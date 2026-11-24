@@ -1,4 +1,3 @@
-split-str
 \ proc-control.f -- Linux/x86-64 exact process-control primitive emitters.
 \
 \ Two child-process control syscalls the supervisor uses after fork:

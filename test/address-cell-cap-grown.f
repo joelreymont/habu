@@ -1,4 +1,3 @@
-split-str
 \ Grow past the fixed band without losing either old or new declarations, and
 \ run a linked program whose code cell `is` stored twice: it holds one row.
 require src/core/exit-status.f
@@ -30,9 +29,9 @@ variable BASE-N
 
 PATH-CAP BUFFER: DIR  variable DIR-U
 PATH-CAP BUFFER: PATH
-: DIR$ ( -- str ) DIR DIR-U @ ;
+: DIR$ ( -- str ) DIR DIR-U @ >str ;
 \ NAME's path in DIR, in bytes the next call reuses.
-: IN$ ( str -- str ) DIR$ 2swap PATH FS:JOIN-PATH PATH swap ;
+: IN$ ( str -- str ) DIR$ swap PATH FS:JOIN-PATH PATH swap >str ;
 
 : SHOW ( CMD:command n -- CMD:command ) {: rc:n :}
    s" address-cell-cap-grown: exited " type rc .
@@ -69,8 +68,8 @@ PATH-CAP BUFFER: PATH
 : RUN ( -- )
    T-RESET
    GROWN
-   s" address-cell-cap-grown" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
+   s" address-cell-cap-grown" FS:MKTEMP-DIR {: s:str :}
+   s STR:DATA DIR s STR:LEN BYTE-COPY  s STR:LEN DIR-U !
    ['] CHECKS ['] REMOVE finally
    T-REPORT ;
 

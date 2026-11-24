@@ -1,4 +1,3 @@
-split-str
 \ bootstrap-created-does-src.f - a does>-created cell cannot mint a nominal family.
 \
 \ The third publisher: the effect a `does>` clause declares for the words its

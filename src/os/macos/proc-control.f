@@ -1,4 +1,3 @@
-split-str
 \ proc-control.f -- macOS exact process-control primitive emitters.
 \
 \ Both report success as 0 and failure as the NEGATED errno, so the supervisor

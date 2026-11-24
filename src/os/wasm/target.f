@@ -1,4 +1,3 @@
-split-str
 \ wasm runtime/build-script target flag and the path capacity.
 
 : HB-TARGET-LINUX? ( -- bool )

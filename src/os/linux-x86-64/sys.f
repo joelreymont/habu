@@ -1,4 +1,3 @@
-split-str
 \ sys.f -- linux-x86-64 OS seam: syscall numbers and kernel argument constants.
 \
 \ The numbers are the x86_64 table, chosen against the argument shapes the
@@ -166,9 +165,9 @@ NR-EXIT-GROUP SYS-EXIT-STENCIL SYS-NR-STENCIL!    \ llvm-mc: movl $231, %eax
 $0F SYS-SVC-STENCIL c!                             \ llvm-mc: syscall
 $05 SYS-SVC-STENCIL 1 + c!
 
-: SYS-EMIT-WRITE ( -- str )  SYS-WRITE-STENCIL SYS-NR-STENCIL-BYTES ;
-: SYS-EMIT-EXIT ( -- str )   SYS-EXIT-STENCIL SYS-NR-STENCIL-BYTES ;
-: SYS-EMIT-SVC ( -- str )    SYS-SVC-STENCIL SYS-SVC-STENCIL-BYTES ;
+: SYS-EMIT-WRITE ( -- str )  SYS-WRITE-STENCIL SYS-NR-STENCIL-BYTES >str ;
+: SYS-EMIT-EXIT ( -- str )   SYS-EXIT-STENCIL SYS-NR-STENCIL-BYTES >str ;
+: SYS-EMIT-SVC ( -- str )    SYS-SVC-STENCIL SYS-SVC-STENCIL-BYTES >str ;
 
 \ ---- the kernel-argument translators -----------------------------------------
 \ openat(AT_FDCWD, path, 0, 0). The path register is set before AT_FDCWD so a

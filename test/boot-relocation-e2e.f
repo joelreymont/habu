@@ -1,4 +1,3 @@
-split-str
 \ A copied engine and its source tree recognize baked modules when the
 \ invocation directory is the copied tree's parent: the copy holds the first
 \ boot file, src/core/exit-status.f, so it is the engine's root (src/core/include.f
@@ -32,20 +31,20 @@ variable OUT-U
 variable ERR-U
 variable RC
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: TREE$ ( -- str ) TREE TREE-U @ ;
-: ENGINE$ ( -- ^u8 n ) ENGINE ENGINE-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: TREE$ ( -- str ) TREE TREE-U @ >str ;
+: ENGINE$ ( -- str ) ENGINE ENGINE-U @ >str ;
 
 : PATH! ( str -- )
-   TREE$ 2swap PATH FS:JOIN-PATH PATH-U ! ;
+   TREE$ swap PATH FS:JOIN-PATH PATH-U ! ;
 
-: COPY-SOURCE ( str -- ) {: rel:^ relu:n :}
-   rel relu PATH!
-   SOURCE-ROOT:CWD$ rel relu SRC FS:JOIN-PATH SRC-U !
-   SRC SRC-U @ PATH PATH-U @ FS:COPY-FILE-STREAM ;
+: COPY-SOURCE ( str -- ) {: rel:str :}
+   rel PATH!
+   SOURCE-ROOT:CWD$ rel SRC FS:JOIN-PATH SRC-U !
+   SRC SRC-U @ >str PATH PATH-U @ >str FS:COPY-FILE-STREAM ;
 
-: ENTRY+ ( str -- ) {: a:^ u:n :}
-   PATH PATH-U @ a u FS:APPEND-FILE ;
+: ENTRY+ ( str -- ) {: s:str :}
+   PATH PATH-U @ >str s FS:APPEND-FILE ;
 
 \ With the argument `refused` the child first asserts that the kernel refused
 \ it its path, so the sandboxed case cannot pass on a host that answers.
@@ -58,13 +57,13 @@ variable RC
    S\" s\q boot relocation: ok\q type cr ;\n;package\nBOOT-RELOCATION-CHILD:RUN\n" ENTRY+ ;
 
 : SETUP ( -- )
-   s" habu-boot-relocation" FS:MKTEMP-DIR {: a:^ u:n :}
-   a u FS:CLEANUP-TREE+
-   a ROOT u BYTE-COPY u ROOT-U !
+   s" habu-boot-relocation" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir STR:DATA ROOT dir STR:LEN BYTE-COPY dir STR:LEN ROOT-U !
    ROOT$ s" tree" TREE FS:JOIN-PATH TREE-U !
-   s" bin" PATH! PATH PATH-U @ FS:MAKE-DIRS
-   s" src/lib" PATH! PATH PATH-U @ FS:MAKE-DIRS
-   s" src/core" PATH! PATH PATH-U @ FS:MAKE-DIRS
+   s" bin" PATH! PATH PATH-U @ >str FS:MAKE-DIRS
+   s" src/lib" PATH! PATH PATH-U @ >str FS:MAKE-DIRS
+   s" src/core" PATH! PATH PATH-U @ >str FS:MAKE-DIRS
    TREE$ s" bin/hb" ENGINE FS:JOIN-PATH ENGINE-U !
    ENGINE-CANDIDATE:PATH$ ENGINE$ FS:COPY-FILE-STREAM
    ENGINE$ FS:CHMOD-X
@@ -73,30 +72,30 @@ variable RC
    s" src/core/exit-status.f" COPY-SOURCE
    WRITE-ENTRY ;
 
-: SAVE ( ^u8 n ^u8 n -- ) {: rel:^ relu:n data:^ size:n :}
-   ROOT$ rel relu PATH FS:JOIN-PATH {: pathu:n :}
-   PATH pathu data size FS:WRITE-ALL ;
+: SAVE ( str str -- ) {: rel:str data:str :}
+   ROOT$ rel PATH FS:JOIN-PATH {: pathu:n :}
+   PATH pathu >str data FS:WRITE-ALL ;
 
 : ENGINE-ARGV+ ( -- )
    s" --load" PROC-ARGV+
    s" tree/entry.f" PROC-ARGV+ ;
 
-: RUN-CHILD ( str -- ) {: exe:^ exeu:n :}
+: RUN-CHILD ( str -- ) {: exe:str :}
    PROC-ENV-INHERIT-MISSING
-   exe exeu ROOT$
+   exe ROOT$
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 \ Keep the child's output beside the tree and check its verdict.
-: VERDICT ( ^u8 n ^u8 n ^u8 n -- )
-   {: out:^ outu:n err:^ erru:n label:^ labelu:n :}
-   out outu OUT OUT-U @ SAVE
-   err erru ERR ERR-U @ SAVE
-   RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
-   label labelu T-LABEL
+: VERDICT ( str str str -- )
+   {: out:str err:str label:str :}
+   out OUT OUT-U @ >str SAVE
+   err ERR ERR-U @ >str SAVE
+   RC @ 0<> if OUT OUT-U @ >str type ERR ERR-U @ >str type then
+   label T-LABEL
    RC @ 0 T=
-   OUT OUT-U @ s" boot relocation: ok" STR:CONTAINS? TTRUE ;
+   OUT OUT-U @ >str s" boot relocation: ok" STR:CONTAINS? TTRUE ;
 
 : PLAIN ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -111,7 +110,7 @@ variable RC
          EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF ENDOF
    ;MATCH
-   SANDBOX swap ;
+   SANDBOX swap >str ;
 
 : REFUSED ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET

@@ -1,4 +1,3 @@
-split-str
 \ bootstrap-created-const-src.f - a constant cannot mint a nominal family.
 \
 \ The `constant` publisher's own row matters here: the checker's row for

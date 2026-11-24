@@ -1,4 +1,3 @@
-split-str
 \ ARENA records come from the real definer and runtime: NAME-NEW's records are
 \ zeroed, cell-aligned and distinct, NAME-NEW-DISPOSE's actions run once,
 \ newest first, at the arena's reset or release, a public declaration publishes
@@ -62,8 +61,8 @@ variable LOG-N
 
 TYPED-VARIABLE EVAL-A ^u8
 variable EVAL-U
-: EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ evaluate-closed ;
-: EVAL ( ^u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
+: EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ >str evaluate-closed ;
+: EVAL ( str -- n ) {: s:str :} s STR:LEN EVAL-U ! s STR:DATA EVAL-A ! [: EVAL-RUN ;] catch ;
 
 \ EVAL with its rejection record unprinted.
 : QUIET-EVAL ( str -- n ) 1 REJECTION:QUIET +! EVAL -1 REJECTION:QUIET +! ;
@@ -72,16 +71,16 @@ variable EVAL-U
 \ multi-error load state.
 : MULTI ( str -- n n ) CHECK:MULTI-ERR-BEGIN EVAL CHECK:MULTI-ERR-END ;
 
-: ABSENT ( ^u8 n ^u8 n -- )
-   {: name:^ nameu:n sfx:^ sfxu:n :}
-   SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
+: ABSENT ( str str -- )
+   {: name:str sfx:str :}
+   SB-RESET  name SB-APPEND  sfx SB-APPEND
    SB$ get-current search-wl 0= TTRUE ;
 
 
 : NO-WORDS ( str -- )
-   {: name:^ nameu:n :}
-   name nameu s" -NEW" ABSENT
-   name nameu s" -NEW-DISPOSE" ABSENT ;
+   {: name:str :}
+   name s" -NEW" ABSENT
+   name s" -NEW-DISPOSE" ABSENT ;
 
 
 \ TAKEN-N records span three chunks of one arena; a record that moved, or one
@@ -179,11 +178,11 @@ variable EVAL-U
 \ Whether NAME+SFX (PUB-ABSENT) or each of NAME's two words (PUB-NO-WORDS) is
 \ absent from ARENA-TEST's public section; the caller is in its private one.
 : PUB-ABSENT ( str str -- )
-   {: name:^ nameu:n sfx:^ sfxu:n :}
-   s" public" EVAL 0 T=  name nameu sfx sfxu ABSENT  s" private" EVAL 0 T= ;
+   {: name:str sfx:str :}
+   s" public" EVAL 0 T=  name sfx ABSENT  s" private" EVAL 0 T= ;
 : PUB-NO-WORDS ( str -- )
-   {: name:^ nameu:n :}
-   s" public" EVAL 0 T=  name nameu NO-WORDS  s" private" EVAL 0 T= ;
+   {: name:str :}
+   s" public" EVAL 0 T=  name NO-WORDS  s" private" EVAL 0 T= ;
 
 
 : TAKEN-NEW-DISPOSE ( -- ) ;
@@ -248,12 +247,12 @@ private
    S\" require src/lib/arena.f\npackage Q public\n;package\nARENA Q:Y n\npackage R public\n: U ( ^ARENA:arena -- ^n ) Q:Y-NEW ;\n;package\n" ;
 
 : VERIFY-FILE ( str -- )
-   {: rel:^ relu:n :}
+   {: rel:str :}
    s" tools/check.f" E2E-TREE:ARGS
    s" --" PROC-ARGV+
    s" --verify-only" PROC-ARGV+
    s" --json-errors" PROC-ARGV+
-   rel relu PROC-ARGV+
+   rel PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
 
 
@@ -267,7 +266,7 @@ private
    s" test/arena-qual.f" E2E-TREE:AT-A VERIFY-QUAL-SRC$ FS:WRITE-ALL
    s" test/arena-uses.f" VERIFY-FILE
    E2E-TREE:OUT$ s" deferred to the run" STR:CONTAINS? 0= TTRUE
-   E2E-TREE:ERR$ nip 0 T=
+   E2E-TREE:ERR$ STR:LEN 0 T=
    E2E-TREE:RC@ 0 T=
    s" and refuses each called with the wrong effect" T-LABEL
    s" test/arena-wrong.f" VERIFY-FILE
@@ -285,7 +284,7 @@ private
    s" and admits a qualified one whose words are free, called as declared" T-LABEL
    s" test/arena-qual.f" VERIFY-FILE
    E2E-TREE:OUT$ s" deferred to the run" STR:CONTAINS? 0= TTRUE
-   E2E-TREE:ERR$ nip 0 T=
+   E2E-TREE:ERR$ STR:LEN 0 T=
    E2E-TREE:RC@ 0 T= ;
 
 : RUN ( -- )

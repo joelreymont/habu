@@ -1,4 +1,3 @@
-split-str
 \ zip-test.f - public lifecycle and independent archive-preservation checks.
 require src/lib/string.f
 require src/lib/zip.f
@@ -32,9 +31,9 @@ TASK:MIN-STACK TASK:TASK ZIP-READER-B
 TASK:SEMAPHORE ZIP-START
 1000 constant ZIP-TASK-ROUNDS
 
-: BASE$ ( -- str ) BASE BASE-LEN @ ;
+: BASE$ ( -- str ) BASE BASE-LEN @ >str ;
 : PATH$ ( str -- str )
-   BASE$ 2swap PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
+   BASE$ swap PATH-BUF FS:JOIN-PATH PATH-BUF swap >str ;
 : INPUT$ ( -- str ) s" input.zip" PATH$ ;
 : OTHER$ ( -- str ) s" other.zip" PATH$ ;
 : MOVED$ ( -- str ) s" moved" PATH$ ;
@@ -42,14 +41,14 @@ TASK:SEMAPHORE ZIP-START
 : FAIL-PATH$ ( -- str ) s" gone/edit.zip" PATH$ ;
 
 : SETUP ( -- )
-   s" habu-zip" FS:MKTEMP-DIR {: dir:^ len:n :}
-   dir BASE len BYTE-COPY len BASE-LEN !
+   s" habu-zip" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA BASE dir STR:LEN BYTE-COPY dir STR:LEN BASE-LEN !
    BASE$ FS:CLEANUP-TREE+ INPUT$ ORIGINAL$ FS:WRITE-ALL
    OTHER$ ORIGINAL$ FS:WRITE-ALL ;
 
-: MEMBER= ( ZIP:archive n str -- ) {: archive:ZIP:archive idx:n want:^ len:n :}
+: MEMBER= ( ZIP:archive n str -- ) {: archive:ZIP:archive idx:n want:str :}
    archive idx ENTRY {: member:ZIP:entry :}
-   archive member ZIP:READ want len T$= ;
+   archive member ZIP:READ want T$= ;
 
 : READ-MEMBERS ( -- )
    INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
@@ -60,8 +59,8 @@ TASK:SEMAPHORE ZIP-START
    archive 4 s" second" MEMBER=
    archive 1 ENTRY {: member:ZIP:entry :}
    archive member NAME$ s" deflated.txt" T$=
-   archive member ZIP:READ {: data:^ len:n :}
-   len 340 T= data 17 s" compressed value " T$=
+   archive member ZIP:READ {: data:str :}
+   data STR:LEN 340 T= data STR:DATA 17 >str s" compressed value " T$=
    archive ZIP:CLOSE ;
 
 : DUP-NAMES ( -- )
@@ -77,9 +76,9 @@ TASK:SEMAPHORE ZIP-START
 : STALE-COUNT ( ZIP:archive -- ZIP:archive ) dup ZIP:COUNT drop ;
 : CLOSE-AGAIN ( ZIP:archive -- ZIP:archive ) dup ZIP:CLOSE ;
 : WRONG-READ ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
-   2dup ZIP:READ 2drop ;
+   2dup ZIP:READ drop ;
 : WRONG-NAME ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
-   2dup NAME$ 2drop ;
+   2dup NAME$ drop ;
 : TRY-REPLACE ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
    2dup s" replacement" REPLACE ;
 : READONLY-FILL ( n SPAN:span<u8> -- ) 2drop ;
@@ -121,31 +120,31 @@ TASK:SEMAPHORE ZIP-START
    [: NUL-PATH ;] E-FFI-NUL TTHROWSQ ;
 
 : CORRUPT-FIXTURE ( -- )
-   ORIGINAL$ {: src:^ len:n :}
-   src RAW len BYTE-COPY $58 RAW STORED-DATA-OFF + c!
-   s" corrupt.zip" PATH$ RAW len FS:WRITE-ALL ;
+   ORIGINAL$ {: src:str :}
+   src STR:DATA RAW src STR:LEN BYTE-COPY $58 RAW STORED-DATA-OFF + c!
+   s" corrupt.zip" PATH$ RAW src STR:LEN >str FS:WRITE-ALL ;
 
 : READ-CORRUPT ( ZIP:archive -- ZIP:archive )
-   dup 0 ENTRY over swap ZIP:READ 2drop ;
+   dup 0 ENTRY over swap ZIP:READ drop ;
 
 : CRC-FAILURE ( -- )
    CORRUPT-FIXTURE s" corrupt.zip" PATH$ ZIP:OPEN {: archive:ZIP:archive :}
    archive [: READ-CORRUPT ;] catch E-READ T= drop
    archive ZIP:CLOSE ;
 
-: FILL-PAYLOAD ( -- ) s" replacement" PAYLOAD swap BYTE-COPY ;
+: FILL-PAYLOAD ( -- ) s" replacement" {: s:str :} s STR:DATA PAYLOAD s STR:LEN BYTE-COPY ;
 
 : REPLACE-MEMBERS ( -- )
    INPUT$ EDIT {: archive:ZIP:archive :}
    archive 0 ENTRY {: member:ZIP:entry :}
-   archive member ZIP:READ {: old:^ old-len:n :}
-   FILL-PAYLOAD archive member PAYLOAD 11 REPLACE
+   archive member ZIP:READ {: old:str :}
+   FILL-PAYLOAD archive member PAYLOAD 11 >str REPLACE
    $58 PAYLOAD c!
    archive member ZIP:READ s" replacement" T$=
-   old old-len s" stored value" T$=
+   old s" stored value" T$=
    archive 4 ENTRY {: duplicate:ZIP:entry :}
    archive duplicate s" " REPLACE
-   archive duplicate ZIP:READ nip 0 T=
+   archive duplicate ZIP:READ STR:LEN 0 T=
    archive COMMIT
    archive [: STALE-COUNT ;] catch E-HANDLE T= drop ;
 
@@ -156,9 +155,9 @@ TASK:SEMAPHORE ZIP-START
    archive 4 s" " MEMBER=
    archive ZIP:CLOSE ;
 
-: RAW-HAS ( str -- ) {: expected:^ len:n :}
+: RAW-HAS ( str -- ) {: expected:str :}
    INPUT$ RAW RAW-CAP FS:READ-ALL {: size:n :}
-   RAW size expected len STR:CONTAINS? TTRUE ;
+   RAW size >str expected STR:CONTAINS? TTRUE ;
 
 : PRESERVED ( -- )
    KEEP-LOCAL$ RAW-HAS
@@ -178,7 +177,7 @@ TASK:SEMAPHORE ZIP-START
    result 3 s" second" MEMBER=
    result ZIP:CLOSE
    INPUT$ RAW RAW-CAP FS:READ-ALL {: size:n :}
-   RAW size s" stored value" STR:CONTAINS? TFALSE ;
+   RAW size >str s" stored value" STR:CONTAINS? TFALSE ;
 
 : DISCARD-CHANGES ( -- )
    INPUT$ EDIT {: archive:ZIP:archive :}
@@ -187,9 +186,9 @@ TASK:SEMAPHORE ZIP-START
    READ-REPLACED ;
 
 : MOVE-DIRECTORY ( -- )
-   OLD-DIR$ PATH-CAP MEM-ALLOC-BYTES {: old:^ old-len:n buf:^ cap:n :}
-   old buf old-len BYTE-COPY
-   buf old-len MOVED$ FS:RENAME-FILE
+   OLD-DIR$ PATH-CAP MEM-ALLOC-BYTES {: old:str buf:^ cap:n :}
+   old STR:DATA buf old STR:LEN BYTE-COPY
+   buf old STR:LEN >str MOVED$ FS:RENAME-FILE
    buf cap BYTES-ALLOC-LEN RELEASE-BYTES ;
 
 : COMMIT-FAILURE ( -- )
@@ -203,13 +202,13 @@ TASK:SEMAPHORE ZIP-START
    archive ZIP:CLOSE ;
 
 : SAVE-INPUT ( -- )
-   INPUT$ {: path:^ len:n :}
-   path RAW len BYTE-COPY RAW len s" saved.zip" PATH$ FS:RENAME-FILE
+   INPUT$ {: path:str :}
+   path STR:DATA RAW path STR:LEN BYTE-COPY RAW path STR:LEN >str s" saved.zip" PATH$ FS:RENAME-FILE
    INPUT$ FS:MAKE-DIR ;
 
 : RESTORE-INPUT ( -- )
-   INPUT$ FS:REMOVE-DIR s" saved.zip" PATH$ {: path:^ len:n :}
-   path RAW len BYTE-COPY RAW len INPUT$ FS:RENAME-FILE ;
+   INPUT$ FS:REMOVE-DIR s" saved.zip" PATH$ {: path:str :}
+   path STR:DATA RAW path STR:LEN BYTE-COPY RAW path STR:LEN >str INPUT$ FS:RENAME-FILE ;
 
 : NO-TEMP ( str -- )
    FS:BASENAME s" .tmp-" STR:STARTS-WITH? TFALSE ;
@@ -226,32 +225,32 @@ TASK:SEMAPHORE ZIP-START
 
 : READONLY-COMMIT ( -- )
    INPUT$ ORIGINAL$ FS:WRITE-ALL INPUT$ ZIP:OPEN COMMIT
-   INPUT$ RAW RAW-CAP FS:READ-ALL RAW swap ORIGINAL$ T$=
+   INPUT$ RAW RAW-CAP FS:READ-ALL RAW swap >str ORIGINAL$ T$=
    INPUT$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
    archive 0 ENTRY {: member:ZIP:entry :}
    archive member [: TRY-REPLACE ;] catch E-READONLY T= 2drop
    archive member [: TRY-REPLACE-WITH ;] catch E-READONLY T= 2drop
    archive 0 s" stored value" MEMBER=
    archive COMMIT
-   INPUT$ RAW RAW-CAP FS:READ-ALL RAW swap ORIGINAL$ T$= ;
+   INPUT$ RAW RAW-CAP FS:READ-ALL RAW swap >str ORIGINAL$ T$= ;
 
-: STALE-SOURCE ( ZIP:archive -- ZIP:archive ) dup SOURCE$ 2drop ;
+: STALE-SOURCE ( ZIP:archive -- ZIP:archive ) dup SOURCE$ drop ;
 
 : ORIGINAL-SOURCE ( -- )
    INPUT$ ORIGINAL$ FS:WRITE-ALL INPUT$ EDIT {: archive:ZIP:archive :}
-   archive SOURCE$ {: data:^ len:n :}
-   data len ORIGINAL$ T$=
+   archive SOURCE$ {: data:str :}
+   data ORIGINAL$ T$=
    archive 0 ENTRY archive swap s" pending" REPLACE
-   archive SOURCE$ ORIGINAL$ T$= data len ORIGINAL$ T$=
+   archive SOURCE$ ORIGINAL$ T$= data ORIGINAL$ T$=
    archive ZIP:CLOSE
    archive [: STALE-SOURCE ;] catch E-HANDLE T= drop ;
 
 : MANY-HANDLES ( -- )
    INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
    archive 0 ENTRY {: first:ZIP:entry :}
-   archive first NAME$ {: name:^ name-len:n :}
-   768 0 ?do archive 1 ENTRY archive swap NAME$ 2drop loop
-   name name-len s" stored.txt" T$=
+   archive first NAME$ {: name:str :}
+   768 0 ?do archive 1 ENTRY archive swap NAME$ drop loop
+   name s" stored.txt" T$=
    archive first ZIP:READ s" stored value" T$=
    archive ZIP:CLOSE
    archive first [: WRONG-READ ;] catch E-HANDLE T= 2drop ;
@@ -262,10 +261,10 @@ TASK:SEMAPHORE ZIP-START
    archive 0 ENTRY archive swap s" replacement text" REPLACE archive COMMIT ;
 
 : FRAMING-CASE ( str str -- )
-   {: before:^ before-len:n after:^ after-len:n :}
-   INPUT$ before before-len FS:WRITE-ALL REPLACE-FIRST
+   {: before:str after:str :}
+   INPUT$ before FS:WRITE-ALL REPLACE-FIRST
    INPUT$ RAW RAW-CAP FS:READ-ALL {: len:n :}
-   RAW len after after-len T$=
+   RAW len >str after T$=
    INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
    archive 0 s" replacement text" MEMBER= archive 1 s" keep" MEMBER=
    archive ZIP:CLOSE ;
@@ -282,17 +281,17 @@ $10000 constant WIDE-COUNT
    4 0 ?do value i 8 * rshift data i + c! loop ;
 
 : COUNT-FIXTURE ( ^u8 -- n ) {: data:^ :}
-   COUNT-LOCAL$ {: local:^ local-len:n :}
-   COUNT-CENTRAL$ {: central:^ central-len:n :}
-   WIDE-COUNT 0 ?do local data i local-len * + local-len BYTE-COPY loop
-   data WIDE-COUNT local-len * + {: directory:^ :}
+   COUNT-LOCAL$ {: local:str :}
+   COUNT-CENTRAL$ {: central:str :}
+   WIDE-COUNT 0 ?do local STR:DATA data i local STR:LEN * + local STR:LEN BYTE-COPY loop
+   data WIDE-COUNT local STR:LEN * + {: directory:^ :}
    WIDE-COUNT 0 ?do
-      directory i central-len * + {: dest:^ :}
-      central dest central-len BYTE-COPY i local-len * dest $2A + COUNT-OFFSET!
+      directory i central STR:LEN * + {: dest:^ :}
+      central STR:DATA dest central STR:LEN BYTE-COPY i local STR:LEN * dest $2A + COUNT-OFFSET!
    loop
-   WIDE-COUNT local-len central-len + * {: end-off:n :}
-   COUNT-END-BEFORE$ {: tail:^ len:n :}
-   tail data end-off + len BYTE-COPY end-off len + ;
+   WIDE-COUNT local STR:LEN central STR:LEN + * {: end-off:n :}
+   COUNT-END-BEFORE$ {: tail:str :}
+   tail STR:DATA data end-off + tail STR:LEN BYTE-COPY end-off tail STR:LEN + ;
 
 : COUNT-CONTENT ( -- )
    INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
@@ -301,15 +300,15 @@ $10000 constant WIDE-COUNT
    archive WIDE-COUNT 1- s" " MEMBER= archive ZIP:CLOSE ;
 
 : ZIP64-COUNT ( -- )
-   COUNT-LOCAL$ nip COUNT-CENTRAL$ nip + WIDE-COUNT * $100 +
+   COUNT-LOCAL$ STR:LEN COUNT-CENTRAL$ STR:LEN + WIDE-COUNT * $100 +
    MEM-ALLOC-BYTES {: data:^ cap:n :}
-   INPUT$ data data COUNT-FIXTURE FS:WRITE-ALL
+   INPUT$ data data COUNT-FIXTURE >str FS:WRITE-ALL
    INPUT$ EDIT {: archive:ZIP:archive :}
    archive ZIP:COUNT WIDE-COUNT T=
    archive 0 ENTRY archive swap s" replacement text" REPLACE archive COMMIT
    INPUT$ data cap FS:READ-ALL {: len:n :}
-   COUNT-END-AFTER$ {: expected:^ size:n :}
-   data len size - + size expected size T$=
+   COUNT-END-AFTER$ {: expected:str :}
+   data len expected STR:LEN - + expected STR:LEN >str expected T$=
    data cap BYTES-ALLOC-LEN RELEASE-BYTES COUNT-CONTENT
    INPUT$ ZIP:OPEN-FILE {: file:ZIP:archive :}
    file ZIP:COUNT WIDE-COUNT T=
@@ -335,23 +334,23 @@ $10000 constant WIDE-COUNT
    INPUT$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
    archive ZIP:COUNT 5 T=
    archive 0 s" stored value" MEMBER=
-   archive 1 ENTRY archive swap ZIP:READ nip 340 T=
+   archive 1 ENTRY archive swap ZIP:READ STR:LEN 340 T=
    archive 2 s" " MEMBER=
    archive ZIP:CLOSE ;
 
 : FILE-STREAM-ONE ( ZIP:archive n str -- )
-   {: archive:ZIP:archive idx:n want:^ size:n :}
+   {: archive:ZIP:archive idx:n want:str :}
    archive archive idx ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
-   0 begin dup size < while
+   0 begin dup want STR:LEN < while
       dup {: off:n :}
-      size off - 7 min {: cap:n :}
+      want STR:LEN off - 7 min {: cap:n :}
       input STREAM-BUF off + cap SPAN:MAKE ZIP:READ-IN
       dup 0= if E-READ throw then +
    repeat drop
    input STREAM-BUF 1 SPAN:MAKE ZIP:READ-IN 0 T=
    input STREAM-BUF 1 SPAN:MAKE ZIP:READ-IN 0 T=
    input ZIP:CLOSE-ENTRY
-   STREAM-BUF size want size T$= ;
+   STREAM-BUF want STR:LEN >str want T$= ;
 
 : FILE-STREAMS ( -- )
    INPUT$ ORIGINAL$ FS:WRITE-ALL
@@ -365,15 +364,15 @@ $10000 constant WIDE-COUNT
 
 : FILE-SOURCE-STREAM ( ZIP:archive -- ) {: archive:ZIP:archive :}
    archive ZIP:OPEN-SOURCE {: input:ZIP:input :}
-   ORIGINAL$ {: expected:^ size:n :}
-   0 begin dup size < while
+   ORIGINAL$ {: expected:str :}
+   0 begin dup expected STR:LEN < while
       dup {: off:n :}
-      input RAW off + size off - 7 min SPAN:MAKE ZIP:READ-IN
+      input RAW off + expected STR:LEN off - 7 min SPAN:MAKE ZIP:READ-IN
       dup 0= if E-READ throw then +
    repeat drop
    input RAW 1 SPAN:MAKE ZIP:READ-IN 0 T=
    input ZIP:CLOSE-ENTRY
-   RAW size expected size T$= ;
+   RAW expected STR:LEN >str expected T$= ;
 
 : FILE-SNAPSHOT ( -- )
    INPUT$ ORIGINAL$ FS:WRITE-ALL
@@ -393,7 +392,7 @@ $10000 constant WIDE-COUNT
    INPUT$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
    archive ZIP:OPEN-SOURCE {: input:ZIP:input :}
    $80000000 MEM-ALLOC-BYTES {: wide:^ cap:n :}
-   input wide cap SPAN:MAKE ZIP:READ-IN ORIGINAL$ nip T=
+   input wide cap SPAN:MAKE ZIP:READ-IN ORIGINAL$ STR:LEN T=
    input wide cap SPAN:MAKE ZIP:READ-IN 0 T=
    input ZIP:CLOSE-ENTRY
    wide cap BYTES-ALLOC-LEN RELEASE-BYTES
@@ -401,8 +400,7 @@ $10000 constant WIDE-COUNT
 
 
 : FILL-BYTE ( n SPAN:span<u8> -- ) {: byte:n dst :}
-   dst SPAN:$ {: data:^ len:n :}
-   len 0 ?do byte data i + c! loop ;
+   dst SPAN:LEN 0 ?do byte dst i SPAN:U8! loop ;
 
 : FAIL-FILL ( n SPAN:span<u8> -- )
    2drop CALLER-CODE throw ;
@@ -417,12 +415,12 @@ $10000 constant WIDE-COUNT
    archive member [: TRY-FILL ;] catch CALLER-CODE T= 2drop
    archive 0 s" stored value" MEMBER=
    archive member 31 65 [: FILL-BYTE ;] ZIP:REPLACE-WITH
-   archive 2 ENTRY archive swap ZIP:READ nip 0 T=
+   archive 2 ENTRY archive swap ZIP:READ STR:LEN 0 T=
    archive COMMIT
    INPUT$ ZIP:OPEN-FILE {: result:ZIP:archive :}
-   result 0 ENTRY result swap ZIP:READ {: data:^ len:n :}
-   len 31 T=
-   len 0 ?do data i + c@ 65 T= loop
+   result 0 ENTRY result swap ZIP:READ {: data:str :}
+   data STR:LEN 31 T=
+   data STR:LEN 0 ?do data STR:DATA i + c@ 65 T= loop
    result ZIP:CLOSE ;
 
 : LARGE-FILE-COPY ( -- )
@@ -478,10 +476,10 @@ $10000 constant WIDE-COUNT
    archive ZIP:CLOSE ;
 
 : SIZE-CASE ( n -- ) {: declared:n :}
-   ORIGINAL$ {: data:^ len:n :}
-   data RAW len BYTE-COPY
+   ORIGINAL$ {: data:str :}
+   data STR:DATA RAW data STR:LEN BYTE-COPY
    declared RAW $128 + c!
-   s" size.zip" PATH$ RAW len FS:WRITE-ALL
+   s" size.zip" PATH$ RAW data STR:LEN >str FS:WRITE-ALL
    s" size.zip" PATH$ ZIP:OPEN-FILE {: archive:ZIP:archive :}
    archive archive 0 ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
    input [: dup ZIP:CLOSE-ENTRY ;] catch E-READ T= drop
@@ -506,13 +504,13 @@ $10000 constant WIDE-COUNT
 
 : BOUNDARY-PATH$ ( -- str ) s" boundary.zip" PATH$ ;
 : BOUNDARY-BASE ( -- n )
-   BOUNDARY-STORE$ {: data:^ len:n :}
-   data RAW len BYTE-COPY len ;
+   BOUNDARY-STORE$ {: data:str :}
+   data STR:DATA RAW data STR:LEN BYTE-COPY data STR:LEN ;
 : BOUNDARY-EFS ( -- n )
-   BOUNDARY-EFS$ {: data:^ len:n :}
-   data RAW len BYTE-COPY len ;
+   BOUNDARY-EFS$ {: data:str :}
+   data STR:DATA RAW data STR:LEN BYTE-COPY data STR:LEN ;
 : BOUNDARY-BYTE ( n n -- ) {: off:n value:n :} value RAW off + c! ;
-: BOUNDARY-SAVE ( n -- ) {: len:n :} BOUNDARY-PATH$ RAW len FS:WRITE-ALL ;
+: BOUNDARY-SAVE ( n -- ) {: len:n :} BOUNDARY-PATH$ RAW len >str FS:WRITE-ALL ;
 : BOUNDARY-OPEN ( -- ) BOUNDARY-PATH$ ZIP:OPEN drop ;
 : BOUNDARY-GOOD ( -- )
    BOUNDARY-PATH$ ZIP:OPEN {: archive:ZIP:archive :}
@@ -556,8 +554,8 @@ $10000 constant WIDE-COUNT
    BOUNDARY-BASE 101 $1F BOUNDARY-BYTE BOUNDARY-SAVE
    BOUNDARY-BAD-READ BOUNDARY-BAD-CLOSE
    BOUNDARY-BASE drop
-   BOUNDARY-STORE$ {: data:^ len:n :}
-   data 77 + RAW 76 + len 77 - BYTE-COPY
+   BOUNDARY-STORE$ {: data:str :}
+   data STR:DATA 77 + RAW 76 + data STR:LEN 77 - BYTE-COPY
    157 76 BOUNDARY-BYTE 175 BOUNDARY-SAVE
    BOUNDARY-BAD-READ BOUNDARY-BAD-CLOSE ;
 : BOUNDARY-DISAGREEMENT ( -- )
@@ -578,9 +576,9 @@ $10000 constant WIDE-COUNT
    first STREAM-BUF 1 SPAN:MAKE ZIP:READ-IN 1 T=
    second STREAM-BUF 2 SPAN:MAKE ZIP:READ-IN 2 T=
    first STREAM-BUF 2 SPAN:MAKE ZIP:READ-IN 2 T=
-   STREAM-BUF 2 s" 12" T$=
+   STREAM-BUF 2 >str s" 12" T$=
    second STREAM-BUF 1 SPAN:MAKE ZIP:READ-IN 1 T=
-   STREAM-BUF 1 s" 2" T$=
+   STREAM-BUF 1 >str s" 2" T$=
    first ZIP:CLOSE-ENTRY second ZIP:CLOSE-ENTRY archive ZIP:CLOSE ;
 
 : BOUNDARY-NUM! ( n n n -- ) {: value:n off:n width:n :}
@@ -588,9 +586,9 @@ $10000 constant WIDE-COUNT
 
 \ Replace the central extra with ZIP64 data; the local header stays intact.
 : BOUNDARY-ZIP64 ( n bool -- n ) {: size:n wide:bool :}
-   BOUNDARY-STORE$ {: data:^ len:n :}
-   data RAW 132 BYTE-COPY
-   data 138 + RAW 136 size + + len 138 - BYTE-COPY
+   BOUNDARY-STORE$ {: data:str :}
+   data STR:DATA RAW 132 BYTE-COPY
+   data STR:DATA 138 + RAW 136 size + + data STR:LEN 138 - BYTE-COPY
    1 132 2 BOUNDARY-NUM! size 134 2 BOUNDARY-NUM!
    size 4 + 107 2 BOUNDARY-NUM!
    size 0 ?do 136 i + 0 BOUNDARY-BYTE loop
@@ -598,7 +596,7 @@ $10000 constant WIDE-COUNT
    size 24 >= if 32 144 8 BOUNDARY-NUM! then
    wide if $FFFFFFFF 101 4 BOUNDARY-NUM! then
    63 size + 152 size + 4 BOUNDARY-NUM!
-   len size 2 - + ;
+   data STR:LEN size 2 - + ;
 
 : BOUNDARY-ZIP64-CASES ( -- )
    8 true BOUNDARY-ZIP64 BOUNDARY-SAVE BOUNDARY-GOOD
@@ -640,8 +638,8 @@ $10000 constant WIDE-COUNT
    skew ZIP:CLOSE ;
 
 : WIDE-BOUNDARY-BASE ( -- n )
-   WIDE-BEFORE$ {: data:^ len:n :}
-   data RAW len BYTE-COPY len ;
+   WIDE-BEFORE$ {: data:str :}
+   data STR:DATA RAW data STR:LEN BYTE-COPY data STR:LEN ;
 : WIDE-BOUNDARY-GOOD ( -- )
    BOUNDARY-PATH$ ZIP:OPEN {: archive:ZIP:archive :}
    archive ZIP:COUNT 3 T= archive ZIP:CLOSE ;
@@ -665,16 +663,16 @@ $10000 constant WIDE-COUNT
 
 \ Different member sizes expose a concurrent zip_stat_index scratch collision.
 : TASK-READ-ONE ( str n str str -- )
-   {: path:^ path-len:n idx:n name:^ name-len:n data:^ data-len:n :}
-   path path-len ZIP:OPEN {: archive:ZIP:archive :}
+   {: path:str idx:n name:str data:str :}
+   path ZIP:OPEN {: archive:ZIP:archive :}
    archive ZIP:COUNT 5 <> if E-READ throw then
    archive idx ENTRY {: member:ZIP:entry :}
-   archive member NAME$ name name-len STR:= 0= if E-READ throw then
-   archive member ZIP:READ data data-len STR:= 0= if E-READ throw then
+   archive member NAME$ name STR:= 0= if E-READ throw then
+   archive member ZIP:READ data STR:= 0= if E-READ throw then
    archive ZIP:CLOSE ;
 
-: TASK-PATH-A$ ( -- str ) TASK-PATH-A TASK-PATH-A-LEN @ ;
-: TASK-PATH-B$ ( -- str ) TASK-PATH-B TASK-PATH-B-LEN @ ;
+: TASK-PATH-A$ ( -- str ) TASK-PATH-A TASK-PATH-A-LEN @ >str ;
+: TASK-PATH-B$ ( -- str ) TASK-PATH-B TASK-PATH-B-LEN @ >str ;
 
 : TASK-READ-A ( -- )
    ZIP-START TASK:WAIT-SEM
@@ -697,10 +695,10 @@ $10000 constant WIDE-COUNT
 
 : TASK-READERS ( -- )
    INPUT$ ORIGINAL$ FS:WRITE-ALL OTHER$ ORIGINAL$ FS:WRITE-ALL
-   INPUT$ {: path-a:^ len-a:n :}
-   path-a TASK-PATH-A len-a BYTE-COPY len-a TASK-PATH-A-LEN !
-   OTHER$ {: path-b:^ len-b:n :}
-   path-b TASK-PATH-B len-b BYTE-COPY len-b TASK-PATH-B-LEN !
+   INPUT$ {: path-a:str :}
+   path-a STR:DATA TASK-PATH-A path-a STR:LEN BYTE-COPY path-a STR:LEN TASK-PATH-A-LEN !
+   OTHER$ {: path-b:str :}
+   path-b STR:DATA TASK-PATH-B path-b STR:LEN BYTE-COPY path-b STR:LEN TASK-PATH-B-LEN !
    0 ZIP-START TASK:SEMAPHORE-INIT
    ['] TASK-READ-A ZIP-READER-A TASK:ACTIVATE
    ['] TASK-READ-B ZIP-READER-B TASK:ACTIVATE

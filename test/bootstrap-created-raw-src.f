@@ -1,4 +1,3 @@
-split-str
 \ bootstrap-created-raw-src.f - a variable's cell cannot mint a nominal family.
 \
 \ The publication routes through `trust-raw`, so every type variable in the

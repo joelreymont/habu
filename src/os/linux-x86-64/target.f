@@ -1,4 +1,3 @@
-split-str
 \ linux-x86-64 runtime/build-script target flag and the OS's path capacity.
 
 : HB-TARGET-LINUX? ( -- bool )
