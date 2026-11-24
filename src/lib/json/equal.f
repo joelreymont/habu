@@ -711,7 +711,7 @@ public
 
 \ Some -1, 0 or 1 as lexeme a's value is below, equal to or above b's; a and
 \ b must be number lexemes the reader admits.
-: NUMBER-COMPARE ( ^u8 n ^u8 n -- option<n> )
+: NUMBER-COMPARE ( str str -- option<n> )
    {: a:^ u:n b:^ v:n :}
    0 a u b v [: ORDER-SLOT ;] catch {: order pa ua pb ub code:n :}
    code 0= if order OPTION:SOME exit then
