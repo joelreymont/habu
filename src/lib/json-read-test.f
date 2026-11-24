@@ -1248,6 +1248,11 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
 : JRT-WARM-VALUE-EQ ( -- )
    70 JRT-NEST-OBJ$ 2dup JSON:VALUE= drop ;
 
+\ READ-REPEAT opens the task's first MEM pool scope, and the pool keeps the
+\ chunk it maps; one call maps it before the release check.
+: JRT-WARM-REPEAT ( -- )
+   70 JRT-DEEP-REPEAT$ JSON:READ-REPEAT drop ;
+
 : JRT-TEST-DEEP ( -- )
    s" nesting at and past the inline stack parses" T-LABEL
    [: JRT-DEEP-EDGES ;] MAPPED:RELEASED? TTRUE
@@ -1257,8 +1262,8 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    [: JRT-DEEP-40000 ;] MAPPED:RELEASED? TTRUE
    s" READ-FIND-KEY works 70 objects deep and READ-FINISH releases the stack" T-LABEL
    [: JRT-TEST-DEEP-FIND ;] MAPPED:RELEASED? TTRUE
-   \ A task's first rejection maps its REASON text and its scope chunk for
-   \ good, so one is taken before the probes.
+   \ A task's first rejection maps its REASON text for good, so one is taken
+   \ before the probes.
    [: s" x" JRT-OPEN-A JSON:READ-NEXT drop JSON:READ-CLOSE ;]
    E-JSON-READ-MALFORMED TTHROWSQ
    s" a failure 100 deep releases the stack" T-LABEL
@@ -1270,8 +1275,9 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s" a record holding a leftover parses again and nothing stays mapped" T-LABEL
    [: JRT-ABANDON-REINIT ;] MAPPED:RELEASED? TTRUE
    s" READ-REPEAT past 64 levels releases both stacks, a throw included" T-LABEL
-   \ READ-REPEAT holds two mappings at once here, its scratch and its record's
-   \ stack, each one page at most.
+   \ With the pool chunk mapped, READ-REPEAT holds two mappings here at once,
+   \ its scratch and its record's stack, each one page at most.
+   JRT-WARM-REPEAT
    [: JRT-DEEP-REPEATS ;] MAPPED:RELEASED? TTRUE
    s" VALUE= past 64 levels releases every record's stack, a throw included" T-LABEL
    JRT-WARM-VALUE-EQ

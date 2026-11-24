@@ -71,6 +71,8 @@ public
 \ Whether eight freed one-page probes map again where they were after the
 \ body: a leaked page takes a hole, a wider leak only where enough adjoin.
 : RELEASED? ( [ -- ] -- bool )
+   \ A body opening the task's first MEM pool scope needs a warm-up call
+   \ first, as the pool keeps that chunk.
    HOLES execute FILLED? ;
 
 ;package
