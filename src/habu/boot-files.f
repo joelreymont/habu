@@ -47,6 +47,7 @@ private
    CHECKER COMMON s" src/core/util.f" ROW
    CHECKER COMMON s" src/core/cell.f" ROW
    CHECKER COMMON s" src/core/pointer-storage.f" ROW
+   CHECKER COMMON s" src/lib/string.f" ROW
    CHECKER COMMON s" src/core/arena-pages.f" ROW
    CHECKER COMMON s" src/core/engine-error.f" ROW
    CHECKER COMMON s" src/core/checker-owner-extension.f" ROW
@@ -123,7 +124,7 @@ private
    RESTLIB COMMON s" src/lib/adt/nullable.f" ROW
    RESTLIB COMMON s" src/lib/num-types.f" ROW
    RESTLIB COMMON s" src/lib/num-arithmetic.f" ROW
-   RESTLIB COMMON s" src/lib/string.f" ROW
+   RESTLIB COMMON s" src/lib/string-option.f" ROW
    RESTLIB COMMON s" src/lib/memory.f" ROW
    RESTLIB COMMON s" src/lib/allocator.f" ROW
    RESTLIB COMMON s" src/lib/arena.f" ROW

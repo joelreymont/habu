@@ -35,7 +35,7 @@ HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
 s" src/core/exit-status.f" required
 s" src/lib/error.f" required
 s" src/lib/span.f" required
-s" src/lib/string.f" required
+s" src/lib/string-option.f" required
 s" src/lib/le.f" required
 s" src/lib/float32.f" required
 s" src/lib/adt/option.f" required

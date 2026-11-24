@@ -954,8 +954,9 @@ DV-OFF 8 + constant SCI-LIMBS-OFF
 SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 ;package
 
-\ STRING-ABI is src/lib/string.f's SB builder, declared here because string.f is
-\ baked into the engine below src/lib/ffi-abi.f, which requires it back.
+\ STRING-ABI is src/lib/string-option.f's SB builder, declared here because
+\ string-option.f is baked into the engine below src/lib/ffi-abi.f, which
+\ requires it back.
 package STRING-ABI
 public
 $400 constant SB-BUF-BYTES

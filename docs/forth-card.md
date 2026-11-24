@@ -305,7 +305,7 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `fill`, `erase` | none; write it: `u 0 ?do 0 a i + c! loop` |
 | `bl` | `STR:SPACE`, `src/lib/string.f` |
 | `*/` | none; `*` then `/` |
-| `s>number?` | `STR:>NUMBER?`, `src/lib/string.f` |
+| `s>number?` | `STR:>NUMBER?`, `src/lib/string-option.f` |
 | `'` in a compiled body | `[: WORD ;]`; `'` is top level only |
 | `0>` | `0 >` |
 | `0>=` | `0 >=` |
