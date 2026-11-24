@@ -348,7 +348,7 @@ private
 public
 \ Opens a record with its code and message: sp drops FAULT-FRAME, x14 = its
 \ start, x17 = the JSON flag.
-: FAULT-OPEN, ( str str -- )
+: FAULT-OPEN, ( str str -- FAULT-RECORD:record )
    FAULT-OPEN
    SP SP FAULT-FRAME SUBI,  14 SP 0 ADDI,
    17 DATA-VA VA>N REJECTION-JSON-CELL + LIT64,  17 17 0 LDR,
@@ -357,7 +357,7 @@ public
 \ Note `in`: the word whose code holds the address in x3, read from the x6
 \ records at x4; x4 = 0 when the site cannot trust the dictionary. With no
 \ such word, note `at` and the address.
-: FAULT-IN, ( -- )
+: FAULT-IN, ( FAULT-RECORD:record -- FAULT-RECORD:record )
    LBL LBL {: at:label done:label :}
    FAULT-IN {: was:n :}
    LFAULT-OWNER LABEL@ BL,
@@ -370,7 +370,8 @@ public
    done LBL, ;
 
 \ A note with the register's value in decimal; the register is copied first.
-: FAULT-NUMBER, ( str n -- ) {: k:^ ku:n r:n :}
+: FAULT-NUMBER, ( FAULT-RECORD:record str n -- FAULT-RECORD:record )
+   {: k:^ ku:n r:n :}
    7 r 0 ADDI,
    k ku NOTE+  PIECE,
    LFAULT-DEC LABEL@ BL, ;
@@ -378,26 +379,29 @@ public
 \ A note with the bytes at the pointer register, the length register's count of
 \ them. Both are among x3..x7, which the record's parts keep until a note writes
 \ x6 or x7.
-: FAULT-TEXT, ( str n n -- ) {: k:^ ku:n p:n l:n :}
+: FAULT-TEXT, ( FAULT-RECORD:record str n n -- FAULT-RECORD:record )
+   {: k:^ ku:n p:n l:n :}
    p 3 < p 7 > or  l 3 < or  l 7 > or IF p l BAD-TEXT-REGS THEN
    k ku NOTE+  PIECE,
    10 p 0 ADDI,  11 l 0 ADDI,  9 17 0 ADDI,  LFAULT-PUT LABEL@ BL, ;
 
 \ A note with the address in the register, `0x` and 16 hex digits; the
 \ register is copied first.
-: FAULT-ADDRESS, ( str n -- ) {: k:^ ku:n r:n :}
+: FAULT-ADDRESS, ( FAULT-RECORD:record str n -- FAULT-RECORD:record )
+   {: k:^ ku:n r:n :}
    7 r 0 ADDI,
    k ku FAULT-ADDRESS  PIECE,  7 HEX, ;
 
 \ Ends the record with its help and exits with the status.
-: FAULT-STOP, ( str n -- ) {: h:^ hu:n status:n :}
+: FAULT-STOP, ( FAULT-RECORD:record str n -- )
+   {: h:^ hu:n status:n :}
    h hu FAULT-STOP
    PIECE,  FLUSH,
    0 status MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Ends the record with its help, none for an empty text, and returns, sp as
 \ FAULT-OPEN, found it.
-: FAULT-KEEP, ( str -- )
+: FAULT-KEEP, ( FAULT-RECORD:record str -- )
    FAULT-KEEP
    PIECE,  FLUSH,
    SP SP FAULT-FRAME ADDI, ;

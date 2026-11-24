@@ -3546,7 +3546,7 @@ private
 
 \ Note `in` the word whose code holds the lr at rsp + off, read from the records
 \ at r13, and help; never returns.
-: POLICY-STOP, ( str n -- ) {: h:^ hu:n lr:n :}
+: POLICY-STOP, ( FAULT-RECORD:record str n -- ) {: h:^ hu:n lr:n :}
    RDI lr POLICY-ARG,
    RSI DBASE-REG ASM-SINK ENC-MOV-RR  RDX NDICT-REG ASM-SINK ENC-MOV-RR
    X64CRASH:FAULT-IN,

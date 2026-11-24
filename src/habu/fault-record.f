@@ -3,7 +3,8 @@ split-str
 \ writes. A fault record is the bytes package REJECTION writes for an unplaced
 \ rejection of the same parts, in prose or, when the main DATA's
 \ REJECTION-JSON-CELL is set, as one JSON object. A site's emitter opens the
-\ record with its code and message, adds notes, then stops or keeps it; each
+\ record with its code and message, adds notes, then stops or keeps it, the
+\ open record a linear token the checker holds to that order; each
 \ part's static text is built here twice, prose and JSON, and the run writes
 \ the one the flag picks. REJECTION is Forth on a thread's VM stacks, and these
 \ sites run where none can: a signal handler (no Forth word is
@@ -19,6 +20,7 @@ require src/lib/vector.f
 package FAULT-RECORD
 public
 256 constant FAULT-FRAME
+DEFLINEAR FAULT-RECORD:record
 private
 : NEW-TEXT ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 \ A file link zeroes scratch cells after each piece, so a text is made when
@@ -44,11 +46,13 @@ public
    JSON-TEXT @ VEC:DELETE  NULL-PTR JSON-TEXT !
    GUARD-TEXT @ VEC:DELETE  NULL-PTR GUARD-TEXT ! ;
 private
-\ The part the record being emitted has open: none, its message, or a note.
-0 constant FAULT-SHUT
-1 constant FAULT-MESSAGE
-2 constant FAULT-NOTE
-variable FAULT-PART  FAULT-SHUT FAULT-PART !
+\ An open record carries its open part: its message, or a note.
+1 constant PART-MESSAGE
+2 constant PART-NOTE
+LINEAR: MINT ( n -- FAULT-RECORD:record )
+LINEAR: ERASE ( FAULT-RECORD:record -- n )
+: PART ( FAULT-RECORD:record -- FAULT-RECORD:record n )
+   ERASE dup MINT swap ;
 
 : PROSE+ ( str -- )  PROSE VEC:APPEND ;
 : JSON+ ( str -- )  JSON VEC:APPEND ;
@@ -62,63 +66,55 @@ variable FAULT-PART  FAULT-SHUT FAULT-PART !
 : ESC+ ( str -- ) {: a:^ u:n :}
    u 0 ?do a i + ESC-BYTE loop ;
 
-: PART? ( n -- ) {: want:n :}
-   FAULT-PART @ want <> IF
-      s" crash: a fault record's parts are out of REJECTION's order" EXIT-STATUS:INTERNAL die
-   THEN ;
-: NOTE-PART? ( -- )
-   FAULT-PART @ FAULT-SHUT = IF
-      s" crash: a fault note outside a record" EXIT-STATUS:INTERNAL die
-   THEN ;
+\ Closes the open part's JSON string, and the notes object after a note.
+: SHUT ( FAULT-RECORD:record -- )
+   ERASE PART-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+ ;
 
 public
 \ A note's key, after the text before it.
-: NOTE+ ( str -- ) {: k:^ ku:n :}
-   NOTE-PART?
+: NOTE+ ( FAULT-RECORD:record str -- FAULT-RECORD:record )
+   {: k:^ ku:n :}
    S\" \n  = " PROSE+  k ku PROSE+  s" : " PROSE+
    S\" \"," JSON+
-   FAULT-PART @ FAULT-MESSAGE = IF S\" \"notes\":{" JSON+ THEN
+   ERASE PART-MESSAGE = IF S\" \"notes\":{" JSON+ THEN
    S\" \"" JSON+  k ku ESC+  S\" \":\"" JSON+
-   FAULT-NOTE FAULT-PART ! ;
+   PART-NOTE MINT ;
 
 \ The record's start: its code and message.
-: FAULT-OPEN ( str str -- )
+: FAULT-OPEN ( str str -- FAULT-RECORD:record )
    {: code:^ cu:n msg:^ mu:n :}
-   FAULT-SHUT PART?
    s" error[" PROSE+  code cu PROSE+  s" ]: " PROSE+  msg mu PROSE+
    S\" {\"severity\":\"error\",\"code\":\"" JSON+  code cu ESC+
    S\" \",\"message\":\"" JSON+  msg mu ESC+
-   FAULT-MESSAGE FAULT-PART ! ;
+   PART-MESSAGE MINT ;
 
 \ A note whose value is an address, `0x` and its hex digits.
-: FAULT-ADDRESS ( str -- )  NOTE+  s" 0x" BOTH+ ;
+: FAULT-ADDRESS ( FAULT-RECORD:record str -- FAULT-RECORD:record )
+   NOTE+  s" 0x" BOTH+ ;
 
 \ Note `in`, the word whose code holds an address; n is the part open before
 \ it, which FAULT-AT takes when the site finds no such word.
-: FAULT-IN ( -- n )
-   NOTE-PART?  FAULT-PART @  s" in" NOTE+ ;
+: FAULT-IN ( FAULT-RECORD:record -- FAULT-RECORD:record n )
+   PART {: was:n :}  s" in" NOTE+  was ;
 
 \ Note `at` and the address, from the part FAULT-IN found open.
-: FAULT-AT ( n -- )  FAULT-PART !  s" at" FAULT-ADDRESS ;
+: FAULT-AT ( FAULT-RECORD:record n -- FAULT-RECORD:record )
+   swap ERASE drop MINT  s" at" FAULT-ADDRESS ;
 
 \ The record's end, with its help, for a site that exits.
-: FAULT-STOP ( str -- ) {: h:^ hu:n :}
-   NOTE-PART?
+: FAULT-STOP ( FAULT-RECORD:record str -- ) {: h:^ hu:n :}
    S\" \n  = help: " PROSE+  h hu PROSE+  S\" \n\n" PROSE+
-   FAULT-PART @ FAULT-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+
-   S\" ,\"help\":\"" JSON+  h hu ESC+  S\" \"}\n" JSON+
-   FAULT-SHUT FAULT-PART ! ;
+   SHUT
+   S\" ,\"help\":\"" JSON+  h hu ESC+  S\" \"}\n" JSON+ ;
 
 \ The record's end, with its help, none for an empty text, for a site that
 \ returns.
-: FAULT-KEEP ( str -- ) {: h:^ hu:n :}
-   NOTE-PART?
+: FAULT-KEEP ( FAULT-RECORD:record str -- ) {: h:^ hu:n :}
    hu 0 <> IF S\" \n  = help: " PROSE+  h hu PROSE+ THEN
    S\" \n\n" PROSE+
-   FAULT-PART @ FAULT-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+
+   SHUT
    hu 0 <> IF S\" ,\"help\":\"" JSON+  h hu ESC+  S\" \"" JSON+ THEN
-   S\" }\n" JSON+
-   FAULT-SHUT FAULT-PART ! ;
+   S\" }\n" JSON+ ;
 
 \ The four stack-bounds messages and their help.
 : CRS-DATA$ ( -- str ) s" the data stack ran past its bounds" ;

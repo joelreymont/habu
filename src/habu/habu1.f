@@ -3596,7 +3596,7 @@ private
 : POLICY-LR, ( -- )  3 SP 0 LDR, ;
 
 \ Note `in` and help, the dictionary read through x26/x27; never returns.
-: POLICY-STOP, ( str -- ) {: h:^ hu:n :}
+: POLICY-STOP, ( FAULT-RECORD:record str -- ) {: h:^ hu:n :}
    4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
    h hu EXIT-STATUS:POLICY FAULT-STOP, ;
 

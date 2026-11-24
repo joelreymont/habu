@@ -257,7 +257,7 @@ public
 public
 \ Opens a record with its code and message: rsp drops FAULT-FRAME, r9 = its
 \ start and r8 the cursor, r10 = the JSON flag.
-: FAULT-OPEN, ( str str -- )
+: FAULT-OPEN, ( str str -- FAULT-RECORD:record )
    FAULT-OPEN
    RSP FAULT-FRAME >IMM32 ASM-SINK ENC-SUB-RI32
    FRAME-REG RSP MOV,  CUR-REG RSP MOV,
@@ -268,7 +268,7 @@ public
 \ Note `in`: the word whose code holds the address in rdi, read from the rdx
 \ records at rsi; rsi = 0 when the site cannot trust the dictionary. With no
 \ such word, note `at` and the address.
-: FAULT-IN, ( -- )
+: FAULT-IN, ( FAULT-RECORD:record -- FAULT-RECORD:record )
    LBL LBL {: at:label done:label :}
    FAULT-IN {: was:n :}
    OWNER-LBL CALL,
@@ -284,33 +284,37 @@ public
    done LBL, ;
 
 \ A note with the register's value in decimal.
-: FAULT-NUMBER, ( str r64 -- ) {: k:^ ku:n r:r64 :}
+: FAULT-NUMBER, ( FAULT-RECORD:record str r64 -- FAULT-RECORD:record )
+   {: k:^ ku:n r:r64 :}
    r PUSH,
    k ku NOTE+  PIECE,
    RAX POP,  DEC-LBL CALL, ;
 
 \ A note with the bytes at the pointer register, the length register's count
 \ of them.
-: FAULT-TEXT, ( str r64 r64 -- ) {: k:^ ku:n p:r64 l:r64 :}
+: FAULT-TEXT, ( FAULT-RECORD:record str r64 r64 -- FAULT-RECORD:record )
+   {: k:^ ku:n p:r64 l:r64 :}
    p PUSH,  l PUSH,
    k ku NOTE+  PIECE,
    RDX POP,  RSI POP,  RDI JSON-REG MOV,  PUT-LBL CALL, ;
 
 \ A note with the address in the register, `0x` and 16 hex digits.
-: FAULT-ADDRESS, ( str r64 -- ) {: k:^ ku:n r:r64 :}
+: FAULT-ADDRESS, ( FAULT-RECORD:record str r64 -- FAULT-RECORD:record )
+   {: k:^ ku:n r:r64 :}
    r PUSH,
    k ku FAULT-ADDRESS  PIECE,
    RAX POP,  HEX, ;
 
 \ Ends the record with its help and exits with the status.
-: FAULT-STOP, ( str n -- ) {: h:^ hu:n status:n :}
+: FAULT-STOP, ( FAULT-RECORD:record str n -- )
+   {: h:^ hu:n status:n :}
    h hu FAULT-STOP
    PIECE,  FLUSH,
    RDI status IMM32,  NR-EXIT-GROUP SYS, ;
 
 \ Ends the record with its help, none for an empty text, and returns, rsp as
 \ FAULT-OPEN, found it.
-: FAULT-KEEP, ( str -- )
+: FAULT-KEEP, ( FAULT-RECORD:record str -- )
    FAULT-KEEP
    PIECE,  FLUSH,
    RSP FAULT-FRAME >IMM32 ASM-SINK ENC-ADD-RI32 ;
