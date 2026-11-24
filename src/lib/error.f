@@ -52,9 +52,6 @@ require src/os/env-base.f
 -2800 constant E-BUILD-FIRST
 -2899 constant E-BUILD-LAST
 
-\ Diagnostics: -2900..-2999.
--2900 constant E-DIAG-FIRST
--2999 constant E-DIAG-LAST
 
 \ Tables: -3000..-3099, declared at this file's end.
 -3000 constant E-TBL-FIRST
@@ -100,9 +97,6 @@ require src/os/env-base.f
 -4200 constant E-SUITE-FIRST
 -4299 constant E-SUITE-LAST
 
-\ Test infrastructure: -4400..-4499
--4400 constant E-TEST-FIRST
--4499 constant E-TEST-LAST
 
 \ Owned growable byte buffer: -5700..-5799, declared at this file's end, past
 \ the stdlib's -2000..-4999 and research/maki's own -5000..-5699.
@@ -122,17 +116,11 @@ require src/os/env-base.f
 -6100 constant E-SPAN-FIRST
 -6199 constant E-SPAN-LAST
 
-\ JSON reader performance samples: -6300..-6399
--6300 constant E-JRP-FIRST
--6399 constant E-JRP-LAST
 
 \ Engine arithmetic: -6400..-6499, declared at this file's end.
 -6400 constant E-ARITH-FIRST
 -6499 constant E-ARITH-LAST
 
-\ Native test runner (package TEST): -6500..-6599
--6500 constant E-TR-FIRST
--6599 constant E-TR-LAST
 
 \ Shared compiler block: -6600..-6699; later compiler stages mint from
 \ -8000..-8999.
@@ -147,25 +135,16 @@ require src/os/env-base.f
 \ Compiler target/policy binding (package CBIND): -6630..-6639, declared at
 \ this file's end.
 
-\ Frozen compiler identity schema: -6700..-6799
--6700 constant E-CID-FIRST
--6799 constant E-CID-LAST
 
 \ Checker behavior and schema checks (package CHECKER-MODEL-PROOF): -6860..-6879,
 \ declared at this file's end.
 -6860 constant E-CMP-FIRST
 -6879 constant E-CMP-LAST
 
-\ Instruction encoding checks: -6900..-6919.
--6900 constant E-CIE-FIRST
--6919 constant E-CIE-LAST
 
 \ Content-key folds: -6920..-6929, minted in src/lib/content-key.f, which owns
 \ package CONTENT-KEY.
 
-\ Snapshot relocation checks: -6880..-6899.
--6880 constant E-CRL-FIRST
--6899 constant E-CRL-LAST
 
 \ Compiler growth region: -8000..-8999, the compiler's second block. Sub-blocks
 \ are 20 codes wide, each headed below by its range; a stage that outgrows its
