@@ -1,4 +1,3 @@
-split-str
 \ power/macos.f - POWER:KEEP-AWAKE and ALLOW-SLEEP through IOKit power
 \ assertions, loaded on macOS.
 require src/lib/power.f
@@ -26,25 +25,25 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
 
 \ An owned CFString of the bytes, 0 when they are not UTF-8.
 : CF-TEXT ( str -- n )
-   {: p:^ u:n :}
-   0 p u UTF8 0 CF-STRING ;
+   {: s:str :}
+   0 s UTF8 0 CF-STRING ;
 
 : CF-FREE ( n -- )
    dup 0 <> if CF-RELEASE else drop then ;
 
 : CHECK ( n str -- )
-   {: status:n verb:^ verbu:n :}
+   {: status:n verb:str :}
    status 0= if exit then
-   LOG:ERROR s" power" LOG:LINE verb verbu LOG:TEXT+ s"  refused, IOReturn " LOG:TEXT+
+   LOG:ERROR s" power" LOG:LINE verb LOG:TEXT+ s"  refused, IOReturn " LOG:TEXT+
       status LOG:INT+ LOG:;LINE
    E-ASSERTION throw ;
 
 
 \ Nothing that can throw runs between creating the strings and releasing them.
 : CREATE-ID ( str ^u8 NUM:alloc-byte-len -- n )
-   drop {: name:^ len:n id:^ :}
+   drop {: name:str id:^ :}
    s" PreventUserIdleSystemSleep" CF-TEXT {: kind:n :}
-   name len CF-TEXT {: label:n :}
+   name CF-TEXT {: label:n :}
    kind 0= label 0= or if
       kind CF-FREE label CF-FREE
       LOG:ERROR s" power" LOG:LINE s" CFStringCreate refused" LOG:TEXT+ LOG:;LINE

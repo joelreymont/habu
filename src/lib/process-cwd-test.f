@@ -1,4 +1,3 @@
-split-str
 \ process-cwd-test.f - focused tests for src/lib/process-cwd.f.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/process-cwd.f src/lib/process-cwd-test.f
 
@@ -48,33 +47,33 @@ variable PCT-I
    ;MATCH ;
 
 : PCT-CAPTURE ( str str ^u8 n ^u8 n n -- n n n )
-   {: path:^ pathu cwd:^ cwdu out:^ outcap err:^ errcap timeout :}
-   path pathu cwd cwdu out outcap >LEN err errcap >LEN timeout >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   {: path:str cwd:str out:^ outcap err:^ errcap timeout :}
+   path cwd out outcap >LEN err errcap >LEN timeout >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCT-CAPTURE>N ;
 
 : PCT-STDIN-CAPTURE ( str str str ^u8 n ^u8 n n -- n n n )
-   {: path:^ pathu cwd:^ cwdu in:^ inu out:^ outcap err:^ errcap timeout :}
-   path pathu cwd cwdu in inu out outcap >LEN err errcap >LEN timeout >MS
+   {: path:str cwd:str in:str out:^ outcap err:^ errcap timeout :}
+   path cwd in out outcap >LEN err errcap >LEN timeout >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
    PCT-CAPTURE>N ;
 
 : PCT-SETUP-ROOT ( -- )
    FS:CLEANUP-RESET
-   s" hb-process-cwd" FS:MKTEMP-DIR {: root:^ rootu :}
-   root PCT-ROOT rootu BYTE-COPY
-   rootu PCT-ROOT-U !
-   PCT-ROOT PCT-ROOT-U @ FS:CLEANUP-TREE+
-   PCT-ROOT PCT-ROOT-U @ s" rel.txt" PCT-REL FS:JOIN-PATH PCT-REL-U !
-   PCT-REL PCT-REL-U @ PCT-OK PCT-OK-U FS:WRITE-ALL ;
+   s" hb-process-cwd" FS:MKTEMP-DIR {: root:str :}
+   root STR:DATA PCT-ROOT root STR:LEN BYTE-COPY
+   root STR:LEN PCT-ROOT-U !
+   PCT-ROOT PCT-ROOT-U @ >str FS:CLEANUP-TREE+
+   PCT-ROOT PCT-ROOT-U @ >str s" rel.txt" PCT-REL FS:JOIN-PATH PCT-REL-U !
+   PCT-REL PCT-REL-U @ >str PCT-OK PCT-OK-U >str FS:WRITE-ALL ;
 
 : PCT-RUN-CAT-CWD ( -- )
    PCT-SETUP-ROOT
    PCT-RESET
    s" rel.txt"  PROC-ARGV+
-   s" /bin/cat" PCT-ROOT PCT-ROOT-U @ PCT-OUT PCT-CAP PCT-ERR PCT-CAP
+   s" /bin/cat" PCT-ROOT PCT-ROOT-U @ >str PCT-OUT PCT-CAP PCT-ERR PCT-CAP
    PROCESS:WAIT-FOREVER MS>N PCT-CAPTURE
    0 T= 0 T= PCT-OK-U T=
-   PCT-OUT PCT-OK-U PCT-OK PCT-OK-U T$=
+   PCT-OUT PCT-OK-U >str PCT-OK PCT-OK-U >str T$=
    s" README.md" FS:FILE? TTRUE
    s" rel.txt" FS:FILE? TFALSE
    PROC-ARGV-N @ 0 T=
@@ -84,10 +83,10 @@ variable PCT-I
 : PCT-RUN-STDIN-CAPTURE ( -- )
    PCT-SETUP-ROOT
    PCT-RESET
-   s" /bin/cat" PCT-ROOT PCT-ROOT-U @ PCT-OK PCT-OK-U PCT-OUT PCT-CAP PCT-ERR PCT-CAP
+   s" /bin/cat" PCT-ROOT PCT-ROOT-U @ >str PCT-OK PCT-OK-U >str PCT-OUT PCT-CAP PCT-ERR PCT-CAP
    PROCESS:WAIT-FOREVER MS>N PCT-STDIN-CAPTURE
    0 T= 0 T= PCT-OK-U T=
-   PCT-OUT PCT-OK-U PCT-OK PCT-OK-U T$=
+   PCT-OUT PCT-OK-U >str PCT-OK PCT-OK-U >str T$=
    PROC-ARGV-N @ 0 T=
    PROC-ENV-N @ 0 T=
    FS:CLEANUP-RUN ;
@@ -113,7 +112,7 @@ variable PCT-I
 : PCT-OUT-OK? ( n -- )
    {: n :}
    n 0 >= n 2 <= and TTRUE
-   PCT-OUT n 2 min s" ok" drop n 2 min T$= ;
+   PCT-OUT n 2 min >str s" ok" STR:DATA n 2 min >str T$= ;
 
 : PCT-CLEARED ( -- )
    PROCESS:PID @ PROCESS:NO-PID T= PROCESS:IN-W @ PROCESS:NO-FD T= ;
@@ -125,10 +124,10 @@ variable PCT-I
    PCT-STDIN-CAPTURE drop 2drop ;
 
 : PCT-OUTCOME ( str ms -- len len PROCESS:ending )
-   {: src:^ srcu:n deadline:ms :}
+   {: src:str deadline:ms :}
    PCT-RESET
    PCT-OUT-CLEAR
-   s" bin/hb" s" ." src srcu
+   s" bin/hb" s" ." src
    PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN deadline
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME ;
 
@@ -144,9 +143,9 @@ variable PCT-I
    T-ENDING-TIMEOUT LEN>N 0 T= LEN>N PCT-OUT-OK?
    PCT-CLEARED
    PCT-SELF-EOF$ PROCESS:WAIT-FOREVER PCT-OUTCOME {: outu:len erru:len oc :}
-   PCT-SELF-EOF$ PCT-OUT outu LEN>N PCT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
+   PCT-SELF-EOF$ PCT-OUT outu LEN>N >str PCT-ERR erru LEN>N >str oc 0 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 2 T=
-   PCT-OUT 2 s" ok" T$=
+   PCT-OUT 2 >str s" ok" T$=
    PCT-CLEARED ;
 
 : PCT-RUN-MISSING-CWD ( -- )
@@ -156,7 +155,7 @@ variable PCT-I
 
 : PCT-CWD-TOO-LONG ( -- )
    PCT-LONG!
-   PCT-LONG PCT-LONG-U PROC-CWD:CWDZ drop ;
+   PCT-LONG PCT-LONG-U >str PROC-CWD:CWDZ drop ;
 
 : PCT-NUL-CWD ( -- )
    PCT-RESET
@@ -185,7 +184,7 @@ variable PCT-I
    s" /bin/echo" s" /" PCT-OUT PCT-CAP PCT-ERR PCT-CAP
    PROCESS:WAIT-FOREVER MS>N PCT-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PCT-OUT outu s\" fresh\n" T$= ;
+   PCT-OUT outu >str s\" fresh\n" T$= ;
 
 : PCT-REFUSED-RESETS ( -- )
    s" a refused cwd spawn leaves no staged argument" T-LABEL

@@ -1,4 +1,3 @@
-split-str
 \ process-command-test.f - focused tests for src/lib/process-command.f.
 \ Run: bin/hb --load src/lib/process-command-test.f
 
@@ -37,17 +36,17 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    >MS CMD:RUN-RC RESULT-CODE ;
 
 : CHECK-LINE ( str str -- str )
-   {: out:^ outu:n expected:^ expectedu:n :}
-   outu expectedu 1+ < if
-      outu expectedu 1+ T=
-      out outu exit
+   {: out:str expected:str :}
+   out STR:LEN expected STR:LEN 1+ < if
+      out STR:LEN expected STR:LEN 1+ T=
+      out exit
    then
-   out expectedu expected expectedu T$=
-   out expectedu + c@ 10 T=
-   out expectedu 1+ + outu expectedu 1+ - ;
+   out STR:DATA expected STR:LEN >str expected T$=
+   out STR:DATA expected STR:LEN + c@ 10 T=
+   out STR:DATA expected STR:LEN 1+ + out STR:LEN expected STR:LEN 1+ - >str ;
 
-: LF-COUNT ( str -- n ) {: a:^ u:n :}
-   0 u 0 ?do a i + c@ 10 = if 1 + then loop ;
+: LF-COUNT ( str -- n ) {: s:str :}
+   0 s STR:LEN 0 ?do s STR:DATA i + c@ 10 = if 1 + then loop ;
 
 : PRINTF ( CMD:command -- CMD:command )
    s" %s:%s" CMD:ARG+
@@ -55,7 +54,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" right" CMD:ARG+
    s" /usr/bin/printf" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ s" left:right" T$=
-   CMD:ERR$ nip 0 T=
+   CMD:ERR$ STR:LEN 0 T=
    PROC-ARGV-N @ COUNT>N 0 T=            \ the scope writes no process-wide staging
    PROC-ENV-N @ COUNT>N 0 T= ;
 
@@ -63,23 +62,23 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" cmd-stdin" CMD:IN!
    s" /bin/cat" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ s" cmd-stdin" T$=
-   CMD:ERR$ nip 0 T= ;
+   CMD:ERR$ STR:LEN 0 T= ;
 
 : HERMETIC-ENV ( CMD:command -- CMD:command )
    CMD:ENV-HERMETIC
    s" test/process-env-child.f" CMD:ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
    s" bin/hb" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
-   CMD:OUT$ ENV-OUT 8 T$=
-   CMD:ERR$ nip 0 T= ;
+   CMD:OUT$ ENV-OUT 8 >str T$=
+   CMD:ERR$ STR:LEN 0 T= ;
 
 : ENTRY-ENV ( CMD:command -- CMD:command )
    CMD:ENV-HERMETIC
    s" test/process-env-child.f" CMD:ARG+
    s" HABU_PROC_ENV_TEST=entry" CMD:ENV-ENTRY+
    s" bin/hb" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
-   CMD:OUT$ ENTRY-OUT 8 T$=
-   CMD:ERR$ nip 0 T= ;
+   CMD:OUT$ ENTRY-OUT 8 >str T$=
+   CMD:ERR$ STR:LEN 0 T= ;
 
 \ Hermetic, so env prints only the caller's rows: one row for the name.
 : REPEATED-ENV-ROWS ( CMD:command -- CMD:command )
@@ -89,7 +88,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" /usr/bin/env" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$
    s" HABU_PROC_ENV_TEST=entry" CHECK-LINE
-   nip 0 T= ;
+   STR:LEN 0 T= ;
 
 : INHERITED-ENV ( CMD:command -- CMD:command )
    s" test/process-env-child.f" CMD:ARG+
@@ -99,7 +98,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" alpha" CHECK-LINE
    s" HOME" GETENV CHECK-LINE
    s" PATH" GETENV CHECK-LINE
-   nip 0 T= ;
+   STR:LEN 0 T= ;
 
 
 \ UNSETENV keeps a PROC-ENV default and an inherited variable from the child,
@@ -120,7 +119,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" default" CHECK-LINE
    s" HOME" GETENV CHECK-LINE
    s" PATH" GETENV CHECK-LINE
-   nip 0 T= ;
+   STR:LEN 0 T= ;
 
 
 \ A caller row of an unset name still reaches the child.
@@ -133,7 +132,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" alpha" CHECK-LINE
    s" HOME" GETENV CHECK-LINE
    s" PATH" GETENV CHECK-LINE
-   nip 0 T= ;
+   STR:LEN 0 T= ;
 
 
 \ A caller row hides an inherited row of its name, a default's or this process's.
@@ -173,8 +172,8 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 : TIMEOUT ( CMD:command -- CMD:command )
    SLEEP T-ENDING-TIMEOUT
    CMD:OUTCOME@ T-ENDING-TIMEOUT
-   CMD:OUT$ nip 0 T=
-   CMD:ERR$ nip 0 T= ;
+   CMD:OUT$ STR:LEN 0 T=
+   CMD:ERR$ STR:LEN 0 T= ;
 
 : TIMEOUT-RC@ ( CMD:command -- CMD:command )
    SLEEP drop CMD:RC@ drop ;
@@ -196,7 +195,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" test/process-command-run-child.f" CMD:ARG+
    s" bin/hb" PROCESS:WAIT-FOREVER MS>N RUN# {: rc:n :}
    CMD:ERR$ s" child-err" T$=
-   CMD:OUT$ s" test: ok" CHECK-LINE nip 0 T=
+   CMD:OUT$ s" test: ok" CHECK-LINE STR:LEN 0 T=
    rc 0 T= ;
 
 : RUN-TIMEOUT ( CMD:command -- CMD:command )
@@ -218,10 +217,10 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 
 : EXIT3-KEPT ( CMD:command -- CMD:command )
    CMD:OUTCOME@ {: oc :}
-   CMD:OUT$ {: out:^ outu:n :}
-   CMD:ERR$ {: err:^ erru:n :}
-   EXIT3$ out outu err erru oc 3 T-ENDING-EXITED=
-   out outu s" x" T$= ;
+   CMD:OUT$ {: out:str :}
+   CMD:ERR$ {: err:str :}
+   EXIT3$ out err oc 3 T-ENDING-EXITED=
+   out s" x" T$= ;
 
 : REFUSED-KEEPS ( CMD:command -- CMD:command )
    s" -c" CMD:ARG+
@@ -247,20 +246,20 @@ create REL PATH-CAP allot   variable REL-U
 : CWD-BODY$ ( -- str )  s" from the private directory" ;
 
 : CWD-RUN ( CMD:command -- CMD:command )
-   DIR DIR-U @ CMD:CWD!
+   DIR DIR-U @ >str CMD:CWD!
    s" here.txt" CMD:ARG+
    s" /bin/cat" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ CWD-BODY$ T$= ;
 
 : CWD ( -- )
    FS:CLEANUP-RESET
-   s" hb-cmd-cwd" FS:MKTEMP-DIR {: d:^ du :}
-   d du FS:CLEANUP-TREE+
-   du PATH-CAP <= TTRUE
-   du PATH-CAP > if FS:CLEANUP-RUN exit then
-   d DIR du BYTE-COPY  du DIR-U !
-   DIR DIR-U @ s" here.txt" REL FS:JOIN-PATH REL-U !
-   REL REL-U @ CWD-BODY$ FS:WRITE-ALL
+   s" hb-cmd-cwd" FS:MKTEMP-DIR {: d:str :}
+   d FS:CLEANUP-TREE+
+   d STR:LEN PATH-CAP <= TTRUE
+   d STR:LEN PATH-CAP > if FS:CLEANUP-RUN exit then
+   d STR:DATA DIR d STR:LEN BYTE-COPY  d STR:LEN DIR-U !
+   DIR DIR-U @ >str s" here.txt" REL FS:JOIN-PATH REL-U !
+   REL REL-U @ >str CWD-BODY$ FS:WRITE-ALL
    [: CWD-RUN ;] CMD:WITH-COMMAND
    s" here.txt" FS:FILE? TFALSE
    FS:CLEANUP-RUN ;
@@ -288,7 +287,7 @@ create REL PATH-CAP allot   variable REL-U
    CMD:OUT$ s\" K=v\n" T$= ;
 
 : NUL-ENV-NAME ( CMD:command -- CMD:command )
-   NUL-NAME NUL-NAME-U s" x" CMD:ENV+ ;
+   NUL-NAME NUL-NAME-U >str s" x" CMD:ENV+ ;
 
 
 : BAD-ENV-ENTRY ( CMD:command -- CMD:command )
@@ -301,11 +300,11 @@ create REL PATH-CAP allot   variable REL-U
 
 \ Read back to its NUL, this name would unset JJ.
 : NUL-UNSET-NAME ( CMD:command -- CMD:command )
-   NUL-NAME NUL-NAME-U CMD:UNSETENV ;
+   NUL-NAME NUL-NAME-U >str CMD:UNSETENV ;
 
 
 : NEGATIVE-UNSET ( CMD:command -- CMD:command )
-   s" NAME" drop -1 CMD:UNSETENV ;
+   s" NAME" STR:DATA -1 >str CMD:UNSETENV ;
 
 
 \ No member has a ceiling: both streams are captured whole.
@@ -316,8 +315,8 @@ create REL PATH-CAP allot   variable REL-U
    s" -c" CMD:ARG+
    s" head -c 100000 /dev/zero; head -c 70000 /dev/zero >&2" CMD:ARG+
    s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
-   CMD:OUT$ nip OUT-BYTES T=
-   CMD:ERR$ nip ERR-BYTES T= ;
+   CMD:OUT$ STR:LEN OUT-BYTES T=
+   CMD:ERR$ STR:LEN ERR-BYTES T= ;
 
 \ One byte past 128 KiB of patterned stdin round-trips through cat.
 131073 constant IN-BYTES
@@ -327,9 +326,9 @@ create IN IN-BYTES allot
    IN-BYTES 0 do i 251 mod IN i + c! loop ;
 
 : BIG-STDIN ( CMD:command -- CMD:command )
-   IN IN-BYTES CMD:IN!
+   IN IN-BYTES >str CMD:IN!
    s" /bin/cat" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
-   CMD:OUT$ IN IN-BYTES T$= ;
+   CMD:OUT$ IN IN-BYTES >str T$= ;
 
 \ 300 arguments, each printed on its own line.
 300 constant ARGS
@@ -338,9 +337,9 @@ create IN IN-BYTES allot
    s\" %s\n" CMD:ARG+
    ARGS 0 do s" a" CMD:ARG+ loop
    s" /usr/bin/printf" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
-   CMD:OUT$ {: a:^ u:n :}
-   u ARGS 2 * T=
-   a u LF-COUNT ARGS T= ;
+   CMD:OUT$ {: out:str :}
+   out STR:LEN ARGS 2 * T=
+   out LF-COUNT ARGS T= ;
 
 \ 3000 distinct rows reach a hermetic child, which prints exactly them.
 3000 constant ROWS
@@ -357,16 +356,16 @@ create NAME 5 allot                      \ V and four digits
    CMD:ENV-HERMETIC
    ROWS 0 do
       i NAME!
-      NAME 5 s" x" CMD:ENV+
+      NAME 5 >str s" x" CMD:ENV+
    loop
    s" /usr/bin/env" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
-   CMD:OUT$ {: a:^ u:n :}
-   u ROWS 8 * T=                         \ "Vdddd=x\n" per row
-   a u LF-COUNT ROWS T= ;
+   CMD:OUT$ {: out:str :}
+   out STR:LEN ROWS 8 * T=               \ "Vdddd=x\n" per row
+   out LF-COUNT ROWS T= ;
 
 \ An inner scope is its own command.
-: SAY ( CMD:command str -- CMD:command ) {: a:^ u:n :}
-   a u CMD:ARG+
+: SAY ( CMD:command str -- CMD:command ) {: s:str :}
+   s CMD:ARG+
    s" /usr/bin/printf" PROCESS:WAIT-FOREVER MS>N RUN# 0 T= ;
 
 : INNER ( CMD:command CMD:command -- CMD:command CMD:command )
@@ -401,7 +400,7 @@ create PIPE-BUF PIPE-CAP allot
    w @ >FD s" |parent" FD:WRITE-FULL
    r @ PIPE-BUF PIPE-CAP read
    dup 0 < if E-FS-IO throw then
-   PIPE-BUF swap ;
+   PIPE-BUF swap >str ;
 
 : PIPE$ ( -- str ) PIPE-R PIPE-W DRAIN$ ;
 : PIPE4$ ( -- str ) PIPE4-R PIPE4-W DRAIN$ ;
@@ -528,7 +527,7 @@ FUNCTION: SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
    s" 4194304" CMD:ARG+
    s" /dev/zero" CMD:ARG+
    s" /usr/bin/head" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
-   CMD:OUT$ nip FAT-BYTES T= ;
+   CMD:OUT$ STR:LEN FAT-BYTES T= ;
 
 : FAT ( CMD:command -- CMD:command )
    FAT-RUN
@@ -552,25 +551,25 @@ TASK:MIN-STACK TASK:TASK TASK-A
 TASK:MIN-STACK TASK:TASK TASK-B
 
 \ Bytes that break `yes ch`'s pattern: ch at even offsets, LF at odd ones.
-: BAD-YES ( str n -- n ) {: a:^ u:n ch:n :}
-   0 u 0 ?do i 1 and 0<> if 10 else ch then a i + c@ <> if 1 + then loop ;
+: BAD-YES ( str n -- n ) {: s:str ch:n :}
+   0 s STR:LEN 0 ?do i 1 and 0<> if 10 else ch then s STR:DATA i + c@ <> if 1 + then loop ;
 
-: YES ( CMD:command str -- CMD:command n ) {: a:^ u:n :}
+: YES ( CMD:command str -- CMD:command n ) {: s:str :}
    s" -c" CMD:ARG+
-   a u CMD:ARG+
+   s CMD:ARG+
    s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# ;
 
 : A-RUN ( CMD:command -- CMD:command )
    s" sleep 0.3; yes A | head -c 100000" YES A-RC !
-   CMD:OUT$ {: a:^ u:n :}
-   u A-LEN !
-   a u 65 BAD-YES A-BAD ! ;
+   CMD:OUT$ {: out:str :}
+   out STR:LEN A-LEN !
+   out 65 BAD-YES A-BAD ! ;
 
 : B-RUN ( CMD:command -- CMD:command )
    s" sleep 0.3; yes B | head -c 100000" YES B-RC !
-   CMD:OUT$ {: a:^ u:n :}
-   u B-LEN !
-   a u 66 BAD-YES B-BAD ! ;
+   CMD:OUT$ {: out:str :}
+   out STR:LEN B-LEN !
+   out 66 BAD-YES B-BAD ! ;
 
 : A-BODY ( -- ) [: A-RUN ;] CMD:WITH-COMMAND 0 TASK:RETURN ;
 : B-BODY ( -- ) [: B-RUN ;] CMD:WITH-COMMAND 0 TASK:RETURN ;
@@ -605,12 +604,14 @@ TASK:MIN-STACK TASK:TASK LATE-TASK
 
 : LATE-RUN ( CMD:command -- CMD:command )
    s" /usr/bin/env" PROCESS:WAIT-FOREVER MS>N RUN# LATE-RC !
-   CMD:OUT$ {: a:^ u:n :}
-   S\" HABU_CMD_DEFAULT=orig\n" {: first:^ firstu:n :}
+   CMD:OUT$ {: out:str :}
+   S\" HABU_CMD_DEFAULT=orig\n" {: first:str :}
    0 LATE-FIRST !
-   u firstu >= if a firstu first firstu STR:= if 1 LATE-FIRST ! then then
+   out STR:LEN first STR:LEN >= if
+      out STR:DATA first STR:LEN >str first STR:= if 1 LATE-FIRST ! then
+   then
    0 LATE-SEEN !
-   a u s" HABU_CMD_LATE=" STR:CONTAINS? if 1 LATE-SEEN ! then ;
+   out s" HABU_CMD_LATE=" STR:CONTAINS? if 1 LATE-SEEN ! then ;
 
 : LATE-BODY ( -- ) [: LATE-RUN ;] CMD:WITH-COMMAND 0 TASK:RETURN ;
 
@@ -621,7 +622,7 @@ TASK:MIN-STACK TASK:TASK LATE-TASK
    ['] LATE-BODY LATE-TASK TASK:ACTIVATE
    [: LATE-PREPARED? LATE-TASK TASK:DONE? or ;] TEST-WAIT:POLL
    LATE-PREPARED? TTRUE
-   s" HABU_CMD_LATE" LATE LATE-U PROC-ENV-DEFAULT+ ;
+   s" HABU_CMD_LATE" LATE LATE-U >str PROC-ENV-DEFAULT+ ;
 
 : LATE-DONE? ( -- bool ) LATE-TASK TASK:DONE? ;
 
@@ -656,9 +657,9 @@ TASK:MIN-STACK TASK:TASK PARKER
    s" 1048576" CMD:ARG+
    s" /dev/zero" CMD:ARG+
    s" /usr/bin/head" PROCESS:WAIT-FOREVER MS>N RUN# PARK-RC !
-   CMD:OUT$ {: a:^ u:n :}
-   u PARK-LEN !
-   a NULL-PTR BYTE-VIEW - PARK-ADDR !
+   CMD:OUT$ {: out:str :}
+   out STR:LEN PARK-LEN !
+   out STR:DATA NULL-PTR BYTE-VIEW - PARK-ADDR !
    1 PARK-READY atomic!
    begin TASK:PAUSE again ;
 
@@ -685,9 +686,9 @@ variable YES-ADDR
 
 : RUNAWAY ( CMD:command -- CMD:command )
    s" /usr/bin/yes" SHORT-TIMEOUT-MS >MS CMD:RUN-OUTCOME T-ENDING-TIMEOUT
-   CMD:OUT$ {: a:^ u:n :}
-   u PAGE-PROBE > TTRUE
-   a NULL-PTR BYTE-VIEW - YES-ADDR !
+   CMD:OUT$ {: out:str :}
+   out STR:LEN PAGE-PROBE > TTRUE
+   out STR:DATA NULL-PTR BYTE-VIEW - YES-ADDR !
    YES-ADDR @ MAPPED 0 T= ;
 
 : RUNAWAY-FREED ( -- )
@@ -704,7 +705,7 @@ variable INNER-ADDR
 
 : FAT-ADDR ( CMD:command -- CMD:command n )
    FAT-RUN
-   CMD:OUT$ drop NULL-PTR BYTE-VIEW -
+   CMD:OUT$ STR:DATA NULL-PTR BYTE-VIEW -
    dup MAPPED 0 T= ;
 
 : SWAP-INNER ( CMD:command CMD:command -- CMD:command CMD:command )

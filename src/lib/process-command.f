@@ -1,4 +1,3 @@
-split-str
 \ process-command.f - scoped child-process commands under a linear token.
 \ CMD:WITH-COMMAND allocates one command context, hands the body a linear
 \ CMD:command naming it and releases the context with everything it grew when
@@ -115,7 +114,7 @@ HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
 : PATHZ ( ^n -- ^u8 ) BYTE-VIEW HEAD-CELLS cells + ;
 : CWDZ ( ^n -- ^u8 ) PATHZ PATHZ-CAP + ;
 
-: VEC-BASE ( ^VEC:vector<u8> -- ^u8 ) VEC:SPAN SPAN:$ drop ;
+: VEC-BASE ( ^VEC:vector<u8> -- ^u8 ) VEC:SPAN SPAN:$ STR:DATA ;
 
 \ n more zero bytes at the end, answered as a span; the block may move.
 : GROW ( ^VEC:vector<u8> n -- SPAN:span<u8> )
@@ -234,8 +233,8 @@ public
 private
 
 : CSTR+ ( str ^VEC:vector<u8> -- )
-   {: a:^ u:n buf:^ :}
-   a u  buf u FFI:CSTR-ROOM GROW  FFI:CSTR drop ;
+   {: s:str buf:^ :}
+   s  buf s STR:LEN FFI:CSTR-ROOM GROW  FFI:CSTR drop ;
 
 \ Offsets, not addresses: the buffer moves as it grows until PREPARE. A
 \ refused entry leaves no bytes and no offset.
@@ -248,23 +247,23 @@ private
 
 public
 
-: ARG+ ( CMD:command str -- CMD:command ) {: a:^ u:n :}
+: ARG+ ( CMD:command str -- CMD:command ) {: s:str :}
    CTX {: h:^ :}
-   u 0 < if E-PROC-OUTPUT throw then
-   h ARG-BYTES @ h ARG-OFF @ [: a u h ARG-BYTES @ CSTR+ ;] ENTRY ;
+   s STR:LEN 0 < if E-PROC-OUTPUT throw then
+   h ARG-BYTES @ h ARG-OFF @ [: s h ARG-BYTES @ CSTR+ ;] ENTRY ;
 
-: ENV-ENTRY+ ( CMD:command str -- CMD:command ) {: a:^ u:n :}
+: ENV-ENTRY+ ( CMD:command str -- CMD:command ) {: s:str :}
    CTX {: h:^ :}
-   u 0 < if E-PROC-ENV throw then
-   a u PROC-ENV-CHECK-ENTRY
-   h ENV-BYTES @ h ENV-OFF @ [: a u h ENV-BYTES @ CSTR+ ;] ENTRY ;
+   s STR:LEN 0 < if E-PROC-ENV throw then
+   s PROC-ENV-CHECK-ENTRY
+   h ENV-BYTES @ h ENV-OFF @ [: s h ENV-BYTES @ CSTR+ ;] ENTRY ;
 
 : ENV+ ( CMD:command str str -- CMD:command )
-   {: name:^ nameu:n val:^ valu:n :}
+   {: name:str val:str :}
    CTX {: h:^ :}
    h ENV-BYTES @ h ENV-OFF @
-   [: name nameu val valu
-      [: h ENV-BYTES @ swap GROW SPAN:$ drop ;] PROC-ENV-ROW drop ;]
+   [: name val
+      [: h ENV-BYTES @ swap GROW SPAN:$ STR:DATA ;] PROC-ENV-ROW drop ;]
    ENTRY ;
 
 \ A run inherits this process's environment and the PROC-ENV defaults unless
@@ -279,34 +278,34 @@ public
 \ unset. Under ENV-HERMETIC nothing is inherited, so UNSETENV changes nothing.
 \ An empty name, a name holding `=` or NUL, or a negative length: E-PROC-ENV.
 : UNSETENV ( CMD:command str -- CMD:command )
-   {: a:^ u:n :}
+   {: s:str :}
    CTX {: h:^ :}
-   a u PROC-ENV-CHECK-NAME
-   h UNSET-BYTES @ h UNSET-OFF @ [: a u h UNSET-BYTES @ CSTR+ ;] ENTRY ;
+   s PROC-ENV-CHECK-NAME
+   h UNSET-BYTES @ h UNSET-OFF @ [: s h UNSET-BYTES @ CSTR+ ;] ENTRY ;
 
 private
 
 : CWD-CHECK ( str -- )
-   {: a:^ u:n :}
-   u 0 <= if E-PROC-PATH throw then
-   u PATHZ-CAP 1 - > if E-PROC-PATH throw then
-   a u FS:DIR? 0= if E-PROC-PATH throw then ;
+   {: s:str :}
+   s STR:LEN 0 <= if E-PROC-PATH throw then
+   s STR:LEN PATHZ-CAP 1 - > if E-PROC-PATH throw then
+   s FS:DIR? 0= if E-PROC-PATH throw then ;
 
 public
 
 \ Run the child from this directory instead of the loader's. A missing path or a
 \ non-directory is refused here, before anything is spawned; RESET clears it.
-: CWD! ( CMD:command str -- CMD:command ) {: a:^ u:n :}
+: CWD! ( CMD:command str -- CMD:command ) {: s:str :}
    CTX {: h:^ :}
-   a u CWD-CHECK
-   a u h CWDZ PATHZ-CAP >LEN PROCESS:ZCOPY drop
-   u h CWD-LEN ! ;
+   s CWD-CHECK
+   s h CWDZ PATHZ-CAP >LEN PROCESS:ZCOPY drop
+   s STR:LEN h CWD-LEN ! ;
 
-: IN! ( CMD:command str -- CMD:command ) {: a:^ u:n :}
+: IN! ( CMD:command str -- CMD:command ) {: s:str :}
    CTX {: h:^ :}
-   u 0 < if E-PROC-OUTPUT throw then
+   s STR:LEN 0 < if E-PROC-OUTPUT throw then
    h IN-BYTES @ 0 VEC:RESIZE
-   a u h IN-BYTES @ VEC:APPEND ;
+   s h IN-BYTES @ VEC:APPEND ;
 
 
 \ The child's fd child is the parent's fd parent in every run until RESET or the
@@ -326,7 +325,7 @@ private
 : NAMES ( ^n -- ^n ) ENV-NAMES @ 0 VEC:AT ;
 
 : ROW-NAME ( ^u8 -- str ) {: z:^ :}
-   z z z ZLEN PROC-ENV-NAME-LEN ;
+   z  z z ZLEN >str PROC-ENV-NAME-LEN >str ;
 
 : NAMED-PUSH ( ^n ^u8 -- ) {: h:^ z:^ :}
    h ENVP-VEC @ VEC:COUNT h NAMES z ROW-NAME MAP:SET
@@ -334,13 +333,13 @@ private
 
 : UNSET-NAME ( ^n n -- str )
    {: h:^ i:n :}
-   h UNSET-BYTES @ VEC-BASE h UNSET-OFF @ i VEC:AT @ + dup ZLEN ;
+   h UNSET-BYTES @ VEC-BASE h UNSET-OFF @ i VEC:AT @ + dup ZLEN >str ;
 
 
 : UNSET? ( ^n ^u8 -- bool )
    {: h:^ z:^ :}
    0 begin dup h UNSET-OFF @ VEC:COUNT < while
-      h over UNSET-NAME z z ZLEN PROC-ENV-SAME-NAME? if drop PROC-ENV-TRUE exit then
+      h over UNSET-NAME z z ZLEN >str PROC-ENV-SAME-NAME? if drop PROC-ENV-TRUE exit then
       1+
    repeat drop PROC-ENV-FALSE ;
 
@@ -382,8 +381,8 @@ private
 \ argv: the path, each argument, the NULL. envp: the caller's rows, one per name
 \ with its last value, then the inherited ones, the NULL; both rebuilt every run.
 : PREPARE ( ^n str -- )
-   {: h:^ path:^ pathu:n :}
-   path pathu h PATHZ PATHZ-CAP >LEN PROCESS:ZCOPY {: z:^ :}
+   {: h:^ path:str :}
+   path h PATHZ PATHZ-CAP >LEN PROCESS:ZCOPY {: z:^ :}
    h ARGV-VEC @ 0 VEC:RESIZE
    z h ARGV-VEC @ VEC:PUSH !
    h ARG-OFF @ VEC:COUNT 0 ?do
@@ -403,8 +402,8 @@ private
    NULL-PTR h ENVP-VEC @ VEC:PUSH ! ;
 
 : CHECK-RUN ( str ms -- )
-   {: path:^ pathu:n timeout:ms :}
-   path pathu PROC-ARGV-CHECK-PATH
+   {: path:str timeout:ms :}
+   path PROC-ARGV-CHECK-PATH
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then ;
 
 
@@ -438,10 +437,10 @@ private
 \ the stdio slots.
 : REQUEST ( ^n -- PROCESS:request )
    {: h:^ :}
-   h PATHZ dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   h PATHZ dup ZLEN >str PROCESS:NEW PROCESS:HERMETIC
    h ARGV-VEC @ 0 VEC:AT PROCESS:ARGV-ROWS
    h ENVP-VEC @ 0 VEC:AT PROCESS:ENV-ROWS
-   h CWD-LEN @ 0 > if h CWDZ h CWD-LEN @ PROCESS:CWD then
+   h CWD-LEN @ 0 > if h CWDZ h CWD-LEN @ >str PROCESS:CWD then
    STDIO
    h PLACE ;
 
@@ -514,12 +513,12 @@ private
 \ capture runs, and is cleared on every path out, so no task row keeps a
 \ context's address past its run.
 : RUN-CAPTURE ( ^n str ms -- )
-   {: h:^ path:^ pathu:n timeout:ms :}
+   {: h:^ path:str timeout:ms :}
    h CANCEL-FD @ >FD {: cancel:fd :}
    PROCESS:NO-FD h CANCEL-FD !
-   path pathu timeout CHECK-RUN
+   path timeout CHECK-RUN
    h CHECK-PLACED
-   h path pathu PREPARE
+   h path PREPARE
    h CAPTURE-RESET
    h RUNNING !
    h cancel timeout [: CAPTURE ;] catch {: code:n :} drop 2drop
@@ -540,9 +539,9 @@ public
 \ path, deadline or closed placed fd refused before the run leaves the previous
 \ outcome in place.
 : RUN-OUTCOME ( CMD:command str ms -- CMD:command PROCESS:ending )
-   {: path:^ pathu:n timeout:ms :}
+   {: path:str timeout:ms :}
    CTX {: h:^ :}
-   h path pathu timeout RUN-CAPTURE
+   h path timeout RUN-CAPTURE
    h OUTCOME-OF ;
 
 \ The stored outcome's completion rc as a result<n,n>: ok = clean exit (0), err =
@@ -559,19 +558,19 @@ public
 \ OUT$ and ERR$ are borrowed until the next run, RESET or the end of the scope.
 : OUT$ ( CMD:command -- CMD:command str )
    CTX {: h:^ :}
-   h OUT-BASE @ h OUT-LEN @ ;
+   h OUT-BASE @ h OUT-LEN @ >str ;
 
 : ERR$ ( CMD:command -- CMD:command str )
    CTX {: h:^ :}
-   h ERR-BASE @ h ERR-LEN @ ;
+   h ERR-BASE @ h ERR-LEN @ >str ;
 
 \ RUN-OUTCOME, then: a clean exit returns; any other completion writes ERR$ to
 \ this process's stderr and throws code, which must be nonzero; a deadline-killed
 \ run throws E-PROC-TIMEOUT (PROCESS:ENDING>RC).
 : RUN ( CMD:command str ms n -- CMD:command )
-   {: path:^ pathu:n timeout:ms code:n :}
-   path pathu timeout RUN-OUTCOME PROCESS:ENDING>RC RC>N 0= if exit then
-   ERR$ {: err:^ erru:n :}
-   FD:STDERR err erru FD:WRITE-FULL code throw ;
+   {: path:str timeout:ms code:n :}
+   path timeout RUN-OUTCOME PROCESS:ENDING>RC RC>N 0= if exit then
+   ERR$ {: err:str :}
+   FD:STDERR err FD:WRITE-FULL code throw ;
 
 ;package

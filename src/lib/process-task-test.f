@@ -1,4 +1,3 @@
-split-str
 \ process-task-test.f - two tasks through the per-task process row.
 
 require src/lib/error.f
@@ -109,7 +108,7 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    FD:PIPE-PAIR {: rd:fd wr:fd :}
    rd FD>N PTT-PIPE-R !
    wr FD>N PTT-PIPE-W !
-   wr FD>N PTT-BYTE 1 write 1 T=
+   wr FD>N PTT-BYTE 1 >str write 1 T=
    ['] PTT-CAPTOR-BODY PTT-CAPTOR TASK:ACTIVATE
    PTT-POLL-UNTIL-DONE
    PTT-PIPE-R @ close
@@ -270,10 +269,10 @@ variable PTT-HELD                        \ exits 21 once its stdin closes
 variable PTT-HELD-W                      \ that stdin's write end
 
 : PTT-SH-ARGS ( str -- )
-   {: s:^ su:n :}
+   {: s:str :}
    PROC-ARGV-RESET
    s" -c" PROC-ARGV+
-   s su PROC-ARGV+ ;
+   s PROC-ARGV+ ;
 
 : PTT-HOLD-SCRIPT ( -- str )
    s" read x; exit 21" ;
@@ -297,11 +296,11 @@ variable PTT-HELD-W                      \ that stdin's write end
 
 \ 0 when `/bin/sh -c script` printed exactly want, else 1.
 : PTT-SH-PRINTS ( CMD:command str str -- n CMD:command )
-   {: script:^ scriptu:n want:^ wantu:n :}
+   {: script:str want:str :}
    s" -c" CMD:ARG+
-   script scriptu CMD:ARG+
+   script CMD:ARG+
    s" /bin/sh" PTT-RUN-OK
-   CMD:OUT$ want wantu STR:= if 0 else 1 then swap ;
+   CMD:OUT$ want STR:= if 0 else 1 then swap ;
 
 : PTT-CAPTURER-RUN ( CMD:command -- n CMD:command )
    s" sleep 0.2; printf capture-ok" s" capture-ok" PTT-SH-PRINTS ;
@@ -335,32 +334,32 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TA
 TASK:MIN-STACK TASK:TASK PTT-GROW-TB
 
 : PTT-GROW-STAGE ( CMD:command str str -- CMD:command )
-   {: v:^ vu:n script:^ scriptu:n :}
+   {: v:str script:str :}
    CMD:ENV-HERMETIC
-   s" PTT_MARK" v vu CMD:ENV+
+   s" PTT_MARK" v CMD:ENV+
    s" -c" CMD:ARG+
-   script scriptu CMD:ARG+ ;
+   script CMD:ARG+ ;
 
 \ The rc of /bin/sh run with the PTT-GROW-U bytes at in as its stdin.
 : PTT-GROW-RUN ( CMD:command ^u8 -- CMD:command n )
-   PTT-GROW-U CMD:IN!
+   PTT-GROW-U >str CMD:IN!
    s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
 \ 0 when stdout is the mark line followed by the whole stdin at in, else 1.
 : PTT-GROW-BAD ( CMD:command str ^u8 -- CMD:command n )
-   {: mark:^ marku:n in:^ :}
-   CMD:OUT$ {: out:^ outu:n :}
-   outu marku PTT-GROW-U + <> if 1 exit then
-   out marku mark marku STR:=
-   out marku + PTT-GROW-U in PTT-GROW-U STR:= and if 0 else 1 then ;
+   {: mark:str in:^ :}
+   CMD:OUT$ {: out:str :}
+   out STR:LEN mark STR:LEN PTT-GROW-U + <> if 1 exit then
+   out STR:DATA mark STR:LEN >str mark STR:=
+   out STR:DATA mark STR:LEN + PTT-GROW-U >str in PTT-GROW-U >str STR:= and if 0 else 1 then ;
 
 : PTT-GROW-A-RUN ( CMD:command -- n CMD:command )
    s" alpha" s" echo A:$PTT_MARK; /bin/cat" PTT-GROW-STAGE
    1 PTT-A-READY atomic!
    PTT-B-DONE 1 PTT-GROW-TB TEST-WAIT:FOR-CELL
    PTT-GROW-IN-A PTT-GROW-RUN {: rc:n :}
-   CMD:OUT$ nip PTT-GROW-OUT-A-U !
-   CMD:ERR$ nip PTT-GROW-ERR-A-U !
+   CMD:OUT$ STR:LEN PTT-GROW-OUT-A-U !
+   CMD:ERR$ STR:LEN PTT-GROW-ERR-A-U !
    S\" A:alpha\n" PTT-GROW-IN-A PTT-GROW-BAD PTT-GROW-A-BAD !
    rc swap ;
 
@@ -369,8 +368,8 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
    1 PTT-B-DONE atomic!
    PTT-A-READY 1 PTT-GROW-TA TEST-WAIT:FOR-CELL
    PTT-GROW-IN-B PTT-GROW-RUN {: rc:n :}
-   CMD:OUT$ nip PTT-GROW-OUT-B-U !
-   CMD:ERR$ nip PTT-GROW-ERR-B-U !
+   CMD:OUT$ STR:LEN PTT-GROW-OUT-B-U !
+   CMD:ERR$ STR:LEN PTT-GROW-ERR-B-U !
    S\" B:beta\n" PTT-GROW-IN-B PTT-GROW-BAD PTT-GROW-B-BAD !
    rc swap ;
 
@@ -451,7 +450,7 @@ variable PTT-FD-BASE-U
 : PTT-LS-RUN ( CMD:command -- CMD:command )
    begin
       PTT-LIST-FDS PTT-INHERIT-COUNT
-      CMD:OUT$ PTT-FD-BASE PTT-FD-BASE-U @ STR:= 0= if
+      CMD:OUT$ PTT-FD-BASE PTT-FD-BASE-U @ >str STR:= 0= if
          1 PTT-INHERIT-LEAKS atomic-add drop
       then
       PTT-INHERIT-ON atomic@ 0=
@@ -461,10 +460,10 @@ variable PTT-FD-BASE-U
 
 : PTT-FD-BASE! ( CMD:command -- CMD:command )
    PTT-LIST-FDS PROCESS:ENDING>RC RC>N 0 T=
-   CMD:OUT$ {: a:^ u:n :}
-   u PTT-FD-BASE-CAP <= TTRUE
-   a PTT-FD-BASE u BYTE-COPY
-   u PTT-FD-BASE-U ! ;
+   CMD:OUT$ {: out:str :}
+   out STR:LEN PTT-FD-BASE-CAP <= TTRUE
+   out STR:DATA PTT-FD-BASE out STR:LEN BYTE-COPY
+   out STR:LEN PTT-FD-BASE-U ! ;
 
 : PTT-FD-BASELINE ( -- ) [: PTT-FD-BASE! ;] CMD:WITH-COMMAND ;
 
@@ -515,7 +514,7 @@ create PTT-CANCEL-BYTE 99 c,
    PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
    s" -c" CMD:ARG+
    PTT-CANCEL-SCRIPT CMD:ARG+
-   PTT-GROW-IN-A PTT-GROW-U CMD:IN!
+   PTT-GROW-IN-A PTT-GROW-U >str CMD:IN!
    PTT-CANCEL-MODE @ 3 = if
       s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-RC drop exit
    then
@@ -542,7 +541,7 @@ create PTT-CANCEL-BYTE 99 c,
    rd FD>N PTT-CANCEL-R ! wr FD>N PTT-CANCEL-W ! ;
 
 : PTT-CANCEL-SIGNAL ( -- )
-   PTT-CANCEL-W @ PTT-CANCEL-BYTE 1 write 1 T= ;
+   PTT-CANCEL-W @ PTT-CANCEL-BYTE 1 >str write 1 T= ;
 
 \ Inspect only this live task's process row, before JOIN releases its region.
 \ Copied bytes establish the capture state, rather than assuming a scheduler
@@ -586,7 +585,7 @@ create PTT-CANCEL-MARK PATH-CAP allot
 variable PTT-CANCEL-MARK-U
 
 : PTT-CANCEL-MARK$ ( -- str )
-   PTT-CANCEL-MARK PTT-CANCEL-MARK-U @ ;
+   PTT-CANCEL-MARK PTT-CANCEL-MARK-U @ >str ;
 
 : PTT-CANCEL-PRE-RUN ( CMD:command -- CMD:command )
    s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME drop ;
@@ -628,9 +627,9 @@ variable PTT-CANCEL-MARK-U
 
 : PTT-CANCEL-PRE ( -- )
    FS:CLEANUP-RESET
-   s" cmd-cancel" FS:MKTEMP-DIR {: root:^ rootu:n :}
-   root rootu FS:CLEANUP-TREE+
-   root rootu s" spawned" PTT-CANCEL-MARK FS:JOIN-PATH PTT-CANCEL-MARK-U !
+   s" cmd-cancel" FS:MKTEMP-DIR {: root:str :}
+   root FS:CLEANUP-TREE+
+   root s" spawned" PTT-CANCEL-MARK FS:JOIN-PATH PTT-CANCEL-MARK-U !
    PTT-CANCEL-OPEN PTT-CANCEL-SIGNAL
    [: PTT-CANCEL-R @ [: PTT-CANCEL-PRE-LENT ;] CMD:WITH-COMMAND ;]
    E-PROC-CANCELLED TTHROWSQ

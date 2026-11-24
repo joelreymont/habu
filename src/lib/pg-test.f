@@ -1,4 +1,3 @@
-split-str
 \ pg-test.f - package PG against a live PostgreSQL server.
 \ test/db/pg-cluster.f starts a private cluster and runs this file with the
 \ cluster's conninfo as its one script argument; the gate row is that harness
@@ -58,7 +57,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    CONNECTIONS RESULTS CONFIGURE
    CONNINFO$ s" " CONNECT MATCH PG:connect-result
       connected OF ENDOF
-      refused OF type cr E-CONNECT throw ENDOF
+      refused OF >str type cr E-CONNECT throw ENDOF
    ;MATCH ;
 
 
@@ -74,7 +73,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    OUTCOME MATCH PG:outcome
       ok OF s" <ok>" ENDOF
       rows OF s" <rows>" ENDOF
-      failed OF 2drop ENDOF
+      failed OF 2drop >str ENDOF
    ;MATCH ;
 
 
@@ -82,7 +81,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    OUTCOME MATCH PG:outcome
       ok OF s" " ENDOF
       rows OF s" " ENDOF
-      failed OF 2swap 2drop ENDOF
+      failed OF 2swap 2drop >str ENDOF
    ;MATCH ;
 
 
@@ -100,14 +99,14 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    s" host=127.0.0.1 port=1 dbname=none user=none" s" " CONNECT
    MATCH PG:connect-result
       connected OF PG:CLOSE s" " ENDOF
-      refused OF ENDOF
+      refused OF >str ENDOF
    ;MATCH ;
 
 
 : ENDS-LF? ( str -- bool )
-   {: a:^ u:n :}
-   u 0= if false exit then
-   a u 1- + c@ STR:LF = ;
+   {: s:str :}
+   s STR:LEN 0= if false exit then
+   s STR:DATA s STR:LEN 1- + c@ STR:LF = ;
 
 
 : CLOSE-KEEP ( PG:connection -- PG:connection )
@@ -146,9 +145,9 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : CONNECT-CASES ( -- )
-   PORT-REFUSED$ {: pa:^ pu:n :}
-   pu 0 > TTRUE
-   pa pu ENDS-LF? TFALSE
+   PORT-REFUSED$ {: p:str :}
+   p STR:LEN 0 > TTRUE
+   p ENDS-LF? TFALSE
    s" an attempt on a closed port is refused by AWAIT" T-LABEL
    s" host=127.0.0.1 port=1 dbname=none user=none" AWAIT-REFUSED ;
 
@@ -156,14 +155,14 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 \ The cluster refuses a missing database after the protocol starts, so the
 \ text is the server's and grows with the name.
 : MISSING-DB ( str -- PG:connect-result )
-   {: name:^ nu:n :}
-   SB-RESET CONNINFO$ SB-APPEND s"  dbname=" SB-APPEND name nu SB-APPEND
+   {: name:str :}
+   SB-RESET CONNINFO$ SB-APPEND s"  dbname=" SB-APPEND name SB-APPEND
    SB$ s" " CONNECT ;
 
 : REFUSED$ ( PG:connect-result -- str )
    MATCH PG:connect-result
       connected OF PG:CLOSE E-CONNECT throw ENDOF
-      refused OF ENDOF
+      refused OF >str ENDOF
    ;MATCH ;
 
 
@@ -172,7 +171,7 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
 
 : LONG-REFUSED ( -- )
    s" pgtest_refused_with_a_much_longer_missing_database_name_xyz" MISSING-DB
-   REFUSED$ nip LONG-REFUSED-U !
+   REFUSED$ STR:LEN LONG-REFUSED-U !
    0 TASK:RETURN ;
 
 
@@ -180,19 +179,19 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
 \ other slot frees between them.
 : REFUSAL-TEXT-CASES ( -- )
    s" a refusal's text survives a longer refusal in another task" T-LABEL
-   s" pgtest_refused" MISSING-DB REFUSED$ {: a:^ u:n :}
-   u 0 > TTRUE
-   a u ENDS-LF? TFALSE
-   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: copy:^ cu :}
-   a copy u BYTE-COPY
+   s" pgtest_refused" MISSING-DB REFUSED$ {: r:str :}
+   r STR:LEN 0 > TTRUE
+   r ENDS-LF? TFALSE
+   r STR:LEN MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: copy:^ cu :}
+   r STR:DATA copy r STR:LEN BYTE-COPY
    0 LONG-REFUSED-U !
    ['] LONG-REFUSED LONG-REFUSED-WORKER TASK:ACTIVATE
    LONG-REFUSED-WORKER TASK:JOIN MATCH result
       ok OF 0 T= ENDOF
       err OF throw ENDOF
    ;MATCH
-   LONG-REFUSED-U @ u > TTRUE
-   a u copy u T$=
+   LONG-REFUSED-U @ r STR:LEN > TTRUE
+   r copy r STR:LEN >str T$=
    copy cu MEM:RELEASE-BYTES ;
 
 
@@ -204,7 +203,7 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
 
 : SOCKET-REFUSAL-CASES ( -- )
    s" a connection libpq rejects at once is refused with its text" T-LABEL
-   SOCKET-CONNINFO$ s" " CONNECT REFUSED$ nip 0 > TTRUE
+   SOCKET-CONNINFO$ s" " CONNECT REFUSED$ STR:LEN 0 > TTRUE
    s" an attempt libpq rejects at once is refused by AWAIT" T-LABEL
    SOCKET-CONNINFO$ AWAIT-REFUSED ;
 
@@ -294,8 +293,8 @@ TYPED-VARIABLE HELD-ID n
       TASK:PAUSE
    again ;
 
-: POLL-EXEC ( PG:connection str -- PG:result ) {: c a:^ u:n :}
-   c a u SEND c RESULT-POLL ;
+: POLL-EXEC ( PG:connection str -- PG:result ) {: c s:str :}
+   c s SEND c RESULT-POLL ;
 
 : SEND-SELECT ( PG:connection -- PG:connection )
    dup s" select 1" SEND ;
@@ -370,10 +369,10 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-: INSERT-ROW ( PG:connection n str -- ) {: c id:n la:^ lu:n :}
+: INSERT-ROW ( PG:connection n str -- ) {: c id:n ls:str :}
    c PARAMS
    c id INT+
-   c la lu TEXT+
+   c ls TEXT+
    c NULL+
    c s" insert into pqt (id, label, note) values ($1, $2, $3)"
    [: OUTCOME-TAG TAG-OK T= AFFECTED COUNT>N 1 T= ;] WITH-RESULT ;
@@ -463,7 +462,7 @@ TYPED-VARIABLE HELD-ID n
 
 \ One past a C int's largest length; reading it would run past HEX-BYTES.
 : HUGE-BINARY ( PG:connection -- PG:connection )
-   dup HEX-BYTES $80000000 BINARY+ ;
+   dup HEX-BYTES $80000000 >str BINARY+ ;
 
 
 : BINARY-CASES ( PG:connection -- PG:connection )
@@ -471,29 +470,29 @@ TYPED-VARIABLE HELD-ID n
    HEX-BYTES! REAL-PAIR!
    s" a binary parameter's bytes arrive exactly" T-LABEL
    c PARAMS
-   c HEX-BYTES 3 BINARY+
+   c HEX-BYTES 3 >str BINARY+
    c s" select encode($1::bytea, 'hex')" [: HEX-ANSWER ;] WITH-RESULT
    s" a binary real[] arrives in PostgreSQL's array binary form" T-LABEL
    c PARAMS
-   c REAL-PAIR 36 BINARY+
+   c REAL-PAIR 36 >str BINARY+
    c s" select array_to_string($1::real[], ',')"
    [: 0 >ROW 0 >COL TEXT$ s" 1.5,-2" T$= ;] WITH-RESULT
    s" text and binary parameters share one statement" T-LABEL
    c PARAMS
    c s" ab" TEXT+
-   c FIVE-BYTES 5 BINARY+
+   c FIVE-BYTES 5 >str BINARY+
    c s" select $1::text || ':' || length($2::bytea)"
    [: 0 >ROW 0 >COL TEXT$ s" ab:5" T$= ;] WITH-RESULT
    s" an empty binary parameter is zero bytes, not NULL" T-LABEL
    c PARAMS
-   c HEX-BYTES 0 BINARY+
+   c HEX-BYTES 0 >str BINARY+
    c s" select length($1::bytea)"
    [: 0 >ROW 0 >COL TEXT$ s" 0" T$= ;] WITH-RESULT
    s" a prepared statement takes a binary parameter" T-LABEL
    c s" pqt_hex" s" select encode($1::bytea, 'hex')"
    [: OUTCOME-TAG TAG-OK T= ;] WITH-PREPARE
    c PARAMS
-   c HEX-BYTES 3 BINARY+
+   c HEX-BYTES 3 >str BINARY+
    c s" pqt_hex" [: HEX-ANSWER ;] WITH-PREPARED
    s" BINARY+ refuses a length past a C int and keeps what is staged" T-LABEL
    c PARAMS
@@ -517,7 +516,7 @@ TYPED-VARIABLE HELD-ID n
 
 
 : BINARY-ANSWER ( PG:result -- PG:result )
-   0 >ROW 0 >COL TEXT$ EVERY-BYTE 256 T$=
+   0 >ROW 0 >COL TEXT$ EVERY-BYTE 256 >str T$=
    0 >ROW 1 >COL TEXT$ s" kept" T$=
    0 >ROW 2 >COL INT drop ;
 
@@ -548,24 +547,24 @@ TYPED-VARIABLE HELD-ID n
 \ Checked against the report the server builds: six KiB of two-byte characters,
 \ then a longer message the connection's copy must grow past the first to hold.
 : RAISED-SAME ( PG:connection str str -- PG:connection )
-   {: c same sameu:n ma mu:n :}
+   {: c same:str ms:str :}
    c PARAMS
-   c ma mu TEXT+
-   c same sameu
+   c ms TEXT+
+   c same
    [: OUTCOME-TAG TAG-ROWS T= 0 >ROW 0 >COL TEXT$ s" t" T$= ;] WITH-RESULT
    c ;
 
 
 : RAISED-BODY ( PG:connection str PG:result -- PG:connection PG:result )
    FAILED-SQLSTATE$ s" P0001" T$=
-   FAILED-MESSAGE$ rot >r
+   FAILED-MESSAGE$ swap >r
    RAISED-SAME r> ;
 
 
 : RAISED-WHOLE ( PG:connection str str -- PG:connection )
-   {: c raise raiseu:n same sameu:n :}
+   {: c raise:str same:str :}
    c PARAMS
-   c same sameu c raise raiseu [: RAISED-BODY ;] WITH-RESULT ;
+   c same c raise [: RAISED-BODY ;] WITH-RESULT ;
 
 
 : LONG-MESSAGE-CASES ( PG:connection -- PG:connection )
@@ -588,8 +587,8 @@ TYPED-VARIABLE HELD-ID n
 
 
 : NESTED-SPAN-BODY ( PG:connection PG:result -- PG:connection PG:result )
-   FAILED-MESSAGE$ rot >r
-   rot INNER-FAILS -rot
+   FAILED-MESSAGE$ swap >r
+   swap INNER-FAILS swap
    S\" ERROR:  outer message\nCONTEXT:  PL/pgSQL function inline_code_block line 1 at RAISE" T$=
    r> ;
 
@@ -619,8 +618,8 @@ TYPED-VARIABLE HELD-ID n
 
 
 : HELD-SPAN-BODY ( PG:connection PG:result -- PG:connection PG:result )
-   FAILED-MESSAGE$ rot >r
-   rot DEFERRED-FAILS -rot
+   FAILED-MESSAGE$ swap >r
+   swap DEFERRED-FAILS swap
    S\" ERROR:  short\nCONTEXT:  PL/pgSQL function inline_code_block line 1 at RAISE" T$=
    r> ;
 
@@ -648,10 +647,10 @@ TYPED-VARIABLE HELD-ID n
    c c s" do $$ begin raise exception 'short'; end $$" [: HELD-SPAN-BODY ;] WITH-RESULT ;
 
 
-: PREPARED-INSERT ( PG:connection n str -- ) {: c id:n la:^ lu:n :}
+: PREPARED-INSERT ( PG:connection n str -- ) {: c id:n ls:str :}
    c PARAMS
    c id INT+
-   c la lu TEXT+
+   c ls TEXT+
    c s" pqt-note" TEXT+
    c s" pqt_ins" [: OUTCOME-TAG TAG-OK T= ;] WITH-PREPARED ;
 
@@ -736,9 +735,9 @@ TYPED-VARIABLE HELD-ID n
    [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
 
 
-: ATTNUM ( PG:connection str -- n ) {: c name:^ nu:n :}
+: ATTNUM ( PG:connection str -- n ) {: c name:str :}
    c PARAMS
-   c name nu TEXT+
+   c name TEXT+
    c s" select attnum from pg_attribute where attrelid = 'pqt'::regclass and attname = $1"
    SCALAR ;
 
@@ -989,17 +988,17 @@ TYPED-VARIABLE HELD-ID n
    c s" insert into pqt (id, label, note) values (1, 'duplicate', null)"
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" 23505" T$=
-      FAILED-MESSAGE$ nip 0 > TTRUE ;] WITH-RESULT
+      FAILED-MESSAGE$ STR:LEN 0 > TTRUE ;] WITH-RESULT
    c ;
 
 
 : READ-BAD-COLUMN ( PG:connection -- PG:connection )
    dup s" select id from pqt where id = 1"
-   [: OUTCOME-TAG TAG-ROWS T= 0 >ROW 99 >COL TEXT$ 2drop ;] WITH-RESULT ;
+   [: OUTCOME-TAG TAG-ROWS T= 0 >ROW 99 >COL TEXT$ drop ;] WITH-RESULT ;
 
 
 : READ-BAD-ROW ( PG:connection -- PG:connection )
-   dup s" select id from pqt where id = 1" [: 99 >ROW 0 >COL TEXT$ 2drop ;] WITH-RESULT ;
+   dup s" select id from pqt where id = 1" [: 99 >ROW 0 >COL TEXT$ drop ;] WITH-RESULT ;
 
 
 : BAD-COLUMN-CASES ( PG:connection -- PG:connection ) {: c :}
@@ -1150,7 +1149,7 @@ variable STMT-U
 
 
 : BIG$ ( -- str )
-   BIG-BUF BYTE-VIEW BIG-LEN ;
+   BIG-BUF BYTE-VIEW BIG-LEN >str ;
 
 
 : FILL-BIG ( -- )
@@ -1177,10 +1176,10 @@ variable STMT-U
    0 STMT-U ! ;
 
 
-: STMT+ ( str -- ) {: a u:n :}
-   STMT-U @ u + STMT-CAP > if E-CAPACITY throw then
-   a STMT-BUF BYTE-VIEW STMT-U @ + u BYTE-COPY
-   STMT-U @ u + STMT-U ! ;
+: STMT+ ( str -- ) {: s:str :}
+   STMT-U @ s STR:LEN + STMT-CAP > if E-CAPACITY throw then
+   s STR:DATA STMT-BUF BYTE-VIEW STMT-U @ + s STR:LEN BYTE-COPY
+   STMT-U @ s STR:LEN + STMT-U ! ;
 
 
 : STMT-C+ ( n -- ) {: ch:n :}
@@ -1196,7 +1195,7 @@ variable STMT-U
 
 
 : STMT$ ( -- str )
-   STMT-BUF BYTE-VIEW STMT-U @ ;
+   STMT-BUF BYTE-VIEW STMT-U @ >str ;
 
 
 : BIG-VALUES ( -- )
@@ -1211,7 +1210,7 @@ variable STMT-U
 : BIG-STATEMENT-CASES ( PG:connection -- PG:connection ) {: c :}
    c s" create table pqtrow (id int primary key)" EXEC-OK
    BIG-VALUES
-   STMT$ nip OLD-STATEMENT-CAP > TTRUE
+   STMT$ STR:LEN OLD-STATEMENT-CAP > TTRUE
    c PARAMS
    c STMT$ [: OUTCOME-TAG TAG-OK T= AFFECTED COUNT>N BIG-ROWS T= ;] WITH-RESULT
    c ;
@@ -1254,14 +1253,14 @@ variable STMT-U
 : ADD-HUGE-TEXT ( PG:connection -- PG:connection )
    dup PARAMS
    dup s" kept" TEXT+
-   dup BIG$ drop MEM-MAX-N 1- TEXT+ ;
+   dup BIG$ STR:DATA MEM-MAX-N 1- >str TEXT+ ;
 
 
 \ With nothing staged the fill is zero and the same length wraps no sum: the
 \ arena asks for a MEM-MAX-N-byte mapping, and the mapping is what refuses it.
 : ADD-LONE-HUGE-TEXT ( PG:connection -- PG:connection )
    dup PARAMS
-   dup BIG$ drop MEM-MAX-N 1- TEXT+ ;
+   dup BIG$ STR:DATA MEM-MAX-N 1- >str TEXT+ ;
 
 
 : PARAM-LENGTH-CASES ( PG:connection -- PG:connection ) {: c :}
@@ -1296,7 +1295,7 @@ variable STMT-U
    c s" insert into pqtscript values (8); insert into pqtnosuch values (1)"
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" 42P01" T$=
-      FAILED-MESSAGE$ nip 0 > TTRUE ;] WITH-SCRIPT
+      FAILED-MESSAGE$ STR:LEN 0 > TTRUE ;] WITH-SCRIPT
    c PARAMS
    c s" select count(*) from pqtscript where id = 8" [: 0 >ROW 0 >COL INT 0 T= ;] WITH-RESULT
    c ;
@@ -1346,8 +1345,8 @@ variable STMT-U
 
 \ COPY TO STDOUT fails with PG's own spans although the server completed it.
 : COPY-OUT-FAILS ( PG:connection str -- )
-   {: c a:^ u:n :}
-   c a u
+   {: c s:str :}
+   c s
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" 0A000" T$=
       FAILED-MESSAGE$ s" COPY is not supported" T$= ;] WITH-RESULT
@@ -1541,9 +1540,9 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    0 EXIT-CONN @ PG:LIVE? TFALSE ;
 
 : BACKEND-COUNT ( PG:connection n str -- n )
-   {: c pid:n sql:^ size:n :}
+   {: c pid:n sql:str :}
    c PARAMS c pid INT+
-   c sql size [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
+   c sql [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
 
 : LOCKED? ( PG:connection n -- bool )
    s" select count(*) from pg_stat_activity where pid=$1 and wait_event_type='Lock'"
@@ -1728,8 +1727,8 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
       failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
    ;MATCH ;
 
-: PEER-WRITE ( TCP4:connection str -- ) {: peer a u:n :}
-   peer a u TCP4:WRITE STATUS-ERRNO 0 T= ;
+: PEER-WRITE ( TCP4:connection str -- ) {: peer s:str :}
+   peer s TCP4:WRITE STATUS-ERRNO 0 T= ;
 
 \ libpq drops a connection whose reply breaks the protocol, so pg.f's next send
 \ on it is refused: E-EXEC, and the connection is closed with it.
@@ -1739,10 +1738,10 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    LISTENER {: lis :}
    LISTENER-CONNINFO$ s" " CONNECT-START {: c :}
    lis ACCEPT-PEER {: peer :}
-   peer PEER-BYTES STARTUP-LEN PEER-WRITE
+   peer PEER-BYTES STARTUP-LEN >str PEER-WRITE
    c POLL-CONNECTED drop
    c s" select 1" SEND
-   peer PEER-BYTES STARTUP-LEN + 5 PEER-WRITE
+   peer PEER-BYTES STARTUP-LEN + 5 >str PEER-WRITE
    c RESULT-POLL CLEAR
    c [: SEND-SELECT ;] catch {: held code:n :}
    code E-EXEC T=
@@ -1841,12 +1840,12 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
 create PATH-BUF PATH-CAP allot          \ the stderr capture file's path
 variable PATH-U
 
-: PATH$ ( -- str )  PATH-BUF PATH-U @ ;
+: PATH$ ( -- str )  PATH-BUF PATH-U @ >str ;
 
 : PATH-MAKE ( -- )
-   s" pg-test" FS:MKTEMP-DIR {: dir:^ dirlen:n :}
-   dir dirlen FS:CLEANUP-TREE+
-   dir dirlen s" stderr.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
+   s" pg-test" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" stderr.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
 
 
@@ -1907,14 +1906,14 @@ $100 constant HEARD-CAP
 HEARD-CAP BUFFER: HEARD
 variable HEARD-U
 
-: HEARD+ ( str -- ) {: a u:n :}
-   HEARD-U @ u + HEARD-CAP > if E-CAPACITY throw then
-   a HEARD HEARD-U @ + u BYTE-COPY
-   HEARD-U @ u + HEARD-U ! ;
+: HEARD+ ( str -- ) {: s:str :}
+   HEARD-U @ s STR:LEN + HEARD-CAP > if E-CAPACITY throw then
+   s STR:DATA HEARD HEARD-U @ + s STR:LEN BYTE-COPY
+   HEARD-U @ s STR:LEN + HEARD-U ! ;
 
 \ Each pair lands as `channel=payload;`.
-: HEAR ( str str -- ) {: ca cu:n pa pu:n :}
-   ca cu HEARD+ s" =" HEARD+ pa pu HEARD+ s" ;" HEARD+ ;
+: HEAR ( str str -- ) {: cs:str ps:str :}
+   cs HEARD+ s" =" HEARD+ ps HEARD+ s" ;" HEARD+ ;
 
 \ b's three notifications commit in one implicit transaction, so a's backend
 \ sends them together and one wait takes all three.
@@ -1928,7 +1927,7 @@ variable HEARD-U
    b s" notify pqtjob, '17'; notify pqtview, 'p2'; notify pqtjob, ''"
    [: OUTCOME-TAG TAG-OK T= ;] WITH-SCRIPT
    a FOREVER-MS >MS [: HEAR ;] NOTIFIED TTRUE
-   HEARD HEARD-U @ s" pqtjob=17;pqtview=p2;pqtjob=;" T$=
+   HEARD HEARD-U @ >str s" pqtjob=17;pqtview=p2;pqtjob=;" T$=
    a PG:CLOSE
    b PG:CLOSE ;
 
@@ -1987,46 +1986,47 @@ variable WARN-LINES
    PATH$ FS:FILE-SIZE {: size:n :}
    FILE-B @ 0 VEC:RESIZE
    FILE-B @ size VEC:ENSURE
-   PATH$ FILE-B @ VEC:SPAN SPAN:$ FS:READ-ALL size T=
+   FILE-B @ VEC:SPAN SPAN:$ {: buf:str :}
+   PATH$ buf STR:DATA buf STR:LEN FS:READ-ALL size T=
    FILE-B @ VEC:SPAN SPAN:$ ;
 
 
 \ libpq's default notice processor writes the message as is.
-: BARE? ( str -- bool ) {: a:^ u:n :}
-   a u s" FATAL:" STR:STARTS-WITH?
-   a u s" NOTICE:" STR:STARTS-WITH? or
-   a u s" WARNING:" STR:STARTS-WITH? or ;
+: BARE? ( str -- bool ) {: s:str :}
+   s s" FATAL:" STR:STARTS-WITH?
+   s s" NOTICE:" STR:STARTS-WITH? or
+   s s" WARNING:" STR:STARTS-WITH? or ;
 
 
-: PG-ERROR? ( str -- bool ) {: a:^ u:n :}
-   u DATE:TIME-LEN < if false exit then
-   a DATE:TIME-LEN + u DATE:TIME-LEN - {: r:^ ru:n :}
-   r ru s"  error pg: " STR:STARTS-WITH?
-   r ru s" terminating connection due to administrator command" STR:CONTAINS?
+: PG-ERROR? ( str -- bool ) {: s:str :}
+   s STR:LEN DATE:TIME-LEN < if false exit then
+   s STR:DATA DATE:TIME-LEN + s STR:LEN DATE:TIME-LEN - >str {: r:str :}
+   r s"  error pg: " STR:STARTS-WITH?
+   r s" terminating connection due to administrator command" STR:CONTAINS?
    and ;
 
 
-: PG-WARN? ( str -- bool ) {: a:^ u:n :}
-   u DATE:TIME-LEN < if false exit then
-   a DATE:TIME-LEN + u DATE:TIME-LEN - s"  warn pg: WARNING:  w" STR:= ;
+: PG-WARN? ( str -- bool ) {: s:str :}
+   s STR:LEN DATE:TIME-LEN < if false exit then
+   s STR:DATA DATE:TIME-LEN + s STR:LEN DATE:TIME-LEN - >str s"  warn pg: WARNING:  w" STR:= ;
 
 
-: LINE-COUNT ( str -- ) {: a:^ u:n :}
-   u 0= if exit then
+: LINE-COUNT ( str -- ) {: s:str :}
+   s STR:LEN 0= if exit then
    1 ALL-LINES +!
-   a u BARE? if 1 BARE-LINES +! then
-   a u PG-ERROR? if 1 PG-LINES +! then
-   a u PG-WARN? if 1 WARN-LINES +! then ;
+   s BARE? if 1 BARE-LINES +! then
+   s PG-ERROR? if 1 PG-LINES +! then
+   s PG-WARN? if 1 WARN-LINES +! then ;
 
 
-: LINES-COUNT ( str -- ) {: at:^ u:n :}
+: LINES-COUNT ( str -- ) {: at:str :}
    0 ALL-LINES !  0 BARE-LINES !  0 PG-LINES !  0 WARN-LINES !
    0 begin
-      at u rot STR:LF swap STR:SPLIT-NEXT
+      at swap STR:LF swap STR:SPLIT-NEXT
    while
       >r LINE-COUNT r>
    repeat
-   drop 2drop ;
+   drop drop ;
 
 
 : RAISES ( PG:connection -- )
@@ -2097,7 +2097,7 @@ PW-LEN BUFFER: PW-RIGHT
 
 PW-RIGHT!
 
-: PW-RIGHT$ ( -- str )   PW-RIGHT PW-LEN ;
+: PW-RIGHT$ ( -- str )   PW-RIGHT PW-LEN >str ;
 : PW-WRONG$ ( -- str )   s" pgtest-pw-wrong" ;
 
 

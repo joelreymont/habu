@@ -1,4 +1,3 @@
-split-str
 \ pg-rows.f - package PG's statements and row readers.
 \ Before the first read or query: `n PG:CONFIGURE-READERS` once for the tasks
 \ that read rows or run queries. Span lifetimes: above NO-TASK.
@@ -89,10 +88,10 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
 
 : CHUNK+ ( n n -- ) {: at:n len:n :}
    len MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
-   at READ-CHUNK @ SPAN:$ {: before:^ before-len:n :}
-   fresh SPAN:$ drop >CHUNK {: c :}
-   before c CHUNK-PREV !
-   before-len c CHUNK-PREV-LEN !
+   at READ-CHUNK @ SPAN:$ {: before:str :}
+   fresh SPAN:$ STR:DATA >CHUNK {: c :}
+   before STR:DATA c CHUNK-PREV !
+   before STR:LEN c CHUNK-PREV-LEN !
    fresh at READ-CHUNK !
    HEADER-BYTES at READ-USED ! ;
 
@@ -100,7 +99,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
 \ False when row at's newest chunk is its first.
 : POP-CHUNK? ( n -- bool ) {: at:n :}
    at READ-CHUNK @ {: newest :}
-   newest SPAN:$ drop >CHUNK {: c :}
+   newest SPAN:$ STR:DATA >CHUNK {: c :}
    c CHUNK-PREV-LEN @ 0= if false exit then
    c CHUNK-PREV @ c CHUNK-PREV-LEN @ SPAN:MAKE at READ-CHUNK !
    newest MEM:FREE-SPAN
@@ -123,13 +122,13 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    at READ-CHUNK @ ;
 
 
-: ARENA+ ( str -- str ) {: a:^ u:n :}
+: ARENA+ ( str -- str ) {: s:str :}
    MY-ARENA {: at:n :}
-   at u ROOM {: chunk :}
+   at s STR:LEN ROOM {: chunk :}
    at READ-USED @ {: used:n :}
-   a u chunk used SPAN:SKIP SPAN:COPY
-   used u + at READ-USED !
-   chunk used u SPAN:SUB SPAN:$ ;
+   s chunk used SPAN:SKIP SPAN:COPY
+   used s STR:LEN + at READ-USED !
+   chunk used s STR:LEN SPAN:SUB SPAN:$ ;
 
 
 \ A refusal overwrites the one before it, so a task's text needs one mapping,
@@ -142,23 +141,23 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    fresh at REFUSAL ! ;
 
 
-: REFUSAL+ ( str n -- ) {: a:^ u:n at:n :}
-   a u at REFUSAL @ at REFUSAL-U @ SPAN:SKIP SPAN:COPY
-   u at REFUSAL-U +! ;
+: REFUSAL+ ( str n -- ) {: s:str at:n :}
+   s at REFUSAL @ at REFUSAL-U @ SPAN:SKIP SPAN:COPY
+   s STR:LEN at REFUSAL-U +! ;
 
 
 \ A `failed` outcome's SQLSTATE and message become the task's refusal text,
 \ `SQLSTATE: message`, or the message alone when libpq made the failure
 \ without a SQLSTATE; then the query is E-QUERY.
-: REFUSED ( str str -- ) {: sa:^ su:n ma:^ mu:n :}
+: REFUSED ( str str -- ) {: ss:str ms:str :}
    MY-ARENA {: at:n :}
    0 at REFUSAL-U !
-   at su mu + 2 + REFUSAL-ROOM
-   su 0<> if
-      sa su at REFUSAL+
+   at ss STR:LEN ms STR:LEN + 2 + REFUSAL-ROOM
+   ss STR:LEN 0<> if
+      ss at REFUSAL+
       s" : " at REFUSAL+
    then
-   ma mu at REFUSAL+
+   ms at REFUSAL+
    RECORD-REFUSAL
    E-QUERY throw ;
 
@@ -180,9 +179,9 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    0 >ROW c >COL TEXT$ ;
 
 
-: BOOL$ ( str -- bool ) {: a:^ u:n :}
-   u 1 <> if E-ROW throw then
-   a c@ TRUE-BYTE = ;
+: BOOL$ ( str -- bool ) {: s:str :}
+   s STR:LEN 1 <> if E-ROW throw then
+   s STR:DATA c@ TRUE-BYTE = ;
 
 public
 
@@ -222,7 +221,7 @@ public
    OUTCOME MATCH outcome
       ok OF NOT-REFUSED E-QUERY throw ENDOF
       rows OF NOT-REFUSED ENDOF
-      failed OF REFUSED ENDOF
+      failed OF >str >r >str r> REFUSED ENDOF
    ;MATCH ;
 
 
@@ -239,9 +238,9 @@ public
 : REFUSED$ ( -- str )
    MY-ARENA {: at:n :}
    REFUSED-KIND @ {: kind:n :}
-   kind KIND-REFUSAL = if at REFUSAL @ SPAN:$ drop at REFUSAL-U @ exit then
+   kind KIND-REFUSAL = if at REFUSAL @ SPAN:$ STR:DATA at REFUSAL-U @ >str exit then
    kind KIND-LOSS = if REFUSED-TEXT @ VEC:SPAN SPAN:$ exit then
-   at REFUSAL @ SPAN:$ drop 0 ;
+   at REFUSAL @ SPAN:$ STR:DATA 0 >str ;
 
 private
 
@@ -255,7 +254,7 @@ private
    OUTCOME MATCH outcome
       ok OF NOT-REFUSED ENDOF
       rows OF NOT-REFUSED E-QUERY throw ENDOF
-      failed OF REFUSED ENDOF
+      failed OF >str >r >str r> REFUSED ENDOF
    ;MATCH ;
 
 public
@@ -274,20 +273,20 @@ public
 \ body runs on the result, whatever its row count, inside the result's scope,
 \ which clears it when the body returns or throws.
 : QUERY ( R PG:connection str [ R PG:result -- S PG:result ] -- S )
-   {: c a:^ u:n body :}
+   {: c s:str body :}
    READ-RESET
-   body c a u [: RUN-ROWS ;] WITH-RESULT ;
+   body c s [: RUN-ROWS ;] WITH-RESULT ;
 
 
 \ One parameter, one row: the read of a row by its identity. The body runs on
 \ the result once its first row is there; the scope clears the result when
 \ the body returns or throws.
 : BY-ID ( R PG:connection n str [ R PG:result -- S PG:result ] -- S )
-   {: c id:n a:^ u:n body :}
+   {: c id:n s:str body :}
    READ-RESET
    c PARAMS
    c id INT+
-   body c a u [: RUN-FIRST ;] WITH-RESULT ;
+   body c s [: RUN-FIRST ;] WITH-RESULT ;
 
 
 \ The first row's columns, copied into the task's arena.

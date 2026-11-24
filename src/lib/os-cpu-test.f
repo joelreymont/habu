@@ -1,4 +1,3 @@
-split-str
 \ os-cpu-test.f - the processor facts against the host's own report.
 \ Run: bin/hb --load src/lib/os-cpu-test.f
 \ Failure modes: a sysconf name wrong for the target, so ONLINE answers another
@@ -32,7 +31,7 @@ create ERR OUT-CAP allot
       ok OF PCAP-CAPTURED:UNMAKE drop LEN>N ENDOF
       err OF PCAP-FAILED:UNMAKE 2drop drop 0 ENDOF
    ;MATCH {: outu:n :}
-   OUT outu STR:TRIM ;
+   OUT outu >str STR:TRIM ;
 
 : GETCONF$ ( -- str )
    PROC-ARGV-RESET
@@ -53,9 +52,9 @@ create ERR OUT-CAP allot
 \ The host's one-minute average, its report's first number; an unreadable
 \ report answers NaN, which no bound holds, so the case fails once.
 : HOST-LOAD ( -- r )
-   HOST-LOAD$ {: text:^ len:n :}
-   text len SPACE-BYTE 0 STR:SPLIT-NEXT drop {: next:n :}
-   HB-TARGET-MACOS? if 2drop text len SPACE-BYTE next STR:SPLIT-NEXT drop drop then
+   HOST-LOAD$ {: text:str :}
+   text SPACE-BYTE 0 STR:SPLIT-NEXT drop {: next:n :}
+   HB-TARGET-MACOS? if drop text SPACE-BYTE next STR:SPLIT-NEXT drop drop then
    F64-TEXT:PARSE MATCH result
       ok OF ENDOF
       err OF drop NAN-BITS IEEE754:BITS>F64 ENDOF

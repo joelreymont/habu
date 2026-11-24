@@ -1,4 +1,3 @@
-split-str
 \ power-test.f - POWER's hold, as the OS itself lists it.
 \ Run: bin/hb --load src/lib/power-test.f
 \ Failure modes: a hold the OS never lists, or still lists after ALLOW-SLEEP; a
@@ -23,13 +22,13 @@ create BAD-NAME $FF c,
 
 \ The pid keeps two runs at once apart.
 : NAME! ( -- )
-   s" habu-power-test-" {: p:^ u:n :}
-   p NAME u BYTE-COPY
-   getpid FMT:INT$ {: d:^ du:n :}
-   d NAME u + du BYTE-COPY
-   u du + NAME-LEN ! ;
+   s" habu-power-test-" {: p:str :}
+   p STR:DATA NAME p STR:LEN BYTE-COPY
+   getpid FMT:INT$ {: d:str :}
+   d STR:DATA NAME p STR:LEN + d STR:LEN BYTE-COPY
+   p STR:LEN d STR:LEN + NAME-LEN ! ;
 
-: NAME$ ( -- str ) NAME NAME-LEN @ ;
+: NAME$ ( -- str ) NAME NAME-LEN @ >str ;
 
 : PMSET ( CMD:command -- CMD:command bool )
    CMD:RESET
@@ -47,7 +46,7 @@ create BAD-NAME $FF c,
 : MACOS ( -- )
    NAME!
    [: LISTED ;] CMD:WITH-COMMAND
-   [: BAD-NAME 1 POWER:KEEP-AWAKE POWER:ALLOW-SLEEP ;] POWER:E-ASSERTION TTHROWSQ ;
+   [: BAD-NAME 1 >str POWER:KEEP-AWAKE POWER:ALLOW-SLEEP ;] POWER:E-ASSERTION TTHROWSQ ;
 
 : OTHER ( -- )
    [: s" habu-power-test" POWER:KEEP-AWAKE POWER:ALLOW-SLEEP ;] POWER:E-PLATFORM TTHROWSQ ;

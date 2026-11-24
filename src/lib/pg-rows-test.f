@@ -1,4 +1,3 @@
-split-str
 \ pg-rows-test.f - package PG's row readers and statements against a live
 \ PostgreSQL server.
 \
@@ -56,9 +55,9 @@ TYPED-VARIABLE CONN PG:connection
    s" select id, name, nick, score, boss, active from person where id = $1" ;
 
 
-: RUN ( str -- ) {: a:^ u:n :}
+: RUN ( str -- ) {: s:str :}
    CONN @ PG:PARAMS
-   CONN @ a u [: ;] PG:WITH-RESULT ;
+   CONN @ s [: ;] PG:WITH-RESULT ;
 
 
 : SEED ( -- )
@@ -67,9 +66,9 @@ TYPED-VARIABLE CONN PG:connection
 
 
 : NAMES-ROW ( PG:result -- str str bool PG:result )
-   1 PG:COL-TEXT rot
-   2 PG:COL-TEXT? {: ka:^ ku:n given:bool :}
-   ka ku rot given swap ;
+   1 PG:COL-TEXT swap
+   2 PG:COL-TEXT? {: k:str given:bool :}
+   k swap given swap ;
 
 
 : NAMES-OF ( PG:connection n -- str str bool )
@@ -77,11 +76,11 @@ TYPED-VARIABLE CONN PG:connection
 
 
 : CHURNED ( str str bool PG:result -- PG:result )
-   >r {: na:^ nu:n ka:^ ku:n given:bool :}
+   >r {: n:str k:str given:bool :}
    s" name after clear" T-LABEL
-   na nu s" Ada" T$=
+   n s" Ada" T$=
    s" nick after clear" T-LABEL
-   ka ku s" ada" T$=
+   k s" ada" T$=
    given TTRUE
    r> ;
 
@@ -116,7 +115,7 @@ TYPED-VARIABLE CONN PG:connection
 
 : GRACE-ROW ( PG:result -- PG:result )
    s" a NULL nullable text is empty and false" T-LABEL
-   2 PG:COL-TEXT? TFALSE nip 0 T=
+   2 PG:COL-TEXT? TFALSE STR:LEN 0 T=
    s" a NULL real is zero" T-LABEL
    3 PG:COL-REAL 0.0 f= TTRUE
    4 PG:COL-ID 1 T=
@@ -125,7 +124,7 @@ TYPED-VARIABLE CONN PG:connection
 
 \ Each refusal throws out of its own scope, which clears the result.
 : NULL-TEXT ( -- )
-   2 [: 2 PG:COL-TEXT 2drop ;] ON-PERSON ;
+   2 [: 2 PG:COL-TEXT drop ;] ON-PERSON ;
 
 : NULL-BOOL ( -- )
    2 [: 2 PG:COL-BOOL drop ;] ON-PERSON ;
@@ -152,7 +151,7 @@ TYPED-VARIABLE CONN PG:connection
    0 2 PG:AT$ s" v1" T$=
    2 2 PG:AT?$ TTRUE s" v3" T$=
    s" a NULL cell in place is empty and false" T-LABEL
-   1 2 PG:AT?$ TFALSE nip 0 T= ;
+   1 2 PG:AT?$ TFALSE STR:LEN 0 T= ;
 
 
 : PAGE-CASES ( -- )
@@ -168,23 +167,23 @@ TYPED-VARIABLE CONN PG:connection
 
 
 : LONG-ROW ( PG:result -- str str str PG:result )
-   1 PG:COL-TEXT rot
-   2 PG:COL-TEXT rot
-   3 PG:COL-TEXT rot ;
+   1 PG:COL-TEXT swap
+   2 PG:COL-TEXT swap
+   3 PG:COL-TEXT swap ;
 
 
 \ The short text stays in the arena's first chunk while each long one chains
 \ another.
 : LONG-CHURNED ( str str str PG:result -- PG:result )
-   >r {: ha:^ hu:n aa:^ au:n ba:^ bu:n :}
+   >r {: h:str a:str b:str :}
    s" a short text beside long ones" T-LABEL
-   ha hu s" head" T$=
+   h s" head" T$=
    s" a text longer than the first chunk reads whole" T-LABEL
-   r> 0 2 PG:AT$ aa au T$=
-   au LONG-TEXT T=
+   r> 0 2 PG:AT$ a T$=
+   a STR:LEN LONG-TEXT T=
    s" a text of several chunks reads whole" T-LABEL
-   0 3 PG:AT$ ba bu T$=
-   bu LONG-TEXT 3 * T= ;
+   0 3 PG:AT$ b T$=
+   b STR:LEN LONG-TEXT 3 * T= ;
 
 
 : LONG-READ ( -- )
@@ -205,7 +204,7 @@ TYPED-VARIABLE CONN PG:connection
 
 
 : NO-SUCH ( -- )
-   CONN @ 99 NAMES-OF drop 2drop 2drop ;
+   CONN @ 99 NAMES-OF drop drop drop ;
 
 
 : REFUSED-QUERY ( -- )
@@ -258,23 +257,23 @@ TYPED-VARIABLE CONN PG:connection
    [: BINARY-BOOL ;] PG:E-TYPE EACH-REFUSES ;
 
 
-: REFUSAL-NAMES ( str -- ) {: a:^ u:n :}
+: REFUSAL-NAMES ( str -- ) {: s:str :}
    PG:REFUSED$ s" 42P01: " STR:STARTS-WITH? TTRUE
-   PG:REFUSED$ a u STR:CONTAINS? TTRUE ;
+   PG:REFUSED$ s STR:CONTAINS? TTRUE ;
 
 
 : NO-REFUSAL ( -- )
-   PG:REFUSED$ nip 0 T= ;
+   PG:REFUSED$ STR:LEN 0 T= ;
 
 
-: EXEC-ON ( str -- ) {: a:^ u:n :}
+: EXEC-ON ( str -- ) {: s:str :}
    CONN @ PG:PARAMS
-   CONN @ a u PG:EXEC ;
+   CONN @ s PG:EXEC ;
 
 
-: QUERY-ON ( str -- ) {: a:^ u:n :}
+: QUERY-ON ( str -- ) {: s:str :}
    CONN @ PG:PARAMS
-   CONN @ a u [: ;] PG:QUERY ;
+   CONN @ s [: ;] PG:QUERY ;
 
 
 \ Answers the row count and the last row's value, asserted once QUERY returns,
@@ -483,7 +482,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 
 : NAME-ROW ( PG:result -- str PG:result )
-   1 PG:COL-TEXT rot ;
+   1 PG:COL-TEXT swap ;
 
 
 : NAME-OF ( PG:connection n -- str )
@@ -510,7 +509,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
 : SIDE ( n -- ) {: k:n :}
    CONNINFO$ OPEN k SIDE-CONN !
    k 0<> if begin ARRIVED atomic@ 1 < while TASK:PAUSE repeat then
-   k SIDE-CONN @ k 1 + NAME-OF {: a:^ u:n :}
+   k SIDE-CONN @ k 1 + NAME-OF {: name:str :}
    k 0= if
       [: 0 SIDE-MISSING ;] catch PG:E-QUERY =
       PG:REFUSED$ s" side_missing_q" STR:CONTAINS? and
@@ -518,7 +517,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    then
    k ARRIVE
    begin ARRIVED atomic@ 2 < while TASK:PAUSE repeat
-   a u k SIDE-NAME$ STR:= if 1 else 0 then k SIDE-KEPT !
+   name k SIDE-NAME$ STR:= if 1 else 0 then k SIDE-KEPT !
    k SIDE-CONN @ PG:CLOSE ;
 
 
@@ -536,7 +535,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 
 : THIRD-READ ( -- )
-   THIRD-CONN @ 1 NAME-OF 2drop ;
+   THIRD-CONN @ 1 NAME-OF drop ;
 
 
 : THIRD-DDL ( -- )

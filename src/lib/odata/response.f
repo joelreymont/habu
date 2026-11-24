@@ -1,4 +1,3 @@
-split-str
 \ response.f - PAGE, RECORD and COPY-ENTITY; part of package ODATA
 \ (src/lib/odata.f), which states the contract.
 \ COPY-ENTITY uses no recursion: JSON:WALK gives the record's events in text
@@ -29,8 +28,8 @@ private
 
 \ Rejects the value as E-RESPONSE.
 : RESPONSE-REJECT ( JSON:value str str -- )
-   {: v ea:^ eu:n fa:^ fu:n :}
-   [: v ea eu fa fu JSON:REJECT ;] catch {: code:n :}
+   {: v es:str fs:str :}
+   [: v es fs JSON:REJECT ;] catch {: code:n :}
    code JSON:E-MEMBER = if
       JSON:E-MEMBER REASON:TEXT$ E-RESPONSE REASON:THROW
    then
@@ -42,27 +41,27 @@ private
 
 \ RESPONSE-REJECT with the four texts joined as the expected text.
 : JOINED-REJECT ( JSON:value str str str str str -- )
-   {: v a:^ an:n b:^ bn:n c:^ cn:n d:^ dn:n fa:^ fu:n :}
+   {: v a:str b:str c:str d:str f:str :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
-   [: a an out VEC:APPEND  b bn out VEC:APPEND
-      c cn out VEC:APPEND  d dn out VEC:APPEND
-      v out VEC:SPAN SPAN:$ fa fu RESPONSE-REJECT ;]
+   [: a out VEC:APPEND  b out VEC:APPEND
+      c out VEC:APPEND  d out VEC:APPEND
+      v out VEC:SPAN SPAN:$ f RESPONSE-REJECT ;]
    [: out VEC:DELETE ;] finally ;
 
 \ The value is not WANT, which WHAT needs.
 : UNEXPECTED ( JSON:value str str -- )
-   {: v what:^ wl:n want:^ nl:n :}
-   v want nl s"  for " what wl s" " KIND-FIX$ JOINED-REJECT ;
+   {: v what:str want:str :}
+   v want s"  for " what s" " KIND-FIX$ JOINED-REJECT ;
 
 \ The name is a second member of WHAT, under another of its names.
 : TWICE ( JSON:value str -- )
-   {: name what:^ wl:n :}
-   name what wl s"  once" s" " s" " REPEAT-FIX$ JOINED-REJECT ;
+   {: name what:str :}
+   name what s"  once" s" " s" " REPEAT-FIX$ JOINED-REJECT ;
 
 \ The object, which needs the member named, lacks it.
 : ABSENT ( JSON:value str -- )
-   {: v name:^ nl:n :}
-   v s" the member `" name nl s" ` in the envelope" s" "
+   {: v name:str :}
+   v s" the member `" name s" ` in the envelope" s" "
    MISSING-FIX$ JOINED-REJECT ;
 
 \ One PAGE call's state: `records` holds a value once `found`.
@@ -84,22 +83,22 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    true e ENVELOPE-FOUND ! ;
 
 : NEED-RECORDS ( ^envelope JSON:value str -- )
-   {: e:^ v name:^ nl:n :}
+   {: e:^ v name:str :}
    e ENVELOPE-FOUND @ if exit then
-   v name nl ABSENT ;
+   v name ABSENT ;
 
 \ The value of one to 18 decimal digits, which no cell overflows.
 : DIGITS ( str -- option<n> )
-   {: a:^ u:n :}
-   u 18 > if OPTION:NONE exit then
-   a u STR:PARSE-POS ;
+   {: s:str :}
+   s STR:LEN 18 > if OPTION:NONE exit then
+   s STR:PARSE-POS ;
 
 \ The count's text, read from the value V.
 : TAKE-COUNT ( str ^envelope JSON:value str -- )
-   {: text:^ len:n e:^ v what:^ wl:n :}
-   text len DIGITS MATCH option
+   {: text:str e:^ v what:str :}
+   text DIGITS MATCH option
       none OF
-         v s" a non-negative integer for " what wl s" " s" "
+         v s" a non-negative integer for " what s" " s" "
          s" write the count as one to 18 decimal digits" JOINED-REJECT
       ENDOF
       some OF
@@ -108,8 +107,8 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    ;MATCH ;
 
 : COUNT-ONCE ( ^envelope JSON:value str -- )
-   {: e:^ name what:^ wl:n :}
-   e ENVELOPE-COUNTED @ if name what wl TWICE then ;
+   {: e:^ name what:str :}
+   e ENVELOPE-COUNTED @ if name what TWICE then ;
 
 : V2-COUNT ( JSON:value ^envelope -- )
    {: v e:^ :}
@@ -125,26 +124,26 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
 : INT? ( JSON:value -- bool )
    {: v :}
    v JSON:NUMBER? 0= if false exit then
-   v JSON:TEXT$ {: a:^ u:n :}
-   u 0 ?do a i + c@ FLOAT-MARK? if unloop false exit then loop
+   v JSON:TEXT$ {: t:str :}
+   t STR:LEN 0 ?do t STR:DATA i + c@ FLOAT-MARK? if unloop false exit then loop
    true ;
 
 : V4-COUNT ( JSON:value JSON:value ^envelope str -- )
-   {: name v e:^ what:^ wl:n :}
-   e name what wl COUNT-ONCE
-   v INT? 0= if v what wl s" an integer" UNEXPECTED then
-   v JSON:TEXT$ e v what wl TAKE-COUNT ;
+   {: name v e:^ what:str :}
+   e name what COUNT-ONCE
+   v INT? 0= if v what s" an integer" UNEXPECTED then
+   v JSON:TEXT$ e v what TAKE-COUNT ;
 
 : NEXT-LINK ( JSON:value JSON:value ^envelope str -- )
-   {: name v e:^ what:^ wl:n :}
-   e ENVELOPE-LINKED @ if name what wl TWICE then
+   {: name v e:^ what:str :}
+   e ENVELOPE-LINKED @ if name what TWICE then
    true e ENVELOPE-LINKED !
-   v JSON:STRING? 0= if v what wl s" a string" UNEXPECTED then
+   v JSON:STRING? 0= if v what s" a string" UNEXPECTED then
    v e ENVELOPE-LINK @ JSON:APPEND-STRING ;
 
 : ARRAY-MEMBER ( JSON:value ^envelope str -- )
-   {: v e:^ what:^ wl:n :}
-   v JSON:ARRAY? 0= if v what wl s" an array of records" UNEXPECTED then
+   {: v e:^ what:str :}
+   v JSON:ARRAY? 0= if v what s" an array of records" UNEXPECTED then
    v e TAKE ;
 
 : RESULTS-MEMBER ( JSON:value JSON:value ^envelope -- )
@@ -288,19 +287,19 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 \ A new mapping of WANT bytes holding the HAVE bytes at FROM; the old
 \ mapping is freed.
 : MOVED ( str n SPAN:span<u8> -- SPAN:span<u8> )
-   {: from:^ have:n want:n old:SPAN:span<u8> :}
+   {: from:str want:n old:SPAN:span<u8> :}
    want MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: grown:SPAN:span<u8> :}
-   from have grown SPAN:COPY
+   from grown SPAN:COPY
    old MEM:FREE-SPAN
    grown ;
 
 : GROW ( ^copy -- )
    {: c:^ :}
    c COPY-ROOM @ FRAME-CELLS * cells {: have:n :}
-   c COPY-FRAMES @ have have 2 * c COPY-MAPPING @ MOVED
+   c COPY-FRAMES @ have >str have 2 * c COPY-MAPPING @ MOVED
    {: grown:SPAN:span<u8> :}
    grown c COPY-MAPPING !
-   grown SPAN:$ drop c COPY-FRAMES !
+   grown SPAN:$ STR:DATA c COPY-FRAMES !
    c COPY-ROOM @ 2 * c COPY-ROOM ! ;
 
 : DROP-FRAMES ( ^copy -- ) COPY-MAPPING @ MEM:FREE-SPAN ;
@@ -358,9 +357,9 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 \ V2's `__metadata` and every V4 member whose name holds `@`.
 : DROPPED? ( ^entity-type str -- bool )
-   {: t:^ name:^ len:n :}
-   t TYPE-V2? if name len s" __metadata" STR:= exit then
-   len 0 ?do name i + c@ [char] @ = if unloop true exit then loop
+   {: t:^ name:str :}
+   t TYPE-V2? if name s" __metadata" STR:= exit then
+   name STR:LEN 0 ?do name STR:DATA i + c@ [char] @ = if unloop true exit then loop
    false ;
 
 \ A declared V2 Edm.DateTime or Edm.DateTimeOffset.
@@ -368,8 +367,8 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    {: t:^ p:^ :}
    p NULL-PTR = if false exit then
    t TYPE-V2? 0= if false exit then
-   p PROPERTY-TYPE @ SPAN:$ {: ty:^ tl:n :}
-   ty tl s" Edm.DateTime" STR:= ty tl s" Edm.DateTimeOffset" STR:= or ;
+   p PROPERTY-TYPE @ SPAN:$ {: ty:str :}
+   ty s" Edm.DateTime" STR:= ty s" Edm.DateTimeOffset" STR:= or ;
 
 : COMPLEX? ( ^property -- bool )
    {: p:^ :}
@@ -382,45 +381,45 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 \ Ends in a sign and four digits, with ticks before them.
 : ZONED? ( str -- bool )
-   {: a:^ u:n :}
-   u 6 < if false exit then
-   a u + 5 - c@ {: sign:n :}
+   {: s:str :}
+   s STR:LEN 6 < if false exit then
+   s STR:DATA s STR:LEN + 5 - c@ {: sign:n :}
    sign [char] + = sign [char] - = or 0= if false exit then
-   a u + 4 - 4 STR:DIGITS? ;
+   s STR:DATA s STR:LEN + 4 - 4 >str STR:DIGITS? ;
 
 \ The offset of `+mmmm` or `-mmmm` in milliseconds, 0 when there is none.
 : ZONE-MS ( str -- n )
-   {: a:^ u:n :}
-   a u ZONED? 0= if 0 exit then
-   a u + 4 - 4 DIGITS MATCH option
+   {: s:str :}
+   s ZONED? 0= if 0 exit then
+   s STR:DATA s STR:LEN + 4 - 4 >str DIGITS MATCH option
       none OF 0 ENDOF
       some OF 60000 * ENDOF
    ;MATCH
-   a u + 5 - c@ [char] - = if negate then ;
+   s STR:DATA s STR:LEN + 5 - c@ [char] - = if negate then ;
 
 \ The UTC milliseconds of `ms`, `-ms`, `ms+mmmm` or `ms-mmmm`, the offset's
 \ minutes taken off; none outside the years 0 to 9999.
 : TICKS ( str -- option<n> )
-   {: a:^ u:n :}
-   a u ZONED? if u 5 - else u then {: v:n :}
-   v 0 > if a c@ [char] - = else false then {: neg:bool :}
+   {: s:str :}
+   s ZONED? if s STR:LEN 5 - else s STR:LEN then {: v:n :}
+   v 0 > if s STR:DATA c@ [char] - = else false then {: neg:bool :}
    neg if 1 else 0 then {: lead:n :}
-   a lead + v lead - DIGITS MATCH option
+   s STR:DATA lead + v lead - >str DIGITS MATCH option
       none OF OPTION:NONE ENDOF
       some OF
-         neg if negate then a u ZONE-MS - {: ms:n :}
+         neg if negate then s ZONE-MS - {: ms:n :}
          ms MS-FIRST >= ms MS-END < and if ms OPTION:SOME
          else OPTION:NONE then
       ENDOF
    ;MATCH ;
 
 : MS ( str -- option<n> )
-   {: a:^ u:n :}
-   a u s" /Date(" STR:STARTS-WITH? a u s" )/" STR:ENDS-WITH? and 0= if
+   {: s:str :}
+   s s" /Date(" STR:STARTS-WITH? s s" )/" STR:ENDS-WITH? and 0= if
       OPTION:NONE exit
    then
-   s" /Date(" nip {: open:n :}
-   a open + u open - 2 - TICKS ;
+   s" /Date(" STR:LEN {: open:n :}
+   s STR:DATA open + s STR:LEN open - 2 - >str TICKS ;
 
 \ Quotient and remainder, the remainder in 0 to d - 1.
 : FLOORED ( n n -- n n )
@@ -431,17 +430,17 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 \ ISO 8601 UTC: the time of day formatted on day 0, then the day over it.
 : ISO ( n ^copy -- str )
    {: ms:n c:^ :}
-   c COPY-TEXT SPAN:$ drop {: out:^ :}
+   c COPY-TEXT SPAN:$ STR:DATA {: out:^ :}
    ms MS-DAY FLOORED {: day:n rest:n :}
-   rest 1000 / out DATE:TIME-LEN DATE:FORMAT-EPOCH-UTC 2drop
-   day out DATE:LEN DATE:FORMAT-YMD 2drop
+   rest 1000 / out DATE:TIME-LEN DATE:FORMAT-EPOCH-UTC drop
+   day out DATE:LEN DATE:FORMAT-YMD drop
    rest 1000 mod {: milli:n :}
    DATE:TIME-LEN 1- {: zone:n :}
-   milli 0= if out DATE:TIME-LEN exit then
+   milli 0= if out DATE:TIME-LEN >str exit then
    [char] . out zone + c!
    milli 3 out zone 1+ DATE:WIDTH!
    [char] Z out zone + 4 + c!
-   out zone 5 + ;
+   out zone 5 + >str ;
 
 : DATE-REJECT ( JSON:value ^property -- )
    {: v p:^ :}
@@ -499,8 +498,8 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 \ The decoded string of the value, a date in a dated slot.
 : DATE-TEXT ( ^JSON:writer str JSON:value ^frame ^copy -- ^JSON:writer )
-   {: text:^ len:n v f:^ c:^ :}
-   text len MS MATCH option
+   {: text:str v f:^ c:^ :}
+   text MS MATCH option
       none OF v SLOT-DATED f WRONG ENDOF
       some OF c ISO JSON:WRITE-STRING ENDOF
    ;MATCH ;
@@ -599,9 +598,9 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 \ The frame takes the slot of the member named, its key written.
 : KEYED ( ^JSON:writer str ^frame slot -- ^JSON:writer )
-   {: name:^ len:n f:^ s:slot :}
+   {: name:str f:^ s:slot :}
    s f FRAME-SLOT !
-   JSON:WRITE-COMMA name len JSON:WRITE-KEY ;
+   JSON:WRITE-COMMA name JSON:WRITE-KEY ;
 
 : PROPERTY-KEYED ( ^JSON:writer ^frame slot -- ^JSON:writer )
    {: f:^ s:slot :}
@@ -609,27 +608,27 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 \ A member of a record of the frame's type, by its decoded name.
 : MEMBER ( ^JSON:writer str ^copy ^frame -- ^JSON:writer )
-   {: name:^ len:n c:^ f:^ :}
+   {: name:str c:^ f:^ :}
    f FRAME-TYPE @ {: t:^ :}
    SLOT-DROPPED f FRAME-SLOT !
-   c COPY-MODEL @ name len HIDDEN? if exit then
-   t name len DROPPED? if exit then
-   t name len FIND-PROPERTY {: p:^ :}
+   c COPY-MODEL @ name HIDDEN? if exit then
+   t name DROPPED? if exit then
+   t name FIND-PROPERTY {: p:^ :}
    p f FRAME-PROPERTY !
    t p DATED? if f SLOT-DATED PROPERTY-KEYED exit then
    p COMPLEX? if f SLOT-COMPLEX PROPERTY-KEYED exit then
-   t name len FIND-NAVIGATION {: n:^ :}
+   t name FIND-NAVIGATION {: n:^ :}
    n f FRAME-NAVIGATION !
    n NULL-PTR <> if SLOT-NAV f FRAME-SLOT ! exit then
-   name len f SLOT-PLAIN KEYED ;
+   name f SLOT-PLAIN KEYED ;
 
 \ A member of a copied object: dropped when hidden, else copied.
 : OBJECT-MEMBER ( ^JSON:writer str ^copy ^frame -- ^JSON:writer )
-   {: name:^ len:n c:^ f:^ :}
-   c COPY-MODEL @ name len HIDDEN? if
+   {: name:str c:^ f:^ :}
+   c COPY-MODEL @ name HIDDEN? if
       SLOT-DROPPED f FRAME-SLOT ! exit
    then
-   name len f SLOT-PLAIN KEYED ;
+   name f SLOT-PLAIN KEYED ;
 
 \ A V2 results object's member: `results` is read, others dropped.
 : RESULTS-NAME ( JSON:value ^frame -- )

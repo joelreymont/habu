@@ -1,4 +1,3 @@
-split-str
 \ os-cpu.f - processor facts the running host reports. ONLINE reads
 \ sysconf(_SC_NPROCESSORS_ONLN); below one is E-ONLINE. LOAD1 is getloadavg(3)'s
 \ first sample as binary64; a return below one is E-LOAD. Each is logged with
@@ -35,8 +34,8 @@ FUNCTION: GETLOADAVG-CALL getloadavg ( ^u8 n -- i32 ) ;FUNCTION
    HB-TARGET-MACOS? if ONLN-MACOS else ONLN-LINUX then ;
 
 \ A call's answer the host gave in place of a fact, logged.
-: REFUSED ( str n -- ) {: what:^ u:n got:n :}
-   LOG:ERROR s" os-cpu" LOG:LINE what u LOG:TEXT+ s"  answered " LOG:TEXT+
+: REFUSED ( str n -- ) {: what:str got:n :}
+   LOG:ERROR s" os-cpu" LOG:LINE what LOG:TEXT+ s"  answered " LOG:TEXT+
       got LOG:INT+ LOG:;LINE ;
 
 : SAMPLE ( ^u8 NUM:alloc-byte-len -- r )

@@ -1,4 +1,3 @@
-split-str
 \ power.f - keep the machine awake while work runs, package POWER. KEEP-AWAKE
 \ asks the OS to hold off idle system sleep under a name the OS lists among its
 \ power assertions, and answers a linear POWER:awake; ALLOW-SLEEP consumes it
@@ -29,7 +28,7 @@ LINEAR: AWAKE> ( POWER:awake -- n )
 defer KEEP-HOOK ( str -- n )
 defer ALLOW-HOOK ( n -- )
 
-: NO-KEEP ( str -- n ) 2drop E-PLATFORM throw ;
+: NO-KEEP ( str -- n ) drop E-PLATFORM throw ;
 : NO-ALLOW ( n -- ) drop E-PLATFORM throw ;
 
 : INSTALL-NONE ( -- )

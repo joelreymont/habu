@@ -1,4 +1,3 @@
-split-str
 \ process-env-test.f - focused tests for src/lib/process-env.f.
 \ Run: bin/hb --load src/lib/process-env-test.f
 
@@ -69,37 +68,37 @@ TASK:SEMAPHORE PET-ENV-START
    ;MATCH ;
 
 : PET-ENV+ ( str str -- )
-   {: name:^ nameu val:^ valu :}
-   name nameu val valu PROC-ENV+ ;
+   {: name:str val:str :}
+   name val PROC-ENV+ ;
 
 : PET-CAPTURE ( str ^u8 n ^u8 n n -- n n n )
-   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   path pathu out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
+   {: path:str out:^ outcap err:^ errcap timeout :}
+   path out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
    PET-CAPTURE>N ;
 
 : PET-OUTCOME ( str ^u8 n ^u8 n n -- len len PROCESS:ending )
-   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   path pathu out outcap >LEN err errcap >LEN timeout >MS
+   {: path:str out:^ outcap err:^ errcap timeout :}
+   path out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 : PET-STDIN-CAPTURE ( str str ^u8 n ^u8 n n -- n n n )
-   {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
-   path pathu in inu out outcap >LEN err errcap >LEN timeout >MS
+   {: path:str in:str out:^ outcap err:^ errcap timeout :}
+   path in out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PET-CAPTURE>N ;
 
 : PET-STDIN-OUTCOME ( str str ^u8 n ^u8 n n -- len len PROCESS:ending )
-   {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
-   path pathu in inu out outcap >LEN err errcap >LEN timeout >MS
+   {: path:str in:str out:^ outcap err:^ errcap timeout :}
+   path in out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ;
 
 : PET-FIND-IN-PATH ( str str ^u8 -- n bool )
-   {: cmd:^ cmdu path:^ pathu dst:^ :}
-   cmd cmdu path pathu dst FIND-EXECUTABLE-IN-PATH
+   {: cmd:str path:str dst:^ :}
+   cmd path dst FIND-EXECUTABLE-IN-PATH
    PET-FIND>N ;
 
 : PET-RESOLVE ( str ^u8 -- n )
-   {: cmd:^ cmdu dst:^ :}
-   cmd cmdu dst RESOLVE-EXECUTABLE ;
+   {: cmd:str dst:^ :}
+   cmd dst RESOLVE-EXECUTABLE ;
 
 : PET-SB-N ( n -- ) {: v:n :}
    v 0 < if E-STR-BOUNDS throw then
@@ -109,11 +108,12 @@ TASK:SEMAPHORE PET-ENV-START
 \ HABU_BIG_001 .. HABU_BIG_600: fixed width, so the child can count them by
 \ prefix and the parent never has to parse the name back.
 : PET-BIG-NAME$ ( n -- str ) {: i:n :}
-   s" HABU_BIG_" PET-BIG-NAME swap BYTE-COPY
+   s" HABU_BIG_" {: prefix:str :}
+   prefix STR:DATA PET-BIG-NAME prefix STR:LEN BYTE-COPY
    i 100 / STR:ZERO + PET-BIG-NAME PET-BIG-PREFIX-U + c!
    i 100 mod 10 / STR:ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 1 + + c!
    i 10 mod STR:ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 2 + + c!
-   PET-BIG-NAME PET-BIG-NAME-U ;
+   PET-BIG-NAME PET-BIG-NAME-U >str ;
 
 : PET-ENV-CMD$ ( -- str )
    s" /usr/bin/env" ;
@@ -124,10 +124,10 @@ TASK:SEMAPHORE PET-ENV-START
    $0A SB-APPEND-C
    SB$ ;
 
-: PET-CASE ( str [ -- ] -- ) {: label:^ labelu:n q :}
+: PET-CASE ( str [ -- ] -- ) {: label:str q :}
    mono-ns PET-START-NS !
    q execute
-   s" PASS: " type label labelu type
+   s" PASS: " type label type
    s"  (" type mono-ns PET-START-NS @ - PROCESS:NS-PER-MS / PET-U-TYPE s" ms)" type cr ;
 
 : PET-RUN-ENV-CHILD ( -- )
@@ -135,7 +135,7 @@ TASK:SEMAPHORE PET-ENV-START
    s" HABU_PROC_ENV_TEST" s" alpha" PET-ENV+
    PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PET-OUT outu PET-ALPHA-LINE$ T$=
+   PET-OUT outu >str PET-ALPHA-LINE$ T$=
    PROC-ARGV-N @ 0 T=
    PROC-ENV-N @ 0 T= ;
 
@@ -147,25 +147,25 @@ TASK:SEMAPHORE PET-ENV-START
 : PET-HAS-ENV-LINE-BODY
    ( str str str n ^u8 NUM:alloc-byte-len -- bool )
    drop
-   {: out:^ outu:n name:^ nameu:n val:^ valu:n lineu:n expected:^ :}
+   {: out:str name:str val:str lineu:n expected:^ :}
    $0A expected c!
-   name expected 1+ nameu BYTE-COPY
-   $3D expected nameu 1+ + c!
-   val expected nameu 2 + + valu BYTE-COPY
+   name STR:DATA expected 1+ name STR:LEN BYTE-COPY
+   $3D expected name STR:LEN 1+ + c!
+   val STR:DATA expected name STR:LEN 2 + + val STR:LEN BYTE-COPY
    $0A expected lineu + c!
-   out outu expected 1+ lineu STR:STARTS-WITH?
-   out outu expected lineu 1+ STR:CONTAINS? or ;
+   out expected 1+ lineu >str STR:STARTS-WITH?
+   out expected lineu 1+ >str STR:CONTAINS? or ;
 
 : PET-HAS-ENV-LINE? ( str str str -- bool )
-   {: out:^ outu:n name:^ nameu:n val:^ valu:n :}
-   nameu valu + 2 + {: lineu:n :}
-   out outu name nameu val valu lineu
+   {: out:str name:str val:str :}
+   name STR:LEN val STR:LEN + 2 + {: lineu:n :}
+   out name val lineu
    lineu 1+ MEM:BYTES-ALLOC-LEN [: PET-HAS-ENV-LINE-BODY ;] MEM:WITH-BYTES ;
 
-: PET-EXPECT-INHERITED ( n str -- ) {: outu:n name:^ nameu:n :}
-   name nameu GETENV {: val:^ valu:n :}
-   valu 0= if exit then
-   PET-OUT outu name nameu val valu PET-HAS-ENV-LINE? TTRUE ;
+: PET-EXPECT-INHERITED ( n str -- ) {: outu:n name:str :}
+   name GETENV {: val:str :}
+   val STR:LEN 0= if exit then
+   PET-OUT outu >str name val PET-HAS-ENV-LINE? TTRUE ;
 
 : PET-ENV-LINE-BOUNDARIES ( -- )
    S\" HOME=alpha\nPATH=beta\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TTRUE
@@ -175,19 +175,19 @@ TASK:SEMAPHORE PET-ENV-START
    S\" HOME=prefix-alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE ;
 
 : PET-GETENV-CHECK ( str str -- n )
-   {: name:^ nameu:n expected:^ expectedu:n :}
+   {: name:str expected:str :}
    PET-ENV-ROUNDS 0 ?do
-      name nameu GETENV expected expectedu STR:= 0= if unloop 0 exit then
+      name GETENV expected STR:= 0= if unloop 0 exit then
    loop
    1 ;
 
 : PET-GETENV-HOME ( -- )
    PET-ENV-START TASK:WAIT-SEM
-   s" HOME" PET-HOME @ PET-HOME-U @ PET-GETENV-CHECK TASK:RETURN ;
+   s" HOME" PET-HOME @ PET-HOME-U @ >str PET-GETENV-CHECK TASK:RETURN ;
 
 : PET-GETENV-PATH ( -- )
    PET-ENV-START TASK:WAIT-SEM
-   s" PATH" PET-GETENV-PATH-PTR @ PET-GETENV-PATH-U @ PET-GETENV-CHECK TASK:RETURN ;
+   s" PATH" PET-GETENV-PATH-PTR @ PET-GETENV-PATH-U @ >str PET-GETENV-CHECK TASK:RETURN ;
 
 : PET-GETENV-JOIN ( result<n,n> -- )
    MATCH result
@@ -196,8 +196,10 @@ TASK:SEMAPHORE PET-ENV-START
    ;MATCH ;
 
 : PET-GETENV-CONCURRENT ( -- )
-   s" HOME" GETENV PET-HOME-U ! PET-HOME !
-   s" PATH" GETENV PET-GETENV-PATH-U ! PET-GETENV-PATH-PTR !
+   s" HOME" GETENV {: home:str :}
+   home STR:LEN PET-HOME-U !  home STR:DATA PET-HOME !
+   s" PATH" GETENV {: path:str :}
+   path STR:LEN PET-GETENV-PATH-U !  path STR:DATA PET-GETENV-PATH-PTR !
    PET-HOME-U @ 0 > TTRUE
    PET-GETENV-PATH-U @ 0 > TTRUE
    0 PET-ENV-START TASK:SEMAPHORE-INIT
@@ -209,7 +211,7 @@ TASK:SEMAPHORE PET-ENV-START
    PET-ENV-START TASK:SEMAPHORE-DESTROY ;
 
 : PET-INHERIT-ENV-OUT ( n -- ) {: outu:n :}
-   PET-OUT outu PET-ALPHA-LINE$ STR:CONTAINS? TTRUE
+   PET-OUT outu >str PET-ALPHA-LINE$ STR:CONTAINS? TTRUE
    outu s" HOME" PET-EXPECT-INHERITED
    outu s" PATH" PET-EXPECT-INHERITED ;
 
@@ -235,7 +237,7 @@ TASK:SEMAPHORE PET-ENV-START
    s" HABU_PROC_ENV_TEST" PROC-ENV-DEFAULT$? TTRUE
    s" alpha" T$=
    s" HABU_PROC_ENV_MISSING" PROC-ENV-DEFAULT$? TFALSE
-   2drop ;
+   drop ;
 
 : PET-EXPLICIT-BEATS-DEFAULT ( -- )
    PET-RESET
@@ -244,7 +246,7 @@ TASK:SEMAPHORE PET-ENV-START
    PROC-ENV-INHERIT-MISSING
    PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" STR:CONTAINS? TFALSE
+   PET-OUT outu >str s" HABU_PROC_ENV_TEST=wrong" STR:CONTAINS? TFALSE
    outu PET-INHERIT-ENV-OUT ;
 
 \ PROC-ENV-SET replaces an existing row in place and appends an absent name;
@@ -258,7 +260,7 @@ TASK:SEMAPHORE PET-ENV-START
    PROC-ENV-INHERIT-MISSING
    PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" STR:CONTAINS? TFALSE
+   PET-OUT outu >str s" HABU_PROC_ENV_TEST=wrong" STR:CONTAINS? TFALSE
    outu PET-INHERIT-ENV-OUT ;
 
 : PET-SET-APPENDS-NEW ( -- )
@@ -280,7 +282,7 @@ TASK:SEMAPHORE PET-ENV-START
    PET-RESET
    s" /usr/bin/false" PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-OUTCOME
    {: outu:len erru:len oc :}
-   s" /usr/bin/false" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 1 T-ENDING-EXITED=
+   s" /usr/bin/false" PET-OUT outu LEN>N >str PET-ERR erru LEN>N >str oc 1 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 : PET-RUN-ARGV-ENV-CAPTURE-RESULT ( -- )
@@ -306,7 +308,7 @@ TASK:SEMAPHORE PET-ENV-START
    s" fresh" PROC-ARGV+
    s" /bin/echo" PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PET-OUT outu s\" fresh\n" T$= ;
+   PET-OUT outu >str s\" fresh\n" T$= ;
 
 : PET-REFUSED-RESETS ( -- )
    PET-RESET PET-STAGE-STALE
@@ -329,24 +331,24 @@ TASK:SEMAPHORE PET-ENV-START
    PET-RESET
    s" /bin/cat" s" env-stdin" PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-STDIN-OUTCOME
    {: outu:len erru:len oc :}
-   s" /bin/cat" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 0 T-ENDING-EXITED=
+   s" /bin/cat" PET-OUT outu LEN>N >str PET-ERR erru LEN>N >str oc 0 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 9 T=
-   PET-OUT 9 s" env-stdin" T$= ;
+   PET-OUT 9 >str s" env-stdin" T$= ;
 
 : PET-RUN-ENV-STDIN-FALSE-LARGE ( -- )
    PET-RESET
    PET-EARLY-IN!
-   s" /usr/bin/false" PET-EARLY-IN PET-EARLY-IN-CAP
+   s" /usr/bin/false" PET-EARLY-IN PET-EARLY-IN-CAP >str
    PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-STDIN-CAPTURE
    1 T= 0 T= 0 T= ;
 
 : PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE ( -- )
    PET-RESET
    PET-EARLY-IN!
-   s" /usr/bin/false" PET-EARLY-IN PET-EARLY-IN-CAP
+   s" /usr/bin/false" PET-EARLY-IN PET-EARLY-IN-CAP >str
    PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-STDIN-OUTCOME
    {: outu:len erru:len oc :}
-   s" /usr/bin/false" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 1 T-ENDING-EXITED=
+   s" /usr/bin/false" PET-OUT outu LEN>N >str PET-ERR erru LEN>N >str oc 1 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 : PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT ( -- )
@@ -372,13 +374,13 @@ DYNAMIC-BUFFER ERR u8
    PROC-ARGV+ ;
 
 : CAPTURE ( str [ n -- ^u8 ] [ n -- ^u8 ] ms -- len len PROCESS:ending )
-   {: in:^ inu out err timeout :}
-   s" /bin/sh" in inu out err timeout
+   {: in:str out err timeout :}
+   s" /bin/sh" in out err timeout
    RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
 
 \ The deadline starts once both pipes hold bytes: a host may start sh late.
 : CAPTURE-WRITTEN ( str [ n -- ^u8 ] [ n -- ^u8 ] ms -- len len PROCESS:ending )
-   {: in:^ inu out err timeout :}
+   {: in:str out err timeout :}
    [: s" /bin/sh" PROC-ARGV-PREPARE PROC-ENV-PREPARE
       PROCESS:WAIT-FOREVER PROCESS:STDIN-CAPTURE-BEGIN
       PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
@@ -386,7 +388,7 @@ DYNAMIC-BUFFER ERR u8
    PROCESS:OUT-R @ >FD -1 >MS PROCESS:POLL-IN COUNT>N 1 T=
    PROCESS:ERR-R @ >FD -1 >MS PROCESS:POLL-IN COUNT>N 1 T=
    timeout PROCESS:CAPTURE-DEADLINE!
-   in inu out err PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
+   in out err PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
 \ Failures to distinguish: either pipe truncated or mixed with the other,
@@ -397,22 +399,22 @@ DYNAMIC-BUFFER ERR u8
 : LARGE ( -- )
    PET-EARLY-IN!
    s" /usr/bin/tee /dev/stderr; printf out; printf err >&2; exit 7" SHELL
-   PET-EARLY-IN PET-EARLY-IN-CAP [: OUT-ROOM ;] [: ERR-ROOM ;]
+   PET-EARLY-IN PET-EARLY-IN-CAP >str [: OUT-ROOM ;] [: ERR-ROOM ;]
    PROCESS:WAIT-FOREVER CAPTURE {: outu:len erru:len oc :}
    oc PROCESS:ENDING>RC RC>N 7 T=
    outu LEN>N PET-EARLY-IN-CAP 3 + T=
    erru LEN>N PET-EARLY-IN-CAP 3 + T=
-   0 OUT PET-EARLY-IN-CAP PET-EARLY-IN PET-EARLY-IN-CAP T$=
-   0 ERR PET-EARLY-IN-CAP PET-EARLY-IN PET-EARLY-IN-CAP T$=
-   PET-EARLY-IN-CAP OUT 3 s" out" T$=
-   PET-EARLY-IN-CAP ERR 3 s" err" T$= ;
+   0 OUT PET-EARLY-IN-CAP >str PET-EARLY-IN PET-EARLY-IN-CAP >str T$=
+   0 ERR PET-EARLY-IN-CAP >str PET-EARLY-IN PET-EARLY-IN-CAP >str T$=
+   PET-EARLY-IN-CAP OUT 3 >str s" out" T$=
+   PET-EARLY-IN-CAP ERR 3 >str s" err" T$= ;
 
 : TIMEOUT ( -- )
    s" printf before-out; printf before-err >&2; exec /bin/sleep 5" SHELL
    s" " [: OUT-ROOM ;] [: ERR-ROOM ;] 300 >MS CAPTURE-WRITTEN
    T-ENDING-TIMEOUT LEN>N 10 T= LEN>N 10 T=
-   0 OUT 10 s" before-out" T$=
-   0 ERR 10 s" before-err" T$= ;
+   0 OUT 10 >str s" before-out" T$=
+   0 ERR 10 >str s" before-err" T$= ;
 
 \ The child closes its pipes and lives on, so the reap after EOF waits on a
 \ running child with no deadline (PROCESS:REAP-CAPTURE-BOUNDED).
@@ -431,8 +433,8 @@ DYNAMIC-BUFFER ERR u8
    {: outu:len erru:len oc :}
    oc T-ENDING-TIMEOUT
    outu LEN>N 10 > TTRUE erru LEN>N 10 > TTRUE
-   0 OUT 10 s" before-out" T$=
-   0 ERR 10 s" before-err" T$= ;
+   0 OUT 10 >str s" before-out" T$=
+   0 ERR 10 >str s" before-err" T$= ;
 
 : REFUSE ( n -- ^u8 )
    drop E-STR-CAPACITY throw ;
@@ -514,7 +516,7 @@ public
    s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-CAPTURE
    {: outu:n erru:n code:n :}
    code 0 T=
-   PET-OUT outu PET-BIG-EXPECT$ STR:CONTAINS? TTRUE ;
+   PET-OUT outu >str PET-BIG-EXPECT$ STR:CONTAINS? TTRUE ;
 
 : PET-BAD-ENV-NAME ( -- )
    PET-RESET
@@ -530,11 +532,11 @@ public
 
 : PET-PATH-FIND-HB ( -- )
    s" hb" s" bin" PET-PATH PET-FIND-IN-PATH TTRUE
-   PET-PATH swap s" bin/hb" T$= ;
+   PET-PATH swap >str s" bin/hb" T$= ;
 
 : PET-PATH-DIRECT-HB ( -- )
    s" bin/hb" s" nowhere" PET-PATH PET-FIND-IN-PATH TTRUE
-   PET-PATH swap s" bin/hb" T$= ;
+   PET-PATH swap >str s" bin/hb" T$= ;
 
 : PET-PATH-MISSING ( -- )
    s" no-habu-process-env-test" s" bin" PET-PATH PET-FIND-IN-PATH TFALSE
@@ -564,26 +566,26 @@ public
    PET-READABLE [char] x GUARD-PAGE:TAIL ;
 
 : PET-ENTRY-UNREAD ( n -- ) {: u:n :}
-   PET-RESET PET-UNREAD u PROC-ENV-ENTRY+ ;
+   PET-RESET PET-UNREAD u >str PROC-ENV-ENTRY+ ;
 
 : PET-ROW-UNREAD ( n -- ) {: nameu:n :}
-   PET-RESET PET-UNREAD nameu s" " PROC-ENV+ ;
+   PET-RESET PET-UNREAD nameu >str s" " PROC-ENV+ ;
 
 : PET-SET-UNREAD ( n -- ) {: nameu:n :}
-   PET-RESET PET-UNREAD nameu s" " PROC-ENV-SET ;
+   PET-RESET PET-UNREAD nameu >str s" " PROC-ENV-SET ;
 
 : PET-DEF-UNREAD ( n -- ) {: nameu:n :}
-   PET-RESET PET-UNREAD nameu s" " PROC-ENV-DEFAULT+ ;
+   PET-RESET PET-UNREAD nameu >str s" " PROC-ENV-DEFAULT+ ;
 
 \ The same refusals for a value after the readable name AB.
 : PET-VAL-ROW-UNREAD ( n -- ) {: valu:n :}
-   PET-RESET s" AB" PET-UNREAD valu PROC-ENV+ ;
+   PET-RESET s" AB" PET-UNREAD valu >str PROC-ENV+ ;
 
 : PET-VAL-SET-UNREAD ( n -- ) {: valu:n :}
-   PET-RESET s" AB" PET-UNREAD valu PROC-ENV-SET ;
+   PET-RESET s" AB" PET-UNREAD valu >str PROC-ENV-SET ;
 
 : PET-VAL-DEF-UNREAD ( n -- ) {: valu:n :}
-   PET-RESET s" AB" PET-UNREAD valu PROC-ENV-DEFAULT+ ;
+   PET-RESET s" AB" PET-UNREAD valu >str PROC-ENV-DEFAULT+ ;
 
 \ A refused row leaves nothing staged in either table.
 : PET-NONE-STAGED ( -- )
@@ -663,7 +665,7 @@ DYNAMIC-BUFFER OUT u8
 : ADD ( n ^u8 [ str str -- ] -- ) {: rows:n prefix:^ q :}
    rows 0 ?do
       i prefix LINE!
-      LINE NAME-U LINE NAME-U 1 + + VAL-U q execute
+      LINE NAME-U >str LINE NAME-U 1 + + VAL-U >str q execute
    loop ;
 
 : OUT-ROOM ( n -- ^u8 )
@@ -682,7 +684,7 @@ DYNAMIC-BUFFER OUT u8
       i 1+ LINE-U * outu > if
          1+
       else
-         i LINE-U * OUT LINE-U LINE LINE-U STR:= 0= if 1+ then
+         i LINE-U * OUT LINE-U >str LINE LINE-U >str STR:= 0= if 1+ then
       then
    loop ;
 
@@ -690,19 +692,19 @@ public
 
 : ENV-ROWS ( -- )
    PET-RESET
-   ENV-N s" HABU_ENV_" drop [: PROC-ENV+ ;] ADD
+   ENV-N s" HABU_ENV_" STR:DATA [: PROC-ENV+ ;] ADD
    RUN {: outu:n :}
    outu ENV-N LINE-U * T=
-   ENV-N outu s" HABU_ENV_" drop MISMATCHES 0 T=
+   ENV-N outu s" HABU_ENV_" STR:DATA MISMATCHES 0 T=
    PET-RESET OUT-RELEASE ;
 
 \ Defaults come first in an inheriting child's environment, ahead of the
 \ parent's own rows.
 : DEFAULT-ROWS ( -- )
    PET-RESET
-   DEF-N s" HABU_DEF_" drop [: PROC-ENV-DEFAULT+ ;] ADD
+   DEF-N s" HABU_DEF_" STR:DATA [: PROC-ENV-DEFAULT+ ;] ADD
    PROC-ENV-INHERIT-MISSING
-   DEF-N RUN s" HABU_DEF_" drop MISMATCHES 0 T=
+   DEF-N RUN s" HABU_DEF_" STR:DATA MISMATCHES 0 T=
    PET-RESET OUT-RELEASE ;
 
 ;package

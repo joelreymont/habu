@@ -1,4 +1,3 @@
-split-str
 \ process-pty-io.f - checked process supervisor over the linear PTY handle registry.
 \ Reopens package PROCESS-PTY (src/lib/process-pty-handle.f): the registry's
 \ words are private, so the supervisor lives in the package and exports its
@@ -131,7 +130,7 @@ variable IO-GO-R                                 \ child-side release gate
    go IO-CLOSE-HIGH
    go FD>N IO-GOBYTE 1 read 1 <> if s" " EXIT-STATUS:EXEC die then
    go FD>N close
-   IO-PATH-BUF IO-PATH-LEN @ PROC-ARGV-PREPARE 0 IO-ENVP execve drop
+   IO-PATH-BUF IO-PATH-LEN @ >str PROC-ARGV-PREPARE 0 IO-ENVP execve drop
    s" " EXIT-STATUS:EXEC die ;
 
 : IO-RESET-STX ( -- )
@@ -140,9 +139,9 @@ variable IO-GO-R                                 \ child-side release gate
    -1 IO-TW !  -1 IO-GO-W !
    -1 IO-SOUT-W !  -1 IO-SIN-R !  -1 IO-GO-R ! ;
 
-: IO-STORE-PATH ( str -- ) {: path:^ pathu:n :}
-   path pathu IO-PATH-BUF IO-PATH-CAP >LEN PROCESS:ZCOPY drop
-   pathu IO-PATH-LEN ! ;
+: IO-STORE-PATH ( str -- ) {: path:str :}
+   path IO-PATH-BUF IO-PATH-CAP >LEN PROCESS:ZCOPY drop
+   path STR:LEN IO-PATH-LEN ! ;
 
 : IO-MK-STDIO ( -- )
    FD:PIPE IO-SOUT-W ! IO-MASTER !   \ stdout: owner reads master, child writes
@@ -225,11 +224,11 @@ variable IO-GO-R                                 \ child-side release gate
    IO-COMMIT
    HANDLE>N IO-RAW ! ;
 
-: IO-SPAWN-MODE ( str bool -- process-pty-handle ) {: path:^ pathu:n tty:bool :}
+: IO-SPAWN-MODE ( str bool -- process-pty-handle ) {: path:str tty:bool :}
    ROOM? 0= if E-PROC-PTY-CAPACITY throw then
    IO-RESET-STX
    tty IO-TTY !
-   path pathu IO-STORE-PATH
+   path IO-STORE-PATH
    [: IO-TXN-SAVE ;] catch dup 0 <> if
       0 IO-TTY !
       IO-SPAWN-CLEAN throw
@@ -273,8 +272,8 @@ create IO-OUTER SLOT-CAP cells allot
    execute HANDLE>N IO-SCOPE @ <> if E-PROC-PTY-HANDLE throw then ;
 
 : IO-WITH ( R str [ R process-pty-handle -- S process-pty-handle ] bool -- S )
-   {: path:^ pathu:n body tty:bool :}
-   path pathu tty IO-SPAWN-MODE IO-ENTER
+   {: path:str body tty:bool :}
+   path tty IO-SPAWN-MODE IO-ENTER
    body [: IO-RUN-BODY ;] [: IO-LEAVE ;] finally ;
 
 public
@@ -299,11 +298,11 @@ public
 
 \ Send one line to the target's input: the bytes then a line feed. A short write
 \ is an error, never a silent truncation.
-: WRITE-LINE ( process-pty-handle str -- process-pty-handle ) {: a:^ u:n :}
+: WRITE-LINE ( process-pty-handle str -- process-pty-handle ) {: s:str :}
    HANDLE-IDX DONE@ {: w:fd :}
-   u 0 > if w FD>N a u write u <> if E-PROC-OUTPUT throw then then
+   s STR:LEN 0 > if w FD>N s write s STR:LEN <> if E-PROC-OUTPUT throw then then
    IO-LF IO-LFBYTE c!
-   w FD>N IO-LFBYTE 1 write 1 <> if E-PROC-OUTPUT throw then ;
+   w FD>N IO-LFBYTE 1 >str write 1 <> if E-PROC-OUTPUT throw then ;
 
 \ Close the target's input so a batch reader sees end of file; the slot is
 \ cleared so teardown does not close it again. Under WITH-TTY-TARGET the terminal
@@ -337,7 +336,7 @@ public
    HANDLE-GATE-TAKE {: gw:fd :}
    gw FD>N 0 < if exit then
    1 IO-GOBYTE c!
-   gw FD>N IO-GOBYTE 1 write drop
+   gw FD>N IO-GOBYTE 1 >str write drop
    gw IO-CLOSE-FD ;
 
 \ Deliver a signal to the target; report 0 or the negated errno so the caller can

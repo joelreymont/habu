@@ -1,4 +1,3 @@
-split-str
 \ process-reaper-fixture.f - the pool src/lib/process-reaper-test.f kills.
 \ With no argument it starts a reaper, spawns two REAPED children, writes each
 \ child's pid on stdout and waits. The hb child (`child`) spawns a sleeper that
@@ -43,17 +42,17 @@ private
    s" (until ps -o stat= -p $$ | grep -q T; do :; done; ps -o pgid= -p $$) & kill -s STOP $$; exec /bin/sleep 30 >/dev/null" ;
 
 : SH-CHILD ( PROCESS:reaper str -- pid )
-   {: rp script:^ scriptu :}
+   {: rp script:str :}
    s" /bin/sh" PROCESS:NEW
    s" -c" PROCESS:ARG
-   script scriptu PROCESS:ARG
+   script PROCESS:ARG
    rp PROCESS:REAPED PROCESS:SPAWN ;
 
 : PARENT ( str -- )
-   {: script:^ scriptu :}
+   {: script:str :}
    PROCESS:REAPER-START {: rp :}
    rp HB-CHILD {: a:pid :}
-   rp script scriptu SH-CHILD PID>N LINE
+   rp script SH-CHILD PID>N LINE
    a PID>N LINE
    a PROCESS:WAIT drop ;
 

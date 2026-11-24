@@ -1,4 +1,3 @@
-split-str
 \ pg.f - PostgreSQL over libpq, bound through the FFI FUNCTION: declarer;
 \ src/lib/pg-rows.f reopens PG with OPEN, EXEC, QUERY and the row readers.
 \ A connection handle and a linear PG:result token name a slot in a process-wide
@@ -281,7 +280,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
 
 \ libpq gives its strings no extent: each ends at its NUL.
 : CSTR$ ( ^u8 -- str )
-   dup ZLEN ;
+   dup ZLEN >str ;
 
 
 : CONN-CHECK ( n -- ) {: slot:n :}
@@ -440,7 +439,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 
-: RELEASE-ARENA ( str -- )
+: RELEASE-ARENA ( ^u8 n -- )
    MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 
@@ -492,22 +491,22 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
 
 \ Reserve first: an impossible length must fail without reading source bytes.
 : ARENA-CSTR ( str n -- n )
-   {: a u:n slot:n :}
-   u 0 < if E-CAPACITY throw then
-   u FFI:CSTR-ROOM {: room:n :}
+   {: s:str slot:n :}
+   s STR:LEN 0 < if E-CAPACITY throw then
+   s STR:LEN FFI:CSTR-ROOM {: room:n :}
    slot room ARENA-ENSURE
    slot ARENA-U@ {: off:n :}
-   a u slot ARENA-BASE off + room SPAN:MAKE FFI:CSTR drop
+   s slot ARENA-BASE off + room SPAN:MAKE FFI:CSTR drop
    off room + slot ARENA-U!
    off ;
 
 
 : ARENA-BYTES ( str n -- n )
-   {: a u:n slot:n :}
-   slot u ARENA-ENSURE
+   {: s:str slot:n :}
+   slot s STR:LEN ARENA-ENSURE
    slot ARENA-U@ {: off:n :}
-   a slot ARENA-BASE off + u BYTE-COPY
-   off u + slot ARENA-U!
+   s STR:DATA slot ARENA-BASE off + s STR:LEN BYTE-COPY
+   off s STR:LEN + slot ARENA-U!
    off ;
 
 
@@ -943,14 +942,14 @@ REGISTER-CHILD-RESET
 
 
 : FIELD$ ( ^u8 -- str ) {: p :}
-   p NULL-ADDR? if NULL-ARG 0 exit then
+   p NULL-ADDR? if NULL-ARG 0 >str exit then
    p CSTR$ ;
 
 
 : -TRAILING-LF ( str -- str )
-   {: a:^ u:n :}
-   u 0 > if a u 1- + c@ STR:LF = if a u 1- exit then then
-   a u ;
+   {: s:str :}
+   s STR:LEN 0 > if s STR:DATA s STR:LEN 1- + c@ STR:LF = if s STR:DATA s STR:LEN 1- >str exit then then
+   s ;
 
 
 \ libpq builds a notice in a PQExpBuffer, which never grows past INT_MAX bytes,
@@ -964,11 +963,11 @@ $7FFFFFFF constant NOTICE-MAX
    while 1 + repeat ;
 
 
-: NOTICE-DROPPED? ( str -- bool ) {: a:^ u:n :}
-   a u s" NOTICE:" STR:STARTS-WITH?
-   a u s" INFO:" STR:STARTS-WITH? or
-   a u s" DEBUG:" STR:STARTS-WITH? or
-   a u s" LOG:" STR:STARTS-WITH? or ;
+: NOTICE-DROPPED? ( str -- bool ) {: s:str :}
+   s s" NOTICE:" STR:STARTS-WITH?
+   s s" INFO:" STR:STARTS-WITH? or
+   s s" DEBUG:" STR:STARTS-WITH? or
+   s s" LOG:" STR:STARTS-WITH? or ;
 
 
 \ libpq's PQnoticeProcessor ( void *arg, const char *message ): the message is
@@ -976,10 +975,10 @@ $7FFFFFFF constant NOTICE-MAX
 : NOTICE-LOG ( ^u8 ^u8 -- )
    nip {: msg :}
    msg NULL-ADDR? if exit then
-   msg dup NOTICE-LEN -TRAILING-LF {: a:^ u:n :}
-   a u NOTICE-DROPPED? if exit then
-   a u s" WARNING:" STR:STARTS-WITH? if LOG:WARN else LOG:ERROR then
-   s" pg" LOG:LINE  a u LOG:TEXT+  LOG:;LINE ;
+   msg dup NOTICE-LEN >str -TRAILING-LF {: m:str :}
+   m NOTICE-DROPPED? if exit then
+   m s" WARNING:" STR:STARTS-WITH? if LOG:WARN else LOG:ERROR then
+   s" pg" LOG:LINE  m LOG:TEXT+  LOG:;LINE ;
 
 CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 ' NOTICE-LOG NOTICE-BODY !
@@ -992,7 +991,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 : COPY-REFUSAL-Z ( -- str )   S\" COPY is not supported\z" ;
-: COPY-REFUSAL$ ( -- str )   COPY-REFUSAL-Z 1- ;
+: COPY-REFUSAL$ ( -- str )   COPY-REFUSAL-Z {: z:str :} z STR:DATA z STR:LEN 1- >str ;
 
 
 \ A COPY_OUT result, kept for a COPY TO STDOUT (KEEP-RESULT), has no server
@@ -1052,7 +1051,8 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot ['] KEEP-REFUSAL catch nip {: code:n :}
    slot CLOSE-SLOT drop
    code 0<> if code throw then
-   REFUSED-TEXT @ VEC:SPAN SPAN:$ PG-PROGRESS:REFUSED ;
+   REFUSED-TEXT @ VEC:SPAN SPAN:$ {: t:str :}
+   t STR:DATA t STR:LEN PG-PROGRESS:REFUSED ;
 
 
 \ CONN-LOST's copy; one that throws leaves the record empty.
@@ -1129,7 +1129,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 \ leaves libpq in COPY_IN to be ended again; the next poll flushes either way.
 : END-COPY-IN ( ^u8 n -- n ) {: pg slot:n :}
    pg LIB-CLEAR
-   slot CONN-PG@ COPY-REFUSAL-Z drop LIB-PUT-COPY-END 0 < if slot CONN-LOST then
+   slot CONN-PG@ COPY-REFUSAL-Z STR:DATA LIB-PUT-COPY-END 0 < if slot CONN-LOST then
    AIO:READABLE AIO:WRITABLE or ;
 
 
@@ -1333,11 +1333,11 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 : EXEC-START ( n str -- )
-   {: slot:n a u:n :}
+   {: slot:n s:str :}
    OP-START
    slot IDLE-CHECK
-   u 0 <= if E-STATEMENT throw then
-   a u slot ARENA-CSTR {: sql-off:n :}
+   s STR:LEN 0 <= if E-STATEMENT throw then
+   s slot ARENA-CSTR {: sql-off:n :}
    slot CLAIM-STATEMENT {: arr-off:n lens-off:n fmts-off:n res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base sql-off + slot PARAM-N@ NULL-ARG base arr-off +
@@ -1349,11 +1349,11 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 : PREPARED-START ( n str -- )
-   {: slot:n a u:n :}
+   {: slot:n s:str :}
    OP-START
    slot IDLE-CHECK
-   u 0 <= if E-STATEMENT throw then
-   a u slot ARENA-CSTR {: name-off:n :}
+   s STR:LEN 0 <= if E-STATEMENT throw then
+   s slot ARENA-CSTR {: name-off:n :}
    slot CLAIM-STATEMENT {: arr-off:n lens-off:n fmts-off:n res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + slot PARAM-N@ base arr-off +
@@ -1366,12 +1366,12 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ The empty name is the unnamed statement, which only DESCRIBE sends.
 : PREPARE-SEND ( n str str -- )
-   {: slot:n na nu:n sa su:n :}
+   {: slot:n ns:str ss:str :}
    OP-START
    slot IDLE-CHECK
-   su 0 <= if E-STATEMENT throw then
-   na nu slot ARENA-CSTR {: name-off:n :}
-   sa su slot ARENA-CSTR {: sql-off:n :}
+   ss STR:LEN 0 <= if E-STATEMENT throw then
+   ns slot ARENA-CSTR {: name-off:n :}
+   ss slot ARENA-CSTR {: sql-off:n :}
    CLAIM-RES-SLOT {: res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + base sql-off + 0 NULL-ARG LIB-SEND-PREPARE {: sent:n :}
@@ -1381,9 +1381,9 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 : PREPARE-START ( n str str -- )
-   {: slot:n na nu:n sa su:n :}
-   nu 0 <= if E-STATEMENT throw then
-   slot na nu sa su PREPARE-SEND ;
+   {: slot:n ns:str ss:str :}
+   ns STR:LEN 0 <= if E-STATEMENT throw then
+   slot ns ss PREPARE-SEND ;
 
 
 : DESCRIBE-START ( n -- )
@@ -1400,12 +1400,12 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ The simple-query protocol. It takes no parameters at all, so a pending
 \ parameter list is a caller error with nowhere to go.
-: SCRIPT-START ( n str -- ) {: slot:n a u:n :}
+: SCRIPT-START ( n str -- ) {: slot:n s:str :}
    OP-START
    slot IDLE-CHECK
-   u 0 <= if E-STATEMENT throw then
+   s STR:LEN 0 <= if E-STATEMENT throw then
    slot PARAM-N@ 0 <> if E-STATEMENT throw then
-   a u slot ARENA-CSTR {: off:n :}
+   s slot ARENA-CSTR {: off:n :}
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ slot ARENA-BASE off + LIB-SEND-QUERY {: sent:n :}
    sent 0= if slot res SEND-FAILED then
@@ -1428,18 +1428,18 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 \ WITH-TRANSACTION and spend them inside the body, which is the only way into a
 \ quotation that may not read the caller's locals.
 : VERB-TEXT! ( n str -- ^u8 )
-   {: slot:n a u:n :}
-   u 0 <= if E-STATEMENT throw then
-   u VERB-CAP 1 - > if E-CAPACITY throw then
-   a u slot VERB-BUF VERB-CAP SPAN:MAKE FFI:CSTR ;
+   {: slot:n s:str :}
+   s STR:LEN 0 <= if E-STATEMENT throw then
+   s STR:LEN VERB-CAP 1 - > if E-CAPACITY throw then
+   s slot VERB-BUF VERB-CAP SPAN:MAKE FFI:CSTR ;
 
 
 : RUN-VERB ( n str -- n )
-   {: slot:n a u:n :}
+   {: slot:n s:str :}
    slot OP-DEADLINE {: deadline:n :}
    OP-START
    slot IDLE-CHECK
-   slot a u VERB-TEXT! {: sql :}
+   slot s VERB-TEXT! {: sql :}
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ sql 0 NULL-ARG NULL-ARG NULL-ARG NULL-ARG TEXT-RESULT
    LIB-SEND-QUERY-PARAMS {: sent:n :}
@@ -1450,8 +1450,8 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ A transaction verb must succeed or the caller's framing is a lie, so a server
 \ refusal is E-EXEC rather than an outcome the caller could ignore.
-: VERB ( n str -- ) {: slot:n a u:n :}
-   slot a u RUN-VERB {: res:n :}
+: VERB ( n str -- ) {: slot:n s:str :}
+   slot s RUN-VERB {: res:n :}
    res RESULT-STATUS {: status:n :}
    status PGRES-COMMAND-OK <> if
       res CLEAR-SLOT
@@ -1490,7 +1490,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 : VALUE$ ( n n n -- str ) {: slot:n ri:n ci:n :}
    slot RES-PG @ {: res :}
    res ri ci LIB-GETVALUE
-   res ri ci LIB-GETLENGTH ;
+   res ri ci LIB-GETLENGTH >str ;
 
 
 \ The cell CELL-AT answered, its slot read without checking it again.
@@ -1504,7 +1504,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 \ The slot is RESULT-SLOT's answer, so its fields are read unchecked.
-: COLUMN-AT ( n col -- str )
+: COLUMN-AT ( n col -- ^u8 n )
    {: slot:n c:col :}
    slot RES-PG @ {: res :}
    c COL>N {: ci:n :}
@@ -1514,9 +1514,9 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 : CMD-COUNT ( n -- n ) {: slot:n :}
-   slot RES-PG@ LIB-CMD-TUPLES CSTR$ {: a u:n :}
-   u 0= if 0 exit then
-   a u STR:>NUMBER? MATCH option
+   slot RES-PG@ LIB-CMD-TUPLES CSTR$ {: t:str :}
+   t STR:LEN 0= if 0 exit then
+   t STR:>NUMBER? MATCH option
       none OF E-TYPE throw ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -1526,7 +1526,8 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    res RESULT-STATUS {: status:n :}
    status PGRES-COMMAND-OK = if PG-OUTCOME:OK exit then
    status PGRES-TUPLES-OK = if PG-OUTCOME:ROWS exit then
-   res RES-PG@ FAILED-SPANS PG-OUTCOME:FAILED ;
+   res RES-PG@ FAILED-SPANS {: state:str msg:str :}
+   state STR:DATA state STR:LEN msg STR:DATA msg STR:LEN PG-OUTCOME:FAILED ;
 
 
 : SCOPE-ENTER ( n -- n ) {: raw:n :}
@@ -1561,9 +1562,9 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ The new arena starts at offset zero, so the staging helper can preserve its
 \ catch input row.
-: STAGE-CONNINFO ( str n -- str n ) {: a u:n slot:n :}
-   a u slot ARENA-CSTR drop
-   a u slot ;
+: STAGE-CONNINFO ( str n -- str n ) {: s:str slot:n :}
+   s slot ARENA-CSTR drop
+   s slot ;
 
 
 : NULL-ENDED ( ^u8 ^u8 ^u8 -- ) {: first second arr :}
@@ -1574,10 +1575,10 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ PQconnectStartParams's keyword and value arrays end the arena, written after
 \ its last growth, as PARAM-ARRAY's are; the conninfo stays at offset zero.
-: STAGE-LOGIN ( str n -- str n ) {: a u:n slot:n :}
+: STAGE-LOGIN ( str n -- str n ) {: s:str slot:n :}
    s" dbname" slot ARENA-CSTR {: db:n :}
    s" password" slot ARENA-CSTR {: key:n :}
-   a u slot ARENA-CSTR {: pw:n :}
+   s slot ARENA-CSTR {: pw:n :}
    slot ARENA-U@ CELL 1 - + CELL-MASK and {: off:n :}
    off LOGIN-N 2 * cells + {: end:n :}
    slot end slot ARENA-U@ - ARENA-ENSURE
@@ -1585,7 +1586,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot ARENA-BASE {: base :}
    base db + base key + base off + NULL-ENDED
    base base pw + base off + LOGIN-N cells + NULL-ENDED
-   a u slot ;
+   s slot ;
 
 
 : LOGIN-ARRAYS ( n -- ^u8 ^u8 ) {: slot:n :}
@@ -1594,9 +1595,9 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 : STAGE ( str n [ str n -- str n ] -- )
-   {: a u:n slot:n step :}
-   a u slot step catch {: code:n :}
-   2drop drop
+   {: s:str slot:n step :}
+   s slot step catch {: code:n :}
+   drop drop
    code 0<> if slot RETIRE-CONN-SLOT code throw then ;
 
 
@@ -1617,16 +1618,16 @@ public
 \ The password never goes through that parse. An empty one is ignored, leaving
 \ the conninfo's or libpq's default; any other overrides both.
 : CONNECT-START ( str str -- connection )
-   {: a u:n pa pu:n :}
+   {: s:str ps:str :}
    OP-START
    NOTICE TASK:CALLER-CONTEXT FFI-CB:ENTRY {: proc:n :}
    CLAIM-CONN-SLOT {: slot:n :}
    slot OPEN-CONN-SLOT
-   a u slot [: STAGE-CONNINFO ;] STAGE
+   s slot [: STAGE-CONNINFO ;] STAGE
    slot ARENA-BASE NULL-ARG LIB-CONNINFO-PARSE {: opts :}
    opts NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
    opts LIB-CONNINFO-FREE
-   pa pu slot [: STAGE-LOGIN ;] STAGE
+   ps slot [: STAGE-LOGIN ;] STAGE
    slot LOGIN-ARRAYS 1 LIB-CONNECT-START-PARAMS {: pg :}
    slot ARENA-RELEASE
    pg NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
@@ -1763,11 +1764,11 @@ public
    BINARY-FORMAT slot FORMAT! ;
 
 
-: TEXT+ ( connection str -- ) {: handle:connection a u:n :}
+: TEXT+ ( connection str -- ) {: handle:connection s:str :}
    handle CONN-SLOT {: slot:n :}
    slot IDLE-CHECK
    slot PARAM-ROOM
-   a u slot ARENA-CSTR TEXT-LEN slot PARAM-OFF+ ;
+   s slot ARENA-CSTR TEXT-LEN slot PARAM-OFF+ ;
 
 
 : INT+ ( connection n -- ) {: handle:connection value:n :}
@@ -1787,29 +1788,29 @@ public
 \ The bytes are the binary form of the type PostgreSQL infers from a cast or
 \ the statement's context; u = 0 is an empty value, not NULL.
 : BINARY+ ( connection str -- )
-   {: handle:connection a u:n :}
+   {: handle:connection s:str :}
    handle CONN-SLOT {: slot:n :}
    slot IDLE-CHECK
    slot PARAM-ROOM
-   u BINARY-MAX > if E-CAPACITY throw then
-   a u slot ARENA-BYTES u slot PARAM-OFF+ ;
+   s STR:LEN BINARY-MAX > if E-CAPACITY throw then
+   s slot ARENA-BYTES s STR:LEN slot PARAM-OFF+ ;
 
 
-: SEND ( connection str -- ) {: handle:connection a u:n :}
-   handle CONN-SLOT a u EXEC-START ;
+: SEND ( connection str -- ) {: handle:connection s:str :}
+   handle CONN-SLOT s EXEC-START ;
 
 
-: SEND-SCRIPT ( connection str -- ) {: handle:connection a u:n :}
-   handle CONN-SLOT a u SCRIPT-START ;
+: SEND-SCRIPT ( connection str -- ) {: handle:connection s:str :}
+   handle CONN-SLOT s SCRIPT-START ;
 
 
 : SEND-PREPARE ( connection str str -- )
-   {: handle:connection na nu:n sa su:n :}
-   handle CONN-SLOT na nu sa su PREPARE-START ;
+   {: handle:connection ns:str ss:str :}
+   handle CONN-SLOT ns ss PREPARE-START ;
 
 
-: SEND-PREPARED ( connection str -- ) {: handle:connection a u:n :}
-   handle CONN-SLOT a u PREPARED-START ;
+: SEND-PREPARED ( connection str -- ) {: handle:connection s:str :}
+   handle CONN-SLOT s PREPARED-START ;
 
 
 \ A COPY fails: FROM STDIN with the server's 57014; TO STDOUT with 0A000 and the
@@ -1817,10 +1818,10 @@ public
 
 \ WITH-RESULT runs exactly one statement on the extended protocol.
 : WITH-RESULT ( R connection str [ R PG:result -- S PG:result ] -- S )
-   {: handle:connection a u:n body :}
+   {: handle:connection s:str body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
-   slot a u EXEC-START
+   slot s EXEC-START
    slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
@@ -1830,26 +1831,26 @@ public
 \ The script is one implicit transaction: a failure rolls it back, stops it and
 \ is the outcome, else the last result is, or a COPY TO STDOUT's.
 : WITH-SCRIPT ( R connection str [ R PG:result -- S PG:result ] -- S )
-   {: handle:connection a u:n body :}
+   {: handle:connection s:str body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
-   slot a u SCRIPT-START
+   slot s SCRIPT-START
    slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
 : WITH-PREPARE ( R connection str str [ R PG:result -- S PG:result ] -- S )
-   {: handle:connection na nu:n sa su:n body :}
+   {: handle:connection ns:str ss:str body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
-   slot na nu sa su PREPARE-START
+   slot ns ss PREPARE-START
    slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
 : WITH-PREPARED ( R connection str [ R PG:result -- S PG:result ] -- S )
-   {: handle:connection a u:n body :}
+   {: handle:connection s:str body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
-   slot a u PREPARED-START
+   slot s PREPARED-START
    slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
@@ -1858,11 +1859,11 @@ public
 \ rejected prepare is the body's result, with its `failed` outcome. A pending
 \ parameter list is E-STATEMENT.
 : WITH-DESCRIPTION ( R connection str [ R PG:result -- S PG:result ] -- S )
-   {: handle:connection a u:n body :}
+   {: handle:connection s:str body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
    slot PARAM-N@ 0 <> if E-STATEMENT throw then
-   slot s" " a u PREPARE-SEND
+   slot s" " s PREPARE-SEND
    slot deadline WAIT-QUERY {: prepared:n :}
    prepared RESULT-SLOT {: res:n :}
    res RESULT-STATUS PGRES-COMMAND-OK <> if
@@ -1915,6 +1916,9 @@ private
    slot act TAKE-NOTIFIES if true exit then
    slot deadline act NOTIFY-WAIT ;
 
+
+: FORGET-NOTE ( str str -- ) drop drop ;
+
 public
 
 
@@ -1928,7 +1932,7 @@ public
 \ A failed read closes the connection and throws E-EXEC; a readiness wait the
 \ AIO loop refuses throws E-EXEC, or the loop's own code, and leaves it open.
 : NOTIFIED? ( connection ms -- bool )
-   [: 2drop 2drop ;] WAIT-NOTIFIES ;
+   [: FORGET-NOTE ;] WAIT-NOTIFIES ;
 
 
 \ NOTIFIED waits as NOTIFIED? does, with its errors, then hands act each

@@ -1,4 +1,3 @@
-split-str
 \ os-memory.f - the running host's memory facts that are not image ABI
 \ constants. PAGE-SIZE reports the host's page size for OS mappings; Habu's
 \ guard window uses the fixed STACK-ABI:PAGE-BYTES and PROT-PAGE-MAX instead.
@@ -40,49 +39,49 @@ $7FFFFFFFFFFFFFFF KB / constant KB-MAX    \ the most kB a cell holds as bytes
 : MEMINFO$ ( -- str ) s" /proc/meminfo" ;
 : KEY$ ( -- str ) s" MemAvailable:" ;
 
-: FAIL ( str -- ) {: why:^ whyu:n :}
-   LOG:ERROR s" os-memory" LOG:LINE why whyu LOG:TEXT+
+: FAIL ( str -- ) {: why:str :}
+   LOG:ERROR s" os-memory" LOG:LINE why LOG:TEXT+
    s" : " LOG:TEXT+ E-AVAILABLE LOG:CODE+ LOG:;LINE
    E-AVAILABLE throw ;
 
 \ True when text holds KEY$ at offset i, at the start of a line.
-: KEY-AT? ( str n -- bool ) {: a:^ u:n i:n :}
-   i 0 > if a i + 1- c@ STR:LF <> if false exit then then
-   a i + u i - KEY$ STR:STARTS-WITH? ;
+: KEY-AT? ( str n -- bool ) {: s:str i:n :}
+   i 0 > if s STR:DATA i + 1- c@ STR:LF <> if false exit then then
+   s STR:DATA i + s STR:LEN i - >str KEY$ STR:STARTS-WITH? ;
 
 \ The offset just past the key of the text's MemAvailable line.
-: KEY-END ( str -- n ) {: a:^ u:n :}
-   u 0 ?do
-      a u i KEY-AT? if i KEY$ nip + unloop exit then
+: KEY-END ( str -- n ) {: s:str :}
+   s STR:LEN 0 ?do
+      s i KEY-AT? if i KEY$ STR:LEN + unloop exit then
    loop
    s" /proc/meminfo has no MemAvailable line" FAIL ;
 
 \ The text up to its first LF.
-: LINE-OF ( str -- str ) {: a:^ u:n :}
-   a u STR:LF STR:INDEX-OF MATCH option
-      none OF a u ENDOF
-      some OF IDX>N a swap ENDOF
+: LINE-OF ( str -- str ) {: s:str :}
+   s STR:LF STR:INDEX-OF MATCH option
+      none OF s ENDOF
+      some OF IDX>N s STR:DATA swap >str ENDOF
    ;MATCH ;
 
 \ The bytes a trimmed `<n> kB` field states.
-: FIELD-BYTES ( str -- n ) {: a:^ u:n :}
-   a u s"  kB" STR:ENDS-WITH? 0= if s" MemAvailable is not in kB" FAIL then
-   a u 3 - STR:RTRIM STR:PARSE-POS MATCH option
+: FIELD-BYTES ( str -- n ) {: s:str :}
+   s s"  kB" STR:ENDS-WITH? 0= if s" MemAvailable is not in kB" FAIL then
+   s STR:DATA s STR:LEN 3 - >str STR:RTRIM STR:PARSE-POS MATCH option
       none OF s" MemAvailable is not a decimal count" FAIL ENDOF
       some OF ENDOF
    ;MATCH {: kb:n :}
    kb KB-MAX > if s" MemAvailable overflows a cell" FAIL then
    kb KB * ;
 
-: TEXT-BYTES ( str -- n ) {: a:^ u:n :}
-   a u KEY-END {: at:n :}
-   a at + u at - LINE-OF STR:TRIM FIELD-BYTES ;
+: TEXT-BYTES ( str -- n ) {: s:str :}
+   s KEY-END {: at:n :}
+   s STR:DATA at + s STR:LEN at - >str LINE-OF STR:TRIM FIELD-BYTES ;
 
 : READ-BYTES ( ^u8 NUM:alloc-byte-len -- n )
    drop {: buf:^ :}
    MEMINFO$ FS:FILE? 0= if s" the host has no /proc/meminfo" FAIL then
    MEMINFO$ buf MEMINFO-CAP FS:READ-ALL {: got:n :}
-   buf got TEXT-BYTES ;
+   buf got >str TEXT-BYTES ;
 
 public
 

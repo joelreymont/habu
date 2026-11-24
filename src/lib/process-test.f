@@ -1,4 +1,3 @@
-split-str
 \ process-test.f -- focused tests for src/lib/process.f.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-test.f
 
@@ -60,42 +59,42 @@ create PT-DRAIN-BUF PT-CHUNK allot
 2 constant PT-ENOENT
 300 constant PT-SHORT-TIMEOUT-MS
 
-: PT-COPY! ( str ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
-   a dst u BYTE-COPY
-   u lenp ! ;
+: PT-COPY! ( str ^u8 ^n -- ) {: s:str dst:^ lenp:^ :}
+   s STR:DATA dst s STR:LEN BYTE-COPY
+   s STR:LEN lenp ! ;
 
-: PT-PATH! ( str str ^u8 ^n -- ) {: pa:^ pu na:^ nu dst:^ lenp:^ :}
-   pa pu na nu dst FS:JOIN-PATH lenp ! ;
+: PT-PATH! ( str str ^u8 ^n -- ) {: ps:str ns:str dst:^ lenp:^ :}
+   ps ns dst FS:JOIN-PATH lenp ! ;
 
 : PT-ROOT ( -- str )
-   PT-ROOT-BUF PT-ROOT-U @ ;
+   PT-ROOT-BUF PT-ROOT-U @ >str ;
 
 : PT-CAPTURE-OK ( -- str )
-   PT-CAPTURE-OK-BUF PT-CAPTURE-OK-U @ ;
+   PT-CAPTURE-OK-BUF PT-CAPTURE-OK-U @ >str ;
 
 : PT-CAPTURE-LONG ( -- str )
-   PT-CAPTURE-LONG-BUF PT-CAPTURE-LONG-U @ ;
+   PT-CAPTURE-LONG-BUF PT-CAPTURE-LONG-U @ >str ;
 
 : PT-CAPTURE-HANG ( -- str )
-   PT-CAPTURE-HANG-BUF PT-CAPTURE-HANG-U @ ;
+   PT-CAPTURE-HANG-BUF PT-CAPTURE-HANG-U @ >str ;
 
 : PT-CAPTURE-ERR-LONG ( -- str )
-   PT-CAPTURE-ERR-LONG-BUF PT-CAPTURE-ERR-LONG-U @ ;
+   PT-CAPTURE-ERR-LONG-BUF PT-CAPTURE-ERR-LONG-U @ >str ;
 
 : PT-CAPTURE-FALSE ( -- str )
-   PT-CAPTURE-FALSE-BUF PT-CAPTURE-FALSE-U @ ;
+   PT-CAPTURE-FALSE-BUF PT-CAPTURE-FALSE-U @ >str ;
 
 : PT-CAPTURE-EOF ( -- str )
-   PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U @ ;
+   PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U @ >str ;
 
 : PT-TERM-MARKER ( -- str )
-   PT-TERM-MARKER-BUF PT-TERM-MARKER-U @ ;
+   PT-TERM-MARKER-BUF PT-TERM-MARKER-U @ >str ;
 
 : PT-RUN-IN ( -- str )
-   PT-RUN-IN-BUF PT-RUN-IN-U @ ;
+   PT-RUN-IN-BUF PT-RUN-IN-U @ >str ;
 
 : PT-RUN-OUT ( -- str )
-   PT-RUN-OUT-BUF PT-RUN-OUT-U @ ;
+   PT-RUN-OUT-BUF PT-RUN-OUT-U @ >str ;
 
 : PT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result
@@ -104,8 +103,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    ;MATCH ;
 
 : PT-ROOT! ( -- )
-   s" habu-process" FS:MKTEMP-DIR {: a:^ u :}
-   a u PT-ROOT-BUF PT-ROOT-U PT-COPY! ;
+   s" habu-process" FS:MKTEMP-DIR PT-ROOT-BUF PT-ROOT-U PT-COPY! ;
 
 : PT-PATHS! ( -- )
    PT-ROOT s" capture-ok.f" PT-CAPTURE-OK-BUF PT-CAPTURE-OK-U PT-PATH!
@@ -118,9 +116,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-ROOT s" run-in" PT-RUN-IN-BUF PT-RUN-IN-U PT-PATH!
    PT-ROOT s" run-out" PT-RUN-OUT-BUF PT-RUN-OUT-U PT-PATH! ;
 
-: PT-WRITE-SCRIPT ( str str -- ) {: path:^ pathu src:^ srcu :}
-   path pathu src srcu FS:WRITE-ALL
-   path pathu FS:CLEANUP+ ;
+: PT-WRITE-SCRIPT ( str str -- ) {: path:str src:str :}
+   path src FS:WRITE-ALL
+   path FS:CLEANUP+ ;
 
 : PT-WRITE-SCRIPTS ( -- )
    PT-CAPTURE-OK s\" 111 emit 117 emit 116 emit create E 101 c, 114 c, 114 c, 2 E 3 >str write drop s\q \q 7 die" PT-WRITE-SCRIPT
@@ -145,21 +143,21 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-ROOT FS:EXISTS? TFALSE ;
 
 : PT-RUN-HB-SCRIPT ( str ^u8 n ^u8 n n -- n n n )
-   {: script:^ scriptu out:^ outcap err:^ errcap timeout :}
+   {: script:str out:^ outcap err:^ errcap timeout :}
    PROC-ARGV-RESET
-   script scriptu  PROC-ARGV+
+   script  PROC-ARGV+
    s" bin/hb" out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N ;
 
 : PT-RUN-HB-SCRIPT-OUTCOME ( str ^u8 n ^u8 n n -- len len PROCESS:ending )
-   {: script:^ scriptu out:^ outcap err:^ errcap timeout :}
+   {: script:str out:^ outcap err:^ errcap timeout :}
    PROC-ARGV-RESET
-   script scriptu  PROC-ARGV+
+   script  PROC-ARGV+
    s" bin/hb" out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
 : PT-RUN-CAPTURE ( str ^u8 n ^u8 n n -- n n n )
-   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   path pathu out outcap >LEN err errcap >LEN timeout >MS PROCESS:RUN-CAPTURE
+   {: path:str out:^ outcap err:^ errcap timeout :}
+   path out outcap >LEN err errcap >LEN timeout >MS PROCESS:RUN-CAPTURE
    PT-CAPTURE>N ;
 
 : PT-READ ( n -- n )
@@ -205,7 +203,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PROCESS:WAIT PROCESS:STATUS>RC RC>N 1 T= ;
 
 : PT-FORK-EXIT ( n -- )
-   s" " rot die ;
+   s" " swap die ;
 
 : TEST-PROC-FORK-WAIT ( -- )
    FD:PIPE-PAIR PT-W ! PT-R !
@@ -310,7 +308,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ stays there. Every caller proves PT-NONBLOCK-ARMED? first for that reason.
 : PT-FILL-FD ( n -- n ) {: wfd:n :}
    0 begin dup PT-FILL-MAX < while
-      wfd PT-CHUNK-BUF PT-CHUNK write 0 < if exit then
+      wfd PT-CHUNK-BUF PT-CHUNK >str write 0 < if exit then
       1+
    repeat ;
 
@@ -339,7 +337,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
       filled 0 > TTRUE
       filled PT-FILL-MAX < TTRUE
       PT-R @ filled PT-DRAIN-FD filled T=
-      PT-W @ PT-CHUNK-BUF PT-CHUNK write PT-CHUNK T=
+      PT-W @ PT-CHUNK-BUF PT-CHUNK >str write PT-CHUNK T=
    then
    PT-R @ close
    PT-W @ close ;
@@ -356,11 +354,11 @@ create PT-DRAIN-BUF PT-CHUNK allot
    if
       PROCESS:IN-W @ PT-FILL-FD {: filled:n :}
       filled 0 > TTRUE
-      PT-CHUNK-BUF PT-CHUNK PROCESS:WRITE-STDIN
+      PT-CHUNK-BUF PT-CHUNK >str PROCESS:WRITE-STDIN
       PROCESS:IN-W @ 0 >= TTRUE
       PROCESS:IN-OFF @ 0 T=
       PROCESS:IN-R @ filled PT-DRAIN-FD filled T=
-      PT-CHUNK-BUF PT-CHUNK PROCESS:WRITE-STDIN
+      PT-CHUNK-BUF PT-CHUNK >str PROCESS:WRITE-STDIN
       PROCESS:IN-OFF @ PT-CHUNK T=
    then
    PROCESS:CLOSE-STDIN-FDS ;
@@ -397,8 +395,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : TEST-RUN-ARGV-CAPTURE-EXACT-CAP ( -- )
    PT-CAPTURE-OK PT-OUT 3 PT-ERR 3 PROCESS:WAIT-FOREVER MS>N PT-RUN-HB-SCRIPT 7 T= 3 T= 3 T=
-   PT-OUT 3 s" out" T$=
-   PT-ERR 3 s" err" T$= ;
+   PT-OUT 3 >str s" out" T$=
+   PT-ERR 3 >str s" err" T$= ;
 
 : TEST-RUN-CAPTURE-TRUNCATED ( -- )
    s" /usr/bin/yes" PT-OUT 3 PT-ERR 32 PROCESS:WAIT-FOREVER MS>N PT-RUN-CAPTURE 2drop drop ;
@@ -421,7 +419,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-EXIT ( -- )
    PT-CAPTURE-FALSE PT-OUT 32 PT-ERR 32 PROCESS:WAIT-FOREVER MS>N PT-RUN-HB-SCRIPT-OUTCOME
    {: outu:len erru:len oc :}
-   PT-CAPTURE-FALSE PT-OUT outu LEN>N PT-ERR erru LEN>N oc 1 T-ENDING-EXITED=
+   PT-CAPTURE-FALSE PT-OUT outu LEN>N >str PT-ERR erru LEN>N >str oc 1 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-TIMEOUT ( -- )
@@ -449,28 +447,28 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : TEST-CAPTURE-EARLY-EOF ( -- )
    [: PT-RUN-EARLY-EOF ;] E-PROC-TIMEOUT TTHROWSQ
-   PROCESS:OUT-LEN @ 2 T= PT-OUT 2 s" ok" T$=
+   PROCESS:OUT-LEN @ 2 T= PT-OUT 2 >str s" ok" T$=
    PROCESS:PID @ PROCESS:NO-PID T=
    PROCESS:OUT-R @ PROCESS:NO-FD T= PROCESS:ERR-R @ PROCESS:NO-FD T=
    PT-EOF-START
    PT-OUT 32 >LEN PT-ERR 32 >LEN PROCESS:RUN-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING
    T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 2 T=
-   PT-OUT 2 s" ok" T$=
+   PT-OUT 2 >str s" ok" T$=
    PROCESS:PID @ PROCESS:NO-PID T= ;
 
 \ Signal-death capture: the reap path derives signaled(sig) from the raw wait
 \ status alone -- no stored pair. The API return and the derived getter agree.
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL ( -- )
-   s" /bin/sh -c kill -KILL $$" {: cmd:^ cmdu:n :}
+   s" /bin/sh -c kill -KILL $$" {: cmd:str :}
    PROC-ARGV-RESET
    s" -c" PROC-ARGV+
    s" kill -KILL $$" PROC-ARGV+
    s" /bin/sh" PT-OUT 32 >LEN PT-ERR 32 >LEN PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
-   cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N oc PROCESS:SIGKILL T-ENDING-SIGNALED=
+   cmd PT-OUT outu LEN>N >str PT-ERR erru LEN>N >str oc PROCESS:SIGKILL T-ENDING-SIGNALED=
    erru LEN>N 0 T= outu LEN>N 0 T=
-   cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N PROCESS:CAPTURE-ENDING PROCESS:SIGKILL T-ENDING-SIGNALED= ;
+   cmd PT-OUT outu LEN>N >str PT-ERR erru LEN>N >str PROCESS:CAPTURE-ENDING PROCESS:SIGKILL T-ENDING-SIGNALED= ;
 
 \ A deliberately tiny deadline proves that capture reports a timeout. The child
 \ never ends: the ok fixture finishes in about 9 ms on this host, so a race
@@ -503,7 +501,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    PT-IN-R @ close
    PT-OUT-W @ close
    PT-OUT-R @ PT-READ 6 T=
-   PT-BUF 6 s" cat-in" T$=
+   PT-BUF 6 >str s" cat-in" T$=
    PT-OUT-R @ close ;
 
 : TEST-RUN-IO-FALSE ( -- )                          \ /usr/bin/false exits 1 -> err(1)
@@ -555,11 +553,11 @@ create PT-Z PT-Z-CAP allot
    s" 12345678" PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
 
 : TEST-ZCOPY-NEG-LEN ( -- )
-   PT-BUF -1 PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
+   PT-BUF -1 >str PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
 
 \ A length whose NUL wraps the sum must not reach the copy loop.
 : TEST-ZCOPY-HUGE-LEN ( -- )
-   PT-BUF MEM-MAX-N PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
+   PT-BUF MEM-MAX-N >str PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
 
 100 constant PT-HOLD-MS                  \ a window the held child outlasts
 $100000000 constant PT-PID-WRAP          \ 2^32: what a C int pid_t drops
@@ -573,10 +571,10 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 
 \ A child of /bin/sh running the script, on the test's own stdio.
 : PT-SH ( str -- pid )
-   {: s:^ su:n :}
+   {: s:str :}
    PROC-ARGV-RESET
    s" -c" PROC-ARGV+
-   s su PROC-ARGV+
+   s PROC-ARGV+
    s" /bin/sh" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO ;
 
 : PT-HOLD-SCRIPT ( -- str )
@@ -740,11 +738,11 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    s" test/process-stdin-zero-child.f" PT-OUT 32 PT-SPAWN-ERR PT-SPAWN-ERR-CAP
    PROCESS:WAIT-FOREVER MS>N PT-RUN-HB-SCRIPT {: outn errn code :}
    s" spawn-stdio: same-number stdin: rc " type code FMT:.INT
-   s"  out " type PT-OUT outn type
-   s"  err " type PT-SPAWN-ERR errn type cr
+   s"  out " type PT-OUT outn >str type
+   s"  err " type PT-SPAWN-ERR errn >str type cr
    code 0 T=
    errn 0 T=
-   PT-OUT outn s" stdin-zero" T$= ;
+   PT-OUT outn >str s" stdin-zero" T$= ;
 
 : PT-UNMARKED-SCRIPT ( -- str )
    s" exec >&-; read x" ;
@@ -825,14 +823,14 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
 
 \ A capture of the child in mode, with no deadline. A child that ends before
 \ `ready` fails the case without a throw, so the case still kills it.
-: PT-TERM-START ( str -- ) {: mode:^ modeu:n :}
+: PT-TERM-START ( str -- ) {: mode:str :}
    PT-TERM-MARKER s" marker" FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
    s" test/process-term-child.f" PROC-ARGV+
    s" --" PROC-ARGV+
    PT-TERM-MARKER PROC-ARGV+
-   mode modeu PROC-ARGV+
+   mode PROC-ARGV+
    s" bin/hb" PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
    pathz argv PROC-SPAWN-ARGV-CAPTURE
@@ -848,8 +846,8 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
 : PT-SINCE-MS ( n -- n )
    mono-ns swap - PROCESS:NS-PER-MS / ;
 
-: PT-TERM-ENDED= ( str n -- ) {: what:^ whatu:n sig:n :}
-   what whatu s" " s" " PROCESS:CAPTURE-ENDING sig T-ENDING-SIGNALED= ;
+: PT-TERM-ENDED= ( str n -- ) {: what:str sig:n :}
+   what s" " s" " PROCESS:CAPTURE-ENDING sig T-ENDING-SIGNALED= ;
 
 : TEST-KILL-CAPTURE-ASKS ( -- )
    s" exit" PT-TERM-START
@@ -897,10 +895,10 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
 \ PROCESS:RUN: each of a child's fds 0, 1 and 2 chosen as inherit, null or pipe.
 : PT-PIPE ( ^u8 n -- PROCESS:stdio ) SPAN:MAKE PROCESS-STDIO:PIPE ;
 
-: PT-SH-REQUEST ( str -- PROCESS:request ) {: script:^ len :}
+: PT-SH-REQUEST ( str -- PROCESS:request ) {: script:str :}
    s" /bin/sh" PROCESS:NEW
    s" -c" PROCESS:ARG
-   script len PROCESS:ARG ;
+   script PROCESS:ARG ;
 
 \ The exit code, or -1 for a child a signal ended.
 : PT-EXITED ( PROCESS:status -- n )
@@ -911,11 +909,11 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
 
 : TEST-RUN-PIPES ( -- )
    s" /bin/cat" PROCESS:NEW
-   s" chosen" PT-PIPE PT-OUT 32 PT-PIPE PT-ERR 32 PT-PIPE PROCESS:RUN
+   s" chosen" dup STR:DATA swap STR:LEN PT-PIPE PT-OUT 32 PT-PIPE PT-ERR 32 PT-PIPE PROCESS:RUN
    PT-EXITED {: o:len e:len code:n :}
    s" run: pipes on all three streams" T-LABEL
    e LEN>N 0 T=
-   PT-OUT o LEN>N s" chosen" T$=
+   PT-OUT o LEN>N >str s" chosen" T$=
    code 0 T= ;
 
 : TEST-RUN-STDOUT-CAPACITY ( -- )
@@ -944,7 +942,7 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
 
 : PT-RUN-OUT$ ( -- str )
    PT-RUN-OUT PT-PWD-OUT PT-PWD-CAP FS:READ-ALL {: n:n :}
-   PT-PWD-OUT n ;
+   PT-PWD-OUT n >str ;
 
 : TEST-RUN-INHERIT-SLOT ( -- )
    PT-RUN-FILES {: in out :}
@@ -967,8 +965,8 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    in close  out close
    s" run: null overrides the request's FD" T-LABEL
    o LEN>N 0 T=
-   PT-ERR e LEN>N s\" err\n" T$=
-   PT-RUN-OUT$ nip 0 T=
+   PT-ERR e LEN>N >str s\" err\n" T$=
+   PT-RUN-OUT$ STR:LEN 0 T=
    code 0 T= ;
 
 \ FD 0 names in, closed, and FD 3 out. RUN refuses the request before a
@@ -988,7 +986,7 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    [: in out PT-RUN-CLOSED-FD ;] E-PROC-SPAWN TTHROWSQ
    PROCESS:ERRNO FS:EBADF T=
    out close
-   PT-RUN-OUT$ nip 0 T= ;
+   PT-RUN-OUT$ STR:LEN 0 T= ;
 
 \ Run in a subject child: with fd 0 closed, cat's inherited stdin is closed too,
 \ so cat fails at once rather than read its own stdout pipe.
@@ -1000,16 +998,16 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    0<> if s" cat-failed" type then ;
 
 : TEST-RUN-CLOSED-STDIN ( -- )
-   s" PT-RUN-CLOSED-STDIN" {: src:^ srcu:n :}
-   src srcu PT-SUB-OUT 64 >LEN PT-SUB-ERR 256 >LEN 10000 >MS SUBJECT:RUN
+   s" PT-RUN-CLOSED-STDIN" {: src:str :}
+   src PT-SUB-OUT 64 >LEN PT-SUB-ERR 256 >LEN 10000 >MS SUBJECT:RUN
    {: o:len e:len ending :}
    s" run: a closed parent stdin stays closed in the child" T-LABEL
-   PT-SUB-OUT o LEN>N s" cat-failed" T$=
+   PT-SUB-OUT o LEN>N >str s" cat-failed" T$=
    ending MATCH PROCESS:ending
      exited OF 0 T= ENDOF
      signaled OF drop 1 0 T= ENDOF
      timeout OF
-        src srcu PT-SUB-OUT o LEN>N PT-SUB-ERR e LEN>N SUBJECT:TIMED-OUT
+        src PT-SUB-OUT o LEN>N >str PT-SUB-ERR e LEN>N >str SUBJECT:TIMED-OUT
      ENDOF
    ;MATCH ;
 
