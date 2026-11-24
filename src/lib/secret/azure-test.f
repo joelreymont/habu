@@ -11,7 +11,8 @@
 \ after the vector's bytes; a 404 not a miss or changing the vector; a 403,
 \ or a metadata 400 during a read, not E-ACCESS; a 503, or a metadata 410
 \ during a read, not E-UNAVAILABLE; another service, an account with `/` or
-\ of 128 bytes not E-CONFIG, or sending a request; a write or erase
+\ of 128 bytes not E-CONFIG, or sending a request; a malformed 200 vault or
+\ metadata answer's bytes in the JSON code's text; a write or erase
 \ admitted; an http URL to another host bound, or a refused bind changing
 \ the bound store; tasks reading at once given another's value, or never
 \ two vault requests in flight at once.
@@ -26,6 +27,8 @@ require src/lib/string.f
 require src/lib/task.f
 require src/lib/vector.f
 require src/lib/net/http.f
+require src/lib/json.f
+require src/lib/reason.f
 
 package SECRET-AZURE-TEST
 private
@@ -46,6 +49,7 @@ TYPED-VARIABLE OUT-VEC ^VEC:vector<u8>
 TYPED-VARIABLE ORIGIN-VEC ^VEC:vector<u8>
 variable ASKS                       \ requests either route has seen
 variable IMDS-STATUS                \ the metadata route's status for a good ask
+variable IMDS-MALFORMED             \ nonzero: the metadata route's 200 is malformed
 variable IN-FLIGHT                  \ vault requests being answered
 variable PEAK                       \ the most IN-FLIGHT has been
 variable HOLD-DUE                   \ mono-ns the vault route holds until, or 0
@@ -69,6 +73,13 @@ TASK:MIN-STACK TASK:TASK READER-7
    S\" {\"access_token\":\"vault-token\",\"expires_in\":\"30\"}" ;
 : ESCAPED-ANSWER$ ( -- str )
    S\" {\"id\":\"escaped\",\"value\":\"a\\\"b\\\\c\\u00e9\\/d\"}" ;
+: SECRET-MARK$ ( -- str ) s" SECRETMARK" ;
+: TOKEN-MARK$ ( -- str ) s" TOKENMARK" ;
+: MALFORMED-VALUE$ ( -- str ) S\" {\"value\": SECRETMARK}" ;
+: MALFORMED-TOKEN$ ( -- str ) S\" {\"access_token\":\"x\" TOKENMARK}" ;
+: CONTROL-VALUE$ ( -- str ) S\" {\"value\": \"SECRETMARK\x01\"}" ;
+: LITERAL-VALUE$ ( -- str ) S\" {\"value\": tSECRETMARK}" ;
+: LEAD-BYTE-VALUE$ ( -- str ) S\" {\"value\": \x01SECRETMARK}" ;
 : OUT ( -- ^VEC:vector<u8> ) OUT-VEC @ ;
 : OUT$ ( -- str ) OUT VEC:SPAN SPAN:$ ;
 : ORIGIN$ ( -- str ) ORIGIN-VEC @ VEC:SPAN SPAN:$ ;
@@ -109,7 +120,7 @@ TASK:MIN-STACK TASK:TASK READER-7
    LONG-U 0 ?do [char] a LONG i + c! loop
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW OUT-VEC !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ORIGIN-VEC !
-   200 IMDS-STATUS !  0 ASKS ! ;
+   200 IMDS-STATUS !  0 IMDS-MALFORMED !  0 ASKS ! ;
 
 
 \ Whether the query's parameter, decoded into the vector, is the text.
@@ -138,6 +149,7 @@ TASK:MIN-STACK TASK:TASK READER-7
    v VEC:DELETE
    ok 0= if answer 400 HTTP:STATUS! exit then
    IMDS-STATUS @ 200 <> if answer IMDS-STATUS @ HTTP:STATUS! exit then
+   IMDS-MALFORMED @ if answer MALFORMED-TOKEN$ HTTP:BODY! exit then
    answer TOKEN-ANSWER$ HTTP:BODY! ;
 
 
@@ -162,6 +174,10 @@ TASK:MIN-STACK TASK:TASK READER-7
       answer s" Forbidden: the caller may not get secrets" HTTP:BODY! exit
    then
    name s" busy" STR:= if answer 503 HTTP:STATUS! exit then
+   name s" malformed" STR:= if answer MALFORMED-VALUE$ HTTP:BODY! exit then
+   name s" control" STR:= if answer CONTROL-VALUE$ HTTP:BODY! exit then
+   name s" literal" STR:= if answer LITERAL-VALUE$ HTTP:BODY! exit then
+   name s" lead-byte" STR:= if answer LEAD-BYTE-VALUE$ HTTP:BODY! exit then
    name SLOT-OF {: k:n :}
    k 0 < if answer 404 HTTP:STATUS! exit then
    answer k BODY$ HTTP:BODY! ;
@@ -243,6 +259,44 @@ TASK:MIN-STACK TASK:TASK READER-7
    200 IMDS-STATUS ! ;
 
 
+\ Reading the account is E-ACCESS; code's text after it.
+: READ-TEXT ( str n -- str )
+   {: account:str code:n :}
+   account SECRET:E-ACCESS READS-ITEM
+   code REASON:TEXT$ ;
+
+: SHOWS-HIDDEN ( str n str -- )
+   {: account:str code:n mark:str :}
+   account code READ-TEXT {: text:str :}
+   text s" (hidden)" STR:COUNT-SUB 0 > TTRUE
+   text mark STR:COUNT-SUB 0 T= ;
+
+: CONTROL-HIDDEN ( -- )
+   s" control" E-JSON-READ-STRING READ-TEXT {: text:str :}
+   text s" found (hidden)" STR:COUNT-SUB 0 > TTRUE
+   text s" $01" STR:COUNT-SUB 0 T=
+   text s" the control byte" STR:COUNT-SUB 0 T= ;
+
+: LITERAL-HIDDEN ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   s" literal" E-JSON-READ-MALFORMED READ-TEXT v VEC:APPEND
+   s" lead-byte" E-JSON-READ-MALFORMED READ-TEXT  v VEC:SPAN SPAN:$  T$=
+   v VEC:DELETE ;
+
+: TEST-HIDDEN ( -- )
+   s" a malformed 200 vault answer's bytes are hidden" T-LABEL
+   s" malformed" E-JSON-READ-MALFORMED SECRET-MARK$ SHOWS-HIDDEN
+   s" a 200 vault answer's control byte is hidden" T-LABEL
+   CONTROL-HIDDEN
+   s" a vault answer's misspelt literal names no literal" T-LABEL
+   LITERAL-HIDDEN
+   s" a malformed 200 metadata answer's bytes are hidden" T-LABEL
+   1 IMDS-MALFORMED !
+   s" escaped" E-JSON-READ-COMMA TOKEN-MARK$ SHOWS-HIDDEN
+   0 IMDS-MALFORMED !
+   REASON:HIDDEN? TFALSE ;
+
+
 : TEST-REFUSALS ( -- )
    ASKS @ {: seen:n :}
    s" another service is E-CONFIG with no request" T-LABEL
@@ -307,7 +361,7 @@ TASK:MIN-STACK TASK:TASK READER-7
 
 
 : CASES ( -- )
-   SERVE TEST-READS TEST-REFUSALS TEST-TASKS ;
+   SERVE TEST-READS TEST-HIDDEN TEST-REFUSALS TEST-TASKS ;
 
 
 : TEST-MAIN ( -- )

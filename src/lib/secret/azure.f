@@ -22,6 +22,7 @@
 require src/lib/secret.f
 require src/lib/net/bearer.f
 require src/lib/net/curl.f
+require src/lib/reason.f
 require src/lib/uri.f
 require src/lib/json.f
 require src/lib/log.f
@@ -125,7 +126,7 @@ HEAP AZURE-CURSOR JSON:cursor
 : AZURE-PARSED? ( ^VEC:vector<u8> ^VEC:vector<u8> -- bool )
    {: dest:^ buf:^ :}
    AZURE-CURSOR-NEW {: c:^ :}
-   [: c dest buf AZURE-DECODE ;]
+   [: [: c dest buf AZURE-DECODE ;] REASON:HIDDEN ;]
    [: c JSON:READ-DISPOSE c AZURE-CURSOR-RELEASE ;] finally ;
 
 

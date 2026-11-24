@@ -50,6 +50,7 @@ require src/lib/adt/option.f
 require src/lib/crypto/evp.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
+require src/lib/reason.f
 require src/lib/uri.f
 
 package BEARER
@@ -1032,7 +1033,7 @@ private
 
 : PARSED ( n SPAN:span<u8> SPAN:span<u8> bool -- n n n )
    {: status:n text room renew:bool :}
-   text room renew -1 -1 -1 [: KEPT ;] catch {: code:n :}
+   text room renew -1 -1 -1 [: [: KEPT ;] REASON:HIDDEN ;] catch {: code:n :}
    code 0= if {: text room renew:bool got:n secs:n kept:n :} got secs kept exit then
    2drop 2drop 2drop
    code MALFORMED? if

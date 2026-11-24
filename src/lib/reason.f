@@ -12,10 +12,10 @@ split-str
 \ reads its own. A text is written between REASON:OPEN and REASON:STOP; only
 \ REASON's part words and pure reads run between them, since an OPEN there
 \ would clear the text being written.
-\ STORAGE CLASS. TASK-LOCAL: one code cell and two vector cells per task, the
-\ last text and the next, in the REASON-ABI band (src/habu/layout.f); a vector
-\ is made on its first use and TASK releases both as each activation ends; the
-\ main task's vectors last the process.
+\ STORAGE CLASS. TASK-LOCAL: per task one code cell, two vector cells, the
+\ last text and the next, and a hide count, in the REASON-ABI band
+\ (src/habu/layout.f); a vector is made on its first use and TASK releases
+\ both as each activation ends; the main task's vectors last the process.
 
 require src/habu/layout.f
 require src/core/exit-status.f
@@ -28,12 +28,12 @@ require src/lib/unicode/visible.f
 package REASON
 EXPORT BOOT:data-base
 
-\ The band states each text's width in bytes; a narrower one would let a
-\ vector cell's store reach the next band.
+\ The band states each cell's width in bytes; a narrower one would let the
+\ last cell's store reach the next band.
 : BAND-AGREE ( -- )
    REASON-ABI:NEXT-OFF REASON-ABI:TEXT-OFF -  CELL <>
-   REASON-ABI:END REASON-ABI:NEXT-OFF -  CELL <>  or if
-      s" reason: a vector cell differs from the REASON-ABI band's text bytes"
+   REASON-ABI:END REASON-ABI:HIDE-OFF -  CELL <>  or if
+      s" reason: a cell differs from the REASON-ABI band's widths"
       EXIT-STATUS:INTERNAL die
    then ;
 BAND-AGREE
@@ -41,6 +41,9 @@ BAND-AGREE
 \ The code of the task's last REASON:THROW, zero while LAST-TEXT holds none.
 : LAST-CODE ( -- ^n )
    data-base REASON-ABI:CODE-OFF + ;
+
+: HIDE-COUNT ( -- ^n )
+   data-base REASON-ABI:HIDE-OFF + ;
 
 \ The band's text cells hold a vector's address.
 CAST: >TEXT-CELL ( ^n -- ^^VEC:vector<u8> )
@@ -64,6 +67,15 @@ CAST: >TEXT-CELL ( ^n -- ^^VEC:vector<u8> )
    c @ VEC:DELETE  NULL-PTR c ! ;
 
 public
+
+\ Whether input is hidden: inside HIDDEN.
+: HIDDEN? ( -- bool )  HIDE-COUNT @ 0 > ;
+
+\ Runs the quotation with VISIBLE, QUOTE and BYTE writing `(hidden)` for the
+\ input's bytes; nested runs stay hidden until the outermost ends.
+: HIDDEN ( R [ R -- S ] -- S )
+   {: body :}
+   1 HIDE-COUNT +!  body [: -1 HIDE-COUNT +! ;] finally ;
 
 \ The text of the calling task's last REASON:THROW when that threw code n, else
 \ empty; valid until the task's next REASON:THROW or REASON:STOP.
@@ -106,20 +118,24 @@ public
 
 : FIX ( -- )  s" ; " APPEND ;
 
-\ Appends the span's visible form.
+\ Appends the span's visible form, or `(hidden)` inside HIDDEN.
 : VISIBLE ( str -- ) {: a:^ u:n :}
+   HIDDEN? if s" (hidden)" APPEND exit then
    a u NEXT-TEXT UNICODE-VISIBLE:APPEND ;
 
 \ Appends the span's visible form in backticks, with `...` before the closing
-\ one when the flag is true.
+\ one when the flag is true, or `(hidden)` alone inside HIDDEN.
 : QUOTE ( str bool -- ) {: a:^ u:n cut:bool :}
+   HIDDEN? if s" (hidden)" APPEND exit then
    s" `" APPEND
    a u VISIBLE
    cut if s" ..." APPEND then
    s" `" APPEND ;
 
-\ Appends `byte $HH`.
-: BYTE ( n -- )  s" byte $" APPEND  2 FMT:HEX-WIDTH$ APPEND ;
+\ Appends `byte $HH`, or `(hidden)` inside HIDDEN.
+: BYTE ( n -- )
+   HIDDEN? if drop s" (hidden)" APPEND exit then
+   s" byte $" APPEND  2 FMT:HEX-WIDTH$ APPEND ;
 
 \ Throws code n with the next text through REASON:THROW.
 : STOP ( n -- ) {: code:n :}

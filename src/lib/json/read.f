@@ -475,6 +475,10 @@ private
 \ READ-VALUE sends only t, f and n to READ-LIT, so a value phase rejected at
 \ one of them rejected a misspelt literal.
 : MALFORMED-ADVICE ( n n n -- str str ) {: st:n b:n prior:n :}
+   REASON:HIDDEN? if
+      st STATE-EXPECTED
+      st -1 -1 MALFORMED-FIX exit
+   then
    st ST-VALUE = st ST-ELEM = or b LITERAL? and if
       b LITERAL$
       s" write the word in full and in lower case, or quote the text as a string"
@@ -485,6 +489,10 @@ private
 : STRING-ADVICE ( n -- str str ) {: b:n :}
    b 0 < if
       s\" the closing `\"` of the string" s\" close the string with `\"`" exit
+   then
+   REASON:HIDDEN? if
+      s" a UTF-8 character or an escape"
+      s" write the text in UTF-8, with control bytes as escapes" exit
    then
    b SP < if
       s" a character or an escape"
