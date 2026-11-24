@@ -30,12 +30,11 @@ require src/lib/pg-rows.f
 
 package PG-TEST
 
-\ Three workers open a connection each, beside the main task's one.
-3 PG:CONNECTIONS+
-
+3 constant CONNECTIONS            \ the most this file holds at once
+64 constant RESULTS               \ live results across every connection
 3 constant READERS                \ the main task and two workers
-\ More reads than PG's 64 live results, so a refusal that left its result
-\ behind would end in PG:E-CAPACITY before the loop does.
+\ More reads than RESULTS, so a refusal that left its result behind would
+\ end in PG:E-CAPACITY before the loop does.
 70 constant OVER-RESULTS
 $5000 constant LONG-TEXT          \ a text longer than an arena's first chunk
 
@@ -44,6 +43,14 @@ TYPED-VARIABLE CONN PG:connection
 
 : CONNINFO$ ( -- str )
    0 SCRIPT-ARGV$ ;
+
+
+: OPEN ( str -- PG:connection )
+   CONNECTIONS RESULTS PG:CONFIGURE
+   s" " PG:CONNECT MATCH PG:connect-result
+      connected OF ENDOF
+      refused OF 2drop PG:E-CONNECT throw ENDOF
+   ;MATCH ;
 
 : PERSON-SQL$ ( -- str )
    s" select id, name, nick, score, boss, active from person where id = $1" ;
@@ -329,8 +336,8 @@ TYPED-VARIABLE LOST-B PG:connection
 
 
 : OPEN-AB ( -- )
-   CONNINFO$ PG:OPEN LOST-A !
-   CONNINFO$ PG:OPEN LOST-B ! ;
+   CONNINFO$ OPEN LOST-A !
+   CONNINFO$ OPEN LOST-B ! ;
 
 : CLOSE-AB ( -- )
    LOST-A @ PG:LIVE? if LOST-A @ PG:CLOSE then
@@ -452,20 +459,11 @@ TYPED-VARIABLE LOST-B PG:connection
    CLOSE-AB ;
 
 
-: REFUSED-OPEN ( -- )
-   s" host=127.0.0.1 port=1 connect_timeout=2" PG:OPEN PG:CLOSE ;
-
-
 : DECLARATION-CASES ( -- )
-   PG:CONNECTIONS 4 T=
-   s" CONNECTIONS+ after the first OPEN" T-LABEL
-   [: 1 PG:CONNECTIONS+ ;] PG:E-CAPACITY TTHROWSQ
    s" the same reader count again is harmless" T-LABEL
    [: READERS PG:CONFIGURE-READERS ;] 0 TTHROWSQ
    s" a different reader count" T-LABEL
-   [: READERS 1 + PG:CONFIGURE-READERS ;] PG:E-CAPACITY TTHROWSQ
-   s" a refused connection" T-LABEL
-   [: REFUSED-OPEN ;] PG:E-CONNECT TTHROWSQ ;
+   [: READERS 1 + PG:CONFIGURE-READERS ;] PG:E-CAPACITY TTHROWSQ ;
 
 
 2 TYPED-BUFFER SIDE-CONN PG:connection
@@ -510,7 +508,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 
 : SIDE ( n -- ) {: k:n :}
-   CONNINFO$ PG:OPEN k SIDE-CONN !
+   CONNINFO$ OPEN k SIDE-CONN !
    k 0<> if begin ARRIVED atomic@ 1 < while TASK:PAUSE repeat then
    k SIDE-CONN @ k 1 + NAME-OF {: a:^ u:n :}
    k 0= if
@@ -547,7 +545,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 
 : THIRD-SIDE ( -- )
-   CONNINFO$ PG:OPEN THIRD-CONN !
+   CONNINFO$ OPEN THIRD-CONN !
    [: THIRD-READ ;] catch THIRD-CODE !
    [: THIRD-DDL ;] catch THIRD-EXEC-CODE !
    THIRD-CONN @ PG:CLOSE ;
@@ -596,7 +594,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 
 : SESSION ( -- )
-   CONNINFO$ PG:OPEN CONN !
+   CONNINFO$ OPEN CONN !
    SEED
    OUTLIVES-CASES
    ADA-CASES

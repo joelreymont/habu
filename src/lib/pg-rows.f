@@ -1,10 +1,9 @@
 split-str
-\ pg-rows.f - package PG's connections per module, statements and row readers.
-\ Before the first OPEN, read or query: `n PG:CONNECTIONS+` in each module for
-\ the connections it opens, and `n PG:CONFIGURE-READERS` once for the tasks
+\ pg-rows.f - package PG's statements and row readers.
+\ Before the first read or query: `n PG:CONFIGURE-READERS` once for the tasks
 \ that read rows or run queries. Span lifetimes: above NO-TASK.
 \ STORAGE CLASS. TASK-LOCAL arenas and refusal texts, one row per reading task;
-\ the declared connection and reader counts are PROCESS-WIDE.
+\ the declared reader count is PROCESS-WIDE.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -15,9 +14,8 @@ require src/lib/task.f
 require src/lib/pg.f
 
 \ PG's row readers: -9320..-9329. Minted
-\ here, beside the words that throw them (docs/forth-card.md § 6). A refused
-\ OPEN is E-CONNECT and a declaration out of range or changed after use is
-\ E-CAPACITY, PG's own codes.
+\ here, beside the words that throw them (docs/forth-card.md § 6). A reader
+\ declaration out of range or changed is E-CAPACITY, PG's own code.
 -9320 constant E-DB-FIRST
 -9329 constant E-DB-LAST
 
@@ -32,15 +30,8 @@ public
 
 private
 
-64 constant RESULTS               \ live results across every connection
 $4000 constant READ-CAP           \ an arena's first chunk, and the least a later one maps
 $74 constant TRUE-BYTE            \ PostgreSQL renders a boolean as 't' or 'f'
-
-\ The process entry owns one connection. Each module that opens connections
-\ declares its maximum beside the storage that owns them, before the first OPEN.
-variable CONNECTION-N
-1 CONNECTION-N !
-variable CONNECTIONS-FROZEN
 
 \ A record outlives the result it was read from, so every span it carries is
 \ copied into the reading task's own arena first, and the result's scope clears
@@ -211,43 +202,6 @@ public
    readers REFUSAL-RESERVE
    readers REFUSAL-U-RESERVE
    readers READER-N ! ;
-
-
-\ The declared connection count, also used by suites that deliberately leave
-\ a stated number of free connections.
-: CONNECTIONS ( -- n ) CONNECTION-N @ ;
-
-
-\ A load-time declaration, not a change to a running registry. PG allocates
-\ the combined capacity on the first OPEN and keeps that bound for the process.
-: CONNECTIONS+ ( n -- ) {: count:n :}
-   count 0 <= CONNECTIONS-FROZEN @ 0<> or if E-CAPACITY throw then
-   count CONNECTION-N +! ;
-
-
-\ The attempt for a caller that drives POLL itself.
-: OPEN-START ( str -- PG:connection )
-   CONNECTIONS RESULTS CONFIGURE
-   1 CONNECTIONS-FROZEN !
-   s" " CONNECT-START ;
-
-
-\ A connection for the calling task. The refusal text is libpq's and can name
-\ the server and the user, so it stays inside the module and the caller gets
-\ the code. AWAIT waits through AIO, so AIO:START comes first.
-: OPEN ( str -- PG:connection )
-   OPEN-START AWAIT MATCH progress
-      connected OF ENDOF
-      refused OF 2drop E-CONNECT throw ENDOF
-      waiting OF 2drop E-CONNECT throw ENDOF
-      completed OF CLEAR E-CONNECT throw ENDOF
-   ;MATCH ;
-
-
-\ An empty conninfo makes libpq read PGHOST, PGPORT, PGDATABASE, PGUSER and
-\ PGPASSWORD from the environment.
-: OPEN-ENV ( -- PG:connection )
-   s" " OPEN ;
 
 
 \ Starts a read on this task: the spans of its previous read are given up, and
