@@ -19255,7 +19255,7 @@ variable SV-FV    variable SV-SPN   variable SV-PFN   variable SV-FACTS
 variable SV-QEN   variable SV-PTRN  variable SV-STLN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK  variable SV-UNSEEN
 variable SV-FSET  variable SV-DEXP  variable SV-DEND  variable SV-DACT  variable SV-RSBAD  variable SV-DF-ACT  variable SV-DF-EXP
-variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
+variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG  variable SV-MCELL  variable SV-MCELL-VAR
 variable SV-SGBAD
 PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
@@ -19281,7 +19281,8 @@ variable TCLOSE  variable TBEST  variable TREACH
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !  UNSEEN @ SV-UNSEEN !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DEND @ SV-DEND !  DACT @ SV-DACT !  RSBAD @ SV-RSBAD !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
-   MDIAG @ SV-MDIAG !                     \ the reason is part of the cursor a trial may abandon
+   \ the reason and its cells are part of the cursor a trial may abandon
+   MDIAG @ SV-MDIAG !  MDIAG-CELL @ SV-MCELL !  MDIAG-CELL-VAR @ SV-MCELL-VAR !
    SGBAD @ SV-SGBAD !  SGBAD-A @ SV-SGBAD-A !
    SGBAD-U @ SV-SGBAD-U !  SGBAD-KIND @ SV-SGBAD-KIND !
    SGBAD-AR-DECL @ SV-SGBAD-AR-DECL !  SGBAD-AR-GOT @ SV-SGBAD-AR-GOT !
@@ -19315,7 +19316,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !  SV-UNSEEN @ UNSEEN !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DEND @ DEND !  SV-DACT @ DACT !  SV-RSBAD @ RSBAD !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
-   SV-MDIAG @ MDIAG !
+   SV-MDIAG @ MDIAG !  SV-MCELL @ MDIAG-CELL !  SV-MCELL-VAR @ MDIAG-CELL-VAR !
    SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
    SV-RAWFENCE @ RAW-FENCE !  SV-CELLHIT @ CELL-HIT !  SV-CELLTYPE @ CELL-HIT-TYPE !  SV-CELLVAR @ ONE-CELL-VAR !
    SV-FACT @ FACT-HIT !  SV-FTERM @ FACT-TERM !  SV-FKIND @ FACT-KIND !
@@ -24769,7 +24770,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 ZSHAPE !
    0 CHECKER-MATCH-MODE !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
-   0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !  0 MDIAG-ZIN !
+   0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !  0 MDIAG-ZIN !  0 MDIAG-CELL !  0 MDIAG-CELL-VAR !
    0 UNFIT !
    FENCE-OK RAW-FENCE !  0 CELL-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 RSR-EXP !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
