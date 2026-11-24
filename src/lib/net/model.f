@@ -2521,131 +2521,106 @@ private
    s" type" DESCEND
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then ;
 
-\ Moves the reader from an array's opener to its element at the index, an
-\ object; false past the array's end.
-: ELEMENT ( JSON:reader n -- JSON:reader bool )
-   0 ?do
-      JSON:READ-NEXT JSON:T-ARR-END = if false unloop exit then
-      JSON:READ-SKIP-VALUE
-   loop
-   JSON:READ-NEXT dup JSON:T-ARR-END = if drop false exit then
-   JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-   true ;
-
 \ The reader past the opener of the reply's output array.
 : OUTPUT-AT ( ^call -- JSON:reader )
    {: c :}
    s" output" c REPLY-AT
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then ;
 
-\ The reader at the output item at the index; false past the last item.
-: ITEM ( n ^call -- JSON:reader bool )
-   {: idx:n c :}
-   c OUTPUT-AT idx ELEMENT ;
+\ The object's member under the name; none is E-RESPONSE.
+: MEMBER ( JSON:value str -- JSON:value )
+   JSON:FIND MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
-\ The reader at the content part at the index of the message item at the
-\ index; false past the last part.
-: PART ( n n ^call -- JSON:reader bool )
-   {: idx:n part:n c :}
-   idx c ITEM drop
-   s" content" DESCEND
-   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   part ELEMENT ;
+: STRING-MEMBER ( JSON:value str -- JSON:value )
+   MEMBER {: s :}
+   s JSON:STRING? 0= if E-RESPONSE throw then
+   s ;
+
+: ARRAY-MEMBER ( JSON:value str -- JSON:value )
+   MEMBER {: a :}
+   a JSON:ARRAY? 0= if E-RESPONSE throw then
+   a ;
+
+\ The type of an output item or content part, each an object with a string
+\ type.
+: TYPE-OF ( JSON:value -- JSON:value )
+   {: v :}
+   v JSON:OBJECT? 0= if E-RESPONSE throw then
+   v s" type" STRING-MEMBER ;
 
 \ The text of the answer message's output_text part (ANSWER?) is the content;
 \ a reply holds one, so a second, in any answer message, is E-RESPONSE.
-: READ-TEXT ( n n ^call -- )
-   {: idx:n part:n c :}
+: READ-TEXT ( JSON:value ^call -- )
+   {: p c :}
    c MODEL-CALL:CONTENT-SEEN @ if E-RESPONSE throw then
-   idx part c PART drop
-   s" text" DESCEND
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR c MODEL-CALL:CONTENT-U !
-   JSON:READ-CLOSE
+   p s" text" STRING-MEMBER
+   [: dup c MODEL-CALL:CONTENT-U !
+      BUF:N>BLEN c CONTENT-BUF BUF:REPLACE ;] JSON:WITH-STRING
    true c MODEL-CALL:CONTENT-SEEN ! ;
 
-\ Reads the message's content part at the index; false past the last part.
-: READ-PART ( n n ^call -- bool )
-   {: idx:n part:n c :}
-   idx part c PART 0= if JSON:READ-CLOSE false exit then
-   TYPE-AT
-   s" refusal" JSON:READ-STR-EQ? if JSON:READ-CLOSE E-REFUSED throw then
-   s" output_text" JSON:READ-STR-EQ? {: text:bool :}
-   JSON:READ-CLOSE
-   text if idx part c READ-TEXT then
-   true ;
+: READ-PART ( JSON:value ^call -- )
+   {: p c :}
+   p TYPE-OF {: t :}
+   t s" refusal" JSON:STRING= if E-REFUSED throw then
+   t s" output_text" JSON:STRING= if p c READ-TEXT then ;
 
-\ Whether the message item at the index is the answer: no phase, null or
-\ final_answer is; commentary is a progress note; any other is E-RESPONSE.
-: ANSWER? ( n ^call -- bool )
-   {: idx:n c :}
-   idx c ITEM drop
-   s" phase" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE true exit then
-   JSON:READ-TOKEN dup JSON:T-NULL = if drop JSON:READ-CLOSE true exit then
-   JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   s" final_answer" JSON:READ-STR-EQ? {: final:bool :}
-   s" commentary" JSON:READ-STR-EQ? {: note:bool :}
-   JSON:READ-CLOSE
-   final note or 0= if E-RESPONSE throw then
-   final ;
+\ Whether a message's phase marks the answer: null or final_answer does;
+\ commentary is a progress note; any other is E-RESPONSE.
+: ANSWER-PHASE? ( JSON:value -- bool )
+   {: p :}
+   p JSON:NULL? if true exit then
+   p JSON:STRING? 0= if E-RESPONSE throw then
+   p s" final_answer" JSON:STRING= if true exit then
+   p s" commentary" JSON:STRING= 0= if E-RESPONSE throw then
+   false ;
 
-\ Reads the output item at the index if it is an answer message; false past
-\ the last. Members come in any order, so type and phase each take a pass.
-: READ-ITEM ( n ^call -- bool )
-   {: idx:n c :}
-   idx c ITEM 0= if JSON:READ-CLOSE false exit then
-   TYPE-AT s" message" JSON:READ-STR-EQ? {: message:bool :}
-   JSON:READ-CLOSE
-   message if
-      idx c ANSWER? if
-         0 begin idx over c READ-PART while 1+ repeat drop
-      then
-   then
-   true ;
+\ A message with no phase is the answer.
+: ANSWER? ( JSON:value -- bool )
+   s" phase" JSON:FIND MATCH option
+      none OF true ENDOF
+      some OF ANSWER-PHASE? ENDOF
+   ;MATCH ;
 
-: READ-OUTPUT ( ^call -- )
-   {: c :}
+\ Reads the parts of the output item if it is an answer message.
+: READ-ITEM ( JSON:value ^call -- )
+   {: v c :}
+   v TYPE-OF s" message" JSON:STRING= 0= if exit then
+   v ANSWER? 0= if exit then
+   v s" content" ARRAY-MEMBER [: c READ-PART ;] JSON:EACH ;
+
+: READ-OUTPUT ( JSON:value ^call -- )
+   {: v c :}
    false c MODEL-CALL:CONTENT-SEEN !
    0 c MODEL-CALL:CONTENT-U !
-   0 begin dup c READ-ITEM while 1+ repeat drop
+   v s" output" ARRAY-MEMBER [: c READ-ITEM ;] JSON:EACH
    c MODEL-CALL:CONTENT-SEEN @ 0= if E-RESPONSE throw then ;
 
-\ Reads the content part at the index of the message item at the index; false
-\ past the last part, E-REFUSED on a refusal.
-: PART-REFUSED ( n n ^call -- bool )
-   {: idx:n part:n c :}
-   idx part c PART 0= if JSON:READ-CLOSE false exit then
-   TYPE-AT s" refusal" JSON:READ-STR-EQ? {: refused:bool :}
-   JSON:READ-CLOSE
-   refused if E-REFUSED throw then
-   true ;
-
 \ A message in a tools reply: E-REFUSED if a part refuses, else E-RESPONSE.
-: TOOL-MESSAGE ( n ^call -- )
-   {: idx:n c :}
-   0 begin idx over c PART-REFUSED while 1+ repeat drop
+: TOOL-MESSAGE ( JSON:value -- )
+   s" content" ARRAY-MEMBER
+   [: TYPE-OF s" refusal" JSON:STRING= if E-REFUSED throw then ;]
+   JSON:EACH
    E-RESPONSE throw ;
 
-\ Counts a function call at the index and skips reasoning; a message is
-\ TOOL-MESSAGE's, any other type E-RESPONSE; false past the last item.
-: READ-TOOL ( n n ^call -- n n bool )
-   {: idx:n count:n c :}
-   idx c ITEM 0= if JSON:READ-CLOSE idx count false exit then
-   TYPE-AT
-   s" function_call" JSON:READ-STR-EQ? {: called:bool :}
-   s" reasoning" JSON:READ-STR-EQ? {: thought:bool :}
-   s" message" JSON:READ-STR-EQ? {: message:bool :}
-   JSON:READ-CLOSE
-   message if idx c TOOL-MESSAGE then
-   called thought or 0= if E-RESPONSE throw then
-   idx count called if 1+ then true ;
+\ Counts a function call and skips reasoning; a message is TOOL-MESSAGE's,
+\ any other type E-RESPONSE.
+: READ-TOOL ( n JSON:value -- n )
+   {: count:n v :}
+   v TYPE-OF {: t :}
+   t s" message" JSON:STRING= if v TOOL-MESSAGE then
+   t s" function_call" JSON:STRING= if count 1+ exit then
+   t s" reasoning" JSON:STRING= 0= if E-RESPONSE throw then
+   count ;
 
 \ A tools reply answers exactly one function call, read whole by OUTPUT$; it
 \ leaves no content.
-: READ-TOOLS ( ^call -- )
-   {: c :}
+: READ-TOOLS ( JSON:value ^call -- )
+   {: v c :}
    0 c MODEL-CALL:CONTENT-U !
-   0 0 begin c READ-TOOL while swap 1+ swap repeat nip
+   0 v s" output" ARRAY-MEMBER [: READ-TOOL ;] JSON:EACH
    1 <> if E-RESPONSE throw then ;
 
 \ An incomplete reply keeps its reason in the content buffer: it has no
@@ -2711,11 +2686,11 @@ private
    c MODEL-CALL:FORM @ MATCH reply-form
       none OF E-RESPONSE throw ENDOF
       schema OF
-         c READ-OUTPUT
+         v c READ-OUTPUT
          c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
          JSON-OBJECT? 0= if E-RESPONSE throw then
       ENDOF
-      tools OF c READ-TOOLS ENDOF
+      tools OF v c READ-TOOLS ENDOF
    ;MATCH ;
 
 : VECTORS-U ( ^call -- n ) VECTORS-BUF BUF:LEN@ BUF:BLEN>N ;
