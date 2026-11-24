@@ -1,4 +1,3 @@
-split-str
 \ event-stream.f - incremental Server-Sent Events framing over arbitrary bytes, by
 \ the HTML "Parsing an event stream" algorithm (9.2.6); no socket, reconnect or
 \ queue, and comments, unknown fields, id and retry are ignored. FEED's callback
@@ -107,44 +106,49 @@ $BF constant BOM-THIRD
    {: state:^ ctx:a cb :}
    state DATA? 0= if state RESET-EVENT exit then
    FAILED state ST!
-   state EVENT VEC:SPAN SPAN:$ {: kind:^ ku:n :}
-   state BODY VEC:SPAN SPAN:$ {: body:^ bu:n :}
-   kind ku UTF8:VALID? 0= if E-UTF8 throw then
-   body bu 1- UTF8:VALID? 0= if E-UTF8 throw then
+   state EVENT VEC:SPAN SPAN:$ {: kind:str :}
+   state BODY VEC:SPAN SPAN:$ {: body:str :}
+   body STR:DATA body STR:LEN 1- >str {: data:str :}
+   kind UTF8:VALID? 0= if E-UTF8 throw then
+   data UTF8:VALID? 0= if E-UTF8 throw then
    ctx
-   ku 0= if s" message" else kind ku then
-   body bu 1- cb execute
+   kind STR:LEN 0= if s" message" else kind then
+   data cb execute
    state RESET-EVENT
    LIVE state ST! ;
 
 : COLON-AT ( str -- n )
-   {: src:^ u:n :}
-   u 0 ?do src i + c@ COLON = if i unloop exit then loop
-   u ;
+   {: src:str :}
+   src STR:LEN 0 ?do
+      src STR:DATA i + c@ COLON = if i unloop exit then
+   loop
+   src STR:LEN ;
 
 : SPLIT-FIELD ( str -- str str )
-   {: src:^ u:n :}
-   src u COLON-AT {: at:n :}
-   at u = if src u src u + 0 exit then
-   src at
-   src at 1+ + u at 1+ - {: value:^ vu:n :}
-   vu 0 > if value c@ SP = if value 1+ vu 1- exit then then
-   value vu ;
+   {: src:str :}
+   src COLON-AT {: at:n :}
+   at src STR:LEN = if
+      src  src STR:DATA src STR:LEN + 0 >str exit
+   then
+   src STR:DATA at >str
+   src STR:DATA at 1+ + src STR:LEN at 1+ - {: value:^ vu:n :}
+   vu 0 > if value c@ SP = if value 1+ vu 1- >str exit then then
+   value vu >str ;
 
 : FIELD-LINE ( ^state -- )
    {: state:^ :}
-   state LINE VEC:SPAN SPAN:$ {: src:^ u:n :}
-   src c@ COLON = if exit then
-   src u SPLIT-FIELD {: name:^ nu:n value:^ vu:n :}
-   name nu s" data" STR:= if
-      value vu state BODY VEC:APPEND
+   state LINE VEC:SPAN SPAN:$ {: src:str :}
+   src STR:DATA c@ COLON = if exit then
+   src SPLIT-FIELD {: name:str value:str :}
+   name s" data" STR:= if
+      value state BODY VEC:APPEND
       LF state BODY VEC:PUSH c!
       true state DATA!
       exit
    then
-   name nu s" event" STR:= if
+   name s" event" STR:= if
       state EVENT 0 VEC:RESIZE
-      value vu state EVENT VEC:APPEND
+      value state EVENT VEC:APPEND
    then ;
 
 : END-LINE ( ^state a [ a str str -- ] -- )
@@ -194,9 +198,9 @@ $BF constant BOM-THIRD
 
 \ The offset of the first CR or LF in the span, else its length.
 : TERM-AT ( str -- n )
-   {: src:^ u:n :}
-   0 begin dup u < while
-      dup src + c@ dup LF = swap CR = or if exit then
+   {: src:str :}
+   0 begin dup src STR:LEN < while
+      dup src STR:DATA + c@ dup LF = swap CR = or if exit then
       1+
    repeat ;
 
@@ -205,16 +209,16 @@ $BF constant BOM-THIRD
 \ the first non-LF byte. Terminators and BOM bytes go through BOM-BYTE. The
 \ answer is the number of bytes consumed.
 : STEP ( ^state str a [ a str str -- ] -- n )
-   {: state:^ src:^ u:n ctx:a cb :}
+   {: state:^ src:str ctx:a cb :}
    state BOM@ BOM-DONE = if
-      src u TERM-AT {: run:n :}
+      src TERM-AT {: run:n :}
       run 0 > if
          false state CR!
-         src run state LINE VEC:APPEND
+         src STR:DATA run >str state LINE VEC:APPEND
          run exit
       then
    then
-   state src c@ ctx cb BOM-BYTE
+   state src STR:DATA c@ ctx cb BOM-BYTE
    1 ;
 
 public
@@ -233,13 +237,15 @@ public
    state DECODER-MAKE ;
 
 : FEED ( decoder str a [ a str str -- ] -- )
-   {: d:decoder src:^ u:n ctx:a cb :}
+   {: d:decoder src:str ctx:a cb :}
    d DECODER-UNMAKE {: state:^ :}
    state CHECK-LIVE
-   u 0 < if E-SOURCE throw then
-   u 0 > src 0= and if E-SOURCE throw then
-   0 begin dup u < while
-      {: at:n :} state src at + u at - ctx cb STEP at +
+   src STR:LEN 0 < if E-SOURCE throw then
+   src STR:LEN 0 > src STR:DATA 0= and if E-SOURCE throw then
+   0 begin dup src STR:LEN < while
+      {: at:n :} state
+      src STR:DATA at + src STR:LEN at - >str
+      ctx cb STEP at +
    repeat drop ;
 
 : FINISH ( decoder -- )

@@ -1,4 +1,3 @@
-split-str
 \ curl.f - HTTPS client over libcurl's easy interface: one request and one
 \ response, with no retry policy, authentication, payload format or URL
 \ construction; TLS, redirects, proxies and the CA bundle are libcurl's. Every
@@ -309,14 +308,14 @@ CAST: >BYTES ( n -- ^u8 )
 
 
 : TEXT-SETOPT ( n n str SPAN:span<u8> -- n )
-   {: easy:n option:n text u:n copy :}
-   easy option text u copy FFI:CSTR FFI:>CELL SETOPT-NUM
+   {: easy:n option:n text:str copy :}
+   easy option text copy FFI:CSTR FFI:>CELL SETOPT-NUM
    copy TEXT-WIPE ;
 
 
 : SET-TEXT-RAW ( handle n str -- n )
-   {: subject:handle option:n text u:n :}
-   subject HANDLE-CELL option text u u TEXT-ROOM
+   {: subject:handle option:n text:str :}
+   subject HANDLE-CELL option text text STR:LEN TEXT-ROOM
    [: MEM:ALLOCATION>SPAN TEXT-SETOPT ;] MEM:WITH-BYTES ;
 
 
@@ -393,16 +392,16 @@ CAST: >BYTES ( n -- ^u8 )
 
 \ curl_slist_append duplicates the line into the node it adds.
 : TEXT-APPEND ( n str SPAN:span<u8> -- n )
-   {: old:n text u:n copy :}
-   old text u copy FFI:CSTR FFI:>CELL SLIST-APPEND
+   {: old:n text:str copy :}
+   old text copy FFI:CSTR FFI:>CELL SLIST-APPEND
    copy TEXT-WIPE ;
 
 
 : HEADER-APPEND ( n str -- status )
-   {: easy:n text u:n :}
+   {: easy:n text:str :}
    easy STATE-GET {: state:n :}
    state STATE-LIST@ {: old:n :}
-   old text u u TEXT-ROOM
+   old text text STR:LEN TEXT-ROOM
    [: MEM:ALLOCATION>SPAN TEXT-APPEND ;] MEM:WITH-BYTES {: list:n :}
    list 0= if OUT-OF-MEMORY exit then
    easy state old list HEADER-STORE ;
@@ -411,9 +410,9 @@ CAST: >BYTES ( n -- ^u8 )
 \ libcurl sends a header line as it is: a CR or LF inside it would end the line
 \ early and send the rest as a line of its own.
 : ONE-LINE ( str -- )
-   {: text u:n :}
-   u 0 ?do
-      text i + c@ dup $0D = swap $0A = or if E-OPERAND throw then
+   {: text:str :}
+   text STR:LEN 0 ?do
+      text STR:DATA i + c@ dup $0D = swap $0A = or if E-OPERAND throw then
    loop ;
 
 
@@ -456,7 +455,7 @@ CAST: >BYTES ( n -- ^u8 )
    true ;
 
 
-: BODY-COPY ( str n -- ) {: target source:n u:n :}
+: BODY-COPY ( ^u8 n n -- ) {: target source:n u:n :}
    u 0= if exit then
    source 0= if E-RESULT throw then
    target source u COPY-OUT drop ;
@@ -501,7 +500,7 @@ SCRATCH-VARIABLE GLOBAL-DONE
 \ With a write function set and none for headers, libcurl hands the header
 \ lines to the write function; fwrite keeps them in the capture stream.
 : HEADER-SINK ( n -- n ) {: easy:n :}
-   FFI:PROCESS-HANDLE s\" fwrite\z" drop FFI:DLSYM {: put:n :}
+   FFI:PROCESS-HANDLE s\" fwrite\z" STR:DATA FFI:DLSYM {: put:n :}
    put 0= if CURLE-FAILED-INIT exit then
    easy OPT-HEADER-FUNCTION put SETOPT-NUM ;
 
@@ -533,15 +532,15 @@ public
    easy >BYTES ADDR>HANDLE CURL-INIT--RESULT:READY ;
 
 
-: URL! ( handle str -- status ) {: subject:handle text u:n :}
-   u 1 AT-LEAST
-   subject OPT-URL text u SET-TEXT ;
+: URL! ( handle str -- status ) {: subject:handle text:str :}
+   text STR:LEN 1 AT-LEAST
+   subject OPT-URL text SET-TEXT ;
 
 
 \ An empty proxy disables proxies, including those named by the environment.
 : PROXY! ( handle str -- status )
-   {: subject:handle text u:n :}
-   subject OPT-PROXY text u SET-TEXT ;
+   {: subject:handle text:str :}
+   subject OPT-PROXY text SET-TEXT ;
 
 
 \ libcurl picks GET by default and POST once BODY! has been used. METHOD!
@@ -551,7 +550,7 @@ public
 \ uses BODY! alone.
 : METHOD! ( handle ^u8 n -- status ) {: subject:handle text u:n :}
    u 1 AT-LEAST
-   subject OPT-METHOD text u SET-TEXT ;
+   subject OPT-METHOD text u >str SET-TEXT ;
 
 
 \ Plain GET again: no body, no Content-Length or form Content-Type, and no
@@ -562,38 +561,38 @@ public
    subject OPT-METHOD 0 SET-NUM-RAW CODE>STATUS ;
 
 
-: HEADER+ ( handle str -- status ) {: subject:handle text u:n :}
-   u 1 AT-LEAST
-   text u ONE-LINE
-   subject HANDLE-CELL text u HEADER-APPEND ;
+: HEADER+ ( handle str -- status ) {: subject:handle text:str :}
+   text STR:LEN 1 AT-LEAST
+   text ONE-LINE
+   subject HANDLE-CELL text HEADER-APPEND ;
 
 
 \ The span is borrowed for this call: libcurl copies the body out of it, and its
 \ declared length is set first because the copy reads that length.
-: BODY! ( handle str -- status ) {: subject:handle bytes u:n :}
-   u 0 AT-LEAST
-   subject OPT-BODY-SIZE u SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
-   subject HANDLE-CELL OPT-COPY-BODY bytes SETOPT-SPAN CODE>STATUS ;
+: BODY! ( handle str -- status ) {: subject:handle bytes:str :}
+   bytes STR:LEN 0 AT-LEAST
+   subject OPT-BODY-SIZE bytes STR:LEN SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
+   subject HANDLE-CELL OPT-COPY-BODY bytes STR:DATA SETOPT-SPAN CODE>STATUS ;
 
 
 \ No copy: each transfer the handle runs before RESET or a new body reads these
 \ bytes, so none changes or frees them in flight, not even a task's cleanup.
-: BORROW-BODY! ( handle str -- status ) {: subject:handle bytes u:n :}
-   u 0 AT-LEAST
-   subject OPT-BODY-SIZE u SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
-   subject HANDLE-CELL OPT-BODY bytes SETOPT-SPAN CODE>STATUS ;
+: BORROW-BODY! ( handle str -- status ) {: subject:handle bytes:str :}
+   bytes STR:LEN 0 AT-LEAST
+   subject OPT-BODY-SIZE bytes STR:LEN SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
+   subject HANDLE-CELL OPT-BODY bytes STR:DATA SETOPT-SPAN CODE>STATUS ;
 
 
 \ Cookies read at request time. An empty path starts the cookie engine with no
 \ stored cookies, which is libcurl's own spelling for "keep session cookies".
-: COOKIE-FILE! ( handle str -- status ) {: subject:handle path u:n :}
-   subject OPT-COOKIE-FILE path u SET-TEXT ;
+: COOKIE-FILE! ( handle str -- status ) {: subject:handle path:str :}
+   subject OPT-COOKIE-FILE path SET-TEXT ;
 
 
 \ Cookies written back when the handle is cleaned up.
-: COOKIE-JAR! ( handle str -- status ) {: subject:handle path u:n :}
-   u 1 AT-LEAST
-   subject OPT-COOKIE-JAR path u SET-TEXT ;
+: COOKIE-JAR! ( handle str -- status ) {: subject:handle path:str :}
+   path STR:LEN 1 AT-LEAST
+   subject OPT-COOKIE-JAR path SET-TEXT ;
 
 
 \ The whole transfer's limit, not one read's. Zero removes it.
@@ -629,7 +628,7 @@ public
 \ libcurl's static text for the code, never freed and valid for the process;
 \ "Unknown error" for a code libcurl does not know.
 : ERROR$ ( code -- str )
-   CODE>N EASY-STRERROR dup ZLEN ;
+   CODE>N EASY-STRERROR dup ZLEN >str ;
 
 
 private
@@ -834,7 +833,7 @@ CAST: VEC-SLOT ( ^n -- ^^VEC:vector<u8> )
 : REC-OWNER@ ( n -- ^n ) REC R.OWNER OWNER-SLOT @ ;
 
 
-: REC-TARGET! ( str -- ) {: target idx:n :}
+: REC-TARGET! ( ^u8 n -- ) {: target idx:n :}
    target idx REC R.TARGET TARGET-SLOT ! ;
 
 
@@ -882,18 +881,19 @@ CAST: VEC-SLOT ( ^n -- ^^VEC:vector<u8> )
    r R.MODE @ MODE-CALLER <>  k r VEC@ ROOM >  and ;
 
 
-\ What libcurl hears back for u bytes at src: all of them, fewer when the limit
-\ cuts them, which ends the transfer, or a pause until the block has room.
-: PIECE-PUT ( str ^n -- n ) {: src:^ u:n r:^ :}
+\ What libcurl hears back for the bytes of src: all of them, fewer when the
+\ limit cuts them, which ends the transfer, or a pause until the block has
+\ room.
+: PIECE-PUT ( str ^n -- n ) {: src:str r:^ :}
    r GONE? if 0 exit then
    r WINDOW@ {: w:n :}
    w WINDOW-CLOSED = if 0 exit then
    w WINDOW-OPEN <> if WRITE-PAUSE exit then
-   r R.CAP @ r R.LEN @ - u min {: k:n :}
+   r R.CAP @ r R.LEN @ - src STR:LEN min {: k:n :}
    r k WAITS? if r k WINDOW-WAIT exit then
-   src k r VEC@ VEC:APPEND
+   src STR:DATA k >str r VEC@ VEC:APPEND
    r R.LEN @ k + r R.LEN !
-   k u < if WINDOW-CLOSED r WINDOW! then
+   k src STR:LEN < if WINDOW-CLOSED r WINDOW! then
    k ;
 
 
@@ -903,7 +903,7 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
 
 : PIECE-BODY ( ^u8 n n n -- n ) {: src:^ size:n count:n data:n :}
    data CURL-N>PTR {: r:^ :}
-   [: src size count * r PIECE-PUT ;] catch {: code:n :}
+   [: src size count * >str r PIECE-PUT ;] catch {: code:n :}
    code 0= if exit then
    drop code r R.THROW !
    0 ;
@@ -1126,14 +1126,14 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
    CURLM-OK ;
 
 
-: HEADER-STATUS? ( ^u8 n n -- bool ) {: source at:n u:n :}
-   at 5 + u > if false exit then
-   source at + 5 s" HTTP/" STR:= ;
+: HEADER-STATUS? ( str n -- bool ) {: source:str at:n :}
+   at 5 + source STR:LEN > if false exit then
+   source STR:DATA at + 5 >str s" HTTP/" STR:= ;
 
 
-: HEADER-LF ( ^u8 n n -- n ) {: source at:n u:n :}
-   at begin dup u < while
-      source over + c@ $0A = if exit then
+: HEADER-LF ( str n -- n ) {: source:str at:n :}
+   at begin dup source STR:LEN < while
+      source STR:DATA over + c@ $0A = if exit then
       1+
    repeat drop -1 ;
 
@@ -1150,21 +1150,22 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
 
 \ Task-local scratch. True when the last status line's block reaches a line led
 \ by CR or LF, as libcurl ends one; LEN-CELL holds its start, HBUF-CELL its end.
-: FINAL-BLOCK? ( str -- bool ) {: source u:n :}
+: FINAL-BLOCK? ( str -- bool ) {: source:str :}
    0 BUF-CELL LE:U64!
    0 LEN-CELL LE:U64!
    0 HBUF-CELL LE:U64!
    0 HLEN-CELL LE:U64!
-   begin BUF-CELL LE:U64@ u < while
+   begin BUF-CELL LE:U64@ source STR:LEN < while
       BUF-CELL LE:U64@ {: at:n :}
-      source at u HEADER-LF dup 0 < if
-         source at u HEADER-STATUS? if at HEADER-CANDIDATE then
-         drop u BUF-CELL LE:U64!
+      source at HEADER-LF dup 0 < if
+         source at HEADER-STATUS? if at HEADER-CANDIDATE then
+         drop source STR:LEN BUF-CELL LE:U64!
       else
          {: lf:n :}
-         source at lf HEADER-STATUS? if at HEADER-CANDIDATE then
+         source STR:DATA lf >str at HEADER-STATUS?
+         if at HEADER-CANDIDATE then
          HLEN-CELL LE:U64@ 0 <> HBUF-CELL LE:U64@ 0= and if
-            source at HEADER-BLANK? if lf 1+ HBUF-CELL LE:U64! then
+            source STR:DATA at HEADER-BLANK? if lf 1+ HBUF-CELL LE:U64! then
          then
          lf 1+ BUF-CELL LE:U64!
       then
@@ -1182,7 +1183,8 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
 \ libcurl answers CURLE_OK for a peer that closes inside the header block
 \ (curl 8.23), which was cut as surely as a short body.
 : CAPTURE-RC ( n n -- n ) {: headers:n headeru:n :}
-   headers >BYTES headeru FINAL-BLOCK? if CURLE-OK else CURLE-PARTIAL-FILE then ;
+   headers >BYTES headeru >str FINAL-BLOCK?
+   if CURLE-OK else CURLE-PARTIAL-FILE then ;
 
 
 \ A finished streamed transfer keeps its body for the reads NEXT-ARM arms. An
@@ -1203,7 +1205,7 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
    status idx REC R.STATUS !
    outcome CURLE-OK <> if
       \ Before a body byte, the last block may be a 1xx or a followed 3xx.
-      u 0 > headers >BYTES headeru FINAL-BLOCK? and if
+      u 0 > headers >BYTES headeru >str FINAL-BLOCK? and if
          idx REC-EASY@ headers headeru VALID-EARLY STATE-PUBLISH
       else headers headeru BYTES-RELEASE then
       idx outcome FAILED-STORE
@@ -2091,9 +2093,9 @@ private
 
 : HEADER-BLOCK ( n ^VEC:vector<u8> -- )
    {: state:n v:^ :}
-   state STATE-RESP@ >BYTES state STATE-LEN@ FINAL-BLOCK
+   state STATE-RESP@ >BYTES state STATE-LEN@ >str FINAL-BLOCK
       {: at:n finish:n :}
-   state STATE-RESP@ >BYTES at +  finish at -  v VEC:APPEND ;
+   state STATE-RESP@ >BYTES at +  finish at - >str  v VEC:APPEND ;
 
 
 \ A streamed transfer this task started and has not left.

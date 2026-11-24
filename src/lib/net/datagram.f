@@ -1,4 +1,3 @@
-split-str
 \ datagram.f - datagram sockets of any address family, on Linux and macOS,
 \ through exact libc bindings. A socket is blocking and close-on-exec; a
 \ receive try never blocks, and RECEIVE waits between tries on the AIO loop.
@@ -143,8 +142,8 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    then ;
 
 
-: BOUND ( str n -- open-result ) {: sockaddr length:n fd:n :}
-   fd sockaddr length BIND-CALL 0 < if
+: BOUND ( str n -- open-result ) {: sockaddr:str fd:n :}
+   fd sockaddr BIND-CALL 0 < if
       LAST-ERROR fd CLOSE-CALL drop DATAGRAM-OPEN--RESULT:FAILED
    else fd DATAGRAM-OPEN--RESULT:OPENED then ;
 
@@ -162,9 +161,9 @@ public
 
 
 \ A socket of that family bound to the sockaddr of that length.
-: BIND ( n str -- open-result ) {: family:n sockaddr length:n :}
+: BIND ( n str -- open-result ) {: family:n sockaddr:str :}
    family OPEN MATCH DATAGRAM:open-result
-      opened OF sockaddr length rot BOUND ENDOF
+      opened OF sockaddr swap BOUND ENDOF
       failed OF DATAGRAM-OPEN--RESULT:FAILED ENDOF
    ;MATCH ;
 
@@ -172,8 +171,8 @@ public
 \ Sends the payload to the sockaddr of that length. Success means the OS
 \ accepted the whole datagram, not that it arrived.
 : SEND ( n str str -- status )
-   {: fd:n sockaddr length:n bytes size:n :}
-   fd bytes size 0 sockaddr length SEND-CALL 0 < if
+   {: fd:n sockaddr:str bytes:str :}
+   fd bytes 0 sockaddr SEND-CALL 0 < if
       LAST-ERROR DATAGRAM-STATUS:FAILED
    else DATAGRAM-STATUS:OK then ;
 

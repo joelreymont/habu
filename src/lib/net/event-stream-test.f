@@ -1,4 +1,3 @@
-split-str
 \ event-stream-test.f - checked native SSE framing cases.
 \ Run: bin/hb --load src/lib/net/event-stream-test.f
 
@@ -24,16 +23,16 @@ variable CALLS
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW swap ! ;
 
 : RECORD ( ^a str str -- )
-   {: ctx:^ kind:^ ku:n data:^ du:n :}
+   {: ctx:^ kind:str data:str :}
    ctx drop
-   kind ku GOT APPEND 0 GOT @ VEC:PUSH c!
-   data du GOT APPEND 0 GOT @ VEC:PUSH c!
+   kind GOT APPEND 0 GOT @ VEC:PUSH c!
+   data GOT APPEND 0 GOT @ VEC:PUSH c!
    1 CALLS +! ;
 
 : EXPECT ( str str -- )
-   {: kind:^ ku:n data:^ du:n :}
-   kind ku WANT APPEND 0 WANT @ VEC:PUSH c!
-   data du WANT APPEND 0 WANT @ VEC:PUSH c! ;
+   {: kind:str data:str :}
+   kind WANT APPEND 0 WANT @ VEC:PUSH c!
+   data WANT APPEND 0 WANT @ VEC:PUSH c! ;
 
 : RESET ( -- )
    GOT @ 0 VEC:RESIZE WANT @ 0 VEC:RESIZE 0 CALLS ! ;
@@ -66,14 +65,14 @@ variable CALLS
    s" message" s" z" EXPECT
    A-OPEN {: d:SSE:decoder :}
    s\" \xEF\xBB\xBF:ignored\r\nevent: custom\r\ndata: A\rdata: é\n\r\ndata:\n\nid: ignored\n\nevent:\ndata: z\n\n"
-   {: src:^ u:n :}
-   d src cut SEND
-   d src cut + u cut - SEND
+   {: src:str :}
+   d src STR:DATA cut >str SEND
+   d src STR:DATA cut + src STR:LEN cut - >str SEND
    d SSE:FINISH d SSE:CLOSE
    3 CHECK ;
 
 : EVERY-SPLIT ( -- )
-   s\" \xEF\xBB\xBF:ignored\r\nevent: custom\r\ndata: A\rdata: é\n\r\ndata:\n\nid: ignored\n\nevent:\ndata: z\n\n" nip
+   s\" \xEF\xBB\xBF:ignored\r\nevent: custom\r\ndata: A\rdata: é\n\r\ndata:\n\nid: ignored\n\nevent:\ndata: z\n\n" STR:LEN
    1+ 0 ?do i SPLIT loop ;
 
 : TWO-DECODERS ( -- )
@@ -120,28 +119,28 @@ variable CALLS
    1 CHECK ;
 
 : BOM-CUT ( str n -- )
-   {: src:^ u:n cut:n :}
+   {: src:str cut:n :}
    A-OPEN {: d:SSE:decoder :}
-   d src cut SEND
-   d src cut + u cut - SEND
+   d src STR:DATA cut >str SEND
+   d src STR:DATA cut + src STR:LEN cut - >str SEND
    d SSE:FINISH d SSE:CLOSE ;
 
 \ A leading BOM split anywhere is dropped; a leading EF or EF BB that does not
 \ finish a BOM is replayed into the line, so its field name is unknown.
 : REAL-BOM ( n -- )
    RESET s" message" s" x" EXPECT
-   s\" \xEF\xBB\xBFdata: x\n\n" rot BOM-CUT 1 CHECK ;
+   s\" \xEF\xBB\xBFdata: x\n\n" swap BOM-CUT 1 CHECK ;
 
 : EF-ONLY ( n -- )
-   RESET s\" \xEFdata: x\n\n" rot BOM-CUT 0 CHECK ;
+   RESET s\" \xEFdata: x\n\n" swap BOM-CUT 0 CHECK ;
 
 : EF-BB ( n -- )
-   RESET s\" \xEF\xBBdata: x\n\n" rot BOM-CUT 0 CHECK ;
+   RESET s\" \xEF\xBBdata: x\n\n" swap BOM-CUT 0 CHECK ;
 
 : BOM-SPLITS ( -- )
-   s\" \xEF\xBB\xBFdata: x\n\n" nip 1+ 0 ?do i REAL-BOM loop
-   s\" \xEFdata: x\n\n" nip 1+ 0 ?do i EF-ONLY loop
-   s\" \xEF\xBBdata: x\n\n" nip 1+ 0 ?do i EF-BB loop ;
+   s\" \xEF\xBB\xBFdata: x\n\n" STR:LEN 1+ 0 ?do i REAL-BOM loop
+   s\" \xEFdata: x\n\n" STR:LEN 1+ 0 ?do i EF-ONLY loop
+   s\" \xEF\xBBdata: x\n\n" STR:LEN 1+ 0 ?do i EF-BB loop ;
 
 : MIDSTREAM-BOM ( -- )
    RESET
@@ -157,7 +156,7 @@ variable CALLS
    70000 0 ?do [char] x BIG @ VEC:PUSH c! loop
    s\" \n\n" BIG APPEND
    A-OPEN {: d:SSE:decoder :}
-   BIG @ VEC:SPAN SPAN:$ d -rot SEND
+   BIG @ VEC:SPAN SPAN:$ d swap SEND
    d SSE:CLOSE
    1 CALLS @ T=
    GOT @ VEC:COUNT 70009 T= ;
@@ -170,7 +169,7 @@ variable CALLS
    0 CHECK ;
 
 : BOOM ( ^a str str -- )
-   2drop 2drop drop -12345 throw ;
+   drop drop drop -12345 throw ;
 
 : CALLBACK-FAILURE ( -- )
    RESET
@@ -193,8 +192,8 @@ variable CALLS
 
 : BAD-SOURCE ( -- )
    A-OPEN ACTIVE !
-   [: ACTIVE @ NULL-PTR -1 SEND ;] SSE:E-SOURCE TTHROWSQ
-   [: ACTIVE @ NULL-PTR 1 SEND ;] SSE:E-SOURCE TTHROWSQ
+   [: ACTIVE @ NULL-PTR -1 >str SEND ;] SSE:E-SOURCE TTHROWSQ
+   [: ACTIVE @ NULL-PTR 1 >str SEND ;] SSE:E-SOURCE TTHROWSQ
    ACTIVE @ SSE:CLOSE ;
 
 : RUN ( -- )

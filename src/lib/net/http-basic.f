@@ -1,4 +1,3 @@
-split-str
 \ http-basic.f - HTTP Basic credentials (RFC 7617), the value of an
 \ `Authorization` field, appended to a byte vector. Input is checked and room
 \ for the whole value reserved before a byte is written, so the vector's block
@@ -25,32 +24,37 @@ $3A constant USER-END            \ ':' ends the user-id
 
 : CONTROL? ( n -- bool ) dup $20 < swap $7F = or ;   \ RFC 5234 CTL.
 
-: USER-CHECKED ( str -- ) {: a:^ u:n :}
-   u 0 ?do
-      a i + c@ dup USER-END = swap CONTROL? or if E-HTTP-BASIC-USER throw then
+: USER-CHECKED ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ dup USER-END = swap CONTROL? or
+      if E-HTTP-BASIC-USER throw then
    loop ;
 
-: PASS-CHECKED ( str -- ) {: a:^ p:n :}
-   p 0 ?do a i + c@ CONTROL? if E-HTTP-BASIC-PASSWORD throw then loop ;
+: PASS-CHECKED ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ CONTROL? if E-HTTP-BASIC-PASSWORD throw then
+   loop ;
 
-\ The bytes of the value: the prefix and the base64 of u + 1 + p bytes.
-: VALUE-LEN ( n n -- n ) + 3 + 3 / 4 * BASIC-PREFIX$ nip + ;
+\ The bytes of the value: the prefix and the base64 of user, `:` and password.
+: VALUE-LEN ( n n -- n ) + 3 + 3 / 4 * BASIC-PREFIX$ STR:LEN + ;
 
 \ Writes the value into s, which holds exactly VALUE-LEN bytes.
 : WRITE-VALUE ( str str SPAN:span<u8> -- )
-   {: user:^ u:n pass:^ p:n s :}
+   {: user:str pass:str s :}
    BASIC-PREFIX$ s SPAN:COPY
-   s BASIC-PREFIX$ nip SPAN:SKIP {: head :}
-   u 3 / 3 * {: whole:n :}
-   user whole head BASE64:ENCODE {: hn:n :}
+   s BASIC-PREFIX$ STR:LEN SPAN:SKIP {: head :}
+   user STR:LEN 3 / 3 * {: whole:n :}
+   user STR:DATA whole >str head BASE64:ENCODE {: hn:n :}
    head hn SPAN:SKIP {: mid :}
-   u whole - {: r:n :}
-   2 r - p min {: k:n :}
-   user whole + r mid SPAN:COPY
+   user STR:LEN whole - {: r:n :}
+   2 r - pass STR:LEN min {: k:n :}
+   user STR:DATA whole + r >str mid SPAN:COPY
    USER-END mid r SPAN:U8!
-   pass k mid r 1+ SPAN:SKIP SPAN:COPY
-   mid SPAN:$ drop r 1+ k + mid BASE64:ENCODE {: mn:n :}
-   pass k + p k - mid mn SPAN:SKIP BASE64:ENCODE drop ;
+   pass STR:DATA k >str mid r 1+ SPAN:SKIP SPAN:COPY
+   mid SPAN:$ STR:DATA r 1+ k + >str
+      mid BASE64:ENCODE {: mn:n :}
+   pass STR:DATA k + pass STR:LEN k - >str
+      mid mn SPAN:SKIP BASE64:ENCODE drop ;
 
 public
 
@@ -63,14 +67,14 @@ E-HTTP-BASIC-PASSWORD constant E-BASIC-PASSWORD
 \ E-BASIC-USER, a password holding a control character E-BASIC-PASSWORD; a
 \ rejection leaves the vector as it was.
 : BASIC-CREDENTIALS ( str str ^VEC:vector<u8> -- )
-   {: user:^ u:n pass:^ p:n v:^ :}
-   u 0 < p 0 < or if E-SPAN-LENGTH throw then
-   user u USER-CHECKED
-   pass p PASS-CHECKED
+   {: user:str pass:str v:^ :}
+   user STR:LEN 0 < pass STR:LEN 0 < or if E-SPAN-LENGTH throw then
+   user USER-CHECKED
+   pass PASS-CHECKED
    v VEC:COUNT {: old:n :}
-   old u p VALUE-LEN + {: new:n :}
+   old user STR:LEN pass STR:LEN VALUE-LEN + {: new:n :}
    v new VEC:RESERVE
    v new VEC:ENSURE
-   user u pass p v VEC:SPAN old SPAN:SKIP WRITE-VALUE ;
+   user pass v VEC:SPAN old SPAN:SKIP WRITE-VALUE ;
 
 ;package

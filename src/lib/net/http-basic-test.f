@@ -1,4 +1,3 @@
-split-str
 \ http-basic-test.f - HTTP:BASIC-CREDENTIALS: RFC 7617's example, a UTF-8
 \ password, every place the `:` can fall in a base64 group, the user and
 \ password rejections, an append after held bytes into room reserved up front,
@@ -21,7 +20,7 @@ package HTTP-BASIC-TEST
 
 : OUT$ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
 
-: DATA ( ^VEC:vector<u8> -- ^u8 ) OUT$ drop ;
+: DATA ( ^VEC:vector<u8> -- ^u8 ) OUT$ STR:DATA ;
 
 : EXAMPLE ( ^ALLOC:allocator -- )
    {: al:^ :}
@@ -44,7 +43,7 @@ package HTTP-BASIC-TEST
 : RESERVED ( ^ALLOC:allocator -- )
    {: al:^ :}
    al 0 [type] u8 VEC:NEW {: v:^ :}
-   s" x: " drop 3 v VEC:APPEND
+   s" x: " v VEC:APPEND
    v 37 VEC:RESERVE
    s" Aladdin" s" open sesame" v HTTP:BASIC-CREDENTIALS
    s" the value is appended after the bytes the vector holds" T-LABEL
@@ -58,7 +57,7 @@ package HTTP-BASIC-TEST
 : MOVED ( ^ALLOC:allocator -- )
    {: al:^ :}
    al 0 [type] u8 VEC:NEW {: v:^ :}
-   s" x: " drop 3 v VEC:APPEND
+   s" x: " v VEC:APPEND
    v 23 VEC:RESERVE
    al 1 [type] u8 VEC:NEW {: after:^ :}
    v DATA {: old:^ :}
@@ -70,14 +69,14 @@ package HTTP-BASIC-TEST
    after VEC:DELETE
    v VEC:DELETE ;
 
-: WANT$ ( str str -- str ) {: user:^ u:n pass:^ p:n :}
-   user u BASIC-JOINED SPAN:COPY
-   [char] : BASIC-JOINED u SPAN:U8!
-   pass p BASIC-JOINED u 1+ SPAN:SKIP SPAN:COPY
+: WANT$ ( str str -- str ) {: user:str pass:str :}
+   user BASIC-JOINED SPAN:COPY
+   [char] : BASIC-JOINED user STR:LEN SPAN:U8!
+   pass BASIC-JOINED user STR:LEN 1+ SPAN:SKIP SPAN:COPY
    s" Basic " BASIC-WANT SPAN:COPY
-   BASIC-JOINED SPAN:$ drop u 1+ p +
+   BASIC-JOINED SPAN:$ STR:DATA user STR:LEN 1+ pass STR:LEN + >str
       BASIC-WANT 6 SPAN:SKIP BASE64:ENCODE {: n:n :}
-   BASIC-WANT SPAN:$ drop n 6 + ;
+   BASIC-WANT SPAN:$ STR:DATA n 6 + >str ;
 
 : ZERO-PAST? ( ^VEC:vector<u8> -- bool )
    {: v:^ :}
@@ -93,9 +92,11 @@ package HTTP-BASIC-TEST
    {: al:^ u:n p:n :}
    al 0 [type] u8 VEC:NEW {: v:^ :}
    v 64 VEC:RESERVE
-   s" abc" drop u s" xyz" drop p v HTTP:BASIC-CREDENTIALS
+   s" abc" STR:DATA u >str {: user:str :}
+   s" xyz" STR:DATA p >str {: pass:str :}
+   user pass v HTTP:BASIC-CREDENTIALS
    s" user and password lengths 0..3" T-LABEL
-   v OUT$ s" abc" drop u s" xyz" drop p WANT$ T$=
+   v OUT$ user pass WANT$ T$=
    s" the bytes past the credentials stay zero" T-LABEL
    v ZERO-PAST? TTRUE
    v VEC:DELETE ;

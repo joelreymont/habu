@@ -1,4 +1,3 @@
-split-str
 \ http-arena.f - per-worker storage for the HTTP/1.1 server
 \ (src/lib/net/http.f): one OS-backed span per worker, carved into the input
 \ buffer, the fixed buffers and the headers of three growing ones; the JSON
@@ -195,7 +194,7 @@ private
 
 
 : BUF-AT ( n n -- ^n ) {: idx:n off:n :}
-   idx SLOT-SPAN off BUF:HDR-BYTES SPAN:SUB SPAN:$ drop CELL-VIEW ;
+   idx SLOT-SPAN off BUF:HDR-BYTES SPAN:SUB SPAN:$ STR:DATA CELL-VIEW ;
 
 
 : BODY-HDR ( n -- ^n )    BODY-OFF BUF-AT ;
@@ -275,8 +274,9 @@ private
    BODY-HDR BODY-START-CAP BUF:N>BLEN BUF:INIT ;
 
 
-: BODY-APPEND ( str n -- ) {: bytes:^ len:n idx:n :}
-   bytes len BUF:N>BLEN idx BODY-HDR BUF:APPEND-SPAN ;
+: BODY-APPEND ( str n -- ) {: bytes:str idx:n :}
+   bytes STR:DATA bytes STR:LEN BUF:N>BLEN
+      idx BODY-HDR BUF:APPEND-SPAN ;
 
 
 : SEG-BUF ( n -- SPAN:span<u8> )
@@ -322,11 +322,11 @@ private
 : BODY-PTR@ ( n -- ^u8 ) BOUNDED BODY-PTR @ ;
 
 
-: RESPONSE-BODY! ( str n -- ) {: bytes:^ len:n idx:n :}
-   len 0 < if E-CAPACITY throw then
+: RESPONSE-BODY! ( str n -- ) {: bytes:str idx:n :}
+   bytes STR:LEN 0 < if E-CAPACITY throw then
    idx CLOSE-FILE
-   bytes idx BOUNDED BODY-PTR !
-   len idx BODY-LEN ! ;
+   bytes STR:DATA idx BOUNDED BODY-PTR !
+   bytes STR:LEN idx BODY-LEN ! ;
 
 
 \ No body at all, borrowed from nowhere: what a slot answers before a body is
@@ -336,7 +336,7 @@ private
    idx IN-BUF 0 SPAN:TAKE SPAN:$ idx RESPONSE-BODY! ;
 
 
-: BUF$ ( ^n -- str )  BUF:SPAN$ BUF:BLEN>N ;
+: BUF$ ( ^n -- str )  BUF:SPAN$ BUF:BLEN>N >str ;
 
 
 : NEXT-SEQ ( n -- n ) {: idx:n :}
@@ -378,7 +378,7 @@ private
 
 
 : SLOT-BODY$ ( n -- str ) {: idx:n :}
-   idx BODY-HDR BUF:SPAN$ BUF:BLEN>N ;
+   idx BODY-HDR BUF:SPAN$ BUF:BLEN>N >str ;
 
 
 : SLOT-ID$ ( n -- str ) {: idx:n :}

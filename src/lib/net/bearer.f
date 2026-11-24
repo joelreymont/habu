@@ -1,4 +1,3 @@
-split-str
 \ bearer.f - OAuth bearer tokens (RFC 6750) on Habu's HTTP server. A route
 \ admits a request whose Authorization carries a compact JWS that one issuer
 \ signed RS256 with a key of its JWK Set, whose iss and aud name that issuer
@@ -161,8 +160,8 @@ TASK:+USER FROM n
    SCRATCH SLOT SCRATCH-BYTES * off + len SPAN:SUB ;
 
 : DECODED ( str SPAN:span<u8> -- SPAN:span<u8> )
-   {: a:^ u:n room :}
-   a u room BASE64:DECODE-URL {: got:n :}
+   {: s:str room :}
+   s room BASE64:DECODE-URL {: got:n :}
    room 0 got SPAN:SUB ;
 
 
@@ -189,10 +188,10 @@ TASK:+USER FROM n
 \ Whether the member is a string equal to the text; the flag when the object
 \ lacks it.
 : MEMBER-IS? ( JSON:value str str bool -- bool )
-   {: obj k:^ ku:n w:^ wu:n absent:bool :}
-   obj k ku JSON:FIND MATCH option
+   {: obj k:str w:str absent:bool :}
+   obj k JSON:FIND MATCH option
       none OF absent ENDOF
-      some OF w wu JSON:STRING= ENDOF
+      some OF w JSON:STRING= ENDOF
    ;MATCH ;
 
 : INT-OF ( JSON:value -- n bool )
@@ -210,10 +209,14 @@ TASK:+USER FROM n
 
 \ A string decoded into the room, its length; -1 for another kind. A string
 \ longer than the room throws E-SPAN-CAPACITY.
+: COPIED ( str SPAN:span<u8> -- n )
+   {: s:str room :}
+   s room SPAN:COPY s STR:LEN ;
+
 : INTO-ROOM ( JSON:value SPAN:span<u8> -- n )
    {: v room :}
    v JSON:STRING? 0= if -1 exit then
-   v [: tuck room SPAN:COPY ;] JSON:WITH-STRING ;
+   v [: room COPIED ;] JSON:WITH-STRING ;
 
 \ A string member decoded into the room; false when it is absent or no string.
 : DECODED$ ( JSON:value str SPAN:span<u8> -- str bool )
@@ -223,7 +226,7 @@ TASK:+USER FROM n
       some OF room INTO-ROOM ENDOF
    ;MATCH {: got:n :}
    got 0< if s" " false exit then
-   room SPAN:$ drop got true ;
+   room SPAN:$ STR:DATA got >str true ;
 
 : NOTE$ ( JSON:value str -- str bool )
    NOTE-OFF HTTP:HEAD-CAP ROOM DECODED$ ;
@@ -234,28 +237,31 @@ TASK:+USER FROM n
 : TOKEN? ( HTTP:request -- bool )
    {: asked:HTTP:request :}
    asked s" Authorization" HTTP:HEADER-COUNT-OF 1 <> if false exit then
-   asked s" Authorization" HTTP:HEADER-OF$ drop {: v:^ vu:n :}
-   vu 7 <= if false exit then
-   v 6 s" Bearer" STR:=CI 0= if false exit then
-   v 6 + c@ 32 <> if false exit then
-   v 7 + vu 7 - SPAN:MAKE SLOT PRESENTED ! true ;
+   asked s" Authorization" HTTP:HEADER-OF$ drop {: v:str :}
+   v STR:LEN 7 <= if false exit then
+   v STR:DATA 6 >str s" Bearer" STR:=CI 0= if false exit then
+   v STR:DATA 6 + c@ 32 <> if false exit then
+   v STR:DATA 7 + v STR:LEN 7 - SPAN:MAKE SLOT PRESENTED ! true ;
 
 : SEGMENT ( str n -- SPAN:span<u8> )
-   {: a:^ u:n off:n :}
-   a u off HTTP:HEAD-CAP off - ROOM DECODED ;
+   {: s:str off:n :}
+   s off HTTP:HEAD-CAP off - ROOM DECODED ;
 
 \ The segments decoded into the worker's scratch, true for an object header
 \ naming a kid and object claims; a repeated member throws (RFC 7519 §4).
 : OPEN ( -- bool )
-   SLOT PRESENTED @ SPAN:$ {: t:^ u:n :}
-   t u 0 DOT {: d1:n :}
+   SLOT PRESENTED @ SPAN:$ {: s:str :}
+   s STR:DATA {: t:^ :}
+   s STR:LEN {: u:n :}
+   s 0 DOT {: d1:n :}
    d1 u = if false exit then
-   t u d1 1+ DOT {: d2:n :}
+   s d1 1+ DOT {: d2:n :}
    d2 u = if false exit then
-   t u d2 1+ DOT u <> if false exit then
-   t d1 0 SEGMENT {: head :}
-   t d1 + 1+ d2 d1 - 1- head SPAN:LEN SEGMENT {: body :}
-   t d2 + 1+ u d2 - 1- head SPAN:LEN body SPAN:LEN + SEGMENT SLOT SIGNATURE !
+   s d2 1+ DOT u <> if false exit then
+   t d1 >str 0 SEGMENT {: head :}
+   t d1 + 1+ d2 d1 - 1- >str head SPAN:LEN SEGMENT {: body :}
+   t d2 + 1+ u d2 - 1- >str head SPAN:LEN body SPAN:LEN + SEGMENT
+      SLOT SIGNATURE !
    t d2 SPAN:MAKE SLOT SIGNED !
    head SPAN:$ JSON:PARSE {: h :}
    h JSON:OBJECT? 0= if false exit then
@@ -263,8 +269,8 @@ TASK:+USER FROM n
    c JSON:OBJECT? 0= if false exit then
    h SLOT HEADER !
    c SLOT CLAIMS !
-   h s" kid" NOTE$ {: k:^ ku:n named:bool :}
-   k ku SPAN:MAKE SLOT KID ! named ;
+   h s" kid" NOTE$ {: k:str named:bool :}
+   k STR:DATA k STR:LEN SPAN:MAKE SLOT KID ! named ;
 
 
 \ A string base64url-decoded into the room; empty for another kind.
@@ -299,7 +305,7 @@ TASK:+USER FROM n
 \ The cached set is one a fetch accepted, so its keys member is an array.
 : KEY-LIST ( -- JSON:value )
    ARRAY-ROUND @ ROUND @ <> if
-      KEYS KEYS-U @ JSON:PARSE s" keys" JSON:GET KEY-ARRAY !
+      KEYS KEYS-U @ >str JSON:PARSE s" keys" JSON:GET KEY-ARRAY !
       ROUND @ ARRAY-ROUND !
    then KEY-ARRAY @ ;
 
@@ -396,8 +402,8 @@ ENUM lookup-step
 
 \ Under KEYS-LOCK: FETCHED, at most KEYS-CAP bytes, into KEYS.
 : KEEP-SET ( -- )
-   FETCHED$ {: src:^ u:n :}
-   src KEYS u BYTE-COPY u KEYS-U ! ;
+   FETCHED$ {: src:str :}
+   src STR:DATA KEYS src STR:LEN BYTE-COPY src STR:LEN KEYS-U ! ;
 
 \ Under KEYS-LOCK: the fetch has returned, by a throw too.
 : RETURNED ( -- )
@@ -442,42 +448,46 @@ ENUM lookup-step
 
 \ Whether the value is the string or an array holding it as an element.
 : CONTAINS? ( JSON:value str -- bool )
-   {: v w:^ wu:n :}
-   v JSON:STRING? if v w wu JSON:STRING= exit then
+   {: v w:str :}
+   v JSON:STRING? if v w JSON:STRING= exit then
    v JSON:ARRAY? 0= if false exit then
-   false v [: w wu JSON:STRING= nip dup 0= ;] JSON:EACH-WHILE ;
+   false v [: w JSON:STRING= nip dup 0= ;] JSON:EACH-WHILE ;
 
 : HOLDS? ( JSON:value str str -- bool )
-   {: obj k:^ ku:n w:^ wu:n :}
-   obj k ku JSON:FIND MATCH option
+   {: obj k:str w:str :}
+   obj k JSON:FIND MATCH option
       none OF false ENDOF
-      some OF w wu CONTAINS? ENDOF
+      some OF w CONTAINS? ENDOF
    ;MATCH ;
 
 : AUDIENCE? ( -- bool ) CLAIMS@ s" aud" AUDIENCE SPAN:$ HOLDS? ;
 
 \ The offset of the first space at or after from, or the end.
 : SPACE-AT ( str n -- n )
-   {: t:^ u:n from:n :}
-   u from ?do t i + c@ $20 = if i unloop exit then loop u ;
+   {: s:str from:n :}
+   s STR:LEN from ?do
+      s STR:DATA i + c@ $20 = if i unloop exit then
+   loop s STR:LEN ;
 
 \ Whether the name is one of the text's words from the offset on, runs of
 \ bytes but spaces.
 : WORD-FROM? ( str str n -- bool )
-   {: t:^ u:n w:^ wu:n from:n :}
-   from begin {: at:n :} at u < while
-      t u at SPACE-AT {: to:n :}
-      to at > if t at + to at - w wu STR:= if true exit then then
+   {: s:str w:str from:n :}
+   from begin {: at:n :} at s STR:LEN < while
+      s at SPACE-AT {: to:n :}
+      to at > if
+         s STR:DATA at + to at - >str w STR:= if true exit then
+      then
       to 1+
    repeat false ;
 
 \ A string claim splits into words here, where AUDIENCE? compares aud whole
 \ (RFC 7519 4.1.3).
 : HELD? ( str str -- bool )
-   {: name:^ nu:n w:^ wu:n :}
+   {: name:str w:str :}
    WORDS-OFF HTTP:HEAD-CAP ROOM {: room :}
-   CLAIMS@ name nu room DECODED$ if w wu 0 WORD-FROM? exit then
-   2drop CLAIMS@ name nu w wu HOLDS? ;
+   CLAIMS@ name room DECODED$ if w 0 WORD-FROM? exit then
+   drop CLAIMS@ name w HOLDS? ;
 
 : VALID? ( n -- bool )
    {: now:n :}
@@ -500,9 +510,9 @@ ENUM lookup-step
    ADMITTED ;
 
 : CHALLENGE ( HTTP:response str -- )
-   {: answer:HTTP:response value:^ vu:n :}
+   {: answer:HTTP:response value:str :}
    answer 401 HTTP:STATUS!
-   answer s" WWW-Authenticate" value vu HTTP:HEADER! ;
+   answer s" WWW-Authenticate" value HTTP:HEADER! ;
 
 \ The challenge for NO-TOKEN or INVALID.
 : CHALLENGE$ ( n -- str )
@@ -527,9 +537,9 @@ ENUM lookup-step
 : SEPARATOR ( -- str ) s" , " ;
 
 : PUT ( str SPAN:span<u8> n -- n )
-   {: a:^ u:n row off:n :}
-   a u row off SPAN:SKIP SPAN:COPY
-   off u + ;
+   {: s:str row off:n :}
+   s row off SPAN:SKIP SPAN:COPY
+   off s STR:LEN + ;
 
 \ The bytes a parameter `name="value"` takes, from the name's and the value's
 \ lengths; none for an empty value, which names nothing.
@@ -541,63 +551,65 @@ ENUM lookup-step
 
 \ Writes nothing for an empty value, as PARAM-LEN measures nothing.
 : PARAM ( str str SPAN:span<u8> n -- n )
-   {: name:^ nu:n value:^ vu:n row off:n :}
-   vu 0= if off exit then
-   name nu row off PUT {: past-name:n :}
+   {: name:str value:str row off:n :}
+   value STR:LEN 0= if off exit then
+   name row off PUT {: past-name:n :}
    S\" =\"" row past-name PUT {: past-eq:n :}
-   value vu row past-eq PUT {: past-value:n :}
+   value row past-eq PUT {: past-value:n :}
    S\" \"" row past-value PUT ;
 
 
 : NAMING ( str str str SPAN:span<u8> n -- n )
-   {: pre:^ pu:n url:^ uu:n scope:^ su:n row off:n :}
-   pre pu row off PUT {: past-pre:n :}
-   METADATA-NAME url uu row past-pre PARAM {: past-url:n :}
-   uu 0<> su 0<> and if SEPARATOR row past-url PUT else past-url then
+   {: pre:str url:str scope:str row off:n :}
+   pre row off PUT {: past-pre:n :}
+   METADATA-NAME url row past-pre PARAM {: past-url:n :}
+   url STR:LEN 0<> scope STR:LEN 0<> and
+   if SEPARATOR row past-url PUT else past-url then
    {: past-sep:n :}
-   SCOPE-NAME scope su row past-sep PARAM ;
+   SCOPE-NAME scope row past-sep PARAM ;
 
 : CHALLENGES-LEN ( n n -- n )
    {: uu:n su:n :}
    uu 0= su 0= and if 0 exit then
-   METADATA-NAME nip uu PARAM-LEN SCOPE-NAME nip su PARAM-LEN +
-   uu 0<> su 0<> and if SEPARATOR nip + then {: params:n :}
-   NAMED-PREFIX nip INVALID-PREFIX nip + params 2 * + ;
+   METADATA-NAME STR:LEN uu PARAM-LEN
+   SCOPE-NAME STR:LEN su PARAM-LEN +
+   uu 0<> su 0<> and if SEPARATOR STR:LEN + then {: params:n :}
+   NAMED-PREFIX STR:LEN INVALID-PREFIX STR:LEN + params 2 * + ;
 
 \ RFC 9728 3.1: the segment METADATA!'s URL holds between its authority and
 \ the resource's path.
 : WELL-KNOWN ( -- str ) s" /.well-known/oauth-protected-resource" ;
 
-: RESOURCE-LEN ( n -- n ) dup 0= if exit then WELL-KNOWN nip - ;
+: RESOURCE-LEN ( n -- n ) dup 0= if exit then WELL-KNOWN STR:LEN - ;
 
 \ The resource the URL names, its bytes but the well-known segment at end.
 : RESOURCE+ ( str n SPAN:span<u8> n -- n )
-   {: url:^ uu:n end:n row off:n :}
-   uu 0= if off exit then
-   url end row off PUT {: past:n :}
-   end WELL-KNOWN nip + {: from:n :}
-   url from + uu from - row past PUT ;
+   {: url:str end:n row off:n :}
+   url STR:LEN 0= if off exit then
+   url STR:DATA end >str row off PUT {: past:n :}
+   end WELL-KNOWN STR:LEN + {: from:n :}
+   url STR:DATA from + url STR:LEN from - >str row past PUT ;
 
 \ METADATA!'s statement as NAMED holds it: the allocation, NAMED-U and
 \ CHALLENGES-U; the well-known segment starts at end.
 : COMPOSED ( str str n -- SPAN:span<u8> n n )
-   {: url:^ uu:n scope:^ su:n end:n :}
-   uu su CHALLENGES-LEN {: cu:n :}
-   cu uu RESOURCE-LEN + su + {: total:n :}
-   total 0= if s" " SPAN:MAKE 0 0 exit then
+   {: url:str scope:str end:n :}
+   url STR:LEN scope STR:LEN CHALLENGES-LEN {: cu:n :}
+   cu url STR:LEN RESOURCE-LEN + scope STR:LEN + {: total:n :}
+   total 0= if s" " STR:DATA 0 SPAN:MAKE 0 0 exit then
    total MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: row :}
-   NAMED-PREFIX url uu scope su row 0 NAMING {: split:n :}
-   INVALID-PREFIX url uu scope su row split NAMING drop
-   url uu end row cu RESOURCE+ {: past:n :}
-   scope su row past PUT drop
+   NAMED-PREFIX url scope row 0 NAMING {: split:n :}
+   INVALID-PREFIX url scope row split NAMING drop
+   url end row cu RESOURCE+ {: past:n :}
+   scope row past PUT drop
    row split cu ;
 
 \ HTTP writes a header value as it is: a quote or backslash would end the
 \ quoted resource_metadata early, and a CR or LF would start a line of its own.
 : QUOTABLE ( str -- )
-   {: text u:n :}
-   u 0 ?do
-      text i + c@ {: c :}
+   {: text:str :}
+   text STR:LEN 0 ?do
+      text STR:DATA i + c@ {: c :}
       c $22 = c $5C = or c $20 < or c $7E > or if E-OPERAND throw then
    loop ;
 
@@ -605,13 +617,14 @@ ENUM lookup-step
 \ RFC 6749 3.3: tokens of NQCHAR (%x21, %x23-5B, %x5D-7E), each one space
 \ from the next. An empty scope names none.
 : SCOPE-TOKENS ( str -- )
-   {: text u:n :}
-   u 0= if exit then
-   text c@ $20 = text u 1- + c@ $20 = or if E-OPERAND throw then
-   u 0 ?do
-      text i + c@ {: c :}
+   {: text:str :}
+   text STR:LEN 0= if exit then
+   text STR:DATA c@ $20 =
+   text STR:DATA text STR:LEN 1- + c@ $20 = or if E-OPERAND throw then
+   text STR:LEN 0 ?do
+      text STR:DATA i + c@ {: c :}
       c $20 = if
-         text i 1+ + c@ $20 = if E-OPERAND throw then
+         text STR:DATA i 1+ + c@ $20 = if E-OPERAND throw then
       else
          c $21 < c $7E > or c $22 = or c $5C = or if E-OPERAND throw then
       then
@@ -628,29 +641,31 @@ ENUM lookup-step
 
 \ The resource's path: nothing, or `/` and no query or fragment.
 : PATH? ( str -- bool )
-   {: p:^ pu:n :}
-   pu 0= if true exit then
-   p c@ [char] / <> if false exit then
-   p pu s" ?" STR:CONTAINS? 0= p pu s" #" STR:CONTAINS? 0= and ;
+   {: p:str :}
+   p STR:LEN 0= if true exit then
+   p STR:DATA c@ [char] / <> if false exit then
+   p s" ?" STR:CONTAINS? 0= p s" #" STR:CONTAINS? 0= and ;
 
 \ Where the well-known segment starts in METADATA!'s URL, 0 for an empty
 \ URL; SECURE's rejection, or E-OPERAND for a URL not of RFC 9728 3.1's form.
 : WELL-KNOWN-AT ( str -- n )
-   {: url:^ uu:n :}
-   uu 0= if 0 exit then
-   url uu SECURE
-   url uu URI:REQUEST-TARGET$ drop url - {: end:n :}
-   url end + uu end - {: rest:^ ru:n :}
-   rest ru WELL-KNOWN STR:STARTS-WITH? 0= if E-OPERAND throw then
-   rest WELL-KNOWN nip + ru WELL-KNOWN nip - PATH? 0= if E-OPERAND throw then
+   {: url:str :}
+   url STR:LEN 0= if 0 exit then
+   url SECURE
+   url URI:REQUEST-TARGET$ STR:DATA url STR:DATA - {: end:n :}
+   url STR:DATA end + url STR:LEN end - >str {: rest:str :}
+   rest WELL-KNOWN STR:STARTS-WITH? 0= if E-OPERAND throw then
+   rest STR:DATA WELL-KNOWN STR:LEN +
+   rest STR:LEN WELL-KNOWN STR:LEN - >str
+   PATH? 0= if E-OPERAND throw then
    end ;
 
 : SCOPES+ ( ^JSON:writer str n -- ^JSON:writer )
-   {: s:^ su:n from:n :}
+   {: s:str from:n :}
    from begin {: at:n :}
-      s su at SPACE-AT {: to:n :}
-      s at + to at - JSON:WRITE-STRING
-      to su <
+      s at SPACE-AT {: to:n :}
+      s STR:DATA at + to at - >str JSON:WRITE-STRING
+      to s STR:LEN <
    while JSON:WRITE-COMMA to 1+ repeat ;
 
 : RESOURCE-BODY ( ^JSON:writer -- ^JSON:writer )
@@ -658,10 +673,10 @@ ENUM lookup-step
    s" resource" RESOURCE$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" authorization_servers" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
    ISSUER SPAN:$ JSON:WRITE-STRING JSON:WRITE-ARRAY-END
-   SCOPE$ {: s:^ su:n :}
-   su 0 > if
+   SCOPE$ {: s:str :}
+   s STR:LEN 0 > if
       JSON:WRITE-COMMA s" scopes_supported" JSON:WRITE-KEY
-      JSON:WRITE-ARRAY-START s su 0 SCOPES+ JSON:WRITE-ARRAY-END
+      JSON:WRITE-ARRAY-START s 0 SCOPES+ JSON:WRITE-ARRAY-END
    then
    JSON:WRITE-OBJECT-END ;
 
@@ -674,12 +689,12 @@ public
 \ neither https nor http to a loopback IP literal, URI:ORIGIN's rejection for
 \ one it cannot read, either leaving the previous issuer in force.
 : ISSUER! ( str str str -- )
-   {: iss:^ iu:n aud:^ au:n url:^ uu:n :}
+   {: iss:str aud:str url:str :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
-   iss iu SECURE url uu SECURE
-   iss ISSUER-AT ! iu ISSUER-LEN !
-   aud AUDIENCE-AT ! au AUDIENCE-LEN !
-   url KEYS-URL-AT ! uu KEYS-URL-LEN !
+   iss SECURE url SECURE
+   iss STR:DATA ISSUER-AT ! iss STR:LEN ISSUER-LEN !
+   aud STR:DATA AUDIENCE-AT ! aud STR:LEN AUDIENCE-LEN !
+   url STR:DATA KEYS-URL-AT ! url STR:LEN KEYS-URL-LEN !
    0 KEYS-U ! 0 KEYS-AT !
    WAKE TASK:SEMAPHORE-DESTROY 0 WAKE TASK:SEMAPHORE-INIT ;
 
@@ -698,15 +713,16 @@ public
 \ allocation leaves the previous statement in force. E-HTTP-STATE while HTTP
 \ serves.
 : METADATA! ( str str -- )
-   {: url:^ uu:n scope:^ su:n :}
+   {: url:str scope:str :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
-   url uu QUOTABLE
-   url uu WELL-KNOWN-AT {: end:n :}
-   scope su SCOPE-TOKENS
-   url uu scope su end COMPOSED {: row split:n cu:n :}
+   url QUOTABLE
+   url WELL-KNOWN-AT {: end:n :}
+   scope SCOPE-TOKENS
+   url scope end COMPOSED {: row split:n cu:n :}
    NAMED-SPAN {: was :}
-   row SPAN:$ NAMED-LEN ! NAMED ! split NAMED-U ! cu CHALLENGES-U !
-   uu RESOURCE-LEN RESOURCE-U !
+   row SPAN:$ dup STR:LEN NAMED-LEN ! STR:DATA NAMED !
+   split NAMED-U ! cu CHALLENGES-U !
+   url STR:LEN RESOURCE-LEN RESOURCE-U !
    was MEM:FREE-SPAN ;
 
 
@@ -744,18 +760,18 @@ public
 \ outside one, or for a claim that is absent or not a string. The answer is
 \ borrowed until the worker's next CLAIM$ or ADMIT?.
 : CLAIM$ ( str -- str bool )
-   {: name:^ nu:n :}
+   {: name:str :}
    ANSWERING? 0= if s" " false exit then
-   CLAIMS@ name nu NOTE$ ;
+   CLAIMS@ name NOTE$ ;
 
 \ Whether a claim of the admitted request this worker answers holds the
 \ name: a string claim as one of its space-separated words (RFC 6749 3.3
 \ scope), as Entra's scp; an array claim as an element, as Entra's roles;
 \ false outside one.
 : CLAIM-HOLDS? ( str str -- bool )
-   {: name:^ nu:n w:^ wu:n :}
+   {: name:str w:str :}
    ANSWERING? 0= if false exit then
-   name nu w wu HELD? ;
+   name w HELD? ;
 
 
 private
@@ -797,7 +813,7 @@ TYPED-VARIABLE NEWEST ^row
 TASK:FACILITY ROWS-LOCK
 ROWS-LOCK TASK:FACILITY-INIT
 
-: GUARD ( SPAN:span<u8> -- ^n ) SPAN:$ drop CELL-VIEW ;
+: GUARD ( SPAN:span<u8> -- ^n ) SPAN:$ STR:DATA CELL-VIEW ;
 
 : LISTED ( R [ R -- S ] -- S )
    ROWS-LOCK TASK:GET [: ROWS-LOCK TASK:RELEASE ;] finally ;
@@ -831,11 +847,11 @@ ENUM grant
 \ http to a loopback IP literal, URI:ORIGIN's rejection for one it cannot
 \ read, either leaving the previous client in force.
 : CLIENT! ( str str str -- )
-   {: url:^ uu:n id:^ iu:n secret:^ su:n :}
-   url uu SECURE
-   url uu SPAN:MAKE ENDPOINT !
-   id iu SPAN:MAKE CLIENT-ID !
-   secret su SPAN:MAKE SECRET !
+   {: url:str id:str secret:str :}
+   url SECURE
+   url STR:DATA url STR:LEN SPAN:MAKE ENDPOINT !
+   id STR:DATA id STR:LEN SPAN:MAKE CLIENT-ID !
+   secret STR:DATA secret STR:LEN SPAN:MAKE SECRET !
    DROP-KEPT ;
 
 private
@@ -843,12 +859,12 @@ private
 \ The value must not lie in the vector: each append before it is read may move
 \ the block.
 : PAIR+ ( str str ^VEC:vector<u8> -- )
-   {: k:^ ku:n v:^ vu:n buf:^ :}
+   {: k:str v:str buf:^ :}
    buf VEC:COUNT 0 > if [char] & buf VEC:PUSH c! then
-   k ku buf VEC:APPEND
+   k buf VEC:APPEND
    [char] = buf VEC:PUSH c!
-   v vu URI:FORM-LEN {: n:n :}
-   v vu buf n VEC:EXTEND URI:FORM-ENCODE drop ;
+   v URI:FORM-LEN {: n:n :}
+   v buf n VEC:EXTEND URI:FORM-ENCODE drop ;
 
 : CREDENTIALS+ ( ^VEC:vector<u8> -- )
    {: buf:^ :}
@@ -863,29 +879,29 @@ private
    buf 0 VEC:RESIZE  buf TOKEN-CAP 2 * VEC:RESERVE ;
 
 : FORM ( str grant ^VEC:vector<u8> -- )
-   {: scope:^ su:n g buf:^ :}
+   {: scope:str g buf:^ :}
    g MATCH grant
       own OF
          buf EMPTIED
          s" grant_type" s" client_credentials" buf PAIR+
          buf CREDENTIALS+
-         s" scope" scope su buf PAIR+ ENDOF
+         s" scope" scope buf PAIR+ ENDOF
       for-person OF {: a:^ au:n :}
          buf EMPTIED
          s" grant_type" s" urn:ietf:params:oauth:grant-type:jwt-bearer" buf PAIR+
          buf CREDENTIALS+
-         s" assertion" a au buf PAIR+
-         s" scope" scope su buf PAIR+
+         s" assertion" a au >str buf PAIR+
+         s" scope" scope buf PAIR+
          s" requested_token_use" s" on_behalf_of" buf PAIR+ ENDOF
    ;MATCH ;
 
 : REFRESH-FORM ( str str ^VEC:vector<u8> -- )
-   {: scope:^ su:n r:^ ru:n buf:^ :}
+   {: scope:str r:str buf:^ :}
    buf EMPTIED
    s" grant_type" s" refresh_token" buf PAIR+
    buf CREDENTIALS+
-   s" refresh_token" r ru buf PAIR+
-   s" scope" scope su buf PAIR+ ;
+   s" refresh_token" r buf PAIR+
+   s" scope" scope buf PAIR+ ;
 
 : OPEN-LINE ( -- )  LOG:ERROR s" bearer" LOG:LINE ;
 
@@ -1009,9 +1025,9 @@ private
 \ A 2xx answer that cannot be used, logged without the answer, which can
 \ hold a token.
 : UNUSABLE ( n str -- )
-   {: status:n what:^ wu:n :}
+   {: status:n what:str :}
    OPEN-LINE s" token answer " LOG:TEXT+  status LOG:INT+
-   s"  " LOG:TEXT+  what wu LOG:TEXT+  LOG:;LINE
+   s"  " LOG:TEXT+  what LOG:TEXT+  LOG:;LINE
    E-RESPONSE throw ;
 
 : PARSED ( n SPAN:span<u8> SPAN:span<u8> bool -- n n n )
@@ -1040,8 +1056,8 @@ private
    secs 0< if
       status s" lacks a positive integer expires_in" UNUSABLE
    then
-   room SPAN:$ drop {: at:^ :}
-   at got at got + kept secs ;
+   room SPAN:$ STR:DATA {: at:^ :}
+   at got >str at got + kept >str secs ;
 
 : ANSWERED ( n ^VEC:vector<u8> -- )
    {: status:n buf:^ :}
@@ -1066,10 +1082,10 @@ private
 \ vector, then emptied to EMPTIED's room for RECEIVED; whether every setting
 \ took, logging the first that did not. IMDS must bypass proxies.
 : IMDS-SET? ( CURL:handle str str ^VEC:vector<u8> -- bool )
-   {: h:CURL:handle o:^ ou:n res:^ ru:n buf:^ :}
-   buf EMPTIED  o ou buf VEC:APPEND
+   {: h:CURL:handle o:str res:str buf:^ :}
+   buf EMPTIED  o buf VEC:APPEND
    s" /metadata/identity/oauth2/token?api-version=2018-02-01&resource="
-   buf VEC:APPEND  res ru buf URI:QUERY-ENCODE
+   buf VEC:APPEND  res buf URI:QUERY-ENCODE
    h buf VEC:SPAN SPAN:$ CURL:URL!  buf 0 VEC:RESIZE
    SET? 0= if false exit then
    h s" Metadata: true" CURL:HEADER+ SET? 0= if false exit then
@@ -1086,11 +1102,11 @@ private
 \ The resource's token from the IMDS at the origin, borrowed from the vector
 \ as TOKEN's, then its expires_in.
 : IMDS-TOKEN ( str str ^VEC:vector<u8> -- str n )
-   {: o:^ ou:n res:^ ru:n buf:^ :}
-   buf [: o ou res ru buf IMDS-SET? ;] [: IMDS-ERROR ;] ASKED
+   {: o:str res:str buf:^ :}
+   buf [: o res buf IMDS-SET? ;] [: IMDS-ERROR ;] ASKED
    buf false ISSUED
-   {: a:^ u:n r:^ rn:n secs:n :}
-   a u secs ;
+   {: a:str r:str secs:n :}
+   a secs ;
 
 public
 
@@ -1106,12 +1122,12 @@ public
 \ 2xx answer's text. A scope or assertion must not lie in the vector.
 \ E-HTTP-STATE before CLIENT!.
 : TOKEN ( str grant ^VEC:vector<u8> -- str n )
-   {: scope:^ su:n g buf:^ :}
+   {: scope:str g buf:^ :}
    STATED
-   scope su g buf FORM
+   scope g buf FORM
    buf [: buf REQUESTED? ;] [: STATUS-ERROR ;] ASKED
-   buf false ISSUED {: a:^ u:n r:^ ru:n secs:n :}
-   a u secs ;
+   buf false ISSUED {: a:str r:str secs:n :}
+   a secs ;
 
 
 \ A new access token for the scope from the endpoint CLIENT! names, by the
@@ -1122,9 +1138,9 @@ public
 \ refresh_token is not a string. A scope or refresh token must not lie in the
 \ vector.
 : REFRESH ( str str ^VEC:vector<u8> -- str str n )
-   {: scope:^ su:n r:^ ru:n buf:^ :}
+   {: scope:str r:str buf:^ :}
    STATED
-   scope su r ru buf REFRESH-FORM
+   scope r buf REFRESH-FORM
    buf [: buf REQUESTED? ;] [: STATUS-ERROR ;] ASKED
    buf true ISSUED ;
 
@@ -1136,12 +1152,12 @@ private
 
 \ Under ROWS-LOCK: the row of the kind, origin and scope, else null.
 : FOUND ( bool str str -- ^row )
-   {: id:bool o:^ ou:n scope:^ su:n :}
+   {: id:bool o:str scope:str :}
    NEWEST @
    begin dup NULL-PTR <> while
       dup ROW-IDENTITY @ bool>n id bool>n =
-      over ROW-ORIGIN$ o ou STR:= and
-      over ROW-SCOPE$ scope su STR:= and if exit then
+      over ROW-ORIGIN$ o STR:= and
+      over ROW-SCOPE$ scope STR:= and if exit then
       ROW-NEXT @
    repeat ;
 
@@ -1150,15 +1166,15 @@ private
 \ The row's lock made ready in its zeroed region and its vectors made, the
 \ origin's and scope's holding them; a throw leaves what was made to UNMADE.
 : MADE ( bool str str ^row -- )
-   {: id:bool o:^ ou:n scope:^ su:n r:^ :}
+   {: id:bool o:str scope:str r:^ :}
    id r ROW-IDENTITY !
    TASK:FACILITY-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN r ROW-REGION !
    0 r ROW-REGION @ SPAN:FILL
    r ROW-REGION @ GUARD TASK:FACILITY-INIT
    EMPTY r ROW-ORIGIN !  EMPTY r ROW-SCOPE !
    EMPTY r ROW-TOKEN !  EMPTY r ROW-ANSWER !
-   o ou r ROW-ORIGIN @ VEC:APPEND
-   scope su r ROW-SCOPE @ VEC:APPEND ;
+   o r ROW-ORIGIN @ VEC:APPEND
+   scope r ROW-SCOPE @ VEC:APPEND ;
 
 \ Frees what MADE made of an unlinked row, and the row.
 : UNMADE ( ^row -- )
@@ -1171,18 +1187,18 @@ private
 \ Under ROWS-LOCK: a new row for the kind, origin and scope, linked newest
 \ first and never freed; a throw leaves nothing allocated.
 : LINKED ( bool str str -- ^row )
-   {: id:bool o:^ ou:n scope:^ su:n :}
+   {: id:bool o:str scope:str :}
    HEAP:ALLOCATOR [type] row ALLOC:NEW {: r:^ :}
-   [: id o ou scope su r MADE ;] catch {: code:n :}
+   [: id o scope r MADE ;] catch {: code:n :}
    code 0<> if r UNMADE code throw then
    NEWEST @ r ROW-NEXT !
    r NEWEST !  r ;
 
 \ Under ROWS-LOCK.
 : ROW-FOR ( bool str str -- ^row )
-   {: id:bool o:^ ou:n scope:^ su:n :}
-   id o ou scope su FOUND dup NULL-PTR = if
-      drop id o ou scope su LINKED
+   {: id:bool o:str scope:str :}
+   id o scope FOUND dup NULL-PTR = if
+      drop id o scope LINKED
    then ;
 
 : FAILED? ( ^row -- bool )
@@ -1223,9 +1239,9 @@ private
 : KEEP ( ^row -- )
    {: r:^ :}
    epoch-seconds {: asked:n :}
-   r ISSUED-FOR {: a:^ u:n secs:n :}
+   r ISSUED-FOR {: a:str secs:n :}
    r ROW-TOKEN @ {: kept:^ :}
-   kept 0 VEC:RESIZE  a u kept VEC:APPEND
+   kept 0 VEC:RESIZE  a kept VEC:APPEND
    asked r ROW-SINCE !  secs LEEWAY-S - r ROW-LIFE !
    construct kept-state kept r ROW-STATE ! ;
 
@@ -1270,9 +1286,9 @@ public
 \ CURRENT. A failed ask throws TOKEN's code. The replaced token and the
 \ endpoint's answer are wiped. E-HTTP-STATE before CLIENT!.
 : CURRENT ( str [ str -- ] -- )
-   {: scope:^ su:n q :}
+   {: scope:str q :}
    STATED
-   false s" " scope su [: ROW-FOR ;] LISTED q HELD ;
+   false s" " scope [: ROW-FOR ;] LISTED q HELD ;
 
 \ Azure's metadata service (IMDS); production passes it to IDENTITY-TOKEN.
 : IMDS$ ( -- str ) s" http://169.254.169.254" ;
@@ -1288,8 +1304,8 @@ public
 \ never a 2xx answer's text. The caller wipes the vector (`0 VEC:RESIZE`)
 \ when done.
 : IDENTITY-TOKEN ( str str ^VEC:vector<u8> -- )
-   {: o:^ ou:n res:^ ru:n dest:^ :}
-   true o ou res ru [: ROW-FOR ;] LISTED
+   {: o:str res:str dest:^ :}
+   true o res [: ROW-FOR ;] LISTED
    [: dest VEC:APPEND ;] HELD ;
 
 ;package

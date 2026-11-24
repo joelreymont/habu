@@ -1,4 +1,3 @@
-split-str
 \ curl-test.f - focused tests for src/lib/net/curl.f over loopback HTTP. One
 \ process holds both peers: a server task binds a TCP4 listener on a free
 \ loopback port, publishes the port in a shared cell and accepts one connection
@@ -204,9 +203,9 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
-: ROOT$ ( -- ^u8 n )       ROOT-BUF ROOT-U @ ;
-: FILE$ ( -- str )       FILE-BUF FILE-U @ ;
-: JAR$ ( -- str )        JAR-BUF JAR-U @ ;
+: ROOT$ ( -- str )       ROOT-BUF ROOT-U @ >str ;
+: FILE$ ( -- str )       FILE-BUF FILE-U @ >str ;
+: JAR$ ( -- str )        JAR-BUF JAR-U @ >str ;
 : HELLO$ ( -- str )      S\" hello\n" ;
 : PROXY-BODY$ ( -- str ) S\" proxy\n" ;
 : COOKIE-PAIR$ ( -- str ) s" probe=value1" ;
@@ -249,7 +248,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: Cache-Control\r\nConnection: close\r\n\r\n" ;
 : BAD-CHUNK-HEAD$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" ;
-: DRIBBLE$ ( -- str ) DRIBBLE-BUF DRIBBLE-U ;
+: DRIBBLE$ ( -- str ) DRIBBLE-BUF DRIBBLE-U >str ;
 
 
 : DRIBBLE-FILL ( -- )
@@ -266,23 +265,23 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 \ Header names are matched without case because HTTP does not fix it; the path
 \ and the method are matched exactly because HTTP does.
-: REQ-AT? ( str n -- bool ) {: needle:^ needleu:n at:n :}
-   at needleu + HEAD-U @ > if false exit then
-   REQ-BUF at + needleu needle needleu STR:= ;
+: REQ-AT? ( str n -- bool ) {: needle:str at:n :}
+   at needle STR:LEN + HEAD-U @ > if false exit then
+   REQ-BUF at + needle STR:LEN >str needle STR:= ;
 
 
-: REQ-AT-CI? ( str n -- bool ) {: needle:^ needleu:n at:n :}
-   at needleu + HEAD-U @ > if false exit then
-   REQ-BUF at + needleu needle needleu STR:=CI ;
+: REQ-AT-CI? ( str n -- bool ) {: needle:str at:n :}
+   at needle STR:LEN + HEAD-U @ > if false exit then
+   REQ-BUF at + needle STR:LEN >str needle STR:=CI ;
 
 
-: REQ-HAS? ( str -- bool ) {: needle:^ needleu:n :}
-   HEAD-U @ 0 ?do needle needleu i REQ-AT? if true unloop exit then loop
+: REQ-HAS? ( str -- bool ) {: needle:str :}
+   HEAD-U @ 0 ?do needle i REQ-AT? if true unloop exit then loop
    false ;
 
 
-: REQ-HAS-CI? ( str -- bool ) {: needle:^ needleu:n :}
-   HEAD-U @ 0 ?do needle needleu i REQ-AT-CI? if true unloop exit then loop
+: REQ-HAS-CI? ( str -- bool ) {: needle:str :}
+   HEAD-U @ 0 ?do needle i REQ-AT-CI? if true unloop exit then loop
    false ;
 
 
@@ -292,11 +291,12 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 \ Index just past the blank line that ends the head, or zero while it is absent.
 : HEAD-SCAN ( -- n )
-   BLANK-LINE$ {: mark:^ marku:n :}
+   BLANK-LINE$ {: mark:str :}
    REQ-U @ {: u:n :}
-   u marku < if 0 exit then
-   u marku - 1+ 0 ?do
-      REQ-BUF i + marku mark marku STR:= if i marku + unloop exit then
+   u mark STR:LEN < if 0 exit then
+   u mark STR:LEN - 1+ 0 ?do
+      REQ-BUF i + mark STR:LEN >str mark STR:=
+      if i mark STR:LEN + unloop exit then
    loop 0 ;
 
 
@@ -315,20 +315,20 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : METHOD$ ( -- str )
-   REQ-BUF 0 TOKEN-END ;
+   REQ-BUF 0 TOKEN-END >str ;
 
 
-: PATH$ ( -- ^u8 n )
+: PATH$ ( -- str )
    0 TOKEN-END 1+ {: at:n :}
-   REQ-BUF at + at TOKEN-END at - ;
+   REQ-BUF at + at TOKEN-END at - >str ;
 
 
-: METHOD-IS? ( str -- bool ) {: want:^ wantu:n :}
-   METHOD$ want wantu STR:= ;
+: METHOD-IS? ( str -- bool ) {: want:str :}
+   METHOD$ want STR:= ;
 
 
-: PATH-IS? ( str -- bool ) {: want:^ wantu:n :}
-   PATH$ want wantu STR:= ;
+: PATH-IS? ( str -- bool ) {: want:str :}
+   PATH$ want STR:= ;
 
 
 : RES-RESET ( -- )
@@ -341,10 +341,10 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    RES-U @ 1+ RES-U ! ;
 
 
-: RES+ ( str -- ) {: text:^ u:n :}
-   RES-U @ u + RES-CAP > if E-STR-CAPACITY throw then
-   text RES-BUF RES-U @ + u BYTE-COPY
-   RES-U @ u + RES-U ! ;
+: RES+ ( str -- ) {: text:str :}
+   RES-U @ text STR:LEN + RES-CAP > if E-STR-CAPACITY throw then
+   text STR:DATA RES-BUF RES-U @ + text STR:LEN BYTE-COPY
+   RES-U @ text STR:LEN + RES-U ! ;
 
 
 : CRLF+ ( -- )
@@ -366,8 +366,8 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    NUM-N @ 0 ?do NUM-BUF NUM-N @ 1- i - + c@ RES-C+ loop ;
 
 
-: STATUS-LINE ( str -- ) {: text:^ u:n :}
-   s" HTTP/1.0 " RES+ text u RES+ CRLF+ ;
+: STATUS-LINE ( str -- ) {: text:str :}
+   s" HTTP/1.0 " RES+ text RES+ CRLF+ ;
 
 
 : COOKIE-HEADER ( -- )
@@ -377,19 +377,19 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 \ Content-Length plus the close makes the body length unambiguous to the client
 \ either way, which is what the exact-bytes assertions rest on.
-: RESPOND ( str str -- ) {: text:^ u:n body:^ bodyu:n :}
+: RESPOND ( str str -- ) {: text:str body:str :}
    RES-RESET
-   text u STATUS-LINE
+   text STATUS-LINE
    s" Content-Type: text/plain" RES+ CRLF+
-   s" Content-Length: " RES+ bodyu RES-NUM CRLF+
+   s" Content-Length: " RES+ body STR:LEN RES-NUM CRLF+
    COOKIE-HEADER
    s" Connection: close" RES+ CRLF+ CRLF+
-   body bodyu RES+ ;
+   body RES+ ;
 
 
-: RESPOND-EMPTY ( str -- ) {: text:^ u:n :}
+: RESPOND-EMPTY ( str -- ) {: text:str :}
    RES-RESET
-   text u STATUS-LINE
+   text STATUS-LINE
    s" Connection: close" RES+ CRLF+ CRLF+ ;
 
 
@@ -456,8 +456,8 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    s" POST" METHOD-IS? 0= if false exit then
    PATH-RETRY$ PATH-IS? 0= if false exit then
    s" Content-Length: 3" REQ-HAS-CI? 0= if false exit then
-   conn FORM$ nip BODY-READ 0= if false exit then
-   REQ-BUF HEAD-U @ + FORM$ nip FORM$ STR:= ;
+   conn FORM$ STR:LEN BODY-READ 0= if false exit then
+   REQ-BUF HEAD-U @ + FORM$ STR:LEN >str FORM$ STR:= ;
 
 
 : RETRY-COUNT ( TCP4:connection -- ) {: conn:TCP4:connection :}
@@ -484,7 +484,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : SEND-RESPONSE ( TCP4:connection -- ) {: conn:TCP4:connection :}
-   conn RES-BUF RES-U @ TCP4:WRITE SERVER-STATUS
+   conn RES-BUF RES-U @ >str TCP4:WRITE SERVER-STATUS
    conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
    conn DRAIN
    conn TCP4:CLOSE PEER-STATUS ;
@@ -510,7 +510,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 \ A client that already gave up answers this write with its own errno, which is
 \ its departure and not a fault of this server.
 : DRIBBLE-STEP! ( TCP4:connection n n -- bool ) {: conn:TCP4:connection at:n step:n :}
-   conn DRIBBLE-BUF at + step TCP4:WRITE
+   conn DRIBBLE-BUF at + step >str TCP4:WRITE
    MATCH TCP4:status
       ok OF true ENDOF
       failed OF drop false ENDOF
@@ -533,7 +533,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 \ client can receive nothing more from this dribble.
 : SERVE-DRIBBLE ( TCP4:connection n n -- ) {: conn:TCP4:connection step:n gap:n :}
    DRIBBLE-HEAD
-   conn RES-BUF RES-U @ TCP4:WRITE SERVER-STATUS
+   conn RES-BUF RES-U @ >str TCP4:WRITE SERVER-STATUS
    conn step gap DRIBBLE-BODY DRIBBLE-SENT atomic!
    conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
    conn DRAIN
@@ -555,10 +555,10 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 : SERVE-STREAM ( TCP4:connection -- ) {: conn:TCP4:connection :}
    STREAM-HEAD
-   conn RES-BUF RES-U @ TCP4:WRITE SERVER-STATUS
-   conn STREAM-BUF 3 TCP4:WRITE SERVER-STATUS
+   conn RES-BUF RES-U @ >str TCP4:WRITE SERVER-STATUS
+   conn STREAM-BUF 3 >str TCP4:WRITE SERVER-STATUS
    STREAM-WAIT-ACK
-   conn STREAM-BUF 3 + STREAM-U 3 - TCP4:WRITE SERVER-STATUS
+   conn STREAM-BUF 3 + STREAM-U 3 - >str TCP4:WRITE SERVER-STATUS
    1 STREAM-DONE atomic!
    conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
    conn DRAIN
@@ -567,8 +567,8 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 : SERVE-STREAM-SHORT ( TCP4:connection -- ) {: conn:TCP4:connection :}
    STREAM-HEAD
-   conn RES-BUF RES-U @ TCP4:WRITE SERVER-STATUS
-   conn STREAM-BUF 3 TCP4:WRITE SERVER-STATUS
+   conn RES-BUF RES-U @ >str TCP4:WRITE SERVER-STATUS
+   conn STREAM-BUF 3 >str TCP4:WRITE SERVER-STATUS
    conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
    conn DRAIN
    conn TCP4:CLOSE PEER-STATUS ;
@@ -579,8 +579,8 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    s" 200 OK" STATUS-LINE
    s" Content-Length: " RES+ HUGE-U RES-NUM CRLF+
    s" Connection: close" RES+ CRLF+ CRLF+
-   conn RES-BUF RES-U @ TCP4:WRITE SERVER-STATUS
-   conn SENT-BYTES HUGE-U TCP4:WRITE SERVER-STATUS
+   conn RES-BUF RES-U @ >str TCP4:WRITE SERVER-STATUS
+   conn SENT-BYTES HUGE-U >str TCP4:WRITE SERVER-STATUS
    conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
    conn DRAIN
    conn TCP4:CLOSE PEER-STATUS ;
@@ -653,7 +653,8 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : H2-STREAM ( TCP4:connection -- n bool ) {: conn:TCP4:connection :}
    HEAD-U @ {: at:n :}
    conn at 6 + REQ-HOLDS? 0= if 0 false exit then
-   REQ-BUF at + 6 S\" SM\r\n\r\n" STR:= 0= if 0 false exit then
+   REQ-BUF at + 6 >str S\" SM\r\n\r\n" STR:=
+   0= if 0 false exit then
    at 6 +
    begin
       conn swap H2-FRAME 0= if 2drop drop 0 false exit then
@@ -679,7 +680,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    0 4 0 0 H2-HEAD+                              \ SETTINGS
    0 4 1 0 H2-HEAD+                              \ SETTINGS with ACK
    1 1 4 stream H2-HEAD+ $88 RES-C+              \ HEADERS: :status 200, HPACK index 8
-   HELLO$ nip 0 1 stream H2-HEAD+ HELLO$ RES+    \ DATA with END_STREAM
+   HELLO$ STR:LEN 0 1 stream H2-HEAD+ HELLO$ RES+    \ DATA with END_STREAM
    \ GOAWAY, no error, as Connection: close: without it the loop's next transfer
    \ reuses this connection, which the server drains and closes unanswered.
    8 7 0 0 H2-HEAD+ stream 4 RES-BE+ 0 4 RES-BE+
@@ -740,9 +741,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    REDIRECT-RESPONSE conn SEND-RESPONSE ;
 
 
-: SERVE-MOVED ( TCP4:connection str -- ) {: conn:TCP4:connection text:^ u:n :}
+: SERVE-MOVED ( TCP4:connection str -- ) {: conn:TCP4:connection text:str :}
    RES-RESET
-   text u STATUS-LINE
+   text STATUS-LINE
    s" Location: " RES+ PATH-ECHO$ RES+ CRLF+
    s" Content-Length: 0" RES+ CRLF+
    s" Connection: close" RES+ CRLF+ CRLF+
@@ -762,16 +763,16 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 : SERVE-ECHO ( TCP4:connection -- ) {: conn:TCP4:connection :}
    s" Content-Length: 3" REQ-HAS-CI? if
-      conn FORM$ nip BODY-READ 0= if 1 SERVER-BAD +! then
+      conn FORM$ STR:LEN BODY-READ 0= if 1 SERVER-BAD +! then
    then
    1 SEND-COOKIE !
-   s" 200 OK" REQ-BUF REQ-U @ RESPOND
+   s" 200 OK" REQ-BUF REQ-U @ >str RESPOND
    0 SEND-COOKIE !
    conn SEND-RESPONSE ;
 
 
 : LENGTH-AT ( n -- n ) {: at:n :}
-   REQ-BUF at + at TOKEN-END at - STR:>NUMBER?
+   REQ-BUF at + at TOKEN-END at - >str STR:>NUMBER?
    MATCH option
       some OF ENDOF
       none OF 1 SERVER-BAD +! 0 ENDOF
@@ -779,9 +780,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : DECLARED-LENGTH ( -- n )
-   s" Content-Length: " {: name:^ nameu:n :}
+   s" Content-Length: " {: name:str :}
    HEAD-U @ 0 ?do
-      name nameu i REQ-AT-CI? if i nameu + LENGTH-AT unloop exit then
+      name i REQ-AT-CI? if i name STR:LEN + LENGTH-AT unloop exit then
    loop
    1 SERVER-BAD +! 0 ;
 
@@ -855,7 +856,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : SERVE-RETRY-PRIME ( TCP4:connection -- ) {: conn:TCP4:connection :}
    RES-RESET
    S\" HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok" RES+
-   conn RES-BUF RES-U @ TCP4:WRITE SERVER-STATUS
+   conn RES-BUF RES-U @ >str TCP4:WRITE SERVER-STATUS
    conn RETRY-NEXT {: next:n :}
    next 1 = if
       conn REQ-READ if
@@ -1016,14 +1017,14 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    SILENT-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER SERVER-STATUS ;
 
 
-: UNDER-ROOT ( str ^u8 -- n ) {: name:^ nameu:n dst:^ :}
-   ROOT$ name nameu dst FS:JOIN-PATH ;
+: UNDER-ROOT ( str ^u8 -- n ) {: name:str dst:^ :}
+   ROOT$ name dst FS:JOIN-PATH ;
 
 
 : MAKE-ROOT ( -- )
-   s" habu-curl" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT-BUF u BYTE-COPY
-   u ROOT-U !
+   s" habu-curl" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA ROOT-BUF dir STR:LEN BYTE-COPY
+   dir STR:LEN ROOT-U !
    s" hello.txt" FILE-BUF UNDER-ROOT FILE-U !
    s" cookies.txt" JAR-BUF UNDER-ROOT JAR-U ! ;
 
@@ -1041,21 +1042,21 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : SCHEME-URL ( str n str -- str )
-   {: scheme:^ schemeu:n port:n path:^ pathu:n :}
+   {: scheme:str port:n path:str :}
    SB-RESET
-   scheme schemeu SB-APPEND
+   scheme SB-APPEND
    s" ://127.0.0.1:" SB-APPEND
    port FMT:SB-U
-   path pathu SB-APPEND
+   path SB-APPEND
    SB$ ;
 
 
-: URL-AT ( n str -- str ) {: port:n path:^ pathu:n :}
-   s" http" port path pathu SCHEME-URL ;
+: URL-AT ( n str -- str ) {: port:n path:str :}
+   s" http" port path SCHEME-URL ;
 
 
-: URL-FOR ( str -- str ) {: path:^ pathu:n :}
-   SERVER-PORT @ path pathu URL-AT ;
+: URL-FOR ( str -- str ) {: path:str :}
+   SERVER-PORT @ path URL-AT ;
 
 
 : OPEN-HANDLE ( -- CURL:handle )
@@ -1142,9 +1143,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : HEADER-EXACT ( CURL:handle str -- )
-   {: subject:CURL:handle want:^ u:n :}
+   {: subject:CURL:handle want:str :}
    subject HEADER-COPY
-   HEADER$ want u T$= ;
+   HEADER$ want T$= ;
 
 
 : HEADER-REFUSED ( CURL:handle -- ) {: subject:CURL:handle :}
@@ -1161,33 +1162,36 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    S\" result=response status=200 body-len=2\nheaders:\n" SB-APPEND
    HEADER$ SB-APPEND
    S\" body:{}\n" SB-APPEND
-   SB$ {: transcript:^ u:n :}
-   transcript TRANSCRIPT-BUF u BYTE-COPY
-   u TRANSCRIPT-U !
-   TRANSCRIPT-PATH pathu TRANSCRIPT-BUF TRANSCRIPT-U @ FS:WRITE-ALL
-   TRANSCRIPT-PATH pathu TRANSCRIPT-BUF TRANSCRIPT-CAP FS:READ-ALL
+   SB$ {: transcript:str :}
+   transcript STR:DATA TRANSCRIPT-BUF transcript STR:LEN BYTE-COPY
+   transcript STR:LEN TRANSCRIPT-U !
+   TRANSCRIPT-PATH pathu >str {: path:str :}
+   path TRANSCRIPT-BUF TRANSCRIPT-U @ >str FS:WRITE-ALL
+   path TRANSCRIPT-BUF TRANSCRIPT-CAP FS:READ-ALL
       TRANSCRIPT-U @ T=
-   TRANSCRIPT-BUF TRANSCRIPT-U @ SB$ T$= ;
+   TRANSCRIPT-BUF TRANSCRIPT-U @ >str SB$ T$= ;
 
 
 : TEXT-AT? ( str str n -- bool )
-   {: text:^ u:n needle:^ needleu:n at:n :}
-   at needleu + u > if false exit then
-   text at + needleu needle needleu STR:= ;
+   {: text:str needle:str at:n :}
+   at needle STR:LEN + text STR:LEN > if false exit then
+   text STR:DATA at + needle STR:LEN >str needle STR:= ;
 
 
 \ The jar is libcurl's Netscape format, where the name and the value are two
 \ tab-separated fields, so each is looked for on its own. The jar is read into
 \ its own buffer: REQ-BUF belongs to the server task.
-: JAR-HAS? ( str -- bool ) {: needle:^ needleu:n :}
+: JAR-HAS? ( str -- bool ) {: needle:str :}
    JAR$ JAR-TEXT-BUF RES-CAP FS:READ-ALL {: u:n :}
-   u 0 ?do JAR-TEXT-BUF u needle needleu i TEXT-AT? if true unloop exit then loop
+   u 0 ?do
+      JAR-TEXT-BUF u >str needle i TEXT-AT? if true unloop exit then
+   loop
    false ;
 
 
-: GET-READY ( str -- CURL:handle ) {: path:^ pathu:n :}
+: GET-READY ( str -- CURL:handle ) {: path:str :}
    OPEN-HANDLE {: subject:CURL:handle :}
-   subject path pathu URL-FOR CURL:URL! EXPECT-OK
+   subject path URL-FOR CURL:URL! EXPECT-OK
    subject ;
 
 
@@ -1198,9 +1202,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject ;
 
 
-: HTTP-PROXY-Z ( -- ^u8 ) S\" http_proxy\z" drop ;
-: NO-PROXY-Z ( -- ^u8 ) S\" no_proxy\z" drop ;
-: NO-PROXY-UP-Z ( -- ^u8 ) S\" NO_PROXY\z" drop ;
+: HTTP-PROXY-Z ( -- ^u8 ) S\" http_proxy\z" STR:DATA ;
+: NO-PROXY-Z ( -- ^u8 ) S\" no_proxy\z" STR:DATA ;
+: NO-PROXY-UP-Z ( -- ^u8 ) S\" NO_PROXY\z" STR:DATA ;
 
 
 : PROXY-URL$ ( -- str )
@@ -1212,7 +1216,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    ENV-DUP dup 0= if E-FS-IO throw then ;
 
 
-: ENV-RESTORE ( str -- )
+: ENV-RESTORE ( ^u8 n -- )
    {: name old:n :}
    old 0= if
       name ENV-UNSET
@@ -1227,10 +1231,10 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    HTTP-PROXY-Z ENV-SAVE HTTP-PROXY-OLD !
    NO-PROXY-Z ENV-SAVE NO-PROXY-OLD !
    NO-PROXY-UP-Z ENV-SAVE NO-PROXY-UP-OLD !
-   PROXY-URL$ 2drop 0 SB-APPEND-C
-   HTTP-PROXY-Z SB$ drop FFI:>CELL 1 ENV-SET 0 T=
-   NO-PROXY-Z S\" \z" drop FFI:>CELL 1 ENV-SET 0 T=
-   NO-PROXY-UP-Z S\" \z" drop FFI:>CELL 1 ENV-SET 0 T= ;
+   PROXY-URL$ drop 0 SB-APPEND-C
+   HTTP-PROXY-Z SB$ STR:DATA FFI:>CELL 1 ENV-SET 0 T=
+   NO-PROXY-Z S\" \z" STR:DATA FFI:>CELL 1 ENV-SET 0 T=
+   NO-PROXY-UP-Z S\" \z" STR:DATA FFI:>CELL 1 ENV-SET 0 T= ;
 
 
 : PROXY-ENV-RESTORE ( -- )
@@ -1314,7 +1318,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    HUGE-BODY-U MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: bytes :}
    PATH-COUNT$ GET-READY {: subject:CURL:handle :}
    subject s" Expect:" CURL:HEADER+ EXPECT-OK
-   subject bytes HUGE-BODY-U CURL:BODY! EXPECT-OK
+   subject bytes HUGE-BODY-U >str CURL:BODY! EXPECT-OK
    bytes HUGE-BODY-U MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
@@ -1330,7 +1334,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 : TEST-METHOD ( -- )
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
-   subject s" DELETE" CURL:METHOD! EXPECT-OK
+   subject s" DELETE" str> CURL:METHOD! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    s" a custom method reaches the server" T-LABEL
@@ -1338,17 +1342,17 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-STATUS @ 501 T= ;
 
 
-: ECHO-HAS? ( str -- bool ) {: needle:^ needleu:n :}
-   LAST-LEN @ 0 ?do BODY$ needle needleu i TEXT-AT? if true unloop exit then loop
+: ECHO-HAS? ( str -- bool ) {: needle:str :}
+   LAST-LEN @ 0 ?do BODY$ needle i TEXT-AT? if true unloop exit then loop
    false ;
 
 
-: ECHO-STARTS? ( str -- bool ) {: line:^ lineu:n :}
-   BODY$ line lineu STR:STARTS-WITH? ;
+: ECHO-STARTS? ( str -- bool ) {: line:str :}
+   BODY$ line STR:STARTS-WITH? ;
 
 
-: FORM-TO ( CURL:handle str -- ) {: subject:CURL:handle path:^ pathu:n :}
-   subject path pathu URL-FOR CURL:URL! EXPECT-OK
+: FORM-TO ( CURL:handle str -- ) {: subject:CURL:handle path:str :}
+   subject path URL-FOR CURL:URL! EXPECT-OK
    subject FORM$ CURL:BODY! EXPECT-OK ;
 
 
@@ -1360,10 +1364,11 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 \ The echo ends with the bytes as the transfer found them, changed after the setter.
 : TEST-BORROWED-POST ( -- )
-   s" b=2" BORROWED-BUF swap BYTE-COPY
+   s" b=2" {: first:str :}
+   first STR:DATA BORROWED-BUF first STR:LEN BYTE-COPY
    PATH-ECHO$ GET-READY {: subject:CURL:handle :}
-   subject BORROWED-BUF FORM$ nip CURL:BORROW-BODY! EXPECT-OK
-   FORM$ BORROWED-BUF swap BYTE-COPY
+   subject BORROWED-BUF FORM$ STR:LEN >str CURL:BORROW-BODY! EXPECT-OK
+   FORM$ STR:DATA BORROWED-BUF FORM$ STR:LEN BYTE-COPY
    subject ECHO-FETCH
    subject CURL:CLEANUP
    s" a borrowed body is sent as it is when the transfer runs" T-LABEL
@@ -1393,7 +1398,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    s" Content-Length: 3" ECHO-HAS? TTRUE
    BODY$ FORM$ STR:ENDS-WITH? TTRUE
    subject PATH-FOUND$ FORM-TO
-   subject s" POST" CURL:METHOD! EXPECT-OK
+   subject s" POST" str> CURL:METHOD! EXPECT-OK
    subject ECHO-FETCH
    s" a METHOD! override is sent again on the request a 302 redirects" T-LABEL
    s" POST /echo " ECHO-STARTS? TTRUE
@@ -1413,7 +1418,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    PATH-ECHO$ GET-READY {: subject:CURL:handle :}
    subject s" X-Reset: 1" CURL:HEADER+ EXPECT-OK
    subject FORM$ CURL:BODY! EXPECT-OK
-   subject s" PUT" CURL:METHOD! EXPECT-OK
+   subject s" PUT" str> CURL:METHOD! EXPECT-OK
    subject ECHO-FETCH
    subject CURL:RESET EXPECT-OK
    subject HEADER-REFUSED
@@ -1492,7 +1497,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-STATUS @ 200 T=
    LAST-LEN @ HUGE-U T=
    v VEC:COUNT HUGE-U T=
-   v VEC:SPAN SPAN:$ SENT-BYTES HUGE-U STR:= TTRUE ;
+   v VEC:SPAN SPAN:$ SENT-BYTES HUGE-U >str STR:= TTRUE ;
 
 
 : HUGE-CASE ( -- )
@@ -1532,7 +1537,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    s" a truncated body leaves the header block whole" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
    LAST-LEN @ 1 T=
-   BODY$ JSON$ drop 1 T$=
+   BODY$ JSON$ STR:DATA 1 >str T$=
    subject HEADERS$ HEADER-EXACT
    s" HEADERS appends the block after the vector's elements" T-LABEL
    subject HEADER CURL:HEADERS
@@ -1807,9 +1812,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : SPLIT-HEADER ( str -- )
-   {: line:^ lu:n :}
+   {: line:str :}
    OPEN-HANDLE {: subject:CURL:handle :}
-   subject line lu CURL:HEADER+ EXPECT-OK
+   subject line CURL:HEADER+ EXPECT-OK
    subject CURL:CLEANUP ;
 
 
@@ -1822,7 +1827,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 \ libcurl reads a body length of -1 as "use strlen", which a NUL would cut.
 : NEGATIVE-BODY ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
-   subject s" a" drop -1 CURL:BODY! EXPECT-OK
+   subject s" a" STR:DATA -1 >str CURL:BODY! EXPECT-OK
    subject CURL:CLEANUP ;
 
 
@@ -1879,7 +1884,7 @@ variable LONG-U
 variable LONG-ANSWER
 
 : LONG-TEXT ( -- str )
-   LONG-PTR @ LONG-U @ ;
+   LONG-PTR @ LONG-U @ >str ;
 
 : LONG-OPEN ( n -- ) {: u:n :}
    OPEN-HANDLE LONG-HANDLE !
@@ -1893,7 +1898,7 @@ variable LONG-ANSWER
 
 : LONG-SETTERS ( -- )
    LONG-HANDLE @ LONG-TEXT CURL:URL! EXPECT-OK
-   LONG-HANDLE @ LONG-TEXT CURL:METHOD! EXPECT-OK
+   LONG-HANDLE @ LONG-TEXT str> CURL:METHOD! EXPECT-OK
    LONG-HANDLE @ LONG-TEXT CURL:HEADER+ EXPECT-OK
    LONG-HANDLE @ LONG-TEXT CURL:PROXY! EXPECT-OK
    LONG-HANDLE @ LONG-TEXT CURL:COOKIE-FILE! EXPECT-OK
@@ -2017,8 +2022,8 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject CURL:CLEANUP ;
 
 
-: LIMIT-FETCH ( str n bool -- ) {: path:^ pathu:n capacity:n multi:bool :}
-   path pathu GET-READY capacity multi LIMIT-RUN ;
+: LIMIT-FETCH ( str n bool -- ) {: path:str capacity:n multi:bool :}
+   path GET-READY capacity multi LIMIT-RUN ;
 
 
 : LIMIT-CASES ( bool -- ) {: multi:bool :}
@@ -2145,7 +2150,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject STREAM-FIRST
    s" HEADERS answers a stream's final block while its body is held" T-LABEL
    STREAM-HEAD
-   subject RES-BUF RES-U @ HEADER-EXACT
+   subject RES-BUF RES-U @ >str HEADER-EXACT
    STALL-READY {: other:CURL:handle :}
    other BODY-CAP >LEN BODY CURL:START EXPECT-OK
    other AWAIT-ONE
@@ -2156,9 +2161,9 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject STREAM-REMAINING
    STREAM-DONE atomic@ 1 T=
    STREAM-READ @ STREAM-U T=
-   STREAM-GOT STREAM-U STREAM-BUF STREAM-U T$=
+   STREAM-GOT STREAM-U >str STREAM-BUF STREAM-U >str T$=
    STREAM-HEAD
-   subject RES-BUF RES-U @ HEADER-EXACT
+   subject RES-BUF RES-U @ >str HEADER-EXACT
    [: STREAM-TERMINAL-AGAIN ;] CURL:E-STATE TTHROWSQ
    subject CURL:CLEANUP ;
 
@@ -2189,7 +2194,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    OWNER-RC @ CURL:E-STATE T=
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
-      chunk OF swap CURL:HTTP-STATUS>N 200 T= LEN>N HELLO$ nip T= ENDOF
+      chunk OF swap CURL:HTTP-STATUS>N 200 T= LEN>N HELLO$ STR:LEN T= ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
       failed OF CURL:CODE>N 0 T= ENDOF
    ;MATCH
@@ -2219,7 +2224,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
       chunk OF
          swap CURL:HTTP-STATUS>N 404 T=
          dup LEN>N 9 T=
-         STREAM-CHUNK swap LEN>N s" not found" T$=
+         STREAM-CHUNK swap LEN>N >str s" not found" T$=
       ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
       failed OF CURL:CODE>N 0 T= ENDOF
@@ -2267,12 +2272,12 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
       chunk OF
          swap CURL:HTTP-STATUS>N 200 T=
          dup LEN>N 3 T=
-         STREAM-CHUNK swap LEN>N STREAM-BUF 3 T$=
+         STREAM-CHUNK swap LEN>N >str STREAM-BUF 3 >str T$=
       ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
       failed OF CURL:CODE>N 0 T= ENDOF
    ;MATCH
-   STREAM-HEAD subject RES-BUF RES-U @ HEADER-EXACT
+   STREAM-HEAD subject RES-BUF RES-U @ >str HEADER-EXACT
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
@@ -2295,7 +2300,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
       chunk OF
          swap CURL:HTTP-STATUS>N 200 T=
          dup LEN>N 3 T=
-         STREAM-CHUNK swap LEN>N s" abc" T$=
+         STREAM-CHUNK swap LEN>N >str s" abc" T$=
       ENDOF
       response OF CURL:HTTP-STATUS>N 0 T= ENDOF
       failed OF CURL:CODE>N 0 T= ENDOF
@@ -2361,7 +2366,8 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
 : BOUNDED-TAKE ( CURL:handle len -- ) {: subject:CURL:handle u:len :}
    u LEN>N {: count:n :}
    BOUNDED-READ @ count + HUGE-U <= if
-      BOUNDED-BUF count SENT-BYTES BOUNDED-READ @ + count STR:= 0=
+      BOUNDED-BUF count >str
+      SENT-BYTES BOUNDED-READ @ + count >str STR:= 0=
    else true then
    if 1 BOUNDED-BAD +! then
    BOUNDED-READ @ count + BOUNDED-READ !
@@ -2473,8 +2479,8 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    until
    STREAM-DONE atomic@ 1 T=
    0 TWO-READ @ STREAM-U T=
-   0 TWO-BODY STREAM-U STREAM-BUF STREAM-U T$=
-   1 TWO-BODY 1 TWO-READ @ HELLO$ T$=
+   0 TWO-BODY STREAM-U >str STREAM-BUF STREAM-U >str T$=
+   1 TWO-BODY 1 TWO-READ @ >str HELLO$ T$=
    s" a stream is armed once and read only when armed" T-LABEL
    PATH-HELLO$ GET-READY {: three:CURL:handle :}
    three OWNER-HANDLE !
@@ -3074,7 +3080,7 @@ variable DEFER-RETURNED
 
 : VEC-RESERVED ( ^VEC:vector<u8> -- ) {: v:^ :}
    v BODY-CAP VEC:RESERVE
-   v VEC:SPAN SPAN:$ drop {: block:^ :}
+   v VEC:SPAN SPAN:$ STR:DATA {: block:^ :}
    PATH-TRICKLE$ GET-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN v CURL:START EXPECT-OK
    subject AWAIT-ONE
@@ -3082,12 +3088,12 @@ variable DEFER-RETURNED
    s" a vector reserved to the limit before START keeps its block" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    v VEC:SPAN SPAN:$ DRIBBLE$ T$=
-   v VEC:SPAN SPAN:$ drop block = TTRUE ;
+   v VEC:SPAN SPAN:$ STR:DATA block = TTRUE ;
 
 
 \ START appends after what the vector holds; a limit of 0 appends nothing.
 : VEC-NO-LIMIT ( ^VEC:vector<u8> -- ) {: v:^ :}
-   s" x" drop 1 v VEC:APPEND
+   s" x" v VEC:APPEND
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
    subject 0 >LEN v CURL:START EXPECT-OK
    subject AWAIT-ONE
@@ -3125,11 +3131,11 @@ variable DEFER-RETURNED
 \ The heap's allocator, but a block grows to 4 bytes at most.
 TYPED-VARIABLE TIGHT-ALLOCATOR ALLOC:allocator
 
-: TIGHT-ALLOC ( str -- ^u8 )
+: TIGHT-ALLOC ( ^u8 n -- ^u8 )
    {: st:^ len:n :}
    HEAP:ALLOCATOR len ALLOC:BYTES drop ;
 
-: TIGHT-RESIZE ( ^u8 str n -- ^u8 )
+: TIGHT-RESIZE ( ^u8 ^u8 n n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    new 4 > if E-MEM-SIZE throw then
    HEAP:ALLOCATOR block old new ALLOC:RESIZE drop ;
@@ -3309,15 +3315,15 @@ TIGHT-FILL
    ARENA:NEW {: a:^ :}
    AIO:START
    s" a refused wake pipe is CURL:E-LOOP" T-LABEL
-   [: STARVED-START ;] CAPTURE-BUF u a STDERR:CAPTURING
-   {: text:^ tu:n :}
+   [: STARVED-START ;] CAPTURE-BUF u >str a STDERR:CAPTURING
+   {: text:str :}
    AIO:STOP
    CURL:E-LOOP T=
    s" CURL logs the refused pipe and the code it was refused with" T-LABEL
-   text tu s"  error curl: the host refused the wake pipe: " STR:CONTAINS? TTRUE
-   text tu E-FS-IO ERROR:NAME$ STR:CONTAINS? TTRUE
+   text s"  error curl: the host refused the wake pipe: " STR:CONTAINS? TTRUE
+   text E-FS-IO ERROR:NAME$ STR:CONTAINS? TTRUE
    s" CURL logs the host's text for EMFILE" T-LABEL
-   text tu FS:EMFILE FS:ERRNO$ STR:CONTAINS? TTRUE
+   text FS:EMFILE FS:ERRNO$ STR:CONTAINS? TTRUE
    a ARENA:RELEASE ;
 
 
