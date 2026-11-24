@@ -1,4 +1,3 @@
-split-str
 \ mcp.f - an MCP server on Habu's HTTP server: the stateless, JSON-response form of
 \ streamable HTTP for MCP 2026-07-28 with server/discover, and the 2025-11-25 initialize
 \ flow. No session ID, no event stream. Before HTTP:START the host states its name with
@@ -225,29 +224,30 @@ CAST: >HELD ( n -- held )
 CAST: HELD>N ( held -- n )
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
+: >SPAN ( str -- SPAN:span<u8> ) {: s:str :} s STR:DATA s STR:LEN SPAN:MAKE ;
 : CURSOR ( -- ^JSON:cursor ) SLOT READER ;
-: ID$ ( -- ^u8 n ) SLOT ID @ SPAN:$ ;
+: ID$ ( -- str ) SLOT ID @ SPAN:$ ;
 : METHOD$ ( -- str ) SLOT METHOD @ SPAN:$ ;
 : PARAMS$ ( -- str ) SLOT PARAMS @ SPAN:$ ;
-: TEXT$ ( -- ^u8 n ) SLOT TEXT @ SPAN:$ ;
+: TEXT$ ( -- str ) SLOT TEXT @ SPAN:$ ;
 : LEGACY? ( -- bool ) SLOT ERA @ LEGACY = ;
 
 
 \ A value's JSON text at the reader: a container whole, a string with quotes.
 : RAW$ ( JSON:reader -- JSON:reader str )
    JSON:READ-TOKEN dup JSON:T-OBJ = over JSON:T-ARR = or if
-      drop JSON:READ-VALUE-SPAN$ exit
+      drop JSON:READ-VALUE-SPAN$ >str exit
    then
    JSON:T-STR = if
-      JSON:READ-SPAN$ {: a:^ u:n :} a 1- u 2 + exit
+      JSON:READ-SPAN$ {: a:^ u:n :} a 1- u 2 + >str exit
    then
-   JSON:READ-SPAN$ ;
+   JSON:READ-SPAN$ >str ;
 
 
 \ The token kind of a non-empty JSON text's first value.
-: KIND ( ^u8 n -- n )
-   {: a:^ u:n :}
-   CURSOR a u JSON:READ-INIT
+: KIND ( str -- n )
+   {: text:str :}
+   CURSOR text JSON:READ-INIT
    JSON:READ-NEXT {: k:n :}
    JSON:READ-CLOSE k ;
 
@@ -256,46 +256,46 @@ CAST: HELD>N ( held -- n )
 
 \ Throws E-INPUT with `member`: expected <e>; <fix>.
 : INPUT-ERROR ( str str str -- )
-   {: ma:^ mu:n ea:^ eu:n fa:^ fu:n :}
-   REASON:OPEN ma mu false REASON:QUOTE s" : " REASON:APPEND
-   REASON:EXPECTED ea eu REASON:APPEND REASON:FIX fa fu REASON:APPEND
+   {: ms:str es:str fs:str :}
+   REASON:OPEN ms false REASON:QUOTE s" : " REASON:APPEND
+   REASON:EXPECTED es REASON:APPEND REASON:FIX fs REASON:APPEND
    E-INPUT REASON:STOP ;
 
 \ Throws E-INPUT with `name`: expected a JSON object; send name as one object.
 : OBJECT-ERROR ( str -- )
-   {: na:^ nu:n :}
-   REASON:OPEN na nu false REASON:QUOTE s" : " REASON:APPEND
+   {: ns:str :}
+   REASON:OPEN ns false REASON:QUOTE s" : " REASON:APPEND
    REASON:EXPECTED s" a JSON object" REASON:APPEND
-   REASON:FIX s" send " REASON:APPEND na nu REASON:APPEND s"  as one object" REASON:APPEND
+   REASON:FIX s" send " REASON:APPEND ns REASON:APPEND s"  as one object" REASON:APPEND
    E-INPUT REASON:STOP ;
 
 \ A member of the object called name and whether it is there; text that is
 \ no object, empty included, is E-INPUT naming it.
 : FIELD? ( str str str -- str bool )
-   {: data:^ len:n na:^ nu:n key:^ ku:n :}
-   len 0= if na nu OBJECT-ERROR then
-   CURSOR data len JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE na nu OBJECT-ERROR then
-   key ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " false exit then
-   RAW$ {: a:^ u:n :}
-   JSON:READ-CLOSE a u true ;
+   {: data:str ns:str key:str :}
+   data STR:LEN 0= if ns OBJECT-ERROR then
+   CURSOR data JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE ns OBJECT-ERROR then
+   key JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " false exit then
+   RAW$ {: value:str :}
+   JSON:READ-CLOSE value true ;
 
 \ Whether a JSON text is a string that decodes to the wanted bytes.
 : STRING= ( str str -- bool )
-   {: raw:^ len:n wanted:^ wu:n :}
-   CURSOR raw len JSON:READ-INIT
+   {: raw:str wanted:str :}
+   CURSOR raw JSON:READ-INIT
    JSON:READ-NEXT JSON:T-STR <> if JSON:READ-CLOSE false exit then
-   wanted wu JSON:READ-STR-EQ? {: same:bool :}
+   wanted JSON:READ-STR-EQ? {: same:bool :}
    JSON:READ-CLOSE same ;
 
-: METHOD= ( str -- bool ) METHOD$ 2swap STRING= ;
+: METHOD= ( str -- bool ) METHOD$ swap STRING= ;
 
 
-: BAD ( n n ^u8 n -- )
-   {: status:n code:n why:^ wu:n :}
+: BAD ( n n str -- )
+   {: status:n code:n why:str :}
    status SLOT STATUS !
    code SLOT CODE !
-   why wu SPAN:MAKE SLOT TEXT !
+   why >SPAN SLOT TEXT !
    ERROR-REPLY SLOT REPLY ! ;
 
 : GOOD ( n -- ) SLOT REPLY !  200 SLOT STATUS ! ;
@@ -316,19 +316,19 @@ CAST: HELD>N ( held -- n )
 
 
 \ An object's JSON text without its braces and the space around them.
-: MEMBERS ( ^u8 n -- ^u8 n )
-   STR:TRIM {: a:^ u:n :}
-   a 1+ u 2 - STR:TRIM ;
+: MEMBERS ( str -- str )
+   STR:TRIM {: s:str :}
+   s STR:DATA 1+ s STR:LEN 2 - >str STR:TRIM ;
 
 
 \ _meta: the members of meta, empty or an object's text, then serverInfo.
 : MODERN-META ( ^JSON:writer str -- ^JSON:writer )
-   {: meta:^ mu:n :}
+   {: meta:str :}
    JSON:WRITE-COMMA s" _meta" JSON:WRITE-KEY
    JSON:WRITE-OBJECT-START
-   mu 0<> if
-      meta mu MEMBERS {: a:^ u:n :}
-      u 0<> if a u JSON:WRITE-RAW JSON:WRITE-COMMA then
+   meta STR:LEN 0<> if
+      meta MEMBERS {: inner:str :}
+      inner STR:LEN 0<> if inner JSON:WRITE-RAW JSON:WRITE-COMMA then
    then
    s" io.modelcontextprotocol/serverInfo" JSON:WRITE-KEY
    SERVER-INFO JSON:WRITE-OBJECT-END ;
@@ -374,11 +374,11 @@ CAST: HELD>N ( held -- n )
 
 
 : OUTPUT-SCHEMA ( ^JSON:writer n -- ^JSON:writer )
-   TOOL-OUTPUT @ SPAN:$ {: text:^ tu:n :}
+   TOOL-OUTPUT @ SPAN:$ {: text:str :}
    s" outputSchema" JSON:WRITE-KEY
    JSON:WRITE-OBJECT-START s" type" s" object" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" properties" JSON:WRITE-KEY
-   JSON:WRITE-OBJECT-START s" data" text tu JSON:WRITE-FIELD-RAW JSON:WRITE-OBJECT-END
+   JSON:WRITE-OBJECT-START s" data" text JSON:WRITE-FIELD-RAW JSON:WRITE-OBJECT-END
    JSON:WRITE-COMMA s" required" JSON:WRITE-KEY
    JSON:WRITE-ARRAY-START s" data" JSON:WRITE-STRING JSON:WRITE-ARRAY-END
    JSON:WRITE-OBJECT-END ;
@@ -388,17 +388,17 @@ CAST: HELD>N ( held -- n )
    {: w idx:n :}
    s" outputSchema" JSON:READ-STR-EQ? {: output:bool :}
    JSON:READ-SPAN$ {: key:^ ku:n :}
-   JSON:READ-NEXT drop RAW$ {: value:^ vu:n :}
+   JSON:READ-NEXT drop RAW$ {: value:str :}
    output if w idx OUTPUT-SCHEMA drop exit then
-   w key 1- ku 2 + JSON:WRITE-RAW s" :" JSON:WRITE-RAW value vu JSON:WRITE-RAW drop ;
+   w key 1- ku 2 + >str JSON:WRITE-RAW s" :" JSON:WRITE-RAW value JSON:WRITE-RAW drop ;
 
 
 : TOOL-ENTRY ( ^JSON:writer n -- ^JSON:writer )
    {: w idx:n :}
-   idx TOOL-TEXT @ SPAN:$ {: text:^ tu:n :}
-   idx TOOL-WHOLE @ if w text tu JSON:WRITE-RAW exit then
+   idx TOOL-TEXT @ SPAN:$ {: text:str :}
+   idx TOOL-WHOLE @ if w text JSON:WRITE-RAW exit then
    w JSON:WRITE-OBJECT-START drop
-   CURSOR text tu JSON:READ-INIT JSON:READ-NEXT drop JSON:READ-NEXT drop
+   CURSOR text JSON:READ-INIT JSON:READ-NEXT drop JSON:READ-NEXT drop
    w idx WRITE-MEMBER
    begin JSON:READ-NEXT JSON:T-KEY = while
       w JSON:WRITE-COMMA drop  w idx WRITE-MEMBER
@@ -407,7 +407,8 @@ CAST: HELD>N ( held -- n )
 
 
 \ Whether the request's caller may see and call the registered tool.
-: SHOWN? ( n -- bool ) TOOL-NAME @ SPAN:$ VISIBILITY @ execute ;
+: SHOWN? ( n -- bool )
+   TOOL-NAME @ SPAN:$ dup STR:DATA swap STR:LEN VISIBILITY @ execute ;
 
 
 : RESULT-START ( ^JSON:writer -- ^JSON:writer )
@@ -449,16 +450,16 @@ CAST: HELD>N ( held -- n )
 \ checked, and any _meta.
 : READ-BODY ( ^JSON:writer -- ^JSON:writer )
    SLOT OPENED @ {: idx:n :}
-   idx RESOURCE-TEXT @ SPAN:$ {: desc:^ du:n :}
+   idx RESOURCE-TEXT @ SPAN:$ {: desc:str :}
    RESULT-START
    s" contents" JSON:WRITE-KEY JSON:WRITE-ARRAY-START JSON:WRITE-OBJECT-START
-   s" uri" desc du s" descriptor" s" uri" FIELD? drop JSON:WRITE-FIELD-RAW
+   s" uri" desc s" descriptor" s" uri" FIELD? drop JSON:WRITE-FIELD-RAW
    JSON:WRITE-COMMA s" mimeType"
-   desc du s" descriptor" s" mimeType" FIELD? drop JSON:WRITE-FIELD-RAW
-   desc du s" descriptor" s" _meta" FIELD? if
-      {: meta:^ mu:n :}
-      JSON:WRITE-COMMA s" _meta" meta mu JSON:WRITE-FIELD-RAW
-   else 2drop then
+   desc s" descriptor" s" mimeType" FIELD? drop JSON:WRITE-FIELD-RAW
+   desc s" descriptor" s" _meta" FIELD? if
+      {: meta:str :}
+      JSON:WRITE-COMMA s" _meta" meta JSON:WRITE-FIELD-RAW
+   else drop then
    JSON:WRITE-COMMA s" text" idx RESOURCE-PAGE @ SPAN:$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END JSON:WRITE-ARRAY-END CACHED-END ;
 
@@ -475,8 +476,8 @@ CAST: HELD>N ( held -- n )
 
 
 : RESULT-BLOCKS ( ^JSON:writer -- ^JSON:writer )
-   SLOT CONTENT-SPAN @ SPAN:$ {: blocks:^ bu:n :}
-   bu 0<> if blocks bu JSON:WRITE-RAW then ;
+   SLOT CONTENT-SPAN @ SPAN:$ {: blocks:str :}
+   blocks STR:LEN 0<> if blocks JSON:WRITE-RAW then ;
 
 
 : CALL-BODY ( ^JSON:writer -- ^JSON:writer )
@@ -497,10 +498,10 @@ CAST: HELD>N ( held -- n )
       then
    then
    JSON:WRITE-COMMA s" isError" SLOT FAULT @ JSON:WRITE-FIELD-BOOL
-   SLOT META-SPAN @ SPAN:$ {: meta:^ mu:n :}
+   SLOT META-SPAN @ SPAN:$ {: meta:str :}
    LEGACY? if
-      mu 0<> if JSON:WRITE-COMMA s" _meta" meta mu JSON:WRITE-FIELD-RAW then
-   else meta mu MODERN-META then
+      meta STR:LEN 0<> if JSON:WRITE-COMMA s" _meta" meta JSON:WRITE-FIELD-RAW then
+   else meta MODERN-META then
    JSON:WRITE-OBJECT-END ;
 
 
@@ -537,13 +538,13 @@ CAST: HELD>N ( held -- n )
 
 
 : ID-FIELD ( ^JSON:writer -- ^JSON:writer )
-   ID$ {: id:^ iu:n :}
-   iu 0= if exit then
-   JSON:WRITE-COMMA s" id" id iu JSON:WRITE-FIELD-RAW ;
+   ID$ {: id:str :}
+   id STR:LEN 0= if exit then
+   JSON:WRITE-COMMA s" id" id JSON:WRITE-FIELD-RAW ;
 
 
 \ A STALE-REPLY's message, part by part: it names the tool and the server.
-: STALE-PARTS ( R [ R ^u8 n -- R ] -- R )
+: STALE-PARTS ( R [ R str -- R ] -- R )
    {: q :}
    s" Unknown tool: " q execute
    TEXT$ q execute
@@ -598,27 +599,28 @@ CAST: HELD>N ( held -- n )
 
 \ A header's value when it arrived exactly once; otherwise empty and false.
 : HEADER$ ( HTTP:request str -- str bool )
-   {: asked:HTTP:request name:^ len:n :}
-   asked name len HTTP:HEADER-COUNT-OF 1 <> if s" " false exit then
-   asked name len HTTP:HEADER-OF$ ;
+   {: asked:HTTP:request name:str :}
+   asked name HTTP:HEADER-COUNT-OF 1 <> if s" " false exit then
+   asked name HTTP:HEADER-OF$ ;
 
 
 \ A media type without its parameters.
 : MEDIA-ESSENCE ( str -- str )
-   {: media:^ size:n :}
-   media size 59 STR:INDEX-OF MATCH option
-      some OF IDX>N media swap ENDOF
-      none OF media size ENDOF
+   {: media:str :}
+   media 59 STR:INDEX-OF MATCH option
+      some OF IDX>N media STR:DATA swap >str ENDOF
+      none OF media ENDOF
    ;MATCH STR:TRIM ;
 
 
 \ Whether a comma-separated header value lists the media type.
 : ACCEPT-HAS? ( str str -- bool )
-   {: value:^ len:n wanted:^ wu:n :}
-   0 len 1+ 0 ?do
-      i len = if true else value i + c@ 44 = then if
+   {: value:str wanted:str :}
+   0 value STR:LEN 1+ 0 ?do
+      i value STR:LEN = if true else value STR:DATA i + c@ 44 = then if
          {: start:n :}
-         value start + i start - MEDIA-ESSENCE wanted wu STR:=CI if
+         value STR:DATA start + i start - >str MEDIA-ESSENCE
+         wanted STR:=CI if
             unloop true exit
          then
          i 1+
@@ -627,13 +629,13 @@ CAST: HELD>N ( held -- n )
 
 
 : ACCEPT? ( HTTP:request -- bool )
-   s" Accept" HEADER$ 0= if 2drop false exit then
-   {: value:^ len:n :}
-   value len s" application/json" ACCEPT-HAS?
-   value len s" text/event-stream" ACCEPT-HAS? and ;
+   s" Accept" HEADER$ 0= if drop false exit then
+   {: value:str :}
+   value s" application/json" ACCEPT-HAS?
+   value s" text/event-stream" ACCEPT-HAS? and ;
 
 : CONTENT-TYPE? ( HTTP:request -- bool )
-   s" Content-Type" HEADER$ 0= if 2drop false exit then
+   s" Content-Type" HEADER$ 0= if drop false exit then
    MEDIA-ESSENCE s" application/json" STR:=CI ;
 
 
@@ -654,17 +656,17 @@ CAST: HELD>N ( held -- n )
 \ A request, or a notification with an empty id: params, when present, are an
 \ object.
 : CALL? ( str str str -- bool )
-   {: id:^ iu:n m:^ mu:n p:^ pu:n :}
-   iu 0<> if
-      id iu MCP-ID? 0= if
+   {: id:str m:str p:str :}
+   id STR:LEN 0<> if
+      id MCP-ID? 0= if
          400 -32600 s" an id that is not a string or an integer" BAD
          false exit
       then
    then
-   id iu SPAN:MAKE SLOT ID !
-   m mu SPAN:MAKE SLOT METHOD !
-   p pu SPAN:MAKE SLOT PARAMS !
-   pu 0<> if p pu OBJECT? 0= if s" params" OBJECT-ERROR then then
+   id >SPAN SLOT ID !
+   m >SPAN SLOT METHOD !
+   p >SPAN SLOT PARAMS !
+   p STR:LEN 0<> if p OBJECT? 0= if s" params" OBJECT-ERROR then then
    true ;
 
 
@@ -678,10 +680,10 @@ CAST: HELD>N ( held -- n )
 \ The reader's code and why answer; its id is the reply's when it is an MCP
 \ id, and its null id is unknown.
 : INVALID? ( n str JSON:value -- bool )
-   {: code:n why:^ wu:n reply :}
-   reply JSON:TEXT$ {: id:^ iu:n :}
-   id iu MCP-ID? if id iu SPAN:MAKE SLOT ID ! then
-   400 code why wu BAD false ;
+   {: code:n why:str reply :}
+   reply JSON:TEXT$ {: id:str :}
+   id MCP-ID? if id >SPAN SLOT ID ! then
+   400 code why BAD false ;
 
 
 \ The text of params a message carries, empty for none.
@@ -693,8 +695,8 @@ CAST: HELD>N ( held -- n )
 
 
 : ENVELOPE? ( str -- bool )
-   {: body:^ len:n :}
-   body len JSON-RPC:>MESSAGE
+   {: body:str :}
+   body JSON-RPC:>MESSAGE
    MATCH JSON-RPC:message
       request OF {: i m p :}
          i JSON:TEXT$ m JSON:TEXT$ p GIVEN$ CALL? ENDOF
@@ -702,40 +704,40 @@ CAST: HELD>N ( held -- n )
          s" " m JSON:TEXT$ p GIVEN$ CALL? ENDOF
       success OF RESPONSE? ENDOF
       failure OF RESPONSE? ENDOF
-      invalid OF INVALID? ENDOF
+      invalid OF {: why:^ wu:n reply :} why wu >str reply INVALID? ENDOF
    ;MATCH ;
 
 
 \ A member of params._meta, and whether it is there.
-: META ( ^u8 n -- ^u8 n bool )
-   {: key:^ ku:n :}
-   PARAMS$ dup 0= if false exit then
+: META ( str -- str bool )
+   {: key:str :}
+   PARAMS$ dup STR:LEN 0= if false exit then
    s" params" s" _meta" FIELD? 0= if false exit then
-   s" params._meta" key ku FIELD? ;
+   s" params._meta" key FIELD? ;
 
 
 \ Requests carry params._meta with protocolVersion and clientCapabilities: one
 \ missing is -32602 (2026-07-28 basic "Per-request protocol fields"), a version
 \ other than the header's -32020.
 : MODERN? ( str -- bool )
-   {: version:^ vu:n :}
+   {: version:str :}
    s" io.modelcontextprotocol/protocolVersion" META 0= if
-      2drop 400 -32602 s" Protocol version required" BAD false exit
+      drop 400 -32602 s" Protocol version required" BAD false exit
    then
-   version vu STRING= 0= if MISMATCH false exit then
+   version STRING= 0= if MISMATCH false exit then
    s" io.modelcontextprotocol/clientCapabilities" META
-   if OBJECT? else 2drop false then
+   if OBJECT? else drop false then
    0= if 400 -32602 s" Client capabilities required" BAD false exit then
    true ;
 
 
 : ERA? ( str -- bool )
-   {: value:^ vu:n :}
-   value vu s" 2026-07-28" STR:= if
-      MODERN SLOT ERA ! value vu MODERN? exit
+   {: value:str :}
+   value s" 2026-07-28" STR:= if
+      MODERN SLOT ERA ! value MODERN? exit
    then
-   value vu s" 2025-11-25" STR:= if LEGACY SLOT ERA ! true exit then
-   value vu SPAN:MAKE SLOT ASKED !
+   value s" 2025-11-25" STR:= if LEGACY SLOT ERA ! true exit then
+   value >SPAN SLOT ASKED !
    400 UNSUPPORTED-VERSION s" Unsupported protocol version" BAD false ;
 
 
@@ -746,22 +748,23 @@ CAST: HELD>N ( held -- n )
    {: asked:HTTP:request :}
    asked s" MCP-Protocol-Version" HTTP:HEADER-COUNT-OF 1 > if MISMATCH false exit then
    asked s" MCP-Protocol-Version" HEADER$ if ERA? exit then
-   2drop
+   drop
    s" initialize" METHOD= if LEGACY SLOT ERA ! true exit then
    MISMATCH false ;
 
 
 \ An Mcp-Name value, decoded into the worker's row when it is =?base64?...?=.
 : DECODED-NAME$ ( str -- str )
-   {: header:^ len:n :}
-   header len s" =?base64?" STR:STARTS-WITH? 0= if header len exit then
-   len 11 <  header len 2 - + 2 s" ?=" STR:= 0=  or if
+   {: header:str :}
+   header s" =?base64?" STR:STARTS-WITH? 0= if header exit then
+   header STR:LEN 11 <
+   header STR:DATA header STR:LEN 2 - + 2 >str s" ?=" STR:= 0=  or if
       s" Mcp-Name" s" an encoded name ending in `?=`"
       s" end the `=?base64?` name with `?=`" INPUT-ERROR
    then
    NAMES SLOT HTTP:HEAD-CAP * HTTP:HEAD-CAP SPAN:SUB {: room :}
-   header 9 + len 11 - room BASE64:DECODE {: u:n :}
-   room 0 SPAN:AT u ;
+   header STR:DATA 9 + header STR:LEN 11 - >str room BASE64:DECODE {: u:n :}
+   room 0 SPAN:AT u >str ;
 
 
 \ The codes of an Mcp-Name that is not a valid encoded name.
@@ -773,19 +776,19 @@ CAST: HELD>N ( held -- n )
 \ A modern request's Mcp-Name names the params member at key, a string: the
 \ messages are -32602's when the member is absent and when it is no string.
 : NAME-HEADER? ( HTTP:request str str str -- bool )
-   {: asked:HTTP:request key:^ ku:n absent:^ au:n invalid:^ iu:n :}
-   PARAMS$ s" params" key ku FIELD? 0= if
-      2drop 400 -32602 absent au BAD false exit
+   {: asked:HTTP:request key:str absent:str invalid:str :}
+   PARAMS$ s" params" key FIELD? 0= if
+      drop 400 -32602 absent BAD false exit
    then
-   {: name:^ nu:n :}
-   name nu KIND JSON:T-STR <> if 400 -32602 invalid iu BAD false exit then
-   asked s" Mcp-Name" HEADER$ 0= if 2drop MISMATCH false exit then
+   {: name:str :}
+   name KIND JSON:T-STR <> if 400 -32602 invalid BAD false exit then
+   asked s" Mcp-Name" HEADER$ 0= if drop MISMATCH false exit then
    [: DECODED-NAME$ ;] catch {: code:n :}
    code 0<> if
       code NAME-FAULT? 0= if code throw then
-      2drop MISMATCH false exit
+      drop MISMATCH false exit
    then
-   name nu 2swap STRING= dup 0= if MISMATCH then ;
+   name swap STRING= dup 0= if MISMATCH then ;
 
 
 \ The modern era's Mcp-Method names the body's method, -32020 otherwise; a
@@ -793,8 +796,8 @@ CAST: HELD>N ( held -- n )
 : HEADERS? ( HTTP:request -- bool )
    {: asked:HTTP:request :}
    LEGACY? if true exit then
-   asked s" Mcp-Method" HEADER$ 0= if 2drop MISMATCH false exit then
-   METHOD$ 2swap STRING= 0= if MISMATCH false exit then
+   asked s" Mcp-Method" HEADER$ 0= if drop MISMATCH false exit then
+   METHOD$ swap STRING= 0= if MISMATCH false exit then
    s" tools/call" METHOD= if
       asked s" name" s" Tool name required" s" Invalid tool name" NAME-HEADER? exit
    then
@@ -806,23 +809,23 @@ CAST: HELD>N ( held -- n )
 
 \ The registered tool a JSON name text names, else -1.
 : TOOL-OF ( str -- n )
-   {: raw:^ ru:n :}
+   {: raw:str :}
    TOOL-COUNT @ 0 ?do
-      raw ru i TOOL-NAME @ SPAN:$ STRING= if i unloop exit then
+      raw i TOOL-NAME @ SPAN:$ STRING= if i unloop exit then
    loop -1 ;
 
 
-: ARGUMENTS ( -- ^u8 n )
-   PARAMS$ s" params" s" arguments" FIELD? 0= if 2drop s" {}" exit then
-   2dup OBJECT? 0= if
+: ARGUMENTS ( -- str )
+   PARAMS$ s" params" s" arguments" FIELD? 0= if drop s" {}" exit then
+   dup OBJECT? 0= if
       s" arguments" OBJECT-ERROR
    then ;
 
 
 \ A JSON string's text between its quotes, as sent, its escapes kept.
 : UNQUOTED$ ( str -- str )
-   {: a:^ u:n :}
-   a 1+ u 2 - ;
+   {: s:str :}
+   s STR:DATA 1+ s STR:LEN 2 - >str ;
 
 
 128 constant NAME-MAX    \ MCP's longest tool name, in bytes
@@ -830,8 +833,8 @@ CAST: HELD>N ( held -- n )
 \ params.name, a string, between its quotes as sent, cut to NAME-MAX bytes at
 \ a character's start.
 : NAMED$ ( -- str )
-   PARAMS$ s" params" s" name" FIELD? drop UNQUOTED$
-   2dup NAME-MAX UTF8:FIT nip ;
+   PARAMS$ s" params" s" name" FIELD? drop UNQUOTED$ {: name:str :}
+   name STR:DATA name NAME-MAX UTF8:FIT >str ;
 
 
 \ -32602 for a tool the caller cannot call, unknown or hidden: `Unknown tool:
@@ -849,9 +852,9 @@ CAST: HELD>N ( held -- n )
 
 \ The text written into the BUF, which grows to hold it.
 : TEXT-SET ( str ^n -- )
-   {: a:^ u:n buf:^ :}
+   {: s:str buf:^ :}
    buf BUF:LIVE? 0= if buf 64 BUF:N>BLEN BUF:INIT then
-   a u BUF:N>BLEN buf BUF:REPLACE ;
+   s STR:DATA s STR:LEN BUF:N>BLEN buf BUF:REPLACE ;
 
 : KEEP-FREE? ( n -- bool )
    KEEPS KEEP-PHASE @ MATCH keeping
@@ -875,7 +878,7 @@ CAST: HELD>N ( held -- n )
    SLOT TO @ HTTP:REQUEST-ID$ idx KEEP-REQ TEXT-SET
    SLOT ERA @ idx KEEPS KEEP-ERA !
    SLOT CALLED @ idx KEEPS KEEP-TOOL !
-   SLOT FROM @ HTTP:TAKE-OVER 2drop idx KEEPS KEEP-CONN !
+   SLOT FROM @ HTTP:TAKE-OVER drop idx KEEPS KEEP-CONN !
    construct keeping kept idx KEEPS KEEP-PHASE !
    idx ;
 
@@ -903,9 +906,9 @@ CAST: HELD>N ( held -- n )
 
 
 : REGISTERED? ( str -- bool )
-   {: name:^ nu:n :}
+   {: name:str :}
    TOOL-COUNT @ 0 ?do
-      name nu i TOOL-NAME @ SPAN:$ STR:= if true unloop exit then
+      name i TOOL-NAME @ SPAN:$ STR:= if true unloop exit then
    loop false ;
 
 
@@ -931,23 +934,24 @@ CAST: HELD>N ( held -- n )
    src dst u BYTE-COPY  dst u + ;
 
 \ Throws E-SCHEMA with the name of the text judged, then the text.
-: SAY ( ^u8 n ^u8 n -- )
-   {: wa:^ wu:n ta:^ tu:n :}
-   REASON:OPEN wa wu REASON:APPEND s"  " REASON:APPEND ta tu REASON:APPEND
+: SAY ( str str -- )
+   {: what:str text:str :}
+   REASON:OPEN what REASON:APPEND s"  " REASON:APPEND text REASON:APPEND
    E-SCHEMA REASON:STOP ;
 
 \ Rejects the reader's token in the text judged, given the expected text
 \ and the fix: READ-REJECT's E-MEMBER text leaves as E-SCHEMA.
-: REJECT ( JSON:reader ^u8 n ^u8 n ^u8 n -- )
-   {: wa:^ wu:n ea:^ eu:n fa:^ fu:n :}
-   [: ea eu fa fu JSON:READ-REJECT ;] catch {: code:n :}
-   code JSON:E-MEMBER = if wa wu code REASON:TEXT$ SAY then
+: REJECT ( JSON:reader str str str -- )
+   {: what:str want:str fix:str :}
+   [: want STR:DATA want STR:LEN fix STR:DATA fix STR:LEN JSON:READ-REJECT ;]
+   catch {: code:n :}
+   code JSON:E-MEMBER = if what code REASON:TEXT$ SAY then
    code throw ;
 
 \ Puts the text with the key between its first two backticks, "``".
 : PUT-KEYED ( ^u8 ^u8 n ^u8 n -- ^u8 )
    {: dst:^ ta:^ tu:n ka:^ ku:n :}
-   ta tu s" ``" STR:FIND-SUB MATCH option
+   ta tu >str s" ``" STR:FIND-SUB MATCH option
       none OF tu ENDOF
       some OF IDX>N 1+ ENDOF
    ;MATCH {: at:n :}
@@ -957,70 +961,71 @@ CAST: HELD>N ( held -- n )
    drop {: ka:^ ku:n ea:^ eu:n fa:^ fu:n buf:^ :}
    buf ea eu ka ku PUT-KEYED {: fix:^ :}
    fix fa fu ka ku PUT-KEYED drop
-   s" descriptor" buf eu ku + fix fu ku + REJECT ;
+   s" descriptor" buf eu ku + >str fix fu ku + >str REJECT ;
 
 \ Rejects the reader's token in a descriptor, the key put as PUT-KEYED puts it.
-: KEY-REJECT ( JSON:reader ^u8 n ^u8 n ^u8 n -- )
-   {: ka:^ ku:n ea:^ eu:n fa:^ fu:n :}
-   ka ku ea eu fa fu  eu fu + ku 2 * + MEM:BYTES-ALLOC-LEN
+: KEY-REJECT ( JSON:reader str str str -- )
+   {: key:str want:str fix:str :}
+   key STR:DATA key STR:LEN want STR:DATA want STR:LEN fix STR:DATA fix STR:LEN
+   want STR:LEN fix STR:LEN + key STR:LEN 2 * + MEM:BYTES-ALLOC-LEN
    [: KEY-SCOPE ;] MEM:WITH-BYTES ;
 
 \ An input's JSON fault leaves as E-SCHEMA, its text after the name of the text
 \ judged; any other code stays.
-: SCHEMA-CODE ( ^u8 n n -- n )
-   {: wa:^ wu:n code:n :}
+: SCHEMA-CODE ( str n -- n )
+   {: what:str code:n :}
    code JSON:INPUT-FAULT? if
-      wa wu code REASON:TEXT$ SAY
+      what code REASON:TEXT$ SAY
    then
    code ;
 
 \ A reader on the text's first token.
-: FIRST-TOKEN ( ^u8 n ^JSON:cursor -- JSON:reader )
-   {: text:^ u:n reader :}
-   reader text u JSON:READ-INIT JSON:READ-NEXT drop ;
+: FIRST-TOKEN ( str ^JSON:cursor -- JSON:reader )
+   {: text:str reader :}
+   reader text JSON:READ-INIT JSON:READ-NEXT drop ;
 
 \ Whether a JSON text, read whole by reader, is an object; text that is not one
 \ JSON value throws the reader's E-JSON-READ-* code.
 : OBJECT-TEXT? ( str ^JSON:cursor -- bool )
-   {: text:^ u:n reader :}
-   reader text u JSON:READ-INIT JSON:READ-NEXT JSON:T-OBJ = {: object:bool :}
+   {: text:str reader :}
+   reader text JSON:READ-INIT JSON:READ-NEXT JSON:T-OBJ = {: object:bool :}
    JSON:READ-FINISH object ;
 
 
 \ Rejects the text's k-th top-level key, counted from 0, as a repeat.
-: REPEAT-REJECT ( n ^u8 n ^JSON:cursor ^u8 n -- )
-   {: k:n text:^ u:n reader wa:^ wu:n :}
-   text u reader FIRST-TOKEN
+: REPEAT-REJECT ( n str ^JSON:cursor str -- )
+   {: k:n text:str reader what:str :}
+   text reader FIRST-TOKEN
    k 0 ?do
       JSON:READ-NEXT drop JSON:READ-NEXT drop JSON:READ-SKIP-VALUE
    loop JSON:READ-NEXT drop
-   wa wu s" each top-level member once"
+   what s" each top-level member once"
    s" remove the repeated member, keeping one" REJECT ;
 
-: SHAPE-IN ( ^u8 n ^JSON:cursor ^u8 n -- )
-   {: text:^ u:n reader wa:^ wu:n :}
-   text u reader OBJECT-TEXT? 0= if
-      text u reader FIRST-TOKEN wa wu
+: SHAPE-IN ( str ^JSON:cursor str -- )
+   {: text:str reader what:str :}
+   text reader OBJECT-TEXT? 0= if
+      text reader FIRST-TOKEN what
       s" a JSON object" s" write it as one object" REJECT
    then
-   text u JSON:READ-REPEAT MATCH option
+   text STR:DATA text STR:LEN JSON:READ-REPEAT MATCH option
       none OF ENDOF
-      some OF text u reader wa wu REPEAT-REJECT ENDOF
+      some OF text reader what REPEAT-REJECT ENDOF
    ;MATCH ;
 
-\ E-SCHEMA unless the text wa wu names is one JSON object with no top-level key repeated
+\ E-SCHEMA unless the text what names is one JSON object with no top-level key repeated
 \ once decoded: JSON.parse keeps a repeated key's last value, so a client would read another.
-: SHAPE ( ^u8 n ^JSON:cursor ^u8 n -- )
-   {: text:^ u:n reader wa:^ wu:n :}
-   [: text u reader wa wu SHAPE-IN ;] catch {: code:n :}
-   wa wu code SCHEMA-CODE {: fault:n :}
+: SHAPE ( str ^JSON:cursor str -- )
+   {: text:str reader what:str :}
+   [: text reader what SHAPE-IN ;] catch {: code:n :}
+   what code SCHEMA-CODE {: fault:n :}
    fault 0<> if fault throw then ;
 
 
 \ Whether a schema object's "type" is the string "object".
 : WHOLE? ( str -- bool )
-   {: text:^ u:n :}
-   SCHEMA-READER text u JSON:READ-INIT JSON:READ-NEXT drop
+   {: text:str :}
+   SCHEMA-READER text JSON:READ-INIT JSON:READ-NEXT drop
    s" type" JSON:READ-FIND-KEY if
       JSON:READ-TOKEN JSON:T-STR = if s" object" JSON:READ-STR-EQ? else false then
    else false then {: whole:bool :}
@@ -1029,35 +1034,35 @@ CAST: HELD>N ( held -- n )
 
 \ The reader on the value of a top-level member of a descriptor SHAPE
 \ admitted; an absent member is rejected at the descriptor's `}`.
-: MEMBER-AT ( ^u8 n ^u8 n -- JSON:reader )
-   {: text:^ tu:n key:^ ku:n :}
-   text tu SCHEMA-READER FIRST-TOKEN
-   key ku JSON:READ-FIND-KEY 0= if
-      key ku s" a member ``" s" add ``" KEY-REJECT
+: MEMBER-AT ( str str -- JSON:reader )
+   {: text:str key:str :}
+   text SCHEMA-READER FIRST-TOKEN
+   key JSON:READ-FIND-KEY 0= if
+      key s" a member ``" s" add ``" KEY-REJECT
    then ;
 
-: PART ( ^u8 n ^u8 n -- ^u8 n )
-   MEMBER-AT RAW$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
+: PART ( str str -- str )
+   MEMBER-AT RAW$ {: value:str :} JSON:READ-CLOSE value ;
 
 
-: OBJECT-PART ( ^u8 n ^u8 n -- ^u8 n )
-   {: text:^ tu:n key:^ ku:n :}
-   text tu key ku MEMBER-AT
+: OBJECT-PART ( str str -- str )
+   {: text:str key:str :}
+   text key MEMBER-AT
    JSON:READ-TOKEN JSON:T-OBJ <> if
-      key ku s" `` as a JSON object" s" write `` as an object" KEY-REJECT
+      key s" `` as a JSON object" s" write `` as an object" KEY-REJECT
    then
-   RAW$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
+   RAW$ {: value:str :} JSON:READ-CLOSE value ;
 
 
 \ The reader on a descriptor member's string value.
-: STRING-AT ( ^u8 n ^u8 n -- JSON:reader )
-   {: text:^ tu:n key:^ ku:n :}
-   text tu key ku MEMBER-AT
+: STRING-AT ( str str -- JSON:reader )
+   {: text:str key:str :}
+   text key MEMBER-AT
    JSON:READ-TOKEN JSON:T-STR <> if
-      key ku s" `` as a string" s" write `` as a JSON string" KEY-REJECT
+      key s" `` as a string" s" write `` as a JSON string" KEY-REJECT
    then ;
 
-: REQUIRE-STRING ( ^u8 n ^u8 n -- )
+: REQUIRE-STRING ( str str -- )
    STRING-AT JSON:READ-CLOSE ;
 
 
@@ -1069,7 +1074,7 @@ CAST: HELD>N ( held -- n )
 
 \ Rejects an inputSchema whose root `type` is not "object", as MCP's Tool
 \ type requires; an absent `type` at the root's `}`.
-: OBJECT-ROOT ( ^u8 n -- )
+: OBJECT-ROOT ( str -- )
    SCHEMA-READER FIRST-TOKEN
    s" type" JSON:READ-FIND-KEY if
       OBJECT-STRING? if JSON:READ-CLOSE else
@@ -1082,43 +1087,43 @@ CAST: HELD>N ( held -- n )
    then ;
 
 \ A throw may leave row idx on the released arena: ADD-TOOL has not counted it.
-: INPUT-SCHEMA ( ^u8 n n -- )
-   {: in:^ iu:n idx:n :}
+: INPUT-SCHEMA ( str n -- )
+   {: in:str idx:n :}
    ARENA:NEW {: ar:^ :}
-   [: in iu JSON:PARSE ar JSON-SCHEMA:COMPILE idx TOOL-INPUT !
-      in iu OBJECT-ROOT ;] catch
+   [: in JSON:PARSE ar JSON-SCHEMA:COMPILE idx TOOL-INPUT !
+      in OBJECT-ROOT ;] catch
    {: code:n :}
-   code REASON:TEXT$ {: ta:^ tu:n :}
+   code REASON:TEXT$ {: text:str :}
    code 0<> if ar ARENA:RELEASE then
-   code JSON-SCHEMA:E-SCHEMA = if s" inputSchema" ta tu SAY then
+   code JSON-SCHEMA:E-SCHEMA = if s" inputSchema" text SAY then
    s" inputSchema" code SCHEMA-CODE {: rest:n :}
    rest 0<> if rest throw then ;
 
 
 \ The offset of the first byte UTF8:NEXT answers raw-byte for, else -1.
-: BAD-BYTE ( ^u8 n -- n ) {: a:^ u:n :}
-   0 begin dup u < while
-      a u rot UTF8:NEXT MATCH UTF8:scalar-step
+: BAD-BYTE ( str -- n ) {: s:str :}
+   0 begin dup s STR:LEN < while
+      s swap UTF8:NEXT MATCH UTF8:scalar-step
          scalar OF nip ENDOF
          raw-byte OF nip 1- exit ENDOF
       ;MATCH
    repeat drop -1 ;
 
-: REQUIRE-UTF8 ( ^u8 n -- ) {: page:^ pu:n :}
-   page pu BAD-BYTE {: at:n :}
+: REQUIRE-UTF8 ( str -- ) {: page:str :}
+   page BAD-BYTE {: at:n :}
    at 0 < if exit then
    REASON:OPEN s" page " REASON:APPEND
-   page page at + 1 1 0 REJECTION:POSITION drop REASON:AT
+   page STR:DATA dup at + 1 1 0 REJECTION:POSITION drop REASON:AT
    REASON:EXPECTED s" UTF-8 text" REASON:APPEND
-   REASON:FOUND page at + c@ REASON:BYTE
+   REASON:FOUND page STR:DATA at + c@ REASON:BYTE
    REASON:FIX s" encode the page as UTF-8" REASON:APPEND
    E-SCHEMA REASON:STOP ;
 
 
 : REGISTERED-URI? ( str -- bool )
-   {: uri:^ uu:n :}
+   {: uri:str :}
    RESOURCE-COUNT @ 0 ?do
-      uri uu i RESOURCE-URI @ SPAN:$ STR:= if true unloop exit then
+      uri i RESOURCE-URI @ SPAN:$ STR:= if true unloop exit then
    loop false ;
 
 
@@ -1126,14 +1131,14 @@ CAST: HELD>N ( held -- n )
    drop {: ru:n room:^ :}
    room ru JSON:READ-STR {: u:n :}
    u MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: name :}
-   room name SPAN:$ drop u BYTE-COPY  name ;
+   room name SPAN:$ STR:DATA u BYTE-COPY  name ;
 
 \ The storage is kept for the process, as the registry is; the descriptor passed SHAPE.
 : DECODED-MEMBER ( str str [ str -- bool ] -- SPAN:span<u8> )
-   {: text:^ tu:n key:^ ku:n registered? :}
-   text tu key ku STRING-AT JSON:READ-SPAN$ nip {: ru:n :}
+   {: text:str key:str registered? :}
+   text key STRING-AT JSON:READ-SPAN$ nip {: ru:n :}
    ru 0= if
-      key ku s" `` as a non-empty string" s" give `` a value" KEY-REJECT
+      key s" `` as a non-empty string" s" give `` a value" KEY-REJECT
    then
    ru ru MEM:BYTES-ALLOC-LEN [: DECODE-SCOPE ;] MEM:WITH-BYTES {: name :}
    JSON:READ-CLOSE
@@ -1161,8 +1166,8 @@ CAST: HELD>N ( held -- n )
 
 
 : BLOCKS-IN ( str -- str )
-   {: text:^ u:n :}
-   CURSOR text u JSON:READ-INIT
+   {: text:str :}
+   CURSOR text JSON:READ-INIT
    JSON:READ-NEXT JSON:T-ARR <> if
       s" content" s" a JSON array of content blocks"
       s" write the blocks in an array" REJECT
@@ -1171,30 +1176,30 @@ CAST: HELD>N ( held -- n )
    JSON:READ-SPAN$ drop {: first:^ :}
    begin BLOCK JSON:READ-NEXT JSON:T-ARR-END = until
    JSON:READ-SPAN$ drop {: close:^ :}
-   JSON:READ-FINISH first close first - ;
+   JSON:READ-FINISH first close first - >str ;
 
 
 \ The objects of a JSON array of MCP content blocks, from the first's open
 \ through the space before the array's close; empty for an empty array.
-: BLOCKS ( ^u8 n -- ^u8 n )
+: BLOCKS ( str -- str )
    [: BLOCKS-IN ;] catch {: code:n :}
    code 0= if exit then
-   2drop s" content" code SCHEMA-CODE throw ;
+   drop s" content" code SCHEMA-CODE throw ;
 
 
 \ A result that is not one JSON object is rejected when the tool's
 \ outputSchema has type object; text that is not JSON throws the reader's code.
-: RESULT-SHAPE ( ^u8 n -- ) {: text:^ u:n :}
-   text u CURSOR OBJECT-TEXT? if exit then
+: RESULT-SHAPE ( str -- ) {: text:str :}
+   text CURSOR OBJECT-TEXT? if exit then
    SLOT CALLED @ TOOL-WHOLE @ 0= if exit then
-   text u CURSOR FIRST-TOKEN s" result"
+   text CURSOR FIRST-TOKEN s" result"
    s" a JSON object, as the tool's outputSchema has type `object`"
    s" answer one JSON object" REJECT ;
 
 
 \ Rejects meta naming serverInfo at that key; meta passed SHAPE.
-: NO-SERVER-INFO ( ^u8 n -- ) {: meta:^ mu:n :}
-   meta mu CURSOR FIRST-TOKEN
+: NO-SERVER-INFO ( str -- ) {: meta:str :}
+   meta CURSOR FIRST-TOKEN
    begin JSON:READ-NEXT JSON:T-KEY = while
       s" io.modelcontextprotocol/serverInfo" JSON:READ-STR-EQ? if
          s" meta" s" no member `io.modelcontextprotocol/serverInfo`"
@@ -1206,17 +1211,17 @@ CAST: HELD>N ( held -- n )
 
 \ Bodies run on several workers at once, so meta and blocks are read by the worker's CURSOR.
 : RESULT! ( str str str bool -- )
-   {: text:^ u:n meta:^ mu:n extra:^ eu:n fault:bool :}
+   {: text:str meta:str extra:str fault:bool :}
    SLOT STAGE @ CALLING <> if E-STATE throw then
-   fault 0= if text u RESULT-SHAPE then
-   mu 0<> if
-      meta mu CURSOR s" meta" SHAPE
-      meta mu NO-SERVER-INFO
+   fault 0= if text RESULT-SHAPE then
+   meta STR:LEN 0<> if
+      meta CURSOR s" meta" SHAPE
+      meta NO-SERVER-INFO
    then
-   extra eu BLOCKS {: blocks:^ bu:n :}
-   text u SPAN:MAKE SLOT TEXT !
-   meta mu SPAN:MAKE SLOT META-SPAN !
-   blocks bu SPAN:MAKE SLOT CONTENT-SPAN !
+   extra BLOCKS {: blocks:str :}
+   text >SPAN SLOT TEXT !
+   meta >SPAN SLOT META-SPAN !
+   blocks >SPAN SLOT CONTENT-SPAN !
    fault SLOT FAULT !
    CALL-REPLY GOOD SEND ;
 
@@ -1228,12 +1233,12 @@ CAST: HELD>N ( held -- n )
    buf ;
 
 \ Under LOG the text is copied: the line is written after the body returns.
-: TOOL-ERROR ( ^u8 n -- )
-   {: text:^ u:n :}
-   LOGGING @ 0= if text u s" " s" []" true RESULT! exit then
+: TOOL-ERROR ( str -- )
+   {: text:str :}
+   LOGGING @ 0= if text s" " s" []" true RESULT! exit then
    TOOL-ERRORS WORKER-BUF {: buf:^ :}
-   text u BUF:N>BLEN buf BUF:REPLACE
-   buf BUF:SPAN$ BUF:BLEN>N s" " s" []" true RESULT! ;
+   text STR:DATA text STR:LEN BUF:N>BLEN buf BUF:REPLACE
+   buf BUF:SPAN$ BUF:BLEN>N >str s" " s" []" true RESULT! ;
 
 \ The vector in a worker's row cell, made the first time.
 : WORKER-VEC ( ^^VEC:vector<u8> -- ^VEC:vector<u8> )
@@ -1246,11 +1251,11 @@ CAST: HELD>N ( held -- n )
 
 \ Whether the arguments satisfy the tool's inputSchema; false gives the tool
 \ error `arguments` and the violation.
-: ADMITTED? ( ^u8 n n -- bool )
-   {: args:^ au:n idx:n :}
+: ADMITTED? ( str n -- bool )
+   {: args:str idx:n :}
    VIOLATION {: v:^ :}
    v 0 VEC:RESIZE  s" arguments" v VEC:APPEND
-   args au JSON:PARSE idx TOOL-INPUT @ v JSON-SCHEMA:VALID?
+   args JSON:PARSE idx TOOL-INPUT @ v JSON-SCHEMA:VALID?
    dup if exit then
    v VEC:SPAN SPAN:$ TOOL-ERROR ;
 
@@ -1261,25 +1266,25 @@ CAST: HELD>N ( held -- n )
    PARAMS$ s" params" s" name" FIELD? 0= if
       s" name" s" a member naming the tool" s" add `name` to params" INPUT-ERROR
    then
-   2dup KIND JSON:T-STR <> if
+   dup KIND JSON:T-STR <> if
       s" name" s" a JSON string" s" send the tool's name as a string" INPUT-ERROR
    then
    TOOL-OF {: idx:n :}
    idx 0< if UNKNOWN-TOOL SEND exit then
    idx SHOWN? 0= if UNKNOWN-TOOL SEND exit then
-   ARGUMENTS {: args:^ au:n :}
+   ARGUMENTS {: args:str :}
    idx SLOT CALLED !
    CALLING SLOT STAGE !
-   args au idx ADMITTED? 0= if exit then
-   [: args au idx TOOL-BODY @ execute ;] catch BODY-FAULT
+   args idx ADMITTED? 0= if exit then
+   [: args STR:DATA args STR:LEN idx TOOL-BODY @ execute ;] catch BODY-FAULT
    SLOT STAGE @ CALLING = if E-STATE throw then ;
 
 
 \ The registered resource a JSON uri text names, else -1.
 : RESOURCE-OF ( str -- n )
-   {: raw:^ ru:n :}
+   {: raw:str :}
    RESOURCE-COUNT @ 0 ?do
-      raw ru i RESOURCE-URI @ SPAN:$ STRING= if i unloop exit then
+      raw i RESOURCE-URI @ SPAN:$ STRING= if i unloop exit then
    loop -1 ;
 
 
@@ -1288,7 +1293,7 @@ CAST: HELD>N ( held -- n )
    PARAMS$ s" params" s" uri" FIELD? 0= if
       s" uri" s" a member naming the resource" s" add `uri` to params" INPUT-ERROR
    then
-   2dup KIND JSON:T-STR <> if
+   dup KIND JSON:T-STR <> if
       s" uri" s" a JSON string" s" send the resource's uri as a string" INPUT-ERROR
    then
    RESOURCE-OF {: idx:n :}
@@ -1325,12 +1330,12 @@ CAST: HELD>N ( held -- n )
 
 
 : TARGET+ ( -- )
-   TARGET-KEY$ {: key:^ ku:n :}
-   ku 0= PARAMS$ nip 0= or if exit then
+   TARGET-KEY$ {: key:str :}
+   key STR:LEN 0= PARAMS$ STR:LEN 0= or if exit then
    \ JSON-RPC's params may be an array, which FIELD? refuses.
    PARAMS$ KIND JSON:T-OBJ <> if exit then
-   PARAMS$ s" params" key ku FIELD? 0= if 2drop exit then
-   2dup KIND JSON:T-STR <> if 2drop exit then
+   PARAMS$ s" params" key FIELD? 0= if drop exit then
+   dup KIND JSON:T-STR <> if drop exit then
    s"  " LOG:TEXT+  UNQUOTED$ LOG:TEXT+ ;
 
 
@@ -1346,25 +1351,25 @@ CAST: HELD>N ( held -- n )
 \ The text, or its first bytes up to TEXT-MAX cut at a character's start and
 \ then ` [<n> B]`, n its length.
 : TEXT-CUT+ ( str -- )
-   {: a:^ u:n :}
-   u TEXT-MAX <= if a u LOG:TEXT+ exit then
-   a u TEXT-MAX UTF8:FIT {: cut:n :}
-   a cut LOG:TEXT+
-   s"  [" LOG:TEXT+  u LOG:INT+  s"  B]" LOG:TEXT+ ;
+   {: s:str :}
+   s STR:LEN TEXT-MAX <= if s LOG:TEXT+ exit then
+   s TEXT-MAX UTF8:FIT {: cut:n :}
+   s STR:DATA cut >str LOG:TEXT+
+   s"  [" LOG:TEXT+  s STR:LEN LOG:INT+  s"  B]" LOG:TEXT+ ;
 
 
 \ A tools/call's params.arguments as sent, when params is an object that has
 \ them.
 : ARGUMENTS+ ( -- )
    s" tools/call" METHOD= 0= if exit then
-   PARAMS$ nip 0= if exit then
+   PARAMS$ STR:LEN 0= if exit then
    PARAMS$ OBJECT? 0= if exit then
-   PARAMS$ s" params" s" arguments" FIELD? 0= if 2drop exit then
+   PARAMS$ s" params" s" arguments" FIELD? 0= if drop exit then
    s"  " LOG:TEXT+  TEXT-CUT+ ;
 
 \ The method, target and arguments; `-` when no method was read.
 : CALL+ ( -- )
-   METHOD$ nip 0= if s" -" LOG:TEXT+ exit then
+   METHOD$ STR:LEN 0= if s" -" LOG:TEXT+ exit then
    METHOD$ UNQUOTED$ LOG:TEXT+  TARGET+  ARGUMENTS+ ;
 
 
@@ -1392,16 +1397,16 @@ CAST: HELD>N ( held -- n )
 
 \ A LOG line opened with `req <id> `.
 : REQ-LINE ( str -- )
-   {: id:^ iu:n :}
+   {: id:str :}
    LOG:INFO s" mcp" LOG:LINE
-   s" req " LOG:TEXT+  id iu LOG:TEXT+  s"  " LOG:TEXT+ ;
+   s" req " LOG:TEXT+  id LOG:TEXT+  s"  " LOG:TEXT+ ;
 
 \ With LOG, the message's line under the id text, given the code passed to
 \ the host.
 : MESSAGE-LOGGED ( str n -- )
-   {: id:^ iu:n code:n :}
+   {: id:str code:n :}
    LOGGING @ 0= if exit then
-   id iu REQ-LINE
+   id REQ-LINE
    CALL+  s"  -> " LOG:TEXT+  code OUTCOME+
    LOG:;LINE ;
 
@@ -1410,7 +1415,7 @@ CAST: HELD>N ( held -- n )
 : HELD-LOGGED ( n n -- )
    {: idx:n code:n :}
    LOGGING @ 0= if exit then
-   idx KEEP-REQ BUF:SPAN$ BUF:BLEN>N REQ-LINE
+   idx KEEP-REQ BUF:SPAN$ BUF:BLEN>N >str REQ-LINE
    s" tools/call " LOG:TEXT+
    idx KEEPS KEEP-TOOL @ TOOL-NAME @ SPAN:$ LOG:TEXT+
    s"  -> " LOG:TEXT+  code OUTCOME+
@@ -1419,7 +1424,7 @@ CAST: HELD>N ( held -- n )
 
 : DISPATCH ( -- )
    LOGGED
-   ID$ nip 0= if NOTIFIED exit then
+   ID$ STR:LEN 0= if NOTIFIED exit then
    s" initialize" METHOD= if INITIALIZE exit then
    s" server/discover" METHOD= if DISCOVER exit then
    s" tools/list" METHOD= if LIST-REPLY GOOD SEND exit then
@@ -1444,9 +1449,9 @@ CAST: HELD>N ( held -- n )
 : OPENED-TO ( sink -- )
    SLOT REPLY-TO !
    IDLE SLOT STAGE !
-   s" " SPAN:MAKE SLOT ID !
-   s" " SPAN:MAKE SLOT METHOD !
-   s" " SPAN:MAKE SLOT PARAMS ! ;
+   s" " >SPAN SLOT ID !
+   s" " >SPAN SLOT METHOD !
+   s" " >SPAN SLOT PARAMS ! ;
 
 
 \ The code a message's caught code passes to the host: none for E-INPUT
@@ -1461,10 +1466,10 @@ CAST: HELD>N ( held -- n )
 : FAULTED ( n -- )
    {: code:n :}
    code 0= if exit then
-   code REASON:TEXT$ {: why:^ wu:n :}
+   code REASON:TEXT$ {: why:str :}
    code PASSED {: passed:n :}
    passed 0<> if passed throw then
-   400 -32602 why wu BAD SEND ;
+   400 -32602 why BAD SEND ;
 
 
 \ WORKER-SLOT's E-HTTP-HANDLE, on a task that is no request worker, as E-STATE.
@@ -1518,14 +1523,14 @@ CAST: HELD>N ( held -- n )
 
 
 \ The message's envelope checked, then dispatched; the text is kept for catch.
-: CARRIED ( ^u8 n -- ^u8 n )
-   2dup ENVELOPE? if DISPATCH else SEND then ;
+: CARRIED ( str -- str )
+   dup ENVELOPE? if DISPATCH else SEND then ;
 
 
 \ The message answered into ANSWER-W, the writer ANSWER holds open on the
 \ caller's vector.
 : VEC-ANSWER ( str -- )
-   [: CARRIED ;] catch {: code:n :} 2drop
+   [: CARRIED ;] catch {: code:n :} drop
    code PASSED {: passed:n :}
    [: code FAULTED ;] [: s" -" passed MESSAGE-LOGGED ;] finally ;
 
@@ -1534,10 +1539,10 @@ public
 \ The server's name and version in serverInfo. The texts are borrowed and
 \ outlive the server, as literals do. E-STATE while HTTP serves.
 : SERVER-INFO! ( str str -- )
-   {: name:^ nu:n version:^ vu:n :}
+   {: name:str version:str :}
    HTTP:RUNNING? if E-STATE throw then
-   name nu SPAN:MAKE SERVER-NAME !
-   version vu SPAN:MAKE SERVER-VERSION ! ;
+   name >SPAN SERVER-NAME !
+   version >SPAN SERVER-VERSION ! ;
 
 
 \ Guidance for the model on using this server: "instructions" in initialize and
@@ -1578,20 +1583,21 @@ public
 \ non-empty string name and object schemas; an outputSchema typed "object" needs object results.
 : ADD-TOOL ( ^u8 n [ ^u8 n -- ] -- )
    {: text:^ tu:n body :}
+   text tu >str {: desc:str :}
    HTTP:RUNNING? if E-STATE throw then
-   text tu SCHEMA-READER s" descriptor" SHAPE
-   text tu s" inputSchema" OBJECT-PART {: input:^ iu:n :}
-   text tu s" outputSchema" PART {: output:^ ou:n :}
-   output ou SCHEMA-READER s" outputSchema" SHAPE
-   output ou WHOLE? {: whole:bool :}
+   desc SCHEMA-READER s" descriptor" SHAPE
+   desc s" inputSchema" OBJECT-PART {: input:str :}
+   desc s" outputSchema" PART {: output:str :}
+   output SCHEMA-READER s" outputSchema" SHAPE
+   output WHOLE? {: whole:bool :}
    TOOL-COUNT @ {: idx:n :}
    idx 1+ TOOLS-RESERVE
-   text tu s" name" [: REGISTERED? ;] DECODED-MEMBER {: name :}
-   [: input iu idx INPUT-SCHEMA ;] catch {: code:n :}
+   desc s" name" [: REGISTERED? ;] DECODED-MEMBER {: name :}
+   [: input idx INPUT-SCHEMA ;] catch {: code:n :}
    code 0<> if name MEM:FREE-SPAN code throw then
    name idx TOOL-NAME !
    text tu SPAN:MAKE idx TOOL-TEXT !
-   output ou SPAN:MAKE idx TOOL-OUTPUT !
+   output >SPAN idx TOOL-OUTPUT !
    whole idx TOOL-WHOLE !
    body idx TOOL-BODY !
    idx 1+ TOOL-COUNT ! ;
@@ -1601,14 +1607,15 @@ public
 \ and the UTF-8 page resources/read answers; both must outlive the server.
 : ADD-RESOURCE ( ^u8 n ^u8 n -- )
    {: text:^ tu:n page:^ pu:n :}
+   text tu >str {: desc:str :}
    HTTP:RUNNING? if E-STATE throw then
-   text tu SCHEMA-READER s" descriptor" SHAPE
-   text tu s" name" REQUIRE-STRING
-   text tu s" mimeType" REQUIRE-STRING
-   page pu REQUIRE-UTF8
+   desc SCHEMA-READER s" descriptor" SHAPE
+   desc s" name" REQUIRE-STRING
+   desc s" mimeType" REQUIRE-STRING
+   page pu >str REQUIRE-UTF8
    RESOURCE-COUNT @ {: idx:n :}
    idx 1+ RESOURCES-RESERVE
-   text tu s" uri" [: REGISTERED-URI? ;] DECODED-MEMBER {: uri :}
+   desc s" uri" [: REGISTERED-URI? ;] DECODED-MEMBER {: uri :}
    uri idx RESOURCE-URI !
    text tu SPAN:MAKE idx RESOURCE-TEXT !
    page pu SPAN:MAKE idx RESOURCE-PAGE !
@@ -1617,11 +1624,13 @@ public
 
 \ A body's result: one JSON value. E-STATE outside a body or after its result;
 \ else the reader's E-JSON-READ-* code or E-SCHEMA, which HANDLE passes to the host.
-: RESULT ( ^u8 n -- ) s" " s" []" false RESULT! ;
+: RESULT ( ^u8 n -- ) >str s" " s" []" false RESULT! ;
 
 \ RESULT, plus the result's _meta object, which reaches the host's widget and not the
 \ model (OpenAI Apps SDK); empty meta adds none, and E-SCHEMA names the meta it refuses.
-: RESULT-META ( ^u8 n ^u8 n -- ) s" []" false RESULT! ;
+: RESULT-META ( ^u8 n ^u8 n -- )
+   {: text:^ u:n meta:^ mu:n :}
+   text u >str meta mu >str s" []" false RESULT! ;
 
 
 \ RESULT, plus a JSON array of MCP content blocks, such as a text of the tool's own, an
@@ -1629,11 +1638,11 @@ public
 \ blocks is one JSON array of objects, each with one string "type".
 : RESULT-CONTENT ( ^u8 n ^u8 n -- )
    {: text:^ u:n extra:^ eu:n :}
-   text u s" " extra eu false RESULT! ;
+   text u >str s" " extra eu >str false RESULT! ;
 
 
 \ A body's tool error: the message as text content, isError true.
-: RESULT-ERROR ( ^u8 n -- ) TOOL-ERROR ;
+: RESULT-ERROR ( ^u8 n -- ) >str TOOL-ERROR ;
 
 
 \ In a body before its result. True: the call's connection is taken and the
@@ -1793,7 +1802,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 : BUF-AT ( n n -- ^n )
    {: idx:n off:n :}
-   idx REGION off BUF:HDR-BYTES SPAN:SUB SPAN:$ drop CELL-VIEW ;
+   idx REGION off BUF:HDR-BYTES SPAN:SUB SPAN:$ STR:DATA CELL-VIEW ;
 
 : URL-BUF ( n -- ^n ) URL-OFF BUF-AT ;
 : REQUEST-VEC ( n -- ^VEC:vector<u8> ) ROW PEER-REQUEST @ ;
@@ -1804,8 +1813,9 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 : DECODER ( n -- SSE:decoder ) ROW PEER-SSE SSE:OPEN ;
 
-: BUF$ ( ^n -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
-: BUF+ ( str ^n -- ) {: a:^ u:n buf:^ :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
+: BUF$ ( ^n -- str ) BUF:SPAN$ BUF:BLEN>N >str ;
+: BUF+ ( str ^n -- )
+   {: s:str buf:^ :} s STR:DATA s STR:LEN BUF:N>BLEN buf BUF:APPEND-SPAN ;
 : VEC$ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
 
 \ The first free row, else -1; under LOCK.
@@ -1823,7 +1833,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    count 1+ ROW-GEN-RESERVE
    RECORDS @ NULL-PTR = if ARENA:NEW RECORDS ! then
    RECORDS @ PEERS-NEW {: rec:^ :}
-   s" " SPAN:MAKE rec PEER-REGION !
+   s" " >SPAN rec PEER-REGION !
    rec count ROW-PEER !
    0 count ROW-GEN !
    count 1+ ROW-COUNT ! ;
@@ -1882,7 +1892,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx TOKEN-BUF BUF:DISPOSE
    idx REGION {: region :}
    LOCK TASK:GET
-   s" " SPAN:MAKE idx ROW-PEER @ PEER-REGION !
+   s" " >SPAN idx ROW-PEER @ PEER-REGION !
    0 idx ROW-GEN !
    LOCK TASK:RELEASE
    region MEM:FREE-SPAN ;
@@ -1897,21 +1907,21 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 \ Readies a claimed row's buffers and copies the URL; answers its operands.
 : FILL-ROW ( n str -- n str )
-   {: idx:n url:^ uu:n :}
+   {: idx:n url:str :}
    idx URL-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
    idx MAKE-REQUEST
    idx REPLY-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
    idx LIST-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
    idx MESSAGE-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
    idx TOKEN-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
-   url uu idx URL-BUF BUF+
-   idx url uu ;
+   url idx URL-BUF BUF+
+   idx url ;
 
 
 : SCHEME-LEN ( str -- n )
-   {: a:^ u:n :}
-   u 8 < 0= if a 8 s" https://" STR:=CI if 8 exit then then
-   u 7 < 0= if a 7 s" http://" STR:=CI if 7 exit then then
+   {: s:str :}
+   s STR:LEN 8 < 0= if s STR:DATA 8 >str s" https://" STR:=CI if 8 exit then then
+   s STR:LEN 7 < 0= if s STR:DATA 7 >str s" http://" STR:=CI if 7 exit then then
    0 ;
 
 : AUTHORITY-BYTE? ( n -- bool )
@@ -1921,23 +1931,25 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ The URL's host and port, its userinfo cut; empty when an @ follows the
 \ authority, where a password holding /, ? or # may have ended it early.
 : HOST$ ( str -- str )
-   {: a:^ u:n :}
-   a u SCHEME-LEN {: from:n :}
+   {: s:str :}
+   s SCHEME-LEN {: from:n :}
    from begin
-      dup u < if dup a + c@ AUTHORITY-BYTE? else false then
+      dup s STR:LEN < if dup s STR:DATA + c@ AUTHORITY-BYTE? else false then
    while 1+ repeat {: end:n :}
-   a end + u end - s" @" STR:CONTAINS? if a 0 exit then
-   from end from ?do a i + c@ [char] @ = if drop i 1+ then loop {: start:n :}
-   a start + end start - ;
+   s STR:DATA end + s STR:LEN end - >str s" @" STR:CONTAINS? if
+      s STR:DATA 0 >str exit
+   then
+   from end from ?do s STR:DATA i + c@ [char] @ = if drop i 1+ then loop {: start:n :}
+   s STR:DATA start + end start - >str ;
 
 \ Curl's failure on the row's exchange, logged with the row's host, unless
 \ REQUEST-STOP stopped the row: then the program ended it.
 : CURL-FAULT ( CURL:code n -- )
    {: rc:CURL:code idx:n :}
    idx STOP@ if E-TRANSFER throw then
-   idx URL-BUF BUF$ HOST$ {: host:^ hu:n :}
+   idx URL-BUF BUF$ HOST$ {: host:str :}
    LOG:ERROR s" mcp" LOG:LINE  s" exchange" LOG:TEXT+
-   hu 0<> if s"  with " LOG:TEXT+  host hu LOG:TEXT+ then
+   host STR:LEN 0<> if s"  with " LOG:TEXT+  host LOG:TEXT+ then
    s"  failed: curl " LOG:TEXT+  rc CURL:CODE>N LOG:INT+
    s" : " LOG:TEXT+  rc CURL:ERROR$ LOG:TEXT+
    LOG:;LINE
@@ -1946,20 +1958,20 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ The row's reply logged with what is wrong with it, then why when there is
 \ a why, its status and its body.
 : REPLY-LINE ( str str n -- )
-   {: what:^ wu:n why:^ yu:n idx:n :}
-   idx URL-BUF BUF$ HOST$ {: host:^ hu:n :}
-   idx REPLY-BUF BUF$ {: body:^ bu:n :}
+   {: what:str why:str idx:n :}
+   idx URL-BUF BUF$ HOST$ {: host:str :}
+   idx REPLY-BUF BUF$ {: body:str :}
    LOG:ERROR s" mcp" LOG:LINE  s" reply" LOG:TEXT+
-   hu 0<> if s"  from " LOG:TEXT+  host hu LOG:TEXT+ then
-   s"  " LOG:TEXT+  what wu LOG:TEXT+
-   yu 0<> if s" : " LOG:TEXT+  why yu LOG:TEXT+ then
+   host STR:LEN 0<> if s"  from " LOG:TEXT+  host LOG:TEXT+ then
+   s"  " LOG:TEXT+  what LOG:TEXT+
+   why STR:LEN 0<> if s" : " LOG:TEXT+  why LOG:TEXT+ then
    s" : status " LOG:TEXT+  idx ROW PEER-STATUS @ CURL:HTTP-STATUS>N LOG:INT+
-   bu 0<> if s"  body: " LOG:TEXT+  body bu LOG:TEXT+ then
+   body STR:LEN 0<> if s"  body: " LOG:TEXT+  body LOG:TEXT+ then
    LOG:;LINE ;
 
 : BAD-REPLY ( str n n -- )
-   {: what:^ wu:n idx:n code:n :}
-   what wu s" " idx REPLY-LINE  code throw ;
+   {: what:str idx:n code:n :}
+   what s" " idx REPLY-LINE  code throw ;
 
 : CHECK ( CURL:status n -- )
    {: idx:n :}
@@ -1972,8 +1984,8 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ Room in a BUF past the bytes it holds.
 : ROOM ( ^n -- ^u8 n )
    {: buf:^ :}
-   buf BUF$ {: a:^ u:n :}
-   a u + buf BUF:CAP@ BUF:BLEN>N u - ;
+   buf BUF$ {: held:str :}
+   held STR:DATA held STR:LEN + buf BUF:CAP@ BUF:BLEN>N held STR:LEN - ;
 
 
 \ Collects the end of a transfer CURL:CANCEL has stopped.
@@ -2020,10 +2032,10 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 \ A request with the request id and the method, up to the params' members.
 : REQUEST-START ( ^JSON:writer str -- ^JSON:writer )
-   {: m:^ mu:n :}
+   {: m:str :}
    JSON:WRITE-OBJECT-START s" jsonrpc" s" 2.0" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" id" REQUEST-ID$ JSON:WRITE-FIELD-RAW
-   JSON:WRITE-COMMA s" method" m mu JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" method" m JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" params" JSON:WRITE-KEY JSON:WRITE-OBJECT-START ;
 
 : REQUEST-END ( ^JSON:writer -- ^JSON:writer )
@@ -2035,35 +2047,35 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 \ tools/list from the cursor's JSON string, or from the start when it is empty.
 : LIST-REQUEST ( n str -- )
-   {: idx:n next:^ nu:n :}
+   {: idx:n next:str :}
    idx WRITER s" tools/list" REQUEST-START
-   nu 0<> if s" cursor" next nu JSON:WRITE-FIELD-RAW JSON:WRITE-COMMA then
+   next STR:LEN 0<> if s" cursor" next JSON:WRITE-FIELD-RAW JSON:WRITE-COMMA then
    REQUEST-END JSON:CLOSE ;
 
 : CALL-REQUEST ( n str str -- )
-   {: idx:n name:^ nu:n args:^ au:n :}
+   {: idx:n name:str args:str :}
    idx WRITER s" tools/call" REQUEST-START
-   s" name" name nu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" arguments" args au JSON:WRITE-FIELD-RAW JSON:WRITE-COMMA
+   s" name" name JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" arguments" args JSON:WRITE-FIELD-RAW JSON:WRITE-COMMA
    REQUEST-END JSON:CLOSE ;
 
 
 : PLAIN-NAME? ( str -- bool )
-   {: a:^ u:n :}
-   u 0 ?do
-      a i + c@ dup $21 < swap $7E > or if false unloop exit then
+   {: s:str :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ dup $21 < swap $7E > or if false unloop exit then
    loop true ;
 
 \ The Mcp-Name line, built in the request vector: the name as it is when every
 \ byte is visible ASCII, else =?base64?...?=.
 : NAME-LINE ( n str -- str )
-   {: idx:n name:^ nu:n :}
+   {: idx:n name:str :}
    idx REQUEST-VEC {: v:^ :}
    v 0 VEC:RESIZE
    s" Mcp-Name: " v VEC:APPEND
-   name nu PLAIN-NAME? if name nu v VEC:APPEND else
+   name PLAIN-NAME? if name v VEC:APPEND else
       s" =?base64?" v VEC:APPEND
-      name nu v nu 2 + 3 / 4 * VEC:EXTEND BASE64:ENCODE drop
+      name v name STR:LEN 2 + 3 / 4 * VEC:EXTEND BASE64:ENCODE drop
       s" ?=" v VEC:APPEND
    then
    v VEC$ ;
@@ -2081,7 +2093,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ A fresh handle, held by the row, posting the request vector to the URL; a
 \ handle a halt left is retired first. E-TRANSFER once REQUEST-STOP stopped the row.
 : PREPARE ( n str ms -- CURL:handle )
-   {: idx:n line:^ lu:n limit:ms :}
+   {: idx:n line:str limit:ms :}
    idx RETIRE
    idx STOP@ if E-TRANSFER throw then
    CURL:INIT
@@ -2092,35 +2104,36 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    h OPTION:SOME idx HANDLE!
    h idx URL-BUF BUF$ CURL:URL! idx CHECK
    h idx REQUEST-VEC VEC$ CURL:BODY! idx CHECK
-   idx TOKEN-BUF BUF$ nip 0<> if h idx BEARER-LINE CURL:HEADER+ idx CHECK then
+   idx TOKEN-BUF BUF$ STR:LEN 0<> if h idx BEARER-LINE CURL:HEADER+ idx CHECK then
    h limit CURL:TIMEOUT! idx CHECK
    h s" Content-Type: application/json" CURL:HEADER+ idx CHECK
    h s" Accept: application/json, text/event-stream" CURL:HEADER+ idx CHECK
    h s" MCP-Protocol-Version: 2026-07-28" CURL:HEADER+ idx CHECK
-   h line lu CURL:HEADER+ idx CHECK
+   h line CURL:HEADER+ idx CHECK
    h ;
 
 
 \ Whether a header line is Content-Type naming text/event-stream.
 : EVENT-TYPE? ( str -- bool )
-   {: a:^ u:n :}
-   a u 58 STR:INDEX-OF MATCH option
+   {: s:str :}
+   s 58 STR:INDEX-OF MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: at:n :}
    at 0< if false exit then
-   a at STR:TRIM s" Content-Type" STR:=CI 0= if false exit then
-   a at + 1+ u at - 1- MEDIA-ESSENCE s" text/event-stream" STR:=CI ;
+   s STR:DATA at >str STR:TRIM s" Content-Type" STR:=CI 0= if false exit then
+   s STR:DATA at + 1+ s STR:LEN at - 1- >str MEDIA-ESSENCE
+   s" text/event-stream" STR:=CI ;
 
 : EVENT-HEAD? ( str -- bool )
-   {: a:^ u:n :}
-   0 begin dup u < while
+   {: s:str :}
+   0 begin dup s STR:LEN < while
       {: at:n :}
-      a at + u at - 10 STR:INDEX-OF MATCH option
-         none OF u at - ENDOF
+      s STR:DATA at + s STR:LEN at - >str 10 STR:INDEX-OF MATCH option
+         none OF s STR:LEN at - ENDOF
          some OF IDX>N ENDOF
       ;MATCH {: len:n :}
-      a at + len EVENT-TYPE? if true exit then
+      s STR:DATA at + len >str EVENT-TYPE? if true exit then
       at len + 1+
    repeat drop false ;
 
@@ -2155,7 +2168,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       buf ROOM {: room:^ ru:n :}
       h room ru >LEN CURL:NEXT
       MATCH CURL:chunk-result
-         chunk OF nip LEN>N room swap buf BUF+ false ENDOF
+         chunk OF nip LEN>N room swap >str buf BUF+ false ENDOF
          response OF idx ROW PEER-STATUS ! true ENDOF
          failed OF idx CURL-FAULT ENDOF
       ;MATCH
@@ -2168,11 +2181,11 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx limit ;
 
 : CALL-EXCHANGE ( n str ms -- n str ms )
-   {: idx:n name:^ nu:n limit:ms :}
+   {: idx:n name:str limit:ms :}
    idx s" Mcp-Method: tools/call" limit PREPARE {: h:CURL:handle :}
-   h idx name nu NAME-LINE CURL:HEADER+ idx CHECK
+   h idx name NAME-LINE CURL:HEADER+ idx CHECK
    idx h TRANSFER
-   idx name nu limit ;
+   idx name limit ;
 
 \ A guarded exchange's code: the row's exchange is let go whether or not it
 \ threw, and a throw passes on, so the client serves its next call. A halt
@@ -2195,9 +2208,9 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 \ Empty data, which a server's priming event carries, is no message.
 : >FOUND ( str -- found )
-   {: a:^ u:n :}
-   u 0= if construct found nothing exit then
-   a u JSON-RPC:>MESSAGE {: m :}
+   {: s:str :}
+   s STR:LEN 0= if construct found nothing exit then
+   s JSON-RPC:>MESSAGE {: m :}
    m RESPONSE-ID$ REQUEST-ID$ STR:= if construct found response exit then
    m MATCH JSON-RPC:message
       invalid OF 2drop 2drop construct found stray ENDOF
@@ -2207,59 +2220,59 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       notification OF 2drop construct found nothing ENDOF
    ;MATCH ;
 
-: FOUND! ( ^peer ^u8 n found -- )
-   {: rec:^ data:^ du:n k:found :}
-   rec PEER-REGION @ SPAN:$ drop MESSAGE-OFF + CELL-VIEW {: buf:^ :}
-   buf BUF:CLEAR data du buf BUF+
+: FOUND! ( ^peer str found -- )
+   {: rec:^ data:str k:found :}
+   rec PEER-REGION @ SPAN:$ STR:DATA MESSAGE-OFF + CELL-VIEW {: buf:^ :}
+   buf BUF:CLEAR data buf BUF+
    k rec PEER-FOUND ! ;
 
-: WHILE-NOTHING ( ^peer ^u8 n -- )
-   {: rec:^ data:^ du:n :}
-   data du >FOUND {: k:found :}
+: WHILE-NOTHING ( ^peer str -- )
+   {: rec:^ data:str :}
+   data >FOUND {: k:found :}
    k MATCH found
-      response OF rec data du k FOUND! ENDOF
-      stray OF rec data du k FOUND! ENDOF
+      response OF rec data k FOUND! ENDOF
+      stray OF rec data k FOUND! ENDOF
       nothing OF ENDOF
    ;MATCH ;
 
-: WHILE-STRAY ( ^peer ^u8 n -- )
-   {: rec:^ data:^ du:n :}
-   data du >FOUND {: k:found :}
+: WHILE-STRAY ( ^peer str -- )
+   {: rec:^ data:str :}
+   data >FOUND {: k:found :}
    k MATCH found
-      response OF rec data du k FOUND! ENDOF
+      response OF rec data k FOUND! ENDOF
       stray OF ENDOF
       nothing OF ENDOF
    ;MATCH ;
 
 \ Keeps in the row's message buffer the first event answering the request,
 \ and until one does, the first that is not JSON-RPC.
-: EVENT ( ^peer ^u8 n ^u8 n -- )
-   {: rec:^ kind:^ ku:n data:^ du:n :}
+: EVENT ( ^peer str str -- )
+   {: rec:^ kind:str data:str :}
    rec PEER-FOUND @ MATCH found
-      nothing OF rec data du WHILE-NOTHING ENDOF
-      stray OF rec data du WHILE-STRAY ENDOF
+      nothing OF rec data WHILE-NOTHING ENDOF
+      stray OF rec data WHILE-STRAY ENDOF
       response OF ENDOF
    ;MATCH ;
 
 \ Feeds the whole reply to the decoder and finishes it; answers its operands.
-: DECODE ( SSE:decoder ^u8 n ^peer -- SSE:decoder ^u8 n ^peer )
-   {: d:SSE:decoder a:^ u:n rec:^ :}
-   d a u rec [: EVENT ;] SSE:FEED
+: DECODE ( SSE:decoder str ^peer -- SSE:decoder str ^peer )
+   {: d:SSE:decoder reply:str rec:^ :}
+   d reply rec [: EVENT ;] SSE:FEED
    d SSE:FINISH
-   d a u rec ;
+   d reply rec ;
 
 \ The reply's JSON-RPC text: its body, or the event EVENT keeps, else a logged
 \ E-RESPONSE; the decoder is always closed.
 : MESSAGE$ ( n -- str )
    {: idx:n :}
-   idx REPLY-BUF BUF$ {: a:^ u:n :}
-   idx ROW PEER-STREAM @ 0= if a u exit then
+   idx REPLY-BUF BUF$ {: reply:str :}
+   idx ROW PEER-STREAM @ 0= if reply exit then
    idx MESSAGE-BUF {: buf:^ :}
    buf BUF:CLEAR
    idx ROW {: rec :}
    construct found nothing rec PEER-FOUND !
    idx DECODER {: d:SSE:decoder :}
-   d a u rec [: DECODE ;] catch {: code:n :} 2drop 2drop
+   d reply rec [: DECODE ;] catch {: code:n :} drop drop drop
    \ Nothing since OPEN pauses, so a halt cannot skip this CLOSE.
    d SSE:CLOSE
    code SSE:E-UTF8 = if
@@ -2278,18 +2291,18 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 \ A member of a JSON object text: its text (a string with quotes), token kind
 \ and whether it is there; no object is a logged E-RESPONSE.
-: MEMBER ( n ^u8 n ^u8 n -- ^u8 n n bool )
-   {: idx:n data:^ len:n key:^ ku:n :}
-   idx ROW PEER-CURSOR data len JSON:READ-INIT
+: MEMBER ( n str str -- str n bool )
+   {: idx:n data:str key:str :}
+   idx ROW PEER-CURSOR data JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if
       JSON:READ-CLOSE
       s" has a result that is not a JSON object" idx E-RESPONSE BAD-REPLY
    then
-   key ku JSON:READ-FIND-KEY 0= if
+   key JSON:READ-FIND-KEY 0= if
       JSON:READ-CLOSE s" " JSON:T-END false exit
    then
-   JSON:READ-TOKEN {: k:n :} RAW$ {: a:^ u:n :}
-   JSON:READ-CLOSE a u k true ;
+   JSON:READ-TOKEN {: k:n :} RAW$ {: value:str :}
+   JSON:READ-CLOSE value k true ;
 
 
 \ The result text of a 2xx reply answering the request, else a logged E-DENIED
@@ -2307,8 +2320,8 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    code 200 < code 299 > or if
       s" is not a success" idx E-RESPONSE BAD-REPLY
    then
-   idx MESSAGE$ {: m:^ mu:n :}
-   m mu JSON-RPC:>MESSAGE
+   idx MESSAGE$ {: m:str :}
+   m JSON-RPC:>MESSAGE
    MATCH JSON-RPC:message
       success OF {: id value :}
          id JSON:TEXT$ REQUEST-ID$ STR:= 0= if
@@ -2322,18 +2335,18 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       failure OF drop drop
          s" is a JSON-RPC error" idx E-RESPONSE BAD-REPLY ENDOF
       invalid OF drop {: why:^ wu:n :} drop
-         s" is not JSON-RPC" why wu idx REPLY-LINE
+         s" is not JSON-RPC" why wu >str idx REPLY-LINE
          E-RESPONSE throw ENDOF
    ;MATCH ;
 
 
-: GATHER ( n ^u8 n -- )
-   {: idx:n raw:^ ru:n :}
+: GATHER ( n str -- )
+   {: idx:n raw:str :}
    idx LIST-BUF {: buf:^ :}
-   raw ru MEMBERS {: a:^ u:n :}
-   u 0= if exit then
+   raw MEMBERS {: inner:str :}
+   inner STR:LEN 0= if exit then
    buf BUF:LEN@ BUF:BLEN>N 1 > if 44 buf BUF:APPEND-BYTE then
-   a u buf BUF+ ;
+   inner buf BUF+ ;
 
 1000000 constant NS-PER-MS
 
@@ -2350,24 +2363,24 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ One page of tools/list from the cursor, its transfer within ms, the time its
 \ TOOLS has left: answers the next page's cursor and true, or an empty text and
 \ false after the last.
-: PAGE ( n ^u8 n ms -- ^u8 n bool )
-   {: idx:n next:^ nu:n limit:ms :}
-   idx next nu LIST-REQUEST
+: PAGE ( n str ms -- str bool )
+   {: idx:n next:str limit:ms :}
+   idx next LIST-REQUEST
    idx limit [: LIST-EXCHANGE ;] catch {: code:n :} 2drop
    idx code SETTLE
-   idx RESULT$ {: result:^ ru:n :}
-   idx result ru s" tools" MEMBER 0= if
+   idx RESULT$ {: result:str :}
+   idx result s" tools" MEMBER 0= if
       s" has no tools member" idx E-RESPONSE BAD-REPLY
    then
    JSON:T-ARR <> if
       s" has tools that are not an array" idx E-RESPONSE BAD-REPLY
    then
-   {: tools:^ tu:n :}
-   idx result ru s" nextCursor" MEMBER {: more:bool :} {: k:n :}
+   {: tools:str :}
+   idx result s" nextCursor" MEMBER {: more:bool :} {: k:n :}
    more if k JSON:T-STR <> if
       s" has a nextCursor that is not a string" idx E-RESPONSE BAD-REPLY
    then then
-   idx tools tu GATHER
+   idx tools GATHER
    more ;
 
 \ Cancels the row's transfer in flight; under LOCK. Answers CURL:CANCEL's
@@ -2400,7 +2413,7 @@ public
    0 region SPAN:FILL
    region CLAIM {: who:client :}
    who LIVE {: idx:n :}
-   idx url uu [: FILL-ROW ;] catch {: code:n :} 2drop drop
+   idx url uu >str [: FILL-ROW ;] catch {: code:n :} drop drop
    code 0<> if idx RELEASE code throw then
    who ;
 
@@ -2427,7 +2440,7 @@ public
    {: who:client token:^ tu:n :}
    who LIVE TOKEN-BUF {: buf:^ :}
    buf BUF:WIPE
-   token tu buf BUF+ ;
+   token tu >str buf BUF+ ;
 
 
 \ Every tool the server lists, following nextCursor to the last page, as one JSON
@@ -2440,9 +2453,9 @@ public
    idx LIST-BUF {: buf:^ :}
    buf BUF:CLEAR
    91 buf BUF:APPEND-BYTE
-   s" " begin idx -rot limit start LEFT PAGE while repeat 2drop
+   s" " begin idx swap limit start LEFT PAGE while repeat drop
    93 buf BUF:APPEND-BYTE
-   buf BUF$ ;
+   buf BUF$ dup STR:DATA swap STR:LEN ;
 
 
 \ tools/call of the named tool with the arguments' JSON object, within ms for the
@@ -2451,19 +2464,20 @@ public
    {: who:client name:^ nu:n args:^ au:n limit:ms :}
    who LIVE {: idx:n :}
    idx REFUSE-STOPPED
-   idx name nu args au CALL-REQUEST
-   idx name nu limit [: CALL-EXCHANGE ;] catch {: code:n :} 2drop 2drop
+   idx name nu >str args au >str CALL-REQUEST
+   idx name nu >str limit [: CALL-EXCHANGE ;] catch {: code:n :}
+   drop drop drop
    idx code SETTLE
-   idx RESULT$ {: result:^ ru:n :}
-   idx result ru s" isError" MEMBER if
-      {: k:n :} 2drop
+   idx RESULT$ {: result:str :}
+   idx result s" isError" MEMBER if
+      {: k:n :} drop
       k JSON:T-TRUE <> k JSON:T-FALSE <> and if
          s" has an isError that is not true or false" idx E-RESPONSE BAD-REPLY
       then
       k JSON:T-TRUE =
-   else drop 2drop false then
+   else drop drop false then
    {: fault:bool :}
-   result ru fault ;
+   result STR:DATA result STR:LEN fault ;
 
 
 \ From any task, stops the client until CLOSE: a TOOLS or CALL whose transfer has not
