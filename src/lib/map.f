@@ -1,4 +1,3 @@
-split-str
 \ map.f - package MAP's INIT, and maps made and grown in an arena. A target
 \ with no OS generator (wasm) requires src/lib/map-core.f, the rest of MAP,
 \ and makes its maps with INIT-KEYED.
@@ -31,6 +30,13 @@ public
    m cap INIT
    m ;
 
+private
+
+: SET-INTO ( str n ^n -- ) {: key:str value:n m:^ :}
+   value m key SET ;
+
+public
+
 \ Room for one more entry at mp: a null map is made, and a map that entry
 \ would fill past half is doubled. Keys are not copied: they must live as long
 \ as arena a.
@@ -41,7 +47,7 @@ public
    old CAP@ COUNT>N {: cap:n :}
    old COUNT@ COUNT>N 1+ 2 * cap <= if exit then
    a cap 2 * >COUNT IN {: new:^ :}
-   old [: -rot new -rot SET ;] EACH
+   old [: new SET-INTO ;] EACH
    new mp ! ;
 
 ;package

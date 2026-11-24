@@ -1,4 +1,3 @@
-split-str
 \ jsonl-test.f - the JSONL memory splitter through the public API.
 \ Run: bin/hb --load src/lib/jsonl-test.f
 
@@ -10,16 +9,16 @@ private
 
 \ The line at pos is want, and the position after it is next.
 : SPLIT= ( str n str n -- )
-   {: a:^ u:n pos:n want:^ wu:n next:n :}
-   a u pos JSONL:SPLIT-LINE TTRUE {: la:^ lu:n got:n :}
-   la lu want wu T$=
+   {: s:str pos:n want:str next:n :}
+   s pos JSONL:SPLIT-LINE TTRUE {: line:str got:n :}
+   line want T$=
    got next T= ;
 
 \ No line starts at pos.
 : SPLIT-END ( str n -- )
-   {: a:^ u:n pos:n :}
-   a u pos JSONL:SPLIT-LINE TFALSE {: la:^ lu:n got:n :}
-   lu 0 T=
+   {: s:str pos:n :}
+   s pos JSONL:SPLIT-LINE TFALSE {: line:str got:n :}
+   line STR:LEN 0 T=
    got pos T= ;
 
 : SPLIT ( -- )
@@ -38,9 +37,9 @@ private
    s\" \n1\n\n2" 3 s" " 4 SPLIT=
    s\" \n1\n\n2" 4 s" 2" 5 SPLIT=
    s\" \n1\n\n2" 5 SPLIT-END
-   [: s" a" drop -1 0 JSONL:SPLIT-LINE drop 2drop drop ;] JSONL:E-SOURCE TTHROWSQ
-   [: NULL-PTR 1 0 JSONL:SPLIT-LINE drop 2drop drop ;] JSONL:E-SOURCE TTHROWSQ
-   [: s" a" -1 JSONL:SPLIT-LINE drop 2drop drop ;] JSONL:E-SOURCE TTHROWSQ ;
+   [: s" a" STR:DATA -1 >str 0 JSONL:SPLIT-LINE drop drop drop ;] JSONL:E-SOURCE TTHROWSQ
+   [: NULL-PTR 1 >str 0 JSONL:SPLIT-LINE drop drop drop ;] JSONL:E-SOURCE TTHROWSQ
+   [: s" a" -1 JSONL:SPLIT-LINE drop drop drop ;] JSONL:E-SOURCE TTHROWSQ ;
 
 public
 : RUN ( -- )

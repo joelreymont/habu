@@ -1,4 +1,3 @@
-split-str
 \ memory-test.f - focused tests for OS-backed memory buffers.
 
 require src/core/exit-status.f
@@ -27,20 +26,20 @@ variable MEMT-HERE
 : MEMT-SPAN-TOTAL ( -- n )
    MEMT-SPAN-BUFS MEM-64K * ;
 
-: MEMT-END ( str -- ^u8 ) {: a:^ u :}
-   a u 1 - + ;
+: MEMT-END ( str -- ^u8 ) {: s:str :}
+   s STR:DATA s STR:LEN 1 - + ;
 
-: MEMT-TOUCH-ENDS ( str -- ) {: a:^ u :}
-   MEMT-MARK-A a c!
-   MEMT-MARK-Z a u MEMT-END c!
-   a c@ MEMT-MARK-A T=
-   a u MEMT-END c@ MEMT-MARK-Z T= ;
+: MEMT-TOUCH-ENDS ( str -- ) {: s:str :}
+   MEMT-MARK-A s STR:DATA c!
+   MEMT-MARK-Z s MEMT-END c!
+   s STR:DATA c@ MEMT-MARK-A T=
+   s MEMT-END c@ MEMT-MARK-Z T= ;
 
-: MEMT-TOUCH-SLOTS ( str n -- ) {: a:^ u count :}
-   count MEM-64K * u T=
+: MEMT-TOUCH-SLOTS ( str n -- ) {: s:str count :}
+   count MEM-64K * s STR:LEN T=
    count 0 ?do
-      MEMT-MARK-A i + a i MEM-64K * + c!
-      a i MEM-64K * + c@ MEMT-MARK-A i + T=
+      MEMT-MARK-A i + s STR:DATA i MEM-64K * + c!
+      s STR:DATA i MEM-64K * + c@ MEMT-MARK-A i + T=
    loop ;
 
 : MEMT-TOUCH-64K-SLOTS ( str -- )
@@ -58,7 +57,7 @@ variable MEMT-HERE
 
 : MEMT-SINGLE-64K ( -- )
    MEM-ALLOC-64K
-   dup MEM-64K T=
+   dup STR:LEN MEM-64K T=
    MEMT-TOUCH-ENDS ;
 
 : MEMT-MANY-64K ( -- )
@@ -67,17 +66,17 @@ variable MEMT-HERE
 
 : MEMT-DATA-UNCHANGED ( -- )
    here NULL-PTR - MEMT-HERE !
-   MEM-ALLOC-64K 2drop
+   MEM-ALLOC-64K drop
    here NULL-PTR - MEMT-HERE @ T= ;
 
-: MEMT-LIVE-SPAN-FRAME ( str n -- ) {: a:^ u remaining :}
-   u MEMT-SPAN-TOTAL T=
-   a u MEMT-TOUCH-SPAN-SLOTS
+: MEMT-LIVE-SPAN-FRAME ( str n -- ) {: s:str remaining :}
+   s STR:LEN MEMT-SPAN-TOTAL T=
+   s MEMT-TOUCH-SPAN-SLOTS
    remaining 0 > if
       MEMT-SPAN-BUFS MEM-ALLOC-64K-BUFFERS
       remaining 1 - recurse
    then
-   a u MEMT-TOUCH-SPAN-SLOTS ;
+   s MEMT-TOUCH-SPAN-SLOTS ;
 
 : MEMT-MANY-LIVE-SPANS ( -- )
    here NULL-PTR - MEMT-HERE !
@@ -112,13 +111,13 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    -1 MEM-ALLOC-BYTES 2drop ;
 
 : MEMT-ZERO-64K ( -- )
-   0 MEM-ALLOC-64K-BUFFERS 2drop ;
+   0 MEM-ALLOC-64K-BUFFERS drop ;
 
 : MEMT-TOO-MANY-64K ( -- )
    MEM-MAX-64K-BUFFERS 1 + MEM-64K-BYTES drop ;
 
 : MEMT-TOO-LARGE-SPAN ( -- )
-   MEM-MAX-N MEM-ALLOC-64K-SPAN 2drop ;
+   MEM-MAX-N MEM-ALLOC-64K-SPAN drop ;
 
 : MEMT-ZERO-CELLS ( -- )
    0 >COUNT MEM-ALLOC-CELLS drop ;
@@ -204,10 +203,11 @@ create RBT-ERR RBT-CAP allot
 
 \ Runs the source in a subject child and asserts its exit code, leaving the
 \ stdout and stderr lengths.
-: RBT-EXITS ( str n -- n n ) {: src:^ srcu:n want:n :}
-   src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
+: RBT-EXITS ( str n -- n n ) {: src:str want:n :}
+   src RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
-   src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc want T-ENDING-EXITED=
+   src RBT-OUT outu LEN>N >str RBT-ERR erru LEN>N >str
+   oc want T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
 \ A child that touches released memory exits 110 after the fault's line on fd 2.
@@ -262,12 +262,13 @@ $100 constant CAP
 create CAP-OUT CAP allot
 create CAP-ERR CAP allot
 
-: EXPECT-FATAL ( str -- ) {: src:^ srcu:n :}
-   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+: EXPECT-FATAL ( str -- ) {: src:str :}
+   src CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
-   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc 78 T-ENDING-EXITED=
+   src CAP-OUT outu LEN>N >str CAP-ERR erru LEN>N >str
+   oc 78 T-ENDING-EXITED=
    outu LEN>N 0 T=
-   CAP-ERR erru LEN>N S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
+   CAP-ERR erru LEN>N >str S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
 
 : RELEASE-SRC ( -- str )
    s" package MFR : RUN ( -- ) MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES swap 1 + swap MEM:RELEASE-BYTES ; ' RUN ;package catch $53 emit" ;

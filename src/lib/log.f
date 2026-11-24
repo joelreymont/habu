@@ -1,4 +1,3 @@
-split-str
 \ log.f - lines on fd 2 that say why a program failed, and, at info, what a
 \ service did, package LOG. A failure caused outside the program (a provider,
 \ the network, the OS) is logged once, with its text, by the library that saw
@@ -83,9 +82,10 @@ variable TAIL
 
 \ The line written for a lost one: a stamp, then the text.
 : NOTICE-TEXT$ ( -- str )  S\"  error log: out of memory, a line was lost\n" ;
-DATE:TIME-LEN NOTICE-TEXT$ nip + constant NOTICE-U
+DATE:TIME-LEN NOTICE-TEXT$ STR:LEN + constant NOTICE-U
 NOTICE-U BUFFER: NOTICE
-NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
+NOTICE-TEXT$ STR:DATA NOTICE DATE:TIME-LEN +
+NOTICE-TEXT$ STR:LEN BYTE-COPY
 
 
 : ROW-FREE ( -- )  ROW @  NULL-PTR ROW !  VEC:DELETE ;
@@ -128,7 +128,8 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    ROW @ {: v:^ :}
    v VEC:COUNT {: old:n :}
    v old DATE:TIME-LEN + VEC:ENSURE
-   epoch-seconds v VEC:SPAN old SPAN:SKIP SPAN:$ DATE:FORMAT-EPOCH-UTC 2drop ;
+   v VEC:SPAN old SPAN:SKIP SPAN:$ {: s:str :}
+   epoch-seconds s STR:DATA s STR:LEN DATE:FORMAT-EPOCH-UTC drop ;
 
 
 : OPEN ( -- )
@@ -149,7 +150,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    b SPACE-B < b DEL-B = or b BACKSLASH = or ;
 
 
-: HEX+ ( n -- )  s" 0123456789abcdef" drop + c@ ROW @ VEC:PUSH c! ;
+: HEX+ ( n -- )  s" 0123456789abcdef" STR:DATA + c@ ROW @ VEC:PUSH c! ;
 
 
 : ESCAPE+ ( n -- )
@@ -163,23 +164,23 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 \ Appends at[from, to).
 : RUN+ ( ^u8 n n -- )
    {: at:^ from:n to:n :}
-   at from + to from - ROW @ VEC:APPEND ;
+   at from + to from - >str ROW @ VEC:APPEND ;
 
 
 \ TEXT+'s contract: the row's first growth, to hold the text unescaped, comes
 \ before any byte of the text is read. The text must not lie in the row: that
 \ growth and each escape's can move the block before the text is read.
 : ESCAPED+ ( str -- )
-   {: at:^ u:n :}
-   ROW @ dup VEC:COUNT u + VEC:RESERVE
-   0 u 0 ?do
-      at i + c@ ESCAPE? if
-         at over i RUN+
-         at i + c@ ESCAPE+
+   {: at:str :}
+   ROW @ dup VEC:COUNT at STR:LEN + VEC:RESERVE
+   0 at STR:LEN 0 ?do
+      at STR:DATA i + c@ ESCAPE? if
+         at STR:DATA over i RUN+
+         at STR:DATA i + c@ ESCAPE+
          drop i 1+
       then
    loop
-   at swap u RUN+ ;
+   at STR:DATA swap at STR:LEN RUN+ ;
 
 
 : LF$ ( -- str )  S\" \n" ;
@@ -216,8 +217,8 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 
 : NOTICE-OUT ( -- )
-   epoch-seconds NOTICE DATE:TIME-LEN DATE:FORMAT-EPOCH-UTC 2drop
-   FD:STDERR [: MENDED? if FD:STDERR NOTICE NOTICE-U FD:TRY-WRITE-FULL WROTE then ;]
+   epoch-seconds NOTICE DATE:TIME-LEN DATE:FORMAT-EPOCH-UTC drop
+   FD:STDERR [: MENDED? if FD:STDERR NOTICE NOTICE-U >str FD:TRY-WRITE-FULL WROTE then ;]
    FD:WITH-NOSIGPIPE ;
 
 
@@ -256,8 +257,9 @@ public
 
 
 : TEXT+ ( str -- )
-   PHASE @ OPENED <> if 2drop exit then
-   [: 2dup ESCAPED+ ;] catch >r 2drop r> MAP-REFUSED ;
+   {: s:str :}
+   PHASE @ OPENED <> if exit then
+   [: s ESCAPED+ ;] catch MAP-REFUSED ;
 
 
 : INT+ ( n -- )  FMT:INT$ TEXT+ ;
@@ -267,17 +269,17 @@ public
 \ `-9701 MODEL:E-KEY: the provider refused the key`, the number alone when none.
 : CODE+ ( n -- ) {: code:n :}
    code INT+
-   code ERROR:NAME$ {: name:^ nameu:n :}
-   nameu 0= if exit then
-   s"  " TEXT+ name nameu TEXT+ s" : " TEXT+ code ERROR:TEXT$ TEXT+ ;
+   code ERROR:NAME$ {: name:str :}
+   name STR:LEN 0= if exit then
+   s"  " TEXT+ name TEXT+ s" : " TEXT+ code ERROR:TEXT$ TEXT+ ;
 
 
 : LINE ( level str -- )
-   {: level:level tag:^ tagu:n :}
+   {: level:level tag:str :}
    CLOSED PHASE !
    [: OPEN  OPENED PHASE ! ;] catch MAP-REFUSED
    s"  " TEXT+  level LEVEL$ TEXT+  s"  " TEXT+
-   tag tagu TEXT+  s" : " TEXT+ ;
+   tag TEXT+  s" : " TEXT+ ;
 
 
 : ;LINE ( -- )

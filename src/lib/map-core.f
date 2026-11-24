@@ -1,4 +1,3 @@
-split-str
 \ map-core.f - package MAP: fixed-capacity open-addressed string-key map in
 \ caller cells (CELL-COUNT sizes them; not CELLS, which would shadow `cells` in
 \ later bodies). Layout, hash, probe and locate are private; src/lib/map-test.f
@@ -136,7 +135,7 @@ private
 
 : SLOT-CLEAR ( ^a idx -- ) {: m:^ ix :}
    0 m ix SLOT-HASH!
-   NULL$ drop m ix SLOT-KEY-A!
+   NULL$ STR:DATA m ix SLOT-KEY-A!
    0 m ix SLOT-KEY-U!
    0 m ix SLOT-VALUE-OFF >OFF NUM-FIELD !
    MAP-SLOT--STATE:EMPTY m ix SLOT-STATE! ;
@@ -161,9 +160,9 @@ public
 
 private
 
-: HASH ( ^a str -- n ) {: m:^ a:^ u :}
+: HASH ( ^a str -- n ) {: m:^ s:str :}
    m HASH-K0-OFF HEADER-FIELD @  m HASH-K1-OFF HEADER-FIELD @
-   a u SIPHASH:BYTES HASH-MASK and ;
+   s SIPHASH:BYTES HASH-MASK and ;
 
 : INDEX ( n count -- idx ) {: hash cap :}
    hash cap COUNT>N mod >IDX ;
@@ -178,15 +177,15 @@ private
       base inc +
    then >IDX ;
 
-: SLOT-MATCH? ( ^a idx n str -- bool ) {: m:^ ix hash key:^ len :}
+: SLOT-MATCH? ( ^a idx n str -- bool ) {: m:^ ix hash key:str :}
    m ix SLOT-HASH@ hash <> if 0 0= 0= exit then
-   m ix SLOT-KEY-A@ m ix SLOT-KEY-U@ key len STR:= ;
+   m ix SLOT-KEY-A@ m ix SLOT-KEY-U@ >str key STR:= ;
 
-: LOCATE-SLOT ( ^a idx str n -- loc ) {: m:^ ix:idx key:^ len:n hash:n :}
+: LOCATE-SLOT ( ^a idx str n -- loc ) {: m:^ ix:idx key:str hash:n :}
    m ix SLOT-STATE@ MATCH slot-state
      empty OF ix MAP-LOC:FREE ENDOF
      occupied OF
-        m ix hash key len SLOT-MATCH? if
+        m ix hash key SLOT-MATCH? if
            ix MAP-LOC:FOUND
         else
            MAP-LOC:FULL
@@ -194,10 +193,10 @@ private
      ENDOF
    ;MATCH ;
 
-: LOCATE ( ^a count str -- loc n ) {: m:^ cap:count key:^ len:n :}
-   m key len HASH {: hash:n :}
+: LOCATE ( ^a count str -- loc n ) {: m:^ cap:count key:str :}
+   m key HASH {: hash:n :}
    cap COUNT>N 0 ?do
-      m hash i >COUNT cap PROBE key len hash LOCATE-SLOT
+      m hash i >COUNT cap PROBE key hash LOCATE-SLOT
       dup MATCH loc
         full OF 0 0= 0= ENDOF
         free OF drop 0 0= ENDOF
@@ -209,11 +208,11 @@ private
    loop
    MAP-LOC:FULL hash ;
 
-: SLOT-INSERT ( a ^a idx n str -- ) {: value m:^ ix hash key:^ len :}
+: SLOT-INSERT ( a ^a idx n str -- ) {: value m:^ ix hash key:str :}
    m COUNT@ COUNT>N 1 + >COUNT m COUNT!
    hash m ix SLOT-HASH!
-   key m ix SLOT-KEY-A!
-   len m ix SLOT-KEY-U!
+   key STR:DATA m ix SLOT-KEY-A!
+   key STR:LEN m ix SLOT-KEY-U!
    value m ix SLOT-VALUE!
    MAP-SLOT--STATE:OCCUPIED m ix SLOT-STATE! ;
 
@@ -252,8 +251,8 @@ private
 
 public
 
-: GET ( ^n str -- option<n> ) {: m:^ key:^ len:n :}
-   m m CAP@ key len LOCATE drop MATCH loc
+: GET ( ^n str -- option<n> ) {: m:^ key:str :}
+   m m CAP@ key LOCATE drop MATCH loc
      full OF OPTION:NONE ENDOF
      free OF drop OPTION:NONE ENDOF
      found OF m swap SLOT-VALUE@ OPTION:SOME ENDOF
@@ -267,18 +266,18 @@ public
 
 \ Stores the key's pointer and length, not a copy; a replacement keeps the first
 \ pointer: the key bytes stay alive and unchanged while the entry exists.
-: SET ( n ^n str -- ) {: value:n m:^ key:^ len:n :}
-   m m CAP@ key len LOCATE {: hash:n :}
+: SET ( n ^n str -- ) {: value:n m:^ key:str :}
+   m m CAP@ key LOCATE {: hash:n :}
    MATCH loc
      full OF E-MAP-FULL throw ENDOF
-     free OF value m rot hash key len SLOT-INSERT ENDOF
+     free OF value m rot hash key SLOT-INSERT ENDOF
      found OF value m rot SLOT-VALUE! ENDOF
    ;MATCH ;
 
 \ Removes the key's entry; true when there was one.
-: REMOVE ( ^n str -- bool ) {: m:^ key:^ len:n :}
+: REMOVE ( ^n str -- bool ) {: m:^ key:str :}
    m CAP@ {: cap:count :}
-   m cap key len LOCATE drop MATCH loc
+   m cap key LOCATE drop MATCH loc
      full OF false ENDOF
      free OF drop false ENDOF
      found OF m cap rot SLOT-REMOVE true ENDOF
@@ -290,7 +289,7 @@ public
    m CAP@ COUNT>N 0 ?do
       m i >IDX SLOT-STATE@ OCCUPIED? if
          m i >IDX SLOT-KEY-A@
-         m i >IDX SLOT-KEY-U@
+         m i >IDX SLOT-KEY-U@ >str
          m i >IDX SLOT-VALUE@
          q execute
       then

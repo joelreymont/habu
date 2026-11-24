@@ -1,4 +1,3 @@
-split-str
 \ bearer-test.f - BEARER:ADMIT? over a real loopback port: ADMIT? before
 \ ISSUER! and ISSUER! or METADATA! while serving, the 503 of a key set that
 \ cannot be fetched, key selection among an EC key, an encryption key and the
@@ -115,56 +114,57 @@ TASK:MIN-STACK TASK:TASK WAITER
 TASK:MIN-STACK TASK:TASK CLAIMER
 
 \ The bytes copied into the span at off; answers the offset past them.
-: PUT ( ^u8 n SPAN:span<u8> n -- n )
-   {: a:^ u:n row off:n :}
-   a row off u SPAN:SUB SPAN:$ drop u BYTE-COPY
+: PUT ( str SPAN:span<u8> n -- n )
+   {: s:str row off:n :}
+   s STR:LEN {: u:n :}
+   s STR:DATA row off u SPAN:SUB SPAN:$ STR:DATA u BYTE-COPY
    off u + ;
 
 
 : SET+ ( str n -- n ) SETS swap PUT ;
 
 : RSA-KEY+ ( str n -- n )
-   {: kid:^ ku:n off:n :}
+   {: kid:str off:n :}
    S\" {\"kty\":\"RSA\",\"kid\":\"" off SET+
-   kid ku rot SET+
-   S\" \",\"use\":\"sig\",\"alg\":\"RS256\",\"n\":\"" rot SET+
-   JWS-FIXTURE:MODULUS$ rot SET+
-   S\" \",\"e\":\"" rot SET+
-   JWS-FIXTURE:EXPONENT$ rot SET+
-   S\" \"}" rot SET+ ;
+   kid swap SET+
+   S\" \",\"use\":\"sig\",\"alg\":\"RS256\",\"n\":\"" swap SET+
+   JWS-FIXTURE:MODULUS$ swap SET+
+   S\" \",\"e\":\"" swap SET+
+   JWS-FIXTURE:EXPONENT$ swap SET+
+   S\" \"}" swap SET+ ;
 
 \ An EC key and an encryption key named a, whose n would not verify, before
 \ the signing key a.
 : SET-ONE-FILL ( -- )
    S\" {\"keys\":[{\"kty\":\"EC\",\"kid\":\"a\",\"crv\":\"P-256\",\"x\":\"AA\",\"y\":\"AA\"}," 0 SET+
-   S\" {\"kty\":\"RSA\",\"kid\":\"a\",\"use\":\"enc\",\"n\":\"AQAB\",\"e\":\"AQAB\"}," rot SET+
-   s" a" rot RSA-KEY+
-   s" ]}" rot SET+ ONE-U ! ;
+   S\" {\"kty\":\"RSA\",\"kid\":\"a\",\"use\":\"enc\",\"n\":\"AQAB\",\"e\":\"AQAB\"}," swap SET+
+   s" a" swap RSA-KEY+
+   s" ]}" swap SET+ ONE-U ! ;
 
 : SET-TWO-FILL ( -- )
    S\" {\"keys\":[" SET-CAP SET+
-   s" a" rot RSA-KEY+
-   s" ," rot SET+
-   s" b" rot RSA-KEY+
-   s" ]}" rot SET+ SET-CAP - TWO-U ! ;
+   s" a" swap RSA-KEY+
+   s" ," swap SET+
+   s" b" swap RSA-KEY+
+   s" ]}" swap SET+ SET-CAP - TWO-U ! ;
 
 \ The signing key c in the first of two keys members, the second empty: a
 \ reader keeping either copy fails REPEATED-SET.
 : SET-THREE-FILL ( -- )
    S\" {\"keys\":[" SET-CAP 2 * SET+
-   s" c" rot RSA-KEY+
-   S\" ],\"keys\":[]}" rot SET+ SET-CAP 2 * - THREE-U ! ;
+   s" c" swap RSA-KEY+
+   S\" ],\"keys\":[]}" swap SET+ SET-CAP 2 * - THREE-U ! ;
 
 : SET-ONE$ ( -- str ) SETS 0 ONE-U @ SPAN:SUB SPAN:$ ;
 : SET-TWO$ ( -- str ) SETS SET-CAP TWO-U @ SPAN:SUB SPAN:$ ;
 : SET-THREE$ ( -- str ) SETS SET-CAP 2 * THREE-U @ SPAN:SUB SPAN:$ ;
 
 
-: CLAIM ( ^JSON:writer ^u8 n -- ^JSON:writer )
-   {: name:^ nu:n :}
-   name nu BEARER:CLAIM$ {: v:^ vu:n has:bool :}
-   has if name nu v vu JSON:WRITE-FIELD-S exit then
-   name nu JSON:WRITE-FIELD-NULL ;
+: CLAIM ( ^JSON:writer str -- ^JSON:writer )
+   {: name:str :}
+   name BEARER:CLAIM$ {: v:str has:bool :}
+   has if name v JSON:WRITE-FIELD-S exit then
+   name JSON:WRITE-FIELD-NULL ;
 
 : CLAIMS-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
@@ -186,19 +186,19 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : FLAG! ( bool n -- )
    {: at:n :}
    if [char] t else [char] f then
-   HELD at 1 SPAN:SUB SPAN:$ drop c! ;
+   HELD at 1 SPAN:SUB SPAN:$ STR:DATA c! ;
 
 : HELD! ( str str n -- )
    {: at:n :}
    BEARER:CLAIM-HOLDS? at FLAG! ;
 
 : APP-1? ( str bool -- bool )
-   if s" app-1" STR:= else 2drop false then ;
+   if s" app-1" STR:= else drop false then ;
 
 : ROLES-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    asked answer BEARER:ADMIT? 0= if exit then
-   s" azp" BEARER:CLAIM$ {: azp:^ zu:n found:bool :}
+   s" azp" BEARER:CLAIM$ {: azp:str found:bool :}
    s" roles" s" Areas.Read" 0 HELD!
    s" roles" s" Areas.Write" 1 HELD!
    s" azp" s" app-1" 2 HELD!
@@ -208,11 +208,11 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" scp" s" c" 6 HELD!
    s" scp" s" d" 7 HELD!
    s" scp" s" a b" 8 HELD!
-   azp zu found APP-1? 9 FLAG!
+   azp found APP-1? 9 FLAG!
    answer HELD SPAN:$ HTTP:BODY! ;
 
 : CLAIM-FLAG ( -- )
-   s" azp" BEARER:CLAIM$ nip nip
+   s" azp" BEARER:CLAIM$ nip
    s" azp" s" app-1" BEARER:CLAIM-HOLDS? or bool>n TASK:RETURN ;
 
 \ Answers CLAIMER's flag; a throw in CLAIMER answers 500.
@@ -250,24 +250,25 @@ TASK:MIN-STACK TASK:TASK CLAIMER
       failed OF drop CURL:E-STATE throw ENDOF
    ;MATCH ;
 
-: URL ( ^u8 n -- ^u8 n )
-   {: path:^ pu:n :}
-   SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
+: URL ( str -- str )
+   {: path:str :}
+   SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U
+   path SB-APPEND SB$ ;
 
-: OPEN ( ^u8 n -- CURL:handle )
-   {: path:^ pu:n :}
+: OPEN ( str -- CURL:handle )
+   {: path:str :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
       failed OF drop CURL:EMPTY-HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
-   h path pu URL CURL:URL! OK h ;
+   h path URL CURL:URL! OK h ;
 
-: ADD ( CURL:handle ^u8 n -- CURL:handle )
-   {: h:CURL:handle a:^ u:n :}
-   h a u CURL:HEADER+ OK h ;
+: ADD ( CURL:handle str -- CURL:handle )
+   {: h:CURL:handle s:str :}
+   h s CURL:HEADER+ OK h ;
 
-: BEARING ( CURL:handle -- CURL:handle ) AUTH AUTH-U @ ADD ;
+: BEARING ( CURL:handle -- CURL:handle ) AUTH AUTH-U @ >str ADD ;
 
 \ The response's status, its body in the emptied vector; -1 for a body past
 \ CAP, -2 for a failed transfer.
@@ -294,9 +295,10 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 
 : SEND ( -- n ) s" /claims" OPEN BEARING FINISH ;
 
-: REFUSED ( n ^u8 n -- )
-   {: status:n want:^ wu:n :}
-   SB-RESET s" WWW-Authenticate: " SB-APPEND want wu SB-APPEND 13 SB-APPEND-C 10 SB-APPEND-C
+: REFUSED ( n str -- )
+   {: status:n want:str :}
+   SB-RESET s" WWW-Authenticate: " SB-APPEND want SB-APPEND
+   13 SB-APPEND-C 10 SB-APPEND-C
    HEADS @ VEC:SPAN SPAN:$ SB$ STR:CONTAINS? TTRUE
    BODY @ VEC:COUNT 0 T=
    status 401 T= ;
@@ -319,63 +321,63 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : SCOPED-INVALID ( n -- )
    S\" Bearer error=\"invalid_token\", scope=\"tender.read tender.write\"" REFUSED ;
 
-: ANSWERED ( n ^u8 n -- )
-   {: status:n want:^ wu:n :}
-   BODY$ want wu T$=
+: ANSWERED ( n str -- )
+   {: status:n want:str :}
+   BODY$ want T$=
    status 200 T= ;
 
 
 : TOKEN+ ( str -- ) TOKEN TOKEN-U @ PUT TOKEN-U ! ;
 : DOT+ ( -- ) s" ." TOKEN+ ;
-: TOKEN$ ( -- ^u8 n ) TOKEN 0 TOKEN-U @ SPAN:SUB SPAN:$ ;
+: TOKEN$ ( -- str ) TOKEN 0 TOKEN-U @ SPAN:SUB SPAN:$ ;
 
 : ENCODED+ ( str -- )
    TOKEN TOKEN-U @ TOKEN-CAP TOKEN-U @ - SPAN:SUB BASE64:ENCODE-URL
    TOKEN-U @ + TOKEN-U ! ;
 
 : AUTHORIZE ( -- )
-   s" Authorization: Bearer " {: p:^ pu:n :}
-   p AUTH pu BYTE-COPY
-   TOKEN$ {: t:^ tu:n :}
-   t AUTH pu + tu BYTE-COPY
+   s" Authorization: Bearer " {: p:str :}  p STR:LEN {: pu:n :}
+   p STR:DATA AUTH pu BYTE-COPY
+   TOKEN$ {: t:str :}  t STR:LEN {: tu:n :}
+   t STR:DATA AUTH pu + tu BYTE-COPY
    pu tu + AUTH-U ! ;
 
-: SIGNED ( ^u8 n ^u8 n -- )
-   {: h:^ hu:n c:^ cu:n :}
+: SIGNED ( str str -- )
+   {: h:str c:str :}
    0 TOKEN-U !
-   h hu ENCODED+ DOT+ c cu ENCODED+ ;
+   h ENCODED+ DOT+ c ENCODED+ ;
 
-: MINT ( ^u8 n ^u8 n -- )
+: MINT ( str str -- )
    SIGNED
-   JWS-FIXTURE:PEM$ TOKEN$ SIGNATURE CRYPTO:RS256-MAX-BYTES CRYPTO:RS256-SIGN
-   {: su:n :}
-   DOT+ SIGNATURE su ENCODED+ AUTHORIZE ;
+   JWS-FIXTURE:PEM$ TOKEN$ SIGNATURE CRYPTO:RS256-MAX-BYTES >str
+   CRYPTO:RS256-SIGN {: su:n :}
+   DOT+ SIGNATURE su >str ENCODED+ AUTHORIZE ;
 
 : HS-MINT ( str str -- )
    SIGNED
-   JWS-FIXTURE:MODULUS$ TOKEN$ SIGNATURE HS256-BYTES CRYPTO:HMAC-SHA256
-   DOT+ SIGNATURE HS256-BYTES ENCODED+ AUTHORIZE ;
+   JWS-FIXTURE:MODULUS$ TOKEN$ SIGNATURE HS256-BYTES >str CRYPTO:HMAC-SHA256
+   DOT+ SIGNATURE HS256-BYTES >str ENCODED+ AUTHORIZE ;
 
-: UNSIGNED ( ^u8 n ^u8 n -- ) SIGNED DOT+ AUTHORIZE ;
+: UNSIGNED ( str str -- ) SIGNED DOT+ AUTHORIZE ;
 
 : RAW-TOKEN ( str -- ) 0 TOKEN-U ! TOKEN+ AUTHORIZE ;
 
 \ One signature byte changed, away from the last character's padding bits.
 : FLIP ( -- )
-   TOKEN$ + 10 - {: at :}
+   TOKEN$ {: t:str :}  t STR:DATA t STR:LEN + 10 - {: at :}
    at c@ [char] A = if [char] B else [char] A then at c!
    AUTHORIZE ;
 
-: CLAIMS ( ^u8 n n ^u8 n -- ^u8 n )
-   {: pre:^ pu:n exp:n post:^ postu:n :}
-   SB-RESET pre pu SB-APPEND exp FMT:SB-INT post postu SB-APPEND SB$ ;
+: CLAIMS ( str n str -- str )
+   {: pre:str exp:n post:str :}
+   SB-RESET pre SB-APPEND exp FMT:SB-INT post SB-APPEND SB$ ;
 
 : ISS-AUD ( -- str )
    S\" {\"iss\":\"https://issuer.test\",\"aud\":\"api://bearer-test\",\"exp\":" ;
 : WHO ( -- str ) S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" ;
 : WANT-WHO ( -- str ) S\" {\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" ;
 : LATER ( -- n ) epoch-seconds LIFE-S + ;
-: CURRENT ( -- ^u8 n ) ISS-AUD LATER WHO CLAIMS ;
+: CURRENT ( -- str ) ISS-AUD LATER WHO CLAIMS ;
 : KID-A ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"a\"}" ;
 : KID-B ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"b\"}" ;
 : KID-C ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"c\"}" ;
@@ -635,8 +637,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : SECURE$ ( -- str ) s" https://bearer-test.example/keys" ;
 
 : ISSUED-AT ( str -- )
-   {: url:^ uu:n :}
-   s" https://issuer.test" s" api://bearer-test" url uu BEARER:ISSUER! ;
+   {: url:str :}
+   s" https://issuer.test" s" api://bearer-test" url BEARER:ISSUER! ;
 
 : CLIENT-AT ( str -- ) s" app" s" " BEARER:CLIENT! ;
 
@@ -699,12 +701,13 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" METADATA! while HTTP serves throws E-HTTP-STATE" T-LABEL
    [: METADATA$ SCOPE$ BEARER:METADATA! ;] E-HTTP-STATE TTHROWSQ
    HTTP:PORT PORT !
-   s" /keys" URL {: a:^ u:n :}
-   a KEYS-URL u BYTE-COPY u KEYS-URL-U !
+   s" /keys" URL {: keys:str :}  keys STR:LEN {: u:n :}
+   keys STR:DATA KEYS-URL u BYTE-COPY u KEYS-URL-U !
    HTTP:STOP ;
 
 : ISSUE ( -- )
-   s" https://issuer.test" s" api://bearer-test" KEYS-URL KEYS-URL-U @ BEARER:ISSUER! ;
+   s" https://issuer.test" s" api://bearer-test" KEYS-URL KEYS-URL-U @ >str
+   BEARER:ISSUER! ;
 
 \ The key set's URL names the port the first START's port 0 chose, and
 \ ISSUER! is refused while serving: the server starts again on that port.

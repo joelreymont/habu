@@ -1,4 +1,3 @@
-split-str
 \ json-value-test.f - JSON:PARSE and JSON:TEXT$: the value as written without
 \ the white space around it, the reader's rejections with their place, a
 \ repeated member name rejected at any depth but not across objects, and a
@@ -23,15 +22,15 @@ require src/lib/test/counting-allocator.f
 package JSON-VALUE-TEST
 private
 
-: SAID ( n str -- ) {: code:n wa:^ wu:n :}
-   code REASON:TEXT$ wa wu T$=
+: SAID ( n str -- ) {: code:n ws:str :}
+   code REASON:TEXT$ ws T$=
    REASON:RELEASE ;
 
 : TEXT-OF ( str -- str )
    JSON:PARSE JSON:TEXT$ ;
 
 : PARSED ( str -- )
-   TEXT-OF 2drop ;
+   TEXT-OF drop ;
 
 : TEST-TEXT ( -- )
    s" TEXT$ answers the value as written, without the white space around it" T-LABEL
@@ -76,8 +75,8 @@ private
    s\" 1:25: expected a member name not used before in this object, found `\"c\"`; remove the repeated member"
    SAID ;
 
-: GOT ( str str -- str ) {: t:^ tu:n n:^ nu:n :}
-   t tu JSON:PARSE n nu JSON:GET JSON:TEXT$ ;
+: GOT ( str str -- str ) {: t:str n:str :}
+   t JSON:PARSE n JSON:GET JSON:TEXT$ ;
 
 \ The text of a found value, or `none`, which no JSON text is.
 : OPTION$ ( option<JSON:value> -- str )
@@ -86,18 +85,18 @@ private
      some OF JSON:TEXT$ ENDOF
    ;MATCH ;
 
-: FOUND$ ( str str -- str ) {: t:^ tu:n n:^ nu:n :}
-   t tu JSON:PARSE n nu JSON:FIND OPTION$ ;
+: FOUND$ ( str str -- str ) {: t:str n:str :}
+   t JSON:PARSE n JSON:FIND OPTION$ ;
 
-: POINTED$ ( str -- str ) {: p:^ u:n :}
-   s\" {\"a\":[1,2],\"a/b\":3}" JSON:PARSE p u JSON:AT OPTION$ ;
+: POINTED$ ( str -- str ) {: s:str :}
+   s\" {\"a\":[1,2],\"a/b\":3}" JSON:PARSE s JSON:AT OPTION$ ;
 
 : NESTED$ ( -- str )
    s\" {\n \"a\": {\n  \"b\": {\"c\":1}\n }\n}" ;
 
 : DEEP-MISSING ( -- )
    NESTED$ JSON:PARSE s" a" JSON:GET s" b" JSON:GET s" x" JSON:GET
-   JSON:TEXT$ 2drop ;
+   JSON:TEXT$ drop ;
 
 : TEST-GET ( -- )
    s" GET answers a member's value, through two objects" T-LABEL
@@ -106,7 +105,7 @@ private
    JSON:TEXT$ s" [true]" T$=
    s" GET rejects a missing member at its object's place" T-LABEL
    [: s\" {\"a\":{}}" JSON:PARSE s" a" JSON:GET s" x" JSON:GET
-      JSON:TEXT$ 2drop ;] JSON:E-MEMBER TTHROWSQ
+      JSON:TEXT$ drop ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER
    s" 1:6: expected a member `x`, found none; add the member or read it with JSON:FIND"
    SAID
@@ -117,7 +116,7 @@ private
    SAID
    s" GET rejects a member of an array" T-LABEL
    [: s\" {\"a\":[1]}" JSON:PARSE s" a" JSON:GET s" b" JSON:GET
-      JSON:TEXT$ 2drop ;] JSON:E-MEMBER TTHROWSQ
+      JSON:TEXT$ drop ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER
    s" 1:6: expected an object, found an array; read a member only from an object"
    SAID ;
@@ -127,7 +126,7 @@ private
 
 : TEST-LONG-NAME ( -- )
    s" GET shows a long missing name cut on a character's first byte" T-LABEL
-   [: s" {}" LONG-NAME$ GOT 2drop ;] JSON:E-MEMBER TTHROWSQ
+   [: s" {}" LONG-NAME$ GOT drop ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER
    s" 1:1: expected a member `abcdefghijklmnopqrstuvwxyz01234...`, found none; add the member or read it with JSON:FIND"
    SAID ;
@@ -137,7 +136,7 @@ private
    s\" {\"a\":1}" s" a" FOUND$ s" 1" T$=
    s\" {\"a\":1}" s" b" FOUND$ s" none" T$=
    s" FIND rejects a member of an array" T-LABEL
-   [: s" [1]" s" a" FOUND$ 2drop ;] JSON:E-MEMBER TTHROWSQ
+   [: s" [1]" s" a" FOUND$ drop ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER
    s" 1:1: expected an object, found an array; read a member only from an object"
    SAID ;
@@ -151,7 +150,7 @@ private
    s" /a/9" POINTED$ s" none" T$=
    s" /a/-" POINTED$ s" none" T$=
    s" AT rejects a malformed pointer" T-LABEL
-   [: s" a" POINTED$ 2drop ;] E-JSON-POINTER TTHROWSQ ;
+   [: s" a" POINTED$ drop ;] E-JSON-POINTER TTHROWSQ ;
 
 \ 100 levels: 64 inline, the rest in the mapping.
 100 constant DEPTH
@@ -160,7 +159,7 @@ create DEEP-BUF DEPTH 2 * allot
 : DEEP$ ( -- str )
    DEPTH 0 ?do [char] [ DEEP-BUF i + c! loop
    DEPTH 0 ?do [char] ] DEEP-BUF DEPTH + i + c! loop
-   DEEP-BUF DEPTH 2 * ;
+   DEEP-BUF DEPTH 2 * >str ;
 
 : DEEP ( -- )
    DEEP$ TEXT-OF DEEP$ T$= ;
@@ -175,12 +174,12 @@ create DEEP-BUF DEPTH 2 * allot
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 \ Appends the text and a `;`.
-: SEE ( ^VEC:vector<u8> str -- ^VEC:vector<u8> ) {: seen a:^ u:n :}
-   a u seen VEC:APPEND  s" ;" seen VEC:APPEND  seen ;
+: SEE ( ^VEC:vector<u8> str -- ^VEC:vector<u8> ) {: seen s:str :}
+   s seen VEC:APPEND  s" ;" seen VEC:APPEND  seen ;
 
 \ Checks the text seen, then deletes the vector.
-: SEEN= ( ^VEC:vector<u8> str -- ) {: seen a:^ u:n :}
-   seen VEC:SPAN SPAN:$ a u T$=  seen VEC:DELETE ;
+: SEEN= ( ^VEC:vector<u8> str -- ) {: seen s:str :}
+   seen VEC:SPAN SPAN:$ s T$=  seen VEC:DELETE ;
 
 : SEE-TEXT ( ^VEC:vector<u8> JSON:value -- ^VEC:vector<u8> )
    JSON:TEXT$ SEE ;
@@ -276,8 +275,8 @@ create DEEP-BUF DEPTH 2 * allot
 
 \ Appends the tag, the value's text and a `;`.
 : TAGGED ( ^VEC:vector<u8> str JSON:value -- ^VEC:vector<u8> )
-   {: seen a:^ u:n v :}
-   a u seen VEC:APPEND  seen v SEE-TEXT ;
+   {: seen s:str v :}
+   s seen VEC:APPEND  seen v SEE-TEXT ;
 
 : SEE-EVENT ( ^VEC:vector<u8> JSON:event -- ^VEC:vector<u8> bool )
    {: seen e :}
@@ -303,9 +302,9 @@ create DEEP-BUF DEPTH 2 * allot
    seen e SEE-EVENT drop  e CLOSE? 0= ;
 
 \ Checks the events WALK gives for the text.
-: WALKED ( str str -- ) {: t:^ tu:n w:^ wu:n :}
-   SEEN-NEW t tu JSON:PARSE [: SEE-EVENT ;] JSON:WALK
-   w wu SEEN= ;
+: WALKED ( str str -- ) {: t:str w:str :}
+   SEEN-NEW t JSON:PARSE [: SEE-EVENT ;] JSON:WALK
+   w SEEN= ;
 
 : TEST-WALK ( -- )
    s" WALK gives an array's events in text order" T-LABEL
@@ -362,8 +361,10 @@ variable CLOSES
    s\" \"aé\"" JSON:PARSE s" a" JSON:STRING= TFALSE
    s" 1" JSON:PARSE s" 1" JSON:STRING= TFALSE ;
 
+: DISCARD ( str -- )  drop ;
+
 : WITH-NUMBER ( -- )
-   s" 42" JSON:PARSE [: 2drop ;] JSON:WITH-STRING ;
+   s" 42" JSON:PARSE [: DISCARD ;] JSON:WITH-STRING ;
 
 : TEST-WITH-STRING ( -- )
    s" WITH-STRING lends a string's decoded text" T-LABEL
@@ -375,11 +376,11 @@ variable CLOSES
    s" 1:1: expected a string, found an integer; write a string" SAID ;
 
 \ Appends the string to a vector holding `x`, then checks the vector.
-: APPENDED ( str str -- ) {: t:^ tu:n w:^ wu:n :}
+: APPENDED ( str str -- ) {: t:str w:str :}
    SEEN-NEW {: out :}
    s" x" out VEC:APPEND
-   t tu JSON:PARSE out JSON:APPEND-STRING
-   out w wu SEEN= ;
+   t JSON:PARSE out JSON:APPEND-STRING
+   out w SEEN= ;
 
 : APPEND-NUMBER ( -- )
    SEEN-NEW {: out :}
@@ -409,15 +410,15 @@ variable CLOSES
 
 \ INTEGER? is true and >N answers want.
 : WHOLE ( str n -- )
-   {: t:^ u:n want:n :}
-   t u JSON:PARSE JSON:INTEGER? TTRUE
-   t u N-OF want T= ;
+   {: s:str want:n :}
+   s JSON:PARSE JSON:INTEGER? TTRUE
+   s N-OF want T= ;
 
 \ INTEGER? is false and >N rejects the value.
 : NOT-WHOLE ( str -- )
-   {: t:^ u:n :}
-   t u JSON:PARSE JSON:INTEGER? TFALSE
-   [: t u N-OF drop ;] JSON:E-MEMBER TTHROWSQ ;
+   {: s:str :}
+   s JSON:PARSE JSON:INTEGER? TFALSE
+   [: s N-OF drop ;] JSON:E-MEMBER TTHROWSQ ;
 
 : TEST->N ( -- )
    s" >N reads a whole number that fits in a cell, as INTEGER? says" T-LABEL
