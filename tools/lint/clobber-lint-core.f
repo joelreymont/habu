@@ -9,8 +9,8 @@ split-str
 \ then once more; only that last walk reports.
 \
 \ The run also fails when a mask row or a call names no routine pass 1
-\ opened, or when the openings and calls it met differ in number from those
-\ a plain scan of the same files finds.
+\ opened. A plain scan of the same files reports, at its line, each
+\ `Lname LABEL@ LBL,` or `BL,` site pass 1 did not meet, as a finding.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -24,48 +24,6 @@ require src/lib/vector.f
 require src/lib/span.f
 require src/lib/arena.f
 require src/core/exit-status.f
-
-package CLOBBER-CENSUS
-
-\ The sites the analysis met in definitions, and the sites a plain scan of the
-\ same files finds.
-variable ROUTINE-N  variable SCAN-ROUTINE-N
-variable CALL-N  variable SCAN-CALL-N
-
-: AGREE? ( -- bool )
-   ROUTINE-N @ SCAN-ROUTINE-N @ =  CALL-N @ SCAN-CALL-N @ = and ;
-
-public
-
-: RESET ( -- )
-   0 ROUTINE-N !  0 SCAN-ROUTINE-N !
-   0 CALL-N !  0 SCAN-CALL-N ! ;
-
-: ROUTINE+ ( -- )
-   ROUTINE-N @ 1+ ROUTINE-N ! ;
-
-: CALL+ ( -- )
-   CALL-N @ 1+ CALL-N ! ;
-
-: SCAN-ROUTINE+ ( -- )
-   SCAN-ROUTINE-N @ 1+ SCAN-ROUTINE-N ! ;
-
-: SCAN-CALL+ ( -- )
-   SCAN-CALL-N @ 1+ SCAN-CALL-N ! ;
-
-: PROVE ( -- )
-   AGREE? if exit then
-   s" clobber-lint: routines=" type ROUTINE-N @ .
-   s" clobber-lint: scanned routines=" type SCAN-ROUTINE-N @ .
-   s" clobber-lint: calls=" type CALL-N @ .
-   s" clobber-lint: scanned calls=" type SCAN-CALL-N @ .
-   s" clobber-lint: the analysis missed a LABEL@ site" EXIT-STATUS:INTERNAL die ;
-
-: REPORT ( -- )
-   s" clobber-lint: routines=" type ROUTINE-N @ .
-   s" clobber-lint: calls=" type CALL-N @ . ;
-
-;package
 
 package CLOBBER
 
@@ -760,6 +718,8 @@ TYPED-VARIABLE USINGS ^VEC:vector<use>
 
 \ The token of each label opening in the current definition.
 TYPED-VARIABLE OPENINGS ^VEC:vector<n>
+\ The text offset of the L-name of each site pass 1 met in the current file.
+TYPED-VARIABLE MET ^VEC:vector<n>
 TYPED-VARIABLE CALA ^u8   \ start of the callee name CALLEE? resolved
 variable DI  variable OX  variable OPLO  variable CALU
 variable RNEXT  variable RDONE  variable CUR
@@ -1106,11 +1066,13 @@ variable WI  variable WE
    k 2 + TOK MN-KIND ;
 : LABEL-OPEN? ( n n -- bool )  LABEL-SITE MN-LBL = ;
 : BL-CALL-SITE? ( n n -- bool )  LABEL-SITE MN-BL = ;
+: TEXT-OFF  ( ^u8 -- n )  LINT-SOURCE:TEXT drop - ;
+: MET+  ( n -- )  TOK drop TEXT-OFF  MET @ VEC:PUSH ! ;
 : COLLECT-OPENINGS ( n n -- ) {: lo:n hi:n :}
    OPENINGS @ 0 VEC:RESIZE  lo OX !
    begin OX @ hi < while
-      OX @ hi LABEL-OPEN? if OX @ OPEN+ CLOBBER-CENSUS:ROUTINE+ then
-      OX @ hi BL-CALL-SITE? if CLOBBER-CENSUS:CALL+ then
+      OX @ hi LABEL-OPEN? if OX @ OPEN+ OX @ MET+ then
+      OX @ hi BL-CALL-SITE? if OX @ MET+ then
       OX @ 1+ OX !
    repeat ;
 : CALLEE? ( n n -- bool ) {: lo:n hi:n :}
@@ -1218,6 +1180,7 @@ variable WI  variable WE
 
 : PASS1-FILE ( str -- ) {: pa:^ pu:n :}
    pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE  FILE-START
+   MET @ 0 VEC:RESIZE
    [: PASS1-AT ;] EACH-DEF ;
 
 variable CHANGED  variable EFF
@@ -1496,33 +1459,57 @@ variable LBL#  variable LX  variable GROWN
    al 0 [type] edge VEC:NEW EDGES !
    al 0 [type] use VEC:NEW USINGS !
    al 0 [type] n VEC:NEW OPENINGS !
+   al 0 [type] n VEC:NEW MET !
    al 0 [type] u8 VEC:NEW WNAME ! ;
 : TABLES-DELETE  ( -- )
    RRS @ VEC:DELETE  CNBUF @ VEC:DELETE  LABELS @ VEC:DELETE
    EDGES @ VEC:DELETE  USINGS @ VEC:DELETE
-   OPENINGS @ VEC:DELETE  WNAME @ VEC:DELETE ;
+   OPENINGS @ VEC:DELETE  MET @ VEC:DELETE  WNAME @ VEC:DELETE ;
 
 : FRESH-SCAN  ( -- )
-   0 PARENS? !  TABLES-NEW  CLOBBER-CENSUS:RESET
+   0 PARENS? !  TABLES-NEW  0 BAD !
    0 HOST# !  0 BOUND# !  0 DEF# ! ;
 
-\ The plain scan reads every token of a file outside comments, code outside
-\ definitions included, and counts `Lname LABEL@ LBL,` openings and
-\ `Lname LABEL@ BL,` calls.
+\ The plain scan reads a file's tokens outside comments, code outside
+\ definitions included, for `Lname LABEL@ LBL,` and `Lname LABEL@ BL,` sites.
 TYPED-VARIABLE SCAN-W1 ^u8  variable SCAN-U1   \ the word before last
 TYPED-VARIABLE SCAN-W2 ^u8  variable SCAN-U2   \ the last word
-: SCAN-WORD  ( str -- ) {: a:^ u:n :}
+
+: MET?  ( n -- bool ) {: off:n :}
+   0 begin dup MET @ VEC:COUNT < while
+      MET @ over VEC:AT @ off = if drop LINT-TRUE exit then
+      1+
+   repeat  drop LINT-FALSE ;
+
+: UNMET  ( str str -- ) {: fa:^ fu:n sa:^ su:n :}
+   LINT-SOURCE:TEXT drop  sa TEXT-OFF  10 LINT-COUNT-CHAR 1+
+   {: line:n :}
+   fa fu type s" :" type line FMT:.INT s" : `" type
+   sa su type s" ` is a site the analysis did not meet;" type
+   s"  write `Lname LABEL@` and the instruction as" type
+   s"  adjacent upper-case words inside a colon" type
+   s"  definition" type NL
+   BAD @ 1+ BAD ! ;
+
+: SCAN-SITE  ( str str -- ) {: fa:^ fu:n sa:^ su:n :}
+   sa TEXT-OFF MET? 0= if fa fu sa su UNMET then ;
+
+: SITE-WORD?  ( str -- bool ) {: a:^ u:n :}
+   a u s" LBL," LINT-STR=CI  a u s" BL," LINT-STR=CI or ;
+
+: SCAN-WORD  ( str str -- ) {: a:^ u:n fa:^ fu:n :}
    SCAN-W1 @ SCAN-U1 @ START-L?  SCAN-W2 @ SCAN-U2 @ LABEL-ACCESS? and if
-      a u s" LBL," LINT-STR=CI if CLOBBER-CENSUS:SCAN-ROUTINE+ then
-      a u s" BL," LINT-STR=CI if CLOBBER-CENSUS:SCAN-CALL+ then
+      a u SITE-WORD? if
+         fa fu  SCAN-W1 @ a u + over -  SCAN-SITE
+      then
    then
    SCAN-W2 @ SCAN-W1 !  SCAN-U2 @ SCAN-U1 !  a SCAN-W2 !  u SCAN-U2 ! ;
-: SCAN-FILE  ( str -- )
-   LINT-SOURCE:LOAD  LINT-SOURCE:TEXT {: t:^ n:n :}
+: SCAN-FILE  ( str -- ) {: pa:^ pu:n :}
+   pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT {: t:^ n:n :}
    t n TOKENIZE
    t SCAN-W1 !  0 SCAN-U1 !  t SCAN-W2 !  0 SCAN-U2 !
    TN# @ 0 ?do
-      i TOK PAREN-COMMENT? 0= if i TOK SCAN-WORD then
+      i TOK PAREN-COMMENT? 0= if i TOK pa pu SCAN-WORD then
    loop ;
 
 variable STALE
@@ -1562,18 +1549,17 @@ variable UNBOUND
    UNBOUND @ 0 > if s" clobber-lint: unbound calls" EXIT-STATUS:FAILURE die then ;
 
 : PASS2-START  ( -- )
-   SEED# @ BOUND# !  0 BAD ! ;
+   SEED# @ BOUND# ! ;
 
 \ Both passes and the plain scan over the files the enumerator visits, in
-\ its order; BAD and the census hold the result.
+\ its order; BAD holds the result.
 : ANALYZE  ( [ [ str -- ] -- ] -- ) {: files :}
    FRESH-SCAN
    [: DECL-FILE ;] files execute
    HOSTS-OPEN
-   [: PASS1-FILE ;] files execute
+   [: 2dup PASS1-FILE SCAN-FILE ;] files execute
    PROVE-ROWS
    files PROVE-CALLS
-   [: SCAN-FILE ;] files execute
    CLOSE-CLOBBERS
    PASS2-START
    [: PASS2-FILE ;] files execute
@@ -1581,7 +1567,6 @@ variable UNBOUND
 
 : CLOBBER-LINT  ( -- )
    [: EACH-FILE ;] ANALYZE
-   CLOBBER-CENSUS:PROVE  CLOBBER-CENSUS:REPORT
    BAD @ 0 > if
       s" clobber-lint: " type BAD @ FMT:.INT s"  finding(s)" type NL
       s" clobber-lint: findings" EXIT-STATUS:FAILURE die
