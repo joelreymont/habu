@@ -1593,6 +1593,11 @@ private
    row XREF-FOUND? if row XREF-PKG-PUBLIC else 0 then
    XREF:SEALED-TARGET? if a u a u SEALED-FAIL then ;
 
+\ Records are placed at the name when a source holds it, since the definer may
+\ have read past it; a name the definer built is placed at the token.
+: DEF-NAME-PLACE ( str -- str ) {: a:^ u:n :}
+   a REJECTION:PLACES? if a u else TOKEN$ then ;
+
 \ The tail the record is named and the wordlist it goes into. DEF-TKA and
 \ DEF-TKL take the name token, which a `does>` clause's rejections name. A bare name
 \ goes into the current wordlist; the qualifier is the first colon at neither
@@ -1600,7 +1605,7 @@ private
 : DEF-QUALIFY-NAME ( str -- str n ) {: a:^ u:n :}
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u get-current a u DEF-SEAL-GUARD exit then
-   a u q 1+ COLON-AT 0 >= if a u TOKEN$ REJECT-QUALIFIED then
+   a u q 1+ COLON-AT 0 >= if a u  a u DEF-NAME-PLACE REJECT-QUALIFIED then
    a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE
    dup XREF:SEALED-TARGET? if a u a u SEALED-FAIL then ;
 
@@ -1749,16 +1754,11 @@ private
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED KEEP-DIE ;
 
-public
-\ The name a u passes the wall, room, duplicate, code room and protected-wordlist
-\ tests, each rejection placed at t tu. kind: 0 (compiled), DKIND:ADDR, VAL or CAST.
-: DEF-RECORD ( str str n n -- )
+\ The room, code room and protected-wordlist tests of a name past the wall and
+\ the duplicate probe, each rejection placed at t tu, then the open.
+: DEF-OPEN-RECORD ( str str n n -- )
    {: a:^ u:n t:^ tu:n wid:n kind:n :}
-   a u t tu DEF-WALL
    ndict@ DICT-CAP >= if a u t tu REJECTION:DICTIONARY-FULL then
-   a u wid WL-PROBE XREF-FOUND? if
-      t tu PKG-DUPLICATE
-   then
    a u t tu 1 CODE-SPACE:ROOM
    SEAL-NDICT@ 0<>  wid XREF-WID-PROTECTED?  and if a u t tu SEALED-FAIL then
    kind DKIND:MASK and {: dk:n :}
@@ -1767,6 +1767,17 @@ public
    if kind DNAME-TARGET or else kind then {: k:n :}
    \ def-open names no word for a protected wordlist; its record stays unpublished, at ndict@.
    a u wid k def-open  ndict@ t tu DECL+ ;
+
+public
+\ The name a u passes the wall, duplicate, room, code room and protected-wordlist
+\ tests, each rejection placed at t tu. kind: 0 (compiled), DKIND:ADDR, VAL or CAST.
+: DEF-RECORD ( str str n n -- )
+   {: a:^ u:n t:^ tu:n wid:n kind:n :}
+   a u t tu DEF-WALL
+   a u wid WL-PROBE XREF-FOUND? if
+      t tu PKG-DUPLICATE
+   then
+   a u t tu wid kind DEF-OPEN-RECORD ;
 private
 
 \ The capture seeded with the name, the spelling the checker is told.
@@ -2138,6 +2149,7 @@ EXPORT TFAM:TFAM-DECL-PARAM-COUNT
 \ The tail and wordlist a definition of the name takes, or its rejection.
 : DEF-TARGET ( str -- str n ) {: a:^ u:n :}
    a u DEF-QUALIFY-NAME {: ta:^ tu:n wid:n :}
+   ta tu  a u DEF-NAME-PLACE DEF-WALL
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
    ta tu wid ;
 
@@ -2172,7 +2184,7 @@ EXPORT TFAM:TFAM-DECL-PARAM-COUNT
    ITEMS-RESET
    0 BODYLEN-CELL CELL!  BODY-ITEM-KIND:NAME 0 0 a u ITEM+
    \ A refused record opens no definition, whose end would drop the item.
-   [: ta tu TOKEN$ wid 0 DEF-RECORD ;] catch {: rc:n :}
+   [: ta tu TOKEN$ wid 0 DEF-OPEN-RECORD ;] catch {: rc:n :}
    rc 0<> if ITEMS-RESET rc throw then
    0 LOCN-CELL CELL!
    dense BODY-ITEMS:EFFECT-CELL CELL!
@@ -2618,14 +2630,11 @@ EXPORT CHECK:REC-WIDE-PUBLISH
    shape CHILD-ANCHORED? if DNAME-ALLOC exit then
    0 ;
 
-\ Records are placed at the name when a source holds it, since the definer may
-\ have read a type after it; a name the definer built is placed at the token.
 : CHILD-RECORD ( str n -- ) {: a:^ u:n shape:n :}
-   a u DEF-QUALIFY-NAME {: ta:^ tu:n wid:n :}
-   a REJECTION:PLACES? if a u else TOKEN$ then {: p:^ pu:n :}
-   ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
+   a u DEF-TARGET {: ta:^ tu:n wid:n :}
+   a u DEF-NAME-PLACE {: p:^ pu:n :}
    0 BODYLEN-CELL CELL!  a u DEF-CAPTURE
-   ta tu p pu wid shape CHILD-KIND DEF-RECORD ;
+   ta tu p pu wid shape CHILD-KIND DEF-OPEN-RECORD ;
 
 \ The anchor is taken after CHILD, whose facts may open an intern segment
 \ at here.

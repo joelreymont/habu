@@ -3519,6 +3519,114 @@ HB-TARGET-LINUX? 0= [if]
    s" E-UNCLOSED" s" :3:1" 70 LOADED-AT
    s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REFUSED-MODES ;
 
+: TAKEN$ ( -- str )
+   s" `GP` is already defined in this wordlist" ;
+
+\ The load's only record, and the check's first, is GP's duplicate at its name.
+: TAKEN-AT ( -- )
+   s" E-DUPLICATE-DEFINITION" s" :3:11" 70 LOADED-AT
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
+   GT-ERR$ TAKEN$ STR:CONTAINS? TTRUE
+   s" " CHECK
+   0 s" code" s" E-DUPLICATE-DEFINITION" FIELD=
+   0 s" message" TAKEN$ FIELD=
+   0 s" GP" 3 11 44 46 AT ;
+
+\ A FUNCTION: whose name is taken is rejected at the name before the group
+\ opens, so an unclosed one is not rejected for being open.
+: TEST-TAKEN-FUNCTION ( -- )
+   s" a FUNCTION: name already taken" T-LABEL
+   SB-RESET
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" : GP ( -- n ) 1 ;" SB-APPEND LF+
+   s" FUNCTION: GP getpid ( -- n )" SB-APPEND LF+
+   s" ;FUNCTION" SB-APPEND LF+
+   s" taken-ffi.f" FIXTURE!
+   TAKEN-AT
+   GJA-LINE# @ 1 T=
+   s" a FUNCTION: name already taken, left open" T-LABEL
+   SB-RESET
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" : GP ( -- n ) 1 ;" SB-APPEND LF+
+   s" FUNCTION: GP getpid ( -- n )" SB-APPEND LF+
+   s" taken-ffi-open.f" FIXTURE!
+   TAKEN-AT ;
+
+\ The load's only record, and the check's first, is c cu at the token tok toku.
+: FIRST-AT ( str str str n n n n -- )
+   {: c:^ cu:n at:^ atu:n tok:^ toku:n line:n col:n bs:n be:n :}
+   c cu at atu 70 LOADED-AT
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
+   s" " CHECK
+   0 s" code" c cu FIELD=
+   0 tok toku line col bs be AT ;
+
+\ A FUNCTION: inside an open declaration rejects the open one at its opener
+\ before its own name is tested, though that name is taken.
+: TEST-TAKEN-FUNCTION-NESTED ( -- )
+   s" a taken FUNCTION: name inside an open structure" T-LABEL
+   SB-RESET
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" : GP ( -- n ) 1 ;" SB-APPEND LF+
+   s" BEGIN-STRUCTURE P" SB-APPEND LF+
+   s" FUNCTION: GP getpid ( -- n )" SB-APPEND LF+
+   s" ;FUNCTION" SB-APPEND LF+
+   s" END-STRUCTURE" SB-APPEND LF+
+   s" taken-ffi-nested.f" FIXTURE!
+   s" E-UNCLOSED" s" :3:1" s" BEGIN-STRUCTURE" 3 1 34 49 FIRST-AT ;
+
+\ A FUNCTION: name no definer takes is rejected at the name, as `:` would
+\ reject it, before the group opens.
+: TEST-WALLED-FUNCTION ( -- )
+   s" a FUNCTION: name that is a keyword" T-LABEL
+   SB-RESET
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" FUNCTION: create getpid ( -- n )" SB-APPEND LF+
+   s" ;FUNCTION" SB-APPEND LF+
+   s" taken-ffi-keyword.f" FIXTURE!
+   s" E-RESERVED-DEFINITION" s" :2:11" s" create" 2 11 26 32 FIRST-AT
+   s" a FUNCTION: name that is a number, left open" T-LABEL
+   SB-RESET
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" FUNCTION: 42 getpid ( -- n )" SB-APPEND LF+
+   s" taken-ffi-number.f" FIXTURE!
+   s" E-NUMERIC-DEFINITION" s" :2:11" s" 42" 2 11 26 28 FIRST-AT ;
+
+\ A FUNCTION: name the engine holds is rejected at the name as ;FUNCTION would
+\ reject it: a primitive's as taken, a sealed package's as sealed.
+: TEST-TAKEN-ENGINE-FUNCTION ( -- )
+   s" a FUNCTION: name a primitive holds, left open" T-LABEL
+   SB-RESET
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" FUNCTION: VARIADIC getpid ( -- n )" SB-APPEND LF+
+   s" taken-ffi-prim.f" FIXTURE!
+   s" E-DUPLICATE-DEFINITION" s" :2:11" s" VARIADIC" 2 11 26 34 FIRST-AT
+   s" a FUNCTION: name in a sealed package" T-LABEL
+   SB-RESET
+   s" s" SB-APPEND 34 SB-APPEND-C s"  a" SB-APPEND 34 SB-APPEND-C
+   s"  s" SB-APPEND 34 SB-APPEND-C s"  b" SB-APPEND 34 SB-APPEND-C
+   s"  STR:= drop" SB-APPEND LF+
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" FUNCTION: STR:= getpid ( -- n )" SB-APPEND LF+
+   s" ;FUNCTION" SB-APPEND LF+
+   s" taken-ffi-sealed.f" FIXTURE!
+   s" E-SEALED-PACKAGE" s" :3:11" 70 LOADED-AT
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
+   s" " CHECK
+   s" E-SEALED-PACKAGE" REJECTED-AS
+   0 s" STR:=" 3 11 49 54 AT ;
+
+\ A FUNCTION: name with a second colon is rejected at the name, though the
+\ effect after it is read first.
+: TEST-QUALIFIED-FUNCTION ( -- )
+   s" a FUNCTION: name with two colons" T-LABEL
+   SB-RESET
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" FUNCTION: A:B:C getpid ( -- n )" SB-APPEND LF+
+   s" ;FUNCTION" SB-APPEND LF+
+   s" qualified-ffi.f" FIXTURE!
+   s" E-BAD-QUALIFIED-RECORD" s" :2:11" s" A:B:C" 2 11 26 31 FIRST-AT ;
+
 \ A throw nothing catches, of a code no table names and outside the exit
 \ statuses 1..255, ends the load with one E-THROW record at the word that threw
 \ it, in the file whose text ran that word. -100000 lies in error.f's range for
@@ -4049,6 +4157,11 @@ HB-TARGET-LINUX? 0= [if]
    TEST-CONTROL-OPEN
    TEST-EMPTY-CLAUSE
    TEST-UNCLOSED
+   TEST-TAKEN-FUNCTION
+   TEST-TAKEN-FUNCTION-NESTED
+   TEST-WALLED-FUNCTION
+   TEST-TAKEN-ENGINE-FUNCTION
+   TEST-QUALIFIED-FUNCTION
    TEST-UNCAUGHT
    TEST-FINALLY-CARRIED
    TEST-RETHROW-STACK

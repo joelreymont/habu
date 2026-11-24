@@ -51,6 +51,7 @@ EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-TOP-ONLY
 EXPORT SOURCE-ROOT:OPENED
 EXPORT SOURCE-ROOT:CLOSED
+EXPORT SOURCE-ROOT:NESTED-REJECT
 
 FFI-ABI:STACK-BUF-BYTES 1 cells / constant FFI-MAX-ARGS
 \ AAPCS64's integer argument registers, and both ABIs' float slots.
@@ -1744,11 +1745,10 @@ EXPORT CHECK:CHECKER-SPLIT-STR
 : OPENER$ ( -- str )
    OPENER-A @ OPENER-U @ ;
 
-\ The read-head transition: answers the name token as the source gave it.
-\ SRCLOC:TOKEN$ is the FUNCTION: token as it starts. A declaration still open
-\ is rejected at its opener, and abandoned.
-: READ-FUNCTION ( [ -- str ] -- str )
-   {: src :}
+\ The read-head transition from the FUNCTION: token at SRCLOC:TOKEN$: answers the
+\ name token, which `named` gets once the declaration is read, before it opens.
+: READ-FUNCTION ( [ -- str ] [ str -- ] -- str )
+   {: src named :}
    SRCLOC:TOKEN$ {: t:^ tu:n :}
    [: OPEN? if
          OPENER$ s" ;FUNCTION" t tu SOURCE-ROOT:UNCLOSED
@@ -1761,14 +1761,21 @@ EXPORT CHECK:CHECKER-SPLIT-STR
       src TOK-SPAN NAME!
       src TOK@ SYM!
       src EFFECT
+      2dup named execute
       construct decl-state open DECL !  t OPENER-A !  tu OPENER-U ! ;] KEEP-REST ;
+
+CAST: AS-TARGET ( n -- [ str -- str n ] )
 
 public
 
-\ The declaration is read before its library is checked: one that cannot be
-\ read is a syntax record whatever library it has.
+\ Read before its library is checked, so an unreadable one is a syntax record;
+\ a taken name is rejected at its source token before anything opens.
 : OPEN-FUNCTION ( -- )
-   [: parse-name ;] READ-FUNCTION 2drop
+   SRCLOC:TOKEN$ [: ;] NESTED-REJECT
+   [: parse-name ;]
+   [: data-base PROVIDED-XT:TARGET-CELL + @ AS-TARGET
+      execute drop 2drop ;]
+   READ-FUNCTION 2drop
    OPENER$ s" ;FUNCTION" ['] DISCARD OPENED
    CHECK-SCOPE ;
 

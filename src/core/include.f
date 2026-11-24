@@ -2526,12 +2526,16 @@ private
 
 \ A declaration opening while another is open rejects the open one and
 \ abandons both.
-: OPENED ( str str [ -- ] -- ) {: t:^ tu:n c:^ cu:n q :}
+: NESTED-REJECT ( str [ -- ] -- ) {: t:^ tu:n q :}
    CLOSER-U @ 0 <> if
       OPENER-A @ OPENER-U @ CLOSER-A @ CLOSER-U @ t tu UNCLOSED
       ABANDON-XT @ execute  q execute  CLOSED
       EXIT-STATUS:REJECTED REJECTION:STOP
-   then
+   then ;
+
+\ Registers the declaration t tu opens, which c cu closes and q abandons.
+: OPENED ( str str [ -- ] -- ) {: t:^ tu:n c:^ cu:n q :}
+   t tu q NESTED-REJECT
    t OPENER-A !  tu OPENER-U !  c CLOSER-A !  cu CLOSER-U !  q ABANDON-XT !
    1 DECL-SERIAL +! ;
 

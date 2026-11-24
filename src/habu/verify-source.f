@@ -3713,7 +3713,7 @@ variable FFI-LIT-B                          \ and the newer
    0 FFI-NAME-U !
    a u FFI-UNCLOSED
    [: [: NEXT-RAW dup 0<> IF 2dup SRCLOC:TOKEN! THEN ;]
-      READ-FUNCTION ;] a u FFI-AT
+      [: 2drop ;] READ-FUNCTION ;] a u FFI-AT
    {: name:^ nameu:n :}
    name SOURCE@ - {: at:n :}
    at TOKEN-BYTE !
