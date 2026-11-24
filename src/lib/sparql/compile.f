@@ -105,14 +105,15 @@ private
       E-SYNTAX throw
    endcase ;
 
-\ Independent correlated groups repeatedly open the same graph/predicate slices.
-\ Share their fixed constraints once per SQL statement. Plain indexed lookups,
-\ dynamic GRAPH names and merged FROM datasets keep the direct source path.
-: REPEATED-EXISTS? ( ^syntax -- bool )
+\ Nested queries and existence tests can plan the same source repeatedly.
+: REPEATED-SCOPES? ( ^syntax -- bool )
    {: state :} false state SYNTAX-NODES @ VEC:COUNT 1 ?do
-      state i NODE-K N-CALL = if state i EXISTS-CALL? if
-         if true unloop exit then true
-      then then
+      state i NODE-K case
+         N-SELECT of i state SYNTAX-ROOT @ <> if drop true unloop exit then endof
+         N-CALL of state i EXISTS-CALL? if
+            if true unloop exit then true
+         then endof
+      endcase
    loop drop false ;
 
 : LOOKUP-ARG+ ( ^plan n -- )
@@ -137,7 +138,7 @@ private
    PLAN-NEW {: plan :}
    plan TREE SYNTAX-ROOT @ {: query:n :}
    plan TREE query NODE-K dup N-SELECT = swap N-ASK = or if
-      plan TREE REPEATED-EXISTS? if
+      plan TREE REPEATED-SCOPES? if
          plan TREE SYNTAX-ARENA @ ARENA:ALLOCATOR 0 [type] lookup VEC:NEW plan PLAN-LOOKUPS !
       then
    then
