@@ -18,4 +18,4 @@ blocks:
   - habu-read-json-by-a447b521
 ---
 
-Problem: read.f's reader stays public while anything outside JSON uses it. Acceptance: every READ-*, T-*, KIND$, JSON:reader and JSON:cursor is private or deleted, with private words left with no caller (INT-INNER, U64-*, FLOAT-INNER, the LISTED family, REPEAT-IN/-WITH, LOCATE/-WITH, MINT-READER/ERASE-READER); json-read-test.f and json-pointer-test.f read through PARSE and value words; json.f and json-rpc.f headers rewritten. Depends: every other child. Claim: unassigned.
+Problem: read.f's reader stays public while anything outside JSON uses it. Acceptance: every READ-*, T-*, KIND$, JSON:reader and JSON:cursor is private or deleted, with private words left with no caller (INT-INNER, U64-*, FLOAT-INNER, the LISTED family, REPEAT-IN/-WITH, LOCATE/-WITH, MINT-READER/ERASE-READER); json-read-test.f and json-pointer-test.f read through PARSE and value words; json.f and json-rpc.f headers rewritten. Five words test the reader's code range by hand (bearer.f and test-issuer.f MALFORMED?, json-schema.f:200, model.f:1757, mcp.f:979). Depends: every other child. Claim: unassigned.
