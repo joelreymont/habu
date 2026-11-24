@@ -2731,31 +2731,34 @@ private
    c VECTORS-BUF c VECTOR-BYTES BUF:N>BLEN BUF:GROW SPAN:$ drop ;
 
 
+\ A number narrowed to binary32 bits; a NaN or infinity is E-RESPONSE.
+: COMPONENT-BITS ( JSON:value -- n )
+   {: x :}
+   x JSON:NUMBER? 0= if E-RESPONSE throw then
+   x JSON:TEXT$ F64-TEXT:PARSE MATCH result
+      ok OF F32:NARROW ENDOF
+      err OF drop E-RESPONSE throw ENDOF
+   ;MATCH
+   dup NONFINITE? if E-RESPONSE throw then ;
+
+\ Stores the next component of the vector at v.
+: READ-COMPONENT ( JSON:value ^u8 ^call -- )
+   {: x v:^ c :}
+   c MODEL-CALL:COMPONENT-COUNT @ {: idx:n :}
+   idx c MODEL-CALL:DIMS @ >= if E-RESPONSE throw then
+   x COMPONENT-BITS v idx 4 * + F32-BUF:STORE
+   idx 1+ c MODEL-CALL:COMPONENT-COUNT ! ;
+
 \ A JSON array of DIMS numbers, each narrowed to binary32.
-: READ-NUMBERS ( JSON:reader ^call -- JSON:reader )
-   {: c :}
-   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
+: READ-NUMBERS ( JSON:value ^call -- )
+   {: a c :}
+   a JSON:ARRAY? 0= if E-RESPONSE throw then
    0 c MODEL-CALL:COMPONENT-COUNT !
    c VECTOR-ROOM {: v:^ :}
-   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
-      dup JSON:T-INT = swap JSON:T-FLOAT = or 0= if
-         JSON:READ-CLOSE E-RESPONSE throw
-      then
-      c MODEL-CALL:COMPONENT-COUNT @ {: idx:n :}
-      idx c MODEL-CALL:DIMS @ >= if JSON:READ-CLOSE E-RESPONSE throw then
-      JSON:READ-SPAN$ F64-TEXT:PARSE MATCH result
-         ok OF F32:NARROW ENDOF
-         err OF drop JSON:READ-CLOSE E-RESPONSE throw ENDOF
-      ;MATCH {: bits:n :}
-      bits NONFINITE? if JSON:READ-CLOSE E-RESPONSE throw then
-      bits v idx 4 * + F32-BUF:STORE
-      idx 1+ c MODEL-CALL:COMPONENT-COUNT !
-   repeat
-   drop
+   a [: v c READ-COMPONENT ;] JSON:EACH
    c MODEL-CALL:COMPONENT-COUNT @ c MODEL-CALL:DIMS @ <> if
-      JSON:READ-CLOSE E-RESPONSE throw
-   then
-   true c MODEL-CALL:VECTOR-SEEN ! ;
+      E-RESPONSE throw
+   then ;
 
 
 \ Decodes base64 a u into the vector's room, answering the decoded length in
@@ -2766,152 +2769,115 @@ private
    a u c VECTORS-BUF BUF:SPAN c MODEL-CALL:VECTOR-AT @ c VECTOR-BYTES SPAN:SUB
    BASE64:DECODE a u c ;
 
+\ The decoded length of base64 text; text that is not base64 is E-RESPONSE.
+: DECODE-LENT ( str ^call -- n )
+   {: a:^ u:n c :}
+   0 a u c [: DECODE-VECTOR ;] catch {: code:n :}
+   code 0<> if 2drop 2drop E-RESPONSE throw then
+   2drop drop ;
 
-\ Base64 of DIMS little-endian binary32 values. An escaped string is unescaped
-\ into the room before its vector, unused until the next reply.
-: READ-BASE64 ( JSON:reader ^call -- JSON:reader )
-   {: c :}
-   JSON:READ-SPAN$ {: a:^ u:n :}
-   a u [char] \ STR:INDEX-OF MATCH option
-      none OF a u c VECTOR-ROOM drop ENDOF
-      some OF
-         drop c VECTORS-U {: t:n :}
-         c VECTORS-BUF u BUF:N>BLEN BUF:GROW SPAN:$ JSON:READ-STR {: m:n :}
-         c VECTOR-ROOM drop
-         c VECTORS-BUF BUF:SPAN SPAN:$ drop t + m
-      ENDOF
-   ;MATCH
-   0 -rot c [: DECODE-VECTOR ;] catch {: code:n :}
-   code 0<> if 2drop 2drop JSON:READ-CLOSE E-RESPONSE throw then
-   2drop drop {: len:n :}
-   len c VECTOR-BYTES <> if JSON:READ-CLOSE E-RESPONSE throw then
-   c VECTORS-BUF BUF:SPAN SPAN:$ drop c MODEL-CALL:VECTOR-AT @ + {: v:^ :}
+\ Base64 of DIMS little-endian binary32 values.
+: READ-BASE64 ( JSON:value ^call -- )
+   {: s c :}
+   c VECTOR-ROOM {: v:^ :}
+   s [: c DECODE-LENT ;] JSON:WITH-STRING
+   c VECTOR-BYTES <> if E-RESPONSE throw then
    c MODEL-CALL:DIMS @ 0 ?do
-      v i 4 * + F32-BUF:LOAD NONFINITE? if JSON:READ-CLOSE E-RESPONSE throw then
-   loop
-   true c MODEL-CALL:VECTOR-SEEN ! ;
+      v i 4 * + F32-BUF:LOAD NONFINITE? if E-RESPONSE throw then
+   loop ;
 
+\ The member of a reply object; a missing one is E-RESPONSE.
+: REPLY-MEMBER ( JSON:value str -- JSON:value )
+   JSON:FIND MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
-: EMBED-MEMBER ( JSON:reader str ^call -- JSON:reader )
-   {: key:^ key-u:n c :}
-   key key-u s" index" STR:= if
-      c MODEL-CALL:PARSED-INDEX @ -1 <> if JSON:READ-CLOSE E-RESPONSE throw then
-      JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE E-RESPONSE throw then
-      JSON:READ-INT {: idx:n :}
-      idx 0 < idx c MODEL-CALL:INPUT-COUNT @ >= or if
-         JSON:READ-CLOSE E-RESPONSE throw
-      then
-      idx c MODEL-CALL:PARSED-INDEX ! exit
-   then
-   key key-u s" embedding" STR:= if
-      c MODEL-CALL:VECTOR-SEEN @ if JSON:READ-CLOSE E-RESPONSE throw then
-      JSON:READ-TOKEN JSON:T-STR = if c READ-BASE64 else c READ-NUMBERS then
-      exit
-   then
-   JSON:READ-SKIP-VALUE ;
+\ An input's index: an integer below INPUT-COUNT.
+: INPUT-INDEX ( JSON:value ^call -- n )
+   {: x c :}
+   x JSON:INTEGER? 0= if E-RESPONSE throw then
+   x JSON:>N {: idx:n :}
+   idx 0 < idx c MODEL-CALL:INPUT-COUNT @ >= or if E-RESPONSE throw then
+   idx ;
 
-: READ-EMBED-OBJECT ( JSON:reader ^call -- JSON:reader )
+\ An embedding: a base64 string or an array of numbers.
+: READ-VECTOR ( JSON:value ^call -- )
+   {: e c :}
+   e JSON:STRING? if e c READ-BASE64 else e c READ-NUMBERS then ;
+
+: COUNT-DATUM ( ^call -- )
    {: c :}
-   -1 c MODEL-CALL:PARSED-INDEX !
-   false c MODEL-CALL:VECTOR-SEEN !
-   begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
-      JSON:T-KEY <> if JSON:READ-CLOSE E-RESPONSE throw then
-      JSON:READ-SPAN$ {: key:^ key-u:n :}
-      JSON:READ-NEXT drop
-      key key-u c EMBED-MEMBER
-   repeat
-   drop
-   c MODEL-CALL:PARSED-INDEX @ {: idx:n :}
-   idx -1 = c MODEL-CALL:VECTOR-SEEN @ 0= or if
-      JSON:READ-CLOSE E-RESPONSE throw
-   then
-   c idx VECTOR-LEN @ 0<> if JSON:READ-CLOSE E-RESPONSE throw then
-   idx c VECTOR-KEEP ;
+   c MODEL-CALL:DATA-COUNT @ 1+ c MODEL-CALL:DATA-COUNT ! ;
 
-: READ-DATA ( JSON:reader ^call -- JSON:reader )
-   {: c :}
-   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
-      JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-      c READ-EMBED-OBJECT
-      c MODEL-CALL:DATA-COUNT @ 1+ c MODEL-CALL:DATA-COUNT !
-   repeat
-   drop ;
+: READ-EMBED-OBJECT ( JSON:value ^call -- )
+   {: o c :}
+   o JSON:OBJECT? 0= if E-RESPONSE throw then
+   o s" index" REPLY-MEMBER c INPUT-INDEX {: idx:n :}
+   c idx VECTOR-LEN @ 0<> if E-RESPONSE throw then
+   o s" embedding" REPLY-MEMBER c READ-VECTOR
+   idx c VECTOR-KEEP
+   c COUNT-DATUM ;
 
-: READ-EMBEDDINGS ( JSON:reader ^call -- JSON:reader )
-   {: c :}
-   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
-      c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ >= if
-         drop JSON:READ-CLOSE E-RESPONSE throw
-      then
-      drop
-      c READ-NUMBERS
-      c MODEL-CALL:DATA-COUNT @ c VECTOR-KEEP
-      c MODEL-CALL:DATA-COUNT @ 1+ c MODEL-CALL:DATA-COUNT !
-   repeat
-   drop ;
+: READ-DATA ( JSON:value ^call -- )
+   {: d c :}
+   d JSON:ARRAY? 0= if E-RESPONSE throw then
+   d [: c READ-EMBED-OBJECT ;] JSON:EACH ;
 
-\ The reader at the reply's top object, under no usage bytes, no usage member
-\ and no vectors read. Kept usage has a length: an object's bytes are not empty.
-: REPLY-START ( ^call -- str bool bool JSON:reader )
+\ The vector of the next input.
+: READ-EMBEDDING ( JSON:value ^call -- )
+   {: e c :}
+   c MODEL-CALL:DATA-COUNT @ {: idx:n :}
+   idx c MODEL-CALL:INPUT-COUNT @ >= if E-RESPONSE throw then
+   e c READ-NUMBERS
+   idx c VECTOR-KEEP
+   c COUNT-DATUM ;
+
+: READ-EMBEDDINGS ( JSON:value ^call -- )
+   {: a c :}
+   a JSON:ARRAY? 0= if E-RESPONSE throw then
+   a [: c READ-EMBEDDING ;] JSON:EACH ;
+
+\ The reply's top object, with no vectors read yet.
+: EMBED-REPLY ( ^call -- JSON:value )
    {: c :}
    c VECTORS-RESET
    0 c MODEL-CALL:DATA-COUNT !
-   s" " false false c WIRE-READER
-   JSON:T-OBJ EXPECT ;
+   c RESPONSE$ JSON:PARSE {: r :}
+   r JSON:OBJECT? 0= if E-RESPONSE throw then
+   r ;
 
-\ Whether the reader's key is the first under these bytes, which leaves it at
-\ the value; the flag under the reader says whether one came.
-: FIRST-KEY? ( bool JSON:reader str -- bool JSON:reader bool )
-   {: key:^ key-u:n :}
-   >r {: seen:bool :} r>
-   key key-u JSON:READ-STR-EQ? seen 0= and {: hit:bool :}
-   hit if JSON:READ-NEXT drop then
-   >r seen hit or r> hit ;
+\ A usage member's bytes, when it is an object.
+: EMBED-USAGE ( JSON:value -- str bool )
+   {: u :}
+   u JSON:OBJECT? 0= if s" " false exit then
+   u JSON:TEXT$ true ;
 
-\ The reader at a member's key, under the usage bytes and whether a usage member
-\ came: the first one is kept there when an object; any other is skipped.
-: USAGE-MEMBER ( str bool bool JSON:reader -- str bool bool JSON:reader )
-   >r {: o:^ o-u:n came:bool seen:bool :} r>
-   s" usage" JSON:READ-STR-EQ? came 0= and {: first:bool :}
-   JSON:READ-NEXT JSON:T-OBJ = first and if
-      JSON:READ-VALUE-SPAN$ {: v:^ v-u:n :}
-      >r v v-u true seen r> exit
-   then
-   JSON:READ-SKIP-VALUE
-   >r o o-u came first or seen r> ;
-
-\ The usage bytes and whether there are any, once the reader has closed the
-\ top object; a reply with no vectors, or not one per input, is refused.
-: REPLY-END ( str bool bool JSON:reader ^call -- str bool )
-   {: c :}
-   JSON:READ-FINISH
-   0= if E-RESPONSE throw then
+\ The bytes of the reply's usage object and whether it has one; a reply
+\ without one vector per input is E-RESPONSE.
+: EMBED-END ( JSON:value ^call -- str bool )
+   {: r c :}
    c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ <> if
       E-RESPONSE throw
    then
-   drop dup 0<> ;
+   r s" usage" JSON:FIND MATCH option
+      none OF s" " false ENDOF
+      some OF EMBED-USAGE ENDOF
+   ;MATCH ;
 
 \ An embeddings reply's vectors, and the bytes of its usage object and whether
-\ it has one, in one walk of its top object.
+\ it has one.
 : ACCEPT-EMBED ( ^call -- str bool )
    {: c :}
-   c REPLY-START
-   begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
-      JSON:T-KEY <> if JSON:READ-CLOSE E-RESPONSE throw then
-      s" data" FIRST-KEY? if c READ-DATA else USAGE-MEMBER then
-   repeat
-   drop c REPLY-END ;
+   c EMBED-REPLY {: r :}
+   r s" data" REPLY-MEMBER c READ-DATA
+   r c EMBED-END ;
 
 : ACCEPT-OLLAMA ( ^call -- str bool )
    {: c :}
-   c REPLY-START
-   begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
-      JSON:T-KEY <> if JSON:READ-CLOSE E-RESPONSE throw then
-      s" embeddings" FIRST-KEY? if c READ-EMBEDDINGS else USAGE-MEMBER then
-   repeat
-   drop c REPLY-END ;
+   c EMBED-REPLY {: r :}
+   r s" embeddings" REPLY-MEMBER c READ-EMBEDDINGS
+   r c EMBED-END ;
 
 : RESPONSE-ERROR ( n -- )
    {: code:n :}
