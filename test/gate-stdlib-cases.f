@@ -420,6 +420,7 @@ SUITE svg-pdf
 SUITE zip
    src/lib/zip-test.f
    src/lib/zip-lifecycle-test.f
+   src/lib/zip-offset-test.f
    test/zip-remove-source.f
 ;SUITE
 
