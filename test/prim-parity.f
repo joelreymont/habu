@@ -17,7 +17,6 @@ require src/lib/ieee754.f                  \ the bit shapes' casts
 package PARITY
 private
 
-$200 constant COVER-CAP                 \ >= the table's row capacity
 $40 constant SUBJ-CAP
 $80 constant LBL-CAP
 8 constant PER-LINE
@@ -29,7 +28,7 @@ $8000000000000000 constant MIN-N
 create FIX-CELLS 4 cells allot
 $20 BUFFER: FIX-BYTES                   \ byte fixture for the offset rows
 4 PTR-U8-TABLE FIX-PTRS                 \ pointer table for the `ptr-field` row
-create COVERED COVER-CAP allot
+create COVERED PRIM-SPEC:COUNT allot
 create SUBJ-BUF SUBJ-CAP allot
 create LBL-BUF LBL-CAP allot
 
@@ -564,12 +563,6 @@ private
    s" prim-parity: assertions " type T-CASES .
    UNCOVERED. ;
 
-: MAP-FITS ( -- )
-   PRIM-SPEC:COUNT COVER-CAP > IF
-      s" prim-parity: table outgrew the coverage map" EXIT-STATUS:FAILURE die
-   THEN ;
-
-MAP-FITS
 T-RESET
 
 \ The coverage map marks exactly the row a set names. This runs before the

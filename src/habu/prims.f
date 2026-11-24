@@ -60,62 +60,70 @@ public
 
 private
 
-\ Rows hold offsets into NAMES and CODES, not addresses, so the table can be
-\ walked by index from any consumer.
-$180 constant ROW-CAP
-10 constant ROW-CELLS
-$2000 constant NAME-CAP
-$1000 constant CODE-CAP
+\ Each row is a datum laid where it is declared: an aligned header of ROW-CELLS
+\ cells, its first an address cell holding the row declared before it, NULL-PTR
+\ for the first, then its package and name bytes, its atoms and its REF's
+\ bytes, each offset taken from the row's own start. LAST-ROW holds the newest
+\ row; ROWS-INDEX lays the index, a datum whose address cell i holds row i, so
+\ any consumer walks the table by index through INDEX.
+11 constant ROW-CELLS
 
-0 constant F-KIND
-1 constant F-NAME-OFF
-2 constant F-NAME-LEN
-3 constant F-PKG-OFF
-4 constant F-PKG-LEN
-5 constant F-CODE-OFF
-6 constant F-CODE-LEN
-7 constant F-FLAGS
-8 constant F-REF-OFF
-9 constant F-REF-LEN
+0 constant F-PREV
+1 constant F-KIND
+2 constant F-NAME-OFF
+3 constant F-NAME-LEN
+4 constant F-PKG-OFF
+5 constant F-PKG-LEN
+6 constant F-CODE-OFF
+7 constant F-CODE-LEN
+8 constant F-FLAGS
+9 constant F-REF-OFF
+10 constant F-REF-LEN
 
 1 constant FL-TRUSTED-ONLY
 2 constant FL-FIXED-ABI
 4 constant FL-IMMEDIATE
 
-create ROWS  ROW-CAP ROW-CELLS * cells allot
-create NAMES NAME-CAP allot
-create CODES CODE-CAP allot
 variable ROW-N
-variable NAME-U
-variable CODE-U
-variable BI
+PERSISTED-PTR-VARIABLE LAST-ROW
+PERSISTED-PTR-VARIABLE INDEX
 
-variable CUR-KIND
-variable CUR-NAME-OFF   variable CUR-NAME-LEN
-variable CUR-PKG-OFF    variable CUR-PKG-LEN
-variable CUR-CODE-OFF
-variable CUR-REF-OFF    variable CUR-REF-LEN
-variable CUR-FLAGS
+: HEADER-FIELD ( ^n n -- ^n )
+   cells + ;
+
+: OPEN-FIELD ( n -- ^n )
+   LAST-ROW @ swap HEADER-FIELD ;
+
+\ The offset of `here` from the open row's start.
+: ROW-HERE ( -- n )
+   here LAST-ROW @ BYTE-VIEW - ;
+
+: ROW-PREV ( ^n -- ^n )
+   F-PREV ptr-field @ ;
+
+: INDEX-BASE ( -- ^n )
+   INDEX @ ;
+
+: ROW-AT ( n -- ^n )
+   INDEX-BASE swap ptr-field @ ;
 
 \ SLOT addresses a row the caller has already bounded.
 : SLOT ( n n -- ^n ) {: row:n field:n :}
-   row ROW-CELLS * field + cells ROWS + ;
+   row ROW-AT field HEADER-FIELD ;
 
 : ROW-FIELD ( n n -- ^n ) SLOT ;
 
 : NAME-SPAN, ( str -- ) {: a:^ u:n :}
-   NAME-U @ u + NAME-CAP > IF s" prims: name buffer full" EXIT-STATUS:INTERNAL die THEN
-   0 BI !
-   BEGIN BI @ u < WHILE
-      BI @ a + c@   NAMES NAME-U @ + BI @ + c!
-      BI @ 1 + BI !
-   REPEAT
-   NAME-U @ u + NAME-U ! ;
+   u 0 ?do a i + c@ c, loop ;
 
 : CODE, ( n -- ) {: code:n :}
-   CODE-U @ CODE-CAP >= IF s" prims: atom buffer full" EXIT-STATUS:INTERNAL die THEN
-   code CODES CODE-U @ + c!
-   CODE-U @ 1 + CODE-U ! ;
+   F-REF-LEN OPEN-FIELD @ 0 <> IF
+      s" prims: an atom follows REF in row " ERROR-TEXT:TYPE
+      LAST-ROW @ BYTE-VIEW F-NAME-OFF OPEN-FIELD @ + F-NAME-LEN OPEN-FIELD @
+      EXIT-STATUS:INTERNAL die
+   THEN
+   code c,
+   1 F-CODE-LEN OPEN-FIELD +! ;
 
 \ Spelled like the checker's row constructors, and private to this package so
 \ both spellings can exist: the checker's build terms, these append the code
@@ -158,33 +166,28 @@ variable CUR-FLAGS
 : PE-QANY        A-QUOT-ANY CODE, ;
 
 : ROW-OPEN ( n -- ) {: kind:n :}
-   kind CUR-KIND !
-   0 CUR-PKG-OFF !  0 CUR-PKG-LEN !
-   0 CUR-REF-OFF !  0 CUR-REF-LEN !
-   0 CUR-FLAGS !
-   CODE-U @ CUR-CODE-OFF ! ;
+   datum
+   here CELL-VIEW {: at:^ :}
+   here ptr-cell-mark 0 ,
+   LAST-ROW @ at 0 ptr-field !
+   kind ,
+   ROW-CELLS 2 - 0 ?do 0 , loop
+   at LAST-ROW ! ;
 
+\ The name is the last token an opener parses; the row's atoms follow it.
 : ROW-NAME ( -- )
-   NAME-U @ CUR-NAME-OFF !
-   parse-name dup CUR-NAME-LEN ! NAME-SPAN, ;
+   ROW-HERE F-NAME-OFF OPEN-FIELD !
+   parse-name dup F-NAME-LEN OPEN-FIELD ! NAME-SPAN,
+   ROW-HERE F-CODE-OFF OPEN-FIELD !
+   0 F-CODE-LEN OPEN-FIELD ! ;
 
 : ROW-WRITE ( -- )
-   ROW-N @ ROW-CAP >= IF s" prims: specification table full" EXIT-STATUS:INTERNAL die THEN
-   CUR-KIND @      ROW-N @ F-KIND SLOT !
-   CUR-NAME-OFF @  ROW-N @ F-NAME-OFF SLOT !
-   CUR-NAME-LEN @  ROW-N @ F-NAME-LEN SLOT !
-   CUR-PKG-OFF @   ROW-N @ F-PKG-OFF SLOT !
-   CUR-PKG-LEN @   ROW-N @ F-PKG-LEN SLOT !
-   CUR-CODE-OFF @  ROW-N @ F-CODE-OFF SLOT !
-   CODE-U @ CUR-CODE-OFF @ - ROW-N @ F-CODE-LEN SLOT !
-   CUR-FLAGS @     ROW-N @ F-FLAGS SLOT !
-   CUR-REF-OFF @   ROW-N @ F-REF-OFF SLOT !
-   CUR-REF-LEN @   ROW-N @ F-REF-LEN SLOT !
    ROW-N @ 1 + ROW-N ! ;
 
 \ A row body holds only atoms, `PE-...` or `;PE-...`, and flag words, which
 \ parse nothing, and `REF name` clauses, so the first closer outside a REF
-\ clause ends the row.
+\ clause ends the row. An atom after REF would put the REF's bytes inside the
+\ row's atoms, so CODE, rejects it.
 : EPRIM: ( -- )
    K-PRIM ROW-OPEN ROW-NAME ;
 
@@ -193,8 +196,8 @@ variable CUR-FLAGS
 
 : EPPRIM: ( -- )
    K-PKG-PRIVATE ROW-OPEN
-   NAME-U @ CUR-PKG-OFF !
-   parse-name dup CUR-PKG-LEN ! NAME-SPAN,
+   ROW-HERE F-PKG-OFF OPEN-FIELD !
+   parse-name dup F-PKG-LEN OPEN-FIELD ! NAME-SPAN,
    ROW-NAME ;
 
 : ECLOSE-PRIVATE ( -- )
@@ -207,25 +210,38 @@ variable CUR-FLAGS
 \ it answers for and where the gate exercises it; the overloads of a name state
 \ it on the row whose instantiation the gate runs.
 : REF ( -- )
-   NAME-U @ CUR-REF-OFF !
-   parse-name dup CUR-REF-LEN ! NAME-SPAN, ;
+   ROW-HERE F-REF-OFF OPEN-FIELD !
+   parse-name dup F-REF-LEN OPEN-FIELD ! NAME-SPAN, ;
 
 \ Marks the open row's checker row a trust boundary: a CHECKED caller is
 \ rejected, while a TRUSTED: body may use it.
 : ETRUSTED-ONLY ( -- )
-   CUR-FLAGS @ FL-TRUSTED-ONLY or CUR-FLAGS ! ;
+   F-FLAGS OPEN-FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
 
 \ Marks the open row's primitive immediate.
 : EIMMEDIATE ( -- )
-   CUR-FLAGS @ FL-IMMEDIATE or CUR-FLAGS ! ;
+   F-FLAGS OPEN-FIELD dup @ FL-IMMEDIATE or swap ! ;
 
 \ Marks the open row's machine body as using the row's widths and glue
 \ without instantiating them.
 : EFIXED-ABI ( -- )
-   CUR-FLAGS @ FL-FIXED-ABI or CUR-FLAGS ! ;
+   F-FLAGS OPEN-FIELD dup @ FL-FIXED-ABI or swap ! ;
 
 : ELAB: ( -- )
    K-ELAB ROW-OPEN ROW-NAME ROW-WRITE ;
+
+\ Run once after the last row: index cell i holds row i, filled from the last
+\ row back through F-PREV.
+: ROWS-INDEX ( -- )
+   datum
+   here CELL-VIEW {: at:^ :}
+   ROW-N @ 0 ?do here ptr-cell-mark 0 , loop
+   LAST-ROW @
+   ROW-N @ 0 ?do
+      dup at ROW-N @ 1 - i - ptr-field !
+      ROW-PREV
+   loop drop
+   at INDEX ! ;
 
 public
 
@@ -236,13 +252,13 @@ public
    F-KIND ROW-FIELD @ ;
 
 : NAME$ ( n -- str ) {: row:n :}
-   NAMES row F-NAME-OFF ROW-FIELD @ +  row F-NAME-LEN ROW-FIELD @ ;
+   row ROW-AT BYTE-VIEW row F-NAME-OFF ROW-FIELD @ +  row F-NAME-LEN ROW-FIELD @ ;
 
 : PKG$ ( n -- str ) {: row:n :}
-   NAMES row F-PKG-OFF ROW-FIELD @ +  row F-PKG-LEN ROW-FIELD @ ;
+   row ROW-AT BYTE-VIEW row F-PKG-OFF ROW-FIELD @ +  row F-PKG-LEN ROW-FIELD @ ;
 
 : REF$ ( n -- str ) {: row:n :}
-   NAMES row F-REF-OFF ROW-FIELD @ +  row F-REF-LEN ROW-FIELD @ ;
+   row ROW-AT BYTE-VIEW row F-REF-OFF ROW-FIELD @ +  row F-REF-LEN ROW-FIELD @ ;
 
 : TRUSTED-ONLY? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-TRUSTED-ONLY and 0 <> ;
@@ -257,7 +273,7 @@ public
    F-CODE-LEN ROW-FIELD @ ;
 
 : CODE@ ( n n -- n ) {: row:n idx:n :}
-   CODES row F-CODE-OFF ROW-FIELD @ + idx + c@ ;
+   row ROW-AT BYTE-VIEW row F-CODE-OFF ROW-FIELD @ + idx + c@ ;
 
 \ Exact spelling: a body registered under a different case is a different row
 \ and must say so. The index lives on the stack: a lookup leaves no state in
@@ -811,5 +827,7 @@ ELAB: evaluate
 ELAB: 2>r
 ELAB: 2r>
 ELAB: 2r@
+
+ROWS-INDEX
 
 ;package
