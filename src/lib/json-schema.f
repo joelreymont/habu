@@ -83,11 +83,11 @@ ENUM extras open closed ruled ;ENUM
 
 STRUCTURE entry DERIVE addr
    FIELD next ^entry
-   FIELD name SPAN:span<u8>
+   FIELD name str
 ;STRUCTURE
 
 \ types: bit i for TYPE-NAMES$'s i-th name, 0 for none; type-order: each i + 1
-\ in the schema's order, 4 bits apiece. An empty span or value, -1 or null is
+\ in the schema's order, 4 bits apiece. An empty string or value, -1 or null is
 \ no rule.
 \ property-map: each property's name to its address; required-map: each
 \ required name to its index in required. A map is null until its first name.
@@ -96,8 +96,8 @@ STRUCTURE node DERIVE addr
    FIELD types n
    FIELD type-order n
    FIELD values JSON:value
-   FIELD minimum SPAN:span<u8>
-   FIELD maximum SPAN:span<u8>
+   FIELD minimum str
+   FIELD maximum str
    FIELD min-length n
    FIELD max-length n
    FIELD max-properties n
@@ -105,7 +105,7 @@ STRUCTURE node DERIVE addr
    FIELD max-items n
    FIELD patterned bool
    FIELD pattern REGEX:regex
-   FIELD pattern-text SPAN:span<u8>
+   FIELD pattern-text str
    FIELD properties ^property
    FIELD property-map ^n
    FIELD required ^entry
@@ -119,7 +119,7 @@ STRUCTURE node DERIVE addr
 ;STRUCTURE
 STRUCTURE property DERIVE addr
    FIELD next ^property
-   FIELD name SPAN:span<u8>
+   FIELD name str
    FIELD node ^node
 ;STRUCTURE
 STRUCTURE branch DERIVE addr
@@ -160,10 +160,10 @@ STRUCTURE level DERIVE addr
    FIELD entry-tail ^^entry
    FIELD branch-tail ^^branch
    FIELD phase reading
-   FIELD names SPAN:span<u8>
+   FIELD names str
    FIELD base n
    FIELD keyword n
-   FIELD name SPAN:span<u8>
+   FIELD name str
 ;STRUCTURE
 ;MUTUAL
 
@@ -227,27 +227,23 @@ ARENA LEVELS level
    a s STR:LEN 1 max ARENA:ALLOC drop {: dst:^ :}
    dst s PUT drop  dst s STR:LEN >str ;
 
-\ The text as a span of its bytes.
-: >SPAN ( str -- SPAN:span<u8> ) {: s:str :}
-   s STR:DATA s STR:LEN SPAN:MAKE ;
-
 \ The string's decoded text, in the build's arena.
 : DECODED ( JSON:value ^build -- str ) {: v b:^ :}
    b BUILD-ARENA @ v [: COPIED ;] JSON:WITH-STRING ;
 
 \ The number's lexeme; e is the expected text for another value.
-: LEXEME ( JSON:value str -- SPAN:span<u8> ) {: v e:str :}
+: LEXEME ( JSON:value str -- str ) {: v e:str :}
    v JSON:NUMBER? 0= if
       v e s" write a number, with no quotes" REJECT
    then
-   v JSON:TEXT$ >SPAN ;
+   v JSON:TEXT$ ;
 
 \ A bound's lexeme, as LEXEME; ex is the expected text for one whose
 \ exponent NUMBER-COMPARE cannot order.
-: BOUND-LEXEME ( JSON:value str str -- SPAN:span<u8> )
+: BOUND-LEXEME ( JSON:value str str -- str )
    {: v e:str ex:str :}
    v e LEXEME {: b :}
-   b SPAN:$ dup JSON:NUMBER-COMPARE MATCH option
+   b dup JSON:NUMBER-COMPARE MATCH option
       none OF
          v ex s" write the bound with a smaller exponent" REJECT
       ENDOF
@@ -367,7 +363,7 @@ $73 constant SCALARS
    then
    lv LEVEL-BUILD @ {: b:^ :}  lv LEVEL-NODE @ {: nd:^ :}
    v b DECODED {: p:str :}
-   p >SPAN nd NODE-PATTERN-TEXT !  true nd NODE-PATTERNED !
+   p nd NODE-PATTERN-TEXT !  true nd NODE-PATTERNED !
    [: p b BUILD-ARENA @ REGEX:COMPILE nd NODE-PATTERN ! ;] catch
    {: code:n :}
    code REGEX:E-PATTERN = if v b BAD-PATTERN then
@@ -419,7 +415,7 @@ $73 constant SCALARS
    b NEW-NODE {: nd:^ :}  nd lv LEVEL-NODE !
    nd NODE-PROPERTIES lv LEVEL-PROPERTY-TAIL !
    nd NODE-REQUIRED lv LEVEL-ENTRY-TAIL !  READING-KEYWORDS lv LEVEL-PHASE !
-   list >SPAN lv LEVEL-NAMES !  base lv LEVEL-BASE !
+   list lv LEVEL-NAMES !  base lv LEVEL-BASE !
    lv b BUILD-TOP !
    nd ;
 
@@ -455,7 +451,7 @@ CAST: >PROPERTY ( n -- ^property )
    b BUILD-ARENA @ PROPERTIES-NEW {: p:^ :}
    lv LEVEL-NAME @ p PROPERTY-NAME !  child p PROPERTY-NODE !
    p lv APPEND-PROPERTY
-   p NULL-PTR -  lv LEVEL-NAME @ SPAN:$
+   p NULL-PTR -  lv LEVEL-NAME @
    lv LEVEL-NODE @ NODE-PROPERTY-MAP  b BUILD-ARENA @ NAME-PUT ;
 
 : APPEND-ENTRY ( ^entry ^level -- ) {: en:^ lv:^ :}
@@ -480,7 +476,7 @@ CAST: >PROPERTY ( n -- ^property )
       ENDOF
    ;MATCH
    b BUILD-ARENA @ ENTRIES-NEW {: en:^ :}
-   ns >SPAN en ENTRY-NAME !
+   ns en ENTRY-NAME !
    en lv APPEND-ENTRY
    nd NODE-REQUIRED-MAP @ NAME-COUNT  ns
    nd NODE-REQUIRED-MAP b BUILD-ARENA @ NAME-PUT ;
@@ -642,19 +638,19 @@ CAST: >PROPERTY ( n -- ^property )
 
 \ The index in the level's list of the name, or -1.
 : LISTED-INDEX ( ^level str -- n ) {: lv:^ w:str :}
-   w lv LEVEL-NAMES @ SPAN:$ NAME-INDEX ;
+   w lv LEVEL-NAMES @ NAME-INDEX ;
 
 : KEYWORD-NAME ( JSON:value ^level -- ) {: v lv:^ :}
    lv v [: LISTED-INDEX ;] JSON:WITH-STRING {: idx:n :}
    idx 0< if
-      v lv LEVEL-NAMES @ SPAN:$ lv LEVEL-BUILD @ BUILD-SCRATCH @ ONE-OF
+      v lv LEVEL-NAMES @ lv LEVEL-BUILD @ BUILD-SCRATCH @ ONE-OF
       s" rename the member to one of those, or remove it" REJECT
    then
    idx lv LEVEL-BASE @ + lv LEVEL-KEYWORD !
    READING-VALUE lv LEVEL-PHASE ! ;
 
 : MEMBER-NAME ( JSON:value ^level -- ) {: v lv:^ :}
-   v lv LEVEL-BUILD @ DECODED >SPAN lv LEVEL-NAME !
+   v lv LEVEL-BUILD @ DECODED lv LEVEL-NAME !
    READING-MEMBER lv LEVEL-PHASE ! ;
 
 \ Names come only in the keywords and properties phases.
@@ -785,13 +781,13 @@ STRUCTURE place DERIVE addr
    FIELD outer ^place
    FIELD inner ^place
    FIELD rooted bool
-   FIELD name SPAN:span<u8>
+   FIELD name str
    FIELD index n
    FIELD node ^node
    FIELD phase judging
    FIELD kind n
    FIELD value JSON:value
-   FIELD text SPAN:span<u8>
+   FIELD text str
    FIELD mark n
    FIELD path-end n
    FIELD count n
@@ -904,7 +900,7 @@ ARENA PLACES place
    w pl PLACE-WALK !  ln pl PLACE-LANE !
    up pl PLACE-OUTER !  NULL-PTR pl PLACE-INNER !
    up NULL-PTR = pl PLACE-ROOTED !
-   s" " >SPAN pl PLACE-NAME !  -1 pl PLACE-INDEX !
+   s" " pl PLACE-NAME !  -1 pl PLACE-INDEX !
    nd pl PLACE-NODE !  JUDGING-VALUE pl PLACE-PHASE !
    pl MARK pl PLACE-MARK !  0 pl PLACE-COUNT !  0 pl PLACE-DEPTH !
    NULL-PTR pl PLACE-ANY-OF !  NULL-PTR pl PLACE-ONE-OF !
@@ -927,10 +923,10 @@ ARENA PLACES place
 
 : DECIDED ( ^place -- bool ) PLACE-LANE @ LANE-VERDICT @ ;
 
-: TEXT$ ( ^place -- str ) PLACE-TEXT @ SPAN:$ ;
+: TEXT$ ( ^place -- str ) PLACE-TEXT @ ;
 
 : KEEP ( JSON:value ^place -- ) {: v pl:^ :}
-   v pl PLACE-VALUE !  v JSON:TEXT$ >SPAN pl PLACE-TEXT ! ;
+   v pl PLACE-VALUE !  v JSON:TEXT$ pl PLACE-TEXT ! ;
 
 \ The member name, decoded into the scratch arena.
 : DECODE ( JSON:value ^place -- str ) {: v pl:^ :}
@@ -960,7 +956,7 @@ ARENA PLACES place
 : SAY-STEP ( ^place -- ) {: pl:^ :}
    pl PLACE-INDEX @ {: idx:n :}
    idx 0 >= if idx pl SAY-INDEX exit then
-   s" ." pl ADD  pl PLACE-NAME @ SPAN:$ pl ADD-CUT ;
+   s" ." pl ADD  pl PLACE-NAME @ pl ADD-CUT ;
 
 \ `.name` for each member and `[i]` for each element from the rooted place
 \ down to this one.
@@ -1069,18 +1065,18 @@ $40 constant INTEGER-BIT
    pl PLACE-MARK @ pl BACK  pl HUGE false ;
 
 \ A bound's lexeme is quoted in the text: `at least` for a minimum.
-: OUTSIDE ( SPAN:span<u8> bool ^place -- ) {: b most:bool pl:^ :}
+: OUTSIDE ( str bool ^place -- ) {: b most:bool pl:^ :}
    pl EXPECTED
    most if s" a number of at most " else s" a number of at least " then
-   pl ADD  b SPAN:$ pl QUOTE
+   pl ADD  b pl QUOTE
    pl FOUND  s" send a number in that range" pl FIX ;
 
 \ Whether the number keeps to the bound b, a maximum when most; an empty b
 \ states none.
-: BOUND? ( SPAN:span<u8> bool ^place -- bool ) {: b most:bool pl:^ :}
-   b SPAN:$ STR:LEN 0= if true exit then
+: BOUND? ( str bool ^place -- bool ) {: b most:bool pl:^ :}
+   b STR:LEN 0= if true exit then
    most if 1 else -1 then {: wrong:n :}
-   pl TEXT$ b SPAN:$ JSON:NUMBER-COMPARE MATCH option
+   pl TEXT$ b JSON:NUMBER-COMPARE MATCH option
       none OF pl HUGE false ENDOF
       some OF wrong = if b most pl OUTSIDE false else true then ENDOF
    ;MATCH ;
@@ -1112,7 +1108,7 @@ $40 constant INTEGER-BIT
 
 : UNMATCHED ( ^node ^place -- ) {: nd:^ pl:^ :}
    pl EXPECTED  s" a string the pattern " pl ADD
-   nd NODE-PATTERN-TEXT @ SPAN:$ pl QUOTE  s"  matches" pl ADD
+   nd NODE-PATTERN-TEXT @ pl QUOTE  s"  matches" pl ADD
    pl FOUND  s" send a string it matches" pl FIX ;
 
 \ The decoded string against the node's lengths and pattern.
@@ -1135,7 +1131,7 @@ $40 constant INTEGER-BIT
 \ The quoted names of the properties from p on: `a`, `b` and `c`.
 : SAY-NAMES ( ^property ^place -- ) {: p:^ pl:^ :}
    p begin dup NULL-PTR <> while
-      dup PROPERTY-NAME @ SPAN:$ pl QUOTE
+      dup PROPERTY-NAME @ pl QUOTE
       PROPERTY-NEXT @ dup NULL-PTR <> if
          dup PROPERTY-NEXT @ NULL-PTR = if s"  and " else s" , " then
          pl ADD
@@ -1157,12 +1153,12 @@ $40 constant INTEGER-BIT
    p PROPERTY-NEXT @ NULL-PTR <> if
       s" rename it to one of those or remove it" pl FIX exit
    then
-   s" ; rename it to " pl ADD  p PROPERTY-NAME @ SPAN:$ pl QUOTE
+   s" ; rename it to " pl ADD  p PROPERTY-NAME @ pl QUOTE
    s"  or remove it" pl ADD ;
 
 : ABSENT ( ^entry ^place -- ) {: en:^ pl:^ :}
-   pl EXPECTED  s" a member " pl ADD  en ENTRY-NAME @ SPAN:$ pl QUOTE
-   s" , found none; add " pl ADD  en ENTRY-NAME @ SPAN:$ pl QUOTE ;
+   pl EXPECTED  s" a member " pl ADD  en ENTRY-NAME @ pl QUOTE
+   s" , found none; add " pl ADD  en ENTRY-NAME @ pl QUOTE ;
 
 : TOO-MANY ( n n ^place -- ) {: most:n k:n pl:^ :}
    pl EXPECTED  s" at most " pl ADD  most s"  member" pl COUNTED
@@ -1201,7 +1197,7 @@ $40 constant INTEGER-BIT
 : PUSH-MEMBER ( ^node str ^place -- ) {: nd:^ ns:str pl:^ :}
    JUDGING-MEMBER pl PLACE-PHASE !
    nd pl PLACE-LANE @ OPEN-PLACE {: kid:^ :}
-   ns >SPAN kid PLACE-NAME ! ;
+   ns kid PLACE-NAME ! ;
 
 : FIND-PROPERTY ( str ^node -- ^property ) {: ns:str nd:^ :}
    ns nd NODE-PROPERTY-MAP @ NAME-GET
@@ -1347,7 +1343,7 @@ ARENA TABLES table
 : HUGE-AT ( n ^table ^place -- ) {: idx:n tb:^ pl:^ :}
    pl PLACE-LANE @ {: ln:^ :}
    pl PLACE-NODE @ NODE-ITEMS @ ln OPEN-PLACE {: kid:^ :}
-   idx kid PLACE-INDEX !  idx tb ELEMENT$ >SPAN kid PLACE-TEXT !
+   idx kid PLACE-INDEX !  idx tb ELEMENT$ kid PLACE-TEXT !
    kid HUGE  ln POP-PLACE ;
 
 \ The first number NUMBER-COMPARE cannot order, if any, rejected at its
