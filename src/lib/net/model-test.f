@@ -146,8 +146,11 @@ TASK:SEMAPHORE HELD
 TASK:SEMAPHORE TURN
 \ LET-GO lets a gated reply go.
 TASK:SEMAPHORE GO
-\ An event stream being written; START makes it and STOP deletes it.
-TYPED-VARIABLE STREAM-OUT ^VEC:vector<u8>
+\ Four workers serve MANY-CALLS' four calls at once, one of them held.
+4 constant WORKERS
+\ Each worker's event stream, made by START and deleted by STOP: a reply's bytes
+\ stay unchanged until its worker has sent them, after the turn is given up.
+HTTP:MAX-WORKERS TYPED-BUFFER STREAM-OUT ^VEC:vector<u8>
 TYPED-VARIABLE STREAM-W JSON:writer
 TYPED-VARIABLE PARSER JSON:cursor
 \ A second parser reads one content part apart from the request.
@@ -325,8 +328,9 @@ $300000 constant BIG-U
    s" keepalive" 9 EVENT-OPEN EVENT-CLOSE ;
 
 
-: STREAM-OPEN ( -- ^JSON:writer ) STREAM-W STREAM-OUT @ JSON:OPEN ;
-: STREAM$ ( -- str ) STREAM-OUT @ VEC:SPAN SPAN:$ ;
+: STREAM ( -- ^VEC:vector<u8> ) HTTP:WORKER-SLOT STREAM-OUT @ ;
+: STREAM-OPEN ( -- ^JSON:writer ) STREAM-W STREAM JSON:OPEN ;
+: STREAM$ ( -- str ) STREAM VEC:SPAN SPAN:$ ;
 
 
 \ Answers with the written events as the whole body.
@@ -1083,7 +1087,7 @@ TYPED-VARIABLE CFG HTTP:config
 : SERVER-CONFIG ( -- ^HTTP:config )
    $7F000001 CFG HTTP-CONFIG:ADDRESS !
    0 CFG HTTP-CONFIG:PORT !
-   4 CFG HTTP-CONFIG:WORKERS !
+   WORKERS CFG HTTP-CONFIG:WORKERS !
    1000 >MS CFG HTTP-CONFIG:IDLE !
    CFG ;
 
@@ -1123,7 +1127,6 @@ EXPORT WIDE-DIMS
 : LET-GO ( -- ) GO TASK:SIGNAL-SEM ;
 
 
-\ Four workers serve MANY-CALLS' four calls at once, one of them held.
 : START ( -- )
    BIG-U MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BIG !
    BIG-FILL
@@ -1131,7 +1134,7 @@ EXPORT WIDE-DIMS
    1 TURN TASK:SEMAPHORE-INIT
    0 GO TASK:SEMAPHORE-INIT
    0 CALLS atomic!
-   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW STREAM-OUT !
+   WORKERS 0 ?do HEAP:ALLOCATOR 0 [type] u8 VEC:NEW i STREAM-OUT ! loop
    HTTP:ROUTES-RESET
    s" POST" s" /responses" [: [: CHAT ;] ALONE ;] HTTP:ROUTE
    s" POST" s" /responses/input_tokens" [: [: INPUT-TOKENS ;] ALONE ;] HTTP:ROUTE
@@ -1148,7 +1151,7 @@ EXPORT WIDE-DIMS
    HELD TASK:SEMAPHORE-DESTROY
    TURN TASK:SEMAPHORE-DESTROY
    GO TASK:SEMAPHORE-DESTROY
-   STREAM-OUT @ VEC:DELETE
+   WORKERS 0 ?do i STREAM-OUT @ VEC:DELETE loop
    BIG$ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 ;using
 ;package
