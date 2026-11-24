@@ -58,6 +58,9 @@ $190 constant WITH-TICK-ORDER-OFF
 \ it retained the row, so the verifier reports only the declarations whose
 \ rows were kept.
 $198 constant VERIFY-DECL-OFF
+\ The shadow rule a published colon definition meets, which VERIFY-DECL-OFF's
+\ registrar skips, asked of a declared one ( name len sig len -- ).
+$1D8 constant VERIFY-SHADOW-OFF
 -8575 constant E-COMP-BINDING
 0 constant BOUND-ORD
 1 constant BOUND-KIND

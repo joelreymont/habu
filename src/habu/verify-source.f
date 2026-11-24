@@ -1242,6 +1242,7 @@ CAST: RENDERS-ACTION ( n -- [ str n -- bool ] )
 CAST: REACH-ACTION ( n -- [ str str -- ] )
 CAST: CLAUSE-ACTION ( n -- [ str -- ] )
 CAST: DECL-ACTION ( n -- [ str str -- n ] )
+CAST: SHADOW-ACTION ( n -- [ str str -- ] )
 CAST: TICK-ORDER-ACTION ( n -- [ str n ^u8 [ -- nominal ] -- n nominal ] )
 
 : WITH-BODY-TICK-ORDER ( str [ -- nominal ] -- bool )
@@ -1856,6 +1857,11 @@ DYNAMIC-BUFFER TICK-QUAL u8
    name nameu sig sigu
    NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute
    dup CHECKER-ROW:QUIET = IF name nameu CHECKER-UNSEEN-NAME THEN ;
+
+\ The shadow rule the load asks of a colon definition as it publishes it, for
+\ NAME declared by SIG.
+: DECL-SHADOW ( str str -- )
+   NCOMP-DISPATCH:DECL-VERIFY-SHADOW-OFF OWNER-XT SHADOW-ACTION execute ;
 
 \ The checker's own guard refuses a colon definition, a cast, a typed storage
 \ definition and a re-export whose name its scope already holds, but a colon
@@ -3652,6 +3658,10 @@ private
 \ BODY-BUF holds only runs of the source.
 DYNAMIC-BUFFER FFI-SIG u8
 variable FFI-SIG-U
+\ The kept declaration's name, empty while none is kept: a copy lies in no
+\ source, so the record is placed at the `;FUNCTION` token, as the load's is.
+DYNAMIC-BUFFER FFI-NAME u8
+variable FFI-NAME-U
 variable FFI-LIT-N                          \ literals read last, at most two:
 variable FFI-LIT-A                          \ the older
 variable FFI-LIT-B                          \ and the newer
@@ -3678,6 +3688,7 @@ variable FFI-LIT-B                          \ and the newer
 \ tokens fed to it.
 : RECORD-FFI-FUNCTION ( str -- )
    {: a:^ u:n :}
+   0 FFI-NAME-U !
    a u FFI-UNCLOSED
    [: [: NEXT-RAW dup 0<> IF 2dup SRCLOC:TOKEN! THEN ;]
       FFI:READ-FUNCTION ;] a u FFI-AT
@@ -3693,6 +3704,7 @@ variable FFI-LIT-B                          \ and the newer
    name nameu sig sigu DECL-SIGNATURE CHECKER-ROW:KEPT =
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE
+      nameu FFI-NAME-RESERVE  name 0 FFI-NAME nameu BYTE-COPY  nameu FFI-NAME-U !
    ELSE FFI:SKIP-FUNCTION THEN ;
 
 \ A word w of the open callback group: a taken one is the duplicate, rejected
@@ -3776,6 +3788,15 @@ variable FFI-LIT-B                          \ and the newer
       skipped OF ENDOF
    ;MATCH
    CB-CLOSED! ;
+
+\ The load judges the word `;FUNCTION` builds as it publishes it, after the
+\ closer's own refusals.
+: FFI-CLOSE ( -- )
+   FFI:PLAN-FUNCTION
+   FFI-NAME-U @ 0= IF EXIT THEN
+   0 FFI-NAME FFI-NAME-U @ {: name:^ nameu:n :}
+   0 FFI-NAME-U !
+   name nameu 0 FFI-SIG FFI-SIG-U @ DECL-SHADOW ;
 
 : FFI-CLOSER? ( str -- bool )
    {: a:^ u:n :}
@@ -3954,7 +3975,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    \ `;FUNCTION` defines only the word the `FUNCTION:` arm recorded, so it marks
    \ nothing.
    a u FFI-CLOSER? decl and IF
-      [: FFI:PLAN-FUNCTION ;] a u FFI-AT 0 0= EXIT
+      [: FFI-CLOSE ;] a u FFI-AT 0 0= EXIT
    THEN
    a u s" ;CALLBACK" STR:=CI decl and IF CLOSE-FFI-CALLBACK 0 0= EXIT THEN
    a u NOMINAL-MARK

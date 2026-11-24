@@ -17352,15 +17352,15 @@ private
    out REJECTION:EMIT-U  41 REJECTION:EMIT1 ;
 
 \ The public: the private twin's package, spelled by its row, and the
-\ definition's name as written. The twin's sym holds both folded.
-: SBA-PUBLIC ( n -- ) {: sym:n :}
+\ definition's name as written, p pu. The twin's sym holds both folded.
+: SBA-PUBLIC ( n str -- ) {: sym:n p:^ pu:n :}
    sym SYM-PKG$ PACKAGE-NAME$
-   NMOFF @ TADDR NMU @ ROW-TAIL$ EMIT-QUALIFIED ;
+   p pu ROW-TAIL$ EMIT-QUALIFIED ;
 
 \ The word as its section names it: a global word bare, a public one qualified.
-: SBA-WORD ( n n -- ) {: sym:n vis:n :}
-   vis CHECKER-PACKAGE-GLOBAL = IF NMOFF @ TADDR NMU @ REJECTION:EMIT-STR EXIT THEN
-   sym SBA-PUBLIC ;
+: SBA-WORD ( n n str -- ) {: sym:n vis:n p:^ pu:n :}
+   vis CHECKER-PACKAGE-GLOBAL = IF p pu REJECTION:EMIT-STR EXIT THEN
+   sym p pu SBA-PUBLIC ;
 
 : SBA-SECTION$ ( n -- str ) {: vis:n :}
    vis CHECKER-PACKAGE-GLOBAL = IF s" global" EXIT THEN  s" public" ;
@@ -17376,23 +17376,24 @@ private
    row NULL-PTR = IF a u EXIT THEN
    row CK-REC-NAME$ ;
 
-\ The DECLARED rows and the name of the colon definition about to be published.
-: SHADOW-ARITY-CK ( n n str -- )
-   {: din:n dout:n a:^ u:n :}
+\ The DECLARED rows and the name of the colon definition about to be published,
+\ then that name as written, p pu, where the record is placed.
+: SHADOW-ARITY-CK ( n n str str -- )
+   {: din:n dout:n a:^ u:n p:^ pu:n :}
    a u SBA-PRIVATE-TWIN {: priv:n vis:n :}
    priv 0= IF EXIT THEN
    priv SBA-CELLS {: pin:n pout:n :}
    pin CELLS-NONE = pout CELLS-NONE = or IF EXIT THEN
    din ROW-CELLS dout ROW-CELLS {: nin:n nout:n :}
    nin pin =  nout pout =  and IF EXIT THEN
-   NMOFF @ TADDR NMU @ RF-REJECTED PIN-REFUSED!   \ the definition's name, not the walk's token
+   p pu RF-REJECTED PIN-REFUSED!   \ the definition's name, not the walk's token
    s" E-SHADOWED-ARITY" REJECTION:OPEN
-   vis SBA-SECTION$ REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR  priv vis SBA-WORD
+   vis SBA-SECTION$ REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR  priv vis p pu SBA-WORD
    s" ` has a different stack effect from its package's private `" REJECTION:EMIT-STR
    priv SBA-PRIVATE$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   NMOFF @ TADDR NMU @ REJECTION:AT
+   p pu REJECTION:AT
    s" its name binds the private word" REJECTION:EMIT-STR
-   vis SBA-SECTION$ REJECTION:NOTE  priv vis SBA-WORD  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
+   vis SBA-SECTION$ REJECTION:NOTE  priv vis p pu SBA-WORD  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
    s" private" REJECTION:NOTE  priv SBA-PRIVATE$ REJECTION:EMIT-STR  32 REJECTION:EMIT1  pin pout SBA-CELLS-TXT
    REJECTION:HELP
    s" declare the same stack effect on both, as the private word's `" REJECTION:EMIT-STR

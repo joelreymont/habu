@@ -474,6 +474,32 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    GJA-LINE# @ 1 T=
    FX-PATH$ CANON$ SHADOWED-AT ;
 
+\ The name of the word `;FUNCTION` builds lies in no source.
+: SHADOWED-FN-AT ( str -- )
+   {: path:^ pathu:n :}
+   0 s" code" s" E-SHADOWED-ARITY" FIELD=
+   0 s" message" s" public `SFN:GP` has a different stack effect" FIELD-HAS
+   0 s" word" s" GP" NOTE=
+   0 s" ;FUNCTION" 7 1 104 113 path pathu FX$ AT-IN ;
+
+: TEST-SHADOWED-FUNCTION ( -- )
+   s" a FUNCTION: word whose private twin moves other cells" T-LABEL
+   SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
+   s" package SFN" SB-APPEND LF+
+   s" : GP ( -- ) ;" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" PROCESS-SYMBOLS" SB-APPEND LF+
+   s" FUNCTION: GP getpid ( -- n )" SB-APPEND LF+
+   s" ;FUNCTION" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" shadowed-fn.f" FIXTURE!
+   s" " 70 CHECK-EXIT
+   FX-PATH$ SHADOWED-FN-AT
+   s" --verify-only" CHECK
+   GJA-LINE# @ 1 T=
+   FX-PATH$ CANON$ SHADOWED-FN-AT ;
+
 \ A definer's rejection under --all-errors does not stop the definitions' check.
 : TEST-ALL-RESERVED ( -- )
    s" a reserved definition name, then an undefined word, under --all-errors" T-LABEL
@@ -3865,6 +3891,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-TICK-SHADOW
    TEST-IS-SHADOW
    TEST-SHADOWED-ARITY
+   TEST-SHADOWED-FUNCTION
    TEST-ALL-RESERVED
    TEST-ALL-ORDER
    TEST-DYN-PLACE
