@@ -3271,15 +3271,17 @@ create ET-CH 8 allot
 
 
 : ET-DIGITS ( n -- ) {: m:n :}
-   m 9 > IF m 10 / recurse THEN
-   m 10 mod 48 + ET-C, ;
+   m 1 rshift 5 / {: q:n :}
+   q 0 > IF q recurse THEN
+   m q 10 * - 48 + ET-C, ;
 
 
+\ Writes every cell: a negative n as `-` and its magnitude, which ET-DIGITS
+\ reads unsigned, so MIN-INT's is 2^63.
 : ET-NUM ( n -- ) {: v:n :}
    ET-SEP
-   v 0 < 0= IF v ET-DIGITS EXIT THEN
-   v negate 0 < IF s" tfam: type entry number out of range" EXIT-STATUS:INTERNAL die THEN
-   45 ET-C,  v negate ET-DIGITS ;
+   v 0 < IF 45 ET-C,  v negate ET-DIGITS EXIT THEN
+   v ET-DIGITS ;
 
 
 : ET-NAME ( str -- ) {: a:^ u:n :}
@@ -3466,19 +3468,28 @@ create ER-MSG ER-MSG-CAP allot
    a k ;
 
 
-: ER-DIGITS ( str -- n ) {: a:^ u:n :}
+: ER-FITS? ( n n n -- bool ) {: acc:n d:n lim:n :}
+   \ After `-` and MIN-INT's digits acc is 2^63, which reads negative.
+   acc 0 < IF RES-FALSE EXIT THEN
+   lim d - 1 rshift 5 /  acc < 0= ;
+
+
+: ER-DIGITS ( str n -- n ) {: a:^ u:n lim:n :}
    u 1 < IF ER-BAD THEN
    0 0 BEGIN dup u < WHILE
       {: acc:n i:n :}
       a i + c@ 48 - {: d:n :}
       d 0 < d 9 > or IF ER-BAD THEN
+      acc d lim ER-FITS? 0= IF ER-BAD THEN
       acc 10 * d +  i 1 +
    REPEAT drop ;
 
 
+\ Reads every cell: a magnitude of at most 2^63 after `-`, else 2^63 - 1.
 : ER-INT ( str -- n ) {: a:^ u:n :}
-   a c@ 45 = IF a 1 + u 1 - ER-DIGITS negate EXIT THEN
-   a u ER-DIGITS ;
+   -1 1 rshift {: top:n :}
+   a c@ 45 = IF a 1 + u 1 - top 1 + ER-DIGITS negate EXIT THEN
+   a u top ER-DIGITS ;
 : ER-NUM ( -- n ) ER-TOKEN ER-INT ;
 
 
