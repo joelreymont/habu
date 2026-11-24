@@ -983,6 +983,13 @@ create XPK-EMPTY 1 allot
    s" : CB-BODY ( -- n ) 9 ;" XPK-LINE  s" CALLBACK: CB ( -- ) ;CALLBACK" XPK-LINE SB$
    s" error[E-DUPLICATE-DEFINITION]: `CB-BODY` is already defined in this wordlist"
    s" |           ^^ already defined" XPK-SEALED
+   s" a group word defined inside CALLBACK:, named at ;CALLBACK" T-LABEL
+   SB-RESET s" require src/lib/ffi-callback.f" XPK-LINE
+   s" CALLBACK: CB ( -- )" XPK-LINE  s" : CB-ENTRY ( -- n ) 9 ;" XPK-LINE
+   s" ;CALLBACK" XPK-LINE SB$
+   s" error[E-DUPLICATE-DEFINITION]: `CB-ENTRY` is already defined in this wordlist"
+   s" | ^^^^^^^^^ already defined" XPK-SEALED
+   XPK-RUN-VERIFY  s" | ^^^^^^^^^ already defined" XPK-ERR?  70 XPK-ASSERT-RC
    s" an engine word nothing used yet takes no redefinition" T-LABEL
    SB-RESET s" : DEFTYPE ( -- n ) 7 ;" XPK-LINE  s" DEFTYPE . cr" XPK-LINE SB$
    s" error[E-DUPLICATE-DEFINITION]: `DEFTYPE` is already defined in this wordlist"

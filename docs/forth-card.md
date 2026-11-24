@@ -361,13 +361,13 @@ end in the string `str`, as `names: dup` does, is `E-NAMES-ROW`.
 A word that makes definitions at load time (anything reaching `define-word` or
 an evaluate word: `FUNCTION:`/`;FUNCTION`, `FSM:DEFINE`) makes names
 `tools/check.f` leaves to its run, which type-checks their uses there, unless
-the source declares them: uses of a `FUNCTION:` word and of a `generates:`
-row's word (§ 4) are checked before the run, `--verify-only` included. A
-failure the check pins before a use it leaves to the run decides that
-definition. At top level any other such name opens that stretch. The definer
-reads none of the tokens after it, so they are checked. A reached definer no
-row or group declares is `W-CHECK-DEFERRED` at its own token, so a `deferred`
-verdict always locates its gap.
+the source declares them: uses of a `FUNCTION:` or `CALLBACK:` word and of a
+`generates:` row's word (§ 4) are checked before the run, `--verify-only`
+included. A failure the check pins before a use it leaves to the run decides
+that definition. At top level any other such name opens that stretch. The
+definer reads none of the tokens after it, so they are checked. A reached
+definer no row or group declares is `W-CHECK-DEFERRED` at its own token, so a
+`deferred` verdict always locates its gap.
 
 After a reached call that may define words or register nominal types, verification
 defers a later use of a missing type to the run; a check no run follows reports
@@ -464,7 +464,7 @@ word's uses before the run; what no row states is left to the run (§ 3). A
 deferred D, or one no `parse-name` reaches through the words it calls (a
 `defer` or executed quotation counts only when its type states `parses`), is
 `E-GENERATES-ROW`.
-`FUNCTION:` needs no row.
+`FUNCTION:` and `CALLBACK:` need no row.
 
 A definer that builds a word from words it found writes no text:
 `name$ EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word` opens

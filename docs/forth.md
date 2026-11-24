@@ -2613,16 +2613,16 @@ sections above.
   if the generated product shadows it. A reached renderer without a read
   declaration group or `generates:` row is itself `W-CHECK-DEFERRED`, even
   without a later product use. A declared primary product closes that gap;
-  other generated names remain deferred at their uses. Closing a read group
-  with `;FUNCTION` is not a gap; a `;FUNCTION` with no declaration open is
-  rejected as the load rejects it, unless a deferral before it left the
+  other generated names remain deferred at their uses. Closing a read group with
+  `;FUNCTION` or `;CALLBACK` is not a gap; a `;FUNCTION` with no declaration
+  open is rejected as the load rejects it, unless a deferral before it left the
   declaration to the run.
   `EXPORT` preserves an engine-provided definer's coverage declaration; an
   export of a source-scanned definer remains deferred.
 - **A text-generating definer can declare its product with `generates:`.** At
   top level, after the definer, `generates: D ( effect )` assigns every word
-  D makes that effect, as `does>` does. `FUNCTION:` instead supplies its
-  declaration group. A `generates:` claim
+  D makes that effect, as `does>` does. `FUNCTION:` and `CALLBACK:` instead
+  supply their declaration groups. A `generates:` claim
   does not define the made word; the load judges its actual effect and any
   other products. An undefined D, a deferred D, a D no `parse-name` reaches
   through the words it calls (a `defer` or executed quotation counts only

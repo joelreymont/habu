@@ -8087,6 +8087,10 @@ variable SIG-STATES-FACTS   0 SIG-STATES-FACTS !
 \ source signature.
 variable SIG-FACTS-MODE   0 SIG-FACTS-MODE !
 : SIG-FACTS! ( bool -- ) SIG-FACTS-MODE ! ;
+
+\ While set, a qualified type names the package its qualifier spells, never a
+\ part of the open package.
+variable SIG-EXACT-MODE   0 SIG-EXACT-MODE !
 variable SIG-CTL   \ the control word, XFER-PACK form, the last facts text's tags gave
 variable SIG-NONZERO   \ the NORET.NONZERO masks, NONZERO-PACK form, the last facts text's tags gave
 variable SIG-PE     \ the PE-TRUSTED-ONLY and PE-TOP-ONLY bits the last facts text's tags gave

@@ -18,6 +18,7 @@ require src/lib/test/runner.f
 require src/lib/task.f
 require test/ffi-callback-fixture.f
 require test/decl-diag-capture.f
+require tools/check-verify-core.f       \ LSP-CHECK:VERIFY-BYTES - the declaration's check
 
 package FFI-CB-TEST
 using FFI-CB
@@ -565,6 +566,38 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" == a stripped image" SAY
    [: STRIPPED-BODY ;] [: GT-CLEANUP ;] finally ;
 
+\ The check reads a declaration, one beside a part named FFI-CB too, and its
+\ words, so it goes on past their uses and refuses the definition after them.
+: VERIFY$ ( -- str )
+   S\" require src/lib/ffi-callback.f\n: CBV-STEP ( n -- n ) 1 + ;\nCALLBACK: CBV ( n -- n ) 0 FALLBACK ;CALLBACK\n: CBV-SET ( -- ) ['] CBV-STEP CBV-BODY ! ;\n: CBV-USE ( -- FFI-CB:callback ) CBV ;\npackage CBV-PART\npackage FFI-CB\n: HELD ( -- ) ;\n;package\nCALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\n: CMP-USE ( -- ) CMP drop ;\n;package\n: CBV-BAD ( -- n ) 1 2 ;\n" ;
+
+: REFUSED? ( LSP-CHECK:verdict -- bool )
+   MATCH LSP-CHECK:verdict
+      verified OF false ENDOF
+      refused OF true ENDOF
+      engine-provided OF false ENDOF
+      held OF false ENDOF
+      incomplete OF {: status :} false ENDOF
+      deferred OF false ENDOF
+   ;MATCH ;
+
+: VERIFY-BODY ( -- )
+   s" ffi-callback-verify" GT-START
+   s" subject.f" SUBJECT-BUF GT-PATH SUBJECT-U !
+   VERIFY$ SUBJECT$ [: drop ;] PROCESS:WAIT-FOREVER true LSP-CHECK:VERIFY-BYTES
+   REFUSED? {: refused:bool :}
+   LSP-CHECK:VERIFY-OUT$ {: out:^ outu:n :}
+   refused  out outu s" E-MISMATCH" STR:CONTAINS? and
+   out outu s" CBV-BAD" STR:CONTAINS? and
+      s" it refuses the definition after the declaration: E-MISMATCH" FACT
+   \ A wrong type on CBV or CBV-BODY, or a deferral, adds a record with its code.
+   out outu S\" \"code\":" STR:COUNT-SUB 1 =
+      s" it reports nothing else: it finds and types the declaration's words" FACT ;
+
+: CASE-VERIFY ( -- )
+   s" == the check of a callback declaration" SAY
+   [: VERIFY-BODY ;] [: GT-CLEANUP ;] finally ;
+
 : WANT-SORTS ( -- )
    s" ok   qsort sorts through a callback; a stack cell, a local and a loop index survive" W
    s" ok   a comparator nests qsort through its own slot" W
@@ -658,6 +691,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" == a callback body that defines a word" W
    s" ok   it is rejected where the body cell keeps it" W ;
 
+: WANT-VERIFY ( -- )
+   s" == the check of a callback declaration" W
+   s" ok   it refuses the definition after the declaration: E-MISMATCH" W
+   s" ok   it reports nothing else: it finds and types the declaration's words" W ;
+
 : WANT-CHILDREN ( -- )
    s" == child outside: exit 106" W
    s" outside: a thread is parked on its own context" W
@@ -703,7 +741,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
    WANT-TASKS WANT-DECLARATIONS WANT-THROWN WANT-CAPTURE
-   WANT-QUALIFIED WANT-PART WANT-BODY-DEFINES WANT-CHILDREN ;
+   WANT-QUALIFIED WANT-PART WANT-BODY-DEFINES WANT-VERIFY WANT-CHILDREN ;
 
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole.
@@ -732,6 +770,7 @@ public
    CASE-QUALIFIED
    CASE-PART
    CASE-BODY-DEFINES
+   CASE-VERIFY
    CASE-CHILDREN
    CASE-STRIPPED
    TRANSCRIPT-CASE

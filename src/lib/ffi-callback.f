@@ -213,6 +213,7 @@ private
 
 CODEGEN:BUFFER NAME
 CODEGEN:BUFFER WORD-NAME             \ NAME and a suffix
+CODEGEN:BUFFER ROW-TEXT              \ the body's row
 
 0 constant BY-N
 1 constant BY-I32
@@ -238,10 +239,10 @@ variable OPEN
    s" '" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
    s" '" REJECTION:EMIT-STR  h hu FFI:HELP-STOP ;
 
-\ The next token. parse-name's bytes stay valid until the next parse, and each
-\ token is matched or copied before then, so it lives on the stack.
-: TOK@ ( -- str )
-   parse-name {: a:^ u:n :}
+\ The next token src gives. Its bytes stay where the source holds them while
+\ the declaration is read, so it lives on the stack.
+: TOK@ ( [ -- str ] -- str )
+   execute {: a:^ u:n :}
    u 0= if
       s" the text ends inside the callback declaration"
       s" complete it: CALLBACK: NAME ( in -- out ) clauses ;CALLBACK"
@@ -336,7 +337,7 @@ variable OPEN
    TOKEN-REJECT ;
 
 \ One input token: true at the -- that ends the inputs.
-: INPUT? ( n n -- n n bool )
+: INPUT? ( n n [ -- str ] -- n n bool )
    TOK@ {: i:n f:n a:^ u:n :}
    a u s" --" STR:= if i f true exit then
    a u s" )" STR:= if
@@ -347,7 +348,7 @@ variable OPEN
    i f a u IN-TOKEN false ;
 
 \ One output token: true at the ) that ends the effect.
-: OUTPUT? ( -- bool )
+: OUTPUT? ( [ -- str ] -- bool )
    TOK@ {: a:^ u:n :}
    a u s" )" STR:= if true exit then
    a u s" --" STR:= if
@@ -357,8 +358,8 @@ variable OPEN
    then
    a u OUT-TOKEN false ;
 
-: INPUTS ( -- ) 0 0 begin INPUT? until 2drop ;
-: OUTPUTS ( -- ) begin OUTPUT? until ;
+: INPUTS ( [ -- str ] -- ) {: src :} 0 0 begin src INPUT? until 2drop ;
+: OUTPUTS ( [ -- str ] -- ) {: src :} begin src OUTPUT? until ;
 
 : NEXT-SLOT ( -- n )
    SLOTS @ {: k:n :}
@@ -384,10 +385,66 @@ variable OPEN
 : LATEST-XT ( -- [ -- ] )
    LATEST XREF-START >ENTRY-XT ;
 
+\ The type of the argument reader BY (BY-*) hands the body.
+: ARG-TYPE$ ( n -- str ) {: by:n :}
+   by BY-PTR = if s" ^u8" exit then
+   by BY-R = if s" r" exit then
+   s" n" ;
+
+: ROW+ ( str -- )
+   ROW-TEXT CODEGEN:APPEND-STRING  32 ROW-TEXT CODEGEN:APPEND-BYTE ;
+
+\ The body's row: the arguments as it takes them, then its result.
+: BODY-ROW ( -- str )
+   ROW-TEXT CODEGEN:RESET
+   READS @ 0 ?do i READ-BY @ ARG-TYPE$ ROW+ loop
+   s" --" ROW+
+   RES-KIND @ R-FLOAT = if s" r" ROW+ then
+   RES-KIND @ R-VALUE = if s" n" ROW+ then
+   ROW-TEXT CODEGEN:CONTENTS 1 - ;
+
+0 constant P-BODY
+1 constant P-DISPATCH
+2 constant P-ENTRY
+3 constant P-NAME
+4 constant P-COUNT
+
+\ Word P (P-*) a declaration defines: its name and effect row, both held until
+\ the next call, and whether it is the typed variable of a quotation of that row.
+: PRODUCT ( n -- str str bool ) {: p:n :}
+   p P-BODY = if s" -BODY" NAME+ BODY-ROW true exit then
+   p P-DISPATCH = if s" -DISPATCH" NAME+ s" --" false exit then
+   p P-ENTRY = if s" -ENTRY" NAME+ s" -- n" false exit then
+   NAME$ s" -- FFI-CB:callback" false ;
+
+\ A type a row spells. NAMED reads a qualified family as that package's
+\ wherever the definer runs; a pointer takes READ-TYPE.
+: ROW-TYPE ( str -- EFFECT:type ) {: a:^ u:n :}
+   a c@ [char] ^ = if a u EFFECT:READ-TYPE exit then
+   a u EFFECT:NAMED ;
+
+\ The row's types from byte at on: inputs until --, outputs after it.
+: ROW-ITEMS ( EFFECT:type bool str n -- EFFECT:type )
+   {: out:bool a:^ u:n at:n :}
+   a u 32 at STR:SPLIT-NEXT {: p:^ pu:n next:n more:bool :}
+   more 0= if exit then
+   p pu s" --" STR:= if true a u next RECURSE exit then
+   p pu ROW-TYPE  out if EFFECT:OUT else EFFECT:IN then
+   out a u next RECURSE ;
+
+: ROW>EFFECT ( str -- EFFECT:type ) {: a:^ u:n :}
+   EFFECT:EMPTY false a u 0 ROW-ITEMS ;
+
+\ Opens product P: its typed variable, or its definition.
+: OPEN-PRODUCT ( n -- )
+   PRODUCT {: a:^ u:n row:^ rowu:n var:bool :}
+   var if a u row rowu ROW>EFFECT EFFECT:VARIABLE-OF exit then
+   a u row rowu ROW>EFFECT define-word ;
+
 \ NAME-DISPATCH ( -- ): [: NAME-BODY BODY-CHECK <reads> NAME-BODY @ execute
 \ <store> ;] k kind RUN
 : DISPATCH-WORD ( [ -- ] n -- ) {: body k:n :}
-   s" -DISPATCH" NAME+ EFFECT:EMPTY define-word
+   P-DISPATCH OPEN-PRODUCT
    s" [:" EFFECT:KEYWORD
    body compile,  postpone BODY-CHECK
    READS @ 0 ?do i READ-ITEMS loop
@@ -396,31 +453,19 @@ variable OPEN
    s" ;]" EFFECT:KEYWORD
    k literal  RES-KIND @ literal  postpone RUN  postpone ; ;
 
-\ The type the body leaves for reader BY (BY-*) to take.
-: ARG-TYPE ( n -- EFFECT:type ) {: by:n :}
-   by BY-PTR = if s" ^u8" EFFECT:READ-TYPE exit then
-   by BY-R = if s" r" EFFECT:NAMED exit then
-   EFFECT:N ;
-
-: BODY-EFFECT ( -- EFFECT:type )
-   EFFECT:EMPTY
-   READS @ 0 ?do i READ-BY @ ARG-TYPE EFFECT:IN loop
-   RES-KIND @ R-FLOAT = if s" r" EFFECT:NAMED EFFECT:OUT exit then
-   RES-KIND @ R-VALUE = if EFFECT:N EFFECT:OUT then ;
-
 \ The accessor's ordinary native emission carries an anonymous C entry after
 \ its Habu return. The native compiler publishes both as one owned record; only
 \ the entry is handed to C, while the accessor can read its relocated
 \ descriptor address.
 : EMIT ( n -- ) {: k:n :}
-   s" -BODY" NAME+ BODY-EFFECT EFFECT:VARIABLE-OF
+   P-BODY OPEN-PRODUCT
    LATEST-XT k DISPATCH-WORD
    LATEST-XT k INSTALL
    k FFI:CALLBACK-ENTRY ARM-STUB
-   s" -ENTRY" NAME+ EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
+   P-ENTRY OPEN-PRODUCT
    k literal  postpone ENTRY-ADDRESS  postpone ;
    STUB-ENTRY k INSTALL-ENTRY
-   NAME$ EFFECT:EMPTY s" FFI-CB:callback" EFFECT:NAMED EFFECT:OUT define-word
+   P-NAME OPEN-PRODUCT
    k literal  postpone DESCRIPTOR  postpone ; ;
 
 \ A rejection between the two keywords abandons the declaration, so nothing
@@ -439,29 +484,41 @@ variable OPEN
 
 public
 
-: OPEN-CALLBACK ( -- )
-   SRCLOC:TOKEN$ {: t:^ tu:n :}
-   \ The load holds the open declaration's opener: it rejects it there.
-   OPEN @ 0 <> if t tu s" ;CALLBACK" ['] DISCARD SOURCE-ROOT:OPENED then
-   R-NONE RES-KIND ! 0 FB-SET !
-   0 READS !
+\ Runs put on each word a declaration defines, as PRODUCT answers it.
+: PRODUCTS ( [ str str bool -- ] -- ) {: put :}
+   P-COUNT 0 ?do i PRODUCT put execute loop ;
+
+\ Reads NAME ( in -- out ) from the tokens src gives and answers the name as
+\ src gave it.
+: READ-CALLBACK ( [ -- str ] -- str ) {: src :}
+   R-NONE RES-KIND !  0 READS !
    \ A name may sit on a later line, so only '(' says it is missing.
-   TOK@ 2dup s" (" STR:= if
+   src TOK@ 2dup s" (" STR:= if
       s" expected a callback name, found " s" ("
       s" write CALLBACK: NAME ( in -- out )" TOKEN-REJECT
    then
    2dup NAME! {: na:^ nu:n :}
-   na nu na nu LBUF:CLAIM-NAME
-   s" -BODY" NAME+ na nu LBUF:CLAIM-NAME
-   s" -DISPATCH" NAME+ na nu LBUF:CLAIM-NAME
-   s" -ENTRY" NAME+ na nu LBUF:CLAIM-NAME
-   TOK@ {: a:^ u:n :}
+   src TOK@ {: a:^ u:n :}
    a u s" (" STR:= 0= if
       s" expected '(' after the callback name, found " a u
       s" write CALLBACK: NAME ( in -- out )" TOKEN-REJECT
    then
-   INPUTS
-   OUTPUTS
+   src INPUTS
+   src OUTPUTS
+   na nu ;
+
+: OPEN-CALLBACK ( -- )
+   SRCLOC:TOKEN$ {: t:^ tu:n :}
+   \ The load holds the open declaration's opener: it rejects it there.
+   OPEN @ 0 <> if t tu s" ;CALLBACK" ['] DISCARD SOURCE-ROOT:OPENED then
+   0 FB-SET !
+   [: parse-name ;] READ-CALLBACK {: na:^ nu:n :}
+   SRCLOC:TOKEN$ {: e:^ eu:n :}
+   \ A claim is rejected at the name, whose words it claims: the name itself first.
+   na nu SRCLOC:TOKEN!
+   na nu na nu LBUF:CLAIM-NAME
+   [: drop 2drop na nu LBUF:CLAIM-NAME ;] PRODUCTS
+   e eu SRCLOC:TOKEN!
    1 OPEN !
    t tu s" ;CALLBACK" ['] DISCARD SOURCE-ROOT:OPENED ;
 
@@ -499,7 +556,7 @@ public
    0 k FAULTS !
    k EMIT ;
 
-;package
+global
 
 \ CALLBACK: NAME ( in -- out ) clauses ;CALLBACK generates
 \   NAME           ( -- FFI-CB:callback )  the descriptor;
@@ -522,13 +579,17 @@ public
 \ A declaration defines words: declare every callback before the first task
 \ starts.
 : CALLBACK: ( -- )
-   FFI-CB:OPEN-CALLBACK ;
+   OPEN-CALLBACK ;
+INTRINSIC-TOP-ONLY INTRINSIC
 
 : FALLBACK ( n -- )
-   FFI-CB:SET-FALLBACK ;
+   SET-FALLBACK ;
 
 : FFALLBACK ( r -- )
-   FFI-CB:SET-FFALLBACK ;
+   SET-FFALLBACK ;
 
 : ;CALLBACK ( -- )
-   FFI-CB:CLOSE-CALLBACK ;
+   CLOSE-CALLBACK ;
+INTRINSIC-TOP-ONLY INTRINSIC
+
+;package

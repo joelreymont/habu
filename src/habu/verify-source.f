@@ -58,7 +58,7 @@ split-str
 \ learned from the source, not listed, so library definers put no names in the
 \ engine; a definer that makes definitions at load, built or from evaluated text,
 \ marks the statement's wordlist instead, leaving what it defines to the run,
-\ while a `generates:` row and FUNCTION:'s declaration group are still read. A
+\ while a `generates:` row and a FUNCTION: or CALLBACK: group are still read. A
 \ row is keyed by the checker's symbol id for the definer's name, so every
 \ spelling resolves through the checker's scope chain. A rewound scope
 \ truncates those ids, so the row count is one of the marks the checker's
@@ -154,6 +154,7 @@ require src/habu/primitive-source.f
 require src/habu/engine-origin.f
 require src/habu/escape.f
 require src/lib/ffi-abi.f
+require src/lib/ffi-callback.f
 
 package VERIFY
 EXPORT CHECK:CHECKER-SIG-SPAN
@@ -610,6 +611,7 @@ EXPORT CHECK:MULTI-ERR?
 EXPORT CHECK:OPEN-USING
 EXPORT CHECK:PROW-ADD-TEXT
 EXPORT CHECK:PROW-FIND
+EXPORT CHECK:SIG-EXACT-MODE
 EXPORT CHECK:SIG-RAW-MODE
 EXPORT CHECK:SIG-STATES-FACTS
 EXPORT CHECK:SPLIT-STR-FILE?
@@ -3397,13 +3399,38 @@ variable LOAD-U
    a u s" included" STR:=CI or  a u s" required" STR:=CI or
    a u s" script-required" STR:=CI or  a u s" provided" STR:=CI or ;
 
-\ The source now scanned opened the FUNCTION: group still open. Nested files
-\ share FFI's open group, as they share the load's open declaration.
-: FFI-OPEN-HERE? ( -- bool )
-   FFI:OPENER$ {: t:^ tu:n :}
+\ The CALLBACK: group the scan read, with its opener and where its name lies;
+\ skipped when a word it claims was refused, so `;CALLBACK` defines nothing.
+ENUM callback-group closed open skipped ;ENUM
+TYPED-VARIABLE CB-GROUP callback-group
+PTR-VARIABLE CB-OPENER-A
+variable CB-OPENER-U
+variable CB-AT
+variable CB-NAME-U
+: CB-CLOSED! ( -- ) construct callback-group closed CB-GROUP ! ;
+CB-CLOSED!
+
+: CB-OPEN? ( -- bool )
+   CB-GROUP @ MATCH callback-group
+      closed OF false ENDOF
+      open OF true ENDOF
+      skipped OF true ENDOF
+   ;MATCH ;
+
+\ Whether the token t tu lies in the source now scanned.
+: SCANNED? ( str -- bool ) {: t:^ tu:n :}
    tu 0= IF false EXIT THEN
    t SOURCE@ - {: at:n :}
    at 0 < 0=  at SOURCE-U @ > 0= and ;
+
+\ The opener and closer of the FUNCTION: or CALLBACK: group this source opened,
+\ else empty: nested files share FFI's open group, as the load's declaration.
+: OPEN-GROUP ( -- str str )
+   FFI:OPENER$ SCANNED? IF FFI:OPENER$ s" ;FUNCTION" EXIT THEN
+   CB-OPEN?  CB-OPENER-A @ CB-OPENER-U @ SCANNED? and IF
+      CB-OPENER-A @ CB-OPENER-U @ s" ;CALLBACK" EXIT
+   THEN
+   NULL-PTR 0 NULL-PTR 0 ;
 
 \ The load words; `provided` loads nothing.
 : LOADS? ( str -- bool ) {: a:^ u:n :}
@@ -3414,13 +3441,19 @@ variable LOAD-U
 : UNCLOSED-LOAD-STOP ( str str str -- )
    SOURCE-ROOT:UNCLOSED-LOAD  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
+\ The load word w wu is called while a group this source opened is open.
+: GROUP-LOAD-STOP ( str -- ) {: w:^ wu:n :}
+   OPEN-GROUP {: t:^ tu:n c:^ cu:n :}
+   tu 0= IF EXIT THEN
+   t tu c cu w wu UNCLOSED-LOAD-STOP ;
+
 : COMPOSE-TOP? ( str -- bool ) {: a:^ u:n :}
    COMPOSE-ON @ 0= IF 0 0= 0= EXIT THEN
    a u LOADER-WORD? 0= IF 0 0= 0= EXIT THEN
    TICK-CONTEXT-UNKNOWN
    a u QUIET-USE
    a u TOKEN-BYTE @ a u TOP-BINDING drop drop ENGINE-ORIGIN-USE
-   a u LOADS? FFI-OPEN-HERE? and IF FFI:OPENER$ s" ;FUNCTION" a u UNCLOSED-LOAD-STOP THEN
+   a u LOADS? IF a u GROUP-LOAD-STOP THEN
    a u [: QUIET-TOP? ;] a u LOADER-AT ;
 
 public
@@ -3547,8 +3580,9 @@ private
 \ The group open in this source is rejected when the token o ou opens another
 \ declaration or, with ou 0, when the source ends.
 : FFI-UNCLOSED ( str -- ) {: o:^ ou:n :}
-   FFI-OPEN-HERE? 0= IF EXIT THEN
-   FFI:OPENER$ s" ;FUNCTION" o ou UNCLOSED-DECL-STOP ;
+   OPEN-GROUP {: t:^ tu:n c:^ cu:n :}
+   tu 0= IF EXIT THEN
+   t tu c cu o ou UNCLOSED-DECL-STOP ;
 
 \ A declaration opening, or a package scope opening or closing, inside the
 \ structure rejects the structure.
@@ -3614,8 +3648,8 @@ private
    name nameu sig sigu sym DEFINER-FIND 0<> CHECKER-GENERATES nip 0= IF EXIT THEN
    sig sigu true sym DEFINER-ADD ;
 
-\ FFI's declaration machine reads `FUNCTION: … ;FUNCTION` from the raw tokens
-\ fed to it. FFI-SIG holds the effect: BODY-BUF holds only runs of the source.
+\ A FUNCTION: declaration's effect or a callback body's type, from FFI's texts:
+\ BODY-BUF holds only runs of the source.
 DYNAMIC-BUFFER FFI-SIG u8
 variable FFI-SIG-U
 variable FFI-LIT-N                          \ literals read last, at most two:
@@ -3640,6 +3674,8 @@ variable FFI-LIT-B                          \ and the newer
    a SOURCE@ - TOKEN-BYTE !
    [: oa ou SRCLOC:TOKEN! ;] finally ;
 
+\ `FUNCTION: … ;FUNCTION`, read by FFI's declaration machine from the raw
+\ tokens fed to it.
 : RECORD-FFI-FUNCTION ( str -- )
    {: a:^ u:n :}
    a u FFI-UNCLOSED
@@ -3658,6 +3694,88 @@ variable FFI-LIT-B                          \ and the newer
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE
    ELSE FFI:SKIP-FUNCTION THEN ;
+
+\ A word w of the open callback group: a taken one is the duplicate, rejected
+\ at the source token t, and the group is skipped.
+: CALLBACK-TAKEN ( str str -- ) {: w:^ wu:n t:^ tu:n :}
+   CB-GROUP @ MATCH callback-group
+      closed OF ENDOF
+      open OF
+         w wu CHECKER-CERT-DUP? IF
+            w wu t tu DUPLICATE-AT!
+            construct callback-group skipped CB-GROUP !
+         THEN
+      ENDOF
+      skipped OF ENDOF
+   ;MATCH ;
+
+\ A word the open callback group defines, as FFI-CB:PRODUCTS gives it, claimed
+\ at the group's name, as the run claims it.
+: CALLBACK-CLAIM ( str str bool -- )
+   drop 2drop SOURCE@ CB-AT @ + CB-NAME-U @ CALLBACK-TAKEN ;
+
+\ The same word asked again at `;CALLBACK`, where the run defines it: a
+\ definition inside the group may have taken it since.
+: CALLBACK-RECLAIM ( str str bool -- )
+   drop 2drop TOKEN-BYTE @ TOKEN-FROM CALLBACK-TAKEN ;
+
+\ `CALLBACK: NAME ( in -- out )`, read by FFI-CB's own reader. Its words are
+\ claimed there and defined at `;CALLBACK`, as the run claims and defines them.
+: RECORD-FFI-CALLBACK ( str -- )
+   {: a:^ u:n :}
+   a u FFI-UNCLOSED
+   [: [: NEXT-RAW dup 0<> IF 2dup SRCLOC:TOKEN! THEN ;]
+      FFI-CB:READ-CALLBACK ;] a u FFI-AT
+   {: name:^ nameu:n :}
+   name SOURCE@ - {: at:n :}
+   at TOKEN-BYTE !
+   NAME-DECLARED
+   a CB-OPENER-A !  u CB-OPENER-U !  at CB-AT !  nameu CB-NAME-U !
+   construct callback-group open CB-GROUP !
+   name nameu at REJECT-DUPLICATE IF
+      construct callback-group skipped CB-GROUP !
+   THEN
+   [: CALLBACK-CLAIM ;] FFI-CB:PRODUCTS ;
+
+\ One word of the open callback group, as FFI-CB:PRODUCTS gives it, placed at
+\ the group's name.
+: CALLBACK-DEF ( str str bool -- )
+   {: name:^ nameu:n row:^ rowu:n var:bool :}
+   NAME-DECLARED
+   CB-AT @ CB-NAME-U @ {: at:n u:n :}
+   CB-OPENER-A @ CB-OPENER-U @ {: t:^ tu:n :}
+   name nameu at u ARM
+   var IF
+      0 FFI-SIG-U !  s" [" FFI-APPEND  row rowu FFI-APPEND  s" ]" FFI-APPEND
+      0 FFI-SIG FFI-SIG-U @ 1 - name nameu CHECKER-DEFTYPED-VARIABLE
+      DISARM
+      t tu name nameu name nameu MADE-EFFECT at at u + DEF-STORAGE DEFINED
+      EXIT
+   THEN
+   name nameu row rowu DECL-SIGNATURE CHECKER-ROW:KEPT =
+   DISARM
+   IF t tu name nameu row rowu at at u + DEF-WORD DEFINED THEN ;
+
+\ A qualified type in the row names the package it spells, even where the
+\ open package has a part of that name.
+: CALLBACK-WORD ( str str bool -- )
+   -1 SIG-EXACT-MODE !
+   [: CALLBACK-DEF ;] [: 0 SIG-EXACT-MODE ! ;] finally ;
+
+\ `;CALLBACK` claims and defines the open group's words; one with none open
+\ is left to the run, which rejects it.
+: CLOSE-FFI-CALLBACK ( -- )
+   CB-GROUP @ MATCH callback-group
+      closed OF ENDOF
+      open OF [: CALLBACK-RECLAIM ;] FFI-CB:PRODUCTS ENDOF
+      skipped OF ENDOF
+   ;MATCH
+   CB-GROUP @ MATCH callback-group
+      closed OF ENDOF
+      open OF [: CALLBACK-WORD ;] FFI-CB:PRODUCTS ENDOF
+      skipped OF ENDOF
+   ;MATCH
+   CB-CLOSED! ;
 
 : FFI-CLOSER? ( str -- bool )
    {: a:^ u:n :}
@@ -3715,6 +3833,8 @@ variable HEAP-XT s" HEAP" HEAP-XT LIBRARY-XT!
 variable CWORK-BUFFER-XT s" CWORK-BUFFER" CWORK-BUFFER-XT LIBRARY-XT!
 variable CWORK-SPAN-XT s" CWORK-SPAN" CWORK-SPAN-XT LIBRARY-XT!
 variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
+variable USERS-XT s" TASK:+USERS" USERS-XT LIBRARY-XT!
+variable USER-XT s" TASK:+USER" USER-XT LIBRARY-XT!
 
 \ A re-export of the library word is that word: the load binds its alias to the
 \ library word's code. An export keeps its source's tail, so only a token whose
@@ -3742,15 +3862,6 @@ variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
    XREF-FIND {: word:^ :}
    word XREF-FOUND? 0= IF false EXIT THEN
    word XREF-START code = ;
-
-\ src/lib/task.f loads after this file, so a TASK definer's code is read where
-\ its row is reached; Q is its qualified name.
-: TASK-DEFINER? ( str str str -- bool )
-   {: a:^ u:n q:^ qu:n name:^ nameu:n :}
-   a u TOKEN-TAIL name nameu STR:=CI 0= IF false EXIT THEN
-   q qu XREF-FIND {: rec:^ :}
-   rec XREF-FOUND? 0= IF false EXIT THEN
-   a u rec XREF-START name nameu LIBRARY-DEFINER? ;
 
 \ A token is a clause only where the load's lookup binds it to the declarer's
 \ word (LIBRARY-DEFINER?); operands are literals read right before it.
@@ -3804,9 +3915,9 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
       [: RECORD-TYPED-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u TYPED-VARIABLE-XT @ s" TYPED-VARIABLE" LIBRARY-DEFINER? IF
       [: RECORD-TYPED-VARIABLE ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u s" TASK:+USERS" s" +USERS" TASK-DEFINER? IF
+   a u USERS-XT @ s" +USERS" LIBRARY-DEFINER? IF
       [: RECORD-BYTE-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u s" TASK:+USER" s" +USER" TASK-DEFINER? IF
+   a u USER-XT @ s" +USER" LIBRARY-DEFINER? IF
       [: RECORD-SLOT ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u DYNAMIC-BUFFER-XT @ s" DYNAMIC-BUFFER" LIBRARY-DEFINER? IF
       [: RECORD-DYNAMIC-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
@@ -3834,6 +3945,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u s" undefine" STR:=CI IF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD 0 0= EXIT THEN
    a u s" generates:" STR:=CI decl and IF RECORD-GENERATES 0 0= EXIT THEN
    a u s" FUNCTION:" STR:=CI decl and IF a u RECORD-FFI-FUNCTION 0 0= EXIT THEN
+   a u s" CALLBACK:" STR:=CI decl and IF a u RECORD-FFI-CALLBACK 0 0= EXIT THEN
    a u FFI-CLAUSE? IF a u FFI-CLAUSE 0 0= EXIT THEN
    a u s" immediate" STR:=CI IF
       TICK-CONTEXT-UNKNOWN  NEWEST-SYM @ CHECKER-IMMEDIATE 0 0= EXIT
@@ -3844,6 +3956,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u FFI-CLOSER? decl and IF
       [: FFI:PLAN-FUNCTION ;] a u FFI-AT 0 0= EXIT
    THEN
+   a u s" ;CALLBACK" STR:=CI decl and IF CLOSE-FFI-CALLBACK 0 0= EXIT THEN
    a u NOMINAL-MARK
    a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
    \ A declaration no arm above reads and that renders no source (`evaluate`
@@ -4226,7 +4339,7 @@ COMPOSE-INIT
 : RUN-IN-SCOPE ( [ -- ] -- )
    CHECKER-SPLIT-STR @ {: split:n :}
    TICK-CONTEXT-RESET
-   false TICK-REMAINDER !  FFI:ABANDON-FUNCTION
+   false TICK-REMAINDER !  FFI:ABANDON-FUNCTION  CB-CLOSED!
    0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !  SOURCE-SEALS-CLEAR
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch {: rc:n :}
