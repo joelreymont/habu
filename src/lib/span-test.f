@@ -1,4 +1,3 @@
-split-str
 \ span-test.f - src/lib/span.f: the reach travels with the pointer. Every E-SPAN
 \ code is reached through the public word that owes it, at the boundary and one
 \ past it. The file also pins the measurement the type's shape rests on: a
@@ -42,7 +41,7 @@ private
    ST-TINY SPAN:LEN 8 T=
    ST-CELLS SPAN:LEN 64 T=
    ST-CELLS SPAN:CELL-LEN 8 T=
-   ST-BUF SPAN:$ nip 64 T= ;
+   ST-BUF SPAN:$ STR:LEN 64 T= ;
 
 : T-BYTES ( -- )
    65 ST-BUF 0 SPAN:U8!
@@ -101,17 +100,17 @@ private
    SRC8 ST-TINY SPAN:COPY
    ST-TINY 0 SPAN:U8@ 97 T=
    ST-TINY 7 SPAN:U8@ 104 T=
-   SRC8 drop 0 ST-TINY SPAN:COPY
+   SRC8 STR:DATA 0 >str ST-TINY SPAN:COPY
    ST-TINY 0 SPAN:U8@ 97 T=
    [: SRC9 ST-TINY SPAN:COPY ;] E-SPAN-CAPACITY TTHROWS
    ST-TINY 0 SPAN:U8@ 97 T=                      \ no partial copy
    ST-TINY 7 SPAN:U8@ 104 T=
-   [: SRC8 drop -1 ST-TINY SPAN:COPY ;] E-SPAN-LENGTH TTHROWS
+   [: SRC8 STR:DATA -1 >str ST-TINY SPAN:COPY ;] E-SPAN-LENGTH TTHROWS
    ST-TINY 0 SPAN:U8@ 97 T= ;
 
 : T-COPY-NARROWED ( -- )
    42 ST-TINY SPAN:FILL
-   SRC8 drop 4 ST-TINY 4 SPAN:TAKE SPAN:COPY     \ fits the narrowed reach
+   SRC8 STR:DATA 4 >str ST-TINY 4 SPAN:TAKE SPAN:COPY     \ fits the narrowed reach
    ST-TINY 3 SPAN:U8@ 100 T=
    ST-TINY 4 SPAN:U8@ 42 T=                      \ untouched past the narrowing
    [: SRC8 ST-TINY 4 SPAN:TAKE SPAN:COPY ;] E-SPAN-CAPACITY TTHROWS
@@ -138,14 +137,14 @@ private
    true 9 0 ?do 18 0 ?do j i FILLED? and loop loop TTRUE ;
 
 : T-MAKE ( -- )
-   ST-BUF SPAN:$ SPAN:MAKE SPAN:LEN 64 T=
-   ST-BUF SPAN:$ drop 0 SPAN:MAKE SPAN:LEN 0 T=
-   [: ST-BUF SPAN:$ drop -1 SPAN:MAKE SPAN:LEN drop ;] E-SPAN-LENGTH TTHROWS ;
+   ST-BUF SPAN:$ str> SPAN:MAKE SPAN:LEN 64 T=
+   ST-BUF SPAN:$ STR:DATA 0 SPAN:MAKE SPAN:LEN 0 T=
+   [: ST-BUF SPAN:$ STR:DATA -1 SPAN:MAKE SPAN:LEN drop ;] E-SPAN-LENGTH TTHROWS ;
 
 : T-ALLOCATION ( ^u8 NUM:alloc-byte-len -- ) {: base:^ bytes :}
    base bytes MEM:ALLOCATION>SPAN {: s :}
    s SPAN:LEN 37 T=
-   s SPAN:$ drop base = TTRUE
+   s SPAN:$ STR:DATA base = TTRUE
    65 s 36 SPAN:U8!
    base 36 + c@ 65 T= ;
 

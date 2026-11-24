@@ -1,4 +1,3 @@
-split-str
 \ systemd-test.f - SYSTEMD:NOTIFY-READY and SYSTEMD:NOTIFY-EXTEND-TIMEOUT
 \ against unix datagram sockets this test binds.
 HB-TARGET-LINUX? ?TARGET
@@ -47,22 +46,22 @@ create GOT GOT-CAP allot
 variable BOUND-FD
 variable ABSTRACT-FD
 
-: SOCKETS$ ( -- str ) SOCKETS SOCKETS-U @ ;
-: BOUND$ ( -- str ) BOUND BOUND-U @ ;
-: MISSING$ ( -- str ) MISSING MISSING-U @ ;
-: ABSTRACT$ ( -- str ) ABSTRACT ABSTRACT-U @ ;
+: SOCKETS$ ( -- str ) SOCKETS SOCKETS-U @ >str ;
+: BOUND$ ( -- str ) BOUND BOUND-U @ >str ;
+: MISSING$ ( -- str ) MISSING MISSING-U @ >str ;
+: ABSTRACT$ ( -- str ) ABSTRACT ABSTRACT-U @ >str ;
 
 : P+ ( str -- )
    PROG CODEGEN:APPEND-STRING
    10 PROG CODEGEN:APPEND-BYTE ;
 
 : CHILD-SOURCE ( str -- )   \ the call that answers a SYSTEMD:status
-   {: call:^ callu:n :}
+   {: call:str :}
    PROG CODEGEN:RESET
    s" require src/lib/systemd.f" P+
    s" require src/lib/fmt.f" P+
    s" : GO ( -- )" P+
-   call callu P+
+   call P+
    s"    MATCH SYSTEMD:status" P+
    s"       ok OF 0 ENDOF" P+
    s"       failed OF SYSTEMD:ERRNO>N ENDOF" P+
@@ -78,27 +77,27 @@ variable ABSTRACT-FD
    ;MATCH ;
 
 : NAMED ( str ^u8 -- n )
-   {: prefix:^ prefixu:n dst:^ :}
-   SB-RESET prefix prefixu SB-APPEND getpid FMT:SB-INT
-   SB$ {: a:^ u:n :} a dst u BYTE-COPY u ;
+   {: prefix:str dst:^ :}
+   SB-RESET prefix SB-APPEND getpid FMT:SB-INT
+   SB$ {: a:str :} a STR:DATA dst a STR:LEN BYTE-COPY a STR:LEN ;
 
 : SOCKETS! ( str -- )
-   {: a:^ u:n :}
-   u PATH-CAP > if E-FS-PATH throw then
-   a SOCKETS u BYTE-COPY  u SOCKETS-U ! ;
+   {: s:str :}
+   s STR:LEN PATH-CAP > if E-FS-PATH throw then
+   s STR:DATA SOCKETS s STR:LEN BYTE-COPY  s STR:LEN SOCKETS-U ! ;
 
 : SETUP ( -- )
    FS:CLEANUP-RESET
-   s" HB_SOCK_TMP" GETENV dup 0 > if
+   s" HB_SOCK_TMP" GETENV dup STR:LEN 0 > if
       SOCKETS!
    else
-      2drop s" habu-sd" FS:MKTEMP-DIR SOCKETS!
+      drop s" habu-sd" FS:MKTEMP-DIR SOCKETS!
       SOCKETS$ FS:CLEANUP-TREE+
    then
    s" habu-sd-" GOT NAMED {: u:n :}
-   SOCKETS$ GOT u BOUND FS:JOIN-PATH BOUND-U !
+   SOCKETS$ GOT u >str BOUND FS:JOIN-PATH BOUND-U !
    s" habu-sd-missing-" GOT NAMED {: v:n :}
-   SOCKETS$ GOT v MISSING FS:JOIN-PATH MISSING-U !
+   SOCKETS$ GOT v >str MISSING FS:JOIN-PATH MISSING-U !
    s" @habu-sd-" ABSTRACT NAMED ABSTRACT-U !
    BOUND$ BIND-AT BOUND-FD !
    ABSTRACT$ BIND-AT ABSTRACT-FD !
@@ -106,26 +105,26 @@ variable ABSTRACT-FD
 
 \ A child engine per case: GETENV reads the environment the process started with.
 : RUN ( str -- n n )   \ outu rc
-   {: value:^ valueu:n :}
-   ENGINE-CANDIDATE:PATH$ {: engine:^ engineu:n :}
-   PROG CODEGEN:CONTENTS {: prog:^ progu:n :}
+   {: value:str :}
+   ENGINE-CANDIDATE:PATH$ {: engine:str :}
+   PROG CODEGEN:CONTENTS {: prog:str :}
    PROC-ARGV-ENV-RESET
-   s" NOTIFY_SOCKET" value valueu PROC-ENV+
+   s" NOTIFY_SOCKET" value PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   engine engineu prog progu
+   engine prog
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
-   rc 0 <> if ERR erru LEN>N type cr then
+   rc 0 <> if ERR erru LEN>N >str type cr then
    outu LEN>N rc ;
 
 : WANT$ ( n -- str )
    SB-RESET FMT:SB-INT 10 SB-APPEND-C SB$ ;
 
 : ANSWERS ( str n -- )
-   {: value:^ valueu:n want:n :}
-   value valueu RUN {: outu:n rc:n :}
-   OUT outu want WANT$ T$=
+   {: value:str want:n :}
+   value RUN {: outu:n rc:n :}
+   OUT outu >str want WANT$ T$=
    s" ... and the child engine exits cleanly" T-LABEL
    rc 0 T= ;
 
@@ -137,7 +136,7 @@ variable ABSTRACT-FD
       truncated OF BLEN>N ENDOF
       timeout OF 0 ENDOF
       failed OF drop 0 ENDOF
-   ;MATCH GOT swap ;
+   ;MATCH GOT swap >str ;
 
 : PATH-CASE ( -- )
    s" a bound path socket: the child answers ok" T-LABEL

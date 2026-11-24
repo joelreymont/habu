@@ -1,4 +1,3 @@
-split-str
 \ svg-pdf.f - completed in-memory SVGs become PDF pages through native
 \ librsvg 2.52+/Cairo, in `package SVG-PDF`. Each SVG loads with no base URI:
 \ data: resources resolve, external files do not, and librsvg may omit a missing
@@ -104,9 +103,9 @@ TASK:+USER VIEW rect
    value 0.0 f> and ;
 
 : OPEN-SVG ( str -- )
-   {: data:^ size:n :}
-   size 0 < if E-OPEN throw then
-   data size ERROR-CELL BYTE-VIEW SVG-OPEN SVG-CELL !
+   {: data:str :}
+   data STR:LEN 0 < if E-OPEN throw then
+   data ERROR-CELL BYTE-VIEW SVG-OPEN SVG-CELL !
    SVG-CELL @ NULL? if E-OPEN throw then
    SVG-CELL @ 96.0 SVG-DPI
    SVG-CELL @ VIEW RECT-WIDTH BYTE-VIEW
@@ -144,8 +143,8 @@ TASK:+USER VIEW rect
    SURFACE-CELL @ SURFACE-STATUS 0<> or if E-FINISH throw then ;
 
 : RENDER-PAGES ( ^SPAN:span<u8> n str -- ^SPAN:span<u8> n )
-   {: pages:^ count:n path:^ pathu:n :}
-   path pathu OPEN-PDF
+   {: pages:^ count:n path:str :}
+   path OPEN-PDF
    count 0 do
       i 0 > if
          pages i PAGE-AT SPAN:$ OPEN-SVG
@@ -162,15 +161,15 @@ TASK:+USER VIEW rect
    pages count ;
 
 : WRITE-BODY ( str str -- )
-   {: path:^ pathu:n data:^ size:n :}
-   data size OPEN-SVG
-   path pathu [: RENDER-PDF ;] FS:REPLACE-STAGED ;
+   {: path:str data:str :}
+   data OPEN-SVG
+   path [: RENDER-PDF ;] FS:REPLACE-STAGED ;
 
 : WRITE-PAGES-BODY ( str ^SPAN:span<u8> n -- )
-   {: path:^ pathu:n pages:^ count:n :}
+   {: path:str pages:^ count:n :}
    count 0 <= if E-OPEN throw then
    pages 0 PAGE-AT SPAN:$ OPEN-SVG
-   pages count path pathu [: RENDER-PAGES ;] FS:REPLACE-STAGED 2drop ;
+   pages count path [: RENDER-PAGES ;] FS:REPLACE-STAGED 2drop ;
 
 public
 

@@ -1,4 +1,3 @@
-split-str
 \ assert-test.f - focused tests for src/lib/test/assert.f through src/lib/test.f.
 \ Run: bin/hb --load src/lib/test.f src/lib/test/assert-test.f
 
@@ -80,7 +79,7 @@ variable TAT-SCRIPT-U
    10 SB-APPEND-C ;
 
 : TAT-SCRIPT$ ( -- str )
-   TAT-SCRIPT-PATH TAT-SCRIPT-U @ ;
+   TAT-SCRIPT-PATH TAT-SCRIPT-U @ >str ;
 
 : TAT-FAIL-SRC$ ( -- str )
    SB-RESET
@@ -91,9 +90,9 @@ variable TAT-SCRIPT-U
    SB$ ;
 
 : TAT-PREPARE ( str str -- )
-   {: prefix:^ prefixu:n name:^ nameu:n :}
-   prefix prefixu GT-START
-   name nameu TAT-SCRIPT-PATH GT-PATH TAT-SCRIPT-U ! ;
+   {: prefix:str name:str :}
+   prefix GT-START
+   name TAT-SCRIPT-PATH GT-PATH TAT-SCRIPT-U ! ;
 
 : TAT-RUN ( -- )
    PROC-ARGV-RESET

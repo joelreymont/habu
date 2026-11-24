@@ -1,4 +1,3 @@
-split-str
 \ test-fsm-test.f - TEST-FSM:TABLE-MODULE on a source file written under
 \ TMPDIR: a two-state table renders to its whole Table module past a table
 \ and a comment its name prefixes, and a file without the named table or a
@@ -25,8 +24,8 @@ $1000 constant TFT-CAP
 TFT-CAP BUFFER: TFT-OUT
 TFT-CAP BUFFER: TFT-ERR
 
-: TFT-DIR$ ( -- str ) TFT-DIR-BUF TFT-DIR-U @ ;
-: TFT-FILE$ ( -- str ) TFT-FILE-BUF TFT-FILE-U @ ;
+: TFT-DIR$ ( -- str ) TFT-DIR-BUF TFT-DIR-U @ >str ;
+: TFT-FILE$ ( -- str ) TFT-FILE-BUF TFT-FILE-U @ >str ;
 
 : TFT-SOURCE ( -- str )
    SB-RESET
@@ -45,8 +44,8 @@ TFT-CAP BUFFER: TFT-ERR
 \ The fixture file door.f in a temp dir of its own: DOOR-LOCK and a
 \ comment that names DOOR before DOOR, then GATE with a PICK line.
 : TFT-FIXTURE ( -- )
-   s" test-fsm" FS:MKTEMP-DIR {: a:^ u:n :}
-   a TFT-DIR-BUF u BYTE-COPY  u TFT-DIR-U !
+   s" test-fsm" FS:MKTEMP-DIR {: a:str :}
+   a STR:DATA TFT-DIR-BUF a STR:LEN BYTE-COPY  a STR:LEN TFT-DIR-U !
    TFT-DIR$ s" door.f" TFT-FILE-BUF FS:JOIN-PATH TFT-FILE-U !
    TFT-FILE$ TFT-SOURCE FS:WRITE-ALL ;
 
@@ -76,13 +75,13 @@ TFT-CAP BUFFER: TFT-ERR
 : TFT-ABSENT ( ^ARENA:arena -- )
    {: ar :}
    TFT-FILE$ s" WINDOW" s" Window" ar TEST-FSM:TABLE-MODULE
-   nip 0 T= ;
+   STR:LEN 0 T= ;
 
 \ GATE's one PICK line rendered as model Gate.
 : TFT-PICKED ( ^ARENA:arena -- )
    {: ar :}
    TFT-FILE$ s" GATE" s" Gate" ar TEST-FSM:TABLE-MODULE
-   2drop ;
+   drop ;
 
 public
 
@@ -98,12 +97,12 @@ private
 
 \ The child src prints `test: 1 failure(s)` and exits FAILURE.
 : TFT-FAILS ( str -- )
-   {: src:^ su:n :}
-   src su TFT-OUT TFT-CAP >LEN TFT-ERR TFT-CAP >LEN
+   {: src:str :}
+   src TFT-OUT TFT-CAP >LEN TFT-ERR TFT-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: ou:len eu:len oc :}
-   src su TFT-OUT ou LEN>N TFT-ERR eu LEN>N oc
+   src TFT-OUT ou LEN>N >str TFT-ERR eu LEN>N >str oc
    EXIT-STATUS:FAILURE T-ENDING-EXITED=
-   TFT-OUT ou LEN>N s" test: 1 failure(s)" STR:CONTAINS? TTRUE ;
+   TFT-OUT ou LEN>N >str s" test: 1 failure(s)" STR:CONTAINS? TTRUE ;
 
 : TFT-MISSING ( -- )
    s" fails without the table" T-LABEL

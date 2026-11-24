@@ -1,4 +1,3 @@
-split-str
 \ sqlite-test.f - package SQLITE on database files under the test's own
 \ temporary directory.
 \ Run: bin/hb --load src/lib/sqlite-test.f
@@ -33,22 +32,22 @@ create LOG-PATH PATH-CAP allot
 create LOG-BUF LOG-CAP allot
 create HELD 3 allot
 
-: ROOT$ ( -- str ) ROOT ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
 
 : SETUP ( -- )
-   s" hb-sqlite" FS:MKTEMP-DIR {: path:^ u:n :}
-   path ROOT u BYTE-COPY
-   u ROOT-U ! ;
+   s" hb-sqlite" FS:MKTEMP-DIR {: path:str :}
+   path STR:DATA ROOT path STR:LEN BYTE-COPY
+   path STR:LEN ROOT-U ! ;
 
 : AT ( str ^u8 -- str )
-   {: name:^ nu:n buf:^ :}
-   ROOT$ name nu buf FS:JOIN-PATH {: u:n :}
-   buf u ;
+   {: name:str buf:^ :}
+   ROOT$ name buf FS:JOIN-PATH {: u:n :}
+   buf u >str ;
 
 : MAIN$ ( -- str ) s" main.db" MAIN-PATH AT ;
 : LINK$ ( -- str ) s" link.db" LINK-PATH AT ;
 : LOG$ ( -- str ) s" log.txt" LOG-PATH AT ;
-: HELD$ ( -- str ) HELD 3 ;
+: HELD$ ( -- str ) HELD 3 >str ;
 
 \ A blob with a 0 byte inside: its length crosses the FFI, never a NUL.
 : BLOB$ ( -- str ) S\" a\x00b\xff" ;
@@ -93,16 +92,16 @@ create HELD 3 allot
 \ ---- 6f: an empty bind and a copied bind -----------------------------------
 
 : BIND-EMPTY ( SQLITE:statement -- SQLITE:statement )
-   NULL-PTR BYTE-VIEW 0 1 SQLITE:BIND-TEXT
-   s" abc" drop HELD 3 BYTE-COPY
+   NULL-PTR BYTE-VIEW 0 >str 1 SQLITE:BIND-TEXT
+   s" abc" STR:DATA HELD 3 BYTE-COPY
    HELD$ 2 SQLITE:BIND-BLOB
-   s" xyz" drop HELD 3 BYTE-COPY
+   s" xyz" STR:DATA HELD 3 BYTE-COPY
    SQLITE:STEP TFALSE ;
 
 : READ-EMPTY ( SQLITE:statement -- SQLITE:statement )
    SQLITE:STEP TTRUE
    0 SQLITE:COL-NULL? TFALSE
-   0 SQLITE:COL-TEXT nip 0 T=
+   0 SQLITE:COL-TEXT STR:LEN 0 T=
    1 SQLITE:COL-BLOB s" abc" T$=
    SQLITE:STEP TFALSE ;
 
@@ -157,15 +156,15 @@ create HELD 3 allot
    SQLITE:WITH-STATEMENT ;
 
 : LINES ( str -- n )
-   {: a:^ u:n :}
-   0 u 0 ?do a i + c@ $0A = if 1+ then loop ;
+   {: s:str :}
+   0 s STR:LEN 0 ?do s STR:DATA i + c@ $0A = if 1+ then loop ;
 
 : REUSE ( SQLITE:connection -- )
    {: c:SQLITE:connection :}
    LOG$ STDERR:CAPTURE
    [: c REUSE-RUN ;] [: STDERR:;CAPTURE ;] finally
    LOG$ LOG-BUF LOG-CAP FS:READ-ALL {: n:n :}
-   LOG-BUF n LINES 1 T=
+   LOG-BUF n >str LINES 1 T=
    c s" SELECT count(*) FROM r" COUNT 3 T= ;
 
 \ ---- 3: WITH-TRANSACTION --------------------------------------------------
@@ -227,8 +226,8 @@ create HELD 3 allot
    [: a b WRITE-REFUSED ;]
    [: STDERR:;CAPTURE ;] finally
    LOG$ LOG-BUF LOG-CAP FS:READ-ALL {: n:n :}
-   LOG-BUF n LINES 1 T=
-   LOG-BUF n s" (extended code 5)" STR:CONTAINS? TTRUE ;
+   LOG-BUF n >str LINES 1 T=
+   LOG-BUF n >str s" (extended code 5)" STR:CONTAINS? TTRUE ;
 
 : READ-TX ( -- )
    MAIN$ SQLITE:OPEN {: a:SQLITE:connection :}

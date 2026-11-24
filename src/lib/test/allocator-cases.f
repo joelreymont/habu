@@ -1,4 +1,3 @@
-split-str
 \ allocator-cases.f - test-only: the cases every allocator meets, in the
 \ allocator test's package; another allocator's test calls TURNS and ZEROED.
 \ STORAGE CLASS. None.
@@ -27,8 +26,8 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
 public
 
 : ZEROED ( str -- )
-   {: p:^ len:n :}
-   0 len 0 ?do p i + c@ or loop 0 T= ;
+   {: s:str :}
+   0 s STR:LEN 0 ?do s STR:DATA i + c@ or loop 0 T= ;
 
 
 : TURNS ( ^ALLOC:allocator -- )

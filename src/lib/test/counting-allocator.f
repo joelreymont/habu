@@ -1,4 +1,3 @@
-split-str
 \ counting-allocator.f - test-only allocators over the heap. COUNTING counts
 \ the blocks it gives and frees, so a test sees storage a reader or source
 \ leaks: TAKEN counts its BYTES calls that answered and FREED its FREE calls;
@@ -23,12 +22,12 @@ variable REFUSED
 private
 TYPED-VARIABLE COUNTER ALLOC:allocator
 
-: C-ALLOC ( str -- ^u8 )
+: C-ALLOC ( ^u8 n -- ^u8 )
    {: st:^ len:n :}
    TAKEN @ 1+ REFUSED @ = if E-MEM-SIZE throw then
    HEAP:ALLOCATOR len ALLOC:BYTES drop  1 TAKEN +! ;
 
-: C-RESIZE ( ^u8 str n -- ^u8 )
+: C-RESIZE ( ^u8 ^u8 n n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    HEAP:ALLOCATOR block old new ALLOC:RESIZE drop ;
 
@@ -43,11 +42,11 @@ COUNTER-FILL
 
 TYPED-VARIABLE MOVER ALLOC:allocator
 
-: M-ALLOC ( str -- ^u8 )
+: M-ALLOC ( ^u8 n -- ^u8 )
    {: st:^ len:n :}
    HEAP:ALLOCATOR len ALLOC:BYTES drop ;
 
-: M-RESIZE ( ^u8 str n -- ^u8 )
+: M-RESIZE ( ^u8 ^u8 n n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    HEAP:ALLOCATOR new ALLOC:BYTES drop {: moved:^ :}
    block moved old new min BYTE-COPY

@@ -1,4 +1,3 @@
-split-str
 \ string-test.f - focused tests for checked stdlib string helpers.
 \ Run: bin/hb --load src/lib/string-test.f
 
@@ -51,13 +50,13 @@ variable STR-TEST-BUF2-LEN
 : STR-CHECK-REJECTS ( str -- )
    CHECK-QUIET-CANDIDATE! 0 STR-ASSERT= ;
 
-: STR-SPLIT-CHECK ( str n n str n bool -- ) {: a:^ u sep start exp:^ exp-u exp-next exp-ok :}
-   a u sep start STR:SPLIT-NEXT
+: STR-SPLIT-CHECK ( str n n str n bool -- ) {: s:str sep start exp:str exp-next exp-ok :}
+   s sep start STR:SPLIT-NEXT
    STR-TEST-SPLIT-OK !
    STR-TEST-SPLIT-NEXT !
-   STR-TEST-SPLIT-U !
-   STR-TEST-SPLIT-A !
-   STR-TEST-SPLIT-A @ STR-TEST-SPLIT-U @ exp exp-u STR-ASSERT$
+   dup STR:LEN STR-TEST-SPLIT-U !
+   STR:DATA STR-TEST-SPLIT-A !
+   STR-TEST-SPLIT-A @ STR-TEST-SPLIT-U @ >str exp STR-ASSERT$
    STR-TEST-SPLIT-NEXT @ exp-next STR-ASSERT=
    exp-ok if
       STR-TEST-SPLIT-OK @ 0= 0= STR-ASSERT
@@ -65,8 +64,8 @@ variable STR-TEST-BUF2-LEN
       STR-TEST-SPLIT-OK @ 0= STR-ASSERT
    then ;
 
-: STR-PARSE-CHECK ( str n bool -- ) {: a:^ u want ok :}
-   a u STR:>NUMBER? MATCH option
+: STR-PARSE-CHECK ( str n bool -- ) {: s:str want ok :}
+   s STR:>NUMBER? MATCH option
      none OF ok 0= STR-ASSERT ENDOF
      some OF ok STR-ASSERT want STR-ASSERT= ENDOF
    ;MATCH ;
@@ -77,7 +76,7 @@ variable STR-TEST-BUF2-LEN
    STR-TEST-A-CHAR SB-APPEND-C ;
 
 : STR-TEST-SB-APPEND-LEN ( n -- ) {: u:n :}
-   s" x" drop u SB-APPEND ;
+   s" x" STR:DATA u >str SB-APPEND ;
 
 : STR-TEST-BUILDER ( -- )
    SB-RESET
@@ -117,7 +116,7 @@ variable STR-TEST-BUF2-LEN
    STR-TEST-BUF2-LEN BUF-RESET
    s" hi" STR-TEST-BUF2 16 STR-TEST-BUF2-LEN BUF-APPEND
    33 STR-TEST-BUF2 16 STR-TEST-BUF2-LEN BUF-APPEND-C
-   STR-TEST-BUF2 STR-TEST-BUF2-LEN BUF-LEN@ s" hi!" STR-ASSERT$
+   STR-TEST-BUF2 STR-TEST-BUF2-LEN BUF-LEN@ >str s" hi!" STR-ASSERT$
    [: STR-TEST-BUF-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
    s" BAD-BUF-RESET ( ^n -- ) BUF-RESET" STR-CHECK-REJECTS
    s" BAD-BUF-LEN@ ( ^n -- n ) BUF-LEN@" STR-CHECK-REJECTS
@@ -147,13 +146,13 @@ variable STR-TEST-BUF2-LEN
    s" 9223372036854775808" 0 STR:FALSE STR-PARSE-CHECK
    s" -9223372036854775809" 0 STR:FALSE STR-PARSE-CHECK ;
 
-: STR-PARSE-SOME ( str n [ str -- option<n> ] -- ) {: a:^ u:n want:n q :}
-   a u q execute MATCH option
+: STR-PARSE-SOME ( str n [ str -- option<n> ] -- ) {: s:str want:n q :}
+   s q execute MATCH option
      none OF 0 0= 0= ENDOF
      some OF want = ENDOF
    ;MATCH STR-ASSERT ;
-: STR-PARSE-NONE ( str [ str -- option<n> ] -- ) {: a:^ u:n q :}
-   a u q execute MATCH option
+: STR-PARSE-NONE ( str [ str -- option<n> ] -- ) {: s:str q :}
+   s q execute MATCH option
      none OF 0 0= ENDOF
      some OF drop 0 0= 0= ENDOF
    ;MATCH STR-ASSERT ;
@@ -254,16 +253,16 @@ variable STR-TEST-BUF2-LEN
       u 0 GUARD-PAGE:TAIL {: a:^ :}
       CELL 0 ?do
          STR-TEST-EQ-BUF i + {: b:^ :}
-         a u b u STR:= STR-ASSERT
+         a u >str b u >str STR:= STR-ASSERT
          u 0 ?do
             128 b i + c!
-            a u b u STR:= 0= STR-ASSERT
+            a u >str b u >str STR:= 0= STR-ASSERT
             0 b i + c!
          loop
       loop
    loop
-   STR-TEST-EDGE 0 STR-TEST-EDGE 1 STR:= 0= STR-ASSERT
-   STR-TEST-EDGE 1 STR-TEST-EDGE 0 STR:= 0= STR-ASSERT ;
+   STR-TEST-EDGE 0 >str STR-TEST-EDGE 1 >str STR:= 0= STR-ASSERT
+   STR-TEST-EDGE 1 >str STR-TEST-EDGE 0 >str STR:= 0= STR-ASSERT ;
 
 : STR-TEST-ORDER ( -- )
    s" " s" " STR:< 0= STR-ASSERT
@@ -274,8 +273,8 @@ variable STR-TEST-BUF2-LEN
    s" abc" s" ab" STR:< 0= STR-ASSERT
    s" azzz" s" ba" STR:< STR-ASSERT
    s" ba" s" azzz" STR:< 0= STR-ASSERT
-   STR-TEST-ORDER-LOW 2 STR-TEST-ORDER-HIGH 2 STR:< STR-ASSERT
-   STR-TEST-ORDER-HIGH 2 STR-TEST-ORDER-LOW 2 STR:< 0= STR-ASSERT ;
+   STR-TEST-ORDER-LOW 2 >str STR-TEST-ORDER-HIGH 2 >str STR:< STR-ASSERT
+   STR-TEST-ORDER-HIGH 2 >str STR-TEST-ORDER-LOW 2 >str STR:< 0= STR-ASSERT ;
 
 : STR-TEST-INDEX-OF-OPTION ( -- )
    s" abcdef" 100 STR:INDEX-OF MATCH option
@@ -319,7 +318,7 @@ s" abc" s" " 3 STR-FIND-SUB-FROM>N 3 STR-ASSERT=
 s" abc" s" c" 3 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
 s" abc" s" " 4 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
 s" abc" s" a" -1 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
-STR-TEST-EDGE 0 s" a" 5 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
+STR-TEST-EDGE 0 >str s" a" 5 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
 s" abcdef" s" cde" STR:CONTAINS? STR-ASSERT
 s" abcdef" s" " STR:CONTAINS? STR-ASSERT
 s" abcdef" s" xyz" STR:CONTAINS? 0= STR-ASSERT
@@ -338,15 +337,15 @@ s" abcdef" s" " STR:COUNT-SUB 0 STR-ASSERT=
 s" " s" a" STR:COUNT-SUB 0 STR-ASSERT=
 s" ab" s" abc" STR:COUNT-SUB 0 STR-ASSERT=
 s"    abc" STR:LTRIM s" abc" STR-ASSERT$
-STR-TEST-LEFT-WS 5 STR:LTRIM s" abc" STR-ASSERT$
+STR-TEST-LEFT-WS 5 >str STR:LTRIM s" abc" STR-ASSERT$
 s" abc   " STR:RTRIM s" abc" STR-ASSERT$
-STR-TEST-RIGHT-WS 5 STR:RTRIM s" abc" STR-ASSERT$
+STR-TEST-RIGHT-WS 5 >str STR:RTRIM s" abc" STR-ASSERT$
 s"    abc   " STR:TRIM s" abc" STR-ASSERT$
-s"   " STR:TRIM nip 0 STR-ASSERT=
-s" " STR:LTRIM nip 0 STR-ASSERT=
-s" " STR:RTRIM nip 0 STR-ASSERT=
-s" copy" drop STR-TEST-BUF 4 BYTE-COPY
-STR-TEST-BUF 4 s" copy" STR-ASSERT$
+s"   " STR:TRIM STR:LEN 0 STR-ASSERT=
+s" " STR:LTRIM STR:LEN 0 STR-ASSERT=
+s" " STR:RTRIM STR:LEN 0 STR-ASSERT=
+s" copy" STR:DATA STR-TEST-BUF 4 BYTE-COPY
+STR-TEST-BUF 4 >str s" copy" STR-ASSERT$
 STR-TEST-BUF STR-TEST-BUF 0 STR-LEN BYTE-COPY-LEN
 STR-TEST-BUF STR-TEST-BUF 0 BYTE-COPY
 STR-TEST-BUILDER

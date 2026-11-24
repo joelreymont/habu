@@ -1,4 +1,3 @@
-split-str
 \ heap-churn.f - test-only: an allocator takes 100000 blocks of 100 B to 1 MiB,
 \ an octave as likely as another, in an order a seeded draw of 512 slots sets:
 \ an empty slot takes a block, and a full one frees its block or resizes it to
@@ -62,28 +61,28 @@ variable HIGHEST
 
 \ Whether the STRIDE-th cells MARK writes for n bytes hold the mark.
 : STRIDED? ( str n -- bool )
-   {: p:^ len:n w:n :}
-   len CLEAR 0 ?do
-      p i + CELL-VIEW @ w <> if unloop false exit then
+   {: s:str w:n :}
+   s STR:LEN CLEAR 0 ?do
+      s STR:DATA i + CELL-VIEW @ w <> if unloop false exit then
    STRIDE +loop true ;
 
 
 : MARKED? ( str n -- bool )
-   {: p:^ len:n w:n :}
-   p len + CELL - CELL-VIEW @ w =  p len w STRIDED?  and ;
+   {: s:str w:n :}
+   s STR:DATA s STR:LEN + CELL - CELL-VIEW @ w =  s w STRIDED?  and ;
 
 
 : ZEROED? ( str -- bool )
-   {: p:^ len:n :}
-   len CELL >= if p len 0 MARKED? exit then
-   true  len 0 ?do p i + c@ 0= and loop ;
+   {: s:str :}
+   s STR:LEN CELL >= if s 0 MARKED? exit then
+   true  s STR:LEN 0 ?do s STR:DATA i + c@ 0= and loop ;
 
 
 \ Whether a block resized from the first size to the second keeps its marks.
 : KEPT? ( str n n -- bool )
-   {: p:^ old:n new:n w:n :}
-   new old >= if p old w MARKED? exit then
-   p new w STRIDED? ;
+   {: s:str new:n w:n :}
+   new s STR:LEN >= if s w MARKED? exit then
+   s STR:DATA new >str w STRIDED? ;
 
 
 : LIVE+ ( n -- ) LIVE +!  LIVE @ HIGHEST @ max HIGHEST ! ;
@@ -91,10 +90,10 @@ variable HIGHEST
 
 \ Marks a block with a new mark and puts it in a slot.
 : SET-SLOT ( str n -- )
-   {: p:^ len:n i:n :}
+   {: s:str i:n :}
    1 STAMPS +!  STAMPS @ {: w:n :}
-   p len w MARK
-   p i PTRS !  len i SIZES !  w i MARKS ! ;
+   s STR:DATA s STR:LEN w MARK
+   s STR:DATA i PTRS !  s STR:LEN i SIZES !  w i MARKS ! ;
 
 
 : REFUSE ( -- ) [: AL @ HUGE ALLOC:BYTES drop drop ;] catch REFUSAL ! ;
@@ -105,15 +104,15 @@ variable HIGHEST
    TAKEN @ BLOCKS 2 / = if REFUSE then
    SIZE {: len:n :}
    AL @ len ALLOC:BYTES drop {: p:^ :}
-   p len ZEROED? 0= if 1 UNZEROED +! then
+   p len >str ZEROED? 0= if 1 UNZEROED +! then
    1 TAKEN +!  len LIVE+
-   p len i SET-SLOT ;
+   p len >str i SET-SLOT ;
 
 
 : GIVE ( n -- )
    {: i:n :}
    i PTRS @ {: p:^ :}
-   p i SIZES @ i MARKS @ MARKED? 0= if 1 CHANGED +! then
+   p i SIZES @ >str i MARKS @ MARKED? 0= if 1 CHANGED +! then
    AL @ p ALLOC:FREE
    i SIZES @ negate LIVE+
    NULL-PTR i PTRS ! ;
@@ -123,7 +122,7 @@ variable HIGHEST
 : GROWN ( ^u8 n n -- )
    {: q:^ old:n new:n :}
    new old <= if exit then
-   q old + new old - ZEROED? 0= if 1 UNZEROED +! then ;
+   q old + new old - >str ZEROED? 0= if 1 UNZEROED +! then ;
 
 
 : RESIZE-SLOT ( n -- )
@@ -131,10 +130,10 @@ variable HIGHEST
    i SIZES @ {: old:n :}
    SIZE {: new:n :}
    AL @ i PTRS @ old new ALLOC:RESIZE drop {: q:^ :}
-   q old new i MARKS @ KEPT? 0= if 1 CHANGED +! then
+   q old >str new i MARKS @ KEPT? 0= if 1 CHANGED +! then
    q old new GROWN
    new old - LIVE+
-   q new i SET-SLOT ;
+   q new >str i SET-SLOT ;
 
 
 : STEP ( -- )

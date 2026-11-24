@@ -1,4 +1,3 @@
-split-str
 \ sqlite.f - SQLite through libsqlite3, bound through the FFI FUNCTION:
 \ declarer, package SQLITE. A connection is the sqlite3 pointer; only the task
 \ that opened it uses it. A statement is a linear token that lives inside
@@ -102,7 +101,7 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
 : REPORT ( ^u8 -- )
    {: db:^ :}
    LOG-OPEN
-   db LIB-ERRMSG dup ZLEN LOG:TEXT+
+   db LIB-ERRMSG dup ZLEN >str LOG:TEXT+
    s"  (extended code " LOG:TEXT+
    db LIB-EXTENDED LOG:INT+
    s" )" LOG:TEXT+ LOG:;LINE ;
@@ -121,12 +120,12 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
    rc OK <> if rc db FAIL then ;
 
 : MISUSE ( str -- )
-   {: a:^ u:n :}
-   LOG-OPEN a u LOG:TEXT+ LOG:;LINE E-SQL throw ;
+   {: s:str :}
+   LOG-OPEN s LOG:TEXT+ LOG:;LINE E-SQL throw ;
 
 : OUTSIDE ( n str -- )
-   {: v:n a:^ u:n :}
-   LOG-OPEN v LOG:INT+ a u LOG:TEXT+ LOG:;LINE E-SQL throw ;
+   {: v:n s:str :}
+   LOG-OPEN v LOG:INT+ s LOG:TEXT+ LOG:;LINE E-SQL throw ;
 
 \ A count or index SQLite takes as a C int, which would otherwise be cut.
 : C-INT ( n -- n )
@@ -153,33 +152,33 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
 \ ---- opening -------------------------------------------------------------
 
 : NUL? ( str -- bool )
-   {: a:^ u:n :}
-   u 0 ?do a i + c@ 0= if true unloop exit then loop
+   {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ 0= if true unloop exit then loop
    false ;
 
 \ sqlite3_open_v2 answers a handle even when it fails, NULL only when out of
 \ memory; only its close frees it.
 : OPEN-AT ( str n ^u8 NUM:alloc-byte-len -- connection )
-   drop {: a:^ u:n flags:n z:^ :}
-   a z u BYTE-COPY  0 z u + c!
+   drop {: s:str flags:n z:^ :}
+   s STR:DATA z s STR:LEN BYTE-COPY  0 z s STR:LEN + c!
    z OUT-CELL BYTE-VIEW flags NULL-ARG LIB-OPEN
    OUT-CELL @ {: rc:n db:^ :}
    rc OK <> if db REPORT db LIB-CLOSE drop rc CLASS throw then
    db >CONNECTION ;
 
 : OPEN-WITH ( str n -- connection )
-   {: a:^ u:n flags:n :}
-   a u NUL? if s" a path holds a NUL byte" MISUSE then
-   a u flags u 1+ MEM:BYTES-ALLOC-LEN [: OPEN-AT ;] MEM:WITH-BYTES ;
+   {: s:str flags:n :}
+   s NUL? if s" a path holds a NUL byte" MISUSE then
+   s flags s STR:LEN 1+ MEM:BYTES-ALLOC-LEN [: OPEN-AT ;] MEM:WITH-BYTES ;
 
 \ ---- statements ----------------------------------------------------------
 
 \ The text's first statement, NULL when only blanks and comments remain, and
 \ the address after it.
 : PREPARE ( connection str -- ^u8 ^u8 )
-   {: c:connection a:^ u:n :}
+   {: c:connection s:str :}
    c DB {: db:^ :}
-   db a u C-INT OUT-CELL BYTE-VIEW TAIL-CELL BYTE-VIEW LIB-PREPARE
+   db s STR:DATA s STR:LEN C-INT >str OUT-CELL BYTE-VIEW TAIL-CELL BYTE-VIEW LIB-PREPARE
    db CHECK
    OUT-CELL @ TAIL-CELL @ ;
 
@@ -203,20 +202,20 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
    [: stmt DRAIN ;] [: stmt FINALIZE ;] finally ;
 
 : EXEC-NEXT ( str connection -- str )
-   {: a:^ u:n c:connection :}
-   c a u PREPARE {: stmt:^ tail:^ :}
-   stmt NULL-ADDR? if a u + 0 exit then
+   {: s:str c:connection :}
+   c s PREPARE {: stmt:^ tail:^ :}
+   stmt NULL-ADDR? if s STR:DATA s STR:LEN + 0 >str exit then
    stmt RUN-ONE
-   tail  a u + tail - ;
+   tail  s STR:DATA s STR:LEN + tail - >str ;
 
 \ SQLite stops reading a text at its first NUL.
 : WHOLE ( str -- ) NUL? if s" a text holds a NUL byte" MISUSE then ;
 
 \ The text's statement and the address after it.
 : FIRST ( connection str -- ^u8 ^u8 )
-   {: c:connection a:^ u:n :}
-   a u WHOLE
-   c a u PREPARE {: stmt:^ tail:^ :}
+   {: c:connection s:str :}
+   s WHOLE
+   c s PREPARE {: stmt:^ tail:^ :}
    stmt NULL-ADDR? if s" the text holds no statement" MISUSE then
    stmt tail ;
 
@@ -234,9 +233,9 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
 
 \ A zero-length value needs a base: SQLite binds NULL for a NULL one.
 : BASE ( str -- ^u8 )
-   {: a:^ u:n :}
-   u 0= if s" " drop exit then
-   a ;
+   {: s:str :}
+   s STR:LEN 0= if s" " STR:DATA exit then
+   s STR:DATA ;
 
 : COL-CHECK ( ^u8 n -- )
    {: stmt:^ col:n :}
@@ -255,7 +254,7 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
 : COL-BYTES ( ^u8 n ^u8 -- str )
    {: stmt:^ col:n p:^ :}
    p stmt BYTES-CHECK
-   p stmt col LIB-COL-BYTES ;
+   p stmt col LIB-COL-BYTES >str ;
 
 public
 
@@ -279,9 +278,9 @@ public
 
 \ Every statement in the text, in order; their rows are discarded.
 : EXEC ( connection str -- )
-   {: c:connection a:^ u:n :}
-   a u WHOLE
-   a u begin dup 0 > while c EXEC-NEXT repeat 2drop ;
+   {: c:connection s:str :}
+   s WHOLE
+   s begin dup STR:LEN 0 > while c EXEC-NEXT repeat drop ;
 
 \ Rolls back the connection's transaction if one is open: SQLite may have
 \ rolled it back itself already, as it does on FULL.
@@ -299,8 +298,8 @@ private
 \ Begins with the text; a body or COMMIT that fails is rolled back, and its
 \ error goes on.
 : TRANSACTION ( R connection str [ R -- S ] -- S )
-   {: c:connection a:^ u:n body :}
-   c a u EXEC
+   {: c:connection s:str body :}
+   c s EXEC
    c body [: COMMIT-AFTER ;] [: c ROLLBACK-OPEN ;] finally ;
 
 public
@@ -308,9 +307,9 @@ public
 \ The text's one statement, prepared for the body.
 : WITH-STATEMENT
    ( R connection str [ R SQLITE:statement -- S SQLITE:statement ] -- S )
-   {: c:connection a:^ u:n body :}
-   c a u FIRST {: stmt:^ tail:^ :}
-   stmt >STATEMENT body c tail a u + tail -
+   {: c:connection s:str body :}
+   c s FIRST {: stmt:^ tail:^ :}
+   stmt >STATEMENT body c tail s STR:DATA s STR:LEN + tail - >str
    [: RUN-BODY stmt <> if E-HANDLE throw then ;]
    [: stmt FINALIZE ;] finally ;
 
@@ -346,15 +345,15 @@ public
    stmt idx C-INT v LIB-BIND-INT stmt STMT-CHECK ;
 
 : BIND-TEXT ( SQLITE:statement str n -- SQLITE:statement )
-   {: a:^ u:n idx:n :}
+   {: s:str idx:n :}
    PEEK {: stmt:^ :}
-   stmt idx C-INT a u BASE u C-INT TRANSIENT LIB-BIND-TEXT
+   stmt idx C-INT s BASE s STR:LEN C-INT >str TRANSIENT LIB-BIND-TEXT
    stmt STMT-CHECK ;
 
 : BIND-BLOB ( SQLITE:statement str n -- SQLITE:statement )
-   {: a:^ u:n idx:n :}
+   {: s:str idx:n :}
    PEEK {: stmt:^ :}
-   stmt idx C-INT a u BASE u C-INT TRANSIENT LIB-BIND-BLOB
+   stmt idx C-INT s BASE s STR:LEN C-INT >str TRANSIENT LIB-BIND-BLOB
    stmt STMT-CHECK ;
 
 : BIND-NULL ( SQLITE:statement n -- SQLITE:statement )

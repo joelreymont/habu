@@ -1,4 +1,3 @@
-split-str
 \ record.f - machine-readable test failure records.
 \ One TSV line per failing case: TFAIL <layer> <case-id> <label>.
 \ Shared so gate logs and repair loops parse one record shape
@@ -28,9 +27,9 @@ variable TREC-U
 : TREC-PAYLOAD-C ( n -- n )
    dup STR:TAB = over STR:LF = or over STR:CR = or if drop STR:SPACE then ;
 
-: TREC-$+ ( str -- ) {: a:^ u:n :}
-   0 begin dup u < while
-      dup a + c@ TREC-PAYLOAD-C TREC-C+
+: TREC-$+ ( str -- ) {: s:str :}
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ TREC-PAYLOAD-C TREC-C+
       1+
    repeat drop ;
 
@@ -43,19 +42,19 @@ variable TREC-U
    TREC-DIGITS+ ;
 
 : TREC$ ( -- str )
-   TREC-BUF TREC-U @ ;
+   TREC-BUF TREC-U @ >str ;
 
 \ The returned span is TREC-BUF scratch: the next record build clobbers it.
 : TREC-FAIL$ ( str n str -- str )
-   {: la:^ lu:n id:n ba:^ bu:n :}
+   {: ls:str id:n bs:str :}
    TREC-RESET
    s" TFAIL" TREC-$+
    STR:TAB TREC-C+
-   la lu TREC-$+
+   ls TREC-$+
    STR:TAB TREC-C+
    id TREC-N+
    STR:TAB TREC-C+
-   ba bu TREC-$+
+   bs TREC-$+
    TREC$ ;
 
 : TREC-FAIL ( str n str -- )

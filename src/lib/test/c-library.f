@@ -1,4 +1,3 @@
-split-str
 \ c-library.f - a C source file a test writes, compiled to a shared library by
 \ the system compiler. cc inherits this process's environment: its driver finds
 \ ld through PATH. STORAGE CLASS. PROCESS-WIDE: BUILD fills the one argv and
@@ -24,9 +23,9 @@ private
    s" -Werror" PROC-ARGV+ ;
 
 : FAIL ( str -- )
-   {: src:^ srcu :}
+   {: src:str :}
    SB-RESET s" c-library: cc failed on " SB-APPEND
-   src srcu SB-APPEND
+   src SB-APPEND
    SB$ EXIT-STATUS:FAILURE die ;
 
 : RUN ( -- result<n,n> )
@@ -38,14 +37,14 @@ public
 
 \ Compile the source at the first path to the library at the second.
 : BUILD ( str str -- )
-   {: src:^ srcu lib:^ libu :}
+   {: src:str lib:str :}
    PROC-ARGV-ENV-RESET FLAGS
    s" -o" PROC-ARGV+
-   lib libu PROC-ARGV+
-   src srcu PROC-ARGV+
+   lib PROC-ARGV+
+   src PROC-ARGV+
    RUN MATCH result
       ok OF drop ENDOF
-      err OF drop src srcu FAIL ENDOF
+      err OF drop src FAIL ENDOF
    ;MATCH ;
 
 ;package

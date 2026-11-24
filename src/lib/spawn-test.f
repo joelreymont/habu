@@ -1,4 +1,3 @@
-split-str
 \ spawn-test.f - focused tests for src/lib/spawn.f.
 \ Run: bin/hb --load src/lib/spawn-test.f
 \ A script names a child's fd as /dev/fd/N, which dash and macOS sh open for any
@@ -35,24 +34,24 @@ SCRIPT-CAP BUFFER: SCRIPT-BYTES
 variable SCRIPT-LEN
 
 
-: SH ( PROCESS:request ^u8 n -- PROCESS:request )
-   {: script:^ len :}
+: SH ( PROCESS:request str -- PROCESS:request )
+   {: script:str :}
    s" -c" PROCESS:ARG
-   script len PROCESS:ARG ;
+   script PROCESS:ARG ;
 
 
 : FILL$ ( n n -- str )
    {: len c :}
    len 0 ?do c ROW-BYTES i + c! loop
-   ROW-BYTES len ;
+   ROW-BYTES len >str ;
 
 
 : SCRIPT! ( str -- )
-   {: src:^ len :}
-   src SCRIPT-BYTES len BYTE-COPY
-   len SCRIPT-LEN ! ;
+   {: src:str :}
+   src STR:DATA SCRIPT-BYTES src STR:LEN BYTE-COPY
+   src STR:LEN SCRIPT-LEN ! ;
 
-: SCRIPT$ ( -- str ) SCRIPT-BYTES SCRIPT-LEN @ ;
+: SCRIPT$ ( -- str ) SCRIPT-BYTES SCRIPT-LEN @ >str ;
 
 
 : MARKER-AT ( n -- n )
@@ -64,13 +63,13 @@ variable SCRIPT-LEN
    {: fd c :}
    c MARKER-AT {: at :}
    at SCRIPT-LEN @ < 0= if exit then
-   fd FMT:INT$ {: d:^ du :}
-   SCRIPT-LEN @ 1- du + {: len :}
+   fd FMT:INT$ {: d:str :}
+   SCRIPT-LEN @ 1- d STR:LEN + {: len :}
    len SCRIPT-CAP > if s" spawn-test: script too long" EXIT-STATUS:FAILURE die then
    SCRIPT-LEN @ begin 1- dup at > while
-      dup SCRIPT-BYTES + c@ over du + 1- SCRIPT-BYTES + c!
+      dup SCRIPT-BYTES + c@ over d STR:LEN + 1- SCRIPT-BYTES + c!
    repeat drop
-   d SCRIPT-BYTES at + du BYTE-COPY
+   d STR:DATA SCRIPT-BYTES at + d STR:LEN BYTE-COPY
    len SCRIPT-LEN ! ;
 
 
@@ -91,20 +90,20 @@ variable SCRIPT-LEN
    repeat drop
    r FD>N close ;
 
-: OUT$ ( -- ^u8 n ) 0 OUT OUT-LEN @ ;
+: OUT$ ( -- str ) 0 OUT OUT-LEN @ >str ;
 
 : WAIT ( pid -- n ) PROCESS:WAIT PROCESS:STATUS>RC RC>N ;
 
 
-: NAME-LEN ( ^u8 n -- n )
-   {: z:^ u :}
-   0 begin dup u < if dup z + c@ EQUAL-BYTE <> else false then while 1+ repeat ;
+: NAME-LEN ( str -- n )
+   {: z:str :}
+   0 begin dup z STR:LEN < if dup z STR:DATA + c@ EQUAL-BYTE <> else false then while 1+ repeat ;
 
 : SAFE-ROW? ( n -- bool )
-   ENVP dup ZLEN {: z:^ u :}
-   z u NAME-LEN {: nu :}
-   nu 0 > nu u < and
-   z nu s" DYLD_" STR:STARTS-WITH? 0= and ;
+   ENVP dup ZLEN >str {: z:str :}
+   z NAME-LEN {: nu :}
+   nu 0 > nu z STR:LEN < and
+   z STR:DATA nu >str s" DYLD_" STR:STARTS-WITH? 0= and ;
 
 : PARENT-ROW ( -- n )
    0 begin
@@ -112,52 +111,52 @@ variable SCRIPT-LEN
       dup SAFE-ROW? 0= while 1+ repeat ;
 
 : PARENT-NAME$ ( n -- str )
-   ENVP dup ZLEN {: z:^ u :}
-   z z u NAME-LEN ;
+   ENVP dup ZLEN >str {: z:str :}
+   z STR:DATA z NAME-LEN >str ;
 
 : PARENT-VALUE$ ( n -- str )
-   ENVP dup ZLEN {: z:^ u :}
-   z u NAME-LEN {: nu :}
-   z nu + 1+ u nu - 1- ;
+   ENVP dup ZLEN >str {: z:str :}
+   z NAME-LEN {: nu :}
+   z STR:DATA nu + 1+ z STR:LEN nu - 1- >str ;
 
 
 : AT? ( n str -- bool )
-   {: pos s:^ u :}
-   pos u + OUT-LEN @ > if false exit then
-   pos OUT u s u STR:= ;
+   {: pos s:str :}
+   pos s STR:LEN + OUT-LEN @ > if false exit then
+   pos OUT s STR:LEN >str s STR:= ;
 
 : LINE-IS? ( n str -- bool )
-   {: pos s:^ u :}
-   pos s u AT? 0= if false exit then
-   pos u + OUT-LEN @ < if pos u + OUT c@ LF-BYTE = else false then ;
+   {: pos s:str :}
+   pos s AT? 0= if false exit then
+   pos s STR:LEN + OUT-LEN @ < if pos s STR:LEN + OUT c@ LF-BYTE = else false then ;
 
 : PAST-NAME ( n str -- n )
-   {: pos name:^ u :}
-   pos name u AT? 0= if -1 exit then
-   pos u + {: at :}
+   {: pos name:str :}
+   pos name AT? 0= if -1 exit then
+   pos name STR:LEN + {: at :}
    at OUT-LEN @ < if at OUT c@ EQUAL-BYTE = if at 1+ exit then then
    -1 ;
 
 : ROW-LINE? ( n str str -- bool )
-   {: pos name:^ u val:^ vu :}
-   pos name u PAST-NAME dup 0< if drop false exit then
-   val vu LINE-IS? ;
+   {: pos name:str val:str :}
+   pos name PAST-NAME dup 0< if drop false exit then
+   val LINE-IS? ;
 
 : NEXT-LINE ( n -- n )
    begin dup OUT-LEN @ < if dup OUT c@ LF-BYTE <> else false then while 1+ repeat
    1+ ;
 
 : NAME-LINES ( str -- n )
-   {: name:^ u :}
+   {: name:str :}
    0 0 begin dup OUT-LEN @ < while
-      dup name u PAST-NAME 0 >= if swap 1+ swap then
+      dup name PAST-NAME 0 >= if swap 1+ swap then
       NEXT-LINE
    repeat drop ;
 
 : ROW-LINES ( str str -- n )
-   {: name:^ u val:^ vu :}
+   {: name:str val:str :}
    0 0 begin dup OUT-LEN @ < while
-      dup name u val vu ROW-LINE? if swap 1+ swap then
+      dup name val ROW-LINE? if swap 1+ swap then
       NEXT-LINE
    repeat drop ;
 
@@ -281,9 +280,9 @@ variable SCRIPT-LEN
    PROCESS:SPAWN {: pid :}
    w FD>N close
    r DRAIN
-   row PARENT-VALUE$ {: val:^ vu :}
-   OUT-LEN @ vu 1+ T=
-   0 val vu LINE-IS? TTRUE
+   row PARENT-VALUE$ {: val:str :}
+   OUT-LEN @ val STR:LEN 1+ T=
+   0 val LINE-IS? TTRUE
    pid WAIT 0 T= ;
 
 

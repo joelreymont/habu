@@ -1,4 +1,3 @@
-split-str
 \ rejection-text.f - rejection records as text a test compares, package
 \ REJECTION-TEXT. FLAT drops each record's gutter, so expected text holds no
 \ width that moves when lines are added above the record. A record runs from a
@@ -23,45 +22,45 @@ variable IN-RECORD
 
 : EMIT+ ( str -- ) OUT @ VEC:APPEND ;
 
-: HEADER? ( str -- bool ) {: a:^ u:n :}
-   a u s" error[" STR:STARTS-WITH?  a u s" warning[" STR:STARTS-WITH? or ;
+: HEADER? ( str -- bool ) {: s:str :}
+   s s" error[" STR:STARTS-WITH?  s s" warning[" STR:STARTS-WITH? or ;
 
-\ Whether a u begins with the gutter: GUTTER blanks or digits, then a blank.
-: GUTTERED? ( str -- bool ) {: a:^ u:n :}
+\ Whether s begins with the gutter: GUTTER blanks or digits, then a blank.
+: GUTTERED? ( str -- bool ) {: s:str :}
    GUTTER @ {: g:n :}
-   u g <= IF false EXIT THEN
-   a g + c@ 32 <> IF false EXIT THEN
+   s STR:LEN g <= IF false EXIT THEN
+   s STR:DATA g + c@ 32 <> IF false EXIT THEN
    g 0 ?DO
-      a i + c@ {: c:n :}
+      s STR:DATA i + c@ {: c:n :}
       c 32 =  c STR:DIGIT? or 0= IF false unloop EXIT THEN
    LOOP true ;
 
-\ The line a u, its newline excluded, onto OUT, its record's gutter dropped.
-: LINE+ ( str -- ) {: a:^ u:n :}
-   a u HEADER? IF 1 GUTTER !  true IN-RECORD !  a u EMIT+ EXIT THEN
-   IN-RECORD @ 0= IF a u EMIT+ EXIT THEN
-   u 0= IF false IN-RECORD ! EXIT THEN
-   a u STR:LTRIM {: t:^ tu:n :}
-   t tu s" -->" STR:STARTS-WITH? IF u tu - GUTTER !  t tu EMIT+ EXIT THEN
-   a u GUTTERED? IF GUTTER @ 1 + {: g:n :}  a g +  u g -  EMIT+ EXIT THEN
-   a u EMIT+ ;
+\ The line s, its newline excluded, onto OUT, its record's gutter dropped.
+: LINE+ ( str -- ) {: s:str :}
+   s HEADER? IF 1 GUTTER !  true IN-RECORD !  s EMIT+ EXIT THEN
+   IN-RECORD @ 0= IF s EMIT+ EXIT THEN
+   s STR:LEN 0= IF false IN-RECORD ! EXIT THEN
+   s STR:LTRIM {: t:str :}
+   t s" -->" STR:STARTS-WITH? IF s STR:LEN t STR:LEN - GUTTER !  t EMIT+ EXIT THEN
+   s GUTTERED? IF GUTTER @ 1 + {: g:n :}  s STR:DATA g +  s STR:LEN g - >str  EMIT+ EXIT THEN
+   s EMIT+ ;
 
 public
 
-\ The text a u with each record's gutter dropped, valid until the next FLAT,
-\ so a u is never an earlier FLAT's answer.
-: FLAT ( str -- str ) {: a:^ u:n :}
+\ The text s with each record's gutter dropped, valid until the next FLAT,
+\ so s is never an earlier FLAT's answer.
+: FLAT ( str -- str ) {: s:str :}
    OUT @ NULL-PTR = IF HEAP:ALLOCATOR 0 [type] u8 VEC:NEW OUT ! THEN
    OUT @ 0 VEC:RESIZE  false IN-RECORD !  1 GUTTER !
-   a u 10 0 BEGIN STR:SPLIT-NEXT WHILE {: p:^ pu:n next:n :}
-      p pu LINE+
-      next u <= IF 10 OUT @ VEC:PUSH c! THEN
-      a u 10 next
-   REPEAT drop 2drop
+   s 10 0 BEGIN STR:SPLIT-NEXT WHILE {: p:str next:n :}
+      p LINE+
+      next s STR:LEN <= IF 10 OUT @ VEC:PUSH c! THEN
+      s 10 next
+   REPEAT drop drop
    OUT @ VEC:SPAN SPAN:$ ;
 
-\ Whether text a u, its records' gutters dropped, holds e eu.
-: HAS? ( str str -- bool ) {: a:^ u:n e:^ eu:n :}
-   a u FLAT e eu STR:CONTAINS? ;
+\ Whether text s, its records' gutters dropped, holds e.
+: HAS? ( str str -- bool ) {: s:str e:str :}
+   s FLAT e STR:CONTAINS? ;
 
 ;package

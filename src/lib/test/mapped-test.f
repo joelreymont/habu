@@ -1,4 +1,3 @@
-split-str
 \ mapped-test.f - the mapped-span witness must answer both ways.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \ src/lib/test/mapped.f src/lib/test/mapped-test.f
@@ -20,15 +19,15 @@ create MPT-STATIC MPT-SPAN allot
 \ went blind once any release happened, fails one of these six assertions.
 : MPT-CASES ( -- )
    MPT-STATIC MAPPED:LIVE? TTRUE
-   MPT-SPAN MEM-ALLOC-64K-SPAN {: a:^ acap:n :}
-   MPT-SPAN MEM-ALLOC-64K-SPAN {: b:^ bcap:n :}
-   a MAPPED:LIVE? TTRUE
-   b MAPPED:LIVE? TTRUE
-   a acap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
-   a MAPPED:LIVE? TFALSE
-   b MAPPED:LIVE? TTRUE
-   b bcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
-   b MAPPED:LIVE? TFALSE
+   MPT-SPAN MEM-ALLOC-64K-SPAN {: a:str :}
+   MPT-SPAN MEM-ALLOC-64K-SPAN {: b:str :}
+   a STR:DATA MAPPED:LIVE? TTRUE
+   b STR:DATA MAPPED:LIVE? TTRUE
+   a STR:DATA a STR:LEN MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
+   a STR:DATA MAPPED:LIVE? TFALSE
+   b STR:DATA MAPPED:LIVE? TTRUE
+   b STR:DATA b STR:LEN MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
+   b STR:DATA MAPPED:LIVE? TFALSE
    MPT-STATIC MAPPED:LIVE? TTRUE ;
 
 1 TYPED-BUFFER MPT-KEPT ^u8

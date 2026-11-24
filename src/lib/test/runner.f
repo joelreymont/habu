@@ -1,4 +1,3 @@
-split-str
 \ runner.f - checked process-fixture helpers for native test scripts: GT-START
 \ makes a cleanup-tracked root under TMPDIR, GT-RUN captures a child's whole
 \ output, GT-FAIL+ records a named failure and GT-REPORT exits
@@ -58,7 +57,7 @@ variable GT-PROGRESS-START-NS
 
 : GT-FAIL-NAME$ ( n -- str ) {: idx :}
    idx GT-FAIL-SLOT
-   idx GT-FAIL-U-PTR @ ;
+   idx GT-FAIL-U-PTR @ >str ;
 
 : GT-RESET ( -- )
    0 GT-OUT-U !
@@ -69,13 +68,13 @@ variable GT-PROGRESS-START-NS
    0 GT-FAIL# ! ;
 
 : GT-ROOT ( -- str )
-   GT-ROOT-BUF GT-ROOT-U @ ;
+   GT-ROOT-BUF GT-ROOT-U @ >str ;
 
 : GT-OUT$ ( -- str )
-   0 GT-OUT-BYTES GT-OUT-U @ ;
+   0 GT-OUT-BYTES GT-OUT-U @ >str ;
 
 : GT-ERR$ ( -- str )
-   0 GT-ERR-BYTES GT-ERR-U @ ;
+   0 GT-ERR-BYTES GT-ERR-U @ >str ;
 
 \ A growing capture's sinks: room for n bytes of stdout or stderr, the bytes
 \ captured so far kept.
@@ -91,44 +90,44 @@ variable GT-PROGRESS-START-NS
 : GT-EXPECT-ROOT ( -- )
    GT-ROOT-U @ 0 <= if E-FS-PATH throw then ;
 
-: GT-COPY-ROOT! ( str -- ) {: a:^ u :}
-   u 0 < if E-FS-PATH throw then
-   u PATH-CAP > if E-FS-PATH throw then
-   a GT-ROOT-BUF u BYTE-COPY
-   u GT-ROOT-U ! ;
+: GT-COPY-ROOT! ( str -- ) {: s:str :}
+   s STR:LEN 0 < if E-FS-PATH throw then
+   s STR:LEN PATH-CAP > if E-FS-PATH throw then
+   s STR:DATA GT-ROOT-BUF s STR:LEN BYTE-COPY
+   s STR:LEN GT-ROOT-U ! ;
 
 : GT-CLEANUP ( -- )
    FS:CLEANUP-RUN ;
 
-: GT-PATH ( str ^u8 -- n ) {: name:^ nameu dst:^ :}
+: GT-PATH ( str ^u8 -- n ) {: name:str dst:^ :}
    GT-EXPECT-ROOT
-   nameu GT-NAME-MAX > if E-FS-CAPACITY throw then
-   GT-ROOT name nameu dst FS:JOIN-PATH ;
+   name STR:LEN GT-NAME-MAX > if E-FS-CAPACITY throw then
+   GT-ROOT name dst FS:JOIN-PATH ;
 
 : GT-FAIL-STORED ( -- n )
    GT-FAIL# @ GT-FAIL-MAX > if GT-FAIL-MAX exit then
    GT-FAIL# @ ;
 
-: GT-FAIL-NAME! ( str -- ) {: name:^ nameu:n :}
+: GT-FAIL-NAME! ( str -- ) {: name:str :}
    GT-FAIL# @ GT-FAIL-MAX >= if exit then
-   name GT-FAIL# @ GT-FAIL-SLOT nameu BYTE-COPY
-   nameu GT-FAIL# @ GT-FAIL-U-PTR ! ;
+   name STR:DATA GT-FAIL# @ GT-FAIL-SLOT name STR:LEN BYTE-COPY
+   name STR:LEN GT-FAIL# @ GT-FAIL-U-PTR ! ;
 
-: GT-FAIL+ ( str -- ) {: name:^ nameu:n :}
-   nameu 0 < if E-TBL-FIELD throw then
-   nameu GT-FAIL-NAME-CAP > if E-TBL-FIELD throw then
-   name nameu GT-FAIL-NAME!
+: GT-FAIL+ ( str -- ) {: name:str :}
+   name STR:LEN 0 < if E-TBL-FIELD throw then
+   name STR:LEN GT-FAIL-NAME-CAP > if E-TBL-FIELD throw then
+   name GT-FAIL-NAME!
    GT-FAIL# @ 1+ GT-FAIL# !
-   s" runner" GT-FAIL# @ name nameu TREC-FAIL ;
+   s" runner" GT-FAIL# @ name TREC-FAIL ;
 
-: GT-CHECK ( bool str -- ) {: ok name:^ nameu :}
-   ok 0= if name nameu GT-FAIL+ then ;
+: GT-CHECK ( bool str -- ) {: ok name:str :}
+   ok 0= if name GT-FAIL+ then ;
 
 \ A failure prints both sides, the evidence a bool would lose, on one line
 \ after the TFAIL record: FMT:.INT, since `.` ends its text with a newline.
-: GT-CHECK-N ( n n str -- ) {: got:n want:n name:^ nameu:n :}
+: GT-CHECK-N ( n n str -- ) {: got:n want:n name:str :}
    got want <> if
-      name nameu GT-FAIL+
+      name GT-FAIL+
       s" runner: expected " type want FMT:.INT
       s"  got " type got FMT:.INT
       cr
@@ -156,9 +155,9 @@ variable GT-PROGRESS-START-NS
 \ A test's child: path with the argv the caller staged. The child inherits this
 \ process's environment, so the scratch it makes lies under the TMPDIR this run
 \ was given.
-: GT-RUN ( str n -- ) {: path:^ pathu timeout :}
+: GT-RUN ( str n -- ) {: path:str timeout :}
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
-   path pathu s" " [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;] timeout >MS
+   path s" " [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;] timeout >MS
    RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    GT-STORE-RUN ;
 
@@ -204,13 +203,13 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 \ held, for reading from its start (the reader). It is unlinked before either
 \ comes back; on a throw nothing is held.
 : GT-CAP-FILE ( str str -- n n )
-   {: dir:^ diru:n name:^ nameu:n :}
-   dir diru name nameu GT-CAP-PATH FS:JOIN-PATH {: pathu:n :}
-   GT-CAP-PATH pathu FS:>PATHZ
+   {: dir:str name:str :}
+   dir name GT-CAP-PATH FS:JOIN-PATH {: pathu:n :}
+   GT-CAP-PATH pathu >str FS:>PATHZ
    FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:O-APPEND or FS:MODE-0644 open {: wr:n :}
    wr 0 < if E-FS-OPEN throw then
-   GT-CAP-PATH pathu FS:>PATHZ open-rd {: opened:n :}
-   GT-CAP-PATH pathu FS:>PATHZ unlink {: gone:n :}
+   GT-CAP-PATH pathu >str FS:>PATHZ open-rd {: opened:n :}
+   GT-CAP-PATH pathu >str FS:>PATHZ unlink {: gone:n :}
    opened 0 < if wr close E-FS-OPEN throw then
    opened GT-CAP-DUP {: rd:n :}
    opened close
@@ -221,11 +220,11 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 \ fd writes to a new file named name under dir; fd's row keeps the stream fd
 \ held before and the file's reader.
 : GT-CAP-REDIRECT ( str str n -- )
-   {: dir:^ diru:n name:^ nameu:n fd:n :}
+   {: dir:str name:str fd:n :}
    fd GT-CAP-DUP {: kept:n :}
    kept 0 < if E-PROC-OUTPUT throw then
    kept fd GT-CAP-SAVE !
-   dir diru name nameu GT-CAP-FILE {: wr:n rd:n :}
+   dir name GT-CAP-FILE {: wr:n rd:n :}
    rd fd GT-CAP-READER !
    wr fd dup2 {: moved:n :}
    wr close-rc {: closed:n :}
@@ -284,9 +283,9 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 \ The files are read with the action's streams still on them; GT-CAP-LEAVE
 \ gives the streams back after the read, on its path and on every throw.
 : GT-CAP-RUN ( [ -- ] str [ n -- ^u8 ] [ n -- ^u8 ] -- len len n )
-   {: q dir:^ diru:n out err :}
-   dir diru s" capture-out.txt" FD:STDOUT FD>N GT-CAP-REDIRECT
-   dir diru s" capture-err.txt" FD:STDERR FD>N GT-CAP-REDIRECT
+   {: q dir:str out err :}
+   dir s" capture-out.txt" FD:STDOUT FD>N GT-CAP-REDIRECT
+   dir s" capture-err.txt" FD:STDERR FD>N GT-CAP-REDIRECT
    q catch {: code:n :}
    FD:STDOUT FD>N GT-CAP-READER @ out GT-CAP-READ
    FD:STDERR FD>N GT-CAP-READER @ err GT-CAP-READ
@@ -295,15 +294,15 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 \ Runs the quotation in this process, its stdout and stderr captured through the
 \ two sinks; a child's capture is GT-RUN.
 : GT-CAPTURE-ACTION ( [ -- ] str [ n -- ^u8 ] [ n -- ^u8 ] -- len len n )
-   {: q dir:^ diru:n out err :}
-   diru 0 <= if E-FS-PATH throw then
+   {: q dir:str out err :}
+   dir STR:LEN 0 <= if E-FS-PATH throw then
    GT-CAP-ENTER
-   q dir diru out err [: GT-CAP-RUN ;] [: GT-CAP-LEAVE ;] finally ;
+   q dir out err [: GT-CAP-RUN ;] [: GT-CAP-LEAVE ;] finally ;
 
 \ Call before a long subcheck and GT-PROGRESS-PASS after it.
-: GT-PROGRESS-RUN ( str -- ) {: label:^ labelu :}
+: GT-PROGRESS-RUN ( str -- ) {: label:str :}
    mono-ns GT-PROGRESS-START-NS !
-   s" RUN: " type label labelu type cr ;
+   s" RUN: " type label type cr ;
 
 : GT-PROGRESS-ELAPSED-MS ( -- n )
    mono-ns GT-PROGRESS-START-NS @ - PROCESS:NS-PER-MS / ;
@@ -313,8 +312,8 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    n 10 >= if n 10 / RECURSE then
    n 10 mod STR:ZERO + emit ;
 
-: GT-PROGRESS-PASS ( str -- ) {: label:^ labelu :}
-   s" PASS: " type label labelu type
+: GT-PROGRESS-PASS ( str -- ) {: label:str :}
+   s" PASS: " type label type
    s"  (" type
    GT-PROGRESS-ELAPSED-MS GT-U-TYPE
    s" ms)" type cr ;
@@ -322,11 +321,11 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 : GT-RC@ ( -- n )
    GT-OUTCOME@ PROCESS:ENDING>RC RC>N ;
 
-: GT-RC= ( n str -- ) {: want name:^ nameu :}
-   GT-RC@ want name nameu GT-CHECK-N ;
+: GT-RC= ( n str -- ) {: want name:str :}
+   GT-RC@ want name GT-CHECK-N ;
 
-: GT-STDOUT-HAS ( str str -- ) {: needle:^ needleu name:^ nameu :}
-   GT-OUT$ needle needleu STR:CONTAINS? name nameu GT-CHECK ;
+: GT-STDOUT-HAS ( str str -- ) {: needle:str name:str :}
+   GT-OUT$ needle STR:CONTAINS? name GT-CHECK ;
 
 : GT-REPORT-OVERFLOW ( -- )
    GT-FAIL# @ GT-FAIL-MAX > if
@@ -366,7 +365,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 \ PATHZ-INTO), so a gate TMPDIR must be short enough to leave it room. An
 \ empty TMPDIR counts as the /tmp FS:MKTEMP-DIR then uses.
 : GT-ROOM-CHECK ( n -- ) {: prefixu:n :}
-   s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then nip {: tmpu:n :}
+   s" TMPDIR" GETENV dup STR:LEN 0= if drop s" /tmp" then STR:LEN {: tmpu:n :}
    prefixu GT-TMPDIR-MAX {: max:n :}
    tmpu max <= if exit then
    s" TMPDIR leaves the test root no room" GT-FAIL+
@@ -377,10 +376,10 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    cr
    GT-REPORT ;
 
-: GT-START ( str -- ) {: prefix:^ prefixu :}
+: GT-START ( str -- ) {: prefix:str :}
    GT-RESET
    FS:CLEANUP-RESET
    0 GT-ROOT-U !
-   prefixu GT-ROOM-CHECK
-   prefix prefixu FS:MKTEMP-DIR GT-COPY-ROOT!
+   prefix STR:LEN GT-ROOM-CHECK
+   prefix FS:MKTEMP-DIR GT-COPY-ROOT!
    GT-ROOT FS:CLEANUP-TREE+ ;

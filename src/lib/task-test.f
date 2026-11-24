@@ -1,4 +1,3 @@
-split-str
 \ task-test.f - CPU tasking smoke, isolation, and exit fixtures.
 \
 \ The claim TASK:SLEEP makes is not "it waited" - a PAUSE loop waits too - but
@@ -167,7 +166,7 @@ variable BUILD-FMT-READY
 : TASK-WORK-A ( -- )
    11 TASK-USER-CELL !
    11 1 TASK-USER-ROW !
-   s" a" drop TASK-USER-TEXT !
+   s" a" STR:DATA TASK-USER-TEXT !
    11 TASK-USER-PAIR TASK-PAIR-FIRST !
    12 TASK-USER-PAIR TASK-PAIR-SECOND !
    TASK:SELF-N TASK-SELF-A !
@@ -177,7 +176,7 @@ variable BUILD-FMT-READY
 : TASK-WORK-B ( -- )
    22 TASK-USER-CELL !
    22 1 TASK-USER-ROW !
-   s" b" drop TASK-USER-TEXT !
+   s" b" STR:DATA TASK-USER-TEXT !
    22 TASK-USER-PAIR TASK-PAIR-FIRST !
    23 TASK-USER-PAIR TASK-PAIR-SECOND !
    TASK:SELF-N TASK-SELF-B !
@@ -229,13 +228,13 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    APP-SHARED @ v + APP-SHARED !
    APP-LOCK TASK:RELEASE ;
 
-: APP-ACQ-WORK ( n str ^n -- ) {: id:n cstr:^ want:n done:^ :}
+: APP-ACQ-WORK ( n str ^n -- ) {: id:n cstr:str done:^ :}
    id TASK-LOCAL-ID !
    0 TASK-LOCAL-FFI !
    APP-ITERS 0 ?do
       id TASK-LOCAL-ID !
-      cstr TASK-CSTRLEN dup TASK-LOCAL-FFI !
-      dup want <> if APP-BAD+ then
+      cstr STR:DATA TASK-CSTRLEN dup TASK-LOCAL-FFI !
+      dup cstr STR:LEN <> if APP-BAD+ then
       APP-FFI-TOTAL atomic-add drop
       TASK-LOCAL-ID @ id <> if APP-BAD+ then
       id 1 + APP-SHARED+
@@ -243,16 +242,16 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    1 done atomic! ;
 
 : APP-ACQ0-WORK ( -- )
-   0 APP-CSTR1 1 APP-ACQ0-DONE APP-ACQ-WORK ;
+   0 APP-CSTR1 1 >str APP-ACQ0-DONE APP-ACQ-WORK ;
 
 : APP-ACQ1-WORK ( -- )
-   1 APP-CSTR2 2 APP-ACQ1-DONE APP-ACQ-WORK ;
+   1 APP-CSTR2 2 >str APP-ACQ1-DONE APP-ACQ-WORK ;
 
 : APP-ACQ2-WORK ( -- )
-   2 APP-CSTR3 3 APP-ACQ2-DONE APP-ACQ-WORK ;
+   2 APP-CSTR3 3 >str APP-ACQ2-DONE APP-ACQ-WORK ;
 
 : APP-ACQ3-WORK ( -- )
-   3 APP-CSTR4 4 APP-ACQ3-DONE APP-ACQ-WORK ;
+   3 APP-CSTR4 4 >str APP-ACQ3-DONE APP-ACQ-WORK ;
 
 : APP-ACQ-WAIT ( -- )
    APP-ACQ0-DONE 1 APP-ACQ0 TEST-WAIT:FOR-CELL
@@ -568,11 +567,11 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" W PC TASK:HIS W PA TASK:HIS - CELL - ." SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-SPAWN-EXITS ( str n -- len len ) {: src:^ srcu:n want:n :}
-   ENGINE-CANDIDATE:PATH$ src srcu
+: TASK-SPAWN-EXITS ( str n -- len len ) {: src:str want:n :}
+   ENGINE-CANDIDATE:PATH$ src
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
-   src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-ENDING-EXITED=
+   src TASK-OUT outu LEN>N >str TASK-ERR erru LEN>N >str oc want T-ENDING-EXITED=
    outu erru ;
 
 : TASK-RUN-EXITS ( str n -- len len )
@@ -588,34 +587,34 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 : TASK-TEST-MAIN-COMPILES ( -- )
    TASK-MAIN-COMPILES$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" 301\n" T$=
+   TASK-OUT outu LEN>N >str S\" 301\n" T$=
    erru LEN>N 0 T= ;
 
 \ The record's first line, which names the primitive; answers stderr's length.
 : TASK-REJECTED-ERR ( str str -- len )
-   {: src:^ srcu:n line:^ lineu:n :}
-   src srcu 79 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" 7\n" T$=
-   TASK-ERR erru LEN>N line lineu STR:STARTS-WITH? TTRUE
+   {: src:str line:str :}
+   src 79 TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-OUT outu LEN>N >str S\" 7\n" T$=
+   TASK-ERR erru LEN>N >str line STR:STARTS-WITH? TTRUE
    erru ;
 
 \ The record's first line and its note `in`, the word that called the
 \ primitive.
 : TASK-EXPECT-REJECTED-IN ( str str str -- )
-   {: src:^ srcu:n line:^ lineu:n in:^ inu:n :}
-   src srcu line lineu TASK-REJECTED-ERR {: erru:len :}
-   TASK-ERR erru LEN>N in inu STR:CONTAINS? TTRUE ;
+   {: src:str line:str in:str :}
+   src line TASK-REJECTED-ERR {: erru:len :}
+   TASK-ERR erru LEN>N >str in STR:CONTAINS? TTRUE ;
 
 \ A body kept by TASK:ACTIVATE that does more than its type states: status
 \ 70 at the keeping site, before the program prints.
 : TASK-EXPECT-KEPT ( str str -- )
-   {: src:^ srcu:n site:^ siteu:n :}
-   src srcu 70 TASK-RUN-EXITS {: outu:len erru:len :}
+   {: src:str site:str :}
+   src 70 TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
-   TASK-ERR erru LEN>N
+   TASK-ERR erru LEN>N >str
    s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
    STR:STARTS-WITH? TTRUE
-   TASK-ERR erru LEN>N site siteu STR:CONTAINS? TTRUE ;
+   TASK-ERR erru LEN>N >str site STR:CONTAINS? TTRUE ;
 
 : TASK-TEST-TASK-COMPILES ( -- )
    TASK-COMPILES$ s" --> <input>:4:23" TASK-EXPECT-KEPT ;
@@ -633,18 +632,18 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 : TASK-TEST-ROLLBACK-LIVE ( -- )
    TASK-ROLLBACK-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" -1\n771\n" T$=
-   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" STR:CONTAINS? TTRUE ;
+   TASK-OUT outu LEN>N >str S\" -1\n771\n" T$=
+   TASK-ERR erru LEN>N >str s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" STR:CONTAINS? TTRUE ;
 
 : TASK-TEST-SCOPED-LIVE ( -- )
    TASK-SCOPED-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" -1\n-1\n" T$=
-   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `RS-R`" STR:CONTAINS? TTRUE ;
+   TASK-OUT outu LEN>N >str S\" -1\n-1\n" T$=
+   TASK-ERR erru LEN>N >str s" error[E-UNDEFINED]: cannot find word `RS-R`" STR:CONTAINS? TTRUE ;
 
-: TASK-EXPECT-FAIL ( str n str -- ) {: src:^ srcu:n want:n needle:^ needleu:n :}
-   src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
+: TASK-EXPECT-FAIL ( str n str -- ) {: src:str want:n needle:str :}
+   src want TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
-   TASK-ERR erru LEN>N needle needleu STR:CONTAINS? TTRUE ;
+   TASK-ERR erru LEN>N >str needle STR:CONTAINS? TTRUE ;
 
 : TASK-TEST-WORKER-DIE ( -- )
    TASK-DIE$ 98 s" task died" TASK-EXPECT-FAIL ;
@@ -665,17 +664,17 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 : BUILD-SB-ROUND ( n -- ) {: c :}
    SB-RESET
    BUILD-RUN 0 do c SB-APPEND-C TASK:PAUSE loop
-   SB$ {: a:^ u :}
-   u BUILD-RUN <> if BUILD-BAD+ exit then
-   u 0 do a i + c@ c <> if BUILD-BAD+ unloop exit then loop ;
+   SB$ {: a:str :}
+   a STR:LEN BUILD-RUN <> if BUILD-BAD+ exit then
+   a STR:LEN 0 do a STR:DATA i + c@ c <> if BUILD-BAD+ unloop exit then loop ;
 
 \ Render my own value and read the builder back as a decimal: another task's
 \ digits, or its cursor, answer a different number.
 : BUILD-FMT-ROUND ( n -- ) {: v :}
    SB-RESET v FMT:SB-U
-   SB$ {: a:^ u :}
-   0 0 begin dup u < while
-      swap 10 * over a + c@ STR:ZERO - + swap 1+
+   SB$ {: a:str :}
+   0 0 begin dup a STR:LEN < while
+      swap 10 * over a STR:DATA + c@ STR:ZERO - + swap 1+
    repeat drop
    v <> if BUILD-BAD+ then ;
 
@@ -699,31 +698,31 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    BUILD-B TASK:JOIN 0 JOIN-OK=
    BUILD-BAD @ 0 T= ;
 
-: TASK-EXPECT-SILENT-OK ( str -- ) {: src:^ srcu:n :}
-   src srcu 0 TASK-RUN-EXITS {: outu:len erru:len :}
+: TASK-EXPECT-SILENT-OK ( str -- ) {: src:str :}
+   src 0 TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru LEN>N 0 T= ;
 
 : TASK-TEST-USER-SLOTS ( -- )
    TASK-USER-BIG$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" 77\n0\n" T$=
+   TASK-OUT outu LEN>N >str S\" 77\n0\n" T$=
    erru LEN>N 0 T=
    TASK-USER-LATE$ 0 TASK-RUN-EXITS {: lateu:len laterr:len :}
-   TASK-OUT lateu LEN>N S\" 77\n0\n-1\n-1\n" T$=
+   TASK-OUT lateu LEN>N >str S\" 77\n0\n-1\n-1\n" T$=
    laterr LEN>N 0 T=
-   E-TASK-USER TEST-EVAL:THROWN-HEAD$ {: needle:^ needleu:n :}
-   TASK-USER-WRAP$ 67 needle needleu TASK-EXPECT-FAIL
+   E-TASK-USER TEST-EVAL:THROWN-HEAD$ {: needle:str :}
+   TASK-USER-WRAP$ 67 needle TASK-EXPECT-FAIL
    TASK-USER-LIVE$ 0 TASK-RUN-EXITS {: liveu:len liverr:len :}
-   TASK-OUT liveu LEN>N S\" -1\n" T$=
-   TASK-ERR liverr LEN>N s" error[E-UNDEFINED]: cannot find word `LIVE`" STR:CONTAINS? TTRUE
+   TASK-OUT liveu LEN>N >str S\" -1\n" T$=
+   TASK-ERR liverr LEN>N >str s" error[E-UNDEFINED]: cannot find word `LIVE`" STR:CONTAINS? TTRUE
    TASK-USER-HUGE$ 0 TASK-RUN-EXITS {: hugeu:len hugerr:len :}
-   TASK-OUT hugeu LEN>N S\" -9850\n-1\n-1\n70\n-9850\n-9850\n5\n0\n" T$=
-   TASK-ERR hugerr LEN>N s" error[E-BAD-STORAGE]: the type of `PT` names no known type" STR:CONTAINS? TTRUE
-   TASK-ERR hugerr LEN>N s" error[E-UNDEFINED]: cannot find word `PT`" STR:CONTAINS? TTRUE ;
+   TASK-OUT hugeu LEN>N >str S\" -9850\n-1\n-1\n70\n-9850\n-9850\n5\n0\n" T$=
+   TASK-ERR hugerr LEN>N >str s" error[E-BAD-STORAGE]: the type of `PT` names no known type" STR:CONTAINS? TTRUE
+   TASK-ERR hugerr LEN>N >str s" error[E-UNDEFINED]: cannot find word `PT`" STR:CONTAINS? TTRUE ;
 
 : TASK-TEST-ROLLBACK-SLOT ( -- )
    TASK-ROLLBACK-SLOT$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" 1\n5\n7\n8\n" T$=
+   TASK-OUT outu LEN>N >str S\" 1\n5\n7\n8\n" T$=
    erru LEN>N 0 T= ;
 
 : TASK-USER-REEXPORT$ ( -- str )
@@ -745,7 +744,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" a re-exported +USER and +USERS declare slots" T-LABEL
    TASK-USER-REEXPORT$ 0 TASK-CHECK-EXITS nip LEN>N 0 T=
    TASK-USER-REEXPORT$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" 12\n" T$=
+   TASK-OUT outu LEN>N >str S\" 12\n" T$=
    erru LEN>N 0 T=
    T-LABEL-CLEAR ;
 
@@ -1873,11 +1872,11 @@ $C3 constant B-RET
 512 constant ENTRY-BYTE-CAP
 
 : ENTRY-W32@ ( n -- n ) {: a:n :}
-   a 4 CODE-BYTES:AT drop {: p:^ :}
+   a 4 CODE-BYTES:AT STR:DATA {: p:^ :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
 : ENTRY-B8@ ( n -- n ) {: a:n :}
-   a 1 CODE-BYTES:AT drop c@ ;
+   a 1 CODE-BYTES:AT STR:DATA c@ ;
 
 variable ENTRY-STLR-ANY               \ release stores of any shape
 variable ENTRY-STLR-DONE              \ STLR x10,[x11] - the DONE publication
@@ -2274,8 +2273,8 @@ variable BIND-PAIR-Q-WON
 
 : TASK-TEST-WORKER-ACTIVATES ( -- )
    TASK-WORKER-ACTIVATES$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" -1\n771\n" T$=
-   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" STR:CONTAINS? TTRUE ;
+   TASK-OUT outu LEN>N >str S\" -1\n771\n" T$=
+   TASK-ERR erru LEN>N >str s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" STR:CONTAINS? TTRUE ;
 
 $30 constant NEW-N                   \ past one pool chunk of 42 records
 300 constant NEW-ROUNDS
@@ -2493,8 +2492,8 @@ variable NEW-STRAY
    1 TASK-USER-ROW @ 99 T=
    WORKER-A 1 TASK-USER-ROW TASK:HIS @ 11 T=
    WORKER-B 1 TASK-USER-ROW TASK:HIS @ 22 T=
-   WORKER-A TASK-USER-TEXT TASK:HIS @ 1 s" a" T$=
-   WORKER-B TASK-USER-TEXT TASK:HIS @ 1 s" b" T$=
+   WORKER-A TASK-USER-TEXT TASK:HIS @ 1 >str s" a" T$=
+   WORKER-B TASK-USER-TEXT TASK:HIS @ 1 >str s" b" T$=
    WORKER-A TASK-USER-PAIR TASK:HIS TASK-PAIR-FIRST @ 11 T=
    WORKER-A TASK-USER-PAIR TASK:HIS TASK-PAIR-SECOND @ 12 T=
    WORKER-B TASK-USER-PAIR TASK:HIS TASK-PAIR-FIRST @ 22 T=

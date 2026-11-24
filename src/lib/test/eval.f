@@ -1,4 +1,3 @@
-split-str
 \ eval.f - typed values and throw codes out of evaluated test text, package
 \ TEST-EVAL, loaded by src/lib/test.f. N, FLAG and RC take one cell, a flag or the
 \ throw code out of a source text under `evaluate-closed`, so a test needs no
@@ -19,9 +18,9 @@ variable SRC-U
 variable N-CELL
 TYPED-VARIABLE FLAG-CELL bool
 
-: SRC! ( str -- )
-   SRC-U !
-   SRC-A ! ;
+: SRC! ( str -- ) {: s:str :}
+   s STR:LEN SRC-U !
+   s STR:DATA SRC-A ! ;
 
 \ A code's name is at most 255 bytes; a longer text throws E-STR-CAPACITY.
 $400 constant HEAD-CAP
@@ -36,7 +35,7 @@ public
 \ SRC$, N! and FLAG! are the hooks of the closed texts below, which run in the
 \ caller's scope and so reach them only qualified. Callers use N, FLAG, RC.
 : SRC$ ( -- str )
-   SRC-A @ SRC-U @ ;
+   SRC-A @ SRC-U @ >str ;
 
 : N! ( n -- )
    N-CELL ! ;
@@ -71,15 +70,15 @@ public
 \ caller's SB survives it; the next call overwrites it.
 : THROWN-HEAD$ ( n -- str )
    {: c:n :}
-   c ERROR:NAME$ {: name:^ nameu:n :}
-   c ERROR:TEXT$ {: text:^ textu:n :}
+   c ERROR:NAME$ {: name:str :}
+   c ERROR:TEXT$ {: text:str :}
    HEAD-LEN BUF-RESET
    s" error[" HEAD+
-   nameu 0= if s" E-THROW" HEAD+ else name nameu HEAD+ then
+   name STR:LEN 0= if s" E-THROW" HEAD+ else name HEAD+ then
    s" ]: " HEAD+
-   textu 0= if
+   text STR:LEN 0= if
       s" nothing caught a throw of code " HEAD+  c FMT:INT$ HEAD+
-   else text textu HEAD+ then
-   HEAD-BUF HEAD-LEN BUF-LEN@ ;
+   else text HEAD+ then
+   HEAD-BUF HEAD-LEN BUF-LEN@ >str ;
 
 ;package

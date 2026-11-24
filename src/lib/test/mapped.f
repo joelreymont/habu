@@ -1,4 +1,3 @@
-split-str
 \ mapped.f - test-only witnesses: is a byte span still mapped, and did a body
 \ release the mappings it took? A growth path proves its release by the old
 \ span's absence: write(2) from an unmapped source answers EFAULT, from a mapped
@@ -20,17 +19,17 @@ create SINK-DIR PATH-CAP allot
 create SINK-PATH PATH-CAP allot
 variable SINK-FD
 
-: DIR! ( str -- n ) {: a:^ u:n :}
-   a SINK-DIR u BYTE-COPY
-   u ;
+: DIR! ( str -- n ) {: s:str :}
+   s STR:DATA SINK-DIR s STR:LEN BYTE-COPY
+   s STR:LEN ;
 
 : OPEN-SINK ( -- n )
    s" habu-mapped" FS:MKTEMP-DIR DIR! {: du:n :}
-   SINK-DIR du s" sink" SINK-PATH FS:JOIN-PATH {: u:n :}
-   SINK-PATH u FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
+   SINK-DIR du >str s" sink" SINK-PATH FS:JOIN-PATH {: u:n :}
+   SINK-PATH u >str FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
-   SINK-PATH u FS:REMOVE-FILE
-   SINK-DIR du FS:REMOVE-DIR
+   SINK-PATH u >str FS:REMOVE-FILE
+   SINK-DIR du >str FS:REMOVE-DIR
    fd SINK-FD !
    fd ;
 
@@ -66,7 +65,7 @@ HOLE-COUNT TYPED-BUFFER HOLE-AT ^u8
 public
 
 : LIVE? ( ^u8 -- bool )
-   SINK swap 1 write 0 > ;
+   SINK swap 1 >str write 0 > ;
 
 \ Whether eight freed one-page probes map again where they were after the
 \ body: a leaked page takes a hole, a wider leak only where enough adjoin.

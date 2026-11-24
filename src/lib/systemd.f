@@ -1,4 +1,3 @@
-split-str
 \ systemd.f - tells systemd's service manager a service is ready, or that its
 \ start or stop needs longer, by the sd_notify(3) protocol: the datagram
 \ READY=1 or EXTEND_TIMEOUT_USEC=<usec> to the unix datagram socket
@@ -35,9 +34,9 @@ private
 \ libsystemd's bounds: at least two bytes, and room for a NUL after them
 \ in sun_path.
 : NAME? ( str -- bool )
-   {: name:^ size:n :}
-   size 2 <  size PATH-BYTES >=  or if false exit then
-   name c@ $2F =  name c@ $40 =  or ;
+   {: name:str :}
+   name STR:LEN 2 <  name STR:LEN PATH-BYTES >=  or if false exit then
+   name STR:DATA c@ $2F =  name STR:DATA c@ $40 =  or ;
 
 : >STATUS ( UDP:status -- status )
    MATCH UDP:status
@@ -47,8 +46,8 @@ private
 
 \ The notice went or did not: a failed close changes neither.
 : SENT ( UDP:socket str str -- status )
-   {: socket:UDP:socket name:^ size:n msg:^ msgu:n :}
-   socket name size msg msgu UDP:SEND >STATUS
+   {: socket:UDP:socket name:str msg:str :}
+   socket name msg UDP:SEND >STATUS
    socket UDP:CLOSE drop ;
 
 \ Off Linux no service manager speaks this protocol.
@@ -57,12 +56,12 @@ private
    s" NOTIFY_SOCKET" GETENV ;
 
 : NOTIFY ( str -- status )
-   {: msg:^ msgu:n :}
-   SOCKET$ {: name:^ size:n :}
-   size 0= if SYSTEMD-STATUS:OK exit then
-   name size NAME? 0= if INVALID exit then
+   {: msg:str :}
+   SOCKET$ {: name:str :}
+   name STR:LEN 0= if SYSTEMD-STATUS:OK exit then
+   name NAME? 0= if INVALID exit then
    UDP:OPEN MATCH UDP:open-result
-      opened OF name size msg msgu SENT ENDOF
+      opened OF name msg SENT ENDOF
       failed OF UDP:ERRNO>N >ERRNO SYSTEMD-STATUS:FAILED ENDOF
    ;MATCH ;
 

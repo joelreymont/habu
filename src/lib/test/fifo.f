@@ -1,4 +1,3 @@
-split-str
 \ fifo.f - a FIFO a test reads to learn when every process of a tree is gone. A
 \ spawned child holds only the descriptors its spawn maps (src/lib/spawn.f), so
 \ the test names the FIFO's path in an environment variable; each test-code
@@ -44,8 +43,8 @@ FUNCTION: READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
 : SLOT ( PROCESS:request n fd -- PROCESS:request ) {: child:n parent:fd :}
    parent FD>N 0 >= if child >FD parent PROCESS:FD then ;
 
-: READ-END ( str -- fd ) {: a:^ u:n :}
-   a u FS:>PATHZ FS:O-NONBLOCK 0 open {: rd:n :}
+: READ-END ( str -- fd ) {: s:str :}
+   s FS:>PATHZ FS:O-NONBLOCK 0 open {: rd:n :}
    rd 0 < if E-FS-OPEN throw then
    rd >FD {: r:fd :}
    r FD:FD-CLOEXEC!
@@ -57,20 +56,20 @@ public
 \ used, so a writer a failed case left cannot open a later case's. Its path goes
 \ to dst (PATH-CAP bytes); the read end is nonblocking and close-on-exec. A
 \ refused mkfifo or open throws E-FS-OPEN.
-: MAKE ( str ^u8 -- n fd ) {: dir:^ diru:n dst:^ :}
+: MAKE ( str ^u8 -- n fd ) {: dir:str dst:^ :}
    MADE @ 1+ MADE !
    SB-RESET s" fifo-" SB-APPEND MADE @ FMT:SB-INT
-   dir diru SB$ dst FS:JOIN-PATH {: u:n :}
-   dst u FS:>PATHZ MODE MKFIFO-CALL 0<> if E-FS-OPEN throw then
-   u dst u READ-END ;
+   dir SB$ dst FS:JOIN-PATH {: u:n :}
+   dst u >str FS:>PATHZ MODE MKFIFO-CALL 0<> if E-FS-OPEN throw then
+   u dst u >str READ-END ;
 
 \ The write end of the FIFO the environment variable name gives the path of,
 \ blocking and inheritable. A variable unset or empty, a path that is no FIFO,
 \ and a FIFO no reader has open throw E-FS-OPEN.
-: WRITER ( str -- fd ) {: name:^ nameu:n :}
-   name nameu GETENV {: a:^ u:n :}
-   u 0= if E-FS-OPEN throw then
-   a u FD:TRY-FIFO-WRITER MATCH option
+: WRITER ( str -- fd ) {: name:str :}
+   name GETENV {: a:str :}
+   a STR:LEN 0= if E-FS-OPEN throw then
+   a FD:TRY-FIFO-WRITER MATCH option
       none OF E-FS-OPEN throw ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -80,10 +79,10 @@ public
 \ write end w at its own number in the child; a negative w maps none. The
 \ staging is reset once the request holds its copy, so a refused spawn, which
 \ throws E-PROC-SPAWN, leaves none.
-: SPAWN ( str fd fd fd fd -- pid ) {: a:^ u in:fd out:fd err:fd w:fd :}
-   a u PROC-ARGV-PREPARE {: pathz:^ argv :}
+: SPAWN ( str fd fd fd fd -- pid ) {: s:str in:fd out:fd err:fd w:fd :}
+   s PROC-ARGV-PREPARE {: pathz:^ argv :}
    PROC-ENV-PREPARE {: envp :}
-   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   pathz dup ZLEN >str PROCESS:NEW PROCESS:HERMETIC
    argv PROCESS:ARGV-ROWS
    envp PROCESS:ENV-ROWS
    0 in SLOT

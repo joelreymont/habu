@@ -21,3 +21,5 @@ Acceptance case (C4 code 7121): code 7121 no longer exists; the switched-off row
 Acceptance case (from the FFI callback checks): src/lib/ffi-callback-test.f CASE-ACCESSOR and WANT-ACCESSOR sit in `false [if]` blocks; turning them on must also call CASE-ACCESSOR in RUN-SUITE and WANT-ACCESSOR in WANT-TRANSCRIPT.
 
 Acceptance case (from the poll slot checks): src/lib/process-test.f TEST-POLL-BOUNDS sits in a `false [if]` block; turning it on must also call it in the suite list beside TEST-POLL-TWO.
+
+Acceptance case (split-str batch plain-15): src/lib/string-test.f :363-558 and src/lib/task-test.f after :2589, in `false [if]`, still use split str pairs and words that no longer exist (STR-LEN, STR-FIND-SUB>N); turning them on converts them to one-value str and current words.
