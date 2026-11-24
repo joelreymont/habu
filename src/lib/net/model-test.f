@@ -174,10 +174,11 @@ TASK:SEMAPHORE TURN
 TASK:SEMAPHORE GO
 \ Four workers serve MANY-CALLS' four calls at once, one of them held.
 4 constant WORKERS
-\ Each worker's event stream, made by START and deleted by STOP: a reply's bytes
-\ stay unchanged until its worker has sent them, after the turn is given up.
+\ Each worker's event stream and its writer, made by START and deleted by STOP:
+\ a reply's bytes stay unchanged until its worker has sent them, after the turn
+\ is given up.
 HTTP:MAX-WORKERS TYPED-BUFFER STREAM-OUT ^VEC:vector<u8>
-TYPED-VARIABLE STREAM-W JSON:writer
+HTTP:MAX-WORKERS TYPED-BUFFER STREAM-W JSON:writer
 create ECHO 256 allot
 variable ECHO-U
 variable IMAGES
@@ -345,7 +346,7 @@ $300000 constant BIG-U
 
 
 : STREAM ( -- ^VEC:vector<u8> ) HTTP:WORKER-SLOT STREAM-OUT @ ;
-: STREAM-OPEN ( -- ^JSON:writer ) STREAM-W STREAM JSON:OPEN ;
+: STREAM-OPEN ( -- ^JSON:writer ) HTTP:WORKER-SLOT STREAM-W STREAM JSON:OPEN ;
 : STREAM$ ( -- str ) STREAM VEC:SPAN SPAN:$ ;
 
 
