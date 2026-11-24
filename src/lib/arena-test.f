@@ -8,11 +8,11 @@ split-str
 \ actions before its children's; leaks under WITH when the body throws; lets a
 \ throwing action stop the rest or loses its code; changes when a mapping is
 \ refused; fails on NULL-PTR;
-\ cannot be held in a run-time record's field; leaves a chunk mapped after
-\ RESET or RELEASE; runs an action twice when a release halted in it resumes;
-\ moves a newest block it could grow in place, gives back an older block's
-\ bytes when it shrinks, or loses a block's bytes or leaves stale ones in it
-\ when its allocator resizes it.
+\ cannot be held in a run-time record's field; leaves a later chunk mapped
+\ after RESET or keeps every first chunk RELEASE gives back; runs an action
+\ twice when a release halted in it resumes; moves a newest block it could
+\ grow in place, gives back an older block's bytes when it shrinks, or loses
+\ a block's bytes or leaves stale ones in it when its allocator resizes it.
 
 require src/lib/test.f
 require src/lib/span.f
@@ -231,18 +231,18 @@ public
    r ROOT-STORE @ ITEM-BYTES [: ITEM-NOTE ;] ERASE-ITEM ARENA:ALLOC-DISPOSE drop
    >ITEM 9 swap ITEM-ID !
    r ROOT-STORE @ 100 ARENA:ALLOC FILL-FF
+   r ROOT-STORE @ 40000 ARENA:ALLOC FILL-FF
    r ROOT-STORE @ ARENA:RELEASE
    ORDER @ 9 T=
    ARENA:NEW r ROOT-STORE !
-   r ROOT-STORE @ 8 ARENA:ALLOC ZEROED? TTRUE
+   r ROOT-STORE @ 200 ARENA:ALLOC ZEROED? TTRUE
    r ROOT-STORE @ ARENA:RELEASE
    ORDER @ 9 T=
    r ROOTS-RELEASE ;
 
 
-\ 10. RESET unmaps a later chunk and RELEASE the first: a subject child that
-\ touches the allocation afterwards exits 110, the memory fault. SUBJECT:RUN's
-\ child evaluates each by its public name.
+\ 10. RESET unmaps a later chunk, and RELEASE a parent's first chunk once its
+\ 64 children fill the spares: a subject child touching either exits 110.
 : RESET-TOUCH ( -- )
    ARENA:NEW {: a:^ :}
    a 40000 ARENA:ALLOC drop {: p:^ :}
@@ -253,6 +253,7 @@ public
 : RELEASE-TOUCH ( -- )
    ARENA:NEW {: a:^ :}
    a 8 ARENA:ALLOC drop {: p:^ :}
+   64 0 do a ARENA:NEW-IN drop loop
    a ARENA:RELEASE
    p c@ drop ;
 

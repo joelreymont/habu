@@ -5,8 +5,11 @@ split-str
 \ of a request with its chunk header and twice the chunk before it. No lock:
 \ one task uses an arena at a time. A handle used after RELEASE is undefined,
 \ as a HEAP record's is. An arena provides an allocator whose free does nothing
-\ and whose resize leaves a moved block's old bytes in place.
+\ and whose resize leaves a moved block's old bytes in place. RELEASE keeps up
+\ to SPARE-N first chunks, zeroed, for the next NEW, at most 64 KiB in all, and
+\ unmaps the rest, so a NEW paired with RELEASE maps nothing in steady state.
 \ STORAGE CLASS. CALLER-OWNED: the caller releases each arena NEW makes.
+\ PROCESS-WIDE: the spare first chunks, a CAS per move; a build leaves them out.
 
 require src/lib/memory.f
 require src/lib/span.f
@@ -43,8 +46,14 @@ private
 
 $4000 constant FIRST-BYTES         \ the first chunk, header included
 
+\ Each cell is 0 or a zeroed first chunk no arena holds. A task takes or gives
+\ one by a compare-and-swap of its cell, so each kept chunk goes to one NEW.
+4 constant SPARE-N
+create SPARES SPARE-N cells SCRATCH-ALLOT
+
 \ The records laid in chunk bytes.
 CAST: >ARENA ( ^u8 -- ^arena )
+CAST: SPARE>ARENA ( n -- ^arena )
 CAST: >ACTION ( ^u8 -- ^action )
 
 : FIRST-ERROR ( n n -- n ) over 0<> if drop else nip then ;
@@ -142,6 +151,36 @@ CAST: >ACTION ( ^u8 -- ^action )
    ARENA-BYTES a ARENA-TOP ! ;
 
 
+\ Spare `i`'s cell.
+: SPARE ( n -- ^n ) cells SPARES + ;
+
+
+\ A spare first chunk's address, 0 when none is spare.
+: TAKE-SPARE ( -- n )
+   SPARE-N 0 do
+      i SPARE atomic@ dup 0<> if
+         dup 0 i SPARE atomic-cas over = if unloop exit then
+      then drop
+   loop 0 ;
+
+
+\ True when a free spare cell took the zeroed chunk at `c`.
+: KEEP-SPARE ( n -- bool )
+   {: c:n :}
+   SPARE-N 0 do
+      0 c i SPARE atomic-cas 0= if true unloop exit then
+   loop false ;
+
+
+\ The released arena's first chunk is zeroed and kept, or unmapped when every
+\ spare cell is full. Answers E-MEM-UNMAP when the unmap was refused, else 0.
+: GIVE-BACK ( ^arena -- n )
+   {: a:^ :}
+   0 a BYTE-VIEW a ARENA-TOP @ SPAN:MAKE SPAN:FILL
+   a NULL-PTR - KEEP-SPARE if 0 exit then
+   a BYTE-VIEW FIRST-BYTES munmap 0< if E-MEM-UNMAP else 0 then ;
+
+
 \ Children end before this arena's actions run, so a child's action may use
 \ what a parent's action frees. Answers the first action or unmap code, else 0.
 : SETTLE ( ^arena bool -- n )
@@ -153,7 +192,7 @@ CAST: >ACTION ( ^u8 -- ^action )
    a DROP-CHUNKS FIRST-ERROR
    keep if a ZERO-FIRST exit then
    a UNLINK
-   a BYTE-VIEW FIRST-BYTES munmap 0< if E-MEM-UNMAP FIRST-ERROR then ;
+   a GIVE-BACK FIRST-ERROR ;
 
 
 : WITH-BODY ( R ^arena [ R ^arena -- S ] -- S ) execute ;
@@ -192,10 +231,16 @@ CAST: >ACTION ( ^u8 -- ^action )
 \ An arena frees its bytes together, at RESET or RELEASE.
 : SELF-FREE ( ^u8 ^u8 -- ) drop drop ;
 
+\ A spare first chunk, else a new mapping.
+: FIRST-CHUNK ( -- ^arena )
+   TAKE-SPARE {: c:n :}
+   c 0<> if c SPARE>ARENA exit then
+   FIRST-BYTES MEM-ALLOC-PTR {: a:^arena :} a ;
+
 public
 
 : NEW ( -- ^arena )
-   FIRST-BYTES MEM-ALLOC-PTR {: a:^arena :}
+   FIRST-CHUNK {: a:^arena :}
    ARENA-BYTES a ARENA-TOP !
    a BYTE-VIEW [: SELF-ALLOC ;] [: SELF-RESIZE ;] [: SELF-FREE ;]
    a ARENA-ALLOCATOR ALLOC:INIT
