@@ -21114,12 +21114,17 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
 
 : LOC-BIND-GROUPS ( -- )
    LIN-SNAPSHOT {: bef:n rbef:n :}
+   STEP-AT-BASE? {: based:bool :}  UF-HAVE @ {: have:n :}
    DCUR @  #LOC @ LGRP @ -  XG-READ 0= IF EXIT THEN
+   XG-TN @ {: need:n :}
    0 BEGIN dup #LOC @ LGRP @ - < WHILE
       dup LOC-GROUP-BIND
       1 +
    REPEAT drop
    XG-ROW @ DCUR !
+   based  need have >  and  OK @ and IF
+      need UF-NEED !  have UF-HAVE !  STEP-UNDERFLOW!
+   THEN
    OK @ IF bef rbef LIN-CHECK THEN ;
 
 \ `at` is the pre row below the locals above, 0 once that is unknown.

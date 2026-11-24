@@ -496,6 +496,12 @@ create ERR CAP allot   variable ERR-U
    s" CS-L5 ( ptr<s,option<a>> -- ptr<s,option<a>> ) {: p:ptr<s,option<a>> :} p"
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
+: LOCALS-UNDERFLOW ( -- )
+   s" a locals group that reads below the declared inputs is an underflow" T-LABEL
+   s" : CS-L7 ( -- ) 5 OPTION:SOME {: a u :} ;" 70
+   s\" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)\n"
+      SUBJECT:REFUSED? TTRUE ;
+
 : SIGNATURE-END ( -- )
    s" tokens after the output side are a syntax error" T-LABEL
    s" CS-S1 ( n -- n -- n n ) dup" CHECK-QUIET-CANDIDATE! 0 T=
@@ -527,6 +533,7 @@ create ERR CAP allot   variable ERR-U
    RETURN-ROW
    ROW-QUANTIFIERS
    OPEN-WIDTH-LOCALS
+   LOCALS-UNDERFLOW
    SIGNATURE-END
    WIDE-COUNT
    T-REPORT ;
