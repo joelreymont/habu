@@ -4290,7 +4290,7 @@ ENUM dispatch-event armed faulted ;ENUM
    {: c :}
    true c RECEIPT RECEIPT-REPLAYED !
    c [: dup JOURNAL-RESTORE ;] catch {: code:n :} drop
-   code c KEEP-FAULT ;
+   code JSON-FAULT? if E-RESPONSE else code then c KEEP-FAULT ;
 
 : LOOK-UP ( ^call -- lookup-event )
    {: c :}

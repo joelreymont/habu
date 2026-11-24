@@ -3018,6 +3018,9 @@ variable ASKED-U
 : REPLAY-CODE ( -- n ) M [: REPLAYED ;] catch {: code:n :} drop code ;
 : ADD-TEXT ( ^MODEL:call -- ^MODEL:call ) {: c :} s" x" c MODEL:TEXT+ c ;
 : NEGATIVE-REPLAY ( n -- n ) s" x" drop -1 M MODEL:REPLAY 2drop ;
+: OPEN-REPLAY ( ^MODEL:call -- ^MODEL:call )
+   {: c :}
+   s" [" c MODEL:REPLAY 2drop c ;
 
 
 \ A caller that looks its journal up itself reads the journal input of the
@@ -3059,6 +3062,10 @@ variable ASKED-U
    ASKED$ s" configuration" MEMBER s" effort" JSON:READ-FIND-KEY ASSERT s" low" STR-IS
    M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" effort" ROW s" low" STR-IS
+   \ A record the JSON reader rejects replays as E-RESPONSE.
+   PURPOSE s" valid" ASK
+   M [: OPEN-REPLAY ;] catch {: bad:n :} drop
+   bad MODEL:E-RESPONSE = ASSERT
    \ A saved refusal replays as the refusal, with no request and no line, and
    \ keeps the request, which JOURNAL-INPUT$ answers again.
    PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
