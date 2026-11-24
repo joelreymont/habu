@@ -33,12 +33,9 @@ CAP BUFFER: WANT
 CAP BUFFER: DESC
 variable DESC-LEN
 TYPED-VARIABLE SET ^ODATA:entity-set
-TYPED-VARIABLE CURSOR JSON:cursor
 TYPED-VARIABLE WRITER JSON:writer
 TYPED-VARIABLE OUT ^VEC:vector<u8>   \ TEST-MAIN makes and deletes it
-CAP BUFFER: STR
-256 constant LINK-CAP
-LINK-CAP BUFFER: LINK
+TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
 
 : ADD ( ^u8 n -- )
    {: text:^ len:n :}
@@ -404,7 +401,10 @@ LINK-CAP BUFFER: LINK
    SET-NAMED ODATA:ENTITY-TYPE ;
 
 : BODY ( ^u8 n -- ^u8 n ) SRC READ ;
-: LINK-SPAN ( -- SPAN:span<u8> ) LINK LINK-CAP SPAN:MAKE ;
+
+\ The records array of the page, its count and next link not read.
+: RECORDS ( ^ODATA:metadata JSON:value -- JSON:value )
+   LINK @ ODATA:PAGE {: records total:option<n> :} records ;
 
 : TOTAL ( option<n> -- n )
    MATCH option
@@ -412,16 +412,16 @@ LINK-CAP BUFFER: LINK
       some OF ENDOF
    ;MATCH ;
 
-\ The plain forms of the records in TEXT, as one array.
-: PLAIN ( ^ODATA:entity-type str -- str )
-   {: t:^ text:^ len:n :}
-   CURSOR text len JSON:READ-INIT JSON:READ-NEXT drop
+: PLAIN-ONE ( ^JSON:writer JSON:value ^ODATA:entity-type -- ^JSON:writer )
+   {: w v t:^ :}
+   v w JSON:WRITE-COMMA t ODATA:COPY-ENTITY ;
+
+\ The plain forms of the records in the array, as one array.
+: PLAIN ( ^ODATA:entity-type JSON:value -- str )
+   {: t:^ records :}
    WRITER OUT @ JSON:OPEN JSON:WRITE-ARRAY-START
-   begin swap JSON:READ-NEXT rot swap dup JSON:T-OBJ = while
-      drop JSON:WRITE-COMMA t STR CAP ODATA:COPY-ENTITY
-   repeat drop
-   JSON:WRITE-ARRAY-END JSON:WRITTEN$ {: a:^ u:n :}
-   JSON:READ-FINISH a u ;
+   records [: t PLAIN-ONE ;] JSON:EACH
+   JSON:WRITE-ARRAY-END JSON:WRITTEN$ ;
 
 \ A page of Customers: its count, its next link and its records written
 \ plain, against page.txt.
@@ -430,11 +430,12 @@ LINK-CAP BUFFER: LINK
    ARENA:NEW {: a:^ :}
    a xml xl MODEL {: m:^ :}
    m s" Customers" SET-TYPE {: t:^ :}
-   m body bl BODY CURSOR LINK-SPAN ODATA:PAGE
-   {: rt:^ rl:n ll:n total:option<n> :}
+   m body bl BODY JSON:PARSE LINK @ ODATA:PAGE
+   {: records total:option<n> :}
    total TOTAL 2 T=
-   LINK ll s" https://h.example/svc/Customers?$skiptoken='C2'" T$=
-   t rt rl PLAIN s" test/fixtures/odata/page.txt" WANT READ T$=
+   LINK @ VEC:SPAN SPAN:$
+   s" https://h.example/svc/Customers?$skiptoken='C2'" T$=
+   t records PLAIN s" test/fixtures/odata/page.txt" WANT READ T$=
    a ARENA:RELEASE ;
 
 : TEST-PAGES ( -- )
@@ -446,22 +447,19 @@ LINK-CAP BUFFER: LINK
    ARENA:NEW {: a:^ :}
    a s" test/fixtures/odata/v2.xml" MODEL {: m:^ :}
    m s" Orders" SET-TYPE {: t:^ :}
-   m s" test/fixtures/odata/v2-array-page.json" BODY CURSOR LINK-SPAN
-   ODATA:PAGE {: rt:^ rl:n ll:n total:option<n> :}
+   m s" test/fixtures/odata/v2-array-page.json" BODY JSON:PARSE LINK @
+   ODATA:PAGE {: records total:option<n> :}
    total TOTAL -1 T=
-   ll 0 T=
-   t rt rl PLAIN s\" [{\"OrderID\":\"1003\",\"Year\":2024,\"Placed\":null}]" T$=
+   LINK @ VEC:COUNT 0 T=
+   t records PLAIN s\" [{\"OrderID\":\"1003\",\"Year\":2024,\"Placed\":null}]" T$=
    a ARENA:RELEASE ;
 
 \ The record of the single-entity response BODY written plain as one of SET.
 : COPY-AS ( ^ODATA:metadata str str -- str )
    {: m:^ set:^ sl:n body:^ bl:n :}
    m set sl SET-TYPE {: t:^ :}
-   m body bl CURSOR ODATA:RECORD$ {: rt:^ rl:n :}
-   CURSOR rt rl JSON:READ-INIT JSON:READ-NEXT drop
-   WRITER OUT @ JSON:OPEN t STR CAP ODATA:COPY-ENTITY
-   JSON:WRITTEN$ {: w:^ wl:n :}
-   JSON:READ-FINISH w wl ;
+   m body bl JSON:PARSE ODATA:RECORD
+   WRITER OUT @ JSON:OPEN t ODATA:COPY-ENTITY JSON:WRITTEN$ ;
 
 \ A record of Orders written plain, against record.txt.
 : RECORD-OF ( str str -- )
@@ -486,23 +484,22 @@ LINK-CAP BUFFER: LINK
    {: xml:^ xl:n path:^ len:n want:^ wl:n :}
    ARENA:NEW {: a:^ :}
    a xml xl MODEL {: m:^ :}
-   [: m path len BODY CURSOR LINK-SPAN ODATA:PAGE drop drop 2drop ;]
+   [: m path len BODY JSON:PARSE RECORDS JSON:TEXT$ 2drop ;]
    ODATA:E-RESPONSE TTHROWSQ
    want wl SAID
    a ARENA:RELEASE ;
 
 \ PAGE takes the page of the set; COPY-ENTITY rejects one of its records,
-\ placed in the records array PAGE answers.
+\ placed in the records array PAGE answers, parsed alone.
 : COPY-REJECTS ( str str str str -- )
    {: xml:^ xl:n set:^ sl:n path:^ len:n want:^ wl:n :}
    ARENA:NEW {: a:^ :}
    a xml xl MODEL {: m:^ :}
    m set sl SET-TYPE {: t:^ :}
-   m path len BODY CURSOR LINK-SPAN
-   ODATA:PAGE drop drop {: rt:^ rl:n :}
-   [: t rt rl PLAIN 2drop ;] ODATA:E-RESPONSE TTHROWSQ
+   m path len BODY JSON:PARSE RECORDS {: records :}
+   [: t records JSON:TEXT$ JSON:PARSE PLAIN 2drop ;]
+   ODATA:E-RESPONSE TTHROWSQ
    want wl SAID
-   CURSOR JSON:READ-DISPOSE
    a ARENA:RELEASE ;
 
 : V2$ ( -- str ) s" test/fixtures/odata/v2.xml" ;
@@ -510,11 +507,8 @@ LINK-CAP BUFFER: LINK
 : V4$ ( -- str ) s" test/fixtures/odata/v4.xml" ;
 
 : TEST-RESPONSE-REJECTIONS ( -- )
-   V2$ s" test/fixtures/odata/repeated-next.json"
-   s\" 1:73: expected member `__next` once, found `\"__next\"`; remove the repeated member, keeping one"
-   PAGE-REJECTS
    V2$ s" test/fixtures/odata/no-records.json"
-   s" 1:20: expected the member `results` in the envelope, found `}`; add the member to the object"
+   s" 1:6: expected the member `results` in the envelope, found `{`; add the member to the object"
    PAGE-REJECTS
    V2$ s" test/fixtures/odata/bad-count.json"
    s\" 1:17: expected a non-negative integer for member `__count`, found `\"2.5\"`; write the count as one to 18 decimal digits"
@@ -522,33 +516,24 @@ LINK-CAP BUFFER: LINK
    V4$ s" test/fixtures/odata/repeated-count.json"
    s\" 1:63: expected member `@odata.count` once, found `\"@odata.count\"`; remove the repeated member, keeping one"
    PAGE-REJECTS
+   V4$ s" test/fixtures/odata/repeated-link.json"
+   s\" 1:35: expected member `@nextLink` once, found `\"@nextLink\"`; remove the repeated member, keeping one"
+   PAGE-REJECTS
    V2$ s" Orders" s" test/fixtures/odata/bad-date.json"
    s\" 1:42: expected /Date(ms)/ or null for member `Shipped` of type Edm.DateTime, found `\"2024-01-01T00:00:00\"`; write the value as /Date(ms)/, /Date(ms+mmmm)/ or /Date(ms-mmmm)/ in the years 0 to 9999, or null"
    COPY-REJECTS
-   V2$ s" Orders" s" test/fixtures/odata/repeated-member.json"
-   s" 1:42: expected each member of the record once, found `}`; remove the repeated member `OrderID`, keeping one"
-   COPY-REJECTS
-   V2$ s" Customers" s" test/fixtures/odata/repeated-v2-expanded.json"
-   s" 1:1113: expected each member of the record once, found `}`; remove the repeated member `Name`, keeping one"
-   COPY-REJECTS
-   V4$ s" Customers" s" test/fixtures/odata/repeated-v4-expanded.json"
-   s" 1:715: expected each member of the record once, found `}`; remove the repeated member `Name`, keeping one"
-   COPY-REJECTS
-   V4$ s" Customers" s" test/fixtures/odata/repeated-complex.json"
-   s" 1:249: expected each member of the record once, found `}`; remove the repeated member `City`, keeping one"
+   V2$ s" Orders" s" test/fixtures/odata/object-date.json"
+   s" 1:42: expected /Date(ms)/ or null for member `Shipped` of type Edm.DateTime, found `{`; write the value as /Date(ms)/, /Date(ms+mmmm)/ or /Date(ms-mmmm)/ in the years 0 to 9999, or null"
    COPY-REJECTS ;
 
 \ COPY-ENTITY rejects a value that is no record, placed at the value.
 : TEST-ENTITY-REJECTION ( -- )
    ARENA:NEW {: a:^ :}
    a V2$ MODEL s" Orders" SET-TYPE {: t:^ :}
-   [: CURSOR s" [1]" JSON:READ-INIT JSON:READ-NEXT drop JSON:READ-NEXT drop
-      WRITER OUT @ JSON:OPEN t STR CAP ODATA:COPY-ENTITY
-      drop JSON:READ-FINISH ;]
+   [: t s" [1]" JSON:PARSE PLAIN 2drop ;]
    ODATA:E-RESPONSE TTHROWSQ
    s" 1:2: expected a record object, found `1`; write that kind of value here"
    SAID
-   CURSOR JSON:READ-DISPOSE
    a ARENA:RELEASE ;
 
 \ Customers' Orders is to-many in both documents, Orders' Buyer to-one.
@@ -562,14 +547,17 @@ LINK-CAP BUFFER: LINK
    V4$ s" Customers" s" test/fixtures/odata/number-in-records.json"
    s" 1:13: expected a record object in an array of records, found `5`; write that kind of value here"
    COPY-REJECTS
-   V2$ s" Customers" s" test/fixtures/odata/repeated-results.json"
-   s\" 1:26: expected member `results` once in a results object, found `\"results\"`; remove the repeated member, keeping one"
+   V4$ s" Customers" s" test/fixtures/odata/array-in-records.json"
+   s" 1:13: expected a record object in an array of records, found `[`; write that kind of value here"
    COPY-REJECTS
    V2$ s" Customers" s" test/fixtures/odata/number-results.json"
    s" 1:23: expected an array of records for member `results`, found `5`; write that kind of value here"
    COPY-REJECTS
+   V2$ s" Customers" s" test/fixtures/odata/object-results.json"
+   s" 1:23: expected an array of records for member `results`, found `{`; write that kind of value here"
+   COPY-REJECTS
    V2$ s" Customers" s" test/fixtures/odata/empty-results.json"
-   s" 1:13: expected the member `results` in a results object, found `}`; add the member to the object"
+   s" 1:12: expected the member `results` in a results object, found `{`; add the member to the object"
    COPY-REJECTS
    V4$ s" Customers" s" test/fixtures/odata/number-navigation.json"
    s" 1:12: expected null or an array of records for navigation `Orders`, found `5`; write that kind of value here"
@@ -595,22 +583,9 @@ LINK-CAP BUFFER: LINK
    ARENA:NEW {: a:^ :}
    a V4$ MODEL {: m:^ :}
    m s" Customers" SET-TYPE {: t:^ :}
-   m s\" {\"value\":[{\"Orders\":null}]}" CURSOR LINK-SPAN
-   ODATA:PAGE drop drop {: rt:^ rl:n :}
-   t rt rl PLAIN s\" [{\"Orders\":null}]" T$=
-   a ARENA:RELEASE ;
-
-\ PAGE throws a body's JSON rejection on with the JSON reader's own text.
-: TEST-JSON-REJECTION ( -- )
-   ARENA:NEW {: a:^ :}
-   a V4$ MODEL {: m:^ :}
-   [: m s\" {\"value\":[1,]}" CURSOR LINK-SPAN ODATA:PAGE
-      drop drop 2drop ;]
-   E-JSON-READ-MALFORMED TTHROWSQ
-   E-JSON-READ-MALFORMED REASON:TEXT$
-   s" 1:13: expected a value, found `]`; write a value, or remove a trailing comma"
-   T$=
-   REASON:RELEASE
+   m s\" {\"value\":[{\"Orders\":null}]}" JSON:PARSE RECORDS
+   {: records :}
+   t records PLAIN s\" [{\"Orders\":null}]" T$=
    a ARENA:RELEASE ;
 
 TYPED-VARIABLE KEY-OUT ^VEC:vector<u8>
@@ -873,32 +848,48 @@ variable VALUE-LEN
    m s" Amount" ODATA:HIDE-PROPERTY TTRUE
    m s" Name" ODATA:HIDE-PROPERTY TTRUE
    m s" Customers" SET-TYPE {: t:^ :}
-   m s" test/fixtures/odata/v2-hide-page.json" BODY CURSOR LINK-SPAN
-   ODATA:PAGE drop drop {: rt:^ rl:n :}
-   t rt rl PLAIN s" test/fixtures/odata/hide-page.txt" WANT READ T$= ;
+   m s" test/fixtures/odata/v2-hide-page.json" BODY JSON:PARSE RECORDS
+   {: records :}
+   t records PLAIN s" test/fixtures/odata/hide-page.txt" WANT READ T$= ;
 
 : ORDER$ ( -- str ) s\" {\"OrderID\":\"1\",\"Year\":1}" ;
 : BUYER$ ( -- str )
    s\" {\"d\":{\"OrderID\":\"1\",\"Year\":1,\"Buyer\":{\"PartyID\":\"C1\",\"Name\":\"A\"}}}" ;
-: TWICE$ ( -- str )
-   s\" {\"d\":{\"OrderID\":\"1\",\"Year\":1,\"Amount\":\"1\",\"Amount\":\"2\"}}" ;
 
-\ Buyer leads to the hidden Customer; a repeated hidden Amount is dropped,
-\ not rejected.
+\ Buyer leads to the hidden Customer.
 : TEST-HIDE-COPY ( -- )
    ARENA:NEW {: a:^ :}
    a s" test/fixtures/odata/v2.xml" MODEL HIDE-PAGE
    a s" test/fixtures/odata/v2.xml" MODEL {: m:^ :}
    m s" Customers" ODATA:HIDE-SET TTRUE
    m s" Orders" BUYER$ COPY-AS ORDER$ T$=
-   a s" test/fixtures/odata/v2.xml" MODEL {: n:^ :}
-   n s" Amount" ODATA:HIDE-PROPERTY TTRUE
-   n s" Orders" TWICE$ COPY-AS ORDER$ T$=
+   a ARENA:RELEASE ;
+
+\ A record whose Referrer, a Party, expands 100000 levels deep is copied as
+\ it stands: COPY-ENTITY holds a level in a frame, not on the machine stack.
+100000 constant FAR
+
+: NEST$ ( -- ^VEC:vector<u8> )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: buf:^ :}
+   FAR 0 ?do s\" {\"Referrer\":" buf VEC:APPEND loop
+   s" {}" buf VEC:APPEND
+   FAR 0 ?do [char] } buf VEC:PUSH c! loop
+   buf ;
+
+: TEST-DEEP-RECORD ( -- )
+   ARENA:NEW {: a:^ :}
+   a V4$ MODEL s" Customers" SET-TYPE {: t:^ :}
+   NEST$ {: buf:^ :}
+   buf VEC:SPAN SPAN:$ JSON:PARSE
+   WRITER OUT @ JSON:OPEN t ODATA:COPY-ENTITY JSON:WRITTEN$
+   buf VEC:SPAN SPAN:$ T$=
+   buf VEC:DELETE
    a ARENA:RELEASE ;
 
 : TEST-MAIN ( -- )
    T-RESET
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW OUT !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW LINK !
    TEST-V2
    TEST-V4
    TEST-DERIVED
@@ -913,7 +904,7 @@ variable VALUE-LEN
    TEST-RESPONSE-SITE-TEXTS
    TEST-NULL-NAVIGATION
    TEST-ENTITY-REJECTION
-   TEST-JSON-REJECTION
+   TEST-DEEP-RECORD
    TEST-KEYS
    TEST-SHARED-NAMES
    TEST-FOREIGN-NAVIGATION
@@ -926,6 +917,7 @@ variable VALUE-LEN
    TEST-HIDE-NAMES
    TEST-HIDE-COPY
    OUT @ VEC:DELETE
+   LINK @ VEC:DELETE
    T-REPORT
    s" odata-test: ok" type cr ;
 

@@ -32,10 +32,9 @@ split-str
 \ is rejected. A V4 key property whose type the document does not declare
 \ loads, and KEY rejects any value for it. A body the XML reader rejects
 \ throws the reader's code with its text. A rejected response is E-RESPONSE
-\ with text of the same form, placed as the JSON reader places its own, in the
-\ bytes the reader was given; a body the JSON reader rejects in PAGE or
-\ RECORD$ throws the reader's code with its text. No count, size or depth is
-\ limited but by memory, a count past 18 digits aside.
+\ with text of the same form, L:C counted in the text JSON:PARSE was given.
+\ No count, size or depth is limited but by memory, a count past 18 digits
+\ aside.
 \ A navigation's target depends on the source set: NAVIGATION-TARGET takes a
 \ set and a navigation property of its type. A V4 binding's Target names an
 \ entity set or a singleton; a binding to a singleton or along a containment
@@ -58,14 +57,13 @@ split-str
 \ V4 `{"value":[...],"@odata.count":N,"@odata.nextLink":"url"}`, 4.01's
 \ `@count` and `@nextLink` the same members as `@odata.count` and
 \ `@odata.nextLink`; other members are read past. It answers the records
-\ array's text, borrowed from the body, the decoded next link's length in
-\ the caller's span, 0 for none and E-SPAN-CAPACITY when it does not fit,
-\ and the count, none when absent. COUNT-OPTION$ answers the query option that
-\ asks for that count: V2 `$inlinecount=allpages`, V4 `$count=true`.
-\ RECORD$ answers the record of a single-entity response: V2 `d`, V4 the
-\ body. Both read the whole body, so they answer only a well-formed one; a
-\ repeated envelope member, a missing records member and a count that is
-\ no non-negative integer are rejected.
+\ array, the decoded next link written into the caller's vector, left empty
+\ for none, and the count, none when absent. COUNT-OPTION$ answers the query
+\ option that asks for that count: V2 `$inlinecount=allpages`, V4
+\ `$count=true`.
+\ RECORD answers the record of a single-entity response: V2 `d`, V4 the
+\ body. Both reject a missing records member, and PAGE a count that is no
+\ non-negative integer and a V4 count or next link under both its names.
 \ COPY-ENTITY writes the plain form of one record of a type. V2: `__metadata`
 \ and `{"__deferred":...}` navigations are dropped, an expanded navigation's
 \ `{"results":[...]}` is written as its array, and `/Date(ms)/`,
@@ -77,9 +75,8 @@ split-str
 \ navigation's target type, and a complex value, or each of a collection of
 \ them, by its complex type; a complex member holding anything else but null
 \ is rejected. A member of a hidden name is dropped at every depth, declared
-\ or not, and never counts as a repeat; other members the type does not
-\ declare are copied as they stand, and a record, expanded and complex ones
-\ included, that repeats a member is rejected. V2 and V4 bodies of the same
+\ or not; other members the type does not declare are copied as they stand.
+\ A record that is no object is rejected. V2 and V4 bodies of the same
 \ records give the same members; a value both versions write in one JSON form
 \ gives the same bytes.
 \ KEY appends to a vector an entity's key predicate from its key values'
@@ -102,9 +99,9 @@ split-str
 \ Ends. The model is read-only once METADATA and the caller's hides return, so
 \ tasks may read it together; the arena's one-task rule covers METADATA and
 \ the hides. The source bytes are not kept.
-\ PAGE and RECORD$ answer text borrowed from the caller's body and leave the
-\ caller's JSON:cursor closed; their scratch, and COPY-ENTITY's, is freed
-\ before they return on every path. No module state.
+\ PAGE and RECORD answer values of the caller's body, which borrow its text;
+\ PAGE's scratch and COPY-ENTITY's are freed before they return on every
+\ path. No module state.
 require src/lib/odata/metadata.f
 require src/lib/odata/response.f
 require src/lib/odata/key.f

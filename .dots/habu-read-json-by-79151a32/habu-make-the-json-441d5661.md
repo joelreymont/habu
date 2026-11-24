@@ -9,7 +9,6 @@ blocks:
   - habu-validate-a-json-9ec8e7c9
   - habu-read-mcp-requests-4c03d74e
   - habu-answer-mcp-client-b40eb00f
-  - habu-read-odata-responses-fb2c90dc
   - habu-read-json-by-a447b521
 ---
 
