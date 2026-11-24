@@ -818,8 +818,8 @@ private
    NR-GETTIMEOFDAY SYS,  TIME-CHECK,
    RAX 0 GTOD ASM-SINK ENC-MOV-RM  0 G-PUSH ;
 
-\ ( -- ns ) CLOCK_MONOTONIC as seconds * 10^9 + nanoseconds, where the ARM64
-\ twin reads CNTVCT_EL0.
+\ ( -- ns ) CLOCK_MONOTONIC, the clock the timers expire on, as seconds * 10^9
+\ plus nanoseconds.
 : MONO-ROW ( -- )
    RDI CLOCK-MONOTONIC IMM32,  RSI 0 GTOD ASM-SINK ENC-LEA
    NR-CLOCK-GETTIME SYS,  TIME-CHECK,

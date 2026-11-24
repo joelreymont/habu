@@ -1380,13 +1380,11 @@ private
    TIME-OK LABEL@ LBL,
    9 XREG-RBASE GTOD-SCRATCH LDR,  9 G-PUSH ;
 
-\ Monotonic nanoseconds for benchmarks. Darwin exposes `clock_gettime` and
-\ `mach_absolute_time` through libSystem/commpage APIs, not this raw-syscall
-\ engine. On arm64 macOS, EL0 can read CNTVCT_EL0 and CNTFRQ_EL0 directly; use
-\ quotient/remainder conversion so the tick*1e9 multiply cannot overflow.
+\ Monotonic nanoseconds on the clock the OS's timers expire on; quotient and
+\ remainder keep the ticks * 10^9 multiply from overflowing.
 : BMONONS ( -- )
    LBL TIME-OK !
-   $D53BE049 EMITW  $D53BE00A EMITW         \ mrs x9,CNTVCT_EL0 ; mrs x10,CNTFRQ_EL0
+   9 OS-TIMER-NOW  10 OS-TIMER-HZ
    10 TIME-OK LABEL@ CBNZ,  BRK,  TIME-OK LABEL@ LBL,
    11 9 10 UDIV,                            \ q = ticks / freq
    12 11 10 MUL,  9 9 12 SUB,               \ r = ticks % freq

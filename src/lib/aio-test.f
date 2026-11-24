@@ -79,6 +79,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 package AIO-TEST
 
 1000000 constant NS-PER-MS
+1000000000 constant NS-PER-S
+1 constant CLOCK-MONO                 \ Linux's CLOCK_MONOTONIC
 5 constant SETTLE-MS                 \ grace for a submission to reach the ring
 20 constant TIMER-MS
 30 constant SILENT-MS
@@ -131,6 +133,10 @@ variable REUSE-CLOSED
 variable CLEAN-GOT
 variable FULL-N
 variable FULL-I
+create MONO-SPEC 16 allot             \ a timespec: seconds, then nanoseconds
+
+PROCESS-SYMBOLS
+FUNCTION: CLOCK-CALL clock_gettime ( n ^u8 -- i32 ) ;FUNCTION
 
 create POKE-BYTE $41 c,
 AIO-TEST-ALIGN8
@@ -286,6 +292,16 @@ TASK:MIN-STACK TASK:TASK FAN7
    LONE-TICKET @ AWAIT>N C2-GOT !
    C2-GOT @ AIO:READABLE and AIO:READABLE T=
    P-R P-W PIPE-CLOSE ;
+
+\ mono-ns reads the clock io_uring's timers expire on, so a deadline set from it
+\ is reached when the timer fires: CLOCK_MONOTONIC read between two lies between.
+: CASE-MONO-CLOCK ( -- )
+   mono-ns {: t0:n :}
+   CLOCK-MONO MONO-SPEC CLOCK-CALL 0 T=
+   MONO-SPEC LE:U64@ NS-PER-S *  MONO-SPEC 8 + LE:U64@ + {: mid:n :}
+   mono-ns {: t1:n :}
+   t0 mid <= TTRUE
+   mid t1 <= TTRUE ;
 
 \ A timer, awaited on the main thread through its own park.
 : CASE-TIMER ( -- )
@@ -1009,6 +1025,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    HB-TARGET-LINUX-KERNEL? if CASE-FIRST-RING then
    CASE-READABLE
    CASE-ALREADY-READY
+   HB-TARGET-LINUX-KERNEL? if CASE-MONO-CLOCK then
    CASE-TIMER
    CASE-POLL-DEADLINE
    CASE-CANCEL
