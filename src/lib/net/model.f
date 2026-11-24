@@ -3599,30 +3599,33 @@ ENUM poll none fed spoiled done ;ENUM
    JSON:READ-CLOSE ;
 
 \ The recorded call id a journal record carries, 0 when it has none.
-: JOURNAL-CALL-ID ( ^call -- n )
-   {: c :}
-   c MODEL-CALL:READER c JOURNAL-OUT$ JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-   s" call_id" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE 0 exit then
-   JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-INT {: id:n :} JSON:READ-CLOSE id ;
+: JOURNAL-CALL-ID ( JSON:value -- n )
+   s" call_id" JSON:FIND MATCH option
+     none OF 0 ENDOF
+     some OF {: id :}
+        id JSON:INTEGER? 0= if E-RESPONSE throw then
+        id JSON:>N
+     ENDOF
+   ;MATCH ;
 
 \ The fault a journaled refusal records, 0 for a reply.
-: JOURNAL-REFUSAL-FAULT ( ^call -- n )
-   {: c :}
-   c MODEL-CALL:READER c JOURNAL-OUT$ JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-   s" refusal" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE 0 exit then
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   s" capacity" JSON:READ-STR-EQ? if JSON:READ-CLOSE E-CAPACITY exit then
-   s" incomplete" JSON:READ-STR-EQ? if JSON:READ-CLOSE E-INCOMPLETE exit then
-   JSON:READ-CLOSE E-RESPONSE throw ;
+: JOURNAL-REFUSAL-FAULT ( JSON:value -- n )
+   s" refusal" JSON:FIND MATCH option
+     none OF 0 ENDOF
+     some OF {: r :}
+        r JSON:STRING? 0= if E-RESPONSE throw then
+        r s" capacity" JSON:STRING= if E-CAPACITY exit then
+        r s" incomplete" JSON:STRING= if E-INCOMPLETE exit then
+        E-RESPONSE throw
+     ENDOF
+   ;MATCH ;
 
 : JOURNAL-RESTORE ( ^call -- )
    {: c :}
    0 c MODEL-CALL:HTTP-STATUS !
-   c JOURNAL-OUT$ JSON-OBJECT? 0= if E-RESPONSE throw then
-   c JOURNAL-REFUSAL-FAULT {: refusal:n :}
+   c JOURNAL-OUT$ JSON:PARSE {: rec :}
+   rec JSON:OBJECT? 0= if E-RESPONSE throw then
+   rec JOURNAL-REFUSAL-FAULT {: refusal:n :}
    refusal 0<> if refusal throw then
    c JOURNAL-ORIGIN
    s" configuration" c JOURNAL-FIELD {: config:^ config-u:n :}
@@ -3655,7 +3658,7 @@ ENUM poll none fed spoiled done ;ENUM
          c COMPACT-PARSE drop
       ENDOF
    ;MATCH
-   c JOURNAL-CALL-ID c LEDGER LEDGER-CALL-ID !
+   rec JOURNAL-CALL-ID c LEDGER LEDGER-CALL-ID !
    c MODEL-CALL:KIND @ OPTION:SOME c MODEL-CALL:REPLAY-KIND ! ;
 
 \ A usage count, null when the reply omitted it.
