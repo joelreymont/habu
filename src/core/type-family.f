@@ -2288,7 +2288,7 @@ TFAM-SCH-ROW-ARITY-INSTALL
       s" pf: a field's cells is not its schema's width" EXIT-STATUS:INTERNAL die THEN ;
 
 \ --- entry reads (TFAM-FIND, below). A family read from its type entry is
-\ first its head (ER-HEAD: declared, with its layout policy and slots), then,
+\ first its head (ER-HEAD: declared, with its layout policy), then,
 \ after every family its entry names, its body (ER-BODY: variants, fields,
 \ layout rows); TFAM-FIND decides both by where it is, so a family holds no
 \ read state. MUTUAL members name each other, so a member's body can be read
@@ -3224,7 +3224,7 @@ REGISTER-ROOT
 \
 \ The text is tokens split by one blank, `-` for an empty name, a family
 \ written `pkg:tail`:
-\   kind vis arity pk... layout slots derive opaque at-sym
+\   kind vis arity pk... layout derive opaque at-sym
 \   ndeps family...   (every other family its schemas name, read first)
 \   nvar (name tag paycells ctor-pkg ctor-sym nroots node...)...
 \   nfld (name variant slot cells byte-off bytes align flags accessor-sym node)...
@@ -3396,7 +3396,7 @@ create ET-CH 8 allot
    0 ET-N !
    id TFAM-KIND@ ET-NUM  id TFAM-VIS@ ET-NUM  id TFAM-ARITY@ ET-NUM
    id TFAM-ARITY@ 0 ?do id i TFAM-PK@ ET-NUM loop
-   id TFAM-LAYOUT-POLICY@ ET-NUM  id TFAM-SLOTS@ ET-NUM
+   id TFAM-LAYOUT-POLICY@ ET-NUM
    id TFAM-DERIVE@ ET-NUM  id TF-REC@ TF.OPAQUE @ ET-NUM
    id TF-REC@ TF.AT-SYM @ ET-SYM
    ED-N @ ET-NUM
@@ -3609,7 +3609,6 @@ create ER-MSG ER-MSG-CAP allot
    id ix ENTRY!
    arity 0 ?do id i ER-NUM TFAM-PK! loop
    id ER-NUM TFAM-LAYOUT!
-   ER-NUM drop                    \ slots: ER-BODY takes them from the rows
    ER-NUM id TF-REC@ TF.DERIVE !
    ER-NUM id TF-REC@ TF.OPAQUE !
    id ER-SYM AT-SYM!
