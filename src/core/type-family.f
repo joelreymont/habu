@@ -556,7 +556,6 @@ variable TFM-EPOCH   1 TFM-EPOCH !
 
 \ --- field mutators.
 : TFAM-LAYOUT! ( n n -- ) {: id:n p:n :}
-   p 0 < p TL-MAX > or IF s" tfam: layout policy out of range" EXIT-STATUS:INTERNAL die THEN
    p id TF-REC@ TF.LAYOUT !
    TFM-EPOCH+ ;
 : TFAM-SLOTS! ( n n -- ) swap TF-REC@ TF.SLOTS !  TFM-EPOCH+ ;
@@ -585,7 +584,6 @@ variable PF-GEN   variable PF-GEN-N
 : PF-GEN-NEW ( -- ) PF-GEN-N @ 1 + dup PF-GEN-N !  PF-GEN ! ;
 
 : TFAM-PK! ( n n n -- ) {: id:n i:n k:n :}
-   k 0 < k PK-MAX > or IF s" tfam: parameter kind out of range" EXIT-STATUS:INTERNAL die THEN
    \ A memoized kind may read this one, so a change starts a new generation.
    PF-GEN @ 0 <> IF id i TFAM-PK@ k <> IF PF-GEN-NEW THEN THEN
    k id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + ! ;
@@ -726,8 +724,6 @@ variable TFX-CUR              \ private bucket-walk cursor
    {: pa:^ pu:n vis:n na:^ nu:n arity:n kind:n :}
    WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
    na nu TF-REQUIRE-CANON
-   arity 0 < IF s" tfam: negative family arity" EXIT-STATUS:INTERNAL die THEN
-   kind TFAM-KIND-VALID? 0= IF s" tfam: family kind out of range" EXIT-STATUS:INTERNAL die THEN
    pa pu na nu TFAM-FIND-IN IF drop E-TFAM-DUP throw THEN drop   \ FIND returns (id-or-0 flag); drop the id
    TF-ENSURE
    TFX-ENSURE                             \ before the slot is committed; see TFX-ADD
@@ -2741,7 +2737,6 @@ variable LAY-N   0 LAY-N !
 
 : LAY-ADD ( n n n n n -- n ) {: fam:n p:n sz:n al:n tw:n :}
    WRITE-WINDOW-CK
-   p 0 < p TL-MAX > or IF s" tfam: layout policy out of range" EXIT-STATUS:INTERNAL die THEN
    fam LAY-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    LAY-ENSURE
    LAY-N @ {: id:n :}
@@ -3477,6 +3472,12 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    a u top ER-DIGITS ;
 : ER-NUM ( -- n ) ER-TOKEN ER-INT ;
 
+\ The next number, which must lie within 0..max.
+: ER-UPTO ( n -- n ) {: max:n :}
+   ER-NUM {: v:n :}
+   v 0 <  v max >  or IF ER-BAD THEN
+   v ;
+
 
 : ER-NAME$ ( -- str )
    ER-TOKEN {: a:^ u:n :}
@@ -3597,12 +3598,14 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
 \ The family's declaration and its scalar rows, before the families it names.
 : ER-HEAD ( str str n -- n ) {: pa:^ pu:n ta:^ tu:n ix:n :}
    ER-NUM {: kind:n :}
+   kind TFAM-KIND-VALID? 0= IF ER-BAD THEN
    ER-NUM {: vis:n :}
    ER-NUM {: arity:n :}
+   arity 0 < IF ER-BAD THEN
    pa pu vis ta tu arity kind TFAM-DECL {: id:n :}
    id ix ENTRY!
-   arity 0 ?do id i ER-NUM TFAM-PK! loop
-   id ER-NUM TFAM-LAYOUT!
+   arity 0 ?do id i PK-MAX ER-UPTO TFAM-PK! loop
+   id TL-MAX ER-UPTO TFAM-LAYOUT!
    ER-NUM id TF-REC@ TF.DERIVE !
    ER-NUM id TF-REC@ TF.OPAQUE !
    id ER-SYM AT-SYM!
@@ -3628,6 +3631,10 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    id TFAM-SUM? id TFAM-ENUM? or 0= IF RES-FALSE EXIT THEN
    pk 0 >  nf 0 >  and ;
 
+\ One layout row: policy, size, alignment, tag width.
+: ER-LAYOUT ( n -- ) {: id:n :}
+   id TL-MAX ER-UPTO ER-NUM ER-NUM ER-NUM LAY-ADD drop ;
+
 \ Variants, fields and layout, after the families they name.
 : ER-BODY ( n -- ) {: id:n :}
    SUMV-N@ {: vstart:n :}
@@ -3645,7 +3652,7 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
       id base nf TFAM-FLD-RANGE!
    THEN
    id id ROW-SLOTS TFAM-SLOTS!
-   ER-NUM 0 ?do id ER-NUM ER-NUM ER-NUM ER-NUM LAY-ADD drop loop
+   ER-NUM 0 ?do id ER-LAYOUT loop
    ER-U @ 0 <> IF ER-BAD THEN ;
 
 EXPORT CHECKER-RESOLVE:REC>INDEX
