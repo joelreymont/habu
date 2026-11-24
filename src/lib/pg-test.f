@@ -56,7 +56,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 : OPEN ( -- PG:connection )
    CONNECTIONS RESULTS CONFIGURE
-   CONNINFO$ CONNECT MATCH PG:connect-result
+   CONNINFO$ s" " CONNECT MATCH PG:connect-result
       connected OF ENDOF
       refused OF type cr E-CONNECT throw ENDOF
    ;MATCH ;
@@ -97,7 +97,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 \ Port 1 is refused before any protocol runs, so the arm carries libpq's own
 \ message and no connection is left behind.
 : PORT-REFUSED$ ( -- str )
-   s" host=127.0.0.1 port=1 dbname=none user=none" CONNECT
+   s" host=127.0.0.1 port=1 dbname=none user=none" s" " CONNECT
    MATCH PG:connect-result
       connected OF PG:CLOSE s" " ENDOF
       refused OF ENDOF
@@ -115,7 +115,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : AWAIT-REFUSED ( str -- )
-   CONNECT-START {: refused :}
+   s" " CONNECT-START {: refused :}
    refused PG:AWAIT MATCH PG:progress
       refused OF 2drop true ENDOF
       connected OF PG:CLOSE false ENDOF
@@ -128,12 +128,20 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : CONNECT-NUL ( -- )
-   S\" host=127.0.0.1 port=1\x00 dbname=none" CONNECT-START PG:CLOSE ;
+   S\" host=127.0.0.1 port=1\x00 dbname=none" s" "
+   CONNECT-START PG:CLOSE ;
+
+
+: PASSWORD-NUL ( -- )
+   s" host=127.0.0.1 port=1 dbname=none" S\" pw\x00x"
+   CONNECT-START PG:CLOSE ;
 
 
 : CONNECT-TEXT-CASES ( -- )
    s" rejected connection text releases its claimed slot" T-LABEL
    CONNECTIONS 1+ 0 ?do [: CONNECT-NUL ;] E-FFI-NUL TTHROWSQ loop
+   s" a rejected password releases its claimed slot" T-LABEL
+   CONNECTIONS 1+ 0 ?do [: PASSWORD-NUL ;] E-FFI-NUL TTHROWSQ loop
    OPEN PG:CLOSE ;
 
 
@@ -150,7 +158,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 : MISSING-DB ( str -- PG:connect-result )
    {: name:^ nu:n :}
    SB-RESET CONNINFO$ SB-APPEND s"  dbname=" SB-APPEND name nu SB-APPEND
-   SB$ CONNECT ;
+   SB$ s" " CONNECT ;
 
 : REFUSED$ ( PG:connect-result -- str )
    MATCH PG:connect-result
@@ -189,14 +197,14 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
 
 
 \ A socket directory that does not exist makes libpq reject the attempt inside
-\ PQconnectStart, before any POLL.
+\ PQconnectStartParams, before any POLL.
 : SOCKET-CONNINFO$ ( -- str )
    s" host=/nonexistent-habu-pgtest port=5432 dbname=none user=none" ;
 
 
 : SOCKET-REFUSAL-CASES ( -- )
    s" a connection libpq rejects at once is refused with its text" T-LABEL
-   SOCKET-CONNINFO$ CONNECT REFUSED$ nip 0 > TTRUE
+   SOCKET-CONNINFO$ s" " CONNECT REFUSED$ nip 0 > TTRUE
    s" an attempt libpq rejects at once is refused by AWAIT" T-LABEL
    SOCKET-CONNINFO$ AWAIT-REFUSED ;
 
@@ -204,7 +212,8 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
 \ The attempt keeps no slot, as CAPACITY-CASES then needs.
 : MALFORMED-CASES ( -- )
    s" a conninfo libpq cannot parse throws E-CONNECT" T-LABEL
-   [: s" postgresql://u:SECRETPW%zz@127.0.0.1:1/db" CONNECT-START PG:CLOSE ;]
+   [: s" postgresql://u:SECRETPW%zz@127.0.0.1:1/db" s" " CONNECT-START
+      PG:CLOSE ;]
    E-CONNECT TTHROWSQ ;
 
 
@@ -272,7 +281,7 @@ TYPED-VARIABLE HELD-ID n
    again ;
 
 : OPEN-POLL ( -- PG:connection )
-   CONNINFO$ CONNECT-START POLL-CONNECTED ;
+   CONNINFO$ s" " CONNECT-START POLL-CONNECTED ;
 
 : RESULT-POLL ( PG:connection -- PG:result ) {: c :}
    begin
@@ -1469,11 +1478,11 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    if 0 EXIT-CONN @ PG:CLOSE then ;
 
 : EXIT-OPEN ( -- )
-   CONNINFO$ CONNECT-START 0 EXIT-CONN !
+   CONNINFO$ s" " CONNECT-START 0 EXIT-CONN !
    0 TASK:RETURN ;
 
 : EXIT-REFUSED ( -- )
-   s" host=127.0.0.1 port=1 dbname=none user=none"
+   s" host=127.0.0.1 port=1 dbname=none user=none" s" "
    CONNECT-START 0 EXIT-CONN !
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
       refused OF 2drop ENDOF
@@ -1484,7 +1493,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    0 TASK:RETURN ;
 
 : EXIT-SEND ( -- )
-   CONNINFO$ CONNECT-START 0 EXIT-CONN !
+   CONNINFO$ s" " CONNECT-START 0 EXIT-CONN !
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
       connected OF drop ENDOF
       refused OF 2drop E-CONNECT throw ENDOF
@@ -1636,7 +1645,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
 \ A server that never answers: the kernel completes the handshake from the
 \ listen backlog, so libpq sends its first packet and waits for a reply.
 : SILENT-CONNECT ( -- )
-   LISTENER-CONNINFO$ CONNECT MATCH PG:connect-result
+   LISTENER-CONNINFO$ s" " CONNECT MATCH PG:connect-result
       connected OF PG:CLOSE ENDOF
       refused OF 2drop ENDOF
    ;MATCH
@@ -1728,7 +1737,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    s" a send libpq refuses throws E-EXEC and closes the connection" T-LABEL
    FILL-PEER
    LISTENER {: lis :}
-   LISTENER-CONNINFO$ CONNECT-START {: c :}
+   LISTENER-CONNINFO$ s" " CONNECT-START {: c :}
    lis ACCEPT-PEER {: peer :}
    peer PEER-BYTES STARTUP-LEN PEER-WRITE
    c POLL-CONNECTED drop
@@ -2075,9 +2084,71 @@ variable WARN-LINES
    w PG:CLOSE ;
 
 
+\ Longer than a fresh call arena, so staging it grows the arena, and a
+\ space every 13 bytes, which a conninfo value would have to quote.
+5000 constant PW-LEN
+PW-LEN BUFFER: PW-RIGHT
+
+: PW-BYTE ( n -- n )
+   13 mod dup 12 = if drop $20 else $61 + then ;
+
+: PW-RIGHT! ( -- )
+   PW-LEN 0 ?do i PW-BYTE PW-RIGHT i + c! loop ;
+
+PW-RIGHT!
+
+: PW-RIGHT$ ( -- str )   PW-RIGHT PW-LEN ;
+: PW-WRONG$ ( -- str )   s" pgtest-pw-wrong" ;
+
+
+: SIGNED-IN? ( PG:connect-result -- bool )
+   MATCH PG:connect-result
+      connected OF PG:CLOSE true ENDOF
+      refused OF 2drop false ENDOF
+   ;MATCH ;
+
+
+: PW-CONNINFO+ ( -- )
+   SB-RESET CONNINFO$ SB-APPEND s"  user=habu_pw" SB-APPEND ;
+
+
+: PW-CONNINFO$ ( -- str )
+   PW-CONNINFO+ SB$ ;
+
+
+: PW-HELD$ ( -- str )
+   PW-CONNINFO+ s"  password=" SB-APPEND PW-WRONG$ SB-APPEND SB$ ;
+
+
+\ The statement holds the whole password, past the string builder's room.
+: ROLE-SQL ( ^VEC:vector<u8> -- ) {: v :}
+   s" create role habu_pw login password '" v VEC:APPEND
+   PW-RIGHT$ v VEC:APPEND
+   s" '" v VEC:APPEND ;
+
+
+: CREATE-ROLE ( PG:connection -- ) {: c :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v :}
+   v ROLE-SQL
+   [: c v VEC:SPAN SPAN:$ EXEC-OK ;] [: v VEC:DELETE ;] finally ;
+
+
+: PASSWORD-CASES ( PG:connection -- PG:connection ) {: c :}
+   c CREATE-ROLE
+   s" a password argument signs in to a role that needs one" T-LABEL
+   PW-CONNINFO$ PW-RIGHT$ CONNECT SIGNED-IN? TTRUE
+   s" a password argument overrides the one the conninfo holds" T-LABEL
+   PW-HELD$ PW-RIGHT$ CONNECT SIGNED-IN? TTRUE
+   s" a wrong password argument is refused and its text omits it" T-LABEL
+   PW-CONNINFO$ PW-WRONG$ CONNECT REFUSED$
+   PW-WRONG$ STR:CONTAINS? TFALSE
+   c ;
+
+
 : SERVER-CASES ( -- )
    OPEN
    DDL-CASES
+   PASSWORD-CASES
    PARAM-CASES
    TEXT-BOUNDARY-CASES
    BINARY-CASES

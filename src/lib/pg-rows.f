@@ -229,7 +229,7 @@ public
 : OPEN-START ( str -- PG:connection )
    CONNECTIONS RESULTS CONFIGURE
    1 CONNECTIONS-FROZEN !
-   CONNECT-START ;
+   s" " CONNECT-START ;
 
 
 \ A connection for the calling task. The refusal text is libpq's and can name

@@ -41,6 +41,7 @@ PATH-CAP BUFFER: DATA        variable DATA-U
 PATH-CAP BUFFER: LOG         variable LOG-U
 PATH-CAP BUFFER: INITDB-LOG  variable INITDB-LOG-U
 PATH-CAP BUFFER: PIDFILE     variable PIDFILE-U
+PATH-CAP BUFFER: HBA
 PATH-CAP $40 + constant TEXT-CAP
 TEXT-CAP BUFFER: CONNINFO       variable CONNINFO-U
 CAPTURE-CAP BUFFER: OUT
@@ -383,6 +384,13 @@ false STOPPED !
    INITDB-LOG$ SHOW-LOG
    s" pg-cluster: initdb failed" FAIL-ROW ;
 
+\ The cluster's whole policy: habu_pw signs in by password, every other role
+\ is trusted. The server listens on no TCP port, so local rules cover every case.
+: HBA! ( -- )
+   DATA$ s" pg_hba.conf" HBA FS:JOIN-PATH {: u:n :}
+   HBA u S\" local all habu_pw scram-sha-256\nlocal all all trust\n"
+   FS:WRITE-ALL ;
+
 : READY? ( -- bool )
    SERVER @ NO-PID = if false exit then
    begin
@@ -446,6 +454,7 @@ false STOPPED !
    s" postgres" POSTGRES TOOL POSTGRES-U !
    MAKE-DIRS TEXTS!
    INITDB-RUN
+   HBA!
    SIGNAL-CHECK
    START
    [: SERVE ;] [: END ;] finally {: what:^ whatu:n passed:bool :}

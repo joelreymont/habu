@@ -50,7 +50,7 @@ using PG
 
 : OPEN ( -- PG:connection )
    1 1 CONFIGURE
-   0 SCRIPT-ARGV$ CONNECT MATCH PG:connect-result
+   0 SCRIPT-ARGV$ s" " CONNECT MATCH PG:connect-result
       connected OF ENDOF
       refused OF type cr s" pg-hold: connect refused" EXIT-STATUS:UNAVAILABLE die ENDOF
    ;MATCH ;

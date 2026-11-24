@@ -151,6 +151,7 @@ $FFFFFFFFFFFFFFF8 constant CELL-MASK      \ round an arena offset up to a cell
 -1 constant TEXT-LEN                      \ a text or NULL parameter: format 0
 $7FFFFFFF constant BINARY-MAX             \ a libpq parameter length is a C int
 4 constant INT-BYTES                      \ a C int's size
+3 constant LOGIN-N                        \ dbname, password and the NULL ending each array
 -1 constant NO-CONN                       \ RES-CONN of a free or half-claimed slot
 10 constant DEC-BASE
 $30 constant DIGIT-ZERO
@@ -220,7 +221,8 @@ TASK:+USER REFUSED-HOLD n
 \ Every pointer is `^u8`, passed back or read at the width libpq states.
 VERSIONED-LIBRARY pq 5
 
-FUNCTION: LIB-CONNECT-START PQconnectStart ( ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-CONNECT-START-PARAMS PQconnectStartParams
+   ( ^u8 ^u8 n -- ^u8 ) ;FUNCTION
 FUNCTION: LIB-CONNINFO-PARSE PQconninfoParse ( ^u8 ^u8 -- ^u8 ) ;FUNCTION
 FUNCTION: LIB-CONNINFO-FREE PQconninfoFree ( ^u8 -- ) ;FUNCTION
 FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ^u8 -- i32 ) ;FUNCTION
@@ -1564,6 +1566,40 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    a u slot ;
 
 
+: NULL-ENDED ( ^u8 ^u8 ^u8 -- ) {: first second arr :}
+   first arr 0 ptr-field !
+   second arr 1 ptr-field !
+   NULL-ARG arr 2 ptr-field ! ;
+
+
+\ PQconnectStartParams's keyword and value arrays end the arena, written after
+\ its last growth, as PARAM-ARRAY's are; the conninfo stays at offset zero.
+: STAGE-LOGIN ( str n -- str n ) {: a u:n slot:n :}
+   s" dbname" slot ARENA-CSTR {: db:n :}
+   s" password" slot ARENA-CSTR {: key:n :}
+   a u slot ARENA-CSTR {: pw:n :}
+   slot ARENA-U@ CELL 1 - + CELL-MASK and {: off:n :}
+   off LOGIN-N 2 * cells + {: end:n :}
+   slot end slot ARENA-U@ - ARENA-ENSURE
+   end slot ARENA-U!
+   slot ARENA-BASE {: base :}
+   base db + base key + base off + NULL-ENDED
+   base base pw + base off + LOGIN-N cells + NULL-ENDED
+   a u slot ;
+
+
+: LOGIN-ARRAYS ( n -- ^u8 ^u8 ) {: slot:n :}
+   slot ARENA-BASE slot ARENA-U@ + {: end :}
+   end LOGIN-N 2 * cells - end LOGIN-N cells - ;
+
+
+: STAGE ( str n [ str n -- str n ] -- )
+   {: a u:n slot:n step :}
+   a u slot step catch {: code:n :}
+   2drop drop
+   code 0<> if slot RETIRE-CONN-SLOT code throw then ;
+
+
 public
 
 \ CONFIGURE sizes the registry, connections then live results, before CONNECT.
@@ -1578,22 +1614,23 @@ public
 \ connection.
 \ A conninfo libpq cannot parse throws E-CONNECT and keeps no text, because
 \ libpq's parse message can quote the conninfo's values, a password among them.
-: CONNECT-START ( str -- connection )
-   {: a u:n :}
+\ The password never goes through that parse. An empty one is ignored, leaving
+\ the conninfo's or libpq's default; any other overrides both.
+: CONNECT-START ( str str -- connection )
+   {: a u:n pa pu:n :}
    OP-START
    NOTICE TASK:CALLER-CONTEXT FFI-CB:ENTRY {: proc:n :}
    CLAIM-CONN-SLOT {: slot:n :}
    slot OPEN-CONN-SLOT
-   a u slot ['] STAGE-CONNINFO catch {: code:n :}
-   2drop drop
-   code 0<> if slot RETIRE-CONN-SLOT code throw then
+   a u slot [: STAGE-CONNINFO ;] STAGE
    slot ARENA-BASE NULL-ARG LIB-CONNINFO-PARSE {: opts :}
    opts NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
    opts LIB-CONNINFO-FREE
-   slot ARENA-BASE LIB-CONNECT-START {: pg :}
+   pa pu slot [: STAGE-LOGIN ;] STAGE
+   slot LOGIN-ARRAYS 1 LIB-CONNECT-START-PARAMS {: pg :}
    slot ARENA-RELEASE
    pg NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
-   \ PQconnectStart only connects and sends; POLL's PQconnectPoll first reads.
+   \ PQconnectStartParams reads nothing: no notice comes before the processor.
    pg proc NULL-ARG LIB-SET-NOTICE-PROCESSOR drop
    pg slot CONN-PG!
    pg LIB-STATUS CONNECTION-BAD <> if
@@ -1649,7 +1686,7 @@ public
 
 \ A TASK:HALT of the waiting task ends the attempt at once, sending nothing, and
 \ frees its slot; the join answers as for any halt.
-: CONNECT ( str -- connect-result )
+: CONNECT ( str str -- connect-result )
    CONNECT-START dup CONNECTION>N CONNECT-HEAD !
    [: AWAIT-ATTEMPT ;] [: FINISH-ATTEMPT ;] finally MATCH progress
       connected OF PG-CONNECT--RESULT:CONNECTED ENDOF
