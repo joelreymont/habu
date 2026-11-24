@@ -11,7 +11,6 @@ blocks:
   - habu-read-mcp-requests-4c03d74e
   - habu-answer-mcp-client-b40eb00f
   - habu-read-odata-responses-fb2c90dc
-  - habu-read-bearer-and-e104de35
   - habu-delete-http-body-452a93b3
   - habu-read-model-f-7ec80090
   - habu-read-json-by-a447b521

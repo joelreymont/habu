@@ -144,6 +144,7 @@ GOT-NEW
 11 constant BUSY-OVERSIZED
 12 constant RENEWED                 \ an escaped token and an escaped refresh token
 13 constant RENEWAL-NUMBER          \ a refresh_token that is a number
+14 constant REPEATED                \ access_token named twice
 variable FAULT-MODE
 CAP BUFFER: POSTED
 variable POSTED-U
@@ -448,6 +449,10 @@ OVERSIZE-FILL
    mode MOVED = if answer 302 HTTP:STATUS! exit then
    mode NO-TOKEN = if answer S\" {\"expires_in\":60}" HTTP:BODY! exit then
    mode NOT-JSON = if answer s" not json" HTTP:BODY! exit then
+   mode REPEATED = if
+      answer S\" {\"access_token\":\"t\",\"access_token\":\"u\",\"expires_in\":60}"
+      HTTP:BODY! exit
+   then
    mode OVERSIZED = if answer OVERSIZE PAST-CAP HTTP:BODY! exit then
    mode BUSY-OVERSIZED = if answer 503 HTTP:STATUS! answer OVERSIZE PAST-CAP HTTP:BODY! exit then
    mode NOT-STRING = if answer S\" {\"access_token\":1,\"expires_in\":60}" HTTP:BODY! exit then
@@ -610,7 +615,14 @@ $A constant LF
    s" a 302 is E-RESPONSE" T-LABEL
    MOVED BEARER:E-RESPONSE FAULT-THROWS
    s" a 200 that is not JSON is E-RESPONSE" T-LABEL
-   NOT-JSON BEARER:E-RESPONSE FAULT-THROWS
+   [: NOT-JSON BEARER:E-RESPONSE FAULT-THROWS ;] CAPTURED
+   s" its line says the answer is not JSON" T-LABEL
+   LINES 1 T=
+   FORM-RESET s"  error bearer: token answer 200 is not JSON " FORM+
+   S\" naming each member once\n" FORM+
+   LINE$ FORM$ T$=
+   s" a 200 naming access_token twice is E-RESPONSE" T-LABEL
+   REPEATED BEARER:E-RESPONSE FAULT-THROWS
    s" a 200 without access_token is E-RESPONSE" T-LABEL
    NO-TOKEN BEARER:E-RESPONSE FAULT-THROWS
    s" a 200 whose access_token is not a string is E-RESPONSE" T-LABEL

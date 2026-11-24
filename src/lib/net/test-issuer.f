@@ -101,15 +101,13 @@ DYNAMIC-BUFFER SECRET-LEN n
 
 HTTP:MAX-WORKERS VECS * TYPED-BUFFER HEADS ^VEC:vector<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER MADE bool
-HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 HTTP:MAX-WORKERS TYPED-BUFFER WHY SPAN:span<u8>      \ an error answer's code
-HTTP:MAX-WORKERS TYPED-BUFFER ASSERTED SPAN:span<u8> \ the assertion's or refresh token's claims, in SCRATCH
+HTTP:MAX-WORKERS TYPED-BUFFER PRESENTED JSON:value   \ the assertion's or refresh token's claims, parsed, in SCRATCH
 HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-AT n    \ a value's offset in FORM, -1 absent
 HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
-: CURSOR ( -- ^JSON:cursor ) SLOT READER ;
 : VEC-OF ( n -- ^VEC:vector<u8> ) SLOT VECS * + HEADS @ ;
 : CLAIMS ( -- ^VEC:vector<u8> ) CLAIMED VEC-OF ;
 : CLAIMS$ ( -- str ) CLAIMS VEC$ ;
@@ -202,7 +200,8 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    s su ;
 
 
-\ Malformed JSON or base64url: the assertion's or refresh token's fault.
+\ Malformed JSON, a repeated member name (JSON:E-MEMBER) or malformed
+\ base64url: the assertion's or refresh token's fault.
 : MALFORMED? ( n -- bool )
    {: code:n :}
    code E-JSON-READ-LAST >= code E-JSON-READ-FIRST <= and
@@ -215,38 +214,40 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    code MALFORMED? if false exit then
    code throw ;
 
-\ The reader on an object text's member, false when the text is not an object
-\ or lacks the key; the caller closes the reader either way.
-: MEMBER ( str str -- JSON:reader bool )
-   {: t:^ tu:n k:^ ku:n :}
-   CURSOR t tu JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if false exit then
-   k ku JSON:READ-FIND-KEY ;
+\ Whether the member is a string equal to the text; false when the object
+\ lacks it.
+: MEMBER-IS? ( JSON:value str str -- bool )
+   {: obj k:^ ku:n w:^ wu:n :}
+   obj k ku JSON:FIND MATCH option
+      none OF false ENDOF
+      some OF w wu JSON:STRING= ENDOF
+   ;MATCH ;
 
-: MEMBER-IS? ( str str str -- bool )
-   {: t:^ tu:n k:^ ku:n w:^ wu:n :}
-   t tu k ku MEMBER 0= if JSON:READ-CLOSE false exit then
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE false exit then
-   w wu JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same ;
+: INT-OF ( JSON:value -- n bool )
+   {: v :}
+   v JSON:INTEGER? 0= if 0 false exit then
+   v JSON:>N true ;
 
+\ An integer member that fits a cell; false when it is absent or no such
+\ number.
+: MEMBER-INT ( JSON:value str -- n bool )
+   JSON:FIND MATCH option
+      none OF 0 false ENDOF
+      some OF INT-OF ENDOF
+   ;MATCH ;
 
-: MEMBER-INT ( str str -- n bool )
-   MEMBER 0= if JSON:READ-CLOSE 0 false exit then
-   JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE 0 false exit then
-   JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
+\ A string as sent, quotes and escapes included; false for another kind.
+: STRING-TEXT ( JSON:value -- str bool )
+   {: v :}
+   v JSON:STRING? 0= if s" " false exit then
+   v JSON:TEXT$ true ;
 
-\ A string member as sent, quotes and escapes included; false when absent or
-\ not a string.
-: MEMBER-RAW ( str str -- str bool )
-   MEMBER 0= if JSON:READ-CLOSE s" " false exit then
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" " false exit then
-   JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a 1- u 2 + true ;
-
-\ Whether a text is one JSON object; malformed JSON throws the reader's code.
-: OBJECT? ( str -- bool )
-   CURSOR -rot JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ = if JSON:READ-FINISH true exit then
-   JSON:READ-CLOSE false ;
+\ A string member as sent; false when it is absent or not a string.
+: MEMBER-RAW ( JSON:value str -- str bool )
+   JSON:FIND MATCH option
+      none OF s" " false ENDOF
+      some OF STRING-TEXT ENDOF
+   ;MATCH ;
 
 
 \ This server's URL with the path; borrowed from the task's SB.
@@ -285,37 +286,36 @@ public
 
 private
 
-: ASSERTED$ ( -- str ) SLOT ASSERTED @ SPAN:$ ;
-
-\ The assertion's or refresh token's claims and signature decoded into
-\ SCRATCH, the claims kept in ASSERTED: the signed text's length and the
-\ signature, true for three segments and a modulus-wide signature.
-: SPLIT ( str -- n SPAN:span<u8> bool )
+\ The claims, the signed text's length and the signature, both decoded into
+\ SCRATCH; true for three segments and a modulus-wide signature.
+: SPLIT ( str -- SPAN:span<u8> n SPAN:span<u8> bool )
    {: t:^ u:n :}
    SCRATCH VEC-OF {: v:^ :}
    v 0 VEC:RESIZE  v u VEC:ENSURE
    v VEC:SPAN {: room :}
    t u 0 [char] . FIND {: d1:n :}
    t u d1 1+ [char] . FIND {: d2:n :}
-   d2 u = if 0 room false exit then
-   t u d2 1+ [char] . FIND u <> if 0 room false exit then
+   d2 u = if room 0 room false exit then
+   t u d2 1+ [char] . FIND u <> if room 0 room false exit then
    t d1 + 1+ d2 d1 - 1- room BASE64:DECODE-URL {: cn:n :}
-   room 0 cn SPAN:SUB SLOT ASSERTED !
    room cn u cn - SPAN:SUB {: rest :}
    t d2 + 1+ u d2 - 1- rest BASE64:DECODE-URL {: sn:n :}
-   d2 rest 0 sn SPAN:SUB sn MODULUS-U @ = ;
+   room 0 cn SPAN:SUB d2 rest 0 sn SPAN:SUB sn MODULUS-U @ = ;
 
 \ The token in the field, an assertion or a refresh token, verifies against the
 \ fixture key, and its claims are one object whose aud is the client id and
 \ whose exp is later than now.
 : VERIFIED? ( n -- bool )
    FIELD$ 0= if 2drop false exit then {: t:^ u:n :}
-   t u SPLIT 0= if drop drop false exit then {: signed:n sig :}
+   t u SPLIT {: body signed:n sig ok:bool :}
+   ok 0= if false exit then
    MODULUS-ROW MODULUS-U @ EXPONENT-ROW EXPONENT-U @
    t signed sig SPAN:$ CRYPTO:RS256-VERIFY? 0= if false exit then
-   ASSERTED$ OBJECT? 0= if false exit then
-   ASSERTED$ s" aud" CLIENT-ID FIELD$ drop MEMBER-IS? 0= if false exit then
-   ASSERTED$ s" exp" MEMBER-INT 0= if drop false exit then
+   body SPAN:$ JSON:PARSE {: c :}
+   c JSON:OBJECT? 0= if false exit then
+   c SLOT PRESENTED !
+   c s" aud" CLIENT-ID FIELD$ drop MEMBER-IS? 0= if false exit then
+   c s" exp" MEMBER-INT 0= if drop false exit then
    epoch-seconds > ;
 
 
@@ -344,7 +344,7 @@ private
 \ The assertion's or refresh token's claim copied as sent, when it has one.
 : COPIED ( ^JSON:writer str -- ^JSON:writer )
    {: k:^ ku:n :}
-   ASSERTED$ k ku MEMBER-RAW 0= if 2drop exit then {: v:^ vu:n :}
+   SLOT PRESENTED @ k ku MEMBER-RAW 0= if 2drop exit then {: v:^ vu:n :}
    JSON:WRITE-COMMA k ku v vu JSON:WRITE-FIELD-RAW ;
 
 \ The client acts for the user of the assertion or refresh token.

@@ -11,7 +11,8 @@ split-str
 \ number and absent claims and an array holding nested values and an escape,
 \ CLAIM$ after the admitted request, CLAIM$ and CLAIM-HOLDS? in a task it
 \ spawns, the refetch window, a cached kid answered while a fetch is in
-\ flight, and an unknown kid and an empty set waiting for that fetch.
+\ flight, an unknown kid and an empty set waiting for that fetch, and a
+\ fetched key set repeating a member refused while the cached one stays.
 \ Run: bin/hb --load src/lib/net/bearer-test.f
 
 require src/lib/test.f
@@ -72,18 +73,21 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
 TOKEN-CAP $40 + BUFFER: AUTH
 variable AUTH-U
 
-\ The two key sets /keys answers: SET-ONE at 0, SET-TWO at SET-CAP.
+\ The three key sets /keys answers: SET-ONE at 0, SET-TWO at SET-CAP,
+\ SET-THREE at twice SET-CAP.
 $800 constant SET-CAP
-SET-CAP 2 * SPAN-BUFFER: SETS
+SET-CAP 3 * SPAN-BUFFER: SETS
 variable ONE-U
 variable TWO-U
+variable THREE-U
 
 $40 constant URL-CAP
 URL-CAP BUFFER: KEYS-URL
 variable KEYS-URL-U
 variable PORT
 
-\ /keys answers 500 (0), SET-ONE (1), SET-TWO (2), or SET-TWO once stalled (3).
+\ /keys answers 500 (0), SET-ONE (1), SET-TWO (2), SET-TWO once stalled (3),
+\ or SET-THREE (4).
 variable MODE
 variable HITS                       \ /keys requests served
 variable EARLY-CODE                 \ what ADMIT? threw before ISSUER!
@@ -144,8 +148,16 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" b" rot RSA-KEY+
    s" ]}" rot SET+ SET-CAP - TWO-U ! ;
 
+\ The signing key c in the first of two keys members, the second empty: a
+\ reader keeping either copy fails REPEATED-SET.
+: SET-THREE-FILL ( -- )
+   S\" {\"keys\":[" SET-CAP 2 * SET+
+   s" c" rot RSA-KEY+
+   S\" ],\"keys\":[]}" rot SET+ SET-CAP 2 * - THREE-U ! ;
+
 : SET-ONE$ ( -- str ) SETS 0 ONE-U @ SPAN:SUB SPAN:$ ;
 : SET-TWO$ ( -- str ) SETS SET-CAP TWO-U @ SPAN:SUB SPAN:$ ;
+: SET-THREE$ ( -- str ) SETS SET-CAP 2 * THREE-U @ SPAN:SUB SPAN:$ ;
 
 
 : CLAIM ( ^JSON:writer ^u8 n -- ^JSON:writer )
@@ -221,6 +233,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    1 HITS atomic-add drop
    MODE atomic@ 0= if answer 500 HTTP:STATUS! exit then
    MODE atomic@ 1 = if answer SET-ONE$ HTTP:BODY! exit then
+   MODE atomic@ 4 = if answer SET-THREE$ HTTP:BODY! exit then
    MODE atomic@ 3 = if STALL then
    answer SET-TWO$ HTTP:BODY! ;
 
@@ -365,6 +378,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : CURRENT ( -- ^u8 n ) ISS-AUD LATER WHO CLAIMS ;
 : KID-A ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"a\"}" ;
 : KID-B ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"b\"}" ;
+: KID-C ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"c\"}" ;
 : FETCHED ( -- ) mono-ns FETCHED-BY ! ;
 
 
@@ -571,6 +585,18 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    WAITED
    HITS atomic@ 4 T= ;
 
+\ FRESH's fetch has returned, so the window runs from now at the latest.
+\ SERVE-CASES states MCP$ and SCOPE$ for this run: challenges name both.
+: REPEATED-SET ( -- )
+   s" a fetched key set naming a member twice is not accepted" T-LABEL
+   FETCHED WAIT-WINDOW
+   4 MODE atomic!
+   KID-C CURRENT MINT SEND BOTH-INVALID
+   HITS atomic@ 5 T=
+   s" the cached key set stays after a fetched one is refused" T-LABEL
+   KID-A CURRENT MINT SEND WANT-WHO ANSWERED
+   HITS atomic@ 5 T= ;
+
 : METADATA$ ( -- str ) s" https://bearer-test.example/.well-known/oauth-protected-resource" ;
 : MCP$ ( -- str ) s" https://bearer-test.example/.well-known/oauth-protected-resource/mcp" ;
 : REPLACED$ ( -- str ) s" https://replaced.test/.well-known/oauth-protected-resource" ;
@@ -685,7 +711,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : SERVE-CASES ( -- )
    AIO:START
    VECTORS
-   SET-ONE-FILL SET-TWO-FILL
+   SET-ONE-FILL SET-TWO-FILL SET-THREE-FILL
    ROUTES
    EARLY
    ISSUE
@@ -703,7 +729,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    \ configuration for a server's run: each statement gets a start of its own.
    MCP$ SCOPE$ BEARER:METADATA!
    PORT @ SERVE-ON
-   FRESH METADATA-SCOPE
+   FRESH REPEATED-SET METADATA-SCOPE
    HTTP:STOP
    s" " SCOPE$ BEARER:METADATA!
    PORT @ SERVE-ON
