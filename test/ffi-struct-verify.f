@@ -351,6 +351,10 @@ variable FFI-SV-SRC-U
    S\" 1 constant FFI-SV-ONE\nFUNCTION: FFI-SV-QB printf ( ^u8 n -- n ) FFI-SV-ONE VARIADIC\ns\" ;FUNCTION\" evaluate"
    FFI-SV-LEFT
    S\" 1 constant FFI-SV-FIXED\nFUNCTION: FFI-SV-RA getpid ( -- n )\ns\" 1 drop\" evaluate\n;FUNCTION\nFUNCTION: FFI-SV-RB printf ( ^u8 n -- n ) FFI-SV-FIXED VARIADIC\ns\" 1 drop\" evaluate\n;FUNCTION"
+   FFI-SV-LEFT
+   S\" require src/lib/ffi-callback.f\nCALLBACK: FFI-SV-CR ( -- ) s\" ;CALLBACK\" evaluate"
+   FFI-SV-LEFT
+   S\" require src/lib/ffi-callback.f\nCALLBACK: FFI-SV-CD ( -- )\ns\" 1 drop\" evaluate\n;CALLBACK\nFFI-SV-CD drop"
    FFI-SV-LEFT ;
 
 

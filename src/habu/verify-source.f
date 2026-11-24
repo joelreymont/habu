@@ -1565,9 +1565,31 @@ CAST: STRETCH-ACTION ( n -- [ str -- ] )
    {: why:n :}
    why DW-TYPE =  why DW-RENDERED = or  why DW-COUNT = or ;
 
+\ The CALLBACK: group the scan read, with its opener and where its name lies;
+\ skipped when a word it claims was refused, so `;CALLBACK` defines nothing;
+\ left when code the check does not follow may close it: the run decides.
+ENUM callback-group closed open skipped left ;ENUM
+TYPED-VARIABLE CB-GROUP callback-group
+PTR-VARIABLE CB-OPENER-A
+variable CB-OPENER-U
+variable CB-AT
+variable CB-NAME-U
+: CB-CLOSED! ( -- ) construct callback-group closed CB-GROUP ! ;
+CB-CLOSED!
+
+\ A skipped group's words are refused whether or not the run closes it.
+: LEAVE-CALLBACK ( -- )
+   CB-GROUP @ MATCH callback-group
+      closed OF ENDOF
+      open OF construct callback-group left CB-GROUP ! ENDOF
+      skipped OF CB-CLOSED! ENDOF
+      left OF ENDOF
+   ;MATCH ;
+
 : DEFER-DECL ( n -- )
    {: why:n :}
    why FOLLOWED? IF SKIP-FUNCTION EXIT THEN
+   LEAVE-CALLBACK
    why DW-RENDERER = IF LEAVE-OPEN-FUNCTION EXIT THEN
    LEAVE-FUNCTION ;
 
@@ -3427,22 +3449,12 @@ variable LOAD-U
    a u s" included" STR:=CI or  a u s" required" STR:=CI or
    a u s" script-required" STR:=CI or  a u s" provided" STR:=CI or ;
 
-\ The CALLBACK: group the scan read, with its opener and where its name lies;
-\ skipped when a word it claims was refused, so `;CALLBACK` defines nothing.
-ENUM callback-group closed open skipped ;ENUM
-TYPED-VARIABLE CB-GROUP callback-group
-PTR-VARIABLE CB-OPENER-A
-variable CB-OPENER-U
-variable CB-AT
-variable CB-NAME-U
-: CB-CLOSED! ( -- ) construct callback-group closed CB-GROUP ! ;
-CB-CLOSED!
-
 : CB-OPEN? ( -- bool )
    CB-GROUP @ MATCH callback-group
       closed OF false ENDOF
       open OF true ENDOF
       skipped OF true ENDOF
+      left OF false ENDOF
    ;MATCH ;
 
 \ Whether the token t tu lies in the source now scanned.
@@ -3729,19 +3741,23 @@ variable FFI-LIT-B                          \ and the newer
       nameu FFI-NAME-RESERVE  name 0 FFI-NAME nameu BYTE-COPY  nameu FFI-NAME-U !
    ELSE SKIP-FUNCTION THEN ;
 
+\ Whether `;CALLBACK` defines the group's words.
+: CB-DEFINES? ( -- bool )
+   CB-GROUP @ MATCH callback-group
+      closed OF false ENDOF
+      open OF true ENDOF
+      skipped OF false ENDOF
+      left OF true ENDOF
+   ;MATCH ;
+
 \ A word w of the open callback group: a taken one is the duplicate, rejected
 \ at the source token t, and the group is skipped.
 : CALLBACK-TAKEN ( str str -- ) {: w:^ wu:n t:^ tu:n :}
-   CB-GROUP @ MATCH callback-group
-      closed OF ENDOF
-      open OF
-         w wu CHECKER-CERT-DUP? IF
-            w wu t tu DUPLICATE-AT!
-            construct callback-group skipped CB-GROUP !
-         THEN
-      ENDOF
-      skipped OF ENDOF
-   ;MATCH ;
+   CB-DEFINES? 0= IF EXIT THEN
+   w wu CHECKER-CERT-DUP? IF
+      w wu t tu DUPLICATE-AT!
+      construct callback-group skipped CB-GROUP !
+   THEN ;
 
 \ A word the open callback group defines, as FFI-CB:PRODUCTS gives it, claimed
 \ at the group's name, as the run claims it.
@@ -3799,16 +3815,8 @@ variable FFI-LIT-B                          \ and the newer
 \ `;CALLBACK` claims and defines the open group's words; one with none open
 \ is left to the run, which rejects it.
 : CLOSE-FFI-CALLBACK ( -- )
-   CB-GROUP @ MATCH callback-group
-      closed OF ENDOF
-      open OF [: CALLBACK-RECLAIM ;] FFI-CB:PRODUCTS ENDOF
-      skipped OF ENDOF
-   ;MATCH
-   CB-GROUP @ MATCH callback-group
-      closed OF ENDOF
-      open OF [: CALLBACK-WORD ;] FFI-CB:PRODUCTS ENDOF
-      skipped OF ENDOF
-   ;MATCH
+   CB-DEFINES? IF [: CALLBACK-RECLAIM ;] FFI-CB:PRODUCTS THEN
+   CB-DEFINES? IF [: CALLBACK-WORD ;] FFI-CB:PRODUCTS THEN
    CB-CLOSED! ;
 
 \ The load judges the word `;FUNCTION` builds as it publishes it, after the
