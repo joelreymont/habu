@@ -18598,11 +18598,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    THEN ;
 
 : INTRINSIC ( n -- ) {: id:n :}
-   id 0 <=  id INTRINSIC>CTL CTL-INTRINSIC-MASK invert and 0 <>  or IF
-      s" INTRINSIC: id out of range" EXIT-STATUS:INTERNAL die
-   THEN
    CK-CLOSED-SYM @ {: sym:n :}
-   sym 0= IF s" INTRINSIC: no recorded definition to tag" EXIT-STATUS:INTERNAL die THEN
    sym CTL-FLAGS-SYM CTL-INTRINSIC-MASK invert and  id INTRINSIC-CTL or {: flags:n :}
    sym flags sym CTL-MASKS-SYM NORET-ADD-SYM
    CK-CLOSED-IX @ ndict@ < IF
