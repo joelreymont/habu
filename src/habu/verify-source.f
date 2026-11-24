@@ -2559,9 +2559,15 @@ variable SUM-VAR-NEXT
       THEN
    LOOP ;
 
-\ A declaration name or body token, as its definer's parse-name reads one: `\` and `(`
-\ are tokens there, not comments (`ENUM colr red \ note` refuses 7101 at `\`).
-: DECL-TOKEN ( -- str ) NEXT-RAW ;
+\ A declaration body token, comments skipped as NEXT skips them, so a replayed
+\ body holds none.
+: DECL-TOKEN ( -- str )
+   BEGIN
+      NEXT-RAW 2dup COMMENT-END dup 0<>
+   WHILE
+      nip nip SKIP-PAST CSR-SKIPPED
+   REPEAT
+   drop ;
 
 EXPORT TYPE-DECL:TDECL-SUMTYPE
 
@@ -2601,7 +2607,7 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
 \ ends inside replays without it, and the front end refuses "missing ;ENUM".
 : RECORD-ENUM ( -- )
    0 NEWEST-SYM !
-   DECL-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
    name nameu at SEALED-FAMILY
    BODY-RESET
@@ -2619,7 +2625,7 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
 \ source; an unclosed body replays as RECORD-ENUM's does: "missing ;STRUCTURE".
 : RECORD-STRUCTURE-DECL ( -- )
    0 NEWEST-SYM !
-   DECL-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
    name nameu at SEALED-FAMILY
    BODY-RESET
@@ -3015,7 +3021,8 @@ variable STG-TYPE-U
    nameu 0= IF NAME-STOP THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu name nameu DEF-NAME-REJECT? IF DECLARATION-END EXIT THEN
-   DECL-TOKEN  over {: f:^ :}
+   \ VALUE-RECORD reads its fields with parse-name: a comment opener is a token.
+   NEXT-RAW  over {: f:^ :}
    BEGIN
       dup 0= IF
          name nameu VRDEF-UNCLOSED
@@ -3027,7 +3034,7 @@ variable STG-TYPE-U
          name nameu f e VALUE-RECORD-ADD
          EXIT
       THEN
-      2drop DECL-TOKEN
+      2drop NEXT-RAW
    AGAIN ;
 
 : VALUE-RECORD-OUTCOME ( [ -- ] -- )

@@ -985,6 +985,13 @@ TYPED-VARIABLE SC-WANT ^VEC:vector<u8>  \ a record's head and path lines, as lon
    s" : SCU14 ( -- ) schp drop ;" SC-LINE
    s" 1 2 3 PC-HD:MAKE SCHOLDS schx" SC-LINE
    s" : SCU8 ( -- ^u8 ) schx ;" SC-LINE
+   s" STRUCTURE rpsdcm DERIVE addr   \ the header's comment" SC-LINE
+   s"    FIELD a n   \ the first field" SC-LINE
+   s"    \ FIELD x n" SC-LINE
+   s"    ( FIELD y n ) FIELD b n" SC-LINE
+   s" ;STRUCTURE" SC-LINE
+   s" : SCCM ( n n -- rpsdcm ) RPSDCM:MAKE ;" SC-LINE
+   s" : SCCMBAD ( n -- rpsdcm ) RPSDCM:MAKE ;" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
    SC-SRC @ VEC:SPAN SPAN:$ ;
 
@@ -1029,7 +1036,7 @@ s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
 SC-NEW SC-SRC !  SC-NEW SC-ERR !  SC-NEW SC-WANT !
 SC-RUN
-SC-ERR$ s" error[" STR:COUNT-SUB 16 T=
+SC-ERR$ s" error[" STR:COUNT-SUB 17 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
    s" :4:35" s" the stack holds n rpsdbuf after this" SC-RECORD
 s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)"
@@ -1093,8 +1100,11 @@ s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `schp-NEW`
    s" :66:16" s" not checked from here" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `schx` on and leaves it to the run"
    s" :69:19" s" not checked from here" SC-RECORD
+\ rpsdcm's comments declare nothing: MAKE takes its two fields.
+s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 2, has 1)"
+   s" :76:27" s" reaches below the inputs" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
-   s" :71:1" s" missing field name" SC-RECORD
+   s" :78:1" s" missing field name" SC-RECORD
 FS:CLEANUP-RUN
 ;package
 
@@ -1234,26 +1244,38 @@ s" STRUCTURE sdlptrn FIELD p ^n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE sdlptrrole FIELD ptr n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE sdlptrrole2 FIELD sdlbox n ;STRUCTURE" TEST-EVAL:RC 0 T=
 
-\ hostile comments. A declaration body has no comment syntax: `(` and `\` are
-\ ordinary tokens, so the declaration rejects the unexpected token, not a
-\ pointer to a linear value.
-DECL-DIAG:PROSE
-s" STRUCTURE sdlptrpar FIELD v n ( FIELD p ^sdlbox ) ;STRUCTURE" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrpar`\n" DECL-DIAG:HAS? TTRUE                                  \ the paren itself was the token
-s" (" s" unexpected token in structure declaration" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: start each clause with `FIELD`, `POLICY`, `DERIVE` or `OPAQUE`, and end with `;STRUCTURE`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" STRUCTURE sdlptrbsl FIELD v n \ FIELD p ^sdlbox" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrbsl`\n" DECL-DIAG:HAS? TTRUE                                  \ and so was the backslash
-s\" \\" s" unexpected token in structure declaration" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: start each clause with `FIELD`, `POLICY`, `DERIVE` or `OPAQUE`, and end with `;STRUCTURE`\n" DECL-DIAG:HAS? TTRUE
-\ and trailing text after the offending field cannot suppress the reject, because
-\ the field is resolved before anything following it is read.
+\ hostile comments. A body takes comments as code does, so a field inside one
+\ is never read: neither pointer to a linear value is rejected.
+s" STRUCTURE sdlptrpar FIELD v n ( FIELD p ^sdlbox ) ;STRUCTURE" TEST-EVAL:RC 0 T=
+s\" STRUCTURE sdlptrbsl FIELD v n \\ FIELD p ^sdlbox\n;STRUCTURE" TEST-EVAL:RC 0 T=
+\ A comment after the offending field cannot suppress the reject: the field is
+\ resolved before anything following it is read.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrtail FIELD p ^sdlbox ( note ) ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrtail`\n" DECL-DIAG:HAS? TTRUE
 s" sdlbox" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:OFF
+\ An unclosed `(` is rejected as in code, at the comment.
+DECL-DIAG:PROSE
+s" STRUCTURE sdlopen FIELD v n ( FIELD p n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-UNTERMINATED-COMMENT]: the comment `(` opens is never closed\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: close the comment with `)`\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:OFF
+
+\ A trailing `\`, a whole-line `\` and a `( … )` between clauses declare
+\ nothing: the record holds a and b alone.
+STRUCTURE sdcmt DERIVE addr   \ the header's comment
+   FIELD a n   \ the first field
+   \ FIELD x n
+   ( FIELD y n ) FIELD b n
+;STRUCTURE
+SDCMT:CELLS 2 T=
+: SDCMT-RT ( n n -- n n ) SDCMT:MAKE SDCMT:UNMAKE ;
+1 2 SDCMT-RT 2 T= 1 T=
+\ A comment inside a field type is skipped too: h's type is `[ n -- n ]`.
+STRUCTURE qcm DERIVE addr FIELD h [ n ( c ) -- n ] ;STRUCTURE
+: QCM-MK ( [ n -- n ] -- qcm ) QCM:MAKE ;
+: QCM-H ( ^qcm -- ^[ n -- n ] ) QCM:H ;
 
 \ 15. DERIVE addr: one accessor per field plus AT / BYTES / CELLS, in the
 \     family's spelling and wordlist, generated at commit because an accessor

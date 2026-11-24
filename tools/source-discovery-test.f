@@ -351,7 +351,15 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    0 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED T=
    0 SOURCE-EVENT:PATH@ s" sd-a.f" SDT-PATH T$=
    1 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED T=
-   1 SOURCE-EVENT:PATH@ s" sd-raw.f" SDT-PATH T$= ;
+   1 SOURCE-EVENT:PATH@ s" sd-raw.f" SDT-PATH T$=
+   \ A closer in a body comment ends nothing, so the `(` after it opens no comment.
+   S\" STRUCTURE cbox FIELD a n \\ ends at ;STRUCTURE (\n;STRUCTURE\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   \ A comment before a member name or a MUTUAL's first name is skipped.
+   S\" STRUCTURE fbox FIELD \\ the ( first\nx n ;STRUCTURE\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   S\" MUTUAL \\ the ( pair\nma STRUCTURE ma FIELD x n ;STRUCTURE ;MUTUAL\nrequire sd-raw.f\n"
+   s" sd-raw.f" SDT-ONE-EVENT ;
 
 \ A package word may replace a family opener. The file really loads dep.f;
 \ discovery must include it or refuse at the ambiguous opener.

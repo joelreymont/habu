@@ -201,7 +201,7 @@ ED-RESET
    2dup s" ;variant" STR:=CI IF 2drop YES EXIT THEN
    2dup s" field" STR:=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
    2drop s" unexpected token in variant block"
-   s" write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body"
+   s" write only `FIELD name type` clauses before `;VARIANT`"
    E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
 : VARIANT-BODY ( -- ) BEGIN VARIANT-CLAUSE UNTIL ;
 : VARIANT-BLOCK ( -- )
@@ -319,7 +319,7 @@ ED-RESET
    2dup s" derive" STR:=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    2dup s" variant" STR:=CI IF 2drop VARIANT-BLOCK NO EXIT THEN
    2drop s" unexpected token in enum declaration"
-   s" write only `POLICY`, `DERIVE` and `VARIANT` clauses before `;ENUM`, with no comments"
+   s" write only `POLICY`, `DERIVE` and `VARIANT` clauses before `;ENUM`"
    E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
 : FULL-BODY ( -- ) BEGIN FULL-CLAUSE UNTIL ;
 

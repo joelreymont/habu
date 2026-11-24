@@ -716,7 +716,6 @@ defer TDECL-NAME-PREFLIGHT-XT ( str -- )
 
 \ --- variant payload elements -> schema nodes (type-schema.f header): positional
 \ letter params within arity, n/f/r and concrete CT cell types, and `^T`.
-\ Comments are not supported inside a declaration block; stray tokens reject.
 
 : TDECL-HEADER! ( str -- n ) {: fa:^ fu:n :}   \ fix for a missing name
    TDN-U @ 0= IF TDN-A @ 0 s" missing name" fa fu E-TDECL-SYNTAX TDECL-THROW THEN

@@ -397,13 +397,27 @@ EXPORT CHECK:WIDTH-FAM
       SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a start + j start - j ;
 
-\ The blanks an argument may start with.
+\ The blanks an argument may start with, and on live input the comments its
+\ reader skipped: a whole-token `\` or `(`. A replay's `(` and `\` are tokens.
 : SD-SKIP ( str n -- n ) {: a:^ u:n i:n :}
    i BEGIN
       dup u < IF a over + c@ SD-BLANK? ELSE NO THEN
    WHILE
       1 +
-   REPEAT ;
+   REPEAT {: s:n :}
+   s u >= IF s EXIT THEN
+   DECL-REPLAY:RP-ACTIVE? IF s EXIT THEN
+   s 0 > IF a s + 1 - c@ SD-BLANK? 0= IF s EXIT THEN THEN
+   s 1 + u < IF a s + 1 + c@ SD-BLANK? 0= IF s EXIT THEN THEN
+   a s + 1 DECL-FRONT:COMMENT-END {: e:n :}
+   e 0= IF s EXIT THEN
+   s 1 + BEGIN
+      dup u < IF a over + c@ e <> ELSE NO THEN
+   WHILE
+      1 +
+   REPEAT
+   dup u < IF 1 + THEN
+   a u rot RECURSE ;
 
 \ Whether the atom ending at j opens a pointer, and the index its pointee is read
 \ from: the byte after `^`. An atom `ptr` not followed by `<` names no type.
@@ -1176,7 +1190,7 @@ EXPORT CHECK:UNSEEN-COVERS?
    2dup s" ;mutual" STR:=CI IF
       UNDECLARED  CLOSE-ALL YES EXIT THEN
    2drop s" unexpected token in mutual declaration"
-   s" write each member as `STRUCTURE name … ;STRUCTURE` and end with `;MUTUAL`, with no comments"
+   s" write each member as `STRUCTURE name … ;STRUCTURE` and end with `;MUTUAL`"
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
 
 : MUTUAL-DRIVE ( -- ) LIST BEGIN MUTUAL-STEP UNTIL ;

@@ -917,10 +917,12 @@ multi-cell type rationale is `docs/design.md` "Types".
   new word (`XREF:UNDEFINE-NAME`) or runs a caught failing `evaluate` that
   created one leaves `does>` none, and the kernel stops it, `E-DOES-UNCREATED`,
   rc 70.
-- **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` or `( … )`
-  comment inside the body is rejected `E-BAD-DECLARATION`, rc 70, by the load
-  and by `tools/check.f`. Put comments above the opener, including comments
-  explaining the header or fields.
+- **A `STRUCTURE`, `ENUM`, `SUMTYPE` or `MUTUAL` body is parsed by its
+  definer.** It takes `\` and `( … )` comments as code does, on the load and
+  in `tools/check.f`: a comment beside a `FIELD` or `VARIANT` line declares
+  nothing. An unclosed `(` runs to the end of the input: the load rejects it
+  `E-UNTERMINATED-COMMENT`, and `tools/check.f` the declaration it leaves
+  open, `E-BAD-DECLARATION`.
 - **A `FIELD` holds a value, not a body.** A payload is a type expression
   (letter param, concrete cell type, `^T`, closed arity-0 family, applied
   family such as `option<n>`, or a quotation `[ in -- out ]`). A quotation
@@ -1001,8 +1003,8 @@ first `IN` or `FINAL`, a row cut short by `IN`, `FINAL` or `;DEFINE`, a row
 with no line, a `(` after SENSE not followed by one name and `)`, a token after
 a `FINAL` row's ACTION other than those three, a `\` anywhere in a row, and a
 `(` in a row but right after SENSE. DEFINE reads the table with `parse-name`,
-so neither opens a comment there (a `STRUCTURE` or `ENUM` body rejects both
-too); comments go above the table. `tools/check.f` skips the table
+so neither opens a comment there; comments go above the table.
+`tools/check.f` skips the table
 (`parses-through: FSM:DEFINE 0 ( ;DEFINE )`) and checks the code after it; the
 generated words are left to the run, so their uses are `W-CHECK-DEFERRED` under
 `--verify-only`.
@@ -2577,7 +2579,8 @@ sections above.
 - **Definer names are raw `parse-name` operands.** `package (` names `(` and
   `: \ ( -- n ) 1 ;` names `\`; they do not open a comment or line
   comment. The type definers refuse `(` or `\` as names (`E-BAD-NOMINAL-TYPE`
-  for `DEFLINEAR` and `VALUE-RECORD`). A definer or parsing word without its
+  for `DEFLINEAR` and `VALUE-RECORD`). A `MUTUAL`'s listed names and member
+  headers are its body: comments there are skipped. A definer or parsing word without its
   operand is `E-MISSING-NAME` at the keyword in every `tools/check.f` mode,
   `--verify-only` included. A definer that declares an effect (`defer`,
   `TRUSTED:`, a `does>` clause, …) with no signature after its

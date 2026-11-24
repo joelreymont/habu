@@ -342,12 +342,8 @@ public
 
 : RP-ACTIVE? ( -- bool ) RP-OPEN? @ 0 <> ;
 
-\ RP-CLAIM ( name body -- ): install one declaration's lexed token stream. It
-\ never copies and cannot see a token already dropped, so a caller's buffer
-\ builder must hold the whole declaration or raise, never truncate
-\ (verify-source.f BODY-APPEND grows its buffers to every run). Comments pass through raw: the live
-\ keyword reads `\` or `(` as an ordinary token and refuses it, so replay must
-\ too.
+\ RP-CLAIM ( name body -- ): install one declaration's lexed tokens without a copy,
+\ so a caller's buffer holds the whole declaration or raises, never truncates.
 : RP-CLAIM ( str str -- )
    RP-BODY!  RP-HEAD!
    0 RP-SCAN-I !
@@ -543,6 +539,42 @@ variable SEEN-I
 
 : MISS-CLEAR ( -- ) NULL-PTR MISS-A ! 0 MISS-U ! 0 MISS-WHY ! ;
 
+EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
+INP-CELL RESERVED-PTR-U8-CELL INPUT-AT     \ the live input's cursor
+INE-CELL RESERVED-PTR-U8-CELL INPUT-END
+
+public
+
+\ The byte that ends the comment a token opens: the line's end after `\`, `)`
+\ after `(`; 0 for any other token.
+: COMMENT-END ( str -- n ) {: a:^ u:n :}
+   u 1 <> IF 0 EXIT THEN
+   a c@ 92 = IF 10 EXIT THEN
+   a c@ 40 = IF 41 EXIT THEN
+   0 ;
+
+private
+
+: TICKS ( str -- ) {: a:^ u:n :}
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+
+\ An unclosed `(` runs to the input's end, where the cursor stays: no body is left to resync.
+: UNCLOSED ( str -- ) {: a:^ u:n :}
+   s" E-UNTERMINATED-COMMENT" REJECTION:OPEN
+   s" the comment " REJECTION:EMIT-STR  a u TICKS
+   s"  opens is never closed" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" the comment opens here" REJECTION:EMIT-STR
+   REJECTION:HELP  s" close the comment with " REJECTION:EMIT-STR  s" )" TICKS
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
+
+\ Skips the live input past the comment token a u opens, as code skips one.
+: SKIP-COMMENT ( str n -- ) {: a:^ u:n c:n :}
+   INPUT-AT @ INPUT-END @ {: p:^ e:^ :}
+   p BEGIN dup e < IF dup c@ c <> ELSE NO THEN WHILE 1 + REPEAT
+   dup e < IF 1 + INPUT-AT ! EXIT THEN
+   INPUT-AT !
+   c 41 = IF a u UNCLOSED THEN ;
+
 public
 
 : TYPE! ( str -- ) TYPE-U ! TYPE-A ! ;
@@ -563,15 +595,22 @@ public
 \ mode selection reads to the first variant before registering the family).
 : HEAD! ( str -- ) HEAD-U ! HEAD-A !  0 HEAD-I ! ;
 
-\ Tokens come from the live input or a replay stream (DECL-REPLAY); RAW checks
-\ the pushback and the lookahead span first, so lookahead is the same on both.
-: SOURCE-NEXT ( -- str )
+\ The next token, raw as `parse-name` or the replay gives it: a family name read
+\ here takes a `(` or `\` as the name.
+: SOURCE-TOKEN ( -- str )
    DECL-REPLAY:RP-ACTIVE? IF DECL-REPLAY:RP-NEXT EXIT THEN
    parse-name ;
 
+\ Tokens come from the live input, comments skipped as code skips them, or a
+\ replay stream (DECL-REPLAY) as lexed; RAW reads the pushback and lookahead first.
+: SOURCE-NEXT ( -- str )
+   DECL-REPLAY:RP-ACTIVE? IF SOURCE-TOKEN EXIT THEN
+   BEGIN SOURCE-TOKEN 2dup COMMENT-END dup 0 <> WHILE SKIP-COMMENT REPEAT
+   drop ;
+
 private
 
-: HEAD-NEXT ( -- str )
+: HEAD-TOKEN ( -- str )
    HEAD-A @ {: a:^ :}
    BEGIN HEAD-I @ HEAD-U @ < IF
       a HEAD-I @ + c@ 32 <= ELSE NO THEN WHILE
@@ -582,9 +621,22 @@ private
       a HEAD-I @ + c@ 32 > ELSE NO THEN WHILE
       HEAD-I @ 1+ HEAD-I !
    REPEAT
-   HEAD-I @ start - {: size:n :}
-   HEAD-I @ HEAD-U @ = IF HEAD-CLEAR THEN
-   a start + size ;
+   a start +  HEAD-I @ start - ;
+
+\ Moves past the next byte c in the span, or to its end.
+: HEAD-PAST ( n -- ) {: c:n :}
+   HEAD-A @ {: a:^ :}
+   BEGIN HEAD-I @ HEAD-U @ < IF
+      a HEAD-I @ + c@ c <> ELSE NO THEN WHILE
+      HEAD-I @ 1+ HEAD-I !
+   REPEAT
+   HEAD-I @ HEAD-U @ < IF HEAD-I @ 1+ HEAD-I ! THEN ;
+
+\ A live span holds the comments SOURCE-NEXT skipped, so they are skipped again.
+: HEAD-NEXT ( -- str )
+   BEGIN HEAD-TOKEN 2dup COMMENT-END dup 0 <> WHILE nip nip HEAD-PAST REPEAT
+   drop
+   HEAD-I @ HEAD-U @ = IF HEAD-CLEAR THEN ;
 
 : RAW ( -- str )                  \ next body token: pushback, lookahead, source
    PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
@@ -598,7 +650,7 @@ public
    2dup DECL-REJECT:TOKEN! ;
 : UNGET ( str -- ) 2dup TERMINATOR? IF 0 SEEN-END ! THEN PEND! ;
 : NAME-TOKEN ( -- str )           \ a name, recorded, never the terminator
-   RAW 2dup DECL-REJECT:TOKEN! ;
+   SOURCE-TOKEN 2dup DECL-REJECT:TOKEN! ;
 
 : POLICY-CODE ( str -- n )         \ policy name -> layout code (or reject)
    dup 0= IF 2drop s" missing layout policy name"

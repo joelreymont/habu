@@ -1210,22 +1210,13 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    two twou SB-APPEND LF+
    name nameu FIXTURE! ;
 
-\ A definer reads its body with `parse-name`, so a `\` or `(` there, even one
-\ hiding the terminator, is the token it refuses.
+\ A VALUE-RECORD reads its fields with `parse-name`, so a `\` or `(` there is the token it rejects.
 : TEST-PREPASS-COMMENT ( -- )
-   s" a comment in a closed SUMTYPE" T-LABEL
-   s" SUMTYPE shape VARIANT dot ;VARIANT \ note" s" ;SUMTYPE" s" sum-comment.f"
-      TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 36 35 36 REFUSED-MODES
-   0 s" label" s" unexpected token in sum declaration" FIELD=
    s" a comment holding a SUMTYPE's terminator" T-LABEL
+   \ A commented `;SUMTYPE` closes nothing: the sum runs to the input's end.
    s" SUMTYPE shape VARIANT dot ;VARIANT \ ;SUMTYPE" s" sum-comment-end.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 36 35 36 REFUSED-MODES
-   0 s" label" s" unexpected token in sum declaration" FIELD=
-   s" a comment in a closed STRUCTURE" T-LABEL
-   s" STRUCTURE pt FIELD x n \ note" s" ;STRUCTURE" s" prod-comment.f" TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 24 23 24 REFUSED-MODES
-   0 s" label" s" unexpected token in structure declaration" FIELD=
+   s" E-BAD-DECLARATION" s" shape" 1 9 8 13 REFUSED-MODES
+   0 s" label" s" missing ;SUMTYPE" FIELD=
    s" a comment in a closed VALUE-RECORD" T-LABEL
    s" VALUE-RECORD vr x n \ note" s" END-VALUE-RECORD" s" vrec-comment.f"
       TWO-LINE-FIXTURE
@@ -1238,18 +1229,11 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" label" s" a signature, not a name" FIELD= ;
 
 : TEST-PREPASS-NAME-COMMENT ( -- )
-   s" a comment after a SUMTYPE's name" T-LABEL
-   s" SUMTYPE shape \ note" s\" VARIANT dot ;VARIANT\n;SUMTYPE" s" sum-name-comment.f"
+   s" a comment before an ENUM's name" T-LABEL
+   s" ENUM \ note" s" colr red green ;ENUM" s" enum-name-comment.f"
       TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 15 14 15 REFUSED-MODES
-   s" a comment after an ENUM's name" T-LABEL
-   s" ENUM colr \ note" s" red green ;ENUM" s" enum-name-comment.f" TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 11 10 11 REFUSED-MODES
-   0 s" label" s" name must be a lowercase tail" FIELD=
-   s" a comment after a STRUCTURE's name" T-LABEL
-   s" STRUCTURE spt \ note" s" FIELD x n ;STRUCTURE" s" struct-name-comment.f"
-      TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 15 14 15 REFUSED-MODES
+   s" E-BAD-DECLARATION" s" \" 1 6 5 6 REFUSED-MODES
+   0 s" label" s" name must be a lowercase family tail" FIELD=
    s" a comment as a typed variable's name" T-LABEL
    s" TYPED-VARIABLE \ n" s" tvar-name-comment.f" LINE-FIXTURE
    s" E-MISSING-NAME" s" \" 1 16 15 16 REFUSED-MODES

@@ -2,8 +2,8 @@ split-str
 \ sumtype-front.f: SUMTYPE's front end, in package TYPE-DECL.
 \ It loads after the declaration runner so each declaration runs inside
 \ DECLARATION-TRANSACTION:RUN, where SUMTYPE's words come from the constructor
-\ participant. It reads its tokens through DECL-FRONT:SOURCE-NEXT, so a tool's
-\ replay runs the same front end.
+\ participant. It reads its tokens through DECL-FRONT, so a tool's replay runs
+\ the same front end.
 
 package TYPE-DECL
 
@@ -21,7 +21,7 @@ package TYPE-DECL
 
 : TDECL-SUMTYPE ( -- )
    SRCLOC:TOKEN$ {: kw:^ ku:n :}
-   DECL-FRONT:SOURCE-NEXT {: na:^ nu:n :}
+   DECL-FRONT:SOURCE-TOKEN {: na:^ nu:n :}
    kw ku na nu REJECTION:NOT-A-NAME
    TDECL-CLEAR
    \ A sum with no name runs to the header's rejection, at its keyword.

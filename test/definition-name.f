@@ -63,7 +63,17 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" a typed variable named by a comment opener rejects at the name" T-LABEL
    HB$ s" TYPED-VARIABLE \ n" RUN-SOURCE 70 T=
    ERR$ s" error[E-MISSING-NAME]: `TYPED-VARIABLE` needs a name" STR:CONTAINS? TTRUE
-   ERR$ s" a comment, not a name" STR:CONTAINS? TTRUE ;
+   ERR$ s" a comment, not a name" STR:CONTAINS? TTRUE
+   s" a sum type named by a comment opener rejects at the name" T-LABEL
+   HB$ S\" SUMTYPE \\ note\nshp VARIANT dot ;VARIANT VARIANT pnt n ;VARIANT ;SUMTYPE"
+      RUN-SOURCE 70 T=
+   ERR$ s" error[E-MISSING-NAME]: `SUMTYPE` needs a name" STR:CONTAINS? TTRUE
+   ERR$ s" a comment, not a name" STR:CONTAINS? TTRUE
+   s" a structure named by a comment opener rejects at the name" T-LABEL
+   HB$ S\" STRUCTURE \\ note\nsbox FIELD x n ;STRUCTURE" RUN-SOURCE 70 T=
+   ERR$ s" error[E-BAD-DECLARATION]: bad structure declaration `\`"
+      STR:CONTAINS? TTRUE
+   ERR$ s" name must be a lowercase family tail" STR:CONTAINS? TTRUE ;
 
 : KEYWORD-SOURCE$ ( str -- str ) {: tok:^ toku:n :}
    SB-RESET

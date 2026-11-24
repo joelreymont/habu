@@ -245,7 +245,6 @@ before the word runs, and `--load` exits 70.
 | any token after a call to a word whose body ends in `die` or `throw`, or after `execute` of such a `[: … ;]` literal or a word like `MEM:WITH-BYTES` given one for its `[ … -- S ] -- S`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE` |
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause, rc 70 |
-| a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 70 |
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line, or a sum whose variants put an address and a number or quotation in one saved cell | `E-BAD-STORAGE` |
 | `( -- ^a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `^a` (a pointer to cells): `: RUN ( ^a [ ^a -- ] -- ) execute ;`, `: GO ( ^box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
@@ -438,7 +437,7 @@ width, cell count or byte count worked out by hand: a type's width can change.
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ^fam )` |
 | `STRUCTURE p … BUFFER b N … ;STRUCTURE` | N bytes inline in a record, N a number literal or a `constant`'s name above 0, from the next cell; a constant whose value only the run computes leaves the declaration to the run (`warning[W-CHECK-DEFERRED]`); the record stays whole cells; `MAKE` takes ceil(N / CELL) `n` for it; a record too wide to make is rejected (`error[E-BAD-DECLARATION]`), and one with a `BUFFER` rejects `DERIVE eq`, `hash` and `init` | under `DERIVE addr`, `P:B ( ^p -- SPAN:span<u8> )`, N bytes |
 | `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`), in part `A:B` it is `B-P:MAKE`, reached inside A only; `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE`, as a `STRUCTURE` in a private section does; a private `ENUM` or `SUMTYPE` likewise gets `FAMILY-VARIANT` and its `DERIVE` words |
-| `MUTUAL a b … ;MUTUAL` | structures that point at each other: one `STRUCTURE … ;STRUCTURE` per listed family, in any order, as one declaration; a member before its `;STRUCTURE` is named only beneath `^`; no comments inside; no `ENUM` or `SUMTYPE` member | each member's `STRUCTURE` words |
+| `MUTUAL a b … ;MUTUAL` | structures that point at each other: one `STRUCTURE … ;STRUCTURE` per listed family, in any order, as one declaration; a member before its `;STRUCTURE` is named only beneath `^`; no `ENUM` or `SUMTYPE` member | each member's `STRUCTURE` words |
 
 A build tracks a compile-time read of storage as a read of the record whose
 address it derives from, within that record's extent: `L 16 +` past

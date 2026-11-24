@@ -1020,10 +1020,8 @@ DYNAMIC-BUFFER SD-DEC u8
    off len SD-TOK$ BLOCK-CLOSER? if SD-SCOPE-CLOSE then ;
 
 
-\ These type definers consume a declaration through its matching closer. Its
-\ family name, field names and variant names, and a MUTUAL's list names and
-\ member headers, are raw operands, not calls or definitions. A member name can
-\ itself spell a closer or a loader word.
+\ These type definers consume a declaration through its matching closer. Its names
+\ are operands, not calls or definitions, and may spell a closer or a loader word.
 : SD-FAMILY-KIND ( n n -- n )
    SD-TOK$ {: a:^ u:n :}
    a u s" structure" STR:=CI if 1 exit then
@@ -1047,28 +1045,39 @@ DYNAMIC-BUFFER SD-DEC u8
    off len SD-CHECK-USE
    off off len SD-R-FAMILY SD-R-RECORD drop ;
 
-\ A MUTUAL's list after its first name, read as the loader reads it: names to
-\ the first `structure`, whose header follows. Answers whether `;mutual` or the
-\ source's end came first.
-: SD-MUTUAL-LIST ( -- bool )
+\ The next body token, comments skipped as the loader skips them.
+: SD-BODY-RAW ( -- n n )
    begin
       SD-RAW {: off:n len:n :}
+      len 1 = off SD-BYTE SD-BACKSLASH = and if SD-SKIP-LINE else
+      len 1 = off SD-BYTE SD-LPAREN = and if SD-SKIP-PAREN else
+      off len exit
+      then then
+   again ;
+
+\ A MUTUAL's list as the loader reads it: names to the first `structure`, whose
+\ header follows. Answers whether `;mutual` or the source's end came first.
+: SD-MUTUAL-LIST ( -- bool )
+   begin
+      SD-BODY-RAW {: off:n len:n :}
       len 0= if true exit then
       off len SD-TOK$ s" ;mutual" STR:=CI if true exit then
-      off len SD-TOK$ s" structure" STR:=CI if SD-RAW 2drop false exit then
+      off len SD-TOK$ s" structure" STR:=CI if
+         SD-BODY-RAW 2drop false exit
+      then
    again ;
 
 : SD-FAMILY-BODY ( n -- ) {: kind:n :}
-   SD-RAW 2drop                        \ family name, a MUTUAL's first listed
-   kind 4 = if SD-MUTUAL-LIST if exit then then
+   \ a STRUCTURE's, ENUM's or SUMTYPE's own name, raw
+   kind 4 = if SD-MUTUAL-LIST if exit then else SD-RAW 2drop then
    begin
-      SD-RAW {: off:n len:n :}
+      SD-BODY-RAW {: off:n len:n :}
       len 0= if exit then
       off len SD-TOK$ s" field" STR:=CI
       off len SD-TOK$ s" buffer" STR:=CI or
       off len SD-TOK$ s" variant" STR:=CI or
       kind 4 = off len SD-TOK$ s" structure" STR:=CI and or if
-         SD-RAW 2drop                   \ member name or header
+         SD-BODY-RAW 2drop
       else
          off len kind SD-FAMILY-END? if exit then
       then

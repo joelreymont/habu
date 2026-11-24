@@ -49,7 +49,7 @@ DECL-DIAG:PROSE
 s" ENUM eac<a,b> red ;ENUM" TEST-EVAL:RC 70 T=                \ parameterized compact form
 s\" error[E-BAD-DECLARATION]: bad enum declaration `eac`\n" DECL-DIAG:HAS? TTRUE
 s" red" s" unexpected token in enum declaration" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write only `POLICY`, `DERIVE` and `VARIANT` clauses before `;ENUM`, with no comments\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: write only `POLICY`, `DERIVE` and `VARIANT` clauses before `;ENUM`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM ech red POLICY packed-tag ;ENUM" TEST-EVAL:RC 70 T=  \ header clause after a compact variant
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ech`\n" DECL-DIAG:HAS? TTRUE
@@ -64,7 +64,7 @@ DECL-DIAG:PROSE
 s" ENUM emv VARIANT alpha FIELD x n ;ENUM" TEST-EVAL:RC 70 T=  \ missing ;VARIANT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `emv`\n" DECL-DIAG:HAS? TTRUE
 s" ;ENUM" s" unexpected token in variant block" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: write only `FIELD name type` clauses before `;VARIANT`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM eme red green" TEST-EVAL:RC 70 T=                  \ missing ;ENUM
 s\" error[E-BAD-DECLARATION]: bad enum declaration `eme`\n" DECL-DIAG:HAS? TTRUE
@@ -731,7 +731,7 @@ DECL-DIAG:PROSE
 s" ENUM dgvb VARIANT vv stray ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgvb`\n" DECL-DIAG:HAS? TTRUE
 s" stray" s" unexpected token in variant block" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: write only `FIELD name type` clauses before `;VARIANT`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM dgvn VARIANT" TEST-EVAL:RC 70 T=
@@ -778,8 +778,8 @@ s" reason two" s" fix two" 990002 DECL-REJECT:EXPLAIN
 \ 23. tools/check.f's declaration pre-pass replays each ENUM it reads, so the
 \     source after it is checked against the family's generated words. One
 \     --all-errors --verify-only run reports each rejection asserted here, and
-\     no other. The dangling VARIANT ends the fixture: its body runs to the end
-\     of input.
+\     no other. The dangling VARIANT ends the fixture: its body, an unclosed
+\     `(`, runs to the end of input.
 package enum-check-test
 private
 
@@ -801,7 +801,14 @@ create EC-NONE 1 allot
    s" ENUM rppol POLICY packed-tag DERIVE eq hash red green ;ENUM" EC-LINE
    s" ENUM rpbadv VARIANT vv stray ;VARIANT ;ENUM" EC-LINE
    s" ENUM rpbadname red red ;ENUM" EC-LINE
-   s" ENUM rpdangle VARIANT" EC-LINE
+   s" ENUM rpcm DERIVE eq \ the header's comment" EC-LINE
+   s"    ( a comment ) VARIANT one ;VARIANT   \ the first variant" EC-LINE
+   s"    \ VARIANT gone ;VARIANT" EC-LINE
+   s"    VARIANT two FIELD x n ( FIELD y n ) ;VARIANT" EC-LINE
+   s" ;ENUM" EC-LINE
+   s" : R2 ( n -- rpcm ) RPCM:TWO ;" EC-LINE
+   s" : R2BAD ( -- rpcm ) RPCM:GONE ;" EC-LINE
+   s" ENUM rpdangle VARIANT ( never closed" EC-LINE
    SB$ ;
 
 : EC-RUN ( -- )
@@ -817,9 +824,11 @@ create EC-NONE 1 allot
    EC-SRC$ EC-OUT outu LEN>N EC-ERR$ oc 70 T-ENDING-EXITED= ;
 
 \ The record headed HEAD is placed at the fixture's PLACE, `:line:column`, and
-\ its caret says LABEL.
+\ its caret says LABEL. The gutter before `-->` is as wide as the line number.
 : EC-RECORD ( str str str -- ) {: h:^ hu:n p:^ pu:n l:^ lu:n :}
-   SB-RESET  h hu SB-APPEND  s\" \n --> " SB-APPEND  EC-FILE SB-APPEND
+   SB-RESET  h hu SB-APPEND  10 SB-APPEND-C
+   1 BEGIN p over + c@ $3A <> WHILE 32 SB-APPEND-C 1 + REPEAT drop
+   s" --> " SB-APPEND  EC-FILE SB-APPEND
    p pu EC-LINE
    EC-ERR$ SB$ STR:CONTAINS? TTRUE
    SB-RESET  s" ^ " SB-APPEND  l lu EC-LINE
@@ -828,15 +837,20 @@ create EC-NONE 1 allot
 s" habu-enum-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" enum-decl-check.f" EC-PATH FS:JOIN-PATH EC-PATH-U !
 EC-RUN
-EC-ERR$ s" error[" STR:COUNT-SUB 4 T=
+EC-ERR$ s" error[" STR:COUNT-SUB 5 T=
 s" error[E-MISMATCH]: R1BAD ends with rpcompact on the stack; its signature promises n"
    s" :3:18" s" the stack holds rpcompact after this" EC-RECORD
 s" error[E-BAD-DECLARATION]: bad enum declaration `rpbadv`"
    s" :5:24" s" unexpected token in variant block" EC-RECORD
 s" error[E-BAD-DECLARATION]: bad enum declaration `rpbadname`"
    s" :6:20" s" duplicate variant" EC-RECORD
+\ rpcm's comments declare nothing: gone is no variant.
+s" error[E-UNDEFINED]: cannot find word `RPCM:GONE`"
+   s" :13:21" s" not found" EC-RECORD
+\ An unclosed `(` runs to the end of input, as in code, and the rejection
+\ is placed at it.
 s" error[E-BAD-DECLARATION]: bad enum declaration `rpdangle`"
-   s" :8:1" s" missing variant name" EC-RECORD
+   s" :14:23" s" missing variant name" EC-RECORD
 FS:CLEANUP-RUN
 ;package
 
@@ -981,25 +995,31 @@ s" ENUM edlptrn VARIANT hold FIELD p ^n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM edlptrrole VARIANT hold FIELD ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM edlptrrole2 VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
-\ A variant block has no comment syntax: `(` and `\` are
-\ ordinary tokens, so the declaration is malformed and rejects 7107, not this
-\ rule's 7109.
-DECL-DIAG:PROSE
-s" ENUM edlptrpar VARIANT hold FIELD v n ( FIELD p ^edlmodel ) ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrpar`\n" DECL-DIAG:HAS? TTRUE
-s" (" s" unexpected token in variant block" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:PROSE
-s" ENUM edlptrbsl VARIANT hold FIELD v n \ FIELD p ^edlmodel" TEST-EVAL:RC 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrbsl`\n" DECL-DIAG:HAS? TTRUE
-s\" \\" s" unexpected token in variant block" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body\n" DECL-DIAG:HAS? TTRUE
-\ and trailing text after the offending payload cannot suppress the reject,
-\ because the payload is resolved before anything following it is read.
+\ A variant block takes comments as code does, so a payload inside one is
+\ never read: neither pointer to a linear value is rejected.
+s" ENUM edlptrpar VARIANT hold FIELD v n ( FIELD p ^edlmodel ) ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s\" ENUM edlptrbsl VARIANT hold FIELD v n \\ FIELD p ^edlmodel\n;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+\ A comment after the offending payload cannot suppress the reject: the payload
+\ is resolved before anything following it is read.
 DECL-DIAG:PROSE
 s" ENUM edlptrtail VARIANT hold FIELD p ^edlmodel ( note ) ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrtail`\n" DECL-DIAG:HAS? TTRUE
 s" edlmodel" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
+\ An unclosed `(` is rejected as in code, at the comment.
+DECL-DIAG:PROSE
+s" ENUM edlopen VARIANT hold FIELD v n ( FIELD p n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s\" error[E-UNTERMINATED-COMMENT]: the comment `(` opens is never closed\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:OFF
+
+\ Comments in the header, beside and between clauses declare nothing: two is
+\ the second variant and holds one field.
+ENUM edcmt DERIVE eq \ the header's comment
+   ( a comment ) VARIANT one ;VARIANT   \ the first variant
+   \ VARIANT gone ;VARIANT
+   VARIANT two FIELD x n ( FIELD y n ) ;VARIANT
+;ENUM
+: EDCMT-TAG ( n -- n ) EDCMT:TWO EDCMT:TAG ;
+7 EDCMT-TAG 1 T=
 
 \ A payload names its own family only inside a `^` pointee, and that pointer is
 \ a pointer to a linear value when the enum holds one: judged at ;ENUM.

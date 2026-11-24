@@ -1917,6 +1917,12 @@ TWX-MULTI-ERR-BEGIN
 s" ENUM tdmenoe red green" evaluate
 TWX-MULTI-ERR-END 1 T=
 s" TDMENOE-GONE ( tdmenoe -- tdmenoe )" CHECK-QUIET-CANDIDATE! 0 T=
+\ An unclosed `(` in a body runs to the input's end: one record, counted once.
+TWX-MULTI-ERR-BEGIN
+REJECTION:CAPTURE
+s" STRUCTURE tdmeu FIELD x n ( never closed" TDT-EVAL-CATCH 70 T=
+TWX-MULTI-ERR-END 1 T=
+REJECTION:BUFFER$ s" error[E-UNTERMINATED-COMMENT]" STR:COUNT-SUB 1 T=
 \ two bad declarations count separately.
 TWX-MULTI-ERR-BEGIN
 s" NEWTYPE Bad1<a> NEWTYPE tdok9<a> SUMTYPE tdes<a> ;SUMTYPE" evaluate
