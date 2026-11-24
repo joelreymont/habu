@@ -397,6 +397,12 @@ SUITE json-rpc
    src/lib/json-rpc-test.f
 ;SUITE
 
+\ The parser tests reopen SPARQL before the public interface seals it.
+SUITE sparql
+   src/lib/sparql/syntax-test.f
+   src/lib/sparql-test.f
+;SUITE
+
 SUITE regex
    src/lib/regex-test.f
 ;SUITE
