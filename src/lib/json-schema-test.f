@@ -209,11 +209,17 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    s\" {\"type\":\"number\",\"minimum\":0}" s" 1e99999999999999999999"
    s" : expected a number whose exponent a signed 64-bit cell holds, found `1e99999999999999999999`; write the number with a smaller exponent"
    FAILS
-   s" VALID? types a whole number of any size or spelling as integer, a fraction not" T-LABEL
+   s" VALID? types a whole number a cell holds as integer, whatever its spelling" T-LABEL
    s\" {\"type\":\"integer\"}" s" 1.0" PASSES
    s\" {\"type\":\"integer\"}" s" 1e2" PASSES
-   s\" {\"type\":\"integer\"}" s" 12345678901234567890" PASSES
-   s\" {\"type\":\"integer\"}" s" 1e99999999999999999999" PASSES
+   s\" {\"type\":\"integer\"}" s" -9223372036854775808" PASSES
+   s\" {\"type\":\"integer\"}" s" 9223372036854775807" PASSES
+   s\" {\"type\":\"integer\"}" s" 12345678901234567890"
+   s" : expected a value of type `integer`, found `12345678901234567890`; send a whole number from -9223372036854775808 to 9223372036854775807"
+   FAILS
+   s\" {\"type\":\"integer\"}" s" 1e99999999999999999999"
+   s" : expected a value of type `integer`, found `1e99999999999999999999`; send a whole number from -9223372036854775808 to 9223372036854775807"
+   FAILS
    s\" {\"type\":\"integer\"}" s" 1e-1"
    s" : expected a value of type `integer`, found `1e-1`; send a whole number"
    FAILS

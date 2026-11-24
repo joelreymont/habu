@@ -24,8 +24,10 @@ split-str
 \ violation, `P: expected X, found Y; fix` with P `.name` per member and
 \ `[i]` per array element below the root, to the vector; text the reader
 \ does not admit, or memory that cannot be had, throws its code, leaving the
-\ vector as it was. A failed anyOf or oneOf lists each alternative's violation
-\ on a line of its own, `[i]` and the violation, its place below the value's.
+\ vector as it was. Type integer takes a whole number a signed cell holds,
+\ whatever its spelling; a larger one is of type number only. A failed anyOf
+\ or oneOf lists each alternative's violation on a line of its own, `[i]` and
+\ the violation, its place below the value's.
 \ VALID? makes no nested call per value: one reader passes over the text,
 \ and each value being judged is a place on a stack in the scratch arena,
 \ so memory, not the machine stack, bounds a value's depth. A place judges
@@ -830,10 +832,8 @@ ARENA PASSES pass
 $10 constant NUMBER-BIT
 $40 constant INTEGER-BIT
 
-\ A number is of type integer when its value has no fractional part,
-\ whatever its size.
 : NUMBER-TYPES ( JSON:reader -- JSON:reader n )
-   JSON:READ-SPAN$ JSON:PARSE JSON:INTEGRAL? if
+   JSON:READ-SPAN$ JSON:PARSE JSON:INTEGER? if
       NUMBER-BIT INTEGER-BIT or exit
    then
    NUMBER-BIT ;
@@ -870,18 +870,24 @@ $40 constant INTEGER-BIT
       o i 4 * rshift 15 and 1- TYPE-NAME pl QUOTE
    loop ;
 
-: TYPE-FIX$ ( ^node bool -- str ) {: nd:^ num:bool :}
+\ The fix for a number that is not of type integer.
+: WHOLE-FIX$ ( ^place -- str )
+   TEXT$ JSON:PARSE JSON:INTEGRAL? if
+      s" send a whole number from -9223372036854775808 to 9223372036854775807" exit
+   then
+   s" send a whole number" ;
+
+: TYPE-FIX$ ( ^node ^place -- str ) {: nd:^ pl:^ :}
    nd NODE-TYPES @ {: t:n :}
-   num t INTEGER-BIT and 0<> and if
-      s" send a whole number" exit
+   pl PLACE-KIND @ NUMBER? t INTEGER-BIT and 0<> and if
+      pl WHOLE-FIX$ exit
    then
    t dup 1- and 0= if s" send a value of that type" exit then
    s" send a value of one of those types" ;
 
 : WRONG-TYPE ( ^node ^place -- ) {: nd:^ pl:^ :}
-   pl PLACE-KIND @ NUMBER? {: num:bool :}
    pl EXPECTED  s" a value of type " pl ADD  nd pl SAY-TYPES
-   pl FOUND  nd num TYPE-FIX$ pl FIX ;
+   pl FOUND  nd pl TYPE-FIX$ pl FIX ;
 
 \ ---- enum and numbers ------------------------------------------------------
 
