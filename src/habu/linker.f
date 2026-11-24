@@ -1120,7 +1120,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    {: src:^ from:n to:n :}
    src from +  to from - {: a:^ u:n :}
    AFTER-PACKAGE @ if a u NAME-SUM SPELL-OPEN then
-   a u s" package" XREF-STR=CI AFTER-PACKAGE ! ;
+   a u s" package" STR:=CI AFTER-PACKAGE ! ;
 
 \ The running word ends at byte i, the blank c.
 : WORD-END ( ^u8 n n -- )

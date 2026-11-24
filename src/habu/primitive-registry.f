@@ -93,7 +93,7 @@ private
 : OWNED? ( str -- bool ) {: name:^ size:n :}
    PRIM-SPEC:COUNT 0 ?do
       i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if
-         i PRIM-SPEC:NAME$ name size CORE-STR= if unloop 0 0= exit then
+         i PRIM-SPEC:NAME$ name size STR:= if unloop 0 0= exit then
       then
    loop
    0 0= 0= ;
@@ -123,7 +123,7 @@ private
 \ The registered body of the name, or -1.
 : BODY-ROW ( str -- n ) {: name:^ size:n :}
    USED @ 0 ?do
-      i NAME$ name size CORE-STR= if i unloop exit then
+      i NAME$ name size STR:= if i unloop exit then
    loop
    -1 ;
 
@@ -144,7 +144,7 @@ private
 \ Names fold case: rows that differ only in case register one name.
 : CHECK-UNIQUE ( n -- ) {: row:n :}
    USED @ row 1+ ?do
-      i NAME$ row NAME$ CORE-STR=CI if row NAME$ TWO-BODIES then
+      i NAME$ row NAME$ STR:=CI if row NAME$ TWO-BODIES then
    loop ;
 
 public

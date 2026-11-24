@@ -90,7 +90,7 @@ variable MEM-LAST                     \ members of the declaration last ended
 \ The member named na nu, -1 for none.
 : MEM-FIND ( str -- n ) {: na:^ nu:n :}
    MEM-N @ 0 ?do
-      i MEM-NAME$ na nu CORE-STR= IF i unloop EXIT THEN
+      i MEM-NAME$ na nu STR:= IF i unloop EXIT THEN
    loop -1 ;
 \ The member whose family is id, -1 for none.
 : MEM-OF ( n -- n ) {: id:n :}
@@ -145,10 +145,10 @@ PTR-VARIABLE NOUN-A   variable NOUN-U
 : SD-NAME-FIX$ ( -- str ) s" write the family name after `STRUCTURE`, as in `STRUCTURE point`" ;
 : LIST-NAME-FIX$ ( -- str ) s" list the families after `MUTUAL`, as in `MUTUAL node link`" ;
 : SD-FIELD-FIX$ ( -- str ) s" give each field of the structure its own name" ;
-: DEFTYPE? ( -- bool ) DECL-REJECT:KIND$ s" deftype" CORE-STR= ;
-: ENUM? ( -- bool ) DECL-REJECT:KIND$ s" enum" CORE-STR= ;
+: DEFTYPE? ( -- bool ) DECL-REJECT:KIND$ s" deftype" STR:= ;
+: ENUM? ( -- bool ) DECL-REJECT:KIND$ s" enum" STR:= ;
 \ A NEWTYPE or DEFTYPE: one base on one line, with no header and no clause.
-: WRAP? ( -- bool ) DEFTYPE? DECL-REJECT:KIND$ s" newtype" CORE-STR= or ;
+: WRAP? ( -- bool ) DEFTYPE? DECL-REJECT:KIND$ s" newtype" STR:= or ;
 \ A DEFTYPE base is one name (WRAP-DRIVE), so its help offers no `^` or header.
 : SD-TYPE-FIX$ ( -- str )
    DEFTYPE? IF
@@ -175,7 +175,7 @@ variable HELP-U
    u 0 ?do a i + c@ HELP-C+ loop ;
 \ The name at a u as its declaration folds it.
 : HELP-FOLD+ ( str -- ) {: a:^ u:n :}
-   u 0 ?do a i + c@ CORE-FOLD-C HELP-C+ loop ;
+   u 0 ?do a i + c@ STR:ASCII-LOWER HELP-C+ loop ;
 
 \ The NEWTYPE a DEFTYPE NAME over BASE becomes, NAME folded to its tail, its
 \ closing "` instead" left to the caller.
@@ -247,8 +247,8 @@ variable HELP-U
 \ asks: a copy kept here drifted twice (it admitted `if`, then value-record names).
 \ Case and duplicate are TFAM-DECL's.
 : NAME-RESERVED? ( str -- bool )
-   2dup s" structure" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" ;structure" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" structure" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" ;structure" STR:=CI IF 2drop YES EXIT THEN
    TYPE-NAME:FAMILY-RESERVED? ;
 
 : REQUIRE-NAME ( str -- )
@@ -416,7 +416,7 @@ EXPORT CHECK:WIDTH-FAM
          na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
       j nu - 1 + YES EXIT
    THEN
-   na nu s" ptr" CORE-STR=CI 0= IF 0 NO EXIT THEN
+   na nu s" ptr" STR:=CI 0= IF 0 NO EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF 0 NO EXIT THEN
    na nu DECL-REJECT:TOKEN!
    s" unknown" s" " na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
@@ -622,7 +622,7 @@ variable SD-QUOT-AT
 : SD-LOOSE-NODE-ONE ( str n -- n ) {: a:^ u:n i:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-LOOSE-PTR EXIT THEN drop
-   na nu s" [" CORE-STR= IF a u j 1 - SD-QUOT-NODE nip EXIT THEN
+   na nu s" [" STR:= IF a u j 1 - SD-QUOT-NODE nip EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? IF
          {: fam:n :}
@@ -660,7 +660,7 @@ SD-LOOSE-INSTALL
 : SD-PARSE-NODE-ONE ( str n n -- n n ) {: a:^ u:n i:n want:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-PTR-NODE EXIT THEN drop
-   na nu s" [" CORE-STR= IF a u j 1 - SD-QUOT-NODE EXIT THEN
+   na nu s" [" STR:= IF a u j 1 - SD-QUOT-NODE EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? 0= IF
          drop
@@ -707,7 +707,7 @@ SD-PARSER-INSTALL
    u depth
    BEGIN dup 0 > WHILE
       NEXT dup 0= IF YES ELSE
-         2dup ca cu CORE-STR=CI IF YES ELSE 2dup TERMINATOR? THEN THEN IF
+         2dup ca cu STR:=CI IF YES ELSE 2dup TERMINATOR? THEN THEN IF
          UNGET  drop a swap
          2dup SD-QUOT-OPEN? IF EXIT THEN
          DECL-REJECT:TOKEN!
@@ -790,12 +790,12 @@ private
    FAM @ TFAM-OPAQUE! ;
 
 : DERIVE-FEATURE? ( str -- bool )
-   2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" addr" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" init" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" tag" CORE-STR=CI IF 2drop YES EXIT THEN
-   s" order" CORE-STR=CI ;
+   2dup s" eq" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" hash" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" addr" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" init" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" tag" STR:=CI IF 2drop YES EXIT THEN
+   s" order" STR:=CI ;
 \ Visibility is not a condition for a derived surface: it picks the spelling and
 \ the wordlist (type-family.f TF-CTOR-PRIV$, rendered by sumtype.f TDGEN-DRV-REF).
 : DERIVE-CONCRETE ( -- )                \ eq/hash compare whole values: arity 0 only
@@ -807,15 +807,15 @@ private
 \ caller's instantiation, and the checker refuses the one instantiation a baked
 \ offset would misdescribe (a type argument wider than one cell).
 : DERIVE-ONE ( str -- )
-   2dup s" eq" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-EQ! DRV-EQ DECL-EVENT:DERIVE EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! DRV-HASH DECL-EVENT:DERIVE EXIT THEN
-   2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! DRV-ADDR DECL-EVENT:DERIVE EXIT THEN
-   2dup s" init" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-INIT! DRV-INIT DECL-EVENT:DERIVE EXIT THEN
-   2dup s" tag" CORE-STR=CI IF
+   2dup s" eq" STR:=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-EQ! DRV-EQ DECL-EVENT:DERIVE EXIT THEN
+   2dup s" hash" STR:=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! DRV-HASH DECL-EVENT:DERIVE EXIT THEN
+   2dup s" addr" STR:=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! DRV-ADDR DECL-EVENT:DERIVE EXIT THEN
+   2dup s" init" STR:=CI IF 2drop FAM @ TFAM-DERIVE-INIT! DRV-INIT DECL-EVENT:DERIVE EXIT THEN
+   2dup s" tag" STR:=CI IF
       2drop s" derive tag requires an enum"
       s" drop `tag` from `DERIVE`: only an `ENUM` derives it"
       TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
-   2dup s" order" CORE-STR=CI IF
+   2dup s" order" STR:=CI IF
       2drop s" derive feature not yet supported"
       s" drop `order` from `DERIVE` and write the comparison as a word over the fields"
       TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
@@ -847,8 +847,8 @@ private
 \ derived tail) would make the generator define a name twice, a die inside the
 \ plan. Refused only under DERIVE addr, which header clauses have fixed by now.
 : MEMBER-CLASH? ( str -- bool )
-   2dup s" make" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" unmake" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" make" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" unmake" STR:=CI IF 2drop YES EXIT THEN
    2dup TFAM-ADDR-FIXED-TAIL? IF 2drop YES EXIT THEN
    TFAM-DERIVED-TAIL? ;
 \ A public family's accessor is a word named by the field itself (`POINT:X`),
@@ -1076,12 +1076,12 @@ EXPORT CHECK:UNSEEN-COVERS?
       s" missing ;STRUCTURE"
       s" end the declaration with `;STRUCTURE` after its last field"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ;structure" CORE-STR=CI IF 2drop MEM-END YES EXIT THEN
-   2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
-   2dup s" buffer" CORE-STR=CI IF 2drop BUFFER-CLAUSE NO EXIT THEN
-   2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
-   2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
-   2dup s" opaque" CORE-STR=CI IF 2drop OPAQUE-CLAUSE NO EXIT THEN
+   2dup s" ;structure" STR:=CI IF 2drop MEM-END YES EXIT THEN
+   2dup s" field" STR:=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
+   2dup s" buffer" STR:=CI IF 2drop BUFFER-CLAUSE NO EXIT THEN
+   2dup s" policy" STR:=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
+   2dup s" derive" STR:=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
+   2dup s" opaque" STR:=CI IF 2drop OPAQUE-CLAUSE NO EXIT THEN
    2drop s" unexpected token in structure declaration"
    s" start each clause with `FIELD`, `POLICY`, `DERIVE` or `OPAQUE`, and end with `;STRUCTURE`"
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
@@ -1125,7 +1125,7 @@ EXPORT CHECK:UNSEEN-COVERS?
    na nu fam YES MEM-ADD ;
 \ The token after the list: end of input, a member or the terminator.
 : LIST-END? ( str -- bool ) {: a:^ u:n :}
-   u 0=  a u s" structure" CORE-STR=CI or  a u s" ;mutual" CORE-STR=CI or ;
+   u 0=  a u s" structure" STR:=CI or  a u s" ;mutual" STR:=CI or ;
 : LIST ( -- )
    NEXT 2dup LIST-END? IF
       2drop s" missing name" LIST-NAME-FIX$
@@ -1172,8 +1172,8 @@ EXPORT CHECK:UNSEEN-COVERS?
       s" missing ;MUTUAL"
       s" end the declaration with `;MUTUAL` after its last `;STRUCTURE`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" structure" CORE-STR=CI IF 2drop MEMBER NO EXIT THEN
-   2dup s" ;mutual" CORE-STR=CI IF
+   2dup s" structure" STR:=CI IF 2drop MEMBER NO EXIT THEN
+   2dup s" ;mutual" STR:=CI IF
       UNDECLARED  CLOSE-ALL YES EXIT THEN
    2drop s" unexpected token in mutual declaration"
    s" write each member as `STRUCTURE name … ;STRUCTURE` and end with `;MUTUAL`, with no comments"

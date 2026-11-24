@@ -136,15 +136,8 @@ public
 : XREF-NAME$ ( ^n -- str )
    dup XREF-NAME-A swap XREF-NAME-LEN ;
 
-: XREF-FOLD-C ( n -- n )
-   dup $41 < if exit then
-   dup $5A > if exit then
-   $20 or ;
-
 PTR-VARIABLE XREF-A
-PTR-VARIABLE XREF-B
 variable XREF-U
-variable XREF-V
 PTR-VARIABLE XREF-SN
 variable XREF-SU
 PTR-VARIABLE XREF-FN
@@ -155,9 +148,6 @@ variable XREF-NV
 : XREF-A@ ( -- ^u8 )
    XREF-A @ ;
 
-: XREF-B@ ( -- ^u8 )
-   XREF-B @ ;
-
 : XREF-SN@ ( -- ^u8 )
    XREF-SN @ ;
 
@@ -167,28 +157,15 @@ variable XREF-NV
 : XREF-A! ( ^u8 -- )
    XREF-A ! ;
 
-: XREF-B! ( ^u8 -- )
-   XREF-B ! ;
-
 : XREF-SN! ( ^u8 -- )
    XREF-SN ! ;
 
 : XREF-FN! ( ^u8 -- )
    XREF-FN ! ;
 
-: XREF-STR=CI ( str str -- bool )
-   XREF-V ! XREF-B! XREF-U ! XREF-A!
-   XREF-U @ XREF-V @ <> if XREF-FALSE exit then
-   0 begin dup XREF-U @ < while
-      dup XREF-A@ swap ZBYTE@ XREF-FOLD-C
-      over XREF-B@ swap ZBYTE@ XREF-FOLD-C <> if drop XREF-FALSE exit then
-      1+
-   repeat drop
-   XREF-TRUE ;
-
 : XREF-MATCH? ( ^n str -- bool )
    XREF-U ! XREF-A!
-   XREF-NAME$ XREF-A@ XREF-U @ XREF-STR=CI ;
+   XREF-NAME$ XREF-A@ XREF-U @ STR:=CI ;
 
 package PKG-AUTH
 private
@@ -542,8 +519,8 @@ seal-package
    clause XREF-NAME$ {: derived:^ dlen:n :}
    DOES-CLAUSE:SUFFIX$ {: suffix:^ sufu:n :}
    dlen len sufu + <> if XREF-FALSE exit then
-   derived len name len XREF-STR=CI 0= if XREF-FALSE exit then
-   derived len + sufu suffix sufu XREF-STR=CI 0= if XREF-FALSE exit then
+   derived len name len STR:=CI 0= if XREF-FALSE exit then
+   derived len + sufu suffix sufu STR:=CI 0= if XREF-FALSE exit then
    parent XREF-START {: first:n :}
    clause XREF-START {: entry:n :}
    entry first <= if XREF-FALSE exit then

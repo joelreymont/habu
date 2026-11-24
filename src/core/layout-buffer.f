@@ -365,7 +365,7 @@ public
 : SCRATCH-CLAUSE? ( -- bool )
    STORAGE-LINE-TOKEN {: ta:^ tu:n :}
    tu 0= IF 0 0= 0= EXIT THEN
-   ta tu s" scratch-only" CORE-STR=CI IF 0 0= EXIT THEN
+   ta tu s" scratch-only" STR:=CI IF 0 0= EXIT THEN
    ta STORAGE-UNREAD  0 0= 0= ;
 
 private

@@ -372,7 +372,7 @@ private
 : ROW-OF ( str -- n )
    {: a:^ u:n :}
    ROW-N 0 ?do
-      i ROW-NAME$ a u CORE-STR=CI if i unloop exit then
+      i ROW-NAME$ a u STR:=CI if i unloop exit then
    loop
    -1 ;
 

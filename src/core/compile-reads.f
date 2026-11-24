@@ -96,8 +96,8 @@ create WID-BUF CELL SCRATCH-ALLOT        \ NAME+'s second bytes
 : SAME? ( n n str str -- bool )
    {: off:n kind:n a:^ u:n b:^ v:n :}
    off CELL@ kind =  off CELL + CELL@ u = and  off 2 cells + CELL@ v = and if
-      off 3 cells + AT u a u CORE-STR=
-      off 3 cells + u + AT v b v CORE-STR= and exit
+      off 3 cells + AT u a u STR:=
+      off 3 cells + u + AT v b v STR:= and exit
    then
    0 0= 0= ;
 

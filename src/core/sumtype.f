@@ -367,7 +367,7 @@ variable TDECL-SEEN-N
 : TDECL-SEEN? ( str -- bool ) {: a:^ u:n :}
    0 BEGIN dup TDECL-SEEN-N @ < WHILE
       dup TDECL-SEEN-NAME @  over TDECL-SEEN-LEN @
-      a u CORE-STR= IF drop RES-TRUE EXIT THEN
+      a u STR:= IF drop RES-TRUE EXIT THEN
       1+
    REPEAT drop RES-FALSE ;
 : TDECL-SEEN+ ( str -- ) {: a:^ u:n :}
@@ -435,7 +435,7 @@ variable TDA-CAP   0 TDA-CAP !          \ bytes mapped at TDA-P, 0 for none
 \ token that generated it.
 : TDECL-WORD-NOTE ( str n -- str ) {: pa:^ pu:n code:n :}
    TDECL-CODE @ code <>  TDA-U @ 0= or IF s" " EXIT THEN
-   TDA-A @ TDA-U @ pa pu CORE-STR=CI IF s" " EXIT THEN
+   TDA-A @ TDA-U @ pa pu STR:=CI IF s" " EXIT THEN
    TDA-A @ TDA-U @ ;
 \ The word a sealed record names: the generated word that would change the
 \ sealed package, else the token a u.
@@ -635,11 +635,11 @@ private
    SUMV-FAM@ TFAM-PKG$ {: pa:^ pu:n :}
    pu 0= IF RES-TRUE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
-   pa pu CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
+   pa pu CHECKER-AUTH-PACKAGE$ STR:=CI ;
 
 : TDECL-VAR-TAKEN? ( str -- bool ) {: a:^ u:n :}
    SUMV-N @ 0 ?do
-      i SUMV-NAME$ a u CORE-STR= IF
+      i SUMV-NAME$ a u STR:= IF
          i TDECL-VAR-SCOPE? IF RES-TRUE unloop EXIT THEN
       THEN
    loop RES-FALSE ;
@@ -763,7 +763,7 @@ defer TDECL-NAME-PREFLIGHT-XT ( str -- )
 \ reject on the resolved id (TDECL-CUR-FAM) for a qualified one. Only the direct
 \ case: mutual recursion (A -> B -> A) is not detected.
 : TDECL-SELF-REF? ( str -- bool ) {: a:^ u:n :}
-   a u TDN-A @ TDN-U @ CORE-STR= ;
+   a u TDN-A @ TDN-U @ STR:= ;
 
 \ Rejects the tail a u when its outcome sr is SR-AMBIG.
 : TDECL-AMBIG-REJECT ( n str -- ) {: sr:n a:^ u:n :}
@@ -881,13 +881,13 @@ defer TDV-ELEM-XT ( str -- n nominal )   \ forward ref for the ELEM<->ARGS<->QUO
    TDV-ARG-N @ {: base:n :}
    BEGIN
       TDECL-NEXT
-      2dup s" >" CORE-STR= IF + fa fu fam base TDV-ARGS-BUILD swap EXIT THEN
+      2dup s" >" STR:= IF + fa fu fam base TDV-ARGS-BUILD swap EXIT THEN
       2dup DELIM? IF s" bad type application"
          TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
       TDV-ELEM-XT TDV-ARG+
       TDECL-NEXT
-      2dup s" ," CORE-STR= IF 2drop ELSE
-      2dup s" >" CORE-STR= IF + fa fu fam base TDV-ARGS-BUILD swap EXIT ELSE
+      2dup s" ," STR:= IF 2drop ELSE
+      2dup s" >" STR:= IF + fa fu fam base TDV-ARGS-BUILD swap EXIT ELSE
          s" bad type application" TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW
       THEN THEN
    AGAIN ;
@@ -954,12 +954,12 @@ PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
    base TDV-QUOT-BUILD-ROW facts sep sepu ;
 : TDV-QUOT-EXPECT ( str str [ str str str n -- ] -- )
    {: a:^ u:n ea:^ eu:n fail :}
-   a u ea eu CORE-STR= IF EXIT THEN
+   a u ea eu STR:= IF EXIT THEN
    u 0= IF a u s" the quotation type is not closed"
       s" close the quotation type with `]`"
       E-TDECL-SYNTAX fail execute EXIT THEN
    a u
-   ea eu s" --" CORE-STR= IF s" the quotation type needs `--` here"
+   ea eu s" --" STR:= IF s" the quotation type needs `--` here"
    ELSE s" the quotation type needs `]` here" THEN
    s" write the quotation type as `[ in -- out ]`"
    E-TDECL-SYNTAX fail execute ;
@@ -989,7 +989,7 @@ variable TYPE-LEVEL
    next elem fail RES-FALSE TDV-QUOT-SIDE rot drop {: din:n sep:^ sepu:n :}
    sep sepu s" --" fail TDV-QUOT-EXPECT
    next elem fail RES-TRUE TDV-QUOT-SIDE {: dout:n dfacts:n end:^ endu:n :}
-   end endu s" |" CORE-STR= IF
+   end endu s" |" STR:= IF
       dfacts 0 <> IF end endu fail TDV-FACT-PLACE THEN
       next elem fail RES-FALSE TDV-QUOT-SIDE rot drop {: rin:n rsep:^ rsepu:n :}
       rsep rsepu s" --" fail TDV-QUOT-EXPECT
@@ -1007,7 +1007,7 @@ variable TYPE-LEVEL
    tu 0= IF qa qu ELSE ta tu THEN wa wu fa fu code TDECL-THROW ;
 \ A quotation never reads past its variant: `;VARIANT` ends it as the text's end would.
 : TDECL-VPAY-QUOT ( str -- n ) {: qa:^ qu:n :}
-   [: TDECL-NEXT 2dup s" ;variant" CORE-STR=CI IF drop 0 THEN ;]
+   [: TDECL-NEXT 2dup s" ;variant" STR:=CI IF drop 0 THEN ;]
    [: TDV-ELEM-XT ;] [: qa qu TDECL-QUOT-FAIL ;] PARSE-QUOT
    SIG-UNRES @ IF drop 0 THEN ;
 
@@ -1023,7 +1023,7 @@ variable TYPE-LEVEL
 : TDECL-VPAY-APP? ( str -- n bool ) {: a:^ u:n :}
    a u TDECL-VPAY-FAM? 0= IF drop 0 RES-FALSE EXIT THEN
    {: fam:n :}
-   TDECL-NEXT 2dup s" <" CORE-STR= IF
+   TDECL-NEXT 2dup s" <" STR:= IF
       2drop a u fam TDECL-VPAY-ARGS fam a rot TDECL-VPAY-UNSTORED RES-TRUE EXIT THEN
    PK! 0 RES-FALSE ;
 
@@ -1033,20 +1033,20 @@ variable TYPE-LEVEL
 : TDECL-VPAY-LOOSE-APP ( -- )
    BEGIN
       TDECL-NEXT
-      2dup s" >" CORE-STR= IF 2drop EXIT THEN
+      2dup s" >" STR:= IF 2drop EXIT THEN
       2dup DELIM? IF s" bad type application"
          TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
       TDV-ELEM-XT drop
       TDECL-NEXT
-      2dup s" ," CORE-STR= IF 2drop ELSE
-      2dup s" >" CORE-STR= IF 2drop EXIT ELSE
+      2dup s" ," STR:= IF 2drop ELSE
+      2dup s" >" STR:= IF 2drop EXIT ELSE
          s" bad type application" TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW
       THEN THEN
    AGAIN ;
 
 : TDECL-VPAY-ONE ( str -- n ) {: a:^ u:n :}
-   a u s" [" CORE-STR= IF a u TDECL-VPAY-QUOT EXIT THEN
-   a u s" ptr" CORE-STR= IF a u s" unknown payload type"
+   a u s" [" STR:= IF a u TDECL-VPAY-QUOT EXIT THEN
+   a u s" ptr" STR:= IF a u s" unknown payload type"
       TDECL-PTR-FIX$ E-TDECL-PAYLOAD TDECL-THROW THEN
    a u SIG-CARET? IF
       a u SIG-CARET-BARE? IF a u s" pointer without a pointee"
@@ -1059,7 +1059,7 @@ variable TYPE-LEVEL
    a u CON-OF dup 0 <> IF drop a u TDECL-PAY-ELEM EXIT THEN drop
    a u TDECL-ABSENT-MAY? IF
       a u TDECL-SRC SIG-UNRES!
-      TDECL-NEXT 2dup s" <" CORE-STR= IF 2drop TDECL-VPAY-LOOSE-APP
+      TDECL-NEXT 2dup s" <" STR:= IF 2drop TDECL-VPAY-LOOSE-APP
       ELSE PK! THEN
       0 EXIT
    THEN
@@ -1287,7 +1287,7 @@ create TDV-BADLETTER 1 allot
       EXIT THEN
    node SCHEMA-A@ {: ff:n :}
    ff TFAM-GEN-PUBLIC? 0= IF
-      ff TFAM-PKG$ fam TFAM-PKG$ CORE-STR=CI 0= IF
+      ff TFAM-PKG$ fam TFAM-PKG$ STR:=CI 0= IF
          s" field family's derived words are private to its package"
          s" declare the field's family in a public section of its package, or drop `eq` and `hash` from `DERIVE`"
          EXIT THEN THEN
@@ -1313,7 +1313,7 @@ create TDV-BADLETTER 1 allot
    0 TDV-PW !  0 TDV-ARG-N !  0 TDV-PAY-N !
    BEGIN
       TDECL-NEXT
-      2dup s" ;variant" CORE-STR=CI IF 2drop fam TDECL-VARIANT-FINISH EXIT THEN
+      2dup s" ;variant" STR:=CI IF 2drop fam TDECL-VARIANT-FINISH EXIT THEN
       0 TYPE-LEVEL !  2dup TDECL-VPAY-ELEM
       SIG-UNRES @ IF drop 2drop ELSE
          >r fam r@ TDECL-REQUIRE-DERIVABLE r>
@@ -1325,7 +1325,7 @@ create TDV-BADLETTER 1 allot
    BEGIN
       TDECL-NEXT
       dup 0= IF 2drop EXIT THEN
-      2dup s" variant" CORE-STR=CI 0= IF
+      2dup s" variant" STR:=CI 0= IF
          s" unexpected token in sum declaration"
             s" write each variant as `VARIANT name type ... ;VARIANT`, after any `POLICY` and `DERIVE` clause"
             E-TDECL-SYNTAX TDECL-THROW
@@ -1406,11 +1406,11 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 \ tolerates it), is an unknown policy.
 
 : TDECL-POLICY-DEFERRED? ( str -- bool ) {: a:^ u:n :}
-   a u s" boxed" CORE-STR=CI ;
+   a u s" boxed" STR:=CI ;
 : TDECL-POLICY-SET ( str n -- ) {: a:^ u:n fam:n :}
-   a u s" stack-cell-tag" CORE-STR=CI IF fam TL-STACK-CELL-TAG TFAM-LAYOUT! EXIT THEN
-   a u s" packed-tag" CORE-STR=CI IF fam TL-PACKED-TAG TFAM-LAYOUT! EXIT THEN
-   a u s" niche-null" CORE-STR=CI IF fam TL-NICHE TFAM-LAYOUT! EXIT THEN
+   a u s" stack-cell-tag" STR:=CI IF fam TL-STACK-CELL-TAG TFAM-LAYOUT! EXIT THEN
+   a u s" packed-tag" STR:=CI IF fam TL-PACKED-TAG TFAM-LAYOUT! EXIT THEN
+   a u s" niche-null" STR:=CI IF fam TL-NICHE TFAM-LAYOUT! EXIT THEN
    a u TDECL-POLICY-DEFERRED? IF
       a u s" layout policy not yet supported"
          s" replace `boxed` with `stack-cell-tag`, `packed-tag` or `niche-null`, or drop the `POLICY` clause"
@@ -1429,7 +1429,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    fam TL-PACKED-TAG fam PACKED-DESC LAY-ADD drop ;
 : TDECL-POLICY ( n -- ) {: fam:n :}
    TDECL-NEXT {: a:^ u:n :}
-   a u s" policy" CORE-STR=CI 0= IF a u PK! EXIT THEN     \ no clause: push the token back for the body loop
+   a u s" policy" STR:=CI 0= IF a u PK! EXIT THEN     \ no clause: push the token back for the body loop
    TDECL-NEXT {: pa:^ pu:n :}
    pu 0= IF TDN-A @ TDN-U @ s" missing layout policy name"
       s" name a policy after `POLICY`: `stack-cell-tag`, `packed-tag` or `niche-null`"
@@ -1464,19 +1464,19 @@ EXPORT CHECKER-RESOLVE:PART-ROW
          s" drop `eq` and `hash` from `DERIVE`, or declare the family with no type parameters"
          E-TDECL-DERIVE TDECL-THROW THEN ;
 : TDECL-DERIVE-SET ( str n -- ) {: a:^ u:n fam:n :}
-   a u s" eq" CORE-STR=CI IF
+   a u s" eq" STR:=CI IF
       a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-EQ! EXIT THEN
-   a u s" hash" CORE-STR=CI IF
+   a u s" hash" STR:=CI IF
       a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-HASH! EXIT THEN
-   a u s" init" CORE-STR=CI IF
+   a u s" init" STR:=CI IF
       a u s" derive init requires a STRUCTURE"
          s" drop `init` from `DERIVE`: only a `STRUCTURE` derives it"
          E-TDECL-DERIVE TDECL-THROW THEN
-   a u s" tag" CORE-STR=CI IF
+   a u s" tag" STR:=CI IF
       a u s" derive tag requires an enum"
          s" drop `tag` from `DERIVE`: only an `ENUM` derives it"
          E-TDECL-DERIVE TDECL-THROW THEN
-   a u s" order" CORE-STR=CI IF
+   a u s" order" STR:=CI IF
       a u s" derive feature not yet supported"
          s" drop `order` from `DERIVE` and write the comparison as a word of your own"
          E-TDECL-DERIVE TDECL-THROW THEN
@@ -1486,17 +1486,17 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 : TDECL-DERIVE-MORE? ( n -- bool ) {: fam:n :}
    TDECL-NEXT {: a:^ u:n :}
    u 0= IF RES-FALSE EXIT THEN
-   a u s" eq" CORE-STR=CI
-   a u s" hash" CORE-STR=CI or
-   a u s" init" CORE-STR=CI or
-   a u s" tag" CORE-STR=CI or
-   a u s" order" CORE-STR=CI or
+   a u s" eq" STR:=CI
+   a u s" hash" STR:=CI or
+   a u s" init" STR:=CI or
+   a u s" tag" STR:=CI or
+   a u s" order" STR:=CI or
    0= IF a u PK! RES-FALSE EXIT THEN
    a u fam TDECL-DERIVE-SET
    RES-TRUE ;
 : TDECL-DERIVE ( n -- ) {: fam:n :}
    TDECL-NEXT {: a:^ u:n :}
-   a u s" derive" CORE-STR=CI 0= IF a u PK! EXIT THEN
+   a u s" derive" STR:=CI 0= IF a u PK! EXIT THEN
    TDECL-NEXT {: fa:^ fu:n :}
    fu 0= IF TDN-A @ TDN-U @ s" missing derive feature"
       s" name a feature after `DERIVE`: `eq`, `hash` or `init`"

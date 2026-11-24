@@ -57,7 +57,7 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
 : FILTERED? ( str -- bool )
    {: a:^ u:n :}
    u FILTER-U @ < IF false EXIT THEN
-   a FILTER-U @ FILTER-A @ FILTER-U @ CORE-STR=CI ;
+   a FILTER-U @ FILTER-A @ FILTER-U @ STR:=CI ;
 
 \ Whether NAME passes the filter and fits the next row, which then holds it.
 : KEPT-NAME? ( str -- bool )
@@ -97,14 +97,14 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
 : KEPT-AT ( str -- n )
    {: a:^ u:n :}
    KEPT-N @ 0 ?DO
-      a u i KEPT$ CORE-STR= IF i UNLOOP EXIT THEN
+      a u i KEPT$ STR:= IF i UNLOOP EXIT THEN
    LOOP
    -1 ;
 
 : KEPT-CI ( str -- n )
    {: a:^ u:n :}
    0  KEPT-N @ 0 ?DO
-      a u i KEPT$ CORE-STR=CI IF 1 + THEN
+      a u i KEPT$ STR:=CI IF 1 + THEN
    LOOP ;
 
 : KEPT-ALL ( -- )
@@ -125,7 +125,7 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
 : FIND$ ( str str -- n )
    {: a:^ u:n b:^ v:n :}
    u v - 1 + 0 ?DO
-      a i + v b v CORE-STR= IF i UNLOOP EXIT THEN
+      a i + v b v STR:= IF i UNLOOP EXIT THEN
    LOOP
    -1 ;
 
@@ -162,7 +162,7 @@ variable SUBJECT-N
 : CURSOR-AT ( str str n -- n )
    {: a:^ u:n b:^ v:n k:n :}
    -1  u v - 1 + 0 ?DO
-      a i + v b v CORE-STR= IF drop i THEN
+      a i + v b v STR:= IF drop i THEN
    LOOP
    k + ;
 
@@ -209,7 +209,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 : TOKEN-AT ( str str n -- n )
    {: a:^ u:n b:^ v:n from:n :}
    u v - 1 + from ?DO
-      a i + v b v CORE-STR=
+      a i + v b v STR:=
       a u i 1 - EDGE? and  a u i v + EDGE? and
       IF i UNLOOP EXIT THEN
    LOOP

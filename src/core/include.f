@@ -479,7 +479,7 @@ variable PROGRAM-U
    REQUIRE-BASE @ 0= 0= if INCLUDE-FALSE exit then
    PROGRAM-INIT
    PROGRAM-U @ 0= if INCLUDE-FALSE exit then
-   a u PROGRAM-BUF PROGRAM-U @ CORE-STR= ;
+   a u PROGRAM-BUF PROGRAM-U @ STR:= ;
 
 \ The working directory, the engine root, the program file and the resolver's
 \ work belong to the process that derived them, so their cells are scratch: a
@@ -556,8 +556,8 @@ private
 : NORMAL-SEG ( str str n -- )
    {: p:^ pu:n a:^ u:n limit:n :}
    u 0= if exit then
-   a u s" ." CORE-STR= if exit then
-   a u s" .." CORE-STR= if
+   a u s" ." STR:= if exit then
+   a u s" .." STR:= if
       NORMAL-BUF NORMAL-U @ PARENT-U NORMAL-U ! exit
    then
    p pu a u limit NORMAL-PUT ;
@@ -717,7 +717,7 @@ public
 
 : BELOW? ( str str -- bool ) {: a:^ u:n root:^ rootu:n :}
    u rootu < if INCLUDE-FALSE exit then
-   a rootu root rootu CORE-STR= 0= if INCLUDE-FALSE exit then
+   a rootu root rootu STR:= 0= if INCLUDE-FALSE exit then
    u rootu = if INCLUDE-TRUE exit then
    rootu 1 = root c@ 47 = and if INCLUDE-TRUE exit then
    a rootu + c@ 47 = ;
@@ -1433,7 +1433,7 @@ private
    root rootu req requ UNDER root rootu BELOW? if
       NORMAL-BUF NORMAL-U @ root rootu RELATIVE first BOOT-KNOWN? if
          NORMAL-BUF NORMAL-U @ CANONICAL drop
-         CANDIDATE$ CORE-STR= CANDIDATE$ rot exit
+         CANDIDATE$ STR:= CANDIDATE$ rot exit
       then
    then
    CANDIDATE$ INCLUDE-FALSE ;
@@ -1455,9 +1455,9 @@ private
    else known then
    dup exists or ;
 
-: ENGINE-SEARCHED? ( -- bool ) ENGINE$ CURRENT$ CORE-STR= 0= ;
+: ENGINE-SEARCHED? ( -- bool ) ENGINE$ CURRENT$ STR:= 0= ;
 : CWD-SEARCHED? ( -- bool )
-   CWD$ CURRENT$ CORE-STR= CWD$ ENGINE$ CORE-STR= or 0= ;
+   CWD$ CURRENT$ STR:= CWD$ ENGINE$ STR:= or 0= ;
 
 \ A relative request's roots in order, each once: its owner, the engine root,
 \ then the working directory. The first root whose candidate stops the search
@@ -1787,7 +1787,7 @@ public
       CANDIDATE$ CANDIDATE$ root rootu RELATIVE exit
    then
    root rootu REQUEST$ UNDER root rootu BELOW? if
-      NORMAL-BUF NORMAL-U @ CANONICAL drop CANDIDATE$ CORE-STR=
+      NORMAL-BUF NORMAL-U @ CANONICAL drop CANDIDATE$ STR:=
    else INCLUDE-FALSE then
    0= if root rootu BOOT-REJECT then
    CANDIDATE$ root rootu REQUEST$ UNDER root rootu RELATIVE ;
@@ -1975,10 +1975,10 @@ private
 
 : COPY-SHARED ( str -- n n ) {: a:^ u:n :}
    0 begin dup EVENT-N @ < while
-      dup ROOT@ a u CORE-STR= if
+      dup ROOT@ a u STR:= if
          dup 6 EVENT-FIELD@ swap 7 EVENT-FIELD@ exit
       then
-      dup CURRENT@ a u CORE-STR= if
+      dup CURRENT@ a u STR:= if
          dup 11 EVENT-FIELD@ swap 12 EVENT-FIELD@ exit
       then
       1+

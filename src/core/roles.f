@@ -181,21 +181,8 @@ NOMINAL-PROVIDER
 INTRINSIC-DECLARATION INTRINSIC
 private
 
-: VRDEF-FOLD-C ( n -- n )
-   dup $41 < IF EXIT THEN
-   dup $5A > IF EXIT THEN
-   $20 or ;
-
-: VRDEF-STR=CI ( str str -- bool ) {: a:^ u:n b:^ v:n :}
-   u v <> IF 0 0= 0= EXIT THEN
-   0 BEGIN dup u < WHILE
-      dup a + c@ VRDEF-FOLD-C
-      over b + c@ VRDEF-FOLD-C <> IF drop 0 0= 0= EXIT THEN
-      1+
-   REPEAT drop 0 0= ;
-
 : VRDEF-END? ( str -- bool )
-   s" END-VALUE-RECORD" VRDEF-STR=CI ;
+   s" END-VALUE-RECORD" STR:=CI ;
 
 \ The source ends inside value record a u. It is written through its help, and
 \ the caller stops it.

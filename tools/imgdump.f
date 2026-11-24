@@ -367,7 +367,7 @@ variable OKV
    CMP-BAD-P @ CMP-BAD-U @ type 32 EMITC CMP-BAD-L @ h. 10 EMITC ;
 
 : CMP-NAME-LEN? {: o idx :} ( n n -- bool )
-   idx A-NAME-P@ idx A-NAME-U@ o E-NAME CORE-STR=
+   idx A-NAME-P@ idx A-NAME-U@ o E-NAME STR:=
    idx A-LEN@ o E-CODE-BYTES = and ;
 
 : CMP-ENTRY {: o idx :} ( n n -- )
@@ -448,7 +448,7 @@ variable OKV
    DICT-START
    begin dup DICT-END < while
       dup ENT? 0= if drop s" imgdump: corrupt dict entry" EXIT-STATUS:DATAERR die then
-      dup E-NAME 2 SCRIPT-ARGV$ CORE-STR=CI if
+      dup E-NAME 2 SCRIPT-ARGV$ STR:=CI if
          dup E-NAME type s"  wid " type E-WID . cr exit
       then
       DREC +
@@ -456,8 +456,8 @@ variable OKV
    s" imgdump: word not found" EXIT-STATUS:NOINPUT die ;
 
 : MAIN ( -- )
-   SCRIPT-ARGC 3 >= if 0 SCRIPT-ARGV$ s" --pc" CORE-STR= if PC-IMG exit then then
-   SCRIPT-ARGC 3 = if 0 SCRIPT-ARGV$ s" --wid" CORE-STR= if WID-IMG exit then then
+   SCRIPT-ARGC 3 >= if 0 SCRIPT-ARGV$ s" --pc" STR:= if PC-IMG exit then then
+   SCRIPT-ARGC 3 = if 0 SCRIPT-ARGV$ s" --wid" STR:= if WID-IMG exit then then
    SCRIPT-ARGC 2 = if COMPARE-IMG exit then
    READ-IMG  PREP-IMG  DUMP-DICT ;
 

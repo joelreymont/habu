@@ -74,10 +74,10 @@ ED-RESET
    code DECL-EVENT:POLICY ;
 
 : DERIVE-FEATURE? ( str -- bool )
-   2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" tag" CORE-STR=CI IF 2drop YES EXIT THEN
-   s" order" CORE-STR=CI ;
+   2dup s" eq" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" hash" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" tag" STR:=CI IF 2drop YES EXIT THEN
+   s" order" STR:=CI ;
 
 \ The first token after the header clauses picks the mode: VARIANT starts full
 \ blocks, a bare name a compact body; a parameter list forces full mode, and the
@@ -87,21 +87,21 @@ ED-RESET
 \ applies, and diagnostics keep their bytes.
 : ED-LOOK-END? ( str -- bool )
    dup 0= IF 2drop YES EXIT THEN
-   s" ;enum" CORE-STR=CI ;
+   s" ;enum" STR:=CI ;
 : ED-FIRST-VARIANT ( str -- str )
    BEGIN
-      2dup s" policy" CORE-STR=CI IF
+      2dup s" policy" STR:=CI IF
          2drop SOURCE-NEXT
          2dup ED-LOOK-END? IF EXIT THEN
          2drop SOURCE-NEXT
       ELSE
-         2dup s" derive" CORE-STR=CI IF
+         2dup s" derive" STR:=CI IF
             2drop SOURCE-NEXT
             BEGIN 2dup DERIVE-FEATURE? WHILE 2drop SOURCE-NEXT REPEAT
          ELSE
             \ OPAQUE may be a compact variant or a forbidden header before
             \ VARIANT blocks. Keep it in the lookahead and inspect the next token.
-            2dup s" opaque" CORE-STR=CI IF 2drop SOURCE-NEXT ELSE EXIT THEN
+            2dup s" opaque" STR:=CI IF 2drop SOURCE-NEXT ELSE EXIT THEN
          THEN
       THEN
    AGAIN ;
@@ -109,7 +109,7 @@ ED-RESET
    SOURCE-NEXT {: first:^ size:n :}
    first size ED-FIRST-VARIANT {: last:^ lastu:n :}
    size 0 <> IF first  last lastu + first -  HEAD! THEN
-   last lastu s" variant" CORE-STR=CI ;
+   last lastu s" variant" STR:=CI ;
 : DERIVE-GUARD ( -- )
    FAM @ TFAM-ARITY@ 0 <> IF
       s" derive requires a concrete (arity 0) family"
@@ -117,10 +117,10 @@ ED-RESET
       E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
 : DERIVE-ONE ( str -- )
    DERIVE-GUARD
-   2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! DRV-EQ DECL-EVENT:DERIVE EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! DRV-HASH DECL-EVENT:DERIVE EXIT THEN
-   2dup s" tag" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-TAG! DRV-TAG DECL-EVENT:DERIVE EXIT THEN
-   2dup s" order" CORE-STR=CI IF
+   2dup s" eq" STR:=CI IF 2drop FAM @ TFAM-DERIVE-EQ! DRV-EQ DECL-EVENT:DERIVE EXIT THEN
+   2dup s" hash" STR:=CI IF 2drop FAM @ TFAM-DERIVE-HASH! DRV-HASH DECL-EVENT:DERIVE EXIT THEN
+   2dup s" tag" STR:=CI IF 2drop FAM @ TFAM-DERIVE-TAG! DRV-TAG DECL-EVENT:DERIVE EXIT THEN
+   2dup s" order" STR:=CI IF
       2drop s" derive feature not yet supported"
       s" derive `eq`, `hash` or `tag` instead: `order` is not implemented"
       E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
@@ -198,8 +198,8 @@ ED-RESET
       s" missing ;VARIANT"
       s" close each variant block with `;VARIANT`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ;variant" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
+   2dup s" ;variant" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" field" STR:=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
    2drop s" unexpected token in variant block"
    s" write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body"
    E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
@@ -211,9 +211,9 @@ ED-RESET
 \ Compact body: full-mode block keywords always reject; a header after a variant
 \ rejects through HEADER-ORDER.
 : COMPACT-KW? ( str -- bool )
-   2dup s" variant" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" ;variant" CORE-STR=CI IF 2drop YES EXIT THEN
-   s" field" CORE-STR=CI ;
+   2dup s" variant" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" ;variant" STR:=CI IF 2drop YES EXIT THEN
+   s" field" STR:=CI ;
 : COMPACT-VARIANT ( str -- )
    {: na:^ nu:n :}
    -1 SEEN-VARIANT !
@@ -222,13 +222,13 @@ ED-RESET
    NVAR @ 1 + NVAR ! ;
 : COMPACT-CLAUSE ( str -- bool )    \ dispatch one compact token; YES = ;ENUM
    2dup DECL-REJECT:TOKEN!               \ the mode-selecting token arrives pre-read
-   2dup s" ;enum" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" ;enum" STR:=CI IF 2drop YES EXIT THEN
    2dup COMPACT-KW? IF
       2drop s" block keyword in a compact enum"
       s" write bare variant names only, or every variant as a `VARIANT name ;VARIANT` block"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
-   2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
+   2dup s" policy" STR:=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
+   2dup s" derive" STR:=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    COMPACT-VARIANT NO ;
 
 \ The kind is fixed at registration, before any variant parses, because TFAM-DECL
@@ -318,10 +318,10 @@ ED-RESET
       s" missing ;ENUM"
       s" end the declaration with `;ENUM`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ;enum" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
-   2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
-   2dup s" variant" CORE-STR=CI IF 2drop VARIANT-BLOCK NO EXIT THEN
+   2dup s" ;enum" STR:=CI IF 2drop YES EXIT THEN
+   2dup s" policy" STR:=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
+   2dup s" derive" STR:=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
+   2dup s" variant" STR:=CI IF 2drop VARIANT-BLOCK NO EXIT THEN
    2drop s" unexpected token in enum declaration"
    s" write only `POLICY`, `DERIVE` and `VARIANT` clauses before `;ENUM`, with no comments"
    E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;

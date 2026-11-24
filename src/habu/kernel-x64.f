@@ -153,7 +153,7 @@ public
 
 : ENTRY-LABEL ( str -- label ) {: a:^ u:n :}
    ENGINE-PRIMS:COUNT 0 ?do
-      i ENGINE-PRIMS:NAME$ a u CORE-STR= if
+      i ENGINE-PRIMS:NAME$ a u STR:= if
          i ENGINE-PRIMS:FIRST-LABEL unloop exit
       then
    loop

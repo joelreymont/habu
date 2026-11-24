@@ -521,7 +521,7 @@ variable SEEN-END            \ this declaration's terminator has been consumed
 public
 \ TERMINATOR? ( token -- bool ) : the token is the running declaration's
 \ terminator; a span a front end reads ahead stops there (SD-SPAN-REST).
-: TERMINATOR? ( str -- bool ) TERM-A @ TERM-U @ CORE-STR=CI ;
+: TERMINATOR? ( str -- bool ) TERM-A @ TERM-U @ STR:=CI ;
 private
 : PEND! ( str -- ) PEND-U ! PEND-A ! ;
 : PEND@ ( -- str ) PEND-A @ PEND-U @ ;
@@ -604,9 +604,9 @@ public
    dup 0= IF 2drop s" missing layout policy name"
       s" name a policy after `POLICY`: `stack-cell-tag`, `packed-tag` or `niche-null`"
       E-TDECL-POLICY DECL-REJECT:REJECT throw THEN
-   2dup s" stack-cell-tag" CORE-STR=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
-   2dup s" packed-tag" CORE-STR=CI IF 2drop TL-PACKED-TAG EXIT THEN
-   2dup s" niche-null" CORE-STR=CI IF 2drop TL-NICHE EXIT THEN
+   2dup s" stack-cell-tag" STR:=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
+   2dup s" packed-tag" STR:=CI IF 2drop TL-PACKED-TAG EXIT THEN
+   2dup s" niche-null" STR:=CI IF 2drop TL-NICHE EXIT THEN
    2drop s" unknown layout policy"
    s" name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`"
    E-TDECL-POLICY DECL-REJECT:REJECT throw ;
@@ -619,7 +619,7 @@ private
    BEGIN SEEN-I @ SEEN-U @ < WHILE
       SEEN-I @ SEEN-LEN @ {: len:n :}
       len u = IF
-         SEEN SEEN-I @ + CELL + len a u CORE-STR= IF YES EXIT THEN
+         SEEN SEEN-I @ + CELL + len a u STR:= IF YES EXIT THEN
       THEN
       SEEN-I @ len SEEN-REC + SEEN-I !
    REPEAT NO ;
@@ -659,7 +659,7 @@ EXPORT TYPE-DECL:TDECL-TXN-XT
    {: ta:^ tu:n :}
    BEGIN
       RAW dup 0= IF 2drop EXIT THEN
-      2dup ta tu CORE-STR=CI IF 2drop EXIT THEN
+      2dup ta tu STR:=CI IF 2drop EXIT THEN
       2drop
    AGAIN ;
 : RESYNC ( str -- )

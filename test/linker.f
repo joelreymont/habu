@@ -234,8 +234,8 @@ variable RC-2
    RC-2 @ 0 T=
    s" m: two builds may define one name with different effects" SAY ;
 
-: N1 ( -- ) s" : CORE-FOLD-C ( -- n ) 5 ;" evaluate-closed ;
-: N2 ( -- ) s" : LK-N1 ( -- n ) CORE-FOLD-C ;" evaluate-closed ;
+: N1 ( -- ) s" : >U8 ( -- n ) 5 ;" evaluate-closed ;
+: N2 ( -- ) s" : LK-N1 ( -- n ) >U8 ;" evaluate-closed ;
 
 : BODY-N ( -- )
    [: N1 ;] catch RC-1 !
@@ -248,8 +248,8 @@ variable RC-2
    HOST-CHECK
    RC-1 @ 0 T=
    RC-2 @ 0 T=
-   s" : LK-N2 ( -- n ) 65 CORE-FOLD-C ;" TEST-EVAL:RC 0 T=
-   s" : LK-N3 ( -- n ) CORE-FOLD-C ;" TEST-EVAL:RC 70 T=
+   s" : LK-N2 ( -- n ) 65 >U8 ;" TEST-EVAL:RC 0 T=
+   s" : LK-N3 ( -- n ) >U8 ;" TEST-EVAL:RC 70 T=
    s" n: a build may redefine an hb word; hb's effect stays" SAY ;
 
 : O1 ( -- )

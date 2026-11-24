@@ -204,7 +204,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 \ false (VERIFY:SUPPLIED).
 : OPEN-TEXT ( str -- str bool ) {: a:^ u:n :}
    OPEN-N @ 0 ?do
-      i OPEN-PATH$ a u CORE-STR= if i OPEN-TEXT$ true unloop exit then
+      i OPEN-PATH$ a u STR:= if i OPEN-TEXT$ true unloop exit then
    loop
    NULL$ false ;
 
@@ -383,7 +383,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 \ comes from the quiet reader, never from a stat after verification.
 : FILE-LINE ( str str -- )
    {: f:^ fu:n a:^ u:n :}
-   f fu SUBJECT-PATH$ CORE-STR= {: subject:bool :}
+   f fu SUBJECT-PATH$ STR:= {: subject:bool :}
    f fu OPEN-TEXT {: open:bool :} 2drop
    f fu VERIFY:QUIET-READ-META drop
    {: size:n msec:n mns:n csec:n cns:n :}
@@ -420,7 +420,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    REF-BATCH? @ if
       tail tailu OF-A @ OF-U @ STR:=CI
    else
-      tail tailu OF-A @ OF-U @ CORE-STR=
+      tail tailu OF-A @ OF-U @ STR:=
    then ;
 
 
@@ -603,7 +603,7 @@ public
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )
    SCRIPT-ARGC 3 < if -1 exit then
-   1 SCRIPT-ARGV$ s" --at" CORE-STR= 0= if -1 exit then
+   1 SCRIPT-ARGV$ s" --at" STR:= 0= if -1 exit then
    2 SCRIPT-ARGV$ STR:>NUMBER? MATCH option
       some OF ENDOF
       none OF -1 ENDOF
@@ -613,7 +613,7 @@ public
 \ that form.
 : OF-ARG ( -- bool )
    SCRIPT-ARGC 3 < if false exit then
-   1 SCRIPT-ARGV$ s" --of" CORE-STR= 0= if false exit then
+   1 SCRIPT-ARGV$ s" --of" STR:= 0= if false exit then
    2 SCRIPT-ARGV$ OF-U ! OF-A !
    true ;
 
@@ -656,8 +656,8 @@ public
 
 : MAIN ( -- )
    SCRIPT-ARGC 2 = if
-      0 SCRIPT-ARGV$ s" --batch-ref" CORE-STR= dup REF-BATCH? !
-      0 SCRIPT-ARGV$ s" --batch" CORE-STR= or if
+      0 SCRIPT-ARGV$ s" --batch-ref" STR:= dup REF-BATCH? !
+      0 SCRIPT-ARGV$ s" --batch" STR:= or if
          true BATCH? !
          1 SCRIPT-ARGV$ OF-U ! OF-A !
          READ-IN
@@ -676,9 +676,9 @@ public
       then
    then
    SCRIPT-ARGC 2 = if
-      1 SCRIPT-ARGV$ s" --index" CORE-STR= if READ-STDIN INDEX-SUBJECT exit then
-      1 SCRIPT-ARGV$ s" --entry" CORE-STR= if READ-STDIN ['] PREVERIFY-ENTRY PREVERIFY exit then
-      1 SCRIPT-ARGV$ s" --prose" CORE-STR= if
+      1 SCRIPT-ARGV$ s" --index" STR:= if READ-STDIN INDEX-SUBJECT exit then
+      1 SCRIPT-ARGV$ s" --entry" STR:= if READ-STDIN ['] PREVERIFY-ENTRY PREVERIFY exit then
+      1 SCRIPT-ARGV$ s" --prose" STR:= if
          false JSON? !
          READ-STDIN
          0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
@@ -686,15 +686,15 @@ public
       then
    then
    SCRIPT-ARGC 3 = if
-      1 SCRIPT-ARGV$ s" --label" CORE-STR= if READ-STDIN ['] PREVERIFY-LABELED PREVERIFY exit then
-      1 SCRIPT-ARGV$ s" --entry" CORE-STR=
-      2 SCRIPT-ARGV$ s" --prose" CORE-STR= and if
+      1 SCRIPT-ARGV$ s" --label" STR:= if READ-STDIN ['] PREVERIFY-LABELED PREVERIFY exit then
+      1 SCRIPT-ARGV$ s" --entry" STR:=
+      2 SCRIPT-ARGV$ s" --prose" STR:= and if
          false JSON? !  READ-STDIN ['] PREVERIFY-ENTRY PREVERIFY exit
       then
    then
    SCRIPT-ARGC 4 = if
-      1 SCRIPT-ARGV$ s" --label" CORE-STR=
-      3 SCRIPT-ARGV$ s" --prose" CORE-STR= and if
+      1 SCRIPT-ARGV$ s" --label" STR:=
+      3 SCRIPT-ARGV$ s" --prose" STR:= and if
          false JSON? !  READ-STDIN ['] PREVERIFY-LABELED PREVERIFY exit
       then
    then

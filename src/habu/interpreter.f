@@ -844,7 +844,7 @@ private
    rec 0= if 0 ROOM 0 exit then
    rec XREF-ADDR>REC XREF-NAME$ {: a:^ u:n :}
    u ROOM {: d:^ :}
-   u 0 ?do a i + c@ XREF-FOLD-C d i + c! loop
+   u 0 ?do a i + c@ STR:ASCII-LOWER d i + c! loop
    d u ;
 
 : PUSH-PKG ( -- )

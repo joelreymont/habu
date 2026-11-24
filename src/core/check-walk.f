@@ -409,7 +409,7 @@ EXPORT CHECKER-TAPE:K-MATCH-ARM
 
 : MATCH-VARIANT-TOK ( str -- )
    {: a:^ u:n :}
-   a u s" ;match" CORE-STR= IF MATCH-END EXIT THEN
+   a u s" ;match" STR:= IF MATCH-END EXIT THEN
    a u MATCH-VARIANT ;
 
 EXPORT CHECKER-TAPE:K-MATCH-OF
@@ -435,7 +435,7 @@ EXPORT CHECKER-TAPE:K-MATCH-OF
    0 DEADP !
    0 CHECKER-MATCH-MODE ! ;
 
-: MATCH-OF-TOK ( str -- ) s" of" CORE-STR= MATCH-OF ;
+: MATCH-OF-TOK ( str -- ) s" of" STR:= MATCH-OF ;
 
 : MATCH-TOK ( str -- ) {: a:^ u:n :}
    CHECKER-MATCH-MODE @ 1 = IF a u MATCH-FAM-TOK EXIT THEN
@@ -548,14 +548,14 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
    a u BODY-LOC-REF? IF ELSE
    TKF TKFU @ PARSE-LIT? IF TKF TKFU @ CHAR-LIT-TOK ELSE
    TKF TKFU @ PKG-LIT? IF TKF TKFU @ PKG-LIT-TOK ELSE
-   TKF TKFU @ s" [type]" CORE-STR= IF TYPE-LIT-TOK ELSE
-   TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
-   TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
-   TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
+   TKF TKFU @ s" [type]" STR:= IF TYPE-LIT-TOK ELSE
+   TKF TKFU @ s" construct" STR:= IF CONSTRUCT-BEGIN ELSE
+   TKF TKFU @ s" match" STR:= IF MATCH-BEGIN ELSE
+   TKF TKFU @ s" {:" STR:= IF LOC-BEGIN ELSE
    a u RETIRED-GLOBAL? IF REJECT-RETIRED ELSE
-   TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
+   TKF TKFU @ s" is" STR:= IF IS-TOK ELSE
    TKF TKFU @ BTICK-CAND? IF BTICK-TOK ELSE
-   TKF TKFU @ s" postpone" CORE-STR= IF POSTPONE-TOK ELSE
+   TKF TKFU @ s" postpone" STR:= IF POSTPONE-TOK ELSE
    TKF TKFU @ CF-CODE {: cf:n :}
    OK @ IF cf 21 = IF a u DEAD-OWNER! THEN THEN   \ exit
    OK @ IF cf 22 = IF a u DEAD-OWNER! THEN THEN   \ leave
@@ -635,8 +635,8 @@ private
 \ entry whose declared effect is not ( -- ).
 : ENTRY-SIG-CK ( -- )
    CK-ENTRY-U @ 0= IF EXIT THEN
-   NMA @ NMU @ CK-ENTRY-A @ CK-ENTRY-U @ CORE-STR=CI 0= IF EXIT THEN
-   SGA @ SGU @ SIG-TRIM s" --" CORE-STR= IF EXIT THEN
+   NMA @ NMU @ CK-ENTRY-A @ CK-ENTRY-U @ STR:=CI 0= IF EXIT THEN
+   SGA @ SGU @ SIG-TRIM s" --" STR:= IF EXIT THEN
    AUTHORITY {: pa:^ pu:n mode:n ok:bool :}
    ok 0=  mode CHECKER-PACKAGE-NONE <>  or IF EXIT THEN
    NMOFF @ TADDR NMU @ {: na:^ nu:n :}
@@ -738,10 +738,10 @@ EXPORT CHECKER-ITEMS:ITEM-CELL@
    THEN
    m 2 = IF
       kind BODY-ITEM-KIND:OPERAND = IF TKF TKFU @ MATCH-VARIANT EXIT THEN
-      kw TKF TKFU @ s" ;match" CORE-STR= and IF MATCH-END EXIT THEN
+      kw TKF TKFU @ s" ;match" STR:= and IF MATCH-END EXIT THEN
       MATCH-VARIANT-NONE EXIT
    THEN
-   m 3 = IF kw TKF TKFU @ s" of" CORE-STR= and MATCH-OF EXIT THEN
+   m 3 = IF kw TKF TKFU @ s" of" STR:= and MATCH-OF EXIT THEN
    kw IF TKF TKFU @ MATCH-SKIP-TOK ELSE EV-OPERAND THEN ;
 
 \ The step an item takes while a construct or a match is open, decided by
@@ -770,9 +770,9 @@ EXPORT CHECKER-ITEMS:ITEM-CELL@
    kind BODY-ITEM-KIND:TYPE =  kind BODY-ITEM-KIND:OPERAND = or ;
 
 : ITEM-KEYWORD ( str -- ) {: a:^ u:n :}
-   TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN EXIT THEN
-   TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN EXIT THEN
-   TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN EXIT THEN
+   TKF TKFU @ s" construct" STR:= IF CONSTRUCT-BEGIN EXIT THEN
+   TKF TKFU @ s" match" STR:= IF MATCH-BEGIN EXIT THEN
+   TKF TKFU @ s" {:" STR:= IF LOC-BEGIN EXIT THEN
    TKF TKFU @ CF-CODE {: cf:n :}
    cf 0 < IF ITEM-UNDEFINED EXIT THEN
    OK @ IF cf 21 = cf 22 = or cf 12 = or IF a u DEAD-OWNER! THEN THEN   \ exit, leave, again
@@ -787,7 +787,7 @@ EXPORT CHECKER-ITEMS:ITEM-CELL@
       a u  v EFFECT-TYPE LOC-TYPED
       #LOC @ 1 + #LOC ! EXIT
    THEN
-   kind BODY-ITEM-KIND:KEYWORD =  TKF TKFU @ s" :}" CORE-STR= and IF LOC-CLOSE EXIT THEN
+   kind BODY-ITEM-KIND:KEYWORD =  TKF TKFU @ s" :}" STR:= and IF LOC-CLOSE EXIT THEN
    ITEM-UNDEFINED ;
 
 \ The slot of the local in scope whose bind sequence is SEQ, else -1.
@@ -1306,7 +1306,7 @@ variable TAGGED-FAM
    unpack IF view READ-VIEW? IF EXIT THEN THEN
    \ The literal is only the owner's name, which no registry holds: the view
    \ families are declared with package "".
-   CHECKER-AUTH-PACKAGE$ s" C2-MEM" CORE-STR=CI 0= IF
+   CHECKER-AUTH-PACKAGE$ s" C2-MEM" STR:=CI 0= IF
       s" only package C2-MEM packs a view or unpacks a mutable view"
       s" unpack a read view, as `( read-view<p,q,u8> -- ^u8 n )`, or make the view with C2-MEM's words"
       E-CAST-SCOPE CAST-ERROR:RAISE
@@ -1359,7 +1359,7 @@ variable TAGGED-FAM
       s" declare the linear type with `DEFLINEAR` inside a package, and this row in that package's private section"
       E-LINEAR-OWNER CAST-ERROR:RAISE
    THEN
-   pa pu CHECKER-AUTH-PACKAGE$ CORE-STR=CI 0= IF
+   pa pu CHECKER-AUTH-PACKAGE$ STR:=CI 0= IF
       pa pu CAST-ERROR:TOKEN!
       s" the linear type belongs to package"
       s" declare this row in the private section of the package that declared the linear type"
@@ -2881,7 +2881,7 @@ private
 : PARSES-ITEM ( str -- n )
    {: a:^ u:n :}
    u 0= IF 2 EXIT THEN
-   a u s" )" CORE-STR= IF 1 EXIT THEN
+   a u s" )" STR:= IF 1 EXIT THEN
    0 ;
 
 : PARSES-LIST-REST ( ^u8 -- str )
@@ -2894,7 +2894,7 @@ private
 \ The terminators as the input holds them, from the first one's start to the
 \ last one's end, and true when the list is malformed.
 : PARSES-LIST-LOAD ( -- str bool )
-   parse-name s" (" CORE-STR= 0= IF NULL-PTR 0 RES-TRUE EXIT THEN
+   parse-name s" (" STR:= 0= IF NULL-PTR 0 RES-TRUE EXIT THEN
    parse-name {: a:^ u:n :}
    a u PARSES-ITEM 0 <> IF NULL-PTR 0 RES-TRUE EXIT THEN
    a u + PARSES-LIST-REST {: end:^ kind:n :}
@@ -3103,14 +3103,14 @@ EXPORT CHECKER-REG:TS-PTR
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   TKF TKFU @ s" xt!" CORE-STR= XT-DECL !
+   TKF TKFU @ s" xt!" STR:= XT-DECL !
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ TOK-CORE-OP?
    ELSE RES-FALSE THEN LAYOUT-XPORT ! ;
 
 \ The spelling is tested first, so no other token is bound for it.
 : TOP-EVALUATE? ( -- bool )
-   TKF TKFU @ s" evaluate" CORE-STR= 0= IF RES-FALSE EXIT THEN
+   TKF TKFU @ s" evaluate" STR:= 0= IF RES-FALSE EXIT THEN
    TKF TKFU @ TOK-CORE-OP? ;
 
 \ A type whose cell count is not known here; a stale value keeps its type's.
@@ -3139,7 +3139,7 @@ EXPORT CHECKER-REG:TS-PTR
 \ CHECKER-TOP-MOVE judges, and for any other word.
 : TOP-XPORT-K ( -- n )
    TKF TKFU @ {: a:^ u:n :}
-   a u s" drop" CORE-STR= IF 0 EXIT THEN
+   a u s" drop" STR:= IF 0 EXIT THEN
    LAYOUT-XPORT @ IF a u WF-XPORT-K EXIT THEN
    0 ;
 
@@ -3470,7 +3470,7 @@ variable TOP-MOVE-N
 
 \ The program's spelling of the step's token is a u, in any case.
 : TOP-SPELLED? ( str -- bool )
-   TOK-SPELL-A @ TOK-SPELL-U @ CORE-STR=CI ;
+   TOK-SPELL-A @ TOK-SPELL-U @ STR:=CI ;
 
 \ The cells of the value the engine `drop`, `@` or `!` moves, from the row's
 \ cells before and after its step: `@` leaves the value for its address, `!`

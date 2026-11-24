@@ -1573,10 +1573,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : WL-PROBE$ ( -- str ) s" get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = if 0 else 1 then" ;
 
-\ Guards a lookup of a name no source spells: P2, after s.f stops retiring the engine's CORE-STR=CI, and
+\ Guards a lookup of a name no source spells: P2, after s.f stops retiring the engine's >U8, and
 \ Q2, after s.f drops the word h.f probes, must compile r.f again and print what a cold build prints.
 : PROBE-CASE ( CMD:command -- CMD:command )
-   s" probe" s" CORE-STR=CI" WL-PROBE$ s\" undefine CORE-STR=CI\n" WRITE-PROBE
+   s" probe" s" >U8" WL-PROBE$ s\" undefine >U8\n" WRITE-PROBE
    s" P" WHICH!  s" main.f" s" prog-p" NEST-BUILD 0= if exit then
    s" prog-p" s\" 0\n\n" s" the program prints K" NEST-RUN
    s" " WRITE-PROBE-S
@@ -1590,9 +1590,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" prog-q" s\" 0\n\n" s" the program prints K" NEST-RUN ;
 
 \ The probe sequence of directory d through lookup q: cold it prints 0, and warm build w, after s.f
-\ stops retiring CORE-STR=CI, prints 1 as a cold build does.
+\ stops retiring >U8, prints 1 as a cold build does.
 : LOOKUP-RUN ( CMD:command str str str -- CMD:command ) {: d:^ du:n q:^ qu:n w:^ wu:n :}
-   d du s" CORE-STR=CI" q qu s\" undefine CORE-STR=CI\n" WRITE-PROBE
+   d du s" >U8" q qu s\" undefine >U8\n" WRITE-PROBE
    d du WHICH!  s" main.f" s" prog-l" NEST-BUILD 0= if exit then
    s" prog-l" s\" 0\n\n" s" the program prints K" NEST-RUN
    s" " WRITE-PROBE-S

@@ -48,8 +48,8 @@ variable RESULT-SYM
 : ID=? ( str str n -- bool )
    {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
    vis ID-VIS @ = pkgu ID-PKG-U @ = and tailu ID-TAIL-U @ = and
-   pkg pkgu 0 ID-PKG ID-PKG-U @ CORE-STR= and
-   tail tailu 0 ID-TAIL ID-TAIL-U @ CORE-STR= and ;
+   pkg pkgu 0 ID-PKG ID-PKG-U @ STR:= and
+   tail tailu 0 ID-TAIL ID-TAIL-U @ STR:= and ;
 
 : STRING>PKG ( JSON:reader -- JSON:reader )
    JSON:READ-SPAN$ nip {: raw:n :}
@@ -144,7 +144,7 @@ variable RESULT-SYM
    {: path:^ pathu:n :}
    SOURCE-ROOT:ENGINE$ {: root:^ rootu:n :}
    pathu rootu 1+ <= if NULL$ false exit then
-   path rootu root rootu CORE-STR= 0= if NULL$ false exit then
+   path rootu root rootu STR:= 0= if NULL$ false exit then
    path rootu + c@ 47 <> if NULL$ false exit then
    path rootu 1+ + pathu rootu 1+ - true ;
 
@@ -173,7 +173,7 @@ public
    live 0= if 0 0 false exit then
    path pathu RELATIVE {: got:^ gotu:n in-root:bool :}
    in-root 0= if 0 0 false exit then
-   got gotu rel relu CORE-STR= 0= if 0 0 false exit then
+   got gotu rel relu STR:= 0= if 0 0 false exit then
    sym VERIFY:SYM-IDENTITY ID!
    0 MODE !
    src srcu path pathu SCAN

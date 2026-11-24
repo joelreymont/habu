@@ -170,29 +170,29 @@ variable UNSAFE-COUNT
 \ literal, compile, and ;.
 : UNSAFE-NAME? ( str -- bool )
    {: a:^ u:n :}
-   a u s" create" XREF-STR=CI
-   a u s" patch32" XREF-STR=CI or
-   a u s" code-publish" XREF-STR=CI or
-   a u s" callmap-set" XREF-STR=CI or
-   a u s" addrmap-set" XREF-STR=CI or
-   a u s" xref-retarget" XREF-STR=CI or
-   a u s" bare-search-wl" XREF-STR=CI or
-   a u s" xref-search-wl" XREF-STR=CI or
-   a u s" bare-scope-find" XREF-STR=CI or
-   a u s" bare-tok-imm?" XREF-STR=CI or
-   a u s" policy-admit" XREF-STR=CI or
-   a u s" policy-seal" XREF-STR=CI or
-   a u s" def-occ-resolve" XREF-STR=CI or
-   a u s" prof-on" XREF-STR=CI or
-   a u s" ndict!" XREF-STR=CI or
-   a u s" wide-mark" XREF-STR=CI or
-   a u s" record-facts!" XREF-STR=CI or
-   a u s" evaluate" XREF-STR=CI or
-   a u s" evaluate-range" XREF-STR=CI or
-   a u s" evaluate-closed" XREF-STR=CI or
-   a u s" literal" XREF-STR=CI or
-   a u s" compile," XREF-STR=CI or
-   a u s" ;" XREF-STR=CI or ;
+   a u s" create" STR:=CI
+   a u s" patch32" STR:=CI or
+   a u s" code-publish" STR:=CI or
+   a u s" callmap-set" STR:=CI or
+   a u s" addrmap-set" STR:=CI or
+   a u s" xref-retarget" STR:=CI or
+   a u s" bare-search-wl" STR:=CI or
+   a u s" xref-search-wl" STR:=CI or
+   a u s" bare-scope-find" STR:=CI or
+   a u s" bare-tok-imm?" STR:=CI or
+   a u s" policy-admit" STR:=CI or
+   a u s" policy-seal" STR:=CI or
+   a u s" def-occ-resolve" STR:=CI or
+   a u s" prof-on" STR:=CI or
+   a u s" ndict!" STR:=CI or
+   a u s" wide-mark" STR:=CI or
+   a u s" record-facts!" STR:=CI or
+   a u s" evaluate" STR:=CI or
+   a u s" evaluate-range" STR:=CI or
+   a u s" evaluate-closed" STR:=CI or
+   a u s" literal" STR:=CI or
+   a u s" compile," STR:=CI or
+   a u s" ;" STR:=CI or ;
 
 
 : UNSAFE-TABLE ( -- )

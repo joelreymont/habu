@@ -149,7 +149,7 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 \ a declaring-package name reaches the renderer unfolded, because TFAM-DECL
 \ interns the spelling the source `package` line typed.
 : RFOLD ( str -- ) {: a:^ u:n :}
-   0 BEGIN dup u < WHILE dup a + c@ CORE-FOLD-C EMIT1 1 + REPEAT drop ;
+   0 BEGIN dup u < WHILE dup a + c@ STR:ASCII-LOWER EMIT1 1 + REPEAT drop ;
 
 : CON-OUT ( n -- ) {: p:n :}
    p 2 = IF 102 EMIT1 ELSE
@@ -194,8 +194,8 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    fam TFAM-PKG$ {: pa:^ pu:n :}
    pu 0 = IF RES-FALSE EXIT THEN
    RFACTS? IF RES-TRUE EXIT THEN
-   pa pu s" @" CORE-STR= IF RES-FALSE EXIT THEN
-   pa pu TFAM-ACTIVE-PKG$ CORE-STR= 0= ;
+   pa pu s" @" STR:= IF RES-FALSE EXIT THEN
+   pa pu TFAM-ACTIVE-PKG$ STR:= 0= ;
 
 
 \ The package folds: packages compare case-insensitively (TFAM-PKG-MATCH?).
@@ -1693,7 +1693,7 @@ variable MDV-I   variable MDV-F
 : TOK-SPAN ( -- ) PIN-TOK$ CODE-SPAN ;
 \ The pin is the closer of a body that walked no token.
 : CLOSER-PINNED? ( -- bool )
-   PIN-TOK$ s" ;" CORE-STR=  PIN-TOK$ s" does>" CORE-STR=  or ;
+   PIN-TOK$ s" ;" STR:=  PIN-TOK$ s" does>" STR:=  or ;
 
 EXPORT CHECKER-RESOLVE:TOP-KEYWORD-ID
 EXPORT CHECKER-RESOLVE:TOP-KEYWORD?
@@ -1722,9 +1722,9 @@ s" linear:" TOP-KEYWORD-ID constant KW-LINEAR
 s" immediate" TOP-KEYWORD-ID constant KW-IMMEDIATE
 
 : STATE-SWITCH? ( str -- bool ) {: t:^ tu:n :}
-   t tu s" [" CORE-STR=CI  t tu s" ]" CORE-STR=CI or ;
+   t tu s" [" STR:=CI  t tu s" ]" STR:=CI or ;
 
-: LOCALS-END? ( str -- bool ) s" :}" CORE-STR= ;
+: LOCALS-END? ( str -- bool ) s" :}" STR:= ;
 
 : LOCALS-END-HELP ( -- )
    s" a locals list begins with `{:` and this `:}` closes none: delete it, or write `{:` where the list begins"
@@ -1770,7 +1770,7 @@ PTR-VARIABLE TAKEN-P   variable TAKEN-CAP   variable TAKEN-N
 : TAKEN$ ( n -- str ) TAKEN-AT {: row:^ :}  TEXT row @ +  row cell+ @ ;
 : TAKEN? ( n n -- bool ) {: at:n len:n :}
    0 BEGIN dup TAKEN-N @ < WHILE
-      dup TAKEN$  TEXT at + len  CORE-STR= IF drop RES-TRUE EXIT THEN
+      dup TAKEN$  TEXT at + len  STR:= IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
 : TAKEN+ ( n n -- ) {: at:n len:n :}
@@ -2287,7 +2287,7 @@ PTR-VARIABLE HOLDER-FIRST
       s" compute the value at top level before the definition and name it with `constant`"
       EMIT-STR EXIT
    THEN
-   t tu d du CORE-STR=CI IF
+   t tu d du STR:=CI IF
       96 EMIT1  t tu EMIT-STR
       s" ` is the word this definition defines: " EMIT-STR
       s" call it from its own body with `recurse`" EMIT-STR EXIT
@@ -2416,7 +2416,7 @@ PTR-VARIABLE HOLDER-FIRST
    ELSE s"  in place of calling it from this body" THEN EMIT-STR ;
 
 : UNSAFE-HELP ( -- )
-   PIN-TOK$ s" evaluate" CORE-STR=CI IF
+   PIN-TOK$ s" evaluate" STR:=CI IF
       s" call `evaluate-closed` in place of " EMIT-STR  TOK-SPAN EXIT
    THEN
    s" move " EMIT-STR  TOK-SPAN  s"  out of the body to top level" EMIT-STR ;

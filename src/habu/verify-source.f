@@ -486,7 +486,7 @@ variable FLAG-N
    ESCAPED-STRING-OPENER? ;
 
 : PRINT-OPENER? ( str -- bool )
-   s" .(" CORE-STR= ;
+   s" .(" STR:= ;
 
 : SKIP-ESCAPED-QUOTE ( -- )
    0 FOUND !
@@ -661,7 +661,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 
 : LOCAL? ( str -- bool ) {: a:^ u:n :}
    LOCAL-N @ 0 ?do
-      a u i LOCAL-A @ i LOCAL-U @ CORE-STR= if 0 0= unloop exit then
+      a u i LOCAL-A @ i LOCAL-U @ STR:= if 0 0= unloop exit then
    loop
    0 0= 0= ;
 
@@ -1148,7 +1148,7 @@ CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
    a u BLOCK-CLOSER? IF BLOCK-DROP LOCAL-DEPTH @ 1 - LOCAL-DEPTH ! THEN ;
 
 : GROUP-TOKEN ( str -- bool ) {: a:^ u:n :}
-   a u s" :}" CORE-STR= IF 0 0= EXIT THEN
+   a u s" :}" STR:= IF 0 0= EXIT THEN
    a u LOCAL-ADD
    0 0= 0= ;
 
@@ -1193,7 +1193,7 @@ variable GROUP-AT
       TOKEN-A @ TOKEN-U @ BODY-APPEND
       EXIT
    THEN
-   TOKEN-A @ TOKEN-U @ s" {:" CORE-STR= IF
+   TOKEN-A @ TOKEN-U @ s" {:" STR:= IF
       BODY-PREV-CLEAR
       TOKEN-BYTE @ GROUP-AT !
       TOKEN-A @ TOKEN-U @ BODY-APPEND
@@ -1224,7 +1224,7 @@ variable GROUP-AT
 \ SKIP-BODY-TOKEN for a definition body, which declares locals.
 : SKIP-DEF-TOKEN ( -- )
    LOCAL-TOKEN? IF BODY-PREV-CLEAR EXIT THEN
-   TOKEN-A @ TOKEN-U @ s" {:" CORE-STR= IF
+   TOKEN-A @ TOKEN-U @ s" {:" STR:= IF
       BODY-PREV-CLEAR  TOKEN-BYTE @ GROUP-AT !  SKIP-GROUP EXIT
    THEN
    TOKEN-A @ TOKEN-U @ BLOCK-STEP
@@ -1772,8 +1772,8 @@ DYNAMIC-BUFFER TICK-QUAL u8
    DEF-TICK-ORDER @ TICK-UNKNOWN = IF EXIT THEN
    LOCAL-TOKEN? IF EXIT THEN
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF EXIT THEN
-   TOKEN-A @ TOKEN-U @ s" [']" CORE-STR= IF EXIT THEN
-   TOKEN-A @ TOKEN-U @ s" [" CORE-STR=
+   TOKEN-A @ TOKEN-U @ s" [']" STR:= IF EXIT THEN
+   TOKEN-A @ TOKEN-U @ s" [" STR:=
    TOKEN-A @ TOKEN-U @ TICK-RESIDENT-IMM? or IF
       TICK-UNKNOWN DEF-TICK-ORDER !  NULL-PTR DEF-TICK-OWNER !
       TICK-CONTEXT-UNKNOWN
@@ -1816,7 +1816,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    BEGIN
       BODY!
       TOKEN-U @ 0= IF UNCLOSED-STOP THEN
-      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
+      TOKEN-A @ TOKEN-U @ s" ;" STR:= IF
          TICK-REMAINDER @ DOES-PARENT-REFUSED @ or IF false EXIT THEN
          sig sigu DEF-NAME-A @ DEF-NAME-U @ VERIFY-DOES-BODY
          {: clause:n :}
@@ -1875,7 +1875,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
 
 \ Whether the path is the subject's, whose bytes are the supplied ones.
 : COMPOSE-SUBJ? ( str -- bool )
-   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= ;
+   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ STR:= ;
 
 : COMPOSE-DIAG$ ( str -- str )
    {: path:^ pathu:n :}
@@ -2278,7 +2278,7 @@ variable TRUSTED-DOES
 : TRUSTED-CALL ( str -- ) {: na:^ nu:n :}
    TRUSTED-DOES @ LOCAL-TOKEN? or IF EXIT THEN
    TOKEN-A @ TOKEN-U @ {: a:^ u:n :}
-   a u s" {:" CORE-STR=  a u BODY-PARSER? or  a u STRING-OPENER? or IF EXIT THEN
+   a u s" {:" STR:=  a u BODY-PARSER? or  a u STRING-OPENER? or IF EXIT THEN
    a u num-parse nip nip IF EXIT THEN
    a u WRAP-CTL-TOK? IF EXIT THEN
    a u s" i" STR:=CI  a u s" j" STR:=CI or  a u s" unloop" STR:=CI or IF EXIT THEN
@@ -2298,7 +2298,7 @@ variable TRUSTED-DOES
    BEGIN
       BODY!
       TOKEN-U @ 0= IF UNCLOSED-STOP THEN
-      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
+      TOKEN-A @ TOKEN-U @ s" ;" STR:= IF EXIT THEN
       LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR:=CI  and IF
          \ This scan skips the clause body, so its acceptance is unknown.
          INDEX-ON @ IF
@@ -3104,13 +3104,13 @@ private
    {: len:n :}
    NEXT-RAW {: a:^ u:n :}
    u 0= IF len 2 EXIT THEN
-   a u s" )" CORE-STR= IF len 1 EXIT THEN
+   a u s" )" STR:= IF len 1 EXIT THEN
    a u len PRS-TERM-ADD 0 ;
 
 \ As the engine word reads it: `(`, then tokens through a standalone `)`, at
 \ least one before it. The bytes kept, and true when malformed.
 : PRS-LIST-READ ( -- n bool )
-   NEXT-RAW s" (" CORE-STR= 0= IF 0 0 0= EXIT THEN
+   NEXT-RAW s" (" STR:= 0= IF 0 0 0= EXIT THEN
    0 BEGIN PRS-LIST-TOKEN dup 0= WHILE drop REPEAT
    {: len:n end:n :}
    len  end 2 =  len 0=  or ;
@@ -3146,7 +3146,7 @@ private
 : PRS-TERM-AT? ( n n str ^u8 -- bool )
    {: i:n j:n a:^ u:n t:^ :}
    j i - u <> IF 0 0= 0= EXIT THEN
-   a u  t i +  u  CORE-STR= ;
+   a u  t i +  u  STR:= ;
 
 \ A U is one of the terminators T TU holds, each followed by a blank.
 : PRS-TERM? ( str str -- bool )
@@ -3306,7 +3306,7 @@ variable LOAD-END
 \ Load PATH, the file the request a u resolved to under ROOT.
 : COMPOSE-OPEN ( str str str -- )
    {: a:^ u:n path:^ pathu:n root:^ rootu:n :}
-   path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= IF
+   path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ STR:= IF
       root rootu path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
       [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT
    THEN
@@ -4012,7 +4012,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    BEGIN
       BODY!
       TOKEN-U @ 0= IF UNCLOSED-STOP THEN
-      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
+      TOKEN-A @ TOKEN-U @ s" ;" STR:= IF EXIT THEN
       SKIP-DEF-TOKEN
    AGAIN ;
 
@@ -4033,7 +4033,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    BEGIN
       BODY!
       TOKEN-U @ 0= IF UNCLOSED-STOP THEN
-      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
+      TOKEN-A @ TOKEN-U @ s" ;" STR:= IF
          DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ false REFUSE-SHAPE IF EXIT THEN
          VERIFY-NAMED-BODY dup REPORT-DEFERRED dup -1 = IF VERIFY-WRAPPER THEN
          dup TALLY
@@ -4070,8 +4070,8 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 \ Reads past the operand body keyword a u reads, as a body does; the keyword
 \ has its record, so the source ending inside the operand adds none.
 : SKIP-OPERAND ( str -- ) {: a:^ u:n :}
-   a u s" {:" CORE-STR= IF
-      BEGIN NEXT-RAW dup 0= IF 2drop EXIT THEN s" :}" CORE-STR= UNTIL EXIT
+   a u s" {:" STR:= IF
+      BEGIN NEXT-RAW dup 0= IF 2drop EXIT THEN s" :}" STR:= UNTIL EXIT
    THEN
    a u s" [type]" STR:=CI IF
       0 BEGIN
@@ -4175,7 +4175,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 
 \ `kernel:` is the engine's synonym for `:`.
 : COLON? ( str -- bool ) {: a:^ u:n :}
-   a u s" :" CORE-STR=  a u s" kernel:" STR:=CI or ;
+   a u s" :" STR:=  a u s" kernel:" STR:=CI or ;
 
 : FLAG-TOP ( -- ^bool )
    FLAG-N @ 1 - FLAGS ;
@@ -4477,7 +4477,7 @@ public
 : QUIET-READ-META ( str -- n n n n n bool )
    {: path:^ pathu:n :}
    READ-META-VALID @ 0<> pathu READ-PATH-U @ = and
-   path pathu READ-PATHZ pathu CORE-STR= and 0= IF 0 0 0 0 0 false EXIT THEN
+   path pathu READ-PATHZ pathu STR:= and 0= IF 0 0 0 0 0 false EXIT THEN
    READ-SIZE @ READ-MSEC @ READ-MNS @ READ-CSEC @ READ-CNS @ true ;
 
 private

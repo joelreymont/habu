@@ -449,10 +449,10 @@ PERSISTED-PTR-VARIABLE HEAD
 : SAME-NAME? ( ^n str str -- bool )
    {: at:^ p:^ pu:n name:^ nameu:n :}
    at ROW-NAME$ {: r:^ ru:n :}
-   pu 0= if r ru name nameu XREF-STR=CI exit then
+   pu 0= if r ru name nameu STR:=CI exit then
    ru pu nameu + 1+ <> if false exit then
    r pu + c@ $3A <> if false exit then
-   r pu p pu XREF-STR=CI if r pu + 1+ nameu name nameu XREF-STR=CI exit then
+   r pu p pu STR:=CI if r pu + 1+ nameu name nameu STR:=CI exit then
    false ;
 
 

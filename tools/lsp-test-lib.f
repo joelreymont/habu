@@ -5367,14 +5367,14 @@ variable WS-ROOT-U
    s" refs-cnf/w/z.f" DISK-URI 0 14 18 REF+
    SYMBOLS-END ;
 
-\ d.f checks z.f inside REVIEW, where DUP and CORE-FOLD-C are private.
+\ d.f checks z.f inside REVIEW, where DUP and >U8 are private.
 \ z.f alone, and e.f requiring it, check the same bytes outside REVIEW,
 \ binding the engine's primitive and image word. These checks verify, so each
 \ shared token conflicts.
 : TEXT-ENG-D ( -- str )
-   s\" package REVIEW\n: DUP ( n -- n n ) 0 over + ;\n: CORE-FOLD-C ( n -- n ) ;\nrequire z.f\n;package\n" ;
+   s\" package REVIEW\n: DUP ( n -- n n ) 0 over + ;\n: >U8 ( n -- u8 ) drop 0 ;\nrequire z.f\n;package\n" ;
 : TEXT-ENG-Z ( -- str )
-   s\" : ZU ( n -- n n ) DUP ;\n: AU ( n -- n ) CORE-FOLD-C ;\n" ;
+   s\" : ZU ( n -- n n ) DUP ;\n: AU ( n -- u8 ) >U8 ;\n" ;
 : TEXT-ENG-E ( -- str )  s\" require z.f\n" ;
 
 : REFS-ENG-TURNS ( -- )
@@ -5411,8 +5411,8 @@ variable WS-ROOT-U
    1 NAMED s" refs-img/w/z.f" 2 s" refs-img/w/z.f" ELSEWHERE+
    CONFLICT-FIRST? dup s" image binding conflicts" HOLDS if
       s" 3" SYMBOLS-START
-      s" refs-img/w/d.f" OPEN-URI 2 2 13 REF+
-      s" refs-img/w/z.f" DISK-URI 1 16 27 REF+ SYMBOLS-END
+      s" refs-img/w/d.f" OPEN-URI 2 2 5 REF+
+      s" refs-img/w/z.f" DISK-URI 1 17 20 REF+ SYMBOLS-END
    then ;
 
 : TEXT-RPKG ( -- str )

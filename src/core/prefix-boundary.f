@@ -24,7 +24,7 @@ public
    ndict@ 0 ?do
       i XREF-REC {: rec:^ :}
       rec XREF-WORDLIST wl = if
-         rec XREF-NAME$ s" IMK-NDICT0" CORE-STR=CI if i unloop exit then
+         rec XREF-NAME$ s" IMK-NDICT0" STR:=CI if i unloop exit then
       then
    loop
    MISSING ;

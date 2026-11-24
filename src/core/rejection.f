@@ -415,7 +415,7 @@ private
    REPEAT drop ;
 : LABELS? ( str -- bool ) {: a:^ u:n :}
    LABELED @ 0= IF 0 0= 0= EXIT THEN
-   a u LABEL-BUF LABEL-U @ CORE-STR= ;
+   a u LABEL-BUF LABEL-U @ STR:= ;
 \ Line, column and byte of p in a buffer whose first byte is at line bl, column
 \ bc, byte bb; LF ends a line, a column counts bytes; tasks may call it.
 public
@@ -1245,11 +1245,11 @@ public
 \ stands, so the source token t tu names nothing when definer kw ku takes it as
 \ a name. Neither byte has a case.
 : NOT-A-NAME ( str str -- ) {: kw:^ ku:n t:^ tu:n :}
-   t tu s" (" CORE-STR= IF
+   t tu s" (" STR:= IF
       kw ku t tu s" a signature, not a name" MISSING-NAME
       EXIT-STATUS:REJECTED STOP
    THEN
-   t tu s" \" CORE-STR= IF
+   t tu s" \" STR:= IF
       kw ku t tu s" a comment, not a name" MISSING-NAME
       EXIT-STATUS:REJECTED STOP
    THEN ;

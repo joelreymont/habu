@@ -77,7 +77,7 @@ variable ROLL-OCC
 : HASH-SLOT ( str n -- n )
    {: name:^ size:n wid:n :}
    FNV:BASIS
-   size 0 ?do name i + c@ XREF-FOLD-C FNV:STEP loop
+   size 0 ?do name i + c@ STR:ASCII-LOWER FNV:STEP loop
    wid xor HIDX-MIX *  64 HIDX-BITS - rshift ;
 
 

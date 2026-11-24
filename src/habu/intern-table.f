@@ -51,7 +51,7 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
    {: k:n t:^ a:^ u:n :}
    t k SLOT-CELL @ {: body:n :}
    body 0= if 0 0= exit then
-   body BODY$ a u CORE-STR= ;
+   body BODY$ a u STR:= ;
 
 
 \ The slot holding the body equal to a u, else the empty slot it goes in: one

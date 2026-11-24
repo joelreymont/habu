@@ -31,20 +31,6 @@ CAST: >I64 ( n -- i64 )
 \ The scope-find flag bit set when two used publics hold the tail.
 2 constant SCOPE-FIND-AMBIGUOUS
 
-: CORE-STR= {: a:^ u:n b:^ v:n :}   \ ( ^u8 n ^u8 n -- bool ) byte-wise string equality
-   u v <> IF 0 0= 0= EXIT THEN
-   u 0 ?do  a i + c@  b i + c@  <> if 0 0= 0= unloop exit then  loop 0 0= ;
-
-\ ASCII case fold + case-insensitive equality (declaration keyword matching).
-: CORE-FOLD-C ( n -- n ) {: c:n :}
-   c $41 < IF c EXIT THEN
-   c $5A > IF c EXIT THEN
-   c $20 or ;
-
-: CORE-STR=CI {: a:^ u:n b:^ v:n :}   \ ( ^u8 n ^u8 n -- bool ) folded equality
-   u v <> IF 0 0= 0= EXIT THEN
-   u 0 ?do  a i + c@ CORE-FOLD-C  b i + c@ CORE-FOLD-C  <> if 0 0= 0= unloop exit then  loop 0 0= ;
-
 variable RDP
 
 : RD32 {: p:^ :} ( ^u8 -- n )

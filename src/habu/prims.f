@@ -281,7 +281,7 @@ public
 : FIND ( str -- n ) {: a:^ u:n :}
    0
    BEGIN dup ROW-N @ < WHILE
-      dup NAME$ a u CORE-STR= IF EXIT THEN
+      dup NAME$ a u STR:= IF EXIT THEN
       1 +
    REPEAT
    drop -1 ;

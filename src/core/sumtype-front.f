@@ -11,7 +11,7 @@ package TYPE-DECL
    BEGIN
       DECL-FRONT:SOURCE-NEXT
       dup 0= IF 2drop RES-FALSE EXIT THEN
-      2dup s" ;sumtype" CORE-STR=CI IF 2drop RES-TRUE EXIT THEN
+      2dup s" ;sumtype" STR:=CI IF 2drop RES-TRUE EXIT THEN
       TDECL-TOKEN+
    AGAIN ;
 

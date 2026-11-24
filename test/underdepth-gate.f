@@ -1,7 +1,7 @@
 split-str
 \ underdepth-gate.f - a bare top-level call on a shallower stack than its
 \ word's effect states (a certified `:`, TRUSTED:, defer, does> clause,
-\ engine-prefix word or primitive) is rejected by the checker before the word
+\ engine word or primitive) is rejected by the checker before the word
 \ runs: rc 70 and an E-INPUT-UNDERFLOW record at the word. The checker
 \ measures the input of `execute`, `catch` and `finally` in a body as any
 \ word's.
@@ -212,9 +212,9 @@ public
    s" UDG-MQA" UDG-LINE
    SB$ ;
 
-: UDG-ENGINE$ ( -- str )            \ an engine-prefix word
+: UDG-ENGINE$ ( -- str )            \ an engine word
    SB-RESET
-   s" CORE-STR=" UDG-LINE
+   s" STR:=" UDG-LINE
    SB$ ;
 
 : UDG-NEG-SHAPES ( -- )
@@ -233,9 +233,9 @@ public
    s" does>-created word's clause inputs fail closed" T-LABEL
    UDG-DOES$ UDG-EXEC:SUBJECT
    s" UDG-MQA" UDG-ASSERT-UNDERDEPTH
-   s" engine-prefix word (CORE-STR=) fails closed" T-LABEL
+   s" engine word (STR:=) fails closed" T-LABEL
    UDG-ENGINE$ UDG-EXEC:SUBJECT
-   s" CORE-STR=" UDG-ASSERT-UNDERDEPTH ;
+   s" STR:=" UDG-ASSERT-UNDERDEPTH ;
 
 \ --- primitive negatives: the checker measures a primitive by its row ------
 \ A bare primitive checked code may call takes the same rejection on a shallow

@@ -25,8 +25,8 @@ private EXPORT BOOT:data-base global
          REJECTION:HELP  s" close it with `[then]`" REJECTION:EMIT-STR
          EXIT-STATUS:REJECTED REJECTION:STOP
       then
-      2dup s" [if]" CORE-STR=CI if 2drop 1 + else
-         s" [then]" CORE-STR=CI if 1 - then
+      2dup s" [if]" STR:=CI if 2drop 1 + else
+         s" [then]" STR:=CI if 1 - then
       then
    repeat drop ;
 immediate
