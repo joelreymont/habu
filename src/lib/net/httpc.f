@@ -1,4 +1,3 @@
-split-str
 \ httpc.f - one HTTP/1.1 client connection to one origin: dialing by name, a
 \ request written once, the answer read in pieces by its framing, and the
 \ connection kept for the next request when the answer allows it, over
@@ -218,9 +217,9 @@ FUNCTION: RECEIVE-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 
-: NODE ( ^conn -- ^u8 ) CONN-NODE SPAN:$ drop ;
-: SERVICE ( ^conn -- ^u8 ) CONN-SERVICE SPAN:$ drop ;
-: HINTS ( ^conn -- ^u8 ) CONN-HINTS SPAN:$ drop ;
+: NODE ( ^conn -- ^u8 ) CONN-NODE SPAN:$ STR:DATA ;
+: SERVICE ( ^conn -- ^u8 ) CONN-SERVICE SPAN:$ STR:DATA ;
+: HINTS ( ^conn -- ^u8 ) CONN-HINTS SPAN:$ STR:DATA ;
 : ROOM ( ^conn -- ^u8 ) CONN-ROOM @ ;
 
 
@@ -305,10 +304,10 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    again ;
 
 \ Writes the whole span to the socket; false with the fault kept.
-: SOCKET-WRITE ( ^conn str -- bool ) {: c a:^ u:n :}
-   0 begin dup u < while
+: SOCKET-WRITE ( ^conn str -- bool ) {: c s:str :}
+   0 begin dup s STR:LEN < while
       {: off:n :}
-      c CONN-FD @ a off + u off - MSG-NOSIGNAL SEND-CALL {: rc:n :}
+      c CONN-FD @ s STR:DATA off + s STR:LEN off - >str MSG-NOSIGNAL SEND-CALL {: rc:n :}
       rc 0 >= if
          off rc +
       else
@@ -345,10 +344,10 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ Writes the whole span through the TLS session; after a want the rest of
 \ the span is written again, the same bytes and length. False with the
 \ fault kept; a peer that has closed fails the write.
-: TLS-WRITE ( ^conn str -- bool ) {: c a:^ u:n :}
-   0 begin dup u < while
+: TLS-WRITE ( ^conn str -- bool ) {: c s:str :}
+   0 begin dup s STR:LEN < while
       {: off:n :}
-      c CONN-TLS a off + u off - TLS:WRITE MATCH TLS:tls-io
+      c CONN-TLS s STR:DATA off + s STR:LEN off - >str TLS:WRITE MATCH TLS:tls-io
          moved OF LEN>N off + true ENDOF
          want-read OF off c POLLIN SEND-WAIT? ENDOF
          want-write OF off c POLLOUT SEND-WAIT? ENDOF
@@ -368,8 +367,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ Writes the whole span over the conn's socket or its TLS session; false
 \ with the fault kept.
-: WRITE-ALL ( ^conn str -- bool ) {: c a:^ u:n :}
-   c CONN-SECURE @ if c a u TLS-WRITE else c a u SOCKET-WRITE then ;
+: WRITE-ALL ( ^conn str -- bool ) {: c s:str :}
+   c CONN-SECURE @ if c s TLS-WRITE else c s SOCKET-WRITE then ;
 
 \ Answer bytes not handed out yet that were read past the head.
 : EXTRA ( ^conn -- n ) {: c :}
@@ -410,16 +409,16 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    c MARKED? if exit then
    f OPTION:SOME c CONN-MARK ! ;
 
-: APPEND ( ^conn str -- ) {: c a:^ u:n :}
+: APPEND ( ^conn str -- ) {: c s:str :}
    c MARKED? if exit then
-   c CONN-USED @ u + c CONN-ROOM-LEN @ > if
+   c CONN-USED @ s STR:LEN + c CONN-ROOM-LEN @ > if
       c construct fault oversize MARK exit
    then
-   a c ROOM c CONN-USED @ + u BYTE-COPY
-   u c CONN-USED +! ;
+   s STR:DATA c ROOM c CONN-USED @ + s STR:LEN BYTE-COPY
+   s STR:LEN c CONN-USED +! ;
 
 : CHAR+ ( ^conn n -- ) {: c b:n :}
-   b c CONN-BYTE c!  c c CONN-BYTE 1 APPEND ;
+   b c CONN-BYTE c!  c c CONN-BYTE 1 >str APPEND ;
 
 : CRLF+ ( ^conn -- ) {: c :} c 13 CHAR+ c 10 CHAR+ ;
 
@@ -433,12 +432,12 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       some OF drop true ENDOF
    ;MATCH ;
 
-: BREAK? ( str -- bool ) {: a:^ u:n :}
-   a u 13 HAS? a u 10 HAS? or ;
+: BREAK? ( str -- bool ) {: s:str :}
+   s 13 HAS? s 10 HAS? or ;
 
 \ Whether a request line's method or target holds CR, LF or SP.
-: SPLITS? ( str -- bool ) {: a:^ u:n :}
-   a u BREAK? a u 32 HAS? or ;
+: SPLITS? ( str -- bool ) {: s:str :}
+   s BREAK? s 32 HAS? or ;
 
 
 \ ---- The origin
@@ -450,53 +449,53 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       some OF drop false ENDOF
    ;MATCH ;
 
-: HOST-BYTES? ( str -- bool ) {: a:^ u:n :}
-   u 0 ?do a i + c@ HOST-BYTE? 0= if false unloop exit then loop
+: HOST-BYTES? ( str -- bool ) {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ HOST-BYTE? 0= if false unloop exit then loop
    true ;
 
 \ The host as getaddrinfo takes it, NUL-terminated in the record.
-: HOST? ( ^conn str -- bool ) {: c a:^ u:n :}
-   u 0= u HOST-MOST > or if false exit then
-   a u HOST-BYTES? 0= if false exit then
-   a c NODE u BYTE-COPY  0 c NODE u + c!
-   u c CONN-HOST-LEN !
+: HOST? ( ^conn str -- bool ) {: c s:str :}
+   s STR:LEN 0= s STR:LEN HOST-MOST > or if false exit then
+   s HOST-BYTES? 0= if false exit then
+   s STR:DATA c NODE s STR:LEN BYTE-COPY  0 c NODE s STR:LEN + c!
+   s STR:LEN c CONN-HOST-LEN !
    true ;
 
 \ The port's digits as getaddrinfo's service, NUL-terminated in the record.
-: PORT? ( ^conn str -- bool ) {: c a:^ u:n :}
-   u 0= u PORT-DIGITS > or if false exit then
-   a u STR:PARSE-POS MATCH option
+: PORT? ( ^conn str -- bool ) {: c s:str :}
+   s STR:LEN 0= s STR:LEN PORT-DIGITS > or if false exit then
+   s STR:PARSE-POS MATCH option
       none OF false exit ENDOF
       some OF dup 1 < swap PORT-MOST > or if false exit then ENDOF
    ;MATCH
-   a c SERVICE u BYTE-COPY  0 c SERVICE u + c!
+   s STR:DATA c SERVICE s STR:LEN BYTE-COPY  0 c SERVICE s STR:LEN + c!
    true ;
 
-: HOST-PORT? ( ^conn str n -- bool ) {: c a:^ u:n k:n :}
-   c a k HOST?  c a k + 1+ u k - 1- PORT? and ;
+: HOST-PORT? ( ^conn str n -- bool ) {: c s:str k:n :}
+   c s STR:DATA k >str HOST?  c s STR:DATA k + 1+ s STR:LEN k - 1- >str PORT? and ;
 
 \ The host and its port, else the scheme's port P.
 : AUTHORITY? ( ^conn str str -- bool )
-   {: c a:^ u:n p:^ pu:n :}
-   a c CONN-AUTHORITY !  u c CONN-AUTHORITY-LEN !
-   a u [char] : STR:INDEX-OF MATCH option
-      none OF c a u HOST? c p pu PORT? and ENDOF
-      some OF IDX>N {: k:n :} c a u k HOST-PORT? ENDOF
+   {: c s:str p:str :}
+   s STR:DATA c CONN-AUTHORITY !  s STR:LEN c CONN-AUTHORITY-LEN !
+   s [char] : STR:INDEX-OF MATCH option
+      none OF c s HOST? c p PORT? and ENDOF
+      some OF IDX>N {: k:n :} c s k HOST-PORT? ENDOF
    ;MATCH ;
 
 \ Whether the span starts with the scheme prefix P, in any case.
-: SCHEME? ( str str -- bool ) {: a:^ u:n p:^ pu:n :}
-   u pu < if false exit then
-   a pu p pu STR:=CI ;
+: SCHEME? ( str str -- bool ) {: s:str p:str :}
+   s STR:LEN p STR:LEN < if false exit then
+   s STR:DATA p STR:LEN >str p STR:=CI ;
 
-: ORIGIN? ( ^conn str -- bool ) {: c a:^ u:n :}
-   a u s" http://" SCHEME? if
+: ORIGIN? ( ^conn str -- bool ) {: c s:str :}
+   s s" http://" SCHEME? if
       false c CONN-SECURE !
-      c a 7 + u 7 - s" 80" AUTHORITY? exit
+      c s STR:DATA 7 + s STR:LEN 7 - >str s" 80" AUTHORITY? exit
    then
-   a u s" https://" SCHEME? if
+   s s" https://" SCHEME? if
       true c CONN-SECURE !
-      c a 8 + u 8 - s" 443" AUTHORITY? exit
+      c s STR:DATA 8 + s STR:LEN 8 - >str s" 443" AUTHORITY? exit
    then
    false ;
 
@@ -537,9 +536,9 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ Every address of the host, of either family, for a stream socket.
 : RESOLVE ( ^conn -- lookup ) {: c :}
    c HINTS!
-   c NODE c SERVICE c HINTS c CONN-FOUND SPAN:$ drop LOOKUP-CALL {: rc:n :}
+   c NODE c SERVICE c HINTS c CONN-FOUND SPAN:$ STR:DATA LOOKUP-CALL {: rc:n :}
    rc 0<> if c construct fault resolve rc FAIL construct lookup failed exit then
-   c CONN-FOUND SPAN:$ drop LE:U64@ {: first:n :}
+   c CONN-FOUND SPAN:$ STR:DATA LE:U64@ {: first:n :}
    first c CONN-LIST !  first c CONN-ADDR !
    first COUNT-ADDRS c CONN-ADDRS-LEFT !
    construct lookup found ;
@@ -556,11 +555,11 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    c CONN-ENDS @ mono-ns - c CONN-ADDRS-LEFT @ / mono-ns + wait min ;
 
 : SOCKET-ERROR ( ^conn -- n ) {: c :}
-   4 c CONN-OPT-LEN SPAN:$ drop LE:U32!
+   4 c CONN-OPT-LEN SPAN:$ STR:DATA LE:U32!
    c CONN-FD @ SOL-SOCKET SO-ERROR
-   c CONN-OPT SPAN:$ drop c CONN-OPT-LEN SPAN:$ drop OPTION-CALL
+   c CONN-OPT SPAN:$ STR:DATA c CONN-OPT-LEN SPAN:$ STR:DATA OPTION-CALL
    0 < if FFI:ERRNO exit then
-   c CONN-OPT SPAN:$ drop LE:U32@ ;
+   c CONN-OPT SPAN:$ STR:DATA LE:U32@ ;
 
 \ Connects the record's socket to the address by the deadline; false with
 \ the fault kept.
@@ -623,8 +622,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ STARTs the conn's session on its socket for the host and the trust file.
 : TLS-START ( ^conn -- shake ) {: c :}
-   c c CONN-TLS c CONN-FD @ >FD c NODE c CONN-HOST-LEN @
-   c CONN-TRUST @ c CONN-TRUST-LEN @ TLS:START SHAKEN ;
+   c c CONN-TLS c CONN-FD @ >FD c NODE c CONN-HOST-LEN @ >str
+   c CONN-TRUST @ c CONN-TRUST-LEN @ >str TLS:START SHAKEN ;
 
 \ Steps the handshake to its end, waiting as each step asks.
 : SHAKE ( ^conn -- greet ) {: c :}
@@ -648,8 +647,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ The head and the body, each written once.
 : DELIVER ( ^conn -- delivery ) {: c :}
-   c c ROOM c CONN-USED @ WRITE-ALL
-   if c c CONN-BODY @ c CONN-BODY-LEN @ WRITE-ALL else false then
+   c c ROOM c CONN-USED @ >str WRITE-ALL
+   if c c CONN-BODY @ c CONN-BODY-LEN @ >str WRITE-ALL else false then
    if construct delivery sent else construct delivery failed then ;
 
 
@@ -658,7 +657,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ Whether the room holds the blank line after the head, searched from FROM;
 \ the head's length is kept when it does.
 : HEAD-END? ( ^conn n -- bool ) {: c from:n :}
-   c ROOM c CONN-FILLED @ S\" \r\n\r\n" from STR:FIND-SUB-FROM MATCH option
+   c ROOM c CONN-FILLED @ >str S\" \r\n\r\n" from STR:FIND-SUB-FROM MATCH option
       none OF false ENDOF
       some OF IDX>N 4 + c CONN-HEAD-LEN ! true ENDOF
    ;MATCH ;
@@ -681,7 +680,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ Where the first CRLF held at or after FROM begins; -1 while none is.
 : LINE-AT ( ^conn n -- n ) {: c from:n :}
-   c ROOM c CONN-FILLED @ S\" \r\n" from STR:FIND-SUB-FROM MATCH option
+   c ROOM c CONN-FILLED @ >str S\" \r\n" from STR:FIND-SUB-FROM MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -689,7 +688,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ Whether byte b may stand at index i of a status line's fixed part:
 \ `HTTP/1.`, a digit, a space, three digits, then a space or CR.
 : LEAD-BYTE? ( n n -- bool ) {: b:n i:n :}
-   i 7 < if s" HTTP/1." drop i + c@ b = exit then
+   i 7 < if s" HTTP/1." STR:DATA i + c@ b = exit then
    i 7 = if b STR:DIGIT? exit then
    i 8 = if b 32 = exit then
    i 12 < if b STR:DIGIT? exit then
@@ -718,7 +717,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    c ROOM {: r:^ :}
    c 0 LINE-AT 12 < if false exit then
    r 7 + c@ STR:DIGIT-VALUE c CONN-MINOR !
-   r 9 + 3 STR:PARSE-POS MATCH option
+   r 9 + 3 >str STR:PARSE-POS MATCH option
       none OF false ENDOF
       some OF {: s:n :}
          s 100 >= s 599 <= and dup if s c CONN-STATUS ! then ENDOF
@@ -738,24 +737,24 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    0 c CONN-HEAD-LEN !
    true ;
 
-: CHUNKED? ( str -- bool ) {: a:^ u:n :}
-   u 7 < if false exit then
-   a u + 7 - 7 s" chunked" STR:=CI ;
+: CHUNKED? ( str -- bool ) {: s:str :}
+   s STR:LEN 7 < if false exit then
+   s STR:DATA s STR:LEN + 7 - 7 >str s" chunked" STR:=CI ;
 
 \ Whether `close` is one of a Connection field's comma-separated options.
-: CLOSE-TOKEN? ( str -- bool ) {: a:^ u:n :}
+: CLOSE-TOKEN? ( str -- bool ) {: s:str :}
    0 begin
       {: start:n :}
-      a u [char] , start STR:SPLIT-NEXT
+      s [char] , start STR:SPLIT-NEXT
    while
-      {: t:^ tu:n next:n :}
-      t tu STR:TRIM s" close" STR:=CI if true exit then
+      {: t:str next:n :}
+      t STR:TRIM s" close" STR:=CI if true exit then
       next
-   repeat 2drop drop false ;
+   repeat drop drop false ;
 
 \ A Content-Length that is not a number, or two that differ, is malformed.
-: LENGTH? ( ^conn str -- bool ) {: c a:^ u:n :}
-   a u STR:PARSE-POS MATCH option
+: LENGTH? ( ^conn str -- bool ) {: c s:str :}
+   s STR:PARSE-POS MATCH option
       none OF false ENDOF
       some OF {: v:n :}
          c CONN-LENGTH @ MATCH option
@@ -766,21 +765,21 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       ENDOF
    ;MATCH ;
 
-: FIELD? ( ^conn str str -- bool ) {: c k:^ ku:n v:^ vu:n :}
-   k ku s" Content-Length" STR:=CI if c v vu LENGTH? exit then
-   k ku s" Transfer-Encoding" STR:=CI if
-      v vu CHUNKED? c CONN-CHUNKED ! true exit
+: FIELD? ( ^conn str str -- bool ) {: c k:str v:str :}
+   k s" Content-Length" STR:=CI if c v LENGTH? exit then
+   k s" Transfer-Encoding" STR:=CI if
+      v CHUNKED? c CONN-CHUNKED ! true exit
    then
-   k ku s" Connection" STR:=CI if
-      v vu CLOSE-TOKEN? if true c CONN-CLOSE-ASKED ! then
+   k s" Connection" STR:=CI if
+      v CLOSE-TOKEN? if true c CONN-CLOSE-ASKED ! then
    then
    true ;
 
 \ A line without a colon names no field this reads.
-: FIELD-LINE? ( ^conn str -- bool ) {: c a:^ u:n :}
-   a u [char] : STR:INDEX-OF MATCH option
+: FIELD-LINE? ( ^conn str -- bool ) {: c s:str :}
+   s [char] : STR:INDEX-OF MATCH option
       none OF true ENDOF
-      some OF IDX>N {: k:n :} c a k a k + 1+ u k - 1- STR:TRIM FIELD? ENDOF
+      some OF IDX>N {: k:n :} c s STR:DATA k >str s STR:DATA k + 1+ s STR:LEN k - 1- >str STR:TRIM FIELD? ENDOF
    ;MATCH ;
 
 : FIELDS-RESET ( ^conn -- ) {: c :}
@@ -790,7 +789,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ The line ending at or after FROM in the head, as its end; the head always
 \ ends in one.
 : LINE-END ( ^conn n -- n ) {: c from:n :}
-   c ROOM c CONN-HEAD-LEN @ S\" \r\n" from STR:FIND-SUB-FROM MATCH option
+   c ROOM c CONN-HEAD-LEN @ >str S\" \r\n" from STR:FIND-SUB-FROM MATCH option
       none OF c CONN-HEAD-LEN @ ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -803,7 +802,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       {: from:n :}
       c from LINE-END {: to:n :}
       to from = if true exit then
-      c c ROOM from + to from - FIELD-LINE? 0= if false exit then
+      c c ROOM from + to from - >str FIELD-LINE? 0= if false exit then
       to 2 +
    again ;
 
@@ -1058,32 +1057,32 @@ public
 \ of the trust file, which a plain one never reads. The record holds no
 \ connection after it.
 : OPEN ( ^conn str str ^u8 n -- bool )
-   {: c o:^ ou:n t:^ tu:n r:^ ru:n :}
+   {: c o:str t:str r:^ ru:n :}
    c CLEAR-TLS
    -1 c CONN-FD !  0 c CONN-LIST !  c UNSENT
-   t c CONN-TRUST !  tu c CONN-TRUST-LEN !
+   t STR:DATA c CONN-TRUST !  t STR:LEN c CONN-TRUST-LEN !
    r c CONN-ROOM !  ru c CONN-ROOM-LEN !
    0 c CONN-USED !  0 c CONN-HEAD-LEN !  OPTION:NONE c CONN-MARK !
-   c o ou ORIGIN? ;
+   c o ORIGIN? ;
 
 \ Method and target. Starts a request head in the room, the request line and
 \ `Host`, and clears the deadlines. A CR, LF or SP in either marks the request
 \ malformed.
-: REQUEST ( ^conn str str -- ) {: c m:^ mu:n t:^ tu:n :}
+: REQUEST ( ^conn str str -- ) {: c m:str t:str :}
    0 c CONN-USED !  0 c CONN-HEAD-LEN !  OPTION:NONE c CONN-MARK !
    0 c CONN-TOTAL !  0 c CONN-STALL !
-   m mu s" GET" STR:= c CONN-GET-METHOD !
-   m mu SPLITS? t tu SPLITS? or if c construct fault malformed MARK then
-   c m mu APPEND  c 32 CHAR+  c t tu APPEND  c s"  HTTP/1.1" APPEND  c CRLF+
-   c s" Host: " APPEND  c c CONN-AUTHORITY @ c CONN-AUTHORITY-LEN @ APPEND
+   m s" GET" STR:= c CONN-GET-METHOD !
+   m SPLITS? t SPLITS? or if c construct fault malformed MARK then
+   c m APPEND  c 32 CHAR+  c t APPEND  c s"  HTTP/1.1" APPEND  c CRLF+
+   c s" Host: " APPEND  c c CONN-AUTHORITY @ c CONN-AUTHORITY-LEN @ >str APPEND
    c CRLF+ ;
 
 \ One header line, without its CRLF. A line break in it, or a head that
 \ outgrows the room, marks the request so SEND fails it without touching the
 \ wire.
-: HEADER+ ( ^conn str -- ) {: c a:^ u:n :}
-   a u BREAK? if c construct fault malformed MARK exit then
-   c a u APPEND  c CRLF+ ;
+: HEADER+ ( ^conn str -- ) {: c s:str :}
+   s BREAK? if c construct fault malformed MARK exit then
+   c s APPEND  c CRLF+ ;
 
 \ Total milliseconds for the whole exchange, from SEND to the last NEXT, and
 \ stall milliseconds for any single wait; 0 means none.
@@ -1093,10 +1092,10 @@ public
 \ The body span is borrowed until SEND returns. A `Content-Length` frames it
 \ in every request but a GET with no body, which has none. Probes or dials,
 \ then writes head and body once. A fault is kept for the first NEXT.
-: SEND ( ^conn str -- ) {: c a:^ u:n :}
-   a c CONN-BODY !  u c CONN-BODY-LEN !
-   c CONN-GET-METHOD @ u 0= and 0= if
-      c s" Content-Length: " APPEND  c u DIGITS+  c CRLF+
+: SEND ( ^conn str -- ) {: c s:str :}
+   s STR:DATA c CONN-BODY !  s STR:LEN c CONN-BODY-LEN !
+   c CONN-GET-METHOD @ s STR:LEN 0= and 0= if
+      c s" Content-Length: " APPEND  c s STR:LEN DIGITS+  c CRLF+
    then
    c CRLF+
    c ENDS!
@@ -1111,7 +1110,8 @@ public
 
 \ The answer's head, status line through the blank line, in the room; valid
 \ until the next REQUEST.
-: HEAD$ ( ^conn -- str ) dup ROOM swap CONN-HEAD-LEN @ ;
+: HEAD$ ( ^conn -- str ) dup ROOM swap CONN-HEAD-LEN @ >str ;
+
 
 \ Drops the connection in any state; the record keeps its origin, trust and
 \ room, and its next SEND dials again.
