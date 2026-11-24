@@ -4,6 +4,9 @@ split-str
 \ The frame is twelve bit patterns by rows [a00 a01 a02 o0, ...], axes in the
 \ first three columns; scratch holds WORK-CELLS cells and must not overlap it.
 \ 408 base-2^26 limbs cover the 42-term sums (53-bit significands, exp >= -1074).
+\ Each limb buffer keeps a live range [lo, hi) holding all its nonzero limbs.
+\ The quotient's 53 bits come from long division by the divisor shifted left
+\ 52 bits, halved after each bit.
 \ STORAGE CLASS. CALLER-OWNED: limb arithmetic lives in the caller's scratch.
 
 require src/lib/span.f
@@ -18,46 +21,95 @@ $3FFFFFF constant MASK
 $4000000 constant BASE
 -5370 constant LOW-EXP
 
-0 constant POS-OFF
-408 constant NEG-OFF
-816 constant PROD-OFF
-832 constant NEXT-OFF
-848 constant NUM-OFF
-1256 constant DEN-OFF
-1664 constant SHIFT-OFF
-2072 constant PLEN-OFF
-2073 constant EXP-OFF
-2074 constant SIGN-OFF
-2075 constant CARRY-OFF
-2076 constant LEN-OFF
-2077 constant INDEX-OFF
-2078 constant BORROW-OFF
-2079 constant NSIGN-OFF
-2080 constant DSIGN-OFF
-2081 constant QUOT-OFF
-2082 constant REXP-OFF
-2083 constant VALUE-OFF
-2084 constant BIT-OFF
+\ Limb buffers by id; buffer id starts at cell id * LIMBS.
+0 constant POS
+1 constant NEG
+2 constant NUM
+3 constant DEN
+4 constant SHIFTED
+2040 constant PROD-OFF
+2056 constant NEXT-OFF
+\ Buffer id's range [lo, hi) is at cells RANGE-OFF + 2id and the next.
+2072 constant RANGE-OFF
+2082 constant PLEN-OFF
+2083 constant EXP-OFF
+2084 constant SIGN-OFF
 
 : BUF ( SPAN:span<cell> n n -- SPAN:span<cell> )
    {: work off:n len:n :}
    work off cells len cells SPAN:SUB ;
-: POS ( SPAN:span<cell> -- SPAN:span<cell> ) POS-OFF LIMBS BUF ;
-: NEG ( SPAN:span<cell> -- SPAN:span<cell> ) NEG-OFF LIMBS BUF ;
+: LIMB-BUF ( SPAN:span<cell> n -- SPAN:span<cell> )
+   LIMBS * LIMBS BUF ;
 : PROD ( SPAN:span<cell> -- SPAN:span<cell> ) PROD-OFF 16 BUF ;
 : NEXT ( SPAN:span<cell> -- SPAN:span<cell> ) NEXT-OFF 16 BUF ;
-: NUM ( SPAN:span<cell> -- SPAN:span<cell> ) NUM-OFF LIMBS BUF ;
-: DEN ( SPAN:span<cell> -- SPAN:span<cell> ) DEN-OFF LIMBS BUF ;
-: SHIFTED ( SPAN:span<cell> -- SPAN:span<cell> ) SHIFT-OFF LIMBS BUF ;
 : S@ ( SPAN:span<cell> n -- n ) SPAN:CELL@ ;
 : S! ( n SPAN:span<cell> n -- ) SPAN:CELL! ;
+: PART ( SPAN:span<cell> n n -- SPAN:span<u8> )
+   {: buf lo:n hi:n :}
+   buf lo cells hi lo - cells SPAN:SUB SPAN:BYTES ;
+: ZERO ( SPAN:span<cell> -- )
+   {: buf :}
+   0 buf SPAN:BYTES SPAN:FILL ;
+
+: LO-OFF ( n -- n ) 2 * RANGE-OFF + ;
+: RANGE@ ( SPAN:span<cell> n -- n n )
+   {: work id:n :}
+   work id LO-OFF S@ work id LO-OFF 1+ S@ ;
+: RANGE! ( n n SPAN:span<cell> n -- )
+   {: lo:n hi:n work id:n :}
+   lo work id LO-OFF S! hi work id LO-OFF 1+ S! ;
+\ The smallest range holding both; an empty range adds nothing.
+: JOIN ( n n n n -- n n )
+   {: alo:n ahi:n blo:n bhi:n :}
+   alo ahi = if blo bhi exit then
+   blo bhi = if alo ahi exit then
+   alo blo min ahi bhi max ;
+: BOTH ( SPAN:span<cell> n n -- n n )
+   {: work a:n b:n :}
+   work a RANGE@ work b RANGE@ JOIN ;
+
+\ The end of [lo, hi) past its last nonzero limb, lo when none is.
+: TOP ( SPAN:span<cell> n n -- n )
+   {: buf lo:n hi:n :}
+   hi lo ?do
+      lo hi + 1- i - {: at:n :}
+      buf at SPAN:CELL@ 0<> if at 1+ unloop exit then
+   loop lo ;
+: BOTTOM ( SPAN:span<cell> n n -- n )
+   {: buf lo:n hi:n :}
+   hi lo ?do buf i SPAN:CELL@ 0<> if i unloop exit then loop hi ;
+: TRIM ( SPAN:span<cell> n -- )
+   {: work id:n :}
+   work id LIMB-BUF {: buf :}
+   work id RANGE@ {: lo:n hi:n :}
+   buf lo hi TOP {: top:n :}
+   buf lo top BOTTOM top work id RANGE! ;
 
 : CLEAR ( SPAN:span<cell> n -- )
-   {: buf len:n :}
-   len 0 ?do 0 buf i SPAN:CELL! loop ;
+   {: work id:n :}
+   0 work id LIMB-BUF work id RANGE@ PART SPAN:FILL
+   0 0 work id RANGE! ;
+\ Zeroes the limb buffers and their ranges from any scratch.
+: RESET ( SPAN:span<cell> -- )
+   {: work :}
+   work 0 SHIFTED 1+ LIMBS * BUF ZERO
+   SHIFTED 1+ 0 ?do 0 0 work i RANGE! loop ;
 : START ( SPAN:span<cell> -- )
    {: work :}
-   work POS LIMBS CLEAR work NEG LIMBS CLEAR ;
+   work POS CLEAR work NEG CLEAR ;
+
+\ NEXT[at..] += PROD * digit, its carry stored past PROD's length.
+: MUL-DIGIT ( SPAN:span<cell> n n -- )
+   {: work digit:n at:n :}
+   work PROD {: prod :} work NEXT {: next :}
+   work PLEN-OFF S@ {: plen:n :}
+   0 plen 0 ?do
+      prod i SPAN:CELL@ digit * next i at + SPAN:CELL@ + +
+      {: value:n :}
+      value MASK and next i at + SPAN:CELL!
+      value WIDTH rshift
+   loop
+   next plen at + SPAN:CELL! ;
 
 : MUL-FACTOR ( SPAN:span<cell> r -- )
    {: work x:r :}
@@ -70,183 +122,182 @@ $4000000 constant BASE
       exponent 1075 -
    else bits $FFFFFFFFFFFFF and -1074 then
    work EXP-OFF S@ + work EXP-OFF S! {: sig:n :}
-   work NEXT 16 CLEAR
-   3 0 ?do
-      sig i WIDTH * rshift MASK and {: digit:n :}
-      0 work CARRY-OFF S!
-      work PLEN-OFF S@ 0 ?do
-         work PROD i SPAN:CELL@ digit *
-         work NEXT i j + SPAN:CELL@ + work CARRY-OFF S@ + {: value:n :}
-         value MASK and work NEXT i j + SPAN:CELL!
-         value WIDTH rshift work CARRY-OFF S!
-      loop
-      work CARRY-OFF S@ work NEXT work PLEN-OFF S@ i + SPAN:CELL!
-   loop
-   work PLEN-OFF S@ 3 + work LEN-OFF S!
-   begin work LEN-OFF S@ 1 >
-      work NEXT work LEN-OFF S@ 1- SPAN:CELL@ 0= and while
-      work LEN-OFF S@ 1- work LEN-OFF S!
-   repeat
-   work LEN-OFF S@ work PLEN-OFF S!
-   work LEN-OFF S@ 0 ?do
-      work NEXT i SPAN:CELL@ work PROD i SPAN:CELL!
-   loop ;
+   work NEXT ZERO
+   3 0 ?do work sig i WIDTH * rshift MASK and i MUL-DIGIT loop
+   work NEXT 1 work PLEN-OFF S@ 3 + TOP {: len:n :}
+   len work PLEN-OFF S!
+   work NEXT 0 len PART SPAN:$ work PROD 0 len PART SPAN:COPY ;
 
-: ADD-PROD ( SPAN:span<cell> SPAN:span<cell> -- )
-   {: work buf :}
+\ Adds the carry into buf from limb at up; answers the end it reached.
+: CARRY ( n n SPAN:span<cell> -- n )
+   {: buf :}
+   begin over 0<> while
+      {: carry:n at:n :}
+      carry buf at SPAN:CELL@ + {: value:n :}
+      value MASK and buf at SPAN:CELL!
+      value WIDTH rshift at 1+
+   repeat nip ;
+
+: ADD-PROD ( SPAN:span<cell> n -- )
+   {: work id:n :}
+   work id LIMB-BUF {: buf :} work PROD {: prod :}
+   work PLEN-OFF S@ {: plen:n :}
    work EXP-OFF S@ LOW-EXP - WIDTH /mod {: shift:n offset:n :}
-   0 work CARRY-OFF S!
-   work PLEN-OFF S@ 0 ?do
-      work PROD i SPAN:CELL@ shift lshift work CARRY-OFF S@ +
-      buf offset i + SPAN:CELL@ + {: value:n :}
+   0 plen 0 ?do
+      prod i SPAN:CELL@ shift lshift + buf offset i + SPAN:CELL@ +
+      {: value:n :}
       value MASK and buf offset i + SPAN:CELL!
-      value WIDTH rshift work CARRY-OFF S!
+      value WIDTH rshift
    loop
-   offset work PLEN-OFF S@ + work INDEX-OFF S!
-   begin work CARRY-OFF S@ 0<> while
-      work CARRY-OFF S@ buf work INDEX-OFF S@ SPAN:CELL@ + {: value:n :}
-      value MASK and buf work INDEX-OFF S@ SPAN:CELL!
-      value WIDTH rshift work CARRY-OFF S!
-      work INDEX-OFF S@ 1+ work INDEX-OFF S!
-   repeat ;
+   offset plen + buf CARRY {: top:n :}
+   work id RANGE@ offset top JOIN work id RANGE! ;
 
 : TERM ( SPAN:span<cell> r r r r r -- )
    {: work a:r b:r c:r d:r e:r :}
-   work PROD 16 CLEAR
    1 work PROD 0 SPAN:CELL!
    1 work PLEN-OFF S! 0 work EXP-OFF S! 0 work SIGN-OFF S!
    work a MUL-FACTOR work b MUL-FACTOR work c MUL-FACTOR
    work d MUL-FACTOR work e MUL-FACTOR
-   work SIGN-OFF S@ 0= if work work POS else work work NEG then ADD-PROD ;
+   work SIGN-OFF S@ 0= if work POS else work NEG then ADD-PROD ;
 
-: COMPARE-SUM ( SPAN:span<cell> -- n )
-   {: work :}
-   LIMBS work INDEX-OFF S!
-   begin work INDEX-OFF S@ 0 > while
-      work INDEX-OFF S@ 1- work INDEX-OFF S!
-      work POS work INDEX-OFF S@ SPAN:CELL@
-      work NEG work INDEX-OFF S@ SPAN:CELL@ - {: diff:n :}
-      diff 0<> if diff exit then
-   repeat 0 ;
+\ The sign of a - b.
+: BUF-CMP ( SPAN:span<cell> n n -- n )
+   {: work a:n b:n :}
+   work a LIMB-BUF {: abuf :} work b LIMB-BUF {: bbuf :}
+   work a b BOTH {: lo:n hi:n :}
+   hi lo ?do
+      lo hi + 1- i - {: at:n :}
+      abuf at SPAN:CELL@ bbuf at SPAN:CELL@ - {: diff:n :}
+      diff 0<> if diff unloop exit then
+   loop 0 ;
 
-: DIFFERENCE ( SPAN:span<cell> SPAN:span<cell> SPAN:span<cell> -- )
-   {: work bigger smaller :}
-   0 work BORROW-OFF S!
-   LIMBS 0 ?do
-      bigger i SPAN:CELL@ smaller i SPAN:CELL@ -
-      work BORROW-OFF S@ - {: diff:n :}
+\ dst = a - b, for a >= b and dst one of a and b.
+: SUBTRACT ( SPAN:span<cell> n n n -- )
+   {: work a:n b:n dst:n :}
+   work a LIMB-BUF {: abuf :} work b LIMB-BUF {: bbuf :}
+   work dst LIMB-BUF {: dbuf :}
+   work a b BOTH {: lo:n hi:n :}
+   0 hi lo ?do
+      abuf i SPAN:CELL@ bbuf i SPAN:CELL@ - swap - {: diff:n :}
       diff 0< if diff BASE + 1 else diff 0 then
-      work BORROW-OFF S! work POS i SPAN:CELL!
-   loop ;
+      swap dbuf i SPAN:CELL!
+   loop drop
+   lo hi work dst RANGE! work dst TRIM ;
 
-: COPY ( SPAN:span<cell> SPAN:span<cell> -- )
-   {: src dst :}
-   LIMBS 0 ?do src i SPAN:CELL@ dst i SPAN:CELL! loop ;
+: COPY ( SPAN:span<cell> n n -- )
+   {: work src:n dst:n :}
+   work dst CLEAR
+   work src RANGE@ {: lo:n hi:n :}
+   work src LIMB-BUF lo hi PART SPAN:$
+   work dst LIMB-BUF lo hi PART SPAN:COPY
+   lo hi work dst RANGE! ;
 
-: FINISH ( SPAN:span<cell> SPAN:span<cell> -- n )
-   {: work dst :}
-   work COMPARE-SUM 0< if
-      work work NEG work POS DIFFERENCE $8000000000000000
+: FINISH ( SPAN:span<cell> n -- n )
+   {: work dst:n :}
+   work POS NEG BUF-CMP 0< if
+      work NEG POS POS SUBTRACT $8000000000000000
    else
-      work work POS work NEG DIFFERENCE 0
+      work POS NEG POS SUBTRACT 0
    then {: sign:n :}
    work POS dst COPY sign ;
 
-: HIGH-BIT ( SPAN:span<cell> SPAN:span<cell> -- n )
-   {: work buf :}
-   LIMBS work INDEX-OFF S!
-   begin work INDEX-OFF S@ 0 > while
-      work INDEX-OFF S@ 1- work INDEX-OFF S!
-      buf work INDEX-OFF S@ SPAN:CELL@ work VALUE-OFF S!
-      work VALUE-OFF S@ 0<> if
-         0 work BIT-OFF S!
-         begin work VALUE-OFF S@ 1 > while
-            work VALUE-OFF S@ 1 rshift work VALUE-OFF S!
-            work BIT-OFF S@ 1+ work BIT-OFF S!
-         repeat
-         work INDEX-OFF S@ WIDTH * work BIT-OFF S@ + exit
-      then
-   repeat -1 ;
+\ floor(log2 value) of a positive limb.
+: LOG2 ( n -- n )
+   0 swap begin dup 1 > while 1 rshift swap 1+ swap repeat drop ;
+: HIGH-BIT ( SPAN:span<cell> n -- n )
+   {: work id:n :}
+   work id LIMB-BUF {: buf :}
+   work id RANGE@ {: lo:n hi:n :}
+   buf lo hi TOP {: top:n :}
+   top lo = if -1 exit then
+   top 1- WIDTH * buf top 1- SPAN:CELL@ LOG2 + ;
 
-: BUF-CMP ( SPAN:span<cell> SPAN:span<cell> SPAN:span<cell> -- n )
-   {: work a b :}
-   LIMBS work INDEX-OFF S!
-   begin work INDEX-OFF S@ 0 > while
-      work INDEX-OFF S@ 1- work INDEX-OFF S!
-      a work INDEX-OFF S@ SPAN:CELL@
-      b work INDEX-OFF S@ SPAN:CELL@ - {: diff:n :}
-      diff 0<> if diff exit then
-   repeat 0 ;
-
-: SHIFT ( SPAN:span<cell> SPAN:span<cell> n -- )
-   {: work src count:n :}
-   work SHIFTED LIMBS CLEAR
+\ SHIFTED = src * 2^count; limbs past LIMBS are dropped.
+: SHIFT ( SPAN:span<cell> n n -- )
+   {: work src:n count:n :}
+   work SHIFTED CLEAR
+   work src LIMB-BUF {: sbuf :} work SHIFTED LIMB-BUF {: dbuf :}
+   work src RANGE@ {: lo:n hi:n :}
    count WIDTH /mod {: shift:n offset:n :}
-   0 work CARRY-OFF S!
-   LIMBS offset - 0 ?do
-      src i SPAN:CELL@ shift lshift work CARRY-OFF S@ + {: value:n :}
-      value MASK and work SHIFTED offset i + SPAN:CELL!
-      value WIDTH rshift work CARRY-OFF S!
-   loop ;
+   hi 1+ LIMBS offset - min {: end:n :}
+   lo end >= if exit then
+   0 end lo ?do
+      sbuf i SPAN:CELL@ shift lshift + {: value:n :}
+      value MASK and dbuf offset i + SPAN:CELL!
+      value WIDTH rshift
+   loop drop
+   lo offset + end offset + work SHIFTED RANGE! work SHIFTED TRIM ;
 
-: SUBTRACT ( SPAN:span<cell> SPAN:span<cell> SPAN:span<cell> -- )
-   {: work a b :}
-   0 work BORROW-OFF S!
-   LIMBS 0 ?do
-      a i SPAN:CELL@ b i SPAN:CELL@ - work BORROW-OFF S@ - {: diff:n :}
-      diff 0< if diff BASE + 1 else diff 0 then
-      work BORROW-OFF S! a i SPAN:CELL!
-   loop ;
-
-: RATIO-BITS ( SPAN:span<cell> -- n )
-   {: work :}
-   work DEN work POS COPY
-   work work POS HIGH-BIT {: dtop:n :}
-   dtop 0< if FMATH:E-DOMAIN throw then
-   work NUM work POS COPY
-   work work POS HIGH-BIT {: ntop:n :}
-   work NSIGN-OFF S@ work DSIGN-OFF S@ xor {: sign:n :}
-   ntop 0< if 0 exit then
-   ntop dtop - work REXP-OFF S!
-   work REXP-OFF S@ 0< if
-      work work NUM work REXP-OFF S@ negate SHIFT
-      work work SHIFTED work DEN BUF-CMP
-   else
-      work work DEN work REXP-OFF S@ SHIFT
-      work work NUM work SHIFTED BUF-CMP
-   then 0< if work REXP-OFF S@ 1- work REXP-OFF S! then
-   work REXP-OFF S@ 1024 > if FMATH:E-OUTPUT throw then
-   work REXP-OFF S@ -1075 < if sign exit then
-   work REXP-OFF S@ 52 - -1074 max {: shift:n :}
-   shift 0< if
-      work work NUM shift negate SHIFT
-      work SHIFTED work NUM COPY
-   else
-      work work DEN shift SHIFT
-      work SHIFTED work DEN COPY
-   then
-   0 work QUOT-OFF S!
-   53 0 ?do
-      52 i - {: bit:n :}
-      work work DEN bit SHIFT
-      work work NUM work SHIFTED BUF-CMP 0 >= if
-         work work NUM work SHIFTED SUBTRACT
-         work QUOT-OFF S@ 1 bit lshift or work QUOT-OFF S!
-      then
+\ buf id = floor(buf id / 2).
+: HALVE ( SPAN:span<cell> n -- )
+   {: work id:n :}
+   work id LIMB-BUF {: buf :}
+   work id RANGE@ {: lo:n hi:n :}
+   lo 1- 0 max {: from:n :}
+   hi from ?do
+      buf i SPAN:CELL@ 1 rshift
+      i 1+ hi < if
+         buf i 1+ SPAN:CELL@ 1 and WIDTH 1- lshift or
+      then buf i SPAN:CELL!
    loop
-   work work NUM 1 SHIFT
-   work work SHIFTED work DEN BUF-CMP {: cmp:n :}
-   cmp 0 > cmp 0= work QUOT-OFF S@ 1 and 0<> and or if
-      work QUOT-OFF S@ 1+ work QUOT-OFF S!
-   then
-   work REXP-OFF S@ -1022 < if work QUOT-OFF S@ sign or exit then
-   work QUOT-OFF S@ $20000000000000 = if
-      work QUOT-OFF S@ 1 rshift work QUOT-OFF S!
-      work REXP-OFF S@ 1+ work REXP-OFF S!
-   then
-   work REXP-OFF S@ 1023 + {: exponent:n :}
+   from hi work id RANGE! work id TRIM ;
+
+\ floor(log2(NUM / DEN)) for nonzero NUM and DEN.
+: RATIO-EXP ( SPAN:span<cell> -- n )
+   {: work :}
+   work NUM HIGH-BIT work DEN HIGH-BIT - {: guess:n :}
+   guess 0< if
+      work NUM guess negate SHIFT work SHIFTED DEN BUF-CMP
+   else
+      work DEN guess SHIFT work NUM SHIFTED BUF-CMP
+   then 0< if guess 1- else guess then ;
+
+\ Scales NUM or DEN so that NUM / DEN is the significand, unrounded.
+: NORMALISE ( SPAN:span<cell> n -- )
+   {: work rexp:n :}
+   rexp 52 - -1074 max {: shift:n :}
+   shift 0< if
+      work NUM shift negate SHIFT work SHIFTED NUM COPY
+   else
+      work DEN shift SHIFT work SHIFTED DEN COPY
+   then ;
+
+\ floor(NUM / DEN) below 2^53, leaving the remainder in NUM.
+: QUOTIENT ( SPAN:span<cell> -- n )
+   {: work :}
+   work DEN 52 SHIFT
+   0 53 0 ?do
+      i 0<> if work SHIFTED HALVE then
+      work NUM SHIFTED BUF-CMP 0 >= if
+         work NUM SHIFTED NUM SUBTRACT
+         1 52 i - lshift or
+      then
+   loop ;
+
+\ The quotient rounded to nearest even by its remainder.
+: ROUND ( SPAN:span<cell> n -- n )
+   {: work quot:n :}
+   work NUM 1 SHIFT
+   work SHIFTED DEN BUF-CMP {: cmp:n :}
+   cmp 0 > cmp 0= quot 1 and 0<> and or if quot 1+ else quot then ;
+
+: PACK ( n n n -- n )
+   {: quot:n rexp:n sign:n :}
+   rexp -1022 < if quot sign or exit then
+   quot $20000000000000 = if quot 1 rshift rexp 1+
+   else quot rexp then {: sig:n e:n :}
+   e 1023 + {: exponent:n :}
    exponent $7FF >= if FMATH:E-OUTPUT throw then
-   exponent 52 lshift work QUOT-OFF S@ $FFFFFFFFFFFFF and or sign or ;
+   exponent 52 lshift sig $FFFFFFFFFFFFF and or sign or ;
+
+: RATIO-BITS ( SPAN:span<cell> n -- n )
+   {: work sign:n :}
+   work NUM HIGH-BIT 0< if 0 exit then
+   work RATIO-EXP {: rexp:n :}
+   rexp 1024 > if FMATH:E-OUTPUT throw then
+   rexp -1075 < if sign exit then
+   work rexp NORMALISE
+   work work QUOTIENT ROUND rexp sign PACK ;
 
 : AXIS ( SPAN:span<cell> n n -- r )
    {: frame row:n col:n :}
@@ -296,12 +347,12 @@ $4000000 constant BASE
    {: work frame px:r py:r pz:r sx:r sy:r sz:r row:n :}
    work START
    work frame 1.0 D-TERMS
-   work work DEN FINISH work DSIGN-OFF S!
-   work work DEN HIGH-BIT 0< if FMATH:E-DOMAIN throw then
+   work DEN FINISH {: dsign:n :}
+   work DEN HIGH-BIT 0< if FMATH:E-DOMAIN throw then
    work START
    work frame px py pz sx sy sz row N-TERMS
-   work work NUM FINISH work NSIGN-OFF S!
-   work RATIO-BITS IEEE754:BITS>F64 ;
+   work NUM FINISH dsign xor {: sign:n :}
+   work sign RATIO-BITS IEEE754:BITS>F64 ;
 
 : NO-OVERLAP? ( SPAN:span<cell> SPAN:span<cell> -- bool )
    {: frame work :}
@@ -330,6 +381,7 @@ public
          FMATH:E-DOMAIN throw
       then
    loop
+   work RESET
    work frame px py pz sx sy sz 0 COORD
    work frame px py pz sx sy sz 1 COORD
    work frame px py pz sx sy sz 2 COORD ;
