@@ -1337,7 +1337,7 @@ public
 
 \ Zero shares START's absolute deadline across head and body. A positive value
 \ grants the body a fresh absolute deadline when its read begins, at the
-\ handler's first BODY$ or BODY-READER. Progress renews neither. Past each
+\ handler's first BODY$. Progress renews neither. Past each
 \ deadline the worker reads only the bytes the socket holds when its first read
 \ finds that deadline passed, however late that read comes, and nothing once a
 \ stop is raised. A request those bytes leave incomplete gets no answer: its

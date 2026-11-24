@@ -7,8 +7,8 @@ split-str
 \ HEAD-CAP is 431, a body past the route or server cap is 413, a transfer coding
 \ other than chunked is 501, and anything the grammar refuses is 400.
 \ DEADLINES. HTTP's START deadline bounds each head; a configured body timeout
-\ starts at the handler's first BODY$ or BODY-READER, otherwise that same
-\ deadline also bounds the body. Before its deadline a fill reads what the
+\ starts at the handler's first BODY$, otherwise that same deadline also bounds
+\ the body. Before its deadline a fill reads what the
 \ socket holds, serving a pending TASK:HALT, and parks the task on the AIO loop
 \ only when it holds nothing. Past it WAIT-READABLE asks once without waiting,
 \ and the first fill to find it passed takes the bytes then queued as the late
@@ -20,7 +20,6 @@ require src/lib/net/http-arena.f
 require src/lib/string.f
 require src/lib/adt/option.f
 require src/lib/net/tcp4.f
-require src/lib/json.f
 require src/lib/num-types.f
 require src/lib/span.f
 require src/lib/task.f
@@ -1005,8 +1004,8 @@ public
    SLOT-OF-REQUEST SLOT-VERSION$ ;
 
 
-\ The body is read off the connection the first time BODY$ or BODY-READER asks,
-\ inside the request's own handler, and every later ask returns the same bytes.
+\ The body is read off the connection the first time BODY$ asks, inside the
+\ request's own handler, and every later ask returns the same bytes.
 \ A read that does not complete throws out of the handler, and the request is
 \ answered with that read's refusal (413, 400) whatever the handler set, or not
 \ at all when the peer left or the deadline passed. Asked from another task it
@@ -1025,14 +1024,6 @@ public
 \ A header whose value is trusted is read only when exactly one arrived.
 : HEADER-COUNT-OF ( request str -- n ) {: subject:request name:^ len:n :}
    subject SLOT-OF-REQUEST name len COUNT-HEADER ;
-
-
-\ The body as BODY$ reads it. The reader lives in the slot's own reader record,
-\ so two workers reading two bodies share nothing. The caller closes it.
-: BODY-READER ( request -- JSON:reader ) {: subject:request :}
-   subject SLOT-OF-REQUEST {: idx:n :}
-   idx BODY-READY
-   idx READER idx SLOT-BODY$ JSON:READ-INIT ;
 
 
 : CLIENT-GONE? ( request -- bool )

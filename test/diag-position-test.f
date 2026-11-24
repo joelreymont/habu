@@ -18,6 +18,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/json.f
 require tools/gate-json-assert-core.f
 require tools/check-core.f
 

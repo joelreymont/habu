@@ -827,7 +827,7 @@ generates: FAULT ( -- n )
 -9333 s" a negative payload length, or an extended length with its high bit set or not in its shortest form" ERROR:CODE E-WS-LENGTH
 -9334 s" a payload longer than the receiver's bound" ERROR:CODE E-WS-TOO-BIG
 -9335 s" a mask bit the sender must not set or must set, or a key the sender cannot use" ERROR:CODE E-WS-MASK
--9340 s" START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT, a TAKE-OVER outside a running handler or a second one inside it, a BODY$ or BODY-READER outside its running handler or after its TAKE-OVER, BEARER:ISSUER!, BEARER:METADATA! or TEST-ISSUER:CLIENT+ while serving, BEARER:ADMIT? before ISSUER!, or BEARER:TOKEN or BEARER:REFRESH before CLIENT!" ERROR:CODE E-HTTP-STATE
+-9340 s" START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT, a TAKE-OVER outside a running handler or a second one inside it, a BODY$ outside its running handler or after its TAKE-OVER, BEARER:ISSUER!, BEARER:METADATA! or TEST-ISSUER:CLIENT+ while serving, BEARER:ADMIT? before ISSUER!, or BEARER:TOKEN or BEARER:REFRESH before CLIENT!" ERROR:CODE E-HTTP-STATE
 -9341 s" a request or response handle past its request, or one over another worker's slot, or a slot asked by a task that is no worker" ERROR:CODE E-HTTP-HANDLE
 -9342 s" a worker count outside 1..MAX-WORKERS, or an idle deadline under 1 ms" ERROR:CODE E-HTTP-WORKERS
 -9343 s" more hooks, headers or bound segments than a table holds, or a negative body length" ERROR:CODE E-HTTP-CAPACITY

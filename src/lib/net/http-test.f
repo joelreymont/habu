@@ -341,13 +341,20 @@ variable ECHO-HITS
    JSON:WRITE-OBJECT-END ;
 
 
-: READ-TEXT ( HTTP:request -- n ) {: asked:HTTP:request :}
-   asked HTTP:BODY-READER
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE -1 exit then
-   s" text" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE -2 exit then
-   TEXT-BUF TEXT-CAP JSON:READ-STR {: len:n :}
-   JSON:READ-CLOSE
+: TEXT-COPY ( str -- n )
+   {: text:^ len:n :}
+   text len TEXT-BUF TEXT-CAP SPAN:MAKE SPAN:COPY
    len ;
+
+
+: READ-TEXT ( HTTP:request -- n ) {: asked:HTTP:request :}
+   asked HTTP:BODY$ JSON:PARSE {: body :}
+   body JSON:OBJECT? 0= if -1 exit then
+   body s" text" JSON:FIND
+   MATCH option
+      none OF -2 ENDOF
+      some OF [: TEXT-COPY ;] JSON:WITH-STRING ENDOF
+   ;MATCH ;
 
 
 : ANSWER-TEXT ( HTTP:request HTTP:response -- )
