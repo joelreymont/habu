@@ -19,6 +19,7 @@ require src/lib/fs.f
 require src/lib/log.f
 require src/lib/memory.f
 require src/lib/string.f
+require src/lib/string-option.f
 
 package OS-MEMORY
 private

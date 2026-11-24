@@ -13,6 +13,7 @@ split-str
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/heap.f

@@ -9,6 +9,7 @@ split-str
 require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f

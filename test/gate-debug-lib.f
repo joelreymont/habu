@@ -4,6 +4,7 @@ split-str
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/string-option.f
 require tools/code-dump-core.f
 require src/lib/process.f
 require test/gate-common.f

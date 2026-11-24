@@ -14,6 +14,7 @@ require src/lib/heap.f
 require src/habu/stack-abi.f
 require src/lib/span.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/adt/option.f
 
 package BUF

@@ -18,6 +18,7 @@ ENTRY-ORDER !
 \ own tree's root, so on an engine that does not carry it the verifier comes from
 \ that tree, not the client's.
 require src/core/exit-status.f
+require src/lib/string-option.f
 require src/habu/verify-source.f
 
 package CHECK-VERIFY-CHILD

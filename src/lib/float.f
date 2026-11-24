@@ -6,6 +6,7 @@ split-str
 \ fit signed i64; engine-shaped decimals keep the engine's admission.
 
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/adt/option.f
 
 46 constant FL-DOT

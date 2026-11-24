@@ -5,6 +5,7 @@ split-str
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/process.f
 require src/lib/ieee754.f
 require src/arch/wasm/kernel-words.f

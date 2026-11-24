@@ -3,6 +3,7 @@ split-str
 \ a kernel word it calls is either provided by a word of
 \ src/arch/wasm/kernel-words.f, which WKMAP names, or left to the write step.
 require src/lib/string.f
+require src/lib/string-option.f
 require src/habu/xref.f
 require src/habu/boot-cells.f
 require src/arch/wasm/kernel-map.f

@@ -14,6 +14,7 @@ split-str
 
 require src/lib/test.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/span.f
 require src/lib/fs.f
 require src/lib/utf8-scalar.f

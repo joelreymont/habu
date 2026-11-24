@@ -40,6 +40,7 @@ require src/lib/adt/nullable.f
 require src/lib/test/subject.f
 require test/decl-diag-capture.f
 require src/lib/memory.f
+require src/lib/string-option.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f

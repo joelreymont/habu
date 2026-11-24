@@ -15,6 +15,7 @@ split-str
 \ for several words from then on.
 
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/fs.f
 require src/lib/span.f
 require src/lib/uri.f

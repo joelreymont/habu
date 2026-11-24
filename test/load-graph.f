@@ -5,6 +5,7 @@ split-str
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/fs.f
 require src/lib/test/suite.f
 require tools/lint/text.f

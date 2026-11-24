@@ -6,6 +6,7 @@ split-str
 \ open document's first (tools/lsp-definition.f). Primitives come from PRIM-SOURCE.
 
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/json.f
 require src/habu/engine-origin.f
 require src/habu/verify-source.f

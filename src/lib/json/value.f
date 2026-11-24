@@ -28,6 +28,7 @@ require src/lib/memory.f
 require src/lib/vector.f
 require src/lib/heap.f
 require src/lib/adt/option.f
+require src/lib/string-option.f
 require src/lib/reason.f
 require src/lib/json/read.f
 require src/lib/json/equal.f

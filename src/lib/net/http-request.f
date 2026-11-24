@@ -18,6 +18,7 @@ split-str
 \ fill, past the parse of at most one window (IN-CAP).
 require src/lib/net/http-arena.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/adt/option.f
 require src/lib/net/tcp4.f
 require src/lib/num-types.f

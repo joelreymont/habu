@@ -10,6 +10,7 @@ require src/lib/error.f
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/adt/option.f
 require src/lib/fmt.f
 require src/lib/fs.f

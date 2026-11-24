@@ -15,6 +15,7 @@ split-str
 
 require src/core/exit-status.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/fs.f
 require src/lib/process.f
 require src/lib/process-argv.f

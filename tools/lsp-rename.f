@@ -7,6 +7,7 @@ split-str
 \ and locations LSP-REFERENCES's, the uses tools/lsp-defs.f's.
 
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/json.f
 require src/lib/adt/option.f
 require src/lib/source-lex.f

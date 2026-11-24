@@ -9,6 +9,7 @@ require src/lib/ffi-abi.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/f64-text.f
 require src/lib/le.f
 require src/lib/fmt.f

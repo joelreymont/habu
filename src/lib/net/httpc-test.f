@@ -31,6 +31,7 @@ split-str
 HB-TARGET-LINUX-KERNEL? ?TARGET
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/fmt.f
 require src/lib/le.f
 require src/lib/num-types.f

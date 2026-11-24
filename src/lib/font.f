@@ -14,6 +14,7 @@ require src/lib/le.f
 require src/lib/memory.f
 require src/lib/task.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/f64-text.f
 
 package FONT

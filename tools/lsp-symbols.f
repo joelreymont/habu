@@ -5,6 +5,7 @@ split-str
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer belongs to the server's one task.
 
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/adt/option.f
 require src/lib/json.f
 require tools/lsp-defs.f

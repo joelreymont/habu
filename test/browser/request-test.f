@@ -5,6 +5,7 @@ split-str
 \ it, as does `bin/hb --load test/browser/request-test.f` from the tree's root.
 
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

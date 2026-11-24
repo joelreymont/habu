@@ -6,6 +6,7 @@ split-str
 \ test's own captured output. bun must be on PATH.
 
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/fs.f
 require src/lib/process.f
 require src/lib/process-argv.f

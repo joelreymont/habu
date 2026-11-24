@@ -5,6 +5,7 @@ split-str
 \ capture also silences the records a reject suite provokes.
 
 require src/lib/string.f
+require src/lib/string-option.f
 
 package DECL-DIAG
 

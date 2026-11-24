@@ -9,6 +9,7 @@ split-str
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/test/record.f
 require src/lib/fmt.f                          \ FMT:.INT - one-line number text, shared builder untouched
 require src/core/exit-status.f

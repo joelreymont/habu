@@ -8,6 +8,7 @@ split-str
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/span.f
 require src/lib/task.f
 require src/lib/fd.f
