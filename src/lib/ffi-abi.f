@@ -49,6 +49,8 @@ EXPORT BOOT:data-base
 EXPORT CHECK:DEFINER-PLACE
 EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-TOP-ONLY
+EXPORT SOURCE-ROOT:OPENED
+EXPORT SOURCE-ROOT:CLOSED
 
 FFI-ABI:STACK-BUF-BYTES 1 cells / constant FFI-MAX-ARGS
 \ AAPCS64's integer argument registers, and both ABIs' float slots.
@@ -907,8 +909,9 @@ create RES-TEXT TYPE-CAP allot             \ the result's type as DECLARED-EFFEC
 variable RES-TEXT-U
 variable CUR-LIB
 \ skipped: the driver cannot tell what the declaration holds, so its clauses
-\ are ignored and it closes without a plan. The load never skips.
-ENUM decl-state closed open skipped ;ENUM
+\ are ignored and it closes without a plan. The load never skips or leaves.
+\ left: the run decides how it closes, from source the driver cannot read.
+ENUM decl-state closed open skipped left ;ENUM
 TYPED-VARIABLE DECL decl-state
 PTR-VARIABLE OPENER-A
 variable OPENER-U
@@ -923,6 +926,7 @@ SCRATCH-VARIABLE SCOPE-SET
       closed OF false ENDOF
       open OF true ENDOF
       skipped OF false ENDOF
+      left OF false ENDOF
    ;MATCH ;
 
 \ The token cells a library selection shares with a declaration, at rest.
@@ -957,7 +961,7 @@ SCRATCH-VARIABLE SCOPE-SET
 \ fix, which places the record at the token read last. The stop abandons the
 \ open declaration, so the next FUNCTION: in the file is not rejected for it.
 : STOP-REJECTION ( -- )
-   OPEN? if SOURCE-ROOT:CLOSED then  CLOSED!
+   OPEN? if CLOSED then  CLOSED!
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : HELP-END ( str -- )
@@ -1727,13 +1731,13 @@ EXPORT CHECK:CHECKER-SPLIT-STR
       ENDOF
       open OF true ENDOF
       skipped OF false ENDOF
+      left OF false ENDOF
    ;MATCH
    CLOSED! ;
 
-public
-
-\ Nothing is published before ;FUNCTION, and the row is registered as the word
-\ is built, so a rejected declaration leaves no half-built word.
+: LEFT! ( -- )
+   construct decl-state left DECL !
+   NULL-PTR OPENER-A !  0 OPENER-U ! ;
 
 \ The token that opened the declaration still open or skipped, as its reader
 \ gave it; empty when none is.
@@ -1748,7 +1752,7 @@ public
    SRCLOC:TOKEN$ {: t:^ tu:n :}
    [: OPEN? if
          OPENER$ s" ;FUNCTION" t tu SOURCE-ROOT:UNCLOSED
-         SOURCE-ROOT:CLOSED  CLOSED!
+         CLOSED  CLOSED!
          EXIT-STATUS:REJECTED REJECTION:STOP
       then
       CLOSED!
@@ -1759,14 +1763,21 @@ public
       src EFFECT
       construct decl-state open DECL !  t OPENER-A !  tu OPENER-U ! ;] KEEP-REST ;
 
+public
+
 \ The declaration is read before its library is checked: one that cannot be
 \ read is a syntax record whatever library it has.
 : OPEN-FUNCTION ( -- )
    [: parse-name ;] READ-FUNCTION 2drop
-   OPENER$ s" ;FUNCTION" ['] DISCARD SOURCE-ROOT:OPENED
+   OPENER$ s" ;FUNCTION" ['] DISCARD OPENED
    CHECK-SCOPE ;
+
+\ The word and its row are made only here, after the plan's rejections, so a
+\ rejected declaration leaves no half-built word.
 : CLOSE-FUNCTION ( -- )
-   [: CLOSE-STATE if SOURCE-ROOT:CLOSED PLAN-CALL EMIT then ;] KEEP-REST ;
+   [: CLOSE-STATE if CLOSED PLAN-CALL EMIT then ;] KEEP-REST ;
+
+private
 
 \ The close transition without the word: the plan and its rejections run.
 : PLAN-FUNCTION ( -- )
@@ -1774,7 +1785,27 @@ public
 
 \ Sent by a driver that cannot tell what the declaration holds.
 : SKIP-FUNCTION ( -- )
-   [: construct decl-state skipped DECL ! ;] KEEP-REST ;
+   [: DECL @ MATCH decl-state
+         closed OF ENDOF
+         open OF construct decl-state skipped DECL ! ENDOF
+         skipped OF ENDOF
+         left OF ENDOF
+      ;MATCH ;] KEEP-REST ;
+
+\ Sent by a driver after a stretch that may close or open a declaration: how it
+\ closes is left to the run.
+: LEAVE-FUNCTION ( -- )
+   [: LEFT! ;] KEEP-REST ;
+
+\ Sent by a driver after rendered text: the text may close the open declaration,
+\ and the load rejects text that ends with one it opened.
+: LEAVE-OPEN-FUNCTION ( -- )
+   [: DECL @ MATCH decl-state
+         closed OF ENDOF
+         open OF LEFT! ENDOF
+         skipped OF LEFT! ENDOF
+         left OF ENDOF
+      ;MATCH ;] KEEP-REST ;
 
 : ABANDON-FUNCTION ( -- )
    [: CLOSED! ;] KEEP-REST ;
@@ -1789,8 +1820,6 @@ public
    RES-KIND @ R-NONE = if exit then
    RES-TEXT RES-TEXT-U @ put execute ;
 
-private
-
 : NOT-OPEN ( -- )
    s" a clause outside a FUNCTION: declaration"
    s" write the clause between FUNCTION: and ;FUNCTION" SYNTAX-REJECT ;
@@ -1800,6 +1829,7 @@ private
       closed OF NOT-OPEN ENDOF
       open OF true ENDOF
       skipped OF false ENDOF
+      left OF false ENDOF
    ;MATCH ;
 
 : STRUCT-VARIADIC ( -- )
@@ -1975,10 +2005,5 @@ INTRINSIC-TOP-ONLY INTRINSIC
 : ;FUNCTION ( -- )
    FFI:CLOSE-FUNCTION ;
 INTRINSIC-TOP-ONLY INTRINSIC
-
-\ Both wordlists are protected here, after FFI's last definition: an engine
-\ that loads this file after its seal rejects any definition into a protected
-\ wordlist and exits 84.
-seal-package
 
 ;package

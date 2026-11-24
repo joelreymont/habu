@@ -302,6 +302,20 @@ variable FFI-SV-SRC-U
    s" ;FUNCTION"
    S\" \"message\":\";FUNCTION with no declaration open\""
    S\" \"token\":\";FUNCTION\"" FFI-SV-UNOPENED
+   \ Neither a deferral the check follows nor rendered text opens a declaration.
+   S\" : FFI-SV-HB ( -- n ) 16 ;\nFFI-SV-HB constant FFI-SV-K\nSTRUCTURE ffisvk BUFFER id FFI-SV-K ;STRUCTURE\n;FUNCTION"
+   S\" \"message\":\";FUNCTION with no declaration open\""
+   S\" \"token\":\";FUNCTION\"" FFI-SV-UNOPENED
+   S\" W-CHECK-DEFERRED" FFI-SV-SAYS
+   S\" s\" 1 drop\" evaluate\n;FUNCTION"
+   S\" \"message\":\";FUNCTION with no declaration open\""
+   S\" \"token\":\";FUNCTION\"" FFI-SV-UNOPENED
+   S\" W-CHECK-DEFERRED" FFI-SV-SAYS
+   \ A does> clause runs nothing where it is defined.
+   S\" s\" : FFI-SV-RD ( n -- ) drop ;\" evaluate\n: FFI-SV-MK ( n -- ) create , does> ( -- ) @ FFI-SV-RD ;\n;FUNCTION"
+   S\" \"message\":\";FUNCTION with no declaration open\""
+   S\" \"token\":\";FUNCTION\"" FFI-SV-UNOPENED
+   S\" W-CHECK-DEFERRED" FFI-SV-SAYS
    s" FUNCTION: FFI-SV no_symbol ( n --"
    S\" \"message\":\"the line ended before the declaration did\""
    S\" \"token\":\"--\"" FFI-SV-UNOPENED ;
@@ -315,6 +329,29 @@ variable FFI-SV-SRC-U
    src srcu FFI-SV-SOURCE s" W-CHECK-DEFERRED" FFI-SV-WARNS
    LSP-CHECK:VERIFY-OUT$ s" E-FFI-SYNTAX" STR:CONTAINS?
    dup IF FFI-SV-SHOW THEN TFALSE ;
+
+\ The source is deferred, and no declaration is rejected.
+: FFI-SV-LEFT ( str -- )
+   {: src:^ srcu:n :}
+   src srcu T-LABEL
+   src srcu FFI-SV-SOURCE s" W-CHECK-DEFERRED" FFI-SV-WARNS
+   LSP-CHECK:VERIFY-OUT$ s" E-FFI-SYNTAX" STR:CONTAINS?
+   LSP-CHECK:VERIFY-OUT$ s" E-UNCLOSED" STR:CONTAINS?  or
+   dup IF FFI-SV-SHOW THEN TFALSE ;
+
+\ Code the check never read may open or close a declaration, so the check
+\ leaves its close to the run.
+: FFI-SV-RENDERED ( -- )
+   S\" FUNCTION: FFI-SV-R getpid ( -- n ) s\" ;FUNCTION\" evaluate"
+   FFI-SV-LEFT
+   S\" s\" : FFI-SV-FN: ( -- ) FFI:OPEN-FUNCTION ;\" evaluate\nFUNCTION: FFI-SV-A getpid ( -- n ) ;FUNCTION\nFFI-SV-FN: FFI-SV-P getpid ( -- n ) ;FUNCTION\nFFI-SV-P drop"
+   FFI-SV-LEFT
+   S\" s\" : FFI-SV-CLOSE ( -- ) FFI:CLOSE-FUNCTION ;\" evaluate\nFUNCTION: FFI-SV-P getpid ( -- n ) FFI-SV-CLOSE\nFFI-SV-P drop"
+   FFI-SV-LEFT
+   S\" 1 constant FFI-SV-ONE\nFUNCTION: FFI-SV-QB printf ( ^u8 n -- n ) FFI-SV-ONE VARIADIC\ns\" ;FUNCTION\" evaluate"
+   FFI-SV-LEFT
+   S\" 1 constant FFI-SV-FIXED\nFUNCTION: FFI-SV-RA getpid ( -- n )\ns\" 1 drop\" evaluate\n;FUNCTION\nFUNCTION: FFI-SV-RB printf ( ^u8 n -- n ) FFI-SV-FIXED VARIADIC\ns\" 1 drop\" evaluate\n;FUNCTION"
+   FFI-SV-LEFT ;
 
 
 \ After a group, a name nothing resolves and a type nothing declares are
@@ -419,6 +456,7 @@ variable FFI-SV-SRC-U
    FFI-SV-STRUCT-RESULT
    FFI-SV-DECLARATIONS
    FFI-SV-DEFERRED
+   FFI-SV-RENDERED
    FFI-SV-GROUP-CLOSE
    FFI-SV-GROUP-REDEFINED
    FFI-SV-SHADOWED

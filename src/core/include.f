@@ -2519,6 +2519,8 @@ public
    t tu c cu UNCLOSED-HELP
    s" before " REJECTION:EMIT-STR  w wu TICKED ;
 
+private
+
 : CLOSED ( -- )
    0 CLOSER-U ! ;
 
@@ -2533,10 +2535,14 @@ public
    t OPENER-A !  tu OPENER-U !  c CLOSER-A !  cu CLOSER-U !  q ABANDON-XT !
    1 DECL-SERIAL +! ;
 
+public
+
 \ The open declaration's opener token; empty when none is open.
 : OPENER$ ( -- str )
    CLOSER-U @ 0= if NULL-PTR 0 exit then
    OPENER-A @ OPENER-U @ ;
+
+private
 
 \ The mark a text takes as it starts, for TEXT-END and TEXT-UNWOUND.
 : TEXT-MARK ( -- n )
@@ -2562,8 +2568,6 @@ public
 : TEXT-UNWOUND ( n -- )
    OPEN-SINCE? 0= if exit then
    ABANDON-XT @ execute  CLOSED ;
-
-private
 
 CAST: CLOSE-ACTION ( n -- [ -- ] )
 
@@ -2787,17 +2791,18 @@ public
 package LOADER
 EXPORT SOURCE-EVENT:EVENT-RECORD
 EXPORT REQUIRE-REG:REQUIRE-STATE
+EXPORT SOURCE-ROOT:LOAD-BEGINS
 
 global
 
 : included ( str -- )
    {: a:^ u:n :}
-   s" included" SOURCE-ROOT:LOAD-BEGINS
+   s" included" LOAD-BEGINS
    s" included" a u INCLUDED-AS ;
 
 : required ( str -- )
    {: a:^ u:n :}
-   s" required" SOURCE-ROOT:LOAD-BEGINS
+   s" required" LOAD-BEGINS
    s" required" a u REQUIRED-AS ;
 
 \ The `--load` argv row.
@@ -2825,9 +2830,10 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 \ INTRINSIC and the loader ids, which are CHECK's, tag them.
 package CHECK
 EXPORT LOADER:INCLUDE-CHECK-PATH
+EXPORT SOURCE-ROOT:LOAD-BEGINS
 global
 : include ( -- )
-   s" include" SOURCE-ROOT:LOAD-BEGINS
+   s" include" LOAD-BEGINS
    s" include" SRCLOC:SPELLED drop {: w:^ wu:n :}
    parse-name {: a:^ u:n :}
    u INCLUDE-CHECK-PATH
@@ -2839,7 +2845,7 @@ create SOURCE-ORIGINAL-INCLUDE-ENTRY 0 ,
 ' include SOURCE-ORIGINAL-INCLUDE-ENTRY xt!
 
 : require ( -- )
-   s" require" SOURCE-ROOT:LOAD-BEGINS
+   s" require" LOAD-BEGINS
    s" require" SRCLOC:SPELLED drop {: w:^ wu:n :}
    parse-name {: a:^ u:n :}
    u INCLUDE-CHECK-PATH

@@ -188,6 +188,14 @@ EXPORT TFAM:SUMV-CTOR-SYM@
 EXPORT TFAM:SUMV-NAME$
 EXPORT TFAM:TFAM-N@
 EXPORT TFAM:TFAM-VAR-START@
+EXPORT FFI:OPENER$
+EXPORT FFI:READ-FUNCTION
+EXPORT FFI:PLAN-FUNCTION
+EXPORT FFI:SKIP-FUNCTION
+EXPORT FFI:LEAVE-FUNCTION
+EXPORT FFI:LEAVE-OPEN-FUNCTION
+EXPORT FFI:ABANDON-FUNCTION
+EXPORT FFI:DECLARED-TEXTS
 EXPORT REQUIRE-REG:REQUIRE-KNOWN?
 
 public
@@ -1540,8 +1548,8 @@ DYNAMIC-BUFFER DEFINER-SIG u8
    1 - DEFINER-SIG@ ;
 
 variable DEFER-REPORT                            \ the child reports deferrals
-\ The last run reached uncertain source. Only DEFER-AT and REPORT-DEFERRED set
-\ it, and each writes the packet that locates it when the child asks for one.
+\ The last run reached uncertain source. Only REPORT-DEFERRAL and REPORT-DEFERRED
+\ set it, and each writes the packet that locates it when the child asks for one.
 variable DEFER-SEEN
 
 \ WHY, the deferral's cause or 0, picks its warning's message and help; a site
@@ -1551,11 +1559,25 @@ CAST: STRETCH-ACTION ( n -- [ str -- ] )
    TICK-REMAINDER @ CHECKER-DEFER-WHY!
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
 
-: DEFER-AT ( str n -- )
+\ A deferral of these causes runs no code the check does not follow, so it
+\ opens or closes no declaration.
+: FOLLOWED? ( n -- bool )
+   {: why:n :}
+   why DW-TYPE =  why DW-RENDERED = or  why DW-COUNT = or ;
+
+: DEFER-DECL ( n -- )
+   {: why:n :}
+   why FOLLOWED? IF SKIP-FUNCTION EXIT THEN
+   why DW-RENDERER = IF LEAVE-OPEN-FUNCTION EXIT THEN
+   LEAVE-FUNCTION ;
+
+: REPORT-DEFERRAL ( str n -- )
    {: a:^ u:n why:n :}
-   FFI:SKIP-FUNCTION
    -1 DEFER-SEEN !
    DEFER-REPORT @ IF a u why REPORT-STRETCH THEN ;
+
+: DEFER-AT ( str n -- )
+   dup DEFER-DECL REPORT-DEFERRAL ;
 
 : QUIET-TYPE-CLEAR ( -- )
    CHECKER-SIG-UNRES-TAKE drop 2drop ;
@@ -1661,7 +1683,7 @@ variable DOES-CLAUSE-U
 
 : REPORT-DOES-CLAUSE ( -- )
    DOES-CLAUSE-U @ 0= IF EXIT THEN
-   DOES-CLAUSE-A @ DOES-CLAUSE-U @ 0 DEFER-AT ;
+   DOES-CLAUSE-A @ DOES-CLAUSE-U @ 0 REPORT-DEFERRAL ;
 
 : TICK-DOES-CHECK ( -- )
    TICK-BODY-A @ TICK-BODY-U @
@@ -3432,7 +3454,7 @@ CB-CLOSED!
 \ The opener and closer of the FUNCTION: or CALLBACK: group this source opened,
 \ else empty: nested files share FFI's open group, as the load's declaration.
 : OPEN-GROUP ( -- str str )
-   FFI:OPENER$ SCANNED? IF FFI:OPENER$ s" ;FUNCTION" EXIT THEN
+   OPENER$ SCANNED? IF OPENER$ s" ;FUNCTION" EXIT THEN
    CB-OPEN?  CB-OPENER-A @ CB-OPENER-U @ SCANNED? and IF
       CB-OPENER-A @ CB-OPENER-U @ s" ;CALLBACK" EXIT
    THEN
@@ -3691,21 +3713,21 @@ variable FFI-LIT-B                          \ and the newer
    0 FFI-NAME-U !
    a u FFI-UNCLOSED
    [: [: NEXT-RAW dup 0<> IF 2dup SRCLOC:TOKEN! THEN ;]
-      FFI:READ-FUNCTION ;] a u FFI-AT
+      READ-FUNCTION ;] a u FFI-AT
    {: name:^ nameu:n :}
    name SOURCE@ - {: at:n :}
    at TOKEN-BYTE !
    NAME-DECLARED
-   name nameu at REJECT-DUPLICATE IF FFI:SKIP-FUNCTION EXIT THEN
+   name nameu at REJECT-DUPLICATE IF SKIP-FUNCTION EXIT THEN
    0 FFI-SIG-U !
-   [: FFI-APPEND ;] FFI:DECLARED-TEXTS
+   [: FFI-APPEND ;] DECLARED-TEXTS
    0 FFI-SIG FFI-SIG-U @ {: sig:^ sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE CHECKER-ROW:KEPT =
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE
       nameu FFI-NAME-RESERVE  name 0 FFI-NAME nameu BYTE-COPY  nameu FFI-NAME-U !
-   ELSE FFI:SKIP-FUNCTION THEN ;
+   ELSE SKIP-FUNCTION THEN ;
 
 \ A word w of the open callback group: a taken one is the duplicate, rejected
 \ at the source token t, and the group is skipped.
@@ -3792,7 +3814,7 @@ variable FFI-LIT-B                          \ and the newer
 \ The load judges the word `;FUNCTION` builds as it publishes it, after the
 \ closer's own refusals.
 : FFI-CLOSE ( -- )
-   FFI:PLAN-FUNCTION
+   PLAN-FUNCTION
    FFI-NAME-U @ 0= IF EXIT THEN
    0 FFI-NAME FFI-NAME-U @ {: name:^ nameu:n :}
    0 FFI-NAME-U !
@@ -3814,15 +3836,15 @@ variable FFI-LIT-B                          \ and the newer
    a u TOKEN-TAIL {: t:^ tu:n :}
    FFI-LIT-N @ {: lits:n :}
    t tu s" STRUCT-ARG" STR:=CI IF
-      lits 2 < IF FFI:SKIP-FUNCTION EXIT THEN
+      lits 2 < IF SKIP-FUNCTION EXIT THEN
       FFI-LIT-A @ FFI-LIT-B @ [: FFI:SET-STRUCT-ARG ;] a u FFI-AT EXIT
    THEN
    t tu s" STRUCT-RESULT" STR:=CI IF
-      lits 1 < IF FFI:SKIP-FUNCTION EXIT THEN
+      lits 1 < IF SKIP-FUNCTION EXIT THEN
       FFI-LIT-B @ [: FFI:SET-STRUCT-RESULT ;] a u FFI-AT EXIT
    THEN
    t tu s" VARIADIC" STR:=CI 0= IF EXIT THEN
-   lits 1 < IF FFI:SKIP-FUNCTION EXIT THEN
+   lits 1 < IF SKIP-FUNCTION EXIT THEN
    FFI-LIT-B @ [: FFI:SET-VARIADIC ;] a u FFI-AT ;
 
 \ The library's storage definers are words, not keywords: a package's word of
@@ -4360,7 +4382,7 @@ COMPOSE-INIT
 : RUN-IN-SCOPE ( [ -- ] -- )
    CHECKER-SPLIT-STR @ {: split:n :}
    TICK-CONTEXT-RESET
-   false TICK-REMAINDER !  FFI:ABANDON-FUNCTION  CB-CLOSED!
+   false TICK-REMAINDER !  ABANDON-FUNCTION  CB-CLOSED!
    0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !  SOURCE-SEALS-CLEAR
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch {: rc:n :}

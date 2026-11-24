@@ -9,6 +9,8 @@ package STRUCTURES
 EXPORT TYPE-DECL:TDECL-CELL-CHILD
 EXPORT TYPE-DECL:TDECL-PTR-CHILD
 EXPORT TYPE-DECL:TDECL-BYTE-CHILD
+EXPORT SOURCE-ROOT:OPENED
+EXPORT SOURCE-ROOT:CLOSED
 
 global
 
@@ -71,7 +73,7 @@ variable STRUCT-OPEN
 \ abandon action is a named word: a quotation before `create` is a bend, and
 \ `does>` needs its `create` before any bend.
 : BEGIN-STRUCTURE ( -- ^n n )
-   SRCLOC:TOKEN$ s" END-STRUCTURE" ['] STRUCT-ABANDON SOURCE-ROOT:OPENED
+   SRCLOC:TOKEN$ s" END-STRUCTURE" ['] STRUCT-ABANDON OPENED
    create ndict@ STRUCT-OPEN !
    here 0 , 0 does> ( -- n ) @ ;
 
@@ -94,7 +96,7 @@ variable STRUCT-OPEN
 
 : END-STRUCTURE ( ^n n -- )
    s" END-STRUCTURE" STRUCT-REQUIRE-OPEN
-   0 STRUCT-OPEN !  SOURCE-ROOT:CLOSED
+   0 STRUCT-OPEN !  CLOSED
    swap ! ;
 
 ;package

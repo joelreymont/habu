@@ -22,6 +22,8 @@ private
 EXPORT BOOT:data-base
 EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-TOP-ONLY
+EXPORT SOURCE-ROOT:OPENED
+EXPORT SOURCE-ROOT:CLOSED
 
 CAST: >CALLBACK ( n -- callback )
 CAST: CALLBACK>N ( callback -- n )
@@ -471,7 +473,7 @@ variable OPEN
 \ A rejection between the two keywords abandons the declaration, so nothing
 \ is left open for the next one.
 : REJECT ( str str -- )
-   OPEN @ 0 <> if SOURCE-ROOT:CLOSED then
+   OPEN @ 0 <> if CLOSED then
    0 OPEN !  FFI:SYNTAX-REJECT ;
 
 \ The loader runs this on a declaration still open when its file ends.
@@ -510,7 +512,7 @@ public
 : OPEN-CALLBACK ( -- )
    SRCLOC:TOKEN$ {: t:^ tu:n :}
    \ The load holds the open declaration's opener: it rejects it there.
-   OPEN @ 0 <> if t tu s" ;CALLBACK" ['] DISCARD SOURCE-ROOT:OPENED then
+   OPEN @ 0 <> if t tu s" ;CALLBACK" ['] DISCARD OPENED then
    0 FB-SET !
    [: parse-name ;] READ-CALLBACK {: na:^ nu:n :}
    SRCLOC:TOKEN$ {: e:^ eu:n :}
@@ -520,7 +522,7 @@ public
    [: drop 2drop na nu LBUF:CLAIM-NAME ;] PRODUCTS
    e eu SRCLOC:TOKEN!
    1 OPEN !
-   t tu s" ;CALLBACK" ['] DISCARD SOURCE-ROOT:OPENED ;
+   t tu s" ;CALLBACK" ['] DISCARD OPENED ;
 
 : SET-FALLBACK ( n -- ) {: v:n :}
    OPEN @ 0= if FALLBACK-REJECT then
@@ -544,7 +546,7 @@ public
       s" open one with CALLBACK: NAME ( in -- out )"
       FFI:SYNTAX-REJECT
    then
-   0 OPEN !  SOURCE-ROOT:CLOSED
+   0 OPEN !  CLOSED
    RES-KIND @ R-NONE <> FB-SET @ 0= and if
       s" a callback with a result needs a fallback"
       s" write n FALLBACK (r: r FFALLBACK) before ;CALLBACK"

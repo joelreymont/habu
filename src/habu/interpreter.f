@@ -2025,7 +2025,7 @@ TYPED-VARIABLE GROUP-OPEN ^u8
 \ record is the buffer's own, and a throw out of the buffer puts this one back
 \ in PEND-CELL.
 variable ENTRY-PEND
-\ SOURCE-ROOT:TEXT-MARK as the buffer began.
+\ TEXT-MARK as the buffer began.
 variable DECL-MARK
 
 : DEF-SOURCE-CLOSE ( -- )
@@ -2044,8 +2044,9 @@ variable DECL-MARK
    PEND-CELL CELL@ ENTRY-PEND @ = if exit then
    DEF-ENDED ;
 
+EXPORT SOURCE-ROOT:TEXT-END
 : DECL-SOURCE-END ( -- )
-   DECL-MARK @ SOURCE-ROOT:TEXT-END ;
+   DECL-MARK @ TEXT-END ;
 
 \ An evaluate begun inside this native definition owns only its new tokens.
 \ The checker reads the body prefix for binding, leaving the definition's
@@ -2875,6 +2876,8 @@ package INTERPRETER
 private
 
 EXPORT CODE-RECLAIM:TRUNCATE
+EXPORT SOURCE-ROOT:TEXT-MARK
+EXPORT SOURCE-ROOT:TEXT-UNWOUND
 
 \ A number is pushed and a word run, each under the floor: the token's effect
 \ on the stack is the program's, so this row, and every row here that
@@ -3226,7 +3229,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    c REJECTION:PASS ;
 
 : REPL-LINE ( str -- bool ) {: a:^ u:n :}
-   SOURCE-ROOT:TEXT-MARK {: mark:n :}
+   TEXT-MARK {: mark:n :}
    FRAME-OPEN {: f:^ :}
    \ The session, not this line, owns a pending definition from an earlier
    \ line, yet a failed line abandons it through this savepoint's full rollback.
@@ -3253,7 +3256,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    out FRAME-DONE = {: done:bool :}
    done 0= if
       code 1 255 BETWEEN? 0= if code ERROR:UNCAUGHT then
-      mark SOURCE-ROOT:TEXT-UNWOUND
+      mark TEXT-UNWOUND
    then
    LINES-NEEDED? 0= if REJECTION:DROP-LINES then
    done 0= if
@@ -3276,7 +3279,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
 \ A definition may span lines; EOF refuses one still open.
 : REPL ( -- )
    0 ENTRY-PEND !
-   SOURCE-ROOT:TEXT-MARK DECL-MARK !
+   TEXT-MARK DECL-MARK !
    true REPL-OK !
    begin
       REPL-OK @ if S\"  ok\n" type then
@@ -3297,7 +3300,7 @@ public
    DECL-MARK @ {: prior-mark:n :}
    PEND-CELL CELL@ {: entry:n :}
    entry ENTRY-PEND !
-   SOURCE-ROOT:TEXT-MARK DECL-MARK !
+   TEXT-MARK DECL-MARK !
    USE-DEPTH-CELL CELL@ USE-FLOOR !
    first 0= if 1 PKG-OUTSIDE-CELL CELL! then
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
@@ -3312,7 +3315,7 @@ public
          entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
       endof
    endcase
-   out FRAME-DONE <> if DECL-MARK @ SOURCE-ROOT:TEXT-UNWOUND then
+   out FRAME-DONE <> if DECL-MARK @ TEXT-UNWOUND then
    prior ENTRY-PEND !  prior-mark DECL-MARK !
    out FRAME-DONE <> if
       entry PEND-CELL CELL!
