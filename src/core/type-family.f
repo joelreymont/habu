@@ -85,8 +85,6 @@ EXPORT SCHEMA-REG:SCHEMA-XT?
 3 constant PK-EVIDENCE
 5 constant PK-MAX
 
-CELL constant TAGW-CELL     \ default tag width: one stack cell
-
 \ Visibility reuses the checker's package modes so registry and package scope
 \ never diverge: CHECKER-PACKAGE-PRIVATE (1) / CHECKER-PACKAGE-PUBLIC (2).
 
@@ -382,22 +380,21 @@ variable TF-PK-N   0 TF-PK-N !
 11 cells constant TF.VAR-COUNT-OFF
 12 cells constant TF.FLD-START-OFF
 13 cells constant TF.FLD-COUNT-OFF
-14 cells constant TF.TAGW-OFF
-15 cells constant TF.SCHEMA-ROOT-OFF
-16 cells constant TF.DERIVE-OFF
+14 cells constant TF.SCHEMA-ROOT-OFF
+15 cells constant TF.DERIVE-OFF
 \ TF.TAILNEXT: next family id (+1) in this row's tail bucket, 0 at the end of the
 \ chain. It is the registry's own lookup index (TFX-* below), which is why it
 \ lives in the record rather than in a side table that could drift from it.
-17 cells constant TF.TAILNEXT-OFF
+16 cells constant TF.TAILNEXT-OFF
 \ TF.OPAQUE: nonzero when the family's generated words take the private-family
 \ placement (the OPAQUE header clause, structure-decl.f OPAQUE-CLAUSE).
-18 cells constant TF.OPAQUE-OFF
+17 cells constant TF.OPAQUE-OFF
 \ TF.ENTRY: the family's type entry, its record index + 1; 0 when it has none.
-19 cells constant TF.ENTRY-OFF
+18 cells constant TF.ENTRY-OFF
 \ TF.AT-SYM: the checker symbol of the family's generated AT, 0 when it has none.
-20 cells constant TF.AT-SYM-OFF
+19 cells constant TF.AT-SYM-OFF
 
-21 cells constant TF-REC
+20 cells constant TF-REC
 
 : TF.PKG-OFF ( ^a -- ^a ) TF.PKG-OFF-AT + ;
 : TF.PKG-U ( ^a -- ^a ) TF.PKG-U-OFF + ;
@@ -415,7 +412,6 @@ variable TF-PK-N   0 TF-PK-N !
 : TF.VAR-COUNT ( ^a -- ^a ) TF.VAR-COUNT-OFF + ;
 : TF.FLD-START ( ^a -- ^a ) TF.FLD-START-OFF + ;
 : TF.FLD-COUNT ( ^a -- ^a ) TF.FLD-COUNT-OFF + ;
-: TF.TAGW ( ^a -- ^a ) TF.TAGW-OFF + ;
 : TF.SCHEMA-ROOT ( ^a -- ^a ) TF.SCHEMA-ROOT-OFF + ;
 : TF.DERIVE ( ^a -- ^a ) TF.DERIVE-OFF + ;
 : TF.TAILNEXT ( ^a -- ^a ) TF.TAILNEXT-OFF + ;
@@ -472,7 +468,6 @@ private
 : TFAM-VAR-COUNT@ ( n -- n ) TF-REC@ TF.VAR-COUNT @ ;
 : TFAM-FLD-START@ ( n -- n ) TF-REC@ TF.FLD-START @ ;
 : TFAM-FLD-COUNT@ ( n -- n ) TF-REC@ TF.FLD-COUNT @ ;
-: TFAM-TAGW@ ( n -- n ) TF-REC@ TF.TAGW @ ;
 : TFAM-PK@ ( n n -- n ) {: id:n i:n :}
    id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + @ ;
 
@@ -579,8 +574,6 @@ variable TFM-EPOCH   1 TFM-EPOCH !
    c 0= IF 0 ELSE s THEN id TF-REC@ TF.FLD-START !
    c id TF-REC@ TF.FLD-COUNT !
    TFM-EPOCH+ ;
-
-: TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
 
 EXPORT CHECKER-REG:SCRATCH{
 EXPORT CHECKER-REG:}SCRATCH
@@ -751,7 +744,6 @@ variable TFX-CUR              \ private bucket-walk cursor
    0 r TF.SLOTS !
    0 r TF.VAR-START !          0 r TF.VAR-COUNT !
    0 r TF.FLD-START !          0 r TF.FLD-COUNT !
-   TAGW-CELL r TF.TAGW !
    0 r TF.SCHEMA-ROOT !
    0 r TF.DERIVE !
    0 r TF.TAILNEXT !
@@ -3232,7 +3224,7 @@ REGISTER-ROOT
 \
 \ The text is tokens split by one blank, `-` for an empty name, a family
 \ written `pkg:tail`:
-\   kind vis arity pk... layout slots tagw derive opaque scratch at-sym
+\   kind vis arity pk... layout slots derive opaque at-sym
 \   ndeps family...   (every other family its schemas name, read first)
 \   nvar (name tag paycells ctor-pkg ctor-sym nroots node...)...
 \   nfld (name variant slot cells byte-off bytes align flags accessor-sym node)...
@@ -3404,7 +3396,7 @@ create ET-CH 8 allot
    0 ET-N !
    id TFAM-KIND@ ET-NUM  id TFAM-VIS@ ET-NUM  id TFAM-ARITY@ ET-NUM
    id TFAM-ARITY@ 0 ?do id i TFAM-PK@ ET-NUM loop
-   id TFAM-LAYOUT-POLICY@ ET-NUM  id TFAM-SLOTS@ ET-NUM  id TFAM-TAGW@ ET-NUM
+   id TFAM-LAYOUT-POLICY@ ET-NUM  id TFAM-SLOTS@ ET-NUM
    id TFAM-DERIVE@ ET-NUM  id TF-REC@ TF.OPAQUE @ ET-NUM
    id TF-REC@ TF.AT-SYM @ ET-SYM
    ED-N @ ET-NUM
@@ -3618,7 +3610,6 @@ create ER-MSG ER-MSG-CAP allot
    arity 0 ?do id i ER-NUM TFAM-PK! loop
    id ER-NUM TFAM-LAYOUT!
    ER-NUM drop                    \ slots: ER-BODY takes them from the rows
-   id ER-NUM TFAM-TAGW!
    ER-NUM id TF-REC@ TF.DERIVE !
    ER-NUM id TF-REC@ TF.OPAQUE !
    id ER-SYM AT-SYM!
