@@ -481,6 +481,9 @@ $38C8 constant VARIABLE-CELL
 \ this cell holds, which rejects it where the definer's words could not be
 \ defined.
 $38D0 constant SEAL-CELL
+\ A declaration passes the name it will define to the running engine's word
+\ this cell holds, which rejects it where `define-word` would.
+$38D8 constant TARGET-CELL
 ;package
 
 \ A child word's shape: from it the engine makes the child's body and the effect

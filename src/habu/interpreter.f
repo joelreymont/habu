@@ -2135,6 +2135,12 @@ EXPORT TFAM:TFAM-DECL-PARAM-COUNT
    u 0= if false exit then
    a a u + WORD-END a u + = ;
 
+\ The tail and wordlist a definition of the name takes, or its rejection.
+: DEF-TARGET ( str -- str n ) {: a:^ u:n :}
+   a u DEF-QUALIFY-NAME {: ta:^ tu:n wid:n :}
+   ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
+   ta tu wid ;
+
 \ The checker reads the signature from the effect cell; the SIG item spells
 \ the effect for the listing alone, and TSIG is read for a trusted head alone.
 : DEFINE-RUN ( str n -- ) {: a:^ u:n eff:n :}
@@ -2162,8 +2168,7 @@ EXPORT TFAM:TFAM-DECL-PARAM-COUNT
       DEF-NO-COMPILER
    then
    OVERLAY-GUARD
-   a u DEF-QUALIFY-NAME {: ta:^ tu:n wid:n :}
-   ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
+   a u DEF-TARGET {: ta:^ tu:n wid:n :}
    ITEMS-RESET
    0 BODYLEN-CELL CELL!  BODY-ITEM-KIND:NAME 0 0 a u ITEM+
    \ A refused record opens no definition, whose end would drop the item.
@@ -3354,6 +3359,7 @@ public
    ['] ITEM-RUN data-base PROVIDED-XT:ITEM-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
    ['] DEF-SEAL-NAME data-base PROVIDED-XT:SEAL-CELL + xt!
+   ['] DEF-TARGET data-base PROVIDED-XT:TARGET-CELL + xt!
    ['] STORAGE-LINE data-base PROVIDED-XT:STORAGE-LINE-CELL + xt!
    ['] CELL-LINE data-base PROVIDED-XT:CELL-LINE-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!

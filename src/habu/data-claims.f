@@ -147,6 +147,7 @@ create TAB
    PROVIDED-XT:ITEM-CELL              1 cells                 CLAIM PROVIDED-XT-ITEM-CELL
    PROVIDED-XT:CHILD-CELL             1 cells                 CLAIM PROVIDED-XT-CHILD-CELL
    PROVIDED-XT:SEAL-CELL              1 cells                 CLAIM PROVIDED-XT-SEAL-CELL
+   PROVIDED-XT:TARGET-CELL            1 cells                 CLAIM PROVIDED-XT-TARGET-CELL
    PROVIDED-XT:STORAGE-LINE-CELL      1 cells                 CLAIM PROVIDED-XT-STORAGE-LINE-CELL
    PROVIDED-XT:CELL-LINE-CELL         1 cells                 CLAIM PROVIDED-XT-CELL-LINE-CELL
    PROVIDED-XT:LITERAL-CELL           1 cells                 CLAIM PROVIDED-XT-LITERAL-CELL
