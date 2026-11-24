@@ -75,7 +75,7 @@ create HCT-BIG HCT-BIG-CAP allot
    s"    true ;" SB-APPEND HCT-LF
    s" : MAIN ( -- )" SB-APPEND HCT-LF
    s"    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}" SB-APPEND HCT-LF
-   S\"    s\" OLD\" str> v VEC:APPEND" SB-APPEND HCT-LF
+   S\"    s\" OLD\" v VEC:APPEND" SB-APPEND HCT-LF
    s"    v SOURCE:READ-STDIN-ALL" SB-APPEND HCT-LF
    s"    v VEC:COUNT ." SB-APPEND HCT-LF
    s"    v VEC:SPAN SPAN:$ str> {: a:^ u:n :}" SB-APPEND HCT-LF
