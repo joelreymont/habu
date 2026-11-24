@@ -890,15 +890,30 @@ PTR-VARIABLE SCRATCH-OPEN   \ the open span's start, NULL when none
 ;package
 package CHECKER-REG
 EXPORT CHECK:SCRATCH-OPEN
+\ Rejects with message m, label l and help h; given no token, the record
+\ stands at the token being read.
+: SCRATCH-REJECT ( str str str -- )
+   {: m:^ mu:n l:^ lu:n h:^ hu:n :}
+   s" E-SCRATCH" REJECTION:OPEN  m mu REJECTION:EMIT-STR
+   NULL-PTR 0 REJECTION:AT  l lu REJECTION:EMIT-STR
+   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
+
 : SCRATCH{ ( -- )
    SCRATCH-OPEN @ NULL-PTR <> IF
-      s" checker: SCRATCH{ inside an open span" EXIT-STATUS:INTERNAL die
+      s" `SCRATCH{` inside an open scratch span"
+      s" a span is already open"
+      s" close the open span with `}SCRATCH` first" SCRATCH-REJECT
    THEN
    align here SCRATCH-OPEN ! ;
 
 : }SCRATCH ( -- )
    SCRATCH-OPEN @ {: start:^ :}
-   start NULL-PTR = IF s" checker: }SCRATCH without SCRATCH{" EXIT-STATUS:INTERNAL die THEN
+   start NULL-PTR = IF
+      s" `}SCRATCH` with no open scratch span"
+      s" no `SCRATCH{` before this"
+      s" open the span with `SCRATCH{`" SCRATCH-REJECT
+   THEN
    here NULL-PTR - start NULL-PTR - - CELL / 0 ?do
       start i cells + scratch-cell-mark
    loop

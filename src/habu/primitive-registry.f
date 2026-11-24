@@ -29,9 +29,19 @@ variable NAME-BYTES
    USED @ 1+ ROW-CELLS * ROWS-RESERVE
    NAME-BYTES @ size + CELL 1- + CELL / NAMES-RESERVE ;
 
+: OPEN-RECORD ( str -- ) {: name:^ size:n :}
+   s" E-PRIM-TABLE" REJECTION:OPEN
+   s" primitive `" REJECTION:EMIT-STR  name size REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR ;
+
+: STOP-RECORD ( str -- )
+   REJECTION:HELP  REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
+
 : SPEC-MISSING ( str -- )
-   s" prims: primitive with no row in src/habu/prims.f: " type type cr
-   s" prims: engine primitive absent from the specification table" EXIT-STATUS:INTERNAL die ;
+   OPEN-RECORD
+   s"  has a backend body but no row in src/habu/prims.f" REJECTION:EMIT-STR
+   s" add its row to src/habu/prims.f, or remove the body" STOP-RECORD ;
 
 public
 
@@ -118,16 +128,18 @@ private
    -1 ;
 
 : NO-BODY ( str -- )
-   s" prims: no backend body for specified primitive " type type cr
-   s" prims: specification row without a backend body" EXIT-STATUS:INTERNAL die ;
+   OPEN-RECORD
+   s"  has a row in src/habu/prims.f but no body in this backend" REJECTION:EMIT-STR
+   s" give it a body in the backend, or remove the row" STOP-RECORD ;
 
 : CHECK-ROW ( n -- )
    PRIM-SPEC:NAME$
    2dup BODY-ROW 0 < if NO-BODY else 2drop then ;
 
 : TWO-BODIES ( str -- )
-   s" prims: two backend bodies for primitive " type type cr
-   s" prims: two bodies register one primitive name" EXIT-STATUS:INTERNAL die ;
+   OPEN-RECORD
+   s"  has two backend bodies; names fold case" REJECTION:EMIT-STR
+   s" remove one body" STOP-RECORD ;
 
 \ Names fold case: rows that differ only in case register one name.
 : CHECK-UNIQUE ( n -- ) {: row:n :}
