@@ -8,4 +8,4 @@ blocks:
   - habu-walk-a-json-da90ebe1
 ---
 
-Problem: JSON-SCHEMA:COMPILE takes the schema's text and reads it with a cursor. Acceptance: COMPILE ( JSON:value ^ARENA:arena -- schema ); mcp.f:1096 follows. Depends: first-and-next lane. Claim: unassigned.
+Problem: JSON-SCHEMA:COMPILE takes the schema's text and reads it with a cursor. Acceptance: COMPILE ( JSON:value ^ARENA:arena -- schema ); mcp.f:1096 follows. Depends: one-pass walk lane. Claim: unassigned.

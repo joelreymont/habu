@@ -8,4 +8,4 @@ blocks:
   - habu-walk-a-json-da90ebe1
 ---
 
-Problem: ODATA:PAGE, RECORD$ and COPY-ENTITY take cursors, scratch pairs and text. Acceptance: PAGE ( ^metadata JSON:value ^VEC:vector<u8> -- JSON:value option<n> ), RECORD ( ^metadata JSON:value -- JSON:value ), COPY-ENTITY ( JSON:value ^JSON:writer ^entity-type -- ^JSON:writer ) walking by FIRST/NEXT, its own repeat check deleted, a deep expanded record as its test. Depends: first-and-next lane. Claim: unassigned.
+Problem: ODATA:PAGE, RECORD$ and COPY-ENTITY take cursors, scratch pairs and text. Acceptance: PAGE ( ^metadata JSON:value ^VEC:vector<u8> -- JSON:value option<n> ), RECORD ( ^metadata JSON:value -- JSON:value ), COPY-ENTITY ( JSON:value ^JSON:writer ^entity-type -- ^JSON:writer ) walking by JSON:WALK, its own repeat check deleted, a deep expanded record as its test. Depends: one-pass walk lane. Claim: unassigned.

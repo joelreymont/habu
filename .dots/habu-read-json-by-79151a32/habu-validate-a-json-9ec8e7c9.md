@@ -8,4 +8,4 @@ blocks:
   - habu-compile-a-json-92f9f4cf
 ---
 
-Problem: JSON-SCHEMA:VALID? takes text and walks it with a cursor. Acceptance: VALID? ( JSON:value schema ^VEC:vector<u8> -- bool ) walks by FIRST/NEXT with its own frame stack, violation texts unchanged, a 100000-deep value as its test. Depends: compile lane. Claim: unassigned.
+Problem: JSON-SCHEMA:VALID? takes text and walks it with a cursor. Acceptance: VALID? ( JSON:value schema ^VEC:vector<u8> -- bool ) walks by JSON:WALK with its own frame stack, violation texts unchanged, a 100000-deep value as its test. Depends: compile lane. Claim: unassigned.
