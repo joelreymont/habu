@@ -623,7 +623,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    \ the inferred effect names its rows by its own rule, never by the pair's
    s" O13 ( R [ R -- R ] -- R ) dup >r catch drop r> execute" CS-CODE<
    s\" \"inferred\":\"R [ R -- R ] -- R\"" CS-CODE?  CS-CODE-END
-   \ a quotation on a side of the pair shows its rows by their letter too
+   \ a quotation on a side of the pair shows the pair's row by its letter too
    s" O14 ( R [ R -- R ] -- R [ R -- R ] ) catch drop" CS-CODE<
    s\" \"expected\":\"R [ R -- R ]\"" CS-CODE?  CS-CODE-END
    \ a stale row may be moved; taking a cell from it is a read
@@ -634,6 +634,18 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    s\" \"code\":\"E-STALE-READ\"" CS-CODE?
    s" stale row: `CS-TAKE` takes cells `catch` left stale: a throw path of the caught body may have overwritten them" CS-CODE?
    s\" \"help\":\"pass them on where the code is 0: after `code 0<> if code throw then`" CS-CODE?
+   CS-CODE-END
+   \ a quotation on a side of the pair shows a row of its own by its cells alone
+   s" O16 ( R [ R -- R ] -- R [ n -- n ] ) catch drop [: 1+ ;]" CS-CODE<
+   s\" \"expected\":\"R [ n -- n ]\",\"found\":\"stale<R> [ n -- n ]\"" CS-CODE?
+   CS-CODE-END
+   \ a row cycle's notes name a stale pair's row once
+   s" O17 ( R [ R -- R ] -- R ) dup >r catch drop r> dup execute" CS-CODE<
+   s\" \"expected\":\"R\",\"found\":\"stale<R> [ R -- R ]\"" CS-CODE?
+   CS-CODE-END
+   \ a stale tail in a quotation on a side of the pair is named once, by stale<R>
+   s" O18 ( R [ R -- R ] [ S -- S ] -- R [ S -- S ] ) {: g :} catch drop g catch drop g" CS-CODE<
+   s\" \"expected\":\"R [ stale<R> -- stale<R> ]\",\"found\":\"stale<R> [ stale<R> -- stale<R> ]\"" CS-CODE?
    CS-CODE-END
    \ the success arm of the exact code gives the row back, past a join
    s" O5 ( R [ R -- R ] -- R ) catch {: code:n :} code 0<> if code throw then"

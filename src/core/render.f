@@ -26,8 +26,8 @@ variable RROW-UNSAID
 \ RBIND-FULL: a forall past BINDER-DEPTH-MAX nested binders, for REC-REFUSE-WHY.
 variable RBIND-FULL
 
-\ RTAILS is set while TAIL-CAPTURE, CYCLE-NOTES, NARROWED-NOTES or DROW of a
-\ stale pair's side renders: every quotation then shows its row tails.
+\ RTAILS is -1 while TAIL-CAPTURE, CYCLE-NOTES or NARROWED-NOTES renders: every
+\ quotation shows its row tails; else 1 on a stale pair's side: only the pair's rows.
 variable RTAILS   0 RTAILS !
 \ RNAMES is 1 while a first pass (REND-EFFECT, INFERRED-FROM) records each row's
 \ tail (RPOS), 2 while its second pass names the rows that share one, else 0.
@@ -365,8 +365,19 @@ create RROW-LTR RROW-CAP cells allot   \ the letter each RROW-KEY row prints by
    RROW-N @ 1 + RROW-N !  c ;
 
 
+\ Whether rows a and b end in one row, past the stale rows that wrap it.
+: SAME-ROW? ( n n -- bool )
+   STALE-TAIL swap STALE-TAIL {: a:n b:n :}
+   a ISROW  b ISROW  and IF a PAY b PAY = EXIT THEN RES-FALSE ;
+
+: PAIR-ROW? ( n -- bool ) {: s:n :}
+   s DEXP @ SAME-ROW?  s DACT @ SAME-ROW?  or ;
+
 : QTAIL ( n -- )
    {: row:n :}
+   \ RBUF-ROW prints a stale tail among the values
+   row ROW-TAIL ISROW 0= IF EXIT THEN
+   RTAILS @ 1 =  row PAIR-ROW? 0=  and IF EXIT THEN
    row ROW-TAIL RROW-LETTER EMIT1  32 EMIT1 ;
 
 
@@ -597,7 +608,7 @@ LOCSHOW-INSTALL
    s PAIR-STALE? {: pair:bool :}  RTAILS @ {: tails:n :}
    pair  t ISROW  and IF t RROW-LETTER EMIT1 32 EMIT1 THEN
    CUT-MARK
-   pair IF -1 RTAILS ! THEN
+   pair  tails 0=  and IF 1 RTAILS ! THEN
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop
    tails RTAILS ! ;
 
@@ -954,7 +965,9 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 : TCAP-ROW ( n -- )   \ a row: its tail's letter and cells
    {: x:n :}
    x ISVAR IF x REND-TYPE EXIT THEN
-   x QTAIL  x DROW ;
+   \ DROW letters a stale pair's side
+   x PAIR-STALE? 0= IF x QTAIL THEN
+   x DROW ;
 
 
 \ Each capture rewrites every byte a reader sees, so a grow keeps none.
