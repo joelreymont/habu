@@ -1,4 +1,3 @@
-split-str
 \ test-issuer-test.f - TEST-ISSUER over a real loopback port: discovery, the key
 \ set, client credentials verified against the served key, invalid_client for
 \ a confidential client without its secret and for a public client asking for
@@ -132,8 +131,8 @@ GOT-NEW
    GOT {: v:^ :}
    v VEC:COUNT {: len:n :}
    v v VEC:CAP VEC:ENSURE
-   v VEC:SPAN len SPAN:SKIP SPAN:$ {: p:^ u:n :}
-   true u 0 ?do p i + c@ 0<> if drop false then loop
+   v VEC:SPAN len SPAN:SKIP SPAN:$ {: s:str :}
+   true s STR:LEN 0 ?do s STR:DATA i + c@ 0<> if drop false then loop
    v len VEC:RESIZE ;
 
 \ /token-fault's answers, by FAULT-MODE.
@@ -160,38 +159,38 @@ $10001 constant PAST-CAP            \ one byte past BEARER's TOKEN-CAP
 PAST-CAP BUFFER: OVERSIZE
 
 : BODY$ ( -- str ) BODY @ VEC:SPAN SPAN:$ ;
-: TOKEN$ ( -- str ) TOKEN TOKEN-U @ ;
-: CLAIMS$ ( -- str ) CLAIMS CLAIMS-U @ ;
-: ASSERTION$ ( -- str ) ASSERTION ASSERTION-U @ ;
+: TOKEN$ ( -- str ) TOKEN TOKEN-U @ >str ;
+: CLAIMS$ ( -- str ) CLAIMS CLAIMS-U @ >str ;
+: ASSERTION$ ( -- str ) ASSERTION ASSERTION-U @ >str ;
 
 \ The text copied into a row, answering its length.
 : COPY ( str ^u8 -- n )
-   {: a:^ u:n row:^ :}
-   a row u BYTE-COPY u ;
+   {: s:str row:^ :}
+   s STR:DATA row s STR:LEN BYTE-COPY s STR:LEN ;
 
 
 \ A string member of an object text as sent, empty when absent.
 : MEMBER$ ( str str -- str )
-   {: t:^ tu:n k:^ ku:n :}
-   READER t tu JSON:READ-INIT JSON:READ-NEXT drop
-   k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " exit then
+   {: t:str k:str :}
+   READER t JSON:READ-INIT JSON:READ-NEXT drop
+   k JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " exit then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" " exit then
-   JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
+   JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u >str ;
 
 \ An integer member of an object text, -1 when absent.
 : MEMBER-INT ( str str -- n )
-   {: t:^ tu:n k:^ ku:n :}
-   READER t tu JSON:READ-INIT JSON:READ-NEXT drop
-   k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE -1 exit then
+   {: t:str k:str :}
+   READER t JSON:READ-INIT JSON:READ-NEXT drop
+   k JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE -1 exit then
    JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE -1 exit then
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v ;
 
 \ A string member of the body's first key, as sent.
 : KEY$ ( str -- str )
-   {: k:^ ku:n :}
+   {: k:str :}
    READER BODY$ JSON:READ-INIT JSON:READ-NEXT drop
    s" keys" JSON:READ-FIND-KEY drop JSON:READ-NEXT drop
-   k ku JSON:READ-FIND-KEY drop JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
+   k JSON:READ-FIND-KEY drop JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u >str ;
 
 
 : OK ( CURL:status -- )
@@ -201,17 +200,17 @@ PAST-CAP BUFFER: OVERSIZE
    ;MATCH TTRUE ;
 
 : URL ( str -- str )
-   {: path:^ pu:n :}
-   SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
+   {: path:str :}
+   SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path SB-APPEND SB$ ;
 
 : OPEN-AT ( str -- CURL:handle )
-   {: url:^ uu:n :}
+   {: url:str :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
       failed OF drop CURL:EMPTY-HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
-   h url uu CURL:URL! OK h ;
+   h url CURL:URL! OK h ;
 
 : OPEN ( str -- CURL:handle ) URL OPEN-AT ;
 
@@ -232,17 +231,17 @@ PAST-CAP BUFFER: OVERSIZE
 
 \ The body posted with the media type; the body is copied by libcurl.
 : POST ( str str str -- n )
-   {: path:^ pu:n type:^ tu:n b:^ bu:n :}
-   path pu OPEN {: h:CURL:handle :}
-   h type tu CURL:HEADER+ OK
-   h b bu CURL:BODY! OK
+   {: path:str type:str b:str :}
+   path OPEN {: h:CURL:handle :}
+   h type CURL:HEADER+ OK
+   h b CURL:BODY! OK
    h FINISH ;
 
 : FORM-TYPE ( -- str ) s" Content-Type: application/x-www-form-urlencoded" ;
 
 : FORM-RESET ( -- ) 0 FORM-U ! ;
 : FORM+ ( str -- ) FORM FORM-U @ + COPY FORM-U +! ;
-: FORM$ ( -- str ) FORM FORM-U @ ;
+: FORM$ ( -- str ) FORM FORM-U @ >str ;
 : ASK ( -- n ) s" /token" FORM-TYPE FORM$ POST ;
 
 \ The client's credentials, its secret percent-encoded.
@@ -260,16 +259,16 @@ PAST-CAP BUFFER: OVERSIZE
 
 \ The body is the error answer.
 : REFUSED ( n n str -- )
-   {: status:n want:n code:^ cu:n :}
-   SB-RESET S\" {\"error\":\"" SB-APPEND code cu SB-APPEND S\" \"}" SB-APPEND
+   {: status:n want:n code:str :}
+   SB-RESET S\" {\"error\":\"" SB-APPEND code SB-APPEND S\" \"}" SB-APPEND
    BODY$ SB$ T$=
    status want T= ;
 
 
 \ The index of the first dot at or after from, else the text's length.
 : DOT ( str n -- n )
-   {: t:^ u:n from:n :}
-   u from ?do t i + c@ [char] . = if i unloop exit then loop u ;
+   {: s:str from:n :}
+   s STR:LEN from ?do s STR:DATA i + c@ [char] . = if i unloop exit then loop s STR:LEN ;
 
 : DECODED ( str ^u8 n -- n ) SPAN:MAKE BASE64:DECODE-URL ;
 
@@ -277,33 +276,34 @@ PAST-CAP BUFFER: OVERSIZE
 \ decoded.
 : ISSUED ( -- )
    BODY$ s" access_token" MEMBER$ TOKEN COPY TOKEN-U !
-   TOKEN$ {: t:^ u:n :}
-   t u 0 DOT {: d1:n :}
-   t u d1 1+ DOT {: d2:n :}
-   t d1 HEAD CAP DECODED HEAD-U !
-   t d1 + 1+ d2 d1 - 1- CLAIMS CAP DECODED CLAIMS-U !
-   t d2 + 1+ u d2 - 1- SIGNATURE CRYPTO:RS256-MAX-BYTES DECODED SIGNATURE-U ! ;
+   TOKEN$ {: t:str :}
+   t 0 DOT {: d1:n :}
+   t d1 1+ DOT {: d2:n :}
+   t STR:DATA d1 >str HEAD CAP DECODED HEAD-U !
+   t STR:DATA d1 + 1+ d2 d1 - 1- >str CLAIMS CAP DECODED CLAIMS-U !
+   t STR:DATA d2 + 1+ t STR:LEN d2 - 1- >str
+   SIGNATURE CRYPTO:RS256-MAX-BYTES DECODED SIGNATURE-U ! ;
 
 \ The issued token verifies against the key /keys served.
 : VERIFIES ( -- )
-   TOKEN$ {: t:^ u:n :}
-   t u 0 DOT {: d1:n :}
-   t u d1 1+ DOT {: d2:n :}
-   MODULUS MODULUS-U @ EXPONENT EXPONENT-U @ t d2 SIGNATURE SIGNATURE-U @
-   CRYPTO:RS256-VERIFY? TTRUE
-   HEAD HEAD-U @ s" kid" MEMBER$ KID KID-U @ T$=
-   HEAD HEAD-U @ s" alg" MEMBER$ s" RS256" T$=
-   HEAD HEAD-U @ s" typ" MEMBER$ s" JWT" T$= ;
+   TOKEN$ {: t:str :}
+   t 0 DOT {: d1:n :}
+   t d1 1+ DOT {: d2:n :}
+   MODULUS MODULUS-U @ >str EXPONENT EXPONENT-U @ >str t STR:DATA d2 >str
+   SIGNATURE SIGNATURE-U @ >str CRYPTO:RS256-VERIFY? TTRUE
+   HEAD HEAD-U @ >str s" kid" MEMBER$ KID KID-U @ >str T$=
+   HEAD HEAD-U @ >str s" alg" MEMBER$ s" RS256" T$=
+   HEAD HEAD-U @ >str s" typ" MEMBER$ s" JWT" T$= ;
 
 \ The answer is a 200 bearer token; the claims every issued token carries.
 : ANSWERED ( n str -- )
-   {: status:n aud:^ au:n :}
+   {: status:n aud:str :}
    status 200 T=
    BODY$ s" token_type" MEMBER$ s" Bearer" T$=
    BODY$ s" expires_in" MEMBER-INT ISSUED-S T=
    ISSUED VERIFIES
    CLAIMS$ s" iss" MEMBER$ s" " URL T$=
-   CLAIMS$ s" aud" MEMBER$ aud au T$=
+   CLAIMS$ s" aud" MEMBER$ aud T$=
    CLAIMS$ s" azp" MEMBER$ s" app" T$=
    CLAIMS$ s" iat" MEMBER-INT {: iat:n :}
    iat epoch-seconds 5 - >= TTRUE
@@ -312,8 +312,8 @@ PAST-CAP BUFFER: OVERSIZE
 
 \ An assertion for the client, minted into ASSERTION.
 : ASSERT ( str n -- )
-   {: aud:^ au:n exp:n :}
-   SB-RESET S\" {\"aud\":\"" SB-APPEND aud au SB-APPEND S\" \",\"exp\":" SB-APPEND
+   {: aud:str exp:n :}
+   SB-RESET S\" {\"aud\":\"" SB-APPEND aud SB-APPEND S\" \",\"exp\":" SB-APPEND
    exp FMT:SB-INT S\" ,\"oid\":\"user-1\",\"tid\":\"tenant-1\"}" SB-APPEND
    SB$ MINTED @ TEST-ISSUER:MINT ASSERTION COPY ASSERTION-U ! ;
 
@@ -413,16 +413,16 @@ PAST-CAP BUFFER: OVERSIZE
 
 : MINTS ( -- )
    s" /mint answers MINT's token for the same claims" T-LABEL
-   S\" {\"sub\":\"s-1\",\"n\":7}" {: c:^ cu:n :}
-   s" /mint" s" Content-Type: application/json" c cu POST 200 T=
-   BODY$ c cu MINTED @ TEST-ISSUER:MINT T$= ;
+   S\" {\"sub\":\"s-1\",\"n\":7}" {: c:str :}
+   s" /mint" s" Content-Type: application/json" c POST 200 T=
+   BODY$ c MINTED @ TEST-ISSUER:MINT T$= ;
 
 
-: ISSUER$ ( -- str ) ISSUER-URL ISSUER-URL-U @ ;
-: KEYS-URL$ ( -- str ) KEYS-URL KEYS-URL-U @ ;
-: ENDPOINT$ ( -- str ) ENDPOINT ENDPOINT-U @ ;
-: FAULT-URL$ ( -- str ) FAULT-URL FAULT-URL-U @ ;
-: COUNT-URL$ ( -- str ) COUNT-URL COUNT-URL-U @ ;
+: ISSUER$ ( -- str ) ISSUER-URL ISSUER-URL-U @ >str ;
+: KEYS-URL$ ( -- str ) KEYS-URL KEYS-URL-U @ >str ;
+: ENDPOINT$ ( -- str ) ENDPOINT ENDPOINT-U @ >str ;
+: FAULT-URL$ ( -- str ) FAULT-URL FAULT-URL-U @ >str ;
+: COUNT-URL$ ( -- str ) COUNT-URL COUNT-URL-U @ >str ;
 
 \ The running server's port and URLs, kept for its restart and stop.
 : ADDRESSES ( -- )
@@ -446,8 +446,8 @@ OVERSIZE-FILL
 : CLAIM-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    asked answer BEARER:ADMIT? 0= if exit then
-   asked HTTP:BODY$ BEARER:CLAIM$ 0= if 2drop answer 404 HTTP:STATUS! exit then
-   {: v:^ vu:n :} answer v vu HTTP:BODY! ;
+   asked HTTP:BODY$ BEARER:CLAIM$ 0= if drop answer 404 HTTP:STATUS! exit then
+   {: v:str :} answer v HTTP:BODY! ;
 
 : FAULT-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
@@ -461,8 +461,8 @@ OVERSIZE-FILL
       answer S\" {\"access_token\":\"t\",\"access_token\":\"u\",\"expires_in\":60}"
       HTTP:BODY! exit
    then
-   mode OVERSIZED = if answer OVERSIZE PAST-CAP HTTP:BODY! exit then
-   mode BUSY-OVERSIZED = if answer 503 HTTP:STATUS! answer OVERSIZE PAST-CAP HTTP:BODY! exit then
+   mode OVERSIZED = if answer OVERSIZE PAST-CAP >str HTTP:BODY! exit then
+   mode BUSY-OVERSIZED = if answer 503 HTTP:STATUS! answer OVERSIZE PAST-CAP >str HTTP:BODY! exit then
    mode NOT-STRING = if answer S\" {\"access_token\":1,\"expires_in\":60}" HTTP:BODY! exit then
    mode NO-LIFETIME = if answer S\" {\"access_token\":\"t\"}" HTTP:BODY! exit then
    mode LIFETIME-STRING = if answer S\" {\"access_token\":\"t\",\"expires_in\":\"3600\"}" HTTP:BODY! exit then
@@ -486,8 +486,8 @@ REPLY-CAP REPLY-SLOTS * BUFFER: REPLIES
 
 \ The text appended at the row's length: the row and its new length.
 : PUT ( ^u8 n str -- ^u8 n )
-   {: at:^ u:n t:^ tu:n :}
-   t tu at u + COPY drop at u tu + ;
+   {: at:^ u:n t:str :}
+   t at u + COPY drop at u t STR:LEN + ;
 
 \ The answer for the count, in a slot of its own, so answers in flight at
 \ once share no bytes.
@@ -495,7 +495,7 @@ REPLY-CAP REPLY-SLOTS * BUFFER: REPLIES
    {: k:n :}
    REPLIES k REPLY-SLOTS mod REPLY-CAP * + 0
    S\" {\"expires_in\":" PUT  LIFE @ FMT:INT$ PUT
-   S\" ,\"access_token\":\"t" PUT  k FMT:INT$ PUT  S\" \"}" PUT ;
+   S\" ,\"access_token\":\"t" PUT  k FMT:INT$ PUT  S\" \"}" PUT >str ;
 
 : COUNT-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
@@ -512,7 +512,7 @@ variable IMDS-STATUS
 variable IMDS-OVERSIZED             \ while set, another status has a body past TOKEN-CAP
 URL-CAP BUFFER: RESOURCE
 variable RESOURCE-U
-: RESOURCE$ ( -- str ) RESOURCE RESOURCE-U @ ;
+: RESOURCE$ ( -- str ) RESOURCE RESOURCE-U @ >str ;
 : RESOURCE! ( str -- ) RESOURCE COPY RESOURCE-U ! ;
 
 \ The token answer for the count, expires_in as a digit string as IMDS
@@ -521,18 +521,18 @@ variable RESOURCE-U
    {: k:n :}
    REPLIES k REPLY-SLOTS mod REPLY-CAP * + 0
    S\" {\"access_token\":\"i" PUT  k FMT:INT$ PUT
-   S\" \",\"expires_in\":\"" PUT  LIFE @ FMT:INT$ PUT  S\" \"}" PUT ;
+   S\" \",\"expires_in\":\"" PUT  LIFE @ FMT:INT$ PUT  S\" \"}" PUT >str ;
 
 \ Whether the query's parameter, decoded into the vector, is the text.
 : PARAM-IS? ( HTTP:request str str ^VEC:vector<u8> -- bool )
-   {: asked:HTTP:request k:^ ku:n want:^ wu:n v:^ :}
+   {: asked:HTTP:request k:str want:str v:^ :}
    v 0 VEC:RESIZE
-   asked k ku v HTTP:PARAM+ 0= if false exit then
-   v VEC:SPAN SPAN:$ want wu STR:= ;
+   asked k v HTTP:PARAM+ 0= if false exit then
+   v VEC:SPAN SPAN:$ want STR:= ;
 
 : IMDS-ASKED? ( HTTP:request ^VEC:vector<u8> -- bool )
    {: asked:HTTP:request v:^ :}
-   asked s" Metadata" HTTP:HEADER-OF$ 0= if 2drop false exit then
+   asked s" Metadata" HTTP:HEADER-OF$ 0= if drop false exit then
    s" true" STR:= 0= if false exit then
    asked s" api-version" s" 2018-02-01" v PARAM-IS? 0= if false exit then
    asked s" resource" RESOURCE$ v PARAM-IS? ;
@@ -546,7 +546,7 @@ variable RESOURCE-U
    IMDS-STATUS @ {: status:n :}
    status 200 <> if
       answer status HTTP:STATUS!
-      IMDS-OVERSIZED @ 0<> if answer OVERSIZE PAST-CAP HTTP:BODY! then
+      IMDS-OVERSIZED @ 0<> if answer OVERSIZE PAST-CAP >str HTTP:BODY! then
       exit
    then
    1 IMDS-ASKS atomic-add 1+ {: k:n :}
@@ -558,48 +558,50 @@ variable RESOURCE-U
 \ The token presented to /claim, asking for the named claim: the status, the
 \ claim in BODY.
 : CLAIM ( str str -- n )
-   {: t:^ tu:n name:^ nu:n :}
-   0 AUTH-U ! s" Authorization: Bearer " AUTH+ t tu AUTH+
+   {: t:str name:str :}
+   0 AUTH-U ! s" Authorization: Bearer " AUTH+ t AUTH+
    s" /claim" OPEN {: h:CURL:handle :}
-   h AUTH AUTH-U @ CURL:HEADER+ OK
+   h AUTH AUTH-U @ >str CURL:HEADER+ OK
    h s" Content-Type: text/plain" CURL:HEADER+ OK
-   h name nu CURL:BODY! OK
+   h name CURL:BODY! OK
    h FINISH ;
 
 : UP ( -- str ) s" api://up/.default" ;
 : OWN-TOKEN ( -- str n ) UP BEARER-GRANT:OWN GOT BEARER:TOKEN ;
 : ZEN ( -- str ) s" api://zen/.default" ;
 : FAULT-TOKEN ( -- str n )
-   ZEN s" a.b-c_d~e" BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN ;
+   ZEN s" a.b-c_d~e" dup STR:DATA swap STR:LEN BEARER-GRANT:FOR-PERSON
+   GOT BEARER:TOKEN ;
 \ /token-fault answering as the mode makes TOKEN throw the code.
 : FAULT-THROWS ( n n -- )
    {: mode:n code:n :}
    mode FAULT-MODE !
-   [: FAULT-TOKEN drop 2drop ;] code TTHROWSQ ;
+   [: FAULT-TOKEN drop drop ;] code TTHROWSQ ;
 
 create LOG-PATH PATH-CAP allot      \ a case's stderr capture file
 variable LOG-PATH-U
 TYPED-VARIABLE LOG-B ^VEC:vector<u8>  \ the capture file's bytes, read back
 $A constant LF
 
-: LOG-PATH$ ( -- str ) LOG-PATH LOG-PATH-U @ ;
+: LOG-PATH$ ( -- str ) LOG-PATH LOG-PATH-U @ >str ;
 
 : LOG-INIT ( -- )
-   s" test-issuer-test" FS:MKTEMP-DIR {: dir:^ dir-u:n :}
-   dir dir-u FS:CLEANUP-TREE+
-   dir dir-u s" stderr.txt" LOG-PATH FS:JOIN-PATH LOG-PATH-U !
+   s" test-issuer-test" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" stderr.txt" LOG-PATH FS:JOIN-PATH LOG-PATH-U !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW LOG-B ! ;
 
 \ The whole capture file, valid until the next read.
 : LOG$ ( -- str )
    LOG-PATH$ FS:FILE-SIZE {: size:n :}
    LOG-B @ size VEC:RESIZE
-   LOG-PATH$ LOG-B @ VEC:SPAN SPAN:$ FS:READ-ALL size T=
+   LOG-B @ VEC:SPAN SPAN:$ {: dst:str :}
+   LOG-PATH$ dst STR:DATA dst STR:LEN FS:READ-ALL size T=
    LOG-B @ VEC:SPAN SPAN:$ ;
 
 : LINES ( -- n )
-   LOG$ {: a:^ u:n :}
-   0 u 0 ?do a i + c@ LF = if 1+ then loop ;
+   LOG$ {: s:str :}
+   0 s STR:LEN 0 ?do s STR:DATA i + c@ LF = if 1+ then loop ;
 
 : CAPTURED ( [ -- ] -- )
    LOG-PATH$ STDERR:CAPTURE
@@ -607,29 +609,30 @@ $A constant LF
 
 \ The one captured line after its stamp, empty when the capture is shorter.
 : LINE$ ( -- str )
-   LOG$ {: a:^ u:n :}
-   u DATE:TIME-LEN < if a 0 exit then
-   a DATE:TIME-LEN + u DATE:TIME-LEN - ;
+   LOG$ {: s:str :}
+   s STR:LEN DATE:TIME-LEN < if s STR:DATA 0 >str exit then
+   s STR:DATA DATE:TIME-LEN + s STR:LEN DATE:TIME-LEN - >str ;
 
 : BEARER-GRANTS ( -- )
    s" TOKEN before CLIENT! is E-HTTP-STATE" T-LABEL
-   [: OWN-TOKEN drop 2drop ;] E-HTTP-STATE TTHROWSQ
+   [: OWN-TOKEN drop drop ;] E-HTTP-STATE TTHROWSQ
    ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!
    s" TOKEN's client credentials token is admitted, azp the client, for expires_in" T-LABEL
    OWN-TOKEN ISSUED-S T= s" azp" CLAIM 200 T=
    BODY$ s" app" T$=
    s" TOKEN for a person is admitted with the assertion's oid" T-LABEL
    s" app" LATER ASSERT
-   UP ASSERTION$ BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN drop s" oid" CLAIM 200 T=
+   UP ASSERTION ASSERTION-U @ BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN drop s" oid" CLAIM 200 T=
    BODY$ s" user-1" T$=
    s" a 400 is E-REFUSED, the vector holding the issuer's answer" T-LABEL
-   [: UP s" a.b.c" BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
+   [: UP s" a.b.c" dup STR:DATA swap STR:LEN BEARER-GRANT:FOR-PERSON
+      GOT BEARER:TOKEN drop drop ;] BEARER:E-REFUSED TTHROWSQ
    GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_grant\"}" T$=
    s" it leaves no byte of the earlier answer past the vector's count" T-LABEL
    GOT-ZEROED? TTRUE
    s" a wrong secret is E-REFUSED, the vector holding the issuer's answer" T-LABEL
    ENDPOINT$ s" app" s" wrong" BEARER:CLIENT!
-   [: [: OWN-TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ ;] CAPTURED
+   [: [: OWN-TOKEN drop drop ;] BEARER:E-REFUSED TTHROWSQ ;] CAPTURED
    GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_client\"}" T$=
    s" a refusal logs the issuer's status and answer once, tagged bearer" T-LABEL
    LINES 1 T=
@@ -639,21 +642,21 @@ $A constant LF
    ENDPOINT$ s" cli" s" " BEARER:CLIENT!
    s" REFRESH from a public client is admitted with the refresh token's oid, for expires_in" T-LABEL
    s" cli" LATER ASSERT
-   UP ASSERTION$ GOT BEARER:REFRESH ISSUED-S T= {: r:^ ru:n :}
+   UP ASSERTION$ GOT BEARER:REFRESH ISSUED-S T= {: r:str :}
    s" oid" CLAIM 200 T= BODY$ s" user-1" T$=
    s" its new refresh token refreshes again" T-LABEL
-   r ru ASSERTION$ T$<>
-   r ru ASSERTION COPY ASSERTION-U !
+   r ASSERTION$ T$<>
+   r ASSERTION COPY ASSERTION-U !
    ASSERTION-U @ 0 > TTRUE
-   UP ASSERTION$ GOT BEARER:REFRESH ISSUED-S T= 2drop
+   UP ASSERTION$ GOT BEARER:REFRESH ISSUED-S T= drop
    s" oid" CLAIM 200 T= BODY$ s" user-1" T$=
    s" an expired refresh token is E-REFUSED, the vector holding invalid_grant" T-LABEL
    s" cli" epoch-seconds 10 - ASSERT
-   [: UP ASSERTION$ GOT BEARER:REFRESH drop 2drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
+   [: UP ASSERTION$ GOT BEARER:REFRESH drop drop drop ;] BEARER:E-REFUSED TTHROWSQ
    GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_grant\"}" T$=
    s" another client's refresh token is E-REFUSED, the vector holding invalid_grant" T-LABEL
    s" app" LATER ASSERT
-   [: UP ASSERTION$ GOT BEARER:REFRESH drop 2drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
+   [: UP ASSERTION$ GOT BEARER:REFRESH drop drop drop ;] BEARER:E-REFUSED TTHROWSQ
    GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_grant\"}" T$= ;
 
 : BEARER-FAULTS ( -- )
@@ -665,7 +668,7 @@ $A constant LF
    s" grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer" FORM+
    s" &client_id=app&client_secret=s3cr%26t%2B1&assertion=a.b-c_d%7Ee" FORM+
    s" &scope=api%3A%2F%2Fzen%2F.default&requested_token_use=on_behalf_of" FORM+
-   POSTED POSTED-U @ FORM$ T$=
+   POSTED POSTED-U @ >str FORM$ T$=
    s" a 503 is E-UNAVAILABLE" T-LABEL
    BUSY BEARER:E-UNAVAILABLE FAULT-THROWS
    s" a 429 is E-UNAVAILABLE" T-LABEL
@@ -717,17 +720,17 @@ $A constant LF
    GOT-ZEROED? TTRUE
    s" REFRESH decodes the token, and an answer without refresh_token gives an empty one" T-LABEL
    ECHO FAULT-MODE !
-   ZEN s" r.1-x" GOT BEARER:REFRESH 60 T= 0 T= drop s" fault/token" T$=
+   ZEN s" r.1-x" GOT BEARER:REFRESH 60 T= STR:LEN 0 T= s" fault/token" T$=
    s" REFRESH from a confidential client posts its secret in the refresh form" T-LABEL
    FORM-RESET s" grant_type=refresh_token&client_id=app&client_secret=s3cr%26t%2B1" FORM+
    s" &refresh_token=r.1-x&scope=api%3A%2F%2Fzen%2F.default" FORM+
-   POSTED POSTED-U @ FORM$ T$=
+   POSTED POSTED-U @ >str FORM$ T$=
    s" REFRESH decodes an escaped refresh token after an escaped token" T-LABEL
    RENEWED FAULT-MODE !
    ZEN s" r.1-x" GOT BEARER:REFRESH 60 T= s" r/2A" T$= s" fault/token" T$=
    s" a 200 whose refresh_token is not a string is E-RESPONSE, its one line naming the member" T-LABEL
    RENEWAL-NUMBER FAULT-MODE !
-   [: [: ZEN s" r.1-x" GOT BEARER:REFRESH drop 2drop 2drop ;] BEARER:E-RESPONSE TTHROWSQ ;] CAPTURED
+   [: [: ZEN s" r.1-x" GOT BEARER:REFRESH drop drop drop ;] BEARER:E-RESPONSE TTHROWSQ ;] CAPTURED
    LINES 1 T=
    FORM-RESET s"  error bearer: token answer 200 lacks " FORM+ S\" a refresh_token string\n" FORM+
    LINE$ FORM$ T$=
@@ -736,10 +739,10 @@ $A constant LF
    ECHO FAULT-MODE !
    FAULT-URL$ s" cli" s" " BEARER:CLIENT!
    s" REFRESH from a public client posts no client_secret" T-LABEL
-   ZEN s" r.1-x" GOT BEARER:REFRESH 2drop 2drop drop
+   ZEN s" r.1-x" GOT BEARER:REFRESH drop drop drop
    FORM-RESET s" grant_type=refresh_token&client_id=cli" FORM+
    s" &refresh_token=r.1-x&scope=api%3A%2F%2Fzen%2F.default" FORM+
-   POSTED POSTED-U @ FORM$ T$= ;
+   POSTED POSTED-U @ >str FORM$ T$= ;
 
 8 constant ASKERS
 4 constant AT-ONCE                  \ the tasks the asked-at-once cases run
@@ -765,16 +768,16 @@ ASKERS TYPED-BUFFER TASKS ^n
    ASKER-6 6 TASKS !  ASKER-7 7 TASKS ! ;
 TASKS!
 
-: SEEN$ ( n -- str ) {: i:n :} SEEN i SEEN-CAP * + i SEEN-U @ ;
+: SEEN$ ( n -- str ) {: i:n :} SEEN i SEEN-CAP * + i SEEN-U @ >str ;
 
 : SAW ( str n -- )
-   {: t:^ tu:n i:n :}
-   t tu SEEN i SEEN-CAP * + COPY i SEEN-U ! ;
+   {: t:str i:n :}
+   t SEEN i SEEN-CAP * + COPY i SEEN-U ! ;
 
 \ CURRENT's token for the scope, copied into slot i.
 : CURRENT-INTO ( str n -- )
-   {: scope:^ su:n i:n :}
-   scope su [: i SAW ;] BEARER:CURRENT ;
+   {: scope:str i:n :}
+   scope [: i SAW ;] BEARER:CURRENT ;
 
 : CURRENT$ ( str -- str ) ASKERS CURRENT-INTO ASKERS SEEN$ ;
 
@@ -855,7 +858,7 @@ TASKS!
    s" a failed ask throws TOKEN's code, and the next CURRENT asks again" T-LABEL
    FAULT-URL$ s" app" s" s3cr&t+1" BEARER:CLIENT!
    BUSY FAULT-MODE !
-   [: DUE CURRENT$ 2drop ;] BEARER:E-UNAVAILABLE TTHROWSQ
+   [: DUE CURRENT$ drop ;] BEARER:E-UNAVAILABLE TTHROWSQ
    ECHO FAULT-MODE !
    COUNT-CLIENT 30 ASKING
    DUE CURRENT$ s" t1" T$=  ASKS atomic@ 1 T= ;
@@ -928,7 +931,7 @@ TASKS!
 : BEARER-UNREACHED ( -- )
    s" an endpoint on a closed loopback port is E-TRANSFER" T-LABEL
    ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!
-   [: OWN-TOKEN drop 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;
+   [: OWN-TOKEN drop drop ;] BEARER:E-TRANSFER TTHROWSQ ;
 
 8000001 constant PAST-CURL-INPUT          \ CURL_MAX_INPUT_LENGTH + 1
 
@@ -945,7 +948,7 @@ TASKS!
    T-LABEL
    LONG-URL {: url :}
    url SPAN:$ s" app" s" s3cr&t+1" BEARER:CLIENT!
-   [: [: OWN-TOKEN drop 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;] CAPTURED
+   [: [: OWN-TOKEN drop drop ;] BEARER:E-TRANSFER TTHROWSQ ;] CAPTURED
    ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!   \ CLIENT! borrows the URL
    url MEM:FREE-SPAN
    LINES 1 T=
@@ -963,9 +966,9 @@ TASKS!
 
 \ The URL the issuer line names, empty when the child printed none.
 : CHILD-URL ( -- str )
-   LINE LINE-U @ s" issuer " STR:STARTS-WITH? TTRUE
+   LINE LINE-U @ >str s" issuer " STR:STARTS-WITH? TTRUE
    LINE-U @ 8 - {: u:n :}
-   u 0 > if LINE 7 + u exit then
+   u 0 > if LINE 7 + u >str exit then
    s" " ;
 
 \ A process boundary is under test: the tool's command line, its issuer line,
@@ -990,10 +993,10 @@ TASKS!
    out-r FD>N CHILD-OUT !
    0 LINE-U !
    [: LINE? ;] TEST-WAIT:POLL
-   CHILD-URL {: url:^ uu:n :}
-   SB-RESET url uu SB-APPEND s" /.well-known/openid-configuration" SB-APPEND
+   CHILD-URL {: url:str :}
+   SB-RESET url SB-APPEND s" /.well-known/openid-configuration" SB-APPEND
    SB$ OPEN-AT FINISH 200 T=
-   BODY$ s" issuer" MEMBER$ url uu T$=
+   BODY$ s" issuer" MEMBER$ url T$=
    in-w FD>N close
    pid PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T=
    out-r FD>N close ;
