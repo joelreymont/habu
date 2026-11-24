@@ -24,19 +24,24 @@ private
 \ first needed and deleted by the emitter that lays it.
 TYPED-VARIABLE PROSE-TEXT ^VEC:vector<u8> SCRATCH-ONLY
 TYPED-VARIABLE JSON-TEXT ^VEC:vector<u8> SCRATCH-ONLY
+TYPED-VARIABLE GUARD-TEXT ^VEC:vector<u8> SCRATCH-ONLY
 : PROSE ( -- ^VEC:vector<u8> )
    PROSE-TEXT @ NULL-PTR = if NEW-TEXT PROSE-TEXT ! then
    PROSE-TEXT @ ;
 : JSON ( -- ^VEC:vector<u8> )
    JSON-TEXT @ NULL-PTR = if NEW-TEXT JSON-TEXT ! then
    JSON-TEXT @ ;
+: GUARD ( -- ^VEC:vector<u8> )
+   GUARD-TEXT @ NULL-PTR = if NEW-TEXT GUARD-TEXT ! then
+   GUARD-TEXT @ ;
 public
 \ The text an emitter lays next, then empties.
 : FAULT-PROSE$ ( -- str ) PROSE VEC:SPAN SPAN:$ ;
 : FAULT-JSON$ ( -- str ) JSON VEC:SPAN SPAN:$ ;
 : FAULT-EMPTY ( -- )
    PROSE-TEXT @ VEC:DELETE  NULL-PTR PROSE-TEXT !
-   JSON-TEXT @ VEC:DELETE  NULL-PTR JSON-TEXT ! ;
+   JSON-TEXT @ VEC:DELETE  NULL-PTR JSON-TEXT !
+   GUARD-TEXT @ VEC:DELETE  NULL-PTR GUARD-TEXT ! ;
 private
 \ The part the record being emitted has open: none, its message, or a note.
 0 constant FAULT-SHUT
@@ -129,20 +134,13 @@ public
 : TASK-GUARD-HELP$ ( -- str )
    s" define and allot on the main thread before the task starts" ;
 
-private
-128 constant GUARD-MSG-CAP
-create GUARD-MSG GUARD-MSG-CAP allot
-TYPED-VARIABLE GUARD-MSG-U len
-: GUARD-MSG+ ( str -- )
-   GUARD-MSG GUARD-MSG-CAP GUARD-MSG-U BUF-APPEND ;
-public
-\ "`<name>` <rest>", held in GUARD-MSG until the next call.
+\ "`<name>` <rest>", held until the record's next PIECE,.
 : GUARD-MSG$ ( str str -- str )
    {: p:^ pu:n r:^ ru:n :}
-   GUARD-MSG-U BUF-RESET
-   s" `" GUARD-MSG+  p pu GUARD-MSG+  s" ` " GUARD-MSG+
-   r ru GUARD-MSG+
-   GUARD-MSG GUARD-MSG-U BUF-LEN@ ;
+   GUARD 0 VEC:RESIZE
+   s" `" GUARD VEC:APPEND  p pu GUARD VEC:APPEND  s" ` " GUARD VEC:APPEND
+   r ru GUARD VEC:APPEND
+   GUARD VEC:SPAN SPAN:$ ;
 
 \ The callback rejections' messages and help: a thunk C entered, and an
 \ outbound foreign call on a context another thread runs in.
