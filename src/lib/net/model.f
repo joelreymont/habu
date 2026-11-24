@@ -3090,12 +3090,6 @@ private
 \ One event, its data a JSON object with a string type, counted by type; the
 \ call's first event starts its reply afresh, a keepalive is skipped and an
 \ error event is the reply.
-\ Counts the event's type; whether it is an output event.
-: COUNT-OUTPUT? ( str ^call -- bool )
-   {: s:str c :}
-   s c COUNT-EVENT
-   s s" response.output_" STR:STARTS-WITH? ;
-
 : READ-EVENT ( ^call str -- ^call str )
    {: c ev:str :}
    c STREAM {: s :}
@@ -3106,7 +3100,7 @@ private
    then
    ev JSON:PARSE {: v :}
    v TYPE-OF {: t :}
-   t [: c COUNT-OUTPUT? ;] JSON:WITH-STRING
+   t [: dup c COUNT-EVENT s" response.output_" STR:STARTS-WITH? ;] JSON:WITH-STRING
    {: output:bool :}
    s STREAM-OUTPUT-NS @ 0= output and if
       TIME:MONO-NS s STREAM-OUTPUT-NS !

@@ -1310,9 +1310,13 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   word (a primitive, a `defer`, the word's own `RECURSE`) makes it one plain
   cell, and a value wider than one cell or one that may be linear is rejected
   at the call. An unsigned definition's or a quotation literal's input is
-  moved the same way by the stack words that take it: `[: dup USE ;] catch`
-  takes a one-cell `NEWTYPE` that `USE` names, and `[: dup + ;] execute`
-  rejects one.
+  moved whole by the stack words that take it once the body, or the word the
+  literal is passed to, names its type: `[: dup USE ;]` moves a `str` when
+  `USE` takes one, and `[: drop 0 ;]` drops the `str` its caller hands it.
+  An input nothing names is one cell, and so is one a locals group binds
+  after a stack word moved it (`: U dup {: s:str :} ... ;` is rejected); one
+  that may be linear is rejected, and `[: dup + ;] execute` still rejects a
+  `NEWTYPE`.
 - Type, role and family names are lower case and case-sensitive: `I64` and
   `IDX` reject as bad signatures.
 - Blanks separate tokens, and a line break or a tab is one, so a long effect

@@ -127,25 +127,16 @@ CAST: TOKEN>N ( XML:kind -- n )
    source 1 $7FFFFFFFFFFFFFFF INPUT-SET
    INPUT-FAILURE expected T= ;
 
-\ The reader is opened INSIDE the caught body, as BAD-INIT below does: `catch`
-\ restores the DEPTH of both stacks and never their contents, so
-\ a reader opened before the catch comes back `stale<XML:reader>` and a linear
-\ cell can be neither read nor dropped. The body closes the reader its failed
-\ NEXT leaves, as the contract requires, and rethrows that failure.
-: BAD-BODY ( str -- str )
-   dup OPEN ['] DRAIN catch swap XML:CLOSE throw ;
-
+\ The reader opens inside the caught body: `catch` restores each stack's
+\ depth, not its contents, so a reader opened before it comes back stale.
 : BAD ( str n -- )
    {: expected:n :}
-   ['] BAD-BODY catch expected T=
+   [: dup OPEN ['] DRAIN catch swap XML:CLOSE throw ;] catch expected T=
    drop ;
-
-: BAD-INIT-BODY ( str -- str )
-   dup OPEN XML:CLOSE ;
 
 : BAD-INIT ( str n -- )
    {: expected:n :}
-   ['] BAD-INIT-BODY catch expected T=
+   [: dup OPEN XML:CLOSE ;] catch expected T=
    drop ;
 
 : EMPTY-ELEMENT ( -- )

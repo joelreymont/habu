@@ -390,6 +390,68 @@ s" TDMV-11 ( tdlight -- tdlight ) [: dup drop ;] execute" CHECK-QUIET-CANDIDATE!
 s" TDMV-12 ( tdlight -- tdlight bool ) [: dup 0= ;] execute" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDMV-13 ( tdlight -- tdlight ) TDMV-UN" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDMV-14 ( tdlight -- tdlight ) TDMV-UR" CHECK-QUIET-CANDIDATE! 0 T=
+\ A literal's or an unsigned definition's input a stack word moves is moved
+\ whole once the body, the consumer or a join names its type, here a str.
+: TDMV-USS ( str -- n ) str> nip ;
+: TDMV-TAKE ( str [ str -- n ] -- n ) execute ;
+: TDMV-QA ( a [ a -- ] -- ) execute ;
+s" TDMV-16 ( str -- str n ) [: dup TDMV-USS ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-17 ( str n -- n n ) [: swap TDMV-USS ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-18 ( str n -- str n n ) [: over TDMV-USS ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-19 ( str -- n ) [: >r r> TDMV-USS ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-20 ( str -- n ) [: drop 7 ;] TDMV-TAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-21 ( str -- str n n ) [: dup TDMV-USS ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-22 dup TDMV-USS" CHECK-QUIET-CANDIDATE! -1 T=
+s\" TDMV-23 ( str bool -- str str ) [: IF dup ELSE s\" x\" THEN ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
+s\" TDMV-24 ( str -- str ) [: BEGIN drop s\" x\" dup TDMV-USS 0= UNTIL ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
+\ A rejected join keeps none of the meet's binds: its input is not moved whole.
+REJECTION:CAPTURE
+s\" TDMV-25 ( n bool -- n n ) [: IF dup ELSE s\" x\" 1 THEN ;] execute" CHECK-CANDIDATE! 0 T=
+s" inferred: n bool -- n n" TDT-HAS
+REJECTION:CAPTURE
+s\" TDMV-28 ( n bool -- n n ) [: IF 1 ELSE drop s\" x\" true THEN ;] execute" CHECK-CANDIDATE! 0 T=
+s" the if and else arms leave different stack depths" TDT-HAS
+s" inferred: n bool -- n n" TDT-HAS
+REJECTION:CAPTURE
+s\" TDMV-29 ( n -- n n ) [: 1 BEGIN 2drop s\" x\" true 0 0= UNTIL ;] execute" CHECK-CANDIDATE! 0 T=
+s" the loop body changes the stack's depth" TDT-HAS
+s" inferred: n -- n n" TDT-HAS
+REJECTION:CAPTURE
+s\" TDMV-30 ( n bool -- n n ) [: IF dup EXIT THEN s\" x\" 1 ;] execute" CHECK-CANDIDATE! 0 T=
+s" found: n n" TDT-HAS
+\ A join whose mismatch lies below a wide cell binds nothing wide either.
+REJECTION:CAPTURE
+s\" TDMV-31 ( n bool -- n n ) [: IF 1 swap ELSE drop true s\" x\" THEN ;] execute" CHECK-CANDIDATE! 0 T=
+s" the if and else arms leave different stack depths" TDT-HAS
+s" inferred: n bool -- n n" TDT-HAS
+REJECTION:CAPTURE
+s\" TDMV-32 ( n -- n n ) [: 1 swap BEGIN 2drop true s\" x\" 0 0= UNTIL ;] execute" CHECK-CANDIDATE! 0 T=
+s" the loop body changes the stack's depth" TDT-HAS
+s" inferred: n -- n n" TDT-HAS
+REJECTION:CAPTURE
+s\" TDMV-33 ( n n -- n n ) [: CASE 1 OF 1 swap ENDOF 2 OF drop true s\" x\" ENDOF ENDCASE ;] execute" CHECK-CANDIDATE! 0 T=
+s" `a` is one cell; `str` is 2 cells" TDT-HAS
+s" inferred: n n -- n n" TDT-HAS
+s" TDMV-26 ( str -- ) [: drop ;] TDMV-QA" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMV-27 ( tdlinp -- tdlinp ) [: dup drop ;] execute" CHECK-QUIET-CANDIDATE! 0 T=
+\ The engine runs what it accepted: each moved str is printed whole.
+s" type-decl-moved" E2E-TREE:TREE
+E2E-TREE:ROOT$ FS:CLEANUP-TREE+
+s" test/tdmv-run.f" E2E-TREE:AT-A
+s\" : USE ( str -- n ) str> nip ;\n: LIT ( str -- str n ) [: dup USE ;] execute ;\n: UN dup USE ;\n: SIG ( str -- str n ) UN ;\ns\" hello\" LIT . type cr  s\" world\" SIG . type cr\n: MK [: dup USE ;] ;\n: TAKE-S ( str [ str -- n ] -- n ) execute ;\n: MK6 [: drop 7 ;] dup >r TAKE-S r> ;\ns\" quoted\" MK execute . type cr  s\" x\" MK6 drop .\n"
+FS:WRITE-ALL
+s" test/tdmv-run.f" E2E-TREE:ARGS
+ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
+E2E-TREE:NEED-OK
+E2E-TREE:OUT$ s\" 5\nhello\n5\nworld\n6\nquoted\n7\n" T$=
+\ An early exit's row meets the fall-through's: the str is moved whole.
+s" test/tdmv-exit.f" E2E-TREE:AT-A
+s\" : USE ( str -- n ) str> nip ;\n: UE1 IF dup EXIT THEN drop s\" x\" dup ;\n: E2 ( str bool -- str str ) [: IF dup EXIT THEN BEGIN drop s\" x\" dup USE 0= 0= UNTIL dup ;] execute ;\ns\" hi\" true UE1 type type cr  s\" hi\" false UE1 type type cr\ns\" hi\" true E2 type type cr  s\" hi\" false E2 type type cr\n"
+FS:WRITE-ALL
+s" test/tdmv-exit.f" E2E-TREE:ARGS
+ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
+E2E-TREE:NEED-OK
+E2E-TREE:OUT$ s\" hihi\nxx\nhihi\nxx\n" T$=
 
 \ --- an unsigned definition's layout local binds its whole value --
 \ Each local takes its signed form's effect or rejection: a str, an option<n>
@@ -417,10 +479,10 @@ s\"   = found: str n\n" TDT-HAS
 \ hidden fields.
 s" TD12-DEPTH ( tdres<n,n> -- tdres<n,n> n ) depth" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" CHECK-QUIET-CANDIDATE! 0 T=
-\ catch/frame words: a layout value FLOWS through a stack-preserving quotation
-\ (whole-row absorption) but cannot bind a quotation's polymorphic operand.
+\ catch/frame words: a layout value flows through a stack-preserving quotation
+\ (whole-row absorption), and the literal's stack words move it whole.
 s" TD12-CATCH ( tdres<n,n> -- tdres<n,n> n ) [: ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-CATCH-TOUCH ( tdres<n,n> -- n ) [: drop ;] catch" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-CATCH-TOUCH ( tdres<n,n> -- n ) [: drop ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
 s" TD12-EXEC-Q ( tdres<n,n> [ a -- a ] -- a ) execute" CHECK-QUIET-CANDIDATE! 0 T=
 \ nested evaluate is rejected in checked bodies outright (unsafe boundary).
 s" TD12-EVAL ( tdres<n,n> ^u8 n -- tdres<n,n> ) evaluate" CHECK-QUIET-CANDIDATE! 0 T=

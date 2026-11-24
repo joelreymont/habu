@@ -80,17 +80,9 @@ create SECOND-BUF CAPACITY allot
    over over CASEFOLD= TFALSE
    swap CASEFOLD= TFALSE ;
 
-\ A caught body keeps its stack's shape, and a quotation moves only one-cell
-\ values: each comparison is a word that keeps the text.
-: LEFT-OF-EMPTY ( str -- str )
-   dup s" " CASEFOLD= drop ;
-
-: RIGHT-OF-EMPTY ( str -- str )
-   dup s" " swap CASEFOLD= drop ;
-
 : INVALID ( str -- )
-   [: LEFT-OF-EMPTY ;] catch E-UTF8 T=
-   [: RIGHT-OF-EMPTY ;] catch E-UTF8 T=
+   [: dup s" " CASEFOLD= drop ;] catch E-UTF8 T=
+   [: dup s" " swap CASEFOLD= drop ;] catch E-UTF8 T=
    drop ;
 
 : BAD-UTF8 ( -- )

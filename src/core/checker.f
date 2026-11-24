@@ -107,9 +107,11 @@ split-str
 \ slots 0 to W-2 and the tag at W-1 on top. Each reuses the logical family id,
 \ name and argument terms and carries its slot plus one in PARAMHID, 0 meaning
 \ logical. A hidden term pairs only with the same family and slot and binds
-\ no con, pointer or atom, and no var but a MOVED one when the value is one cell
-\ wide. A call expands a logical cell whose width it
-\ resolved the same way (OUTPUT-COPY). Whole-bundle transports (dup, swap,
+\ no con, pointer or atom, and no var but a MOVED or UNSIZED one when the value
+\ is one cell wide. An unsigned definition's or a quotation literal's input
+\ is moved whole once its type is named: its UNSIZED var meeting a group's tag
+\ takes the logical value (U-ROW). A call expands a logical cell whose width
+\ it resolved the same way (OUTPUT-COPY). Whole-bundle transports (dup, swap,
 \ >r and kin) move the group by row surgery (XPORT-STEP?). A layout whose
 \ width reads an open argument (LAYOUT-WIDTH-OPEN?) stays one logical cell: a
 \ transport would bind it to a fresh var, which LAYOUT-XPORT-ALLOW? refuses
@@ -614,7 +616,10 @@ split-str
 \ operation's raw source-byte offset and an operand position. Transport and
 \ locals rows use logical operand positions; layout-memory rows use position 0
 \ for the operation's bundle width, the address itself staying one cell. An
-\ absent row means scalar lowering. The compiler queries the table before
+\ absent row means scalar lowering. A stack word over an unsigned
+\ definition's or a quotation literal's input that the body or the literal's
+\ consumer names only later gets its row when the check ends (WF-NOTE-SCAN); an
+\ input nothing names is one cell. The compiler queries the table before
 \ emitting the operation. The table is per-check scratch.
 \
 \ Storable layouts: `!` and `@` through a `^family<..>` address move the
@@ -1133,9 +1138,12 @@ private
 \ TVK-ADDR: the pointee of a row that reads, writes and sizes nothing through
 \ the pointer, so any type, any family included; an inferred signature keeps it.
 12 constant TVK-ADDR
-\ TVK-MOVED: a var the body only moves, so it takes a one-cell layout value;
-\ any other use makes it TVK-CELL.
+\ TVK-MOVED: a var moved at one cell, a signed word's or a call's copy of one:
+\ it takes a one-cell layout value; any other use makes it TVK-CELL.
 13 constant TVK-MOVED
+\ TVK-UNSIZED: an open input's var the body only moves, its width open: it
+\ takes the whole value the body or the literal's consumer names.
+14 constant TVK-UNSIZED
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK! ( n n -- ) cells TVK + ! ;
 : TVO@ ( n -- n ) cells TVO + @ ;
@@ -1162,22 +1170,26 @@ private
 : TVK-STORED! ( n -- ) TVK-STORED swap cells TVK + ! ;
 : TVK-ADDR! ( n -- ) TVK-ADDR swap cells TVK + ! ;
 : TVK-MOVED! ( n -- ) TVK-MOVED swap cells TVK + ! ;
+: MOVE-KIND? ( n -- bool ) dup TVK-MOVED = swap TVK-UNSIZED = or ;
+\ The kind an effect stores: an UNSIZED var nothing named is one cell.
+: PUBLISH-KIND ( n -- n ) dup TVK-UNSIZED = IF drop TVK-MOVED THEN ;
 
 \ The fence lattice: ADDR < STORED < ANY < CELL < NULL < DBASE < RAW. A meet
 \ keeps the stricter kind. Row kinds are not on this lattice and rank 0 (a row
-\ var never meets a type var). MOVED meets MOVED as itself and any other kind
-\ as CELL.
+\ var never meets a type var). UNSIZED meets UNSIZED as itself, the two move
+\ kinds meet as MOVED, and either meets any other kind as CELL.
 : TVK-RANK ( n -- n )
    dup TVK-RAW = IF drop 4 EXIT THEN
    dup TVK-DBASE = IF drop 3 EXIT THEN
    dup TVK-NULL = IF drop 2 EXIT THEN
    dup TVK-STORED = IF drop -1 EXIT THEN
    dup TVK-ADDR = IF drop -2 EXIT THEN
-   dup TVK-CELL = swap TVK-MOVED = or IF 1 EXIT THEN
+   dup TVK-CELL = swap MOVE-KIND? or IF 1 EXIT THEN
    0 ;
-: MOVED>CELL ( n -- n ) dup TVK-MOVED = IF drop TVK-CELL THEN ;
+: MOVED>CELL ( n -- n ) dup MOVE-KIND? IF drop TVK-CELL THEN ;
 : TVK-MEET ( n n -- n ) {: m1:n m2:n :}
-   m1 TVK-MOVED = m2 TVK-MOVED = and IF TVK-MOVED EXIT THEN
+   m1 TVK-UNSIZED = m2 TVK-UNSIZED = and IF TVK-UNSIZED EXIT THEN
+   m1 MOVE-KIND? m2 MOVE-KIND? and IF TVK-MOVED EXIT THEN
    m1 MOVED>CELL m2 MOVED>CELL {: k1:n k2:n :}
    k1 TVK-SCOPE = k2 TVK-SCOPE = or IF TVK-SCOPE EXIT THEN
    k1 TVK-REGION = k2 TVK-REGION = or IF TVK-REGION EXIT THEN
@@ -4296,8 +4308,8 @@ EXPORT CHECKER-QUOT-FRESH:HELD
 \ Slots 0..W-2 are payload, W-1 the tag.
 : MK-HIDDEN ( n n -- n ) {: src0:n slot:n :}
    src0 T-RES slot HIDDEN-OF ;
-\ Renderer compaction folds a full hidden run back to this logical type;
-\ checking never consumes it. The wrapper belongs to the value.
+\ Renderer compaction folds a full hidden run back to this logical type. The
+\ wrapper belongs to the value.
 : MK-LOGICAL ( n -- n ) {: src0:n :}
    src0 T-UNSTALE {: src:n :}
    PARAM-SCR-N @ {: base:n :}
@@ -4508,7 +4520,7 @@ variable RAW-FENCE
 \ MD- codes, numbered with the MD- block below; 0 for none.
 102 constant MD-ONE-CELL     \ a one-cell variable met a declared (T-PARAM) type
 103 constant MD-OFF-STEP     \ a stepped pointee's variable met a layout type
-110 constant MD-MOVED-LINEAR \ a MOVED variable met a one-cell type that may be linear
+110 constant MD-MOVED-LINEAR \ a MOVED variable met a one-cell type, or an UNSIZED one a type, that may be linear
 variable CELL-HIT
 \ The type the variable met, set with CELL-HIT.
 variable CELL-HIT-TYPE
@@ -4545,28 +4557,30 @@ variable XT-DECL
 : CELL-HIT! ( n n n -- ) {: code:n t:n vid:n :}
    code CELL-HIT !  t CELL-HIT-TYPE !  vid ONE-CELL-VAR ! ;
 
-\ A MOVED var takes a one-cell layout value its body never reads, the hidden
-\ cell a signature expands it to included: that cell is the whole value.
+\ A move var takes a one-cell layout value, the hidden cell included; an
+\ UNSIZED one also takes a logical value of any width outside a step.
 : MOVED-TAKES? ( n n -- bool ) {: v:n t:n :}
    v ISVAR 0= IF RES-FALSE EXIT THEN
-   v PAY TVK@ TVK-MOVED <> IF RES-FALSE EXIT THEN
+   v PAY TVK@ {: k:n :}
+   k MOVE-KIND? 0= IF RES-FALSE EXIT THEN
    t TAG T-PARAM <> IF RES-FALSE EXIT THEN
    t TYPE-CLOSED? 0= IF RES-FALSE EXIT THEN
    t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
-   t T-WIDTH 1 = ;
+   t T-WIDTH 1 = IF RES-TRUE EXIT THEN
+   k TVK-UNSIZED =  t HIDDEN-PARAM? 0= and  LAYOUT-XPORT @ 0= and ;
 
-\ A one-cell var met declared type t: latch t, which a plain cell is not. A
-\ MOVED var is one cell only against a wider value; one that may be linear it
-\ latches apart, as the stack words moving it may copy or drop it.
+\ A one-cell var met declared type t: latch t. A move var latches a wider t,
+\ and one that may be linear apart: MOVED at one cell, UNSIZED at any width.
 : ONE-CELL-MET ( n n -- ) {: v:n t:n :}
    v ISVAR 0= IF EXIT THEN
    t TAG T-PARAM <> IF EXIT THEN
    v PAY TVK@ {: k:n :}
-   k TVK-MOVED =  t T-WIDTH 1 = and  t LAYOUT-MAYBE-LINEAR? and IF
+   k TVK-MOVED =  t T-WIDTH 1 = and  k TVK-UNSIZED = or
+   t LAYOUT-MAYBE-LINEAR? and IF
       MD-MOVED-LINEAR t v PAY CELL-HIT!  EXIT
    THEN
    k TVK-CELL =  k TVK-ANY = or
-   k TVK-MOVED =  t T-WIDTH 1 >  and  or 0= IF EXIT THEN
+   k MOVE-KIND?  t T-WIDTH 1 >  and  or 0= IF EXIT THEN
    MD-ONE-CELL t v PAY CELL-HIT! ;
 
 \ A stepped pointee's var met layout type t: latch t. A fixed step is one
@@ -4689,22 +4703,24 @@ variable XT-DECL
    t ISVAR 0= IF EXIT THEN
    t PAY TVK@ TVK-RANK kind TVK-RANK < IF t PAY kind TVK-RAISE-TO THEN ;
 
-\ A move keeps a MOVED var: a pairing with another MOVED var, or in a
-\ transport step with a plain var, which takes its kind. Any other pairing
-\ reads the cell, so its MOVED side becomes CELL and is judged as one. True
-\ for a move.
+\ True for a move: a move var meets its own kind, the other move kind (both
+\ become MOVED), a plain var in a step, or, UNSIZED, what MOVED-TAKES? admits.
 : MOVED-KEEP? ( n n -- bool ) {: vid:n term:n :}
    term T-RES {: t:n :}
    t ISVAR IF t PAY TVK@ ELSE -1 THEN {: tk:n :}
    vid TVK@ {: vk:n :}
-   vk TVK-MOVED <> tk TVK-MOVED <> and IF RES-FALSE EXIT THEN
+   vk MOVE-KIND? 0= tk MOVE-KIND? 0= and IF RES-FALSE EXIT THEN
    vk tk = IF RES-TRUE EXIT THEN
+   vk MOVE-KIND? tk MOVE-KIND? and IF
+      vid TVK-MOVED TVK-RAISE-TO  t PAY TVK-MOVED TVK-RAISE-TO  RES-TRUE EXIT
+   THEN
    LAYOUT-XPORT @ 0 <> t ISVAR and IF
       vk TVK-ANY = IF RES-TRUE EXIT THEN
-      tk TVK-ANY = IF t PAY TVK-MOVED TVK-LOWER-TO RES-TRUE EXIT THEN
+      tk TVK-ANY = IF t PAY vk TVK-LOWER-TO RES-TRUE EXIT THEN
    THEN
-   vk TVK-MOVED = IF vid TVK-CELL TVK-RAISE-TO THEN
-   tk TVK-MOVED = IF t PAY TVK-CELL TVK-RAISE-TO THEN
+   vk TVK-UNSIZED = IF vid MK-VAR t MOVED-TAKES? IF RES-TRUE EXIT THEN THEN
+   vk MOVE-KIND? IF vid TVK-CELL TVK-RAISE-TO THEN
+   tk MOVE-KIND? IF t PAY TVK-CELL TVK-RAISE-TO THEN
    RES-FALSE ;
 
 : RAW-BLOCK? ( n n -- bool )
@@ -5348,6 +5364,34 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
 : LOGHID-EXPAND ( n n -- ) LOGHID-WIDTH LOGHID-ROWS PAIR ;
 : LOGHID-EXPAND-REV ( n n -- ) LOGHID-WIDTH LOGHID-ROWS swap PAIR ;
 
+\ An unbound UNSIZED var atop rv may take whole the wider group whose tag is
+\ atop rh; LOGHID-EXPAND then pairs the group's fields.
+: UNSIZED-AT? ( n n -- bool ) {: rh:n rv:n :}
+   LAYOUT-XPORT @ 0 <> IF RES-FALSE EXIT THEN
+   rv P>TYPE T-RES {: v:n :}
+   v ISVAR 0= IF RES-FALSE EXIT THEN
+   v PAY TVK@ TVK-UNSIZED <> IF RES-FALSE EXIT THEN
+   rh P>TYPE T-RES {: th:n :}
+   th TAG T-STALE = IF RES-FALSE EXIT THEN
+   th HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   th T-WIDTH {: w:n :}
+   w 1 > 0= IF RES-FALSE EXIT THEN
+   th HIDDEN-SLOT@ w 1 - <> IF RES-FALSE EXIT THEN
+   th TYPE-CLOSED? 0= IF RES-FALSE EXIT THEN
+   th LAYOUT-MAYBE-LINEAR? 0= ;
+: UNSIZED-BIND ( n n n -- ) {: rh:n rv:n mask:n :}
+   rh P>TYPE T-RES MK-LOGICAL  rv P>TYPE T-RES PAY  mask TV-BIND ;
+
+\ An UNSIZED var facing a group UNSIZED-AT? accepts takes it, provided (mask 0).
+: UNSIZED-MEET ( n n -- )
+   R-RES swap R-RES swap
+   BEGIN over TAG S-PUSH =  over TAG S-PUSH =  and WHILE
+      2dup UNSIZED-AT? IF 2dup 0 UNSIZED-BIND THEN
+      2dup swap UNSIZED-AT? IF 2dup swap 0 UNSIZED-BIND THEN
+      swap VALUE-REST 0= IF 2drop EXIT THEN R-RES
+      swap VALUE-REST 0= IF 2drop EXIT THEN R-RES
+   REPEAT 2drop ;
+
 : LOGHID-JOIN? ( n n -- bool )
    {: rh:n rl:n :}
    rh rl LOGHID-AT? 0= IF RES-FALSE EXIT THEN
@@ -5495,6 +5539,10 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    over STALE-ROW? over STALE-ROW? or IF STALE-NOTE U-FAIL EXIT THEN
    \ Zero terminates a closed evaluator row; it has no cell to descend into.
    over TAG S-PUSH <> over TAG S-PUSH <> or IF U-FAIL EXIT THEN
+   UNIFY-KIND @ UK-JOIN <> IF
+      2dup UNSIZED-AT? IF 2dup ROLE-D1 UNSIZED-BIND THEN
+      2dup swap UNSIZED-AT? IF 2dup swap ROLE-D2 UNSIZED-BIND THEN
+   THEN
    \ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells. The
    \ spine cursor is not slot-aligned past it: drop to no-position.
    2dup LOGHID-AT? IF -1 CUR-UPOS ! LOGHID-EXPAND EXIT THEN
@@ -7072,16 +7120,25 @@ variable QUOT-LOSS
    own 0= IF RES-TRUE EXIT THEN
    t q Q>DIN CWIN-DTERMS @ TERMS-OCC?  t q Q>RIN CWIN-RTERMS @ TERMS-OCC?  or ;
 
+\ The cell latches a unify sets; a trial that takes its binds back restores them.
+: LATCHES@ ( -- n n n n n n n n n n n )
+   STALE-HIT @  STALE-SELF @  SCOPE-HIT @  RAW-FENCE @
+   CELL-HIT @  CELL-HIT-TYPE @  ONE-CELL-VAR @
+   FACT-HIT @  FACT-TERM @  FACT-KIND @  BASE-PTR-HIT @ ;
+
+: LATCHES! ( n n n n n n n n n n n -- )
+   BASE-PTR-HIT !  FACT-KIND !  FACT-TERM !  FACT-HIT !
+   ONE-CELL-VAR !  CELL-HIT-TYPE !  CELL-HIT !
+   RAW-FENCE !  SCOPE-HIT !  STALE-SELF !  STALE-HIT ! ;
+
 \ The fit as a trial: a unify that fails is taken back with the cell latches it
 \ set, so a body that changes the stack is judged on rows the trial left alone.
 : CATCH-FITS? ( -- bool )
-   TRAIL-N @  STALE-HIT @  STALE-SELF @  SCOPE-HIT @  RAW-FENCE @
-   CELL-HIT @  FACT-HIT @  BASE-PTR-HIT @
-   {: mark:n sh:n ss:n sc:n rf:n ch:n fh:n bh:n :}
+   TRAIL-N @  LATCHES@
+   {: mark:n sh:n ss:n sc:n rf:n ch:n ct:n cv:n fh:n ft:n fk:n bh:n :}
    DCUR @ QTT @ Q>DOUT UNIFY-IN IF RES-TRUE EXIT THEN
    mark TRAIL-UNWIND
-   sh STALE-HIT !  ss STALE-SELF !  sc SCOPE-HIT !  rf RAW-FENCE !
-   ch CELL-HIT !  fh FACT-HIT !  bh BASE-PTR-HIT !
+   sh ss sc rf ch ct cv fh ft fk bh LATCHES!
    RES-FALSE ;
 
 : CATCH-ONE-TAIL? ( -- bool )
@@ -11685,7 +11742,7 @@ UIX-RESET
       T-VAR of
          EN-VAR E-NODE-NEW E-WOFF >r
          x E-RES PAY E-TV-ID r@ E-WPTR EN.A !
-         x E-RES PAY TVK@ r@ E-WPTR EN.B !   \ persist the var kind for freshening + snapshot
+         x E-RES PAY TVK@ PUBLISH-KIND r@ E-WPTR EN.B !   \ persist the var kind for freshening + snapshot
          x E-RES PAY NSCOPE@ Q-FLAG>N r@ E-WPTR EN.C !
          x E-RES PAY NLINEAR@ Q-FLAG>N r@ E-WPTR EN.D !
          x E-RES PAY E-VAR-LETTER r@ E-WPTR EN.E !
@@ -11707,7 +11764,7 @@ UIX-RESET
          \ Until the tail is copied, a node's EN.B links back to the node above
          \ it; the walk back interns the nodes deepest first, the order nested
          \ copies would.
-         0 x E-RES                                   \ ( back cur )
+         0 x E-RES dup ROW-CELLS ROW-EXPAND-TERMS    \ ( back cur )
          BEGIN
             EN-PUSH E-NODE-NEW E-WOFF >r
             TOP-SCOPE-SEEN @  0 TOP-SCOPE-SEEN !     \ ( back cur outer ) a scope seen in this cell's type
@@ -19333,9 +19390,9 @@ variable TCLOSE  variable TBEST  variable TREACH
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
    SGWIN @ SV-SGWIN !  SGWOUT @ SV-SGWOUT !  SGWRIN @ SV-SGWRIN !  SGWROUT @ SV-SGWROUT !
    THDMASK @ SV-THDMASK !  THRMASK @ SV-THRMASK !  THSET @ SV-THSET !
-   RAW-FENCE @ SV-RAWFENCE !  CELL-HIT @ SV-CELLHIT !  CELL-HIT-TYPE @ SV-CELLTYPE !  ONE-CELL-VAR @ SV-CELLVAR !
-   FACT-HIT @ SV-FACT !  FACT-TERM @ SV-FTERM !  FACT-KIND @ SV-FKIND !
-   BASE-PTR-HIT @ SV-BASEPTR !  STALE-HIT @ SV-STALE !  STALE-SELF @ SV-STALE-SELF !  SCOPE-HIT @ SV-SCOPE ! ;
+   LATCHES@  SV-BASEPTR !  SV-FKIND !  SV-FTERM !  SV-FACT !
+   SV-CELLVAR !  SV-CELLTYPE !  SV-CELLHIT !
+   SV-RAWFENCE !  SV-SCOPE !  SV-STALE-SELF !  SV-STALE ! ;
 
 : TRIAL-REST-SG
    SV-SGBAD @ SGBAD !  SV-SGBAD-A @ SGBAD-A !
@@ -19359,9 +19416,9 @@ variable TCLOSE  variable TBEST  variable TREACH
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !  SV-MCELL @ MDIAG-CELL !  SV-MCELL-VAR @ MDIAG-CELL-VAR !
    SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
-   SV-RAWFENCE @ RAW-FENCE !  SV-CELLHIT @ CELL-HIT !  SV-CELLTYPE @ CELL-HIT-TYPE !  SV-CELLVAR @ ONE-CELL-VAR !
-   SV-FACT @ FACT-HIT !  SV-FTERM @ FACT-TERM !  SV-FKIND @ FACT-KIND !
-   SV-BASEPTR @ BASE-PTR-HIT !  SV-STALE @ STALE-HIT !  SV-STALE-SELF @ STALE-SELF !  SV-SCOPE @ SCOPE-HIT !
+   SV-STALE @  SV-STALE-SELF @  SV-SCOPE @  SV-RAWFENCE @
+   SV-CELLHIT @  SV-CELLTYPE @  SV-CELLVAR @
+   SV-FACT @  SV-FTERM @  SV-FKIND @  SV-BASEPTR @  LATCHES!
    TRIAL-REST-SG ;
 
 \ Is a var still an open distance-row base operand? Its pointee never met a
@@ -19506,6 +19563,10 @@ $80 constant WF-INIT
 SCRATCH{
 PTR-VARIABLE WFS-P   variable WF-CAP   variable WF-N
 variable WF-CURROW   variable WF-POS-I
+PTR-VARIABLE WFNS-P   variable WFN-CAP   variable WFN-N   \ the noted tokens
+\ The current token's transport read: its offset, row and operand count, 0 for
+\ no read.
+variable WFN-OFF   variable WFN-ROW   variable WFN-K
 }SCRATCH
 
 : WFS ( -- ^n ) WFS-P @ ;
@@ -19554,9 +19615,8 @@ variable WF-CURROW   variable WF-POS-I
       1 +
    repeat ;
 
-: WF-ADD-FULL ( n n n n -- )
-   {: pos:n fam:n term:n w:n :}
-   TSTART @ {: off:n :}
+: WF-ADD-FULL ( n n n n n -- )
+   {: off:n pos:n fam:n term:n w:n :}
    off pos WF-SEEK {: idx:n :}
    idx WF-N @ < if
       off pos idx WF-KEY= if
@@ -19576,11 +19636,11 @@ variable WF-CURROW   variable WF-POS-I
    term r WF.TERM !
    WF-N @ 1 + WF-N ! ;
 
-: WF-ADD ( n n n -- ) {: pos:n fam:n w:n :}
-   pos fam 0 w WF-ADD-FULL ;
+: WF-ADD ( n n n n -- ) {: off:n pos:n fam:n w:n :}
+   off pos fam 0 w WF-ADD-FULL ;
 
 : WF-MEM-RECORD ( n -- ) {: t:n :}
-   0 t PARAM>FAM t t T-WIDTH WF-ADD-FULL ;
+   TSTART @ 0 t PARAM>FAM t t T-WIDTH WF-ADD-FULL ;
 
 : LAYOUT-MEM-INNER ( -- n bool )
    DCUR @ R-RES {: node:n :}
@@ -20184,11 +20244,8 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
       FIELD-LOAN-ORD @ off bytes CW-FIELD-SPAN CWIN-ADD
       selector-ord REC-IX !
    THEN
-   TSTART @ {: selector-off:n :}
-   FIELD-LOAN-OFF @ TSTART !
-   1 0 0 off 1+ WF-ADD-FULL
-   2 0 0 bytes WF-ADD-FULL
-   selector-off TSTART ! ;
+   FIELD-LOAN-OFF @ 1 0 0 off 1+ WF-ADD-FULL
+   FIELD-LOAN-OFF @ 2 0 0 bytes WF-ADD-FULL ;
 
 : SCOPE-FIELD-SCHEME? ( n n -- bool ) {: supplied:n ceiling:n :}
    supplied TAG T-FORALL <> IF RES-TRUE EXIT THEN
@@ -20502,21 +20559,22 @@ EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
    REPEAT drop ;
 
 \ An expanded hidden group's cell count is its registry width.
-: WF-POS-RECORD ( n -- n ) {: node:n :}
+: WF-POS-RECORD ( n n -- n ) {: node:n off:n :}
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? IF
       t CELL>FAM {: fam:n :}                    \ a stale window cell is still this family's
       t T-WIDTH {: w:n :}
-      WF-POS-I @  fam  w  WF-ADD
+      off  WF-POS-I @  fam  w  WF-ADD
       node  w  ROW-DROP-N EXIT
    THEN
-   t LAYOUT-PARAM? IF WF-POS-I @  t CELL>FAM  t T-WIDTH  WF-ADD THEN
+   t LAYOUT-PARAM? IF off  WF-POS-I @  t CELL>FAM  t T-WIDTH  WF-ADD THEN
    node P>REST ;
 
-: WF-ROW-SCAN ( n n -- ) {: row:n k:n :}
+\ The facts of row's top k operands at the token at source offset off.
+: WF-ROW-SCAN ( n n n -- ) {: row:n k:n off:n :}
    row WF-CURROW !  0 WF-POS-I !
    BEGIN WF-POS-I @ k <  WF-CURROW @ R-RES TAG S-PUSH =  and WHILE
-      WF-CURROW @ R-RES WF-POS-RECORD WF-CURROW !
+      WF-CURROW @ R-RES off WF-POS-RECORD WF-CURROW !
       WF-POS-I @ 1 + WF-POS-I !
    REPEAT ;
 
@@ -20542,8 +20600,69 @@ EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
    a u s" 2r@" STR:= IF RES-TRUE EXIT THEN
    RES-FALSE ;
 : WF-XPORT-RECORD ( str -- ) {: a:^ u:n :}
-   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
-   a u WF-XPORT-K  WF-ROW-SCAN ;
+   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @ {: row:n :}
+   a u WF-XPORT-K {: k:n :}
+   row k TSTART @ WF-ROW-SCAN
+   TSTART @ WFN-OFF !  row WFN-ROW !  k WFN-K ! ;
+
+\ --- width facts read at the end -------------
+$0 constant WFN.OFF-OFF
+$8 constant WFN.ROW-OFF
+$10 constant WFN.K-OFF
+$18 constant WFN-REC
+$10 constant WFN-INIT
+
+: WFNS ( -- ^n ) WFNS-P @ ;
+
+: WFN-ENSURE ( n -- ) {: need:n :}
+   need WFN-CAP @ <= IF EXIT THEN
+   need WFN-CAP @ 2 * max WFN-INIT max {: cap:n :}
+   WFNS-P @ WFN-CAP @ WFN-REC * cap WFN-REC * SR-GROW WFNS-P !
+   cap WFN-CAP ! ;
+
+: WFN-ROW@ ( n -- ^n ) WFN-REC * WFNS + ;
+
+: WFN-ADD ( n n n -- ) {: off:n row:n k:n :}
+   WFN-N @ 1 + WFN-ENSURE
+   WFN-N @ WFN-ROW@ {: r:^ :}
+   off r WFN.OFF-OFF + !  row r WFN.ROW-OFF + !  k r WFN.K-OFF + !
+   WFN-N @ 1 + WFN-N ! ;
+
+: UNSIZED-VAR? ( n -- bool )
+   T-RES dup ISVAR IF PAY TVK@ TVK-UNSIZED = ELSE drop RES-FALSE THEN ;
+
+\ Row's top k operands to the first UNSIZED var, true when it met one; with
+\ fix each such var becomes MOVED and the walk goes on.
+: UNSIZED-WALK ( n n bool -- bool ) {: row:n k:n fix:bool :}
+   row 0 BEGIN dup k < WHILE
+      over R-RES dup TAG S-PUSH <> IF drop 2drop RES-FALSE EXIT THEN
+      dup P>TYPE UNSIZED-VAR? IF
+         fix 0= IF drop 2drop RES-TRUE EXIT THEN
+         dup P>TYPE T-RES PAY TVK-MOVED TVK-LOWER-TO
+      THEN
+      VALUE-REST 0= IF drop 2drop RES-FALSE EXIT THEN
+      rot drop swap  1 +
+   REPEAT 2drop RES-FALSE ;
+
+: UNSIZED-IN-K? ( n n -- bool ) RES-FALSE UNSIZED-WALK ;
+
+\ A locals group fixes its slots' widths: each UNSIZED var among row's top k
+\ operands becomes MOVED.
+: UNSIZED-FIX ( n n -- ) RES-TRUE UNSIZED-WALK drop ;
+
+\ After the token's step: note the row WF-XPORT-RECORD read if it still holds
+\ an UNSIZED var.
+: WF-NOTE-STEP ( -- )
+   WFN-K @ {: k:n :}  0 WFN-K !
+   k 0=  OK @ 0=  or IF EXIT THEN
+   WFN-ROW @ k UNSIZED-IN-K? 0= IF EXIT THEN
+   WFN-OFF @ WFN-ROW @ k WFN-ADD ;
+
+: WF-NOTE-SCAN ( -- )
+   WFN-N @ 0 ?do
+      i WFN-ROW@ {: r:^ :}
+      r WFN.ROW-OFF + @  r WFN.K-OFF + @  r WFN.OFF-OFF + @  WF-ROW-SCAN
+   loop ;
 
 
 \ One row per cell across one op's groups, its term and its occurrence;
@@ -21185,7 +21304,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    XG-LEN gi cells + @ idx LOC-WIDTH! ;
 : LOC-DECL-GROUPS ( n n -- ) {: decl:n wf0:n :}
    wf0 WF-TOKEN-CUT
-   decl  #LOC @ LGRP @ -  WF-ROW-SCAN
+   decl  #LOC @ LGRP @ -  TSTART @ WF-ROW-SCAN
    decl  #LOC @ LGRP @ -  XG-READ 0= IF
       s" checker: declared local row unreadable" EXIT-STATUS:INTERNAL die
    THEN
@@ -21264,7 +21383,8 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    DCUR @ {: pre:n :}  RCUR @ {: rpre:n :}  WF-N @ {: wf0:n :}
    unj IF pre LOC-DECL-ROW ELSE 0 THEN {: decl:n :}
    pre 0 LOC-BUNDLE-ROW {: cap:n :}  cap DCUR !
-   cap  #LOC @ LGRP @ -  WF-ROW-SCAN
+   cap  #LOC @ LGRP @ -  UNSIZED-FIX
+   cap  #LOC @ LGRP @ -  TSTART @ WF-ROW-SCAN
    \ A captured cell LOC-BUNDLE-ROW leaves open-width binds as one cell of a
    \ wider value: the bind refuses it, typed or not.
    cap  #LOC @ LGRP @ -  XP-OPEN-GROUP {: open:n :}
@@ -21892,6 +22012,43 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    RCUR @ ;
 
 
+0 constant CFM-ARMS
+1 constant CFM-EXIT
+2 constant CFM-LOOP
+
+: CFM-JOIN? ( n n -- bool ) ROW-JOIN-PREP UNIFY-JOIN ;
+
+\ Whether a site of kind passes its own depth checks and joins.
+: CFM-PASS? ( n n n n n -- bool )
+   {: a:n b:n ra:n rb:n kind:n :}
+   kind CFM-LOOP = IF
+      a b ROW-META=  ra rb ROW-META= and 0= IF RES-FALSE EXIT THEN
+      b a UNIFY-JOIN  rb ra UNIFY-JOIN and EXIT
+   THEN
+   kind CFM-ARMS = IF
+      a ROW-CELLS b ROW-CELLS <> IF RES-FALSE EXIT THEN
+   THEN
+   a b CFM-JOIN?  ra rb CFM-JOIN? and ;
+
+\ Keeps the UNSIZED binds that let a site's own depth checks and joins pass,
+\ and none if they would not.
+: CF-MEET ( n n n n n -- )
+   {: a:n b:n ra:n rb:n kind:n :}
+   TRAIL-N @  LATCHES@
+   {: mark:n sh:n ss:n sc:n rf:n ch:n ct:n cv:n fh:n ft:n fk:n bh:n :}
+   a b UNSIZED-MEET  ra rb UNSIZED-MEET
+   TRAIL-N @ {: bound:n :}
+   bound mark <> IF
+      a b ra rb kind CFM-PASS? IF bound ELSE mark THEN TRAIL-UNWIND
+   THEN
+   sh ss sc rf ch ct cv fh ft fk bh LATCHES! ;
+
+\ CF-MEET under the facts the join will use, which its prep reads.
+: CF-MEET-FACTS ( n n n n n n n -- )
+   {: a:n b:n ra:n rb:n fa:n fb:n kind:n :}
+   fa fb FACT-MEET JOIN-FACTS !
+   a b ra rb kind CF-MEET ;
+
 : CF-JOIN-LIVE ( n n n n n n -- )
    {: da:n db:n ra:n rb:n fa:n fb:n :}
    fa fb FACT-MEET JOIN-FACTS !
@@ -22020,6 +22177,8 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    DEADP @ IF EXIT THEN
    idx CF-CASE-HAS? IF
       idx CF-CASE-DATA@ DCUR @ idx CF-CASE-RET@ RCUR @
+      idx CF-ROW CF.FB @ FACTS @ CFM-EXIT CF-MEET-FACTS
+      idx CF-CASE-DATA@ DCUR @ idx CF-CASE-RET@ RCUR @
       idx CF-ROW CF.FB @ FACTS @ CF-JOIN-LIVE
       DCUR @ idx CF-CASE-DATA!
       RCUR @ idx CF-CASE-RET!
@@ -22104,6 +22263,8 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
       if-dead IF
          0 DEADP !
       ELSE
+         CF@B DCUR @ CF@RB RCUR @
+         CF-TOP CF.FB @ FACTS @ CFM-ARMS CF-MEET-FACTS
          CF@B DCUR @ MD-ARMS-DEPTH CF-ARMS-DEPTH
          CF@B DCUR @ CF@RB RCUR @ CF-TOP CF.FB @ FACTS @ CF-JOIN-LIVE
          0 DEADP !
@@ -22125,6 +22286,8 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
            CF-TOP CF.FA @ FACTS !
            entry-d DCUR !  entry-r RCUR !
            CF-TOP CF.FT @ RES-FALSE CF-ARM-FACT
+           DCUR @ true-d RCUR @ true-r
+           FACTS @ true-f CFM-ARMS CF-MEET-FACTS
            true-d DCUR @ MD-IF-DEPTH CF-ARMS-DEPTH
            DCUR @ true-d RCUR @ true-r FACTS @ true-f CF-JOIN-LIVE
            CF@LA CF-LOOPS=
@@ -22140,6 +22303,8 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    -1 WRAPBENT !
    CF-LOOPS @ 0 <> IF MD-EXIT-LOOP CF-FAIL EXIT THEN
    XSET @ IF
+      XROW @ DCUR @ XRROW @ RCUR @
+      XFACT @ FACTS @ CFM-EXIT CF-MEET-FACTS
       XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE
       DCUR @ XROW !  RCUR @ XRROW !  FACTS @ XFACT !
    ELSE
@@ -22166,6 +22331,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    STEP-BOOL-IN
    3 3 MD-CLOSES-NOTHING CF-AT? IF
      DEADP? 0= IF
+        CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
         OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
@@ -22178,6 +22344,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 : CF-AGAIN ( -- )
    3 3 MD-CLOSES-NOTHING CF-AT? IF
      DEADP? 0= IF
+        CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
         OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
@@ -22200,6 +22367,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 : CF-REPEAT
    4 4 MD-CLOSES-NOTHING CF-AT? IF
      DEADP? 0= IF
+        CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
         OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
@@ -22242,6 +22410,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    5 5 CF-LOOP-WHY CF-AT? IF
      DEADP @ IF CF@DED 0= DEADP !
      ELSE
+        CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
         OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
@@ -22282,6 +22451,8 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
       MD-NO-LOOP CF-FAIL
    ELSE
      doidx 1 + CF-LOOPS=
+     doidx CF-ROW CF.SA @ DCUR @
+     doidx CF-ROW CF.RA @ RCUR @ CFM-LOOP CF-MEET
      doidx CF-ROW CF.SA @ DCUR @
      doidx CF-ROW CF.RA @ RCUR @ CF-CARRIED=
      doidx CF-ROW CF.SA @ SUNI-JOIN
@@ -22335,6 +22506,8 @@ variable QTMP
      XSET @ IF
        DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
        ELSE
+          XROW @ DCUR @ XRROW @ RCUR @
+          XFACT @ FACTS @ CFM-EXIT CF-MEET-FACTS
           XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE
        THEN
      THEN
@@ -22538,6 +22711,8 @@ variable MTCH-W                      \ the bundle width the walk below really co
    DEADP @ IF EXIT THEN
    MF-CUR MF.HAS @ 0 <> IF
       FAILSET @ {: fs0:n :}                   \ SUNI-JOIN pins the token itself
+      MF-CUR MF.OUT @ DCUR @ MF-CUR MF.ROUT @ RCUR @
+      #CFC @ 2 - CF-ROW CF.FB @ FACTS @ CFM-EXIT CF-MEET-FACTS
       MF-CUR MF.OUT @ DCUR @ MF-CUR MF.ROUT @ RCUR @
       #CFC @ 2 - CF-ROW CF.FB @ FACTS @ CF-JOIN-LIVE
       DCUR @ MF-CUR MF.OUT !
@@ -24192,7 +24367,7 @@ variable XPORT-TAIL
 }SCRATCH
 
 \ A transport token only moves what it takes from an unsigned definition's or a
-\ quotation literal's open input: each plain var it binds there becomes MOVED.
+\ quotation literal's open input: each plain var it binds there becomes UNSIZED.
 : XPORT-TAIL-ARM ( -- )
    0 XPORT-TAIL !
    LAYOUT-XPORT @ 0=  QDEPTH @ 0=  SGSEEN @ 0 <>  and  or IF EXIT THEN
@@ -24201,7 +24376,7 @@ variable XPORT-TAIL
    XPORT-TAIL @ dup 0= IF drop EXIT THEN
    R-RES BEGIN dup TAG S-PUSH = WHILE
       dup P>TYPE T-RES dup ISVAR IF
-         PAY dup TVK@ TVK-ANY = IF TVK-MOVED TVK-LOWER-TO ELSE drop THEN
+         PAY dup TVK@ TVK-ANY = IF TVK-UNSIZED TVK-LOWER-TO ELSE drop THEN
       ELSE drop THEN
       P>REST R-RES
    REPEAT drop ;
@@ -24233,7 +24408,7 @@ variable XPORT-TAIL
 
 : DO-TOK-TAIL ( str bool n n n -- )
    {: a:^ u:n unj:bool ok-in:n unck-in:n pin-in:n :}
-   XPORT-TAIL-MOVE
+   XPORT-TAIL-MOVE  WF-NOTE-STEP
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are
@@ -24877,7 +25052,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    CLEAR  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
-   0 WF-N !  0 RECW !  0 LOST-N !  0 UNJ-TOK !
+   0 WF-N !  0 WFN-N !  0 WFN-K !  0 RECW !  0 LOST-N !  0 UNJ-TOK !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !  0 CLAUSE-WALK !  0 WALK-ITEMS !
    NZ-RESET ;
 

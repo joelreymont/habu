@@ -103,7 +103,7 @@ EXPORT TFAM:TFL-VPADS
    OK @ 0= IF EXIT THEN
    scope SCOPE-EXTERIOR-XT IF
       SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
-   1 0 0 width WF-ADD-FULL
+   TSTART @ 1 0 0 width WF-ADD-FULL
    REC-ON @ IF
       REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
       REC-IX @ align 0 CW-INIT-ALIGN CWIN-ADD
@@ -160,7 +160,7 @@ EXPORT TFAM:TFL-VPADS
    OK @ 0= IF EXIT THEN
    scope SCOPE-EXTERIOR-XT IF
       SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
-   1 0 0 width WF-ADD-FULL
+   TSTART @ 1 0 0 width WF-ADD-FULL
    REC-ON @ IF
       REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
       REC-IX @ align 0 CW-INIT-ALIGN CWIN-ADD
@@ -204,7 +204,7 @@ EXPORT TFAM:TFL-VPADS
    OK @ 0= IF EXIT THEN
    scope SCOPE-EXTERIOR-XT IF
       SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
-   1 0 0 width WF-ADD-FULL
+   TSTART @ 1 0 0 width WF-ADD-FULL
    REC-ON @ IF
       REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
       REC-IX @ align 0 CW-INIT-ALIGN CWIN-ADD
@@ -957,7 +957,11 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
 : CHECK-FOLD-EXITS ( -- )
    XSET @ IF
      DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
-     ELSE XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE THEN
+     ELSE
+        XROW @ DCUR @ XRROW @ RCUR @
+        XFACT @ FACTS @ CFM-EXIT CF-MEET-FACTS
+        XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE
+     THEN
    THEN ;
 
 : SGHASR? ( -- bool )
@@ -1538,7 +1542,7 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    CK-CLOSE-CLEAR
    \ An unjudged scan's call rows are the width authority whatever its verdict
    \ (UNJ-SPLICE), so a rejected TRUSTED: body still states its call rows.
-   dup -1 = NMU @ 0 > and  BWIN-UNJUDGED @ 0 <> or IF CALL-FINALIZE THEN
+   dup -1 = NMU @ 0 > and  BWIN-UNJUDGED @ 0 <> or IF CALL-FINALIZE WF-NOTE-SCAN THEN
    dup -1 = NMU @ 0 > and IF
       NMA @ NMU @ PUBLISH-REFUSALS
       \ Every fact below is about the symbol the definition is recorded under,
@@ -2390,7 +2394,7 @@ package CHECK
    CHECK-VERDICT dup DVERD !
    dup VERDICT-CHECKED =  over VERDICT-DEFERRED =  or IF SIG-EFF-DROP THEN
    dup 0= IF RIGID-DIAG-CLASSIFY THEN
-   dup -1 = IF CALL-FINALIZE THEN
+   dup -1 = IF CALL-FINALIZE WF-NOTE-SCAN THEN
    \ A clause body is walked like any other but is nobody's definition body, and
    \ the next record after it is the CREATED word's, so what this walk armed
    \ dies here, before the tape's observer, which may refuse the clause.

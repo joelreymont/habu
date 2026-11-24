@@ -244,13 +244,9 @@ variable WIDE-BAD
    ['] DRAIN catch XML:E-STATE T=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
-: BAD-INIT-BODY ( str -- str )
-   dup OPEN XML:SOURCE-CLOSE ;
-
 : BAD-INIT ( str n -- )
    {: want:n :}
-   ['] BAD-INIT-BODY
-   catch want T= drop ;
+   [: dup OPEN XML:SOURCE-CLOSE ;] catch want T= drop ;
 
 \ A rejection's text: the place, what was expected, the token found and the fix.
 : SAID ( n str -- ) {: code:n ws:str :}
