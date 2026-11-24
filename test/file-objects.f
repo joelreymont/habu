@@ -60,10 +60,10 @@ package FILE-OBJECTS-TEST
 43 constant INSIDE-I                     \ and inside-i.f's, which loads inside a package or alone
 44 constant AIO-OBJ                      \ src/lib/aio.f's, which kept-aio.f requires
 45 constant TAILS                        \ TAIL$'s tails
-53 constant FILES-C                     \ build C's objects
-208 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
-192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
-72 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
+52 constant FILES-C                     \ build C's objects
+240 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
+224 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
+104 constant FILES-LEN-FIELD             \ the header's FILES length offset (linker.f WRITE-OBJECT)
 32 constant FILES-ROW                    \ a FILES row's bytes (linker.f FILES-ROW-BYTES)
 24 constant STAMP-BYTES                  \ the stamp an object's INPUT starts with
 16384 constant CAP                       \ an object's bytes
@@ -164,18 +164,23 @@ variable CLASS-N                        \ the class CLASS+ read
    -1 +loop
    0 ;
 
-\ build.f with the kernel object and the mode, if any, as its arguments; dst
-\ gets the output before the given last line. Answers its length, -1 if it did
-\ not exit 0 or overflowed dst.
-: BUILD ( CMD:command ^u8 n ^u8 n ^u8 n ^u8 -- CMD:command n )
-   {: out:^ outu:n mode:^ modeu:n last:^ lastu:n dst:^ :}
+\ build.f with the kernel object and the mode, if any, as its arguments, in the
+\ out root; answers its exit code.
+: BUILD-RUN ( CMD:command ^u8 n ^u8 n -- CMD:command n )
+   {: out:^ outu:n mode:^ modeu:n :}
    CMD:RESET
    s" --load" CMD:ARG+  s" test/fixtures/file-objects/build.f" CMD:ARG+
    s" --" CMD:ARG+  HB-BUILD-CORE:KERNEL$ CMD:ARG+
    modeu 0<> if mode modeu CMD:ARG+ then
    s" HABU_OUT" out outu CMD:ENV+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
-   PROCESS:ENDING>RC RC>N {: rc:n :}
+   PROCESS:ENDING>RC RC>N ;
+
+\ BUILD-RUN; dst gets the output before the given last line. Answers its
+\ length, -1 if it did not exit 0 or overflowed dst.
+: BUILD ( CMD:command ^u8 n ^u8 n ^u8 n ^u8 -- CMD:command n )
+   {: out:^ outu:n mode:^ modeu:n last:^ lastu:n dst:^ :}
+   out outu mode modeu BUILD-RUN {: rc:n :}
    CMD:OUT$ last lastu STR:ENDS-WITH? {: done:bool :}
    done  rc 0 =  and 0= if rc SHOW then
    s" the build's last line is the one expected" LABEL  done TTRUE
@@ -323,11 +328,11 @@ variable CLASS-N                        \ the class CLASS+ read
    FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    cs EXPECT LE:U64!  cns FS:S-IFREG 32 lshift or EXPECT 8 + LE:U64!  size EXPECT 16 + LE:U64! ;
 
-\ Build C's objects: each sequence's, the twins', e.f's, and count.f's and shape.f's, which A also
+\ Build C's objects: each sequence's, the twins', and count.f's and shape.f's, which A also
 \ writes; a refused file writes none, and count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote fifty-three objects" LABEL  C$ OBJECTS FILES-C T=
+   s" the build wrote fifty-two objects" LABEL  C$ OBJECTS FILES-C T=
    C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
@@ -340,9 +345,8 @@ variable CLASS-N                        \ the class CLASS+ read
 \ earlier file that defines a public name it spells, or a private name of a package it opens, is
 \ edited, when an earlier file lays a string its object lays, when it is loaded without the
 \ files its object names, when files that
-\ stored into a cell it read load in another order, when its records do not fit the dictionary, or
-\ when the link refuses its object or would link it wrong; any other file links, a compile after it
-\ included.
+\ stored into a cell it read load in another order, or when its records do not fit the dictionary;
+\ any other file links, a compile after it included.
 : CHECK-EDIT ( -- )
    s" C" WHICH!
    s" the mixed builds compile 0, 1 and 0 files" LABEL
@@ -365,10 +369,8 @@ variable CLASS-N                        \ the class CLASS+ read
    STATE-W STATE-W-U @ s\" order: compiled 4 3 0 3\n" STR:CONTAINS? TTRUE
    s" the build after the body's caught text that left a record is rejected E-FAILED" LABEL
    STATE-W STATE-W-U @ s\" none: compiled -9690\n" STR:CONTAINS? TTRUE
-   s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 0\n" STR:CONTAINS? TTRUE
-   s" the words builds compile 5, 4, 0, 2, 1, 1 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" words: compiled 5 4 0 2 1 1 0\n" STR:CONTAINS? TTRUE
+   s" the words builds compile 5, 4, 0 and 2 files, then stop 70 at c.f's A2" LABEL
+   STATE-W STATE-W-U @ s\" words: compiled 5 4 0 2 70\n" STR:CONTAINS? TTRUE
    s" the ran builds compile 4, 1, 3, 0, 3 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" ran: compiled 4 1 3 0 3 0\n" STR:CONTAINS? TTRUE
    s" the stores builds compile 4, 1, 2, 2, 2, 0 and 2 files" LABEL
@@ -477,29 +479,55 @@ variable CLASS-N                        \ the class CLASS+ read
 : WARM-A ( CMD:command -- CMD:command )
    s" A2" WHICH!  COLD-ASIDE  s\" compiled 0\n" WARM ;
 
-\ A4's edit: count.f's object cut to half its length.
-: CUT ( -- )
-   A$ s" A" 0 FOUND? 0= if exit then
+\ A4's edit: count.f's object cut to half its length; false when A wrote no such object.
+: CUT ( -- bool )
+   A$ s" A" 0 FOUND? 0= if false exit then
    FOUND$ BYTES-A CAP FS:READ-ALL {: u:n :}
-   FOUND$ BYTES-A u 2 / FS:WRITE-ALL ;
+   FOUND$ BYTES-A u 2 / FS:WRITE-ALL  true ;
 
 \ A5's edit: count.f's object grown in place to 2^48 bytes, past what mmap maps on an arm64
 \ host; the bytes added are a hole, so the disk holds none.
-: GROW ( -- )
-   A$ s" A" 0 FOUND? 0= if exit then
+: GROW ( -- bool )
+   A$ s" A" 0 FOUND? 0= if false exit then
    FOUND$ FS:OPEN-APPEND-FD >FD {: f:fd :}
    f 1 48 lshift FD:RESIZE
-   f FD>N close ;
+   f FD>N close  true ;
 
-\ Guards a cut object: count.f compiles, and its piece's new time compiles shape.f, main.f, reopen.f and
-\ mark.f, whose objects name that piece by its time; again.f's two loads link.
+\ A6's edit: one byte of count.f's object flipped, the first of INPUT's stamp, so every length
+\ and offset in it still holds.
+: FLIP ( -- bool )
+   A$ s" A" 0 FOUND? 0= if false exit then
+   FOUND$ BYTES-A CAP FS:READ-ALL {: u:n :}
+   BYTES-A HEADER-BYTES + dup c@ $FF xor swap c!
+   FOUND$ BYTES-A u FS:WRITE-ALL  true ;
+
+\ After FOUND$'s edit the build stops with DATAERR, its record naming the object, which stays; once deleted,
+\ count.f compiles and its new time compiles shape.f, main.f, reopen.f and mark.f; again.f's loads link.
+: DAMAGED ( CMD:command str bool -- CMD:command )
+   {: why:^ why-n:n edited:bool :}
+   edited 0= if exit then
+   A$ s" " BUILD-RUN {: rc:n :}
+   SB-RESET  s" ]: " SB-APPEND  FOUND$ SB-APPEND
+   CMD:ERR$ SB$ STR:CONTAINS? {: named:bool :}
+   CMD:ERR$ s" E-DAMAGED-OBJECT" STR:CONTAINS?  named and {: coded:bool :}
+   CMD:ERR$ why why-n STR:CONTAINS?  coded and {: said:bool :}
+   rc EXIT-STATUS:DATAERR =  said and  0= if rc SHOW then
+   s" the build stops on the damaged object" LABEL  rc EXIT-STATUS:DATAERR T=
+   s" its record names the object and why" LABEL  said TTRUE
+   s" the object stays" LABEL  FOUND$ FS:EXISTS? TTRUE
+   FOUND$ FS:REMOVE-FILE
+   s\" compiled 5\n" WARM ;
+
 : WARM-CUT ( CMD:command -- CMD:command )
-   s" A4" WHICH!  CUT  s\" compiled 5\n" WARM ;
+   s" A4" WHICH!  s"  is not the file hb wrote" CUT DAMAGED ;
 
 \ macOS only: Linux ext4 refuses a file past 16 TiB, so FD:RESIZE throws E-FS-IO there.
 : WARM-GROW ( CMD:command -- CMD:command )
    HB-TARGET-MACOS? 0= if exit then
-   s" A5" WHICH!  GROW  s\" compiled 5\n" WARM ;
+   s" A5" WHICH!  s"  cannot be read" GROW DAMAGED ;
+
+: WARM-FLIP ( CMD:command -- CMD:command )
+   s" A6" WHICH!  s"  is not the file hb wrote" FLIP DAMAGED ;
 
 \ Guards a new first file: pad.f compiles, and so do main.f and mark.f, which spell its SCRATCH and FIRST,
 \ and reopen.f, which runs count.f's LATER after main.f stores into count.f's data; the other four link.
@@ -2042,10 +2070,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N BUILT? ;
 
-\ Guards a warm build's read of type entries that name each other (type-family.f
-\ ER-STATE): MT2 links mt.f, whose mtlink entry holds mtnode by value, compiles
-\ mt-main.f after a comment is added, and writes the program and map that MT3, a
-\ cold build of the same files, writes.
+\ Guards a warm build's read of type entries that name each other: MT2 links
+\ mt.f, whose mtlink entry holds mtnode by value, compiles mt-main.f after a
+\ comment is added, and writes the program and map that MT3, a cold build of
+\ the same files, writes.
 : MUTUAL-CASE ( CMD:command -- CMD:command )
    WRITE-MUTUAL
    s" MT" WHICH!  s" mt-main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
@@ -2492,7 +2520,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE RECORD-CASE ZERO-CASE PATH-CASE STALE-CASE HIDDEN-CASE
+   [: WARM-A WARM-CUT WARM-GROW WARM-FLIP WARM-B WARM-E LOG-CASE PT-CASE RECORD-CASE ZERO-CASE PATH-CASE STALE-CASE HIDDEN-CASE
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
       CAUGHT-PASSED-CASE CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CAUGHT-AGAIN-CASE CTOR-CASE EXPORT-CASE

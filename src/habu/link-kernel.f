@@ -5,6 +5,7 @@ split-str
 \ reaches. The two kernels bake different inputs, so the map goes
 \ by name and wordlist.
 require src/core/exit-status.f
+require src/lib/error.f
 require src/lib/le.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -30,6 +31,47 @@ private
 
 : SAY-CR ( -- ) s\" \n" SAY ;
 
+\ An object hb writes, a file or the kernel's, opens with an 8-byte magic and then
+\ the SHA-256 of its bytes from 40 to its end. The span holds at least 40 bytes.
+SHA256-CTX-BYTES BUFFER: SHA-CTX
+32 BUFFER: SUM
+
+: SUM-OF ( str -- ) {: a:^ u:n :}
+   SHA-CTX  a 40 +  u 40 -  SUM SHA256-IN ;
+
+: SEALED? ( str -- bool ) {: a:^ u:n :}
+   a u SUM-OF  SUM 32  a 8 + 32  STR:= ;
+
+: SEAL ( str -- ) {: a:^ u:n :}
+   a u SUM-OF  SUM  a 8 +  32 BYTE-COPY ;
+
+: DAMAGE-END ( str -- )
+   s" cause" REJECTION:NOTE  REJECTION:EMIT-STR
+   REJECTION:HELP  s" delete it and build again" REJECTION:EMIT-STR
+   EXIT-STATUS:DATAERR REJECTION:STOP ;
+
+\ Stops the build with status DATAERR: the object at the path is not as hb
+\ wrote it, for the cause.
+: DAMAGED ( str str -- ) {: p:^ pu:n c:^ cu:n :}
+   s" E-DAMAGED-OBJECT" REJECTION:OPEN
+   p pu REJECTION:EMIT-STR  s"  is not the file hb wrote" REJECTION:EMIT-STR
+   c cu DAMAGE-END ;
+
+\ Stops the build with status DATAERR: the object at the path cannot be
+\ read, for the cause.
+: UNREADABLE ( str str -- ) {: p:^ pu:n c:^ cu:n :}
+   s" E-DAMAGED-OBJECT" REJECTION:OPEN
+   p pu REJECTION:EMIT-STR  s"  cannot be read" REJECTION:EMIT-STR
+   c cu DAMAGE-END ;
+
+\ Stops the build as UNREADABLE for a code caught opening, sizing, reading or
+\ mapping the object at the path. The caller throws any other code on itself,
+\ which keeps the caught record.
+: READ-FAILED ( str n -- ) {: p:^ pu:n code:n :}
+   code E-FS-OPEN =  code E-FS-STAT = or  code E-FS-IO = or  code E-MEM-MAP = or  if
+      p pu  code ERROR:NAME$  UNREADABLE
+   then ;
+
 EXPORT BOOT:data-base
 EXPORT CHECK:PRIM-NAME
 EXPORT CHECK:PRIM-OPEN
@@ -46,8 +88,8 @@ DYNAMIC-BUFFER ROWS n
 variable N-HOSTS
 
 
-\ READ checks the whole object and every section's extent once, so the readers
-\ after it index it unchecked.
+\ CHECK passes only an object as hb wrote it, and BAD stops one whose layout
+\ this hb does not read, so the readers index it unchecked.
 
 DYNAMIC-BUFFER KOBJ u8
 variable KOBJ-U                      \ its length, 0 before READ
@@ -80,8 +122,6 @@ variable CHECK-ROWS-AT               \ the checker rows' bytes in KOBJ
 variable CHECK-ROWS-U
 DYNAMIC-BUFFER OWNED-AT n            \ each package-private row's package, then name: offset in KOBJ, length
 variable OWNED-ROWS
-SHA256-CTX-BYTES BUFFER: SHA-CTX
-32 BUFFER: SUM
 PATH-CAP BUFFER: PATH                \ READ's path, for its error lines
 variable PATH-U
 
@@ -90,7 +130,7 @@ variable PATH-U
 
 : BAD ( -- )
    SAY-OBJECT
-   s" link: the kernel object is cut short or malformed" EXIT-STATUS:DATAERR die ;
+   s" link: this hb does not read the kernel object's layout: build its tree with a stage (docs/bootstrap.md)" EXIT-STATUS:DATAERR die ;
 
 : KOBJ@ ( n -- n ) 0 KOBJ swap + LE:U64@ ;
 
@@ -148,11 +188,6 @@ variable PATH-U
    1 TABLE SCOPES-N ! SCOPES-AT !
    SYMBOLS
    2 TABLE PRESETS-N ! PRESETS-AT !
-   AT @ KOBJ-U @ = if
-      SAY-OBJECT
-      s" link: the kernel object has no checker rows: its tree is older than this hb"
-      EXIT-STATUS:DATAERR die
-   then
    IMPORTS MACHO-U ! MACHO-AT !
    IMPORTS ELF-U ! ELF-AT !
    NEXT {: rowsu:n :}
@@ -160,14 +195,12 @@ variable PATH-U
    AT @ KOBJ-U @ <> if BAD then ;
 
 : CHECK ( -- )
-   KOBJ-U @ 40 < if BAD then
+   KOBJ-U @ 40 < if PATH PATH-U @ s" checksum" DAMAGED then
    0 KOBJ 8 s" HBKERNX6" STR:= X64!
-   X64? 0= if 0 KOBJ 8 s" HBKERNEL" STR:= 0= if BAD then then
-   SHA-CTX  0 KOBJ 40 +  KOBJ-U @ 40 -  SUM SHA256-IN
-   SUM 32  0 KOBJ 8 + 32  STR:= 0= if
-      SAY-OBJECT
-      s" link: the kernel object fails its checksum" EXIT-STATUS:DATAERR die
-   then ;
+   X64? 0= if
+      0 KOBJ 8 s" HBKERNEL" STR:= 0= if PATH PATH-U @ s" checksum" DAMAGED then
+   then
+   0 KOBJ KOBJ-U @ SEALED? 0= if PATH PATH-U @ s" checksum" DAMAGED then ;
 
 : LABEL-AT ( n -- n ) 8 * LABELS-AT @ + KOBJ@ ;
 
@@ -275,33 +308,15 @@ public
 
 private
 
-\ A cell-aligned offset whose cell lies whole in [0, start); start is cell-aligned.
-: IN-HEADER? ( n n -- bool )
-   {: off:n start:n :}
-   off 7 and 0=  off 0 >= and  off start < and ;
-
-public
-
-\ The offset of a header cell the link reads or writes; one whose cell does not
-\ lie whole below the object's DATA-START makes the object malformed.
-: HEADER-CELL ( n -- n )
-   dup s" DATA-START" SYM IN-HEADER? 0= if BAD then ;
-
-private
-
-: CEILING-IN ( n -- )
-   {: start:n :}
-   s" DP-CEILING-OFF" SYM {: ceil:n :}
-   s" DATA-SIZE" SYM {: size:n :}
-   ceil size or 7 and 0<>  ceil start < or  ceil size > or
-   if BAD then ;
-
-\ DATA-START is cell-aligned, and the dictionary's ceiling lies between it and
-\ DATA's end.
-: HEADER-BOUNDS ( -- )
-   s" DATA-START" SYM {: start:n :}
-   start 7 and 0<> if BAD then
-   start CEILING-IN ;
+\ The file at the path into KOBJ and its length into KOBJ-U; false when it is
+\ missing.
+: KOBJ-FILL ( str -- bool )
+   {: path:^ pathu:n :}
+   path pathu FS:OPEN-SIZED {: file:fd size:n found:bool :}
+   found 0= if false exit then
+   size 1 max KOBJ-RESERVE
+   file 0 KOBJ size FS:READ-SIZED
+   size KOBJ-U !  true ;
 
 public
 
@@ -312,15 +327,14 @@ public
    0 KOBJ-U !
    pathu PATH-CAP min PATH-U !
    path PATH PATH-U @ BYTE-COPY
-   path pathu FS:OPEN-SIZED {: file:fd size:n found:bool :}
+   [: path pathu KOBJ-FILL ;] catch {: found code:n :}
+   path pathu code READ-FAILED
+   code 0<> if code throw then
    found 0= if
       s" link: no kernel object at " SAY path pathu SAY SAY-CR
       s" link: the kernel object is missing" EXIT-STATUS:NOINPUT die
    then
-   size 1 max KOBJ-RESERVE
-   file 0 KOBJ size FS:READ-SIZED
-   size KOBJ-U !
-   CHECK SECTIONS HEADER-BOUNDS
+   CHECK SECTIONS
    s" DATA-START" SYM {: theirs:n :}
    theirs DATA-START > if
       SAY-OBJECT

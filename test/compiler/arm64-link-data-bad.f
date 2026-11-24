@@ -2,9 +2,8 @@ split-str
 \ arm64-link-data-bad.f - a program whose link LINKER:WRITE refuses, one per
 \ process, chosen by the first script argument: `data`, a cell declared as a
 \ DATA pointer that holds an address outside the build's space, read by the
-\ entry, since a stripped link checks only the data its entry reaches;
-\ `header`, an empty entry, refused only by a malformed kernel object when the
-\ link writes the header cells; `eval`, an entry that calls `evaluate-closed`.
+\ entry, since a stripped link checks only the data its entry reaches; `eval`,
+\ an entry that calls `evaluate-closed`.
 \ The second argument is the kernel object the link adopts, the third the path
 \ it would write.
 \ test/compiler/arm64-link-data.f runs each and checks it.
@@ -37,12 +36,6 @@ CAST: ENTRY-XT ( n -- [ -- ] )
    s" arm64-link-data-bad: the DATA pointer was not refused" EXIT-STATUS:FAILURE die ;
 
 
-: HEADER-BODY ( -- )
-   s" : LD-HB ( -- ) ;" evaluate-closed
-   s" LD-HB" WORD-XT  APP-ENTRY:XT!  WRITE
-   s" arm64-link-data-bad: the kernel object was not refused" EXIT-STATUS:FAILURE die ;
-
-
 : EVAL-BODY ( -- )
    s\" : LD-EV ( -- ) s\" \" evaluate-closed ;" evaluate-closed
    s" LD-EV" WORD-XT  APP-ENTRY:XT!  WRITE
@@ -55,9 +48,8 @@ public
    1 SCRIPT-ARGV$ LINKER:KERNEL
    0 SCRIPT-ARGV$ {: at:^ u:n :}
    at u s" data" STR:= if s" app" RTARGET:HOST-TARGET [: DATA-BODY ;] LINKER:WITH exit then
-   at u s" header" STR:= if s" app" RTARGET:HOST-TARGET [: HEADER-BODY ;] LINKER:WITH exit then
    at u s" eval" STR:= if s" app" RTARGET:HOST-TARGET [: EVAL-BODY ;] LINKER:WITH exit then
-   s" arm64-link-data-bad: the case is data, header or eval" EXIT-STATUS:FAILURE die ;
+   s" arm64-link-data-bad: the case is data or eval" EXIT-STATUS:FAILURE die ;
 
 ;package
 

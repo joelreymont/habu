@@ -15,11 +15,10 @@ split-str
 \ only reads, prints the sum, then blocks on stdin; while it blocks, its
 \ smaps shows the table's pages in DATA as file pages, not Anonymous ones.
 \ Each refusal (arm64-link-data-bad.f) dies, so each runs in its own child.
-\ The data child also runs on three malformed copies of the kernel object, one
-\ failing its checksum, one whose DATA-START is off a cell and one whose Mach-O
-\ import names do not end in a NUL, which its read refuses before the child
-\ arms; the header child runs on a fourth, whose DP-CELL lies at its
-\ DATA-START, which the link refuses at that cell after it arms.
+\ The data child also runs on copies of the kernel object, one with a code byte
+\ flipped, which fails its checksum, and one with a cell appended and its sum
+\ written again, whose layout hb does not read: its read stops the child before
+\ it arms.
 \ Fixture words are LD- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
@@ -42,7 +41,6 @@ require src/habu/xref.f
 require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-data.f
-require src/os/macos/macho.f
 require tools/hb-build-core.f
 
 package ARM64-LINK-DATA
@@ -222,68 +220,27 @@ HB-TARGET-LINUX? 0= [if]
    s" eval"  s" error[E-CANNOT-RUN-STRIPPED]: `LD-EV` calls `evaluate-closed`" 70 BAD-CHILD ;
 
 
-SHA256-CTX-BYTES BUFFER: SHA-CTX
-24 BUFFER: START-SYM                 \ a symbol's length cell, then its name
-
-\ The offset of the value of the symbol named name, at most 16 bytes, in the
-\ object, -1 if none: the name is padded to a cell.
-: START-AT ( str str -- n )
-   {: a:^ u:n name:^ name-n:n :}
-   name-n START-SYM LE:U64!  name START-SYM 8 + name-n BYTE-COPY
-   a u START-SYM name-n 8 + STR:FIND-SUB MATCH option
-      none OF -1 ENDOF
-      some OF IDX>N 8 +  name-n 7 + -8 and + ENDOF
-   ;MATCH ;
-
-\ The checksum, bytes 8-40, as the SHA-256 of the object's bytes 40 on.
-: RESUM ( str -- )
-   {: a:^ u:n :}
-   SHA-CTX  a 40 +  u 40 -  a 8 + SHA256-IN ;
-
 \ The kernel object with a code byte flipped, written to flipped.
 : FLIPPED ( -- )
    HB-BUILD-CORE:KERNEL$ FILE-BYTES {: a:^ u:n :}
    a 48 + c@ $ff xor a 48 + c!
    s" flipped" PROG$ a u FS:WRITE-ALL  FIRST-LINK-RELEASE ;
 
-\ The kernel object with DATA-START 4 lower and the checksum over it, written
-\ to shifted.
-: SHIFTED ( -- )
-   HB-BUILD-CORE:KERNEL$ FILE-BYTES {: a:^ u:n :}
-   a u s" DATA-START" START-AT {: at:n :}
-   s" the kernel object has a DATA-START symbol" T-LABEL  at 0 >= TTRUE
-   at 0< if FIRST-LINK-RELEASE exit then
-   a at + LE:U64@ 4 -  a at + LE:U64!
-   a u RESUM
-   s" shifted" PROG$ a u FS:WRITE-ALL  FIRST-LINK-RELEASE ;
+create SHA-CTX SHA256-CTX-BYTES allot
 
-\ The kernel object with the DP-CELL symbol at its DATA-START, a header cell
-\ outside the header, and the checksum over it, written to dp-at-start.
-: DP-AT-START ( -- )
-   HB-BUILD-CORE:KERNEL$ FILE-BYTES {: a:^ u:n :}
-   a u s" DATA-START" START-AT {: start:n :}
-   a u s" DP-CELL" START-AT {: dp:n :}
-   s" the kernel object has DATA-START and DP-CELL symbols" T-LABEL
-   start 0 >=  dp 0 >=  and TTRUE
-   start 0<  dp 0<  or if FIRST-LINK-RELEASE exit then
-   a start + LE:U64@  a dp + LE:U64!
-   a u RESUM
-   s" dp-at-start" PROG$ a u FS:WRITE-ALL  FIRST-LINK-RELEASE ;
+\ Writes the object's sum as hb does, so the copy passes its checksum.
+: RESEAL ( str -- ) {: a:^ u:n :}
+   SHA-CTX  a 40 +  u 40 -  a 8 +  SHA256-IN ;
 
-\ The kernel object with the NUL ending its Mach-O imports' last name made an
-\ x, and the checksum over it, written to unended.
-: UNENDED ( -- )
-   HB-BUILD-CORE:KERNEL$ FILE-BYTES {: a:^ u:n :}
-   SB-RESET  MACHO:IMPORTS 0 ?do i MACHO:IMPORT$ SB-APPEND  0 SB-APPEND-C loop
-   a u SB$ STR:FIND-SUB MATCH option
-      none OF -1 ENDOF
-      some OF IDX>N SB$ nip + 1 - ENDOF
-   ;MATCH {: at:n :}
-   s" the kernel object holds the Mach-O import names" T-LABEL  at 0 >= TTRUE
-   at 0< if FIRST-LINK-RELEASE exit then
-   [char] x a at + c!
-   a u RESUM
-   s" unended" PROG$ a u FS:WRITE-ALL  FIRST-LINK-RELEASE ;
+\ The kernel object with a zero cell appended and its sum written again, written
+\ to grown.
+: GROWN ( -- )
+   HB-BUILD-CORE:KERNEL$ FILE-BYTES nip {: u:n :}
+   u 8 + FIRST-LINK-RESERVE
+   0  u FIRST-LINK LE:U64!
+   0 FIRST-LINK u 8 + {: g:^ gu:n :}
+   g gu RESEAL
+   s" grown" PROG$ g gu FS:WRITE-ALL  FIRST-LINK-RELEASE ;
 
 \ The data child on the object at name, refused by its read for the reason err
 \ before it arms, exits 65.
@@ -296,17 +253,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    name name-n s" the read exits 65" CHILD-LABEL  rc 65 T= ;
 
 : BAD-FLIPPED ( CMD:command -- CMD:command )
-   s" flipped"  s" link: the kernel object fails its checksum" BAD-OBJECT ;
+   s" flipped"  s"  is not the file hb wrote" BAD-OBJECT ;
 
-: BAD-SHIFTED ( CMD:command -- CMD:command )
-   s" shifted"  s" link: the kernel object is cut short or malformed" BAD-OBJECT ;
-
-: BAD-UNENDED ( CMD:command -- CMD:command )
-   s" unended"  s" link: the kernel object is cut short or malformed" BAD-OBJECT ;
-
-: BAD-DP-AT-START ( CMD:command -- CMD:command )
-   s" header"  s" dp-at-start" PROG$  s" dp-at-start"
-   s" link: the kernel object is cut short or malformed" 65 BAD-LINK ;
+: BAD-GROWN ( CMD:command -- CMD:command )
+   s" grown"  s" does not read the kernel object's layout" BAD-OBJECT ;
 
 
 HB-TARGET-LINUX? [if]
@@ -449,11 +399,10 @@ public
    [: RUN-MAIN ;] CMD:WITH-COMMAND
    [: RUN-OVER ;] CMD:WITH-COMMAND
    [: BAD-DATA ;] CMD:WITH-COMMAND
-   FLIPPED  SHIFTED  UNENDED  DP-AT-START
+   FLIPPED
    [: BAD-FLIPPED ;] CMD:WITH-COMMAND
-   [: BAD-SHIFTED ;] CMD:WITH-COMMAND
-   [: BAD-UNENDED ;] CMD:WITH-COMMAND
-   [: BAD-DP-AT-START ;] CMD:WITH-COMMAND
+   GROWN
+   [: BAD-GROWN ;] CMD:WITH-COMMAND
    [: BAD-EVAL ;] CMD:WITH-COMMAND
    RUN-HELD
    ROOT$ FS:REMOVE-TREE

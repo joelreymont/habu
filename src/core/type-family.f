@@ -62,7 +62,6 @@ EXPORT SCHEMA-REG:SCHEMA-XT?
 3 constant TK-ENUM          \ payload-free sum
 
 4 constant TK-EVIDENCE      \ compile-only evidence family
-4 constant TK-MAX
 
 \ --- layout policy (physical representation); the default is TL-STACK-CELL-TAG.
 
@@ -71,8 +70,6 @@ EXPORT SCHEMA-REG:SCHEMA-XT?
 2 constant TL-NICHE
 3 constant TL-BOXED
 4 constant TL-CUSTOM
-
-4 constant TL-MAX
 
 \ --- parameter kind (kind of each of a family's `arity` parameters).
 
@@ -83,7 +80,6 @@ EXPORT SCHEMA-REG:SCHEMA-XT?
 5 constant PK-REGION       \ non-value host allocation identity
 
 3 constant PK-EVIDENCE
-5 constant PK-MAX
 
 \ Visibility reuses the checker's package modes so registry and package scope
 \ never diverge: CHECKER-PACKAGE-PRIVATE (1) / CHECKER-PACKAGE-PUBLIC (2).
@@ -220,7 +216,6 @@ EXPORT CHECK:CW-MEMBER-OFFSET
 EXPORT CHECK:CW-MEMBER-SPAN
 EXPORT CHECK:CW-MEMBER-STRIDE
 EXPORT CHECK:CWIN-ADD
-EXPORT CHECK:DAMAGED-OBJECT
 EXPORT CHECK:DCUR
 EXPORT CHECK:EFFECT-TYPE-FAM
 EXPORT CHECK:ENTRIES-PENDING
@@ -489,7 +484,6 @@ private
 4 constant DRV-ADDR              \ address surface: one accessor per field
 8 constant DRV-INIT              \ initialized-record field accessors
 16 constant DRV-TAG              \ checked conversion from a tag, TAG>
-DRV-EQ DRV-HASH or DRV-ADDR or DRV-INIT or DRV-TAG or constant DRV-ALL
 
 : TFAM-DERIVE@ ( n -- n ) TF-REC@ TF.DERIVE @ ;
 
@@ -715,7 +709,6 @@ variable TFX-CUR              \ private bucket-walk cursor
 
 \ --- declaration. Storage only ever sees canonical lowercase tails.
 
-: TFAM-KIND-VALID? ( n -- bool ) {: k:n :} k 0 >= k TK-MAX <= and ;
 : TFAM-PK-RESERVE ( n -- ) {: k:n :}        \ default every parameter to PK-CELL
    0 BEGIN dup k < WHILE
       PK-CELL TF-PK+
@@ -2032,12 +2025,6 @@ private
    a u PF-RESERVED? IF E-PF-NAME throw THEN ;
 
 : PF-FAM-LIVE? ( n -- bool ) {: fam:n :} fam 0 >= fam TFAM-N @ < and ;
-: PF-OWNER-OK? ( n n -- bool ) {: fam:n var:n :}
-   fam PF-FAM-LIVE? 0= IF RES-FALSE EXIT THEN
-   var PF-NO-VARIANT = IF fam TFAM-PRODUCT? EXIT THEN
-   var 0 < var SUMV-N @ >= or IF RES-FALSE EXIT THEN
-   var SUMV-FAM@ fam =
-   fam TFAM-SUM? fam TFAM-ENUM? or and ;
 
 EXPORT CHECKER-RESOLVE:TOP$
 
@@ -2197,17 +2184,6 @@ PTR-VARIABLE PF-MEMO-P   variable PF-MEMO-CAP
 : PF-QUOT-ROW-INSTALL ( -- ) [: PF-QUOT-ROW-OK-IMPL ;] is PF-QUOT-ROW-OK? ;
 PF-QUOT-ROW-INSTALL
 
-: PF-SCHEMA-OK? ( n n -- bool ) {: owner:n sch:n :}
-   sch 0 < sch SCH-ROOT-N @ >= or IF RES-FALSE EXIT THEN
-   sch SCHEMA-ROOT@ {: node:n :}
-   owner node PF-NODE-KIND? IF
-      {: kind:n :}
-      node SCHEMA-PARAM? IF
-         owner C2-INIT-FAM @ = node SCHEMA-A@ 1 = and IF kind PK-TYPE =
-         ELSE kind PK-CELL = THEN EXIT
-      THEN kind PF-NONVALUE? 0= EXIT
-   THEN drop RES-FALSE ;
-
 \ --- declaration-time parameter-arity walk for SUM variant payloads. TFC-SCH-TERM
 \ (construct/MATCH) indexes its minted-var scratch by parameter index with no
 \ bounds guard, so a payload parameter beyond arity would be a silent
@@ -2255,74 +2231,6 @@ defer TFAM-SCH-ROW-ARITY ( n n -- n )   \ ( owner rownode -- bad-idx ) forward r
 : TFAM-SCH-ROW-ARITY-INSTALL ( -- ) [: TFAM-SCH-ROW-ARITY-IMPL ;] is TFAM-SCH-ROW-ARITY ;
 TFAM-SCH-ROW-ARITY-INSTALL
 
-: PF-RANGE-OVERLAP? ( n n n n -- bool ) {: a:n au:n b:n bu:n :}
-   a b bu + < b a au + < and ;
-: PF-U8? ( n -- bool ) {: node:n :}   \ a buffer's schema: the con u8
-   node SCHEMA-CON? IF node SCHEMA-A@ CC-U8 = ELSE RES-FALSE THEN ;
-
-\ --- entry reads (TFAM-FIND, below). A family read from its type entry is
-\ first its head (ER-HEAD: declared, with its layout policy), then,
-\ after every family its entry names, its body (ER-BODY: variants, fields,
-\ layout rows); TFAM-FIND decides both by where it is, so a family holds no
-\ read state. MUTUAL members name each other, so a member's body can be read
-\ while a member it holds by value has only its head and no fields, which
-\ would measure 0 cells wide. The read as a whole is one machine, ER-STATE:
-\   ER-IDLE  no entry is being read.
-\   ER-OPEN  an entry is being read; the width check of each field row from
-\            ER-MARK on waits for the outermost read's end.
-\ IDLE -> OPEN  the outermost TFAM-FIND starts reading an entry: ER-MARK := PF-N.
-\ OPEN -> OPEN  a read inside it, which adds rows past ER-MARK.
-\ OPEN -> IDLE  the outermost read returns, every body read; it then checks the
-\               rows from ER-MARK on (PF-WIDTHS-REQUIRE): by-value containment
-\               is acyclic, so every width they read is now whole.
-\ OPEN -> IDLE  a throw leaves the outermost read, which rethrows it.
-0 constant ER-IDLE
-1 constant ER-OPEN
-variable ER-STATE   ER-IDLE ER-STATE !
-variable ER-MARK    0 ER-MARK !
-
-: PF-OVERLAP? ( n n n n n n -- bool )
-   {: fam:n var:n slot:n cellsn:n boff:n bytesn:n :}
-   fam var FVX-FIRST
-   BEGIN dup 0 <> WHILE
-      dup 1 - PF-REC@ {: r:^ :}
-      fam var r PF-ROW-OWNER? IF
-         slot cellsn r PF.SLOT @ r PF.CELLS @ PF-RANGE-OVERLAP? IF drop RES-TRUE EXIT THEN
-         boff bytesn r PF.BYTE-OFF @ r PF.BYTES @ PF-RANGE-OVERLAP? IF drop RES-TRUE EXIT THEN
-      THEN
-      FVX-NEXT
-   REPEAT
-   drop RES-FALSE ;
-
-\ A field's slot and cells: whole cells that end within PF-MAX-N bytes.
-: PF-SLOTS-OK? ( n n -- bool ) {: slot:n cellsn:n :}
-   slot 0 < cellsn 1 < or IF RES-FALSE EXIT THEN
-   cellsn PF-MAX-N CELL / slot - <= ;
-\ A field starts at its slot's first byte, aligned to a cell.
-: PF-CELL-ALIGNED? ( n n n -- bool ) {: slot:n boff:n al:n :}
-   al CELL =  boff slot cells =  and ;
-\ A buffer is u8 bytes, at least one, that end in its last cell; any other
-\ field fills its cells.
-: PF-BYTES-OK? ( n n n n -- bool ) {: sch:n cellsn:n bytesn:n flags:n :}
-   flags PF-FLAG-BUFFER <> IF bytesn cellsn cells = EXIT THEN
-   sch SCHEMA-ROOT@ PF-U8? 0= IF RES-FALSE EXIT THEN
-   bytesn 1 < IF RES-FALSE EXIT THEN
-   bytesn 1 - CELL / 1 + cellsn = ;
-: PF-POLICY-OK? ( n -- bool )   \ a policy that lays out fields
-   TFAM-LAYOUT-POLICY@ {: p:n :}
-   p TL-STACK-CELL-TAG =  p TL-PACKED-TAG =  or  p TL-NICHE =  or ;
-\ A field row's numbers in the ranges hb writes, all but its width
-\ (PF-WIDTHS-REQUIRE). Each test reads only what the tests before it found in
-\ range: a live family, a schema root, cells that fit.
-: PF-ROW-OK? ( n n n n n n n n n -- bool )
-   {: fam:n var:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   fam var PF-OWNER-OK? 0= IF RES-FALSE EXIT THEN
-   fam sch PF-SCHEMA-OK? 0= IF RES-FALSE EXIT THEN
-   fam PF-POLICY-OK? 0= IF RES-FALSE EXIT THEN
-   slot cellsn PF-SLOTS-OK? 0= IF RES-FALSE EXIT THEN
-   slot boff al PF-CELL-ALIGNED? 0= IF RES-FALSE EXIT THEN
-   sch cellsn bytesn flags PF-BYTES-OK? 0= IF RES-FALSE EXIT THEN
-   fam var slot cellsn boff bytesn PF-OVERLAP? 0= ;
 : PF-DUP? ( n n str -- bool ) {: fam:n var:n na:^ nu:n :}
    fam var FVX-FIRST
    BEGIN dup 0 <> WHILE
@@ -3367,12 +3275,6 @@ create ET-CH 8 allot
    ET-BUF @ ET-N @ ;
 
 PTR-VARIABLE ER-P   variable ER-U          \ the rest of the text being read
-PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
-
-\ The type entry being read does not read as this tree's writer wrote it.
-: ER-BAD ( -- )
-   s" type entry"  ER-NAME @ ER-NAME-U @  DAMAGED-OBJECT ;
-
 
 \ The index of the last ':' in a name, -1 for none.
 : LAST-COLON ( str -- n ) {: a:^ u:n :}
@@ -3401,44 +3303,26 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
 
 
 : ER-TOKEN ( -- str )
-   ER-U @ 1 < IF ER-BAD THEN
    ER-P @ ER-U @ {: a:^ u:n :}
    a u ER-LEN {: k:n :}
-   k 0= IF ER-BAD THEN
    k u < IF a k + 1 + ER-P !  u k - 1 - ER-U !
    ELSE a u + ER-P !  0 ER-U ! THEN
    a k ;
 
 
-: ER-FITS? ( n n n -- bool ) {: acc:n d:n lim:n :}
-   \ After `-` and MIN-INT's digits acc is 2^63, which reads negative.
-   acc 0 < IF RES-FALSE EXIT THEN
-   lim d - 1 rshift 5 /  acc < 0= ;
-
-
-: ER-DIGITS ( str n -- n ) {: a:^ u:n lim:n :}
-   u 1 < IF ER-BAD THEN
+: ER-DIGITS ( str -- n ) {: a:^ u:n :}
    0 0 BEGIN dup u < WHILE
       {: acc:n i:n :}
       a i + c@ 48 - {: d:n :}
-      d 0 < d 9 > or IF ER-BAD THEN
-      acc d lim ER-FITS? 0= IF ER-BAD THEN
       acc 10 * d +  i 1 +
    REPEAT drop ;
 
 
-\ Reads every cell: a magnitude of at most 2^63 after `-`, else 2^63 - 1.
+\ A decimal cell, with a leading - when negative.
 : ER-INT ( str -- n ) {: a:^ u:n :}
-   -1 1 rshift {: top:n :}
-   a c@ 45 = IF a 1 + u 1 - top 1 + ER-DIGITS negate EXIT THEN
-   a u top ER-DIGITS ;
+   a c@ 45 = IF a 1 + u 1 - ER-DIGITS negate EXIT THEN
+   a u ER-DIGITS ;
 : ER-NUM ( -- n ) ER-TOKEN ER-INT ;
-
-\ The next number, which must lie within 0..max.
-: ER-UPTO ( n -- n ) {: max:n :}
-   ER-NUM {: v:n :}
-   v 0 <  v max >  or IF ER-BAD THEN
-   v ;
 
 
 : ER-NAME$ ( -- str )
@@ -3449,8 +3333,7 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
 
 \ A family the registry holds, by its exact name.
 : ER-FAM ( -- n )
-   ER-TOKEN SPLIT-NAME 0= IF ER-BAD THEN
-   TFAM-FIND-IN 0= IF ER-BAD THEN ;
+   ER-TOKEN SPLIT-NAME drop TFAM-FIND-IN drop ;
 
 
 : ES-PUSH ( n -- ) {: node:n :}
@@ -3469,85 +3352,61 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
 
 
 \ A node's children are built and staged before its own roots are pushed, so
-\ each node's roots stay contiguous. ar is the arity of the family whose entry
-\ is read: a parameter indexes its type variables.
-: ER-NODE ( n -- n ) {: ar:n :}
-   ER-TOKEN {: a:^ u:n :}
-   u 1 <> IF ER-BAD THEN
-   a c@ {: c:n :}
-   c 80 = IF
-      ER-NUM {: ix:n :}
-      ix 0 <  ix ar >=  or IF ER-BAD THEN
-      ix SCHEMA-PARAM EXIT
-   THEN
-   c 67 = IF
-      ER-TOKEN CT-FIND {: con:n :}
-      con 0= IF ER-BAD THEN
-      con SCHEMA-CON EXIT
-   THEN
-   c 42 = IF ar recurse SCHEMA-PTR EXIT THEN
+\ each node's roots stay contiguous.
+: ER-NODE ( -- n )
+   ER-TOKEN drop c@ {: c:n :}
+   c 80 = IF ER-NUM SCHEMA-PARAM EXIT THEN
+   c 67 = IF ER-TOKEN CT-FIND SCHEMA-CON EXIT THEN
+   c 42 = IF recurse SCHEMA-PTR EXIT THEN
    c 65 = IF
       ER-FAM {: fam:n :}
       ER-NUM {: k:n :}
-      k fam TFAM-ARITY@ <> IF ER-BAD THEN
       ES-N @ {: mark:n :}
-      k 0 ?do ar recurse ES-PUSH loop
+      k 0 ?do recurse ES-PUSH loop
       fam  mark ES-ROOTS  k SCHEMA-APP EXIT
    THEN
    c 81 = IF
       ER-NUM {: qa:n :}
       ES-N @ {: mark:n :}
-      SCH-QUOT-ROWS 0 ?do ar recurse ES-PUSH loop
+      SCH-QUOT-ROWS 0 ?do recurse ES-PUSH loop
       mark ES@  mark 1 + ES@  mark 2 + ES@  mark 3 + ES@  qa 1 and 0 <>  qa 1 invert and
       mark ES-N !
       SCHEMA-QUOT EXIT
    THEN
-   c 82 = IF
-      ER-NUM {: k:n :}
-      k 0 < IF ER-BAD THEN
-      ES-N @ {: mark:n :}
-      k 0 ?do ar recurse ES-PUSH loop
-      mark ES-ROOTS k SCHEMA-ROW EXIT
-   THEN
-   ER-BAD ;
+   ER-NUM {: k:n :}
+   ES-N @ {: mark:n :}
+   k 0 ?do recurse ES-PUSH loop
+   mark ES-ROOTS k SCHEMA-ROW ;
 
 
 : ER-SYM ( -- n )
    ER-TOKEN {: a:^ u:n :}
    u 1 = IF a c@ 45 = IF 0 EXIT THEN THEN
    a u ER-INT {: vis:n :}
-   vis SYM-GLOBAL <  vis SYM-PUBLIC >  or IF ER-BAD THEN
    ER-NAME$ {: pa:^ pu:n :}
    ER-TOKEN {: ta:^ tu:n :}
    pa pu vis ta tu CHECKER-PKG-SYM ;
 
 
-\ Reads one variant of family id; answers its positional payload count.
-: ER-VARIANT ( n -- n ) {: id:n :}
+\ Reads one variant of family id.
+: ER-VARIANT ( n -- ) {: id:n :}
    ER-TOKEN {: na:^ nu:n :}
-   na nu TF-CANON? 0= IF ER-BAD THEN
-   id na nu SUMV-FIND nip IF ER-BAD THEN
    ER-NUM {: tag:n :}
-   PF-MAX-N CELL / ER-UPTO {: pc:n :}
+   ER-NUM {: pc:n :}
    ER-NAME$ {: ca:^ cu:n :}
    ER-SYM {: sym:n :}
    ER-NUM {: k:n :}
-   k 0 < IF ER-BAD THEN
    ES-N @ {: mark:n :}
-   k 0 ?do id TFAM-ARITY@ ER-NODE ES-PUSH loop
+   k 0 ?do ER-NODE ES-PUSH loop
    mark ES-ROOTS {: ss:n :}
    id na nu tag ss k pc SUMV-ADD {: v:n :}
    cu 0 <> IF v ca cu TF-INTERN cu SUMV-CTOR-PKG! THEN
-   sym 0 <> IF v sym SUMV-CTOR-SYM! THEN
-   k ;
+   sym 0 <> IF v sym SUMV-CTOR-SYM! THEN ;
 
 
-: ER-FIELD ( n n n -- ) {: id:n vstart:n nv:n :}
+: ER-FIELD ( n n -- ) {: id:n vstart:n :}
    ER-TOKEN {: na:^ nu:n :}
-   na nu TF-CANON? 0= IF ER-BAD THEN
-   na nu PF-RESERVED? IF ER-BAD THEN
    ER-NUM {: vo:n :}
-   vo PF-NO-VARIANT <  vo nv >=  or IF ER-BAD THEN
    vo 0 < IF PF-NO-VARIANT ELSE vstart vo + THEN {: var:n :}
    ER-NUM {: slot:n :}
    ER-NUM {: nc:n :}
@@ -3555,11 +3414,8 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    ER-NUM {: nb:n :}
    ER-NUM {: al:n :}
    ER-NUM {: flags:n :}
-   flags PF-FLAGS-NONE <>  flags PF-FLAG-BUFFER <>  and IF ER-BAD THEN
    ER-SYM {: sym:n :}
-   id TFAM-ARITY@ ER-NODE SCHEMA-ROOT+ {: root:n :}
-   id var root slot nc boff nb al flags PF-ROW-OK? 0= IF ER-BAD THEN
-   id var na nu PF-DUP? IF ER-BAD THEN
+   ER-NODE SCHEMA-ROOT+ {: root:n :}
    PF-N @ {: fid:n :}
    id var na nu root slot nc boff nb al flags PF-ADD
    fid sym FIELD-SYM! ;
@@ -3568,20 +3424,14 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
 \ The family's declaration and its scalar rows, before the families it names.
 : ER-HEAD ( str str n -- n ) {: pa:^ pu:n ta:^ tu:n ix:n :}
    ER-NUM {: kind:n :}
-   kind TFAM-KIND-VALID? 0= IF ER-BAD THEN
    ER-NUM {: vis:n :}
-   vis CHECKER-PACKAGE-PRIVATE <>  vis CHECKER-PACKAGE-PUBLIC <>  and
-   IF ER-BAD THEN
-   TFAM-DECL-PARAM-COUNT ER-UPTO {: arity:n :}
-   ta tu TF-CANON? 0= IF ER-BAD THEN
+   ER-NUM {: arity:n :}
    pa pu vis ta tu arity kind TFAM-DECL {: id:n :}
    id ix ENTRY!
-   arity 0 ?do id i PK-MAX ER-UPTO TFAM-PK! loop
-   id TL-MAX ER-UPTO TFAM-LAYOUT!
+   arity 0 ?do id i ER-NUM TFAM-PK! loop
+   id ER-NUM TFAM-LAYOUT!
    ER-NUM {: drv:n :}
-   drv DRV-ALL invert and 0 <> IF ER-BAD THEN
    ER-NUM {: opq:n :}
-   opq 0 <>  opq -1 <>  and IF ER-BAD THEN
    drv id TF-REC@ TF.DERIVE !
    opq id TF-REC@ TF.OPAQUE !
    id ER-SYM AT-SYM!
@@ -3601,35 +3451,25 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    THEN
    id TFAM-SLOTS@ ;
 
-\ A sum's or an enum's variants take named fields or positional payloads,
-\ never both: pk is the widest variant's positional count, nf the field count.
-: ER-PAYLOAD-MIX? ( n n n -- bool ) {: id:n pk:n nf:n :}
-   id TFAM-SUM? id TFAM-ENUM? or 0= IF RES-FALSE EXIT THEN
-   pk 0 >  nf 0 >  and ;
-
 \ One layout row: policy, size, alignment, tag width.
 : ER-LAYOUT ( n -- ) {: id:n :}
-   id TL-MAX ER-UPTO ER-NUM ER-NUM ER-NUM LAY-ADD drop ;
+   id ER-NUM ER-NUM ER-NUM ER-NUM LAY-ADD drop ;
 
 \ Variants, fields and layout, after the families they name.
 : ER-BODY ( n -- ) {: id:n :}
    SUMV-N@ {: vstart:n :}
    ER-NUM {: nv:n :}
-   nv 0 < IF ER-BAD THEN
-   0  nv 0 ?do id ER-VARIANT max loop {: pk:n :}
+   nv 0 ?do id ER-VARIANT loop
    id vstart nv TFAM-VAR-RANGE!
    ER-NUM {: nf:n :}
-   nf 0 < IF ER-BAD THEN
-   id pk nf ER-PAYLOAD-MIX? IF ER-BAD THEN
    nf 0 > IF
       TYPE-FIELD:COUNT {: base:n :}
-      nf 0 ?do id vstart nv ER-FIELD loop
+      nf 0 ?do id vstart ER-FIELD loop
       PF-COMMIT
       id base nf TFAM-FLD-RANGE!
    THEN
    id id ROW-SLOTS TFAM-SLOTS!
-   1 ER-UPTO 0 ?do id ER-LAYOUT loop
-   ER-U @ 0 <> IF ER-BAD THEN ;
+   ER-NUM 0 ?do id ER-LAYOUT loop ;
 
 EXPORT CHECKER-RESOLVE:REC>INDEX
 EXPORT CHECK:FACTS@
@@ -3656,58 +3496,31 @@ EXPORT BOOT:TYPES-WL
    rec ;
 
 \ Reads record rec's type entry into the registry: its head, then each family it
-\ names that the registry lacks, then its body (ER-STATE). The rows read are
-\ written out again and must equal the entry's text.
+\ names that the registry lacks, then its body.
 : ER-READ ( ^n -- n ) {: rec:^ :}
    rec REC>INDEX {: ix:n :}
-   ER-P @ ER-U @ ER-NAME @ ER-NAME-U @ {: sp:^ su:n sn:^ snu:n :}
-   rec CK-REC-NAME$ {: ra:^ ru:n :}
-   ra ER-NAME !  ru ER-NAME-U !
+   ER-P @ ER-U @ {: sp:^ su:n :}
    ix FACTS@ ER-U ! ER-P !
-   ra ru SPLIT-NAME 0= IF ER-BAD THEN
-   ix ER-HEAD {: id:n :}
+   rec CK-REC-NAME$ SPLIT-NAME drop  ix ER-HEAD {: id:n :}
    ER-NUM 0 ?do
-      ER-TOKEN SPLIT-NAME 0= IF ER-BAD THEN
+      ER-TOKEN SPLIT-NAME drop
       {: qa:^ qu:n ta:^ tu:n :}
       qa qu ta tu TFAM-FIND-IN nip 0= IF
-         qa qu ta tu ER-PROBE {: dep:^ :}
-         dep NULL-PTR = IF ER-BAD THEN
-         dep recurse drop
+         qa qu ta tu ER-PROBE recurse drop
       THEN
    loop
    id ER-BODY
-   id ENTRY-TEXT$ ix FACTS@ STR:= 0= IF ER-BAD THEN
-   sp ER-P !  su ER-U !  sn ER-NAME !  snu ER-NAME-U !
+   sp ER-P !  su ER-U !
    id ;
 
-\ A row that is no buffer is as many cells as its schema is wide.
-: PF-WIDTH-OK? ( n -- bool ) {: id:n :}
-   id PF-REC@ {: r:^ :}
-   r PF.FLAGS @ PF-FLAG-BUFFER = IF RES-TRUE EXIT THEN
-   r PF.FAM @ r PF.SCH @ SCHEMA-ROOT@ TFAM-SCH-WIDTH
-   r PF.CELLS @ = ;
-\ The width check ER-OPEN deferred, for every field row from mark on; a
-\ wrong row names its family's entry.
-: PF-WIDTHS-REQUIRE ( n -- ) {: mark:n :}
-   PF-N @ mark ?do
-      i PF-WIDTH-OK? 0= IF
-         s" type entry"  i PF-REC@ PF.FAM @ ENTRY-NAME$
-         DAMAGED-OBJECT
-      THEN
-   loop ;
-
 \ TFAM-FIND-IN, else the family's type entry `pkg:tail` read into the registry
-\ (ER-READ), the outermost read moving ER-STATE.
+\ (ER-READ).
 : TFAM-FIND ( str str -- n bool )
    {: pa:^ pu:n na:^ nu:n :}
    pa pu na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN drop
    pa pu na nu ER-PROBE {: rec:^ :}
    rec NULL-PTR = IF 0 RES-FALSE EXIT THEN
-   ER-STATE @ ER-OPEN = IF rec ER-READ RES-TRUE EXIT THEN
-   PF-N @ ER-MARK !  ER-OPEN ER-STATE !
-   [: rec ER-READ ;] [: ER-IDLE ER-STATE ! ;] finally {: id:n :}
-   ER-MARK @ PF-WIDTHS-REQUIRE
-   id RES-TRUE ;
+   rec ER-READ RES-TRUE ;
 
 \ The family a spelling names exactly, with no scope or fallback: a bare tail is
 \ package "", else path:tail split at the last colon.
@@ -3728,9 +3541,7 @@ EXPORT BOOT:TYPES-WL
             i FACTS@ LINEAR-TEXT? IF
                rec CK-REC-NAME$ CT-FIND drop
             ELSE
-               rec CK-REC-NAME$ SPLIT-NAME 0= IF
-                  s" type entry"  rec CK-REC-NAME$  DAMAGED-OBJECT THEN
-               TFAM-FIND drop drop
+               rec CK-REC-NAME$ SPLIT-NAME drop TFAM-FIND drop drop
             THEN
          THEN
       loop

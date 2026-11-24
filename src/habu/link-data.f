@@ -138,7 +138,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ A cell the build stored into would be written and slid twice.
 : HEADER! ( n n -- )
-   NATIVE:HEADER-CELL {: v:n off:n :}
+   {: v:n off:n :}
    off SPACE-AT @ 0<> if
       s" E-LINK-HEADER-CELL" REJECTION:OPEN
       s" the build stored into the header cell at offset " REJECTION:EMIT-STR
@@ -161,7 +161,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    va s" DP-CEILING-OFF" NATIVE:SYM +  s" DP-CEILING-CELL" NATIVE:SYM HEADER!
    start s" HEAP-START-CELL" NATIVE:SYM HEADER!
    NATIVE:PRESET-N 0 ?do i NATIVE:PRESET@ HEADER! loop
-   va s" FD-CELL" NATIVE:SYM NATIVE:HEADER-CELL +
+   va s" FD-CELL" NATIVE:SYM +
       s" FD-PTR-CELL" NATIVE:SYM HEADER!
    NATIVE:TEXT-VA s" RBASE-CELL" NATIVE:SYM HEADER!
    NATIVE:TEXT-VA LUNCAUGHT LABEL-OFFSET +  s" UNCGH-CELL" NATIVE:SYM HEADER!

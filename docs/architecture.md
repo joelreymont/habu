@@ -199,7 +199,7 @@ before the next part. Objects live in the tree's own out root
 (src/lib/build-out.f); no build cache is shared between trees. The proof is a
 warm build whose program equals the program of a build into an empty out root.
 
-**A build decides from stamps and times and hashes nothing.** A file's stamp
+**A build decides from stamps and times, never from a hash.** A file's stamp
 is its change time and size, read before the file is read. Its parts' objects
 link only while the stamp is equal, so a file put back with an older time
 compiles. Each word and each stretch of data carries the clock time its result
@@ -235,9 +235,12 @@ signature, and writes a file it generates only when the text differs.
 
 **A damaged object stops the build.** hb syncs an object before it renames it
 into place (src/lib/fs-mutate.f REPLACE-CACHED), so a crash leaves the old
-file, the whole new one or none. An object that does not read as hb wrote it
-was changed outside hb: the build ends with an error that says what is damaged
-and how to recover, and never compiles around it.
+file, the whole new one or none. Each object carries a SHA-256 of its bytes,
+checked before any of them is read. An object that fails it was changed
+outside hb: the build ends with an error that names it and says to delete it
+and build again; hb neither removes it nor compiles around it. An object that passes but
+no longer fits the build, such as one whose source was edited, compiles its
+part.
 
 **A part whose load a link could not repeat never links** and compiles on
 every build: one that starts or ends inside an open package or `using`, one

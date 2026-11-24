@@ -231,12 +231,8 @@ ED-RESET
    2dup s" derive" STR:=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    COMPACT-VARIANT NO ;
 
-\ The kind is fixed at registration, before any variant parses, because TFAM-DECL
-\ sets it once: compact registers TK-ENUM (arity 0), full registers TK-SUM with the
-\ declared arity (PF-OWNER-OK? admits a named variant field on either). TFAM-WIDTH@
-\ treats both alike at zero payload, so a payloadless full ENUM has the compact
-\ width. A variant's fields are the TYPE-FIELD rows keyed (family, variant id);
-\ DECL-EVENT:VARIANT sets its SV.SCH-COUNT to 0.
+\ The kind is fixed at registration, before any variant parses, as TFAM-DECL sets it once: compact
+\ registers TK-ENUM (arity 0), full TK-SUM with the declared arity; both have one width at zero payload.
 : OPEN-TX ( -- )
    SUMV-N@ VBASE !
    TYPE-FIELD:COUNT FLDBASE !

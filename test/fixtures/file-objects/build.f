@@ -366,246 +366,7 @@ PATH-CAP BUFFER: FIFTH-BUF
    NONE-K$ s\" : FOB-K ( -- ) ;\n" FS:WRITE-ALL
    s" none: compiled " type  NONE-WRITTEN FMT:.INT cr ;
 
-\ ---- objects the link refuses or links wrong ----
-\ Each edit starts from the object e.f's first build wrote (CRAFT-FIRST): a build reads one edit.
-8192 constant CRAFT-CAP
-192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
-PATH-CAP BUFFER: CRAFT-BUF
-PATH-CAP BUFFER: CRAFT-PATH   variable CRAFT-PATH-U
-PATH-CAP BUFFER: CRAFT-TAIL   variable CRAFT-TAIL-U   \ the end of the path CRAFT-FIND seeks
-CRAFT-CAP BUFFER: CRAFT-FIRST   variable CRAFT-U
-CRAFT-CAP BUFFER: CRAFT-OBJ
-variable AT                              \ the walk's offset in CRAFT-OBJ
-variable RECS                            \ the records walked
-variable DEFS                            \ the kind 0 entries walked, each its emission's number
-variable FLAG-AT                         \ the package entry's own-private flag's offset
-variable MID-EM
-variable PKG-REC
-variable LOW-REC
-variable HIGH-REC
-variable INDEX-AT                        \ MID's call row of LOW: its reference's sum's offset
-variable LATE-FLAG-AT                    \ the late package entry's own-private flag's offset
-variable LATE-AT                         \ the late package's KIND-PRIVATE entry's offset
-variable SLOT-AT                         \ the first does> slot's P: its offset
-
-: CRAFT-E$ ( -- str ) s" crafted" s" e.f" CRAFT-BUF FILE-IN ;
-
-: CRAFT-BUILD ( -- n )
-   [: s" app" RTARGET:HOST-TARGET [: CRAFT-E$ included ;] LINKER:WITH ;] catch RESULT ;
-
-: OBJ@ ( n -- n ) CRAFT-OBJ swap + LE:U64@ ;
-: OBJ! ( n n -- ) CRAFT-OBJ swap + LE:U64! ;
-: OBJ-U64 ( -- n ) AT @ OBJ@  8 AT +! ;
-: OBJ-SKIP ( n -- ) 8 * AT +! ;
-
-\ The first piece's record n's sum and count, from its TIMES block: the header's pair 16 bytes before
-\ PIECES' gives its offset; the block is its word count, then 11 cells a word, sum and count last.
-: CRAFT-ID ( n -- n n )
-   {: n:n :}
-   PIECES-FIELD 16 - OBJ@  8 +  n 88 * + {: w:n :}
-   w 72 + OBJ@  w 80 + OBJ@ ;
-
-\ A reference: its tag, then 3, 1, 4, 4, 1, 0, 4 or 2 fields for tags 0-7 (linker.f CODE+).
-: REF-SKIP ( -- )
-   OBJ-U64 {: tag:n :}
-   tag 0 = if 3 OBJ-SKIP exit then
-   tag 2 =  tag 3 =  tag 6 =  or or if 4 OBJ-SKIP exit then
-   tag 1 =  tag 4 =  or if 1 OBJ-SKIP exit then
-   tag 7 = if 2 OBJ-SKIP then ;
-
-
-\ An entry (linker.f RECORD+, LATE+, SEAL+); kind 4 is a late private wordlist and kind 5 a
-\ sealed package, each one reference and no record; kind 6, a type entry, ends at its role.
-: ENTRY-WALK ( -- )
-   AT @ {: at:n :}
-   OBJ-U64 {: kind:n :}
-   kind 4 = if at LATE-AT ! then
-   kind 4 =  kind 5 =  or if 3 OBJ-SKIP exit then
-   OBJ-U64 {: u:n :}
-   CRAFT-OBJ AT @ + u {: name:^ nu:n :}
-   u AT +!  1 OBJ-SKIP
-   OBJ-U64 {: role:n :}
-   role 3 =  role 4 =  or if 3 OBJ-SKIP then        \ a role 3 or 4 names its package
-   name nu s" LOW" STR:= if RECS @ LOW-REC ! then
-   name nu s" HIGH" STR:= if RECS @ HIGH-REC ! then
-   name nu s" FILE-OBJECTS-CRAFT" STR:= {: craft:bool :}
-   name nu s" FILE-OBJECTS-CRAFT-LATE" STR:= {: late:bool :}
-   kind 1 =  craft and if RECS @ PKG-REC ! then
-   1 RECS +!
-   kind 0 = if
-      name nu s" MID" STR:= if DEFS @ MID-EM ! then
-      1 DEFS +!
-      REF-SKIP exit
-   then
-   kind 1 = if
-      craft if AT @ FLAG-AT ! then
-      late if AT @ LATE-FLAG-AT ! then
-      1 OBJ-SKIP exit
-   then
-   kind 6 = if exit then
-   kind 2 = if 3 else 1 then OBJ-SKIP ;
-
-
-\ A call row of emission e: site, kind, reference; MID's row naming LOW (tag 0, file 0, LOW's sum
-\ and count) is kept.
-: CALL-ROW ( n -- )
-   {: e:n :}
-   2 OBJ-SKIP
-   AT @ {: ref:n :}
-   REF-SKIP
-   e MID-EM @ <> if exit then
-   LOW-REC @ CRAFT-ID {: sum:n count:n :}
-   ref OBJ@ 0=  ref 8 + OBJ@ 0=  and  ref 16 + OBJ@ sum =  and  ref 24 + OBJ@ count =  and if
-      ref 16 + INDEX-AT !
-   then ;
-
-
-\ Emission e (linker.f CODE+): S, R, the bytes, F offsets, call rows, address rows, P.
-: EMISSION-WALK ( n -- )
-   {: e:n :}
-   OBJ-U64 {: s:n :}
-   1 OBJ-SKIP
-   s AT +!
-   OBJ-U64 OBJ-SKIP
-   OBJ-U64 0 ?do e CALL-ROW loop
-   OBJ-U64 0 ?do  2 OBJ-SKIP  REF-SKIP  loop
-   AT @ {: p-at:n :}
-   OBJ-U64 0< if exit then
-   SLOT-AT @ 0< if p-at SLOT-AT ! then
-   REF-SKIP ;
-
-
-\ CRAFT-FIRST into CRAFT-OBJ, then its fields' offsets; the build ends rc 1 when one is missing.
-: CRAFT-WALK ( -- )
-   CRAFT-FIRST CRAFT-OBJ CRAFT-U @ BYTE-COPY
-   PIECES-FIELD OBJ@ AT !
-   0 RECS !  0 DEFS !  -1 FLAG-AT !  -1 MID-EM !  -1 PKG-REC !  -1 LOW-REC !  -1 HIGH-REC !
-   -1 INDEX-AT !  -1 LATE-FLAG-AT !  -1 LATE-AT !  -1 SLOT-AT !
-   OBJ-U64 0 ?do ENTRY-WALK loop
-   OBJ-U64 0 ?do i EMISSION-WALK loop
-   FLAG-AT @ 0<  PKG-REC @ 0<  or  HIGH-REC @ 0<  or  INDEX-AT @ 0<  or
-   LATE-FLAG-AT @ 0<  or  LATE-AT @ 0<  or  SLOT-AT @ 0<  or if
-      s" build: CRAFTS: e.f's object lacks a field the edits need" EXIT-STATUS:FAILURE die
-   then ;
-
-
-\ The edited object, u bytes, into the object CRAFT-FIND found.
-: CRAFT-WRITE ( n -- )
-   {: u:n :}
-   CRAFT-PATH CRAFT-PATH-U @ CRAFT-OBJ u FS:WRITE-ALL ;
-
-\ The edited object, u bytes, into e.f's object; then a build.
-: CRAFTED-BUILD ( n -- n ) CRAFT-WRITE  CRAFT-BUILD ;
-
-
-\ A path of the walk that ends with CRAFT-TAIL into CRAFT-PATH.
-: CRAFT-SEEN ( str -- )
-   {: p:^ pu:n :}
-   p pu CRAFT-TAIL CRAFT-TAIL-U @ STR:ENDS-WITH? 0= if exit then
-   p CRAFT-PATH pu BYTE-COPY  pu CRAFT-PATH-U ! ;
-
-\ The object under <out>/obj whose path ends with the tail, into CRAFT-FIRST and CRAFT-PATH.
-: CRAFT-FIND ( str -- )
-   {: t:^ tu:n :}
-   t CRAFT-TAIL tu BYTE-COPY  tu CRAFT-TAIL-U !
-   0 CRAFT-PATH-U !
-   s" obj" DIR$ ['] CRAFT-SEEN FS:WALK-FILES
-   CRAFT-PATH-U @ 0= if
-      s" build: CRAFT-FIND: no object ends with the tail" EXIT-STATUS:FAILURE die
-   then
-   CRAFT-PATH CRAFT-PATH-U @ CRAFT-FIRST CRAFT-CAP FS:READ-ALL CRAFT-U ! ;
-
-
-\ The package's own-private flag 0 while LOW, a later entry, names its private wordlist.
-: NO-PRIVATE ( -- n ) CRAFT-WALK  0 FLAG-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
-
-\ MID's call row naming HIGH, a record made after MID.
-: LATER-RECORD ( -- n )
-   CRAFT-WALK  HIGH-REC @ CRAFT-ID  INDEX-AT @ 8 + OBJ!  INDEX-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
-
-\ MID's call row naming the package's own record.
-: PACKAGE-RECORD ( -- n )
-   CRAFT-WALK  PKG-REC @ CRAFT-ID  INDEX-AT @ 8 + OBJ!  INDEX-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
-
-\ The late package's own-private flag 1: its KIND-PRIVATE entry names a package holding one.
-: LATE-OWN ( -- n ) CRAFT-WALK  1 LATE-FLAG-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
-
-\ The first piece's word count in TIMES, whose pair is the header's 16 bytes before PIECES, one
-\ more than its records.
-: TIMES-COUNT ( -- n )
-   CRAFT-WALK
-   PIECES-FIELD 16 - OBJ@ {: count-at:n :}
-   count-at OBJ@ 1 +  count-at OBJ!  CRAFT-U @ CRAFTED-BUILD ;
-
-
-\ The TIMES span at offset at moved past u bytes inserted at r in the piece, or grown by them when it
-\ holds r.
-: SPAN-GROW ( n n n -- )
-   {: at:n r:n u:n :}
-   at OBJ@ {: off:n :}
-   off r >= if off u + at OBJ! exit then
-   off at 8 + OBJ@ +  r > if  at 8 + OBJ@ u +  at 8 + OBJ!  then ;
-
-
-\ CRAFT-FIRST grown into CRAFT-OBJ by u bytes at k, in the last section, so before any edit past k; each TIMES span
-\ past k moves and one holding k grows (SPAN-GROW): EXTENT-CK finds each extent at its span. Past CRAFT-CAP, rc 1.
-: CRAFT-GROW ( n n -- )
-   {: k:n u:n :}
-   CRAFT-U @ u + CRAFT-CAP > if
-      s" build: CRAFTS: the grown object exceeds CRAFT-CAP" EXIT-STATUS:FAILURE die
-   then
-   CRAFT-FIRST k +  CRAFT-OBJ k u + +  CRAFT-U @ k -  BYTE-COPY
-   PIECES-FIELD 8 + {: len-at:n :}
-   len-at OBJ@ u + len-at OBJ!
-   k PIECES-FIELD OBJ@ - {: r:n :}
-   PIECES-FIELD 16 - OBJ@ {: times:n :}
-   times OBJ@ {: w:n :}
-   w 0 ?do
-      times 8 +  i 88 * + {: row:n :}
-      row 8 + r u SPAN-GROW  row 24 + r u SPAN-GROW  row 40 + r u SPAN-GROW
-   loop
-   times 8 +  w 88 * + {: exts:n :}
-   exts OBJ@ 0 ?do  exts 8 +  i 48 * +  8 + r u SPAN-GROW  loop
-   exts 8 +  exts OBJ@ 48 * +  8 + r u SPAN-GROW ;
-
-
-\ V's slot naming LOW (tag 0, file 0, LOW's sum and count) in place of none: 24 bytes more, in the
-\ last section.
-: SLOT-TARGET ( -- n )
-   CRAFT-WALK
-   SLOT-AT @ 8 + {: tag-at:n :}
-   tag-at OBJ@ 5 <> if s" build: CRAFTS: V's slot names a target" EXIT-STATUS:FAILURE die then
-   tag-at 8 + 24 CRAFT-GROW
-   LOW-REC @ CRAFT-ID {: sum:n count:n :}
-   0 tag-at OBJ!  0 tag-at 8 + OBJ!  sum tag-at 16 + OBJ!  count tag-at 24 + OBJ!
-   CRAFT-U @ 24 + CRAFTED-BUILD ;
-
-
-\ e.f's first build, six builds each over one crafted object, then a plain build. CRAFT's
-\ wordlists come between LATE's two, so LATE gains its private one by a KIND-PRIVATE entry.
-: CRAFTS ( -- )
-   s" crafted" DIR$ FS:MAKE-DIR
-   CRAFT-E$ s\" : FILE-OBJECTS-CRAFT-LATE:ONE ( -- n ) 1 ;\n" FS:WRITE-ALL
-   CRAFT-E$ s\" package FILE-OBJECTS-CRAFT private : LOW ( -- n ) 1 ;\n" FS:APPEND-FILE
-   CRAFT-E$ s\" public : MID ( -- n ) LOW 1 + ; : HIGH ( -- n ) 3 ; ;package\n" FS:APPEND-FILE
-   CRAFT-E$ s\" package FILE-OBJECTS-CRAFT-LATE public variable V ;package\n" FS:APPEND-FILE
-   CRAFT-BUILD {: one:n :}
-   s" /crafted/e.f.hfo" CRAFT-FIND
-   NO-PRIVATE {: two:n :}
-   LATER-RECORD {: three:n :}
-   PACKAGE-RECORD {: four:n :}
-   SLOT-TARGET {: five:n :}
-   LATE-OWN {: six:n :}
-   TIMES-COUNT {: seven:n :}
-   CRAFT-BUILD {: eight:n :}
-   s" crafted: compiled " one two three RESULTS.
-   space four FMT:.INT  space five FMT:.INT  space six FMT:.INT
-   space seven FMT:.INT  space eight FMT:.INT cr ;
-
 \ ---- words a source spells ----
-144 constant WORDS-FIELD                \ the header's WORDS offset, then length (linker.f WRITE-OBJECT)
-32 constant WORD-ROW-BYTES               \ a WORDS row: FILES row, sum, count, time
-
 : WORDS-A$ ( -- str ) s" words" s" a.f" FIRST-BUF FILE-IN ;
 : WORDS-B$ ( -- str ) s" words" s" b.f" SECOND-BUF FILE-IN ;
 : WORDS-C$ ( -- str ) s" words" s" c.f" THIRD-BUF FILE-IN ;
@@ -618,28 +379,8 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
       LINKER:WITH ;]
    catch RESULT ;
 
-\ b.f's object, read afresh, in CRAFT-OBJ, and the offset of its first WORDS row.
-: FIRST-WORD-ROW ( -- n )
-   s" /words/b.f.hfo" CRAFT-FIND
-   CRAFT-FIRST CRAFT-OBJ CRAFT-U @ BYTE-COPY
-   WORDS-FIELD 8 + OBJ@ WORD-ROW-BYTES < if
-      s" build: BY-WORD: b.f's object lists no word" EXIT-STATUS:FAILURE die
-   then
-   WORDS-FIELD OBJ@ ;
-
-\ b.f's first WORDS row with its time one more; then a build.
-: WORD-RETIMED ( -- n )
-   FIRST-WORD-ROW 24 + {: at:n :}
-   at OBJ@ 1 +  at OBJ!  CRAFT-U @ CRAFT-WRITE  WORDS-BUILD ;
-
-\ b.f's first WORDS row naming sum 1000, which no word of its piece has; then a build, which compiles b.f:
-\ the row names no record of its sum and count (WORDS-CK).
-: WORD-MISSING ( -- n )
-   FIRST-WORD-ROW 8 + {: at:n :}
-   1000 at OBJ!  CRAFT-U @ CRAFT-WRITE  WORDS-BUILD ;
-
-\ A file depends on each earlier word its source spells, not on the word's whole piece: A1's edit
-\ compiles b.f, d.f and e.f, not c.f, which spells A2; a new C in a.f compiles c.f, which spells C.
+\ A file depends on each earlier word its source spells, not on the word's whole piece: A1's edit compiles b.f, d.f
+\ and e.f, not c.f, which spells A2; a new C in a.f compiles c.f, and A2's removal compiles it again, rejected for A2.
 : BY-WORD ( -- )
    s" words" DIR$ FS:MAKE-DIR
    WORDS-A$ s\" package FILE-OBJECTS-WORDS public : A1 ( -- n ) 1 ; : A2 ( -- n ) 2 ; ;package\n" FS:WRITE-ALL
@@ -654,11 +395,10 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
    WORDS-A$ s\" package FILE-OBJECTS-WORDS public : A1 ( -- n ) 3 ; : A2 ( -- n ) 2 ; : C ( -- n ) 9 ; ;package\n"
    FS:WRITE-ALL
    WORDS-BUILD {: four:n :}
-   WORD-RETIMED {: five:n :}
-   WORD-MISSING {: six:n :}
-   WORDS-BUILD {: seven:n :}
+   WORDS-A$ s\" package FILE-OBJECTS-WORDS public : A1 ( -- n ) 3 ; : C ( -- n ) 9 ; ;package\n" FS:WRITE-ALL
+   WORDS-BUILD {: five:n :}
    s" words: compiled " one two three RESULTS.
-   space four FMT:.INT  space five FMT:.INT  space six FMT:.INT  space seven FMT:.INT cr ;
+   space four FMT:.INT  space five FMT:.INT cr ;
 
 \ ---- words a run word reaches ----
 : RAN-A$ ( -- str ) s" ran" s" a.f" FIRST-BUF FILE-IN ;
@@ -953,7 +693,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    s" app" RTARGET:HOST-TARGET [: STOP-STORE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-GAP ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS TWINS ORDERS NONES CRAFTS BY-WORD BY-RUN
+   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS TWINS ORDERS NONES BY-WORD BY-RUN
    BY-STORES BY-GAIN BY-OWN BY-THROUGH BY-FULL
    s" stopped" type cr ;
 
