@@ -2368,24 +2368,28 @@ private
    v JSON:OBJECT? if v OPENAI-SIZE? exit then
    false ;
 
-\ The provider's message, kept from the reply's error member, the reader at
-\ it: the member itself when a string, as Ollama sends it, else its message,
-\ as OpenAI and Azure send it.
-: ERROR-TEXT ( JSON:reader ^call -- JSON:reader )
-   {: c :}
-   JSON:READ-TOKEN JSON:T-OBJ = if
-      s" message" JSON:READ-FIND-KEY 0= if exit then
-   then
-   JSON:READ-TOKEN JSON:T-STR <> if exit then
-   c REPLY-STR BUF:N>BLEN c ERROR-BUF BUF:REPLACE ;
+\ The provider's message, kept from the reply's error member: the member
+\ itself when a string, as Ollama sends it, else its message, as OpenAI and
+\ Azure send it.
+: ERROR-TEXT ( JSON:value ^call -- )
+   {: v c :}
+   v JSON:OBJECT? if
+      v s" message" JSON:FIND MATCH option
+         none OF exit ENDOF
+         some OF ENDOF
+      ;MATCH
+   else v then {: m :}
+   m JSON:STRING? 0= if exit then
+   m [: BUF:N>BLEN c ERROR-BUF BUF:REPLACE ;] JSON:WITH-STRING ;
 
 : ERROR-BODY ( ^call -- ^call )
    {: c :}
-   c WIRE-READER
-   JSON:READ-NEXT JSON:T-OBJ = if
-      s" error" JSON:READ-FIND-KEY if c ERROR-TEXT then
-   then
-   JSON:READ-CLOSE c ;
+   c RESPONSE$ JSON:PARSE {: v :}
+   v JSON:OBJECT? 0= if c exit then
+   v s" error" JSON:FIND MATCH option
+      none OF ENDOF
+      some OF c ERROR-TEXT ENDOF
+   ;MATCH c ;
 
 \ Keeps a failed reply's provider message. A body that is not such JSON has
 \ none.
@@ -2655,28 +2659,32 @@ private
    c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR c MODEL-CALL:INCOMPLETE-U !
    JSON:READ-CLOSE E-INCOMPLETE throw ;
 
-: ERROR-OBJECT ( ^call -- JSON:reader )
-   {: c :}
-   s" error" c REPLY-AT
-   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then ;
-
-\ The fault a failed reply's error code names, the reader at its error object.
-: CODE-FAULT ( JSON:reader -- JSON:reader n )
-   s" code" JSON:READ-FIND-KEY 0= if E-HTTP exit then
-   JSON:READ-TOKEN JSON:T-STR <> if E-HTTP exit then
-   s" context_length_exceeded" JSON:READ-STR-EQ? if E-CAPACITY exit then
-   s" rate_limit_exceeded" JSON:READ-STR-EQ? if E-UNAVAILABLE exit then
-   s" server_error" JSON:READ-STR-EQ? if E-UNAVAILABLE exit then
-   s" server_is_overloaded" JSON:READ-STR-EQ? if E-UNAVAILABLE exit then
-   s" flex_unavailable" JSON:READ-STR-EQ? if E-TIER exit then
+\ The fault a failed reply's error object names by its code.
+: CODE-FAULT ( JSON:value -- n )
+   s" code" JSON:FIND MATCH option
+      none OF E-HTTP exit ENDOF
+      some OF ENDOF
+   ;MATCH {: v :}
+   v JSON:STRING? 0= if E-HTTP exit then
+   v s" context_length_exceeded" JSON:STRING= if E-CAPACITY exit then
+   v s" rate_limit_exceeded" JSON:STRING= if E-UNAVAILABLE exit then
+   v s" server_error" JSON:STRING= if E-UNAVAILABLE exit then
+   v s" server_is_overloaded" JSON:STRING= if E-UNAVAILABLE exit then
+   v s" flex_unavailable" JSON:STRING= if E-TIER exit then
    E-HTTP ;
 
 \ A failed reply keeps its error message as the call's error text.
 : READ-FAILURE ( ^call -- )
    {: c :}
-   c ERROR-OBJECT c ERROR-TEXT JSON:READ-CLOSE
-   c ERROR-OBJECT CODE-FAULT {: fault:n :}
-   JSON:READ-CLOSE fault throw ;
+   c RESPONSE$ JSON:PARSE {: v :}
+   v JSON:OBJECT? 0= if E-RESPONSE throw then
+   v s" error" JSON:FIND MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF ENDOF
+   ;MATCH {: e :}
+   e JSON:OBJECT? 0= if E-RESPONSE throw then
+   e c ERROR-TEXT
+   e CODE-FAULT throw ;
 
 \ Throws the fault of a reply whose status is other than completed.
 : REPLY-STATUS ( ^call -- )
@@ -3148,24 +3156,23 @@ private
    JSON:T-OBJ EXPECT
    key key-u JSON:READ-FIND-KEY ;
 
-\ The reader at the error event's error object: its error member when an
-\ object, else the event.
-: ERROR-AT ( ^call -- JSON:reader )
-   {: c :}
-   c WIRE-READER JSON:T-OBJ EXPECT
-   s" error" JSON:READ-FIND-KEY if
-      JSON:READ-TOKEN JSON:T-OBJ = if exit then
-   then
-   JSON:READ-CLOSE c WIRE-READER JSON:T-OBJ EXPECT ;
+\ The error event's error object: its error member when an object, else the
+\ event.
+: ERROR-AT ( JSON:value -- JSON:value )
+   {: v :}
+   v s" error" JSON:FIND MATCH option
+      none OF v ENDOF
+      some OF dup JSON:OBJECT? 0= if drop v then ENDOF
+   ;MATCH ;
 
 \ An error event fails the response as a failed status does: the event is the
 \ reply.
-: ERROR-EVENT ( ^u8 n ^call -- )
+: ERROR-EVENT ( str ^call -- )
    {: a:^ u:n c :}
    a u c KEEP-REPLY
-   c ERROR-AT c ERROR-TEXT JSON:READ-CLOSE
-   c ERROR-AT CODE-FAULT {: fault:n :}
-   JSON:READ-CLOSE
+   a u JSON:PARSE ERROR-AT {: e :}
+   e c ERROR-TEXT
+   e CODE-FAULT {: fault:n :}
    c STREAM {: s :}
    fault s STREAM-FAULT !
    true s STREAM-DONE ! ;
