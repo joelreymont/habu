@@ -1,4 +1,3 @@
-split-str
 \ state.f - XML reader state: INIT, INIT-INPUT, INIT-SOURCE, CLOSE, DISPOSE and the
 \ accessors; part of package XML (src/lib/xml.f). Offsets are absolute bytes of the
 \ stream, a BOM included. Open frames' names and live bindings are copied once into
@@ -199,7 +198,7 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
 
 : SOURCE$ ( ^cursor -- str )
    {: state :}
-   state CURSOR-SOURCE @ state CURSOR-SOURCE-LEN @ ;
+   state CURSOR-SOURCE @ state CURSOR-SOURCE-LEN @ >str ;
 
 : UTF16-SOURCE? ( mode -- bool )
    dup MODE-SOURCE-UTF16-LE-BOM MODE-EQ over MODE-SOURCE-UTF16-BE-BOM MODE-EQ or
@@ -223,20 +222,20 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
 
 \ Writes the found part at off in the window and the fix, and throws code with
 \ the text.
-: REJECT-TAIL ( ^cursor n str n -- ) {: state off:n fa:^ fu:n code:n :}
-   state SOURCE$ state WINDOW-PLACE off fa fu code TAIL-FROM ;
+: REJECT-TAIL ( ^cursor n str n -- ) {: state off:n fs:str code:n :}
+   state SOURCE$ state WINDOW-PLACE off fs code TAIL-FROM ;
 
 \ Rejects at off in the window, placed in the whole input.
 : REJECT ( ^cursor n str str n -- )
-   {: state off:n ea:^ eu:n fa:^ fu:n code:n :}
-   state SOURCE$ state WINDOW-PLACE off ea eu fa fu code REJECT-FROM ;
+   {: state off:n es:str fs:str code:n :}
+   state SOURCE$ state WINDOW-PLACE off es fs code REJECT-FROM ;
 
 \ Rejects the first byte above $7F in the window from off on.
 : ASCII-WINDOW ( ^cursor n -- )
    {: state off:n :}
-   state SOURCE$ {: window:^ size:n :}
-   window off + size off - HIGH-BYTE off + {: high:n :}
-   high size < if
+   state SOURCE$ {: window:str :}
+   window STR:DATA off + window STR:LEN off - >str HIGH-BYTE off + {: high:n :}
+   high window STR:LEN < if
       state high ASCII-EXPECTED$ ASCII-FIX$ E-ENCODING REJECT
    then ;
 
@@ -248,9 +247,9 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
    stream STREAM-CTX @ input stream STREAM-FILL @ execute {: count:n :}
    count 0 < count CHUNK > or if E-RANGE throw then
    count 0= if 1 stream STREAM-EOF ! false exit then
-   input SPAN:$ drop count stream TOKEN-VEC VEC:APPEND
+   input SPAN:$ STR:DATA count >str stream TOKEN-VEC VEC:APPEND
    stream TOKEN-VEC VEC:SPAN SPAN:$
-   state CURSOR-SOURCE-LEN ! state CURSOR-SOURCE !
+   dup STR:LEN state CURSOR-SOURCE-LEN ! STR:DATA state CURSOR-SOURCE !
    state CURSOR-SOURCE-MODE @ MODE-INPUT-ASCII MODE-EQ if
       state state CURSOR-SOURCE-LEN @ count - ASCII-WINDOW
    then
@@ -287,13 +286,13 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
 : SPAN$ ( ^cursor n n -- str )
    {: state start:n size:n :}
    start -2 < if
-      state SCOPE$ drop start negate 3 - + size exit
+      state SCOPE$ STR:DATA start negate 3 - + size >str exit
    then
-   state CURSOR-SOURCE @ start + size ;
+   state CURSOR-SOURCE @ start + size >str ;
 
 : MATCH$ ( ^cursor str -- bool )
-   {: state value size:n :}
-   size 0 ?do
+   {: state value:str :}
+   value STR:LEN 0 ?do
       state INPUT? if
          state state CURSOR-POSITION @ i + 1+ INPUT-ENSURE 0= if
             false unloop exit
@@ -303,7 +302,7 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
          false unloop exit
       then
       state CURSOR-SOURCE @ state CURSOR-POSITION @ i + + c@
-      value i + c@ <> if false unloop exit then
+      value STR:DATA i + c@ <> if false unloop exit then
    loop
    true ;
 
@@ -311,7 +310,7 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
 : BYTE-SCOPE ( ^cursor n ^u8 NUM:alloc-byte-len -- )
    drop {: state byte:n buf:^ :}
    $60 buf c!  byte buf 1+ c!  $60 buf 2 + c!
-   state state CURSOR-POSITION @ buf 3
+   state state CURSOR-POSITION @ buf 3 >str
    s" write that byte here, or correct the markup before it" E-MALFORMED REJECT ;
 
 : REQUIRE-BYTE ( ^cursor n -- )
@@ -439,12 +438,12 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
    cap 4 / CHUNK tail max <= and if exit then
    state SOURCE$ state WINDOW-PLACE consumed PLACE-POSITION
    stream STREAM-COLUMN ! stream STREAM-LINE !
-   state CURSOR-SOURCE @ consumed + tail
+   state CURSOR-SOURCE @ consumed + tail >str
       stream TOKEN-VEC VEC:SPAN SPAN:COPY
    stream TOKEN-VEC tail VEC:RESIZE
    stream TOKEN-TRIM
    stream TOKEN-VEC VEC:SPAN SPAN:$
-      state CURSOR-SOURCE-LEN ! state CURSOR-SOURCE !
+      dup STR:LEN state CURSOR-SOURCE-LEN ! STR:DATA state CURSOR-SOURCE !
    stream STREAM-BASE @ consumed + stream STREAM-BASE !
    0 state CURSOR-POSITION ! ;
 
@@ -456,19 +455,19 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
 
 \ A value of bytes $20..$7F other than `&` decodes to itself.
 : PLAIN-VALUE? ( str -- bool )
-   {: source size:n :}
-   size 0 ?do
-      source i + c@ {: byte:n :}
+   {: source:str :}
+   source STR:LEN 0 ?do
+      source STR:DATA i + c@ {: byte:n :}
       byte $20 < byte $26 = or byte $7F > or if false unloop exit then
    loop
    true ;
 
 : URI-INTO ( str ^VEC:vector<u8> -- )
-   {: source size:n v:^ :}
-   source size PLAIN-VALUE? 0= if
-      source size DECODE-ATTR v DECODE-INTO exit
+   {: source:str v:^ :}
+   source PLAIN-VALUE? 0= if
+      source DECODE-ATTR v DECODE-INTO exit
    then
-   source size v VEC:APPEND ;
+   source v VEC:APPEND ;
 
 : CURRENT-FRAME ( ^cursor -- ^frame )
    dup CURSOR-OPEN-DEPTH @ 1- FRAME ;
@@ -545,12 +544,12 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
    state s\" \xEF\xBB\xBF" MATCH$ if state 3 ADVANCE-N then ;
 
 : INIT-BODY ( ^cursor str -- ^cursor str )
-   {: state source size:n :}
-   source state CURSOR-SOURCE !
-   size state CURSOR-SOURCE-LEN !
+   {: state source:str :}
+   source STR:DATA state CURSOR-SOURCE !
+   source STR:LEN state CURSOR-SOURCE-LEN !
    state READER-TABLES
    state BOM
-   state source size ;
+   state source ;
 
 
 \ The stream goes into the record before the tables, so a failed table step
@@ -564,12 +563,12 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
 
 public
 : INIT ( ^cursor ^ALLOC:allocator str -- XML:reader )
-   {: record al:^ source size:n :}
-   source size SPAN-CHECK
+   {: record al:^ source:str :}
+   source SPAN-CHECK
    record INIT-STATE
    al record CURSOR-ALLOCATOR !
-   record source size ['] INIT-BODY catch
-   >r 2drop drop r> {: code:n :}
+   record source ['] INIT-BODY catch
+   >r drop drop r> {: code:n :}
    record code BUILT ;
 
 \ Reads UTF-8 or declared US-ASCII; the fill writes the span it is lent and answers a
@@ -616,9 +615,9 @@ private
 
 : SOURCE-BODY ( ^cursor ^header -- ^cursor ^header )
    {: state source-state :}
-   source-state SRC-LEXICAL$ {: lexical size:n :}
-   lexical state CURSOR-SOURCE !
-   size state CURSOR-SOURCE-LEN !
+   source-state SRC-LEXICAL$ {: lexical:str :}
+   lexical STR:DATA state CURSOR-SOURCE !
+   lexical STR:LEN state CURSOR-SOURCE-LEN !
    source-state SOURCE-READER-MODE state CURSOR-SOURCE-MODE !
    state source-state WINDOW-COLUMNS
    state READER-TABLES
@@ -673,13 +672,13 @@ private
    state index ATTRIBUTE ;
 
 : LOCAL-SPAN ( str -- str )
-   {: name size:n :}
-   size 0 ?do
-      name i + c@ $3A = if
-         name i 1+ + size i 1+ - unloop exit
+   {: name:str :}
+   name STR:LEN 0 ?do
+      name STR:DATA i + c@ $3A = if
+         name STR:DATA i 1+ + name STR:LEN i 1+ - >str unloop exit
       then
    loop
-   name size ;
+   name ;
 
 \ Keep the reader below throwing workers' arguments. Native catch restores
 \ stack depth, so public locals could overwrite the reader's saved stack cell.

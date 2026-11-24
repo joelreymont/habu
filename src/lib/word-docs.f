@@ -1,4 +1,3 @@
-split-str
 \ word-docs.f - package WORD-DOCS: the words a Habu source text defines, each
 \ with its package, section, stack effect and the comment above it, read through
 \ the shared lexer (src/lib/source-lex.f, package LINT-LEX).
@@ -111,7 +110,11 @@ variable IN-GLOBAL                            \ the open section is `global`
 
 \ The byte past token k; a string literal's span ends before its payload.
 : PAST ( n -- n ) {: k:n :}
-   k LINT-LEX:LITERAL? if k LINT-LEX:CONTENT + 1+ else k LINT-LEX:TOKEN + then
+   k LINT-LEX:LITERAL? if
+      k LINT-LEX:CONTENT dup STR:LEN swap STR:DATA + 1+
+   else
+      k LINT-LEX:TOKEN dup STR:LEN swap STR:DATA +
+   then
    SRC@ - ;
 
 \ Between two tokens the text holds only delimiters and `\` comments, so a
@@ -140,15 +143,15 @@ variable IN-GLOBAL                            \ the open section is `global`
 : NOTE ( n -- str n ) {: s:n :}
    s LINE-END {: e:n :}
    s e INK 1+ e SKIP-SPACE {: t:n :}
-   SRC@ t + e t - STR:RTRIM
+   SRC@ t + e t - >str STR:RTRIM
    e 1+ ;
 
 : NOTES-LEN ( n n -- n ) {: top:n stop:n :}
    top stop >= if 0 exit then
    -1 top
    begin dup stop < while
-      NOTE {: u:n next:n :} drop
-      u + 1+ next
+      NOTE {: line:str next:n :}
+      line STR:LEN + 1+ next
    repeat drop ;
 
 \ Copy them to dst, a newline before each line but the run's first, as
@@ -157,9 +160,9 @@ variable IN-GLOBAL                            \ the open section is `global`
    dst top
    begin dup stop < while
       dup top <> {: later:bool :}
-      NOTE {: a:^ u:n next:n :}
+      NOTE {: line:str next:n :}
       later if STR:LF over c! 1+ then
-      a over u BYTE-COPY u +
+      line STR:DATA over line STR:LEN BYTE-COPY line STR:LEN +
       next
    repeat 2drop ;
 
@@ -174,7 +177,7 @@ variable IN-GLOBAL                            \ the open section is `global`
 : TEXT$ ( n n -- str ) {: k:n f:n :}
    k REC HEAD-CELLS cells +
    f 0 ?do k i FIELD@ + loop
-   k f FIELD@ ;
+   k f FIELD@ >str ;
 
 : FLAG? ( n n -- bool ) {: k:n bit:n :}
    k FLAGS-CELL FIELD@ bit and 0<> ;
@@ -200,24 +203,24 @@ variable IN-GLOBAL                            \ the open section is `global`
    PUB !  false IN-GLOBAL ! ;
 
 : ADD ( n str str n -- )
-   {: k:n a:^ u:n e:^ eu:n flags:n :}
+   {: k:n s:str e:str flags:n :}
    k LINT-LEX:BYTE@ LINE-START {: stop:n :}
    k 0= if 0 else k 1- PAST then {: floor:n :}
    stop floor NOTES-START {: top:n :}
    top stop NOTES-LEN {: cu:n :}
    PATH-U {: pu:n :}
-   pu u + eu + cu + {: tu:n :}
+   pu s STR:LEN + e STR:LEN + cu + {: tu:n :}
    HEAD-CELLS cells tu + TAKE {: r:^ :}
    pu r CELL!
-   u r CELL + CELL!
-   eu r 2 cells + CELL!
+   s STR:LEN r CELL + CELL!
+   e STR:LEN r 2 cells + CELL!
    cu r 3 cells + CELL!
    flags r FLAGS-CELL cells + CELL!
    r HEAD-CELLS cells + {: t:^ :}
    t PATH-COPY
-   a t pu + u BYTE-COPY
-   e t pu + u + eu BYTE-COPY
-   t pu + u + eu + top stop NOTES-COPY
+   s STR:DATA t pu + s STR:LEN BYTE-COPY
+   e STR:DATA t pu + s STR:LEN + e STR:LEN BYTE-COPY
+   t pu + s STR:LEN + e STR:LEN + top stop NOTES-COPY
    r RECS @ VEC:PUSH ! ;
 
 : LEXED ( -- )
@@ -230,7 +233,7 @@ variable IN-GLOBAL                            \ the open section is `global`
    k 1+ ;
 
 : NO-TEXT ( -- str )
-   SRC@ 0 ;
+   SRC@ 0 >str ;
 
 \ The effect after name token j: a `( ... )` comment that is the next token,
 \ on its line or a later one, with no `\` comment between. The lexer drops `\`
@@ -240,7 +243,7 @@ variable IN-GLOBAL                            \ the open section is `global`
    j 1+ {: c:n :}
    c LINT-LEX:COUNT >= if NO-TEXT exit then
    c LINT-LEX:KIND@ LINT-LEX:COMMENT <> if NO-TEXT exit then
-   c LINT-LEX:TOKEN drop c@ LPAREN <> if NO-TEXT exit then
+   c LINT-LEX:TOKEN STR:DATA c@ LPAREN <> if NO-TEXT exit then
    c LINT-LEX:BYTE@ {: e:n :}
    j PAST e INK e <> if NO-TEXT exit then
    c LINT-LEX:CONTENT STR:TRIM ;
@@ -257,7 +260,11 @@ variable IN-GLOBAL                            \ the open section is `global`
 \ to the package's private section.
 : OPEN-PKG ( n -- )
    NAMED LINT-LEX:TOKEN
-   PKG-U @ 0= if PKG-U ! PKG ! else PART-U ! PART ! then
+   PKG-U @ 0= if
+      dup STR:LEN PKG-U ! STR:DATA PKG !
+   else
+      dup STR:LEN PART-U ! STR:DATA PART !
+   then
    false SECTION! ;
 
 : CLOSE-PKG ( -- )
@@ -267,18 +274,18 @@ variable IN-GLOBAL                            \ the open section is `global`
 : STEP ( n -- ) {: k:n :}
    k LINT-LEX:KIND@ LINT-LEX:WORD <> if exit then
    k LINT-LEX:OPERAND? if exit then
-   k LINT-LEX:TOKEN {: a:^ u:n :}
-   a u s" :" STR:= if k COLON exit then
-   a u s" package" STR:=CI if k OPEN-PKG exit then
+   k LINT-LEX:TOKEN {: t:str :}
+   t s" :" STR:= if k COLON exit then
+   t s" package" STR:=CI if k OPEN-PKG exit then
    PKG-U @ 0= if exit then
-   a u s" ;package" STR:=CI if CLOSE-PKG exit then
-   a u s" public" STR:=CI if true SECTION! exit then
-   a u s" private" STR:=CI if false SECTION! exit then
-   a u s" global" STR:=CI if false PUB !  true IN-GLOBAL ! exit then
-   a u s" EXPORT" STR:=CI if k EXPORT-AT then ;
+   t s" ;package" STR:=CI if CLOSE-PKG exit then
+   t s" public" STR:=CI if true SECTION! exit then
+   t s" private" STR:=CI if false SECTION! exit then
+   t s" global" STR:=CI if false PUB !  true IN-GLOBAL ! exit then
+   t s" EXPORT" STR:=CI if k EXPORT-AT then ;
 
 : READ-ALL ( -- )
-   SRC@ SRC-U @ LINT-LEX:SOURCE LEXED
+   SRC@ SRC-U @ >str LINT-LEX:SOURCE LEXED
    0 begin dup LINT-LEX:COUNT < while dup STEP 1+ repeat drop ;
 
 : FORGET-TEXT ( -- )
@@ -291,10 +298,10 @@ public
 
 \ Appends a record per `: NAME`, and per `EXPORT NAME` in a package, in source
 \ order; a lexer rejection or an unnamed definer throws E-SOURCE, records kept.
-: FILE ( str -- ) {: a:^ u:n :}
+: FILE ( str -- ) {: s:str :}
    LIVE? 0= if INIT then
-   a SRC !  u SRC-U !
-   a PKG !  0 PKG-U !  a PART !  0 PART-U !  false SECTION!
+   s STR:DATA SRC !  s STR:LEN SRC-U !
+   s STR:DATA PKG !  0 PKG-U !  s STR:DATA PART !  0 PART-U !  false SECTION!
    [: READ-ALL ;] [: FORGET-TEXT ;] finally ;
 
 \ Drops every record and releases their storage.

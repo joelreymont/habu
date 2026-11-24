@@ -1,4 +1,3 @@
-split-str
 \ zip-lifecycle-test.f - an archive's snapshot goes with CLOSE, a host fault
 \ during CLOSE keeps the host's code and still retires the archive, and a halt
 \ during disposal takes effect after the archive's node is freed.
@@ -33,13 +32,13 @@ TASK:SEMAPHORE LOCK-RELEASE
 
 
 : INPUT$ ( -- str )
-   BASE BASE-LEN @ s" input.zip" PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
+   BASE BASE-LEN @ >str s" input.zip" PATH-BUF FS:JOIN-PATH PATH-BUF swap >str ;
 
 
 : LIFECYCLE-SETUP ( -- )
-   s" habu-zip-lifecycle" FS:MKTEMP-DIR {: directory bytes:n :}
-   directory BASE bytes BYTE-COPY bytes BASE-LEN !
-   BASE bytes FS:CLEANUP-TREE+
+   s" habu-zip-lifecycle" FS:MKTEMP-DIR {: directory:str :}
+   directory STR:DATA BASE directory STR:LEN BYTE-COPY directory STR:LEN BASE-LEN !
+   BASE directory STR:LEN >str FS:CLEANUP-TREE+
    INPUT$ ZIP-TEST:ORIGINAL$ FS:WRITE-ALL ;
 
 
@@ -90,17 +89,17 @@ TASK:SEMAPHORE LOCK-RELEASE
    INPUT$ OPEN {: archive:archive :}
    archive KEEP-SNAP-PATH
    s" the open archive's snapshot exists" T-LABEL
-   SNAP-PATH SNAP-PATH-U @ FS:EXISTS? TTRUE
+   SNAP-PATH SNAP-PATH-U @ >str FS:EXISTS? TTRUE
    archive CLOSE
    s" CLOSE removed the archive's snapshot" T-LABEL
-   SNAP-PATH SNAP-PATH-U @ FS:EXISTS? TFALSE ;
+   SNAP-PATH SNAP-PATH-U @ >str FS:EXISTS? TFALSE ;
 
 : CLOSE-KEEP ( archive -- archive ) dup CLOSE ;
 
 : SNAPSHOT-GONE ( -- )
    INPUT$ OPEN {: archive:archive :}
    archive KEEP-SNAP-PATH
-   SNAP-PATH SNAP-PATH-U @ FS:REMOVE-FILE
+   SNAP-PATH SNAP-PATH-U @ >str FS:REMOVE-FILE
    s" CLOSE with its snapshot removed is E-FS-IO" T-LABEL
    archive [: CLOSE-KEEP ;] catch E-FS-IO T= drop
    s" CLOSE retired the archive whose snapshot was removed" T-LABEL

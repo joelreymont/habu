@@ -1,4 +1,3 @@
-split-str
 \ read.f - the XML event scanner: NEXT, CONTENT and TEXT.
 
 require src/lib/xml/names.f
@@ -100,16 +99,16 @@ private
 \ Rejects the reader at off, expecting the open element's end tag.
 \ The expected text `</NAME>` names the open element, cut as a found token is.
 : END-TAG-REJECT ( ^cursor n str n -- )
-   {: state off:n fa:^ fu:n code:n :}
+   {: state off:n fs:str code:n :}
    state CURRENT-FRAME {: frame :}
-   state frame FRAME-NAME @ frame FRAME-NAME-U @ SPAN$ {: name:^ u:n :}
-   name u CAPPED {: len:n form:n :}
+   state frame FRAME-NAME @ frame FRAME-NAME-U @ SPAN$ {: name:str :}
+   name CAPPED {: len:n form:n :}
    state off REJECT-HEAD
    s" `</" REASON:APPEND
-   name len REASON:VISIBLE
+   name STR:DATA len >str REASON:VISIBLE
    form FOUND-CUT = if s" ..." REASON:APPEND then
    s" >`" REASON:APPEND
-   state off fa fu code REJECT-TAIL ;
+   state off fs code REJECT-TAIL ;
 
 : MATCH-END-NAME ( ^cursor -- )
    {: state :}
@@ -241,8 +240,8 @@ private
    then ;
 
 : DECLARATION-NAME? ( ^cursor n str -- bool )
-   {: state index:n name size:n :}
-   state state index ATTRIBUTE name size NAME-MATCH? ;
+   {: state index:n name:str :}
+   state state index ATTRIBUTE name NAME-MATCH? ;
 
 : DECLARATION-VALUE$ ( ^cursor n -- str )
    {: state index:n :}
@@ -392,8 +391,8 @@ private
       s" correct the attribute's name, or remove the attribute"
       E-MALFORMED REJECT
    then
-   state index DECLARATION-VALUE$ {: value size:n :}
-   value size s" yes" BYTES= value size s" no" BYTES= or 0= if
+   state index DECLARATION-VALUE$ {: value:str :}
+   value s" yes" BYTES= value s" no" BYTES= or 0= if
       state state index DECLARATION-VALUE-OFF
       s" `yes` or `no`" s" write `yes` or `no` as `standalone`'s value"
       E-MALFORMED REJECT

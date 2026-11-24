@@ -1,4 +1,3 @@
-split-str
 \ Offset promotion is tested without allocating a multi-gigabyte payload.
 require src/lib/zip.f
 require src/lib/test.f
@@ -24,33 +23,33 @@ package ZIP
    S\" \x50\x4B\x01\x02\x3F\x03\x2D\x00\x00\x00\x00\x00\x34\x12\x78\x56\x78\x56\x34\x12\x04\x00\x00\x00\x04\x00\x00\x00\x01\x00\x1C\x00\x03\x00\x00\x00\x01\x00\x00\x00\xA4\x81\xFF\xFF\xFF\xFF\x78\xFE\xCA\x04\x00\x6B\x65\x65\x70\xEF\xBE\x04\x00\x74\x61\x69\x6C\x01\x00\x08\x00\x03\x00\x00\x00\x01\x00\x00\x00\x65\x6E\x64" ;
 
 : OFFSET-SOURCE ( ^n str -- )
-   {: node:^ data:^ len:n :}
+   {: node:^ data:str :}
    node SNAPSHOT-OPEN node SNAP-FD @ {: fd:n :}
    node SOURCE-PTR @ node PATH-PTR ! node SOURCE-LEN @ node PATH-LEN !
    node FILE-CHUNK BUFFER-ALLOC node COPY-BUF !
-   fd >FD data len FD:WRITE-FULL len node RAW-LEN !
-   0 len 1 2 fd 0 mmap {: mapped:n :}
+   fd >FD data FD:WRITE-FULL data STR:LEN node RAW-LEN !
+   0 data STR:LEN 1 2 fd 0 mmap {: mapped:n :}
    mapped -1 = if E-READ throw then
    mapped MAPPED>RAW node RAW-PTR !
-   node node RAW-PTR @ len COPY-IN drop node DIRECTORY-PTR !
-   len node DIRECTORY-SIZE ! ;
+   node node RAW-PTR @ data STR:LEN >str COPY-IN STR:DATA node DIRECTORY-PTR !
+   data STR:LEN node DIRECTORY-SIZE ! ;
 
 : OFFSET-PROMOTION-CASE ( str str -- )
-   {: before:^ before-len:n after:^ after-len:n :}
+   {: before:str after:str :}
    REGISTER ARCHIVE-NODE {: node:^ :}
-   node before before-len OFFSET-SOURCE
+   node before OFFSET-SOURCE
    node MEMBER-CELLS cells BUFFER-ALLOC CELL-VIEW {: member:^ :}
    node member 0 MEMBER-CENTRAL drop
    node RAW-PTR @ node RAW-LEN @ munmap 0<> if E-READ throw then
    0 MAPPED>RAW node RAW-PTR !
    $100000003 member NEW-LOCAL !
-   s" habu-zip-offset" FS:MKTEMP FD>N node TEMP-FD ! {: out:^ outu :}
+   s" habu-zip-offset" FS:MKTEMP FD>N node TEMP-FD ! {: out:str :}
    node member WRITE-CENTRAL
    node node OUT-LEN @ BUFFER-ALLOC {: output:^ :}
-   out outu output node OUT-LEN @ FS:READ-ALL
-   output swap after after-len T$=
+   out output node OUT-LEN @ FS:READ-ALL
+   output swap >str after T$=
    node TEMP-FD @ C-CLOSE-FD 0 T=
-   out outu FS:REMOVE-FILE node DISCARD-NODE ;
+   out FS:REMOVE-FILE node DISCARD-NODE ;
 
 : OFFSET-PROMOTION-TEST ( -- )
    OFFSET-WIDE-BEFORE$ OFFSET-WIDE-AFTER$ OFFSET-PROMOTION-CASE

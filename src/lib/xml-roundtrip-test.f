@@ -1,4 +1,3 @@
-split-str
 require src/lib/test.f
 require src/lib/xml.f
 require src/lib/byte-edit.f
@@ -22,12 +21,12 @@ TYPED-VARIABLE RD XML:cursor
       0 of s" <?xml version='1.0'?><p:a xmlns:p='urn:p' q='old'>old</p:a><!--keep-->" endof
       1 of s\" <?xml version=\"1.0\"?><p:a xmlns:p=\"urn:p\" q=\"&amp;\">&#65;</p:a><!--keep-->" endof
       2 of s" <?xml version='1.0'?><p:a xmlns:p='urn:p' q = '&#x1F600;' >é</p:a><!--keep-->" endof
-      s" <?xml version='1.0'?><p:a xmlns:p='urn:p' q=''>long &lt; old</p:a><!--keep-->" rot
+      s" <?xml version='1.0'?><p:a xmlns:p='urn:p' q=''>long &lt; old</p:a><!--keep-->" swap
    endcase ;
 
 : OPEN ( str -- XML:reader )
-   {: source size:n :}
-   RD HEAP:ALLOCATOR source size INIT ;
+   {: source:str :}
+   RD HEAP:ALLOCATOR source INIT ;
 
 : ATTRIBUTE-RANGE ( -- off len )
    ORIGINAL$ OPEN NEXT drop NEXT drop
@@ -41,11 +40,11 @@ TYPED-VARIABLE RD XML:cursor
    XML:CLOSE start size ;
 
 : APPLY ( str -- n )
-   {: value size:n :}
+   {: value:str :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: attr:^ :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: text:^ :}
-   value size attr ESCAPE-ATTR
-   value size text ESCAPE-TEXT
+   value attr ESCAPE-ATTR
+   value text ESCAPE-TEXT
    ATTRIBUTE-RANGE {: attr-start:off attr-old:len :}
    TEXT-RANGE {: text-start:off text-old:len :}
    HEAP:ALLOCATOR ORIGINAL$ EDIT:INIT
@@ -61,25 +60,25 @@ TYPED-VARIABLE RD XML:cursor
 : READBACK$ ( -- str ) READBACK @ VEC:SPAN SPAN:$ ;
 
 : VERIFY ( str n -- )
-   {: value size:n document-size:n :}
-   DOCUMENT document-size OPEN
+   {: value:str document-size:n :}
+   DOCUMENT document-size >str OPEN
    NEXT drop NEXT drop
    ATTR-NEXT TTRUE ATTR-NEXT TTRUE
-   CLEARED ATTR-TEXT READBACK$ value size T$=
+   CLEARED ATTR-TEXT READBACK$ value T$=
    NEXT drop
-   CLEARED TEXT READBACK$ value size T$=
+   CLEARED TEXT READBACK$ value T$=
    NEXT drop NEXT drop
    CLEARED TEXT READBACK$ s" keep" T$=
    NEXT drop XML:CLOSE ;
 
 : ROUNDTRIP ( str -- )
-   {: value size:n :}
-   value size value size APPLY VERIFY ;
+   {: value:str :}
+   value value APPLY VERIFY ;
 
 : ASCII-ROUNDTRIPS ( -- )
    $7F $20 ?do
       i SINGLE c!
-      SINGLE 1 ROUNDTRIP
+      SINGLE 1 >str ROUNDTRIP
    loop ;
 
 \ Chunks include every XML escape, whitespace normalization, multi-byte
@@ -97,18 +96,18 @@ TYPED-VARIABLE RD XML:cursor
       8 of s" İi̇" endof
       9 of s" 😀🚀" endof
       10 of s" 名" endof
-      s" abc 019" rot
+      s" abc 019" swap
    endcase ;
 
 : RANDOM-VALUE$ ( -- str )
    0
    32 PROP:RND% 1+ 0 ?do
       {: size:n :}
-      CHUNK$ {: chunk:^ count:n :}
-      chunk RANDOM-BUF size + count BYTE-COPY
-      size count +
+      CHUNK$ {: chunk:str :}
+      chunk STR:DATA RANDOM-BUF size + chunk STR:LEN BYTE-COPY
+      size chunk STR:LEN +
    loop
-   RANDOM-BUF swap ;
+   RANDOM-BUF swap >str ;
 
 : DRAIN ( XML:reader -- XML:reader )
    begin NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
@@ -128,13 +127,13 @@ TYPED-VARIABLE RD XML:cursor
    \ The final 17 bytes close the root and retain its following comment.
    \ Every selected prefix stops before that close, including mid-UTF8,
    \ mid-entity, mid-attribute, and incomplete processing-instruction cuts.
-   17 - PROP:RND% 1+ DOCUMENT swap REJECTS ;
+   17 - PROP:RND% 1+ DOCUMENT swap >str REJECTS ;
 
 : RANDOM-ROUNDTRIPS ( -- )
    $517A32D PROP:SEED!
    2048 0 ?do
       4 PROP:RND% TEMPLATE !
-      RANDOM-VALUE$ 2dup APPLY dup >r VERIFY r> RANDOM-REJECTION
+      RANDOM-VALUE$ dup APPLY dup >r VERIFY r> RANDOM-REJECTION
    loop ;
 
 READBACK-NEW

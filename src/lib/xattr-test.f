@@ -1,4 +1,3 @@
-split-str
 \ xattr-test.f - XATTR's words on a file under the test's temporary directory,
 \ through `user.` attributes.
 \ Run: bin/hb --load src/lib/xattr-test.f
@@ -29,15 +28,15 @@ variable FILE-U
 variable FILE-FD
 variable CLOSED-FD
 
-: ROOT$ ( -- str ) ROOT ROOT-U @ ;
-: FILE$ ( -- str ) FILE FILE-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: FILE$ ( -- str ) FILE FILE-U @ >str ;
 : FD@ ( -- fd ) FILE-FD @ >FD ;
 : NAME$ ( -- str ) s" user.hb-xattr-test" ;
 
 : SETUP ( -- )
-   s" hb-xattr" FS:MKTEMP-DIR {: path:^ u:n :}
-   path ROOT u BYTE-COPY
-   u ROOT-U !
+   s" hb-xattr" FS:MKTEMP-DIR {: path:str :}
+   path STR:DATA ROOT path STR:LEN BYTE-COPY
+   path STR:LEN ROOT-U !
    ROOT$ s" file" FILE FS:JOIN-PATH FILE-U !
    FILE$ s" " FS:WRITE-ALL
    FILE$ FS:>PATHZ FS:O-RDWR 0 open FILE-FD !
@@ -57,9 +56,9 @@ variable CLOSED-FD
    FD@ NAME$ buf XATTR:GET GOT>N ;
 
 : HOLDS ( str -- )
-   {: want:^ wu:n :}
-   BUF GET-N wu T=
-   BUF SPAN:$ drop wu want wu T$= ;
+   {: want:str :}
+   BUF GET-N want STR:LEN T=
+   BUF SPAN:$ STR:DATA want STR:LEN >str want T$= ;
 
 : ADD-AGAIN ( -- ) FD@ NAME$ s" again" XATTR:ADD ;
 
@@ -79,7 +78,7 @@ variable CLOSED-FD
    s" set of a fresh name" T-LABEL
    FD@ FRESH$ s" made" XATTR:SET
    FD@ FRESH$ BUF XATTR:GET GOT>N 4 T=
-   BUF SPAN:$ drop 4 s" made" T$= ;
+   BUF SPAN:$ STR:DATA 4 >str s" made" T$= ;
 
 : NAME-255$ ( -- str ) LONG 255 SPAN:TAKE SPAN:$ ;
 

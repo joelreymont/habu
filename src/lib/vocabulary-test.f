@@ -1,4 +1,3 @@
-split-str
 \ vocabulary-test.f - the design seal through the real load path, at tier 0;
 \ each case is one child: bin/hb --load <harness>.f -- <case>.f, in test/policy.
 \ Run: bin/hb --load src/lib/vocabulary-test.f
@@ -30,23 +29,23 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : ARTIFACT$ ( -- str ) s" build/vocabulary-run.txt" ;
 : DIR$ ( -- str ) s" test/policy/" ;
 
-: HARNESS! ( str -- ) STEM-U ! STEM-A ! ;
-: STEM$ ( -- str ) STEM-A @ STEM-U @ ;
+: HARNESS! ( str -- ) dup STR:LEN STEM-U ! STR:DATA STEM-A ! ;
+: STEM$ ( -- str ) STEM-A @ STEM-U @ >str ;
 : TIER0 ( -- ) s" allow" HARNESS! ;
 
 : FILE$ ( str -- str )
-   {: stem:^ su:n :}
-   SB-RESET DIR$ SB-APPEND stem su SB-APPEND s" .f" SB-APPEND
+   {: stem:str :}
+   SB-RESET DIR$ SB-APPEND stem SB-APPEND s" .f" SB-APPEND
    SB$ ;
 
 : CODE! ( CMD:command PROCESS:ending str -- CMD:command )
-   {: oc ran:^ ranu:n :}
-   CMD:OUT$ {: out:^ outu:n :}
-   CMD:ERR$ {: err:^ erru:n :}
+   {: oc ran:str :}
+   CMD:OUT$ {: out:str :}
+   CMD:ERR$ {: err:str :}
    oc MATCH PROCESS:ending
      exited OF CODE ! ENDOF
      signaled OF drop -1 CODE ! ENDOF
-     timeout OF ran ranu out outu err erru T-TIMED-OUT ENDOF
+     timeout OF ran out err T-TIMED-OUT ENDOF
    ;MATCH ;
 
 : FILE-ARG+ ( CMD:command str -- CMD:command )
@@ -54,21 +53,21 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ An empty case name loads the harness alone.
 : SPAWN ( CMD:command str -- CMD:command )
-   {: name:^ nu:n :}
+   {: name:str :}
    s" --load" CMD:ARG+
    STEM$ FILE-ARG+
-   nu 0 > if
+   name STR:LEN 0 > if
       s" --" CMD:ARG+
-      name nu FILE-ARG+
+      name FILE-ARG+
    then
    s" bin/hb" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
-   nu 0 > if name nu else STEM$ then FILE$ CODE! ;
+   name STR:LEN 0 > if name else STEM$ then FILE$ CODE! ;
 
 : ERR-LINE$ ( CMD:command -- CMD:command str )
-   CMD:ERR$ {: a:^ u:n :}
-   a u LF STR:INDEX-OF MATCH option
-     none OF a u ENDOF
-     some OF IDX>N a swap ENDOF
+   CMD:ERR$ {: s:str :}
+   s LF STR:INDEX-OF MATCH option
+     none OF s ENDOF
+     some OF IDX>N s STR:DATA swap >str ENDOF
    ;MATCH ;
 
 \ Append the first stderr line to the builder.
@@ -79,42 +78,42 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ whole or by its head.
 : SAID-HEAD$ ( CMD:command n -- CMD:command str ) {: want:n :}
    SB-RESET SAID+
-   SB$ {: a:^ u:n :}
-   a u want min ;
+   SB$ {: s:str :}
+   s STR:DATA s STR:LEN want min >str ;
 
-: LOG ( CMD:command str -- CMD:command ) {: name:^ nu:n :}
+: LOG ( CMD:command str -- CMD:command ) {: name:str :}
    SB-RESET STEM$ SB-APPEND s"  " SB-APPEND
-   nu 0 > if name nu SB-APPEND else s" -" SB-APPEND then
+   name STR:LEN 0 > if name SB-APPEND else s" -" SB-APPEND then
    s"  rc=" SB-APPEND CODE @ FMT:SB-INT s"  " SB-APPEND
    SAID+ LF SB-APPEND-C
    ARTIFACT$ SB$ FS:APPEND-FILE ;
 
-: LABEL ( str str -- ) {: name:^ nu:n what:^ wu:n :}
-   SB-RESET STEM$ SB-APPEND s"  " SB-APPEND name nu SB-APPEND
-   s" : " SB-APPEND what wu SB-APPEND
+: LABEL ( str str -- ) {: name:str what:str :}
+   SB-RESET STEM$ SB-APPEND s"  " SB-APPEND name SB-APPEND
+   s" : " SB-APPEND what SB-APPEND
    SB$ T-LABEL ;
 
 \ One scope per child: its captures stay readable until the verdict is taken.
 : RUNS-IN ( str n str str CMD:command -- CMD:command )
-   >r {: name:^ nu:n rc:n line:^ lu:n out:^ ou:n :} r>
-   name nu s" exit code" LABEL
-   name nu SPAWN
-   name nu LOG
+   >r {: name:str rc:n line:str out:str :} r>
+   name s" exit code" LABEL
+   name SPAWN
+   name LOG
    CODE @ rc T=
-   name nu s" first stderr line" LABEL
-   lu SAID-HEAD$ line lu T$=
-   name nu s" stdout" LABEL
-   CMD:OUT$ out ou T$= ;
+   name s" first stderr line" LABEL
+   line STR:LEN SAID-HEAD$ line T$=
+   name s" stdout" LABEL
+   CMD:OUT$ out T$= ;
 
 : RUNS ( str n str str -- )
    [: RUNS-IN ;] CMD:WITH-COMMAND ;
 
 \ RUNS, and a span the whole stderr holds: the record's place or its notes.
 : SAYS-IN ( str n str str str CMD:command -- CMD:command )
-   >r {: name:^ nu:n rc:n line:^ lu:n span:^ su:n out:^ ou:n :} r>
-   >r name nu rc line lu out ou r> RUNS-IN
-   name nu s" stderr span" LABEL
-   CMD:ERR$ span su STR:CONTAINS? TTRUE ;
+   >r {: name:str rc:n line:str span:str out:str :} r>
+   >r name rc line out r> RUNS-IN
+   name s" stderr span" LABEL
+   CMD:ERR$ span STR:CONTAINS? TTRUE ;
 
 : SAYS ( str n str str str -- )
    [: SAYS-IN ;] CMD:WITH-COMMAND ;
@@ -122,18 +121,18 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ A rejection the engine throws: the record's first line and its place,
 \ status 70, no output.
 : REFUSES ( str str str -- )
-   {: name:^ nu:n line:^ lu:n place:^ pu:n :}
-   name nu 70 line lu place pu s" " SAYS ;
+   {: name:str line:str place:str :}
+   name 70 line place s" " SAYS ;
 
 : TIER0-REFUSES ( str str str -- )
-   {: name:^ nu:n line:^ lu:n place:^ pu:n :}
-   TIER0 name nu line lu place pu REFUSES ;
+   {: name:str line:str place:str :}
+   TIER0 name line place REFUSES ;
 
 \ A harness the engine stops with an E-POLICY record: its first line, the
 \ notes span, the stdout.
 : STOPS ( str str str -- )
-   {: line:^ lu:n notes:^ nu:n out:^ ou:n :}
-   s" " 107 line lu notes nu out ou SAYS ;
+   {: line:str notes:str out:str :}
+   s" " 107 line notes out SAYS ;
 
 : SEALED$ ( -- str ) s" error[E-POLICY]: the vocabulary is sealed" ;
 : KEYWORD$ ( -- str ) s" error[E-POLICY]: a package publishes a word spelled like a keyword" ;

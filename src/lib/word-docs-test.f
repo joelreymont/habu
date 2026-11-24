@@ -1,4 +1,3 @@
-split-str
 \ word-docs-test.f - package WORD-DOCS through its public API: an inline fixture
 \ for each recording rule, the refusals, storage beyond one chunk, and a real
 \ source file.
@@ -27,7 +26,7 @@ variable FIX-U
    FIX @ ;
 
 : FIX$ ( -- str )
-   FIX@ FIX-U @ ;
+   FIX@ FIX-U @ >str ;
 
 : FIX-OPEN ( -- )
    FIX-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FIX !
@@ -36,10 +35,10 @@ variable FIX-U
 : FIX-CLOSE ( -- )
    FIX@ FIX-CAP MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
-: +FIX ( str -- ) {: a:^ u:n :}
-   FIX-U @ u + FIX-CAP > if E-STR-CAPACITY throw then
-   a FIX@ FIX-U @ + u BYTE-COPY
-   FIX-U @ u + FIX-U ! ;
+: +FIX ( str -- ) {: s:str :}
+   FIX-U @ s STR:LEN + FIX-CAP > if E-STR-CAPACITY throw then
+   s STR:DATA FIX@ FIX-U @ + s STR:LEN BYTE-COPY
+   FIX-U @ s STR:LEN + FIX-U ! ;
 
 : +SB ( -- )
    SB$ +FIX ;
@@ -47,10 +46,10 @@ variable FIX-U
 : DOCS ( str -- )
    WORD-DOCS:RESET WORD-DOCS:FILE ;
 
-: REC= ( n str str str -- ) {: k:n a:^ u:n p:^ pu:n e:^ eu:n :}
-   k WORD-DOCS:NAME$ a u T$=
-   k WORD-DOCS:PACKAGE$ p pu T$=
-   k WORD-DOCS:EFFECT$ e eu T$= ;
+: REC= ( n str str str -- ) {: k:n s:str p:str e:str :}
+   k WORD-DOCS:NAME$ s T$=
+   k WORD-DOCS:PACKAGE$ p T$=
+   k WORD-DOCS:EFFECT$ e T$= ;
 
 : RULES-FIXTURE ( -- )
    0 FIX-U !
@@ -77,7 +76,7 @@ variable FIX-U
    1 WORD-DOCS:COMMENT$ s\" First line.\n\n   indented." T$=
    1 WORD-DOCS:PUBLIC? TFALSE
    2 s" SHOWN" s" ALPHA" s" -- n" REC=
-   2 WORD-DOCS:COMMENT$ nip 0 T=
+   2 WORD-DOCS:COMMENT$ STR:LEN 0 T=
    2 WORD-DOCS:PUBLIC? TTRUE
    3 s" BARE" s" ALPHA" s" " REC=
    3 WORD-DOCS:PUBLIC? TTRUE
@@ -85,7 +84,7 @@ variable FIX-U
    \ A `\` comment between the name and `( ... )` leaves no declared effect,
    \ beside the name or on a line of its own; a blank line does not.
    5 s" NOTED" s" ALPHA" s" " REC=
-   5 WORD-DOCS:COMMENT$ nip 0 T=
+   5 WORD-DOCS:COMMENT$ STR:LEN 0 T=
    6 s" SKIPPED" s" ALPHA" s" " REC=
    7 s" SPACED" s" ALPHA" s" -- n" REC=
    8 s" AGAIN" s" ALPHA" s" --" REC=
@@ -97,7 +96,7 @@ variable FIX-U
    10 WORD-DOCS:PUBLIC? TTRUE
    10 WORD-DOCS:EXPORT? TTRUE
    11 s" AFTER" s" " s" --" REC=
-   11 WORD-DOCS:COMMENT$ nip 0 T=
+   11 WORD-DOCS:COMMENT$ STR:LEN 0 T=
    11 WORD-DOCS:EXPORT? TFALSE ;
 
 \ A run whose first lines are bare `\` keeps a newline for each.
@@ -184,24 +183,24 @@ variable FIX-U
    MANY 1- WORD-DOCS:NAME$ s" W1499" T$=
    MANY 1- WORD-DOCS:COMMENT$ s" note 1499" T$=
    MANY s" LONG" s" " s" --" REC=
-   MANY WORD-DOCS:COMMENT$ {: c:^ cu:n :}
-   cu LONG-LINES LONG-WIDTH 1+ * 1- T=
-   c c@ X-BYTE T=
-   c LONG-WIDTH + c@ STR:LF T=
-   c cu + 1- c@ X-BYTE T=
+   MANY WORD-DOCS:COMMENT$ {: c:str :}
+   c STR:LEN LONG-LINES LONG-WIDTH 1+ * 1- T=
+   c STR:DATA c@ X-BYTE T=
+   c STR:DATA LONG-WIDTH + c@ STR:LF T=
+   c STR:DATA c STR:LEN + 1- c@ X-BYTE T=
    WORD-DOCS:RESET ;
 
-: READ-FILE ( str -- ) {: pa:^ pu:n :}
-   pa pu FS:OPEN-SIZED {: fd size:n ok :}
+: READ-FILE ( str -- ) {: ps:str :}
+   ps FS:OPEN-SIZED {: fd size:n ok :}
    ok TTRUE
    size FIX-CAP > if E-STR-CAPACITY throw then
    fd FIX@ size FS:READ-SIZED
    size FIX-U ! ;
 
-\ Record k named a u.
-: FIND ( str -- n ) {: a:^ u:n :}
+\ Record k named s.
+: FIND ( str -- n ) {: s:str :}
    WORD-DOCS:COUNT 0 ?do
-      i WORD-DOCS:NAME$ a u STR:= if i unloop exit then
+      i WORD-DOCS:NAME$ s STR:= if i unloop exit then
    loop
    -1 ;
 
@@ -234,7 +233,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : WDT-BOUNDS ( -- )
    s" a record at or past COUNT, or any after RESET, is E-VEC-BOUNDS" T-LABEL
    s" : ONE ( -- ) ;" WORD-DOCS:FILE
-   [: 1 WORD-DOCS:NAME$ 2drop ;] E-VEC-BOUNDS TTHROWSQ
+   [: 1 WORD-DOCS:NAME$ drop ;] E-VEC-BOUNDS TTHROWSQ
    WORD-DOCS:RESET
-   [: 0 WORD-DOCS:NAME$ 2drop ;] E-VEC-BOUNDS TTHROWSQ ;
+   [: 0 WORD-DOCS:NAME$ drop ;] E-VEC-BOUNDS TTHROWSQ ;
 [then]

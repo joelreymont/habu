@@ -1,4 +1,3 @@
-split-str
 \ source.f - XML source views and reversible lexical/original byte
 \ coordinates. Part of package XML (src/lib/xml.f). UTF-8 and US-ASCII borrow
 \ the original bytes; UTF-16 is converted to canonical UTF-8 in the source's
@@ -67,17 +66,17 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
 
 : SRC-BOM$ ( ^header -- str )
    {: state :}
-   state HEADER-ORIGINAL @ drop state HEADER-BOM-LEN @ ;
+   state HEADER-ORIGINAL @ STR:DATA state HEADER-BOM-LEN @ >str ;
 
 : SRC-STARTS? ( str str -- bool )
-   {: source size:n signature count:n :}
-   size count < if false exit then
-   source count signature count BYTES= ;
+   {: source:str signature:str :}
+   source STR:LEN signature STR:LEN < if false exit then
+   source STR:DATA signature STR:LEN >str signature BYTES= ;
 
-: SRC-UNIT ( str encoding -- n )
-   {: source cursor:n encoding:encoding :}
-   source cursor + c@ {: first:n :}
-   source cursor 1+ + c@ {: second:n :}
+: SRC-UNIT ( str n encoding -- n )
+   {: source:str cursor:n encoding:encoding :}
+   source STR:DATA cursor + c@ {: first:n :}
+   source STR:DATA cursor 1+ + c@ {: second:n :}
    encoding XML-ENCODING:UTF16-LE XML-ENCODING:EQ if
       second 8 lshift first or
    else
@@ -85,41 +84,41 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
    then ;
 
 : SRC-DECL-CHAR ( str n encoding n -- n )
-   {: source size:n bom:n encoding:encoding index:n :}
+   {: source:str bom:n encoding:encoding index:n :}
    encoding XML-ENCODING:UTF8 XML-ENCODING:EQ if 1 else 2 then
    {: width:n :}
-   index 0 < index size bom - width / >= or if -1 exit then
+   index 0 < index source STR:LEN bom - width / >= or if -1 exit then
    bom index width * + {: cursor:n :}
-   width 1 = if source cursor + c@ else
+   width 1 = if source STR:DATA cursor + c@ else
       source cursor encoding SRC-UNIT then ;
 
 : FOLD-ASCII ( n -- n )
    dup $41 >= over $5A <= and if $20 + then ;
 
 : FOLD-EQUAL? ( str str -- bool )
-   {: first first-size:n second second-size:n :}
-   first-size second-size <> if false exit then
-   first-size 0 ?do
-      first i + c@ FOLD-ASCII second i + c@ FOLD-ASCII <> if
+   {: first:str second:str :}
+   first STR:LEN second STR:LEN <> if false exit then
+   first STR:LEN 0 ?do
+      first STR:DATA i + c@ FOLD-ASCII second STR:DATA i + c@ FOLD-ASCII <> if
          false unloop exit
       then
    loop
    true ;
 
 : SRC-DECL-MATCH? ( str n encoding n str -- bool )
-   {: source size:n bom:n encoding:encoding cursor:n expected count:n :}
-   count 0 ?do
-      source size bom encoding cursor i + SRC-DECL-CHAR
-      expected i + c@ <> if false unloop exit then
+   {: source:str bom:n encoding:encoding cursor:n expected:str :}
+   expected STR:LEN 0 ?do
+      source bom encoding cursor i + SRC-DECL-CHAR
+      expected STR:DATA i + c@ <> if false unloop exit then
    loop
    true ;
 
 : SRC-DECL-WHITE ( str n encoding n -- n )
-   {: source size:n bom:n encoding:encoding cursor:n :}
+   {: source:str bom:n encoding:encoding cursor:n :}
    cursor
    begin
       {: next:n :}
-      source size bom encoding next SRC-DECL-CHAR XML-SPACE? 0= if
+      source bom encoding next SRC-DECL-CHAR XML-SPACE? 0= if
          next exit
       then
       next 1+
@@ -128,17 +127,17 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
 \ Read one quoted pseudoattribute value after its name; the reader validates
 \ the full declaration grammar after source encoding has been selected.
 : SRC-DECL-ASSIGN ( str n encoding n -- n n )
-   {: source size:n bom:n encoding:encoding cursor:n :}
-   source size bom encoding cursor SRC-DECL-WHITE {: equal:n :}
-   source size bom encoding equal SRC-DECL-CHAR $3D <> if -1 -1 exit then
-   source size bom encoding equal 1+ SRC-DECL-WHITE {: open:n :}
-   source size bom encoding open SRC-DECL-CHAR {: quote:n :}
+   {: source:str bom:n encoding:encoding cursor:n :}
+   source bom encoding cursor SRC-DECL-WHITE {: equal:n :}
+   source bom encoding equal SRC-DECL-CHAR $3D <> if -1 -1 exit then
+   source bom encoding equal 1+ SRC-DECL-WHITE {: open:n :}
+   source bom encoding open SRC-DECL-CHAR {: quote:n :}
    quote $22 <> quote $27 <> and if -1 -1 exit then
    open 1+ {: start:n :}
    start
    begin
       {: cursor:n :}
-      source size bom encoding cursor SRC-DECL-CHAR {: byte:n :}
+      source bom encoding cursor SRC-DECL-CHAR {: byte:n :}
       byte -1 = byte $3C = or byte $3E = or if -1 -1 exit then
       byte quote = if start cursor 1+ exit then
       cursor 1+
@@ -147,26 +146,26 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
 \ The index, as SRC-DECL-CHAR counts, of the encoding label's first character
 \ when the declaration names US-ASCII, else -1.
 : SRC-DECL-ASCII ( str n encoding -- n )
-   {: source size:n bom:n encoding:encoding :}
-   source size bom encoding 0 s" <?xml" SRC-DECL-MATCH? 0= if -1 exit then
-   source size bom encoding 5 SRC-DECL-CHAR XML-SPACE? 0= if -1 exit then
-   source size bom encoding 5 SRC-DECL-WHITE {: version:n :}
-   source size bom encoding version s" version" SRC-DECL-MATCH? 0= if -1 exit then
-   source size bom encoding version 7 + SRC-DECL-ASSIGN
+   {: source:str bom:n encoding:encoding :}
+   source bom encoding 0 s" <?xml" SRC-DECL-MATCH? 0= if -1 exit then
+   source bom encoding 5 SRC-DECL-CHAR XML-SPACE? 0= if -1 exit then
+   source bom encoding 5 SRC-DECL-WHITE {: version:n :}
+   source bom encoding version s" version" SRC-DECL-MATCH? 0= if -1 exit then
+   source bom encoding version 7 + SRC-DECL-ASSIGN
    {: value:n after:n :}
    value -1 = after value 1+ <= or if -1 exit then
-   source size bom encoding after SRC-DECL-CHAR XML-SPACE? 0= if -1 exit then
-   source size bom encoding after SRC-DECL-WHITE {: label:n :}
-   source size bom encoding label s" encoding" SRC-DECL-MATCH? 0= if -1 exit then
-   source size bom encoding label 8 + SRC-DECL-ASSIGN
+   source bom encoding after SRC-DECL-CHAR XML-SPACE? 0= if -1 exit then
+   source bom encoding after SRC-DECL-WHITE {: label:n :}
+   source bom encoding label s" encoding" SRC-DECL-MATCH? 0= if -1 exit then
+   source bom encoding label 8 + SRC-DECL-ASSIGN
    {: start:n end:n :}
    start -1 = end start - 1- 8 <> or if -1 exit then
-   s" US-ASCII" drop {: ascii :}
+   s" US-ASCII" STR:DATA {: ascii :}
    8 0 ?do
-      source size bom encoding start i + SRC-DECL-CHAR FOLD-ASCII
+      source bom encoding start i + SRC-DECL-CHAR FOLD-ASCII
       ascii i + c@ FOLD-ASCII <> if -1 unloop exit then
    loop
-   source size bom encoding end SRC-DECL-CHAR dup XML-SPACE? swap $3F = or
+   source bom encoding end SRC-DECL-CHAR dup XML-SPACE? swap $3F = or
    if start else -1 then ;
 
 : DECL-ASCII-EXPECTED$ ( -- str )
@@ -175,16 +174,16 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
    s" declare the encoding the document is saved in, or save it as US-ASCII without a byte order mark" ;
 
 : SRC-CHECK-DECL ( str encoding n -- encoding n )
-   {: source size:n encoding:encoding bom:n :}
-   source size bom encoding SRC-DECL-ASCII {: label:n :}
+   {: source:str encoding:encoding bom:n :}
+   source bom encoding SRC-DECL-ASCII {: label:n :}
    label 0< if encoding bom exit then
    encoding XML-ENCODING:UTF8 XML-ENCODING:EQ 0= if
-      source size bom label 2 * +
+      source bom label 2 * +
       encoding XML-ENCODING:UTF16-BE XML-ENCODING:EQ
       DECL-ASCII-EXPECTED$ DECL-ASCII-FIX$ E-ENCODING REJECT-UNITS
    then
    bom 0<> if
-      source size WHOLE bom label + DECL-ASCII-EXPECTED$
+      source WHOLE bom label + DECL-ASCII-EXPECTED$
       DECL-ASCII-FIX$ E-ENCODING REJECT-FROM
    then
    XML-ENCODING:US-ASCII bom ;
@@ -198,33 +197,33 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
    E-ENCODING REJECT-UNITS ;
 
 : SRC-DETECT ( str -- encoding n )
-   {: source size:n :}
-   source size s\" \z\z\xFE\xFF" SRC-STARTS?
-   source size s\" \xFF\xFE\z\z" SRC-STARTS? or
-   source size s\" \z\z\z<" SRC-STARTS? or
-   source size s\" <\z\z\z" SRC-STARTS? or if
-      source size WHOLE 0 s" a UTF-8 or UTF-16 document"
+   {: source:str :}
+   source s\" \z\z\xFE\xFF" SRC-STARTS?
+   source s\" \xFF\xFE\z\z" SRC-STARTS? or
+   source s\" \z\z\z<" SRC-STARTS? or
+   source s\" <\z\z\z" SRC-STARTS? or if
+      source WHOLE 0 s" a UTF-8 or UTF-16 document"
       s" save the document as UTF-8 or UTF-16" E-ENCODING
       REJECT-FROM
    then
-   source size s\" \xFF\xFE" SRC-STARTS? if
-      source size XML-ENCODING:UTF16-LE 2 SRC-CHECK-DECL exit
+   source s\" \xFF\xFE" SRC-STARTS? if
+      source XML-ENCODING:UTF16-LE 2 SRC-CHECK-DECL exit
    then
-   source size s\" \xFE\xFF" SRC-STARTS? if
-      source size XML-ENCODING:UTF16-BE 2 SRC-CHECK-DECL exit
+   source s\" \xFE\xFF" SRC-STARTS? if
+      source XML-ENCODING:UTF16-BE 2 SRC-CHECK-DECL exit
    then
-   source size s\" \xEF\xBB\xBF" SRC-STARTS? if
-      source size XML-ENCODING:UTF8 3 SRC-CHECK-DECL exit
+   source s\" \xEF\xBB\xBF" SRC-STARTS? if
+      source XML-ENCODING:UTF8 3 SRC-CHECK-DECL exit
    then
-   source size s\" <\z?\z" SRC-STARTS? if
-      source size XML-ENCODING:UTF16-LE 0 SRC-CHECK-DECL exit
+   source s\" <\z?\z" SRC-STARTS? if
+      source XML-ENCODING:UTF16-LE 0 SRC-CHECK-DECL exit
    then
-   source size s\" \z<\z?" SRC-STARTS? if
-      source size XML-ENCODING:UTF16-BE 0 SRC-CHECK-DECL exit
+   source s\" \z<\z?" SRC-STARTS? if
+      source XML-ENCODING:UTF16-BE 0 SRC-CHECK-DECL exit
    then
-   source size s\" <\z" SRC-STARTS? if source size false BOMLESS-START then
-   source size s\" \z<" SRC-STARTS? if source size true BOMLESS-START then
-   source size XML-ENCODING:UTF8 0 SRC-CHECK-DECL ;
+   source s\" <\z" SRC-STARTS? if source false BOMLESS-START then
+   source s\" \z<" SRC-STARTS? if source true BOMLESS-START then
+   source XML-ENCODING:UTF8 0 SRC-CHECK-DECL ;
 
 \ Rejects at off, after a high surrogate, in UTF-16 bytes.
 : UNPAIRED-HIGH ( str n bool -- )
@@ -233,25 +232,25 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
    E-UTF16 REJECT-UNITS ;
 
 : SRC-NEXT ( str n encoding -- n n )
-   {: source size:n cursor:n encoding:encoding :}
+   {: source:str cursor:n encoding:encoding :}
    encoding XML-ENCODING:UTF16-BE XML-ENCODING:EQ {: be:bool :}
-   size cursor - 2 < if
-      source size cursor be s" a UTF-16 unit of two bytes"
+   source STR:LEN cursor - 2 < if
+      source cursor be s" a UTF-16 unit of two bytes"
       s" write the last character whole, or remove the stray byte"
       E-UTF16 REJECT-UNITS
    then
    source cursor encoding SRC-UNIT {: first:n :}
    first $DC00 >= first $DFFF <= and if
-      source size cursor be
+      source cursor be
       s" a character, or a high surrogate before a low one"
       s" write the high surrogate before the low one, or remove the low surrogate"
       E-UTF16 REJECT-UNITS
    then
    first $D800 >= first $DBFF <= and if
-      size cursor - 4 < if source size cursor 2 + be UNPAIRED-HIGH then
+      source STR:LEN cursor - 4 < if source cursor 2 + be UNPAIRED-HIGH then
       source cursor 2 + encoding SRC-UNIT {: second:n :}
       second $DC00 < second $DFFF > or if
-         source size cursor 2 + be UNPAIRED-HIGH
+         source cursor 2 + be UNPAIRED-HIGH
       then
       first $D800 - 10 lshift second $DC00 - + $10000 +
       cursor 4 +
@@ -260,32 +259,32 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
    then
    {: scalar:n next:n :}
    scalar XML-SCALAR? 0= if
-      source size cursor be SCALAR-EXPECTED$ SCALAR-FIX$ E-SCALAR REJECT-UNITS
+      source cursor be SCALAR-EXPECTED$ SCALAR-FIX$ E-SCALAR REJECT-UNITS
    then
    scalar next ;
 
 : SRC-SCAN ( str n encoding -- n )
-   {: source size:n bom:n encoding:encoding :}
+   {: source:str bom:n encoding:encoding :}
    encoding XML-ENCODING:US-ASCII XML-ENCODING:EQ if
-      source size ASCII-WIRE
-      size 0 ?do
-         source i + c@ {: byte:n :}
-         source size WHOLE i byte REQUIRE-SCALAR
+      source ASCII-WIRE
+      source STR:LEN 0 ?do
+         source STR:DATA i + c@ {: byte:n :}
+         source WHOLE i byte REQUIRE-SCALAR
       loop
-      size exit
+      source STR:LEN exit
    then
    encoding XML-ENCODING:UTF8 XML-ENCODING:EQ if
       bom
-      begin dup size < while
+      begin dup source STR:LEN < while
          {: cursor:n :}
-         source size WHOLE cursor SCALAR-AT nip
+         source WHOLE cursor SCALAR-AT nip
       repeat
-      drop size bom - exit
+      drop source STR:LEN bom - exit
    then
    0 bom
-   begin dup size < while
+   begin dup source STR:LEN < while
       {: total:n cursor:n :}
-      source size cursor encoding SRC-NEXT
+      source cursor encoding SRC-NEXT
       {: scalar:n next:n :}
       scalar SCALAR-WIDTH {: width:n :}
       width MAX-SIZE total - > if E-CAPACITY throw then
@@ -295,10 +294,10 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
 
 \ Answers the encoding, the BOM's bytes and the lexical length.
 : SRC-VALIDATE ( str -- encoding n n )
-   {: source size:n :}
-   source size SPAN-CHECK
-   source size SRC-DETECT {: encoding:encoding bom:n :}
-   source size bom encoding SRC-SCAN {: lexical:n :}
+   {: source:str :}
+   source SPAN-CHECK
+   source SRC-DETECT {: encoding:encoding bom:n :}
+   source bom encoding SRC-SCAN {: lexical:n :}
    encoding bom lexical ;
 
 \ Set each checkpoint from mark on whose stride point lies at or before the
@@ -315,14 +314,14 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
 
 : SRC-WRITE-UTF16 ( ^header -- )
    {: state :}
-   state SRC-ORIGINAL$ {: original size:n :}
+   state SRC-ORIGINAL$ {: original:str :}
    state SRC-ENCODING {: encoding:encoding :}
-   state HEADER-LEXICAL @ drop {: output :}
+   state HEADER-LEXICAL @ STR:DATA {: output :}
    output state HEADER-BOM-LEN @ 1
-   begin over size < while
+   begin over original STR:LEN < while
       {: target cursor:n mark:n :}
       state mark target output - cursor SRC-MARKS {: marked:n :}
-      original size cursor encoding SRC-NEXT
+      original cursor encoding SRC-NEXT
       {: scalar:n next:n :}
       scalar target PUT-SCALAR next marked
    repeat
@@ -330,13 +329,13 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
    state mark target output - cursor SRC-MARKS drop ;
 
 : SRC-INITIALIZE ( ^header str encoding n n -- )
-   {: state original size:n encoding:encoding bom:n lexical:n :}
-   original size state HEADER-ORIGINAL !
+   {: state original:str encoding:encoding bom:n lexical:n :}
+   original state HEADER-ORIGINAL !
    encoding state HEADER-ENCODING !
    bom state HEADER-BOM-LEN !
    encoding XML-ENCODING:UTF8 XML-ENCODING:EQ
    encoding XML-ENCODING:US-ASCII XML-ENCODING:EQ or if
-      original bom + lexical state HEADER-LEXICAL ! exit
+      original STR:DATA bom + lexical >str state HEADER-LEXICAL ! exit
    then
    state HEADER-ALLOCATOR @ {: al:^ :}
    al lexical SRC-MARK-STRIDE / [type] n VEC:NEW state HEADER-MARKS !
@@ -355,11 +354,11 @@ public
 \ Validates the whole wire encoding and scalar range before it takes storage;
 \ it does not check well-formedness.
 : SOURCE-INIT ( ^ALLOC:allocator str -- XML:source )
-   {: al:^ original size:n :}
-   original size SRC-VALIDATE {: encoding:encoding bom:n lexical:n :}
+   {: al:^ original:str :}
+   original SRC-VALIDATE {: encoding:encoding bom:n lexical:n :}
    al [type] header ALLOC:NEW {: state :}
    al state HEADER-ALLOCATOR !
-   [: state original size encoding bom lexical SRC-INITIALIZE ;] catch {: code:n :}
+   [: state original encoding bom lexical SRC-INITIALIZE ;] catch {: code:n :}
    code 0<> if state SRC-FREE code throw then
    state SRC-MINT ;
 
@@ -403,27 +402,27 @@ public
 private
 \ SOURCE-INIT validated every scalar; only continuation bytes split one.
 : SRC-CONTINUATION? ( str n -- bool )
-   {: lexical size:n cursor:n :}
-   cursor 0<> cursor size <> and if
-      lexical cursor + c@ $C0 and $80 = exit
+   {: lexical:str cursor:n :}
+   cursor 0<> cursor lexical STR:LEN <> and if
+      lexical STR:DATA cursor + c@ $C0 and $80 = exit
    then
    false ;
 
 
 : SRC-MARK-AT ( ^header n -- n n )
    {: state endpoint:n :}
-   state SRC-LEXICAL$ {: lexical size:n :}
+   state SRC-LEXICAL$ {: lexical:str :}
    endpoint SRC-MARK-STRIDE / {: mark:n :}
    mark 0= if 0 state HEADER-BOM-LEN @ exit then
    mark SRC-MARK-STRIDE *
-   begin dup lexical size rot SRC-CONTINUATION? while 1+ repeat
+   begin dup lexical swap SRC-CONTINUATION? while 1+ repeat
    state HEADER-MARKS @ mark 1- VEC:AT @ ;
 
 
 : SRC-MAP ( ^header n -- n )
    {: state endpoint:n :}
-   state SRC-LEXICAL$ {: lexical size:n :}
-   lexical size endpoint SRC-CONTINUATION? if E-BOUNDARY throw then
+   state SRC-LEXICAL$ {: lexical:str :}
+   lexical endpoint SRC-CONTINUATION? if E-BOUNDARY throw then
    state SRC-ENCODING XML-ENCODING:UTF8 XML-ENCODING:EQ
    state SRC-ENCODING XML-ENCODING:US-ASCII XML-ENCODING:EQ or if
       state HEADER-BOM-LEN @ endpoint + exit
@@ -431,7 +430,7 @@ private
    state endpoint SRC-MARK-AT
    begin over endpoint < while
       {: cursor:n original:n :}
-      lexical size WHOLE cursor SCALAR-AT {: scalar:n next:n :}
+      lexical WHOLE cursor SCALAR-AT {: scalar:n next:n :}
       original scalar $10000 < if 2 else 4 then +
       next swap
    repeat
@@ -439,7 +438,7 @@ private
 
 : SRC-RANGE ( ^header n n -- n n )
    {: state start:n count:n :}
-   state SRC-LEXICAL$ nip {: size:n :}
+   state SRC-LEXICAL$ STR:LEN {: size:n :}
    start 0 < count 0 < or if E-RANGE throw then
    start size > if E-RANGE throw then
    count size start - > if E-RANGE throw then
@@ -468,27 +467,27 @@ public
 
 private
 : SRC-ENCODE-SIZE ( ^header str -- n )
-   {: state input size:n :}
-   input size SPAN-CHECK
+   {: state input:str :}
+   input SPAN-CHECK
    state SRC-ENCODING XML-ENCODING:US-ASCII XML-ENCODING:EQ if
-      input size ASCII-WIRE
-      size 0 ?do
-         input size WHOLE i input i + c@ REQUIRE-SCALAR
+      input ASCII-WIRE
+      input STR:LEN 0 ?do
+         input WHOLE i input STR:DATA i + c@ REQUIRE-SCALAR
       loop
-      size exit
+      input STR:LEN exit
    then
    state SRC-ENCODING XML-ENCODING:UTF8 XML-ENCODING:EQ if
       0
-      begin dup size < while
+      begin dup input STR:LEN < while
          {: cursor:n :}
-         input size WHOLE cursor SCALAR-AT nip
+         input WHOLE cursor SCALAR-AT nip
       repeat
-      drop size exit
+      drop input STR:LEN exit
    then
    0 0
-   begin dup size < while
+   begin dup input STR:LEN < while
       {: total:n cursor:n :}
-      input size WHOLE cursor SCALAR-AT {: scalar:n next:n :}
+      input WHOLE cursor SCALAR-AT {: scalar:n next:n :}
       scalar $10000 < if 2 else 4 then {: width:n :}
       width MAX-SIZE total - > if E-CAPACITY throw then
       total width + next
@@ -496,8 +495,8 @@ private
    drop ;
 
 : SRC-ENCODE-ARGS ( XML:source str -- XML:source ^header str )
-   {: input size:n :}
-   SRC-STATE input size ;
+   {: input:str :}
+   SRC-STATE input ;
 
 public
 \ ENCODE appends replacement markup, already escaped, in the wire encoding
@@ -506,8 +505,8 @@ public
    SRC-ENCODE-ARGS SRC-ENCODE-SIZE ;
 
 : OWNER-ENCODE-SIZE ( source-owner str -- n )
-   {: owner input size:n :}
-   owner OWNER-STATE input size SRC-ENCODE-SIZE ;
+   {: owner input:str :}
+   owner OWNER-STATE input SRC-ENCODE-SIZE ;
 
 private
 : SRC-PUT-UNIT ( n encoding ^u8 -- ^u8 )
@@ -521,16 +520,16 @@ private
    then ;
 
 : SRC-ENCODE-WRITE ( ^header str ^u8 -- )
-   {: state input size:n output :}
+   {: state input:str output :}
    state SRC-ENCODING {: encoding:encoding :}
    encoding XML-ENCODING:UTF8 XML-ENCODING:EQ
    encoding XML-ENCODING:US-ASCII XML-ENCODING:EQ or if
-      input output size >LEN BYTE-COPY-LEN exit
+      input STR:DATA output input STR:LEN >LEN BYTE-COPY-LEN exit
    then
    output 0
-   begin dup size < while
+   begin dup input STR:LEN < while
       {: target cursor:n :}
-      input size WHOLE cursor SCALAR-AT {: scalar:n next:n :}
+      input WHOLE cursor SCALAR-AT {: scalar:n next:n :}
       scalar $10000 < if
          scalar encoding target SRC-PUT-UNIT
       else
@@ -544,23 +543,23 @@ private
    2drop ;
 
 : SRC-ENCODE-INTO ( ^header str ^VEC:vector<u8> -- )
-   {: state input size:n v:^ :}
-   state input size SRC-ENCODE-SIZE {: needed:n :}
+   {: state input:str v:^ :}
+   state input SRC-ENCODE-SIZE {: needed:n :}
    v VEC:COUNT {: at:n :}
-   v at needed + input VEC:MAKE-ROOM {: src:^ :}
+   v at needed + input STR:DATA VEC:MAKE-ROOM {: src:^ :}
    v at needed + VEC:ENSURE
-   state src size  v VEC:SPAN SPAN:$ drop at +  SRC-ENCODE-WRITE ;
+   state src input STR:LEN >str  v VEC:SPAN SPAN:$ STR:DATA at +  SRC-ENCODE-WRITE ;
 
 : SRC-INTO-ARGS ( XML:source str ^VEC:vector<u8> -- XML:source ^header str ^VEC:vector<u8> )
-   {: input size:n v:^ :}
-   SRC-STATE input size v ;
+   {: input:str v:^ :}
+   SRC-STATE input v ;
 
 public
 : ENCODE ( XML:source str ^VEC:vector<u8> -- XML:source )
    SRC-INTO-ARGS SRC-ENCODE-INTO ;
 
 : OWNER-ENCODE ( source-owner str ^VEC:vector<u8> -- )
-   {: owner input size:n v:^ :}
-   owner OWNER-STATE input size v SRC-ENCODE-INTO ;
+   {: owner input:str v:^ :}
+   owner OWNER-STATE input v SRC-ENCODE-INTO ;
 
 ;package

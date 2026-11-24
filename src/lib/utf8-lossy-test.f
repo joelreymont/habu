@@ -1,4 +1,3 @@
-split-str
 \ utf8-lossy-test.f - UTF8-LOSSY:REPAIR against Rust's String::from_utf8_lossy:
 \ each expected span is that function's output over the same input.
 
@@ -9,18 +8,18 @@ require src/lib/utf8-lossy.f
 package UTF8-LOSSY-TEST
 
 : ASSERT-REPAIR ( str str -- )
-   {: in:^ inlen:n want:^ wantlen:n :}
+   {: in:str want:str :}
    ARENA:NEW {: a:^ :}
-   in inlen a UTF8-LOSSY:REPAIR {: out:^ outlen:n :}
-   out outlen want wantlen T$=
-   out in <> TTRUE
+   in a UTF8-LOSSY:REPAIR {: out:str :}
+   out want T$=
+   out STR:DATA in STR:DATA <> TTRUE
    a ARENA:RELEASE ;
 
-: ASSERT-UNCOPIED ( str -- ) {: in:^ inlen:n :}
+: ASSERT-UNCOPIED ( str -- ) {: in:str :}
    ARENA:NEW {: a:^ :}
-   in inlen a UTF8-LOSSY:REPAIR {: out:^ outlen:n :}
-   out in = TTRUE
-   outlen inlen T=
+   in a UTF8-LOSSY:REPAIR {: out:str :}
+   out STR:DATA in STR:DATA = TTRUE
+   out STR:LEN in STR:LEN T=
    a ARENA:RELEASE ;
 
 \ Unicode 3.9, Table 3-8: each maximal subpart is one U+FFFD.
@@ -69,7 +68,7 @@ package UTF8-LOSSY-TEST
 
 : NEGATIVE-LENGTH ( -- )
    ARENA:NEW {: a:^ :}
-   [: S" A" drop -1 a UTF8-LOSSY:REPAIR 2drop ;] E-STR-BOUNDS TTHROWSQ
+   [: S" A" STR:DATA -1 >str a UTF8-LOSSY:REPAIR drop ;] E-STR-BOUNDS TTHROWSQ
    a ARENA:RELEASE ;
 
 public

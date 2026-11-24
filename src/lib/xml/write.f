@@ -1,4 +1,3 @@
-split-str
 \ write.f - XML escaping.
 
 require src/lib/xml/scalar.f
@@ -25,20 +24,20 @@ private
       $A of
          attr if s" &#10;" else s" " then
       endof
-      s" " rot
+      s" " swap
    endcase ;
 
 : ESCAPED-LEN ( n bool -- n )
    {: scalar:n attr:bool :}
-   scalar attr ESCAPED$ nip
+   scalar attr ESCAPED$ STR:LEN
    dup 0= if drop scalar SCALAR-WIDTH then ;
 
 : ESCAPED-SIZE ( str bool -- n )
-   {: source size:n attr:bool :}
+   {: source:str attr:bool :}
    0 0
-   begin dup size < while
+   begin dup source STR:LEN < while
       {: total:n cursor:n :}
-      source size WHOLE cursor SCALAR-AT {: scalar:n next:n :}
+      source WHOLE cursor SCALAR-AT {: scalar:n next:n :}
       scalar attr ESCAPED-LEN {: added:n :}
       added MAX-SIZE total - > if E-CAPACITY throw then
       total added + next
@@ -47,38 +46,38 @@ private
 
 : WRITE-ESCAPED ( n bool ^u8 -- ^u8 )
    {: scalar:n attr:bool destination :}
-   scalar attr ESCAPED$ {: escaped size:n :}
-   size 0= if scalar destination PUT-SCALAR exit then
-   escaped destination size >LEN BYTE-COPY-LEN
-   destination size + ;
+   scalar attr ESCAPED$ {: escaped:str :}
+   escaped STR:LEN 0= if scalar destination PUT-SCALAR exit then
+   escaped STR:DATA destination escaped STR:LEN >LEN BYTE-COPY-LEN
+   destination escaped STR:LEN + ;
 
 : ESCAPE-WRITE ( str bool ^u8 -- )
-   {: source size:n attr:bool destination :}
+   {: source:str attr:bool destination :}
    destination 0
-   begin dup size < while
+   begin dup source STR:LEN < while
       {: output cursor:n :}
-      source size WHOLE cursor SCALAR-AT {: scalar:n next:n :}
+      source WHOLE cursor SCALAR-AT {: scalar:n next:n :}
       scalar attr output WRITE-ESCAPED next
    repeat
    2drop ;
 
 : ESCAPE-INTO ( str bool ^VEC:vector<u8> -- )
-   {: source size:n attr:bool v:^ :}
-   source size SPAN-CHECK
-   source size attr ESCAPED-SIZE {: needed:n :}
+   {: source:str attr:bool v:^ :}
+   source SPAN-CHECK
+   source attr ESCAPED-SIZE {: needed:n :}
    v VEC:COUNT {: at:n :}
-   v at needed + source VEC:MAKE-ROOM {: src:^ :}
+   v at needed + source STR:DATA VEC:MAKE-ROOM {: src:^ :}
    v at needed + VEC:ENSURE
-   src size attr  v VEC:SPAN SPAN:$ drop at +  ESCAPE-WRITE ;
+   src source STR:LEN >str attr  v VEC:SPAN SPAN:$ STR:DATA at +  ESCAPE-WRITE ;
 
 public
 \ Each appends the text, escaped, to the vector; the text may lie in it.
 : ESCAPE-TEXT ( str ^VEC:vector<u8> -- )
-   {: source size:n v:^ :}
-   source size false v ESCAPE-INTO ;
+   {: source:str v:^ :}
+   source false v ESCAPE-INTO ;
 
 : ESCAPE-ATTR ( str ^VEC:vector<u8> -- )
-   {: source size:n v:^ :}
-   source size true v ESCAPE-INTO ;
+   {: source:str v:^ :}
+   source true v ESCAPE-INTO ;
 
 ;package

@@ -1,4 +1,3 @@
-split-str
 \ XMODEM packet framing after the XMODEM/YMODEM Protocol Reference: single file,
 \ 1K and CAN, no YMODEM batch; no transport, file or device policy (peer tests:
 \ test/xmodem.py). CRC: polynomial $1021, initial zero, no reflection or final
@@ -62,9 +61,9 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    loop ;
 
 
-: CHECK-VALUE ( str n -- n ) {: data size:n kind:n :}
-   0 size 0 ?do
-      data i + c@ kind 1 = if CRC-BYTE else + $FF and then
+: CHECK-VALUE ( str n -- n ) {: data:str kind:n :}
+   0 data STR:LEN 0 ?do
+      data STR:DATA i + c@ kind 1 = if CRC-BYTE else + $FF and then
    loop ;
 
 
@@ -90,14 +89,14 @@ CAST: N>BLEN ( n -- NUM:byte-len )
 
 
 : PAYLOAD+ ( str n ^VEC:vector<u8> -- )
-   {: data size:n block:n output:^ :}
-   data size output VEC:APPEND
-   block size - 0 ?do $1A output VEC:PUSH c! loop ;
+   {: data:str block:n output:^ :}
+   data output VEC:APPEND
+   block data STR:LEN - 0 ?do $1A output VEC:PUSH c! loop ;
 
 
 : TRAILER+ ( n n ^VEC:vector<u8> -- )
    {: block:n kind:n output:^ :}
-   output VEC:SPAN SPAN:$ drop 3 + block kind CHECK-VALUE {: check:n :}
+   output VEC:SPAN SPAN:$ STR:DATA 3 + block >str kind CHECK-VALUE {: check:n :}
    kind 1 = if check 8 rshift output VEC:PUSH c! then
    check $FF and output VEC:PUSH c! ;
 
@@ -106,14 +105,14 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    data c@ kind 1 = if 8 lshift data 1 + c@ or then ;
 
 
-: CHECK-DECODE ( str n -- n ) {: data size:n kind:n :}
+: CHECK-DECODE ( str n -- n ) {: data:str kind:n :}
    kind CHECK-KIND
-   size 4 < if E-FRAME throw then
-   data c@ WIRE-BLOCK {: block:n :}
-   size block 4 + kind + <> if E-FRAME throw then
-   data 1 + c@ data 2 + c@ xor $FF <> if E-FRAME throw then
-   data 3 + block kind CHECK-VALUE
-   data 3 + block + kind TRAILER@ <> if E-FRAME throw then block ;
+   data STR:LEN 4 < if E-FRAME throw then
+   data STR:DATA c@ WIRE-BLOCK {: block:n :}
+   data STR:LEN block 4 + kind + <> if E-FRAME throw then
+   data STR:DATA 1 + c@ data STR:DATA 2 + c@ xor $FF <> if E-FRAME throw then
+   data STR:DATA 3 + block >str kind CHECK-VALUE
+   data STR:DATA 3 + block + kind TRAILER@ <> if E-FRAME throw then block ;
 
 public
 
@@ -132,19 +131,19 @@ public
 \ The borrowed payload must not alias the output vector, which ENCODE empties
 \ first. Input length may be zero.
 : ENCODE ( str sequence payload-size check-kind ^VEC:vector<u8> -- )
-   {: data size:n sequence:sequence block:payload-size kind:check-kind output:^ :}
-   size sequence SEQUENCE>N block PAYLOAD-SIZE>N kind CHECK-KIND>N CHECK-ENCODE
+   {: data:str sequence:sequence block:payload-size kind:check-kind output:^ :}
+   data STR:LEN sequence SEQUENCE>N block PAYLOAD-SIZE>N kind CHECK-KIND>N CHECK-ENCODE
    output block kind PACKET-BYTES BLEN>N VEC:RESERVE output 0 VEC:RESIZE
    sequence SEQUENCE>N block PAYLOAD-SIZE>N output HEADER+
-   data size block PAYLOAD-SIZE>N output PAYLOAD+
+   data block PAYLOAD-SIZE>N output PAYLOAD+
    block PAYLOAD-SIZE>N kind CHECK-KIND>N output TRAILER+ ;
 
 
 \ Validates one entire packet, then borrows its full 128/1024-byte payload.
 \ XMODEM carries no exact binary length; never strip 0x1A from this span.
 : DECODE ( str check-kind -- str sequence )
-   {: data size:n kind:check-kind :}
-   data size kind CHECK-KIND>N CHECK-DECODE {: block:n :}
-   data 3 + block data 1 + c@ >SEQUENCE ;
+   {: data:str kind:check-kind :}
+   data kind CHECK-KIND>N CHECK-DECODE {: block:n :}
+   data STR:DATA 3 + block >str data STR:DATA 1 + c@ >SEQUENCE ;
 
 ;package

@@ -1,4 +1,3 @@
-split-str
 require src/lib/test.f
 require src/lib/xml.f
 require src/lib/vector.f
@@ -31,8 +30,8 @@ TYPED-VARIABLE RD2 XML:cursor
 CAST: TOKEN>N ( XML:kind -- n )
 
 : OPEN ( str -- XML:reader )
-   {: source size:n :}
-   RD HEAP:ALLOCATOR source size INIT ;
+   {: source:str :}
+   RD HEAP:ALLOCATOR source INIT ;
 
 : NEXT= ( XML:reader XML:kind -- XML:reader )
    TOKEN>N {: expected:n :}
@@ -43,12 +42,12 @@ CAST: TOKEN>N ( XML:kind -- n )
    RAW LEN>N size T= OFF>N start T= ;
 
 : NAME= ( XML:reader str -- XML:reader )
-   {: expected size:n :}
-   NAME$ expected size T$= ;
+   {: expected:str :}
+   NAME$ expected T$= ;
 
 : LOCAL= ( XML:reader str -- XML:reader )
-   {: expected size:n :}
-   LOCAL$ expected size T$= ;
+   {: expected:str :}
+   LOCAL$ expected T$= ;
 
 : DECODED-NEW ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DECODED ! ;
 : DECODED-CLEAR ( -- ) DECODED @ 0 VEC:RESIZE ;
@@ -56,46 +55,46 @@ CAST: TOKEN>N ( XML:kind -- n )
 : DECODED$ ( -- str ) DECODED @ VEC:SPAN SPAN:$ ;
 
 : URI= ( XML:reader str -- XML:reader )
-   {: expected size:n :}
-   CLEARED URI DECODED$ expected size T$= ;
+   {: expected:str :}
+   CLEARED URI DECODED$ expected T$= ;
 
 : PREFIX= ( XML:reader str str -- XML:reader )
-   {: prefix prefix-size:n expected size:n :}
-   prefix prefix-size T-LABEL
-   prefix prefix-size CLEARED PREFIX-URI TTRUE
-   DECODED$ expected size T$= ;
+   {: prefix:str expected:str :}
+   prefix T-LABEL
+   prefix CLEARED PREFIX-URI TTRUE
+   DECODED$ expected T$= ;
 
 : PREFIX-MISSING ( XML:reader str -- XML:reader )
-   {: prefix size:n :}
+   {: prefix:str :}
    s" Z" CLEARED VEC:APPEND
-   prefix size DECODED @ PREFIX-URI TFALSE
+   prefix DECODED @ PREFIX-URI TFALSE
    DECODED$ s" Z" T$= ;
 
 : PREFIX-READ ( XML:reader -- XML:reader )
    s" p" CLEARED PREFIX-URI drop ;
 
 : TEXT= ( XML:reader str -- XML:reader )
-   {: expected size:n :}
-   CLEARED TEXT DECODED$ expected size T$= ;
+   {: expected:str :}
+   CLEARED TEXT DECODED$ expected T$= ;
 
 : ATTR-NAME= ( XML:reader str -- XML:reader )
-   {: expected size:n :}
-   ATTR-NAME$ expected size T$= ;
+   {: expected:str :}
+   ATTR-NAME$ expected T$= ;
 
 : ATTR-URI= ( XML:reader str -- XML:reader )
-   {: expected size:n :}
-   CLEARED ATTR-URI DECODED$ expected size T$= ;
+   {: expected:str :}
+   CLEARED ATTR-URI DECODED$ expected T$= ;
 
 : ATTR-TEXT= ( XML:reader str -- XML:reader )
-   {: expected size:n :}
-   CLEARED ATTR-TEXT DECODED$ expected size T$= ;
+   {: expected:str :}
+   CLEARED ATTR-TEXT DECODED$ expected T$= ;
 
 : DRAIN ( XML:reader -- XML:reader )
    begin NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
 
 : INPUT-SET ( str n n -- )
-   {: source size:n limit:n fail-at:n :}
-   source INPUT-SOURCE ! size INPUT-LEN !
+   {: source:str limit:n fail-at:n :}
+   source STR:DATA INPUT-SOURCE ! source STR:LEN INPUT-LEN !
    limit INPUT-LIMIT ! fail-at INPUT-FAIL !
    0 INPUT-POS ! ;
 
@@ -105,7 +104,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    INPUT-LEN @ pos @ -
    output SPAN:LEN min INPUT-LIMIT @ min {: count:n :}
    count 0= if 0 exit then
-   INPUT-SOURCE @ pos @ + count output SPAN:COPY
+   INPUT-SOURCE @ pos @ + count >str output SPAN:COPY
    count pos +! count ;
 
 : INPUT-OPEN ( -- XML:reader )
@@ -124,8 +123,8 @@ CAST: TOKEN>N ( XML:kind -- n )
    ['] DRAIN catch swap XML:CLOSE ;
 
 : INPUT-BAD ( str n -- )
-   {: source size:n expected:n :}
-   source size 1 $7FFFFFFFFFFFFFFF INPUT-SET
+   {: source:str expected:n :}
+   source 1 $7FFFFFFFFFFFFFFF INPUT-SET
    INPUT-FAILURE expected T= ;
 
 \ The reader is opened INSIDE the caught body, as BAD-INIT below does: `catch`
@@ -133,15 +132,21 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ a reader opened before the catch comes back `stale<XML:reader>` and a linear
 \ cell can be neither read nor dropped. The body closes the reader its failed
 \ NEXT leaves, as the contract requires, and rethrows that failure.
+: BAD-BODY ( str -- str )
+   dup OPEN ['] DRAIN catch swap XML:CLOSE throw ;
+
 : BAD ( str n -- )
    {: expected:n :}
-   [: 2dup OPEN ['] DRAIN catch swap XML:CLOSE throw ;] catch expected T=
-   2drop ;
+   ['] BAD-BODY catch expected T=
+   drop ;
+
+: BAD-INIT-BODY ( str -- str )
+   dup OPEN XML:CLOSE ;
 
 : BAD-INIT ( str n -- )
    {: expected:n :}
-   [: 2dup OPEN XML:CLOSE ;] catch expected T=
-   2drop ;
+   ['] BAD-INIT-BODY catch expected T=
+   drop ;
 
 : EMPTY-ELEMENT ( -- )
    s" <a/>" OPEN
@@ -401,11 +406,11 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ `using` import resolves.
 : NEXT-ONE ( XML:reader -- XML:reader ) NEXT drop ;
 : ATTR-NEXT-ONE ( XML:reader -- XML:reader ) ATTR-NEXT drop ;
-: NAME-READ ( XML:reader -- XML:reader ) NAME$ 2drop ;
-: ATTR-NAME-READ ( XML:reader -- XML:reader ) ATTR-NAME$ 2drop ;
+: NAME-READ ( XML:reader -- XML:reader ) NAME$ drop ;
+: ATTR-NAME-READ ( XML:reader -- XML:reader ) ATTR-NAME$ drop ;
 : ATTR-RAW-READ ( XML:reader -- XML:reader ) ATTR-RAW 2drop ;
 : ATTR-VALUE-READ ( XML:reader -- XML:reader ) ATTR-VALUE 2drop ;
-: ATTR-VALUE$-READ ( XML:reader -- XML:reader ) ATTR-VALUE$ 2drop ;
+: ATTR-VALUE$-READ ( XML:reader -- XML:reader ) ATTR-VALUE$ drop ;
 : CONTENT-READ ( XML:reader -- XML:reader ) CONTENT 2drop ;
 : TEXT-FULL ( XML:reader -- XML:reader ) CLEARED TEXT ;
 
@@ -563,9 +568,9 @@ variable WIDE-LEN
 variable URI-LEN
 
 : WIDE+ ( str -- )
-   {: source size:n :}
-   source WIDE-DOC @ WIDE-LEN @ + size >LEN BYTE-COPY-LEN
-   size WIDE-LEN +! ;
+   {: source:str :}
+   source STR:DATA WIDE-DOC @ WIDE-LEN @ + source STR:LEN >LEN BYTE-COPY-LEN
+   source STR:LEN WIDE-LEN +! ;
 
 : WIDE-N+ ( n -- )
    {: value:n :}
@@ -574,9 +579,9 @@ variable URI-LEN
    1 WIDE-LEN +! ;
 
 : URI+ ( str -- )
-   {: source size:n :}
-   source OTHER-BUF URI-LEN @ + size >LEN BYTE-COPY-LEN
-   size URI-LEN +! ;
+   {: source:str :}
+   source STR:DATA OTHER-BUF URI-LEN @ + source STR:LEN >LEN BYTE-COPY-LEN
+   source STR:LEN URI-LEN +! ;
 
 \ Emit URI index, its U+20061 scalars as UTF-8 or as character references.
 : WIDE-URI ( n bool [ str -- ] -- )
@@ -592,10 +597,10 @@ variable URI-LEN
 : EXPECTED-URI$ ( n -- str )
    0 URI-LEN !
    false [: URI+ ;] WIDE-URI
-   OTHER-BUF URI-LEN @ ;
+   OTHER-BUF URI-LEN @ >str ;
 
 : WIDE-BUILD ( str -- )
-   {: tail size:n :}
+   {: tail:str :}
    0 WIDE-LEN !
    s" <r" WIDE+
    WIDE-PREFIXES 0 ?do
@@ -603,10 +608,10 @@ variable URI-LEN
       i false [: WIDE+ ;] WIDE-URI s" '" WIDE+
    loop
    WIDE-PREFIXES 0 ?do s"  p" WIDE+ i WIDE-N+ s" :a='1'" WIDE+ loop
-   tail size WIDE+
+   tail WIDE+
    s" />" WIDE+ ;
 
-: WIDE-OPEN ( -- XML:reader ) RD HEAP:ALLOCATOR WIDE-DOC @ WIDE-LEN @ INIT ;
+: WIDE-OPEN ( -- XML:reader ) RD HEAP:ALLOCATOR WIDE-DOC @ WIDE-LEN @ >str INIT ;
 
 : WIDE-BAD ( str -- )
    WIDE-BUILD
@@ -624,7 +629,7 @@ variable URI-LEN
    s"  p0:a='2'" WIDE-BAD
    0 URI-LEN !
    s"  xmlns:q='" URI+ WIDE-LAST true [: URI+ ;] WIDE-URI s" ' q:a='2'" URI+
-   OTHER-BUF URI-LEN @ WIDE-BAD
+   OTHER-BUF URI-LEN @ >str WIDE-BAD
    WIDE-DOC @ WIDE-DOC-CAP MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 : ESCAPING ( -- )
@@ -700,10 +705,10 @@ variable URI-LEN
 
 \ Fills of at most limit bytes; an unlimited one fills each span it is lent until input runs short.
 : INPUT-LARGE-TEXT ( n -- ) {: limit:n :}
-   s" <r>" drop INPUT-BIG 3 BYTE-COPY
+   s" <r>" STR:DATA INPUT-BIG 3 BYTE-COPY
    8192 0 ?do [char] x INPUT-BIG 3 i + + c! loop
-   s" </r>" drop INPUT-BIG 8195 + 4 BYTE-COPY
-   INPUT-BIG 8199 limit $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   s" </r>" STR:DATA INPUT-BIG 8195 + 4 BYTE-COPY
+   INPUT-BIG 8199 >str limit $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
    XML-KIND:START NEXT=
    0 INPUT-USED ! 3 INPUT-OFF !
    begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
@@ -720,18 +725,18 @@ variable URI-LEN
    XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : INPUT-LARGE-SCOPE ( -- )
-   s" <a><b xmlns:p='" {: prefix size:n :}
-   prefix INPUT-BIG size BYTE-COPY
-   1000 0 ?do [char] x INPUT-BIG size i + + c! loop
-   s" '><p:c/></b><d/></a>" {: suffix suffix-size:n :}
-   suffix INPUT-BIG size 1000 + + suffix-size BYTE-COPY
-   INPUT-BIG size 1000 + suffix-size +
+   s" <a><b xmlns:p='" {: prefix:str :}
+   prefix STR:DATA INPUT-BIG prefix STR:LEN BYTE-COPY
+   1000 0 ?do [char] x INPUT-BIG prefix STR:LEN i + + c! loop
+   s" '><p:c/></b><d/></a>" {: suffix:str :}
+   suffix STR:DATA INPUT-BIG prefix STR:LEN 1000 + + suffix STR:LEN BYTE-COPY
+   INPUT-BIG prefix STR:LEN 1000 + suffix STR:LEN + >str
       1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
    XML-KIND:START NEXT=
    XML-KIND:START NEXT=
    XML-KIND:START NEXT= s" p:c" NAME=
    CLEARED URI DECODED @ VEC:COUNT 1000 T=
-   DECODED$ drop {: uri:^ :}
+   DECODED$ STR:DATA {: uri:^ :}
    uri c@ [char] x T=
    uri 999 + c@ [char] x T=
    XML-KIND:END NEXT= XML-KIND:END NEXT=
@@ -787,9 +792,9 @@ variable URI-LEN
 \ Level i of the chain is p:aD, D the digit i mod 10.
 : LEVEL-NAME ( n -- str )
    10 mod [char] 0 + {: digit:n :}
-   s" p:a" drop DEEP-NAME 3 BYTE-COPY
+   s" p:a" STR:DATA DEEP-NAME 3 BYTE-COPY
    digit DEEP-NAME 3 + c!
-   DEEP-NAME 4 ;
+   DEEP-NAME 4 >str ;
 
 : DEEP-BUILD ( -- str )
    DOC-START
@@ -837,7 +842,7 @@ variable SEEN
    {: value:n :}
    value 10 >= if value 10 / recurse then
    value 10 mod $30 + DEEP-NAME c!
-   DEEP-NAME 1 DEEP+ ;
+   DEEP-NAME 1 >str DEEP+ ;
 
 \ Read count events, counting each that is not expected in DEEP-BAD.
 : EVENTS ( XML:reader XML:kind n -- XML:reader )
@@ -931,8 +936,8 @@ variable SEEN
    INPUT-FAILURE -9299 T= ;
 
 \ A rejection's text: the place, what was expected, the token found and the fix.
-: SAID ( n str -- ) {: code:n wa:^ wu:n :}
-   code REASON:TEXT$ wa wu T$=
+: SAID ( n str -- ) {: code:n ws:str :}
+   code REASON:TEXT$ ws T$=
    REASON:RELEASE ;
 
 : REJECTION-TEXTS ( -- )

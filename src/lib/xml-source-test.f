@@ -1,4 +1,3 @@
-split-str
 require src/lib/test.f
 require src/lib/xml.f
 require src/lib/byte-edit.f
@@ -33,9 +32,9 @@ variable WIDE-BAD
    s\" \xFE\xFF\z<\za\z>\zx\z<\z/\za\z>" ;
 
 : ASCII>UTF16 ( str bool -- str )
-   {: ascii size:n little:bool :}
-   size 0 ?do
-      ascii i + c@ {: byte:n :}
+   {: ascii:str little:bool :}
+   ascii STR:LEN 0 ?do
+      ascii STR:DATA i + c@ {: byte:n :}
       little if
          byte BOMLESS i 2 * + c!
          0 BOMLESS i 2 * 1+ + c!
@@ -44,21 +43,21 @@ variable WIDE-BAD
          byte BOMLESS i 2 * 1+ + c!
       then
    loop
-   BOMLESS size 2 * ;
+   BOMLESS ascii STR:LEN 2 * >str ;
 
 : BOM-ASCII ( str bool -- str )
-   {: ascii size:n little:bool :}
-   ascii size little ASCII>UTF16 {: encoded count:n :}
+   {: ascii:str little:bool :}
+   ascii little ASCII>UTF16 {: encoded:str :}
    little if
       $FF BOM-INPUT c! $FE BOM-INPUT 1+ c!
    else
       $FE BOM-INPUT c! $FF BOM-INPUT 1+ c!
    then
-   encoded BOM-INPUT 2 + count BYTE-COPY
-   BOM-INPUT count 2 + ;
+   encoded STR:DATA BOM-INPUT 2 + encoded STR:LEN BYTE-COPY
+   BOM-INPUT encoded STR:LEN 2 + >str ;
 
 : OPEN ( str -- XML:source )
-   HEAP:ALLOCATOR -rot XML:SOURCE-INIT ;
+   HEAP:ALLOCATOR swap XML:SOURCE-INIT ;
 
 : READER ( XML:source -- XML:source XML:reader ) RD XML:INIT-SOURCE ;
 
@@ -109,9 +108,9 @@ variable WIDE-BAD
    s\" <?xml version='1.0' encoding='us-ascii'?><a q=\q&#x4E2D;\q>&#x4E2D;</a>"
    OPEN
    XML:SOURCE-ENCODING XML-ENCODING:US-ASCII XML-ENCODING:EQ TTRUE
-   XML:SOURCE-BOM$ nip 0 T=
-   XML:SOURCE-LEXICAL$ {: lexical size:n :}
-   lexical size s\" <?xml version='1.0' encoding='us-ascii'?><a q=\q&#x4E2D;\q>&#x4E2D;</a>" T$=
+   XML:SOURCE-BOM$ STR:LEN 0 T=
+   XML:SOURCE-LEXICAL$ {: lexical:str :}
+   lexical s\" <?xml version='1.0' encoding='us-ascii'?><a q=\q&#x4E2D;\q>&#x4E2D;</a>" T$=
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
    XML:ATTR-NEXT TTRUE
    CLEARED XML:ATTR-TEXT DECODED$ s" 中" T$=
@@ -153,14 +152,14 @@ variable WIDE-BAD
    [: ASCII-OWNER @ s\" \z" XML:OWNER-ENCODE-SIZE drop ;]
    XML:E-SCALAR TTHROWSQ
    out VEC:SPAN SPAN:$ s" &#x4E2D;" T$=
-   owner XML:OWNER-ORIGINAL$ {: original size:n :}
-   HEAP:ALLOCATOR original size EDIT:INIT
+   owner XML:OWNER-ORIGINAL$ {: original:str :}
+   HEAP:ALLOCATOR original EDIT:INIT
    edit-off edit-len out VEC:SPAN SPAN:$ EDIT:REPLACE
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE
    out VEC:DELETE
-   WRITTEN written s" <?xml version='1.0' encoding='US-ASCII'?><a>&#x4E2D;</a>" T$=
-   WRITTEN written OPEN
+   WRITTEN written >str s" <?xml version='1.0' encoding='US-ASCII'?><a>&#x4E2D;</a>" T$=
+   WRITTEN written >str OPEN
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
    XML-KIND:TEXT NEXT= CLEARED XML:TEXT DECODED$ s" 中" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE
@@ -222,7 +221,7 @@ variable WIDE-BAD
 : BOMLESS-READ ( -- )
    s\" <?xml version='1.0' encoding='UTF-16LE'?><a>x</a>"
    true ASCII>UTF16 OPEN
-   XML:SOURCE-BOM$ nip 0 T=
+   XML:SOURCE-BOM$ STR:LEN 0 T=
    XML:SOURCE-LEXICAL$
    s\" <?xml version='1.0' encoding='UTF-16LE'?><a>x</a>" T$=
    READER
@@ -232,7 +231,7 @@ variable WIDE-BAD
    XML:CLOSE XML:SOURCE-CLOSE
    s\" <?xml version='1.0' encoding='utf-16be'?><a>x</a>"
    false ASCII>UTF16 OPEN
-   XML:SOURCE-BOM$ nip 0 T=
+   XML:SOURCE-BOM$ STR:LEN 0 T=
    READER
    XML-KIND:PI NEXT= XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
    CLEARED XML:TEXT DECODED$ s\" x" T$=
@@ -246,14 +245,17 @@ variable WIDE-BAD
    ['] DRAIN catch XML:E-STATE T=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
+: BAD-INIT-BODY ( str -- str )
+   dup OPEN XML:SOURCE-CLOSE ;
+
 : BAD-INIT ( str n -- )
    {: want:n :}
-   [: 2dup OPEN XML:SOURCE-CLOSE ;]
-   catch want T= 2drop ;
+   ['] BAD-INIT-BODY
+   catch want T= drop ;
 
 \ A rejection's text: the place, what was expected, the token found and the fix.
-: SAID ( n str -- ) {: code:n wa:^ wu:n :}
-   code REASON:TEXT$ wa wu T$=
+: SAID ( n str -- ) {: code:n ws:str :}
+   code REASON:TEXT$ ws T$=
    REASON:RELEASE ;
 
 : ASCII-REJECTIONS ( -- )
@@ -318,27 +320,27 @@ variable WIDE-BAD
    edit-len LEN>N 2 T=
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
    s\" A🚗" out XML:ENCODE
-   out VEC:SPAN SPAN:$ {: encoded added:n :}
-   added 6 T=
+   out VEC:SPAN SPAN:$ {: encoded:str :}
+   encoded STR:LEN 6 T=
    little if
-      encoded added s\" A\z\x3D\xD8\x97\xDE" T$=
+      encoded s\" A\z\x3D\xD8\x97\xDE" T$=
    else
-      encoded added s\" \zA\xD8\x3D\xDE\x97" T$=
+      encoded s\" \zA\xD8\x3D\xDE\x97" T$=
    then
-   XML:SOURCE-ORIGINAL$ {: original original-len:n :}
-   HEAP:ALLOCATOR original original-len EDIT:INIT
-   edit-off edit-len encoded added EDIT:REPLACE
+   XML:SOURCE-ORIGINAL$ {: original:str :}
+   HEAP:ALLOCATOR original EDIT:INIT
+   edit-off edit-len encoded EDIT:REPLACE
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE XML:SOURCE-CLOSE
    out VEC:DELETE
    edit-off OFF>N {: start:n :}
    edit-len LEN>N {: removed:n :}
-   WRITTEN BYTE-VIEW start original start T$=
-   WRITTEN BYTE-VIEW start added + + written start added + -
-   original start removed + + original-len start removed + -
+   WRITTEN BYTE-VIEW start >str original STR:DATA start >str T$=
+   WRITTEN BYTE-VIEW start encoded STR:LEN + + written start encoded STR:LEN + - >str
+   original STR:DATA start removed + + original STR:LEN start removed + - >str
    T$=
-   WRITTEN written OPEN
-   XML:SOURCE-BOM$ nip 0 T=
+   WRITTEN written >str OPEN
+   XML:SOURCE-BOM$ STR:LEN 0 T=
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
    CLEARED XML:TEXT DECODED$ s\" A🚗|KEEP" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
@@ -366,7 +368,7 @@ variable WIDE-BAD
    insert-old LEN>N 0 T=
    delete-off delete-len XML:SOURCE-RANGE
    {: delete-wire:off delete-old:len :}
-   XML:SOURCE-LEXICAL$ nip >OFF 0 >LEN XML:SOURCE-RANGE
+   XML:SOURCE-LEXICAL$ STR:LEN >OFF 0 >LEN XML:SOURCE-RANGE
    {: eof-wire:off eof-old:len :}
    eof-old LEN>N 0 T=
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
@@ -376,18 +378,18 @@ variable WIDE-BAD
    out VEC:COUNT attr-added - {: insert-added:n :}
    s\" " out XML:ENCODE
    out VEC:COUNT attr-added insert-added + T=
-   out VEC:SPAN SPAN:$ drop {: encoded :}
+   out VEC:SPAN SPAN:$ STR:DATA {: encoded :}
    little if
-      encoded attr-added s\" A\z\x3D\xD8\x97\xDE" T$=
+      encoded attr-added >str s\" A\z\x3D\xD8\x97\xDE" T$=
    else
-      encoded attr-added s\" \zA\xD8\x3D\xDE\x97" T$=
+      encoded attr-added >str s\" \zA\xD8\x3D\xDE\x97" T$=
    then
-   XML:SOURCE-ORIGINAL$ {: original original-len:n :}
-   HEAP:ALLOCATOR original original-len EDIT:INIT
-   attr-wire attr-old encoded attr-added EDIT:REPLACE
-   insert-wire insert-old encoded attr-added + insert-added EDIT:REPLACE
-   delete-wire delete-old encoded 0 EDIT:REPLACE
-   eof-wire eof-old encoded 0 EDIT:REPLACE
+   XML:SOURCE-ORIGINAL$ {: original:str :}
+   HEAP:ALLOCATOR original EDIT:INIT
+   attr-wire attr-old encoded attr-added >str EDIT:REPLACE
+   insert-wire insert-old encoded attr-added + insert-added >str EDIT:REPLACE
+   delete-wire delete-old encoded 0 >str EDIT:REPLACE
+   eof-wire eof-old encoded 0 >str EDIT:REPLACE
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE XML:SOURCE-CLOSE
    out VEC:DELETE
@@ -397,15 +399,15 @@ variable WIDE-BAD
    delete-wire OFF>N {: c:n :}
    delete-old LEN>N {: cr:n :}
    attr-added ar T=
-   WRITTEN BYTE-VIEW a original a T$=
-   WRITTEN BYTE-VIEW a attr-added + + b a ar + -
-   original a ar + + b a ar + - T$=
-   WRITTEN BYTE-VIEW b insert-added + + c b -
-   original b + c b - T$=
-   WRITTEN BYTE-VIEW c insert-added + + written c insert-added + -
-   original c cr + + original-len c cr + - T$=
-   WRITTEN written OPEN
-   XML:SOURCE-BOM$ nip 2 T=
+   WRITTEN BYTE-VIEW a >str original STR:DATA a >str T$=
+   WRITTEN BYTE-VIEW a attr-added + + b a ar + - >str
+   original STR:DATA a ar + + b a ar + - >str T$=
+   WRITTEN BYTE-VIEW b insert-added + + c b - >str
+   original STR:DATA b + c b - >str T$=
+   WRITTEN BYTE-VIEW c insert-added + + written c insert-added + - >str
+   original STR:DATA c cr + + original STR:LEN c cr + - >str T$=
+   WRITTEN written >str OPEN
+   XML:SOURCE-BOM$ STR:LEN 2 T=
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
    XML:ATTR-NEXT TTRUE
    CLEARED XML:ATTR-TEXT DECODED$ s\" A🚗" T$=
@@ -430,19 +432,19 @@ variable WIDE-BAD
    text-off text-len XML:SOURCE-RANGE {: edit-off:off edit-len:len :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
    s" é" out XML:ENCODE
-   out VEC:SPAN SPAN:$ {: encoded added:n :}
-   encoded added s\" \xE9\z" T$=
-   XML:SOURCE-ORIGINAL$ {: original original-len:n :}
-   HEAP:ALLOCATOR original original-len EDIT:INIT
-   edit-off edit-len encoded added EDIT:REPLACE
+   out VEC:SPAN SPAN:$ {: encoded:str :}
+   encoded s\" \xE9\z" T$=
+   XML:SOURCE-ORIGINAL$ {: original:str :}
+   HEAP:ALLOCATOR original EDIT:INIT
+   edit-off edit-len encoded EDIT:REPLACE
    $5A WRITTEN c!
    ['] WRITE-TINY catch EDIT:E-CAPACITY T=
    WRITTEN c@ $5A T=
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE XML:SOURCE-CLOSE
    out VEC:DELETE
-   WRITTEN written s\" \xFF\xFE<\za\z>\z\xE9\z<\z/\za\z>\z" T$=
-   WRITTEN written OPEN
+   WRITTEN written >str s\" \xFF\xFE<\za\z>\z\xE9\z<\z/\za\z>\z" T$=
+   WRITTEN written >str OPEN
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
    CLEARED XML:TEXT DECODED$ s" é" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
@@ -588,8 +590,8 @@ variable WIDE-BAD
 
 
 : MARK-ASCII ( str bool -- )
-   {: text size:n little:bool :}
-   size 0 ?do text i + c@ 1 little MARK-SCALAR loop ;
+   {: text:str little:bool :}
+   text STR:LEN 0 ?do text STR:DATA i + c@ 1 little MARK-SCALAR loop ;
 
 
 \ <a>, 64 turns of 😀éx中x, </a>: 711 lexical bytes. A turn is 11 bytes, so
@@ -609,7 +611,7 @@ variable WIDE-BAD
    loop
    s" </a>" little MARK-ASCII
    MARKED-WIRE @ MARKED-AT MARKED-LEX @ cells + !
-   MARKED MARKED-WIRE @ ;
+   MARKED MARKED-WIRE @ >str ;
 
 : PROBE-RANGE ( XML:source -- XML:source )
    PROBE @ >OFF 0 >LEN XML:SOURCE-RANGE 2drop ;
@@ -617,9 +619,9 @@ variable WIDE-BAD
 
 : MARKED-RANGES ( bool -- )
    {: little:bool :}
-   little MARKED-BUILD {: original size:n :}
-   original size OPEN
-   XML:SOURCE-LEXICAL$ nip MARKED-LEX @ T=
+   little MARKED-BUILD {: original:str :}
+   original OPEN
+   XML:SOURCE-LEXICAL$ STR:LEN MARKED-LEX @ T=
    READER DRAIN XML:CLOSE
    0
    MARKED-LEX @ 1+ 0 ?do
@@ -641,9 +643,9 @@ variable WIDE-BAD
 
 
 : WIDE-PUT ( ^VEC:vector<u8> str -- )
-   {: wire:^ text size:n :}
-   size 0 ?do
-      text i + c@ wire VEC:PUSH c!
+   {: wire:^ text:str :}
+   text STR:LEN 0 ?do
+      text STR:DATA i + c@ wire VEC:PUSH c!
       0 wire VEC:PUSH c!
    loop ;
 
@@ -693,10 +695,10 @@ variable WIDE-BAD
 
 \ A source reader's rejection: its code and its text, read at the catch.
 : SAID-NEXT ( str n str -- )
-   {: want:n wa:^ wu:n :}
+   {: want:n ws:str :}
    OPEN READER
    ['] DRAIN catch want T=
-   want REASON:TEXT$ wa wu T$=
+   want REASON:TEXT$ ws T$=
    REASON:RELEASE
    XML:CLOSE XML:SOURCE-CLOSE ;
 

@@ -1,4 +1,3 @@
-split-str
 \ zip-ffi.f - exact libzip/libc ABI bindings, private to ZIP.
 \ STORAGE CLASS. None of its own: the registries it walks are zip-state.f's.
 require src/lib/ffi-abi.f
@@ -64,7 +63,7 @@ FUNCTION: C-PWRITE pwrite ( n str n -- n ) ;FUNCTION
    node SNAP-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
    node RAW-PTR @ dup NULL? if drop else node RAW-LEN @ munmap 0<> or then
    node SOURCE-LIVE @ 0<> if
-      node SOURCE-PTR @ node SOURCE-LEN @ FS:CLEANUP-FORGET
+      node SOURCE-PTR @ node SOURCE-LEN @ >str FS:CLEANUP-FORGET
       node SOURCE-PTR @ unlink 0<> or
    then
    node FORGET-ARCHIVE

@@ -1,4 +1,3 @@
-split-str
 \ XML 1.0 scalar/entity decoding retains byte offsets in its input view.
 require src/lib/prelude.f
 require src/lib/utf8-scalar.f
@@ -36,29 +35,29 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 : BYTE-ADDRESS ( ^u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
 : SPAN-CHECK ( str -- )
-   {: source size:n :}
-   size 0 < if E-RANGE throw then
-   source BYTE-ADDRESS {: start:n :}
+   {: source:str :}
+   source STR:LEN 0 < if E-RANGE throw then
+   source STR:DATA BYTE-ADDRESS {: start:n :}
    start 0 < if E-RANGE throw then
-   size 0 > start 0= and if E-RANGE throw then
-   size MAX-SIZE start - > if E-RANGE throw then ;
+   source STR:LEN 0 > start 0= and if E-RANGE throw then
+   source STR:LEN MAX-SIZE start - > if E-RANGE throw then ;
 
 \ Each helper below rejects at the failing byte of the span it is given, an entity
 \ reference at its `&`, counted from at, the place of the span's first byte.
 : BYTE@ ( str place n -- n )
-   {: source size:n at:place index:n :}
-   index 0 < index size >= or if
-      source size at index 0 max size min
+   {: source:str at:place index:n :}
+   index 0 < index source STR:LEN >= or if
+      source at index 0 max source STR:LEN min
       s" the rest of the document"
       s" write the rest of the document" E-TRUNCATED REJECT-FROM
    then
-   source index + c@ ;
+   source STR:DATA index + c@ ;
 
 : BYTES= ( str str -- bool )
-   {: first first-len:n second second-len:n :}
-   first-len second-len <> if false exit then
-   first-len 0 ?do
-      first i + c@ second i + c@ <> if false unloop exit then
+   {: first:str second:str :}
+   first STR:LEN second STR:LEN <> if false exit then
+   first STR:LEN 0 ?do
+      first STR:DATA i + c@ second STR:DATA i + c@ <> if false unloop exit then
    loop
    true ;
 
@@ -78,79 +77,79 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 
 \ Rejects the scalar at off in the span unless XML 1.0 allows it.
 : REQUIRE-SCALAR ( str place n n -- )
-   {: source size:n at:place off:n scalar:n :}
+   {: source:str at:place off:n scalar:n :}
    scalar XML-SCALAR? 0= if
-      source size at off SCALAR-EXPECTED$ SCALAR-FIX$ E-SCALAR
+      source at off SCALAR-EXPECTED$ SCALAR-FIX$ E-SCALAR
       REJECT-FROM
    then ;
 
 \ The offset of the first byte above $7F, or n when there is none.
 : HIGH-BYTE ( str -- n )
-   {: source size:n :}
-   size 0 ?do source i + c@ $7F > if i unloop exit then loop
-   size ;
+   {: source:str :}
+   source STR:LEN 0 ?do source STR:DATA i + c@ $7F > if i unloop exit then loop
+   source STR:LEN ;
 
 : ASCII-EXPECTED$ ( -- str ) s" a US-ASCII character" ;
 : ASCII-FIX$ ( -- str )
    s\" write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" ;
 
 : ASCII-WIRE ( str -- )
-   {: source size:n :}
-   source size HIGH-BYTE {: off:n :}
-   off size < if
-      source size WHOLE off ASCII-EXPECTED$ ASCII-FIX$ E-ENCODING
+   {: source:str :}
+   source HIGH-BYTE {: off:n :}
+   off source STR:LEN < if
+      source WHOLE off ASCII-EXPECTED$ ASCII-FIX$ E-ENCODING
       REJECT-FROM
    then ;
 
 : SCALAR-AT ( str place n -- n n )
-   {: source size:n at:place cursor:n :}
-   source size at cursor BYTE@ drop
-   source size cursor
+   {: source:str at:place cursor:n :}
+   source at cursor BYTE@ drop
+   source cursor
    UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF ENDOF
       raw-byte OF
-         2drop source size at cursor s" a UTF-8 character"
+         2drop source at cursor s" a UTF-8 character"
          s" write the text in UTF-8" E-UTF8 REJECT-FROM
       ENDOF
    ;MATCH
    {: scalar:n next:n :}
-   source size at cursor scalar REQUIRE-SCALAR
+   source at cursor scalar REQUIRE-SCALAR
    scalar next ;
 
 : DIGIT-REJECT ( str place n -- )
-   {: source size:n at:place amp:n :}
-   source size at amp
+   {: source:str at:place amp:n :}
+   source at amp
    s" a character reference such as `&#65;` or `&#x41;`"
    s" write the character's number in decimal after `&#`, or in hex after `&#x`, and end the reference with `;`"
    E-ENTITY REJECT-FROM ;
 
 : NAME-REJECT ( str place n -- )
-   {: source size:n at:place amp:n :}
-   source size at amp
+   {: source:str at:place amp:n :}
+   source at amp
    s" `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`"
    s" write `&amp;` for a literal `&`, and end each reference with `;`"
    E-ENTITY REJECT-FROM ;
 
 \ The value of a digit of the reference at amp.
 : HEX-DIGIT ( str place n n -- n )
-   {: source size:n at:place amp:n byte:n :}
-   byte STR:HEX-DIGIT? 0= if source size at amp DIGIT-REJECT then
+   {: source:str at:place amp:n byte:n :}
+   byte STR:HEX-DIGIT? 0= if source at amp DIGIT-REJECT then
    byte STR:HEX-DIGIT-VALUE ;
 
 \ The value of the reference at amp after one more digit.
 : NUMERIC-STEP ( str place n n n n -- n )
-   {: source size:n at:place amp:n value:n digit:n radix:n :}
-   digit radix >= if source size at amp DIGIT-REJECT then
+   {: source:str at:place amp:n value:n digit:n radix:n :}
+   digit radix >= if source at amp DIGIT-REJECT then
    value $10FFFF digit - radix / > if
-      source size at amp s" a character number at most `&#x10FFFF;`"
+      source at amp s" a character number at most `&#x10FFFF;`"
       s" write the number of a Unicode character" E-ENTITY REJECT-FROM
    then
    value radix * digit + ;
 
 \ The scalar of the character reference at amp and the offset after its `;`.
 : NUMERIC-ENTITY ( str place n -- n n )
-   {: source size:n at:place amp:n :}
-   source size at amp 2 + BYTE@ $78 = if
+   {: source:str at:place amp:n :}
+   source at amp 2 + BYTE@ $78 = if
       amp 3 + $10
    else
       amp 2 + 10
@@ -159,54 +158,54 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    0 digits
    begin
       {: value:n cursor:n :}
-      source size at cursor BYTE@ $3B = if
-         cursor digits = if source size at amp DIGIT-REJECT then
-         source size at amp value REQUIRE-SCALAR
+      source at cursor BYTE@ $3B = if
+         cursor digits = if source at amp DIGIT-REJECT then
+         source at amp value REQUIRE-SCALAR
          value cursor 1+ exit
       then
-      source size at amp source size at cursor BYTE@ HEX-DIGIT
+      source at amp source at cursor BYTE@ HEX-DIGIT
       {: digit:n :}
-      source size at amp value digit radix NUMERIC-STEP
+      source at amp value digit radix NUMERIC-STEP
       cursor 1+
    again ;
 
 \ The scalar a predefined entity names, given the reference at amp and its `;`
 \ at end.
 : NAMED-SCALAR ( str place n n -- n )
-   {: source size:n at:place amp:n end:n :}
-   source amp 1+ + end amp - 1- {: name len:n :}
-   name len s" lt" BYTES= if $3C exit then
-   name len s" gt" BYTES= if $3E exit then
-   name len s" amp" BYTES= if $26 exit then
-   name len s" apos" BYTES= if $27 exit then
-   name len s" quot" BYTES= if $22 exit then
-   source size at amp NAME-REJECT ;
+   {: source:str at:place amp:n end:n :}
+   source STR:DATA amp 1+ + end amp - 1- >str {: name:str :}
+   name s" lt" BYTES= if $3C exit then
+   name s" gt" BYTES= if $3E exit then
+   name s" amp" BYTES= if $26 exit then
+   name s" apos" BYTES= if $27 exit then
+   name s" quot" BYTES= if $22 exit then
+   source at amp NAME-REJECT ;
 
 : SEMICOLON? ( n str place -- bool )
-   {: cursor:n source size:n at:place :}
-   source size at cursor BYTE@ $3B = ;
+   {: cursor:n source:str at:place :}
+   source at cursor BYTE@ $3B = ;
 
 : ENTITY-AT ( str place n -- n n )
-   {: source size:n at:place start:n :}
-   source size at start 1+ BYTE@ $23 = if
-      source size at start NUMERIC-ENTITY exit
+   {: source:str at:place start:n :}
+   source at start 1+ BYTE@ $23 = if
+      source at start NUMERIC-ENTITY exit
    then
    start 1+
    begin
-      dup source size at SEMICOLON? 0=
+      dup source at SEMICOLON? 0=
    while
-      dup start - 5 > if source size at start NAME-REJECT then
+      dup start - 5 > if source at start NAME-REJECT then
       1+
    repeat
    {: end:n :}
-   source size at start end NAMED-SCALAR
+   source at start end NAMED-SCALAR
    end 1+ ;
 
 : NORMALIZED ( str n n n -- n n )
-   {: source size:n mode:n scalar:n next:n :}
+   {: source:str mode:n scalar:n next:n :}
    scalar $D = if
-      next size < if
-         source next + c@ $A = if next 1+ else next then
+      next source STR:LEN < if
+         source STR:DATA next + c@ $A = if next 1+ else next then
       else next then
       $A swap
    else scalar next then
@@ -216,13 +215,13 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    else value after then ;
 
 : DECODE-AT ( str place n n -- n n )
-   {: source size:n at:place cursor:n mode:n :}
+   {: source:str at:place cursor:n mode:n :}
    mode DECODE-RAW <> if
-      source size at cursor BYTE@ $26 = if
-         source size at cursor ENTITY-AT exit
+      source at cursor BYTE@ $26 = if
+         source at cursor ENTITY-AT exit
       then
    then
-   source size mode source size at cursor SCALAR-AT NORMALIZED ;
+   source mode source at cursor SCALAR-AT NORMALIZED ;
 
 : SCALAR-WIDTH ( n -- n )
    dup $80 < if drop 1 exit then
@@ -230,12 +229,12 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    $10000 < if 3 else 4 then ;
 
 : DECODED-SIZE ( str n -- n )
-   {: source size:n mode:n :}
-   source size SPAN-CHECK
+   {: source:str mode:n :}
+   source SPAN-CHECK
    0 0
-   begin dup size < while
+   begin dup source STR:LEN < while
       {: total:n cursor:n :}
-      source size WHOLE cursor mode DECODE-AT
+      source WHOLE cursor mode DECODE-AT
       {: scalar:n next:n :}
       total scalar SCALAR-WIDTH + next
    repeat
@@ -270,11 +269,11 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    scalar last PUT-CONTINUATION ;
 
 : DECODE-WRITE ( str n ^u8 -- )
-   {: source size:n mode:n destination :}
+   {: source:str mode:n destination :}
    destination 0
-   begin dup size < while
+   begin dup source STR:LEN < while
       {: next-output cursor:n :}
-      source size WHOLE cursor mode DECODE-AT
+      source WHOLE cursor mode DECODE-AT
       {: scalar:n next:n :}
       scalar next-output PUT-SCALAR next
    repeat
@@ -282,24 +281,24 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 
 \ A reader's value was checked when NEXT read it, so it rejects nothing here.
 : DECODE-INTO ( str n ^VEC:vector<u8> -- )
-   {: source size:n mode:n v:^ :}
-   source size mode DECODED-SIZE {: needed:n :}
+   {: source:str mode:n v:^ :}
+   source mode DECODED-SIZE {: needed:n :}
    v VEC:COUNT {: at:n :}
    v at needed + VEC:ENSURE
-   v VEC:SPAN SPAN:$ drop at + {: out:^ :}
-   source size mode out DECODE-WRITE ;
+   v VEC:SPAN SPAN:$ STR:DATA at + {: out:^ :}
+   source mode out DECODE-WRITE ;
 
 : NORMAL-EQUAL? ( str str -- bool )
-   {: first first-len:n second second-len:n :}
+   {: first:str second:str :}
    0 0
    begin
       {: first-index:n second-index:n :}
-      first-index first-len = second-index second-len = or if
-         first-index first-len = second-index second-len = and exit
+      first-index first STR:LEN = second-index second STR:LEN = or if
+         first-index first STR:LEN = second-index second STR:LEN = and exit
       then
-      first first-len WHOLE first-index DECODE-ATTR DECODE-AT
+      first WHOLE first-index DECODE-ATTR DECODE-AT
       {: first-scalar:n first-next:n :}
-      second second-len WHOLE second-index DECODE-ATTR
+      second WHOLE second-index DECODE-ATTR
       DECODE-AT
       {: second-scalar:n second-next:n :}
       first-scalar second-scalar <> if false exit then

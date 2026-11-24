@@ -1,4 +1,3 @@
-split-str
 \ names.f - XML names, namespace scopes and PREFIX-URI; part of package XML
 \ (src/lib/xml.f). Name spans keep their prefix; URI and ATTR-URI answer the
 \ resolved, decoded namespace URI. A default namespace applies to elements, not
@@ -106,8 +105,8 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state CURSOR-HASH-K0 @ state CURSOR-HASH-K1 @ ;
 
 : BYTES-HASH ( ^cursor str -- n )
-   {: state source size:n :}
-   state KEY@ source size SIPHASH:BYTES ;
+   {: state source:str :}
+   state KEY@ source SIPHASH:BYTES ;
 
 : HASH-START ( ^cursor -- ^SIPHASH:state )
    {: state :}
@@ -173,22 +172,22 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state attr ATTRIBUTE-VALUE @ attr ATTRIBUTE-VALUE-U @ SPAN$ ;
 
 : PREFIX-SIZE ( str -- n )
-   {: source size:n :}
-   size 0 ?do
-      source i + c@ $3A = if i unloop exit then
+   {: source:str :}
+   source STR:LEN 0 ?do
+      source STR:DATA i + c@ $3A = if i unloop exit then
    loop
    0 ;
 
 : NAME-MATCH? ( ^cursor ^attribute str -- bool )
-   {: state attr expected size:n :}
-   state attr ATTRIBUTE-NAME$ expected size BYTES= ;
+   {: state attr expected:str :}
+   state attr ATTRIBUTE-NAME$ expected BYTES= ;
 
 : NS-ATTRIBUTE? ( ^cursor ^attribute -- bool )
    {: state attr :}
    state attr s" xmlns" NAME-MATCH? if true exit then
-   state attr ATTRIBUTE-NAME$ {: name size:n :}
-   size 6 < if false exit then
-   name 6 s" xmlns:" BYTES= ;
+   state attr ATTRIBUTE-NAME$ {: name:str :}
+   name STR:LEN 6 < if false exit then
+   name STR:DATA 6 >str s" xmlns:" BYTES= ;
 
 : NS-PREFIX ( ^cursor ^attribute -- n n )
    {: state attr :}
@@ -201,9 +200,9 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state uri 0 URI$ NORMAL-EQUAL? ;
 
 : XMLNS-CHECK ( ^cursor ^attribute str -- )
-   {: state attr prefix size:n :}
+   {: state attr prefix:str :}
    attr ATTRIBUTE-NAME @ {: at:n :}
-   prefix size s" xmlns" BYTES= if
+   prefix s" xmlns" BYTES= if
       state at s" a prefix other than `xmlns`"
       s" remove the declaration: XML binds `xmlns` itself"
       E-NAMESPACE REJECT
@@ -216,9 +215,9 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    then ;
 
 : XML-PREFIX-CHECK ( ^cursor ^attribute str -- )
-   {: state attr prefix size:n :}
+   {: state attr prefix:str :}
    attr ATTRIBUTE-NAME @ {: at:n :}
-   prefix size s" xml" BYTES= if
+   prefix s" xml" BYTES= if
       state attr XML-URI RESERVED-URI? 0= if
          state at
          s" `xml` bound to `http://www.w3.org/XML/1998/namespace`"
@@ -236,10 +235,10 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 
 : NS-BINDING-CHECK ( ^cursor ^attribute -- )
    {: state attr :}
-   state state attr NS-PREFIX SPAN$ {: prefix size:n :}
-   state attr prefix size XMLNS-CHECK
-   state attr prefix size XML-PREFIX-CHECK
-   size 0 > attr ATTRIBUTE-VALUE-U @ 0= and if
+   state state attr NS-PREFIX SPAN$ {: prefix:str :}
+   state attr prefix XMLNS-CHECK
+   state attr prefix XML-PREFIX-CHECK
+   prefix STR:LEN 0 > attr ATTRIBUTE-VALUE-U @ 0= and if
       state attr ATTRIBUTE-NAME @ s" a prefix declaration with a URI"
       s" write the prefix's URI: XML 1.0 cannot undeclare a prefix"
       E-NAMESPACE REJECT
@@ -248,12 +247,12 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 \ A URI hashes its decoded scalars, one word each: the units NORMAL-EQUAL?
 \ compares, so URIs it calls equal hash equal however they are spelled.
 : URI-HASH ( ^cursor str -- n )
-   {: state source size:n :}
+   {: state source:str :}
    state HASH-START {: sip :}
    0
-   begin dup size < while
+   begin dup source STR:LEN < while
       {: cursor:n :}
-      source size WHOLE cursor DECODE-ATTR DECODE-AT
+      source WHOLE cursor DECODE-ATTR DECODE-AT
       {: scalar:n next:n :}
       sip scalar SIPHASH:ABSORB-WORD next
    repeat
@@ -264,17 +263,17 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 \ binding keeps its URI's hash, so an attribute costs its local name, not its
 \ URI, and equal expanded names hash equal.
 : EXPANDED-HASH ( ^cursor n str -- n )
-   {: state uri:n local size:n :}
+   {: state uri:n local:str :}
    state HASH-START {: sip :}
    sip uri SIPHASH:ABSORB-WORD
-   size 0 ?do sip local i + c@ SIPHASH:ABSORB-BYTE loop
+   local STR:LEN 0 ?do sip local STR:DATA i + c@ SIPHASH:ABSORB-BYTE loop
    sip SIPHASH:FINISH ;
 
 : EMPTY-URI-HASH ( ^cursor -- n ) s" " URI-HASH ;
 
 : PREFIX-HEAD ( ^cursor str -- ^n )
-   {: state prefix size:n :}
-   state prefix size BYTES-HASH
+   {: state prefix:str :}
+   state prefix BYTES-HASH
    state CURSOR-NAMESPACES @ VEC:COUNT BUCKET {: bucket:n :}
    state bucket NAMESPACE BINDING-HEAD ;
 
@@ -367,26 +366,26 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    loop ;
 
 : BINDING-INDEX ( ^cursor str -- n )
-   {: state prefix size:n :}
-   state prefix size PREFIX-HEAD @
+   {: state prefix:str :}
+   state prefix PREFIX-HEAD @
    begin dup 0 >= while
       state over NAMESPACE {: binding :}
-      prefix size state binding BINDING-PREFIX$ BYTES= if exit then
+      prefix state binding BINDING-PREFIX$ BYTES= if exit then
       drop binding BINDING-LINK @
    repeat ;
 
 : PREFIX-BINDING ( ^cursor str -- n n n bool )
-   {: state prefix size:n :}
-   prefix size s" xml" BYTES= if
+   {: state prefix:str :}
+   prefix s" xml" BYTES= if
       XML-URI 0 state state XML-URI 0 URI$ URI-HASH true exit
    then
-   prefix size s" xmlns" BYTES= if 0 0 0 false exit then
-   state prefix size BINDING-INDEX {: index:n :}
+   prefix s" xmlns" BYTES= if 0 0 0 false exit then
+   state prefix BINDING-INDEX {: index:n :}
    index 0 >= if
       state index NAMESPACE {: binding :}
       binding BINDING-URI @ binding BINDING-URI-U @ binding BINDING-URI-HASH @ true exit
    then
-   0 0 state EMPTY-URI-HASH size 0= ;
+   0 0 state EMPTY-URI-HASH prefix STR:LEN 0= ;
 
 : BOUND-URI ( ^cursor str -- n n bool )
    PREFIX-BINDING {: start:n size:n hash:n bound:bool :}
@@ -450,15 +449,15 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state RESOLVE-ATTRIBUTES ;
 
 : PREFIX-URI-ARGS ( XML:reader str ^VEC:vector<u8> -- XML:reader ^cursor str ^VEC:vector<u8> )
-   {: prefix size:n v:^ :}
-   STATE prefix size v ;
+   {: prefix:str v:^ :}
+   STATE prefix v ;
 
 : PREFIX-URI-STATE ( ^cursor str ^VEC:vector<u8> -- bool )
-   {: state prefix size:n v:^ :}
+   {: state prefix:str v:^ :}
    state LIVE
    state CURSOR-OPEN-DEPTH @ 0= if E-STATE throw then
-   prefix size SPAN-CHECK
-   state prefix size BOUND-URI if
+   prefix SPAN-CHECK
+   state prefix BOUND-URI if
       state -rot URI$ v URI-INTO true
    else
       2drop false
