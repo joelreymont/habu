@@ -97,6 +97,32 @@ public
 : ASSERT ( bool -- ) dup T-ASSERT 0= if T-REPORT then ;
 : FAIL ( -- ) false ASSERT ;
 
+
+\ The value, asserted a JSON object.
+: OBJECT ( JSON:value -- JSON:value ) {: v :} v JSON:OBJECT? ASSERT v ;
+
+
+\ The member of that name, asserted present.
+: FOUND ( JSON:value str -- JSON:value )
+   {: v key:^ key-u:n :}
+   v key key-u JSON:FIND MATCH option
+      none OF FAIL v ENDOF
+      some OF true ASSERT ENDOF
+   ;MATCH ;
+
+
+: HAS? ( JSON:value str -- bool )
+   JSON:FIND MATCH option
+      none OF false ENDOF
+      some OF {: m :} true ENDOF
+   ;MATCH ;
+
+
+\ The member `key` of the JSON object a u.
+: MEMBER ( str str -- JSON:value )
+   {: a:^ u:n key:^ key-u:n :}
+   a u JSON:PARSE OBJECT key key-u FOUND ;
+
 \ Each store read throws the code until it is 0 again.
 : READ-FAULT! ( n -- ) READ-FAULT ! ;
 : KEY-SERVICE$ ( -- str ) s" habu-test" ;
@@ -141,7 +167,7 @@ variable SENT-U
 create FAILURE FAILURE-CAP allot
 variable FAILURE-U
 TASK:SEMAPHORE HELD
-\ The handlers share this package's buffers and parsers, so one runs at a time
+\ The handlers share this package's buffers, so one runs at a time
 \ (ALONE); the held stream gives its turn up while it waits.
 TASK:SEMAPHORE TURN
 \ LET-GO lets a gated reply go.
@@ -152,9 +178,6 @@ TASK:SEMAPHORE GO
 \ stay unchanged until its worker has sent them, after the turn is given up.
 HTTP:MAX-WORKERS TYPED-BUFFER STREAM-OUT ^VEC:vector<u8>
 TYPED-VARIABLE STREAM-W JSON:writer
-TYPED-VARIABLE PARSER JSON:cursor
-\ A second parser reads one content part apart from the request.
-TYPED-VARIABLE PART JSON:cursor
 create ECHO 256 allot
 variable ECHO-U
 variable IMAGES
@@ -189,44 +212,53 @@ $300000 constant BIG-U
    else 2drop false then ;
 
 
-\ A reader, on the parser record, at the value of member `key` of the JSON
-\ object a u.
-: MEMBER ( ^JSON:cursor ^u8 n ^u8 n -- JSON:reader )
-   {: storage:^ a:^ u:n key:^ key-u:n :}
-   storage a u JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ = ASSERT
-   key key-u JSON:READ-FIND-KEY ASSERT ;
+\ Appends text to a buffer of cap bytes whose length is in the cell.
+: APPEND ( str ^u8 n ^n -- )
+   {: a:^ u:n buf:^ cap:n len:^ :}
+   a u buf len @ + cap len @ - SPAN:MAKE SPAN:COPY
+   u len +! ;
 
 
-\ A reader at the value of the request body's member `key`.
-: BODY-MEMBER ( HTTP:request str -- JSON:reader )
+\ The value of the request body's member `key`.
+: BODY-MEMBER ( HTTP:request str -- JSON:value )
    {: r:HTTP:request key:^ key-u:n :}
-   PARSER r HTTP:BODY$ key key-u MEMBER ;
+   r HTTP:BODY$ key key-u MEMBER ;
 
 
 \ Whether a request body names a service tier.
 : TIERED? ( HTTP:request -- bool )
-   {: r:HTTP:request :}
-   PARSER r HTTP:BODY$ JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ = ASSERT
-   s" service_tier" JSON:READ-FIND-KEY {: named:bool :}
-   JSON:READ-CLOSE named ;
+   HTTP:BODY$ JSON:PARSE OBJECT s" service_tier" HAS? ;
 
 
-\ A reader at the content array of a chat request's user input.
-: CONTENT ( HTTP:request -- JSON:reader )
-   s" input" BODY-MEMBER
-   JSON:READ-NEXT JSON:T-OBJ = ASSERT
-   s" content" JSON:READ-FIND-KEY ASSERT ;
+\ An array's first element; an empty array fails.
+: FIRST ( JSON:value -- JSON:value )
+   {: v :}
+   v s" /0" JSON:AT MATCH option
+      none OF FAIL v ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
 
-\ The text of a chat request's first part.
+\ The content array of a chat request's user input.
+: CONTENT ( HTTP:request -- JSON:value )
+   s" input" BODY-MEMBER FIRST OBJECT s" content" FOUND ;
+
+
+\ The text of a chat request's first part, escapes as written.
 : FIRST-TEXT ( HTTP:request -- str )
-   CONTENT
-   JSON:READ-NEXT JSON:T-OBJ = ASSERT
-   s" text" JSON:READ-FIND-KEY ASSERT
-   JSON:READ-SPAN$ {: a:^ u:n :}
-   JSON:READ-CLOSE a u ;
+   CONTENT FIRST OBJECT s" text" FOUND
+   JSON:TEXT$ {: a:^ u:n :} a 1+ u 2 - ;
+
+
+: INPUT-LINE ( JSON:value -- )
+   {: s :}
+   s JSON:STRING? ASSERT
+   1 RECEIVED-N +!
+   RECEIVED-U @ 0<> if
+      RECEIVED-U @ RECEIVED-CAP < ASSERT
+      10 RECEIVED RECEIVED-U @ + c! 1 RECEIVED-U +!
+   then
+   s [: RECEIVED RECEIVED-CAP RECEIVED-U APPEND ;] JSON:WITH-STRING ;
 
 
 \ Decodes an embedding request's input array into RECEIVED, one input per line
@@ -234,31 +266,19 @@ $300000 constant BIG-U
 : INPUT-LINES ( HTTP:request -- )
    0 RECEIVED-U !
    0 RECEIVED-N !
-   s" input" BODY-MEMBER
-   JSON:READ-TOKEN JSON:T-ARR = ASSERT
-   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
-      JSON:T-STR = ASSERT
-      1 RECEIVED-N +!
-      RECEIVED-U @ 0<> if
-         RECEIVED-U @ RECEIVED-CAP < ASSERT
-         10 RECEIVED RECEIVED-U @ + c! 1 RECEIVED-U +!
-      then
-      RECEIVED RECEIVED-U @ + RECEIVED-CAP RECEIVED-U @ - JSON:READ-STR RECEIVED-U +!
-   repeat drop JSON:READ-CLOSE ;
+   s" input" BODY-MEMBER {: v :}
+   v JSON:ARRAY? ASSERT
+   v [: INPUT-LINE ;] JSON:EACH ;
 
 
-\ Echoes the decoded url of the content part a u when its type is input_image.
-: PART+ ( str -- )
-   {: a:^ u:n :}
-   PART a u s" type" MEMBER
-   s" input_image" JSON:READ-STR-EQ? {: image:bool :}
-   JSON:READ-CLOSE
-   image 0= if exit then
-   PART a u s" image_url" MEMBER
+\ Echoes the decoded url of the content part when its type is input_image.
+: PART+ ( JSON:value -- )
+   {: p :}
+   p OBJECT s" type" FOUND s" input_image" JSON:STRING= 0= if exit then
+   p OBJECT s" image_url" FOUND {: url :}
    IMAGES @ 0<> if s" ," ECHO+ then
    S\" \q" ECHO+
-   ECHO ECHO-U @ + 256 ECHO-U @ - JSON:READ-STR ECHO-U +!
-   JSON:READ-CLOSE
+   url [: ECHO 256 ECHO-U APPEND ;] JSON:WITH-STRING
    S\" \q" ECHO+
    1 IMAGES +! ;
 
@@ -267,11 +287,7 @@ $300000 constant BIG-U
 : IMAGE-ECHO ( HTTP:request -- )
    0 ECHO-U ! 0 IMAGES !
    S\" {\qimages\q:[" ECHO+
-   CONTENT
-   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
-      JSON:T-OBJ = ASSERT
-      JSON:READ-VALUE-SPAN$ PART+
-   repeat drop JSON:READ-CLOSE
+   CONTENT [: OBJECT PART+ ;] JSON:EACH
    s" ]}" ECHO+ ;
 
 
@@ -991,9 +1007,9 @@ variable KEPT-U
    r KEEP-BODY
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
    r response FAILED-NEXT? if exit then
-   r s" encoding_format" BODY-MEMBER
-   JSON:READ-TOKEN JSON:T-STR = ASSERT
-   s" base64" JSON:READ-STR-EQ? ASSERT JSON:READ-CLOSE
+   r s" encoding_format" BODY-MEMBER {: f :}
+   f JSON:STRING? ASSERT
+   f s" base64" JSON:STRING= ASSERT
    r INPUT-LINES RECEIVED$ {: i:^ i-u:n :}
    i i-u 1 min s" x" STR:= if
       response [: LENGTH-VECTOR ;] HTTP:JSON! exit
@@ -1037,7 +1053,7 @@ variable KEPT-U
    1 CALLS atomic-add drop
    r s" Authorization" HTTP:HEADER-OF$ {: a:^ u:n present:bool :}
    present if response 401 HTTP:STATUS! exit then
-   r s" truncate" BODY-MEMBER JSON:READ-TOKEN JSON:T-FALSE = ASSERT JSON:READ-CLOSE
+   r s" truncate" BODY-MEMBER JSON:TEXT$ s" false" STR:= ASSERT
    r HTTP:BODY$ s" encoding_format" STR:CONTAINS? 0= ASSERT
    r INPUT-LINES RECEIVED$ {: i:^ i-u:n :}
    i i-u S\" one\ntwo" STR:= if
@@ -2330,32 +2346,16 @@ variable LANDED
 : INPUT$ ( -- str ) JOURNAL-INPUT JOURNAL-INPUT-U @ ;
 
 
-TYPED-VARIABLE PARSER JSON:cursor
-
-
-\ A reader inside a JSON object.
-: READER ( ^u8 n -- JSON:reader )
-   {: a:^ u:n :}
-   PARSER a u JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ = ASSERT ;
-
-
-\ A reader at the value of a JSON object's member `key`.
-: MEMBER ( ^u8 n ^u8 n -- JSON:reader )
-   {: a:^ u:n key:^ key-u:n :}
-   a u READER key key-u JSON:READ-FIND-KEY ASSERT ;
-
-
-\ A reader at the value of the journal record's usage member `key`.
-: USAGE ( ^u8 n -- JSON:reader )
+\ The value of the journal record's usage member `key`.
+: USAGE ( str -- JSON:value )
    {: key:^ key-u:n :}
-   RECORD$ s" usage" MEMBER key key-u JSON:READ-FIND-KEY ASSERT ;
+   RECORD$ s" usage" MEMBER key key-u FOUND ;
 
 
-: STR-IS ( JSON:reader str -- ) JSON:READ-STR-EQ? ASSERT JSON:READ-CLOSE ;
-: INT-IS ( JSON:reader n -- ) {: want:n :} JSON:READ-INT want = ASSERT JSON:READ-CLOSE ;
-: NULL-IS ( JSON:reader -- ) JSON:READ-TOKEN JSON:T-NULL = ASSERT JSON:READ-CLOSE ;
-: NO-USAGE ( -- ) RECORD$ READER s" usage" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
+: STR-IS ( JSON:value str -- ) JSON:STRING= ASSERT ;
+: INT-IS ( JSON:value n -- ) {: want:n :} JSON:>N want = ASSERT ;
+: NULL-IS ( JSON:value -- ) JSON:NULL? ASSERT ;
+: NO-USAGE ( -- ) RECORD$ JSON:PARSE OBJECT s" usage" HAS? 0= ASSERT ;
 
 
 \ A recorder that numbers the rows it records from 1, keeps the last record
@@ -2381,13 +2381,16 @@ variable ROW-FAIL
 : TEST-REJECT ( n n -- ) nip REJECTED-ROW ! ;
 : TEST-RECORDER ( -- ) 0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER! ;
 : ROW$ ( -- str ) ROW-TEXT ROW-U @ ;
-\ A reader at the value of the last recorded row's member `key`.
-: ROW ( ^u8 n -- JSON:reader ) {: key:^ key-u:n :} ROW$ key key-u MEMBER ;
+\ The value of the last recorded row's member `key`.
+: ROW ( str -- JSON:value ) {: key:^ key-u:n :} ROW$ key key-u MEMBER ;
 : BLANK-PURPOSE ( n -- n ) s"  " M MODEL:PURPOSE! ;
 : NEGATIVE-PURPOSE ( n -- n ) s" x" drop -1 M MODEL:PURPOSE! ;
 : PURPOSE ( -- ) s" assemble" M MODEL:PURPOSE! ;
 \ The first generation row's prefix hash, 64 hex digits.
 create HASH 64 allot
+: KEEP-HASH ( str -- )
+   {: a:^ u:n :}
+   a u HASH 64 SPAN:MAKE SPAN:COPY u 64 = ASSERT ;
 
 
 \ How long a locked callback waits, as on a database lock, unless halted.
@@ -2510,7 +2513,7 @@ variable PAUSED-ROWS
    s" cache_write_tokens" ROW 3 INT-IS
    s" output_tokens" ROW 6 INT-IS
    s" reasoning_tokens" ROW 2 INT-IS
-   s" prefix_hash" ROW HASH 64 JSON:READ-STR 64 = ASSERT JSON:READ-CLOSE
+   s" prefix_hash" ROW [: KEEP-HASH ;] JSON:WITH-STRING
    RECORD$ s" call_id" MEMBER 1 INT-IS
    s" kind" USAGE s" generation" STR-IS
    s" model" USAGE s" test-generation" STR-IS
@@ -2552,7 +2555,7 @@ variable PAUSED-ROWS
    s" reasoning_tokens" USAGE NULL-IS
    s" Read other evidence." M MODEL:SYSTEM!
    PURPOSE CHAT
-   s" prefix_hash" ROW HASH 64 JSON:READ-STR-EQ? 0= ASSERT JSON:READ-CLOSE
+   s" prefix_hash" ROW HASH 64 JSON:STRING= 0= ASSERT
    s" Read source evidence." M MODEL:SYSTEM!
    NO-USAGE
    M MODEL:REJECTED
@@ -2581,27 +2584,27 @@ variable PAUSED-ROWS
    s" input_tokens" ROW 2 INT-IS ;
 
 
-\ A reader at the value of the last request's member `key`.
-: SENT ( ^u8 n -- JSON:reader ) {: key:^ key-u:n :} MODEL-PEER:SENT$ key key-u MEMBER ;
-\ A reader at the value of the journal input's configuration member `key`.
-: CONFIG ( ^u8 n -- JSON:reader )
+\ The value of the last request's member `key`.
+: SENT ( str -- JSON:value ) {: key:^ key-u:n :} MODEL-PEER:SENT$ key key-u MEMBER ;
+\ The value of the journal input's configuration member `key`.
+: CONFIG ( str -- JSON:value )
    {: key:^ key-u:n :}
-   INPUT$ s" configuration" MEMBER key key-u JSON:READ-FIND-KEY ASSERT ;
-\ A reader at the last chat request's reasoning effort.
-: SENT-EFFORT ( -- JSON:reader ) s" reasoning" SENT s" effort" JSON:READ-FIND-KEY ASSERT ;
+   INPUT$ s" configuration" MEMBER key key-u FOUND ;
+\ The last chat request's reasoning effort.
+: SENT-EFFORT ( -- JSON:value ) s" reasoning" SENT s" effort" FOUND ;
 \ Neither the last chat request nor its journal input names an effort.
 : NO-EFFORT ( -- )
-   MODEL-PEER:SENT$ READER s" reasoning" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE
-   INPUT$ s" configuration" MEMBER s" effort" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
+   MODEL-PEER:SENT$ JSON:PARSE OBJECT s" reasoning" HAS? 0= ASSERT
+   INPUT$ s" configuration" MEMBER s" effort" HAS? 0= ASSERT ;
 \ A chat request is not stored, carries the system text as its instructions
 \ and asks for an answer in the configured JSON schema.
 : CHAT-REQUEST ( -- )
    CHAT
-   s" store" SENT JSON:READ-TOKEN JSON:T-FALSE = ASSERT JSON:READ-CLOSE
-   s" stream" SENT JSON:READ-TOKEN JSON:T-TRUE = ASSERT JSON:READ-CLOSE
+   s" store" SENT JSON:TEXT$ s" false" STR:= ASSERT
+   s" stream" SENT JSON:TEXT$ s" true" STR:= ASSERT
    s" instructions" SENT s" Read source evidence." STR-IS
-   s" text" SENT s" format" JSON:READ-FIND-KEY ASSERT
-   s" type" JSON:READ-FIND-KEY ASSERT s" json_schema" STR-IS ;
+   s" text" SENT s" format" FOUND
+   s" type" FOUND s" json_schema" STR-IS ;
 create ROW-NAME 1 allot
 \ A one-letter purpose row from "a"; its model and effort do not matter.
 : NTH-ROW ( n -- )
@@ -2652,7 +2655,7 @@ create ROW-NAME 1 allot
 
 \ The last request names no prompt cache key.
 : NO-CACHE-KEY ( -- )
-   MODEL-PEER:SENT$ READER s" prompt_cache_key" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
+   MODEL-PEER:SENT$ JSON:PARSE OBJECT s" prompt_cache_key" HAS? 0= ASSERT ;
 32768 constant KEYLESS-CAP
 create KEYLESS KEYLESS-CAP allot
 variable KEYLESS-U
@@ -2683,13 +2686,14 @@ variable KEYLESS-U
 
 \ Neither the last request nor its journal input names an output limit.
 : NO-MAX-OUTPUT ( -- )
-   MODEL-PEER:SENT$ READER s" max_output_tokens" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE
-   INPUT$ s" configuration" MEMBER s" max_output_tokens" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
+   MODEL-PEER:SENT$ JSON:PARSE OBJECT s" max_output_tokens" HAS? 0= ASSERT
+   INPUT$ s" configuration" MEMBER s" max_output_tokens" HAS? 0= ASSERT ;
 \ The last request's output limit is the JSON number n.
 : MAX-OUTPUT-IS ( n -- )
    {: n:n :}
-   s" max_output_tokens" SENT JSON:READ-TOKEN JSON:T-INT = ASSERT
-   JSON:READ-INT n = ASSERT JSON:READ-CLOSE ;
+   s" max_output_tokens" SENT {: v :}
+   v JSON:INTEGER? ASSERT
+   v JSON:>N n = ASSERT ;
 : NEGATIVE-MAX-OUTPUT ( n -- n ) -1 M MODEL:MAX-OUTPUT! ;
 
 
@@ -2720,7 +2724,7 @@ variable KEYLESS-U
 
 \ The last chat request names no service tier.
 : NO-TIER ( -- )
-   MODEL-PEER:SENT$ READER s" service_tier" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
+   MODEL-PEER:SENT$ JSON:PARSE OBJECT s" service_tier" HAS? 0= ASSERT ;
 
 
 : NEGATIVE-TIER ( n -- n ) s" y" s" m" s" " s" " drop -1 M MODEL:PURPOSE-MODEL! ;
@@ -2932,11 +2936,8 @@ variable LOOKUPS    \ COUNT-GET's lookups
 \ Keeps only the journaled record's configuration and an incomplete refusal,
 \ a record with no reply and no call id.
 : BARE-REFUSAL ( -- )
-   RECORD$ s" configuration" MEMBER
-   JSON:READ-TOKEN JSON:T-OBJ = ASSERT
-   JSON:READ-VALUE-SPAN$ {: a:^ u:n :}
+   RECORD$ s" configuration" MEMBER OBJECT JSON:TEXT$ {: a:^ u:n :}
    SB-RESET S\" {\qconfiguration\q:" SB-APPEND a u SB-APPEND
-   JSON:READ-CLOSE
    S\" ,\qrefusal\q:\qincomplete\q}" SB-APPEND
    SB$ JOURNAL-RECORD 65536 SPAN:MAKE SPAN:COPY
    SB$ nip JOURNAL-RECORD-U ! ;
@@ -3059,7 +3060,7 @@ variable ASKED-U
    REPLAY-CODE MODEL:E-STATE = ASSERT
    s" reason" s" test-generation" s" low" s" " M MODEL:PURPOSE-MODEL!
    s" reason" M MODEL:PURPOSE! s" valid" ASK
-   ASKED$ s" configuration" MEMBER s" effort" JSON:READ-FIND-KEY ASSERT s" low" STR-IS
+   ASKED$ s" configuration" MEMBER s" effort" FOUND s" low" STR-IS
    M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" effort" ROW s" low" STR-IS
    \ A record the JSON reader rejects replays as E-RESPONSE.
@@ -4053,10 +4054,10 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    a u c MODEL:ITEM+ a u c ;
 : ITEM-CODE ( str -- n )
    M [: ADD-ITEM ;] catch {: code:n :} drop 2drop code ;
-\ The array or object the reader is on is exactly these source bytes.
-: RAW-IS ( JSON:reader str -- )
+\ The value is exactly these source bytes.
+: RAW-IS ( JSON:value str -- )
    {: want:^ want-u:n :}
-   JSON:READ-VALUE-SPAN$ want want-u STR:= ASSERT JSON:READ-CLOSE ;
+   JSON:TEXT$ want want-u STR:= ASSERT ;
 
 
 \ ITEM+ before PARTS-RESET, after CHAT or after JOURNAL-INPUT$ is E-STATE, the
@@ -4283,10 +4284,9 @@ variable COUNTED-U
 : COUNT-THEN-CHAT ( -- )
    TOOLS s" tool-call" PREP CALLED$ ITEM
    M MODEL:COUNT-INPUT drop
-   s" input" SENT JSON:READ-VALUE-SPAN$ {: a:^ u:n :}
+   s" input" SENT JSON:TEXT$ {: a:^ u:n :}
    u 32768 <= ASSERT
    a u COUNTED 32768 SPAN:MAKE SPAN:COPY u COUNTED-U !
-   JSON:READ-CLOSE
    M MODEL:CHAT nip 0= ASSERT
    s" input" SENT COUNTED$ RAW-IS
    TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= ASSERT
@@ -4457,7 +4457,7 @@ variable COUNTED-U
    ROWS-MADE @ 1 = ASSERT
    s" kind" ROW s" compaction" STR-IS
    s" effort" ROW NULL-IS
-   RECORD$ s" configuration" MEMBER s" effort" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE
+   RECORD$ s" configuration" MEMBER s" effort" HAS? 0= ASSERT
    s" input_tokens" ROW 11 INT-IS
    s" kind" USAGE s" compaction" STR-IS
    s" input_tokens" USAGE 11 INT-IS
@@ -4593,7 +4593,7 @@ variable COUNTED-U
 : OPENAI-GET ( n str ^n -- bool )
    {: ctx:n input:^ input-u:n out:^ :}
    input input-u s" configuration" MEMBER
-   s" endpoint" JSON:READ-FIND-KEY ASSERT
+   s" endpoint" FOUND
    s" https://api.openai.com/v1/responses" STR-IS
    JOURNAL-RECORD JOURNAL-RECORD-U @ BUF:N>BLEN out BUF:REPLACE
    true ;
