@@ -3523,6 +3523,8 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
 \ Reads one variant of family id; answers its positional payload count.
 : ER-VARIANT ( n -- n ) {: id:n :}
    ER-TOKEN {: na:^ nu:n :}
+   na nu TF-CANON? 0= IF ER-BAD THEN
+   id na nu SUMV-FIND nip IF ER-BAD THEN
    ER-NUM {: tag:n :}
    PF-MAX-N CELL / ER-UPTO {: pc:n :}
    ER-NAME$ {: ca:^ cu:n :}
@@ -3540,6 +3542,8 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
 
 : ER-FIELD ( n n n -- ) {: id:n vstart:n nv:n :}
    ER-TOKEN {: na:^ nu:n :}
+   na nu TF-CANON? 0= IF ER-BAD THEN
+   na nu PF-RESERVED? IF ER-BAD THEN
    ER-NUM {: vo:n :}
    vo PF-NO-VARIANT <  vo nv >=  or IF ER-BAD THEN
    vo 0 < IF PF-NO-VARIANT ELSE vstart vo + THEN {: var:n :}
@@ -3553,6 +3557,7 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    ER-SYM {: sym:n :}
    id TFAM-ARITY@ ER-NODE SCHEMA-ROOT+ {: root:n :}
    id var root slot nc boff nb al flags PF-ROW-OK? 0= IF ER-BAD THEN
+   id var na nu PF-DUP? IF ER-BAD THEN
    PF-N @ {: fid:n :}
    id var na nu root slot nc boff nb al flags PF-ADD
    fid sym FIELD-SYM! ;
@@ -3566,6 +3571,7 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    vis CHECKER-PACKAGE-PRIVATE <>  vis CHECKER-PACKAGE-PUBLIC <>  and
    IF ER-BAD THEN
    TFAM-DECL-PARAM-COUNT ER-UPTO {: arity:n :}
+   ta tu TF-CANON? 0= IF ER-BAD THEN
    pa pu vis ta tu arity kind TFAM-DECL {: id:n :}
    id ix ENTRY!
    arity 0 ?do id i PK-MAX ER-UPTO TFAM-PK! loop
@@ -3620,7 +3626,7 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
       id base nf TFAM-FLD-RANGE!
    THEN
    id id ROW-SLOTS TFAM-SLOTS!
-   ER-NUM 0 ?do id ER-LAYOUT loop
+   1 ER-UPTO 0 ?do id ER-LAYOUT loop
    ER-U @ 0 <> IF ER-BAD THEN ;
 
 EXPORT CHECKER-RESOLVE:REC>INDEX
