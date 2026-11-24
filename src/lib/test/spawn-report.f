@@ -1,4 +1,3 @@
-split-str
 \ spawn-report.f - launch-context and child-outcome reporter for process fixtures.
 \ CONTEXT prints the launch shape (pid, script argv, cwd markers, fds 0/1/2, the
 \ environment), each line starting `ctx `, so reports taken under different
@@ -46,14 +45,14 @@ variable MARK-U
    n 0 < if [char] - emit 0 n - U-TYPE exit then
    n U-TYPE ;
 
-: KEY ( str -- ) {: a:^ u:n :}
-   s" ctx " type a u type s"  " type ;
+: KEY ( str -- ) {: s:str :}
+   s" ctx " type s type s"  " type ;
 
-: LINE$ ( str str -- ) {: ka:^ ku:n va:^ vu:n :}
-   ka ku KEY va vu type cr ;
+: LINE$ ( str str -- ) {: ks:str vs:str :}
+   ks KEY vs type cr ;
 
-: LINE# ( str n -- ) {: ka:^ ku:n v:n :}
-   ka ku KEY v N-TYPE cr ;
+: LINE# ( str n -- ) {: ks:str v:n :}
+   ks KEY v N-TYPE cr ;
 
 : FD-OPEN? ( n -- bool ) {: fd:n :}
    fd F-GETFD 0 fcntl 0 >= ;
@@ -67,8 +66,8 @@ variable MARK-U
 : FD-TTY? ( n -- bool ) {: fd:n :}
    fd TIO-GET TIO-BUF ioctl 0 = ;
 
-: FD-LINE ( str n -- ) {: ka:^ ku:n fd:n :}
-   ka ku KEY
+: FD-LINE ( str n -- ) {: ks:str fd:n :}
+   ks KEY
    s" open " type fd FD-OPEN? YN$ type
    s"  flags " type fd FD-FLAGS N-TYPE
    s"  tty " type fd FD-TTY? YN$ type cr ;
@@ -89,7 +88,7 @@ variable MARK-U
    repeat drop ;
 
 : ENV-LINE ( n -- ) {: i:n :}
-   s" ctx env " type i ENVP dup ZLEN type cr ;
+   s" ctx env " type i ENVP dup ZLEN >str type cr ;
 
 : ENV-LINES ( -- )
    0 begin dup ENVP 0= 0= while
@@ -100,13 +99,13 @@ variable MARK-U
 : ENGINE-REL$ ( -- str )
    s" bin/hb" ;
 
-: MARK$ ( str str -- str ) {: ba:^ bu:n ra:^ ru:n :}
-   ba bu ra ru MARK-BUF FS:JOIN-PATH MARK-U !
-   MARK-BUF MARK-U @ ;
+: MARK$ ( str str -- str ) {: bs:str rs:str :}
+   bs rs MARK-BUF FS:JOIN-PATH MARK-U !
+   MARK-BUF MARK-U @ >str ;
 
 : PWD-MARKER ( -- )
-   s" PWD" GETENV dup 0= if
-      2drop s" pwd-has bin/hb" s" (PWD unset)" LINE$ exit
+   s" PWD" GETENV dup STR:LEN 0= if
+      drop s" pwd-has bin/hb" s" (PWD unset)" LINE$ exit
    then
    ENGINE-REL$ MARK$ FS:FILE? {: found:bool :}
    s" pwd-has bin/hb" found YN$ LINE$ ;
@@ -127,13 +126,13 @@ public
    ENV-LINES ;
 
 : CHILD ( str n n str str -- )
-   {: la:^ lu:n want:n got:n oa:^ ou:n ea:^ eu:n :}
-   s" child-outcome: " type la lu type cr
+   {: ls:str want:n got:n os:str es:str :}
+   s" child-outcome: " type ls type cr
    s" child rc: want " type want N-TYPE s"  got " type got N-TYPE cr
-   s" child stdout (" type ou N-TYPE s"  bytes):" type cr
-   oa ou type cr
-   s" child stderr (" type eu N-TYPE s"  bytes):" type cr
-   ea eu type cr
+   s" child stdout (" type os STR:LEN N-TYPE s"  bytes):" type cr
+   os type cr
+   s" child stderr (" type es STR:LEN N-TYPE s"  bytes):" type cr
+   es type cr
    CONTEXT ;
 
 ;package

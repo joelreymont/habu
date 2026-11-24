@@ -1,4 +1,3 @@
-split-str
 \ stderr-test.f - STDERR:CAPTURE holds one capture at a time, and
 \ STDERR:CAPTURING reads a capture whole past a throw.
 \ Run: bin/hb --load src/lib/test/stderr-test.f
@@ -22,21 +21,21 @@ create FILE-BUF FILE-CAP allot      \ the capture file's bytes, read back
 variable CODE-A
 variable CODE-B
 
-: PATH$ ( -- str )  PATH-BUF PATH-U @ ;
+: PATH$ ( -- str )  PATH-BUF PATH-U @ >str ;
 
 
 : PATH-MAKE ( -- )
-   s" stderr-test" FS:MKTEMP-DIR {: dir:^ dirlen:n :}
-   dir dirlen FS:CLEANUP-TREE+
-   dir dirlen s" err.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
+   s" stderr-test" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" err.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
 
-: FILE$ ( -- str )  FILE-BUF  PATH$ FILE-BUF FILE-CAP FS:READ-ALL ;
+: FILE$ ( -- str )  FILE-BUF  PATH$ FILE-BUF FILE-CAP FS:READ-ALL >str ;
 
 
 : ERR-OUT ( str -- )
-   {: at:^ u:n :}
-   FD:STDERR at u FD:WRITE-FULL ;
+   {: at:str :}
+   FD:STDERR at FD:WRITE-FULL ;
 
 
 : CAPTURED ( [ -- ] -- )
@@ -73,11 +72,11 @@ variable CODE-B
 
 
 : HALVES ( str -- )
-   {: text:^ u:n :}
-   LINE$ nip {: half:n :}
-   u half 2 * T=
-   text half LINE$ T$=
-   text half + half LINE$ T$= ;
+   {: text:str :}
+   LINE$ STR:LEN {: half:n :}
+   text STR:LEN half 2 * T=
+   text STR:DATA half >str LINE$ T$=
+   text STR:DATA half + half >str LINE$ T$= ;
 
 
 : WHOLE-CASE ( -- )

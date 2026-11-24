@@ -1,4 +1,3 @@
-split-str
 \ uri-test.f - file URIs decoded to paths, paths encoded to file URIs, bytes
 \ encoded as a web form or a query component and decoded from a form, request
 \ paths checked for a dot segment, and http(s) URLs resolved, compared, sliced
@@ -27,11 +26,11 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 : PATH$ ( str -- str )
    DST URI:FILE>PATH {: u:n :}
-   DST $ drop u ;
+   DST $ STR:DATA u >str ;
 
 : PATH= ( str str -- )
-   {: a:^ u:n b:^ v:n :}
-   a u PATH$ b v T$= ;
+   {: a:str b:str :}
+   a PATH$ b T$= ;
 
 \ An empty or `localhost` authority, the scheme and the host in any case.
 : FORMS ( -- )
@@ -97,7 +96,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" file:///abcd%G" DECODE-DROP ;
 
 : NEGATIVE-LENGTH ( -- )
-   s" file:///x" drop -1 DECODE-DROP ;
+   s" file:///x" STR:DATA -1 >str DECODE-DROP ;
 
 \ A refusal writes nothing: the whole URI is checked, and the path's length
 \ measured against the span, before the first byte lands. A span of exactly the
@@ -110,15 +109,15 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    5 UNTOUCHED
    [: NEGATIVE-LENGTH ;] E-SPAN-LENGTH TTHROWSQ
    s" file:///abcd" DST 5 TAKE URI:FILE>PATH 5 T=
-   DST $ drop 5 s" /abcd" T$= ;
+   DST $ STR:DATA 5 >str s" /abcd" T$= ;
 
 : URI$ ( str -- str )
    URI-DST URI:PATH>FILE {: u:n :}
-   URI-DST $ drop u ;
+   URI-DST $ STR:DATA u >str ;
 
 : URI= ( str str -- )
-   {: a:^ u:n b:^ v:n :}
-   a u URI$ b v T$= ;
+   {: a:str b:str :}
+   a URI$ b T$= ;
 
 \ `file://` and the path, whose `/`, letters, digits and `-._~` stay as they
 \ are.
@@ -152,7 +151,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" a b" DST URI:PATH>FILE drop ;
 
 : ENCODE-NEGATIVE ( -- )
-   s" /x" drop -1 DST URI:PATH>FILE drop ;
+   s" /x" STR:DATA -1 >str DST URI:PATH>FILE drop ;
 
 \ An encoding refused writes nothing, and a span of exactly the URI's length
 \ is enough.
@@ -165,13 +164,13 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    [: ENCODE-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    13 UNTOUCHED
    s" /a b" DST 13 TAKE URI:PATH>FILE 13 T=
-   DST $ drop 13 s" file:///a%20b" T$= ;
+   DST $ STR:DATA 13 >str s" file:///a%20b" T$= ;
 
 : TRIP ( n -- )
    {: b:n :}
    [char] / ONE c!
    b ONE 1+ c!
-   ONE 2 URI$ PATH$ ONE 2 T$= ;
+   ONE 2 >str URI$ PATH$ ONE 2 >str T$= ;
 
 \ Every byte comes back from its URI as it went in.
 : ROUND-TRIP ( -- )
@@ -179,7 +178,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 : FORM$ ( str -- str )
    URI-DST URI:FORM-ENCODE {: u:n :}
-   URI-DST $ drop u ;
+   URI-DST $ STR:DATA u >str ;
 
 : FORM-SAFE$ ( -- str )
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*-._" ;
@@ -188,20 +187,20 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 : FORM-SAFE? ( n -- bool )
    {: c:n :}
-   FORM-SAFE$ {: a:^ u:n :}
-   false u 0 ?do a i + c@ c = or loop ;
+   FORM-SAFE$ {: s:str :}
+   false s STR:LEN 0 ?do s STR:DATA i + c@ c = or loop ;
 
 : FORM-WANT ( n -- str )
    {: b:n :}
-   b FORM-SAFE? if b WANT c! WANT 1 exit then
-   b STR:SPACE = if [char] + WANT c! WANT 1 exit then
+   b FORM-SAFE? if b WANT c! WANT 1 >str exit then
+   b STR:SPACE = if [char] + WANT c! WANT 1 >str exit then
    [char] % WANT c!
-   HEX$ drop b 4 rshift + c@ WANT 1+ c!
-   HEX$ drop b $F and + c@ WANT 2 + c!
-   WANT 3 ;
+   HEX$ STR:DATA b 4 rshift + c@ WANT 1+ c!
+   HEX$ STR:DATA b $F and + c@ WANT 2 + c!
+   WANT 3 >str ;
 
 : FORM-BYTES ( -- )
-   256 0 do i ONE c! ONE 1 FORM$ i FORM-WANT T$= loop ;
+   256 0 do i ONE c! ONE 1 >str FORM$ i FORM-WANT T$= loop ;
 
 : DECODED$ ( str -- str )
    DECODED @ 0 VEC:RESIZE
@@ -210,7 +209,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 \ Every byte comes back from its form encoding as it went in.
 : FORM-TRIP ( -- )
-   256 0 do i ONE c! ONE 1 FORM$ DECODED$ ONE 1 T$= loop ;
+   256 0 do i ONE c! ONE 1 >str FORM$ DECODED$ ONE 1 >str T$= loop ;
 
 \ A `%` at the end, with one digit, or with a non-hex digit in either place
 \ decodes to itself.
@@ -227,7 +226,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" a ~" DST 4 TAKE URI:FORM-ENCODE drop ;
 
 : FORM-NEGATIVE ( -- )
-   s" a" drop -1 DST URI:FORM-ENCODE drop ;
+   s" a" STR:DATA -1 >str DST URI:FORM-ENCODE drop ;
 
 \ A form encoding rejected writes nothing, and a span of exactly its length
 \ is enough.
@@ -238,7 +237,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    [: FORM-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    5 UNTOUCHED
    s" a ~" DST 5 TAKE URI:FORM-ENCODE 5 T=
-   DST $ drop 5 s" a+%7E" T$= ;
+   DST $ STR:DATA 5 >str s" a+%7E" T$= ;
 
 \ A dot segment in each reading, raw or decoded once, and none decoded twice.
 : DOT-SEGMENTS ( -- )
@@ -263,8 +262,8 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" /a/..%3fx" URI:DOT-SEGMENT? TTRUE
    s" /a%3f/../b" URI:DOT-SEGMENT? TTRUE
    s" /a/..%23x" URI:DOT-SEGMENT? TTRUE
-   s" /a/..%2e" drop 5 URI:DOT-SEGMENT? TTRUE
-   s" /a/%2e" drop 5 URI:DOT-SEGMENT? TFALSE
+   s" /a/..%2e" STR:DATA 5 >str URI:DOT-SEGMENT? TTRUE
+   s" /a/%2e" STR:DATA 5 >str URI:DOT-SEGMENT? TFALSE
    s" /a/.." URI:DOT-SEGMENT? TTRUE
    s" .." URI:DOT-SEGMENT? TTRUE
    s" /a/%252e%252e/b" URI:DOT-SEGMENT? TFALSE
@@ -272,11 +271,11 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 : RESOLVED$ ( str str -- str )
    URL-DST URI:RESOLVE {: u:n :}
-   URL-DST $ drop u ;
+   URL-DST $ STR:DATA u >str ;
 
 : RESOLVE= ( str str str -- )   \ base, reference, target
-   {: b:^ bu:n r:^ ru:n t:^ tu:n :}
-   b bu r ru RESOLVED$ t tu T$= ;
+   {: b:str r:str t:str :}
+   b r RESOLVED$ t T$= ;
 
 : CATALOG$ ( -- str )
    s" https://h/sap/opu/odata4/iwfnd/config/default/iwfnd/catalog/0002/ServiceGroups?$expand=X&$top=3" ;
@@ -298,12 +297,12 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    CATALOG$ s" https://other/x" s" https://other/x" RESOLVE= ;
 
 : RFC= ( str str -- )   \ reference, target
-   {: r:^ ru:n t:^ tu:n :}
-   s" http://a/b/c/d;p?q" r ru t tu RESOLVE= ;
+   {: r:str t:str :}
+   s" http://a/b/c/d;p?q" r t RESOLVE= ;
 
 : RFC-DROP ( str -- )
-   {: r:^ ru:n :}
-   s" http://a/b/c/d;p?q" r ru URL-DST URI:RESOLVE drop ;
+   {: r:str :}
+   s" http://a/b/c/d;p?q" r URL-DST URI:RESOLVE drop ;
 
 \ RFC 3986 section 5.4.1, a scheme other than http(s) rejected.
 : RFC-NORMAL ( -- )
@@ -382,7 +381,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    [: RESOLVE-SHORT ;] E-SPAN-CAPACITY TTHROWSQ
    14 UNTOUCHED
    s" http://a/b/c/d;p?q" s" g" DST 14 TAKE URI:RESOLVE 14 T=
-   DST $ drop 14 s" http://a/b/c/g" T$= ;
+   DST $ STR:DATA 14 >str s" http://a/b/c/g" T$= ;
 
 \ A reference resolved against an http(s) base: a server's pages, RFC 3986's
 \ examples, paths holding `:`, authorities rejected and a short span.
@@ -426,7 +425,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 : REQUEST-TARGETS ( -- )
    s" https://h/sap/X/A?$skiptoken=5#f" URI:REQUEST-TARGET$
    s" /sap/X/A?$skiptoken=5" T$=
-   s" https://h" URI:REQUEST-TARGET$ nip 0 T= ;
+   s" https://h" URI:REQUEST-TARGET$ STR:LEN 0 T= ;
 
 \ A space as `%20`, quotes and the delimiters a query gives meaning to
 \ escaped; a second encoding appended after the first.

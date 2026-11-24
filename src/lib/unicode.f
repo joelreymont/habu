@@ -1,4 +1,3 @@
-split-str
 \ unicode.f - Unicode whitespace, locale-independent full casefold equality
 \ and full lowercasing. CASEFOLD= compares whole UTF-8 spans by full case
 \ folding (Straße equals STRASSE), with no normalization, keeping embedded
@@ -44,9 +43,9 @@ private
    0 < if E-UTF8 throw then ;
 
 : VALID-UTF8 ( str -- )
-   {: source:^ size:n :}
-   size VALID-LENGTH
-   source size UTF8:VALID? 0= if E-UTF8 throw then ;
+   {: source:str :}
+   source STR:LEN VALID-LENGTH
+   source UTF8:VALID? 0= if E-UTF8 throw then ;
 
 \ C's four-byte int output, in a task-local cell each call zeroes first.
 TASK:+USER RESULT n
@@ -75,27 +74,27 @@ $82 constant FINAL-TAIL
 
 \ Whether every byte of a span is below $80; a negative length is E-UTF8.
 : ASCII? ( str -- bool )
-   {: text:^ size:n :}
-   size VALID-LENGTH
-   0 begin dup size < while
-      dup text + c@ ASCII-LIMIT < 0= if drop false exit then
+   {: text:str :}
+   text STR:LEN VALID-LENGTH
+   0 begin dup text STR:LEN < while
+      dup text STR:DATA + c@ ASCII-LIMIT < 0= if drop false exit then
       1+
    repeat
    drop true ;
 
 \ Writes an ASCII span's lowercase to a destination of a given capacity.
 : ASCII-LOWER-INTO ( str ^u8 n -- n )
-   {: text:^ size:n out:^ capacity:n :}
-   capacity size < if E-CAPACITY throw then
-   size 0 ?do text i + c@ STR:ASCII-LOWER out i + c! loop
-   size ;
+   {: text:str out:^ capacity:n :}
+   capacity text STR:LEN < if E-CAPACITY throw then
+   text STR:LEN 0 ?do text STR:DATA i + c@ STR:ASCII-LOWER out i + c! loop
+   text STR:LEN ;
 
 \ Whether an ASCII span's lowercase is another span byte for byte.
 : ASCII-LOWERS-TO? ( str str -- bool )
-   {: text:^ size:n target:^ target-size:n :}
-   size target-size <> if false exit then
-   size 0 ?do
-      text i + c@ STR:ASCII-LOWER target i + c@ <> if
+   {: text:str target:str :}
+   text STR:LEN target STR:LEN <> if false exit then
+   text STR:LEN 0 ?do
+      text STR:DATA i + c@ STR:ASCII-LOWER target STR:DATA i + c@ <> if
          false unloop exit
       then
    loop
@@ -114,9 +113,9 @@ $82 constant FINAL-TAIL
 \ Whether the first scalar from a cursor that is not Case_Ignorable is
 \ Cased; false at the end.
 : CASED-AFTER? ( str n -- bool )
-   {: text:^ size:n at:n :}
-   at begin dup size < while
-      text size rot SCALAR@ {: cp:n next:n :}
+   {: text:str at:n :}
+   at begin dup text STR:LEN < while
+      text swap SCALAR@ {: cp:n next:n :}
       cp IGNORABLE? 0= if cp CASED? exit then
       next
    repeat
@@ -126,20 +125,20 @@ $82 constant FINAL-TAIL
 \ Case_Ignorable scalars by libunistring's tests, a Cased one precedes
 \ it and none follows. A scalar both Cased and Case_Ignorable is passed.
 : SIGMA! ( bool str n -- )
-   {: before:bool text:^ size:n at:n :}
-   before text size at 2 + CASED-AFTER? 0= and
+   {: before:bool text:str at:n :}
+   before text at 2 + CASED-AFTER? 0= and
    if FINAL-TAIL else SMALL-TAIL then
-   text at + 1+ c!
-   SMALL-LEAD text at + c! ;
+   text STR:DATA at + 1+ c!
+   SMALL-LEAD text STR:DATA at + c! ;
 
 \ Lowers every U+03A3 in valid UTF-8 in place. The flag carried
 \ between turns is whether the last scalar not Case_Ignorable is Cased.
 : SIGMAS! ( str -- )
-   {: text:^ size:n :}
-   false 0 begin dup size < while
+   {: text:str :}
+   false 0 begin dup text STR:LEN < while
       {: before:bool at:n :}
-      text size at SCALAR@ {: cp:n next:n :}
-      cp CAPITAL-SIGMA = if before text size at SIGMA! then
+      text at SCALAR@ {: cp:n next:n :}
+      cp CAPITAL-SIGMA = if before text at SIGMA! then
       cp IGNORABLE? if before else cp CASED? then next
    repeat
    2drop ;
@@ -148,65 +147,65 @@ $82 constant FINAL-TAIL
 \ one context-dependent mapping, so a copy whose capital sigmas are
 \ already lowered leaves it none to apply.
 : SIGMA-LOWER ( str n n n ^u8 -- ^u8 )
-   {: text:^ size:n lang:n form:n buf:n out:^ :}
-   text size s" Σ" STR:CONTAINS? 0= if
-      text size lang form buf out LOWER-CALL exit
+   {: text:str lang:n form:n buf:n out:^ :}
+   text s" Σ" STR:CONTAINS? 0= if
+      text lang form buf out LOWER-CALL exit
    then
-   size ALLOC-CALL MATCH nullable
+   text STR:LEN ALLOC-CALL MATCH nullable
       none OF E-CASEFOLD throw ENDOF
       some OF ENDOF
    ;MATCH {: copy:^ :}
-   text copy size BYTE-COPY
-   copy size SIGMAS!
-   copy size lang form buf out LOWER-CALL
+   text STR:DATA copy text STR:LEN BYTE-COPY
+   copy text STR:LEN >str SIGMAS!
+   copy text STR:LEN >str lang form buf out LOWER-CALL
    copy RELEASE ;
 
 \ Runs MAP, FOLD-CALL or SIGMA-LOWER, on a valid span and answers its
 \ owned result and that result's length.
 : ALLOCATE-MAP ( str [ str n n n ^u8 -- ^u8 ] -- str )
-   {: source:^ size:n map :}
-   source size VALID-UTF8
+   {: source:str map :}
+   source VALID-UTF8
    0 RESULT !
-   source size 0 0 0 RESULT BYTE-VIEW map execute
+   source 0 0 0 RESULT BYTE-VIEW map execute
    dup >CELL 0= if E-CASEFOLD throw then
-   RESULT @ ;
+   RESULT @ >str ;
 
 \ Keep the same stack shape on success and failure for the cleanup path.
 : COPY-MAPPED ( str ^u8 n -- str ^u8 n )
-   {: source:^ size:n out:^ capacity:n :}
-   capacity size < if E-CAPACITY throw then
-   source out size BYTE-COPY
-   source size out capacity ;
+   {: source:str out:^ capacity:n :}
+   capacity source STR:LEN < if E-CAPACITY throw then
+   source STR:DATA out source STR:LEN BYTE-COPY
+   source out capacity ;
 
 : MAPPED-BYTES ( str [ str n n n ^u8 -- ^u8 ] -- n )
-   {: source:^ length:n map :}
-   source length ASCII? if length exit then
-   source length map ALLOCATE-MAP swap RELEASE ;
+   {: source:str map :}
+   source ASCII? if source STR:LEN exit then
+   source map ALLOCATE-MAP dup STR:DATA RELEASE STR:LEN ;
 
 : MAP-INTO ( str ^u8 n [ str n n n ^u8 -- ^u8 ] -- n )
-   {: source:^ length:n out:^ capacity:n map :}
-   source length ASCII? if
-      source length out capacity ASCII-LOWER-INTO exit
+   {: source:str out:^ capacity:n map :}
+   source ASCII? if
+      source out capacity ASCII-LOWER-INTO exit
    then
-   source length map ALLOCATE-MAP {: mapped:^ size:n :}
-   mapped size out capacity [: COPY-MAPPED ;] catch
-   {: error:n :} 2drop 2drop
+   source map ALLOCATE-MAP {: mapped:str :}
+   mapped out capacity [: COPY-MAPPED ;] catch
+   {: error:n :} 2drop drop
    \ catch restores depth, not cells overwritten by a callee before throw.
    \ The owner is kept in this outer lexical frame, never recovered from args.
-   mapped RELEASE
+   mapped STR:DATA RELEASE
    error 0<> if error throw then
-   size ;
+   mapped STR:LEN ;
 
 public
 
 : CASEFOLD= ( str str -- bool )
-   {: left:^ left-size:n right:^ right-size:n :}
-   left left-size ASCII? right right-size ASCII? and if
-      left left-size right right-size STR:=CI exit
+   {: left:str right:str :}
+   left ASCII? right ASCII? and if
+      left right STR:=CI exit
    then
-   left left-size VALID-UTF8 right right-size VALID-UTF8
+   left VALID-UTF8 right VALID-UTF8
    0 RESULT !
-   left left-size right right-size 0 0 RESULT BYTE-VIEW COMPARE-CALL
+   left right 0 0 RESULT BYTE-VIEW COMPARE-CALL
    0<> if E-CASEFOLD throw then
    RESULT @ 0= ;
 
@@ -225,15 +224,15 @@ public
 \ The second span is checked before the first is lowered, so nothing after
 \ ALLOCATE-MAP can throw and the owned result is always released.
 : LOWERS-TO? ( str str -- bool )
-   {: source:^ size:n target:^ target-size:n :}
-   target target-size VALID-UTF8
-   source size ASCII? if
-      source size target target-size ASCII-LOWERS-TO? exit
+   {: source:str target:str :}
+   target VALID-UTF8
+   source ASCII? if
+      source target ASCII-LOWERS-TO? exit
    then
-   source size [: SIGMA-LOWER ;] ALLOCATE-MAP
-   {: lowered:^ lowered-size:n :}
-   lowered lowered-size target target-size STR:=
-   lowered RELEASE ;
+   source [: SIGMA-LOWER ;] ALLOCATE-MAP
+   {: lowered:str :}
+   lowered target STR:=
+   lowered STR:DATA RELEASE ;
 
 seal-package
 ;using

@@ -1,4 +1,3 @@
-split-str
 require src/lib/test.f
 require src/lib/property.f
 require src/lib/unicode.f
@@ -11,17 +10,17 @@ create OUTPUT CAPACITY allot
 create SECOND-BUF CAPACITY allot
 
 : FOLDED= ( str str -- )
-   {: expected:^ expected-size:n :}
-   2dup FOLDED-BYTES expected-size T=
+   {: expected:str :}
+   dup FOLDED-BYTES expected STR:LEN T=
    OUTPUT CAPACITY UNICODE:FOLD
-   OUTPUT swap expected expected-size T$= ;
+   OUTPUT swap >str expected T$= ;
 
 : LOWERED= ( str str -- )
-   {: expected:^ expected-size:n :}
-   2dup expected expected-size LOWERS-TO? TTRUE
-   2dup LOWERED-BYTES expected-size T=
+   {: expected:str :}
+   dup expected LOWERS-TO? TTRUE
+   dup LOWERED-BYTES expected STR:LEN T=
    OUTPUT CAPACITY UNICODE:LOWER
-   OUTPUT swap expected expected-size T$= ;
+   OUTPUT swap >str expected T$= ;
 
 : CANARY! ( -- )
    CAPACITY 0 ?do $55 OUTPUT i + c! loop ;
@@ -43,7 +42,7 @@ create SECOND-BUF CAPACITY allot
    [: s\" x\xFF" OUTPUT CAPACITY UNICODE:LOWER drop ;] E-UTF8 TTHROWSQ CANARY=
    [: s\" \xC0\xAF" LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ
    [: s" xy" OUTPUT 1 UNICODE:LOWER drop ;] E-CAPACITY TTHROWSQ CANARY=
-   [: s" x" drop -1 LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ
+   [: s" x" STR:DATA -1 >str LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ
    s" Az" s" Az" LOWERS-TO? TFALSE
    s" STRASSE" s" straße" LOWERS-TO? TFALSE
    s" Straße" s" Straße" LOWERS-TO? TFALSE
@@ -59,7 +58,7 @@ create SECOND-BUF CAPACITY allot
       4 of s" Σςσ" endof
       5 of s" é😀" endof
       6 of s\" A\zB" endof
-      s" abc 019" rot
+      s" abc 019" swap
    endcase ;
 
 : RANDOM-FOLDS ( -- )
@@ -68,26 +67,34 @@ create SECOND-BUF CAPACITY allot
       PROP:BUF-RESET 16 RND% 0 ?do CHUNK$ BUF+ loop
       BUF$ OUTPUT CAPACITY UNICODE:FOLD {: size:n :}
       BUF$ FOLDED-BYTES size T=
-      BUF$ OUTPUT size CASEFOLD= TTRUE
-      OUTPUT size SECOND-BUF CAPACITY UNICODE:FOLD {: repeated:n :}
-      OUTPUT size SECOND-BUF repeated T$=
+      BUF$ OUTPUT size >str CASEFOLD= TTRUE
+      OUTPUT size >str SECOND-BUF CAPACITY UNICODE:FOLD {: repeated:n :}
+      OUTPUT size >str SECOND-BUF repeated >str T$=
    loop ;
 
 : EQUAL ( str str -- )
-   2over 2over CASEFOLD= TTRUE
-   2swap CASEFOLD= TTRUE ;
+   over over CASEFOLD= TTRUE
+   swap CASEFOLD= TTRUE ;
 
 : DIFFERENT ( str str -- )
-   2over 2over CASEFOLD= TFALSE
-   2swap CASEFOLD= TFALSE ;
+   over over CASEFOLD= TFALSE
+   swap CASEFOLD= TFALSE ;
+
+\ A caught body keeps its stack's shape, and a quotation moves only one-cell
+\ values: each comparison is a word that keeps the text.
+: LEFT-OF-EMPTY ( str -- str )
+   dup s" " CASEFOLD= drop ;
+
+: RIGHT-OF-EMPTY ( str -- str )
+   dup s" " swap CASEFOLD= drop ;
 
 : INVALID ( str -- )
-   [: 2dup s" " CASEFOLD= drop ;] catch E-UTF8 T=
-   [: 2dup s" " 2swap CASEFOLD= drop ;] catch E-UTF8 T=
-   2drop ;
+   [: LEFT-OF-EMPTY ;] catch E-UTF8 T=
+   [: RIGHT-OF-EMPTY ;] catch E-UTF8 T=
+   drop ;
 
 : BAD-UTF8 ( -- )
-   s" x" drop -1 INVALID
+   s" x" STR:DATA -1 >str INVALID
    s\" \x80" INVALID
    s\" \xC0\xAF" INVALID
    s\" \xC2" INVALID

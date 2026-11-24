@@ -1,4 +1,3 @@
-split-str
 \ utf16-test.f - UTF-16 code units of UTF-8 spans, the byte back from a unit,
 \ and strict UTF-16LE conversion, through src/lib/utf16.f.
 \ Run: bin/hb --load src/lib/utf16-test.f
@@ -31,12 +30,12 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
 : GOT$ ( ^VEC:vector<u8> -- str )  VEC:SPAN SPAN:$ ;
 
 : UNITS= ( str n -- )
-   {: a:^ u:n want:n :}
-   a u UTF16:UNITS want T= ;
+   {: s:str want:n :}
+   s UTF16:UNITS want T= ;
 
 : OFFSET= ( str n n -- )
-   {: a:^ u:n unit:n want:n :}
-   a u unit UTF16:OFFSET want T= ;
+   {: s:str unit:n want:n :}
+   s unit UTF16:OFFSET want T= ;
 
 : BMP ( -- )
    s" " 0 UNITS=
@@ -51,8 +50,8 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    s\" a\xF0\x9F\x98\x80b\xF0\x9F\x98\x80" 6 UNITS= ;
 
 : COLUMNS ( -- )
-   s\" \xF0\x9F\x98\x80 x" drop 5 3 UNITS=
-   s\" \xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80x" drop 9 4 UNITS= ;
+   s\" \xF0\x9F\x98\x80 x" STR:DATA 5 >str 3 UNITS=
+   s\" \xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80x" STR:DATA 9 >str 4 UNITS= ;
 
 \ Invalid UTF-8 counts as UTF8:NEXT reads it: one unit for every byte it answers
 \ as `raw-byte`, the width of the U+FFFD that stands for that byte. A truncated
@@ -115,11 +114,11 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
 
 : BYTE-TRIP ( n -- )
    {: b:n :}
-   MIXED MIXED drop b UTF16:UNITS UTF16:OFFSET b T= ;
+   MIXED MIXED STR:DATA b >str UTF16:UNITS UTF16:OFFSET b T= ;
 
 : UNIT-TRIP ( n -- )
    {: unit:n :}
-   MIXED drop MIXED unit UTF16:OFFSET UTF16:UNITS unit T= ;
+   MIXED STR:DATA MIXED unit UTF16:OFFSET >str UTF16:UNITS unit T= ;
 
 : ROUND-TRIPS ( -- )
    0 BYTE-TRIP 1 BYTE-TRIP 3 BYTE-TRIP 6 BYTE-TRIP
@@ -128,10 +127,10 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    5 UNIT-TRIP 6 UNIT-TRIP 7 UNIT-TRIP ;
 
 : NEGATIVE-LENGTH ( -- )
-   s" a" drop -1 UTF16:UNITS drop ;
+   s" a" STR:DATA -1 >str UTF16:UNITS drop ;
 
 : OFFSET-NEGATIVE-LENGTH ( -- )
-   s" a" drop -1 0 UTF16:OFFSET drop ;
+   s" a" STR:DATA -1 >str 0 UTF16:OFFSET drop ;
 
 : OFFSET-NEGATIVE-INDEX ( -- )
    s" a" -1 UTF16:OFFSET drop ;
@@ -146,21 +145,21 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    [: OFFSET-EMPTY-NEGATIVE ;] E-STR-BOUNDS TTHROWSQ ;
 
 : LE>UTF8= ( str str -- )
-   {: le:^ lu:n want:^ wu:n :}
+   {: le:str want:str :}
    LE-BUF @ 0 VEC:RESIZE
-   le lu LE-BUF @ UTF16:APPEND-LE>UTF8
-   LE-BUF @ GOT$ want wu T$= ;
+   le LE-BUF @ UTF16:APPEND-LE>UTF8
+   LE-BUF @ GOT$ want T$= ;
 
 : UTF8>LE= ( str str -- )
-   {: text:^ tu:n want:^ wu:n :}
+   {: text:str want:str :}
    LE-BUF @ 0 VEC:RESIZE
-   text tu LE-BUF @ UTF16:APPEND-UTF8>LE
-   LE-BUF @ GOT$ want wu T$= ;
+   text LE-BUF @ UTF16:APPEND-UTF8>LE
+   LE-BUF @ GOT$ want T$= ;
 
 : BOTH= ( str str -- )
-   {: le:^ lu:n text:^ tu:n :}
-   le lu text tu LE>UTF8=
-   text tu le lu UTF8>LE= ;
+   {: le:str text:str :}
+   le text LE>UTF8=
+   text le UTF8>LE= ;
 
 
 : VECTORS ( -- )
@@ -177,11 +176,11 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
 
 
 : ROUND-TRIP ( -- )
-   s\" a\x00\xC3\xA9\xEF\xBF\xBF\xF0\x9F\x98\x80z" {: text:^ tu:n :}
+   s\" a\x00\xC3\xA9\xEF\xBF\xBF\xF0\x9F\x98\x80z" {: text:str :}
    LE-BUF @ 0 VEC:RESIZE  LE-OUT @ 0 VEC:RESIZE
-   text tu LE-BUF @ UTF16:APPEND-UTF8>LE
+   text LE-BUF @ UTF16:APPEND-UTF8>LE
    LE-BUF @ GOT$ LE-OUT @ UTF16:APPEND-LE>UTF8
-   LE-OUT @ GOT$ text tu T$= ;
+   LE-OUT @ GOT$ text T$= ;
 
 
 : APPENDS ( -- )
@@ -208,8 +207,8 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    [: s\" \x00\xDC" LE-BUF @ UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ          \ DC00 alone
    [: s\" \xFF\xDF" LE-BUF @ UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ          \ DFFF alone
    [: s\" \x00\xD8\x00\xE0" LE-BUF @ UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ  \ high, then E000
-   [: s\" \x00\xD8\x00\xDC" drop 2 LE-BUF @ UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ \ the span ends before its low
-   [: s" a" drop -2 LE-BUF @ UTF16:APPEND-LE>UTF8 ;] E-STR-BOUNDS TTHROWSQ ;
+   [: s\" \x00\xD8\x00\xDC" STR:DATA 2 >str LE-BUF @ UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ \ the span ends before its low
+   [: s" a" STR:DATA -2 >str LE-BUF @ UTF16:APPEND-LE>UTF8 ;] E-STR-BOUNDS TTHROWSQ ;
 
 
 : UTF8-REFUSALS ( -- )
@@ -219,7 +218,7 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    [: s\" \xF4\x90\x80\x80" LE-BUF @ UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ   \ past U+10FFFF
    [: s\" \xF0\x9F\x98" LE-BUF @ UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ       \ truncated at the end
    [: s\" a\xF0\x9F\x98b" LE-BUF @ UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ     \ truncated by b
-   [: s" a" drop -1 LE-BUF @ UTF16:APPEND-UTF8>LE ;] E-STR-BOUNDS TTHROWSQ ;
+   [: s" a" STR:DATA -1 >str LE-BUF @ UTF16:APPEND-UTF8>LE ;] E-STR-BOUNDS TTHROWSQ ;
 
 : CONVERSIONS ( -- )
    LE-BUF FRESH  LE-OUT FRESH

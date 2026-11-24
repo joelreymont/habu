@@ -1,4 +1,3 @@
-split-str
 \ tree-copy.f - private copies of checkout files for tools and tests that build
 \ or boot a tree without touching the checkout. A name is relative to the working
 \ directory or the checkout, or absolute under it; its copy keeps the
@@ -17,22 +16,22 @@ private
 PTR-VARIABLE INTO-P                    variable INTO-U
 create DEST PATH-CAP allot          variable DEST-U
 
-: INTO$ ( -- str ) INTO-P @ INTO-U @ ;
-: DEST$ ( -- str ) DEST DEST-U @ ;
+: INTO$ ( -- str ) INTO-P @ INTO-U @ >str ;
+: DEST$ ( -- str ) DEST DEST-U @ >str ;
 
-: INTO! ( str -- ) INTO-U ! INTO-P ! ;
+: INTO! ( str -- ) dup STR:LEN INTO-U ! STR:DATA INTO-P ! ;
 
 : CHECKOUT-REL ( str -- str )
-   SOURCE-ROOT:CANONICAL drop {: a:^ u:n :}
-   a u SOURCE-ROOT:CWD$ SOURCE-ROOT:BELOW? 0= if E-FS-PATH throw then
-   a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE ;
+   SOURCE-ROOT:CANONICAL drop {: s:str :}
+   s SOURCE-ROOT:CWD$ SOURCE-ROOT:BELOW? 0= if E-FS-PATH throw then
+   s SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE ;
 
 \ A walk callback has no context, so the root is read from INTO$.
 : MEMBER ( str -- )
-   {: a:^ u:n :}
-   INTO$ a u CHECKOUT-REL DEST FS:JOIN-PATH DEST-U !
+   {: s:str :}
+   INTO$ s CHECKOUT-REL DEST FS:JOIN-PATH DEST-U !
    DEST$ SOURCE-ROOT:DIRNAME FS:MAKE-DIRS
-   a u DEST$ FS:COPY-FILE-STREAM ;
+   s DEST$ FS:COPY-FILE-STREAM ;
 
 public
 
@@ -42,8 +41,8 @@ public
 
 \ src/ and tools/: the sources tools/hb-build.f builds from.
 : BUILD-SOURCES ( str -- )
-   {: root:^ rootu:n :}
-   s" src" root rootu TREE
-   s" tools" root rootu TREE ;
+   {: root:str :}
+   s" src" root TREE
+   s" tools" root TREE ;
 
 ;package

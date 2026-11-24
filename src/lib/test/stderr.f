@@ -1,4 +1,3 @@
-split-str
 \ stderr.f - a test's hold on fd 2, package STDERR. CAPTURE sends fd 2 to the
 \ file at a path, created empty or truncated, until ;CAPTURE gives the process
 \ its own stderr back. A failed dup or dup2 is E-FS-IO. CAPTURING runs a word
@@ -39,10 +38,10 @@ variable SAVED              \ the process's own stderr while a capture is open, 
 public
 
 : CAPTURE ( str -- )
-   {: path:^ u:n :}
+   {: path:str :}
    SAVED @ 0<> if E-STATE throw then
-   path u s" " FS:WRITE-ALL
-   path u FS:OPEN-APPEND-FD {: file:n :}
+   path s" " FS:WRITE-ALL
+   path FS:OPEN-APPEND-FD {: file:n :}
    FD:STDERR FD>N F-DUPFD SAVE-FD-MIN fcntl {: saved:n :}
    saved 0 < if file close-rc drop E-FS-IO throw then
    file REDIRECT-TO 0= if saved close-rc drop E-FS-IO throw then
@@ -59,19 +58,19 @@ private
 
 \ Nothing writes the file once its capture has ended, so its size bounds it.
 : READ-WHOLE ( str ^ARENA:arena -- str )
-   {: path:^ u:n a:^ :}
-   a path u FS:FILE-SIZE ARENA:ALLOC {: at:^ cap:n :}
-   at  path u at cap FS:READ-ALL ;
+   {: path:str a:^ :}
+   a path FS:FILE-SIZE ARENA:ALLOC {: at:^ cap:n :}
+   at  path at cap FS:READ-ALL >str ;
 
 public
 
 \ Answers the code xt threw, 0 for none, and the text it wrote to fd 2, which
 \ the arena holds; the capture ends whether or not xt threw.
 : CAPTURING ( [ -- ] str ^ARENA:arena -- n str )
-   {: run path:^ u:n a:^ :}
-   path u CAPTURE
+   {: run path:str a:^ :}
+   path CAPTURE
    run catch ;CAPTURE
-   path u a READ-WHOLE
-   path u FS:REMOVE-FILE ;
+   path a READ-WHOLE
+   path FS:REMOVE-FILE ;
 
 ;package
