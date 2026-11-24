@@ -17496,7 +17496,7 @@ PTR-VARIABLE OWNQ-P   variable OWNQ-CAP   variable OWNQ-N
 \ PUBLISH-REFUSALS before the definition's first write.
 : CHECKER-USIG-CERT-PARSED ( str -- )
    {: na:^ nu:n :}
-   na nu  NMOFF @ TADDR nu  CHECKER-REC-NAME-AT!
+   NMOFF @ TADDR nu 2dup CHECKER-REC-NAME-AT!
    SG-ROWS-N @ 0 <> IF
       SG-ROWS-RESOLVE
       -1 SG-ROWS-PUBLISH !

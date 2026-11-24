@@ -951,6 +951,16 @@ variable LABEL-U
    s" ;FUNCTION" GE-SRC-LINE
    $46 s" `A:B:C`" s" checker spells a trusted record's name as written" CHECK-BUF-BAD ;
 
+: COLON-TWIN-SPELLING ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package B : Xx ( -- ) ; public : XX ( -- n ) 1 ; ;package" GE-SRC-LINE
+   $46 s" = private: Xx (0 -- 0)" s" checker spells a colon's private twin as written" CHECK-BUF-BAD
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package B : Xx ( -- ) nosuchword ; public : XX ( -- n ) 1 ; ;package" GE-SRC-LINE
+   $46 s" = private: Xx (0 -- 0)" s" checker spells a rejected private twin as written" CHECK-BUF-BAD ;
+
 : RUN-LOAD-ONE ( str str -- ) {: path:^ pathu:n label:^ labelu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
@@ -1419,6 +1429,7 @@ public
    PACKAGE-DUPLICATE-CHECK
    DEFER-TWIN-SPELLING
    TRUSTED-NAME-SPELLING
+   COLON-TWIN-SPELLING
    PACKAGE-MULTIFILE-LOAD
    PACKAGE-INCLUDE
    PACKAGE-MISUSE

@@ -610,11 +610,10 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
    eff 0 <> IF eff NMA @ NMU @ CTOR-NAME? EFFECT-SIG EXIT THEN
    SGA @ SGU @ PARSE-SIG-RAW ;
 
-\ Records the pending definition's declared effect under name NA, AT the name
-\ as read: its rows from PENDING-SIG, its text the signature at SGA.
+\ Records the pending definition's declared effect under AT, the name as read.
 : CHECKER-USIG-CERT-ADD-PENDING ( str str bool -- )
    {: na:^ nu:n at:^ atu:n external:bool :}
-   na nu at atu USIG-CERT-ADMIT
+   at atu at atu USIG-CERT-ADMIT
    NEW
    SGBAD-CLEAR
    PENDING-SIG {: din:n dout:n rin:n rout:n :}
