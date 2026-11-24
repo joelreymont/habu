@@ -1,9 +1,10 @@
 ---
 title: "Derive NDICT's lookup chain from OUTER"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T16:08:44.075068+03:00"
+closed-at: "2026-11-24T21:33:41.946739+01:00"
 blocks:
   - habu-move-evaluate-and-9119f746
 ---
