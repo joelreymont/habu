@@ -162,9 +162,9 @@ public
    off 0 >=  off held <  and if v VECTOR-DATA @ off + exit then
    s ;
 
-\ n elements read at the address, appended; a negative n is E-VEC-CAPACITY.
-\ They may be the vector's own elements, though growth moves the block.
-: APPEND ( ^t n ^vector<t> -- )
+\ The bytes of the str, appended; they may be the vector's own, though growth
+\ moves the block.
+: APPEND ( str ^vector<u8> -- )
    {: src:^ k:n v:^ :}
    k 0 < if E-VEC-CAPACITY throw then
    v VECTOR-COUNT @ {: old:n :}

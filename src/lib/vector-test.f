@@ -134,9 +134,10 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
    [: v $2000000000000001 VEC:RESERVE ;] E-VEC-CAPACITY TTHROWSQ
    [: v -1 VEC:TRIM ;] E-VEC-CAPACITY TTHROWSQ
    [: v $2000000000000001 VEC:TRIM ;] E-VEC-CAPACITY TTHROWSQ
-   [: v 0 VEC:AT -1 v VEC:APPEND ;] E-VEC-CAPACITY TTHROWSQ
-   [: v 0 VEC:AT $2000000000000001 v VEC:APPEND ;] E-VEC-CAPACITY TTHROWSQ
-   v VEC:DELETE ;
+   al 1 [type] u8 VEC:NEW {: w:^ :}
+   [: w 0 VEC:AT -1 >str w VEC:APPEND ;] E-VEC-CAPACITY TTHROWSQ
+   [: w 0 VEC:AT $7FFFFFFFFFFFFFF9 >str w VEC:APPEND ;] E-VEC-CAPACITY TTHROWSQ
+   w VEC:DELETE  v VEC:DELETE ;
 
 TYPED-VARIABLE NO-VEC ^VEC:vector<n>
 
@@ -212,16 +213,16 @@ TYPED-VARIABLE AL ALLOC:allocator
 
 : RESERVED ( -- )
    s" VEC:RESERVE keeps COUNT; growth within it asks for no bytes and moves nothing" T-LABEL
-   AL 2 [type] n VEC:NEW {: v:^ :}
-   7 v 0 VEC:AT !
+   AL 2 [type] u8 VEC:NEW {: v:^ :}
+   7 v 0 VEC:AT c!
    v 40 VEC:RESERVE
-   v VEC:COUNT 2 T=  v 0 VEC:AT @ 7 T=
+   v VEC:COUNT 2 T=  v 0 VEC:AT c@ 7 T=
    v 0 VEC:AT {: first:^ :}  ALLOCS @ {: a0:n :}
    38 0 ?do v VEC:PUSH drop loop
-   v 3 VEC:RESIZE  v 0 VEC:AT 2 v VEC:APPEND  v 3 VEC:AT @ 7 T=
+   v 3 VEC:RESIZE  v 0 VEC:AT 2 >str v VEC:APPEND  v 3 VEC:AT c@ 7 T=
    v 40 VEC:ENSURE  v 40 VEC:RESERVE
    ALLOCS @ a0 T=  v 0 VEC:AT first = TTRUE
-   v VEC:COUNT 40 T=  v 0 VEC:AT @ 7 T=
+   v VEC:COUNT 40 T=  v 0 VEC:AT c@ 7 T=
    v VEC:DELETE ;
 
 : TRIMMED ( -- )
@@ -236,13 +237,12 @@ TYPED-VARIABLE AL ALLOC:allocator
    v 30 VEC:TRIM  LAST-N @ 30 cells T=
    v VEC:DELETE ;
 
-\ The source's byte offset, 16, passes the room of 3.
 : LAST-APPEND ( -- )
    s" VEC:APPEND reads its own elements where growth moved them" T-LABEL
-   AL 3 [type] n VEC:NEW {: v:^ :}
-   3 0 ?do i 1 + v i VEC:AT ! loop
-   v 2 VEC:AT 1 v VEC:APPEND
-   v VEC:COUNT 4 T=  v 3 VEC:AT @ 3 T=
+   AL 3 [type] u8 VEC:NEW {: v:^ :}
+   3 0 ?do i 1 + v i VEC:AT c! loop
+   v 2 VEC:AT 1 >str v VEC:APPEND
+   v VEC:COUNT 4 T=  v 3 VEC:AT c@ 3 T=
    v VEC:DELETE ;
 
 \ The source's block lies below the vector's, which the append moves.

@@ -217,7 +217,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : PARAM ( str str -- JSON:reader n )
    {: p k :}
    p str> nip 0= if E-LSP-PARAMS throw then
-   JSON-ST p str> READ-INIT
+   JSON-ST p READ-INIT
    READ-NEXT T-OBJ <> if E-LSP-PARAMS throw then
    k READ-FIND-KEY 0= if E-LSP-PARAMS throw then
    READ-TOKEN ;
@@ -425,7 +425,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    k HELD-ENDS @ at - >str ;
 
 : HOLD ( str -- )
-   str> HELD-B @ VEC:APPEND
+   HELD-B @ VEC:APPEND
    HELD-COUNT @ 1+ HELD-ENDS-RESERVE
    HELD-B @ VEC:COUNT HELD-COUNT @ HELD-ENDS !
    1 HELD-COUNT +! ;
@@ -453,7 +453,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ string's decoded text, in ID-SPAN, and true; else its JSON text and false.
 : ID-KEY ( JSON:value -- str bool )
    JSON:TEXT$ {: r :}
-   JSON-ST r str> READ-INIT
+   JSON-ST r READ-INIT
    READ-NEXT T-STR = if ID-SPAN DECODE true else 0 false then {: n:n str:bool :}
    READ-CLOSE
    str if ID-SPAN @ SPAN:$ str> drop n >str true exit then
@@ -464,7 +464,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : ID-PARAM? ( str str bool -- bool )
    {: p k str:bool :}
    p str> nip 0= if false exit then
-   JSON-ST p str> READ-INIT
+   JSON-ST p READ-INIT
    READ-NEXT T-OBJ = if s" id" READ-FIND-KEY else false then
    if
       READ-TOKEN T-STR = if
@@ -489,7 +489,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : URI-SLOT ( str -- n )
    {: p :}
    p str> nip 0= if -1 exit then
-   JSON-ST p str> READ-INIT
+   JSON-ST p READ-INIT
    READ-NEXT T-OBJ =
    if s" textDocument" INTO? else false then
    if s" uri" READ-FIND-KEY else false then
@@ -911,7 +911,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : MARKDOWN? ( str -- bool )
    {: p :}
    p str> nip 0= if false exit then
-   JSON-ST p str> READ-INIT
+   JSON-ST p READ-INIT
    READ-NEXT T-OBJ =
    if s" capabilities" INTO? else false then
    if s" textDocument" INTO? else false then
@@ -950,7 +950,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : WORKSPACE! ( str -- )
    {: p :}
    p str> nip 0= if exit then
-   JSON-ST p str> READ-INIT
+   JSON-ST p READ-INIT
    READ-NEXT T-OBJ =
    if s" workspaceFolders" READ-FIND-KEY else false then
    if READ-TOKEN T-ARR = else false then
@@ -958,7 +958,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    folders if begin READ-NEXT T-ARR-END <> while FOLDER repeat then
    READ-CLOSE
    folders if exit then
-   JSON-ST p str> READ-INIT
+   JSON-ST p READ-INIT
    READ-NEXT T-OBJ =
    if s" rootUri" READ-FIND-KEY else false then
    if READ-TOKEN T-STR = else false then

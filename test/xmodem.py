@@ -58,7 +58,7 @@ class Checks:
         output = self.out / 'packet.bin'
         source = self.input(data) + f'''
 FRESH OUTPUT !
-s" preserved" str> OUTPUT @ VEC:APPEND
+s" preserved" OUTPUT @ VEC:APPEND
 : EXERCISE ( -- )
    [: INPUT @ VEC:SPAN SPAN:$ {sequence} >SEQUENCE {size} >PAYLOAD-SIZE {kind} >CHECK-KIND OUTPUT @ ENCODE ;] catch .
    s" {output}" OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE ;

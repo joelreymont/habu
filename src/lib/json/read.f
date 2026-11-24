@@ -557,7 +557,7 @@ $7F constant DEL
 
 public
 
-: READ-INIT ( ^cursor ^u8 n -- JSON:reader )
+: READ-INIT ( ^cursor str -- JSON:reader )
    {: state:^ source:^ len:n :}
    source len REQUIRE-SOURCE
    state source len INIT-STATE
