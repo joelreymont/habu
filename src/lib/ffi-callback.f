@@ -24,6 +24,7 @@ EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-TOP-ONLY
 EXPORT SOURCE-ROOT:OPENED
 EXPORT SOURCE-ROOT:CLOSED
+EXPORT SOURCE-ROOT:NESTED-REJECT
 
 CAST: >CALLBACK ( n -- callback )
 CAST: CALLBACK>N ( callback -- n )
@@ -511,8 +512,8 @@ public
 
 : OPEN-CALLBACK ( -- )
    SRCLOC:TOKEN$ {: t:^ tu:n :}
-   \ The load holds the open declaration's opener: it rejects it there.
-   OPEN @ 0 <> if t tu s" ;CALLBACK" ['] DISCARD OPENED then
+   \ An open declaration is rejected before this one's name is read or claimed.
+   t tu [: ;] NESTED-REJECT
    0 FB-SET !
    [: parse-name ;] READ-CALLBACK {: na:^ nu:n :}
    SRCLOC:TOKEN$ {: e:^ eu:n :}

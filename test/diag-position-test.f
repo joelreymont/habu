@@ -3575,6 +3575,20 @@ HB-TARGET-LINUX? 0= [if]
    s" taken-ffi-nested.f" FIXTURE!
    s" E-UNCLOSED" s" :3:1" s" BEGIN-STRUCTURE" 3 1 34 49 FIRST-AT ;
 
+\ A CALLBACK: inside an open declaration rejects the open one at its opener
+\ before its own name is claimed, though that name is taken.
+: TEST-TAKEN-CALLBACK-NESTED ( -- )
+   s" a taken CALLBACK: name inside an open structure" T-LABEL
+   SB-RESET
+   s" require src/lib/ffi-callback.f" SB-APPEND LF+
+   s" : GP ( -- n ) 1 ;" SB-APPEND LF+
+   s" BEGIN-STRUCTURE P" SB-APPEND LF+
+   s" CALLBACK: GP ( -- )" SB-APPEND LF+
+   s" ;CALLBACK" SB-APPEND LF+
+   s" END-STRUCTURE" SB-APPEND LF+
+   s" taken-cb-nested.f" FIXTURE!
+   s" E-UNCLOSED" s" :3:1" s" BEGIN-STRUCTURE" 3 1 49 64 FIRST-AT ;
+
 \ A FUNCTION: name no definer takes is rejected at the name, as `:` would
 \ reject it, before the group opens.
 : TEST-WALLED-FUNCTION ( -- )
@@ -4159,6 +4173,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-UNCLOSED
    TEST-TAKEN-FUNCTION
    TEST-TAKEN-FUNCTION-NESTED
+   TEST-TAKEN-CALLBACK-NESTED
    TEST-WALLED-FUNCTION
    TEST-TAKEN-ENGINE-FUNCTION
    TEST-QUALIFIED-FUNCTION
