@@ -1,4 +1,3 @@
-split-str
 \ checker-soundness-suite.f - a certified body must not exceed its declared effect.
 
 require src/lib/adt/option.f
@@ -101,15 +100,15 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 $1000 constant CAP
 create OUT CAP allot   variable OUT-U
 create ERR CAP allot   variable ERR-U
-: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
+: OUT$ ( -- str ) OUT OUT-U @ >str ;
+: ERR$ ( -- str ) ERR ERR-U @ >str ;
 \ Source src, run as the subject, exits with code want; OUT$ and ERR$ hold its
 \ streams until the next run.
-: RUNS ( ^u8 n n -- ) {: src:^ u:n want:n :}
-   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+: RUNS ( str n -- ) {: src:str want:n :}
+   src OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
-   src u OUT$ ERR$ oc want T-ENDING-EXITED= ;
+   src OUT$ ERR$ oc want T-ENDING-EXITED= ;
 
 
 \ CHECK-QUIET-CANDIDATE!: -1 certified, 0 rejected, 1 uncheckable.
@@ -162,12 +161,12 @@ create ERR CAP allot   variable ERR-U
    s" : CS-K11 ( -- n ) [: ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s\" = found: [ C -- C ]\n" SUBJECT:REFUSED? TTRUE
    s" a callable left under its own copy names the row that would contain itself" T-LABEL
-   s" : CS-K98 ( R [ R -- R ] -- R ) dup execute ;" 70 SUBJECT:REJECTED {: e:^ eu:n ok:bool :}
+   s" : CS-K98 ( R [ R -- R ] -- R ) dup execute ;" 70 SUBJECT:REJECTED {: e:str ok:bool :}
    ok TTRUE
-   e eu s" error[E-MISMATCH]: `execute` would make a stack row contain itself" STR:CONTAINS? TTRUE
+   e s" error[E-MISMATCH]: `execute` would make a stack row contain itself" STR:CONTAINS? TTRUE
    \ the rendering indents each note by the width of the line number's gutter
-   e eu s\" = expected: R\n" STR:CONTAINS? TTRUE
-   e eu s\" = found: R [ R -- R ]\n" STR:CONTAINS? TTRUE
+   e s\" = expected: R\n" STR:CONTAINS? TTRUE
+   e s\" = found: R [ R -- R ]\n" STR:CONTAINS? TTRUE
    s" a named word's input names the row that would contain itself" T-LABEL
    s" : CS-TAKE ( R [ R -- R ] -- R ) execute ; : CS-K105 ( R [ R -- R ] -- R ) dup CS-TAKE ;" 70
    s" error[E-MISMATCH]: `CS-TAKE` would make a stack row contain itself"

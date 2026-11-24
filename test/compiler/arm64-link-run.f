@@ -1,4 +1,3 @@
-split-str
 \ arm64-link-run.f - LINKER:WRITE's stripped programs, run, their kernel the
 \ tree's kernel object. One build stores each of four entries and writes a
 \ program for it: LR-HI prints `Hi` and exits 0; LR-THROW prints nothing and
@@ -35,12 +34,12 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 create ROOT-BUF PATH-CAP allot variable ROOT-U
 create PROG-BUF PATH-CAP allot
 
-: ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT-BUF ROOT-U @ >str ;
 
 : PROG$ ( str -- str )
-   {: name:^ name-n:n :}
-   ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
-   PROG-BUF u ;
+   {: name:str :}
+   ROOT$ name PROG-BUF FS:JOIN-PATH {: u:n :}
+   PROG-BUF u >str ;
 
 
 : FIXTURE ( -- )
@@ -58,9 +57,9 @@ create PROG-BUF PATH-CAP allot
 
 
 : WRITE-PROG ( str str -- )
-   {: word:^ word-n:n file:^ file-n:n :}
-   word word-n STORE-ENTRY
-   file file-n PROG$ LINKER:WRITE ;
+   {: word:str file:str :}
+   word STORE-ENTRY
+   file PROG$ LINKER:WRITE ;
 
 
 : BODY ( -- )
@@ -71,15 +70,15 @@ create PROG-BUF PATH-CAP allot
    s" LR-DEEP" s" deep" WRITE-PROG ;
 
 
-: RUN-PROG ( CMD:command str ^u8 n n -- CMD:command )
-   {: file:^ file-n:n out:^ out-n:n want:n :}
-   file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:OUT$ out out-n STR:=  rc want =  and 0= if
-      s" arm64-link-run: " type file file-n type s"  exited " type rc .
+: RUN-PROG ( CMD:command str str n -- CMD:command )
+   {: file:str out:str want:n :}
+   file PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:OUT$ out STR:=  rc want =  and 0= if
+      s" arm64-link-run: " type file type s"  exited " type rc .
       s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr
    then
-   file file-n T-LABEL  CMD:OUT$ out out-n T$=
-   file file-n T-LABEL  rc want T= ;
+   file T-LABEL  CMD:OUT$ out T$=
+   file T-LABEL  rc want T= ;
 
 : RUN-HI ( CMD:command -- CMD:command ) s" hi" s\" Hi\n" 0 RUN-PROG ;
 : RUN-THROW ( CMD:command -- CMD:command ) s" throw" s" " 3 RUN-PROG ;
@@ -95,12 +94,12 @@ create PROG-BUF PATH-CAP allot
 \ The text load's size, the header field at IMAGE-TEXT-SIZE-OFF. An ELF file
 \ is larger: past the text come the read-write load, the pad to the next
 \ PROT-PAGE-MAX boundary and the carrier's DATA pages.
-: SMALLER ( ^u8 n -- )
-   {: file:^ file-n:n :}
-   file file-n PROG$ IMAGE-TEXT-SIZE-OFF TEXT-LOAD 8 FS:READ-AT
+: SMALLER ( str -- )
+   {: file:str :}
+   file PROG$ IMAGE-TEXT-SIZE-OFF TEXT-LOAD 8 FS:READ-AT
    TEXT-LOAD LE:U64@ {: size:n :}
    size $20000 < 0= if
-      s" arm64-link-run: " type file file-n type s"  has a text load of bytes: " type size .
+      s" arm64-link-run: " type file type s"  has a text load of bytes: " type size .
    then
    s" the text load is under 128 KiB: only the kernel code the program reaches is written"
       T-LABEL
@@ -110,11 +109,11 @@ $20000 BUFFER: HI-BYTES
 
 \ A text hi never prints: the profiler's report.
 : NO-PROFILER ( -- )
-   s" hi" PROG$ {: file:^ file-n:n :}
-   file file-n FS:FILE-SIZE $20000 min {: size:n :}
-   file file-n 0 HI-BYTES size FS:READ-AT
+   s" hi" PROG$ {: file:str :}
+   file FS:FILE-SIZE $20000 min {: size:n :}
+   file 0 HI-BYTES size FS:READ-AT
    s" hi keeps no profiler code" T-LABEL
-   HI-BYTES size s" profiler not armed" STR:CONTAINS? TFALSE ;
+   HI-BYTES size >str s" profiler not armed" STR:CONTAINS? TFALSE ;
 
 
 \ ---- the kernel build's inputs log, replayed -------------------------------------
@@ -182,13 +181,13 @@ variable DEPTH-LR                    \ the scan's open loads
 
 \ LOG-LR with its bytes from the first offset to the second replaced, in EDIT-LR.
 : SPLICE-LR ( n n str -- )
-   {: at0:n at1:n new:^ newu:n :}
+   {: at0:n at1:n new:str :}
    0 LOG-LR {: log:^ :}
    0 EDIT-LR {: edit:^ :}
    log edit at0 BYTE-COPY
-   new  edit at0 +  newu BYTE-COPY
-   log at1 +  edit at0 + newu +  LOG-LR-U @ at1 -  BYTE-COPY
-   LOG-LR-U @ at1 - at0 + newu + EDIT-LR-U ! ;
+   new STR:DATA  edit at0 +  new STR:LEN BYTE-COPY
+   log at1 +  edit at0 + new STR:LEN +  LOG-LR-U @ at1 -  BYTE-COPY
+   LOG-LR-U @ at1 - at0 + new STR:LEN + EDIT-LR-U ! ;
 
 \ The padded part's top spelling as x's that, joined to its root, are one byte
 \ past PATH-CAP: each alone PATH-OK? takes, the resolver refuses (E-PATH-RANGE).
@@ -198,34 +197,34 @@ variable DEPTH-LR                    \ the scan's open loads
    PATH-CAP root CELL-LR - {: u:n :}
    u PAD-LR LE:U64!
    u 0 ?do  [char] x PAD-LR 8 + i + c!  loop
-   at  at FIELD-LR  PAD-LR u 8 +  SPLICE-LR ;
+   at  at FIELD-LR  PAD-LR u 8 + >str  SPLICE-LR ;
 
 \ The resumed part given the path and stamp of the part before it.
 : SWAP-RESUMED-LR ( -- )
    BEFORE-LR @ 8 + {: b:n :}
    RESUMED-LR @ 8 + {: c:n :}
-   c  c FIELD-LR 24 +  0 LOG-LR b +  b FIELD-LR 24 + b -  SPLICE-LR ;
+   c  c FIELD-LR 24 +  0 LOG-LR b +  b FIELD-LR 24 + b - >str  SPLICE-LR ;
 
 : HOLD-LR ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    false HELD-LR !
-   [: a u LINKER:INPUTS-HOLD? HELD-LR ! ;] catch RC-LR ! ;
+   [: s LINKER:INPUTS-HOLD? HELD-LR ! ;] catch RC-LR ! ;
 
 : EDITED-LR ( -- )
-   0 EDIT-LR EDIT-LR-U @ HOLD-LR  RC-LR @ 0 T=  HELD-LR @ TFALSE ;
+   0 EDIT-LR EDIT-LR-U @ >str HOLD-LR  RC-LR @ 0 T=  HELD-LR @ TFALSE ;
 
 : READ-LR ( -- )
-   HB-BUILD-CORE:KERNEL-INPUTS$ {: p:^ pu:n :}
-   p pu FS:FILE-SIZE HEAD-LR - {: u:n :}
+   HB-BUILD-CORE:KERNEL-INPUTS$ {: p:str :}
+   p FS:FILE-SIZE HEAD-LR - {: u:n :}
    u LOG-LR-U !
    u LOG-LR-RESERVE  u PATH-CAP + 8 + EDIT-LR-RESERVE
-   p pu HEAD-LR  0 LOG-LR u  FS:READ-AT ;
+   p HEAD-LR  0 LOG-LR u  FS:READ-AT ;
 
 \ The inputs log records the tree's root, so it replays from there.
 : CHECK-LR ( -- )
    SOURCE-ROOT:CWD$ [:
       s" the fresh inputs log holds" T-LABEL
-      0 LOG-LR LOG-LR-U @ HOLD-LR  RC-LR @ 0 T=  HELD-LR @ TTRUE
+      0 LOG-LR LOG-LR-U @ >str HOLD-LR  RC-LR @ 0 T=  HELD-LR @ TTRUE
       s" a top spelling one byte past PATH-CAP joined to its root does not hold, with no throw" T-LABEL
       PAD-SPELLING-LR EDITED-LR
       s" a resumed part with the path and stamp of the part before it does not hold" T-LABEL
@@ -247,8 +246,8 @@ public
    T-RESET
    s" write outside a build is E-COMP-STATE" T-LABEL
    [: s" x" LINKER:WRITE ;] E-COMP-STATE TTHROWSQ
-   s" habu-link-run" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT-BUF u BYTE-COPY  u ROOT-U !
+   s" habu-link-run" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA ROOT-BUF d STR:LEN BYTE-COPY  d STR:LEN ROOT-U !
    false RTARGET:HOST-TARGET HB-BUILD-CORE:KERNEL-BUILD
    REPLAY
    s" app" RTARGET:HOST-TARGET [: BODY ;] LINKER:WITH

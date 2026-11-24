@@ -1,4 +1,3 @@
-split-str
 \ check-signal-test.f - a stopped check.f, and a check run past its deadline,
 \ leave no process and no scratch behind; a verifier or a run that writes past
 \ its capture, and a path the run cannot quote, each end check.f with one record.
@@ -71,14 +70,14 @@ PROCESS:NO-FD FIFO-RD !
 PROCESS:NO-FD CHECK-WATCH !
 PROCESS:NO-FD FEED-WR !
 
-: TMP$ ( -- str )    TMP TMP-U @ ;
-: LOG$ ( -- str )    LOG LOG-U @ ;
-: OUT$ ( -- ^u8 n )    OUT OUT-U @ ;
-: STANDIN$ ( -- str )   STANDIN STANDIN-U @ ;
-: QUOTED$ ( -- str )   QUOTED QUOTED-U @ ;
-: LOUD$ ( -- str )   LOUD LOUD-U @ ;
-: BAD-TMP$ ( -- str )   BAD-TMP BAD-TMP-U @ ;
-: FIFO$ ( -- str )   FIFO FIFO-U @ ;
+: TMP$ ( -- str )    TMP TMP-U @ >str ;
+: LOG$ ( -- str )    LOG LOG-U @ >str ;
+: OUT$ ( -- str )    OUT OUT-U @ >str ;
+: STANDIN$ ( -- str )   STANDIN STANDIN-U @ >str ;
+: QUOTED$ ( -- str )   QUOTED QUOTED-U @ >str ;
+: LOUD$ ( -- str )   LOUD LOUD-U @ >str ;
+: BAD-TMP$ ( -- str )   BAD-TMP BAD-TMP-U @ >str ;
+: FIFO$ ( -- str )   FIFO FIFO-U @ >str ;
 
 \ A process is started with its caller's ignored signals still ignored, and a
 \ check.f that inherited one would never see it. RELEASE restores the default
@@ -103,7 +102,7 @@ PROCESS:NO-FD FEED-WR !
    TMP$ FS:MAKE-DIRS ;
 
 : ENTRY+ ( str -- )
-   2drop ENTRY-N @ 1+ ENTRY-N ! ;
+   drop ENTRY-N @ 1+ ENTRY-N ! ;
 
 : TMP-ENTRIES ( -- n )
    0 ENTRY-N !
@@ -165,7 +164,7 @@ PROCESS:NO-FD FEED-WR !
    true ;
 
 : OPEN-NULL ( -- n )
-   s\" /dev/null\z" drop open-rd {: fd:n :}
+   s\" /dev/null\z" STR:DATA open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
@@ -181,8 +180,8 @@ PROCESS:NO-FD FEED-WR !
 
 \ check.f with stdin in, stderr into LOG and stdout into OUT. The watch opens
 \ while check.f is alive: macOS cannot register a process that has exited.
-: CHECK-SPAWN-TMP ( str n -- ) {: tmp:^ tmpu:n in:n :}
-   s" TMPDIR" tmp tmpu PROC-ENV+
+: CHECK-SPAWN-TMP ( str n -- ) {: tmp:str in:n :}
+   s" TMPDIR" tmp PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    LOG$ OPEN-LOG {: log:n :}
    OUT$ OPEN-LOG {: out:n :}
@@ -238,10 +237,10 @@ PROCESS:NO-FD FEED-WR !
 \ most FEED-CHUNK, so the write cannot block. A short write or a failed poll
 \ answers false.
 : FEED? ( str -- bool )
-   {: a:^ u:n :}
+   {: s:str :}
    FEED-WR @ FD:POLLOUT -1 POLL-WITHIN {: ready:n :}
    ready 0 < if false exit then
-   FEED-WR @ a u write u = ;
+   FEED-WR @ s write s STR:LEN = ;
 
 : FEED-FILL ( -- )
    FEED-CHUNK 0 ?do 10 FEED i + c! loop ;
@@ -251,7 +250,7 @@ PROCESS:NO-FD FEED-WR !
 : FEED-PAD? ( -- bool )
    FEED-FILL
    PAD-BYTES FEED-CHUNK / 0 ?do
-      FEED FEED-CHUNK FEED? 0= if false unloop exit then
+      FEED FEED-CHUNK >str FEED? 0= if false unloop exit then
    loop
    true ;
 
@@ -294,14 +293,14 @@ PROCESS:NO-FD FEED-WR !
    CHECK-PID @ >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop
    CHECK-REAP drop
    s" the late check.f's output:" type cr
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL type cr ;
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL >str type cr ;
 
 \ check.f names each step of its answer that threw (tools/check-core.f
 \ CHK-SAY-THROW), and src/lib/process.f a walk of the child's tree it could not
 \ finish (PROCESS:WALK-REPORT).
 : LOG-THREW? ( -- bool )
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL {: a:^ u:n :}
-   a u s" threw" STR:CONTAINS? a u s" not walked" STR:CONTAINS? or ;
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL >str {: s:str :}
+   s s" threw" STR:CONTAINS? s s" not walked" STR:CONTAINS? or ;
 
 \ The ways a stopped check.f can leak, each asserted here:
 \ - an orphaned child: check.f's child leads its own process group, so a
@@ -396,7 +395,7 @@ PROCESS:NO-FD FEED-WR !
    s" deadline: check.f exits its refusal status" T-LABEL
    CHECK-REAP PROCESS:STATUS>RC RC>N 70 T=
    s" deadline: one record on stderr names the subject and the deadline" T-LABEL
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL json LATE-RECORD$ T$=
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL >str json LATE-RECORD$ T$=
    s" deadline: stdout holds no record" T-LABEL
    OUT$ FS:FILE-SIZE 0 T=
    s" deadline: the scratch is gone when check.f has ended" T-LABEL
@@ -416,13 +415,13 @@ PROCESS:NO-FD FEED-WR !
    STANDIN$ FS:CHMOD-X ;
 
 : TRUNCATED-RECORD$ ( -- str )
-   SUBJECT$ SOURCE-ROOT:CANON-OS drop {: p:^ pu:n :}
+   SUBJECT$ SOURCE-ROOT:CANON-OS drop {: p:str :}
    SB-RESET
-   s" error[E-PROC-STDERR-CAPACITY]: " SB-APPEND  p pu SB-APPEND
+   s" error[E-PROC-STDERR-CAPACITY]: " SB-APPEND  p SB-APPEND
    s\" : the verifier wrote past its capture of standard error\n  = stderr: at most " SB-APPEND
    VERIFY-ERR-CAP FMT:SB-INT
    s\"  bytes\n  = help: an engine defect wrote it, its stderr is shown above; run the program with `bin/hb " SB-APPEND
-   p pu SB-APPEND
+   p SB-APPEND
    s\" `\n\n" SB-APPEND
    SB$ ;
 
@@ -438,25 +437,25 @@ PROCESS:NO-FD FEED-WR !
    CHECK-ENDED
    s" truncated: check.f exits unavailable" T-LABEL
    CHECK-REAP PROCESS:STATUS>RC RC>N 69 T=
-   TRUNCATED-RECORD$ {: r:^ ru:n :}
+   TRUNCATED-RECORD$ {: r:str :}
    LOG$ FS:FILE-SIZE {: size:n :}
    s" truncated: stderr is the captured stderr, a newline and one record" T-LABEL
-   size  VERIFY-ERR-CAP 1+ ru +  T=
+   size  VERIFY-ERR-CAP 1+ r STR:LEN +  T=
    s" truncated: the record ends stderr" T-LABEL
-   LOG$ size ru - LOG-TEXT ru FS:READ-AT
-   LOG-TEXT ru r ru T$=
+   LOG$ size r STR:LEN - LOG-TEXT r STR:LEN FS:READ-AT
+   LOG-TEXT r STR:LEN >str r T$=
    s" truncated: the record starts its own line" T-LABEL
-   LOG$ size ru - 1- LOG-TEXT 1 FS:READ-AT
+   LOG$ size r STR:LEN - 1- LOG-TEXT 1 FS:READ-AT
    LOG-TEXT c@ 10 T= ;
 
 : LOUD-RECORD$ ( -- str )
-   LOUD$ SOURCE-ROOT:CANON-OS drop {: p:^ pu:n :}
+   LOUD$ SOURCE-ROOT:CANON-OS drop {: p:str :}
    SB-RESET
-   s" error[E-PROC-STDOUT-CAPACITY]: " SB-APPEND  p pu SB-APPEND
+   s" error[E-PROC-STDOUT-CAPACITY]: " SB-APPEND  p SB-APPEND
    s" : the run wrote past its capture" SB-APPEND
    s\" \n  = stdout: at most " SB-APPEND  RUN-OUT-CAP FMT:SB-INT
    s\"  bytes\n  = help: run the program with `bin/hb " SB-APPEND
-   p pu SB-APPEND  s" ` to see its whole output" SB-APPEND
+   p SB-APPEND  s" ` to see its whole output" SB-APPEND
    s\" , or make it write less\n\n" SB-APPEND
    SB$ ;
 
@@ -473,15 +472,15 @@ PROCESS:NO-FD FEED-WR !
    s" loud: check.f exits its refusal status" T-LABEL
    CHECK-REAP PROCESS:STATUS>RC RC>N 70 T=
    s" loud: stderr is the stdout record alone" T-LABEL
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL >str
    LOUD-RECORD$ T$= ;
 
 : QUOTED-RECORD$ ( -- str )
-   QUOTED$ SOURCE-ROOT:CANON-OS drop {: p:^ pu:n :}
+   QUOTED$ SOURCE-ROOT:CANON-OS drop {: p:str :}
    SB-RESET
-   s" error[E-FS-PATH-UNSAFE]: the path `" SB-APPEND  p pu 4 - SB-APPEND  s" \nx.f" SB-APPEND
+   s" error[E-FS-PATH-UNSAFE]: the path `" SB-APPEND  p STR:DATA p STR:LEN 4 - >str SB-APPEND  s" \nx.f" SB-APPEND
    s\" ` holds a double quote, backslash, CR, LF or NUL, so the run cannot quote it\n  = found: a LF at byte " SB-APPEND
-   pu 4 - FMT:SB-INT
+   p STR:LEN 4 - FMT:SB-INT
    s\" \n  = help: rename or move the file so its path holds none of them\n\n" SB-APPEND
    SB$ ;
 
@@ -497,7 +496,7 @@ PROCESS:NO-FD FEED-WR !
    s" quoted: check.f exits its usage status" T-LABEL
    CHECK-REAP PROCESS:STATUS>RC RC>N 64 T=
    s" quoted: one record shows the path on one line and names the byte" T-LABEL
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL QUOTED-RECORD$ T$= ;
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL >str QUOTED-RECORD$ T$= ;
 
 \ check.f's temporary directory is under a TMPDIR whose path holds a double
 \ quote, which the run cannot quote.
@@ -511,8 +510,8 @@ PROCESS:NO-FD FEED-WR !
    s" tmpdir: check.f exits its usage status" T-LABEL
    CHECK-REAP PROCESS:STATUS>RC RC>N 64 T=
    s" tmpdir: the record names the double quote and TMPDIR" T-LABEL
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL
-   BAD-TMP$ SOURCE-ROOT:CANON-OS drop nip {: pu:n :}
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL >str
+   BAD-TMP$ SOURCE-ROOT:CANON-OS drop STR:LEN {: pu:n :}
    SB-RESET
    s\" \n  = found: a double quote at byte " SB-APPEND
    pu 2 - FMT:SB-INT

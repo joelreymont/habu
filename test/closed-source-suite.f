@@ -1,4 +1,3 @@
-split-str
 \ closed-source-suite.f - generated source runs as a closed program.
 require src/lib/codegen.f
 require src/lib/error.f
@@ -13,9 +12,9 @@ CODEGEN:BUFFER GEN
 : GEN+ ( str -- ) GEN CODEGEN:APPEND-STRING ;
 
 \ The declaration every definer here means: `: <name> ( -- n ) <v> ;`.
-: RENDER ( n ^u8 n -- ) {: v:n a:^ u:n :}
+: RENDER ( n str -- ) {: v:n s:str :}
    GEN CODEGEN:RESET
-   s" : " GEN+  a u GEN+  s"  ( -- n ) " GEN+
+   s" : " GEN+  s GEN+  s"  ( -- n ) " GEN+
    v GEN CODEGEN:APPEND-DECIMAL  s"  ;" GEN+ ;
 
 : CROSS ( -- ) GEN CODEGEN:CONTENTS evaluate-closed ;
@@ -25,10 +24,10 @@ CODEGEN:BUFFER GEN
 \ only in what they append: a sound one's product certifies, one leaving a cell
 \ is rejected with a record and 70, and one taking a cell it never pushed
 \ throws 70 with the caller's cells intact.
-: SOUND ( n ^u8 n -- ) RENDER CROSS ;
+: SOUND ( n str -- ) RENDER CROSS ;
 
-: LEAKY ( n str -- ) {: v:n a:^ u:n :}
-   v a u RENDER  s"  " GEN+  v GEN CODEGEN:APPEND-DECIMAL  CROSS ;
+: LEAKY ( n str -- ) {: v:n s:str :}
+   v s RENDER  s"  " GEN+  v GEN CODEGEN:APPEND-DECIMAL  CROSS ;
 
 : GREEDY ( n str -- ) RENDER  s"  drop" GEN+  CROSS ;
 

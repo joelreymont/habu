@@ -1,4 +1,3 @@
-split-str
 \ check-signal-subject.f - the program test/check-signal-test.f has check.f
 \ check (in its run stage's child) and test/capture-tree-test.f captures. It
 \ starts a SLEEPER (/bin/sh becoming `sleep 20`, in its own process group as
@@ -23,12 +22,12 @@ create REPORT 1 cells allot
 
 : REPORT-PID ( fd -- ) {: w:fd :}
    getpid REPORT !
-   w FD>N REPORT 1 cells write 1 cells <> if
+   w FD>N REPORT 1 cells >str write 1 cells <> if
       s" check-signal-subject: report refused" EXIT-STATUS:IOERR die
    then ;
 
 : CLOSED? ( -- bool )
-   s" CHECK_SIGNAL_CLOSED" GETENV nip 0<> ;
+   s" CHECK_SIGNAL_CLOSED" GETENV STR:LEN 0<> ;
 
 \ It opens that FIFO's write end first (src/lib/test/fifo.f) and maps it into
 \ the sleeper, so end of file means nothing the subject ran is left.

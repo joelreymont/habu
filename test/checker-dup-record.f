@@ -1,4 +1,3 @@
-split-str
 \ checker-dup-record.f - a duplicate the checker refuses in the caller's scope
 \ (VERIFY:SOURCE-BUF-IN-SCOPE) leaves the record it collided with intact. CHECK
 \ refuses before its record step's first write: a later-wins entry without the
@@ -24,7 +23,7 @@ variable SRC-U
 \ x86-64 refuses a quotation that reads a local, so the source span travels
 \ through these two cells to the caught body.
 : ACT ( -- )
-   SRC-A @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
+   SRC-A @ SRC-U @ >str VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 create OUT $1000 allot
 create ERR $1000 allot
@@ -44,9 +43,9 @@ public
 \ Verify one span in the caller's scope with the checker's diagnostics
 \ collected; 0 when it certified, else the throw code.
 : VERIFY-QUIET ( str -- n )
-   {: a:^ u:n :}
-   a SRC-A !
-   u SRC-U !
+   {: s:str :}
+   s STR:DATA SRC-A !
+   s STR:LEN SRC-U !
    REJECTION:CAPTURE
    [: ACT ;] catch {: rc:n :}
    REJECTION:BUFFER-OFF
@@ -54,21 +53,21 @@ public
 
 \ The exit code of a child engine that reads TOP-SCAN$ as its program.
 : TOP-SCAN-RC ( -- n )
-   TOP-SCAN$ {: src:^ u:n :}
+   TOP-SCAN$ {: src:str :}
    PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ src u OUT $1000 >LEN ERR $1000 >LEN
+   ENGINE-CANDIDATE:PATH$ src OUT $1000 >LEN ERR $1000 >LEN
    PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE
    PCAP-RESULT:>N {: outu:n erru:n rc:n :}
-   ERR erru type
+   ERR erru >str type
    rc ;
 
 \ The same span in multi-error mode, where a rejection's record is kept instead
 \ of thrown: the throw code, then the rejections counted.
 : MULTI-QUIET ( str -- n n )
-   {: a:^ u:n :}
+   {: s:str :}
    CHECK:MULTI-ERR-BEGIN
-   a u VERIFY-QUIET
+   s VERIFY-QUIET
    CHECK:MULTI-ERR-END ;
 
 : DIAG$ ( -- str )
@@ -84,7 +83,7 @@ s" a certified word redefined with a signature is refused" T-LABEL
 s" : CDR-ONE ( -- n ) 2 ;" CDR:VERIFY-QUIET 70 T=
 s" a caller verified after it certifies" T-LABEL
 s" : CDR-ONE-USE ( -- n ) CDR-ONE ;" CDR:VERIFY-QUIET 0 T=
-CDR:DIAG$ nip 0 T=
+CDR:DIAG$ STR:LEN 0 T=
 
 : CDR-TWO ( -- n ) 2 ;
 
@@ -92,7 +91,7 @@ s" a certified word redefined without a signature is refused" T-LABEL
 s" : CDR-TWO 3 ;" CDR:VERIFY-QUIET 70 T=
 s" a caller verified after it certifies" T-LABEL
 s" : CDR-TWO-USE ( -- n ) CDR-TWO ;" CDR:VERIFY-QUIET 0 T=
-CDR:DIAG$ nip 0 T=
+CDR:DIAG$ STR:LEN 0 T=
 
 \ REJECT-DUPLICATE (verify-source.f) leaves the body unchecked.
 : CDR-THREE ( -- n ) 3 ;
@@ -104,7 +103,7 @@ CDR:DIAG$ s" error[E-DUPLICATE-DEFINITION]: `CDR-THREE`" STR:CONTAINS? TTRUE
 CDR:DIAG$ s" E-MISMATCH" STR:CONTAINS? 0= TTRUE
 s" a caller verified after it certifies" T-LABEL
 s" : CDR-THREE-USE ( -- n ) CDR-THREE ;" CDR:VERIFY-QUIET 0 T=
-CDR:DIAG$ nip 0 T=
+CDR:DIAG$ STR:LEN 0 T=
 
 \ Compiled by this load: each definition passes the checker hook or the load
 \ dies with the hook's diagnostic.

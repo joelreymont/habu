@@ -295,9 +295,9 @@ variable CS-CHILD-ERR-U
    CS-IMAGE-BUILD
    CS-IMAGE-RUN
    S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-wrong-status.f\" included\n"
-      s" catch-success-wrong-status.f:11:18" CS-SAVED-REFUSAL
+      s" catch-success-wrong-status.f:10:18" CS-SAVED-REFUSAL
    S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-override.f\" included\n"
-      s" catch-success-override.f:12:24" CS-SAVED-REFUSAL ;
+      s" catch-success-override.f:11:24" CS-SAVED-REFUSAL ;
 
 : CS-SECTION-IMAGE ( -- )
    s" a built hb executes a guarded catch and still refuses forged proof" T-LABEL

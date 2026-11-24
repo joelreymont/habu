@@ -1,4 +1,3 @@
-split-str
 \ input-underflow-refusals.f - rejected programs for "a definition may not
 \ consume below its declared inputs". The refusal names the consuming token and
 \ both counts. Controls: a short and mistyped call keeps its own mismatch, and a
@@ -36,11 +35,11 @@ private
 : MISMATCH$ ( -- str )
    S\" \"code\":\"E-MISMATCH\"" ;
 
-: HAS? ( ^u8 n -- )
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
+: HAS? ( str -- )
+   REJECTION:BUFFER$ swap STR:CONTAINS? TTRUE ;
 
 : LACKS? ( str -- )
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? TFALSE ;
+   REJECTION:BUFFER$ swap STR:CONTAINS? TFALSE ;
 
 : TOKEN=? ( str -- bool )
    SB-RESET
@@ -53,10 +52,10 @@ private
 : NOT-TOKEN? ( str -- )
    TOKEN=? TFALSE ;
 
-: SHORT-BY? ( str str -- ) {: needs:^ needsu:n has:^ hasu:n :}
+: SHORT-BY? ( str str -- ) {: needs:str has:str :}
    SB-RESET
    s" input underflow: the call takes more cells than the definition's declared inputs leave (needs " SB-APPEND
-   needs needsu SB-APPEND  s" , has " SB-APPEND  has hasu SB-APPEND  s" )" SB-APPEND
+   needs SB-APPEND  s" , has " SB-APPEND  has SB-APPEND  s" )" SB-APPEND
    SB$ HAS? ;
 
 : NAMED ( -- )
@@ -68,10 +67,10 @@ private
    SB$ HAS? ;
 
 : ROWS? ( str str -- )   \ the record's expected and found notes
-   {: e:^ eu:n a:^ au:n :}
+   {: e:str a:str :}
    SB-RESET
-   S\" \"expected\":\"" SB-APPEND  e eu SB-APPEND
-   S\" \",\"found\":\"" SB-APPEND  a au SB-APPEND  34 SB-APPEND-C
+   S\" \"expected\":\"" SB-APPEND  e SB-APPEND
+   S\" \",\"found\":\"" SB-APPEND  a SB-APPEND  34 SB-APPEND-C
    SB$ HAS? ;
 
 \ ---- the shortfall itself ----------------------------------------------------

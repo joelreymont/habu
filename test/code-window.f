@@ -1,4 +1,3 @@
-split-str
 \ code-window.f - the code region's RX view is never writable. The region is
 \ mapped twice (src/habu/habu2.f EM-MMAP-CODE-REGION): code runs from DBASE and
 \ every store goes to the RW alias at DBASE plus REGION-ALIAS:DELTA-CELL. A
@@ -25,21 +24,21 @@ $800 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: CAPTURE ( ^u8 n -- len len PROCESS:ending ) {: src:^ u:n :}
-   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
+: CAPTURE ( str -- len len PROCESS:ending ) {: src:str :}
+   src OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
-: EXPECT ( ^u8 n n -- ) {: src:^ u:n want:n :}
-   src u CAPTURE {: outu:len erru:len oc :}
-   src u OUT outu LEN>N ERR erru LEN>N oc want T-ENDING-EXITED= ;
+: EXPECT ( str n -- ) {: src:str want:n :}
+   src CAPTURE {: outu:len erru:len oc :}
+   src OUT outu LEN>N >str ERR erru LEN>N >str oc want T-ENDING-EXITED= ;
 
 \ The memory fault is thrown, uncaught: exit 110 after its record.
-: TRAPS ( ^u8 n -- ) {: src:^ u:n :}
-   src u CAPTURE {: outu:len erru:len oc :}
-   src u OUT outu LEN>N ERR erru LEN>N oc 110
+: TRAPS ( str -- ) {: src:str :}
+   src CAPTURE {: outu:len erru:len oc :}
+   src OUT outu LEN>N >str ERR erru LEN>N >str oc 110
    T-ENDING-EXITED=
-   ERR erru LEN>N FAULT-RECORD$ STR:STARTS-WITH? TTRUE ;
+   ERR erru LEN>N >str FAULT-RECORD$ STR:STARTS-WITH? TTRUE ;
 
-: ACCEPTS ( ^u8 n -- )  0 EXPECT ;
+: ACCEPTS ( str -- )  0 EXPECT ;
 
 : TEST-RX-VIEW ( -- )
    s" a raw store above CP faults: the RX view is not writable" T-LABEL
@@ -59,9 +58,9 @@ create ERR CAP allot
 : TEST-FORK-REGION ( -- )
    s" a forked child's dictionary writes leave the parent unchanged" T-LABEL
    S\" : CW-KEEP ( -- n ) 17 ;\n: CW-CHILD ( -- ) s\" undefine CW-KEEP\" evaluate-closed ;\n: CW-FORK ( -- ) PROC-FORK:CHECKED dup PID>N 0= if drop ['] CW-CHILD ERROR:CHILD-TOP then PID>N wait-status 0<> if 75 throw then ;\nCW-FORK CW-KEEP .\n"
-   2dup CAPTURE {: outu:len erru:len oc :}
-   OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
-   OUT outu LEN>N S\" 17\n" T$=
+   dup CAPTURE {: outu:len erru:len oc :}
+   OUT outu LEN>N >str ERR erru LEN>N >str oc 0 T-ENDING-EXITED=
+   OUT outu LEN>N >str S\" 17\n" T$=
    erru LEN>N 0 T= ;
 
 public

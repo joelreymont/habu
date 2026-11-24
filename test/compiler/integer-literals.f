@@ -1,4 +1,3 @@
-split-str
 \ Integer admission is shared by interpret, evaluate, and native compilation.
 require src/lib/string.f
 require src/lib/test.f
@@ -17,12 +16,12 @@ package INTEGER-LITERALS-TEST
 : $10000000000000000G ( -- n ) 42 ;
 
 
-: PARSED= ( str n -- ) {: src:^ len:n want:n :}
-   src len num-parse {: got:n flt:bool ok:bool :}
+: PARSED= ( str n -- ) {: src:str want:n :}
+   src num-parse {: got:n flt:bool ok:bool :}
    ok TTRUE flt TFALSE got want T= ;
 
 
-: REFUSED ( ^u8 n -- )
+: REFUSED ( str -- )
    num-parse {: got:n flt:bool ok:bool :}
    ok TFALSE flt TFALSE got 0 T= ;
 
@@ -53,25 +52,25 @@ package INTEGER-LITERALS-TEST
    s" $10000000000000000G" REFUSED ;
 
 
-: BAD-INTERPRETED ( str -- ) {: lit:^ len:n :}
+: BAD-INTERPRETED ( str -- ) {: lit:str :}
    SB-RESET
-   lit len SB-APPEND
+   lit SB-APPEND
    s"  drop" SB-APPEND
    [: SB$ evaluate-closed ;] 70 TTHROWSQ ;
 
 
-: BAD-COMPILED ( str -- ) {: lit:^ len:n :}
+: BAD-COMPILED ( str -- ) {: lit:str :}
    SB-RESET
    s" : INTEGER-OVERFLOW-BAD ( -- n ) " SB-APPEND
-   lit len SB-APPEND
+   lit SB-APPEND
    s"  ;" SB-APPEND
    [: SB$ evaluate-closed ;] 70 TTHROWSQ ;
 
 
-: BAD-LITERAL ( str -- ) {: lit:^ len:n :}
-   lit len REFUSED
-   lit len BAD-INTERPRETED
-   lit len BAD-COMPILED ;
+: BAD-LITERAL ( str -- ) {: lit:str :}
+   lit REFUSED
+   lit BAD-INTERPRETED
+   lit BAD-COMPILED ;
 
 
 : REFUSALS ( -- )

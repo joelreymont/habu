@@ -1,4 +1,3 @@
-split-str
 \ certify-does-definer.f - certification knows what a `does>` definer publishes.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f \
 \   src/habu/verify-source.f test/certify-does-definer.f
@@ -36,10 +35,10 @@ create AREA 2 cells allot
 : MAKE ( n -- )
    {: off:n :}
    parse-name
-   {: name:^ nameu:n :}
+   {: name:str :}
    TEXT CODEGEN:RESET
    s" : " TEXT CODEGEN:APPEND-STRING
-   name nameu TEXT CODEGEN:APPEND-STRING
+   name TEXT CODEGEN:APPEND-STRING
    s"  ( -- ^n ) CDD-GEN:AREA " TEXT CODEGEN:APPEND-STRING
    off TEXT CODEGEN:APPEND-DECIMAL
    s"  + ;" TEXT CODEGEN:APPEND-STRING
@@ -345,12 +344,12 @@ variable CDD-SRC-U
 \ x86-64 refuses a quotation that reads a local, so the span travels to the
 \ caught read through these two cells.
 : CDD-READ ( -- )
-   CDD-SRC-A @ CDD-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
+   CDD-SRC-A @ CDD-SRC-U @ >str VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : CDD-SPAN! ( str -- )
-   {: a:^ u:n :}
-   a CDD-SRC-A !
-   u CDD-SRC-U ! ;
+   {: s:str :}
+   s STR:DATA CDD-SRC-A !
+   s STR:LEN CDD-SRC-U ! ;
 
 \ A neutral scope that pops, as tools/check.f reads a source.
 : CDD-SCOPED ( str -- n )
@@ -375,11 +374,11 @@ variable CDD-SRC-U
 \ after it, `evaluate` or a deferred word is rejected too: kept, it makes the
 \ pre-pass take the token after a call as a made name the load never makes.
 : CDD-ROW-REJECTED ( [ -- ] str -- )
-   {: wa:^ wu:n :}
+   {: ws:str :}
    REJECTION:CAPTURE
    70 TTHROWSQ
    REJECTION:BUFFER$ s" error[E-GENERATES-ROW]" STR:CONTAINS? TTRUE
-   REJECTION:BUFFER$ wa wu STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ ws STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 
 : CDD-SECTION-GENERATES-REFUSED ( -- )
@@ -411,10 +410,10 @@ variable CDD-SRC-U
 defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
 
 : CDD-NOT-CERTIFIED ( str str -- )
-   {: sa:^ su:n wa:^ wu:n :}
+   {: ss:str ws:str :}
    REJECTION:CAPTURE
-   sa su TEST-EVAL:RC  70 T=
-   REJECTION:BUFFER$ wa wu STR:CONTAINS? TTRUE
+   ss TEST-EVAL:RC  70 T=
+   REJECTION:BUFFER$ ws STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 
 : CDD-NP-REFUSED ( str -- )

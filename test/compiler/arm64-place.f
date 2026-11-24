@@ -1,4 +1,3 @@
-split-str
 \ arm64-place.f - LINKER:WRITE's placement of a build's code, checked on the
 \ stripped programs one build writes after loading
 \ test/compiler/arm64-place-fixture.f, each run in its own process. run prints
@@ -35,18 +34,18 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 create ROOT-BUF PATH-CAP allot variable ROOT-U
 create PROG-BUF PATH-CAP allot
 
-: ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT-BUF ROOT-U @ >str ;
 
 : PROG$ ( str -- str )
-   {: name:^ name-n:n :}
-   ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
-   PROG-BUF u ;
+   {: name:str :}
+   ROOT$ name PROG-BUF FS:JOIN-PATH {: u:n :}
+   PROG-BUF u >str ;
 
 \ The bytes of the file at the path, in storage its size makes.
-: FILE-BYTES ( str -- str ) {: p:^ pu:n :}
-   p pu FS:FILE-SIZE MEM-ALLOC-BYTES {: b:^ bu:n :}
-   p pu b bu FS:READ-ALL {: got:n :}
-   b got ;
+: FILE-BYTES ( str -- str ) {: p:str :}
+   p FS:FILE-SIZE MEM-ALLOC-BYTES {: b:^ bu:n :}
+   p b bu FS:READ-ALL {: got:n :}
+   b got >str ;
 
 
 : FIXTURE ( -- )
@@ -62,9 +61,9 @@ create PROG-BUF PATH-CAP allot
 
 
 : WRITE-PROG ( str str -- )
-   {: word:^ word-n:n file:^ file-n:n :}
-   word word-n STORE-ENTRY
-   file file-n PROG$ LINKER:WRITE ;
+   {: word:str file:str :}
+   word STORE-ENTRY
+   file PROG$ LINKER:WRITE ;
 
 
 \ run is linked again after the other programs.
@@ -77,14 +76,14 @@ create PROG-BUF PATH-CAP allot
 
 
 : RUN-PROG ( CMD:command str str -- CMD:command )
-   {: file:^ file-n:n out:^ out-n:n :}
-   file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:OUT$ out out-n STR:=  rc 0=  and 0= if
-      s" arm64-place: " type file file-n type s"  exited " type rc .
+   {: file:str out:str :}
+   file PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:OUT$ out STR:=  rc 0=  and 0= if
+      s" arm64-place: " type file type s"  exited " type rc .
       s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr
    then
-   file file-n T-LABEL  CMD:OUT$ out out-n T$=
-   file file-n T-LABEL  rc 0 T= ;
+   file T-LABEL  CMD:OUT$ out T$=
+   file T-LABEL  rc 0 T= ;
 
 : RUN-RUN ( CMD:command -- CMD:command ) s" run" s\" 11\n" RUN-PROG ;
 : RUN-TICK ( CMD:command -- CMD:command ) s" tick" s\" 8\n" RUN-PROG ;
@@ -93,8 +92,8 @@ create PROG-BUF PATH-CAP allot
 
 \ Whether the map has a row for the word: a row's name stands between spaces.
 : ROW? ( str str -- bool )
-   {: map:^ map-n:n name:^ name-n:n :}
-   map map-n PROG$ FILE-BYTES name name-n STR:CONTAINS? ;
+   {: map:str name:str :}
+   map PROG$ FILE-BYTES name STR:CONTAINS? ;
 
 
 : RUN-MAP ( -- )
@@ -157,8 +156,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   s" habu-place" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT-BUF u BYTE-COPY  u ROOT-U !
+   s" habu-place" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA ROOT-BUF d STR:LEN BYTE-COPY  d STR:LEN ROOT-U !
    false RTARGET:HOST-TARGET HB-BUILD-CORE:KERNEL-BUILD
    s" app" RTARGET:HOST-TARGET [: BODY ;] LINKER:WITH
    [: RUN-RUN ;] CMD:WITH-COMMAND

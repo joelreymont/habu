@@ -1,4 +1,3 @@
-split-str
 \ base-pointer-arith-refusals.f - rejected programs and controls for "a pointer
 \ derived from NULL-PTR holds a plain value". Each refusal answers E-RAW-CELL-PTR
 \ with a reason per kind. TVK-NULL is fenced in value position and permissive
@@ -77,11 +76,11 @@ private
 : NP-SUGGEST$ ( -- str )
    s" declare the pointee the base address reaches" ;
 
-: HAS? ( ^u8 n -- )
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
+: HAS? ( str -- )
+   REJECTION:BUFFER$ swap STR:CONTAINS? TTRUE ;
 
 : LACKS? ( str -- )
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? TFALSE ;
+   REJECTION:BUFFER$ swap STR:CONTAINS? TFALSE ;
 
 \ Asserting the reason, not only the code, keeps each rule's prose its own.
 : REFUSED-CODE ( str -- )   \ leaves the diagnostic armed for the reason assertions
@@ -110,7 +109,7 @@ private
    DB-REASON$ LACKS?  NULL-REASON$ LACKS?  RAW-REASON$ LACKS?
    DISARM ;
 
-: CERTIFIES ( ^u8 n -- )
+: CERTIFIES ( str -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ ---- the forgery: a nominal identity out of a base address -------------------
@@ -369,7 +368,7 @@ private
    s" BPA-LN ( ^option<bpa-tok> -- n ) PTR>N" CERTIFIES
    s" BPA-QIO ( ^option<a> -- n ) BPA-QI" CERTIFIES ;
 
-: MISMATCH ( ^u8 n -- )
+: MISMATCH ( str -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    S\" \"code\":\"E-MISMATCH\"" HAS?

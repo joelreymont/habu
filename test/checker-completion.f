@@ -1,4 +1,3 @@
-split-str
 \ checker-completion.f - the spellings that bind at a cursor, as the checker
 \ selects them.
 \   bin/hb --load test/checker-completion.f
@@ -51,22 +50,23 @@ variable CALLS
 PTR-VARIABLE FILTER-A   variable FILTER-U
 
 : KEPT-RESET ( str -- )
-   FILTER-U !  FILTER-A !
+   {: s:str :}
+   s STR:LEN FILTER-U !  s STR:DATA FILTER-A !
    0 KEPT-N !  0 KEPT-OVER !  0 CALLS ! ;
 
 : FILTERED? ( str -- bool )
-   {: a:^ u:n :}
-   u FILTER-U @ < IF false EXIT THEN
-   a FILTER-U @ FILTER-A @ FILTER-U @ STR:=CI ;
+   {: s:str :}
+   s STR:LEN FILTER-U @ < IF false EXIT THEN
+   s STR:DATA FILTER-U @ >str FILTER-A @ FILTER-U @ >str STR:=CI ;
 
 \ Whether NAME passes the filter and fits the next row, which then holds it.
 : KEPT-NAME? ( str -- bool )
-   {: a:^ u:n :}
+   {: s:str :}
    1 CALLS +!
-   a u FILTERED? 0= IF false EXIT THEN
-   KEPT-N @ KEPT-CAP >=  u KEPT-W >  or IF 1 KEPT-OVER +! false EXIT THEN
-   a  KEPT-NAMES KEPT-N @ KEPT-W * +  u BYTE-COPY
-   u  KEPT-LENS KEPT-N @ cells + !
+   s FILTERED? 0= IF false EXIT THEN
+   KEPT-N @ KEPT-CAP >=  s STR:LEN KEPT-W >  or IF 1 KEPT-OVER +! false EXIT THEN
+   s STR:DATA  KEPT-NAMES KEPT-N @ KEPT-W * +  s STR:LEN BYTE-COPY
+   s STR:LEN  KEPT-LENS KEPT-N @ cells + !
    true ;
 
 \ The next row's bytes S to E; the row is kept.
@@ -78,54 +78,54 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
 
 \ A spelling VERIFY:ON-CANDIDATE offers, with the path of its declaration's
 \ file and where its declaring token starts and ends there.
-: KEEP ( ^u8 n ^u8 n n n -- )
-   {: a:^ u:n p:^ pu:n s:n e:n :}
-   a u KEPT-NAME? 0= IF EXIT THEN
-   pu KEPT-PATH-W > IF 1 KEPT-OVER +! EXIT THEN
-   p  KEPT-PATHS KEPT-N @ KEPT-PATH-W * +  pu BYTE-COPY
-   pu  KEPT-PATH-LENS KEPT-N @ cells + !
+: KEEP ( str str n n -- )
+   {: a:str p:str s:n e:n :}
+   a KEPT-NAME? 0= IF EXIT THEN
+   p STR:LEN KEPT-PATH-W > IF 1 KEPT-OVER +! EXIT THEN
+   p STR:DATA  KEPT-PATHS KEPT-N @ KEPT-PATH-W * +  p STR:LEN BYTE-COPY
+   p STR:LEN  KEPT-PATH-LENS KEPT-N @ cells + !
    s e KEPT-SPAN ;
 
 : KEPT$ ( n -- str )
    {: i:n :}
-   KEPT-NAMES i KEPT-W * +  KEPT-LENS i cells + @ ;
+   KEPT-NAMES i KEPT-W * +  KEPT-LENS i cells + @ >str ;
 
 : KEPT-PATH$ ( n -- str )
    {: i:n :}
-   KEPT-PATHS i KEPT-PATH-W * +  KEPT-PATH-LENS i cells + @ ;
+   KEPT-PATHS i KEPT-PATH-W * +  KEPT-PATH-LENS i cells + @ >str ;
 
 : KEPT-AT ( str -- n )
-   {: a:^ u:n :}
+   {: s:str :}
    KEPT-N @ 0 ?DO
-      a u i KEPT$ STR:= IF i UNLOOP EXIT THEN
+      s i KEPT$ STR:= IF i UNLOOP EXIT THEN
    LOOP
    -1 ;
 
 : KEPT-CI ( str -- n )
-   {: a:^ u:n :}
+   {: s:str :}
    0  KEPT-N @ 0 ?DO
-      a u i KEPT$ STR:=CI IF 1 + THEN
+      s i KEPT$ STR:=CI IF 1 + THEN
    LOOP ;
 
 : KEPT-ALL ( -- )
    s" the filter's spellings fit the table" T-LABEL
    KEPT-OVER @ 0 T= ;
 
-: KEPT-LOC ( n ^u8 n n n -- )
-   {: i:n p:^ pu:n s:n e:n :}
-   i KEPT-PATH$ p pu T$=
+: KEPT-LOC ( n str n n -- )
+   {: i:n p:str s:n e:n :}
+   i KEPT-PATH$ p T$=
    KEPT-STARTS i cells + @ s T=
    KEPT-ENDS i cells + @ e T= ;
 
-: ABSENT ( ^u8 n -- )
-   {: a:^ u:n :}
-   a u T-LABEL
-   a u KEPT-CI 0 T= ;
+: ABSENT ( str -- )
+   {: a:str :}
+   a T-LABEL
+   a KEPT-CI 0 T= ;
 
 : FIND$ ( str str -- n )
-   {: a:^ u:n b:^ v:n :}
-   u v - 1 + 0 ?DO
-      a i + v b v STR:= IF i UNLOOP EXIT THEN
+   {: a:str b:str :}
+   a STR:LEN b STR:LEN - 1 + 0 ?DO
+      a STR:DATA i + b STR:LEN >str b STR:= IF i UNLOOP EXIT THEN
    LOOP
    -1 ;
 
@@ -138,13 +138,13 @@ variable SUBJECT-N
 
 \ Append TEXT and a newline to the subject.
 : LINE+ ( str -- )
-   {: a:^ u:n :}
-   SUBJECT-N @ u + 1 + SUBJECT-CAP > IF
+   {: s:str :}
+   SUBJECT-N @ s STR:LEN + 1 + SUBJECT-CAP > IF
       s" checker-completion: a subject longer than SUBJECT-CAP" EXIT-STATUS:FULL die
    THEN
-   a  SUBJECT-BUF SUBJECT-N @ +  u BYTE-COPY
-   10  SUBJECT-BUF SUBJECT-N @ u + +  c!
-   u 1 + SUBJECT-N +! ;
+   s STR:DATA  SUBJECT-BUF SUBJECT-N @ +  s STR:LEN BYTE-COPY
+   10  SUBJECT-BUF SUBJECT-N @ s STR:LEN + +  c!
+   s STR:LEN 1 + SUBJECT-N +! ;
 
 : SUBJECT-OF ( str -- str )
    0 SUBJECT-N !
@@ -156,29 +156,29 @@ variable SUBJECT-N
    s" package CMPX public : CMPAMB ( -- n ) 7 ; ;package" LINE+
    s" package CMPY public : CMPAMB ( -- n ) 8 ; ;package" LINE+
    LINE+
-   SUBJECT-BUF SUBJECT-N @ ;
+   SUBJECT-BUF SUBJECT-N @ >str ;
 
 \ Byte K into the last NEEDLE in TEXT, which a subject's body holds.
 : CURSOR-AT ( str str n -- n )
-   {: a:^ u:n b:^ v:n k:n :}
-   -1  u v - 1 + 0 ?DO
-      a i + v b v STR:= IF drop i THEN
+   {: a:str b:str k:n :}
+   -1  a STR:LEN b STR:LEN - 1 + 0 ?DO
+      a STR:DATA i + b STR:LEN >str b STR:= IF drop i THEN
    LOOP
    k + ;
 
 PTR-VARIABLE RUN-A   variable RUN-U
 
 : SUBJECT-COMPOSE ( -- )
-   RUN-A @ RUN-U @ SUBJECT-PATH$ 2dup VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
+   RUN-A @ RUN-U @ >str SUBJECT-PATH$ dup VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
-: UNKEPT ( ^u8 n ^u8 n n n -- ) 2drop 2drop 2drop ;
+: UNKEPT ( str str n n -- ) 2drop drop drop ;
 
 \ Run Q, which composes TEXT at SUBJECT-PATH$, in a neutral scope of its own so
 \ no case sees another's declarations, each spelling offered to V; the throw
 \ code.
-: COMPOSE-RUN ( str [ -- ] [ ^u8 n ^u8 n n n -- ] -- n )
-   {: a:^ u:n q v :}
-   a RUN-A !  u RUN-U !
+: COMPOSE-RUN ( str [ -- ] [ str str n n -- ] -- n )
+   {: s:str q v :}
+   s STR:DATA RUN-A !  s STR:LEN RUN-U !
    v is VERIFY:ON-CANDIDATE
    [: q CHECK:SCOPED ;] catch
    \ No word reads a defer's action: UNKEPT drops each spelling, as the default.
@@ -195,22 +195,22 @@ PTR-VARIABLE RUN-A   variable RUN-U
 \ Compose BODY, then PREFIX alone on a top-level line with the cursor at its
 \ end. A prefix that names nothing is rejected there, so no code is read.
 : TOP-AT ( str str -- )
-   {: b:^ bu:n p:^ pu:n :}
-   b bu SUBJECT-OF 2drop  p pu LINE+
-   SUBJECT-BUF SUBJECT-N @  SUBJECT-N @ 1 -  COMPOSE-AT drop ;
+   {: b:str p:str :}
+   b SUBJECT-OF drop  p LINE+
+   SUBJECT-BUF SUBJECT-N @ >str  SUBJECT-N @ 1 -  COMPOSE-AT drop ;
 
 \ Whether byte AT of TEXT is a blank or past either end: a token's edge.
 : EDGE? ( str n -- bool )
-   {: a:^ u:n at:n :}
-   at 0 <  at u >=  or IF true EXIT THEN
-   a at + c@ 33 < ;
+   {: s:str at:n :}
+   at 0 <  at s STR:LEN >=  or IF true EXIT THEN
+   s STR:DATA at + c@ 33 < ;
 
 \ Where the first token spelled TOKEN starts in TEXT at or after byte FROM.
 : TOKEN-AT ( str str n -- n )
-   {: a:^ u:n b:^ v:n from:n :}
-   u v - 1 + from ?DO
-      a i + v b v STR:=
-      a u i 1 - EDGE? and  a u i v + EDGE? and
+   {: a:str b:str from:n :}
+   a STR:LEN b STR:LEN - 1 + from ?DO
+      a STR:DATA i + b STR:LEN >str b STR:=
+      a i 1 - EDGE? and  a i b STR:LEN + EDGE? and
       IF i UNLOOP EXIT THEN
    LOOP
    -1 ;
@@ -218,51 +218,51 @@ PTR-VARIABLE RUN-A   variable RUN-U
 \ Where the first token spelled TOKEN at or after byte FROM of the last
 \ subject composed starts and ends.
 : SPAN-FROM ( str n -- n n )
-   {: t:^ tu:n from:n :}
-   RUN-A @ RUN-U @ t tu from TOKEN-AT  dup tu + ;
+   {: t:str from:n :}
+   RUN-A @ RUN-U @ >str t from TOKEN-AT  dup t STR:LEN + ;
 
 \ The spelling after its last colon.
 : TAIL ( str -- str )
-   {: a:^ u:n :}
-   u 0 ?DO
-      a u 1 - i - + c@ 58 = IF a u i - + i UNLOOP EXIT THEN
+   {: s:str :}
+   s STR:LEN 0 ?DO
+      s STR:DATA s STR:LEN 1 - i - + c@ 58 = IF s STR:DATA s STR:LEN i - + i >str UNLOOP EXIT THEN
    LOOP
-   a u ;
+   s ;
 
 \ NAME was offered exactly so spelled, from PATH's bytes S to E.
 : SPELLED ( str str n n -- )
-   {: a:^ u:n p:^ pu:n s:n e:n :}
-   a u T-LABEL
-   a u KEPT-AT {: i:n :}
+   {: a:str p:str s:n e:n :}
+   a T-LABEL
+   a KEPT-AT {: i:n :}
    i 0 >= TTRUE
    i 0 < IF EXIT THEN
-   i p pu s e KEPT-LOC ;
+   i p s e KEPT-LOC ;
 
 \ NAME was offered once, exactly so spelled, from PATH's bytes S to E.
 : OFFERED ( str str n n -- )
-   {: a:^ u:n p:^ pu:n s:n e:n :}
-   a u p pu s e SPELLED
-   a u T-LABEL
-   a u KEPT-CI 1 T= ;
+   {: a:str p:str s:n e:n :}
+   a p s e SPELLED
+   a T-LABEL
+   a KEPT-CI 1 T= ;
 
 \ NAME was offered at its declaring token in the last subject composed: the
 \ first token after the first AFTER spelled as NAME's tail.
 : PLACED-AFTER ( str str -- )
-   {: a:^ u:n f:^ fu:n :}
-   a u SUBJECT-PATH$
-   a u TAIL  RUN-A @ RUN-U @ f fu FIND$ fu +  SPAN-FROM
+   {: s:str f:str :}
+   s SUBJECT-PATH$
+   s TAIL  RUN-A @ RUN-U @ >str f FIND$ f STR:LEN +  SPAN-FROM
    OFFERED ;
 
 : PLACED ( str -- )
    s" " PLACED-AFTER ;
 
 \ NAME was offered as a local is: exactly so spelled, with no path or bytes.
-: LOCAL ( ^u8 n -- )
+: LOCAL ( str -- )
    s" " 0 0 SPELLED ;
 
 \ NAME was offered once, exactly so spelled, with no path or bytes: a word
 \ only the dictionary holds.
-: UNPLACED ( ^u8 n -- )
+: UNPLACED ( str -- )
    s" " 0 0 OFFERED ;
 
 \ How this can fail, each one a case below:
@@ -312,7 +312,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 : CASE-PARTIAL ( -- )
    s" cmp" KEPT-RESET
    s" : CMPC ( -- n ) CMPA CMPB + ;" SUBJECT-OF
-   2dup s" CMPB" 2 CURSOR-AT COMPOSE-AT
+   dup s" CMPB" 2 CURSOR-AT COMPOSE-AT
    s" a partial token's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPGONE" ABSENT
@@ -325,14 +325,14 @@ PTR-VARIABLE RUN-A   variable RUN-U
 : CASE-GAP ( -- )
    s" cmp" KEPT-RESET
    s" : CMPC1 ( -- n ) CMPA CMPB + ;" SUBJECT-OF
-   2dup s" CMPB" 0 CURSOR-AT COMPOSE-AT
+   dup s" CMPB" 0 CURSOR-AT COMPOSE-AT
    s" the gap's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPA" PLACED
    s" CMPB" PLACED
    s" cmp" KEPT-RESET
    s" : CMPC1 ( -- n ) CMPA CMPB + ; : CMPC2 ( -- n ) CMPA CMPB + ;" SUBJECT-OF
-   2dup s" ;" 0 CURSOR-AT COMPOSE-AT
+   dup s" ;" 0 CURSOR-AT COMPOSE-AT
    s" the end's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPA" PLACED
@@ -341,11 +341,11 @@ PTR-VARIABLE RUN-A   variable RUN-U
 
 : CASE-NOT-BODY ( -- )
    s" cmp" KEPT-RESET
-   s" : CMPC3 ( -- n ) CMPA ;" SUBJECT-OF  2dup s" CMPC3" 2 CURSOR-AT COMPOSE-AT
+   s" : CMPC3 ( -- n ) CMPA ;" SUBJECT-OF  dup s" CMPC3" 2 CURSOR-AT COMPOSE-AT
    s" the name's check runs through" T-LABEL 0 T=
    s" a cursor in the name offers nothing" T-LABEL
    CALLS @ 0 T=
-   s" : CMPC4 ( -- n ) CMPA ;" SUBJECT-OF  2dup s" --" 1 CURSOR-AT COMPOSE-AT
+   s" : CMPC4 ( -- n ) CMPA ;" SUBJECT-OF  dup s" --" 1 CURSOR-AT COMPOSE-AT
    s" the signature's check runs through" T-LABEL 0 T=
    s" a cursor in the signature offers nothing" T-LABEL
    CALLS @ 0 T= ;
@@ -354,12 +354,12 @@ PTR-VARIABLE RUN-A   variable RUN-U
 \ it, with no location.
 : CASE-ENGINE ( -- )
    s" du" KEPT-RESET
-   s" : CMPN ( n -- n n ) dup ;" SUBJECT-OF  2dup s" dup ;" 2 CURSOR-AT COMPOSE-AT
+   s" : CMPN ( n -- n n ) dup ;" SUBJECT-OF  dup s" dup ;" 2 CURSOR-AT COMPOSE-AT
    s" the engine word's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" dup" UNPLACED
    s" byte-cop" KEPT-RESET
-   s" : CMPN2 ( n -- n ) ;" SUBJECT-OF  2dup s" ;" 0 CURSOR-AT COMPOSE-AT
+   s" : CMPN2 ( n -- n ) ;" SUBJECT-OF  dup s" ;" 0 CURSOR-AT COMPOSE-AT
    s" the empty body's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" BYTE-COPY" UNPLACED ;
@@ -369,7 +369,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 : CASE-LOCAL-CASE ( -- )
    s" it" KEPT-RESET
    s" : CMPK ( n n -- n ) {: item:n ITEM:n :} item ITEM + ;" SUBJECT-OF
-   2dup s" ITEM +" 2 CURSOR-AT COMPOSE-AT
+   dup s" ITEM +" 2 CURSOR-AT COMPOSE-AT
    s" the locals' check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" item" LOCAL
@@ -380,7 +380,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 : CASE-LOCAL ( -- )
    s" cmp" KEPT-RESET
    s" : CMPL ( n -- n ) {: CMPLOC:n :} CMPLOC ;" SUBJECT-OF
-   2dup s" CMPLOC ;" 2 CURSOR-AT COMPOSE-AT
+   dup s" CMPLOC ;" 2 CURSOR-AT COMPOSE-AT
    s" the local's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPLOC" LOCAL
@@ -390,7 +390,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 : CASE-QUOT-LOCAL ( -- )
    s" cmp" KEPT-RESET
    s" : CMPQ ( n -- n ) {: CMPLOC:n :} [: CMPA ;] drop CMPLOC ;" SUBJECT-OF
-   2dup s" CMPA ;]" 2 CURSOR-AT COMPOSE-AT
+   dup s" CMPA ;]" 2 CURSOR-AT COMPOSE-AT
    s" the quotation's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPA" PLACED
@@ -400,14 +400,14 @@ PTR-VARIABLE RUN-A   variable RUN-U
 : CASE-NO-LOCAL ( -- )
    s" cmp" KEPT-RESET
    s" : CMPT ( n -- n ) {: CMPLOC:n :} ['] CMPA drop CMPLOC ;" SUBJECT-OF
-   2dup s" ['] CMPA" 6 CURSOR-AT COMPOSE-AT
+   dup s" ['] CMPA" 6 CURSOR-AT COMPOSE-AT
    s" the tick's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPA" PLACED
    s" cmploc" ABSENT
    s" cmp" KEPT-RESET
    s" : CMPI ( n -- n ) {: CMPLOC:n :} [: CMPA ;] is CMPDF CMPLOC ;" SUBJECT-OF
-   2dup s" is CMPDF" 5 CURSOR-AT COMPOSE-AT
+   dup s" is CMPDF" 5 CURSOR-AT COMPOSE-AT
    s" the is target's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPDF" PLACED
@@ -417,7 +417,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 : CASE-AMBIGUOUS ( -- )
    s" cmp" KEPT-RESET
    s" using CMPX using CMPY : CMPU ( -- n ) CMPA ; ;using ;using" SUBJECT-OF
-   2dup s" CMPA ;" 2 CURSOR-AT COMPOSE-AT
+   dup s" CMPA ;" 2 CURSOR-AT COMPOSE-AT
    s" the using scope's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPA" PLACED
@@ -429,7 +429,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 : CASE-QUALIFIED ( -- )
    s" cmpp:" KEPT-RESET
    s" : CMPV ( -- n ) CMPP:CMPPUB ;" SUBJECT-OF
-   2dup s" CMPP:CMPPUB ;" 7 CURSOR-AT COMPOSE-AT
+   dup s" CMPP:CMPPUB ;" 7 CURSOR-AT COMPOSE-AT
    s" the qualified call's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPP:CMPPUB" PLACED
@@ -438,7 +438,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 \ 4. A top-level cursor.
 : CASE-TOP ( -- )
    s" cmp" KEPT-RESET
-   s" CMPA drop" SUBJECT-OF  2dup s" CMPA drop" 2 CURSOR-AT COMPOSE-AT
+   s" CMPA drop" SUBJECT-OF  dup s" CMPA drop" 2 CURSOR-AT COMPOSE-AT
    s" the top level's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPA" PLACED
@@ -447,7 +447,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
    s" CMPPUB" ABSENT
    s" CMPAMB" ABSENT
    s" cmpp:" KEPT-RESET
-   s" CMPP:CMPPUB drop" SUBJECT-OF  2dup s" CMPP:CMPPUB drop" 7 CURSOR-AT COMPOSE-AT
+   s" CMPP:CMPPUB drop" SUBJECT-OF  dup s" CMPP:CMPPUB drop" 7 CURSOR-AT COMPOSE-AT
    s" the qualified top level's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPP:CMPPUB" PLACED
@@ -457,7 +457,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 : CASE-RELEASE ( -- )
    s" cmp" KEPT-RESET
    s" : CMPR ( -- n ) CMPA CMPNOPE ;" SUBJECT-OF
-   2dup s" CMPA CMPNOPE" 2 CURSOR-AT COMPOSE-AT
+   dup s" CMPA CMPNOPE" 2 CURSOR-AT COMPOSE-AT
    s" a refused body throws its refusal" T-LABEL 0 T<>
    s" a refused body still offers what binds" T-LABEL
    s" CMPA" PLACED ;
@@ -471,39 +471,39 @@ PTR-VARIABLE RUN-A   variable RUN-U
    s" no cursor outlived the last composition" T-LABEL
    CALLS @ 0 T=
    s" : CMPS ( -- n ) CMPA CMPB + ;" SUBJECT-OF
-   2dup s" CMPA" 2 CURSOR-AT COMPOSE-AT
+   dup s" CMPA" 2 CURSOR-AT COMPOSE-AT
    s" a new cursor's composition runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPA" PLACED ;
 
-: THROWING ( ^u8 n ^u8 n n n -- )
+: THROWING ( str str n n -- )
    KEEP  E-DIV-ZERO throw ;
 
 \ The subject byte whose use USE-THROWS throws at.
 variable THROW-AT
 
 : USE-THROWS ( n n str n n n n -- )
-   {: s:n e:n p:^ pu:n ds:n de:n sym:n v:n :}
+   {: s:n e:n p:str ds:n de:n sym:n v:n :}
    s THROW-AT @ = IF E-DIV-ZERO throw THEN ;
 
 : USE-DROPS ( n n str n n n n -- )
-   2drop 2drop 2drop 2drop ;
+   2drop 2drop drop 2drop ;
 
 : CASE-OUTLIVE ( -- )
    s" cmp" KEPT-RESET
    s" : CMPR2 ( -- n ) CMPA CMPNOPE ;" SUBJECT-OF
-   2dup s" CMPA CMPNOPE" 2 CURSOR-AT COMPOSE-AT
+   dup s" CMPA CMPNOPE" 2 CURSOR-AT COMPOSE-AT
    s" the refused body's composition throws" T-LABEL 0 T<>
    NEXT-UNARMED
    s" cmp" KEPT-RESET
-   s" : CMPW ( -- n ) CMPA ;" SUBJECT-OF  2dup s" CMPA ;" 2 CURSOR-AT VERIFY:CURSOR!
+   s" : CMPW ( -- n ) CMPA ;" SUBJECT-OF  dup s" CMPA ;" 2 CURSOR-AT VERIFY:CURSOR!
    ['] SUBJECT-COMPOSE ['] THROWING COMPOSE-RUN
    s" the visitor's throw leaves the composition" T-LABEL E-DIV-ZERO T=
    NEXT-UNARMED
    s" cmp" KEPT-RESET
    s" : CMPH ( -- n ) CMPA ;" SUBJECT-OF
-   2dup s" CMPA ;" 0 CURSOR-AT THROW-AT !
-   2dup s" CMPA ;" 2 CURSOR-AT
+   dup s" CMPA ;" 0 CURSOR-AT THROW-AT !
+   dup s" CMPA ;" 2 CURSOR-AT
    ['] USE-THROWS is VERIFY:ON-USE
    COMPOSE-AT
    ['] USE-DROPS is VERIFY:ON-USE
@@ -512,7 +512,7 @@ variable THROW-AT
    \ The duplicate CMPA stops the scan before the cursor, which never fires.
    s" cmp" KEPT-RESET
    s" : CMPA ( -- n ) 9 ; CMPB drop" SUBJECT-OF
-   2dup s" CMPB drop" 2 CURSOR-AT COMPOSE-AT
+   dup s" CMPB drop" 2 CURSOR-AT COMPOSE-AT
    s" the stopped scan throws" T-LABEL 0 T<>
    s" before its cursor" T-LABEL
    CALLS @ 0 T=
@@ -522,7 +522,7 @@ TYPED-VARIABLE NEST-TRIED bool
 variable NEST-AT
 
 \ A visitor that sets the cursor at NEST-AT, once.
-: NEST-CURSOR ( ^u8 n ^u8 n n n -- )
+: NEST-CURSOR ( str str n n -- )
    NEST-TRIED @ IF KEEP EXIT THEN  true NEST-TRIED !  NEST-AT @ VERIFY:CURSOR!  KEEP ;
 
 : NEST-TEXT$ ( -- str )
@@ -530,10 +530,10 @@ variable NEST-AT
 
 \ The throw code and how many candidates NEST-TEXT$ offers with the cursor at
 \ CMPA, through visitor V.
-: NESTED-CALLS ( [ ^u8 n ^u8 n n n -- ] -- n n )
+: NESTED-CALLS ( [ str str n n -- ] -- n n )
    {: v :}
    s" cmp" KEPT-RESET  false NEST-TRIED !
-   NEST-TEXT$ 2dup s" CMPA ;" 2 CURSOR-AT VERIFY:CURSOR!
+   NEST-TEXT$ dup s" CMPA ;" 2 CURSOR-AT VERIFY:CURSOR!
    ['] SUBJECT-COMPOSE v COMPOSE-RUN  CALLS @ ;
 
 : CASE-NESTED ( -- )
@@ -557,23 +557,23 @@ variable NEST-AT
 variable USE-N   variable USE-SUM
 
 : COUNT-USE ( n n str n n n n -- )
-   {: s:n e:n p:^ pu:n ds:n de:n sym:n v:n :}
+   {: s:n e:n p:str ds:n de:n sym:n v:n :}
    1 USE-N +!  s e + USE-SUM +! ;
 
 \ The cursor changes nothing the composition answers: TEXT composed with the
 \ cursor at AT and with none throws the same, certifies and defers the same
 \ and publishes the same uses at the same bytes; the throw code.
 : OBSERVED ( str n -- n )
-   {: a:^ u:n at:n :}
+   {: s:str at:n :}
    s" cmp" KEPT-RESET
    ['] COUNT-USE is VERIFY:ON-USE
    0 USE-N !  0 USE-SUM !
-   a u COMPOSE-KEPT  VERIFY:CENSUS {: rc0:n c0:n d0:n :}
+   s COMPOSE-KEPT  VERIFY:CENSUS {: rc0:n c0:n d0:n :}
    USE-N @ USE-SUM @ {: n0:n sum0:n :}
    s" the composition with no cursor offers nothing" T-LABEL
    CALLS @ 0 T=
    0 USE-N !  0 USE-SUM !
-   a u at COMPOSE-AT  VERIFY:CENSUS {: rc1:n c1:n d1:n :}
+   s at COMPOSE-AT  VERIFY:CENSUS {: rc1:n c1:n d1:n :}
    ['] USE-DROPS is VERIFY:ON-USE
    s" the cursor's composition throws the same" T-LABEL  rc1 rc0 T=
    s" certifies the same" T-LABEL  c1 c0 T=
@@ -586,10 +586,10 @@ variable USE-N   variable USE-SUM
 
 : CASE-OBSERVER ( -- )
    s" : CMPE ( -- n ) CMPA CMPB + ;" SUBJECT-OF
-   2dup s" CMPB +" 2 CURSOR-AT OBSERVED
+   dup s" CMPB +" 2 CURSOR-AT OBSERVED
    s" the certified body certifies" T-LABEL 0 T=
    s" : CMPE2 ( -- n ) CMPA CMPB ;" SUBJECT-OF
-   2dup s" CMPB ;" 2 CURSOR-AT OBSERVED
+   dup s" CMPB ;" 2 CURSOR-AT OBSERVED
    s" the refused body is refused" T-LABEL 0 T<> ;
 
 \ 6. The selection spells what it binds.
@@ -601,7 +601,7 @@ variable USE-N   variable USE-SUM
 
 : CASE-DISCRIMINATOR ( -- )
    s" dsc" KEPT-RESET
-   DISC$ SUBJECT-OF  2dup s" DSCITEM +" 4 CURSOR-AT COMPOSE-AT
+   DISC$ SUBJECT-OF  dup s" DSCITEM +" 4 CURSOR-AT COMPOSE-AT
    s" the discriminator's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" dscitem" LOCAL
@@ -617,7 +617,7 @@ variable USE-N   variable USE-SUM
 
 : CASE-HIDDEN ( -- )
    s" byte-c" KEPT-RESET
-   HIDE$ SUBJECT-OF  2dup s" BYTE-COPY ;" 6 CURSOR-AT COMPOSE-AT
+   HIDE$ SUBJECT-OF  dup s" BYTE-COPY ;" 6 CURSOR-AT COMPOSE-AT
    s" the hiding word's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" byte-copy" PLACED
@@ -638,7 +638,7 @@ variable REJECTS
 : CASE-REDECLARED ( -- )
    s" cmpa" KEPT-RESET
    s" : cmpa ( -- n ) 12 ; : CMPRD ( -- n ) CMPA ;" SUBJECT-OF
-   2dup s" CMPA ;" 2 CURSOR-AT VERIFY:CURSOR!
+   dup s" CMPA ;" 2 CURSOR-AT VERIFY:CURSOR!
    REJECTION:CAPTURE
    ['] MULTI-COMPOSE ['] KEEP COMPOSE-RUN
    REJECTION:BUFFER-OFF
@@ -656,7 +656,7 @@ variable REJECTS
 
 : CASE-VISITED ( -- )
    s" cmpeb:" KEPT-RESET
-   VISITED$ SUBJECT-OF  2dup s" CMPEB:CMPEXA drop" 10 CURSOR-AT COMPOSE-AT
+   VISITED$ SUBJECT-OF  dup s" CMPEB:CMPEXA drop" 10 CURSOR-AT COMPOSE-AT
    s" the composition runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPEB:CMPEXA" SUBJECT-PATH$ s" CMPEA:CMPEXA" 0 SPAN-FROM OFFERED ;
@@ -671,7 +671,7 @@ DEP-CAP BUFFER: DEP-BUF
 \ Where CmpDep's declaring token starts and ends in the dependency's bytes.
 : DEP-SPAN ( -- n n )
    DEP-PATH$ DEP-BUF DEP-CAP FS:READ-ALL {: n:n :}
-   DEP-BUF n s" CmpDep" 0 TOKEN-AT  dup 6 + ;
+   DEP-BUF n >str s" CmpDep" 0 TOKEN-AT  dup 6 + ;
 
 \ The dependency's path as a load resolves it from the tree's root, where this
 \ test runs.
@@ -681,7 +681,7 @@ DEP-CAP BUFFER: DEP-BUF
 : CASE-DEPENDENCY ( -- )
    s" cmpdep" KEPT-RESET
    s" require test/checker-completion-dep.f : CMPDU ( -- n ) CmpDep ;" SUBJECT-OF
-   2dup s" CmpDep ;" 4 CURSOR-AT COMPOSE-AT
+   dup s" CmpDep ;" 4 CURSOR-AT COMPOSE-AT
    s" the subject's composition runs through" T-LABEL 0 T=
    KEPT-ALL
    DEP-SPAN {: s:n e:n :}
@@ -695,7 +695,7 @@ DEP-CAP BUFFER: DEP-BUF
    s" : CMPRW ( -- n ) 17 ;" SUBJECT-OF COMPOSE-KEPT
    s" the rewound word's composition runs through" T-LABEL 0 T=
    s" : CMPRX ( -- n ) 18 ; : CMPRY ( -- n ) CMPRX ;" SUBJECT-OF
-   2dup s" CMPRX ;" 2 CURSOR-AT COMPOSE-AT
+   dup s" CMPRX ;" 2 CURSOR-AT COMPOSE-AT
    s" the next composition runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPRX" PLACED
@@ -717,7 +717,7 @@ DEP-CAP BUFFER: DEP-BUF
    {: k:n :}
    s" qalp:cmpa" KEPT-RESET
    s" package QALP public : QALAL ( -- n ) QALP:CMPA ; ;package" SUBJECT-OF
-   2dup s" QALP:CMPA" k CURSOR-AT COMPOSE-AT
+   dup s" QALP:CMPA" k CURSOR-AT COMPOSE-AT
    s" the open package's body's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" QALP:CMPA" PLACED ;
@@ -725,11 +725,11 @@ DEP-CAP BUFFER: DEP-BUF
 \ Under the top-level prefix P, QalPk's QalW is offered spelled NAME, where it
 \ is declared.
 : QALW-AT ( str str -- )
-   {: p:^ pu:n a:^ u:n :}
+   {: p:str s:str :}
    s" qalpk:" KEPT-RESET
-   QAL$ p pu TOP-AT
+   QAL$ p TOP-AT
    KEPT-ALL
-   a u PLACED ;
+   s PLACED ;
 
 : CASE-QUALIFIED-ANY ( -- )
    s" qalp:" KEPT-RESET
@@ -741,7 +741,7 @@ DEP-CAP BUFFER: DEP-BUF
    s" QALP:QALPRI" ABSENT
    s" qalp:qal" KEPT-RESET
    s" package QALP public : QALPUB ( -- n ) 30 ; : QALSELF ( -- n ) QALP:QALPUB ; ;package" SUBJECT-OF
-   2dup s" QALP:QALPUB ;" 1 CURSOR-AT COMPOSE-AT
+   dup s" QALP:QALPUB ;" 1 CURSOR-AT COMPOSE-AT
    s" the public's body's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" QALP:QALPUB" PLACED
@@ -796,7 +796,7 @@ DEP-CAP BUFFER: DEP-BUF
    {: k:n :}
    s" cmqb:" KEPT-RESET
    s" package CMQA : CMQU ( -- n ) CmqB:QPW ; ;package" SUBJECT-OF
-   2dup s" CmqB:QPW" k CURSOR-AT COMPOSE-AT
+   dup s" CmqB:QPW" k CURSOR-AT COMPOSE-AT
    s" the package's body's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CmqB:QPW" UNPLACED
@@ -818,19 +818,19 @@ DEP-CAP BUFFER: DEP-BUF
    {: k:n :}
    s" cmqb:" KEPT-RESET
    s" package CMQC : CMQX ( -- n ) CMQB:QPT ; ;package" SUBJECT-OF
-   2dup s" CMQB:QPT" k CURSOR-AT COMPOSE-AT
+   dup s" CMQB:QPT" k CURSOR-AT COMPOSE-AT
    s" the other package's body's check runs through" T-LABEL 0 T=
    PART-OUT ;
 
 \ Under the top-level prefix P, CMQB: offers what PART-OUT says.
 : PART-TOP ( str -- )
-   {: p:^ pu:n :}
-   s" cmqb:" KEPT-RESET  s" " p pu TOP-AT  PART-OUT ;
+   {: p:str :}
+   s" cmqb:" KEPT-RESET  s" " p TOP-AT  PART-OUT ;
 
 \ CMQA: offers nothing at top level.
 : PART-PATH ( str -- )
-   {: p:^ pu:n :}
-   s" cmqa:" KEPT-RESET  s" " p pu TOP-AT
+   {: p:str :}
+   s" cmqa:" KEPT-RESET  s" " p TOP-AT
    KEPT-ALL
    s" nothing behind CMQA" T-LABEL
    KEPT-N @ 0 T= ;
@@ -850,7 +850,7 @@ DEP-CAP BUFFER: DEP-BUF
 
 : CASE-PART-REPLAY ( -- )
    s" cmqb:qpr" KEPT-RESET
-   PART-OPENS$ SUBJECT-OF  2dup s" CmqB:QPR" 6 CURSOR-AT COMPOSE-AT
+   PART-OPENS$ SUBJECT-OF  dup s" CmqB:QPR" 6 CURSOR-AT COMPOSE-AT
    s" the package's body's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CmqB:QPR" PLACED
@@ -862,28 +862,28 @@ DEP-CAP BUFFER: DEP-BUF
 \ behind its own name, which qualifies a global too, as the engine's find binds
 \ it.
 : IN-PART ( str -- str )
-   {: a:^ u:n :}
+   {: s:str :}
    0 SUBJECT-N !
-   s" package CMQA package CmqB" LINE+  a u LINE+  s" ;package ;package" LINE+
-   SUBJECT-BUF SUBJECT-N @ ;
+   s" package CMQA package CmqB" LINE+  s LINE+  s" ;package ;package" LINE+
+   SUBJECT-BUF SUBJECT-N @ >str ;
 
 : CASE-PART-OPEN ( -- )
    s" qp" KEPT-RESET
-   s" : CMQS1 ( -- n ) QPV QPW + ;" IN-PART  2dup s" QPW +" 2 CURSOR-AT COMPOSE-AT
+   s" : CMQS1 ( -- n ) QPV QPW + ;" IN-PART  dup s" QPW +" 2 CURSOR-AT COMPOSE-AT
    s" the part's body's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" QPW" UNPLACED
    s" QPV" UNPLACED
    s" QPT" ABSENT
    s" cmqb:qp" KEPT-RESET
-   s" : CMQS2 ( -- n ) QPV QPW + ;" IN-PART  2dup s" QPW +" 0 CURSOR-AT COMPOSE-AT
+   s" : CMQS2 ( -- n ) QPV QPW + ;" IN-PART  dup s" QPW +" 0 CURSOR-AT COMPOSE-AT
    s" the part's gap's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CmqB:QPW" UNPLACED
    s" CmqB:QPV" ABSENT
    s" CmqB:QPT" ABSENT
    s" cmqb:dup" KEPT-RESET
-   s" : CMQS3 ( n -- n n ) CmqB:dup ;" IN-PART  2dup s" CmqB:dup" 1 CURSOR-AT COMPOSE-AT
+   s" : CMQS3 ( n -- n n ) CmqB:dup ;" IN-PART  dup s" CmqB:dup" 1 CURSOR-AT COMPOSE-AT
    s" the qualified global's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CmqB:dup" UNPLACED ;

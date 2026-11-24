@@ -1,4 +1,3 @@
-split-str
 \ arm64-link-data-bad.f - a program whose link LINKER:WRITE refuses, one per
 \ process, chosen by the first script argument: `data`, a cell declared as a
 \ DATA pointer that holds an address outside the build's space, read by the
@@ -46,9 +45,9 @@ public
 
 : RUN ( -- )
    1 SCRIPT-ARGV$ LINKER:KERNEL
-   0 SCRIPT-ARGV$ {: at:^ u:n :}
-   at u s" data" STR:= if s" app" RTARGET:HOST-TARGET [: DATA-BODY ;] LINKER:WITH exit then
-   at u s" eval" STR:= if s" app" RTARGET:HOST-TARGET [: EVAL-BODY ;] LINKER:WITH exit then
+   0 SCRIPT-ARGV$ {: at:str :}
+   at s" data" STR:= if s" app" RTARGET:HOST-TARGET [: DATA-BODY ;] LINKER:WITH exit then
+   at s" eval" STR:= if s" app" RTARGET:HOST-TARGET [: EVAL-BODY ;] LINKER:WITH exit then
    s" arm64-link-data-bad: the case is data or eval" EXIT-STATUS:FAILURE die ;
 
 ;package

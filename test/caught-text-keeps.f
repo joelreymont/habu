@@ -1,4 +1,3 @@
-split-str
 \ caught-text-keeps.f - the code a caught failed text keeps, and the created
 \ record a definer's does> acts on after a motion retires records.
 
@@ -12,7 +11,7 @@ package CRECL-TEST
 
 private
 
-: REC ( ^u8 n -- ^n )
+: REC ( str -- ^n )
    XREF-FIND
    dup XREF-FOUND? 0= if s" caught-text-keeps: subject not found" EXIT-STATUS:FAILURE die then ;
 
@@ -62,22 +61,22 @@ $1000 constant LC-CAP
 LC-CAP BUFFER: LC-OUT
 LC-CAP BUFFER: LC-ERR
 
-: LC-EXITS ( str n -- len len ) {: src:^ srcu:n want:n :}
-   src srcu LC-OUT LC-CAP >LEN LC-ERR LC-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+: LC-EXITS ( str n -- len len ) {: src:str want:n :}
+   src LC-OUT LC-CAP >LEN LC-ERR LC-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
-   src srcu LC-OUT outu LEN>N LC-ERR erru LEN>N oc want T-ENDING-EXITED=
+   src LC-OUT outu LEN>N >str LC-ERR erru LEN>N >str oc want T-ENDING-EXITED=
    outu erru ;
 
-: LC-PRINTS ( str str -- ) {: want:^ wantu:n :}
+: LC-PRINTS ( str str -- ) {: want:str :}
    0 LC-EXITS {: outu:len erru:len :}
    erru LEN>N 0 T=
-   LC-OUT outu LEN>N want wantu T$= ;
+   LC-OUT outu LEN>N >str want T$= ;
 
 \ The program runs to the end and prints this; the definition it refuses reports
 \ on stderr.
-: LC-OUT-PRINTS ( str str -- ) {: want:^ wantu:n :}
+: LC-OUT-PRINTS ( str str -- ) {: want:str :}
    0 LC-EXITS drop {: outu:len :}
-   LC-OUT outu LEN>N want wantu T$= ;
+   LC-OUT outu LEN>N >str want T$= ;
 
 : LASTC-CASE ( -- )
    s" a definer after an evaluate that fails acts on its own word" T-LABEL

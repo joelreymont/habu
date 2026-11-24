@@ -1,4 +1,3 @@
-split-str
 \ checker-model-schema.f - Accepted and rejected checker programs.
 
 require src/lib/error.f
@@ -22,20 +21,20 @@ variable STR-N
 \ Every text below is interned once and referred to by handle, so a table row is
 \ a run of cells and the data blocks stay readable as data.
 
-: STR+ ( str -- n ) {: a:^ u:n :}
+: STR+ ( str -- n ) {: s:str :}
    STR-N @ STR-MAX >= if E-CMP-POOL throw then
-   POOL-U @ u + POOL-CAP > if E-CMP-POOL throw then
-   a POOL POOL-U @ + u BYTE-COPY
+   POOL-U @ s STR:LEN + POOL-CAP > if E-CMP-POOL throw then
+   s STR:DATA POOL POOL-U @ + s STR:LEN BYTE-COPY
    POOL-U @ STR-N @ cells SOFF + !
-   u STR-N @ cells SLEN + !
-   STR-N @ POOL-U @ u + POOL-U !
+   s STR:LEN STR-N @ cells SLEN + !
+   STR-N @ POOL-U @ s STR:LEN + POOL-U !
    STR-N @ 1+ STR-N ! ;
 
 public
 
 : STR$ ( n -- str ) {: h:n :}
    h 0 < h STR-N @ >= or if E-CMP-ROW throw then
-   POOL h cells SOFF + @ + h cells SLEN + @ ;
+   POOL h cells SOFF + @ + h cells SLEN + @ >str ;
 
 private
 
@@ -74,9 +73,9 @@ public
 private
 
 : VEC-ROW ( str str n -- )
-   {: na:^ nu:n sa:^ su:n verd:n :}
-   na nu STR+ VEC-NAME VEC-N @ COL!
-   sa su STR+ VEC-SRC VEC-N @ COL!
+   {: ns:str ss:str verd:n :}
+   ns STR+ VEC-NAME VEC-N @ COL!
+   ss STR+ VEC-SRC VEC-N @ COL!
    verd VEC-VERD VEC-N @ COL!
    VEC-N @ 1+ VEC-N ! ;
 

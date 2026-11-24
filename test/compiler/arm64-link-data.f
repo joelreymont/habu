@@ -1,4 +1,3 @@
-split-str
 \ arm64-link-data.f - a stripped program's DATA, written by LINKER:WRITE and
 \ run, its kernel the tree's kernel object. One build writes the programs. main
 \ prints `12 6 0 11 11 ld-text`: the word an xt cell holds, which reads a
@@ -50,12 +49,12 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 create ROOT-BUF PATH-CAP allot variable ROOT-U
 create PROG-BUF PATH-CAP allot
 
-: ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT-BUF ROOT-U @ >str ;
 
 : PROG$ ( str -- str )
-   {: name:^ name-n:n :}
-   ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
-   PROG-BUF u ;
+   {: name:str :}
+   ROOT$ name PROG-BUF FS:JOIN-PATH {: u:n :}
+   PROG-BUF u >str ;
 
 
 $100000 constant OVER-STEP                \ over's first allot step, in bytes
@@ -102,23 +101,23 @@ DATA-SIZE PROF-CNT-BYTES - DATA-START - constant OVER-ROOM
 DYNAMIC-BUFFER FIRST-LINK u8
 
 : FILE-BYTES ( str -- str )
-   {: path:^ path-n:n :}
-   path path-n FS:FILE-SIZE {: size:n :}
+   {: path:str :}
+   path FS:FILE-SIZE {: size:n :}
    size FIRST-LINK-RESERVE
-   path path-n 0  0 FIRST-LINK size FS:READ-AT
-   0 FIRST-LINK size ;
+   path 0  0 FIRST-LINK size FS:READ-AT
+   0 FIRST-LINK size >str ;
 
 DYNAMIC-BUFFER SECOND-LINK u8
 
 \ main linked again from the same build gives the same file.
 : SECOND-CASE ( -- )
-   s" main" PROG$ FILE-BYTES {: a:^ a-n:n :}
-   a-n SECOND-LINK-RESERVE
-   a 0 SECOND-LINK a-n BYTE-COPY
+   s" main" PROG$ FILE-BYTES {: a:str :}
+   a STR:LEN SECOND-LINK-RESERVE
+   a STR:DATA 0 SECOND-LINK a STR:LEN BYTE-COPY
    s" main" PROG$ LINKER:WRITE
-   s" main" PROG$ FILE-BYTES {: b:^ b-n:n :}
+   s" main" PROG$ FILE-BYTES {: b:str :}
    s" a second link writes the same bytes" T-LABEL
-   b b-n  0 SECOND-LINK a-n  STR:= TTRUE
+   b  0 SECOND-LINK a STR:LEN >str  STR:= TTRUE
    FIRST-LINK-RELEASE SECOND-LINK-RELEASE ;
 
 
@@ -158,8 +157,8 @@ HB-TARGET-LINUX? 0= [if]
 
 
 : RUN-PROG ( CMD:command str -- CMD:command n )
-   {: file:^ file-n:n :}
-   file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
+   {: file:str :}
+   file PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
 : RUN-MAIN ( CMD:command -- CMD:command )
    s" main" RUN-PROG {: rc:n :}
@@ -183,31 +182,31 @@ HB-TARGET-LINUX? 0= [if]
 
 
 : CHILD-LABEL ( str str -- )
-   {: name:^ name-n:n what:^ what-n:n :}
-   SB-RESET  s" refusal, " SB-APPEND  name name-n SB-APPEND
-   s" : " SB-APPEND  what what-n SB-APPEND  SB$ T-LABEL ;
+   {: name:str what:str :}
+   SB-RESET  s" refusal, " SB-APPEND  name SB-APPEND
+   s" : " SB-APPEND  what SB-APPEND  SB$ T-LABEL ;
 
 : CHILD-RC ( CMD:command str str -- CMD:command n )
-   {: name:^ name-n:n obj:^ obj-n:n :}
+   {: name:str obj:str :}
    s" --load" CMD:ARG+  s" test/compiler/arm64-link-data-bad.f" CMD:ARG+
-   s" --" CMD:ARG+  name name-n CMD:ARG+  obj obj-n CMD:ARG+
+   s" --" CMD:ARG+  name CMD:ARG+  obj CMD:ARG+
    s" bad" PROG$ CMD:ARG+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
 \ name's child on the object at obj arms, its link is refused for the reason
 \ err, and it exits with status want; label names the case.
 : BAD-LINK ( CMD:command str str str str n -- CMD:command )
-   {: name:^ name-n:n obj:^ obj-n:n label:^ label-n:n err:^ err-n:n want:n :}
-   name name-n obj obj-n CHILD-RC {: rc:n :}
-   label label-n s" the child arms before the link" CHILD-LABEL
+   {: name:str obj:str label:str err:str want:n :}
+   name obj CHILD-RC {: rc:n :}
+   label s" the child arms before the link" CHILD-LABEL
    CMD:OUT$ s\" ARM64-LINK-DATA-BAD-ARMED\n" T$=
-   label label-n s" the link's reason" CHILD-LABEL
-   CMD:ERR$ err err-n STR:CONTAINS? TTRUE
-   label label-n s" the link's status" CHILD-LABEL  rc want T= ;
+   label s" the link's reason" CHILD-LABEL
+   CMD:ERR$ err STR:CONTAINS? TTRUE
+   label s" the link's status" CHILD-LABEL  rc want T= ;
 
 : BAD-CHILD ( CMD:command str str n -- CMD:command )
-   {: name:^ name-n:n err:^ err-n:n want:n :}
-   name name-n HB-BUILD-CORE:KERNEL$ name name-n err err-n want BAD-LINK ;
+   {: name:str err:str want:n :}
+   name HB-BUILD-CORE:KERNEL$ name err want BAD-LINK ;
 
 : NAMES-LABEL ( str -- ) s" the link names what it refuses" CHILD-LABEL ;
 
@@ -222,35 +221,35 @@ HB-TARGET-LINUX? 0= [if]
 
 \ The kernel object with a code byte flipped, written to flipped.
 : FLIPPED ( -- )
-   HB-BUILD-CORE:KERNEL$ FILE-BYTES {: a:^ u:n :}
-   a 48 + c@ $ff xor a 48 + c!
-   s" flipped" PROG$ a u FS:WRITE-ALL  FIRST-LINK-RELEASE ;
+   HB-BUILD-CORE:KERNEL$ FILE-BYTES {: f:str :}
+   48 FIRST-LINK c@ $ff xor 48 FIRST-LINK c!
+   s" flipped" PROG$ f FS:WRITE-ALL  FIRST-LINK-RELEASE ;
 
 create SHA-CTX SHA256-CTX-BYTES allot
 
 \ Writes the object's sum as hb does, so the copy passes its checksum.
-: RESEAL ( str -- ) {: a:^ u:n :}
-   SHA-CTX  a 40 +  u 40 -  a 8 +  SHA256-IN ;
+: RESEAL ( str -- ) {: s:str :}
+   SHA-CTX  s STR:DATA 40 +  s STR:LEN 40 - >str  s STR:DATA 8 +  SHA256-IN ;
 
 \ The kernel object with a zero cell appended and its sum written again, written
 \ to grown.
 : GROWN ( -- )
-   HB-BUILD-CORE:KERNEL$ FILE-BYTES nip {: u:n :}
+   HB-BUILD-CORE:KERNEL$ FILE-BYTES STR:LEN {: u:n :}
    u 8 + FIRST-LINK-RESERVE
    0  u FIRST-LINK LE:U64!
-   0 FIRST-LINK u 8 + {: g:^ gu:n :}
-   g gu RESEAL
-   s" grown" PROG$ g gu FS:WRITE-ALL  FIRST-LINK-RELEASE ;
+   0 FIRST-LINK u 8 + >str {: g:str :}
+   g RESEAL
+   s" grown" PROG$ g FS:WRITE-ALL  FIRST-LINK-RELEASE ;
 
 \ The data child on the object at name, refused by its read for the reason err
 \ before it arms, exits 65.
 : BAD-OBJECT ( CMD:command str str -- CMD:command )
-   {: name:^ name-n:n err:^ err-n:n :}
-   s" data"  name name-n PROG$ CHILD-RC {: rc:n :}
-   name name-n s" nothing on stdout" CHILD-LABEL  CMD:OUT$ nip 0 T=
-   name name-n s" the read's reason" CHILD-LABEL
-   CMD:ERR$ err err-n STR:CONTAINS? TTRUE
-   name name-n s" the read exits 65" CHILD-LABEL  rc 65 T= ;
+   {: name:str err:str :}
+   s" data"  name PROG$ CHILD-RC {: rc:n :}
+   name s" nothing on stdout" CHILD-LABEL  CMD:OUT$ STR:LEN 0 T=
+   name s" the read's reason" CHILD-LABEL
+   CMD:ERR$ err STR:CONTAINS? TTRUE
+   name s" the read exits 65" CHILD-LABEL  rc 65 T= ;
 
 : BAD-FLIPPED ( CMD:command -- CMD:command )
    s" flipped"  s"  is not the file hb wrote" BAD-OBJECT ;
@@ -268,7 +267,7 @@ variable SMAPS-N
 variable AT                          \ the parse's offset in SMAPS
 variable START                       \ the start of the mapping being read
 
-: LINE$ ( -- str ) LINE LINE-N @ ;
+: LINE$ ( -- str ) LINE LINE-N @ >str ;
 
 : LINE-DONE? ( -- bool )
    LINE-N @ LINE-CAP =
@@ -300,12 +299,12 @@ variable START                       \ the start of the mapping being read
    fd 0 >= if fd close then ;
 
 \ The line at AT, AT moved past it.
-: NEXT-LINE ( -- ^u8 n )
+: NEXT-LINE ( -- str )
    AT @ {: from:n :}
    begin
       AT @ SMAPS-N @ < if AT @ SMAPS c@ LF-BYTE <> else false then
    while 1 AT +! repeat
-   from SMAPS  AT @ from -  1 AT +! ;
+   from SMAPS  AT @ from - >str  1 AT +! ;
 
 \ A hex digit's value, -1 for another byte.
 : HEX-DIGIT ( u8 -- n )
@@ -315,42 +314,42 @@ variable START                       \ the start of the mapping being read
    -1 ;
 
 \ The value of the hex digits the line starts with.
-: HEX ( ^u8 n -- n )
-   {: a:^ u:n :}
-   0 u 0 ?do
-      a i + c@ HEX-DIGIT dup 0< if drop unloop exit then
+: HEX ( str -- n )
+   {: s:str :}
+   0 s STR:LEN 0 ?do
+      s STR:DATA i + c@ HEX-DIGIT dup 0< if drop unloop exit then
       swap 16 * +
    loop ;
 
 \ The value of the decimal digits in the line, whatever lies between them.
-: DEC ( ^u8 n -- n )
-   {: a:^ u:n :}
-   0 u 0 ?do
-      a i + c@ dup [char] 0 >= over [char] 9 <= and
+: DEC ( str -- n )
+   {: s:str :}
+   0 s STR:LEN 0 ?do
+      s STR:DATA i + c@ dup [char] 0 >= over [char] 9 <= and
       if [char] 0 - swap 10 * + else drop then
    loop ;
 
 \ A mapping's header starts with its hex start; a field's key, a capital.
-: HEADER? ( ^u8 n -- bool )
-   {: a:^ u:n :}
-   u 0 > if a c@ HEX-DIGIT 0 >= else false then ;
+: HEADER? ( str -- bool )
+   {: s:str :}
+   s STR:LEN 0 > if s STR:DATA c@ HEX-DIGIT 0 >= else false then ;
 
 : IN-DATA? ( -- bool )
    START @ LINUX-LAYOUT:DATA-VA >=
    START @ LINUX-LAYOUT:DATA-VA LINUX-LAYOUT:DATA-SIZE + < and ;
 
 \ A field's share of FILE-KB: Rss adds, Anonymous takes away.
-: FIELD-KB ( ^u8 n -- n )
-   {: a:^ u:n :}
+: FIELD-KB ( str -- n )
+   {: s:str :}
    IN-DATA? 0= if 0 exit then
-   a u s" Rss:" STR:STARTS-WITH? if a u DEC exit then
-   a u s" Anonymous:" STR:STARTS-WITH? if a u DEC negate exit then
+   s s" Rss:" STR:STARTS-WITH? if s DEC exit then
+   s s" Anonymous:" STR:STARTS-WITH? if s DEC negate exit then
    0 ;
 
-: LINE-KB ( ^u8 n -- n )
-   {: a:^ u:n :}
-   a u HEADER? if a u HEX START ! 0 exit then
-   a u FIELD-KB ;
+: LINE-KB ( str -- n )
+   {: s:str :}
+   s HEADER? if s HEX START ! 0 exit then
+   s FIELD-KB ;
 
 \ The kB of DATA's window resident and not Anonymous, over each mapping that
 \ starts in it.
@@ -392,8 +391,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   s" habu-link-data" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT-BUF u BYTE-COPY  u ROOT-U !
+   s" habu-link-data" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA ROOT-BUF d STR:LEN BYTE-COPY  d STR:LEN ROOT-U !
    false RTARGET:HOST-TARGET HB-BUILD-CORE:KERNEL-BUILD
    s" app" RTARGET:HOST-TARGET [: BODY ;] LINKER:WITH
    [: RUN-MAIN ;] CMD:WITH-COMMAND
