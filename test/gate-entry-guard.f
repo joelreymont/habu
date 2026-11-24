@@ -5,7 +5,8 @@ split-str
 \ The guard walks the load graph, from every file a running row loads through
 \ every import and launch. A load of another running row's entry is refused,
 \ naming the file and line that makes it, and so is a preload that is another
-\ running row's entry. A file may name itself, and rows may share an entry.
+\ running row's entry. A file may name itself; two rows sharing an entry are
+\ refused, naming both.
 
 require src/lib/error.f
 require src/lib/fmt.f
@@ -15,8 +16,7 @@ require test/load-graph.f
 package ENTRY-GUARD
 private
 
-DYNAMIC-BUFFER ROW-A n                   \ the first row a file is an entry of
-DYNAMIC-BUFFER ROW-B n                   \ another row it is an entry of
+DYNAMIC-BUFFER ROW-OF n                  \ the row a file is an entry of
 DYNAMIC-BUFFER MARK n                    \ the row walk that last reached it
 DYNAMIC-BUFFER QUEUE n
 variable WALK
@@ -27,20 +27,25 @@ variable ERRORS
 
 : RESET ( -- )
    LOAD-GRAPH:FILE-COUNT {: n:n :}
-   n ROW-A-RESERVE n ROW-B-RESERVE n MARK-RESERVE n QUEUE-RESERVE
-   n 0 ?do -1 i ROW-A ! -1 i ROW-B ! 0 i MARK ! loop
+   n ROW-OF-RESERVE n MARK-RESERVE n QUEUE-RESERVE
+   n 0 ?do -1 i ROW-OF ! 0 i MARK ! loop
    0 WALK ! -1 OWNER ! 0 ERRORS ! ;
 
 : ENTRY-ADD ( n bool str -- ) {: row:n entry:bool a:^ u:n :}
    a u LOAD-GRAPH:FILE-ID {: f:n :}
    entry 0= if exit then
-   f ROW-A @ 0 < if row f ROW-A ! exit then
-   f ROW-A @ row <> if row f ROW-B ! then ;
+   f ROW-OF @ {: had:n :}
+   had 0 >= had row <> and if
+      s" entry guard: rows " type had TEST:ITEM-NAME$ type
+      s"  and " type row TEST:ITEM-NAME$ type
+      s"  share the entry " type f LOAD-GRAPH:FILE$ type cr
+      1 ERRORS +! exit
+   then
+   row f ROW-OF ! ;
 
 \ A row other than the owner that has the file as an entry, else -1.
 : OTHER ( n -- n ) {: f:n :}
-   f ROW-A @ OWNER @ <> if f ROW-A @ exit then
-   f ROW-B @ ;
+   f ROW-OF @ dup OWNER @ = if drop -1 then ;
 
 : REPORT ( n n n -- ) {: src:n e:n row:n :}
    e LOAD-GRAPH:EDGE-TO {: to:n :}
