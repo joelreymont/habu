@@ -544,4 +544,41 @@ public
    p pu out DECODE
    len ;
 
+private
+
+: DOT ( str n -- n )
+   {: t:^ u:n from:n :}
+   u from ?do t i + c@ [char] . = if i unloop exit then loop u ;
+
+: V6-LOOPBACK ( -- str ) s" [::1]" ;
+
+\ Decimal 0 to 255 without a leading zero, which a resolver may read as
+\ octal.
+: OCTET? ( str -- bool )
+   {: a:^ u:n :}
+   u 1 < u 3 > or if false exit then
+   a u STR:DIGITS? 0= if false exit then
+   u 1 > a c@ [char] 0 = and if false exit then
+   a u s" 255" STR:DIGITS<= ;
+
+\ A dotted-quad IPv4 literal in 127.0.0.0/8.
+: LOOPBACK-V4? ( str -- bool )
+   {: h:^ hu:n :}
+   h hu s" 127." STR:STARTS-WITH? 0= if false exit then
+   h hu 4 DOT {: d1:n :}
+   h hu d1 1+ DOT {: d2:n :}
+   d2 hu >= if false exit then
+   h hu d2 1+ DOT hu <> if false exit then
+   h 4 + d1 4 - OCTET?
+   h d1 + 1+ d2 d1 - 1- OCTET? and
+   h d2 + 1+ hu d2 - 1- OCTET? and ;
+
+\ True for an https URL, or an http one whose host is a loopback IP literal;
+\ ORIGIN's rejection for one it cannot read.
+: SECURE? ( str -- bool )
+   ORIGIN drop {: s:^ su:n h:^ hu:n :}
+   s su s" https" STR:=CI if true exit then
+   h hu V6-LOOPBACK STR:= if true exit then
+   h hu LOOPBACK-V4? ;
+
 ;package

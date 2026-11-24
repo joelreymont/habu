@@ -534,6 +534,12 @@ SUITE secret-dir
    src/lib/secret/dir-test.f
 ;SUITE
 
+\ SECRET:AZURE-BIND against a loopback metadata service and vault. Its own
+\ suite: the bind holds SECRET's store for the whole process.
+SUITE secret-azure
+   src/lib/secret/azure-test.f
+;SUITE
+
 \ SECRET:WRITE and SECRET:READ on Linux against a private bus and keyring, with
 \ secret-tool. Its own suite: SECRET:LINUX-ITEM! and libsecret's connection
 \ hold for the whole process.
