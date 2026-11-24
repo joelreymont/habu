@@ -1763,58 +1763,52 @@ private
    code JSON-FAULT? if na nu ta tu NAMED-THROW then
    code 0<> if code throw then ;
 
-: JSON-OBJECT? ( str ^call -- bool )
-   {: a:^ u:n c :}
-   c MODEL-CALL:READER a u JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ = if
-      JSON:READ-SKIP-VALUE
-      JSON:READ-NEXT JSON:T-END = {: valid:bool :}
-      JSON:READ-CLOSE valid exit
-   then
-   JSON:READ-CLOSE false ;
+: JSON-OBJECT? ( str -- bool )
+   JSON:PARSE JSON:OBJECT? ;
 
 : OBJECT-FIX$ ( -- str ) s" pass one JSON object" ;
 
-: OBJECT-STEP ( str ^call -- str ^call )
-   {: a:^ u:n c :}
-   c MODEL-CALL:READER a u JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if s" an object" OBJECT-FIX$ JSON:READ-REJECT then
-   JSON:READ-SKIP-VALUE
-   JSON:READ-NEXT JSON:T-END <> if
-      s" the end of the input" OBJECT-FIX$ JSON:READ-REJECT
-   then
-   JSON:READ-CLOSE
-   a u c ;
+: OBJECT-STEP ( str -- str )
+   2dup JSON:PARSE {: v :}
+   v JSON:OBJECT? 0= if
+      v s" an object" OBJECT-FIX$ JSON:REJECT
+   then ;
 
 \ Bytes that are not exactly one JSON object, a reader fault included, are
 \ E-CONFIG.
-: CHECK-OBJECT ( str ^call str -- )
+: CHECK-OBJECT ( str str -- )
    {: na:^ nu:n :}
-   [: OBJECT-STEP ;] catch {: code:n :} code REASON:TEXT$ {: ta:^ tu:n :}
-   drop 2drop
+   [: OBJECT-STEP ;] catch {: code:n :} 2drop
+   code REASON:TEXT$ {: ta:^ tu:n :}
    na nu ta tu code READER-THROW ;
 
 : TOOLS-FIX$ ( -- str ) s" pass one JSON array of one or more tool objects" ;
 
-: TOOLS-STEP ( str ^call -- str ^call )
-   {: a:^ u:n c :}
-   c MODEL-CALL:READER a u JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-ARR <> if s" an array" TOOLS-FIX$ JSON:READ-REJECT then
-   JSON:READ-NEXT JSON:T-OBJ <> if s" an object" TOOLS-FIX$ JSON:READ-REJECT then
-   begin JSON:READ-SKIP-VALUE JSON:READ-NEXT dup JSON:T-OBJ = while drop repeat
-   JSON:T-ARR-END <> if s" an object or `]`" TOOLS-FIX$ JSON:READ-REJECT then
-   JSON:READ-NEXT JSON:T-END <> if
-      s" the end of the input" TOOLS-FIX$ JSON:READ-REJECT
+\ After the first element, `]` may also end the array.
+: TOOL-EXPECTED$ ( n -- str )
+   0= if s" an object" exit then
+   s" an object or `]`" ;
+
+\ Counts k past an element that is an object; any other is rejected.
+: TOOL-STEP ( n JSON:value -- n ) {: k:n v :}
+   v JSON:OBJECT? 0= if
+      v k TOOL-EXPECTED$ TOOLS-FIX$ JSON:REJECT
    then
-   JSON:READ-CLOSE
-   a u c ;
+   k 1+ ;
+
+: TOOLS-STEP ( str -- str )
+   2dup JSON:PARSE {: v :}
+   v JSON:ARRAY? 0= if v s" an array" TOOLS-FIX$ JSON:REJECT then
+   0 v [: TOOL-STEP ;] JSON:EACH 0= if
+      v s" a non-empty array" TOOLS-FIX$ JSON:REJECT
+   then ;
 
 \ Bytes that are not one non-empty JSON array of objects, a reader fault
 \ included, are E-CONFIG.
-: CHECK-TOOLS ( str ^call str -- )
+: CHECK-TOOLS ( str str -- )
    {: na:^ nu:n :}
-   [: TOOLS-STEP ;] catch {: code:n :} code REASON:TEXT$ {: ta:^ tu:n :}
-   drop 2drop
+   [: TOOLS-STEP ;] catch {: code:n :} 2drop
+   code REASON:TEXT$ {: ta:^ tu:n :}
    na nu ta tu code READER-THROW ;
 
 \ Appends an item's bytes to the items, after a single comma once there are
@@ -1835,7 +1829,7 @@ public
    c UNPREPARE drop
    c REQUIRE-BUILDING
    a u s" ITEM+'s item" REQUIRE-LENGTH
-   a u c s" ITEM+'s item" CHECK-OBJECT
+   a u s" ITEM+'s item" CHECK-OBJECT
    construct input-state broken c MODEL-CALL:CHAT-INPUT !
    a u c ITEM-JOIN
    construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
@@ -1869,8 +1863,8 @@ private
    c CHECK-INPUT
    c MODEL-CALL:FORM @ MATCH reply-form
       none OF NO-FORM ENDOF
-      schema OF c FORM$ c s" SCHEMA!'s schema" CHECK-OBJECT ENDOF
-      tools OF c FORM$ c s" TOOLS!'s tools" CHECK-TOOLS ENDOF
+      schema OF c FORM$ s" SCHEMA!'s schema" CHECK-OBJECT ENDOF
+      tools OF c FORM$ s" TOOLS!'s tools" CHECK-TOOLS ENDOF
    ;MATCH ;
 
 : BODY-OPEN ( ^call -- )
@@ -2695,14 +2689,14 @@ private
 
 : ACCEPT-CHAT ( ^call -- )
    {: c :}
-   c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
+   c RESPONSE$ JSON-OBJECT? 0= if E-RESPONSE throw then
    c REPLY-STATUS
    c MODEL-CALL:FORM @ MATCH reply-form
       none OF E-RESPONSE throw ENDOF
       schema OF
          c READ-OUTPUT
          c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
-         c JSON-OBJECT? 0= if E-RESPONSE throw then
+         JSON-OBJECT? 0= if E-RESPONSE throw then
       ENDOF
       tools OF c READ-TOOLS ENDOF
    ;MATCH ;
@@ -3219,7 +3213,7 @@ private
       0 c MODEL-CALL:RESPONSE-U !
       true s STREAM-HEARD !
    then
-   a u c JSON-OBJECT? 0= if E-RESPONSE throw then
+   a u JSON-OBJECT? 0= if E-RESPONSE throw then
    a u s" type" c DATA-AT 0= if JSON:READ-CLOSE E-RESPONSE throw then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
    \ The span of a string token holds its bytes without the quotes.
@@ -3527,7 +3521,7 @@ ENUM poll none fed spoiled done ;ENUM
 \ objects, the last a compaction item; else E-RESPONSE.
 : CHECK-WINDOW ( ^call -- )
    {: c :}
-   c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
+   c RESPONSE$ JSON-OBJECT? 0= if E-RESPONSE throw then
    s" " c OUTPUT-AT
    begin NEXT-ITEM while KEEP-LAST repeat
    2drop JSON:READ-CLOSE {: last:^ last-u:n :}
@@ -3640,12 +3634,12 @@ ENUM poll none fed spoiled done ;ENUM
 : JOURNAL-RESTORE ( ^call -- )
    {: c :}
    0 c MODEL-CALL:HTTP-STATUS !
-   c JOURNAL-OUT$ c JSON-OBJECT? 0= if E-RESPONSE throw then
+   c JOURNAL-OUT$ JSON-OBJECT? 0= if E-RESPONSE throw then
    c JOURNAL-REFUSAL-FAULT {: refusal:n :}
    refusal 0<> if refusal throw then
    c JOURNAL-ORIGIN
    s" configuration" c JOURNAL-FIELD {: config:^ config-u:n :}
-   config config-u c JSON-OBJECT? 0= if E-RESPONSE throw then
+   config config-u JSON-OBJECT? 0= if E-RESPONSE throw then
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c GEN-CONFIG-BYTES ENDOF
       embed OF c EMBED-CONFIG-BYTES ENDOF
