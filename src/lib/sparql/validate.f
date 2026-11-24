@@ -9,7 +9,6 @@ private
 defer SCOPE ( ^syntax n -- n )
 defer QUERY-SCOPE ( ^syntax n -- n )
 defer EXPRESSION-CHECK ( ^syntax n bool -- )
-defer CONTAINS-AGGREGATE? ( ^syntax n -- bool )
 defer CHECK-GROUPED ( ^syntax n n -- )
 
 : NAME-IN? ( ^syntax n n -- bool )
@@ -166,43 +165,55 @@ defer CHECK-GROUPED ( ^syntax n n -- )
    {: state pattern:n :} state NEST
    state pattern PATTERN-SCOPE-BODY state UNNEST ;
 
-: CONTAINS-AGGREGATE-BODY ( ^syntax n -- bool )
-   {: state expression:n :}
-   expression 0= if false exit then
+: NODE-IN? ( ^syntax n n -- bool )
+   {: state node:n list:n :}
+   list begin dup 0<> while
+      {: current:n :}
+      state current NODE-A@ node = if true exit then
+      state current NODE-B@
+   repeat drop false ;
+
+defer COLLECT-AGGREGATES ( ^syntax n n -- n )
+
+: COLLECT-AGGREGATES-BODY ( ^syntax n n -- n )
+   {: state expression:n found:n :}
+   expression 0= if found exit then
    state expression NODE-K {: kind:n :}
    kind N-LIST = if
-      expression begin dup 0<> while
-         {: list:n :}
-         state state list NODE-A@ CONTAINS-AGGREGATE? if
-            true exit
-         then state list NODE-B@
-      repeat drop false exit
+      found expression begin dup 0<> while
+         {: result:n list:n :}
+         state state list NODE-A@ result COLLECT-AGGREGATES
+         state list NODE-B@
+      repeat drop exit
    then
    kind N-CALL = if
-      state expression AGGREGATE? if true exit then
-   then
-   kind N-CALL = kind N-UNARY = or kind N-BINARY = or
-   kind N-ALIAS = or if
-      state state expression NODE-A@ CONTAINS-AGGREGATE?
-         if true exit then
-      kind N-CALL <> kind N-UNARY <> and if
-         state state expression NODE-B@ CONTAINS-AGGREGATE? exit
+      state expression AGGREGATE? if
+         state expression found NODE-IN? if found
+         else state expression found CONS then exit
       then
-   then false ;
+      state expression EXISTS-CALL? if found exit then
+   then
+   kind N-CALL = kind N-BINARY = or kind N-UNARY = or
+   kind N-ALIAS = or if
+      state state expression NODE-A@ found COLLECT-AGGREGATES
+      kind N-CALL <> kind N-UNARY <> and if
+         state state expression NODE-B@ rot COLLECT-AGGREGATES
+      then
+   else found then ;
 
-: CONTAINS-AGGREGATE ( ^syntax n -- bool )
-   {: state expression:n :} state NEST
-   state expression CONTAINS-AGGREGATE-BODY state UNNEST ;
+: QUERY-COLLECT-AGGREGATES ( ^syntax n n -- n )
+   {: state expression:n found:n :} state NEST
+   state expression found COLLECT-AGGREGATES-BODY state UNNEST ;
 
-: MODIFIER-AGGREGATE? ( ^syntax n -- bool )
-   {: state list:n :}
-   list begin dup 0<> while
-      {: current:n :} state current NODE-A@ {: modifier:n :}
-      state modifier NODE-K dup N-ORDER = swap N-HAVING = or if
-         state state modifier NODE-A@ CONTAINS-AGGREGATE?
-         if true exit then
-      then state current NODE-B@
-   repeat drop false ;
+: FIND-AGGREGATES ( ^syntax n -- n )
+   {: state query:n :}
+   state state query NODE-A@ 0 COLLECT-AGGREGATES
+   state query NODE-D@ begin dup 0<> while
+      {: found:n list:n :} state list NODE-A@ {: modifier:n :}
+      state modifier NODE-K dup N-HAVING = swap N-ORDER = or if
+         state state modifier NODE-A@ found COLLECT-AGGREGATES
+      else found then state list NODE-B@
+   repeat drop ;
 
 : GROUPED-NAMES ( ^syntax n n -- n n )
    {: state expressions:n scope:n :}
@@ -260,13 +271,8 @@ defer CHECK-GROUPED ( ^syntax n n -- )
 
 : TAIL-NAMES ( ^syntax n -- n )
    {: state query:n :}
-   state query NODE NODE-VALUE @ dup 0<> if state swap SCOPE
+   state query QUERY-VALUES@ dup 0<> if state swap SCOPE
    else drop 0 then ;
-
-: QUERY-NAMES ( ^syntax n -- n )
-   {: state query:n :}
-   state state state query NODE-B@ SCOPE
-      state query TAIL-NAMES SCOPE-UNION ;
 
 : PROJECT-SCOPE ( ^syntax n n n bool -- n )
    {: state query:n scope:n grouped:n aggregate:bool :}
@@ -288,7 +294,7 @@ defer CHECK-GROUPED ( ^syntax n n -- )
       else
          names state expression projected FRESH-VAR
       then state list NODE-B@
-   repeat drop nip ;
+   repeat drop nip state swap REVERSE ;
 
 : QUERY-MODIFIERS ( ^syntax n n n bool -- )
    {: state query:n grouped:n projected:n aggregate:bool :}
@@ -311,9 +317,9 @@ defer CHECK-GROUPED ( ^syntax n n -- )
    {: state query:n :}
    state state query NODE-B@ SCOPE {: scope:n :}
    state query GROUP-BY-NODE {: grouping:n :}
-   state state query NODE-A@ CONTAINS-AGGREGATE?
-   state state query NODE-D@ MODIFIER-AGGREGATE? or
-   grouping 0<> or {: aggregate:bool :}
+   state query FIND-AGGREGATES {: aggregates:n :}
+   aggregates state query QUERY-INFO NODE-B !
+   aggregates 0<> grouping 0<> or {: aggregate:bool :}
    grouping 0<> if
       state state grouping NODE-A@ scope GROUPED-NAMES
    else scope 0 then {: names:n grouped:n :}
@@ -322,14 +328,14 @@ defer CHECK-GROUPED ( ^syntax n n -- )
       state names state query TAIL-NAMES SCOPE-UNION
       state grouped state query TAIL-NAMES SCOPE-UNION
       aggregate PROJECT-SCOPE
-   else names then {: projected:n :}
+   else state names state query TAIL-NAMES SCOPE-UNION then {: projected:n :}
    state query grouped projected aggregate QUERY-MODIFIERS
-   projected ;
+   projected state query QUERY-INFO NODE-C ! projected ;
 
 : INSTALL-VALIDATION ( -- )
    ['] CHECK-EXPRESSION is EXPRESSION-CHECK
    ['] PATTERN-SCOPE is SCOPE
-   ['] CONTAINS-AGGREGATE is CONTAINS-AGGREGATE?
+   ['] QUERY-COLLECT-AGGREGATES is COLLECT-AGGREGATES
    ['] GROUPED-CHECK is CHECK-GROUPED
    ['] CHECK-QUERY is QUERY-SCOPE ;
 

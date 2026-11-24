@@ -1,12 +1,14 @@
 # Native query compiler
 
-Private implementation of `SPARQL:QUERY`. The caller owns one arena. Habu
+The compiler and result writer serve both public query interfaces. Habu
 parses the query and emits one parameterized PostgreSQL statement; PostgreSQL
 evaluates joins, paths, aggregates, ordering and slicing.
 
 ## Internal contract
 
-`QUERY(query, base, schema, deadline, context, read, write)` owns the arena.
+The public call owns its compilation arena. `QUERY-ROWS` gives the host a
+borrowed statement and argument iterator and consumes rows synchronously.
+`QUERY` exposes the same plan over the byte callback.
 `read(context, request)` returns an array of row values; after the plan
 descriptor, each request is `{"op":"next"}` and an empty array ends the
 stream. `write(context, bytes)` receives standard SPARQL Results JSON or
@@ -69,6 +71,5 @@ bin/hb --load tools/sparql-compile.f -- batch.json test_backend </dev/null
 ```
 
 The [external W3C harness](../../../test/sparql/README.md) uses those statements
-without evaluating SPARQL itself. Its fixture/comparison functions remain
-unchanged. The obsolete Rust crate, ABI and evaluator are removed;
+without evaluating SPARQL itself. The obsolete Rust crate, ABI and evaluator are removed;
 there is no separate query executable or library to build.

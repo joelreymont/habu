@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the unchanged W3C comparison policy through Habu and PostgreSQL.
+"""Run W3C query cases through Habu and PostgreSQL.
 
 Habu alone parses SPARQL and compiles SQL. PostgreSQL alone evaluates it.
 This adapter supplies fixtures and serializes returned rows for the existing
@@ -235,12 +235,14 @@ def main():
             "counts_by_group": {group: dict(Counter(r["status"] for r in records if r["group"] == group))
                                 for group in sorted(set(r["group"] for r in records))},
             "elapsed_seconds": round(time.perf_counter() - started, 3),
-            "comparison": "Unchanged fixture/comparison functions: exact RDF 1.1 terms, bags, global blank-node bijection, rs:index order, REDUCED lax cardinality; no numeric lexical normalization",
+            "comparison": "Exact RDF 1.1 terms, bags, global blank-node bijection, rs:index order, REDUCED lax cardinality; no numeric lexical normalization",
             "records": records,
         }
         args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
         print(json.dumps(result["counts"]))
 
+    return 0 if records and len(records) == len(tests) and all(r["status"] == "pass" for r in records) else 1
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

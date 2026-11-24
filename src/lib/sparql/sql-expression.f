@@ -85,6 +85,10 @@ private
 : AGGREGATE+ ( ^plan n -- )
    {: plan call:n :} plan TREE {: state :}
    state call s" COUNT" CALL-IS? if plan call COUNT+ exit then
+   state call s" SAMPLE" CALL-IS? if
+      plan s" any_value(" SQL+
+      plan state call 0 ARGUMENT@ SQL-EXPRESSION plan s" )" SQL+ exit
+   then
    plan s" @.sparql_aggregate(" SQL+
    plan state call TEXT$ STRING+
    plan s" ,array_agg(" SQL+
@@ -175,8 +179,8 @@ private
       plan state node NODE-A@ EBV+ plan s" )" SQL+ exit
    then
    plan s" @.sparql_arithmetic(" SQL+
-   plan state node TEXT$ STRING+
-   plan s" ,@.sparql_number(0,'http://www.w3.org/2001/XMLSchema#integer')," SQL+
+   plan node s" +" INFIX-IS? if plan s" 'u+'," SQL+ else plan s" 'u-'," SQL+ then
+   plan s" NULL::jsonb," SQL+
    plan state node NODE-A@ SQL-EXPRESSION plan s" )" SQL+ ;
 
 : EXPRESSION-BODY+ ( ^plan n -- )

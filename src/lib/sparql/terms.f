@@ -129,7 +129,11 @@ private
 
 : READ-LANGUAGE ( ^syntax n -- )
    {: state term:n :}
-   state N-LITERAL 1 0 COPY-TOKEN {: language:n :}
+   state TOKEN$ {: token length:n :}
+   state token 1+ length 1- COPY$ {: text size:n :}
+   size 0 ?do text i + dup c@ ASCII-LOWER swap c! loop
+   state NEXT-TOKEN
+   state N-LITERAL text size TEXT-NODE {: language:n :}
    language state term NODE NODE-B !
    state s" langString" RDF-IRI
       state term NODE NODE-A ! ;

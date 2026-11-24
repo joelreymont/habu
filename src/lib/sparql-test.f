@@ -9,7 +9,7 @@ require src/lib/time.f
 package SPARQL-TEST
 private
 
-4096 CODEGEN:BUFFER OUTPUT
+CODEGEN:BUFFER OUTPUT
 variable READS
 variable KIND
 
@@ -42,6 +42,13 @@ variable KIND
    s" " s" test_backend" 0 NULL-PTR [: SOURCE ;] [: COLLECT ;]
       SPARQL:QUERY ;
 
+: NATIVE-ROWS ( ^u8 ^SPARQL:call -- )
+   {: context call :}
+   call SPARQL:STATEMENT$ nip 0 > TTRUE
+   0 call [: nip 0 > TTRUE 1+ ;] SPARQL:EACH-PARAMETER 0 > TTRUE
+   call SPARQL:GRAPH-RESULT? TFALSE
+   call s\" {\"x\":{\"type\":\"literal\",\"value\":\"one\"}}" SPARQL:WRITE-ROW ;
+
 public
 
 : RUN ( -- )
@@ -54,6 +61,14 @@ public
    RESET 1 KIND !
    s" SELECT rows are standard result bindings" T-LABEL
    s" SELECT ?x WHERE { VALUES ?x { 'one' } }" RUN-QUERY
+   OUTPUT CODEGEN:CONTENTS
+   s\" {\"head\":{\"vars\":[\"x\"]},\"results\":{\"bindings\":[{\"x\":{\"type\":\"literal\",\"value\":\"one\"}}]}}"
+      JSON:VALUE= TTRUE
+
+   RESET
+   s" a native host binds parameters and streams individual rows" T-LABEL
+   s" SELECT ?x WHERE { VALUES ?x { 'one' } }" s" " s" test_backend" 0
+   NULL-PTR [: NATIVE-ROWS ;] [: COLLECT ;] SPARQL:QUERY-ROWS
    OUTPUT CODEGEN:CONTENTS
    s\" {\"head\":{\"vars\":[\"x\"]},\"results\":{\"bindings\":[{\"x\":{\"type\":\"literal\",\"value\":\"one\"}}]}}"
       JSON:VALUE= TTRUE

@@ -101,7 +101,10 @@ defer GROUP-PATTERN ( ^syntax -- n )
 
 : CHECK-CALL ( ^syntax n -- )
    {: state call:n :}
-   state call TEXT$ BUILTIN? 0= if exit then
+   state call TEXT$ BUILTIN? 0= if
+      state call NODE NODE-FLAGS @ F-STAR and
+      state call NODE-B@ or 0<> if E-SYNTAX throw then exit
+   then
    state call NODE NODE-FLAGS @ {: flags:n :}
    flags F-STAR and 0<> if
       state call s" COUNT" CALL-IS? 0= if E-SYNTAX throw then
@@ -131,7 +134,10 @@ defer GROUP-PATTERN ( ^syntax -- n )
    else text size then
    state N-CALL 2swap TEXT-NODE {: call:n :}
    state s" (" EXPECT$ state call CALL-ARGUMENTS
-   state call CHECK-CALL call ;
+   state call CHECK-CALL
+   state call s" BNODE" CALL-IS? state call NODE-A@ 0<> and if
+      true state SYNTAX-SCOPED !
+   then call ;
 
 : READ-EXISTS ( ^syntax bool -- n )
    {: state negative:bool :}

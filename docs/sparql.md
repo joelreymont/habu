@@ -1,24 +1,33 @@
 # SPARQL
 
-One public operation, `SPARQL:QUERY`:
+Habu parses a read-only query and compiles one parameterized PostgreSQL
+statement. PostgreSQL evaluates joins, paths, expressions, aggregates,
+ordering and slicing. The host supplies the base IRI, trusted backend
+schema, absolute monotonic deadline and callbacks.
+
+A native database host uses `SPARQL:QUERY-ROWS`:
 
 ```forth
 ( query query-length base base-length schema schema-length deadline
-  context read write -- )
+  context execute-plan write -- )
 ```
 
-`read` has effect `[ context request length -- batch length ]`.
-`write` has effect `[ context bytes length -- ]`.
-The exact checked effects are in `src/lib/sparql.f`.
+The `execute-plan` callback receives `context` and a scoped `^SPARQL:call`.
+Read the SQL with `SPARQL:STATEMENT$`, bind its text parameters in
+`SPARQL:EACH-PARAMETER` order, and pass each returned SQL column to
+`SPARQL:WRITE-ROW` while the database owns the row. Both the statement
+and its arguments stay valid for this callback. `SPARQL:GRAPH-RESULT?`
+identifies N-Triples output. Each synchronous `write` receives
+`context bytes length`.
 
-Habu parses SPARQL and compiles one parameterized PostgreSQL statement.
-PostgreSQL evaluates joins, paths, expressions, aggregates, ordering and
-slicing. Models supply SPARQL text. The host supplies the base IRI, trusted
-backend schema, absolute monotonic deadline and callbacks.
+Hosts with a byte transport can use `SPARQL:QUERY`. It takes a `read`
+callback in the same position as `execute-plan`. Its checked effect is
+`[ context request length -- batch length ]`. Both interfaces use the
+same compiler and result writer.
 
 ## Ownership
 
-`QUERY` owns one arena for syntax, SQL construction and result writing.
+Each invocation owns an arena for syntax and SQL construction.
 Callbacks run synchronously on the caller's task. A returned batch remains
 valid until the next `read`; a write span expires when `write` returns.
 Both callbacks are stable quotations; pass per-call state through `context`.
@@ -49,8 +58,9 @@ result. Every SQL row contains one JSONB column, `v`:
 | CONSTRUCT / DESCRIBE | Object with `s`, `p`, `o` RDF terms | N-Triples |
 
 The host owns authorization and one read-only, repeatable-read snapshot
-across cursor creation and all fetches. Zen fetches 64 rows at a time and
-applies its output-byte budget. Counts and joins execute before rows cross
+across cursor creation and all fetches. Zen fetches up to 64 rows,
+stopping once a batch reaches 64 KiB. A row stays whole. PostgreSQL
+checks its size before transfer, and Zen enforces a 1 MiB output budget. Counts and joins execute before rows cross
 this boundary.
 
 ## RDF source
@@ -85,10 +95,8 @@ bin/hb --load src/lib/sparql-test.f </dev/null
 ```
 
 The [W3C audit](../test/sparql/README.md) uses the native Habu compiler and
-PostgreSQL with the pinned 855-case query profile. Its fixture loading and
-comparison policy are preserved from the earlier audit. The old Rust score
-is historical; it does not validate this replacement. Native execution and
-conformance remain pending until a current T0 runtime runs these checks.
+PostgreSQL with the pinned 855-case query profile. The runner checks row order for indexed result fixtures and
+exits with a failing status if any result differs.
 
 The private [compiler contract](../src/lib/sparql/README.md) records current
 implementation limits separately from the public callback API.

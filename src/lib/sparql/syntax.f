@@ -49,6 +49,7 @@ private
 29 constant N-HAVING
 30 constant N-LIMIT
 31 constant N-OFFSET
+32 constant N-QUERY-INFO
 
 1 constant F-DISTINCT
 2 constant F-REDUCED
@@ -94,6 +95,7 @@ STRUCTURE syntax OPAQUE DERIVE addr
    FIELD labels n
    FIELD deadline n
    FIELD ticks n
+   FIELD scoped bool
    FIELD nesting n
 ;STRUCTURE
 
@@ -134,6 +136,20 @@ private
    state SYNTAX-NODES @ VEC:COUNT {: index:n :}
    kind state SYNTAX-NODES @ VEC:PUSH NODE-KIND !
    index ;
+
+\ Only query forms carry this node: trailing VALUES, aggregate slots and
+\ projected names are shared by validation, SQL construction and the writer.
+: QUERY-INFO ( ^syntax n -- ^node )
+   over swap NODE NODE-VALUE @ NODE ;
+
+: NEW-QUERY ( ^syntax n -- n )
+   {: state kind:n :}
+   state kind ADD-NODE {: query:n :}
+   state N-QUERY-INFO ADD-NODE state query NODE NODE-VALUE ! query ;
+
+: QUERY-VALUES@ ( ^syntax n -- n ) QUERY-INFO NODE-A @ ;
+: QUERY-AGGREGATES ( ^syntax n -- n ) QUERY-INFO NODE-B @ ;
+: QUERY-NAMES ( ^syntax n -- n ) QUERY-INFO NODE-C @ ;
 
 : TEXT! ( ^syntax n ^u8 n -- )
    {: state index:n text size:n :}

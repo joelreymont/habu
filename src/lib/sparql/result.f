@@ -10,15 +10,15 @@ public
 
 -10000 s" invalid SPARQL backend result" ERROR:CODE E-QUERY
 
-private
-
-STRUCTURE call DERIVE addr
+STRUCTURE call OPAQUE DERIVE addr
    FIELD plan ^plan
    FIELD context ^u8
    FIELD read [ ^u8 ^u8 n -- ^u8 n ]
    FIELD write [ ^u8 ^u8 n -- ]
    FIELD rows n
 ;STRUCTURE
+
+private
 
 CAST: >CURSOR ( ^u8 -- ^JSON:cursor )
 
@@ -92,31 +92,45 @@ CAST: >CURSOR ( ^u8 -- ^JSON:cursor )
    byte 4 rshift HEX out 4 + c! byte 15 and HEX out 5 + c!
    call out 6 OUT ;
 
+: HEX-ESCAPE? ( n bool -- bool )
+   {: byte:n iri:bool :}
+   byte 32 < byte 127 = or if true exit then
+   iri 0= if false exit then
+   byte 32 = byte 60 = or byte 62 = or byte 123 = or
+   byte 125 = or byte 124 = or byte 94 = or byte 96 = or
+   byte 34 = or byte 92 = or ;
+
+: PLAIN ( ^call ^u8 n n -- )
+   {: call text start:n end:n :}
+   end start > if call text start + end start - OUT then ;
+
 : QUOTED ( ^call ^u8 n bool ^u8 -- )
    {: call text size:n iri:bool scratch :}
-   size 0 ?do
+   0 size 0 ?do
+      {: start:n :}
+      i 4095 and 0= if call CHECK-RESULT then
       text i + c@ {: byte:n :}
-      byte 32 < byte 127 = or
-      iri if byte 32 = or byte 60 = or byte 62 = or byte 123 = or
-         byte 125 = or byte 124 = or byte 94 = or byte 96 = or byte 34 = or byte 92 = or then if
-         call byte scratch ESCAPE
-      else
-         byte 34 = byte 92 = or if call s" \" OUT then
-         call text i + 1 OUT
-      then
-   loop ;
+      byte iri HEX-ESCAPE? if
+         call text start i PLAIN call byte scratch ESCAPE i 1+
+      else byte 34 = byte 92 = or if
+         call text start i PLAIN call s" \" OUT i
+      else start then then
+   loop {: start:n :} call text start size PLAIN ;
 
 : IRI ( ^call ^u8 n ^u8 -- )
    {: call text size:n scratch :}
    call s" <" OUT call text size true scratch QUOTED call s" >" OUT ;
 
-: BLANK ( ^call ^u8 n ^u8 -- )
-   {: call text size:n scratch :}
-   call s" _:b" OUT
+: BLANK ( ^call ^u8 n ^ARENA:arena -- )
+   {: call text size:n arena :}
+   arena ARENA:ALLOCATOR size 2 * 3 + ALLOC:BYTES {: out count:n :}
+   s" _:b" drop out 3 BYTE-COPY
    size 0 ?do
-      text i + c@ dup 4 rshift HEX scratch c!
-      15 and HEX scratch 1+ c! call scratch 2 OUT
-   loop ;
+      i 4095 and 0= if call CHECK-RESULT then
+      out 3 + i 2 * + {: at :}
+      text i + c@ dup 4 rshift HEX at c!
+      15 and HEX at 1+ c!
+   loop call out count OUT ;
 
 : TERM ( ^call ^u8 n ^ARENA:arena -- )
    {: call bytes size:n arena :}
@@ -125,7 +139,7 @@ CAST: >CURSOR ( ^u8 -- ^JSON:cursor )
    bytes size s" value" arena MEMBER$ dup 0= if E-QUERY throw then
       arena STRING$ {: value vu:n :}
    kind ku s" uri" STR= if call value vu scratch IRI exit then
-   kind ku s" bnode" STR= if call value vu scratch BLANK exit then
+   kind ku s" bnode" STR= if call value vu arena BLANK exit then
    kind ku s" literal" STR= 0= if E-QUERY throw then
    call s\" \"" OUT call value vu false scratch QUOTED call s\" \"" OUT
    bytes size s" xml:lang" arena TEXT-MEMBER$ dup 0<> if

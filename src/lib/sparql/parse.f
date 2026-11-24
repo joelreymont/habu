@@ -171,6 +171,10 @@ private
       state triple NODE-K N-TRIPLE <> if E-SYNTAX throw then
       state state triple NODE-B@ NODE-K N-PATH = if
          E-SYNTAX throw
+      then
+      state state triple NODE-A@ NODE-K N-BNODE =
+      state state triple NODE-C@ NODE-K N-BNODE = or if
+         true state SYNTAX-SCOPED !
       then state list NODE-B@
    repeat drop ;
 
@@ -188,12 +192,12 @@ private
 : TAIL-VALUES ( ^syntax n -- )
    {: state query:n :}
    state s" VALUES" ACCEPT$ 0= if exit then
-   state VALUES state query NODE NODE-VALUE ! ;
+   state VALUES state query QUERY-INFO NODE-A ! ;
 
 : SELECT-QUERY ( ^syntax -- n )
    {: state :}
    state s" SELECT" EXPECT$
-   state N-SELECT ADD-NODE {: query:n :}
+   state N-SELECT NEW-QUERY {: query:n :}
    state query PROJECTION state query DATASETS
    state query false WHERE-GROUP
    state query MODIFIERS state query TAIL-VALUES query ;
@@ -205,20 +209,20 @@ private
 
 : ASK-QUERY ( ^syntax -- n )
    {: state :}
-   state N-ASK ADD-NODE {: query:n :}
+   state N-ASK NEW-QUERY {: query:n :}
    state query DATASETS state query false WHERE-GROUP
    state query MODIFIERS state query TAIL-VALUES query ;
 
 : DESCRIBE-QUERY ( ^syntax -- n )
    {: state :}
-   state N-DESCRIBE ADD-NODE {: query:n :}
+   state N-DESCRIBE NEW-QUERY {: query:n :}
    state query DESCRIBE-TARGETS state query DATASETS
    state query true WHERE-GROUP
    state query MODIFIERS state query TAIL-VALUES query ;
 
 : CONSTRUCT-QUERY ( ^syntax -- n )
    {: state :}
-   state N-CONSTRUCT ADD-NODE {: query:n :}
+   state N-CONSTRUCT NEW-QUERY {: query:n :}
    state s" {" IS$ if
       state GROUP-PATTERN {: template:n :}
       state template TEMPLATE-CHECK

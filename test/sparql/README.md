@@ -13,11 +13,11 @@ excludes updates, entailment, remote federation execution, protocol and
 SPARQL 1.2. Valid federation syntax is still accepted independently of the
 execution policy.
 
-`fixtures.py` preserves the previous fixture/comparison functions verbatim.
+`fixtures.py` implements the fixture loading and result comparison.
 Comparison checks exact RDF 1.1 terms, duplicate rows and one blank-node
 bijection across the whole result. Numeric lexical spelling is preserved.
-Ordering follows explicit `rs:index` annotations; this profile has none, so
-the score alone cannot prove every ORDER BY sequence. REDUCED uses the
+Ordering follows explicit `rs:index` annotations. Fixtures without those
+annotations are compared as multisets. REDUCED uses the
 fixture's lax cardinality rule. No numeric mismatch is reclassified as a pass.
 
 `dataset-descriptions.json` contains input graph selections from the
@@ -51,6 +51,7 @@ python test/sparql/run_habu.py \
   --output .out/sparql-conformance/results.json
 ```
 
+The runner exits nonzero for failed, incomplete or empty runs.
 The adapter loads `tools/sparql-compile.f` once for all queries. It retains
 every emitted plan, compiler diagnostic and source hash with the report.
 The test backend uses temporary fixture tables and the production SQL term

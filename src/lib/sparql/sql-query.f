@@ -6,48 +6,6 @@ require src/lib/sparql/sql-path.f
 package SPARQL
 private
 
-defer COLLECT-AGGREGATES ( ^syntax n n -- n )
-
-: COLLECT-AGGREGATES-BODY ( ^syntax n n -- n )
-   {: state expression:n found:n :}
-   expression 0= if found exit then
-   state expression NODE-K {: kind:n :}
-   kind N-LIST = if
-      found expression begin dup 0<> while
-         {: result:n list:n :}
-         state state list NODE-A@ result COLLECT-AGGREGATES
-         state list NODE-B@
-      repeat drop exit
-   then
-   kind N-CALL = if
-      state expression AGGREGATE? if
-         state expression found NODE-IN? if found
-         else state expression found CONS then exit
-      then
-      state expression EXISTS-CALL? if found exit then
-   then
-   kind N-CALL = kind N-BINARY = or kind N-UNARY = or
-   kind N-ALIAS = or if
-      state state expression NODE-A@ found COLLECT-AGGREGATES
-      kind N-CALL <> kind N-UNARY <> and if
-         state state expression NODE-B@ rot COLLECT-AGGREGATES
-      then
-   else found then ;
-
-: QUERY-COLLECT-AGGREGATES ( ^syntax n n -- n )
-   {: state expression:n found:n :} state NEST
-   state expression found COLLECT-AGGREGATES-BODY state UNNEST ;
-
-: QUERY-AGGREGATES ( ^syntax n -- n )
-   {: state query:n :}
-   state state query NODE-A@ 0 COLLECT-AGGREGATES
-   state query NODE-D@ begin dup 0<> while
-      {: found:n list:n :} state list NODE-A@ {: modifier:n :}
-      state modifier NODE-K dup N-HAVING = swap N-ORDER = or if
-         state state modifier NODE-A@ found COLLECT-AGGREGATES
-      else found then state list NODE-B@
-   repeat drop ;
-
 : GROUP-VALUE+ ( ^plan n -- )
    {: plan expression:n :} plan TREE {: state :}
    state expression NODE-K N-ALIAS = if
@@ -110,7 +68,7 @@ defer COLLECT-AGGREGATES ( ^syntax n n -- n )
    plan plan PLAN-GROUPING @ input GROUP-ALIAS-SQL {: source:n :}
    plan CTE {: relation:n :}
    plan s" SELECT " SQL+
-   plan PLAN-SCOPES @ if
+   plan TREE SYNTAX-SCOPED @ if
       plan s" coalesce(min(r.u),(SELECT u FROM q0))||'/group/'||row_number()OVER()::text AS u," SQL+
    else plan s" ''::text AS u," SQL+ then
    plan GROUP-MAP+ plan s" AS v" SQL+
@@ -173,19 +131,6 @@ defer COLLECT-AGGREGATES ( ^syntax n n -- n )
    plan s" AS z" SQL+
    plan input FROM+ plan CTE-END relation ;
 
-: SELECT-NAMES ( ^syntax n -- n )
-   {: state query:n :}
-   state query NODE NODE-FLAGS @ F-STAR and 0<> if
-      state query QUERY-NAMES exit
-   then
-   0 state query NODE-A@ begin dup 0<> while
-      {: names:n list:n :} state list NODE-A@ {: projection:n :}
-      state projection NODE-K N-ALIAS = if
-         state projection NODE-B@
-      else projection then
-      state swap names CONS state list NODE-B@
-   repeat drop state swap REVERSE ;
-
 : PROJECT-MAP+ ( ^plan n -- )
    {: plan names:n :} plan TREE {: state :}
    plan s" '{}'::jsonb" SQL+
@@ -199,7 +144,7 @@ defer COLLECT-AGGREGATES ( ^syntax n n -- n )
 
 : PROJECT-SQL ( ^plan n n -- n )
    {: plan query:n input:n :}
-   plan TREE query SELECT-NAMES {: names:n :}
+   plan TREE query QUERY-NAMES {: names:n :}
    plan CTE {: relation:n :}
    plan s" SELECT r.u," SQL+ plan names PROJECT-MAP+
    plan s" AS v,r.z" SQL+ plan input FROM+ plan CTE-END relation ;
@@ -237,7 +182,7 @@ defer COLLECT-AGGREGATES ( ^syntax n n -- n )
    plan state query NODE-B@ 0 true GROUP-SQL
    plan query rot GROUP-QUERY
    plan query rot HAVING-SQL
-   state query NODE NODE-VALUE @ dup 0<> if
+   state query QUERY-VALUES@ dup 0<> if
       plan swap rot VALUES-SQL
    else drop then
    state query NODE-K N-SELECT = if
@@ -262,7 +207,6 @@ defer COLLECT-AGGREGATES ( ^syntax n n -- n )
    plan s" )subquery" SQL+ plan CTE-END relation ;
 
 : INSTALL-SQL-QUERY ( -- )
-   ['] QUERY-COLLECT-AGGREGATES is COLLECT-AGGREGATES
    ['] SUBQUERY-SQL is SQL-QUERY ;
 
 INSTALL-SQL-QUERY

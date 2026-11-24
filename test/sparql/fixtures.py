@@ -176,7 +176,7 @@ def load_expected(test):
             if variable is not None and value is not None:
                 row[str(variable)] = to_json_term(value)
         rows.append(row)
-        index = graph.value(solution,RS.index)
+        index = graph.value(solution,RS["index"])
         indices.append(int(index) if index is not None else None)
     ordered = any(i is not None for i in indices)
     if ordered:
@@ -200,7 +200,7 @@ def solution_graph(rows, ordered):
         solution = BNode()
         result.add((HX.root,HX.solution,solution))
         if ordered:
-            result.add((solution,HX.index,Literal(index)))
+            result.add((solution,HX["index"],Literal(index)))
         for variable,term in row.items():
             result.add((solution,URIRef(str(HX)+"variable:"+quote(variable,safe="")),to_rdf_term(term,bnodes)))
     return result

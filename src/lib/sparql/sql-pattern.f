@@ -105,8 +105,38 @@ defer GROUP-SQL ( ^plan n n bool -- n )
       plan s" SELECT NULL::jsonb s,NULL::jsonb p,NULL::jsonb o WHERE false" SQL+
    then plan s" )dataset)" SQL+ ;
 
+: FIXED-ARG ( ^plan n -- n )
+   {: plan term:n :}
+   term 0= if 0 exit then
+   plan term VARIABLE? if 0 exit then
+   plan plan term TERM-JSON PARAMETER ;
+
+: LOOKUP-ID ( ^plan n n n -- n )
+   {: plan subject:n predicate:n object:n :}
+   plan PLAN-LOOKUPS @ {: lookups :}
+   plan subject FIXED-ARG {: s:n :} plan predicate FIXED-ARG {: p:n :}
+   plan object FIXED-ARG {: o:n :} plan plan PLAN-GRAPH-TERM @ FIXED-ARG {: g:n :}
+   lookups VEC:COUNT 0 ?do
+      lookups i VEC:AT {: req :}
+      req LOOKUP-SUBJECT @ s = req LOOKUP-PREDICATE @ p = and
+      req LOOKUP-OBJECT @ o = and req LOOKUP-GRAPH @ g = and if i unloop exit then
+   loop
+   lookups VEC:COUNT lookups VEC:PUSH {: req :}
+   s req LOOKUP-SUBJECT ! p req LOOKUP-PREDICATE !
+   o req LOOKUP-OBJECT ! g req LOOKUP-GRAPH ! ;
+
+: SHARED-SOURCE? ( ^plan -- bool )
+   {: plan :} plan PLAN-LOOKUPS @ 0= if false exit then
+   plan PLAN-GRAPH @ 0= if plan PLAN-DATASET @ 0= exit then
+   plan TREE plan PLAN-GRAPH-TERM @ NODE-K N-IRI = ;
+
 : SOURCE+ ( ^plan n n n -- )
    {: plan subject:n predicate:n object:n :}
+   plan SHARED-SOURCE? if
+      plan s" (SELECT s,p,o,g FROM sparql_source WHERE k=" SQL+
+      plan plan subject predicate object LOOKUP-ID SQL-N
+      plan s" )" SQL+ exit
+   then
    plan PLAN-GRAPH @ dup 0<> if
       {: graph:n :}
       plan subject predicate object MATCH-START+
@@ -306,7 +336,7 @@ defer GROUP-SQL ( ^plan n n bool -- n )
    state node NODE-A@ {: term:n :}
    state GRAPH-ID {: graph:n :}
    plan true CHILD-PLAN {: child :}
-   graph child PLAN-GRAPH ! child CHILD-SEED
+   graph child PLAN-GRAPH ! term child PLAN-GRAPH-TERM ! child CHILD-SEED
    child state node NODE-B@ 0 true GROUP-SQL {: body:n :}
    child s" SELECT u,v FROM " SQL+ child body SQL-NAME
    plan CTE {: relation:n :}
@@ -320,16 +350,31 @@ defer GROUP-SQL ( ^plan n n bool -- n )
    plan s" )t" SQL+ plan term graph GRAPH-TEST+
    plan CTE-END plan input relation JOIN+ ;
 
-: VALUE-MAP+ ( ^plan n n -- )
-   {: plan names:n values:n :} plan TREE {: state :}
-   plan s" jsonb_strip_nulls(jsonb_build_object(" SQL+
-   names values begin over 0<> while
-      {: variables:n row:n :}
-      plan plan state variables NODE-A@ VARIABLE$ STRING+
-      plan s" ," SQL+ plan state row NODE-A@ TERM+
-      state variables NODE-B@ state row NODE-B@
-      over 0<> if plan s" ," SQL+ then
-   repeat 2drop plan s" ))" SQL+ ;
+: WRITE-VALUES-ROW ( ^JSON:writer ^syntax n n -- ^JSON:writer )
+   {: writer state names:n values:n :}
+   writer JSON:WRITE-OBJECT-START false names values begin over 0<> while
+      {: out wrote:bool variables:n row:n :}
+      state row NODE-A@ {: term:n :}
+      state term NODE-K N-UNDEF = if out wrote else
+         out wrote if JSON:WRITE-COMMA then
+         state state variables NODE-A@ TEXT$ JSON:WRITE-KEY
+         state term WRITE-TERM true
+      then state variables NODE-B@ state row NODE-B@
+   repeat 2drop drop JSON:WRITE-OBJECT-END ;
+
+: VALUES-DATA$ ( ^syntax n -- ^u8 n )
+   {: state node:n :}
+   state SYNTAX-ARENA @ {: arena :}
+   arena BUF:HDR-BYTES [: BUF:DISPOSE ;] ARENA:ALLOC-DISPOSE drop CELL-VIEW
+      {: buffer :}
+   buffer 256 BUF:N>BLEN BUF:INIT
+   arena ARENA:ALLOCATOR [type] JSON:writer ALLOC:NEW
+   buffer JSON:WRITE-OPEN-BUF JSON:WRITE-ARRAY-START
+   state node NODE-A@ {: names:n :}
+   state node NODE-B@ begin dup 0<> while
+      {: out list:n :} out state names state list NODE-A@ WRITE-VALUES-ROW
+      state list NODE-B@ dup 0<> if swap JSON:WRITE-COMMA swap then
+   repeat drop JSON:WRITE-ARRAY-END JSON:WRITTEN$ ;
 
 : CONTEXT-VALUES ( ^plan n -- n )
    {: plan input:n :}
@@ -343,20 +388,10 @@ defer GROUP-SQL ( ^plan n n bool -- n )
 
 : VALUES-SQL ( ^plan n n -- n )
    {: plan node:n input:n :} plan TREE {: state :}
-   state node NODE-A@ {: names:n :}
-   state node NODE-B@ {: rows:n :}
    plan CTE {: relation:n :}
-   rows 0= if
-      plan s" SELECT ''::text u,'{}'::jsonb v WHERE false" SQL+
-   else
-      rows begin dup 0<> while
-         {: list:n :}
-         plan s" SELECT ''::text u," SQL+
-         plan names state list NODE-A@ VALUE-MAP+
-         plan s" AS v" SQL+
-         state list NODE-B@ dup 0<> if plan s" UNION ALL " SQL+ then
-      repeat drop
-   then plan CTE-END
+   plan s" SELECT ''::text AS u,v FROM jsonb_array_elements(" SQL+
+   state node VALUES-DATA$ plan -rot PARAMETER+
+   plan s" ::text::jsonb) AS rows(v)" SQL+ plan CTE-END
    plan relation CONTEXT-VALUES {: matched:n :}
    plan input matched JOIN+ ;
 

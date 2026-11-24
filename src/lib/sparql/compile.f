@@ -105,11 +105,44 @@ private
       E-SYNTAX throw
    endcase ;
 
+\ Independent correlated groups repeatedly open the same graph/predicate slices.
+\ Share their fixed constraints once per SQL statement. Plain indexed lookups,
+\ dynamic GRAPH names and merged FROM datasets keep the direct source path.
+: REPEATED-EXISTS? ( ^syntax -- bool )
+   {: state :} false state SYNTAX-NODES @ VEC:COUNT 1 ?do
+      state i NODE-K N-CALL = if state i EXISTS-CALL? if
+         if true unloop exit then true
+      then then
+   loop drop false ;
+
+: LOOKUP-ARG+ ( ^plan n -- )
+   {: plan arg:n :} arg 0= if plan s" NULL::jsonb" SQL+ exit then
+   plan s" $" SQL+ plan arg SQL-N plan s" ::text::jsonb" SQL+ ;
+
+: LOOKUPS+ ( ^plan -- )
+   {: plan :} plan PLAN-LOOKUPS @ {: lookups :}
+   lookups 0= if exit then lookups VEC:COUNT 0= if exit then
+   plan s" ,sparql_source AS MATERIALIZED (SELECT req.k,t.* FROM (VALUES " SQL+
+   lookups VEC:COUNT 0 ?do
+      i 0<> if plan s" ," SQL+ then
+      lookups i VEC:AT {: req :}
+      plan s" (" SQL+ plan i SQL-N plan s" ," SQL+ plan req LOOKUP-SUBJECT @ LOOKUP-ARG+
+      plan s" ," SQL+ plan req LOOKUP-PREDICATE @ LOOKUP-ARG+
+      plan s" ," SQL+ plan req LOOKUP-OBJECT @ LOOKUP-ARG+
+      plan s" ," SQL+ plan req LOOKUP-GRAPH @ LOOKUP-ARG+ plan s" )" SQL+
+   loop
+   plan s" )req(k,s,p,o,g) CROSS JOIN LATERAL @.sparql_match(req.s,req.p,req.o,req.g)t)" SQL+ ;
+
 : COMPILE ( ^syntax ^u8 n -- ^plan )
    PLAN-NEW {: plan :}
    plan TREE SYNTAX-ROOT @ {: query:n :}
+   plan TREE query NODE-K dup N-SELECT = swap N-ASK = or if
+      plan TREE REPEATED-EXISTS? if
+         plan TREE SYNTAX-ARENA @ ARENA:ALLOCATOR 0 [type] lookup VEC:NEW plan PLAN-LOOKUPS !
+      then
+   then
    plan SEED plan query QUERY-SOLUTIONS {: rows:n :}
-   plan query rows FINISH-QUERY plan ;
+   plan LOOKUPS+ plan query rows FINISH-QUERY plan ;
 
 : REQUEST-CAPACITY ( ^plan -- n )
    {: plan :}
@@ -144,7 +177,7 @@ private
    state state SYNTAX-ROOT @ NODE-K N-SELECT <> if
       JSON:WRITE-ARRAY-END exit
    then
-   state state SYNTAX-ROOT @ SELECT-NAMES
+   state state SYNTAX-ROOT @ QUERY-NAMES
    begin dup 0<> while
       {: out list:n :}
       out state state list NODE-A@ TEXT$ JSON:WRITE-STRING

@@ -12,6 +12,11 @@ STRUCTURE argument DERIVE addr
    FIELD text ^u8 FIELD size n
 ;STRUCTURE
 
+\ Bound parameter indices, zero for wildcard/default graph.
+STRUCTURE lookup DERIVE addr
+   FIELD subject n FIELD predicate n FIELD object n FIELD graph n
+;STRUCTURE
+
 STRUCTURE plan DERIVE addr
    FIELD syntax ^syntax
    FIELD text ^VEC:vector<u8>
@@ -19,9 +24,10 @@ STRUCTURE plan DERIVE addr
    FIELD serial n
    FIELD dataset n
    FIELD graph n
+   FIELD graph-term n
+   FIELD lookups ^VEC:vector<lookup>
    FIELD context n
    FIELD correlated bool
-   FIELD scopes bool
    FIELD merged bool
    FIELD aggregates n
    FIELD grouping n
@@ -147,33 +153,31 @@ defer PATH-TRIPLE ( ^plan n n -- n )
    state term NODE-B@ dup 0<> if state swap TEXT$ nip +
    else drop then 6 * 256 + ;
 
+: WRITE-TERM ( ^JSON:writer ^syntax n -- ^JSON:writer )
+   {: writer state term:n :}
+   writer JSON:WRITE-OBJECT-START
+   s" type" state term TYPE$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" value" state term TEXT$ JSON:WRITE-FIELD-S
+   state term NODE-B@ dup 0<> if
+      {: language:n :} JSON:WRITE-COMMA
+      s" xml:lang" state language TEXT$ JSON:WRITE-FIELD-S
+   else drop state term NODE-A@ dup 0<> if
+      state swap TEXT$ {: dtype du:n :}
+      dtype du s" http://www.w3.org/2001/XMLSchema#string" STR= 0= if
+         JSON:WRITE-COMMA s" datatype" dtype du JSON:WRITE-FIELD-S
+      then
+   else drop then then JSON:WRITE-OBJECT-END ;
+
 : TERM-JSON ( ^plan n -- ^u8 n )
    {: plan term:n :} plan TREE {: state :}
-   state SYNTAX-ARENA @ ARENA:ALLOCATOR {: allocator :}
-   allocator [type] JSON:writer ALLOC:NEW {: writer :}
-   writer allocator state term TERM-SIZE ALLOC:BYTES
-      JSON:WRITE-OPEN
-   JSON:WRITE-OBJECT-START
-   s" type" state term TYPE$ JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA
-   s" value" state term TEXT$ JSON:WRITE-FIELD-S
-   state term NODE-A@ dup 0<> if
-      {: datatype:n :}
-      JSON:WRITE-COMMA
-      s" datatype" state datatype TEXT$ JSON:WRITE-FIELD-S
-   else drop then
-   state term NODE-B@ dup 0<> if
-      {: language:n :}
-      JSON:WRITE-COMMA
-      s" xml:lang" state language TEXT$ JSON:WRITE-FIELD-S
-   else drop then
-   JSON:WRITE-OBJECT-END JSON:WRITTEN$ ;
+   state SYNTAX-ARENA @ ARENA:ALLOCATOR {: alloc :}
+   alloc [type] JSON:writer ALLOC:NEW
+   alloc state term TERM-SIZE ALLOC:BYTES JSON:WRITE-OPEN
+   state term WRITE-TERM JSON:WRITTEN$ ;
 
 : RDF+ ( ^plan n -- )
-   {: plan term:n :}
-   plan s" @.sparql_normalize(" SQL+
-   plan term TERM-JSON plan -rot PARAMETER+
-   plan s" ::text::jsonb)" SQL+ ;
+   {: plan term:n :} plan plan term TERM-JSON PARAMETER+
+   plan s" ::text::jsonb" SQL+ ;
 
 : VARIABLE$ ( ^plan n -- ^u8 n )
    {: plan term:n :} plan TREE {: state :}
@@ -215,7 +219,7 @@ defer PATH-TRIPLE ( ^plan n n -- n )
 
 : SCOPE+ ( ^plan n -- )
    {: plan relation:n :}
-   plan PLAN-SCOPES @ if
+   plan TREE SYNTAX-SCOPED @ if
       plan s" (r.u||'/'||" SQL+ plan relation SQL-N
       plan s" ::text||'/'||row_number()OVER()::text) AS u," SQL+
    else plan s" ''::text AS u," SQL+ then ;
@@ -233,15 +237,6 @@ defer PATH-TRIPLE ( ^plan n n -- n )
    plan name size STRING+ plan s" ,ARRAY[" SQL+ ;
 
 : CALL-END ( ^plan -- ) s" ]::jsonb[])" SQL+ ;
-
-: SCOPED? ( ^syntax -- bool )
-   {: state :}
-   state SYNTAX-NODES @ VEC:COUNT 1 ?do
-      state i NODE-K N-CALL = if
-         state i s" BNODE" CALL-IS? if true unloop exit then
-      then
-      state i NODE-K N-BNODE = if true unloop exit then
-   loop false ;
 
 : SCHEMA-CHECK ( ^u8 n -- )
    {: name size:n :}
@@ -264,7 +259,7 @@ defer PATH-TRIPLE ( ^plan n n -- n )
    allocator 0 [type] u8 VEC:NEW plan PLAN-TEXT !
    allocator 0 [type] argument VEC:NEW plan PLAN-ARGUMENTS !
    allocator 1 [type] n VEC:NEW plan PLAN-BOUND !
-   state SCOPED? plan PLAN-SCOPES ! plan ;
+   plan ;
 
 : SEED ( ^plan -- )
    {: plan :}
@@ -277,7 +272,7 @@ defer PATH-TRIPLE ( ^plan n n -- n )
       else drop then
       plan s" AS u," SQL+ plan BINDINGS+ plan s" AS v" SQL+
    else
-      plan PLAN-SCOPES @ if
+      plan TREE SYNTAX-SCOPED @ if
          plan PLAN-CONTEXT @ dup 0<> if
             plan swap CONTEXT-NAME+ plan s" .u AS u," SQL+
          else drop plan s" gen_random_uuid()::text AS u," SQL+ then
@@ -292,6 +287,8 @@ defer PATH-TRIPLE ( ^plan n n -- n )
    parent PLAN-ARGUMENTS @ child PLAN-ARGUMENTS !
    parent PLAN-DATASET @ child PLAN-DATASET !
    parent PLAN-GRAPH @ child PLAN-GRAPH !
+   parent PLAN-GRAPH-TERM @ child PLAN-GRAPH-TERM !
+   parent PLAN-LOOKUPS @ child PLAN-LOOKUPS !
    parent PLAN-CONTEXT @ child PLAN-CONTEXT !
    parent PLAN-MERGED @ child PLAN-MERGED !
    correlated child PLAN-CORRELATED ! child ;
@@ -311,14 +308,6 @@ defer PATH-TRIPLE ( ^plan n n -- n )
 : GROUP-KEY$ ( ^plan n -- ^u8 n )
    {: plan expression:n :}
    plan s" @group:" expression INTERNAL$ ;
-
-: NODE-IN? ( ^syntax n n -- bool )
-   {: state node:n list:n :}
-   list begin dup 0<> while
-      {: current:n :}
-      state current NODE-A@ node = if true exit then
-      state current NODE-B@
-   repeat drop false ;
 
 : BINDING+ ( ^plan ^u8 n -- )
    {: plan key size:n :}
