@@ -155,7 +155,6 @@ STRUCTURE call DERIVE addr
    FIELD body-w JSON:writer
    FIELD parts-w JSON:writer
    FIELD journal-parts-w JSON:writer
-   FIELD reader JSON:cursor
    FIELD gate TASK:sem
    FIELD gate-ready bool
    FIELD handle option<CURL:handle>
@@ -179,8 +178,6 @@ STRUCTURE call DERIVE addr
    FIELD chat-input input-state
    FIELD form reply-form
    FIELD content-seen bool
-   FIELD parsed-index n
-   FIELD vector-seen bool
    FIELD kind call-kind
    FIELD receive receive-rest
    FIELD component-count n
@@ -1043,7 +1040,6 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    then
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ {: base:^ :}
    base DISPOSE-BUFFERS
-   c MODEL-CALL:READER JSON:READ-DISPOSE
    base ARENA-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    NULL-PTR c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE !
    0 c MODEL-CALL:ARENA MODEL-ALLOCATION:SIZE ! ;
@@ -1789,8 +1785,8 @@ private
    0= if s" an object" exit then
    s" an object or `]`" ;
 
-\ Counts k past an element that is an object; any other is rejected.
-: TOOL-STEP ( n JSON:value -- n ) {: k:n v :}
+: TOOL-STEP ( n JSON:value -- n )
+   {: k:n v :}
    v JSON:OBJECT? 0= if
       v k TOOL-EXPECTED$ TOOLS-FIX$ JSON:REJECT
    then
@@ -2315,17 +2311,6 @@ private
    OPTION:NONE c MODEL-CALL:TRANSPORT !
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
-: WIRE-READER ( ^call -- JSON:reader )
-   {: c :}
-   c MODEL-CALL:READER c RESPONSE$ JSON:READ-INIT ;
-
-\ The reply's current string, decoded into the content buffer, which a failed
-\ call leaves unused.
-: REPLY-STR ( JSON:reader ^call -- JSON:reader str )
-   {: c :}
-   c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR {: u:n :}
-   c CONTENT-BUF HELD u SPAN:TAKE SPAN:$ ;
-
 \ Ollama's error text for an input longer than the model's context.
 : OLLAMA-SIZE? ( str -- bool )
    {: a:^ u:n :}
@@ -2501,32 +2486,6 @@ private
    h s" POST" CURL:METHOD! c CHECK-STATUS
    h body body-u CURL:BODY! c CHECK-STATUS ;
 
-: EXPECT ( JSON:reader n -- JSON:reader )
-   {: want:n :}
-   JSON:READ-NEXT want <> if JSON:READ-CLOSE E-RESPONSE throw then ;
-
-: DESCEND ( JSON:reader str -- JSON:reader )
-   {: key:^ key-u:n :}
-   key key-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then ;
-
-\ The reader at the reply's member under the key.
-: REPLY-AT ( str ^call -- JSON:reader )
-   {: key:^ key-u:n c :}
-   c WIRE-READER
-   JSON:T-OBJ EXPECT
-   key key-u DESCEND ;
-
-\ The reader at the string type of the object it was at.
-: TYPE-AT ( JSON:reader -- JSON:reader )
-   s" type" DESCEND
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then ;
-
-\ The reader past the opener of the reply's output array.
-: OUTPUT-AT ( ^call -- JSON:reader )
-   {: c :}
-   s" output" c REPLY-AT
-   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then ;
-
 \ The object's member under the name; none is E-RESPONSE.
 : MEMBER ( JSON:value str -- JSON:value )
    JSON:FIND MATCH option
@@ -2627,17 +2586,10 @@ private
 \ content.
 : READ-INCOMPLETE ( JSON:value ^call -- )
    {: v c :}
-   v s" incomplete_details" JSON:FIND MATCH option
-      none OF E-RESPONSE throw ENDOF
-      some OF ENDOF
-   ;MATCH {: d :}
+   v s" incomplete_details" MEMBER {: d :}
    d JSON:OBJECT? 0= if E-RESPONSE throw then
-   d s" reason" JSON:FIND MATCH option
-      none OF E-RESPONSE throw ENDOF
-      some OF ENDOF
-   ;MATCH {: r :}
-   r JSON:STRING? 0= if E-RESPONSE throw then
-   r [: dup c MODEL-CALL:INCOMPLETE-U !
+   d s" reason" STRING-MEMBER
+   [: dup c MODEL-CALL:INCOMPLETE-U !
       BUF:N>BLEN c CONTENT-BUF BUF:REPLACE ;] JSON:WITH-STRING
    E-INCOMPLETE throw ;
 
@@ -2658,10 +2610,7 @@ private
 \ A failed reply keeps its error message as the call's error text.
 : READ-FAILURE ( JSON:value ^call -- )
    {: v c :}
-   v s" error" JSON:FIND MATCH option
-      none OF E-RESPONSE throw ENDOF
-      some OF ENDOF
-   ;MATCH {: e :}
+   v s" error" MEMBER {: e :}
    e JSON:OBJECT? 0= if E-RESPONSE throw then
    e c ERROR-TEXT
    e CODE-FAULT throw ;
@@ -2669,11 +2618,7 @@ private
 \ Throws the fault of a reply whose status is other than completed.
 : REPLY-STATUS ( JSON:value ^call -- )
    {: v c :}
-   v s" status" JSON:FIND MATCH option
-      none OF E-RESPONSE throw ENDOF
-      some OF ENDOF
-   ;MATCH {: st :}
-   st JSON:STRING? 0= if E-RESPONSE throw then
+   v s" status" STRING-MEMBER {: st :}
    st s" incomplete" JSON:STRING= if v c READ-INCOMPLETE then
    st s" failed" JSON:STRING= if v c READ-FAILURE then
    st s" completed" JSON:STRING= 0= if E-RESPONSE throw then ;
@@ -2778,13 +2723,6 @@ private
       v i 4 * + F32-BUF:LOAD NONFINITE? if E-RESPONSE throw then
    loop ;
 
-\ The member of a reply object; a missing one is E-RESPONSE.
-: REPLY-MEMBER ( JSON:value str -- JSON:value )
-   JSON:FIND MATCH option
-      none OF E-RESPONSE throw ENDOF
-      some OF ENDOF
-   ;MATCH ;
-
 \ An input's index: an integer below INPUT-COUNT.
 : INPUT-INDEX ( JSON:value ^call -- n )
    {: x c :}
@@ -2805,9 +2743,9 @@ private
 : READ-EMBED-OBJECT ( JSON:value ^call -- )
    {: o c :}
    o JSON:OBJECT? 0= if E-RESPONSE throw then
-   o s" index" REPLY-MEMBER c INPUT-INDEX {: idx:n :}
+   o s" index" MEMBER c INPUT-INDEX {: idx:n :}
    c idx VECTOR-LEN @ 0<> if E-RESPONSE throw then
-   o s" embedding" REPLY-MEMBER c READ-VECTOR
+   o s" embedding" MEMBER c READ-VECTOR
    idx c VECTOR-KEEP
    c COUNT-DATUM ;
 
@@ -2862,13 +2800,13 @@ private
 : ACCEPT-EMBED ( ^call -- str bool )
    {: c :}
    c EMBED-REPLY {: r :}
-   r s" data" REPLY-MEMBER c READ-DATA
+   r s" data" MEMBER c READ-DATA
    r c EMBED-END ;
 
 : ACCEPT-OLLAMA ( ^call -- str bool )
    {: c :}
    c EMBED-REPLY {: r :}
-   r s" embeddings" REPLY-MEMBER c READ-EMBEDDINGS
+   r s" embeddings" MEMBER c READ-EMBEDDINGS
    r c EMBED-END ;
 
 : RESPONSE-ERROR ( n -- )
@@ -3457,12 +3395,7 @@ ENUM poll none fed spoiled done ;ENUM
 : WINDOW-ITEMS ( ^call -- JSON:value )
    RESPONSE$ JSON:PARSE {: v :}
    v JSON:OBJECT? 0= if E-RESPONSE throw then
-   v s" output" JSON:FIND MATCH option
-      none OF E-RESPONSE throw ENDOF
-      some OF ENDOF
-   ;MATCH {: out :}
-   out JSON:ARRAY? 0= if E-RESPONSE throw then
-   out ;
+   v s" output" ARRAY-MEMBER ;
 
 \ OPTION:NONE's effect is one cell; this one names the item's width.
 : NO-ITEM ( -- option<JSON:value> ) OPTION:NONE ;
@@ -3476,12 +3409,7 @@ ENUM poll none fed spoiled done ;ENUM
 \ Whether the item is a compaction item; E-RESPONSE unless its type is a
 \ string.
 : COMPACTION? ( JSON:value -- bool )
-   s" type" JSON:FIND MATCH option
-      none OF E-RESPONSE throw ENDOF
-      some OF ENDOF
-   ;MATCH {: kind :}
-   kind JSON:STRING? 0= if E-RESPONSE throw then
-   kind s" compaction" JSON:STRING= ;
+   s" type" STRING-MEMBER s" compaction" JSON:STRING= ;
 
 \ A compaction reply's output is a nonempty array of objects, the last a
 \ compaction item; else E-RESPONSE.
@@ -3531,13 +3459,9 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ The member a journal record must carry, an object or a string.
 : JOURNAL-FIELD ( JSON:value str -- JSON:value )
-   JSON:FIND MATCH option
-      none OF E-RESPONSE throw ENDOF
-      some OF {: f :}
-         f JSON:OBJECT? f JSON:STRING? or 0= if E-RESPONSE throw then
-         f
-      ENDOF
-   ;MATCH ;
+   MEMBER {: f :}
+   f JSON:OBJECT? f JSON:STRING? or 0= if E-RESPONSE throw then
+   f ;
 
 : JOURNAL-STRING ( JSON:value str -- JSON:value )
    JOURNAL-FIELD {: f :}
@@ -3558,13 +3482,8 @@ ENUM poll none fed spoiled done ;ENUM
 : JOURNAL-ORIGIN ( JSON:value -- )
    s" origin" JOURNAL-FIELD {: o :}
    o JSON:OBJECT? 0= if E-RESPONSE throw then
-   o s" kind" JSON:FIND MATCH option
-      none OF E-RESPONSE throw ENDOF
-      some OF {: k :}
-         k JSON:STRING? 0= if E-RESPONSE throw then
-         k s" " JSON:STRING= if E-RESPONSE throw then
-      ENDOF
-   ;MATCH ;
+   o s" kind" STRING-MEMBER
+   s" " JSON:STRING= if E-RESPONSE throw then ;
 
 \ The recorded call id a journal record carries, 0 when it has none.
 : JOURNAL-CALL-ID ( JSON:value -- n )
@@ -5141,8 +5060,9 @@ public
 : OUTPUT$ ( ^call -- str )
    {: c :}
    c CONTENT$ 2drop
-   s" output" c REPLY-AT JSON:READ-VALUE-SPAN$ {: a:^ u:n :}
-   JSON:READ-CLOSE a u ;
+   c RESPONSE$ JSON:PARSE {: v :}
+   v JSON:OBJECT? 0= if E-RESPONSE throw then
+   v s" output" MEMBER JSON:TEXT$ ;
 
 \ Finishes the chat request built since PARTS-RESET as CHAT does before its
 \ journal lookup and answers the journal input a journal's get and put receive
