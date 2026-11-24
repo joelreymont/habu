@@ -4528,6 +4528,11 @@ variable BASE-PTR-HIT
 \ A `stale<t>` met a type this token's unify demanded. It holds the stale term
 \ read, 0 for none.
 variable STALE-HIT
+\ -1 when STALE-HIT is the stale row a row var met whole: a step took that
+\ row itself, not a cell of it.
+variable STALE-SELF
+\ Records a stale hit as a cell read; only SELF-STALE-NOTE marks it the row.
+: STALE-HIT! ( n -- ) STALE-HIT !  0 STALE-SELF ! ;
 
 \ `xt!` is the sanctioned code-cell mint: DO-TOK1 opens the window on the
 \ token and the token's latches close it.
@@ -4623,7 +4628,7 @@ variable XT-DECL
    T-RES {: t:n :}
    t TVK-RAW FENCE-WHY
    dup FENCE-FAMILY = over FENCE-PTR = or over FENCE-EXEC = or IF dup RAW-FENCE-HIT THEN
-   dup FENCE-STALE = IF t STALE-HIT ! THEN
+   dup FENCE-STALE = IF t STALE-HIT! THEN
    0= ;
 
 : BASE-BLOCK? ( n n -- bool )
@@ -4631,7 +4636,7 @@ variable XT-DECL
    t kind FENCE-WHY
    dup FENCE-OK   = IF drop RES-FALSE EXIT THEN
    dup FENCE-EXEC = IF RAW-FENCE-HIT RES-TRUE EXIT THEN
-   dup FENCE-STALE = IF drop t STALE-HIT ! RES-TRUE EXIT THEN
+   dup FENCE-STALE = IF drop t STALE-HIT! RES-TRUE EXIT THEN
    drop
    kind TVK-NULL =  CUR-STRICT @ 0 <> and IF RES-FALSE EXIT THEN   \ the null inside a pointee: the pointer, not the cell
    kind BASE-PTR-HIT ! RES-TRUE ;
@@ -4707,7 +4712,7 @@ variable XT-DECL
    vid TVK@ TVK-CELL = IF
       term T-RES dup ISVAR IF PAY TVK-CELL TVK-RAISE-TO RES-FALSE EXIT THEN
       \ A generic ! or atomic! still reads its one-cell value.
-      dup TAG T-STALE = IF STALE-HIT ! RES-TRUE EXIT THEN
+      dup TAG T-STALE = IF STALE-HIT! RES-TRUE EXIT THEN
       dup T-WIDTH 1 = IF drop RES-FALSE EXIT THEN
       MD-ONE-CELL swap vid CELL-HIT!  RES-TRUE EXIT
    THEN
@@ -4860,8 +4865,8 @@ variable FORALL-INPUT-ROOT
 \ Reaching this last arm with a stale on either side is a READ of the cell, and
 \ it is named rather than reported as a shape mismatch.
 : STALE-NOTE ( n n -- n n ) {: a:n b:n :}
-   a TAG T-STALE = IF a STALE-HIT ! ELSE
-   b TAG T-STALE = IF b STALE-HIT ! THEN THEN
+   a TAG T-STALE = IF a STALE-HIT! ELSE
+   b TAG T-STALE = IF b STALE-HIT! THEN THEN
    a b ;
 
 : FORALL-CEILING-PAIR ( n n -- ) {: got:n want:n :}
@@ -5460,6 +5465,7 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
 : SELF-STALE? ( n n -- bool ) {: r:n x:n :}
    x STALE-ROW? 0= IF RES-FALSE EXIT THEN
    x STALE>INNER R-RES r = ;
+: SELF-STALE-NOTE ( n n -- n n ) STALE-NOTE  -1 STALE-SELF ! ;
 
 : U-ROW ( n n -- )
    R-RES swap R-RES swap 2dup U-CALL-TAIL
@@ -5469,7 +5475,7 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
       dup ROW-VALUE? 0= IF U-FAIL EXIT THEN
       2dup QUOT-ROW-BLOCK? IF U-FAIL ELSE
          2dup ROW-OCC? IF
-            2dup SELF-STALE? IF STALE-NOTE THEN  2drop RES-FALSE UOK !
+            2dup SELF-STALE? IF SELF-STALE-NOTE THEN  2drop RES-FALSE UOK !
          ELSE swap PAY RV! THEN
       THEN EXIT
    THEN
@@ -5477,7 +5483,7 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
       over ROW-VALUE? 0= IF U-FAIL EXIT THEN
       2dup swap QUOT-ROW-BLOCK? IF U-FAIL ELSE
          2dup swap ROW-OCC? IF
-            2dup swap SELF-STALE? IF STALE-NOTE THEN
+            2dup swap SELF-STALE? IF SELF-STALE-NOTE THEN
             2dup swap CALL-CYCLE? IF U-FAIL  -1 CYCLE-HIT ! ELSE 2drop RES-FALSE UOK ! THEN
          ELSE PAY RV! THEN
       THEN EXIT
@@ -5905,7 +5911,7 @@ variable MDIAG-ZIN    \ literal 0: the callee's input it reached, its index from
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
 variable MDIAG-CELL   \ one-cell, step and moved-linear rules: the layout type a variable met; fact rules: FACT-HIT; stale reads: the stale term
-variable MDIAG-CELL-VAR   \ one-cell, step and moved-linear rules: that variable's id; fact rules: FACT-TERM
+variable MDIAG-CELL-VAR   \ one-cell, step and moved-linear rules: that variable's id; fact rules: FACT-TERM; stale reads: STALE-SELF
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
 }SCRATCH
 
@@ -5985,7 +5991,9 @@ TAIL-CAPTURE-DEFAULT
    \ a cell with no type left to read answers before any rule about which type
    \ it is
    STALE-HIT @ 0 <> IF
-      MDIAG @  STALE-HIT @ STALE-WHY MDIAG!  MDIAG @ <> IF STALE-HIT @ MDIAG-CELL ! THEN
+      MDIAG @  STALE-HIT @ STALE-WHY MDIAG!  MDIAG @ <> IF
+         STALE-HIT @ MDIAG-CELL !  STALE-SELF @ MDIAG-CELL-VAR !
+      THEN
    THEN
    RAW-FENCE @ FENCE-EXEC = IF MD-RAW-EXEC MDIAG! THEN
    RAW-FENCE @ FENCE-PTR = IF MD-RAW-PTR MDIAG! THEN
@@ -6952,7 +6960,7 @@ variable QUOT-LOSS
 : XT-MISMATCH ( n -- ) {: t:n :}
    0 OK !
    FAILSET @ 0= IF
-      t TAG T-STALE = IF t STALE-HIT ! THEN
+      t TAG T-STALE = IF t STALE-HIT! THEN
       FRESH MK-ROW FRESH MK-ROW FRESH MK-ROW dup MK-QUOT FRESH MK-ROW MK-PUSH
       t FRESH MK-ROW MK-PUSH  UF-CAPTURE
    THEN ;
@@ -7064,12 +7072,12 @@ variable QUOT-LOSS
 \ The fit as a trial: a unify that fails is taken back with the cell latches it
 \ set, so a body that changes the stack is judged on rows the trial left alone.
 : CATCH-FITS? ( -- bool )
-   TRAIL-N @  STALE-HIT @  SCOPE-HIT @  RAW-FENCE @
+   TRAIL-N @  STALE-HIT @  STALE-SELF @  SCOPE-HIT @  RAW-FENCE @
    CELL-HIT @  FACT-HIT @  BASE-PTR-HIT @
-   {: mark:n sh:n sc:n rf:n ch:n fh:n bh:n :}
+   {: mark:n sh:n ss:n sc:n rf:n ch:n fh:n bh:n :}
    DCUR @ QTT @ Q>DOUT UNIFY-IN IF RES-TRUE EXIT THEN
    mark TRAIL-UNWIND
-   sh STALE-HIT !  sc SCOPE-HIT !  rf RAW-FENCE !
+   sh STALE-HIT !  ss STALE-SELF !  sc SCOPE-HIT !  rf RAW-FENCE !
    ch CELL-HIT !  fh FACT-HIT !  bh BASE-PTR-HIT !
    RES-FALSE ;
 
@@ -19268,7 +19276,7 @@ variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
 variable SV-TRAIL   variable SV-PIN
 variable SV-RAWFENCE  variable SV-CELLHIT  variable SV-CELLTYPE  variable SV-CELLVAR
 variable SV-FACT  variable SV-FTERM  variable SV-FKIND
-variable SV-BASEPTR  variable SV-STALE  variable SV-SCOPE
+variable SV-BASEPTR  variable SV-STALE  variable SV-STALE-SELF  variable SV-SCOPE
 variable TSEEN  variable TSOK
 \ The closest failed row's effect, how far it got, and the last trial's reach.
 variable TCLOSE  variable TBEST  variable TREACH
@@ -19294,7 +19302,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    THDMASK @ SV-THDMASK !  THRMASK @ SV-THRMASK !  THSET @ SV-THSET !
    RAW-FENCE @ SV-RAWFENCE !  CELL-HIT @ SV-CELLHIT !  CELL-HIT-TYPE @ SV-CELLTYPE !  ONE-CELL-VAR @ SV-CELLVAR !
    FACT-HIT @ SV-FACT !  FACT-TERM @ SV-FTERM !  FACT-KIND @ SV-FKIND !
-   BASE-PTR-HIT @ SV-BASEPTR !  STALE-HIT @ SV-STALE !  SCOPE-HIT @ SV-SCOPE ! ;
+   BASE-PTR-HIT @ SV-BASEPTR !  STALE-HIT @ SV-STALE !  STALE-SELF @ SV-STALE-SELF !  SCOPE-HIT @ SV-SCOPE ! ;
 
 : TRIAL-REST-SG
    SV-SGBAD @ SGBAD !  SV-SGBAD-A @ SGBAD-A !
@@ -19320,7 +19328,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
    SV-RAWFENCE @ RAW-FENCE !  SV-CELLHIT @ CELL-HIT !  SV-CELLTYPE @ CELL-HIT-TYPE !  SV-CELLVAR @ ONE-CELL-VAR !
    SV-FACT @ FACT-HIT !  SV-FTERM @ FACT-TERM !  SV-FKIND @ FACT-KIND !
-   SV-BASEPTR @ BASE-PTR-HIT !  SV-STALE @ STALE-HIT !  SV-SCOPE @ SCOPE-HIT !
+   SV-BASEPTR @ BASE-PTR-HIT !  SV-STALE @ STALE-HIT !  SV-STALE-SELF @ STALE-SELF !  SV-SCOPE @ SCOPE-HIT !
    TRIAL-REST-SG ;
 
 \ Is a var still an open distance-row base operand? Its pointee never met a
@@ -24134,7 +24142,7 @@ variable XPORT-TAIL
    THEN
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   FENCE-OK RAW-FENCE !  0 CELL-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
+   FENCE-OK RAW-FENCE !  0 CELL-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 STALE-SELF !  0 SCOPE-HIT !
    TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ TOK-CORE-OP?
@@ -24150,7 +24158,7 @@ variable XPORT-TAIL
    \ The raw-cell and base-address refusals name themselves where they are
    \ raised. The flags are dropped here because TRY-PRIMS applies candidate
    \ rows in turn and the next token must start clean.
-   FENCE-OK RAW-FENCE !  0 CELL-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   FENCE-OK RAW-FENCE !  0 CELL-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 STALE-SELF !  0 SCOPE-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
    NZ-STEP
    unj IF

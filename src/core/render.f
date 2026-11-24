@@ -1937,15 +1937,17 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
       s" restricts " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  here" EMIT-STR
    endcase ;
 
-\ Whether the end check read a stale row: the body returns a tail `catch` left
-\ stale. A step that takes a cell from a stale row reads a cell.
+\ Whether a stale row was read: the end check returns a tail `catch` left stale,
+\ or a step takes that whole row. A step that takes a cell of it reads a cell.
 : STALE-ROW-READ? ( -- bool )
-   MDIAG @ MD-STALE-READ =  DEND @ 0 <>  and  MDIAG-CELL @ STALE-ROW?  and ;
+   MDIAG @ MD-STALE-READ =  MDIAG-CELL @ STALE-ROW?  and
+   DEND @ 0 <>  MDIAG-CELL-VAR @ 0 <>  or  and ;
 
 : REASON-MESSAGE ( -- )
    STALE-ROW-READ? IF
-      s" stale row: " EMIT-STR  END-SUBJECT
-      s"  returns cells `catch` left stale: a throw path of the caught body may have overwritten them" EMIT-STR
+      s" stale row: " EMIT-STR
+      DEND @ 0 <> IF END-SUBJECT  s"  returns" ELSE TOK-SPAN  s"  takes" THEN EMIT-STR
+      s"  cells `catch` left stale: a throw path of the caught body may have overwritten them" EMIT-STR
       EXIT
    THEN
    MDIAG @ MD-SCOPED-TICK =  MDIAG @ MD-IS-UNKNOWN = or  MDIAG @ MD-IS-NOT-DEFER = or
@@ -2509,7 +2511,8 @@ PTR-VARIABLE HOLDER-FIRST
          FACT-HELP EXIT
       THEN
       STALE-ROW-READ? IF
-         s" return them where the code is 0: after `code 0<> if code throw then`" EMIT-STR EXIT
+         DEND @ 0 <> IF s" return them" ELSE s" pass them on" THEN EMIT-STR
+         s"  where the code is 0: after `code 0<> if code throw then`" EMIT-STR EXIT
       THEN
       MDIAG @ MD-SUGGEST$ EMIT-STR EXIT
    THEN

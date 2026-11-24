@@ -593,6 +593,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
 \ named by the declared row; a helper returns that row only on the success arm.
 : CS-EXEC ( R [ R -- R ] -- R [ R -- R ] ) dup >r execute r> ;
 : CS-TIE ( R [ R -- R ] -- R [ R -- R ] ) ;
+: CS-TAKE ( R [ R -- R ] -- R ) execute ;
 
 : CS-SECTION-OPEN ( -- )
    s" open rows" T-LABEL
@@ -628,6 +629,12 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    \ a stale row may be moved; taking a cell from it is a read
    s" O4 ( R [ R -- R ] -- R ) catch drop drop" CS-CODE<
    CS-STALE?  CS-CODE-END
+   \ a step that takes the stale row whole reads the row
+   s" O15 ( R [ R -- R ] -- R ) dup >r catch drop r> CS-TAKE" CS-CODE<
+   s\" \"code\":\"E-STALE-READ\"" CS-CODE?
+   s" stale row: `CS-TAKE` takes cells `catch` left stale: a throw path of the caught body may have overwritten them" CS-CODE?
+   s\" \"help\":\"pass them on where the code is 0: after `code 0<> if code throw then`" CS-CODE?
+   CS-CODE-END
    \ the success arm of the exact code gives the row back, past a join
    s" O5 ( R [ R -- R ] -- R ) catch {: code:n :} code 0<> if code throw then"
       CHECK-QUIET-CANDIDATE! -1 T=
