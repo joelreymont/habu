@@ -3101,22 +3101,15 @@ private
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
 \ Keeps the reply's response id, which a failure's log line names.
-: KEEP-ID ( ^call -- )
-   {: c :}
-   s" id" c REPLY-AT
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   c REPLY-STR BUF:N>BLEN c RESPONSE-ID-BUF BUF:REPLACE
-   JSON:READ-CLOSE ;
+: KEEP-ID ( JSON:value ^call -- )
+   {: r c :}
+   r s" id" STRING-MEMBER
+   [: BUF:N>BLEN c RESPONSE-ID-BUF BUF:REPLACE ;] JSON:WITH-STRING ;
 
 \ Whether the reply's status says the response is still queued or running.
-: RUNNING? ( ^call -- bool )
-   {: c :}
-   s" status" c REPLY-AT
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   s" queued" JSON:READ-STR-EQ? {: queued:bool :}
-   s" in_progress" JSON:READ-STR-EQ? {: going:bool :}
-   JSON:READ-CLOSE
-   queued going or ;
+: RUNNING? ( JSON:value -- bool )
+   s" status" STRING-MEMBER {: t :}
+   t s" queued" JSON:STRING= t s" in_progress" JSON:STRING= or ;
 
 
 : CURL+ ( n -- )
@@ -3131,13 +3124,6 @@ private
    a u BUF:N>BLEN c RESPONSE-BUF BUF:REPLACE
    u c MODEL-CALL:RESPONSE-U ! ;
 
-\ The reader at the event data's member under the key, and whether it is there.
-: DATA-AT ( str str ^call -- JSON:reader bool )
-   {: a:^ u:n key:^ key-u:n c :}
-   c MODEL-CALL:READER a u JSON:READ-INIT
-   JSON:T-OBJ EXPECT
-   key key-u JSON:READ-FIND-KEY ;
-
 \ The error event's error object: its error member when an object, else the
 \ event.
 : ERROR-AT ( JSON:value -- JSON:value )
@@ -3147,12 +3133,10 @@ private
       some OF dup JSON:OBJECT? 0= if drop v then ENDOF
    ;MATCH ;
 
-\ An error event fails the response as a failed status does: the event is the
-\ reply.
-: ERROR-EVENT ( str ^call -- )
-   {: a:^ u:n c :}
-   a u c KEEP-REPLY
-   a u JSON:PARSE ERROR-AT {: e :}
+\ An error event fails the response as a failed status does.
+: ERROR-EVENT ( JSON:value ^call -- )
+   {: v c :}
+   v ERROR-AT {: e :}
    e c ERROR-TEXT
    e CODE-FAULT {: fault:n :}
    c STREAM {: s :}
@@ -3162,18 +3146,20 @@ private
 \ An event carrying the response object makes it the reply; the first names
 \ the response's id, and a status other than queued or in_progress ends the
 \ stream.
-: RESPONSE-EVENT ( str ^call -- )
-   {: a:^ u:n c :}
-   a u s" response" c DATA-AT 0= if JSON:READ-CLOSE exit then
-   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-VALUE-SPAN$ {: r:^ r-u:n :}
-   JSON:READ-CLOSE
-   r r-u c KEEP-REPLY
-   c RESPONSE-ID$ nip 0= if c KEEP-ID then
-   c RUNNING? 0= if true c STREAM STREAM-DONE ! then ;
+: RESPONSE-EVENT ( JSON:value ^call -- )
+   {: v c :}
+   v s" response" JSON:FIND MATCH option
+      none OF exit ENDOF
+      some OF ENDOF
+   ;MATCH {: r :}
+   r JSON:OBJECT? 0= if E-RESPONSE throw then
+   r JSON:TEXT$ c KEEP-REPLY
+   c RESPONSE-ID$ nip 0= if r c KEEP-ID then
+   r RUNNING? 0= if true c STREAM STREAM-DONE ! then ;
 
 \ One event, its data a JSON object with a string type, counted by type; the
-\ call's first event starts its reply afresh, and a keepalive is skipped.
+\ call's first event starts its reply afresh, a keepalive is skipped and an
+\ error event is the reply.
 : READ-EVENT ( ^call str -- ^call str )
    {: c a:^ u:n :}
    c STREAM {: s :}
@@ -3182,21 +3168,21 @@ private
       0 c MODEL-CALL:RESPONSE-U !
       true s STREAM-HEARD !
    then
-   a u JSON-OBJECT? 0= if E-RESPONSE throw then
-   a u s" type" c DATA-AT 0= if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   \ The span of a string token holds its bytes without the quotes.
-   JSON:READ-SPAN$ {: t:^ t-u:n :}
-   t t-u c COUNT-EVENT
-   s STREAM-OUTPUT-NS @ 0= t t-u s" response.output_" STR:STARTS-WITH? and if
+   a u JSON:PARSE {: v :}
+   v TYPE-OF {: t :}
+   t [: 2dup c COUNT-EVENT
+      s" response.output_" STR:STARTS-WITH? ;] JSON:WITH-STRING
+   {: output:bool :}
+   s STREAM-OUTPUT-NS @ 0= output and if
       TIME:MONO-NS s STREAM-OUTPUT-NS !
    then
-   s" keepalive" JSON:READ-STR-EQ? {: keepalive:bool :}
-   s" error" JSON:READ-STR-EQ? {: failed:bool :}
-   JSON:READ-CLOSE
-   keepalive if c a u exit then
-   failed if a u c ERROR-EVENT c a u exit then
-   a u c RESPONSE-EVENT
+   t s" keepalive" JSON:STRING= if c a u exit then
+   t s" error" JSON:STRING= if
+      a u c KEEP-REPLY
+      v c ERROR-EVENT
+      c a u exit
+   then
+   v c RESPONSE-EVENT
    c a u ;
 
 
