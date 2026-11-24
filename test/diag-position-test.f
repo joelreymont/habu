@@ -1941,23 +1941,6 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    CHECK-ARGV  FX-PATH$ PROC-ARGV+
    LAUNCHED  GT-ERR$ GJA-SPLIT-LINES ;
 
-\ tools/check-all-errors.f reads argv, so it is spawned; it fails a check that
-\ stops in a file the subject requires.
-: TEST-ALL-ERRORS-STOPPED ( -- )
-   s" check-all-errors on a stop in a required file" T-LABEL
-   SB-RESET
-   s" defer D ( -- )" SB-APPEND LF+
-   s" D" SB-APPEND LF+
-   s" all-errors-stop-dep.f" FIXTURE!
-   SB-RESET
-   s" require all-errors-stop-dep.f" SB-APPEND LF+
-   s" all-errors-stop.f" FIXTURE!
-   PROC-ARGV-RESET
-   s" --load" PROC-ARGV+  s" tools/check-all-errors.f" PROC-ARGV+
-   s" --" PROC-ARGV+  s" --label" PROC-ARGV+  s" all-errors-stop.f" PROC-ARGV+
-   FX-PATH$ PROC-ARGV+
-   s" W-CHECK-STOPPED" 1 LAUNCHED ;
-
 \ The string builder holds the resolver's unplaced record of a command-line
 \ path, its message appended by MSG.
 : RANGE-RECORD ( [ -- ] -- ) {: msg :}
@@ -4001,7 +3984,6 @@ HB-TARGET-LINUX? 0= [if]
    TEST-UNDEFINE-ABSENT
    TEST-UNDEFINE-RENDERED
    TEST-TICK-STOPPED
-   TEST-ALL-ERRORS-STOPPED
    TEST-PROGRAM-TARGET-WORD
    TEST-PARSES-REJECT
    TEST-GENERATES

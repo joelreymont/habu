@@ -243,9 +243,9 @@ variable REG-I
 
 \ `.( ... )` is the printing comment. Its body is text the engine prints, never
 \ code, so the whole span is one inert COMMENT token and the declaration spelled
-\ inside it must not reach a consumer - the exact case tools/error-code-lint.f
-\ depends on. `.(X)` has no delimiter after the opener, so `parse-name` returns
-\ one ordinary word instead, and an opener that never closes ends at end of input.
+\ inside it must not reach a consumer. `.(X)` has no delimiter after the opener,
+\ so `parse-name` returns one ordinary word instead, and an opener that never
+\ closes ends at end of input.
 : TEST-LEXER-PRINT-PAREN ( -- )
    s" .( -9001 constant E-XA )  -9001 constant E-XB" LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT

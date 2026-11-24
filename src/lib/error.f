@@ -2,8 +2,8 @@ split-str
 \ error.f - canonical stdlib throw codes, and the rejection record of a throw of
 \ one. -999999..-100000 is reserved for external applications and libraries
 \ (docs/forth.md, Errors). A file owns the whole block between its FIRST and
-\ LAST, minted or not (tools/error-code-lint.f); a subsystem that outgrows its
-\ block takes a second region, never renumbers.
+\ LAST, minted or not; a subsystem that outgrows its block takes a second
+\ region, never renumbers.
 \ A package's block is minted in the package's file; a comment here says where.
 \ STORAGE CLASS. PROCESS-WIDE: the rows ERROR:CODE and ERROR:FAULT lay in data
 \ space and the persisted head cell that holds the newest one's address. A row

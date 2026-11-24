@@ -2,8 +2,7 @@ split-str
 \ native-effect.f - the typed machine-state contract of one emitted routine:
 \ per register file what it reads, returns in and destroys, its condition flags,
 \ link register, frame and net stack-pointer change, calls and syscalls, and how
-\ control leaves. The A64IR dialect composes it with its operand records;
-\ tools/lint/clobber-lint.f still answers from hand tables.
+\ control leaves. The A64IR dialect composes it with its operand records.
 
 require src/lib/prelude.f
 require src/lib/error.f

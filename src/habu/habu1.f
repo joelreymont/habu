@@ -2108,8 +2108,7 @@ $58 constant CBT-LR                     \ C's x30
       defined:label signal-had:label signal-kept:label caller-row:label
       region-found:label caller-leave:label no-region:label :}
    SP SP CBT-BYTES SUBI,
-   \ C's callee-saved set is saved and restored in this body:
-   \ tools/lint/clobber-lint.f proves x30 from the routine's own text.
+   \ C's callee-saved set is saved and restored in this body.
    29 19 do i SP i 19 - cells STR, loop
    XREG-RBASE 0 MOVZ,
    29 SP CBT-FP STR, 30 SP CBT-LR STR,

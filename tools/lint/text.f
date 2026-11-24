@@ -8,49 +8,12 @@ require src/lib/adt/option.f                      \ option<n> finders
 require src/core/exit-status.f
 
 \ ---- whole-file read -------------------------------------------------------
-create READ-PROBE 1 allot
-variable RFD  variable RGOT  variable RLEN
 
 : LINT-TRUE ( -- bool )
    0 0= ;
 
 : LINT-FALSE ( -- bool )
    0 1 = ;
-
-: LINT-NOT ( bool -- bool )
-   IF LINT-FALSE ELSE LINT-TRUE THEN ;
-
-: LINT-FD-WRITE ( n str -- ) {: fd:n a:^ u:n :}
-   u 0= IF exit THEN
-   fd a u write u <> IF s" lint: write failed" EXIT-STATUS:IOERR die THEN ;
-
-\ capacity/IO exits must name the offending file — a bare "file exceeds buffer"
-\ hides which source outgrew which lint buffer.
-: LINT-READ-DIE ( str str n -- )
-   {: msg:^ msgu:n path:^ pathu:n rc:n :}
-   2 msg msgu LINT-FD-WRITE
-   path pathu rc die ;
-
-\ open takes a NUL-terminated path, so FS:>PATHZ copies the Habu path first.
-: READ-FILE ( str ^u8 n -- str )
-   {: a:^ u buf:^ cap :}
-   a u FS:>PATHZ 0 0 open  RFD !
-   RFD @ 0 < IF s" lint: cannot open file: " a u EXIT-STATUS:IOERR LINT-READ-DIE THEN
-   0 RLEN !
-   begin  RFD @  buf RLEN @ +  cap RLEN @ -  read  dup RGOT !  0 >
-   while  RLEN @ RGOT @ + RLEN !  repeat
-   RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " a u EXIT-STATUS:IOERR LINT-READ-DIE THEN
-   RLEN @ cap = IF
-      RFD @ READ-PROBE 1 read RGOT !
-      RGOT @ 0 < IF
-         RFD @ close s" lint: cannot read file: " a u EXIT-STATUS:IOERR LINT-READ-DIE
-      THEN
-      RGOT @ 0 > IF
-         RFD @ close s" lint: file exceeds buffer: " a u EXIT-STATUS:FULL LINT-READ-DIE
-      THEN
-   THEN
-   RFD @ close
-   buf RLEN @ ;
 
 \ Runtime-sized whole-file storage for an input that grows: a fixed buffer dies
 \ mid-run the day the file crosses its constant. A slab is three cells the
@@ -116,9 +79,9 @@ public
 
 ;package
 
-\ The one shared slab, for the many linters that hold a single source live:
-\ TOKENIZE callers consume each file before loading the next one, so a larger
-\ later file may replace the backing region while smaller files reuse it.
+\ The one shared slab, for tools that hold a single source live: each file is
+\ consumed before the next one loads, so a larger later file may replace the
+\ backing region while smaller files reuse it.
 package LINT-SOURCE
 
 create SLAB LINT-SLAB:CELLS cells allot
@@ -141,10 +104,6 @@ public
       1+
    repeat drop LINT-TRUE ;
 
-: LINT-PREFIX? ( str str -- bool ) {: a:^ u b:^ v :}
-   u v < IF LINT-FALSE exit THEN
-   a v b v LINT-STR= ;
-
 : LINT-FIND-SUB ( str str -- option<n> ) {: a:^ u:n sa:^ su:n :}
    su 0= IF 0 OPTION:SOME exit THEN
    0 begin dup u su - <= while
@@ -159,59 +118,12 @@ public
 : LINT-FOLD ( n -- n )
    dup 64 > over 91 < and IF 32 + THEN ;
 
-: LINT-STR=CI ( str str -- bool ) {: a:^ u b:^ v :}
-   u v <> IF LINT-FALSE exit THEN
-   0 begin dup u < while
-      dup a + c@ LINT-FOLD over b + c@ LINT-FOLD <> IF drop LINT-FALSE exit THEN
-      1+
-   repeat drop LINT-TRUE ;
-
 : FOLD-TO ( str ^u8 -- ) {: a:^ u dst:^ :}
    0 begin dup u < while  dup a + c@ LINT-FOLD  over dst + c!  1+  repeat  drop ;
 
-\ ---- bounded string helpers for source tools ------------------------------
 13 constant LINT-CR
-34 constant DQUOTE
-46 constant DOT
-47 constant SLASH
-: LINT-WS? ( n -- bool )  dup 32 = over 9 = or over 10 = or swap LINT-CR = or ;
-\ Whether byte i of the span a u exists and is not whitespace (LINT-INK-AT?)
-\ or is whitespace (LINT-GAP-AT?). Each reads the byte only when i is inside
-\ the span: `and` evaluates both operands, and the byte past a span that fills
-\ its mapping is unmapped.
-: LINT-INK-AT? ( str n -- bool )
-   {: a:^ u:n i:n :}
-   i u >= IF LINT-FALSE exit THEN
-   a i + c@ LINT-WS? 0= ;
-: LINT-GAP-AT? ( str n -- bool )
-   {: a:^ u:n i:n :}
-   i u >= IF LINT-FALSE exit THEN
-   a i + c@ LINT-WS? ;
-: LINT-LTRIM ( str -- str ) {: a:^ u :}
-   0 begin dup u < while
-      dup a + c@ LINT-WS? 0= IF dup a +  u rot -  exit THEN  1+
-   repeat  drop  a 0 ;
-: LINT-RTRIM ( str -- str ) {: a:^ u :}
-   u RLEN !
-   begin RLEN @ 0 > while
-      a RLEN @ 1- + c@ LINT-WS? IF RLEN @ 1- RLEN ! ELSE a RLEN @ exit THEN
-   repeat  a 0 ;
-: LINT-TRIM ( str -- str )  LINT-LTRIM LINT-RTRIM ;
-: LINT-STARTS-WITH? ( str str -- bool )  LINT-PREFIX? ;
-: LINT-SUFFIX? ( str str -- bool ) {: a:^ u b:^ v :}
-   u v < IF LINT-FALSE exit THEN
-   a u v - + v b v LINT-STR= ;
-: LINT-ENDS-WITH? ( str str -- bool )  LINT-SUFFIX? ;
-: LINT-INDEX-OF ( str n -- option<n> ) {: a:^ u:n c:n :}   \ SOME first byte offset, NONE if absent
-   0 begin dup u < while  dup a + c@ c = IF OPTION:SOME exit THEN  1+  repeat  drop OPTION:NONE ;
-: LINT-COUNT-CHAR ( str n -- n ) {: a:^ u c :}
-   0  0 begin dup u < while
-      dup a + c@ c = IF swap 1+ swap THEN  1+
-   repeat  drop ;
 
 \ Shared split results: (offset, length) rows into the caller's source string.
-\ The scan cursors are the package's own, so a split during a read never moves
-\ READ-FILE's.
 \ Consumers call the public words bare through `using LINT-SPLIT`.
 package LINT-SPLIT
 private
@@ -231,7 +143,6 @@ variable SN#
 : SPLIT+ ( str -- ) {: a:^ u:n :}
    SN# @ SMAX >= IF s" lint: split result overflow" EXIT-STATUS:FULL die THEN
    a SN# @ SOFF !  u SLEN SN# @ cells + !  SN# @ 1+ SN# ! ;
-: S@ ( n -- str )  dup SOFF @  swap cells SLEN + @ ;
 
 private
 
@@ -251,48 +162,5 @@ public
       CUR @ 1+ CUR !
    repeat
    MARK @ u < IF a MARK @ +  u MARK @ -  ADD-LINE THEN ;
-: SPLIT-WHITESPACE ( str -- ) {: a:^ u:n :}
-   SPLIT-CLEAR  0 CUR !
-   begin CUR @ u < while
-      begin a u CUR @ LINT-GAP-AT? while CUR @ 1+ CUR ! repeat
-      CUR @ u < IF
-         CUR @ MARK !
-         begin a u CUR @ LINT-INK-AT? while CUR @ 1+ CUR ! repeat
-         a MARK @ +  CUR @ MARK @ -  SPLIT+
-      THEN
-   repeat ;
 
 ;package
-: HAS-EXT? ( str str -- bool )  LINT-SUFFIX? ;
-\ ---- throw-code name registry for CLI failure attribution ------------------
-\ The table names the codes LINT-MAIN (tools/lint/lib.f) can name in its
-\ attribution line: the intern and token tables' EXIT-STATUS:FULL.
-8 constant LINT-CODE-MAX
-32 constant LINT-CODE-NAME-CAP
-create LINT-CODE-VALS LINT-CODE-MAX cells allot
-create LINT-CODE-NAME-BUF LINT-CODE-MAX LINT-CODE-NAME-CAP * allot
-create LINT-CODE-NAME-US LINT-CODE-MAX cells allot
-variable LINT-CODE#
-
-: LINT-CODE-NAME$ ( n -- str ) {: i:n :}
-   LINT-CODE-NAME-BUF i LINT-CODE-NAME-CAP * +
-   LINT-CODE-NAME-US i cells + @ ;
-
-: LINT-CODE-VAL@ ( n -- n )
-   cells LINT-CODE-VALS + @ ;
-
-: LINT-CODE-NAME+ ( str n -- ) {: a:^ u:n code:n :}
-   LINT-CODE# @ LINT-CODE-MAX >= IF s" lint: code-name table full" EXIT-STATUS:INTERNAL die THEN
-   u LINT-CODE-NAME-CAP > IF s" lint: code name too long" EXIT-STATUS:INTERNAL die THEN
-   code LINT-CODE-VALS LINT-CODE# @ cells + !
-   a LINT-CODE-NAME-BUF LINT-CODE# @ LINT-CODE-NAME-CAP * + u LINT-BMOVE
-   u LINT-CODE-NAME-US LINT-CODE# @ cells + !
-   LINT-CODE# @ 1+ LINT-CODE# ! ;
-
-s" EXIT-STATUS:FULL" EXIT-STATUS:FULL LINT-CODE-NAME+
-
-: LINT-CODE-FIND ( n -- n ) {: code:n :}   \ registry index or -1
-   0 begin dup LINT-CODE# @ < while
-      dup LINT-CODE-VAL@ code = IF exit THEN
-      1+
-   repeat drop -1 ;

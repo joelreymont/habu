@@ -755,7 +755,7 @@ variable LABEL-U
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    70 s" RESET" s" package rejects duplicate public word" RUN-BAD-SOURCE
-   s" /test/gate-dictionary.f:12:1" s" package duplicate public word placed at the evaluating word" GE-EXPECT-ERR-HAS
+   s" /test/gate-dictionary.f:10:1" s" package duplicate public word placed at the evaluating word" GE-EXPECT-ERR-HAS
    GE-SRC-RESET
    s" package APP" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE

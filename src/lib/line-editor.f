@@ -19,9 +19,7 @@ variable LLEN  variable LPOS    \ line length, cursor
 variable LOVER                  \ bytes this line asked for past LLINE-MAX
 create LDEC 24 allot            \ the refusal's decimal scratch, filled from its end
 variable LDEC-I
-create LDEC-LF 10 c,            \ the refusal's newline: an escaped literal whose
-                                \ payload opens with a backslash breaks the shared
-                                \ lint tokenizer (tools/lint/token.f)
+create LDEC-LF 10 c,            \ the refusal's newline
 variable HN  variable HV        \ history count, browse index
 PTR-VARIABLE HS                 \ history slot scratch: it holds a ring address
 variable DONE                   \ 0 editing, 1 accepted, 2 eof
@@ -178,8 +176,8 @@ private
 
 \ One line on descriptor 2: what filled up, the ceiling and the length the line
 \ asked for. Diagnostics do not leave through the editor's echo (src/lib/genio-core.f),
-\ and no REPL-baked word may `die` or `bye` (tools/repl-lint-core.f), so the
-\ session states the refusal and reads the next line.
+\ and no REPL-baked word may `die` or `bye`, so the session states the refusal
+\ and reads the next line.
 : LINE-FULL ( -- )
    2 s" hb: repl line over " write drop
    LLINE-MAX LDEC!  2 LDEC$ write drop

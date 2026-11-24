@@ -2091,8 +2091,7 @@ answers alike.
   nonoverlapping blocks within the external range; the application integrator
   resolves collisions among dependencies. Applications that never run together
   may reuse blocks. Re-export an existing error through its owner's constant.
-  This is an allocation convention: the checker does not enforce it, and Habu's
-  error-code lint scans this repository, not external dependency trees.
+  This is an allocation convention: the checker does not enforce it.
 - Process exit statuses use only the `EXIT-STATUS` package, whose names and
   values are `src/core/exit-status.f`. No global `E-*` aliases.
 - **Fallible words `throw` a named code** (`src/lib/error.f` or the owning

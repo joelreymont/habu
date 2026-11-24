@@ -17,15 +17,9 @@ split-str
 require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/memory.f
-require src/lib/vector.f
-require src/lib/fs.f
-require src/lib/source.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require tools/lint/text.f
-require tools/lint/token.f
-require tools/lint/lib.f
 require src/lib/source-lex.f
 
 \ VERIFY opens its own package, which a file required inside a package cannot,
@@ -42,7 +36,6 @@ variable CA-OUT-FD                      \ where the report goes
 FD:STDERR FD>N CA-OUT-FD !
 TYPED-VARIABLE CA-SRC-A ^u8
 variable CA-SRC-U
-variable CA-SRC-CAP
 
 TYPED-VARIABLE CA-FILE-A ^u8
 variable CA-FILE-U
@@ -79,27 +72,7 @@ TYPED-VARIABLE CA-COMPOSE-ENTRY bool    \ the composed bytes are entry text
 
 \ ---- the bytes of the file a record names ----------------------------------
 
-\ Room for n bytes of the source being read, in a region of the read's own: a
-\ larger region takes the bytes the last one holds, and the last is released
-\ when this read made it.
-: CA-SRC-ROOM ( n -- ^u8 ) {: need:n :}
-   need CA-SRC-CAP @ > if
-      CA-SRC-A@ CA-SRC-CAP @ {: old:^ oldcap:n :}
-      need MEM-ALLOC-64K-SPAN CA-SRC-CAP ! {: fresh:^ :}
-      old fresh oldcap BYTE-COPY
-      oldcap 0 > if old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES then
-      fresh CA-SRC-A!
-   then
-   CA-SRC-A@ ;
-
-\ Each read takes a region of its own, so the bytes an earlier read or the
-\ caller left (CA-SOURCE-BUF!) stay where they are.
-: CA-READ-SOURCE ( str -- ) {: path:^ pu:n :}
-   0 CA-SRC-CAP !
-   path pu  path pu FS:FILE-SIZE  [: CA-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED CA-SRC-U ! ;
-
 : CA-SOURCE-BUF! ( str -- ) {: a:^ u:n :}
-   u CA-SRC-CAP !
    u CA-SRC-U !
    a CA-SRC-A! ;
 
@@ -226,15 +199,6 @@ private
    CA-FILE-A@ CA-COMPOSE-LABEL-A !  CA-FILE-U @ CA-COMPOSE-LABEL-U ! ;
 
 public
-
-\ Check the source file at the given path under the given label as a load runs
-\ it, every file a top-level loader statement loads included (COMPOSE-BUF). No
-\ run of the program follows, so the check reports what it leaves to one.
-: FILE ( str str -- ) {: labela:^ labelu:n patha:^ pathu:n :}
-   [: labela labelu CA-START
-      patha pathu CA-READ-SOURCE
-      patha pathu false CA-COMPOSE-AT
-      true true CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
 \ Check the given source bytes as the file at the given path, reporting them
 \ under the given label: the composition verifies every file a top-level

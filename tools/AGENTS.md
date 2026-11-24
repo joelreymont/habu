@@ -10,7 +10,7 @@ also a library; `-core.f` and `-lib.f` hold what tests and other tools reuse;
 - Recovery: `seed-main.f` (`docs/bootstrap.md` "Recovery").
 - Convergence: `chain-run-build.f`.
 - Profiling a build: `build-profile.f`.
-- Checks: `check.f`, the `*-lint.f` entries over `lint/`, `lsp.f` and `lsp-*.f`.
+- Checks: `check.f`, `lsp.f` and `lsp-*.f`.
 - Inspection: `engine-size.f`, `imagedisasm.f`, `code-dump.f`.
 - `unicode/` generates and verifies `src/lib/unicode/class-data.f`,
   `src/lib/unicode/visible-data.f` and `src/lib/unicode/script-data.f`.

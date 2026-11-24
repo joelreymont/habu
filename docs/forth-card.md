@@ -318,9 +318,9 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `set-current` | the section keywords: `public`, `private` or `global` inside `package … ;package` |
 
 A top-level word that parses or is a `defer` is `W-CHECK-STOPPED` at the word,
-verdict `deferred`; `--verify-only` and check-all-errors exit 1 unless something
-is refused, and the check discovers nothing after it: no definition, package,
-load or use in this file or any file that loads it. A top-level call or tick
+verdict `deferred`; `--verify-only` exits 1 unless something is refused, and
+the check discovers nothing after it: no definition, package, load or use in
+this file or any file that loads it. A top-level call or tick
 of a word that may move the source root (`SOURCE-ROOT:ROOT!`, `SOURCE-ROOT:CD`,
 `SOURCE-ROOT:POPPATH`, `SOURCE-ROOT:ENGINE!`, or a word that calls or ticks
 one) ends the check the same way. State what such a word reads, after its
@@ -586,8 +586,7 @@ holds an address**.
   that needs it under its own name reads the owner's constant (`E-OWNER constant
   E-LOCAL`). A library owns one inclusive block of about a hundred bounded by
   its own `E-X-FIRST` / `E-X-LAST` (arrays, filesystem, strings, …) and reserves
-  that whole range whether or not every code is minted;
-  `tools/error-code-lint.f` reports a file minting inside another's.
+  that whole range whether or not every code is minted.
 - A code is declared with its text: `-9701 s" the provider refused the key"
   ERROR:CODE E-KEY` defines the constant `E-KEY` and keeps its name, qualified
   by the open package (`MODEL:E-KEY`), and the text in the program's data.
