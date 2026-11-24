@@ -2,6 +2,7 @@ split-str
 \ json-only-core.f - JSON diagnostic line filter core.
 
 require src/lib/error.f
+require src/lib/json.f
 require src/lib/jsonl.f
 require src/lib/string.f
 require src/lib/fd.f

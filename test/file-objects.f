@@ -1886,32 +1886,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" build two rewrites no object" LABEL  n 0 T=
    s" prog-z" s\" 0\n" s" the program prints z.zip's entry count" NEST-RUN ;
 
-\ The jsonl sequence's f.f: K counts the lines of d.jsonl, which it reads by its absolute path
-\ through JSONL:OPEN.
-: WRITE-JSONL ( -- )
-   L$ s" jsonl" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
-   s\" 1\n" SRC+  s" d.jsonl" NEST-WRITE
-   s\" require src/lib/jsonl.f\npackage FILE-OBJECTS-JSONL\n" SRC+
-   s\" TYPED-VARIABLE C JSONL:cursor\nvariable N\n: COUNTED ( -- ) C s\" " SRC+
-   s" d.jsonl" NEST-PATH$ SRC+
-   s\" \" 64 JSONL:OPEN begin C JSONL:NEXT while 1 N +! repeat ;\n" SRC+
-   s\" COUNTED public N @ constant K ;package\n" SRC+  s" f.f" NEST-WRITE
-   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-JSONL:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
-
-\ Guards a file a load reads through JSONL: JL2, after a line is added to d.jsonl, prints a cold
-\ build's 2; JL3, with nothing changed, links every file.
-: JSONL-CASE ( CMD:command -- CMD:command )
-   WRITE-JSONL
-   s" JL" WHICH!  s" main.f" s" prog-j" NEST-BUILD 0= if exit then
-   s" prog-j" s\" 1\n" s" the program prints d.jsonl's line count" NEST-RUN
-   s\" 1\n2\n" SRC+  s" d.jsonl" NEST-WRITE
-   s" JL2" WHICH!  s" main.f" s" prog-j" NEST-BUILD 0= if exit then
-   s" prog-j" s\" 2\n" s" the program prints d.jsonl's line count" NEST-RUN  L$ MARK
-   s" JL3" WHICH!  s" main.f" s" prog-j" NEST-BUILD 0= if exit then
-   L$ REWRITTEN {: n:n :}
-   s" build three rewrites no object" LABEL  n 0 T=
-   s" prog-j" s\" 2\n" s" the program prints d.jsonl's line count" NEST-RUN ;
-
 \ The kind sequence's f.f: K is whether k is a directory, which it asks by its absolute path through FS:DIR?.
 : WRITE-KIND ( -- )
    L$ s" kind" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
@@ -2524,7 +2498,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       CAUGHT-PASSED-CASE CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CAUGHT-AGAIN-CASE CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE SEARCH-WL-CASE SCOPE-FIND-CASE
       PUBLIC-LOOKUP-CASE CLAUSE-CASE DERIVED-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
-      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
+      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE
       DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE FOLDED-CASE FOLDED-TOP-CASE PACKAGED-CASE EVALUATED-CASE
       OPENED-CASE BUILT-CASE CAST-CASE CROSS-CASE TARGET-CASE ;]

@@ -4,12 +4,13 @@ split-str
 \ refuses the whole packet for one. A control byte is a blank inside a stack
 \ effect, so none reaches a token, and `( n<c>jesc-nosuch -- n )` carries each
 \ c from 0x00 to 0x1F into an unknown-signature-type packet's source text.
-\ Every stream must parse with the strict JSONL reader, its "source_line" must
+\ Every row of a stream must parse as strict JSON, its "source_line" must
 \ decode back to the line written and its "token" to jesc-nosuch alone. A line
 \ feed ends the line, so its "source_line" is the token's line, after it.
 
 require src/lib/string.f
 require test/gate-common.f
+require src/lib/json.f
 require src/lib/jsonl.f
 require tools/check-core.f
 
