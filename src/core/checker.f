@@ -24994,23 +24994,10 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in a string
 
 : ANNOT-REC-SYM ( ^n -- n ) {: rec:^ :}
-   rec CK-REC-NAME$ {: name:^ nameu:n :}
-   rec CK-REC-WID {: wid:n :}
-   wid WL:GLOBAL? IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
-   ndict@ 0 ?DO
-      i REC-AT {: ns:^ :}
-      ns CK-REC-WID BOOT:NAMESPACE-WL = IF
-         wid ns @ = IF
-            ns CK-REC-NAME$ SYM-PUBLIC name nameu CHECKER-PKG-SYM
-            UNLOOP EXIT
-         THEN
-         wid ns CELL + @ = IF
-            ns CK-REC-NAME$ SYM-PRIVATE name nameu CHECKER-PKG-SYM
-            UNLOOP EXIT
-         THEN
-      THEN
-   LOOP
-   s" checker: an annotated word's wordlist has no package" EXIT-STATUS:INTERNAL die ;
+   rec REC-HOME drop {: pa:^ pu:n vis:n :}
+   rec CK-REC-NAME$ {: a:^ u:n :}
+   vis SYM-GLOBAL = IF a u CHECKER-GLOBAL-SYM EXIT THEN
+   pa pu vis a u CHECKER-PKG-SYM ;
 
 : CTL-ADD-REC ( ^n n -- ) {: rec:^ flag:n :}
    rec ANNOT-REC-SYM {: sym:n :}
