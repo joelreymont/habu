@@ -11,7 +11,6 @@ split-str
 require src/core/exit-status.f
 require src/lib/prelude.f
 require src/lib/error.f
-require src/lib/le.f
 require src/lib/hashmap.f
 require src/core/bytes.f
 require src/compiler/target.f
@@ -28,8 +27,6 @@ EXPORT BOOT:data-base
 ENUM state closed open native ;ENUM
 TYPED-VARIABLE SH-STATE state
 TYPED-VARIABLE SH-BIND CBIND:binding \ the binding an open shadow compiles for
-TYPED-VARIABLE NATIVE-ADDRS-XT [ ^u8 -- ]
-variable NATIVE-ADDRS-SET            \ a backend installed NATIVE-ADDRS-XT
 
 \ ---- the emissions -----------------------------------------------------------
 \ Each column counts only the published emissions; a taken one lies just past
@@ -185,29 +182,6 @@ private
    at size + CODE-BUF-RESERVE
    NEMIT:BYTES at CODE-BUF size BYTE-COPY ;
 
-\ A placed native emission keeps its exact recorded rows, while only their
-\ carried fields return to the unplaced form the shadow linker consumes.
-\ Internal relative calls need no row and retain their displacement.
-5 constant REL32-BYTES
-1 constant REL32-FIELD
-$E8 constant CALL-OP
-$E9 constant TAIL-OP
-
-: NATIVE-CALLS ( n -- )
-   {: e:n :}
-   e EM-AT @ {: at:n :}
-   NEMIT:CALL-SITES 0 ?do
-      i NEMIT:CALL-SITE@ {: off:n :}
-      off 0 < off REL32-BYTES + NEMIT:SIZE > or if E-NSHADOW-ROW throw then
-      i NEMIT:CALL-KIND@ {: kind:n :}
-      kind NEMIT:CALL = if CALL-OP else
-         kind NEMIT:TAIL = if TAIL-OP else E-NSHADOW-ROW throw then
-      then {: opcode:n :}
-      at off + CODE-BUF {: p:^ :}
-      p c@ opcode <> if E-NSHADOW-ROW throw then
-      0 p REL32-FIELD + LE:U32!
-   loop ;
-
 : COPY-FUNS ( n -- )
    {: e:n :}
    e EM-FUN0 @ {: k0:n :}
@@ -291,24 +265,13 @@ $E9 constant TAIL-OP
    e EM-HOST @ {: h:n :}
    h 0 >=  h e <> and if h target PATCH-ONE then ;
 
-\ Whether COPY returns a native shadow's placed emission to the unplaced form,
-\ which needs NATIVE-ADDRS!.
-: UNPLACE? ( -- bool )
-   NATIVE? NEMIT:PLACED? and 0= if false exit then
-   NATIVE-ADDRS-SET @ 0= if E-NSHADOW-STATE throw then
-   true ;
-
 \ Copy the emission sealed in NEMIT as emission e. A copy taken over one no
 \ publication claimed simply replaces it: both lie past the counts.
 : COPY ( n -- )
    {: e:n :}
-   UNPLACE? {: unplace:bool :}
+   NATIVE? NEMIT:PLACED? and if E-NSHADOW-STATE throw then
    e COPY-ROW
    e COPY-BYTES
-   unplace if
-      e NATIVE-CALLS
-      e EM-AT @ CODE-BUF NATIVE-ADDRS-XT @ execute
-   then
    e COPY-FUNS
    e COPY-CALLS
    e COPY-ADDRS
@@ -454,15 +417,6 @@ public
    b CBIND:VALIDATE SH-BIND !
    CLEAR
    construct state open SH-STATE ! ;
-
-\ A placed emission's address sites carry the host address it was placed with.
-\ A backend that hands a native shadow a placed emission installs how its sites
-\ carry an address and return to the unplaced form,
-\ given the first byte of its copy while the emission stands sealed in NEMIT;
-\ COPY refuses such an emission until one has.
-: NATIVE-ADDRS! ( [ ^u8 -- ] -- )
-   NATIVE-ADDRS-XT !
-   1 NATIVE-ADDRS-SET ! ;
 
 \ The engine's own emission is compiled for the engine's own binding, so a
 \ native shadow opens for no other.
