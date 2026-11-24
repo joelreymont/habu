@@ -1,4 +1,3 @@
-split-str
 \ inotify.f - change notices for watched directories, through Linux's
 \ inotify. DRAIN discards the pending events unread: a caller learns only that
 \ something changed. OPEN and WATCH answer a failure, with the call's errno as
@@ -54,9 +53,9 @@ FUNCTION: READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
 
 : FAIL ( n -- )
    {: e:n :}
-   e FS:ERRNO$ {: text:^ tu:n :}
+   e FS:ERRNO$ {: text:str :}
    LOG:ERROR s" inotify" LOG:LINE
-   s" read: " LOG:TEXT+ text tu LOG:TEXT+ LOG:;LINE
+   s" read: " LOG:TEXT+ text LOG:TEXT+ LOG:;LINE
    e FS:CAUSE! E-INOTIFY throw ;
 
 \ One read: the bytes it discarded, and whether more may be pending.

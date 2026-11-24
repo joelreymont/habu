@@ -1,4 +1,3 @@
-split-str
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/fsm.f
@@ -81,15 +80,15 @@ DEFINE GETAFIX ( ^line ) entry key
 
 
 : GETAFIX$ ( str -- str )
-   {: a:^ u:n :}
+   {: s:str :}
    LINE-REC {: l :}
-   a l FSM--TEST-LINE:TEXT !
-   u l FSM--TEST-LINE:LEN !
+   s STR:DATA l FSM--TEST-LINE:TEXT !
+   s STR:LEN l FSM--TEST-LINE:LEN !
    0 l POS!
    OUT-BUF l FSM--TEST-LINE:OUT !
    0 l USED!
    l construct entry start GETAFIX
-   OUT-BUF l USED@ ;
+   OUT-BUF l USED@ >str ;
 
 
 : ENTRIES ( -- )
@@ -342,14 +341,14 @@ DEFINE PEEK ( ^n ) tally pulse
 DYNAMIC-BUFFER SRC u8
 variable SRC-LEN
 
-: SRC+ ( str -- ) {: a:^ u:n :}
-   u 0= if exit then
-   SRC-LEN @ u + SRC-RESERVE
-   a SRC-LEN @ SRC u BYTE-COPY
-   SRC-LEN @ u + SRC-LEN ! ;
+: SRC+ ( str -- ) {: s:str :}
+   s STR:LEN 0= if exit then
+   SRC-LEN @ s STR:LEN + SRC-RESERVE
+   s STR:DATA SRC-LEN @ SRC s STR:LEN BYTE-COPY
+   SRC-LEN @ s STR:LEN + SRC-LEN ! ;
 
 : N+ ( n -- ) FMT:INT$ SRC+ ;
-: SRC$ ( -- str ) 0 SRC SRC-LEN @ ;
+: SRC$ ( -- str ) 0 SRC SRC-LEN @ >str ;
 
 
 \ A machine that runs after a rejected table: the next DEFINE starts from an
@@ -406,8 +405,8 @@ variable SRC-LEN
 
 
 \ Each line LINES hands, as `state input next;`.
-: SEEN+ ( str str str -- ) {: s:^ su:n i:^ iu:n x:^ xu:n :}
-   s su SRC+ s"  " SRC+ i iu SRC+ s"  " SRC+ x xu SRC+ s" ;" SRC+ ;
+: SEEN+ ( str str str -- ) {: st:str inp:str nxt:str :}
+   st SRC+ s"  " SRC+ inp SRC+ s"  " SRC+ nxt SRC+ s" ;" SRC+ ;
 
 : SEEN$ ( str -- str ) 0 SRC-LEN !  [: SEEN+ ;] FSM:LINES  SRC$ ;
 
@@ -416,9 +415,9 @@ variable SRC-LEN
 : LINES-READ ( -- )
    S\" M ( ^n ) ph sig\n   IN idle S go BUMP >busy\thalt - >idle\r\n   IN busy S ( stop ) stop - PICK\x1FFINAL done - ;DEFINE IN late S go - >idle"
    SEEN$ s" idle go >busy;idle halt >idle;busy stop PICK;" T$=
-   [: s" M ( n ) ph sig IN idle S go - >busy" SEEN$ 2drop ;]
+   [: s" M ( n ) ph sig IN idle S go - >busy" SEEN$ drop ;]
    FSM:E-SYNTAX TTHROWSQ
-   [: s" M ( n ) ph sig IN idle S go - ;DEFINE" SEEN$ 2drop ;]
+   [: s" M ( n ) ph sig IN idle S go - ;DEFINE" SEEN$ drop ;]
    FSM:E-SYNTAX TTHROWSQ
    15 VALID 2 T= ;
 
@@ -432,10 +431,10 @@ variable SRC-LEN
 \ the action's own line.
 : PLACED-EFFECT ( -- )
    s" include test/fixtures/fsm/wrong-effect.f" 70 SUBJECT:REJECTED
-   {: e:^ eu:n exited:bool :}
+   {: e:str exited:bool :}
    exited TTRUE
-   e eu s" `bump`" STR:CONTAINS? TTRUE
-   e eu s" wrong-effect.f:15" STR:CONTAINS? TTRUE ;
+   e s" `bump`" STR:CONTAINS? TTRUE
+   e s" wrong-effect.f:15" STR:CONTAINS? TTRUE ;
 
 \ An unknown states type is placed at the header's states token.
 : PLACED-STATES ( -- )

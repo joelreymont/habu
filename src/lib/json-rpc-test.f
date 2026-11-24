@@ -1,4 +1,3 @@
-split-str
 \ json-rpc-test.f - the JSON-RPC 2.0 envelope, through src/lib/json-rpc.f.
 \ Run: bin/hb --load src/lib/json-rpc-test.f
 
@@ -43,13 +42,13 @@ TYPED-VARIABLE W JSON:writer
          s" failure" SB-APPEND SB-SP i VALUE+ SB-SP v VALUE+ ENDOF
       invalid OF {: c:n w:^ wu:n i :}
          s" invalid" SB-APPEND SB-SP c FMT:SB-INT SB-SP i VALUE+ SB-SP
-         w wu SB-APPEND ENDOF
+         w wu >str SB-APPEND ENDOF
    ;MATCH
    SB$ ;
 
-: SORTS ( ^u8 n ^u8 n -- )
-   {: a:^ u:n want:^ wu:n :}
-   a u >MESSAGE SHOW$ want wu T$= ;
+: SORTS ( str str -- )
+   {: body:str want:str :}
+   body >MESSAGE SHOW$ want T$= ;
 
 \ Members in any order and with blanks between; params an object, an array,
 \ absent or null; ids as their exact text: an integer, a negative fraction with
@@ -100,9 +99,9 @@ TYPED-VARIABLE W JSON:writer
 
 \ The body sorts as PARSE-ERROR with the null id.
 : NOT-JSON ( str -- )
-   >MESSAGE SHOW$ {: s:^ su:n :}
-   PARSE-HEAD$ nip su min {: hu:n :}
-   s hu PARSE-HEAD$ T$= ;
+   >MESSAGE SHOW$ {: s:str :}
+   PARSE-HEAD$ STR:LEN s STR:LEN min {: hu:n :}
+   s STR:DATA hu >str PARSE-HEAD$ T$= ;
 
 \ A string holding one byte that cannot start UTF-8.
 create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
@@ -119,7 +118,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"\\x\"}" NOT-JSON
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"\\ud800\"}" NOT-JSON
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"x\",}" NOT-JSON
-   BAD-UTF8 9 NOT-JSON ;
+   BAD-UTF8 9 >str NOT-JSON ;
 
 \ An array, empty or not; a number, string or null root: INVALID-REQUEST, id null.
 : TEST-ROOT ( -- )
@@ -202,28 +201,28 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
 
 : CLOSED$ ( ^JSON:writer -- str )
    {: w :}
-   w WRITTEN$ {: a:^ u:n :}
+   w WRITTEN$ {: s:str :}
    w JSON:CLOSE
-   a u ;
+   s ;
 
-: ID ( ^u8 n -- JSON:value )  JSON:PARSE ;
+: ID ( str -- JSON:value )  JSON:PARSE ;
 
 \ RESULT, ERROR and NOTIFY: exact bytes, a message escaped, each read back by
 \ >MESSAGE.
 : TEST-WRITE ( -- )
    WRITER s" 2" ID RESULT WRITE-NULL END CLOSED$
-   2dup s\" {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":null}" T$=
+   dup s\" {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":null}" T$=
    s" success 2 null" SORTS
    WRITER s\" \"a\\\"b\"" ID RESULT WRITE-OBJECT-START WRITE-OBJECT-END
    END CLOSED$
-   2dup s\" {\"jsonrpc\":\"2.0\",\"id\":\"a\\\"b\",\"result\":{}}" T$=
+   dup s\" {\"jsonrpc\":\"2.0\",\"id\":\"a\\\"b\",\"result\":{}}" T$=
    s\" success \"a\\\"b\" {}" SORTS
    WRITER NULL-ID METHOD-NOT-FOUND s\" no \"x\"" ERROR CLOSED$
-   2dup s\" {\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32601,\"message\":\"no \\\"x\\\"\"}}" T$=
+   dup s\" {\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32601,\"message\":\"no \\\"x\\\"\"}}" T$=
    s\" failure null {\"code\":-32601,\"message\":\"no \\\"x\\\"\"}" SORTS
    WRITER s" textDocument/publishDiagnostics" NOTIFY
    WRITE-ARRAY-START WRITE-ARRAY-END END CLOSED$
-   2dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":[]}" T$=
+   dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":[]}" T$=
    s\" notification \"textDocument/publishDiagnostics\" []" SORTS ;
 
 : TEST-MAIN ( -- )

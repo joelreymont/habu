@@ -1,4 +1,3 @@
-split-str
 \ inotify-test.f - INOTIFY's words on a directory under the test's temporary
 \ directory.
 \ Run: bin/hb --load src/lib/inotify-test.f
@@ -24,8 +23,8 @@ variable DIR-FD
 variable FILE-FD
 variable INST-FD
 
-: ROOT$ ( -- str ) ROOT ROOT-U @ ;
-: FILE$ ( -- str ) FILE FILE-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: FILE$ ( -- str ) FILE FILE-U @ >str ;
 : DIR@ ( -- fd ) DIR-FD @ >FD ;
 : FILE@ ( -- fd ) FILE-FD @ >FD ;
 : INST@ ( -- fd ) INST-FD @ >FD ;
@@ -37,9 +36,9 @@ variable INST-FD
    ;MATCH ;
 
 : SETUP ( -- )
-   s" hb-inotify" FS:MKTEMP-DIR {: path:^ u:n :}
-   path ROOT u BYTE-COPY
-   u ROOT-U !
+   s" hb-inotify" FS:MKTEMP-DIR {: path:str :}
+   path STR:DATA ROOT path STR:LEN BYTE-COPY
+   path STR:LEN ROOT-U !
    ROOT$ s" file" FILE FS:JOIN-PATH FILE-U !
    ROOT$ FS:>PATHZ FS:O-RDONLY 0 open DIR-FD !
    DIR-FD @ 0 >= TTRUE

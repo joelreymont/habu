@@ -1,4 +1,3 @@
-split-str
 \ json-rpc.f - the JSON-RPC 2.0 envelope: >MESSAGE sorts one body into a
 \ message and the writers build replies on a caller's JSON writer. Each part
 \ of a message is a JSON:value, so an id, a method or a string result keeps
@@ -53,11 +52,13 @@ ENUM message
 
 private
 
-: INVALID ( n str JSON:value -- message )  JSON--RPC-MESSAGE:INVALID ;
+: INVALID ( n str JSON:value -- message )
+   {: code:n why:str id :}
+   code why STR:DATA why STR:LEN id JSON--RPC-MESSAGE:INVALID ;
 
 : FAULT ( str JSON:value -- message )
-   {: why:^ wu:n id :}
-   INVALID-REQUEST why wu id INVALID ;
+   {: why:str id :}
+   INVALID-REQUEST why id INVALID ;
 
 : PRESENT? ( option<JSON:value> -- bool )
    MATCH option
@@ -216,16 +217,16 @@ private
 \ PARSE's value replaces the slot under the body, so the quotation under
 \ catch leaves the types it was given.
 : PARSE-SLOT ( JSON:value str -- JSON:value str )
-   {: v body:^ len:n :}
-   body len PARSE  body len ;
+   {: v body:str :}
+   body PARSE  body ;
 
 public
 
 : >MESSAGE ( str -- message )
-   {: body:^ len:n :}
-   NULL-ID body len [: PARSE-SLOT ;] catch {: code:n :}
-   code 0<> if 2drop drop code NOT-PARSED exit then
-   2drop SORT-ROOT ;
+   {: body:str :}
+   NULL-ID body [: PARSE-SLOT ;] catch {: code:n :}
+   code 0<> if drop drop code NOT-PARSED exit then
+   drop SORT-ROOT ;
 
 private
 
@@ -246,20 +247,20 @@ public
 
 \ A whole error reply: `{"jsonrpc":"2.0","id":ID,"error":{"code":N,"message":M}}`.
 : ERROR ( ^JSON:writer JSON:value n str -- ^JSON:writer )
-   {: id code:n msg:^ mu:n :}
+   {: id code:n msg:str :}
    HEAD id ID-FIELD
    WRITE-COMMA  s" error" WRITE-KEY
    WRITE-OBJECT-START
    s" code" code WRITE-FIELD-INT
-   WRITE-COMMA  s" message" msg mu WRITE-FIELD-S
+   WRITE-COMMA  s" message" msg WRITE-FIELD-S
    WRITE-OBJECT-END
    WRITE-OBJECT-END ;
 
 \ `{"jsonrpc":"2.0","method":M,"params":`; the caller writes params, then END.
 : NOTIFY ( ^JSON:writer str -- ^JSON:writer )
-   {: m:^ mu:n :}
+   {: m:str :}
    HEAD
-   WRITE-COMMA  s" method" m mu WRITE-FIELD-S
+   WRITE-COMMA  s" method" m WRITE-FIELD-S
    WRITE-COMMA  s" params" WRITE-KEY ;
 
 : END ( ^JSON:writer -- ^JSON:writer )

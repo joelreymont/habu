@@ -1,4 +1,3 @@
-split-str
 \ json-pointer-test.f - focused tests for JSON:POINTER? and JSON:POINTER-SPAN.
 \ Run: bin/hb --load src/lib/json-pointer-test.f
 
@@ -16,17 +15,17 @@ private
 
 \ A slash, then a byte no UTF-8 text holds.
 create BAD-UTF8 47 c, 255 c,
-: BAD-UTF8$ ( -- str ) BAD-UTF8 2 ;
+: BAD-UTF8$ ( -- str ) BAD-UTF8 2 >str ;
 
 \ The bytes the pointer names in DOC$.
 : PLACE$ ( str -- str )
-   {: p:^ u:n :}
-   DOC$ p u JSON:POINTER-SPAN TTRUE {: at:n len:n :}
-   DOC$ drop at + len ;
+   {: s:str :}
+   DOC$ s JSON:POINTER-SPAN TTRUE {: at:n len:n :}
+   DOC$ STR:DATA at + len >str ;
 
 : NO-PLACE ( str -- )
-   {: p:^ u:n :}
-   DOC$ p u JSON:POINTER-SPAN TFALSE 0 T= 0 T= ;
+   {: s:str :}
+   DOC$ s JSON:POINTER-SPAN TFALSE 0 T= 0 T= ;
 
 \ Section 5's twelve pointers and the values it gives for them.
 : TEST-RFC ( -- )

@@ -1,4 +1,3 @@
-split-str
 \ fs-statx-test.f - FS-STATX:BIRTH, SUBVOLUME and PERMISSIONS on files made
 \ under the test's temporary directory, and their refusal of a closed one.
 \ Run: bin/hb --load src/lib/fs-statx-test.f
@@ -43,12 +42,12 @@ create STATFS-BUF STATFS-BYTES allot
 create FLAGS 8 allot
 variable ROOT-U
 
-: ROOT$ ( -- str ) ROOT ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
 : PATH ( str -- str )
-   ROOT$ 2swap PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
+   ROOT$ swap PATH-BUF FS:JOIN-PATH PATH-BUF swap >str ;
 : SETUP ( -- )
-   s" habu-fs-statx" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT u BYTE-COPY  u ROOT-U ! ;
+   s" habu-fs-statx" FS:MKTEMP-DIR {: s:str :}
+   s STR:DATA ROOT s STR:LEN BYTE-COPY  s STR:LEN ROOT-U ! ;
 
 \ The clock's time, seconds then nanoseconds.
 : CLOCK ( n -- n n )
@@ -79,8 +78,8 @@ variable ROOT-U
 : ON ( fd -- )
    s"  on " type MAGIC FS-NAME$ type cr ;
 
-: SAY ( str fd -- ) {: a:^ u:n file:fd :}
-   s" fs-statx-test: " type a u type file ON ;
+: SAY ( str fd -- ) {: s:str file:fd :}
+   s" fs-statx-test: " type s type file ON ;
 
 \ Birth lies between a coarse clock read before the file is made and a
 \ fine one read after; a filesystem that keeps none is named and passes.

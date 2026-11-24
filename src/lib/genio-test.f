@@ -1,4 +1,3 @@
-split-str
 \ genio-test.f - GENIO:READ-LINE answers a device's lines of any length, an
 \ empty one included.
 \ The device's accept reads an in-process source that holds every line before
@@ -90,7 +89,7 @@ TASK:MIN-STACK TASK:TASK READER
 : NO-READY? ( -- bool ) false ;
 : NO-READ ( ^u8 n -- n ) {: a:^ cap:n :} 0 ;
 : NO-ACCEPT ( ^u8 n -- n ) {: a:^ cap:n :} -1 ;
-: NO-WRITE ( str -- ) {: a:^ u:n :} ;
+: NO-WRITE ( str -- ) {: s:str :} ;
 : NOTHING ( -- ) ;
 
 : OPEN-SRC ( -- )
@@ -100,8 +99,8 @@ TASK:MIN-STACK TASK:TASK READER
 
 \ ---- reading through the device ------------------------------------------------
 
-: SAME? ( str n -- bool ) {: a:^ u:n c:n :}
-   u 0 ?do a i + c@ c <> if false unloop exit then loop
+: SAME? ( str n -- bool ) {: s:str c:n :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ c <> if false unloop exit then loop
    true ;
 
 : DEV@ ( -- GENIO:device )
@@ -109,8 +108,8 @@ TASK:MIN-STACK TASK:TASK READER
 
 
 : LINE-BODY ( -- )
-   GENIO:READ-LINE {: a:^ u:n :}
-   a 0= GOT-NULL !  u GOT-LEN !  a u WANT-CH @ SAME? GOT-SAME ! ;
+   GENIO:READ-LINE {: s:str :}
+   s STR:DATA 0= GOT-NULL !  s STR:LEN GOT-LEN !  s WANT-CH @ SAME? GOT-SAME ! ;
 
 : LINE-ROW ( -- )
    ['] LINE-BODY catch GOT-CODE ! ;
@@ -119,16 +118,16 @@ TASK:MIN-STACK TASK:TASK READER
    -1 GOT-LEN !  false GOT-SAME !  false GOT-NULL !  0 GOT-CODE !  c WANT-CH !
    DEV@ GENIO:TERMINAL body GENIO:WITH-IO ;
 
-: T-LINE ( n n str -- ) {: want:n c:n la:^ lu:n :}
-   la lu T-LABEL
+: T-LINE ( n n str -- ) {: want:n c:n ls:str :}
+   ls T-LABEL
    [: LINE-ROW ;] c ROW
    GOT-CODE @ 0 T=
    GOT-LEN @ want T=
    GOT-SAME @ TTRUE
    GOT-NULL @ TFALSE ;
 
-: T-NULL-LINE ( str -- ) {: la:^ lu:n :}
-   la lu T-LABEL
+: T-NULL-LINE ( str -- ) {: ls:str :}
+   ls T-LABEL
    [: LINE-ROW ;] 0 ROW
    GOT-CODE @ 0 T=
    GOT-NULL @ TTRUE ;
@@ -136,12 +135,12 @@ TASK:MIN-STACK TASK:TASK READER
 \ ---- a device write that faults ---------------------------------------------
 \ The sink appends what it is written; the faulty device's write reads address 0.
 
-: SINK-WRITE ( str -- ) {: a:^ u:n :}
-   u 0 ?do
-      SINK-N @ SINK-CAP < if a i + c@ SINK SINK-N @ + c!  SINK-N @ 1+ SINK-N ! then
+: SINK-WRITE ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do
+      SINK-N @ SINK-CAP < if s STR:DATA i + c@ SINK SINK-N @ + c!  SINK-N @ 1+ SINK-N ! then
    loop ;
 
-: FAULTY-WRITE ( str -- ) {: a:^ u:n :}
+: FAULTY-WRITE ( str -- ) {: s:str :}
    NULL-PTR BYTE-VIEW c@ drop ;
 
 : OUT-DEVICE ( [ str -- ] -- GENIO:device ) {: qwrite :}
@@ -164,7 +163,7 @@ TASK:MIN-STACK TASK:TASK READER
    SINK-DEV @ GENIO:>DEVICE GENIO:CLOSE
    GOT-CODE @ 110 T=
    self GENIO:TERMINAL GENIO:DEVICE>N T=
-   SINK SINK-N @ s" y" T$= ;
+   SINK SINK-N @ >str s" y" T$= ;
 
 : REUSE-BODY ( -- )
    CALLER-DEV @ GENIO:>DEVICE GENIO:CLOSE
@@ -185,8 +184,8 @@ TASK:MIN-STACK TASK:TASK READER
 \ The worker's line is released on its exit chain, which TASK:JOIN has run.
 : READER-BODY ( -- )
    DEV@ GENIO:INPUT!
-   GENIO:READ-LINE {: a:^ u:n :}
-   a u CH-C SAME? if u else -1 then TASK:RETURN ;
+   GENIO:READ-LINE {: s:str :}
+   s CH-C SAME? if s STR:LEN else -1 then TASK:RETURN ;
 
 : T-WORKER ( -- )
    s" a worker reads a 700-byte line" T-LABEL

@@ -1,4 +1,3 @@
-split-str
 \ ALLOC through the heap's allocator: the cases every allocator meets; bytes
 \ come back zeroed where a freed block's were dirty; small records share
 \ pages; RESIZE keeps a block's bytes as it grows and shrinks and zeroes the
@@ -25,7 +24,7 @@ $7FFFFFFFFFFFFFF0 constant HUGE
    $FF block 4096 SPAN:MAKE SPAN:FILL
    AL block ALLOC:FREE
    AL 4096 ALLOC:BYTES drop {: again:^ :}
-   again 4096 ALLOC-TEST:ZEROED
+   again 4096 >str ALLOC-TEST:ZEROED
    AL again ALLOC:FREE ;
 
 
@@ -59,7 +58,7 @@ $7FFFFFFFFFFFFFF0 constant HUGE
    {: grown:^ :}
    s" and shrinks it, keeping the bytes that remain" T-LABEL
    AL grown $100000 8 ALLOC:RESIZE 8 T= {: shrunk:^ :}
-   shrunk c@ 7 T=  shrunk 1 + 7 ALLOC-TEST:ZEROED
+   shrunk c@ 7 T=  shrunk 1 + 7 >str ALLOC-TEST:ZEROED
    shrunk ;
 
 
@@ -71,7 +70,7 @@ $7FFFFFFFFFFFFFF0 constant HUGE
    AL block 64 16 ALLOC:RESIZE drop {: cut:^ :}
    AL cut 16 64 ALLOC:RESIZE drop {: back:^ :}
    back c@ $FF T=  back 15 + c@ $FF T=
-   back 16 + 48 ALLOC-TEST:ZEROED
+   back 16 + 48 >str ALLOC-TEST:ZEROED
    AL back ALLOC:FREE ;
 
 

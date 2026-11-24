@@ -1,4 +1,3 @@
-split-str
 \ fs-mutate-test.f - focused tests for src/lib/fs-mutate.f.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/fs-mutate-test.f
 \ Real special-inode fixtures require mkfifo and socat on PATH.
@@ -71,10 +70,10 @@ create FMT-LONG-BUF PATH-CAP 1 + allot
    PATH-CAP 1 + 0 ?do 97 FMT-LONG-BUF i + c! loop ;
 
 : FMT-LONG$ ( -- str )
-   FMT-LONG-BUF PATH-CAP 1 + ;
+   FMT-LONG-BUF PATH-CAP 1 + >str ;
 
 : FMT-FULL$ ( -- str )
-   FMT-LONG-BUF PATH-CAP ;
+   FMT-LONG-BUF PATH-CAP >str ;
 
 create FMT-MKDIR-BUF PATH-CAP allot
 create FMT-NEST-A-BUF PATH-CAP allot
@@ -123,109 +122,109 @@ $1ED constant FMT-MODE-0755
 create FMT-STREAM-SRC-DATA FMT-STREAM-LEN allot
 create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 
-: FMT-COPY! ( str ^u8 ^n -- ) {: a:^ u dst:^ up:^ :}
-   u PATH-CAP > if E-FS-PATH throw then
-   a dst u BYTE-COPY
-   u up ! ;
+: FMT-COPY! ( str ^u8 ^n -- ) {: s:str dst:^ up:^ :}
+   s STR:LEN PATH-CAP > if E-FS-PATH throw then
+   s STR:DATA dst s STR:LEN BYTE-COPY
+   s STR:LEN up ! ;
 
 : FMT-ROOT$ ( -- str )
-   FMT-ROOT-BUF FMT-ROOT-U @ ;
+   FMT-ROOT-BUF FMT-ROOT-U @ >str ;
 
 : FMT-REMOVE-PATH ( -- str )
-   FMT-REMOVE-BUF FMT-REMOVE-U @ ;
+   FMT-REMOVE-BUF FMT-REMOVE-U @ >str ;
 
 : FMT-RENAME-SRC ( -- str )
-   FMT-RENAME-SRC-BUF FMT-RENAME-SRC-U @ ;
+   FMT-RENAME-SRC-BUF FMT-RENAME-SRC-U @ >str ;
 
 : FMT-RENAME-DST ( -- str )
-   FMT-RENAME-DST-BUF FMT-RENAME-DST-U @ ;
+   FMT-RENAME-DST-BUF FMT-RENAME-DST-U @ >str ;
 
 : FMT-CHMOD-PATH ( -- str )
-   FMT-CHMOD-BUF FMT-CHMOD-U @ ;
+   FMT-CHMOD-BUF FMT-CHMOD-U @ >str ;
 
 : FMT-COPY-SRC ( -- str )
-   FMT-COPY-SRC-BUF FMT-COPY-SRC-U @ ;
+   FMT-COPY-SRC-BUF FMT-COPY-SRC-U @ >str ;
 
 : FMT-COPY-DST ( -- str )
-   FMT-COPY-DST-BUF FMT-COPY-DST-U @ ;
+   FMT-COPY-DST-BUF FMT-COPY-DST-U @ >str ;
 
 : FMT-STREAM-SRC ( -- str )
-   FMT-STREAM-SRC-BUF FMT-STREAM-SRC-U @ ;
+   FMT-STREAM-SRC-BUF FMT-STREAM-SRC-U @ >str ;
 
 : FMT-STREAM-DST ( -- str )
-   FMT-STREAM-DST-BUF FMT-STREAM-DST-U @ ;
+   FMT-STREAM-DST-BUF FMT-STREAM-DST-U @ >str ;
 
 : FMT-ATOMIC-PATH ( -- str )
-   FMT-ATOMIC-BUF FMT-ATOMIC-U @ ;
+   FMT-ATOMIC-BUF FMT-ATOMIC-U @ >str ;
 
 : FMT-PARENT-A ( -- str )
-   FMT-PARENT-A-BUF FMT-PARENT-A-U @ ;
+   FMT-PARENT-A-BUF FMT-PARENT-A-U @ >str ;
 
 : FMT-PARENT-B ( -- str )
-   FMT-PARENT-B-BUF FMT-PARENT-B-U @ ;
+   FMT-PARENT-B-BUF FMT-PARENT-B-U @ >str ;
 
 : FMT-PARENT-LINK ( -- str )
-   FMT-PARENT-LINK-BUF FMT-PARENT-LINK-U @ ;
+   FMT-PARENT-LINK-BUF FMT-PARENT-LINK-U @ >str ;
 
 : FMT-PARENT-BOUND ( -- str )
-   FMT-PARENT-BOUND-BUF FMT-PARENT-BOUND-U @ ;
+   FMT-PARENT-BOUND-BUF FMT-PARENT-BOUND-U @ >str ;
 
 : FMT-MKDIR-PATH ( -- str )
-   FMT-MKDIR-BUF FMT-MKDIR-U @ ;
+   FMT-MKDIR-BUF FMT-MKDIR-U @ >str ;
 
 : FMT-NEST-A ( -- str )
-   FMT-NEST-A-BUF FMT-NEST-A-U @ ;
+   FMT-NEST-A-BUF FMT-NEST-A-U @ >str ;
 
 : FMT-NEST-B ( -- str )
-   FMT-NEST-B-BUF FMT-NEST-B-U @ ;
+   FMT-NEST-B-BUF FMT-NEST-B-U @ >str ;
 
 : FMT-NEST-C ( -- str )
-   FMT-NEST-C-BUF FMT-NEST-C-U @ ;
+   FMT-NEST-C-BUF FMT-NEST-C-U @ >str ;
 
 : FMT-TREE ( -- str )
-   FMT-TREE-BUF FMT-TREE-U @ ;
+   FMT-TREE-BUF FMT-TREE-U @ >str ;
 
 : FMT-TREE-CHILD ( -- str )
-   FMT-TREE-CHILD-BUF FMT-TREE-CHILD-U @ ;
+   FMT-TREE-CHILD-BUF FMT-TREE-CHILD-U @ >str ;
 
 : FMT-TREE-GRAND ( -- str )
-   FMT-TREE-GRAND-BUF FMT-TREE-GRAND-U @ ;
+   FMT-TREE-GRAND-BUF FMT-TREE-GRAND-U @ >str ;
 
 : FMT-TREE-DOTS ( -- str )
-   FMT-TREE-DOTS-BUF FMT-TREE-DOTS-U @ ;
+   FMT-TREE-DOTS-BUF FMT-TREE-DOTS-U @ >str ;
 
 : FMT-TREE-ROOT-FILE ( -- str )
-   FMT-TREE-ROOT-FILE-BUF FMT-TREE-ROOT-FILE-U @ ;
+   FMT-TREE-ROOT-FILE-BUF FMT-TREE-ROOT-FILE-U @ >str ;
 
 : FMT-TREE-LEAF ( -- str )
-   FMT-TREE-LEAF-BUF FMT-TREE-LEAF-U @ ;
+   FMT-TREE-LEAF-BUF FMT-TREE-LEAF-U @ >str ;
 
 : FMT-TREE-DOTS-FILE ( -- str )
-   FMT-TREE-DOTS-FILE-BUF FMT-TREE-DOTS-FILE-U @ ;
+   FMT-TREE-DOTS-FILE-BUF FMT-TREE-DOTS-FILE-U @ >str ;
 
 : FMT-LINK-TARGET ( -- str )
-   FMT-LINK-TARGET-BUF FMT-LINK-TARGET-U @ ;
+   FMT-LINK-TARGET-BUF FMT-LINK-TARGET-U @ >str ;
 
 : FMT-LINK ( -- str )
-   FMT-LINK-BUF FMT-LINK-U @ ;
+   FMT-LINK-BUF FMT-LINK-U @ >str ;
 
 : FMT-BROKEN-TARGET ( -- str )
-   FMT-BROKEN-TARGET-BUF FMT-BROKEN-TARGET-U @ ;
+   FMT-BROKEN-TARGET-BUF FMT-BROKEN-TARGET-U @ >str ;
 
 : FMT-BROKEN-LINK ( -- str )
-   FMT-BROKEN-LINK-BUF FMT-BROKEN-LINK-U @ ;
+   FMT-BROKEN-LINK-BUF FMT-BROKEN-LINK-U @ >str ;
 
 : FMT-LINK-DIR ( -- str )
-   FMT-LINK-DIR-BUF FMT-LINK-DIR-U @ ;
+   FMT-LINK-DIR-BUF FMT-LINK-DIR-U @ >str ;
 
 : FMT-LINK-DIR-FILE ( -- str )
-   FMT-LINK-DIR-FILE-BUF FMT-LINK-DIR-FILE-U @ ;
+   FMT-LINK-DIR-FILE-BUF FMT-LINK-DIR-FILE-U @ >str ;
 
 : FMT-TREE-DIR-LINK ( -- str )
-   FMT-TREE-DIR-LINK-BUF FMT-TREE-DIR-LINK-U @ ;
+   FMT-TREE-DIR-LINK-BUF FMT-TREE-DIR-LINK-U @ >str ;
 
 : FMT-COLLIDE ( -- str )
-   FMT-COLLIDE-BUF FMT-COLLIDE-U @ ;
+   FMT-COLLIDE-BUF FMT-COLLIDE-U @ >str ;
 
 : FMT-TEMP-BASE ( -- str )
    FMT-ROOT$ ;
@@ -238,13 +237,13 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 \ GT-POOL-CHILD-SOCK!). Without it the root goes under
 \ TMPDIR, then /tmp. FMT-PREPARE registers the root as a tree, so a throw before
 \ FMT-TEST-CLEANUP still removes it at exit.
-: FMT-ROOT-COPY! ( str -- ) {: a:^ u :}
-   a FMT-ROOT-BUF u BYTE-COPY
-   u FMT-ROOT-U ! ;
+: FMT-ROOT-COPY! ( str -- ) {: s:str :}
+   s STR:DATA FMT-ROOT-BUF s STR:LEN BYTE-COPY
+   s STR:LEN FMT-ROOT-U ! ;
 
 : FMT-ROOT! ( -- )
-   s" HB_SOCK_TMP" GETENV dup 0 > if FMT-ROOT-COPY! exit then
-   2drop
+   s" HB_SOCK_TMP" GETENV dup STR:LEN 0 > if FMT-ROOT-COPY! exit then
+   drop
    s" habu-fs-mutate" FS:MKTEMP-DIR FMT-ROOT-COPY! ;
 
 : FMT-REMOVE! ( -- )
@@ -421,27 +420,27 @@ public
 : FMT-REAL ( str -- str )
    FS:>PATHZ FMT-REAL-BUF FS:PATHZ-CAP realpath {: u:n :}
    u 0 > TTRUE
-   FMT-REAL-BUF u ;
+   FMT-REAL-BUF u >str ;
 
 
 \ A real chain whose canonical spelling is n bytes, for a test whose subject is
 \ that length. Its first name is registered for cleanup.
 : FMT-DEEP-DIR ( n -- str )
    {: n:n :}
-   FMT-ROOT$ FMT-REAL nip {: r:n :}
+   FMT-ROOT$ FMT-REAL STR:LEN {: r:n :}
    n r ?do
       i r - 201 mod 0= i n 1- < and if FS:SLASH else 97 then
       FMT-REAL-BUF i + c!
    loop
-   FMT-REAL-BUF n FS:MAKE-DIRS
-   FMT-REAL-BUF r 201 + FS:CLEANUP-TREE+
-   FMT-REAL-BUF n ;
+   FMT-REAL-BUF n >str FS:MAKE-DIRS
+   FMT-REAL-BUF r 201 + >str FS:CLEANUP-TREE+
+   FMT-REAL-BUF n >str ;
 
 
 \ A base one byte past the longest FS:MKTEMP-DIR-IN builds in for its prefix,
 \ whatever seed it would draw.
 : FMT-TEMP-BASE-NO-ROOM ( -- )
-   FMT-LONG-BUF s" nr" nip FS:TEMP-DIR-BASE-MAX 1+ s" nr" FS:MKTEMP-DIR-IN 2drop ;
+   FMT-LONG-BUF s" nr" STR:LEN FS:TEMP-DIR-BASE-MAX 1+ >str s" nr" FS:MKTEMP-DIR-IN drop ;
 
 : FMT-SUFFIX-NO-ROOM ( -- )
    s" ab" s" .c" FMT-READ-BUF 3 SPAN:MAKE FS:SUFFIX-PATH drop ;
@@ -467,7 +466,7 @@ public
    [: MAKE-LINK-EXISTS ;] E-FS-IO TTHROWSQ
    FMT-LINK FS:REMOVE-FILE
    FMT-LINK-TARGET FMT-READ-BUF 64 FS:READ-ALL 11 T=
-   FMT-READ-BUF 11 s" link-target" T$=
+   FMT-READ-BUF 11 >str s" link-target" T$=
    FMT-LINK-TARGET FS:REMOVE-FILE ;
 ;package
 
@@ -483,10 +482,10 @@ create LOCK-LINK-BUF PATH-CAP allot
 variable CREATED-FD
 
 : LOCK-PATH$ ( str -- str )
-   FMT-ROOT$ 2swap LOCK-PATH-BUF FS:JOIN-PATH LOCK-PATH-BUF swap ;
+   FMT-ROOT$ swap LOCK-PATH-BUF FS:JOIN-PATH LOCK-PATH-BUF swap >str ;
 
 : LOCK-LINK$ ( str -- str )
-   FMT-ROOT$ 2swap LOCK-LINK-BUF FS:JOIN-PATH LOCK-LINK-BUF swap ;
+   FMT-ROOT$ swap LOCK-LINK-BUF FS:JOIN-PATH LOCK-LINK-BUF swap >str ;
 
 : CLOEXEC? ( fd -- bool )
    FD>N F-GETFD 0 fcntl FD:FD-CLOEXEC and FD:FD-CLOEXEC = ;
@@ -566,14 +565,14 @@ public
    FMT-COPY-SRC FMT-COPY-DST FS:COPY-FILE-STREAM
    FMT-COPY-DST FS:FILE? TTRUE
    FMT-COPY-DST FMT-READ-BUF 64 FS:READ-ALL 8 T=
-   FMT-READ-BUF 8 s" copy-src" T$= ;
+   FMT-READ-BUF 8 >str s" copy-src" T$= ;
 
 \ The copy destination followed by a NUL byte.
 : FMT-NUL-DST$ ( -- str )
-   FMT-COPY-DST {: dst:^ size:n :}
-   dst FMT-LONG-BUF size BYTE-COPY
-   0 FMT-LONG-BUF size + c!
-   FMT-LONG-BUF BYTE-VIEW size 1+ ;
+   FMT-COPY-DST {: dst:str :}
+   dst STR:DATA FMT-LONG-BUF dst STR:LEN BYTE-COPY
+   0 FMT-LONG-BUF dst STR:LEN + c!
+   FMT-LONG-BUF BYTE-VIEW dst STR:LEN 1+ >str ;
 
 : FMT-NUL-SECOND-COPY ( -- )
    FMT-COPY-SRC FMT-NUL-DST$ FS:COPY-FILE-STREAM ;
@@ -582,7 +581,7 @@ public
    [: FMT-NUL-SECOND-COPY ;] E-FFI-NUL TTHROWSQ
    FMT-COPY-SRC FS:FILE? TTRUE
    FMT-COPY-DST FMT-READ-BUF 64 FS:READ-ALL 8 T=
-   FMT-READ-BUF 8 s" copy-src" T$= ;
+   FMT-READ-BUF 8 >str s" copy-src" T$= ;
 
 \ The descriptor open would hand out next: the lowest one free.
 : FMT-NEXT-FD ( -- n )
@@ -608,29 +607,29 @@ public
 
 : FMT-TEST-STREAM-COPY ( -- )
    FMT-FILL-STREAM-DATA
-   FMT-STREAM-SRC FMT-STREAM-SRC-DATA FMT-STREAM-LEN FS:WRITE-ALL
+   FMT-STREAM-SRC FMT-STREAM-SRC-DATA FMT-STREAM-LEN >str FS:WRITE-ALL
    FMT-STREAM-SRC FMT-STREAM-DST FS:COPY-FILE-STREAM
    FMT-STREAM-DST FS:FILE? TTRUE
    FMT-STREAM-DST FS:FILE-SIZE FMT-STREAM-LEN T=
    FMT-STREAM-DST FMT-STREAM-DST-DATA FMT-STREAM-LEN FS:READ-ALL FMT-STREAM-LEN T=
-   FMT-STREAM-DST-DATA FMT-STREAM-LEN FMT-STREAM-SRC-DATA FMT-STREAM-LEN T$= ;
+   FMT-STREAM-DST-DATA FMT-STREAM-LEN >str FMT-STREAM-SRC-DATA FMT-STREAM-LEN >str T$= ;
 
 : FMT-TEST-ATOMIC-WRITE ( -- )
    FMT-ATOMIC-PATH s" old" FS:WRITE-ALL
    FMT-ATOMIC-PATH s" new-data" FS:ATOMIC-WRITE-FILE
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 8 T=
-   FMT-READ-BUF 8 s" new-data" T$= ;
+   FMT-READ-BUF 8 >str s" new-data" T$= ;
 
 : FMT-TEST-ATOMIC-ALIASES ( -- )
    SB-RESET s" builder-source" SB-APPEND
    FMT-ATOMIC-PATH SB$ FS:ATOMIC-WRITE-FILE
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 14 T=
-   FMT-READ-BUF 14 s" builder-source" T$=
+   FMT-READ-BUF 14 >str s" builder-source" T$=
    SB-RESET FMT-ATOMIC-PATH SB-APPEND
    SB$ s" builder-target" FS:ATOMIC-WRITE-FILE
    SB$ FMT-ATOMIC-PATH T$=
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 14 T=
-   FMT-READ-BUF 14 s" builder-target" T$=
+   FMT-READ-BUF 14 >str s" builder-target" T$=
    \ Both creation paths apply the process umask to the same requested mode.
    FMT-REMOVE-PATH s" mode-control" FS:WRITE-ALL
    FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and
@@ -645,9 +644,9 @@ public
    FMT-LINK FS:SYMLINK? TTRUE
    FMT-BROKEN-LINK FS:SYMLINK? TTRUE
    FMT-BROKEN-LINK FMT-READ-BUF 64 FS:READ-ALL 13 T=
-   FMT-READ-BUF 13 s" through-links" T$=
+   FMT-READ-BUF 13 >str s" through-links" T$=
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 13 T=
-   FMT-READ-BUF 13 s" through-links" T$=
+   FMT-READ-BUF 13 >str s" through-links" T$=
    FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0600 T=
    FMT-BROKEN-LINK FS:REMOVE-FILE
    FMT-LINK FS:REMOVE-FILE ;
@@ -672,25 +671,25 @@ public
    s" published" FS:WRITE-ALL ;
 
 : FMT-STAGED-TMP ( -- str )
-   FMT-STAGED-TMP-BUF FMT-STAGED-TMP-U @ ;
+   FMT-STAGED-TMP-BUF FMT-STAGED-TMP-U @ >str ;
 
 \ The fill's own refusal remains the error when removing its sibling also
 \ fails. Replacing the reserved file with a directory makes unlink refuse.
 : FMT-STAGED-CLEAN-FAIL ( str -- )
-   2dup FMT-STAGED-TMP-BUF FMT-STAGED-TMP-U FMT-COPY!
-   2dup FS:REMOVE-FILE
+   dup FMT-STAGED-TMP-BUF FMT-STAGED-TMP-U FMT-COPY!
+   dup FS:REMOVE-FILE
    FS:MAKE-DIR
    E-FS-CAPACITY throw ;
 
 \ A diagnostic line's class: the code's declared name, else its number.
 : FMT-CLASS$ ( n -- str ) {: code :}
-   code ERROR:NAME$ {: name:^ nameu :}
-   nameu 0= if code FMT:INT$ exit then
-   name nameu ;
+   code ERROR:NAME$ {: name:str :}
+   name STR:LEN 0= if code FMT:INT$ exit then
+   name ;
 
 : FMT-ERR-PATH ( -- str )
    FMT-ROOT$ s" stderr.txt" FMT-ERR-PATH-BUF FS:JOIN-PATH {: u:n :}
-   FMT-ERR-PATH-BUF u ;
+   FMT-ERR-PATH-BUF u >str ;
 
 : FMT-STAGED-CAPTURED ( -- )
    FMT-ERR-PATH STDERR:CAPTURE
@@ -708,11 +707,11 @@ public
 \ The errno's digits sit between the fixed text and the line's end.
 : FMT-STAGED-LINE ( -- )
    FMT-ERR-PATH FMT-ERR-BUF FMT-ERR-CAP FS:READ-ALL {: u:n :}
-   FMT-STAGED-WANT {: want:^ wantu:n :}
-   u wantu 1+ > TTRUE
-   FMT-ERR-BUF wantu want wantu T$=
+   FMT-STAGED-WANT {: want:str :}
+   u want STR:LEN 1+ > TTRUE
+   FMT-ERR-BUF want STR:LEN >str want T$=
    FMT-ERR-BUF u + 1- c@ 10 T=
-   FMT-ERR-BUF wantu + u wantu - 1- STR:>NUMBER? MATCH option
+   FMT-ERR-BUF want STR:LEN + u want STR:LEN - 1- >str STR:>NUMBER? MATCH option
       none OF false TTRUE ENDOF
       some OF 0 > TTRUE ENDOF
    ;MATCH
@@ -723,7 +722,7 @@ public
    s" staged fill error survives cleanup refusal" T-LABEL
    [: FMT-STAGED-CAPTURED ;] E-FS-CAPACITY TTHROWSQ
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL {: u:n :}
-   FMT-READ-BUF u s" previous" T$=
+   FMT-READ-BUF u >str s" previous" T$=
    s" the cleanup refusal's line names its operation and errno" T-LABEL
    FMT-STAGED-LINE
    FMT-STAGED-TMP FS:DIR? TTRUE
@@ -732,30 +731,30 @@ public
    FMT-ATOMIC-PATH FS:REMOVE-FILE ;
 
 : FMT-STAGED-SPAN ( SPAN:span<u8> str -- SPAN:span<u8> )
-   {: data path:^ pathu:n :}
-   path pathu data SPAN:$ FS:WRITE-ALL
+   {: data path:str :}
+   path data SPAN:$ FS:WRITE-ALL
    data ;
 
 : FMT-STAGED-FAIL ( SPAN:span<u8> str -- SPAN:span<u8> )
-   {: data path:^ pathu:n :}
-   path pathu FMT-STAGED-FORGOT-BUF FMT-STAGED-FORGOT-U FMT-COPY!
-   path pathu data SPAN:$ FS:WRITE-ALL
+   {: data path:str :}
+   path FMT-STAGED-FORGOT-BUF FMT-STAGED-FORGOT-U FMT-COPY!
+   path data SPAN:$ FS:WRITE-ALL
    E-FS-IO throw ;
 
 : FMT-STAGED-FORGOT ( -- str )
-   FMT-STAGED-FORGOT-BUF FMT-STAGED-FORGOT-U @ ;
+   FMT-STAGED-FORGOT-BUF FMT-STAGED-FORGOT-U @ >str ;
 
 : FMT-TEST-STAGED-CONTEXT ( -- )
    s" staged callbacks preserve a complete layout value" T-LABEL
-   s" context" SPAN:MAKE FMT-ATOMIC-PATH [: FMT-STAGED-SPAN ;] FS:REPLACE-STAGED
+   s" context" dup STR:DATA swap STR:LEN SPAN:MAKE FMT-ATOMIC-PATH [: FMT-STAGED-SPAN ;] FS:REPLACE-STAGED
    SPAN:$ s" context" T$=
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 7 T=
-   FMT-READ-BUF 7 s" context" T$=
+   FMT-READ-BUF 7 >str s" context" T$=
    s" a throwing callback preserves the old file and releases its sibling" T-LABEL
-   [: s" partial" SPAN:MAKE FMT-ATOMIC-PATH
-      [: FMT-STAGED-FAIL ;] FS:REPLACE-STAGED SPAN:$ 2drop ;] E-FS-IO TTHROWSQ
+   [: s" partial" dup STR:DATA swap STR:LEN SPAN:MAKE FMT-ATOMIC-PATH
+      [: FMT-STAGED-FAIL ;] FS:REPLACE-STAGED SPAN:$ drop ;] E-FS-IO TTHROWSQ
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 7 T=
-   FMT-READ-BUF 7 s" context" T$=
+   FMT-READ-BUF 7 >str s" context" T$=
    FMT-STAGED-FORGOT FS:EXISTS? TFALSE
    \ No slot names the sibling now: FMT-TEST-CLEANUP's run must leave this file.
    FMT-STAGED-FORGOT s" unowned" FS:WRITE-ALL
@@ -763,9 +762,12 @@ public
    s" FMT-BAD-STAGED ( n str -- ) [: 2drop drop ;] FS:REPLACE-STAGED"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: FMT-STAGED-MODE-FILL ( str -- ) {: path:^ pathu :}
-   path pathu FS:STAT-MODE FMT-MODE-PERM and FMT-SIBLING-MODE !
-   path pathu s" private" FS:WRITE-ALL ;
+: FMT-STAGED-MODE-FILL ( str -- ) {: path:str :}
+   path FS:STAT-MODE FMT-MODE-PERM and FMT-SIBLING-MODE !
+   path s" private" FS:WRITE-ALL ;
+
+: FMT-STAGED-X-FILL ( str -- )
+   dup FS:CHMOD-X FMT-STAGED-MODE-FILL ;
 
 : FMT-TEST-STAGED-MODE ( -- )
    FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and {: before:n :}
@@ -779,7 +781,7 @@ public
    FMT-ATOMIC-PATH FMT-MODE-0444 FS:CHMOD-MODE
    FMT-ATOMIC-PATH [: FMT-STAGED-MODE-FILL ;] FS:REPLACE-STAGED
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 7 T=
-   FMT-READ-BUF 7 s" private" T$=
+   FMT-READ-BUF 7 >str s" private" T$=
    FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0444 T=
    s" a write-only target is replaced and stays write-only" T-LABEL
    FMT-ATOMIC-PATH FMT-MODE-0200 FS:CHMOD-MODE
@@ -788,10 +790,10 @@ public
    FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0200 T=
    FMT-ATOMIC-PATH FMT-MODE-0600 FS:CHMOD-MODE
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 7 T=
-   FMT-READ-BUF 7 s" private" T$=
+   FMT-READ-BUF 7 >str s" private" T$=
    s" execute bits the fill sets on the sibling are kept" T-LABEL
    FMT-ATOMIC-PATH FS:MODE-0644 FS:CHMOD-MODE
-   FMT-ATOMIC-PATH [: 2dup FS:CHMOD-X FMT-STAGED-MODE-FILL ;]
+   FMT-ATOMIC-PATH [: FMT-STAGED-X-FILL ;]
       FS:REPLACE-STAGED
    FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0755 T=
    FMT-ATOMIC-PATH before FS:CHMOD-MODE ;
@@ -816,9 +818,9 @@ public
    FMT-PARENT-B FMT-PARENT-LINK FS:MAKE-SYMLINK
    FMT-PARENT-BOUND [: FMT-PARENT-FILL ;] FS:REPLACE-STAGED
    FMT-PARENT-BOUND FMT-READ-BUF 64 FS:READ-ALL 9 T=
-   FMT-READ-BUF 9 s" published" T$=
+   FMT-READ-BUF 9 >str s" published" T$=
    FMT-PARENT-B-ENTRY FMT-READ-BUF 64 FS:READ-ALL 6 T=
-   FMT-READ-BUF 6 s" source" T$=
+   FMT-READ-BUF 6 >str s" source" T$=
    FMT-PARENT-LINK FS:REMOVE-FILE
    FMT-PARENT-BOUND FS:REMOVE-FILE
    FMT-PARENT-B-ENTRY FS:REMOVE-FILE
@@ -843,7 +845,7 @@ create DROP-BOX-BUF PATH-CAP allot
 variable DROP-BOX-U
 
 : DROP-BOX$ ( -- str )
-   DROP-BOX-BUF DROP-BOX-U @ ;
+   DROP-BOX-BUF DROP-BOX-U @ >str ;
 
 public
 \ A directory its owner may write and search but not list, as a drop box is,
@@ -857,7 +859,7 @@ public
    FMT-MKDIR-PATH FMT-MODE-0755 FS:CHMOD-MODE
    0 T=
    DROP-BOX$ FMT-READ-BUF 64 FS:READ-ALL 7 T=
-   FMT-READ-BUF 7 s" dropped" T$=
+   FMT-READ-BUF 7 >str s" dropped" T$=
    DROP-BOX$ FS:REMOVE-FILE
    FMT-MKDIR-PATH FS:REMOVE-DIR ;
 ;package
@@ -868,15 +870,15 @@ variable PRIVATE-DIR-U
 create PRIVATE-OUT-BUF PATH-CAP allot
 variable PRIVATE-OUT-U
 
-: PRIVATE-DIR$ ( -- str ) PRIVATE-DIR-BUF PRIVATE-DIR-U @ ;
-: PRIVATE-OUT$ ( -- str ) PRIVATE-OUT-BUF PRIVATE-OUT-U @ ;
+: PRIVATE-DIR$ ( -- str ) PRIVATE-DIR-BUF PRIVATE-DIR-U @ >str ;
+: PRIVATE-OUT$ ( -- str ) PRIVATE-OUT-BUF PRIVATE-OUT-U @ >str ;
 
 
 \ The destination holds exactly body at mode.
 : PRIVATE-IS ( str n -- )
-   {: body:^ bodyu mode :}
-   PRIVATE-OUT$ FMT-READ-BUF 64 FS:READ-ALL bodyu T=
-   FMT-READ-BUF bodyu body bodyu T$=
+   {: body:str mode :}
+   PRIVATE-OUT$ FMT-READ-BUF 64 FS:READ-ALL body STR:LEN T=
+   FMT-READ-BUF body STR:LEN >str body T$=
    PRIVATE-OUT$ FS:STAT-MODE FMT-MODE-PERM and mode T= ;
 
 
@@ -950,21 +952,21 @@ create MANY-PATH-BUF PATH-CAP allot
 create MANY-BYTES-BUF MANY-CAP allot
 create MANY-GOT-BUF MANY-CAP allot
 
-: MANY-DIR$ ( -- str ) MANY-DIR-BUF MANY-DIR-U @ ;
+: MANY-DIR$ ( -- str ) MANY-DIR-BUF MANY-DIR-U @ >str ;
 
 : MANY-PATH$ ( n -- str )
-   MANY-DIR$ rot FMT:INT$ MANY-PATH-BUF FS:JOIN-PATH
-   MANY-PATH-BUF swap ;
+   MANY-DIR$ swap FMT:INT$ MANY-PATH-BUF FS:JOIN-PATH
+   MANY-PATH-BUF swap >str ;
 
 \ File i's bytes: 97i + 1 of them, each its offset plus 7i.
 : MANY-BYTES ( n -- str ) {: idx :}
    idx 97 * 1+ {: size :}
    size 0 ?do i idx 7 * + 255 and MANY-BYTES-BUF i + c! loop
-   MANY-BYTES-BUF size ;
+   MANY-BYTES-BUF size >str ;
 
 \ The body: file i's name and bytes.
 : MANY-FILE ( n -- str str ) {: idx :}
-   idx MANY-BYTES idx FMT:INT$ 2swap ;
+   idx MANY-BYTES idx FMT:INT$ swap ;
 
 \ E-FS-BAND is a code FS:ATOMIC-CREATE-FILES never throws itself.
 : MANY-THROWS ( n -- str str )
@@ -977,7 +979,7 @@ create MANY-GOT-BUF MANY-CAP allot
 
 : MANY-HOLDS ( n -- ) {: idx :}
    idx MANY-PATH$ MANY-GOT-BUF MANY-CAP FS:READ-ALL {: gotu :}
-   MANY-GOT-BUF gotu idx MANY-BYTES T$= ;
+   MANY-GOT-BUF gotu >str idx MANY-BYTES T$= ;
 
 : MANY-REMOVE ( n -- )
    0 ?do i MANY-PATH$ FS:REMOVE-FILE loop
@@ -994,16 +996,16 @@ public
    MANY-DIR$ MANY-COUNT [: MANY-FILE ;] FS:ATOMIC-CREATE-FILES
    s" a name taken before FS:ATOMIC-CREATE-FILES keeps its bytes" T-LABEL
    MANY-TAKEN MANY-PATH$ MANY-GOT-BUF MANY-CAP FS:READ-ALL {: takenu :}
-   MANY-GOT-BUF takenu s" taken" T$=
+   MANY-GOT-BUF takenu >str s" taken" T$=
    s" every other name FS:ATOMIC-CREATE-FILES made holds its bytes" T-LABEL
    MANY-COUNT 0 ?do i MANY-TAKEN <> if i MANY-HOLDS then loop
    MANY-DIR$ 2 [: MANY-TWICE ;] FS:ATOMIC-CREATE-FILES
    s" a name taken since FILL keeps the first file's bytes" T-LABEL
    MANY-DIR$ s" twice" MANY-PATH-BUF FS:JOIN-PATH {: twiceu :}
-   MANY-PATH-BUF twiceu MANY-GOT-BUF MANY-CAP FS:READ-ALL {: gotu :}
-   MANY-GOT-BUF gotu s" first" T$=
+   MANY-PATH-BUF twiceu >str MANY-GOT-BUF MANY-CAP FS:READ-ALL {: gotu :}
+   MANY-GOT-BUF gotu >str s" first" T$=
    T-LABEL-CLEAR
-   MANY-PATH-BUF twiceu FS:REMOVE-FILE
+   MANY-PATH-BUF twiceu >str FS:REMOVE-FILE
    MANY-COUNT MANY-REMOVE ;
 
 \ A body's throw in the second group: the first group's names hold their
@@ -1053,15 +1055,15 @@ create NAMED-DIR-BUF PATH-CAP allot
 
 \ The directory each name below goes in; a case that empties it removes it.
 : NAMED-DIR$ ( -- str )
-   FMT-ROOT$ s" named" NAMED-DIR-BUF FS:JOIN-PATH NAMED-DIR-BUF swap ;
+   FMT-ROOT$ s" named" NAMED-DIR-BUF FS:JOIN-PATH NAMED-DIR-BUF swap >str ;
 
 : NAMED$ ( n -- str )
    {: n:n :}
-   NAMED-DIR$ {: dir:^ diru:n :}
-   dir NAMED-BUF diru BYTE-COPY
-   FS:SLASH NAMED-BUF diru + c!
-   diru 1+ n + diru 1+ ?do 110 NAMED-BUF i + c! loop
-   NAMED-BUF diru 1+ n + ;
+   NAMED-DIR$ {: dir:str :}
+   dir STR:DATA NAMED-BUF dir STR:LEN BYTE-COPY
+   FS:SLASH NAMED-BUF dir STR:LEN + c!
+   dir STR:LEN 1+ n + dir STR:LEN 1+ ?do 110 NAMED-BUF i + c! loop
+   NAMED-BUF dir STR:LEN 1+ n + >str ;
 
 public
 \ Past NAME_MAX, the host refuses the component: E-FS-IO with its cause.
@@ -1078,7 +1080,7 @@ public
    NAMED-DIR$ FS:MAKE-DIR
    n NAMED$ s" long" FS:ATOMIC-WRITE-FILE
    n NAMED$ FMT-READ-BUF 64 FS:READ-ALL 4 T=
-   FMT-READ-BUF 4 s" long" T$=
+   FMT-READ-BUF 4 >str s" long" T$=
    n NAMED$ FS:REMOVE-FILE
    NAMED-DIR$ FS:REMOVE-DIR ;
 
@@ -1096,28 +1098,29 @@ public
 \ leaves no room within PATH-CAP for even the shortest sibling, /.tmp-0-0.
 : ATOMIC-PATH-CAP ( -- )
    PATH-CAP 8 - {: least:n :}
-   least PATH-CAP least - 1 and + FMT-DEEP-DIR {: dir:^ diru:n :}
-   PATH-CAP 2 - diru ?do
+   least PATH-CAP least - 1 and + FMT-DEEP-DIR {: deep:str :}
+   deep STR:DATA {: dir:^ :}
+   PATH-CAP 2 - deep STR:LEN ?do
       FS:SLASH dir i + c!  [char] . dir i 1+ + c!
    2 +loop
    FS:SLASH dir PATH-CAP 2 - + c!
    [char] x dir PATH-CAP 1- + c!
-   dir PATH-CAP s" capped" FS:ATOMIC-WRITE-FILE
-   dir PATH-CAP FMT-READ-BUF 64 FS:READ-ALL 6 T=
-   FMT-READ-BUF 6 s" capped" T$= ;
+   dir PATH-CAP >str s" capped" FS:ATOMIC-WRITE-FILE
+   dir PATH-CAP >str FMT-READ-BUF 64 FS:READ-ALL 6 T=
+   FMT-READ-BUF 6 >str s" capped" T$= ;
 ;package
 
 \ A base of the longest length FS:MKTEMP-DIR-IN builds in still takes a temp.
 : FMT-TEMP-BASE-MAX ( -- )
-   s" max" nip FS:TEMP-DIR-BASE-MAX FMT-DEEP-DIR {: base:^ baseu:n :}
-   base baseu s" max" FS:MKTEMP-DIR-IN {: temp:^ tempu:n :}
-   temp tempu FS:DIR? TTRUE
-   temp baseu base baseu T$= ;
+   s" max" STR:LEN FS:TEMP-DIR-BASE-MAX FMT-DEEP-DIR {: base:str :}
+   base s" max" FS:MKTEMP-DIR-IN {: temp:str :}
+   temp FS:DIR? TTRUE
+   temp STR:DATA base STR:LEN >str base T$= ;
 
 : FMT-TEST-TEMPS ( -- )
-   FMT-TEMP-BASE s" one" FS:MKTEMP-DIR-IN 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+
-   FMT-TEMP-BASE s" two" FS:MKTEMP-DIR-IN 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+
-   s" habu-fs-mut" FS:MKTEMP-DIR 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+
+   FMT-TEMP-BASE s" one" FS:MKTEMP-DIR-IN dup FS:DIR? TTRUE FS:CLEANUP-DIR+
+   FMT-TEMP-BASE s" two" FS:MKTEMP-DIR-IN dup FS:DIR? TTRUE FS:CLEANUP-DIR+
+   s" habu-fs-mut" FS:MKTEMP-DIR dup FS:DIR? TTRUE FS:CLEANUP-DIR+
    FMT-TEMP-BASE-MAX ;
 
 \ A base that already ends in a slash, as macOS's TMPDIR does, takes no second
@@ -1126,30 +1129,30 @@ public
    FMT-MKDIR-PATH FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
    FS:SLASH FMT-COLLIDE-BUF FMT-COLLIDE-U @ + c!
    FMT-COLLIDE-U @ 1+ FMT-COLLIDE-U !
-   FMT-COLLIDE s" slash" FS:MKTEMP-DIR-IN {: temp:^ tempu:n :}
-   temp tempu FS:DIR? TTRUE
+   FMT-COLLIDE s" slash" FS:MKTEMP-DIR-IN {: temp:str :}
+   temp FS:DIR? TTRUE
    FMT-MKDIR-PATH s" slash-" FMT-UNIQUE-BUF FS:JOIN-PATH {: wantu:n :}
-   temp tempu FMT-UNIQUE-BUF wantu STR:STARTS-WITH? TTRUE
-   temp tempu FS:REMOVE-DIR ;
+   temp FMT-UNIQUE-BUF wantu >str STR:STARTS-WITH? TTRUE
+   temp FS:REMOVE-DIR ;
 
 : FMT-TEST-MKTEMP ( -- )
    s" FS:MKTEMP makes a private read-write file under the temp root" T-LABEL
-   s" habu-fs-mkf" FS:MKTEMP {: path:^ pathu file:fd :}
-   path pathu FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
+   s" habu-fs-mkf" FS:MKTEMP {: path:str file:fd :}
+   path FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
    FMT-COLLIDE FS:CLEANUP+
-   s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then FMT-REAL
+   s" TMPDIR" GETENV dup STR:LEN 0= if drop s" /tmp" then FMT-REAL
    s" habu-fs-mkf-" FMT-UNIQUE-BUF FS:JOIN-PATH {: wantu:n :}
-   FMT-COLLIDE FMT-UNIQUE-BUF wantu STR:STARTS-WITH? TTRUE
+   FMT-COLLIDE FMT-UNIQUE-BUF wantu >str STR:STARTS-WITH? TTRUE
    FMT-COLLIDE FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0600 T=
    file FD>N s" mkstemp" write 7 T=
    file FD>N FMT-READ-BUF 64 read 0 T=
    file FD>N FS:CLOSE-FD 0 T=
    FMT-COLLIDE FMT-READ-BUF 64 FS:READ-ALL 7 T=
-   FMT-READ-BUF 7 s" mkstemp" T$=
-   s" habu-fs-mkf" FS:MKTEMP {: next:^ nextu nextfd:fd :}
-   next nextu FS:CLEANUP+
+   FMT-READ-BUF 7 >str s" mkstemp" T$=
+   s" habu-fs-mkf" FS:MKTEMP {: next:str nextfd:fd :}
+   next FS:CLEANUP+
    nextfd FD>N FS:CLOSE-FD 0 T=
-   next nextu FMT-COLLIDE T$<> ;
+   next FMT-COLLIDE T$<> ;
 
 \ Child engines: TMPDIR is read from the process environment, which a running
 \ process does not change for itself. A child whose TMPDIR cannot hold a temp
@@ -1180,19 +1183,19 @@ variable CAUGHT-PROG-U
 variable WANT-U
 
 : MISSING$ ( -- str )
-   MISSING-BUF MISSING-U @ ;
+   MISSING-BUF MISSING-U @ >str ;
 
 : PROG$ ( -- str )
-   PROG-BUF PROG-U @ ;
+   PROG-BUF PROG-U @ >str ;
 
 : FILE-PROG$ ( -- str )
-   FILE-PROG-BUF FILE-PROG-U @ ;
+   FILE-PROG-BUF FILE-PROG-U @ >str ;
 
 : CANON-PROG$ ( -- str )
-   CANON-PROG-BUF CANON-PROG-U @ ;
+   CANON-PROG-BUF CANON-PROG-U @ >str ;
 
 : CAUGHT-PROG$ ( -- str )
-   CAUGHT-PROG-BUF CAUGHT-PROG-U @ ;
+   CAUGHT-PROG-BUF CAUGHT-PROG-U @ >str ;
 
 : PATHS! ( -- )
    FMT-ROOT$ s" no-such-tmpdir" MISSING-BUF FS:JOIN-PATH MISSING-U !
@@ -1216,69 +1219,69 @@ variable WANT-U
 \ A directory one byte past the longest TMPDIR with room for the temp name
 \ PROG-SRC$ asks for, whose prefix is tmpdir-child.
 : LONG$ ( -- str )
-   s" tmpdir-child" nip FS:TEMP-DIR-BASE-MAX 1+ FMT-DEEP-DIR ;
+   s" tmpdir-child" STR:LEN FS:TEMP-DIR-BASE-MAX 1+ FMT-DEEP-DIR ;
 
-: CHILD-ENV ( str -- ) {: a:^ u :}
+: CHILD-ENV ( str -- ) {: s:str :}
    PROC-ARGV-ENV-RESET
-   s" TMPDIR" a u PROC-ENV-SET ;
+   s" TMPDIR" s PROC-ENV-SET ;
 
-: CAPTURE ( str -- len len PROCESS:ending ) {: prog:^ progu :}
+: CAPTURE ( str -- len len PROCESS:ending ) {: prog:str :}
    PROC-ENV-INHERIT-MISSING
-   prog progu PROC-ARGV+
+   prog PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
-: WANT+ ( str -- ) {: a:^ u :}
-   a WANT-BUF WANT-U @ + u BYTE-COPY
-   WANT-U @ u + WANT-U ! ;
+: WANT+ ( str -- ) {: s:str :}
+   s STR:DATA WANT-BUF WANT-U @ + s STR:LEN BYTE-COPY
+   WANT-U @ s STR:LEN + WANT-U ! ;
 
-\ The prose record of TMPDIR a u, made in pieces: a value near PATH-CAP bytes
+\ The prose record of TMPDIR s, made in pieces: a value near PATH-CAP bytes
 \ with its texts overflows SB-CAP.
 : WANT! ( str str str str -- )
-   {: name:^ nameu why:^ whyu a:^ u h:^ hu :}
+   {: name:str why:str s:str h:str :}
    0 WANT-U !
-   s" error[" WANT+  name nameu WANT+  s" ]: " WANT+  why whyu WANT+
-   S\" \n  = TMPDIR: " WANT+  a u WANT+
-   S\" \n  = help: " WANT+  h hu WANT+  S\" \n\n" WANT+ ;
+   s" error[" WANT+  name WANT+  s" ]: " WANT+  why WANT+
+   S\" \n  = TMPDIR: " WANT+  s WANT+
+   S\" \n  = help: " WANT+  h WANT+  S\" \n\n" WANT+ ;
 
-: WANT$ ( -- str ) WANT-BUF WANT-U @ ;
+: WANT$ ( -- str ) WANT-BUF WANT-U @ >str ;
 
-: DIR-WANT! ( str -- ) {: a:^ u :}
-   s" E-FS-DIR" s" TMPDIR is not a directory" a u
+: DIR-WANT! ( str -- ) {: s:str :}
+   s" E-FS-DIR" s" TMPDIR is not a directory" s
    s" point TMPDIR at an existing directory, or unset it to use /tmp" WANT! ;
 
 \ The child failed printing WANT$ once, as the record its uncaught throw of code
 \ carries, in place of the engine's own record of that throw.
 : RECORD-ONCE ( str len len PROCESS:ending n -- )
-   {: prog:^ progu outu:len erru:len oc code:n :}
+   {: prog:str outu:len erru:len oc code:n :}
    oc MATCH PROCESS:ending
      exited OF 0 T<> ENDOF
      signaled OF s" exit" s" signal" T-ENDING-MISS ENDOF
-     timeout OF prog progu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
+     timeout OF prog OUT outu LEN>N >str ERR erru LEN>N >str T-TIMED-OUT ENDOF
    ;MATCH
-   ERR erru LEN>N WANT$ STR:COUNT-SUB 1 T=
-   ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TFALSE ;
+   ERR erru LEN>N >str WANT$ STR:COUNT-SUB 1 T=
+   ERR erru LEN>N >str code TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TFALSE ;
 
 : REJECTED ( str str n -- )
-   {: prog:^ progu a:^ u code:n :}
-   a u CHILD-ENV prog progu CAPTURE {: outu:len erru:len oc :}
-   prog progu outu erru oc code RECORD-ONCE ;
+   {: prog:str s:str code:n :}
+   s CHILD-ENV prog CAPTURE {: outu:len erru:len oc :}
+   prog outu erru oc code RECORD-ONCE ;
 
-\ tools/check.f checking prog under TMPDIR a u: its run makes a temp directory.
+\ tools/check.f checking prog under TMPDIR s: its run makes a temp directory.
 : CHECK-REJECTED ( str str n -- )
-   {: prog:^ progu a:^ u code:n :}
-   a u CHILD-ENV
+   {: prog:str s:str code:n :}
+   s CHILD-ENV
    s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
    s" --" PROC-ARGV+
-   prog progu CAPTURE {: outu:len erru:len oc :}
-   prog progu outu erru oc code RECORD-ONCE ;
+   prog CAPTURE {: outu:len erru:len oc :}
+   prog outu erru oc code RECORD-ONCE ;
 
 \ A child that catches FS:MKTEMP's E-FS-DIR goes on and prints no record.
 : CAUGHT ( -- )
    MISSING$ CHILD-ENV CAUGHT-PROG$ CAPTURE {: outu:len erru:len oc :}
-   CAUGHT-PROG$ OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
-   OUT outu LEN>N s" on" T$=
-   ERR erru LEN>N s" " T$= ;
+   CAUGHT-PROG$ OUT outu LEN>N >str ERR erru LEN>N >str oc 0 T-ENDING-EXITED=
+   OUT outu LEN>N >str s" on" T$=
+   ERR erru LEN>N >str s" " T$= ;
 
 \ With TMPDIR a link to a directory, the line the child prints is its own
 \ realpath. The directory is removed by name, so the parent's removal shows the
@@ -1290,10 +1293,10 @@ variable WANT-U
    CANON-PROG$ FS:CLEANUP+
    FMT-PARENT-LINK CHILD-ENV
    CANON-PROG$ CAPTURE {: outu:len erru:len oc :}
-   CANON-PROG$ OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
-   OUT outu LEN>N NL 0 STR:SPLIT-NEXT 2drop {: td:^ tdu:n :}
-   td tdu td tdu FMT-REAL T$=
-   td tdu FS:REMOVE-DIR
+   CANON-PROG$ OUT outu LEN>N >str ERR erru LEN>N >str oc 0 T-ENDING-EXITED=
+   OUT outu LEN>N >str NL 0 STR:SPLIT-NEXT drop drop {: td:str :}
+   td td FMT-REAL T$=
+   td FS:REMOVE-DIR
    FMT-PARENT-LINK FS:REMOVE-FILE
    FMT-PARENT-A FS:REMOVE-DIR ;
 
@@ -1354,7 +1357,7 @@ public
    FMT-LINK FS:FILE? TTRUE
    FMT-TEST-PATH-IDENTITY
    FMT-LINK FMT-READ-BUF 64 FS:READ-ALL 11 T=
-   FMT-READ-BUF 11 s" link-target" T$=
+   FMT-READ-BUF 11 >str s" link-target" T$=
    [: FMT-MAKE-SYMLINK-EXISTS ;] E-FS-IO TTHROWSQ
    FMT-LINK FS:REMOVE-FILE
    FMT-LINK FS:SYMLINK? TFALSE
@@ -1369,7 +1372,7 @@ public
    \ It still names its target: a file made there reads through it.
    FMT-BROKEN-TARGET s" arrived" FS:WRITE-ALL
    FMT-BROKEN-LINK FMT-READ-BUF 64 FS:READ-ALL 7 T=
-   FMT-READ-BUF 7 s" arrived" T$=
+   FMT-READ-BUF 7 >str s" arrived" T$=
    FMT-BROKEN-TARGET FS:REMOVE-FILE
    FMT-BROKEN-LINK FS:REMOVE-FILE
    FMT-BROKEN-LINK FS:SYMLINK? TFALSE ;
@@ -1399,10 +1402,10 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
 
 \ FMT-TREE with a trailing slash: lstat of `link/` resolves the link.
 : FMT-TREE-SLASH$ ( -- str )
-   FMT-TREE {: a:^ u:n :}
-   a FMT-ROOT-PATH-BUF u BYTE-COPY
-   FS:SLASH FMT-ROOT-PATH-BUF u + c!
-   FMT-ROOT-PATH-BUF u 1 + ;
+   FMT-TREE {: s:str :}
+   s STR:DATA FMT-ROOT-PATH-BUF s STR:LEN BYTE-COPY
+   FS:SLASH FMT-ROOT-PATH-BUF s STR:LEN + c!
+   FMT-ROOT-PATH-BUF s STR:LEN 1 + >str ;
 
 : FMT-REMOVE-TREE-SLASH ( -- )
    FMT-TREE-SLASH$ FS:REMOVE-TREE ;
@@ -1430,14 +1433,14 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
 \ kept.txt/x: a root whose parent component is a regular file.
 : FMT-REMOVE-TREE-NOTDIR ( -- )
    FMT-LINK-DIR-FILE s" x" FMT-ROOT-PATH-BUF FS:JOIN-PATH {: u:n :}
-   FMT-ROOT-PATH-BUF u FS:REMOVE-TREE ;
+   FMT-ROOT-PATH-BUF u >str FS:REMOVE-TREE ;
 
 \ kept.txt/: a regular file spelled as a directory.
 : FMT-REMOVE-FILE-SLASH ( -- )
-   FMT-LINK-DIR-FILE {: a:^ u:n :}
-   a FMT-ROOT-PATH-BUF u BYTE-COPY
-   FS:SLASH FMT-ROOT-PATH-BUF u + c!
-   FMT-ROOT-PATH-BUF u 1 + FS:REMOVE-TREE ;
+   FMT-LINK-DIR-FILE {: s:str :}
+   s STR:DATA FMT-ROOT-PATH-BUF s STR:LEN BYTE-COPY
+   FS:SLASH FMT-ROOT-PATH-BUF s STR:LEN + c!
+   FMT-ROOT-PATH-BUF s STR:LEN 1 + >str FS:REMOVE-TREE ;
 
 : FMT-TEST-REMOVE-TREE-NOTDIR ( -- )
    [: FMT-REMOVE-TREE-NOTDIR ;] catch FS:ERRNO {: code:n cause:n :}
@@ -1453,13 +1456,13 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
    FMT-LINK-DIR-FILE FS:FILE? TTRUE ;
 
 : FMT-DEEP$ ( n -- str ) {: level:n :}
-   FMT-TREE {: a:^ u:n :}
-   a FMT-ROOT-PATH-BUF u BYTE-COPY
+   FMT-TREE {: s:str :}
+   s STR:DATA FMT-ROOT-PATH-BUF s STR:LEN BYTE-COPY
    level 0 ?do
-      FS:SLASH FMT-ROOT-PATH-BUF u i 2 * + + c!
-      100 FMT-ROOT-PATH-BUF u i 2 * + 1 + + c!
+      FS:SLASH FMT-ROOT-PATH-BUF s STR:LEN i 2 * + + c!
+      100 FMT-ROOT-PATH-BUF s STR:LEN i 2 * + 1 + + c!
    loop
-   FMT-ROOT-PATH-BUF u level 2 * + ;
+   FMT-ROOT-PATH-BUF s STR:LEN level 2 * + >str ;
 
 : FMT-TEST-RMDIR-ERRNO ( -- )
    [: FMT-RMDIR-MISSING ;] catch FS:ERRNO {: code:n cause:n :}
@@ -1501,11 +1504,11 @@ variable MKFIFO-U
 variable SOCAT-U
 
 
-: TOOL ( str ^u8 -- n ) {: name:^ size:n dst:^ :}
-   name size dst FIND-EXECUTABLE MATCH option
+: TOOL ( str ^u8 -- n ) {: name:str dst:^ :}
+   name dst FIND-EXECUTABLE MATCH option
       none OF
          2 s" fs-mutate-test: required executable missing: " write drop
-         2 name size write drop 2 S\" \n" write drop
+         2 name write drop 2 S\" \n" write drop
          E-PROC-PATH throw
       ENDOF
       some OF ENDOF
@@ -1520,7 +1523,7 @@ variable SOCAT-U
 : MAKE-FIFO ( -- )
    PROC-ARGV-RESET
    FMT-TREE-LEAF PROC-ARGV+
-   MKFIFO-PATH MKFIFO-U @ -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
+   MKFIFO-PATH MKFIFO-U @ >str -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
    MATCH result
       ok OF drop ENDOF
       err OF drop E-FS-IO throw ENDOF
@@ -1535,7 +1538,7 @@ variable SOCAT-U
    PROC-ARGV-RESET
    SB$ PROC-ARGV+
    s" /dev/null" PROC-ARGV+
-   SOCAT-PATH SOCAT-U @ -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO
+   SOCAT-PATH SOCAT-U @ >str -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO
    LISTENER ! ;
 
 
@@ -1648,32 +1651,32 @@ create P-CAD PATH-CAP allot  variable P-CAD-U
 create P-CBS PATH-CAP allot  variable P-CBS-U
 create P-CBD PATH-CAP allot  variable P-CBD-U
 
-: A1$ ( -- str ) P-A1 P-A1-U @ ;
-: A2$ ( -- str ) P-A2 P-A2-U @ ;
-: B1$ ( -- str ) P-B1 P-B1-U @ ;
-: B2$ ( -- str ) P-B2 P-B2-U @ ;
-: AW$ ( -- str ) P-AW P-AW-U @ ;
-: BW$ ( -- str ) P-BW P-BW-U @ ;
-: RA$ ( -- str ) P-RA P-RA-U @ ;
-: RAS$ ( -- str ) P-RAS P-RAS-U @ ;
-: RAF$ ( -- str ) P-RAF P-RAF-U @ ;
-: RAG$ ( -- str ) P-RAG P-RAG-U @ ;
-: RB$ ( -- str ) P-RB P-RB-U @ ;
-: RBS$ ( -- str ) P-RBS P-RBS-U @ ;
-: RBF$ ( -- str ) P-RBF P-RBF-U @ ;
-: RBG$ ( -- str ) P-RBG P-RBG-U @ ;
-: KEEP$ ( -- str ) P-KEEP P-KEEP-U @ ;
-: W5$ ( -- str ) P-W5 P-W5-U @ ;
-: W5S$ ( -- str ) P-W5S P-W5S-U @ ;
-: W5F1$ ( -- str ) P-W5F1 P-W5F1-U @ ;
-: W5F2$ ( -- str ) P-W5F2 P-W5F2-U @ ;
-: W5D$ ( -- str ) P-W5D P-W5D-U @ ;
-: W5DS$ ( -- str ) P-W5DS P-W5DS-U @ ;
-: W5DF$ ( -- str ) P-W5DF P-W5DF-U @ ;
-: CAS$ ( -- str ) P-CAS P-CAS-U @ ;
-: CAD$ ( -- str ) P-CAD P-CAD-U @ ;
-: CBS$ ( -- str ) P-CBS P-CBS-U @ ;
-: CBD$ ( -- str ) P-CBD P-CBD-U @ ;
+: A1$ ( -- str ) P-A1 P-A1-U @ >str ;
+: A2$ ( -- str ) P-A2 P-A2-U @ >str ;
+: B1$ ( -- str ) P-B1 P-B1-U @ >str ;
+: B2$ ( -- str ) P-B2 P-B2-U @ >str ;
+: AW$ ( -- str ) P-AW P-AW-U @ >str ;
+: BW$ ( -- str ) P-BW P-BW-U @ >str ;
+: RA$ ( -- str ) P-RA P-RA-U @ >str ;
+: RAS$ ( -- str ) P-RAS P-RAS-U @ >str ;
+: RAF$ ( -- str ) P-RAF P-RAF-U @ >str ;
+: RAG$ ( -- str ) P-RAG P-RAG-U @ >str ;
+: RB$ ( -- str ) P-RB P-RB-U @ >str ;
+: RBS$ ( -- str ) P-RBS P-RBS-U @ >str ;
+: RBF$ ( -- str ) P-RBF P-RBF-U @ >str ;
+: RBG$ ( -- str ) P-RBG P-RBG-U @ >str ;
+: KEEP$ ( -- str ) P-KEEP P-KEEP-U @ >str ;
+: W5$ ( -- str ) P-W5 P-W5-U @ >str ;
+: W5S$ ( -- str ) P-W5S P-W5S-U @ >str ;
+: W5F1$ ( -- str ) P-W5F1 P-W5F1-U @ >str ;
+: W5F2$ ( -- str ) P-W5F2 P-W5F2-U @ >str ;
+: W5D$ ( -- str ) P-W5D P-W5D-U @ >str ;
+: W5DS$ ( -- str ) P-W5DS P-W5DS-U @ >str ;
+: W5DF$ ( -- str ) P-W5DF P-W5DF-U @ >str ;
+: CAS$ ( -- str ) P-CAS P-CAS-U @ >str ;
+: CAD$ ( -- str ) P-CAD P-CAD-U @ >str ;
+: CBS$ ( -- str ) P-CBS P-CBS-U @ >str ;
+: CBD$ ( -- str ) P-CBD P-CBD-U @ >str ;
 : A-BODY$ ( -- str ) s" task-a wrote this" ;
 : B-BODY$ ( -- str ) s" b" ;
 
@@ -1705,9 +1708,9 @@ create P-CBD PATH-CAP allot  variable P-CBD-U
    FMT-ROOT$ s" copy-b-src.bin" P-CBS FS:JOIN-PATH P-CBS-U !
    FMT-ROOT$ s" copy-b-dst.bin" P-CBD FS:JOIN-PATH P-CBD-U ! ;
 
-: FILE-IS? ( str str -- ) {: path:^ pathu body:^ bodyu :}
-   path pathu FMT-READ-BUF 64 FS:READ-ALL bodyu T=
-   FMT-READ-BUF bodyu body bodyu T$= ;
+: FILE-IS? ( str str -- ) {: path:str body:str :}
+   path FMT-READ-BUF 64 FS:READ-ALL body STR:LEN T=
+   FMT-READ-BUF body STR:LEN >str body T$= ;
 
 \ A worker's answer: what it returned, which is 0, or the code it threw.
 : JOIN-CODE ( ^n -- n )
@@ -1730,17 +1733,17 @@ create P-CBD PATH-CAP allot  variable P-CBD-U
 \ A keeps a copy of the path FS:MKTEMP-DIR-IN handed it, waits until B has made one
 \ of its own, and only then reads the span it is still holding.
 : T1-A-ROUND ( n -- ) {: round :}
-   FMT-ROOT$ s" race-a" FS:MKTEMP-DIR-IN {: path:^ u :}
-   path u A-TMP SPAN:COPY  u A-TMP-U !
+   FMT-ROOT$ s" race-a" FS:MKTEMP-DIR-IN {: path:str :}
+   path A-TMP SPAN:COPY  path STR:LEN A-TMP-U !
    round A-READY atomic!
    B-DONE round WORKER-B TEST-WAIT:FOR-CELL
-   path u A-TMP$ STR:= 0= if 1 T1-BAD atomic-add drop then
+   path A-TMP$ STR:= 0= if 1 T1-BAD atomic-add drop then
    A-TMP$ FS:REMOVE-DIR ;
 
 : T1-B-ROUND ( n -- ) {: round :}
    A-READY round WORKER-A TEST-WAIT:FOR-CELL
-   FMT-ROOT$ s" race-b" FS:MKTEMP-DIR-IN {: path:^ u :}
-   path u B-TMP SPAN:COPY  u B-TMP-U !
+   FMT-ROOT$ s" race-b" FS:MKTEMP-DIR-IN {: path:str :}
+   path B-TMP SPAN:COPY  path STR:LEN B-TMP-U !
    round B-DONE atomic!
    B-TMP$ FS:REMOVE-DIR ;
 
@@ -1757,8 +1760,8 @@ create P-CBD PATH-CAP allot  variable P-CBD-U
 
 \ An even round moves the file out, an odd one moves it back, so SWAPS rounds
 \ end where they started.
-: T2-ROUND ( n str str -- ) {: round p1:^ p1u p2:^ p2u :}
-   round 1 and 0= if p1 p1u p2 p2u FS:RENAME-FILE else p2 p2u p1 p1u FS:RENAME-FILE then ;
+: T2-ROUND ( n str str -- ) {: round p1:str p2:str :}
+   round 1 and 0= if p1 p2 FS:RENAME-FILE else p2 p1 FS:RENAME-FILE then ;
 
 : T2-A ( -- ) SWAPS 0 ?do i A1$ A2$ T2-ROUND loop 0 TASK:RETURN ;
 : T2-B ( -- ) SWAPS 0 ?do i B1$ B2$ T2-ROUND loop 0 TASK:RETURN ;
@@ -1807,14 +1810,14 @@ create P-CBD PATH-CAP allot  variable P-CBD-U
    97 which + SB-APPEND-C
    s" -" SB-APPEND
    i FMT:SB-U
-   SB$ {: a:^ u :}
-   a u dst SPAN:COPY
-   dst u SPAN:TAKE SPAN:$ ;
+   SB$ {: s:str :}
+   s dst SPAN:COPY
+   dst s STR:LEN SPAN:TAKE SPAN:$ ;
 
 : T4-REG-ONE ( n n SPAN:span<u8> -- ) {: which i dst :}
-   which i dst REG-NAME {: a:^ u :}
-   a u s" reg" FS:WRITE-ALL
-   a u FS:CLEANUP+ ;
+   which i dst REG-NAME {: name:str :}
+   name s" reg" FS:WRITE-ALL
+   name FS:CLEANUP+ ;
 
 : T4-A ( -- ) REGS 0 ?do 0 i A-REG T4-REG-ONE loop 0 TASK:RETURN ;
 : T4-B ( -- ) REGS 0 ?do 1 i B-REG T4-REG-ONE loop 0 TASK:RETURN ;
@@ -1858,12 +1861,12 @@ variable T6-BAD
 \ reports as E-FS-DIR (measured). Two walks in flight cover disjoint trees. The
 \ row proves the removal moves no part of the walk's state: every path the
 \ callback gets starts at the walked root, and both files are still found.
-: UNDER? ( str str -- bool ) {: a:^ u ra:^ ru :}
-   u ru <= if false exit then
-   a ru ra ru STR:= ;
+: UNDER? ( str str -- bool ) {: s:str rs:str :}
+   s STR:LEN rs STR:LEN <= if false exit then
+   s STR:DATA rs STR:LEN >str rs STR:= ;
 
-: T6-CB ( str -- ) {: a:^ u :}
-   a u W5$ UNDER? 0= if 1 T6-BAD +! then
+: T6-CB ( str -- ) {: s:str :}
+   s W5$ UNDER? 0= if 1 T6-BAD +! then
    T6-SEEN @ 0= if W5D$ FS:REMOVE-TREE then
    1 T6-SEEN +! ;
 
@@ -1901,9 +1904,9 @@ variable T7-READY
 
 \ Counts a round whose destination is not byte for byte its own source.
 : T7-CHECK ( str ^u8 ^u8 ^n -- )
-   {: dst:^ dstu src:^ got:^ bad:^ :}
-   dst dstu got T7-LEN FS:READ-ALL {: u :}
-   got u src T7-LEN STR:= 0= if 1 bad atomic-add drop then ;
+   {: dst:str src:^ got:^ bad:^ :}
+   dst got T7-LEN FS:READ-ALL {: u :}
+   got u >str src T7-LEN >str STR:= 0= if 1 bad atomic-add drop then ;
 
 : T7-A-ROUND ( -- )
    CAS$ CAD$ FS:COPY-FILE-STREAM
@@ -1923,8 +1926,8 @@ variable T7-READY
 
 : T7-RUN ( -- )
    T7-A-SRC 0 T7-FILL  T7-B-SRC 255 T7-FILL
-   CAS$ T7-A-SRC T7-LEN FS:WRITE-ALL
-   CBS$ T7-B-SRC T7-LEN FS:WRITE-ALL
+   CAS$ T7-A-SRC T7-LEN >str FS:WRITE-ALL
+   CBS$ T7-B-SRC T7-LEN >str FS:WRITE-ALL
    0 T7-A-BAD !  0 T7-B-BAD !  0 T7-READY !
    ['] T7-A WORKER-A TASK:ACTIVATE
    ['] T7-B WORKER-B TASK:ACTIVATE
@@ -1972,9 +1975,9 @@ variable DIR-U
    DIR$ SB-APPEND
    s" /f-" SB-APPEND
    i FMT:SB-U
-   SB$ {: a:^ u :}
-   a u NAME-BUF SPAN:COPY
-   NAME-BUF u SPAN:TAKE SPAN:$ ;
+   SB$ {: s:str :}
+   s NAME-BUF SPAN:COPY
+   NAME-BUF s STR:LEN SPAN:TAKE SPAN:$ ;
 
 public
 
@@ -1982,9 +1985,9 @@ public
    SB-RESET
    FMT-ROOT$ SB-APPEND
    s" /grow" SB-APPEND
-   SB$ {: a:^ u :}
-   a u DIR-BUF SPAN:COPY
-   u DIR-U !
+   SB$ {: s:str :}
+   s DIR-BUF SPAN:COPY
+   s STR:LEN DIR-U !
    DIR$ FS:MAKE-DIR
    DIR$ FS:CLEANUP-DIR+
    GROWS 0 ?do
@@ -2016,8 +2019,8 @@ $10000 TASK:TASK WORKER
 
 variable DONE
 
-: MARK$ ( -- str ) P-MARK P-MARK-U @ ;
-: NONE$ ( -- str ) P-NONE P-NONE-U @ ;
+: MARK$ ( -- str ) P-MARK P-MARK-U @ >str ;
+: NONE$ ( -- str ) P-NONE P-NONE-U @ >str ;
 
 \ File i's path, valid until the next call.
 : NAME$ ( n -- str ) {: i :}
@@ -2025,7 +2028,7 @@ variable DONE
    s" f-" SB-APPEND
    i FMT:SB-U
    FMT-ROOT$ SB$ P-NAME FS:JOIN-PATH {: u :}
-   P-NAME u ;
+   P-NAME u >str ;
 
 : PATHS! ( -- )
    FMT-ROOT$ s" mark" P-MARK FS:JOIN-PATH P-MARK-U !
@@ -2090,9 +2093,9 @@ public
    FMT-LINK-DIR FS:CLEANUP-TREE+
    FMT-GROW:REGISTER
    FMT-ROOT$ FS:CLEANUP-FORGET
-   s" habu-fs-mkf" FS:MKTEMP {: path:^ pathu file:fd :}
+   s" habu-fs-mkf" FS:MKTEMP {: path:str file:fd :}
    file FD>N FS:CLOSE-FD 0 T=
-   path pathu FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
+   path FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
    [: FS:CLEANUP-RUN ;] catch 0 T=
    s" FS:MKTEMP registers nothing for the run to remove" T-LABEL
    FMT-COLLIDE FS:FILE? dup TTRUE if FMT-COLLIDE FS:REMOVE-FILE then

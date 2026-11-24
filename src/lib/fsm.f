@@ -1,4 +1,3 @@
-split-str
 \ fsm.f - state machines from a table. DEFINE reads a table of states, the
 \ input each state senses, and the action and next state for each input, and
 \ builds checked words from it, so a missing input, an unknown next state or a
@@ -49,12 +48,12 @@ PTR-VARIABLE CTX-A    variable CTX-U
 PTR-VARIABLE STATES-A variable STATES-U
 PTR-VARIABLE INPUTS-A variable INPUTS-U
 
-: AT ( str -- str ) 2dup SRCLOC:TOKEN! ;
+: AT ( str -- str ) dup STR:DATA over STR:LEN SRCLOC:TOKEN! ;
 
-: NAME$ ( -- str ) NAME-A @ NAME-U @ AT ;
-: CTX$ ( -- str ) CTX-A @ CTX-U @ AT ;
-: STATES$ ( -- str ) STATES-A @ STATES-U @ AT ;
-: INPUTS$ ( -- str ) INPUTS-A @ INPUTS-U @ AT ;
+: NAME$ ( -- str ) NAME-A @ NAME-U @ >str AT ;
+: CTX$ ( -- str ) CTX-A @ CTX-U @ >str AT ;
+: STATES$ ( -- str ) STATES-A @ STATES-U @ >str AT ;
+: INPUTS$ ( -- str ) INPUTS-A @ INPUTS-U @ >str AT ;
 
 \ The table's rows in order. A row's tokens start at its ROW-AT: an IN row's
 \ state, SENSE and inputs, then ROW-LINES lines of input, ACTION and NEXT; a
@@ -79,13 +78,13 @@ variable RAW-I
 \ LINES's text and the next byte to read in it.
 PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 
-: TOK+ ( str -- ) {: a:^ u:n :}
+: TOK+ ( str -- ) {: s:str :}
    TOKS @ {: k:n :}
    k 1+ TOK-A-RESERVE  k 1+ TOK-U-RESERVE
-   a k TOK-A !  u k TOK-U !
+   s STR:DATA k TOK-A !  s STR:LEN k TOK-U !
    k 1+ TOKS ! ;
 
-: TOK@ ( n -- str ) {: k:n :} k TOK-A @ k TOK-U @ ;
+: TOK@ ( n -- str ) {: k:n :} k TOK-A @ k TOK-U @ >str ;
 : TOK$ ( n -- str ) TOK@ AT ;
 
 \ Opens a row at the next token.
@@ -110,13 +109,13 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 
 \ Keeps a token; false at the source's end, which an empty token marks, or
 \ after `;DEFINE`.
-: KEEP? ( str -- bool ) {: a:^ u:n :}
-   u 0= if false exit then
+: KEEP? ( str -- bool ) {: s:str :}
+   s STR:LEN 0= if false exit then
    RAWS @ {: k:n :}
    k 1+ RAW-A-RESERVE  k 1+ RAW-U-RESERVE
-   a k RAW-A !  u k RAW-U !
+   s STR:DATA k RAW-A !  s STR:LEN k RAW-U !
    k 1+ RAWS !
-   a u s" ;DEFINE" STR:= 0= ;
+   s s" ;DEFINE" STR:= 0= ;
 
 : SOURCE-TOKENS ( -- ) begin parse-name KEEP? 0= until ;
 
@@ -131,10 +130,10 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
    begin TEXT-BLANK? while 1 TEXT-I +! repeat
    TEXT-I @ {: from:n :}
    begin TEXT-BYTE? while 1 TEXT-I +! repeat
-   TEXT-A @ from +  TEXT-I @ from - ;
+   TEXT-A @ from +  TEXT-I @ from - >str ;
 
 : TEXT-TOKENS ( str -- )
-   TEXT-U !  TEXT-A !  0 TEXT-I !
+   dup STR:LEN TEXT-U !  STR:DATA TEXT-A !  0 TEXT-I !
    begin TEXT-NAME KEEP? 0= until ;
 
 \ The next token, made the token read last; the table cut short before
@@ -143,48 +142,48 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
    RAW-I @ {: k:n :}
    k RAWS @ < 0= if E-SYNTAX throw then
    k 1+ RAW-I !
-   k RAW-A @ k RAW-U @ AT ;
+   k RAW-A @ k RAW-U @ >str AT ;
 
-: KEYWORD? ( str -- bool ) {: a:^ u:n :}
-   a u s" IN" STR:=
-   a u s" FINAL" STR:= or
-   a u s" ;DEFINE" STR:= or ;
+: KEYWORD? ( str -- bool ) {: s:str :}
+   s s" IN" STR:=
+   s s" FINAL" STR:= or
+   s s" ;DEFINE" STR:= or ;
 
 \ DEFINE reads the table with parse-name, so `\` and `(` are tokens where a
 \ reader sees a comment; no line holds either, and `(` only opens a row's
 \ inputs right after its SENSE.
-: COMMENT? ( str -- bool ) {: a:^ u:n :}
-   a u s" \" STR:=
-   a u s" (" STR:= or ;
+: COMMENT? ( str -- bool ) {: s:str :}
+   s s" \" STR:=
+   s s" (" STR:= or ;
 
 \ A token a row needs: a keyword in its place cuts the row short.
 : OPERAND ( -- str )
-   TOKEN {: a:^ u:n :}
-   a u KEYWORD? a u COMMENT? or if E-SYNTAX throw then
-   a u ;
+   TOKEN {: t:str :}
+   t KEYWORD? t COMMENT? or if E-SYNTAX throw then
+   t ;
 
 
 : HEADER ( -- )
-   TOKEN NAME-U ! NAME-A !
+   TOKEN dup STR:LEN NAME-U ! STR:DATA NAME-A !
    TOKEN s" (" STR:= 0= if E-SYNTAX throw then
-   TOKEN {: a:^ u:n :}
-   a CTX-A ! 0 CTX-U !
-   a u
-   begin 2dup s" )" STR:= 0= while
-      + CTX-A @ - CTX-U !
+   TOKEN {: t:str :}
+   t STR:DATA CTX-A ! 0 CTX-U !
+   t
+   begin dup s" )" STR:= 0= while
+      dup STR:DATA swap STR:LEN + CTX-A @ - CTX-U !
       TOKEN
-   repeat 2drop
-   TOKEN STATES-U ! STATES-A !
-   TOKEN INPUTS-U ! INPUTS-A ! ;
+   repeat drop
+   TOKEN dup STR:LEN STATES-U ! STR:DATA STATES-A !
+   TOKEN dup STR:LEN INPUTS-U ! STR:DATA INPUTS-A ! ;
 
 : LINE ( str -- ) TOK+ OPERAND TOK+ OPERAND TOK+ LINES+ ;
 
 
 : ROW-INPUTS ( -- str )
-   OPERAND {: i:^ iu:n :}
-   i iu s" )" STR:= if E-SYNTAX throw then
+   OPERAND {: i:str :}
+   i s" )" STR:= if E-SYNTAX throw then
    TOKEN s" )" STR:= 0= if E-SYNTAX throw then
-   i iu ;
+   i ;
 
 
 \ A row has at least one line, so the token after SENSE, or after
@@ -192,14 +191,14 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 : IN-ROW ( -- )
    ROW+
    OPERAND TOK+  OPERAND TOK+
-   TOKEN {: t:^ tu:n :}
-   t tu s" (" STR:= if
+   TOKEN {: t:str :}
+   t s" (" STR:= if
       ROW-INPUTS TOK+ TOKEN
    else
-      INPUTS$ TOK+ t tu
-   then {: l:^ lu:n :}
-   l lu KEYWORD? l lu COMMENT? or if E-SYNTAX throw then
-   l lu LINE ;
+      INPUTS$ TOK+ t
+   then {: l:str :}
+   l KEYWORD? l COMMENT? or if E-SYNTAX throw then
+   l LINE ;
 
 : FINAL-ROW ( -- ) ROW+ OPERAND TOK+ OPERAND TOK+ ;
 
@@ -207,25 +206,25 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 \ One token after the header, in one of two states, an IN row open or not:
 \ IN and FINAL close it, and any other token but `\` or `(` is a line of the
 \ open row.
-: STEP ( bool str -- bool ) {: open:bool a:^ u:n :}
-   a u s" IN" STR:= if IN-ROW true exit then
-   a u s" FINAL" STR:= if FINAL-ROW false exit then
-   open a u COMMENT? 0= and if a u LINE true exit then
+: STEP ( bool str -- bool ) {: open:bool s:str :}
+   s s" IN" STR:= if IN-ROW true exit then
+   s s" FINAL" STR:= if FINAL-ROW false exit then
+   open s COMMENT? 0= and if s LINE true exit then
    E-SYNTAX throw ;
 
 : READ-TABLE ( -- )
    HEADER
    false
-   begin TOKEN 2dup s" ;DEFINE" STR:= 0= while STEP repeat
-   2drop drop ;
+   begin TOKEN dup s" ;DEFINE" STR:= 0= while STEP repeat
+   drop drop ;
 
 
-: WORD+ ( str -- ) {: a:^ u:n :}
-   WORD-LEN @ u + WORD-TEXT-RESERVE
-   a WORD-LEN @ WORD-TEXT u BYTE-COPY
-   WORD-LEN @ u + WORD-LEN ! ;
+: WORD+ ( str -- ) {: s:str :}
+   WORD-LEN @ s STR:LEN + WORD-TEXT-RESERVE
+   s STR:DATA WORD-LEN @ WORD-TEXT s STR:LEN BYTE-COPY
+   WORD-LEN @ s STR:LEN + WORD-LEN ! ;
 
-: WORD$ ( -- str ) 0 WORD-TEXT WORD-LEN @ ;
+: WORD$ ( -- str ) 0 WORD-TEXT WORD-LEN @ >str ;
 
 \ <NAME>/<state>, of state token K.
 : STATE-NAME ( n -- str ) {: k:n :}
@@ -233,7 +232,7 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 
 \ <NAME>/<state>/<input>, of state token K and line token L.
 : LINE-NAME ( n n -- str ) {: k:n l:n :}
-   k STATE-NAME 2drop s" /" WORD+ l TOK$ WORD+ WORD$ ;
+   k STATE-NAME drop s" /" WORD+ l TOK$ WORD+ WORD$ ;
 
 : STEP-NAME ( -- str )
    0 WORD-LEN ! NAME$ WORD+ s" -STEP" WORD+ WORD$ ;
@@ -242,15 +241,15 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 : STATES-TYPE ( -- EFFECT:type ) STATES$ EFFECT:READ-TYPE ;
 
 \ `construct <states> <state>`.
-: NEW-STATE ( str -- ) {: a:^ u:n :}
+: NEW-STATE ( str -- ) {: s:str :}
    s" construct" EFFECT:KEYWORD
    STATES$ STATES-TYPE EFFECT:TYPE-ITEM
-   a u EFFECT:OPERAND ;
+   s EFFECT:OPERAND ;
 
 \ <word> ( CTX -- ) runs the ACTION, `drop` for `-`.
-: ACT-WORD ( str str -- ) {: w:^ wu:n a:^ au:n :}
-   w wu EFFECT:EMPTY CTX-TYPE EFFECT:IN define-word
-   a au s" -" STR:= if postpone drop else a au EFFECT:CALL then
+: ACT-WORD ( str str -- ) {: w:str a:str :}
+   w EFFECT:EMPTY CTX-TYPE EFFECT:IN define-word
+   a s" -" STR:= if postpone drop else a EFFECT:CALL then
    postpone ; ;
 
 \ A line's word, unless its ACTION is `-`.
@@ -266,13 +265,13 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 
 \ The NEXT of line L of state token K; ACT says the line has a word.
 : NEXT-ITEMS ( bool n n -- ) {: act:bool k:n l:n :}
-   l 2 + TOK$ {: x:^ xu:n :}
-   x c@ [char] > = 0= if
+   l 2 + TOK$ {: x:str :}
+   x STR:DATA c@ [char] > = 0= if
       act if postpone dup  k l LINE-NAME EFFECT:CALL then
-      x xu EFFECT:CALL exit
+      x EFFECT:CALL exit
    then
    act 0= if postpone drop then
-   x 1+ xu 1- NEW-STATE
+   x STR:DATA 1+ x STR:LEN 1- >str NEW-STATE
    act if postpone swap  k l LINE-NAME EFFECT:CALL then ;
 
 : LINE-ARM ( n n -- ) {: k:n l:n :}
@@ -286,7 +285,7 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
    k STATE-NAME
    EFFECT:EMPTY CTX-TYPE EFFECT:IN STATES-TYPE EFFECT:OUT define-word
    postpone dup  k 1+ TOK$ EFFECT:CALL
-   s" match" EFFECT:KEYWORD  k 2 + TOK$ 2dup EFFECT:READ-TYPE EFFECT:TYPE-ITEM
+   s" match" EFFECT:KEYWORD  k 2 + TOK$ dup EFFECT:READ-TYPE EFFECT:TYPE-ITEM
    r ROW-LINES @ 0 ?do k  k i LINE-TOK  LINE-ARM loop
    s" ;match" EFFECT:KEYWORD  postpone ; ;
 
@@ -352,9 +351,9 @@ public
 
 \ Reads the table in the text through `;DEFINE` as DEFINE does, then runs Q on
 \ each line; its tokens point into the text, and Q reads no table itself.
-: LINES ( str [ str str str -- ] -- ) {: a:^ u:n q :}
+: LINES ( str [ str str str -- ] -- ) {: text:str q :}
    SRCLOC:TOKEN$ {: s:^ su:n :}
-   [: [: a u TEXT-TOKENS READ-TABLE ;] [: s su SRCLOC:TOKEN! ;] finally
+   [: [: text TEXT-TOKENS READ-TABLE ;] [: s su SRCLOC:TOKEN! ;] finally
       ROWS @ 0 ?do i q ROW-RUN loop ;]
    [: RELEASE ;] finally ;
 

@@ -1,4 +1,3 @@
-split-str
 \ fs-lock-test.f - advisory directory ownership across processes.
 \ Run: bin/hb --load src/lib/fs-lock-test.f
 \ Failure modes: a second process can take a live hold; close or process death
@@ -30,14 +29,14 @@ variable HELD-FD
 \ that reaches WAIT late still passes, only with less of a wait in between.
 200 constant HOLD-MS
 
-: ROOT$ ( -- str ) ROOT ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
 
 : SETUP ( -- )
-   s" hb-fs-lock" FS:MKTEMP-DIR {: path:^ u:n :}
-   path ROOT u BYTE-COPY
-   u ROOT-U ! ;
+   s" hb-fs-lock" FS:MKTEMP-DIR {: path:str :}
+   path STR:DATA ROOT path STR:LEN BYTE-COPY
+   path STR:LEN ROOT-U ! ;
 
-: CHILD-EXIT ( n -- ) s" " rot die ;
+: CHILD-EXIT ( n -- ) s" " swap die ;
 
 : EXPECT-CLEAN ( pid -- )
    PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T= ;
@@ -79,9 +78,9 @@ variable HELD-FD
    {: w:fd :}
    ROOT$ FS-LOCK:OPEN-DIR {: fd:fd :}
    fd FS-LOCK:TRY 0= if 1 CHILD-EXIT then
-   w FD>N SIGNAL 1 write 1 <> if 2 CHILD-EXIT then
+   w FD>N SIGNAL 1 >str write 1 <> if 2 CHILD-EXIT then
    HOLD-MS >MS TASK:SLEEP
-   MARK-PATH MARK-U @ s" released" FS:WRITE-ALL
+   MARK-PATH MARK-U @ >str s" released" FS:WRITE-ALL
    fd FD>N close
    0 CHILD-EXIT ;
 
@@ -99,7 +98,7 @@ variable HELD-FD
    r FD>N close
    ROOT$ FS-LOCK:OPEN-DIR {: fd:fd :}
    fd FS-LOCK:WAIT
-   MARK-PATH MARK-U @ FS:EXISTS? TTRUE
+   MARK-PATH MARK-U @ >str FS:EXISTS? TTRUE
    fd FD>N HELD-FD !
    PROC-FORK:CHECKED {: child:pid :}
    child PID>N 0= if CHILD-BUSY then
@@ -143,8 +142,8 @@ variable HELD-FD
 : BAD-RELEASE ( -- ) -1 >FD FS-LOCK:RELEASE ;
 : BAD-DIR ( -- )
    ROOT$ s" file" FILE-PATH FS:JOIN-PATH {: u:n :}
-   FILE-PATH u s" x" FS:WRITE-ALL
-   FILE-PATH u FS-LOCK:OPEN-DIR FD>N close ;
+   FILE-PATH u >str s" x" FS:WRITE-ALL
+   FILE-PATH u >str FS-LOCK:OPEN-DIR FD>N close ;
 
 \ The quotation, run on a closed descriptor, throws E-FS-IO with EBADF in
 \ FS:ERRNO; the cause is cleared first, so a stale one cannot pass.

@@ -1,4 +1,3 @@
-split-str
 \ fs-rename-noreplace-test.f - FS:ATOMIC-CREATE-PRIVATE claims only a free name:
 \ a taken one, a live link's target or a directory answers false untouched, a
 \ dangling link is E-FS-STAT, and of two racing claims exactly one wins.
@@ -24,17 +23,17 @@ variable SIBLINGS
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
-: PATH ( n str -- str ) {: idx name bytes :}
+: PATH ( n str -- str ) {: idx name:str :}
    PATHS idx PATH-CAP * + {: out :}
-   out ROOT ROOT-U @ name bytes out FS:JOIN-PATH ;
+   out ROOT ROOT-U @ >str name out FS:JOIN-PATH >str ;
 
 : TARGET ( -- str ) 0 s" target" PATH ;
 : DEST ( -- str ) 1 s" dest" PATH ;
-: RACE-DEST ( -- str ) PATHS 2 PATH-CAP * + RACE-DEST-U @ ;
+: RACE-DEST ( -- str ) PATHS 2 PATH-CAP * + RACE-DEST-U @ >str ;
 
-: CONTENT ( str str -- ) {: path:^ pathu expected:^ expectedu :}
-   path pathu TEXT 64 FS:READ-ALL {: got :}
-   TEXT got expected expectedu T$= ;
+: CONTENT ( str str -- ) {: path:str expected:str :}
+   path TEXT 64 FS:READ-ALL {: got :}
+   TEXT got >str expected T$= ;
 
 : CLAIM ( str -- bool ) s" new bytes" FS:ATOMIC-CREATE-PRIVATE ;
 
@@ -100,7 +99,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    ;MATCH ;
 
 : RACE ( -- )
-   2 s" race-dest" PATH nip RACE-DEST-U !
+   2 s" race-dest" PATH STR:LEN RACE-DEST-U !
    0 RACE-READY !
    ['] RACE-A WORKER-A TASK:ACTIVATE
    ['] RACE-B WORKER-B TASK:ACTIVATE
@@ -110,7 +109,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    br WINNER? {: b:bool :}
    a if b TFALSE else b TTRUE then
    a if RACE-DEST s" first bytes" CONTENT else RACE-DEST s" second bytes" CONTENT then
-   ROOT ROOT-U @ COUNT-ENTRIES
+   ROOT ROOT-U @ >str COUNT-ENTRIES
    SIBLINGS @ 0 T=
    ENTRIES @ 1 T=
    RACE-DEST FS:REMOVE-FILE ;
@@ -119,10 +118,10 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    PUBLISH EXISTING-FILE LIVE-LINK DANGLING-LINK EXISTING-DIR RACE ;
 
 : SETUP ( -- )
-   s" habu-rename-noreplace" FS:MKTEMP-DIR {: path:^ bytes :}
-   path ROOT bytes BYTE-COPY bytes ROOT-U ! ;
+   s" habu-rename-noreplace" FS:MKTEMP-DIR {: path:str :}
+   path STR:DATA ROOT path STR:LEN BYTE-COPY path STR:LEN ROOT-U ! ;
 
-: CLEAN ( -- ) ROOT ROOT-U @ FS:REMOVE-TREE ;
+: CLEAN ( -- ) ROOT ROOT-U @ >str FS:REMOVE-TREE ;
 : RUN ( -- ) T-RESET SETUP [: CHECKS ;] [: CLEAN ;] finally T-REPORT ;
 
 RUN

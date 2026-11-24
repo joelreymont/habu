@@ -1,4 +1,3 @@
-split-str
 \ json-schema-test.f - schemas through JSON-SCHEMA:COMPILE: the shapes the
 \ consumers register and each rejected schema's text; values through
 \ JSON-SCHEMA:VALID?, each violation's text.
@@ -16,19 +15,19 @@ require src/lib/json-schema.f
 
 package JSON-SCHEMA-TEST
 
-: PARSED ( ^u8 n ^ARENA:arena -- JSON-SCHEMA:schema ) {: t:^ u:n a:^ :}
-   t u JSON:PARSE a JSON-SCHEMA:COMPILE ;
+: PARSED ( str ^ARENA:arena -- JSON-SCHEMA:schema ) {: t:str a:^ :}
+   t JSON:PARSE a JSON-SCHEMA:COMPILE ;
 
-: COMPILE-ONLY ( ^u8 n -- )
+: COMPILE-ONLY ( str -- )
    [: PARSED drop ;] ARENA:WITH ;
 
-: ACCEPTS ( ^u8 n -- ) {: t:^ u:n :}
-   [: t u COMPILE-ONLY ;] catch 0 T= ;
+: ACCEPTS ( str -- ) {: t:str :}
+   [: t COMPILE-ONLY ;] catch 0 T= ;
 
 \ The schema is rejected with exactly the text given.
-: REJECTS ( ^u8 n ^u8 n -- ) {: t:^ u:n w:^ wu:n :}
-   [: t u COMPILE-ONLY ;] JSON-SCHEMA:E-SCHEMA TTHROWSQ
-   JSON-SCHEMA:E-SCHEMA REASON:TEXT$ w wu T$=
+: REJECTS ( str str -- ) {: t:str w:str :}
+   [: t COMPILE-ONLY ;] JSON-SCHEMA:E-SCHEMA TTHROWSQ
+   JSON-SCHEMA:E-SCHEMA REASON:TEXT$ w T$=
    REASON:RELEASE ;
 
 : TAKEN ( -- )
@@ -137,26 +136,26 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
 : UNMAKE ( ^^VEC:vector<u8> -- ) {: c:^ :}
    c @ VEC:DELETE  NULL-PTR c ! ;
 
-: VIOLATION$ ( -- ^u8 n ) VIOLATION @ VEC:SPAN SPAN:$ ;
+: VIOLATION$ ( -- str ) VIOLATION @ VEC:SPAN SPAN:$ ;
 
-: CHECKED ( ^u8 n ^u8 n ^ARENA:arena -- bool )
-   {: v:^ vu:n s:^ su:n a:^ :}
-   s su a PARSED {: sc :}
-   v vu JSON:PARSE sc VIOLATION @ JSON-SCHEMA:VALID? ;
+: CHECKED ( str str ^ARENA:arena -- bool )
+   {: v:str s:str a:^ :}
+   s a PARSED {: sc :}
+   v JSON:PARSE sc VIOLATION @ JSON-SCHEMA:VALID? ;
 
 \ The value v checked against the schema s, the vector cleared first.
-: VERDICT ( ^u8 n ^u8 n -- bool ) {: s:^ su:n v:^ vu:n :}
+: VERDICT ( str str -- bool ) {: s:str v:str :}
    VIOLATION @ 0 VEC:RESIZE
-   v vu s su [: CHECKED ;] ARENA:WITH ;
+   v s [: CHECKED ;] ARENA:WITH ;
 
-: PASSES ( ^u8 n ^u8 n -- )
+: PASSES ( str str -- )
    VERDICT TTRUE  VIOLATION$ s" " T$= ;
 
 \ The value fails with exactly the text given.
-: FAILS ( ^u8 n ^u8 n ^u8 n -- ) {: s:^ su:n v:^ vu:n w:^ wu:n :}
-   s su v vu VERDICT TFALSE  VIOLATION$ w wu T$= ;
+: FAILS ( str str str -- ) {: s:str v:str w:str :}
+   s v VERDICT TFALSE  VIOLATION$ w T$= ;
 
-: SAPD$ ( -- ^u8 n )
+: SAPD$ ( -- str )
    s\" {\"type\":\"object\",\"properties\":{\"filter\":{\"type\":\"string\"},\"top\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":500},\"key\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"}}},\"required\":[\"filter\"],\"additionalProperties\":false}" ;
 
 : SAPD ( -- )
@@ -284,10 +283,10 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    s" .abcdefghijklmnopqrstuvwxyz012345...: expected a value of type `string`, found `1`; send a value of that type"
    FAILS ;
 
-: STRINGS$ ( -- ^u8 n )
+: STRINGS$ ( -- str )
    s\" {\"type\":\"array\",\"items\":{\"type\":\"string\"}}" ;
 
-: UNIQUE-STRINGS$ ( -- ^u8 n )
+: UNIQUE-STRINGS$ ( -- str )
    s\" {\"type\":\"array\",\"items\":{\"type\":\"string\"},\"uniqueItems\":true}" ;
 
 : ARRAYS ( -- )
@@ -340,12 +339,12 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
 
 100000 constant DEPTH
 
-: ADD-TIMES ( ^u8 n n -- ) {: s:^ u:n k:n :}
-   k 0 ?do s u NESTED @ VEC:APPEND loop ;
+: ADD-TIMES ( str n -- ) {: s:str k:n :}
+   k 0 ?do s NESTED @ VEC:APPEND loop ;
 
 \ o DEPTH times, m, then c DEPTH times; answers the vector's count after.
-: NEST ( ^u8 n ^u8 n ^u8 n -- n ) {: o:^ ou:n m:^ mu:n c:^ cu:n :}
-   o ou DEPTH ADD-TIMES  m mu 1 ADD-TIMES  c cu DEPTH ADD-TIMES
+: NEST ( str str str -- n ) {: o:str m:str c:str :}
+   o DEPTH ADD-TIMES  m 1 ADD-TIMES  c DEPTH ADD-TIMES
    NESTED @ VEC:COUNT ;
 
 \ The schema, the value it takes and the two it rejects, one after another
@@ -357,19 +356,20 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    s" [" s\" \"a\"" s" ]" NEST {: b:n :}
    s" [" s" 1" s" ]" NEST {: c:n :}
    s" [" s" 1" s" ,0]" NEST drop
-   NESTED @ VEC:SPAN SPAN:$ {: t:^ u:n :}
-   t a  t a +  b a -  PASSES
-   t a  t b +  c b -  VERDICT TFALSE
-   VIOLATION$ {: w:^ wu:n :}
-   w 6 s" [0][0]" T$=  wu 300073 T=
-   t a  t c +  u c -
+   NESTED @ VEC:SPAN SPAN:$ {: all:str :}
+   all STR:DATA {: t:^ :}
+   t a >str  t a +  b a - >str  PASSES
+   t a >str  t b +  c b - >str  VERDICT TFALSE
+   VIOLATION$ {: w:str :}
+   w STR:DATA 6 >str s" [0][0]" T$=  w STR:LEN 300073 T=
+   t a >str  t c +  all STR:LEN c - >str
    s" : expected at most 1 item, found 2 items; remove an item" FAILS
    NESTED UNMAKE ;
 
-: CHOICE-LEVEL$ ( -- ^u8 n )
+: CHOICE-LEVEL$ ( -- str )
    s\" : expected a value one schema of `anyOf` takes, found `\"a\"`; meet one of them:\n  [0]" ;
 
-: INNERMOST$ ( -- ^u8 n )
+: INNERMOST$ ( -- str )
    s\" [0]: expected a value of type `integer`, found `\"a\"`; send a value of that type" ;
 
 \ Each level's text, then the innermost alternative's violation.
@@ -377,14 +377,14 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    s" VALID? judges anyOf nested 100000 levels deep" T-LABEL
    NESTED MAKE
    s\" {\"anyOf\":[" s\" {\"type\":\"integer\"}" s" ]}" NEST drop
-   NESTED @ VEC:SPAN SPAN:$ {: t:^ u:n :}
-   t u s" 1" PASSES
-   t u s\" \"a\"" VERDICT TFALSE
-   VIOLATION$ {: w:^ wu:n :}
-   CHOICE-LEVEL$ {: h:^ hu:n :}  INNERMOST$ {: m:^ mu:n :}
-   w hu h hu T$=
-   w wu + mu -  mu  m mu T$=
-   wu  hu DEPTH *  mu + 3 -  T=
+   NESTED @ VEC:SPAN SPAN:$ {: t:str :}
+   t s" 1" PASSES
+   t s\" \"a\"" VERDICT TFALSE
+   VIOLATION$ {: w:str :}
+   CHOICE-LEVEL$ {: h:str :}  INNERMOST$ {: m:str :}
+   w STR:DATA h STR:LEN >str h T$=
+   w STR:DATA w STR:LEN + m STR:LEN -  m STR:LEN >str  m T$=
+   w STR:LEN  h STR:LEN DEPTH *  m STR:LEN + 3 -  T=
    NESTED UNMAKE ;
 
 : CHOICES ( -- )
