@@ -1759,9 +1759,6 @@ private
    code JSON-FAULT? if na nu ta tu NAMED-THROW then
    code 0<> if code throw then ;
 
-: JSON-OBJECT? ( str -- bool )
-   JSON:PARSE JSON:OBJECT? ;
-
 : OBJECT-FIX$ ( -- str ) s" pass one JSON object" ;
 
 : OBJECT-STEP ( str -- str )
@@ -2331,7 +2328,7 @@ private
    v JSON:STRING? 0= if false exit then
    v [: SIZE-TEXT? ;] JSON:WITH-STRING ;
 
-\ The test's answer for a member found, false for none.
+\ The test's answer for a value present, false for none.
 : FOUND? ( option<JSON:value> [ JSON:value -- bool ] -- bool )
    {: test :}
    MATCH option
@@ -2367,39 +2364,42 @@ private
    m JSON:STRING? 0= if exit then
    m [: BUF:N>BLEN c ERROR-BUF BUF:REPLACE ;] JSON:WITH-STRING ;
 
-: ERROR-BODY ( ^call -- ^call )
-   {: c :}
-   c RESPONSE$ JSON:PARSE {: v :}
-   v JSON:OBJECT? 0= if c exit then
+: ERROR-BODY ( JSON:value ^call -- )
+   {: v c :}
+   v JSON:OBJECT? 0= if exit then
    v s" error" JSON:FIND MATCH option
       none OF ENDOF
       some OF c ERROR-TEXT ENDOF
-   ;MATCH c ;
+   ;MATCH ;
 
-\ Keeps a failed reply's provider message. A body that is not such JSON has
-\ none.
-: KEEP-ERROR ( ^call -- )
+\ A failed reply's body, none when it is not JSON.
+: FAILED-BODY ( ^call -- option<JSON:value> )
    {: c :}
-   c [: ERROR-BODY ;] catch {: code:n :} drop
-   code JSON-FAULT? if exit then
-   code 0<> if code throw then ;
+   [: c RESPONSE$ JSON:PARSE ;] catch {: v code:n :}
+   code 0= if v OPTION:SOME exit then
+   code JSON-FAULT? if OPTION:NONE exit then
+   code throw ;
 
-: SIZE-BODY? ( ^call -- bool )
-   {: c :}
-   c RESPONSE$ JSON:PARSE {: v :}
+\ Keeps a failed reply's provider message, when its body names one.
+: KEEP-ERROR ( option<JSON:value> ^call -- )
+   {: body c :}
+   body MATCH option
+      none OF ENDOF
+      some OF c ERROR-BODY ENDOF
+   ;MATCH ;
+
+: SIZE-BODY? ( JSON:value -- bool )
+   {: v :}
    v JSON:OBJECT? 0= if false exit then
    v s" error" JSON:FIND [: SIZE-ERROR? ;] FOUND? ;
 
 \ Whether a failed reply refuses the request for its size: HTTP 413, or a 400
-\ whose body names the refusal. A body that is not such JSON is not one.
-: SIZE-REFUSAL? ( ^call -- bool )
-   {: c :}
+\ whose body names the refusal.
+: SIZE-REFUSAL? ( option<JSON:value> ^call -- bool )
+   {: body c :}
    c MODEL-CALL:HTTP-STATUS @ 413 = if true exit then
    c MODEL-CALL:HTTP-STATUS @ 400 <> if false exit then
-   [: c SIZE-BODY? ;] catch {: size code:n :}
-   code 0= if size exit then
-   code JSON-FAULT? if false exit then
-   code throw ;
+   body [: SIZE-BODY? ;] FOUND? ;
 
 
 \ Room in the response buffer for at least one byte past those received.
@@ -2466,8 +2466,9 @@ private
    rc c LEDGER LEDGER-TRANSPORT !
    rc 0<> if E-TRANSPORT throw then
    status CURL:HTTP-STATUS>N 200 <> if
-      c KEEP-ERROR
-      c SIZE-REFUSAL? if E-CAPACITY throw then
+      c FAILED-BODY {: body :}
+      body c KEEP-ERROR
+      body c SIZE-REFUSAL? if E-CAPACITY throw then
       status c STATUS-THROW
    then
    c ;
@@ -2623,9 +2624,8 @@ private
    st s" failed" JSON:STRING= if v c READ-FAILURE then
    st s" completed" JSON:STRING= 0= if E-RESPONSE throw then ;
 
-: ACCEPT-CHAT ( ^call -- )
-   {: c :}
-   c RESPONSE$ JSON:PARSE {: v :}
+: ACCEPT-CHAT ( JSON:value ^call -- )
+   {: v c :}
    v JSON:OBJECT? 0= if E-RESPONSE throw then
    v c REPLY-STATUS
    c MODEL-CALL:FORM @ MATCH reply-form
@@ -2633,7 +2633,7 @@ private
       schema OF
          v c READ-OUTPUT
          c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
-         JSON-OBJECT? 0= if E-RESPONSE throw then
+         JSON:PARSE JSON:OBJECT? 0= if E-RESPONSE throw then
       ENDOF
       tools OF v c READ-TOOLS ENDOF
    ;MATCH ;
@@ -2768,44 +2768,32 @@ private
    a JSON:ARRAY? 0= if E-RESPONSE throw then
    a [: c READ-EMBEDDING ;] JSON:EACH ;
 
-\ The reply's top object, with no vectors read yet.
-: EMBED-REPLY ( ^call -- JSON:value )
-   {: c :}
-   c VECTORS-RESET
-   0 c MODEL-CALL:DATA-COUNT !
-   c RESPONSE$ JSON:PARSE {: r :}
-   r JSON:OBJECT? 0= if E-RESPONSE throw then
-   r ;
-
-\ A usage member's bytes, when it is an object.
-: EMBED-USAGE ( JSON:value -- str bool )
+\ A usage member, when it is an object.
+: EMBED-USAGE ( JSON:value -- option<JSON:value> )
    {: u :}
-   u JSON:OBJECT? 0= if s" " false exit then
-   u JSON:TEXT$ true ;
+   u JSON:OBJECT? 0= if OPTION:NONE exit then
+   u OPTION:SOME ;
 
-\ The bytes of the reply's usage object and whether it has one; a reply
-\ without one vector per input is E-RESPONSE.
-: EMBED-END ( JSON:value ^call -- str bool )
+\ The reply's usage object, none without one; a reply without one vector per
+\ input is E-RESPONSE.
+: EMBED-END ( JSON:value ^call -- option<JSON:value> )
    {: r c :}
    c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ <> if
       E-RESPONSE throw
    then
    r s" usage" JSON:FIND MATCH option
-      none OF s" " false ENDOF
+      none OF OPTION:NONE ENDOF
       some OF EMBED-USAGE ENDOF
    ;MATCH ;
 
-\ An embeddings reply's vectors, and the bytes of its usage object and whether
-\ it has one.
-: ACCEPT-EMBED ( ^call -- str bool )
-   {: c :}
-   c EMBED-REPLY {: r :}
+\ An embeddings reply's vectors, and its usage object, none without one.
+: ACCEPT-EMBED ( JSON:value ^call -- option<JSON:value> )
+   {: r c :}
    r s" data" MEMBER c READ-DATA
    r c EMBED-END ;
 
-: ACCEPT-OLLAMA ( ^call -- str bool )
-   {: c :}
-   c EMBED-REPLY {: r :}
+: ACCEPT-OLLAMA ( JSON:value ^call -- option<JSON:value> )
+   {: r c :}
    r s" embeddings" MEMBER c READ-EMBEDDINGS
    r c EMBED-END ;
 
@@ -2816,7 +2804,7 @@ private
 
 : PARSE-CHAT ( ^call -- )
    {: c :}
-   c [: dup ACCEPT-CHAT ;] catch {: code:n :} drop
+   [: c RESPONSE$ JSON:PARSE c ACCEPT-CHAT ;] catch {: code:n :}
    code RESPONSE-ERROR ;
 
 \ A usage count: an integer, or none for null.
@@ -2879,9 +2867,9 @@ private
    c TOKENS TOKENS-REASONING ! ;
 
 \ A chat or compaction reply's usage counts.
-: ACCEPT-USAGE ( ^call -- )
-   {: c :}
-   c RESPONSE$ JSON:PARSE c USAGE? MATCH option
+: ACCEPT-USAGE ( JSON:value ^call -- )
+   {: v c :}
+   v c USAGE? MATCH option
       none OF ENDOF
       some OF c USAGE-COUNTS ENDOF
    ;MATCH ;
@@ -2891,28 +2879,25 @@ private
    {: u c :}
    u s" prompt_tokens" USAGE-AT c TOKENS TOKENS-INPUT ! ;
 
-\ An embeddings reply's prompt_tokens, from its usage object's bytes.
-: EMBED-TOKENS ( str ^call -- str ^call )
-   {: a:^ u:n c :}
-   a u JSON:PARSE c PROMPT-TOKENS
-   a u c ;
-
-: FAULT-TOKENS ( ^call -- ^call )
-   {: c :}
-   c RESPONSE$ JSON:PARSE c USAGE? MATCH option
+\ A usage object's prompt_tokens, when an integer. It throws nothing, so the
+\ walk's fault is the one thrown.
+: FAULT-PROMPT ( JSON:value ^call -- )
+   {: u c :}
+   u s" prompt_tokens" JSON:FIND MATCH option
       none OF ENDOF
-      some OF c PROMPT-TOKENS ENDOF
-   ;MATCH c ;
+      some OF {: n :}
+         n JSON:INTEGER? 0= if exit then
+         n JSON:>N OPTION:SOME c TOKENS TOKENS-INPUT !
+      ENDOF
+   ;MATCH ;
 
-\ The prompt_tokens of a reply the walk rejected, read from the whole reply;
-\ the walk's fault is the one passed on.
-: FAULT-USAGE ( ^call -- )
-   [: FAULT-TOKENS ;] catch {: code:n :} drop ;
-
-: PARSE-USAGE ( ^call -- )
-   {: c :}
-   c [: dup ACCEPT-USAGE ;] catch {: code:n :} drop
-   code RESPONSE-ERROR ;
+\ The prompt_tokens of a reply the walk rejected.
+: FAULT-TOKENS ( JSON:value ^call -- )
+   {: v c :}
+   v c USAGE? MATCH option
+      none OF ENDOF
+      some OF c FAULT-PROMPT ENDOF
+   ;MATCH ;
 
 \ Keeps the served tier's name; an empty one is E-RESPONSE.
 : SERVED! ( str ^call -- )
@@ -2928,32 +2913,33 @@ private
    t [: c SERVED! ;] JSON:WITH-STRING ;
 
 \ The tier the reply says served it, when it names one.
-: ACCEPT-TIER ( ^call -- )
-   {: c :}
-   c RESPONSE$ JSON:PARSE s" service_tier" JSON:FIND MATCH option
+: ACCEPT-TIER ( JSON:value ^call -- )
+   {: v c :}
+   v s" service_tier" JSON:FIND MATCH option
       none OF ENDOF
       some OF c SERVED-TIER ENDOF
    ;MATCH ;
 
-: PARSE-TIER ( ^call -- )
+\ The reply's top object, with no vectors read yet; a reply that is not JSON
+\ is E-RESPONSE.
+: EMBED-REPLY ( ^call -- JSON:value )
    {: c :}
-   c [: dup ACCEPT-TIER ;] catch {: code:n :} drop
-   code RESPONSE-ERROR ;
-
-\ The reply's vectors, and its usage object's bytes and whether it has one.
-\ One catch: a code merged from two catches proves nothing, E-STALE-READ.
-: PARSE-EMBED ( ^call -- str bool )
-   {: c :}
-   s" " false c
-   c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
-      [: >r 2drop drop r@ ACCEPT-OLLAMA r> ;]
-   else
-      [: >r 2drop drop r@ ACCEPT-EMBED r> ;]
-   then catch {: code:n :}
-   code 0= if drop exit then
-   2drop 2drop
+   c VECTORS-RESET
+   0 c MODEL-CALL:DATA-COUNT !
+   [: c RESPONSE$ JSON:PARSE ;] catch {: r code:n :}
    code JSON-FAULT? if E-RESPONSE throw then
-   code throw ;
+   code 0<> if code throw then
+   r JSON:OBJECT? 0= if E-RESPONSE throw then
+   r ;
+
+\ The reply's vectors, and its usage object, none without one.
+: PARSE-EMBED ( JSON:value ^call -- option<JSON:value> )
+   {: r c :}
+   c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
+      r c ACCEPT-OLLAMA
+   else
+      r c ACCEPT-EMBED
+   then ;
 
 : BEGIN-RESET ( ^call -- ^call )
    {: c :}
@@ -3354,11 +3340,17 @@ ENUM poll none fed spoiled done ;ENUM
    c ;
 
 \ Reads a chat reply's usage, service tier and content.
+: READ-CHAT ( ^call -- )
+   {: c :}
+   c RESPONSE$ JSON:PARSE {: v :}
+   v c ACCEPT-USAGE
+   v c ACCEPT-TIER
+   v c ACCEPT-CHAT ;
+
 : CHAT-PARSE ( ^call -- ^call )
    {: c :}
-   c PARSE-USAGE
-   c PARSE-TIER
-   c PARSE-CHAT
+   [: c READ-CHAT ;] catch {: code:n :}
+   code RESPONSE-ERROR
    c TOKENS TOKENS-INPUT @ OR-ZERO c MODEL-CALL:INPUT-TOKENS !
    c TOKENS TOKENS-CACHED @ OR-ZERO c MODEL-CALL:CACHED-TOKENS !
    c ;
@@ -3366,13 +3358,16 @@ ENUM poll none fed spoiled done ;ENUM
 \ Reads an embed reply's vectors and usage.
 : EMBED-PARSE ( ^call -- ^call )
    {: c :}
-   [: c PARSE-EMBED ;] catch {: a u present walk:n :}
-   walk 0<> if c FAULT-USAGE walk throw then
-   present if
-      true c TOKENS TOKENS-SEEN !
-      a u c [: EMBED-TOKENS ;] catch {: code:n :} 2drop drop
-      code RESPONSE-ERROR
-   then
+   c EMBED-REPLY {: r :}
+   [: r c PARSE-EMBED ;] catch {: usage walk:n :}
+   walk 0<> if r c FAULT-TOKENS walk throw then
+   usage MATCH option
+      none OF ENDOF
+      some OF
+         true c TOKENS TOKENS-SEEN !
+         c PROMPT-TOKENS
+      ENDOF
+   ;MATCH
    c ;
 
 \ A count reply's input_tokens, at its top level: an integer.
@@ -3390,10 +3385,10 @@ ENUM poll none fed spoiled done ;ENUM
    code RESPONSE-ERROR
    c ;
 
-\ The reply's output array; E-RESPONSE unless the reply is one JSON object
-\ with one.
-: WINDOW-ITEMS ( ^call -- JSON:value )
-   RESPONSE$ JSON:PARSE {: v :}
+\ The reply's output array; E-RESPONSE unless the reply is an object with
+\ one.
+: WINDOW-ITEMS ( JSON:value -- JSON:value )
+   {: v :}
    v JSON:OBJECT? 0= if E-RESPONSE throw then
    v s" output" ARRAY-MEMBER ;
 
@@ -3413,9 +3408,9 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ A compaction reply's output is a nonempty array of objects, the last a
 \ compaction item; else E-RESPONSE.
-: CHECK-WINDOW ( ^call -- )
-   {: c :}
-   NO-ITEM c WINDOW-ITEMS [: LAST-ITEM ;] JSON:EACH
+: CHECK-WINDOW ( JSON:value -- )
+   {: items :}
+   NO-ITEM items [: LAST-ITEM ;] JSON:EACH
    MATCH option
       none OF E-RESPONSE throw ENDOF
       some OF COMPACTION? 0= if E-RESPONSE throw then ENDOF
@@ -3423,12 +3418,12 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ Replaces the finished input with the reply's window: its output items, in
 \ order, and no parts; the input is broken until the window is whole.
-: TAKE-WINDOW ( ^call -- )
-   {: c :}
+: TAKE-WINDOW ( JSON:value ^call -- )
+   {: items c :}
    construct input-state broken c MODEL-CALL:CHAT-INPUT !
    c EMPTY-INPUT
    \ ITEM-JOIN writes ITEMS-BUF, so the response text the items borrow stays.
-   c WINDOW-ITEMS [: JSON:TEXT$ c ITEM-JOIN ;] JSON:EACH
+   items [: JSON:TEXT$ c ITEM-JOIN ;] JSON:EACH
    c PART-OPEN
    construct input-state building c MODEL-CALL:CHAT-INPUT !
    c PART-FINISH ;
@@ -3437,10 +3432,12 @@ ENUM poll none fed spoiled done ;ENUM
 \ tier, then its window as the call's input.
 : ACCEPT-COMPACT ( ^call -- )
    {: c :}
-   c ACCEPT-USAGE
-   c ACCEPT-TIER
-   c CHECK-WINDOW
-   c TAKE-WINDOW
+   c RESPONSE$ JSON:PARSE {: v :}
+   v c ACCEPT-USAGE
+   v c ACCEPT-TIER
+   v WINDOW-ITEMS {: items :}
+   items CHECK-WINDOW
+   items c TAKE-WINDOW
    c TOKENS TOKENS-INPUT @ OR-ZERO c MODEL-CALL:INPUT-TOKENS !
    c TOKENS TOKENS-CACHED @ OR-ZERO c MODEL-CALL:CACHED-TOKENS ! ;
 
@@ -3534,7 +3531,7 @@ ENUM poll none fed spoiled done ;ENUM
       ENDOF
       embed OF
          c REPLAY-CONTENT$ nip 0<> if E-RESPONSE throw then
-         c PARSE-EMBED 2drop drop
+         c EMBED-REPLY c PARSE-EMBED {: usage :}
       ENDOF
       tally OF
          c REPLAY-CONTENT$ nip 0<> if E-RESPONSE throw then
