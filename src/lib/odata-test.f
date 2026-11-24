@@ -1,4 +1,3 @@
-split-str
 \ odata-test.f - ODATA over the hand-written documents and responses in
 \ test/fixtures/odata/: each model printed as one canonical text and compared
 \ with the expected text beside it; a V2 and a V4 page and record of the same
@@ -37,22 +36,22 @@ TYPED-VARIABLE WRITER JSON:writer
 TYPED-VARIABLE OUT ^VEC:vector<u8>   \ TEST-MAIN makes and deletes it
 TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
 
-: ADD ( ^u8 n -- )
-   {: text:^ len:n :}
-   text DESC DESC-LEN @ + len BYTE-COPY
-   len DESC-LEN +! ;
+: ADD ( str -- )
+   {: text:str :}
+   text STR:DATA DESC DESC-LEN @ + text STR:LEN BYTE-COPY
+   text STR:LEN DESC-LEN +! ;
 
 : NL ( -- ) s\" \n" ADD ;
-: DESC$ ( -- str ) DESC DESC-LEN @ ;
+: DESC$ ( -- str ) DESC DESC-LEN @ >str ;
 
 : SAP$ ( -- str ) s" http://www.sap.com/Protocols/SAPData" ;
 : COMMON$ ( -- str ) s" com.sap.vocabularies.Common.v1" ;
 : CORE$ ( -- str ) s" Org.OData.Core.V1" ;
 
 \ ` LABEL=text` when the annotation is there.
-: SHOW ( ^u8 n bool ^u8 n -- )
-   {: text:^ len:n has:bool label:^ ll:n :}
-   has if s"  " ADD label ll ADD s" =" ADD text len ADD then ;
+: SHOW ( str bool str -- )
+   {: text:str has:bool label:str :}
+   has if s"  " ADD label ADD s" =" ADD text ADD then ;
 
 : SHOW-PROPERTY ( ^ODATA:property -- )
    {: p:^ :}
@@ -93,18 +92,18 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
 
 \ `NAME none` for a name ENTITY-SET does not answer as a set.
 : SHOW-LOOKUP ( ^ODATA:metadata str -- )
-   {: m:^ name:^ len:n :}
-   name len ADD s"  " ADD
-   m name len ODATA:ENTITY-SET SHOW-TARGET NL ;
+   {: m:^ name:str :}
+   name ADD s"  " ADD
+   m name ODATA:ENTITY-SET SHOW-TARGET NL ;
 
-: READ ( ^u8 n ^u8 -- ^u8 n )
-   {: path:^ len:n dst:^ :}
-   path len dst CAP FS:READ-ALL {: got:n :}
-   dst got ;
+: READ ( str ^u8 -- str )
+   {: path:str dst:^ :}
+   path dst CAP FS:READ-ALL {: got:n :}
+   dst got >str ;
 
-: MODEL ( ^ARENA:arena ^u8 n -- ^ODATA:metadata )
-   {: a:^ path:^ len:n :}
-   a path len SRC READ ODATA:METADATA ;
+: MODEL ( ^ARENA:arena str -- ^ODATA:metadata )
+   {: a:^ path:str :}
+   a path SRC READ ODATA:METADATA ;
 
 : TEST-V2 ( -- )
    0 DESC-LEN !
@@ -128,12 +127,12 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
    a ARENA:RELEASE ;
 
 \ The sets of the document at XML, printed against the text at TXT.
-: DESCRIBES ( ^u8 n ^u8 n -- )
-   {: xml:^ xl:n txt:^ tl:n :}
+: DESCRIBES ( str str -- )
+   {: xml:str txt:str :}
    0 DESC-LEN !
    ARENA:NEW {: a:^ :}
-   a xml xl MODEL [: SHOW-SET ;] ODATA:EACH-ENTITY-SET
-   DESC$ txt tl WANT READ T$=
+   a xml MODEL [: SHOW-SET ;] ODATA:EACH-ENTITY-SET
+   DESC$ txt WANT READ T$=
    a ARENA:RELEASE ;
 
 : TEST-DERIVED ( -- )
@@ -162,19 +161,19 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
 
 \ The document SOURCE is rejected with CODE and TEXT.
 : SOURCE-REJECTS ( str str n -- )
-   {: src:^ sl:n text:^ tl:n code:n :}
+   {: src:str text:str code:n :}
    ARENA:NEW {: a:^ :}
-   [: a src sl ODATA:METADATA drop ;] code TTHROWSQ
-   code REASON:TEXT$ text tl T$=
+   [: a src ODATA:METADATA drop ;] code TTHROWSQ
+   code REASON:TEXT$ text T$=
    REASON:RELEASE
    a ARENA:RELEASE ;
 
 \ The document at PATH is rejected with CODE and TEXT.
 : REJECTS-CODE ( str str n -- )
-   {: path:^ len:n text:^ tl:n code:n :}
-   path len SRC READ text tl code SOURCE-REJECTS ;
+   {: path:str text:str code:n :}
+   path SRC READ text code SOURCE-REJECTS ;
 
-: REJECTS ( ^u8 n ^u8 n -- ) ODATA:E-METADATA REJECTS-CODE ;
+: REJECTS ( str str -- ) ODATA:E-METADATA REJECTS-CODE ;
 
 \ undeclared-type.xml's type name has a two-byte character over byte 32;
 \ long-names.xml's set name is 33 bytes and its type name 34.
@@ -400,7 +399,7 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
 : SET-TYPE ( ^ODATA:metadata str -- ^ODATA:entity-type )
    SET-NAMED ODATA:ENTITY-TYPE ;
 
-: BODY ( ^u8 n -- ^u8 n ) SRC READ ;
+: BODY ( str -- str ) SRC READ ;
 
 \ The records array of the page, its count and next link not read.
 : RECORDS ( ^ODATA:metadata JSON:value -- JSON:value )
@@ -426,11 +425,11 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
 \ A page of Customers: its count, its next link and its records written
 \ plain, against page.txt.
 : PAGE-OF ( str str -- )
-   {: xml:^ xl:n body:^ bl:n :}
+   {: xml:str body:str :}
    ARENA:NEW {: a:^ :}
-   a xml xl MODEL {: m:^ :}
+   a xml MODEL {: m:^ :}
    m s" Customers" SET-TYPE {: t:^ :}
-   m body bl BODY JSON:PARSE LINK @ ODATA:PAGE
+   m body BODY JSON:PARSE LINK @ ODATA:PAGE
    {: records total:option<n> :}
    total TOTAL 2 T=
    LINK @ VEC:SPAN SPAN:$
@@ -456,16 +455,16 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
 
 \ The record of the single-entity response BODY written plain as one of SET.
 : COPY-AS ( ^ODATA:metadata str str -- str )
-   {: m:^ set:^ sl:n body:^ bl:n :}
-   m set sl SET-TYPE {: t:^ :}
-   m body bl JSON:PARSE ODATA:RECORD
+   {: m:^ set:str body:str :}
+   m set SET-TYPE {: t:^ :}
+   m body JSON:PARSE ODATA:RECORD
    WRITER OUT @ JSON:OPEN t ODATA:COPY-ENTITY JSON:WRITTEN$ ;
 
 \ A record of Orders written plain, against record.txt.
 : RECORD-OF ( str str -- )
-   {: xml:^ xl:n body:^ bl:n :}
+   {: xml:str body:str :}
    ARENA:NEW {: a:^ :}
-   a xml xl MODEL s" Orders" body bl BODY COPY-AS
+   a xml MODEL s" Orders" body BODY COPY-AS
    s" test/fixtures/odata/record.txt" WANT READ T$=
    a ARENA:RELEASE ;
 
@@ -476,30 +475,30 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
 \ E-RESPONSE's text is WANT, then released, so a later case's plain throw
 \ cannot match it.
 : SAID ( str -- )
-   {: want:^ wl:n :}
-   ODATA:E-RESPONSE REASON:TEXT$ want wl T$=
+   {: want:str :}
+   ODATA:E-RESPONSE REASON:TEXT$ want T$=
    REASON:RELEASE ;
 
 : PAGE-REJECTS ( str str str -- )
-   {: xml:^ xl:n path:^ len:n want:^ wl:n :}
+   {: xml:str path:str want:str :}
    ARENA:NEW {: a:^ :}
-   a xml xl MODEL {: m:^ :}
-   [: m path len BODY JSON:PARSE RECORDS JSON:TEXT$ 2drop ;]
+   a xml MODEL {: m:^ :}
+   [: m path BODY JSON:PARSE RECORDS JSON:TEXT$ drop ;]
    ODATA:E-RESPONSE TTHROWSQ
-   want wl SAID
+   want SAID
    a ARENA:RELEASE ;
 
 \ PAGE takes the page of the set; COPY-ENTITY rejects one of its records,
 \ placed in the records array PAGE answers, parsed alone.
 : COPY-REJECTS ( str str str str -- )
-   {: xml:^ xl:n set:^ sl:n path:^ len:n want:^ wl:n :}
+   {: xml:str set:str path:str want:str :}
    ARENA:NEW {: a:^ :}
-   a xml xl MODEL {: m:^ :}
-   m set sl SET-TYPE {: t:^ :}
-   m path len BODY JSON:PARSE RECORDS {: records :}
-   [: t records JSON:TEXT$ JSON:PARSE PLAIN 2drop ;]
+   a xml MODEL {: m:^ :}
+   m set SET-TYPE {: t:^ :}
+   m path BODY JSON:PARSE RECORDS {: records :}
+   [: t records JSON:TEXT$ JSON:PARSE PLAIN drop ;]
    ODATA:E-RESPONSE TTHROWSQ
-   want wl SAID
+   want SAID
    a ARENA:RELEASE ;
 
 : V2$ ( -- str ) s" test/fixtures/odata/v2.xml" ;
@@ -530,7 +529,7 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
 : TEST-ENTITY-REJECTION ( -- )
    ARENA:NEW {: a:^ :}
    a V2$ MODEL s" Orders" SET-TYPE {: t:^ :}
-   [: t s" [1]" JSON:PARSE PLAIN 2drop ;]
+   [: t s" [1]" JSON:PARSE PLAIN drop ;]
    ODATA:E-RESPONSE TTHROWSQ
    s" 1:2: expected a record object, found `1`; write that kind of value here"
    SAID
@@ -592,7 +591,7 @@ TYPED-VARIABLE KEY-OUT ^VEC:vector<u8>
 PTR-VARIABLE VALUE-AT
 variable VALUE-LEN
 
-: VALUE$ ( -- str ) VALUE-AT @ VALUE-LEN @ ;
+: VALUE$ ( -- str ) VALUE-AT @ VALUE-LEN @ >str ;
 
 \ The key predicate KEY appends to KEY-OUT, emptied first.
 : KEY$ ( ^ODATA:entity-type [ ^ODATA:property -- str ] -- str )
@@ -603,16 +602,16 @@ variable VALUE-LEN
 
 \ The key predicate of the set's type when its one key's value is VALUE.
 : PREDICATE$ ( ^ODATA:metadata str str -- str )
-   VALUE-LEN ! VALUE-AT ! SET-TYPE [: drop VALUE$ ;] KEY$ ;
+   str> VALUE-LEN ! VALUE-AT ! SET-TYPE [: drop VALUE$ ;] KEY$ ;
 
-: WRITES ( ^ODATA:metadata ^u8 n ^u8 n ^u8 n -- )
-   {: m:^ set:^ sl:n v:^ vl:n want:^ wl:n :}
-   m set sl v vl PREDICATE$ want wl T$= ;
+: WRITES ( ^ODATA:metadata str str str -- )
+   {: m:^ set:str v:str want:str :}
+   m set v PREDICATE$ want T$= ;
 
 : REJECTS-KEY ( ^ODATA:metadata str str str -- )
-   {: m:^ set:^ sl:n v:^ vl:n want:^ wl:n :}
-   [: m set sl v vl PREDICATE$ 2drop ;] ODATA:E-KEY TTHROWSQ
-   ODATA:E-KEY REASON:TEXT$ want wl T$=
+   {: m:^ set:str s:str want:str :}
+   [: m set s PREDICATE$ drop ;] ODATA:E-KEY TTHROWSQ
+   ODATA:E-KEY REASON:TEXT$ want T$=
    REASON:RELEASE ;
 
 : V2-KEYS ( ^ODATA:metadata -- )

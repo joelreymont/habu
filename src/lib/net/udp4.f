@@ -1,4 +1,3 @@
-split-str
 \ udp4.f - Linux and Darwin IPv4 datagrams through exact, bounded libc
 \ bindings; no protocol, sequencing or retry policy. Calls must not nest within
 \ one task; close sockets before image capture: they are process resources.
@@ -145,30 +144,31 @@ FUNCTION: LOCAL-CALL getsockname ( n ^u8 ^u8 -- i32 ) ;FUNCTION
    ;MATCH ;
 
 
-: OCTET-LENGTH ( str -- n ) {: text size:n :}
-   0 begin dup size < while
-      dup text + c@ $2E = if exit then 1 +
+: OCTET-LENGTH ( str -- n ) {: text:str :}
+   0 begin dup text STR:LEN < while
+      dup text STR:DATA + c@ $2E = if exit then 1 +
    repeat ;
 
 
-: OCTET-VALUE ( str -- n ) {: text size:n :}
-   size 1 3 WITHIN-RANGE
-   size 1 > text c@ $30 = and if E-OPERAND throw then
-   0 size 0 do
-      text i + c@ $30 - dup 0 9 WITHIN-RANGE swap 10 * +
+: OCTET-VALUE ( str -- n ) {: text:str :}
+   text STR:LEN 1 3 WITHIN-RANGE
+   text STR:LEN 1 > text STR:DATA c@ $30 = and if E-OPERAND throw then
+   0 text STR:LEN 0 do
+      text STR:DATA i + c@ $30 - dup 0 9 WITHIN-RANGE swap 10 * +
    loop dup 0 $FF WITHIN-RANGE ;
 
 
-: OCTET ( str -- str n ) {: text size:n :}
-   text size OCTET-LENGTH {: length:n :}
-   text length + size length - text length OCTET-VALUE ;
+: OCTET ( str -- str n ) {: text:str :}
+   text OCTET-LENGTH {: length:n :}
+   text STR:DATA length + text STR:LEN length - >str
+   text STR:DATA length >str OCTET-VALUE ;
 
 
-: FOLLOWING-OCTET ( n str -- n str ) {: address:n text size:n :}
-   size 1 < if E-OPERAND throw then
-   text c@ $2E <> if E-OPERAND throw then
-   text $01 + size 1 - OCTET {: next remaining:n octet:n :}
-   address 8 lshift octet or next remaining ;
+: FOLLOWING-OCTET ( n str -- n str ) {: address:n text:str :}
+   text STR:LEN 1 < if E-OPERAND throw then
+   text STR:DATA c@ $2E <> if E-OPERAND throw then
+   text STR:DATA $01 + text STR:LEN 1 - >str OCTET {: next:str octet:n :}
+   address 8 lshift octet or next ;
 
 
 public
@@ -179,12 +179,12 @@ public
 
 
 \ Strict dotted decimal: four octets, no signs, padding, or leading zeros.
-: ADDRESS$ ( str -- address ) {: text size:n :}
-   size 7 15 WITHIN-RANGE
-   text size OCTET {: next remaining:n first:n :}
-   first next remaining FOLLOWING-OCTET FOLLOWING-OCTET FOLLOWING-OCTET
-   {: value:n tail rest:n :}
-   rest 0 <> if E-OPERAND throw then value >ADDRESS ;
+: ADDRESS$ ( str -- address ) {: text:str :}
+   text STR:LEN 7 15 WITHIN-RANGE
+   text OCTET {: next:str first:n :}
+   first next FOLLOWING-OCTET FOLLOWING-OCTET FOLLOWING-OCTET
+   {: value:n tail:str :}
+   tail STR:LEN 0 <> if E-OPERAND throw then value >ADDRESS ;
 
 
 : PORT ( n -- port )
@@ -198,7 +198,7 @@ public
 \ BIND returns an owned socket; the caller closes it exactly once.
 \ Address is a numeric IPv4 address (e.g. $7F000001); port zero asks the OS.
 : BIND ( address port -- open-result )
-   ENDPOINT! 2 SOCKADDR SOCKADDR-BYTES DATAGRAM:BIND >OPEN-RESULT ;
+   ENDPOINT! 2 SOCKADDR SOCKADDR-BYTES >str DATAGRAM:BIND >OPEN-RESULT ;
 
 
 : LOCAL ( socket -- endpoint-result ) {: socket:socket :}
@@ -210,9 +210,9 @@ public
 \ The input is borrowed for this call. SEND waits while the socket's send
 \ buffer is full; an interrupted send answers `failed`.
 : SEND ( socket address port str -- status )
-   {: socket:socket address:address port:port bytes size:n :}
+   {: socket:socket address:address port:port bytes:str :}
    address port ENDPOINT!
-   socket SOCKET>N SOCKADDR SOCKADDR-BYTES bytes size DATAGRAM:SEND >STATUS ;
+   socket SOCKET>N SOCKADDR SOCKADDR-BYTES >str bytes DATAGRAM:SEND >STATUS ;
 
 
 \ A packet may be empty. `truncated` carries the datagram's own length, with

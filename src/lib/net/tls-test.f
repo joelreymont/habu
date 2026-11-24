@@ -1,4 +1,3 @@
-split-str
 \ tls-test.f - TLS sessions against TEST-TLS-PEER's `openssl s_server -www`
 \ on a loopback port, with the certificates it makes: a trusted handshake
 \ carries GET / and its answer to the close; another host name and an
@@ -84,8 +83,8 @@ create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
    0 ;
 
 : SET-UP ( fd str str -- n n )
-   {: sock:fd host:^ hu:n file:^ fu:n :}
-   SESSION sock host hu file fu TEST-TLS-PEER:IN-DIR TLS:START
+   {: sock:fd host:str file:str :}
+   SESSION sock host file TEST-TLS-PEER:IN-DIR TLS:START
    >STEP ;
 
 \ The handshake to its end, waiting on the socket as it asks.
@@ -101,10 +100,10 @@ create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
 \ The span written whole; false once WRITE answers closed or failed. After a
 \ want answer the same span is written again, as WRITE requires.
 : PUT ( fd str -- bool )
-   {: sock:fd a:^ u:n :}
+   {: sock:fd s:str :}
    0
    begin {: sent:n :}
-      SESSION a sent + u sent - TLS:WRITE
+      SESSION s STR:DATA sent + s STR:LEN sent - >str TLS:WRITE
       MATCH TLS:tls-io
          moved OF LEN>N sent + ENDOF
          want-read OF sock FD:POLLIN AWAIT sent ENDOF
@@ -113,7 +112,7 @@ create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
          truncated OF false exit ENDOF
          failed OF drop false exit ENDOF
       ;MATCH
-      dup u >= if drop true exit then
+      dup s STR:LEN >= if drop true exit then
    again ;
 
 \ ANSWER filled until READ ends it: CLOSED, TRUNCATED or FAILED.
@@ -140,7 +139,7 @@ create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
    sock SHAKE 0 T= DONE T=
    sock S\" GET / HTTP/1.0\r\n\r\n" PUT TTRUE
    sock TAKE CLOSED T=
-   ANSWER ANSWER-U @ s" HTTP/1.0 200" STR:STARTS-WITH? TTRUE
+   ANSWER ANSWER-U @ >str s" HTTP/1.0 200" STR:STARTS-WITH? TTRUE
    sock HANG-UP ;
 
 : OTHER-HOST ( -- )
@@ -170,15 +169,15 @@ create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
 
 \ A trust path FS cannot spell, given as it is.
 : UNSPELLED ( str -- )
-   {: path:^ u:n :}
-   SESSION -1 >FD s" localhost" path u TLS:START >STEP
+   {: path:str :}
+   SESSION -1 >FD s" localhost" path TLS:START >STEP
    TEST-TLS-PEER:X509-FILE-IO T= DISTRUSTED T=
    SESSION TLS:STOP ;
 
 : BAD-PATHS ( -- )
    PATH-CAP 1 + 0 do [char] a LONG i + c! loop
    s" a trust path longer than PATH-CAP is distrusted at START" T-LABEL
-   LONG PATH-CAP 1 + UNSPELLED
+   LONG PATH-CAP 1 + >str UNSPELLED
    s" a trust path holding a 0 byte is distrusted at START" T-LABEL
    s\" ca\z.pem" UNSPELLED ;
 
@@ -217,7 +216,7 @@ create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
    {: from:TCP4:connection to:TCP4:connection :}
    from RELAYED RELAY-ROOM TCP4:TRANSFER-BYTES TCP4:TRY-READ
    MATCH TCP4:try-read-result
-      data OF BLEN>N to RELAYED rot TCP4:WRITE OK? ENDOF
+      data OF BLEN>N to RELAYED rot >str TCP4:WRITE OK? ENDOF
       closed OF drop false ENDOF
       empty OF true ENDOF
       failed OF drop false ENDOF

@@ -1,4 +1,3 @@
-split-str
 \ udp-test.f - unix datagram sockets bound in the pool's short HB_SOCK_TMP,
 \ else under TMPDIR, and abstract names.
 \
@@ -44,9 +43,9 @@ create NAME NAME-CAP allot   variable NAME-U
 variable SOCK-R
 variable SOCK-S
 
-: DIR$ ( -- str ) DIR DIR-U @ ;
-: PATH$ ( -- str ) PATH PATH-U @ ;
-: NAME$ ( -- str ) NAME NAME-U @ ;
+: DIR$ ( -- str ) DIR DIR-U @ >str ;
+: PATH$ ( -- str ) PATH PATH-U @ >str ;
+: NAME$ ( -- str ) NAME NAME-U @ >str ;
 
 
 \ ---- result inspectors -------------------------------------------------------
@@ -86,14 +85,15 @@ variable SOCK-S
 \ ---- the sockets the cases share ---------------------------------------------
 
 : PATH! ( str -- )
-   {: name:^ size:n :}
-   DIR$ name size PATH FS:JOIN-PATH PATH-U ! ;
+   {: name:str :}
+   DIR$ name PATH FS:JOIN-PATH PATH-U ! ;
 
 
 \ An abstract name of this process: the namespace is the host's.
 : NAME! ( -- )
    SB-RESET s" @habu-udp-" SB-APPEND getpid FMT:SB-INT
-   SB$ {: a:^ u:n :} a NAME u BYTE-COPY u NAME-U ! ;
+   SB$ {: s:str :}
+   s STR:DATA NAME s STR:LEN BYTE-COPY s STR:LEN NAME-U ! ;
 
 
 : BIND-RECEIVER ( str -- )
@@ -121,8 +121,8 @@ variable SOCK-S
    loop true ;
 
 
-: SEND-TO ( str -- ) {: name:^ size:n :}
-   SOCK-S @ UDP:>SOCKET name size SEND-BUF PAYLOAD-N UDP:SEND
+: SEND-TO ( str -- ) {: name:str :}
+   SOCK-S @ UDP:>SOCKET name SEND-BUF PAYLOAD-N >str UDP:SEND
    STATUS-ERRNO 0 T= ;
 
 
@@ -195,19 +195,19 @@ HB-TARGET-MACOS? [if]
 : T-LONG ( -- )
    s" a path longer than sun_path throws E-SPAN-CAPACITY" T-LABEL
    $61 LONG LONG-N SPAN:MAKE SPAN:FILL
-   LONG LONG-N PATH!
+   LONG LONG-N >str PATH!
    [: BIND-LONG ;] E-SPAN-CAPACITY TTHROWSQ ;
 
 
-: DIR! ( str -- ) {: a:^ u:n :}
-   a DIR u BYTE-COPY u DIR-U ! ;
+: DIR! ( str -- ) {: s:str :}
+   s STR:DATA DIR s STR:LEN BYTE-COPY s STR:LEN DIR-U ! ;
 
 
 \ A gate test's TMPDIR leaves sun_path no room; HB_SOCK_TMP is short.
 : SETUP ( -- )
    FS:CLEANUP-RESET
-   s" HB_SOCK_TMP" GETENV dup 0 > if DIR! exit then
-   2drop s" habu-udp" FS:MKTEMP-DIR DIR!
+   s" HB_SOCK_TMP" GETENV dup STR:LEN 0 > if DIR! exit then
+   drop s" habu-udp" FS:MKTEMP-DIR DIR!
    DIR$ FS:CLEANUP-TREE+ ;
 
 

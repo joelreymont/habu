@@ -1,4 +1,3 @@
-split-str
 \ ws.f - RFC 6455 WebSocket connections on the HTTP/1.1 server.
 \ ACCEPT takes a route handler's connection (HTTP:TAKE-OVER) for WS's one task,
 \ the only reader and writer of every socket, which waits on one AIO group: a
@@ -387,11 +386,11 @@ RUN-IDLE RUN !
    live idx OUT-U ! ;
 
 
-: QUEUE ( n str -- ) {: idx:n a u:n :}
+: QUEUE ( n str -- ) {: idx:n s:str :}
    idx QUEUED 0= if mono-ns idx SINCE ! then
-   idx u ROOM
-   a u idx OUT @ idx OUT-U @ SPAN:SKIP SPAN:COPY
-   u idx OUT-U +! ;
+   idx s STR:LEN ROOM
+   s idx OUT @ idx OUT-U @ SPAN:SKIP SPAN:COPY
+   s STR:LEN idx OUT-U +! ;
 
 
 : HEADER-OUT ( n opcode n -- ) {: idx:n op u:n :}
@@ -401,9 +400,9 @@ RUN-IDLE RUN !
    idx OUT-U +! ;
 
 
-: FRAME-OUT ( n opcode str -- ) {: idx:n op a u:n :}
-   idx op u HEADER-OUT
-   idx a u QUEUE ;
+: FRAME-OUT ( n opcode str -- ) {: idx:n op s:str :}
+   idx op s STR:LEN HEADER-OUT
+   idx s QUEUE ;
 
 
 : CLOSE-OUT ( n n -- ) {: idx:n code:n :}
@@ -442,19 +441,19 @@ RUN-IDLE RUN !
    phase PHASE-CLOSING = op CONTROL? and ;
 
 
-: SHIP ( n n str -- n ) {: h:n wire:n a u:n :}
+: SHIP ( n n str -- n ) {: h:n wire:n s:str :}
    h CURRENT? 0= if 0 exit then
    h >SLOT {: idx:n :}
    idx wire WIRE>OPCODE TAKES? 0= if 0 exit then
    idx OVERFLOW? if 0 exit then
-   idx wire WIRE>OPCODE a u FRAME-OUT
+   idx wire WIRE>OPCODE s FRAME-OUT
    1 ;
 
 
-: SEND ( n n str -- ) {: h:n wire:n a u:n :}
-   u 0 < if E-WS-LENGTH throw then
+: SEND ( n n str -- ) {: h:n wire:n s:str :}
+   s STR:LEN 0 < if E-WS-LENGTH throw then
    LOCK TASK:GET
-   h wire a u [: SHIP ;] [: UNLOCK ;] finally {: got:n :}
+   h wire s [: SHIP ;] [: UNLOCK ;] finally {: got:n :}
    POKE
    got 0= if E-WS-CLOSED throw then ;
 
@@ -833,7 +832,8 @@ RUN-IDLE RUN !
 
 \ The codec throws what breaks the protocol, so this runs under a catch.
 : DECODE-HELD ( n -- n ) {: idx:n :}
-   idx HEAD-BUF SPAN:$ drop idx HEAD-U @ WS-SENDER:CLIENT MESSAGE-MAX DECODE-HEADER
+   idx HEAD-BUF SPAN:$ STR:DATA idx HEAD-U @ >str
+   WS-SENDER:CLIENT MESSAGE-MAX DECODE-HEADER
    MATCH decoded
       need OF idx HEAD-WANT ! ENDOF
       frame OF idx KEEP-FRAME ENDOF
@@ -918,8 +918,8 @@ RUN-IDLE RUN !
 
 
 : DELIVER ( n -- ) {: idx:n :}
-   idx MESSAGE$ {: a u:n :}
-   idx MSG-WIRE @ TEXT? if a u WS-MESSAGE:TEXT else a u WS-MESSAGE:BINARY then {: msg :}
+   idx MESSAGE$ str>
+   idx MSG-WIRE @ TEXT? if WS-MESSAGE:TEXT else WS-MESSAGE:BINARY then {: msg :}
    0 idx MSG-U !
    0 idx MSG-WIRE !
    idx msg HAND-OFF ;
@@ -959,7 +959,7 @@ RUN-IDLE RUN !
    idx F-LEN @ {: u:n :}
    u 0= if STATUS-NONE exit then
    u CODE-BYTES < if STATUS-PROTOCOL exit then
-   idx CONTROL-BUF SPAN:$ drop CODE-BYTES BE@ {: code:n :}
+   idx CONTROL-BUF SPAN:$ STR:DATA CODE-BYTES >str BE@ {: code:n :}
    code WIRE-STATUS? 0= if STATUS-PROTOCOL exit then
    idx CONTROL-BUF CODE-BYTES u CODE-BYTES - SPAN:SUB SPAN:$ UTF8:VALID? 0= if STATUS-DATA exit then
    code ;
@@ -999,7 +999,7 @@ RUN-IDLE RUN !
 
 
 : INPUT ( n -- ) {: idx:n :}
-   idx LINK @ idx IN @ RX-CAP SPAN:TAKE SPAN:$ TCP4:TRANSFER-BYTES TCP4:TRY-READ
+   idx LINK @ idx IN @ RX-CAP SPAN:TAKE SPAN:$ str> TCP4:TRANSFER-BYTES TCP4:TRY-READ
    MATCH TCP4:try-read-result
       data OF BLEN>N idx IN-U ! 0 idx IN-AT ! idx HEARD-NOW idx PARSE ENDOF
       empty OF ENDOF
@@ -1265,21 +1265,21 @@ ENUM course
    code throw ;
 
 
-: SOLE ( HTTP:request str -- str bool ) {: asked:HTTP:request name nu:n :}
-   asked name nu HTTP:HEADER-COUNT-OF 1 <> if name 0 false exit then
-   asked name nu HTTP:HEADER-OF$ ;
+: SOLE ( HTTP:request str -- str bool ) {: asked:HTTP:request name:str :}
+   asked name HTTP:HEADER-COUNT-OF 1 <> if name STR:DATA 0 >str false exit then
+   asked name HTTP:HEADER-OF$ ;
 
 
 : LISTS? ( HTTP:request str str -- bool )
-   {: asked:HTTP:request name nu:n token tu:n :}
-   asked name nu SOLE {: va vu:n found:bool :}
+   {: asked:HTTP:request name:str token:str :}
+   asked name SOLE {: v:str found:bool :}
    found 0= if false exit then
-   va vu token tu HTTP:LIST-HAS? ;
+   v token HTTP:LIST-HAS? ;
 
 
 : DECODE-NONCE ( n -- n )
    {: w:n :}
-   w KEY-AT @ w KEY-U @ w NONCE-BUF BASE64:DECODE ;
+   w KEY-AT @ w KEY-U @ >str w NONCE-BUF BASE64:DECODE ;
 
 
 \ The key is the base64 of sixteen bytes (section 4.2.1), and is kept as it
@@ -1287,11 +1287,11 @@ ENUM course
 \ not this word's to answer.
 : KEY-OK? ( HTTP:request n -- bool )
    {: asked:HTTP:request w:n :}
-   asked s" sec-websocket-key" SOLE {: va vu:n found:bool :}
+   asked s" sec-websocket-key" SOLE {: v:str found:bool :}
    found 0= if false exit then
-   vu NONCE-CHARS <> if false exit then
-   va w KEY-AT !
-   vu w KEY-U !
+   v STR:LEN NONCE-CHARS <> if false exit then
+   v STR:DATA w KEY-AT !
+   v STR:LEN w KEY-U !
    w [: DECODE-NONCE ;] catch {: got code:n :}
    code 0= if got NONCE-BYTES = exit then
    code E-BASE64-FIRST > code E-BASE64-LAST < or if code throw then
@@ -1314,9 +1314,9 @@ ENUM course
    asked s" upgrade" s" websocket" LISTS? 0= if 400 exit then
    asked s" connection" s" upgrade" LISTS? 0= if 400 exit then
    asked w KEY-OK? 0= if 400 exit then
-   asked s" sec-websocket-version" SOLE {: va vu:n found:bool :}
+   asked s" sec-websocket-version" SOLE {: v:str found:bool :}
    found 0= if 426 exit then
-   va vu s" 13" STR:= 0= if 426 exit then
+   v s" 13" STR:= 0= if 426 exit then
    0 ;
 
 
@@ -1342,7 +1342,7 @@ ENUM course
 \ The accept value (section 4.2.2), behind the queue.
 : ACCEPT-VALUE ( n n -- ) {: idx:n w:n :}
    idx CTX-BUF SHA1:START
-   idx CTX-BUF w KEY-AT @ w KEY-U @ SHA1:FEED
+   idx CTX-BUF w KEY-AT @ w KEY-U @ >str SHA1:FEED
    idx CTX-BUF GUID$ SHA1:FEED
    idx CTX-BUF SHA1:FINISH idx DIGEST-BUF SHA1:DIGEST!
    idx ACCEPT-CHARS ROOM
@@ -1381,20 +1381,20 @@ ENUM course
    0 idx MSG-WIRE ! ;
 
 
-: FILL-INPUT ( n str -- n str ) {: idx:n early eu:n :}
-   RX-CAP eu max NEW-SPAN idx IN !
-   early eu idx IN @ SPAN:COPY
+: FILL-INPUT ( n str -- n str ) {: idx:n early:str :}
+   RX-CAP early STR:LEN max NEW-SPAN idx IN !
+   early idx IN @ SPAN:COPY
    0 idx IN-AT !
-   eu idx IN-U !
-   idx early eu ;
+   early STR:LEN idx IN-U !
+   idx early ;
 
 
 \ Under LOCK: the request's connection taken into the slot and the socket
 \ published to the task, open with the 101 queued. An input mapping that fails
 \ closes the connection before the throw goes on, so nothing holds it.
 : TAKE ( HTTP:request n -- HTTP:request n ) {: asked:HTTP:request idx:n :}
-   asked HTTP:TAKE-OVER {: conn:TCP4:connection early eu:n :}
-   idx early eu [: FILL-INPUT ;] catch {: code:n :} 2drop drop
+   asked HTTP:TAKE-OVER {: conn:TCP4:connection early:str :}
+   idx early [: FILL-INPUT ;] catch {: code:n :} drop drop
    code 0 <> if conn TCP4:CLOSE drop code throw then
    conn idx LINK !
    PHASE-OPEN idx PHASE !
@@ -1697,13 +1697,13 @@ public
 \ E-WS-CLOSED; a frame is never refused for its own size. A send on a socket
 \ closing, closed or gone is E-WS-CLOSED, and text that is not UTF-8 is
 \ E-WS-TEXT before anything is queued (section 5.6).
-: SEND-TEXT ( socket str -- ) {: sock a u:n :}
-   a u UTF8:VALID? 0= if E-WS-TEXT throw then
-   sock SOCKET>N WS-OPCODE:TEXT OPCODE>WIRE a u SEND ;
+: SEND-TEXT ( socket str -- ) {: sock s:str :}
+   s UTF8:VALID? 0= if E-WS-TEXT throw then
+   sock SOCKET>N WS-OPCODE:TEXT OPCODE>WIRE s SEND ;
 
 
-: SEND-BINARY ( socket str -- ) {: sock a u:n :}
-   sock SOCKET>N WS-OPCODE:BINARY OPCODE>WIRE a u SEND ;
+: SEND-BINARY ( socket str -- ) {: sock s:str :}
+   sock SOCKET>N WS-OPCODE:BINARY OPCODE>WIRE s SEND ;
 
 
 \ Starts the closing handshake under that status, from any task: the close

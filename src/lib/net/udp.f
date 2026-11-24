@@ -1,4 +1,3 @@
-split-str
 \ udp.f - unix-domain datagram sockets named by a path or, on Linux, an
 \ abstract name written @name. Linux and macOS. CLOSE does not remove a
 \ path's socket file.
@@ -70,21 +69,21 @@ SOCKADDR-BYTES TASK:+USERS ADDRESS-ROW u8
 
 
 \ A C string; the length counts its NUL.
-: PATH! ( str -- n ) {: name size:n :}
-   name size 0 PATH-SPAN FFI:CSTR drop size 3 + ;
+: PATH! ( str -- n ) {: name:str :}
+   name 0 PATH-SPAN FFI:CSTR drop name STR:LEN 3 + ;
 
 
 \ A NUL, then the name after its @, and no NUL that the length counts: Linux
 \ reads an abstract name, macOS answers ENOENT.
-: ABSTRACT! ( str -- n ) {: name size:n :}
-   name 1+ size 1- 1 PATH-SPAN SPAN:COPY
-   0 SOCKADDR 2 + c! size 2 + ;
+: ABSTRACT! ( str -- n ) {: name:str :}
+   name STR:DATA 1+ name STR:LEN 1- >str 1 PATH-SPAN SPAN:COPY
+   0 SOCKADDR 2 + c! name STR:LEN 2 + ;
 
 
-: NAME! ( str -- n ) {: name size:n :}
-   size 0= if 2 exit then
-   name c@ AT-SIGN = if name size ABSTRACT! exit then
-   name size PATH! ;
+: NAME! ( str -- n ) {: name:str :}
+   name STR:LEN 0= if 2 exit then
+   name STR:DATA c@ AT-SIGN = if name ABSTRACT! exit then
+   name PATH! ;
 
 
 \ Answers the address length; the empty name is the header alone.
@@ -127,15 +126,15 @@ public
 \ another socket file holds answers `failed` EADDRINUSE.
 : BIND ( str -- open-result )
    ADDRESS! {: length:n :}
-   AF-UNIX SOCKADDR length DATAGRAM:BIND >OPEN-RESULT ;
+   AF-UNIX SOCKADDR length >str DATAGRAM:BIND >OPEN-RESULT ;
 
 
 \ Sends the payload to the name. On Linux it waits while the receiver's
 \ queue is full; macOS answers `failed` ENOBUFS.
 : SEND ( socket str str -- status )
-   {: socket:socket name size:n bytes length:n :}
-   name size ADDRESS! {: addrlen:n :}
-   socket SOCKET>N SOCKADDR addrlen bytes length DATAGRAM:SEND >STATUS ;
+   {: socket:socket name:str bytes:str :}
+   name ADDRESS! {: addrlen:n :}
+   socket SOCKET>N SOCKADDR addrlen >str bytes DATAGRAM:SEND >STATUS ;
 
 
 \ `truncated` carries the datagram's own length. Timeout zero makes one try, a

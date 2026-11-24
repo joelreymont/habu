@@ -1,4 +1,3 @@
-split-str
 \ ws-frame-test.f - the RFC 6455 frame codec: section 5.7's examples byte for
 \ byte, every length form at its edges, round trips, short headers, refusals.
 \ Run: bin/hb --load src/lib/net/ws-frame-test.f
@@ -23,12 +22,12 @@ variable BOUND
 TYPED-VARIABLE WHO WS:sender
 
 : OUT$ ( n -- str )
-   OUT SPAN:$ drop swap ;
+   OUT SPAN:$ STR:DATA swap >str ;
 
-: HEX$ ( str -- str ) {: a u:n :}
-   HEX u 2 * SPAN:TAKE SPAN:$ {: h hu:n :}
-   u 0 ?do a i + c@ h i 2 * + BYTE>HEX loop
-   h hu ;
+: HEX$ ( str -- str ) {: s:str :}
+   HEX s STR:LEN 2 * SPAN:TAKE SPAN:$ {: h:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ h STR:DATA i 2 * + BYTE>HEX loop
+   h ;
 
 : NIBBLE ( n -- n ) {: c:n :}
    c [char] a >= if c [char] a - $0A + exit then
@@ -36,10 +35,11 @@ TYPED-VARIABLE WHO WS:sender
 
 \ A case's bytes are staged, with the sender and the bound, because a refusal
 \ runs in a quotation and a quotation sees no locals.
-: STAGE ( str WS:sender n -- ) {: a u:n who max:n :}
-   u 2 / {: k:n :}
+: STAGE ( str WS:sender n -- ) {: s:str who max:n :}
+   s STR:LEN 2 / {: k:n :}
    k 0 ?do
-      a i 2 * + c@ NIBBLE 4 lshift a i 2 * + 1+ c@ NIBBLE or $FF and
+      s STR:DATA i 2 * + c@ NIBBLE 4 lshift
+      s STR:DATA i 2 * + 1+ c@ NIBBLE or $FF and
       STAGED i SPAN:U8!
    loop
    k STAGED-LEN !
@@ -47,7 +47,7 @@ TYPED-VARIABLE WHO WS:sender
    max BOUND ! ;
 
 : STAGED$ ( -- str )
-   STAGED SPAN:$ drop STAGED-LEN @ ;
+   STAGED SPAN:$ STR:DATA STAGED-LEN @ >str ;
 
 : DECODE-STAGED ( -- WS:decoded )
    STAGED$ WHO @ BOUND @ WS:DECODE-HEADER ;
@@ -55,33 +55,33 @@ TYPED-VARIABLE WHO WS:sender
 : PUT ( WS:header WS:sender -- )
    OUT WS:ENCODE-HEADER drop ;
 
-: ENCODES ( WS:header WS:sender str -- ) {: h who want wu:n :}
-   want wu T-LABEL
-   h who OUT WS:ENCODE-HEADER OUT$ HEX$ want wu T$= ;
+: ENCODES ( WS:header WS:sender str -- ) {: h who want:str :}
+   want T-LABEL
+   h who OUT WS:ENCODE-HEADER OUT$ HEX$ want T$= ;
 
-: DECODES ( str WS:sender n n -- ) {: a u:n who max:n size:n :}
-   a u who max STAGE
-   a u T-LABEL
+: DECODES ( str WS:sender n n -- ) {: s:str who max:n size:n :}
+   s who max STAGE
+   s T-LABEL
    DECODE-STAGED MATCH WS:decoded
       need OF drop s" a need, not a frame" T-FAIL-AS ENDOF
       frame OF {: h got:n :}
          got size T=
-         a u T-LABEL
-         h who OUT WS:ENCODE-HEADER OUT$ HEX$ a size 2 * T$=
+         s T-LABEL
+         h who OUT WS:ENCODE-HEADER OUT$ HEX$ s STR:DATA size 2 * >str T$=
       ENDOF
    ;MATCH ;
 
-: NEEDS ( str WS:sender n -- ) {: a u:n who want:n :}
-   a u who LEN-MAX STAGE
-   a u T-LABEL
+: NEEDS ( str WS:sender n -- ) {: s:str who want:n :}
+   s who LEN-MAX STAGE
+   s T-LABEL
    DECODE-STAGED MATCH WS:decoded
       need OF want T= ENDOF
       frame OF drop drop s" a frame, not a need" T-FAIL-AS ENDOF
    ;MATCH ;
 
-: REFUSES ( str WS:sender n n -- ) {: a u:n who max:n code:n :}
-   a u who max STAGE
-   a u T-LABEL
+: REFUSES ( str WS:sender n n -- ) {: s:str who max:n code:n :}
+   s who max STAGE
+   s T-LABEL
    [: DECODE-STAGED drop ;] code TTHROWSQ ;
 
 : RFC-ENCODE ( -- )
@@ -109,10 +109,10 @@ TYPED-VARIABLE WHO WS:sender
    s" Hello" STAGED SPAN:COPY
    RFC-KEY STAGED 5 SPAN:TAKE WS:MASK
    s" Hello masked" T-LABEL
-   STAGED SPAN:$ drop 5 HEX$ s" 7f9f4d5158" T$=
+   STAGED SPAN:$ STR:DATA 5 >str HEX$ s" 7f9f4d5158" T$=
    RFC-KEY STAGED 5 SPAN:TAKE WS:MASK
    s" and masked again" T-LABEL
-   STAGED SPAN:$ drop 5 s" Hello" T$=
+   STAGED SPAN:$ STR:DATA 5 >str s" Hello" T$=
    s" a negative key" T-LABEL
    [: -1 STAGED WS:MASK ;] E-WS-MASK TTHROWSQ
    s" a key past 32 bits" T-LABEL
@@ -190,7 +190,7 @@ TYPED-VARIABLE WHO WS:sender
    s" 82ff" WS-SENDER:CLIENT 14 NEEDS
    s" 82ff0000000000010000" WS-SENDER:CLIENT 14 NEEDS
    s" a negative count" T-LABEL
-   [: 0 OUT$ drop -1 WS-SENDER:SERVER LEN-MAX WS:DECODE-HEADER drop ;]
+   [: 0 OUT$ STR:DATA -1 >str WS-SENDER:SERVER LEN-MAX WS:DECODE-HEADER drop ;]
    E-SPAN-LENGTH TTHROWSQ ;
 
 : RESERVED-OPCODE ( n -- ) {: b:n :}

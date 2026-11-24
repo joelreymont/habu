@@ -1,4 +1,3 @@
-split-str
 \ test-tls-peer.f - the TLS peer of the TLS and HTTPS tests, never a
 \ production one: `openssl s_server`, the test's own child on a loopback port,
 \ with certificates CERTS makes in the scratch directory SCRATCH makes under
@@ -51,20 +50,20 @@ variable SERVER-IN                      \ its stdin's write end; 0 while none
 variable SERVER-PORT
 
 
-: DIR$ ( -- str ) DIR DIR-U @ ;
+: DIR$ ( -- str ) DIR DIR-U @ >str ;
 
 public
 
 \ A file of the scratch directory, in SB's buffer.
 : IN-DIR ( str -- str )
-   {: a:^ u:n :}
-   SB-RESET DIR$ SB-APPEND s" /" SB-APPEND a u SB-APPEND SB$ ;
+   {: s:str :}
+   SB-RESET DIR$ SB-APPEND s" /" SB-APPEND s SB-APPEND SB$ ;
 
 \ The scratch directory, its name starting with the prefix.
 : SCRATCH ( str -- )
-   FS:MKTEMP-DIR {: a:^ u:n :}
-   a u DIR DIR-ROOM SPAN:MAKE SPAN:COPY
-   u DIR-U ! ;
+   FS:MKTEMP-DIR {: d:str :}
+   d DIR DIR-ROOM SPAN:MAKE SPAN:COPY
+   d STR:LEN DIR-U ! ;
 
 private
 
@@ -109,17 +108,19 @@ private
 
 \ The output after the ACCEPT line's prefix, empty until it is there.
 : TAIL$ ( -- str )
-   OUT OUT-U @ ACCEPT$ STR:FIND-SUB MATCH option
-      none OF OUT 0 ENDOF
-      some OF IDX>N ACCEPT$ nip + dup OUT + swap OUT-U @ swap - ENDOF
+   OUT OUT-U @ >str ACCEPT$ STR:FIND-SUB MATCH option
+      none OF OUT 0 >str ENDOF
+      some OF
+         IDX>N ACCEPT$ STR:LEN + dup OUT + swap OUT-U @ swap - >str
+      ENDOF
    ;MATCH ;
 
 \ The port's digits once their line has ended, else empty.
 : PORT$ ( -- str )
-   TAIL$ {: a:^ u:n :}
-   a u 10 STR:INDEX-OF MATCH option
-      none OF a 0 ENDOF
-      some OF IDX>N a swap ENDOF
+   TAIL$ {: t:str :}
+   t 10 STR:INDEX-OF MATCH option
+      none OF t STR:DATA 0 >str ENDOF
+      some OF IDX>N t STR:DATA swap >str ENDOF
    ;MATCH ;
 
 \ TLS 1.3 encrypts a record's type, so only on TLS 1.2 does a relay see
@@ -150,7 +151,7 @@ private
    w FD>N close
    r FD>N SERVER-OUT !
    0 OUT-U !
-   begin PORT$ nip 0= while READ-OUT repeat
+   begin PORT$ STR:LEN 0= while READ-OUT repeat
    PORT$ STR:PARSE-POS MATCH option
       none OF s" no port" T-FAIL-AS ENDOF
       some OF SERVER-PORT ! ENDOF
@@ -172,8 +173,8 @@ public
 
 \ The bytes to the server's stdin in one write, which a pipe keeps whole.
 : SCRIPTED ( str -- )
-   {: a:^ u:n :}
-   SERVER-IN @ >FD a u FD:WRITE-FULL ;
+   {: s:str :}
+   SERVER-IN @ >FD s FD:WRITE-FULL ;
 
 : PORT ( -- n ) SERVER-PORT @ ;
 
@@ -191,7 +192,7 @@ public
 \ handshake before any byte SCRIPTED gives that session, so a session that
 \ has answered is counted.
 : HANDSHAKES ( -- n )
-   DRAIN-OUT  OUT OUT-U @ s" CIPHER is" STR:COUNT-SUB ;
+   DRAIN-OUT  OUT OUT-U @ >str s" CIPHER is" STR:COUNT-SUB ;
 
 : UNSERVE ( -- )
    SERVER-PID @ 0= if exit then

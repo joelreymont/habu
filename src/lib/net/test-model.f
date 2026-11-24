@@ -1,4 +1,3 @@
-split-str
 \ test-model.f - a model server's replies for tests, never a production one:
 \ each public word answers one request on Habu's HTTP server as OpenAI's
 \ Responses API does. COMPLETED!, INCOMPLETE!, REFUSAL! and OUTPUT! answer a
@@ -39,10 +38,10 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 \ Opens the data of an event of the type numbered n, after its type and number.
 : EVENT-OPEN ( ^JSON:writer str n -- ^JSON:writer )
-   {: type:^ type-u:n seq:n :}
-   s" event: " JSON:WRITE-RAW type type-u JSON:WRITE-RAW
+   {: type:str seq:n :}
+   s" event: " JSON:WRITE-RAW type JSON:WRITE-RAW
    S\" \ndata: {" JSON:WRITE-RAW
-   s" type" type type-u JSON:WRITE-FIELD-S
+   s" type" type JSON:WRITE-FIELD-S
    S\" ,\qsequence_number\q:" JSON:WRITE-RAW seq JSON:WRITE-U ;
 
 
@@ -56,17 +55,17 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 
 : PENDING ( ^JSON:writer str -- ^JSON:writer )
-   {: status:^ status-u:n :}
+   {: status:str :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
-   s" status" status status-u JSON:WRITE-FIELD-S
+   s" status" status JSON:WRITE-FIELD-S
    S\" ,\qoutput\q:[]}" JSON:WRITE-RAW ;
 
 
 \ A reply object's members through its first output item, a reasoning item.
 : REPLY-HEAD ( ^JSON:writer str -- ^JSON:writer )
-   {: status:^ status-u:n :}
+   {: status:str :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
-   s" status" status status-u JSON:WRITE-FIELD-S
+   s" status" status JSON:WRITE-FIELD-S
    S\" ,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]}" JSON:WRITE-RAW ;
 
 
@@ -85,35 +84,35 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 
 : COMPLETED-REPLY ( ^JSON:writer str -- ^JSON:writer )
-   {: text:^ text-u:n :}
+   {: text:str :}
    s" completed" REPLY-HEAD MESSAGE-OPEN
    S\" \qtype\q:\qoutput_text\q," JSON:WRITE-RAW
-   s" text" text text-u JSON:WRITE-FIELD-S
+   s" text" text JSON:WRITE-FIELD-S
    S\" ,\qannotations\q:[]" JSON:WRITE-RAW
    MESSAGE-CLOSE ;
 
 
 : INCOMPLETE-REPLY ( ^JSON:writer str -- ^JSON:writer )
-   {: reason:^ reason-u:n :}
+   {: reason:str :}
    s" incomplete" REPLY-HEAD
    S\" ],\qincomplete_details\q:{" JSON:WRITE-RAW
-   s" reason" reason reason-u JSON:WRITE-FIELD-S
+   s" reason" reason JSON:WRITE-FIELD-S
    S\" },\qerror\q:null" JSON:WRITE-RAW USAGE
    s" }" JSON:WRITE-RAW ;
 
 
 : REFUSAL-REPLY ( ^JSON:writer str -- ^JSON:writer )
-   {: text:^ text-u:n :}
+   {: text:str :}
    s" completed" REPLY-HEAD MESSAGE-OPEN
    S\" \qtype\q:\qrefusal\q," JSON:WRITE-RAW
-   s" refusal" text text-u JSON:WRITE-FIELD-S
+   s" refusal" text JSON:WRITE-FIELD-S
    MESSAGE-CLOSE ;
 
 
 : OUTPUT-REPLY ( ^JSON:writer str -- ^JSON:writer )
-   {: items:^ items-u:n :}
+   {: items:str :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:" JSON:WRITE-RAW
-   items items-u JSON:WRITE-RAW
+   items JSON:WRITE-RAW
    S\" ,\qincomplete_details\q:null,\qerror\q:null" JSON:WRITE-RAW USAGE
    s" }" JSON:WRITE-RAW ;
 
@@ -133,9 +132,9 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 
 : STREAMED ( HTTP:response str [ ^JSON:writer str -- ^JSON:writer ] str -- )
-   {: answer:HTTP:response text:^ text-u:n body type:^ type-u:n :}
+   {: answer:HTTP:response text:str body type:str :}
    OPENED
-   type type-u 2 RESPONSE-OPEN text text-u body execute EVENT-CLOSE
+   type 2 RESPONSE-OPEN text body execute EVENT-CLOSE
    answer SENT ;
 
 public
@@ -184,11 +183,11 @@ public
 \ /responses/compact: one JSON object, no event stream, whose output is
 \ exactly the JSON array and whose usage is the terminal replies' own.
 : COMPACTION! ( HTTP:response str -- )
-   {: answer:HTTP:response items:^ items-u:n :}
+   {: answer:HTTP:response items:str :}
    READY
    SLOT WRITER ROW JSON:OPEN
    S\" {\qid\q:\qcmp_1\q,\qobject\q:\qresponse.compaction\q,\qcreated_at\q:0,\qoutput\q:" JSON:WRITE-RAW
-   items items-u JSON:WRITE-RAW USAGE s" }" JSON:WRITE-RAW
+   items JSON:WRITE-RAW USAGE s" }" JSON:WRITE-RAW
    JSON:CLOSE
    answer s" Content-Type" s" application/json" HTTP:HEADER!
    answer ROW$ HTTP:BODY! ;

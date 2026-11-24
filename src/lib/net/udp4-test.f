@@ -1,4 +1,3 @@
-split-str
 \ udp4-test.f - loopback datagrams.
 \
 \ Two sockets in one process talk over 127.0.0.1, so the suite needs no peer and
@@ -148,7 +147,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
 
 : SEND-PAYLOAD ( -- )
    SOCK-A @ UDP4:>SOCKET LOOPBACK UDP4:ADDRESS PORT-B @ UDP4:PORT
-   SEND-BUF PAYLOAD-N UDP4:SEND STATUS-ERRNO 0 T= ;
+   SEND-BUF PAYLOAD-N >str UDP4:SEND STATUS-ERRNO 0 T= ;
 
 
 : RECEIVE-B ( n n -- UDP4:receive-result ) {: capacity:n timeout:n :}
@@ -217,7 +216,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    s" a datagram past the largest payload answers failed with EMSGSIZE" T-LABEL
    OPEN-PAIR
    SOCK-A @ UDP4:>SOCKET LOOPBACK UDP4:ADDRESS PORT-B @ UDP4:PORT
-   OVERSIZE-BUF OVERSIZE-N UDP4:SEND STATUS-ERRNO EMSGSIZE T=
+   OVERSIZE-BUF OVERSIZE-N >str UDP4:SEND STATUS-ERRNO EMSGSIZE T=
    CLOSE-PAIR ;
 
 

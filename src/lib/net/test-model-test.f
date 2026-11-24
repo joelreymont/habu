@@ -1,4 +1,3 @@
-split-str
 \ test-model-test.f - MODEL:CHAT against a loopback HTTP server whose
 \ /responses routes answer through TEST-MODEL: a completed reply gives its text,
 \ JSON escapes included; an incomplete one MODEL:E-INCOMPLETE with its reason;
@@ -65,17 +64,17 @@ TASK:SEMAPHORE GO
 \ Every item holds KEY$.
 : STORE-READ ( str str ^VEC:vector<u8> -- bool )
    {: dest:^ :}
-   2drop 2drop
+   drop drop
    KEY$ dest VEC:APPEND
    true ;
 
 
 : STORE-WRITE ( str str str -- )
-   2drop 2drop 2drop SECRET:E-CONFIG throw ;
+   drop drop drop SECRET:E-CONFIG throw ;
 
 
 : STORE-ERASE ( str str -- bool )
-   2drop 2drop SECRET:E-CONFIG throw ;
+   drop drop SECRET:E-CONFIG throw ;
 
 
 : ROUTES ( -- )
@@ -90,11 +89,11 @@ TASK:SEMAPHORE GO
 
 
 : AT ( str -- )
-   {: path:^ pu:n :}
-   SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND
+   {: path:str :}
+   SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path SB-APPEND
    SB$ M MODEL:BASE-URL!
    M MODEL:PARTS-RESET
-   s" Reply." M MODEL:TEXT+ ;
+   s" Reply." str> M MODEL:TEXT+ ;
 
 
 : SETUP ( -- )
@@ -108,7 +107,7 @@ TASK:SEMAPHORE GO
 : COMPLETED ( -- )
    s" a completed reply gives its text" T-LABEL
    s" /completed" AT
-   M MODEL:CHAT TEXT$ T$=
+   M MODEL:CHAT >str TEXT$ T$=
    s" a completed reply's usage reaches the call" T-LABEL
    M MODEL:INPUT-TOKENS 11 T=
    M MODEL:CACHED-TOKENS 4 T= ;
@@ -118,7 +117,7 @@ TASK:SEMAPHORE GO
    s" an incomplete reply is E-INCOMPLETE with its reason" T-LABEL
    s" /incomplete" AT
    [: M MODEL:CHAT 2drop ;] MODEL:E-INCOMPLETE TTHROWSQ
-   M MODEL:INCOMPLETE-REASON$ REASON$ T$= ;
+   M MODEL:INCOMPLETE-REASON$ >str REASON$ T$= ;
 
 
 : CUT ( -- )
@@ -158,7 +157,7 @@ TASK:SEMAPHORE GO
 
 
 : RECORD ( n str -- n )
-   2drop drop
+   drop drop
    IN-REC TASK:SIGNAL-SEM
    GO TASK:WAIT-SEM
    TASK:PAUSE
