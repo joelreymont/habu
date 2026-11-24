@@ -1,4 +1,3 @@
-split-str
 \ engine-candidate.f - the validated engine binary nested tooling trusts and
 \ spawns: HABU_UNDER_TEST from the child-env default table a gate exports, then
 \ from the live environment, else the running program's own path, so a
@@ -24,31 +23,31 @@ PATH-CAP BUFFER: JOINED
 
 : RESOLVE$ ( -- str )
    NAME$ PROC-ENV-DEFAULT$? if exit then
-   2drop
-   NAME$ GETENV dup 0 > if exit then
-   2drop ENGINE-ID:OWN-PATH ;
+   drop
+   NAME$ GETENV dup STR:LEN 0 > if exit then
+   drop ENGINE-ID:OWN-PATH ;
 
 \ An empty override stays empty for VALIDATE$ to reject; joined, it would name
 \ the working directory.
-: ABSOLUTE$ ( str -- str ) {: a:^ u:n :}
-   u 0= if a u exit then
-   a c@ [char] / = if a u exit then
-   SOURCE-ROOT:CWD$ a u JOINED FS:JOIN-PATH {: ju:n :}
-   JOINED ju ;
+: ABSOLUTE$ ( str -- str ) {: s:str :}
+   s STR:LEN 0= if s exit then
+   s STR:DATA c@ [char] / = if s exit then
+   SOURCE-ROOT:CWD$ s JOINED FS:JOIN-PATH {: ju:n :}
+   JOINED ju >str ;
 
 \ The running engine is always executable, so a path that is not is the
 \ override's.
-: REJECT ( str -- ) {: a:^ u:n :}
+: REJECT ( str -- ) {: s:str :}
    s" E-ENGINE-NOT-EXECUTABLE" REJECTION:OPEN
    NAME$ REJECTION:EMIT-STR  s"  names `" REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR  s" `, which is not an executable file" REJECTION:EMIT-STR
+   s REJECTION:EMIT-STR  s" `, which is not an executable file" REJECTION:EMIT-STR
    REJECTION:HELP
    s" point " REJECTION:EMIT-STR  NAME$ REJECTION:EMIT-STR
    s"  at an executable hb, or unset it" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : VALIDATE$ ( str -- str )
-   2dup FS:EXECUTABLE? 0= if 2dup REJECT then ;
+   dup FS:EXECUTABLE? 0= if dup REJECT then ;
 
 public
 

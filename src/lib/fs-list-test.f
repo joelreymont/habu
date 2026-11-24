@@ -1,4 +1,3 @@
-split-str
 \ fs-list-test.f - focused tests for src/lib/fs-list.f.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/task.f src/lib/fs-list.f src/lib/fs-list-test.f
 
@@ -35,18 +34,18 @@ create FLT-MOVED-BUF PATH-CAP allot
 create FLT-DIRENT-TYPE-FIXTURE 24 allot
 
 : FLT-ROOT$ ( -- str )
-   FLT-ROOT-BUF FLT-ROOT-U @ ;
+   FLT-ROOT-BUF FLT-ROOT-U @ >str ;
 
 : FLT-ROOT! ( -- )
-   s" habu-fs-list" FS:MKTEMP-DIR {: a:^ u:n :}
-   a FLT-ROOT-BUF u BYTE-COPY
-   u FLT-ROOT-U ! ;
+   s" habu-fs-list" FS:MKTEMP-DIR {: made:str :}
+   made STR:DATA FLT-ROOT-BUF made STR:LEN BYTE-COPY
+   made STR:LEN FLT-ROOT-U ! ;
 
 : FLT-PATH ( str -- str )
-   FLT-ROOT$ 2swap FLT-PATH-BUF FS:JOIN-PATH FLT-PATH-BUF swap ;
+   FLT-ROOT$ swap FLT-PATH-BUF FS:JOIN-PATH FLT-PATH-BUF swap >str ;
 
 : FLT-COUNT ( str -- )
-   nip FLT-SEEN-BYTES +! 1 FLT-SEEN +! ;
+   STR:LEN FLT-SEEN-BYTES +! 1 FLT-SEEN +! ;
 
 : FLT-EACH ( -- )
    0 FLT-SEEN ! 0 FLT-SEEN-BYTES !
@@ -67,20 +66,20 @@ create FLT-DIRENT-TYPE-FIXTURE 24 allot
    FLT-SEEN-BYTES @ 13 T=
    FLT-ROOT$ FLT-NAMES 64 FS-LIST:NAMES {: n:n :}
    n 15 T=
-   FLT-NAMES 5 s" a.txt" T$=
+   FLT-NAMES 5 >str s" a.txt" T$=
    FLT-NAMES 5 + c@ 10 T=
-   FLT-NAMES 6 + 5 s" b.txt" T$=
+   FLT-NAMES 6 + 5 >str s" b.txt" T$=
    FLT-NAMES 11 + c@ 10 T=
-   FLT-NAMES 12 + 3 s" sub" T$= ;
+   FLT-NAMES 12 + 3 >str s" sub" T$= ;
 
 : FLT-TYPE-KIND ( u8 u8 -- ) {: got:u8 want:u8 :}
    got FS-LIST:DT-UNKNOWN = got want = or TTRUE ;
 
-: FLT-MANY-TYPE ( str u8 -- ) {: name:^ size:n kind:u8 :}
-   size 3 <> if E-FS-LIST-ENTRY throw then
-   name c@ [char] m <> if E-FS-LIST-ENTRY throw then
-   name 1 + c@ [char] A - {: hi:n :}
-   name 2 + c@ [char] A - {: lo:n :}
+: FLT-MANY-TYPE ( str u8 -- ) {: name:str kind:u8 :}
+   name STR:LEN 3 <> if E-FS-LIST-ENTRY throw then
+   name STR:DATA c@ [char] m <> if E-FS-LIST-ENTRY throw then
+   name STR:DATA 1 + c@ [char] A - {: hi:n :}
+   name STR:DATA 2 + c@ [char] A - {: lo:n :}
    hi 0 >= hi 10 < and lo 0 >= lo 16 < and and
       0= if E-FS-LIST-ENTRY throw then
    hi 16 * lo + {: idx:n :}
@@ -89,29 +88,29 @@ create FLT-DIRENT-TYPE-FIXTURE 24 allot
    1 FLT-TYPED-MANY +!
    kind FS-LIST:DT-REG FLT-TYPE-KIND ;
 
-: FLT-TYPE ( str u8 -- ) {: name:^ size:n kind:u8 :}
+: FLT-TYPE ( str u8 -- ) {: name:str kind:u8 :}
    1 FLT-TYPED-SEEN +!
-   name size s" a.txt" STR:= if
+   name s" a.txt" STR:= if
       1 FLT-TYPED-A +!
       kind FS-LIST:DT-REG FLT-TYPE-KIND exit
    then
-   name size s" b.txt" STR:= if
+   name s" b.txt" STR:= if
       1 FLT-TYPED-B +!
       kind FS-LIST:DT-REG FLT-TYPE-KIND exit
    then
-   name size s" sub" STR:= if
+   name s" sub" STR:= if
       1 FLT-TYPED-DIR +!
       kind FS-LIST:DT-DIR FLT-TYPE-KIND exit
    then
-   name size s" dangling" STR:= if
+   name s" dangling" STR:= if
       1 FLT-TYPED-LINK +!
       kind FS-LIST:DT-LNK FLT-TYPE-KIND exit
    then
-   name size FLT-LONG-NAME 240 STR:= if
+   name FLT-LONG-NAME 240 >str STR:= if
       1 FLT-TYPED-LONG +!
       kind FS-LIST:DT-REG FLT-TYPE-KIND exit
    then
-   name size kind FLT-MANY-TYPE ;
+   name kind FLT-MANY-TYPE ;
 
 : FLT-TYPED-RESET ( -- )
    0 FLT-TYPED-SEEN ! 0 FLT-TYPED-A ! 0 FLT-TYPED-B !
@@ -155,12 +154,12 @@ create FLT-DIRENT-TYPE-FIXTURE 24 allot
    [char] m FLT-MANY-NAME c!
    idx 16 / 65 + FLT-MANY-NAME 1 + c!
    idx 16 mod 65 + FLT-MANY-NAME 2 + c!
-   FLT-MANY-NAME 3 FLT-PATH ;
+   FLT-MANY-NAME 3 >str FLT-PATH ;
 
 : FLT-TEST-REFILL ( -- )
    160 0 do i FLT-MANY-PATH s" x" FS:WRITE-ALL loop
    240 0 do [char] q FLT-LONG-NAME i + c! loop
-   FLT-LONG-NAME 240 FLT-PATH s" x" FS:WRITE-ALL
+   FLT-LONG-NAME 240 >str FLT-PATH s" x" FS:WRITE-ALL
    FLT-TYPED
    FLT-CHECK-TYPED-REFILL ;
 
@@ -171,12 +170,12 @@ create FLT-DIRENT-TYPE-FIXTURE 24 allot
    FLT-CHECK-TYPED-REFILL ;
 
 : FLT-INNER-COUNT ( str u8 -- )
-   drop 2drop 1 FLT-INNER-SEEN +! ;
+   drop drop 1 FLT-INNER-SEEN +! ;
 
 \ The outer listing's first entry lists the whole directory again through
 \ the same descriptor, before the outer one reads its second block.
 : FLT-OUTER ( str u8 -- )
-   drop 2drop 1 FLT-OUTER-SEEN +!
+   drop drop 1 FLT-OUTER-SEEN +!
    FLT-OUTER-SEEN @ 1 <> if exit then
    FLT-AT-DIR @ >FD [: FLT-INNER-COUNT ;] FS-LIST:EACH-TYPED-AT ;
 
@@ -190,9 +189,9 @@ create FLT-DIRENT-TYPE-FIXTURE 24 allot
 : FLT-MOVED$ ( -- str )
    FLT-ROOT-U @ {: u:n :}
    FLT-ROOT-BUF FLT-MOVED-BUF u BYTE-COPY
-   s" -moved" {: tail:^ tailu:n :}
-   tail FLT-MOVED-BUF u + tailu BYTE-COPY
-   FLT-MOVED-BUF u tailu + ;
+   s" -moved" {: tail:str :}
+   tail STR:DATA FLT-MOVED-BUF u + tail STR:LEN BYTE-COPY
+   FLT-MOVED-BUF u tail STR:LEN + >str ;
 
 \ The root, renamed after the test opened it, lists whole through the
 \ descriptor; its old path is gone until it is renamed back.
@@ -218,12 +217,12 @@ create FLT-DIRENT-TYPE-FIXTURE 24 allot
    FS:ERRNO FS:EBADF T= ;
 
 : FLT-CHECK-LONG ( str -- )
-   2dup FLT-COUNT
-   dup 240 = if
-      FLT-LONG-NAME 240 T$=
+   dup FLT-COUNT
+   dup STR:LEN 240 = if
+      FLT-LONG-NAME 240 >str T$=
       1 FLT-LONG-SEEN +!
    else
-      2drop
+      drop
    then ;
 
 : FLT-TEST-LONG-REFILL ( -- )
@@ -266,7 +265,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    FLT-SEEN @ 3 T=
    FLT-SEEN-BYTES @ 13 T=
    s" the listing inside it saw every name" T-LABEL
-   FLT-INNER FLT-INNER-U @ s\" one\ntwo" T$= ;
+   FLT-INNER FLT-INNER-U @ >str s\" one\ntwo" T$= ;
 
 : FLT-NEST ( str -- )
    FLT-COUNT
@@ -319,7 +318,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    fd ;
 
 : FLT-THROW ( str -- )
-   2drop E-A-BOUNDS throw ;              \ no listing path raises the quotation's code
+   drop E-A-BOUNDS throw ;              \ no listing path raises the quotation's code
 
 : FLT-THROWING ( -- )
    FLT-ROOT$ [: FLT-THROW ;] FS-LIST:EACH ;

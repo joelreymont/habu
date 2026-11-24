@@ -1,4 +1,3 @@
-split-str
 \ diff-test.f - src/lib/diff.f's unified patches and three-way merges, byte
 \ for byte. Every expected text is what git 2.x writes for the same input
 \ (`git diff --no-index` without its index line, and `git merge-file -p --diff3
@@ -121,7 +120,7 @@ TYPED-VARIABLE WANT-VEC ^VEC:vector<u8>
 : TEST-IDENTICAL ( -- )
    s" identical texts write nothing" FRESH
    PATH NINE NINE OUT WRITE-EDIT
-   GOT$ nip 0 T= ;
+   GOT$ STR:LEN 0 T= ;
 
 
 : TEST-CRLF ( -- )

@@ -1,4 +1,3 @@
-split-str
 \ fmath-basis.f - exact binary64 basis scaling in `package FBASIS`: SCALE3 maps p
 \ to o + A diag(s) A^-1 (p-o) and rounds each coordinate once, to nearest even.
 \ The frame is twelve bit patterns by rows [a00 a01 a02 o0, ...], axes in the
@@ -352,10 +351,10 @@ $4000000 constant BASE
 
 : NO-OVERLAP? ( SPAN:span<cell> SPAN:span<cell> -- bool )
    {: frame work :}
-   frame SPAN:BYTES SPAN:$ {: fp:^ flen:n :}
-   work SPAN:BYTES SPAN:$ {: wp:^ wlen:n :}
-   fp NULL-PTR - wp NULL-PTR - {: fa:n wa:n :}
-   fa wa <= if wa fa - flen >= else fa wa - wlen >= then ;
+   frame SPAN:BYTES SPAN:$ {: f:str :}
+   work SPAN:BYTES SPAN:$ {: w:str :}
+   f STR:DATA NULL-PTR - w STR:DATA NULL-PTR - {: fa:n wa:n :}
+   fa wa <= if wa fa - f STR:LEN >= else fa wa - w STR:LEN >= then ;
 : FINITE-FRAME? ( ^cell -- bool )
    {: frame:^ :}
    true 12 0 ?do

@@ -1,4 +1,3 @@
-split-str
 require src/lib/string.f
 require src/lib/f64-text.f
 require src/lib/test.f
@@ -21,27 +20,27 @@ create OUTPUT MAX-BYTES allot
    ;MATCH ;
 : PARSE-BITS ( str -- n ) PARSE-OK F64>BITS ;
 
-: EXPECT ( n str -- ) {: bits:n expected:^ len:n :}
+: EXPECT ( n str -- ) {: bits:n expected:str :}
    bits BITS>F64 FORMAT-OK {: actual:n :}
-   OUTPUT actual expected len STR:= TTRUE
-   OUTPUT actual PARSE-OK F64>BITS bits T= ;
+   OUTPUT actual >str expected STR:= TTRUE
+   OUTPUT actual >str PARSE-OK F64>BITS bits T= ;
 
 \ In LONG: head, then count zeros, then tail.
 create LONG 8192 allot
 : PADDED ( str n str -- str )
-   {: head:^ head-len:n count:n tail:^ tail-len:n :}
-   head LONG head-len BYTE-COPY
-   count 0 ?do $30 LONG head-len i + + c! loop
-   tail LONG head-len count + + tail-len BYTE-COPY
-   LONG head-len count + tail-len + ;
+   {: head:str count:n tail:str :}
+   head STR:DATA LONG head STR:LEN BYTE-COPY
+   count 0 ?do $30 LONG head STR:LEN i + + c! loop
+   tail STR:DATA LONG head STR:LEN count + + tail STR:LEN BYTE-COPY
+   LONG head STR:LEN count + tail STR:LEN + >str ;
 
 \ In LONG: count nines, then tail.
-: NINES ( n str -- str ) {: count:n tail:^ tail-len:n :}
+: NINES ( n str -- str ) {: count:n tail:str :}
    count 0 ?do $39 LONG i + c! loop
-   tail LONG count + tail-len BYTE-COPY LONG count tail-len + ;
+   tail STR:DATA LONG count + tail STR:LEN BYTE-COPY LONG count tail STR:LEN + >str ;
 
 : ROUNDTRIP ( n -- ) {: bits:n :}
-   bits BITS>F64 FORMAT-OK OUTPUT swap PARSE-OK F64>BITS bits T= ;
+   bits BITS>F64 FORMAT-OK OUTPUT swap >str PARSE-OK F64>BITS bits T= ;
 
 : ERROR-CODE ( result<r,fault> -- n )
    MATCH result

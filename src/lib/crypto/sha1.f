@@ -1,4 +1,3 @@
-split-str
 \ sha1.f - SHA-1 (FIPS 180-4) for the WebSocket handshake, not for security:
 \ RFC 6455's Sec-WebSocket-Accept only proves a server read the client's key.
 \ Collisions are practical: authenticate, sign or name adversary bytes with the
@@ -42,7 +41,7 @@ $80 constant PAD-MARK            \ the one bit appended after the message
 $FFFFFFFF constant W32
 
 : CONTEXT ( SPAN:span<u8> -- ^u8 )
-   SPAN:$ CTX-BYTES < if E-SPAN-CAPACITY throw then ;
+   SPAN:$ dup STR:LEN CTX-BYTES < if E-SPAN-CAPACITY throw then STR:DATA ;
 
 : CHAIN ( ^u8 -- ^u8 )
    CHAIN-OFF + ;
@@ -119,16 +118,16 @@ $FFFFFFFF constant W32
    h3 d + W32 and  h4 e + W32 and
    SHA1-DIGEST:MAKE ;
 
-: ABSORB ( ^u8 str -- str ) {: ctx a u:n :}
+: ABSORB ( ^u8 str -- str ) {: ctx s:str :}
    ctx TOTAL@ {: total:n :}
    total BLOCK-BYTES 1- and {: used:n :}
-   BLOCK-BYTES used - u min {: take:n :}
-   a  ctx TAIL used +  take BYTE-COPY
+   BLOCK-BYTES used - s STR:LEN min {: take:n :}
+   s STR:DATA  ctx TAIL used +  take BYTE-COPY
    total take + ctx TOTAL!
    used take + BLOCK-BYTES = if
       ctx CHAIN LOAD ctx TAIL COMPRESS ctx CHAIN STORE
    then
-   a take +  u take - ;
+   s STR:DATA take +  s STR:LEN take - >str ;
 
 public
 
@@ -137,10 +136,10 @@ public
    IV ctx CHAIN STORE
    0 ctx TOTAL! ;
 
-: FEED ( SPAN:span<u8> str -- ) {: s a u:n :}
-   s CONTEXT {: ctx :}
-   u 0 < if E-SPAN-LENGTH throw then
-   a u begin dup 0 > while ctx -rot ABSORB repeat 2drop ;
+: FEED ( SPAN:span<u8> str -- ) {: sp s:str :}
+   sp CONTEXT {: ctx :}
+   s STR:LEN 0 < if E-SPAN-LENGTH throw then
+   s begin dup STR:LEN 0 > while ctx swap ABSORB repeat drop ;
 
 \ Section 5.1.1's padding, built in PAD from a copy of the tail: the mark bit,
 \ zeros, and the message length in bits in the last eight bytes, spilling into
@@ -163,10 +162,10 @@ public
    total 8 * pad LENGTH-OFF + BE64!
    pad COMPRESS ;
 
-: HASH ( SPAN:span<u8> str -- digest ) {: s a u:n :}
-   s START  s a u FEED  s FINISH ;
+: HASH ( SPAN:span<u8> str -- digest ) {: sp s:str :}
+   sp START  sp s FEED  sp FINISH ;
 
 : DIGEST! ( digest SPAN:span<u8> -- )
-   SPAN:$ DIGEST-BYTES < if E-SPAN-CAPACITY throw then STORE ;
+   SPAN:$ dup STR:LEN DIGEST-BYTES < if E-SPAN-CAPACITY throw then STR:DATA STORE ;
 
 ;package

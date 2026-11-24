@@ -1,4 +1,3 @@
-split-str
 \ date.f - Gregorian UTC dates, in `package DATE`, the one date module for the
 \ stdlib and the tool CLIs. PARSE-YMD accepts exactly YYYY-MM-DD.
 \ PARSE-HTTP accepts the three forms RFC 9110 section 5.6.7 makes a recipient
@@ -140,19 +139,19 @@ public
    loop OPTION:SOME ;
 
 : PARSE-YMD ( str -- option<n> )
-   {: a:^ u:n :}   \ SOME Unix epoch day, NONE on bad YYYY-MM-DD
-   u LEN <> IF OPTION:NONE exit THEN
-   a DATE-YEAR-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
-   a DATE-MONTH-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
-   a 0 DATE-YEAR-LEN N MATCH option
+   {: s:str :}   \ SOME Unix epoch day, NONE on bad YYYY-MM-DD
+   s STR:LEN LEN <> IF OPTION:NONE exit THEN
+   s STR:DATA DATE-YEAR-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
+   s STR:DATA DATE-MONTH-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
+   s STR:DATA 0 DATE-YEAR-LEN N MATCH option
      none OF OPTION:NONE ENDOF
      some OF
         {: y:n :}
-        a DATE-YEAR-DASH 1+ DATE-PART-LEN N MATCH option
+        s STR:DATA DATE-YEAR-DASH 1+ DATE-PART-LEN N MATCH option
           none OF OPTION:NONE ENDOF
           some OF
              {: m:n :}
-             a DATE-MONTH-DASH 1+ DATE-PART-LEN N MATCH option
+             s STR:DATA DATE-MONTH-DASH 1+ DATE-PART-LEN N MATCH option
                none OF OPTION:NONE ENDOF
                some OF
                   {: d:n :}
@@ -182,13 +181,13 @@ public
    m DATE-PART-LEN dst DATE-YEAR-DASH 1+ WIDTH!
    DATE-DASH dst DATE-MONTH-DASH + c!
    d DATE-PART-LEN dst DATE-MONTH-DASH 1+ WIDTH!
-   dst LEN ;
+   dst LEN >str ;
 
 : FORMAT-EPOCH-UTC ( n ^u8 n -- str )
    {: seconds:n dst:^ cap:n :}
    cap TIME-LEN < IF E-TIME-CAPACITY throw THEN
    seconds 0 < IF E-TIME-RANGE throw THEN
-   seconds SECONDS-DAY / dst cap FORMAT-YMD 2drop
+   seconds SECONDS-DAY / dst cap FORMAT-YMD drop
    seconds SECONDS-DAY mod {: rem:n :}
    DATE-T-CHAR dst DATE-T-POS + c!
    rem DATE-SECONDS-HOUR / DATE-PART-LEN dst DATE-HOUR-POS WIDTH!
@@ -199,7 +198,7 @@ public
    DATE-COLON dst DATE-MINUTE-COLON + c!
    second DATE-PART-LEN dst DATE-SECOND-POS WIDTH!
    DATE-Z-CHAR dst DATE-Z-POS + c!
-   dst TIME-LEN ;
+   dst TIME-LEN >str ;
 
 private
 3 constant DATE-NAME-LEN                \ a month or short day name
@@ -226,34 +225,34 @@ private
 : ASCTIME-TEMPLATE ( -- str ) s" ___ ___ __ __:__:__ ____" ;
 
 : TEMPLATE? ( str n str -- bool )
-   {: a:^ u:n k:n t:^ tu:n :}   \ t matches the text from byte k on
-   k 0 <  u k tu + <> or IF false exit THEN
-   tu 0 ?do
-      t i + c@ dup DATE-HOLE <>
-      swap a k + i + c@ <> and IF unloop false exit THEN
+   {: s:str k:n t:str :}   \ t matches the text from byte k on
+   k 0 <  s STR:LEN k t STR:LEN + <> or IF false exit THEN
+   t STR:LEN 0 ?do
+      t STR:DATA i + c@ dup DATE-HOLE <>
+      swap s STR:DATA k + i + c@ <> and IF unloop false exit THEN
    loop true ;
 
 : DAY-NAME= ( str bool str -- bool )
-   {: a:^ u:n short:bool name:^ len:n :}
-   short IF a u name DATE-NAME-LEN STR:= exit THEN
-   a u name len STR:= ;
+   {: s:str short:bool name:str :}
+   short IF s name STR:DATA DATE-NAME-LEN >str STR:= exit THEN
+   s name STR:= ;
 
 : DAY-NAME? ( str bool -- bool )
-   {: a:^ u:n short:bool :}   \ short: the name's first three bytes
-   a u short s" Monday" DAY-NAME=
-   a u short s" Tuesday" DAY-NAME= or
-   a u short s" Wednesday" DAY-NAME= or
-   a u short s" Thursday" DAY-NAME= or
-   a u short s" Friday" DAY-NAME= or
-   a u short s" Saturday" DAY-NAME= or
-   a u short s" Sunday" DAY-NAME= or ;
+   {: s:str short:bool :}   \ short: the name's first three bytes
+   s short s" Monday" DAY-NAME=
+   s short s" Tuesday" DAY-NAME= or
+   s short s" Wednesday" DAY-NAME= or
+   s short s" Thursday" DAY-NAME= or
+   s short s" Friday" DAY-NAME= or
+   s short s" Saturday" DAY-NAME= or
+   s short s" Sunday" DAY-NAME= or ;
 
 : MONTH-NAME ( ^u8 n -- option<n> )
    {: a:^ pos:n :}   \ SOME month 1..12 named at pos
-   s" JanFebMarAprMayJunJulAugSepOctNovDec" drop {: names:^ :}
+   s" JanFebMarAprMayJunJulAugSepOctNovDec" STR:DATA {: names:^ :}
    DATE-DEC 0 ?do
-      a pos + DATE-NAME-LEN
-      names i DATE-NAME-LEN * + DATE-NAME-LEN STR:=
+      a pos + DATE-NAME-LEN >str
+      names i DATE-NAME-LEN * + DATE-NAME-LEN >str STR:=
       IF i 1+ unloop OPTION:SOME exit THEN
    loop OPTION:NONE ;
 
@@ -339,13 +338,13 @@ private
 
 : IMF ( ^u8 -- option<n> )
    {: a:^ :}
-   a DATE-NAME-LEN true DAY-NAME? 0= IF OPTION:NONE exit THEN
+   a DATE-NAME-LEN >str true DAY-NAME? 0= IF OPTION:NONE exit THEN
    a DATE-NAME-LEN DATE-YEAR-LEN 0 [: 2drop 2drop ;] STAMP ;
 
 : RFC850 ( str n -- option<n> )
-   {: a:^ k:n now:n :}   \ k bytes of day name
-   a k false DAY-NAME? 0= IF OPTION:NONE exit THEN
-   a k DATE-PART-LEN now [: FULL-YEAR ;] STAMP ;
+   {: day:str now:n :}
+   day false DAY-NAME? 0= IF OPTION:NONE exit THEN
+   day STR:DATA day STR:LEN DATE-PART-LEN now [: FULL-YEAR ;] STAMP ;
 
 : ASCTIME-DAY ( ^u8 -- option<n> )
    {: a:^ :}   \ two digits, or a space and one
@@ -355,7 +354,7 @@ private
 
 : ASCTIME ( ^u8 -- option<n> )
    {: a:^ :}
-   a DATE-NAME-LEN true DAY-NAME? 0= IF OPTION:NONE exit THEN
+   a DATE-NAME-LEN >str true DAY-NAME? 0= IF OPTION:NONE exit THEN
    a DATE-ASCTIME-MONTH MONTH-NAME MATCH option
      none OF OPTION:NONE ENDOF
      some OF
@@ -382,11 +381,11 @@ private
 public
 
 : PARSE-HTTP ( str n -- option<n> )
-   {: a:^ u:n now:n :}   \ SOME epoch seconds; now serves RFC 850's year
-   a u 0 IMF-TEMPLATE TEMPLATE? IF a IMF exit THEN
-   a u 0 ASCTIME-TEMPLATE TEMPLATE? IF a ASCTIME exit THEN
-   u RFC850-TEMPLATE nip - {: k:n :}
-   a u k RFC850-TEMPLATE TEMPLATE? IF a k now RFC850 exit THEN
+   {: s:str now:n :}   \ SOME epoch seconds; now serves RFC 850's year
+   s 0 IMF-TEMPLATE TEMPLATE? IF s STR:DATA IMF exit THEN
+   s 0 ASCTIME-TEMPLATE TEMPLATE? IF s STR:DATA ASCTIME exit THEN
+   s STR:LEN RFC850-TEMPLATE STR:LEN - {: k:n :}
+   s k RFC850-TEMPLATE TEMPLATE? IF s STR:DATA k >str now RFC850 exit THEN
    OPTION:NONE ;
 
 ;package

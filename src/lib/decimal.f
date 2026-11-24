@@ -1,4 +1,3 @@
-split-str
 \ decimal.f - exact signed i64 conversion of decimal text (package DECIMAL),
 \ with no float or allocation. EXACT takes single interior underscores, an
 \ optional point with a digit on one side (`1.`, `.5`) and an optional signed
@@ -35,20 +34,20 @@ private
    a at + c@ ;
 
 : AT ( str n -- n )
-   {: a:^ u:n at:n :}
-   at u < if a at BYTE else 0 then ;
+   {: s:str at:n :}
+   at s STR:LEN < if s STR:DATA at BYTE else 0 then ;
 
 : SOURCE ( str -- )
-   {: a:^ u:n :}
-   u 0 < if E-SOURCE throw then
-   u 0 > a 0= and if E-SOURCE throw then ;
+   {: s:str :}
+   s STR:LEN 0 < if E-SOURCE throw then
+   s STR:LEN 0 > s STR:DATA 0= and if E-SOURCE throw then ;
 
 \ An invalid separator remains unconsumed.
 : DIGITS ( str n bool -- n n n n )
-   {: a:^ u:n start:n repeat?:bool :}
+   {: s:str start:n repeat?:bool :}
    start 0 0 0 begin
       {: at:n count:n leading:n trailing:n :}
-      a u at AT {: ch:n :}
+      s at AT {: ch:n :}
       ch DIGIT? if
          at 1+ count 1+
          ch ZERO = count leading = and if leading 1+ else leading then
@@ -56,10 +55,10 @@ private
       else
          ch SEP = count 0 > and if
             at 1+ begin
-               dup u < repeat? and if a over BYTE SEP = else false then
+               dup s STR:LEN < repeat? and if s STR:DATA over BYTE SEP = else false then
             while 1+ repeat
             {: pos:n :}
-            a u pos AT DIGIT? if
+            s pos AT DIGIT? if
                \ The digit is processed on the next turn.
                pos count leading trailing
             else
@@ -92,16 +91,16 @@ private
 \ An absent marker has zero exponent. A malformed marker remains unconsumed,
 \ so the caller's end-of-input check rejects it.
 : EXPONENT ( str n -- n n bool )
-   {: a:^ u:n start:n :}
-   a u start AT dup EXP-LOWER = swap EXP-UPPER = or 0= if
+   {: s:str start:n :}
+   s start AT dup EXP-LOWER = swap EXP-UPPER = or 0= if
       start 0 false exit
    then
    start 1+ {: after-e:n :}
-   a u after-e AT MINUS = {: negative?:bool :}
-   a u after-e AT dup MINUS = swap PLUS = or if after-e 1+ else after-e then {: digits-at:n :}
-   a u digits-at false DIGITS {: end:n count:n leading:n trailing:n :}
+   s after-e AT MINUS = {: negative?:bool :}
+   s after-e AT dup MINUS = swap PLUS = or if after-e 1+ else after-e then {: digits-at:n :}
+   s digits-at false DIGITS {: end:n count:n leading:n trailing:n :}
    count 0= if start 0 false exit then
-   a digits-at end u EXP-CAP EXP-MAGNITUDE {: magnitude:n :}
+   s STR:DATA digits-at end s STR:LEN EXP-CAP EXP-MAGNITUDE {: magnitude:n :}
    end magnitude negative? ;
 
 \ The negative accumulator admits i64 minimum without overflow.
@@ -149,31 +148,31 @@ private
    a start end leading wanted negative? ACCUM ;
 
 : CONVERT ( str bool -- option<i64> )
-   {: a:^ u:n integer?:bool :}
-   a u SOURCE
-   u 0= if OPTION:NONE exit then
-   a 0 BYTE MINUS = {: negative?:bool :}
-   a 0 BYTE dup MINUS = swap PLUS = or if 1 else 0 then {: start:n :}
-   a u start integer? DIGITS {: int-end:n int-count:n int-lead:n int-trail:n :}
+   {: s:str integer?:bool :}
+   s SOURCE
+   s STR:LEN 0= if OPTION:NONE exit then
+   s STR:DATA 0 BYTE MINUS = {: negative?:bool :}
+   s STR:DATA 0 BYTE dup MINUS = swap PLUS = or if 1 else 0 then {: start:n :}
+   s start integer? DIGITS {: int-end:n int-count:n int-lead:n int-trail:n :}
    integer? if
-      int-count 0= int-end u <> or if OPTION:NONE exit then
+      int-count 0= int-end s STR:LEN <> or if OPTION:NONE exit then
       int-count int-lead = if 0 >I64 OPTION:SOME exit then
-      a start int-end int-count int-count int-lead int-trail 0 false negative? VALUE exit
+      s STR:DATA start int-end int-count int-count int-lead int-trail 0 false negative? VALUE exit
    then
-   a u int-end AT DOT = if
-      a u int-end 1+ false DIGITS
+   s int-end AT DOT = if
+      s int-end 1+ false DIGITS
    else
       int-end 0 0 0
    then {: mant-end:n frac-count:n frac-lead:n frac-trail:n :}
    int-count frac-count + 0= if OPTION:NONE exit then
-   a u mant-end EXPONENT {: end:n magnitude:n exp-negative?:bool :}
-   end u <> if OPTION:NONE exit then
+   s mant-end EXPONENT {: end:n magnitude:n exp-negative?:bool :}
+   end s STR:LEN <> if OPTION:NONE exit then
    int-count int-lead = if int-count frac-lead + else int-lead then {: leading:n :}
    frac-count 0= if int-trail else
       frac-count frac-lead = if frac-count int-trail + else frac-trail then
    then {: trailing:n :}
    int-count frac-count + leading = if 0 >I64 OPTION:SOME exit then
-   a start mant-end int-count int-count frac-count + leading trailing magnitude exp-negative? negative? VALUE ;
+   s STR:DATA start mant-end int-count int-count frac-count + leading trailing magnitude exp-negative? negative? VALUE ;
 
 public
 

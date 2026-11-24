@@ -1,4 +1,3 @@
-split-str
 \ diff.f - package DIFF: a line diff of two byte texts, written in git's unified
 \ form for one path, and diff3's three-way merge of base, ours and theirs.
 \ A line ends at LF, and a last line without one is a line too: "x" and "x\n"
@@ -113,13 +112,13 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 
 : COUNT-LINES ( str -- n )
-   {: a u :}
-   0 u 0 ?do a i LINE-START? if 1+ then loop ;
+   {: s:str :}
+   0 s STR:LEN 0 ?do s STR:DATA i LINE-START? if 1+ then loop ;
 
 
 : >TEXT ( str -- text )
-   {: a u :}
-   a u a u COUNT-LINES TEXT-MAKE ;
+   {: s:str :}
+   s STR:DATA s STR:LEN s COUNT-LINES TEXT-MAKE ;
 
 : TEXT-LINES ( text -- n )  TEXT-UNMAKE nip nip ;
 : TEXT-LEN ( text -- n )  TEXT-UNMAKE drop nip ;
@@ -144,13 +143,13 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    {: w g :}
    w g START@ {: s :}
    w WORK-TEXT @ s +
-   w g 1+ START@ s - ;
+   w g 1+ START@ s - >str ;
 
 
 : ENDS-LF? ( str -- bool )
-   {: a u :}
-   u 0= if false exit then
-   a u 1- + c@ LF = ;
+   {: s:str :}
+   s STR:LEN 0= if false exit then
+   s STR:DATA s STR:LEN 1- + c@ LF = ;
 
 
 \ Copy t to text offset at, its first line numbered g; the next line and offset.
@@ -168,9 +167,9 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 : CLASS ( ^work n -- n )
    {: w g :}
-   w WORK-MAP @ w g LINE$ {: m a u :}
-   m a u MAP:GET MATCH option
-      none OF g m a u MAP:SET g ENDOF
+   w WORK-MAP @ w g LINE$ {: m line:str :}
+   m line MAP:GET MATCH option
+      none OF g m line MAP:SET g ENDOF
       some OF ENDOF
    ;MATCH ;
 
@@ -499,7 +498,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 : CUT ( SPAN:span<u8> n -- SPAN:span<u8> ^u8 )
    {: s u :}
-   s u SPAN:SKIP s u SPAN:TAKE SPAN:$ drop ;
+   s u SPAN:SKIP s u SPAN:TAKE SPAN:$ STR:DATA ;
 
 
 : OPEN ( ^u8 NUM:alloc-byte-len ^VEC:vector<u8> n -- SPAN:span<u8> ^work )
@@ -529,7 +528,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 \ The texts' bytes take the rest of the scratch; their lines follow in order.
 : LOAD-TEXTS ( SPAN:span<u8> ^work n -- )
    {: s w bytes :}
-   s bytes CUT w WORK-TEXT ! SPAN:$ 2drop ;
+   s bytes CUT w WORK-TEXT ! SPAN:$ drop ;
 
 
 : FINISH ( ^work n n -- )
@@ -539,8 +538,8 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 
 : OUT$ ( ^work str -- )
-   {: w a u :}
-   a u w WORK-OUT @ VEC:APPEND ;
+   {: w s:str :}
+   s w WORK-OUT @ VEC:APPEND ;
 
 
 : OUT-BYTE ( ^work n -- )
@@ -549,8 +548,8 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 
 : OUT-LINE ( ^work str -- )
-   {: w a u :}
-   w a u OUT$ w LF OUT-BYTE ;
+   {: w s:str :}
+   w s OUT$ w LF OUT-BYTE ;
 
 
 : OUT-U ( ^work n -- )
@@ -561,16 +560,16 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 : COPY-LINES ( ^work n n -- )
    {: w lo hi :}
-   w WORK-TEXT @ w lo START@ + w hi START@ w lo START@ - {: a u :}
-   w a u OUT$ ;
+   w WORK-TEXT @ w lo START@ + w hi START@ w lo START@ - >str {: line:str :}
+   w line OUT$ ;
 
 
 : OUT-MARKED ( ^work n n -- )
    {: w c g :}
    w c OUT-BYTE
-   w g LINE$ {: a u :}
-   w a u OUT$
-   a u ENDS-LF? if exit then
+   w g LINE$ {: line:str :}
+   w line OUT$
+   line ENDS-LF? if exit then
    w LF OUT-BYTE
    w s" \ No newline at end of file" OUT-LINE ;
 
@@ -592,7 +591,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 : FUNC? ( ^work n -- bool )
    {: w g :}
-   w g LINE$ drop c@ {: c :}
+   w g LINE$ STR:DATA c@ {: c :}
    c [char] _ = c [char] $ = or if true exit then
    c STR:ASCII-LOWER {: l :}
    l STR:BEFORE-LOWER-A > l STR:AFTER-LOWER-Z < and ;
@@ -613,8 +612,9 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 : OUT-FUNC ( ^work n -- )
    {: w g :}
    g NO-FUNC = if exit then
-   w g LINE$ FUNC-MAX min STR:RTRIM {: a u :}
-   w 32 OUT-BYTE w a u OUT$ ;
+   w g LINE$ {: line:str :}
+   line STR:DATA line STR:LEN FUNC-MAX min >str STR:RTRIM {: head:str :}
+   w 32 OUT-BYTE w head OUT$ ;
 
 
 : OUT-HUNK-HEAD ( ^work ^script n n n n n -- )
@@ -665,8 +665,8 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 \ past ASCII (core.quotePath), so no path byte can start a patch line.
 
 : ANY-BYTE? ( str [ n -- bool ] -- bool )
-   {: a u pred :}
-   u 0 ?do a i + c@ pred execute if true unloop exit then loop false ;
+   {: s:str pred :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ pred execute if true unloop exit then loop false ;
 
 
 : QUOTE-BYTE? ( n -- bool )
@@ -680,7 +680,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    {: w c :}
    c QUOTE-BYTE? 0= if w c OUT-BYTE exit then
    w [char] \ OUT-BYTE
-   c 7 < 0= c STR:CR > 0= and if w s" abtnvfr" drop c 7 - + c@ OUT-BYTE exit then
+   c 7 < 0= c STR:CR > 0= and if w s" abtnvfr" STR:DATA c 7 - + c@ OUT-BYTE exit then
    c [char] " = c [char] \ = or if w c OUT-BYTE exit then
    w c 6 rshift [char] 0 + OUT-BYTE
    w c 3 rshift 7 and [char] 0 + OUT-BYTE
@@ -689,30 +689,30 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 \ Prefix pre and path p as git names a side, quoted whole when p needs it.
 : OUT-NAME ( ^work str str -- )
-   {: w pre pu p u :}
-   p u [: QUOTE-BYTE? ;] ANY-BYTE? 0= if w pre pu OUT$ w p u OUT$ exit then
-   w [char] " OUT-BYTE w pre pu OUT$
-   u 0 ?do w p i + c@ OUT-QUOTED loop
+   {: w pre:str p:str :}
+   p [: QUOTE-BYTE? ;] ANY-BYTE? 0= if w pre OUT$ w p OUT$ exit then
+   w [char] " OUT-BYTE w pre OUT$
+   p STR:LEN 0 ?do w p STR:DATA i + c@ OUT-QUOTED loop
    w [char] " OUT-BYTE ;
 
 
 \ The rest of a `---` or `+++` line naming a side, which ends in a tab when the
 \ path holds a space.
 : OUT-SIDE ( ^work str str -- )
-   {: w pre pu p u :}
-   w pre pu p u OUT-NAME
-   p u [: STR:SPACE = ;] ANY-BYTE? if w STR:TAB OUT-BYTE then
+   {: w pre:str p:str :}
+   w pre p OUT-NAME
+   p [: STR:SPACE = ;] ANY-BYTE? if w STR:TAB OUT-BYTE then
    w LF OUT-BYTE ;
 
 
 : OUT-NAMES ( ^work str kind -- )
-   {: w p u k :}
+   {: w p:str k :}
    k MATCH kind
       edit OF
-         w s" --- " OUT$ w s" a/" p u OUT-SIDE w s" +++ " OUT$ w s" b/" p u OUT-SIDE
+         w s" --- " OUT$ w s" a/" p OUT-SIDE w s" +++ " OUT$ w s" b/" p OUT-SIDE
       ENDOF
-      add OF w s" --- /dev/null" OUT-LINE w s" +++ " OUT$ w s" b/" p u OUT-SIDE ENDOF
-      delete OF w s" --- " OUT$ w s" a/" p u OUT-SIDE w s" +++ /dev/null" OUT-LINE ENDOF
+      add OF w s" --- /dev/null" OUT-LINE w s" +++ " OUT$ w s" b/" p OUT-SIDE ENDOF
+      delete OF w s" --- " OUT$ w s" a/" p OUT-SIDE w s" +++ /dev/null" OUT-LINE ENDOF
    ;MATCH ;
 
 
@@ -724,13 +724,13 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 \ has its mode line, as git writes for a regular file, and like git no names
 \ when it is empty.
 : OUT-PATCH ( ^work ^script str kind -- )
-   {: w s p u k :}
+   {: w s p:str k :}
    s SCRIPT-COUNT @ 0= k EDIT? and if exit then
-   w s" diff --git " OUT$ w s" a/" p u OUT-NAME
-   w STR:SPACE OUT-BYTE w s" b/" p u OUT-NAME w LF OUT-BYTE
+   w s" diff --git " OUT$ w s" a/" p OUT-NAME
+   w STR:SPACE OUT-BYTE w s" b/" p OUT-NAME w LF OUT-BYTE
    w k OUT-MODE
    s SCRIPT-COUNT @ 0= if exit then
-   w p u k OUT-NAMES
+   w p k OUT-NAMES
    0 s SCRIPT-A0 @ NO-FUNC begin {: first lo fn :} first s SCRIPT-COUNT @ < while
       s first HUNK-END {: last :}
       w s first last lo fn OUT-HUNK {: a f :}
@@ -739,7 +739,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 
 : PATCH-BODY ( str text text kind ^VEC:vector<u8> ^u8 NUM:alloc-byte-len -- )
-   {: p u a b k out base size :}
+   {: p:str a b k out base size :}
    a TEXT-LINES {: la :}
    la b TEXT-LINES + {: lines :}
    base size out lines OPEN {: w :}
@@ -749,12 +749,12 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    w a 0 0 ADD-TEXT {: g at :}
    w b g at ADD-TEXT nip w swap lines FINISH
    w s RUN
-   w s p u k OUT-PATCH ;
+   w s p k OUT-PATCH ;
 
 
 : PATCH ( str text text kind ^VEC:vector<u8> -- )
-   {: p u a b k out :}
-   p u a b k out
+   {: p:str a b k out :}
+   p a b k out
    a TEXT-LINES b TEXT-LINES + a TEXT-LEN b TEXT-LEN + 1 SIZE
    [: PATCH-BODY ;] MEM:WITH-BYTES ;
 
@@ -809,9 +809,10 @@ STRUCTURE block
 
 : CRLF-LINE? ( ^work n -- bool )
    {: w g :}
-   w g LINE$ {: a u :}
-   u 2 < if false exit then
-   a u + 2 - c@ STR:CR = a u + 1- c@ LF = and ;
+   w g LINE$ {: line:str :}
+   line STR:LEN 2 < if false exit then
+   line STR:DATA line STR:LEN + {: end:^ :}
+   end 2 - c@ STR:CR = end 1- c@ LF = and ;
 
 : >EOL ( bool -- eol )  if construct eol crlf else construct eol lf then ;
 
@@ -858,8 +859,8 @@ STRUCTURE block
 
 \ A marker line and lines lo..hi-1, the last ended if it has no line end.
 : SECTION ( ^work str n n bool -- )
-   {: w a u lo hi crlf :}
-   w a u OUT$ w crlf OUT-EOL
+   {: w s:str lo hi crlf :}
+   w s OUT$ w crlf OUT-EOL
    w lo hi COPY-LINES
    lo hi = if exit then
    w hi 1- LINE$ ENDS-LF? if exit then
@@ -926,22 +927,22 @@ public
 \ their context touches; nothing when the texts have the same lines. P is
 \ quoted and hunk headers name a function line as git's are.
 : WRITE-EDIT ( str str str ^VEC:vector<u8> -- )
-   {: p u a au b bu out :}
-   p u a au >TEXT b bu >TEXT construct kind edit out PATCH ;
+   {: p:str a:str b:str out :}
+   p a >TEXT b >TEXT construct kind edit out PATCH ;
 
 
 \ The patch adding path P with this text: `new file mode 100644`, then
 \ `--- /dev/null` and one hunk, which an empty text leaves out.
 : WRITE-ADD ( str str ^VEC:vector<u8> -- )
-   {: p u b bu out :}
-   p u s" " >TEXT b bu >TEXT construct kind add out PATCH ;
+   {: p:str b:str out :}
+   p s" " >TEXT b >TEXT construct kind add out PATCH ;
 
 
 \ The patch deleting path P, whose text this was: `deleted file mode 100644`,
 \ then `+++ /dev/null` and one hunk, which an empty text leaves out.
 : WRITE-DELETE ( str str ^VEC:vector<u8> -- )
-   {: p u a au out :}
-   p u a au >TEXT s" " >TEXT construct kind delete out PATCH ;
+   {: p:str a:str out :}
+   p a >TEXT s" " >TEXT construct kind delete out PATCH ;
 
 
 \ Append the three-way merge of base, ours and theirs by line, by diff3's rules:
@@ -951,13 +952,13 @@ public
 \ conflict (`<<<<<<< ours`, `||||||| base`, `=======`, `>>>>>>> theirs`), every
 \ section ending in a line end, CR LF where git's merge writes one.
 : MERGE ( str str str ^VEC:vector<u8> -- bool )
-   {: a au b bu c cu out :}
-   a au >TEXT {: ta :}
-   b bu >TEXT {: tb :}
-   c cu >TEXT {: tc :}
+   {: a:str b:str c:str out :}
+   a >TEXT {: ta :}
+   b >TEXT {: tb :}
+   c >TEXT {: tc :}
    ta tb tc out
    ta TEXT-LINES tb TEXT-LINES + tc TEXT-LINES +
-   au bu + cu + 2 SIZE
+   a STR:LEN b STR:LEN + c STR:LEN + 2 SIZE
    [: MERGE-BODY ;] MEM:WITH-BYTES ;
 
 ;package

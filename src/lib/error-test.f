@@ -1,4 +1,3 @@
-split-str
 \ Run: bin/hb --load src/lib/error-test.f
 
 require src/lib/error.f
@@ -40,8 +39,8 @@ package PB
 
 : UNDECLARED-CASE ( -- )
    s" an undeclared code has an empty name and text" T-LABEL
-   UNDECLARED ERROR:NAME$ nip 0 T=
-   UNDECLARED ERROR:TEXT$ nip 0 T= ;
+   UNDECLARED ERROR:NAME$ STR:LEN 0 T=
+   UNDECLARED ERROR:TEXT$ STR:LEN 0 T= ;
 
 
 : MIN-CASE ( -- )
@@ -82,10 +81,10 @@ package PB
    UNDECLARED ERROR:FAULT? TFALSE ;
 
 
-\ The capture holds one record, whose head line is h hu and help line p pu.
-: ONE-RECORD ( str str -- ) {: h:^ hu:n p:^ pu:n :}
-   REJECTION:BUFFER$ h hu STR:CONTAINS? TTRUE
-   REJECTION:BUFFER$ p pu STR:CONTAINS? TTRUE
+\ The capture holds one record, whose head line is h and help line p.
+: ONE-RECORD ( str str -- ) {: h:str p:str :}
+   REJECTION:BUFFER$ h STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ p STR:CONTAINS? TTRUE
    REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
    REJECTION:BUFFER-OFF ;
 

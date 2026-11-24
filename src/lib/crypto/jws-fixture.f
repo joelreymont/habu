@@ -1,4 +1,3 @@
-split-str
 \ jws-fixture.f - the RSA key of RFC 7515 appendix A.2, for tests that sign
 \ or verify RS256: the public JWK members n and e as base64url text, as the RFC
 \ prints them, and the private components as an unencrypted PKCS#8 PEM.
@@ -16,15 +15,15 @@ PEM-CAP BUFFER: PEM-ROW
 variable PEM-U
 
 : MODULUS+ ( str -- )
-   {: a:^ u:n :}
-   a MODULUS-ROW MODULUS-U @ + u BYTE-COPY
-   MODULUS-U @ u + MODULUS-U ! ;
+   {: s:str :}
+   s STR:DATA MODULUS-ROW MODULUS-U @ + s STR:LEN BYTE-COPY
+   MODULUS-U @ s STR:LEN + MODULUS-U ! ;
 
 : PEM+ ( str -- )
-   {: a:^ u:n :}
-   a PEM-ROW PEM-U @ + u BYTE-COPY
-   10 PEM-ROW PEM-U @ u + + c!
-   PEM-U @ u + 1+ PEM-U ! ;
+   {: s:str :}
+   s STR:DATA PEM-ROW PEM-U @ + s STR:LEN BYTE-COPY
+   10 PEM-ROW PEM-U @ s STR:LEN + + c!
+   PEM-U @ s STR:LEN + 1+ PEM-U ! ;
 
 
 : FILL ( -- )
@@ -68,8 +67,8 @@ FILL
 
 public
 
-: MODULUS$ ( -- str ) MODULUS-ROW MODULUS-U @ ;
+: MODULUS$ ( -- str ) MODULUS-ROW MODULUS-U @ >str ;
 : EXPONENT$ ( -- str ) s" AQAB" ;
-: PEM$ ( -- str ) PEM-ROW PEM-U @ ;
+: PEM$ ( -- str ) PEM-ROW PEM-U @ >str ;
 
 ;package

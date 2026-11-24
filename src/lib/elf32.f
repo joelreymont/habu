@@ -1,4 +1,3 @@
-split-str
 \ elf32.f - bounded ELF32 little-endian header and program-segment reader, in
 \ `package ELF32`; it never allocates, loads code, reads sections or relocations
 \ or picks an ABI. The caller supplies the input's real readable extent;
@@ -76,20 +75,20 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    data $04 + c@ 1 <> data $05 + c@ 1 <> or if E-UNSUPPORTED throw then
    data $06 + c@ 1 <> data $14 + LE32@ 1 <> or if E-UNSUPPORTED throw then ;
 
-: CHECK-HEADER ( str -- ) {: data size:n :}
-   size 0 HEADER-BYTES CHECK-RANGE data CHECK-IDENT
-   data $28 + LE16@ dup HEADER-BYTES < if E-FORMAT throw then
-   size 0 rot CHECK-RANGE ;
+: CHECK-HEADER ( str -- ) {: data:str :}
+   data STR:LEN 0 HEADER-BYTES CHECK-RANGE data STR:DATA CHECK-IDENT
+   data STR:DATA $28 + LE16@ dup HEADER-BYTES < if E-FORMAT throw then
+   data STR:LEN 0 rot CHECK-RANGE ;
 
-: CHECK-TABLE ( str -- ) {: data size:n :}
-   data PH-COUNT dup $FFFF = if E-UNSUPPORTED throw then
+: CHECK-TABLE ( str -- ) {: data:str :}
+   data STR:DATA PH-COUNT dup $FFFF = if E-UNSUPPORTED throw then
    dup 0= if drop exit then
-   data PH-STRIDE dup PROGRAM-BYTES < if E-FORMAT throw then
-   * size data PH-OFFSET rot CHECK-RANGE
-   data PH-OFFSET 0= if E-FORMAT throw then ;
+   data STR:DATA PH-STRIDE dup PROGRAM-BYTES < if E-FORMAT throw then
+   * data STR:LEN data STR:DATA PH-OFFSET rot CHECK-RANGE
+   data STR:DATA PH-OFFSET 0= if E-FORMAT throw then ;
 
 : HEADER-CHECKED ( str -- )
-   2dup CHECK-HEADER CHECK-TABLE ;
+   dup CHECK-HEADER CHECK-TABLE ;
 
 : PROGRAM-ROW ( ^u8 n -- ^u8 ) {: data index:n :}
    data data PH-OFFSET + index data PH-STRIDE * + ;
@@ -113,8 +112,8 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    row LE32@ 1 = if row CHECK-LOAD-EXTENT row CHECK-LOAD-ALIGNMENT then ;
 
 : SEGMENT-SPAN ( ^u8 ^u8 -- str ) {: data row :}
-   row LE32@ 0= row $10 + LE32@ 0= or if data 0 exit then
-   data row $04 + LE32@ + row $10 + LE32@ ;
+   row LE32@ 0= row $10 + LE32@ 0= or if data 0 >str exit then
+   data row $04 + LE32@ + row $10 + LE32@ >str ;
 
 : MAKE-HEADER ( ^u8 -- header ) {: data :}
    data $10 + LE16@ >FILE-KIND data $12 + LE16@ >MACHINE-ID
@@ -131,15 +130,15 @@ CAST: N>BLEN ( n -- NUM:byte-len )
 public
 
 \ INFO validates the header and table bounds, not every segment or the sections.
-: INFO ( str -- header ) {: data size:n :}
-   data size HEADER-CHECKED data MAKE-HEADER ;
+: INFO ( str -- header ) {: data:str :}
+   data HEADER-CHECKED data STR:DATA MAKE-HEADER ;
 
 \ The result borrows bytes from the unchanged input until its caller is finished.
 : PROGRAM ( str program-index -- segment )
-   {: data size:n index:program-index :}
-   data size HEADER-CHECKED data index PROGRAM-INDEX>N CHECK-INDEX
-   data index PROGRAM-INDEX>N PROGRAM-ROW {: row :}
-   row size CHECK-ROW data row MAKE-SEGMENT ;
+   {: data:str index:program-index :}
+   data HEADER-CHECKED data STR:DATA index PROGRAM-INDEX>N CHECK-INDEX
+   data STR:DATA index PROGRAM-INDEX>N PROGRAM-ROW {: row :}
+   row data STR:LEN CHECK-ROW data STR:DATA row MAKE-SEGMENT ;
 
 \ Accepted: version 1, ELFCLASS32, ELFDATA2LSB, larger declared header and entry
 \ strides with valid bounds, no program entries; PN_XNUM is E-UNSUPPORTED. Every
@@ -148,8 +147,8 @@ public
 \ segment and PT_NULL answer an empty span at the input start. Physical
 \ addresses and unknown machine and segment ids pass through; ordering, dynamic
 \ linking, permissions, entry and machine flags are not checked.
-: VALIDATE ( str -- ) {: data size:n :}
-   data size HEADER-CHECKED
-   data PH-COUNT 0 ?do data i PROGRAM-ROW size CHECK-ROW loop ;
+: VALIDATE ( str -- ) {: data:str :}
+   data HEADER-CHECKED
+   data STR:DATA PH-COUNT 0 ?do data STR:DATA i PROGRAM-ROW data STR:LEN CHECK-ROW loop ;
 
 ;package

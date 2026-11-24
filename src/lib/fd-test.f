@@ -1,4 +1,3 @@
-split-str
 \ fd-test.f - close-on-exec pipes, exact reads and full writes over real pipes,
 \ a write with SIGPIPE held off, how far a tried write got, one write that never
 \ waits; a temp file cut back and appended to, a directory synced, and a temp
@@ -64,16 +63,16 @@ variable FILLED                   \ FILLER's descriptors still open
    ;MATCH ;
 
 : PATTERN! ( SPAN:span<u8> -- )
-   $ {: p:^ u:n :}
-   u 0 ?do i PATTERN-MOD mod p i + c! loop ;
+   $ {: s:str :}
+   s STR:LEN 0 ?do i PATTERN-MOD mod s STR:DATA i + c! loop ;
 
 : PATTERN? ( SPAN:span<u8> -- bool )
-   $ {: p:^ u:n :}
-   u 0 ?do p i + c@ i PATTERN-MOD mod <> if false unloop exit then loop
+   $ {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ i PATTERN-MOD mod <> if false unloop exit then loop
    true ;
 
 : CHILD-EXIT ( n -- )
-   s" " rot die ;
+   s" " swap die ;
 
 \ The rest of a forked child's life: its part runs under catch, and the exit
 \ code is PROCESS:EXIT-RC's for a throw, else the code the part chose.
@@ -126,7 +125,7 @@ variable FILLED                   \ FILLER's descriptors still open
    ERR-FD @ >FD s" broken" UNTIL-AT @ WRITE-FULL-UNTIL ;
 
 : UNTIL-NEGATIVE ( -- )
-   ERR-FD @ >FD s" x" drop -1 UNTIL-AT @ WRITE-FULL-UNTIL ;
+   ERR-FD @ >FD s" x" STR:DATA -1 >str UNTIL-AT @ WRITE-FULL-UNTIL ;
 
 : UNTIL-EXPIRED ( -- )
    ERR-FD @ >FD s" x" UNTIL-AT @ WRITE-FULL-UNTIL ;
@@ -140,7 +139,7 @@ variable FILLED                   \ FILLER's descriptors still open
    w s" abc" mono-ns 1000 1000000 * + WRITE-FULL-UNTIL
    w FD-FLAGS FD:O-NONBLOCK and FD:O-NONBLOCK T=
    r SMALL 3 TAKE READ-EXACT OUTCOME FULL-MARK T=
-   SMALL $ drop 3 s" abc" T$=
+   SMALL $ STR:DATA 3 >str s" abc" T$=
    w FD>N ERR-FD !
    mono-ns 1- UNTIL-AT !
    [: UNTIL-EXPIRED ;] E-FS-TIMEOUT TTHROWSQ
@@ -155,20 +154,20 @@ variable FILLED                   \ FILLER's descriptors still open
    ERR-FD @ >FD s" x" FD:TRY-WRITE drop ;
 
 : NONBLOCK-NEGATIVE ( -- )
-   ERR-FD @ >FD s" x" drop -1 FD:TRY-WRITE drop ;
+   ERR-FD @ >FD s" x" STR:DATA -1 >str FD:TRY-WRITE drop ;
 
 \ One write to a full non-blocking pipe answers 0 rather than waiting, and
 \ moves bytes again once the reader has taken what was there.
 : NONBLOCK-WRITE ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
    w NONBLOCK!
-   SRC @ $ {: src:^ u:n :}
-   w src u FD:TRY-WRITE {: k:n :}
+   SRC @ $ {: src:str :}
+   w src FD:TRY-WRITE {: k:n :}
    k 0 > TTRUE
-   k u < TTRUE
-   w src k + u k - FD:TRY-WRITE 0 T=
+   k src STR:LEN < TTRUE
+   w src STR:DATA k + src STR:LEN k - >str FD:TRY-WRITE 0 T=
    r DST @ k TAKE READ-EXACT OUTCOME FULL-MARK T=
-   w src k + u k - FD:TRY-WRITE 0 > TTRUE
+   w src STR:DATA k + src STR:LEN k - >str FD:TRY-WRITE 0 > TTRUE
    r FD>N close
    w FD>N ERR-FD !
    w [: [: NONBLOCK-BROKEN ;] E-FS-IO TTHROWSQ ;] WITH-NOSIGPIPE
@@ -250,7 +249,7 @@ variable FILLED                   \ FILLER's descriptors still open
    w FD>N s" abc" write 3 T=
    w FD>N close
    r SMALL 8 TAKE READ-EXACT OUTCOME 3 T=
-   SMALL $ drop 3 s" abc" T$=
+   SMALL $ STR:DATA 3 >str s" abc" T$=
    r SMALL READ-EXACT OUTCOME 0 T=
    r FD>N close ;
 
@@ -264,7 +263,7 @@ variable FILLED                   \ FILLER's descriptors still open
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if r FD>N close [: WRITER ;] IN-CHILD then
    w FD>N close
-   r FD>N DST @ $ read {: got:n :}
+   r FD>N DST @ $ dup STR:DATA swap STR:LEN read {: got:n :}
    got 0 > TTRUE
    got PAYLOAD < TTRUE
    r DST @ got SKIP READ-EXACT OUTCOME FULL-MARK T=
@@ -316,39 +315,39 @@ variable FILLED                   \ FILLER's descriptors still open
 \ An append descriptor writes the next part at the end RESIZE leaves, once the
 \ part written after the kept one is cut away.
 : CUT-THEN-APPEND ( -- )
-   s" fd-test" FS:MKTEMP {: pa:^ pu:n made:fd :}
+   s" fd-test" FS:MKTEMP {: path:str made:fd :}
    made FD>N close
-   pa pu FS:OPEN-APPEND-FD >FD {: f:fd :}
+   path FS:OPEN-APPEND-FD >FD {: f:fd :}
    f s" part-one" WRITE-FULL
    f s" partial" WRITE-FULL
    f 8 RESIZE
    f s" part-two" WRITE-FULL
    f SYNC
    f FD>N close
-   pa pu SMALL $ FS:READ-ALL 16 T=
+   path SMALL $ dup STR:DATA swap STR:LEN FS:READ-ALL 16 T=
    SMALL $ s" part-onepart-two" T$=
-   pa pu FS:REMOVE-FILE ;
+   path FS:REMOVE-FILE ;
 
 \ CHMOD's bits read back through the descriptor's stat, and a read after SEEK
 \ starts at the offset.
 : MODE-THEN-SEEK ( -- )
-   s" fd-test" FS:MKTEMP {: pa:^ pu:n f:fd :}
+   s" fd-test" FS:MKTEMP {: path:str f:fd :}
    f 416 MODE!                       \ 0640, where mkstemp made 0600
    f FS:FD-STAT
    FS:STAT-MODE@ $FFF and 416 T=
    f s" 0123456789" WRITE-FULL
    f 4 SEEK
    f SMALL READ-EXACT OUTCOME 6 T=
-   SMALL $ drop 6 s" 456789" T$=
+   SMALL $ STR:DATA 6 >str s" 456789" T$=
    f FD>N close
-   pa pu FS:REMOVE-FILE ;
+   path FS:REMOVE-FILE ;
 
 : DIR-SYNC ( -- )
-   s" fd-test" FS:MKTEMP-DIR {: pa:^ pu:n :}
-   pa pu FS:OPEN-DIR-READ {: d:n :}
+   s" fd-test" FS:MKTEMP-DIR {: path:str :}
+   path FS:OPEN-DIR-READ {: d:n :}
    d >FD SYNC
    d FS:CLOSE-FD 0 T=
-   pa pu FS:REMOVE-DIR ;
+   path FS:REMOVE-DIR ;
 
 : READ-CLOSED ( -- )
    ERR-FD @ >FD SMALL READ-EXACT OUTCOME drop ;
@@ -363,7 +362,7 @@ variable FILLED                   \ FILLER's descriptors still open
    ERR-FD @ >FD s" data" WRITE-FULL ;
 
 : WRITE-NEGATIVE ( -- )
-   ERR-FD @ >FD s" x" drop -1 WRITE-FULL ;
+   ERR-FD @ >FD s" x" STR:DATA -1 >str WRITE-FULL ;
 
 : RESIZE-PIPE ( -- )
    ERR-FD @ >FD 0 RESIZE ;
@@ -467,7 +466,7 @@ variable FILLED                   \ FILLER's descriptors still open
    d s" abc" WRITE-FULL
    d FD>N close
    r SMALL 8 TAKE READ-EXACT OUTCOME 3 T=
-   SMALL $ drop 3 s" abc" T$=
+   SMALL $ STR:DATA 3 >str s" abc" T$=
    r FD>N close ;
 
 : DUPLICATE-ERR ( -- )
@@ -543,7 +542,7 @@ variable FILLED                   \ FILLER's descriptors still open
    FD:PIPE-PAIR {: r:fd w:fd :}
    w s" abc" TRY-WRITE-FULL WROTE>N ALL-MARK T=
    r SMALL 3 TAKE READ-EXACT OUTCOME FULL-MARK T=
-   SMALL $ drop 3 s" abc" T$=
+   SMALL $ STR:DATA 3 >str s" abc" T$=
    w NONBLOCK!
    w SRC @ $ TRY-WRITE-FULL WROTE>N PART-MARK T=
    r 0 >MS PROCESS:POLL-IN COUNT>N 1 T=

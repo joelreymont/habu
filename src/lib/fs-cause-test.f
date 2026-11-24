@@ -1,4 +1,3 @@
-split-str
 \ fs-cause-test.f - real filesystem failures through the public FS load path.
 \ Run: bin/hb --load src/lib/fs-cause-test.f
 
@@ -29,12 +28,12 @@ variable BAD-CODE
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
-: ROOT$ ( -- str ) ROOT-BUF ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT-BUF ROOT-U @ >str ;
 : PATH ( str -- str )
-   ROOT$ 2swap PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
+   ROOT$ swap PATH-BUF FS:JOIN-PATH PATH-BUF swap >str ;
 : SETUP ( -- )
-   s" habu-fs-cause" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT-BUF u BYTE-COPY u ROOT-U !
+   s" habu-fs-cause" FS:MKTEMP-DIR {: made:str :}
+   made STR:DATA ROOT-BUF made STR:LEN BYTE-COPY made STR:LEN ROOT-U !
    LONG-U 0 do [char] x LONG-NAME i + c! loop
    s" file" PATH s" a" FS:WRITE-ALL
    s" dir" PATH FS:MAKE-DIR
@@ -43,17 +42,18 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 : MISSING ( -- ) s" missing" PATH READ-BUF 16 FS:READ-ALL drop ;
 : INTERMEDIATE ( -- ) s" file/child" PATH READ-BUF 16 FS:READ-ALL drop ;
 : LOOPED ( -- ) s" loop" PATH READ-BUF 16 FS:READ-ALL drop ;
-: TOO-LONG ( -- ) LONG-NAME LONG-U PATH READ-BUF 16 FS:READ-ALL drop ;
-: TOO-LONG-WRITE ( -- ) LONG-NAME LONG-U PATH s" a" FS:WRITE-ALL ;
+: TOO-LONG ( -- ) LONG-NAME LONG-U >str PATH READ-BUF 16 FS:READ-ALL drop ;
+: TOO-LONG-WRITE ( -- ) LONG-NAME LONG-U >str PATH s" a" FS:WRITE-ALL ;
 : NO-ROOM ( -- ) s" file" PATH READ-BUF 0 FS:READ-ALL drop ;
 : DENIED ( -- ) s" dir/child" PATH READ-BUF 16 FS:READ-ALL drop ;
-: BAD-PATH ( -- ) LONG-NAME PATH-CAP 1 + FS:>PATHZ drop ;
-: REGULAR-LIST ( -- ) s" file" PATH [: 2drop ;] FS-LIST:EACH ;
-: MISSING-LIST ( -- ) s" missing" PATH [: 2drop ;] FS-LIST:EACH ;
+: BAD-PATH ( -- ) LONG-NAME PATH-CAP 1 + >str FS:>PATHZ drop ;
+: IGNORE-ENTRY ( str -- ) drop ;
+: REGULAR-LIST ( -- ) s" file" PATH [: IGNORE-ENTRY ;] FS-LIST:EACH ;
+: MISSING-LIST ( -- ) s" missing" PATH [: IGNORE-ENTRY ;] FS-LIST:EACH ;
 : MISSING-STAT ( -- ) s" missing" PATH FS:STAT-MODE drop ;
 : MISSING-LSTAT ( -- ) s" missing" PATH FS:TRY-LSTAT drop ;
 : LINK-DIR ( -- ) ROOT$ s" link" PATH FS:MAKE-LINK ;
-: CALLBACK-FAIL ( str -- ) 2drop MISSING ;
+: CALLBACK-FAIL ( str -- ) drop MISSING ;
 : CALLBACK-LIST ( -- ) ROOT$ [: CALLBACK-FAIL ;] FS-LIST:EACH ;
 
 \ Both tasks hold a different failed open across the same barrier. Neither
@@ -130,9 +130,9 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    FS:ERRNO FS:ERRNO$ s" No such file or directory" T$=
    FS:ERRNO FS:ENOENT T=
    100000 FS:ERRNO$ s" Unknown error" STR:STARTS-WITH? TTRUE
-   FS:ENOENT FS:ERRNO$ drop {: a:^ :}
-   FS:EACCES FS:ERRNO$ {: v:n :} drop
-   a v s" Permission denied" T$= ;
+   FS:ENOENT FS:ERRNO$ STR:DATA {: a:^ :}
+   FS:EACCES FS:ERRNO$ STR:LEN {: v:n :}
+   a v >str s" Permission denied" T$= ;
 
 public
 : MAIN ( -- )

@@ -1,4 +1,3 @@
-split-str
 \ font.f - one selected font face and one LTR SVG glyph run through HarfBuzz
 \ 14.2+ (libharfbuzz and libharfbuzz-vector), in `package FONT`. FONT never
 \ searches for a font, replaces a missing glyph or splits a run. The font file
@@ -171,8 +170,8 @@ TASK:+USER H-SEEN n
    UNLOCK ident >IMAGE ;
 
 : OPEN-BLOB ( str n -- ^u8 )
-   {: data:^ size:n index:n :}
-   data size 0 NULL-PTR NULL-PTR BLOB-CREATE {: blob:^ :}
+   {: data:str index:n :}
+   data 0 NULL-PTR NULL-PTR BLOB-CREATE {: blob:^ :}
    blob NULL? if E-OPEN throw then
    blob index FACE-CREATE {: face:^ :}
    blob BLOB-DESTROY
@@ -210,8 +209,8 @@ TASK:+USER H-SEEN n
    selected visible ;
 
 : TEXT-STEP ( n n str n -- n n n )
-   {: script:n ink:n data:^ size:n cursor:n :}
-   data size cursor UTF8:NEXT MATCH UTF8:scalar-step
+   {: script:n ink:n data:str cursor:n :}
+   data cursor UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF {: codepoint:n next:n :}
          script ink codepoint SCRIPT-CHECK next
       ENDOF
@@ -219,12 +218,12 @@ TASK:+USER H-SEEN n
    ;MATCH ;
 
 : STEP-IN ( n n n str -- n n n )
-   {: script:n ink:n cursor:n data:^ size:n :}
-   script ink data size cursor TEXT-STEP ;
+   {: script:n ink:n cursor:n data:str :}
+   script ink data cursor TEXT-STEP ;
 
-: TEXT-CHECK ( str -- n ) {: data:^ size:n :}
-   size 0 < size MAX-TEXT > or if E-TEXT throw then
-   0 0 0 begin dup size < while data size STEP-IN repeat drop nip ;
+: TEXT-CHECK ( str -- n ) {: data:str :}
+   data STR:LEN 0 < data STR:LEN MAX-TEXT > or if E-TEXT throw then
+   0 0 0 begin dup data STR:LEN < while data STEP-IN repeat drop nip ;
 
 : BLOB-PRESENT? ( ^u8 -- bool )
    dup BLOB-LEN 0<> swap BLOB-DESTROY ;
@@ -262,9 +261,9 @@ TASK:+USER H-SEEN n
 : PATH-DELIM? ( n -- bool )
    dup PATH-SKIP? swap $22 = or ;
 : TOKEN-END ( str n -- n )
-   {: svg:^ size:n start:n :}
-   start begin dup size < while
-      svg over + c@ PATH-DELIM? if exit then
+   {: svg:str start:n :}
+   start begin dup svg STR:LEN < while
+      svg STR:DATA over + c@ PATH-DELIM? if exit then
       1+
    repeat E-RENDER throw ;
 : PATH-NUMBER ( str -- r )
@@ -273,36 +272,36 @@ TASK:+USER H-SEEN n
       err OF drop E-RENDER throw ENDOF
    ;MATCH ;
 : SCAN-NUMBER ( str n -- n )
-   {: svg:^ size:n start:n :}
-   svg size start TOKEN-END {: stop:n :}
+   {: svg:str start:n :}
+   svg start TOKEN-END {: stop:n :}
    stop start = if E-RENDER throw then
-   svg start + stop start - PATH-NUMBER HULL-VALUE
+   svg STR:DATA start + stop start - >str PATH-NUMBER HULL-VALUE
    stop ;
 : SCAN-PATH ( str n -- n )
-   {: svg:^ size:n start:n :}
-   start begin dup size < while
-      svg over + c@ dup $22 = if
+   {: svg:str start:n :}
+   start begin dup svg STR:LEN < while
+      svg STR:DATA over + c@ dup $22 = if
          drop H-PAIR @ 0<> if E-RENDER throw then
          1+ exit
       then
       dup PATH-SKIP? if drop 1+ else
-         drop svg size rot SCAN-NUMBER
+         drop svg swap SCAN-NUMBER
       then
    repeat E-RENDER throw ;
 : FIND-PATH-AT ( str n -- n )
-   {: svg:^ size:n start:n :}
-   svg start + size start - s" <path d=" STR:FIND-SUB MATCH option
+   {: svg:str start:n :}
+   svg STR:DATA start + svg STR:LEN start - >str s" <path d=" STR:FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N start + ENDOF
    ;MATCH ;
-: SCAN-SVG ( str -- ) {: svg:^ size:n :}
+: SCAN-SVG ( str -- ) {: svg:str :}
    HULL-RESET
-   0 begin dup size < while
-      dup svg size rot FIND-PATH-AT dup 0< if 2drop exit then
+   0 begin dup svg STR:LEN < while
+      dup svg swap FIND-PATH-AT dup 0< if 2drop exit then
       nip
-      dup 8 + size >= if E-RENDER throw then
-      svg over 8 + + c@ $22 <> if E-RENDER throw then
-      9 + svg size rot SCAN-PATH
+      dup 8 + svg STR:LEN >= if E-RENDER throw then
+      svg STR:DATA over 8 + + c@ $22 <> if E-RENDER throw then
+      9 + svg swap SCAN-PATH
    repeat drop ;
 
 : GLYPH-STEP ( ^u8 ^u8 ^u8 ^u8 n n -- n n )
@@ -392,7 +391,7 @@ TASK:+USER H-SEEN n
    \ The first render contains the exact decimal path coordinates. Rendering
    \ clears the draw context, so the shaped run is drawn once more below.
    draw DRAW-RENDER dup NULL? if E-RENDER throw then BLOB-CELL !
-   BLOB-CELL @ NULL-PTR BLOB-DATA BLOB-CELL @ BLOB-LEN SCAN-SVG
+   BLOB-CELL @ NULL-PTR BLOB-DATA BLOB-CELL @ BLOB-LEN >str SCAN-SVG
    BLOB-CELL @ BLOB-DESTROY NULL-PTR BLOB-CELL !
    HULL-EDGES {: hx:n hy:n hr:n hb:n :}
 
@@ -411,9 +410,9 @@ TASK:+USER H-SEEN n
    x0 s>f y1 negate s>f x1 x0 - s>f y1 y0 - s>f ;
 
 : DRAW-RUN ( ^u8 ^u8 ^u8 str n n -- ^u8 r r r r )
-   {: font:^ buf:^ draw:^ data:^ size:n em:n ink:n :}
+   {: font:^ buf:^ draw:^ data:str em:n ink:n :}
    font em 64 * dup FONT-SCALE
-   buf data size 0 size BUF-ADD
+   buf data 0 data STR:LEN BUF-ADD
    buf BUF-GUESS
    buf BUF-DIRECTION 4 <> if E-TEXT throw then
    font buf NULL-PTR 0 SHAPE
@@ -434,11 +433,11 @@ TASK:+USER H-SEEN n
    CLEAR-STATE ;
 
 : RENDER-BODY ( str n n -- image )
-   {: data:^ size:n em:n ink:n :}
+   {: data:str em:n ink:n :}
    REF-CELL @ FONT-CREATE dup NULL? if E-RENDER throw then FONT-CELL !
    BUF-CREATE dup NULL? if E-RENDER throw then BUF-CELL !
    SVG-FORMAT DRAW-CREATE dup NULL? if E-RENDER throw then DRAW-CELL !
-   FONT-CELL @ BUF-CELL @ DRAW-CELL @ data size em ink DRAW-RUN
+   FONT-CELL @ BUF-CELL @ DRAW-CELL @ data em ink DRAW-RUN
    {: blob:^ x:r y:r w:r h:r :}
    blob NULL? if E-RENDER throw then
    blob BLOB-CELL !
@@ -446,10 +445,10 @@ TASK:+USER H-SEEN n
    NULL-PTR BLOB-CELL ! ;
 
 : RENDER-REF ( ^u8 str n n -- image )
-   {: face:^ data:^ size:n em:n ink:n :}
+   {: face:^ data:str em:n ink:n :}
    CLEAR-STATE
    face REF-CELL !
-   data size em ink [: RENDER-BODY ;] [: RELEASE-STATE ;] finally ;
+   data em ink [: RENDER-BODY ;] [: RELEASE-STATE ;] finally ;
 
 : NODE-BOUNDS ( ^n -- r r r r ) {: node:^ :}
    node BX @ IEEE754:BITS>F64
@@ -461,10 +460,10 @@ public
 
 \ OPEN copies the font bytes, so the caller may release its input on return.
 : OPEN ( str n -- font )
-   {: data:^ size:n index:n :}
-   size 0 <= size MAX-FONT > or if E-OPEN throw then
+   {: data:str index:n :}
+   data STR:LEN 0 <= data STR:LEN MAX-FONT > or if E-OPEN throw then
    index 0 < index MAX-FONT > or if E-OPEN throw then
-   data size index OPEN-BLOB OPEN-CELL !
+   data index OPEN-BLOB OPEN-CELL !
    [: KEEP-OPEN ;] [: RELEASE-OPEN ;] finally ;
 : CLOSE ( font -- )
    LOCK [: FONT-NODE dup FONTS REMOVE ;] [: UNLOCK ;] finally
@@ -477,15 +476,15 @@ public
 \ sbix/CBDT color data throws E-GLYPH; a run whose ink passes 2^24 units
 \ throws E-EXTENT. A whitespace-only run is a valid zero-size SVG.
 : RENDER ( font str n -- image )
-   {: handle:font data:^ size:n em:n :}
-   data size TEXT-CHECK {: ink:n :}
+   {: handle:font data:str em:n :}
+   data TEXT-CHECK {: ink:n :}
    em EM-CHECK drop
-   handle FONT-REF data size em ink RENDER-REF ;
+   handle FONT-REF data em ink RENDER-REF ;
 \ The bytes are the image's, valid until FREE.
 : SVG$ ( image -- str )
    LOCK
    [: IMAGE-NODE OBJECT @
-      dup NULL-PTR BLOB-DATA swap BLOB-LEN
+      dup NULL-PTR BLOB-DATA swap BLOB-LEN >str
    ;] [: UNLOCK ;] finally ;
 \ In SVG's downward Y axis.
 : BOUNDS ( image -- r r r r )

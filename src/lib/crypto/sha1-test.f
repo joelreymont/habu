@@ -1,4 +1,3 @@
-split-str
 \ sha1-test.f - SHA-1 against the FIPS 180 vectors, the lengths where padding
 \ changes shape, and the context contract.
 \ Run: bin/hb --load src/lib/crypto/sha1-test.f
@@ -32,17 +31,17 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
    [char] a A-BYTES SPAN:FILL ;
 
 : A$ ( n -- str )
-   A-BYTES SPAN:$ drop swap ;
+   A-BYTES SPAN:$ STR:DATA swap >str ;
 
 : HEX$ ( SHA1:digest -- str )
    DG SHA1:DIGEST!
-   DG SPAN:$ drop {: d :}
-   HEX SPAN:$ drop {: h :}
+   DG SPAN:$ STR:DATA {: d :}
+   HEX SPAN:$ STR:DATA {: h :}
    SHA1:DIGEST-BYTES 0 do d i + c@ h i 2 * + BYTE>HEX loop
-   h 40 ;
+   h 40 >str ;
 
-: DIGEST= ( SHA1:digest str -- ) {: got want wu:n :}
-   got HEX$ want wu T$= ;
+: DIGEST= ( SHA1:digest str -- ) {: got want:str :}
+   got HEX$ want T$= ;
 
 : FIPS ( -- )
    s" FIPS 180: the empty message" T-LABEL
@@ -74,11 +73,11 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
 
 \ The byte-wise stream fills the tail through every position
 \ before the length lands.
-: BOUNDARY ( n str -- ) {: u:n want wu:n :}
-   CTX-A u A$ SHA1:HASH want wu DIGEST=
+: BOUNDARY ( n str -- ) {: u:n want:str :}
+   CTX-A u A$ SHA1:HASH want DIGEST=
    CTX-B SHA1:START
    u 0 do CTX-B 1 A$ SHA1:FEED loop
-   CTX-B SHA1:FINISH want wu DIGEST= ;
+   CTX-B SHA1:FINISH want DIGEST= ;
 
 : BOUNDARIES ( -- )
    s" 55 bytes: the length still fits the last block" T-LABEL
@@ -126,10 +125,10 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
    s" FEED refuses a context one byte short" T-LABEL
    [: CTX-SHORT s" abc" SHA1:FEED ;] E-SPAN-CAPACITY TTHROWSQ
    s" FINISH refuses a context one byte short" T-LABEL
-   [: CTX-SHORT SHA1:FINISH HEX$ drop drop ;] E-SPAN-CAPACITY TTHROWSQ
+   [: CTX-SHORT SHA1:FINISH HEX$ drop ;] E-SPAN-CAPACITY TTHROWSQ
    CTX-A SHA1:START
    s" FEED refuses a negative length" T-LABEL
-   [: CTX-A 0 A$ drop -1 SHA1:FEED ;] E-SPAN-LENGTH TTHROWSQ
+   [: CTX-A 0 A$ STR:DATA -1 >str SHA1:FEED ;] E-SPAN-LENGTH TTHROWSQ
    CANARY DG-SHORT SPAN:FILL
    s" DIGEST! refuses a span one byte short" T-LABEL
    [: CTX-A s" abc" SHA1:HASH DG-SHORT SHA1:DIGEST! ;] E-SPAN-CAPACITY TTHROWSQ

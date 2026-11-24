@@ -1,4 +1,3 @@
-split-str
 \ f64-text.f - exact finite binary64 text computed here in integers: PARSE
 \ rounds a decimal to the nearest binary64 and FORMAT writes the shortest
 \ decimal that reads back. Neither reads the locale or the rounding mode, and
@@ -34,34 +33,34 @@ $7FFFFFFFFFFFFFFF constant MAGNITUDE-MASK
 BIG-AT FORMAT-LIMBS 2 + 8 * + constant FORMAT-BYTES
 
 : DIGIT? ( n -- bool ) dup $30 >= swap $39 <= and ;
-: DIGITS ( str n -- n ) {: text:^ len:n offset:n :}
-   offset begin dup len < if text over + c@ DIGIT? else false then while 1+ repeat ;
-: SIGN-SKIP ( str n -- n ) {: text:^ len:n offset:n :}
-   offset len < if text offset + c@ dup $2B = swap $2D = or if offset 1+ exit then then offset ;
+: DIGITS ( str n -- n ) {: text:str offset:n :}
+   offset begin dup text STR:LEN < if text STR:DATA over + c@ DIGIT? else false then while 1+ repeat ;
+: SIGN-SKIP ( str n -- n ) {: text:str offset:n :}
+   offset text STR:LEN < if text STR:DATA offset + c@ dup $2B = swap $2D = or if offset 1+ exit then then offset ;
 : EXPONENT? ( n -- bool ) dup $65 = swap $45 = or ;
 
 \ Zero means complete decimal; one means malformed; two means trailing bytes.
-: FRACTION-END ( str n -- n ) {: text:^ len:n offset:n :}
-   offset len < if text offset + c@ $2E = if
-      text len offset 1+ DIGITS exit
+: FRACTION-END ( str n -- n ) {: text:str offset:n :}
+   offset text STR:LEN < if text STR:DATA offset + c@ $2E = if
+      text offset 1+ DIGITS exit
    then then offset ;
 
-: GRAMMAR ( str -- n ) {: text:^ len:n :}
-   len 0 <= if 1 exit then
-   text len 0 SIGN-SKIP {: first:n :}
-   text len first DIGITS {: integer-end:n :}
-   text len integer-end FRACTION-END {: end:n :}
+: GRAMMAR ( str -- n ) {: text:str :}
+   text STR:LEN 0 <= if 1 exit then
+   text 0 SIGN-SKIP {: first:n :}
+   text first DIGITS {: integer-end:n :}
+   text integer-end FRACTION-END {: end:n :}
    integer-end first = if end integer-end - 1 <= if 1 exit then then
-   end len < if text end + c@ EXPONENT? if
-      text len end 1+ SIGN-SKIP {: exponent-start:n :}
-      text len exponent-start DIGITS dup exponent-start = if drop 1 exit then
+   end text STR:LEN < if text STR:DATA end + c@ EXPONENT? if
+      text end 1+ SIGN-SKIP {: exponent-start:n :}
+      text exponent-start DIGITS dup exponent-start = if drop 1 exit then
    else end then else end then
-   len = if 0 else 2 then ;
+   text STR:LEN = if 0 else 2 then ;
 
 : NONFINITE-TEXT? ( str -- bool )
-   2dup 0 SIGN-SKIP {: offset:n :} offset - swap offset + swap
-   2dup s" nan" STR:=CI if 2drop true exit then
-   2dup s" inf" STR:=CI if 2drop true exit then s" infinity" STR:=CI ;
+   dup 0 SIGN-SKIP {: offset:n :} dup STR:DATA offset + swap STR:LEN offset - >str
+   dup s" nan" STR:=CI if drop true exit then
+   dup s" inf" STR:=CI if drop true exit then s" infinity" STR:=CI ;
 
 : POW10 ( n -- n ) 1 swap 0 ?do 10 * loop ;
 : PUT-DIGITS ( n ^u8 n -- ) {: value:n out:^ width:n :}
@@ -311,40 +310,40 @@ private
 \ The exponent after the marker at offset - 1; once its magnitude reaches
 \ EXPONENT-CAP it grows no more.
 : EXPONENT-VALUE ( str n -- n )
-   {: text:^ len:n offset:n :}
-   text len offset SIGN-SKIP {: start:n :}
-   0 len start ?do
-      dup EXPONENT-CAP < if 10 * text i + c@ $30 - + then
+   {: text:str offset:n :}
+   text offset SIGN-SKIP {: start:n :}
+   0 text STR:LEN start ?do
+      dup EXPONENT-CAP < if 10 * text STR:DATA i + c@ $30 - + then
    loop
-   start offset > if text offset + c@ $2D = if negate then then ;
+   start offset > if text STR:DATA offset + c@ $2D = if negate then then ;
 
 
 \ Of a text GRAMMAR admits: where its digits start, its integer digits end and
 \ its fraction ends.
-: PARTS ( str -- n n n ) {: text:^ len:n :}
-   text len 0 SIGN-SKIP {: first:n :}
-   text len first DIGITS {: integer-end:n :}
-   first integer-end text len integer-end FRACTION-END ;
+: PARTS ( str -- n n n ) {: text:str :}
+   text 0 SIGN-SKIP {: first:n :}
+   text first DIGITS {: integer-end:n :}
+   first integer-end text integer-end FRACTION-END ;
 
 
 \ The count of significant digits kept, q with the value D x 10^q, D those
 \ digits, and whether a dropped digit was not 0.
 : SCAN-DECIMAL ( str -- n n bool )
-   {: text:^ len:n :}
-   text len PARTS {: first:n integer-end:n end:n :}
-   0 0 false text first integer-end false COUNT-DIGITS
-   end integer-end > if text integer-end 1+ end true COUNT-DIGITS then
+   {: text:str :}
+   text PARTS {: first:n integer-end:n end:n :}
+   0 0 false text STR:DATA first integer-end false COUNT-DIGITS
+   end integer-end > if text STR:DATA integer-end 1+ end true COUNT-DIGITS then
    {: kept:n power:n lost:bool :}
-   end len < if text len end 1+ EXPONENT-VALUE else 0 then {: exponent:n :}
+   end text STR:LEN < if text end 1+ EXPONENT-VALUE else 0 then {: exponent:n :}
    kept exponent power + lost ;
 
 
 \ Leaves D, the first `kept` significant digits, in big.
 : FILL-DECIMAL ( str n ^n -- )
-   {: text:^ len:n kept:n big:^ :}
-   text len PARTS {: first:n integer-end:n end:n :}
-   0 0 0 text first integer-end kept big FILL-DIGITS
-   end integer-end > if text integer-end 1+ end kept big FILL-DIGITS then
+   {: text:str kept:n big:^ :}
+   text PARTS {: first:n integer-end:n end:n :}
+   0 0 0 text STR:DATA first integer-end kept big FILL-DIGITS
+   end integer-end > if text STR:DATA integer-end 1+ end kept big FILL-DIGITS then
    big FOLD drop ;
 
 
@@ -380,10 +379,10 @@ private
 
 
 : CONVERT ( str n n bool n n ^u8 NUM:alloc-byte-len -- result<r,fault> )
-   drop {: text:^ len:n count:n q:n dropped:bool limbs:n sign:n work:^ :}
+   drop {: text:str count:n q:n dropped:bool limbs:n sign:n work:^ :}
    work CELL-VIEW {: big :}
    limbs big BIG-INIT
-   text len count big FILL-DECIMAL
+   text count big FILL-DECIMAL
    q big BINARY-SCALE dropped or big ROUNDED {: bits:n :}
    bits $7FF0000000000000 >= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    bits sign or IEEE754:BITS>F64 RESULT:OK ;
@@ -391,13 +390,13 @@ private
 
 \ Decides the far ranges before it allocates; the sign joins last.
 : READ-DECIMAL ( str -- result<r,fault> )
-   {: text:^ len:n :}
-   text c@ $2D = if $8000000000000000 else 0 then {: sign:n :}
-   text len SCAN-DECIMAL {: count:n q:n dropped:bool :}
+   {: text:str :}
+   text STR:DATA c@ $2D = if $8000000000000000 else 0 then {: sign:n :}
+   text SCAN-DECIMAL {: count:n q:n dropped:bool :}
    count 0= count q + -330 < or if sign IEEE754:BITS>F64 RESULT:OK exit then
    count q + 310 > if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    count q LIMBS {: limbs:n :}
-   text len count q dropped limbs sign
+   text count q dropped limbs sign
    limbs 2 + cells BYTES-ALLOC-LEN [: CONVERT ;] WITH-BYTES ;
 
 
@@ -405,13 +404,13 @@ public
 \ The nearest binary64 to a signed decimal/exponent text, ties to even, zero's
 \ sign kept; padding, hex, nonfinite values and trailing bytes are refused.
 : PARSE ( str -- result<r,fault> )
-   {: text:^ len:n :}
-   len 0 < if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
-   text len NONFINITE-TEXT? if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
-   text len GRAMMAR {: code:n :}
+   {: text:str :}
+   text STR:LEN 0 < if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
+   text NONFINITE-TEXT? if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
+   text GRAMMAR {: code:n :}
    code 1 = if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
    code 2 = if F64--TEXT-FAULT:TRAILING RESULT:ERR exit then
-   text len READ-DECIMAL ;
+   text READ-DECIMAL ;
 
 ;using
 ;package

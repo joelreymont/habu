@@ -1,4 +1,3 @@
-split-str
 \ float-test.f - checked STR>FLOAT coverage.
 \ Run: bin/hb --load src/lib/float-test.f
 
@@ -64,9 +63,9 @@ package DECIMAL-FLOAT-TEST
 \ The checked decimal admission used by STR>FLOAT must agree with the
 \ engine's literal reader at its accumulator boundaries.
 : ADMISSION ( str -- )
-   {: a:^ u:n :}
-   a u FL-ENGINE-DECIMAL-ADMITTED? {: checked:bool :}
-   a u num-parse and nip {: native:bool :}
+   {: s:str :}
+   s FL-ENGINE-DECIMAL-ADMITTED? {: checked:bool :}
+   s num-parse and nip {: native:bool :}
    checked native and checked 0= native 0= and or TTRUE ;
 
 : ADMISSION-CASES ( -- )
@@ -94,9 +93,9 @@ package DECIMAL-FLOAT-TEST
    got want - abs ulps <= ;
 
 
-: CHECK-BITS ( str n n -- ) {: a:^ u:n want:n ulps:n :}
-   a u 80 min T-LABEL
-   a u STR>FLOAT MATCH option
+: CHECK-BITS ( str n n -- ) {: s:str want:n ulps:n :}
+   s STR:DATA s STR:LEN 80 min >str T-LABEL
+   s STR>FLOAT MATCH option
      none OF false ENDOF
      some OF IEEE754:F64>BITS {: got:n :}
        ulps 0= if got want = else got want ulps WITHIN-ULPS? then
@@ -152,27 +151,27 @@ create LONG-TOKEN 512 allot
 : LONG-INTEGER ( -- )
    ZERO-DIGITS
    $31 LONG-TOKEN c!
-   s" e-400" LONG-TOKEN 401 + swap BYTE-COPY
-   LONG-TOKEN 406 $3FF0000000000000 0 CHECK-BITS
+   s" e-400" dup STR:DATA LONG-TOKEN 401 + rot STR:LEN BYTE-COPY
+   LONG-TOKEN 406 >str $3FF0000000000000 0 CHECK-BITS
    \ Huge positive exponent plus omitted integer digits cannot wrap negative.
-   s" e9223372036854775807" LONG-TOKEN 401 + swap BYTE-COPY
-   LONG-TOKEN 421 $7FF0000000000000 0 CHECK-BITS ;
+   s" e9223372036854775807" dup STR:DATA LONG-TOKEN 401 + rot STR:LEN BYTE-COPY
+   LONG-TOKEN 421 >str $7FF0000000000000 0 CHECK-BITS ;
 
 
 : LONG-FRACTION ( -- )
    ZERO-DIGITS
    $2E LONG-TOKEN c!
    $31 LONG-TOKEN 400 + c!
-   s" e400" LONG-TOKEN 401 + swap BYTE-COPY
-   LONG-TOKEN 405 $3FF0000000000000 0 CHECK-BITS
+   s" e400" dup STR:DATA LONG-TOKEN 401 + rot STR:LEN BYTE-COPY
+   LONG-TOKEN 405 >str $3FF0000000000000 0 CHECK-BITS
    \ A long, nonzero fractional numerator must not become infinity / infinity.
    ZERO-DIGITS
    $2E LONG-TOKEN c!
    $31 LONG-TOKEN 1+ c!
-   s" e1" LONG-TOKEN 401 + swap BYTE-COPY
-   LONG-TOKEN 403 $3FF0000000000000 0 CHECK-BITS
+   s" e1" dup STR:DATA LONG-TOKEN 401 + rot STR:LEN BYTE-COPY
+   LONG-TOKEN 403 >str $3FF0000000000000 0 CHECK-BITS
    $78 LONG-TOKEN 390 + c!
-   LONG-TOKEN 403 T-FL-BAD ;
+   LONG-TOKEN 403 >str T-FL-BAD ;
 
 
 : LONG-PRECISION ( -- )
@@ -206,12 +205,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    ;MATCH ;
 
 : FL-EDGE-NEG ( n -- ) {: u:n :}
-   0 0 GUARD-PAGE:TAIL u STR>FLOAT FL-DROP ;
+   0 0 GUARD-PAGE:TAIL u >str STR>FLOAT FL-DROP ;
 
 : FL-SIGNED-NEG ( n n -- ) {: sign:n u:n :}
    2 [char] 1 GUARD-PAGE:TAIL {: a:^ :}
    sign a c!
-   a u STR>FLOAT FL-DROP ;
+   a u >str STR>FLOAT FL-DROP ;
 
 : FL-NEGATIVE-LENGTHS ( -- )
    [: STR:MINUS -1 FL-SIGNED-NEG ;] E-STR-BOUNDS TTHROWSQ

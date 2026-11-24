@@ -1,4 +1,3 @@
-split-str
 \ Run: bin/hb --load src/lib/decimal-test.f
 
 require src/lib/string.f
@@ -29,48 +28,48 @@ create LONG-SRC 1048600 allot
    ;MATCH ;
 
 : EXACT= ( str i64 -- )
-   {: a:^ u:n want:i64 :}
-   a u DECIMAL:EXACT want SOME= ;
+   {: s:str want:i64 :}
+   s DECIMAL:EXACT want SOME= ;
 
 : EXACT-NONE ( str -- )
    DECIMAL:EXACT NONE? ;
 
 : INTEGER= ( str i64 -- )
-   {: a:^ u:n want:i64 :}
-   a u DECIMAL:INTEGER want SOME= ;
+   {: s:str want:i64 :}
+   s DECIMAL:INTEGER want SOME= ;
 
 : INTEGER-NONE ( str -- )
    DECIMAL:INTEGER NONE? ;
 
 : PRIORITY ( str -- option<i64> )
-   {: a:^ u:n :}
-   a u DECIMAL:INTEGER MATCH option
-      none OF a u DECIMAL:EXACT ENDOF
+   {: s:str :}
+   s DECIMAL:INTEGER MATCH option
+      none OF s DECIMAL:EXACT ENDOF
       some OF OPTION:SOME ENDOF
    ;MATCH ;
 
 : STRING= ( str i64 -- )
-   {: a:^ u:n want:i64 :}
-   READER-SPACE a u JSON:READ-INIT
+   {: s:str want:i64 :}
+   READER-SPACE s JSON:READ-INIT
    JSON:READ-NEXT JSON:T-STR T=
    DECODE-BUF 64 JSON:READ-STR {: size:n :}
-   DECODE-BUF size PRIORITY want SOME=
+   DECODE-BUF size >str PRIORITY want SOME=
    JSON:READ-NEXT JSON:T-END T=
    JSON:READ-CLOSE ;
 
 : BAD-DECIMAL-LEN ( -- )
-   s" 1" drop -1 DECIMAL:EXACT drop ;
+   s" 1" STR:DATA -1 >str DECIMAL:EXACT drop ;
 
 : BAD-DECIMAL-PTR ( -- )
-   NULL-PTR 1 DECIMAL:EXACT drop ;
+   NULL-PTR 1 >str DECIMAL:EXACT drop ;
 
 : LONG-CANCELLATION ( -- )
    48 LONG-SRC c!
    46 LONG-SRC 1+ c!
    LONG-ZEROS 0 ?do 48 LONG-SRC 2 i + + c! loop
-   s" 1e1048578" {: suffix:^ size:n :}
-   suffix LONG-SRC 2 LONG-ZEROS + + size BYTE-COPY
-   LONG-SRC 2 LONG-ZEROS + size + 1 EXACT= ;
+   s" 1e1048578" {: suffix:str :}
+   suffix STR:DATA LONG-SRC 2 LONG-ZEROS + + suffix STR:LEN BYTE-COPY
+   LONG-SRC 2 LONG-ZEROS + suffix STR:LEN + >str 1 EXACT= ;
 
 : CASES ( -- )
    s" 1e2" 100 EXACT=

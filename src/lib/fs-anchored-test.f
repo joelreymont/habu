@@ -1,4 +1,3 @@
-split-str
 \ Anchored filesystem reads through the public source and native load paths.
 require src/lib/test.f
 require src/lib/fs-mutate.f
@@ -23,11 +22,11 @@ create LONG PATH-CAP 1 + allot
 PROCESS-SYMBOLS
 FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
-: TMP$ ( -- str ) TMP TMP-U @ ;
+: TMP$ ( -- str ) TMP TMP-U @ >str ;
 : PATH ( n str -- str )
-   {: idx:n name:^ u:n :}
+   {: idx:n name:str :}
    PATHS idx PATH-CAP * + {: out:^ :}
-   TMP$ name u out FS:JOIN-PATH out swap ;
+   TMP$ name out FS:JOIN-PATH out swap >str ;
 : ROOT ( -- str ) 0 s" root" PATH ;
 : OUTSIDE ( -- str ) 1 s" outside" PATH ;
 : CHILD ( -- str ) 2 s" root/child" PATH ;
@@ -68,7 +67,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    ;MATCH ;
 
 : FD-ENTRY ( str -- )
-   2drop 1 OPEN-FDS +! ;
+   drop 1 OPEN-FDS +! ;
 : FD-COUNT ( -- n )
    0 OPEN-FDS !
    HB-TARGET-MACOS? if s" /dev/fd" else s" /proc/self/fd" then
@@ -76,18 +75,18 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    OPEN-FDS @ ;
 : READ$ ( fd str -- n ) OUT FS:READ-FILE-AT ;
 : READ-CHECK ( fd str str -- )
-   {: fd:fd path:^ u:n want:^ wantu:n :}
-   fd path u READ$ wantu T=
-   OUT wantu SPAN:TAKE SPAN:$ want wantu T$= ;
+   {: fd:fd path:str want:str :}
+   fd path READ$ want STR:LEN T=
+   OUT want STR:LEN SPAN:TAKE SPAN:$ want T$= ;
 
 : READ-CHECK-CLOSE ( fd str str -- )
-   {: fd:fd path:^ u:n want:^ wantu:n :}
-   fd path u want wantu READ-CHECK
+   {: fd:fd path:str want:str :}
+   fd path want READ-CHECK
    fd FS:CLOSE-DIR ;
 
 : SETUP ( -- )
-   s" habu-anchored" FS:MKTEMP-DIR {: a:^ u:n :}
-   a u FS:>PATHZ TMP FS:PATHZ-CAP realpath {: actual:n :}
+   s" habu-anchored" FS:MKTEMP-DIR {: made:str :}
+   made FS:>PATHZ TMP FS:PATHZ-CAP realpath {: actual:n :}
    actual 0 > TTRUE
    actual TMP-U !
    ROOT FS:MAKE-DIR OUTSIDE FS:MAKE-DIR CHILD FS:MAKE-DIR DEEP FS:MAKE-DIR DOT-DIR FS:MAKE-DIR
@@ -129,9 +128,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    [: ANCHOR @ >FD s" child/" READ$ drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s" ./child" READ$ drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s" child/../file" READ$ drop ;] E-FS-PATH TTHROWSQ
-   [: ANCHOR @ >FD s" child" drop -1 READ$ drop ;] E-FS-PATH TTHROWSQ
+   [: ANCHOR @ >FD s" child" STR:DATA -1 >str READ$ drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s\" bad\zname" READ$ drop ;] E-FFI-NUL TTHROWSQ
-   [: ANCHOR @ >FD LONG PATH-CAP 1 + READ$ drop ;] E-FS-PATH TTHROWSQ
+   [: ANCHOR @ >FD LONG PATH-CAP 1 + >str READ$ drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s" child/file" OUT 7 SPAN:TAKE FS:READ-FILE-AT drop ;] E-FS-CAPACITY TTHROWSQ
    [: ANCHOR @ >FD s" child/file" OUT 0 SPAN:TAKE FS:READ-FILE-AT drop ;] E-FS-CAPACITY TTHROWSQ
    FS:ERRNO 0 T=
@@ -225,14 +224,14 @@ variable PAR-BAD
 TASK:MIN-STACK TASK:TASK PAR-A
 TASK:MIN-STACK TASK:TASK PAR-B
 
-: PAR-ROUND ( str SPAN:span<u8> str -- ) {: p:^ pu:n buf want:^ wu:n :}
-   ANCHOR @ >FD p pu buf FS:READ-FILE-AT {: got:n :}
-   got wu = if buf wu SPAN:TAKE SPAN:$ want wu STR:= if exit then then
+: PAR-ROUND ( str SPAN:span<u8> str -- ) {: p:str buf want:str :}
+   ANCHOR @ >FD p buf FS:READ-FILE-AT {: got:n :}
+   got want STR:LEN = if buf want STR:LEN SPAN:TAKE SPAN:$ want STR:= if exit then then
    1 PAR-BAD atomic-add drop ;
-: PAR-WORK ( str SPAN:span<u8> str -- ) {: p:^ pu:n buf want:^ wu:n :}
+: PAR-WORK ( str SPAN:span<u8> str -- ) {: p:str buf want:str :}
    1 PAR-READY atomic-add drop
    begin PAR-READY atomic@ 2 < while TASK:PAUSE repeat
-   PAR-ITERS 0 do p pu buf want wu PAR-ROUND loop
+   PAR-ITERS 0 do p buf want PAR-ROUND loop
    0 TASK:RETURN ;
 : PAR-WORK-A ( -- ) s" child/file" OUT-A s" original" PAR-WORK ;
 : PAR-WORK-B ( -- ) s" child/deep/file" OUT-B s" deep" PAR-WORK ;
@@ -310,15 +309,15 @@ create LINK-BUF PATH-CAP allot
 : SIZE ( fd -- n ) FS:FD-STAMP nip nip ;
 : OPENED-SIZE ( option<fd> -- n )
    SOME {: f:fd :} f SIZE f FS:CLOSE-DIR ;
-: STAT-SIZE ( str -- n ) {: a:^ u:n :}
-   D a u FS:TRY-STAT-AT TTRUE FS:STAT-SIZE@ ;
-: ABSENT ( str -- ) {: a:^ u:n :}
-   D a u FS:TRY-STAT-AT FS:ENOENT FALSE-WITH ;
+: STAT-SIZE ( str -- n ) {: s:str :}
+   D s FS:TRY-STAT-AT TTRUE FS:STAT-SIZE@ ;
+: ABSENT ( str -- ) {: s:str :}
+   D s FS:TRY-STAT-AT FS:ENOENT FALSE-WITH ;
 \ Runs q on each name every name word refuses.
 : REFUSED ( [ fd str -- ] -- ) {: q :}
    D s" " q execute  D s" ." q execute  D s" .." q execute
    D s" sub/x" q execute  D s\" a\zb" q execute
-   D LONG PATH-CAP 1 + q execute ;
+   D LONG PATH-CAP 1 + >str q execute ;
 
 : READS ( -- )
    D s" file" FS:TRY-OPEN-READ-AT OPENED-SIZE 8 T=
@@ -343,11 +342,11 @@ create LINK-BUF PATH-CAP allot
 \ intact, refuses a buffer the name would fill, and refuses a closed
 \ descriptor as E-FS-STAT with ENOENT.
 : FD-PATHS ( -- )
-   $1ED 4 FMT:OCT-WIDTH$ {: mode:^ mu:n :}
+   $1ED 4 FMT:OCT-WIDTH$ {: mode:str :}
    D LINK-BUF PATH-CAP FS:FD-PATH {: u:n :}
-   LINK-BUF u AT-DIR T$=
-   mode mu s" 0755" T$=
-   [: D LINK-BUF AT-DIR nip 1- FS:FD-PATH drop ;]
+   LINK-BUF u >str AT-DIR T$=
+   mode s" 0755" T$=
+   [: D LINK-BUF AT-DIR STR:LEN 1- FS:FD-PATH drop ;]
    E-FS-CAPACITY TTHROWSQ
    D s" sub" FS:TRY-OPEN-DIR-AT SOME {: f:fd :}
    f FS:CLOSE-DIR
@@ -386,10 +385,10 @@ create LINK-BUF PATH-CAP allot
    gone FS:CLOSE-DIR
    [: 448 FS:TRY-MAKE-DIR-AT FS:EINVAL FALSE-WITH ;] REFUSED ;
 
-: RENAME-TO ( fd str -- bool ) {: d:fd a:^ u:n :}
-   D s" b" d a u FS:TRY-RENAME-AT ;
-: RENAME-NEW-TO ( fd str -- bool ) {: d:fd a:^ u:n :}
-   D s" b" d a u FS:TRY-RENAME-NEW-AT ;
+: RENAME-TO ( fd str -- bool ) {: d:fd s:str :}
+   D s" b" d s FS:TRY-RENAME-AT ;
+: RENAME-NEW-TO ( fd str -- bool ) {: d:fd s:str :}
+   D s" b" d s FS:TRY-RENAME-NEW-AT ;
 : RENAMES ( -- )
    D s" a" D s" b" FS:TRY-RENAME-AT TTRUE
    s" a" ABSENT s" b" STAT-SIZE 3 T=
@@ -422,8 +421,8 @@ create LINK-BUF PATH-CAP allot
    [: FS:TRY-REMOVE-FILE-AT FS:EINVAL FALSE-WITH ;] REFUSED
    [: FS:TRY-REMOVE-DIR-AT FS:EINVAL FALSE-WITH ;] REFUSED ;
 
-: LINK-AS ( fd str -- bool ) {: d:fd a:^ u:n :}
-   TEMP @ >FD d a u FS:TRY-LINK-AT ;
+: LINK-AS ( fd str -- bool ) {: d:fd s:str :}
+   TEMP @ >FD d s FS:TRY-LINK-AT ;
 : TEMPS ( -- )
    D FS:TEMP-AT {: t:fd :}
    t FD>N TEMP !
@@ -469,22 +468,22 @@ HB-TARGET-LINUX-KERNEL? 0= [if]
 \ A new file of that name, written and read through the descriptor; only
 \ Linux has AT words that write.
 HB-TARGET-LINUX-KERNEL? [if]
-: WRITE-AT ( fd str -- ) {: dir:fd name:^ u:n :}
+: WRITE-AT ( fd str -- ) {: dir:fd name:str :}
    dir FS:TEMP-AT {: t:fd :}
    t s" written" FD:WRITE-FULL
-   t dir name u FS:TRY-LINK-AT TTRUE
+   t dir name FS:TRY-LINK-AT TTRUE
    t FS:CLOSE-DIR
-   dir name u s" written" READ-CHECK ;
+   dir name s" written" READ-CHECK ;
 [then]
 HB-TARGET-LINUX-KERNEL? 0= [if]
-: WRITE-AT ( fd str -- ) 2drop drop ;
+: WRITE-AT ( fd str -- ) drop drop ;
 [then]
 
 : FOLLOWS-TO ( str str str -- )
-   {: path:^ u:n file:^ fu:n name:^ nu:n :}
-   path u FS:OPEN-DIR-FOLLOW {: dir:fd :}
-   dir file fu s" original" READ-CHECK
-   dir name nu WRITE-AT
+   {: path:str file:str name:str :}
+   path FS:OPEN-DIR-FOLLOW {: dir:fd :}
+   dir file s" original" READ-CHECK
+   dir name WRITE-AT
    dir FS:CLOSE-DIR ;
 \ linked is a link to root.
 : FOLLOWS ( -- )

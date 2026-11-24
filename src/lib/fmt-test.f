@@ -1,4 +1,3 @@
-split-str
 \ fmt-test.f - checked number formatting coverage.
 \ Run: bin/hb --load src/lib/fmt-test.f
 
@@ -12,20 +11,20 @@ require src/lib/ieee754.f
 package FMT-TEST
 using FMT
 
-: T-U ( n str -- ) {: a:^ u :}
-   SB-RESET SB-U  SB$ a u T$= ;
-: T-HEX ( n str -- ) {: a:^ u :}
-   SB-RESET s" pre:" SB-APPEND SB-HEX  SB$ a u T$= ;
-: T-HEXW ( n n str -- ) {: a:^ u :}       \ ( value width expect )
-   SB-RESET s" pre:" SB-APPEND SB-HEX-WIDTH  SB$ a u T$= ;
-: T-INT ( n str -- ) {: a:^ u :}
-   SB-RESET SB-INT  SB$ a u T$= ;
-: T-SCALED ( n n str -- ) {: a:^ u :}
-   SB-RESET s" pre:" SB-APPEND SB-SCALED  SB$ a u T$= ;
-: T-FIX ( r n str -- ) {: a:^ u :}        \ ( value places expect )
-   SB-RESET SB-FIX  SB$ a u T$= ;
-: T-SCI ( r n str -- ) {: a:^ u :}
-   SB-RESET SB-SCI SB$ a u T$= ;
+: T-U ( n str -- ) {: s:str :}
+   SB-RESET SB-U  SB$ s T$= ;
+: T-HEX ( n str -- ) {: s:str :}
+   SB-RESET s" pre:" SB-APPEND SB-HEX  SB$ s T$= ;
+: T-HEXW ( n n str -- ) {: s:str :}       \ ( value width expect )
+   SB-RESET s" pre:" SB-APPEND SB-HEX-WIDTH  SB$ s T$= ;
+: T-INT ( n str -- ) {: s:str :}
+   SB-RESET SB-INT  SB$ s T$= ;
+: T-SCALED ( n n str -- ) {: s:str :}
+   SB-RESET s" pre:" SB-APPEND SB-SCALED  SB$ s T$= ;
+: T-FIX ( r n str -- ) {: s:str :}        \ ( value places expect )
+   SB-RESET SB-FIX  SB$ s T$= ;
+: T-SCI ( r n str -- ) {: s:str :}
+   SB-RESET SB-SCI SB$ s T$= ;
 
 \ .U and .INT render the same bytes SB-U / SB-INT append -- one renderer, one
 \ set of digit cases above -- and type them without disturbing the builder. The
@@ -38,15 +37,15 @@ using FMT
    SB-RESET s" sb-sentinel" SB-APPEND
    .INT  SB$ s" sb-sentinel" T$= ;
 : T-INT$ ( n str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    SB-RESET s" sb-sentinel" SB-APPEND
-   INT$ a u T$=  SB$ s" sb-sentinel" T$= ;
-: T-OCT ( n n str -- ) {: a:^ u:n :}       \ ( value width expect )
-   OCT-WIDTH$ a u T$= ;
+   INT$ s T$=  SB$ s" sb-sentinel" T$= ;
+: T-OCT ( n n str -- ) {: s:str :}       \ ( value width expect )
+   OCT-WIDTH$ s T$= ;
 \ F.N has no bounded width and does build in the shared builder, so its text is
 \ still readable through SB$ after the call.
-: T-PFN ( r n str -- ) {: a:^ u:n :}      \ ( value places expect )
-   F.N   SB$ a u T$= ;
+: T-PFN ( r n str -- ) {: s:str :}      \ ( value places expect )
+   F.N   SB$ s T$= ;
 
 : NEG-U-CASE ( -- )        SB-RESET -1 SB-U ;
 : OVERFLOW-FIX-CASE ( -- ) SB-RESET 1000000000000000000.0 2 SB-FIX ;     \ 1e18 * 10^2 overflows i64
@@ -148,10 +147,10 @@ using FMT
    SB$ s" carry" T$=
    [: 0 17 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ
    SB$ s" carry" T$=
-   [: $1000 4 OCT-WIDTH$ 2drop ;] E-FMT-DOMAIN TTHROWSQ   \ 10000 octal
-   [: -1 21 OCT-WIDTH$ 2drop ;] E-FMT-DOMAIN TTHROWSQ
-   [: 0 0 OCT-WIDTH$ 2drop ;] E-FMT-DOMAIN TTHROWSQ
-   [: 0 22 OCT-WIDTH$ 2drop ;] E-FMT-DOMAIN TTHROWSQ
+   [: $1000 4 OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ   \ 10000 octal
+   [: -1 21 OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ
+   [: 0 0 OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ
+   [: 0 22 OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ
    [: OVERFLOW-FIX-CASE ;]  E-FMT-OVERFLOW TTHROWSQ
    [: OVERFLOW-2P63-CASE ;] E-FMT-OVERFLOW TTHROWSQ \ exactly 2^63 does not fit i64
    [: SCI-LOW-CASE ;] E-FMT-DOMAIN TTHROWSQ

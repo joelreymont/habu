@@ -1,4 +1,3 @@
-split-str
 require src/lib/elf32.f
 require src/lib/test.f
 
@@ -10,13 +9,13 @@ create INPUT $100 allot
 CAST: BLEN>N ( NUM:byte-len -- n )
 
 : RESET ( -- )
-   S\" \x7f\x45\x4c\x46\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00\x01\x00\x00\x00\x01\x00\x00\x80\x34\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x05\x34\x00\x20\x00\x02\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x80\x00\x00\x00\x00\x00\x00\x80\x00\x00\x00\x88\x05\x00\x00\x00\x08\x00\x00\x00\x05\x00\x00\x00\x10\x00\x00\x00\x01\x00\x00\x00\x90\x00\x00\x00\x10\x00\x00\x80\x10\x00\x00\x88\x00\x00\x00\x00\x10\x00\x00\x00\x06\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x2a\x00\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" INPUT swap >LEN BYTE-COPY-LEN ;
+   S\" \x7f\x45\x4c\x46\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00\x01\x00\x00\x00\x01\x00\x00\x80\x34\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x05\x34\x00\x20\x00\x02\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x80\x00\x00\x00\x00\x00\x00\x80\x00\x00\x00\x88\x05\x00\x00\x00\x08\x00\x00\x00\x05\x00\x00\x00\x10\x00\x00\x00\x01\x00\x00\x00\x90\x00\x00\x00\x10\x00\x00\x80\x10\x00\x00\x88\x00\x00\x00\x00\x10\x00\x00\x00\x06\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x2a\x00\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" dup STR:DATA INPUT rot STR:LEN >LEN BYTE-COPY-LEN ;
 
 : U32! ( n n -- ) {: value:n offset:n :}
    4 0 do value i 8 * rshift $FF and INPUT offset + i + c! loop ;
 
 : SPAN ( -- str )
-   INPUT $90 ;
+   INPUT $90 >str ;
 
 : HEADER-CASE ( -- )
    SPAN INFO ELF32-HEADER:UNMAKE
@@ -33,14 +32,14 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    SPAN 1 >PROGRAM-INDEX PROGRAM ELF32-SEGMENT:UNMAKE
    $10 T= 6 T= BLEN>N $10 T=
    ADDRESS>N $88000010 T= ADDRESS>N $80000010 T= SEGMENT-KIND>N 1 T=
-   0 T= INPUT = TTRUE ;
+   dup STR:LEN 0 T= STR:DATA INPUT = TTRUE ;
 
 : VALID ( -- ) SPAN VALIDATE ;
 : DROP-HEADER ( ELF32:header -- ) ELF32-HEADER:UNMAKE 2drop 2drop 2drop drop ;
-: DROP-SEGMENT ( ELF32:segment -- ) ELF32-SEGMENT:UNMAKE 2drop 2drop 2drop 2drop ;
+: DROP-SEGMENT ( ELF32:segment -- ) ELF32-SEGMENT:UNMAKE 2drop 2drop 2drop drop ;
 
 : TRUNCATED ( n -- )
-   [: dup INPUT swap VALIDATE ;] catch E-BOUNDS T= drop ;
+   [: dup INPUT swap >str VALIDATE ;] catch E-BOUNDS T= drop ;
 
 : HEADER-REFUSALS ( -- )
    RESET 0 INPUT c! [: VALID ;] E-FORMAT TTHROWSQ
@@ -75,8 +74,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : EMPTY-AND-EXTENDED ( -- )
    RESET 0 INPUT $2C + c! 0 INPUT $2A + c! $FFFFFFFF $1C U32!
-   INPUT $34 VALIDATE
-   INPUT $34 INFO ELF32-HEADER:UNMAKE
+   INPUT $34 >str VALIDATE
+   INPUT $34 >str INFO ELF32-HEADER:UNMAKE
    PROGRAM-COUNT>N 0 T= 2drop 2drop 2drop
    RESET
    INPUT $80 + INPUT $A0 + 5 >LEN BYTE-COPY-LEN
@@ -86,8 +85,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    INPUT $E0 + INPUT $40 + $20 >LEN BYTE-COPY-LEN
    $A0 $44 U32! $B0 $6C U32!
    $40 $1C U32! $40 INPUT $28 + c! $28 INPUT $2A + c!
-   INPUT $B0 VALIDATE
-   INPUT $B0 0 >PROGRAM-INDEX PROGRAM ELF32-SEGMENT:UNMAKE
+   INPUT $B0 >str VALIDATE
+   INPUT $B0 >str 0 >PROGRAM-INDEX PROGRAM ELF32-SEGMENT:UNMAKE
    2drop 2drop 2drop S\" \x2a\x00\x00\x00\xff" T$= ;
 
 : SEGMENT-SCOPE ( -- )
@@ -99,7 +98,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    RESET 4 $34 U32! 0 $48 U32! 3 $50 U32! VALID
    RESET 0 $54 U32! $FFFFFFFF $58 U32! $FFFFFFFF $64 U32! VALID
    SPAN 1 >PROGRAM-INDEX PROGRAM ELF32-SEGMENT:UNMAKE
-   2drop 2drop drop SEGMENT-KIND>N 0 T= 0 T= INPUT = TTRUE
+   2drop 2drop drop SEGMENT-KIND>N 0 T= dup STR:LEN 0 T= STR:DATA INPUT = TTRUE
    RESET $FFFFFFFF $58 U32! 1 $64 U32!
    SPAN INFO DROP-HEADER
    SPAN 0 >PROGRAM-INDEX PROGRAM DROP-SEGMENT
