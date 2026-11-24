@@ -965,12 +965,11 @@ CAST: HELD>N ( held -- n )
    ka ku ea eu fa fu  eu fu + ku 2 * + MEM:BYTES-ALLOC-LEN
    [: KEY-SCOPE ;] MEM:WITH-BYTES ;
 
-\ A reader's E-JSON-READ-* code leaves as E-SCHEMA, its text after the name of the text
-\ judged; E-READ-SOURCE is a caller's wrong source and stays, as every other code does.
+\ An input's JSON fault leaves as E-SCHEMA, its text after the name of the text
+\ judged; any other code stays.
 : SCHEMA-CODE ( ^u8 n n -- n )
    {: wa:^ wu:n code:n :}
-   code E-JSON-READ-FIRST <=  code E-JSON-READ-LAST >=  and
-   code JSON:E-READ-SOURCE <> and if
+   code JSON:INPUT-FAULT? if
       wa wu code REASON:TEXT$ SAY
    then
    code ;

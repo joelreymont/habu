@@ -1747,15 +1747,9 @@ public
 
 private
 
-\ A rejection by package JSON's reading words: malformed text, a repeated
-\ member name or a value of the wrong kind.
-: JSON-FAULT? ( n -- bool )
-   {: code:n :}
-   code E-JSON-READ-FIRST <= code E-JSON-READ-LAST >= and ;
-
 : SETTING-THROW ( str str n -- )
    {: na:^ nu:n ta:^ tu:n code:n :}
-   code JSON-FAULT? if na nu ta tu NAMED-THROW then
+   code JSON:INPUT-FAULT? if na nu ta tu NAMED-THROW then
    code 0<> if code throw then ;
 
 : OBJECT-FIX$ ( -- str ) s" pass one JSON object" ;
@@ -2376,7 +2370,7 @@ private
    {: c :}
    [: c RESPONSE$ JSON:PARSE ;] catch {: v code:n :}
    code 0= if v OPTION:SOME exit then
-   code JSON-FAULT? if OPTION:NONE exit then
+   code JSON:INPUT-FAULT? if OPTION:NONE exit then
    code throw ;
 
 \ Keeps a failed reply's provider message, when its body names one.
@@ -2800,7 +2794,7 @@ private
 
 : RESPONSE-ERROR ( n -- )
    {: code:n :}
-   code JSON-FAULT? if E-RESPONSE throw then
+   code JSON:INPUT-FAULT? if E-RESPONSE throw then
    code 0<> if code throw then ;
 
 : PARSE-CHAT ( ^call -- )
@@ -2928,7 +2922,7 @@ private
    c VECTORS-RESET
    0 c MODEL-CALL:DATA-COUNT !
    [: c RESPONSE$ JSON:PARSE ;] catch {: r code:n :}
-   code JSON-FAULT? if E-RESPONSE throw then
+   code JSON:INPUT-FAULT? if E-RESPONSE throw then
    code 0<> if code throw then
    r JSON:OBJECT? 0= if E-RESPONSE throw then
    r ;
@@ -3114,7 +3108,7 @@ private
 \ Bytes that are not UTF-8 or JSON make an unusable reply.
 : READ-FAULT ( n -- n )
    {: code:n :}
-   code SSE:E-UTF8 = code JSON-FAULT? or if E-RESPONSE exit then
+   code SSE:E-UTF8 = code JSON:INPUT-FAULT? or if E-RESPONSE exit then
    code ;
 
 
@@ -4165,7 +4159,7 @@ ENUM dispatch-event armed faulted ;ENUM
    {: c :}
    true c RECEIPT RECEIPT-REPLAYED !
    c [: dup JOURNAL-RESTORE ;] catch {: code:n :} drop
-   code JSON-FAULT? if E-RESPONSE else code then c KEEP-FAULT ;
+   code JSON:INPUT-FAULT? if E-RESPONSE else code then c KEEP-FAULT ;
 
 : LOOK-UP ( ^call -- lookup-event )
    {: c :}

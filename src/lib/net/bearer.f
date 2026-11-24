@@ -166,12 +166,11 @@ TASK:+USER FROM n
    room 0 got SPAN:SUB ;
 
 
-\ Input's fault: malformed JSON or base64url, or a repeated member (JSON:E-MEMBER).
-\ No input raises E-JSON-READ-STATE or JSON:E-READ-SOURCE, so they pass.
+\ Input's fault: a JSON reader code JSON:INPUT-FAULT? names, or malformed
+\ base64url.
 : MALFORMED? ( n -- bool )
    {: code:n :}
-   code E-JSON-READ-STATE = code JSON:E-READ-SOURCE = or if false exit then
-   code E-JSON-READ-LAST >= code E-JSON-READ-FIRST <= and
+   code JSON:INPUT-FAULT?
    code E-BASE64-LAST >= code E-BASE64-FIRST <= and or ;
 
 : STEP ( [ bool -- bool ] -- bool )

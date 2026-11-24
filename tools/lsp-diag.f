@@ -86,7 +86,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    u LINE-U !
    [: SCAN ;] catch {: code:n :}
    code 0<> if
-      code E-JSON-READ-LAST >= code E-JSON-READ-FIRST <= and 0= if code throw then
+      code JSON:INPUT-FAULT? 0= if code throw then
       -1 FILE-U !
    then
    FILE-U @ 0 > if FILE-BUF c@ SLASH = exit then

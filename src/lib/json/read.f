@@ -414,6 +414,15 @@ $7F constant DEL
 : READER-CODE? ( n -- bool )
    dup E-JSON-READ-FIRST <= swap E-JSON-READ-LAST >= and ;
 
+public
+
+\ Whether a reader code is the input's fault: every one but E-READ-SOURCE,
+\ a caller's wrong source.
+: INPUT-FAULT? ( n -- bool )
+   dup READER-CODE? swap E-READ-SOURCE <> and ;
+
+private
+
 \ The byte at the place, -1 at the end of the input.
 : PLACE-BYTE ( ^cursor -- n ) {: state:^ :}
    state EOF? if -1 exit then

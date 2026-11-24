@@ -133,9 +133,7 @@ HEAP AZURE-CURSOR JSON:cursor
    {: name:str dest:^ buf:^ :}
    [: dest buf AZURE-PARSED? ;] catch {: found code:n :}
    code 0= if found if exit then then
-   code E-JSON-READ-STATE = code JSON:E-READ-SOURCE = or
-   code E-JSON-READ-FIRST > code E-JSON-READ-LAST < or or
-   code 0<> and if code throw then
+   code 0<> code JSON:INPUT-FAULT? 0= and if code throw then
    name AZURE-LINE
    s" its 200 answer is not JSON holding a value string" LOG:TEXT+ LOG:;LINE
    E-ACCESS throw ;

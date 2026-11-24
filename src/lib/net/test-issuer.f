@@ -200,11 +200,11 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    s su ;
 
 
-\ Malformed JSON, a repeated member name (JSON:E-MEMBER) or malformed
-\ base64url: the assertion's or refresh token's fault.
+\ Input's fault: a JSON reader code JSON:INPUT-FAULT? names, or malformed
+\ base64url.
 : MALFORMED? ( n -- bool )
    {: code:n :}
-   code E-JSON-READ-LAST >= code E-JSON-READ-FIRST <= and
+   code JSON:INPUT-FAULT?
    code E-BASE64-LAST >= code E-BASE64-FIRST <= and or ;
 
 \ One step over untrusted text: malformed is false, any other throw passes.
