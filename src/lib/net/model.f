@@ -2332,36 +2332,40 @@ private
    a u s" exceeds the context length" STR:CONTAINS?
    a u s" exceeds maximum context length" STR:CONTAINS? or ;
 
-\ Whether a member of OpenAI's error object, the reader at its value, names a
-\ refusal for size: by its code, or by its message where the code is null, as
-\ in an embeddings refusal.
-: SIZE-MEMBER? ( JSON:reader str ^call -- JSON:reader bool )
-   {: key:^ key-u:n c :}
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-SKIP-VALUE false exit then
-   key key-u s" code" STR:= if
-      s" context_length_exceeded" JSON:READ-STR-EQ? if true exit then
-      s" string_above_max_length" JSON:READ-STR-EQ? exit
-   then
-   key key-u s" message" STR:= if
-      c REPLY-STR s" This model's maximum context length" STR:STARTS-WITH? exit
-   then
-   false ;
+\ OpenAI's error codes for a request past the model's size.
+: SIZE-CODE? ( JSON:value -- bool )
+   {: v :}
+   v s" context_length_exceeded" JSON:STRING=
+   v s" string_above_max_length" JSON:STRING= or ;
 
-: OPENAI-SIZE? ( JSON:reader ^call -- JSON:reader bool )
-   {: c :}
-   begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
-      drop
-      JSON:READ-SPAN$ {: key:^ key-u:n :}
-      JSON:READ-NEXT drop
-      key key-u c SIZE-MEMBER? if true exit then
-   repeat
-   drop false ;
+: SIZE-TEXT? ( str -- bool )
+   s" This model's maximum context length" STR:STARTS-WITH? ;
 
-\ The reader at the reply's error member.
-: SIZE-ERROR? ( JSON:reader ^call -- JSON:reader bool )
-   {: c :}
-   JSON:READ-TOKEN JSON:T-STR = if c REPLY-STR OLLAMA-SIZE? exit then
-   JSON:READ-TOKEN JSON:T-OBJ = if c OPENAI-SIZE? exit then
+: SIZE-MESSAGE? ( JSON:value -- bool )
+   {: v :}
+   v JSON:STRING? 0= if false exit then
+   v [: SIZE-TEXT? ;] JSON:WITH-STRING ;
+
+\ The test's answer for a member found, false for none.
+: FOUND? ( option<JSON:value> [ JSON:value -- bool ] -- bool )
+   {: test :}
+   MATCH option
+      none OF false ENDOF
+      some OF test execute ENDOF
+   ;MATCH ;
+
+\ Whether OpenAI's error object names a refusal for size: by its code, or by
+\ its message, as an embeddings refusal with a null code does.
+: OPENAI-SIZE? ( JSON:value -- bool )
+   {: v :}
+   v s" code" JSON:FIND [: SIZE-CODE? ;] FOUND?
+   v s" message" JSON:FIND [: SIZE-MESSAGE? ;] FOUND? or ;
+
+\ The reply's error member: Ollama's text, or OpenAI's object.
+: SIZE-ERROR? ( JSON:value -- bool )
+   {: v :}
+   v JSON:STRING? if v [: OLLAMA-SIZE? ;] JSON:WITH-STRING exit then
+   v JSON:OBJECT? if v OPENAI-SIZE? exit then
    false ;
 
 \ The provider's message, kept from the reply's error member, the reader at
@@ -2393,11 +2397,9 @@ private
 
 : SIZE-BODY? ( ^call -- bool )
    {: c :}
-   c WIRE-READER
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE false exit then
-   s" error" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE false exit then
-   c SIZE-ERROR? {: size:bool :}
-   JSON:READ-CLOSE size ;
+   c RESPONSE$ JSON:PARSE {: v :}
+   v JSON:OBJECT? 0= if false exit then
+   v s" error" JSON:FIND [: SIZE-ERROR? ;] FOUND? ;
 
 \ Whether a failed reply refuses the request for its size: HTTP 413, or a 400
 \ whose body names the refusal. A body that is not such JSON is not one.
