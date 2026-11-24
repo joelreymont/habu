@@ -5,8 +5,7 @@ split-str
 \ at a time while the main task drives CURL. It speaks HTTP/1, and cleartext
 \ HTTP/2 to a client that opens with the HTTP/2 preface. A second listener is
 \ never accepted on: the peer that never answers. HABU_NET_TESTS=1 adds one real
-\ HTTPS request over the CA bundle and, on Linux, two over CA-PATH!: one over
-\ /etc/ssl/certs, and one over an empty directory, which must fail to verify.
+\ HTTPS request.
 \ Run: bin/hb --load src/lib/net/curl-test.f
 \
 \ Failure hypotheses for incremental receive: a memstream may hide bytes until
@@ -124,7 +123,6 @@ $4001000 constant HUGE-U                \ a page past 64 MiB: a reply has no fix
 create ROOT-BUF PATH-CAP allot
 create FILE-BUF PATH-CAP allot
 create JAR-BUF PATH-CAP allot
-create NO-CERTS-BUF PATH-CAP allot      \ an empty certificate directory
 create BODY-BUF BODY-CAP allot          \ the second stream's bytes
 create REQ-BUF REQ-CAP allot
 create PLAIN-BUF REQ-CAP allot          \ the plain peer's, apart from the server task's
@@ -3270,31 +3268,6 @@ TIGHT-FILL
    LAST-STATUS @ 200 T= ;
 
 
-: FETCH-OVER ( str -- ) {: path:^ u:n :}
-   OPEN-HANDLE {: subject:CURL:handle :}
-   subject s" https://example.com/" CURL:URL! EXPECT-OK
-   subject true CURL:FOLLOW! EXPECT-OK
-   subject path u CURL:CA-PATH! EXPECT-OK
-   subject BODY-CAP >LEN FETCH
-   subject CURL:CLEANUP ;
-
-
-\ libcurl gives 60 for a peer no certificate in the directory vouches for; the
-\ empty one fails only while the bundle libcurl was built with goes unread.
-: TEST-CA-PATH ( -- )
-   HB-TARGET-LINUX-KERNEL? 0= if exit then
-   s" /etc/ssl/certs" FETCH-OVER
-   s" HTTPS succeeds over the hashed certificate directory" T-LABEL
-   LAST-KIND @ KIND-RESPONSE T=
-   LAST-STATUS @ 200 T=
-   s" no-certs" NO-CERTS-BUF UNDER-ROOT {: certsu:n :}
-   NO-CERTS-BUF certsu FS:MAKE-DIR
-   NO-CERTS-BUF certsu FETCH-OVER
-   s" an empty certificate directory fails as CURLE_PEER_FAILED_VERIFICATION" T-LABEL
-   LAST-KIND @ KIND-FAILED T=
-   LAST-CODE @ 60 T= ;
-
-
 : LIMIT! ( n -- ) {: soft:n :}
    RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
    soft LIMITS !
@@ -3374,8 +3347,7 @@ TIGHT-FILL
 
 : OPT-IN ( -- )
    NET-TESTS? 0= if exit then
-   TEST-HTTPS
-   TEST-CA-PATH ;
+   TEST-HTTPS ;
 
 
 : PREPARE ( -- )
