@@ -1,4 +1,3 @@
-split-str
 \ http-response.f - the response a handler builds in its worker's slot: a
 \ status, header lines, a borrowed body span or a filed document, and the error
 \ answer every refusal shares, rendered by the one hook ON-ERROR installs
@@ -26,16 +25,16 @@ MAX-WORKERS TYPED-BUFFER FILE-OFFSET n
 MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
 
 
-: OUT+ ( str n -- ) {: src:^ len:n idx:n :}
-   src len BUF:N>BLEN idx OUT-BUF BUF:APPEND-SPAN ;
+: OUT+ ( str n -- ) {: src:str idx:n :}
+   src STR:DATA src STR:LEN BUF:N>BLEN idx OUT-BUF BUF:APPEND-SPAN ;
 
 
 : OUT+C ( n n -- ) {: byte:n idx:n :}
    byte idx OUT-BUF BUF:APPEND-BYTE ;
 
 
-: HDR+ ( str n -- ) {: src:^ len:n idx:n :}
-   src len BUF:N>BLEN idx HDR-BUF BUF:APPEND-SPAN ;
+: HDR+ ( str n -- ) {: src:str idx:n :}
+   src STR:DATA src STR:LEN BUF:N>BLEN idx HDR-BUF BUF:APPEND-SPAN ;
 
 
 : HDR+C ( n n -- ) {: byte:n idx:n :}
@@ -66,9 +65,9 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
    idx ID-U@ 1+ idx ID-U! ;
 
 
-: ID+ ( str n -- ) {: src:^ len:n idx:n :}
-   src len idx ID-BUF idx ID-U@ SPAN:SKIP SPAN:COPY
-   idx ID-U@ len + idx ID-U! ;
+: ID+ ( str n -- ) {: src:str idx:n :}
+   src idx ID-BUF idx ID-U@ SPAN:SKIP SPAN:COPY
+   idx ID-U@ src STR:LEN + idx ID-U! ;
 
 
 \ The identity one request is reported under: the worker that served it and how
@@ -147,7 +146,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
       507 of s" Insufficient Storage" endof
       508 of s" Loop Detected" endof
       511 of s" Network Authentication Required" endof
-      s" " rot
+      s" " swap
    endcase ;
 
 
@@ -223,7 +222,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
    begin idx FILE-OFFSET @ idx BODY-LEN@ < while
       idx FILE-READ {: got:n :}
       got 0 <= if false exit then
-      conn idx FILE-BUFFER @ got WRITE-SPAN 0= if false exit then
+      conn idx FILE-BUFFER @ got >str WRITE-SPAN 0= if false exit then
       idx FILE-OFFSET @ got + idx FILE-OFFSET !
    repeat
    true ;
@@ -245,7 +244,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
    conn idx OUT-BUF BUF$ WRITE-SPAN 0= if false exit then
    idx NO-BODY? if true exit then
    idx FILE-LIVE @ 0<> if conn idx SEND-FILE exit then
-   conn idx BODY-PTR@ idx BODY-LEN@ WRITE-SPAN ;
+   conn idx BODY-PTR@ idx BODY-LEN@ >str WRITE-SPAN ;
 
 
 : SEND ( TCP4:connection response -- bool )
@@ -287,21 +286,21 @@ public
 
 \ One header line. The caller owns the name and the value only for this call.
 : HEADER! ( response str str -- )
-   {: subject:response name:^ namelen:n value:^ valuelen:n :}
+   {: subject:response name:str value:str :}
    subject SLOT-OF-RESPONSE {: idx:n :}
-   name namelen idx HDR+
+   name idx HDR+
    COLON idx HDR+C
    SP idx HDR+C
-   value valuelen idx HDR+
+   value idx HDR+
    CR idx HDR+C
    LF idx HDR+C ;
 
 
 \ The body is BORROWED: it must stay valid until the response has been sent,
 \ which a literal, a loaded static file and the slot's own JSON vector all are.
-: BODY! ( response str -- ) {: subject:response bytes:^ len:n :}
+: BODY! ( response str -- ) {: subject:response bytes:str :}
    subject SLOT-OF-RESPONSE {: idx:n :}
-   bytes len idx RESPONSE-BODY! ;
+   bytes idx RESPONSE-BODY! ;
 
 
 \ A filed document is immutable while it is served. The response takes the
@@ -339,20 +338,20 @@ private
 
 \ The whole error answer as text in the slot's JSON vector: the code, the
 \ message and the request id the fault was reported under, on one line.
-: ERROR-TEXT+ ( str n -- ) {: src:^ len:n idx:n :}
-   src len idx JSON-OUT @ VEC:APPEND ;
+: ERROR-TEXT+ ( str n -- ) {: src:str idx:n :}
+   src idx JSON-OUT @ VEC:APPEND ;
 
 
 : PLAIN-ERROR ( response n str str -- )
-   {: subject:response status:n code:^ codelen:n message:^ messagelen:n :}
+   {: subject:response status:n code:str message:str :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
    subject status STATUS!
    idx DROP-BODY
    idx JSON-OUT @ 0 VEC:RESIZE
-   code codelen idx ERROR-TEXT+
+   code idx ERROR-TEXT+
    s" : " idx ERROR-TEXT+
-   message messagelen idx ERROR-TEXT+
+   message idx ERROR-TEXT+
    s"  (request " idx ERROR-TEXT+
    idx SLOT-ID$ idx ERROR-TEXT+
    S\" )\n" idx ERROR-TEXT+

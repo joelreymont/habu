@@ -1,4 +1,3 @@
-split-str
 \ http-request.f - one HTTP/1.1 request read off a connection into a worker's
 \ slot. Every span the parser records addresses the slot's own input buffer and
 \ lives until the worker starts the next request.
@@ -193,7 +192,8 @@ private
    IN-CAP idx IN-U@ - {: room:n :}
    idx LATE-LEFT@ {: left:n :}
    left UNTAKEN = if room else room left min then {: want:n :}
-   idx IN-BUF idx IN-U@ want SPAN:SUB SPAN:$ TCP4:TRANSFER-BYTES ;
+   idx IN-BUF idx IN-U@ want SPAN:SUB SPAN:$ str>
+   TCP4:TRANSFER-BYTES ;
 
 
 : READ-INTO ( TCP4:connection n -- fill-outcome ) {: conn:TCP4:connection idx:n :}
@@ -398,29 +398,29 @@ private
    idx end 2 + PARSE-HEADERS-FROM ;
 
 
-: HEADER-MATCH ( n n str -- n ) {: idx:n at:n name:^ len:n :}
+: HEADER-MATCH ( n n str -- n ) {: idx:n at:n name:str :}
    at idx HEADER-N@ >= if -1 exit then
-   idx at HEADER-NAME$ name len STR:=CI if at exit then
-   idx at 1+ name len RECURSE ;
+   idx at HEADER-NAME$ name STR:=CI if at exit then
+   idx at 1+ name RECURSE ;
 
 
-: FIND-HEADER ( n str -- n ) {: idx:n name:^ len:n :}
-   idx 0 name len HEADER-MATCH ;
+: FIND-HEADER ( n str -- n ) {: idx:n name:str :}
+   idx 0 name HEADER-MATCH ;
 
 
-: COUNT-FROM ( n n str -- n ) {: idx:n at:n name:^ len:n :}
+: COUNT-FROM ( n n str -- n ) {: idx:n at:n name:str :}
    at idx HEADER-N@ >= if 0 exit then
-   idx at 1+ name len RECURSE {: rest:n :}
-   idx at HEADER-NAME$ name len STR:=CI if rest 1+ exit then
+   idx at 1+ name RECURSE {: rest:n :}
+   idx at HEADER-NAME$ name STR:=CI if rest 1+ exit then
    rest ;
 
 
-: COUNT-HEADER ( n str -- n ) {: idx:n name:^ len:n :}
-   idx 0 name len COUNT-FROM ;
+: COUNT-HEADER ( n str -- n ) {: idx:n name:str :}
+   idx 0 name COUNT-FROM ;
 
 
-: HEADER$ ( n str -- str bool ) {: idx:n name:^ len:n :}
-   idx name len FIND-HEADER {: at:n :}
+: HEADER$ ( n str -- str bool ) {: idx:n name:str :}
+   idx name FIND-HEADER {: at:n :}
    at 0 < if idx 0 0 SPAN$ false exit then
    idx at HEADER-VALUE$ true ;
 
@@ -432,18 +432,18 @@ $5D constant CLOSE-BRACKET
 
 \ How many bytes come before the first c: all of them when none is c.
 : BEFORE ( str n -- n )
-   {: a u:n c:n :}
-   u 0 ?do
-      a i + c@ c = if i unloop exit then
+   {: s:str c:n :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ c = if i unloop exit then
    loop
-   u ;
+   s STR:LEN ;
 
 
 \ True when every byte passes the test; an empty run passes.
 : EVERY? ( str [ n -- bool ] -- bool )
-   {: a u:n test :}
-   u 0 ?do
-      a i + c@ test execute 0= if false unloop exit then
+   {: s:str test :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ test execute 0= if false unloop exit then
    loop
    true ;
 
@@ -459,21 +459,21 @@ $5D constant CLOSE-BRACKET
 
 \ The "%" at that offset begins an escape: two hex digits follow it.
 : ESCAPE? ( str n -- bool )
-   {: a u:n at:n :}
-   at 2 + u >= if false exit then
-   a at + 1+ 2 [: STR:HEX-DIGIT? ;] EVERY? ;
+   {: s:str at:n :}
+   at 2 + s STR:LEN >= if false exit then
+   s STR:DATA at + 1+ 2 >str [: STR:HEX-DIGIT? ;] EVERY? ;
 
 
 \ reg-name (RFC 3986 3.2.2), which an IPv4address is too, never empty (RFC
 \ 9110 4.2.1).
 : REG-NAME? ( str -- bool )
-   {: a u:n :}
-   u 0= if false exit then
-   u 0 ?do
-      a i + c@ PERCENT = if
-         a u i ESCAPE? 0= if false unloop exit then
+   {: s:str :}
+   s STR:LEN 0= if false exit then
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ PERCENT = if
+         s i ESCAPE? 0= if false unloop exit then
       else
-         a i + c@ HOST-BYTE? 0= if false unloop exit then
+         s STR:DATA i + c@ HOST-BYTE? 0= if false unloop exit then
       then
    loop
    true ;
@@ -482,37 +482,37 @@ $5D constant CLOSE-BRACKET
 \ What follows the host: nothing, or ":" and a port, whose digits may be none
 \ (RFC 3986 3.2.3).
 : PORT-PART? ( str -- bool )
-   {: a u:n :}
-   u 0= if true exit then
-   a c@ COLON <> if false exit then
-   a 1+ u 1- [: STR:DIGIT? ;] EVERY? ;
+   {: s:str :}
+   s STR:LEN 0= if true exit then
+   s STR:DATA c@ COLON <> if false exit then
+   s STR:DATA 1+ s STR:LEN 1- >str [: STR:DIGIT? ;] EVERY? ;
 
 
 \ h16: one to four hex digits.
 : HEX16? ( str -- bool )
-   {: a u:n :}
-   u 1 < u 4 > or if false exit then
-   a u [: STR:HEX-DIGIT? ;] EVERY? ;
+   {: s:str :}
+   s STR:LEN 1 < s STR:LEN 4 > or if false exit then
+   s [: STR:HEX-DIGIT? ;] EVERY? ;
 
 
 \ dec-octet: 0 to 255, with no leading zero.
 : DEC-OCTET? ( str -- bool )
-   {: a u:n :}
-   u 1 < u 3 > or if false exit then
-   a u STR:DIGITS? 0= if false exit then
-   u 1 > a c@ STR:ZERO = and if false exit then
-   a u s" 255" STR:DIGITS<= ;
+   {: s:str :}
+   s STR:LEN 1 < s STR:LEN 3 > or if false exit then
+   s STR:DIGITS? 0= if false exit then
+   s STR:LEN 1 > s STR:DATA c@ STR:ZERO = and if false exit then
+   s s" 255" STR:DIGITS<= ;
 
 
 \ IPv4address: four dec-octets split by ".".
 : IPV4? ( str -- bool )
-   {: a u:n :}
-   a u DOT STR:COUNT-CHAR 3 <> if false exit then
+   {: s:str :}
+   s DOT STR:COUNT-CHAR 3 <> if false exit then
    0
    4 0 ?do
       {: at:n :}
-      a at + u at - DOT BEFORE {: k:n :}
-      a at + k DEC-OCTET? 0= if false unloop exit then
+      s STR:DATA at + s STR:LEN at - >str DOT BEFORE {: k:n :}
+      s STR:DATA at + k >str DEC-OCTET? 0= if false unloop exit then
       at k + 1+
    loop
    drop true ;
@@ -521,23 +521,24 @@ $5D constant CLOSE-BRACKET
 \ The total with a run's last group added: an h16 counts one and a dotted quad
 \ two; -1 when it is neither.
 : LAST-GROUP ( n str -- n )
-   {: total:n a u:n :}
-   a u HEX16? if total 1+ exit then
-   a u IPV4? if total 2 + exit then
+   {: total:n s:str :}
+   s HEX16? if total 1+ exit then
+   s IPV4? if total 2 + exit then
    -1 ;
 
 
 \ The 16-bit groups a run split by single ":" stands for, or -1 when a group
 \ is malformed; only the last may be a dotted quad, and an empty run has none.
 : GROUPS ( str -- n )
-   {: a u:n :}
-   u 0= if 0 exit then
+   {: s:str :}
+   s STR:LEN 0= if 0 exit then
    0 0
    begin
       {: total:n at:n :}
-      a at + u at - COLON BEFORE {: k:n :}
-      at k + u = if total a at + k LAST-GROUP exit then
-      a at + k HEX16? 0= if -1 exit then
+      s STR:DATA at + s STR:LEN at - >str COLON BEFORE {: k:n :}
+      s STR:DATA at + k >str {: group:str :}
+      at k + s STR:LEN = if total group LAST-GROUP exit then
+      group HEX16? 0= if -1 exit then
       total 1+ at k + 1+
    again ;
 
@@ -545,10 +546,12 @@ $5D constant CLOSE-BRACKET
 \ The groups on each side of the "::" at that offset: fewer than eight in all,
 \ since it stands for one at least, and no dotted quad before it.
 : ELIDED? ( str n -- bool )
-   {: a u:n at:n :}
-   a at DOT STR:COUNT-CHAR 0 <> if false exit then
-   a at GROUPS {: left:n :}
-   a at + 2 + u at - 2 - GROUPS {: right:n :}
+   {: s:str at:n :}
+   s STR:DATA at >str {: head:str :}
+   s STR:DATA at + 2 + s STR:LEN at - 2 - >str {: tail:str :}
+   head DOT STR:COUNT-CHAR 0 <> if false exit then
+   head GROUPS {: left:n :}
+   tail GROUPS {: right:n :}
    left 0 < right 0 < or if false exit then
    left right + H16-GROUPS < ;
 
@@ -556,11 +559,11 @@ $5D constant CLOSE-BRACKET
 \ IPv6address (RFC 3986 3.2.2): eight 16-bit groups, or fewer around the one
 \ "::" that stands for the rest.
 : IPV6? ( str -- bool )
-   {: a u:n :}
-   a u s" ::" STR:FIND-SUB
+   {: s:str :}
+   s s" ::" STR:FIND-SUB
    MATCH option
-      none OF a u GROUPS H16-GROUPS = ENDOF
-      some OF IDX>N {: at:n :} a u at ELIDED? ENDOF
+      none OF s GROUPS H16-GROUPS = ENDOF
+      some OF IDX>N {: at:n :} s at ELIDED? ENDOF
    ;MATCH ;
 
 
@@ -573,38 +576,43 @@ $5D constant CLOSE-BRACKET
 \ IPvFuture past its "v": a hex version, ".", then at least one unreserved,
 \ sub-delims or ":" byte.
 : FUTURE? ( str -- bool )
-   {: a u:n :}
-   a u DOT BEFORE {: k:n :}
-   k 0= k 1+ u >= or if false exit then
-   a k [: STR:HEX-DIGIT? ;] EVERY? 0= if false exit then
-   a k + 1+ u k - 1- [: FUTURE-BYTE? ;] EVERY? ;
+   {: s:str :}
+   s DOT BEFORE {: k:n :}
+   k 0= k 1+ s STR:LEN >= or if false exit then
+   s STR:DATA k >str [: STR:HEX-DIGIT? ;] EVERY? 0= if false exit then
+   s STR:DATA k + 1+ s STR:LEN k - 1- >str
+   [: FUTURE-BYTE? ;] EVERY? ;
 
 
 \ What an IP-literal's brackets hold: IPvFuture after a "v", else IPv6.
 : IP-LITERAL? ( str -- bool )
-   {: a u:n :}
-   u 0= if false exit then
-   a 1 s" v" STR:=CI if a 1+ u 1- FUTURE? exit then
-   a u IPV6? ;
+   {: s:str :}
+   s STR:LEN 0= if false exit then
+   s STR:DATA 1 >str s" v" STR:=CI if
+      s STR:DATA 1+ s STR:LEN 1- >str FUTURE? exit
+   then
+   s IPV6? ;
 
 
 \ An IP-literal past its "[": the literal up to the "]", then the port part.
 : LITERAL-HOST? ( str -- bool )
-   {: a u:n :}
-   a u CLOSE-BRACKET BEFORE {: k:n :}
-   k u = if false exit then
-   a k IP-LITERAL? 0= if false exit then
-   a k + 1+ u k - 1- PORT-PART? ;
+   {: s:str :}
+   s CLOSE-BRACKET BEFORE {: k:n :}
+   k s STR:LEN = if false exit then
+   s STR:DATA k >str IP-LITERAL? 0= if false exit then
+   s STR:DATA k + 1+ s STR:LEN k - 1- >str PORT-PART? ;
 
 
 \ Host = uri-host [ ":" port ] (RFC 9110 7.2): an IP-literal in brackets, else
 \ a reg-name up to the first ":".
 : HOST-VALUE? ( str -- bool )
-   {: a u:n :}
-   a u s" [" STR:STARTS-WITH? if a 1+ u 1- LITERAL-HOST? exit then
-   a u COLON BEFORE {: k:n :}
-   a k REG-NAME? 0= if false exit then
-   a k + u k - PORT-PART? ;
+   {: s:str :}
+   s s" [" STR:STARTS-WITH? if
+      s STR:DATA 1+ s STR:LEN 1- >str LITERAL-HOST? exit
+   then
+   s COLON BEFORE {: k:n :}
+   s STR:DATA k >str REG-NAME? 0= if false exit then
+   s STR:DATA k + s STR:LEN k - >str PORT-PART? ;
 
 
 \ RFC 9112 3.2: an HTTP/1.1 request carries one Host and an HTTP/1.0 request
@@ -622,11 +630,11 @@ public
 \ True when a comma-separated header value (RFC 9110 5.6.1) holds the token,
 \ each element trimmed and compared case-insensitively.
 : LIST-HAS? ( str str -- bool )
-   {: list:^ listu:n token:^ tokenu:n :}
+   {: list:str token:str :}
    0 begin {: start:n :}
-      list listu CH-COMMA start STR:SPLIT-NEXT {: fa:^ fu:n next:n found:bool :}
+      list CH-COMMA start STR:SPLIT-NEXT {: part:str next:n found:bool :}
       found 0= if false exit then
-      fa fu STR:TRIM token tokenu STR:=CI if true exit then
+      part STR:TRIM token STR:=CI if true exit then
       next start <= if false exit then
       next
    again ;
@@ -640,10 +648,10 @@ private
 
 : DECIDE-KEEP-ALIVE ( n -- ) {: idx:n :}
    idx KEEP-ALIVE-DEFAULT {: alive:bool :}
-   idx s" connection" HEADER$ {: va:^ vu:n found:bool :}
+   idx s" connection" HEADER$ {: v:str found:bool :}
    found 0= if alive FLAG>N idx KEEP-ALIVE! exit then
-   va vu s" close" LIST-HAS? if 0 idx KEEP-ALIVE! exit then
-   va vu s" keep-alive" LIST-HAS? if 1 idx KEEP-ALIVE! exit then
+   v s" close" LIST-HAS? if 0 idx KEEP-ALIVE! exit then
+   v s" keep-alive" LIST-HAS? if 1 idx KEEP-ALIVE! exit then
    alive FLAG>N idx KEEP-ALIVE! ;
 
 
@@ -780,10 +788,10 @@ private
    idx s" content-length" COUNT-HEADER {: count:n :}
    count 0= if -1 exit then
    count 1 > if -2 exit then
-   idx s" content-length" HEADER$ drop {: va:^ vu:n :}
-   vu 0= if -2 exit then
-   va vu STR:DIGITS? 0= if -2 exit then
-   va vu STR:>NUMBER?
+   idx s" content-length" HEADER$ drop {: v:str :}
+   v STR:LEN 0= if -2 exit then
+   v STR:DIGITS? 0= if -2 exit then
+   v STR:>NUMBER?
    MATCH option
       some OF ENDOF
       none OF -2 ENDOF
@@ -791,16 +799,16 @@ private
 
 
 : CHUNKED? ( n -- bool ) {: idx:n :}
-   idx s" transfer-encoding" HEADER$ {: va:^ vu:n found:bool :}
+   idx s" transfer-encoding" HEADER$ {: v:str found:bool :}
    found 0= if false exit then
-   va vu STR:TRIM s" chunked" STR:=CI ;
+   v STR:TRIM s" chunked" STR:=CI ;
 
 
 \ The body framing the head declares, refused from the headers alone before
 \ any handler runs (RFC 9112 6.3): both framings at once or a malformed length
 \ is 400, a coding other than chunked 501, a length over the cap 413.
 : CHECK-BODY ( n n -- parse-result ) {: idx:n cap:n :}
-   idx s" transfer-encoding" HEADER$ {: tea:^ teu:n coded:bool :}
+   idx s" transfer-encoding" HEADER$ nip {: coded:bool :}
    idx CONTENT-LENGTH {: declared:n :}
    coded declared -1 <> and if BAD exit then
    coded if
@@ -916,15 +924,15 @@ E-HTTP-BODY-READ constant E-BODY-READ
 \ RFC 9110 10.1.1: answer 100-continue in HTTP/1.1, ignore it in HTTP/1.0.
 : EXPECTS-CONTINUE? ( n -- bool ) {: idx:n :}
    idx SLOT-VERSION$ s" HTTP/1.1" STR:= 0= if false exit then
-   idx s" expect" HEADER$ {: va:^ vu:n found:bool :}
+   idx s" expect" HEADER$ {: v:str found:bool :}
    found 0= if false exit then
-   va vu s" 100-continue" STR:=CI ;
+   v s" 100-continue" STR:=CI ;
 
 
 : WRITE-SPAN ( TCP4:connection str -- bool )
-   {: conn:TCP4:connection bytes:^ len:n :}
-   len 0= if true exit then
-   conn bytes len TCP4:WRITE
+   {: conn:TCP4:connection bytes:str :}
+   bytes STR:LEN 0= if true exit then
+   conn bytes TCP4:WRITE
    MATCH TCP4:status
       ok OF true ENDOF
       failed OF drop false ENDOF
@@ -962,10 +970,14 @@ E-HTTP-BODY-READ constant E-BODY-READ
 
 \ A query pair's name and value; a pair with no "=" has the empty value.
 : PAIR ( str -- str str )
-   {: a:^ u:n :}
-   a u EQUALS STR:INDEX-OF MATCH option
-      none OF a u a u + 0 ENDOF
-      some OF IDX>N {: at:n :} a at a at + 1+ u at - 1- ENDOF
+   {: s:str :}
+   s EQUALS STR:INDEX-OF MATCH option
+      none OF s s STR:DATA s STR:LEN + 0 >str ENDOF
+      some OF
+         IDX>N {: at:n :}
+         s STR:DATA at >str
+         s STR:DATA at + 1+ s STR:LEN at - 1- >str
+      ENDOF
    ;MATCH ;
 
 
@@ -989,13 +1001,13 @@ public
 \ the empty value. The parser checked every escape (ESCAPES-OK?), so each one
 \ decodes.
 : PARAM+ ( request str ^VEC:vector<u8> -- bool )
-   {: subject:request key:^ keyu:n v:^ :}
-   subject QUERY$ {: q:^ qu:n :}
+   {: subject:request key:str v:^ :}
+   subject QUERY$ {: q:str :}
    0 begin {: start:n :}
-      q qu AMPERSAND start STR:SPLIT-NEXT {: fa:^ fu:n next:n found:bool :}
+      q AMPERSAND start STR:SPLIT-NEXT {: part:str next:n found:bool :}
       found 0= if false exit then
-      fa fu PAIR {: na:^ nu:n va:^ vu:n :}
-      na nu key keyu URI:FORM= if va vu v URI:FORM-DECODE+ true exit then
+      part PAIR {: name:str value:str :}
+      name key URI:FORM= if value v URI:FORM-DECODE+ true exit then
       next
    again ;
 
@@ -1018,13 +1030,13 @@ public
    idx SLOT-BODY$ ;
 
 
-: HEADER-OF$ ( request str -- str bool ) {: subject:request name:^ len:n :}
-   subject SLOT-OF-REQUEST name len HEADER$ ;
+: HEADER-OF$ ( request str -- str bool ) {: subject:request name:str :}
+   subject SLOT-OF-REQUEST name HEADER$ ;
 
 
 \ A header whose value is trusted is read only when exactly one arrived.
-: HEADER-COUNT-OF ( request str -- n ) {: subject:request name:^ len:n :}
-   subject SLOT-OF-REQUEST name len COUNT-HEADER ;
+: HEADER-COUNT-OF ( request str -- n ) {: subject:request name:str :}
+   subject SLOT-OF-REQUEST name COUNT-HEADER ;
 
 
 : CLIENT-GONE? ( request -- bool )

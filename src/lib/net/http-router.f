@@ -1,4 +1,3 @@
-split-str
 \ http-router.f - routes keyed on a method and a path pattern with named
 \ segments, as in /items/{id}. A pattern segment written {name} matches one
 \ nonempty path segment and binds its decoded text; every other segment
@@ -29,11 +28,11 @@ variable ROUTE-COUNT
 
 
 : ROUTE-METHOD$ ( n -- str ) {: route:n :}
-   route ROUTE-METHOD-A @ route ROUTE-METHOD-N @ ;
+   route ROUTE-METHOD-A @ route ROUTE-METHOD-N @ >str ;
 
 
 : ROUTE-PATTERN$ ( n -- str ) {: route:n :}
-   route ROUTE-PATTERN-A @ route ROUTE-PATTERN-N @ ;
+   route ROUTE-PATTERN-A @ route ROUTE-PATTERN-N @ >str ;
 
 
 : ROUTE-BODY-CAP ( n -- n ) {: route:n :}
@@ -45,44 +44,44 @@ variable ROUTE-COUNT
 
 \ ---- segments ---------------------------------------------------------------
 
-: SEG-END ( str n -- n ) {: bytes:^ len:n from:n :}
-   len from ?do
-      bytes i + c@ SLASH = if i unloop exit then
+: SEG-END ( str n -- n ) {: bytes:str from:n :}
+   bytes STR:LEN from ?do
+      bytes STR:DATA i + c@ SLASH = if i unloop exit then
    loop
-   len ;
+   bytes STR:LEN ;
 
 
-: NAMED? ( str -- bool ) {: bytes:^ len:n :}
-   len 2 < if false exit then
-   bytes c@ LBRACE <> if false exit then
-   bytes len + 1- c@ RBRACE = ;
+: NAMED? ( str -- bool ) {: bytes:str :}
+   bytes STR:LEN 2 < if false exit then
+   bytes STR:DATA c@ LBRACE <> if false exit then
+   bytes STR:DATA bytes STR:LEN + 1- c@ RBRACE = ;
 
 
-: SEGMENT-NAME$ ( str -- str ) {: bytes:^ len:n :}
-   bytes 1+ len 2 - ;
+: SEGMENT-NAME$ ( str -- str ) {: bytes:str :}
+   bytes STR:DATA 1+ bytes STR:LEN 2 - >str ;
 
 
 \ The escapes were validated when the request line was parsed, so a percent
 \ always carries the two hex digits this reads.
-: COPY-SEGMENT ( str n -- ) {: bytes:^ len:n idx:n :}
+: COPY-SEGMENT ( str n -- ) {: bytes:str idx:n :}
    0
    begin
       {: at:n :}
-      at len >= if exit then
-      bytes at + c@ PERCENT = at 3 + len <= and if
-         bytes at 1+ + c@ STR:HEX-DIGIT-VALUE HEX-BASE *
-         bytes at 2 + + c@ STR:HEX-DIGIT-VALUE + idx SEGMENT+C
+      at bytes STR:LEN >= if exit then
+      bytes STR:DATA at + c@ PERCENT = at 3 + bytes STR:LEN <= and if
+         bytes STR:DATA at 1+ + c@ STR:HEX-DIGIT-VALUE HEX-BASE *
+         bytes STR:DATA at 2 + + c@ STR:HEX-DIGIT-VALUE + idx SEGMENT+C
          at 3 +
       else
-         bytes at + c@ idx SEGMENT+C
+         bytes STR:DATA at + c@ idx SEGMENT+C
          at 1+
       then
    again ;
 
 
-: BIND-SEGMENT ( str n -- ) {: bytes:^ len:n idx:n :}
+: BIND-SEGMENT ( str n -- ) {: bytes:str idx:n :}
    idx SEGMENT-OPEN {: start:n :}
-   bytes len idx COPY-SEGMENT
+   bytes idx COPY-SEGMENT
    start idx SEGMENT-CLOSE ;
 
 
@@ -91,21 +90,22 @@ variable ROUTE-COUNT
 \ Select a route from the validated path without copying named segments. The
 \ request's body limit is checked before a selected route binds them.
 : SEGMENTS-MATCH? ( n n -- bool ) {: route:n idx:n :}
-   route ROUTE-PATTERN$ {: pat:^ patlen:n :}
-   idx SLOT-PATH$ {: path:^ pathlen:n :}
+   route ROUTE-PATTERN$ {: pat:str :}
+   idx SLOT-PATH$ {: path:str :}
+   pat STR:LEN path STR:LEN {: patlen:n pathlen:n :}
    0 0
    begin
       {: patat:n pathat:n :}
       patat patlen >= pathat pathlen >= and if true exit then
       patat patlen >= pathat pathlen >= or if false exit then
-      pat patlen patat 1+ SEG-END {: patend:n :}
-      path pathlen pathat 1+ SEG-END {: pathend:n :}
-      pat patat 1+ + patend patat - 1- {: pa:^ pu:n :}
-      path pathat 1+ + pathend pathat - 1- {: ha:^ hu:n :}
-      pa pu NAMED? if
-         hu 0= if false exit then
+      pat patat 1+ SEG-END {: patend:n :}
+      path pathat 1+ SEG-END {: pathend:n :}
+      pat STR:DATA patat 1+ + patend patat - 1- >str {: pseg:str :}
+      path STR:DATA pathat 1+ + pathend pathat - 1- >str {: hseg:str :}
+      pseg NAMED? if
+         hseg STR:LEN 0= if false exit then
       else
-         pa pu ha hu STR:= 0= if false exit then
+         pseg hseg STR:= 0= if false exit then
       then
       patend pathend
    again ;
@@ -114,18 +114,19 @@ variable ROUTE-COUNT
 \ The selected pattern already matches this path. Copy only its named
 \ segments once the body has been accepted, just before the handler runs.
 : BIND-ROUTE ( n n -- ) {: route:n idx:n :}
-   route ROUTE-PATTERN$ {: pat:^ patlen:n :}
-   idx SLOT-PATH$ {: path:^ pathlen:n :}
+   route ROUTE-PATTERN$ {: pat:str :}
+   idx SLOT-PATH$ {: path:str :}
    0 idx SEG-U!
    0 idx SEGMENT-N!
    0 0
    begin
       {: patat:n pathat:n :}
-      patat patlen >= if exit then
-      pat patlen patat 1+ SEG-END {: patend:n :}
-      path pathlen pathat 1+ SEG-END {: pathend:n :}
-      pat patat 1+ + patend patat - 1- NAMED? if
-         path pathat 1+ + pathend pathat - 1- idx BIND-SEGMENT
+      patat pat STR:LEN >= if exit then
+      pat patat 1+ SEG-END {: patend:n :}
+      path pathat 1+ SEG-END {: pathend:n :}
+      pat STR:DATA patat 1+ + patend patat - 1- >str NAMED? if
+         path STR:DATA pathat 1+ + pathend pathat - 1- >str
+         idx BIND-SEGMENT
       then
       patend pathend
    again ;
@@ -151,16 +152,16 @@ variable ROUTE-COUNT
    false ;
 
 
-: NAMED-INDEX ( n str -- n ) {: route:n name:^ namelen:n :}
-   route ROUTE-PATTERN$ {: pat:^ patlen:n :}
+: NAMED-INDEX ( n str -- n ) {: route:n name:str :}
+   route ROUTE-PATTERN$ {: pat:str :}
    0 0
    begin
       {: at:n count:n :}
-      at patlen >= if -1 exit then
-      pat patlen at 1+ SEG-END {: end:n :}
-      pat at 1+ + end at - 1- {: pa:^ pu:n :}
-      pa pu NAMED? if
-         pa pu SEGMENT-NAME$ name namelen STR:= if count exit then
+      at pat STR:LEN >= if -1 exit then
+      pat at 1+ SEG-END {: end:n :}
+      pat STR:DATA at 1+ + end at - 1- >str {: seg:str :}
+      seg NAMED? if
+         seg SEGMENT-NAME$ name STR:= if count exit then
          end count 1+
       else
          end count
@@ -207,17 +208,17 @@ variable ROUTE-COUNT
 
 
 : ADD-ROUTE ( str str n [ request response -- ] -- )
-   {: method:^ methodlen:n pattern:^ patternlen:n cap:n handler :}
+   {: method:str pattern:str cap:n handler :}
    RUNNING @ 0 <> if E-STATE throw then
-   methodlen 0 <= if E-ROUTE throw then
-   patternlen 0 <= if E-ROUTE throw then
-   pattern c@ SLASH <> if E-ROUTE throw then
+   method STR:LEN 0 <= if E-ROUTE throw then
+   pattern STR:LEN 0 <= if E-ROUTE throw then
+   pattern STR:DATA c@ SLASH <> if E-ROUTE throw then
    ROUTE-COUNT @ 1+ ROUTE-RESERVE
    ROUTE-COUNT @ {: at:n :}
-   method at ROUTE-METHOD-A !
-   methodlen at ROUTE-METHOD-N !
-   pattern at ROUTE-PATTERN-A !
-   patternlen at ROUTE-PATTERN-N !
+   method STR:DATA at ROUTE-METHOD-A !
+   method STR:LEN at ROUTE-METHOD-N !
+   pattern STR:DATA at ROUTE-PATTERN-A !
+   pattern STR:LEN at ROUTE-PATTERN-N !
    cap at ROUTE-CAP !
    handler at ROUTE-HANDLER !
    at 1+ ROUTE-COUNT ! ;
@@ -228,15 +229,15 @@ public
 \ One route. The method, the pattern and the handler are the caller's and must
 \ outlive the server, which a literal and a definition both do.
 : ROUTE ( str str [ request response -- ] -- )
-   {: method:^ methodlen:n pattern:^ patternlen:n handler :}
-   method methodlen pattern patternlen -1 handler ADD-ROUTE ;
+   {: method:str pattern:str handler :}
+   method pattern -1 handler ADD-ROUTE ;
 
 
 \ An explicit byte limit for this route, including zero for an empty body.
 : ROUTE-CAPPED ( str str n [ request response -- ] -- )
-   {: method:^ methodlen:n pattern:^ patternlen:n cap:n handler :}
+   {: method:str pattern:str cap:n handler :}
    cap 0 < if E-CAPACITY throw then
-   method methodlen pattern patternlen cap handler ADD-ROUTE ;
+   method pattern cap handler ADD-ROUTE ;
 
 
 : ROUTES-RESET ( -- )
@@ -247,11 +248,11 @@ public
 \ The text a named pattern segment bound, decoded. False when this request
 \ matched no route, or that route names no such segment.
 : SEGMENT-OF$ ( request str -- str bool )
-   {: subject:request name:^ namelen:n :}
+   {: subject:request name:str :}
    subject SLOT-OF-REQUEST {: idx:n :}
    idx ROUTE-AT@ {: route:n :}
    route 0 < if idx SEG-BUF 0 SPAN:TAKE SPAN:$ false exit then
-   route name namelen NAMED-INDEX {: at:n :}
+   route name NAMED-INDEX {: at:n :}
    at 0 < if idx SEG-BUF 0 SPAN:TAKE SPAN:$ false exit then
    at idx SEGMENT-N@ >= if idx SEG-BUF 0 SPAN:TAKE SPAN:$ false exit then
    idx at SEGMENT$ true ;

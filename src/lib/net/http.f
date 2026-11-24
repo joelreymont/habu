@@ -1,4 +1,3 @@
-split-str
 \ http.f - the HTTP/1.1 server: a listener task on an IPv4 address, a fixed pool
 \ of workers taking connections, and the calls SUBMIT queues, from one queue,
 \ one handler per request in a catch boundary (a throw answers 500 with the
@@ -317,7 +316,7 @@ private
 
 
 : DISCARD ( TCP4:connection SPAN:span<u8> -- bool ) {: conn:TCP4:connection room :}
-   conn room SPAN:$ TCP4:TRANSFER-BYTES TCP4:READ
+   conn room SPAN:$ str> TCP4:TRANSFER-BYTES TCP4:READ
    MATCH TCP4:read-result
       data OF drop true ENDOF
       closed OF drop false ENDOF
@@ -344,9 +343,9 @@ private
 
 
 \ A parsed method or path is never empty: an empty one was not given.
-: FIELD+ ( str -- ) {: bytes:^ len:n :}
-   len 0= if s" -" LOG:TEXT+ exit then
-   bytes len LOG:TEXT+ ;
+: FIELD+ ( str -- ) {: bytes:str :}
+   bytes STR:LEN 0= if s" -" LOG:TEXT+ exit then
+   bytes LOG:TEXT+ ;
 
 
 : ACCESS-LINE ( n -- ) {: idx:n :}
@@ -1044,9 +1043,9 @@ variable EXIT-HOOK-N
 \ The step of BIND-LISTENER the OS refused, logged as
 \ `<step> <a.b.c.d>:<port> failed, errno <n>` before E-SOCKET.
 : REPORT-UNBOUND ( TCP4:errno n n str -- )
-   {: cause:TCP4:errno address:n port:n step:^ stepn:n :}
+   {: cause:TCP4:errno address:n port:n step:str :}
    LOG:ERROR s" http" LOG:LINE
-   step stepn LOG:TEXT+  s"  " LOG:TEXT+
+   step LOG:TEXT+  s"  " LOG:TEXT+
    address 24 OCTET+  s" ." LOG:TEXT+
    address 16 OCTET+  s" ." LOG:TEXT+
    address 8 OCTET+  s" ." LOG:TEXT+
@@ -1281,14 +1280,14 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    0 LINGER-SCRATCH LINGER-CAP SPAN:MAKE ;
 
 
-: REPLY-HEAD ( n str n -- ) {: status:n type:^ type-n:n body-n:n :}
+: REPLY-HEAD ( n str n -- ) {: status:n type:str body-n:n :}
    SB-RESET
    s" HTTP/1.1 " SB-APPEND
    status FMT:SB-U
    SP SB-APPEND-C
    status REASON$ SB-APPEND
    s\" \r\nContent-Type: " SB-APPEND
-   type type-n SB-APPEND
+   type SB-APPEND
    s\" \r\n" SB-APPEND
    status BODYLESS? 0= if
       s" Content-Length: " SB-APPEND
@@ -1303,12 +1302,12 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 
 : SEND-REPLY ( n str str -- bool )
-   {: status:n type:^ type-n:n body:^ body-n:n :}
-   status type type-n body-n REPLY-HEAD
+   {: status:n type:str body:str :}
+   status type body STR:LEN REPLY-HEAD
    REPLYING @ TCP4:>CONNECTION {: conn:TCP4:connection :}
    conn SB$ WRITE-SPAN 0= if false exit then
    status BODYLESS? 0= if
-      conn body body-n WRITE-SPAN 0= if false exit then
+      conn body WRITE-SPAN 0= if false exit then
    then
    conn LINGER-ROOM LINGER
    true ;
@@ -1437,9 +1436,9 @@ public
 \ string builder, so a content type past its room is E-STR-CAPACITY. REPLY
 \ closes the connection on every way out, a throw or a TASK:HALT included.
 : REPLY ( TCP4:connection n str str -- bool )
-   {: conn:TCP4:connection status:n type:^ type-n:n body:^ body-n:n :}
+   {: conn:TCP4:connection status:n type:str body:str :}
    conn TCP4:CONNECTION>N REPLYING !
-   status type type-n body body-n [: SEND-REPLY ;] [: CLOSE-REPLYING ;] finally ;
+   status type body [: SEND-REPLY ;] [: CLOSE-REPLYING ;] finally ;
 
 
 \ The address and port to listen on, how many request workers to run, and how

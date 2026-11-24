@@ -1,4 +1,3 @@
-split-str
 \ httpc-test.f - focused tests for src/lib/net/httpc.f over loopback HTTP/1.1.
 \ One process holds both peers: a server task accepts on a loopback TCP4
 \ listener bound to port 0 and answers each request with the bytes its case
@@ -242,19 +241,19 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ The request head's length through its blank line; 0 while incomplete.
 : HEAD-U ( -- n )
-   REQ-BUF REQ-U @ S\" \r\n\r\n" STR:FIND-SUB MATCH option
+   REQ-BUF REQ-U @ >str S\" \r\n\r\n" STR:FIND-SUB MATCH option
       none OF 0 ENDOF
       some OF IDX>N 4 + ENDOF
    ;MATCH ;
 
 \ The body length a request head of H bytes declares; 0 for none.
 : BODY-U ( n -- n ) {: h:n :}
-   REQ-BUF h s" Content-Length: " STR:FIND-SUB MATCH option
+   REQ-BUF h >str s" Content-Length: " STR:FIND-SUB MATCH option
       none OF 0 ENDOF
       some OF IDX>N 16 + {: at:n :}
-         REQ-BUF at + h at - 13 STR:INDEX-OF MATCH option
+         REQ-BUF at + h at - >str 13 STR:INDEX-OF MATCH option
             none OF 0 ENDOF
-            some OF IDX>N REQ-BUF at + swap STR:PARSE-POS
+            some OF IDX>N REQ-BUF at + swap >str STR:PARSE-POS
                MATCH option none OF 0 ENDOF some OF ENDOF ;MATCH
             ENDOF
          ;MATCH
@@ -295,8 +294,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : ANSWER-ALL ( TCP4:connection n -- bool ) {: conn:TCP4:connection idx:n :}
    begin conn READ-REQUEST while
       1 idx PER-CONN atomic-add drop
-      1 REQUESTS atomic-add REPLY {: a:^ u:n shut:bool :}
-      conn a u TCP4:WRITE PEER-STATUS
+      1 REQUESTS atomic-add REPLY {: reply:str shut:bool :}
+      conn reply TCP4:WRITE PEER-STATUS
       1 WRITTEN atomic-add drop
       shut if conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS true exit then
    repeat false ;
@@ -357,12 +356,12 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ ---- The client
 
-: ORIGIN$ ( -- str ) ORIGIN-BUF ORIGIN-U @ ;
+: ORIGIN$ ( -- str ) ORIGIN-BUF ORIGIN-U @ >str ;
 
 : ORIGIN! ( n -- ) {: port:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND port FMT:SB-U
-   SB$ {: a:^ u:n :}
-   a ORIGIN-BUF u BYTE-COPY  u ORIGIN-U ! ;
+   SB$ {: s:str :}
+   s STR:DATA ORIGIN-BUF s STR:LEN BYTE-COPY  s STR:LEN ORIGIN-U ! ;
 
 \ The server's script for a fresh case, its counts zeroed.
 : SCRIPT-IS ( script -- )
@@ -381,13 +380,13 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 : END-CASE ( -- ) LINK HTTPC:CLOSE ;
 
-: PREPARE ( str str -- ) {: m:^ mu:n t:^ tu:n :}
-   LINK m mu t tu HTTPC:REQUEST
+: PREPARE ( str str -- ) {: m:str t:str :}
+   LINK m t HTTPC:REQUEST
    LINK TOTAL-MS STALL-MS HTTPC:DEADLINES! ;
 
 : ASK ( -- ) s" GET" s" /case" PREPARE  LINK s" " HTTPC:SEND ;
 
-: GOT$ ( -- str ) GOT-BUF GOT-U @ ;
+: GOT$ ( -- str ) GOT-BUF GOT-U @ >str ;
 
 : GOT+ ( n -- ) {: k:n :}
    GOT-U @ k + GOT-CAP > if
@@ -417,11 +416,11 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    ANSWER-RESET
    LINK SPAN-BUF span >LEN HTTPC:NEXT ANSWERED? TFALSE ;
 
-: ANSWER-IS ( n str -- ) {: status:n a:^ u:n :}
+: ANSWER-IS ( n str -- ) {: status:n s:str :}
    FAULTS @ 0<> if
       s" httpc-test: NEXT failed: " type LAST-FAULT @ HTTPC:FAULT$ type cr
    then
-   FAULTS @ 0 T=  LAST-STATUS @ status T=  GOT$ a u T$= ;
+   FAULTS @ 0 T=  LAST-STATUS @ status T=  GOT$ s T$= ;
 
 \ The answer ended in the fault, which LOST? answers LOST for. LAST-FAULT
 \ is the answer's own only when one fault was recorded.
@@ -434,7 +433,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ Whether the last request head the server answered names a Content-Length.
 : SEEN-LENGTH? ( -- bool )
-   SEEN-BUF SEEN-U @ s" Content-Length" STR:FIND-SUB MATCH option
+   SEEN-BUF SEEN-U @ >str s" Content-Length" STR:FIND-SUB MATCH option
       none OF false ENDOF
       some OF drop true ENDOF
    ;MATCH ;
@@ -576,17 +575,18 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" POST" s" /case" PREPARE  LINK s" " HTTPC:SEND  WIDE-SPAN READ-ALL
    s" an empty POST sends Content-Length: 0" T-LABEL
    200 s" second" ANSWER-IS
-   SEEN-BUF SEEN-U @ S\" \r\nContent-Length: 0\r\n" STR:FIND-SUB MATCH option
+   SEEN-BUF SEEN-U @ >str S\" \r\nContent-Length: 0\r\n" STR:FIND-SUB
+   MATCH option
       none OF false ENDOF
       some OF drop true ENDOF
    ;MATCH TTRUE
    END-CASE ;
 
 \ An answer that forbids keeping its connection; the next request dials anew.
-: SHUT-BY ( script str -- ) {: sc:script a:^ u:n :}
+: SHUT-BY ( script str -- ) {: sc:script s:str :}
    sc BEGIN-CASE
    ASK WIDE-SPAN READ-ALL
-   a u T-LABEL
+   s T-LABEL
    200 s" first" ANSWER-IS
    ASK WIDE-SPAN READ-ALL
    200 s" second" ANSWER-IS
@@ -602,12 +602,12 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ A room of the head's size leaves the whole body on the socket.
 : TEST-WIRE-BODY ( -- )
-   construct script wire-sized WIRE-SIZED-HEAD$ nip BEGIN-IN
+   construct script wire-sized WIRE-SIZED-HEAD$ STR:LEN BEGIN-IN
    ASK SIZED-SPAN READ-ALL
    s" a Content-Length body read from the wire arrives whole" T-LABEL
    200 ALPHABET$ ANSWER-IS
    END-CASE
-   construct script wire-chunked WIRE-CHUNKED-HEAD$ nip BEGIN-IN
+   construct script wire-chunked WIRE-CHUNKED-HEAD$ STR:LEN BEGIN-IN
    ASK CHUNKED-SPAN READ-ALL
    s" a chunked body read from the wire decodes whole" T-LABEL
    200 s" hello, world" ANSWER-IS
@@ -616,7 +616,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 \ The room holds the answer but not the byte past it, so the connection is
 \ kept with that byte unread on its socket.
 : TEST-STALE-BYTE ( -- )
-   construct script stale-byte STALE-BYTE$ nip 1- BEGIN-IN
+   construct script stale-byte STALE-BYTE$ STR:LEN 1- BEGIN-IN
    ASK WIDE-SPAN READ-ALL
    s" an answer with a byte past it on the socket" T-LABEL
    200 s" first" ANSWER-IS
@@ -686,10 +686,10 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    HTTPC-FAULT:TIMEOUT true FAULT-IS
    END-CASE ;
 
-: MALFORMED-BY ( script str -- ) {: sc:script a:^ u:n :}
+: MALFORMED-BY ( script str -- ) {: sc:script s:str :}
    sc BEGIN-CASE
    ASK WIDE-SPAN READ-ALL
-   a u T-LABEL
+   s T-LABEL
    HTTPC-FAULT:MALFORMED false FAULT-IS
    END-CASE ;
 
@@ -715,12 +715,12 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ A request with a stall only, in a room of SMALL-ROOM bytes, whose answer
 \ fails `oversize`.
-: OVERSIZE-BY ( script str -- ) {: sc:script a:^ u:n :}
+: OVERSIZE-BY ( script str -- ) {: sc:script s:str :}
    sc SMALL-ROOM BEGIN-IN
    LINK s" GET" s" /case" HTTPC:REQUEST
    LINK 0 STALL-MS HTTPC:DEADLINES!
    LINK s" " HTTPC:SEND  WIDE-SPAN READ-ALL
-   a u T-LABEL
+   s T-LABEL
    HTTPC-FAULT:OVERSIZE false FAULT-IS
    END-CASE ;
 
@@ -792,20 +792,21 @@ TRUST-ROOM BUFFER: TRUST-BUF            \ the trust file's path OPEN borrows
 variable TRUST-U
 
 \ The origin `https://` HOST `:` PORT.
-: HTTPS-ORIGIN! ( str n -- ) {: h:^ hu:n port:n :}
-   SB-RESET s" https://" SB-APPEND h hu SB-APPEND s" :" SB-APPEND
-   port FMT:SB-U SB$ {: a:^ u:n :}
-   a ORIGIN-BUF u BYTE-COPY  u ORIGIN-U ! ;
+: HTTPS-ORIGIN! ( str n -- ) {: h:str port:n :}
+   SB-RESET s" https://" SB-APPEND h SB-APPEND s" :" SB-APPEND
+   port FMT:SB-U SB$ {: s:str :}
+   s STR:DATA ORIGIN-BUF s STR:LEN BYTE-COPY  s STR:LEN ORIGIN-U ! ;
 
 : TRUST! ( str -- )
-   TEST-TLS-PEER:IN-DIR {: a:^ u:n :}
-   a TRUST-BUF u BYTE-COPY  u TRUST-U ! ;
+   TEST-TLS-PEER:IN-DIR {: path:str :}
+   path STR:DATA TRUST-BUF path STR:LEN BYTE-COPY
+   path STR:LEN TRUST-U ! ;
 
 \ A conn opened on the https origin for HOST at PORT, trusting the scratch
 \ file, with a room of ROOM bytes.
-: BEGIN-HTTPS-AT ( str str n n -- ) {: h:^ hu:n f:^ fu:n port:n room:n :}
-   f fu TRUST!  h hu port HTTPS-ORIGIN!
-   LINK ORIGIN$ TRUST-BUF TRUST-U @ ROOM-BUF room HTTPC:OPEN
+: BEGIN-HTTPS-AT ( str str n n -- ) {: h:str f:str port:n room:n :}
+   f TRUST!  h port HTTPS-ORIGIN!
+   LINK ORIGIN$ TRUST-BUF TRUST-U @ >str ROOM-BUF room HTTPC:OPEN
    s" OPEN takes the https origin" T-LABEL TTRUE ;
 
 : BEGIN-HTTPS ( str str -- )
@@ -868,11 +869,11 @@ variable TRUST-U
 
 \ The plain server answers the ClientHello by its script; the handshake
 \ fails with mbedTLS's code as CAUSE.
-: SHAKE-FAILS ( script n str -- ) {: sc:script cause:n a:^ u:n :}
+: SHAKE-FAILS ( script n str -- ) {: sc:script cause:n s:str :}
    sc SCRIPT-IS
    s" localhost" s" ca.pem" PORT-CELL @ ROOM-CAP BEGIN-HTTPS-AT
    ASK-ROOT WIDE-SPAN READ-ALL
-   a u T-LABEL
+   s T-LABEL
    HTTPC-FAULT:HANDSHAKE true FAULT-IS
    LINK HTTPC:CAUSE cause T=
    END-CASE ;
@@ -892,7 +893,7 @@ variable TRUST-U
 \ body's at the body: STALE$, in the same record, stays in the TLS session. A
 \ reused connection would answer the second request with it.
 : TEST-HTTPS-HELD ( -- )
-   s" localhost" s" ca.pem" TEST-TLS-PEER:PORT HELD-HEAD$ nip
+   s" localhost" s" ca.pem" TEST-TLS-PEER:PORT HELD-HEAD$ STR:LEN
    BEGIN-HTTPS-AT
    ASK-ROOT
    SB-RESET HELD-HEAD$ SB-APPEND s" first" SB-APPEND STALE$ SB-APPEND
@@ -956,9 +957,9 @@ create LONG-TRUST PATH-CAP 1 + allot    \ a trust path FS cannot spell
 \ An https origin at the plain server, opened in a record full of stale
 \ bytes, trusting the path: each SEND dials, and TLS refuses the path
 \ before it makes anything. The server has closed DONE connections.
-: UNREAD-PATH ( str n -- ) {: t:^ tu:n done:n :}
+: UNREAD-PATH ( str n -- ) {: t:str done:n :}
    SPOIL  s" 127.0.0.1" PORT-CELL @ HTTPS-ORIGIN!
-   SPARE ORIGIN$ t tu ROOM-BUF ROOM-CAP HTTPC:OPEN TTRUE
+   SPARE ORIGIN$ t ROOM-BUF ROOM-CAP HTTPC:OPEN TTRUE
    OPEN-FDS {: open:n :}
    UNREAD-SENDS 0 do open done i + 1+ UNREAD-SEND loop
    SPARE HTTPC:CLOSE ;
@@ -972,7 +973,7 @@ create LONG-TRUST PATH-CAP 1 + allot    \ a trust path FS cannot spell
    PATH-CAP 1 + 0 do [char] a LONG-TRUST i + c! loop
    s" OPEN takes a trust path longer than PATH-CAP, which fails `trust`"
    T-LABEL
-   LONG-TRUST PATH-CAP 1 + UNREAD-SENDS UNREAD-PATH ;
+   LONG-TRUST PATH-CAP 1 + >str UNREAD-SENDS UNREAD-PATH ;
 
 \ ---- A relay that withholds the close_notify
 
@@ -1015,14 +1016,14 @@ TASK:MIN-STACK TASK:TASK RELAY-TASK
 \ to the buffer's start. False at an alert, which WITHHELD records.
 : PASS ( TCP4:connection -- bool ) {: client:TCP4:connection :}
    WHOLE {: sent:n alert:bool :}
-   client RECORDS sent TCP4:WRITE PEER-STATUS
+   client RECORDS sent >str TCP4:WRITE PEER-STATUS
    RECORDS sent + RECORDS RECORDS-U @ sent - BYTE-COPY
    sent negate RECORDS-U +!
    alert if true WITHHELD ! false exit then
    true ;
 
 : UP ( TCP4:connection n -- bool ) {: server:TCP4:connection k:n :}
-   server UPWARD k TCP4:WRITE PEER-STATUS true ;
+   server UPWARD k >str TCP4:WRITE PEER-STATUS true ;
 
 \ The client's bytes to the server; false at the client's end.
 : FROM-CLIENT ( TCP4:connection TCP4:connection -- bool )
@@ -1124,10 +1125,10 @@ TASK:MIN-STACK TASK:TASK RELAY-TASK
 \ ---- The table against its model
 
 \ The file at the path, whole, in the arena.
-: FILE-IN ( str ^ARENA:arena -- str ) {: p:^ pu:n ar :}
-   p pu FS:FILE-SIZE {: u:n :}
+: FILE-IN ( str ^ARENA:arena -- str ) {: p:str ar :}
+   p FS:FILE-SIZE {: u:n :}
    ar u ARENA:ALLOC drop {: b:^ :}
-   b  p pu b u FS:READ-ALL ;
+   b  p b u FS:READ-ALL >str ;
 
 : TABLE-IS-MODEL ( ^ARENA:arena -- ) {: ar :}
    s" src/lib/net/httpc.f" s" LIFECYCLE" s" Httpc" ar TEST-FSM:TABLE-MODULE
