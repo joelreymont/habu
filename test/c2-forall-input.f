@@ -1,4 +1,3 @@
-split-str
 \ A saved callback with two binders specializes to the live scope and region
 \ while WITH-INIT consumes a concrete quotation inside the owner path.
 require src/lib/c2-memory.f

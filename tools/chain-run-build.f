@@ -1,4 +1,3 @@
-split-str
 \ chain-run-build.f - CLI entry for the checked generation-chain driver.
 \
 \ Exit status: EXIT-STATUS:SUCCESS at a fixpoint; EXIT-STATUS:USAGE for a

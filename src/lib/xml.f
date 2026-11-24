@@ -1,4 +1,3 @@
-split-str
 \ xml.f - package XML: XML 1.0 pull reader, source views and escaping. A reader
 \ is a linear XML:reader over a caller-declared XML:cursor record (a STRUCTURE
 \ field, a typed variable or ALLOC:NEW); a zero-filled record owns nothing.

@@ -1,4 +1,3 @@
-split-str
 \ Independently encoded ZIP framing fixtures (PKWARE APPNOTE 4.3).
 package ZIP-TEST
 

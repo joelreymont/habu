@@ -1,4 +1,3 @@
-split-str
 \ log-first.f - the log program's first file: its top level logs a line, so
 \ the build takes LOG's facility, a lock of the building process alone, and
 \ leaves a facility of its own held.

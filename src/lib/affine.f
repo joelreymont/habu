@@ -1,4 +1,3 @@
-split-str
 \ affine.f - binary64 3D affine transforms: rotate one about a line, map a
 \ point through one.
 \ A transform is twelve binary64 cells, row-major 3x4,

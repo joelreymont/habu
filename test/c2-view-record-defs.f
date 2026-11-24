@@ -1,4 +1,3 @@
-split-str
 \ Public field schemas kept in a saved image for a fresh consumer.
 STRUCTURE c2vinner<a,b> FIELD source read-view<a,b,u8> FIELD mark n ;STRUCTURE
 STRUCTURE c2vouter<a,b> FIELD item c2vinner<a,b> ;STRUCTURE

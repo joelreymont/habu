@@ -1,4 +1,3 @@
-split-str
 \ checker-rollback-signature-suite.f - a definition the checker rejects rolls
 \ its scope back, so the name can take a different effect that holds its callers.
 

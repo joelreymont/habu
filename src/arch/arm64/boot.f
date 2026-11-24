@@ -1,4 +1,3 @@
-split-str
 \ boot.f - the arm64 start-up at offset 0 of a product's code. START, maps the
 \ stacks and DATA and places the DATA image in it: on Linux it moves the
 \ carrier's pages to each run the table names, on macOS it stores each run's

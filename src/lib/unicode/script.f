@@ -1,4 +1,3 @@
-split-str
 \ script.f - the pinned Unicode Script property of a scalar.
 \
 \ STORAGE CLASS. PROCESS-WIDE read-only table (src/lib/unicode/script-data.f,

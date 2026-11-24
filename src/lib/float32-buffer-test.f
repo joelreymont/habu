@@ -1,4 +1,3 @@
-split-str
 \ float32-buffer-test.f - F32 byte-buffer conversion tests.
 
 require src/lib/test.f

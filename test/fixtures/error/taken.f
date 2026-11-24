@@ -1,4 +1,3 @@
-split-str
 \ taken.f - for src/lib/error-test.f: a code declared under a second name is rejected with a
 \ record, rc 70; the second declaration reads the code through the first, one lint claim.
 

@@ -1,4 +1,3 @@
-split-str
 \ process-stdin-zero-child.f - child program run as
 \ `bin/hb test/process-stdin-zero-child.f`. It closes its own fd 0, so the
 \ capture's stdin pipe opens with its close-on-exec read end on fd 0, the number

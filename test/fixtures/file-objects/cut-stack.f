@@ -1,4 +1,3 @@
-split-str
 \ cut-stack.f - a require of cut-stack-a.f, which cuts a part only when nothing loaded it before;
 \ a clean request; a request with a cell on the stack (an unclean cut at top scope).
 

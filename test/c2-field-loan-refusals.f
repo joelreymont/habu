@@ -1,4 +1,3 @@
-split-str
 \ Authenticated selection and the child field view cannot be forged or escaped.
 require src/lib/test.f
 require src/lib/test/subject.f

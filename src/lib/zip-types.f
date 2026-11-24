@@ -1,4 +1,3 @@
-split-str
 \ zip-types.f - inspectable identities; live ownership is checked by ZIP.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 require src/lib/error.f

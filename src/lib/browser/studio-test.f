@@ -1,4 +1,3 @@
-split-str
 \ studio-test.f - STUDIO:KEY-VOLUME for four scenes stated here, each number
 \ within 1e-9 of the larger of its own size and 1; the expected numbers come
 \ from viewport.js's own viewer, studio, keyAxes, keyVolume and SHADOW_SIDE,

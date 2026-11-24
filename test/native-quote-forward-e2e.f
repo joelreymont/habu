@@ -1,4 +1,3 @@
-split-str
 \ A typed callback can receive and execute another typed quotation.
 require src/lib/test.f
 

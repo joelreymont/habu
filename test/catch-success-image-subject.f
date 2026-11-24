@@ -1,4 +1,3 @@
-split-str
 \ Guarded catch source a --repl build links into hb, run as its MAIN.
 
 require src/core/exit-status.f

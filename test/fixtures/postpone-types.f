@@ -1,4 +1,3 @@
-split-str
 \ postpone-types.f - a file that builds types and ends, which
 \ test/postpone-effect.f loads while it holds a type of its own.
 

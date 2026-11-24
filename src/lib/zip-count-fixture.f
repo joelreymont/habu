@@ -1,4 +1,3 @@
-split-str
 \ Small repeated records exercise the actual ZIP64 count boundary.
 package ZIP-TEST
 

@@ -1,4 +1,3 @@
-split-str
 \ sent-release-main.f - its top level captures a rejection and releases it, so
 \ the record reaches stderr and fails the build.
 

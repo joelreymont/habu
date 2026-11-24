@@ -1,4 +1,3 @@
-split-str
 \ The profiler's pc index answers exactly what an exhaustive scan answers.
 \ prof-on builds a pc-sorted live-range index of every record that owns code;
 \ the SIGALRM handler and prof-pc>rec run the same search, so this tests the

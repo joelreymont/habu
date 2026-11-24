@@ -1,4 +1,3 @@
-split-str
 \ ffi-grow.f - FFI-T-THROWN's text: 128 distinct rows grow FFI's function table
 \ from any count up to 256, since FN-GROW doubles a full table. It runs only
 \ inside a load that throws, so no declared word is called.

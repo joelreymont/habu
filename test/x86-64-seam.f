@@ -1,4 +1,3 @@
-split-str
 \ x86-64-seam.f - the x86_64 Linux seam from an aarch64 engine: the mov r64,
 \ imm64 relocation site kind (RELOC) over hand-built fixtures, and the x86-64
 \ row of src/compiler/target.f. HB-TARGET-LINUX-X86-64? is false on this host,

@@ -1,4 +1,3 @@
-split-str
 \ A borrowed view moves by value through nested typed records.
 require src/core/exit-status.f
 require src/lib/test.f

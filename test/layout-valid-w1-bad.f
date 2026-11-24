@@ -1,4 +1,3 @@
-split-str
 \ layout-valid-w1-bad.f — W1 enum fetch rejects a forged tag before returning it.
 
 package LAYOUT-VALID-W1

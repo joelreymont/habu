@@ -1,4 +1,3 @@
-split-str
 \ seal-first.f - the sealed program's first file, built by tools/hb-build.f.
 
 package FILE-OBJECTS-SEAL-OTHER

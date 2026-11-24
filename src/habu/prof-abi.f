@@ -1,4 +1,3 @@
-split-str
 \ prof-abi.f - the sampling profiler's band and arena layout, package PROF-ABI.
 \ Build-only, as data-claims.f is: layout.f is baked into every runtime image
 \ and none of this is read at run time. Each target's handler and the report

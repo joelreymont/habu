@@ -1,4 +1,3 @@
-split-str
 \ An operator spelling redefined after `undefine` is the new word at every
 \ operand, and the checker certifies that word, the one the compiler calls.
 \ `undefine` is process-global, so these rows have a file of their own.

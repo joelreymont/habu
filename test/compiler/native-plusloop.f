@@ -1,4 +1,3 @@
-split-str
 \ The counted loop with a step. Forth 2012 6.1.0140: the loop ends
 \ when the index crosses the boundary between limit-1 and limit in the step's
 \ direction; with old = index - limit and next = index' - limit that is ((old

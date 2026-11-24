@@ -1,4 +1,3 @@
-split-str
 \ fmath.f - integer roots, rounded integer quotients and transcendental floats
 \ in checked Habu, without libm or a new engine primitive. SIN and COS carry
 \ fdlibm's kernels and its three-piece pi/2 reduction, and ACOS is fdlibm's arc

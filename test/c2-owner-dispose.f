@@ -1,4 +1,3 @@
-split-str
 \ A checked owner releases a foreign acquisition through its supplied disposer.
 require src/lib/string.f
 require src/lib/test.f

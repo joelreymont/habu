@@ -1,4 +1,3 @@
-split-str
 \ record-first.f - the record program's first file: its top level prints a warning
 \ record through REJECTION, so the build maps the text the record is built in, and
 \ drops a captured rejection, which never reaches stderr and so leaves the build linking.

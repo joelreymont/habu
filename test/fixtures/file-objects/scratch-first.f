@@ -1,4 +1,3 @@
-split-str
 package FILE-OBJECTS-SCRATCH-FIRST
 private
 variable SLOT   SLOT scratch-cell-mark

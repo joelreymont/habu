@@ -1,4 +1,3 @@
-split-str
 require src/lib/test.f
 require src/arch/tic6x/asm.f
 

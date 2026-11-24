@@ -1,4 +1,3 @@
-split-str
 \ sealed-root.f - sealed-pkg.f, sealed-seal.f, then sealed-spell.f, which spells the sealed package.
 
 require test/fixtures/file-objects/sealed-pkg.f

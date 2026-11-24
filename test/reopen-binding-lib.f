@@ -1,4 +1,3 @@
-split-str
 \ reopen-binding-lib.f - the defining file of package REOPEN-BIND, whose public
 \ tails spell engine words. test/reopen-binding.f reopens the package from its
 \ own file and names each of those tails bare.

@@ -1,4 +1,3 @@
-split-str
 \ linux-flags.f -- the BSD-shaped open and mmap flag bits the engine takes and
 \ the Linux bits each becomes. Every pair is one BSD bit and one Linux bit, the
 \ same on aarch64 and x86-64; a bit not kept and not paired is dropped.

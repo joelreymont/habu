@@ -1,4 +1,3 @@
-split-str
 \ Small STORE archives for central metadata and accepted header disagreement.
 package ZIP-TEST
 

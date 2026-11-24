@@ -1,4 +1,3 @@
-split-str
 \ array.f - cell arrays summed, counted and prefix-summed in place (package
 \ ARRAY); the caller passes a length that is not negative.
 \ STORAGE CLASS. CALLER-OWNED.

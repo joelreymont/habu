@@ -1,4 +1,3 @@
-split-str
 \ layout-valid-guard-base.f — a nested sum and a raw view of a checked buffer of it, for the layout guard fixtures.
 
 package LAYOUT-VALID-GUARD

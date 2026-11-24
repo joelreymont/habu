@@ -1,4 +1,3 @@
-split-str
 \ Generated initialized-record accessors load and type-check from source.
 \ WITH-INIT is a separate operation; this fixture checks the declaration and
 \ calls through their public effects without constructing a live initialized view.

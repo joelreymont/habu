@@ -1,4 +1,3 @@
-split-str
 \ extent-product-test.f - the checker half of extent-role product/factorization
 \ (docs/design.md "Type substrate"): a folded row index is the ordered product
 \ type, and a contraction may sum an inner extent. The surface half is

@@ -1,4 +1,3 @@
-split-str
 \ ieee754-test.f - focused IEEE-754 bit and rounding tests.
 
 require src/lib/test.f

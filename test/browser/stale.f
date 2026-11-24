@@ -1,4 +1,3 @@
-split-str
 \ stale.f - STALE, a fixture module whose hello states a turn protocol revision
 \ other than test/browser/turn-revision.f's, as a module whose events and
 \ records are stale would; built by `tools/hb-build.f -- --target wasm`, whose

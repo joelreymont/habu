@@ -1,4 +1,3 @@
-split-str
 \ A real C2 owner initializes and clears fixed records before returning bytes.
 require src/lib/test.f
 require src/lib/memory.f

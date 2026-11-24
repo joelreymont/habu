@@ -1,4 +1,3 @@
-split-str
 \ test.f - public checked test framework interface.
 \
 \ STORAGE CLASS. No state of its own; each loaded module states its class.

@@ -1,4 +1,3 @@
-split-str
 \ `create … allot` reads zero after a negative allot, which lowers the data
 \ pointer over written bytes.
 require src/lib/test.f

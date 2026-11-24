@@ -1,4 +1,3 @@
-split-str
 package FILE-OBJECTS-REDO
 public
 : Y ( -- n ) 1 ;

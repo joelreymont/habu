@@ -1,4 +1,3 @@
-split-str
 \ float32-test.f - exact scalar F32 conversion tests.
 
 require src/lib/test.f

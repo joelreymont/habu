@@ -1,4 +1,3 @@
-split-str
 \ rollback.f - its build is rejected: `catch drop`, the case under test, swallows two failed texts that
 \ leave words and data and send no rejection, one thrown after requiring rollback-req.f, one after an allot.
 : FOB-TRY ( -- ) [: s" 16 allot : FOB-NO ( -- n ) 1 ; 70 throw" evaluate-closed ;] catch drop ;

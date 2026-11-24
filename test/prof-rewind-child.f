@@ -1,4 +1,3 @@
-split-str
 \ Run in a child: a caught failed text keeps its words' ordinals and code, so a
 \ later word gets its own, and each report charges only the word that ran.
 

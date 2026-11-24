@@ -1,4 +1,3 @@
-split-str
 \ Registered target-action acceptance. Each printed label and refusal is
 \ repeatable with `bin/hb --load test/compiler/target-resolve.f`.
 require src/lib/test.f

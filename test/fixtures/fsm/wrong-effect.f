@@ -1,4 +1,3 @@
-split-str
 \ wrong-effect.f - the ACTION on line 15, `bump`, leaves a cell an action may
 \ not, so the line's word is rejected there, the action named as the table
 \ spells it.

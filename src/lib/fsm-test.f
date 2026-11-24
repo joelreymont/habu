@@ -426,7 +426,7 @@ variable SRC-LEN
 \ A table word's undefined ACTION is placed at the ACTION's own line.
 : PLACED-ACTION ( -- )
    s" include test/fixtures/fsm/undefined-action.f" 70
-   s" undefined-action.f:15" SUBJECT:REFUSED? TTRUE ;
+   s" undefined-action.f:14" SUBJECT:REFUSED? TTRUE ;
 
 \ A wrong action is named as the table spells it, not as it was defined, at
 \ the action's own line.
@@ -435,12 +435,12 @@ variable SRC-LEN
    {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" `bump`" STR:CONTAINS? TTRUE
-   e eu s" wrong-effect.f:16" STR:CONTAINS? TTRUE ;
+   e eu s" wrong-effect.f:15" STR:CONTAINS? TTRUE ;
 
 \ An unknown states type is placed at the header's states token.
 : PLACED-STATES ( -- )
    s" include test/fixtures/fsm/unknown-states.f" 70
-   s" unknown-states.f:12" SUBJECT:REFUSED? TTRUE ;
+   s" unknown-states.f:11" SUBJECT:REFUSED? TTRUE ;
 
 \ The corrected twin loads; the checker rejects each faulty table at load, 70.
 : REJECTED ( -- )

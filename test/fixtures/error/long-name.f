@@ -1,4 +1,3 @@
-split-str
 \ long-name.f - a declaration with a 256-byte name is rejected with a record,
 \ rc 70 (src/lib/error-test.f).
 

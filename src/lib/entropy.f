@@ -1,4 +1,3 @@
-split-str
 \ entropy.f - bytes from the kernel's secure generator through libc getentropy
 \ (macOS; glibc 2.25 and later). FILL blocks only until the generator is first
 \ seeded. A refused call is logged with its errno, then E-FILL, and the span may then hold some fresh bytes,

@@ -1,4 +1,3 @@
-split-str
 \ array-test.f - focused tests for the ARRAY cell-array helpers.
 \ Run: bin/hb --load src/lib/array-test.f
 

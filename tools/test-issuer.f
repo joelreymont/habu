@@ -1,4 +1,3 @@
-split-str
 \ test-issuer.f - TEST-ISSUER served on a loopback port for suites that cannot
 \ load it. Prints `issuer http://127.0.0.1:<port>` and serves until stdin ends.
 \ Usage: bin/hb --load tools/test-issuer.f -- [--client <id> <secret>]...

@@ -1,4 +1,3 @@
-split-str
 \ mid-e3.f - required at the end of mid-four.f's part 2.
 
 package FILE-OBJECTS-MID-E3 public : E3 ( -- ) ; ;package

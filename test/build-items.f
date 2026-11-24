@@ -577,7 +577,7 @@ public
    s" include test/fixtures/build-items/placed.f" 70 SUBJECT:REJECTED
    {: e:^ eu:n exited:bool :}
    exited TTRUE
-   e eu s" placed.f:20" STR:CONTAINS? TTRUE
+   e eu s" placed.f:19" STR:CONTAINS? TTRUE
    e eu s" `n` reads built local 0" STR:CONTAINS? TTRUE ;
 
 \ A read pinned after an earlier failure is placed at the definer's call.

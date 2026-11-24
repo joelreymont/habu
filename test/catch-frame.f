@@ -1,4 +1,3 @@
-split-str
 \ catch-frame.f - a caught throw restores the whole caller frame: data SP,
 \ return-stack and loop-stack depth and the handler chain. A caught failed
 \ text keeps the storage older data points into and the files it required

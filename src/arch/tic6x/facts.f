@@ -1,4 +1,3 @@
-split-str
 \ facts.f - resource and dependence facts of one word of the C66x subset
 \ src/arch/tic6x/asm.f constructs, read by the emitter's packet scheduler and
 \ the interpreter's packet checks (SPRUGH7 section 3.8). A word outside the

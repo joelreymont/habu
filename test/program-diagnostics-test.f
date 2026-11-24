@@ -93,7 +93,7 @@ package PROGRAM-DIAGNOSTICS
       s" E-XTKIND habu: address cell kind mismatch" NEGATIVE-LINE
    s" test/xt-cell-band-bad.f" 96 s" XT-CELL-BAND-ARMED"
       s" E-XTBAND habu: address cell out of range" NEGATIVE-LINE
-   s" test/enum-ctor-collide-bad.f" s" enum-ctor-collide-bad.f:18:1" DIAGNOSTIC
+   s" test/enum-ctor-collide-bad.f" s" enum-ctor-collide-bad.f:17:1" DIAGNOSTIC
    s" error[E-BAD-DECLARATION]" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
    s" ^ generated declaration already defined" s" test/enum-ctor-collide-bad.f"
       GE-EXPECT-ERR-HAS
@@ -363,7 +363,7 @@ variable BIG-U
       s" error[E-MISMATCH]: LONG-ROW ends with (2952 more) n n" NEGATIVE
    s" test/program-diagnostic-long-quot.f" 70 s" LONG-QUOT-ARMED"
       s" error[E-MISMATCH]: LONG-QUOT ends with [ -- (2953 more) n n" NEGATIVE
-   s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:10:30" DIAGNOSTIC
+   s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:9:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" = evaluated: : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" HABU-DIAGNOSTIC

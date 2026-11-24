@@ -1,4 +1,3 @@
-split-str
 \ A generated constructor collision prints its rejection record and throws the
 \ checker's status, which the caller catches.
 require src/lib/test.f

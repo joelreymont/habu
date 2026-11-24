@@ -1,4 +1,3 @@
-split-str
 \ placed.f - a definer whose built body reads a local after its `{:` block
 \ ended, called on line 19. The built body is spelled from the definer's
 \ strings, so its rejection is placed at that call: placed.f:19.

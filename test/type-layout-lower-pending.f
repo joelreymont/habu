@@ -1,4 +1,3 @@
-split-str
 \ type-layout-lower-pending.f — width-aware lowering (docs/design.md "Families
 \ and layout policies"): generated constructors seed bundles that cross the
 \ stack, return stack, locals and typed storage before their values are checked.

@@ -1,4 +1,3 @@
-split-str
 \ engine-size.f - the command line over tools/image-size-lib.f, whose header says
 \ what the report means. Run: <engine> --load tools/engine-size.f -- <program>
 \ The measurement lives in the library because tools/hb-build-lib.f requires

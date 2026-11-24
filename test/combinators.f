@@ -1,4 +1,3 @@
-split-str
 \ combinators.f — checked iterators preserve the callback's entire stack row.
 
 require src/lib/test.f

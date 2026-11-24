@@ -1,4 +1,3 @@
-split-str
 \ Observe OS thread identities independently of Habu's task registry.
 require src/core/exit-status.f
 require src/lib/ffi-abi.f

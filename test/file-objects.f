@@ -1111,15 +1111,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" Y4" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
    s" a load inside a package never links inside-i.f's object from a load alone" INSIDE-I COMPILED ;
 
-\ kept-aio.f's build: it exits 70 with LINKER:E-ADDRESS naming OLD at kept-aio.f's line 9.
+\ kept-aio.f's build: it exits 70 with LINKER:E-ADDRESS naming OLD at kept-aio.f's line 8.
 : KEPT-AIO-REJECTED ( CMD:command -- CMD:command )
    s" test/fixtures/file-objects/kept-aio.f" false BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[LINKER:E-ADDRESS]" STR:CONTAINS? {: classed:bool :}
    CMD:ERR$ s" in OLD +0" STR:CONTAINS? classed and {: named:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/kept-aio.f:9" STR:CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/kept-aio.f:8" STR:CONTAINS? {: placed:bool :}
    named placed and  rc 70 =  and 0= if rc SHOW then
    s" the build rejects OLD" LABEL  named TTRUE
-   s" the rejection names kept-aio.f's line 9" LABEL  placed TTRUE
+   s" the rejection names kept-aio.f's line 8" LABEL  placed TTRUE
    s" the build exits 70" LABEL  rc 70 T= ;
 
 \ Guards a file's top level in a build, a build per guard; N, the one engine build, reports its sizes.
@@ -1196,16 +1196,16 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" threw -" STR:CONTAINS?  placed or ;
 
 \ rollback.f's build, which catches texts that leave words and data: it exits 67,
-\ rejected E-FAILED at line 10, which ran the newest of them, and its code 70.
+\ rejected E-FAILED at line 9, which ran the newest of them, and its code 70.
 : CAUGHT-CASE ( CMD:command -- CMD:command )
    s" CF" WHICH!
    s" test/fixtures/file-objects/rollback.f" FAILING-BUILD {: rc:n :}
-   s\" rollback.f:10:1\n   |\n10 | FOB-TRY\n   | ^^^^^^^ this ran the text\n"
+   s\" rollback.f:9:1\n  |\n9 | FOB-TRY\n  | ^^^^^^^ this ran the text\n"
    s" = code: 70" FAILED-AT? {: placed:bool :}
    THREW? {: threw:bool :}
    rc 67 =  placed and  threw 0= and 0= if rc SHOW then
    s" the build exits 67" LABEL  rc 67 T=
-   s" the build is rejected E-FAILED at rollback.f's line 10 with code 70" LABEL  placed TTRUE
+   s" the build is rejected E-FAILED at rollback.f's line 9 with code 70" LABEL  placed TTRUE
    s" the build prints no record of the throw beside it" LABEL  threw TFALSE ;
 
 \ rollback-passed.f's build: its caught E-PATH-RANGE never displaces FOB-TRY's E-FAILED at line 5.
@@ -2512,7 +2512,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/fixtures/file-objects/target-run.f" TOOL-RUN {: rc:n :}
    CMD:ERR$ s" error[E-TARGET-WORD]" STR:CONTAINS? {: classed:bool :}
    CMD:ERR$ s" target word `FO-TAIL`" STR:CONTAINS? {: tail:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:9:" STR:CONTAINS? tail and {: placed:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:8:" STR:CONTAINS? tail and {: placed:bool :}
    classed placed and  rc 0<> and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
    s" the refusal is E-TARGET-WORD" LABEL  classed TTRUE

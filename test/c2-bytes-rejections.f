@@ -1,4 +1,3 @@
-split-str
 \ The checker pins a byte view's lifetime, region and access, and keeps
 \ C2-MEM's pack private.
 require src/lib/test.f

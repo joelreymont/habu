@@ -1,4 +1,3 @@
-split-str
 \ checker-model-cases.f - Exercise checker vocabulary and control-flow vectors through the real checker.
 
 require src/lib/prelude.f

@@ -1,4 +1,3 @@
-split-str
 \ Production vocabulary behavior.
 require src/lib/test.f
 require src/lib/ieee754.f

@@ -1,4 +1,3 @@
-split-str
 \ pad.f - build B loads it first, so every later file's records, emissions and
 \ DATA sit at other indices and addresses than in build A.
 

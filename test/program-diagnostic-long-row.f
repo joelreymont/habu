@@ -1,4 +1,3 @@
-split-str
 \ A definition that leaves more values than a diagnostic row holds: its
 \ rejection says how many it left out.
 s" LONG-ROW-ARMED" type cr

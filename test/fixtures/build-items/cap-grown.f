@@ -1,4 +1,3 @@
-split-str
 \ cap-grown.f - a program that keeps more address rows than the band holds: a
 \ buffer of 70000 quotation cells, the last one stored by the build.
 

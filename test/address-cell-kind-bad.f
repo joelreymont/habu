@@ -1,4 +1,3 @@
-split-str
 \ address-cell-kind-bad.f - one persisted cell cannot have two address kinds.
 
 require src/lib/error.f

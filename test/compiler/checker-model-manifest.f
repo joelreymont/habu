@@ -1,4 +1,3 @@
-split-str
 \ checker-model-manifest.f - Run checker behavior cases in their declaring package.
 
 require src/lib/test.f

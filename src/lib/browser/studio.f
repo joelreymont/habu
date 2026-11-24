@@ -1,4 +1,3 @@
-split-str
 \ studio.f - STUDIO: the key light's volume, the bodies a module sends so the
 \ host's ground shadow is the whole model's. KEY-VOLUME computes, in binary64:
 \ - the view's axes as viewport.js's viewer gives them, then studio's (up the

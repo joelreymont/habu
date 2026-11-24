@@ -1,4 +1,3 @@
-split-str
 \ time-cpu.f - the calling thread's CPU time (user and system) in `package TIME`,
 \ through libc clock_gettime. Unlike src/lib/time.f's wall clocks it excludes time
 \ preempted, waiting or asleep, but still runs slower on a slower core. It is its

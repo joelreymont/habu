@@ -1,4 +1,3 @@
-split-str
 \ Checker refusals for the opaque table control and its element loans.
 require src/lib/test.f
 require src/lib/test/subject.f

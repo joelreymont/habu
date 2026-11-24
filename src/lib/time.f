@@ -1,4 +1,3 @@
-split-str
 \ time.f - checked wrappers around native clocks, in `package TIME`.
 \ MONO-NS is monotonic nanoseconds: compare readings for order or elapsed time
 \ only, never as absolute values. It counts real time.

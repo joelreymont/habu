@@ -1,4 +1,3 @@
-split-str
 \ target-policy.f - acceptance suite for the compiler target/policy binding.
 \ Covers src/compiler/digest.f, target.f, numeric-policy.f and binding.f through
 \ their public words: a missing or role-swapped field is a checker refusal and

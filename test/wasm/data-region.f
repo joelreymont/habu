@@ -1,4 +1,3 @@
-split-str
 \ data-region.f - a program for test/wasm/data-test.f: a stack depth, a real's
 \ text and a dynamic buffer, built by `tools/hb-build.f -- --target wasm`, whose
 \ entry is MAIN.

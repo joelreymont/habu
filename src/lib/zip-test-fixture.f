@@ -1,4 +1,3 @@
-split-str
 \ Synthetic ZIP: stored, deflate, empty, duplicate names and metadata.
 package ZIP-TEST
 $30 constant STORED-DATA-OFF

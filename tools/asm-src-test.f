@@ -1,4 +1,3 @@
-split-str
 \ asm-src-test.f - unchecked source ARM64 encoder regression.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f tools/asm-src-test.f
 

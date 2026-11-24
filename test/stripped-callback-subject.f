@@ -1,4 +1,3 @@
-split-str
 \ A stripped application that hands qsort a callback. A binding is process
 \ state, which no image carries, so the entry word binds its two slots, sorts
 \ and unbinds. The outer comparator sorts a second row through the inner one,

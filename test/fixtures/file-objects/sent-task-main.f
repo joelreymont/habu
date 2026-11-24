@@ -1,4 +1,3 @@
-split-str
 \ sent-task-main.f - its top level runs a task that sends a rejection, which
 \ fails the build though main sent none.
 

@@ -1,4 +1,3 @@
-split-str
 \ long-storage.f - storage definers whose generated name or stored type no
 \ fixed scratch holds: each is spelled into a store that grows.
 

@@ -1,4 +1,3 @@
-split-str
 \ export-main.f - a program built by tools/hb-build.f with --repl, whose input
 \ names FILE-OBJECTS-EXP's exports: a private word, another package's public
 \ word, a constant, a does> definer, one whose private source the file

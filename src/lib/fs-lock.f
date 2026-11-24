@@ -1,4 +1,3 @@
-split-str
 \ fs-lock.f - advisory exclusive flock on caller-held descriptors, binding only
 \ cooperating processes on one kernel. TRY never waits and answers false only
 \ when another holder blocks it; WAIT retries EINTR. RELEASE unlocks the open

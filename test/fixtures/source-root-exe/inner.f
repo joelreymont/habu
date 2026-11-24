@@ -1,4 +1,3 @@
-split-str
 \ inner.f - test/source-root-exe-test.f's library that no engine bakes.
 package SOURCE-ROOT-EXE-INNER
 public

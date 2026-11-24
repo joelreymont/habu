@@ -1,4 +1,3 @@
-split-str
 \ Two committed layouts with equal size but distinct record identities.
 package C2-RECORDS-TYPES
 public

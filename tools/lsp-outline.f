@@ -1,4 +1,3 @@
-split-str
 \ lsp-outline.f - textDocument/documentSymbol: a flat SymbolInformation list of
 \ the definitions the document's last completed check retained in its own file
 \ (LSP-DEFS:DEFS-OWN-GROUP), in retention order, while that check's positions are

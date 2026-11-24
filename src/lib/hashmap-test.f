@@ -1,4 +1,3 @@
-split-str
 \ hashmap-test.f - coverage for HM:HASH64 / HM:PROBE / HM:PROBE-PAIR / HM:CLEAR.
 
 require src/lib/error.f

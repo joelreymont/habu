@@ -1,4 +1,3 @@
-split-str
 \ odata.f - package ODATA: an OData V2 or V4 service's $metadata document read
 \ into a model of its entity sets, entity types, properties, keys, navigation
 \ properties and annotations, and its JSON responses read by that model.

@@ -1,4 +1,3 @@
-split-str
 \ ffi-callback-child.f - one scenario per run, since a refusal ends the process;
 \ the released case runs two that exit 0, and grown-bind exits 0 unless its
 \ binding was lost.

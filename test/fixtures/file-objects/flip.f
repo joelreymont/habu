@@ -1,4 +1,3 @@
-split-str
 \ flip.f - on every host one [if] requests flip-b.f, so the part after it starts at [then]; when
 \ flip-a.f is already loaded its require cuts no part, and that part starts there.
 

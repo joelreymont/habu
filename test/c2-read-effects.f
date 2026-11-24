@@ -1,4 +1,3 @@
-split-str
 \ C2 shared-view foundation.
 \ Each view is two cells (address and bound); no source in this suite creates one.
 \ Checked words may transport views supplied by their callers, including through

@@ -1,4 +1,3 @@
-split-str
 \ order-root-b.f - order-root-a.f with order-midb.f in order-mida.f's place.
 
 require test/fixtures/file-objects/order-ha.f

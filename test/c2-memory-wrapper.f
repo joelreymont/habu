@@ -1,4 +1,3 @@
-split-str
 \ Higher-rank unique effects compiled into the saved C2 image.
 require src/lib/memory.f
 require src/lib/c2-memory.f

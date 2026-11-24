@@ -1,4 +1,3 @@
-split-str
 \ process-pty-handle-test.f - PTY authority lifecycle coverage.
 
 require src/lib/process-pty-handle.f

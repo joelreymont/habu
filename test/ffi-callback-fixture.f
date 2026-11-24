@@ -1,4 +1,3 @@
-split-str
 \ ffi-callback-fixture.f - what src/lib/ffi-callback-test.f and the child it
 \ spawns (test/ffi-callback-child.f) share: libc's qsort, bsearch and pthread
 \ entry points, the callbacks C is handed, the cells their bodies report

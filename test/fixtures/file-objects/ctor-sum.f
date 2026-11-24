@@ -1,4 +1,3 @@
-split-str
 \ ctor-sum.f - ctor-main.f's sum type: its declaration closes the constructor
 \ package FILE--OBJECTS--CTOR, the family name's hyphens doubled.
 

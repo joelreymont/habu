@@ -1,4 +1,3 @@
-split-str
 \ A named enum fetch refusal identifies the checked definition.
 package PROGRAM-DIAG-LOWER
 ENUM color red green ;ENUM

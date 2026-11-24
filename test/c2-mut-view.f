@@ -1,4 +1,3 @@
-split-str
 \ C2 exclusive-view intrinsic: a two-cell stack value carries exactly one
 \ linear authority while its element parameter only describes the pointee.
 

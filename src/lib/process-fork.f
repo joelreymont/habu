@@ -1,4 +1,3 @@
-split-str
 \ process-fork.f - checked fork wrappers (package PROC-FORK) and the reaper
 \ that kills a spawned pool child's process group when its pool parent dies.
 \ CHECKED and SET-PGID are not named FORK and SETPGID: those tails would

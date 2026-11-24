@@ -1,4 +1,3 @@
-split-str
 \ sent-uncaught-main.f - its top level catches a throw and hands the code to
 \ ERROR:UNCAUGHT, whose record fails the build.
 

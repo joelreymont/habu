@@ -1,4 +1,3 @@
-split-str
 \ gate-common.f - entry wrapper for native gate helpers.
 require src/lib/error.f
 require src/lib/string.f

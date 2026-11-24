@@ -1,4 +1,3 @@
-split-str
 \ More than 129 C entry points, including an entry saved before table growth.
 require src/lib/test.f
 require src/lib/ffi-abi.f

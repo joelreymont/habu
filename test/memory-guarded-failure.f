@@ -1,4 +1,3 @@
-split-str
 \ Deny only a writable mmap after MEM:ALLOC-GUARDED reserves its inaccessible
 \ span. A failed fixed remap must return all virtual pages in that span.
 require src/core/exit-status.f

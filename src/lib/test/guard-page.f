@@ -1,4 +1,3 @@
-split-str
 \ guard-page.f - test-only caller bytes that end where readable memory ends.
 \ A word that must bound a length before it reads is proved to by bytes followed
 \ by an inaccessible page: claimed one past the tail, a read before the bound

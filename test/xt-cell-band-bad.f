@@ -1,4 +1,3 @@
-split-str
 \ xt-cell-band-bad.f - `xt!` refuses a cell outside DATA, before the store.
 \ The address-cell table is keyed by a cell's DATA offset, and both its
 \ declaration and the link, which gives each listed cell its image value, touch

@@ -1,4 +1,3 @@
-split-str
 \ A duplicate family reports its declaration while the load completes.
 package PROGRAM-DIAG-CTOR
 SUMTYPE zres VARIANT ok n ;VARIANT ;SUMTYPE

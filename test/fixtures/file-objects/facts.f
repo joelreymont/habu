@@ -1,4 +1,3 @@
-split-str
 \ facts.f - words build.f's `facts` mode compiles callers of after the file
 \ links: BOX, a does> definer a caller wraps, FAIL, a word that ends in a throw,
 \ so a token after a call of it is dead code, and TAKE, whose input a string

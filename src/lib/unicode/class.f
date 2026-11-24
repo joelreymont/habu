@@ -1,4 +1,3 @@
-split-str
 \ class.f - complete pinned Unicode character-class and bracket-pair queries.
 \
 \ STORAGE CLASS. PROCESS-WIDE read-only tables (src/lib/unicode/class-data.f,

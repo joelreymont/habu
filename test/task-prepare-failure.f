@@ -1,4 +1,3 @@
-split-str
 \ A failed later stack allocation leaves no earlier task mappings behind.
 \ PREPARE maps three guarded stacks, then a region; an address-space limit
 \ LIMIT-PAGES above the warm process admits two stacks and refuses the third's

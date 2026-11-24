@@ -1,4 +1,3 @@
-split-str
 \ task-signal-altstack.f - a runtime alternate signal stack belongs to each
 \ Habu OS thread, and profiler arming must keep that thread's stack installed.
 \ The x86-64 task entry registers its own band below the task's pushes, so a

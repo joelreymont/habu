@@ -1,4 +1,3 @@
-split-str
 \ fmath-test.f - exact integer roots and quotients at their boundaries, and
 \ measured float-math behavior.
 

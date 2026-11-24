@@ -1,4 +1,3 @@
-split-str
 \ c2-mut-entry.f - test/c2-memory-entry.f's case for the interpreter written in
 \ Habu (test/interpreter-loop-on.f first): it refuses the mutable entry, rc 70.
 require src/lib/memory.f

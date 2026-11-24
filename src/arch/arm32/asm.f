@@ -1,4 +1,3 @@
-split-str
 \ asm.f - A32ASM, ARMv7-R A32 and ARMv7E-M Thumb-2 instructions constructed as
 \ values; nothing here emits, lays out or relocates them. Destination first, then
 \ sources; a memory form takes the data register, the base, then the byte offset,

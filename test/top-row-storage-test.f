@@ -278,11 +278,11 @@ variable ERR-U
    s" a top-level rejection in an evaluated string names its evaluate and the string's line" T-LABEL
    CLEAR  REJECTION:CAPTURE
    INCLUDE-EVAL
-   s" /test/fixtures/top-row-eval.f:5:" HAS?  s" error[E-RAW-CELL-PTR]" HAS?
+   s" /test/fixtures/top-row-eval.f:4:" HAS?  s" error[E-RAW-CELL-PTR]" HAS?
    s" = evaluated: here TS-V !" HAS?  s" pointer through an untyped cell" HAS?
    REJECTION:BUFFER-OFF
    ARM  INCLUDE-EVAL
-   S\" /test/fixtures/top-row-eval.f\",\"line\":5," HAS?
+   S\" /test/fixtures/top-row-eval.f\",\"line\":4," HAS?
    S\" \"token\":\"evaluate\"" HAS?
    S\" \"evaluated\":{\"source_line\":\"here TS-V !\"" HAS?  RAW-PTR
    DISARM UNTOUCHED ;
