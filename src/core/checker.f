@@ -20249,23 +20249,77 @@ EXPORT CHECKER-RESOLVE:REC-AT
 ;package
 package CHECK
 
+\ Per wordlist id, one plus the index of the newest namespace record whose public
+\ or private wordlist it is, 0 for none, over the records below NS-SEEN. A lookup
+\ first indexes the records made since. When the count went down it drops the rows
+\ naming a record at or above it, which can empty a row an older record holds; it
+\ indexes from 0 again when the answer is missing or no longer holds, as after a
+\ package gains its private wordlist. The cells rest in a scratch span.
+SCRATCH{
+PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
+}SCRATCH
+
+: NS-ENSURE ( n -- ) {: need:n :}
+   need NS-CAP @ <= IF EXIT THEN
+   need NS-CAP @ 2 * max 64 max {: nc:n :}
+   NS-ROWS-P @ NS-CAP @ cells nc cells SR-GROW NS-ROWS-P !
+   nc NS-CAP ! ;
+
+: NS-PUT ( n n -- ) {: wid:n i:n :}
+   wid 0 <= IF EXIT THEN
+   wid 1 + NS-ENSURE
+   i 1 +  NS-ROWS-P @ wid cells + ! ;
+
+: NS-NOTE ( n -- ) {: i:n :}
+   i REC-AT {: ns:^ :}
+   ns CK-REC-WID BOOT:NAMESPACE-WL <> IF EXIT THEN
+   ns @ i NS-PUT  ns CELL + @ i NS-PUT ;
+
+: NS-CLEAR ( -- ) NS-ROWS-P @ 0 NS-CAP @ ARENA-CELLS-ZERO  0 NS-SEEN ! ;
+
+: NS-UNNAME ( ^n n -- )
+   {: row:^ top:n :}
+   row @ top > IF 0 row ! THEN ;
+
+: NS-DROP ( n -- )
+   {: top:n :}
+   NS-CAP @ 0 ?DO NS-ROWS-P @ i cells + top NS-UNNAME LOOP
+   top NS-SEEN ! ;
+
+: NS-INDEX ( -- )
+   ndict@ NS-SEEN @ < IF ndict@ NS-DROP THEN
+   ndict@ NS-SEEN @ ?DO i NS-NOTE LOOP
+   ndict@ NS-SEEN ! ;
+
+: NS-ROW@ ( n -- n ) {: wid:n :}
+   wid 0 >  wid NS-CAP @ <  and IF NS-ROWS-P @ wid cells + @ ELSE 0 THEN ;
+
+: NS-HOLDS? ( n n -- bool ) {: wid:n row:n :}
+   row 0= IF RES-FALSE EXIT THEN
+   row 1 - REC-AT {: ns:^ :}
+   ns CK-REC-WID BOOT:NAMESPACE-WL =  wid ns @ =  wid ns CELL + @ =  or  and ;
+
+\ The global wordlists and any wid at or below 0 are no package's: a miss on
+\ them would index every record again. The namespace marker is negative, and so
+\ is the WL:RETIRED of a retired record the linker's NAME-PKG asks about.
+: NS-FIND ( n -- n ) {: wid:n :}
+   wid 0 <=  wid WL:GLOBAL?  or IF 0 EXIT THEN
+   NS-INDEX
+   wid  wid NS-ROW@  NS-HOLDS? 0= IF NS-CLEAR NS-INDEX THEN
+   wid NS-ROW@ {: row:n :}
+   wid row NS-HOLDS? IF row ELSE 0 THEN ;
+
 \ The package path and section of the wordlist record rec is in, found by the
-\ namespace row that owns it; false for a wordlist no package owns.
+\ newest namespace record that names it; false for a wordlist no package owns.
 : REC-HOME ( ^n -- str n bool ) {: rec:^ :}
    rec CK-REC-WID {: wid:n :}
    wid WL:GLOBAL? IF s" " SYM-GLOBAL RES-TRUE EXIT THEN
-   ndict@ 0 ?DO
-      i REC-AT {: row:^ :}
-      row CK-REC-WID BOOT:NAMESPACE-WL = IF
-         row 0 DICT-CELL@ wid = IF
-            row CK-REC-NAME$ SYM-PUBLIC RES-TRUE UNLOOP EXIT
-         THEN
-         row 1 DICT-CELL@ wid = IF
-            row CK-REC-NAME$ SYM-PRIVATE RES-TRUE UNLOOP EXIT
-         THEN
-      THEN
-   LOOP
-   s" " SYM-GLOBAL RES-FALSE ;
+   wid NS-FIND {: row:n :}
+   row 0= IF s" " SYM-GLOBAL RES-FALSE EXIT THEN
+   row 1 - REC-AT {: ns:^ :}
+   ns CK-REC-NAME$
+   wid ns @ = IF SYM-PUBLIC ELSE SYM-PRIVATE THEN
+   RES-TRUE ;
 
 : REC-HOME-SYM ( ^n -- n ) {: rec:^ :}
    rec REC-HOME drop {: pa:^ pu:n vis:n :}

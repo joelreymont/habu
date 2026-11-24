@@ -3692,77 +3692,14 @@ package CHECK
 \ A record's facts text (CHECK:FACTS@) is read into the stores the first time a
 \ lookup binds the record (LIVE-BIND), and an export's when the linker links it.
 
-\ Per wordlist id, one plus the index of the newest namespace record whose public
-\ or private wordlist it is, 0 for none, over the records below NS-SEEN. A lookup
-\ first indexes the records made since. When the count went down it drops the rows
-\ naming a record at or above it, which can empty a row an older record holds; it
-\ indexes from 0 again when the answer is missing or no longer holds, as after a
-\ package gains its private wordlist. The cells rest in a scratch span.
-SCRATCH{
-PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
-}SCRATCH
-
-: NS-ENSURE ( n -- ) {: need:n :}
-   need NS-CAP @ <= IF EXIT THEN
-   need NS-CAP @ 2 * max 64 max {: nc:n :}
-   NS-ROWS-P @ NS-CAP @ cells nc cells SR-GROW NS-ROWS-P !
-   nc NS-CAP ! ;
-
-: NS-PUT ( n n -- ) {: wid:n i:n :}
-   wid 0 <= IF EXIT THEN
-   wid 1 + NS-ENSURE
-   i 1 +  NS-ROWS-P @ wid cells + ! ;
-
-: NS-NOTE ( n -- ) {: i:n :}
-   i REC-AT {: ns:^ :}
-   ns CK-REC-WID BOOT:NAMESPACE-WL <> IF EXIT THEN
-   ns @ i NS-PUT  ns CELL + @ i NS-PUT ;
-
-: NS-CLEAR ( -- ) NS-ROWS-P @ 0 NS-CAP @ ARENA-CELLS-ZERO  0 NS-SEEN ! ;
-
-: NS-UNNAME ( ^n n -- )
-   {: row:^ top:n :}
-   row @ top > IF 0 row ! THEN ;
-
-: NS-DROP ( n -- )
-   {: top:n :}
-   NS-CAP @ 0 ?DO NS-ROWS-P @ i cells + top NS-UNNAME LOOP
-   top NS-SEEN ! ;
-
-: NS-INDEX ( -- )
-   ndict@ NS-SEEN @ < IF ndict@ NS-DROP THEN
-   ndict@ NS-SEEN @ ?DO i NS-NOTE LOOP
-   ndict@ NS-SEEN ! ;
-
-: NS-ROW@ ( n -- n ) {: wid:n :}
-   wid 0 >  wid NS-CAP @ <  and IF NS-ROWS-P @ wid cells + @ ELSE 0 THEN ;
-
-: NS-HOLDS? ( n n -- bool ) {: wid:n row:n :}
-   row 0= IF RES-FALSE EXIT THEN
-   row 1 - REC-AT {: ns:^ :}
-   ns CK-REC-WID BOOT:NAMESPACE-WL =  wid ns @ =  wid ns CELL + @ =  or  and ;
-
-\ The global wordlists and any wid at or below 0 are no package's: a miss on
-\ them would index every record again. The namespace marker is negative, and so
-\ is the WL:RETIRED of a retired record the linker's NAME-PKG asks about.
-: NS-FIND ( n -- n ) {: wid:n :}
-   wid 0 <=  wid WL:GLOBAL?  or IF 0 EXIT THEN
-   NS-INDEX
-   wid  wid NS-ROW@  NS-HOLDS? 0= IF NS-CLEAR NS-INDEX THEN
-   wid NS-ROW@ {: row:n :}
-   wid row NS-HOLDS? IF row ELSE 0 THEN ;
-
 : REC-SYM ( ^n -- n ) {: rec:^ :}
    rec CK-REC-NAME$ {: name:^ nameu:n :}
    rec CK-REC-WID {: wid:n :}
    nameu 0= wid -2 = or IF 0 EXIT THEN
    wid WL:GLOBAL? IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
-   wid NS-FIND {: row:n :}
-   row 0= IF 0 EXIT THEN
-   row 1 - REC-AT {: ns:^ :}
-   ns CK-REC-NAME$
-   wid ns @ = IF SYM-PUBLIC ELSE SYM-PRIVATE THEN
-   name nameu CHECKER-PKG-SYM ;
+   rec REC-HOME {: pa:^ pu:n vis:n hit:bool :}
+   hit 0= IF 0 EXIT THEN
+   pa pu vis name nameu CHECKER-PKG-SYM ;
 
 \ A read runs inside a caller's check, between its tokens, so it is a guest
 \ there, as a top step is (TOP-GUEST): it parses above the term pools' marks,
