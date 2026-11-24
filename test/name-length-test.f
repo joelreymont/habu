@@ -1,9 +1,6 @@
 split-str
-\ name-length-test.f - every checker word source can call with a name or a text
-\ rejects a length that describes no memory, -1 and the maximum cell. A query
-\ answers no; a declaring word ends with its own rejection. A name has no
-\ ceiling: a long one is taken, a package name, a part path and a field name
-\ included.
+\ name-length-test.f - a name has no ceiling: a long one is taken, a
+\ package name, a part path and a field name included.
 
 require src/lib/error.f
 require src/lib/memory.f
@@ -22,18 +19,17 @@ package NAME-LENGTH-TEST
 
 $400 constant OUT-CAP
 $10000 constant ERR-CAP            \ a record names a whole name up to three times
--1 1 rshift constant MAX-CELL
 \ A name has no ceiling: a definer captures a word's name and one separator
 \ into the definition's body text, which grows with the definition, before it
-\ writes the record. LONG-LEN is a name's length past the old 8000-byte cap.
+\ writes the record.
 20000 constant LONG-LEN
 create OUT OUT-CAP allot
 create ERR ERR-CAP allot
 
-\ Room for a name or text one past the longest a case hands, in whole pages
-\ between two guard pages. Each name and text ends at a guard page, so a word
-\ that reads past a short one faults at once instead of reading on through
-\ what is mapped after it. Every byte of the names is q.
+\ Room for a name one past the longest a case hands, in whole pages between
+\ two guard pages. Each name ends at a guard page, so a word that reads past
+\ one faults at once instead of reading on through what is mapped after it.
+\ Every byte of the names is q.
 LONG-LEN 1 + STACK-ABI:PAGE-BYTES / 1 + STACK-ABI:PAGE-BYTES *
    constant ROOM
 PTR-VARIABLE NAMES
@@ -47,45 +43,6 @@ NAMES!
    {: u:n :}
    NAMES @ ROOM + u - u ;
 
-\ The name the next case hands its word: LEN bytes of q ending at the guard
-\ page, or for a length no span has, its two last bytes.
-variable LEN
-: BAD$ ( -- str )
-   LEN @ {: u:n :}
-   u 0 < u ROOM > or IF 2 TAIL drop u EXIT THEN
-   u TAIL ;
-
-\ The text the next case hands its word: LEN bytes ending at the guard page,
-\ `head` and then spaces, or for a length no span has, two spaces.
-PTR-VARIABLE TEXTS
-: TEXTS! ( -- ) ROOM MEM:ALLOC-GUARDED drop TEXTS ! ;
-TEXTS!
-: TEXT ( ^u8 n -- ^u8 n )
-   {: h:^ hu:n :}
-   TEXTS @ {: p:^ :}
-   ROOM 0 ?do 32 p i + c! loop
-   LEN @ {: u:n :}
-   u 0 < u ROOM > or IF p ROOM + 2 - u EXIT THEN
-   p ROOM + u - {: t:^ :}
-   hu 0 ?do h i + c@ t i + c! loop
-   t u ;
-
-\ A definition CHECK! certifies.
-: BODY$ ( -- ^u8 n ) s" NLT-W ( -- )" TEXT ;
-
-\ A query ends a returning case: its answer is a refusal.
-: VERDICT ( bool -- )
-   IF s" refused" ELSE s" taken" THEN type cr ;
-
-\ ---- the cases a child runs -------------------------------------------------
-: PRIM ( -- ) BAD$ PRIM-SPEC:FIND 0 < VERDICT ;
-
-: CHECK!-IT ( -- ) BODY$ CHECK! drop ;
-: CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
-: HOOK-IT ( -- ) BODY$ CHECK:DEFINITION drop ;
-
-
-\ ---- the parent's side -------------------------------------------------------
 \ A label keeps what fits in LBL.
 128 constant LBL-CAP
 create LBL LBL-CAP allot
@@ -100,67 +57,23 @@ variable LBL-U
    {: at:^ atu:n src:^ srcu:n :}
    0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+ ;
 
-\ A declaring word's refusal ends the process, so every case runs `src` in a
-\ forked child, with LEN at `u`.
-: RUN-AT ( n ^u8 n -- len len PROCESS:ending )
-   {: u:n src:^ srcu:n :}
-   u LEN !
+\ A declaring word's rejection ends the process, so `src` runs in a forked
+\ child.
+: RUN-AT ( ^u8 n -- len len PROCESS:ending )
+   {: src:^ srcu:n :}
    src srcu OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
-
-\ The child prints that its word refused, and nothing else, and exits 0.
-: RETURNS-AT ( n str str -- )
-   {: u:n at:^ atu:n src:^ srcu:n :}
-   at atu src srcu LABEL-AT
-   u src srcu RUN-AT {: outu:len erru:len oc :}
-   RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
-   RELABEL ERR erru LEN>N s" " T$=
-   RELABEL OUT outu LEN>N S\" refused\n" T$= ;
-
-\ The child ends with the word's own refusal: `rc` and its one-line message.
-: DIES-AT ( n str str n str -- )
-   {: u:n at:^ atu:n src:^ srcu:n rc:n want:^ wantu:n :}
-   at atu src srcu LABEL-AT
-   u src srcu RUN-AT {: outu:len erru:len oc :}
-   RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
-   RELABEL outu LEN>N 0 T=
-   RELABEL ERR erru LEN>N want wantu T$= ;
 
 \ The child ends with one rejection record: `rc`, a record that, its gutter
 \ dropped, starts with `head`, holds `note` and is followed by no other.
-: REJECTS-AT ( n str str n str str -- )
-   {: u:n at:^ atu:n src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
+: REJECTS-AT ( str str n str str -- )
+   {: at:^ atu:n src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
    at atu src srcu LABEL-AT
-   u src srcu RUN-AT {: outu:len erru:len oc :}
+   src srcu RUN-AT {: outu:len erru:len oc :}
    RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
    RELABEL outu LEN>N 0 T=
    RELABEL ERR erru LEN>N REJECTION-TEXT:FLAT head headu STARTS-WITH? TTRUE
    RELABEL ERR erru LEN>N note noteu REJECTION-TEXT:HAS? TTRUE
    RELABEL ERR erru LEN>N S\" \nerror[" CONTAINS? TFALSE ;
-
-\ -1 and the maximum cell, for a name or a text with no bound of its own.
-: RETURNS ( ^u8 n -- )
-   {: src:^ srcu:n :}
-   -1 s" -1" src srcu RETURNS-AT
-   MAX-CELL s" max" src srcu RETURNS-AT ;
-: DIES ( ^u8 n n ^u8 n -- )
-   {: src:^ srcu:n rc:n want:^ wantu:n :}
-   -1 s" -1" src srcu rc want wantu DIES-AT
-   MAX-CELL s" max" src srcu rc want wantu DIES-AT ;
-: REJECTS ( ^u8 n n ^u8 n ^u8 n -- )
-   {: src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
-   -1 s" -1" src srcu rc head headu note noteu REJECTS-AT
-   MAX-CELL s" max" src srcu rc head headu note noteu REJECTS-AT ;
-
-: TEST-QUERIES ( -- )
-   s" PRIM" RETURNS ;
-
-\ A definition's source text is no name either: only -1 and the maximum cell
-\ describe none of it, and each dies at the token buffer's limit.
-: TOO-LARGE$ ( -- str ) S\" checker: token buffer too large\n" ;
-: TEST-TEXTS ( -- )
-   s" CHECK!-IT" 76 TOO-LARGE$ DIES
-   s" CANDIDATE-IT" 76 TOO-LARGE$ DIES
-   s" HOOK-IT" 76 TOO-LARGE$ DIES ;
 
 \ ---- a long name -------------------------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.
@@ -242,7 +155,7 @@ variable LBL-U
 \ the word runs. The name is w, which no word of this file is named.
 : TEST-ENGINE ( -- )
    LONG-LEN 119 RUN-SRC {: da:^ du:n :}
-   0 da du RUN-AT {: outu:len erru:len oc :}
+   da du RUN-AT {: outu:len erru:len oc :}
    s" `:` defines a word with a long name" T-LABEL
    da du OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    s" ... and says nothing" T-LABEL
@@ -262,12 +175,12 @@ variable LBL-U
    s" VALUE-RECORD " LONG-LEN 114 LETTERS JOIN s"  f n END-VALUE-RECORD" JOIN
    {: ra:^ ru:n :}
    ra ru TEST-EVAL:RC 0 T=
-   0 s" again" ra ru 70 S\" error[E-BAD-DECLARATION]: value record `"
+   s" again" ra ru 70 S\" error[E-BAD-DECLARATION]: value record `"
    s" already a type or reserved" REJECTS-AT
    s" a linear type with a long name is declared" T-LABEL
    s" DEFLINEAR " LONG-LEN 115 LETTERS JOIN {: la:^ lu:n :}
    la lu TEST-EVAL:RC 0 T=
-   0 s" again" la lu 70 S\" error[E-BAD-DECLARATION]: `DEFLINEAR "
+   s" again" la lu 70 S\" error[E-BAD-DECLARATION]: `DEFLINEAR "
    s" already a type or reserved" REJECTS-AT
    s" a structure with a long field name is declared" T-LABEL
    s" STRUCTURE nlt-long FIELD " LONG-LEN 116 LETTERS JOIN s"  n ;STRUCTURE" JOIN
@@ -282,9 +195,7 @@ variable LBL-U
 
 : MAIN ( -- )
    T-RESET
-   TEST-QUERIES
    TEST-PACKAGE
-   TEST-TEXTS
    TEST-ENGINE
    TEST-LONG
    T-REPORT

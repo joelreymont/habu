@@ -1050,9 +1050,7 @@ package CAST-ERROR
 : CLEAR ( -- )
    NULL-PTR WORD-A !  0 WORD-U !  NULL-PTR KEY-A !  0 KEY-U !
    NULL-PTR SIG-A !  0 SIG-U !  NULL-PTR TOK-A !  0 TOK-U ! ;
-\ A signature whose length describes no memory gets no note.
 : SIG-NOTE ( -- )
-   SIG$ BYTE-SPAN? 0= IF EXIT THEN
    s" signature" REJECTION:NOTE  SIG$ SIG-TRIM REJECTION:EMIT-CUT ;
 \ Opens the declaration's rejection under code, why wa wu saying what is wrong,
 \ placed at its token; the caller writes the label.
@@ -1972,9 +1970,8 @@ package CHECK
    IF REJECTION:SOURCE-OFF THEN ;
 
 \ Whether the name is a keyword or a number, which a load rejects; the
-\ record is ended. A false length is left unread, to CHECK.
+\ record is ended.
 : CANDIDATE-NAME-REJECT? ( str -- bool ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    a u SIG-LTRIM FIRST-TOKEN {: na:^ nu:n :}
    na nu na nu DEF-NAME-REJECT? {: bad:bool :}
    bad IF REJECTION:KEEP THEN
@@ -2213,12 +2210,6 @@ package CHECKER-IDENTITY
 \ A row that did not parse is rejected before a gate walks it; family tails read
 \ the engine's open namespace.
 : PARSE ( str str -- ) {: na:^ nu:n sa:^ su:n :}
-   sa su BYTE-SPAN? 0= IF
-      s" the signature's length describes no memory"
-      s" length describes no memory"
-      s" pass the signature text's address and its length in bytes"
-      E-CAST-ARITY CAST-ERROR:RAISE-LABEL
-   THEN
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW RAW-SIG!

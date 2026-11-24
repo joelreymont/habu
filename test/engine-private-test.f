@@ -73,8 +73,7 @@ s\" : EPV-ONE ( -- n ) 1 ;\ns\q EPV-ONE\q s\q -- n n\q trust-raw"
 s\" : EPV-ROW ( -- bool ) s\q EPV-ONE\q s\q -- n n\q CHECK:ROW-DECLARED ;"
    s" error[E-UNDEFINED]: cannot find word `CHECK:ROW-DECLARED`" ENGINE-PRIVATE:TCE-REJECTS
 
-\ TRUST-DECL's row registrar and its outcome probes are private too: a program
-\ passing a name span no memory has would fault in the registration.
+\ TRUST-DECL's row registrar and its outcome probes are private too.
 s\" NULL-PTR 5 s\q -- n\q TRUST-DECL-ROW ."
    s" error[E-UNDEFINED]: cannot find word `TRUST-DECL-ROW`" ENGINE-PRIVATE:TCE-REJECTS
 s\" : EPV-REJ ( -- bool ) s\q EPV-ONE\q s\q -- n n\q TRUST-DECL-REJECTED? ;"

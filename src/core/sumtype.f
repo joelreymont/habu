@@ -212,7 +212,6 @@ DECL-PARAM-CLEAR
 
 EXPORT CHECK:ARENA-ROWS-ENSURE
 EXPORT CHECK:BIND-DEPTH
-EXPORT CHECK:BYTE-SPAN?
 EXPORT CHECK:C2-READ-FAM
 EXPORT CHECK:CHECKER-AUTH-PACKAGE$
 EXPORT CHECK:CHECKER-AUTH-PACKAGE-ACTIVE?
@@ -332,7 +331,6 @@ EXPORT CHECK:WRITE-WINDOW-CK
 : DECL-HEADER ( str -- str n bool )
    {: a:^ u:n :}
    DECL-PARAM-CLEAR
-   a u BYTE-SPAN? 0= IF a 0 0 RES-FALSE EXIT THEN
    a u DECL-FAMILY-NAME nip {: tail:n :}
    tail u = IF a u 0 RES-TRUE EXIT THEN
    u tail - 2 - {: chars:n :}
@@ -601,12 +599,9 @@ variable TDECL-TOK-N
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ The declared name is read first by the body's name gate and by the report. A
-\ length that describes no memory (BYTE-SPAN?) is recorded as no name, so the
-\ declaration is refused as a missing name and the report reads none of it.
+\ The declared name is read first by the body's name gate and by the report.
 : TDECL-CTX! ( str str str -- )   \ kind, name, body
    TDB-U ! TDB-A !
-   2dup BYTE-SPAN? 0= IF drop 0 THEN
    TDN-U ! TDN-A !
    TDK-U ! TDK-A !
    0 TDS-U !  NULL-PTR TDS-A !
@@ -616,7 +611,6 @@ variable TDECL-TOK-N
    -1 TDECL-CUR-FAM !
    s" " s" " 0 TDECL-ARM ;
 : TDECL-PLACE! ( str -- )
-   2dup BYTE-SPAN? 0= IF drop 0 THEN
    TDS-U ! TDS-A ! ;
 
 \ The unterminated-sum rejection: the declaration-shaped E-BAD-DECLARATION
@@ -1183,7 +1177,7 @@ TERM-SCHEMA-INSTALL
 \ form holds the type, else 0.
 : READ-TYPE ( str [ str str n n -- ] [ str -- ] -- n )
    {: a:^ u:n fail letter :}
-   a SB!  a u BYTE-SPAN? IF u ELSE 0 THEN SL !
+   a SB!  u SL !
    READ-LETTER {: la:^ lu:n :}
    lu 0 <> IF la lu letter execute 0 EXIT THEN
    SIG-UNRES-CLEAR  SGBAD-CLEAR  0 TDV-ARG-N !

@@ -191,7 +191,6 @@ EXPORT CHECKER-REG:GROW
 
 EXPORT CHECK:ARENA-BYTES-ENSURE
 EXPORT CHECK:ARENA-ROWS-ENSURE
-EXPORT CHECK:BYTE-SPAN?
 EXPORT CHECK:C2-INIT-FAM
 EXPORT CHECK:C2-MUT-FAM
 EXPORT CHECK:C2-READ-FAM
@@ -324,7 +323,6 @@ EXPORT CHECK:WRITE-WINDOW-CK
 
 : TF-CANON? ( str -- bool ) {: a:^ u:n :}    \ tailbytes + internal single '-' + >=1 letter
    u 0= IF RES-FALSE EXIT THEN
-   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN      \ a false length is no tail
    0 BEGIN dup u < WHILE
       {: i:n :}
       a i + c@ TF-TAILBYTE? 0= IF RES-FALSE EXIT THEN
@@ -1271,10 +1269,7 @@ variable TF-CTOR-U               \ derived-name length
 \ declared further down, so the scan is an xt bound there.
 defer TFAM-ADDR-FIND-XT ( str -- n bool )
 
-\ A length that describes no memory (BYTE-SPAN?) spells no generated word, and
-\ is answered before a scan reads the bytes.
 : TF-GEN-FIND ( str -- n bool ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF 0 RES-FALSE EXIT THEN
    a u TF-CW-SPLIT? IF
       a u TF-CTOR-QUAL-FIND IF RES-TRUE EXIT THEN
    ELSE

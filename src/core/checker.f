@@ -8236,16 +8236,7 @@ variable SIGSCOPE-U
 : SIG-SCOPE$ ( -- str )
    SIGSCOPE-ON @ IF SIGSCOPE-P @ SIGSCOPE-U @ ELSE CHECKER-AUTH-PACKAGE$ THEN ;
 
-\ A false length inside the range cannot be detected. The first reader of a
-\ name asks this before it reads a byte and refuses a false length as any name
-\ it cannot take.
-: BYTE-SPAN? ( str -- bool ) {: a:^ u:n :}
-   u 0 < IF RES-FALSE EXIT THEN
-   a u + a < IF RES-FALSE EXIT THEN
-   RES-TRUE ;
-
 : SIG-FAM? ( str -- n bool ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF 0 RES-FALSE EXIT THEN
    SIG-SCOPE$ a u TFAM-RESOLVE* ;
 : TYPE-VAR-TOK? ( str -- bool ) {: a:^ u:n :}
    u 1 = IF a c@ LOWER? EXIT THEN
@@ -8396,11 +8387,7 @@ variable PKHAVE
       1+
    repeat drop RES-FALSE ;
 
-\ CHECKER-TRY-RECORD and CHECKER-DEFLINEAR ask this first, so it bounds their
-\ name: a length of -1 would move the value-record or signature-type string
-\ pool's used mark back.
 : TYPE-RESERVED? ( str -- bool ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF RES-TRUE EXIT THEN
    a u DELIM? IF RES-TRUE EXIT THEN
    a u s" [" CORE-STR= IF RES-TRUE EXIT THEN
    a u ROW-LEAD? IF RES-TRUE EXIT THEN
@@ -9615,12 +9602,10 @@ variable ROOT-SET-W
    SIG-TAGS ;
 
 
-\ A length that describes no memory parses as the empty text, which has no `--`
-\ and is refused unread.
 : PARSE-SIG-RAW ( str -- n n n n ) {: a:^ u:n :}
    SIG-UNRES-CLEAR
    a SB!
-   a u BYTE-SPAN? IF u ELSE 0 THEN SL !
+   u SL !
    0 SI !
    SIG-FACTS-MODE @ IF PARSE-FACTS EXIT THEN
    PSIG {: din:n dout:n rin:n rout:n :}
@@ -9767,7 +9752,6 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
 
 : STORAGE-PARSE? ( str -- bool ) {: a:^ u:n :}
    STORAGE-RESET
-   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    a SB!  u SL !  0 SI !
    NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
@@ -9957,12 +9941,9 @@ variable VREC-TYPE-U
 : VREC-TYPE-REJECT ( str -- n n )
    VREC-BAD-TOKEN  VREC-WHY-TYPE VREC-REJECT ;
 
-\ A field text whose length describes no memory holds no field, so its record
-\ is refused as an empty one before a byte of it is read.
 : VREC-PARSE-FIELDS ( n str str -- n n )
    {: id:n rec:^ recu:n fields:^ fieldsu:n :}
    SIG-UNRES-CLEAR
-   fields fieldsu BYTE-SPAN? 0= IF fieldsu 0 EXIT THEN
    fields SB! fieldsu SL ! 0 SI !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
@@ -12644,7 +12625,6 @@ SCRATCH-VARIABLE HEAD-KEY-CAP     \ HEAD-KEY-P's room, in cells
 }SCRATCH
 : HEAD-KEY ( -- ^u8 ) HEAD-KEY-P @ ;
 
-EXPORT CHECK:BYTE-SPAN?
 \ The row of the open package's part `TOP:<name>`, NULL-PTR when no package is
 \ open or no such part is recorded.
 : PART-ROW ( str -- ^n ) {: a:^ u:n :}
@@ -12656,10 +12636,9 @@ EXPORT CHECK:BYTE-SPAN?
    $3A HEAD-KEY tu + c!
    a HEAD-KEY tu 1 + + u ARENA-COPY
    HEAD-KEY ku BOOT:NAMESPACE-WL WL-PROBE ;
-\ The row a qualifier's head names here, NULL-PTR for none or a false length: in A
-\ or its part `A:<head>` first, then a top-level package.
+\ The row a qualifier's head names here, NULL-PTR for none: in A or its
+\ part `A:<head>` first, then a top-level package.
 : HEAD-ROW ( str -- ^n ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF NULL-PTR EXIT THEN
    a u PART-ROW  dup NULL-PTR <> IF EXIT THEN
    drop
    a u BOOT:NAMESPACE-WL WL-PROBE ;
@@ -14494,11 +14473,9 @@ package CHECK
 variable CHECKER-QBAD-TOK
 
 \ A non-edge first colon with a second colon anywhere is a malformed qualified
-\ name and must never resolve. So is a name whose length describes no memory:
-\ this split is the first reader of every name the checker resolves.
+\ name and must never resolve.
 : CHECKER-QUALIFIED? ( str -- bool ) {: a:^ u:n :}
    0 CHECKER-QBAD-TOK !
-   a u BYTE-SPAN? 0= IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
    a u CHECKER-COLON-SCAN {: cn:n ci:n :}
    cn 0= IF RES-FALSE EXIT THEN
    ci 0= IF RES-FALSE EXIT THEN
@@ -15890,10 +15867,8 @@ private
 : CHECKER-STORAGE-NAME-REFUSE ( str -- ) {: da:^ du:n :}
    da du da du STG-NO-NAME CHECKER-STORAGE-REJECT ;
 
-\ A published storage name has at most one inner ':' and does not end in one;
-\ a length that describes no memory is refused before any byte is read.
+\ A published storage name has at most one inner ':' and does not end in one.
 : CHECKER-LBUF-NAME-OK? ( str -- bool ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    a u a u DEF-NAME-REJECT? IF STGR-END RES-FALSE EXIT THEN
    u 0 > IF a u + 1 - c@ 58 = IF
       a u a u STG-COLON-END CHECKER-STORAGE-REJECT RES-FALSE EXIT
@@ -15907,11 +15882,6 @@ private
 
 \ The storage registrars below record a definer's accessor for the source
 \ pre-pass, their one caller, which runs them inside its window.
-
-: CHECKER-REPLAY-NAME-OK? ( str -- bool )
-   {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
-   a u CHECKER-LBUF-NAME-OK? ;
 
 : CHECKER-GLOBAL-SYM ( str -- n ) {: a u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
@@ -17537,7 +17507,7 @@ EXPORT CHECKER-LBUF:COUNT-OK?
 : CHECKER-DEFLAYOUT-BUFFER
    ( str str str -- )
    {: type:^ typeu:n count:^ countu:n name:^ nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-LAYOUT-INFO 0= IF
       2drop
       STORAGE-UNRESOLVED? IF
@@ -17558,7 +17528,7 @@ EXPORT CHECKER-LBUF:COUNT-OK?
 : CHECKER-DEFTYPED-BUFFER
    ( str str str -- )
    {: type:^ typeu:n count:^ countu:n name:^ nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-STORAGE-INFO 0= IF
       drop
       STORAGE-UNRESOLVED? IF
@@ -17573,7 +17543,7 @@ EXPORT CHECKER-LBUF:COUNT-OK?
 : CHECKER-DEFTYPED-VARIABLE
    ( str str -- )
    {: type:^ typeu:n name:^ nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-STORAGE-INFO 0= IF
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
@@ -17585,7 +17555,7 @@ EXPORT CHECKER-LBUF:COUNT-OK?
 : CHECKER-DEFBYTE-BUFFER
    ( str str str -- )
    {: type:^ typeu:n count:^ countu:n name:^ nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
@@ -17597,7 +17567,7 @@ EXPORT CHECKER-LBUF:COUNT-OK?
 : CHECKER-DEFCWORK-SPAN
    ( str str str -- )
    {: type:^ typeu:n count:^ countu:n name:^ nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
@@ -17612,13 +17582,13 @@ EXPORT CHECKER-LBUF:COUNT-OK?
    type typeu CHECKER-DYNAMIC-INFO nip IF
       type typeu name nameu CHECKER-DEFTYPED-VARIABLE EXIT
    THEN
-   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    name nameu type typeu CHECKER-STORAGE-TYPE-REJECT ;
 
 \ A task's single slot admits what a storage definer's declaration line admits.
 : CHECKER-DEFSLOT ( str str -- )
    {: type:^ typeu:n name:^ nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO nip 0= IF
       name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
@@ -17698,7 +17668,7 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
 : CHECKER-DEFSUFFIX-NAME ( str str str -- )
    {: name:^ nameu:n sfx:^ sfxu:n sig:^ sigu:n :}
    name nameu sfx sfxu CHECKER-LBUF-SUFFIXED$ {: gen:^ genu:n :}
-   gen genu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   gen genu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    sig SFX-SIG-A !  sigu SFX-SIG-U !  gen SFX-GEN-A !  genu SFX-GEN-U !
    NAV-PAUSE {: on:n new:n :}
    [: SFX-SIG-A @ SFX-SIG-U @ SFX-GEN-A @ SFX-GEN-U @ CHECKER-USIG-CERT-ADD ;]
@@ -17709,7 +17679,7 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
 : CHECKER-DEFDYNAMIC-BUFFER
    ( str str -- )
    {: type:^ typeu:n name:^ nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
       drop
       name nameu s" -RESERVE" s" -RELEASE" CHECKER-UNSEEN-PAIR
@@ -17743,7 +17713,7 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
 : CHECKER-DEFDEFER-LAYOUT-BUFFER
    ( str str -- )
    {: type:^ typeu:n name:^ nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-LAYOUT-INFO 0= IF
       2drop
       name nameu s" -BIND" s" -GROW" CHECKER-UNSEEN-PAIR
@@ -22801,9 +22771,6 @@ private
 : TRUST-USIG-SYM! ( str str n -- n )
    {: na:^ nu:n sa:^ su:n sym:n :}
    na nu TOKFOLD drop
-   \ A span no memory has is refused as unparsed; SGBAD-CLEAR first drops the
-   \ class an earlier refused signature left.
-   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 na nu USIG-ADD-BAD CHECKER-ROW:REJECTED EXIT THEN
    \ A nonzero SYM keys the row and the name is only refused when malformed:
    \ a does> after a refused definition passes it empty; interning that dies 76.
    sym 0= IF TKF TKFU @ na nu CHECKER-RECORD-NAME-AT 2drop ELSE
@@ -24758,8 +24725,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
 
 \ Every scan starts here, so a scan inside the compile window is refused first,
 \ before the reset clears the latches the pending definition's publication
-\ reads (WRITE-WINDOW-CK). A length that describes no memory (BYTE-SPAN?) is
-\ refused before any state is reset.
+\ reads (WRITE-WINDOW-CK).
 : CHECK-CLEAR ( -- )
    WRAP-CLEAR  0 WRAPMADE !
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
@@ -24792,7 +24758,6 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
 : CHECK-RESET {: a u :}
    WRITE-WINDOW-CK
    a u TORDER-SCAN!
-   a u BYTE-SPAN? 0= IF s" checker: token buffer too large" EXIT-STATUS:INTERNAL die THEN
    RES-FALSE RECOVERY-USED!
    FO-RESET
    u TOKBUF-ENSURE
