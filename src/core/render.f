@@ -26,8 +26,8 @@ variable RROW-UNSAID
 \ RBIND-FULL: a forall past BINDER-DEPTH-MAX nested binders, for REC-REFUSE-WHY.
 variable RBIND-FULL
 
-\ RTAILS is set while TAIL-CAPTURE, CYCLE-NOTES or NARROWED-NOTES renders: every
-\ quotation then shows its row tails.
+\ RTAILS is set while TAIL-CAPTURE, CYCLE-NOTES, NARROWED-NOTES or DROW of a
+\ stale pair's side renders: every quotation then shows its row tails.
 variable RTAILS   0 RTAILS !
 \ RNAMES is 1 while a first pass (REND-EFFECT, INFERRED-FROM) records each row's
 \ tail (RPOS), 2 while its second pass names the rows that share one, else 0.
@@ -571,17 +571,21 @@ variable RSHOW-DST
 : LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOCSHOW-INSTALL
 
-\ The expected and found rows show their tails when either ends in a stale tail:
-\ `R n` against `stale<R> n`.
+\ Only the expected and found rows show their tails, when either ends in a stale
+\ tail: `R n` against `stale<R> n`. RNAMES passes name rows by their own rule.
 : PAIR-STALE? ( n -- bool ) {: s:n :}
+   RNAMES @ 0 <> IF RES-FALSE EXIT THEN
    DEXP @ 0=  DACT @ 0=  or IF RES-FALSE EXIT THEN
    s DEXP @ =  s DACT @ =  or 0= IF RES-FALSE EXIT THEN
    DEXP @ ROW-TAIL STALE-ROW?  DACT @ ROW-TAIL STALE-ROW?  or ;
 
 : DROW {: s :}  s REND-COLLECT  RBUF-TAIL @ {: t:n :}
-   s PAIR-STALE?  t ISROW  and IF t RROW-LETTER EMIT1 32 EMIT1 THEN
+   s PAIR-STALE? {: pair:bool :}  RTAILS @ {: tails:n :}
+   pair  t ISROW  and IF t RROW-LETTER EMIT1 32 EMIT1 THEN
    CUT-MARK
-   RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
+   pair IF -1 RTAILS ! THEN
+   RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop
+   tails RTAILS ! ;
 
 
 : REND-PASS ( n n n n bool -- )

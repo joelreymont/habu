@@ -616,8 +616,15 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    \ the expected side then shows its row too, and a stale row is no empty stack
    s" O11 ( R n [ R n -- R n ] -- R n n ) catch" CS-CODE<
    s\" \"expected\":\"R n n\",\"found\":\"stale<R> stale<n> n\"" CS-CODE?  CS-CODE-END
-   s" O12 ( R [ R -- R ] -- R ) catch drop" CS-CODE<
+   s" O12 ( R [ R n -- R n ] -- R ) [: 5 swap [: [: CS-EXEC ;] catch drop drop ;] execute ;] execute"
+      CS-CODE<
    s\" \"label\":\"the stack holds stale<R> after this\"" CS-CODE?  CS-CODE-END
+   \ the inferred effect names its rows by its own rule, never by the pair's
+   s" O13 ( R [ R -- R ] -- R ) dup >r catch drop r> execute" CS-CODE<
+   s\" \"inferred\":\"R [ R -- R ] -- R\"" CS-CODE?  CS-CODE-END
+   \ a quotation on a side of the pair shows its rows by their letter too
+   s" O14 ( R [ R -- R ] -- R [ R -- R ] ) catch drop" CS-CODE<
+   s\" \"expected\":\"R [ R -- R ]\"" CS-CODE?  CS-CODE-END
    \ a stale row may be moved; taking a cell from it is a read
    s" O4 ( R [ R -- R ] -- R ) catch drop drop" CS-CODE<
    CS-STALE?  CS-CODE-END
