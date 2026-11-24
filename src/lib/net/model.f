@@ -1747,14 +1747,13 @@ public
 
 private
 
-\ A fault of the JSON reader: bytes that are not the JSON read expects.
+\ A rejection by package JSON's reading words: malformed text, a repeated
+\ member name or a value of the wrong kind.
 : JSON-FAULT? ( n -- bool )
    {: code:n :}
    code E-JSON-READ-FIRST <= code E-JSON-READ-LAST >= and ;
 
-\ Throws code n on, except a JSON reader's rejection of the argument named,
-\ with the reader's text, as E-CONFIG with the text `<name> <text>`.
-: READER-THROW ( str str n -- )
+: SETTING-THROW ( str str n -- )
    {: na:^ nu:n ta:^ tu:n code:n :}
    code JSON-FAULT? if na nu ta tu NAMED-THROW then
    code 0<> if code throw then ;
@@ -1767,13 +1766,13 @@ private
       v s" an object" OBJECT-FIX$ JSON:REJECT
    then ;
 
-\ Bytes that are not exactly one JSON object, a reader fault included, are
+\ Bytes that are not exactly one JSON object with unique member names are
 \ E-CONFIG.
 : CHECK-OBJECT ( str str -- )
    {: na:^ nu:n :}
    [: OBJECT-STEP ;] catch {: code:n :} 2drop
    code REASON:TEXT$ {: ta:^ tu:n :}
-   na nu ta tu code READER-THROW ;
+   na nu ta tu code SETTING-THROW ;
 
 : TOOLS-FIX$ ( -- str ) s" pass one JSON array of one or more tool objects" ;
 
@@ -1796,13 +1795,13 @@ private
       v s" a non-empty array" TOOLS-FIX$ JSON:REJECT
    then ;
 
-\ Bytes that are not one non-empty JSON array of objects, a reader fault
-\ included, are E-CONFIG.
+\ Bytes that are not one non-empty JSON array of objects with unique member
+\ names are E-CONFIG.
 : CHECK-TOOLS ( str str -- )
    {: na:^ nu:n :}
    [: TOOLS-STEP ;] catch {: code:n :} 2drop
    code REASON:TEXT$ {: ta:^ tu:n :}
-   na nu ta tu code READER-THROW ;
+   na nu ta tu code SETTING-THROW ;
 
 \ Appends an item's bytes to the items, after a single comma once there are
 \ any.
@@ -1815,8 +1814,8 @@ private
 
 public
 
-\ One history item in OpenAI's shape; E-CONFIG unless one JSON object. Items
-\ follow the parts' message, in the order added, verbatim in body and journal.
+\ One OpenAI history item, E-CONFIG unless one JSON object with unique member
+\ names; body and journal hold it verbatim after the parts' message, in order.
 : ITEM+ ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
@@ -2504,8 +2503,13 @@ private
    a JSON:ARRAY? 0= if E-RESPONSE throw then
    a ;
 
-\ The type of an output item or content part, each an object with a string
-\ type.
+: OBJECT-MEMBER ( JSON:value str -- JSON:value )
+   MEMBER {: o :}
+   o JSON:OBJECT? 0= if E-RESPONSE throw then
+   o ;
+
+\ The string type of an object: an output item, a content part or a stream
+\ event; any other value is E-RESPONSE.
 : TYPE-OF ( JSON:value -- JSON:value )
    {: v :}
    v JSON:OBJECT? 0= if E-RESPONSE throw then
@@ -2587,9 +2591,7 @@ private
 \ content.
 : READ-INCOMPLETE ( JSON:value ^call -- )
    {: v c :}
-   v s" incomplete_details" MEMBER {: d :}
-   d JSON:OBJECT? 0= if E-RESPONSE throw then
-   d s" reason" STRING-MEMBER
+   v s" incomplete_details" OBJECT-MEMBER s" reason" STRING-MEMBER
    [: dup c MODEL-CALL:INCOMPLETE-U !
       BUF:N>BLEN c CONTENT-BUF BUF:REPLACE ;] JSON:WITH-STRING
    E-INCOMPLETE throw ;
@@ -2611,8 +2613,7 @@ private
 \ A failed reply keeps its error message as the call's error text.
 : READ-FAILURE ( JSON:value ^call -- )
    {: v c :}
-   v s" error" MEMBER {: e :}
-   e JSON:OBJECT? 0= if E-RESPONSE throw then
+   v s" error" OBJECT-MEMBER {: e :}
    e c ERROR-TEXT
    e CODE-FAULT throw ;
 
@@ -3454,32 +3455,20 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-OUT-BUF c MODEL-CALL:JOURNAL-GET @ execute ;
 
-\ The member a journal record must carry, an object or a string.
-: JOURNAL-FIELD ( JSON:value str -- JSON:value )
-   MEMBER {: f :}
-   f JSON:OBJECT? f JSON:STRING? or 0= if E-RESPONSE throw then
-   f ;
-
-: JOURNAL-STRING ( JSON:value str -- JSON:value )
-   JOURNAL-FIELD {: f :}
-   f JSON:STRING? 0= if E-RESPONSE throw then
-   f ;
-
 : JOURNAL-STRING-BUF ( JSON:value str ^n ^call -- )
    {: rec key:^ key-u:n buf:^ c :}
-   rec key key-u JOURNAL-STRING {: f :}
+   rec key key-u STRING-MEMBER {: f :}
    buf f JSON:TEXT$ nip c RESET-SIZED
    f [: BUF:N>BLEN buf BUF:REPLACE ;] JSON:WITH-STRING ;
 
 : JOURNAL-RESPONSE ( JSON:value ^call -- )
    {: rec c :}
-   rec s" response" JOURNAL-STRING
+   rec s" response" STRING-MEMBER
    [: c KEEP-REPLY ;] JSON:WITH-STRING ;
 
 : JOURNAL-ORIGIN ( JSON:value -- )
-   s" origin" JOURNAL-FIELD {: o :}
-   o JSON:OBJECT? 0= if E-RESPONSE throw then
-   o s" kind" STRING-MEMBER
+   s" origin" OBJECT-MEMBER
+   s" kind" STRING-MEMBER
    s" " JSON:STRING= if E-RESPONSE throw then ;
 
 \ The recorded call id a journal record carries, 0 when it has none.
@@ -3512,8 +3501,7 @@ ENUM poll none fed spoiled done ;ENUM
    rec JOURNAL-REFUSAL-FAULT {: refusal:n :}
    refusal 0<> if refusal throw then
    rec JOURNAL-ORIGIN
-   rec s" configuration" JOURNAL-FIELD {: config :}
-   config JSON:OBJECT? 0= if E-RESPONSE throw then
+   rec s" configuration" OBJECT-MEMBER {: config :}
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c GEN-CONFIG-BYTES ENDOF
       embed OF c EMBED-CONFIG-BYTES ENDOF

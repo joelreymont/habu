@@ -195,13 +195,6 @@ $300000 constant BIG-U
 : RECEIVED$ ( -- str ) RECEIVED RECEIVED-U @ ;
 
 
-: ECHO+ ( str -- )
-   {: a:^ u:n :}
-   ECHO-U @ u + 256 <= ASSERT
-   a u ECHO ECHO-U @ + 256 ECHO-U @ - SPAN:MAKE SPAN:COPY
-   u ECHO-U +! ;
-
-
 : TAKE ( TASK:sem -- )
    {: s:TASK:sem :}
    [: s TASK:TRY-WAIT-SEM ;] TEST-WAIT:POLL ;
@@ -218,6 +211,11 @@ $300000 constant BIG-U
    {: a:^ u:n buf:^ cap:n len:^ :}
    a u buf len @ + cap len @ - SPAN:MAKE SPAN:COPY
    u len +! ;
+
+: ECHO+ ( str -- )
+   {: a:^ u:n :}
+   ECHO-U @ u + 256 <= ASSERT
+   a u ECHO 256 ECHO-U APPEND ;
 
 
 \ The value of the request body's member `key`.
@@ -2354,7 +2352,9 @@ variable LANDED
 
 
 : STR-IS ( JSON:value str -- ) JSON:STRING= ASSERT ;
-: INT-IS ( JSON:value n -- ) {: want:n :} JSON:>N want = ASSERT ;
+: INT-IS ( JSON:value n -- )
+   {: v want:n :}
+   v JSON:TEXT$ want FMT:INT$ STR:= ASSERT ;
 : NULL-IS ( JSON:value -- ) JSON:NULL? ASSERT ;
 : NO-USAGE ( -- ) RECORD$ JSON:PARSE OBJECT s" usage" HAS? 0= ASSERT ;
 
@@ -2694,7 +2694,7 @@ variable KEYLESS-U
    {: n:n :}
    s" max_output_tokens" SENT {: v :}
    v JSON:INTEGER? ASSERT
-   v JSON:>N n = ASSERT ;
+   v JSON:TEXT$ n FMT:INT$ STR:= ASSERT ;
 : NEGATIVE-MAX-OUTPUT ( n -- n ) -1 M MODEL:MAX-OUTPUT! ;
 
 
@@ -3064,7 +3064,7 @@ variable ASKED-U
    ASKED$ s" configuration" MEMBER s" effort" FOUND s" low" STR-IS
    M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" effort" ROW s" low" STR-IS
-   \ A record the JSON reader rejects replays as E-RESPONSE.
+   \ A record that is not JSON replays as E-RESPONSE.
    PURPOSE s" valid" ASK
    M [: OPEN-REPLAY ;] catch {: bad:n :} drop
    bad MODEL:E-RESPONSE = ASSERT
