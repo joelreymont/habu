@@ -428,7 +428,7 @@ width, cell count or byte count worked out by hand: a type's width can change.
 | `TYPED-VARIABLE V t` | one typed cell or record | `( -- ^t )` |
 | `TYPED-VARIABLE V ^t` | a cell holding an address of `t` | `( -- ^^t )` |
 | `n TYPED-BUFFER TB t` | a fixed array of `t` | `( n -- ^t )` |
-| `TYPED-VARIABLE V t SCRATCH-ONLY`, `n TYPED-BUFFER TB t SCRATCH-ONLY` | typed storage a build leaves out | `( -- ^t )`, `( n -- ^t )` |
+| `TYPED-VARIABLE V t SCRATCH-ONLY`, `n TYPED-BUFFER TB t SCRATCH-ONLY` | typed storage a build leaves out, zero again in its next piece | `( -- ^t )`, `( n -- ^t )` |
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ^^u8 )`, indexed with `ptr-field` |
 | `n PERSISTED-PTR-U8-TABLE TT` | a `PTR-U8-TABLE` whose cells keep their addresses across a save | `( -- ^^u8 )`, indexed with `ptr-field` |
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ^t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |

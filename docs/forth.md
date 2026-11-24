@@ -1535,7 +1535,10 @@ typed storage not declared `SCRATCH-ONLY`.
 **A value valid only in its process stays out of the saved image.** It is kept
 in `TYPED-VARIABLE V t SCRATCH-ONLY` or `n TYPED-BUFFER TB t SCRATCH-ONLY`,
 which a build saves as zeros, or in storage no build saves (`DYNAMIC-BUFFER`,
-`ARENA`, `HEAP`, a task's `USER`).
+`ARENA`, `HEAP`, a task's `USER`). A build also reads such a cell as zero in every piece
+after the one that stored it, since a linked file's top level never runs: what
+a later piece reads is file data, and scratch top-level code would make is made
+where it is first used.
 
 Records that mix a pointer field with scalars use `STRUCTURE … DERIVE addr`
 (**Structures And Enums**). Two launders remain open and certify today:
