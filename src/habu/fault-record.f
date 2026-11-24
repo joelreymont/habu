@@ -11,16 +11,32 @@ split-str
 \ frame, a stop that must not be caught.
 require src/core/exit-status.f
 require src/lib/string.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 
 package FAULT-RECORD
 public
 256 constant FAULT-FRAME
 private
-256 constant FAULT-TEXT-CAP
+: NEW-TEXT ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+\ A file link zeroes scratch cells after each piece, so a text is made when
+\ first needed and deleted by the emitter that lays it.
+TYPED-VARIABLE PROSE-TEXT ^VEC:vector<u8> SCRATCH-ONLY
+TYPED-VARIABLE JSON-TEXT ^VEC:vector<u8> SCRATCH-ONLY
+: PROSE ( -- ^VEC:vector<u8> )
+   PROSE-TEXT @ NULL-PTR = if NEW-TEXT PROSE-TEXT ! then
+   PROSE-TEXT @ ;
+: JSON ( -- ^VEC:vector<u8> )
+   JSON-TEXT @ NULL-PTR = if NEW-TEXT JSON-TEXT ! then
+   JSON-TEXT @ ;
 public
 \ The text an emitter lays next, then empties.
-create FAULT-PROSE FAULT-TEXT-CAP allot  variable FAULT-PROSE-U
-create FAULT-JSON FAULT-TEXT-CAP allot  variable FAULT-JSON-U
+: FAULT-PROSE$ ( -- str ) PROSE VEC:SPAN SPAN:$ ;
+: FAULT-JSON$ ( -- str ) JSON VEC:SPAN SPAN:$ ;
+: FAULT-EMPTY ( -- )
+   PROSE-TEXT @ VEC:DELETE  NULL-PTR PROSE-TEXT !
+   JSON-TEXT @ VEC:DELETE  NULL-PTR JSON-TEXT ! ;
 private
 \ The part the record being emitted has open: none, its message, or a note.
 0 constant FAULT-SHUT
@@ -28,15 +44,8 @@ private
 2 constant FAULT-NOTE
 variable FAULT-PART  FAULT-SHUT FAULT-PART !
 
-: TEXT+ ( str ^u8 ^n -- )
-   {: a:^ u:n buf:^ len:^ :}
-   len @ u + FAULT-TEXT-CAP > IF
-      s" crash: a fault record's text is longer than FAULT-TEXT-CAP" EXIT-STATUS:INTERNAL die
-   THEN
-   u 0 ?do  a i + c@  buf len @ + i + c!  loop
-   len @ u + len ! ;
-: PROSE+ ( str -- )  FAULT-PROSE FAULT-PROSE-U TEXT+ ;
-: JSON+ ( str -- )  FAULT-JSON FAULT-JSON-U TEXT+ ;
+: PROSE+ ( str -- )  PROSE VEC:APPEND ;
+: JSON+ ( str -- )  JSON VEC:APPEND ;
 : BOTH+ ( str -- ) {: a:^ u:n :}  a u PROSE+  a u JSON+ ;
 
 \ A site's text is laid as is in a JSON string, so it holds no byte JSON escapes.

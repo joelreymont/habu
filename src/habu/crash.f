@@ -231,14 +231,16 @@ private
 \ Writes the prose or the JSON text as x17 says, then empties both.
 : PIECE, ( -- )
    LBL LBL LBL LBL {: prose:label json:label code:label put:label :}
+   FAULT-PROSE$ {: pa:^ pu:n :}
+   FAULT-JSON$ {: ja:^ ju:n :}
    code B,
-   prose LBL,  FAULT-PROSE FAULT-PROSE-U @ BYTES,
-   json LBL,  FAULT-JSON FAULT-JSON-U @ BYTES,
+   prose LBL,  pa pu BYTES,
+   json LBL,  ja ju BYTES,
    code LBL,
-   10 prose ADR,  11 FAULT-PROSE-U @ MOVZ,  17 put CBZ,
-   10 json ADR,  11 FAULT-JSON-U @ MOVZ,
+   10 prose ADR,  11 pu MOVZ,  17 put CBZ,
+   10 json ADR,  11 ju MOVZ,
    put LBL,  9 0 MOVZ,  LFAULT-PUT LABEL@ BL,
-   0 FAULT-PROSE-U !  0 FAULT-JSON-U ! ;
+   FAULT-EMPTY ;
 
 \ The register's 16 hex digits at the cursor; a FLUSH-BELOW, keeps it, so it
 \ is none of x0..x2, x8, x12, x13 and x16.

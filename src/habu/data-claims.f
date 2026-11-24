@@ -6,7 +6,7 @@ require src/habu/layout.f
 require src/habu/address-cells.f
 require src/habu/prof-abi.f
 
-\ Every claim on DATA states its extent. CLAIMS-ASSERT refuses an overlapping
+\ Every claim on DATA states its extent. CLAIMS-ASSERT rejects an overlapping
 \ pair at engine build time, naming both, when an engine builder
 \ (src/habu/habu1.f, src/habu/kernel-x64.f) loads this file.
 \
@@ -21,52 +21,25 @@ require src/habu/prof-abi.f
 \ note at CMM-CELL). Separate rows would assert a conflict the engine takes on
 \ purpose.
 package DATA-CLAIMS
+private
+
+: NO-NAME ( n n -- ) {: off:n len:n :}
+   s" E-DATA-CLAIM" REJECTION:OPEN
+   s" the CLAIM is missing its display name" REJECTION:EMIT-STR
+   s" offset" REJECTION:NOTE  off REJECTION:EMIT-U
+   s" length" REJECTION:NOTE  len REJECTION:EMIT-U
+   REJECTION:HELP  s" name the claim after `CLAIM`" REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
+
 public
-
-$100 constant MSG-CAP
-2 constant ROW-CELLS
-
-create MSG-BUF MSG-CAP allot
-variable MSG-U
-
-: MSG-RESET ( -- )
-   0 MSG-U ! ;
-
-: MSG+ ( str -- ) {: a u :}
-   0 begin dup u < while
-      MSG-U @ MSG-CAP < if
-         dup a + c@ MSG-BUF MSG-U @ + c!
-         MSG-U @ 1+ MSG-U !
-      then
-      1+
-   repeat drop ;
-
-: MSG$ ( -- str )
-   MSG-BUF MSG-U @ ;
-
-\ Each claim is one line, `<offset> <length> CLAIM <display name>`. The row is
-\ two contiguous cells in TAB; the name goes to its own blob, one counted string
-\ per row in row order, because its bytes cannot sit between the rows. CLAIM
-\ reads the name with parse-name, which allots nothing at HERE, so TAB grows
-\ with `,` alone.
-$1000 constant NAMES-CAP
-create NAMES NAMES-CAP allot
-variable NAMES-U
-
-: NAME-C+ ( n -- ) {: b :}
-   NAMES-U @ NAMES-CAP < 0= if
-      s" layout: DATA-CLAIMS names exceed NAMES-CAP" EXIT-STATUS:INTERNAL die
-   then
-   b NAMES NAMES-U @ + c!
-   NAMES-U @ 1+ NAMES-U ! ;
-
+\ Each claim is one line, `<offset> <length> CLAIM <display name>`. A row in
+\ TAB is the offset, the length and the name's byte count, then the name,
+\ padded to a cell. A row is named by its byte offset from TAB.
 : CLAIM ( n n -- ) {: off len :}
    parse-name {: a u :}
-   u 0 = if s" layout: DATA-CLAIMS row has no name" EXIT-STATUS:INTERNAL die then
-   u $FF > if s" layout: DATA-CLAIMS name exceeds its count byte" EXIT-STATUS:INTERNAL die then
-   u NAME-C+
-   0 begin dup u < while dup a + c@ NAME-C+ 1+ repeat drop
-   off , len , ;
+   u 0 = if off len NO-NAME then
+   off , len , u ,
+   u 0 ?do a i + c@ c, loop  align ;
 parses: CLAIM 1
 
 create TAB
@@ -226,22 +199,34 @@ create TAB
    SECTION-CELL                       1 cells                 CLAIM SECTION-CELL
    \ The profiler band stays the last row, where BAND-ASSERT places it again.
    0 DATA-SIZE PROF-ABI:PROF-BAND-AT  PROF-CNT-BYTES          CLAIM PROF-BAND
-   0 ,  0 ,
+   0 ,  0 ,  0 ,
 
 : ROW-OFF ( n -- n )
-   ROW-CELLS * cells TAB + @ ;
+   TAB + @ ;
 
 : ROW-LEN ( n -- n )
-   ROW-CELLS * cells 1 cells + TAB + @ ;
+   TAB + 1 cells + @ ;
 
-: NAME-AT ( n -- str ) {: ix :}
-   NAMES 0 begin dup ix < while
-      swap dup c@ 1+ + swap 1+
-   repeat drop dup 1+ swap c@ ;
+: NAME-AT ( n -- str ) {: row :}
+   TAB row + 3 cells +  TAB row + 2 cells + @ ;
 
-: COUNT-ROWS ( -- n )
-   0 begin dup ROW-LEN 0 <> while 1+ repeat ;
+private
+: NEXT-ROW ( n -- n ) {: row :}
+   TAB row + 2 cells + @  1 cells 1- +  1 cells / cells
+   row 3 cells + + ;
 
+: END-ROW? ( n -- bool )
+   ROW-LEN 0 = ;
+
+: LAST-ROW ( -- n )
+   0 begin dup NEXT-ROW END-ROW? 0= while NEXT-ROW repeat ;
+
+: EXTENT ( n -- ) {: row :}
+   row NAME-AT REJECTION:NOTE
+   s" offset " REJECTION:EMIT-STR  row ROW-OFF REJECTION:EMIT-U
+   s" , length " REJECTION:EMIT-STR  row ROW-LEN REJECTION:EMIT-U ;
+
+public
 \ Half-open [off, off+len) intersection. A zero-length row cannot exist: the
 \ walk stops on one, so a claim declared with no extent ends the table early
 \ instead of being silently skipped - which is why every row states `1 cells`
@@ -250,31 +235,36 @@ create TAB
    a ROW-OFF b ROW-OFF b ROW-LEN + < 
    b ROW-OFF a ROW-OFF a ROW-LEN + < and ;
 
-: CLAIMS-DIE ( n n -- ) {: a b :}
-   MSG-RESET
-   s" layout: DATA-CLAIMS overlap: " MSG+
-   a NAME-AT MSG+
-   s"  and " MSG+
-   b NAME-AT MSG+
-   MSG$ EXIT-STATUS:INTERNAL die ;
+: OVERLAP-REJECT ( n n -- ) {: a b :}
+   s" E-DATA-CLAIM" REJECTION:OPEN
+   s" the DATA claims `" REJECTION:EMIT-STR  a NAME-AT REJECTION:EMIT-STR
+   s" ` and `" REJECTION:EMIT-STR  b NAME-AT REJECTION:EMIT-STR
+   s" ` overlap" REJECTION:EMIT-STR
+   a EXTENT  b EXTENT
+   REJECTION:HELP
+   s" move one so the extents do not overlap" REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : CLAIMS-ASSERT ( -- )
-   COUNT-ROWS {: n :}
-   0 begin dup n < while
-      dup 1+ begin dup n < while
-         2dup OVERLAP? if 2dup CLAIMS-DIE then
-         1+
+   0 begin dup END-ROW? 0= while
+      dup NEXT-ROW begin dup END-ROW? 0= while
+         2dup OVERLAP? if 2dup OVERLAP-REJECT then
+         NEXT-ROW
       repeat drop
-      1+
+      NEXT-ROW
    repeat drop ;
 
-COUNT-ROWS 1- constant PROF-ROW
+LAST-ROW constant PROF-ROW
 
 \ The last row is the band PROF-BAND-AT placed for the global DATA-SIZE; a row
 \ added after it would be the one BAND-ASSERT moves instead.
 : PROF-ROW-ASSERT ( -- )
    PROF-ROW ROW-OFF 0 DATA-SIZE PROF-ABI:PROF-BAND-AT <> if
-      s" layout: DATA-CLAIMS last row is not PROF-BAND" EXIT-STATUS:INTERNAL die
+      s" E-DATA-CLAIM" REJECTION:OPEN
+      s" the last row is not `PROF-BAND`" REJECTION:EMIT-STR
+      PROF-ROW EXTENT
+      REJECTION:HELP  s" keep `PROF-BAND` the last row" REJECTION:EMIT-STR
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then ;
 PROF-ROW-ASSERT
 
@@ -282,7 +272,7 @@ PROF-ROW-ASSERT
 \ table again, for a build whose target's DATA-SIZE is not the global one.
 : BAND-ASSERT ( n -- )
    {: size :}
-   0 size PROF-ABI:PROF-BAND-AT  PROF-ROW ROW-CELLS * cells TAB + !
+   0 size PROF-ABI:PROF-BAND-AT  TAB PROF-ROW + !
    CLAIMS-ASSERT ;
 
 CLAIMS-ASSERT

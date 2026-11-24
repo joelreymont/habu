@@ -80,15 +80,17 @@ variable DEC-CELL
 \ Writes the prose or the JSON text as r10 says, then empties both.
 : PIECE, ( -- )
    LBL LBL LBL LBL {: prose:label json:label code:label put:label :}
+   FAULT-PROSE$ {: pa:^ pu:n :}
+   FAULT-JSON$ {: ja:^ ju:n :}
    code JMP,
-   prose LBL,  FAULT-PROSE FAULT-PROSE-U @ BYTES,
-   json LBL,  FAULT-JSON FAULT-JSON-U @ BYTES,
+   prose LBL,  pa pu BYTES,
+   json LBL,  ja ju BYTES,
    code LBL,
-   RSI prose MOVABS,  RDX FAULT-PROSE-U @ IMM32,
+   RSI prose MOVABS,  RDX pu IMM32,
    JSON-REG TEST,  C-E put JCC,
-   RSI json MOVABS,  RDX FAULT-JSON-U @ IMM32,
+   RSI json MOVABS,  RDX ju IMM32,
    put LBL,  RDI ZERO-REG,  PUT-LBL CALL,
-   0 FAULT-PROSE-U !  0 FAULT-JSON-U ! ;
+   FAULT-EMPTY ;
 
 \ rax's 16 hex digits at the cursor, most significant first. Clobbers rax,
 \ rcx, rdx and r11.
