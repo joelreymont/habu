@@ -4,10 +4,16 @@ split-str
 \ folding (Straße equals STRASSE), with no normalization, keeping embedded
 \ NULs. FOLD writes a span's full case folding and LOWER its full lowercase
 \ (Straße folds to strasse but lowercases to straße), and LOWERS-TO? tells
-\ whether a span's full lowercase is another span byte for byte. They are
-\ libunistring's u8_casecmp, u8_casefold and u8_tolower with NULL language
-\ and normalization, so the case data is the installed library's. STORAGE
-\ CLASS. TASK-LOCAL: C's result cell, a TASK:+USER row.
+\ whether a span's full lowercase is another span byte for byte. With no
+\ language, both mappings take an all-ASCII span (every byte below $80) to
+\ itself with A-Z lowered to a-z (UnicodeData.txt, CaseFolding.txt; no
+\ SpecialCasing entry has an ASCII source without a language), which these
+\ words compute without libunistring; CASEFOLD= does so only when both spans
+\ are ASCII, since other text can fold to ASCII (U+212A KELVIN SIGN folds to
+\ k). Other text goes to libunistring's u8_casecmp, u8_casefold and
+\ u8_tolower with NULL language and normalization, so its case data is the
+\ installed library's.
+\ STORAGE CLASS. TASK-LOCAL: C's result cell, a TASK:+USER row.
 \ U+03A3 lowers by Unicode's Final_Sigma as Rust's str::to_lowercase does.
 
 require src/lib/unicode/class.f
@@ -61,10 +67,39 @@ PROCESS-SYMBOLS
 FUNCTION: ALLOC-CALL malloc ( n -- nullable<u8> ) ;FUNCTION
 FUNCTION: RELEASE free ( ^u8 -- ) ;FUNCTION
 
+$80 constant ASCII-LIMIT
 $3A3 constant CAPITAL-SIGMA
 $CF constant SMALL-LEAD
 $83 constant SMALL-TAIL
 $82 constant FINAL-TAIL
+
+\ Whether every byte of a span is below $80; a negative length is E-UTF8.
+: ASCII? ( str -- bool )
+   {: text:^ size:n :}
+   size VALID-LENGTH
+   0 begin dup size < while
+      dup text + c@ ASCII-LIMIT < 0= if drop false exit then
+      1+
+   repeat
+   drop true ;
+
+\ Writes an ASCII span's lowercase to a destination of a given capacity.
+: ASCII-LOWER-INTO ( str ^u8 n -- n )
+   {: text:^ size:n out:^ capacity:n :}
+   capacity size < if E-CAPACITY throw then
+   size 0 ?do text i + c@ STR:ASCII-LOWER out i + c! loop
+   size ;
+
+\ Whether an ASCII span's lowercase is another span byte for byte.
+: ASCII-LOWERS-TO? ( str str -- bool )
+   {: text:^ size:n target:^ target-size:n :}
+   size target-size <> if false exit then
+   size 0 ?do
+      text i + c@ STR:ASCII-LOWER target i + c@ <> if
+         false unloop exit
+      then
+   loop
+   true ;
 
 : CASED? ( n -- bool ) CASED-CALL 0<> ;
 : IGNORABLE? ( n -- bool ) IGNORABLE-CALL 0<> ;
@@ -144,11 +179,16 @@ $82 constant FINAL-TAIL
    source size out capacity ;
 
 : MAPPED-BYTES ( str [ str n n n ^u8 -- ^u8 ] -- n )
-   ALLOCATE-MAP swap RELEASE ;
+   {: source:^ length:n map :}
+   source length ASCII? if length exit then
+   source length map ALLOCATE-MAP swap RELEASE ;
 
 : MAP-INTO ( str ^u8 n [ str n n n ^u8 -- ^u8 ] -- n )
-   {: out:^ capacity:n map :}
-   map ALLOCATE-MAP {: mapped:^ size:n :}
+   {: source:^ length:n out:^ capacity:n map :}
+   source length ASCII? if
+      source length out capacity ASCII-LOWER-INTO exit
+   then
+   source length map ALLOCATE-MAP {: mapped:^ size:n :}
    mapped size out capacity [: COPY-MAPPED ;] catch
    {: error:n :} 2drop 2drop
    \ catch restores depth, not cells overwritten by a callee before throw.
@@ -161,6 +201,9 @@ public
 
 : CASEFOLD= ( str str -- bool )
    {: left:^ left-size:n right:^ right-size:n :}
+   left left-size ASCII? right right-size ASCII? and if
+      left left-size right right-size STR:=CI exit
+   then
    left left-size VALID-UTF8 right right-size VALID-UTF8
    0 RESULT !
    left left-size right right-size 0 0 RESULT BYTE-VIEW COMPARE-CALL
@@ -184,6 +227,9 @@ public
 : LOWERS-TO? ( str str -- bool )
    {: source:^ size:n target:^ target-size:n :}
    target target-size VALID-UTF8
+   source size ASCII? if
+      source size target target-size ASCII-LOWERS-TO? exit
+   then
    source size [: SIGMA-LOWER ;] ALLOCATE-MAP
    {: lowered:^ lowered-size:n :}
    lowered lowered-size target target-size STR:=

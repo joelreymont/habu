@@ -42,6 +42,9 @@ create SECOND-BUF CAPACITY allot
    [: s" İ" OUTPUT 2 UNICODE:LOWER drop ;] E-CAPACITY TTHROWSQ CANARY=
    [: s\" x\xFF" OUTPUT CAPACITY UNICODE:LOWER drop ;] E-UTF8 TTHROWSQ CANARY=
    [: s\" \xC0\xAF" LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ
+   [: s" xy" OUTPUT 1 UNICODE:LOWER drop ;] E-CAPACITY TTHROWSQ CANARY=
+   [: s" x" drop -1 LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ
+   s" Az" s" Az" LOWERS-TO? TFALSE
    s" STRASSE" s" straße" LOWERS-TO? TFALSE
    s" Straße" s" Straße" LOWERS-TO? TFALSE
    [: s\" x\xFF" s" x" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ
@@ -107,12 +110,15 @@ s" I" s" i" EQUAL
 s" K" s" k" EQUAL
 s" 😀名" s" 😀名" EQUAL
 s\" A\zB" s\" a\zb" EQUAL
+s" @AZ[`az{ MiXeD" s" @az[`AZ{ mIxEd" EQUAL
 s" I" s" ı" DIFFERENT
 s" İ" s" i" DIFFERENT
 s" é" s" é" DIFFERENT
 s" ab" s" abc" DIFFERENT
 s" " s" x" DIFFERENT
 s\" a\zB" s\" a\zC" DIFFERENT
+s" @" s" `" DIFFERENT
+s" [" s" {" DIFFERENT
 $20 WHITE-SPACE? TTRUE
 $A0 WHITE-SPACE? TTRUE
 $2009 WHITE-SPACE? TTRUE
@@ -138,6 +144,7 @@ s" İ" s" i̇" FOLDED=
 s" ẞ" s" ss" FOLDED=
 s" УКРАЇНА" s" україна" FOLDED=
 s\" A\zB" s\" a\zb" FOLDED=
+s" @AZ[`az{ MiXeD" s" @az[`az{ mixed" FOLDED=
 FOLD-PREFLIGHT
 s" " s" " LOWERED=
 s" Straße" s" straße" LOWERED=
@@ -151,6 +158,7 @@ s" ΑΣ" s" ας" LOWERED=
 s" Σ" s" σ" LOWERED=
 s" ΑΣΑ" s" ασα" LOWERED=
 s\" A\zB" s\" a\zb" LOWERED=
+s" @AZ[`az{ MiXeD" s" @az[`az{ mixed" LOWERED=
 LOWER-PREFLIGHT
 RANDOM-FOLDS
 T-REPORT
