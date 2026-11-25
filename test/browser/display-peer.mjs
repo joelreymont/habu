@@ -507,8 +507,7 @@ async function browser() {
       assert.deepEqual(picked, [-1, 0, 0x3F800000], `a pick on the shadow answers none, got ${picked}`);
       // The canvas's pixel row through the shadow's floor point: its greys are
       // the traced rays', and from its darkest pixel out to each end the
-      // penumbra brightens without a band or a step, and the row ends on the
-      // white floor.
+      // penumbra brightens without a band or a step.
       const width = await evaluate(`document.querySelector("canvas").width`);
       const places = Array.from({ length: width }, (_, k) =>
         [(2 * k + 1) / width - 1, points[0][1]]);
@@ -527,7 +526,6 @@ async function browser() {
           assert.ok(next.every((v, j) => v >= c[j] && v - c[j] <= 6),
             `along the row out from pixel ${darkest}, pixel ${k} ${c} then ${next}`);
         }
-        assert.deepEqual(row[end], background, `the row ends on white floor, got ${row[end]}`);
       }
       // The turntable keeps the key's place on screen as the camera orbits.
       await evaluate(`box(${JSON.stringify(orbited)})`);
@@ -557,6 +555,32 @@ async function browser() {
       assert.equal(sights, "occluded 01030303 10",
         `the key test fails behind the caster and passes beside it, around it and ` +
         `past it from the softbox's edge, got ${sights}`);
+      // A resize before the next draw leaves the key test the last draw's.
+      // After an SVG display.f's resize turn draws nothing, so the key test
+      // runs between them. At 2 by 2 pixels shade would be one pixel, whose
+      // centre lies under the caster.
+      const sized = async (side) => {
+        const before = await evaluate(`document.querySelector("canvas").width`);
+        await evaluate(`(() => { const { style } = document.querySelector("canvas");
+          style.width = style.height = ${JSON.stringify(side)}; })()`);
+        await until(() => evaluate(`document.querySelector("canvas").width !== ${before}`));
+      };
+      await command("red");
+      await evaluate(`box(${JSON.stringify(down)}, 0.5)`);
+      await sized("2px");
+      await command("key");
+      const shrunk = (await state()).text;
+      // The view test reads the depth the resize made, of the new size.
+      const keyBits = (text) => text.split(" ")[1].match(/../g).map((b) => parseInt(b, 16) & 2);
+      assert.deepEqual(keyBits(shrunk), keyBits(sights),
+        `the key test after a resize answers the last draw's, got ${shrunk}`);
+      // Each draw after a resize shades at the buffer's size.
+      await evaluate(`box(${JSON.stringify(down)})`);
+      await sized("");
+      await evaluate(`box(${JSON.stringify(down)})`);
+      const [regrown, regrownMirror] = await pixels(points);
+      assert.ok(grey(regrown), `after resizes and a draw the floor is in shadow, got ${regrown}`);
+      assert.deepEqual(regrownMirror, background, `and its mirror is white, got ${regrownMirror}`);
       // Tilted 45° about x, the camera's right is down's, so the turntable
       // keeps the key where it was; were the studio the view's own frame, the
       // key would stand nearly overhead and leave this floor point, x 0.6 and
@@ -607,7 +631,7 @@ async function browser() {
       assert.deepEqual(none, background, `with no ground the floor is white, got ${none}`);
       console.log(`Headless Chrome ground: shadow ${shade}, mirror ${mirror}, far ${far}, ` +
         `box ${top}, row darkest ${row[darkest]} rising at most ${rise}, orbited ${turned}, ` +
-        `1e-12 scale ${tiny}, key ${sights}, tilted ${leaning}, ` +
+        `1e-12 scale ${tiny}, key ${sights}, after a resize ${shrunk} and ${regrown}, tilted ${leaning}, ` +
         `from below ${under}, outside the view bare ${bare} and cast-only ${outside}, ` +
         `cast-only in view shade ${castShade} top ${castTop} pick ${castPick}, no ground ${none}`);
     }

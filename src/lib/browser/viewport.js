@@ -108,8 +108,8 @@
 // ground, in linear light and not tone-mapped, so an unshadowed ground reads
 // white as the clear does.
 // occlude's key test draws each box's footprint, the ground whose rays can
-// cross it, in shade's pixels, where crossed passes when one of them crosses
-// the box and no marked slice.
+// cross it, in shade's pixels, where crossed passes when one of the pixel's
+// rays, those visible traced into it, crosses the box and no marked slice.
 // box draws one occlude box per instance, under the camera's matrix, as the
 // 12 triangles of its faces:
 // vertex k takes corner corners[k], whose bit j picks the highest coordinate j
@@ -480,15 +480,18 @@ fn ray(i: u32) -> vec2<f32> {
   return reach * c * vec2<f32>(1.0, -1.0) / (1.0 + dot(slope, c));
 }
 
-// V at the ground point q, light x and y, for shade's pixel px. A 2x2 block of
-// pixels takes its four turns, the pixel's 16 rays i = 4 m + turn: shadow's
-// four taps give each pixel all 64.
+// The turn of shade's pixel px: a 2x2 block of pixels takes its four turns,
+// a pixel's 16 rays i = 4 m + turn, so shadow's four taps give each all 64.
+fn turn(px: vec2<f32>) -> u32 {
+  return (u32(px.x) & 1u) + 2u * (u32(px.y) & 1u);
+}
+
+// V at the ground point q, light x and y, for shade's pixel px.
 fn visible(q: vec2<f32>, px: vec2<f32>) -> f32 {
   let at = mapped(q) * f32(SIDE);
-  let turn = (u32(px.x) & 1u) + 2u * (u32(px.y) & 1u);
   var blocked = 0.0;
   for (var m = 0u; m < 16u; m++) {
-    blocked += traced(at, ray(4u * m + turn));
+    blocked += traced(at, ray(4u * m + turn(px)));
   }
   return 1.0 - blocked / 16.0;
 }
@@ -590,7 +593,8 @@ struct Reach {
 }
 
 // Whether the ray from world point p, going d a unit of height share, crosses
-// the box lo to hi at a height share of 0 or more.
+// the box lo to hi at a height share of 0 or more, past T too, where traced
+// finds it clear: an occlude box can reach above the casters' box.
 fn crosses(p: vec3<f32>, d: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> bool {
   let safe = select(d, vec3<f32>(1e-30), abs(d) < vec3<f32>(1e-30));
   let a = (lo - p) / safe;
@@ -600,12 +604,12 @@ fn crosses(p: vec3<f32>, d: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> bool {
   return t0 <= t1;
 }
 
-// The key test passes at a ground point when one of visible's 64 rays there
-// crosses the box and no marked slice.
+// The key test passes at shade's pixel when one of the 16 rays visible traced
+// into it crosses the box and no marked slice.
 @fragment fn crossed(f: Reach) {
   let at = mapped((light.clip * vec4<f32>(f.world, 1.0)).xy) * f32(SIDE);
-  for (var i = 0u; i < 64u; i++) {
-    let d = ray(i);
+  for (var m = 0u; m < 16u; m++) {
+    let d = ray(4u * m + turn(f.at.xy));
     if (crosses(f.world, d.x * f.wx + d.y * f.wy + f.wh, f.lo, f.hi) &&
         traced(at, d) == 0.0) { return; }
   }
@@ -909,7 +913,8 @@ function grouped(rows, count, origin) {
 // view of the ground held then and of the last view viewer gave, the identity
 // matrix's before any. While a ground is held, marks exist with area, the
 // caster pass's attachment SHADOW_SIDE square, and with shade, half the
-// drawing buffer's size rounded up, which a resize alone makes again. A draw
+// drawing buffer's size rounded up, which a draw that shades makes again when
+// the buffer's size has changed (resize). A draw
 // whose eye is above the plane and whose key's volume is not null first
 // draws every row into marks along the key, ORs the marks into their
 // levels, draws V into shade, then draws the catcher first in its main
@@ -1143,15 +1148,13 @@ function setup(canvas, context, device, release, fail) {
     meshes.delete(handle);
   };
 
+  // shade and shadeMatrix stay the last draw's until the next draw that
+  // shades remakes both, so an occlude before it answers the last draw's key.
   const resize = () => {
     depth.destroy();
     color.destroy();
     depth = depthTexture();
     color = colorTexture();
-    if (shadows) {
-      shadows.shade.destroy();
-      shaded();
-    }
   };
 
   const ground = (held, box) => {
@@ -1185,6 +1188,11 @@ function setup(canvas, context, device, release, fail) {
     last.cast = cast !== null;
     const encoder = device.createCommandEncoder();
     if (cast) {
+      const [w, h] = [Math.ceil(canvas.width / 2), Math.ceil(canvas.height / 2)];
+      if (shadows.shade.width !== w || shadows.shade.height !== h) {
+        shadows.shade.destroy();
+        shaded();
+      }
       const { area, marks, shade } = shadows;
       device.queue.writeBuffer(light, 0, lit(cast, key));
       // shade's texel is two pixels square, so it overruns an odd canvas.
