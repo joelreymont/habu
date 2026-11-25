@@ -94,8 +94,8 @@ $1A8 constant ROWS-END-OFF
 \ rolls back.
 $1B0 constant HELD-END-OFF
 \ The does> clause record a replayed TRUSTED: definer publishes at its `;`: its
-\ clause is declared, never checked, so VERIFY-SOURCE-DOES-OFF, which checks one
-\ first, is not this.
+\ clause was checked before its row was declared, so VERIFY-SOURCE-DOES-OFF,
+\ which checks one first, is not this.
 $1B8 constant VERIFY-SOURCE-CLAUSE-OFF
 \ Completion: the verifier arms the cursor the next body check fires at, and
 \ asks which spellings bind at a top-level cursor. The position kind says how

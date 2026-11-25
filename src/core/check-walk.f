@@ -2407,11 +2407,14 @@ package CHECK
 \ authority, as tier 0 checks it. With authority, a clause would be rejected a
 \ call its parent's body may make (E-CAP-TRUSTED on a colon word defined with
 \ checking off).
-: CHECK-DOES-UNJUDGED! ( str str -- n ) {: ba:^ bu:n sa:^ su:n :}
+: CLAUSE-UNJUDGED ( str str -- n n ) {: ba:^ bu:n sa:^ su:n :}
    -1 BWIN-UNJUDGED !
    0 [: drop ba bu sa su CHECK-DOES-RUN ;]
-   SCAN {: v rc:n :}
-   0 BWIN-UNJUDGED !
+   SCAN
+   0 BWIN-UNJUDGED ! ;
+
+: CHECK-DOES-UNJUDGED! ( str str -- n ) {: ba:^ bu:n sa:^ su:n :}
+   ba bu sa su CLAUSE-UNJUDGED {: v:n rc:n :}
    rc 0 <> IF rc throw THEN
    sa su DOES-EFF-LATCH!
    v ;
@@ -2556,30 +2559,33 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    rc 0= IF EXIT THEN
    rc DEF-RESUMES? 0= IF rc throw THEN  DEF-RESUMED ;
 
-\ The walk Q makes of a TRUSTED: body for its tokens' require checks, as
-\ CHECK-UNJUDGED! walks it: no verdict, no record, no use published.
-: REQUIRED-WALK ( [ -- ] -- )
-   {: q :}
+\ Walks a TRUSTED: definition's text `NAME ( in -- out ) body`, without its
+\ does> clause, for its require checks: no verdict, record or use.
+: CHECKER-REQUIRED-BODY ( str -- )
+   {: a:^ u:n :}
    WRITE-WINDOW-CK
-   [: -1 BWIN-UNJUDGED !
-      0 [: drop q execute 0 ;] SCAN nip
+   [: -1 BWIN-UNJUDGED !  -1 VSIG !
+      0 [: drop a u CHECK-RESET  SCAN-HELD  0 ;] SCAN nip
       0 BWIN-UNJUDGED !
       DEF-RESUMED  SIG-EFF-DROP  SIG-UNRES-CLEAR  WRAP-CLEAR ;]
    CELLS-KEPT {: rc:n :}
    rc 0=  rc DEF-RESUMES? or IF EXIT THEN
    rc throw ;
 
-\ The require checks of a TRUSTED: definition's text `NAME ( in -- out ) body`,
-\ without its does> clause.
-: CHECKER-REQUIRED-BODY ( str -- )
-   {: a:^ u:n :}
-   [: -1 VSIG !  a u CHECK-RESET  SCAN-HELD ;] REQUIRED-WALK ;
-
-\ The require checks of a TRUSTED: definer's clause body BA BU under its
-\ signature SA SU.
-: CHECKER-REQUIRED-CLAUSE ( str str -- )
-   {: ba:^ bu:n sa:^ su:n :}
-   [: 0 VSIG !  ba bu sa su CLAUSE-START IF SCAN-HELD THEN ;] REQUIRED-WALK ;
+\ The verdict on a TRUSTED: definer's clause, its rejection reported; no use
+\ in it is published.
+: CHECKER-TRUSTED-DOES! ( str str str -- n )
+   {: ba:^ bu:n sa:^ su:n na:^ nu:n :}
+   WRITE-WINDOW-CK
+   [: 0 VSIG !  ba bu sa su CLAUSE-UNJUDGED ;]
+   CELLS-KEPT {: v:n rc:n :}
+   SIG-UNRES-CLEAR
+   rc 0 <> IF
+      rc SRC-DOES-THREW
+      rc DEF-RESUMES? IF 0 EXIT THEN
+      rc throw
+   THEN
+   v na nu DOES-REPORT ;
 
 \ One rollback frame spans the head's scan, the clause's and publication; while
 \ open, RBF-DEPTH stays nonzero so compaction relocates none of its cursors.

@@ -54,7 +54,7 @@ split-str
 \
 \ Definer rows: a `create … does>` definition is a definer, and every word it
 \ creates takes the clause's declared effect, a `TRUSTED:` definer's included,
-\ whose body is asserted but whose clause is still a declaration. The rows are
+\ whose head is asserted but whose clause is checked. The rows are
 \ learned from the source, not listed, so library definers put no names in the
 \ engine; a definer that makes definitions at load, built or from evaluated text,
 \ marks the statement's wordlist instead, leaving what it defines to the run,
@@ -169,7 +169,7 @@ EXPORT CHECK:CHECKER-NAMES-ROW
 EXPORT CHECK:CHECKER-NAMED-USE
 EXPORT CHECK:CHECKER-VERIFY-REQUIRED
 EXPORT CHECK:CHECKER-REQUIRED-BODY
-EXPORT CHECK:CHECKER-REQUIRED-CLAUSE
+EXPORT CHECK:CHECKER-TRUSTED-DOES!
 EXPORT CHECK:TOP-KEYWORD?
 EXPORT CHECK:CHECKER-LINEAR
 EXPORT CHECK:VERIFY-PARSES-N
@@ -2380,28 +2380,41 @@ variable TRUSTED-SIG-U
       THEN
    AGAIN ;
 
-\ The appended text's checks: what comes before the clause, then the clause.
-: TRUSTED-TEXT-CHECK ( -- )
+\ The require checks of the appended text before the clause.
+: TRUSTED-REQUIRES ( -- )
+   REQUIRES:CURRENT@ 0 <= IF EXIT THEN
    BODY$ {: a:^ u:n :}
    TRUSTED-CUT @ {: cut:n :}
-   cut 0= IF a u CHECKER-REQUIRED-BODY EXIT THEN
-   a cut CHECKER-REQUIRED-BODY
-   a cut +  u cut -  TRUSTED-SIG-A @ TRUSTED-SIG-U @ CHECKER-REQUIRED-CLAUSE ;
+   a  cut 0= IF u ELSE cut THEN  CHECKER-REQUIRED-BODY ;
 
-\ The require checks the load makes of NAME's body before it declares NAME's
-\ row; the scan ends where it stood, since the body is read again.
-: TRUSTED-REQUIRES ( str str -- )
+\ The verdict on the appended clause of NAME, whose `;` is the read token; -1
+\ for no clause.
+: TRUSTED-DOES-CHECK ( str -- n ) {: na:^ nu:n :}
+   TRUSTED-CUT @ {: cut:n :}
+   cut 0= IF -1 EXIT THEN
+   BODY$ {: a:^ u:n :}
+   TOKEN-A @ TOKEN-U @ a cut + REJECTION:CLOSER!
+   a cut +  u cut -  TRUSTED-SIG-A @ TRUSTED-SIG-U @ na nu
+   CHECKER-TRUSTED-DOES! BODY-VERDICT ;
+
+\ The verdict on NAME's clause, after the head's require checks, as the load
+\ makes both before it declares NAME's row: 0 for a second does>, -1 for no
+\ clause or in an index. The scan ends where it stood, since the body is read
+\ again.
+: TRUSTED-TEXT-CHECK ( str str -- n )
    {: na:^ nu:n sig:^ sigu:n :}
-   REQUIRES:CURRENT@ 0 <= IF EXIT THEN
+   INDEX-ON @ IF -1 EXIT THEN
    SCAN-I @ {: mark:n :}
    BODY-RESET
    na nu BODY-APPEND  sig 1 - sigu 2 + BODY-APPEND
-   APPEND-TRUSTED IF TRUSTED-TEXT-CHECK THEN
+   APPEND-TRUSTED IF TRUSTED-REQUIRES  na nu TRUSTED-DOES-CHECK ELSE 0 THEN
+   dup REPORT-DEFERRED
    BODY-RESET
    mark SCAN-I ! ;
 
-\ A `does>` outside a string declares the clause. No other judgement is made of
-\ the tokens here, but what those before it may do when run, the word may do.
+\ A `does>` outside a string declares the clause. No judgement is made of the
+\ tokens here, but what those before it may do when run, the word may do: KEPT
+\ says whether its row stands.
 : SCAN-TRUSTED-BODY ( str bool -- ) {: na:^ nu:n kept:bool :}
    BODY-PREV-CLEAR
    LOCALS-RESET
@@ -2412,7 +2425,7 @@ variable TRUSTED-SIG-U
       TOKEN-A @ TOKEN-U @ s" ;" STR:= IF EXIT THEN
       DOES-TOKEN? IF
          TRUSTED-DOES @ 0<> IF DOES-TWICE-STOP THEN
-         \ This scan skips the clause body, so its acceptance is unknown.
+         \ An index checks no TRUSTED: clause, so this one's acceptance is unknown.
          INDEX-ON @ IF
             true TICK-REMAINDER !
             TOKEN-A @ TOKEN-U @ 0 DEFER-AT EXIT
@@ -2439,7 +2452,9 @@ variable TRUSTED-SIG-U
       name nameu SIGNATURE-AT 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
    THEN
    name nameu SIGNATURE-AT {: sig:^ sigu:n :}
-   name nameu sig sigu TRUSTED-REQUIRES
+   name nameu sig sigu TRUSTED-TEXT-CHECK 0= IF
+      name nameu false SCAN-TRUSTED-BODY EXIT
+   THEN
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: row:n :}

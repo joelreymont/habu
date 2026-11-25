@@ -3893,6 +3893,70 @@ HB-TARGET-LINUX? 0= [if]
    s" E-MISMATCH" REJECTED-AS
    0 s" ;" 1 37 36 37 AT ;
 
+\ A TRUSTED: definer's clause is judged, in its parent's regime, before the
+\ definer's row.
+: TEST-TRUSTED-CLAUSE ( -- )
+   s" a trusted definer's clause that leaves too much" T-LABEL
+   s" TRUSTED: D ( n -- ) create , does> ( ^n -- n ) dup ;"
+   s" trusted-clause.f" LINE-FIXTURE
+   0 s" E-MISMATCH" s" dup" s" :1:48" 1 48 47 50 REJECTED-BOTH
+   s" a trusted definer's clause that leaves a cell it promises none of" T-LABEL
+   s" TRUSTED: DF ( -- ) create does> ( -- ) drop 1 2 + ;"
+   s" trusted-clause-none.f" LINE-FIXTURE
+   0 s" E-MISMATCH" s" +" s" :1:49" 1 49 48 49 REJECTED-BOTH
+   s" a trusted definer's empty clause, at its ;" T-LABEL
+   SB-RESET
+   s" TRUSTED: D ( n -- ) create drop" SB-APPEND LF+
+   s"   does> ( -- )" SB-APPEND LF+
+   s"   ;" SB-APPEND LF+
+   s" trusted-clause-empty.f" FIXTURE!
+   0 s" E-MISMATCH" s" ;" s" :3:3" 3 3 49 50 REJECTED-BOTH
+   s" an if open at the ; ending a trusted definer's clause" T-LABEL
+   s" TRUSTED: D ( n -- ) create , does> ( -- n ) @ dup if ;"
+   s" trusted-clause-open.f" LINE-FIXTURE
+   0 s" E-CONTROL-OPEN" s" ;" s" :1:54" 1 54 53 54 REJECTED-BOTH
+   s" a quotation in a trusted definer's clause reads a local" T-LABEL
+   s" TRUSTED: D ( n -- ) create , does> ( -- n ) @ {: a:n :} [: a ;] execute ;"
+   s" trusted-clause-local.f" LINE-FIXTURE
+   0 s" E-BAD-LOCAL-SHAPE" s" a" s" :1:60" 1 60 59 60 REJECTED-BOTH
+   s" a trusted definer's clause and its own row" T-LABEL
+   s" TRUSTED: D ( -- nosuch:fam ) create does> ( ^n -- n ) dup ;"
+   s" trusted-clause-row.f" LINE-FIXTURE
+   s" " CHECK
+   s" E-MISMATCH" REJECTED-AS
+   0 s" dup" 1 55 54 57 AT
+   s" E-MISMATCH" s" :1:55" 70 LOADED-AT
+   s" a word the run makes in a trusted definer's clause" T-LABEL
+   MADE-LINES
+   s" TRUSTED: D ( n -- ) create , does> ( -- n ) @ MADE drop ;" SB-APPEND LF+
+   s" 5 D W1" SB-APPEND LF+
+   s" trusted-clause-made.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 2 T=
+   1 s" code" s" W-CHECK-DEFERRED" FIELD=
+   1 s" MADE" 3 47 88 92 AT
+   s" " 0 LOADED
+   s" what follows a trusted definer whose clause is rejected, which is no word" T-LABEL
+   SB-RESET
+   s" TRUSTED: D ( n -- ) create , does> ( ^n -- n ) dup ;" SB-APPEND LF+
+   s" : Z ( -- n ) 1 ;" SB-APPEND LF+
+   s" 5 D W1" SB-APPEND LF+
+   s" : BAD ( -- n ) 1 2 ;" SB-APPEND LF+
+   s" trusted-clause-used.f" FIXTURE!
+   s" --all-errors" CHECK
+   GJA-LINE# @ 4 T=
+   0 s" code" s" E-MISMATCH" FIELD=
+   1 s" code" s" E-UNDEFINED" FIELD=
+   1 s" D" 3 3 72 73 AT
+   2 s" code" s" E-UNDEFINED" FIELD=
+   2 s" W1" 3 5 74 76 AT
+   3 s" code" s" E-MISMATCH" FIELD=
+   3 s" 2" 4 18 94 95 AT
+   s" a second does> in a trusted definer, before its row" T-LABEL
+   s" TRUSTED: D ( -- nosuch:fam ) create does> ( -- n ) @ does> ( -- n ) @ ;"
+   s" trusted-clause-twice.f" LINE-FIXTURE
+   0 s" E-DOES-TWICE" s" does>" s" :1:54" 1 54 53 58 REJECTED-BOTH ;
+
 \ A structure or FUNCTION: group still open when its file ends, or when another
 \ declaration opens, is rejected at the token that opened it.
 : TEST-UNCLOSED ( -- )
@@ -4592,6 +4656,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-SECOND-ELSE
    TEST-CONTROL-OPEN
    TEST-EMPTY-CLAUSE
+   TEST-TRUSTED-CLAUSE
    TEST-UNCLOSED
    TEST-TAKEN-FUNCTION
    TEST-TAKEN-FUNCTION-NESTED
