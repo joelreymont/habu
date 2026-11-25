@@ -1736,7 +1736,9 @@ variable CATCH-REC                   \ catch's
    s" cell+" 38 OP-MAP  s" negate" 39 OP-MAP  s" invert" 40 OP-MAP
    s" lshift" 41 OP-MAP  s" rshift" 42 OP-MAP  s" ptr-field" 43 OP-MAP
    s" >str" 44 OP-MAP  s" data" 45 OP-MAP  s" len" 46 OP-MAP
-   s" c!" 47 OP-MAP
+   s" c!" 47 OP-MAP  s" byte-view" 48 OP-MAP  s" cell-view" 49 OP-MAP
+   s" PTR>N" 50 OP-MAP  s" str>" 51 OP-MAP  s" chars" 52 OP-MAP
+   s" NULL-PTR" 53 OP-MAP
    s" data-base" SEEDED BASE-REC !  s" catch" SEEDED CATCH-REC ! ;
 
 : MAP-OPS ( -- ) OP-MAPPED @ 0= if OPS-MAP then ;
@@ -1949,6 +1951,12 @@ DYNAMIC-BUFFER COUNT-SLOT n
       45 of DROP1 true endof          \ data keeps the base, as its body does
       46 of NIP1 true endof           \ len keeps the count, as its body does
       47 of a CELL1 BYTE-W STORE true endof
+      48 of true endof                \ 48 to 52 keep their cells, as their
+      49 of true endof                \ empty bodies do
+      50 of true endof
+      51 of true endof
+      52 of true endof
+      53 of 0 PUSH-CONST true endof
       NO-INLINE
    endcase ;
 
