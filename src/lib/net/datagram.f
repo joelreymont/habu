@@ -5,8 +5,8 @@
 \ negative one waits with no deadline; any other is the milliseconds the call
 \ may wait in all. AIO:START must have run before the first wait.
 \ STORAGE CLASS. TASK-LOCAL on macOS: two 4-byte TASK:+USERS rows hold
-\ getsockopt's answer and its length; none on Linux. The data and address
-\ buffers are caller-owned.
+\ getsockopt's answer and its length; none on Linux. The vector and the
+\ address buffers are caller-owned.
 require src/lib/error.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
@@ -16,6 +16,7 @@ require src/lib/task.f
 require src/lib/aio.f
 require src/lib/le.f
 require src/lib/fd.f
+require src/lib/vector.f
 
 -9240 constant E-DATAGRAM-FIRST
 -9249 constant E-DATAGRAM-LAST
@@ -61,7 +62,7 @@ FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
 FUNCTION: BIND-CALL bind ( n str -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 FUNCTION: SEND-CALL sendto ( n str n str -- n ) ;FUNCTION
-FUNCTION: RECEIVE-CALL recvfrom ( n ^u8 n n ^u8 ^u8 -- n ) ;FUNCTION
+FUNCTION: RECEIVE-CALL recvfrom ( n str n ^u8 ^u8 -- n ) ;FUNCTION
 
 : LAST-ERROR ( -- errno )
    FFI:ERRNO >ERRNO ;
@@ -78,9 +79,14 @@ $80002 constant SOCKET-TYPE        \ SOCK_DGRAM | SOCK_CLOEXEC
    drop 0 ;
 
 \ MSG_TRUNC | MSG_DONTWAIT: a truncated datagram answers its own length.
-: TRY ( n ^u8 NUM:byte-len ^u8 ^u8 -- n errno )
-   {: fd:n bytes capacity:NUM:byte-len from from-len :}
-   fd bytes capacity BLEN>N $60 from from-len RECEIVE-CALL LAST-ERROR ;
+\ Receives into n new elements, then keeps only the bytes written.
+: TRY ( n ^VEC:vector<u8> n ^u8 ^u8 -- n errno )
+   {: fd:n v:^ most:n from from-len :}
+   v VEC:COUNT {: old:n :}
+   fd v most VEC:EXTEND SPAN:$ $60 from from-len RECEIVE-CALL
+   LAST-ERROR {: got:n error:errno :}
+   v old got 0 max most min + VEC:RESIZE
+   got error ;
 [then]
 
 
@@ -105,14 +111,16 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    fd $FFFF $1002 OPTION-VALUE OPTION-LEN OPTION-CALL ;
 
 \ BSD recvfrom answers only the bytes copied: read the whole datagram, then
-\ copy the caller's prefix. $80 is MSG_DONTWAIT.
-: TRY ( n ^u8 NUM:byte-len ^u8 ^u8 -- n errno )
-   {: fd:n bytes capacity:NUM:byte-len from from-len :}
+\ append at most n of it. $80 is MSG_DONTWAIT. The room is reserved before
+\ the scratch block, so the append neither allocates nor throws.
+: TRY ( n ^VEC:vector<u8> n ^u8 ^u8 -- n errno )
+   {: fd:n v:^ most:n from from-len :}
+   v  v VEC:COUNT most +  VEC:RESERVE
    OPTION-VALUE LE:U32@ {: size:n :}
    size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:^ extent:NUM:alloc-byte-len :}
-   fd buf size $80 from from-len RECEIVE-CALL {: got:n :}
+   fd buf size >str $80 from from-len RECEIVE-CALL {: got:n :}
    LAST-ERROR {: error:errno :}
-   got 0 >= if buf bytes got capacity BLEN>N min BYTE-COPY then
+   got 0 >= if buf got most min >str v VEC:APPEND then
    buf extent MEM:RELEASE-BYTES
    got error ;
 [then]
@@ -134,8 +142,8 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    fd >FD AIO:READABLE left AIO:WAIT-READY ;
 
 
-: RECEIVED ( n NUM:byte-len -- receive-result ) {: got:n capacity:NUM:byte-len :}
-   got capacity BLEN>N > if
+: RECEIVED ( n NUM:byte-len -- receive-result ) {: got:n most:NUM:byte-len :}
+   got most BLEN>N > if
       got N>BLEN DATAGRAM-RECEIVE--RESULT:TRUNCATED
    else
       got N>BLEN DATAGRAM-RECEIVE--RESULT:PACKET
@@ -177,15 +185,17 @@ public
    else DATAGRAM-STATUS:OK then ;
 
 
-\ `truncated` carries the datagram's own length. The cell from-len enters as
-\ from's size; NULL-PTR for from and from-len wants no sender.
-: RECEIVE ( n ^u8 NUM:byte-len ms ^u8 ^u8 -- receive-result )
-   {: fd:n bytes capacity:NUM:byte-len timeout:ms from from-len :}
+\ Appends at most n bytes of one datagram; `truncated` carries the
+\ datagram's own length. On timeout, failure or a throw COUNT is as it was.
+\ The cell from-len enters as from's size; NULL-PTR for from and from-len
+\ wants no sender.
+: RECEIVE ( n ^VEC:vector<u8> NUM:byte-len ms ^u8 ^u8 -- receive-result )
+   {: fd:n v:^ most:NUM:byte-len timeout:ms from from-len :}
    fd PREPARE 0 < if LAST-ERROR DATAGRAM-RECEIVE--RESULT:FAILED exit then
    mono-ns {: start:n :}
    begin
-      fd bytes capacity from from-len TRY {: got:n error:errno :}
-      got 0 >= if got capacity RECEIVED exit then
+      fd v most BLEN>N from from-len TRY {: got:n error:errno :}
+      got 0 >= if got most RECEIVED exit then
       error dup RETRY? 0= if DATAGRAM-RECEIVE--RESULT:FAILED exit then drop
       timeout start LEFT dup MS>N 0= if drop DATAGRAM-RECEIVE--RESULT:TIMEOUT exit then
       fd swap WAIT-READABLE

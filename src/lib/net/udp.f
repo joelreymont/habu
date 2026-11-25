@@ -3,13 +3,14 @@
 \ path's socket file.
 \ A name sun_path cannot hold throws E-SPAN-CAPACITY.
 \ STORAGE CLASS. TASK-LOCAL: the socket address is one TASK:+USERS row; the
-\ data buffers are caller-owned.
+\ payload and the vector are caller-owned.
 require src/lib/ffi-abi.f
 require src/lib/span.f
 require src/lib/type/deftype.f
 require src/lib/num-types.f
 require src/lib/task.f
 require src/lib/le.f
+require src/lib/vector.f
 require src/lib/net/datagram.f
 
 package UDP
@@ -137,11 +138,13 @@ public
    socket SOCKET>N SOCKADDR addrlen >str bytes DATAGRAM:SEND >STATUS ;
 
 
-\ `truncated` carries the datagram's own length. Timeout zero makes one try, a
-\ negative one waits with no deadline; a wait needs AIO:START to have run.
-: RECEIVE ( socket ^u8 NUM:byte-len ms -- receive-result )
-   {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
-   socket SOCKET>N bytes capacity timeout NULL-PTR NULL-PTR
+\ Appends at most n bytes of one datagram; `truncated` carries the
+\ datagram's own length. On timeout or failure COUNT is as it was. Timeout
+\ zero makes one try, a negative one waits with no deadline; a wait needs
+\ AIO:START to have run.
+: RECEIVE ( socket ^VEC:vector<u8> NUM:byte-len ms -- receive-result )
+   {: socket:socket v:^ most:NUM:byte-len timeout:ms :}
+   socket SOCKET>N v most timeout NULL-PTR NULL-PTR
    DATAGRAM:RECEIVE >RECEIVE-RESULT ;
 
 

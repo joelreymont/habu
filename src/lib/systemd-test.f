@@ -13,6 +13,8 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/num-types.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/net/udp.f
 require src/core/exit-status.f
 require src/lib/systemd.f
@@ -24,8 +26,6 @@ $1000 constant IO-CAP
 $40 constant GOT-CAP
 2 constant ENOENT
 22 constant EINVAL
-
-CAST: BLEN>N ( NUM:byte-len -- n )
 
 : CAP-LEN ( n -- NUM:byte-len )
    NUM:BYTE-LEN MATCH option
@@ -129,26 +129,35 @@ variable ABSTRACT-FD
    rc 0 T= ;
 
 \ A unix datagram is queued before sendto returns, so nothing waits.
-: RECEIVED$ ( n -- str )
-   UDP:>SOCKET GOT GOT-CAP CAP-LEN 0 >MS UDP:RECEIVE
+: RECEIVE ( n ^VEC:vector<u8> -- )
+   {: fd:n v:^ :}
+   fd UDP:>SOCKET v GOT-CAP CAP-LEN 0 >MS UDP:RECEIVE
    MATCH UDP:receive-result
-      packet OF BLEN>N ENDOF
-      truncated OF BLEN>N ENDOF
-      timeout OF 0 ENDOF
-      failed OF drop 0 ENDOF
-   ;MATCH GOT swap >str ;
+      packet OF drop ENDOF
+      truncated OF drop ENDOF
+      timeout OF ENDOF
+      failed OF drop ENDOF
+   ;MATCH ;
+
+\ The socket's queued datagram is the str.
+: HOLDS ( n str -- )
+   {: fd:n want:str :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   fd v RECEIVE
+   v VEC:BYTES want T$=
+   v VEC:DELETE ;
 
 : PATH-CASE ( -- )
    s" a bound path socket: the child answers ok" T-LABEL
    BOUND$ 0 ANSWERS
    s" ... and the socket holds READY=1" T-LABEL
-   BOUND-FD @ RECEIVED$ s" READY=1" T$= ;
+   BOUND-FD @ s" READY=1" HOLDS ;
 
 : ABSTRACT-CASE ( -- )
    s" a bound abstract socket: the child answers ok" T-LABEL
    ABSTRACT$ 0 ANSWERS
    s" ... and the socket holds READY=1" T-LABEL
-   ABSTRACT-FD @ RECEIVED$ s" READY=1" T$= ;
+   ABSTRACT-FD @ s" READY=1" HOLDS ;
 
 : EMPTY-CASE ( -- )
    s" an empty NOTIFY_SOCKET answers ok" T-LABEL
@@ -171,7 +180,7 @@ variable ABSTRACT-FD
    s" an extension to a bound path socket: the child answers ok" T-LABEL
    BOUND$ 0 ANSWERS
    s" ... and the socket holds EXTEND_TIMEOUT_USEC in microseconds" T-LABEL
-   BOUND-FD @ RECEIVED$ s" EXTEND_TIMEOUT_USEC=90000000" T$= ;
+   BOUND-FD @ s" EXTEND_TIMEOUT_USEC=90000000" HOLDS ;
 
 \ In this process: the bound is checked before NOTIFY_SOCKET is read.
 : NEGATIVE-CASE ( -- )

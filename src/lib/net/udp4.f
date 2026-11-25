@@ -1,11 +1,8 @@
 \ udp4.f - Linux and Darwin IPv4 datagrams through exact, bounded libc
 \ bindings; no protocol, sequencing or retry policy. Calls must not nest within
 \ one task; close sockets before image capture: they are process resources.
-\ RECEIVE's timeout: zero makes one try and never reaches the AIO loop; a
-\ negative one waits with no deadline; any other is the milliseconds the call
-\ may wait in all. AIO:START must have run before the first wait.
 \ STORAGE CLASS. TASK-LOCAL: the endpoint storage is two TASK:+USERS rows
-\ (SOCKADDR-ROW, ADDRLEN-ROW); the datagram spans are caller-owned.
+\ (SOCKADDR-ROW, ADDRLEN-ROW); the payload is caller-owned.
 require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
@@ -37,13 +34,6 @@ SUMTYPE status
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-SUMTYPE receive-result
-   VARIANT packet NUM:byte-len address port ;VARIANT
-   VARIANT truncated NUM:byte-len address port ;VARIANT
-   VARIANT timeout ;VARIANT
-   VARIANT failed errno ;VARIANT
-;SUMTYPE
-
 E-UDP4-OPERAND constant E-OPERAND
 
 private
@@ -51,7 +41,6 @@ private
 $10 constant SOCKADDR-BYTES
 $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
-$FFE3 constant MAX-PAYLOAD
 
 \ Endpoint storage is per task: a sockaddr_in, the raw bytes the OS reads and
 \ fills, and its socklen_t.
@@ -63,9 +52,6 @@ SOCKADDR-BYTES TASK:+USERS SOCKADDR-ROW u8
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
    value minimum < value maximum > or if E-OPERAND throw then ;
 
-
-\ Each caller has shown the cell nonnegative.
-CAST: N>BLEN ( n -- NUM:byte-len )
 
 
 : BE16! ( n ^u8 -- ) {: value:n target :}
@@ -135,15 +121,6 @@ FUNCTION: LOCAL-CALL getsockname ( n ^u8 ^u8 -- i32 ) ;FUNCTION
    ;MATCH ;
 
 
-: >RECEIVE-RESULT ( DATAGRAM:receive-result -- receive-result )
-   MATCH DATAGRAM:receive-result
-      packet OF ENDPOINT@ UDP4-RECEIVE--RESULT:PACKET ENDOF
-      truncated OF ENDPOINT@ UDP4-RECEIVE--RESULT:TRUNCATED ENDOF
-      timeout OF UDP4-RECEIVE--RESULT:TIMEOUT ENDOF
-      failed OF DATAGRAM:ERRNO>N >ERRNO UDP4-RECEIVE--RESULT:FAILED ENDOF
-   ;MATCH ;
-
-
 : OCTET-LENGTH ( str -- n ) {: text:str :}
    0 begin dup text STR:LEN < while
       dup text STR:DATA + c@ $2E = if exit then 1 +
@@ -191,10 +168,6 @@ public
    dup 0 MAX-PORT WITHIN-RANGE >PORT ;
 
 
-: PAYLOAD-BYTES ( n -- NUM:byte-len )
-   dup 0 MAX-PAYLOAD WITHIN-RANGE N>BLEN ;
-
-
 \ BIND returns an owned socket; the caller closes it exactly once.
 \ Address is a numeric IPv4 address (e.g. $7F000001); port zero asks the OS.
 : BIND ( address port -- open-result )
@@ -213,15 +186,6 @@ public
    {: socket:socket address:address port:port bytes:str :}
    address port ENDPOINT!
    socket SOCKET>N SOCKADDR SOCKADDR-BYTES >str bytes DATAGRAM:SEND >STATUS ;
-
-
-\ A packet may be empty. `truncated` carries the datagram's own length, with
-\ only capacity bytes copied.
-: RECEIVE ( socket ^u8 NUM:byte-len ms -- receive-result )
-   {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
-   ENDPOINT-OUTPUT
-   socket SOCKET>N bytes capacity timeout SOCKADDR ADDRLEN DATAGRAM:RECEIVE
-   >RECEIVE-RESULT ;
 
 
 \ The caller closes each socket once and never reuses it: on Linux, close

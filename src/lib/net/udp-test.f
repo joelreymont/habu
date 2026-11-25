@@ -8,6 +8,8 @@ require src/lib/test.f
 require src/lib/string.f
 require src/lib/num-types.f
 require src/lib/span.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fmt.f
@@ -35,7 +37,6 @@ $40 constant NAME-CAP
 2 constant ENOENT
 
 create SEND-BUF BUF-CAP allot
-create RECV-BUF BUF-CAP allot
 create LONG LONG-N allot
 create DIR PATH-CAP allot   variable DIR-U
 create PATH PATH-CAP allot   variable PATH-U
@@ -115,10 +116,21 @@ variable SOCK-S
    PAYLOAD-N 0 do i 7 * 3 + $FF and SEND-BUF i + c! loop ;
 
 
-: PAT-CHECK ( n -- bool ) {: count:n :}
-   count 0 do
-      RECV-BUF i + c@ i 7 * 3 + $FF and <> if unloop false exit then
+: PAT? ( str -- bool ) {: got:str :}
+   got STR:LEN 0 ?do
+      got STR:DATA i + c@ i 7 * 3 + $FF and <> if unloop false exit then
    loop true ;
+
+
+\ The bytes from n on hold the datagram's first bytes, and nothing follows.
+: PAT-CHECK ( ^VEC:vector<u8> n n -- bool )
+   {: v:^ skip:n count:n :}
+   v VEC:COUNT skip count + = if
+      v VEC:SPAN skip SPAN:SKIP SPAN:$ PAT? exit
+   then false ;
+
+
+: FRESH ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 
 : SEND-TO ( str -- ) {: name:str :}
@@ -126,8 +138,9 @@ variable SOCK-S
    STATUS-ERRNO 0 T= ;
 
 
-: RECEIVE-R ( n -- UDP:receive-result ) {: capacity:n :}
-   SOCK-R @ UDP:>SOCKET RECV-BUF capacity CAP-LEN 0 >MS UDP:RECEIVE ;
+: RECEIVE-R ( ^VEC:vector<u8> n -- UDP:receive-result )
+   {: v:^ most:n :}
+   SOCK-R @ UDP:>SOCKET v most CAP-LEN 0 >MS UDP:RECEIVE ;
 
 
 \ ---- cases -------------------------------------------------------------------
@@ -138,22 +151,43 @@ variable SOCK-S
    s" path" PATH!
    PATH$ BIND-RECEIVER OPEN-SENDER
    PATH$ SEND-TO
-   BUF-CAP RECEIVE-R PAYLOAD-N WANT-PACKET
+   FRESH {: v:^ :}
+   v BUF-CAP RECEIVE-R PAYLOAD-N WANT-PACKET
    s" and the bytes delivered are the bytes that were sent" T-LABEL
-   PAYLOAD-N PAT-CHECK TTRUE
+   v 0 PAYLOAD-N PAT-CHECK TTRUE
+   v VEC:DELETE
+   CLOSE-BOTH
+   PATH$ FS:REMOVE-FILE ;
+
+
+: T-APPENDS ( -- )
+   s" a datagram is appended after the bytes a vector holds" T-LABEL
+   PAT-FILL
+   s" appends" PATH!
+   PATH$ BIND-RECEIVER OPEN-SENDER
+   PATH$ SEND-TO
+   FRESH {: v:^ :}
+   s" held" v VEC:APPEND
+   v BUF-CAP RECEIVE-R PAYLOAD-N WANT-PACKET
+   v 4 PAYLOAD-N PAT-CHECK TTRUE
+   s" and the bytes it held are intact" T-LABEL
+   v VEC:SPAN 4 SPAN:TAKE SPAN:$ s" held" T$=
+   v VEC:DELETE
    CLOSE-BOTH
    PATH$ FS:REMOVE-FILE ;
 
 
 : T-TRUNCATED ( -- )
-   s" a datagram larger than the capacity is truncated, carrying its own length" T-LABEL
+   s" a datagram longer than the most appended is truncated, carrying its own length" T-LABEL
    PAT-FILL
    s" truncated" PATH!
    PATH$ BIND-RECEIVER OPEN-SENDER
    PATH$ SEND-TO
-   SMALL-CAP RECEIVE-R PAYLOAD-N WANT-TRUNCATED
-   s" and the capacity it filled holds the datagram's first bytes" T-LABEL
-   SMALL-CAP PAT-CHECK TTRUE
+   FRESH {: v:^ :}
+   v SMALL-CAP RECEIVE-R PAYLOAD-N WANT-TRUNCATED
+   s" and the bytes appended are the datagram's first ones" T-LABEL
+   v 0 SMALL-CAP PAT-CHECK TTRUE
+   v VEC:DELETE
    CLOSE-BOTH
    PATH$ FS:REMOVE-FILE ;
 
@@ -165,8 +199,10 @@ HB-TARGET-LINUX-KERNEL? [if]
    NAME!
    NAME$ BIND-RECEIVER OPEN-SENDER
    NAME$ SEND-TO
-   BUF-CAP RECEIVE-R PAYLOAD-N WANT-PACKET
-   PAYLOAD-N PAT-CHECK TTRUE
+   FRESH {: v:^ :}
+   v BUF-CAP RECEIVE-R PAYLOAD-N WANT-PACKET
+   v 0 PAYLOAD-N PAT-CHECK TTRUE
+   v VEC:DELETE
    CLOSE-BOTH
    s" and binding the name made no file" T-LABEL
    NAME$ FS:EXISTS? TFALSE ;
@@ -215,6 +251,7 @@ HB-TARGET-MACOS? [if]
    T-RESET
    SETUP
    T-PATH
+   T-APPENDS
    T-TRUNCATED
    T-ABSTRACT
    T-LONG
