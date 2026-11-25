@@ -305,7 +305,10 @@ EXPORT TFAM:TFL-VPADS
       CURSYM @ CALL-AUTHORITY
       dup CALL-REJECTED = IF drop -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
       dup CALL-RECOVERS = IF RES-TRUE RECOVERY-USED! THEN
-      CALL-PRIMS <> IF FEP @ EFF-APPLY EXIT THEN
+      CALL-PRIMS <> IF
+         FEP @ {: h:^ :}
+         h EFF-APPLY  CURSYM @ h LEFT-TYPES EXIT
+      THEN
    THEN
    CURSYM @ TRY-PRIMS IF EXIT THEN
    TSEEN @ 0 <> IF TCLOSE @ E-PTR EFF-APPLY EXIT THEN
@@ -1030,7 +1033,7 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
    TBASE@ b + REJECTION:>SOURCE drop {: start:n :}
    TBASE@ e + REJECTION:>SOURCE drop {: end:n :}
    REJECTION:SOURCE$ drop start +  end start -
-   call IF DW-QUOT ELSE 0 THEN ;
+   call IF LEFT-WHY @ ELSE 0 THEN ;
 
 \ `cast: NAME ( in -- out )` is a declaration: the engine's reader keyword
 \ publishes an identity word and asks CHECKER-DEFCAST to prove the declared
@@ -1574,6 +1577,7 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
       CTLNEW @ INHSET @ or CTLNEW !
+      TAKES-LEFT @ IF CTLNEW @ CTL-OPAQUE or CTLNEW ! THEN
       ZSUMMARY-EFFECT? IF
          ZSHAPE @ 1 = IF CTLNEW @ CTL-ZERO-TRUE or CTLNEW ! THEN
          ZSHAPE @ 3 = IF CTLNEW @ CTL-ZERO-FALSE or CTLNEW ! THEN

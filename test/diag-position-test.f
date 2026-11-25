@@ -1889,6 +1889,123 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" code" s" E-LOCAL-ESCAPE" FIELD=
    0 s" RUN" 2 36 63 66 AT ;
 
+\ Token TOK, record K, is left to the run because of a type it is handed.
+: TAKES-AT ( n str n n n n -- )
+   {: k:n tok:str line:n col:n bs:n be:n :}
+   k s" code" s" W-CHECK-DEFERRED" FIELD=
+   k s" message" s" only the run can tell which types" FIELD-HAS
+   k tok line col bs be AT ;
+
+\ The check leaves the call of TOK, past its first two records, where the load
+\ rejects it with code C.
+: TAKES-BOTH ( str str str n n n n -- )
+   {: c:str tok:str at:str line:n col:n bs:n be:n :}
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 tok line col bs be TAKES-AT
+   c at 70 LOADED-AT ;
+
+: RECORD-LINES ( -- )
+   MADE-LINES
+   s" STRUCTURE pt FIELD x n FIELD y n ;STRUCTURE" SB-APPEND LF+
+   s" STRUCTURE one FIELD x n ;STRUCTURE" SB-APPEND LF+
+   s" TYPED-VARIABLE P pt" SB-APPEND LF+
+   s" TYPED-VARIABLE N n" SB-APPEND LF+ ;
+
+: EACH-LINES ( -- )
+   RECORD-LINES
+   s" : EACH ( ^t [ ^t -- ] -- ) MADE drop swap @ drop drop ;" SB-APPEND LF+ ;
+
+\ What a body left to the run does with its type variables only the run can
+\ tell, so only a plain scalar's caller is judged.
+: TEST-TYPE-LEFT ( -- )
+   s" a record behind the pointer of a body left to the run" T-LABEL
+   EACH-LINES
+   s" : SHOW ( ^pt -- ) drop ;" SB-APPEND LF+
+   s" : U ( -- ) P [: SHOW ;] EACH ;" SB-APPEND LF+
+   s" type-left.f" FIXTURE!
+   s" E-MISMATCH" s" EACH" s" :9:25" 9 25 265 269 TAKES-BOTH
+   s" a record of one cell, behind that pointer" T-LABEL
+   EACH-LINES
+   s" TYPED-VARIABLE O one" SB-APPEND LF+
+   s" : SHOW ( ^one -- ) drop ;" SB-APPEND LF+
+   s" : U ( -- ) O [: SHOW ;] EACH ;" SB-APPEND LF+
+   s" type-left-one.f" FIXTURE!
+   s" E-MISMATCH" s" EACH" s" :10:25" 10 25 287 291 TAKES-BOTH
+   s" a quotation behind the pointer of a body left to the run" T-LABEL
+   MADE-LINES
+   s" TYPED-VARIABLE KV [ -- ]" SB-APPEND LF+
+   s" : W ( ^t -- ) MADE drop NULL-PTR = drop ;" SB-APPEND LF+
+   s" : U ( -- ) KV W ;" SB-APPEND LF+
+   s" type-left-quot.f" FIXTURE!
+   s" E-RAW-CELL-PTR" s" W" s" :5:15" 5 15 123 124 TAKES-BOTH
+   s" an atom behind the pointer of a body left to the run" T-LABEL
+   MADE-LINES
+   s" package Q" SB-APPEND LF+
+   s" private" SB-APPEND LF+
+   s" cast: PN ( ^t -- ^n )" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" : PNN ( ^t -- ) PN drop ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" : W ( ^t -- ) MADE drop Q:PNN ;" SB-APPEND LF+
+   s" : U ( ^xt -- ) W ;" SB-APPEND LF+
+   s" type-left-atom.f" FIXTURE!
+   s" E-CAST-CLASS" s" W" s" :10:16" 10 16 171 172 TAKES-BOTH
+   s" a number behind that pointer" T-LABEL
+   EACH-LINES
+   s" : SHOW ( ^n -- ) drop ;" SB-APPEND LF+
+   s" : U ( -- ) N [: SHOW ;] EACH ;" SB-APPEND LF+
+   s" type-left-scalar.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 2 T=
+   s" " 0 LOADED
+   s" a generic caller of a body left to the run, and its callers" T-LABEL
+   RECORD-LINES
+   s" : W ( ^t -- ) MADE drop @ drop ;" SB-APPEND LF+
+   s" : VIA ( ^u -- ) W ;" SB-APPEND LF+
+   s" : UN ( -- ) N VIA ;" SB-APPEND LF+
+   s" type-left-scalar-via.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" W" 8 17 209 210 TAKES-AT
+   s" " 0 LOADED
+   RECORD-LINES
+   s" : W ( ^t -- ) MADE drop @ drop ;" SB-APPEND LF+
+   s" : VIA ( ^u -- ) W ;" SB-APPEND LF+
+   s" : UN ( -- ) N VIA ;" SB-APPEND LF+
+   s" : U ( -- ) P VIA ;" SB-APPEND LF+
+   s" type-left-via.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 4 T=
+   2 s" W" 8 17 209 210 TAKES-AT
+   3 s" VIA" 10 14 246 249 TAKES-AT
+   s" E-MISMATCH" s" :10:14" 70 LOADED-AT
+   s" a tick of a body left to the run" T-LABEL
+   RECORD-LINES
+   s" : W ( ^t -- ) MADE drop @ drop ;" SB-APPEND LF+
+   s" : UN ( -- ) N ['] W execute ;" SB-APPEND LF+
+   s" type-left-tick-scalar.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" W" 8 19 211 212 TAKES-AT
+   s" " 0 LOADED
+   RECORD-LINES
+   s" : W ( ^t -- ) MADE drop @ drop ;" SB-APPEND LF+
+   s" : U ( -- ) P ['] W execute ;" SB-APPEND LF+
+   s" type-left-tick.f" FIXTURE!
+   s" E-MISMATCH" s" W" s" :8:20" 8 18 210 211 TAKES-BOTH
+   s" a caller that hands its parameter over in a quotation it never runs" T-LABEL
+   RECORD-LINES
+   s" : W ( ^t -- ) MADE drop @ drop ;" SB-APPEND LF+
+   s" : VIA ( ^u -- ) {: p:^ :} [: p W ;] drop ;" SB-APPEND LF+
+   s" : U ( -- ) P VIA ;" SB-APPEND LF+
+   s" type-left-literal.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 4 T=
+   2 s" W" 8 32 224 225 TAKES-AT
+   3 s" VIA" 9 14 249 252 TAKES-AT
+   s" E-MISMATCH" s" :9:14" 70 LOADED-AT ;
+
 \ The check, past K records, rejects with code C where the load does.
 : REJECTED-BOTH ( n str str str n n n n -- )
    {: k:n c:str tok:str at:str line:n col:n bs:n be:n :}
@@ -2246,6 +2363,12 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ The check cannot follow MADE, so it does not know whether LATE throws: the load
 \ decides a body that catches a quotation calling it.
+: CATCH-AT ( n n n n n -- )
+   {: k:n line:n col:n bs:n be:n :}
+   k s" code" s" W-CHECK-DEFERRED" FIELD=
+   k s" message" s" only the run can tell whether what `catch` runs throws" FIELD-HAS
+   k s" catch" line col bs be AT ;
+
 : CATCH-LINES ( str -- ) {: body:str :}
    SB-RESET
    s\" : GEN ( -- ) s\" : MADE ( n -- n ) dup 0 > if " SB-APPEND  body SB-APPEND
@@ -2262,8 +2385,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" catch-left-throws.f" FIXTURE!
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 4 T=
-   2 s" catch" 5 27 177 182 LEFT-AT
-   3 s" catch" 6 23 212 217 LEFT-AT
+   2 5 27 177 182 CATCH-AT
+   3 6 23 212 217 CATCH-AT
    s" E-STALE-READ" s" :5:33" 70 LOADED-AT
    s" and which throws nothing" T-LABEL
    s" drop 7" CATCH-LINES
@@ -2271,8 +2394,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" catch-left-returns.f" FIXTURE!
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 4 T=
-   2 s" catch" 5 27 171 176 LEFT-AT
-   3 s" catch" 6 23 206 211 LEFT-AT
+   2 5 27 171 176 CATCH-AT
+   3 6 23 206 211 CATCH-AT
    s" " 0 LOADED
    s" a catch after a token the check cannot follow keeps that token's cause" T-LABEL
    s" drop 7 throw" CATCH-LINES
@@ -2296,6 +2419,27 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : S ( str -- n ) [: DD ;] catch ;" SB-APPEND LF+
    s" catch-left-mismatch.f" FIXTURE!
    3 s" E-MISMATCH" s" catch" s" :6:27" 6 27 210 215 REJECTED-BOTH ;
+
+\ The check cannot follow MADE, so it does not know whether DV divides by what it
+\ takes: the load decides a literal 0 handed to DV or to a word that hands it on.
+\ No load marks ID's type variable, so the check judges W.
+: TEST-ZERO-LEFT ( -- )
+   s" a literal 0 handed to a body left to the run" T-LABEL
+   SB-RESET
+   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s" : DV ( n n -- n ) MADE / ;" SB-APPEND LF+
+   s" : V ( n n -- n ) DV ;" SB-APPEND LF+
+   s" : U ( -- n ) 1 0 V ;" SB-APPEND LF+
+   s" : ID ( t -- t ) MADE ;" SB-APPEND LF+
+   s" : W ( -- n ) 0 ID ;" SB-APPEND LF+
+   s" zero-left.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 4 T=
+   2 s" code" s" W-CHECK-DEFERRED" FIELD=
+   2 s" message" s" only the run can tell whether `V` divides by or throws its 0" FIELD-HAS
+   2 s" V" 5 18 121 122 AT
+   s" E-DIV-ZERO" s" :5:18" 70 LOADED-AT ;
 
 \ The check, which compiles nothing, names a mixed-case private twin as the
 \ load does: as its declaration spells it, never folded.
@@ -4751,11 +4895,13 @@ HB-TARGET-LINUX? 0= [if]
    TEST-DERIVE-BYTES-FIELD
    TEST-DEFER-SUGGEST
    TEST-QUOT-LEFT
+   TEST-TYPE-LEFT
    TEST-QUOT-LEFT-JUDGED
    TEST-QUOT-LEFT-RECORD
    TEST-QUOT-LEFT-FACT
    TEST-PAYLOAD-QUOT
    TEST-CATCH-LEFT
+   TEST-ZERO-LEFT
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON
    TEST-SECOND-ELSE

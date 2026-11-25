@@ -1307,6 +1307,23 @@ variable STLN   PTR-VARIABLE STLA-P   PTR-VARIABLE STLC-P   variable STL-CAP
 \ cell `catch` left stale (STALE-WHY).
 variable TOP-UNKNOWN
 
+global
+\ Why the check left a stretch or definition to the run, each with its own
+\ message and help; 0 is no cause recorded.
+1 constant DW-PARSER         \ a top-level word or primitive that parses with no `parses:` row
+2 constant DW-DEFER          \ a top-level call of a deferred word
+3 constant DW-PARSES         \ a top-level word whose `parses:` row bounds what it reads
+4 constant DW-RENDERER       \ a renderer whose text no `generates:` row or group declares
+5 constant DW-CATCH          \ a catch of a quotation only the run can tell throws
+6 constant DW-TYPE           \ a type that may arrive with rendered text
+7 constant DW-RENDERED       \ a word whose meaning rendered source may change
+8 constant DW-ROOTS          \ a top-level call that may move the source root
+9 constant DW-COUNT          \ a buffer byte count naming a constant only the run defines
+10 constant DW-QUOT          \ a quotation only the run can judge: whether it is kept, or what it does
+11 constant DW-TAKES         \ a type only the run can tell a word takes
+12 constant DW-ZERO          \ a literal 0 only the run can tell a word divides by or throws
+private
+
 \ Unification trail: one entry (id << 4 | tag) per binding, compression link, provenance,
 \ kind or scope raise, run record or left call.
 4096 constant TRAIL-INIT
@@ -1314,8 +1331,10 @@ SCRATCH{
 PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
 PTR-VARIABLE TRAIL-OLD-P   \ by trail index: the value a kind, scope, link or provenance entry replaced
 variable TRAIL-PIN   \ trail height + 1 where the rejection's rows were pinned (ROWS-PIN), 0 none
-variable LEFT-CALL   \ 1 + the start of the first token whose quotation only the run can judge, 0 none
+variable LEFT-CALL   \ 1 + the start of the first token only the run can judge, 0 none
 variable LEFT-END    \ that token's end
+variable LEFT-WHY    \ its DW- code
+variable TAKES-LEFT  \ -1 once a token is left for DW-TAKES, though LEFT-CALL holds an earlier one
 }SCRATCH
 : TRAIL ( -- ^n ) TRAIL-P @ ;
 : TRAIL-OLD ( -- ^n ) TRAIL-OLD-P @ ;
@@ -4209,15 +4228,15 @@ variable FAILB  variable FAILE   \ the pin's span, the current token's while no 
 
 \ The trail holds the record, so a trial taken back takes it back. A pinned
 \ failure decides the body, so a call after it records nothing.
-: LEFT-CALL! ( -- )
+: LEFT-CALL! ( n -- ) {: why:n :}
    LEFT-CALL @ 0 <>  FAILSET @ 0 <>  or IF EXIT THEN
    0 6 TRAIL-PUSH
-   FAILB @ 1+ LEFT-CALL !  FAILE @ LEFT-END ! ;
+   FAILB @ 1+ LEFT-CALL !  FAILE @ LEFT-END !  why LEFT-WHY ! ;
 
 \ An NS-LEFT variable is a block part: it binds a variable, which takes its
 \ state, or a block's scope, which only the run can judge.
 : LEFT-BIND ( n -- )
-   T-RES dup ISVAR IF PAY NS-LEFT NSCOPE-RAISE-TO ELSE drop LEFT-CALL! THEN ;
+   T-RES dup ISVAR IF PAY NS-LEFT NSCOPE-RAISE-TO ELSE drop DW-QUOT LEFT-CALL! THEN ;
 
 : TV! ( n n -- )
    {: term:n id:n :}
@@ -5294,7 +5313,7 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    THEN
    \ Facts are not trailed: a rolled-back trial can only add facts.
    TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE
-      left opaque or IF LEFT-CALL! ELSE kept IF has got Q-FACTS! THEN THEN
+      left opaque or IF DW-QUOT LEFT-CALL! ELSE kept IF has got Q-FACTS! THEN THEN
       handed IF
          got Q>FACTS KEPT-RUN @ or KEPT-RUN !
          got Q>FACTS CTL-STATABLE and KEPT-WANT @ invert and 0 <> IF got KEPT-RUN-T ! THEN
@@ -5986,20 +6005,6 @@ private
 64 constant MD-LOCAL-ESCAPE  \ a quotation that reads a local would outlive it (LSC-CK, STORE-HIT)
 65 constant MD-BINDER-PLACE  \ an inferred effect holds a callback binder outside a callback input (CHECK)
 66 constant MD-DEPTH-WIDE    \ depth or .s over a row holding a wide value or one of open width (HIDROW-STEP?)
-
-global
-\ Why the check left a stretch or definition to the run, each with its own
-\ message and help; 0 is no cause recorded.
-1 constant DW-PARSER         \ a top-level word or primitive that parses with no `parses:` row
-2 constant DW-DEFER          \ a top-level call of a deferred word
-3 constant DW-PARSES         \ a top-level word whose `parses:` row bounds what it reads
-4 constant DW-RENDERER       \ a renderer whose text no `generates:` row or group declares
-6 constant DW-TYPE           \ a type that may arrive with rendered text
-7 constant DW-RENDERED       \ a word whose meaning rendered source may change
-8 constant DW-ROOTS          \ a top-level call that may move the source root
-9 constant DW-COUNT          \ a buffer byte count naming a constant only the run defines
-10 constant DW-QUOT          \ a quotation only the run can judge: whether it is kept, or what it does
-private
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
 \ known cells is unknown, not left stale by a `catch`.
@@ -7253,7 +7258,7 @@ variable QUOT-LOSS
      QTT @ QUOT-APPLY-INST QTT !
      QTT @ Q>DIN QUOT-TAIL-OWN?  QTT @ Q>RIN QUOT-TAIL-OWN?
      noret  QTT @ Q>XHAS 0=  and {: dead:bool :}
-     QTT @ Q>FACTS CTL-OPAQUE and 0 <> IF LEFT-CALL! THEN
+     QTT @ Q>FACTS CTL-OPAQUE and 0 <> IF DW-CATCH LEFT-CALL! THEN
      dead 0=
    ELSE RES-FALSE RES-FALSE RES-TRUE THEN {: dmine:bool rmine:bool returns:bool :}
    QTT @ TAG T-QUOT = IF
@@ -18684,6 +18689,25 @@ variable NORET-FMEND
 
 : CTL-FLAGS-SYM ( n -- n ) CTL-WORD-SYM XFER-FLAGS ;
 
+\ A plain scalar is a type no body the load accepts rejects: what a body does with
+\ a type variable rejects only a layout, pointer, callable, atom or linear value.
+: LEFT-TAKES? ( n -- bool )
+   T-RES dup TAG T-CON = swap LIN-CON? 0= and ;
+
+\ Runs while EI-TV holds h's instance. A block part is no counted variable:
+\ LEFT-BIND judges it.
+: LEFT-TYPES ( n ^u8 -- ) {: sym:n h:^ :}
+   OK @ 0=  sym CTL-FLAGS-SYM CTL-OPAQUE and 0=  or IF EXIT THEN
+   h E-TVN@ {: tvn:n :}
+   tvn LVM-CLEAR
+   tvn h E-DIN@ RES-FALSE EN-COUNT  tvn h E-DOUT@ RES-TRUE EN-COUNT
+   tvn h E-RIN@ RES-FALSE EN-COUNT  tvn h E-ROUT@ RES-TRUE EN-COUNT
+   tvn 0 ?do
+      i cells LVM-IN + @  i cells LVM-OUT + @  or 0 <> IF
+         i cells EI-TV + @ LEFT-TAKES? 0= IF -1 TAKES-LEFT !  DW-TAKES LEFT-CALL! THEN
+      THEN
+   loop ;
+
 EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 
 \ `>r` `r>` `r@` are compile keywords the engine matches before any lookup, so
@@ -18881,10 +18905,25 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       s" the check leaves buffer byte count " REJECTION:EMIT-STR  t tu DW-CODE
       s"  to the run because only the run defines its value" REJECTION:EMIT-STR EXIT
    THEN
+   why DW-CATCH = IF
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  on to the run because only the run can tell whether what " REJECTION:EMIT-STR
+      t tu DW-CODE  s"  runs throws" REJECTION:EMIT-STR EXIT
+   THEN
    why DW-QUOT = IF
       s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
       s"  on to the run because only the run can tell whether a quotation is kept or what it does"
       REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-TAKES = IF
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  on to the run because only the run can tell which types " REJECTION:EMIT-STR
+      t tu DW-CODE  s"  takes" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-ZERO = IF
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  on to the run because only the run can tell whether " REJECTION:EMIT-STR
+      t tu DW-CODE  s"  divides by or throws its 0" REJECTION:EMIT-STR EXIT
    THEN
    s" the check cannot follow the source from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on and leaves it to the run" REJECTION:EMIT-STR ;
@@ -18898,6 +18937,9 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    why DW-ROOTS = IF s" may move the source root" REJECTION:EMIT-STR EXIT THEN
    why DW-COUNT = IF s" value known only to the run" REJECTION:EMIT-STR EXIT THEN
    why DW-QUOT = IF s" a quotation only the run can judge" REJECTION:EMIT-STR EXIT THEN
+   why DW-TAKES = IF s" a type only the run can judge" REJECTION:EMIT-STR EXIT THEN
+   why DW-CATCH = IF s" what it runs may throw" REJECTION:EMIT-STR EXIT THEN
+   why DW-ZERO = IF s" a zero only the run can judge" REJECTION:EMIT-STR EXIT THEN
    s" not checked from here" REJECTION:EMIT-STR ;
 \ What lifts the deferral, or what the run does where nothing can; a `parses:`
 \ row's or rendered source's has nothing to write, so no help.
@@ -18935,6 +18977,19 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       s" use a quotation that reads no local, calls only words the check judges and does only "
       REJECTION:EMIT-STR  s" what the type that takes it states, " REJECTION:EMIT-STR
       s" or state the rest in that type, and the check judges " REJECTION:EMIT-STR  t tu DW-CODE EXIT
+   THEN
+   why DW-TAKES = IF
+      s" write the types " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  takes in its signature in place of its type variables, and the check judges the types of each use"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-CATCH = IF
+      s" keep the words the check leaves to the run out of all that the caught quotation calls"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-ZERO = IF
+      s" keep the words the check leaves to the run out of all that " REJECTION:EMIT-STR
+      t tu DW-CODE  s"  calls, and the check judges the 0" REJECTION:EMIT-STR EXIT
    THEN
    s" rewrite the code from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on with words whose effects the check knows" REJECTION:EMIT-STR ;
@@ -19130,14 +19185,33 @@ variable NZ-IN   variable NZ-TAKEN   variable NZ-DIV   variable NZ-THROW
 \ throws E-THROW-ZERO; a redefinition of an engine spelling is marked by its
 \ own body.
 
-\ True when NODE, the callee's input I under MARKS, holds a literal 0 at a
-\ marked input; then the call is rejected.
+\ True when input I, from the top, of the encoded row at OFF is declared an
+\ integer: only such an input is seeded (NZ-SEED?), so only it can be marked.
+: EN-INT-AT? ( n n -- bool ) {: off:n i:n :}
+   off 0= IF RES-FALSE EXIT THEN
+   off E-PTR {: e:^ :}
+   e EN.TAG @ EN-PUSH <> IF RES-FALSE EXIT THEN
+   i 0 > IF e EN.B @ i 1 - RECURSE EXIT THEN
+   e EN.A @ dup 0= IF drop RES-FALSE EXIT THEN
+   E-PTR {: c:^ :}
+   c EN.TAG @ EN-CON <> IF RES-FALSE EXIT THEN
+   c EN.A @ INT-FAM? ;
+
+\ True when NODE, the callee's input I under MARKS, holds a literal 0 at a marked
+\ input; then the call is rejected. An opaque callee may lack a mark the load sets.
 : ZERO-AT? ( n n n -- bool ) {: node:n i:n marks:n :}
    node P>PROOF {: pf:n :}
    pf CP-LIT? 0= IF RES-FALSE EXIT THEN
    pf CP-ID 0 <> IF RES-FALSE EXIT THEN
    i marks NZ-MARKS {: div:bool thr:bool :}
-   div thr or 0= IF RES-FALSE EXIT THEN
+   div thr or 0= IF
+      CTL-FLAGS-CUR CTL-OPAQUE and 0 <> IF
+         CURSYM @ CHECKER-FIND-USIG-SYM IF
+            FEP @ E-DIN@ i EN-INT-AT? IF DW-ZERO LEFT-CALL! THEN
+         THEN
+      THEN
+      RES-FALSE EXIT
+   THEN
    div IF MD-DIV-ZERO ELSE MD-THROW-ZERO THEN MDIAG!
    i MDIAG-ZIN !
    0 OK !
@@ -23984,8 +24058,8 @@ variable IS-PEND-U                   \ and its length
    IS-TOFF @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
 
-\ A rejected tick or `is` names its target, moving the pin off the `[']` or `is`
-\ DO-TOK1 set.
+\ A rejected tick or `is` and a left tick name the target, moving the pin off the
+\ `[']` or `is` DO-TOK1 set.
 : TICK-PIN ( -- )
    FAILSET @ 0 <> IF EXIT THEN
    TARGET-PIN! ;
@@ -24149,6 +24223,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
          RES-TRUE RECOVERY-USED!
       THEN
       FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE BTICK-PUSH
+      TICK-PIN  sym FEP @ LEFT-TYPES
    ELSE
       sym 0=  rec 0=  and IF TKF TKFU @ REJECT-UNDEFINED THEN
       OPAQUE-XT BTICK-PUSH
@@ -25156,7 +25231,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
    0 REJECTION !  0 CREJECT !  0 CRTGT !  0 RCOMPILE !  0 CUSING !  0 PIN-BODY-CALL !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
-   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 LEFT-CALL !  0 QUALBAD !  0 CAPREQ !
+   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 LEFT-CALL !  0 TAKES-LEFT !  0 QUALBAD !  0 CAPREQ !
    0 NP-ORIG-N !  0 CALL-MINT-N !  0 RECUR-MAP-N !  0 RECUR-INST-N !
    CLEAR  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
