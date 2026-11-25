@@ -1,4 +1,3 @@
-split-str
 \ link-map.f - the target's names for a build's records: each record's wordlist
 \ id as the target numbers it, and <program>.map, which LINKER:WRITE writes
 \ beside the program in the format tools/image-names.f reads (habu-names 1). Its
@@ -44,13 +43,13 @@ private
 \ cannot number it. The linker holds no source place, so the record is unplaced.
 : BAD-WID ( n n -- )
    {: wid:n r:n :}
-   r XREF-REC XREF-NAME$ {: name:^ nameu:n :}
+   r XREF-REC XREF-NAME$ {: name:str :}
    s" E-LINK-WORDLIST" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  name REJECTION:EMIT-STR
    s" ` names wordlist " REJECTION:EMIT-STR  wid REJECTION:EMIT-N
    s" , which the build did not make, so the target cannot number it" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" define `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
+   s" define `" REJECTION:EMIT-STR  name REJECTION:EMIT-STR
    s" ` in a wordlist the build makes: its global wordlist, a package it declares or one `wordlist` answers"
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
@@ -200,22 +199,22 @@ variable REGION-N
    dup 0 < if s" -" MAP+ then
    ERROR-TEXT:DIGITS$ MAP+ ;
 
-: MAP-HEX+ ( n -- ) s" 0123456789ABCDEF" drop swap + 1 MAP+ ;
+: MAP-HEX+ ( n -- ) s" 0123456789ABCDEF" STR:DATA swap + 1 >str MAP+ ;
 
 \ A path, its bytes at or below a space and its '%' as %XX, and none as `-`.
 : MAP-ESC+ ( str -- )
-   {: a:^ u:n :}
-   u 0= if s" -" MAP+ exit then
-   u 0 ?do
-      a i + c@ {: c:n :}
+   {: s:str :}
+   s STR:LEN 0= if s" -" MAP+ exit then
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ {: c:n :}
       c 32 <=  c 37 = or if
          s" %" MAP+  c 4 rshift MAP-HEX+  c 15 and MAP-HEX+
-      else a i + 1 MAP+ then
+      else s STR:DATA i + 1 >str MAP+ then
    loop ;
 
 : MAP-NAME+ ( str -- )
-   {: a:^ u:n :}
-   u 0= if s" -" MAP+ else a u MAP+ then ;
+   {: s:str :}
+   s STR:LEN 0= if s" -" MAP+ else s MAP+ then ;
 
 : REC+ ( -- n ) MAP-REC @  1 MAP-REC +! ;
 
@@ -243,8 +242,8 @@ variable REGION-N
 : FILE-PATH$ ( n -- str )
    {: row:n :}
    row 0 < if s" " exit then
-   LOAD-PATHS @ BYTES$ drop  row BUILT-PATHS @ + {: at:^ :}
-   at 8 +  at LE:U64@ ;
+   LOAD-PATHS @ BYTES$ STR:DATA  row BUILT-PATHS @ + {: at:^ :}
+   at 8 +  at LE:U64@ >str ;
 
 
 : KERNEL-ROW+ ( n -- )
@@ -327,10 +326,10 @@ variable REGION-N
 
 \ The bytes [at, end) the link appended after the code, if any, of the kind.
 : TAIL-ROW+ ( str n n -- )
-   {: kind:^ kindu:n at:n end:n :}
+   {: kind:str at:n end:n :}
    end at > if
       REC+ 0 at  end at - CODE-SPAN:EXACT  -1 MAP-HEAD
-      s" - " MAP+  kind kindu MAP+  s"  generated -" MAP+  MAP-NL
+      s" - " MAP+  kind MAP+  s"  generated -" MAP+  MAP-NL
    then ;
 
 : REGION-ROW+ ( n -- )
@@ -353,12 +352,12 @@ variable REGION-N
 
 
 : MAP-WRITE ( str n -- )
-   {: path:^ pathu:n end:n :}
+   {: path:str end:n :}
    MAP-TEXT BYTES-NEW  MAP-PATH BYTES-NEW
    MAP-FILL MAP-SORT MAP-ENDS MAP-ALIASES
    S\" habu-names 1\ncolumns rec named start len wid name kind origin source\n" MAP+
    0 MAP-REC !  end CODE-ROWS  end REGION-ROWS  PACKAGE-ROWS
-   path pathu MAP-PATH @ VEC:APPEND  s" .map" MAP-PATH @ VEC:APPEND
+   path MAP-PATH @ VEC:APPEND  s" .map" MAP-PATH @ VEC:APPEND
    MAP-PATH @ BYTES$ [: MAP-TEXT @ BYTES$ FS:WRITE-ALL ;] FS:REPLACE-CACHED ;
 
 : MAP-RELEASE ( -- )

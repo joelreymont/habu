@@ -1,4 +1,3 @@
-split-str
 \ link-data.f - a build's DATA: the link's copy of the open space's cells, each
 \ declared cell given its value at DATA-VA, appended to A64ICODE's code buffer
 \ after the routine band. A Mach-O image holds the copy as its non-zero cell
@@ -215,7 +214,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    else
       NATIVE:CODE LDICT LABEL-OFFSET +  k DREC * +  24 +
    then
-   flags DNAME-LEN-MASK and ;
+   flags DNAME-LEN-MASK and >str ;
 
 
 \ A built-in primitive's facts text, laid in the space; 0 for a package row, an
@@ -223,9 +222,9 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : PRIM-TEXT ( n -- n )
    {: k:n :}
    k 5 PRIM@ WL:PRIMITIVES <> if 0 exit then
-   k PRIM-NAME$ PRIMITIVE-FACTS {: a:^ u:n :}
-   u 0= if 0 exit then
-   a u INTERN:TEXT BASE @ - ;
+   k PRIM-NAME$ PRIMITIVE-FACTS {: t:str :}
+   t STR:LEN 0= if 0 exit then
+   t INTERN:TEXT BASE @ - ;
 
 \ After the kernel and before DATA-IMAGE copies the space.
 : PRIM-TEXTS ( -- )
@@ -301,13 +300,13 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    a 0= if 0 exit then
    a LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
-   r XREF-REC XREF-NAME$ {: name:^ nameu:n :}
+   r XREF-REC XREF-NAME$ {: name:str :}
    s" E-LINK-RECORD-ENTRY" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  name REJECTION:EMIT-STR
    s" ` enters at " REJECTION:EMIT-STR  a REJECTION:EMIT-N
    s" , which is no code the engine holds" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" define `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
+   s" define `" REJECTION:EMIT-STR  name REJECTION:EMIT-STR
    s" ` in a file the engine build loads" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
@@ -416,7 +415,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    begin dup COPY-N < while dup RUN-END tuck RUN, NEXT-SET repeat drop ;
 
 
-: CARRIER$ ( -- str ) 0 CARRIER CARRIER-N @ ;
+: CARRIER$ ( -- str ) 0 CARRIER CARRIER-N @ >str ;
 
 \ The copy in pages, the last one zero past the copy's end: the boot moves whole
 \ pages, and one image runs on every page size its machine's kernels have.
@@ -575,16 +574,16 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ Write the linked image and sign it, a Mach-O one when macho, else an ELF one.
 : EMIT-IMAGE ( str str bool -- )
-   {: sig:^ sigu:n path:^ pathu:n macho:bool :}
+   {: sig:str path:str macho:bool :}
    macho if
-      sig sigu MACHO:SET-SIGID
+      sig MACHO:SET-SIGID
       MACHO:ASM-CODE NATIVE:TEXT-VA NATIVE:MACHO-IMPORTS$ MACHO:BUILD-IMAGE
       MACHO:CODESIG2
    else
-      sig sigu ELF:SET-SIGID
+      sig ELF:SET-SIGID
       NATIVE:X64? if
          NATIVE:TEXT-VA X64CODE:FIXUPS!
-         NATIVE:CODE NATIVE:SIZE NATIVE:TEXT-VA
+         NATIVE:CODE NATIVE:SIZE >str NATIVE:TEXT-VA
          NATIVE:ELF-IMPORTS$ s" CARRIER-VA" NATIVE:SYM CARRIER$ ELF:BUILD-X64
       else
          ELF:ASM-CODE NATIVE:TEXT-VA NATIVE:ELF-IMPORTS$ s" CARRIER-VA" NATIVE:SYM
@@ -592,7 +591,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       then
       ELF:CODESIG2
    then
-   path pathu DRV-WRITE-IMAGE ;
+   path DRV-WRITE-IMAGE ;
 
 
 \ Link the open space's program and write it, signed, to the path, as Mach-O
@@ -603,12 +602,12 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ a sibling renamed over the path: macOS kills a signed program rewritten in
 \ place.
 : WRITE-PROGRAM ( str bool -- )
-   {: path:^ pathu:n macho:bool :}
+   {: path:str macho:bool :}
    ENGINE? @ if 0 PLACE-FACTS then
    macho ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
-   path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap
+   path [: dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then swap
       macho EMIT-IMAGE  FS:CHMOD-X ;] FS:REPLACE-CACHED
-   REGIONS  path pathu CODE-END @ WRITE-MAP ;
+   REGIONS  path CODE-END @ WRITE-MAP ;
 
 public
 
@@ -623,11 +622,11 @@ public
 \ module, a Mach-O or ELF target's as WRITE-PROGRAM does. GOING comes first:
 \ outside a build no target is open for the match to read.
 : WRITE ( str -- )
-   {: path:^ pathu:n :}
+   {: path:str :}
    false GOING
    TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
-      macho OF path pathu true WRITE-PROGRAM ENDOF
-      elf OF path pathu false WRITE-PROGRAM ENDOF
+      macho OF path true WRITE-PROGRAM ENDOF
+      elf OF path false WRITE-PROGRAM ENDOF
       pe OF
          s" E-LINK-NO-WRITER" REJECTION:OPEN
          s" the link has no file writer for a PE target" REJECTION:EMIT-STR
@@ -635,7 +634,7 @@ public
          s" build for a Linux or macOS target" REJECTION:EMIT-STR
          EXIT-STATUS:REJECTED REJECTION:STOP
       ENDOF
-      wasm OF path pathu WASM:WRITE-MODULE ENDOF
+      wasm OF path WASM:WRITE-MODULE ENDOF
    ;MATCH ;
 
 ;package

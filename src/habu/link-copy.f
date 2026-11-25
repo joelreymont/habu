@@ -1,4 +1,3 @@
-split-str
 \ link-copy.f - the data a program reaches and the link's copy of the open
 \ space: REACH-DATA marks the units and address rows a stripped program reads
 \ and lays its data out; the copy is that data, its kept rows listed in cell
@@ -275,7 +274,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 
 
 \ The build's DP, where the space's data ends.
-: SPACE-END ( -- n ) SPACE-DATA nip BASE @ + ;
+: SPACE-END ( -- n ) SPACE-DATA STR:LEN BASE @ + ;
 
 : SEG ( n n -- ^n ) swap SEG-CELLS * + SEGS ;
 
@@ -387,7 +386,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 
 
 : DATA-LEN ( -- n )
-   ENGINE? @ if SPACE-DATA nip exit then
+   ENGINE? @ if SPACE-DATA STR:LEN exit then
    LAID-END @ ;
 
 : IN-BAND? ( -- bool ) KEPT-N @ ADDRESS-CELLS:BOOT-CAP <= ;
@@ -485,8 +484,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
 : COPY-AT ( n -- ^u8 ) 0 COPY-CELLS BYTE-VIEW swap + ;
 
 : COPY-SPACE ( -- )
-   SPACE-DATA {: p:^ u:n :}
-   p 0 COPY-AT u BYTE-COPY ;
+   SPACE-DATA {: s:str :}
+   s STR:DATA 0 COPY-AT s STR:LEN BYTE-COPY ;
 
 \ The space's u bytes from offset from at image offset at.
 : COPY-BYTES-AT ( n n n -- )

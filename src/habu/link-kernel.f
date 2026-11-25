@@ -1,4 +1,3 @@
-split-str
 \ link-kernel.f - the native kernel a build's link adopts from the kernel object
 \ a kernel build writes, the map from the running hb's kernel primitive entries
 \ to the object's, and the cut that keeps only the kernel code a program
@@ -38,14 +37,14 @@ private
 SHA256-CTX-BYTES BUFFER: SHA-CTX
 32 BUFFER: SUM
 
-: SUM-OF ( str -- ) {: a:^ u:n :}
-   SHA-CTX  a 40 +  u 40 -  SUM SHA256-IN ;
+: SUM-OF ( str -- ) {: s:str :}
+   SHA-CTX  s STR:DATA 40 +  s STR:LEN 40 - >str  SUM SHA256-IN ;
 
-: SEALED? ( str -- bool ) {: a:^ u:n :}
-   a u SUM-OF  SUM 32  a 8 + 32  STR:= ;
+: SEALED? ( str -- bool ) {: s:str :}
+   s SUM-OF  SUM 32 >str  s STR:DATA 8 + 32 >str  STR:= ;
 
-: SEAL ( str -- ) {: a:^ u:n :}
-   a u SUM-OF  SUM  a 8 +  32 BYTE-COPY ;
+: SEAL ( str -- ) {: s:str :}
+   s SUM-OF  SUM  s STR:DATA 8 +  32 BYTE-COPY ;
 
 : DAMAGE-END ( str -- )
    s" cause" REJECTION:NOTE  REJECTION:EMIT-STR
@@ -54,24 +53,24 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 \ Stops the build with status DATAERR: the object at the path is not as hb
 \ wrote it, for the cause.
-: DAMAGED ( str str -- ) {: p:^ pu:n c:^ cu:n :}
+: DAMAGED ( str str -- ) {: p:str c:str :}
    s" E-DAMAGED-OBJECT" REJECTION:OPEN
-   p pu REJECTION:EMIT-STR  s"  is not the file hb wrote" REJECTION:EMIT-STR
-   c cu DAMAGE-END ;
+   p REJECTION:EMIT-STR  s"  is not the file hb wrote" REJECTION:EMIT-STR
+   c DAMAGE-END ;
 
 \ Stops the build with status DATAERR: the object at the path cannot be
 \ read, for the cause.
-: UNREADABLE ( str str -- ) {: p:^ pu:n c:^ cu:n :}
+: UNREADABLE ( str str -- ) {: p:str c:str :}
    s" E-DAMAGED-OBJECT" REJECTION:OPEN
-   p pu REJECTION:EMIT-STR  s"  cannot be read" REJECTION:EMIT-STR
-   c cu DAMAGE-END ;
+   p REJECTION:EMIT-STR  s"  cannot be read" REJECTION:EMIT-STR
+   c DAMAGE-END ;
 
 \ Stops the build as UNREADABLE for a code caught opening, sizing, reading or
 \ mapping the object at the path. The caller throws any other code on itself,
 \ which keeps the caught record.
-: READ-FAILED ( str n -- ) {: p:^ pu:n code:n :}
+: READ-FAILED ( str n -- ) {: p:str code:n :}
    code E-FS-OPEN =  code E-FS-STAT = or  code E-FS-IO = or  code E-MEM-MAP = or  if
-      p pu  code ERROR:NAME$  UNREADABLE
+      p  code ERROR:NAME$  UNREADABLE
    then ;
 
 EXPORT BOOT:data-base
@@ -128,7 +127,7 @@ PATH-CAP BUFFER: PATH                \ READ's path, for its error lines
 variable PATH-U
 
 
-: SAY-OBJECT ( -- ) s" link: kernel object " SAY  PATH PATH-U @ SAY  SAY-CR ;
+: SAY-OBJECT ( -- ) s" link: kernel object " SAY  PATH PATH-U @ >str SAY  SAY-CR ;
 
 : BAD ( -- )
    SAY-OBJECT
@@ -197,12 +196,12 @@ variable PATH-U
    AT @ KOBJ-U @ <> if BAD then ;
 
 : CHECK ( -- )
-   KOBJ-U @ 40 < if PATH PATH-U @ s" checksum" DAMAGED then
-   0 KOBJ 8 s" HBKERNX6" STR:= X64!
+   KOBJ-U @ 40 < if PATH PATH-U @ >str s" checksum" DAMAGED then
+   0 KOBJ 8 >str s" HBKERNX6" STR:= X64!
    X64? 0= if
-      0 KOBJ 8 s" HBKERNEL" STR:= 0= if PATH PATH-U @ s" checksum" DAMAGED then
+      0 KOBJ 8 >str s" HBKERNEL" STR:= 0= if PATH PATH-U @ >str s" checksum" DAMAGED then
    then
-   0 KOBJ KOBJ-U @ SEALED? 0= if PATH PATH-U @ s" checksum" DAMAGED then ;
+   0 KOBJ KOBJ-U @ >str SEALED? 0= if PATH PATH-U @ >str s" checksum" DAMAGED then ;
 
 : LABEL-AT ( n -- n ) 8 * LABELS-AT @ + KOBJ@ ;
 
@@ -211,34 +210,34 @@ variable PATH-U
    NEXT {: u:n :}
    AT @ {: at:n :}
    u SKIP
-   0 KOBJ at +  u ;
+   0 KOBJ at +  u >str ;
 
 \ One row, stated by kind: a package's private row on its package's private
 \ symbol, kept for the record linker.f OWNED+ lays of it.
 : STATE-ROW ( -- )
    NEXT NEXT NEXT {: kind:n trusted:n fixed:n :}
    AT @ 8 + {: name-at:n :}
-   NAME-NEXT {: name:^ nameu:n :}
+   NAME-NEXT {: name:str :}
    AT @ 8 + {: pkg-at:n :}
-   NAME-NEXT {: pkg:^ pkgu:n :}
+   NAME-NEXT {: pkg:str :}
    NEXT {: atoms:n :}
    atoms 0<  atoms KOBJ-U @ > or if BAD then
    kind PRIM-SPEC:K-PKG-PRIVATE = {: owned:bool :}
    owned if
       OWNED-ROWS @ 4 * {: o:n :}
       o 4 + OWNED-AT-RESERVE
-      pkg-at o OWNED-AT !  pkgu o 1 + OWNED-AT !
-      name-at o 2 + OWNED-AT !  nameu o 3 + OWNED-AT !
+      pkg-at o OWNED-AT !  pkg STR:LEN o 1 + OWNED-AT !
+      name-at o 2 + OWNED-AT !  name STR:LEN o 3 + OWNED-AT !
       1 OWNED-ROWS +!
    then
    kind PRIM-SPEC:K-PRIM =  owned or if
-      name nameu PRIM-OPEN
+      name PRIM-OPEN
       atoms 0 ?do NEXT PRIM-ATOM loop
-      pkg  pkgu  trusted 0<>  fixed 0<>  PRIM-CLOSE
+      pkg  trusted 0<>  fixed 0<>  PRIM-CLOSE
       exit
    then
    atoms 8 * SKIP
-   kind PRIM-SPEC:K-ELAB = if name nameu PRIM-NAME exit then
+   kind PRIM-SPEC:K-ELAB = if name PRIM-NAME exit then
    BAD ;
 
 
@@ -248,18 +247,18 @@ public
 : READ? ( -- bool ) KOBJ-U @ 0<> ;
 
 : SYM ( str -- n )
-   {: a:^ u:n :}
+   {: s:str :}
    SYMS-AT @
    SYMS-N @ 0 ?do
       {: at:n :}
       at KOBJ@ {: len:n :}
       at 8 +  len 7 + -8 and + {: value-at:n :}
-      0 KOBJ at 8 + +  len  a u  STR:= if value-at KOBJ@ unloop exit then
+      0 KOBJ at 8 + +  len >str  s  STR:= if value-at KOBJ@ unloop exit then
       value-at 8 +
    loop
    drop
    SAY-OBJECT
-   s" link: the kernel object has no symbol " SAY a u SAY SAY-CR
+   s" link: the kernel object has no symbol " SAY s SAY SAY-CR
    s" link: the kernel object lacks a symbol the link reads" EXIT-STATUS:DATAERR die ;
 
 : LABEL-REF ( n -- label )
@@ -281,12 +280,12 @@ public
 
 : ROW-NAME$ ( n -- str )
    PRIM-AT @ 24 + {: at:n :}
-   0 KOBJ at 8 + +  at KOBJ@ ;
+   0 KOBJ at 8 + +  at KOBJ@ >str ;
 
 \ The package-private rows STATE-PRIMS stated: row k's package and name.
 : OWNED-N ( -- n ) OWNED-ROWS @ ;
-: OWNED-PKG$ ( n -- str ) 4 * {: o:n :}  0 KOBJ o OWNED-AT @ +  o 1 + OWNED-AT @ ;
-: OWNED-NAME$ ( n -- str ) 4 * {: o:n :}  0 KOBJ o 2 + OWNED-AT @ +  o 3 + OWNED-AT @ ;
+: OWNED-PKG$ ( n -- str ) 4 * {: o:n :}  0 KOBJ o OWNED-AT @ +  o 1 + OWNED-AT @ >str ;
+: OWNED-NAME$ ( n -- str ) 4 * {: o:n :}  0 KOBJ o 2 + OWNED-AT @ +  o 3 + OWNED-AT @ >str ;
 
 \ The label of the chain holding the entry scope-kind? answers kind k for, k
 \ from 2 to 8.
@@ -298,8 +297,8 @@ public
    j 8 * SCOPES-AT @ + KOBJ@ LABEL-REF ;
 
 \ The Mach-O and the ELF import sections' bytes.
-: MACHO-IMPORTS$ ( -- str ) 0 KOBJ MACHO-AT @ +  MACHO-U @ ;
-: ELF-IMPORTS$ ( -- str ) 0 KOBJ ELF-AT @ +  ELF-U @ ;
+: MACHO-IMPORTS$ ( -- str ) 0 KOBJ MACHO-AT @ +  MACHO-U @ >str ;
+: ELF-IMPORTS$ ( -- str ) 0 KOBJ ELF-AT @ +  ELF-U @ >str ;
 
 \ The header cells the object gives a value: preset k's value and offset.
 : PRESET-N ( -- n ) PRESETS-N @ ;
@@ -313,8 +312,8 @@ private
 \ The file at the path into KOBJ and its length into KOBJ-U; false when it is
 \ missing.
 : KOBJ-FILL ( str -- bool )
-   {: path:^ pathu:n :}
-   path pathu FS:OPEN-SIZED {: file:fd size:n found:bool :}
+   {: path:str :}
+   path FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if false exit then
    size 1 max KOBJ-RESERVE
    file 0 KOBJ size FS:READ-SIZED
@@ -325,15 +324,15 @@ public
 \ The kernel object at the path, which the links that follow adopt; one whose
 \ DATA-START is above hb's dies: hb routes only its own header's stores.
 : READ ( str -- )
-   {: path:^ pathu:n :}
+   {: path:str :}
    0 KOBJ-U !
-   pathu PATH-CAP min PATH-U !
-   path PATH PATH-U @ BYTE-COPY
-   [: path pathu KOBJ-FILL ;] catch {: found code:n :}
-   path pathu code READ-FAILED
+   path STR:LEN PATH-CAP min PATH-U !
+   path STR:DATA PATH PATH-U @ BYTE-COPY
+   [: path KOBJ-FILL ;] catch {: found code:n :}
+   path code READ-FAILED
    code 0<> if code throw then
    found 0= if
-      s" link: no kernel object at " SAY path pathu SAY SAY-CR
+      s" link: no kernel object at " SAY path SAY SAY-CR
       s" link: the kernel object is missing" EXIT-STATUS:NOINPUT die
    then
    CHECK SECTIONS
@@ -386,9 +385,9 @@ private
 \ The object's row of the primitive with the name, or -1. Seed names are
 \ unique across wordlists, and an owned row's wordlist differs between hbs.
 : ROW-OF ( str -- n )
-   {: a:^ u:n :}
+   {: s:str :}
    ROW-N 0 ?do
-      i ROW-NAME$ a u STR:=CI if i unloop exit then
+      i ROW-NAME$ s STR:=CI if i unloop exit then
    loop
    -1 ;
 
@@ -400,7 +399,7 @@ private
 
 : HOST-ROW ( n n -- ^u8 )
    {: table:n k:n :}
-   table k DREC * +  DREC CODE-BYTES:AT drop ;
+   table k DREC * +  DREC CODE-BYTES:AT STR:DATA ;
 
 
 \ A table row enters at rbase plus [0] and keeps an out-of-line name at rbase
@@ -415,7 +414,7 @@ private
    flags DNAME-EXT and 0<> if
       rbase rec 24 + LE:U64@ +  len CODE-BYTES:AT
    else
-      rec 24 +  len
+      rec 24 +  len >str
    then
    ROW-OF {: row:n :}
    row 0 < if exit then
@@ -425,7 +424,7 @@ private
 : HOST-ENTRIES ( -- )
    0 N-HOSTS !
    HOST-TABLE {: table:n :}
-   table 8 - 8 CODE-BYTES:AT drop LE:U64@
+   table 8 - 8 CODE-BYTES:AT STR:DATA LE:U64@
    0 ?do table i HOST-ROW KEEP loop ;
 
 
@@ -675,7 +674,7 @@ private
 
 : X64-ADOPT ( -- )
    X64CODE:SINK-OPEN
-   0 KOBJ CODE-AT @ + CODE-U @ X64CODE:ASM-SINK VEC:APPEND
+   0 KOBJ CODE-AT @ + CODE-U @ >str X64CODE:ASM-SINK VEC:APPEND
    LABELS-N @ 0 ?do
       X64CODE:LBL drop i LABEL-AT i X64CODE:LABEL-POS!
    loop
