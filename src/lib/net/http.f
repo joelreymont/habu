@@ -343,17 +343,25 @@ private
    0 idx HEAD-U! ;
 
 
-\ A parsed method or path is never empty: an empty one was not given.
+\ A parsed method is never empty: an empty one was not given.
 : FIELD+ ( str -- ) {: bytes:str :}
    bytes STR:LEN 0= if s" -" LOG:TEXT+ exit then
    bytes LOG:TEXT+ ;
+
+
+\ The matched route's pattern, never the path: a path may carry a
+\ credential.
+: ROUTE-FIELD+ ( n -- ) {: idx:n :}
+   idx ROUTE-AT@ {: route:n :}
+   route 0 < if s" -" LOG:TEXT+ exit then
+   route ROUTE-PATTERN$ LOG:TEXT+ ;
 
 
 : ACCESS-LINE ( n -- ) {: idx:n :}
    LOG:INFO s" http" LOG:LINE
    s" req " LOG:TEXT+  idx SLOT-ID$ LOG:TEXT+
    s"  " LOG:TEXT+  idx SLOT-METHOD$ FIELD+
-   s"  " LOG:TEXT+  idx SLOT-PATH$ FIELD+
+   s"  " LOG:TEXT+  idx ROUTE-FIELD+
    s"  " LOG:TEXT+ ;
 
 
@@ -1317,10 +1325,11 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 public
 
 \ From the next START on, every request the server reads writes one LOG INFO
-\ line, tag http: `req <id> <method> <path> <status> <n> B in <ms> ms`, id the
-\ REQUEST-ID$, path without its query, n the body bytes sent and ms the whole
-\ milliseconds from the end of the head's read to the line. A method or path
-\ the request did not give is `-`. In place of `<status> <n> B`, a send that
+\ line, tag http: `req <id> <method> <route> <status> <n> B in <ms> ms`, id the
+\ REQUEST-ID$, route the pattern of the route the request matched, n the body
+\ bytes sent and ms the whole milliseconds from the end of the head's read to
+\ the line. A method the request did not give, and the route of a request no
+\ route matched, is `-`. In place of `<status> <n> B`, a send that
 \ failed writes `<status> unsent`, a connection its handler took `taken`, and
 \ a request given no answer `unanswered`. No header value is written. It
 \ lasts across STOP; E-STATE while running.

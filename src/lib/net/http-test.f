@@ -2711,7 +2711,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 : LOGGED-SERVER ( -- )
    TRACE-RESET
    LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
-   s\" GET /api/ping?token=q-secret HTTP/1.1\r\nHost: x\r\nX-Secret: h-secret\r\nConnection: close\r\n\r\n" RAW-ONE
+   s\" GET /api/items/p-secret?token=q-secret HTTP/1.1\r\nHost: x\r\nX-Secret: h-secret\r\nConnection: close\r\n\r\n" RAW-ONE
    s\" GET /api/nothing HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s\" GET\r\nHost: x\r\n\r\n" RAW-ONE
    s\" POST /api/uploads HTTP/1.1\r\nHost: x\r\nContent-Length: 9\r\nConnection: close\r\n\r\n" RAW-ONE
@@ -2744,12 +2744,12 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    READ-STDERR
    s" after HTTP:LOG every request read writes one access line" T-LABEL
    ACCESS-LINES 8 T=
-   s" req r0-1 GET /api/ping 200 23 B " ACCESS? TTRUE
-   s" req r0-2 GET /api/nothing 404 79 B " ACCESS? TTRUE
+   s" req r0-1 GET /api/items/{id} 200 53 B " ACCESS? TTRUE
+   s" req r0-2 GET - 404 79 B " ACCESS? TTRUE
    s" req r0-3 - - 400 101 B " ACCESS? TTRUE
    s" req r0-4 POST /api/uploads 413 109 B " ACCESS? TTRUE
    s" req r0-5 POST /api/body-probe taken " ACCESS? TTRUE
-   s" req r0-6 HEAD /api/nothing 404 0 B " ACCESS? TTRUE
+   s" req r0-6 HEAD - 404 0 B " ACCESS? TTRUE
    s" req r0-7 POST /api/uploads 413 109 B " ACCESS? TTRUE
    s" req r0-8 POST /api/uploads unanswered " ACCESS? TTRUE
    ERR$ s" secret" STR:CONTAINS? TFALSE ;
