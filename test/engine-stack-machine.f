@@ -1,4 +1,3 @@
-split-str
 \ A machine-stack overflow ends named, as a VM stack's does: the record `the
 \ machine stack ran past its bounds` on fd 2 and the exit
 \ status 102, from the crash handler on the thread's alternate signal stack. Control:
@@ -20,8 +19,8 @@ create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 
-: SUBJECT$ ( -- str ) SUBJECT SUBJECT-U @ ;
-: IMAGE$ ( -- str ) IMAGE IMAGE-U @ ;
+: SUBJECT$ ( -- str ) SUBJECT SUBJECT-U @ >str ;
+: IMAGE$ ( -- str ) IMAGE IMAGE-U @ >str ;
 
 : MACHINE$ ( -- str )
    S\" error[E-STACK-BOUNDS]: the machine stack ran past its bounds\n" ;
@@ -37,20 +36,20 @@ variable IMAGE-U
    S\" require src/lib/task.f\nTRUSTED: R ( -- ) recurse recurse ;\n: R0 ( -- ) R ;\nTASK:MIN-STACK TASK:TASK WORKER\n: GO ( -- ) ['] R0 WORKER TASK:ACTIVATE begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat ;\nGO\n" ;
 
 \ stderr starts with the record's first line.
-: EXPECT-LINE ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-ERR$ want wantu STR:STARTS-WITH? 0= if label labelu GE-FAIL then ;
+: EXPECT-LINE ( str str -- ) {: want:str label:str :}
+   GT-ERR$ want STR:STARTS-WITH? 0= if label GE-FAIL then ;
 
-: RUN-SRC ( str -- ) {: src:^ srcu:n :}
+: RUN-SRC ( str -- ) {: src:str :}
    GE-HB-RESET
-   GE-HB$ src srcu PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
+   GE-HB$ src PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
 
-: MACHINE-EXIT ( str -- ) {: label:^ labelu:n :}
-   102 label labelu GE-EXPECT-RC
-   MACHINE$ label labelu EXPECT-LINE ;
+: MACHINE-EXIT ( str -- ) {: label:str :}
+   102 label GE-EXPECT-RC
+   MACHINE$ label EXPECT-LINE ;
 
-: MACHINE ( ^u8 n ^u8 n -- ) {: src:^ srcu:n label:^ labelu:n :}
-   src srcu RUN-SRC
-   label labelu MACHINE-EXIT ;
+: MACHINE ( str str -- ) {: src:str label:str :}
+   src RUN-SRC
+   label MACHINE-EXIT ;
 
 : REPRODUCERS ( -- )
    SELF$ s" a word calling itself, tier 0" MACHINE
@@ -72,8 +71,8 @@ variable IMAGE-U
 : FAULT-LINE$ ( -- str )
    S\" error[E-MEMORY-FAULT]: a read or write faulted\n" ;
 
-: FAULT-LINE ( str -- ) {: label:^ labelu:n :}
-   GT-ERR$ FAULT-LINE$ STR:STARTS-WITH? 0= if label labelu GE-FAIL then ;
+: FAULT-LINE ( str -- ) {: label:str :}
+   GT-ERR$ FAULT-LINE$ STR:STARTS-WITH? 0= if label GE-FAIL then ;
 
 \ The stripped application's own startup registers the alternate stack before it
 \ installs the handler (src/arch/arm64/boot.f ENTRY,). It has no interpreter
@@ -117,11 +116,11 @@ variable IMAGE-U
    REJECTION:KEEP  REJECTION:BUFFER-OFF  was REJECTION:JSON !
    REJECTION:BUFFER$ ;
 
-: CONTROL ( ^u8 n bool ^u8 n -- )
-   {: src:^ srcu:n json:bool label:^ labelu:n :}
-   src srcu RUN-SRC
-   102 label labelu GE-EXPECT-RC
-   json RECORD$ label labelu GE-EXPECT-ERR ;
+: CONTROL ( str bool str -- )
+   {: src:str json:bool label:str :}
+   src RUN-SRC
+   102 label GE-EXPECT-RC
+   json RECORD$ label GE-EXPECT-ERR ;
 
 : CONTROLS ( -- )
    OVERFLOW$ false s" a data-stack overflow" CONTROL
@@ -145,11 +144,11 @@ variable IMAGE-U
 
 \ The record closes its notes and itself, so it parses.
 : FAULT-CONTROL ( -- )
-   s" a memory fault under REJECTION:JSON" {: label:^ labelu:n :}
+   s" a memory fault under REJECTION:JSON" {: label:str :}
    FAULT$ RUN-SRC
-   110 label labelu GE-EXPECT-RC
-   FAULT-RECORD$ label labelu GE-EXPECT-ERR
-   GT-ERR$ S\" }}\n" STR:ENDS-WITH? 0= if label labelu GE-FAIL then
+   110 label GE-EXPECT-RC
+   FAULT-RECORD$ label GE-EXPECT-ERR
+   GT-ERR$ S\" }}\n" STR:ENDS-WITH? 0= if label GE-FAIL then
    s" PASS: a memory fault's JSON record, notes and no help" type cr ;
 
 : BODY ( -- )

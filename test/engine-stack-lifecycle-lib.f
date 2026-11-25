@@ -1,4 +1,3 @@
-split-str
 \ engine-stack-lifecycle-lib.f - the active stack allocation follows stack
 \ switches and nonlocal frame restoration.
 require src/habu/stack-abi.f
@@ -17,9 +16,9 @@ variable OUTLEN
 variable ERRLEN
 variable STATUS
 
-: CHILD-CAPTURE ( str -- ) {: src:^ size:n :}
+: CHILD-CAPTURE ( str -- ) {: src:str :}
    PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ src size OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
+   ENGINE-CANDIDATE:PATH$ src OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N STATUS ! ERRLEN ! OUTLEN ! ;
 
 \ A crashed child's dump outgrows IO-CAP on either stream, and its
@@ -30,25 +29,25 @@ variable STATUS
    T-NEXT s" child output exceeded the capture" T-ASSERT-DETAIL
    0 OUTLEN ! 0 ERRLEN ! -1 ;
 
-: CHILD-RC ( str -- n ) {: src:^ size:n :}
-   [: src size CHILD-CAPTURE ;] catch {: code:n :}
+: CHILD-RC ( str -- n ) {: src:str :}
+   [: src CHILD-CAPTURE ;] catch {: code:n :}
    code 0= if STATUS @ exit then
    code E-PROC-STDOUT-CAPACITY = if CHILD-TRUNCATED exit then
    code E-PROC-STDERR-CAPACITY = if CHILD-TRUNCATED exit then
    code throw ;
 
-: PREFIX? ( str str -- bool ) {: g:^ gu:n w:^ wu:n :}
-   gu wu < if 0 0= 0= exit then
-   g wu w wu T-STR= ;
+: PREFIX? ( str str -- bool ) {: g:str w:str :}
+   g STR:LEN w STR:LEN < if 0 0= 0= exit then
+   g STR:DATA w STR:LEN >str w T-STR= ;
 
 \ GOT need only start with WANT: the guard-page record's first line names the
 \ stack that faulted, and the word its note names varies.
-: T-PREFIX= ( str str -- ) {: g:^ gu:n w:^ wu:n :}
+: T-PREFIX= ( str str -- ) {: g:str w:str :}
    T-NEXT
-   g gu w wu PREFIX? 0= if
+   g w PREFIX? 0= if
       T-FAIL
-      s" assert: expected prefix:" type cr w wu type cr
-      s" got string:" type cr g gu type cr
+      s" assert: expected prefix:" type cr w type cr
+      s" got string:" type cr g type cr
    then
    T-LABEL-CLEAR ;
 
@@ -57,17 +56,17 @@ variable STATUS
 \ site names the stack it expects.
 : REFUSED-DATA ( str -- )
    CHILD-RC 102 T=
-   ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
+   ERR ERRLEN @ >str S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
    T-PREFIX= ;
 
 : REFUSED-RETURN ( str -- )
    CHILD-RC 102 T=
-   ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the return stack ran past its bounds\n"
+   ERR ERRLEN @ >str S\" error[E-STACK-BOUNDS]: the return stack ran past its bounds\n"
    T-PREFIX= ;
 
 : REFUSED-LOOP ( str -- )
    CHILD-RC 102 T=
-   ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the loop stack ran past its bounds\n"
+   ERR ERRLEN @ >str S\" error[E-STACK-BOUNDS]: the loop stack ran past its bounds\n"
    T-PREFIX= ;
 
 \ An included file runs on a stack of its own. The in-process case sees the
@@ -93,9 +92,9 @@ variable STATUS
 \ A data request below the base is the one rejection with a name: the checker
 \ rejects a bare call on a shallower stack before the body runs, names the token
 \ and exits 70.
-: NAMED-UNDERDEPTH ( str str -- ) {: src:^ size:n diag:^ diagu:n :}
-   src size CHILD-RC 70 T=
-   ERR ERRLEN @ diag diagu STR:CONTAINS? TTRUE ;
+: NAMED-UNDERDEPTH ( str str -- ) {: src:str diag:str :}
+   src CHILD-RC 70 T=
+   ERR ERRLEN @ >str diag STR:CONTAINS? TTRUE ;
 
 \ Tier-0 2>r/2r> use the guarded VM return mapping. EDGE n fills n slots, one
 \ `>r` a level, moves a pair at the top and checks each level's cell on the way
@@ -104,7 +103,7 @@ variable STATUS
    s" last two return-stack slots" T-LABEL
    s" : EDGE ( n -- bool ) dup 0= if drop 11 22 2>r 2r> . . 0 0= exit then dup dup >r 1 - recurse swap r> = and ; STACK-ABI:RETURN-CELLS 2 - EDGE bool>n ."
    CHILD-RC 0 T=
-   OUT OUTLEN @ S\" 22\n11\n-1\n" T$=
+   OUT OUTLEN @ >str S\" 22\n11\n-1\n" T$=
    s" whole return transfer needs two free slots" T-LABEL
    s" : EDGE ( n -- ) dup 0= if drop 11 22 2>r 2r> 2drop exit then 1 >r 1 - recurse r> drop ; STACK-ABI:RETURN-CELLS 1 - EDGE" REFUSED-RETURN ;
 

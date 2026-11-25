@@ -1,4 +1,3 @@
-split-str
 \ Dynamic typed storage uses the real compiler, allocator and accessor.
 require src/lib/test.f
 require src/lib/adt/option.f
@@ -33,8 +32,11 @@ variable RAW
 \ code.
 TYPED-VARIABLE DB-EVAL-A ^u8
 variable DB-EVAL-U
-: DB-EVAL-RUN ( -- ) DB-EVAL-A @ DB-EVAL-U @ evaluate-closed ;
-: DB-EVAL ( str -- n ) DB-EVAL-U ! DB-EVAL-A ! [: DB-EVAL-RUN ;] catch ;
+: DB-EVAL-RUN ( -- ) DB-EVAL-A @ DB-EVAL-U @ >str evaluate-closed ;
+: DB-EVAL ( str -- n )
+   {: src:str :}
+   src STR:LEN DB-EVAL-U ! src STR:DATA DB-EVAL-A !
+   [: DB-EVAL-RUN ;] catch ;
 
 : OPTION-N ( option<n> -- n )
    MATCH option

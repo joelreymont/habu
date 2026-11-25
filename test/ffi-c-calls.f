@@ -1,4 +1,3 @@
-split-str
 \ ffi-c-calls.f - FUNCTION: calls against C functions the run builds.
 \ Loaded by src/lib/ffi-test.f on macOS and Linux arm64, inside package
 \ FFI-TEST. No system function takes nine longs and a double, or returns a
@@ -72,14 +71,14 @@ variable FFI-T-CC-LIB-U
    HB-TARGET-MACOS? if s" libhbccalls.dylib" exit then
    s" libhbccalls.so" ;
 
-: FFI-T-CC-SRC$ ( -- str ) FFI-T-CC-SRC-PATH FFI-T-CC-SRC-U @ ;
-: FFI-T-CC-LIB-PATH$ ( -- str ) FFI-T-CC-LIB-PATH FFI-T-CC-LIB-U @ ;
+: FFI-T-CC-SRC$ ( -- str ) FFI-T-CC-SRC-PATH FFI-T-CC-SRC-U @ >str ;
+: FFI-T-CC-LIB-PATH$ ( -- str ) FFI-T-CC-LIB-PATH FFI-T-CC-LIB-U @ >str ;
 
 : FFI-T-CC-BUILD ( -- )
-   s" habu-ffi-c-calls" FS:MKTEMP-DIR {: dir:^ diru :}
-   dir diru FS:CLEANUP-TREE+
-   dir diru s" hb-c-calls.c" FFI-T-CC-SRC-PATH FS:JOIN-PATH FFI-T-CC-SRC-U !
-   dir diru FFI-T-CC-LIB$ FFI-T-CC-LIB-PATH FS:JOIN-PATH FFI-T-CC-LIB-U !
+   s" habu-ffi-c-calls" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" hb-c-calls.c" FFI-T-CC-SRC-PATH FS:JOIN-PATH FFI-T-CC-SRC-U !
+   dir FFI-T-CC-LIB$ FFI-T-CC-LIB-PATH FS:JOIN-PATH FFI-T-CC-LIB-U !
    FFI-T-CC-SRC CODEGEN:RESET
    FFI-T-CC-C
    FFI-T-CC-SRC$ FFI-T-CC-SRC CODEGEN:CONTENTS FS:WRITE-ALL

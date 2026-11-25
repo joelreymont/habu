@@ -1,4 +1,3 @@
-split-str
 \ enum-decl-suite.f - behavior and rollback suite for the ENUM declaration front
 \ end, driven through the global `ENUM`. It asserts reject codes, rendered
 \ diagnostics, field-row counts and the generated constructors.
@@ -153,8 +152,8 @@ public
 
 \ REJECT-CODE asserts a declaration's reject code, public so section 24
 \ (control-word names) reuses it.
-: REJECT-CODE ( str n -- ) {: a:^ u:n want:n :}
-   a u TEST-EVAL:RC want T= ;
+: REJECT-CODE ( str n -- ) {: s:str want:n :}
+   s TEST-EVAL:RC want T= ;
 
 DECL-DIAG:PROSE
 s" ENUM compact-dup-policy POLICY packed-tag POLICY stack-cell-tag alpha ;ENUM" 70 REJECT-CODE
@@ -339,9 +338,9 @@ variable CT-DICT   variable CT-CP
 
 \ A generation failure must leave the native dictionary byte-identical: what
 \ the generator had defined is truncated with the rest of the declaration.
-: CTOR-REJECT ( str n -- ) {: a:^ u:n want:n :}
+: CTOR-REJECT ( str n -- ) {: s:str want:n :}
    DICT-MARK
-   a u TEST-EVAL:RC want T=
+   s TEST-EVAL:RC want T=
    DICT-SAME ;
 
 private
@@ -664,8 +663,8 @@ s" leaked-family" DECL-REJECT:FAMILY!
 s" leaked-token" DECL-REJECT:TOKEN!
 s" leaked-reason" s" leaked-fix" 7102 DECL-REJECT:EXPECT
 s" enum" DECL-REJECT:OPEN
-DECL-REJECT:FAMILY$ nip 0 T=
-DECL-REJECT:TOKEN$ nip 0 T=
+DECL-REJECT:FAMILY$ STR:LEN 0 T=
+DECL-REJECT:TOKEN$ STR:LEN 0 T=
 7102 DECL-REJECT:REASON$ s" duplicate name in this package" DECL-DIAG:SAME? TTRUE
 
 \ 22h. A span longer than the 96-byte slot is capped and MARKED with a
@@ -679,7 +678,7 @@ s" survivor" DECL-REJECT:TOKEN!
 s" qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop"
 DECL-REJECT:FAMILY!
 DECL-REJECT:TOKEN$ s" survivor" DECL-DIAG:SAME? TTRUE
-DECL-REJECT:FAMILY$ nip 96 T=
+DECL-REJECT:FAMILY$ STR:LEN 96 T=
 DECL-REJECT:FAMILY$
 s" qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwe..."
 DECL-DIAG:SAME? TTRUE
@@ -789,8 +788,8 @@ create EC-OUT EC-CAP allot
 create EC-ERR EC-CAP allot   variable EC-ERR-U
 create EC-NONE 1 allot
 
-: EC-FILE ( -- str ) EC-PATH EC-PATH-U @ ;
-: EC-ERR$ ( -- str ) EC-ERR EC-ERR-U @ ;
+: EC-FILE ( -- str ) EC-PATH EC-PATH-U @ >str ;
+: EC-ERR$ ( -- str ) EC-ERR EC-ERR-U @ >str ;
 : EC-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
 
 : EC-SRC$ ( -- str )
@@ -817,25 +816,29 @@ create EC-NONE 1 allot
    s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
    s" --" PROC-ARGV+  s" --all-errors" PROC-ARGV+
    s" --verify-only" PROC-ARGV+  EC-FILE PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$  EC-NONE 0  EC-OUT EC-CAP >LEN
+   ENGINE-CANDIDATE:PATH$  EC-NONE 0 >str  EC-OUT EC-CAP >LEN
    EC-ERR EC-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    erru LEN>N EC-ERR-U !
-   EC-SRC$ EC-OUT outu LEN>N EC-ERR$ oc 70 T-ENDING-EXITED= ;
+   EC-SRC$ EC-OUT outu LEN>N >str EC-ERR$ oc 70 T-ENDING-EXITED= ;
 
 \ The record headed HEAD is placed at the fixture's PLACE, `:line:column`, and
 \ its caret says LABEL. The gutter before `-->` is as wide as the line number.
-: EC-RECORD ( str str str -- ) {: h:^ hu:n p:^ pu:n l:^ lu:n :}
-   SB-RESET  h hu SB-APPEND  10 SB-APPEND-C
-   1 BEGIN p over + c@ $3A <> WHILE 32 SB-APPEND-C 1 + REPEAT drop
+: EC-RECORD ( str str str -- ) {: h:str p:str l:str :}
+   SB-RESET  h SB-APPEND  10 SB-APPEND-C
+   1 BEGIN p STR:DATA over + c@ $3A <> WHILE 32 SB-APPEND-C 1 + REPEAT drop
    s" --> " SB-APPEND  EC-FILE SB-APPEND
-   p pu EC-LINE
+   p EC-LINE
    EC-ERR$ SB$ STR:CONTAINS? TTRUE
-   SB-RESET  s" ^ " SB-APPEND  l lu EC-LINE
+   SB-RESET  s" ^ " SB-APPEND  l EC-LINE
    EC-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
-s" habu-enum-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
-s" enum-decl-check.f" EC-PATH FS:JOIN-PATH EC-PATH-U !
+: EC-PATH! ( -- )
+   s" habu-enum-decl" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" enum-decl-check.f" EC-PATH FS:JOIN-PATH EC-PATH-U ! ;
+
+EC-PATH!
 EC-RUN
 EC-ERR$ s" error[" STR:COUNT-SUB 5 T=
 s" error[E-MISMATCH]: R1BAD ends with rpcompact on the stack; its signature promises n"
@@ -886,13 +889,13 @@ variable LI
 
 700 constant LONG-N
 
-: SRC$ ( -- ^u8 n ) SRC-BUF SRC-U @ ;
+: SRC$ ( -- str ) SRC-BUF SRC-U @ >str ;
 : PUT-C ( n -- ) {: c:n :}
    SRC-U @ SRC-CAP >= IF s" enum-decl-suite: long-enum buffer overflow" EXIT-STATUS:FAILURE die THEN
    c SRC-BUF SRC-U @ + c!  SRC-U @ 1 + SRC-U ! ;
-: PUT$ ( str -- ) {: a:^ u:n :}
+: PUT$ ( str -- ) {: s:str :}
    0 LI !
-   BEGIN LI @ u < WHILE  a LI @ + c@ PUT-C  LI @ 1 + LI !  REPEAT ;
+   BEGIN LI @ s STR:LEN < WHILE  s STR:DATA LI @ + c@ PUT-C  LI @ 1 + LI !  REPEAT ;
 : PUT-DIGIT ( n -- ) 48 + PUT-C ;
 : PUT-VARIANT ( n -- ) {: i:n :}
    118 PUT-C

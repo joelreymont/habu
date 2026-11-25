@@ -1,4 +1,3 @@
-split-str
 \ engine-stack-wide.f - primitive and width-aware native transfers use the
 \ active stack allocation.
 require test/engine-stack-lifecycle-lib.f
@@ -21,16 +20,16 @@ package STACK-LIFECYCLE-TEST
 \ the first write past the capacity is the transfer's own. The child dies on the
 \ data guard page: status 102 after the record "the data
 \ stack ran past its bounds".
-: RATCHET-TAIL ( str -- ) {: name:^ nameu:n :}
-   s"  : RATCHET ( n -- ) begin dup " SB-APPEND  name nameu SB-APPEND
+: RATCHET-TAIL ( str -- ) {: name:str :}
+   s"  : RATCHET ( n -- ) begin dup " SB-APPEND  name SB-APPEND
    s"  recurse again ; : RATCHET0 ( -- ) 1 RATCHET ; RATCHET0" SB-APPEND ;
 
-: PLAIN-OVERFLOW ( str str -- ) {: defs:^ defsu:n name:^ nameu:n :}
-   SB-RESET defs defsu SB-APPEND name nameu RATCHET-TAIL
+: PLAIN-OVERFLOW ( str str -- ) {: defs:str name:str :}
+   SB-RESET defs SB-APPEND name RATCHET-TAIL
    SB$ REFUSED-DATA ;
 
-: PAIR-OVERFLOW ( str str -- ) {: defs:^ defsu:n name:^ nameu:n :}
-   PAIR-TYPE-SOURCE defs defsu SB-APPEND name nameu RATCHET-TAIL
+: PAIR-OVERFLOW ( str str -- ) {: defs:str name:str :}
+   PAIR-TYPE-SOURCE defs SB-APPEND name RATCHET-TAIL
    s"  ;package" SB-APPEND SB$ REFUSED-DATA ;
 
 : PAIR-REFUSED-RETURN ( str -- )
@@ -56,7 +55,7 @@ package STACK-LIFECYCLE-TEST
    s" native wide return peek and pop preserve both cells" T-LABEL
    s" : EDGE ( n -- bool ) dup 0= if drop 11 22 SW-PAIR:MAKE >r r@ SW-PAIR:UNMAKE . . r> SW-PAIR:UNMAKE . . 0 0= exit then dup dup >r 1 - recurse swap r> = and ; STACK-ABI:RETURN-CELLS 2 - EDGE bool>n ."
    PAIR-RC 0 T=
-   OUT OUTLEN @ S\" 22\n11\n22\n11\n-1\n" T$=
+   OUT OUTLEN @ >str S\" 22\n11\n22\n11\n-1\n" T$=
    s" observable native wide return transfer needs two free slots" T-LABEL
    s" : EDGE ( n -- ) dup 0= if drop 11 22 SW-PAIR:MAKE >r r@ SW-PAIR:UNMAKE . . r> SW-PAIR:UNMAKE . . exit then 1 >r 1 - recurse r> drop ; STACK-ABI:RETURN-CELLS 1 - EDGE"
    PAIR-REFUSED-RETURN ;
@@ -70,8 +69,8 @@ package STACK-LIFECYCLE-TEST
 : LARGE-RC ( str -- n )
    LARGE-TYPE-SOURCE SB-APPEND SB$ CHILD-RC ;
 
-: LARGE-OVERFLOW ( str str -- ) {: defs:^ defsu:n name:^ nameu:n :}
-   LARGE-TYPE-SOURCE defs defsu SB-APPEND name nameu RATCHET-TAIL
+: LARGE-OVERFLOW ( str str -- ) {: defs:str name:str :}
+   LARGE-TYPE-SOURCE defs SB-APPEND name RATCHET-TAIL
    SB$ REFUSED-DATA ;
 
 : LARGE-TRANSFERS ( -- )
@@ -89,8 +88,8 @@ package STACK-LIFECYCLE-TEST
 : MEDIUM-RC ( str -- n )
    MEDIUM-TYPE-SOURCE SB-APPEND SB$ CHILD-RC ;
 
-: MEDIUM-OVERFLOW ( str str -- ) {: defs:^ defsu:n name:^ nameu:n :}
-   MEDIUM-TYPE-SOURCE defs defsu SB-APPEND name nameu RATCHET-TAIL
+: MEDIUM-OVERFLOW ( str str -- ) {: defs:str name:str :}
+   MEDIUM-TYPE-SOURCE defs SB-APPEND name RATCHET-TAIL
    SB$ REFUSED-DATA ;
 
 : MEDIUM-TRANSFERS ( -- )

@@ -1,4 +1,3 @@
-split-str
 \ diag-json-escape.f - a --json-errors packet escapes every control byte. RFC
 \ 8259 section 7 forbids a raw byte below 0x20 in a JSON string, and a client
 \ refuses the whole packet for one. A control byte is a blank inside a stack
@@ -33,13 +32,13 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
    c GE-SRC-C
    s" jesc-nosuch -- n ) dup ;" GE-SRC-LINE ;
 
-: FAIL ( ^u8 n -- )
-   {: msg:^ msgu:n :}
+: FAIL ( str -- )
+   {: msg:str :}
    s" control byte " type BYTE @ .
-   msg msgu GE-FAIL ;
+   msg GE-FAIL ;
 
 : CHECK-ACT ( -- )
-   GE-SRC-BUF GE-SRC-U @ s" json-escape.f" LSP-CHECK:SOURCE
+   GE-SRC-BUF GE-SRC-U @ >str s" json-escape.f" LSP-CHECK:SOURCE
    LSP-CHECK:RUN ;
 
 : CHECK-JSON ( -- )
@@ -51,7 +50,7 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
 \ "token" precedes "source_line" in the packet, and READ-FIND-KEY only reads
 \ forward.
 : TOKEN-AND-SOURCE ( str -- )
-   READER-STORAGE -rot JSON:READ-INIT JSON:READ-NEXT drop
+   READER-STORAGE swap JSON:READ-INIT JSON:READ-NEXT drop
    s" token" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" packet has no token field" FAIL then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" packet token field is not a string" FAIL then
    s" jesc-nosuch" JSON:READ-STR-EQ? 0= if JSON:READ-CLOSE
@@ -70,29 +69,29 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
       s" packet source_line field does not decode to the line written" FAIL
    then JSON:READ-CLOSE ;
 
-: BLANK? ( str -- bool ) {: a:^ u:n :}
-   u 0 ?do
-      a i + c@ dup 32 = over 9 = or over 13 = or swap 10 = or
+: BLANK? ( str -- bool ) {: s:str :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ dup 32 = over 9 = or over 13 = or swap 10 = or
       0= if false unloop exit then
    loop true ;
 
-: ROW ( ^u8 n bool -- )
-   {: a:^ u:n first:bool :}
-   READER-STORAGE a u JSON:READ-INIT JSON:READ-NEXT JSON:T-OBJ <> if
+: ROW ( str bool -- )
+   {: s:str first:bool :}
+   READER-STORAGE s JSON:READ-INIT JSON:READ-NEXT JSON:T-OBJ <> if
       JSON:READ-CLOSE s" packet stream has a non-object" FAIL
    then
    JSON:READ-SKIP-VALUE JSON:READ-FINISH
-   first if a u TOKEN-AND-SOURCE then ;
+   first if s TOKEN-AND-SOURCE then ;
 
 \ Every row of the stream parses strictly; the first object is the packet.
 : STREAM ( -- )
-   GT-ERR$ {: a:^ u:n :}
+   GT-ERR$ {: err:str :}
    0 POS !
    0 COUNT !
-   begin POS @ u < while
-      a u POS @ JSONL:SPLIT-LINE drop {: line:^ lu:n next:n :}
-      line lu BLANK? 0= if
-         line lu COUNT @ 0= ROW
+   begin POS @ err STR:LEN < while
+      err POS @ JSONL:SPLIT-LINE drop {: line:str next:n :}
+      line BLANK? 0= if
+         line COUNT @ 0= ROW
          COUNT @ 1+ COUNT !
       then
       next POS !

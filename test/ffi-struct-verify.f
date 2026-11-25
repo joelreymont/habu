@@ -1,4 +1,3 @@
-split-str
 \ ffi-struct-verify.f - LSP-CHECK:VERIFY-BYTES, the check of tools/check.f
 \ --verify-only, reads FUNCTION: declarations. Loaded by
 \ src/lib/ffi-test.f inside package FFI-TEST. Each
@@ -20,7 +19,7 @@ DYNAMIC-BUFFER FFI-SV-SRC u8
 variable FFI-SV-SRC-U
 
 : FFI-SV-SRC$ ( -- str )
-   0 FFI-SV-SRC FFI-SV-SRC-U @ ;
+   0 FFI-SV-SRC FFI-SV-SRC-U @ >str ;
 
 \ Write the source where the load children read it.
 : FFI-SV-WRITE ( -- )
@@ -41,10 +40,10 @@ variable FFI-SV-SRC-U
 \ when JSON is true and prose otherwise.
 : FFI-SV-CHECK-AS ( bool -- n )
    {: json:bool :}
-   SB$ {: a:^ u:n :}
-   u 1 max FFI-SV-SRC-RESERVE
-   a 0 FFI-SV-SRC u BYTE-COPY
-   u FFI-SV-SRC-U !
+   SB$ {: src:str :}
+   src STR:LEN 1 max FFI-SV-SRC-RESERVE
+   src STR:DATA 0 FFI-SV-SRC src STR:LEN BYTE-COPY
+   src STR:LEN FFI-SV-SRC-U !
    FFI-SV-SRC$ s" test/ffi-sv.f" E2E-TREE:AT-A [: drop ;] PROCESS:WAIT-FOREVER
    json LSP-CHECK:VERIFY-BYTES FFI-SV-KIND ;
 
@@ -53,20 +52,20 @@ variable FFI-SV-SRC-U
 
 \ Check `FUNCTION: FFI-SV no_symbol <decl> ;FUNCTION`.
 : FFI-SV-RUN ( str -- n )
-   {: decl:^ declu:n :}
+   {: decl:str :}
    SB-RESET
    FFI-SV-HEAD$ SB-APPEND
    s" FUNCTION: FFI-SV no_symbol " SB-APPEND
-   decl declu SB-APPEND
+   decl SB-APPEND
    S\"  ;FUNCTION\n" SB-APPEND
    FFI-SV-CHECK ;
 
 \ Check FFI-SV-HEAD$ and then the source, a newline after it.
 : FFI-SV-SOURCE ( str -- n )
-   {: src:^ srcu:n :}
+   {: src:str :}
    SB-RESET
    FFI-SV-HEAD$ SB-APPEND
-   src srcu SB-APPEND
+   src SB-APPEND
    S\" \n" SB-APPEND
    FFI-SV-CHECK ;
 
@@ -75,9 +74,9 @@ variable FFI-SV-SRC-U
    LSP-CHECK:VERIFY-OUT$ type LSP-CHECK:VERIFY-LOG$ type ;
 
 : FFI-SV-SAYS ( str -- )
-   {: s:^ su:n :}
-   LSP-CHECK:VERIFY-OUT$ s su STR:CONTAINS? 0= IF FFI-SV-SHOW THEN
-   LSP-CHECK:VERIFY-OUT$ s su STR:CONTAINS? TTRUE ;
+   {: s:str :}
+   LSP-CHECK:VERIFY-OUT$ s STR:CONTAINS? 0= IF FFI-SV-SHOW THEN
+   LSP-CHECK:VERIFY-OUT$ s STR:CONTAINS? TTRUE ;
 
 
 \ The source certifies: verified, and no packet, deferred or refused.
@@ -88,44 +87,44 @@ variable FFI-SV-SRC-U
    LSP-CHECK:VERIFY-OUT$ S\" \"code\":" STR:CONTAINS? TFALSE ;
 
 : FFI-SV-PASS ( str -- )
-   {: decl:^ declu:n :}
-   decl declu T-LABEL
-   decl declu FFI-SV-RUN
+   {: decl:str :}
+   decl T-LABEL
+   decl FFI-SV-RUN
    FFI-SV-CLEAN ;
 
 
 \ The source is refused, with CODE in a packet.
 : FFI-SV-REFUSES ( n str -- )
-   {: kind:n code:^ codeu:n :}
+   {: kind:n code:str :}
    kind 1 <> IF FFI-SV-SHOW THEN
    kind 1 T=
-   LSP-CHECK:VERIFY-OUT$ code codeu STR:CONTAINS? TTRUE ;
+   LSP-CHECK:VERIFY-OUT$ code STR:CONTAINS? TTRUE ;
 
 \ The source is deferred, with the warning STR in the output.
 : FFI-SV-WARNS ( n str -- )
-   {: kind:n w:^ wu:n :}
+   {: kind:n w:str :}
    kind 2 <> IF FFI-SV-SHOW THEN
    kind 2 T=
-   w wu FFI-SV-SAYS ;
+   w FFI-SV-SAYS ;
 
 : FFI-SV-REFUSED ( str str -- )
-   {: decl:^ declu:n code:^ codeu:n :}
-   decl declu FFI-SV-RUN
-   code codeu FFI-SV-REFUSES ;
+   {: decl:str code:str :}
+   decl FFI-SV-RUN
+   code FFI-SV-REFUSES ;
 
 : FFI-SV-REFUSE ( str str -- )
-   {: decl:^ declu:n code:^ codeu:n :}
-   decl declu T-LABEL
-   decl declu code codeu FFI-SV-REFUSED ;
+   {: decl:str code:str :}
+   decl T-LABEL
+   decl code FFI-SV-REFUSED ;
 
 
 \ A rejection's record names the load's code.
 : FFI-SV-SYNTAX ( str str -- )
-   {: decl:^ declu:n msg:^ msgu:n :}
-   decl declu S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSE
+   {: decl:str msg:str :}
+   decl S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSE
    FFI-T-SRC CODEGEN:RESET
    S\" \"message\":\"" FFI-T-SRC+
-   msg msgu FFI-T-SRC+
+   msg FFI-T-SRC+
    S\" \"" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS FFI-SV-SAYS ;
 : FFI-SV-ARITY ( str -- )
@@ -134,11 +133,11 @@ variable FFI-SV-SRC-U
 \ A struct plan the check rejects with E-FFI-ARITY prints the load's record,
 \ its header and its help, placed at ;FUNCTION with the definer's label.
 : FFI-SV-RECORD ( str str -- )
-   {: head:^ headu:n help:^ helpu:n :}
-   LSP-CHECK:VERIFY-OUT$ head headu STR:CONTAINS? TTRUE
+   {: head:str help:str :}
+   LSP-CHECK:VERIFY-OUT$ head STR:CONTAINS? TTRUE
    LSP-CHECK:VERIFY-OUT$ S\" \"token\":\";FUNCTION\",\"source_line\":" STR:CONTAINS? TTRUE
    LSP-CHECK:VERIFY-OUT$ S\" \"label\":\"the definer was reading here\"" STR:CONTAINS? TTRUE
-   LSP-CHECK:VERIFY-OUT$ help helpu STR:CONTAINS? TTRUE ;
+   LSP-CHECK:VERIFY-OUT$ help STR:CONTAINS? TTRUE ;
 
 : FFI-SV-STAGED ( -- )
    S\" \"code\":\"E-FFI-ARITY\",\"message\":\"a struct call stages at most 16 cells of stack inputs and record copies\""
@@ -248,12 +247,12 @@ variable FFI-SV-SRC-U
 
 \ A whole source the load rejects, with its message and token.
 : FFI-SV-UNOPENED ( str str str -- )
-   {: src:^ srcu:n msg:^ msgu:n tok:^ toku:n :}
-   src srcu T-LABEL
-   src srcu FFI-SV-SOURCE
+   {: src:str msg:str tok:str :}
+   src T-LABEL
+   src FFI-SV-SOURCE
    S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSES
-   msg msgu FFI-SV-SAYS
-   tok toku FFI-SV-SAYS ;
+   msg FFI-SV-SAYS
+   tok FFI-SV-SAYS ;
 
 \ The check rejects each declaration where the load does, with the load's record.
 : FFI-SV-DECLARATIONS ( -- )
@@ -274,7 +273,7 @@ variable FFI-SV-SRC-U
    S\" \"token\":\"STRUCT-RESULT\"" FFI-SV-UNOPENED
    \ A declaration still open when the next opens is rejected at its opener.
    s" FUNCTION: FFI-SV no_symbol ( -- ) FUNCTION: FFI-SW no_symbol ( -- ) ;FUNCTION"
-   2dup T-LABEL  FFI-SV-SOURCE
+   dup T-LABEL  FFI-SV-SOURCE
    S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REFUSES
    S\" \"message\":\"`FUNCTION:` is still open at `FUNCTION:`\""
    FFI-SV-SAYS
@@ -283,14 +282,14 @@ variable FFI-SV-SRC-U
    \ A load inside a declaration is rejected at its opener, before the load
    \ resolves its path.
    S\" FUNCTION: FFI-SV no_symbol ( -- )\ninclude ffi-sv-none.f\n;FUNCTION"
-   2dup T-LABEL  FFI-SV-SOURCE
+   dup T-LABEL  FFI-SV-SOURCE
    S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REFUSES
    S\" \"message\":\"`FUNCTION:` is still open when `include` loads a file\""
    FFI-SV-SAYS
    S\" \"column\":1," FFI-SV-SAYS
    S\" \"help\":\"close it with `;FUNCTION` before `include`\"" FFI-SV-SAYS
    S\" BEGIN-STRUCTURE FFI-SV-S\ninclude ffi-sv-none.f\nEND-STRUCTURE"
-   2dup T-LABEL  FFI-SV-SOURCE
+   dup T-LABEL  FFI-SV-SOURCE
    S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REFUSES
    S\" \"message\":\"`BEGIN-STRUCTURE` is still open when `include` loads a file\""
    FFI-SV-SAYS
@@ -298,7 +297,7 @@ variable FFI-SV-SRC-U
    S\" \"help\":\"close it with `END-STRUCTURE` before `include`\"" FFI-SV-SAYS
    \ A renderer in a structure body is deferred at its token.
    S\" BEGIN-STRUCTURE FFI-SV-S\ns\" include ffi-sv-none.f\" evaluate\nEND-STRUCTURE"
-   2dup T-LABEL  FFI-SV-SOURCE s" W-CHECK-DEFERRED" FFI-SV-WARNS
+   dup T-LABEL  FFI-SV-SOURCE s" W-CHECK-DEFERRED" FFI-SV-WARNS
    s" ;FUNCTION"
    S\" \"message\":\";FUNCTION with no declaration open\""
    S\" \"token\":\";FUNCTION\"" FFI-SV-UNOPENED
@@ -332,9 +331,9 @@ variable FFI-SV-SRC-U
 
 \ The source is deferred, and no declaration is rejected.
 : FFI-SV-LEFT ( str -- )
-   {: src:^ srcu:n :}
-   src srcu T-LABEL
-   src srcu FFI-SV-SOURCE s" W-CHECK-DEFERRED" FFI-SV-WARNS
+   {: src:str :}
+   src T-LABEL
+   src FFI-SV-SOURCE s" W-CHECK-DEFERRED" FFI-SV-WARNS
    LSP-CHECK:VERIFY-OUT$ s" E-FFI-SYNTAX" STR:CONTAINS?
    LSP-CHECK:VERIFY-OUT$ s" E-UNCLOSED" STR:CONTAINS?  or
    dup IF FFI-SV-SHOW THEN TFALSE ;
@@ -362,17 +361,17 @@ variable FFI-SV-SRC-U
 \ rejected, not left to the run.
 : FFI-SV-GROUP-CLOSE ( -- )
    s" FUNCTION: FFI-SV no_symbol ( ^u8 n -- i32 ) ;FUNCTION : FFI-SV-F1 ( -- ) FFI-SV-NOSUCH ;"
-   2dup T-LABEL  FFI-SV-SOURCE
+   dup T-LABEL  FFI-SV-SOURCE
    S\" \"code\":\"E-UNDEFINED\"" FFI-SV-REFUSES
    s" FUNCTION: FFI-SV no_symbol ( ^u8 n -- i32 ) ;FUNCTION : FFI-SV-F2 ( ^u8 -- n ) {: buf :} buf 1 FFI-SV {: got:i32 :} buf CELL-VIEW @ ;"
-   2dup T-LABEL  FFI-SV-SOURCE
+   dup T-LABEL  FFI-SV-SOURCE
    S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" FFI-SV-REFUSES ;
 
 \ A program's own `;FUNCTION` closes no group: called at top level, this
 \ defer stops the check, and the run rejects the group.
 : FFI-SV-GROUP-REDEFINED ( -- )
    S\" package FFI-SV-P\npublic\n: NOP ( -- ) ;\ndefer ;FUNCTION ( -- )\n: SET ( -- ) ['] NOP is ;FUNCTION ;\nSET\nPROCESS-SYMBOLS FUNCTION: FFI-SV-H no_symbol ( ^u8 n -- i32 ) ;FUNCTION\n;package"
-   2dup T-LABEL  FFI-SV-SOURCE s" W-CHECK-STOPPED" FFI-SV-WARNS ;
+   dup T-LABEL  FFI-SV-SOURCE s" W-CHECK-STOPPED" FFI-SV-WARNS ;
 
 
 \ A clause is the declarer's word only where the token resolves to it: a
@@ -381,8 +380,8 @@ variable FFI-SV-SRC-U
 \ child because inside this file's FFI-TEST the source's `package` would open
 \ a part of FFI-TEST, not a package of its own.
 : FFI-SV-ORDINARY ( str -- )
-   {: src:^ srcu:n :}
-   SB-RESET src srcu SB-APPEND
+   {: src:str :}
+   SB-RESET src SB-APPEND
    FFI-SV-CHECK
    FFI-SV-CLEAN
    FFI-SV-WRITE
@@ -401,8 +400,8 @@ variable FFI-SV-SRC-U
 \ STRUCT-ARG's code and refuses the clause, so the check refuses it with the
 \ load's code. The load runs in a child for FFI-SV-SHADOWED's reason.
 : FFI-SV-ALIASED ( str -- )
-   {: src:^ srcu:n :}
-   SB-RESET src srcu SB-APPEND
+   {: src:str :}
+   SB-RESET src SB-APPEND
    FFI-SV-CHECK S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSES
    FFI-SV-WRITE
    s" test/ffi-sv.f" E2E-TREE:ARGS
@@ -436,10 +435,10 @@ variable FFI-SV-SRC-U
 \ A declaration is read before its library is checked, so one that cannot be
 \ read and selects none gets the same record from the load and the check.
 : FFI-SV-UNSELECTED-HAS ( str -- )
-   {: out:^ outu:n :}
-   out outu s" error[E-FFI-SYNTAX]: expected '(' after the C symbol" STR:CONTAINS? TTRUE
-   out outu s" ffi-sv.f:2:20" STR:CONTAINS? TTRUE
-   out outu s" = help: write FUNCTION: NAME symbol ( inputs -- output ) ;FUNCTION"
+   {: out:str :}
+   out s" error[E-FFI-SYNTAX]: expected '(' after the C symbol" STR:CONTAINS? TTRUE
+   out s" ffi-sv.f:2:20" STR:CONTAINS? TTRUE
+   out s" = help: write FUNCTION: NAME symbol ( inputs -- output ) ;FUNCTION"
    STR:CONTAINS? TTRUE ;
 
 : FFI-SV-UNSELECTED ( -- )

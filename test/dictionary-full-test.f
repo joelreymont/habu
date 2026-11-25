@@ -1,4 +1,3 @@
-split-str
 \ dictionary-full-test.f - a definition, a storage declaration, a does> clause,
 \ a package, a qualified head's namespace, an EXPORT, a declaration and a
 \ replayed definition that find no dictionary record left are rejected as
@@ -22,17 +21,17 @@ private
    S\" require src/lib/fmt.f\ncreate NB 32 allot\n: LEAVE-FREE ( n -- ) DICT-CAP ndict@ - swap - 0 ?do s\" create F\" str> NB swap BYTE-COPY  i FMT:INT$ str> {: a:^ u:n :}  a NB 8 + u BYTE-COPY  NB 8 u + >str evaluate-closed loop ;\n" ;
 
 \ Runs the prelude, then the case's lines from line 4.
-: RUN-CASE ( str -- ) {: a:^ u:n :}
-   GE-SRC-RESET  PRELUDE$ GE-SRC+  a u GE-SRC+
+: RUN-CASE ( str -- ) {: s:str :}
+   GE-SRC-RESET  PRELUDE$ GE-SRC+  s GE-SRC+
    GE-HB-RESET
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ >str PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
 
-: EXPECT ( ^u8 n ^u8 n ^u8 n -- )
-   {: src:^ srcu:n want:^ wantu:n label:^ labelu:n :}
-   src srcu RUN-CASE
-   want wantu label labelu GE-EXPECT-ERR
-   77 label labelu GE-EXPECT-RC
-   s" PASS: " type label labelu type cr ;
+: EXPECT ( str str str -- )
+   {: src:str want:str label:str :}
+   src RUN-CASE
+   want label GE-EXPECT-ERR
+   77 label GE-EXPECT-RC
+   s" PASS: " type label type cr ;
 
 \ MK and its does> clause take the last two records, so OVER1 finds none.
 : DEFINITION ( -- )

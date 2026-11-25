@@ -1,4 +1,3 @@
-split-str
 \ engine-span-end.f - the engine's source scanners read only the text they get.
 \ CHECK! (src/core/checker.f) scans a caller's text; a guard
 \ joining the bound and byte tests with `and` evaluates both and reads past the
@@ -14,10 +13,10 @@ package ENGINE-SPAN-END-TEST
 private
 
 \ A copy of the text whose last byte is the last readable one.
-: EDGE ( ^u8 n -- ^u8 n ) {: t:^ tu:n :}
-   tu 32 GUARD-PAGE:TAIL {: a:^ :}
-   t a tu BYTE-COPY
-   a tu ;
+: EDGE ( str -- str ) {: t:str :}
+   t STR:LEN 32 GUARD-PAGE:TAIL {: a:^ :}
+   t STR:DATA a t STR:LEN BYTE-COPY
+   a t STR:LEN >str ;
 
 \ A body whose last token ends at the edge: CHECK-SCAN's token loop.
 : BODY-AT-EDGE ( -- )

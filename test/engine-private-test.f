@@ -1,4 +1,3 @@
-split-str
 \ engine-private-test.f - a program cannot name the engine's private words.
 \ Each case's source is rejected with the same error line by `--load`'s
 \ evaluate-closed and by tools/check.f over that source written to a file.
@@ -17,7 +16,7 @@ private
 T-RESET
 
 TYPED-VARIABLE TCE-A ^u8   variable TCE-U
-: TCE-GO ( -- )  TCE-A @ TCE-U @ evaluate-closed ;
+: TCE-GO ( -- )  TCE-A @ TCE-U @ >str evaluate-closed ;
 
 2048 constant TCE-CAP
 create TCE-PATH PATH-CAP allot   variable TCE-PATH-U
@@ -25,23 +24,27 @@ create TCE-OUT TCE-CAP allot
 create TCE-ERR TCE-CAP allot
 create TCE-NONE 1 allot
 
-: TCE-FILE ( -- str )  TCE-PATH TCE-PATH-U @ ;
+: TCE-FILE ( -- str )  TCE-PATH TCE-PATH-U @ >str ;
+
+: TCE-PATH! ( -- )
+   s" habu-engine-private" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" case.f" TCE-PATH FS:JOIN-PATH TCE-PATH-U ! ;
 
 FS:CLEANUP-RESET
-s" habu-engine-private" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
-s" case.f" TCE-PATH FS:JOIN-PATH TCE-PATH-U !
+TCE-PATH!
 
 \ One tools/check.f process per case: it stops at a file's first rejection.
-: TCE-CHECK ( str str -- ) {: src:^ srcu:n wa:^ wu:n :}
-   TCE-FILE src srcu FS:WRITE-ALL
+: TCE-CHECK ( str str -- ) {: src:str ws:str :}
+   TCE-FILE src FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
    s" --" PROC-ARGV+  TCE-FILE PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$  TCE-NONE 0  TCE-OUT TCE-CAP >LEN
+   ENGINE-CANDIDATE:PATH$  TCE-NONE 0 >str  TCE-OUT TCE-CAP >LEN
    TCE-ERR TCE-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
-   TCE-ERR erru LEN>N wa wu STR:CONTAINS? TTRUE
-   src srcu TCE-OUT outu LEN>N TCE-ERR erru LEN>N oc 70
+   TCE-ERR erru LEN>N >str ws STR:CONTAINS? TTRUE
+   src TCE-OUT outu LEN>N >str TCE-ERR erru LEN>N >str oc 70
    T-ENDING-EXITED= ;
 
 public
@@ -49,11 +52,11 @@ public
 \ TCE-REJECTS asserts the string stops with the checker's status after a record
 \ that starts with the text given, under evaluate-closed, and holds it under
 \ tools/check.f. The record quotes the calling line, which holds the text.
-: TCE-REJECTS ( str str -- ) {: src:^ srcu:n wa:^ wu:n :}
-   src TCE-A !  srcu TCE-U !
+: TCE-REJECTS ( str str -- ) {: src:str ws:str :}
+   src STR:DATA TCE-A !  src STR:LEN TCE-U !
    REJECTION:CAPTURE  [: TCE-GO ;] catch  REJECTION:BUFFER-OFF
-   70 T=  REJECTION:BUFFER$ wa wu STR:STARTS-WITH? TTRUE
-   src srcu wa wu TCE-CHECK ;
+   70 T=  REJECTION:BUFFER$ ws STR:STARTS-WITH? TTRUE
+   src ws TCE-CHECK ;
 
 ;package
 

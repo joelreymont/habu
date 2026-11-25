@@ -1,4 +1,3 @@
-split-str
 \ ffi-struct-fixture.f - the C library the struct-by-value FFI cases call.
 \ test/ffi-struct-result.f and test/ffi-struct-arg.f select it, and the first
 \ SELECT builds it with the system compiler: no system library takes integer
@@ -118,18 +117,18 @@ variable LIB-U                    \ 0 until BUILD makes the library
    HB-TARGET-MACOS? if s" libhbstruct.dylib" exit then
    s" libhbstruct.so" ;
 
-: SRC$ ( -- ^u8 n ) SRC-PATH SRC-U @ ;
-: LIB$ ( -- str ) LIB-PATH LIB-U @ ;
+: SRC$ ( -- str ) SRC-PATH SRC-U @ >str ;
+: LIB$ ( -- str ) LIB-PATH LIB-U @ >str ;
 
-: PATHS ( ^u8 n -- )
-   {: dir:^ diru :}
-   dir diru s" hb-struct.c" SRC-PATH FS:JOIN-PATH SRC-U !
-   dir diru LIB-NAME$ LIB-PATH FS:JOIN-PATH LIB-U ! ;
+: PATHS ( str -- )
+   {: dir:str :}
+   dir s" hb-struct.c" SRC-PATH FS:JOIN-PATH SRC-U !
+   dir LIB-NAME$ LIB-PATH FS:JOIN-PATH LIB-U ! ;
 
 : BUILD ( -- )
-   s" habu-ffi-struct" FS:MKTEMP-DIR {: dir:^ diru :}
-   dir diru FS:CLEANUP-TREE+
-   dir diru PATHS
+   s" habu-ffi-struct" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir PATHS
    SRC CODEGEN:RESET
    TYPES SUMS PLACEMENTS OWNERSHIP RESULTS
    SRC$ SRC CODEGEN:CONTENTS FS:WRITE-ALL

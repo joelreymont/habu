@@ -1,4 +1,3 @@
-split-str
 \ e2e-tree.f - a scratch source tree for an end-to-end row: the checkout's src/
 \ and tools/ linked in, a test/ directory for the sources the row copies, and
 \ children run in it with their stdout, stderr and exit code kept for the
@@ -32,51 +31,51 @@ variable RC-CELL
 
 public
 
-: ROOT$ ( -- str ) ROOT ROOT-U @ ;
-: OUT$ ( -- str ) OUT OUT-U @ ;
-: ERR$ ( -- str ) ERR ERR-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: OUT$ ( -- str ) OUT OUT-U @ >str ;
+: ERR$ ( -- str ) ERR ERR-U @ >str ;
 : RC@ ( -- n ) RC-CELL @ ;
 
-: AT-A ( str -- str ) {: rel:^ relu:n :}
-   ROOT$ rel relu PATH FS:JOIN-PATH PATH swap ;
+: AT-A ( str -- str ) {: rel:str :}
+   ROOT$ rel PATH FS:JOIN-PATH PATH swap >str ;
 
-: LINK ( ^u8 n -- ) {: rel:^ relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET FS:JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A FS:MAKE-SYMLINK ;
+: LINK ( str -- ) {: rel:str :}
+   SOURCE-ROOT:CWD$ rel TARGET FS:JOIN-PATH TARGET-U !
+   TARGET TARGET-U @ >str rel AT-A FS:MAKE-SYMLINK ;
 
-: COPY-TEST ( str -- ) {: rel:^ relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET FS:JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A FS:COPY-FILE-STREAM ;
+: COPY-TEST ( str -- ) {: rel:str :}
+   SOURCE-ROOT:CWD$ rel TARGET FS:JOIN-PATH TARGET-U !
+   TARGET TARGET-U @ >str rel AT-A FS:COPY-FILE-STREAM ;
 
 : TREE ( str -- )
-   FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT u BYTE-COPY u ROOT-U !
+   FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA ROOT dir STR:LEN BYTE-COPY dir STR:LEN ROOT-U !
    s" src" LINK s" tools" LINK
    s" test" AT-A FS:MAKE-DIRS ;
 
-: ARGS ( str -- ) {: source:^ size:n :}
+: ARGS ( str -- ) {: source:str :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" PROC-ARGV+
-   source size PROC-ARGV+ ;
+   source PROC-ARGV+ ;
 
 : RUN-ON ( str str -- )
-   {: engine:^ engineu:n cwd:^ cwdu:n :}
+   {: engine:str cwd:str :}
    PROC-ENV-INHERIT-MISSING
-   engine engineu cwd cwdu
+   engine cwd
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
 : RUN-INPUT ( str str -- )
-   {: engine:^ engineu:n input:^ inputu:n :}
+   {: engine:str input:str :}
    PROC-ENV-INHERIT-MISSING
-   engine engineu ROOT$ input inputu
+   engine ROOT$ input
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT ;
 
 : SAVE-LOG ( str str -- )
-   {: outpath:^ outu:n errpath:^ erru:n :}
-   outpath outu AT-A OUT$ FS:WRITE-ALL
-   errpath erru AT-A ERR$ FS:WRITE-ALL ;
+   {: outpath:str errpath:str :}
+   outpath AT-A OUT$ FS:WRITE-ALL
+   errpath AT-A ERR$ FS:WRITE-ALL ;
 
 : NEED-OK ( -- )
    RC@ 0<> if OUT$ type ERR$ type then

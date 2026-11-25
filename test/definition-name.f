@@ -1,4 +1,3 @@
-split-str
 \ definition-name.f - the post-seal checker bridge, and a definition no
 \ authority can place in a package failing closed with exit status 70 and
 \ naming the refused state on fd 2. The suite runs it on HABU_UNDER_TEST.
@@ -22,19 +21,19 @@ create ERR CAP allot
 variable OUT-U         \ bytes the last child wrote to fd 1
 variable ERR-U         \ bytes the last child wrote to fd 2
 
-: ERR$ ( -- ^u8 n )
-   ERR ERR-U @ ;
+: ERR$ ( -- str )
+   ERR ERR-U @ >str ;
 
-: OUT$ ( -- ^u8 n )
-   OUT OUT-U @ ;
+: OUT$ ( -- str )
+   OUT OUT-U @ >str ;
 
 \ The engine under test: the gate's freshly built candidate when it exported
 \ one, else the running engine itself (src/lib/engine-candidate.f).
 : HB$ ( -- str )       ENGINE-CANDIDATE:PATH$ ;
 
-: RUN-SOURCE ( str str -- n ) {: exe:^ exeu:n src:^ srcu:n :}
+: RUN-SOURCE ( str str -- n ) {: exe:str src:str :}
    PROC-ARGV-RESET
-   exe exeu src srcu OUT CAP >LEN ERR CAP >LEN
+   exe src OUT CAP >LEN ERR CAP >LEN
    PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE
    PCAP-RESULT:>N {: outu:n erru:n rc:n :} outu OUT-U ! erru ERR-U ! rc ;
@@ -43,8 +42,8 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" package BRIDGE public : W ( -- n ) 1 ; ;package BRIDGE:W drop" ;
 
 : PACKAGE-RC ( -- n )
-   PACKAGE-SOURCE$ {: src:^ u:n :}
-   HB$ src u RUN-SOURCE ;
+   PACKAGE-SOURCE$ {: src:str :}
+   HB$ src RUN-SOURCE ;
 
 : MISSING-DEFINITION-NAME ( -- )
    s" a lone colon rejects at the engine reader" T-LABEL
@@ -75,30 +74,30 @@ variable ERR-U         \ bytes the last child wrote to fd 2
       STR:CONTAINS? TTRUE
    ERR$ s" name must be a lowercase family tail" STR:CONTAINS? TTRUE ;
 
-: KEYWORD-SOURCE$ ( str -- str ) {: tok:^ toku:n :}
+: KEYWORD-SOURCE$ ( str -- str ) {: tok:str :}
    SB-RESET
    s" package KW-NAME private : " SB-APPEND
-   tok toku SB-APPEND
+   tok SB-APPEND
    S\"  ( -- ) ; s\" AFTER\" type ;package" SB-APPEND
    SB$ ;
 
-: KEYWORD-REJECT ( str -- ) {: tok:^ toku:n :}
-   tok toku KEYWORD-SOURCE$ {: src:^ srcu:n :}
+: KEYWORD-REJECT ( str -- ) {: tok:str :}
+   tok KEYWORD-SOURCE$ {: src:str :}
    s" keyword definition rejects at its name" T-LABEL
-   HB$ src srcu RUN-SOURCE 70 T=
+   HB$ src RUN-SOURCE 70 T=
    s" keyword definition names the constraint" T-LABEL
-   SB-RESET s" error[E-RESERVED-DEFINITION]: `" SB-APPEND tok toku SB-APPEND
+   SB-RESET s" error[E-RESERVED-DEFINITION]: `" SB-APPEND tok SB-APPEND
    s" ` is a keyword" SB-APPEND
    ERR$ SB$ STR:CONTAINS? TTRUE
    s" keyword definition stops before later source" T-LABEL
    OUT$ s" AFTER" STR:CONTAINS? 0= TTRUE ;
 
 : DEFINER-REJECT ( str str str -- )
-   {: src:^ srcu:n msg:^ msgu:n at:^ atu:n :}
+   {: src:str msg:str at:str :}
    s" a definer's own keyword or number name rejects at the name" T-LABEL
-   HB$ src srcu RUN-SOURCE 70 T=
-   ERR$ msg msgu STR:CONTAINS? TTRUE
-   ERR$ at atu STR:CONTAINS? TTRUE
+   HB$ src RUN-SOURCE 70 T=
+   ERR$ msg STR:CONTAINS? TTRUE
+   ERR$ at STR:CONTAINS? TTRUE
    OUT$ s" AFTER" STR:CONTAINS? 0= TTRUE ;
 
 : KEYWORD-DEFINITION ( -- )

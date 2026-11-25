@@ -1,4 +1,3 @@
-split-str
 \ deftype-dup-bad.f - a duplicate DEFTYPE in one package is refused:
 \ CHECKER-DEFTYPE throws E-TFAM-DUP, which exits 70 uncaught because the
 \ checker rendered it. The ARMED marker proves the first declaration ran before

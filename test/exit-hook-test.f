@@ -1,4 +1,3 @@
-split-str
 \ Process exit and the build boundary, one child per case: the exit actions
 \ (src/lib/at-exit.f) and the cleanup registry on each exit path, and what a
 \ built program keeps from its build, a queue its build defined included. A
@@ -33,54 +32,54 @@ variable ROOT-U
 variable SCRIPT-U
 variable TREE-U
 
-: ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
-: SCRIPT$ ( -- str ) SCRIPT-BUF SCRIPT-U @ ;
-: TREE$ ( -- str ) TREE-BUF TREE-U @ ;
-: TEXT$ ( -- ^u8 n ) TEXT-BUF TEXT-U @ ;
+: ROOT$ ( -- str ) ROOT-BUF ROOT-U @ >str ;
+: SCRIPT$ ( -- str ) SCRIPT-BUF SCRIPT-U @ >str ;
+: TREE$ ( -- str ) TREE-BUF TREE-U @ >str ;
+: TEXT$ ( -- str ) TEXT-BUF TEXT-U @ >str ;
 
 \ Child sources are built a line at a time: one 255-byte source line of this
 \ file cannot hold a whole script, and the pieces read as the program they are.
-: TEXT+ ( ^u8 n -- ) {: src:^ srcu :}
-   TEXT-U @ srcu + TEXT-CAP > if E-FS-CAPACITY throw then
-   src TEXT-BUF TEXT-U @ + srcu BYTE-COPY
-   TEXT-U @ srcu + TEXT-U ! ;
+: TEXT+ ( str -- ) {: src:str :}
+   TEXT-U @ src STR:LEN + TEXT-CAP > if E-FS-CAPACITY throw then
+   src STR:DATA TEXT-BUF TEXT-U @ + src STR:LEN BYTE-COPY
+   TEXT-U @ src STR:LEN + TEXT-U ! ;
 
 : PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" exit-hook" FS:MKTEMP-DIR {: path:^ pathu :}
-   path ROOT-BUF pathu BYTE-COPY pathu ROOT-U !
+   s" exit-hook" FS:MKTEMP-DIR {: path:str :}
+   path STR:DATA ROOT-BUF path STR:LEN BYTE-COPY path STR:LEN ROOT-U !
    ROOT$ FS:CLEANUP-TREE+ ;
 
-: TREE-PATH ( str -- ) {: name:^ nameu :}
-   ROOT$ name nameu TREE-BUF FS:JOIN-PATH TREE-U ! ;
+: TREE-PATH ( str -- ) {: name:str :}
+   ROOT$ name TREE-BUF FS:JOIN-PATH TREE-U ! ;
 
 \ The script path, the directory the child is told to register, and the two
 \ lines every child script starts with.
-: CASE-PATHS ( str str -- ) {: script:^ scriptu tree:^ treeu :}
-   ROOT$ script scriptu SCRIPT-BUF FS:JOIN-PATH SCRIPT-U !
-   tree treeu TREE-PATH
+: CASE-PATHS ( str str -- ) {: script:str tree:str :}
+   ROOT$ script SCRIPT-BUF FS:JOIN-PATH SCRIPT-U !
+   tree TREE-PATH
    0 TEXT-U !
    S\" require src/lib/fs-mutate.f\n" TEXT+
    S\" : CHILD-TREE ( -- str ) 0 SCRIPT-ARGV$ ;\n" TEXT+ ;
 
 : SHOW-FAILURE ( n n n -- ) {: outu:n erru:n rc:n :}
    s" exit-hook child rc " type rc . cr
-   OUT outu type ERR erru type ;
+   OUT outu >str type ERR erru >str type ;
 
 : EXPECT-RC ( n n n n -- ) {: outu:n erru:n rc:n want:n :}
    rc want = 0= if outu erru rc SHOW-FAILURE then
    rc want T= ;
 
-: ERR-HAS? ( n ^u8 n -- bool ) {: erru:n want:^ wantu :}
-   ERR erru want wantu STR:CONTAINS? ;
+: ERR-HAS? ( n str -- bool ) {: erru:n want:str :}
+   ERR erru >str want STR:CONTAINS? ;
 
 \ The child runs the program at the path with the arguments put so far, and
 \ with this process's environment, so TMPDIR and the working directory are the
 \ ones the suite itself runs with. Capture gives the child no stdin, so the
 \ program's own exit is what the case measures.
-: RUN-PATH ( str -- n n n ) {: path:^ pathu :}
+: RUN-PATH ( str -- n n n ) {: path:str :}
    PROC-ENV-INHERIT-MISSING
-   path pathu
+   path
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
@@ -100,13 +99,13 @@ variable TREE-U
 
 \ hb-build with the flag, if any, the script as its source and the case's path
 \ as its -o.
-: RUN-BUILD-AS ( str -- n n n ) {: flag:^ flagu :}
+: RUN-BUILD-AS ( str -- n n n ) {: flag:str :}
    SCRIPT$ TEXT$ FS:ATOMIC-WRITE-FILE
    PROC-ARGV-ENV-RESET
    s" --load" PROC-ARGV+
    s" tools/hb-build.f" PROC-ARGV+
    s" --" PROC-ARGV+
-   flagu 0<> if flag flagu PROC-ARGV+ then
+   flag STR:LEN 0<> if flag PROC-ARGV+ then
    SCRIPT$ PROC-ARGV+
    s" -o" PROC-ARGV+
    TREE$ PROC-ARGV+
@@ -119,8 +118,8 @@ variable TREE-U
    PROC-ARGV-ENV-RESET
    TREE$ RUN-PATH ;
 
-: OUT-HAS? ( n ^u8 n -- bool ) {: outu:n want:^ wantu :}
-   OUT outu want wantu STR:CONTAINS? ;
+: OUT-HAS? ( n str -- bool ) {: outu:n want:str :}
+   OUT outu >str want STR:CONTAINS? ;
 
 \ A normal top-level exit reaches the vector.
 : CASE-NORMAL ( -- )
@@ -268,10 +267,10 @@ create STAGED-OUT-BUF PATH-CAP allot
 variable STAGED-OUT-U
 variable STAGED-FILES
 
-: STAGED-OUT$ ( -- str ) STAGED-OUT-BUF STAGED-OUT-U @ ;
+: STAGED-OUT$ ( -- str ) STAGED-OUT-BUF STAGED-OUT-U @ >str ;
 
 : STAGED-COUNT ( str -- )
-   2drop STAGED-FILES @ 1+ STAGED-FILES ! ;
+   drop STAGED-FILES @ 1+ STAGED-FILES ! ;
 
 : STAGED-FILES# ( -- n )
    0 STAGED-FILES !
@@ -295,7 +294,7 @@ variable STAGED-FILES
    erru s" child: dying" ERR-HAS? TTRUE
    TREE$ s" out" STAGED-OUT-BUF FS:JOIN-PATH STAGED-OUT-U !
    STAGED-OUT$ STAGED-BUF STAGED-CAP FS:READ-ALL {: u:n :}
-   STAGED-BUF u s" previous" T$=
+   STAGED-BUF u >str s" previous" T$=
    STAGED-FILES# 1 T= ;
 
 \ An exit action a task alone adds runs at the main thread's exit: the action
@@ -388,7 +387,7 @@ variable STAGED-FILES
    erru SCRIPT$ ERR-HAS? TTRUE
    erru s" ended the process during the build" ERR-HAS? TTRUE
    TREE$ STAGED-BUF STAGED-CAP FS:READ-ALL {: u:n :}
-   STAGED-BUF u s" previous" T$= ;
+   STAGED-BUF u >str s" previous" T$= ;
 
 \ The source's top level dies; its newer exit action dies too, and the older one still
 \ runs, before hb-build's line.
@@ -428,7 +427,7 @@ variable STAGED-FILES
 create RUN-FILE-BUF PATH-CAP allot
 variable RUN-FILE-U
 
-: RUN-FILE$ ( -- str ) RUN-FILE-BUF RUN-FILE-U @ ;
+: RUN-FILE$ ( -- str ) RUN-FILE-BUF RUN-FILE-U @ >str ;
 
 \ It builds and runs a program because the build boundary is under test: the
 \ exit actions and cleanups its source's top level registers run when the
@@ -484,7 +483,7 @@ variable RUN-FILE-U
    qu qe qrc 67 EXPECT-RC
    0 TEXT-U !
    S\" error[E-BUILT-CASE]: the program's own failure\n  = code: -100001\n" TEXT+
-   ERR qe TEXT$ STR:COUNT-SUB 1 T=
+   ERR qe >str TEXT$ STR:COUNT-SUB 1 T=
    qe s" uncaught throw" ERR-HAS? TFALSE ;
 
 \ A built program ends an uncaught throw with one record and status 67, no
@@ -505,7 +504,7 @@ variable RUN-FILE-U
    S\" error[E-FS-DIR]: TMPDIR is not a directory\n  = TMPDIR: " TEXT+
    RUN-FILE$ TEXT+
    S\" \n  = help: point TMPDIR at an existing directory, or unset it to use /tmp\n" TEXT+
-   ERR pe TEXT$ STR:COUNT-SUB 1 T=
+   ERR pe >str TEXT$ STR:COUNT-SUB 1 T=
    pe s" uncaught throw" ERR-HAS? TFALSE
    s" a built program prints the record of a code its throw carries none for" T-LABEL
    EXPECT-CASE-RECORD ;
@@ -558,7 +557,7 @@ variable RUN-FILE-U
    rc 0<> if exit then
    RUN-TARGET {: poutu:n perru:n prc:n :}
    s" the target's task runs each carried cleanup once, newest first" T-LABEL
-   OUT poutu S\" 21\n" T$=
+   OUT poutu >str S\" 21\n" T$=
    poutu perru prc 0 EXPECT-RC ;
 
 \ 128 TASK:NEW tasks push the cleanups' rows into a mapped chunk, which no

@@ -1,4 +1,3 @@
-split-str
 \ diag-position-test.f - a checker packet locates its token in the checked file,
 \ with LF ending a line; a packet in a required file names and locates there.
 \ Semantic checks call LSP-CHECK's public words in process; the verifier and run
@@ -48,26 +47,26 @@ PROCESS-SYMBOLS
 FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 : BASE$ ( -- str )
-   BASE BASE-U @ ;
+   BASE BASE-U @ >str ;
 
 : FX$ ( -- str )
-   FX FX-U @ ;
+   FX FX-U @ >str ;
 
 : FX-PATH$ ( -- str )
-   FX-P FX-PU @ ;
+   FX-P FX-PU @ >str ;
 
 : DEP$ ( -- str )
-   DEP DEP-U @ ;
+   DEP DEP-U @ >str ;
 
 : DEP-PATH$ ( -- str )
-   DEP-P DEP-PU @ ;
+   DEP-P DEP-PU @ >str ;
 
 : ROOT! ( -- )
    FS:CLEANUP-RESET
    s" habu-diag-position" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL drop
-   {: a:^ u:n :}
-   a BASE u BYTE-COPY
-   u BASE-U !
+   {: root:str :}
+   root STR:DATA BASE root STR:LEN BYTE-COPY
+   root STR:LEN BASE-U !
    BASE$ FS:CLEANUP-TREE+ ;
 
 : LF+ ( -- ) 10 SB-APPEND-C ;
@@ -77,44 +76,44 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ Writes the string builder's text as fixture NAME and keeps a copy for the
 \ packets' byte spans.
 : FIXTURE! ( str -- )
-   {: name:^ nameu:n :}
-   BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
+   {: name:str :}
+   BASE$ name FX-P FS:JOIN-PATH FX-PU !
    SB$
-   {: a:^ u:n :}
-   a FX u BYTE-COPY
-   u FX-U !
+   {: text:str :}
+   text STR:DATA FX text STR:LEN BYTE-COPY
+   text STR:LEN FX-U !
    FX-PATH$ FX$ FS:WRITE-ALL ;
 
-\ The u bytes at a end the fixture text, built in place for a fixture longer
+\ The bytes of s end the fixture text, built in place for a fixture longer
 \ than the string builder holds.
-: FX+ ( str -- ) {: a:^ u:n :}
-   FX-U @ u + CAP > IF E-STR-CAPACITY throw THEN
-   a FX FX-U @ + u BYTE-COPY
-   FX-U @ u + FX-U ! ;
+: FX+ ( str -- ) {: s:str :}
+   FX-U @ s STR:LEN + CAP > IF E-STR-CAPACITY throw THEN
+   s STR:DATA FX FX-U @ + s STR:LEN BYTE-COPY
+   FX-U @ s STR:LEN + FX-U ! ;
 
 \ PATH with every link resolved: the checker names a required file so, and
 \ --verify-only its subject too.
 : CANON$ ( str -- str )
    FS:>PATHZ CANON FS:PATHZ-CAP realpath {: n:n :}
    n 0 <= IF E-FS-PATH throw THEN
-   CANON n ;
+   CANON n >str ;
 
 \ The fixture becomes the required file later packets name.
 : DEP! ( -- )
    FX DEP FX-U @ BYTE-COPY
    FX-U @ DEP-U !
-   FX-PATH$ CANON$ {: a:^ u:n :}
-   a DEP-P u BYTE-COPY
-   u DEP-PU ! ;
+   FX-PATH$ CANON$ {: path:str :}
+   path STR:DATA DEP-P path STR:LEN BYTE-COPY
+   path STR:LEN DEP-PU ! ;
 
 : STORE! ( str len len PROCESS:ending -- )
-   {: src:^ srcu:n outu:len erru:len oc :}
+   {: src:str outu:len erru:len oc :}
    outu LEN>N GT-OUT-U !
    erru LEN>N GT-ERR-U !
    oc MATCH PROCESS:ending
      exited OF RC ! ENDOF
      signaled OF drop -1 RC ! ENDOF
-     timeout OF src srcu GT-OUT$ GT-ERR$ T-TIMED-OUT ENDOF
+     timeout OF src GT-OUT$ GT-ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
 \ LSP-CHECK:RUN throws its nonzero code on, as for the CLI's exit status, with
@@ -132,96 +131,96 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    GT-ERR$ GJA-SPLIT-LINES ;
 
 : CHECK-EXIT ( str n -- )
-   {: flag:^ flagu:n want:n :}
+   {: flag:str want:n :}
    LSP-CHECK:RESET
-   flagu 0 > IF flag 2 + flagu 2 - LSP-CHECK:OPT THEN
+   flag STR:LEN 0 > IF flag STR:DATA 2 + flag STR:LEN 2 - >str LSP-CHECK:OPT THEN
    s" json-errors" LSP-CHECK:OPT
    FX-PATH$ LSP-CHECK:FILE
    want CHECK-CAPTURE ;
 
-: CHECK ( ^u8 n -- )
+: CHECK ( str -- )
    70 CHECK-EXIT ;
 
 : FIELD-MISSING ( str -- )
-   {: key:^ keyu:n :}
+   {: key:str :}
    T-NEXT
    T-FAIL
-   s" assert: missing JSON field " type key keyu type cr ;
+   s" assert: missing JSON field " type key type cr ;
 
 : FIELD-NOT ( str str -- )
-   {: key:^ keyu:n kind:^ kindu:n :}
+   {: key:str kind:str :}
    T-NEXT
    T-FAIL
-   s" assert: JSON field " type key keyu type s"  is not " type kind kindu type cr ;
+   s" assert: JSON field " type key type s"  is not " type kind type cr ;
 
 
 : STR-FIELD= ( SPAN:span<u8> str str -- )
-   {: root:SPAN:span<u8> key:^ keyu:n want:^ wantu:n :}
-   root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
+   {: root:SPAN:span<u8> key:str want:str :}
+   root key GJA-FIELD? 0= IF drop key FIELD-MISSING EXIT THEN
    {: v:SPAN:span<u8> :}
-   v GJA-KIND JSON:T-STR <> IF key keyu s" a string" FIELD-NOT EXIT THEN
-   v GJA-STRING$ want wantu T$= ;
+   v GJA-KIND JSON:T-STR <> IF key s" a string" FIELD-NOT EXIT THEN
+   v GJA-STRING$ want T$= ;
 
 
 : INT-FIELD= ( SPAN:span<u8> str n -- )
-   {: root:SPAN:span<u8> key:^ keyu:n want:n :}
-   root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
+   {: root:SPAN:span<u8> key:str want:n :}
+   root key GJA-FIELD? 0= IF drop key FIELD-MISSING EXIT THEN
    {: v:SPAN:span<u8> :}
-   v GJA-KIND JSON:T-INT <> IF key keyu s" an integer" FIELD-NOT EXIT THEN
+   v GJA-KIND JSON:T-INT <> IF key s" an integer" FIELD-NOT EXIT THEN
    v GJA-OPEN JSON:READ-INT {: got:n :} JSON:READ-CLOSE
    got want T= ;
 
 
 : FIELD-ABSENT ( SPAN:span<u8> str -- )
-   {: root:SPAN:span<u8> key:^ keyu:n :}
-   root key keyu GJA-FIELD? 0= IF drop T-NEXT EXIT THEN
+   {: root:SPAN:span<u8> key:str :}
+   root key GJA-FIELD? 0= IF drop T-NEXT EXIT THEN
    drop
    T-NEXT
    T-FAIL
-   s" assert: unexpected JSON field " type key keyu type cr ;
+   s" assert: unexpected JSON field " type key type cr ;
 
 
 : FIELD= ( n str str -- )
-   {: k:n key:^ keyu:n want:^ wantu:n :}
+   {: k:n key:str want:str :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
-   k GJA-LINE$ GJA-PARSE key keyu want wantu STR-FIELD= ;
+   k GJA-LINE$ GJA-PARSE key want STR-FIELD= ;
 
 : FIELD-HAS ( n str str -- )
-   {: k:n key:^ keyu:n want:^ wantu:n :}
+   {: k:n key:str want:str :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
-   k GJA-LINE$ GJA-PARSE key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
+   k GJA-LINE$ GJA-PARSE key GJA-FIELD? 0= IF drop key FIELD-MISSING EXIT THEN
    {: v:SPAN:span<u8> :}
-   v GJA-KIND JSON:T-STR <> IF key keyu s" a string" FIELD-NOT EXIT THEN
-   v GJA-STRING$ want wantu STR:CONTAINS? TTRUE ;
+   v GJA-KIND JSON:T-STR <> IF key s" a string" FIELD-NOT EXIT THEN
+   v GJA-STRING$ want STR:CONTAINS? TTRUE ;
 
 : NOTE= ( n str str -- )
-   {: k:n key:^ keyu:n want:^ wantu:n :}
+   {: k:n key:str want:str :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
    k GJA-LINE$ GJA-PARSE s" notes" GJA-FIELD? 0= IF drop s" notes" FIELD-MISSING EXIT THEN
-   key keyu want wantu STR-FIELD= ;
+   key want STR-FIELD= ;
 
 : PLACED-IN ( n str n n n n str str -- )
-   {: k:n sp:^ spu:n line:n col:n bs:n be:n path:^ pathu:n text:^ textu:n :}
+   {: k:n sp:str line:n col:n bs:n be:n path:str text:str :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
    k GJA-LINE$ GJA-PARSE
    {: root:SPAN:span<u8> :}
-   root s" file" path pathu STR-FIELD=
+   root s" file" path STR-FIELD=
    root s" line" line INT-FIELD=
    root s" column" col INT-FIELD=
    root s" byte_start" bs INT-FIELD=
    root s" byte_end" be INT-FIELD=
-   bs 0 >=  be bs >= and  be textu <= and IF
-      text bs + be bs - sp spu T$=
+   bs 0 >=  be bs >= and  be text STR:LEN <= and IF
+      text STR:DATA bs + be bs - >str sp T$=
    ELSE
       T-NEXT s" expected span lies outside the fixture" T-ASSERT-DETAIL
    THEN ;
 
 : AT-IN ( n str n n n n str str -- )
-   {: k:n tok:^ toku:n line:n col:n bs:n be:n path:^ pathu:n text:^ textu:n :}
-   k tok toku line col bs be path pathu text textu PLACED-IN
-   k s" token" tok toku FIELD= ;
+   {: k:n tok:str line:n col:n bs:n be:n path:str text:str :}
+   k tok line col bs be path text PLACED-IN
+   k s" token" tok FIELD= ;
 
-: AT ( n ^u8 n n n n n -- )
+: AT ( n str n n n n -- )
    FX-PATH$ FX$ AT-IN ;
 
 : DEP-AT ( n str n n n n -- )
@@ -344,9 +343,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ Packet 0 of the last run is the run stage's rejection CODE, placed at its
 \ token in the file that holds it as a definition's is.
 : TOP-AT ( str str n n n n str str -- )
-   {: c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n path:^ pathu:n text:^ textu:n :}
-   0 s" code" c cu FIELD=
-   0 tok toku line col bs be path pathu text textu AT-IN ;
+   {: c:str tok:str line:n col:n bs:n be:n path:str text:str :}
+   0 s" code" c FIELD=
+   0 tok line col bs be path text AT-IN ;
 
 : TEST-TOP-LINE ( -- )
    s" a top-level rejection after a definition is placed at its token" T-LABEL
@@ -404,16 +403,16 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    FX-PATH$ FX$ TOP-AT ;
 
 : SHADOW-FIXTURE ( str str -- )
-   {: decl:^ declu:n body:^ bodyu:n :}
+   {: decl:str body:str :}
    SB-RESET
    s" package P" SB-APPEND LF+
    s" public" SB-APPEND LF+
-   decl declu SB-APPEND LF+
+   decl SB-APPEND LF+
    s" ;package" SB-APPEND LF+
-   decl declu SB-APPEND LF+
+   decl SB-APPEND LF+
    s" using P" SB-APPEND LF+
    s" : USE-IT ( -- )" SB-APPEND LF+
-   body bodyu SB-APPEND LF+
+   body SB-APPEND LF+
    s" ;using" SB-APPEND LF+ ;
 
 \ The checker resolves the token's lowercase fold; the packet names the file's
@@ -459,10 +458,10 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" shadowed.f" FIXTURE! ;
 
 : SHADOWED-AT ( str -- )
-   {: path:^ pathu:n :}
+   {: path:str :}
    0 s" code" s" E-SHADOWED-ARITY" FIELD=
    0 s" message" s" private `F`" FIELD-HAS
-   0 s" F" 5 5 47 48 path pathu FX$ AT-IN ;
+   0 s" F" 5 5 47 48 path FX$ AT-IN ;
 
 : TEST-SHADOWED-ARITY ( -- )
    s" a public whose private twin moves other cells" T-LABEL
@@ -477,11 +476,11 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ The name of the word `;FUNCTION` builds lies in no source.
 : SHADOWED-FN-AT ( str -- )
-   {: path:^ pathu:n :}
+   {: path:str :}
    0 s" code" s" E-SHADOWED-ARITY" FIELD=
    0 s" message" s" public `SFN:GP` has a different stack effect" FIELD-HAS
    0 s" word" s" GP" NOTE=
-   0 s" ;FUNCTION" 7 1 104 113 path pathu FX$ AT-IN ;
+   0 s" ;FUNCTION" 7 1 104 113 path FX$ AT-IN ;
 
 : TEST-SHADOWED-FUNCTION ( -- )
    s" a FUNCTION: word whose private twin moves other cells" T-LABEL
@@ -557,11 +556,11 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s"    V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN" SB-APPEND LF+
    s"    V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN V-UN ;" SB-APPEND LF+ ;
 
-: NOT-RECORDED ( ^u8 n -- )
-   {: path:^ pathu:n :}
+: NOT-RECORDED ( str -- )
+   {: path:str :}
    0 s" code" s" W-EFFECT-NOT-RECORDED" FIELD=
    0 s" message" s" `WIDE`" FIELD-HAS
-   0 s" WIDE" 3 5 71 75 path pathu FX$ AT-IN
+   0 s" WIDE" 3 5 71 75 path FX$ AT-IN
    1 begin dup GJA-LINE# @ < while
       dup GJA-LINE$ s" W-EFFECT-NOT-RECORDED" STR:CONTAINS? TFALSE
       1 +
@@ -725,15 +724,15 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ The fixture's one rejection, E-PARSES-ROW at TOK, under the check and under
 \ --verify-only.
 : ROW-REJECTED ( str n n n n -- )
-   {: tok:^ toku:n line:n col:n bs:n be:n :}
+   {: tok:str line:n col:n bs:n be:n :}
    s" " CHECK
    GJA-LINE# @ 1 T=
    0 s" code" s" E-PARSES-ROW" FIELD=
-   0 tok toku line col bs be AT
+   0 tok line col bs be AT
    s" --verify-only" CHECK
    GJA-LINE# @ 1 T=
    0 s" code" s" E-PARSES-ROW" FIELD=
-   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+   0 tok line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 : TEST-PARSES-REJECT ( -- )
    s" a parses: row naming an undefined word" T-LABEL
@@ -863,34 +862,34 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ A SUMTYPE in a private section defines HUE-RED for its variant red.
 : HUE-FIXTURE ( str -- )
-   {: tail:^ tailu:n :}
+   {: tail:str :}
    SB-RESET
    s" package HUES" SB-APPEND LF+
    s" : HUE-RED ( -- n ) 1 ;" SB-APPEND LF+
    s" SUMTYPE hue VARIANT red ;VARIANT VARIANT blue ;VARIANT ;SUMTYPE"
    SB-APPEND LF+
-   tailu 0 > IF tail tailu SB-APPEND LF+ THEN
+   tail STR:LEN 0 > IF tail SB-APPEND LF+ THEN
    s" ;package" SB-APPEND LF+
    s" sum-generated.f" FIXTURE! ;
 
 \ A STRUCTURE in a private section defines CKDPROD-MAKE.
 : CKDPROD-FIXTURE ( str -- )
-   {: tail:^ tailu:n :}
+   {: tail:str :}
    SB-RESET
    s" package CKDPRODS" SB-APPEND LF+
    s" : CKDPROD-MAKE ( n -- n ) 1 + ;" SB-APPEND LF+
    s" STRUCTURE ckdprod FIELD x n ;STRUCTURE" SB-APPEND LF+
-   tailu 0 > IF tail tailu SB-APPEND LF+ THEN
+   tail STR:LEN 0 > IF tail SB-APPEND LF+ THEN
    s" ;package" SB-APPEND LF+
    s" prod-generated.f" FIXTURE! ;
 
 \ The generated name lies in no source text: the record is placed at the
 \ family's name and names the word in its `word` note.
 : GENERATED-AT ( str -- )
-   {: wa:^ wu:n :}
+   {: ws:str :}
    0 s" code" s" E-BAD-DECLARATION" FIELD=
    0 s" label" s" generated declaration already defined" FIELD=
-   0 s" word" wa wu NOTE= ;
+   0 s" word" ws NOTE= ;
 
 \ The rejected family registers no type for a later use.
 : TEST-GENERATED-NAME ( -- )
@@ -955,36 +954,36 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" size" 3 10 40 44 AT ;
 
 : LINE-FIXTURE ( str str -- )
-   {: text:^ textu:n name:^ nameu:n :}
+   {: text:str name:str :}
    SB-RESET
-   text textu SB-APPEND LF+
-   name nameu FIXTURE! ;
+   text SB-APPEND LF+
+   name FIXTURE! ;
 
 : REJECTED-AS ( str -- )
-   {: c:^ cu:n :}
+   {: c:str :}
    GJA-LINE# @ 1 T=
-   0 s" code" c cu FIELD= ;
+   0 s" code" c FIELD= ;
 
 \ The composition check gives one packet, a rejection. Plain preverification
 \ uses this same composition verifier; REFUSED-MODES keeps representative
 \ checks across the mode boundary.
 : REFUSED-AT ( str str n n n n -- )
-   {: c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
+   {: c:str tok:str line:n col:n bs:n be:n :}
    s" --all-errors" CHECK
-   c cu REJECTED-AS
-   0 tok toku line col bs be AT ;
+   c REJECTED-AS
+   0 tok line col bs be AT ;
 
 : REFUSED-MODES-RC ( str str n n n n n -- )
-   {: c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n rc:n :}
+   {: c:str tok:str line:n col:n bs:n be:n rc:n :}
    s" " rc CHECK-EXIT
-   c cu REJECTED-AS
-   0 tok toku line col bs be AT
+   c REJECTED-AS
+   0 tok line col bs be AT
    s" --all-errors" rc CHECK-EXIT
-   c cu REJECTED-AS
-   0 tok toku line col bs be AT
+   c REJECTED-AS
+   0 tok line col bs be AT
    s" --verify-only" rc CHECK-EXIT
-   c cu REJECTED-AS
-   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+   c REJECTED-AS
+   0 tok line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 : REFUSED-MODES ( str str n n n n -- )
    70 REFUSED-MODES-RC ;
@@ -1120,11 +1119,11 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ Under --verify-only the declaration pre-pass alone rejects the fixture; the
 \ record's label says why.
 : PREPASS-REJECTED ( str str str n n n n -- )
-   {: c:^ cu:n why:^ whyu:n tok:^ toku:n line:n col:n bs:n be:n :}
+   {: c:str why:str tok:str line:n col:n bs:n be:n :}
    s" --verify-only" CHECK
-   c cu REJECTED-AS
-   0 s" label" why whyu FIELD=
-   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+   c REJECTED-AS
+   0 s" label" why FIELD=
+   0 tok line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 : TEST-PREPASS-NOMINAL ( -- )
    s" a reserved DEFLINEAR name under --verify-only" T-LABEL
@@ -1204,11 +1203,11 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    1 s" widget" 6 20 160 166 FX-PATH$ CANON$ FX$ AT-IN ;
 
 : TWO-LINE-FIXTURE ( str str str -- )
-   {: one:^ oneu:n two:^ twou:n name:^ nameu:n :}
+   {: one:str two:str name:str :}
    SB-RESET
-   one oneu SB-APPEND LF+
-   two twou SB-APPEND LF+
-   name nameu FIXTURE! ;
+   one SB-APPEND LF+
+   two SB-APPEND LF+
+   name FIXTURE! ;
 
 \ A VALUE-RECORD reads its fields with `parse-name`, so a `\` or `(` there is the token it rejects.
 : TEST-PREPASS-COMMENT ( -- )
@@ -1280,30 +1279,30 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" E-BAD-LOCAL-SHAPE" s" |" 1 23 22 23 REFUSED-MODES ;
 
 : RECORD-PLACED ( n str str str n n n n str -- )
-   {: k:n code:^ codeu:n tok:^ toku:n sp:^ spu:n line:n col:n bs:n be:n path:^ pathu:n :}
-   k s" code" code codeu FIELD=
-   k s" token" tok toku FIELD=
-   k sp spu line col bs be path pathu FX$ PLACED-IN ;
+   {: k:n code:str tok:str sp:str line:n col:n bs:n be:n path:str :}
+   k s" code" code FIELD=
+   k s" token" tok FIELD=
+   k sp line col bs be path FX$ PLACED-IN ;
 
 : STORED-PLACED ( str str n n n n str -- )
-   {: word:^ wordu:n tok:^ toku:n line:n col:n bs:n be:n path:^ pathu:n :}
-   0 s" E-BAD-STORED-SIGNATURE" tok toku tok toku line col bs be path pathu RECORD-PLACED
-   0 s" message" word wordu FIELD-HAS ;
+   {: word:str tok:str line:n col:n bs:n be:n path:str :}
+   0 s" E-BAD-STORED-SIGNATURE" tok tok line col bs be path RECORD-PLACED
+   0 s" message" word FIELD-HAS ;
 
 \ STORED-PLACED for each check of the fixture, plain, --all-errors and
 \ --verify-only: each gives the refusal alone, never followed by its statement's
 \ throw.
 : STORED-AT ( str str n n n n -- )
-   {: word:^ wordu:n tok:^ toku:n line:n col:n bs:n be:n :}
+   {: word:str tok:str line:n col:n bs:n be:n :}
    s" " CHECK
    GJA-LINE# @ 1 T=
-   word wordu tok toku line col bs be FX-PATH$ STORED-PLACED
+   word tok line col bs be FX-PATH$ STORED-PLACED
    s" --all-errors" CHECK
    GJA-LINE# @ 1 T=
-   word wordu tok toku line col bs be FX-PATH$ STORED-PLACED
+   word tok line col bs be FX-PATH$ STORED-PLACED
    s" --verify-only" CHECK
    GJA-LINE# @ 1 T=
-   word wordu tok toku line col bs be FX-PATH$ CANON$ STORED-PLACED ;
+   word tok line col bs be FX-PATH$ CANON$ STORED-PLACED ;
 
 \ A stored signature that does not parse is rejected at the type it cannot
 \ read, or at the name its declaration reads when the signature holds no type,
@@ -1367,23 +1366,23 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    1 s" code" s" E-INPUT-UNDERFLOW" FIELD=
    1 s" drop" 2 18 68 72 AT ;
 
-: RECORD-AT ( ^u8 n ^u8 n ^u8 n n n n n n n -- )
-   {: code:^ codeu:n tok:^ toku:n sp:^ spu:n line:n col:n bs:n be:n count:n lead:n :}
+: RECORD-AT ( str str str n n n n n n -- )
+   {: code:str tok:str sp:str line:n col:n bs:n be:n count:n lead:n :}
    s" " CHECK
    GJA-LINE# @ count T=
-   0 code codeu tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
+   0 code tok sp line col bs be FX-PATH$ RECORD-PLACED
    s" --all-errors" CHECK
    GJA-LINE# @ count T=
-   0 code codeu tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
+   0 code tok sp line col bs be FX-PATH$ RECORD-PLACED
    s" --verify-only" CHECK
    GJA-LINE# @ count lead + T=
-   lead code codeu tok toku sp spu line col bs be FX-PATH$ CANON$ RECORD-PLACED ;
+   lead code tok sp line col bs be FX-PATH$ CANON$ RECORD-PLACED ;
 
 \ RECORD-AT for E-BAD-QUALIFIED-RECORD: each check gives the record alone, at
 \ the name as written.
 : MALFORMED-AT ( str n n n n -- )
-   {: tok:^ toku:n line:n col:n bs:n be:n :}
-   s" E-BAD-QUALIFIED-RECORD" tok toku tok toku line col bs be 1 0 RECORD-AT ;
+   {: tok:str line:n col:n bs:n be:n :}
+   s" E-BAD-QUALIFIED-RECORD" tok tok line col bs be 1 0 RECORD-AT ;
 
 \ A colon definition CHECK rejects: the plain check stops at that refusal, and
 \ --all-errors and --verify-only follow it with the record the rejected
@@ -1557,7 +1556,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 
 : LIT-FIXTURE ( str -- )
-   {: text:^ textu:n :}
+   {: text:str :}
    SB-RESET
    s" : U8C ( u8 -- ) drop ;" SB-APPEND LF+
    s" : U16C ( u16 -- ) drop ;" SB-APPEND LF+
@@ -1566,23 +1565,23 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : NC ( n -- ) drop ;" SB-APPEND LF+
    s" : EQ2 ( a a -- ) 2drop ;" SB-APPEND LF+
    s" : K ( a b [ a b -- ] -- ) execute ;" SB-APPEND LF+
-   text textu SB-APPEND LF+
+   text SB-APPEND LF+
    s" literal.f" FIXTURE! ;
 
 
 : LIT-REFUSED ( str str -- )
-   {: text:^ textu:n why:^ whyu:n :}
-   text textu T-LABEL
-   text textu LIT-FIXTURE
+   {: text:str why:str :}
+   text T-LABEL
+   text LIT-FIXTURE
    s" " CHECK
    s" E-MISMATCH" REJECTED-AS
-   0 s" message" why whyu FIELD= ;
+   0 s" message" why FIELD= ;
 
 
 : LIT-ACCEPTED ( str -- )
-   {: text:^ textu:n :}
-   text textu T-LABEL
-   text textu LIT-FIXTURE
+   {: text:str :}
+   text T-LABEL
+   text LIT-FIXTURE
    s" " 0 CHECK-EXIT ;
 
 
@@ -1686,22 +1685,22 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    CERTIFIED ;
 
 : MK-FIXTURE ( str str str -- )
-   {: def:^ defu:n text:^ textu:n name:^ nameu:n :}
+   {: def:str text:str name:str :}
    SB-RESET
-   def defu SB-APPEND LF+
+   def SB-APPEND LF+
    s" MK MADE" SB-APPEND LF+
-   text textu SB-APPEND LF+
-   name nameu FIXTURE! ;
+   text SB-APPEND LF+
+   name FIXTURE! ;
 
 \ MK-FIXTURE whose row bounds MK's call to the name it reads, so the check goes
 \ on after it.
 : MADE-FIXTURE ( str str -- )
-   {: text:^ textu:n name:^ nameu:n :}
-   s" : MK ( -- ) create ; parses: MK 1" text textu name nameu MK-FIXTURE ;
+   {: text:str name:str :}
+   s" : MK ( -- ) create ; parses: MK 1" text name MK-FIXTURE ;
 
 : MK-WARNED ( n n str -- )
-   {: k:n bs:n code:^ codeu:n :}
-   k s" code" code codeu FIELD=
+   {: k:n bs:n code:str :}
+   k s" code" code FIELD=
    k s" severity" s" warning" FIELD=
    k s" MK" 2 1 bs bs 2 + FX-PATH$ CANON$ FX$ AT-IN ;
 
@@ -1709,52 +1708,52 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" W-CHECK-DEFERRED" MK-WARNED ;
 
 : RUN-REFUSED-AT ( str str n n n n -- )
-   {: c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
+   {: c:str tok:str line:n col:n bs:n be:n :}
    s" " CHECK
-   c cu REJECTED-AS
-   0 tok toku line col bs be AT
+   c REJECTED-AS
+   0 tok line col bs be AT
    s" --all-errors" CHECK
-   c cu REJECTED-AS
-   0 tok toku line col bs be AT ;
+   c REJECTED-AS
+   0 tok line col bs be AT ;
 
 \ --verify-only defers both MK's call and X's body, whose use of MADE needs its
 \ own warning where the check stopped.
 : VERIFY-DEFERS ( str -- )
-   {: tok:^ toku:n :}
+   {: tok:str :}
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 2 T=
    0 34 MK-DEFERRED
    1 s" code" s" W-CHECK-DEFERRED" FIELD=
    1 s" severity" s" warning" FIELD=
-   1 tok toku 3 12 53 53 toku + FX-PATH$ CANON$ FX$ AT-IN ;
+   1 tok 3 12 53 53 tok STR:LEN + FX-PATH$ CANON$ FX$ AT-IN ;
 
 : VERIFY-REFUSED-AT ( str str n n n n -- )
-   {: c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
-   c cu tok toku line col bs be RUN-REFUSED-AT
+   {: c:str tok:str line:n col:n bs:n be:n :}
+   c tok line col bs be RUN-REFUSED-AT
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
    0 34 MK-DEFERRED
-   1 s" code" c cu FIELD=
-   1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+   1 s" code" c FIELD=
+   1 tok line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ hb, run on the arguments added and IN as its stdin, exits WANT with TEXT in
 \ its stderr, or with an empty stderr when TEXT is empty.
-: PIPED ( ^u8 n ^u8 n n -- )
-   {: in:^ inu:n text:^ textu:n want:n :}
+: PIPED ( str str n -- )
+   {: in:str text:str want:n :}
    FX-PATH$
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$  in inu  [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
+   ENGINE-CANDIDATE:PATH$  in  [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    STORE!
    RC @ want T=
-   textu 0= IF GT-ERR-U @ 0 T= EXIT THEN
-   GT-ERR$ text textu STR:CONTAINS? TTRUE ;
+   text STR:LEN 0= IF GT-ERR-U @ 0 T= EXIT THEN
+   GT-ERR$ text STR:CONTAINS? TTRUE ;
 
 : LAUNCHED ( str n -- )
-   {: text:^ textu:n want:n :}
-   EMPTY 0 text textu want PIPED ;
+   {: text:str want:n :}
+   EMPTY 0 >str text want PIPED ;
 
-: LOADED ( ^u8 n n -- )
+: LOADED ( str n -- )
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
    FX-PATH$ PROC-ARGV+
@@ -1781,29 +1780,29 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" message" CASE-MSG$ FIELD=
    0 s" private" s" Ee (0 -- 0)" NOTE= ;
 
-: GEN-CASE-MSG ( str -- ) {: w:^ wu:n :}
-   s" public `Q:" SB-APPEND  w wu SB-APPEND
+: GEN-CASE-MSG ( str -- ) {: w:str :}
+   s" public `Q:" SB-APPEND  w SB-APPEND
    s" ` has a different stack effect from its package's private `" SB-APPEND
-   w wu SB-APPEND  s" `" SB-APPEND ;
+   w SB-APPEND  s" `" SB-APPEND ;
 
 \ The check names a generated private twin W as the load does: in the bytes
 \ the load builds for it from declaration DECL, never folded.
 : GEN-CASE ( str str str str -- )
-   {: decl:^ declu:n name:^ nameu:n w:^ wu:n note:^ noteu:n :}
+   {: decl:str name:str w:str note:str :}
    SB-RESET
    s" package Q" SB-APPEND LF+
-   decl declu SB-APPEND LF+
+   decl SB-APPEND LF+
    s" public" SB-APPEND LF+
-   s" : " SB-APPEND  w wu SB-APPEND  s"  ( -- ) ;" SB-APPEND LF+
+   s" : " SB-APPEND  w SB-APPEND  s"  ( -- ) ;" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
-   name nameu FIXTURE!
-   SB-RESET  s" error[E-SHADOWED-ARITY]: " SB-APPEND  w wu GEN-CASE-MSG
+   name FIXTURE!
+   SB-RESET  s" error[E-SHADOWED-ARITY]: " SB-APPEND  w GEN-CASE-MSG
    SB$ 70 LOADED
    s" --verify-only" CHECK
    GJA-LINE# @ 1 T=
-   SB-RESET  w wu GEN-CASE-MSG
+   SB-RESET  w GEN-CASE-MSG
    0 s" message" SB$ FIELD=
-   0 s" private" note noteu NOTE= ;
+   0 s" private" note NOTE= ;
 
 : TEST-GENERATED-CASE ( -- )
    s" a public whose generated private twin moves other cells" T-LABEL
@@ -1835,15 +1834,15 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ The load exits RC after its record for CODE, placed at AT after the fixture's
 \ path (`:line:column`, or nothing for a record with no place).
 : LOADED-AT ( str str n -- )
-   {: c:^ cu:n at:^ atu:n rc:n :}
-   SB-RESET s" error[" SB-APPEND c cu SB-APPEND s" ]" SB-APPEND
+   {: c:str at:str rc:n :}
+   SB-RESET s" error[" SB-APPEND c SB-APPEND s" ]" SB-APPEND
    SB$ rc LOADED
-   SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND at atu SB-APPEND
+   SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND at SB-APPEND
    GT-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ The fixture path names NAME under the test's root, without making it.
-: NAMED! ( str -- ) {: name:^ nameu:n :}
-   BASE$ name nameu FX-P CAP SPAN:MAKE FS:JOIN-PATH-INTO FX-PU ! ;
+: NAMED! ( str -- ) {: name:str :}
+   BASE$ name FX-P CAP SPAN:MAKE FS:JOIN-PATH-INTO FX-PU ! ;
 
 \ The check's only record stands in no source: it names no file and no word.
 : UNPLACED ( -- )
@@ -1854,15 +1853,15 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    root s" notes" GJA-FIELD? IF s" word" FIELD-ABSENT ELSE drop THEN ;
 
 \ NAME under the test's root, the root spelled with every link resolved.
-: CANON-NAMED ( str -- str ) {: name:^ nameu:n :}
-   BASE$ CANON$ name nameu DIR-P FS:JOIN-PATH {: u:n :}
-   DIR-P u ;
+: CANON-NAMED ( str -- str ) {: name:str :}
+   BASE$ CANON$ name DIR-P FS:JOIN-PATH {: u:n :}
+   DIR-P u >str ;
 
 \ The fixture path, a named input that does not exist, gets the load's record
 \ and status, searched at WANT, from the load and the check alike.
-: NAMED-MISSING ( str -- ) {: want:^ wantu:n :}
+: NAMED-MISSING ( str -- ) {: want:str :}
    SB-RESET  s" error[E-MISSING-SOURCE]: cannot open `" SB-APPEND  FX-PATH$ SB-APPEND
-   S\" `\n  = searched: " SB-APPEND  want wantu SB-APPEND
+   S\" `\n  = searched: " SB-APPEND  want SB-APPEND
    S\" \n  = help: a path given on the command line is looked up from the" SB-APPEND
    S\"  directory hb runs in\n\n" SB-APPEND
    SB$ 70 LOADED  GT-ERR$ SB$ T$=
@@ -1870,7 +1869,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" code" s" E-MISSING-SOURCE" FIELD=
    SB-RESET  s" cannot open `" SB-APPEND  FX-PATH$ SB-APPEND  s" `" SB-APPEND
    0 s" message" SB$ FIELD=
-   0 s" searched" want wantu NOTE=
+   0 s" searched" want NOTE=
    0 s" help" s" a path given on the command line is looked up from the directory hb runs in" FIELD=
    UNPLACED ;
 
@@ -1910,7 +1909,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" named-file/x.f/." CANON-NAMED NAMED-MISSING ;
 
 \ hb runs the fixture path as a program, exiting WANT with TEXT in its stderr.
-: RAN ( ^u8 n n -- )
+: RAN ( str n -- )
    PROC-ARGV-RESET  FX-PATH$ PROC-ARGV+  LAUNCHED ;
 
 \ The arguments start tools/check.f with --json-errors.
@@ -1921,7 +1920,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ tools/check.f checks the fixture path with --json-errors, exiting WANT with
 \ TEXT in its stderr, whose records are split for FIELD=.
-: CHECKED ( ^u8 n n -- )
+: CHECKED ( str n -- )
    CHECK-ARGV  FX-PATH$ PROC-ARGV+
    LAUNCHED  GT-ERR$ GJA-SPLIT-LINES ;
 
@@ -1960,7 +1959,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ The fixture path names a file under the test's root, its name past the cap.
 : LONG-NAMED! ( -- )
    LONG-NAME-BYTES 0 ?do 97 LONG-NAME i + c! loop
-   LONG-NAME LONG-NAME-BYTES NAMED! ;
+   LONG-NAME LONG-NAME-BYTES >str NAMED! ;
 
 \ A named input whose path resolves past the cap, or is empty, is judged by the
 \ resolver alone.
@@ -1987,11 +1986,11 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : TEST-STDIN-CAST ( -- )
    s" a cast evaluated from stdin's bytes, at its place in <stdin>" T-LABEL
    s" parse-name x str> drop 31 + 32 evaluate \ cast: LRD-WIDE ( n -- ptr u8 n )"
-   {: src:^ srcu:n :}
+   {: src:str :}
    CHECK-ARGV
-   src srcu s" E-CAST-FAM" 70 PIPED  GT-ERR$ GJA-SPLIT-LINES
+   src s" E-CAST-FAM" 70 PIPED  GT-ERR$ GJA-SPLIT-LINES
    GJA-LINE# @ 1 T=
-   0 s" ptr" 1 65 64 67 s" <stdin>" src srcu PLACED-IN ;
+   0 s" ptr" 1 65 64 67 s" <stdin>" src PLACED-IN ;
 
 \ CALLBACK builds the duplicate's name in its own buffer, so the check places
 \ the record at the `;CALLBACK` that ran it, as the load does.
@@ -2007,26 +2006,27 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" ;CALLBACK" 4 1 74 83 FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ The fixture's path spelled BASE/./.../NAME, past the cap.
-: DOTTED! ( str -- ) {: name:^ nameu:n :}
-   BASE$ {: b:^ bu:n :}
-   b FX-P bu BYTE-COPY  47 FX-P bu + c!  bu 1+ FX-PU !
-   begin FX-PU @ nameu + PATH-CAP <= while
+: DOTTED! ( str -- ) {: name:str :}
+   BASE$ {: b:str :}
+   b STR:DATA FX-P b STR:LEN BYTE-COPY
+   47 FX-P b STR:LEN + c!  b STR:LEN 1+ FX-PU !
+   begin FX-PU @ name STR:LEN + PATH-CAP <= while
       46 FX-P FX-PU @ + c!  47 FX-P FX-PU @ 1+ + c!
       FX-PU @ 2 + FX-PU !
    repeat
-   name FX-P FX-PU @ + nameu BYTE-COPY
-   FX-PU @ nameu + FX-PU ! ;
+   name STR:DATA FX-P FX-PU @ + name STR:LEN BYTE-COPY
+   FX-PU @ name STR:LEN + FX-PU ! ;
 
 \ Fixture NAME's one line includes the fixture path, which may be past the
 \ string builder's capacity.
-: INCLUDER! ( str -- ) {: name:^ nameu:n :}
-   s" include " {: k:^ ku:n :}
-   k FX ku BYTE-COPY
-   FX-P FX ku + FX-PU @ BYTE-COPY
-   ku FX-PU @ + {: u:n :}
+: INCLUDER! ( str -- ) {: name:str :}
+   s" include " {: k:str :}
+   k STR:DATA FX k STR:LEN BYTE-COPY
+   FX-P FX k STR:LEN + FX-PU @ BYTE-COPY
+   k STR:LEN FX-PU @ + {: u:n :}
    10 FX u + c!
    u 1+ FX-U !
-   BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
+   BASE$ name FX-P FS:JOIN-PATH FX-PU !
    FX-PATH$ FX$ FS:WRITE-ALL ;
 
 \ A named input written past the cap that resolves within it runs, is loaded
@@ -2054,8 +2054,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    [: EMPTY-MSG ;] RANGE-FIELDS ;
 
 \ The run places the record for CODE at line L, column C of the fixture.
-: RAN-AT ( str n n -- ) {: c:^ cu:n l:n col:n :}
-   SB-RESET  s" error[" SB-APPEND  c cu SB-APPEND
+: RAN-AT ( str n n -- ) {: c:str l:n col:n :}
+   SB-RESET  s" error[" SB-APPEND  c SB-APPEND
    SB$ 70 RAN
    SB-RESET  s" --> " SB-APPEND  FX-PATH$ SB-APPEND  s" :" SB-APPEND
    l FMT:SB-U  s" :" SB-APPEND  col FMT:SB-U  LF+
@@ -2063,26 +2063,26 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ The run, the check and --verify-only place the record for CODE at the
 \ fixture's bytes BS to BE on line 1.
-: LITERAL-PLACED ( str n n -- ) {: c:^ cu:n bs:n be:n :}
-   c cu 1 bs 1+ RAN-AT
-   c cu 70 CHECKED
-   c cu REJECTED-AS
-   0 FX bs + be bs -  1 bs 1+ bs be FX-PATH$ FX$ PLACED-IN
+: LITERAL-PLACED ( str n n -- ) {: c:str bs:n be:n :}
+   c 1 bs 1+ RAN-AT
+   c 70 CHECKED
+   c REJECTED-AS
+   0 FX bs + be bs - >str  1 bs 1+ bs be FX-PATH$ FX$ PLACED-IN
    s" --verify-only" 70 CHECK-EXIT
-   c cu REJECTED-AS
-   0 FX bs + be bs -  1 bs 1+ bs be FX-PATH$ CANON$ FX$ PLACED-IN ;
+   c REJECTED-AS
+   0 FX bs + be bs - >str  1 bs 1+ bs be FX-PATH$ CANON$ FX$ PLACED-IN ;
 
 \ Fixture NAME's one line passes `included` an escaped literal, LONG-NAME-BYTES
 \ `x` then `\x41.f`, past the cap; written in FX, as the string builder holds
 \ less.
-: LONG-ESCAPED! ( str -- ) {: name:^ nameu:n :}
-   BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
-   s\" s\\\" " {: k:^ ku:n :}
-   k FX ku BYTE-COPY
-   LONG-NAME-BYTES 0 ?do 120 FX ku + i + c! loop
-   s\" \\x41.f\" included\n" {: t:^ tu:n :}
-   t FX ku + LONG-NAME-BYTES + tu BYTE-COPY
-   ku LONG-NAME-BYTES + tu + FX-U !
+: LONG-ESCAPED! ( str -- ) {: name:str :}
+   BASE$ name FX-P FS:JOIN-PATH FX-PU !
+   s\" s\\\" " {: k:str :}
+   k STR:DATA FX k STR:LEN BYTE-COPY
+   LONG-NAME-BYTES 0 ?do 120 FX k STR:LEN + i + c! loop
+   s\" \\x41.f\" included\n" {: t:str :}
+   t STR:DATA FX k STR:LEN + LONG-NAME-BYTES + t STR:LEN BYTE-COPY
+   k STR:LEN LONG-NAME-BYTES + t STR:LEN + FX-U !
    FX-PATH$ FX$ FS:WRITE-ALL ;
 
 \ A top-level literal's path the loader rejects is placed at the literal, an
@@ -2105,10 +2105,10 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ The string builder holds a skipped arm of the line given, then a load of
 \ str-dep.f.
-: STR-ARM! ( str -- ) {: a:^ u:n :}
+: STR-ARM! ( str -- ) {: s:str :}
    STR-DEP!
    SB-RESET  s" HB-TARGET-WASM? [if]" SB-APPEND LF+
-   a u SB-APPEND LF+  s" [then]" SB-APPEND LF+
+   s SB-APPEND LF+  s" [then]" SB-APPEND LF+
    s\" s\" str-dep.f\" required" SB-APPEND LF+
    s" STR-DEP" SB-APPEND LF+ ;
 
@@ -2306,7 +2306,7 @@ HB-TARGET-LINUX? 0= [if]
 \ The fixture directory TEST-REQUIRED-UNSEARCHABLE makes unsearchable.
 : UNSEARCHABLE$ ( -- str )
    BASE$ s" unsearchable" DIR-P FS:JOIN-PATH {: u:n :}
-   DIR-P u ;
+   DIR-P u >str ;
 
 \ The help of a record whose lookup UNSEARCHABLE$ denied.
 : UNSEARCHABLE-HELP ( -- )
@@ -2396,7 +2396,7 @@ HB-TARGET-LINUX? 0= [if]
    s" lnk" NAMED!  s" unsearchable/sub" FX-PATH$ FS:MAKE-SYMLINK
    s" alnk" NAMED!
    BASE$ s" unsearchable/sub" DIR-P FS:JOIN-PATH {: au:n :}
-   DIR-P au FX-PATH$ FS:MAKE-SYMLINK
+   DIR-P au >str FX-PATH$ FS:MAKE-SYMLINK
    s" require unsearchable/x.f" s" require-unsearchable.f" LINE-FIXTURE
    UNSEARCHABLE$ 0 FS:CHMOD-MODE
    [: UNSEARCHABLE-REJECTED LONG-REJECTED LINKED-REJECTED
@@ -2448,9 +2448,9 @@ HB-TARGET-LINUX? 0= [if]
    GT-ERR$ SB$ T$= ;
 
 : VERIFY-REJECTED-AT ( n str str n n n n -- )
-   {: k:n c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
-   k s" code" c cu FIELD=
-   k tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+   {: k:n c:str tok:str line:n col:n bs:n be:n :}
+   k s" code" c FIELD=
+   k tok line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ A bad escape is rejected at the literal's opener, by each check as by the
 \ load, before an unclosed string after it. An earlier definition's E-UNDEFINED
@@ -2495,13 +2495,13 @@ HB-TARGET-LINUX? 0= [if]
    1 s" E-UNTERMINATED-STRING" s\" s\"" 2 1 21 23 VERIFY-REJECTED-AT
    s" E-UNDEFINED" s" :1:12" 70 LOADED-AT ;
 
-\ The load knows no `EPRIM:`, so it rejects the fixture at it: p pu is the
+\ The load knows no `EPRIM:`, so it rejects the fixture at it: p is the
 \ record's place after the path, through its marked source line.
-: ROW-LOADED ( str -- ) {: p:^ pu:n :}
+: ROW-LOADED ( str -- ) {: p:str :}
    s" error[E-UNDEFINED]" 70 LOADED
    SB-RESET
    S\" error[E-UNDEFINED]: cannot find word `EPRIM:`\n --> " SB-APPEND
-   FX-PATH$ SB-APPEND  p pu SB-APPEND
+   FX-PATH$ SB-APPEND  p SB-APPEND
    S\"   = help: define `EPRIM:` before this point, or check its spelling\n\n"
    SB-APPEND
    GT-ERR$ SB$ T$= ;
@@ -2559,8 +2559,8 @@ HB-TARGET-LINUX? 0= [if]
 
 \ A step is 5 bytes written and 2 decoded: PATH-CAP 4 / steps pass PATH-CAP
 \ written only, PATH-CAP 3 * 5 / decoded too, and the resolver takes both.
-: STEPS-FIXTURE ( n str -- ) {: steps:n name:^ nameu:n :}
-   BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
+: STEPS-FIXTURE ( n str -- ) {: steps:n name:str :}
+   BASE$ name FX-P FS:JOIN-PATH FX-PU !
    0 FX-U !
    s\" s\\\" " FX+
    steps 0 ?do s\" .\\x2F" FX+ loop
@@ -2568,18 +2568,18 @@ HB-TARGET-LINUX? 0= [if]
    FX-PATH$ FX$ FS:WRITE-ALL ;
 
 : VERIFY-ONLY-AT ( str n n str n n n n -- )
-   {: call:^ callu:n cline:n cbs:n tok:^ toku:n line:n col:n bs:n be:n :}
+   {: call:str cline:n cbs:n tok:str line:n col:n bs:n be:n :}
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 2 T=
    0 s" code" s" W-CHECK-DEFERRED" FIELD=
    0 s" severity" s" warning" FIELD=
-   0 call callu cline 1 cbs cbs callu + FX-PATH$ CANON$ FX$ AT-IN
+   0 call cline 1 cbs cbs call STR:LEN + FX-PATH$ CANON$ FX$ AT-IN
    1 s" code" s" W-CHECK-DEFERRED" FIELD=
    1 s" severity" s" warning" FIELD=
-   1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+   1 tok line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 : VERIFY-STOPPED-AT ( str n n -- )
-   {: call:^ callu:n cline:n cbs:n :}
+   {: call:str cline:n cbs:n :}
    s" " 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
    s" --all-errors" 0 CHECK-EXIT
@@ -2589,7 +2589,7 @@ HB-TARGET-LINUX? 0= [if]
    0 s" code" s" W-CHECK-STOPPED" FIELD=
    0 s" severity" s" warning" FIELD=
    0 s" label" s" may move the source root" FIELD=
-   0 call callu cline 1 cbs cbs callu + FX-PATH$ CANON$ FX$ AT-IN ;
+   0 call cline 1 cbs cbs call STR:LEN + FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ A string loader's path is the bytes the load's literal makes. A loader in a
 \ body loads when the word runs: the plain check and --all-errors follow its
@@ -3124,22 +3124,22 @@ HB-TARGET-LINUX? 0= [if]
    s" GEN" SB-APPEND LF+ ;
 
 : SUGGESTS ( str n n str str -- )
-   {: code:^ codeu:n want:n k:n tok:^ toku:n sug:^ sugu:n :}
+   {: code:str want:n k:n tok:str sug:str :}
    s" --verify-only" want CHECK-EXIT
-   k s" code" code codeu FIELD=
-   k s" token" tok toku FIELD=
-   sugu 0 > IF k s" help" sug sugu FIELD= EXIT THEN
+   k s" code" code FIELD=
+   k s" token" tok FIELD=
+   sug STR:LEN 0 > IF k s" help" sug FIELD= EXIT THEN
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
    k GJA-LINE$ GJA-PARSE s" help" FIELD-ABSENT ;
 
 : DEFER-SUGGESTS ( n n str str -- )
-   {: want:n k:n tok:^ toku:n sug:^ sugu:n :}
-   s" W-CHECK-DEFERRED" want k tok toku sug sugu SUGGESTS ;
+   {: want:n k:n tok:str sug:str :}
+   s" W-CHECK-DEFERRED" want k tok sug SUGGESTS ;
 
 \ A stop fails --verify-only when nothing is refused.
 : STOP-SUGGESTS ( n str str -- )
-   {: k:n tok:^ toku:n sug:^ sugu:n :}
-   s" W-CHECK-STOPPED" 1 k tok toku sug sugu SUGGESTS
+   {: k:n tok:str sug:str :}
+   s" W-CHECK-STOPPED" 1 k tok sug SUGGESTS
    k s" message" s" checks nothing after it" FIELD-HAS ;
 
 \ A deferral's help names what lifts its cause. A body the check defers, and a
@@ -3536,14 +3536,14 @@ HB-TARGET-LINUX? 0= [if]
    s" taken-ffi-open.f" FIXTURE!
    TAKEN-AT ;
 
-\ The load's only record, and the check's first, is c cu at the token tok toku.
+\ The load's only record, and the check's first, is c at the token tok.
 : FIRST-AT ( str str str n n n n -- )
-   {: c:^ cu:n at:^ atu:n tok:^ toku:n line:n col:n bs:n be:n :}
-   c cu at atu 70 LOADED-AT
+   {: c:str at:str tok:str line:n col:n bs:n be:n :}
+   c at 70 LOADED-AT
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
    s" " CHECK
-   0 s" code" c cu FIELD=
-   0 tok toku line col bs be AT ;
+   0 s" code" c FIELD=
+   0 tok line col bs be AT ;
 
 \ A FUNCTION: inside an open declaration rejects the open one at its opener
 \ before its own name is tested, though that name is taken.
@@ -3796,7 +3796,7 @@ HB-TARGET-LINUX? 0= [if]
    GT-ERR$ s" caught-dep.f" STR:CONTAINS? TFALSE ;
 
 : AMBIG-FIXTURE ( bool str -- )
-   {: global:bool body:^ bodyu:n :}
+   {: global:bool body:str :}
    SB-RESET
    s" package PA" SB-APPEND LF+
    s" public" SB-APPEND LF+
@@ -3810,7 +3810,7 @@ HB-TARGET-LINUX? 0= [if]
    s" using PA" SB-APPEND LF+
    s" using PB" SB-APPEND LF+
    s" : USE-IT ( -- )" SB-APPEND LF+
-   body bodyu SB-APPEND LF+
+   body SB-APPEND LF+
    s" ;using" SB-APPEND LF+
    s" ;using" SB-APPEND LF+ ;
 

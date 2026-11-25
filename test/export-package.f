@@ -1,4 +1,3 @@
-split-str
 \ export-package.f - interpret-level `EXPORT` in fresh child engines. Inside an
 \ open package's public section it publishes an existing word under its own
 \ tail; outside a package it is rejected. A package's `global` section defines
@@ -38,15 +37,15 @@ create XPK-OUT XPK-CAP allot
 create XPK-ERR XPK-CAP allot
 create XPK-EMPTY 1 allot
 
-: XPK-COPY! ( str ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
-   u PATH-CAP > if E-FS-CAPACITY throw then
-   src dst u BYTE-COPY
-   u lenp ! ;
+: XPK-COPY! ( str ^u8 ^n -- ) {: src:str dst:^ lenp:^ :}
+   src STR:LEN PATH-CAP > if E-FS-CAPACITY throw then
+   src STR:DATA dst src STR:LEN BYTE-COPY
+   src STR:LEN lenp ! ;
 
-: XPK-ROOT ( -- str )   XPK-ROOT-BUF XPK-ROOT-U @ ;
-: XPK-CHILD ( -- str )  XPK-CHILD-BUF XPK-CHILD-U @ ;
-: XPK-PROG ( -- str )   XPK-PROG-BUF XPK-PROG-U @ ;
-: XPK-IN$ ( -- str )    XPK-IN XPK-IN-U @ ;
+: XPK-ROOT ( -- str )   XPK-ROOT-BUF XPK-ROOT-U @ >str ;
+: XPK-CHILD ( -- str )  XPK-CHILD-BUF XPK-CHILD-U @ >str ;
+: XPK-PROG ( -- str )   XPK-PROG-BUF XPK-PROG-U @ >str ;
+: XPK-IN$ ( -- str )    XPK-IN XPK-IN-U @ >str ;
 
 : XPK-LF ( -- )   10 SB-APPEND-C ;
 
@@ -132,8 +131,8 @@ create XPK-EMPTY 1 allot
    s" P . ." XPK-LINE
    SB$ ;
 
-: XPK-DBASE-FORGE$ ( str -- str ) {: a:^ u:n :}   \ the line a u alone
-   SB-RESET  a u XPK-LINE  SB$ ;
+: XPK-DBASE-FORGE$ ( str -- str ) {: s:str :}   \ the line s alone
+   SB-RESET  s XPK-LINE  SB$ ;
 
 : XPK-DBASE-EXPORT-FORGE$ ( -- str )     \ BOOT's private data-base (E-SEALED-PACKAGE)
    SB-RESET
@@ -160,16 +159,16 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ U's public NAME, exported bare from a package under `using U`.
-: XPK-USED-FORGE$ ( str -- str ) {: a:^ u:n :}
+: XPK-USED-FORGE$ ( str -- str ) {: s:str :}
    SB-RESET
    s" package U" XPK-LINE
    s" public" XPK-LINE
-   s" : " SB-APPEND  a u SB-APPEND  s"  ( -- n ) 7 ;" XPK-LINE
+   s" : " SB-APPEND  s SB-APPEND  s"  ( -- n ) 7 ;" XPK-LINE
    s" ;package" XPK-LINE
    s" using U" XPK-LINE
    s" package XP" XPK-LINE
    s" public" XPK-LINE
-   s" EXPORT " SB-APPEND  a u XPK-LINE
+   s" EXPORT " SB-APPEND  s XPK-LINE
    s" ;package" XPK-LINE
    s" ;using" XPK-LINE
    SB$ ;
@@ -303,9 +302,9 @@ create XPK-EMPTY 1 allot
    s" P-GLOBAL . cr" XPK-LINE
    SB$ ;
 
-\ The package, then the line a u.
-: XPK-GLOBAL-AFTER$ ( str -- str ) {: a:^ u:n :}
-   SB-RESET XPK-GLOBAL-PKG  a u XPK-LINE  SB$ ;
+\ The package, then the line s.
+: XPK-GLOBAL-AFTER$ ( str -- str ) {: s:str :}
+   SB-RESET XPK-GLOBAL-PKG  s XPK-LINE  SB$ ;
 
 : XPK-GLOBAL-OUTSIDE$ ( -- str )
    SB-RESET
@@ -398,8 +397,8 @@ create XPK-EMPTY 1 allot
    s" Q:LATE . cr" XPK-LINE
    SB$ ;
 
-\ A sealed package's part B, then the line a u in B's global section.
-: XPK-SEALED-PART$ ( str -- str ) {: a:^ u:n :}
+\ A sealed package's part B, then the line s in B's global section.
+: XPK-SEALED-PART$ ( str -- str ) {: s:str :}
    SB-RESET
    s" package U" XPK-LINE
    s" public" XPK-LINE
@@ -411,7 +410,7 @@ create XPK-EMPTY 1 allot
    s" seal-package" XPK-LINE
    s" package B" XPK-LINE
    s" global" XPK-LINE
-   a u XPK-LINE
+   s XPK-LINE
    s" ;package" XPK-LINE
    s" ;package" XPK-LINE
    SB$ ;
@@ -523,15 +522,15 @@ create XPK-EMPTY 1 allot
    s" CALLBACK: ( -- ) ;CALLBACK" XPK-LINE
    SB$ ;
 
-\ A sealed package P, then the section word s su, if any, and the line a u.
-: XPK-SEALED-LINE$ ( str str -- str ) {: s:^ su:n a:^ u:n :}
+\ A sealed package P, then the section word s, if any, and the line a.
+: XPK-SEALED-LINE$ ( str str -- str ) {: s:str a:str :}
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
    s" : HID ( -- n ) 9 ;" XPK-LINE
    s" seal-package" XPK-LINE
-   su 0 > IF s su XPK-LINE THEN
-   a u XPK-LINE
+   s STR:LEN 0 > IF s XPK-LINE THEN
+   a XPK-LINE
    s" ;package" XPK-LINE
    SB$ ;
 
@@ -620,31 +619,31 @@ create XPK-EMPTY 1 allot
 \ Children run ENGINE-CANDIDATE:PATH$ over piped stdin or under --load.
 
 : XPK-STORE! ( len len PROCESS:ending str -- )
-   {: outu:len erru:len oc src:^ srcu:n :}
+   {: outu:len erru:len oc src:str :}
    outu LEN>N XPK-OUT-U !  erru LEN>N XPK-ERR-U !
    oc MATCH PROCESS:ending
      exited OF XPK-RC ! 0 0= XPK-EXITED ! ENDOF
      signaled OF XPK-RC ! 0 0= 0= XPK-EXITED ! ENDOF
      timeout OF
-        src srcu XPK-OUT XPK-OUT-U @ XPK-ERR XPK-ERR-U @ T-TIMED-OUT
+        src XPK-OUT XPK-OUT-U @ >str XPK-ERR XPK-ERR-U @ >str T-TIMED-OUT
      ENDOF
    ;MATCH ;
 
-: XPK-IN! ( str -- ) {: a:^ u:n :}
-   u XPK-CAP > if E-FS-CAPACITY throw then
-   a XPK-IN u BYTE-COPY
-   u XPK-IN-U ! ;
+: XPK-IN! ( str -- ) {: s:str :}
+   s STR:LEN XPK-CAP > if E-FS-CAPACITY throw then
+   s STR:DATA XPK-IN s STR:LEN BYTE-COPY
+   s STR:LEN XPK-IN-U ! ;
 
 : XPK-RUN-LOAD ( str -- )
-   {: src:^ srcu:n :}
-   XPK-CHILD src srcu FS:WRITE-ALL
+   {: src:str :}
+   XPK-CHILD src FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
    XPK-CHILD PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$  XPK-EMPTY 0  XPK-OUT XPK-CAP >LEN
+   ENGINE-CANDIDATE:PATH$  XPK-EMPTY 0 >str  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   src srcu XPK-STORE! ;
+   src XPK-STORE! ;
 
 : XPK-RUN-STDIN ( str -- )
    XPK-IN!
@@ -663,7 +662,7 @@ create XPK-EMPTY 1 allot
 
 \ Runs the arguments so far with empty stdin.
 : XPK-SPAWN ( -- )
-   ENGINE-CANDIDATE:PATH$  XPK-EMPTY 0  XPK-OUT XPK-CAP >LEN
+   ENGINE-CANDIDATE:PATH$  XPK-EMPTY 0 >str  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    XPK-CHILD XPK-STORE! ;
@@ -692,16 +691,16 @@ create XPK-EMPTY 1 allot
    XPK-EXITED @ TTRUE
    XPK-RC @ rc T= ;
 
-: XPK-OUT? ( str -- ) {: a:^ u:n :}
-   XPK-OUT XPK-OUT-U @ a u STR:CONTAINS? TTRUE ;
+: XPK-OUT? ( str -- ) {: s:str :}
+   XPK-OUT XPK-OUT-U @ >str s STR:CONTAINS? TTRUE ;
 
-: XPK-ERR? ( str -- ) {: a:^ u:n :}
-   XPK-ERR XPK-ERR-U @ a u STR:CONTAINS? TTRUE ;
+: XPK-ERR? ( str -- ) {: s:str :}
+   XPK-ERR XPK-ERR-U @ >str s STR:CONTAINS? TTRUE ;
 
 : XPK-PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" habu-export-pkg" FS:MKTEMP-DIR {: a:^ u:n :}
-   a u XPK-ROOT-BUF XPK-ROOT-U XPK-COPY!
+   s" habu-export-pkg" FS:MKTEMP-DIR {: dir:str :}
+   dir XPK-ROOT-BUF XPK-ROOT-U XPK-COPY!
    XPK-ROOT FS:CLEANUP-TREE+
    XPK-ROOT s" forge.f" XPK-CHILD-BUF FS:JOIN-PATH XPK-CHILD-U !
    XPK-ROOT s" forge-prog" XPK-PROG-BUF FS:JOIN-PATH XPK-PROG-U ! ;
@@ -712,17 +711,17 @@ create XPK-EMPTY 1 allot
 
 \ --- cases ---------------------------------------------------------------------
 
-\ The source a u is rejected with record e and text c by stdin, by --load and
+\ The source s is rejected with record e and text c by stdin, by --load and
 \ by the verifier alone.
-: XPK-REJECT-ALL ( str str str -- ) {: a:^ u:n e:^ eu:n c:^ cu:n :}
-   a u XPK-RUN-STDIN 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
-   a u XPK-RUN-LOAD 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
-   XPK-RUN-VERIFY 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR? ;
+: XPK-REJECT-ALL ( str str str -- ) {: s:str e:str c:str :}
+   s XPK-RUN-STDIN 70 XPK-ASSERT-RC  e XPK-ERR?  c XPK-ERR?
+   s XPK-RUN-LOAD 70 XPK-ASSERT-RC  e XPK-ERR?  c XPK-ERR?
+   XPK-RUN-VERIFY 70 XPK-ASSERT-RC  e XPK-ERR?  c XPK-ERR? ;
 
-\ The line a u is rejected by --load for naming data-base, which only the
+\ The line s is rejected by --load for naming data-base, which only the
 \ engine's packages reach, by EXPORT.
-: XPK-DBASE ( str -- ) {: a:^ u:n :}
-   a u XPK-DBASE-FORGE$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
+: XPK-DBASE ( str -- ) {: s:str :}
+   s XPK-DBASE-FORGE$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    s" error[E-UNDEFINED]" XPK-ERR?  s" `data-base`" XPK-ERR? ;
 
 : XPK-POSITIVES ( -- )
@@ -732,7 +731,7 @@ create XPK-EMPTY 1 allot
    XPK-CTOR-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" ctor-alias-ok" XPK-OUT?
    s" a program reads STR's exports of its primitives" T-LABEL
    XPK-STR-PRIM-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC
-   XPK-OUT XPK-OUT-U @ S\" 97\n3\n" T$=
+   XPK-OUT XPK-OUT-U @ >str S\" 97\n3\n" T$=
    s" data record exports (--load)" T-LABEL
    XPK-DATA-FORGE$ XPK-RUN-LOAD 0 XPK-ASSERT-RC s" 42" XPK-OUT?
    s" an unsealed package's private word exports (--load)" T-LABEL
@@ -803,20 +802,20 @@ create XPK-EMPTY 1 allot
    s" error[E-EXPORT-NO-PACKAGE]" XPK-ERR? ;
 
 \ A name a global section's package does not publish is E-UNDEFINED.
-: XPK-GLOBAL-UNDEFINED ( str -- ) {: a:^ u:n :}
-   a u T-LABEL
-   a u XPK-GLOBAL-AFTER$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
+: XPK-GLOBAL-UNDEFINED ( str -- ) {: s:str :}
+   s T-LABEL
+   s XPK-GLOBAL-AFTER$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    s" E-UNDEFINED" XPK-ERR? ;
 
-\ Both --load and tools/check.f reject the source a u with the record e eu
-\ and, unless it is empty, the caret line c cu.
-: XPK-SEALED ( str str str -- ) {: a:^ u:n e:^ eu:n c:^ cu:n :}
-   a u XPK-RUN-LOAD
-   e eu XPK-ERR?  cu 0 > IF c cu XPK-ERR? THEN  70 XPK-ASSERT-RC
+\ Both --load and tools/check.f reject the source s with the record e
+\ and, unless it is empty, the caret line c.
+: XPK-SEALED ( str str str -- ) {: s:str e:str c:str :}
+   s XPK-RUN-LOAD
+   e XPK-ERR?  c STR:LEN 0 > IF c XPK-ERR? THEN  70 XPK-ASSERT-RC
    XPK-RUN-CHECK
-   e eu XPK-ERR?  cu 0 > IF c cu XPK-ERR? THEN  70 XPK-ASSERT-RC ;
+   e XPK-ERR?  c STR:LEN 0 > IF c XPK-ERR? THEN  70 XPK-ASSERT-RC ;
 
-\ Both --load and tools/check.f accept the source a u.
+\ Both --load and tools/check.f accept the source.
 : XPK-ACCEPT-BOTH ( str -- )
    XPK-RUN-LOAD 0 XPK-ASSERT-RC
    XPK-RUN-CHECK 0 XPK-ASSERT-RC ;
@@ -1026,10 +1025,10 @@ create XPK-EMPTY 1 allot
 \ The declaration words are their packages' global words over private
 \ implementations: a checked body reaches no implementation, and may not call
 \ the declaration word itself.
-: XPK-DECL-REJECT ( str str -- ) {: a:^ u:n e:^ eu:n :}
-   a u T-LABEL
-   SB-RESET a u XPK-LINE SB$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
-   e eu XPK-ERR? ;
+: XPK-DECL-REJECT ( str str -- ) {: s:str e:str :}
+   s T-LABEL
+   SB-RESET s XPK-LINE SB$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
+   e XPK-ERR? ;
 
 : XPK-DECL ( -- )
    s" : XPK-DECL-ENUM ( -- ) ENUM-DECL:DECLARE-ENUM ;" s" E-UNDEFINED" XPK-DECL-REJECT
@@ -1083,12 +1082,12 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" ;package" XPK-LINE
    s" 2 3 PT:AT" XPK-LINE ;
 
-\ A point, then the primitive a u on its own line, run; the record names a u.
-: XPK-PT-XPORT ( str -- ) {: a:^ u:n :}
-   a u T-LABEL
-   SB-RESET XPK-PT-LINES  a u XPK-LINE  SB$ XPK-RUN-STDIN
+\ A point, then the primitive s on its own line, run; the record names s.
+: XPK-PT-XPORT ( str -- ) {: s:str :}
+   s T-LABEL
+   SB-RESET XPK-PT-LINES  s XPK-LINE  SB$ XPK-RUN-STDIN
    70 XPK-ASSERT-RC  s" error[E-LAYOUT-VALUE]: `" XPK-ERR?
-   SB-RESET s" `" SB-APPEND  a u SB-APPEND
+   SB-RESET s" `" SB-APPEND  s SB-APPEND
    s" ` at top level would take part of a value held in more than one cell" SB-APPEND
    SB$ XPK-ERR? ;
 
@@ -1141,9 +1140,9 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" 2swap" XPK-PT-XPORT  s" 2over" XPK-PT-XPORT  s" 2>r" XPK-PT-XPORT
    XPK-PT-CONSTANT XPK-EMPTY-CONSTANT XPK-PT-CONSTANTS ;
 
-: XPK-PT-DROP ( str str -- ) {: w:^ v:n a:^ u:n :}
-   w v T-LABEL
-   SB-RESET XPK-PT-LINES  a u XPK-LINE  SB$ XPK-RUN-STDIN
+: XPK-PT-DROP ( str str -- ) {: w:str a:str :}
+   w T-LABEL
+   SB-RESET XPK-PT-LINES  a XPK-LINE  SB$ XPK-RUN-STDIN
    0 XPK-ASSERT-RC  s" 100" XPK-OUT? ;
 
 : XPK-LT-DROP ( -- )

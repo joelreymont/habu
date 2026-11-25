@@ -1,4 +1,3 @@
-split-str
 \ ffi-struct-arg.f - C structs passed by value through FUNCTION:.
 \ Loaded by src/lib/ffi-test.f inside package FFI-TEST, after
 \ test/ffi-struct-result.f, whose canaried destination and fixture it reuses.

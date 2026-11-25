@@ -1,4 +1,3 @@
-split-str
 \ The active allocation follows stack switches and nonlocal frame restoration.
 require test/engine-stack-lifecycle-lib.f
 

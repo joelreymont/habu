@@ -1,4 +1,3 @@
-split-str
 \ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb). A
 \ failure prints F<index>, assertion detail, and exits 1 via T-REPORT.
 \
@@ -26,7 +25,7 @@ package ENGINE-SUITE
 2 constant OWNER-PRIVATE-WID
 
 : NUM-WID-HIDDEN? ( n -- bool )
-   s" (NUM)" rot search-wl 0= ;
+   s" (NUM)" swap search-wl 0= ;
 
 public
 
@@ -234,13 +233,13 @@ FIVE 5 T=
 4 ARR A4
 7 2 A4 !
 2 A4 @ 7 T=
-here 3 over c! 65 over 1 + c! 66 over 2 + c! count 3 T= drop
+here 3 over c! 65 over 1 + c! 66 over 2 + c! count STR:LEN 3 T=
 here 10 over ! 5 over +! @ 15 T=
 
 create TESC-S-WANT
    $41 c, $5C c, $42 c, $22 c, $0A c, $09 c, $0D c, $00 c, $41 c,
 : TESC-S-WANT$ ( -- str )
-   TESC-S-WANT 9 ;
+   TESC-S-WANT 9 >str ;
 : TESC-S-COMPILED$ ( -- str )
    S\" A\\B\"\n\t\r\z\x41" ;
 S\" A\\B\"\n\t\r\z\x41" TESC-S-WANT$ T$=
@@ -250,7 +249,7 @@ create TESC-S-MULTILINE-WANT
    $7B c, $0A c, $20 c, $22 c, $6B c, $22 c, $3A c,
    $20 c, $22 c, $76 c, $22 c, $0A c, $7D c, $0A c,
 : TESC-S-MULTILINE-WANT$ ( -- str )
-   TESC-S-MULTILINE-WANT 14 ;
+   TESC-S-MULTILINE-WANT 14 >str ;
 : TESC-S-MULTILINE$ ( -- str )
    S\" {
  \"k\": \"v\"
@@ -261,7 +260,7 @@ TESC-S-MULTILINE$ TESC-S-MULTILINE-WANT$ T$=
 create TESC-C-WANT
    $41 c, $22 c, $0A c, $42 c,
 : TESC-C-WANT$ ( -- str )
-   TESC-C-WANT 4 ;
+   TESC-C-WANT 4 >str ;
 : TESC-C-COMPILED$ ( -- str )
    C\" A\q\n\x42" count ;
 C\" A\q\n\x42" count TESC-C-WANT$ T$=
@@ -287,11 +286,11 @@ TFOLD 6 T=
 TMAP
 TFOLD 9 T=
 : T-CHECK-REJECTS ( str -- )
-   2dup T-LABEL
+   dup T-LABEL
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : T-CHECK-PASSES ( str -- )
-   2dup T-LABEL
+   dup T-LABEL
    CHECK! -1 T= ;
 
 : TC-DIAG-OFF ( -- )
@@ -381,7 +380,7 @@ T-LABEL-CAP 256 T=
 \ T-LABEL was compiled against the global cap and is still reading it: a label
 \ this long could not have been stored under the package's shadowed 2.
 s" engine resolution: shadow did not reach the compiled reader" T-LABEL
-T-LABEL$ nip 59 T=
+T-LABEL$ STR:LEN 59 T=
 s" engine resolution: the reference spelling is case-folded" T-LABEL
 t-label-cap 256 T=
 T-Label-Cap 256 T=
@@ -403,18 +402,22 @@ public
 
 \ The source travels through the quotation and back out, because x86-64
 \ refuses a quotation that reads a local.
-: OUTCOME ( ^u8 n -- n )
-   [: 2dup evaluate-closed ;] catch {: rc:n :}
-   2drop rc ;
+: EVAL-KEEP ( str -- str )
+   dup evaluate-closed ;
+
+: OUTCOME ( str -- n )
+   [: EVAL-KEEP ;] catch {: rc:n :}
+   drop rc ;
 
 \ OUTCOME with the records it prints captured, however quiet the caller is.
-: CAPTURED ( ^u8 n -- n ) {: a:^ u:n :}
+: CAPTURED ( str -- n ) {: src:str :}
    REJECTION:QUIET @ {: q:n :}
    0 REJECTION:QUIET !  REJECTION:CAPTURE
-   a u OUTCOME
+   src OUTCOME
    REJECTION:BUFFER-OFF  q REJECTION:QUIET ! ;
-\ Whether the captured records hold the text a u.
-: HAS ( ^u8 n -- ) {: a:^ u:n :}   REJECTION:BUFFER$ a u STR:CONTAINS? TTRUE ;
+\ Whether the captured records hold the text.
+: HAS ( str -- ) {: want:str :}
+   REJECTION:BUFFER$ want STR:CONTAINS? TTRUE ;
 
 ;package
 
@@ -463,11 +466,11 @@ s" sigless-mid-comment certifies" T-LABEL
 s" COK-SIGLESS-MID-COMMENT dup ( n -- n ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 \ escaped-string payloads: the checker accepts exactly the engine's escape set
 \ and rejects what the load path rejects.
-s\" COK-ESC-GOOD ( -- ^u8 n ) s\\\" a\\n b\\\\ c\\\" d\\x41 e\\XaF f\\q g\\z\" " T-CHECK-PASSES
-s\" CBAD-ESC-LETTER ( -- ^u8 n ) s\\\" bad\\g\" " T-CHECK-REJECTS
-s\" CBAD-ESC-HEX ( -- ^u8 n ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
-s\" CBAD-ESC-HEX-SHORT ( -- ^u8 n ) s\\\" bad\\x4\" " T-CHECK-REJECTS
-s\" CBAD-ESC-UNTERMINATED ( -- ^u8 n ) s\\\" no end" T-CHECK-REJECTS
+s\" COK-ESC-GOOD ( -- str ) s\\\" a\\n b\\\\ c\\\" d\\x41 e\\XaF f\\q g\\z\" " T-CHECK-PASSES
+s\" CBAD-ESC-LETTER ( -- str ) s\\\" bad\\g\" " T-CHECK-REJECTS
+s\" CBAD-ESC-HEX ( -- str ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
+s\" CBAD-ESC-HEX-SHORT ( -- str ) s\\\" bad\\x4\" " T-CHECK-REJECTS
+s\" CBAD-ESC-UNTERMINATED ( -- str ) s\\\" no end" T-CHECK-REJECTS
 \ A pointer's pointee element type is invariant: the u8->cell/u32 integer
 \ widening that applies to top-level scalar cells must NOT apply inside a ptr.
 s" COK-PTR-ADD ( ^a n -- ^a ) +" T-CHECK-PASSES
@@ -496,11 +499,11 @@ TYPED-VARIABLE ESB-BYTE-P ^u8
 s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
 \ REC-SIG refusal is certified-but-unrecorded and must say which word and why.
 : T-CHECK-SAYS ( str str -- )
-   {: ta:^ tu:n :}
+   {: src:str want:str :}
    REJECTION:CAPTURE
-   2dup T-LABEL
-   CHECK-CANDIDATE! 0 T=
-   REJECTION:BUFFER$ ta tu STR:CONTAINS? TTRUE
+   src T-LABEL
+   src CHECK-CANDIDATE! 0 T=
+   REJECTION:BUFFER$ want STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 \ An effect's text renders quotation effects to EFFECT-DEPTH-MAX levels, so a
 \ quot nested past a diagnostic's budget still records.
@@ -620,7 +623,7 @@ s" COK-CODESIG2 ( -- img ) T-ASM-CODE T-BUILD-IMAGE T-CODESIG2" T-CHECK-PASSES
 s" COK-SNAP-HDR ( n -- snap n ) T-BUILD-SNAP-HDR" T-CHECK-PASSES
 s" COK-SNAP-EXTRA ( -- ^u8 n ) T-SNAP-EXTRA-PTR T-SNAP-EXTRA-SIZE" T-CHECK-PASSES
 s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" T-CHECK-PASSES
-s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" T-CHECK-PASSES
+s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 >str 1 die then 1 +" T-CHECK-PASSES
 defer T-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> )
 defer T-PTX-ADD ( tile<f32,block-256,mask-live> tile<f32,block-256,mask-live> -- tile<f32,block-256,mask-live> )
 defer T-PTX-GRID ( span<space-global,f32,e> -- gridctx<block-256,e,fresh-mask-live> )
@@ -632,10 +635,10 @@ defer T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,
 12064 constant TRAIL-SRC-CAP
 create TRAIL-SRC TRAIL-SRC-CAP allot
 : TRAIL-SRC$ ( str -- str )
-   {: h:^ hu:n :}
-   h TRAIL-SRC hu BYTE-COPY
-   3000 0 ?do s"  1 +" drop TRAIL-SRC hu + i 4 * + 4 BYTE-COPY loop
-   TRAIL-SRC hu 12000 + ;
+   {: h:str :}
+   h STR:DATA TRAIL-SRC h STR:LEN BYTE-COPY
+   3000 0 ?do s"  1 +" STR:DATA TRAIL-SRC h STR:LEN + i 4 * + 4 BYTE-COPY loop
+   TRAIL-SRC h STR:LEN 12000 + >str ;
 s" trail-arena-grow" T-LABEL
 s" COK-TRAIL ( n -- n )" TRAIL-SRC$ CHECK! -1 T=
 s" a body past the trail's first capacity still rejects a wrong result" T-LABEL
@@ -660,8 +663,8 @@ variable LOCG-U
    then
    LOCG-BUF LOCG-U @ + c!  LOCG-U @ 1 + LOCG-U ! ;
 : LOCG+ ( str -- )
-   {: a:^ u:n :}
-   0 begin dup u < while  dup a + c@ LOCG-C  1 + repeat drop ;
+   {: s:str :}
+   0 begin dup s STR:LEN < while  dup s STR:DATA + c@ LOCG-C  1 + repeat drop ;
 : LOCG-NAME ( n -- )
    s"  local-name-past-sixteen-" LOCG+
    dup 10 / 48 + LOCG-C  10 mod 48 + LOCG-C ;
@@ -673,8 +676,8 @@ variable LOCG-U
    s"  {:" LOCG+  100 0 ?do  i LOCG-NAME  loop  s"  :}" LOCG+
    99 LOCG-NAME  0 LOCG-NAME  s"  - ;" LOCG+ ;
 \ The definition without its leading ": " and trailing " ;".
-: LOCG-DEF$ ( -- str ) LOCG-BUF 2 + LOCG-U @ 4 - ;
-: LOCG-SRC$ ( -- str ) LOCG-BUF LOCG-U @ ;
+: LOCG-DEF$ ( -- str ) LOCG-BUF 2 + LOCG-U @ 4 - >str ;
+: LOCG-SRC$ ( -- str ) LOCG-BUF LOCG-U @ >str ;
 LOCG-BUILD
 s" 100 locals with long names certify" T-LABEL
 LOCG-DEF$ CHECK-CANDIDATE! -1 T=
@@ -1289,7 +1292,7 @@ s" CBAD-BUILD-IMAGE-STALE ( -- img ) T-ASM-CODE T-BUILD-IMAGE T-BUILD-IMAGE" T-C
 s" CBAD-CODESIG2 ( -- ) T-CODESIG2" T-CHECK-REJECTS
 s" CBAD-SNAP-HDR ( n -- n ) T-BUILD-SNAP-HDR" T-CHECK-REJECTS
 s" CBAD-THROW-DUMMY ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 +" T-CHECK-REJECTS
-s" CBAD-DIE-DUMMY ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 +" T-CHECK-REJECTS
+s" CBAD-DIE-DUMMY ( i64 -- i64 ) dup 0 < if here 0 >str 1 die 0 then 1 +" T-CHECK-REJECTS
 s" CBAD-EXIT-DUMMY ( i64 -- i64 ) exit 0" T-CHECK-REJECTS
 : T-LINUX-DUP2-FD ( reg fd reg -- ) drop drop drop ;
 : T-LINUX-SPAWN ( reg reg reg reg reg reg reg -- ) drop drop drop drop drop drop drop ;
@@ -1323,9 +1326,9 @@ variable ES-R1  variable ES-W1  variable ES-R2  variable ES-W2
 variable ES-FA  variable ES-FB
 : ES-ADDR ( ^a -- n ) NULL-PTR - ;
 : ES-REQ! ( n n -- ) ES-SFREQ + ! ;               \ ( value field -- )
-: ES-SFZ! ( str n -- ) {: a:^ u:n off:n :}
-   0 begin dup u < while  dup a + c@  over off + ES-SFZ + c!  1 + repeat drop
-   0 ES-SFZ off u + + c! ;
+: ES-SFZ! ( str n -- ) {: s:str off:n :}
+   0 begin dup s STR:LEN < while  dup s STR:DATA + c@  over off + ES-SFZ + c!  1 + repeat drop
+   0 ES-SFZ off s STR:LEN + + c! ;
 : ES-SFDIGIT ( n n -- ) {: fd:n off:n :}  fd 48 +  ES-SFZ ES-SF-SCRIPT off + + c! ;
 : ES-SFSETUP ( -- )
    s" /bin/sh" 0 ES-SFZ!  s" -c" 8 ES-SFZ!
@@ -1348,8 +1351,8 @@ variable ES-FA  variable ES-FB
 : ES-SFSPAWN ( n -- n ) SPAWN-ABI:NFDS ES-REQ!  ES-SFREQ spawn-fds ;
 : ES-FREE-FD ( n -- n ) begin dup ES-F-GETFD 0 fcntl 0 < 0= while 1+ repeat ;
 : ES-SFREAD ( n -- n ) ES-SFBUF 16 read ;
-: ES-SFLINE? ( str n -- bool ) {: a:^ u:n got:n :}
-   got u 1+ =  ES-SFBUF u a u T-STR= and  ES-SFBUF u + c@ 10 = and ;
+: ES-SFLINE? ( str n -- bool ) {: s:str got:n :}
+   got s STR:LEN 1+ =  ES-SFBUF s STR:LEN >str s T-STR= and  ES-SFBUF s STR:LEN + c@ 10 = and ;
 ES-SFSETUP
 
 s" spawn-fds-pipe-on-stdout" T-LABEL
@@ -1428,10 +1431,10 @@ create DIRBASE 8 allot
 create ES-ROOT PATH-CAP allot
 variable ES-ROOT-U
 create ES-JOIN PATH-CAP allot
-: ES-ROOT$ ( -- str ) ES-ROOT ES-ROOT-U @ ;
-: ES-ROOT! ( str -- ) {: a:^ u:n :}  a ES-ROOT u BYTE-COPY  u ES-ROOT-U ! ;
-: ES-TMPZ ( str -- ^u8 ) {: name:^ nameu:n :}
-   ES-ROOT$ name nameu ES-JOIN FS:JOIN-PATH {: u:n :}  ES-JOIN u FS:>PATHZ ;
+: ES-ROOT$ ( -- str ) ES-ROOT ES-ROOT-U @ >str ;
+: ES-ROOT! ( str -- ) {: s:str :}  s STR:DATA ES-ROOT s STR:LEN BYTE-COPY  s STR:LEN ES-ROOT-U ! ;
+: ES-TMPZ ( str -- ^u8 ) {: name:str :}
+   ES-ROOT$ name ES-JOIN FS:JOIN-PATH {: u:n :}  ES-JOIN u >str FS:>PATHZ ;
 variable DFD
 : U16@ ( ^u8 -- n ) {: a:^ :} a c@ a 1 + c@ 8 lshift or ;
 : MODE@ ( -- n ) ES-STB 4 + U16@ ;
@@ -1482,7 +1485,7 @@ TFNEG TTRUE
 5 TQX 5 T=
 0 TQX 99 T=
 
-s" " nip 0 T=
+s" " STR:LEN 0 T=
 
 $340000000 constant ES-LINUX-DATA-VA
 $44000000000 constant ES-MACOS-DATA-VA
@@ -1511,7 +1514,7 @@ TEPOCH TTRUE
 TEPOCH-DEPTH TTRUE
 create TEPOCH-BYTE 120 c,
 : TEPOCH-AFTER-WRITEERR ( -- bool )
-   99 TEPOCH-BYTE 1 write drop epoch-seconds 1600000000 > ;
+   99 TEPOCH-BYTE 1 >str write drop epoch-seconds 1600000000 > ;
 TEPOCH-AFTER-WRITEERR TTRUE
 mono-ns mono-ns <= TTRUE
 : TMONO-ELAPSED ( -- n ) mono-ns 0 100000 0 do i + loop drop mono-ns swap - ;
@@ -1570,9 +1573,9 @@ TJSF TTRUE
 
 \ Public parser primitive: runtime and immediate paths both use the native
 \ tokenizer and advance the caller's input cursor.
-: TPN1 ( -- ) parse-name 5 T= c@ 97 T= ;
+: TPN1 ( -- ) parse-name dup STR:LEN 5 T= STR:DATA c@ 97 T= ;
 TPN1 alpha
-: TPNI ( -- ) parse-name 4 T= c@ 98 T= ; immediate
+: TPNI ( -- ) parse-name dup STR:LEN 4 T= STR:DATA c@ 98 T= ; immediate
 parses: TPNI 1
 : TPN2 ( -- n ) TPNI beta 7 ;
 TPN2 7 T=
@@ -1582,7 +1585,7 @@ EVAL-TOP-CELL VVAL-OFF VSMAX cells + >= TTRUE
 EVAL-TOP-CELL CELL + DATA-START <= TTRUE
 s" : TEVAL-HI-CALLEE ( n n n n n n n -- ) {: a:n b:n c:n d:n e:n f:n g:n :} a drop b drop c drop d drop e drop f drop g drop ; : TEVAL-HI-CALL ( -- ) 1 2 3 4 5 6 7 TEVAL-HI-CALLEE ;" evaluate
 : TEVAL-PARSE ( -- )
-   parse-name 5 T= c@ 103 T= ;
+   parse-name dup STR:LEN 5 T= STR:DATA c@ 103 T= ;
 TEVAL-PARSE gamma
 
 \ float VS: d-reg binops (FADD path), dup of a float constant, and a
@@ -1618,8 +1621,8 @@ variable ES-CPX-ND
 \ a name longer than DNAME-INL: the definer copies it into code space before
 \ the entry
 : ES-CPX-BAD-EXT$ ( -- str ) s" : ES-CPX-BAD-EXTENDED-NAME evaluate ;" ;
-TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ evaluate ;
-TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
+TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ str> evaluate ;
+TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ str> evaluate ;
 : ES-CPX-BAD-RUN ( -- )
    ['] ES-CPX-BAD-EVAL catch 70 T= ;
 : ES-CPX-BAD-EXT-RUN ( -- )
@@ -1739,8 +1742,8 @@ s" ESNP-FETCH-N-2 ( ^n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 \ x18 is Darwin-reserved: XNU zeroes it on any trap return, so an escaped
 \ literal whose copy crosses a DATA page or a code page must not depend on it.
 \ The fixtures sit at top level: evaluate cannot carry escaped literals.
-: TX18-CHK ( str -- ) 150 T=  c@ [char] A T= ;
-: TX18-QCHK ( str -- ) 180 T=  c@ [char] B T= ;
+: TX18-CHK ( str -- ) dup STR:LEN 150 T=  STR:DATA c@ [char] A T= ;
+: TX18-QCHK ( str -- ) dup STR:LEN 180 T=  STR:DATA c@ [char] B T= ;
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK
