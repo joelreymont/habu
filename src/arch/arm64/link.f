@@ -1,7 +1,8 @@
 split-str
 \ link.f - an arm64 shadow emission patched in place for its link-time address:
 \ calls become bl/b and code addresses adrp+add relative to where the code runs,
-\ data address chains take the value a data resolver gives. Words visible only
+\ data address chains take the value a data resolver gives. A code site the
+\ link does not write is `adrp rd, 0; add rd, rd, 0`. Words visible only
 \ inside LINKER.
 
 require src/lib/le.f
@@ -29,16 +30,12 @@ public
    kind NEMIT:CALL = if d A64ASM:ENC-BL else d A64ASM:ENC-B then  p LE:U32! ;
 
 
-\ The 16-byte chain at p, link-time address at, becomes adrp+add of to and two
-\ nops in its own register; ENC-ADRP throws E-A64EMIT-REACH past adrp's reach.
+\ The two words at p, link-time address at, become adrp+add of to in the
+\ register of the first; ENC-ADRP throws E-A64EMIT-REACH past adrp's reach.
 : CODE-ADDRESS! ( n n ^u8 -- )
    {: to:n at:n p:^ :}
-   to 12 rshift  at 12 rshift - {: pages:n :}
-   p LE:U32@ ADDRESS-CARRIER:ADDR-RD-MASK and {: rd:n :}
-   rd pages A64ASM:ENC-ADRP  p LE:U32!
-   rd rd to $FFF and A64ASM:ENC-ADDI  p 4 + LE:U32!
-   A64ASM:ENC-NOP  p 8 + LE:U32!
-   A64ASM:ENC-NOP  p 12 + LE:U32! ;
+   p LE:U32@ ADDRESS-CARRIER:ADDR-RD-MASK and  to at A64ASM:ENC-ADRP-ADD
+   p 4 + LE:U32!  p LE:U32! ;
 
 
 \ dst holds emission e's bytes and runs from link-time address at.
@@ -56,10 +53,11 @@ public
       e i NSHADOW:ADDR-SITE@ {: s:n :}
       dst s + {: p:^ :}
       e i NSHADOW:ADDR-SITE-VALUE@ {: v:n :}
+      e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = {: data?:bool :}
       e s live execute 0= if
-         0 p end CHAIN!
+         data? if 0 p end CHAIN! else 0 0 p CODE-ADDRESS! then
       else
-         e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
+         data? if
             v data execute  p end CHAIN!
          else
             v resolve execute  at s +  p CODE-ADDRESS!
@@ -68,9 +66,11 @@ public
    loop ;
 
 
-\ v written as the address value at site of a row of kind in emission bytes b, s of them.
+\ v written as the address value at site of a row of kind in emission bytes b, s of them;
+\ a code site, whose value depends on where it runs, becomes `adrp rd, 0; add rd, rd, 0`.
 : ADDRESS! ( n ^u8 n n n -- )
    {: v:n b:^ s:n site:n kind:n :}
+   kind NEMIT:ADDR-CODE = if 0 0 b site + CODE-ADDRESS! exit then
    v  b site +  b s +  CHAIN! ;
 
 ;package

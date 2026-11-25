@@ -1,9 +1,9 @@
 split-str
-\ address-carrier.f - the arm64 address chain shapes and their writer. A matching
+\ address-carrier.f - the arm64 data address chain shapes and their writer. A matching
 \ shape grants no provenance: callers still need an address site row or a
 \ created-owner record. Its own package, not RELOC: the engine bakes
 \ layout.f, which owns RELOC, and the image tools that load this file on a
-\ product engine may not reopen it (docs/forth-card.md § 6).
+\ target engine may not reopen it (docs/forth-card.md § 6).
 
 package ADDRESS-CARRIER
 public
@@ -42,7 +42,7 @@ public
 
 \ Shared DATA uses MOVZ lsl32; MOVK lsl16; MOVK lsl0. Both fixed DATA
 \ mappings fit 48 bits. It must not use x20: that base is private to each task.
-\ CODE addresses retain the four-half carrier. Only declared address sites
+\ Any other data address is the four-half carrier. Only declared address sites
 \ use this grammar: a numeric lookalike never acquires pointer provenance.
 \ Return zero on a truncated or malformed carrier, without reading past end.
 : CHAIN-SIZE ( ^u8 ^u8 -- n ) {: p:^ end:^ :}

@@ -13,11 +13,13 @@ split-str
 \ E-A64EMIT-REACH.
 \
 \ A data address inside the fixed DATA mapping is three words, `movz lsl32`,
-\ `movk lsl16`, `movk`; any other address is all four lanes. Every lane is
-\ emitted so the publisher can rewrite it in place. A data address's row
-\ carries the origin ADDR-DATA takes, a code address's -1. A quotation's
-\ address is an `adr` relative to its own site and `recurse` a `bl` to byte
-\ 0: neither files a row.
+\ `movk lsl16`, `movk`; any other data address is all four lanes. Every lane is
+\ emitted so the publisher can rewrite it in place. A code address is `adrp`
+\ and `add` relative to where the code runs, `adrp d, 0; add d, d, 0` until
+\ PATCH writes it for a placed emission or the link for any other. A data
+\ address's row carries the origin ADDR-DATA takes, a code address's -1. A
+\ quotation's address is an `adr` relative to its own site and `recurse` a
+\ `bl` to byte 0: neither files a row.
 \
 \ The frame cell stays the index's home (`j` and the runtime read it); x29 is
 \ a copy written beside every store of it. HELD says whether the code emitted
@@ -272,16 +274,24 @@ variable HELD                         \ nonzero while x29 holds the index
    NCBSTUB:SLOT@ CB-ID OUT @ CHAIN4-IN
    NCBSTUB:THUNK@ {: thunk:n :}
    OUT-OFF NEMIT:ADDR-CODE thunk -1 EMIT-ADDR-ROW+
-   thunk TMP OUT @ CHAIN4-IN
+   TMP 0 ENC-ADRP OUT @ W32+  TMP TMP 0 ENC-ADDI OUT @ W32+
    TMP ENC-BR OUT @ W32+
    at ;
 
-\ Every call row's `bl` or `b`, from its site placed at place to its target.
+\ Every call row's `bl` or `b`, and every code address row's `adrp` and `add`
+\ in the site's register, from its site placed at place to its target.
 : PATCH ( n -- )
    {: place:n :}
    EMIT-CALL-ROWS 0 ?do
       i EMIT-CALL-ROW {: at:n kind:n to:n :}
       to place at + -  kind NEMIT:CALL = if ENC-BL else ENC-B then  at W32!
+   loop
+   EMIT-ADDR-ROWS 0 ?do
+      i EMIT-ADDR-ROW {: at:n kind:n to:n :}
+      kind NEMIT:ADDR-CODE = if
+         OUT @ at VEC:AT c@ 31 and  to  place at +  ENC-ADRP-ADD
+         at INSN + W32!  at W32!
+      then
    loop ;
 
 \ ---- values ------------------------------------------------------------------
@@ -295,7 +305,7 @@ variable HELD                         \ nonzero while x29 holds the index
 : ADDR-CODE ( n vreg -- )
    {: v:n d:vreg :}
    HERE-OFF NEMIT:ADDR-CODE v -1 PEND+
-   v d REG CHAIN4 ;
+   d REG 0 ENC-ADRP W  d REG d REG 0 ENC-ADDI W ;
 
 \ `adr rd, 0` until ADR-PUT writes the distance to unit n.
 : ADDR-QUOT ( n vreg -- )

@@ -546,6 +546,13 @@ public
    pages ADR-OK? ?REACH
    $90000000 rd or  pages ENC-ADRD or MSK ;
 
+\ adrp then add of address to into rd, the pair at address at; ENC-ADRP throws
+\ E-A64EMIT-REACH past adrp's reach.
+: ENC-ADRP-ADD ( n n n -- n n )
+   {: rd:n to:n at:n :}
+   rd  to 12 rshift  at 12 rshift -  ENC-ADRP
+   rd rd to $FFF and ENC-ADDI ;
+
 
 : ENC-FMOVDD ( n n -- n ) DR2 $1E604000 RR ;
 
