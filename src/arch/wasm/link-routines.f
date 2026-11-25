@@ -1,4 +1,3 @@
-split-str
 \ link-routines.f - the kernel routines a Wasm module carries, each laid when the
 \ program reaches its word and shaped as tier 0's code is (src/habu/t0-wasm.f).
 require src/lib/string.f
@@ -750,72 +749,72 @@ variable SITES-N
 : ROUTINE-SITES ( -- n )  SITES-N @ ;
 : ROUTINE-SITE ( n -- n )  SITES @ ;
 
-: BODY$ ( -- str )  0 BUF BUF-U @ ;
+: BODY$ ( -- str )  0 BUF BUF-U @ >str ;
 
 public
 
 \ The named kernel word's routine body, as WLINK:FUNCTION+ takes one and valid
 \ until the next call, and true; an empty span and false when it has none.
 : ROUTINE-BODY ( str -- str bool )
-   {: name:^ u:n :}
+   {: name:str :}
    0 BUF-U !  0 SITES-N !
-   name u s" emit" STR:=CI if EMIT-BODY BODY$ true exit then
-   name u s" write" STR:=CI if WRITE-BODY BODY$ true exit then
-   name u s" !" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
-   name u s" c!" STR:=CI if OP-I64-STORE8 ALIGN-8 STORE-BODY BODY$ true exit then
+   name s" emit" STR:=CI if EMIT-BODY BODY$ true exit then
+   name s" write" STR:=CI if WRITE-BODY BODY$ true exit then
+   name s" !" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
+   name s" c!" STR:=CI if OP-I64-STORE8 ALIGN-8 STORE-BODY BODY$ true exit then
    \ LE's words take any alignment, so their hint is ALIGN-8.
-   name u s" u16@" STR:=CI if OP-I64-LOAD16-U ALIGN-8 LOAD-BODY BODY$ true exit then
-   name u s" u32@" STR:=CI if OP-I64-LOAD32-U ALIGN-8 LOAD-BODY BODY$ true exit then
-   name u s" u16!" STR:=CI if OP-I64-STORE16 ALIGN-8 STORE-BODY BODY$ true exit then
-   name u s" u32!" STR:=CI if OP-I64-STORE32 ALIGN-8 STORE-BODY BODY$ true exit then
+   name s" u16@" STR:=CI if OP-I64-LOAD16-U ALIGN-8 LOAD-BODY BODY$ true exit then
+   name s" u32@" STR:=CI if OP-I64-LOAD32-U ALIGN-8 LOAD-BODY BODY$ true exit then
+   name s" u16!" STR:=CI if OP-I64-STORE16 ALIGN-8 STORE-BODY BODY$ true exit then
+   name s" u32!" STR:=CI if OP-I64-STORE32 ALIGN-8 STORE-BODY BODY$ true exit then
    \ A module saves no image, so xt! is a plain store.
-   name u s" xt!" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
+   name s" xt!" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    \ ---- division, views and atomics
-   name u s" /" STR:=CI if OP-I64-DIV-S true DIVIDE-BODY BODY$ true exit then
-   name u s" mod" STR:=CI if OP-I64-REM-S false DIVIDE-BODY BODY$ true exit then
-   name u s" cell-view" STR:=CI if VIEW-BODY BODY$ true exit then
-   name u s" byte-view" STR:=CI if VIEW-BODY BODY$ true exit then
-   name u s" PTR>N" STR:=CI if VIEW-BODY BODY$ true exit then
-   name u s" >str" STR:=CI if VIEW-BODY BODY$ true exit then
-   name u s" str>" STR:=CI if VIEW-BODY BODY$ true exit then
-   name u s" data" STR:=CI if DATA-BODY BODY$ true exit then
-   name u s" len" STR:=CI if LEN-BODY BODY$ true exit then
-   name u s" fence" STR:=CI if VIEW-BODY BODY$ true exit then
-   name u s" atomic@" STR:=CI if OP-I64-LOAD ALIGN-64 LOAD-BODY BODY$ true exit then
-   name u s" atomic!" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
-   name u s" atomic-u32@" STR:=CI if OP-I64-LOAD32-U ALIGN-32 LOAD-BODY BODY$ true exit then
-   name u s" atomic-u32!" STR:=CI if OP-I64-STORE32 ALIGN-32 STORE-BODY BODY$ true exit then
-   name u s" atomic-cas" STR:=CI if CAS-BODY BODY$ true exit then
-   name u s" atomic-add" STR:=CI if FETCH-ADD-BODY BODY$ true exit then
+   name s" /" STR:=CI if OP-I64-DIV-S true DIVIDE-BODY BODY$ true exit then
+   name s" mod" STR:=CI if OP-I64-REM-S false DIVIDE-BODY BODY$ true exit then
+   name s" cell-view" STR:=CI if VIEW-BODY BODY$ true exit then
+   name s" byte-view" STR:=CI if VIEW-BODY BODY$ true exit then
+   name s" PTR>N" STR:=CI if VIEW-BODY BODY$ true exit then
+   name s" >str" STR:=CI if VIEW-BODY BODY$ true exit then
+   name s" str>" STR:=CI if VIEW-BODY BODY$ true exit then
+   name s" data" STR:=CI if DATA-BODY BODY$ true exit then
+   name s" len" STR:=CI if LEN-BODY BODY$ true exit then
+   name s" fence" STR:=CI if VIEW-BODY BODY$ true exit then
+   name s" atomic@" STR:=CI if OP-I64-LOAD ALIGN-64 LOAD-BODY BODY$ true exit then
+   name s" atomic!" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
+   name s" atomic-u32@" STR:=CI if OP-I64-LOAD32-U ALIGN-32 LOAD-BODY BODY$ true exit then
+   name s" atomic-u32!" STR:=CI if OP-I64-STORE32 ALIGN-32 STORE-BODY BODY$ true exit then
+   name s" atomic-cas" STR:=CI if CAS-BODY BODY$ true exit then
+   name s" atomic-add" STR:=CI if FETCH-ADD-BODY BODY$ true exit then
    \ ---- floats
-   name u s" f+" STR:=CI if OP-F64-ADD FARITH-BODY BODY$ true exit then
-   name u s" f-" STR:=CI if OP-F64-SUB FARITH-BODY BODY$ true exit then
-   name u s" f*" STR:=CI if OP-F64-MUL FARITH-BODY BODY$ true exit then
-   name u s" f/" STR:=CI if OP-F64-DIV FARITH-BODY BODY$ true exit then
-   name u s" fsqrt" STR:=CI if FSQRT-BODY BODY$ true exit then
-   name u s" fnegate" STR:=CI if OP-F64-NEG FSIGN-BODY BODY$ true exit then
-   name u s" fabs" STR:=CI if OP-F64-ABS FSIGN-BODY BODY$ true exit then
-   name u s" f<" STR:=CI if OP-F64-LT FCOMPARE-BODY BODY$ true exit then
-   name u s" f>" STR:=CI if OP-F64-GT FCOMPARE-BODY BODY$ true exit then
-   name u s" f=" STR:=CI if OP-F64-EQ FCOMPARE-BODY BODY$ true exit then
-   name u s" f<=" STR:=CI if OP-F64-LE FCOMPARE-BODY BODY$ true exit then
-   name u s" f>=" STR:=CI if OP-F64-GE FCOMPARE-BODY BODY$ true exit then
-   name u s" f0<" STR:=CI if OP-F64-LT FCOMPARE0-BODY BODY$ true exit then
-   name u s" f0=" STR:=CI if OP-F64-EQ FCOMPARE0-BODY BODY$ true exit then
-   name u s" s>f" STR:=CI if S>F-BODY BODY$ true exit then
-   name u s" f>s" STR:=CI if F>S-BODY BODY$ true exit then
+   name s" f+" STR:=CI if OP-F64-ADD FARITH-BODY BODY$ true exit then
+   name s" f-" STR:=CI if OP-F64-SUB FARITH-BODY BODY$ true exit then
+   name s" f*" STR:=CI if OP-F64-MUL FARITH-BODY BODY$ true exit then
+   name s" f/" STR:=CI if OP-F64-DIV FARITH-BODY BODY$ true exit then
+   name s" fsqrt" STR:=CI if FSQRT-BODY BODY$ true exit then
+   name s" fnegate" STR:=CI if OP-F64-NEG FSIGN-BODY BODY$ true exit then
+   name s" fabs" STR:=CI if OP-F64-ABS FSIGN-BODY BODY$ true exit then
+   name s" f<" STR:=CI if OP-F64-LT FCOMPARE-BODY BODY$ true exit then
+   name s" f>" STR:=CI if OP-F64-GT FCOMPARE-BODY BODY$ true exit then
+   name s" f=" STR:=CI if OP-F64-EQ FCOMPARE-BODY BODY$ true exit then
+   name s" f<=" STR:=CI if OP-F64-LE FCOMPARE-BODY BODY$ true exit then
+   name s" f>=" STR:=CI if OP-F64-GE FCOMPARE-BODY BODY$ true exit then
+   name s" f0<" STR:=CI if OP-F64-LT FCOMPARE0-BODY BODY$ true exit then
+   name s" f0=" STR:=CI if OP-F64-EQ FCOMPARE0-BODY BODY$ true exit then
+   name s" s>f" STR:=CI if S>F-BODY BODY$ true exit then
+   name s" f>s" STR:=CI if F>S-BODY BODY$ true exit then
    \ ---- map-anon and munmap
-   name u s" map-anon" STR:=CI if MAP-BODY BODY$ true exit then
-   name u s" munmap" STR:=CI if UNMAP-BODY BODY$ true exit then
+   name s" map-anon" STR:=CI if MAP-BODY BODY$ true exit then
+   name s" munmap" STR:=CI if UNMAP-BODY BODY$ true exit then
    \ ---- throw, die and execute
-   name u s" throw" STR:=CI if THROW-BODY BODY$ true exit then
-   name u s" die" STR:=CI if DIE-BODY BODY$ true exit then
-   name u s" execute" STR:=CI if EXECUTE-BODY BODY$ true exit then
+   name s" throw" STR:=CI if THROW-BODY BODY$ true exit then
+   name s" die" STR:=CI if DIE-BODY BODY$ true exit then
+   name s" execute" STR:=CI if EXECUTE-BODY BODY$ true exit then
    \ ---- catch and finally
-   name u s" catch" STR:=CI if CATCH-BODY BODY$ true exit then
-   name u s" finally" STR:=CI if FINALLY-BODY BODY$ true exit then
+   name s" catch" STR:=CI if CATCH-BODY BODY$ true exit then
+   name s" finally" STR:=CI if FINALLY-BODY BODY$ true exit then
    \ ---- depth
-   name u s" depth" STR:=CI if DEPTH-BODY BODY$ true exit then
+   name s" depth" STR:=CI if DEPTH-BODY BODY$ true exit then
    s" " false ;
 
 ;using

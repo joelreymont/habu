@@ -1,4 +1,3 @@
-split-str
 \ icode.f — A64ICODE, the ARM64 single-pass assembler: EMITW appends asm.f
 \ encodings to the CODE window; labels resolve B/BL, B.cond, CBZ/CBNZ, ADR and
 \ LOFF, sites, backward at once and forward by backpatch. ASM-CP counts words;
@@ -313,7 +312,7 @@ variable IDEC-N                     \ fill cursor: digits land backwards from th
    IDEC-SET
    BEGIN IDEC-DIGIT  IDEC-V @ 0 = IDEC-CY @ 0 = and UNTIL
    IDEC-NEG @ 0 <> IF IDEC-MINUS IDEC-PUT THEN
-   IDEC-BUF IDEC-N @ CODE-BYTE+  IDEC-CAP IDEC-N @ - ;
+   IDEC-BUF IDEC-N @ CODE-BYTE+  IDEC-CAP IDEC-N @ -  >str ;
 
 \ `die` takes one span, so the line is composed first; separate writes would
 \ interleave with other stderr output. Outgrowing IMSG-CAP is a rejection, not a
@@ -331,7 +330,7 @@ variable IMSG-V
 : IMSG-A@ ( -- ^u8 ) IMSG-A @ ;
 
 : IMSG+ ( str -- )
-   IMSG-U ! IMSG-A !
+   dup STR:DATA IMSG-A !  STR:LEN IMSG-U !
    \ Any source can call IMSG+, so the length is compared with the room left: in
    \ a sum, a length near the maximum cell wraps back under the capacity.
    IMSG-U @ 0 <  IMSG-U @ IMSG-CAP IMSG-N @ - >  or if
@@ -352,7 +351,7 @@ variable IMSG-V
    s"  target=" I-RTARGET @ IMSG-FIELD
    s"  delta="  I-RDELTA  @ IMSG-FIELD
    s"  limit="  I-RLIMIT  @ IMSG-FIELD
-   IMSG-BUF IMSG-N @ EXIT-STATUS:ENCODE die ;
+   IMSG-BUF IMSG-N @ >str EXIT-STATUS:ENCODE die ;
 
 private
 
@@ -704,7 +703,7 @@ variable BYU
 : BYA@ ( -- ^u8 ) BYA @ ;
 
 : BYTES-ARGS ( str -- )
-   BYU !  BYA ! ;
+   dup STR:DATA BYA !  STR:LEN BYU ! ;
 
 : BYTES-CAP ( -- )
    BYU @ 3 + 4 / ASM-CP?  ASM-CP @ $4 * CODE swap CODE-BYTE+ BYP ! ;

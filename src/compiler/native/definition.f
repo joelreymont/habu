@@ -1,4 +1,3 @@
-split-str
 \ definition.f - the compiler-neutral step around one pending definition's
 \ lowering: staging, the checker scan and verdict, name and arity checks,
 \ publication by kind, the pending callback stub, and retraction on rejection.
@@ -83,13 +82,13 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 public
 
 : SRC$ ( -- str )
-   M-SRC @ M-SRC-U @ ;
+   M-SRC @ M-SRC-U @ >str ;
 
 : DOES-BYTE@ ( -- n )
    data-base DOESB-CELL + @ ;
 
 : NAME$ ( -- str )
-   NAME-A @ NAME-U @ ;
+   NAME-A @ NAME-U @ >str ;
 
 \ A compiler entry reached while a compilation runs would stage one definition
 \ over another's state.
@@ -132,14 +131,14 @@ private
    data-base TSIG-A-CELL CELL / ptr-field ;
 
 : TRUST-SIG$ ( -- str )
-   TRUST-SIG-A-FIELD @  data-base TSIG-U-CELL + @ ;
+   TRUST-SIG-A-FIELD @  data-base TSIG-U-CELL + @ >str ;
 
 : CHECK-PARENT ( str -- n )
-   {: a:^ u:n :}
+   {: s:str :}
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
-      a u CHECK-UNJUDGED! exit then
+      s CHECK-UNJUDGED! exit then
    0 CHECKER-OWNER:BIND-REGIME!
-   a u CHECK:DEFINITION ;
+   s CHECK:DEFINITION ;
 
 public
 
@@ -161,7 +160,8 @@ private
    M-SRC @ {: src:^ :}
    M-DOES @ {: cut:n :}
    cut DOES-SPAN < cut M-SRC-U @ > or if E-NFEED-CUT throw then
-   src cut DOES-SPAN - + DOES-SPAN 1- s" does>" STR:=CI 0= if E-NFEED-CUT throw then
+   src cut DOES-SPAN - +  DOES-SPAN 1-  >str
+   s" does>" STR:=CI 0= if E-NFEED-CUT throw then
    src cut 1- + c@ 32 <> if E-NFEED-CUT throw then ;
 
 EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?
@@ -176,7 +176,7 @@ public
    CHECKER-NATIVE-DOES-BEGIN
    1 M-DOES-FRAME !
    M-DOES @ {: cut:n :}
-   M-SRC @ cut DOES-SPAN - CHECK-PARENT
+   M-SRC @ cut DOES-SPAN - >str CHECK-PARENT
    TRUSTED? if drop else -1 <> if E-COMP-VERDICT throw then then
    \ The clause's scan clears the checker's recovery flag, so keep the head's.
    RECOVERY-USED? M-HEAD-RECOVERY ! ;
@@ -184,13 +184,13 @@ public
 \ The `does>` clause, named for a rejection by the unit's name. The checker's
 \ token ordinal first steps past the `does>` keyword between the two bodies.
 : CHECK-DOES-CLAUSE ( str -- n )
-   {: na:^ nu:n :}
+   {: ns:str :}
    ADVANCE
    M-DOES @ {: cut:n :}
-   M-SRC @ cut +  M-SRC-U @ cut -  {: ca:^ cu:n :}
-   ca cu CLOSER-ARM
-   ca cu  M-DOES-SIG @ M-DOES-SIG-U @
-   CHECKER-OWNER:DOES-CHECK na nu CLAUSE-CK
+   M-SRC @ cut +  M-SRC-U @ cut -  >str {: c:str :}
+   c CLOSER-ARM
+   c  M-DOES-SIG @ M-DOES-SIG-U @ >str
+   CHECKER-OWNER:DOES-CHECK ns CLAUSE-CK
    CHECK-DOES-DIN-CELLS 0 <  CHECK-DOES-DOUT-CELLS 0 <  or if E-COMP-ARITY throw then
    -1 ;
 
@@ -243,17 +243,18 @@ private
 EXPORT CHECKER-RESOLVE:HEAD-ROW
 
 : QUALIFIED-RECORD-NAME? ( ^n str n -- bool )
-   {: rec:^ a:^ u:n split:n :}
-   rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
-   a split HEAD-ROW
+   {: rec:^ s:str split:n :}
+   s STR:DATA split 1+ ZPTR+  s STR:LEN split - 1-  >str {: tail:str :}
+   rec tail XREF-MATCH? 0= if false exit then
+   s STR:DATA split >str HEAD-ROW
    dup XREF-FOUND? 0= if drop false exit then
    XREF-PKG-PUBLIC  rec XREF-WORDLIST  = ;
 
 : RECORD-NAME? ( ^n str -- bool )
-   {: rec:^ a:^ u:n :}
-   a u XREF-QUAL-INDEX {: split:n :}
-   split 0 < if rec a u XREF-MATCH? exit then
-   rec a u split QUALIFIED-RECORD-NAME? ;
+   {: rec:^ s:str :}
+   s XREF-QUAL-INDEX {: split:n :}
+   split 0 < if rec s XREF-MATCH? exit then
+   rec s split QUALIFIED-RECORD-NAME? ;
 
 \ The compiler owns one pending record, so the dictionary count must not move.
 : PUBLISHED-NONE ( n -- ) {: before:n :}
@@ -321,7 +322,7 @@ private
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if
-         NULL-PTR 0 false DOES-PUBLISHED
+         NULL-PTR 0 >str false DOES-PUBLISHED
          0 M-DOES-FRAME !
       then
       exit
@@ -338,20 +339,21 @@ public
 : TARGET-ERROR ( n -- )
    XREF:ENTRY-REC {: r:n :}
    r -1 = if E-COMP-STATE throw then
-   r XREF-REC XREF-NAME$ {: na:^ nu:n :}
+   r XREF-REC XREF-NAME$ {: na:str :}
    s" E-TARGET-WORD" REJECTION:OPEN
    s" a build cannot run target word `" REJECTION:EMIT-STR
-   na nu REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   SRCLOC:TOKEN$ REJECTION:AT  s" runs a target word" REJECTION:EMIT-STR
+   na REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   SRCLOC:TOKEN$ >str REJECTION:AT
+   s" runs a target word" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" define `" REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
+   s" define `" REJECTION:EMIT-STR  na REJECTION:EMIT-STR
    s" ` in a `host` section if the build runs it, or call it only from target words"
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The `;` that ends the definition: the token the engine read last, whose
 \ address in the input places a rejection there on its line.
-: CLOSE$ ( -- str ) READ-AT @ data-base TKL-CELL + @ ;
+: CLOSE$ ( -- str ) READ-AT @ data-base TKL-CELL + @ >str ;
 
 private
 
@@ -370,7 +372,7 @@ public
       \ A HEAD-MARKED? definer keeps its rows, as a withheld colon word does;
       \ every other withheld definer is rolled back.
       M-DOES-FRAME @ 0<> if
-         NULL-PTR 0 HEAD-MARKED? DOES-PUBLISHED
+         NULL-PTR 0 >str HEAD-MARKED? DOES-PUBLISHED
          HEAD-MARKED? if CHECKER-NATIVE-DOES-COMMIT then
          0 M-DOES-FRAME !
       then
@@ -379,9 +381,9 @@ public
    rc 0 <> if RETRACT then ;
 
 : STAGE-UNIT ( str -- )
-   {: sa su:n :}
+   {: ss:str :}
    0 CHECKER-OWNER:BIND-REGIME!
-   sa M-SRC ! su M-SRC-U !
+   ss STR:DATA M-SRC ! ss STR:LEN M-SRC-U !
    0 M-VERDICT !
    false M-ROW-REJECTED !
    CHECKER-ROWS-END M-ROWS !

@@ -1,4 +1,3 @@
-split-str
 \ checker-owner.f - the checker this compiler asks.
 
 require src/lib/prelude.f
@@ -23,8 +22,10 @@ public
 
 \ A TRUSTED: parent's clause is scanned unjudged, as its body was.
 : DOES-CHECK ( str str -- n )
-   BIND-UNJUDGED @ 0<> if CHECK-DOES-UNJUDGED! exit then
-   CHECK-DOES! ;
+   {: b:str s:str :}
+   BIND-UNJUDGED @ 0<> if b s CHECK-DOES-UNJUDGED! exit then
+   \ CHECK-DOES! has no row, so it takes each str as two halves.
+   b STR:DATA b STR:LEN  s STR:DATA s STR:LEN  CHECK-DOES! ;
 
 EXPORT DOES-REPORT
 

@@ -1,4 +1,3 @@
-split-str
 \ native-effect.f - the typed machine-state contract of one emitted routine:
 \ per register file what it reads, returns in and destroys, its condition flags,
 \ link register, frame and net stack-pointer change, calls and syscalls, and how

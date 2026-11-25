@@ -1,4 +1,3 @@
-split-str
 \ link.f - WLINK, the Wasm backend's linker: encoded functions, a data image and
 \ table slots written as one Wasm module (docs/xcomp.md "Linking"); the rows come
 \ from LINKER's Wasm writer (src/arch/wasm/link-module.f). The image's byte at
@@ -153,9 +152,9 @@ create LEB-ROW LEB-MOST SCRATCH-ALLOT
 
 \ Never empty: a name, a type, a body or the image.
 : PUT-BYTES ( str -- )
-   {: a u:n :}
-   DRY @ 0= if  a u  AT @ OUT u SPAN:MAKE  SPAN:COPY  then
-   u AT +! ;
+   {: s:str :}
+   DRY @ 0= if  s  AT @ OUT s STR:LEN SPAN:MAKE  SPAN:COPY  then
+   s STR:LEN AT +! ;
 
 : PUT-BYTE ( n -- )
    {: v:n :}
@@ -164,7 +163,7 @@ create LEB-ROW LEB-MOST SCRATCH-ALLOT
 
 : PUT-LEB ( n -- )
    {: u:n :}
-   LEB SPAN:$ drop u PUT-BYTES ;
+   LEB SPAN:$ STR:DATA u >str PUT-BYTES ;
 
 : PUT-U32 ( n -- )  LEB WLEB:U32! PUT-LEB ;
 : PUT-S32 ( n -- )  LEB WLEB:S32! PUT-LEB ;
@@ -266,17 +265,17 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
 
 : TYPE$ ( n -- str )
    {: k:n :}
-   k TYPE-AT @ TYPES  k TYPE-LEN @ ;
+   k TYPE-AT @ TYPES  k TYPE-LEN @ >str ;
 
 \ The index of the type in TY, which a type equal to it already has.
 : INTERN ( -- n )
    NTYPES @ 0 ?do
-      i TYPE$  TY TY-U @  STR:= if i unloop exit then
+      i TYPE$  TY TY-U @ >str  STR:= if i unloop exit then
    loop
    NTYPES @ {: k:n :}
    k 1+ TYPE-AT-RESERVE  k 1+ TYPE-LEN-RESERVE
    TYPES-U @ TY-U @ + TYPES-RESERVE
-   TY TY-U @  TYPES-U @ TYPES TY-U @ SPAN:MAKE  SPAN:COPY
+   TY TY-U @ >str  TYPES-U @ TYPES TY-U @ SPAN:MAKE  SPAN:COPY
    TYPES-U @ k TYPE-AT !  TY-U @ k TYPE-LEN !
    TY-U @ TYPES-U +!
    1 NTYPES +!
@@ -399,7 +398,7 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
 \ ---- the sections -------------------------------------------------------------
 : BODY$ ( n -- str )
    {: k:n :}
-   k FN-AT @ BODIES  k FN-LEN @ ;
+   k FN-AT @ BODIES  k FN-LEN @ >str ;
 
 \ The pages holding every region and the image. The run wrapper and tier 0's
 \ code store into the DATA region's header cells whatever the image's length.
@@ -408,7 +407,7 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
 
 : TYPE-SEC ( -- )
    NTYPES @ PUT-U32
-   0 TYPES TYPES-U @ PUT-BYTES ;
+   0 TYPES TYPES-U @ >str PUT-BYTES ;
 
 : FUNCTION-SEC ( -- )
    NF @ WRAPPERS + RESERVES @ + PUT-U32
@@ -427,8 +426,8 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
    LIMITS-MAX PUT-BYTE  PAGES PUT-U32  PAGES-MAX PUT-U32 ;
 
 : PUT-EXPORT ( str n n -- )
-   {: a u:n kind:n idx:n :}
-   u PUT-U32  a u PUT-BYTES  kind PUT-BYTE  idx PUT-U32 ;
+   {: s:str kind:n idx:n :}
+   s STR:LEN PUT-U32  s PUT-BYTES  kind PUT-BYTE  idx PUT-U32 ;
 
 \ The wrappers follow the functions, so run's index is their count.
 : EXPORT-SEC ( -- )
@@ -474,7 +473,7 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
    NRUNS @ 0 ?do
       ACTIVE PUT-U32  WPROF:DATA-VA i RUN-AT @ + ADDRESS-CONST  OP-END PUT-BYTE
       i RUN-LEN @ PUT-U32
-      i RUN-AT @ IMAGE  i RUN-LEN @ PUT-BYTES
+      i RUN-AT @ IMAGE  i RUN-LEN @ >str PUT-BYTES
    loop ;
 
 : WRITE-MODULE ( -- )
@@ -656,14 +655,14 @@ public
 \ in its lanes has type (i32 ctx, inputs x i64) -> (i32 status, outputs x i64),
 \ one in the aligned frame (i32) -> (i32).
 : FUNCTION+ ( str n n n WLINK:origin -- n )
-   {: a u:n in:n out:n var:n o:WLINK:origin :}
+   {: s:str in:n out:n var:n o:WLINK:origin :}
    NF @ {: k:n :}
    k COLUMN+
-   BODIES-U @ u + BODIES-RESERVE
-   a u  BODIES-U @ BODIES u SPAN:MAKE  SPAN:COPY
-   BODIES-U @ k FN-AT !  u k FN-LEN !
+   BODIES-U @ s STR:LEN + BODIES-RESERVE
+   s  BODIES-U @ BODIES s STR:LEN SPAN:MAKE  SPAN:COPY
+   BODIES-U @ k FN-AT !  s STR:LEN k FN-LEN !
    in k FN-IN !  out k FN-OUT !  var k FN-VAR !  o RANK k FN-RANK !
-   u BODIES-U +!
+   s STR:LEN BODIES-U +!
    1 NF +!
    k ;
 
@@ -699,12 +698,12 @@ public
 \ The data image, in place of any before it. An image whose end from WPROF's
 \ DATA base passes memory32's 65536 pages is rejected before a byte is reserved.
 : DATA! ( str -- )
-   {: a u:n :}
-   u 0 < if E-SPAN-LENGTH throw then
-   u IMAGE-MAX > if E-WLINK-MEMORY throw then
-   u IMAGE-RESERVE
-   u 0 > if  a u  0 IMAGE u SPAN:MAKE  SPAN:COPY  then
-   u IMAGE-U ! ;
+   {: s:str :}
+   s STR:LEN 0 < if E-SPAN-LENGTH throw then
+   s STR:LEN IMAGE-MAX > if E-WLINK-MEMORY throw then
+   s STR:LEN IMAGE-RESERVE
+   s STR:LEN 0 > if  s  0 IMAGE s STR:LEN SPAN:MAKE  SPAN:COPY  then
+   s STR:LEN IMAGE-U ! ;
 
 \ The image's cell at offset at holds the address of a kind and a target, which
 \ LINK stores into the image before it writes the module.
@@ -745,7 +744,7 @@ public
    u OUT-RESERVE
    0 AT !  0 DRY !  WRITE-MODULE
    PATCH
-   0 OUT u ;
+   0 OUT u >str ;
 
 ;using
 ;package

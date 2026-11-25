@@ -1,4 +1,3 @@
-split-str
 \ icode.f - X64CODE, the x86-64 code layer: ASM-SINK, the sink X64ASM
 \ (src/arch/x86-64/asm.f) appends every instruction to, and the labels a stream
 \ branches to; the counterpart of src/arch/arm64/icode.f. The seam
@@ -60,7 +59,7 @@ public
 \ The driver owns ASM-SINK's lifetime: SINK-OPEN before the first byte and
 \ SINK-CLOSE when the build is done.
 : ASM-SINK ( -- ^VEC:vector<u8> ) SINK @ ;
-: CODE ( -- ^u8 ) ASM-SINK VEC:BYTES drop ;
+: CODE ( -- ^u8 ) ASM-SINK VEC:BYTES STR:DATA ;
 : ASM-LEN ( -- n ) ASM-SINK VEC:COUNT ;
 
 private
@@ -363,7 +362,7 @@ public
 : SPACE ( n -- ^u8 )
    ASM-LEN {: k:n at:n :}
    ASM-SINK at k + VEC:ENSURE
-   ASM-SINK VEC:SPAN at SPAN:SKIP SPAN:$ drop ;
+   ASM-SINK VEC:SPAN at SPAN:SKIP SPAN:$ STR:DATA ;
 
 private
 

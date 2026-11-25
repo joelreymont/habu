@@ -1,4 +1,3 @@
-split-str
 \ link-site.f - the Wasm part of the linker's address values
 \ (src/habu/t0-wasm.f "THE ROWS"). An address site is `i64.const` and a padded
 \ ten-byte s64 after it, for a code or a data address alike.

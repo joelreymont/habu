@@ -1,4 +1,3 @@
-split-str
 \ link-module.f - LINKER's Wasm writer: a stripped program's placed emissions and
 \ the link's copy of its data, handed to WLINK and written as one module. It
 \ rejects by name every kernel word the program reaches that no kernel-words.f
@@ -53,7 +52,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 : DEAD-BODY$ ( -- str )
    3 DEAD-BODY-RESERVE
    0 0 DEAD-BODY c!  WCODE:OP-UNREACHABLE 1 DEAD-BODY c!  WCODE:OP-END 2 DEAD-BODY c!
-   0 DEAD-BODY 3 ;
+   0 DEAD-BODY 3 >str ;
 
 \ Placed emission e's functions, added in order as WLINK's captured functions.
 \ One in a dead record's range keeps its index with the body `unreachable`
@@ -66,7 +65,7 @@ variable KERNEL-N                    \ the kernel routines this link added
       e i NSHADOW:FUNCTION-OFFSET@ {: at:n :}
       e i FUNCTION-END {: end:n :}
       e at LIVE-AT? {: live:bool :}
-      live if e NSHADOW:BYTES at +  end at - else DEAD-BODY$ then
+      live if e NSHADOW:BYTES at +  end at - >str else DEAD-BODY$ then
       0 0 1 WLINK-ORIGIN:CAPTURED WLINK:FUNCTION+ {: h:n :}
       h NFUN @ <> if E-COMP-STATE throw then
       h 1+ SLOTS-RESERVE  0 h SLOTS !
@@ -97,9 +96,9 @@ variable KERNEL-N                    \ the kernel routines this link added
 : KERNEL-FUNCTION ( n -- n )
    {: a:n :}
    KERNEL-N @ 0 ?do i KERNEL-HOST @ a = if i KERNEL-HANDLE @ unloop exit then loop
-   a NAME-AT ROUTINE-BODY {: body:^ bu:n has:bool :}
+   a NAME-AT ROUTINE-BODY {: body:str has:bool :}
    has 0= if -1 exit then
-   body bu  0 0 1 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ {: h:n :}
+   body  0 0 1 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ {: h:n :}
    ROUTINE-SITES 0 ?do  h  i ROUTINE-SITE  WLINK:INDIRECT+  loop
    h NFUN @ <> if E-COMP-STATE throw then
    h 1+ SLOTS-RESERVE  0 h SLOTS !
@@ -206,13 +205,13 @@ variable KERNEL-N                    \ the kernel routines this link added
 \ The record for host address a, through its help; the caller ends it.
 : REJECTED. ( n -- )
    {: a:n :}
-   a NAME-AT {: name:^ nameu:n :}
+   a NAME-AT {: name:str :}
    s" E-WASM-NO-KERNEL-WORD" REJECTION:OPEN
    s" the program reaches " REJECTION:EMIT-STR
-   nameu 0= if
+   name STR:LEN 0= if
       s" the kernel code at " REJECTION:EMIT-STR  a REJECTION:EMIT-N
    else
-      s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+      s" `" REJECTION:EMIT-STR  name REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
    then
    s" , which a Wasm module does not provide" REJECTION:EMIT-STR
    REJECTION:HELP
@@ -253,7 +252,7 @@ public
 \ Link the open space's stripped program into one Wasm module at the path, its reserve
 \ calling map-anon; the header's DP, bounds and heap start stay as the copy holds them.
 : WRITE-MODULE ( str -- )
-   {: path:^ pathu:n :}
+   {: path:str :}
    false GOING
    APP-ENTRY:XT-CELL SPACE-AT @ {: entry:n :}
    ROUTINES REACH-DATA
@@ -262,8 +261,8 @@ public
    entry CALLEE {: h:n :}
    s" map-anon" NAMED-ENTRY KERNEL-FUNCTION WLINK:RESERVE!
    REJECTIONS
-   0 COPY-AT DATA-IMAGE-LEN WLINK:DATA!
-   path pathu  h WLINK:LINK  FS:ATOMIC-WRITE-FILE ;
+   0 COPY-AT DATA-IMAGE-LEN >str WLINK:DATA!
+   path  h WLINK:LINK  FS:ATOMIC-WRITE-FILE ;
 
 ;package
 ;package

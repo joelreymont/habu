@@ -1,4 +1,3 @@
-split-str
 \ digest.f - SHA-256 values and little-endian eight-byte slots for compiler data.
 \
 \ Not reentrant: this package keeps one digest context (SHA-CTX) and one output
@@ -44,8 +43,8 @@ public
       dst i SLOT-BYTES * + CELL-VIEW !
    loop ;
 
-: COMPUTE ( str -- CDIGEST:digest ) {: a u:n :}
-   SHA-CTX a u DG SHA256-IN
+: COMPUTE ( str -- CDIGEST:digest ) {: s:str :}
+   SHA-CTX s DG SHA256-IN
    DG 0 SLOT@  DG 1 SLOT@  DG 2 SLOT@  DG 3 SLOT@
    CDIGEST-DIGEST:MAKE ;
 

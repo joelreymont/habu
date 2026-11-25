@@ -1,4 +1,3 @@
-split-str
 \ link.f - an arm64 shadow emission patched in place for its link-time address:
 \ calls become bl/b and code addresses adrp+add relative to where the code runs,
 \ data address chains take the value a data resolver gives. A code site the

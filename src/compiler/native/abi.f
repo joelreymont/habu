@@ -1,4 +1,3 @@
-split-str
 \ abi.f - the convention a Habu word is entered and left through, built as a
 \ routine contract from four numbers: scratch base, scratch count, values taken
 \ and values left. An externally callable word takes argument i from data-stack

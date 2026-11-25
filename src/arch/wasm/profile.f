@@ -1,4 +1,3 @@
-split-str
 \ profile.f - WPROF, the Wasm V1 the backend targets: features, call arity and
 \ memory layout. The target contract carries only BASE and SCALAR-FP for wasm
 \ (src/compiler/target.f MASK-WASM), so these numbers live here. A Wasm build

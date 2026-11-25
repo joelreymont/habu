@@ -1,4 +1,3 @@
-split-str
 \ x86-64 emissions use rel32 calls and movabs address literals.
 require src/core/exit-status.f
 require src/lib/le.f

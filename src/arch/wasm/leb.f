@@ -1,4 +1,3 @@
-split-str
 \ leb.f - WLEB, the Wasm backend's LEB128 (docs/xcomp.md "Linking"). Writers
 \ write the shortest LEB at the start of the caller's span and answer its length;
 \ padded writers always write the widest (5 bytes for a u32, 10 for an s64) so a
@@ -59,7 +58,8 @@ $7FFFFFFF constant S32-MAX
 
 : PUT ( n bool n SPAN:span<u8> -- n )
    {: v:n signed:bool len:n s :}
-   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: p :}
+   s SPAN:$ dup STR:LEN len < if E-SPAN-CAPACITY throw then
+   STR:DATA {: p :}
    v len 0 ?do
       dup GROUP-BITS and i 1+ len < if MORE-BIT or then p i + c!
       signed if ASR7 else 7 rshift then
@@ -67,11 +67,11 @@ $7FFFFFFF constant S32-MAX
    len ;
 
 : EXTENT ( str n -- n )
-   {: p avail:n most:n :}
+   {: s:str most:n :}
    0 begin
       dup most = if E-OVERLONG throw then
-      dup avail = if E-TRUNCATED throw then
-      p over + c@ MORE-BIT and 0<>
+      dup s STR:LEN = if E-TRUNCATED throw then
+      s STR:DATA over + c@ MORE-BIT and 0<>
    while 1+ repeat
    1+ ;
 
@@ -86,24 +86,24 @@ $7FFFFFFF constant S32-MAX
    then ;
 
 : DECODE ( str n bool -- n n )
-   {: p avail:n bits:n signed:bool :}
-   avail 0 < if E-SPAN-LENGTH throw then
+   {: s:str bits:n signed:bool :}
+   s STR:LEN 0 < if E-SPAN-LENGTH throw then
    bits WIDEST {: most:n :}
-   p avail most EXTENT {: len:n :}
-   p len + 1- c@ {: last:n :}
+   s most EXTENT {: len:n :}
+   s STR:DATA len + 1- c@ {: last:n :}
    len most = if
       last bits most 1- 7 * - signed FITS? 0= if E-RANGE throw then
    then
-   0 len 0 ?do p i + c@ GROUP-BITS and i 7 * lshift or loop
+   0 len 0 ?do s STR:DATA i + c@ GROUP-BITS and i 7 * lshift or loop
    signed last SIGN-BIT and 0<> and len 7 * 64 < and if
       -1 len 7 * lshift or
    then
    len ;
 
 : FIELD ( str n n bool -- n )
-   {: p avail:n at:n bits:n signed:bool :}
-   at 0 < at avail > or if E-SPAN-RANGE throw then
-   p at + avail at - bits signed DECODE
+   {: s:str at:n bits:n signed:bool :}
+   at 0 < at s STR:LEN > or if E-SPAN-RANGE throw then
+   s STR:DATA at +  s STR:LEN at -  >str  bits signed DECODE
    bits WIDEST <> if E-UNPADDED throw then ;
 
 public

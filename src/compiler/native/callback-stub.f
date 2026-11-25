@@ -1,4 +1,3 @@
-split-str
 \ One callback declaration's native C entry while its accessor compiles.
 require src/lib/prelude.f
 require src/lib/error.f

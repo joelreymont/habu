@@ -1,4 +1,3 @@
-split-str
 \ asm.f — x86_64 instruction encoders, package X64ASM.
 \ Operands are nominal types; every encoder screens an operand before it packs a
 \ bit, and a rejection is E-OPERAND. Destination comes first; a memory form takes
