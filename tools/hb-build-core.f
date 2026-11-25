@@ -219,9 +219,9 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    loop ;
 
 \ A registry row below the engine's source root, which the build reads hb's
-\ files from, by its name under it: the product matches a require against its
-\ rows under its own engine root, a Habu tree. A program's row outside the root
-\ keeps its canonical path; hb's is refused.
+\ files from, by its name under it: the built program matches a require
+\ against its rows under its own engine root, a Habu tree. A program's row
+\ outside the root keeps its canonical path; hb's is refused.
 : REG-ROW ( str bool -- )
    {: a:^ u:n engine:bool :}
    SOURCE-ROOT:ENGINE$ {: c:^ cu:n :}
