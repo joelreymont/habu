@@ -52,6 +52,11 @@ package CURL
    CURL-LOCK TASK:RELEASE ;
 
 
+\ Whether the transfer ended and waits for its owner to collect it.
+: CURL-TEST:SETTLED? ( CURL:handle -- bool ) {: subject:CURL:handle :}
+   subject HANDLE-CELL OWNED-INDEX REC-STATE@ STATE-DONE = ;
+
+
 OPT-LONG 84 + constant OPT-HTTP-VERSION   \ CURLOPT_HTTP_VERSION
 5 constant HTTP-2-PRIOR                   \ CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE
 
@@ -96,6 +101,7 @@ $1000 constant RES-CAP
 $1000 constant TRANSCRIPT-CAP
 $20 constant NUM-CAP
 8 constant DRAIN-TRIES                  \ reads that finish a connection the peer is closing
+1000 constant PAUSED-MS                 \ long enough for a first piece to arrive
 100 constant STALL-MS                   \ well under the stall path's forever
 $FE constant FILL-BYTE                  \ the sentinel NEXT must not write past a chunk
 $300 constant DRIBBLE-U                 \ the dribble body, served whole but slowly
@@ -3057,6 +3063,66 @@ variable DEFER-RETURNED
    CURL:LOOP-STOP ;
 
 
+\ The loop pauses the stream in the locked turn that publishes its three held
+\ bytes. The server sends the rest before the cancel, so none of its writes
+\ meets a reset.
+: STREAM-PAUSED ( CURL:handle -- ) {: subject:CURL:handle :}
+   0 STREAM-ACK atomic! 0 STREAM-DONE atomic!
+   subject OWNER-HANDLE !
+   subject CURL:STREAM-START EXPECT-OK
+   [: OWNER-HANDLE @ CURL-TEST:HELD 0 > ;] TEST-WAIT:POLL
+   1 STREAM-ACK atomic!
+   [: STREAM-DONE atomic@ 1 = ;] TEST-WAIT:POLL ;
+
+
+: CASE-STREAM-RESTART ( -- )
+   PATH-STREAM$ GET-READY {: subject:CURL:handle :}
+   subject STREAM-PAUSED
+   subject CURL:CANCEL
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop false TTRUE ENDOF
+      response OF drop false TTRUE ENDOF
+      failed OF CURL:CODE>N 42 T= ENDOF
+   ;MATCH
+   subject PATH-HELLO$ URL-FOR CURL:URL! EXPECT-OK
+   subject BODY-CAP >LEN MULTI-FETCH
+   subject CURL:CLEANUP
+   s" a handle cancelled while its stream was paused starts again" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   BODY$ HELLO$ T$= ;
+
+
+: STREAM-CODE ( CURL:handle -- n ) {: subject:CURL:handle :}
+   begin
+      subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+      MATCH CURL:chunk-result
+         chunk OF 2drop true 0 ENDOF
+         response OF drop false 0 ENDOF
+         failed OF CURL:CODE>N false swap ENDOF
+      ;MATCH
+   swap while drop repeat ;
+
+
+\ Nothing takes the held bytes, so the stream is still paused when its time
+\ ends; the same limit then bounds the second transfer.
+: CASE-STREAM-TIMEOUT-RESTART ( -- )
+   PATH-STREAM$ GET-READY {: subject:CURL:handle :}
+   subject PAUSED-MS >MS CURL:TIMEOUT! EXPECT-OK
+   subject STREAM-PAUSED
+   [: OWNER-HANDLE @ CURL-TEST:SETTLED? ;] TEST-WAIT:POLL
+   s" a stream paused past its time limit fails as timed out" T-LABEL
+   subject STREAM-CODE 28 T=
+   subject PATH-HELLO$ URL-FOR CURL:URL! EXPECT-OK
+   subject BODY-CAP >LEN MULTI-FETCH
+   subject CURL:CLEANUP
+   s" a handle timed out while its stream was paused starts again" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   BODY$ HELLO$ T$= ;
+
+
 : START-COLD ( -- )
    COLD-HANDLE @ BODY-CAP >LEN BODY CURL:START EXPECT-OK ;
 
@@ -3207,6 +3273,8 @@ TIGHT-FILL
    CASE-RETRY-DEFAULT
    CASE-RETRY-FRESH
    PARITY-LIMITS
+   CASE-STREAM-RESTART
+   CASE-STREAM-TIMEOUT-RESTART
    CASE-VECTORS
    CASE-STREAM-HELD
    CASE-STREAM-MODES
@@ -3256,7 +3324,7 @@ TIGHT-FILL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   114 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
+   118 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )

@@ -126,6 +126,7 @@ private
 0 constant OPT-LONG                       \ CURLOPTTYPE_LONG
 10000 constant OPT-OBJECT                 \ CURLOPTTYPE_OBJECTPOINT
 20000 constant OPT-FUNCTION               \ CURLOPTTYPE_FUNCTIONPOINT
+30000 constant OPT-OFF                    \ CURLOPTTYPE_OFF_T
 $100000 constant INFO-STRING              \ CURLINFO_STRING
 $200000 constant INFO-LONG                \ CURLINFO_LONG
 
@@ -153,6 +154,7 @@ OPT-LONG 155 + constant OPT-TIMEOUT-MS    \ CURLOPT_TIMEOUT_MS
 OPT-LONG 156 + constant OPT-CONNECT-MS    \ CURLOPT_CONNECTTIMEOUT_MS
 OPT-LONG 181 + constant OPT-PROTOCOLS     \ CURLOPT_PROTOCOLS
 OPT-LONG 182 + constant OPT-REDIR-PROTO   \ CURLOPT_REDIR_PROTOCOLS
+OPT-OFF 146 + constant OPT-MAX-RECV       \ CURLOPT_MAX_RECV_SPEED_LARGE
 INFO-LONG 2 + constant INFO-STATUS        \ CURLINFO_RESPONSE_CODE
 INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
 
@@ -917,9 +919,16 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
    easy OPT-WRITE-DATA r FFI:>CELL SETOPT-NUM ;
 
 
+\ libcurl 8.18 leaves a handle whose transfer ended while paused blocked, and
+\ this limit's default unblocks it; releases after 8.18 fix it.
+: TRANSFER-SINK ( n n -- n ) {: easy:n headers:n :}
+   easy OPT-MAX-RECV 0 SETOPT-NUM dup CURLE-OK <> if exit then drop
+   easy OPT-HEADER-DATA headers SETOPT-NUM ;
+
+
 : TRANSFER ( n ^n n -- n ) {: easy:n r:^ headers:n :}
    easy r BODY-SINK dup CURLE-OK <> if exit then drop
-   easy OPT-HEADER-DATA headers SETOPT-NUM dup CURLE-OK <> if exit then drop
+   easy headers TRANSFER-SINK dup CURLE-OK <> if exit then drop
    easy EASY-PERFORM ;
 
 
@@ -1900,7 +1909,7 @@ private
    {: headers:n :}
    headers idx REC R.HSTREAM !
    idx sink execute
-   [: easy OPT-HEADER-DATA headers SETOPT-NUM ;] OK-THEN dup CURLE-OK <> if
+   [: easy headers TRANSFER-SINK ;] OK-THEN dup CURLE-OK <> if
       idx STREAM-DROP drop
       idx REC-RELEASE
       CODE>STATUS exit
