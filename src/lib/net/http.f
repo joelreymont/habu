@@ -21,6 +21,7 @@ require src/lib/aio.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/log.f
+require src/lib/time.f
 
 package HTTP
 
@@ -358,7 +359,7 @@ private
 
 : ;ACCESS-LINE ( n -- ) {: idx:n :}
    s"  in " LOG:TEXT+
-   mono-ns idx START-NS@ - NS-PER-MS / LOG:INT+
+   idx START-NS@ TIME:ELAPSED-MS LOG:INT+
    s"  ms" LOG:TEXT+
    LOG:;LINE ;
 
