@@ -1025,8 +1025,7 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
 \ Where a deferred body is left to the run, in the source the pre-verifier read, not in
 \ its reused body buffer, and a left call's cause as a DW- code, 0 for any other's.
 : CHECKER-VERIFY-DEFERRED-BODY ( -- ^u8 n n )
-   DVERD @ VERDICT-DEFERRED =  LEFT-CALL @ 0 <>  and
-   UNSEEN @ 0=  LEFT-CALL @ 1 -  FAILB @ <  or  and {: call:bool :}
+   DVERD @ VERDICT-DEFERRED =  LEFT-CALL @ 0 <>  and {: call:bool :}
    call IF LEFT-CALL @ 1 -  LEFT-END @ ELSE FAILB @ FAILE @ THEN {: b:n e:n :}
    TBASE@ b + REJECTION:>SOURCE drop {: start:n :}
    TBASE@ e + REJECTION:>SOURCE drop {: end:n :}
@@ -1606,8 +1605,8 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
       THEN
       sym CK-CLOSE!
    THEN
-   \ A token unseen: recorded so a caller binds and a duplicate is rejected, with
-   \ only the may-claims the walk saw (INHSET) and CTL-OPAQUE for those it did not.
+   \ A body left at a token: recorded so a caller binds and a duplicate is rejected,
+   \ with the may-claims the walk saw and CTL-OPAQUE for those it did not.
    dup VERDICT-DEFERRED =  UNSEEN @ 0 <>  and  NMU @ 0 >  and  CHECK-SIG? and
    TORDER-ACTIVE @ TORDER-PARENT-GATE < and IF
       NMA @ NMU @ CHECK-REC-ADMIT

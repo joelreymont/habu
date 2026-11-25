@@ -1980,7 +1980,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : TRY ( n -- ) {: a:n :} [: a ;] [: drop 1 GETQ ;] catch drop drop drop ;" SB-APPEND LF+
    s" left-calls.f" FIXTURE!
    s" --verify-only" 0 CHECK-EXIT
-   GJA-LINE# @ 7 T=
+   GJA-LINE# @ 8 T=
    3 s" RUN" 5 45 175 178 LEFT-AT
    4 s" RUN" 6 36 228 231 LEFT-AT
    5 s" RUN" 7 41 289 292 LEFT-AT
@@ -2123,13 +2123,33 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    GJA-LINE# @ 3 T=
    2 s" RUN" 5 36 143 146 LEFT-AT
    s" error[E-MISMATCH]" 70 LOADED
-   s" a quotation that runs one that parses through a body left to the run" T-LABEL
-   MADE-LINES
-   s" TYPED-VARIABLE KEPT [ -- ]" SB-APPEND LF+
-   s" : RUN ( [ -- ] -- ) MADE drop execute ;" SB-APPEND LF+
-   s" : USE ( -- ) [: [: parse-name drop ;] RUN ;] KEPT ! ;" SB-APPEND LF+
-   s" fact-left-inner.f" FIXTURE!
-   2 s" E-MISMATCH" s" !" s" :5:51" 5 51 159 160 REJECTED-BOTH
+   \ MADE takes `parse-name` as its operand, so P does not parse: the check, which
+   \ cannot follow MADE, judges no fact it read past it.
+   s" a kept quotation whose body parses only as the check misreads it" T-LABEL
+   SB-RESET
+   s\" : GEN ( -- ) s\" : MADE ( -- ) parse-name drop ; immediate parses: MADE 1\" evaluate-closed ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s" : P ( -- ) MADE parse-name ;" SB-APPEND LF+
+   s" TYPED-VARIABLE KV [ -- ]" SB-APPEND LF+
+   s" : USE ( -- ) [: P ;] KV ! ;" SB-APPEND LF+
+   s" fact-left-misread.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" !" 5 25 174 175 LEFT-AT
+   s" " 0 LOADED
+   s" a quotation of a parsing word left to the run, handed to a left word" T-LABEL
+   SB-RESET
+   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s" : P ( -- ) MADE parse-name drop ;" SB-APPEND LF+
+   s" : RUN ( [ -- ] -- ) MADE execute ;" SB-APPEND LF+
+   s" : C ( -- ) [: P ;] RUN ;" SB-APPEND LF+
+   s\" C \\ : BAD ( -- n ) s\" x\" ;" SB-APPEND LF+
+   s" fact-left-handed.f" FIXTURE!
+   s" --verify-only" 1 CHECK-EXIT
+   GJA-LINE# @ 5 T=
+   4 s" code" s" W-CHECK-STOPPED" FIELD=
+   4 s" C" 6 1 149 150 AT
    s" a quotation that calls a body left to the run, kept" T-LABEL
    MADE-LINES
    s" TYPED-VARIABLE KEPT [ -- ]" SB-APPEND LF+
@@ -2182,6 +2202,18 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a quotation that parses, kept with one that calls a body left to the run" T-LABEL
    s" : STOQ {: q n :} n 0= if [: LATE ;] else q then KP ! ;" 216 STOQ-KEPT
    s" : STOQ 0= if drop [: LATE ;] then KP ! ;" 202 STOQ-KEPT
+   s" a quotation that calls a body left to the run before a token that parses, kept" T-LABEL
+   SB-RESET
+   s\" : GEN ( -- ) s\" : MADE ( -- ) parse-name drop ; immediate parses: MADE 1\" evaluate-closed ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s" : LATE ( -- ) MADE parse-name ;" SB-APPEND LF+
+   s" TYPED-VARIABLE KV [ -- ]" SB-APPEND LF+
+   s" : USE ( -- ) [: LATE ;] KV ! ;" SB-APPEND LF+
+   s" fact-after-left.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" !" 5 28 180 181 LEFT-AT
+   s" " 0 LOADED
    s" a quotation that parses, kept by a checked body" T-LABEL
    SB-RESET
    s" TYPED-VARIABLE KEPT [ -- ]" SB-APPEND LF+
@@ -2211,6 +2243,59 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : RUN ( act n -- ) {: x:n :} MATCH act idle OF ENDOF fire OF [: x . ;] swap execute KV ! ENDOF ;MATCH ;" SB-APPEND LF+
    s" payload-local.f" FIXTURE!
    0 s" E-LOCAL-ESCAPE" s" execute" s" :3:77" 3 77 189 196 REJECTED-BOTH ;
+
+\ The check cannot follow MADE, so it does not know whether LATE throws: the load
+\ decides a body that catches a quotation calling it.
+: CATCH-LINES ( str -- ) {: body:str :}
+   SB-RESET
+   s\" : GEN ( -- ) s\" : MADE ( n -- n ) dup 0 > if " SB-APPEND  body SB-APPEND
+   s\"  then ;\" evaluate-closed ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s" : LATE ( n -- n ) MADE ;" SB-APPEND LF+
+   s\" : DD ( n -- ) LATE drop s\" x\" 1 die ;" SB-APPEND LF+
+   s" : U ( n -- n ) [: LATE ;] catch drop ;" SB-APPEND LF+ ;
+
+: TEST-CATCH-LEFT ( -- )
+   s" a catch of a body left to the run, which throws" T-LABEL
+   s" drop 7 throw" CATCH-LINES
+   s" : D ( n -- ) [: DD ;] catch 2drop ;" SB-APPEND LF+
+   s" catch-left-throws.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 4 T=
+   2 s" catch" 5 27 177 182 LEFT-AT
+   3 s" catch" 6 23 212 217 LEFT-AT
+   s" E-STALE-READ" s" :5:33" 70 LOADED-AT
+   s" and which throws nothing" T-LABEL
+   s" drop 7" CATCH-LINES
+   s" : D ( n -- ) [: DD ;] catch ;" SB-APPEND LF+
+   s" catch-left-returns.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 4 T=
+   2 s" catch" 5 27 171 176 LEFT-AT
+   3 s" catch" 6 23 206 211 LEFT-AT
+   s" " 0 LOADED
+   s" a catch after a token the check cannot follow keeps that token's cause" T-LABEL
+   s" drop 7 throw" CATCH-LINES
+   s" : R ( n -- n ) MADE [: LATE ;] catch drop ;" SB-APPEND LF+
+   s" catch-after-unseen.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 4 T=
+   3 s" message" s" cannot follow the source from `MADE` on" FIELD-HAS
+   3 s" MADE" 6 16 205 209 AT
+   s" a caught quotation's facts stay in the record of a body left at the catch" T-LABEL
+   s" drop 7 throw" CATCH-LINES
+   s" : P ( -- n ) [: parse-name drop 5 DD ;] catch ;" SB-APPEND LF+
+   s\" P \\ drop  : BAD ( -- n ) s\" x\" ;" SB-APPEND LF+
+   s" catch-left-parses.f" FIXTURE!
+   s" --verify-only" 1 CHECK-EXIT
+   GJA-LINE# @ 5 T=
+   4 s" code" s" W-CHECK-STOPPED" FIELD=
+   4 s" P" 7 1 238 239 AT
+   s" a catch the check rejects is rejected though its quotation is left" T-LABEL
+   s" drop 7" CATCH-LINES
+   s" : S ( str -- n ) [: DD ;] catch ;" SB-APPEND LF+
+   s" catch-left-mismatch.f" FIXTURE!
+   3 s" E-MISMATCH" s" catch" s" :6:27" 6 27 210 215 REJECTED-BOTH ;
 
 \ The check, which compiles nothing, names a mixed-case private twin as the
 \ load does: as its declaration spells it, never folded.
@@ -4670,6 +4755,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-QUOT-LEFT-RECORD
    TEST-QUOT-LEFT-FACT
    TEST-PAYLOAD-QUOT
+   TEST-CATCH-LEFT
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON
    TEST-SECOND-ELSE

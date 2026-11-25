@@ -1595,8 +1595,8 @@ $10000 constant BVAR-REGION-BIT
 : Q>FACTS ( n -- n ) PAY cells QXFA + @ ;
 : Q-FACTS! ( n n -- ) PAY cells QXFA + ! ;
 SCRATCH{
-\ INHSET: the CTL-INHERITED facts of what the body calls or runs, sticky per body;
-\ an open literal's body has its own.
+\ The CTL-INHERITED facts of what the body calls or runs, sticky per body; an open
+\ literal's body has its own.
 variable INHSET
 }SCRATCH
 \ Running a quotation charges the runner with its facts.
@@ -4202,11 +4202,15 @@ PTR-VARIABLE CAST-SEEN-P   variable CAST-SEEN-CAP   variable CAST-SEEN-N
 
 EXPORT CHECKER-QUOT-FRESH:HELD
 
+SCRATCH{
+variable FAILSET   \ a failure is pinned
+}SCRATCH
 variable FAILB  variable FAILE   \ the pin's span, the current token's while no failure is pinned
 
-\ The trail holds the record, so a trial taken back takes it back.
+\ The trail holds the record, so a trial taken back takes it back. A pinned
+\ failure decides the body, so a call after it records nothing.
 : LEFT-CALL! ( -- )
-   LEFT-CALL @ 0 <> IF EXIT THEN
+   LEFT-CALL @ 0 <>  FAILSET @ 0 <>  or IF EXIT THEN
    0 6 TRAIL-PUSH
    FAILB @ 1+ LEFT-CALL !  FAILE @ LEFT-END ! ;
 
@@ -5221,9 +5225,10 @@ defer U-DRAIN-XT ( n -- )
 \ of the quotations its slot hands it to run; the last of those with a fact it lacks.
 variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-T
 
-\ The stated facts F has and G certainly lacks: only the run can tell an opaque G's.
+\ The stated facts F certainly has and G certainly lacks: only the run can tell an
+\ opaque body's.
 : FACTS-LACKED ( n n -- n ) {: f:n g:n :}
-   g CTL-OPAQUE and 0 <> IF 0 EXIT THEN
+   f g or CTL-OPAQUE and 0 <> IF 0 EXIT THEN
    f g invert and CTL-STATABLE and ;
 
 \ F or G is opaque, so only the run can tell whether they state the same facts.
@@ -5271,7 +5276,7 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    got Q>FACTS or {: has:n :}
    UOK @ IF HOLD-ESCAPE? IF upos CUR-UPOS !  got want U-FAIL  -1 TAIL-HIT ! THEN THEN
    has want Q>FACTS FACTS-LACKED {: lack:n :}
-   keeps NS-LEFT =  lack 0 <> and {: left:bool :}
+   keeps NS-LEFT =  lack 0 <>  has CTL-OPAQUE and 0 <>  or  and {: left:bool :}
    \ Only the run can tell a fact of a body the check left.
    kept  has want Q>FACTS KEPT-LEFT? and
    inv  has want Q>FACTS FACTS-LEFT? and  or {: opaque:bool :}
@@ -5718,7 +5723,7 @@ create ROWMAP 26 cells allot
    NEW-WALK ;
 variable VSIG
 SCRATCH{
-variable DEXP   variable DACT   variable FAILSET
+variable DEXP   variable DACT
 \ DEND: the captured DEXP DACT pair is the declared outputs and the body's final
 \ stack.
 variable DEND
@@ -6034,7 +6039,7 @@ variable DEFER-STOP   \ -1 when the next deferral warning is where the check sto
 
 SCRATCH{
 variable UNJ-TOK          \ inside an unjudged token: the splice is armed
-variable UNSEEN           \ an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
+variable UNSEEN           \ a token that leaves the rest of the body to the run
 }SCRATCH
 
 \ No failure is pinned yet; inside an unjudged token, that token has not failed.
@@ -6046,8 +6051,8 @@ variable UNSEEN           \ an undefined token a rendering statement in scope ma
 : UNCK-RAISE ( -- )
    PIN-OPEN? IF -1 UNCK ! THEN ;
 
-\ A name a rendering statement may define defers the definition only while the
-\ pin is open: a failure pinned before it decides it (the limit: UNSEEN-MARK$).
+\ A name a rendering statement may define, or a catch only the run knows to return,
+\ leaves the definition to the run only while no failure is pinned: a pinned one decides it.
 : UNSEEN-RAISE ( -- )
    PIN-OPEN? IF -1 UNSEEN ! THEN
    UNCK-RAISE ;
@@ -7247,7 +7252,9 @@ variable QUOT-LOSS
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
      QTT @ Q>DIN QUOT-TAIL-OWN?  QTT @ Q>RIN QUOT-TAIL-OWN?
-     noret QTT @ Q>XHAS 0= and 0=
+     noret  QTT @ Q>XHAS 0=  and {: dead:bool :}
+     QTT @ Q>FACTS CTL-OPAQUE and 0 <> IF LEFT-CALL! THEN
+     dead 0=
    ELSE RES-FALSE RES-FALSE RES-TRUE THEN {: dmine:bool rmine:bool returns:bool :}
    QTT @ TAG T-QUOT = IF
      QTT @ INH-CHARGE
@@ -7270,7 +7277,7 @@ variable QUOT-LOSS
         CALL-FREEZE-XT
      THEN
      noret IF
-        QTT @ Q>XHAS 0= IF TOKEN-DEAD! THEN
+        returns 0= IF TOKEN-DEAD! THEN
      ELSE reshape IF
         CATCH-RESHAPE-REJECT
      ELSE fit 0= IF
@@ -7304,6 +7311,9 @@ variable QUOT-LOSS
         THEN
         RCUR @ nr CWIN-RTERMS @ QTT @ Q>XRMASK QTT @ Q>XHAS ropen ROW-STALE-TOP RCUR !
      THEN
+     \ Only a throw the walk did not see gets past this catch; the catch's own
+     \ failure decides the body first.
+     returns 0=  QTT @ Q>FACTS CTL-OPAQUE and 0 <> and  OK @ and IF UNSEEN-RAISE THEN
    ELSE QTT @ TAG T-VAR =  QTT @ OPAQUE-XT? or IF
      \ Opaque xt, as RSEXEC judges it: catching it launders whatever the xt does
      \ past the checker just as executing it would.
