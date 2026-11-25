@@ -45,7 +45,7 @@ variable FILE-U
    SB-RESET S\" require test/wasm/storage.f\n: MAIN ( -- ) " SB-APPEND
    entry SB-APPEND  S\"  ;\n" SB-APPEND
    SRC SRC-U @ >str SB$ FS:WRITE-ALL
-   SRC SRC-U @ MOD MOD-U @ WASM-HARNESS:BUILD ;
+   SRC SRC-U @ >str MOD MOD-U @ >str WASM-HARNESS:BUILD ;
 
 \ The entry's module, the file name with .wasm, builds, validates and runs to
 \ status, printing want; want and the output stay as name-expected.txt and
@@ -55,11 +55,11 @@ variable FILE-U
    SB-RESET name SB-APPEND s" -expected.txt" SB-APPEND
    want SB$ FILE!
    entry name BUILD 0 T=
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
-   MOD MOD-U @ WASM-HARNESS:RUN status T=
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ >str WASM-HARNESS:RUN status T=
    SB-RESET name SB-APPEND s" -actual.txt" SB-APPEND
-   WASM-HARNESS:OUT$ >str SB$ FILE!
-   WASM-HARNESS:OUT$ >str want T$= ;
+   WASM-HARNESS:OUT$ SB$ FILE!
+   WASM-HARNESS:OUT$ want T$= ;
 
 \ GROW's lines, REFUSE's and REUSE's.
 : BUFFER$ ( -- str )

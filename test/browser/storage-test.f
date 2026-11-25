@@ -54,7 +54,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    rc ;
 
 : BUILD ( -- n )
-   s" test/browser/storage.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/storage.f" MOD MOD-U @ >str WASM-HARNESS:BUILD ;
 
 : SUM ( str -- n )
    {: s:str :}
@@ -107,7 +107,7 @@ public
    rc 0 T=
    rc 0<> if T-REPORT exit then
    s" it validates" T-LABEL
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
    PAYLOAD! {: sum:n :}
    sum WANT {: want:str :}
    s" the buffer grows beside the fetched bytes, keeps them, and its freed pages return cleared" T-LABEL

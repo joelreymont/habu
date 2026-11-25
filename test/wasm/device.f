@@ -82,11 +82,11 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
    THROWER KERNEL0
    0 s" one.wasm" MODULE {: s:str :}
    s" a one-function module validates" T-LABEL
-   s STR:DATA s STR:LEN WASM-HARNESS:VALID? TTRUE
+   s WASM-HARNESS:VALID? TTRUE
    s" it exits 1, its entry's status" T-LABEL
-   s STR:DATA s STR:LEN WASM-HARNESS:RUN 1 T=
+   s WASM-HARNESS:RUN 1 T=
    s" the bytes it wrote to OUT are read back" T-LABEL
-   WASM-HARNESS:OUT$ >str TEXT$ T$=
+   WASM-HARNESS:OUT$ TEXT$ T$=
    s" its throw code is read back whole" T-LABEL
    WASM-HARNESS:THROW-CODE CODE T= ;
 
@@ -95,29 +95,29 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
    KERNEL0
    0 s" trap.wasm" MODULE {: s:str :}
    s" a body that traps validates" T-LABEL
-   s STR:DATA s STR:LEN WASM-HARNESS:VALID? TTRUE
+   s WASM-HARNESS:VALID? TTRUE
    s" it exits 2" T-LABEL
-   s STR:DATA s STR:LEN WASM-HARNESS:RUN 2 T= ;
+   s WASM-HARNESS:RUN 2 T= ;
 
 : INVALID-ROW ( -- )
    0 BODY-U !  0 B,  $42 B, 0 S64,  $0B B,     \ an i64 for its i32 status
    KERNEL0
    0 s" invalid.wasm" MODULE {: s:str :}
    s" a body answering the wrong type is invalid" T-LABEL
-   s STR:DATA s STR:LEN WASM-HARNESS:VALID? TFALSE
+   s WASM-HARNESS:VALID? TFALSE
    s" it exits 3" T-LABEL
-   s STR:DATA s STR:LEN WASM-HARNESS:RUN 3 T= ;
+   s WASM-HARNESS:RUN 3 T= ;
 
 \ ---- W03 -------------------------------------------------------------------------
 : W03-ROW ( -- )
    BUILD
    CHAIN s" w03.wasm" MODULE {: s:str :}
    s" W03's module validates" T-LABEL
-   s STR:DATA s STR:LEN WASM-HARNESS:VALID? TTRUE
+   s WASM-HARNESS:VALID? TTRUE
    s" W03's module runs to status 0" T-LABEL
-   s STR:DATA s STR:LEN WASM-HARNESS:RUN 0 T=
+   s WASM-HARNESS:RUN 0 T=
    s" W03's module writes no output" T-LABEL
-   WASM-HARNESS:OUT$ nip 0 T= ;
+   WASM-HARNESS:OUT$ STR:LEN 0 T= ;
 
 public
 

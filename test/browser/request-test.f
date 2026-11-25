@@ -101,7 +101,7 @@ PATH-CAP BUFFER: FILE
    rc 0 T= ;
 
 : BUILD ( -- n )
-   s" test/browser/request.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/request.f" MOD MOD-U @ >str WASM-HARNESS:BUILD ;
 
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET
@@ -394,7 +394,7 @@ public
    rc 0 T=
    rc 0<> if  ERR$ type cr  T-REPORT exit  then
    s" browser request fixture validates" T-LABEL
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
    TAGGED-CASE
    PARALLEL-CASE
    TRAPPED-CASE

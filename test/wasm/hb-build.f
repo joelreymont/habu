@@ -75,8 +75,8 @@ variable MOD-U
    START  s" --repl" ARG+  WASM+  SRC+  MOD+  DRIVER ;
 
 : RAN ( -- n )
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
-   MOD MOD-U @ WASM-HARNESS:RUN ;
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ >str WASM-HARNESS:RUN ;
 
 
 \ m.f, and a file of requires whose paths hold DIR, may outgrow SB-CAP: their
@@ -99,7 +99,7 @@ variable TEXT-U
    s" `53 emit` builds into a module that validates, runs to status 0 and prints 5" T-LABEL
    s" emit.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str s" 5" T$= ;
+   WASM-HARNESS:OUT$ s" 5" T$= ;
 
 : EMITS! ( n str -- )
    {: reps:n name:str :}
@@ -119,8 +119,8 @@ variable TEXT-U
    s" emit grows OUT and the harness receives every byte" T-LABEL
    s" full.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ nip WPROF:OUT-CAP 2 * 1+ T=
-   WASM-HARNESS:OUT$ >str ALL-X? TTRUE ;
+   WASM-HARNESS:OUT$ STR:LEN WPROF:OUT-CAP 2 * 1+ T=
+   WASM-HARNESS:OUT$ ALL-X? TTRUE ;
 
 \ One write to descriptor 2 past ERR's first size: ERR grows and takes it whole;
 \ one to descriptor 1 goes to OUT.
@@ -135,9 +135,9 @@ variable TEXT-U
    s" a write to descriptor 2 grows ERR, which receives every byte, and one to 1 goes to OUT" T-LABEL
    s" err.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:ERR$ nip n T=
-   WASM-HARNESS:ERR$ >str ALL-X? TTRUE
-   WASM-HARNESS:OUT$ >str s" x" T$=
+   WASM-HARNESS:ERR$ STR:LEN n T=
+   WASM-HARNESS:ERR$ ALL-X? TTRUE
+   WASM-HARNESS:OUT$ s" x" T$=
    S\" : MAIN ( -- ) s\" x\" str> drop 1 32 lshift 1+ >str 1 die ;" s" huge.f" SOURCE!
    s" a die ERR cannot grow for traps and records STREAM-GROW at ERR's end past it" T-LABEL
    s" huge.wasm" BUILD 0 T=
@@ -265,7 +265,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the float words build into a module that prints what the host prints" T-LABEL
    s" f.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str F-HOST$ T$= ;
+   WASM-HARNESS:OUT$ F-HOST$ T$= ;
 
 
 \ The program loops.f: +loop up, down and not entered, j, r@, leave, until and again.
@@ -287,7 +287,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" +loop up, down and not entered, j, r@, leave, until and again print what the host prints" T-LABEL
    s" loops.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str LOOPS-HOST$ T$= ;
+   WASM-HARNESS:OUT$ LOOPS-HOST$ T$= ;
 
 
 \ The program sha.f prints the SHA-256 of "abc", of FIPS 180's two-block message
@@ -316,7 +316,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a program that hashes with SHA-256 builds into a module that prints the host's digests" T-LABEL
    s" sha.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str SHA-HOST$ T$= ;
+   WASM-HARNESS:OUT$ SHA-HOST$ T$= ;
 
 
 \ The program nan.f prints the bits of a made NaN, then of a NaN operand on the
@@ -342,7 +342,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a made NaN is the one NaN, and a NaN operand is the answer, the left before the right" T-LABEL
    s" nan.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str NAN-HOST$ T$= ;
+   WASM-HARNESS:OUT$ NAN-HOST$ T$= ;
 
 
 \ Package M in m.f: map-anon and munmap through words.
@@ -387,7 +387,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a run unmapped twice traps after both earlier answers" T-LABEL
    s" twice.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:OUT$ >str S\" 0\n0\n" T$= ;
+   WASM-HARNESS:OUT$ S\" 0\n0\n" T$= ;
 
 : DEFER-CASE ( -- )
    S\" defer HOOK ( n -- n )\n: TWICE ( n -- n ) 2 * ;\n: SET ( -- ) [: TWICE ;] is HOOK ;\nSET\n: MAIN ( -- ) 3 HOOK .  [: 1 + ;] is HOOK  3 HOOK . ;"
@@ -395,7 +395,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a defer set while building and again while running calls each word it holds" T-LABEL
    s" defer.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str S\" 6\n4\n" T$= ;
+   WASM-HARNESS:OUT$ S\" 6\n4\n" T$= ;
 
 : DOES-CASE ( -- )
    S\" require src/lib/span.f\n8 SPAN-BUFFER: B\n: MK ( n -- ) create , does> ( -- n ) @ ;\n5 MK FIVE\n: MAIN ( -- ) B SPAN:LEN .  FIVE . ;"
@@ -403,7 +403,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a created word's does> clause runs in a Wasm module: B and FIVE print what the host prints" T-LABEL
    s" does.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str S\" 8\n5\n" T$=
+   WASM-HARNESS:OUT$ S\" 8\n5\n" T$=
    SB-RESET
    S\" package ADV\nprivate\nvariable ACTION\npublic\n" SB-APPEND
    S\" : MAKER ( -- ) create 0 , does> ( -- ) drop ;\n: MAIN ( -- ) ACTION @ drop ;\n" SB-APPEND
@@ -412,7 +412,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a cell naming a does> clause places a definer no live word reaches, and its module runs to status 0" T-LABEL
    s" clause-cell.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str s" " T$= ;
+   WASM-HARNESS:OUT$ s" " T$= ;
 
 
 : ERR-HAS ( str -- )
@@ -514,8 +514,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" die writes its message to ERR and traps" T-LABEL
    s" die.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:OUT$ nip 0 T=
-   WASM-HARNESS:ERR$ >str S\" boom\n" T$= ;
+   WASM-HARNESS:OUT$ STR:LEN 0 T=
+   WASM-HARNESS:ERR$ S\" boom\n" T$= ;
 
 
 \ Package C in catch.f: catch, finally and the depths a caught throw restores,
@@ -603,7 +603,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" pass.wasm" BUILD 0 T=
    RAN 0 T=
    WASM-HARNESS:THROW-CODE 0 T=
-   WASM-HARNESS:OUT$ >str s" KDMXCG" T$= ;
+   WASM-HARNESS:OUT$ s" KDMXCG" T$= ;
 
 
 : SEGMENTS-CASE ( -- )
@@ -612,7 +612,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" data of 100001 separated cells builds into a module of at most 100000 segments, which bun loads" T-LABEL
    s" segments.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str S\" 1\n" T$= ;
+   WASM-HARNESS:OUT$ S\" 1\n" T$= ;
 
 
 : UNUSED-CASE ( -- )
@@ -620,7 +620,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" an unreachable definition with an unsupported call is omitted" T-LABEL
    s" unused.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str S\" 7\n" T$= ;
+   WASM-HARNESS:OUT$ S\" 7\n" T$= ;
 
 : FATAL-CASE ( -- )
    S\" : FATAL ( -- ) s\" fatal\" 77 die ; : MAIN ( -- ) ['] FATAL catch . ;"
@@ -628,7 +628,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" die prints its message and traps through catch, with no continuation" T-LABEL
    s" fatal.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:ERR$ >str S\" fatal\n" T$= ;
+   WASM-HARNESS:ERR$ S\" fatal\n" T$= ;
 
 \ ACTION-XT gives execute's own xt, which has no stored effect, as this
 \ fixture's type; its table slot is execute's kernel routine.
@@ -661,17 +661,17 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a word run through a code cell holding execute's xt prints 31, as natively" T-LABEL
    s" execute-cell.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str S\" 31\n" T$=
+   WASM-HARNESS:OUT$ S\" 31\n" T$=
    WORD-CELL!
    s" a word run through a code cell holding its own xt prints 31, as natively" T-LABEL
    s" word-cell.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str S\" 31\n" T$=
+   WASM-HARNESS:OUT$ S\" 31\n" T$=
    CATCH-CELL!
    s" catch through a code cell holding catch's xt prints the code -37, as natively" T-LABEL
    s" catch-cell.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ >str S\" -37\n" T$= ;
+   WASM-HARNESS:OUT$ S\" -37\n" T$= ;
 
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
@@ -689,8 +689,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" an ENUM fetched through a pointer passes its tag check, then a stored 7 fails it" T-LABEL
    s" fetch.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:OUT$ >str S\" 2\n" T$=
-   WASM-HARNESS:ERR$ >str S\" E-BAD-TAG habu: layout tag 7 outside 0..2\n" T$= ;
+   WASM-HARNESS:OUT$ S\" 2\n" T$=
+   WASM-HARNESS:ERR$ S\" E-BAD-TAG habu: layout tag 7 outside 0..2\n" T$= ;
 [then]
 
 
@@ -799,8 +799,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" Wasm BYTE-COPY prints the same diagnostic and traps through catch" T-LABEL
    s" negative.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:OUT$ nip 0 T=
-   WASM-HARNESS:ERR$ >str S\" byte: negative length\n" T$= ;
+   WASM-HARNESS:OUT$ STR:LEN 0 T=
+   WASM-HARNESS:ERR$ S\" byte: negative length\n" T$= ;
 
 T-RESET SETUP NEGATIVE-BYTE-CASE T-REPORT
 [then]

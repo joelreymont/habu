@@ -42,7 +42,7 @@ variable MOD-U
    d s" take.wasm" MOD FS:JOIN-PATH MOD-U ! ;
 
 : BUILD ( -- n )
-   s" test/browser/take.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/take.f" MOD MOD-U @ >str WASM-HARNESS:BUILD ;
 
 \ host-cli.mjs on the module with the typed texts, run by bun.
 : HOST ( str str -- n )
@@ -84,7 +84,7 @@ public
    rc 0 T=
    rc 0<> if ERR ERR-U @ >str type cr T-REPORT exit then
    s" browser take fixture validates" T-LABEL
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
    TAKEN-CASE
    THROWN-CASE
    s" four take-then-free cycles end with the memory one does"

@@ -112,7 +112,7 @@ variable BEFORE-U
 
 
 : BUILD ( -- n )
-   s" test/browser/app.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/app.f" MOD MOD-U @ >str WASM-HARNESS:BUILD ;
 
 
 : HOST-OPEN ( -- )
@@ -352,7 +352,7 @@ public
    rc 0 T=
    rc 0<> if  ERR$ type cr  T-REPORT exit  then
    s" browser app fixture validates" T-LABEL
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
    RPC-CASE
    ORDER-CASE
    AFTER-CASE

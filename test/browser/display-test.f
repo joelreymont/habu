@@ -50,7 +50,7 @@ variable FILE-U
    FILE FILE-U @ >str s" sixteen bytes ok" FS:WRITE-ALL ;
 
 : BUILD ( -- n )
-   s" test/browser/display.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/display.f" MOD MOD-U @ >str WASM-HARNESS:BUILD ;
 
 : MAC-CHROME ( -- str )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
@@ -98,7 +98,7 @@ public
    rc 0 T=
    rc 0<> if ERR ERR-U @ >str type cr T-REPORT exit then
    s" browser display fixture validates" T-LABEL
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
    PEER {: peer:n :}
    s" SVG/input records, scenes, identities, refusals and CLI" T-LABEL
    peer 0 T=

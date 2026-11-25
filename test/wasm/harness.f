@@ -148,24 +148,24 @@ variable MEM-END
 
 public
 
-: BUILD ( ^u8 n ^u8 n -- n )
-   {: src:^ su:n mod:^ mu:n :}
+: BUILD ( str str -- n )
+   {: src:str mod:str :}
    PROC-ARGV-RESET
    s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+  s" --target" ARG+  s" wasm" ARG+
-   src su >str ARG+  s" -o" ARG+  mod mu >str ARG+
+   src ARG+  s" -o" ARG+  mod ARG+
    s" bin/hb" RUN-AT {: rc:n :}
    rc 0<> if  ERR ERR-U @ >str type cr  then
    rc ;
 
-: VALID? ( ^u8 n -- bool )  >str false VALIDATE ;
+: VALID? ( str -- bool )  false VALIDATE ;
 
 \ W05 probes one missing required feature on the same generated module.
 : VALID-WITHOUT-SAT? ( str -- bool )  true VALIDATE ;
 
-: RUN ( ^u8 n -- n )
-   {: path:^ u:n :}
+: RUN ( str -- n )
+   {: path:str :}
    PROC-ARGV-RESET
-   s" test/wasm/run.mjs" ARG+  path u >str ARG+
+   s" test/wasm/run.mjs" ARG+  path ARG+
    s" bun" SPAWN {: rc:n :}
    0 CODE !  0 KIND !  0 ADDR !
    rc 1 = if  THROWN CODE !  then
@@ -173,8 +173,8 @@ public
    rc 2 = if  FAULTED  then
    rc ;
 
-: OUT$ ( -- ^u8 n )  OUT OUT-U @ ;
-: ERR$ ( -- ^u8 n )  ERR TAIL @ +  ERR-U @ TAIL @ - ;
+: OUT$ ( -- str )  OUT OUT-U @ >str ;
+: ERR$ ( -- str )  ERR TAIL @ +  ERR-U @ TAIL @ - >str ;
 
 : THROW-CODE ( -- n )  CODE @ ;
 : FAULT-KIND ( -- n )  KIND @ ;

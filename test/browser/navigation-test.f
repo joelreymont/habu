@@ -49,7 +49,7 @@ PATH-CAP BUFFER: FILE
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
 
 : BUILD ( -- n )
-   s" test/browser/navigation.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/navigation.f" MOD MOD-U @ >str WASM-HARNESS:BUILD ;
 
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET
@@ -242,7 +242,7 @@ public
    rc 0 T=
    rc 0<> if ERR ERR-U @ >str type cr T-REPORT exit then
    s" browser navigation module validates" T-LABEL
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
    INPUT-CASE ZERO-CASE REDRAW-CASE REMESH-CASE PICK-CASE
    OCCLUDE-CASE UNANSWERED-CASE INVALID-CASES FREED-CASES
    T-REPORT ;

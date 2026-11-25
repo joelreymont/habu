@@ -47,7 +47,7 @@ variable SRC-U
 
 \ OUT's lines after WANT$'s, the highest live bytes, or 0.
 : HIGHEST ( -- n )
-   WASM-HARNESS:OUT$ >str {: s:str :}
+   WASM-HARNESS:OUT$ {: s:str :}
    WANT$ {: w:str :}
    s STR:DATA  w STR:LEN s STR:LEN min >str  w T$=
    s STR:DATA w STR:LEN s STR:LEN min +  s STR:LEN w STR:LEN - 0 max >str  STR:RTRIM STR:>NUMBER? MATCH option
@@ -87,9 +87,9 @@ public
    T-RESET
    SETUP
    s" 100000 blocks of 100 B to 1 MiB, freed or resized, come zeroed and keep their bytes in a Wasm module" T-LABEL
-   SRC SRC-U @ MOD MOD-U @ WASM-HARNESS:BUILD 0 T=
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
-   MOD MOD-U @ WASM-HARNESS:RUN 0 T=
+   SRC SRC-U @ >str MOD MOD-U @ >str WASM-HARNESS:BUILD 0 T=
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ >str WASM-HARNESS:RUN 0 T=
    HIGHEST {: high:n :}
    high SHOW
    high BOUNDED

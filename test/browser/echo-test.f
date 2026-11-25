@@ -79,8 +79,8 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : BUILD ( -- )
    s" test/browser/echo.f builds into a module that validates" T-LABEL
-   s" test/browser/echo.f" str> MOD MOD-U @ WASM-HARNESS:BUILD 0 T=
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE ;
+   s" test/browser/echo.f" MOD MOD-U @ >str WASM-HARNESS:BUILD 0 T=
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE ;
 
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET
@@ -240,7 +240,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ event, the host naming both revisions.
 : STALE-CASE ( -- )
    s" test/browser/stale.f builds into a module" T-LABEL
-   s" test/browser/stale.f" str> STALE-MOD STALE-MOD-U @
+   s" test/browser/stale.f" STALE-MOD STALE-MOD-U @ >str
    WASM-HARNESS:BUILD 0 T=
    s" stale: a hello of another revision ends the module, exit status 1" T-LABEL
    PROC-ARGV-RESET

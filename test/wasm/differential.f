@@ -130,14 +130,15 @@ variable THROWN-U
 \ throw's code whole; a run that returns writes nothing to ERR.
 : WASM ( str n n -- )
    {: want:str status:n code:n :}
-   SRC SRC-U @ MODULE MODULE-U @ WASM-HARNESS:BUILD {: r:n :}
+   SRC SRC-U @ >str  MODULE MODULE-U @ >str
+   WASM-HARNESS:BUILD {: r:n :}
    LABEL  r 0 T=
    r 0<> if  exit  then
-   LABEL  MODULE MODULE-U @ WASM-HARNESS:VALID? TTRUE
-   LABEL  MODULE MODULE-U @ WASM-HARNESS:RUN status T=
-   WASM-HARNESS:OUT$ >str s" -wasm.txt" KEEP
-   LABEL  WASM-HARNESS:OUT$ >str want T$=
-   status 0= if  LABEL  WASM-HARNESS:ERR$ >str s" " T$=  then
+   LABEL  MODULE MODULE-U @ >str WASM-HARNESS:VALID? TTRUE
+   LABEL  MODULE MODULE-U @ >str WASM-HARNESS:RUN status T=
+   WASM-HARNESS:OUT$ s" -wasm.txt" KEEP
+   LABEL  WASM-HARNESS:OUT$ want T$=
+   status 0= if  LABEL  WASM-HARNESS:ERR$ s" " T$=  then
    status 1 = if  LABEL  WASM-HARNESS:THROW-CODE code T=  then ;
 
 \ ---- W03's program ---------------------------------------------------------------
@@ -231,7 +232,7 @@ public
    s"   = code: " THROWN+  SB-RESET code FMT:SB-INT SB$ THROWN+
    S\" \n  = help: catch the code where the program can go on, or remove its cause\n\n" THROWN+
    want 1 EXIT-STATUS:UNCAUGHT WASM
-   LABEL  WASM-HARNESS:ERR$ >str THROWN THROWN-U @ >str T$= ;
+   LABEL  WASM-HARNESS:ERR$ THROWN THROWN-U @ >str T$= ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Stderr is the native engine's record of a caught memory fault.
