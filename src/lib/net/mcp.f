@@ -146,7 +146,7 @@ DYNAMIC-BUFFER TOOL-TEXT SPAN:span<u8>       \ the descriptor
 DYNAMIC-BUFFER TOOL-OUTPUT SPAN:span<u8>     \ the descriptor's outputSchema
 DYNAMIC-BUFFER TOOL-WHOLE bool              \ TOOL-OUTPUT's "type" is "object"
 DYNAMIC-BUFFER TOOL-INPUT JSON-SCHEMA:schema \ the descriptor's inputSchema
-DYNAMIC-BUFFER TOOL-BODY [ ^u8 n -- ]
+DYNAMIC-BUFFER TOOL-BODY [ str -- ]
 
 \ A row to each resource, in ADD-RESOURCE order.
 variable RESOURCE-COUNT
@@ -154,8 +154,8 @@ DYNAMIC-BUFFER RESOURCE-URI SPAN:span<u8>     \ decoded
 DYNAMIC-BUFFER RESOURCE-TEXT SPAN:span<u8>    \ the descriptor
 DYNAMIC-BUFFER RESOURCE-PAGE SPAN:span<u8>
 
-: EVERY ( ^u8 n -- bool ) 2drop true ;
-TYPED-VARIABLE VISIBILITY [ ^u8 n -- bool ]   \ VISIBLE!'s hook
+: EVERY ( str -- bool ) drop true ;
+TYPED-VARIABLE VISIBILITY [ str -- bool ]   \ VISIBLE!'s hook
 ' EVERY VISIBILITY !
 
 variable LOGGING                              \ LOG's: nonzero once it ran
@@ -408,7 +408,7 @@ CAST: HELD>N ( held -- n )
 
 \ Whether the request's caller may see and call the registered tool.
 : SHOWN? ( n -- bool )
-   TOOL-NAME @ SPAN:$ dup STR:DATA swap STR:LEN VISIBILITY @ execute ;
+   TOOL-NAME @ SPAN:$ VISIBILITY @ execute ;
 
 
 : RESULT-START ( ^JSON:writer -- ^JSON:writer )
@@ -1277,7 +1277,7 @@ CAST: HELD>N ( held -- n )
    idx SLOT CALLED !
    CALLING SLOT STAGE !
    args idx ADMITTED? 0= if exit then
-   [: args STR:DATA args STR:LEN idx TOOL-BODY @ execute ;] catch BODY-FAULT
+   [: args idx TOOL-BODY @ execute ;] catch BODY-FAULT
    SLOT STAGE @ CALLING = if E-STATE throw then ;
 
 
@@ -1555,9 +1555,9 @@ public
 \ Guidance for the model on using this server: "instructions" in initialize and
 \ server/discover results, left out while the text is empty. The text is
 \ borrowed and outlives the server, as literals do. E-STATE while HTTP serves.
-: INSTRUCTIONS! ( ^u8 n -- )
+: INSTRUCTIONS! ( str -- )
    HTTP:RUNNING? if E-STATE throw then
-   SPAN:MAKE INSTRUCTIONS ! ;
+   >SPAN INSTRUCTIONS ! ;
 
 
 \ From the next HTTP:START on, each message HANDLE or ANSWER takes writes one
@@ -1583,16 +1583,15 @@ public
 \ False hides the named tool from HANDLE's or ANSWER's caller as an unknown one; the
 \ default admits every tool; it may ask BEARER:CLAIM$. _meta.ui.visibility ["app"]
 \ keeps a tool listed but widget-only.
-: VISIBLE! ( [ ^u8 n -- bool ] -- )
+: VISIBLE! ( [ str -- bool ] -- )
    HTTP:RUNNING? if E-STATE throw then
    VISIBILITY ! ;
 
 
 \ A borrowed MCP Tool descriptor, which must outlive the server, and its body. It needs a
 \ non-empty string name and object schemas; an outputSchema typed "object" needs object results.
-: ADD-TOOL ( ^u8 n [ ^u8 n -- ] -- )
-   {: text:^ tu:n body :}
-   text tu >str {: desc:str :}
+: ADD-TOOL ( str [ str -- ] -- )
+   {: desc:str body :}
    HTTP:RUNNING? if E-STATE throw then
    desc SCHEMA-READER s" descriptor" SHAPE
    desc s" inputSchema" OBJECT-PART {: input:str :}
@@ -1605,7 +1604,7 @@ public
    [: input idx INPUT-SCHEMA ;] catch {: code:n :}
    code 0<> if name MEM:FREE-SPAN code throw then
    name idx TOOL-NAME !
-   text tu SPAN:MAKE idx TOOL-TEXT !
+   desc >SPAN idx TOOL-TEXT !
    output >SPAN idx TOOL-OUTPUT !
    whole idx TOOL-WHOLE !
    body idx TOOL-BODY !
@@ -1614,44 +1613,42 @@ public
 
 \ A borrowed MCP Resource descriptor, with a non-empty string uri and string name and mimeType,
 \ and the UTF-8 page resources/read answers; both must outlive the server.
-: ADD-RESOURCE ( ^u8 n ^u8 n -- )
-   {: text:^ tu:n page:^ pu:n :}
-   text tu >str {: desc:str :}
+: ADD-RESOURCE ( str str -- )
+   {: desc:str page:str :}
    HTTP:RUNNING? if E-STATE throw then
    desc SCHEMA-READER s" descriptor" SHAPE
    desc s" name" REQUIRE-STRING
    desc s" mimeType" REQUIRE-STRING
-   page pu >str REQUIRE-UTF8
+   page REQUIRE-UTF8
    RESOURCE-COUNT @ {: idx:n :}
    idx 1+ RESOURCES-RESERVE
    desc s" uri" [: REGISTERED-URI? ;] DECODED-MEMBER {: uri :}
    uri idx RESOURCE-URI !
-   text tu SPAN:MAKE idx RESOURCE-TEXT !
-   page pu SPAN:MAKE idx RESOURCE-PAGE !
+   desc >SPAN idx RESOURCE-TEXT !
+   page >SPAN idx RESOURCE-PAGE !
    idx 1+ RESOURCE-COUNT ! ;
 
 
 \ A body's result: one JSON value. E-STATE outside a body or after its result;
 \ else the reader's E-JSON-READ-* code or E-SCHEMA, which HANDLE passes to the host.
-: RESULT ( ^u8 n -- ) >str s" " s" []" false RESULT! ;
+: RESULT ( str -- ) s" " s" []" false RESULT! ;
 
 \ RESULT, plus the result's _meta object, which reaches the host's widget and not the
 \ model (OpenAI Apps SDK); empty meta adds none, and E-SCHEMA names the meta it refuses.
-: RESULT-META ( ^u8 n ^u8 n -- )
-   {: text:^ u:n meta:^ mu:n :}
-   text u >str meta mu >str s" []" false RESULT! ;
+: RESULT-META ( str str -- )
+   s" []" false RESULT! ;
 
 
 \ RESULT, plus a JSON array of MCP content blocks, such as a text of the tool's own, an
 \ image or an embedded resource, that is the result's content as given; E-SCHEMA unless
 \ blocks is one JSON array of objects, each with one string "type".
-: RESULT-CONTENT ( ^u8 n ^u8 n -- )
-   {: text:^ u:n extra:^ eu:n :}
-   text u >str s" " extra eu >str false RESULT! ;
+: RESULT-CONTENT ( str str -- )
+   {: text:str extra:str :}
+   text s" " extra false RESULT! ;
 
 
 \ A body's tool error: the message as text content, isError true.
-: RESULT-ERROR ( ^u8 n -- ) >str TOOL-ERROR ;
+: RESULT-ERROR ( str -- ) TOOL-ERROR ;
 
 
 \ In a body before its result. True: the call's connection is taken and the
@@ -2416,13 +2413,13 @@ public
 \ and keeps running while the client is used. Answers borrow the client's
 \ buffers until its next TOOLS, CALL or CLOSE. A throw leaves the client ready
 \ for the next call. OPEN that throws holds nothing.
-: OPEN ( ^u8 n -- client )
-   {: url:^ uu:n :}
+: OPEN ( str -- client )
+   {: url:str :}
    REGION-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: region :}
    0 region SPAN:FILL
    region CLAIM {: who:client :}
    who LIVE {: idx:n :}
-   idx url uu >str [: FILL-ROW ;] catch {: code:n :} drop drop
+   idx url [: FILL-ROW ;] catch {: code:n :} drop drop
    code 0<> if idx RELEASE code throw then
    who ;
 
@@ -2445,16 +2442,16 @@ public
 \ exchange until the next TOKEN! or CLOSE; the text is copied, the token it
 \ replaces wiped, and an empty one sends none. A token holding CR or LF makes
 \ each exchange throw CURL:E-OPERAND. E-STATE for a closed client.
-: TOKEN! ( client ^u8 n -- )
-   {: who:client token:^ tu:n :}
+: TOKEN! ( client str -- )
+   {: who:client token:str :}
    who LIVE TOKEN-BUF {: buf:^ :}
    buf BUF:WIPE
-   token tu >str buf BUF+ ;
+   token buf BUF+ ;
 
 
 \ Every tool the server lists, following nextCursor to the last page, as one JSON
 \ array in order, the whole call within ms (0: no limit); E-TRANSFER past ms.
-: TOOLS ( client ms -- ^u8 n )
+: TOOLS ( client ms -- str )
    {: who:client limit:ms :}
    TIME:MONO-NS {: start:n :}
    who LIVE {: idx:n :}
@@ -2464,17 +2461,17 @@ public
    91 buf BUF:APPEND-BYTE
    s" " begin idx swap limit start LEFT PAGE while repeat drop
    93 buf BUF:APPEND-BYTE
-   buf BUF$ dup STR:DATA swap STR:LEN ;
+   buf BUF$ ;
 
 
 \ tools/call of the named tool with the arguments' JSON object, within ms for the
 \ whole transfer (0: no limit): the result object's JSON text and its isError.
-: CALL ( client ^u8 n ^u8 n ms -- ^u8 n bool )
-   {: who:client name:^ nu:n args:^ au:n limit:ms :}
+: CALL ( client str str ms -- str bool )
+   {: who:client name:str args:str limit:ms :}
    who LIVE {: idx:n :}
    idx REFUSE-STOPPED
-   idx name nu >str args au >str CALL-REQUEST
-   idx name nu >str limit [: CALL-EXCHANGE ;] catch {: code:n :}
+   idx name args CALL-REQUEST
+   idx name limit [: CALL-EXCHANGE ;] catch {: code:n :}
    drop drop drop
    idx code SETTLE
    idx RESULT$ {: result:str :}
@@ -2486,7 +2483,7 @@ public
       k JSON:T-TRUE =
    else drop drop false then
    {: fault:bool :}
-   result STR:DATA result STR:LEN fault ;
+   result fault ;
 
 
 \ From any task, stops the client until CLOSE: a TOOLS or CALL whose transfer has not
