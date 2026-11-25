@@ -493,12 +493,18 @@ variable HELD                         \ nonzero while x29 holds the index
 \ ---- memory ------------------------------------------------------------------
 : LOAD ( vreg vreg width -- )
    {: d:vreg a:vreg w:width :}
-   w WIDTH>N 1 = if d REG a REG 0 ENC-LDRB W exit then
+   w WIDTH>N {: n:n :}
+   n 1 = if d REG a REG 0 ENC-LDRB W exit then
+   n 2 = if d REG a REG 0 ENC-LDRH W exit then
+   n 4 = if d REG a REG 0 ENC-LDRW W exit then
    d REG a REG 0 ENC-LDR W ;
 
 : STORE ( vreg vreg width -- )
    {: s:vreg a:vreg w:width :}
-   w WIDTH>N 1 = if s REG a REG 0 ENC-STRB W exit then
+   w WIDTH>N {: n:n :}
+   n 1 = if s REG a REG 0 ENC-STRB W exit then
+   n 2 = if s REG a REG 0 ENC-STRH W exit then
+   n 4 = if s REG a REG 0 ENC-STRW W exit then
    s REG a REG 0 ENC-STR W ;
 
 \ ---- the return stack --------------------------------------------------------

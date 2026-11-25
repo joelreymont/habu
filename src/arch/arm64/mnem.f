@@ -74,6 +74,10 @@ ENGINE-GPR:A64-DSTACK constant XDS  31 constant SP
 
 : STRB, ( n n n -- )  ENC-STRB EMITW ;
 
+: LDRH, ( n n n -- )  ENC-LDRH EMITW ;
+
+: STRH, ( n n n -- )  ENC-STRH EMITW ;
+
 : LDRW, ( n n n -- )  ENC-LDRW EMITW ;
 
 : STRW, ( n n n -- )  ENC-STRW EMITW ;

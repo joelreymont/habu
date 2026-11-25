@@ -1614,6 +1614,18 @@ private
 : BCSTORE ( -- )
    B G-POP A G-POP  A B 0 STRB, ;
 
+: BHFETCH ( -- )
+   A G-POP  A A 0 LDRH, A G-PUSH ;
+
+: BHSTORE ( -- )
+   B G-POP A G-POP  A B 0 STRH, ;
+
+: BWFETCH ( -- )
+   A G-POP  A A 0 LDRW, A G-PUSH ;
+
+: BWSTORE ( -- )
+   B G-POP A G-POP  A B 0 STRW, ;
+
 \ Atomic primitives (ARMv8.1 LSE). A=x9 B=x10 C=x11.
 : BATFETCH ( -- )   \ atomic@ ( ^a -- a ) : LDAR x9,[x9]
    A G-POP  A A LDAR,  A G-PUSH ;
@@ -3831,6 +3843,8 @@ package ENGINE-EMIT
    s" data" ['] BDROP FPRIM-L  s" len" ['] BNIP FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM
+   s" u16@" ['] BHFETCH FPRIM-L  s" u16!" ['] BHSTORE FPRIM
+   s" u32@" ['] BWFETCH FPRIM-L  s" u32!" ['] BWSTORE FPRIM
    s" atomic@" ['] BATFETCH FPRIM-L  s" atomic!" ['] BATSTORE FPRIM
    s" atomic-u32@" ['] BATFETCH32 FPRIM-L  s" atomic-u32!" ['] BATSTORE32 FPRIM
    s" atomic-add" ['] BATADD FPRIM  s" atomic-cas" ['] BATCAS FPRIM  s" fence" ['] BFENCE FPRIM-L

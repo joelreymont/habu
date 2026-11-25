@@ -459,8 +459,8 @@ ARCHES TYPED-BUFFER EMIT-IMM?-XT [ n -- bool ]
 ARCHES TYPED-BUFFER EMIT-LOAD-XT [ vreg vreg width -- ]
 ARCHES TYPED-BUFFER EMIT-STORE-XT [ vreg vreg width -- ]
 
-\ EMIT-LOAD sets d to the cell or zero-extended byte at a. EMIT-STORE puts s's
-\ cell or low byte at a and sets no vreg. Neither checks a, nor do kernel rows.
+\ EMIT-LOAD sets d to the w bytes at a, zero-extended. EMIT-STORE puts s's low w
+\ bytes at a and sets no vreg. Neither checks a, nor do kernel rows.
 : EMIT-LOAD ( vreg vreg width -- ) {: d:vreg a:vreg w:width :}
    d CACHE-DROP  d a w CUR @ EMIT-LOAD-XT @ execute ;
 : EMIT-STORE ( vreg vreg width -- ) CUR @ EMIT-STORE-XT @ execute ;

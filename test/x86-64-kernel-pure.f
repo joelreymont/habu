@@ -110,11 +110,27 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
 
 \ ---- the memory scenarios ----------------------------------------------------
 \ Each passes the case value through a store row and reads it back through its
-\ fetch row, at the fixture's first cell, as prim-parity.f MEM-PRIM does; count
-\ also answers the address past the byte.
+\ fetch row, at the fixture's first cell or, for the 16- and 32-bit rows, at
+\ offset 1, as prim-parity.f MEM-PRIM does; count also answers the address past
+\ the byte.
 : STORED ( n -- ) {: v:n :}  v N, 0 AT, s" !" CALL ;
 
+\ The u bytes from the fixture's offset 1, little-endian, each read by `c@`.
+: ODD-BYTES, ( n -- ) {: u:n :}
+   1 AT, s" c@" CALL
+   u 1 ?do  i 1+ AT, s" c@" CALL  i 8 * N, s" lshift" CALL  s" or" CALL  loop ;
+
+: ODD-FETCH ( n str -- ) {: v:n row:str :}
+   v N, 1 AT, s" !" CALL  1 AT, row CALL ;
+
+: ODD-STORE ( n str n -- ) {: v:n row:str u:n :}
+   0 N, u 1+ AT, s" c!" CALL  v N, 1 AT, row CALL  u 1+ ODD-BYTES, ;
+
 : MEM-SCENARIO ( n -- ) {: v:n :}
+   SUBJ$ s" u16@" STR:= if  v s" u16@" ODD-FETCH  exit then
+   SUBJ$ s" u32@" STR:= if  v s" u32@" ODD-FETCH  exit then
+   SUBJ$ s" u16!" STR:= if  v s" u16!" 2 ODD-STORE  exit then
+   SUBJ$ s" u32!" STR:= if  v s" u32!" 4 ODD-STORE  exit then
    SUBJ$ s" !" STR:= if  v STORED  0 AT, s" @" CALL  exit then
    SUBJ$ s" c!" STR:= if  v N, 0 AT, s" c!" CALL  0 AT, s" c@" CALL  exit then
    SUBJ$ s" +!" STR:= if

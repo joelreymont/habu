@@ -409,6 +409,12 @@ EPRIM: str>       PE-STR PE-IN PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
 \ A str's base and its byte count.
 EPPRIM: STR data PE-STR PE-IN PE-PTR-U8 PE-OUT ECLOSE-PRIVATE
 EPPRIM: STR len PE-STR PE-IN PE-N PE-OUT ECLOSE-PRIVATE
+\ Little-endian 16- and 32-bit words at any alignment: a fetch zero-extends, a
+\ store writes the value's low bits.
+EPPRIM: LE u16@ PE-PTR-U8 PE-IN PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: LE u32@ PE-PTR-U8 PE-IN PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: LE u16! PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
+EPPRIM: LE u32! PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ The address as a number, for a distance or a hash; the way back is a
 \ package's private `CAST:`.
 EPRIM: PTR>N      PE-PTR-A-ADDR PE-IN PE-N PE-OUT EPRIM;

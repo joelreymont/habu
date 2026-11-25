@@ -612,13 +612,19 @@ variable STEPPED                      \ nonzero when the last access moved rbx
 \ ---- memory ------------------------------------------------------------------
 : LOAD ( vreg vreg width -- )
    {: d:vreg a:vreg w:width :}
-   w WIDTH>N 1 = if d REG a REG MEM-AT SINK ENC-MOVZX-8-RM exit then
+   w WIDTH>N {: n:n :}
+   n 1 = if d REG a REG MEM-AT SINK ENC-MOVZX-8-RM exit then
+   n 2 = if d REG a REG MEM-AT SINK ENC-MOVZX-16-RM exit then
+   n 4 = if d REG R64>N >R32 a REG MEM-AT SINK ENC-MOV32-RM exit then
    d REG a REG MEM-AT SINK ENC-MOV-RM ;
 
 : STORE ( vreg vreg width -- )
    {: s:vreg a:vreg w:width :}
    s REG {: r:r64 :}
-   w WIDTH>N 1 = if r R64>N >R8 a REG MEM-AT SINK ENC-MOV8-MR exit then
+   w WIDTH>N {: n:n :}
+   n 1 = if r R64>N >R8 a REG MEM-AT SINK ENC-MOV8-MR exit then
+   n 2 = if r R64>N >R16 a REG MEM-AT SINK ENC-MOV16-MR exit then
+   n 4 = if r R64>N >R32 a REG MEM-AT SINK ENC-MOV32-MR exit then
    r a REG MEM-AT SINK ENC-MOV-MR ;
 
 \ ---- calls -------------------------------------------------------------------

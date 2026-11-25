@@ -367,6 +367,28 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
          $FF                             $FF  MEM
 ;CASES
 
+\ The 16- and 32-bit rows work at an odd offset. A fetch reads the field of a
+\ whole cell stored there; a store answers the field and the byte after it.
+0 CASES u16@
+     $AB8123                           $8123  MEM
+          -1                           $FFFF  MEM
+;CASES
+
+0 CASES u16!
+     $AB8123                           $8123  MEM
+          -1                           $FFFF  MEM
+;CASES
+
+0 CASES u32@
+ $AB87654321                       $87654321  MEM
+          -1                       $FFFFFFFF  MEM
+;CASES
+
+0 CASES u32!
+ $AB87654321                       $87654321  MEM
+          -1                       $FFFFFFFF  MEM
+;CASES
+
 0 CASES +!
            0                               3  MEM
           10                              13  MEM

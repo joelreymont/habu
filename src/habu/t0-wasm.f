@@ -356,12 +356,20 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ ---- memory ------------------------------------------------------------------
 : LOAD ( vreg vreg width -- ) {: d:vreg a:vreg w:width :}
    a GET-REG  OP-I32-WRAP-I64 B,
-   w WIDTH>N 1 = if OP-I64-LOAD8-U 0 0 MEM, else LD64, then
+   w WIDTH>N {: n:n :}
+   n 1 = if OP-I64-LOAD8-U ALIGN-8 0 MEM, then
+   n 2 = if OP-I64-LOAD16-U ALIGN-8 0 MEM, then
+   n 4 = if OP-I64-LOAD32-U ALIGN-8 0 MEM, then
+   n 8 = if LD64, then
    d SET-REG ;
 
 : STORE ( vreg vreg width -- ) {: s:vreg a:vreg w:width :}
    a GET-REG  OP-I32-WRAP-I64 B,  s GET-REG
-   w WIDTH>N 1 = if OP-I64-STORE8 ALIGN-8 0 MEM, else ST64, then ;
+   w WIDTH>N {: n:n :}
+   n 1 = if OP-I64-STORE8 ALIGN-8 0 MEM, then
+   n 2 = if OP-I64-STORE16 ALIGN-8 0 MEM, then
+   n 4 = if OP-I64-STORE32 ALIGN-8 0 MEM, then
+   n 8 = if ST64, then ;
 
 \ ---- calls -------------------------------------------------------------------
 : CALL-SITE ( n n n -- ) {: kind:n to:n loc:n :}

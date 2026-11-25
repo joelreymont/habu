@@ -12,6 +12,7 @@ require src/lib/fmt.f
 require src/lib/error.f                    \ E-DIV-ZERO, in the cases switched off
 require src/habu/prim-ref.f
 require src/lib/ieee754.f                  \ the bit shapes' casts
+require src/lib/le.f
 
 package PARITY
 private
@@ -308,11 +309,19 @@ $3A constant COLON-B
    ns s" /mod" STR:= IF [: DV-A @ DV-B @ PRIM-REF:DIVREM 2drop ;] catch EXIT THEN
    s" rejecting binary reference" ns NO-ARM ;
 
+\ The u bytes from FIX-BYTES's offset 1, little-endian, each read by `c@`.
+: ODD-BYTES ( n -- n ) {: u:n :}
+   0 u 0 DO FIX-BYTES 1+ I + c@ I 8 * lshift or LOOP ;
+
 \ A store/fetch pair round-trips the case value over the file's own fixtures and
 \ covers both rows. `PTR>N` reads no memory: the value is a byte offset into
 \ FIX-CELLS, answered back as the number less FIX-CELLS's own distance from
 \ NULL-PTR.
 : MEM-PRIM ( n str -- n ) {: v:n ns:str :}
+   ns s" u16@" STR:= IF v FIX-BYTES 1+ cell-view ! FIX-BYTES 1+ LE:u16@ EXIT THEN
+   ns s" u32@" STR:= IF v FIX-BYTES 1+ cell-view ! FIX-BYTES 1+ LE:u32@ EXIT THEN
+   ns s" u16!" STR:= IF 0 FIX-BYTES 3 + c! v FIX-BYTES 1+ LE:u16! 3 ODD-BYTES EXIT THEN
+   ns s" u32!" STR:= IF 0 FIX-BYTES 5 + c! v FIX-BYTES 1+ LE:u32! 5 ODD-BYTES EXIT THEN
    ns s" !" STR:= IF
       v FIX-CELLS ! FIX-CELLS @ EXIT THEN
    ns s" c!" STR:= IF

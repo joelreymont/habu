@@ -763,6 +763,11 @@ public
    name u s" write" STR:=CI if WRITE-BODY BODY$ true exit then
    name u s" !" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    name u s" c!" STR:=CI if OP-I64-STORE8 ALIGN-8 STORE-BODY BODY$ true exit then
+   \ LE's words take any alignment, so their hint is ALIGN-8.
+   name u s" u16@" STR:=CI if OP-I64-LOAD16-U ALIGN-8 LOAD-BODY BODY$ true exit then
+   name u s" u32@" STR:=CI if OP-I64-LOAD32-U ALIGN-8 LOAD-BODY BODY$ true exit then
+   name u s" u16!" STR:=CI if OP-I64-STORE16 ALIGN-8 STORE-BODY BODY$ true exit then
+   name u s" u32!" STR:=CI if OP-I64-STORE32 ALIGN-8 STORE-BODY BODY$ true exit then
    \ A module saves no image, so xt! is a plain store.
    name u s" xt!" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    \ ---- division, views and atomics

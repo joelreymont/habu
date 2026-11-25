@@ -338,6 +338,10 @@ public
 
 : ENC-STRB ( n n n -- n ) XRDI ?IMM12 $39000000 RRI ;
 
+: ENC-LDRH ( n n n -- n ) XRDI 2 SCALE/ ?IMM12 $79400000 RRI ;
+
+: ENC-STRH ( n n n -- n ) XRDI 2 SCALE/ ?IMM12 $79000000 RRI ;
+
 : ENC-LDUR ( n n n -- n ) XRDI ?SIMM9 $F8400000 RRSI ;
 
 : ENC-STUR ( n n n -- n ) XRDI ?SIMM9 $F8000000 RRSI ;
