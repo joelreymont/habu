@@ -408,6 +408,7 @@ public
       s" prim-parity: wrong row kind" EXIT-STATUS:FAILURE die
    THEN
    0 SUBJ-N ! ;
+parses: CASES 1
 
 : ;CASES ( -- )
    SUBJ-N @ 0= IF

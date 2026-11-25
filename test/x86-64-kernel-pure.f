@@ -154,6 +154,7 @@ public
    OVERLOAD !
    parse-name SUBJ!
    0 CASE-N ! ;
+parses: CASES 1
 
 : ;CASES ( -- )
    CASE-N @ 0= if
