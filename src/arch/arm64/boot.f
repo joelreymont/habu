@@ -64,7 +64,7 @@ HB-TARGET-LINUX-ARM64? [if]
    LBL LBL LBL {: more:label moved:label done:label :}
    text0 TEXT-BASE,
    6 start TEXT-AT,  7 end TEXT-AT,
-   10 CARRIER-OFF LINUX-LAYOUT:CODE-OFF - LIT64,  10 9 10 ADD,
+   10 LINUX-LAYOUT:CARRIER-VA VA>N LIT64,
    more LBL,  6 7 CMP,  C-CS done BCOND,
       11 6 0 LDR,  1 6 8 LDR,  6 6 16 ADDI,  11 XREG-RBASE 11 ADD,
       0 10 0 ADDI,  2 1 0 ADDI,  3 MREMAP-MOVE-FIXED MOVZ,  4 11 0 ADDI,

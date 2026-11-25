@@ -17,7 +17,7 @@ using X64CODE
 : MOVE-RUNS, ( label label -- )
    {: first:label last:label :}
    LBL LBL LBL {: more:label bad:label done:label :}
-   RDI RBASE-REG CARRIER-OFF LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
+   RDI LINUX-LAYOUT:CARRIER-VA VA>N IMM,
    R9 first MOVABS,
    more LBL,
    RAX last MOVABS,

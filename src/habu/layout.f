@@ -57,8 +57,6 @@ REGION $4000 - constant CODE-CEILING
 \ The code region's offset past the largest text and its read-write tail: from
 \ the image's base where Linux reserves it, from __text where macOS hints it.
 $2000000 constant REGION-OFF
-\ Where the ELF image's carrier load starts, from its base: past the code region.
-REGION-OFF REGION + constant CARRIER-OFF
 \ AArch64 BL imm26 reach (+/-128 MiB): direct-BL emission relies on the code
 \ region lying within it of __text.
 $8000000 constant BL-REACH
