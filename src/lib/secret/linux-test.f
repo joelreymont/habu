@@ -11,7 +11,7 @@
 \ than the bound one; an empty name or two equal keys bound; a write or read
 \ the stopped keyring fails that is not E-ACCESS logged once.
 \ dbus-daemon, gnome-keyring-daemon, gdbus and secret-tool on PATH are required.
-HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or ?TARGET
+HB-TARGET-LINUX? ?TARGET
 require src/core/exit-status.f
 require src/lib/secret.f
 require src/lib/secret/linux.f

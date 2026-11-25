@@ -42,7 +42,7 @@ private
 $40 constant AT-SIGN
 
 
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 \ sockaddr_un: a u16 sun_family, then sun_path.
 110 constant SOCKADDR-BYTES
 

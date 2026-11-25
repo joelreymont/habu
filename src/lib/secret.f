@@ -186,4 +186,3 @@ public
 
 HB-TARGET-MACOS? [if] require src/lib/secret/macos.f [then]
 HB-TARGET-LINUX? [if] require src/lib/secret/linux.f [then]
-HB-TARGET-LINUX-X86-64? [if] require src/lib/secret/linux.f [then]

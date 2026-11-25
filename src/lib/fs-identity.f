@@ -25,7 +25,7 @@ FUNCTION: STAT-CALL stat ( ^u8 ^u8 -- i32 )
 ;FUNCTION
 
 : DEVICE-INODE ( ^u8 -- n n ) {: buffer :}
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if buffer LE:U64@ else
+   HB-TARGET-LINUX? if buffer LE:U64@ else
       HB-TARGET-MACOS? if buffer LE:U32@ else E-FS-STAT throw then
    then
    buffer STAT-INO-OFF + LE:U64@ ;

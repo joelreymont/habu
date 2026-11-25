@@ -30,22 +30,22 @@ private
 \ would make this suite red on the other target. A third target is rejected by
 \ name.
 : EXPECT-SIGUSR1 ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 10 else 30 then ;
+   HB-TARGET-LINUX? if 10 else 30 then ;
 
 : EXPECT-SIGUSR2 ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 12 else 31 then ;
+   HB-TARGET-LINUX? if 12 else 31 then ;
 
 : EXPECT-SIGSTOP ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 19 else 17 then ;
+   HB-TARGET-LINUX? if 19 else 17 then ;
 
 : EXPECT-SIGCONT ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 18 else 19 then ;
+   HB-TARGET-LINUX? if 18 else 19 then ;
 
 : SA-FLAGS-OFF ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $88 else $0C then ;
+   HB-TARGET-LINUX? if $88 else $0C then ;
 
 : SA-RESTART ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $10000000 else 2 then ;
+   HB-TARGET-LINUX? if $10000000 else 2 then ;
 
 \ glibc supplies the x86-64 restorer when it installs a sigaction, including
 \ the default disposition restored by RELEASE. It is part of the observed

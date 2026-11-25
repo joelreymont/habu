@@ -161,9 +161,9 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 
 4 constant ERR-INTR
 : ERR-TIME ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $3E else 101 then ;
+   HB-TARGET-LINUX? if $3E else 101 then ;
 : ERR-CANCELED ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $7D else 89 then ;
+   HB-TARGET-LINUX? if $7D else 89 then ;
 
 1000 constant MS-PER-S
 1000000 constant NS-PER-MS

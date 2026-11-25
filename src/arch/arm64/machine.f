@@ -25,7 +25,7 @@ private
 \ x86-64 build window loads it on an ARM64 host), so it answers the reserving
 \ default instead of rejecting the whole closure.
 : PLATFORM-RESERVED-MASK ( -- n )
-   HB-TARGET-LINUX? if 0 exit then
+   HB-TARGET-LINUX-ARM64? if 0 exit then
    HB-TARGET-MACOS? if 1 PLATFORM-N lshift exit then
    HB-TARGET-LINUX-X86-64? if 1 PLATFORM-N lshift exit then
    E-CTGT-ABI throw ;

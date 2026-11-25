@@ -100,7 +100,7 @@ private
 : XREG? ( n -- n )
    ?REG
    dup ARM-X18 <> IF exit THEN
-   HB-TARGET-LINUX? IF exit THEN
+   HB-TARGET-LINUX-ARM64? IF exit THEN
    HB-TARGET-MACOS? IF s" asm: x18 is Darwin-reserved" EXIT-STATUS:ENCODE die THEN
    s" asm: unknown target" EXIT-STATUS:ENCODE die ;
 

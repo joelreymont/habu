@@ -83,7 +83,7 @@ require src/arch/arm64/mnem.f
 require src/habu/crash.f
 require src/habu/habu1.f
 require src/habu/rt.f
-HB-TARGET-LINUX? [if]
+HB-TARGET-LINUX-ARM64? [if]
    require src/os/linux/sys.f
 [then]
 HB-TARGET-MACOS? [if]
@@ -108,7 +108,7 @@ private
 \ The rejection is a die because this file loads inside the engine-build window,
 \ which has no src/lib/ in it.
 : PROF-TARGET-OK ( -- )
-   HB-TARGET-LINUX? if exit then
+   HB-TARGET-LINUX-ARM64? if exit then
    HB-TARGET-MACOS? if exit then
    s" hb: this target's signal frame is not modelled" EXIT-STATUS:INTERNAL die ;
 PROF-TARGET-OK
@@ -120,16 +120,16 @@ DATA-VA VA>N MAIN-THREAD-CELL + constant PROF-THREAD-VA
 $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
 
 : C-PROF-MCTX>R21 ( -- )
-   HB-TARGET-LINUX? IF 21 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 21 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
    21 4 MCTX-OFF LDR, ;
 
 : C-PROF-PC>R9 ( -- )
-   HB-TARGET-LINUX? IF 9 21 LINUX-MCTX-PC-OFF LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 9 21 LINUX-MCTX-PC-OFF LDR, exit THEN
    9 21 MACOS-MCTX-PC-OFF LDR, ;
 
 \ rd = the interrupted context's x<n>, read from the signal frame (x21 = mcontext).
 : C-PROF-CTX-X>R ( n n -- ) {: x:n rd:n :}
-   HB-TARGET-LINUX? IF rd 21 LINUX-MCTX-X0-OFF x 8 * + LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF rd 21 LINUX-MCTX-X0-OFF x 8 * + LDR, exit THEN
    rd 21 SS-OFF x 8 * + LDR, ;
 
 \ x13 = the record's code bytes from its raw length cell:
@@ -856,7 +856,7 @@ private
 : C-PROF-SIGACTION-FRAME ( -- )
    SP SP 32 SUBI,
    9 LPROFH LABEL@ ADR,  9 SP 0 STR,
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       10 LINUX-SA-PROF-FLAGS LIT64,  10 SP 8 STR,
       10 0 MOVZ,  10 SP 16 STR,  10 SP 24 STR,
       exit
@@ -866,7 +866,7 @@ private
 
 : C-PROF-SIGACTION ( -- )
    0 SIGALRM MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,
-   HB-TARGET-LINUX? IF 3 LINUX-SIGSET-SIZE MOVZ, THEN
+   HB-TARGET-LINUX-ARM64? IF 3 LINUX-SIGSET-SIZE MOVZ, THEN
    NR-SIGACTION SYS, ;
 
 : C-PROF-SIGACTION-DONE ( -- )

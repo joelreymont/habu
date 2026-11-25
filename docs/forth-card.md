@@ -677,7 +677,9 @@ forth.md: **Errors**, **Integer arithmetic**.
   during a build`). The verifier follows a `[if]` only after a target predicate, or one
   and `0=`. A file that builds for some
   targets only states them on its first code line, before its requires:
-  `HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET`. On another target
+  `HB-TARGET-MACOS? HB-TARGET-LINUX? or ?TARGET`. `HB-TARGET-LINUX?` is
+  every Linux, `HB-TARGET-LINUX-ARM64?` and `HB-TARGET-LINUX-X86-64?` one
+  Linux architecture each, beside `HB-TARGET-WASM?`. On another target
   the load stops there with an E-TARGET rejection naming the target (the
   seam's `HB-TARGET$`), throw 70. A file that requires it states nothing.
 - A loaded file is a closed program: its top level starts at `depth` 0, a

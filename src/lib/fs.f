@@ -834,7 +834,7 @@ private
 
 public
 : DIRENT-NAME-OFFSET ( -- n )
-   HB-TARGET-LINUX-KERNEL? if
+   HB-TARGET-LINUX? if
       LINUX-DIRENT-NAME-OFF exit
    then
    HB-TARGET-MACOS? if
@@ -844,7 +844,7 @@ public
 
 \ Keep the kernel byte, including zero for DT_UNKNOWN.
 : DIRENT-TYPE ( ^u8 -- u8 )
-   HB-TARGET-LINUX-KERNEL? if 18 + c@ exit then
+   HB-TARGET-LINUX? if 18 + c@ exit then
    HB-TARGET-MACOS? if 20 + c@ exit then
    TARGET-UNKNOWN ;
 
@@ -862,7 +862,7 @@ private
    ent ent DIRENT-RECLEN LINUX-DIRENT-NAMELEN-SCAN ;
 
 : DIRENT-NAMELEN ( ^u8 -- n )
-   HB-TARGET-LINUX-KERNEL? if LINUX-DIRENT-NAMELEN exit then
+   HB-TARGET-LINUX? if LINUX-DIRENT-NAMELEN exit then
    HB-TARGET-MACOS? if DIRENT-NAMELEN-OFF BYTE+ LE:U16@ exit then
    TARGET-UNKNOWN ;
 

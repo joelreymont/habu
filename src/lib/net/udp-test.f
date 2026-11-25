@@ -192,7 +192,7 @@ variable SOCK-S
    PATH$ FS:REMOVE-FILE ;
 
 
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 : T-ABSTRACT ( -- )
    s" a datagram sent to a bound abstract name arrives" T-LABEL
    PAT-FILL

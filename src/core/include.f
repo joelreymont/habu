@@ -1394,7 +1394,7 @@ private
 \ A target with no executable path, as Wasm, loads no source.
 : ENGINE-FIND ( -- n )
    HB-TARGET-MACOS? if APPLE-EXE ENGINE-FIND-FOR exit then
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+   HB-TARGET-LINUX? if
       s" /proc/self/exe" ENGINE-FIND-FOR exit
    then
    s" include: no engine path on this target" EXIT-STATUS:INTERNAL die ;

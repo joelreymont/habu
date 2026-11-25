@@ -10,7 +10,7 @@
 \ call, released when it returns or throws, so tasks may read at once.
 \ TASK-LOCAL: WATCH's path, in fs.f's band. CALLER-OWNED: every instance,
 \ closed with `close`.
-HB-TARGET-LINUX-KERNEL? ?TARGET
+HB-TARGET-LINUX? ?TARGET
 require src/lib/error.f
 require src/lib/adt/option.f
 require src/lib/ffi-abi.f

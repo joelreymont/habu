@@ -43,7 +43,7 @@ constant X64-MASK
 
 : DSTACK ( -- n )
    HB-TARGET-LINUX-X86-64? if X64-DSTACK exit then
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or if A64-DSTACK exit then
+   HB-TARGET-LINUX-ARM64? HB-TARGET-MACOS? or if A64-DSTACK exit then
    s" layout: ENGINE-GPR: unknown target" EXIT-STATUS:INTERNAL die ;
 
 ;package

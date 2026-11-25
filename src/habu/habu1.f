@@ -54,7 +54,7 @@ require src/arch/arm64/mnem.f
 require src/habu/crash.f
 require src/habu/fault-record.f
 require src/habu/rt.f
-HB-TARGET-LINUX? [if]
+HB-TARGET-LINUX-ARM64? [if]
    require src/os/linux/proc-control.f
    require src/os/linux/proc-watch.f
    require src/os/linux/sys.f
@@ -645,7 +645,7 @@ private
 : BPIPE ( -- )                     \ ( -- rfd wfd rc ) rc=0, or -errno thrice
    LBL LNX-OK !
    LBL LNX-DONE !
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       SP SP 16 SUBI,
       0 SP 0 ADDI,  1 0 MOVZ,  NR-PIPE SYS,
       9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
@@ -672,7 +672,7 @@ private
    1 G-POP  0 G-POP
    LBL LNX-OK !
    LBL LNX-DONE !
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       2 0 MOVZ,
       NR-DUP2 SYS,
       9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
@@ -710,7 +710,7 @@ private
    LBL {: ok:label :}
    LBL {: done:label :}
    LBL LNX-REAL !
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       1 73 CMPI,  C-NE LNX-REAL LABEL@ BCOND,
          LINUX-IGNORE-SIGPIPE
          done B,
@@ -740,7 +740,7 @@ private
    2 G-POP  1 G-POP  0 G-POP
    LBL LNX-PNEG !
    LBL LNX-PCALL !
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       SP SP 32 SUBI,
       2 0 CMPI,  C-LT LNX-PNEG LABEL@ BCOND,
          5 1000 MOVZ,  6 2 5 UDIV,
@@ -1052,7 +1052,7 @@ variable SZA-I
 : BSPAWNIO ( -- )                  \ ( pathz stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  9 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       SP SP 64 SUBI,
       9 SP 16 STR,
       13 0 MOVZ,  13 SP 24 STR,
@@ -1083,7 +1083,7 @@ variable SZA-I
 : BSPAWNARGVIO ( -- )              \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  9 G-POP  8 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       SP SP 16 SUBI,
       13 0 MOVZ,  13 SP 0 STR,
       13 0 MOVN,
@@ -1112,7 +1112,7 @@ variable SZA-I
 : BSPAWNARGVENVIO ( -- )           \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  7 G-POP  9 G-POP  8 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       13 0 MOVN,
       8 >REG 9 >REG 7 >REG 13 >REG 10 >REG 11 >REG 12 >REG LINUX-SPAWN
       exit
@@ -1136,7 +1136,7 @@ variable SZA-I
 : BSPAWNARGVENVCWDIO ( -- )        \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS2
    12 G-POP  11 G-POP  10 G-POP  6 G-POP  7 G-POP  9 G-POP  8 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       8 >REG 9 >REG 7 >REG 6 >REG 10 >REG 11 >REG 12 >REG LINUX-SPAWN
       exit
    THEN
@@ -1283,12 +1283,12 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 : BSPAWNFDS ( -- )
    LBL {: valid:label :}
    LBL {: push:label :}
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or 0= IF ENGINE-EMIT:TARGET-UNKNOWN THEN
+   HB-TARGET-LINUX-ARM64? HB-TARGET-MACOS? or 0= IF ENGINE-EMIT:TARGET-UNKNOWN THEN
    10 G-POP
    11 10 SPAWN-ABI:NFDS LDR,  11 0 CMPI,  C-GE valid BCOND,
       9 SPAWN-EINVAL 1- MOVN,  push B,
    valid LBL,
-   HB-TARGET-LINUX? IF LINUX-SPAWN-FDS THEN
+   HB-TARGET-LINUX-ARM64? IF LINUX-SPAWN-FDS THEN
    HB-TARGET-MACOS? IF 8 10 0 ADDI,  DARWIN-SPAWN-FDS THEN
    push LBL,
    9 G-PUSH ;
@@ -1787,7 +1787,7 @@ private
 : FS-SYS-PUSH-FLAG ( -- )
    LBL LBL {: ok:label done:label :}
    9 ok CBZ,
-      HB-TARGET-LINUX? IF 10 31 0 SUB, ELSE
+      HB-TARGET-LINUX-ARM64? IF 10 31 0 SUB, ELSE
          HB-TARGET-MACOS? IF 10 0 0 ADDI, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
       THEN
       10 XREG-RBASE FS-ABI:ERRNO-OFF STR,
@@ -1802,7 +1802,7 @@ private
 
 : BOPEN ( -- )
    2 G-POP  1 G-POP  0 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       3 2 0 ADDI,
       OS-OPEN-FLAGS
       1 0 0 ADDI,
@@ -1824,7 +1824,7 @@ private
 
 : BMMAP ( -- )                     \ ( addr len prot flags fd off -- addr|-1 )
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
-   HB-TARGET-LINUX? IF OS-MMAP-FLAGS  NR-MMAP SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-LINUX-ARM64? IF OS-MMAP-FLAGS  NR-MMAP SYS,  SYS-PUSH  exit THEN
    HB-TARGET-MACOS? IF NR-MMAP SYS,  SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
@@ -1863,7 +1863,7 @@ public
 \ pointer. The low three bits are cleared anyway, for kernels that kept the
 \ CPU number there.
 : CB-SELF, ( n -- ) {: r:n :}
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       $D53BD040 r or EMITW
    ELSE
       $D53BD060 r or EMITW
@@ -2282,7 +2282,7 @@ $58 constant CBT-LR                     \ C's x30
 
 : BACCESS ( -- )
    1 G-POP  0 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
       NR-ACCESS SYS,  FS-SYS-PUSH
       exit
@@ -2292,7 +2292,7 @@ $58 constant CBT-LR                     \ C's x30
 
 : BUNLINK ( -- )
    0 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       1 0 0 ADDI,  0 99 MOVN,  2 0 MOVZ,
       NR-UNLINK SYS,  FS-SYS-PUSH
       exit
@@ -2302,7 +2302,7 @@ $58 constant CBT-LR                     \ C's x30
 
 : BRENAME ( -- )
    1 G-POP  0 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       3 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  2 99 MOVN,
       NR-RENAME SYS,  FS-SYS-PUSH
       exit
@@ -2312,7 +2312,7 @@ $58 constant CBT-LR                     \ C's x30
 
 : BCHMOD ( -- )
    1 G-POP  0 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
       NR-CHMOD SYS,  FS-SYS-PUSH
       exit
@@ -2322,7 +2322,7 @@ $58 constant CBT-LR                     \ C's x30
 
 : BSYMLINK ( -- )
    2 G-POP  0 G-POP
-   HB-TARGET-LINUX? IF 1 99 MOVN, ELSE
+   HB-TARGET-LINUX-ARM64? IF 1 99 MOVN, ELSE
       HB-TARGET-MACOS? IF 1 1 MOVN, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
    THEN
    3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
@@ -2330,7 +2330,7 @@ $58 constant CBT-LR                     \ C's x30
 
 : BREADLINK ( -- )
    3 G-POP  2 G-POP  1 G-POP
-   HB-TARGET-LINUX? IF 0 99 MOVN, ELSE
+   HB-TARGET-LINUX-ARM64? IF 0 99 MOVN, ELSE
       HB-TARGET-MACOS? IF 0 1 MOVN, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
    THEN
    4 0 MOVZ,  5 0 MOVZ,
@@ -2345,7 +2345,7 @@ package LIBC-OS
 : SLOT-AT, ( str -- ) {: name:^ u:n :}
    15 CODE-OFF LIT64,  16 16 15 SUB,
    17 16 IMAGE-TEXT-SIZE-OFF LDR,
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-ARM64? if
       16 16 17 ADD,  16 16 name u ELF:IMPORT-ROW ELF:SLOT-OFF LDR,
    else HB-TARGET-MACOS? if
       15 CODE-OFF LIT64,  17 17 15 ADD,  15 $3FFF LIT64,
@@ -2493,7 +2493,7 @@ public
 \ failed clone does; a child that cannot map its views dies named with exit 71.
 \ The child starts with no exit owner, so its own exit runs the actions.
 : FORK ( -- )                         \ ( -- pid|-1 )
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       LBL LBL LBL LBL LBL {: unfd:label failed:label parent:label done:label dead:label :}
       LBL LBL LBL LBL LBL {: scan:label next:label full:label scanned:label plain:label :}
       LBL LBL {: span:label out:label :}
@@ -2601,7 +2601,7 @@ public
 package ENGINE-EMIT
 : BMKDIR ( -- )
    1 G-POP  0 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,
       NR-MKDIR SYS,  FS-SYS-PUSH
       exit
@@ -2611,7 +2611,7 @@ package ENGINE-EMIT
 
 : BRMDIR ( -- )
    0 G-POP
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       1 0 0 ADDI,  0 99 MOVN,  2 $200 MOVZ,
       NR-RMDIR SYS,  FS-SYS-PUSH
       exit
@@ -2631,7 +2631,7 @@ package ENGINE-EMIT
    1 G-POP  0 G-POP
    LBL STAT-OK !
    LBL STAT-DONE !
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
       NR-STAT64 SYS,
       9 C-CS CSET,  9 STAT-OK LABEL@ CBZ,
@@ -2649,7 +2649,7 @@ package ENGINE-EMIT
    1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
    LBL STAT-OK !
    LBL STAT-DONE !
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 AT-SYMLINK-NOFOLLOW MOVZ,
       NR-LSTAT64 SYS,
       9 C-CS CSET,  9 STAT-OK LABEL@ CBZ,
@@ -3486,7 +3486,7 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
    LBL LBL LBL {: none:label next:label done:label :}
    C G-POP  B G-POP  A G-POP                    \ x11 = blocks, x10 = bytes, x9 = state
    C 0 CMPI,  C-LE none BCOND,
-   HB-TARGET-LINUX? IF none SHA2-PROBE, THEN
+   HB-TARGET-LINUX-ARM64? IF none SHA2-PROBE, THEN
    15 C 0 ADDI,  13 A 32 ADDI,
    SHA256-K,
    next LBL,  SHA256-BLOCK,  C C 1 SUBI,  C next CBNZ,

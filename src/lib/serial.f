@@ -46,10 +46,10 @@ E-SERIAL-OPERAND constant E-OPERAND
 
 private
 
-: TERM-BYTES ( -- n ) HB-TARGET-LINUX-KERNEL? if $2C else 72 then ;
-: OPEN-FLAGS ( -- n ) HB-TARGET-LINUX-KERNEL? if $80902 else $1020006 then ;   \ O_RDWR | O_NONBLOCK | O_NOCTTY | O_CLOEXEC.
-: GET-TERM ( -- n ) HB-TARGET-LINUX-KERNEL? if $802C542A else $40487413 then ;   \ TIOCGETA / TCGETS2.
-: SET-TERM ( -- n ) HB-TARGET-LINUX-KERNEL? if $402C542B else $80487414 then ;   \ TIOCSETA / TCSETS2, no queue flush.
+: TERM-BYTES ( -- n ) HB-TARGET-LINUX? if $2C else 72 then ;
+: OPEN-FLAGS ( -- n ) HB-TARGET-LINUX? if $80902 else $1020006 then ;   \ O_RDWR | O_NONBLOCK | O_NOCTTY | O_CLOEXEC.
+: GET-TERM ( -- n ) HB-TARGET-LINUX? if $802C542A else $40487413 then ;   \ TIOCGETA / TCGETS2.
+: SET-TERM ( -- n ) HB-TARGET-LINUX? if $402C542B else $80487414 then ;   \ TIOCSETA / TCSETS2, no queue flush.
 $100F100F constant BAUD-MASK
 $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
@@ -173,7 +173,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : CONFIGURE ( handle baud -- open-result ) {: handle:handle baud:baud :}
    handle SAVED GET-RAW 0 < if LAST-ERROR SERIAL-OPEN--RESULT:FAILED exit then
-   HB-TARGET-LINUX-KERNEL? if
+   HB-TARGET-LINUX? if
       SAVED $10 + c@ 0 <> if SERIAL-OPEN--RESULT:UNSUPPORTED exit then
    then
    baud RAW!
@@ -202,7 +202,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : RETRY? ( errno -- bool )
    ERRNO>N dup 4 = swap
-   HB-TARGET-LINUX-KERNEL? if 11 else 35 then = or ;
+   HB-TARGET-LINUX? if 11 else 35 then = or ;
 
 
 \ Positive event bits, zero for the deadline, or a negative errno. One POLL on

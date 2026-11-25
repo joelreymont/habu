@@ -63,13 +63,13 @@ REGISTER-RESETS
 5 constant SIGTRAP
 
 : SIGBUS ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 7 else 10 then ;
+   HB-TARGET-LINUX? if 7 else 10 then ;
 
 : SIG-BLOCK ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 0 else 1 then ;
+   HB-TARGET-LINUX? if 0 else 1 then ;
 
 : SIG-SETMASK ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 2 else 3 then ;
+   HB-TARGET-LINUX? if 2 else 3 then ;
 
 PROCESS-SYMBOLS
 

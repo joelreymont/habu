@@ -6,7 +6,7 @@
 \ E-XATTR with the call's errno as FS:ERRNO, logged with its text.
 \ STORAGE CLASS. TASK-LOCAL: the name's C copy is one TASK:+USERS row.
 \ CALLER-OWNED: every value and GET's buffer.
-HB-TARGET-LINUX-KERNEL? ?TARGET
+HB-TARGET-LINUX? ?TARGET
 require src/lib/error.f
 require src/lib/span.f
 require src/lib/ffi-abi.f

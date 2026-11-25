@@ -435,7 +435,7 @@ KERNEL: TKERNEL-INC ( n -- n ) 1+ ;
 \ target predicates must be real executable booleans, not trusted signature stubs
 : TTARGET-COUNT ( -- n )
    0
-   HB-TARGET-LINUX? if 1 + then
+   HB-TARGET-LINUX-ARM64? if 1 + then
    HB-TARGET-MACOS? if 1 + then
    HB-TARGET-LINUX-X86-64? if 1 + then ;
 TTARGET-COUNT 1 T=
@@ -1774,7 +1774,6 @@ $44000000000 constant ES-MACOS-DATA-VA
 
 : ES-DATA-VA ( -- n )
    HB-TARGET-LINUX? if ES-LINUX-DATA-VA exit then
-   HB-TARGET-LINUX-X86-64? if ES-LINUX-DATA-VA exit then
    HB-TARGET-MACOS? if ES-MACOS-DATA-VA exit then
    ES-TARGET-UNKNOWN ;
 dbase@ rbase > TTRUE                                 \ the code region sits above __text

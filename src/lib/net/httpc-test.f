@@ -30,7 +30,7 @@
 \ with spec/HttpcTable.tla whole, so the table spec/HttpcFollows.tla ties to
 \ the model spec/Httpc.tla is the code's.
 \ Run: bin/hb --load src/lib/net/httpc-test.f </dev/null
-HB-TARGET-LINUX-KERNEL? ?TARGET
+HB-TARGET-LINUX? ?TARGET
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/string-option.f

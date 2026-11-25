@@ -7,7 +7,7 @@
 \ With ATOMIC_FAIL_FILE set a regular file's fsync fails with EIO too, so each
 \ call is E-FS-IO before its rename and every file keeps its old bytes, and
 \ FS:ATOMIC-CREATE-FILES publishes none of its group's names.
-HB-TARGET-LINUX-KERNEL? ?TARGET
+HB-TARGET-LINUX? ?TARGET
 
 require src/lib/string.f
 require src/lib/test/assert.f

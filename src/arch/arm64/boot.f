@@ -6,7 +6,7 @@
 \ maps the code region, copies the record image into its dictionary band and
 \ slides the record list, then builds the name index and enters the engine's
 \ main. Its caller binds the tail's labels.
-HB-TARGET-LINUX? HB-TARGET-MACOS? or ?TARGET
+HB-TARGET-LINUX-ARM64? HB-TARGET-MACOS? or ?TARGET
 require src/core/exit-status.f
 require src/lib/le.f
 require src/lib/string.f
@@ -16,7 +16,7 @@ require src/arch/arm64/mnem.f
 require src/habu/layout.f
 require src/habu/xref.f
 
-HB-TARGET-LINUX? [if]
+HB-TARGET-LINUX-ARM64? [if]
    require src/os/linux/layout.f
    require src/os/linux/sys.f
 [then]
@@ -26,7 +26,7 @@ require src/os/script-argv.f
 require src/habu/rt.f
 require src/habu/crash.f
 
-HB-TARGET-LINUX? [if]
+HB-TARGET-LINUX-ARM64? [if]
    require src/os/linux/proc-watch.f
    require src/os/linux/proc-control.f
 [then]
@@ -56,7 +56,7 @@ using SYSCALL
    rd l LOFF,  rd 9 rd ADD, ;
 
 
-HB-TARGET-LINUX? [if]
+HB-TARGET-LINUX-ARM64? [if]
 \ Move each run [off][bytes] in [x6, x7) from the carrier, x10 at its pages,
 \ to DATA + off. A failed move dies.
 : PLACE-RUNS, ( label label label -- )

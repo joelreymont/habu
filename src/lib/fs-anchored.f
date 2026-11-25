@@ -297,7 +297,7 @@ public
    FD>N A-CLOSE-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
 
 
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 private
 PROCESS-SYMBOLS
 FUNCTION: A-LINK-CALL linkat ( n ^u8 n ^u8 n -- i32 ) ;FUNCTION

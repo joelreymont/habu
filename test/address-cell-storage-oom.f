@@ -10,7 +10,7 @@ create OUT 1024 allot
 create ERR 4096 allot
 : RUN ( -- )
    T-RESET
-   HB-TARGET-LINUX-KERNEL? 0= if
+   HB-TARGET-LINUX? 0= if
       s" address-cell-storage-oom: the address-space limit applies to Linux" type cr
    else
       PROC-ARGV-RESET

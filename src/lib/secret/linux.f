@@ -5,7 +5,7 @@
 \ the label. Contract: src/lib/secret.f.
 \ STORAGE CLASS. PROCESS-WIDE: the bound attribute names and label, written by
 \ LINUX-ITEM! before use and only read afterwards.
-HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or ?TARGET
+HB-TARGET-LINUX? ?TARGET
 require src/lib/secret.f
 require src/lib/memory.f                      \ the identifiers' C copies
 require src/lib/span.f

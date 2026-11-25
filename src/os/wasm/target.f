@@ -9,7 +9,7 @@
 : HB-TARGET-LINUX-X86-64? ( -- bool )
    0 0= 0= ;
 
-: HB-TARGET-LINUX-KERNEL? ( -- bool )
+: HB-TARGET-LINUX-ARM64? ( -- bool )
    0 0= 0= ;
 
 : HB-TARGET-WASM? ( -- bool )

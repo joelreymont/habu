@@ -221,7 +221,7 @@ private
    -1 ;
 
 : FIONREAD ( -- n )
-   HB-TARGET-LINUX-KERNEL? if FIONREAD-LINUX exit then
+   HB-TARGET-LINUX? if FIONREAD-LINUX exit then
    HB-TARGET-MACOS? if FIONREAD-MACOS exit then
    E-STATE throw ;
 

@@ -142,7 +142,7 @@ variable CST-ERR-U
    CST-SIGN s" com.apple.echo" CST-EXPECT-TEAM ;
 
 : CST-EXPECT-UNSIGNED-VERIFY-RC ( -- )
-   HB-TARGET-LINUX-KERNEL? if
+   HB-TARGET-LINUX? if
       CST-ENSURE CODESIGN:VERIFY-RC 0 T=
       exit
    then
@@ -239,7 +239,7 @@ variable CST-ERR-U
    s" /no/such/habu-codesign-test" CODESIGN:VERIFY ;
 
 : CST-TEST-TOOL ( -- )
-   HB-TARGET-LINUX-KERNEL? if
+   HB-TARGET-LINUX? if
       CODESIGN:TOOL FS:FILE? TFALSE
       exit
    then

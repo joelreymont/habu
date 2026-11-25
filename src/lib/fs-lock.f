@@ -28,7 +28,7 @@ FUNCTION: FLOCK-CALL flock ( n n -- i32 ) ;FUNCTION
 : OPEN-FLAGS ( -- n )
    HB-TARGET-MACOS? if $1100000 exit then    \ O_CLOEXEC | O_DIRECTORY.
    \ Linux arch/arm64/include/uapi/asm/fcntl.h: O_DIRECTORY bit 14, O_DIRECT bit 16.
-   HB-TARGET-LINUX? if $84000 exit then      \ O_CLOEXEC | O_DIRECTORY.
+   HB-TARGET-LINUX-ARM64? if $84000 exit then      \ O_CLOEXEC | O_DIRECTORY.
    \ x86-64 takes include/uapi/asm-generic/fcntl.h: O_DIRECTORY is bit 16, the
    \ bit arm64 spends on O_DIRECT.
    HB-TARGET-LINUX-X86-64? if $90000 exit then  \ O_CLOEXEC | O_DIRECTORY.

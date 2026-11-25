@@ -28,7 +28,7 @@ require src/arch/arm64/icode.f
 require src/habu/fault-record.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/mnem.f
-HB-TARGET-LINUX? [if]
+HB-TARGET-LINUX-ARM64? [if]
    require src/os/linux/sys.f
 [then]
 HB-TARGET-MACOS? [if]
@@ -426,7 +426,7 @@ public
 \ x30 = the interrupted code's lr, read from the signal mcontext the register
 \ points at; LDIE-LINE prints it.
 : C-CRASH-LR>R30 ( n -- ) {: mctx:n :}
-   HB-TARGET-LINUX? IF 30 mctx LINUX-MCTX-LR-OFF LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 30 mctx LINUX-MCTX-LR-OFF LDR, exit THEN
    30 mctx MACOS-MCTX-LR-OFF LDR, ;
 
 private
@@ -435,7 +435,7 @@ private
 \ handler with (sig, info, uctx) in x0/x1/x2; the macOS trampoline passes
 \ (catcher, style, sig, info, uctx) in x0..x4.
 : C-CRASH-ENTRY ( -- )
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       20 0 0 ADDI,
       23 1 0 ADDI,
       19 2 0 ADDI,
@@ -448,7 +448,7 @@ private
 \ si_addr's byte offset inside siginfo_t: Linux aarch64 pads si_signo/errno/code
 \ to 16 bytes, macOS puts six ints ahead of it.
 : C-CRASH-FAULT-ADDR>R25 ( -- )
-   HB-TARGET-LINUX? IF 25 23 LINUX-SI-ADDR-OFF LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 25 23 LINUX-SI-ADDR-OFF LDR, exit THEN
    25 23 MACOS-SI-ADDR-OFF LDR, ;
 
 \ The interrupted x20 from the mcontext, as the handler's own x20 is the signal
@@ -456,16 +456,16 @@ private
 \ task's or a callback's entry until DATA loads, the frame sp across an FFI
 \ call's BLR.
 : C-CRASH-DATA>R24 ( -- )
-   HB-TARGET-LINUX? IF 24 21 LINUX-MCTX-X0-OFF XREG-RBASE 8 * + LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 24 21 LINUX-MCTX-X0-OFF XREG-RBASE 8 * + LDR, exit THEN
    24 21 SS-OFF XREG-RBASE 8 * + LDR, ;
 
 : C-CRASH-MCTX>R21 ( -- )
-   HB-TARGET-LINUX? IF 21 19 LINUX-UC-MCTX-OFF ADDI, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 21 19 LINUX-UC-MCTX-OFF ADDI, exit THEN
    21 19 MCTX-OFF LDR, ;
 
 : C-CRASH-XREG>R9 ( -- )
    22 20 3 LSLI,
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       22 22 LINUX-MCTX-X0-OFF ADDI,
    ELSE
       22 22 SS-OFF ADDI,
@@ -473,15 +473,15 @@ private
    22 21 22 ADD,  9 22 0 LDR, ;
 
 : C-CRASH-PC>R9 ( -- )
-   HB-TARGET-LINUX? IF 9 21 LINUX-MCTX-PC-OFF LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 9 21 LINUX-MCTX-PC-OFF LDR, exit THEN
    9 21 MACOS-MCTX-PC-OFF LDR, ;
 
 : C-CRASH-SP>R9 ( -- )
-   HB-TARGET-LINUX? IF 9 21 LINUX-MCTX-SP-OFF LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 9 21 LINUX-MCTX-SP-OFF LDR, exit THEN
    9 21 MACOS-MCTX-SP-OFF LDR, ;
 
 : C-CRASH-PRINT-REGS ( -- )
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       9 21 LINUX-MCTX-FP-OFF LDR,  LHEX LABEL@ BL,
       9 21 LINUX-MCTX-LR-OFF LDR,  LHEX LABEL@ BL,
    ELSE
@@ -557,7 +557,7 @@ variable CRS-THROW
 : C-CRASH-OWNER>R3 ( -- )
    C-CRASH-PC>R9  3 9 0 ADDI,
    C-CRASH-REGION>R10  4 10 0 ADDI,
-   HB-TARGET-LINUX? IF 6 21 LINUX-MCTX-X0-OFF NDICT 8 * + LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 6 21 LINUX-MCTX-X0-OFF NDICT 8 * + LDR, exit THEN
    6 21 SS-OFF NDICT 8 * + LDR, ;
 
 \ The record of a stack's overflow, x3, x4 and x6 as FAULT-IN, reads them.
@@ -582,7 +582,7 @@ variable CRS-THROW
 \ still hold the trampoline's infostyle and token. Returns only if sigreturn
 \ fails.
 : C-CRASH-RESUME ( -- )
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       14 21 LINUX-MCTX-PC-OFF STR,
       NR-SIGRETURN SYS,                          \ rt_sigreturn reads the frame at the entry sp
       exit
@@ -657,7 +657,7 @@ variable CRS-THROW
    C-CRASH-OWNER>R3  FAULT-IN,
    s" " FAULT-KEEP,
    10 EXIT-STATUS:MEMORY-FAULT MOVZ,
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       10 21 LINUX-MCTX-X0-OFF 9 8 * + STR,
    ELSE
       10 21 SS-OFF 9 8 * + STR,
@@ -711,7 +711,7 @@ variable CRS-THROW
 \ sigaction(x0, the frame at sp, NULL).
 : C-SIGACTION-CALL ( -- )
    1 SP 0 ADDI,  2 0 MOVZ,
-   HB-TARGET-LINUX? IF 3 CRASH-LINUX-SIGSET-SIZE MOVZ, THEN
+   HB-TARGET-LINUX-ARM64? IF 3 CRASH-LINUX-SIGSET-SIZE MOVZ, THEN
    NR-SIGACTION SYS, ;
 
 public
@@ -725,7 +725,7 @@ public
    CR-FLAGS !  CR-HANDLER !
    SP SP $40 SUBI,
    CR-HANDLER @ SP 0 STR,
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       10 CR-FLAGS @ LIT64,  10 SP $8 STR,
       10 0 MOVZ,  10 SP $10 STR,  10 SP $18 STR,
       exit

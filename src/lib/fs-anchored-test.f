@@ -278,7 +278,7 @@ TASK:MIN-STACK TASK:TASK PAR-B
    SEARCH-SETUP
    [: SEARCH-OPENS ;] [: SEARCH-A MODE-0700 FS:CHMOD-MODE ;] finally ;
 
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 FS-ABI:S-IFLNK constant S-IFLNK
 $1FF constant PERMS
 384 constant MODE-0600
@@ -463,13 +463,13 @@ create LINK-BUF PATH-CAP allot
    MOVED-ANCHOR
    D FS:CLOSE-DIR ;
 [then]
-HB-TARGET-LINUX-KERNEL? 0= [if]
+HB-TARGET-LINUX? 0= [if]
 : NAMED ( -- ) ;
 [then]
 
 \ A new file of that name, written and read through the descriptor; only
 \ Linux has AT words that write.
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 : WRITE-AT ( fd str -- ) {: dir:fd name:str :}
    dir FS:TEMP-AT {: t:fd :}
    t s" written" FD:WRITE-FULL
@@ -477,7 +477,7 @@ HB-TARGET-LINUX-KERNEL? [if]
    t FS:CLOSE-DIR
    dir name s" written" READ-CHECK ;
 [then]
-HB-TARGET-LINUX-KERNEL? 0= [if]
+HB-TARGET-LINUX? 0= [if]
 : WRITE-AT ( fd str -- ) drop drop ;
 [then]
 

@@ -955,7 +955,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 FFI-RUN
 
 : FFI-T-STRUCT-LOAD ( -- )
-   HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or if
+   HB-TARGET-MACOS? HB-TARGET-LINUX? or if
       s" test/ffi-struct-result.f" required
       s" test/ffi-struct-arg.f" required
       s" test/ffi-struct-verify.f" required
@@ -963,7 +963,7 @@ FFI-RUN
 FFI-T-STRUCT-LOAD
 
 : FFI-T-C-CALLS-LOAD ( -- )
-   HB-TARGET-MACOS? HB-TARGET-LINUX? or if
+   HB-TARGET-MACOS? HB-TARGET-LINUX-ARM64? or if
       s" test/ffi-c-calls.f" required
    then ;
 FFI-T-C-CALLS-LOAD

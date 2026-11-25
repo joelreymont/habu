@@ -452,13 +452,13 @@ FUNCTION: OPEN-CALL open ( ^u8 n n -- i32 ) 2 VARIADIC ;FUNCTION
 
 \ O_WRONLY|O_CREAT|O_EXCL for the host.
 : EXCL-WRITE-FLAGS ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $C1 exit then
+   HB-TARGET-LINUX? if $C1 exit then
    HB-TARGET-MACOS? if $A01 exit then
    E-FS-OPEN throw ;
 
 \ O_RDWR|O_CREAT|O_EXCL for the host.
 : EXCL-RDWR-FLAGS ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $C2 exit then
+   HB-TARGET-LINUX? if $C2 exit then
    HB-TARGET-MACOS? if $A02 exit then
    E-FS-OPEN throw ;
 
@@ -886,7 +886,7 @@ FUNCTION: SYNC-RANGE-CALL sync_file_range ( n n n n -- i32 ) ;FUNCTION
 \ under way, as PostgreSQL's pre_sync_fname does. A hint: its result is
 \ unread. Darwin has no such call.
 : HINT-WRITE ( n -- ) {: fd :}
-   HB-TARGET-LINUX-KERNEL? if
+   HB-TARGET-LINUX? if
       fd 0 0 SFR-WRITE SYNC-RANGE-CALL drop
    then ;
 

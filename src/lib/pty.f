@@ -89,7 +89,7 @@ SCRATCH-VARIABLE WRITTEN
 
 
 : NAME-SLAVE ( n ^u8 -- n ) {: m:n path :}
-   HB-TARGET-LINUX-KERNEL? if m path NAME-LINUX else m path NAME-MACOS then ;
+   HB-TARGET-LINUX? if m path NAME-LINUX else m path NAME-MACOS then ;
 
 
 : READ-READY ( master SPAN:span<u8> -- n ) {: m:master s :}

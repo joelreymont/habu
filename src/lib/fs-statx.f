@@ -6,7 +6,7 @@
 \ errno; the descriptor stays open.
 \ STORAGE CLASS. TASK-LOCAL: the statx buffer, a TASK:+USERS row.
 \ PROCESS-WIDE: the empty path, never written.
-HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or ?TARGET
+HB-TARGET-LINUX? ?TARGET
 
 require src/lib/error.f
 require src/lib/fs.f

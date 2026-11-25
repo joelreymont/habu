@@ -79,12 +79,12 @@ public
 \ silently drops a bit the host does not know, so the wrong constant arms
 \ nothing at all and the descriptor stays blocking.
 : O-NONBLOCK ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $800 else 4 then ;
+   HB-TARGET-LINUX? if $800 else 4 then ;
 
 \ F_DUPFD_CLOEXEC is not one number either: 1030 (F_LINUX_SPECIFIC_BASE + 6) on
 \ both Linux targets, 67 on macOS.
 : F-DUPFD-CLOEXEC ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 1030 else 67 then ;
+   HB-TARGET-LINUX? if 1030 else 67 then ;
 
 private
 
@@ -112,7 +112,7 @@ public
 \ other, whose write can then raise SIGPIPE, and the other then leaves it set.
 : WITH-NOSIGPIPE ( fd [ -- ] -- )
    {: f:fd body :}
-   HB-TARGET-LINUX-KERNEL? if f FD-NOSIGPIPE! body execute exit then
+   HB-TARGET-LINUX? if f FD-NOSIGPIPE! body execute exit then
    f FD>N F-GETNOSIGPIPE 0 fcntl {: old:n :}
    old 0 < if old E-PROC-OUTPUT RC-FAIL then
    f FD-NOSIGPIPE!

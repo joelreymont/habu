@@ -16,7 +16,7 @@
 \ context, configuration and trust chain inline, so it stays at one address
 \ from START to STOP. Every START, whatever it answered, is followed by STOP
 \ before the record starts again or is dropped.
-HB-TARGET-LINUX-KERNEL? ?TARGET
+HB-TARGET-LINUX? ?TARGET
 
 require src/lib/error.f
 require src/lib/span.f

@@ -35,16 +35,16 @@ SUMTYPE signal-result
 15 constant SIGTERM
 
 : SIGUSR1 ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 10 else 30 then ;
+   HB-TARGET-LINUX? if 10 else 30 then ;
 
 : SIGUSR2 ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 12 else 31 then ;
+   HB-TARGET-LINUX? if 12 else 31 then ;
 
 : SIGSTOP ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 19 else 17 then ;
+   HB-TARGET-LINUX? if 19 else 17 then ;
 
 : SIGCONT ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 18 else 19 then ;
+   HB-TARGET-LINUX? if 18 else 19 then ;
 
 private
 
@@ -64,7 +64,7 @@ $0C constant SA-MACOS-FLAGS-OFF
 SA-LINUX-BYTES SA-MACOS-BYTES max constant SA-BUF-BYTES
 
 : SA-FLAGS-OFF ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+   HB-TARGET-LINUX? if
       SA-LINUX-FLAGS-OFF
    else
       SA-MACOS-FLAGS-OFF
@@ -73,7 +73,7 @@ SA-LINUX-BYTES SA-MACOS-BYTES max constant SA-BUF-BYTES
 \ The same flag, spelled differently: a Linux $10000000 installed on macOS is
 \ SA_SIGINFO|SA_NOCLDWAIT|SA_NODEFER and not SA_RESTART at all.
 : SA-RESTART ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $10000000 else 2 then ;
+   HB-TARGET-LINUX? if $10000000 else 2 then ;
 
 0 constant SA-NO-FLAGS
 0 constant SIG-DFL

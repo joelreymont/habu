@@ -17,7 +17,7 @@ require src/lib/heap.f
 package SECRET
 : SECRET-E2E:UNBIND ( -- ) INSTALL-DEFAULT ;
 HB-TARGET-MACOS? [if] : SECRET-E2E:NATIVE ( -- ) INSTALL-MAC ; [then]
-HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or [if]
+HB-TARGET-LINUX? [if]
    : SECRET-E2E:NATIVE ( -- ) INSTALL-LINUX ;
 [then]
 ;package

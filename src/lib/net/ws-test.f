@@ -125,19 +125,19 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 CAST: SOCK>N ( WS:socket -- n )
 
 : SOL-SOCKET ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 1 exit then
+   HB-TARGET-LINUX? if 1 exit then
    HB-TARGET-MACOS? if $FFFF exit then
    E-PLATFORM throw ;
 : SO-RCVBUF ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 8 exit then
+   HB-TARGET-LINUX? if 8 exit then
    HB-TARGET-MACOS? if $1002 exit then
    E-PLATFORM throw ;
 : SO-SNDBUF ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 7 exit then
+   HB-TARGET-LINUX? if 7 exit then
    HB-TARGET-MACOS? if $1001 exit then
    E-PLATFORM throw ;
 : ERRNO-INPROGRESS ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 115 exit then
+   HB-TARGET-LINUX? if 115 exit then
    HB-TARGET-MACOS? if 36 exit then
    E-PLATFORM throw ;
 $18 constant POLL-FAILED          \ POLLERR and POLLHUP

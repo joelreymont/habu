@@ -46,7 +46,7 @@ require src/habu/primitive-registry.f
 require src/habu/prof-abi.f
 require src/habu/prof.f
 require src/habu/rt.f
-HB-TARGET-LINUX? [if]
+HB-TARGET-LINUX-ARM64? [if]
    require src/os/linux/sys.f
 [then]
 HB-TARGET-MACOS? [if]
@@ -108,15 +108,15 @@ here NL-KW - constant NL-LEN
 
 private
 : C-TRAP-MCTX>R9 ( -- )
-   HB-TARGET-LINUX? IF 9 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 9 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
    9 4 MCTX-OFF LDR, ;
 
 : C-MCTX-PC>R10 ( -- )
-   HB-TARGET-LINUX? IF 10 9 LINUX-MCTX-PC-OFF LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 10 9 LINUX-MCTX-PC-OFF LDR, exit THEN
    10 9 MACOS-MCTX-PC-OFF LDR, ;
 
 : C-MCTX-X19>R12 ( -- )
-   HB-TARGET-LINUX? IF 12 9 LINUX-MCTX-X19-OFF LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 12 9 LINUX-MCTX-X19-OFF LDR, exit THEN
    12 9 MACOS-MCTX-X19-OFF LDR, ;
 ;package
 
@@ -130,7 +130,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 here BPL-KW - constant BPL-LEN
 
 : C-MCTX-LR>R9 ( -- )
-   HB-TARGET-LINUX? IF 9 9 LINUX-MCTX-LR-OFF LDR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 9 9 LINUX-MCTX-LR-OFF LDR, exit THEN
    9 9 MACOS-MCTX-LR-OFF LDR, ;
 ;package
 
@@ -178,7 +178,7 @@ package ENGINE-EMIT
    8 SP 40 LDR,  12 0 MOVZ,  12 8 0 STR, ;
 
 : C-MCTX-PC<R12 ( -- )
-   HB-TARGET-LINUX? IF 12 9 LINUX-MCTX-PC-OFF STR, exit THEN
+   HB-TARGET-LINUX-ARM64? IF 12 9 LINUX-MCTX-PC-OFF STR, exit THEN
    12 9 MACOS-MCTX-PC-OFF STR, ;
 
 \ The slot's index is its offset in BPTAB over 32 bytes.
@@ -1338,7 +1338,7 @@ private
 : EXIT-WAIT, ( -- )
    LBL {: again:label :}
    again LBL,  0 0 MOVZ,  1 0 MOVZ,
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  NR-POLL SYS,  again B,  exit
    THEN
    HB-TARGET-MACOS? IF 2 0 MOVN,  NR-POLL SYS,  again B,  exit THEN
@@ -1374,7 +1374,7 @@ package ENGINE-EMIT
 
 public
 : EM-ENTRY-ARGS ( -- )
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       13 SP 0 LDR,  14 SP 8 ADDI,
       15 13 1 ADDI,  15 15 3 LSLI,  15 14 15 ADD,
       exit
@@ -1400,7 +1400,7 @@ public
 : EM-MMAP-CODE-REGION ( -- )
    \ Leaves x0 = the base code runs from and x21 = the RW alias - base; x13-x15
    \ (argc, argv, envp), x19 and x20 survive.
-   HB-TARGET-LINUX? IF
+   HB-TARGET-LINUX-ARM64? IF
       \ The RX view maps fixed over the image's own load of the region, at its
       \ base plus REGION-OFF; the RW alias goes where the kernel puts it.
       LBL LBL {: vfail:label vdone:label :}

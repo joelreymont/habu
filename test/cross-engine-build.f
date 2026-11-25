@@ -35,11 +35,11 @@ PATH-CAP BUFFER: PROG     variable PROG-U
 : PROG$ ( -- str ) PROG PROG-U @ >str ;
 
 : TARGET$ ( -- str )
-   HB-TARGET-LINUX? if s" macos-aarch64" exit then s" linux-aarch64" ;
+   HB-TARGET-LINUX-ARM64? if s" macos-aarch64" exit then s" linux-aarch64" ;
 : MAGIC$ ( -- str )
-   HB-TARGET-LINUX? if s\" \xCF\xFA\xED\xFE" exit then s\" \x7FELF" ;
+   HB-TARGET-LINUX-ARM64? if s\" \xCF\xFA\xED\xFE" exit then s\" \x7FELF" ;
 : AARCH64? ( ^u8 -- bool ) {: h:^ :}
-   HB-TARGET-LINUX? if h 4 + LE:U32@ CPU-ARM64 = exit then
+   HB-TARGET-LINUX-ARM64? if h 4 + LE:U32@ CPU-ARM64 = exit then
    h 18 + LE:U16@ EM-AARCH64 = ;
 
 : SHOW ( CMD:command n -- CMD:command )

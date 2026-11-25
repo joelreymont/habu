@@ -68,7 +68,7 @@ FUNCTION: RECEIVE-CALL recvfrom ( n str n ^u8 ^u8 -- n ) ;FUNCTION
    FFI:ERRNO >ERRNO ;
 
 
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 $80002 constant SOCKET-TYPE        \ SOCK_DGRAM | SOCK_CLOEXEC
 
 \ SOCK_CLOEXEC set the flag.

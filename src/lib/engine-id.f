@@ -64,7 +64,7 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 \ negative when it rejects.
 : READ-OWN-PATH ( -- n )
    HB-TARGET-MACOS? if getpid OWN-PATH-BUF OWN-PATH-CAP SELF-PATH exit then
-   HB-TARGET-LINUX-KERNEL? if
+   HB-TARGET-LINUX? if
       PROC-SELF-EXE OWN-PATH-BUF OWN-PATH-CAP readlink exit
    then
    0 ;
@@ -85,7 +85,7 @@ public
 private
 
 : OPEN-RUNNING ( -- n )
-   HB-TARGET-LINUX-KERNEL? if
+   HB-TARGET-LINUX? if
       PROC-SELF-EXE open-rd exit
    then
    HB-TARGET-MACOS? if

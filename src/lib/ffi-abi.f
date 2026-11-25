@@ -33,7 +33,7 @@ split-str
 
 require src/lib/ieee754.f
 
-HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
+HB-TARGET-MACOS? HB-TARGET-LINUX? or ?TARGET
 s" src/core/exit-status.f" required
 s" src/lib/error.f" required
 s" src/lib/span.f" required
@@ -319,7 +319,7 @@ variable LIB-N
 public
 \ The handle FFI:DLSYM takes for the process's own symbols.
 : PROCESS-HANDLE ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 0 exit then
+   HB-TARGET-LINUX? if 0 exit then
    HB-TARGET-MACOS? if -2 exit then
    E-FFI-LIBRARY throw ;
 
@@ -571,7 +571,7 @@ private
       s" ." buf CODEGEN:APPEND-STRING
       version buf CODEGEN:APPEND-DECIMAL
       s" .dylib" buf CODEGEN:APPEND-STRING
-   else HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+   else HB-TARGET-LINUX? if
       s" .so." buf CODEGEN:APPEND-STRING
       version buf CODEGEN:APPEND-DECIMAL
    else E-FFI-LIBRARY throw then then
@@ -1289,7 +1289,7 @@ private
 
 : INT-REGS ( -- n )
    HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX exit then
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or if REG-MAX exit then
+   HB-TARGET-LINUX-ARM64? HB-TARGET-MACOS? or if REG-MAX exit then
    E-FFI-LIBRARY throw ;
 
 : RESULT-REGS ( n -- n )
@@ -1531,7 +1531,7 @@ private
 \ is stated, not at the first call in whatever module declared it. A rendered
 \ name passes by construction.
 : TARGET-HELP$ ( -- str )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+   HB-TARGET-LINUX? if
       s" name it with VERSIONED-LIBRARY, which spells it for linux" exit
    then
    HB-TARGET-MACOS? if
@@ -1551,7 +1551,7 @@ private
       path u s" .dylib" STR:ENDS-WITH? if false exit then
       path u s" .so" STR:ENDS-WITH? path u s" .so." STR:CONTAINS? or exit
    then
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+   HB-TARGET-LINUX? if
       path u s" .dylib" STR:ENDS-WITH? exit
    then
    E-FFI-LIBRARY throw ;

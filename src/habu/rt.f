@@ -8,7 +8,7 @@ require src/habu/crash.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/mnem.f
-HB-TARGET-LINUX? [if]
+HB-TARGET-LINUX-ARM64? [if]
    require src/os/linux/sys.f
 [then]
 HB-TARGET-MACOS? [if]

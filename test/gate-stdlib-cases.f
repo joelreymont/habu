@@ -491,7 +491,7 @@ SUITE curl-http
 \ its https origins against openssl s_server on loopback, with certificates
 \ made at test time. mbedTLS 4 and openssl are a gate requirement
 \ (docs/bootstrap.md "Requirements").
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 SUITE httpc
    src/lib/net/httpc-test.f
 ;SUITE
@@ -500,7 +500,7 @@ SUITE httpc
 \ TLS client sessions over mbedTLS against openssl s_server on loopback, with
 \ certificates made at test time. mbedTLS 4 and openssl are a gate requirement
 \ (docs/bootstrap.md "Requirements").
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 SUITE tls
    src/lib/net/tls-test.f
 ;SUITE
@@ -559,7 +559,7 @@ SUITE secret-azure
 \ SECRET:WRITE and SECRET:READ on Linux against a private bus and keyring, with
 \ secret-tool. Its own suite: SECRET:LINUX-ITEM! and libsecret's connection
 \ hold for the whole process.
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 SUITE secret-linux
    src/lib/secret/linux-test.f
 ;SUITE
@@ -1122,28 +1122,28 @@ SUITE fs-mutate
 ;SUITE
 
 \ Host failures come from an LD_PRELOAD shim of glibc's fsync and renameat2.
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 SUITE fs-atomic-faults
    test/fs-atomic-faults.f
 ;SUITE
 [then]
 
 \ sd_notify(3) is Linux's: the cases bind unix datagram sockets, abstract ones too.
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 SUITE systemd
    src/lib/systemd-test.f
 ;SUITE
 [then]
 
 \ The attribute calls are bound on the Linux kernel only, arm64 and x86-64.
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 SUITE xattr
    src/lib/xattr-test.f
 ;SUITE
 [then]
 
 \ inotify is bound on the Linux kernel only.
-HB-TARGET-LINUX-KERNEL? [if]
+HB-TARGET-LINUX? [if]
 SUITE inotify
    src/lib/inotify-test.f
 ;SUITE

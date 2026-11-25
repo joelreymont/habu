@@ -52,7 +52,7 @@ private
 
 \ Off Linux no service manager speaks this protocol.
 : SOCKET$ ( -- str )
-   HB-TARGET-LINUX-KERNEL? 0= if s" " exit then
+   HB-TARGET-LINUX? 0= if s" " exit then
    s" NOTIFY_SOCKET" GETENV ;
 
 : NOTIFY ( str -- status )

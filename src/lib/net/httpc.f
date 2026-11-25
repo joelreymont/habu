@@ -66,7 +66,7 @@
 \ the session between that check and the probe, so a TLS record held on the
 \ socket makes the connection stale too. Hanging up STOPs a session that
 \ started before the socket is closed.
-HB-TARGET-LINUX-KERNEL? ?TARGET
+HB-TARGET-LINUX? ?TARGET
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/string-option.f

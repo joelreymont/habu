@@ -1113,8 +1113,11 @@ named words, with one word that runs them in order.
   provided a file during a build; do it at the file's top level: <path>`
   ("Packages" lists the words rejected).
 - **A file that builds for some targets only states them** on its first code
-  line, before its requires: `HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or
-  ?TARGET`. `?TARGET ( bool -- )` returns on true; on false the load stops
+  line, before its requires: `HB-TARGET-MACOS? HB-TARGET-LINUX? or
+  ?TARGET`. The target predicates are `HB-TARGET-MACOS?`, `HB-TARGET-WASM?`,
+  `HB-TARGET-LINUX?` on every Linux, and `HB-TARGET-LINUX-ARM64?` and
+  `HB-TARGET-LINUX-X86-64?` on one Linux architecture each.
+  `?TARGET ( bool -- )` returns on true; on false the load stops
   at that line with an `E-TARGET` rejection naming the target (the seam's
   `HB-TARGET$ ( -- ^u8 n )`), status 70, so a build exits 70 and writes no
   program or module. The files that require it inherit the

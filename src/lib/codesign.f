@@ -325,7 +325,7 @@ SCRATCH-VARIABLE CODESIGN-MAGIC-FD
 
 \ A Linux host, or an ELF file built for one on a Mac (--target).
 : CODESIGN-LINUX? ( str -- bool ) {: a:^ u:n :}
-   HB-TARGET-LINUX-KERNEL? if true exit then
+   HB-TARGET-LINUX? if true exit then
    a u CODESIGN-ELF? ;
 
 public

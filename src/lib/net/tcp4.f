@@ -116,18 +116,18 @@ $10 constant SOCKADDR-BYTES
 $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
 $7FFFF000 constant MAX-TRANSFER    \ Linux transfers at most this many bytes per call.
-: SOCKET-FLAGS ( -- n ) HB-TARGET-LINUX-KERNEL? if $80001 else 1 then ;   \ SOCK_STREAM, with SOCK_CLOEXEC on Linux.
+: SOCKET-FLAGS ( -- n ) HB-TARGET-LINUX? if $80001 else 1 then ;   \ SOCK_STREAM, with SOCK_CLOEXEC on Linux.
 $80800 constant ACCEPT-FLAGS       \ SOCK_CLOEXEC | SOCK_NONBLOCK on the accepted connection.
-: MSG-NOSIGNAL ( -- n ) HB-TARGET-LINUX-KERNEL? if $4000 else $80000 then ;   \ A write to a closed peer never signals.
+: MSG-NOSIGNAL ( -- n ) HB-TARGET-LINUX? if $4000 else $80000 then ;   \ A write to a closed peer never signals.
 4 constant F-SETFL
-: O-NONBLOCK ( -- n ) HB-TARGET-LINUX-KERNEL? if $800 else 4 then ;   \ Linux's SOCK_NONBLOCK is the same bit.
+: O-NONBLOCK ( -- n ) HB-TARGET-LINUX? if $800 else 4 then ;   \ Linux's SOCK_NONBLOCK is the same bit.
 $39 constant POLL-DONE             \ POLLIN|POLLERR|POLLHUP|POLLNVAL: a read will not block.
 $01 constant POLLIN                \ a receive will not block, on both.
 $04 constant POLLOUT               \ a send will not block, on both.
 \ Linux raises POLLHUP on a peer's FIN only once this end has shut too, and
 \ POLLRDHUP only when asked for; macOS raises POLLHUP only through POLLIN's read filter.
-: HANG-EVENTS ( -- n ) HB-TARGET-LINUX-KERNEL? if $2001 else $01 then ;   \ POLLIN, with POLLRDHUP on Linux.
-: HANG-BITS ( -- n ) HB-TARGET-LINUX-KERNEL? if $2038 else $38 then ;   \ POLLERR|POLLHUP|POLLNVAL, with POLLRDHUP on Linux.
+: HANG-EVENTS ( -- n ) HB-TARGET-LINUX? if $2001 else $01 then ;   \ POLLIN, with POLLRDHUP on Linux.
+: HANG-BITS ( -- n ) HB-TARGET-LINUX? if $2038 else $38 then ;   \ POLLERR|POLLHUP|POLLNVAL, with POLLRDHUP on Linux.
 -1 constant NO-TIMEOUT             \ poll(2) waits until ready; Darwin takes no other negative one.
 1000000 constant NS-PER-MS
 $7FFFFFFFFFFFFFFF constant NO-DEADLINE   \ a mono-ns deadline that never passes.
@@ -136,13 +136,13 @@ $7FFFFFFFFFFFFFFF constant NO-DEADLINE   \ a mono-ns deadline that never passes.
 12 constant ENOMEM
 23 constant ENFILE
 24 constant EMFILE
-: ECONNABORTED ( -- n ) HB-TARGET-LINUX-KERNEL? if 103 else 53 then ;
-: ENOBUFS ( -- n ) HB-TARGET-LINUX-KERNEL? if 105 else 55 then ;
+: ECONNABORTED ( -- n ) HB-TARGET-LINUX? if 103 else 53 then ;
+: ENOBUFS ( -- n ) HB-TARGET-LINUX? if 105 else 55 then ;
 6 constant IPPROTO-TCP
 1 constant TCP-NODELAY
-: SOL-SOCKET ( -- n ) HB-TARGET-LINUX-KERNEL? if 1 else $FFFF then ;
-: SO-REUSEADDR ( -- n ) HB-TARGET-LINUX-KERNEL? if 2 else 4 then ;
-: FIONREAD ( -- n ) HB-TARGET-LINUX-KERNEL? if $541B else $4004667F then ;   \ bytes received and not yet read.
+: SOL-SOCKET ( -- n ) HB-TARGET-LINUX? if 1 else $FFFF then ;
+: SO-REUSEADDR ( -- n ) HB-TARGET-LINUX? if 2 else 4 then ;
+: FIONREAD ( -- n ) HB-TARGET-LINUX? if $541B else $4004667F then ;   \ bytes received and not yet read.
 $5411 constant SIOCOUTQ            \ Linux: bytes written and not yet acknowledged.
 $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option rather than an ioctl.
 0 constant SHUT-RD
@@ -199,7 +199,7 @@ CAST: N>BLEN ( n -- NUM:byte-len )
 
 : ENDPOINT! ( address port -- ) {: address:address port:port :}
    CLEAR-ENDPOINT
-   HB-TARGET-LINUX-KERNEL? if
+   HB-TARGET-LINUX? if
       2 SOCKADDR c!
    else
       SOCKADDR-BYTES SOCKADDR c! 2 SOCKADDR 1+ c!
@@ -262,7 +262,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : OWN-SOCKET ( n -- n ) {: fd:n :}
-   HB-TARGET-LINUX-KERNEL? if fd exit then
+   HB-TARGET-LINUX? if fd exit then
    fd 0 < if fd exit then
    fd 2 1 fcntl drop
    fd ;
@@ -295,7 +295,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ Linux's accept4 makes the connection close-on-exec and non-blocking as it
 \ accepts it; Darwin's accept takes no flags, so the connection gets both after.
 : ACCEPT-RAW ( n -- n ) {: fd:n :}
-   HB-TARGET-LINUX-KERNEL? if
+   HB-TARGET-LINUX? if
       fd SOCKADDR ADDRLEN ACCEPT-FLAGS ACCEPT-CALL exit
    then
    fd SOCKADDR ADDRLEN DARWIN-ACCEPT OWN-SOCKET
@@ -484,7 +484,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 : ACCEPT-ABORTED? ( n -- bool ) {: code:n :}
    code ECONNABORTED = code FD:EAGAIN# = or if true exit then
-   HB-TARGET-LINUX-KERNEL? if code LINUX-PENDING? exit then
+   HB-TARGET-LINUX? if code LINUX-PENDING? exit then
    false ;
 
 
