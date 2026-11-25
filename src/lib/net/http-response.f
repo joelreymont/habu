@@ -213,7 +213,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
       ready OF ENDOF
       timed-out OF -1 ENDOF
       cancelled OF -1 ENDOF
-      refused OF drop -1 ENDOF
+      rejected OF drop -1 ENDOF
    ;MATCH ;
 
 

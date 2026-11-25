@@ -13,7 +13,7 @@
 \ appended, a 404 is a miss, a lost transfer or a status a retry may change
 \ is E-UNAVAILABLE, and anything else E-ACCESS, each logged once tagged
 \ secret. The token's E-TRANSFER and E-UNAVAILABLE are E-UNAVAILABLE, its
-\ E-REFUSED and E-RESPONSE E-ACCESS, which BEARER logged. Contract:
+\ E-REJECTED and E-RESPONSE E-ACCESS, which BEARER logged. Contract:
 \ src/lib/secret.f. The vault URL is an origin alone, https or http to a
 \ loopback IP literal, one trailing `/` allowed; the metadata origin is an
 \ origin alone.
@@ -106,7 +106,7 @@ AZURE-LOCK TASK:FACILITY-INIT
    catch {: code:n :}
    code BEARER:E-TRANSFER = code BEARER:E-UNAVAILABLE = or
    if E-UNAVAILABLE throw then
-   code BEARER:E-REFUSED = code BEARER:E-RESPONSE = or
+   code BEARER:E-REJECTED = code BEARER:E-RESPONSE = or
    if E-ACCESS throw then
    code 0<> if code throw then ;
 

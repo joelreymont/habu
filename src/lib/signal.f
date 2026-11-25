@@ -252,14 +252,14 @@ REGISTER-RESET
 \ and a bare POLLERR, are a read end gone behind the facility's back and would
 \ otherwise be re-read against the deadline forever. The kernel answers that
 \ state two ways - as those bits when it still has the descriptor, and as a
-\ refused poll (EBADF) when the number no longer names one - and both name the
+\ failed poll (EBADF) when the number no longer names one - and both name the
 \ poll.
 : READABLE-WITHIN? ( ms -- bool ) {: window:ms :}
    READ-FD AIO:READABLE window AIO:WAIT-READY
    MATCH AIO:readiness
       ready OF FD:POLLIN and 0= if E-SIGNAL-POLL throw then true ENDOF
       timed-out OF false ENDOF
-      refused OF drop E-SIGNAL-POLL throw ENDOF
+      rejected OF drop E-SIGNAL-POLL throw ENDOF
    ;MATCH ;
 
 \ Four bytes is under PIPE_BUF, so the pipe takes the number whole or not at

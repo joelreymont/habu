@@ -2,7 +2,7 @@
 \ master is the peer, the slave opened by SERIAL:OPEN8N1 at 115200 as
 \ test/serial.py's host does. Pinned here, not by the host: a parked READ is not
 \ a thread parked in poll(2), a zero window answers a terminal holding bytes,
-\ and a wait with no loop is refused by name.
+\ and a wait with no loop is rejected by name.
 \ Run: bin/hb --load src/lib/serial-test.f
 
 require src/lib/test.f
@@ -153,7 +153,7 @@ TASK:MIN-STACK TASK:TASK READER
    MATCH AIO:readiness
       ready OF drop ENDOF
       timed-out OF ENDOF
-      refused OF drop ENDOF
+      rejected OF drop ENDOF
    ;MATCH ;
 
 \ A zero timeout links a zero-length timeout behind the poll. The kernel serves
@@ -202,13 +202,13 @@ TASK:MIN-STACK TASK:TASK READER
    PORT EMPTY 1 SERIAL:BYTES IDLE-MS >MS SERIAL:READ IO-DROP ;
 
 : NO-LOOP-CASE ( -- )
-   s" a read with the loop stopped is refused by name" T-LABEL
+   s" a read with the loop stopped is rejected by name" T-LABEL
    AIO:STOP
    [: STOPPED-READ ;] E-AIO-STATE TTHROWSQ
    AIO:START ;
 
-\ The kernel refuses the poll of a descriptor that names nothing with EBADF, so
-\ the refused arm answers what POLLNVAL answered on the poll(2) path: errno 9,
+\ The kernel fails the poll of a descriptor that names nothing with EBADF, so
+\ the rejected arm answers what POLLNVAL answered on the poll(2) path: errno 9,
 \ the number test/serial.py pins for a read after close.
 
 : AFTER-CLOSE-CASE ( -- )

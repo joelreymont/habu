@@ -101,7 +101,7 @@ variable IO-GO-R                                 \ child-side release gate
    MATCH AIO:readiness
       ready OF IO-WATCH-EVENT? ENDOF
       timed-out OF false ENDOF
-      refused OF drop E-PROC-OUTPUT throw ENDOF
+      rejected OF drop E-PROC-OUTPUT throw ENDOF
    ;MATCH ;
 
 : IO-CLOSE-HIGH ( fd -- ) {: keep:fd :}
@@ -339,7 +339,7 @@ public
    MATCH AIO:readiness
       ready OF m v cap IO-READ-READY ENDOF
       timed-out OF 0 ENDOF
-      refused OF drop E-PROC-OUTPUT throw ENDOF
+      rejected OF drop E-PROC-OUTPUT throw ENDOF
    ;MATCH ;
 
 \ Release the target to exec. Idempotent once the gate is spent.

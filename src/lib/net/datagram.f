@@ -202,7 +202,7 @@ public
       MATCH AIO:readiness
          ready OF drop ENDOF
          timed-out OF DATAGRAM-RECEIVE--RESULT:TIMEOUT exit ENDOF
-         refused OF >ERRNO DATAGRAM-RECEIVE--RESULT:FAILED exit ENDOF
+         rejected OF >ERRNO DATAGRAM-RECEIVE--RESULT:FAILED exit ENDOF
       ;MATCH
    again ;
 

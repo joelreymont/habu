@@ -57,7 +57,7 @@ package BEARER
 public
 
 -9630 s" no answer from the token endpoint" ERROR:CODE E-TRANSFER
--9631 s" the issuer refused with a 4xx a retry will not change" ERROR:CODE E-REFUSED
+-9631 s" the issuer rejected the request with a 4xx a retry will not change" ERROR:CODE E-REJECTED
 -9632 s" a URL is not https (state https, or http only to 127.0.0.0/8 or [::1]), a METADATA! URL is not /.well-known/oauth-protected-resource right after its authority, then nothing or a path with no query or fragment (insert the segment before the resource's path; drop the query and fragment), a METADATA! URL holds a quote, backslash, control or non-ASCII byte (percent-encode it), or a scope is not tokens of printable ASCII but quote and backslash one space apart (remove the other bytes and spaces)"
    ERROR:CODE E-OPERAND
 -9633 s" the token endpoint answered a status a retry may change" ERROR:CODE E-UNAVAILABLE
@@ -439,7 +439,7 @@ ENUM lookup-step
    ;MATCH ;
 
 
-\ Only RS256 is ever verified, which refuses alg none and HS256; a header with
+\ Only RS256 is ever verified, which rejects alg none and HS256; a header with
 \ crit names extensions this verifier does not understand (RFC 7515 4.1.11).
 : RS256? ( -- bool )
    HEADER@ s" alg" s" RS256" false MEMBER-IS? 0= if false exit then
@@ -526,7 +526,7 @@ ENUM lookup-step
    outcome NO-TOKEN = if named NAMED-U @ SPAN:TAKE SPAN:$ exit then
    named NAMED-U @ SPAN:SKIP SPAN:$ ;
 
-: REFUSE ( HTTP:response n -- )
+: REJECT ( HTTP:response n -- )
    {: answer:HTTP:response outcome:n :}
    outcome UNAVAILABLE = if answer 503 HTTP:STATUS! exit then
    answer outcome CHALLENGE$ CHALLENGE ;
@@ -710,9 +710,9 @@ public
 \ `<scheme>://<authority>/.well-known/oauth-protected-resource[<path>]`
 \ (RFC 9728 3.1), or holding a quote, a backslash, or a byte below $20 or above
 \ $7E unencoded, or for a scope that is not space-separated RFC 6749 3.3 scope
-\ tokens; URI:ORIGIN's rejection for a URL it cannot read. A refused text or
-\ allocation leaves the previous statement in force. E-HTTP-STATE while HTTP
-\ serves.
+\ tokens; URI:ORIGIN's rejection for a URL it cannot read. A rejected text or
+\ failed allocation leaves the previous statement in force. E-HTTP-STATE while
+\ HTTP serves.
 : METADATA! ( str str -- )
    {: url:str scope:str :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
@@ -740,7 +740,7 @@ public
 
 
 \ Whether the request carries a current bearer token of the issuer's for this
-\ server. A refusal answers the response itself, with an empty body: 401
+\ server. A rejection answers the response itself, with an empty body: 401
 \ challenging Bearer for no, several or a non-Bearer Authorization, or Bearer
 \ error="invalid_token" for a token that fails, either one naming METADATA!'s
 \ URL and scope once stated; 503 when there is no key set and none
@@ -751,7 +751,7 @@ public
    ISSUER$ STR:LEN 0= if E-HTTP-STATE throw then
    0 PASSED !
    asked OUTCOME {: outcome:n :}
-   outcome ADMITTED <> if answer outcome REFUSE false exit then
+   outcome ADMITTED <> if answer outcome REJECT false exit then
    asked HTTP:REQUEST>N FROM !
    true bool>n PASSED !
    true ;
@@ -937,7 +937,7 @@ private
    {: status:CURL:http-status :}
    status CURL:UNAVAILABLE? if E-UNAVAILABLE exit then
    status CURL:HTTP-STATUS>N {: code:n :}
-   code 400 >= code 500 < and if E-REFUSED exit then
+   code 400 >= code 500 < and if E-REJECTED exit then
    E-RESPONSE ;
 
 \ The vector is empty with EMPTIED's room: the answer is appended to it, at
@@ -1115,7 +1115,7 @@ public
 \ from the endpoint CLIENT! names, borrowed from the vector until the caller
 \ writes to it again, then the answer's expires_in: the token's lifetime in
 \ seconds, positive. E-TRANSFER for no answer; E-UNAVAILABLE for a status
-\ CURL:UNAVAILABLE? accepts; E-REFUSED for another 4xx, the vector then
+\ CURL:UNAVAILABLE? accepts; E-REJECTED for another 4xx, the vector then
 \ holding the issuer's answer, empty past TOKEN-CAP; E-RESPONSE for a 2xx
 \ that is not JSON naming each member once or lacks an access_token string or
 \ a positive integer expires_in, a number or a digit string, or any other
@@ -1300,7 +1300,7 @@ public
 \ scope's: asked again once LEEWAY-S or less of its expires_in remains, one
 \ task at a time, a task that waited on a failed ask throwing its code.
 \ Callable from any task. E-TRANSFER for no answer; E-UNAVAILABLE for 404,
-\ 410 and a status CURL:UNAVAILABLE? accepts; E-REFUSED for another 4xx;
+\ 410 and a status CURL:UNAVAILABLE? accepts; E-REJECTED for another 4xx;
 \ E-RESPONSE as TOKEN. Each failed ask first logs one line tagged bearer,
 \ never a 2xx answer's text. The caller wipes the vector (`0 VEC:RESIZE`)
 \ when done.

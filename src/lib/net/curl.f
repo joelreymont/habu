@@ -1492,7 +1492,7 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
       ready OF drop ENDOF
       timed-out OF ENDOF
       cancelled OF ENDOF
-      refused OF drop ENDOF
+      rejected OF drop ENDOF
    ;MATCH ;
 
 
@@ -1642,7 +1642,7 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
 
 
 \ Every wait this loop holds is ended and awaited before the task returns: a
-\ record still in flight is what AIO:STOP refuses, and a ticket nobody awaits is
+\ record still in flight is what AIO:STOP rejects, and a ticket nobody awaits is
 \ a record nobody frees.
 : GROUP-DRAIN ( -- )
    FD-SETSIZE 0 ?do i FD-MASK@ 0 <> if i FD-DROP then loop
@@ -1654,11 +1654,11 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
    LOOP-RUN LOOP-MRC ! ;
 
 
-\ However the loop ends - a multi call that refused, or a throw out of AIO - no
+\ However the loop ends - a multi call that failed, or a throw out of AIO - no
 \ owner is left parked on a loop that is gone: every transfer in flight is ended
 \ first and what ended the loop is the task's answer, which LOOP-STOP rethrows.
 \ A loop that ended by a throw leaves its tickets to AIO's own per-task cleanup,
-\ because the ring is what just refused.
+\ because the ring is what just failed.
 : LOOP-BODY ( -- )
    CURLM-OK LOOP-MRC !
    [: LOOP-RUN-STORE ;] catch {: rc:n :}

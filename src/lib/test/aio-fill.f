@@ -1,7 +1,7 @@
 \ aio-fill.f - AIO held at its ceiling, package AIO-FILL. FILL submits polls that
-\ never fire until AIO refuses one, and answers that refusal's code; UNFILL
-\ cancels and awaits each and closes its pipe. CEILING is the code AIO refuses
-\ with on this target. RAISE-FDS lifts the soft descriptor limit to what a test
+\ never fire until AIO rejects one, and answers that rejection's code; UNFILL
+\ cancels and awaits each and closes its pipe. CEILING is that rejection's code
+\ on this target. RAISE-FDS lifts the soft descriptor limit to what a test
 \ holds open, the fill's pipes included.
 \
 \ STORAGE CLASS. PROCESS-WIDE: one fill at a time, its tickets and pipes in
@@ -16,7 +16,7 @@ package AIO-FILL
 
 private
 
--9950 constant E-FILL-PIPE        \ a fill pipe the OS refused, outside every lib block
+-9950 constant E-FILL-PIPE        \ a fill pipe that failed to open, outside every lib block
 
 public
 
@@ -49,7 +49,7 @@ create FD-LIMIT 16 allot
       ready OF drop ENDOF
       timed-out OF ENDOF
       cancelled OF ENDOF
-      refused OF drop ENDOF
+      rejected OF drop ENDOF
    ;MATCH ;
 
 public

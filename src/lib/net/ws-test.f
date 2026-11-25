@@ -37,9 +37,9 @@ package WS
    RUNNING? 0= if E-WS-STATE throw then
    HTTP:WORKER-SLOT {: w:n :}
    asked w VERDICT {: status:n :}
-   status 0 <> if answer status REFUSE exit then
+   status 0 <> if answer status REJECT exit then
    RESERVE {: idx:n :}
-   idx 0 < if answer 503 REFUSE exit then
+   idx 0 < if answer 503 REJECT exit then
    stall execute
    asked answer q arg idx w OPEN-SOCKET ;
 : WS-TEST:LAST-GEN ( n -- ) {: idx:n :}
@@ -101,7 +101,7 @@ $1F4 constant SHORT-MS            \ a bound a case waits out, far under its othe
 13 constant CR
 10 constant LF
 32 constant SP
--9980 constant E-SILENT           \ this file's own fixture refusals, outside every lib block
+-9980 constant E-SILENT           \ this file's own fixture rejections, outside every lib block
 -9981 constant E-HANDLER          \ the handler that is meant to throw
 -9982 constant E-DIAL
 -9983 constant E-PLATFORM          \ a target this file has no socket option values for
@@ -173,7 +173,7 @@ variable RX-FIN
 variable RX-LEN
 variable RX-EOF
 TYPED-VARIABLE RX-OP WS:opcode
-variable REFUSED-WITH             \ the status the route was told its handshake was refused with
+variable REJECTED-WITH            \ the status the route was told its handshake was rejected with
 variable STALLING                 \ set once the stalled handshake holds its slot
 variable BAD-TEXT                 \ what the handler's send of text that is not UTF-8 threw
 variable BAD-CODE                 \ what the handler's close under 1005 threw
@@ -337,7 +337,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    4 0 ?do LOOPBACK 3 i - 8 * rshift $FF and PEER-SA i 4 + SPAN:U8! loop ;
 
 \ The socket is non-blocking, so its connect completes when POLL finds it
-\ writable; an error or hang-up there is a refused connect.
+\ writable; an error or hang-up there is a failed connect.
 : CONNECTED? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
    conn TCP4:CONNECTION-FD {: f:fd :}
    f FD>N PEER-SA SPAN:$ CONNECT-CALL 0 = if true exit then
@@ -346,7 +346,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    MATCH AIO:readiness
       ready OF POLL-FAILED and 0= ENDOF
       timed-out OF false ENDOF
-      refused OF drop false ENDOF
+      rejected OF drop false ENDOF
    ;MATCH ;
 
 : SOCKET-OPT! ( n n n -- n )
@@ -379,7 +379,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    MATCH AIO:readiness
       ready OF drop ENDOF
       timed-out OF ENDOF
-      refused OF drop ENDOF
+      rejected OF drop ENDOF
    ;MATCH ;
 
 : REFILL ( TCP4:connection -- ) {: conn:TCP4:connection :}
@@ -617,7 +617,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : SEND-LATE ( -- )
    0 NOTED @ s" late" WS:SEND-TEXT ;
 
-\ The handler closes first: a status no frame may carry is refused, a second
+\ The handler closes first: a status no frame may carry is rejected, a second
 \ close is nothing new, and nothing is sent behind the close.
 : CLOSE-FIRST ( WS:socket -- ) {: sock:WS:socket :}
    [: CLOSE-UNSENDABLE ;] catch BAD-CODE atomic!
@@ -647,7 +647,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : SEND-PROBE ( -- )
    0 NOTED @ s" ." WS:SEND-TEXT ;
 
-\ The handler sends a probe every POLL-MS until one is refused, as it is once
+\ The handler sends a probe every POLL-MS until one is rejected, as it is once
 \ a stop has closed the socket, and returns: the stop's own close ends the
 \ call, not a step the case takes.
 : PROBE ( -- )
@@ -714,7 +714,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : KEEP ( WS:accepted -- )
    MATCH WS:accepted
       open OF 0 HELD ! ENDOF
-      refused OF REFUSED-WITH ! ENDOF
+      rejected OF REJECTED-WITH ! ENDOF
    ;MATCH ;
 
 \ A route posts ACCEPTED whether or not its body threw, so the case's wait
@@ -732,7 +732,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : ACCEPT-AGAIN ( -- )
    0 KEPT-REQUEST @ 0 KEPT-RESPONSE @ [: NOTE ;] 0 WS:ACCEPT KEEP ;
 
-\ One request is one socket: a second accept of it is refused, and the first
+\ One request is one socket: a second accept of it is rejected, and the first
 \ socket serves on.
 : ACCEPT-TWICE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
@@ -822,96 +822,96 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn ENDS
    sock LOST CLOSED-WITH ;
 
-\ The status line a refused handshake is answered with, and the status the
-\ route was told it was refused with: 0 when the server refused the request
+\ The status line a rejected handshake is answered with, and the status the
+\ route was told it was rejected with: 0 when the server rejected the request
 \ before any route ran.
-: REFUSED ( str str n -- ) {: label:str want:str status:n :}
+: REJECTED ( str str n -- ) {: label:str want:str status:n :}
    label T-LABEL
-   0 REFUSED-WITH !
+   0 REJECTED-WITH !
    S\" \r\n" REQ+
    REQ-SEND {: conn:TCP4:connection :}
    status 0 <> if AWAIT-ROUTE then
    HEAD$ want STR:STARTS-WITH? TTRUE
    label LOG s" : " LOG HEAD$ FIRST-LINE LOG-LINE
    conn TCP4:CLOSE DROP-STATUS
-   REFUSED-WITH @ status T= ;
+   REJECTED-WITH @ status T= ;
 
 : BAD$ ( -- str )
    s" HTTP/1.1 400 Bad Request" ;
 
 \ Section 4.2.1's first two items: the handshake is an HTTP/1.1 GET carrying
 \ one valid Host.
-: REQUEST-REFUSALS ( -- )
+: REQUEST-REJECTIONS ( -- )
    s" POST" s" /ws" REQ-START GOOD-LINES
-   s" POST" BAD$ 400 REFUSED
+   s" POST" BAD$ 400 REJECTED
    s" GET" s" /ws" s" HTTP/1.0" REQ-BARE HOST+ GOOD-LINES
-   s" HTTP/1.0" BAD$ 400 REFUSED
+   s" HTTP/1.0" BAD$ 400 REJECTED
    s" GET" s" /ws" s" HTTP/1.1" REQ-BARE GOOD-LINES
-   s" no Host" BAD$ 0 REFUSED
+   s" no Host" BAD$ 0 REJECTED
    s" GET" s" /ws" REQ-START HOST+ GOOD-LINES
-   s" two Hosts" BAD$ 0 REFUSED
+   s" two Hosts" BAD$ 0 REJECTED
    s" GET" s" /ws" s" HTTP/1.1" REQ-BARE s" Host" s" " LINE+ GOOD-LINES
-   s" an empty Host" BAD$ 0 REFUSED
+   s" an empty Host" BAD$ 0 REJECTED
    s" GET" s" /ws" s" HTTP/1.1" REQ-BARE s" Host" s" a b" LINE+ GOOD-LINES
-   s" a Host with a space" BAD$ 0 REFUSED ;
+   s" a Host with a space" BAD$ 0 REJECTED ;
 
-: REFUSAL-CASES ( -- )
-   s" refused handshakes" SECTION
+: REJECTION-CASES ( -- )
+   s" rejected handshakes" SECTION
    s" GET" s" /ws" REQ-START
    s" Connection" s" Upgrade" LINE+
    s" Sec-WebSocket-Key" KEY$ LINE+
    s" Sec-WebSocket-Version" s" 13" LINE+
-   s" no Upgrade" BAD$ 400 REFUSED
+   s" no Upgrade" BAD$ 400 REJECTED
    s" GET" s" /ws" REQ-START
    s" Upgrade" s" h2c" LINE+
    s" Connection" s" Upgrade" LINE+
    s" Sec-WebSocket-Key" KEY$ LINE+
    s" Sec-WebSocket-Version" s" 13" LINE+
-   s" Upgrade to h2c" BAD$ 400 REFUSED
+   s" Upgrade to h2c" BAD$ 400 REJECTED
    s" GET" s" /ws" REQ-START
    s" Upgrade" s" websocket" LINE+
    s" Connection" s" close" LINE+
    s" Sec-WebSocket-Key" KEY$ LINE+
    s" Sec-WebSocket-Version" s" 13" LINE+
-   s" Connection without Upgrade" BAD$ 400 REFUSED
+   s" Connection without Upgrade" BAD$ 400 REJECTED
    s" GET" s" /ws" REQ-START
    s" Upgrade" s" websocket" LINE+
    s" Connection" s" Upgrade" LINE+
    s" Sec-WebSocket-Version" s" 13" LINE+
-   s" no key" BAD$ 400 REFUSED
+   s" no key" BAD$ 400 REJECTED
    s" GET" s" /ws" REQ-START
    s" Upgrade" s" websocket" LINE+
    s" Connection" s" Upgrade" LINE+
    s" Sec-WebSocket-Key" s" dGhlIHNhbXBsZSBub25jZQ=" LINE+
    s" Sec-WebSocket-Version" s" 13" LINE+
-   s" a key of 23 characters" BAD$ 400 REFUSED
+   s" a key of 23 characters" BAD$ 400 REJECTED
    s" GET" s" /ws" REQ-START
    s" Upgrade" s" websocket" LINE+
    s" Connection" s" Upgrade" LINE+
    s" Sec-WebSocket-Key" s" dGhlIHNhbXBsZSBub25jZQAA" LINE+
    s" Sec-WebSocket-Version" s" 13" LINE+
-   s" a key of 18 bytes" BAD$ 400 REFUSED
+   s" a key of 18 bytes" BAD$ 400 REJECTED
    s" GET" s" /ws" REQ-START
    s" Upgrade" s" websocket" LINE+
    s" Connection" s" Upgrade" LINE+
    s" Sec-WebSocket-Key" s" dGhlIHNhbXBsZSBub25jZ!==" LINE+
    s" Sec-WebSocket-Version" s" 13" LINE+
-   s" a key outside base64" BAD$ 400 REFUSED
+   s" a key outside base64" BAD$ 400 REJECTED
    s" GET" s" /ws" REQ-START GOOD-LINES
    s" Sec-WebSocket-Key" KEY$ LINE+
-   s" two keys" BAD$ 400 REFUSED
-   REQUEST-REFUSALS
+   s" two keys" BAD$ 400 REJECTED
+   REQUEST-REJECTIONS
    s" GET" s" /ws" REQ-START
    s" Upgrade" s" websocket" LINE+
    s" Connection" s" Upgrade" LINE+
    s" Sec-WebSocket-Key" KEY$ LINE+
-   s" no version" s" HTTP/1.1 426 Upgrade Required" 426 REFUSED
+   s" no version" s" HTTP/1.1 426 Upgrade Required" 426 REJECTED
    s" GET" s" /ws" REQ-START
    s" Upgrade" s" websocket" LINE+
    s" Connection" s" Upgrade" LINE+
    s" Sec-WebSocket-Key" KEY$ LINE+
    s" Sec-WebSocket-Version" s" 12" LINE+
-   s" version 12" s" HTTP/1.1 426 Upgrade Required" 426 REFUSED
+   s" version 12" s" HTTP/1.1 426 Upgrade Required" 426 REJECTED
    s" a 426 names the version and the protocol" T-LABEL
    HEAD$ S\" \r\nSec-WebSocket-Version: 13\r\n" STR:CONTAINS? TTRUE
    HEAD$ S\" \r\nUpgrade: websocket\r\n" STR:CONTAINS? TTRUE ;
@@ -941,7 +941,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn FAREWELL
    sock 1000 CLOSED-WITH ;
 
-\ The handler's text that is not UTF-8 is refused before a byte of it goes
+\ The handler's text that is not UTF-8 is rejected before a byte of it goes
 \ out: the first frame the client hears is the echo of its next text.
 : BAD-TEXT-CASE ( -- )
    s" text the server may not send" SECTION
@@ -950,7 +950,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn true WS-OPCODE:TEXT s" badtext" SAY
    conn WS-OPCODE:TEXT s" ok" EXCHANGE
    conn FAREWELL
-   s" text that is not UTF-8 is refused" T-LABEL
+   s" text that is not UTF-8 is rejected" T-LABEL
    BAD-TEXT atomic@ E-WS-TEXT T= ;
 
 \ Each length form at its edges: 7 bits to 125, 16 bits from 126 to 65535, and
@@ -1058,7 +1058,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn s SAY-RAW
    conn sock code FAILED ;
 
-\ What the codec refuses in a header, each from the fewest bytes that show it.
+\ What the codec rejects in a header, each from the fewest bytes that show it.
 : HEADER-FAULTS ( -- )
    s" an unmasked frame" s" 810548656c6c6f" 1002 BREAKS
    s" a control frame past 125 bytes" s" 89fe" 1002 BREAKS
@@ -1092,7 +1092,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    long long-sock 1009 FAILED ;
 
 \ A frame whose header is accepted and whose payload never comes: the client
-\ ends its stream, so the handler is told 1006 where a refused length would
+\ ends its stream, so the handler is told 1006 where a rejected length would
 \ have been 1009.
 : BOUND-CASES ( -- )
    s" a message of exactly the bound" SECTION
@@ -1192,7 +1192,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    SECOND-ACCEPT @ HTTP:E-STATE T=
    conn FAREWELL
    sock 1000 CLOSED-WITH
-   s" the refused accept keeps no slot" T-LABEL
+   s" the rejected accept keeps no slot" T-LABEL
    OPEN-ALL CLOSE-ALL ;
 
 \ WS reports each handler fault on fd 2. For THROW-CASE fd 2 is a file, read
@@ -1322,7 +1322,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s ;
 
 \ That many PUSH-BYTES frames from this task to the socket; the code the first
-\ refused push threw, or 0 when all of them were queued.
+\ rejected push threw, or 0 when all of them were queued.
 : PUSHES ( WS:socket n -- n ) {: sock:WS:socket n:n :}
    sock 0 PUSHED-TO !
    n 0 ?do
@@ -1384,7 +1384,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn FAREWELL ;
 
 \ A handle kept past its socket names nothing, even once its slot serves the
-\ next socket: a send through it is refused, a close through it is nothing
+\ next socket: a send through it is rejected, a close through it is nothing
 \ new, and the next socket hears only its own frames.
 : HELD-CASE ( -- )
    s" a handle kept past its socket" SECTION
@@ -1394,7 +1394,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    OPENS drop {: conn:TCP4:connection :}
    conn WS-OPCODE:TEXT s" mine" EXCHANGE
    gone 0 PUSHED-TO !
-   s" a send through it is refused" T-LABEL
+   s" a send through it is rejected" T-LABEL
    [: s" late" PUSH-ONE drop ;] E-WS-CLOSED TTHROWSQ
    s" and a close through it is nothing new" T-LABEL
    gone 1000 WS:CLOSE
@@ -1466,8 +1466,8 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn FAREWELL
    still TCP4:CLOSE DROP-STATUS ;
 
-\ The socket past START's limit is refused 503, and no socket exists for it;
-\ the body read behind its head is dropped with its connection.
+\ The socket past START's limit is rejected with 503, and no socket exists for
+\ it; the body read behind its head is dropped with its connection.
 : CAPACITY-CASE ( -- )
    s" the socket past capacity" SECTION
    OPEN-ALL
@@ -1475,7 +1475,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    REQ-SEND {: conn:TCP4:connection :}
    AWAIT-ROUTE
    HEAD$ s" HTTP/1.1 503 " STR:STARTS-WITH? TTRUE
-   REFUSED-WITH @ 503 T=
+   REJECTED-WITH @ 503 T=
    conn TCP4:CLOSE DROP-STATUS
    0 STREAM-AT ! 0 STREAM-U !
    CROWD 1- CONNS @ WS-OPCODE:TEXT s" last" EXCHANGE
@@ -1579,7 +1579,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    2 SIZED WS:START
    OPENS drop {: first:TCP4:connection :}
    0 STALLING !
-   0 REFUSED-WITH !
+   0 REJECTED-WITH !
    s" GET" s" /stall" REQ-START GOOD-LINES S\" \r\n" REQ+
    DIAL {: conn:TCP4:connection :}
    conn REQ$ SEND-RAW
@@ -1595,7 +1595,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    WS:STOP
    1 SIZED WS:START
    AWAIT-ROUTE
-   REFUSED-WITH @ 503 T=
+   REJECTED-WITH @ 503 T=
    conn READ-HEAD
    HEAD$ s" HTTP/1.1 503 " STR:STARTS-WITH? TTRUE
    conn TCP4:CLOSE DROP-STATUS
@@ -1607,7 +1607,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    STOP-TASK TASK:DONE? if 1 else 0 then ;
 
 \ A second WS:STOP while the first waits for a handshake that holds its slot
-\ is E-WS-STATE, and the first returns once that handshake is refused. The
+\ is E-WS-STATE, and the first returns once that handshake is rejected. The
 \ first stop runs on its own task; the open socket's 1001 shows it has begun.
 : STOP-TWICE-CASE ( -- )
    s" a second stop while one runs" SECTION
@@ -1616,7 +1616,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    first HEAR 1001 GOT-CLOSE
    [: WS:STOP ;] E-WS-STATE TTHROWSQ
    AWAIT-ROUTE
-   REFUSED-WITH @ 503 T=
+   REJECTED-WITH @ 503 T=
    [: STOP-ENDED ;] AWAITED drop
    TASK-CODE 0 T=
    conn TCP4:CLOSE DROP-STATUS
@@ -1732,7 +1732,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    SB$ ERR-W ;
 
 \ AIO is filled while a handshake holds its slot, so the poll WS's task makes
-\ for the new socket is refused.
+\ for the new socket is rejected.
 : FAULTING ( -- )
    0 STALLING !
    s" GET" s" /fill" REQ-START GOOD-LINES S\" \r\n" REQ+
@@ -1740,7 +1740,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn REQ$ SEND-RAW
    [: STALLING @ ;] AWAITED drop
    AIO-FILL:FILL {: code:n :}
-   s" AIO refuses the poll past its ceiling" T-LABEL
+   s" AIO rejects the poll past its ceiling" T-LABEL
    code AIO-FILL:CEILING T=
    code TASK-LINE
    FILLED TASK:SIGNAL-SEM
@@ -1750,7 +1750,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn TCP4:CLOSE DROP-STATUS
    0 STREAM-AT ! 0 STREAM-U ! ;
 
-\ A throw that ends WS's task, here the poll AIO refuses at its ceiling, is
+\ A throw that ends WS's task, here the poll AIO rejects at its ceiling, is
 \ one line on stderr with its code, and WS:STOP still ends the run.
 : FAULT-CASE ( -- )
    s" a task that fails" T-LABEL
@@ -1814,7 +1814,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" W
    s" " W
    s" < end of stream" W
-   s" == refused handshakes" W
+   s" == rejected handshakes" W
    s" no Upgrade: HTTP/1.1 400 Bad Request" W
    s" Upgrade to h2c: HTTP/1.1 400 Bad Request" W
    s" Connection without Upgrade: HTTP/1.1 400 Bad Request" W
@@ -2111,7 +2111,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ The table full first, while no other socket holds a slot.
 : CASES ( -- )
    CAPACITY-CASE
-   HANDSHAKE-CASE REFUSAL-CASES TOLERANT-CASE
+   HANDSHAKE-CASE REJECTION-CASES TOLERANT-CASE
    ECHO-CASE BAD-TEXT-CASE LENGTH-CASES FRAGMENT-CASES PING-CASES EARLY-CASE
    FIRST-CALL-CASE
    HEADER-FAULTS MESSAGE-FAULTS BOUND-CASES

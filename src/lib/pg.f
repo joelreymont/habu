@@ -1238,7 +1238,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    MATCH AIO:readiness
       ready OF drop ENDOF
       timed-out OF deadline NO-DEADLINE = if E-EXEC else E-DEADLINE then throw ENDOF
-      refused OF drop E-EXEC throw ENDOF
+      rejected OF drop E-EXEC throw ENDOF
    ;MATCH
    socket events deadline ;
 
@@ -1313,7 +1313,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    MATCH AIO:readiness
       ready OF drop true ENDOF
       timed-out OF false ENDOF
-      refused OF drop E-EXEC throw ENDOF
+      rejected OF drop E-EXEC throw ENDOF
    ;MATCH ;
 
 
@@ -1948,7 +1948,7 @@ public
 \ connection is E-STATEMENT; one inside a transaction, which holds
 \ notifications back until it ends, is E-TRANSACTION; a negative ms is E-BOUND.
 \ A failed read closes the connection and throws E-EXEC; a readiness wait the
-\ AIO loop refuses throws E-EXEC, or the loop's own code, and leaves it open.
+\ AIO loop rejects throws E-EXEC, or the loop's own code, and leaves it open.
 : NOTIFIED? ( connection ms -- bool )
    [: FORGET-NOTE ;] WAIT-NOTIFIES ;
 

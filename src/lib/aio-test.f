@@ -1,11 +1,11 @@
 \ aio-test.f - the io_uring loop: readiness, timers, cancellation, grouped
-\ waits, the completion operations, the per-task cleanup and every refusal.
+\ waits, the completion operations, the per-task cleanup and every rejection.
 \ Pipes, one regular file under the test's own temporary directory, and one
 \ loopback stream this process is both ends of; no clock but the monotonic one.
 \
 \ Every transfer hands its allocation to the operation and takes it back from
 \ AWAIT-XFER, which is the only word that answers one, and releases it itself.
-\ A buffer a case still holds after a refusal was never submitted.
+\ A buffer a case still holds after a rejection was never submitted.
 
 require src/lib/error.f
 require src/lib/test.f
@@ -218,13 +218,13 @@ TASK:MIN-STACK TASK:TASK FAN6
 TASK:MIN-STACK TASK:TASK FAN7
 
 \ One number per outcome, so a case asserts what it got: the revents mask for
-\ ready, the errno for refused, and a marker for the other two.
+\ ready, the errno for rejected, and a marker for the other two.
 : OUTCOME>N ( AIO:outcome -- n )
    MATCH AIO:outcome
       ready OF ENDOF
       timed-out OF MARK-TIMED-OUT ENDOF
       cancelled OF MARK-CANCELLED ENDOF
-      refused OF negate ENDOF
+      rejected OF negate ENDOF
    ;MATCH ;
 
 : AWAIT>N ( AIO:ticket -- n )
@@ -375,7 +375,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL FULL-N @ FULL-TICKETS !
    1 FULL-N +! ;
 
-\ Polls until the ring refuses one: answers the refusal's code, or 0 when
+\ Polls until the ring rejects one: answers the rejection's code, or 0 when
 \ FULL-CAP polls went in.
 : FULL-FILL ( -- n )
    0 FULL-N !
@@ -384,7 +384,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    repeat
    0 ;
 
-\ Cancels every poll FULL-FILL made and answers the last refusal's code, or 0.
+\ Cancels every poll FULL-FILL made and answers the last rejection's code, or 0.
 : FULL-CANCEL ( -- n )
    0 FULL-N @ 0 ?do
       i FULL-I !
@@ -398,7 +398,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    loop ;
 
 \ A cancel takes no record of its own, so polls that fill every record can
-\ still be cancelled. A refused cancel pokes the pipe so the awaits end.
+\ still be cancelled. A rejected cancel pokes the pipe so the awaits end.
 \ The records fill through every doubling to the largest ring; once every
 \ poll is cancelled and awaited, the retired rings close with no further
 \ completion.
@@ -502,7 +502,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 : TICKET-DROP ( AIO:ticket -- )
    drop ;
 
-: CASE-STOPPED-REFUSAL ( -- )
+: CASE-STOPPED-REJECTION ( -- )
    [: TIMER-MS >MS AIO:TIMEOUT TICKET-DROP ;] E-AIO-STATE TTHROWSQ
    [: AIO:STOP ;] E-AIO-STATE TTHROWSQ ;
 
@@ -609,7 +609,7 @@ TASK:MIN-STACK TASK:TASK FAN7
       ready OF drop false TTRUE ENDOF
       timed-out OF false TTRUE ENDOF
       cancelled OF false TTRUE ENDOF
-      refused OF 9 T= ENDOF
+      rejected OF 9 T= ENDOF
    ;MATCH
    MEM:RELEASE-BYTES ;
 
@@ -621,7 +621,7 @@ TASK:MIN-STACK TASK:TASK FAN7
       ready OF drop false TTRUE ENDOF
       timed-out OF false TTRUE ENDOF
       cancelled OF false TTRUE ENDOF
-      refused OF 9 T= ENDOF
+      rejected OF 9 T= ENDOF
    ;MATCH
    MEM:RELEASE-BYTES
    P-R P-W PIPE-OPEN
@@ -1018,7 +1018,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    T-RESET
    THREADS BASE-THREADS !
    AIO-TEST-TYPES
-   CASE-STOPPED-REFUSAL
+   CASE-STOPPED-REJECTION
    AIO:START
    CASE-START-TWICE
    HB-TARGET-LINUX-KERNEL? if CASE-FIRST-RING then
@@ -1062,7 +1062,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : OWNER-WORK ( -- )
    [: LONE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] catch OWNER-RC ! ;
 
-: CASE-OWNER-REFUSAL ( -- )
+: CASE-OWNER-REJECTION ( -- )
    0 OWNER-RC !
    P-R P-W PIPE-OPEN
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
@@ -1106,7 +1106,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ nothing of an earlier case in flight, the claim takes the lowest free record,
 \ and nothing frees a record between the await and the next submission, so the
 \ second operation lands on the record the first one just gave back. Each case
-\ asserts that before it asserts a refusal.
+\ asserts that before it asserts a rejection.
 : REUSED ( n n -- ) {: live:n stale:n :}
    live AIO-TEST:HANDLE-IDX stale AIO-TEST:HANDLE-IDX T=
    live stale <> TTRUE ;
@@ -1171,8 +1171,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    P-R P-W PIPE-CLOSE ;
 
 \ The task that adds to an empty group owns it until it is empty again, so a
-\ second task's GROUP+, GROUP- and AWAIT-ANY on it are refused before they reach
-\ its row, and the second task's own ticket stays out of it.
+\ second task's GROUP+, GROUP- and AWAIT-ANY on it are rejected before they
+\ reach its row, and the second task's own ticket stays out of it.
 : THIEF-WORK ( -- )
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL THIEF-TICKET !
    [: THIEF-TICKET @ 1 OWNED-GROUP AIO:GROUP+ ;] catch THIEF-ADD-RC !
@@ -1209,7 +1209,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : AIO-TEST-CHECKS-RUN ( -- )
    T-RESET
    AIO:START
-   CASE-OWNER-REFUSAL
+   CASE-OWNER-REJECTION
    CASE-AWAIT-TWICE
    CASE-STALE-TICKET
    CASE-STALE-XFER

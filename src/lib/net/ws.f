@@ -43,7 +43,7 @@ NEWTYPE socket
 \ failed, throw <code> <name>: <text>`, name and text when the code is
 \ declared, and a throw on `opened` or a message also closes
 \ the socket under 1011. A peer that breaks the protocol fails the
-\ connection: 1002 for a frame the codec refuses or one out of order, 1007
+\ connection: 1002 for a frame the codec rejects or one out of order, 1007
 \ for text that is not UTF-8, 1009 for a message past MESSAGE-MAX. A ping is
 \ answered with a pong even once this end has sent its close.
 ENUM message
@@ -54,11 +54,11 @@ ENUM message
 ;ENUM
 
 \ What ACCEPT answers: the socket of a handshake that passed, or the HTTP
-\ status, 400, 426 or 503, a refused one is answered with once the handler
+\ status, 400, 426 or 503, a rejected one is answered with once the handler
 \ returns.
 ENUM accepted
    VARIANT open FIELD sock socket ;VARIANT
-   VARIANT refused FIELD status n ;VARIANT
+   VARIANT rejected FIELD status n ;VARIANT
 ;ENUM
 
 $100000 constant MESSAGE-MAX
@@ -210,7 +210,7 @@ DYNAMIC-BUFFER DELIVERY n             \ DELIVERY-READY, DELIVERY-QUEUED or DELIV
 DYNAMIC-BUFFER PENDING message        \ what the handler call queued or running is handed
 
 \ Every column holds n slots. A column that already holds them is left as it
-\ is; fresh pages are zero, a free slot (PHASE-NONE). A refused mapping throws
+\ is; fresh pages are zero, a free slot (PHASE-NONE). A failed mapping throws
 \ with CAP unchanged.
 : TABLES-RESERVE ( n -- ) {: n:n :}
    n LINK-RESERVE
@@ -358,7 +358,7 @@ RUN-IDLE RUN !
       ready OF drop ENDOF
       timed-out OF ENDOF
       cancelled OF ENDOF
-      refused OF drop ENDOF
+      rejected OF drop ENDOF
    ;MATCH ;
 
 
@@ -757,7 +757,7 @@ RUN-IDLE RUN !
    idx ;
 
 
-\ Under LOCK: a call HTTP:SUBMIT refused never runs, so the slot is ready
+\ Under LOCK: a call HTTP:SUBMIT rejected never runs, so the slot is ready
 \ again, or retired for a `closed` nobody is told.
 : UNHAND ( n -- ) {: idx:n :}
    idx CLOSED-CALL? if idx VACATE exit then
@@ -1180,7 +1180,7 @@ ENUM course
       ready OF idx swap READY ENDOF
       timed-out OF ENDOF
       cancelled OF ENDOF
-      refused OF drop idx LOSE ENDOF
+      rejected OF drop idx LOSE ENDOF
    ;MATCH
    idx SYNC BOUND ;
 
@@ -1254,7 +1254,7 @@ ENUM course
    LOG:;LINE ;
 
 
-\ WS's task. A throw from its loop - a poll or the timer AIO refuses at its
+\ WS's task. A throw from its loop - a poll or the timer AIO rejects at its
 \ ceiling, a mapping the task cannot get - is reported and rethrown, so
 \ TASK:THROW@ keeps it and CLEANUP closes every socket: each handshake is then
 \ 503 until STOP and START. A halt passes the catch unreported.
@@ -1284,7 +1284,7 @@ ENUM course
 
 
 \ The key is the base64 of sixteen bytes (section 4.2.1), and is kept as it
-\ was sent for the accept value. A throw that is not base64's own refusal is
+\ was sent for the accept value. A throw that is not base64's own rejection is
 \ not this word's to answer.
 : KEY-OK? ( HTTP:request n -- bool )
    {: asked:HTTP:request w:n :}
@@ -1308,7 +1308,7 @@ ENUM course
 
 
 \ 0 for an opening handshake this server accepts, else the HTTP status that
-\ refuses it: 426 when all that is wrong is the version (section 4.4). The
+\ rejects it: 426 when all that is wrong is the version (section 4.4). The
 \ scratch is the HTTP worker's row.
 : VERDICT ( HTTP:request n -- n ) {: asked:HTTP:request w:n :}
    asked GET-OK? 0= if 400 exit then
@@ -1321,19 +1321,19 @@ ENUM course
    0 ;
 
 
-: REFUSE ( HTTP:response n -- accepted ) {: answer:HTTP:response status:n :}
+: REJECT ( HTTP:response n -- accepted ) {: answer:HTTP:response status:n :}
    status 503 = if
       answer 503 s" websocket_unavailable" s" this server has no room for another WebSocket" HTTP:ERROR!
-      503 WS-ACCEPTED:REFUSED exit
+      503 WS-ACCEPTED:REJECTED exit
    then
    status 426 = if
       answer s" Upgrade" s" websocket" HTTP:HEADER!
       answer s" Sec-WebSocket-Version" s" 13" HTTP:HEADER!
       answer 426 s" upgrade_required" s" this server speaks WebSocket version 13" HTTP:ERROR!
-      426 WS-ACCEPTED:REFUSED exit
+      426 WS-ACCEPTED:REJECTED exit
    then
    answer 400 s" bad_handshake" s" the request is not a WebSocket opening handshake" HTTP:ERROR!
-   400 WS-ACCEPTED:REFUSED ;
+   400 WS-ACCEPTED:REJECTED ;
 
 
 : GUID$ ( -- str )
@@ -1444,7 +1444,7 @@ ENUM course
 
 
 \ The reserved slot becomes the request's socket, or, when WS began stopping
-\ since RESERVE, is given back and the request refused with 503. A throw, from
+\ since RESERVE, is given back and the request rejected with 503. A throw, from
 \ a request already taken, from a mapping or from HTTP:SUBMIT, gives the slot
 \ back before it goes on, so no slot stays reserved and no connection open.
 : OPEN-SOCKET ( HTTP:request HTTP:response [ socket n message -- ] n n n -- accepted )
@@ -1457,7 +1457,7 @@ ENUM course
    code 0= gone 0= and if q arg idx OPEN-CALL else code then {: err:n :}
    LOCK TASK:RELEASE
    err 0 <> if idx GIVE-BACK err throw then
-   gone if idx GIVE-BACK answer 503 REFUSE exit then
+   gone if idx GIVE-BACK answer 503 REJECT exit then
    POKE
    h >SOCKET WS-ACCEPTED:OPEN ;
 
@@ -1667,7 +1667,7 @@ public
 \ is an HTTP/1.1 GET whose Upgrade names websocket, whose Connection names
 \ Upgrade, whose Sec-WebSocket-Key is the base64 of sixteen bytes and whose
 \ Sec-WebSocket-Version is 13, each of those four arriving once; the server
-\ refuses an HTTP/1.1 request without exactly one valid Host before any handler
+\ rejects an HTTP/1.1 request without exactly one valid Host before any handler
 \ runs. A handshake that passes takes the connection from the server and `open`
 \ carries the socket; the task answers 101, and the handler is called with the
 \ socket, n and `opened`, then every message and, once, `closed`, short of a
@@ -1676,7 +1676,7 @@ public
 \ message. A peer gone without a close is found by ping (config). A handshake
 \ that does not pass is answered 400, or 426 naming version 13, and one past
 \ the config's sockets, or while WS is stopping, 503, through the response
-\ once the route handler returns, and `refused` carries that status: no
+\ once the route handler returns, and `rejected` carries that status: no
 \ socket exists for it, and n is not kept.
 \ Origin is the route handler's to check before it accepts. Outside a run or
 \ while START still starts it, it is E-WS-STATE.
@@ -1685,9 +1685,9 @@ public
    RUNNING? 0= if E-WS-STATE throw then
    HTTP:WORKER-SLOT {: w:n :}
    asked w VERDICT {: status:n :}
-   status 0 <> if answer status REFUSE exit then
+   status 0 <> if answer status REJECT exit then
    RESERVE {: idx:n :}
-   idx 0 < if answer 503 REFUSE exit then
+   idx 0 < if answer 503 REJECT exit then
    asked answer q arg idx w OPEN-SOCKET ;
 
 
@@ -1695,7 +1695,7 @@ public
 \ included: each appends whole frames to the socket's queue under LOCK and pokes
 \ the wake pipe, so a sender never waits for the peer. A frame queued behind
 \ QUEUE-MAX unwritten bytes loses the socket (1006, its queue dropped) and is
-\ E-WS-CLOSED; a frame is never refused for its own size. A send on a socket
+\ E-WS-CLOSED; a frame is never rejected for its own size. A send on a socket
 \ closing, closed or gone is E-WS-CLOSED, and text that is not UTF-8 is
 \ E-WS-TEXT before anything is queued (section 5.6).
 : SEND-TEXT ( socket str -- ) {: sock s:str :}

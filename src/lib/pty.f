@@ -133,7 +133,7 @@ public
    MATCH AIO:readiness
       ready OF drop m v cap APPEND-READY ENDOF
       timed-out OF 0 ENDOF
-      refused OF drop E-IO throw ENDOF
+      rejected OF drop E-IO throw ENDOF
    ;MATCH ;
 
 

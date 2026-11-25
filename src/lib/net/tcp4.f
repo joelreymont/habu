@@ -354,7 +354,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    MATCH AIO:readiness
       ready OF REVENTS>READY ENDOF
       timed-out OF TCP4-READY--RESULT:IDLE ENDOF
-      refused OF >ERRNO TCP4-READY--RESULT:FAILED ENDOF
+      rejected OF >ERRNO TCP4-READY--RESULT:FAILED ENDOF
    ;MATCH ;
 
 

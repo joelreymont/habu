@@ -46,13 +46,13 @@ NEWTYPE group
 NEWTYPE xfer ^n
 
 \ What an operation ended as. `ready` carries the poll revents the kernel
-\ reported (or zero for an operation with no mask); `refused` carries the errno
+\ reported (or zero for an operation with no mask); `rejected` carries the errno
 \ as a positive number.
 SUMTYPE outcome
    VARIANT ready n ;VARIANT
    VARIANT timed-out ;VARIANT
    VARIANT cancelled ;VARIANT
-   VARIANT refused n ;VARIANT
+   VARIANT rejected n ;VARIANT
 ;SUMTYPE
 
 private
@@ -219,7 +219,7 @@ BEGIN-STRUCTURE REC-BYTES
    \ its extent. REC.HOLD says the pair is this record's to give back. It is
    \ set with the pair, before the entry is published, because once an entry
    \ is in the ring the kernel may run it whether or not the io_uring_enter
-   \ that offered it was refused; TAKE-XFER clears it when the caller gets the
+   \ that offered it failed; TAKE-XFER clears it when the caller gets the
    \ pair back, and REC-DISCARD when the loop releases the pair.
    CELL +FIELD REC.BUF
    CELL +FIELD REC.BUF-LEN
@@ -350,7 +350,7 @@ FUNCTION: EVENTFD-CALL eventfd ( n n -- i32 ) ;FUNCTION
 FUNCTION: FD-READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
 FUNCTION: FD-WRITE-CALL write ( n str -- n ) ;FUNCTION
 
-\ Logs a refused system call's errno before it throws, so the errno the kernel
+\ Logs a failed system call's errno before it throws, so the errno the kernel
 \ gave is not lost behind a named code.
 : DIAG-ERRNO ( str -- ) {: label:str :}
    FFI:ERRNO {: errno:n :}
@@ -526,7 +526,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    rg RING-RECS-LIVE @ 0= and ;
 
 \ A record names no ring on Darwin.
-\ A refused wake was logged; the loop's next turn closes the ring anyway.
+\ A failed wake was logged; the loop's next turn closes the ring anyway.
 : REC-FREE ( n -- ) {: idx:n :}
    idx REC REC.RING @ 0<> if
       idx REC-RING @ dup RING-UNCOUNT
@@ -585,7 +585,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    0 r REC.HOLD ! 0 r REC.CANCELING !
    TASK:SELF idx REC-OWNER ! ;
 
-\ Read from the record states themselves, so what STOP refuses is exactly a
+\ Read from the record states themselves, so what STOP rejects is exactly a
 \ record not yet free, whoever claimed or released it.
 : CHUNK-BUSY? ( n n -- bool ) {: c:n len:n :}
    len 0 ?do
@@ -635,7 +635,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ head, so one an earlier enter left behind is this call's to submit, and asking
 \ for its own count alone could report another's entry as its own. A drained ring
 \ says this submission reached the kernel; a short take is E-AIO-ENTER, with the
-\ errno line only when the call itself was refused. Every caller holds AIO-LOCK,
+\ errno line only when the call itself failed. Every caller holds AIO-LOCK,
 \ so no other submitter moves the tail across the call.
 : ENTER-SUBMIT ( ^ring -- n ) {: rg:^ :}
    rg rg SQ-PENDING 0 0 ENTER-CALL {: rc:n :}
@@ -787,8 +787,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    CQO-CQES P-CQ@ rg RING-CQ-CQES-OFF ! ;
 
 \ Releases the first `mapped` regions and the ring's fd after logging, since
-\ munmap and close overwrite the errno the refused mmap left.
-: MAP-REFUSED ( ^ring str n -- )
+\ munmap and close overwrite the errno the failed mmap left.
+: MAP-FAILED ( ^ring str n -- )
    {: rg:^ label:str mapped:n :}
    label DIAG-ERRNO
    mapped 1 > if
@@ -802,15 +802,15 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 : RING-MAPS ( ^ring -- ) {: rg:^ :}
    rg rg RING-SQ-LEN @ OFF-SQ-RING RING-MAP dup 0 < if
-      drop rg s" mmap of the submission ring errno " 0 MAP-REFUSED
+      drop rg s" mmap of the submission ring errno " 0 MAP-FAILED
       E-AIO-SETUP throw then
    AIO-MAPPED>PTR rg RING-SQ-BASE !
    rg rg RING-CQ-LEN @ OFF-CQ-RING RING-MAP dup 0 < if
-      drop rg s" mmap of the completion ring errno " 1 MAP-REFUSED
+      drop rg s" mmap of the completion ring errno " 1 MAP-FAILED
       E-AIO-SETUP throw then
    AIO-MAPPED>PTR rg RING-CQ-BASE !
    rg rg RING-SQES-LEN @ OFF-SQES RING-MAP dup 0 < if
-      drop rg s" mmap of the submission entries errno " 2 MAP-REFUSED
+      drop rg s" mmap of the submission entries errno " 2 MAP-FAILED
       E-AIO-SETUP throw then
    AIO-MAPPED>PTR rg RING-SQE-BASE ! ;
 
@@ -880,7 +880,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    0 begin dup RINGS RING-STATE @ RING-FREE <> while 1 + repeat ;
 
 \ Retires rg for a new active ring of double its completion entries; answers
-\ that ring and 0, or rg and E-AIO-FULL, rg still active, when the setup is refused.
+\ that ring and 0, or rg and E-AIO-FULL, rg still active, when the setup fails.
 : RING-GROW ( ^ring -- ^ring n ) {: rg:^ :}
    RING-FREE-AT {: k:n :}
    [: k RINGS rg RING-CQ-ENTRIES @ 2 * RING-SETUP ;] catch {: code:n :}
@@ -958,7 +958,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    rg idx SUBMIT-OR-FORGET idx ;
 
 \ The record takes the caller's allocation: the pair and REC.HOLD are written
-\ before the entry is published, and a refused claim writes no entry, so there
+\ before the entry is published, and a rejected claim writes no entry, so there
 \ the allocation is still the caller's.
 : XFER-STAGE ( ^ring n ^u8 NUM:alloc-byte-len n n n -- n n )
    {: rg:^ f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
@@ -1011,8 +1011,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    WAKE-FD @ close-rc drop
    -1 WAKE-FD ! ;
 
-\ Opens WAKE-FD before the active ring, entry 0, and closes it when the ring
-\ is refused.
+\ Opens WAKE-FD before the active ring, entry 0, and closes it when the
+\ ring's setup fails.
 : URING-SETUP ( -- )
    0 EFD-CLOEXEC EVENTFD-CALL {: fd:n :}
    fd 0 < if s" eventfd errno " DIAG-ERRNO E-AIO-SETUP throw then
@@ -1051,8 +1051,8 @@ INSTALL-HOST
 \ entry in that task's exit chain, so a task that submits keeps its own
 \ cleanups: they run beside this one, newest registration first.
 
-\ A cancel is refused only by an enter the kernel refused or took short, or by
-\ a failed write to Darwin's wake pipe.
+\ A cancel is rejected only after an enter that failed or was taken short, or
+\ after a failed write to Darwin's wake pipe.
 : TRY-CANCEL ( n -- ) {: target:n :}
    target HOST-CANCEL drop ;
 
@@ -1106,7 +1106,7 @@ INSTALL-HOST
    r REC.TIMED-OUT @ 0 <> if AIO-OUTCOME:TIMED-OUT exit then
    res ERR-TIME negate = if AIO-OUTCOME:TIMED-OUT exit then
    res ERR-CANCELED negate = if AIO-OUTCOME:CANCELLED exit then
-   res negate AIO-OUTCOME:REFUSED ;
+   res negate AIO-OUTCOME:REJECTED ;
 
 : TAKE ( n -- outcome ) {: idx:n :}
    AIO-LOCK TASK:GET
@@ -1364,11 +1364,11 @@ public
    t TICKET>REC REC.IDX @ AWAIT-ONE ;
 
 \ What a wait for readiness ended as: the revents the kernel reported, the
-\ deadline, or the errno of a refused poll.
+\ deadline, or the errno of a failed poll.
 ENUM readiness
    VARIANT ready FIELD revents n ;VARIANT
    VARIANT timed-out ;VARIANT
-   VARIANT refused FIELD errno n ;VARIANT
+   VARIANT rejected FIELD errno n ;VARIANT
 ;ENUM
 
 \ POLL and AWAIT in one call, under the same rules. Nothing outside this
@@ -1379,8 +1379,8 @@ ENUM readiness
    MATCH outcome
       ready OF AIO-READINESS:READY ENDOF
       timed-out OF AIO-READINESS:TIMED-OUT ENDOF
-      cancelled OF ERR-CANCELED AIO-READINESS:REFUSED ENDOF
-      refused OF AIO-READINESS:REFUSED ENDOF
+      cancelled OF ERR-CANCELED AIO-READINESS:REJECTED ENDOF
+      rejected OF AIO-READINESS:REJECTED ENDOF
    ;MATCH ;
 
 \ ---- the waker ---------------------------------------------------------------
@@ -1405,7 +1405,7 @@ create WAKE-BYTE $01 c,
 public
 
 \ Opens the waker's pipe, with no byte owed. FD:PIPE's code is thrown when the
-\ host refuses the pipe, and nothing is left open then.
+\ pipe fails to open, and nothing is left open then.
 : WAKER-OPEN ( ^waker -- ) {: w:^ :}
    FD:PIPE w WAKER-WRITE-END ! w WAKER-READ-END !
    0 w WAKER-OWED atomic! ;

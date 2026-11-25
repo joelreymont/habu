@@ -816,11 +816,11 @@ variable EXIT-HOOK-N
       ready OF drop ENDOF
       timed-out OF ENDOF
       cancelled OF ENDOF
-      refused OF drop ENDOF
+      rejected OF drop ENDOF
    ;MATCH ;
 
 
-\ A sleep, not an AIO timer: the pause also waits out an AIO that refuses
+\ A sleep, not an AIO timer: the pause also waits out an AIO that rejects
 \ records.
 : ACCEPT-PAUSE ( -- )
    STOP-READ-MS >MS TASK:SLEEP ;
@@ -916,7 +916,7 @@ variable EXIT-HOOK-N
       ready OF drop true ENDOF
       timed-out OF false ENDOF
       cancelled OF false ENDOF
-      refused OF drop false ENDOF
+      rejected OF drop false ENDOF
    ;MATCH ;
 
 
@@ -954,7 +954,7 @@ variable EXIT-HOOK-N
       ready OF drop ACCEPT-ONE ENDOF
       timed-out OF ENDOF
       cancelled OF 1 STOPPING atomic-add drop ENDOF
-      refused OF drop 1 STOPPING atomic-add drop ENDOF
+      rejected OF drop 1 STOPPING atomic-add drop ENDOF
    ;MATCH ;
 
 
@@ -1105,7 +1105,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 \ The bound's timer is cancelled and then awaited: a cancel does not wait, and a
 \ record nobody awaits is one the ring still holds (src/lib/aio.f), which
-\ would refuse the LOOP-STOP that follows this server.
+\ would reject the LOOP-STOP that follows this server.
 : DROP-TIMER ( AIO:ticket -- ) {: timer:AIO:ticket :}
    timer AIO:CANCEL
    timer SETTLE ;

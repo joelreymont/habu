@@ -3,16 +3,16 @@
 \ a confidential client without its secret and for a public client asking for
 \ client credentials or On-Behalf-Of, unsupported_grant_type, invalid_request
 \ for a repeated field and a wrong media type, On-Behalf-Of with a minted
-\ assertion and its invalid_grant refusals, /mint against MINT, and
+\ assertion and its invalid_grant rejections, /mint against MINT, and
 \ tools/test-issuer.f as a child process.
 \ BEARER's client against it: TOKEN before CLIENT!, for each grant admitted by
-\ ADMIT? with the caller's claims, a 400 and a 401 refusal, the 400 leaving no
+\ ADMIT? with the caller's claims, a 400 and a 401 rejection, the 400 leaving no
 \ byte of the longer answer before it past the vector's count; REFRESH from a
 \ public client admitted with the refresh token's oid, again with the new
-\ refresh token it answered, an expired and a foreign refresh token refused
-\ invalid_grant; a closed port,
+\ refresh token it answered, an expired and a foreign refresh token rejected
+\ with invalid_grant; a closed port,
 \ and on /token-fault the form's exact bytes, the answer's lifetime as a
-\ number and as a digit string, and the answers TOKEN refuses: a 503, a 429
+\ number and as a digit string, and the answers TOKEN rejects: a 503, a 429
 \ and a 302, a 2xx that is not JSON, one without access_token, one whose
 \ access_token is not a string, one without expires_in, one whose expires_in
 \ is a string not all digits, one whose expires_in is 0, and a 200 and a 503
@@ -29,7 +29,7 @@
 \ a token appended after the vector's bytes and kept across CLIENT!, asked
 \ again when it lasts LEEWAY-S or less, asked once for four tasks at once,
 \ and a 404, a 410 and a 410 past TOKEN-CAP as E-UNAVAILABLE, a 400 as
-\ E-REFUSED.
+\ E-REJECTED.
 \ Run: bin/hb --load src/lib/net/test-issuer-test.f
 
 require src/lib/test.f
@@ -258,7 +258,7 @@ PAST-CAP BUFFER: OVERSIZE
 : ON-BEHALF ( -- ) UNSCOPED s" &scope=api%3A%2F%2Fdown%2F.default" FORM+ ;
 
 \ The body is the error answer.
-: REFUSED ( n n str -- )
+: REJECTED ( n n str -- )
    {: status:n want:n code:str :}
    SB-RESET S\" {\"error\":\"" SB-APPEND code SB-APPEND S\" \"}" SB-APPEND
    BODY$ SB$ T$=
@@ -358,41 +358,41 @@ PAST-CAP BUFFER: OVERSIZE
 : CLIENTS ( -- )
    s" a wrong secret is invalid_client" T-LABEL
    FORM-RESET s" client_id=app&client_secret=s3cr&grant_type=client_credentials" FORM+
-   ASK 401 s" invalid_client" REFUSED
+   ASK 401 s" invalid_client" REJECTED
    s" an unknown client is invalid_client" T-LABEL
    FORM-RESET s" client_id=other&client_secret=s3cr%26t%2B1&grant_type=client_credentials" FORM+
-   ASK 401 s" invalid_client" REFUSED
+   ASK 401 s" invalid_client" REJECTED
    s" a form's + is a space" T-LABEL
    FORM-RESET s" client_id=app&client_secret=s3cr%26t+1&grant_type=client_credentials" FORM+
-   ASK 401 s" invalid_client" REFUSED
+   ASK 401 s" invalid_client" REJECTED
    s" a confidential client that leaves out its secret is invalid_client" T-LABEL
    FORM-RESET s" client_id=app&grant_type=client_credentials&scope=api%3A%2F%2Fup%2F.default" FORM+
-   ASK 401 s" invalid_client" REFUSED
+   ASK 401 s" invalid_client" REJECTED
    s" a public client asking for client credentials is invalid_client" T-LABEL
    FORM-RESET s" client_id=cli&grant_type=client_credentials&scope=api%3A%2F%2Fup%2F.default" FORM+
-   ASK 401 s" invalid_client" REFUSED ;
+   ASK 401 s" invalid_client" REJECTED ;
 
 : REQUESTS ( -- )
    s" an unknown grant is unsupported_grant_type" T-LABEL
    APP s" &grant_type=password" FORM+
-   ASK 400 s" unsupported_grant_type" REFUSED
+   ASK 400 s" unsupported_grant_type" REJECTED
    s" a field given twice is invalid_request" T-LABEL
    CREDENTIALS s" &client_id=app" FORM+
-   ASK 400 s" invalid_request" REFUSED
+   ASK 400 s" invalid_request" REJECTED
    s" a body that is not a form is invalid_request" T-LABEL
    CREDENTIALS s" /token" s" Content-Type: text/plain" FORM$ POST
-   400 s" invalid_request" REFUSED
+   400 s" invalid_request" REJECTED
    s" a scope that names no audience is invalid_request" T-LABEL
    APP s" &grant_type=client_credentials" FORM+
-   ASK 400 s" invalid_request" REFUSED
+   ASK 400 s" invalid_request" REJECTED
    APP s" &grant_type=client_credentials&scope=" FORM+
-   ASK 400 s" invalid_request" REFUSED
+   ASK 400 s" invalid_request" REJECTED
    APP s" &grant_type=client_credentials&scope=/.default" FORM+
-   ASK 400 s" invalid_request" REFUSED
-   s" app" LATER ASSERT UNSCOPED ASK 400 s" invalid_request" REFUSED
+   ASK 400 s" invalid_request" REJECTED
+   s" app" LATER ASSERT UNSCOPED ASK 400 s" invalid_request" REJECTED
    s" a scope that is not UTF-8 is invalid_request" T-LABEL
    APP s" &grant_type=client_credentials&scope=%FF%FE" FORM+
-   ASK 400 s" invalid_request" REFUSED ;
+   ASK 400 s" invalid_request" REJECTED ;
 
 : OBO ( -- )
    s" On-Behalf-Of copies the assertion's oid and tid" T-LABEL
@@ -400,16 +400,16 @@ PAST-CAP BUFFER: OVERSIZE
    CLAIMS$ s" oid" MEMBER$ s" user-1" T$=
    CLAIMS$ s" tid" MEMBER$ s" tenant-1" T$=
    s" an assertion with a changed signature is invalid_grant" T-LABEL
-   s" app" LATER ASSERT FLIP ON-BEHALF ASK 400 s" invalid_grant" REFUSED
+   s" app" LATER ASSERT FLIP ON-BEHALF ASK 400 s" invalid_grant" REJECTED
    s" an assertion for another audience is invalid_grant" T-LABEL
-   s" other" LATER ASSERT ON-BEHALF ASK 400 s" invalid_grant" REFUSED
+   s" other" LATER ASSERT ON-BEHALF ASK 400 s" invalid_grant" REJECTED
    s" an expired assertion is invalid_grant" T-LABEL
-   s" app" epoch-seconds 10 - ASSERT ON-BEHALF ASK 400 s" invalid_grant" REFUSED
+   s" app" epoch-seconds 10 - ASSERT ON-BEHALF ASK 400 s" invalid_grant" REJECTED
    s" a public client asking On-Behalf-Of is invalid_client" T-LABEL
    s" cli" LATER ASSERT
    FORM-RESET s" client_id=cli&grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer" FORM+
    s" &requested_token_use=on_behalf_of&scope=api%3A%2F%2Fdown%2F.default&assertion=" FORM+ ASSERTION$ FORM+
-   ASK 401 s" invalid_client" REFUSED ;
+   ASK 401 s" invalid_client" REJECTED ;
 
 : MINTS ( -- )
    s" /mint answers MINT's token for the same claims" T-LABEL
@@ -624,17 +624,17 @@ $A constant LF
    s" app" LATER ASSERT
    UP ASSERTION ASSERTION-U @ BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN drop s" oid" CLAIM 200 T=
    BODY$ s" user-1" T$=
-   s" a 400 is E-REFUSED, the vector holding the issuer's answer" T-LABEL
+   s" a 400 is E-REJECTED, the vector holding the issuer's answer" T-LABEL
    [: UP s" a.b.c" dup STR:DATA swap STR:LEN BEARER-GRANT:FOR-PERSON
-      GOT BEARER:TOKEN drop drop ;] BEARER:E-REFUSED TTHROWSQ
+      GOT BEARER:TOKEN drop drop ;] BEARER:E-REJECTED TTHROWSQ
    GOT VEC:BYTES S\" {\"error\":\"invalid_grant\"}" T$=
    s" it leaves no byte of the earlier answer past the vector's count" T-LABEL
    GOT-ZEROED? TTRUE
-   s" a wrong secret is E-REFUSED, the vector holding the issuer's answer" T-LABEL
+   s" a wrong secret is E-REJECTED, the vector holding the issuer's answer" T-LABEL
    ENDPOINT$ s" app" s" wrong" BEARER:CLIENT!
-   [: [: OWN-TOKEN drop drop ;] BEARER:E-REFUSED TTHROWSQ ;] CAPTURED
+   [: [: OWN-TOKEN drop drop ;] BEARER:E-REJECTED TTHROWSQ ;] CAPTURED
    GOT VEC:BYTES S\" {\"error\":\"invalid_client\"}" T$=
-   s" a refusal logs the issuer's status and answer once, tagged bearer" T-LABEL
+   s" a rejection logs the issuer's status and answer once, tagged bearer" T-LABEL
    LINES 1 T=
    FORM-RESET S\"  error bearer: token request answered 401: " FORM+
    S\" {\"error\":\"invalid_client\"}\n" FORM+
@@ -650,13 +650,13 @@ $A constant LF
    ASSERTION-U @ 0 > TTRUE
    UP ASSERTION$ GOT BEARER:REFRESH ISSUED-S T= drop
    s" oid" CLAIM 200 T= BODY$ s" user-1" T$=
-   s" an expired refresh token is E-REFUSED, the vector holding invalid_grant" T-LABEL
+   s" an expired refresh token is E-REJECTED, the vector holding invalid_grant" T-LABEL
    s" cli" epoch-seconds 10 - ASSERT
-   [: UP ASSERTION$ GOT BEARER:REFRESH drop drop drop ;] BEARER:E-REFUSED TTHROWSQ
+   [: UP ASSERTION$ GOT BEARER:REFRESH drop drop drop ;] BEARER:E-REJECTED TTHROWSQ
    GOT VEC:BYTES S\" {\"error\":\"invalid_grant\"}" T$=
-   s" another client's refresh token is E-REFUSED, the vector holding invalid_grant" T-LABEL
+   s" another client's refresh token is E-REJECTED, the vector holding invalid_grant" T-LABEL
    s" app" LATER ASSERT
-   [: UP ASSERTION$ GOT BEARER:REFRESH drop drop drop ;] BEARER:E-REFUSED TTHROWSQ
+   [: UP ASSERTION$ GOT BEARER:REFRESH drop drop drop ;] BEARER:E-REJECTED TTHROWSQ
    GOT VEC:BYTES S\" {\"error\":\"invalid_grant\"}" T$= ;
 
 : BEARER-FAULTS ( -- )
@@ -923,8 +923,8 @@ TASKS!
    1 IMDS-OVERSIZED !
    410 BEARER:E-UNAVAILABLE IMDS-THROWS
    0 IMDS-OVERSIZED !
-   s" an IMDS 400 is E-REFUSED" T-LABEL
-   400 BEARER:E-REFUSED IMDS-THROWS
+   s" an IMDS 400 is E-REJECTED" T-LABEL
+   400 BEARER:E-REJECTED IMDS-THROWS
    200 IMDS-STATUS !  GOT 0 VEC:RESIZE ;
 
 \ Run once the server has stopped: its port is closed.
@@ -944,7 +944,7 @@ TASKS!
    url ;
 
 : BEARER-LONG ( -- )
-   s" an endpoint libcurl refuses to set is E-TRANSFER, logged with curl 43"
+   s" an endpoint libcurl rejects is E-TRANSFER, logged with curl 43"
    T-LABEL
    LONG-URL {: url :}
    url SPAN:$ s" app" s" s3cr&t+1" BEARER:CLIENT!
@@ -1002,7 +1002,7 @@ TASKS!
    out-r FD>N close ;
 
 
-\ BEARER:ISSUER! names this server's URL and is refused while HTTP serves, so
+\ BEARER:ISSUER! names this server's URL and is rejected while HTTP serves, so
 \ the server starts once to take a port and serves again on it.
 : SERVE-CASES ( -- )
    AIO:START LOG-INIT

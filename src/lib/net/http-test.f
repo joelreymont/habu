@@ -715,7 +715,7 @@ $2710 constant PARK-MS            \ far past every stop bound
       ready OF drop ENDOF
       timed-out OF ENDOF
       cancelled OF ENDOF
-      refused OF drop ENDOF
+      rejected OF drop ENDOF
    ;MATCH ;
 
 
@@ -2826,8 +2826,8 @@ variable REFUSED-CODE
    HELD @ TCP4:>LISTENER TCP4:CLOSE-LISTENER DROP-TCP-STATUS ;
 
 
-\ A start whose tasks have no loop to ride their readiness waits on is refused
-\ by AIO's own code. The same code thrown inside the listener's own task would
+\ A start whose tasks have no loop to ride their readiness waits on is rejected
+\ with AIO's own code. The same code thrown inside the listener's own task would
 \ be a report nobody reads and a suite hanging on its first request.
 : NO-LOOP-CASE ( -- )
    AIO:RUNNING? TFALSE
@@ -3412,7 +3412,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    PARK-AWAIT
    QUEUE-PEERS
    OPENED @ HTTP-TEST:QUEUED T=
-   s" AIO refuses the poll past its ceiling" T-LABEL
+   s" AIO rejects the poll past its ceiling" T-LABEL
    AIO-FILL:FILL AIO-FILL:CEILING T=
    ERR-PATH-MAKE
    ERR-PATH$ STDERR:CAPTURE

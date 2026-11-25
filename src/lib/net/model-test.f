@@ -405,7 +405,7 @@ $300000 constant BIG-U
    MATCH AIO:readiness
       ready OF drop ENDOF
       timed-out OF FAIL ENDOF
-      refused OF drop FAIL ENDOF
+      rejected OF drop FAIL ENDOF
    ;MATCH
    conn RAW-CLOSE ;
 
