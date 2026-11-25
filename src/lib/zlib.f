@@ -1,4 +1,3 @@
-split-str
 \ zlib.f - raw DEFLATE (RFC 1951), zlib-framed DEFLATE (RFC 1950) and CRC-32
 \ by libz. A codec word borrows both buffers, keeps nothing and answers the
 \ bytes it wrote; libz allocates from init to the matching *End, which every
@@ -90,20 +89,20 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
 : ADDRESS ( ^u8 -- n ) NULL-PTR - ;
 
 \ libz counts lengths in 32 bits.
-: SPAN-CHECK ( str -- ) {: p:^ u:n :}
-   u 0 < if E-SIZE throw then
-   u U32-MAX > if E-SIZE throw then
-   u 0<> p NULL-PTR = and if E-SIZE throw then ;
+: SPAN-CHECK ( str -- ) {: s:str :}
+   s STR:LEN 0 < if E-SIZE throw then
+   s STR:LEN U32-MAX > if E-SIZE throw then
+   s STR:LEN 0<> s STR:DATA NULL-PTR = and if E-SIZE throw then ;
 
 : DISJOINT-CHECK ( str str -- )
-   {: a:^ au:n b:^ bu:n :}
-   au 0= bu 0= or if exit then
-   a ADDRESS b ADDRESS bu + < b ADDRESS a ADDRESS au + < and if E-SIZE throw then ;
+   {: a:str b:str :}
+   a STR:LEN 0= b STR:LEN 0= or if exit then
+   a STR:DATA ADDRESS b STR:DATA ADDRESS b STR:LEN + < b STR:DATA ADDRESS a STR:DATA ADDRESS a STR:LEN + < and if E-SIZE throw then ;
 
 : PAIR-CHECK ( str str -- )
-   {: src:^ srcu:n dst:^ cap:n :}
-   src srcu SPAN-CHECK dst cap SPAN-CHECK
-   src srcu dst cap DISJOINT-CHECK ;
+   {: src:str dst:str :}
+   src SPAN-CHECK dst SPAN-CHECK
+   src dst DISJOINT-CHECK ;
 
 \ A framed stream that asks for a preset dictionary is data no caller can
 \ supply one for.
@@ -118,11 +117,11 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    dup Z-OK = if drop exit then
    FAIL ;
 
-: STAGE ( str ^u8 n -- )
-   {: src:^ srcu:n dst:^ cap:n :}
+: STAGE ( str str -- )
+   {: src:str dst:str :}
    CLEAR
-   src NEXT-IN ! srcu STREAM ZSTREAM-AVAIL-IN BYTE-VIEW LE:U32!
-   dst NEXT-OUT ! cap AVAIL-OUT! ;
+   src STR:DATA NEXT-IN ! src STR:LEN STREAM ZSTREAM-AVAIL-IN BYTE-VIEW LE:U32!
+   dst STR:DATA NEXT-OUT ! dst STR:LEN AVAIL-OUT! ;
 
 \ The *End status of an operation that succeeded. After a failure the caught
 \ code is the report: abandoning an unfinished deflater ends with Z_DATA_ERROR.
@@ -217,23 +216,23 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    dup U32-MAX > if E-SIZE throw then ;
 
 \ Every stream is at least one byte, so zero capacity cannot hold one.
-: DEFLATE-FOR ( str ^u8 n n -- n )
-   {: src:^ srcu:n dst:^ cap:n window:n :}
-   src srcu dst cap PAIR-CHECK
-   cap 0= if E-CAPACITY throw then
-   window src srcu dst cap [: STAGE DEFLATE-SESSION ;] [: CLEAR ;] finally ;
+: DEFLATE-FOR ( str str n -- n )
+   {: src:str dst:str window:n :}
+   src dst PAIR-CHECK
+   dst STR:LEN 0= if E-CAPACITY throw then
+   window src dst [: STAGE DEFLATE-SESSION ;] [: CLEAR ;] finally ;
 
-: INFLATE-FOR ( str ^u8 n n -- n )
-   {: src:^ srcu:n dst:^ cap:n window:n :}
-   src srcu dst cap PAIR-CHECK
-   window src srcu dst cap [: STAGE INFLATE-SESSION ;] [: CLEAR ;] finally ;
+: INFLATE-FOR ( str str n -- n )
+   {: src:str dst:str window:n :}
+   src dst PAIR-CHECK
+   window src dst [: STAGE INFLATE-SESSION ;] [: CLEAR ;] finally ;
 
 public
 
 \ The finalized IEEE CRC-32; zero for no bytes.
-: CRC32 ( str -- u32 ) {: p:^ u:n :}
-   p u SPAN-CHECK
-   0 p u C-CRC32 U32-MAX and ;
+: CRC32 ( str -- u32 ) {: s:str :}
+   s SPAN-CHECK
+   0 s C-CRC32 U32-MAX and ;
 
 \ A capacity DEFLATE-RAW always completes in, for n source bytes.
 : RAW-BOUND ( n -- n ) RAW-WINDOW BOUND-FOR ;

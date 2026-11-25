@@ -1,4 +1,3 @@
-split-str
 \ serial-xmodem.f - bounded XMODEM transfers over an already-open raw serial
 \ stream. Each SEND or RECEIVE takes one overall deadline that negotiation,
 \ retries and draining share. Only `completed` means done: a failure may leave
@@ -96,7 +95,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : READ-BYTE ( ns ^session -- n ) {: deadline:ns session:^ :}
    deadline REMAINING {: timeout:ms :}
    timeout MS>N 0= if -1 exit then
-   session SESSION-CONTROL SPAN:$ drop {: control :}
+   session SESSION-CONTROL SPAN:$ STR:DATA {: control :}
    session SESSION-HANDLE @ control 1 SERIAL:BYTES timeout SERIAL:READ
    MATCH SERIAL:io-result
       transferred OF drop control c@ ENDOF
@@ -106,9 +105,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    ;MATCH ;
 
 
-: WRITE-CHUNK ( n str ^session -- n ) {: offset:n data size:n session:^ :}
+: WRITE-CHUNK ( n str ^session -- n ) {: offset:n data:str session:^ :}
    session CHECK-TIME
-   session SESSION-HANDLE @ data offset + size offset -
+   session SESSION-HANDLE @ data STR:DATA offset + data STR:LEN offset - >str
    session SESSION-DEADLINE @ REMAINING SERIAL:WRITE
    MATCH SERIAL:io-result
       transferred OF BLEN>N offset + ENDOF
@@ -118,13 +117,13 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    ;MATCH ;
 
 
-: WRITE-ALL ( str ^session -- ) {: data size:n session:^ :}
-   0 begin dup size < while data size session WRITE-CHUNK repeat drop ;
+: WRITE-ALL ( str ^session -- ) {: data:str session:^ :}
+   0 begin dup data STR:LEN < while data session WRITE-CHUNK repeat drop ;
 
 
 : SEND-BYTE ( n ^session -- ) {: value:n session:^ :}
-   session SESSION-CONTROL SPAN:$ drop {: control :}
-   value control c! control 1 session WRITE-ALL ;
+   session SESSION-CONTROL SPAN:$ STR:DATA {: control :}
+   value control c! control 1 >str session WRITE-ALL ;
 
 
 : READ-CONTROL ( ns ^session -- n ) {: deadline:ns session:^ :}
@@ -148,8 +147,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    again ;
 
 
-: READ-CHUNK ( n str ^session -- n ) {: offset:n data size:n session:^ :}
-   session SESSION-HANDLE @ data offset + size offset - SERIAL:BYTES
+: READ-CHUNK ( n str ^session -- n ) {: offset:n data:str session:^ :}
+   session SESSION-HANDLE @ data STR:DATA offset + data STR:LEN offset - SERIAL:BYTES
    session RECEIVE-WINDOW REMAINING SERIAL:READ
    MATCH SERIAL:io-result
       transferred OF BLEN>N offset + ENDOF
@@ -161,9 +160,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 \ A partial frame may continue while each chunk arrives within the configured
 \ wait. The overall transfer deadline still bounds every chunk and drain.
-: READ-REST ( str ^session -- bool ) {: data size:n session:^ :}
-   0 begin dup size < while
-      data size session READ-CHUNK dup 0 < if drop FALSE exit then
+: READ-REST ( str ^session -- bool ) {: data:str session:^ :}
+   0 begin dup data STR:LEN < while
+      data session READ-CHUNK dup 0 < if drop FALSE exit then
    repeat drop TRUE ;
 
 
@@ -185,9 +184,10 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 \ Best effort only, without waiting beyond the transfer deadline.
 : CANCEL-PEER ( ^session -- ) {: session:^ :}
-   session SESSION-CONTROL SPAN:$ {: control len:n :}
+   session SESSION-CONTROL SPAN:$ {: buf:str :}
+   buf STR:DATA {: control :}
    CAN control c! CAN control 1 + c! CAN control 2 + c!
-   session SESSION-HANDLE @ control len 0 >MS SERIAL:WRITE IGNORE-IO ;
+   session SESSION-HANDLE @ buf 0 >MS SERIAL:WRITE IGNORE-IO ;
 
 
 : RESULT ( ^session n -- transfer-result ) {: session:^ error:n :}
@@ -223,7 +223,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : BUILD-PACKET ( ^session -- ) {: session:^ :}
-   session SESSION-SOURCE @ session SESSION-PROGRESS @ + session CHUNK-SIZE
+   session SESSION-SOURCE @ session SESSION-PROGRESS @ + session CHUNK-SIZE >str
    session SESSION-NEXT @ >SEQUENCE session SESSION-BLOCK @
    session SESSION-KIND @ session PACKET ENCODE ;
 
@@ -263,12 +263,12 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : READ-FRAME ( ^session -- str ) {: session:^ :}
-   session SESSION-CONTROL SPAN:$ drop c@ {: header:n :}
+   session SESSION-CONTROL SPAN:$ STR:DATA c@ {: header:n :}
    header session FRAME-SIZE BLEN>N {: size:n :}
    session PACKET dup size VEC:RESIZE
-   VEC:BYTES drop {: data :}
+   VEC:BYTES STR:DATA {: data :}
    header data c!
-   data 1 + size 1 - session READ-REST 0= if E-FRAME throw then data size ;
+   data 1 + size 1 - >str session READ-REST 0= if E-FRAME throw then data size >str ;
 
 
 : PREVIOUS? ( sequence ^session -- bool ) {: sequence:sequence session:^ :}
@@ -277,12 +277,12 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : ACCEPT-PAYLOAD ( str sequence ^session -- )
-   {: data size:n sequence:sequence session:^ :}
+   {: data:str sequence:sequence session:^ :}
    sequence SEQUENCE>N session SESSION-NEXT @ = if
-      size session SESSION-MAXIMUM @ session SESSION-PROGRESS @ - >
+      data STR:LEN session SESSION-MAXIMUM @ session SESSION-PROGRESS @ - >
       if E-SXMODEM-CAPACITY throw then
-      data size session SESSION-OUTPUT @ VEC:APPEND
-      size session ADVANCE ACK session SEND-BYTE exit
+      data session SESSION-OUTPUT @ VEC:APPEND
+      data STR:LEN session ADVANCE ACK session SEND-BYTE exit
    then
    sequence session PREVIOUS? if session TRY+ ACK session SEND-BYTE exit then
    E-FRAME throw ;
@@ -343,10 +343,10 @@ public
 \ CRC mode uses the requested payload size; checksum negotiation selects 128.
 \ Success requires the peer's EOT ACK and reports the original source length.
 : SEND ( str XMODEM:payload-size ms ^session -- transfer-result )
-   {: data size:n block:XMODEM:payload-size timeout:ms session:^ :}
+   {: data:str block:XMODEM:payload-size timeout:ms session:^ :}
    block PAYLOAD-SIZE>N XMODEM:BLOCK drop
    timeout session START
-   data session SESSION-SOURCE ! size session SESSION-SOURCE-LEN !
+   data STR:DATA session SESSION-SOURCE ! data STR:LEN session SESSION-SOURCE-LEN !
    block session SESSION-BLOCK !
    session [: dup SEND-RUN ;] catch RESULT ;
 

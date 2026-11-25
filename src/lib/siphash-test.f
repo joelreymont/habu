@@ -1,4 +1,3 @@
-split-str
 \ siphash-test.f - SIPHASH against the SipHash-2-4 reference vectors, and
 \ ENTROPY:FILL against the OS generator. SIPT-VEC is vectors_sip64 of
 \ github.com/veorq/SipHash vectors.h: entry i hashes bytes 00..i-1 under key
@@ -74,7 +73,7 @@ TYPED-VARIABLE SIPT-STATE SIPHASH:state
 
 : SIPT-CHECK ( n n -- )
    {: len:n want:n :}
-   SIPT-K0 SIPT-K1 SIPT-MSG len SIPHASH:BYTES  want T=
+   SIPT-K0 SIPT-K1 SIPT-MSG len >str SIPHASH:BYTES  want T=
    SIPT-START  0 len SIPT-BYTES+  SIPT-STATE SIPHASH:FINISH  want T=
    len 1+ 8 min 0 ?do len i SIPT-MIXED  want T= loop ;
 
@@ -89,18 +88,18 @@ create SIPT-B SIPT-SMALL allot
 create SIPT-BIG SIPT-BIG-N allot
 
 : SIPT-ZERO ( str -- )
-   {: p len:n :}
-   len 0 ?do 0 p i + c! loop ;
+   {: s:str :}
+   s STR:LEN 0 ?do 0 s STR:DATA i + c! loop ;
 
 
 : SIPT-DIFFS ( ^u8 str -- n )
-   {: p q len:n :}
-   0 len 0 ?do p i + c@ q i + c@ <> if 1+ then loop ;
+   {: p s:str :}
+   0 s STR:LEN 0 ?do p i + c@ s STR:DATA i + c@ <> if 1+ then loop ;
 
 
 : SIPT-NONZERO ( str -- n )
-   {: p len:n :}
-   0 len 0 ?do p i + c@ 0<> if 1+ then loop ;
+   {: s:str :}
+   0 s STR:LEN 0 ?do s STR:DATA i + c@ 0<> if 1+ then loop ;
 
 
 : SIPT-RUN ( -- )
@@ -108,21 +107,21 @@ create SIPT-BIG SIPT-BIG-N allot
    SIPT-FILL-MSG
    SIPT-N 0 ?do i  i SIPT-WANT  SIPT-CHECK loop
    \ the key is two distinct halves: swapping them changes the answer
-   SIPT-K1 SIPT-K0 SIPT-MSG 8 SIPHASH:BYTES  8 SIPT-WANT T<>
+   SIPT-K1 SIPT-K0 SIPT-MSG 8 >str SIPHASH:BYTES  8 SIPT-WANT T<>
    SIPT-FILL-HIGH
    SIPT-LONG-COUNT 0 ?do
       SIPT-LONG i +  i cells SIPT-LONG-VEC + @  SIPT-CHECK
    loop
-   [: SIPT-K0 SIPT-K1 SIPT-MSG -1 SIPHASH:BYTES drop ;] E-SPAN-LENGTH TTHROWSQ
-   SIPT-A SIPT-SMALL SIPT-ZERO  SIPT-B SIPT-SMALL SIPT-ZERO
+   [: SIPT-K0 SIPT-K1 SIPT-MSG -1 >str SIPHASH:BYTES drop ;] E-SPAN-LENGTH TTHROWSQ
+   SIPT-A SIPT-SMALL >str SIPT-ZERO  SIPT-B SIPT-SMALL >str SIPT-ZERO
    SIPT-A SIPT-SMALL ENTROPY:FILL  SIPT-B SIPT-SMALL ENTROPY:FILL
-   SIPT-A SIPT-B SIPT-SMALL SIPT-DIFFS 0 T<>
+   SIPT-A SIPT-B SIPT-SMALL >str SIPT-DIFFS 0 T<>
    \ 300 bytes cross the 256-byte chunk: the second chunk's 44 bytes and the
    \ last 64 are not left zero
-   SIPT-BIG SIPT-BIG-N SIPT-ZERO
+   SIPT-BIG SIPT-BIG-N >str SIPT-ZERO
    SIPT-BIG SIPT-BIG-N ENTROPY:FILL
-   SIPT-BIG SIPT-CHUNK +  SIPT-BIG-N SIPT-CHUNK -  SIPT-NONZERO 0 T<>
-   SIPT-BIG SIPT-BIG-N 64 - +  64 SIPT-NONZERO 0 T<>
+   SIPT-BIG SIPT-CHUNK +  SIPT-BIG-N SIPT-CHUNK -  >str SIPT-NONZERO 0 T<>
+   SIPT-BIG SIPT-BIG-N 64 - +  64 >str SIPT-NONZERO 0 T<>
    [: SIPT-A -1 ENTROPY:FILL ;] E-SPAN-LENGTH TTHROWSQ ;
 
 SIPT-RUN

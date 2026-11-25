@@ -1,4 +1,3 @@
-split-str
 \ aio-test.f - the io_uring loop: readiness, timers, cancellation, grouped
 \ waits, the completion operations, the per-task cleanup and every refusal.
 \ Pipes, one regular file under the test's own temporary directory, and one
@@ -244,7 +243,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    0 wcell ! ;
 
 : POKE ( n -- ) {: w:n :}
-   w POKE-BYTE 1 write drop ;
+   w POKE-BYTE 1 >str write drop ;
 
 : SLOT ( ^n n -- ^n ) {: base:^ idx:n :}
    base idx cells + ;
@@ -549,14 +548,14 @@ TASK:MIN-STACK TASK:TASK FAN7
    drop ;
 
 : XFER-PATH ( -- str )
-   XFER-PATH-BUF XFER-PATH-U @ ;
+   XFER-PATH-BUF XFER-PATH-U @ >str ;
 
 : XFER-FILE! ( -- )
    XFER-PAT PAT-FILL
-   s" habu-aio" FS:MKTEMP-DIR {: a:^ u :}
-   a u FS:CLEANUP-TREE+
-   a u s" xfer.bin" XFER-PATH-BUF FS:JOIN-PATH XFER-PATH-U !
-   XFER-PATH XFER-PAT XFER-N FS:WRITE-ALL ;
+   s" habu-aio" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" xfer.bin" XFER-PATH-BUF FS:JOIN-PATH XFER-PATH-U !
+   XFER-PATH XFER-PAT XFER-N >str FS:WRITE-ALL ;
 
 \ One READ through the loop: a fresh allocation in, the bytes the kernel moved
 \ out, and the buffer checked against the pattern at the file offset `at` before
@@ -786,7 +785,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    XFER-FORGET-TASK AWAIT-END
    XFER-FORGET-TASK TASK:KILL
    STOP-LOOP
-   P-W @ FORGET-PTR @ 1 write 0 < TTRUE
+   P-W @ FORGET-PTR @ 1 >str write 0 < TTRUE
    P-R P-W PIPE-CLOSE
    AIO:START ;
 
@@ -869,7 +868,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    XC @ TCP4:CONNECTION-FD AIO:READABLE -1 >MS AIO:POLL {: px:AIO:ticket :}
    XFER-ALLOC {: sbuf scap:NUM:alloc-byte-len :}
    sbuf PAT-FILL
-   new-peer sbuf REUSE-N write REUSE-N T=
+   new-peer sbuf REUSE-N >str write REUSE-N T=
    px AWAIT>N 0 > TTRUE
    P-W @ POKE
    REUSE-TASK AWAIT-END

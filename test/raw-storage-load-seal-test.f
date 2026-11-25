@@ -1,4 +1,3 @@
-split-str
 \ raw-storage-load-seal-test.f - the raw-storage nominal seal on the native
 \ `bin/hb --load` definer path.
 \ The engine creates every cell as this file loads, so the checker sees only the
@@ -72,7 +71,7 @@ CELL-DEFINER DOES-CELL
 \ the cell's pointee binds to the `u8` con, which is a scalar. This is the
 \ control that says the pointer rule fences addresses and not raw storage.
 : SCALAR-BYTES ( -- )
-   s" S6 ( -- ) BYTE-CELL 4 type" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" S6 ( -- ) BYTE-CELL 4 >str type" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ ---- the cells still work at runtime -----------------------------------------
 : ROUND-TRIP ( -- )

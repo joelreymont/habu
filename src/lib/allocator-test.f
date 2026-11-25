@@ -1,4 +1,3 @@
-split-str
 \ ALLOC through an arena's allocator: NEW answers zeroed, distinct, cell-aligned
 \ records of a structure, `n` and `r` that keep their fields; BYTES answers
 \ zeroed bytes past the first chunk too; the allocator outlives a reset; a child
@@ -35,9 +34,9 @@ package ALLOC-TEST
 : BYTES ( ^ALLOC:allocator -- )
    {: al:^ :}
    s" ALLOC:BYTES answers zeroed bytes and the length asked" T-LABEL
-   al 100 ALLOC:BYTES dup 100 T= ZEROED
+   al 100 ALLOC:BYTES dup 100 T= >str ZEROED
    s" and so past the first chunk" T-LABEL
-   al $8000 ALLOC:BYTES dup $8000 T= ZEROED
+   al $8000 ALLOC:BYTES dup $8000 T= >str ZEROED
    s" and no bytes as NULL-PTR, which ALLOC:FREE frees as nothing" T-LABEL
    al 0 ALLOC:BYTES 0 T= {: z:^ :}
    z NULL-PTR = TTRUE
@@ -103,7 +102,7 @@ TYPED-VARIABLE AL ALLOC:allocator
 
 
 \ A bump allocator over POOL that counts its calls and keeps the last length.
-: P-ALLOC ( str -- ^u8 )
+: P-ALLOC ( ^u8 n -- ^u8 )
    {: st:^ len:n :}
    1 ALLOCS +!  len LAST-N !
    st TOP @ +  len 7 + -8 and TOP +! ;
@@ -115,7 +114,7 @@ TYPED-VARIABLE AL ALLOC:allocator
 
 
 \ Moves every block, so a byte RESIZE keeps was copied.
-: P-RESIZE ( ^u8 str n -- ^u8 )
+: P-RESIZE ( ^u8 ^u8 n n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    1 RESIZES-MADE +!
    st new P-ALLOC {: moved:^ :}

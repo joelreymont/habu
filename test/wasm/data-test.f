@@ -1,4 +1,3 @@
-split-str
 \ A module `hb-build --target wasm` builds under a foreign Wasm host that grows
 \ its memory before the run. The peer,
 \ test/wasm/data-peer.mjs, only dumps the module's memory before and after its
@@ -45,58 +44,58 @@ variable AFTER-PATH-U
 \ The module's memory as the peer dumped it after the run.
 DYNAMIC-BUFFER AFTER u8
 
-: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
+: ARG+ ( str -- ) PROC-ARGV+ ;
 
 : NUM-ARG ( n -- )
    SB-RESET FMT:SB-U SB$ ARG+ ;
 
 : SPAWN ( str -- n )
-   {: exe:^ eu:n :}
-   exe eu EXE RESOLVE-EXECUTABLE {: xu:n :}
-   EXE xu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+   {: exe:str :}
+   exe EXE RESOLVE-EXECUTABLE {: xu:n :}
+   EXE xu >str OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: ou:len er:len rc:n :}
    ou LEN>N OUT-U !
-   rc 0<> if ERR er LEN>N type cr then
+   rc 0<> if ERR er LEN>N >str type cr then
    rc ;
 
-: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
+: OUT$ ( -- str ) OUT OUT-U @ >str ;
 
 : SETUP ( -- )
-   s" wasm-data" FS:MKTEMP-DIR {: dir:^ u:n :}
-   dir DIR u BYTE-COPY
-   DIR u s" data-region.wasm" MOD FS:JOIN-PATH MOD-U !
-   DIR u s" before.bin" BEFORE-PATH FS:JOIN-PATH BEFORE-PATH-U !
-   DIR u s" after.bin" AFTER-PATH FS:JOIN-PATH AFTER-PATH-U ! ;
+   s" wasm-data" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA DIR dir STR:LEN BYTE-COPY
+   DIR dir STR:LEN >str s" data-region.wasm" MOD FS:JOIN-PATH MOD-U !
+   DIR dir STR:LEN >str s" before.bin" BEFORE-PATH FS:JOIN-PATH BEFORE-PATH-U !
+   DIR dir STR:LEN >str s" after.bin" AFTER-PATH FS:JOIN-PATH AFTER-PATH-U ! ;
 
 : BUILD ( -- n )
-   s" test/wasm/data-region.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/wasm/data-region.f" MOD MOD-U @ >str WASM-HARNESS:BUILD ;
 
 : PEER ( -- n )
    PROC-ARGV-RESET
-   s" test/wasm/data-peer.mjs" ARG+ MOD MOD-U @ ARG+
-   BEFORE-PATH BEFORE-PATH-U @ ARG+ AFTER-PATH AFTER-PATH-U @ ARG+
+   s" test/wasm/data-peer.mjs" ARG+ MOD MOD-U @ >str ARG+
+   BEFORE-PATH BEFORE-PATH-U @ >str ARG+ AFTER-PATH AFTER-PATH-U @ >str ARG+
    HOST-OFFSET NUM-ARG HOST-BYTE NUM-ARG
    s" bun" SPAWN ;
 
 : READ-DUMP ( str str -- )
-   {: pa:^ pu:n dst:^ u:n :}
-   pa pu dst u FS:READ-ALL u <> if E-FS-IO throw then ;
+   {: ps:str dst:str :}
+   ps dst STR:DATA dst STR:LEN FS:READ-ALL dst STR:LEN <> if E-FS-IO throw then ;
 
 \ Reads the dump after the run; answers the size of the one before it, the
 \ base of the page the peer grew.
 : LOAD-DUMPS ( -- n )
-   AFTER-PATH AFTER-PATH-U @ FS:FILE-SIZE {: au:n :}
+   AFTER-PATH AFTER-PATH-U @ >str FS:FILE-SIZE {: au:n :}
    au AFTER-RESERVE
-   AFTER-PATH AFTER-PATH-U @ 0 AFTER au READ-DUMP
-   BEFORE-PATH BEFORE-PATH-U @ FS:FILE-SIZE ;
+   AFTER-PATH AFTER-PATH-U @ >str 0 AFTER au >str READ-DUMP
+   BEFORE-PATH BEFORE-PATH-U @ >str FS:FILE-SIZE ;
 
 : LAST-LINE ( str -- str )
-   STR:RTRIM {: a:^ u:n :}
-   u begin dup 0 > while
-      a over 1- + c@ STR:LF = if a over + u rot - exit then
+   STR:RTRIM {: t:str :}
+   t STR:LEN begin dup 0 > while
+      t STR:DATA over 1- + c@ STR:LF = if t STR:DATA over + t STR:LEN rot - >str exit then
       1-
-   repeat drop a u ;
+   repeat drop t ;
 
 : NO-BASE ( str -- )
    type cr
@@ -104,10 +103,10 @@ DYNAMIC-BUFFER AFTER u8
 
 \ data-region.f prints the dynamic buffer's address last.
 : DYN-BASE ( -- n )
-   OUT$ LAST-LINE {: a:^ u:n :}
-   a u STR:>NUMBER? MATCH option
+   OUT$ LAST-LINE {: line:str :}
+   line STR:>NUMBER? MATCH option
       some OF ENDOF
-      none OF a u NO-BASE ENDOF
+      none OF line NO-BASE ENDOF
    ;MATCH ;
 
 public
@@ -117,7 +116,7 @@ public
    SETUP
    s" test/wasm/data-region.f builds into a module that validates" T-LABEL
    BUILD 0 T=
-   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
    s" the module runs to status 0 under the foreign peer" T-LABEL
    PEER 0 T=
    LOAD-DUMPS {: host:n :}

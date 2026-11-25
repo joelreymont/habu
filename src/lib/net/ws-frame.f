@@ -1,4 +1,3 @@
-split-str
 \ ws-frame.f - the RFC 6455 frame header (section 5.2): encode it, decode it,
 \ mask a payload. A header is 2 to 14 bytes before its payload. A client masks
 \ every frame it sends and a server masks none (section 5.1), so the sender,
@@ -92,11 +91,11 @@ $FFFFFFFF constant KEY-MAX
    ;MATCH ;
 
 
-: BE@ ( str -- n ) {: p k:n :}
-   0 k 0 ?do 8 lshift p i + c@ or loop ;
+: BE@ ( str -- n ) {: s:str :}
+   0 s STR:LEN 0 ?do 8 lshift s STR:DATA i + c@ or loop ;
 
-: BE! ( n str -- ) {: v p k:n :}
-   k 0 ?do v k 1- i - 8 * rshift $FF and p i + c! loop ;
+: BE! ( n str -- ) {: v s:str :}
+   s STR:LEN 0 ?do v s STR:LEN 1- i - 8 * rshift $FF and s STR:DATA i + c! loop ;
 
 
 : EXT-BYTES ( n -- n ) {: len:n :}
@@ -158,11 +157,11 @@ public
    if E-WS-MASK throw then
    len EXT-BYTES {: ext:n :}
    2 ext + masked KEY-SIZE + {: size:n :}
-   s SPAN:$ size < if E-SPAN-CAPACITY throw then {: out :}
+   s SPAN:$ dup STR:LEN size < if E-SPAN-CAPACITY throw then STR:DATA {: out :}
    fin if FIN-BIT else 0 then op OPCODE>WIRE or out c!
    masked if MASK-BIT else 0 then len LEN7 or out 1+ c!
-   len out 2 + ext BE!
-   key out 2 + ext + masked KEY-SIZE BE!
+   len out 2 + ext >str BE!
+   key out 2 + ext + masked KEY-SIZE >str BE!
    size ;
 
 
@@ -173,20 +172,20 @@ public
 \ bytes E-WS-CONTROL, a wrong mask bit for the sender E-WS-MASK, an extended
 \ length with its high bit set or not in its shortest form E-WS-LENGTH (section
 \ 5.2's MUST), and a payload past the bound E-WS-TOO-BIG.
-: DECODE-HEADER ( str sender n -- decoded ) {: p held:n who max:n :}
-   held 0 < if E-SPAN-LENGTH throw then
-   held 1 < if 2 WS-DECODED:NEED exit then
-   p c@ FIRST-BYTE {: fin:bool op :}
-   held 2 < if 2 WS-DECODED:NEED exit then
-   p 1+ c@ who op SECOND-BYTE {: masked:bool len7:n :}
+: DECODE-HEADER ( str sender n -- decoded ) {: s:str who max:n :}
+   s STR:LEN 0 < if E-SPAN-LENGTH throw then
+   s STR:LEN 1 < if 2 WS-DECODED:NEED exit then
+   s STR:DATA c@ FIRST-BYTE {: fin:bool op :}
+   s STR:LEN 2 < if 2 WS-DECODED:NEED exit then
+   s STR:DATA 1+ c@ who op SECOND-BYTE {: masked:bool len7:n :}
    len7 EXT-OF {: ext:n :}
    2 ext + masked KEY-SIZE + {: size:n :}
-   held 2 ext + < if size WS-DECODED:NEED exit then
-   ext 0= if len7 else p 2 + ext BE@ then {: len:n :}
+   s STR:LEN 2 ext + < if size WS-DECODED:NEED exit then
+   ext 0= if len7 else s STR:DATA 2 + ext >str BE@ then {: len:n :}
    len 0 < len EXT-BYTES ext <> or if E-WS-LENGTH throw then
    len max > if E-WS-TOO-BIG throw then
-   held size < if size WS-DECODED:NEED exit then
-   fin op len p 2 + ext + masked KEY-SIZE BE@ WS-HEADER:MAKE
+   s STR:LEN size < if size WS-DECODED:NEED exit then
+   fin op len s STR:DATA 2 + ext + masked KEY-SIZE >str BE@ WS-HEADER:MAKE
    size WS-DECODED:FRAME ;
 
 
@@ -194,16 +193,16 @@ public
 \ key's high byte first (section 5.3), so masking twice restores it.
 : MASK ( n SPAN:span<u8> -- ) {: key:n s :}
    key 0 < key KEY-MAX > or if E-WS-MASK throw then
-   s SPAN:$ {: p u:n :}
-   u 0 ?do
-      p i + c@ key 3 i 3 and - 8 * rshift xor $FF and p i + c!
+   s SPAN:$ {: buf:str :}
+   buf STR:LEN 0 ?do
+      buf STR:DATA i + c@ key 3 i 3 and - 8 * rshift xor $FF and buf STR:DATA i + c!
    loop ;
 
 
 \ The status code, high byte first, as a close frame's payload begins.
 : CLOSE-CODE! ( close-code SPAN:span<u8> -- ) {: code s :}
-   s SPAN:$ CODE-BYTES < if E-SPAN-CAPACITY throw then {: out :}
-   code CLOSE-CODE>N out CODE-BYTES BE! ;
+   s SPAN:$ dup STR:LEN CODE-BYTES < if E-SPAN-CAPACITY throw then STR:DATA {: out :}
+   code CLOSE-CODE>N out CODE-BYTES >str BE! ;
 
 : CLOSE-NORMAL ( -- close-code ) 1000 >CLOSE-CODE ;
 : CLOSE-PROTOCOL ( -- close-code ) 1002 >CLOSE-CODE ;

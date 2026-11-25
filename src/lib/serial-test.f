@@ -1,4 +1,3 @@
-split-str
 \ serial-test.f - package SERIAL over a pseudoterminal pair, in one process: the
 \ master is the peer, the slave opened by SERIAL:OPEN8N1 at 115200 as
 \ test/serial.py's host does. Pinned here, not by the host: a parked READ is not
@@ -85,10 +84,10 @@ TASK:MIN-STACK TASK:TASK READER
 
 \ One chunk at a time until the master has handed over every byte, so a split
 \ answer from the terminal is not read as a short transfer.
-: PEER-EXACT ( str -- ) {: bytes size:n :}
-   0 begin dup size < while
+: PEER-EXACT ( str -- ) {: bytes:str :}
+   0 begin dup bytes STR:LEN < while
       dup {: offset:n :}
-      PEER bytes offset + size offset - -1 >MS PTY:READ {: got:n :}
+      PEER bytes STR:DATA offset + bytes STR:LEN offset - -1 >MS PTY:READ {: got:n :}
       got 0 <= if E-PROC-OUTPUT throw then
       got +
    repeat drop ;
@@ -104,7 +103,7 @@ TASK:MIN-STACK TASK:TASK READER
    m PTY:MASTER>N MASTER !
 
    s" the slave path of a pty pair opens at 115200 8N1" T-LABEL
-   SLAVE len SPEED SERIAL:BAUD SERIAL:OPEN8N1 OPENED {: fd:n :}
+   SLAVE len >str SPEED SERIAL:BAUD SERIAL:OPEN8N1 OPENED {: fd:n :}
    fd 0 >= TTRUE
    fd HANDLE !
 
@@ -118,7 +117,7 @@ TASK:MIN-STACK TASK:TASK READER
    PORT BUF 5 SERIAL:BYTES -1 >MS SERIAL:READ K-MOVED 5 WANT
 
    s" ... and they are the bytes the master wrote" T-LABEL
-   BUF 5 s" habu!" STR:= TTRUE ;
+   BUF 5 >str s" habu!" STR:= TTRUE ;
 
 : IDLE-CASE ( -- )
    mono-ns {: started:n :}
@@ -160,8 +159,8 @@ TASK:MIN-STACK TASK:TASK READER
    PORT s" forth!" -1 >MS SERIAL:WRITE K-MOVED 6 WANT
 
    s" ... and the master reads exactly those six" T-LABEL
-   BUF 6 PEER-EXACT
-   BUF 6 s" forth!" STR:= TTRUE ;
+   BUF 6 >str PEER-EXACT
+   BUF 6 >str s" forth!" STR:= TTRUE ;
 
 \ A task asserts nothing: the reader records what its READ answered.
 
@@ -212,7 +211,7 @@ TASK:MIN-STACK TASK:TASK READER
 
 : HANGUP-CASE ( -- )
    SPARE PTY:SLAVE-PATH-CAP PTY:OPEN {: m:PTY:master len:n :}
-   SPARE len SPEED SERIAL:BAUD SERIAL:OPEN8N1 OPENED {: fd:n :}
+   SPARE len >str SPEED SERIAL:BAUD SERIAL:OPEN8N1 OPENED {: fd:n :}
    fd 0 >= TTRUE
    fd HANDLE !
    m PTY:CLOSE

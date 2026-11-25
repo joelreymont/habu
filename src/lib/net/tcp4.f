@@ -1,4 +1,3 @@
-split-str
 \ tcp4.f - Linux and Darwin IPv4 stream sockets through exact, bounded libc
 \ bindings; no protocol, framing, name resolution or connection policy. Every
 \ connection this module makes is non-blocking.
@@ -281,12 +280,12 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : BIND-RAW ( n -- n ) {: fd:n :}
-   fd SOCKADDR SOCKADDR-BYTES BIND-CALL ;
+   fd SOCKADDR SOCKADDR-BYTES >str BIND-CALL ;
 
 
 : REUSEADDR-RAW ( n -- n ) {: fd:n :}
    1 OPTION LE:U32!
-   fd SOL-SOCKET SO-REUSEADDR OPTION 4 OPTION-CALL ;
+   fd SOL-SOCKET SO-REUSEADDR OPTION 4 >str OPTION-CALL ;
 
 
 : LISTEN-RAW ( n n -- n )
@@ -304,19 +303,19 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : CONNECT-RAW ( n -- n ) {: fd:n :}
-   fd SOCKADDR SOCKADDR-BYTES CONNECT-CALL ;
+   fd SOCKADDR SOCKADDR-BYTES >str CONNECT-CALL ;
 
 
 : LOCAL-RAW ( n -- n ) {: fd:n :}
    fd SOCKADDR ADDRLEN LOCAL-CALL ;
 
 
-: RECEIVE-RAW ( n str -- n ) {: fd:n bytes size:n :}
-   fd bytes size 0 RECEIVE-CALL ;
+: RECEIVE-RAW ( n str -- n ) {: fd:n bytes:str :}
+   fd bytes STR:DATA bytes STR:LEN 0 RECEIVE-CALL ;
 
 
-: SEND-RAW ( n str -- n ) {: fd:n bytes size:n :}
-   fd bytes size MSG-NOSIGNAL SEND-CALL ;
+: SEND-RAW ( n str -- n ) {: fd:n bytes:str :}
+   fd bytes MSG-NOSIGNAL SEND-CALL ;
 
 
 : SHUTDOWN-RAW ( n n -- n )
@@ -380,10 +379,10 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 \ A stream read of zero bytes is the peer's orderly end of stream, never an
 \ empty message, so a zero-byte request answers `data` at once without one.
-: TRY-CHUNK ( n str -- try-read-result ) {: fd:n bytes size:n :}
-   size 0= if 0 N>BLEN TCP4-TRY--READ--RESULT:DATA exit then
+: TRY-CHUNK ( n str -- try-read-result ) {: fd:n bytes:str :}
+   bytes STR:LEN 0= if 0 N>BLEN TCP4-TRY--READ--RESULT:DATA exit then
    begin
-      fd bytes size RECEIVE-RAW dup 0 > if N>BLEN TCP4-TRY--READ--RESULT:DATA exit then
+      fd bytes RECEIVE-RAW dup 0 > if N>BLEN TCP4-TRY--READ--RESULT:DATA exit then
       0= if 0 N>BLEN TCP4-TRY--READ--RESULT:CLOSED exit then
       LAST-ERROR dup WOULD-BLOCK? if drop TCP4-TRY--READ--RESULT:EMPTY exit then
       dup INTERRUPTED? 0= if TCP4-TRY--READ--RESULT:FAILED exit then drop
@@ -393,9 +392,9 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ One receive, tried again after a wait for data while there is nothing to
 \ receive yet, so a read on a non-blocking connection still blocks until the
 \ stream answers.
-: READ-CHUNK ( n str -- read-result ) {: fd:n bytes size:n :}
+: READ-CHUNK ( n str -- read-result ) {: fd:n bytes:str :}
    begin
-      fd bytes size TRY-CHUNK
+      fd bytes TRY-CHUNK
       MATCH try-read-result
          data OF TCP4-READ--RESULT:DATA exit ENDOF
          closed OF TCP4-READ--RESULT:CLOSED exit ENDOF
@@ -412,17 +411,17 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 : EXACT-STEP ( n connection ^u8 NUM:byte-len -- read-result )
    {: got:n conn:connection bytes want:NUM:byte-len :}
-   conn CONNECTION>N bytes got + want BLEN>N got - READ-CHUNK ;
+   conn CONNECTION>N bytes got + want BLEN>N got - >str READ-CHUNK ;
 
 
 \ One send that never waits: `moved`, `empty` when there was no room, or
 \ `failed`. A zero-byte request is `moved` with none, at once. An interrupt
 \ retries it until the mono-ns deadline has passed and is `empty` after that,
 \ so no retry carries a slice past it; NO-DEADLINE retries every interrupt.
-: SEND-BY ( n str n -- slice-result ) {: fd:n bytes size:n deadline:n :}
-   size 0= if 0 N>BLEN TCP4-SLICE--RESULT:MOVED exit then
+: SEND-BY ( n str n -- slice-result ) {: fd:n bytes:str deadline:n :}
+   bytes STR:LEN 0= if 0 N>BLEN TCP4-SLICE--RESULT:MOVED exit then
    begin
-      fd bytes size SEND-RAW
+      fd bytes SEND-RAW
       dup 0 >= if N>BLEN TCP4-SLICE--RESULT:MOVED exit then drop
       LAST-ERROR dup WOULD-BLOCK? if drop TCP4-SLICE--RESULT:EMPTY exit then
       dup INTERRUPTED? 0= if TCP4-SLICE--RESULT:FAILED exit then drop
@@ -455,10 +454,10 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    again ;
 
 
-: AFTER-ROOM ( n str n -- slice-result ) {: fd:n bytes size:n deadline:n :}
+: AFTER-ROOM ( n str n -- slice-result ) {: fd:n bytes:str deadline:n :}
    fd deadline ROOM-BY
    MATCH ready-result
-      ready OF fd bytes size deadline SEND-BY ENDOF
+      ready OF fd bytes deadline SEND-BY ENDOF
       idle OF TCP4-SLICE--RESULT:EMPTY ENDOF
       failed OF TCP4-SLICE--RESULT:FAILED ENDOF
    ;MATCH ;
@@ -575,7 +574,7 @@ public
 \ the writable span. `closed` carries zero bytes.
 : READ ( connection ^u8 NUM:byte-len -- read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
-   conn CONNECTION>N bytes capacity BLEN>N READ-CHUNK ;
+   conn CONNECTION>N bytes capacity BLEN>N >str READ-CHUNK ;
 
 
 \ One receive of up to capacity bytes that never waits: `empty` when the stream
@@ -585,7 +584,7 @@ public
 \ must be non-blocking.
 : TRY-READ ( connection ^u8 NUM:byte-len -- try-read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
-   conn CONNECTION>N bytes capacity BLEN>N TRY-CHUNK ;
+   conn CONNECTION>N bytes capacity BLEN>N >str TRY-CHUNK ;
 
 
 \ Blocks until the whole span is filled. An end of stream before that is
@@ -616,14 +615,14 @@ public
 \ kernel for as long as the peer takes. Nothing here pauses or weighs a bound;
 \ a caller writing a span in slices does both between them.
 : SEND-SLICE ( connection str -- slice-result )
-   {: conn:connection bytes size:n :}
-   size SEND-SPAN {: span:n :}
+   {: conn:connection bytes:str :}
+   bytes STR:LEN SEND-SPAN {: span:n :}
    conn CONNECTION>N {: fd:n :}
    mono-ns SEND-SLICE-MS NS-PER-MS * + {: deadline:n :}
-   fd bytes span deadline SEND-BY
+   fd bytes STR:DATA span >str deadline SEND-BY
    MATCH slice-result
       moved OF TCP4-SLICE--RESULT:MOVED ENDOF
-      empty OF fd bytes span deadline AFTER-ROOM ENDOF
+      empty OF fd bytes STR:DATA span >str deadline AFTER-ROOM ENDOF
       failed OF TCP4-SLICE--RESULT:FAILED ENDOF
    ;MATCH ;
 
@@ -632,9 +631,9 @@ public
 \ `moved` carries the bytes the OS took, `empty` says there was no room, and
 \ `failed` carries the errno. The connection must be non-blocking.
 : TRY-SEND ( connection str -- slice-result )
-   {: conn:connection bytes size:n :}
-   size SEND-SPAN {: span:n :}
-   conn CONNECTION>N bytes span NO-DEADLINE SEND-BY ;
+   {: conn:connection bytes:str :}
+   bytes STR:LEN SEND-SPAN {: span:n :}
+   conn CONNECTION>N bytes STR:DATA span >str NO-DEADLINE SEND-BY ;
 
 
 \ Blocks until every byte is accepted by the OS, which is not delivery. A failed
@@ -643,16 +642,16 @@ public
 \ ends the task, whether it moved some or none: a peer that takes a few bytes in
 \ every slice holds the write for as long as it reads, but not past a halt.
 : WRITE ( connection str -- status )
-   {: conn:connection bytes size:n :}
+   {: conn:connection bytes:str :}
    0
    begin {: sent:n :}
-      conn bytes sent + size sent - SEND-SLICE
+      conn bytes STR:DATA sent + bytes STR:LEN sent - >str SEND-SLICE
       MATCH slice-result
          moved OF BLEN>N sent + ENDOF
          empty OF sent ENDOF
          failed OF TCP4-STATUS:FAILED exit ENDOF
       ;MATCH
-      dup size >= if drop TCP4-STATUS:OK exit then
+      dup bytes STR:LEN >= if drop TCP4-STATUS:OK exit then
       TASK:PAUSE
    again ;
 
@@ -661,7 +660,7 @@ public
 \ at once instead of waiting for the previous segment's acknowledgement.
 : NODELAY! ( connection bool -- status ) {: conn:connection on:bool :}
    on if 1 else 0 then OPTION LE:U32!
-   conn CONNECTION>N IPPROTO-TCP TCP-NODELAY OPTION 4 OPTION-CALL RC>STATUS ;
+   conn CONNECTION>N IPPROTO-TCP TCP-NODELAY OPTION 4 >str OPTION-CALL RC>STATUS ;
 
 
 : UNREAD ( connection -- queue-result )

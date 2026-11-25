@@ -1,4 +1,3 @@
-split-str
 \ zip.f - indexed ZIP reading and byte-preserving replacement; libzip
 \ (src/lib/zip-ffi.f) decompresses. Every word checks that the archive is live
 \ (ZIP:E-HANDLE) and the entry its own (ZIP:E-ENTRY). No error quotes a member.
@@ -36,10 +35,10 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 \ node discards it.
 : SNAPSHOT-WORK ( ^n ^u8 -- ^n ^u8 )
    {: node:^ copy:^ :}
-   s" habu-zip-source" FS:MKTEMP FD>N node SNAP-FD ! {: path:^ len:n :}
-   path len copy SNAPSHOT-ROOM SPAN:MAKE CSTR
-   node SOURCE-PTR ! len node SOURCE-LEN ! 1 node SOURCE-LIVE !
-   path len FS:CLEANUP+
+   s" habu-zip-source" FS:MKTEMP FD>N node SNAP-FD ! {: path:str :}
+   path copy SNAPSHOT-ROOM SPAN:MAKE CSTR
+   node SOURCE-PTR ! path STR:LEN node SOURCE-LEN ! 1 node SOURCE-LIVE !
+   path FS:CLEANUP+
    node copy ;
 
 : SNAPSHOT-OPEN ( ^n -- )
@@ -50,7 +49,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 : SOURCE-STEP ( ^n ^u8 n -- n ) {: node:^ buf:^ cap:n :}
    node SOURCE-FD @ buf cap read {: got:n :}
    got 0 < got cap > or if E-FS-IO throw then
-   got 0 > if node SNAP-FD @ >FD buf got FD:WRITE-FULL then
+   got 0 > if node SNAP-FD @ >FD buf got >str FD:WRITE-FULL then
    got ;
 
 : COPY-SOURCE ( ^n -- ) {: node:^ :}
@@ -72,13 +71,13 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    loop true ;
 
 : OPEN-WORK ( ^n str n -- ^n str n )
-   {: node:^ path:^ len:n flags:n :}
+   {: node:^ path:str flags:n :}
    flags node MODE !
-   len CSTR-ROOM {: room:n :}
-   path len node room BUFFER-ALLOC room SPAN:MAKE CSTR node PATH-PTR !
-   len node PATH-LEN !
+   path STR:LEN CSTR-ROOM {: room:n :}
+   path node room BUFFER-ALLOC room SPAN:MAKE CSTR node PATH-PTR !
+   path STR:LEN node PATH-LEN !
    node SNAPSHOT-OPEN
-   path len node PATH-PTR @ COMPILE-READS:FILE+
+   path node PATH-PTR @ COMPILE-READS:FILE+
    node PATH-PTR @ open-rd {: src:n :}
    src 0 < if E-FS-OPEN throw then src node SOURCE-FD !
    node COPY-SOURCE node CLOSE-SOURCE-FD
@@ -95,16 +94,16 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    node $10000 BUFFER-ALLOC node RAW-SCRATCH !
    node RAW-PTR @ node RAW-LEN @ munmap 0<> if E-FS-IO throw then
    0 MAPPED>RAW node RAW-PTR !
-   node path len flags ;
+   node path flags ;
 
 : OPEN-ATTEMPT ( ^n str n -- n )
-   [: OPEN-WORK ;] catch >r 2drop 2drop r> ;
+   [: OPEN-WORK ;] catch >r drop drop drop r> ;
 
 : OPEN-CHECKED ( str n -- archive )
-   {: path:^ len:n flags:n :}
-   len PATH-CHECK REGISTER {: archive:archive :}
+   {: path:str flags:n :}
+   path STR:LEN PATH-CHECK REGISTER {: archive:archive :}
    archive ARCHIVE-NODE {: node:^ :}
-   node path len flags OPEN-ATTEMPT {: code:n :}
+   node path flags OPEN-ATTEMPT {: code:n :}
    code 0<> if node code DISCARD-FAILED then
    archive ;
 
@@ -124,9 +123,9 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 : NAME-COPY ( ^n n -- str )
    {: node:^ idx:n :}
    node idx MEMBER-AT {: member:^ :}
-   node member CENTRAL-NAME {: name:^ len:n :}
-   node len 1 max CHUNK-RESERVE {: dst:^ :}
-   name dst len BYTE-COPY dst len ;
+   node member CENTRAL-NAME {: name:str :}
+   node name STR:LEN 1 max CHUNK-RESERVE {: dst:^ :}
+   name STR:DATA dst name STR:LEN BYTE-COPY dst name STR:LEN >str ;
 
 : MEMBER-SIZE ( ^n n -- n ) {: node:^ idx:n :}
    node OBJECT @ NULL? if node idx MEMBER-AT PLAIN-SIZE @ exit then
@@ -134,8 +133,8 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    STAT ENTRY-STAT-VALID @ STAT-SIZE-VALID and 0= if E-READ throw then
    STAT ENTRY-STAT-SIZE @ dup SIZE-CHECK ;
 
-: CRC-FEED ( n str -- n ) {: crc:n data:^ len:n :}
-   crc len 0 ?do data i + c@ CRC-BYTE loop ;
+: CRC-FEED ( n str -- n ) {: crc:n data:str :}
+   crc data STR:LEN 0 ?do data STR:DATA i + c@ CRC-BYTE loop ;
 
 : OPEN-INPUT ( ^n n -- input ) {: owner:^ idx:n :}
    owner idx MEMBER-AT {: member:^ :}
@@ -210,7 +209,8 @@ $7FFFFFFF constant PIECE-MAX
 : READ-INNER ( ^n SPAN:span<u8> -- n )
    {: node:^ dst :}
    node INPUT-DONE @ 0<> if 0 exit then
-   dst SPAN:$ PIECE-MAX min {: data:^ cap:n :}
+   dst SPAN:$ {: whole:str :}
+   whole STR:DATA whole STR:LEN PIECE-MAX min {: data:^ cap:n :}
    cap 0= if 0 exit then
    node data cap INPUT-BYTES {: got:n :}
    \ A negative count from read or C-PREAD (kinds 1 and 2) is the host's; from
@@ -221,7 +221,7 @@ $7FFFFFFF constant PIECE-MAX
    node INPUT-OFF @ got SAFE+ dup node INPUT-LEN @ > if E-READ throw then
    node INPUT-OFF !
    node INPUT-KIND @ 1 <> if
-      node INPUT-CRC @ data got CRC-FEED node INPUT-CRC !
+      node INPUT-CRC @ data got >str CRC-FEED node INPUT-CRC !
    then got ;
 
 
@@ -252,55 +252,55 @@ $7FFFFFFF constant PIECE-MAX
    close-code 0<> if close-code throw then ;
 
 : COPY-INPUT ( ^n str -- ^n str )
-   {: node:^ buf:^ len:n :}
-   0 begin dup len < while
+   {: node:^ buf:str :}
+   0 begin dup buf STR:LEN < while
       dup {: off:n :}
-      node buf off + len off - SPAN:MAKE READ-INNER
+      node buf STR:DATA off + buf STR:LEN off - SPAN:MAKE READ-INNER
       dup 0= if E-READ throw then +
    repeat drop
-   node buf 1 SPAN:MAKE READ-INNER 0<> if E-READ throw then
-   node buf len ;
+   node buf STR:DATA 1 SPAN:MAKE READ-INNER 0<> if E-READ throw then
+   node buf ;
 
 : COPY-ATTEMPT ( ^n str -- n )
-   [: COPY-INPUT ;] catch >r 2drop drop r> ;
+   [: COPY-INPUT ;] catch >r drop drop r> ;
 
 : READ-COPY ( ^n n -- str ) {: node:^ idx:n :}
    node idx MEMBER-AT {: member:^ :}
-   member REPLACED? if member REPLACEMENT @ member REPLACE-LEN @ exit then
+   member REPLACED? if member REPLACEMENT @ member REPLACE-LEN @ >str exit then
    node idx MEMBER-SIZE {: len:n :}
    node len BUFFER-ALLOC {: buf:^ :}
    node idx OPEN-INPUT INPUT-NODE {: input:^ :}
-   input buf len COPY-ATTEMPT {: code:n :}
+   input buf len >str COPY-ATTEMPT {: code:n :}
    input DISCARD-INPUT {: close-code:n :}
    code 0<> if code throw then
    close-code 0<> if close-code throw then
-   buf len ;
+   buf len >str ;
 
 : WRITABLE ( ^n -- )
    MODE @ READONLY-FLAG and 0 <> if E-READONLY throw then ;
 
-: REPLACE-COPY ( ^n n str -- ) {: node:^ idx:n data:^ len:n :}
+: REPLACE-COPY ( ^n n str -- ) {: node:^ idx:n data:str :}
    node WRITABLE
    node idx MEMBER-AT {: member:^ :}
    member REMOVED? if E-ENTRY throw then
-   node data len COPY-IN {: buf:^ size:n :}
-   buf member REPLACEMENT ! size member REPLACE-LEN !
-   buf size CRC32 member REPLACE-CRC ! 1 node DIRTY ! ;
+   node data COPY-IN {: copy:str :}
+   copy STR:DATA member REPLACEMENT ! copy STR:LEN member REPLACE-LEN !
+   copy CRC32 member REPLACE-CRC ! 1 node DIRTY ! ;
 
 : FILL-BUFFER ( a str [ a SPAN:span<u8> -- ] -- a str [ a SPAN:span<u8> -- ] )
-   {: ctx buf:^ len:n fill :}
-   ctx buf len SPAN:MAKE fill execute
-   ctx buf len fill ;
+   {: ctx buf:str fill :}
+   ctx buf STR:DATA buf STR:LEN SPAN:MAKE fill execute
+   ctx buf fill ;
 
 : REPLACE-FILL ( ^n n n a [ a SPAN:span<u8> -- ] -- )
    {: node:^ idx:n len:n ctx fill :}
    node WRITABLE node idx MEMBER-AT {: member:^ :}
    member REMOVED? if E-ENTRY throw then
    node len BUFFER-ALLOC {: buf:^ :}
-   ctx buf len fill [: FILL-BUFFER ;] catch >r 2drop 2drop r> {: code:n :}
+   ctx buf len >str fill [: FILL-BUFFER ;] catch >r drop drop drop r> {: code:n :}
    code 0<> if node buf BUFFER-RELEASE code throw then
    buf member REPLACEMENT ! len member REPLACE-LEN !
-   buf len CRC32 member REPLACE-CRC ! 1 node DIRTY ! ;
+   buf len >str CRC32 member REPLACE-CRC ! 1 node DIRTY ! ;
 
 public
 
@@ -323,7 +323,7 @@ public
       mapped -1 = if E-FS-IO throw then
       mapped MAPPED>RAW node RAW-PTR !
    then
-   node RAW-PTR @ node RAW-LEN @ ;
+   node RAW-PTR @ node RAW-LEN @ >str ;
 : COUNT ( archive -- n ) ARCHIVE-NODE COUNT-NODE ;
 \ Entries are zero-based indices, so duplicate names stay distinct; there is no
 \ fixed entry limit.
@@ -362,9 +362,9 @@ public
 : CLOSE-ENTRY ( input -- ) CLOSE-IN-CHECKED ;
 
 \ Copies its input at once, an empty member too.
-: REPLACE ( archive entry str -- ) {: archive:archive entry:entry data:^ len:n :}
+: REPLACE ( archive entry str -- ) {: archive:archive entry:entry data:str :}
    archive ARCHIVE-NODE {: node:^ :}
-   node node entry ENTRY-INDEX data len REPLACE-COPY ;
+   node node entry ENTRY-INDEX data REPLACE-COPY ;
 
 \ Stages omission on an EDIT handle, idempotently. Until COMMIT or CLOSE, COUNT,
 \ indices, names and reads keep the opened view, and replacing a removed entry
