@@ -121,7 +121,8 @@ private
 : IMGD-MAIN ( -- )
    IMGD-PARSE-ARGS
    IMGD-CHECK-RANGE
-   IMGD-IMG@ IMGD-OFF @ + IMGD-N @ >str DISASM ;
+   IMGD-IMG@ IMGD-OFF @ + IMGD-N @ 4 * >str
+   A64DIS:DISASM ;
 
 
 : IMGD-RUN? ( -- )

@@ -8,7 +8,7 @@ public
 : STEP ( str n -- n )
    drop STR:DATA {: a:^ :}
    a c@ a 1 + c@ 8 lshift or
-   a 2 + c@ 16 lshift or a 3 + c@ 24 lshift or DIS1
+   a 2 + c@ 16 lshift or a 3 + c@ 24 lshift or A64DIS:DIS1
    4 ;
 
 ;package

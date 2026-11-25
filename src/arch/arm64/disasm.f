@@ -1,8 +1,9 @@
-split-str
 \ disasm.f - table-driven ARM64 disassembler. DIS1 prints one u32 as one line, no
 \ newline: the mnemonic and each operand after one space, or ? and 8 hex digits.
 
 require src/lib/fmt.f
+
+package A64DIS
 
 : U64, ( n -- )
    {: v :}
@@ -14,9 +15,9 @@ variable DTB-N
 \ Lays a DTB row [mask:8][val:8][kind:1][nlen:1][name]; the first row whose mask
 \ and value match a word decides, and DROW-EMIT prints each kind's operands.
 : ROW, ( n n n str -- )
-   {: mask val kind name:^ u :}
-   mask U64,  val U64,  kind c,  u c,
-   u 0 ?do name i + c@ c, loop
+   {: mask val kind name:str :}
+   mask U64,  val U64,  kind c,  name STR:LEN c,
+   name STR:LEN 0 ?do name STR:DATA i + c@ c, loop
    1 DTB-N +! ;
 
 
@@ -108,7 +109,7 @@ create DTB DTB-ROWS
 
 create CHB 4 allot
 
-: EMITC ( n -- ) {: c :} c CHB c! CHB 1 type ;
+: EMITC ( n -- ) {: c :} c CHB c! CHB 1 >str type ;
 
 : SPC ( -- ) 32 EMITC ;
 
@@ -122,7 +123,8 @@ create CHB 4 allot
 \ Condition names by bits 3-0, two letters each.
 : DCOND ( n -- )
    {: w :}
-   s" eqnecsccmiplvsvchilsgeltgtlealnv" drop w 15 and 2 * + 2 type ;
+   s" eqnecsccmiplvsvchilsgeltgtlealnv" STR:DATA
+   w 15 and 2 * + 2 >str type ;
 
 
 \ Index of the highest set bit, -1 for zero.
@@ -162,13 +164,13 @@ create CHB 4 allot
 
 
 : DLS1 ( n str -- )
-   {: w name:^ u :}
-   name u type  w FRD DOUT w FRN DOUT w FI12 DOUT ;
+   {: w name:str :}
+   name type  w FRD DOUT w FRN DOUT w FI12 DOUT ;
 
 
 : DLS4 ( n str -- )
-   {: w name:^ u :}
-   name u type  w FRD DOUT w FRN DOUT w FI12 4 * DOUT ;
+   {: w name:str :}
+   name type  w FRD DOUT w FRN DOUT w FI12 4 * DOUT ;
 
 
 : DLS-SPECIAL ( n -- bool ) {: w :}
@@ -208,6 +210,8 @@ create CHB 4 allot
    63 EMITC SPC  SB-RESET w 8 FMT:SB-HEX-WIDTH SB$ type ;
 
 
+public
+
 : DIS1 ( n -- )
    {: w :}
    w DLS-SPECIAL IF EXIT THEN
@@ -217,7 +221,9 @@ create CHB 4 allot
       row 16 + c@ {: kind :}
       row 17 + c@ {: nlen :}
       w row U64@ and row 8 + U64@ = IF
-         w kind DVALID? IF row 18 + nlen type  w kind DROW-EMIT ELSE w DUNKNOWN THEN
+         w kind DVALID? IF
+            row 18 + nlen >str type  w kind DROW-EMIT
+         ELSE w DUNKNOWN THEN
          EXIT
       THEN
       row 18 + nlen +  i 1 +
@@ -225,9 +231,12 @@ create CHB 4 allot
    2drop w DUNKNOWN ;
 
 
+\ The str is the code's bytes: one line per 4-byte instruction.
 : DISASM ( str -- )
-   {: a:^ n :}
-   0 BEGIN dup n < WHILE
-      a over 4 * + U32@ DIS1 cr
+   {: s:str :}
+   0 BEGIN dup s STR:LEN 4 / < WHILE
+      s STR:DATA over 4 * + U32@ DIS1 cr
       1 +
    REPEAT drop ;
+
+;package
