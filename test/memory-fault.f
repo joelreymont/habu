@@ -1,4 +1,3 @@
-split-str
 \ A load through a bad address in Habu code throws 110
 \ on the faulting thread: a catch receives it and the program runs on, a task
 \ ends with it, and uncaught it exits 110 after its record on fd 2, with no
@@ -20,15 +19,15 @@ private
 
 : RUN-BUF ( -- )
    GE-HB-RESET
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ >str PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
 
 \ The child ended by the signal, not by an exit: crash.f EMIT-CRASH-HANDLER
 \ re-raises it after the dump. An exit of 128 + n is no signal death.
-: KILLED-BY ( n str -- ) {: sig:n label:^ labelu:n :}
+: KILLED-BY ( n str -- ) {: sig:n label:str :}
    GT-OUTCOME@ MATCH PROCESS:ending
-     exited OF drop label labelu GE-FAIL ENDOF
-     signaled OF sig <> if label labelu GE-FAIL then ENDOF
-     timeout OF label labelu GE-FAIL ENDOF
+     exited OF drop label GE-FAIL ENDOF
+     signaled OF sig <> if label GE-FAIL then ENDOF
+     timeout OF label GE-FAIL ENDOF
    ;MATCH ;
 
 : UNCAUGHT ( -- )

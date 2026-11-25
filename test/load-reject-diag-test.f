@@ -1,4 +1,3 @@
-split-str
 \ load-reject-diag-test.f - a rejecting `bin/hb --load` must identify itself: a
 \ checked load refusal exits 70 with a named diagnostic on stderr; an
 \ unmodeled immediate in a TRUSTED: body is refused by the checker's preflight
@@ -103,118 +102,118 @@ variable EXITED
 variable RC
 
 : BASE$ ( -- str )
-   BASE BASE-U @ ;
+   BASE BASE-U @ >str ;
 
 : UNDEF$ ( -- str )
-   UNDEF-P UNDEF-U @ ;
+   UNDEF-P UNDEF-U @ >str ;
 
-: BODY$ ( -- ^u8 n )
-   BODY-P BODY-U @ ;
+: BODY$ ( -- str )
+   BODY-P BODY-U @ >str ;
 
 : OUTER$ ( -- str )
-   OUTER-P OUTER-U @ ;
+   OUTER-P OUTER-U @ >str ;
 
 : FRAG$ ( -- str )
-   FRAG-P FRAG-U @ ;
+   FRAG-P FRAG-U @ >str ;
 
 : SIDE$ ( -- str )
-   SIDE-P SIDE-U @ ;
+   SIDE-P SIDE-U @ >str ;
 
 : INC$ ( -- str )
-   INC-P INC-U @ ;
+   INC-P INC-U @ >str ;
 
 : REQ$ ( -- str )
-   REQ-P REQ-U @ ;
+   REQ-P REQ-U @ >str ;
 
 : CALLER$ ( -- str )
-   CALLER-P CALLER-U @ ;
+   CALLER-P CALLER-U @ >str ;
 
 : MISS$ ( -- str )
-   MISS-P MISS-U @ ;
+   MISS-P MISS-U @ >str ;
 
 : REBOUND$ ( -- str )
-   REBOUND-P REBOUND-U @ ;
+   REBOUND-P REBOUND-U @ >str ;
 
 : TOP-INC$ ( -- str )
-   TOP-INC-P TOP-INC-U @ ;
+   TOP-INC-P TOP-INC-U @ >str ;
 
 : TOP-REQ$ ( -- str )
-   TOP-REQ-P TOP-REQ-U @ ;
+   TOP-REQ-P TOP-REQ-U @ >str ;
 
 : RUNTIME$ ( -- str )
-   RUNTIME-P RUNTIME-U @ ;
+   RUNTIME-P RUNTIME-U @ >str ;
 
 : MODELED$ ( -- str )
-   MODELED-P MODELED-U @ ;
+   MODELED-P MODELED-U @ >str ;
 
 : TRUSTED$ ( -- str )
-   TRUSTED-P TRUSTED-U @ ;
+   TRUSTED-P TRUSTED-U @ >str ;
 
 : BPS$ ( -- str )
-   BPS-P BPS-U @ ;
+   BPS-P BPS-U @ >str ;
 
 : BPF$ ( -- str )
-   BPF-P BPF-U @ ;
+   BPF-P BPF-U @ >str ;
 
 : RES$ ( -- str )
-   RES-P RES-U @ ;
+   RES-P RES-U @ >str ;
 
 : RTYPE$ ( -- str )
-   RTYPE-P RTYPE-U @ ;
+   RTYPE-P RTYPE-U @ >str ;
 
 : RNEST$ ( -- str )
-   RNEST-P RNEST-U @ ;
+   RNEST-P RNEST-U @ >str ;
 
 : RCATCH$ ( -- str )
-   RCATCH-P RCATCH-U @ ;
+   RCATCH-P RCATCH-U @ >str ;
 
 : CF$ ( -- str )
-   CF-P CF-U @ ;
+   CF-P CF-U @ >str ;
 
 : TARGET$ ( -- str )
-   TARGET-P TARGET-U @ ;
+   TARGET-P TARGET-U @ >str ;
 
 : TARGET-JSON$ ( -- str )
-   TARGET-JSON-P TARGET-JSON-U @ ;
+   TARGET-JSON-P TARGET-JSON-U @ >str ;
 
 : TARGET-DEF$ ( -- str )
-   TARGET-DEF-P TARGET-DEF-U @ ;
+   TARGET-DEF-P TARGET-DEF-U @ >str ;
 
 : ONCE$ ( -- str )
-   ONCE-P ONCE-U @ ;
+   ONCE-P ONCE-U @ >str ;
 
 : ONCE-UNDEF$ ( -- str )
-   ONCE-UNDEF-P ONCE-UNDEF-U @ ;
+   ONCE-UNDEF-P ONCE-UNDEF-U @ >str ;
 
 : CAPTURE$ ( -- str )
-   CAPTURE-P CAPTURE-U @ ;
+   CAPTURE-P CAPTURE-U @ >str ;
 
 : ONCE-JSON$ ( -- str )
-   ONCE-JSON-P ONCE-JSON-U @ ;
+   ONCE-JSON-P ONCE-JSON-U @ >str ;
 
 : SHADOW$ ( -- str )
-   SHADOW-P SHADOW-U @ ;
+   SHADOW-P SHADOW-U @ >str ;
 
 : MARK$ ( -- str )
-   MARK-P MARK-U @ ;
+   MARK-P MARK-U @ >str ;
 
 : FRAG-FIXTURE! ( str str str str -- )
-   {: pre:^ preu:n frag:^ fragu:n post:^ postu:n path:^ pathu:n :}
+   {: pre:str frag:str post:str path:str :}
    SB-RESET
-   pre preu SB-APPEND
-   frag fragu SB-APPEND
-   post postu SB-APPEND
-   path pathu SB$ FS:WRITE-ALL ;
+   pre SB-APPEND
+   frag SB-APPEND
+   post SB-APPEND
+   path SB$ FS:WRITE-ALL ;
 
 : PATH! ( str ^u8 ^n -- )
-   {: name:^ nameu:n dst:^ lenp:^ :}
-   BASE$ name nameu dst FS:JOIN-PATH lenp ! ;
+   {: name:str dst:^ lenp:^ :}
+   BASE$ name dst FS:JOIN-PATH lenp ! ;
 
 : ROOT! ( -- )
    FS:CLEANUP-RESET
-   s" habu-load-reject-diag" FS:MKTEMP-DIR {: a:^ u:n :}
-   a BASE u BYTE-COPY
-   u BASE-U !
+   s" habu-load-reject-diag" FS:MKTEMP-DIR {: s:str :}
+   s STR:DATA BASE s STR:LEN BYTE-COPY
+   s STR:LEN BASE-U !
    BASE$ FS:CLEANUP-TREE+ ;
 
 : PATHS! ( -- )
@@ -293,9 +292,9 @@ undefine include
 " FS:WRITE-ALL ;
 
 \ One definition per append: SB holds one path and its text, not three.
-: RUNTIME-DEF+ ( str str -- ) {: pre:^ preu:n post:^ postu:n :}
+: RUNTIME-DEF+ ( str str -- ) {: pre:str post:str :}
    SB-RESET
-   pre preu SB-APPEND FRAG$ SB-APPEND post postu SB-APPEND
+   pre SB-APPEND FRAG$ SB-APPEND post SB-APPEND
    RUNTIME$ SB$ FS:APPEND-FILE ;
 
 : RUNTIME-FIXTURE! ( -- )
@@ -330,50 +329,50 @@ undefine include
    FIXTURES! ;
 
 : STORE! ( len len PROCESS:ending str -- )
-   {: outu:len erru:len oc src:^ srcu:n :}
+   {: outu:len erru:len oc src:str :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF src srcu OUT OUT-U @ ERR ERR-U @ T-TIMED-OUT ENDOF
+     timeout OF src OUT OUT-U @ >str ERR ERR-U @ >str T-TIMED-OUT ENDOF
    ;MATCH ;
 
 \ Runs the engine under test on the arguments built for PATH.
-: LAUNCH ( str -- ) {: path:^ pathu:n :}
-   ENGINE-CANDIDATE:PATH$  EMPTY 0  OUT CAP >LEN
+: LAUNCH ( str -- ) {: path:str :}
+   ENGINE-CANDIDATE:PATH$  EMPTY 0 >str  OUT CAP >LEN
    ERR CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   path pathu STORE! ;
+   path STORE! ;
 
-: RUN ( ^u8 n -- ) {: path:^ pathu:n :}
+: RUN ( str -- ) {: path:str :}
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
-   path pathu PROC-ARGV+
-   path pathu LAUNCH ;
+   path PROC-ARGV+
+   path LAUNCH ;
 
-: CHECK-RUN ( str -- ) {: path:^ pathu:n :}
+: CHECK-RUN ( str -- ) {: path:str :}
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
-   s" --" PROC-ARGV+  path pathu PROC-ARGV+
-   path pathu LAUNCH ;
+   s" --" PROC-ARGV+  path PROC-ARGV+
+   path LAUNCH ;
 
-: CHECK-ALL-RUN ( str -- ) {: path:^ pathu:n :}
+: CHECK-ALL-RUN ( str -- ) {: path:str :}
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
    s" --" PROC-ARGV+  s" --all-errors" PROC-ARGV+
-   path pathu PROC-ARGV+
-   path pathu LAUNCH ;
+   path PROC-ARGV+
+   path LAUNCH ;
 
-: ERR$ ( -- ^u8 n )
-   ERR ERR-U @ ;
+: ERR$ ( -- str )
+   ERR ERR-U @ >str ;
 
-: OUT$ ( -- ^u8 n )
-   OUT OUT-U @ ;
+: OUT$ ( -- str )
+   OUT OUT-U @ >str ;
 
 \ Every rejecting load: NON-EMPTY stderr that names the failing token, EMPTY
 \ stdout, exit-kind EXIT, rc 70 — the silent-exit-70 red/green discriminator.
-: ASSERT-NAMED ( str -- ) {: name:^ nameu:n :}
+: ASSERT-NAMED ( str -- ) {: name:str :}
    ERR-U @ 0 > TTRUE
-   ERR$ name nameu STR:CONTAINS? TTRUE
+   ERR$ name STR:CONTAINS? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ 70 T= ;
@@ -384,29 +383,29 @@ undefine include
    ERR-U @ 0 T= ;
 
 : ASSERT-OK-OUT ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    ASSERT-OK
-   OUT$ a u STR:CONTAINS? TTRUE ;
+   OUT$ s STR:CONTAINS? TTRUE ;
 
 \ stderr places the record at PATH's PLACE, `:line:column`.
-: ASSERT-AT ( str str -- ) {: path:^ pathu:n place:^ placeu:n :}
-   SB-RESET  s"  --> " SB-APPEND  path pathu SB-APPEND  place placeu SB-APPEND
+: ASSERT-AT ( str str -- ) {: path:str place:str :}
+   SB-RESET  s"  --> " SB-APPEND  path SB-APPEND  place SB-APPEND
    10 SB-APPEND-C
    ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ body.f is rejected with the record HEAD at PLACE.
-: BODY-REJECT-AT ( str str -- ) {: head:^ headu:n place:^ placeu:n :}
-   head headu ASSERT-NAMED
-   BODY$ place placeu ASSERT-AT ;
+: BODY-REJECT-AT ( str str -- ) {: head:str place:str :}
+   head ASSERT-NAMED
+   BODY$ place ASSERT-AT ;
 
 : ASSERT-IMM-DIAG ( n n str str -- )
-   {: line:n col:n token:^ tokenu:n help:^ helpu:n :}
+   {: line:n col:n token:str help:str :}
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root s" code" GJA-REQ s" E-UNMODELED-IMMEDIATE" GJA-ASSERT-STR
    root s" line" line GJA-ASSERT-INT-FIELD
    root s" column" col GJA-ASSERT-INT-FIELD
-   root s" token" GJA-REQ token tokenu GJA-ASSERT-STR
-   root s" help" GJA-REQ help helpu GJA-ASSERT-STR
+   root s" token" GJA-REQ token GJA-ASSERT-STR
+   root s" help" GJA-REQ help GJA-ASSERT-STR
    root GJA-RECORD-FORM ;
 
 : TEST-STORE-SIGNALED ( -- )
@@ -447,11 +446,11 @@ undefine include
 \ Each control-flow case is a load of its own: a load stops at its first refusal.
 \ Its record HEAD names the reason, placed at the token at PLACE.
 : CF-RUN ( str str str -- )
-   {: src:^ srcu:n head:^ headu:n place:^ placeu:n :}
-   CF$ src srcu FS:WRITE-ALL
+   {: src:str head:str place:str :}
+   CF$ src FS:WRITE-ALL
    CF$ RUN
-   head headu ASSERT-NAMED
-   CF$ place placeu ASSERT-AT ;
+   head ASSERT-NAMED
+   CF$ place ASSERT-AT ;
 
 \ A depth change names the start row, or the else arm's, as expected and the
 \ changed row as found.
@@ -512,15 +511,15 @@ undefine include
 \ token at column COL marked by MARK (its carets and label), then TAIL (notes
 \ and help).
 : PARAMETRIC-REJECT ( str str n str str -- )
-   {: src:^ srcu:n msg:^ msgu:n col:n mark:^ marku:n tail:^ tailu:n :}
-   BODY$ src srcu FS:WRITE-ALL
+   {: src:str msg:str col:n mark:str tail:str :}
+   BODY$ src FS:WRITE-ALL
    BODY$ RUN
    s" E-NONPARAMETRIC-EFFECT" ASSERT-NAMED
-   SB-RESET  s" error[E-NONPARAMETRIC-EFFECT]: " SB-APPEND  msg msgu SB-APPEND
+   SB-RESET  s" error[E-NONPARAMETRIC-EFFECT]: " SB-APPEND  msg SB-APPEND
    S\" \n --> " SB-APPEND  BODY$ SB-APPEND  s" :1:" SB-APPEND  col FMT:SB-INT
-   S\" \n  |\n1 | " SB-APPEND  src srcu SB-APPEND  S\" \n  |" SB-APPEND
+   S\" \n  |\n1 | " SB-APPEND  src SB-APPEND  S\" \n  |" SB-APPEND
    col 0 ?do 32 SB-APPEND-C loop
-   mark marku SB-APPEND  S\" \n  " SB-APPEND  tail tailu SB-APPEND  S\" \n\n" SB-APPEND
+   mark SB-APPEND  S\" \n  " SB-APPEND  tail SB-APPEND  S\" \n\n" SB-APPEND
    ERR$ SB$ STR:= TTRUE ;
 
 : TEST-PARAMETRIC ( -- )
@@ -678,10 +677,10 @@ undefine include
 
 \ A storage declaration whose definer cannot size its type is the checker's
 \ refusal, named for the declared word in HEAD and placed at the unknown type.
-: STORAGE-REJECT ( str str -- ) {: src:^ srcu:n head:^ headu:n :}
-   BODY$ src srcu FS:WRITE-ALL
+: STORAGE-REJECT ( str str -- ) {: src:str head:str :}
+   BODY$ src FS:WRITE-ALL
    BODY$ RUN
-   head headu ASSERT-NAMED
+   head ASSERT-NAMED
    ERR$ s" ^ unknown type" STR:CONTAINS? TTRUE ;
 
 : TEST-STORAGE ( -- )
@@ -699,11 +698,11 @@ undefine include
 
 \ SRC as the body exits RC, its stderr holding the record HEAD placed at PLACE.
 : CODE-REJECT-AT ( str str str n -- )
-   {: src:^ srcu:n head:^ headu:n place:^ placeu:n rc:n :}
-   BODY$ src srcu FS:WRITE-ALL
+   {: src:str head:str place:str rc:n :}
+   BODY$ src FS:WRITE-ALL
    BODY$ RUN
-   ERR$ head headu STR:CONTAINS? TTRUE
-   BODY$ place placeu ASSERT-AT
+   ERR$ head STR:CONTAINS? TTRUE
+   BODY$ place ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ rc T= ;
@@ -753,10 +752,10 @@ undefine include
 \ the file's bytes, so its rejection is placed at that `evaluate`, with the
 \ string in an evaluated note.
 : ASSERT-EVALUATED ( str str -- )
-   {: text:^ textu:n label:^ labelu:n :}
-   SB-RESET s" = evaluated: " SB-APPEND text textu SB-APPEND
+   {: text:str label:str :}
+   SB-RESET s" = evaluated: " SB-APPEND text SB-APPEND
    ERR$ SB$ STR:CONTAINS? TTRUE
-   SB-RESET s" ^ " SB-APPEND label labelu SB-APPEND
+   SB-RESET s" ^ " SB-APPEND label SB-APPEND
    ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 : TEST-EVALUATED-PLACE ( -- )
@@ -816,10 +815,10 @@ undefine include
 
 \ A structure the checker finds open at a body's closing `;`, a plain body's or
 \ a does> clause's, is placed at that `;` (column 1 of PLACE's line).
-: ASSERT-CLOSE-LINE ( str -- ) {: place:^ placeu:n :}
+: ASSERT-CLOSE-LINE ( str -- ) {: place:str :}
    BODY$ RUN
    s" error[E-CONTROL-OPEN]: a control structure is still open at the end of the definition"
-      place placeu BODY-REJECT-AT ;
+      place BODY-REJECT-AT ;
 
 : TEST-OPEN-AT-CLOSE ( -- )
    s" an if open at a later line's ; is refused on the line of the ;" T-LABEL
@@ -942,9 +941,9 @@ undefine include
    ERR$ s" help: a locals list begins with `{:` and this `:}` closes none: delete it, or write `{:` where the list begins"
       STR:CONTAINS? TTRUE ;
 
-: ASSERT-CONSTANT-KEYWORD ( str -- ) {: at:^ atu:n :}
+: ASSERT-CONSTANT-KEYWORD ( str -- ) {: at:str :}
    s" error[E-UNDEFINED]: `constant` is a top-level keyword, not a word"
-      at atu BODY-REJECT-AT
+      at BODY-REJECT-AT
    ERR$ s" outside any definition" STR:CONTAINS? TTRUE ;
 
 \ A checked body's `constant` is named a keyword under either loader, whatever
@@ -968,14 +967,14 @@ undefine include
 \ placed at the token that pushed the bottom cell, in the innermost file. Paths
 \ are matched by their file names: the temporary root may resolve through a
 \ symbolic link.
-: ASSERT-RESIDUE ( str str -- ) {: msg:^ msgu:n at:^ atu:n :}
+: ASSERT-RESIDUE ( str str -- ) {: msg:str at:str :}
    EXITED @ TTRUE
    RC @ 70 T=
    OUT-U @ 0 T=
    ERR$ s" error[E-EVAL-RESIDUE]: " STR:STARTS-WITH? TTRUE
-   ERR$ msg msgu STR:CONTAINS? TTRUE
+   ERR$ msg STR:CONTAINS? TTRUE
    ERR$ s" E-EVAL-RESIDUE" STR:COUNT-SUB 1 T=
-   ERR$ at atu STR:CONTAINS? TTRUE
+   ERR$ at STR:CONTAINS? TTRUE
    ERR$ s" uncaught throw" STR:CONTAINS? TFALSE ;
 
 : TEST-RESIDUE ( -- )
@@ -1175,16 +1174,16 @@ undefine include
    70 ASSERT-REJECTED ;
 
 \ The keyword starts line 1, which holds LINE.
-: BODY-ONLY-EXPECT ( str str -- ) {: word:^ wordu:n line:^ lineu:n :}
+: BODY-ONLY-EXPECT ( str str -- ) {: word:str line:str :}
    SB-RESET
-   s" error[E-UNDEFINED]: `" SB-APPEND  word wordu SB-APPEND
+   s" error[E-UNDEFINED]: `" SB-APPEND  word SB-APPEND
    s" ` works only inside a definition" SB-APPEND
    S\" \n --> " SB-APPEND  BODY$ SB-APPEND
-   S\" :1:1\n  |\n1 | " SB-APPEND  line lineu SB-APPEND
+   S\" :1:1\n  |\n1 | " SB-APPEND  line SB-APPEND
    S\" \n  | " SB-APPEND
-   wordu 0 ?do [char] ^ SB-APPEND-C loop
+   word STR:LEN 0 ?do [char] ^ SB-APPEND-C loop
    s"  outside a definition" SB-APPEND  10 SB-APPEND-C
-   s"   = help: move `" SB-APPEND  word wordu SB-APPEND
+   s"   = help: move `" SB-APPEND  word SB-APPEND
    S\" ` into a `:` … `;` body\n\n" SB-APPEND ;
 
 : TEST-BODY-ONLY ( -- )
@@ -1273,27 +1272,27 @@ undefine include
 
 \ The record of keyword KW named at column COL of the one line SRC.
 : KEYWORD-EXPECT ( str str n -- )
-   {: kw:^ kwu:n src:^ srcu:n col:n :}
+   {: kw:str src:str col:n :}
    SB-RESET
-   s" error[E-UNDEFINED]: `" SB-APPEND  kw kwu SB-APPEND
+   s" error[E-UNDEFINED]: `" SB-APPEND  kw SB-APPEND
    s" ` is a keyword, not a word" SB-APPEND
    S\" \n --> " SB-APPEND  BODY$ SB-APPEND  s" :1:" SB-APPEND  col FMT:SB-INT
-   S\" \n  |\n1 | " SB-APPEND  src srcu SB-APPEND  S\" \n  |" SB-APPEND
+   S\" \n  |\n1 | " SB-APPEND  src SB-APPEND  S\" \n  |" SB-APPEND
    col 0 ?do 32 SB-APPEND-C loop
-   kwu 0 ?do 94 SB-APPEND-C loop
+   kw STR:LEN 0 ?do 94 SB-APPEND-C loop
    S\"  not a word\n" SB-APPEND
    s"   = help: name a word defined with `:` … `;` that uses `" SB-APPEND
-   kw kwu SB-APPEND  S\" `\n\n" SB-APPEND ;
+   kw SB-APPEND  S\" `\n\n" SB-APPEND ;
 
 \ The load and tools/check.f give SRC, which names keyword KW at column COL
 \ where a word is needed, KEYWORD-EXPECT's record.
 : KEYWORD-REJECT ( str str n -- )
-   {: kw:^ kwu:n src:^ srcu:n col:n :}
-   BODY$ src srcu FS:WRITE-ALL
+   {: kw:str src:str col:n :}
+   BODY$ src FS:WRITE-ALL
    BODY$ RUN
-   kw kwu src srcu col KEYWORD-EXPECT  70 ASSERT-REJECTED
+   kw src col KEYWORD-EXPECT  70 ASSERT-REJECTED
    BODY$ CHECK-RUN
-   kw kwu src srcu col KEYWORD-EXPECT  70 ASSERT-REJECTED ;
+   kw src col KEYWORD-EXPECT  70 ASSERT-REJECTED ;
 
 : TEST-KEYWORD-OPERAND ( -- )
    s" a top-level tick of if is told it is not a word" T-LABEL
@@ -1358,9 +1357,9 @@ undefine include
 
 \ SRC as the body exits 67, its stderr opening with the line
 \ SB holds and then its help: the record has no place.
-: PATH-PASS-NOWHERE ( str -- ) {: src:^ srcu:n :}
+: PATH-PASS-NOWHERE ( str -- ) {: src:str :}
    S\" \n  = help: " SB-APPEND
-   BODY$ src srcu FS:WRITE-ALL
+   BODY$ src FS:WRITE-ALL
    BODY$ RUN
    ERR$ SB$ STR:STARTS-WITH? TTRUE
    OUT-U @ 0 T=
@@ -1378,15 +1377,15 @@ create LONG LONG-QS 64 + allot
 variable LONG-U
 
 : LONG+ ( str -- )
-   {: a:^ u:n :}
-   a LONG LONG-U @ + u BYTE-COPY  u LONG-U +! ;
+   {: s:str :}
+   s STR:DATA LONG LONG-U @ + s STR:LEN BYTE-COPY  s STR:LEN LONG-U +! ;
 
 \ A missing path of 4223 bytes, which CANONICAL normalizes past the cap.
 : LONG$ ( -- str )
    0 LONG-U !  S\" s\" /x/" LONG+
    LONG-QS 0 ?do [char] q LONG LONG-U @ + c!  1 LONG-U +! loop
    S\" \" SOURCE-ROOT:CANONICAL drop drop" LONG+
-   LONG LONG-U @ ;
+   LONG LONG-U @ >str ;
 
 : TEST-PATH-PASS ( -- )
    s" CANON-OS's uncaught throw on an empty path prints its record" T-LABEL

@@ -1,4 +1,3 @@
-split-str
 \ postpone-define.f - a definer builds a definition with define-word,
 \ literal, compile, and postpone, and each postponed or compiled word binds
 \ the word the definer found when it was compiled, whatever the building
@@ -143,7 +142,7 @@ s" DUP-B" POSTPONE-DEFINER:MAKE-DUP
       some OF c@ ENDOF
    ;MATCH ;
 : DUPS ( -- n )
-   s" Q" drop NULLABLE:SOME DUP-A DUP-B
+   s" Q" STR:DATA NULLABLE:SOME DUP-A DUP-B
    NUL-BYTE swap NUL-BYTE + swap NUL-BYTE + ;
 DUPS 243 T=
 
@@ -151,12 +150,12 @@ DUPS 243 T=
 : FAMILIES ( -- ) 24 0 ?do POSTPONE-DEFINER:NULLABLE-T drop loop ;
 FAMILIES
 s" DUP-C" POSTPONE-DEFINER:MAKE-DUP
-: DUPS-C ( -- n ) s" Q" drop NULLABLE:SOME DUP-C NUL-BYTE swap NUL-BYTE + ;
+: DUPS-C ( -- n ) s" Q" STR:DATA NULLABLE:SOME DUP-C NUL-BYTE swap NUL-BYTE + ;
 DUPS-C 162 T=
 
 \ Each rejection's code and place: a name no source holds is placed at the
 \ word the file ran and named in the `word` note.
-: HAS ( ^u8 n -- ) {: a:^ u:n :}   REJECTION:BUFFER$ a u STR:CONTAINS? TTRUE ;
+: HAS ( str -- ) {: s:str :}   REJECTION:BUFFER$ s STR:CONTAINS? TTRUE ;
 
 : NOT-EFFECT ( -- n ) [: s" NOT-BUILT" EFFECT:N define-word ;] catch ;
 REJECTION:CAPTURE
@@ -165,8 +164,8 @@ s" error[E-NOT-EFFECT]" HAS  REJECTION:BUFFER$ s" postpone-define.f" 1 s" NOT-EF
 s" = word: NOT-BUILT" HAS  REJECTION:BUFFER-OFF
 
 \ 23 type parameters fit an effect, a 24th is E-NOT-EFFECT.
-: WIDE ( ^u8 n n -- n ) {: a:^ u:n k:n :}
-   [: a u k POSTPONE-DEFINER:MAKE-WIDE ;] catch ;
+: WIDE ( str n -- n ) {: s:str k:n :}
+   [: s k POSTPONE-DEFINER:MAKE-WIDE ;] catch ;
 s" WIDE-23" 23 WIDE 0 T=
 REJECTION:CAPTURE
 s" WIDE-24" 24 WIDE 70 T=

@@ -1,4 +1,3 @@
-split-str
 \ process-pty-io-smoke.f - the checked PTY process supervisor
 \ (src/lib/process-pty-io.f) through its public PROCESS-PTY:* lifecycle.
 
@@ -181,7 +180,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
    quiet 0 T=
    elapsed 90000000 >= TTRUE
    elapsed 1000000000 < TTRUE
-   SIGNAL-BYTES got s" habu-pty-eintr" T$= ;
+   SIGNAL-BYTES got >str s" habu-pty-eintr" T$= ;
 
 : SIGNAL-OUTPUT ( -- )
    PROC-ARGV-RESET
@@ -211,7 +210,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
 : NO-LEAK-BODY ( process-pty-handle -- process-pty-handle )
    FDS-SEEN OPEN-FDS {: n:n :}
    s" a spawn beside a gated target inherits none of its descriptors" T-LABEL
-   FDS-SEEN n FDS-BASE FDS-BASE-U @ T$= ;
+   FDS-SEEN n >str FDS-BASE FDS-BASE-U @ >str T$= ;
 
 : NO-LEAK ( -- )
    FDS-BASE OPEN-FDS FDS-BASE-U !

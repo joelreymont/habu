@@ -1,4 +1,3 @@
-split-str
 \ prim-row-test.f - verify-source reads a row's header and body by the row rule.
 \ A row opens only in a file the engine provides, so each case scans its bytes
 \ as the bytes of src/habu/prims.f; its records name <input>.
@@ -30,11 +29,11 @@ private
    s" EPRIM: FOO PE-N"
       s" src/habu/prims.f" s" <input>" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
-\ The action stops with a record that opens with h hu.
-: REJECTED ( [ -- ] ^u8 n -- ) {: q h:^ hu:n :}
+\ The action stops with a record that opens with h.
+: REJECTED ( [ -- ] str -- ) {: q h:str :}
    REJECTION:CAPTURE  q catch  REJECTION:BUFFER-OFF
    70 T=
-   REJECTION:BUFFER$ h hu STR:STARTS-WITH? TTRUE ;
+   REJECTION:BUFFER$ h STR:STARTS-WITH? TTRUE ;
 
 : ROW-CASE ( -- )
    s" a REF operand is one raw token, a string opener or a closer included"

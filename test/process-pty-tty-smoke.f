@@ -1,4 +1,3 @@
-split-str
 \ process-pty-tty-smoke.f - the supervisor's pseudo-terminal mode and its public
 \ write/await surface, driven through PROCESS-PTY:WRITE-LINE / AWAIT-BYTES from
 \ outside the package.
@@ -38,19 +37,19 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ handle stays on top of the stack, which is why this step is here and not in
 \ the module.
 : READ-STEP ( process-pty-handle -- process-pty-handle n )
-   ROOM$ STEP-MS PROCESS-PTY:AWAIT-BYTES {: n:n :}
+   ROOM$ str> STEP-MS PROCESS-PTY:AWAIT-BYTES {: n:n :}
    n 0 > if n TOOK then
    n ;
 
 \ What the target said so far: the end of every failed wait's diagnostic, which
 \ goes to stdout and leaves stderr to the engine.
 : READ-SO-FAR ( -- )
-   BUF$ {: ra:^ ru:n :}
-   s" read so far (" type ru FMT:.INT s"  bytes):" type cr ra ru type cr ;
+   BUF$ {: r:str :}
+   s" read so far (" type r STR:LEN FMT:.INT s"  bytes):" type cr r type cr ;
 
-: WAIT-SHOW ( str str -- ) {: ha:^ hu:n ta:^ tu:n :}
-   s" expected: " type ta tu type
-   hu 0 > if s"  after " type ha hu type then
+: WAIT-SHOW ( str str -- ) {: hs:str ts:str :}
+   s" expected: " type ts type
+   hs STR:LEN 0 > if s"  after " type hs type then
    cr ;
 
 \ Read until the tail appears at or after the head or the target hangs up; an
@@ -60,11 +59,11 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ count of reads or quiet polls bounds the wait. The hang-up answers whether the
 \ tail came before it.
 : EXPECT-AFTER ( process-pty-handle str str -- process-pty-handle bool )
-   {: ha:^ hu:n ta:^ tu:n :}
+   {: hs:str ts:str :}
    begin
-      ha hu ta tu AFTER? if true exit then
+      hs ts AFTER? if true exit then
       READ-STEP {: n:n :}
-      n 0 < if ha hu ta tu AFTER? exit then
+      n 0 < if hs ts AFTER? exit then
    again ;
 
 \ After the target exited, read everything it left behind until the hang-up.
@@ -80,16 +79,16 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ A wait the target hung up on fails its case with what it waited for and what
 \ the target said.
 : EXPECT-AFTER! ( process-pty-handle str str -- process-pty-handle )
-   {: ha:^ hu:n ta:^ tu:n :}
-   ha hu ta tu EXPECT-AFTER 0= if ha hu ta tu WAIT-SHOW READ-SO-FAR false TTRUE then ;
+   {: hs:str ts:str :}
+   hs ts EXPECT-AFTER 0= if hs ts WAIT-SHOW READ-SO-FAR false TTRUE then ;
 
-: EXPECT! ( process-pty-handle str -- process-pty-handle ) {: ta:^ tu:n :}
-   ANYWHERE$ ta tu EXPECT-AFTER! ;
+: EXPECT! ( process-pty-handle str -- process-pty-handle ) {: ts:str :}
+   ANYWHERE$ ts EXPECT-AFTER! ;
 
 \ The editor redraws the prompt on every keystroke, so the typed line's echo
 \ carries prompts: only a prompt after the answer proves the REPL came back.
-: PROMPT-AFTER! ( process-pty-handle str -- process-pty-handle ) {: na:^ nu:n :}
-   na nu PROMPT$ EXPECT-AFTER! ;
+: PROMPT-AFTER! ( process-pty-handle str -- process-pty-handle ) {: ns:str :}
+   ns PROMPT$ EXPECT-AFTER! ;
 
 \ The barrier before a line is typed: wait for the prompt that follows the
 \ previous exchange's last answer, then DROP everything read. After it the child
@@ -98,7 +97,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ in " ok" and a prompt, and the echo of a line carries prompts of its own. A
 \ fresh child has echoed nothing, so its first prompt is its own and the head
 \ is ANYWHERE$ (test/repl-address-cell-rollback.f PROMPT waits the same way).
-: SETTLE ( process-pty-handle ^u8 n -- process-pty-handle )
+: SETTLE ( process-pty-handle str -- process-pty-handle )
    PROMPT-AFTER! BUF-CLEAR ;
 
 \ One line typed at the target. Not SEND: that is the module's own master, and
@@ -181,7 +180,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    at 7 + {: from:n :}
    from S\" \r" FIND-FROM {: end:n :}
    end 0 < if -1 exit then
-   BUF$ drop from + end from - STR:>NUMBER? MATCH option
+   BUF$ STR:DATA from + end from - >str STR:>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;

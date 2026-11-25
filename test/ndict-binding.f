@@ -1,4 +1,3 @@
-split-str
 \ Indexed compiler lookup follows live scope and definition changes.
 require src/lib/test.f
 require src/habu/fnv.f
@@ -29,9 +28,9 @@ private
 : REPLAY-RA ( -- ) [: s" : NDB-RA ( -- n ) 5 ;" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;
 public
 
-: REPLAY ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word REPLAY-RA ;
+: REPLAY ( str -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word REPLAY-RA ;
 
-: REPLAY-DOES ( ^u8 n -- )
+: REPLAY-DOES ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN define-word
    s" create , does> ( -- n )" evaluate-closed REPLAY-RA ;
 
@@ -42,42 +41,42 @@ using NDICT
 
 \ Test-only record identity and retired-wordlist inspection.
 \ No raw record is exported.
-: RECORD ( ^u8 n n -- ^n ) CHECKER-RESOLVE:WL-PROBE ;
+: RECORD ( str n -- ^n ) CHECKER-RESOLVE:WL-PROBE ;
 CAST: REF-WORD ( n -- [ -- n ] )
 : REF-VALUE ( n n -- n ) DEF-OCC:CALLABLE REF-WORD execute ;
 variable ROLL-SLOT
 variable ROLL-OCC
 
 
-: EV ( ^u8 n -- ) evaluate-closed ;
+: EV ( str -- ) evaluate-closed ;
 
 
 : OPEN-SCOPE ( -- )
-   S\" package NDB-LEFT using NDICT s\q SHARED\q FIXED-VALUE 10 T= ;using ;package" EV
-   S\" package NDB-LEFT using NDB-RIGHT using NDICT s\q SHARED\q FIXED-VALUE 10 T= ;using ;using ;package" EV
-   s" NDB-LEFT:SHARED" FIXED-VALUE 20 T=
-   s" NDB-LEFT:HIDDEN" SPELL-START 0 T=
-   s" HIDDEN" SPELL-START 0 T=
-   s" NDB-LEFT:SHARED:BAD" SPELL-START 0 T=
-   s" NDB-NO-PACKAGE:SHARED" SPELL-START 0 T= ;
+   S\" package NDB-LEFT using NDICT s\q SHARED\q str> FIXED-VALUE 10 T= ;using ;package" EV
+   S\" package NDB-LEFT using NDB-RIGHT using NDICT s\q SHARED\q str> FIXED-VALUE 10 T= ;using ;using ;package" EV
+   s" NDB-LEFT:SHARED" str> FIXED-VALUE 20 T=
+   s" NDB-LEFT:HIDDEN" str> SPELL-START 0 T=
+   s" HIDDEN" str> SPELL-START 0 T=
+   s" NDB-LEFT:SHARED:BAD" str> SPELL-START 0 T=
+   s" NDB-NO-PACKAGE:SHARED" str> SPELL-START 0 T= ;
 
 
 : AMBIGUOUS ( -- )
-   S\" using NDB-LEFT using NDB-RIGHT using NDICT s\q AMBIG\q SPELL-START drop" EV ;
+   S\" using NDB-LEFT using NDB-RIGHT using NDICT s\q AMBIG\q str> SPELL-START drop" EV ;
 
 
 : USED-SCOPE ( -- )
-   S\" using NDB-LEFT using NDB-LEFT using NDICT s\q SOLO\q FIXED-VALUE 29 T= ;using ;using ;using" EV
-   S\" using NDB-LEFT using NDICT s\q NDB-GLOBAL\q FIXED-VALUE 17 T= ;using ;using" EV
+   S\" using NDB-LEFT using NDB-LEFT using NDICT s\q SOLO\q str> FIXED-VALUE 29 T= ;using ;using ;using" EV
+   S\" using NDB-LEFT using NDICT s\q NDB-GLOBAL\q str> FIXED-VALUE 17 T= ;using ;using" EV
    ['] AMBIGUOUS E-USING-AMBIGUOUS TTHROWS
-   s" SOLO" SPELL-START 0 T=
+   s" SOLO" str> SPELL-START 0 T=
    s" using NDB-LEFT : NDB-USED ( -- n ) SOLO ; ;using NDB-USED 29 T=" EV ;
 
 
 : HASH-SLOT ( str n -- n )
-   {: name:^ size:n wid:n :}
+   {: name:str wid:n :}
    FNV:BASIS
-   size 0 ?do name i + c@ STR:ASCII-LOWER FNV:STEP loop
+   name STR:LEN 0 ?do name STR:DATA i + c@ STR:ASCII-LOWER FNV:STEP loop
    wid xor HIDX-MIX *  64 HIDX-BITS - rshift ;
 
 
@@ -88,22 +87,22 @@ create TEXT-BUF TEXT-CAP allot
 variable TEXT-U
 
 
-: TEXT$ ( -- ^u8 n ) TEXT-BUF TEXT-U @ ;
+: TEXT$ ( -- str ) TEXT-BUF TEXT-U @ >str ;
 
 
-: TEXT+ ( ^u8 n -- )
-   {: src:^ u:n :}
-   src TEXT-BUF TEXT-U @ + u BYTE-COPY
-   TEXT-U @ u + TEXT-U ! ;
+: TEXT+ ( str -- )
+   {: src:str :}
+   src STR:DATA TEXT-BUF TEXT-U @ + src STR:LEN BYTE-COPY
+   TEXT-U @ src STR:LEN + TEXT-U ! ;
 
 
 : NUM+ ( n -- ) FMT:INT$ TEXT+ ;
 
 
 \ TEXT holds the prefix then k's digits.
-: SPELL ( ^u8 n n -- )
-   {: p:^ u:n k:n :}
-   0 TEXT-U !  p u TEXT+  k NUM+ ;
+: SPELL ( str n -- )
+   {: p:str k:n :}
+   0 TEXT-U !  p TEXT+  k NUM+ ;
 
 
 : SLOT-OF ( n -- n )
@@ -137,11 +136,11 @@ variable TEXT-U
 : CHECK-PAIR ( n n -- )
    {: a:n b:n :}
    a b DEFINE-PAIR
-   s" NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ FIXED-VALUE 41 T=
-   s" ndb-left:ndb-collide-" b SPELL TEXT$ FIXED-VALUE 42 T=
+   s" NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ str> FIXED-VALUE 41 T=
+   s" ndb-left:ndb-collide-" b SPELL TEXT$ str> FIXED-VALUE 42 T=
    s" undefine NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ EV
-   s" NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ SPELL-START 0 T=
-   s" NDB-LEFT:NDB-COLLIDE-" b SPELL TEXT$ FIXED-VALUE 42 T= ;
+   s" NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ str> SPELL-START 0 T=
+   s" NDB-LEFT:NDB-COLLIDE-" b SPELL TEXT$ str> FIXED-VALUE 42 T= ;
 
 
 : COLLISIONS ( -- )
@@ -163,16 +162,16 @@ variable TEXT-U
    new-slot new-occ REF-VALUE 32 T=
    old-occ new-occ T<>
    s" : NDB-AFTER ( -- n ) NDB-REBIND ; NDB-BEFORE 31 T= NDB-AFTER 32 T=" EV
-   s" NDB-REBIND" FIXED-VALUE 32 T= ;
+   s" NDB-REBIND" str> FIXED-VALUE 32 T= ;
 
 
 : RETIRED-LATEST ( -- )
    s" 11 constant NDB-RETIRED" EV
-   s" NDB-RETIRED" SPELL-START {: first:n :}
+   s" NDB-RETIRED" str> SPELL-START {: first:n :}
    s" undefine NDB-RETIRED 22 constant NDB-RETIRED" EV
-   s" NDB-RETIRED" SPELL-START {: latest:n :}
+   s" NDB-RETIRED" str> SPELL-START {: latest:n :}
    s" undefine NDB-RETIRED" EV
-   s" NDB-RETIRED" SPELL-START 0 T=
+   s" NDB-RETIRED" str> SPELL-START 0 T=
    s" NDB-RETIRED" XREF-RETIRED-WL RECORD XREF-START latest T=
    latest first T<>
    s" NDB-RETIRED" XREF-RETIRED-WL RECORD
@@ -186,7 +185,7 @@ public
 private
 
 : FAIL-EVALUATION ( -- )
-   S\" : NDB-ROLLBACK ( -- n ) 71 ; using NDICT s\q NDB-ROLLBACK\q SPELL-START 0<> TTRUE ;using NDICT-BINDING-TEST:CAPTURE-ROLLBACK 73 throw" EV ;
+   S\" : NDB-ROLLBACK ( -- n ) 71 ; using NDICT s\q NDB-ROLLBACK\q str> SPELL-START 0<> TTRUE ;using NDICT-BINDING-TEST:CAPTURE-ROLLBACK 73 throw" EV ;
 
 
 : ROLLBACK-KEPT ( -- )
@@ -195,10 +194,10 @@ private
    ['] FAIL-EVALUATION 73 TTHROWS
    ndict@ before 1+ T=
    ROLL-SLOT @ before T=
-   s" NDB-ROLLBACK" SPELL-START 0 T=
+   s" NDB-ROLLBACK" str> SPELL-START 0 T=
    s" 74 constant NDB-AFTER-ROLLBACK" EV
    s" NDB-AFTER-ROLLBACK" 0 RECORD before 1+ XREF-REC = TTRUE
-   s" NDB-AFTER-ROLLBACK" FIXED-VALUE 74 T=
+   s" NDB-AFTER-ROLLBACK" str> FIXED-VALUE 74 T=
    \ The occurrence the failed text selected still reaches its word.
    ROLL-SLOT @ ROLL-OCC @ REF-VALUE 71 T= ;
 

@@ -1,4 +1,3 @@
-split-str
 \ Explicit representation views preserve addresses and define access width.
 require src/lib/test.f
 require src/lib/memory.f
@@ -12,8 +11,8 @@ CAST: >ITEM ( n -- item )
 CAST: ITEM>N ( item -- n )
 1 LAYOUT-BUFFER ITEMS item
 
-: REJECT ( ^u8 n -- )
-   2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T= ;
+: REJECT ( str -- )
+   dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : MAPPED-CELL ( -- )
    1 cells MEM-ALLOC-BYTES {: buf len:n :}

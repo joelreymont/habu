@@ -366,9 +366,9 @@ variable BIG-U
    s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:9:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" = evaluated: : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
-   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" HABU-DIAGNOSTIC
+   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:24:18" HABU-DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
-   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" DIAGNOSTIC
+   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:24:18" DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-one-cell.f" s" program-diagnostic-one-cell.f:20:25" DIAGNOSTIC
    s" error[E-MISMATCH]: `t` in `AP`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS

@@ -1,4 +1,3 @@
-split-str
 \ `.` and `u.` over MIN-N ($8000000000000000), whose negation is itself. The
 \ engine's signed printer (src/habu/rt.f G-PRINT9) negates and then divides
 \ unsigned, which reads the negated pattern as its magnitude; a signed divide
@@ -37,8 +36,8 @@ variable SINK-DEV
    c SINK SINK-N @ + c!
    SINK-N @ 1+ SINK-N ! ;
 
-: SINK-WRITE ( str -- ) {: a:^ u:n :}
-   u 0 ?do a i + c@ SINK-PUT loop ;
+: SINK-WRITE ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ SINK-PUT loop ;
 
 : SINK-KEY ( -- n )
    GENIO:E-IO throw ;
@@ -64,9 +63,9 @@ variable SINK-DEV
 
 \ Both printers end their text with a newline, so the case compares what came
 \ before it and asserts the newline separately.
-: BODY$ ( -- ^u8 n )
-   SINK-N @ 0= if SINK 0 exit then
-   SINK SINK-N @ 1- ;
+: BODY$ ( -- str )
+   SINK-N @ 0= if SINK 0 >str exit then
+   SINK SINK-N @ 1- >str ;
 
 : TERMINATOR ( -- n )
    SINK-N @ 0= if 0 exit then
@@ -84,20 +83,20 @@ variable SINK-DEV
    v u.
    GENIO:TERMINAL GENIO:OUTPUT! ;
 
-: CHECKED ( ^u8 n -- ) {: wa:^ wu:n :}
-   BODY$ wa wu T$=
+: CHECKED ( str -- ) {: ws:str :}
+   BODY$ ws T$=
    TERMINATOR LF T=
    SINK-OVER @ 0 T= ;
 
-: T-DOT ( n str -- ) {: v:n wa:^ wu:n :}
-   wa wu T-LABEL
+: T-DOT ( n str -- ) {: v:n ws:str :}
+   ws T-LABEL
    v DOT-CAPTURED
-   wa wu CHECKED ;
+   ws CHECKED ;
 
-: T-U. ( n str -- ) {: v:n wa:^ wu:n :}
-   wa wu T-LABEL
+: T-U. ( n str -- ) {: v:n ws:str :}
+   ws T-LABEL
    v U-CAPTURED
-   wa wu CHECKED ;
+   ws CHECKED ;
 
 public
 

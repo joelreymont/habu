@@ -1,4 +1,3 @@
-split-str
 \ Loads test/loop-obligations-subject.f on the engine under test at its default
 \ tier, through the normal load path.
 require src/lib/test.f
@@ -23,12 +22,12 @@ create ERR IO-CAP allot
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
-   s" test/loop-obligations-subject.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
-   OUT outu LEN>N S\" loop-runtime: ok\n" STR:= 0= rc 0 <> or if
-      ERR erru LEN>N type cr
+   s" test/loop-obligations-subject.f" OUT outu LEN>N >str ERR erru LEN>N >str rc SUBJECT:RC-TIMED-OUT
+   OUT outu LEN>N >str S\" loop-runtime: ok\n" STR:= 0= rc 0 <> or if
+      ERR erru LEN>N >str type cr
    then
    rc 0 T=
-   OUT outu LEN>N S\" loop-runtime: ok\n" T$=
+   OUT outu LEN>N >str S\" loop-runtime: ok\n" T$=
    \ The subject asserts each exact catch code; the load path must also diagnose.
    erru LEN>N 0 > TTRUE ;
 

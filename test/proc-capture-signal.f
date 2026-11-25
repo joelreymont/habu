@@ -1,4 +1,3 @@
-split-str
 \ proc-capture-signal.f - a child capture survives a signal storm. poll(2) is
 \ the one blocking syscall SA_RESTART never restarts, so each tick of the 1 kHz
 \ profiler's SIGALRM (prof-on, ITIMER_REAL) returns EINTR, which process.f must
@@ -48,8 +47,8 @@ create PCS-ERR PCS-ERR-CAP allot
    prof-off
    code 0 T=
    errn 0 T=
-   outn PCS-MARK nip T=
-   PCS-OUT outn PCS-MARK T$=
+   outn PCS-MARK STR:LEN T=
+   PCS-OUT outn >str PCS-MARK T$=
    elapsed PCS-MIN-NS >= TTRUE ;
 
 100 constant PCS-HOLD-MS             \ the held child's window

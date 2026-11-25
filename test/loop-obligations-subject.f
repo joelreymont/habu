@@ -1,4 +1,3 @@
-split-str
 \ Loop exits: unloop and exit forms run to their values, and the checker refuses
 \ each unbalanced form. test/loop-obligations.f loads it and reads its output.
 
@@ -23,10 +22,10 @@ PTR-VARIABLE SOURCE-A
 variable SOURCE-U
 
 : LOAD-SOURCE ( -- )
-   SOURCE-A @ SOURCE-U @ evaluate-closed ;
+   SOURCE-A @ SOURCE-U @ >str evaluate-closed ;
 
-: REJECT ( ^u8 n -- )
-   SOURCE-U ! SOURCE-A !
+: REJECT ( str -- ) {: s:str :}
+   s STR:DATA SOURCE-A !  s STR:LEN SOURCE-U !
    [: LOAD-SOURCE ;] catch 70 EQ! ;
 
 : DIRECT ( -- )

@@ -1,4 +1,3 @@
-split-str
 \ Existing nominal pointers instantiate checked generic inputs without minting identities.
 require src/lib/test.f
 
@@ -27,8 +26,8 @@ create RAW-CELL 1 cells allot
 : VIEWED-BYTE ( ^identity -- u8 ) BYTE-VIEW c@ ;
 : STRUCT-BYTE ( ^identity -- u8 ) 0 STRUCT-BYTE+ c@ ;
 
-: REJECT ( ^u8 n -- )
-   2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T= ;
+: REJECT ( str -- )
+   dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : RUN ( -- )
    T-RESET

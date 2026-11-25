@@ -1,4 +1,3 @@
-split-str
 \ process-env-big-child.f - child for the large-inherited-environment test.
 \ The parent sets HABU_BIG_001..HABU_BIG_600. This prints "big-env-child <own>
 \ <seen>": the prefixed entries in its own envp, and those reported by
@@ -29,21 +28,21 @@ variable BIG-I
 
 : BIG-OWN ( -- n )
    0 0 begin over ENVP 0= 0= while
-      over ENVP dup ZLEN BIG-NAME$ STR:STARTS-WITH? if 1 + then
+      over ENVP dup ZLEN >str BIG-NAME$ STR:STARTS-WITH? if 1 + then
       swap 1 + swap
    repeat nip ;
 
 \ A prefixed entry starts a capture line only at a line boundary, so a value
 \ that happens to contain the prefix is not counted.
-: BIG-LINE-AT? ( str n -- bool ) {: a:^ u:n i:n :}
-   i 0 > if a i 1 - + c@ $0A = 0= if 0 0= 0= exit then then
-   a i + u i - BIG-NAME$ STR:STARTS-WITH? ;
+: BIG-LINE-AT? ( str n -- bool ) {: s:str i:n :}
+   i 0 > if s STR:DATA i 1 - + c@ $0A = 0= if 0 0= 0= exit then then
+   s STR:DATA i + s STR:LEN i - >str BIG-NAME$ STR:STARTS-WITH? ;
 
-: BIG-SEEN ( str -- n ) {: a:^ u:n :}
+: BIG-SEEN ( str -- n ) {: s:str :}
    0
    0 BIG-I !
-   begin BIG-I @ u < while
-      a u BIG-I @ BIG-LINE-AT? if 1 + then
+   begin BIG-I @ s STR:LEN < while
+      s BIG-I @ BIG-LINE-AT? if 1 + then
       BIG-I @ 1 + BIG-I !
    repeat ;
 
@@ -54,7 +53,7 @@ variable BIG-I
    PROC-ENV-INHERIT-MISSING
    s" /usr/bin/env" BIG-OUT BIG-CAP >LEN BIG-ERR BIG-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} BIG-OUT o LEN>N BIG-SEEN ENDOF
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} BIG-OUT o LEN>N >str BIG-SEEN ENDOF
      err OF PCAP-FAILED:UNMAKE 2drop drop 0 ENDOF
    ;MATCH ;
 

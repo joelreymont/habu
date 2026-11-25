@@ -1,4 +1,3 @@
-split-str
 \ postpone-effect.f - an effect a definer builds renders as the signature its
 \ built word records, naming a private family by its package. A multi-error
 \ load that refuses a built body keeps its effect, which names the definer's
@@ -23,7 +22,7 @@ private
 
 \ : NAME ( -- n ) PK-ONE ; over effect E.
 : MAKE-ONE ( EFFECT:type str -- )
-   rot define-word  postpone PK-ONE  postpone ; ;
+   swap define-word  postpone PK-ONE  postpone ; ;
 
 EFFECT:EMPTY EFFECT:N EFFECT:OUT
 require test/fixtures/postpone-types.f
@@ -59,7 +58,7 @@ public
 : PD-CELL ( -- ^pdcell ) 0 PD-CELLS ;
 
 \ : NAME ( ^pdcell -- ^pdcell ) drop drop ;, an underflow.
-: MAKE-CELL-BROKEN ( ^u8 n -- )
+: MAKE-CELL-BROKEN ( str -- )
    CELL-EFFECT define-word
    postpone drop  postpone drop
    postpone ; ;
@@ -79,12 +78,12 @@ STRUCTURE peslot FIELD a n ;STRUCTURE
 
 \ : PE-SLOT-W ( ^peslot n -- ^peslot ) drop ; over SLOT-EFFECT.
 : MAKE-SLOT ( -- )
-   SLOT-EFFECT s" PE-SLOT-W" rot define-word  postpone drop  postpone ; ;
+   SLOT-EFFECT s" PE-SLOT-W" swap define-word  postpone drop  postpone ; ;
 
 \ : PE-XT-W ( xt -- xt ) ; over an `xt` in and out.
 : MAKE-XT ( -- )
    s" xt" EFFECT:READ-TYPE {: x :}
-   EFFECT:EMPTY x EFFECT:IN  x EFFECT:OUT  s" PE-XT-W" rot define-word
+   EFFECT:EMPTY x EFFECT:IN  x EFFECT:OUT  s" PE-XT-W" swap define-word
    postpone ; ;
 
 public
@@ -101,11 +100,11 @@ s" PE-XT-B ( n -- n ) PE-XT-W" CHECK-QUIET-CANDIDATE! 0 T=
 
 TYPED-VARIABLE EVAL-A ^u8
 variable EVAL-U
-: EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ evaluate-closed ;
+: EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ >str evaluate-closed ;
 \ The refusals counted and the throw code when the text is evaluated under the
 \ multi-error load state.
-: MULTI ( str -- n n )
-   EVAL-U ! EVAL-A !  CHECK:MULTI-ERR-BEGIN [: EVAL-RUN ;] catch CHECK:MULTI-ERR-END ;
+: MULTI ( str -- n n ) {: s:str :}
+   s STR:DATA EVAL-A !  s STR:LEN EVAL-U !  CHECK:MULTI-ERR-BEGIN [: EVAL-RUN ;] catch CHECK:MULTI-ERR-END ;
 
 \ The refused built word keeps its effect: its caller certifies, one refusal.
 S\" s\" CELL-BROKEN\" POSTPONE-CELL:MAKE-CELL-BROKEN\n: CELL-USE ( -- ) POSTPONE-CELL:PD-CELL CELL-BROKEN drop ;"
@@ -138,9 +137,9 @@ s" PE-N" s" n" EFFECT:NAMED MAKE-ID
 
 7 PE-U32 7 T=
 s" : PE-U32-NARROW ( u32 -- u8 ) PE-U32 ;" TEST-EVAL:RC 70 T=
-s" ab" drop PE-BYTES c@ 97 T=
+s" ab" STR:DATA PE-BYTES c@ 97 T=
 s" 0 PE-SLOTS PE-BYTES drop" TEST-EVAL:RC 70 T=
-s" Q" drop NULLABLE:SOME PE-NUL PE-NUL-BYTE 81 T=
+s" Q" STR:DATA NULLABLE:SOME PE-NUL PE-NUL-BYTE 81 T=
 s" PE-FLAG NULLABLE:SOME PE-NUL drop" TEST-EVAL:RC 70 T=
 0 PE-SLOTS PE-SLOT  0 PE-SLOTS =  TTRUE
 s" POSTPONE-CELL:PD-CELL PE-SLOT drop" TEST-EVAL:RC 70 T=
@@ -167,8 +166,8 @@ DECL-DIAG:OFF
 
 package POSTPONE-STORE
 private
-: REJECTED ( ^u8 n -- n ) {: a:^ u:n :}
-   DECL-DIAG:JSON  [: a u evaluate-closed ;] catch ;
+: REJECTED ( str -- n ) {: s:str :}
+   DECL-DIAG:JSON  [: s evaluate-closed ;] catch ;
 : REASON ( -- )
    s" a definer's type ends with the load that built it: build it where it is used"
    DECL-DIAG:HAS? TTRUE ;

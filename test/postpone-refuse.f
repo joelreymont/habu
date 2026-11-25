@@ -1,4 +1,3 @@
-split-str
 \ postpone-refuse.f - a definition a definer builds is refused for compile, of
 \ a quotation literal and for a postponed word since undefined, and the next
 \ definition compiles; a definer is refused for postponing a word its tick is
@@ -32,7 +31,7 @@ undefine ONE
 : ONE ( -- n ) 2 ;
 
 : TRUSTED-POSTPONE ( -- n )
-   [: s\" : MAKE-TRUSTED ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word postpone reloc-maps-clear postpone ; ;"
+   [: s\" : MAKE-TRUSTED ( str -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word postpone reloc-maps-clear postpone ; ;"
       evaluate-closed ;] catch ;
 TRUSTED-POSTPONE 70 T=
 
@@ -92,12 +91,12 @@ create RAW-ERR RAW-CAP allot
 public
 \ Abandoning a definition that awaits `[char]`'s operand skips no later line.
 : RAW-CHILD ( -- )
-   s\" : MAKE-RAW ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word  s\" [char]\" evaluate-closed  99 throw ;\n: RUN-RAW ( -- n ) [: s\" PR-RAW\" MAKE-RAW ;] catch ;\nRUN-RAW .  s\" raw: end\" type"
-   {: src:^ srcu:n :}
-   src srcu RAW-OUT RAW-CAP >LEN RAW-ERR RAW-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+   s\" : MAKE-RAW ( str -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word  s\" [char]\" evaluate-closed  99 throw ;\n: RUN-RAW ( -- n ) [: s\" PR-RAW\" MAKE-RAW ;] catch ;\nRUN-RAW .  s\" raw: end\" type"
+   {: src:str :}
+   src RAW-OUT RAW-CAP >LEN RAW-ERR RAW-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
-   RAW-OUT outu LEN>N s\" 99\nraw: end" T$=
-   src srcu RAW-OUT outu LEN>N RAW-ERR erru LEN>N oc 0 T-ENDING-EXITED= ;
+   RAW-OUT outu LEN>N >str s\" 99\nraw: end" T$=
+   src RAW-OUT outu LEN>N >str RAW-ERR erru LEN>N >str oc 0 T-ENDING-EXITED= ;
 ;package
 
 \ A skipped line fails nothing in its own process, so the case runs in a child.

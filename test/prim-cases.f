@@ -1,4 +1,3 @@
-split-str
 \ prim-cases.f — the integer primitive case sets, as data.
 \
 \ One set per row of src/habu/prims.f, in table order: each line is a row's

@@ -1,4 +1,3 @@
-split-str
 \ local-spelling-suite.f - a local answers to its DECLARED SPELLING, and a word
 \ written in its own case is that word.
 \ The checker (src/core/checker.f LOC-REF?) and tier 0 (src/habu/t0.f DO-LOCAL)
@@ -27,28 +26,28 @@ variable OUT-N
    OUT-N @ 1 + OUT-N ! ;
 
 \ A JSON key emitter, reduced: it writes the key bytes and the colon.
-: KEY ( ^u8 n -- ) {: a:^ u:n :}
-   u 0 ?do a i + c@ PUTC loop
+: KEY ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ PUTC loop
    58 PUTC ;
 
 public
 
 \ A field writer with its local spelled `key`:
-\ `key keyu KEY` is the local, the local, and then the WORD.
-: FIELD-S ( str str -- ) {: key:^ keyu:n v:^ vu:n :}
+\ `key KEY` is the local and then the WORD.
+: FIELD-S ( str str -- ) {: key:str v:str :}
    0 OUT-N !
-   key keyu KEY
-   vu 0 ?do v i + c@ PUTC loop ;
+   key KEY
+   v STR:LEN 0 ?do v STR:DATA i + c@ PUTC loop ;
 
-: OUT$ ( -- ^u8 n )
-   OUT OUT-N @ ;
+: OUT$ ( -- str )
+   OUT OUT-N @ >str ;
 
 \ The buffer incident: `text` is the source span, `TEXT` the buffer it fills.
-: PUT ( ^u8 n -- ) {: text:^ size:n :}
-   size 0 ?do  text i + c@  TEXT i + c!  loop ;
+: PUT ( str -- ) {: text:str :}
+   text STR:LEN 0 ?do  text STR:DATA i + c@  TEXT i + c!  loop ;
 
-: TEXT$ ( n -- ^u8 n ) {: u:n :}
-   TEXT u ;
+: TEXT$ ( n -- str ) {: u:n :}
+   TEXT u >str ;
 
 \ The variable incident: `rev` is the addend, `REV` the variable.
 : REV! ( n -- )
@@ -93,7 +92,7 @@ public
 \ Neither the comment below nor the string body holds a token, and TEXTURE is one
 \ name, not TEXT and URE: only the bare `text` here is the local.
 : SPELLED ( n -- n ) {: text:n :}
-   s" TEXT is a word and text is a local" 2drop   \ TEXT, text ( TEXT text )
+   s" TEXT is a word and text is a local" drop   \ TEXT, text ( TEXT text )
    text TEXTURE ;
 
 ;package
@@ -112,17 +111,17 @@ create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
 
-: RUN ( ^u8 n -- n ) {: src:^ u:n :}   \ source -> child exit status (-1 = signal)
-   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
+: RUN ( str -- n ) {: src:str :}   \ source -> child exit status (-1 = signal)
+   src OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
      exited OF ENDOF
      signaled OF drop -1 ENDOF
-     timeout OF src u OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
+     timeout OF src OUT outu LEN>N >str ERR erru LEN>N >str T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: ERR$ ( -- ^u8 n )
-   ERR ERR-U @ ;
+: ERR$ ( -- str )
+   ERR ERR-U @ >str ;
 
 ;package
 

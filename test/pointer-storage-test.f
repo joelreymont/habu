@@ -1,4 +1,3 @@
-split-str
 \ pointer-storage-test.f - focused pointer-slot ownership and effect regression.
 
 require src/lib/error.f
@@ -33,7 +32,7 @@ SCRATCH-VARIABLE SCR-CELL
    65 SCR-ROW 15 + c!  SCR-ROW 15 + c@ 65 T= ;
 
 : SAMPLE ( -- ^u8 )
-   s" pointer-storage" drop ;
+   s" pointer-storage" STR:DATA ;
 
 : TABLE-FIELD ( n -- ^^u8 )
    cells TABLE-SLOT + 0 ptr-field ;

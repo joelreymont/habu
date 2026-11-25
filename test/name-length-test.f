@@ -1,4 +1,3 @@
-split-str
 \ name-length-test.f - a name has no ceiling: a long one is taken, a
 \ package name, a part path and a field name included.
 
@@ -39,41 +38,41 @@ PTR-VARIABLE NAMES
    p NAMES ! ;
 NAMES!
 
-: TAIL ( n -- ^u8 n )
+: TAIL ( n -- str )
    {: u:n :}
-   NAMES @ ROOM + u - u ;
+   NAMES @ ROOM + u - u >str ;
 
 \ A label keeps what fits in LBL.
 128 constant LBL-CAP
 create LBL LBL-CAP allot
 variable LBL-U
 : LBL+ ( str -- )
-   {: a:^ u:n :}
-   u LBL-CAP LBL-U @ - min {: k:n :}
-   k 0 ?do a i + c@ LBL LBL-U @ + i + c! loop
+   {: s:str :}
+   s STR:LEN LBL-CAP LBL-U @ - min {: k:n :}
+   k 0 ?do s STR:DATA i + c@ LBL LBL-U @ + i + c! loop
    LBL-U @ k + LBL-U ! ;
-: RELABEL ( -- ) LBL LBL-U @ T-LABEL ;
+: RELABEL ( -- ) LBL LBL-U @ >str T-LABEL ;
 : LABEL-AT ( str str -- )
-   {: at:^ atu:n src:^ srcu:n :}
-   0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+ ;
+   {: at:str src:str :}
+   0 LBL-U !  src LBL+  s"  at " LBL+  at LBL+ ;
 
 \ A declaring word's rejection ends the process, so `src` runs in a forked
 \ child.
-: RUN-AT ( ^u8 n -- len len PROCESS:ending )
-   {: src:^ srcu:n :}
-   src srcu OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
+: RUN-AT ( str -- len len PROCESS:ending )
+   {: src:str :}
+   src OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
 \ The child ends with one rejection record: `rc`, a record that, its gutter
 \ dropped, starts with `head`, holds `note` and is followed by no other.
 : REJECTS-AT ( str str n str str -- )
-   {: at:^ atu:n src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
-   at atu src srcu LABEL-AT
-   src srcu RUN-AT {: outu:len erru:len oc :}
-   RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
+   {: at:str src:str rc:n head:str note:str :}
+   at src LABEL-AT
+   src RUN-AT {: outu:len erru:len oc :}
+   RELABEL src OUT outu LEN>N >str ERR erru LEN>N >str oc rc T-ENDING-EXITED=
    RELABEL outu LEN>N 0 T=
-   RELABEL ERR erru LEN>N REJECTION-TEXT:FLAT head headu STR:STARTS-WITH? TTRUE
-   RELABEL ERR erru LEN>N note noteu REJECTION-TEXT:HAS? TTRUE
-   RELABEL ERR erru LEN>N S\" \nerror[" STR:CONTAINS? TFALSE ;
+   RELABEL ERR erru LEN>N >str REJECTION-TEXT:FLAT head STR:STARTS-WITH? TTRUE
+   RELABEL ERR erru LEN>N >str note REJECTION-TEXT:HAS? TTRUE
+   RELABEL ERR erru LEN>N >str S\" \nerror[" STR:CONTAINS? TFALSE ;
 
 \ ---- a long name -------------------------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.
@@ -83,50 +82,50 @@ variable LBL-U
    58 p c!  32 p 1 + c!
    u 0 ?do c p 2 + i + c! loop
    32 p u 2 + + c!  59 p u 3 + + c!
-   p u 4 + ;
+   p u 4 + >str ;
 
 \ `: <u bytes of c> ( -- ) 82 emit ; <u bytes of c>`, in a fresh mapping: a
 \ definition and its one call, which prints R.
 : RAN$ ( -- str ) s"  ( -- ) 82 emit ; " ;
 : RUN-SRC ( n n -- str )
    {: u:n c:n :}
-   RAN$ {: b:^ bu:n :}
-   u 2 * bu + 2 + {: su:n :}
+   RAN$ {: b:str :}
+   u 2 * b STR:LEN + 2 + {: su:n :}
    su MEM-ALLOC-BYTES drop {: p:^ :}
    58 p c!  32 p 1 + c!
    u 0 ?do c p 2 + i + c! loop
-   bu 0 ?do b i + c@ p u 2 + + i + c! loop
-   u 0 ?do c p u 2 + bu + + i + c! loop
-   p su ;
+   b STR:LEN 0 ?do b STR:DATA i + c@ p u 2 + + i + c! loop
+   u 0 ?do c p u 2 + b STR:LEN + + i + c! loop
+   p su >str ;
 
-: LETTERS ( n n -- ^u8 n )
+: LETTERS ( n n -- str )
    {: u:n c:n :}
    u MEM-ALLOC-BYTES drop {: p:^ :}
    u 0 ?do c p i + c! loop
-   p u ;
+   p u >str ;
 
 : LONG$ ( -- str ) LONG-LEN TAIL ;
 
 \ `a` and then `b`, in a fresh mapping.
-: JOIN ( ^u8 n ^u8 n -- ^u8 n )
-   {: a:^ au:n b:^ bu:n :}
-   au bu + MEM-ALLOC-BYTES drop {: p:^ :}
-   a p au BYTE-COPY
-   b p au + bu BYTE-COPY
-   p au bu + ;
+: JOIN ( str str -- str )
+   {: a:str b:str :}
+   a STR:LEN b STR:LEN + MEM-ALLOC-BYTES drop {: p:^ :}
+   a STR:DATA p a STR:LEN BYTE-COPY
+   b STR:DATA p a STR:LEN + b STR:LEN BYTE-COPY
+   p a STR:LEN b STR:LEN + >str ;
 
 \ A LONG-LEN package and part, a word in each and a SUMTYPE whose constructor
 \ package is longer still: each runs, qualified and under `using`; prints PWWS.
 : PKG-SRC$ ( -- str )
-   LONG-LEN 81 LETTERS {: l:^ lu:n :}
-   LONG-LEN 82 LETTERS {: r:^ ru:n :}
-   s" package " l lu JOIN
+   LONG-LEN 81 LETTERS {: l:str :}
+   LONG-LEN 82 LETTERS {: r:str :}
+   s" package " l JOIN
    S\" \npublic\n: NLT-W ( -- ) 87 emit ;\nSUMTYPE nltshape VARIANT dot ;VARIANT ;SUMTYPE\nprivate\npackage " JOIN
-   r ru JOIN S\" \npublic\n: NLT-P ( -- ) 80 emit ;\n;package\n" JOIN
-   r ru JOIN S\" :NLT-P\n;package\n" JOIN
-   l lu JOIN S\" :NLT-W\nusing " JOIN
-   l lu JOIN S\" \nNLT-W\n;using\n: NLT-S ( -- ) " JOIN
-   l lu JOIN S\" -NLTSHAPE:DOT drop 83 emit ;\nNLT-S\n" JOIN ;
+   r JOIN S\" \npublic\n: NLT-P ( -- ) 80 emit ;\n;package\n" JOIN
+   r JOIN S\" :NLT-P\n;package\n" JOIN
+   l JOIN S\" :NLT-W\nusing " JOIN
+   l JOIN S\" \nNLT-W\n;using\n: NLT-S ( -- ) " JOIN
+   l JOIN S\" -NLTSHAPE:DOT drop 83 emit ;\nNLT-S\n" JOIN ;
 
 \ `--load` and tools/check.f each take the package from a file, so each runs
 \ in a child over a scratch tree's copy of it.
@@ -154,14 +153,14 @@ variable LBL-U
 \ defines a word with a long name, whose body text passes 20000 bytes, and
 \ the word runs. The name is w, which no word of this file is named.
 : TEST-ENGINE ( -- )
-   LONG-LEN 119 RUN-SRC {: da:^ du:n :}
-   da du RUN-AT {: outu:len erru:len oc :}
+   LONG-LEN 119 RUN-SRC {: src:str :}
+   src RUN-AT {: outu:len erru:len oc :}
    s" `:` defines a word with a long name" T-LABEL
-   da du OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
+   src OUT outu LEN>N >str ERR erru LEN>N >str oc 0 T-ENDING-EXITED=
    s" ... and says nothing" T-LABEL
-   ERR erru LEN>N s" " T$=
+   ERR erru LEN>N >str s" " T$=
    s" ... and the word runs" T-LABEL
-   OUT outu LEN>N s" R" T$= ;
+   OUT outu LEN>N >str s" R" T$= ;
 
 \ The word this file defines below, with a long name, and long-named types, a
 \ field and a defer, each declared through source. A second declaration of a type ends
@@ -173,22 +172,22 @@ variable LBL-U
    LONG-LEN 113 DEF-SRC TEST-EVAL:RC 70 T=
    s" a value-record with a long name is declared" T-LABEL
    s" VALUE-RECORD " LONG-LEN 114 LETTERS JOIN s"  f n END-VALUE-RECORD" JOIN
-   {: ra:^ ru:n :}
-   ra ru TEST-EVAL:RC 0 T=
-   s" again" ra ru 70 S\" error[E-BAD-DECLARATION]: value record `"
+   {: rs:str :}
+   rs TEST-EVAL:RC 0 T=
+   s" again" rs 70 S\" error[E-BAD-DECLARATION]: value record `"
    s" already a type or reserved" REJECTS-AT
    s" a linear type with a long name is declared" T-LABEL
-   s" DEFLINEAR " LONG-LEN 115 LETTERS JOIN {: la:^ lu:n :}
-   la lu TEST-EVAL:RC 0 T=
-   s" again" la lu 70 S\" error[E-BAD-DECLARATION]: `DEFLINEAR "
+   s" DEFLINEAR " LONG-LEN 115 LETTERS JOIN {: ls:str :}
+   ls TEST-EVAL:RC 0 T=
+   s" again" ls 70 S\" error[E-BAD-DECLARATION]: `DEFLINEAR "
    s" already a type or reserved" REJECTS-AT
    s" a structure with a long field name is declared" T-LABEL
    s" STRUCTURE nlt-long FIELD " LONG-LEN 116 LETTERS JOIN s"  n ;STRUCTURE" JOIN
    TEST-EVAL:RC 0 T=
    s" a deferred long name is stored whole" T-LABEL
-   LONG-LEN 112 LETTERS {: da:^ du:n :}
-   s" defer " da du JOIN s"  ( -- n )" JOIN TEST-EVAL:RC 0 T=
-   s" NLT-DEFERRED ( -- n ) " da du JOIN CHECK-QUIET-CANDIDATE! -1 T=
+   LONG-LEN 112 LETTERS {: ds:str :}
+   s" defer " ds JOIN s"  ( -- n )" JOIN TEST-EVAL:RC 0 T=
+   s" NLT-DEFERRED ( -- n ) " ds JOIN CHECK-QUIET-CANDIDATE! -1 T=
    s" the word with a long name is undefined" T-LABEL
    s" undefine " LONG$ JOIN TEST-EVAL:RC 0 T=
    CALL-LONG$ CHECK-QUIET-CANDIDATE! 0 T= ;
@@ -202,7 +201,7 @@ variable LBL-U
    s" name-length-test: ok" type cr ;
 
 \ The word with a long name.
-LONG-LEN 113 DEF-SRC evaluate
+LONG-LEN 113 DEF-SRC str> evaluate
 
 MAIN
 

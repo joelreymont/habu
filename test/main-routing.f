@@ -1,4 +1,3 @@
-split-str
 \ main-routing.f - exercise the emitted engine's stdin and argv routing.
 \ Needs HABU_UNDER_TEST set to the emitted candidate.
 
@@ -15,30 +14,30 @@ private
 create PATH-BUF PATH-CAP allot
 
 : FILE$ ( -- str )
-   s" route.f" PATH-BUF GT-PATH PATH-BUF swap ;
+   s" route.f" PATH-BUF GT-PATH PATH-BUF swap >str ;
 
 : READ$ ( -- str )
-   s" read.f" PATH-BUF GT-PATH PATH-BUF swap ;
+   s" read.f" PATH-BUF GT-PATH PATH-BUF swap >str ;
 
 : STACK$ ( -- str )
-   s" stack.f" PATH-BUF GT-PATH PATH-BUF swap ;
+   s" stack.f" PATH-BUF GT-PATH PATH-BUF swap >str ;
 
 : ODD$ ( -- str )
-   S\" q\"\\\nd.f" PATH-BUF GT-PATH PATH-BUF swap ;
+   S\" q\"\\\nd.f" PATH-BUF GT-PATH PATH-BUF swap >str ;
 
 \ A stdin program of several MiB, which the stream grows many times to hold.
 $480000 constant LONG-SIZE
 DYNAMIC-BUFFER PADDED u8
 
-: RUN ( ^u8 n [ -- ] -- ) {: input:^ u:n args :}
+: RUN ( str [ -- ] -- ) {: input:str args :}
    GE-HB-RESET
    args execute
-   GE-HB$ input u PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
+   GE-HB$ input PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
 
-: PASS ( ^u8 n ^u8 n -- ) {: want:^ wantu:n label:^ labelu:n :}
-   label labelu GE-EXPECT-OK
-   want wantu label labelu GE-EXPECT-OUT
-   s" " label labelu GE-EXPECT-ERR ;
+: PASS ( str str -- ) {: want:str label:str :}
+   label GE-EXPECT-OK
+   want label GE-EXPECT-OUT
+   s" " label GE-EXPECT-ERR ;
 
 : FILE-ARG ( -- )
    FILE$ GE-ARG+ ;
@@ -77,15 +76,15 @@ DYNAMIC-BUFFER PADDED u8
 : LONG-TEXT ( -- )
    LONG-SIZE PADDED-RESERVE
    LONG-SIZE 0 do $0A i PADDED c! loop
-   S\" s\" A\" type" {: head:^ headu:n :}
-   S\" s\" B\" type cr" {: tail:^ tailu:n :}
-   head 0 PADDED headu BYTE-COPY
-   tail LONG-SIZE tailu - 1 - PADDED tailu BYTE-COPY ;
+   S\" s\" A\" type" {: head:str :}
+   S\" s\" B\" type cr" {: tail:str :}
+   head STR:DATA 0 PADDED head STR:LEN BYTE-COPY
+   tail STR:DATA LONG-SIZE tail STR:LEN - 1 - PADDED tail STR:LEN BYTE-COPY ;
 
 : LONG-STDIN ( -- )
    LONG-TEXT
    GE-HB-RESET
-   GE-HB$ 0 PADDED LONG-SIZE PROCESS:WAIT-FOREVER GE-RUN-STDIN
+   GE-HB$ 0 PADDED LONG-SIZE >str PROCESS:WAIT-FOREVER GE-RUN-STDIN
    PADDED-RELEASE
    S\" AB\n" s" a stdin program past the stream's first sizes" GE-EXPECT-OUT
    s" " s" a stdin program past the stream's first sizes" GE-EXPECT-ERR

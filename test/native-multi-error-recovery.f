@@ -1,4 +1,3 @@
-split-str
 \ A counted native checker refusal ends its pending definition without
 \ publishing it, and the surrounding source keeps its earlier definitions.
 require src/habu/layout.f
