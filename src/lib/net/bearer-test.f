@@ -67,8 +67,6 @@ TYPED-VARIABLE HEADS ^VEC:vector<u8>
 $1000 constant TOKEN-CAP
 TOKEN-CAP SPAN-BUFFER: TOKEN
 variable TOKEN-U
-CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
-32 constant HS256-BYTES
 TOKEN-CAP $40 + BUFFER: AUTH
 variable AUTH-U
 
@@ -347,16 +345,24 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    0 TOKEN-U !
    h ENCODED+ DOT+ c ENCODED+ ;
 
-: MINT ( str str -- )
-   SIGNED
-   JWS-FIXTURE:PEM$ TOKEN$ SIGNATURE CRYPTO:RS256-MAX-BYTES >str
-   CRYPTO:RS256-SIGN {: su:n :}
-   DOT+ SIGNATURE su >str ENCODED+ AUTHORIZE ;
+: NEW-VEC ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
-: HS-MINT ( str str -- )
-   SIGNED
-   JWS-FIXTURE:MODULUS$ TOKEN$ SIGNATURE HS256-BYTES >str CRYPTO:HMAC-SHA256
-   DOT+ SIGNATURE HS256-BYTES >str ENCODED+ AUTHORIZE ;
+\ The signature the quotation appends to a fresh vector, as the token's
+\ third segment; the vector is deleted on every path.
+: SIGNATURE+ ( [ ^VEC:vector<u8> -- ] -- ) {: sign :}
+   NEW-VEC {: v:^ :}
+   [: v sign execute  DOT+ v VEC:BYTES ENCODED+ ;]
+   [: v VEC:DELETE ;] finally ;
+
+: RS-SIGNS ( ^VEC:vector<u8> -- ) {: v:^ :}
+   JWS-FIXTURE:PEM$ TOKEN$ v CRYPTO:RS256-SIGN ;
+
+: HS-SIGNS ( ^VEC:vector<u8> -- ) {: v:^ :}
+   JWS-FIXTURE:MODULUS$ TOKEN$ v CRYPTO:HMAC-SHA256 ;
+
+: MINT ( str str -- ) SIGNED [: RS-SIGNS ;] SIGNATURE+ AUTHORIZE ;
+
+: HS-MINT ( str str -- ) SIGNED [: HS-SIGNS ;] SIGNATURE+ AUTHORIZE ;
 
 : UNSIGNED ( str str -- ) SIGNED DOT+ AUTHORIZE ;
 

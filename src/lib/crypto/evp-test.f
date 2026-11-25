@@ -1,13 +1,15 @@
 \ evp-test.f - focused tests for src/lib/crypto/evp.f against published vectors.
 \ Run: bin/hb --load src/lib/crypto/evp-test.f
-\ AES-256-GCM: Test Cases 13 and 16 of McGrew and Viega's GCM specification (the
-\ submission NIST SP 800-38D adopted), its 96-bit-IV AES-256 cases with
-\ associated data. HMAC-SHA-256: RFC 4231 cases 1 to 4. SHA-1: RFC 2202
-\ section 3 and RFC 6238 appendix B (time 59).
+\ HMAC-SHA-256: RFC 4231 cases 1 to 4. RS256: RFC 7515 appendix A.2. Each
+\ signature and MAC appends to a vector the case makes on the heap allocator
+\ and deletes.
 
 require src/lib/test.f
 require src/lib/prelude.f
-require src/lib/memory.f
+require src/lib/heap.f
+require src/lib/vector.f
+require src/lib/le.f
+require src/lib/entropy.f
 require src/lib/crypto/evp.f
 require src/lib/crypto/jws-fixture.f
 require src/lib/fs.f
@@ -25,33 +27,14 @@ VERSIONED-LIBRARY crypto 3
 FUNCTION: STALE-ERROR-NEW ERR_new ( -- ) ;FUNCTION
 FUNCTION: STALE-ERROR-SET ERR_set_error ( n n n -- ) ;FUNCTION
 
-$20 constant KEY-CAP
-$10 constant NONCE-CAP
-$40 constant AAD-CAP
-$80 constant TEXT-CAP
-$A0 constant SEALED-CAP
 $20 constant MAC-CAP
 $80 constant MAC-KEY-CAP
 $80 constant MSG-CAP
 
-create KEY-BUF KEY-CAP allot
-create NONCE-BUF NONCE-CAP allot
-create AAD-BUF AAD-CAP allot
-create PLAIN-BUF TEXT-CAP allot
-create BACK-BUF TEXT-CAP allot
-create SEALED-BUF SEALED-CAP allot
-create WANT-BUF SEALED-CAP allot
 create MAC-KEY-BUF MAC-KEY-CAP allot
 create MSG-BUF MSG-CAP allot
-create MAC-BUF MAC-CAP allot
 create MAC-WANT-BUF MAC-CAP allot
 
-variable KEY-N
-variable NONCE-N
-variable AAD-N
-variable PLAIN-N
-variable SEALED-N
-variable WANT-N
 variable MAC-KEY-N
 variable MSG-N
 variable MAC-WANT-N
@@ -100,104 +83,21 @@ variable FILL-N
    FILL-N @ ;
 
 
-\ GCM Test Case 16: AES-256 with associated data.
-
-: TC16-KEY ( -- )
-   KEY-BUF KEY-CAP INTO
-   s" feffe9928665731c6d6a8f9467308308" HEX,
-   s" feffe9928665731c6d6a8f9467308308" HEX,
-   FILLED KEY-N ! ;
-
-: TC16-NONCE ( -- )
-   NONCE-BUF NONCE-CAP INTO
-   s" cafebabefacedbaddecaf888" HEX,
-   FILLED NONCE-N ! ;
-
-: TC16-AAD ( -- )
-   AAD-BUF AAD-CAP INTO
-   s" feedfacedeadbeeffeedfacedeadbeef" HEX,
-   s" abaddad2" HEX,
-   FILLED AAD-N ! ;
-
-: TC16-PLAIN ( -- )
-   PLAIN-BUF TEXT-CAP INTO
-   s" d9313225f88406e5a55909c5aff5269a" HEX,
-   s" 86a7a9531534f7da2e4c303d8a318a72" HEX,
-   s" 1c3c0c95956809532fcf0e2449a6b525" HEX,
-   s" b16aedf5aa0de657ba637b39" HEX,
-   FILLED PLAIN-N ! ;
-
-\ The expected sealed record: the vector's C followed by its T, which is the
-\ order SEAL writes them.
-: TC16-SEALED ( -- )
-   WANT-BUF SEALED-CAP INTO
-   s" 522dc1f099567d07f47f37a32a84427d" HEX,
-   s" 643a8cdcbfe5c0c97598a2bd2555d1aa" HEX,
-   s" 8cb08e48590dbb3da7b08b1056828838" HEX,
-   s" c5f61e6393ba7a0abcc9f662" HEX,
-   s" 76fc6ece0f4e1768cddf8853bb2d551b" HEX,
-   FILLED WANT-N ! ;
-
-: TC16 ( -- )
-   TC16-KEY TC16-NONCE TC16-AAD TC16-PLAIN TC16-SEALED ;
-
-
-\ GCM Test Case 13: AES-256, empty plaintext and no associated data.
-
-: TC13 ( -- )
-   KEY-BUF KEY-CAP INTO  0 KEY-CAP REPEAT,  FILLED KEY-N !
-   NONCE-BUF NONCE-CAP INTO  0 $0C REPEAT,  FILLED NONCE-N !
-   AAD-BUF AAD-CAP INTO  FILLED AAD-N !
-   PLAIN-BUF TEXT-CAP INTO  FILLED PLAIN-N !
-   WANT-BUF SEALED-CAP INTO
-   s" 530f8afbc74536b9a963b4f1c4cb738b" HEX,
-   FILLED WANT-N ! ;
-
-
-: KEY$ ( -- str )     KEY-BUF KEY-N @ >str ;
-: NONCE$ ( -- str )   NONCE-BUF NONCE-N @ >str ;
-: AAD$ ( -- str )     AAD-BUF AAD-N @ >str ;
-: PLAIN$ ( -- str )   PLAIN-BUF PLAIN-N @ >str ;
-: SEALED$ ( -- str )  SEALED-BUF SEALED-N @ >str ;
-: WANT$ ( -- str )    WANT-BUF WANT-N @ >str ;
-
-: SEAL-VECTOR ( -- )
-   KEY$ NONCE$ AAD$ PLAIN$ SEALED-BUF SEALED-CAP CRYPTO:SEAL SEALED-N ! ;
-
-\ The unsealed plaintext lands in BACK-BUF; the answer is the length `ok` carried,
-\ or the negated refusal code, so one assertion covers both arms.
-: UNSEAL-VECTOR ( -- n )
-   KEY$ NONCE$ AAD$ SEALED$ BACK-BUF TEXT-CAP >str CRYPTO:UNSEAL
-   MATCH CRYPTO:unseal-result
-      ok OF LEN>N ENDOF
-      failed OF CRYPTO:CODE>N negate ENDOF
-   ;MATCH ;
-
-: BACK$ ( -- str )
-   BACK-BUF PLAIN-N @ >str ;
-
-: PAINT-BACK ( -- )
-   TEXT-CAP 0 ?do $A5 BACK-BUF i + c! loop ;
-
-: BACK-CLEAR? ( -- bool )
-   PLAIN-N @ 0 ?do
-      BACK-BUF i + c@ 0 <> if false unloop exit then
-   loop
-   true ;
-
-: FLIP-SEALED ( n -- ) {: at:n :}
-   SEALED-BUF at + dup c@ 1 xor swap c! ;
-
-
 \ RFC 4231 HMAC-SHA-256.
 
 : MAC-KEY$ ( -- str )   MAC-KEY-BUF MAC-KEY-N @ >str ;
 : MSG$ ( -- str )       MSG-BUF MSG-N @ >str ;
-: MAC$ ( -- str )       MAC-BUF CRYPTO:MAC-BYTES >str ;
 : MAC-WANT$ ( -- str )  MAC-WANT-BUF MAC-WANT-N @ >str ;
 
+: NEW-VEC ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+
+\ The MAC of the message under the key, appended to a fresh vector, is the
+\ wanted one.
 : MAC-VECTOR ( -- )
-   MAC-KEY$ MSG$ MAC-BUF MAC-CAP >str CRYPTO:HMAC-SHA256 ;
+   NEW-VEC {: v:^ :}
+   MAC-KEY$ MSG$ v CRYPTO:HMAC-SHA256
+   v VEC:BYTES MAC-WANT$ T$=
+   v VEC:DELETE ;
 
 : RFC4231-1 ( -- )
    MAC-KEY-BUF MAC-KEY-CAP INTO  $0B $14 REPEAT,  FILLED MAC-KEY-N !
@@ -237,274 +137,46 @@ variable FILL-N
    s" 85f0faa3e578f8077a2e3ff46729665b" HEX,
    FILLED MAC-WANT-N ! ;
 
-\ Dynamic truncation belongs to the TOTP consumer, not the crypto binding.
-: TOTP1 ( -- n )
-   MAC-BUF CRYPTO:MAC1-BYTES 1- + c@ $0F and MAC-BUF + {: p:^ :}
-   p c@ $7F and 24 lshift p 1+ c@ 16 lshift or
-   p 2 + c@ 8 lshift or p 3 + c@ or 100000000 mod ;
-
-: MAC1-VECTORS ( -- )
-   s" RFC 2202 HMAC-SHA-1 test case 1, exact 20-byte output span" T-LABEL
-   RFC4231-1
-   MAC-WANT-BUF MAC-CAP INTO
-   s" b617318655057264e28bc0b6fb378c8ef146be00" HEX, FILLED MAC-WANT-N !
-   $A5 MAC-BUF CRYPTO:MAC1-BYTES + c!
-   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC1-BYTES >str CRYPTO:HMAC-SHA1
-   MAC-BUF CRYPTO:MAC1-BYTES >str MAC-WANT$ T$=
-   MAC-BUF CRYPTO:MAC1-BYTES + c@ $A5 T=
-
-   s" RFC 6238 SHA-1: time 59, 30-second step, eight digits" T-LABEL
-   MSG-BUF MSG-CAP INTO 0 7 REPEAT, 59 30 / BYTE, FILLED MSG-N !
-   s" 12345678901234567890" MSG$ MAC-BUF CRYPTO:MAC1-BYTES >str CRYPTO:HMAC-SHA1
-   TOTP1 94287082 T= ;
-
-
-\ Each quotation differs from a working call in exactly one operand.
-
-: SHORT-KEY ( -- )
-   KEY-BUF KEY-CAP 1- >str NONCE$ AAD$ PLAIN$ SEALED-BUF SEALED-CAP CRYPTO:SEAL drop ;
-
-: LONG-KEY ( -- )
-   KEY-BUF KEY-CAP 1+ >str NONCE$ AAD$ PLAIN$ SEALED-BUF SEALED-CAP CRYPTO:SEAL drop ;
-
-: SHORT-NONCE ( -- )
-   KEY$ NONCE-BUF CRYPTO:NONCE-BYTES 1- >str AAD$ PLAIN$
-   SEALED-BUF SEALED-CAP CRYPTO:SEAL drop ;
-
-: LONG-NONCE ( -- )
-   KEY$ NONCE-BUF CRYPTO:NONCE-BYTES 1+ >str AAD$ PLAIN$
-   SEALED-BUF SEALED-CAP CRYPTO:SEAL drop ;
-
-\ One byte short of the ciphertext plus its tag.
-: SEAL-NO-ROOM ( -- )
-   KEY$ NONCE$ AAD$ PLAIN$
-   SEALED-BUF PLAIN-N @ CRYPTO:TAG-BYTES + 1- CRYPTO:SEAL drop ;
-
-: UNSEAL-NO-ROOM ( -- )
-   KEY$ NONCE$ AAD$ SEALED$ BACK-BUF PLAIN-N @ 1- >str CRYPTO:UNSEAL drop ;
-
-\ A record shorter than a bare tag carries no ciphertext at all.
-: UNSEAL-NO-TAG ( -- )
-   KEY$ NONCE$ AAD$ SEALED-BUF CRYPTO:TAG-BYTES 1- >str
-   BACK-BUF TEXT-CAP >str CRYPTO:UNSEAL drop ;
-
-: MAC-NO-ROOM ( -- )
-   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC-BYTES 1- >str CRYPTO:HMAC-SHA256 ;
-
-: MAC1-NO-ROOM ( -- )
-   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC1-BYTES 1- >str CRYPTO:HMAC-SHA1 ;
-
-: RANDOM-NO-SPAN ( -- )
-   MAC-BUF 0 CRYPTO:RANDOM-BYTES ;
-
-
-$20 constant DRAW-CAP
-create DRAW-A DRAW-CAP allot
-create DRAW-B DRAW-CAP allot
-
-: PAINT-DRAWS ( -- )
-   DRAW-CAP 0 ?do 0 DRAW-A i + c! 0 DRAW-B i + c! loop ;
-
-: ALL-ZERO? ( str -- bool ) {: span:str :}
-   span STR:LEN 0 ?do span STR:DATA i + c@ 0 <> if false unloop exit then loop
-   true ;
-
-
-\ One owned mapping holds the plaintext, the sealed record and the unsealed
-\ plaintext; MEM:WITH-BYTES releases it on every path.
-
-$100000 constant BIG-BYTES
-variable BIG-SEALED
-variable BIG-UNSEALED
-
-: BIG-SPAN ( -- n )
-   BIG-BYTES 3 * CRYPTO:TAG-BYTES + ;
-
-: BIG-FILL ( ^u8 -- ) {: plain :}
-   BIG-BYTES 0 ?do i $FF and plain i + c! loop ;
-
-: BIG-SAME? ( ^u8 ^u8 -- bool ) {: plain unsealed :}
-   BIG-BYTES 0 ?do
-      plain i + c@ unsealed i + c@ <> if false unloop exit then
-   loop
-   true ;
-
-: BIG-ROUND ( ^u8 NUM:alloc-byte-len -- ) drop {: base :}
-   base {: plain :}
-   base BIG-BYTES + {: sealed :}
-   base BIG-BYTES 2 * CRYPTO:TAG-BYTES + + {: unsealed :}
-   plain BIG-FILL
-   KEY$ NONCE$ AAD$ plain BIG-BYTES >str sealed BIG-BYTES CRYPTO:TAG-BYTES +
-   CRYPTO:SEAL BIG-SEALED !
-   KEY$ NONCE$ AAD$ sealed BIG-SEALED @ >str unsealed BIG-BYTES >str CRYPTO:UNSEAL
-   MATCH CRYPTO:unseal-result
-      ok OF LEN>N ENDOF
-      failed OF CRYPTO:CODE>N negate ENDOF
-   ;MATCH BIG-UNSEALED !
-   plain unsealed BIG-SAME? TTRUE ;
-
-: BIG-TRIP ( -- )
-   BIG-SPAN MEM:BYTES-ALLOC-LEN [: BIG-ROUND ;] MEM:WITH-BYTES ;
-
-
-\ Every SEAL and UNSEAL allocates an EVP_CIPHER_CTX and must free it on the way
-\ out. A leaked context is at least the struct plus an AES key schedule, so
-\ ROUNDS of them add megabytes to the resident set; the margin below is far
-\ under one round's worth of leak and far over the allocator noise of a run
-\ that frees everything.
-
-0 constant RUSAGE-SELF
-$20 constant MAXRSS-OFF                  \ ru_maxrss, past ru_utime and ru_stime
-$90 constant RUSAGE-BYTES                \ struct rusage: two timevals and fourteen longs
-8 constant CELL-BYTES
-$4E20 constant ROUNDS                    \ 20,000 seal/open pairs
-$100 constant WARMUP                     \ enough rounds to settle the allocator's own growth
-$400 constant RSS-MARGIN                 \ kilobytes; one leaked context per round would be far more
-
-create RUSAGE-BUF RUSAGE-BYTES allot
-
-PROCESS-SYMBOLS
-
-FUNCTION: RESOURCE-USAGE getrusage ( n ^u8 -- i32 ) ;FUNCTION
-
-: LE64@ ( ^u8 -- n ) {: source :}
-   0 CELL-BYTES 0 do source 7 i - + c@ swap 8 lshift or loop ;
-
-: PEAK-KB ( -- n )
-   RUSAGE-SELF RUSAGE-BUF RESOURCE-USAGE 0 <> if E-VECTOR throw then
-   RUSAGE-BUF MAXRSS-OFF + LE64@ ;
-
-: ONE-ROUND ( -- n )
-   SEAL-VECTOR
-   UNSEAL-VECTOR ;
-
-: ROUNDS-RUN ( n -- ) {: count:n :}
-   count 0 ?do ONE-ROUND PLAIN-N @ <> if E-VECTOR throw then loop ;
-
-
-: GCM-VECTORS ( -- )
-   s" GCM test case 16 seals to its published ciphertext and tag" T-LABEL
-   TC16
-   SEAL-VECTOR
-   SEALED-N @ WANT-N @ T=
-   SEALED$ WANT$ T$=
-
-   s" GCM test case 16 opens back to its plaintext" T-LABEL
-   PAINT-BACK
-   UNSEAL-VECTOR PLAIN-N @ T=
-   BACK$ PLAIN$ T$=
-
-   s" GCM test case 13 seals an empty message to its tag alone" T-LABEL
-   TC13
-   SEAL-VECTOR
-   SEALED-N @ CRYPTO:TAG-BYTES T=
-   SEALED$ WANT$ T$=
-
-   s" GCM test case 13 opens back to nothing" T-LABEL
-   UNSEAL-VECTOR 0 T= ;
-
-
-: TAMPER ( -- )
-   TC16
-   SEAL-VECTOR
-
-   s" a flipped tag bit is refused and clears the output" T-LABEL
-   PAINT-BACK
-   SEALED-N @ 1- FLIP-SEALED
-   UNSEAL-VECTOR CRYPTO:E-TAG negate T=
-   BACK-CLEAR? TTRUE
-   SEALED-N @ 1- FLIP-SEALED
-
-   s" a flipped ciphertext bit is refused and clears the output" T-LABEL
-   PAINT-BACK
-   0 FLIP-SEALED
-   UNSEAL-VECTOR CRYPTO:E-TAG negate T=
-   BACK-CLEAR? TTRUE
-   0 FLIP-SEALED
-
-   s" associated data that differs is refused" T-LABEL
-   PAINT-BACK
-   AAD-BUF dup c@ 1 xor swap c!
-   UNSEAL-VECTOR CRYPTO:E-TAG negate T=
-   BACK-CLEAR? TTRUE
-   AAD-BUF dup c@ 1 xor swap c!
-
-   s" the untampered record still opens" T-LABEL
-   UNSEAL-VECTOR PLAIN-N @ T=
-   BACK$ PLAIN$ T$= ;
 
 
 : MAC-VECTORS ( -- )
    s" RFC 4231 HMAC-SHA-256 test case 1" T-LABEL
-   RFC4231-1 MAC-VECTOR MAC$ MAC-WANT$ T$=
+   RFC4231-1 MAC-VECTOR
 
    s" RFC 4231 HMAC-SHA-256 test case 2" T-LABEL
-   RFC4231-2 MAC-VECTOR MAC$ MAC-WANT$ T$=
+   RFC4231-2 MAC-VECTOR
 
    s" RFC 4231 HMAC-SHA-256 test case 3" T-LABEL
-   RFC4231-3 MAC-VECTOR MAC$ MAC-WANT$ T$=
+   RFC4231-3 MAC-VECTOR
 
    s" RFC 4231 HMAC-SHA-256 test case 4" T-LABEL
-   RFC4231-4 MAC-VECTOR MAC$ MAC-WANT$ T$= ;
+   RFC4231-4 MAC-VECTOR ;
 
+\ The vector holds the message, then its MAC.
+: MAC-KEPT ( ^VEC:vector<u8> -- ) {: v:^ :}
+   v VEC:COUNT MSG-N @ CRYPTO:MAC-BYTES + T=
+   v 0 VEC:AT MSG-N @ >str MSG$ T$=
+   v MSG-N @ VEC:AT CRYPTO:MAC-BYTES >str MAC-WANT$ T$= ;
 
-: REFUSALS ( -- )
-   TC16
-   SEAL-VECTOR
+\ The message is the vector's whole text, its block trimmed to it so the
+\ MAC's append grows the block.
+: MAC-OF-OWN ( -- )
+   NEW-VEC {: v:^ :}
+   MSG$ v VEC:APPEND  v 0 VEC:TRIM
+   MAC-KEY$ v VEC:BYTES v CRYPTO:HMAC-SHA256
+   v MAC-KEPT
+   v VEC:DELETE ;
 
-   s" a key that is not 32 bytes is refused" T-LABEL
-   [: SHORT-KEY ;] CRYPTO:E-OPERAND TTHROWSQ
-   [: LONG-KEY ;] CRYPTO:E-OPERAND TTHROWSQ
-
-   s" a nonce that is not 12 bytes is refused" T-LABEL
-   [: SHORT-NONCE ;] CRYPTO:E-OPERAND TTHROWSQ
-   [: LONG-NONCE ;] CRYPTO:E-OPERAND TTHROWSQ
-
-   s" an output span too small for the ciphertext and tag is refused" T-LABEL
-   [: SEAL-NO-ROOM ;] CRYPTO:E-OPERAND TTHROWSQ
-   [: UNSEAL-NO-ROOM ;] CRYPTO:E-OPERAND TTHROWSQ
-
-   s" a record shorter than one tag is refused" T-LABEL
-   [: UNSEAL-NO-TAG ;] CRYPTO:E-OPERAND TTHROWSQ
-
-   s" a digest span under 32 bytes is refused" T-LABEL
-   RFC4231-1
-   [: MAC-NO-ROOM ;] CRYPTO:E-OPERAND TTHROWSQ
-
-   s" a SHA-1 digest span under 20 bytes is refused before writing" T-LABEL
-   $A5 MAC-BUF c!
-   [: MAC1-NO-ROOM ;] CRYPTO:E-OPERAND TTHROWSQ
-   MAC-BUF c@ $A5 T=
-
-   s" an empty span of random bytes is refused" T-LABEL
-   [: RANDOM-NO-SPAN ;] CRYPTO:E-OPERAND TTHROWSQ ;
-
-
-: RANDOMNESS ( -- )
-   s" RANDOM-BYTES fills the span and does not repeat itself" T-LABEL
-   PAINT-DRAWS
-   DRAW-A DRAW-CAP CRYPTO:RANDOM-BYTES
-   DRAW-B DRAW-CAP CRYPTO:RANDOM-BYTES
-   DRAW-A DRAW-CAP >str ALL-ZERO? TFALSE
-   DRAW-B DRAW-CAP >str ALL-ZERO? TFALSE
-   DRAW-A DRAW-CAP >str DRAW-B DRAW-CAP >str T$<> ;
-
-
-: BIG-MESSAGE ( -- )
-   TC16
-   s" a one-mebibyte message seals and opens unchanged" T-LABEL
-   BIG-TRIP
-   BIG-SEALED @ BIG-BYTES CRYPTO:TAG-BYTES + T=
-   BIG-UNSEALED @ BIG-BYTES T= ;
-
-
-: CONTEXT-LIFETIME ( -- )
-   TC16
-   s" twenty thousand seal/open rounds free every context" T-LABEL
-   WARMUP ROUNDS-RUN
-   PEAK-KB {: before:n :}
-   ROUNDS ROUNDS-RUN
-   PEAK-KB before - RSS-MARGIN < TTRUE ;
+: MAC-KEEPS ( -- )
+   s" a MAC appends after the vector's bytes, which stay" T-LABEL
+   RFC4231-2
+   NEW-VEC {: v:^ :}
+   MSG$ v VEC:APPEND
+   MAC-KEY$ MSG$ v CRYPTO:HMAC-SHA256
+   v MAC-KEPT
+   v VEC:DELETE
+   s" a MAC of the vector's own bytes appends after them" T-LABEL
+   MAC-OF-OWN ;
 
 
 \ The key is JWS-FIXTURE's; the signature is transcribed from RFC 7515 A.2.
@@ -550,9 +222,30 @@ variable JWS-N
    RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
    CRYPTO:RS256-VERIFY? ;
 
+: COPIED ( ^VEC:vector<u8> ^u8 -- n ) {: v:^ dst :}
+   v 0 VEC:AT dst v VEC:COUNT BYTE-COPY
+   v VEC:COUNT ;
+
+\ The signature of the message under the PEM, appended to a fresh vector
+\ and copied to the address; answers its width.
+: SIGN-TO ( str str ^u8 -- n )
+   {: pem:str msg:str dst :}
+   NEW-VEC {: v:^ :}
+   [: pem msg v CRYPTO:RS256-SIGN  v dst COPIED ;]
+   [: v VEC:DELETE ;] finally ;
+
+\ A sign for its throw into a vector holding one byte, which stays its only
+\ byte.
+: SIGN-REJECTED ( str str n -- )
+   {: pem:str msg:str code:n :}
+   NEW-VEC {: v:^ :}
+   $A5 v VEC:PUSH c!
+   [: pem msg v CRYPTO:RS256-SIGN ;] code TTHROWSQ
+   v VEC:COUNT 1 T=
+   v VEC:DELETE ;
+
 : RFC-SIGN ( -- n )
-   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
-   CRYPTO:RS256-SIGN ;
+   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT SIGN-TO ;
 
 : RSA-VECTORS ( -- )
    RFC-RSA
@@ -567,12 +260,7 @@ variable JWS-N
    JWS-MSG dup c@ 1 xor swap c!
    s" a shortened signature is a mismatch" T-LABEL
    RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES 1- >str
-   CRYPTO:RS256-VERIFY? TFALSE
-   s" short output capacity is an operand refusal before writing" T-LABEL
-   $A5 RSA-OUT c!
-   [: RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES 1- >str
-      CRYPTO:RS256-SIGN drop ;] CRYPTO:E-OPERAND TTHROWSQ
-   RSA-OUT c@ $A5 T= ;
+   CRYPTO:RS256-VERIFY? TFALSE ;
 
 
 \ Additional external controls: a separately generated RSA public key and a
@@ -583,7 +271,8 @@ create RSA-SECOND RSA-BYTES allot
 create RSA-PSS RSA-BYTES allot
 create RSA-EMPTY RSA-BYTES allot
 create RSA-BAD CRYPTO:RS256-MAX-BYTES 1+ allot
-create RSA-NONCE 12 allot
+8 constant NONCE-BYTES
+create RSA-NONCE NONCE-BYTES allot
 create RSA-ISSUE JWS-CAP allot
 JWS-CAP SPAN-BUFFER: RSA-B64
 variable RSA-ISSUE-N
@@ -649,18 +338,6 @@ variable RSA-ISSUE-N
    RSA-BAD CRYPTO:RS256-MAX-BYTES 1+ >str RSA-E 3 >str
    JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str CRYPTO:RS256-VERIFY? ;
 
-: RSA-SIGN-SHORT-PEM ( -- n )
-   RSA-PEM PEM-N @ 10 - >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
-   CRYPTO:RS256-SIGN ;
-
-: RSA-SIGN-OVERLAP-KEY ( -- n )
-   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-PEM RSA-BYTES >str
-   CRYPTO:RS256-SIGN ;
-
-: RSA-SIGN-OVERLAP-MSG ( -- n )
-   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str JWS-MSG RSA-BYTES >str
-   CRYPTO:RS256-SIGN ;
-
 : RSA-KEY-REFUSALS ( -- )
    s" malformed JWK integers are key errors" T-LABEL
    [: RSA-N 0 >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
@@ -689,11 +366,11 @@ variable RSA-ISSUE-N
    [: RSA-N RSA-BYTES >str RSA-N RSA-BYTES >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
       CRYPTO:RS256-VERIFY? drop ;] CRYPTO:E-KEY TTHROWSQ
    s" malformed and non-PKCS#8 PEM is a key error" T-LABEL
-   [: RSA-SIGN-SHORT-PEM drop ;] CRYPTO:E-KEY TTHROWSQ
-   [: s" -----BEGIN RSA PRIVATE KEY-----" JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
-      CRYPTO:RS256-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
-   [: s" -----BEGIN ENCRYPTED PRIVATE KEY-----" JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
-      CRYPTO:RS256-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-PEM PEM-N @ 10 - >str JWS-MSG JWS-N @ >str CRYPTO:E-KEY SIGN-REJECTED
+   s" -----BEGIN RSA PRIVATE KEY-----" JWS-MSG JWS-N @ >str
+   CRYPTO:E-KEY SIGN-REJECTED
+   s" -----BEGIN ENCRYPTED PRIVATE KEY-----" JWS-MSG JWS-N @ >str
+   CRYPTO:E-KEY SIGN-REJECTED
    RFC-VERIFY TTRUE ;
 
 : RSA-SIGNATURE-CASES ( -- )
@@ -720,34 +397,49 @@ variable RSA-ISSUE-N
    RFC-VERIFY TFALSE
    RSA-SIG dup c@ 1 xor swap c!
    s" empty and binary messages sign and verify" T-LABEL
-   RSA-PEM PEM-N @ >str JWS-MSG 0 >str RSA-OUT RSA-BYTES >str CRYPTO:RS256-SIGN RSA-BYTES T=
+   RSA-PEM PEM-N @ >str JWS-MSG 0 >str RSA-OUT SIGN-TO RSA-BYTES T=
    RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG 0 >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TTRUE
    0 JWS-MSG c! $FF JWS-MSG 1+ c! 10 JWS-MSG 2 + c!
-   RSA-PEM PEM-N @ >str JWS-MSG 3 >str RSA-OUT RSA-BYTES >str CRYPTO:RS256-SIGN RSA-BYTES T=
+   RSA-PEM PEM-N @ >str JWS-MSG 3 >str RSA-OUT SIGN-TO RSA-BYTES T=
    RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG 3 >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TTRUE
    RFC-RSA ;
 
+: SIGNED-AFTER ( ^VEC:vector<u8> str -- ) {: v:^ head:str :}
+   v VEC:COUNT head STR:LEN RSA-BYTES + T=
+   v 0 VEC:AT head STR:LEN >str head T$=
+   v head STR:LEN VEC:AT RSA-BYTES >str RSA-SIG RSA-BYTES >str T$= ;
+
+: KEPT ( ^VEC:vector<u8> -- ) s" kept" SIGNED-AFTER ;
+
+\ The signature lands after the vector's four bytes; a rejection appends
+\ nothing.
+: RSA-APPEND-CASE ( -- )
+   NEW-VEC {: v:^ :}
+   s" kept" v VEC:APPEND
+   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str v CRYPTO:RS256-SIGN
+   v KEPT
+   [: s" -----BEGIN RSA PRIVATE KEY-----" JWS-MSG JWS-N @ >str v
+      CRYPTO:RS256-SIGN ;] CRYPTO:E-KEY TTHROWSQ
+   v KEPT
+   v VEC:DELETE ;
+
+\ The message is the vector's whole text, its block trimmed to it so the
+\ signature's append grows the block.
+: RSA-OWN-CASE ( -- )
+   NEW-VEC {: v:^ :}
+   JWS-MSG JWS-N @ >str v VEC:APPEND  v 0 VEC:TRIM
+   RSA-PEM PEM-N @ >str v VEC:BYTES v CRYPTO:RS256-SIGN
+   v JWS-MSG JWS-N @ >str SIGNED-AFTER
+   v VEC:DELETE ;
+
 : RSA-OUTPUT-CASES ( -- )
-   s" exact and larger output capacities preserve surrounding bytes" T-LABEL
-   $A5 RSA-OUT c! $5A RSA-OUT RSA-BYTES 1+ + c!
-   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT 1+ RSA-BYTES >str
-   CRYPTO:RS256-SIGN RSA-BYTES T=
-   RSA-OUT c@ $A5 T=
-   RSA-OUT RSA-BYTES 1+ + c@ $5A T=
-   RSA-OUT 1+ RSA-BYTES >str RSA-SIG RSA-BYTES >str T$=
-   $5A RSA-OUT RSA-BYTES 1+ + c!
-   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT 1+ RSA-BYTES 1+ >str
-   CRYPTO:RS256-SIGN RSA-BYTES T=
-   RSA-OUT RSA-BYTES 1+ + c@ $5A T=
-   s" overlapping spans and invalid counts are operands" T-LABEL
-   [: RSA-SIGN-OVERLAP-KEY drop ;] CRYPTO:E-OPERAND TTHROWSQ
-   [: RSA-SIGN-OVERLAP-MSG drop ;] CRYPTO:E-OPERAND TTHROWSQ
-   [: RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT -1 >str
-      CRYPTO:RS256-SIGN drop ;] CRYPTO:E-OPERAND TTHROWSQ
-   [: RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT $80000000 >str
-      CRYPTO:RS256-SIGN drop ;] CRYPTO:E-OPERAND TTHROWSQ
+   s" a signature appends after the vector's bytes, which stay" T-LABEL
+   RSA-APPEND-CASE
+   s" a signature of the vector's own bytes appends after them" T-LABEL
+   RSA-OWN-CASE
+   s" a negative count and an address past the end are operands" T-LABEL
    [: RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG -1 >str RSA-SIG RSA-BYTES >str
       CRYPTO:RS256-VERIFY? drop ;] CRYPTO:E-OPERAND TTHROWSQ
    [: $7FFFFFFFFFFFFFF0 >RSA-U8 32 >str RSA-E 3 >str JWS-MSG JWS-N @ >str
@@ -771,7 +463,7 @@ variable RSA-ISSUE-N
 : RSA-ISSUE-FROM-NONCE ( -- )
    RSA-ISSUE JWS-CAP INTO
    s\" {\"iss\":\"tender\",\"nonce\":\"" ASCII,
-   12 0 ?do
+   NONCE-BYTES 0 ?do
       RSA-NONCE i + c@ {: b:n :}
       b 4 rshift $F and dup 10 < if [char] 0 + else 10 - [char] a + then BYTE,
       b $F and dup 10 < if [char] 0 + else 10 - [char] a + then BYTE,
@@ -784,14 +476,13 @@ variable RSA-ISSUE-N
    FILLED JWS-N ! ;
 
 : RSA-ISSUE-BUILD ( -- )
-   RSA-NONCE 12 CRYPTO:RANDOM-BYTES
+   ENTROPY:RANDOM RSA-NONCE LE:U64!
    RSA-ISSUE-FROM-NONCE ;
 
 : RSA-NONCE-TRIP ( -- )
    RSA-ISSUE-BUILD
    s" runtime nonce in issuer payload signs, verifies and detects change" T-LABEL
-   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
-   CRYPTO:RS256-SIGN RSA-BYTES T=
+   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT SIGN-TO RSA-BYTES T=
    RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TTRUE
    RSA-NONCE dup c@ 1 xor swap c!
@@ -853,8 +544,8 @@ TASK:MIN-STACK TASK:TASK RSA-WORK-B
 
 : RSA-WORK-A-RUN ( -- )
    16 0 ?do
-      RSA-PEM PEM-N @ >str s" worker-alpha" RSA-WORK-A-OUT RSA-BYTES >str
-      CRYPTO:RS256-SIGN RSA-BYTES <> if 1 TASK:RETURN unloop exit then
+      RSA-PEM PEM-N @ >str s" worker-alpha" RSA-WORK-A-OUT SIGN-TO
+      RSA-BYTES <> if 1 TASK:RETURN unloop exit then
       RSA-N RSA-BYTES >str RSA-E 3 >str s" worker-alpha" RSA-WORK-A-OUT RSA-BYTES >str
       CRYPTO:RS256-VERIFY? 0= if 2 TASK:RETURN unloop exit then
    loop
@@ -862,8 +553,8 @@ TASK:MIN-STACK TASK:TASK RSA-WORK-B
 
 : RSA-WORK-B-RUN ( -- )
    16 0 ?do
-      RSA-SECOND-PEM RSA-SECOND-PEM-N @ >str s" worker-beta" RSA-WORK-B-OUT RSA-BYTES >str
-      CRYPTO:RS256-SIGN RSA-BYTES <> if 1 TASK:RETURN unloop exit then
+      RSA-SECOND-PEM RSA-SECOND-PEM-N @ >str s" worker-beta" RSA-WORK-B-OUT SIGN-TO
+      RSA-BYTES <> if 1 TASK:RETURN unloop exit then
       RSA-SECOND RSA-BYTES >str RSA-E 3 >str s" worker-beta" RSA-WORK-B-OUT RSA-BYTES >str
       CRYPTO:RS256-VERIFY? 0= if 2 TASK:RETURN unloop exit then
    loop
@@ -888,8 +579,10 @@ create RSA-CASE-PEM PEM-CAP allot
 variable RSA-CASE-N
 
 : RSA-CASE-SIGN ( -- n )
-   RSA-CASE-PEM RSA-CASE-N @ >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
-   CRYPTO:RS256-SIGN ;
+   RSA-CASE-PEM RSA-CASE-N @ >str JWS-MSG JWS-N @ >str RSA-OUT SIGN-TO ;
+
+: RSA-CASE-REJECTED ( -- )
+   RSA-CASE-PEM RSA-CASE-N @ >str JWS-MSG JWS-N @ >str CRYPTO:E-KEY SIGN-REJECTED ;
 
 : RSA-CASE-TRAILING-DER ( -- )
    RSA-CASE-PEM PEM-CAP INTO
@@ -1085,53 +778,47 @@ variable RSA-CASE-N
 
 : RSA-PRIVATE-REFUSALS ( -- )
    s" EC, RSA-PSS, encrypted, legacy and inconsistent private keys refuse" T-LABEL
-   $A5 RSA-OUT c!
    RSA-CASE-EC
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
-   RSA-OUT c@ $A5 T=
+   RSA-CASE-REJECTED
    RSA-CASE-PSS
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    RSA-CASE-LEGACY
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    RSA-CASE-ENCRYPTED
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    RSA-CASE-INCONSISTENT
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    s" one PKCS#8 PEM rejects trailing decoded DER" T-LABEL
    RSA-CASE-TRAILING-DER
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    s" PKCS#8 PEM rejects material behind a hyphen EOF" T-LABEL
    RSA-CASE-HIDDEN-DER
-   $A5 RSA-OUT c!
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
-   RSA-OUT c@ $A5 T=
+   RSA-CASE-REJECTED
    s" inline hyphen cannot hide appended DER from PEM validation" T-LABEL
    RSA-CASE-INLINE-HIDDEN-DER
-   $A5 RSA-OUT c!
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
-   RSA-OUT c@ $A5 T=
+   RSA-CASE-REJECTED
    s" base64 after padding and inline footer refuse" T-LABEL
    RSA-CASE-AFTER-PAD
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    RSA-CASE-INLINE-FOOTER
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    s" PKCS#8 rejects trailing DER inside its RSA private key" T-LABEL
    RSA-CASE-TRAILING-INNER
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    s" RSA private key rejects an extra ASN.1 item" T-LABEL
    RSA-CASE-TRAILING-SEQ
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    s" empty PEM payload is a key error" T-LABEL
    RSA-CASE-PEM PEM-CAP INTO
    s" -----BEGIN PRIVATE KEY-----" PEM-LINE
    s" -----END PRIVATE KEY-----" PEM-LINE
    FILLED RSA-CASE-N !
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    RSA-CASE-PEM PEM-CAP INTO
    RSA-PEM PEM-N @ >str ASCII,
    s" -----BEGIN PRIVATE KEY-----" ASCII,
    FILLED RSA-CASE-N !
-   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-REJECTED
    RFC-SIGN RSA-BYTES T= ;
 
 : RSA-PRIVATE-CRLF ( -- )
@@ -1158,10 +845,8 @@ variable RSA-CASE-N
       RSA-PEM i + c@ BYTE,
    loop
    FILLED RSA-CASE-N !
-   $A5 RSA-OUT RSA-BYTES + c!
    RSA-CASE-SIGN RSA-BYTES T=
-   RSA-OUT RSA-BYTES >str RSA-SIG RSA-BYTES >str T$=
-   RSA-OUT RSA-BYTES + c@ $A5 T= ;
+   RSA-OUT RSA-BYTES >str RSA-SIG RSA-BYTES >str T$= ;
 
 : RSA-PRIVATE-MARKER-SPACE ( -- )
    s" spaces and tabs adjacent to PEM markers with LF and CRLF" T-LABEL
@@ -1172,7 +857,7 @@ variable RSA-CASE-N
 \ An independently generated 2049-bit RSA key gives a 257-byte signature.
 create RSA-ODD-N 257 allot
 create RSA-ODD-SIG 257 allot
-create RSA-ODD-OUT 258 allot
+create RSA-ODD-OUT 257 allot
 create RSA-ODD-PEM PEM-CAP allot
 variable RSA-ODD-PEM-N
 
@@ -1235,11 +920,9 @@ variable RSA-ODD-PEM-N
    s" a 2049-bit RSA key signs and verifies exactly 257 bytes" T-LABEL
    RSA-ODD-N 257 >str RSA-E 3 >str s" non-byte-aligned RSA modulus"
    RSA-ODD-SIG 257 >str CRYPTO:RS256-VERIFY? TTRUE
-   $5A RSA-ODD-OUT 257 + c!
    RSA-ODD-PEM RSA-ODD-PEM-N @ >str s" non-byte-aligned RSA modulus"
-   RSA-ODD-OUT 258 >str CRYPTO:RS256-SIGN 257 T=
-   RSA-ODD-OUT 257 >str RSA-ODD-SIG 257 >str T$=
-   RSA-ODD-OUT 257 + c@ $5A T= ;
+   RSA-ODD-OUT SIGN-TO 257 T=
+   RSA-ODD-OUT 257 >str RSA-ODD-SIG 257 >str T$= ;
 
 
 \ The RFC modulus also admits exponent three. This signature was produced
@@ -1325,14 +1008,8 @@ create RSA-LARGE-E 9 allot
    RSA-SIGNATURE-CASES
    RSA-OUTPUT-CASES
    RSA-NONCE-TRIP
-   GCM-VECTORS
-   TAMPER
    MAC-VECTORS
-   MAC1-VECTORS
-   REFUSALS
-   RANDOMNESS
-   BIG-MESSAGE
-   CONTEXT-LIFETIME ;
+   MAC-KEEPS ;
 
 T-RESET
 RUN

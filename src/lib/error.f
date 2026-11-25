@@ -247,8 +247,9 @@ require src/os/env-base.f
 \ -9231 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
 \ -9235 unassigned: src/lib/net/curl.f grows its transfer records.
 
-\ Authenticated encryption and HMAC over libcrypto (package CRYPTO):
-\ -9270..-9279, declared at this file's end.
+\ HMAC and RS256 over libcrypto (package CRYPTO): -9270..-9279, declared at
+\ this file's end.
+\ -9271..-9274 unassigned.
 -9270 constant E-CRYPTO-FIRST
 -9279 constant E-CRYPTO-LAST
 
@@ -776,11 +777,7 @@ generates: FAULT ( -- n )
 -9232 s" a curl handle that is empty, not live or another task's, or a transfer already in flight" ERROR:CODE E-CURL-STATE
 -9233 s" libcurl answered a call with a result it cannot give, or a capture that is not whole" ERROR:FAULT E-CURL-RESULT
 -9234 s" a curl argument out of range, a header holding CR or LF, or a record index outside the table" ERROR:CODE E-CURL-OPERAND
--9270 s" a key, nonce, span length or output span the operation cannot accept" ERROR:CODE E-CRYPTO-OPERAND
--9271 s" libcrypto refused a step of the encryption" ERROR:FAULT E-CRYPTO-SEAL
--9272 s" libcrypto refused a step of the decryption" ERROR:FAULT E-CRYPTO-OPEN
--9273 s" the tag did not authenticate the ciphertext and its associated data" ERROR:CODE E-CRYPTO-TAG
--9274 s" the random generator reported failure" ERROR:FAULT E-CRYPTO-RANDOM
+-9270 s" a span the operation cannot accept, or an RS256 word run while one runs on the same task" ERROR:CODE E-CRYPTO-OPERAND
 -9275 s" libcrypto refused the keyed hash, or answered a digest of the wrong width" ERROR:FAULT E-CRYPTO-MAC
 -9277 s" an RS256 key whose encoding, import or validation was refused" ERROR:CODE E-CRYPTO-KEY
 -9278 s" RS256 verification setup or operation failed" ERROR:FAULT E-CRYPTO-VERIFY

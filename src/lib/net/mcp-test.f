@@ -1602,7 +1602,6 @@ variable TOKEN-U
 $800 constant KEY-SET-CAP
 KEY-SET-CAP SPAN-BUFFER: KEY-SET
 variable KEY-SET-U
-CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
 
 \ The bytes copied into the span at off; answers the offset past them.
 : PUT ( ^u8 n SPAN:span<u8> n -- n )
@@ -1627,6 +1626,14 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    TOKEN TOKEN-U @ TOKEN-CAP TOKEN-U @ - SPAN:SUB BASE64:ENCODE-URL
    TOKEN-U @ + TOKEN-U ! ;
 
+\ The signature over TOKEN, in a vector this word makes and deletes, as the
+\ token's third segment.
+: SIGNATURE+ ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   [: JWS-FIXTURE:PEM$ TOKEN$ v CRYPTO:RS256-SIGN
+      s" ." TOKEN+ v VEC:BYTES ENCODED+ ;]
+   [: v VEC:DELETE ;] finally ;
+
 \ A current token in TOKEN for the caller's azp and oid.
 : MINT ( ^u8 n ^u8 n -- )
    {: azp:^ au:n oid:^ ou:n :}
@@ -1636,9 +1643,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    S\" \",\"oid\":\"" SB-APPEND oid ou SB-APPEND S\" \"}" SB-APPEND
    0 TOKEN-U !
    S\" {\"alg\":\"RS256\",\"kid\":\"a\"}" ENCODED+ s" ." TOKEN+ SB$ ENCODED+
-   JWS-FIXTURE:PEM$ TOKEN$ SIGNATURE CRYPTO:RS256-MAX-BYTES CRYPTO:RS256-SIGN
-   {: su:n :}
-   s" ." TOKEN+ SIGNATURE su ENCODED+ ;
+   SIGNATURE+ ;
 
 : ZEN ( -- ) s" zen-app" s" o-1" MINT ;
 : OWNER ( -- ) s" owner-app" s" o-2" MINT ;

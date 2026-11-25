@@ -1,93 +1,44 @@
-\ crypto/evp.f - AES-256-GCM sealing, HMAC-SHA-256/SHA-1 and RS256 over OpenSSL
-\ 3's libcrypto. No key management: derivation, rotation, storage format, nonce
-\ counters, JWS serialization and key selection belong above it.
-\ STORAGE CLASS. TASK-LOCAL: each task's EVP_CIPHER_CTX slot and RS256 signer
-\ record are TASK:+USER rows, its out-parameter bytes TASK:+USERS u8 rows.
-\ Input spans are borrowed per call and nothing is kept between calls; a SEAL or
-\ UNSEAL context is freed on every path, a throw included.
+\ crypto/evp.f - HMAC-SHA-256 and RS256 over OpenSSL 3's libcrypto. No key
+\ management: rotation, storage format, JWS serialization and key selection
+\ belong above it. A word that makes bytes appends them to the caller's
+\ vector; on failure COUNT is what it was and earlier bytes stay.
+\ STORAGE CLASS. TASK-LOCAL: each task's RS256 signer record is a TASK:+USER
+\ row; its out-parameter bytes, the MAC and the signature are TASK:+USERS u8
+\ rows, written there and then appended, so an input may lie in the vector.
+\ Input spans are borrowed per call and nothing is kept between calls.
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/ffi-abi.f
 require src/lib/le.f
-require src/lib/type/deftype.f
 require src/lib/task.f
+require src/lib/vector.f
 
 package CRYPTO
 public
 
-DEFTYPE CODE
-
-\ A wrong tag is a decision the caller branches on, not an exception: UNSEAL
-\ answers it as data, and `ok` carries the plaintext length it wrote.
-SUMTYPE unseal-result
-   VARIANT ok len ;VARIANT
-   VARIANT failed code ;VARIANT
-;SUMTYPE
-
 E-CRYPTO-OPERAND constant E-OPERAND
-E-CRYPTO-SEAL constant E-SEAL
-E-CRYPTO-OPEN constant E-OPEN
-E-CRYPTO-TAG constant E-TAG
-E-CRYPTO-RANDOM constant E-RANDOM
 E-CRYPTO-MAC constant E-MAC
 E-CRYPTO-KEY constant E-KEY
 E-CRYPTO-VERIFY constant E-VERIFY
 E-CRYPTO-SIGN constant E-SIGN
 
-\ The sizes a caller allocates against. SEAL wants KEY-BYTES and NONCE-BYTES
-\ exactly and writes TAG-BYTES past the ciphertext; HMAC-SHA256 writes MAC-BYTES.
-$20 constant KEY-BYTES                    \ AES-256
-$0C constant NONCE-BYTES                  \ GCM's 96-bit IV, the only length this package accepts
-$10 constant TAG-BYTES                    \ the GCM tag SEAL appends and UNSEAL verifies
 $20 constant MAC-BYTES                    \ HMAC-SHA-256
-$14 constant MAC1-BYTES                   \ HMAC-SHA-1
 $800 constant RS256-MAX-BYTES             \ RSA 16384-bit signature
 
 private
 
-\ EVP_CIPHER_CTX_ctrl selectors, from /usr/include/openssl/evp.h. Each GCM
-\ spelling is the AEAD one, so the two names carry the same number.
-$09 constant CTRL-SET-IVLEN               \ EVP_CTRL_GCM_SET_IVLEN = EVP_CTRL_AEAD_SET_IVLEN
-$10 constant CTRL-GET-TAG                 \ EVP_CTRL_GCM_GET_TAG = EVP_CTRL_AEAD_GET_TAG
-$11 constant CTRL-SET-TAG                 \ EVP_CTRL_GCM_SET_TAG = EVP_CTRL_AEAD_SET_TAG
-
 1 constant OSSL-OK                        \ every libcrypto call declared below answers 1 for success
 $7FFFFFFF constant MAX-SPAN               \ every length this package passes is a C int
 
-\ libcrypto's EVP cipher interface and its one-shot HMAC. EVP_CIPHER_CTX*,
-\ EVP_CIPHER* and EVP_MD* are OPAQUE here - nothing in this package dereferences
-\ one - so they are declared `n`: both host ABIs pass a pointer and an integer in the
-\ same register. Only a span Habu or the callee really reads or writes is `^u8`.
-\
-\ Three symbols carry two argument SHAPES each, under different Habu names.
-\ EVP_EncryptInit_ex selects the cipher with a NULL key and IV and then installs
-\ the key with a NULL cipher; EVP_EncryptUpdate takes the associated data with a
-\ NULL output; EVP_CIPHER_CTX_ctrl writes the tag out for one selector and reads
-\ it in for another.
+\ libcrypto's one-shot HMAC and its RS256 interface. EVP_MD* and the other
+\ handles are OPAQUE here - nothing in this package dereferences one - so they
+\ are declared `n`: both host ABIs pass a pointer and an integer in the same
+\ register. Only a span Habu or the callee really reads or writes is `^u8`.
 VERSIONED-LIBRARY crypto 3
 
-FUNCTION: CTX-NEW EVP_CIPHER_CTX_new ( -- n ) ;FUNCTION
-FUNCTION: CTX-FREE EVP_CIPHER_CTX_free ( n -- ) ;FUNCTION
-FUNCTION: AES-256-GCM EVP_aes_256_gcm ( -- n ) ;FUNCTION
 FUNCTION: SHA-256 EVP_sha256 ( -- n ) ;FUNCTION
-FUNCTION: SHA-1 EVP_sha1 ( -- n ) ;FUNCTION
-FUNCTION: RAND-BYTES RAND_bytes ( ^u8 n -- i32 ) ;FUNCTION
-FUNCTION: ENC-CIPHER EVP_EncryptInit_ex ( n n n n n -- i32 ) ;FUNCTION
-FUNCTION: ENC-KEY EVP_EncryptInit_ex ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
-FUNCTION: DEC-CIPHER EVP_DecryptInit_ex ( n n n n n -- i32 ) ;FUNCTION
-FUNCTION: DEC-KEY EVP_DecryptInit_ex ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
-FUNCTION: ENC-AAD EVP_EncryptUpdate ( n n ^u8 str -- i32 ) ;FUNCTION
-FUNCTION: DEC-AAD EVP_DecryptUpdate ( n n ^u8 str -- i32 ) ;FUNCTION
-FUNCTION: ENC-UPDATE EVP_EncryptUpdate ( n ^u8 ^u8 str -- i32 ) ;FUNCTION
-FUNCTION: DEC-UPDATE EVP_DecryptUpdate ( n ^u8 ^u8 str -- i32 ) ;FUNCTION
-FUNCTION: ENC-FINAL EVP_EncryptFinal_ex ( n ^u8 ^u8 -- i32 ) ;FUNCTION
-FUNCTION: DEC-FINAL EVP_DecryptFinal_ex ( n ^u8 ^u8 -- i32 ) ;FUNCTION
-FUNCTION: CTL-VALUE EVP_CIPHER_CTX_ctrl ( n n n n -- i32 ) ;FUNCTION
-FUNCTION: CTL-TAG-OUT EVP_CIPHER_CTX_ctrl ( n n n ^u8 -- i32 ) ;FUNCTION
-FUNCTION: CTL-TAG-IN EVP_CIPHER_CTX_ctrl ( n n n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: HMAC-CALL HMAC ( n str str ^u8 ^u8 -- n ) ;FUNCTION
-FUNCTION: HMAC1-CALL HMAC ( n str str ^u8 ^u8 -- n ) ;FUNCTION
 
 \ RS256 uses provider-owned opaque keys and parameters. No OpenSSL struct is
 \ laid out in Habu.
@@ -137,30 +88,18 @@ FUNCTION: DIGEST-SIGN-SIZE EVP_DigestSign ( n n ^u8 str -- i32 ) ;FUNCTION
 \ holds, and stores the length it wrote in that cell.
 FUNCTION: DIGEST-SIGN EVP_DigestSign ( n ^u8 ^u8 str -- i32 ) ;FUNCTION
 
-\ Foreign out-parameter storage, per task: two tasks may be sealing at once and
-\ each needs its own live context.
-TASK:+USER CTX-SLOT n
-
-\ C fills these raw byte rows: OUTL and MAC-LEN a C int, FINAL a block.
-8 TASK:+USERS OUTL-ROW u8
-16 TASK:+USERS FINAL-ROW u8
+MAC-BYTES TASK:+USERS MAC-ROW u8
+\ C fills this raw byte row, a C int, per task: two tasks may hash at once.
 8 TASK:+USERS MAC-LEN-ROW u8
-
-: OUTL-BUF ( -- ^u8 )
-   0 OUTL-ROW ;
-
-: FINAL-BUF ( -- ^u8 )
-   0 FINAL-ROW ;
 
 : MAC-LEN-BUF ( -- ^u8 )
    0 MAC-LEN-ROW ;
 
+: MAC-BUF ( -- ^u8 )
+   0 MAC-ROW ;
+
 
 \ A C int out-parameter, little-endian on both targets (src/lib/le.f).
-: OUTL@ ( -- n )
-   OUTL-BUF LE:U32@ ;
-
-
 : MAC-LEN@ ( -- n )
    MAC-LEN-BUF LE:U32@ ;
 
@@ -173,133 +112,10 @@ TASK:+USER CTX-SLOT n
    u 0 MAX-SPAN WITHIN-RANGE ;
 
 
-: SPAN-ZERO ( str -- ) {: target:str :}
-   target STR:LEN 0 ?do 0 target STR:DATA i + c! loop ;
-
-
-: CTX@ ( -- n )
-   CTX-SLOT @ ;
-
-
-\ The slot holds at most one live context. A non-empty slot means an earlier call
-\ left one behind, which is a named failure rather than a silent leak.
-: CTX-OPEN ( n -- ) {: failure:n :}
-   CTX@ 0 <> if failure throw then
-   CTX-NEW dup 0= if drop failure throw then
-   CTX-SLOT ! ;
-
-
-: CTX-RELEASE ( -- )
-   CTX@ dup 0= if drop exit then
-   CTX-FREE
-   0 CTX-SLOT ! ;
-
-
-\ GCM's three-step start: name the cipher, state the IV length, then install the
-\ key and nonce. The IV length must be set while the key slot is still empty.
-: SEAL-BEGIN ( ^u8 ^u8 -- ) {: key nonce :}
-   CTX@ AES-256-GCM 0 0 0 ENC-CIPHER OSSL-OK <> if E-SEAL throw then
-   CTX@ CTRL-SET-IVLEN NONCE-BYTES 0 CTL-VALUE OSSL-OK <> if E-SEAL throw then
-   CTX@ 0 0 key nonce ENC-KEY OSSL-OK <> if E-SEAL throw then ;
-
-
-: UNSEAL-BEGIN ( ^u8 ^u8 -- ) {: key nonce :}
-   CTX@ AES-256-GCM 0 0 0 DEC-CIPHER OSSL-OK <> if E-OPEN throw then
-   CTX@ CTRL-SET-IVLEN NONCE-BYTES 0 CTL-VALUE OSSL-OK <> if E-OPEN throw then
-   CTX@ 0 0 key nonce DEC-KEY OSSL-OK <> if E-OPEN throw then ;
-
-
-\ Associated data is authenticated, not encrypted, so the update takes a NULL
-\ output. Empty associated data needs no call at all.
-: SEAL-AAD ( str -- ) {: aad:str :}
-   aad STR:LEN 0= if exit then
-   CTX@ 0 OUTL-BUF aad ENC-AAD OSSL-OK <> if E-SEAL throw then ;
-
-
-: UNSEAL-AAD ( str -- ) {: aad:str :}
-   aad STR:LEN 0= if exit then
-   CTX@ 0 OUTL-BUF aad DEC-AAD OSSL-OK <> if E-OPEN throw then ;
-
-
-\ GCM is a stream cipher: one update consumes the whole plaintext and emits
-\ exactly as many bytes, so a short write is a broken library, not a partial call.
-: SEAL-TEXT ( str ^u8 -- ) {: plain:str out :}
-   plain STR:LEN 0= if exit then
-   CTX@ out OUTL-BUF plain ENC-UPDATE OSSL-OK <> if E-SEAL throw then
-   OUTL@ plain STR:LEN <> if E-SEAL throw then ;
-
-
-\ The final call emits nothing for GCM; it only closes the GHASH. The tag then
-\ lands directly past the ciphertext, which is where the sealed record carries it.
-: SEAL-FINISH ( str -- n ) {: out:str :}
-   CTX@ FINAL-BUF OUTL-BUF ENC-FINAL OSSL-OK <> if E-SEAL throw then
-   OUTL@ 0 <> if E-SEAL throw then
-   CTX@ CTRL-GET-TAG TAG-BYTES out STR:DATA out STR:LEN + CTL-TAG-OUT
-   OSSL-OK <> if E-SEAL throw then
-   out STR:LEN TAG-BYTES + ;
-
-
-: SEAL-RUN ( ^u8 ^u8 str str ^u8 -- n )
-   {: key nonce aad:str plain:str out :}
-   key nonce SEAL-BEGIN
-   aad SEAL-AAD
-   plain out SEAL-TEXT
-   out plain STR:LEN >str SEAL-FINISH ;
-
-
-\ A refused record never leaves plaintext behind: the bytes the caller would have
-\ read as the message are cleared before the failure is answered.
-: UNSEAL-REFUSED ( str n -- unseal-result ) {: out:str failure:n :}
-   out SPAN-ZERO
-   failure >CODE CRYPTO-UNSEAL--RESULT:FAILED ;
-
-
-: TEXT-DECRYPTED? ( str ^u8 -- bool ) {: cipher:str out :}
-   cipher STR:LEN 0= if true exit then
-   CTX@ out OUTL-BUF cipher DEC-UPDATE OSSL-OK <> if false exit then
-   OUTL@ cipher STR:LEN <> if E-OPEN throw then
-   true ;
-
-
-\ The tag the record carries is installed before the final call, and that call is
-\ the whole authentication decision.
-: TAG-VERIFIED? ( str -- bool ) {: cipher:str :}
-   CTX@ CTRL-SET-TAG TAG-BYTES cipher STR:DATA cipher STR:LEN + CTL-TAG-IN
-   OSSL-OK <> if E-OPEN throw then
-   CTX@ FINAL-BUF OUTL-BUF DEC-FINAL OSSL-OK <> if false exit then
-   OUTL@ 0 <> if E-OPEN throw then
-   true ;
-
-
-: UNSEAL-RUN ( ^u8 ^u8 str str ^u8 -- unseal-result )
-   {: key nonce aad:str cipher:str out :}
-   cipher STR:LEN TAG-BYTES - {: pu:n :}
-   key nonce UNSEAL-BEGIN
-   aad UNSEAL-AAD
-   cipher STR:DATA pu >str out TEXT-DECRYPTED? 0=
-   if out pu >str E-OPEN UNSEAL-REFUSED exit then
-   cipher STR:DATA pu >str TAG-VERIFIED? 0=
-   if out pu >str E-TAG UNSEAL-REFUSED exit then
-   pu >LEN CRYPTO-UNSEAL--RESULT:OK ;
-
-
-: KEY-NONCE ( n n -- ) {: ku:n nu:n :}
-   ku KEY-BYTES <> if E-OPERAND throw then
-   nu NONCE-BYTES <> if E-OPERAND throw then ;
-
-
-: SEAL-OPERANDS ( n n n n n -- ) {: ku:n nu:n au:n pu:n ou:n :}
-   ku nu KEY-NONCE
-   au SPAN-LEN
-   pu 0 MAX-SPAN TAG-BYTES - WITHIN-RANGE
-   ou pu TAG-BYTES + < if E-OPERAND throw then ;
-
-
-: UNSEAL-OPERANDS ( n n n n n -- ) {: ku:n nu:n au:n cu:n ou:n :}
-   ku nu KEY-NONCE
-   au SPAN-LEN
-   cu TAG-BYTES MAX-SPAN WITHIN-RANGE
-   ou cu TAG-BYTES - < if E-OPERAND throw then ;
+: MAC-INTO ( str str -- )
+   {: key:str msg:str :}
+   SHA-256 key msg MAC-BUF MAC-LEN-BUF HMAC-CALL 0= if E-MAC throw then
+   MAC-LEN@ MAC-BYTES <> if E-MAC throw then ;
 
 \ RS256's task record owns all opaque handles and PEM's decoded private bytes.
 STRUCTURE signer DERIVE addr
@@ -327,6 +143,11 @@ STRUCTURE signer DERIVE addr
    FIELD sig-len n
 ;STRUCTURE
 TASK:+USER SIGNER signer
+\ A signature: RS-KEY-CHECK caps the key at RSA-MAX-BITS, so RS256-MAX-BYTES.
+RS256-MAX-BYTES TASK:+USERS SIG-ROW u8
+
+: SIG-BUF ( -- ^u8 )
+   0 SIG-ROW ;
 
 create RSA-NAME 82 c, 83 c, 65 c, 0 c,
 create BN-NAME 110 c, 0 c,
@@ -404,11 +225,6 @@ CAST: RS>BYTES ( n -- ^u8 )
    source STR:LEN 0 > start 0= and if E-OPERAND throw then
    source STR:LEN RS-MAX-ADDRESS start - > if E-OPERAND throw then ;
 
-: RS-OVERLAP? ( str str -- bool )
-   {: a:str b:str :}
-   a STR:LEN 0= b STR:LEN 0= or if false exit then
-   a STR:DATA FFI:>CELL b STR:DATA FFI:>CELL b STR:LEN + <
-   b STR:DATA FFI:>CELL a STR:DATA FFI:>CELL a STR:LEN + < and ;
 
 : RS-JWK-INT ( str -- )
    {: bytes:str :}
@@ -697,8 +513,16 @@ CAST: RS>BYTES ( n -- ^u8 )
    then
    drop ERROR-CLEAR E-VERIFY throw ;
 
-: RS-SIGN-RUN ( str str ^u8 n -- n )
-   {: pem:str msg:str out cap:n :}
+\ The signature over the message into SIG-BUF, exactly n bytes.
+: RS-SIGN-INTO ( n str -- )
+   {: k:n msg:str :}
+   k SIGNER SIGNER-SIG-LEN BYTE-VIEW LE:U64!
+   RS-MD@ SIG-BUF SIGNER SIGNER-SIG-LEN BYTE-VIEW msg DIGEST-SIGN
+   OSSL-OK <> if E-SIGN throw then
+   SIGNER SIGNER-SIG-LEN BYTE-VIEW LE:U64@ k <> if E-SIGN throw then ;
+
+: RS-SIGN-RUN ( str str ^VEC:vector<u8> -- )
+   {: pem:str msg:str v:^ :}
    pem RS-PRIVATE-IMPORT
    RS-PRIVATE-PARAMS
    true RS-KEY-CHECK {: k:n :}
@@ -707,64 +531,19 @@ CAST: RS>BYTES ( n -- ^u8 )
    RS-MD@ 0 SIGNER SIGNER-SIG-LEN BYTE-VIEW msg DIGEST-SIGN-SIZE OSSL-OK <>
    if E-SIGN throw then
    SIGNER SIGNER-SIG-LEN BYTE-VIEW LE:U64@ k <> if E-SIGN throw then
-   cap k < if E-OPERAND throw then
-   k SIGNER SIGNER-SIG-LEN BYTE-VIEW LE:U64!
-   RS-MD@ out SIGNER SIGNER-SIG-LEN BYTE-VIEW msg DIGEST-SIGN
-   OSSL-OK <> if E-SIGN throw then
-   SIGNER SIGNER-SIG-LEN BYTE-VIEW LE:U64@ k <> if E-SIGN throw then
-   k ;
+   k msg RS-SIGN-INTO
+   SIG-BUF k >str v VEC:APPEND ;
 
 public
 
-\ Fill the span with cryptographically strong bytes. An empty span is a caller
-\ mistake, not a no-op.
-: RANDOM-BYTES ( ^u8 n -- ) {: out u:n :}
-   u 1 MAX-SPAN WITHIN-RANGE
-   out u RAND-BYTES OSSL-OK <> if E-RANDOM throw then ;
-
-
-\ AES-256-GCM. The output span receives the ciphertext followed by the 16-byte
-\ tag and must hold both; SEAL answers how many bytes it wrote. The key is 32
-\ bytes and the nonce 12. A nonce must never repeat under one key: GCM then
-\ leaks the two plaintexts' XOR and the authentication key. The associated data
-\ (such as a record's row identity) is authenticated, never copied into the
-\ output: the record fails to open under any other.
-: SEAL ( str str str str ^u8 n -- n )
-   {: key:str nonce:str aad:str plain:str out ou:n :}
-   key STR:LEN nonce STR:LEN aad STR:LEN plain STR:LEN ou SEAL-OPERANDS
-   E-SEAL CTX-OPEN
-   key STR:DATA nonce STR:DATA aad plain out
-   [: SEAL-RUN ;] [: CTX-RELEASE ;] finally ;
-
-
-\ The reverse. The ciphertext span is what SEAL wrote, tag included, so the
-\ plaintext is TAG-BYTES shorter and the output span must hold that much. A
-\ record whose tag does not authenticate its ciphertext and associated data
-\ answers `failed` with the output cleared; no partial plaintext is ever visible.
-: UNSEAL ( str str str str str -- unseal-result )
-   {: key:str nonce:str aad:str cipher:str out:str :}
-   key STR:LEN nonce STR:LEN aad STR:LEN cipher STR:LEN out STR:LEN UNSEAL-OPERANDS
-   E-OPEN CTX-OPEN
-   key STR:DATA nonce STR:DATA aad cipher out STR:DATA
-   [: UNSEAL-RUN ;] [: CTX-RELEASE ;] finally ;
-
-
-\ HMAC-SHA-256 of the message under the key, into a span of at least MAC-BYTES.
-\ The key may be any length; libcrypto folds a long one with SHA-256 itself.
-: HMAC-SHA256 ( str str str -- ) {: key:str msg:str out:str :}
+\ HMAC-SHA-256 of the message under the key, MAC-BYTES appended. The key may
+\ be any length; libcrypto folds a long one with SHA-256 itself.
+: HMAC-SHA256 ( str str ^VEC:vector<u8> -- )
+   {: key:str msg:str v:^ :}
    key STR:LEN SPAN-LEN
    msg STR:LEN SPAN-LEN
-   out STR:LEN MAC-BYTES < if E-OPERAND throw then
-   SHA-256 key msg out STR:DATA MAC-LEN-BUF HMAC-CALL 0= if E-MAC throw then
-   MAC-LEN@ MAC-BYTES <> if E-MAC throw then ;
-
-\ HMAC-SHA-1 has the same span contract, with a MAC1-BYTES digest.
-: HMAC-SHA1 ( str str str -- ) {: key:str msg:str out:str :}
-   key STR:LEN SPAN-LEN
-   msg STR:LEN SPAN-LEN
-   out STR:LEN MAC1-BYTES < if E-OPERAND throw then
-   SHA-1 key msg out STR:DATA MAC-LEN-BUF HMAC1-CALL 0= if E-MAC throw then
-   MAC-LEN@ MAC1-BYTES <> if E-MAC throw then ;
+   key msg MAC-INTO
+   MAC-BUF MAC-BYTES >str v VEC:APPEND ;
 
 \ Verify PKCS#1 v1.5 SHA-256 over exact message bytes. JWK integers are
 \ canonical unsigned big-endian byte strings. A wrong signature is false.
@@ -777,16 +556,14 @@ public
    modulus exponent msg sig
    [: RS-VERIFY-RUN ;] [: RS-CLOSE ;] finally ;
 
-\ Sign with one unencrypted PKCS#8 RSA PRIVATE KEY PEM. The caller owns the
-\ output; on success exactly the modulus width is written and returned.
-: RS256-SIGN ( str str str -- n )
-   {: pem:str msg:str out:str :}
-   pem RS-SPAN msg RS-SPAN out RS-SPAN
-   out pem RS-OVERLAP? if E-OPERAND throw then
-   out msg RS-OVERLAP? if E-OPERAND throw then
+\ Sign with one unencrypted PKCS#8 RSA PRIVATE KEY PEM, appending the
+\ signature, exactly the modulus width.
+: RS256-SIGN ( str str ^VEC:vector<u8> -- )
+   {: pem:str msg:str v:^ :}
+   pem RS-SPAN msg RS-SPAN
    pem RS-PEM-SHAPE
    RS-OPEN
-   msg out STR:DATA out STR:LEN
+   msg v
    [: RS-SIGN-RUN ;] [: RS-CLOSE ;] finally ;
 
 ;package

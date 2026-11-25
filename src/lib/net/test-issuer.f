@@ -19,7 +19,6 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/fmt.f
-require src/lib/memory.f
 require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/base64.f
@@ -270,12 +269,15 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    v old s STR:LEN 4 * 2 + 3 / + VEC:ENSURE
    s v VEC:SPAN old SPAN:SKIP BASE64:ENCODE-URL drop ;
 
-\ The signature over the vector's text appended as its third segment.
-: SIGNED+ ( ^VEC:vector<u8> ^u8 NUM:alloc-byte-len -- )
-   MEM:ALLOCATION>SPAN SPAN:$ {: v:^ out:str :}
-   JWS-FIXTURE:PEM$ v VEC$ out CRYPTO:RS256-SIGN {: su:n :}
-   [char] . v VEC:PUSH c!
-   out STR:DATA su >str v SEGMENT+ ;
+\ The signature over the vector's text appended as its third segment, by way
+\ of a vector this word makes and deletes.
+: SIGNED+ ( ^VEC:vector<u8> -- )
+   {: v:^ :}
+   NEW-VEC {: sig:^ :}
+   [: JWS-FIXTURE:PEM$ v VEC$ sig CRYPTO:RS256-SIGN
+      [char] . v VEC:PUSH c!
+      sig VEC$ v SEGMENT+ ;]
+   [: sig VEC:DELETE ;] finally ;
 
 public
 
@@ -288,7 +290,7 @@ public
    HEADER$ v SEGMENT+
    [char] . v VEC:PUSH c!
    claims v SEGMENT+
-   v MODULUS-U @ MEM:BYTES-ALLOC-LEN [: SIGNED+ ;] MEM:WITH-BYTES
+   v SIGNED+
    v VEC$ ;
 
 private
