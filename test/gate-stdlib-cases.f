@@ -1101,14 +1101,14 @@ SUITE fs-mutate
 ;SUITE
 
 \ Host failures come from an LD_PRELOAD shim of glibc's fsync and renameat2.
-HB-TARGET-LINUX? [if]
+HB-TARGET-LINUX-KERNEL? [if]
 SUITE fs-atomic-faults
    test/fs-atomic-faults.f
 ;SUITE
 [then]
 
 \ sd_notify(3) is Linux's: the cases bind unix datagram sockets, abstract ones too.
-HB-TARGET-LINUX? [if]
+HB-TARGET-LINUX-KERNEL? [if]
 SUITE systemd
    src/lib/systemd-test.f
 ;SUITE

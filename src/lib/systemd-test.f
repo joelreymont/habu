@@ -1,6 +1,6 @@
 \ systemd-test.f - SYSTEMD:NOTIFY-READY and SYSTEMD:NOTIFY-EXTEND-TIMEOUT
 \ against unix datagram sockets this test binds.
-HB-TARGET-LINUX? ?TARGET
+HB-TARGET-LINUX-KERNEL? ?TARGET
 
 require src/lib/string.f
 require src/lib/test.f
