@@ -513,6 +513,12 @@ public
    W32 $C7 0 m 0 s RM-ENC
    imm s EMIT-D ;
 
+\ REX.W sign-extends the literal to the cell it writes.
+: ENC-MOV-MI32 ( imm32 mem ^VEC:vector<u8> -- ) {: v:imm32 m:mem s:^ :}
+   v IMM32>N ?SIMM32 {: imm:n :}
+   W64 $C7 0 m 0 s RM-ENC
+   imm s EMIT-D ;
+
 : ENC-MOV-RI64 ( r64 imm64 ^VEC:vector<u8> -- ) {: d:r64 v:imm64 s:^ :}
    d R64>N REG-NUM {: n:n :}
    1 0 0 n 3 rshift 0 s EMIT-REX

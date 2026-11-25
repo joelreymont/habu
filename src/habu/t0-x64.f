@@ -6,6 +6,12 @@ split-str
 \ this file holds only x86-64 encodings and register choices. FILL-SLOT
 \ stores its words into the EMIT- and src/habu/t0-label.f (LABEL) cells for
 \ CTARGET-ARCH:X86-64.
+\
+\ FLAGS says whether the condition codes hold a compare no word has read yet.
+\ CMP and CMP-LIT set it; SET-FLAG, FWD-CC and BACK-CC, which read the codes,
+\ clear it, and so does a unit's start. A word that compares and branches
+\ itself leaves it alone. While it is clear a zero is loaded by an xor, which
+\ writes the codes; while it is set, by a mov, which does not.
 
 require src/lib/error.f
 require src/lib/heap.f
@@ -29,6 +35,10 @@ using X64ASM
 : IMM? ( n -- bool ) {: v:n :}
    v -2147483648 >= v 2147483647 <= and ;
 
+\ A sign-extended imm8.
+: SHORT? ( n -- bool ) {: v:n :}
+   v -128 >= v 127 <= and ;
+
 : COND ( cc -- condition )
    {: c:cc :}
    c CC>N {: k:n :}
@@ -45,6 +55,7 @@ variable FRAME-CELLS                  \ machine-stack cells this body uses
 variable REC-CELLS                    \ this unit's quotation record cells
 variable ENV                          \ 1 when this unit keeps a record's address
 variable BODY-AT                      \ first byte after the frame adjustment
+variable FLAGS                        \ nonzero while the condition codes are held
 variable NFRAME
 variable NUNIT                        \ units begun in this emission
 DYNAMIC-BUFFER FRAME-AT n             \ offset of each frame imm32 field
@@ -86,10 +97,12 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 \ A forward rel32 at the end of what was just emitted: its field's offset.
 : FWD-SITE ( -- LABEL:branch ) HERE-OFF 4 - LABEL:>BRANCH ;
 
-\ Load the constant n into r with the shortest form that holds it and leaves
-\ the condition codes alone: zero is a mov, not an xor.
+\ Load the constant n into r with the shortest form that holds it and keeps
+\ held condition codes.
 : LIT-R ( n r64 -- ) {: v:n r:r64 :}
-   v 0 >= v $FFFFFFFF <= and if r R64>N >R32 v >IMM32 SINK ENC-MOV32-RI32 exit then
+   r R64>N >R32 {: r4:r32 :}
+   v 0 =  FLAGS @ 0=  and if r4 r4 SINK ENC-XOR32-RR exit then
+   v 0 >= v $FFFFFFFF <= and if r4 v >IMM32 SINK ENC-MOV32-RI32 exit then
    v IMM? if r v >IMM32 SINK ENC-MOV-RI32 exit then
    r v >IMM64 SINK ENC-MOV-RI64 ;
 
@@ -128,7 +141,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 : UNIT-BEGIN ( -- )
    HERE-OFF EMIT-UNIT+
    NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !  0 NFRAME !
+   0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !  0 FLAGS !  0 NFRAME !
    RSP 0 >IMM32 SINK ENC-SUB-RI32  FRAME-SITE
    HERE-OFF BODY-AT ! ;
 
@@ -230,9 +243,14 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    s REG DSP MEM-AT SINK ENC-MOV-MR
    k DSP+ ;
 
-: PUSH-LIT ( n n -- ) {: v:n k:n :}
+\ Store the constant n at m, keeping held condition codes.
+: LIT-M ( n mem -- ) {: v:n m:mem :}
+   v IMM? if v >IMM32 m SINK ENC-MOV-MI32 exit then
    v RAX LIT-R
-   RAX DSP MEM-AT SINK ENC-MOV-MR
+   RAX m SINK ENC-MOV-MR ;
+
+: PUSH-LIT ( n n -- ) {: v:n k:n :}
+   v DSP MEM-AT LIT-M
    k DSP+ ;
 
 : POP ( vreg n -- ) {: d:vreg k:n :}
@@ -244,8 +262,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    s REG DSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
 
 : SPILL-LIT ( n n -- ) {: v:n k:n :}
-   v RAX LIT-R
-   RAX DSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
+   v DSP k CELL * MEM-OFF LIT-M ;
 
 : FILL ( vreg n -- )
    {: d:vreg k:n :}
@@ -311,15 +328,30 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    k 4 = if dr sr SINK ENC-XOR-RR exit then
    E-OPERAND throw ;
 
-: OP-LIT ( vreg n alu -- )
-   {: d:vreg v:n o:alu :}
-   d REG {: dr:r64 :}  v >IMM32 {: iv:imm32 :}  o ALU>N {: k:n :}
+: OP-RI8 ( r64 imm8 alu -- )
+   {: dr:r64 iv:imm8 o:alu :}
+   o ALU>N {: k:n :}
+   k 0 = if dr iv SINK ENC-ADD-RI8 exit then
+   k 1 = if dr iv SINK ENC-SUB-RI8 exit then
+   k 2 = if dr iv SINK ENC-AND-RI8 exit then
+   k 3 = if dr iv SINK ENC-OR-RI8 exit then
+   k 4 = if dr iv SINK ENC-XOR-RI8 exit then
+   E-OPERAND throw ;
+
+: OP-RI32 ( r64 imm32 alu -- )
+   {: dr:r64 iv:imm32 o:alu :}
+   o ALU>N {: k:n :}
    k 0 = if dr iv SINK ENC-ADD-RI32 exit then
    k 1 = if dr iv SINK ENC-SUB-RI32 exit then
    k 2 = if dr iv SINK ENC-AND-RI32 exit then
    k 3 = if dr iv SINK ENC-OR-RI32 exit then
    k 4 = if dr iv SINK ENC-XOR-RI32 exit then
    E-OPERAND throw ;
+
+: OP-LIT ( vreg n alu -- )
+   {: d:vreg v:n o:alu :}
+   v SHORT? if d REG v >IMM8 o OP-RI8 exit then
+   d REG v >IMM32 o OP-RI32 ;
 
 \ A shift by a register takes its count in cl, and cl is vreg 0's low byte;
 \ the hardware masks the count to six bits. SHIFT-LIT masks its count here.
@@ -382,17 +414,27 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
 : SET-FLAG ( vreg cc -- )
    {: d:vreg c:cc :}
+   0 FLAGS !
    c COND 0 >R8 SINK ENC-SETCC
    d REG 0 >R8 SINK ENC-MOVZX-8-RR
    d REG SINK ENC-NEG ;
 
 : CMP ( vreg vreg -- )
    {: a:vreg b:vreg :}
+   1 FLAGS !
    a REG b REG SINK ENC-CMP-RR ;
+
+\ `test r, r` sets every signed condition as `cmp r, 0` does.
+: CMP-R ( r64 n -- )
+   {: r:r64 v:n :}
+   v 0 = if r r SINK ENC-TEST-RR exit then
+   v SHORT? if r v >IMM8 SINK ENC-CMP-RI8 exit then
+   r v >IMM32 SINK ENC-CMP-RI32 ;
 
 : CMP-LIT ( vreg n -- )
    {: a:vreg v:n :}
-   a REG v >IMM32 SINK ENC-CMP-RI32 ;
+   1 FLAGS !
+   a REG v CMP-R ;
 
 \ ---- memory ------------------------------------------------------------------
 : LOAD ( vreg vreg width -- )
@@ -447,7 +489,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
 : FWD-NE-LIT ( vreg n -- LABEL:branch )
    {: sel:vreg v:n :}
-   sel v CMP-LIT
+   sel REG v CMP-R
    C-NE FWD-JCC ;
 
 : FWD-GE ( vreg vreg -- LABEL:branch )
@@ -455,7 +497,9 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    s REG l REG SINK ENC-CMP-RR
    C-GE FWD-JCC ;
 
-: FWD-CC ( cc -- LABEL:branch ) COND FWD-JCC ;
+: FWD-CC ( cc -- LABEL:branch )
+   0 FLAGS !
+   COND FWD-JCC ;
 
 \ The branch's jcc becomes je: its opcode byte is just before the field.
 : ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: at:n :}
@@ -476,6 +520,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
 : BACK-CC ( cc LABEL:head -- )
    {: c:cc m:LABEL:head :}
+   0 FLAGS !
    c COND m BACK-JCC ;
 
 \ ---- the return stack --------------------------------------------------------
