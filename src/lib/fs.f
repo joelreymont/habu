@@ -1,4 +1,3 @@
-split-str
 \ fs.f - checked filesystem helpers.
 \ STORAGE CLASS. TASK-LOCAL: the per-call slots, the FS cause, PATHZ-BUF,
 \ STAT-BUF, the read probe and ERRNO$'s text are the FS-ABI band of the
@@ -123,14 +122,14 @@ FUNCTION: STRERROR-CALL strerror_r ( n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: XPG-STRERROR-CALL __xpg_strerror_r ( n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: GETEUID-CALL geteuid ( -- u32 ) ;FUNCTION
 
-: STRERROR ( n str -- n )
+: STRERROR ( n ^u8 n -- n )
    HB-TARGET-MACOS? if STRERROR-CALL exit then
    XPG-STRERROR-CALL ;
 
 : NUL-AT ( str -- n )
-   {: buf:^ u:n :}
-   u 0 ?do buf i + c@ 0= if i unloop exit then loop
-   u ;
+   {: buf:str :}
+   buf STR:LEN 0 ?do buf STR:DATA i + c@ 0= if i unloop exit then loop
+   buf STR:LEN ;
 
 : TEXT-BUF ( -- ^u8 )
    data-base FS-ABI:TEXT-OFF + BYTE-VIEW ;
@@ -143,10 +142,10 @@ public
    TEXT-BUF {: buf:^ :}
    e buf TEXT-CAP STRERROR {: rc:n :}
    rc ERANGE = if E-SPAN-CAPACITY throw then
-   buf TEXT-CAP NUL-AT {: len:n :}
+   buf TEXT-CAP >str NUL-AT {: len:n :}
    \ An unknown errno answers EINVAL with a text the host cuts silently.
    rc EINVAL = if len 1+ TEXT-CAP >= if E-SPAN-CAPACITY throw then then
-   buf len ;
+   buf len >str ;
 
 : CAUSE-CLEAR ( -- )
    0 data-base FS-ABI:ERRNO-OFF + ! ;
@@ -247,7 +246,7 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
    ctx WALK-SPAN d FRAME-BYTES * FRAME-BYTES SPAN:SUB ;
 
 : FRAME-FIELD ( ^n n n -- ^n ) {: ctx:^ d k :}
-   ctx d FRAME SPAN:$ drop CELL-VIEW k cells + ;
+   ctx d FRAME SPAN:$ STR:DATA CELL-VIEW k cells + ;
 
 : CUR-FIELD ( ^n n -- ^n ) {: ctx:^ k :}
    ctx ctx WALK-DEPTH@ k FRAME-FIELD ;
@@ -343,7 +342,7 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
    grown FRAME-BYTES * MEM-ALLOC-BYTES SPAN:MAKE {: fresh :}
    ctx WALK-SPAN {: old :}
    old SPAN:$ fresh SPAN:COPY
-   fresh SPAN:$ drop ctx WALK-FRAMES !
+   fresh SPAN:$ STR:DATA ctx WALK-FRAMES !
    grown ctx WALK-CAP !
    ctx cap grown FDS-CLEAR
    old MEM:FREE-SPAN ;
@@ -354,20 +353,20 @@ public
 \ FFI:CSTR owns the copy, the terminator and the 0-byte rejection (E-FFI-NUL),
 \ bounded by the destination's reach.
 : PATHZ-INTO ( str SPAN:span<u8> -- ^u8 )
-   {: a:^ u dst :}
+   {: s:str dst :}
    CAUSE-CLEAR
-   u 0 < if E-FS-PATH throw then
-   u PATH-CAP > if E-FS-PATH throw then
-   a u dst FFI:CSTR ;
+   s STR:LEN 0 < if E-FS-PATH throw then
+   s STR:LEN PATH-CAP > if E-FS-PATH throw then
+   s dst FFI:CSTR ;
 
 : >PATHZ ( str -- ^u8 )
    PATHZ-BUF PATHZ-INTO ;
 
 \ Whether >PATHZ can spell the path: 0 to PATH-CAP bytes, none of them 0.
-: PATHZ? ( str -- bool ) {: a:^ u:n :}
-   u 0 < if false exit then
-   u PATH-CAP > if false exit then
-   a u 0 STR:INDEX-OF MATCH option
+: PATHZ? ( str -- bool ) {: s:str :}
+   s STR:LEN 0 < if false exit then
+   s STR:LEN PATH-CAP > if false exit then
+   s 0 STR:INDEX-OF MATCH option
       none OF true ENDOF
       some OF drop false ENDOF
    ;MATCH ;
@@ -375,16 +374,16 @@ public
 private
 \ >PATHZ of a path whose file a word reads, the read recorded
 \ (COMPILE-READS:FILE+).
-: READ-PATHZ ( str -- ^u8 ) {: a:^ u:n :}
-   a u >PATHZ {: z:^ :}
-   a u z COMPILE-READS:FILE+
+: READ-PATHZ ( str -- ^u8 ) {: s:str :}
+   s >PATHZ {: z:^ :}
+   s z COMPILE-READS:FILE+
    z ;
 
 \ >PATHZ of a path whose final symlink a word reads, not its target, the read
 \ recorded.
-: READ-LPATHZ ( str -- ^u8 ) {: a:^ u:n :}
-   a u >PATHZ {: z:^ :}
-   a u z COMPILE-READS:LFILE+
+: READ-LPATHZ ( str -- ^u8 ) {: s:str :}
+   s >PATHZ {: z:^ :}
+   s z COMPILE-READS:LFILE+
    z ;
 
 \ Whether stat answers for the NUL-terminated path, into STAT-BUF; it records no
@@ -511,44 +510,44 @@ public
 : EXECUTABLE? ( str -- bool )
    READ-PATHZ X-OK access 0= ;
 
-: BASENAME ( str -- str ) {: a:^ u :}
-   u begin dup 0 > while
-      dup 1 - a + c@ SLASH = if
-         a over + u rot - exit
+: BASENAME ( str -- str ) {: s:str :}
+   s STR:LEN begin dup 0 > while
+      dup 1 - s STR:DATA + c@ SLASH = if
+         s STR:DATA over + s STR:LEN rot - >str exit
       then
       1-
    repeat
-   drop a u ;
+   drop s ;
 
 \ A parent that already ends in a separator takes no second one; the measure and
 \ the write share this one answer.
-: JOIN-SEPARATED? ( str -- bool ) {: pa:^ pu :}
-   pu 0 <= if false exit then
-   pa pu 1 - + c@ SLASH = ;
+: JOIN-SEPARATED? ( str -- bool ) {: ps:str :}
+   ps STR:LEN 0 <= if false exit then
+   ps STR:DATA ps STR:LEN 1 - + c@ SLASH = ;
 
 private
-: JOIN-LEN ( str n -- n ) {: pa:^ pu nu :}
-   pa pu JOIN-SEPARATED? if pu nu + exit then
-   pu 1 + nu + ;
+: JOIN-LEN ( str n -- n ) {: ps:str nu :}
+   ps JOIN-SEPARATED? if ps STR:LEN nu + exit then
+   ps STR:LEN 1 + nu + ;
 
 public
 \ A join that does not fit dst is E-FS-CAPACITY, with nothing written. Each
 \ length meets dst's on its own first, so a huge one cannot wrap the sum.
-: JOIN-PATH-INTO ( str str SPAN:span<u8> -- n ) {: pa:^ pu na:^ nu dst :}
+: JOIN-PATH-INTO ( str str SPAN:span<u8> -- n ) {: ps:str ns:str dst :}
    CAUSE-CLEAR
-   pu 0 < if E-FS-PATH throw then
-   nu 0 < if E-FS-PATH throw then
+   ps STR:LEN 0 < if E-FS-PATH throw then
+   ns STR:LEN 0 < if E-FS-PATH throw then
    dst SPAN:LEN {: cap :}
-   pu cap > nu cap > or if E-FS-CAPACITY throw then
-   pa pu nu JOIN-LEN cap > if E-FS-CAPACITY throw then
-   pa pu dst SPAN:COPY
-   pa pu JOIN-SEPARATED? if
-      na nu dst pu SPAN:SKIP SPAN:COPY
-      pu nu + exit
+   ps STR:LEN cap > ns STR:LEN cap > or if E-FS-CAPACITY throw then
+   ps ns STR:LEN JOIN-LEN cap > if E-FS-CAPACITY throw then
+   ps dst SPAN:COPY
+   ps JOIN-SEPARATED? if
+      ns dst ps STR:LEN SPAN:SKIP SPAN:COPY
+      ps STR:LEN ns STR:LEN + exit
    then
-   SLASH dst pu SPAN:U8!
-   na nu dst pu 1 + SPAN:SKIP SPAN:COPY
-   pu 1 + nu + ;
+   SLASH dst ps STR:LEN SPAN:U8!
+   ns dst ps STR:LEN 1 + SPAN:SKIP SPAN:COPY
+   ps STR:LEN 1 + ns STR:LEN + ;
 
 \ dst holds PATH-CAP bytes: the reach minted here is the caller's promise.
 : JOIN-PATH ( str str ^u8 -- n )
@@ -587,9 +586,9 @@ private
    IO-RD @ 0 > ;
 
 public
-: READ-ALL ( str ^u8 n -- n ) {: pa:^ pu dst:^ cap :}
+: READ-ALL ( str ^u8 n -- n ) {: ps:str dst:^ cap :}
    cap 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
-   pa pu READ-PATHZ open-rd IO-FD !
+   ps READ-PATHZ open-rd IO-FD !
    IO-FD @ 0 < if E-FS-OPEN throw then
    dst cap READ-FILL {: got :}
    got cap = if READ-MORE? if IO-FD @ close E-FS-CAPACITY throw then then
@@ -615,7 +614,7 @@ private
    got 0= got want > or if file 0 PREAD-FAIL then
    done got + ;
 
-: PREAD-FILL ( n n str -- )
+: PREAD-FILL ( n n ^u8 n -- )
    {: file off dst:^ len :}
    0 begin dup len < while file off dst len PREAD-STEP repeat drop ;
 
@@ -629,9 +628,9 @@ public
 \ path. Its state is locals and the task's path buffer, so tasks may call it
 \ at once.
 : READ-AT ( str n ^u8 n -- )
-   {: pa:^ pu off dst:^ len :}
+   {: ps:str off dst:^ len :}
    off 0 < len 0 < or if CAUSE-CLEAR E-FS-CAPACITY throw then
-   pa pu READ-PATHZ open-rd {: file :}
+   ps READ-PATHZ open-rd {: file :}
    file 0 < if E-FS-OPEN throw then
    file off dst len PREAD-FILL
    file close ;
@@ -704,8 +703,8 @@ public
 \ is not a regular file is closed and E-FS-STAT. The open does not block: a
 \ FIFO at the path opens at once and is E-FS-STAT, as any file not regular is.
 \ A true flag hands the caller an open descriptor that READ-SIZED closes.
-: OPEN-SIZED ( str -- fd n bool ) {: pa:^ pu :}
-   pa pu READ-PATHZ O-NONBLOCK 0 open {: file :}
+: OPEN-SIZED ( str -- fd n bool ) {: ps:str :}
+   ps READ-PATHZ O-NONBLOCK 0 open {: file :}
    file 0 < if
       ERRNO ENOENT = if -1 >FD 0 false exit then
       E-FS-OPEN throw
@@ -745,17 +744,17 @@ public
    limit ;
 
 private
-: WRITE-BY-FLAGS ( str str n -- ) {: pa:^ pu src:^ u flags :}
-   u 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
-   pa pu EXISTS? if pa pu FILE? 0= if E-FS-OPEN throw then then
-   pa pu >PATHZ flags MODE-0644 open IO-FD !
+: WRITE-BY-FLAGS ( str str n -- ) {: ps:str src:str flags :}
+   src STR:LEN 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
+   ps EXISTS? if ps FILE? 0= if E-FS-OPEN throw then then
+   ps >PATHZ flags MODE-0644 open IO-FD !
    IO-FD @ 0 < if E-FS-OPEN throw then
-   pa pu FILE? 0= if IO-FD @ close E-FS-OPEN throw then
+   ps FILE? 0= if IO-FD @ close E-FS-OPEN throw then
    0 IO-OFF !
-   begin IO-OFF @ u < while
-      IO-FD @ src IO-OFF @ + u IO-OFF @ - write IO-WR !
+   begin IO-OFF @ src STR:LEN < while
+      IO-FD @ src STR:DATA IO-OFF @ + src STR:LEN IO-OFF @ - >str write IO-WR !
       IO-WR @ 0 <= if IO-FD @ close E-FS-IO throw then
-      IO-WR @ u IO-OFF @ - > if IO-FD @ close E-FS-IO throw then
+      IO-WR @ src STR:LEN IO-OFF @ - > if IO-FD @ close E-FS-IO throw then
       IO-OFF @ IO-WR @ + IO-OFF !
    repeat
    IO-FD @ close ;
@@ -767,22 +766,22 @@ public
 : APPEND-FILE ( str str -- )
    O-WRONLY O-CREAT or O-APPEND or WRITE-BY-FLAGS ;
 
-: OPEN-APPEND-FD ( str -- n ) {: pa:^ pu :}
-   pa pu EXISTS? if pa pu FILE? 0= if E-FS-OPEN throw then then
-   pa pu >PATHZ O-WRONLY O-CREAT or O-APPEND or MODE-0644 open {: fd :}
+: OPEN-APPEND-FD ( str -- n ) {: ps:str :}
+   ps EXISTS? if ps FILE? 0= if E-FS-OPEN throw then then
+   ps >PATHZ O-WRONLY O-CREAT or O-APPEND or MODE-0644 open {: fd :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
 private
-: DOT-ENTRY? ( str -- bool ) {: a:^ u :}
-   u 1 = if a c@ DOT = else false then ;
+: DOT-ENTRY? ( str -- bool ) {: s:str :}
+   s STR:LEN 1 = if s STR:DATA c@ DOT = else false then ;
 
-: DOTDOT-ENTRY? ( str -- bool ) {: a:^ u :}
-   u 2 = if a c@ DOT = a 1 + c@ DOT = and else false then ;
+: DOTDOT-ENTRY? ( str -- bool ) {: s:str :}
+   s STR:LEN 2 = if s STR:DATA c@ DOT = s STR:DATA 1 + c@ DOT = and else false then ;
 
 public
 : SKIP-SELF-ENTRY? ( str -- bool )
-   2dup DOT-ENTRY? if 2drop true exit then
+   dup DOT-ENTRY? if drop true exit then
    DOTDOT-ENTRY? ;
 
 : OPEN-DIR-READ ( str -- n )
@@ -851,15 +850,15 @@ public
 private
 \ A malformed record throws plainly here: closing descriptors belongs to
 \ whoever opened them.
-: LINUX-DIRENT-NAMELEN-SCAN ( str -- n ) {: ent:^ rec :}
-   0 begin dup LINUX-DIRENT-NAME-OFF + rec < while
-      ent over LINUX-DIRENT-NAME-OFF + BYTE@ 0= if exit then
+: LINUX-DIRENT-NAMELEN-SCAN ( str -- n ) {: ent:str :}
+   0 begin dup LINUX-DIRENT-NAME-OFF + ent STR:LEN < while
+      ent STR:DATA over LINUX-DIRENT-NAME-OFF + BYTE@ 0= if exit then
       1+
    repeat
    CAUSE-CLEAR E-FS-DIR throw ;
 
 : LINUX-DIRENT-NAMELEN ( ^u8 -- n ) {: ent:^ :}
-   ent ent DIRENT-RECLEN LINUX-DIRENT-NAMELEN-SCAN ;
+   ent ent DIRENT-RECLEN >str LINUX-DIRENT-NAMELEN-SCAN ;
 
 : DIRENT-NAMELEN ( ^u8 -- n )
    HB-TARGET-LINUX? if LINUX-DIRENT-NAMELEN exit then
@@ -868,7 +867,7 @@ private
 
 public
 : DIRENT-NAME ( ^u8 -- str )
-   dup DIRENT-NAME-OFFSET BYTE+ swap DIRENT-NAMELEN ;
+   dup DIRENT-NAME-OFFSET BYTE+ swap DIRENT-NAMELEN >str ;
 
 private
 : DIRENT-NAME-END ( ^u8 -- n ) {: ent:^ :}
@@ -882,21 +881,21 @@ private
    then ;
 
 : READ-DIR ( ^n -- bool ) {: ctx:^ :}
-   ctx FD@ ctx CUR-DIR SPAN:$ ctx BASE@ getdirentries64
+   ctx FD@ ctx CUR-DIR SPAN:$ dup STR:DATA swap STR:LEN ctx BASE@ getdirentries64
    dup 0 < if drop E-FS-DIR throw then
    dup ctx N! 0 > ;
 
 \ The root reaches the depth-0 slot before any >PATHZ judges it, so the length
 \ gate's rejection is made here.
-: WALK-ROOT! ( ^n str -- ) {: ctx:^ a:^ u :}
+: WALK-ROOT! ( ^n str -- ) {: ctx:^ s:str :}
    CAUSE-CLEAR
-   u 0 < if E-FS-PATH throw then
-   u PATH-CAP > if E-FS-PATH throw then
-   a u ctx 0 PATH-SLOT SPAN:COPY
-   u ctx 0 PATH-U ! ;
+   s STR:LEN 0 < if E-FS-PATH throw then
+   s STR:LEN PATH-CAP > if E-FS-PATH throw then
+   s ctx 0 PATH-SLOT SPAN:COPY
+   s STR:LEN ctx 0 PATH-U ! ;
 
-: OPEN-WALK-DIR ( ^n str -- ) {: ctx:^ a:^ u :}
-   a u OPEN-DIR-READ ctx FD!
+: OPEN-WALK-DIR ( ^n str -- ) {: ctx:^ s:str :}
+   s OPEN-DIR-READ ctx FD!
    0 ctx BASE@ ! ;
 
 : CLOSE-CUR-DIR ( ^n -- ) {: ctx:^ :}
@@ -931,9 +930,9 @@ private
 : DESCEND-PATH ( ^n -- ^n str ) {: ctx:^ :}
    ctx WALK-DEPTH@ 1 + {: d :}
    ctx d ENSURE-DEPTH
-   ctx CUR-PATH$ {: pa:^ pu :}
-   ctx CUR-ENTRY DIRENT-NAME {: na:^ nu :}
-   pa pu na nu ctx d PATH-SLOT JOIN-PATH-INTO ctx d PATH-U !
+   ctx CUR-PATH$ {: pa:str :}
+   ctx CUR-ENTRY DIRENT-NAME {: na:str :}
+   pa na ctx d PATH-SLOT JOIN-PATH-INTO ctx d PATH-U !
    d ctx WALK-DEPTH!
    ctx ctx CUR-PATH$ ;
 
@@ -942,8 +941,8 @@ private
 
 \ The entry's S-IFREG or S-IFDIR, or 0 for one below the root the walk skips.
 \ stat leaves errno in ERRNO's slot, not libc's; SYMLINK?'s lstat overwrites it.
-: WALK-TYPE ( ^n str -- n ) {: ctx:^ a:^ u :}
-   a u TRY-STAT-MODE MATCH option
+: WALK-TYPE ( ^n str -- n ) {: ctx:^ s:str :}
+   s TRY-STAT-MODE MATCH option
      none OF -1 ENDOF
      some OF S-IFMT and ENDOF
    ;MATCH ERRNO {: fmt e :}
@@ -951,7 +950,7 @@ private
    ctx WALK-DEPTH@ 0<> if
       fmt 0 >= if 0 exit then
       e ENOENT = if 0 exit then
-      a u SYMLINK? if 0 exit then
+      s SYMLINK? if 0 exit then
    then
    fmt 0< if e CAUSE! then
    E-FS-STAT throw ;
@@ -962,12 +961,12 @@ private
 \ frames, which a descent may move, so it is read only before the first one;
 \ the loop carries nothing but the handle across its recursion.
 : WALK-PATH ( ^n str [ str -- bool ] [ str -- ] -- )
-   {: ctx:^ a:^ u allow q :}
-   a u allow execute 0= if exit then
-   ctx a u WALK-TYPE {: fmt :}
-   fmt S-IFREG = if a u q execute exit then
+   {: ctx:^ s:str allow q :}
+   s allow execute 0= if exit then
+   ctx s WALK-TYPE {: fmt :}
+   fmt S-IFREG = if s q execute exit then
    fmt S-IFDIR <> if exit then
-   ctx a u OPEN-WALK-DIR
+   ctx s OPEN-WALK-DIR
    begin ctx READ-DIR while
       ctx DIR-BLOCK-BEGIN
       begin ctx DIR-MORE? while
@@ -984,19 +983,19 @@ private
 \ `{: a u q :} a u q catch` - so the walk travels on the stack into this
 \ preserving word and the literal quotation below catches THAT.
 : WALK-RUN ( ^n str [ str -- bool ] [ str -- ] -- ^n str [ str -- bool ] [ str -- ] )
-   {: ctx:^ a:^ u allow q :}
-   ctx a u WALK-ROOT!
+   {: ctx:^ s:str allow q :}
+   ctx s WALK-ROOT!
    ctx ctx CUR-PATH$ allow q WALK-PATH
-   ctx a u allow q ;
+   ctx s allow q ;
 
 \ The WITH-BYTES body: the handle is that scope's bytes, so WITH-BYTES frees it
 \ however the walk ends, and the frames are mapped and released here, around
 \ the one catch.
 : WALK-SCOPE ( str [ str -- bool ] [ str -- ] ^u8 NUM:alloc-byte-len -- )
-   drop CELL-VIEW {: a:^ u allow q ctx:^ :}
+   drop CELL-VIEW {: s:str allow q ctx:^ :}
    ctx WALK-MAP
-   ctx a u allow q [: WALK-RUN ;] catch {: code:n :}
-   drop drop 2drop drop
+   ctx s allow q [: WALK-RUN ;] catch {: code:n :}
+   drop drop drop drop
    ctx WALK-UNMAP
    code 0<> if code throw then ;
 
@@ -1004,7 +1003,7 @@ public
 : WALK-FILES-IF ( str [ str -- bool ] [ str -- ] -- )
    WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: WALK-SCOPE ;] MEM:WITH-BYTES ;
 
-: WALK-FILES ( str [ str -- ] -- ) {: a:^ u q :}
-   a u [: 2drop true ;] q WALK-FILES-IF ;
+: WALK-FILES ( str [ str -- ] -- ) {: s:str q :}
+   s [: drop true ;] q WALK-FILES-IF ;
 
 ;package

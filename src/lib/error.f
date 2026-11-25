@@ -1,4 +1,3 @@
-split-str
 \ error.f - canonical stdlib throw codes, and the rejection record of a throw of
 \ one. -999999..-100000 is reserved for external applications and libraries
 \ (docs/forth.md, Errors). A file owns the whole block between its FIRST and
@@ -405,11 +404,11 @@ PERSISTED-PTR-VARIABLE HEAD
 
 
 : ROW-NAME$ ( ^n -- str ) {: r:^ :}
-   r 5 cells + BYTE-VIEW r 2 cells + @ ;
+   r 5 cells + BYTE-VIEW r 2 cells + @ >str ;
 
 
 : ROW-TEXT$ ( ^n -- str ) {: r:^ :}
-   r 5 cells + BYTE-VIEW r 2 cells + @ + r 3 cells + @ ;
+   r 5 cells + BYTE-VIEW r 2 cells + @ + r 3 cells + @ >str ;
 
 
 : FIND ( n -- ^n ) {: code:n :}
@@ -427,30 +426,30 @@ PERSISTED-PTR-VARIABLE HEAD
 
 
 : SAME-NAME? ( ^n str str -- bool )
-   {: at:^ p:^ pu:n name:^ nameu:n :}
-   at ROW-NAME$ {: r:^ ru:n :}
-   pu 0= if r ru name nameu STR:=CI exit then
-   ru pu nameu + 1+ <> if false exit then
-   r pu + c@ $3A <> if false exit then
-   r pu p pu STR:=CI if r pu + 1+ nameu name nameu STR:=CI exit then
+   {: at:^ p:str name:str :}
+   at ROW-NAME$ {: r:str :}
+   p STR:LEN 0= if r name STR:=CI exit then
+   r STR:LEN p STR:LEN name STR:LEN + 1+ <> if false exit then
+   r STR:DATA p STR:LEN + c@ $3A <> if false exit then
+   r STR:DATA p STR:LEN >str p STR:=CI if r STR:DATA p STR:LEN + 1+ name STR:LEN >str name STR:=CI exit then
    false ;
 
 
-\ Rejects code's declaration as p pu : name nameu, from token t tu after kw ku:
+\ Rejects code's declaration as p : name, from token t after kw:
 \ no name, a name past NAME-CAP bytes, an empty text, or a code another holds.
 : CHECK ( n str str n str str -- )
-   {: code:n p:^ pu:n name:^ nameu:n textu:n kw:^ ku:n t:^ tu:n :}
-   kw ku t tu REJECTION:NOT-A-NAME
-   nameu 0= if
-      kw ku kw ku s" no name follows it" REJECTION:MISSING-NAME
+   {: code:n p:str name:str textu:n kw:str t:str :}
+   kw t REJECTION:NOT-A-NAME
+   name STR:LEN 0= if
+      kw kw s" no name follows it" REJECTION:MISSING-NAME
       EXIT-STATUS:REJECTED REJECTION:STOP
    then
-   nameu NAME-CAP > if
+   name STR:LEN NAME-CAP > if
       s" E-BAD-DECLARATION" REJECTION:OPEN
-      s" the name of a code is " REJECTION:EMIT-STR  nameu REJECTION:EMIT-U
+      s" the name of a code is " REJECTION:EMIT-STR  name STR:LEN REJECTION:EMIT-U
       s"  bytes, more than the " REJECTION:EMIT-STR  NAME-CAP REJECTION:EMIT-U
       s"  a name holds" REJECTION:EMIT-STR
-      t tu REJECTION:AT  s" too long" REJECTION:EMIT-STR
+      t REJECTION:AT  s" too long" REJECTION:EMIT-STR
       REJECTION:HELP  s" shorten the name to " REJECTION:EMIT-STR
       NAME-CAP REJECTION:EMIT-U  s"  bytes or fewer" REJECTION:EMIT-STR
       EXIT-STATUS:REJECTED REJECTION:STOP
@@ -459,20 +458,20 @@ PERSISTED-PTR-VARIABLE HEAD
       s" E-BAD-DECLARATION" REJECTION:OPEN
       s" code " REJECTION:EMIT-STR  code REJECTION:EMIT-N
       s"  has an empty text" REJECTION:EMIT-STR
-      kw ku REJECTION:AT  s" declared here" REJECTION:EMIT-STR
+      kw REJECTION:AT  s" declared here" REJECTION:EMIT-STR
       REJECTION:HELP  s" give the code a text that says what failed" REJECTION:EMIT-STR
       EXIT-STATUS:REJECTED REJECTION:STOP
    then
    code FIND {: at:^ :}
    at NULL-PTR = if exit then
-   at p pu name nameu SAME-NAME? if exit then
+   at p name SAME-NAME? if exit then
    s" E-DUPLICATE-DEFINITION" REJECTION:OPEN
    s" code " REJECTION:EMIT-STR  code REJECTION:EMIT-N
    s"  is already `" REJECTION:EMIT-STR  at ROW-NAME$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   t tu REJECTION:AT  s" declared again" REJECTION:EMIT-STR
+   t REJECTION:AT  s" declared again" REJECTION:EMIT-STR
    REJECTION:HELP  s" give `" REJECTION:EMIT-STR
-   pu 0<> if p pu REJECTION:EMIT-STR  s" :" REJECTION:EMIT-STR then
-   name nameu REJECTION:EMIT-STR
+   p STR:LEN 0<> if p REJECTION:EMIT-STR  s" :" REJECTION:EMIT-STR then
+   name REJECTION:EMIT-STR
    s" ` a code its block has not declared" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
@@ -481,14 +480,14 @@ CAST: AS-CHILD-RUN ( n -- [ str n n str -- n ] )
 
 \ The name becomes a folded constant in the current wordlist, made with no
 \ text: a value child, whose type is empty.
-: DEFINE ( n str -- ) {: code:n name:^ nameu:n :}
-   name nameu CHILD-ABI:VALUE code NULL-PTR 0
+: DEFINE ( n str -- ) {: code:n name:str :}
+   name CHILD-ABI:VALUE code NULL-PTR 0 >str
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute drop ;
 
 
-: BYTES, ( str -- ) {: a:^ u:n :}
-   a here u BYTE-COPY
-   u allot ;
+: BYTES, ( str -- ) {: s:str :}
+   s STR:DATA here s STR:LEN BYTE-COPY
+   s STR:LEN allot ;
 
 
 : PAD, ( -- )
@@ -498,47 +497,47 @@ CAST: AS-CHILD-RUN ( n -- [ str n n str -- n ] )
 \ A row is five cells, the previous row, the code, the qualified name's length,
 \ the text's length and the fault flag (-1 or 0), then the name and the text.
 : ROW, ( n str str str bool -- )
-   {: code:n p:^ pu:n name:^ nameu:n text:^ textu:n fault:bool :}
+   {: code:n p:str name:str text:str fault:bool :}
    datum
    here CELL-VIEW {: at:^ :}
    here ptr-cell-mark 0 ,
    HEAD @ at 0 ptr-field !
    code ,
-   pu nameu + pu 0<> if 1+ then ,
-   textu ,
+   p STR:LEN name STR:LEN + p STR:LEN 0<> if 1+ then ,
+   text STR:LEN ,
    fault bool>n ,
-   p pu BYTES,
-   pu 0<> if s" :" BYTES, then
-   name nameu BYTES,
-   text textu BYTES,
+   p BYTES,
+   p STR:LEN 0<> if s" :" BYTES, then
+   name BYTES,
+   text BYTES,
    PAD,
    at HEAD ! ;
 
 
 \ CODE's and FAULT's declaration of the name after them, the flag saying FAULT.
 : DECLARE ( n str bool -- )
-   {: code:n text:^ textu:n fault:bool :}
-   SRCLOC:TOKEN$ {: kw:^ ku:n :}
-   parse-name {: name:^ nameu:n :}
-   PKG$ {: p:^ pu:n :}
-   code p pu name nameu textu kw ku name nameu CHECK
-   code name nameu DEFINE
-   code p pu name nameu text textu fault ROW, ;
+   {: code:n text:str fault:bool :}
+   SRCLOC:TOKEN$ >str {: kw:str :}
+   parse-name {: name:str :}
+   PKG$ {: p:str :}
+   code p name text STR:LEN kw name CHECK
+   code name DEFINE
+   code p name text fault ROW, ;
 
 
 \ The text of a code a file below this one mints by `constant`, recorded under
 \ the name after it, PKG:TAIL split at its last colon; it defines no word.
 : MINTED ( n str bool -- )
-   {: code:n text:^ textu:n fault:bool :}
-   SRCLOC:TOKEN$ {: kw:^ ku:n :}
-   parse-name {: name:^ nameu:n :}
-   nameu
-   begin dup 0 > if dup 1- name + c@ $3A <> else false then while 1- repeat
+   {: code:n text:str fault:bool :}
+   SRCLOC:TOKEN$ >str {: kw:str :}
+   parse-name {: name:str :}
+   name STR:LEN
+   begin dup 0 > if dup 1- name STR:DATA + c@ $3A <> else false then while 1- repeat
    {: cut:n :}
    cut 0 > if cut 1- else 0 then {: pu:n :}
-   name cut + nameu cut - {: tail:^ tailu:n :}
-   code name pu tail tailu textu kw ku name nameu CHECK
-   code name pu tail tailu text textu fault ROW, ;
+   name STR:DATA cut + name STR:LEN cut - >str {: tail:str :}
+   code name STR:DATA pu >str tail text STR:LEN kw name CHECK
+   code name STR:DATA pu >str tail text fault ROW, ;
 parses: MINTED 1
 
 public
@@ -573,10 +572,10 @@ generates: FAULT ( -- n )
 \ text, or E-THROW and the code when it has none.
 : OPEN ( n -- )
    {: c:n :}
-   c NAME$ {: a:^ u:n :}
-   u 0= if s" E-THROW" else a u then REJECTION:OPEN
-   c TEXT$ {: t:^ tu:n :}
-   tu 0 > if t tu REJECTION:EMIT-STR exit then
+   c NAME$ {: name:str :}
+   name STR:LEN 0= if s" E-THROW" else name then REJECTION:OPEN
+   c TEXT$ {: text:str :}
+   text STR:LEN 0 > if text REJECTION:EMIT-STR exit then
    s" nothing caught a throw of code " REJECTION:EMIT-STR
    c REJECTION:EMIT-N ;
 

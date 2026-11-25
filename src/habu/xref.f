@@ -1,4 +1,3 @@
-split-str
 \ xref.f - live dictionary inspection words for the REPL and debug path, read
 \ through dbase@/ndict@; load after boot-cells.f, wl.f and layout.f. It requires
 \ none: the arm64 cold prefix loads it before it records the files it loaded,
@@ -134,7 +133,7 @@ public
    XREF-INLINE-NAME ;
 
 : XREF-NAME$ ( ^n -- str )
-   dup XREF-NAME-A swap XREF-NAME-LEN ;
+   dup XREF-NAME-A swap XREF-NAME-LEN >str ;
 
 PTR-VARIABLE XREF-A
 variable XREF-U
@@ -164,16 +163,16 @@ variable XREF-NV
    XREF-FN ! ;
 
 : XREF-MATCH? ( ^n str -- bool )
-   XREF-U ! XREF-A!
-   XREF-NAME$ XREF-A@ XREF-U @ STR:=CI ;
+   dup STR:LEN XREF-U ! STR:DATA XREF-A!
+   XREF-NAME$ XREF-A@ XREF-U @ >str STR:=CI ;
 
 package PKG-AUTH
 private
 EXPORT BOOT:data-base
 
 : NAME-OUT ( ^n -- str bool ) {: rec:^ :}
-   rec XREF-NAME$ dup 0= if
-      2drop s" " XREF-FALSE exit
+   rec XREF-NAME$ dup STR:LEN 0= if
+      drop s" " XREF-FALSE exit
    then
    XREF-TRUE ;
 
@@ -245,18 +244,18 @@ INSTALL
 
 ;package
 
-: XREF-FIND-WL ( str n -- ^n ) {: a:^ u:n wid:n :}
+: XREF-FIND-WL ( str n -- ^n ) {: s:str wid:n :}
    \ A retired row stays indexed under the wordlist it left, so WL:RETIRED takes
    \ the descending scan.
    wid 0 >= wid BOOT:NAMESPACE-WL = or if
-      a u wid CHECKER-RESOLVE:WL-PROBE exit
+      s wid CHECKER-RESOLVE:WL-PROBE exit
    then
-   a u wid COMPILE-READS:NAME+
-   u XREF-FU !  a XREF-FN!
+   s wid COMPILE-READS:NAME+
+   s STR:LEN XREF-FU !  s STR:DATA XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
       dup XREF-REC XREF-WORDLIST wid = if
-         dup XREF-REC XREF-FN@ XREF-FU @ XREF-MATCH? if XREF-REC exit then
+         dup XREF-REC XREF-FN@ XREF-FU @ >str XREF-MATCH? if XREF-REC exit then
       then
       1-
    repeat drop
@@ -264,23 +263,23 @@ INSTALL
 
 \ A miss in the global wordlist answers the walk of WL:PRIMITIVES, the
 \ built-ins' wordlist (kernel-x64.f FIND-HELPER, does the same).
-: XREF-FIND-WL-INDEX ( str n -- n ) {: a:^ u:n wid:n :}
-   a u wid COMPILE-READS:NAME+
-   u XREF-FU !  a XREF-FN!
+: XREF-FIND-WL-INDEX ( str n -- n ) {: s:str wid:n :}
+   s wid COMPILE-READS:NAME+
+   s STR:LEN XREF-FU !  s STR:DATA XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
       dup XREF-REC XREF-WORDLIST wid = if
-         dup XREF-REC XREF-FN@ XREF-FU @ XREF-MATCH? if exit then
+         dup XREF-REC XREF-FN@ XREF-FU @ >str XREF-MATCH? if exit then
       then
       1-
    repeat drop
-   wid BOOT:GLOBAL-WL = if a u WL:PRIMITIVES recurse exit then
+   wid BOOT:GLOBAL-WL = if s WL:PRIMITIVES recurse exit then
    -1 ;
 
 variable XREF-QI
 
 : XREF-QUAL-INDEX ( str -- n )
-   XREF-SU ! XREF-SN!
+   dup STR:LEN XREF-SU ! STR:DATA XREF-SN!
    -1 XREF-QI !
    0 begin dup XREF-SU @ < while
       XREF-SN@ over ZBYTE@ $3A = if
@@ -294,17 +293,17 @@ variable XREF-QI
    dup XREF-SU @ 1- = if drop -1 exit then ;
 
 : XREF-FIND-QUALIFIED ( str n -- ^n )
-   XREF-IDX ! XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-IDX @ BOOT:NAMESPACE-WL XREF-FIND-WL
+   XREF-IDX ! dup STR:LEN XREF-SU ! STR:DATA XREF-SN!
+   XREF-SN@ XREF-IDX @ >str BOOT:NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop XREF-NULL exit then
    XREF-PKG-PUBLIC {: qwid:n :}
-   XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL ;
+   XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1- >str  qwid  XREF-FIND-WL ;
 
 : XREF-FIND ( str -- ^n )
    XREF-QUAL-INDEX
    dup -2 = if drop XREF-NULL exit then
-   dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED exit then
-   drop XREF-SN@ XREF-SU @ BOOT:GLOBAL-WL
+   dup 0 >= if XREF-SN@ XREF-SU @ >str swap XREF-FIND-QUALIFIED exit then
+   drop XREF-SN@ XREF-SU @ >str BOOT:GLOBAL-WL
    XREF-FIND-WL ;
 names: XREF-FIND
 
@@ -317,13 +316,13 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 
 \ A qualified head resolves as the checker's does, a part of the open package
 \ first, so `undefine` finds the word the checker's guard then judges.
-: XREF-FIND-TARGET-INDEX ( str -- n ) {: a:^ u:n :}
-   a u XREF-QUAL-INDEX {: q:n :}
+: XREF-FIND-TARGET-INDEX ( str -- n ) {: s:str :}
+   s XREF-QUAL-INDEX {: q:n :}
    q -2 = if -1 exit then
-   q 0 < if a u XREF-FIND-CURRENT-INDEX exit then
-   a q HEAD-ROW {: ns:^ :}
+   q 0 < if s XREF-FIND-CURRENT-INDEX exit then
+   s STR:DATA q >str HEAD-ROW {: ns:^ :}
    ns XREF-FOUND? 0= if -1 exit then
-   a q 1 + ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC  XREF-FIND-WL-INDEX ;
+   s STR:DATA q 1 + ZPTR+  s STR:LEN q - 1- >str  ns XREF-PKG-PUBLIC  XREF-FIND-WL-INDEX ;
 ;package
 
 \ FLAG-SET rewrites a write-protected record cell through patch32, which this
@@ -451,16 +450,16 @@ public
 ;package
 
 \ A rejection's name between backticks.
-: XREF-EMIT-TICKS ( str -- ) {: a:^ u:n :}
-   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+: XREF-EMIT-TICKS ( str -- ) {: s:str :}
+   96 REJECTION:EMIT1  s REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
-\ The scope a lookup of the name a u searched: a qualified name its package's
+\ The scope a lookup of the name s searched: a qualified name its package's
 \ public words, a bare one wid.
-: XREF-EMIT-SCOPE ( str n -- ) {: a:^ u:n wid:n :}
-   a u XREF-QUAL-INDEX {: q:n :}
+: XREF-EMIT-SCOPE ( str n -- ) {: s:str wid:n :}
+   s XREF-QUAL-INDEX {: q:n :}
    q -2 = if s" none: the name holds more than one `:`" REJECTION:EMIT-STR exit then
    q 0 >= if
-      s" the public words of package " REJECTION:EMIT-STR  a q XREF-EMIT-TICKS exit
+      s" the public words of package " REJECTION:EMIT-STR  s STR:DATA q >str XREF-EMIT-TICKS exit
    then
    wid BOOT:GLOBAL-WL = if s" the global words" REJECTION:EMIT-STR exit then
    wid XREF:NS-ROW 0= if drop s" the current wordlist" REJECTION:EMIT-STR exit then
@@ -482,12 +481,12 @@ EXPORT TYPE-DECL:TDECL-THROW-AT
 \ A family or generated name is the declaration's error where SEALED-TARGET?
 \ rejects it, or in a package the verified source sealed. A head resolves as the
 \ definition's does: a part is asked by its path.
-: CHECK ( str -- ) {: a:^ u:n :}
-   a u XREF-QUAL-INDEX {: q:n :}
-   q 0 < IF get-current XREF:SEALED-TARGET? IF a u SEALED-STOP THEN EXIT THEN
-   a q HEAD-ROW {: ns:^ :}
-   ns XREF-FOUND? IF ns XREF-NAME$ ELSE a q THEN SOURCE-SEALED? IF a u SEALED-STOP THEN
-   ns XREF-FOUND? IF ns XREF-PKG-PUBLIC ELSE 0 THEN XREF:SEALED-TARGET? IF a u SEALED-STOP THEN ;
+: CHECK ( str -- ) {: s:str :}
+   s XREF-QUAL-INDEX {: q:n :}
+   q 0 < IF get-current XREF:SEALED-TARGET? IF s SEALED-STOP THEN EXIT THEN
+   s STR:DATA q >str HEAD-ROW {: ns:^ :}
+   ns XREF-FOUND? IF ns XREF-NAME$ ELSE s STR:DATA q >str THEN SOURCE-SEALED? IF s SEALED-STOP THEN
+   ns XREF-FOUND? IF ns XREF-PKG-PUBLIC ELSE 0 THEN XREF:SEALED-TARGET? IF s SEALED-STOP THEN ;
 
 EXPORT TYPE-DECL:TDECL-NAME-PREFLIGHT-XT
 
@@ -499,13 +498,13 @@ seal-package
 
 ;package
 
-: XREF-RETIRE-WL ( str n -- ) {: a:^ u:n wid:n :}
-   a u wid COMPILE-READS:NAME+
-   u XREF-FU !  a XREF-FN!
+: XREF-RETIRE-WL ( str n -- ) {: s:str wid:n :}
+   s wid COMPILE-READS:NAME+
+   s STR:LEN XREF-FU !  s STR:DATA XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
       dup XREF-REC XREF-WORDLIST wid = if
-         dup XREF-REC XREF-FN@ XREF-FU @ XREF-MATCH? if
+         dup XREF-REC XREF-FN@ XREF-FU @ >str XREF-MATCH? if
             dup XREF-REC XREF:RETIRE
          then
       then
@@ -521,12 +520,12 @@ seal-package
    k XREF-REC {: parent:^ :}
    k 1+ XREF-REC {: clause:^ :}
    parent XREF-WORDLIST clause XREF-WORDLIST <> if XREF-FALSE exit then
-   parent XREF-NAME$ {: name:^ len:n :}
-   clause XREF-NAME$ {: derived:^ dlen:n :}
-   DOES-CLAUSE:SUFFIX$ {: suffix:^ sufu:n :}
-   dlen len sufu + <> if XREF-FALSE exit then
-   derived len name len STR:=CI 0= if XREF-FALSE exit then
-   derived len + sufu suffix sufu STR:=CI 0= if XREF-FALSE exit then
+   parent XREF-NAME$ {: name:str :}
+   clause XREF-NAME$ {: derived:str :}
+   DOES-CLAUSE:SUFFIX$ {: suffix:str :}
+   derived STR:LEN name STR:LEN suffix STR:LEN + <> if XREF-FALSE exit then
+   derived STR:DATA name STR:LEN >str name STR:=CI 0= if XREF-FALSE exit then
+   derived STR:DATA name STR:LEN + suffix STR:LEN >str suffix STR:=CI 0= if XREF-FALSE exit then
    parent XREF-START {: first:n :}
    clause XREF-START {: entry:n :}
    entry first <= if XREF-FALSE exit then
@@ -555,7 +554,7 @@ DOES-COMPANION-INSTALL
 \ definer made still branches to the old clause.
 : XREF-RETIRE-INDEX ( n -- ) {: k:n :}
    k XREF-DOES-COMPANION? if k 1+ XREF-REC XREF:RETIRE then
-   k XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
+   k XREF-REC dup XREF-NAME$ swap XREF-WORDLIST XREF-RETIRE-WL ;
 
 package XREF
 global
@@ -567,25 +566,25 @@ global
 \ anything changes. Both loops run these words; a replayed `undefine` never
 \ reaches them, since the checker's source pass retires through the overlay
 \ (src/core/checker.f CHECKER-OVERLAY:RETIRE).
-: XREF-UNDEFINE-GUARD ( str -- ) {: a:^ u:n :}
+: XREF-UNDEFINE-GUARD ( str -- ) {: s:str :}
    data-base REPLAY-SCOPE:LATCH + @ 0= if exit then
    s" E-OVERLAY-OPEN" REJECTION:OPEN
-   s" `undefine` " REJECTION:EMIT-STR  a u XREF-EMIT-TICKS
+   s" `undefine` " REJECTION:EMIT-STR  s XREF-EMIT-TICKS
    s"  while a checker replay is open" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" replay still open" REJECTION:EMIT-STR
+   s REJECTION:AT  s" replay still open" REJECTION:EMIT-STR
    REJECTION:HELP
    s" run `undefine` after the `CHECK:SCOPED` quotation returns"
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 ;package
 
-: XREF-REQUIRE-UNDEFINE ( n str -- n ) {: idx:n a:^ u:n :}
+: XREF-REQUIRE-UNDEFINE ( n str -- n ) {: idx:n s:str :}
    idx 0 < if
       s" E-UNDEFINED" REJECTION:OPEN
-      a u XREF-EMIT-TICKS
+      s XREF-EMIT-TICKS
       s"  is not defined here, so `undefine` cannot retire it" REJECTION:EMIT-STR
-      a u REJECTION:AT  s" not found" REJECTION:EMIT-STR
-      s" scope" REJECTION:NOTE  a u get-current XREF-EMIT-SCOPE
+      s REJECTION:AT  s" not found" REJECTION:EMIT-STR
+      s" scope" REJECTION:NOTE  s get-current XREF-EMIT-SCOPE
       REJECTION:HELP
       s" name a word this scope defines, or drop the `undefine` line"
       REJECTION:EMIT-STR
@@ -595,21 +594,21 @@ global
 
 package XREF
 public
-\ The index `undefine` would retire for a u, negative for none; a
+\ The index `undefine` would retire for s, negative for none; a
 \ malformed name is rejected.
-: UNDEFINE-FIND ( str -- n ) {: a:^ u:n :}
-   a u XREF-QUAL-INDEX -2 = if a u a u REJECT-QUALIFIED then
-   a u XREF-FIND-TARGET-INDEX ;
+: UNDEFINE-FIND ( str -- n ) {: s:str :}
+   s XREF-QUAL-INDEX -2 = if s s REJECT-QUALIFIED then
+   s XREF-FIND-TARGET-INDEX ;
 
-\ The index `undefine` retires for a u, rejecting one this scope does not define.
-: UNDEFINE-INDEX ( str -- n ) {: a:^ u:n :}
-   a u UNDEFINE-FIND  a u XREF-REQUIRE-UNDEFINE ;
+\ The index `undefine` retires for s, rejecting one this scope does not define.
+: UNDEFINE-INDEX ( str -- n ) {: s:str :}
+   s UNDEFINE-FIND  s XREF-REQUIRE-UNDEFINE ;
 
 : UNDEFINE-NAME ( str -- )
-   XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
-   XREF-SN@ XREF-SU @ UNDEFINE-INDEX XREF-IDX !
-   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE   \ guarded checker mutation completes before retirement
+   dup STR:LEN XREF-SU ! STR:DATA XREF-SN!
+   XREF-SN@ XREF-SU @ >str XREF-UNDEFINE-GUARD
+   XREF-SN@ XREF-SU @ >str UNDEFINE-INDEX XREF-IDX !
+   XREF-SN@ XREF-SU @ >str CHECKER-UNDEFINE   \ guarded checker mutation completes before retirement
    XREF-IDX @ XREF-RETIRE-INDEX ;
 ;package
 
@@ -717,8 +716,8 @@ public
    XREF-NAME$ type ;
 
 : XREF-N. ( str n -- )
-   XREF-NV ! XREF-FU ! XREF-FN!
-   XREF-FN@ XREF-FU @ type
+   XREF-NV ! dup STR:LEN XREF-FU ! STR:DATA XREF-FN!
+   XREF-FN@ XREF-FU @ >str type
    XREF-SP emit
    XREF-NV @ . ;
 
@@ -728,7 +727,7 @@ public
    dup s" start" rot XREF-START XREF-N.
    dup s" len" rot XREF-LEN XREF-N.
    dup s" flags" rot XREF-FLAGS XREF-N.
-   s" wordlist" rot XREF-WORDLIST XREF-N. ;
+   s" wordlist" swap XREF-WORDLIST XREF-N. ;
 
 : XREF ( -- )
    parse-name XREF-FIND XREF. ;
@@ -736,11 +735,11 @@ public
 : SEE ( -- )
    XREF ;
 
-\ `undefine`, the source token t tu, has no name after it. It is written
+\ `undefine`, the source token t, has no name after it. It is written
 \ through its help, and the caller stops it.
-: UNDEFINE-NO-NAME ( str -- ) {: t:^ tu:n :}
-   t tu s" the name of the word to retire"
-   t tu s" no name follows" REJECTION:MISSING-OPERAND
+: UNDEFINE-NO-NAME ( str -- ) {: t:str :}
+   t s" the name of the word to retire"
+   t s" no name follows" REJECTION:MISSING-OPERAND
    s" write the word after it, as in `undefine NAME`" REJECTION:EMIT-STR ;
 
 package XREF
@@ -749,8 +748,8 @@ global
 : undefine ( -- )
    data-base TKA-CELL + 0 ptr-field @  data-base TKL-CELL + @
    {: ta:^ tu:n :}
-   parse-name dup 0= if
-      ta tu UNDEFINE-NO-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
+   parse-name dup STR:LEN 0= if
+      ta tu >str UNDEFINE-NO-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
    then
    XREF:UNDEFINE-NAME ;
 ;package

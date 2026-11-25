@@ -1,4 +1,3 @@
-split-str
 \ equal.f - VALUE=, whether two JSON texts hold the same value, and
 \ NUMBER-COMPARE, the order of two numbers. A file of package JSON
 \ (src/lib/json.f).
@@ -56,10 +55,10 @@ MEM-MAX-N 10 mod 1+ constant TEN-LAST        \ the largest digit after m = -TEN-
 \ The offsets of the first and the last significant digit and of the point,
 \ each -1 without one, then the mantissa's end: the exponent marker or u.
 : MANTISSA ( str -- n n n n )
-   {: p:^ u:n :}
+   {: s:str :}
    -1 -1 -1 0
-   begin dup u < if dup p + c@ EXP-MARK? 0= else false then
-   while p swap MANTISSA-BYTE repeat ;
+   begin dup s STR:LEN < if dup s STR:DATA + c@ EXP-MARK? 0= else false then
+   while s STR:DATA swap MANTISSA-BYTE repeat ;
 
 
 \ Digit d onto m, a negated number so far: one past LEAST-N is
@@ -74,12 +73,12 @@ MEM-MAX-N 10 mod 1+ constant TEN-LAST        \ the largest digit after m = -TEN-
 \ The exponent the lexeme states after its mantissa's end m, 0 without one;
 \ one a signed cell cannot hold is E-JSON-READ-NUMBER.
 : STATED-EXP ( str n -- n )
-   {: p:^ u:n m:n :}
+   {: s:str m:n :}
    m 1+ {: at:n :}
-   at u > if 0 exit then
-   p at + c@ {: sign:n :}
+   at s STR:LEN > if 0 exit then
+   s STR:DATA at + c@ {: sign:n :}
    sign PLUS =  sign MINUS =  or if at 1+ else at then {: from:n :}
-   0 u from ?do p i + c@ ZERO - DIGIT-ONTO loop
+   0 s STR:LEN from ?do s STR:DATA i + c@ ZERO - DIGIT-ONTO loop
    sign MINUS = if exit then
    dup LEAST-N = if E-JSON-READ-NUMBER throw then
    negate ;
@@ -108,8 +107,8 @@ MEM-MAX-N 10 mod 1+ constant TEN-LAST        \ the largest digit after m = -TEN-
 \ zero, from one scan; any exponent past a cell is E-JSON-READ-NUMBER.
 : DIGITS ( ^u8 n -- n n n )
    {: p:^ u:n :}
-   p u MANTISSA {: f:n l:n dot:n m:n :}
-   p u m STATED-EXP {: e:n :}
+   p u >str MANTISSA {: f:n l:n dot:n m:n :}
+   p u >str m STATED-EXP {: e:n :}
    f 0< if 0 0 0 exit then
    dot 0< if m else dot then {: at:n :}
    at f e POINT-EXP  f  f l at DIGIT-COUNT ;
@@ -123,7 +122,7 @@ MEM-MAX-N 10 mod 1+ constant TEN-LAST        \ the largest digit after m = -TEN-
 
 \ Whether count significant digits from a and from b are the same, byte for
 \ byte, each side stepping over its point.
-: SAME-DIGITS? ( ^u8 str -- bool )
+: SAME-DIGITS? ( ^u8 ^u8 n -- bool )
    {: a:^ b:^ count:n :}
    0 0  count 0 ?do
       over a + c@  over b + c@  <> if 2drop false unloop exit then
@@ -138,7 +137,7 @@ MEM-MAX-N 10 mod 1+ constant TEN-LAST        \ the largest digit after m = -TEN-
 
 \ Whether two lexemes have one value, each given by its bytes and what DIGITS
 \ answers for it.
-: NUMBER= ( str n n str n n -- bool )
+: NUMBER= ( ^u8 n n n ^u8 n n n -- bool )
    {: a:^ xa:n fa:n na:n b:^ xb:n fb:n nb:n :}
    na 0=  nb 0= {: za:bool zb:bool :}
    za zb and if true exit then
@@ -182,20 +181,20 @@ MEM-MAX-N 10 mod 1+ constant TEN-LAST        \ the largest digit after m = -TEN-
    p NEGATIVE? if -1 exit then
    1 ;
 
-: NUMBER-ORDER ( ^u8 n ^u8 n -- n )
-   {: a:^ u:n b:^ v:n :}
-   a u DIGITS {: xa:n fa:n na:n :}
-   b v DIGITS {: xb:n fb:n nb:n :}
-   a na VALUE-SIGN  b nb VALUE-SIGN {: sa:n sb:n :}
+: NUMBER-ORDER ( str str -- n )
+   {: a:str b:str :}
+   a STR:DATA a STR:LEN DIGITS {: xa:n fa:n na:n :}
+   b STR:DATA b STR:LEN DIGITS {: xb:n fb:n nb:n :}
+   a STR:DATA na VALUE-SIGN  b STR:DATA nb VALUE-SIGN {: sa:n sb:n :}
    sa sb <> if sa sb CELL-ORDER exit then
    sa 0= if 0 exit then
-   a xa fa na b xb fb nb MAGNITUDE-ORDER sa * ;
+   a STR:DATA xa fa na b STR:DATA xb fb nb MAGNITUDE-ORDER sa * ;
 
 \ NUMBER-ORDER's answer replaces the slot under the lexemes, so the quotation
 \ under catch leaves the types it was given.
-: ORDER-SLOT ( n ^u8 n ^u8 n -- n ^u8 n ^u8 n )
-   {: a:^ u:n b:^ v:n :}
-   drop  a u b v NUMBER-ORDER  a u b v ;
+: ORDER-SLOT ( n str str -- n str str )
+   {: a:str b:str :}
+   drop  a b NUMBER-ORDER  a b ;
 
 
 \ A number whose exponents a cell cannot hold is rejected at its token.
@@ -211,7 +210,7 @@ MEM-MAX-N 10 mod 1+ constant TEN-LAST        \ the largest digit after m = -TEN-
 \ under catch leaves the types it was given.
 : DIGITS-SLOT ( n n n ^cursor -- n n n ^cursor )
    {: state:^ :}
-   drop drop drop  state RAW-SPAN$ DIGITS  state ;
+   drop drop drop  state RAW-SPAN$ dup STR:DATA swap STR:LEN DIGITS  state ;
 
 \ The cursor's number token as DIGITS reads it.
 : TOKEN-DIGITS ( ^cursor -- n n n )
@@ -360,7 +359,7 @@ STRUCTURE walk DERIVE addr
 : MEMBER-KEY$ ( ^walk n -- str )
    {: w:^ r:n :}
    w r ROW {: row:^ :}
-   w WALK-KEYS @ row ROW-KEY-AT @ VEC:AT  row ROW-KEY-LEN @ ;
+   w WALK-KEYS @ row ROW-KEY-AT @ VEC:AT  row ROW-KEY-LEN @ >str ;
 
 
 : MEMBER< ( ^walk n n -- bool )
@@ -427,15 +426,15 @@ STRUCTURE walk DERIVE addr
 \ Object row obj's member whose key decodes to key, or -1. The first of equal keys is found each
 \ time, so a key a repeats meets a member already matched and a key b repeats leaves one unmatched.
 : FIND-MEMBER ( ^walk n str -- n )
-   {: w:^ obj:n key:^ len:n :}
+   {: w:^ obj:n key:str :}
    w obj ROW {: o:^ :}
    o ROW-FIRST @  dup o ROW-COUNT @ + {: lo:n hi:n :}
    lo hi
-   [: w swap MEMBER@ w swap MEMBER-KEY$ key len STR:< ;]
+   [: w swap MEMBER@ w swap MEMBER-KEY$ key STR:< ;]
    SORT:PARTITION-POINT {: at:n :}
    at hi = if -1 exit then
    w at MEMBER@ {: q:n :}
-   w q MEMBER-KEY$ key len STR:= if q else -1 then ;
+   w q MEMBER-KEY$ key STR:= if q else -1 then ;
 
 
 \ ---- the index pass ----------------------------------------------------------
@@ -513,10 +512,10 @@ STRUCTURE walk DERIVE addr
 
 \ Reads b whole with record b into one row per value, each number read once;
 \ a key or a closer adds no row and makes no room.
-: INDEX ( ^walk ^u8 n -- )
-   {: w:^ b:^ v:n :}
+: INDEX ( ^walk str -- )
+   {: w:^ b:str :}
    w WALK-B {: c:^ :}
-   c b v INIT-STATE
+   c b INIT-STATE
    begin c NEXT-INNER dup T-END <> while w swap INDEX-TOKEN repeat
    drop ;
 
@@ -574,7 +573,7 @@ STRUCTURE walk DERIVE addr
 \ Whether a's number equals row r's, whose bytes start at raw.
 : SAME-NUMBER? ( ^walk ^u8 ^row -- bool )
    {: w:^ raw:^ r:^ :}
-   w WALK-A RAW-SPAN$ drop
+   w WALK-A RAW-SPAN$ STR:DATA
    w WALK-NUM-EXP @  w WALK-NUM-FIRST @  w WALK-NUM-COUNT @
    raw  r ROW-EXP @  r ROW-FIRST @  r ROW-COUNT @  NUMBER= ;
 
@@ -584,13 +583,13 @@ STRUCTURE walk DERIVE addr
 : SCALAR= ( ^walk ^row -- bool )
    {: w:^ r:^ :}
    w WALK-A {: ca:^ :}
-   w WALK-B CURSOR-SRC @ r ROW-START @ +  r ROW-LEN @ {: raw:^ len:n :}
-   ca CURSOR-KIND @ NUMERIC? if w raw r SAME-NUMBER? exit then
+   w WALK-B CURSOR-SRC @ r ROW-START @ +  r ROW-LEN @ >str {: raw:str :}
+   ca CURSOR-KIND @ NUMERIC? if w raw STR:DATA r SAME-NUMBER? exit then
    ca CURSOR-KIND @ T-STR <> if true exit then
-   ca w WALK-BUF @ DECODED$ {: s:^ n:n :}
-   w WALK-S raw len INIT-STATE
+   ca w WALK-BUF @ DECODED$ {: s:str :}
+   w WALK-S raw INIT-STATE
    w WALK-S NEXT-INNER drop
-   w WALK-S s n MATCH-INNER ;
+   w WALK-S s MATCH-INNER ;
 
 
 : ENTER ( ^walk -- n )
@@ -630,8 +629,8 @@ STRUCTURE walk DERIVE addr
    {: w:^ :}
    w TOP {: f:^ :}
    w A-NEXT T-KEY <> if w f CLOSE-ON exit then
-   w WALK-A w WALK-BUF @ DECODED$ {: key:^ len:n :}
-   w  f FRAME-ROW @  key len FIND-MEMBER {: q:n :}
+   w WALK-A w WALK-BUF @ DECODED$ {: key:str :}
+   w  f FRAME-ROW @  key FIND-MEMBER {: q:n :}
    q 0< if W-DIFFERENT exit then
    w q ROW {: row:^ :}
    row ROW-MATCHED @ if W-DIFFERENT exit then
@@ -662,48 +661,48 @@ STRUCTURE walk DERIVE addr
 
 \ The answer stands only once record a has read a to its end.
 : EQUAL-SLOT ( bool ^walk str str -- bool ^walk str str )
-   {: w:^ a:^ u:n b:^ v:n :}
+   {: w:^ a:str b:str :}
    drop
-   w v WALK-INIT
-   w b v INDEX
+   w b STR:LEN WALK-INIT
+   w b INDEX
    w LAY-LISTS
    w LIST-MEMBERS
    w SORT-MEMBERS
-   w WALK-A a u INIT-STATE
+   w WALK-A a INIT-STATE
    w VALUE-EQ?
    begin w A-NEXT T-END = until
-   w a u b v ;
+   w a b ;
 
 
 \ VALUE= in walk w; a throw leaves no reader stack or vector behind.
 : EQUAL-IN ( str str ^walk -- bool )
-   {: a:^ u:n b:^ v:n w:^ :}
-   false w a u b v [: EQUAL-SLOT ;] catch
-   {: same pw pa ua pb ub code:n :}
+   {: a:str b:str w:^ :}
+   false w a b [: EQUAL-SLOT ;] catch
+   {: same pw pa pb code:n :}
    w WALK-FREE
    code 0= if same exit then
    code throw ;
 
 
 : EQUAL-RUN ( str str -- bool )
-   {: a:^ u:n b:^ v:n :}
-   a u b v [type] walk [: EQUAL-IN ;] MEM:WITH-RECORD ;
+   {: a:str b:str :}
+   a b [type] walk [: EQUAL-IN ;] MEM:WITH-RECORD ;
 
 public
 
 \ False when either side repeats a key. Both texts are read whole: a malformed one throws whatever
 \ the answer, as does an exponent past a cell. Time is at most n log n in the two texts' sizes.
 : VALUE= ( str str -- bool )
-   {: a:^ u:n b:^ v:n :}
-   a u REQUIRE-SOURCE
-   b v REQUIRE-SOURCE
-   a u b v EQUAL-RUN ;
+   {: a:str b:str :}
+   a REQUIRE-SOURCE
+   b REQUIRE-SOURCE
+   a b EQUAL-RUN ;
 
 \ Some -1, 0 or 1 as lexeme a's value is below, equal to or above b's; a and
 \ b must be number lexemes the reader admits.
 : NUMBER-COMPARE ( str str -- option<n> )
-   {: a:^ u:n b:^ v:n :}
-   0 a u b v [: ORDER-SLOT ;] catch {: order pa ua pb ub code:n :}
+   {: a:str b:str :}
+   0 a b [: ORDER-SLOT ;] catch {: order pa pb code:n :}
    code 0= if order OPTION:SOME exit then
    code E-JSON-READ-NUMBER = if OPTION:NONE exit then
    code throw ;

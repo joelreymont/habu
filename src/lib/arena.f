@@ -1,4 +1,3 @@
-split-str
 \ arena.f - an arena a program holds by pointer: zeroed allocations that never
 \ move, release actions and child arenas, all released together. The arena's
 \ header sits at the start of its first chunk; each later chunk is the larger
@@ -210,21 +209,21 @@ CAST: >ACTION ( ^u8 -- ^action )
 
 \ A shrink zeroes the cut bytes before a later growth reads them or the
 \ newest block gives them back to its chunk.
-: ZERO-TAIL ( str n -- )
+: ZERO-TAIL ( ^u8 n n -- )
    {: block:^ old:n new:n :}
    new old < if 0 block new + old new - SPAN:MAKE SPAN:FILL then ;
 
 
 \ True when the block is the newest allocation and its chunk has `more` bytes
 \ after it; `more` is below zero when the block shrinks.
-: IN-PLACE? ( ^arena str n -- bool )
+: IN-PLACE? ( ^arena ^u8 n n -- bool )
    {: a:^ block:^ extent:n more:n :}
    a NEWEST {: base:^ size:n :}
    block extent + base a ARENA-TOP @ + =
    size a ARENA-TOP @ - more >= and ;
 
 
-: SELF-RESIZE ( ^u8 str n -- ^u8 )
+: SELF-RESIZE ( ^u8 ^u8 n n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    st >ARENA {: a:^ :}
    old EXTENT {: oe:n :}

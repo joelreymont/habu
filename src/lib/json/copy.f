@@ -1,4 +1,3 @@
-split-str
 \ copy.f - COPY-VALUE, one JSON:value into a writer.
 \
 \ COPY-VALUE walks the value's tokens with a cursor in one loop, counting

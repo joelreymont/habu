@@ -1,4 +1,3 @@
-split-str
 \ genio-core.f - the generic text I/O device table: EMIT, KEY, READ-LINE and
 \ the rest reach a device through a vector table, chosen per task. It requires no
 \ transport and changes nothing on load.
@@ -202,12 +201,12 @@ private
 \ The terminal's operations name the descriptors rather than calling `emit` and
 \ `type`, which follow the current device.
 
-: TERMINAL-WRITE ( str -- ) {: bytes:^ len:n :}
-   STDOUT-FD bytes len write drop ;
+: TERMINAL-WRITE ( str -- ) {: bytes:str :}
+   STDOUT-FD bytes write drop ;
 
 : TERMINAL-EMIT ( n -- ) {: c:n :}
    c SCRATCH c!
-   STDOUT-FD SCRATCH 1 write drop ;
+   STDOUT-FD SCRATCH 1 >str write drop ;
 
 : TERMINAL-READ ( ^u8 n -- n ) {: bytes:^ cap:n :}
    STDIN-FD bytes cap read dup 0 < if drop E-IO throw then ;
@@ -376,13 +375,13 @@ public
    c idx OP-EMIT @ execute
    busy BUSY-PTR !  prev ACTIVE-PTR ! ;
 
-: WRITE ( str -- ) {: bytes:^ len:n :}
+: WRITE ( str -- ) {: bytes:str :}
    OUT-ROW {: idx:n :}
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
    BUSY-PTR @ {: busy:n :}
    idx ACTIVE-PTR !  1 BUSY-PTR !
-   bytes len idx OP-WRITE @ execute
+   bytes idx OP-WRITE @ execute
    busy BUSY-PTR !  prev ACTIVE-PTR ! ;
 
 : FLUSH ( -- )
@@ -486,7 +485,7 @@ TASK:+USER IO-LINE ^VEC:vector<u8>
 \ True when the line goes on past this chunk.
 : APPEND-CHUNK ( n -- bool ) {: got:n :}
    got 0 < if false exit then
-   CHUNK got IO-LINE @ VEC:APPEND
+   CHUNK got >str IO-LINE @ VEC:APPEND
    got CHUNK-CAP = ;
 
 \ False at the end of input; else IO-LINE holds the whole line.

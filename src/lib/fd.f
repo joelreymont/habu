@@ -1,4 +1,3 @@
-split-str
 \ fd.f - the standard descriptors, close-on-exec pipes, the non-blocking mark,
 \ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
 \ as a failed call), one write that never waits on a non-blocking descriptor,
@@ -203,11 +202,11 @@ public
 
 \ One write to a descriptor the caller made non-blocking: the bytes it moved.
 : TRY-WRITE ( fd str -- n )
-   {: f:fd src:^ u:n :}
-   u 0 < if E-SPAN-LENGTH throw then
-   u 0= if 0 exit then
-   f FD>N src u WRITE-CALL {: k:n :}
-   k u > if E-FS-IO throw then
+   {: f:fd src:str :}
+   src STR:LEN 0 < if E-SPAN-LENGTH throw then
+   src STR:LEN 0= if 0 exit then
+   f FD>N src WRITE-CALL {: k:n :}
+   k src STR:LEN > if E-FS-IO throw then
    k 0 > if k exit then
    k 0= if E-FS-IO throw then
    FFI:ERRNO {: cause:n :}
@@ -218,37 +217,37 @@ private
 
 \ A positive result advances; a 0 waits for POLLOUT against the same deadline.
 : SEND-UNTIL ( fd str n n -- n )
-   {: f:fd src:^ u:n done:n deadline:n :}
-   f src done + u done - TRY-WRITE {: k:n :}
+   {: f:fd src:str done:n deadline:n :}
+   f src STR:DATA done + src STR:LEN done - >str TRY-WRITE {: k:n :}
    k 0= if f deadline WAIT-OUT then
    k ;
 
 : SEND-ALL-UNTIL ( fd str n -- )
-   {: f:fd src:^ u:n deadline:n :}
-   0 begin dup u < while
+   {: f:fd src:str deadline:n :}
+   0 begin dup src STR:LEN < while
       mono-ns deadline >= if E-FS-TIMEOUT throw then
       dup {: done:n :}
-      f src u done deadline SEND-UNTIL +
+      f src done deadline SEND-UNTIL +
    repeat drop ;
 
 : SEND-KEEP ( fd str n -- fd str n )
-   {: f:fd src:^ u:n deadline:n :}
-   f src u deadline SEND-ALL-UNTIL
-   f src u deadline ;
+   {: f:fd src:str deadline:n :}
+   f src deadline SEND-ALL-UNTIL
+   f src deadline ;
 
 : MORE ( n fd SPAN:span<u8> -- n )
    {: got:n f:fd dst :}
-   dst got SKIP $ {: at:^ want:n :}
-   f FD>N at want read {: k:n :}
+   dst got SKIP $ {: room:str :}
+   f FD>N room STR:DATA room STR:LEN read {: k:n :}
    k 0 < if E-FS-IO throw then
-   k want > if E-FS-IO throw then
+   k room STR:LEN > if E-FS-IO throw then
    k ;
 
 \ The bytes one write moved, 0 when it moved none; a count past the asked one is
 \ answered as the call gave it.
 : SENT ( n fd str -- n )
-   {: done:n f:fd src:^ u:n :}
-   f FD>N src done + u done - write 0 max ;
+   {: done:n f:fd src:str :}
+   f FD>N src STR:DATA done + src STR:LEN done - >str write 0 max ;
 
 : PIPE-HELD ( -- fd fd )
    pipe {: r:n w:n rc:n :}
@@ -280,12 +279,12 @@ public
 \ FD-NOSIGPIPE! or writes inside WITH-NOSIGPIPE; then the write is rejected. A
 \ count past the asked one is `part`: bytes moved, but not the ones asked.
 : TRY-WRITE-FULL ( fd str -- wrote )
-   {: f:fd src:^ u:n :}
-   u 0 < if E-SPAN-LENGTH throw then
-   0 begin dup u < while
-      dup dup f src u SENT +
+   {: f:fd src:str :}
+   src STR:LEN 0 < if E-SPAN-LENGTH throw then
+   0 begin dup src STR:LEN < while
+      dup dup f src SENT +
       2dup = if drop 0= if FD-WROTE:NONE else FD-WROTE:PART then exit then
-      dup u > if 2drop FD-WROTE:PART exit then
+      dup src STR:LEN > if 2drop FD-WROTE:PART exit then
       nip
    repeat drop FD-WROTE:ALL ;
 
@@ -306,13 +305,13 @@ public
 \ timeout or failure some bytes may have reached the peer; the caller decides
 \ whether to discard that conversation.
 : WRITE-FULL-UNTIL ( fd str n -- )
-   {: f:fd src:^ u:n deadline:n :}
-   u 0 < if E-SPAN-LENGTH throw then
-   u 0= if exit then
+   {: f:fd src:str deadline:n :}
+   src STR:LEN 0 < if E-SPAN-LENGTH throw then
+   src STR:LEN 0= if exit then
    f FLAGS {: flags:n :}
    f flags ARM {: changed:bool :}
-   f src u deadline [: SEND-KEEP ;] catch
-   >r 2drop 2drop r> {: code:n :}
+   f src deadline [: SEND-KEEP ;] catch
+   >r 2drop drop r> {: code:n :}
    changed if f flags RESTORE then
    code 0<> if code throw then ;
 
@@ -366,9 +365,9 @@ public
 \ closed and throws E-FS-IO. It neither sleeps nor polls: the caller owns the
 \ deadline and the retries.
 : TRY-FIFO-WRITER ( str -- option<fd> )
-   {: pa:^ pu:n :}
-   pa pu FS:FIFO? 0= if E-FS-OPEN throw then
-   pa pu FS:>PATHZ FS:O-WRONLY O-NONBLOCK or OPEN-CALL {: opened:n :}
+   {: ps:str :}
+   ps FS:FIFO? 0= if E-FS-OPEN throw then
+   ps FS:>PATHZ FS:O-WRONLY O-NONBLOCK or OPEN-CALL {: opened:n :}
    opened 0 < if
       FFI:ERRNO ENXIO = if OPTION:NONE exit then
       E-FS-OPEN ERRNO-FAIL

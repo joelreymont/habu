@@ -1,4 +1,3 @@
-split-str
 \ at-exit.f - the actions a process runs when it exits. This file owns the
 \ engine's process-exit vector: the engine clears it and calls it once just
 \ before the exit_group of a normal top-level exit, a `die`, an uncaught throw

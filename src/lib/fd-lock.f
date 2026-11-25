@@ -1,4 +1,3 @@
-split-str
 \ fd-lock.f - order descriptor creation against fork and spawn. A forked child
 \ that execs keeps every descriptor not yet close-on-exec, so creating and marking
 \ one run under FD-LOCK:WITH, which PROC-FORK:RAW's fork also holds. PROCESS:SPAWN

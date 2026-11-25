@@ -1,4 +1,3 @@
-split-str
 \ codegen.f - a shared growing byte buffer for building text: a generated word's
 \ name, or a generator tool's output. STORAGE CLASS. CALLER-OWNED: each buffer's
 \ header is its definer's dictionary storage and its text a dynamic mapping that
@@ -53,8 +52,8 @@ public
    c  d CB-DATA d CB-LEN@ +  c!
    d CB-LEN@ 1 + d CB-LEN! ;
 
-: APPEND-STRING ( str ^n -- ) {: a:^ u:n d:^ :}
-   0 begin dup u < while  dup a + c@ d APPEND-BYTE  1 +  repeat drop ;
+: APPEND-STRING ( str ^n -- ) {: s:str d:^ :}
+   0 begin dup s STR:LEN < while  dup s STR:DATA + c@ d APPEND-BYTE  1 +  repeat drop ;
 
 private
 
@@ -70,6 +69,6 @@ public
    v 0 < if [char] - d APPEND-BYTE then
    v 0 > if v negate else v then d CB-DIGITS ;
 
-: CONTENTS ( ^n -- str ) {: d:^ :}  d CB-DATA d CB-LEN@ ;
+: CONTENTS ( ^n -- str ) {: d:^ :}  d CB-DATA d CB-LEN@ >str ;
 
 ;package

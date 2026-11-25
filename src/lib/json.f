@@ -1,4 +1,3 @@
-split-str
 \ json.f - package JSON: a checked pull reader, an emit-only writer, a copy
 \ of a JSON:value into the writer and a comparison of two values.
 \ Reading is strict RFC 8259: no comments, trailing commas or single quotes.

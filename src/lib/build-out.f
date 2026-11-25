@@ -1,4 +1,3 @@
-split-str
 \ build-out.f - where a build writes what it makes, under <out>: $HABU_OUT when set
 \ and non-empty (relative to SOURCE-ROOT:CWD$), else .out under the working
 \ directory. <out>/obj/<hb's stamp>/ holds the objects that hb wrote, each under the
@@ -25,33 +24,33 @@ PATH-CAP SCRATCH-BUFFER: PATH-BUF
 \ The out root in OUT-BUF. HABU_OUT is read through ENV-INPUT:CURRENT$, so its
 \ value is no build input.
 : OUT-ROOT ( -- n )
-   s" HABU_OUT" ENV-INPUT:CURRENT$ {: v:^ vu:n :}
-   vu 0= if SOURCE-ROOT:CWD$ s" .out" OUT-BUF FS:JOIN-PATH exit then
-   v c@ FS:SLASH <> if SOURCE-ROOT:CWD$ v vu OUT-BUF FS:JOIN-PATH exit then
-   vu PATH-CAP > if E-FS-CAPACITY throw then
-   v OUT-BUF vu BYTE-COPY
-   vu ;
+   s" HABU_OUT" ENV-INPUT:CURRENT$ {: v:str :}
+   v STR:LEN 0= if SOURCE-ROOT:CWD$ s" .out" OUT-BUF FS:JOIN-PATH exit then
+   v STR:DATA c@ FS:SLASH <> if SOURCE-ROOT:CWD$ v OUT-BUF FS:JOIN-PATH exit then
+   v STR:LEN PATH-CAP > if E-FS-CAPACITY throw then
+   v STR:DATA OUT-BUF v STR:LEN BYTE-COPY
+   v STR:LEN ;
 
 public
 
 : BASE$ ( -- str )
    OUT-U @ 0= if
       OUT-ROOT {: outu:n :}
-      OUT-BUF outu FS:MAKE-DIRS
+      OUT-BUF outu >str FS:MAKE-DIRS
       outu OUT-U !
    then
-   OUT-BUF OUT-U @ ;
+   OUT-BUF OUT-U @ >str ;
 
 : OBJ$ ( str -- str )
-   {: name:^ nameu:n :}
-   nameu 0 <= if E-FS-PATH throw then
+   {: name:str :}
+   name STR:LEN 0 <= if E-FS-PATH throw then
    OBJ-U @ 0= if
       BASE$ s" obj" PATH-BUF FS:JOIN-PATH {: obju:n :}
-      PATH-BUF obju ENGINE-ID:KEY$ OBJ-BUF FS:JOIN-PATH {: stampu:n :}
-      OBJ-BUF stampu FS:MAKE-DIRS
+      PATH-BUF obju >str ENGINE-ID:KEY$ OBJ-BUF FS:JOIN-PATH {: stampu:n :}
+      OBJ-BUF stampu >str FS:MAKE-DIRS
       stampu OBJ-U !
    then
-   OBJ-BUF OBJ-U @ name nameu PATH-BUF FS:JOIN-PATH
-   PATH-BUF swap ;
+   OBJ-BUF OBJ-U @ >str name PATH-BUF FS:JOIN-PATH
+   PATH-BUF swap >str ;
 
 ;package

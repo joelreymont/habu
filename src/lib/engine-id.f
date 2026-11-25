@@ -1,4 +1,3 @@
-split-str
 \ engine-id.f - the running program's path, OWN-PATH, as the kernel reports
 \ it, and the running engine's stamp, KEY$. KEY$ is decimal
 \ `<ctime seconds>.<nanoseconds>-<size>`, read by fstat from a descriptor bound
@@ -80,7 +79,7 @@ public
       then
       OWN-PATH-U !  -1 OWN-PATH-DONE !
    then
-   OWN-PATH-BUF OWN-PATH-U @ ;
+   OWN-PATH-BUF OWN-PATH-U @ >str ;
 
 private
 
@@ -110,9 +109,9 @@ private
 \ Appends a number, at least zero, to the key in decimal without padding.
 : DEC+ ( n -- ) {: v:n :}
    v 0 < if E-ENGINE-KEY throw then
-   v FMT:INT$ {: a:^ u:n :}
-   a EID-KEY EID-KEY-U @ + u BYTE-COPY
-   EID-KEY-U @ u + EID-KEY-U ! ;
+   v FMT:INT$ {: digits:str :}
+   digits STR:DATA EID-KEY EID-KEY-U @ + digits STR:LEN BYTE-COPY
+   EID-KEY-U @ digits STR:LEN + EID-KEY-U ! ;
 
 : BYTE+ ( n -- )
    EID-KEY EID-KEY-U @ + c!
@@ -139,6 +138,6 @@ public
       code 0<> if code throw then
       -1 EID-KEY-DONE !
    then
-   EID-KEY EID-KEY-U @ ;
+   EID-KEY EID-KEY-U @ >str ;
 
 ;package

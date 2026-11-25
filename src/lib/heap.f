@@ -1,4 +1,3 @@
-split-str
 \ heap.f - the heap: libc's calloc, realloc and free as an allocator, so a
 \ container made with ALLOCATOR runs on the system allocator. The Wasm target
 \ has no libc: there src/lib/heap/wasm.f gives the record its functions.
@@ -28,7 +27,7 @@ FUNCTION: FREE-CALL free ( ^u8 -- ) ;FUNCTION
 
 
 \ A failed realloc leaves the block as it was.
-: RESIZE-BYTES ( ^u8 str n -- ^u8 )
+: RESIZE-BYTES ( ^u8 ^u8 n n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    block new REALLOC-CALL {: moved:^ :}
    moved NULL-PTR = if new s" a heap block" REJECTION:MAP-PASS then

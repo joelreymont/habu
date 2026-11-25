@@ -1,4 +1,3 @@
-split-str
 \ byte-buffer.f - one package-owned growable byte buffer, package BUF.
 \ The caller embeds a three-cell header (BUF:HDR-BYTES); the buffer owns the one
 \ block at its storage pointer: a HEAP:ALLOCATOR block below
@@ -63,8 +62,8 @@ private
    len HEAP-BLOCK? if HEAP:ALLOCATOR len ALLOC:BYTES SPAN:MAKE exit then
    len MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
 : STORAGE-RELEASE ( SPAN:span<u8> -- ) {: old :}
-   old SPAN:$ {: p:^ len:n :}
-   len HEAP-BLOCK? if HEAP:ALLOCATOR p ALLOC:FREE exit then
+   old SPAN:$ {: block:str :}
+   block STR:LEN HEAP-BLOCK? if HEAP:ALLOCATOR block STR:DATA ALLOC:FREE exit then
    old MEM:FREE-SPAN ;
 
 \ The header is the span: the base lives in the pointer field and the reach in
@@ -81,9 +80,9 @@ private
 \ rejected grow leaves the old block owned and intact.
 : INSTALL-STORAGE ( ^a SPAN:span<u8> SPAN:span<u8> -- )
    {: buf:^ d old :}
-   d SPAN:$ {: dp:^ cap:n :}
-   dp buf DATA!
-   cap buf CAP-RAW!
+   d SPAN:$ {: block:str :}
+   block STR:DATA buf DATA!
+   block STR:LEN buf CAP-RAW!
    old STORAGE-RELEASE ;
 
 \ The caller validates the new capacity before allocating.
@@ -120,9 +119,9 @@ private
 
 : INIT-RAW ( ^a n -- ) {: buf:^ cap:n :}
    cap CHECK-CAP
-   cap STORAGE-ALLOC SPAN:$ {: d:^ got:n :}
-   d buf DATA!
-   got buf CAP-RAW!
+   cap STORAGE-ALLOC SPAN:$ {: d:str :}
+   d STR:DATA buf DATA!
+   d STR:LEN buf CAP-RAW!
    0 buf SET-LEN ;
 
 \ Clear the entire header before release; dead headers retain no process address.
@@ -143,8 +142,8 @@ private
    buf LEN-RAW@ 1 + buf SET-LEN ;
 
 : APPEND-SPAN-RAW ( str ^a -- )
-   {: src:^ u:n buf:^ :}
-   buf LEN-RAW@ u + {: need:n :}
+   {: src:str buf:^ :}
+   buf LEN-RAW@ src STR:LEN + {: need:n :}
    need CHECK-NEED
    need buf CAP-RAW@ > if
       buf need GROW-CAP {: cap:n :}
@@ -153,27 +152,27 @@ private
       cap STORAGE-ALLOC {: d :}
       old buf LEN-RAW@ SPAN:TAKE SPAN:$ d SPAN:COPY
       \ src may borrow old storage. Copy it before install releases old.
-      src u d buf LEN-RAW@ SPAN:SKIP SPAN:COPY
+      src d buf LEN-RAW@ SPAN:SKIP SPAN:COPY
       buf d old INSTALL-STORAGE
    else
-      src u buf BUF-SPAN buf LEN-RAW@ SPAN:SKIP SPAN:COPY
+      src buf BUF-SPAN buf LEN-RAW@ SPAN:SKIP SPAN:COPY
    then
    need buf SET-LEN ;
 
-: REPLACE-RAW ( str ^a -- ) {: src:^ u:n buf:^ :}
-   buf u RESERVE-RAW
-   src u buf BUF-SPAN SPAN:COPY
-   u buf SET-LEN ;
+: REPLACE-RAW ( str ^a -- ) {: src:str buf:^ :}
+   buf src STR:LEN RESERVE-RAW
+   src buf BUF-SPAN SPAN:COPY
+   src STR:LEN buf SET-LEN ;
 
 \ Appends text[at, hit) and new for the first old at or after at and answers
 \ the offset past that old and true; with no old left, appends the rest and
 \ answers at and false.
 : APPEND-UNTIL-OLD ( str str str ^a n -- n bool )
-   {: text:^ tu:n old:^ ou:n new:^ nu:n buf:^ at:n :}
-   text tu old ou at STR:FIND-SUB-FROM MATCH option
-      none OF text at + tu at - buf APPEND-SPAN-RAW at false ENDOF
-      some OF IDX>N dup at - text at + swap buf APPEND-SPAN-RAW
-              new nu buf APPEND-SPAN-RAW ou + true ENDOF
+   {: text:str old:str new:str buf:^ at:n :}
+   text old at STR:FIND-SUB-FROM MATCH option
+      none OF text STR:DATA at + text STR:LEN at - >str buf APPEND-SPAN-RAW at false ENDOF
+      some OF IDX>N dup at - text STR:DATA at + swap >str buf APPEND-SPAN-RAW
+              new buf APPEND-SPAN-RAW old STR:LEN + true ENDOF
    ;MATCH ;
 
 public
@@ -238,16 +237,16 @@ public
 \ before releasing the old block.
 : APPEND-BYTE ( n ^a -- )  APPEND-BYTE-RAW ;
 : APPEND-SPAN ( ^u8 NUM:byte-len ^a -- ) {: src:^ u:NUM:byte-len buf:^ :}
-   src u BLEN>N buf APPEND-SPAN-RAW ;
+   src u BLEN>N >str buf APPEND-SPAN-RAW ;
 : REPLACE ( ^u8 NUM:byte-len ^a -- ) {: src:^ u:NUM:byte-len buf:^ :}
-   src u BLEN>N buf REPLACE-RAW ;
+   src u BLEN>N >str buf REPLACE-RAW ;
 
 \ The text with every non-overlapping old replaced by new, appended; answers the
 \ count STR:COUNT-SUB answers. No operand may overlap the storage. An empty old is
 \ its zero occurrences: STR:FIND-SUB-FROM would answer every offset.
 : APPEND-REPLACED ( str str str ^a -- n )
-   {: text:^ tu:n old:^ ou:n new:^ nu:n buf:^ :}
-   ou 0= if text tu buf APPEND-SPAN-RAW 0 exit then
-   0 0 begin >r text tu old ou new nu buf r> APPEND-UNTIL-OLD while swap 1+ swap repeat drop ;
+   {: text:str old:str new:str buf:^ :}
+   old STR:LEN 0= if text buf APPEND-SPAN-RAW 0 exit then
+   0 0 begin >r text old new buf r> APPEND-UNTIL-OLD while swap 1+ swap repeat drop ;
 
 ;package

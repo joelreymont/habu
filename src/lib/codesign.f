@@ -1,4 +1,3 @@
-split-str
 \ codesign.f - checked target signing and signed-image
 \ comparison (package CODESIGN) for build drivers. On macOS the words run
 \ /usr/bin/codesign with the identity of team TEAM$, never ad hoc: no tool is
@@ -71,17 +70,17 @@ private
 : CODESIGN-EXPECT-TOOL ( -- )
    TOOL FS:FILE? 0= if E-BUILD-COMMAND throw then ;
 
-: CODESIGN-EXPECT-FILE ( str -- ) {: a:^ u :}
-   u 0 <= if E-BUILD-PATH throw then
-   a u FS:FILE? 0= if E-BUILD-PATH throw then ;
+: CODESIGN-EXPECT-FILE ( str -- ) {: s:str :}
+   s STR:LEN 0 <= if E-BUILD-PATH throw then
+   s FS:FILE? 0= if E-BUILD-PATH throw then ;
 
-: CODESIGN-EXPECT-EXECUTABLE ( str -- ) {: a:^ u :}
-   a u CODESIGN-EXPECT-FILE
-   a u FS:EXECUTABLE? 0= if E-BUILD-PATH throw then ;
+: CODESIGN-EXPECT-EXECUTABLE ( str -- ) {: s:str :}
+   s CODESIGN-EXPECT-FILE
+   s FS:EXECUTABLE? 0= if E-BUILD-PATH throw then ;
 
-: CODESIGN-CAPTURE ( str -- n ) {: tool:^ toolu:n :}
+: CODESIGN-CAPTURE ( str -- n ) {: tool:str :}
    PROC-ENV-RESET
-   tool toolu s" "
+   tool s" "
    [: CODESIGN-OUT-ROOM ;] [: CODESIGN-ERR-ROOM ;]
    CODESIGN-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    {: o:len e:len oc :}
@@ -93,7 +92,7 @@ private
 \ stderr ahead of the status code.
 : CODESIGN-ERR-SHOW ( n -- n ) {: rc:n :}
    rc 0<> if
-      CODESIGN-ERR-U @ 0 > if 0 CODESIGN-ERR CODESIGN-ERR-U @ ERROR-TEXT:TYPE then
+      CODESIGN-ERR-U @ 0 > if 0 CODESIGN-ERR CODESIGN-ERR-U @ >str ERROR-TEXT:TYPE then
    then
    rc ;
 
@@ -122,15 +121,15 @@ private
 : CODESIGN-SECURITY ( [ str -- ] -- ) {: xt :}
    SECURITY CODESIGN-CAPTURE CODESIGN-ERR-SHOW 0<>
    CODESIGN-OUT-U @ 0= or if CODESIGN-NO-IDENTITY then
-   0 CODESIGN-OUT CODESIGN-OUT-U @ xt execute ;
+   0 CODESIGN-OUT CODESIGN-OUT-U @ >str xt execute ;
 
-: CODESIGN-KEEP-IDS ( str -- ) {: a:^ u:n :}
-   u CODESIGN-IDS-RESERVE
-   a 0 CODESIGN-IDS u BYTE-COPY
-   u CODESIGN-IDS-U ! ;
+: CODESIGN-KEEP-IDS ( str -- ) {: s:str :}
+   s STR:LEN CODESIGN-IDS-RESERVE
+   s STR:DATA 0 CODESIGN-IDS s STR:LEN BYTE-COPY
+   s STR:LEN CODESIGN-IDS-U ! ;
 
 : CODESIGN-IDS$ ( -- str )
-   0 CODESIGN-IDS CODESIGN-IDS-U @ ;
+   0 CODESIGN-IDS CODESIGN-IDS-U @ >str ;
 
 \ The hashes of the valid signing identities, certificate and private key both
 \ in the keychain search list.
@@ -158,55 +157,55 @@ private
 
 8 constant CODESIGN-OU-SKIP
 
-\ The offset of b in a at or after from, else u.
-: CODESIGN-FIND ( n str str -- n ) {: from:n a:^ u:n b:^ v:n :}
-   a u b v from STR:FIND-SUB-FROM MATCH option
-     none OF u ENDOF
+\ The offset of pat in s at or after from, else s's length.
+: CODESIGN-FIND ( n str str -- n ) {: from:n s:str pat:str :}
+   s pat from STR:FIND-SUB-FROM MATCH option
+     none OF s STR:LEN ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;
 
 \ Whether the OU mark at offset at is followed by TEAM$.
-: CODESIGN-TEAM-AT? ( n str -- bool ) {: at:n a:^ u:n :}
-   at CODESIGN-OU-MARK nip + CODESIGN-OU-SKIP + {: team:n :}
-   team TEAM$ nip + u > if false exit then
-   a team + TEAM$ nip TEAM$ STR:= ;
+: CODESIGN-TEAM-AT? ( n str -- bool ) {: at:n s:str :}
+   at CODESIGN-OU-MARK STR:LEN + CODESIGN-OU-SKIP + {: team:n :}
+   team TEAM$ STR:LEN + s STR:LEN > if false exit then
+   s STR:DATA team + TEAM$ STR:LEN >str TEAM$ STR:= ;
 
-: CODESIGN-TEAM-IN? ( str -- bool ) {: a:^ u:n :}
+: CODESIGN-TEAM-IN? ( str -- bool ) {: s:str :}
    0 begin
-      a u CODESIGN-OU-MARK CODESIGN-FIND
-      dup u <
+      s CODESIGN-OU-MARK CODESIGN-FIND
+      dup s STR:LEN <
    while
-      dup a u CODESIGN-TEAM-AT? if drop true exit then
+      dup s CODESIGN-TEAM-AT? if drop true exit then
       1 +
    repeat
    drop false ;
 
 \ Whether the certificate's subject names TEAM$.
-: CODESIGN-TEAM-CERT? ( str -- bool ) {: a:^ u:n :}
-   0 a u CODESIGN-SUBJ-MARK CODESIGN-FIND {: subj:n :}
-   subj u >= if false exit then
-   subj a u s\" \n" CODESIGN-FIND {: eol:n :}
-   a subj + eol subj - CODESIGN-TEAM-IN? ;
+: CODESIGN-TEAM-CERT? ( str -- bool ) {: s:str :}
+   0 s CODESIGN-SUBJ-MARK CODESIGN-FIND {: subj:n :}
+   subj s STR:LEN >= if false exit then
+   subj s s\" \n" CODESIGN-FIND {: eol:n :}
+   s STR:DATA subj + eol subj - >str CODESIGN-TEAM-IN? ;
 
 \ Keeps the hash of the certificate from at to next when it is the team's and
 \ a valid identity.
-: CODESIGN-PICK-AT ( n n str -- bool ) {: at:n next:n a:^ u:n :}
-   at CODESIGN-CERT-MARK nip + {: hash:n :}
+: CODESIGN-PICK-AT ( n n str -- bool ) {: at:n next:n s:str :}
+   at CODESIGN-CERT-MARK STR:LEN + {: hash:n :}
    hash CODESIGN-ID-LEN + next > if false exit then
-   a at + next at - CODESIGN-TEAM-CERT? 0= if false exit then
-   CODESIGN-IDS$ a hash + CODESIGN-ID-LEN STR:CONTAINS? 0= if false exit then
-   a hash + CODESIGN-ID CODESIGN-ID-LEN BYTE-COPY
+   s STR:DATA at + next at - >str CODESIGN-TEAM-CERT? 0= if false exit then
+   CODESIGN-IDS$ s STR:DATA hash + CODESIGN-ID-LEN >str STR:CONTAINS? 0= if false exit then
+   s STR:DATA hash + CODESIGN-ID CODESIGN-ID-LEN BYTE-COPY
    -1 CODESIGN-ID? !
    true ;
 
-: CODESIGN-NEXT-CERT ( n str -- n ) {: at:n a:^ u:n :}
-   at CODESIGN-CERT-MARK nip + a u CODESIGN-CERT-MARK CODESIGN-FIND ;
+: CODESIGN-NEXT-CERT ( n str -- n ) {: at:n s:str :}
+   at CODESIGN-CERT-MARK STR:LEN + s CODESIGN-CERT-MARK CODESIGN-FIND ;
 
-: CODESIGN-PICK ( str -- ) {: a:^ u:n :}
-   0 a u CODESIGN-CERT-MARK CODESIGN-FIND
-   begin dup u < while
-      dup a u CODESIGN-NEXT-CERT
-      2dup a u CODESIGN-PICK-AT if 2drop exit then
+: CODESIGN-PICK ( str -- ) {: s:str :}
+   0 s CODESIGN-CERT-MARK CODESIGN-FIND
+   begin dup s STR:LEN < while
+      dup s CODESIGN-NEXT-CERT
+      2dup s CODESIGN-PICK-AT if 2drop exit then
       nip
    repeat
    drop ;
@@ -227,67 +226,67 @@ public
    CODESIGN-ID? @ 0= if
       [: CODESIGN-FIND-ID ;] [: CODESIGN-IDS-RELEASE ;] finally
    then
-   CODESIGN-ID CODESIGN-ID-LEN ;
+   CODESIGN-ID CODESIGN-ID-LEN >str ;
 
 private
 
 : CODESIGN-TARGET-UNKNOWN ( -- )
    E-BUILD-SOURCE throw ;
 
-: CODESIGN-MACOS-VERIFY-ARGS ( str -- ) {: a:^ u :}
-   a u CODESIGN-EXPECT-EXECUTABLE
+: CODESIGN-MACOS-VERIFY-ARGS ( str -- ) {: s:str :}
+   s CODESIGN-EXPECT-EXECUTABLE
    PROC-ARGV-RESET
    s" -v"  PROC-ARGV+
-   a u  PROC-ARGV+ ;
+   s  PROC-ARGV+ ;
 
 : CODESIGN-REQ-HEAD ( -- str )
    s\" =anchor apple generic and certificate leaf[subject.OU] = \"" ;
 
-create CODESIGN-REQ CODESIGN-REQ-HEAD nip TEAM$ nip + 1 + allot
+create CODESIGN-REQ CODESIGN-REQ-HEAD STR:LEN TEAM$ STR:LEN + 1 + allot
 
 \ The requirement every team signature meets: an Apple-issued certificate of
 \ team TEAM$.
 : CODESIGN-TEAM-REQ ( -- str )
-   CODESIGN-REQ-HEAD {: h:^ hu:n :}
-   TEAM$ {: t:^ tu:n :}
-   h CODESIGN-REQ hu BYTE-COPY
-   t CODESIGN-REQ hu + tu BYTE-COPY
-   [char] " CODESIGN-REQ hu tu + + c!
-   CODESIGN-REQ hu tu + 1 + ;
+   CODESIGN-REQ-HEAD {: h:str :}
+   TEAM$ {: t:str :}
+   h STR:DATA CODESIGN-REQ h STR:LEN BYTE-COPY
+   t STR:DATA CODESIGN-REQ h STR:LEN + t STR:LEN BYTE-COPY
+   [char] " CODESIGN-REQ h STR:LEN t STR:LEN + + c!
+   CODESIGN-REQ h STR:LEN t STR:LEN + 1 + >str ;
 
 \ codesign -v -R exits nonzero for any other signer, Apple's and ad hoc
 \ included, and for a file it cannot read.
-: CODESIGN-MACOS-TEAM? ( str -- bool ) {: a:^ u :}
+: CODESIGN-MACOS-TEAM? ( str -- bool ) {: s:str :}
    PROC-ARGV-RESET
    s" -v"  PROC-ARGV+
    s" -R"  PROC-ARGV+
    CODESIGN-TEAM-REQ  PROC-ARGV+
-   a u  PROC-ARGV+
+   s  PROC-ARGV+
    CODESIGN-RUN 0= ;
 
 : CODESIGN-SIGN-ARGS ( -- )
-   IDENTITY$ {: id:^ idu:n :}
+   IDENTITY$ {: id:str :}
    PROC-ARGV-RESET
    s" -s"  PROC-ARGV+
-   id idu  PROC-ARGV+
+   id  PROC-ARGV+
    s" --timestamp=none"  PROC-ARGV+
    s" --force"  PROC-ARGV+ ;
 
 \ A written image carries its writer's identifier (src/habu/sign-id.f); the
 \ keychain's access list names it, so the team signature keeps it.
-: CODESIGN-MACOS-FORCE ( str -- ) {: a:^ u :}
-   a u CODESIGN-EXPECT-FILE
+: CODESIGN-MACOS-FORCE ( str -- ) {: s:str :}
+   s CODESIGN-EXPECT-FILE
    CODESIGN-SIGN-ARGS
    s" --preserve-metadata=identifier"  PROC-ARGV+
-   a u  PROC-ARGV+
+   s  PROC-ARGV+
    CODESIGN-RUN-OK ;
 
-: CODESIGN-MACOS-FORCE-AS ( str str -- ) {: a:^ u id:^ idu :}
-   a u CODESIGN-EXPECT-FILE
+: CODESIGN-MACOS-FORCE-AS ( str str -- ) {: s:str id:str :}
+   s CODESIGN-EXPECT-FILE
    CODESIGN-SIGN-ARGS
    s" -i"  PROC-ARGV+
-   id idu  PROC-ARGV+
-   a u  PROC-ARGV+
+   id  PROC-ARGV+
+   s  PROC-ARGV+
    CODESIGN-RUN-OK ;
 
 : CODESIGN-LINUX-VERIFY-RC ( str -- n )
@@ -295,7 +294,7 @@ create CODESIGN-REQ CODESIGN-REQ-HEAD nip TEAM$ nip + 1 + allot
    0 ;
 
 : CODESIGN-LINUX-FORCE ( str -- )
-   2dup CODESIGN-EXPECT-FILE
+   dup CODESIGN-EXPECT-FILE
    FS:CHMOD-X ;
 
 4 constant CODESIGN-MAGIC-BYTES
@@ -315,71 +314,71 @@ SCRATCH-VARIABLE CODESIGN-MAGIC-FD
 : CODESIGN-MAGIC-CLOSE ( -- )
    CODESIGN-MAGIC-FD @ close ;
 
-: CODESIGN-ELF? ( str -- bool ) {: a:^ u:n :}
-   u 0 <= if false exit then
-   a u FS:FILE? 0= if false exit then
-   a u FS:OPEN-SIZED {: f:fd size:n found:bool :}
+: CODESIGN-ELF? ( str -- bool ) {: s:str :}
+   s STR:LEN 0 <= if false exit then
+   s FS:FILE? 0= if false exit then
+   s FS:OPEN-SIZED {: f:fd size:n found:bool :}
    found 0= if false exit then
    f FD>N CODESIGN-MAGIC-FD !
    [: CODESIGN-MAGIC-READ ;] [: CODESIGN-MAGIC-CLOSE ;] finally ;
 
 \ A Linux host, or an ELF file built for one on a Mac (--target).
-: CODESIGN-LINUX? ( str -- bool ) {: a:^ u:n :}
+: CODESIGN-LINUX? ( str -- bool ) {: s:str :}
    HB-TARGET-LINUX? if true exit then
-   a u CODESIGN-ELF? ;
+   s CODESIGN-ELF? ;
 
 public
 
-: VERIFY-RC ( str -- n ) {: a:^ u:n :}
-   a u CODESIGN-LINUX? if a u CODESIGN-LINUX-VERIFY-RC exit then
-   HB-TARGET-MACOS? if a u CODESIGN-MACOS-VERIFY-ARGS CODESIGN-RUN exit then
+: VERIFY-RC ( str -- n ) {: s:str :}
+   s CODESIGN-LINUX? if s CODESIGN-LINUX-VERIFY-RC exit then
+   HB-TARGET-MACOS? if s CODESIGN-MACOS-VERIFY-ARGS CODESIGN-RUN exit then
    CODESIGN-TARGET-UNKNOWN ;
 
-: VERIFY ( str -- ) {: a:^ u:n :}
-   a u CODESIGN-LINUX? if
-      a u CODESIGN-EXPECT-EXECUTABLE
+: VERIFY ( str -- ) {: s:str :}
+   s CODESIGN-LINUX? if
+      s CODESIGN-EXPECT-EXECUTABLE
       exit
    then
    HB-TARGET-MACOS? if
-      a u CODESIGN-MACOS-VERIFY-ARGS
+      s CODESIGN-MACOS-VERIFY-ARGS
       CODESIGN-RUN-OK
       exit
    then
    CODESIGN-TARGET-UNKNOWN ;
 
-: FORCE ( str -- ) {: a:^ u:n :}
-   a u CODESIGN-LINUX? if a u CODESIGN-LINUX-FORCE exit then
-   HB-TARGET-MACOS? if a u CODESIGN-MACOS-FORCE exit then
+: FORCE ( str -- ) {: s:str :}
+   s CODESIGN-LINUX? if s CODESIGN-LINUX-FORCE exit then
+   HB-TARGET-MACOS? if s CODESIGN-MACOS-FORCE exit then
    CODESIGN-TARGET-UNKNOWN ;
 
 \ Whether a file carries a valid signature of team TEAM$. An ELF file has no
 \ signer: true when it is executable, E-BUILD-PATH when it is not.
-: TEAM-SIGNED? ( str -- bool ) {: a:^ u:n :}
-   a u CODESIGN-LINUX? if a u CODESIGN-LINUX-VERIFY-RC 0= exit then
-   HB-TARGET-MACOS? if a u CODESIGN-MACOS-TEAM? exit then
+: TEAM-SIGNED? ( str -- bool ) {: s:str :}
+   s CODESIGN-LINUX? if s CODESIGN-LINUX-VERIFY-RC 0= exit then
+   HB-TARGET-MACOS? if s CODESIGN-MACOS-TEAM? exit then
    CODESIGN-TARGET-UNKNOWN ;
 
 \ Signs a file for the team unless it already carries a valid team signature,
 \ so an install keeps the one its build made; a written image's own is ad hoc.
-: ENSURE ( str -- ) {: a:^ u:n :}
-   a u CODESIGN-LINUX? 0= HB-TARGET-MACOS? and if
-      a u TEAM-SIGNED? if exit then
+: ENSURE ( str -- ) {: s:str :}
+   s CODESIGN-LINUX? 0= HB-TARGET-MACOS? and if
+      s TEAM-SIGNED? if exit then
    then
-   a u FORCE
-   a u VERIFY ;
+   s FORCE
+   s VERIFY ;
 
 \ Sign under a fixed identifier, whatever the file already carries. Without one
 \ codesign names the signature after the file, so the name a writer happened to
 \ use would travel inside the image.
-: SIGN-AS ( str str -- ) {: a:^ u:n id:^ idu:n :}
-   a u CODESIGN-LINUX? if
-      a u FORCE
-      a u VERIFY
+: SIGN-AS ( str str -- ) {: s:str id:str :}
+   s CODESIGN-LINUX? if
+      s FORCE
+      s VERIFY
       exit
    then
    HB-TARGET-MACOS? if
-      a u id idu CODESIGN-MACOS-FORCE-AS
-      a u VERIFY
+      s id CODESIGN-MACOS-FORCE-AS
+      s VERIFY
       exit
    then
    CODESIGN-TARGET-UNKNOWN ;
@@ -414,15 +413,15 @@ $10000 constant CMS-SLOT
 
 \ The offset of the first load command hit accepts; 0 for no 64-bit Mach-O or no
 \ hit, -1 when a command up to that one runs past the image.
-: COMMAND ( str [ n -- bool ] -- n ) {: a:^ u:n hit :}
-   u MACHO64-HEADER < if 0 exit then
-   a LE:U32@ MACHO64-MAGIC <> if 0 exit then
+: COMMAND ( str [ n -- bool ] -- n ) {: s:str hit :}
+   s STR:LEN MACHO64-HEADER < if 0 exit then
+   s STR:DATA LE:U32@ MACHO64-MAGIC <> if 0 exit then
    MACHO64-HEADER
-   a 16 + LE:U32@ 0 ?do
+   s STR:DATA 16 + LE:U32@ 0 ?do
       {: at:n :}
-      at LC-HEAD u SPAN-IN? 0= if -1 unloop exit then
-      a at + 4 + LE:U32@ {: size:n :}
-      size LC-HEAD < at size u SPAN-IN? 0= or if -1 unloop exit then
+      at LC-HEAD s STR:LEN SPAN-IN? 0= if -1 unloop exit then
+      s STR:DATA at + 4 + LE:U32@ {: size:n :}
+      size LC-HEAD < at size s STR:LEN SPAN-IN? 0= or if -1 unloop exit then
       at hit execute if at unloop exit then
       at size +
    loop
@@ -430,10 +429,10 @@ $10000 constant CMS-SLOT
 
 \ The offset of the image's LC_CODE_SIGNATURE, as COMMAND answers, and -1
 \ when the command is not LC-SIGNATURE-SIZE bytes.
-: SIG-COMMAND ( str -- n ) {: a:^ u:n :}
-   a u [: a + LE:U32@ LC-SIGNATURE = ;] COMMAND {: at:n :}
+: SIG-COMMAND ( str -- n ) {: s:str :}
+   s [: s STR:DATA + LE:U32@ LC-SIGNATURE = ;] COMMAND {: at:n :}
    at 0 > if
-      a at + 4 + LE:U32@ LC-SIGNATURE-SIZE <> if -1 exit then
+      s STR:DATA at + 4 + LE:U32@ LC-SIGNATURE-SIZE <> if -1 exit then
    then
    at ;
 
@@ -445,18 +444,18 @@ $10000 constant CMS-SLOT
 : LINKEDIT? ( ^u8 n -- bool ) {: a:^ at:n :}
    a at + LE:U32@ LC-SEGMENT-64 <> if false exit then
    a at + 4 + LE:U32@ SEGMENT-SIZE < if false exit then
-   a at + SEG-NAME + LINKEDIT-NAME nip LINKEDIT-NAME STR:= 0= if false exit then
-   a at + SEG-NAME + LINKEDIT-NAME nip + c@ 0= ;
+   a at + SEG-NAME + LINKEDIT-NAME STR:LEN >str LINKEDIT-NAME STR:= 0= if false exit then
+   a at + SEG-NAME + LINKEDIT-NAME STR:LEN + c@ 0= ;
 
 \ The offset of the image's __LINKEDIT segment command, as COMMAND answers.
-: LINKEDIT-COMMAND ( str -- n ) {: a:^ u:n :}
-   a u [: a swap LINKEDIT? ;] COMMAND ;
+: LINKEDIT-COMMAND ( str -- n ) {: s:str :}
+   s [: s STR:DATA swap LINKEDIT? ;] COMMAND ;
 
 \ The offset past a field at at of len bytes when the images agree on the
 \ bytes from from up to it, else -1; -1 when from is.
 : SAME-TO ( n ^u8 ^u8 n n -- n ) {: from:n a:^ b:^ at:n len:n :}
    from 0< if -1 exit then
-   a from + at from - b from + at from - STR:= if at len + else -1 then ;
+   a from + at from - >str b from + at from - >str STR:= if at len + else -1 then ;
 
 \ Whether the signature command at lc and the segment command at seg end
 \ before the data offset doff.
@@ -498,43 +497,43 @@ $10000 constant CMS-SLOT
 \ index are bounds-checked. The first LC_CODE_SIGNATURE and its first CMS slot
 \ are used; real signers put the signature command last and the CMS blob after
 \ the CodeDirectory.
-: CMS-SPAN ( str -- n n bool ) {: a:^ u:n :}
-   a u SIG-COMMAND {: lc:n :}
+: CMS-SPAN ( str -- n n bool ) {: s:str :}
+   s SIG-COMMAND {: lc:n :}
    lc 0< if 0 0 false exit then
    lc 0= if 0 0 true exit then
-   a lc + SIG-DATAOFF + LE:U32@ {: sig:n :}
-   a lc + SIG-DATASIZE + LE:U32@ {: sigu:n :}
-   sig sigu u SPAN-IN? 0= sigu SUPERBLOB-HEAD < or if 0 0 false exit then
-   a sig + BE:U32@ SUPERBLOB-MAGIC <> if 0 0 false exit then
-   a sig sigu CMS-SLOT-SPAN ;
+   s STR:DATA lc + SIG-DATAOFF + LE:U32@ {: sig:n :}
+   s STR:DATA lc + SIG-DATASIZE + LE:U32@ {: sigu:n :}
+   sig sigu s STR:LEN SPAN-IN? 0= sigu SUPERBLOB-HEAD < or if 0 0 false exit then
+   s STR:DATA sig + BE:U32@ SUPERBLOB-MAGIC <> if 0 0 false exit then
+   s STR:DATA sig sigu CMS-SLOT-SPAN ;
 
 public
 
 \ True when the two images have one length and equal bytes outside the CMS
 \ blob of their code signatures; an image with no signature is compared whole.
 \ A signature that lies outside its image is never the same image.
-: SAME-IMAGE? ( str str -- bool ) {: a:^ au:n b:^ bu:n :}
-   au bu <> if false exit then
-   a au CMS-SPAN {: as:n al:n aok:bool :}
-   b bu CMS-SPAN {: bs:n bl:n bok:bool :}
+: SAME-IMAGE? ( str str -- bool ) {: a:str b:str :}
+   a STR:LEN b STR:LEN <> if false exit then
+   a CMS-SPAN {: as:n al:n aok:bool :}
+   b CMS-SPAN {: bs:n bl:n bok:bool :}
    aok bok and 0= if false exit then
    as bs <> al bl <> or if false exit then
-   a as b as STR:= 0= if false exit then
+   a STR:DATA as >str b STR:DATA as >str STR:= 0= if false exit then
    as al + {: tail:n :}
-   a tail + au tail - b tail + bu tail - STR:= ;
+   a STR:DATA tail + a STR:LEN tail - >str b STR:DATA tail + b STR:LEN tail - >str STR:= ;
 
 \ Whether two images match up to one shared signature offset, outside the sizes
 \ signing sets in LC_CODE_SIGNATURE and __LINKEDIT; unsigned ones match whole.
-: SAME-CODE? ( str str -- bool ) {: a:^ au:n b:^ bu:n :}
-   a au SIG-COMMAND {: lc:n :}
-   lc b bu SIG-COMMAND <> lc 0< or if false exit then
-   lc 0= if a au b bu STR:= exit then
-   a au LINKEDIT-COMMAND {: seg:n :}
-   seg b bu LINKEDIT-COMMAND <> seg 0 <= or if false exit then
-   a lc + SIG-DATAOFF + LE:U32@ {: doff:n :}
-   doff b lc + SIG-DATAOFF + LE:U32@ <> if false exit then
-   doff au <= doff bu <= and 0= if false exit then
+: SAME-CODE? ( str str -- bool ) {: a:str b:str :}
+   a SIG-COMMAND {: lc:n :}
+   lc b SIG-COMMAND <> lc 0< or if false exit then
+   lc 0= if a b STR:= exit then
+   a LINKEDIT-COMMAND {: seg:n :}
+   seg b LINKEDIT-COMMAND <> seg 0 <= or if false exit then
+   a STR:DATA lc + SIG-DATAOFF + LE:U32@ {: doff:n :}
+   doff b STR:DATA lc + SIG-DATAOFF + LE:U32@ <> if false exit then
+   doff a STR:LEN <= doff b STR:LEN <= and 0= if false exit then
    lc seg doff HEAD-BEFORE? 0= if false exit then
-   a b lc seg doff HEAD-SAME? ;
+   a STR:DATA b STR:DATA lc seg doff HEAD-SAME? ;
 
 ;package

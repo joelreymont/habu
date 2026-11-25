@@ -1,4 +1,3 @@
-split-str
 \ pointer.f - RFC 6901 JSON Pointers: POINTER? and POINTER-SPAN. A file of
 \ package JSON (src/lib/json.f).
 \
@@ -42,25 +41,25 @@ private
 
 \ Whether every tilde in the bytes is followed by 0 or 1.
 : ESCAPES-OK? ( str -- bool )
-   {: p:^ u:n :}
-   u 0 ?do
-      p i + c@ TILDE = if
-         i 1+ u >= if false unloop exit then
-         p i 1+ + c@ dup ZERO = swap DIGIT-ONE = or
+   {: s:str :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ TILDE = if
+         i 1+ s STR:LEN >= if false unloop exit then
+         s STR:DATA i 1+ + c@ dup ZERO = swap DIGIT-ONE = or
          0= if false unloop exit then
       then
    loop true ;
 
 \ The end of the token that starts at from: the next slash, or u.
 : TOKEN-END ( str n -- n )
-   {: p:^ u:n from:n :}
+   {: s:str from:n :}
    from begin
-      dup u < if dup p + c@ SLASH <> else false then
+      dup s STR:LEN < if dup s STR:DATA + c@ SLASH <> else false then
    while 1+ repeat ;
 
 \ The byte at in, an escape decoded, and the offset past it. POINTER? passed
 \ every tilde, so the byte after one is 0 or 1.
-: UNESCAPE-STEP ( str -- n n )
+: UNESCAPE-STEP ( ^u8 n -- n n )
    {: p:^ in:n :}
    p in + c@ {: c:n :}
    c TILDE <> if c in 1+ exit then
@@ -92,11 +91,11 @@ private
 \ The array index a token names: 0, or a digit 1-9 then digits, below cap;
 \ false for any other token. An index stays below cap, so it never overflows.
 : INDEX? ( str n -- n bool )
-   {: t:^ len:n cap:n :}
-   len 0= if 0 false exit then
-   len 1 > t c@ ZERO = and if 0 false exit then
-   0 len 0 ?do
-      t i + c@ cap INDEX-STEP 0= if false unloop exit then
+   {: s:str cap:n :}
+   s STR:LEN 0= if 0 false exit then
+   s STR:LEN 1 > s STR:DATA c@ ZERO = and if 0 false exit then
+   0 s STR:LEN 0 ?do
+      s STR:DATA i + c@ cap INDEX-STEP 0= if false unloop exit then
    loop true ;
 
 \ Skips the array's next element; false at the array's end.
@@ -114,50 +113,50 @@ private
 \ Moves the cursor from the value it is on into the place the decoded token
 \ names there; false when there is none. cap bounds an index.
 : DESCEND ( ^cursor str n -- bool )
-   {: state:^ t:^ len:n cap:n :}
+   {: state:^ s:str cap:n :}
    state CURSOR-KIND @ {: kind:n :}
-   kind T-OBJ = if state t len FIND-INNER exit then
+   kind T-OBJ = if state s FIND-INNER exit then
    kind T-ARR <> if false exit then
-   t len cap INDEX? 0= if drop false exit then
+   s cap INDEX? 0= if drop false exit then
    {: k:n :} state k INTO-ARRAY ;
 
 \ Takes the token after the slash at at; answers the offset after the token
 \ and whether it names a place.
 : TOKEN-STEP ( ^cursor n str ^VEC:vector<u8> n -- n bool )
-   {: state:^ at:n p:^ u:n out:^ cap:n :}
-   p u at 1+ TOKEN-END {: end:n :}
-   state  p at 1+ end out UNESCAPE  cap DESCEND end swap ;
+   {: state:^ at:n s:str out:^ cap:n :}
+   s at 1+ TOKEN-END {: end:n :}
+   state  s STR:DATA at 1+ end out UNESCAPE  cap DESCEND end swap ;
 
 \ Takes every token of the pointer from the value the cursor is on; false at
 \ the first that names no place.
 : FOLLOW ( ^cursor str ^VEC:vector<u8> n -- bool )
-   {: state:^ p:^ u:n out:^ cap:n :}
-   0 begin dup u < while
-      state swap p u out cap TOKEN-STEP 0= if drop false exit then
+   {: state:^ s:str out:^ cap:n :}
+   0 begin dup s STR:LEN < while
+      state swap s out cap TOKEN-STEP 0= if drop false exit then
    repeat drop true ;
 
 \ The offset and length of the value the pointer names from the value the
 \ cursor reads next, and true; 0 0 false for no such place.
 : SEEK ( ^cursor str ^VEC:vector<u8> -- n n bool )
-   {: state:^ p:^ u:n out:^ :}
+   {: state:^ s:str out:^ :}
    state NEXT-INNER drop
-   state p u out state CURSOR-SRC-LEN @ FOLLOW
+   state s out state CURSOR-SRC-LEN @ FOLLOW
    0= if 0 0 false exit then
-   state ANY-SPAN-INNER {: at:^ len:n :}
-   at state CURSOR-SRC @ - len true ;
+   state ANY-SPAN-INNER {: span:str :}
+   span STR:DATA state CURSOR-SRC @ - span STR:LEN true ;
 
 \ The place's offset and length in the text, and whether it is there. The
 \ reader reads the whole text on either answer.
 : LOCATE ( ^cursor str str ^VEC:vector<u8> -- n n bool )
-   {: rec:^ text:^ tu:n p:^ u:n out:^ :}
-   rec text tu READ-INIT
-   READER>STATE p u out SEEK {: at:n len:n found:bool :}
+   {: rec:^ text:str s:str out:^ :}
+   rec text READ-INIT
+   READER>STATE s out SEEK {: at:n len:n found:bool :}
    READ-FINISH at len found ;
 
 : LOCATE-WITH ( str str ^cursor -- n n bool )
-   {: text:^ tu:n p:^ u:n rec:^ :}
-   HEAP:ALLOCATOR u [type] u8 VEC:NEW {: out:^ :}
-   [: [: rec text tu p u out LOCATE ;] [: rec MORE-RELEASE ;] finally ;]
+   {: text:str s:str rec:^ :}
+   HEAP:ALLOCATOR s STR:LEN [type] u8 VEC:NEW {: out:^ :}
+   [: [: rec text s out LOCATE ;] [: rec MORE-RELEASE ;] finally ;]
    [: out VEC:DELETE ;] finally ;
 
 public
@@ -166,20 +165,20 @@ public
 \ after a slash, every tilde followed by 0 or 1, and the bytes UTF-8. False
 \ for a negative length or a null address with a positive one.
 : POINTER? ( str -- bool )
-   {: p:^ u:n :}
-   u 0= if true exit then
-   u 0 < if false exit then
-   p 0= if false exit then
-   p c@ SLASH <> if false exit then
-   p u ESCAPES-OK? 0= if false exit then
-   p u UTF8:VALID? ;
+   {: s:str :}
+   s STR:LEN 0= if true exit then
+   s STR:LEN 0 < if false exit then
+   s STR:DATA 0= if false exit then
+   s STR:DATA c@ SLASH <> if false exit then
+   s ESCAPES-OK? 0= if false exit then
+   s UTF8:VALID? ;
 
 \ The offset and length in text of the value the pointer names, and true; 0 0
 \ false for no such place. A pointer POINTER? rejects throws E-JSON-POINTER.
 : POINTER-SPAN ( str str -- n n bool )
-   {: text:^ tu:n p:^ u:n :}
-   p u POINTER? 0= if E-JSON-POINTER throw then
-   text tu REQUIRE-SOURCE
-   text tu p u [type] cursor [: LOCATE-WITH ;] MEM:WITH-RECORD ;
+   {: text:str s:str :}
+   s POINTER? 0= if E-JSON-POINTER throw then
+   text REQUIRE-SOURCE
+   text s [type] cursor [: LOCATE-WITH ;] MEM:WITH-RECORD ;
 
 ;package

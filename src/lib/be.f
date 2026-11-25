@@ -1,4 +1,3 @@
-split-str
 \ be.f - fixed-width big-endian integers in a caller's bytes, the counterpart of
 \ src/lib/le.f (a SolidWorks container's key and version, Parasolid transmit
 \ partition fields). A store writes the low bytes of its value, so a negative
