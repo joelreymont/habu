@@ -22,7 +22,6 @@ require src/lib/test.f
 require src/lib/aio.f
 require src/lib/fmt.f
 require src/lib/heap.f
-require src/lib/span.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/vector.f
@@ -81,8 +80,8 @@ TASK:MIN-STACK TASK:TASK READER-7
 : LITERAL-VALUE$ ( -- str ) S\" {\"value\": tSECRETMARK}" ;
 : LEAD-BYTE-VALUE$ ( -- str ) S\" {\"value\": \x01SECRETMARK}" ;
 : OUT ( -- ^VEC:vector<u8> ) OUT-VEC @ ;
-: OUT$ ( -- str ) OUT VEC:SPAN SPAN:$ ;
-: ORIGIN$ ( -- str ) ORIGIN-VEC @ VEC:SPAN SPAN:$ ;
+: OUT$ ( -- str ) OUT VEC:BYTES ;
+: ORIGIN$ ( -- str ) ORIGIN-VEC @ VEC:BYTES ;
 : LONG$ ( -- str ) LONG LONG-U >str ;
 
 : CLEAR-OUT ( -- ) OUT 0 VEC:RESIZE ;
@@ -128,7 +127,7 @@ TASK:MIN-STACK TASK:TASK READER-7
    {: asked:HTTP:request key:str want:str v:^ :}
    v 0 VEC:RESIZE
    asked key v HTTP:PARAM+ 0= if false exit then
-   v VEC:SPAN SPAN:$ want STR:= ;
+   v VEC:BYTES want STR:= ;
 
 : HEADER-IS? ( HTTP:request str str -- bool )
    {: asked:HTTP:request key:str want:str :}
@@ -280,7 +279,7 @@ TASK:MIN-STACK TASK:TASK READER-7
 : LITERAL-HIDDEN ( -- )
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
    s" literal" E-JSON-READ-MALFORMED READ-TEXT v VEC:APPEND
-   s" lead-byte" E-JSON-READ-MALFORMED READ-TEXT  v VEC:SPAN SPAN:$  T$=
+   s" lead-byte" E-JSON-READ-MALFORMED READ-TEXT  v VEC:BYTES  T$=
    v VEC:DELETE ;
 
 : TEST-HIDDEN ( -- )
@@ -319,7 +318,7 @@ TASK:MIN-STACK TASK:TASK READER-7
 : OWN? ( ^VEC:vector<u8> n -- bool )
    {: v:^ k:n :}
    SERVICE$ k ACCOUNT$ v SECRET:READ
-   v VEC:SPAN SPAN:$ k VALUE$ STR:= and
+   v VEC:BYTES k VALUE$ STR:= and
    v 0 VEC:RESIZE ;
 
 \ Reads reader r's items, counting in WRONG r each value not its own.

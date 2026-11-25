@@ -45,7 +45,7 @@ private
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
    [: a out VEC:APPEND  b out VEC:APPEND
       c out VEC:APPEND  d out VEC:APPEND
-      v out VEC:SPAN SPAN:$ f RESPONSE-REJECT ;]
+      v out VEC:BYTES f RESPONSE-REJECT ;]
    [: out VEC:DELETE ;] finally ;
 
 \ The value is not WANT, which WHAT needs.

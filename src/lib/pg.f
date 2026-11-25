@@ -1051,7 +1051,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot ['] KEEP-REFUSAL catch nip {: code:n :}
    slot CLOSE-SLOT drop
    code 0<> if code throw then
-   REFUSED-TEXT @ VEC:SPAN SPAN:$ {: t:str :}
+   REFUSED-TEXT @ VEC:BYTES {: t:str :}
    t STR:DATA t STR:LEN PG-PROGRESS:REFUSED ;
 
 

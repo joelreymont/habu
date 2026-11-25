@@ -81,7 +81,7 @@ public
 \ empty; valid until the task's next REASON:THROW or REASON:STOP.
 : TEXT$ ( n -- str ) {: code:n :}
    code 0=  LAST-CODE @ code <>  or if s" " exit then
-   LAST-TEXT VEC:SPAN SPAN:$ ;
+   LAST-TEXT VEC:BYTES ;
 
 \ Throws code n with the span kept as the calling task's text, replacing any
 \ earlier one. The span is appended after the old text, then moved to the
@@ -92,7 +92,7 @@ public
    LAST-TEXT {: t:^ :}
    t VEC:COUNT {: k:n :}
    a u t VEC:APPEND
-   t VEC:SPAN SPAN:$ drop {: p:^ :}
+   t VEC:BYTES drop {: p:^ :}
    p k + p u BYTE-COPY
    t u VEC:RESIZE
    code LAST-CODE !
@@ -139,7 +139,7 @@ public
 
 \ Throws code n with the next text through REASON:THROW.
 : STOP ( n -- ) {: code:n :}
-   NEXT-TEXT VEC:SPAN SPAN:$ code THROW ;
+   NEXT-TEXT VEC:BYTES code THROW ;
 
 \ Deletes the calling task's texts.
 : RELEASE ( -- )

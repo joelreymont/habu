@@ -22,7 +22,6 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/span.f
 require src/lib/memory.f
 require src/lib/heap.f
 require src/lib/arena.f
@@ -462,7 +461,7 @@ CAST: >RECORD ( n -- ^t )
 : NONE$ ( -- str ) s" none" ;
 
 \ Attributes. Each answer is a view of scratch, overwritten by the next.
-: SCRATCH$ ( ^doc -- str ) DOC-SCRATCH @ VEC:SPAN SPAN:$ ;
+: SCRATCH$ ( ^doc -- str ) DOC-SCRATCH @ VEC:BYTES ;
 
 : CLEARED ( ^doc -- ^VEC:vector<u8> ) DOC-SCRATCH @ dup 0 VEC:RESIZE ;
 

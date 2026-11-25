@@ -196,7 +196,7 @@ create JWT-RUN-KEY-WANT
    NULL-PTR [: JWT-MOVE-ALLOC ;] [: JWT-MOVE-RESIZE ;] [: JWT-MOVE-FREE ;]
    JWT-MOVER ALLOC:INIT ;
 
-: JWT-GROW-AT ( -- ^u8 ) JWT-GROW-OUT @ VEC:SPAN SPAN:$ STR:DATA ;
+: JWT-GROW-AT ( -- ^u8 ) JWT-GROW-OUT @ VEC:BYTES STR:DATA ;
 
 \ A vector on JWT-MOVER with room for eight bytes, so the cases outgrow it
 \ and each growth moves the block.
@@ -222,7 +222,7 @@ create JWT-RUN-KEY-WANT
    JWT-GROW-W JSON:RESET JSON:WRITTEN$ STR:LEN 0 T=
    JWT-GROW-W s" two" JSON:WRITE-RAW drop
    JWT-GROW-W JSON:CLOSE
-   v VEC:SPAN SPAN:$ s" two" T$=
+   v VEC:BYTES s" two" T$=
    v VEC:DELETE
    [: JWT-GROW-W JSON:WRITTEN$ drop ;] E-JSON-WRITE-STATE TTHROWSQ ;
 

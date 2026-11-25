@@ -421,7 +421,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : HELD$ ( n -- str )
    {: k:n :}
    k 0= if 0 else k 1- HELD-ENDS @ then {: at:n :}
-   HELD-B @ VEC:SPAN SPAN:$ str> drop at +
+   HELD-B @ VEC:BYTES str> drop at +
    k HELD-ENDS @ at - >str ;
 
 : HOLD ( str -- )

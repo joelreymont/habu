@@ -158,7 +158,7 @@ variable POSTED-U
 $10001 constant PAST-CAP            \ one byte past BEARER's TOKEN-CAP
 PAST-CAP BUFFER: OVERSIZE
 
-: BODY$ ( -- str ) BODY @ VEC:SPAN SPAN:$ ;
+: BODY$ ( -- str ) BODY @ VEC:BYTES ;
 : TOKEN$ ( -- str ) TOKEN TOKEN-U @ >str ;
 : CLAIMS$ ( -- str ) CLAIMS CLAIMS-U @ >str ;
 : ASSERTION$ ( -- str ) ASSERTION ASSERTION-U @ >str ;
@@ -528,7 +528,7 @@ variable RESOURCE-U
    {: asked:HTTP:request k:str want:str v:^ :}
    v 0 VEC:RESIZE
    asked k v HTTP:PARAM+ 0= if false exit then
-   v VEC:SPAN SPAN:$ want STR:= ;
+   v VEC:BYTES want STR:= ;
 
 : IMDS-ASKED? ( HTTP:request ^VEC:vector<u8> -- bool )
    {: asked:HTTP:request v:^ :}
@@ -595,9 +595,9 @@ $A constant LF
 : LOG$ ( -- str )
    LOG-PATH$ FS:FILE-SIZE {: size:n :}
    LOG-B @ size VEC:RESIZE
-   LOG-B @ VEC:SPAN SPAN:$ {: dst:str :}
+   LOG-B @ VEC:BYTES {: dst:str :}
    LOG-PATH$ dst STR:DATA dst STR:LEN FS:READ-ALL size T=
-   LOG-B @ VEC:SPAN SPAN:$ ;
+   LOG-B @ VEC:BYTES ;
 
 : LINES ( -- n )
    LOG$ {: s:str :}
@@ -627,13 +627,13 @@ $A constant LF
    s" a 400 is E-REFUSED, the vector holding the issuer's answer" T-LABEL
    [: UP s" a.b.c" dup STR:DATA swap STR:LEN BEARER-GRANT:FOR-PERSON
       GOT BEARER:TOKEN drop drop ;] BEARER:E-REFUSED TTHROWSQ
-   GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_grant\"}" T$=
+   GOT VEC:BYTES S\" {\"error\":\"invalid_grant\"}" T$=
    s" it leaves no byte of the earlier answer past the vector's count" T-LABEL
    GOT-ZEROED? TTRUE
    s" a wrong secret is E-REFUSED, the vector holding the issuer's answer" T-LABEL
    ENDPOINT$ s" app" s" wrong" BEARER:CLIENT!
    [: [: OWN-TOKEN drop drop ;] BEARER:E-REFUSED TTHROWSQ ;] CAPTURED
-   GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_client\"}" T$=
+   GOT VEC:BYTES S\" {\"error\":\"invalid_client\"}" T$=
    s" a refusal logs the issuer's status and answer once, tagged bearer" T-LABEL
    LINES 1 T=
    FORM-RESET S\"  error bearer: token request answered 401: " FORM+
@@ -653,11 +653,11 @@ $A constant LF
    s" an expired refresh token is E-REFUSED, the vector holding invalid_grant" T-LABEL
    s" cli" epoch-seconds 10 - ASSERT
    [: UP ASSERTION$ GOT BEARER:REFRESH drop drop drop ;] BEARER:E-REFUSED TTHROWSQ
-   GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_grant\"}" T$=
+   GOT VEC:BYTES S\" {\"error\":\"invalid_grant\"}" T$=
    s" another client's refresh token is E-REFUSED, the vector holding invalid_grant" T-LABEL
    s" app" LATER ASSERT
    [: UP ASSERTION$ GOT BEARER:REFRESH drop drop drop ;] BEARER:E-REFUSED TTHROWSQ
-   GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_grant\"}" T$= ;
+   GOT VEC:BYTES S\" {\"error\":\"invalid_grant\"}" T$= ;
 
 : BEARER-FAULTS ( -- )
    FAULT-URL$ s" app" s" s3cr&t+1" BEARER:CLIENT!
@@ -865,7 +865,7 @@ TASKS!
 
 \ The IMDS origin: the test server's own.
 : ORIGIN$ ( -- str ) ISSUER$ ;
-: GOT$ ( -- str ) GOT VEC:SPAN SPAN:$ ;
+: GOT$ ( -- str ) GOT VEC:BYTES ;
 : IDENTITY ( -- ) ORIGIN$ RESOURCE$ GOT BEARER:IDENTITY-TOKEN ;
 : IMDS-ASKING ( n -- ) LIFE ! 0 IMDS-ASKS atomic! ;
 
@@ -875,7 +875,7 @@ TASKS!
    1 ENTERED atomic-add drop
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
    ORIGIN$ RESOURCE$ v BEARER:IDENTITY-TOKEN
-   v VEC:SPAN SPAN:$ i SAW  v VEC:DELETE  0 TASK:RETURN ;
+   v VEC:BYTES i SAW  v VEC:DELETE  0 TASK:RETURN ;
 
 : IMDS-AT-ONCE ( -- )
    s" IDENTITY-TOKEN from four tasks at once asks once" T-LABEL

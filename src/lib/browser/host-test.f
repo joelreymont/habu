@@ -92,8 +92,8 @@ TYPED-VARIABLE CFG HTTP:config
    file WANT CAP FS:READ-ALL {: u:n :}
    path GET 200 T=
    SB-RESET  s" Content-Type: " SB-APPEND  type SB-APPEND  S\" \r\n" SB-APPEND
-   HEAD @ VEC:SPAN SPAN:$ SB$ STR:CONTAINS? TTRUE
-   BODY @ VEC:SPAN SPAN:$ WANT u >str T$= ;
+   HEAD @ VEC:BYTES SB$ STR:CONTAINS? TTRUE
+   BODY @ VEC:BYTES WANT u >str T$= ;
 
 : SERVE-CASES ( -- )
    AIO:START

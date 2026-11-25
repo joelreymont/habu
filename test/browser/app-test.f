@@ -11,7 +11,6 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
@@ -312,16 +311,16 @@ variable BEFORE-U
 : PAGE! ( -- )
    MOD MOD-U @ >str FS:FILE-SIZE {: wu:n :}
    BYTES WASM !  WASM @ wu VEC:ENSURE
-   WASM @ VEC:SPAN SPAN:$ {: w:str :}
+   WASM @ VEC:BYTES {: w:str :}
    MOD MOD-U @ >str w STR:DATA w STR:LEN FS:READ-ALL
    w STR:LEN <> if E-FS-IO throw then
    BYTES PAGE !
    TITLE$ PAGE @ MCP-APP:PAGE+
-   PAGE @ VEC:SPAN SPAN:$ s" page.html" FILE!
+   PAGE @ VEC:BYTES s" page.html" FILE!
    PAGE @ VEC:DELETE
    BYTES CODE !
    w CODE @ MCP-APP:CODE+
-   CODE @ VEC:SPAN SPAN:$ s" code.json" FILE!
+   CODE @ VEC:BYTES s" code.json" FILE!
    CODE @ VEC:DELETE  WASM @ VEC:DELETE ;
 
 

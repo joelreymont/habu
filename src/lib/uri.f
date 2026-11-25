@@ -472,7 +472,7 @@ public
    v VEC:COUNT {: at:n :}
    v at len + s STR:DATA VEC:MAKE-ROOM {: src:^ :}
    v at len + VEC:ENSURE
-   v VEC:SPAN SPAN:$ STR:DATA {: out:^ :}
+   v VEC:BYTES STR:DATA {: out:^ :}
    at s STR:LEN 0 ?do src i + c@ out rot [: UNRESERVED? ;] ENCODE-BYTE loop drop ;
 
 \ The path and query of an http(s) URL: its bytes from the authority's end

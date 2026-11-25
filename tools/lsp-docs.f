@@ -10,7 +10,6 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/heap.f
 require src/lib/vector.f
-require src/lib/span.f
 require src/lib/adt/option.f
 
 package LSP-DOCS
@@ -37,7 +36,7 @@ variable SLOT-COUNT
 variable NEXT-ID
 
 : LIVE? ( n -- bool )  SLOTS ENTRY-LIVE @ ;
-: BYTES$ ( ^^VEC:vector<u8> -- str )  @ VEC:SPAN SPAN:$ ;
+: BYTES$ ( ^^VEC:vector<u8> -- str )  @ VEC:BYTES ;
 
 : KEEP ( str ^^VEC:vector<u8> -- )
    {: a:^ u:n at:^ :}

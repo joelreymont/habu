@@ -121,7 +121,7 @@ create JW-ESC-W
 : JW-ALIAS ( ^writer str -- n ) {: w a:^ u:n :}
    w JW-OUT@ {: v:^ :}
    v NULL-PTR = if -1 exit then
-   v VEC:SPAN SPAN:$ {: base:^ used:n :}
+   v VEC:BYTES {: base:^ used:n :}
    a base < if -1 exit then
    a base - {: off:n :}
    off v VEC:CAP >= if -1 exit then
@@ -132,7 +132,7 @@ create JW-ESC-W
 \ The source span where it lies now, given JW-ALIAS's answer for it.
 : JW-REBASE ( ^writer str n -- str ) {: w a:^ u:n off:n :}
    off 0 < if a u exit then
-   w JW-OUT VEC:SPAN SPAN:$ drop off +  u ;
+   w JW-OUT VEC:BYTES drop off +  u ;
 
 : JW-SIZE+ ( n n -- n ) {: left:n right:n :}
    right MEM-MAX-N left - > if E-JSON-WRITE-CAPACITY throw then
@@ -258,7 +258,7 @@ public
 
 \ The span stays valid until the next write.
 : WRITTEN$ ( ^writer -- str )
-   JW-OUT VEC:SPAN SPAN:$ ;
+   JW-OUT VEC:BYTES ;
 
 : WRITE-RAW ( ^writer str -- ^writer ) {: w a:^ u:n :}
    a u JW-SPAN

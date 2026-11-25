@@ -205,7 +205,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 : DECODED$ ( str -- str )
    DECODED @ 0 VEC:RESIZE
    DECODED @ URI:FORM-DECODE+
-   DECODED @ VEC:SPAN SPAN:$ ;
+   DECODED @ VEC:BYTES ;
 
 \ Every byte comes back from its form encoding as it went in.
 : FORM-TRIP ( -- )

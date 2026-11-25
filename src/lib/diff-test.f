@@ -21,8 +21,8 @@ TYPED-VARIABLE WANT-VEC ^VEC:vector<u8>
 : NEW ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 : W+ ( str -- )  WANT VEC:APPEND ;
-: GOT$ ( -- str )  OUT VEC:SPAN SPAN:$ ;
-: WANT$ ( -- str )  WANT VEC:SPAN SPAN:$ ;
+: GOT$ ( -- str )  OUT VEC:BYTES ;
+: WANT$ ( -- str )  WANT VEC:BYTES ;
 : SAME ( -- )  GOT$ WANT$ T$= ;
 
 : FRESH ( str -- )  T-LABEL OUT 0 VEC:RESIZE WANT 0 VEC:RESIZE ;

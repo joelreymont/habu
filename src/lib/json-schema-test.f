@@ -136,7 +136,7 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
 : UNMAKE ( ^^VEC:vector<u8> -- ) {: c:^ :}
    c @ VEC:DELETE  NULL-PTR c ! ;
 
-: VIOLATION$ ( -- str ) VIOLATION @ VEC:SPAN SPAN:$ ;
+: VIOLATION$ ( -- str ) VIOLATION @ VEC:BYTES ;
 
 : CHECKED ( str str ^ARENA:arena -- bool )
    {: v:str s:str a:^ :}
@@ -356,7 +356,7 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    s" [" s\" \"a\"" s" ]" NEST {: b:n :}
    s" [" s" 1" s" ]" NEST {: c:n :}
    s" [" s" 1" s" ,0]" NEST drop
-   NESTED @ VEC:SPAN SPAN:$ {: all:str :}
+   NESTED @ VEC:BYTES {: all:str :}
    all STR:DATA {: t:^ :}
    t a >str  t a +  b a - >str  PASSES
    t a >str  t b +  c b - >str  VERDICT TFALSE
@@ -377,7 +377,7 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    s" VALID? judges anyOf nested 100000 levels deep" T-LABEL
    NESTED MAKE
    s\" {\"anyOf\":[" s\" {\"type\":\"integer\"}" s" ]}" NEST drop
-   NESTED @ VEC:SPAN SPAN:$ {: t:str :}
+   NESTED @ VEC:BYTES {: t:str :}
    t s" 1" PASSES
    t s\" \"a\"" VERDICT TFALSE
    VIOLATION$ {: w:str :}

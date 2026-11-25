@@ -29,7 +29,7 @@ variable SHOWN-N                         \ and the links written so far
 
 : PATH$ ( -- str )  0 PATH-B PATH-U @ ;
 : T+ ( str -- )  TIP-B @ VEC:APPEND ;
-: TIP$ ( -- str )  TIP-B @ VEC:SPAN SPAN:$ ;
+: TIP$ ( -- str )  TIP-B @ VEC:BYTES ;
 
 : STRING>PATH ( JSON:reader -- JSON:reader )
    READ-SPAN$ nip {: raw:n :}

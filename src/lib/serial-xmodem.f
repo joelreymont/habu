@@ -230,7 +230,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : SEND-PACKET ( ^session -- ) {: session:^ :}
    MAX-TRIES 0 do
-      session PACKET VEC:SPAN SPAN:$ session WRITE-ALL
+      session PACKET VEC:BYTES session WRITE-ALL
       session CONTROL-WINDOW session WAIT-REPLY ACK = if unloop exit then
       session CHECK-TIME
    loop E-SXMODEM-RETRIES throw ;
@@ -266,7 +266,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    session SESSION-CONTROL SPAN:$ drop c@ {: header:n :}
    header session FRAME-SIZE BLEN>N {: size:n :}
    session PACKET dup size VEC:RESIZE
-   VEC:SPAN SPAN:$ drop {: data :}
+   VEC:BYTES drop {: data :}
    header data c!
    data 1 + size 1 - session READ-REST 0= if E-FRAME throw then data size ;
 

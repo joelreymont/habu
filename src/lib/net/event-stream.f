@@ -106,8 +106,8 @@ $BF constant BOM-THIRD
    {: state:^ ctx:a cb :}
    state DATA? 0= if state RESET-EVENT exit then
    FAILED state ST!
-   state EVENT VEC:SPAN SPAN:$ {: kind:str :}
-   state BODY VEC:SPAN SPAN:$ {: body:str :}
+   state EVENT VEC:BYTES {: kind:str :}
+   state BODY VEC:BYTES {: body:str :}
    body STR:DATA body STR:LEN 1- >str {: data:str :}
    kind UTF8:VALID? 0= if E-UTF8 throw then
    data UTF8:VALID? 0= if E-UTF8 throw then
@@ -137,7 +137,7 @@ $BF constant BOM-THIRD
 
 : FIELD-LINE ( ^state -- )
    {: state:^ :}
-   state LINE VEC:SPAN SPAN:$ {: src:str :}
+   state LINE VEC:BYTES {: src:str :}
    src STR:DATA c@ COLON = if exit then
    src SPLIT-FIELD {: name:str value:str :}
    name s" data" STR:= if

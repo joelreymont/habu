@@ -239,7 +239,7 @@ public
    MY-ARENA {: at:n :}
    REFUSED-KIND @ {: kind:n :}
    kind KIND-REFUSAL = if at REFUSAL @ SPAN:$ STR:DATA at REFUSAL-U @ >str exit then
-   kind KIND-LOSS = if REFUSED-TEXT @ VEC:SPAN SPAN:$ exit then
+   kind KIND-LOSS = if REFUSED-TEXT @ VEC:BYTES exit then
    at REFUSAL @ SPAN:$ STR:DATA 0 >str ;
 
 private

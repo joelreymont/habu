@@ -7,7 +7,6 @@
 \ STORAGE CLASS. PROCESS-WIDE: one vector, which each FLAT reuses.
 
 require src/lib/heap.f
-require src/lib/span.f
 require src/lib/vector.f
 require src/lib/string.f
 
@@ -57,7 +56,7 @@ public
       next s STR:LEN <= IF 10 OUT @ VEC:PUSH c! THEN
       s 10 next
    REPEAT drop drop
-   OUT @ VEC:SPAN SPAN:$ ;
+   OUT @ VEC:BYTES ;
 
 \ Whether text s, its records' gutters dropped, holds e.
 : HAS? ( str str -- bool ) {: s:str e:str :}

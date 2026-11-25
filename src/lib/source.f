@@ -71,7 +71,7 @@ private
    {: v:^ :}
    v STDIN-ROOM
    v VEC:COUNT {: old:n :}
-   v VEC:SPAN SPAN:$ drop old + {: at:^ :}
+   v VEC:BYTES drop old + {: at:^ :}
    0 at v VEC:CAP old - read {: got:n :}
    got 0 < if E-FS-IO throw then
    v old got + VEC:ENSURE

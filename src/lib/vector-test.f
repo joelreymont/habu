@@ -250,7 +250,7 @@ TYPED-VARIABLE AL ALLOC:allocator
    AL 3 [type] u8 VEC:NEW {: u:^ :}
    3 0 ?do i 1 + u i VEC:AT c! loop
    AL 1 [type] u8 VEC:NEW {: v:^ :}
-   u VEC:SPAN SPAN:$ v VEC:APPEND
+   u VEC:BYTES v VEC:APPEND
    v VEC:COUNT 4 T=  v 0 VEC:AT c@ 0 T=
    4 1 ?do v i VEC:AT c@ i T= loop
    u VEC:DELETE  v VEC:DELETE ;

@@ -7,7 +7,6 @@ require src/lib/heap.f
 require src/habu/sign-id.f
 require src/arch/x86-64/icode.f
 require src/os/linux-flags.f
-require src/lib/span.f
 require src/lib/vector.f
 
 \ The production image writer loads at top level, as every production path loads it.
@@ -85,7 +84,7 @@ using LINUX-LAYOUT   \ the guard
 \ functions through their GOT slots, so every image binds all of them.
 TYPED-VARIABLE IMPORT-BUF ^VEC:vector<u8>
 
-: IMPORTS$ ( -- str ) IMPORT-BUF @ VEC:SPAN SPAN:$ ;
+: IMPORTS$ ( -- str ) IMPORT-BUF @ VEC:BYTES ;
 
 : IMPORTS! ( -- )
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW IMPORT-BUF !

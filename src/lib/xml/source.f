@@ -341,7 +341,7 @@ LINEAR: SRC-ERASE ( XML:source -- ^header )
    al lexical SRC-MARK-STRIDE / [type] n VEC:NEW state HEADER-MARKS !
    al lexical [type] u8 VEC:NEW {: copy:^ :}
    copy state HEADER-COPY !
-   copy VEC:SPAN SPAN:$ state HEADER-LEXICAL !
+   copy VEC:BYTES state HEADER-LEXICAL !
    state SRC-WRITE-UTF16 ;
 
 : SRC-FREE ( ^header -- )
@@ -548,7 +548,7 @@ private
    v VEC:COUNT {: at:n :}
    v at needed + input STR:DATA VEC:MAKE-ROOM {: src:^ :}
    v at needed + VEC:ENSURE
-   state src input STR:LEN >str  v VEC:SPAN SPAN:$ STR:DATA at +  SRC-ENCODE-WRITE ;
+   state src input STR:LEN >str  v VEC:BYTES STR:DATA at +  SRC-ENCODE-WRITE ;
 
 : SRC-INTO-ARGS ( XML:source str ^VEC:vector<u8> -- XML:source ^header str ^VEC:vector<u8> )
    {: input:str v:^ :}

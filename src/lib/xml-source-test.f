@@ -2,7 +2,6 @@ require src/lib/test.f
 require src/lib/xml.f
 require src/lib/byte-edit.f
 require src/lib/heap.f
-require src/lib/span.f
 require src/lib/vector.f
 require src/lib/reason.f
 require src/lib/test/counting-allocator.f
@@ -63,7 +62,7 @@ variable WIDE-BAD
 
 : DECODED-NEW ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DECODED ! ;
 : CLEARED ( -- ^VEC:vector<u8> ) DECODED @ dup 0 VEC:RESIZE ;
-: DECODED$ ( -- str ) DECODED @ VEC:SPAN SPAN:$ ;
+: DECODED$ ( -- str ) DECODED @ VEC:BYTES ;
 
 : NEXT= ( XML:reader XML:kind -- XML:reader )
    XML-KIND:TAG {: want:n :}
@@ -144,17 +143,17 @@ variable WIDE-BAD
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
    out ENCODED-OUT !
    owner s" &#x4E2D;" out XML:OWNER-ENCODE
-   out VEC:SPAN SPAN:$ s" &#x4E2D;" T$=
+   out VEC:BYTES s" &#x4E2D;" T$=
    [: ASCII-OWNER @ s" 中" XML:OWNER-ENCODE-SIZE drop ;]
    XML:E-ENCODING TTHROWSQ
    [: ASCII-OWNER @ s" 中" ENCODED-OUT @ XML:OWNER-ENCODE ;]
    XML:E-ENCODING TTHROWSQ
    [: ASCII-OWNER @ s\" \z" XML:OWNER-ENCODE-SIZE drop ;]
    XML:E-SCALAR TTHROWSQ
-   out VEC:SPAN SPAN:$ s" &#x4E2D;" T$=
+   out VEC:BYTES s" &#x4E2D;" T$=
    owner XML:OWNER-ORIGINAL$ {: original:str :}
    HEAP:ALLOCATOR original EDIT:INIT
-   edit-off edit-len out VEC:SPAN SPAN:$ EDIT:REPLACE
+   edit-off edit-len out VEC:BYTES EDIT:REPLACE
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE
    out VEC:DELETE
@@ -320,7 +319,7 @@ variable WIDE-BAD
    edit-len LEN>N 2 T=
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
    s\" A🚗" out XML:ENCODE
-   out VEC:SPAN SPAN:$ {: encoded:str :}
+   out VEC:BYTES {: encoded:str :}
    encoded STR:LEN 6 T=
    little if
       encoded s\" A\z\x3D\xD8\x97\xDE" T$=
@@ -378,7 +377,7 @@ variable WIDE-BAD
    out VEC:COUNT attr-added - {: insert-added:n :}
    s\" " out XML:ENCODE
    out VEC:COUNT attr-added insert-added + T=
-   out VEC:SPAN SPAN:$ STR:DATA {: encoded :}
+   out VEC:BYTES STR:DATA {: encoded :}
    little if
       encoded attr-added >str s\" A\z\x3D\xD8\x97\xDE" T$=
    else
@@ -432,7 +431,7 @@ variable WIDE-BAD
    text-off text-len XML:SOURCE-RANGE {: edit-off:off edit-len:len :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
    s" é" out XML:ENCODE
-   out VEC:SPAN SPAN:$ {: encoded:str :}
+   out VEC:BYTES {: encoded:str :}
    encoded s\" \xE9\z" T$=
    XML:SOURCE-ORIGINAL$ {: original:str :}
    HEAP:ALLOCATOR original EDIT:INIT
@@ -512,7 +511,7 @@ variable WIDE-BAD
    s" cd" out XML:ENCODE
    s" <e" out XML:ESCAPE-TEXT
    s" 'f" out XML:ESCAPE-ATTR
-   out VEC:SPAN SPAN:$ s" abcd&lt;e&apos;f" T$=
+   out VEC:BYTES s" abcd&lt;e&apos;f" T$=
    out VEC:DELETE
    XML:SOURCE-CLOSE ;
 
@@ -522,12 +521,12 @@ variable WIDE-BAD
    ALLOC-TEST:MOVING 0 [type] u8 VEC:NEW {: v:^ :}
    s" a<b" v VEC:APPEND
    v 3 VEC:TRIM
-   v VEC:SPAN SPAN:$ v XML:ESCAPE-TEXT
-   v VEC:SPAN SPAN:$ s" a<ba&lt;b" T$=
+   v VEC:BYTES v XML:ESCAPE-TEXT
+   v VEC:BYTES s" a<ba&lt;b" T$=
    s" <a/>" OPEN
    v 9 VEC:TRIM
-   v VEC:SPAN SPAN:$ v XML:ENCODE
-   v VEC:SPAN SPAN:$ s" a<ba&lt;ba<ba&lt;b" T$=
+   v VEC:BYTES v XML:ENCODE
+   v VEC:BYTES s" a<ba&lt;ba<ba&lt;b" T$=
    XML:SOURCE-CLOSE
    v VEC:DELETE ;
 
@@ -661,7 +660,7 @@ variable WIDE-BAD
    CHILDREN 0 ?do wire s" <a/>" WIDE-PUT loop
    wire s" </r>" WIDE-PUT
    wire VEC:COUNT size T=
-   wire VEC:SPAN SPAN:$ OPEN XML:SOURCE-OWN {: owner :}
+   wire VEC:BYTES OPEN XML:SOURCE-OWN {: owner :}
    0 WIDE-BAD !
    CHILDREN 0 ?do
       owner i 4 * 3 + >OFF 4 >LEN XML:OWNER-RANGE

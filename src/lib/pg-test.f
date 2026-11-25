@@ -1986,9 +1986,9 @@ variable WARN-LINES
    PATH$ FS:FILE-SIZE {: size:n :}
    FILE-B @ 0 VEC:RESIZE
    FILE-B @ size VEC:ENSURE
-   FILE-B @ VEC:SPAN SPAN:$ {: buf:str :}
+   FILE-B @ VEC:BYTES {: buf:str :}
    PATH$ buf STR:DATA buf STR:LEN FS:READ-ALL size T=
-   FILE-B @ VEC:SPAN SPAN:$ ;
+   FILE-B @ VEC:BYTES ;
 
 
 \ libpq's default notice processor writes the message as is.
@@ -2130,7 +2130,7 @@ PW-RIGHT!
 : CREATE-ROLE ( PG:connection -- ) {: c :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v :}
    v ROLE-SQL
-   [: c v VEC:SPAN SPAN:$ EXEC-OK ;] [: v VEC:DELETE ;] finally ;
+   [: c v VEC:BYTES EXEC-OK ;] [: v VEC:DELETE ;] finally ;
 
 
 : PASSWORD-CASES ( PG:connection -- PG:connection ) {: c :}

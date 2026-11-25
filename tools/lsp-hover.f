@@ -27,7 +27,7 @@ variable TARGET-G                        \ and the group of the record it shows
 
 : V+ ( str -- )  VALUE-B @ VEC:APPEND ;
 : NL ( -- )  LF VALUE-B @ VEC:PUSH c! ;
-: VALUE$ ( -- str )  VALUE-B @ VEC:SPAN SPAN:$ ;
+: VALUE$ ( -- str )  VALUE-B @ VEC:BYTES ;
 
 : WHERE+ ( str -- )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE V+ ;
 

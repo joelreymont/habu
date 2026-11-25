@@ -50,7 +50,7 @@ public
 \ The driver owns ASM-SINK's lifetime: SINK-OPEN before the first byte and
 \ SINK-CLOSE when the build is done.
 : ASM-SINK ( -- ^VEC:vector<u8> ) SINK @ ;
-: CODE ( -- ^u8 ) ASM-SINK VEC:SPAN SPAN:$ drop ;
+: CODE ( -- ^u8 ) ASM-SINK VEC:BYTES drop ;
 : ASM-LEN ( -- n ) ASM-SINK VEC:COUNT ;
 
 private

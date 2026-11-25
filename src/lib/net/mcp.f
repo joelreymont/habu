@@ -1257,7 +1257,7 @@ CAST: HELD>N ( held -- n )
    v 0 VEC:RESIZE  s" arguments" v VEC:APPEND
    args JSON:PARSE idx TOOL-INPUT @ v JSON-SCHEMA:VALID?
    dup if exit then
-   v VEC:SPAN SPAN:$ TOOL-ERROR ;
+   v VEC:BYTES TOOL-ERROR ;
 
 
 \ The body gives its result once, through RESULT, RESULT-META, RESULT-CONTENT or
@@ -1519,7 +1519,7 @@ CAST: HELD>N ( held -- n )
    idx code HELD-LOGGED
    code 0<> if idx CLOSE-KEPT code throw then
    idx KEEPS KEEP-CONN @ 200 s" application/json"
-   FINISH-VEC VEC:SPAN SPAN:$ HTTP:REPLY drop ;
+   FINISH-VEC VEC:BYTES HTTP:REPLY drop ;
 
 
 \ The message's envelope checked, then dispatched; the text is kept for catch.
@@ -1816,7 +1816,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : BUF$ ( ^n -- str ) BUF:SPAN$ BUF:BLEN>N >str ;
 : BUF+ ( str ^n -- )
    {: s:str buf:^ :} s STR:DATA s STR:LEN BUF:N>BLEN buf BUF:APPEND-SPAN ;
-: VEC$ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
+: VEC$ ( ^VEC:vector<u8> -- str ) VEC:BYTES ;
 
 \ The first free row, else -1; under LOCK.
 : FREE-ROW ( -- n )
@@ -2141,7 +2141,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : STREAM? ( CURL:handle -- bool )
    {: h:CURL:handle :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
-   [: h v CURL:HEADERS v VEC:SPAN SPAN:$ EVENT-HEAD? ;]
+   [: h v CURL:HEADERS v VEC:BYTES EVENT-HEAD? ;]
    [: v VEC:DELETE ;] finally ;
 
 \ The state is read and the transfer started in one LOCK hold: a REQUEST-STOP

@@ -162,7 +162,7 @@ TASK:MIN-STACK TASK:TASK STALLER
       failed OF drop CURL:E-STATE throw ENDOF
    ;MATCH ;
 
-: BODY$ ( -- str ) BODY @ VEC:SPAN SPAN:$ ;
+: BODY$ ( -- str ) BODY @ VEC:BYTES ;
 
 \ The response's status, its body in BODY; -1 for a body past CAP, -2 for a
 \ failed transfer.
@@ -1787,7 +1787,7 @@ TYPED-VARIABLE REPLIES ^VEC:vector<u8>   \ SERVE-CASES makes and deletes it
    62 v VEC:PUSH c!
    asked HTTP:BODY$ v MCP:ANSWER
    answer JSON-HEADER
-   answer v VEC:SPAN SPAN:$ HTTP:BODY! ;
+   answer v VEC:BYTES HTTP:BODY! ;
 
 : ANSWER-OPEN ( -- CURL:handle )
    s" /answer" s" Content-Type: application/json" s" Accept: application/json"

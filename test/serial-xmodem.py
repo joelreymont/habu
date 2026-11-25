@@ -16,7 +16,6 @@ SETUP = '''
 require src/lib/aio.f
 require src/lib/fs.f
 require src/lib/heap.f
-require src/lib/span.f
 require src/lib/vector.f
 package SXMODEM-TEST
 using XMODEM
@@ -28,7 +27,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : INPUT-READ ( str n -- ) {: path:str capacity:n :}
    HEAP:ALLOCATOR capacity [type] u8 VEC:NEW INPUT !
-   INPUT @ VEC:SPAN SPAN:$ str> drop {: data :}
+   INPUT @ VEC:BYTES str> drop {: data :}
    path data capacity FS:READ-ALL INPUT @ swap VEC:RESIZE ;
 
 
@@ -111,7 +110,7 @@ class Checks:
         source.write_bytes(data)
         output = self.out / 'received.bin'
         if sending:
-            call = f'INPUT @ VEC:SPAN SPAN:$ {block} BLOCK {total} >MS SESSION SERIAL-XMODEM:SEND'
+            call = f'INPUT @ VEC:BYTES {block} BLOCK {total} >MS SESSION SERIAL-XMODEM:SEND'
             expected = expected or f'completed {len(data)}'
         else:
             call = f'{maximum} BYTES OUTPUT @ {total} >MS SESSION SERIAL-XMODEM:RECEIVE'
@@ -128,7 +127,7 @@ FRESH OUTPUT !
    {'handle CLOSE-HANDLE' if close_before else ''}
    s" READY" type cr
    {call} REPORT
-   s" {output}" OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL
+   s" {output}" OUTPUT @ VEC:BYTES FS:WRITE-ALL
    SESSION SERIAL-XMODEM:DISPOSE {'handle CLOSE-HANDLE' if not close_before else ''}
    INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE
    AIO:STOP ;
@@ -386,9 +385,9 @@ RUN
 
     def reuse(self):
         actions = '''
-INPUT @ VEC:SPAN SPAN:$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+INPUT @ VEC:BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
 128 BYTES OUTPUT @ 5000 >MS SESSION SERIAL-XMODEM:RECEIVE REPORT
-INPUT @ VEC:SPAN SPAN:$ 1024 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+INPUT @ VEC:BYTES 1024 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
 1024 BYTES OUTPUT @ 5000 >MS SESSION SERIAL-XMODEM:RECEIVE
 '''
         def peer(port):
@@ -416,8 +415,8 @@ INPUT @ VEC:SPAN SPAN:$ 1024 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
             port.expect(b'\x04')
             port.write(b'\x06')
         self.exchange('reuse-after-peer-cancel', recover, actions='''
-INPUT @ VEC:SPAN SPAN:$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
-INPUT @ VEC:SPAN SPAN:$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
+INPUT @ VEC:BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+INPUT @ VEC:BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
 ''', expected='cancelled completed 7')
 
     def native(self, body, *, rejected=None):
@@ -490,7 +489,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
 
 
 : CHECK-REPLY ( n ^VEC:vector<u8> -- ) {{: identity:n output:^ :}}
-   output VEC:SPAN SPAN:$ str> {{: data length:n :}}
+   output VEC:BYTES str> {{: data length:n :}}
    length 128 <> if -1 throw then
    length 0 do data i + c@ identity <> if -1 throw then loop ;
 

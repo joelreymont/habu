@@ -36,7 +36,7 @@ variable SHOWN-N                         \ and the items written so far
 : WORD$ ( -- str )  0 WORD-B WORD-U @ ;
 : FILE$ ( -- str )  0 FILE-B FILE-U @ ;
 : D+ ( str -- )  DETAIL-B @ VEC:APPEND ;
-: DETAIL$ ( -- str )  DETAIL-B @ VEC:SPAN SPAN:$ ;
+: DETAIL$ ( -- str )  DETAIL-B @ VEC:BYTES ;
 
 : STRING>WORD ( JSON:reader -- JSON:reader )
    READ-SPAN$ nip {: raw:n :}

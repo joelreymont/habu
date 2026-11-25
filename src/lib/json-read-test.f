@@ -393,7 +393,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
    v room VEC:RESERVE
    v JRT-APPEND-VEC ! ;
-: JRT-APPEND$ ( -- str )  JRT-APPEND-VEC @ VEC:SPAN SPAN:$ ;
+: JRT-APPEND$ ( -- str )  JRT-APPEND-VEC @ VEC:BYTES ;
 : JRT-APPEND-LEN ( -- n )  JRT-APPEND-VEC @ VEC:COUNT ;
 
 : JRT-TEST-STR-APPEND ( -- )

@@ -17,7 +17,6 @@ require src/lib/secret.f
 require src/lib/test.f
 require src/lib/codegen.f
 require src/lib/string.f
-require src/lib/span.f
 require src/lib/fd.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -308,7 +307,7 @@ NO-PID KEY-PID !
    s\" stored\x00by secret-tool" CMD:IN!
    TOOL-RUN
    SERVICE$ s" stored" OUT SECRET:READ TTRUE
-   OUT VEC:SPAN SPAN:$ s\" stored\x00by secret-tool" T$=
+   OUT VEC:BYTES s\" stored\x00by secret-tool" T$=
    OUT 0 VEC:RESIZE ;
 
 \ The call's throw code, with fd 2 sent to a file for the call.

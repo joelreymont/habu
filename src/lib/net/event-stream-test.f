@@ -3,7 +3,6 @@
 
 require src/lib/test.f
 require src/lib/heap.f
-require src/lib/span.f
 require src/lib/vector.f
 require src/lib/net/event-stream.f
 
@@ -39,7 +38,7 @@ variable CALLS
 
 : CHECK ( n -- )
    CALLS @ T=
-   GOT @ VEC:SPAN SPAN:$ WANT @ VEC:SPAN SPAN:$ T$= ;
+   GOT @ VEC:BYTES WANT @ VEC:BYTES T$= ;
 
 : A-OPEN ( -- SSE:decoder ) DEC-A SSE:OPEN ;
 : B-OPEN ( -- SSE:decoder ) DEC-B SSE:OPEN ;
@@ -156,7 +155,7 @@ variable CALLS
    70000 0 ?do [char] x BIG @ VEC:PUSH c! loop
    s\" \n\n" BIG APPEND
    A-OPEN {: d:SSE:decoder :}
-   BIG @ VEC:SPAN SPAN:$ d swap SEND
+   BIG @ VEC:BYTES d swap SEND
    d SSE:CLOSE
    1 CALLS @ T=
    GOT @ VEC:COUNT 70009 T= ;

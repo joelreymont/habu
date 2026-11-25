@@ -799,7 +799,7 @@ variable OPEN-N
 : SESSION$ ( -- str )  SESSION-B SPAN$ BLEN>N ;
 : IN$ ( -- str )  IN-B SPAN$ BLEN>N ;
 : WANT$ ( -- str )  WANT-B SPAN$ BLEN>N ;
-: MSG$ ( -- str )  MSG-TEXT @ VEC:SPAN SPAN:$ ;
+: MSG$ ( -- str )  MSG-TEXT @ VEC:BYTES ;
 : PAR$ ( -- str )  PAR-B SPAN$ BLEN>N ;
 : DIR$ ( -- str )  DIR-B SPAN$ BLEN>N ;
 : IN+ ( str -- )  N>BLEN IN-B APPEND-SPAN ;

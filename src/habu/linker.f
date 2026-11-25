@@ -557,7 +557,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    ['] INIT-BUFFERS catch {: rc:n :}
    rc 0<> if DISPOSE-OBJECTS rc throw then ;
 
-: BYTES$ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
+: BYTES$ ( ^VEC:vector<u8> -- str ) VEC:BYTES ;
 
 \ OBJECT's bytes, which every field read of OBJECT reads: READ-OBJECT and WRITE-OBJECT, the
 \ only words that move them, take them again (OBJ-TAKE) before they return, as RD-OPEN does.

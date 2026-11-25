@@ -38,7 +38,6 @@ split-str
 require src/lib/error.f
 require src/lib/heap.f
 require src/lib/le.f
-require src/lib/span.f
 require src/lib/vector.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
@@ -327,7 +326,7 @@ DYNAMIC-BUFFER BR-ARG n
 
 
 : COPY ( n n -- ) {: from:n to:n :}
-   RAW @ VEC:SPAN SPAN:$ drop from +  to from -  OUT @ VEC:APPEND ;
+   RAW @ VEC:BYTES drop from +  to from -  OUT @ VEC:APPEND ;
 
 
 \ ---- the body ----------------------------------------------------------------
@@ -382,7 +381,7 @@ DYNAMIC-BUFFER BR-ARG n
    EPI @ VEC:COUNT {: e:n :}
    0 NEPI @ 0 ?do
       i EPI-AT @ COPY
-      EPI @ VEC:SPAN SPAN:$ OUT @ VEC:APPEND
+      EPI @ VEC:BYTES OUT @ VEC:APPEND
       i EPI-AT @
    loop
    HERE-OFF COPY
@@ -419,7 +418,7 @@ DYNAMIC-BUFFER BR-ARG n
    TMP ENC-BR OUT @ W32+
    at ;
 
-: BYTES ( -- str ) OUT @ VEC:SPAN SPAN:$ ;
+: BYTES ( -- str ) OUT @ VEC:BYTES ;
 
 \ Every call row's `bl` or `b`, from its site placed at place to its target.
 : PATCH ( n -- )

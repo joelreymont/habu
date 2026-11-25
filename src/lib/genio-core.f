@@ -21,7 +21,6 @@ require src/lib/type/deftype.f
 require src/lib/num-types.f
 require src/lib/task.f
 require src/lib/heap.f
-require src/lib/span.f
 require src/lib/vector.f
 require src/lib/line-editor.f
 
@@ -521,6 +520,6 @@ public
    LINE-OPEN
    IO-LINE @ 0 VEC:RESIZE
    LINE-FILL 0= if NULL$ exit then
-   IO-LINE @ VEC:SPAN SPAN:$ ;
+   IO-LINE @ VEC:BYTES ;
 
 ;package

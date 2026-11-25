@@ -32,7 +32,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : ROOT$ ( -- str ) ROOT SPAN:$ STR:DATA ROOT-U @ >str ;
 : SERVICE$ ( -- str ) s" org.habu.secret-dir-test" ;
 : OUT ( -- ^VEC:vector<u8> ) OUT-VEC @ ;
-: OUT$ ( -- str ) OUT VEC:SPAN SPAN:$ ;
+: OUT$ ( -- str ) OUT VEC:BYTES ;
 
 \ Empties OUT, zeroing the bytes it held.
 : CLEAR-OUT ( -- ) OUT 0 VEC:RESIZE ;

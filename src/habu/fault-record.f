@@ -14,7 +14,6 @@ require src/core/exit-status.f
 require src/core/rejection.f
 require src/lib/string.f
 require src/lib/heap.f
-require src/lib/span.f
 require src/lib/vector.f
 
 package FAULT-RECORD
@@ -39,8 +38,8 @@ TYPED-VARIABLE GUARD-TEXT ^VEC:vector<u8> SCRATCH-ONLY
    GUARD-TEXT @ ;
 public
 \ The text an emitter lays next, then empties.
-: FAULT-PROSE$ ( -- str ) PROSE VEC:SPAN SPAN:$ ;
-: FAULT-JSON$ ( -- str ) JSON VEC:SPAN SPAN:$ ;
+: FAULT-PROSE$ ( -- str ) PROSE VEC:BYTES ;
+: FAULT-JSON$ ( -- str ) JSON VEC:BYTES ;
 : FAULT-EMPTY ( -- )
    PROSE-TEXT @ VEC:DELETE  NULL-PTR PROSE-TEXT !
    JSON-TEXT @ VEC:DELETE  NULL-PTR JSON-TEXT !
@@ -135,7 +134,7 @@ public
    GUARD 0 VEC:RESIZE
    s" `" GUARD VEC:APPEND  p pu GUARD VEC:APPEND  s" ` " GUARD VEC:APPEND
    r ru GUARD VEC:APPEND
-   GUARD VEC:SPAN SPAN:$ ;
+   GUARD VEC:BYTES ;
 
 \ The callback rejections' messages and help: a thunk C entered, and an
 \ outbound foreign call on a context another thread runs in.

@@ -130,6 +130,9 @@ public
    {: v:^ :}
    v VECTOR-DATA @ >ELEM  v VECTOR-COUNT @ v VECTOR-WIDTH @ *  SPAN:MAKE ;
 
+\ The bytes as a str, ended as SPAN's span is.
+: BYTES ( ^vector<u8> -- str ) SPAN SPAN:$ ;
+
 \ COUNT grown by n, answering the span of the n new elements, which are
 \ zero; the block may move, as ENSURE's does.
 : EXTEND ( ^vector<t> n -- SPAN:span<t> )

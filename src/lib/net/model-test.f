@@ -344,7 +344,7 @@ $300000 constant BIG-U
 
 : STREAM ( -- ^VEC:vector<u8> ) HTTP:WORKER-SLOT STREAM-OUT @ ;
 : STREAM-OPEN ( -- ^JSON:writer ) HTTP:WORKER-SLOT STREAM-W STREAM JSON:OPEN ;
-: STREAM$ ( -- str ) STREAM VEC:SPAN SPAN:$ ;
+: STREAM$ ( -- str ) STREAM VEC:BYTES ;
 
 
 \ Answers with the written events as the whole body.

@@ -18,7 +18,7 @@ package HTTP-BASIC-TEST
 64 SPAN-BUFFER: BASIC-WANT
 8 SPAN-BUFFER: BASIC-JOINED
 
-: OUT$ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
+: OUT$ ( ^VEC:vector<u8> -- str ) VEC:BYTES ;
 
 : DATA ( ^VEC:vector<u8> -- ^u8 ) OUT$ STR:DATA ;
 

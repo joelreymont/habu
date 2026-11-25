@@ -96,7 +96,7 @@ CAST: N>BLEN ( n -- NUM:byte-len )
 
 : TRAILER+ ( n n ^VEC:vector<u8> -- )
    {: block:n kind:n output:^ :}
-   output VEC:SPAN SPAN:$ STR:DATA 3 + block >str kind CHECK-VALUE {: check:n :}
+   output VEC:BYTES STR:DATA 3 + block >str kind CHECK-VALUE {: check:n :}
    kind 1 = if check 8 rshift output VEC:PUSH c! then
    check $FF and output VEC:PUSH c! ;
 

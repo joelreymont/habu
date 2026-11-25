@@ -50,7 +50,7 @@ variable BIG-LEX-U
 : FIX-NEW  ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 : FIX-RESET  ( ^VEC:vector<u8> -- )  0 VEC:RESIZE ;
 : FIX-C+  ( n ^VEC:vector<u8> -- )  VEC:PUSH c! ;
-: FIX$  ( ^VEC:vector<u8> -- str )  VEC:SPAN SPAN:$ ;
+: FIX$  ( ^VEC:vector<u8> -- str )  VEC:BYTES ;
 
 : LEX+  ( str -- )  LEX-B @ VEC:APPEND ;
 : LEX-C+  ( n -- )  LEX-B @ FIX-C+ ;

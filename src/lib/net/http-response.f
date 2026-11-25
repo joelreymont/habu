@@ -356,7 +356,7 @@ private
    idx SLOT-ID$ idx ERROR-TEXT+
    S\" )\n" idx ERROR-TEXT+
    subject s" Content-Type" s" text/plain; charset=utf-8" HEADER!
-   idx JSON-OUT @ VEC:SPAN SPAN:$ idx RESPONSE-BODY! ;
+   idx JSON-OUT @ VEC:BYTES idx RESPONSE-BODY! ;
 
 
 \ The quotation lives in a row declared to hold one, the checker's proven

@@ -129,7 +129,7 @@ private
 : SCOPE-VEC ( ^stream -- ^VEC:vector<u8> ) STREAM-SCOPE @ ;
 
 : SCOPE$ ( ^cursor -- str )
-   CURSOR-STREAM @ SCOPE-VEC VEC:SPAN SPAN:$ ;
+   CURSOR-STREAM @ SCOPE-VEC VEC:BYTES ;
 
 \ A vector not yet made is NULL-PTR, which DELETE ignores.
 : STREAM-CLOSE ( ^ALLOC:allocator ^stream -- )
@@ -248,7 +248,7 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
    count 0 < count CHUNK > or if E-RANGE throw then
    count 0= if 1 stream STREAM-EOF ! false exit then
    input SPAN:$ STR:DATA count >str stream TOKEN-VEC VEC:APPEND
-   stream TOKEN-VEC VEC:SPAN SPAN:$
+   stream TOKEN-VEC VEC:BYTES
    dup STR:LEN state CURSOR-SOURCE-LEN ! STR:DATA state CURSOR-SOURCE !
    state CURSOR-SOURCE-MODE @ MODE-INPUT-ASCII MODE-EQ if
       state state CURSOR-SOURCE-LEN @ count - ASCII-WINDOW
@@ -442,7 +442,7 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
       stream TOKEN-VEC VEC:SPAN SPAN:COPY
    stream TOKEN-VEC tail VEC:RESIZE
    stream TOKEN-TRIM
-   stream TOKEN-VEC VEC:SPAN SPAN:$
+   stream TOKEN-VEC VEC:BYTES
       dup STR:LEN state CURSOR-SOURCE-LEN ! STR:DATA state CURSOR-SOURCE !
    stream STREAM-BASE @ consumed + stream STREAM-BASE !
    0 state CURSOR-POSITION ! ;

@@ -1123,7 +1123,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : BODY$ ( -- str )
-   BODY VEC:SPAN SPAN:$ ;
+   BODY VEC:BYTES ;
 
 
 : UNTOUCHED? ( -- bool )
@@ -1134,7 +1134,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : HEADER$ ( -- str )
-   HEADER VEC:SPAN SPAN:$ ;
+   HEADER VEC:BYTES ;
 
 
 : HEADER-COPY ( CURL:handle -- )
@@ -1497,7 +1497,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-STATUS @ 200 T=
    LAST-LEN @ HUGE-U T=
    v VEC:COUNT HUGE-U T=
-   v VEC:SPAN SPAN:$ SENT-BYTES HUGE-U >str STR:= TTRUE ;
+   v VEC:BYTES SENT-BYTES HUGE-U >str STR:= TTRUE ;
 
 
 : HUGE-CASE ( -- )
@@ -2609,7 +2609,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 200 T=
    idx MANY-VECS @ {: v:^ :}
-   v VEC:SPAN SPAN:$ HELLO$ T$=
+   v VEC:BYTES HELLO$ T$=
    v VEC:DELETE ;
 
 
@@ -3075,20 +3075,20 @@ variable DEFER-RETURNED
    LAST-KIND @ KIND-RESPONSE T=
    LAST-LEN @ DRIBBLE-U T=
    v VEC:COUNT DRIBBLE-U T=
-   v VEC:SPAN SPAN:$ DRIBBLE$ T$= ;
+   v VEC:BYTES DRIBBLE$ T$= ;
 
 
 : VEC-RESERVED ( ^VEC:vector<u8> -- ) {: v:^ :}
    v BODY-CAP VEC:RESERVE
-   v VEC:SPAN SPAN:$ STR:DATA {: block:^ :}
+   v VEC:BYTES STR:DATA {: block:^ :}
    PATH-TRICKLE$ GET-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN v CURL:START EXPECT-OK
    subject AWAIT-ONE
    subject CURL:CLEANUP
    s" a vector reserved to the limit before START keeps its block" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
-   v VEC:SPAN SPAN:$ DRIBBLE$ T$=
-   v VEC:SPAN SPAN:$ STR:DATA block = TTRUE ;
+   v VEC:BYTES DRIBBLE$ T$=
+   v VEC:BYTES STR:DATA block = TTRUE ;
 
 
 \ START appends after what the vector holds; a limit of 0 appends nothing.
@@ -3101,7 +3101,7 @@ variable DEFER-RETURNED
    s" a limit of 0 takes no body and leaves the vector as it was" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
    LAST-LEN @ 0 T=
-   v VEC:SPAN SPAN:$ s" x" T$= ;
+   v VEC:BYTES s" x" T$= ;
 
 
 \ Into an empty vector, the body's one piece waits for AWAIT's growth and is
@@ -3115,7 +3115,7 @@ variable DEFER-RETURNED
    LAST-KIND @ KIND-TRUNCATED T=
    LAST-STATUS @ 200 T=
    LAST-LEN @ 5 T=
-   v VEC:SPAN SPAN:$ s" hello" T$= ;
+   v VEC:BYTES s" hello" T$= ;
 
 
 : VEC-CUT-RESUMED ( ^VEC:vector<u8> -- )
@@ -3168,7 +3168,7 @@ TIGHT-FILL
    subject AWAIT-ONE
    s" a handle whose AWAIT threw starts again" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
-   v VEC:SPAN SPAN:$ HELLO$ T$=
+   v VEC:BYTES HELLO$ T$=
    s" PERFORM throws the growth the allocator refused" T-LABEL
    [: subject 7 >LEN tight CURL:PERFORM DROP-FETCH ;] E-MEM-SIZE TTHROWSQ
    subject CURL:CLEANUP ;

@@ -55,7 +55,7 @@ TYPED-VARIABLE LIST-A ^u8             \ the file the list being written is for,
 variable LIST-U
 variable ITEMS                           \ and the diagnostics in it so far
 
-: NEW$ ( -- str )  NEW-B @ VEC:SPAN SPAN:$ ;
+: NEW$ ( -- str )  NEW-B @ VEC:BYTES ;
 : FILE$ ( -- str )  FILE-BUF FILE-U @ ;
 
 : ERR ( str -- )

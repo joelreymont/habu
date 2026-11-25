@@ -27,7 +27,6 @@ require src/lib/uri.f
 require src/lib/json.f
 require src/lib/log.f
 require src/lib/heap.f
-require src/lib/span.f
 require src/lib/string.f
 require src/lib/vector.f
 
@@ -43,9 +42,9 @@ TYPED-VARIABLE AZURE-SERVICE ^VEC:vector<u8>
 TYPED-VARIABLE AZURE-IMDS ^VEC:vector<u8>
 HEAP AZURE-CURSOR JSON:cursor
 
-: AZURE-VAULT$ ( -- str ) AZURE-VAULT @ VEC:SPAN SPAN:$ ;
-: AZURE-SERVICE$ ( -- str ) AZURE-SERVICE @ VEC:SPAN SPAN:$ ;
-: AZURE-IMDS$ ( -- str ) AZURE-IMDS @ VEC:SPAN SPAN:$ ;
+: AZURE-VAULT$ ( -- str ) AZURE-VAULT @ VEC:BYTES ;
+: AZURE-SERVICE$ ( -- str ) AZURE-SERVICE @ VEC:BYTES ;
+: AZURE-IMDS$ ( -- str ) AZURE-IMDS @ VEC:BYTES ;
 
 
 \ A secret name Key Vault holds, which a URL path reads as one segment.
@@ -105,17 +104,17 @@ HEAP AZURE-CURSOR JSON:cursor
 \ The handle copies each text, so the vector is emptied after each.
 : AZURE-ASK ( CURL:handle str ^VEC:vector<u8> -- )
    {: h:CURL:handle name:str buf:^ :}
-   name  h buf VEC:SPAN SPAN:$ CURL:HEADER+  AZURE-SET
+   name  h buf VEC:BYTES CURL:HEADER+  AZURE-SET
    buf 0 VEC:RESIZE
    name buf AZURE-URL
-   name  h buf VEC:SPAN SPAN:$ CURL:URL!  AZURE-SET
+   name  h buf VEC:BYTES CURL:URL!  AZURE-SET
    buf 0 VEC:RESIZE
    name  h AZURE-TIMEOUT-MS >MS CURL:TIMEOUT!  AZURE-SET ;
 
 
 : AZURE-DECODE ( ^JSON:cursor ^VEC:vector<u8> ^VEC:vector<u8> -- bool )
    {: c:^ dest:^ buf:^ :}
-   c buf VEC:SPAN SPAN:$ JSON:READ-INIT
+   c buf VEC:BYTES JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE false exit then
    s" value" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE false exit then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE false exit then
@@ -149,7 +148,7 @@ HEAP AZURE-CURSOR JSON:cursor
    code 404 = if false exit then
    name AZURE-LINE s" status " LOG:TEXT+ code LOG:INT+
    code 200 < code 299 > or if
-      s" : " LOG:TEXT+ buf VEC:SPAN SPAN:$ LOG:TEXT+
+      s" : " LOG:TEXT+ buf VEC:BYTES LOG:TEXT+
    then
    LOG:;LINE
    st CURL:UNAVAILABLE? if E-UNAVAILABLE throw then

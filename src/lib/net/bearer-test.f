@@ -110,7 +110,7 @@ TASK:MIN-STACK TASK:TASK WAITER
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ASKED-BODY !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW WAITED-BODY ! ;
 
-: BODY$ ( -- str ) BODY @ VEC:SPAN SPAN:$ ;
+: BODY$ ( -- str ) BODY @ VEC:BYTES ;
 TASK:MIN-STACK TASK:TASK CLAIMER
 
 \ The bytes copied into the span at off; answers the offset past them.
@@ -299,7 +299,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    {: status:n want:str :}
    SB-RESET s" WWW-Authenticate: " SB-APPEND want SB-APPEND
    13 SB-APPEND-C 10 SB-APPEND-C
-   HEADS @ VEC:SPAN SPAN:$ SB$ STR:CONTAINS? TTRUE
+   HEADS @ VEC:BYTES SB$ STR:CONTAINS? TTRUE
    BODY @ VEC:COUNT 0 T=
    status 401 T= ;
 
@@ -548,14 +548,14 @@ TASK:MIN-STACK TASK:TASK CLAIMER
       ok OF 200 T= ENDOF
       err OF throw ENDOF
    ;MATCH
-   ASKED-BODY @ VEC:SPAN SPAN:$ WANT-WHO T$= ;
+   ASKED-BODY @ VEC:BYTES WANT-WHO T$= ;
 
 : WAITED ( -- )
    WAITER TASK:JOIN MATCH result
       ok OF 200 T= ENDOF
       err OF throw ENDOF
    ;MATCH
-   WAITED-BODY @ VEC:SPAN SPAN:$ WANT-WHO T$= ;
+   WAITED-BODY @ VEC:BYTES WANT-WHO T$= ;
 
 : WINDOW ( -- )
    s" a fetch in flight does not delay a cached kid" T-LABEL

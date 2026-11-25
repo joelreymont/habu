@@ -27,7 +27,7 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    {: c:^ :}
    c RELEASE  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! ;
 
-: GOT$ ( ^VEC:vector<u8> -- str )  VEC:SPAN SPAN:$ ;
+: GOT$ ( ^VEC:vector<u8> -- str )  VEC:BYTES ;
 
 : UNITS= ( str n -- )
    {: s:str want:n :}

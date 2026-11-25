@@ -92,7 +92,7 @@ TASK:FACILITY DIR-LOCK
    dst VEC:COUNT {: old:n :}
    [: dst old DIR-SIZE @ + VEC:ENSURE ;] catch {: code:n :}
    code 0<> if DIR-FD @ close code throw then
-   dst VEC:SPAN SPAN:$ STR:DATA old + {: at:^ :}
+   dst VEC:BYTES STR:DATA old + {: at:^ :}
    [: DIR-FD @ >FD at DIR-SIZE @ FS:READ-SIZED ;] catch
    FS:ERRNO DIR-REJECT ;
 

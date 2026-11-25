@@ -15,7 +15,6 @@
 
 require src/lib/string.f
 require src/lib/heap.f
-require src/lib/span.f
 require src/lib/vector.f
 require src/lib/json.f
 require src/lib/net/http.f
@@ -28,7 +27,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
 : ROW ( -- ^VEC:vector<u8> ) SLOT BODIES @ ;
-: ROW$ ( -- str ) ROW VEC:SPAN SPAN:$ ;
+: ROW$ ( -- str ) ROW VEC:BYTES ;
 
 
 : READY ( -- )

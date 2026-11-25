@@ -114,7 +114,7 @@ HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
 : PATHZ ( ^n -- ^u8 ) BYTE-VIEW HEAD-CELLS cells + ;
 : CWDZ ( ^n -- ^u8 ) PATHZ PATHZ-CAP + ;
 
-: VEC-BASE ( ^VEC:vector<u8> -- ^u8 ) VEC:SPAN SPAN:$ STR:DATA ;
+: VEC-BASE ( ^VEC:vector<u8> -- ^u8 ) VEC:BYTES STR:DATA ;
 
 \ n more zero bytes at the end, answered as a span; the block may move.
 : GROW ( ^VEC:vector<u8> n -- SPAN:span<u8> )
@@ -495,7 +495,7 @@ private
    timeout PROCESS:STDIN-CAPTURE-BEGIN
    cancel START-CANCEL
    h SPAWN
-   h IN-BYTES @ VEC:SPAN SPAN:$
+   h IN-BYTES @ VEC:BYTES
    [: OUT-ROOM ;] [: ERR-ROOM ;] PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    h cancel timeout ;
 

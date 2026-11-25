@@ -81,7 +81,7 @@ variable INVALID-LAST
    1 pos +! 1 ;
 
 : CLEARED ( -- ^VEC:vector<u8> ) DECODED @ dup 0 VEC:RESIZE ;
-: DECODED$ ( -- str ) DECODED @ VEC:SPAN SPAN:$ ;
+: DECODED$ ( -- str ) DECODED @ VEC:BYTES ;
 
 : STREAM-READ ( -- )
    0 STREAM-POS !
@@ -202,7 +202,7 @@ variable INVALID-LAST
    {: text-size:n :}
    owner s" <!--late-->" out XML:OWNER-ENCODE
    out VEC:COUNT attr-size - text-size - {: tail-size:n :}
-   out VEC:SPAN SPAN:$ drop {: encoded :}
+   out VEC:BYTES drop {: encoded :}
    owner XML:OWNER-ORIGINAL$ {: original original-size:n :}
    end-off OFF>N original-size T=
    HEAP:ALLOCATOR original original-size EDIT:INIT

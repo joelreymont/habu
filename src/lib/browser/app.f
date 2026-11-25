@@ -151,7 +151,7 @@ APP-AT APP-MARK STR:LEN + constant APP-END
    ARENA:ALLOCATOR {: t:str v:^ al:^ :}
    al 0 [type] u8 VEC:NEW {: s:^ :}
    t s XML:ESCAPE-TEXT
-   s VEC:SPAN SPAN:$ v COMPOSE ;
+   s VEC:BYTES v COMPOSE ;
 
 
 \ CODE-ID+'s files, in its order, fed to the SHA-256 context.

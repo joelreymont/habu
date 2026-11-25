@@ -335,7 +335,7 @@ TASK:+USER FROM n
    h KEYS-TIMEOUT-MS >MS CURL:TIMEOUT! OK? 0= if -1 exit then
    h KEYS-CAP >LEN FETCHED @ CURL:PERFORM FETCHED-LEN ;
 
-: FETCHED$ ( -- str ) FETCHED @ VEC:SPAN SPAN:$ ;
+: FETCHED$ ( -- str ) FETCHED @ VEC:BYTES ;
 
 : KEY-SET? ( -- bool )
    FETCHED$ JSON:PARSE {: set :}
@@ -924,7 +924,7 @@ private
 \ that did not.
 : REQUESTED? ( CURL:handle ^VEC:vector<u8> -- bool )
    {: h:CURL:handle buf:^ :}
-   h buf VEC:SPAN SPAN:$ CURL:BODY!
+   h buf VEC:BYTES CURL:BODY!
    buf 0 VEC:RESIZE
    SET? 0= if false exit then
    h ENDPOINT @ SPAN:$ CURL:URL! SET? 0= if false exit then
@@ -1063,7 +1063,7 @@ private
 : ANSWERED ( n ^VEC:vector<u8> -- )
    {: status:n buf:^ :}
    OPEN-LINE s" token request answered " LOG:TEXT+  status LOG:INT+
-   s" : " LOG:TEXT+  buf VEC:SPAN SPAN:$ LOG:TEXT+  LOG:;LINE ;
+   s" : " LOG:TEXT+  buf VEC:BYTES LOG:TEXT+  LOG:;LINE ;
 
 : STATED ( -- ) ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then ;
 
@@ -1087,7 +1087,7 @@ private
    buf EMPTIED  o buf VEC:APPEND
    s" /metadata/identity/oauth2/token?api-version=2018-02-01&resource="
    buf VEC:APPEND  res buf URI:QUERY-ENCODE
-   h buf VEC:SPAN SPAN:$ CURL:URL!  buf 0 VEC:RESIZE
+   h buf VEC:BYTES CURL:URL!  buf 0 VEC:RESIZE
    SET? 0= if false exit then
    h s" Metadata: true" CURL:HEADER+ SET? 0= if false exit then
    h s" " CURL:PROXY! SET? 0= if false exit then
@@ -1147,9 +1147,9 @@ public
 
 private
 
-: ROW-ORIGIN$ ( ^row -- str ) ROW-ORIGIN @ VEC:SPAN SPAN:$ ;
-: ROW-SCOPE$ ( ^row -- str ) ROW-SCOPE @ VEC:SPAN SPAN:$ ;
-: ROW-KEPT$ ( ^row -- str ) ROW-TOKEN @ VEC:SPAN SPAN:$ ;
+: ROW-ORIGIN$ ( ^row -- str ) ROW-ORIGIN @ VEC:BYTES ;
+: ROW-SCOPE$ ( ^row -- str ) ROW-SCOPE @ VEC:BYTES ;
+: ROW-KEPT$ ( ^row -- str ) ROW-TOKEN @ VEC:BYTES ;
 
 \ Under ROWS-LOCK: the row of the kind, origin and scope, else null.
 : FOUND ( bool str str -- ^row )

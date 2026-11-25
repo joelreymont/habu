@@ -712,10 +712,10 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 : KEY-SPEC$ ( ^call -- str ) KEY-SPEC-BUF BUFFER$ ;
 : SYSTEM$ ( ^call -- str ) SYSTEM-BUF BUFFER$ ;
 : FORM$ ( ^call -- str ) FORM-BUF BUFFER$ ;
-: PARTS$ ( ^call -- str ) PARTS-BYTES VEC:SPAN SPAN:$ ;
-: JOURNAL-PARTS$ ( ^call -- str ) JOURNAL-PARTS-BYTES VEC:SPAN SPAN:$ ;
+: PARTS$ ( ^call -- str ) PARTS-BYTES VEC:BYTES ;
+: JOURNAL-PARTS$ ( ^call -- str ) JOURNAL-PARTS-BYTES VEC:BYTES ;
 : ITEMS$ ( ^call -- str ) ITEMS-BUF BUFFER$ ;
-: BODY$ ( ^call -- str ) BODY-BYTES VEC:SPAN SPAN:$ ;
+: BODY$ ( ^call -- str ) BODY-BYTES VEC:BYTES ;
 : EFFORT$ ( ^call -- str )
    {: c :}
    c PICK-CELL @ {: r:n :}
@@ -743,11 +743,11 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 : ENDPOINT$ ( ^call -- str ) ENDPOINT-BUF BUFFER$ ;
 : IDENTITY$ ( ^call -- str ) IDENTITY-BUF BUFFER$ ;
 : BASE-URL$ ( ^call -- str ) BASE-URL-BUF BUFFER$ ;
-: GEN-CONFIG$ ( ^call -- str ) GEN-CONFIG-BYTES VEC:SPAN SPAN:$ ;
-: EMBED-CONFIG$ ( ^call -- str ) EMBED-CONFIG-BYTES VEC:SPAN SPAN:$ ;
+: GEN-CONFIG$ ( ^call -- str ) GEN-CONFIG-BYTES VEC:BYTES ;
+: EMBED-CONFIG$ ( ^call -- str ) EMBED-CONFIG-BYTES VEC:BYTES ;
 : JOURNAL-INPUT-SPAN$ ( ^call -- str )
-   JOURNAL-INPUT-BYTES VEC:SPAN SPAN:$ ;
-: JOURNAL-RECORD$ ( ^call -- str ) JOURNAL-RECORD-BYTES VEC:SPAN SPAN:$ ;
+   JOURNAL-INPUT-BYTES VEC:BYTES ;
+: JOURNAL-RECORD$ ( ^call -- str ) JOURNAL-RECORD-BYTES VEC:BYTES ;
 : JOURNAL-OUT$ ( ^call -- str ) JOURNAL-OUT-BUF BUFFER$ ;
 : REPLAY-CONTENT$ ( ^call -- str ) REPLAY-CONTENT-BUF BUFFER$ ;
 : RESPONSE$ ( ^call -- str )
@@ -1407,7 +1407,7 @@ private
       E-STATE throw
    endcase ;
 
-: SETTING$ ( ^settings n -- str ) SETTING-BUF VEC:SPAN SPAN:$ ;
+: SETTING$ ( ^settings n -- str ) SETTING-BUF VEC:BYTES ;
 
 
 \ Reads the item of setting idx into its vector and returns its length; a
@@ -2252,7 +2252,7 @@ private
    \ byte, so a freed block holds only the prefix.
    KEY-PREFIX$ c KEY-LINE-BUF VEC:APPEND
    c KEY-FETCH
-   c KEY-LINE-BUF VEC:SPAN SPAN:$ ;
+   c KEY-LINE-BUF VEC:BYTES ;
 
 : KEY-HEADER-KEEP ( CURL:handle ^call -- CURL:handle ^call )
    2dup KEY-LINE CURL:HEADER+ over CHECK-STATUS ;

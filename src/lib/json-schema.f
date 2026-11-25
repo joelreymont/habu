@@ -50,7 +50,6 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/span.f
 require src/lib/fmt.f
 require src/lib/adt/option.f
 require src/lib/arena.f
@@ -1695,7 +1694,7 @@ ARENA TABLES table
 : FLATTEN ( ^lane -- ) {: ln:^ :}
    ln LANE-FIRST @ {: p:^ :}
    p PIECE-NEXT @ begin dup NULL-PTR <> while
-      dup PIECE-TEXT @ VEC:SPAN SPAN:$ p PIECE-TEXT @ VEC:APPEND
+      dup PIECE-TEXT @ VEC:BYTES p PIECE-TEXT @ VEC:APPEND
       PIECE-NEXT @
    repeat drop ;
 

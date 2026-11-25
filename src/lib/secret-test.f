@@ -27,7 +27,7 @@ private
 TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
 
 : OUT ( -- ^VEC:vector<u8> ) TEST-OUT @ ;
-: OUT$ ( -- str ) OUT VEC:SPAN SPAN:$ ;
+: OUT$ ( -- str ) OUT VEC:BYTES ;
 
 \ Empties OUT, zeroing the bytes it held.
 : CLEAR-OUT ( -- ) OUT 0 VEC:RESIZE ;

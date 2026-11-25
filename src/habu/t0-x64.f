@@ -9,7 +9,6 @@ split-str
 
 require src/lib/error.f
 require src/lib/heap.f
-require src/lib/span.f
 require src/lib/vector.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
@@ -76,7 +75,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    k 4 + >R64 ;
 
 : PUT ( n n n -- ) {: v:n off:n k:n :}
-   SINK VEC:SPAN SPAN:$ drop off + {: p:^ :}
+   SINK VEC:BYTES drop off + {: p:^ :}
    k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
 
 : REL32! ( n n -- )
@@ -187,7 +186,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    RAX SINK ENC-JMP-REG
    at ;
 
-: BYTES ( -- str ) SINK VEC:SPAN SPAN:$ ;
+: BYTES ( -- str ) SINK VEC:BYTES ;
 
 \ A call's rel32 is measured from the end of its five bytes, placed at.
 : PATCH-CALL ( n n n -- ) {: at:n off:n to:n :}
@@ -460,7 +459,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
 \ The branch's jcc becomes je: its opcode byte is just before the field.
 : ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: at:n :}
-   C-E CONDITION>N $80 +  SINK VEC:SPAN SPAN:$ drop at 1 - + c! ;
+   C-E CONDITION>N $80 +  SINK VEC:BYTES drop at 1 - + c! ;
 
 \ A backward rel is measured from the end of the instruction, five bytes for
 \ jmp rel32 and six for jcc rel32.

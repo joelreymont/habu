@@ -12,7 +12,6 @@ require src/lib/error.f
 require src/lib/heap.f
 require src/lib/memory.f
 require src/lib/reason.f
-require src/lib/span.f
 require src/lib/test.f
 require src/lib/vector.f
 require src/lib/json.f
@@ -179,7 +178,7 @@ create DEEP-BUF DEPTH 2 * allot
 
 \ Checks the text seen, then deletes the vector.
 : SEEN= ( ^VEC:vector<u8> str -- ) {: seen s:str :}
-   seen VEC:SPAN SPAN:$ s T$=  seen VEC:DELETE ;
+   seen VEC:BYTES s T$=  seen VEC:DELETE ;
 
 : SEE-TEXT ( ^VEC:vector<u8> JSON:value -- ^VEC:vector<u8> )
    JSON:TEXT$ SEE ;
@@ -350,7 +349,7 @@ variable CLOSES
    s" WALK reads 100000 levels in one pass" T-LABEL
    0 LEVEL !  0 PEAK !  0 CLOSES !
    NEST$ {: buf :}
-   buf VEC:SPAN SPAN:$ JSON:PARSE [: COUNT-LEVEL ;] JSON:WALK
+   buf VEC:BYTES JSON:PARSE [: COUNT-LEVEL ;] JSON:WALK
    buf VEC:DELETE
    PEAK @ FAR T=  CLOSES @ FAR T=  LEVEL @ 0 T= ;
 
@@ -392,7 +391,7 @@ variable CLOSES
 : APPEND-OWN ( -- )
    ALLOC-TEST:MOVING 0 [type] u8 VEC:NEW {: out :}
    s\" \"\\nabcdefghijklmnop\"" out VEC:APPEND
-   out VEC:SPAN SPAN:$ JSON:PARSE out JSON:APPEND-STRING
+   out VEC:BYTES JSON:PARSE out JSON:APPEND-STRING
    out s\" \"\\nabcdefghijklmnop\"\nabcdefghijklmnop" SEEN= ;
 
 : TEST-APPEND-STRING ( -- )

@@ -52,7 +52,7 @@ CAST: TOKEN>N ( XML:kind -- n )
 : DECODED-NEW ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DECODED ! ;
 : DECODED-CLEAR ( -- ) DECODED @ 0 VEC:RESIZE ;
 : CLEARED ( -- ^VEC:vector<u8> ) DECODED-CLEAR DECODED @ ;
-: DECODED$ ( -- str ) DECODED @ VEC:SPAN SPAN:$ ;
+: DECODED$ ( -- str ) DECODED @ VEC:BYTES ;
 
 : URI= ( XML:reader str -- XML:reader )
    {: expected:str :}
@@ -636,10 +636,10 @@ variable URI-LEN
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
    v ESCAPED-OUT !
    s\" A<&>\r\n\q'😀" v ESCAPE-TEXT
-   v VEC:SPAN SPAN:$ s\" A&lt;&amp;&gt;&#13;\n\q'😀" T$=
+   v VEC:BYTES s\" A&lt;&amp;&gt;&#13;\n\q'😀" T$=
    v 0 VEC:RESIZE
    s\" A<&>\r\n\t\q'😀" v ESCAPE-ATTR
-   v VEC:SPAN SPAN:$ s" A&lt;&amp;&gt;&#13;&#10;&#9;&quot;&apos;😀" T$=
+   v VEC:BYTES s" A&lt;&amp;&gt;&#13;&#10;&#9;&quot;&apos;😀" T$=
    v 0 VEC:RESIZE
    s" " v ESCAPE-TEXT  v VEC:COUNT 0 T=
    [: s\" \z" ESCAPED-OUT @ ESCAPE-TEXT ;] E-SCALAR TTHROWSQ
@@ -786,7 +786,7 @@ variable URI-LEN
       E-NAMESPACE INPUT-BAD ;
 
 : DOC-START ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DEEP-DOC ! ;
-: DOC$ ( -- str ) DEEP-DOC @ VEC:SPAN SPAN:$ ;
+: DOC$ ( -- str ) DEEP-DOC @ VEC:BYTES ;
 : DEEP+ ( str -- ) DEEP-DOC @ VEC:APPEND ;
 
 \ Level i of the chain is p:aD, D the digit i mod 10.

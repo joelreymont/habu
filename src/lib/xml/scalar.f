@@ -285,7 +285,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    source mode DECODED-SIZE {: needed:n :}
    v VEC:COUNT {: at:n :}
    v at needed + VEC:ENSURE
-   v VEC:SPAN SPAN:$ STR:DATA at + {: out:^ :}
+   v VEC:BYTES STR:DATA at + {: out:^ :}
    source mode out DECODE-WRITE ;
 
 : NORMAL-EQUAL? ( str str -- bool )

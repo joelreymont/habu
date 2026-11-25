@@ -150,7 +150,7 @@ TYPED-VARIABLE RES ^VEC:vector<u8>
 
 
 : RES$ ( -- str )
-   RES @ VEC:SPAN SPAN:$ ;
+   RES @ VEC:BYTES ;
 
 
 : RES-FROM ( n -- str ) {: at:n :}
@@ -247,7 +247,7 @@ TYPED-VARIABLE PARAM-VEC ^VEC:vector<u8>
    asked s" b" PARAM-ONE
    s" , " PARAM-TEXT
    asked s" missing" PARAM-ONE
-   answer PARAM-VEC @ VEC:SPAN SPAN:$ HTTP:BODY!
+   answer PARAM-VEC @ VEC:BYTES HTTP:BODY!
    answer 200 HTTP:STATUS! ;
 
 
@@ -1382,7 +1382,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    subject BIG-RES-CAP body TAKE-INTO drop {: status:n :}
    subject CURL:CLEANUP
    status 200 T=
-   body VEC:SPAN SPAN:$ BIG-ANSWER? TTRUE
+   body VEC:BYTES BIG-ANSWER? TTRUE
    body VEC:DELETE
    s" GET" s" /api/ping" FETCH 200 T=
    RES$ S\" {\qservice\q:\qhttp-test\q}" T$= ;

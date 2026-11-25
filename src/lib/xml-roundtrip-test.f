@@ -48,8 +48,8 @@ TYPED-VARIABLE RD XML:cursor
    ATTRIBUTE-RANGE {: attr-start:off attr-old:len :}
    TEXT-RANGE {: text-start:off text-old:len :}
    HEAP:ALLOCATOR ORIGINAL$ EDIT:INIT
-   attr-start attr-old attr VEC:SPAN SPAN:$ EDIT:REPLACE
-   text-start text-old text VEC:SPAN SPAN:$ EDIT:REPLACE
+   attr-start attr-old attr VEC:BYTES EDIT:REPLACE
+   text-start text-old text VEC:BYTES EDIT:REPLACE
    DOCUMENT BYTE-CAP EDIT:WRITE {: document-size:n :}
    EDIT:CLOSE
    attr VEC:DELETE  text VEC:DELETE
@@ -57,7 +57,7 @@ TYPED-VARIABLE RD XML:cursor
 
 : READBACK-NEW ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW READBACK ! ;
 : CLEARED ( -- ^VEC:vector<u8> ) READBACK @ dup 0 VEC:RESIZE ;
-: READBACK$ ( -- str ) READBACK @ VEC:SPAN SPAN:$ ;
+: READBACK$ ( -- str ) READBACK @ VEC:BYTES ;
 
 : VERIFY ( str n -- )
    {: value:str document-size:n :}

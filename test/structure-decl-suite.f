@@ -909,7 +909,7 @@ TYPED-VARIABLE SC-WANT ^VEC:vector<u8>  \ a record's head and path lines, as lon
 
 : SC-NEW ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 : SC-FILE ( -- str ) SC-PATH SC-PATH-U @ ;
-: SC-ERR$ ( -- str ) SC-ERR @ VEC:SPAN SPAN:$ ;
+: SC-ERR$ ( -- str ) SC-ERR @ VEC:BYTES ;
 : SB-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
 : SC-LINE ( str -- )
    SC-SRC @ VEC:APPEND  10 SC-SRC @ VEC:PUSH c! ;
@@ -993,7 +993,7 @@ TYPED-VARIABLE SC-WANT ^VEC:vector<u8>  \ a record's head and path lines, as lon
    s" : SCCM ( n n -- rpsdcm ) RPSDCM:MAKE ;" SC-LINE
    s" : SCCMBAD ( n -- rpsdcm ) RPSDCM:MAKE ;" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
-   SC-SRC @ VEC:SPAN SPAN:$ ;
+   SC-SRC @ VEC:BYTES ;
 
 : SC-ARGS ( CMD:command -- CMD:command )
    s" --load" CMD:ARG+  s" tools/check.f" CMD:ARG+
@@ -1028,7 +1028,7 @@ TYPED-VARIABLE SC-WANT ^VEC:vector<u8>  \ a record's head and path lines, as lon
    SC-WANT @ 0 VEC:RESIZE  h hu SC-WANT+  10 SC-WANT-C
    p pu SC-GUTTER  s" --> " SC-WANT+  SC-FILE SC-WANT+
    p pu SC-WANT+  10 SC-WANT-C
-   SC-ERR$ SC-WANT @ VEC:SPAN SPAN:$ STR:CONTAINS? TTRUE
+   SC-ERR$ SC-WANT @ VEC:BYTES STR:CONTAINS? TTRUE
    SB-RESET  s" ^ " SB-APPEND  l lu SB-LINE
    SC-ERR$ SB$ STR:CONTAINS? TTRUE ;
 

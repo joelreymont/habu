@@ -43,7 +43,7 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    true ;
 
 : X= ( ^u8 n -- ) {: ea:^ eu:n :}
-   SINK VEC:SPAN SPAN:$ {: da:^ dlen:n :}
+   SINK VEC:BYTES {: da:^ dlen:n :}
    da dlen ea eu SPAN=HEX? TTRUE
    SINK 0 VEC:RESIZE ;
 

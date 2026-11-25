@@ -68,7 +68,7 @@ private
    v VEC:COUNT {: at:n :}
    v at needed + source STR:DATA VEC:MAKE-ROOM {: src:^ :}
    v at needed + VEC:ENSURE
-   src source STR:LEN >str attr  v VEC:SPAN SPAN:$ STR:DATA at +  ESCAPE-WRITE ;
+   src source STR:LEN >str attr  v VEC:BYTES STR:DATA at +  ESCAPE-WRITE ;
 
 public
 \ Each appends the text, escaped, to the vector; the text may lie in it.

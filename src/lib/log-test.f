@@ -95,7 +95,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 : FILE$ ( -- str )
    PATH$ FS:FILE-SIZE {: size:n :}
    FILE-B @ size VEC:RESIZE
-   FILE-B @ VEC:SPAN SPAN:$ {: buf:str :}
+   FILE-B @ VEC:BYTES {: buf:str :}
    PATH$ buf STR:DATA buf STR:LEN FS:READ-ALL size T=
    buf ;
 
@@ -177,11 +177,11 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 : BIG-MAKE ( -- )
    HEAP:ALLOCATOR BIG-U [type] u8 VEC:NEW BIG-B !
-   BIG-B @ VEC:SPAN SPAN:$ {: at:str :}
+   BIG-B @ VEC:BYTES {: at:str :}
    at STR:LEN 0 ?do i 26 mod [char] a + at STR:DATA i + c! loop ;
 
 
-: BIG$ ( -- str )  BIG-B @ VEC:SPAN SPAN:$ ;
+: BIG$ ( -- str )  BIG-B @ VEC:BYTES ;
 : BIG-HEAD$ ( -- str )  s"  error big: " ;
 
 
@@ -553,7 +553,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    PIPE-BACK
    READER TASK:JOIN JOIN-CODE {: drained:n :}
    PIPE-R @ close-rc 0 T=
-   PIPE-B @ VEC:SPAN SPAN:$ TASK-LINES-OK
+   PIPE-B @ VEC:BYTES TASK-LINES-OK
    LINES @ TASK-LINES 2 * T=
    BAD @ 0 T=
    0 NEXTS @ TASK-LINES T=
@@ -628,7 +628,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    epoch-seconds T1 !
    PIPE-BACK
    PIPE-R @ close-rc 0 T=
-   PIPE-B @ VEC:SPAN SPAN:$ {: at:str :}
+   PIPE-B @ VEC:BYTES {: at:str :}
    at STR:LEN 1 DATE:TIME-LEN + KEPT-REST$ STR:LEN + T=
    at STR:DATA c@ LF T=
    at STR:DATA 1+ at STR:LEN 1- >str KEPT-REST$ LINE-OK STR:LEN 0 T=

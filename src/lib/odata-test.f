@@ -432,7 +432,7 @@ TYPED-VARIABLE LINK ^VEC:vector<u8>  \ and this one
    m body BODY JSON:PARSE LINK @ ODATA:PAGE
    {: records total:option<n> :}
    total TOTAL 2 T=
-   LINK @ VEC:SPAN SPAN:$
+   LINK @ VEC:BYTES
    s" https://h.example/svc/Customers?$skiptoken='C2'" T$=
    t records PLAIN s" test/fixtures/odata/page.txt" WANT READ T$=
    a ARENA:RELEASE ;
@@ -598,7 +598,7 @@ variable VALUE-LEN
    KEY-OUT @ {: v:^ :}
    v 0 VEC:RESIZE
    v ODATA:KEY
-   v VEC:SPAN SPAN:$ ;
+   v VEC:BYTES ;
 
 \ The key predicate of the set's type when its one key's value is VALUE.
 : PREDICATE$ ( ^ODATA:metadata str str -- str )
@@ -696,7 +696,7 @@ variable VALUE-LEN
    t [: ORDER-VALUE ;] v ODATA:KEY
    [: t [: drop s" x" ;] v ODATA:KEY ;] ODATA:E-KEY TTHROWSQ
    REASON:RELEASE
-   v VEC:SPAN SPAN:$
+   v VEC:BYTES
    s" Orders(Year=2024,OrderID='it%27%27s%20a%2Fb')" T$= ;
 
 : TEST-KEYS ( -- )
@@ -879,9 +879,9 @@ variable VALUE-LEN
    ARENA:NEW {: a:^ :}
    a V4$ MODEL s" Customers" SET-TYPE {: t:^ :}
    NEST$ {: buf:^ :}
-   buf VEC:SPAN SPAN:$ JSON:PARSE
+   buf VEC:BYTES JSON:PARSE
    WRITER OUT @ JSON:OPEN t ODATA:COPY-ENTITY JSON:WRITTEN$
-   buf VEC:SPAN SPAN:$ T$=
+   buf VEC:BYTES T$=
    buf VEC:DELETE
    a ARENA:RELEASE ;
 

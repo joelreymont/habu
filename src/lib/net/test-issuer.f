@@ -54,7 +54,7 @@ JWS-FIXTURE:EXPONENT$ EXPONENT-ROW JWS-FIXTURE:EXPONENT$ STR:LEN RAW EXPONENT-U 
 
 : HEADER$ ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"test-issuer\",\"typ\":\"JWT\"}" ;
 
-: VEC$ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
+: VEC$ ( ^VEC:vector<u8> -- str ) VEC:BYTES ;
 : NEW-VEC ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 \ The clients: each id's offset in CLIENTS, its secret right after it.

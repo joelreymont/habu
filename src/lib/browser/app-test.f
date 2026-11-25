@@ -39,9 +39,9 @@ TYPED-VARIABLE FILE ^VEC:vector<u8>
 : ESCAPED$ ( -- str )  s\" <title>Zürich &lt;&amp;\"'</title>" ;
 
 : BYTES ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
-: PAGE$ ( -- str )  PAGE @ VEC:SPAN SPAN:$ ;
-: CODE$ ( -- str )  CODE @ VEC:SPAN SPAN:$ ;
-: FILE$ ( -- str )  FILE @ VEC:SPAN SPAN:$ ;
+: PAGE$ ( -- str )  PAGE @ VEC:BYTES ;
+: CODE$ ( -- str )  CODE @ VEC:BYTES ;
+: FILE$ ( -- str )  FILE @ VEC:BYTES ;
 
 : AFTER$ ( -- str )
    PAGE$ {: s:str :}
