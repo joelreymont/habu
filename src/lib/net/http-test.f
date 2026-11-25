@@ -186,6 +186,12 @@ TYPED-VARIABLE RES ^VEC:vector<u8>
    answer 299 HTTP:STATUS! ;
 
 
+: UNAVAILABLE ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   answer s" Content-Type" s" application/json" HTTP:HEADER!
+   answer s" X-Kept" s" yes" HTTP:HEADER!
+   answer 503 s" unavailable" s" the database is unavailable" HTTP:ERROR! ;
+
+
 \ The id the pattern bound travels to the body through these cells, which the
 \ body quotation reads back: x86-64 refuses a quotation that reads a local.
 PTR-VARIABLE ITEM-ID-A
@@ -753,6 +759,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/ping" [: PING ;] HTTP:ROUTE
    s" GET" s" /api/unauthorized" [: UNAUTHORIZED ;] HTTP:ROUTE
    s" GET" s" /api/unregistered" [: UNREGISTERED ;] HTTP:ROUTE
+   s" GET" s" /api/unavailable" [: UNAVAILABLE ;] HTTP:ROUTE
    s" GET" s" /api/items/{id}" [: ITEM ;] HTTP:ROUTE
    s" GET" s" /api/params" [: PARAMS ;] HTTP:ROUTE
    s" GET" s" /api/version" [: ASKED-VERSION ;] HTTP:ROUTE
@@ -1348,6 +1355,16 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s\" HTTP/1.1 401 Unauthorized\r\n" BEGINS? TTRUE
    s\" GET /api/unregistered HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s\" HTTP/1.1 299 \r\n" BEGINS? TTRUE ;
+
+
+\ An error answer replaces the body and the Content-* headers that describe
+\ it, and keeps every other header the handler wrote.
+: ERROR-HEADER-CASE ( -- )
+   s\" GET /api/unavailable HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 503 " BEGINS? TTRUE
+   RES$ s" Content-Type: " STR:COUNT-SUB 1 T=
+   s\" Content-Type: text/plain; charset=utf-8\r\n" HAS? TTRUE
+   s\" X-Kept: yes\r\n" HAS? TTRUE ;
 
 
 \ A handler that throws is answered 500 and its worker - the only one this
@@ -3432,6 +3449,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    JSON-CASES
    REFUSAL-CASES
    REASON-CASES
+   ERROR-HEADER-CASE
    FAULT-CASE
    BIG-JSON-CASE
    HUGE-JSON-CASE

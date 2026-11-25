@@ -345,9 +345,7 @@ private
 : PLAIN-ERROR ( response n str str -- )
    {: subject:response status:n code:str message:str :}
    subject SLOT-OF-RESPONSE {: idx:n :}
-   idx SELF-SLOT <> if E-HANDLE throw then
    subject status STATUS!
-   idx DROP-BODY
    idx JSON-OUT @ 0 VEC:RESIZE
    code idx ERROR-TEXT+
    s" : " idx ERROR-TEXT+
@@ -368,6 +366,31 @@ private
    [: PLAIN-ERROR ;] 0 ERROR-HOOK ! ;
 
 PLAIN-ERRORS
+
+
+\ A header line that describes the body: its name begins `Content-`, in any
+\ case.
+: BODY-HEADER? ( str -- bool ) {: line:str :}
+   s" Content-" {: prefix:str :}
+   line STR:LEN prefix STR:LEN < if false exit then
+   line STR:DATA prefix STR:LEN >str prefix STR:=CI ;
+
+
+\ The slot's header lines from `from` on, each moved down to `to` unless it
+\ describes the body; answers the length kept. A move only goes down, so the
+\ lines still to read are intact.
+: KEEP-LINES ( n n n -- n ) {: idx:n from:n to:n :}
+   idx HDR-BUF BUF:SPAN {: lines :}
+   from lines SPAN:LEN >= if to exit then
+   lines SPAN:$ LF from STR:SPLIT-NEXT drop {: line:str next:n :}
+   line BODY-HEADER? if idx next to RECURSE exit then
+   next lines SPAN:LEN min from - {: len:n :}
+   lines from len SPAN:SUB SPAN:$ lines to len SPAN:SUB SPAN:COPY
+   idx next to len + RECURSE ;
+
+
+: DROP-BODY-HEADERS ( n -- ) {: idx:n :}
+   idx 0 0 KEEP-LINES BUF:N>BLEN idx HDR-BUF BUF:LEN! ;
 
 
 : IN-REQUEST? ( n -- bool )
@@ -406,9 +429,15 @@ public
 
 \ Every refusal and fault this server answers, and any a handler answers
 \ itself, as the installed hook renders it; plain text until ON-ERROR says
-\ otherwise.
+\ otherwise. Every hook renders on the answer less its body and the `Content-*`
+\ headers that describe it; the other headers the handler wrote stay.
 : ERROR! ( response n str str -- )
-   0 ERROR-HOOK @ execute ;
+   {: subject:response status:n code:str message:str :}
+   subject SLOT-OF-RESPONSE {: idx:n :}
+   idx SELF-SLOT <> if E-HANDLE throw then
+   idx DROP-BODY
+   idx DROP-BODY-HEADERS
+   subject status code message 0 ERROR-HOOK @ execute ;
 
 
 ;package
