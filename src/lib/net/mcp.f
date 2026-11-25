@@ -5,12 +5,11 @@
 \ the MCP Tool object tools/list shows, annotations and _meta included, and each
 \ resource, such as an app's ui:// page, with ADD-RESOURCE. It authenticates each
 \ request, validates its Origin (403 when one is present and not allowed) and passes it
-\ to HANDLE; a route guarded by bearer tokens is
-\ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. HANDLE logs each message it
-\ dispatches, a notification included, as one LOG:INFO line `mcp: <method>`, then a
-\ tools/call's params.name or a resources/read's params.uri when it is a string,
-\ written between its quotes as sent, never the arguments, without LOG; with it,
-\ one line after the answer, `req <id> <method> <target> -> <outcome> in <n> ms`, at
+\ to HANDLE; a route guarded by bearer tokens is ROUTES, in mcp-routes.f. HANDLE logs
+\ each message it dispatches, a notification included, as one LOG:INFO line
+\ `mcp: <method>`, then a tools/call's params.name or a resources/read's params.uri when it
+\ is a string, written between its quotes as sent, never the arguments, without LOG;
+\ with it, one line after the answer, `req <id> <method> <target> -> <outcome> in <n> ms`, at
 \ LOG ERROR for a fault and LOG INFO otherwise. id is the HTTP:REQUEST-ID$ of HANDLE's
 \ request or the id ANSWER is given; method and target are as without LOG, `-` when no
 \ method was read; n is whole milliseconds from the request's start, ANSWER's entry or,
@@ -107,14 +106,14 @@ package MCP
 public
 -9480 constant E-FIRST
 -9489 constant E-LAST
--9481 s" an MCP word ran out of turn: SERVER-INFO!, INSTRUCTIONS!, LOG, ADD-TOOL, ADD-RESOURCE or VISIBLE! while HTTP serves, HANDLE or ANSWER before SERVER-INFO!, ANSWER or FINISH off a request worker, a body that does not give its result exactly once, HOLD outside a body before its result, FINISH of a call not held, or a client word given a closed client"
+-9481 s" an MCP word ran out of turn: SERVER-INFO!, INSTRUCTIONS!, LOG, ADD-TOOL, ADD-RESOURCE, VISIBLE!, ORIGIN! or ROUTES while HTTP serves, HANDLE or ANSWER before SERVER-INFO!, ANSWER or FINISH off a request worker, a body that does not give its result exactly once, HOLD outside a body before its result, FINISH of a call not held, or a client word given a closed client"
    ERROR:FAULT E-STATE
 -9482 s" ADD-TOOL was given a registered name or ADD-RESOURCE a registered uri, compared decoded"
    ERROR:CODE E-DUPLICATE
 -9483 s" a client's request could not be sent or its reply received" ERROR:CODE E-TRANSFER
 -9484 s" the server's reply has a status other than 2xx that is neither E-DENIED's nor E-UNAVAILABLE's, is not a JSON-RPC success for the request, or holds a result without its method's shape"
    ERROR:CODE E-RESPONSE
--9485 s" a descriptor, inputSchema, outputSchema, meta, result, content blocks or a page outside what MCP takes: correct it where its reason text says"
+-9485 s" a descriptor, inputSchema, outputSchema, meta, result, content blocks, a page or an origin outside what MCP takes: correct it where its reason text says"
    ERROR:CODE E-SCHEMA
 -9486 s" the server refused a client's call with 401 or 403" ERROR:CODE E-DENIED
 -9487 s" the server answered a status CURL:UNAVAILABLE? accepts" ERROR:CODE E-UNAVAILABLE
@@ -947,7 +946,7 @@ CAST: HELD>N ( held -- n )
    n RESOURCE-PAGE-RESERVE ;
 
 \ E-SCHEMA's text names the text judged (descriptor, inputSchema, outputSchema, meta,
-\ result, content or page), then the place in it.
+\ result, content or page), then the place in it; an origin's quotes the origin.
 
 : PUT ( ^u8 ^u8 n -- ^u8 ) {: dst:^ src:^ u:n :}
    src dst u BYTE-COPY  dst u + ;

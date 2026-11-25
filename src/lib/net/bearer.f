@@ -4,11 +4,13 @@
 \ and this server, and whose exp and nbf hold (RFC 7515, 7517, 7519). The host
 \ states the issuer with ISSUER! before HTTP:START, guards a route with
 \ `req res BEARER:ADMIT? if ... then` and reads the caller's claims with CLAIM$
-\ and CLAIM-HOLDS?. METADATA! names this server's protected-resource metadata
+\ and CLAIM-HOLDS?. CALLER? guards a route for a person whose token holds the
+\ stated scope or an app APP! lists; PERSON? and CALLER-KEY say which it is.
+\ METADATA! names this server's protected-resource metadata
 \ (RFC 9728 5.1) and the scope its tokens need (RFC 6750 3) in each 401
-\ challenge, and RESOURCE-METADATA answers that metadata's GET (RFC 9728 3);
-\ beside that scope both name offline_access, without which Entra gives a
-\ client no refresh token.
+\ challenge, and RESOURCE-METADATA answers that metadata's GET (RFC 9728 3),
+\ which METADATA-ROUTES routes to it; beside that scope both name
+\ offline_access, without which Entra gives a client no refresh token.
 \ As a client, TOKEN gets a token from the token endpoint CLIENT! names, for
 \ the client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of), and
 \ REFRESH renews one with a refresh grant (RFC 6749 6); CURRENT keeps the
@@ -16,16 +18,17 @@
 \ token for a resource from Azure's metadata service at an origin (IMDS$),
 \ kept per origin and resource. Every other URL BEARER fetches or advertises
 \ is https, or http to a loopback IP literal for tests.
-\ STORAGE CLASS. PROCESS-WIDE: the issuer, and the challenges, resource and
-\ scope METADATA! states, written before HTTP serves; the key set, read and
-\ replaced under KEYS-LOCK and fetched over CURL outside it by one worker at a
-\ time; the counts of workers waiting for that fetch and of fetches returned,
-\ under KEYS-LOCK, and the semaphore that wakes them, which ISSUER! sets up;
-\ tables indexed by HTTP:WORKER-SLOT holding each request's token and
-\ scratch; the client CLIENT! states, written before any TOKEN or REFRESH;
-\ and the rows CURRENT keeps, one per scope, and IDENTITY-TOKEN keeps, one
-\ per origin and resource, written under ROWS-LOCK when linked and each under
-\ its own lock after; CLIENT! empties CURRENT's.
+\ STORAGE CLASS. PROCESS-WIDE: the issuer, the apps APP! lists, the challenges,
+\ resource and scope METADATA! states, and the path METADATA-ROUTES routes,
+\ written before HTTP serves; the key set, read and replaced under KEYS-LOCK and
+\ fetched over CURL outside it by one worker at a time; the counts of workers
+\ waiting for that fetch and of fetches returned, under KEYS-LOCK, and the
+\ semaphore that wakes them, which ISSUER! sets up; tables indexed by
+\ HTTP:WORKER-SLOT holding each request's token and scratch; the client CLIENT!
+\ states, written before any TOKEN or REFRESH; and the rows CURRENT keeps, one
+\ per scope, and IDENTITY-TOKEN keeps, one per origin and resource, written
+\ under ROWS-LOCK when linked and each under its own lock after; CLIENT! empties
+\ CURRENT's.
 \ TASK-LOCAL: the admitted request, TASK:+USER rows.
 \
 \ Key lookup: a worker looks for the token's kid in the cached key set under
@@ -60,13 +63,14 @@ require src/lib/net/http-response.f
 require src/lib/json/read.f
 require src/lib/json/value.f
 require src/lib/json/write.f
+require src/lib/net/http-router.f
 
 package BEARER
 public
 
 -9630 s" no answer from the token endpoint" ERROR:CODE E-TRANSFER
 -9631 s" the issuer rejected the request with a 4xx a retry will not change" ERROR:CODE E-REJECTED
--9632 s" a URL is not https (state https, or http only to 127.0.0.0/8 or [::1]), a METADATA! URL is not /.well-known/oauth-protected-resource right after its authority, then nothing or a path with no query or fragment (insert the segment before the resource's path; drop the query and fragment), a METADATA! URL holds a quote, backslash, control or non-ASCII byte (percent-encode it), or a scope is not tokens of printable ASCII but quote and backslash one space apart (remove the other bytes and spaces)"
+-9632 s" a URL is not https (state https, or http only to 127.0.0.0/8 or [::1]), a METADATA! URL is not /.well-known/oauth-protected-resource right after its authority, then nothing or a path with no query or fragment (insert the segment before the resource's path; drop the query and fragment), a METADATA! URL holds a quote, backslash, brace, control or non-ASCII byte (percent-encode it), a scope is not tokens of printable ASCII but quote and backslash one space apart (remove the other bytes and spaces), or an APP! id is empty or holds a space, control or non-ASCII byte (state the app's client id alone)"
    ERROR:CODE E-OPERAND
 -9633 s" the token endpoint answered a status a retry may change" ERROR:CODE E-UNAVAILABLE
 -9634 s" the token endpoint answered a reply TOKEN or REFRESH cannot use" ERROR:CODE E-RESPONSE
@@ -117,6 +121,18 @@ SCRATCH-VARIABLE RESOURCE-U
 : SCOPE$ ( -- str )
    NAMED-SPAN CHALLENGES-U @ RESOURCE-U @ + SPAN:SKIP SPAN:$ ;
 
+\ The path METADATA-ROUTES gave HTTP, whose routes read it in place; made at
+\ its first call, so a built program keeps none.
+TYPED-VARIABLE ROUTE-PATH ^VEC:vector<u8> SCRATCH-ONLY
+
+\ The ids APP! lists, one space apart; made at the first APP!, so a built
+\ program keeps none.
+TYPED-VARIABLE APPS ^VEC:vector<u8> SCRATCH-ONLY
+
+: APPS$ ( -- str )
+   APPS @ dup NULL-PTR = if drop s" " exit then
+   VEC:BYTES ;
+
 \ The key set's text, under KEYS-LOCK with KEYS-AT, FETCHING, WAITERS, ROUND,
 \ KEY-ARRAY and ARRAY-ROUND; FETCHED and ACCEPTED are the fetcher's alone.
 KEYS-CAP SCRATCH-BUFFER: KEYS
@@ -134,8 +150,9 @@ TASK:FACILITY KEYS-LOCK
 KEYS-LOCK TASK:FACILITY-INIT
 
 \ A worker's scratch: the decoded segments, no longer than the token and so
-\ than the head; a note holding the kid, then CLAIM$'s answer; the string
-\ claim CLAIM-HOLDS? splits, apart from the note CLAIM$ lends; the key.
+\ than the head; a note holding the kid, then the claim CLAIM$ lends or
+\ CALLER-KEY appends; the string claim CLAIM-HOLDS? or PERSON? splits, apart
+\ from the note; the key.
 0 constant SEGMENTS-OFF
 HTTP:HEAD-CAP constant NOTE-OFF
 HTTP:HEAD-CAP 2 * constant WORDS-OFF
@@ -157,8 +174,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER KID SPAN:span<u8> SCRATCH-ONLY
 HTTP:MAX-WORKERS TYPED-BUFFER MODULUS SPAN:span<u8> SCRATCH-ONLY
 HTTP:MAX-WORKERS TYPED-BUFFER EXPONENT SPAN:span<u8> SCRATCH-ONLY
 
-\ The running task's: PASSED is nonzero once ADMIT? admitted FROM, a request's
-\ number.
+\ The running task's: PASSED is nonzero while FROM, a request's number, stands
+\ admitted by ADMIT? and not rejected by CALLER?.
 TASK:+USER PASSED n
 TASK:+USER FROM n
 
@@ -492,6 +509,12 @@ ENUM lookup-step
       to 1+
    repeat false ;
 
+\ Appends a word to a list WORD-FROM? reads.
+: WORD+ ( str ^VEC:vector<u8> -- )
+   {: w:str list:^ :}
+   list VEC:COUNT 0 > if s"  " list VEC:APPEND then
+   w list VEC:APPEND ;
+
 \ A string claim splits into words here, where AUDIENCE? compares aud whole
 \ (RFC 7519 4.1.3).
 : HELD? ( str str -- bool )
@@ -627,11 +650,12 @@ ENUM lookup-step
 
 \ HTTP writes a header value as it is: a quote or backslash would end the
 \ quoted resource_metadata early, and a CR or LF would start a line of its own.
+\ A brace, no URI byte (RFC 3986 2), would make a named segment of a route.
 : QUOTABLE ( str -- )
    {: text:str :}
    text STR:LEN 0 ?do
       text STR:DATA i + c@ {: c :}
-      c $22 = c $5C = or c $20 < or c $7E > or if E-OPERAND throw then
+      c $22 = c $5C = or c $7B = or c $7D = or c $20 < or c $7E > or if E-OPERAND throw then
    loop ;
 
 
@@ -729,11 +753,11 @@ public
 \ run time. E-OPERAND for a URL neither https nor http to a loopback IP
 \ literal, or not of the form
 \ `<scheme>://<authority>/.well-known/oauth-protected-resource[<path>]`
-\ (RFC 9728 3.1), or holding a quote, a backslash, or a byte below $20 or above
-\ $7E unencoded, or for a scope that is not space-separated RFC 6749 3.3 scope
-\ tokens; URI:ORIGIN's rejection for a URL it cannot read. A rejected text or
-\ failed allocation leaves the previous statement in force. E-HTTP-STATE while
-\ HTTP serves.
+\ (RFC 9728 3.1), or holding a quote, a backslash, a brace, or a byte below $20
+\ or above $7E unencoded, or for a scope that is not space-separated RFC 6749
+\ 3.3 scope tokens; URI:ORIGIN's rejection for a URL it cannot read. A rejected
+\ text or failed allocation leaves the previous statement in force.
+\ E-HTTP-STATE while HTTP serves.
 : METADATA! ( str str -- )
    {: url:str scope:str :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
@@ -759,6 +783,41 @@ public
    answer 200 HTTP:STATUS!
    answer [: RESOURCE-BODY ;] HTTP:JSON! ;
 
+private
+
+: ROUTE-PATH-READY ( -- )
+   ROUTE-PATH @ NULL-PTR <> if exit then
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ROUTE-PATH ! ;
+
+\ METADATA!'s URL path: RESOURCE$ is that URL less the well-known segment.
+: METADATA-PATH ( -- str )
+   ROUTE-PATH-READY
+   ROUTE-PATH @ {: path:^ :}
+   path 0 VEC:RESIZE
+   WELL-KNOWN path VEC:APPEND
+   RESOURCE$ URI:REQUEST-TARGET$ path VEC:APPEND
+   path VEC:BYTES ;
+
+: METADATA-ROUTE ( str -- )
+   {: path:str :}
+   s" GET" path [: RESOURCE-METADATA ;] HTTP:ROUTE ;
+
+public
+
+\ Adds RESOURCE-METADATA as the GET route of METADATA!'s URL path and, where
+\ that path goes on past the well-known segment, of that segment alone too. A
+\ second call replaces the text the first one's routes read, so
+\ HTTP:ROUTES-RESET comes between. METADATA! comes before it: one stated after
+\ leaves the routes at the old path. A built program keeps no route: it adds
+\ them at run time. E-HTTP-STATE with no METADATA! URL stated or while HTTP
+\ serves.
+: METADATA-ROUTES ( -- )
+   HTTP:RUNNING? RESOURCE-U @ 0= or if E-HTTP-STATE throw then
+   METADATA-PATH {: path:str :}
+   path METADATA-ROUTE
+   path WELL-KNOWN STR:= if exit then
+   WELL-KNOWN METADATA-ROUTE ;
+
 
 \ Whether the request carries a current bearer token of the issuer's for this
 \ server. A rejection answers the response itself, with an empty body: 401
@@ -780,7 +839,7 @@ public
 
 \ A string claim of the admitted request this worker answers, decoded; false
 \ outside one, or for a claim that is absent or not a string. The answer is
-\ borrowed until the worker's next CLAIM$ or ADMIT?.
+\ borrowed until the worker's next CLAIM$, ADMIT? or CALLER-KEY.
 : CLAIM$ ( str -- str bool )
    {: name:str :}
    ANSWERING? 0= if s" " false exit then
@@ -794,6 +853,126 @@ public
    {: name:str w:str :}
    ANSWERING? 0= if false exit then
    name w HELD? ;
+
+private
+
+: NONEMPTY? ( str -- bool )
+   {: name:str :}
+   CLAIMS@ name JSON:FIND MATCH option
+      none OF false ENDOF
+      some OF dup JSON:STRING? swap s" " JSON:STRING= 0= and ENDOF
+   ;MATCH ;
+
+\ A stated scope as Entra writes it in scp: `access_as_user` for
+\ `api://<id>/access_as_user`.
+: SCP-NAME ( str -- str )
+   {: s:str :}
+   s STR:LEN begin
+      dup 0 > if s STR:DATA over 1- + c@ [char] / <> else false then
+   while 1- repeat {: at:n :}
+   s STR:DATA at + s STR:LEN at - >str ;
+
+\ offline_access asks for a refresh token; Entra never writes it in scp.
+: SCOPE-HELD? ( str -- bool )
+   {: scope:str :}
+   scope s" offline_access" STR:= if true exit then
+   s" scp" scope SCP-NAME HELD? ;
+
+: SCOPES-HELD? ( -- bool )
+   SCOPE$ {: s:str :}
+   0 begin {: at:n :} at s STR:LEN < while
+      s at SPACE-AT {: to:n :}
+      s STR:DATA at + to at - >str SCOPE-HELD? 0= if false exit then
+      to 1+
+   repeat true ;
+
+\ The token's client id: azp, or with no azp a v1 token's appid.
+: APP-ID ( -- str )
+   CLAIMS@ s" azp" HAS? if s" azp" else s" appid" then {: name:str :}
+   CLAIMS@ name NOTE$ drop ;
+
+\ Whether the admitted request's token is a listed app's own: a delegated
+\ token names the app too, but has an scp.
+: APP? ( -- bool )
+   ANSWERING? 0= if false exit then
+   s" tid" NONEMPTY? 0= if false exit then
+   CLAIMS@ s" scp" HAS? if false exit then
+   APPS$ APP-ID 0 WORD-FROM? ;
+
+: APP-BYTES ( str -- )
+   {: id:str :}
+   id STR:LEN 0= if E-OPERAND throw then
+   id STR:LEN 0 ?do
+      id STR:DATA i + c@ {: c :}
+      c $21 < c $7E > or if E-OPERAND throw then
+   loop ;
+
+: APPS-READY ( -- )
+   APPS @ NULL-PTR <> if exit then
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW APPS ! ;
+
+: CLAIM+ ( str ^VEC:vector<u8> -- )
+   {: name:str buf:^ :}
+   CLAIMS@ name NOTE$ drop buf VEC:APPEND ;
+
+: TENANT+ ( str ^VEC:vector<u8> -- )
+   {: kind:str buf:^ :}
+   kind buf VEC:APPEND
+   s" tid" buf CLAIM+
+   s" :" buf VEC:APPEND ;
+
+public
+
+\ Lists an app id that may call as itself, beside those listed before. The text
+\ is copied. A built program keeps none: it states them at run time.
+\ E-HTTP-STATE while HTTP serves; E-OPERAND for an id that is empty or holds a
+\ byte outside $21..$7E.
+: APP! ( str -- )
+   {: id:str :}
+   HTTP:RUNNING? if E-HTTP-STATE throw then
+   id APP-BYTES
+   APPS-READY
+   id APPS @ WORD+ ;
+
+
+\ Whether the admitted request this worker answers carries a person's token: a
+\ nonempty string tid and oid, and a nonempty string scp holding every scope
+\ METADATA! states, each by the part after its last `/`, offline_access aside.
+\ With no scope stated any nonempty scp will do: an app's own token has an oid
+\ and no scp. False outside an admitted request.
+: PERSON? ( -- bool )
+   ANSWERING? 0= if false exit then
+   s" tid" NONEMPTY? s" oid" NONEMPTY? and
+   s" scp" NONEMPTY? and 0= if false exit then
+   SCOPES-HELD? ;
+
+
+\ Whether ADMIT? admits the request and its token is a person's (PERSON?) or a
+\ listed app's: a nonempty string tid, no scp claim, and an azp, or where the
+\ token has no azp an appid, that APP! lists. A rejection answers the response
+\ itself: ADMIT?'s, or 403 caller_rejected, after which CLAIM$ and CLAIM-HOLDS?
+\ answer false.
+: CALLER? ( HTTP:request HTTP:response -- bool )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked answer ADMIT? 0= if false exit then
+   PERSON? if true exit then
+   APP? if true exit then
+   0 PASSED !
+   answer 403 s" caller_rejected"
+   s" the token is neither a person's with this server's scope nor a listed app's"
+   HTTP:ERROR! false ;
+
+
+\ Appends who calls: `entra:<tid>:<oid>` for a person, `app:<tid>:<app id>` for
+\ a listed app. E-HTTP-STATE when this worker answers no admitted request of
+\ either.
+: CALLER-KEY ( ^VEC:vector<u8> -- )
+   {: buf:^ :}
+   PERSON? if
+      s" entra:" buf TENANT+  s" oid" buf CLAIM+ exit
+   then
+   APP? 0= if E-HTTP-STATE throw then
+   s" app:" buf TENANT+  APP-ID buf VEC:APPEND ;
 
 
 private

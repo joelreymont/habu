@@ -520,6 +520,12 @@ SUITE bearer
    src/lib/net/bearer-test.f
 ;SUITE
 
+\ MCP:ROUTES on a loopback port: the Origin check, BEARER:CALLER? and the
+\ metadata routes.
+SUITE mcp-routes
+   src/lib/net/mcp-routes-test.f
+;SUITE
+
 SUITE odata
    src/lib/odata-test.f
 ;SUITE

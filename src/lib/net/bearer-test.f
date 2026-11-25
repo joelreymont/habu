@@ -10,8 +10,11 @@
 \ number and absent claims and an array holding nested values and an escape,
 \ CLAIM$ after the admitted request, CLAIM$ and CLAIM-HOLDS? in a task it
 \ spawns, the refetch window, a cached kid answered while a fetch is in
-\ flight, an unknown kid and an empty set waiting for that fetch, and a
-\ fetched key set repeating a member refused while the cached one stays.
+\ flight, an unknown kid and an empty set waiting for that fetch, a fetched
+\ key set repeating a member rejected while the cached one stays, APP!'s
+\ rejections, CALLER-KEY outside a request, and CALLER?, PERSON? and
+\ CALLER-KEY for a person with no scope, a URI's and two stated, a listed app's
+\ v2 and v1 tokens, and tokens of neither.
 \ Run: bin/hb --load src/lib/net/bearer-test.f
 
 require src/lib/net/http-response.f
@@ -65,6 +68,7 @@ TYPED-VARIABLE CFG HTTP:config
 $1000 constant CAP
 TYPED-VARIABLE BODY ^VEC:vector<u8>
 TYPED-VARIABLE HEADS ^VEC:vector<u8>
+TYPED-VARIABLE KEY-OUT ^VEC:vector<u8> \ what CALLER-ROUTE answers
 10 SPAN-BUFFER: HELD
 
 $1000 constant TOKEN-CAP
@@ -90,6 +94,7 @@ variable PORT
 \ or SET-THREE (4).
 variable MODE
 variable HITS                       \ /keys requests served
+variable CLAIMED                    \ a claim was answered after CALLER?'s 403
 variable EARLY-CODE                 \ what ADMIT? threw before ISSUER!
 variable FETCHED-BY                 \ a mono-ns after the last fetch returned
 variable DUE                        \ when that fetch's window has passed, a mono-ns
@@ -108,6 +113,7 @@ TASK:MIN-STACK TASK:TASK WAITER
 : VECTORS ( -- )
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HEADS !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW KEY-OUT !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ASKED-BODY !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW WAITED-BODY ! ;
 
@@ -225,6 +231,19 @@ TASK:MIN-STACK TASK:TASK CLAIMER
       ok OF 0<> if answer s" true" HTTP:BODY! else answer s" false" HTTP:BODY! then ENDOF
       err OF throw ENDOF
    ;MATCH ;
+
+: CLAIMED! ( -- )
+   s" azp" BEARER:CLAIM$ nip
+   s" azp" s" app-2" BEARER:CLAIM-HOLDS? or bool>n CLAIMED atomic! ;
+
+: CALLER-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked answer BEARER:CALLER? 0= if CLAIMED! exit then
+   KEY-OUT @ {: out:^ :}
+   out 0 VEC:RESIZE
+   BEARER:PERSON? if s" person " else s" app " then out VEC:APPEND
+   out BEARER:CALLER-KEY
+   answer out VEC:BYTES HTTP:BODY! ;
 
 : STALL ( -- )
    [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL ;
@@ -614,6 +633,74 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : SCOPE$ ( -- str ) s" tender.read tender.write" ;
 : OFFLINE$ ( -- str ) s" tender.read tender.write offline_access" ;
 
+\ The issuer's current token with these claims more, sent to CALLER-ROUTE.
+: CALL ( str -- n )
+   {: more:str :}
+   KID-A ISS-AUD LATER more CLAIMS MINT
+   s" /caller" OPEN BEARING FINISH ;
+
+: FORBIDDEN ( n -- )
+   {: status:n :}
+   BODY$ s" caller_rejected" STR:CONTAINS? TTRUE
+   status 403 T= ;
+
+: PERSON ( -- str ) s" person entra:t-1:o-1" ;
+: APP ( -- str ) s" app app:t-1:app-1" ;
+
+: APP-CASES ( -- )
+   s" APP! rejects an empty id" T-LABEL
+   [: s" " BEARER:APP! ;] BEARER:E-OPERAND TTHROWSQ
+   s" APP! rejects an id with a space" T-LABEL
+   [: s" app-1 app-2" BEARER:APP! ;] BEARER:E-OPERAND TTHROWSQ
+   s" CALLER-KEY outside a request throws E-HTTP-STATE" T-LABEL
+   [: KEY-OUT @ BEARER:CALLER-KEY ;] E-HTTP-STATE TTHROWSQ
+   s" app-0" BEARER:APP!
+   s" app-1" BEARER:APP! ;
+
+\ With no scope stated.
+: CALLERS ( -- )
+   s" with no scope stated an scp makes a person" T-LABEL
+   S\" ,\"azp\":\"app-2\",\"oid\":\"o-1\",\"tid\":\"t-1\",\"scp\":\"any\"}" CALL
+   PERSON ANSWERED
+   s" no scp and a listed azp is that app" T-LABEL
+   S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" CALL APP ANSWERED
+   s" a v1 token's appid is the other listed app" T-LABEL
+   S\" ,\"appid\":\"app-0\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" CALL
+   s" app app:t-1:app-0" ANSWERED
+   s" no scp and an unlisted azp is forbidden" T-LABEL
+   1 CLAIMED atomic!
+   S\" ,\"azp\":\"app-2\",\"appid\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" CALL
+   FORBIDDEN
+   s" CLAIM$ and CLAIM-HOLDS? after a 403 answer false" T-LABEL
+   CLAIMED atomic@ 0 T=
+   s" an empty oid or tid is forbidden" T-LABEL
+   S\" ,\"azp\":\"app-2\",\"oid\":\"\",\"tid\":\"t-1\",\"scp\":\"any\"}" CALL FORBIDDEN
+   S\" ,\"oid\":\"o-1\",\"tid\":\"\",\"scp\":\"any\"}" CALL FORBIDDEN
+   S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\"}" CALL FORBIDDEN
+   s" an scp that is no string is neither kind's" T-LABEL
+   S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\",\"scp\":[\"any\"]}" CALL
+   FORBIDDEN
+   s" CALLER? leaves a 401 to ADMIT?" T-LABEL
+   s" /caller" OPEN FINISH CHALLENGED ;
+
+: TWO-SCOPES ( -- )
+   s" an scp holding both stated scopes among others is a person's" T-LABEL
+   S\" ,\"oid\":\"o-1\",\"tid\":\"t-1\",\"scp\":\"a tender.write tender.read b\"}" CALL
+   PERSON ANSWERED
+   s" an scp lacking one of two stated scopes is forbidden" T-LABEL
+   S\" ,\"oid\":\"o-1\",\"tid\":\"t-1\",\"scp\":\"tender.read\"}" CALL FORBIDDEN ;
+
+: URI-SCOPE ( -- )
+   s" an scp naming a URI scope's last part is a person's" T-LABEL
+   S\" ,\"oid\":\"o-1\",\"tid\":\"t-1\",\"scp\":\"access_as_user\"}" CALL
+   PERSON ANSWERED
+   s" a person's token whose scp lacks the scope is forbidden" T-LABEL
+   S\" ,\"azp\":\"app-2\",\"oid\":\"o-1\",\"tid\":\"t-1\",\"scp\":\"other\"}" CALL
+   FORBIDDEN
+   s" a listed app's token with an scp lacking the scope is forbidden" T-LABEL
+   S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\",\"scp\":\"other\"}" CALL
+   FORBIDDEN ;
+
 : METADATA-SCOPE ( -- )
    s" with a URL and a scope no Authorization challenges Bearer naming both" T-LABEL
    s" /claims" OPEN FINISH BOTH
@@ -693,6 +780,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    HTTP:ROUTES-RESET
    s" GET" s" /early" [: EARLY-ROUTE ;] HTTP:ROUTE
    s" GET" s" /claims" [: GUARDED-ROUTE ;] HTTP:ROUTE
+   s" GET" s" /caller" [: CALLER-ROUTE ;] HTTP:ROUTE
    s" GET" s" /plain" [: PLAIN-ROUTE ;] HTTP:ROUTE
    s" GET" s" /spawn" [: SPAWN-ROUTE ;] HTTP:ROUTE
    s" GET" s" /roles" [: ROLES-ROUTE ;] HTTP:ROUTE
@@ -710,6 +798,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    [: s" a" s" b" s" c" BEARER:ISSUER! ;] E-HTTP-STATE TTHROWSQ
    s" METADATA! while HTTP serves throws E-HTTP-STATE" T-LABEL
    [: METADATA$ SCOPE$ BEARER:METADATA! ;] E-HTTP-STATE TTHROWSQ
+   s" APP! while HTTP serves throws E-HTTP-STATE" T-LABEL
+   [: s" app-2" BEARER:APP! ;] E-HTTP-STATE TTHROWSQ
    HTTP:PORT PORT !
    s" /keys" URL {: keys:str :}  keys STR:LEN {: u:n :}
    keys STR:DATA KEYS-URL u BYTE-COPY u KEYS-URL-U !
@@ -732,9 +822,11 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    \ which CHALLENGED and INVALID assert.
    METADATA$ SCOPE$ BEARER:METADATA!
    s" " s" " BEARER:METADATA!
+   APP-CASES
    PORT @ SERVE-ON
    UNAVAILABLE ADMITTED UNKNOWN-KID NO-TOKEN MALFORMED SIGNATURES AUDIENCES
    TIMES STRINGS HOLDINGS STALE-CLAIM SPAWNED-CLAIM WINDOW
+   CALLERS
    HTTP:STOP
    URL-CASES
    ISSUE
@@ -742,11 +834,15 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    \ configuration for a server's run: each statement gets a start of its own.
    MCP$ SCOPE$ BEARER:METADATA!
    PORT @ SERVE-ON
-   FRESH REPEATED-SET METADATA-SCOPE
+   FRESH REPEATED-SET METADATA-SCOPE TWO-SCOPES
    HTTP:STOP
    s" " OFFLINE$ BEARER:METADATA!
    PORT @ SERVE-ON
    SCOPE-ONLY
+   HTTP:STOP
+   s" " s" api://bearer-test/access_as_user" BEARER:METADATA!
+   PORT @ SERVE-ON
+   URI-SCOPE
    HTTP:STOP
    METADATA-ACCEPTS
    \ The second statement replaces the first.
@@ -759,6 +855,9 @@ TASK:MIN-STACK TASK:TASK CLAIMER
       SCOPE$ BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
    s" METADATA! with CR LF in its URL throws E-OPERAND" T-LABEL
    [: s\" https://bearer-test.example/.well-known/oauth-protected-resource/\r\nX-Injected: 1"
+      SCOPE$ BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
+   s" METADATA! with a brace in its URL throws E-OPERAND" T-LABEL
+   [: s" https://bearer-test.example/.well-known/oauth-protected-resource/{x}"
       SCOPE$ BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
    s" METADATA! with a byte above $7E in its URL throws E-OPERAND" T-LABEL
    [: s\" https://bearer-test.example/.well-known/oauth-protected-resource/\xFF"
