@@ -6,7 +6,9 @@
 \ `req res BEARER:ADMIT? if ... then` and reads the caller's claims with CLAIM$
 \ and CLAIM-HOLDS?. METADATA! names this server's protected-resource metadata
 \ (RFC 9728 5.1) and the scope its tokens need (RFC 6750 3) in each 401
-\ challenge, and RESOURCE-METADATA answers that metadata's GET (RFC 9728 3).
+\ challenge, and RESOURCE-METADATA answers that metadata's GET (RFC 9728 3);
+\ beside that scope both name offline_access, without which Entra gives a
+\ client no refresh token.
 \ As a client, TOKEN gets a token from the token endpoint CLIENT! names, for
 \ the client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of), and
 \ REFRESH renews one with a refresh grant (RFC 6749 6); CURRENT keeps the
@@ -591,18 +593,28 @@ ENUM lookup-step
    end WELL-KNOWN STR:LEN + {: from:n :}
    url STR:DATA from + url STR:LEN from - >str row past PUT ;
 
+\ What a stated scope lacks to ask for a refresh token too.
+: OFFLINE ( str -- str )
+   {: scope:str :}
+   scope STR:LEN 0= scope s" offline_access" 0 WORD-FROM? or if s" " exit then
+   s"  offline_access" ;
+
 \ METADATA!'s statement as NAMED holds it: the allocation, NAMED-U and
 \ CHALLENGES-U; the well-known segment starts at end.
 : COMPOSED ( str str n -- SPAN:span<u8> n n )
    {: url:str scope:str end:n :}
-   url STR:LEN scope STR:LEN CHALLENGES-LEN {: cu:n :}
-   cu url STR:LEN RESOURCE-LEN + scope STR:LEN + {: total:n :}
+   scope OFFLINE {: more:str :}
+   scope STR:LEN more STR:LEN + {: su:n :}
+   url STR:LEN su CHALLENGES-LEN {: cu:n :}
+   cu url STR:LEN RESOURCE-LEN + {: at:n :}
+   at su + {: total:n :}
    total 0= if s" " STR:DATA 0 SPAN:MAKE 0 0 exit then
    total MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: row :}
-   NAMED-PREFIX url scope row 0 NAMING {: split:n :}
-   INVALID-PREFIX url scope row split NAMING drop
-   url end row cu RESOURCE+ {: past:n :}
-   scope row past PUT drop
+   more row scope row at PUT PUT drop
+   row at SPAN:SKIP SPAN:$ {: asked:str :}
+   NAMED-PREFIX url asked row 0 NAMING {: split:n :}
+   INVALID-PREFIX url asked row split NAMING drop
+   url end row cu RESOURCE+ drop
    row split cu ;
 
 \ HTTP writes a header value as it is: a quote or backslash would end the
@@ -702,8 +714,9 @@ public
 
 \ The URL of this server's protected-resource metadata and the scope of access
 \ a token needs here (RFC 6750 3), which each 401 challenge then names as
-\ resource_metadata and scope, and RESOURCE-METADATA answers; an empty text
-\ names none. The texts are copied, so they need not outlive the call. A built
+\ resource_metadata and scope, and RESOURCE-METADATA answers, the scope with
+\ offline_access beside it; an empty text names none. The texts are copied, so
+\ they need not outlive the call. A built
 \ program keeps neither: it challenges plainly until it states METADATA! at
 \ run time. E-OPERAND for a URL neither https nor http to a loopback IP
 \ literal, or not of the form
@@ -730,7 +743,7 @@ public
 \ The route handler a host gives HTTP:ROUTE for the GET of METADATA!'s URL
 \ path: 200 with the protected-resource metadata (RFC 9728 2), naming the
 \ resource that URL stands for, the issuer as its one authorization server
-\ and METADATA!'s scope tokens as scopes_supported, absent for an empty
+\ and the challenges' scope tokens as scopes_supported, absent for an empty
 \ scope. E-HTTP-STATE before ISSUER! or with no METADATA! URL stated.
 : RESOURCE-METADATA ( HTTP:request HTTP:response -- )
    nip {: answer:HTTP:response :}

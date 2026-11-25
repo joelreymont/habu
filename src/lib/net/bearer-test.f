@@ -310,14 +310,14 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    S\" Bearer error=\"invalid_token\", resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource\""
    REFUSED ;
 : BOTH ( n -- )
-   S\" Bearer resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource/mcp\", scope=\"tender.read tender.write\""
+   S\" Bearer resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource/mcp\", scope=\"tender.read tender.write offline_access\""
    REFUSED ;
 : BOTH-INVALID ( n -- )
-   S\" Bearer error=\"invalid_token\", resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource/mcp\", scope=\"tender.read tender.write\""
+   S\" Bearer error=\"invalid_token\", resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource/mcp\", scope=\"tender.read tender.write offline_access\""
    REFUSED ;
-: SCOPED ( n -- ) S\" Bearer scope=\"tender.read tender.write\"" REFUSED ;
+: SCOPED ( n -- ) S\" Bearer scope=\"tender.read tender.write offline_access\"" REFUSED ;
 : SCOPED-INVALID ( n -- )
-   S\" Bearer error=\"invalid_token\", scope=\"tender.read tender.write\"" REFUSED ;
+   S\" Bearer error=\"invalid_token\", scope=\"tender.read tender.write offline_access\"" REFUSED ;
 
 : ANSWERED ( n str -- )
    {: status:n want:str :}
@@ -609,6 +609,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : MCP$ ( -- str ) s" https://bearer-test.example/.well-known/oauth-protected-resource/mcp" ;
 : REPLACED$ ( -- str ) s" https://replaced.test/.well-known/oauth-protected-resource" ;
 : SCOPE$ ( -- str ) s" tender.read tender.write" ;
+: OFFLINE$ ( -- str ) s" tender.read tender.write offline_access" ;
 
 : METADATA-SCOPE ( -- )
    s" with a URL and a scope no Authorization challenges Bearer naming both" T-LABEL
@@ -617,11 +618,11 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    KID-A CURRENT MINT FLIP SEND BOTH-INVALID
    s" the metadata route names the resource below the well-known segment, the issuer and the scopes" T-LABEL
    s" /.well-known/oauth-protected-resource/mcp" OPEN FINISH
-   S\" {\"resource\":\"https://bearer-test.example/mcp\",\"authorization_servers\":[\"https://issuer.test\"],\"scopes_supported\":[\"tender.read\",\"tender.write\"]}"
+   S\" {\"resource\":\"https://bearer-test.example/mcp\",\"authorization_servers\":[\"https://issuer.test\"],\"scopes_supported\":[\"tender.read\",\"tender.write\",\"offline_access\"]}"
    ANSWERED ;
 
 : SCOPE-ONLY ( -- )
-   s" with only a scope no Authorization challenges Bearer naming the scope" T-LABEL
+   s" with only a scope, which names offline_access, no Authorization challenges Bearer naming it once" T-LABEL
    s" /claims" OPEN FINISH SCOPED
    s" with only a scope a changed signature byte is invalid, naming the scope" T-LABEL
    KID-A CURRENT MINT FLIP SEND SCOPED-INVALID ;
@@ -740,7 +741,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    PORT @ SERVE-ON
    FRESH REPEATED-SET METADATA-SCOPE
    HTTP:STOP
-   s" " SCOPE$ BEARER:METADATA!
+   s" " OFFLINE$ BEARER:METADATA!
    PORT @ SERVE-ON
    SCOPE-ONLY
    HTTP:STOP
