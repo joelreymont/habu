@@ -304,7 +304,7 @@ variable LABEL-U
    s" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" GE-SRC-CHECK-LINE
    s" P3 ( i64 -- i64 ) abs" GE-SRC-CHECK-LINE
    s" P4 ( i64 i64 -- i64 i64 ) /mod" GE-SRC-CHECK-LINE
-   s" P5 ( ^u8 -- ^u8 i64 ) count" GE-SRC-CHECK-LINE
+   s" P5 ( ^u8 -- str ) count" GE-SRC-CHECK-LINE
    s" P6 ( i64 i64 -- i64 i64 i64 ) depth" GE-SRC-CHECK-LINE
    s" P7 ( -- n ) 0 4096 3 $1002 -1 0 mmap" GE-SRC-CHECK-LINE
    s" P8 ( ^u8 ^a -- ^u8 ) swap over 0 ptr-field ! 0 ptr-field @" GE-SRC-CHECK-LINE
@@ -754,7 +754,7 @@ variable LABEL-U
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    70 s" RESET" s" package rejects duplicate public word" RUN-BAD-SOURCE
-   s" /test/gate-dictionary.f:10:1" s" package duplicate public word placed at the evaluating word" GE-EXPECT-ERR-HAS
+   s" /test/gate-dictionary.f:9:1" s" package duplicate public word placed at the evaluating word" GE-EXPECT-ERR-HAS
    GE-SRC-RESET
    s" package APP" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
@@ -863,7 +863,7 @@ variable LABEL-U
    s" ;package" GE-SRC-LINE
    s" GD-QUNDEF:TARGET ." GE-SRC-LINE
    s" TYPED-VARIABLE GD-UQ-A ^u8   variable GD-UQ-U" GE-SRC-LINE
-   s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ evaluate-closed ;" GE-SRC-LINE
+   s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ >str evaluate-closed ;" GE-SRC-LINE
    s" : GD-UQ-CATCH ( str -- n ) str> GD-UQ-U ! GD-UQ-A ! [: GD-UQ-GO ;] catch ;" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  undefine PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
    s"  GD-UQ-CATCH ." GE-SRC-LINE
@@ -1089,7 +1089,7 @@ variable LABEL-U
    s" GD-POINT GD-FW:FW.X @ ." GE-SRC-LINE
    s" GD-POINT GD-FW:FW.Y @ ." GE-SRC-LINE
    s" GD-POINT GD-FW:FW.FLAGS c@ ." GE-SRC-LINE
-   s" GD-POINT GD-FW:FW.NAME @ 2 type cr" GE-SRC-LINE ;
+   s" GD-POINT GD-FW:FW.NAME @ 2 >str type cr" GE-SRC-LINE ;
 
 : STRUCTURE-SOURCE ( -- )
    GE-SRC-RESET
@@ -1111,8 +1111,8 @@ variable LABEL-U
    s" GD-POINT POINT.X @ ." GE-SRC-LINE
    s" GD-POINT POINT.Y @ ." GE-SRC-LINE
    s" GD-POINT POINT.FLAGS c@ ." GE-SRC-LINE
-   s" GD-POINT POINT.NAME @ 2 type cr" GE-SRC-LINE
-   s" GD-PTR @ 2 type cr" GE-SRC-LINE
+   s" GD-POINT POINT.NAME @ 2 >str type cr" GE-SRC-LINE
+   s" GD-PTR @ 2 >str type cr" GE-SRC-LINE
    s" : GD-USE-X ( ^a -- ^a ) POINT.X ;" GE-SRC-LINE
    s" : GD-USE-NAME ( ^a -- ^^u8 ) POINT.NAME ;" GE-SRC-LINE
    s" : GD-USE-PTR ( -- ^^u8 ) GD-PTR ;" GE-SRC-LINE

@@ -1,4 +1,3 @@
-split-str
 \ xref-test-fixture.f - focused tests for live dictionary xref words.
 
 require src/lib/test.f
@@ -69,7 +68,7 @@ public
    XRT-SAID-NULL
    REJECTION:CAPTURE [: XREF-NULL XREF-FLAGS drop ;] 70 TTHROWSQ
    XRT-SAID-NULL
-   REJECTION:CAPTURE [: XREF-NULL XREF-NAME$ 2drop ;] 70 TTHROWSQ
+   REJECTION:CAPTURE [: XREF-NULL XREF-NAME$ drop ;] 70 TTHROWSQ
    XRT-SAID-NULL ;
 
 : XRT-UNDEFINE ( -- )

@@ -1,4 +1,3 @@
-split-str
 \ zed-run-lib.f - checked remote device-run harness over argv-spawned ssh/scp/rsync
 \ (src/lib/process-command.f), never a shell. Remote commands are built from
 \ controlled path tokens only; test data travels as files. Failures throw E-ZED-*;
@@ -41,8 +40,8 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 
 \ ---- env-driven configuration ------------------------------------------------
 
-: ENV-OR ( str str -- str ) {: da:^ du:n name:^ nameu:n :}
-   name nameu GETENV dup 0= if 2drop da du then ;
+: ENV-OR ( str str -- str ) {: ds:str name:str :}
+   name GETENV dup STR:LEN 0= if drop ds then ;
 
 : HOST$ ( -- str )
    s" zed" s" ZED_HOST" ENV-OR ;
@@ -61,31 +60,31 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 : CMD-RESET ( -- )
    0 CMD-U ! ;
 
-: CMD-RAW ( str -- ) {: a:^ u:n :}
-   CMD-U @ u + CMD-CAP > if E-ZED-ARG throw then
-   a CMD-BUF CMD-U @ + u BYTE-COPY
-   CMD-U @ u + CMD-U ! ;
+: CMD-RAW ( str -- ) {: s:str :}
+   CMD-U @ s STR:LEN + CMD-CAP > if E-ZED-ARG throw then
+   s STR:DATA CMD-BUF CMD-U @ + s STR:LEN BYTE-COPY
+   CMD-U @ s STR:LEN + CMD-U ! ;
 
 : CMD-TOK ( str -- )
    CMD-U @ 0 > if s"  " CMD-RAW then
    CMD-RAW ;
 
 : CMD$ ( -- str )
-   CMD-BUF CMD-U @ ;
+   CMD-BUF CMD-U @ >str ;
 
 \ ---- rsync/scp destination: host:scratch/ ------------------------------------
 
-: DEST+ ( str -- ) {: a:^ u:n :}
-   DEST-U @ u + DEST-CAP > if E-ZED-ARG throw then
-   a DEST-BUF DEST-U @ + u BYTE-COPY
-   DEST-U @ u + DEST-U ! ;
+: DEST+ ( str -- ) {: s:str :}
+   DEST-U @ s STR:LEN + DEST-CAP > if E-ZED-ARG throw then
+   s STR:DATA DEST-BUF DEST-U @ + s STR:LEN BYTE-COPY
+   DEST-U @ s STR:LEN + DEST-U ! ;
 
 : DEST-BUILD ( -- )
    0 DEST-U !
-   HOST$ DEST+  s" :" DEST+  SCRATCH-BUF SCRATCH-U @ DEST+  s" /" DEST+ ;
+   HOST$ DEST+  s" :" DEST+  SCRATCH-BUF SCRATCH-U @ >str DEST+  s" /" DEST+ ;
 
 : DEST$ ( -- str )
-   DEST-BUF DEST-U @ ;
+   DEST-BUF DEST-U @ >str ;
 
 \ ---- ssh/scp/rsync argv runners (capture stdout/stderr/rc) -------------------
 
@@ -94,25 +93,25 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    s" -o" CMD:ARG+  s" ConnectTimeout=10" CMD:ARG+ ;
 
 : SSH-RUN ( CMD:command str -- CMD:command rc )
-   {: a:^ u:n :}
+   {: s:str :}
    BATCH-OPTS
    HOST$ CMD:ARG+
-   a u CMD:ARG+
+   s CMD:ARG+
    SSH$ TIMEOUT-MS @ >MS CMD:RUN-RC MATCH result
      ok  OF >RC ENDOF
      err OF >RC ENDOF
    ;MATCH ;
 
 : EXEC-BODY ( str CMD:command -- rc CMD:command )
-   >r {: a:^ u:n :} r>
-   a u SSH-RUN swap ;
+   >r {: s:str :} r>
+   s SSH-RUN swap ;
 
 : SSH-EXEC ( str -- rc )   \ the rc alone; the captures end with the scope
    [: EXEC-BODY ;] CMD:WITH-COMMAND ;
 
 : WITH-RUN-BODY ( R str [ R rc CMD:command -- S CMD:command ] CMD:command -- S CMD:command )
-   >r {: a:^ u:n body :} r>
-   a u SSH-RUN swap body execute ;
+   >r {: s:str body :} r>
+   s SSH-RUN swap body execute ;
 
 \ Run the upload's argv and throw E-ZED-PUT for a nonzero completion.
 : PUT-RUN ( CMD:command str -- CMD:command )
@@ -122,16 +121,16 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    ;MATCH ;
 
 : PUT-DIR-BODY ( str CMD:command -- CMD:command )
-   >r {: a:^ u:n :} r>
+   >r {: s:str :} r>
    s" -rlt" CMD:ARG+
-   a u CMD:ARG+
+   s CMD:ARG+
    DEST$ CMD:ARG+
    RSYNC$ PUT-RUN ;
 
 : PUT-FILE-BODY ( str CMD:command -- CMD:command )
-   >r {: a:^ u:n :} r>
+   >r {: s:str :} r>
    s" -o" CMD:ARG+  s" BatchMode=yes" CMD:ARG+
-   a u CMD:ARG+
+   s CMD:ARG+
    DEST$ CMD:ARG+
    SCP$ PUT-RUN ;
 
@@ -140,27 +139,27 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 : WS-BYTE? ( n -- bool ) {: c:n :}   \ trailing whitespace: LF $0A, CR $0D, space $20
    c $0A = c $0D = or c $20 = or ;
 
-: TRIM-TRAIL ( str -- str ) {: a:^ u:n :}
-   u TRIM-N !
+: TRIM-TRAIL ( str -- str ) {: s:str :}
+   s STR:LEN TRIM-N !
    begin
-      TRIM-N @ 0 > if a TRIM-N @ 1- + c@ WS-BYTE? else NO then
+      TRIM-N @ 0 > if s STR:DATA TRIM-N @ 1- + c@ WS-BYTE? else NO then
    while
       TRIM-N @ 1- TRIM-N !
    repeat
-   a TRIM-N @ ;
+   s STR:DATA TRIM-N @ >str ;
 
-: SCRATCH! ( str -- ) {: a:^ u:n :}
-   u SCRATCH-CAP > if E-ZED-ARG throw then
-   a SCRATCH-BUF u BYTE-COPY
-   u SCRATCH-U ! ;
+: SCRATCH! ( str -- ) {: s:str :}
+   s STR:LEN SCRATCH-CAP > if E-ZED-ARG throw then
+   s STR:DATA SCRATCH-BUF s STR:LEN BYTE-COPY
+   s STR:LEN SCRATCH-U ! ;
 
 public
 
 \ ---- availability / skip policy ----------------------------------------------
 
-: ENV-AVAILABLE? ( str -- bool ) {: a:^ u:n :}
-   u 0= if NO exit then
-   a u s" 0" STR:= if NO exit then
+: ENV-AVAILABLE? ( str -- bool ) {: s:str :}
+   s STR:LEN 0= if NO exit then
+   s s" 0" STR:= if NO exit then
    YES ;
 
 : AVAILABLE? ( -- bool )
@@ -201,16 +200,16 @@ public
 : WITH-RUN ( R str [ R rc CMD:command -- S CMD:command ] -- S )
    [: WITH-RUN-BODY ;] CMD:WITH-COMMAND ;
 
-: RUN-IN ( str -- rc ) {: a:^ u:n :}   \ run with cwd = scratch
+: RUN-IN ( str -- rc ) {: s:str :}   \ run with cwd = scratch
    CMD-RESET
-   s" cd" CMD-TOK  SCRATCH-BUF SCRATCH-U @ CMD-TOK  s" &&" CMD-TOK  a u CMD-TOK
+   s" cd" CMD-TOK  SCRATCH-BUF SCRATCH-U @ >str CMD-TOK  s" &&" CMD-TOK  s CMD-TOK
    CMD$ SSH-EXEC ;
 
 : PING ( -- )   \ reachability probe: throws E-ZED-UNREACH if the host is down
    s" true" RUN UNREACH-OK ;
 
 : SCRATCH$ ( -- str )
-   SCRATCH-BUF SCRATCH-U @ ;
+   SCRATCH-BUF SCRATCH-U @ >str ;
 
 private
 
@@ -227,7 +226,7 @@ public
 : SCRATCH-RM ( -- )   \ remove the scratch tree (fail-closed)
    SCRATCH-U @ 0= if exit then
    CMD-RESET
-   s" rm -rf" CMD-TOK  SCRATCH-BUF SCRATCH-U @ CMD-TOK
+   s" rm -rf" CMD-TOK  SCRATCH-BUF SCRATCH-U @ >str CMD-TOK
    CMD$ SSH-EXEC RUN-OK
    0 SCRATCH-U ! ;
 
@@ -239,13 +238,13 @@ public
    DEST-BUILD
    [: PUT-FILE-BODY ;] CMD:WITH-COMMAND ;
 
-: HAVE-TOOL? ( str -- bool ) {: a:^ u:n :}   \ remote `command -v <tool>`
+: HAVE-TOOL? ( str -- bool ) {: s:str :}   \ remote `command -v <tool>`
    CMD-RESET
-   s" command -v" CMD-TOK  a u CMD-TOK  s" >/dev/null 2>&1" CMD-TOK
+   s" command -v" CMD-TOK  s CMD-TOK  s" >/dev/null 2>&1" CMD-TOK
    CMD$ SSH-EXEC RC>N 0= ;
 
 : NEED-TOOL ( str -- )   \ fail-closed if a required remote tool is absent
-   2dup HAVE-TOOL? if 2drop exit then
-   2drop E-ZED-TOOLCHAIN throw ;
+   dup HAVE-TOOL? if drop exit then
+   drop E-ZED-TOOLCHAIN throw ;
 
 ;package

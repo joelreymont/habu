@@ -1,4 +1,3 @@
-split-str
 \ script-verify.f - independent exhaustive verifier for the Unicode Script table.
 \ It reads both inputs with a parser of its own, checks each variant's name and
 \ tag against PropertyValueAliases.txt, every scalar's answer against
@@ -61,9 +60,9 @@ CODEGEN:BUFFER TEXT
 
 \ The whole file, in a buffer the process keeps: names point into it.
 : READ-INPUT ( str -- str )
-   2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
-   path pathu buf cap FS:READ-ALL {: got:n :}
-   buf got ;
+   dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:str buf:str :}
+   path buf STR:DATA buf STR:LEN FS:READ-ALL {: got:n :}
+   buf STR:DATA got >str ;
 
 : HEX-DIGIT ( n -- n bool ) {: c:n :}
    c 48 >= c 57 <= and if c 48 - true exit then
@@ -71,50 +70,50 @@ CODEGEN:BUFFER TEXT
    c 97 >= c 102 <= and if c 87 - true exit then
    0 false ;
 
-: PARSE-HEX ( str -- n ) {: a:^ u:n :}
-   u 0= u 6 > or if E-SCRIPT-MISMATCH throw then
-   0 u 0 ?do
-      16 * a i + c@ HEX-DIGIT 0= if E-SCRIPT-MISMATCH throw then +
+: PARSE-HEX ( str -- n ) {: s:str :}
+   s STR:LEN 0= s STR:LEN 6 > or if E-SCRIPT-MISMATCH throw then
+   0 s STR:LEN 0 ?do
+      16 * s STR:DATA i + c@ HEX-DIGIT 0= if E-SCRIPT-MISMATCH throw then +
    loop ;
 
-: BYTE-INDEX ( str n -- n ) {: a:^ u:n c:n :}
-   0 begin dup u < while
-      dup a + c@ c = if exit then
+: BYTE-INDEX ( str n -- n ) {: s:str c:n :}
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ c = if exit then
       1+
    repeat ;
 
 \ Each line of a file, in order.
-: EACH-LINE ( str [ str -- ] -- ) {: a:^ u:n q :}
-   0 begin dup u <= while
+: EACH-LINE ( str [ str -- ] -- ) {: s:str q :}
+   0 begin dup s STR:LEN <= while
       {: start:n :}
-      a u LINE-FEED start STR:SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
+      s LINE-FEED start STR:SPLIT-NEXT {: line:str next:n valid:bool :}
       valid 0= if E-SCRIPT-MISMATCH throw then
-      line lineu q execute
+      line q execute
       next
    repeat drop ;
 
 \ The field of a `;`-separated line that starts at start, trimmed.
-: FIELD-AT ( str n -- str n ) {: a:^ u:n start:n :}
-   a u SEMICOLON start STR:SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
+: FIELD-AT ( str n -- str n ) {: s:str start:n :}
+   s SEMICOLON start STR:SPLIT-NEXT {: f:str next:n valid:bool :}
    valid 0= if E-SCRIPT-MISMATCH throw then
-   fa fu STR:TRIM next ;
+   f STR:TRIM next ;
 
-: NAME+ ( str -- ) {: a:^ u:n :}
+: NAME+ ( str -- ) {: s:str :}
    NAME-N @ NAME-CAPACITY >= if E-SCRIPT-MISMATCH throw then
-   a NAME-N @ NAME-A !
-   u NAME-N @ NAME-U !
+   s STR:DATA NAME-N @ NAME-A !
+   s STR:LEN NAME-N @ NAME-U !
    NAME-N @ 1+ NAME-N ! ;
 
-: ALIAS-LINE ( str -- ) {: a:^ u:n :}
-   a u 0 FIELD-AT {: pa:^ pu:n next:n :}
-   pa pu s" sc" STR:= 0= if exit then
-   a u next FIELD-AT {: code:^ codeu:n next2:n :}
-   codeu 4 <> if E-SCRIPT-MISMATCH throw then
-   a u next2 FIELD-AT drop NAME+ ;
+: ALIAS-LINE ( str -- ) {: s:str :}
+   s 0 FIELD-AT {: p:str next:n :}
+   p s" sc" STR:= 0= if exit then
+   s next FIELD-AT {: code:str next2:n :}
+   code STR:LEN 4 <> if E-SCRIPT-MISMATCH throw then
+   s next2 FIELD-AT drop NAME+ ;
 
-: NAME-INDEX ( str -- n ) {: a:^ u:n :}
+: NAME-INDEX ( str -- n ) {: s:str :}
    NAME-N @ 0 ?do
-      a u i NAME-A @ i NAME-U @ STR:= if i unloop exit then
+      s i NAME-A @ i NAME-U @ >str STR:= if i unloop exit then
    loop
    E-SCRIPT-MISMATCH throw ;
 
@@ -130,19 +129,19 @@ CODEGEN:BUFFER TEXT
    tag 1+ at ! ;
 
 \ `XXXX` or `XXXX..YYYY`.
-: RANGE-BOUNDS ( str -- n n ) {: a:^ u:n :}
-   a u DOT BYTE-INDEX {: pos:n :}
-   pos u = if a u PARSE-HEX dup exit then
-   pos 2 + u >= if E-SCRIPT-MISMATCH throw then
-   a pos + 1+ c@ DOT <> if E-SCRIPT-MISMATCH throw then
-   a pos PARSE-HEX a pos 2 + + u pos 2 + - PARSE-HEX ;
+: RANGE-BOUNDS ( str -- n n ) {: s:str :}
+   s DOT BYTE-INDEX {: pos:n :}
+   pos s STR:LEN = if s PARSE-HEX dup exit then
+   pos 2 + s STR:LEN >= if E-SCRIPT-MISMATCH throw then
+   s STR:DATA pos + 1+ c@ DOT <> if E-SCRIPT-MISMATCH throw then
+   s STR:DATA pos >str PARSE-HEX s STR:DATA pos 2 + + s STR:LEN pos 2 + - >str PARSE-HEX ;
 
-: SCRIPTS-LINE ( str -- ) {: line:^ lineu:n :}
-   line line lineu HASH BYTE-INDEX STR:TRIM {: a:^ u:n :}
-   u 0= if exit then
-   a u 0 FIELD-AT {: ra:^ ru:n next:n :}
-   a u next FIELD-AT drop NAME-INDEX {: tag:n :}
-   ra ru RANGE-BOUNDS {: lo:n hi:n :}
+: SCRIPTS-LINE ( str -- ) {: line:str :}
+   line STR:DATA line HASH BYTE-INDEX >str STR:TRIM {: row:str :}
+   row STR:LEN 0= if exit then
+   row 0 FIELD-AT {: range:str next:n :}
+   row next FIELD-AT drop NAME-INDEX {: tag:n :}
+   range RANGE-BOUNDS {: lo:n hi:n :}
    hi lo < if E-SCRIPT-MISMATCH throw then
    hi 1+ lo ?do i tag TRUTH+ loop ;
 
@@ -193,9 +192,9 @@ CODEGEN:BUFFER TEXT
 
 : CHECK-REGENERATION ( -- )
    UNICODE-SCRIPT-TOOL:LOAD-PINNED
-   UNICODE-SCRIPT-TOOL:RENDER {: generated:^ generatedu:n :}
-   DATA-PATH$ READ-INPUT {: buf:^ got:n :}
-   generated generatedu buf got STR:= 0= if E-SCRIPT-MISMATCH throw then ;
+   UNICODE-SCRIPT-TOOL:RENDER {: generated:str :}
+   DATA-PATH$ READ-INPUT {: buf:str :}
+   generated buf STR:= 0= if E-SCRIPT-MISMATCH throw then ;
 
 public
 

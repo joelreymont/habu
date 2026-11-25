@@ -1,4 +1,3 @@
-split-str
 \ script-generate.f - deterministic Unicode Script source generator.
 \ The variants are the Script values of PropertyValueAliases.txt in its order,
 \ so a value's tag is its index there. Each Scripts.txt row marks its scalars;
@@ -62,43 +61,43 @@ CODEGEN:BUFFER OUTPUT
 
 \ The whole file, in a buffer the process keeps: names point into it.
 : READ-INPUT ( str -- str )
-   2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
-   path pathu buf cap FS:READ-ALL {: got:n :}
-   buf got ;
+   dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:str buf:str :}
+   path buf STR:DATA buf STR:LEN FS:READ-ALL {: got:n :}
+   buf STR:DATA got >str ;
 
-: NAME+ ( str -- ) {: a:^ u:n :}
-   u 0= if UNICODE-CLASS-TOOL:E-SYNTAX throw then
+: NAME+ ( str -- ) {: s:str :}
+   s STR:LEN 0= if UNICODE-CLASS-TOOL:E-SYNTAX throw then
    NAME-N @ NAME-CAPACITY >= if UNICODE-CLASS-TOOL:E-CAPACITY throw then
-   a NAME-N @ NAME-A !
-   u NAME-N @ NAME-U !
+   s STR:DATA NAME-N @ NAME-A !
+   s STR:LEN NAME-N @ NAME-U !
    NAME-N @ 1+ NAME-N ! ;
 
-: NEXT-FIELD ( str n -- str n bool ) {: a:^ u:n start:n :}
-   a u SEMICOLON start STR:SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
-   fa fu STR:TRIM next valid ;
+: NEXT-FIELD ( str n -- str n bool ) {: s:str start:n :}
+   s SEMICOLON start STR:SPLIT-NEXT {: f:str next:n valid:bool :}
+   f STR:TRIM next valid ;
 
 \ An `sc ; Code ; Long_Name [; Alias]` row adds its long name.
-: ALIAS-ROW ( str -- ) {: line:^ lineu:n :}
-   line lineu 0 NEXT-FIELD {: pa:^ pu:n next1:n ok1:bool :}
-   pa pu s" sc" STR:= 0= if exit then
-   line lineu next1 NEXT-FIELD {: ca:^ cu:n next2:n ok2:bool :}
-   line lineu next2 NEXT-FIELD {: la:^ lu:n next3:n ok3:bool :}
+: ALIAS-ROW ( str -- ) {: line:str :}
+   line 0 NEXT-FIELD {: p:str next1:n ok1:bool :}
+   p s" sc" STR:= 0= if exit then
+   line next1 NEXT-FIELD {: c:str next2:n ok2:bool :}
+   line next2 NEXT-FIELD {: l:str next3:n ok3:bool :}
    ok1 ok2 and ok3 and 0= if UNICODE-CLASS-TOOL:E-SYNTAX throw then
-   cu 4 <> if UNICODE-CLASS-TOOL:E-SYNTAX throw then
-   next3 drop la lu NAME+ ;
+   c STR:LEN 4 <> if UNICODE-CLASS-TOOL:E-SYNTAX throw then
+   next3 drop l NAME+ ;
 
-: SCAN-ALIASES ( str -- ) {: a:^ u:n :}
-   0 begin dup u <= while
+: SCAN-ALIASES ( str -- ) {: s:str :}
+   0 begin dup s STR:LEN <= while
       {: start:n :}
-      a u LINE-FEED start STR:SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
+      s LINE-FEED start STR:SPLIT-NEXT {: line:str next:n valid:bool :}
       valid 0= if UNICODE-CLASS-TOOL:E-SYNTAX throw then
-      line lineu ALIAS-ROW
+      line ALIAS-ROW
       next
    repeat drop ;
 
-: NAME-INDEX ( str -- n ) {: a:^ u:n :}
+: NAME-INDEX ( str -- n ) {: s:str :}
    NAME-N @ 0 ?do
-      a u i NAME-A @ i NAME-U @ STR:= if i unloop exit then
+      s i NAME-A @ i NAME-U @ >str STR:= if i unloop exit then
    loop
    UNICODE-CLASS-TOOL:E-SYNTAX throw ;
 
@@ -107,9 +106,9 @@ CODEGEN:BUFFER OUTPUT
    at @ 0<> if UNICODE-CLASS-TOOL:E-RANGE throw then
    tag 1+ at ! ;
 
-: SCRIPT-ROW ( n n str -- ) {: lo:n hi:n a:^ u:n :}
+: SCRIPT-ROW ( n n str -- ) {: lo:n hi:n s:str :}
    lo 0 < hi lo < or hi SCALAR-MAX > or if UNICODE-CLASS-TOOL:E-RANGE throw then
-   a u NAME-INDEX {: tag:n :}
+   s NAME-INDEX {: tag:n :}
    hi 1+ lo ?do i tag MARK-SCALAR loop ;
 
 : CLEAR-MARKS ( -- )

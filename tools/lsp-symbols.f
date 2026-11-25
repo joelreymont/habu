@@ -1,4 +1,3 @@
-split-str
 \ lsp-symbols.f - workspace/symbol: the definitions the open documents' last
 \ completed checks retained (tools/lsp-defs.f). Document symbols
 \ (tools/lsp-outline.f) answer with SYMBOL.
@@ -29,9 +28,9 @@ variable SHOWN-N                         \ and the symbols it lists so far
 DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 
 : CONTAINS-CI? ( str str -- bool )
-   {: a:^ u:n b:^ v:n :}
-   u v - 1+ 0 ?do
-      a i + v b v STR:=CI if unloop true exit then
+   {: a:str b:str :}
+   a STR:LEN b STR:LEN - 1+ 0 ?do
+      a STR:DATA i + b STR:LEN >str b STR:=CI if unloop true exit then
    loop
    false ;
 
@@ -41,26 +40,26 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
       some OF IDX>N ENDOF
    ;MATCH ;
 
-: PACKAGE$ ( -- str )  QUERY-A @ COLON-AT @ ;
+: PACKAGE$ ( -- str )  QUERY-A @ COLON-AT @ >str ;
 : TAIL$ ( -- str )
    COLON-AT @ 1+ {: at:n :}
-   QUERY-A @ at + QUERY-U @ at - ;
+   QUERY-A @ at + QUERY-U @ at - >str ;
 
 \ The text after the word's first colon when that colon is neither its first
 \ nor its last byte, else the whole word: what a caller writes after a
 \ package's colon, also for a word re-exported by EXPORT PKG:WORD.
 : REC-TAIL$ ( n -- str )
-   REC-WORD$ {: w:^ wu:n :}
-   w wu COLON-IN {: at:n :}
-   at 0 > at wu 1- < and if w at 1+ + wu at 1+ - exit then
-   w wu ;
+   REC-WORD$ {: w:str :}
+   w COLON-IN {: at:n :}
+   at 0 > at w STR:LEN 1- < and if w STR:DATA at 1+ + w STR:LEN at 1+ - >str exit then
+   w ;
 
 \ Its word holds the query; or, for a query with a colon, the checker recorded
 \ it public in the package before the first colon (compared whole) and its tail
 \ holds the text after it. ASCII letters compare without case.
 : LISTED? ( n -- bool )
    {: r:n :}
-   r REC-WORD$ QUERY-A @ QUERY-U @ CONTAINS-CI? if true exit then
+   r REC-WORD$ QUERY-A @ QUERY-U @ >str CONTAINS-CI? if true exit then
    COLON-AT @ 0 < if false exit then
    r REC-PUBLIC? 0= if false exit then
    r REC-PACKAGE$ PACKAGE$ STR:=CI 0= if false exit then
@@ -72,14 +71,14 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 : NAME$ ( n -- str )
    {: r:n :}
    r REC-PUBLIC? 0= if r REC-WORD$ exit then
-   r REC-TAIL$ {: w:^ wu:n :}
-   r REC-PACKAGE$ {: p:^ pu:n :}
-   pu 1+ wu + {: nu:n :}
+   r REC-TAIL$ {: w:str :}
+   r REC-PACKAGE$ {: p:str :}
+   p STR:LEN 1+ w STR:LEN + {: nu:n :}
    nu 1+ NAME-B-RESERVE
-   p 0 NAME-B pu BYTE-COPY
-   [char] : pu NAME-B c!
-   w pu 1+ NAME-B wu BYTE-COPY
-   0 NAME-B nu ;
+   p STR:DATA 0 NAME-B p STR:LEN BYTE-COPY
+   [char] : p STR:LEN NAME-B c!
+   w STR:DATA p STR:LEN 1+ NAME-B w STR:LEN BYTE-COPY
+   0 NAME-B nu >str ;
 
 : KIND ( n -- n )
    {: class:n :}
@@ -95,16 +94,16 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 \ held the file when the check completed, else at its path's file URI.
 \ containerName: the package the word was recorded under; a global has none.
 : NAMED ( ^JSON:writer n n str -- ^JSON:writer )
-   {: g:n r:n nm:^ nu:n :}
+   {: g:n r:n nm:str :}
    WRITE-OBJECT-START
-   s" name" nm nu WRITE-FIELD-S WRITE-COMMA
+   s" name" nm WRITE-FIELD-S WRITE-COMMA
    s" kind" r REC-CLASS KIND WRITE-FIELD-U WRITE-COMMA
    s" location" WRITE-KEY WRITE-OBJECT-START
       s" uri" g GROUP-URI$ WRITE-FIELD-RAW WRITE-COMMA
       r REC-RANGE LSP-TEXT:RANGE-AT
    WRITE-OBJECT-END
-   r REC-PACKAGE$ {: p:^ pu:n :}
-   pu 0 > if WRITE-COMMA s" containerName" p pu WRITE-FIELD-S then
+   r REC-PACKAGE$ {: p:str :}
+   p STR:LEN 0 > if WRITE-COMMA s" containerName" p WRITE-FIELD-S then
    WRITE-OBJECT-END ;
 
 public
@@ -137,11 +136,11 @@ public
 \ file while the store keeps one, else the latest. The order follows the store:
 \ check after check, oldest first, each check's files in first-named order.
 : ANSWER ( ^JSON:writer str -- ^JSON:writer )
-   {: w q:^ qu:n :}
+   {: w q:str :}
    w OUT !
-   q QUERY-A !
-   qu QUERY-U !
-   q qu COLON-IN COLON-AT !
+   q STR:DATA QUERY-A !
+   q STR:LEN QUERY-U !
+   q COLON-IN COLON-AT !
    0 SHOWN-N !
    w WRITE-ARRAY-START drop
    [: GROUP-SYMBOLS ;] DEFS-EACH

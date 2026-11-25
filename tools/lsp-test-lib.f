@@ -1,4 +1,3 @@
-split-str
 \ lsp-test-lib.f - the language server end to end: tools/lsp.f run as a
 \ client runs it, with compatible cases sharing one child.
 \ Run: bin/hb --load tools/lsp-test.f
@@ -794,24 +793,26 @@ OPEN-CAP TYPED-BUFFER OPEN-LENS n
 variable OPEN-N
 
 : READY ( ^a -- )  256 N>BLEN INIT ;
+: BYTES+ ( str ^a -- )  {: s:str buf:^ :}  s STR:DATA s STR:LEN N>BLEN buf APPEND-SPAN ;
+: BYTES! ( str ^a -- )  {: s:str buf:^ :}  s STR:DATA s STR:LEN N>BLEN buf REPLACE ;
 
-: LABEL$ ( -- str )  LABEL-B SPAN$ BLEN>N ;
-: SESSION$ ( -- str )  SESSION-B SPAN$ BLEN>N ;
-: IN$ ( -- str )  IN-B SPAN$ BLEN>N ;
-: WANT$ ( -- str )  WANT-B SPAN$ BLEN>N ;
+: LABEL$ ( -- str )  LABEL-B SPAN$ BLEN>N >str ;
+: SESSION$ ( -- str )  SESSION-B SPAN$ BLEN>N >str ;
+: IN$ ( -- str )  IN-B SPAN$ BLEN>N >str ;
+: WANT$ ( -- str )  WANT-B SPAN$ BLEN>N >str ;
 : MSG$ ( -- str )  MSG-TEXT @ VEC:BYTES ;
-: PAR$ ( -- str )  PAR-B SPAN$ BLEN>N ;
-: DIR$ ( -- str )  DIR-B SPAN$ BLEN>N ;
-: IN+ ( str -- )  N>BLEN IN-B APPEND-SPAN ;
-: WANT+ ( str -- )  N>BLEN WANT-B APPEND-SPAN ;
+: PAR$ ( -- str )  PAR-B SPAN$ BLEN>N >str ;
+: DIR$ ( -- str )  DIR-B SPAN$ BLEN>N >str ;
+: IN+ ( str -- )  IN-B BYTES+ ;
+: WANT+ ( str -- )  WANT-B BYTES+ ;
 : MSG+ ( str -- )  MSG-TEXT @ VEC:APPEND ;
 : MSG-CLEAR ( -- )  MSG-TEXT @ 0 VEC:RESIZE ;
-: PAR+ ( str -- )  N>BLEN PAR-B APPEND-SPAN ;
-: EXP$ ( -- str )  EXP-B SPAN$ BLEN>N ;
-: EXP+ ( str -- )  N>BLEN EXP-B APPEND-SPAN ;
-: TXT$ ( -- str )  TXT-B SPAN$ BLEN>N ;
-: OUT$ ( -- str )  OUT-SPAN SPAN:$ drop OUT-LEN @ ;
-: ERR$ ( -- str )  ERR-SPAN SPAN:$ drop ERR-LEN @ ;
+: PAR+ ( str -- )  PAR-B BYTES+ ;
+: EXP$ ( -- str )  EXP-B SPAN$ BLEN>N >str ;
+: EXP+ ( str -- )  EXP-B BYTES+ ;
+: TXT$ ( -- str )  TXT-B SPAN$ BLEN>N >str ;
+: OUT$ ( -- str )  OUT-SPAN SPAN:$ STR:DATA OUT-LEN @ >str ;
+: ERR$ ( -- str )  ERR-SPAN SPAN:$ STR:DATA ERR-LEN @ >str ;
 
 : INT$ ( n -- str )  SB-RESET FMT:SB-INT SB$ ;
 
@@ -826,32 +827,32 @@ variable OPEN-N
 
 \ The body must not live in SB, where the header is built.
 : FRAMED ( str -- )
-   {: a:^ u:n :}
-   u HEAD$ IN+
-   a u IN+ ;
+   {: s:str :}
+   s STR:LEN HEAD$ IN+
+   s IN+ ;
 
 \ A body framed in another header form: BEFORE, the length, AFTER, the body.
 : FORM ( str str str -- )
-   {: a:^ u:n b:^ bu:n c:^ cu:n :}
-   b bu IN+
-   u INT$ IN+
-   c cu IN+
-   a u IN+ ;
+   {: s:str b:str c:str :}
+   b IN+
+   s STR:LEN INT$ IN+
+   c IN+
+   s IN+ ;
 
 : ASK$ ( str str -- str )
-   {: i:^ iu:n m:^ mu:n :}
+   {: id:str m:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"method\":\"" MSG+ m mu MSG+ s\" \"}" MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
+   s\" ,\"method\":\"" MSG+ m MSG+ s\" \"}" MSG+
    MSG$ ;
 
 : ASK ( str str -- )  ASK$ FRAMED ;
 
 : TELL$ ( str str -- str )
-   {: m:^ mu:n p:^ pu:n :}
+   {: m:str p:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"method\":\"" MSG+ m mu MSG+ s\" \"" MSG+
-   pu 0 > if s\" ,\"params\":" MSG+ p pu MSG+ then
+   s\" {\"jsonrpc\":\"2.0\",\"method\":\"" MSG+ m MSG+ s\" \"" MSG+
+   p STR:LEN 0 > if s\" ,\"params\":" MSG+ p MSG+ then
    s" }" MSG+
    MSG$ ;
 
@@ -873,17 +874,17 @@ variable OPEN-N
 : URI-B ( -- str )  s\" \"file:///habu-lsp-test/a%20b.f\"" ;
 
 : OPEN-PARAMS ( str str str -- )
-   {: u:^ uu:n v:^ vu:n t:^ tu:n :}
+   {: u:str v:str t:str :}
    PAR-B CLEAR
-   s\" {\"textDocument\":{\"uri\":" PAR+ u uu PAR+
-   s\" ,\"languageId\":\"habu\",\"version\":" PAR+ v vu PAR+
-   s\" ,\"text\":" PAR+ t tu PAR+ s" }}" PAR+ ;
+   s\" {\"textDocument\":{\"uri\":" PAR+ u PAR+
+   s\" ,\"languageId\":\"habu\",\"version\":" PAR+ v PAR+
+   s\" ,\"text\":" PAR+ t PAR+ s" }}" PAR+ ;
 
 : CHANGE-PARAMS ( str str -- )
-   {: u:^ uu:n c:^ cu:n :}
+   {: u:str c:str :}
    PAR-B CLEAR
-   s\" {\"textDocument\":{\"uri\":" PAR+ u uu PAR+
-   s\" ,\"version\":2},\"contentChanges\":" PAR+ c cu PAR+ s" }" PAR+ ;
+   s\" {\"textDocument\":{\"uri\":" PAR+ u PAR+
+   s\" ,\"version\":2},\"contentChanges\":" PAR+ c PAR+ s" }" PAR+ ;
 
 : OPEN-DOC ( str -- )
    s" 1" s\" \": A ( -- ) ;\\n\"" OPEN-PARAMS
@@ -901,46 +902,46 @@ variable OPEN-N
    s" textDocument/didChange" PAR$ TELL ;
 
 : CLOSE-DOC ( str -- )
-   {: u:^ uu:n :}
+   {: u:str :}
    PAR-B CLEAR
-   s\" {\"textDocument\":{\"uri\":" PAR+ u uu PAR+ s" }}" PAR+
+   s\" {\"textDocument\":{\"uri\":" PAR+ u PAR+ s" }}" PAR+
    s" textDocument/didClose" PAR$ TELL ;
 
 \ The workspace session reuses one root: the first path component names the
 \ case and is dropped. Its live tree moves into that case's artifact afterward.
 : FIXTURE ( str -- str )
-   {: a:^ u:n :}
-   DIR$ N>BLEN PATH-B REPLACE
+   {: s:str :}
+   DIR$ PATH-B BYTES!
    SHARED? @ if
-      s" /" N>BLEN PATH-B APPEND-SPAN
-      WORKSPACE? @ if s" workspace" else LABEL$ then N>BLEN PATH-B APPEND-SPAN
+      s" /" PATH-B BYTES+
+      WORKSPACE? @ if s" workspace" else LABEL$ then PATH-B BYTES+
    then
-   s" /" N>BLEN PATH-B APPEND-SPAN
+   s" /" PATH-B BYTES+
    SHARED? @ WORKSPACE? @ and if
-      a u s" /" STR:FIND-SUB MATCH option
-         none OF a u ENDOF
-         some OF {: cut:idx :} a cut IDX>N 1+ + u cut IDX>N 1+ - ENDOF
+      s s" /" STR:FIND-SUB MATCH option
+         none OF s ENDOF
+         some OF {: cut:idx :} s STR:DATA cut IDX>N 1+ + s STR:LEN cut IDX>N 1+ - >str ENDOF
       ;MATCH
-   else a u then N>BLEN PATH-B APPEND-SPAN
-   PATH-B SPAN$ BLEN>N ;
+   else s then PATH-B BYTES+
+   PATH-B SPAN$ BLEN>N >str ;
 
 : IN-TREE ( str -- str )
-   {: a:^ u:n :}
-   SOURCE-ROOT:CWD$ N>BLEN PATH-B REPLACE
-   s" /" N>BLEN PATH-B APPEND-SPAN
-   a u N>BLEN PATH-B APPEND-SPAN
-   PATH-B SPAN$ BLEN>N ;
+   {: s:str :}
+   SOURCE-ROOT:CWD$ PATH-B BYTES!
+   s" /" PATH-B BYTES+
+   s PATH-B BYTES+
+   PATH-B SPAN$ BLEN>N >str ;
 
 : A-PATH ( -- str )  s" a.f" FIXTURE ;
 : B-PATH ( -- str )  s" b.f" FIXTURE ;
 
 : URI-OF ( str -- str )
    URI-SPAN URI:PATH>FILE {: n:n :}
-   URI-SPAN SPAN:$ drop n ;
+   URI-SPAN SPAN:$ STR:DATA n >str ;
 
 : URI+ ( str -- )
-   URI-OF {: a:^ u:n :}
-   s\" \"" PAR+ a u PAR+ s\" \"" PAR+ ;
+   URI-OF {: a:str :}
+   s\" \"" PAR+ a PAR+ s\" \"" PAR+ ;
 
 \ The byte at A as JSON string text, in PAR: a quote, a backslash and LF
 \ escaped; the texts here hold no other control byte.
@@ -950,35 +951,35 @@ variable OPEN-N
    c 10 = if s" \n" PAR+ exit then
    c 34 = if s\" \\\"" PAR+ exit then
    c 92 = if s" \\" PAR+ exit then
-   a 1 PAR+ ;
+   a 1 >str PAR+ ;
 
 : TEXT+ ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    s\" \"" PAR+
-   u 0 ?do a i + ESCAPED+ loop
+   s STR:LEN 0 ?do s STR:DATA i + ESCAPED+ loop
    s\" \"" PAR+ ;
 
 : OPEN-AT ( n -- ^u8 )  PATH-CAP * OPEN-PATHS + ;
 : OPEN-PATH ( n -- str )
-   dup OPEN-AT swap OPEN-LENS @ ;
+   dup OPEN-AT swap OPEN-LENS @ >str ;
 
 : OPEN-ADD ( str -- )
-   SHARED? @ 0= if 2drop exit then
-   {: p:^ pu:n :}
-   OPEN-N @ OPEN-CAP < pu PATH-CAP <= and 0= if E-TBL-BOUNDS throw then
+   SHARED? @ 0= if drop exit then
+   {: p:str :}
+   OPEN-N @ OPEN-CAP < p STR:LEN PATH-CAP <= and 0= if E-TBL-BOUNDS throw then
    OPEN-N @ {: idx:n :}
-   p idx OPEN-AT pu BYTE-COPY
-   pu idx OPEN-LENS !
+   p STR:DATA idx OPEN-AT p STR:LEN BYTE-COPY
+   p STR:LEN idx OPEN-LENS !
    1 OPEN-N +! ;
 
 : OPEN-REMOVE ( str -- )
-   SHARED? @ 0= if 2drop exit then
-   {: p:^ pu:n :}
+   SHARED? @ 0= if drop exit then
+   {: p:str :}
    OPEN-N @ 0 ?do
-      i OPEN-PATH p pu STR:= if
+      i OPEN-PATH p STR:= if
          OPEN-N @ 1- {: last:n :}
          i last <> if
-            last OPEN-PATH i OPEN-AT swap BYTE-COPY
+            last OPEN-AT i OPEN-AT last OPEN-LENS @ BYTE-COPY
             last OPEN-LENS @ i OPEN-LENS !
          then
          -1 OPEN-N +!
@@ -987,20 +988,20 @@ variable OPEN-N
    loop ;
 
 : OPENS ( str str n -- )
-   {: p:^ pu:n t:^ tu:n v:n :}
+   {: p:str t:str v:n :}
    PAR-B CLEAR
-   s\" {\"textDocument\":{\"uri\":" PAR+ p pu URI+
+   s\" {\"textDocument\":{\"uri\":" PAR+ p URI+
    s\" ,\"languageId\":\"habu\",\"version\":" PAR+ v INT$ PAR+
-   s\" ,\"text\":" PAR+ t tu TEXT+ s" }}" PAR+
+   s\" ,\"text\":" PAR+ t TEXT+ s" }}" PAR+
    s" textDocument/didOpen" PAR$ TELL
-   p pu OPEN-ADD ;
+   p OPEN-ADD ;
 
 : CHANGES ( str str n -- )
-   {: p:^ pu:n t:^ tu:n v:n :}
+   {: p:str t:str v:n :}
    PAR-B CLEAR
-   s\" {\"textDocument\":{\"uri\":" PAR+ p pu URI+
+   s\" {\"textDocument\":{\"uri\":" PAR+ p URI+
    s\" ,\"version\":" PAR+ v INT$ PAR+
-   s\" },\"contentChanges\":[{\"text\":" PAR+ t tu TEXT+ s" }]}" PAR+
+   s\" },\"contentChanges\":[{\"text\":" PAR+ t TEXT+ s" }]}" PAR+
    s" textDocument/didChange" PAR$ TELL ;
 
 : NAMING ( str -- )
@@ -1010,7 +1011,7 @@ variable OPEN-N
 : SAVES ( str -- )  NAMING s" textDocument/didSave" PAR$ TELL ;
 : CLOSE-WIRE ( str -- )  NAMING s" textDocument/didClose" PAR$ TELL ;
 : CLOSES ( str -- )
-   2dup CLOSE-WIRE
+   dup CLOSE-WIRE
    OPEN-REMOVE ;
 
 : WATCHES ( str -- )
@@ -1022,16 +1023,16 @@ variable OPEN-N
 \ ---- the stderr expected ------------------------------------------------------
 
 : IGNORED-HEAD ( str n -- )
-   {: m:^ mu:n code:n :}
-   s\" lsp: ignored \"" WANT+ m mu WANT+ s\" \": throw " WANT+
+   {: m:str code:n :}
+   s\" lsp: ignored \"" WANT+ m WANT+ s\" \": throw " WANT+
    code INT$ WANT+ ;
 
 : IGNORED ( str n -- )  IGNORED-HEAD s\" \n" WANT+ ;
 
 \ The line of a throw that carried the reader's text W.
 : IGNORED-WHY ( str n str -- )
-   {: m:^ mu:n code:n w:^ wu:n :}
-   m mu code IGNORED-HEAD s" : " WANT+ w wu WANT+ s\" \n" WANT+ ;
+   {: m:str code:n w:str :}
+   m code IGNORED-HEAD s" : " WANT+ w WANT+ s\" \n" WANT+ ;
 
 : STOPPED ( n -- )
    s" lsp: stopped by throw " WANT+ INT$ WANT+ s\" \n" WANT+ ;
@@ -1039,34 +1040,34 @@ variable OPEN-N
 : CUT-SHORT ( -- )  s\" lsp: input ended before exit\n" WANT+ ;
 
 : UNAPPLIED ( str str n -- )
-   {: m:^ mu:n p:^ pu:n code:n :}
-   m mu p pu TELL
-   m mu code IGNORED ;
+   {: m:str p:str code:n :}
+   m p TELL
+   m code IGNORED ;
 : UNAPPLIED-WHY ( str str n str -- )
-   {: m:^ mu:n p:^ pu:n code:n w:^ wu:n :}
-   m mu p pu TELL
-   m mu code w wu IGNORED-WHY ;
+   {: m:str p:str code:n w:str :}
+   m p TELL
+   m code w IGNORED-WHY ;
 
 \ The line about the check of the document at PATH, these words after its URI,
 \ then the prose of the test's own check, ended by LF.
 : SAID ( str str -- )
-   {: p:^ pu:n w:^ wu:n :}
-   s" lsp: " WANT+ p pu URI-OF WANT+ s" : " WANT+ w wu WANT+ s\" \n" WANT+
-   LSP-CHECK:VERIFY-LOG$ {: a:^ u:n :}
-   u 0= if exit then
-   a u WANT+
-   a u + 1- c@ 10 <> if s\" \n" WANT+ then ;
+   {: p:str w:str :}
+   s" lsp: " WANT+ p URI-OF WANT+ s" : " WANT+ w WANT+ s\" \n" WANT+
+   LSP-CHECK:VERIFY-LOG$ {: log:str :}
+   log STR:LEN 0= if exit then
+   log WANT+
+   log STR:DATA log STR:LEN + 1- c@ 10 <> if s\" \n" WANT+ then ;
 
 \ The lines about a check that completed with this verdict: none unless the
 \ test's own check wrote prose.
 : COMPLETED ( str str -- )
-   LSP-CHECK:VERIFY-LOG$ nip 0= if 2drop 2drop exit then
+   LSP-CHECK:VERIFY-LOG$ STR:LEN 0= if drop drop exit then
    SAID ;
 
 \ ---- running the server -------------------------------------------------------
 
 : CONVERSATION ( str -- )
-   N>BLEN LABEL-B REPLACE
+   LABEL-B BYTES!
    IN-B CLEAR
    WANT-B CLEAR
    0 OUT-LEN !
@@ -1080,9 +1081,9 @@ variable OPEN-N
    PROC-ENV-INHERIT-MISSING ;
 
 : ARTIFACT$ ( str -- str )
-   {: x:^ xu:n :}
+   {: x:str :}
    SB-RESET
-   DIR$ SB-APPEND s" /" SB-APPEND LABEL$ SB-APPEND x xu SB-APPEND
+   DIR$ SB-APPEND s" /" SB-APPEND LABEL$ SB-APPEND x SB-APPEND
    SB$ ;
 
 : ARCHIVE-STREAMS ( -- )
@@ -1101,10 +1102,10 @@ variable OPEN-N
 \ The shared session's complete byte trace includes initialize and shutdown;
 \ its named case files are individual segments.
 : TRACE$ ( str -- str )
-   {: x:^ xu:n :}
+   {: x:str :}
    SB-RESET DIR$ SB-APPEND s" /" SB-APPEND SESSION$ SB-APPEND
    s" .trace" SB-APPEND
-   x xu SB-APPEND SB$ ;
+   x SB-APPEND SB$ ;
 
 : TRACE-WRITE ( -- )
    s" .in" TRACE$ IN$ FS:WRITE-ALL
@@ -1127,22 +1128,22 @@ variable OPEN-N
 : TIMEOUT-EXIT-PROBE ( -- )
    s" timed-out conversation" CONVERSATION
    s" timeout input" IN+
-   s" timeout stdout" dup OUT-LEN ! OUT-SPAN SPAN:COPY
-   s" timeout stderr" dup ERR-LEN ! ERR-SPAN SPAN:COPY
+   s" timeout stdout" dup STR:LEN OUT-LEN ! OUT-SPAN SPAN:COPY
+   s" timeout stderr" dup STR:LEN ERR-LEN ! ERR-SPAN SPAN:COPY
    PROCESS-ENDING:TIMEOUT 0 EXITED ;
 
 : TEST-EXIT-TIMEOUT ( -- )
    s" LSP timeout reports the conversation and both streams" T-LABEL
-   s" package LSP-TEST TIMEOUT-EXIT-PROBE ;package" {: src:^ srcu:n :}
-   src srcu OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN
+   s" package LSP-TEST TIMEOUT-EXIT-PROBE ;package" {: src:str :}
+   src OUT-SPAN SPAN:$ dup STR:DATA swap STR:LEN >LEN ERR-SPAN SPAN:$ dup STR:DATA swap STR:LEN >LEN
    CONVERSATION-MS >MS SUBJECT:RUN {: outu:len erru:len r :}
-   src srcu OUT-SPAN SPAN:$ drop outu LEN>N
-   ERR-SPAN SPAN:$ drop erru LEN>N r EXIT-STATUS:UNCAUGHT T-ENDING-EXITED=
-   OUT-SPAN SPAN:$ drop outu LEN>N s" timed-out conversation" STR:CONTAINS? TTRUE
-   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout input" STR:CONTAINS? TTRUE
-   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stdout" STR:CONTAINS? TTRUE
-   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stderr" STR:CONTAINS? TTRUE
-   ERR-SPAN SPAN:$ drop erru LEN>N E-PROC-TIMEOUT TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE ;
+   src OUT-SPAN SPAN:$ STR:DATA outu LEN>N >str
+   ERR-SPAN SPAN:$ STR:DATA erru LEN>N >str r EXIT-STATUS:UNCAUGHT T-ENDING-EXITED=
+   OUT-SPAN SPAN:$ STR:DATA outu LEN>N >str s" timed-out conversation" STR:CONTAINS? TTRUE
+   OUT-SPAN SPAN:$ STR:DATA outu LEN>N >str s" timeout input" STR:CONTAINS? TTRUE
+   OUT-SPAN SPAN:$ STR:DATA outu LEN>N >str s" timeout stdout" STR:CONTAINS? TTRUE
+   OUT-SPAN SPAN:$ STR:DATA outu LEN>N >str s" timeout stderr" STR:CONTAINS? TTRUE
+   ERR-SPAN SPAN:$ STR:DATA erru LEN>N >str E-PROC-TIMEOUT TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE ;
 
 : TOOK ( n -- )
    {: ns:n :}
@@ -1152,8 +1153,8 @@ variable OPEN-N
    SB$ type cr ;
 
 : HOLDS ( bool str -- )
-   {: ok:bool r:^ ru:n :}
-   SB-RESET LABEL$ SB-APPEND s" : " SB-APPEND r ru SB-APPEND
+   {: ok:bool r:str :}
+   SB-RESET LABEL$ SB-APPEND s" : " SB-APPEND r SB-APPEND
    SB$ T-LABEL ok TTRUE ;
 
 \ The capture writes the input in pieces, and one piece lands in the empty
@@ -1162,9 +1163,9 @@ variable OPEN-N
 \ expects a check.
 : CONVERSE ( n -- )
    {: rc:n :}
-   IN$ nip PROCESS:STDIN-CHUNK-CAP <= s" input past one write" HOLDS
+   IN$ STR:LEN PROCESS:STDIN-CHUNK-CAP <= s" input past one write" HOLDS
    mono-ns {: t0:n :}
-   STAGED IN$ OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN CONVERSATION-MS >MS
+   STAGED IN$ OUT-SPAN SPAN:$ dup STR:DATA swap STR:LEN >LEN ERR-SPAN SPAN:$ dup STR:DATA swap STR:LEN >LEN CONVERSATION-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: o:len e:len r :}
    mono-ns t0 - TOOK
    o LEN>N OUT-LEN !
@@ -1173,19 +1174,19 @@ variable OPEN-N
 
 \ ---- the output ---------------------------------------------------------------
 
-: UNREAD ( -- str )  OUT-SPAN SPAN:$ drop OUT-AT @ +  OUT-LEN @ OUT-AT @ - ;
+: UNREAD ( -- str )  OUT-SPAN SPAN:$ STR:DATA OUT-AT @ +  OUT-LEN @ OUT-AT @ - >str ;
 
 : ALIKE ( str str -- )  LABEL$ T-LABEL T$= ;
 
 : FRAME-LEN ( str -- n )
-   {: a:^ u:n :}
-   s" Content-Length: " nip {: name:n :}
-   a u s\" \r\n\r\n" STR:FIND-SUB MATCH option
+   {: s:str :}
+   s" Content-Length: " STR:LEN {: name:n :}
+   s s\" \r\n\r\n" STR:FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: end:n :}
    end name < if -1 exit then
-   a name + end name - STR:>NUMBER? MATCH option
+   s STR:DATA name + end name - >str STR:>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -1193,34 +1194,34 @@ variable OPEN-N
 : MISFRAMED ( -- str )
    false s" output not framed as LSP frames it" HOLDS
    OUT-LEN @ OUT-AT !
-   OUT-SPAN SPAN:$ drop 0 ;
+   OUT-SPAN SPAN:$ STR:DATA 0 >str ;
 
 \ The server frames a message as `Content-Length: N`, CR LF twice and N bytes,
 \ the length without sign or leading zeros.
 : NEXT-BODY ( -- str )
-   UNREAD {: a:^ u:n :}
-   a u FRAME-LEN {: len:n :}
+   UNREAD {: a:str :}
+   a FRAME-LEN {: len:n :}
    len 0 < if MISFRAMED exit then
-   len HEAD$ {: h:^ hu:n :}
-   a u h hu STR:STARTS-WITH? 0= if MISFRAMED exit then
-   hu len + u > if MISFRAMED exit then
-   hu len + OUT-AT +!
-   a hu + len ;
+   len HEAD$ {: h:str :}
+   a h STR:STARTS-WITH? 0= if MISFRAMED exit then
+   h STR:LEN len + a STR:LEN > if MISFRAMED exit then
+   h STR:LEN len + OUT-AT +!
+   a STR:DATA h STR:LEN + len >str ;
 
 : HEARD ( str -- )
-   {: a:^ u:n :}
-   NEXT-BODY a u ALIKE ;
+   {: s:str :}
+   NEXT-BODY s ALIKE ;
 
 \ The next frame is an error reply to the request with this id's JSON text,
 \ with this code. Its message is prose: only that it is a string is read.
 : REFUSED ( str n -- )
-   {: i:^ iu:n code:n :}
-   NEXT-BODY {: b:^ bu:n :}
+   {: id:str code:n :}
+   NEXT-BODY {: b:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"error\":{\"code\":" MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+ s\" ,\"error\":{\"code\":" MSG+
    code INT$ MSG+ s\" ,\"message\":\"" MSG+
-   b bu MSG$ nip min MSG$ ALIKE
-   b bu s\" \"}}" STR:ENDS-WITH? LABEL$ T-LABEL TTRUE ;
+   b STR:DATA b STR:LEN MSG$ STR:LEN min >str MSG$ ALIKE
+   b s\" \"}}" STR:ENDS-WITH? LABEL$ T-LABEL TTRUE ;
 
 : CAPABILITIES ( -- )
    MSG-CLEAR
@@ -1240,9 +1241,9 @@ variable OPEN-N
 
 
 : NULL-RESULT ( str -- )
-   {: i:^ iu:n :}
+   {: id:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":null}" MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+ s\" ,\"result\":null}" MSG+
    MSG$ HEARD ;
 
 : ENDS ( -- )
@@ -1493,32 +1494,32 @@ variable OPEN-N
    1 DEADLINE @ PROCESS:LEFT-MS PROCESS:POLL drop ;
 
 : PIECE ( -- )
-   IN$ {: a:^ u:n :}
-   u SENT @ - PIPE-ATOM min {: k:n :}
+   IN$ {: a:str :}
+   a STR:LEN SENT @ - PIPE-ATOM min {: k:n :}
    WRITABLE
-   IN-W @ a SENT @ + k FD:WRITE-FULL
+   IN-W @ a STR:DATA SENT @ + k >str FD:WRITE-FULL
    k SENT +! ;
 
 \ Writes the input not yet written piece by piece, so a server that stopped
 \ reading cannot hold the test past DEADLINE.
 : STREAM ( -- )
-   begin SENT @ IN$ nip < while PIECE repeat ;
+   begin SENT @ IN$ STR:LEN < while PIECE repeat ;
 
 \ A long turn, including one with long document paths, is streamed under the
 \ same deadline rather than refused by the test.
 : SAY ( -- )
-   IN$ {: a:^ u:n :}
-   u SENT @ - {: left:n :}
+   IN$ {: a:str :}
+   a STR:LEN SENT @ - {: left:n :}
    left PROCESS:STDIN-CHUNK-CAP > if STREAM exit then
    WRITABLE
-   IN-W @ a SENT @ + left FD:WRITE-FULL
-   u SENT ! ;
+   IN-W @ a STR:DATA SENT @ + left >str FD:WRITE-FULL
+   a STR:LEN SENT ! ;
 
 : WHOLE? ( -- bool )
-   UNREAD {: a:^ u:n :}
-   a u FRAME-LEN {: len:n :}
+   UNREAD {: a:str :}
+   a FRAME-LEN {: len:n :}
    len 0 < if false exit then
-   len HEAD$ nip len + u <= ;
+   len HEAD$ STR:LEN len + a STR:LEN <= ;
 
 \ Reads stdout until the output not yet read as frames holds a whole frame,
 \ stdout ends or the output fills its span. Once HELD-BY has closed its end,
@@ -1533,18 +1534,18 @@ variable OPEN-N
 
 \ The text must not live in SB, where HEAR builds frame headers.
 : HEAR-FOR ( str -- )
-   {: t:^ tu:n :}
+   {: t:str :}
    [: HEAR ;] catch {: code:n :}
    code E-PROC-TIMEOUT = if
-      LABEL$ type s" : waiting for " type t tu type cr
+      LABEL$ type s" : waiting for " type t type cr
    then
    code 0<> if code throw then ;
 
 : PUBLISHED ( str -- )
-   {: u:^ uu:n :}
+   {: u:str :}
    MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":" MSG+
-   u uu MSG+ s\" ,\"diagnostics\":[]}}" MSG+
+   u MSG+ s\" ,\"diagnostics\":[]}}" MSG+
    MSG$ HEAR-FOR
    MSG$ HEARD ;
 
@@ -1554,7 +1555,7 @@ variable OPEN-N
 \ there, or ends: a check that publishes nothing is over once it has said why.
 : LOGGED ( -- )
    begin
-      ERR-LEN @ WANT$ nip < ERR-LEN @ ERR-SPAN SPAN:LEN < and if
+      ERR-LEN @ WANT$ STR:LEN < ERR-LEN @ ERR-SPAN SPAN:LEN < and if
          ERR-LEN @ ERR-R @ ERR-SPAN DEADLINE @ BYTE
       else false then
    while 1 ERR-LEN +! repeat ;
@@ -1637,44 +1638,44 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 \ The document at PATH is open with this text beside CHECKS-BESIDE's subject.
 : BESIDE! ( str str -- )
-   {: p:^ pu:n t:^ tu:n :}
-   p pu SOURCE-ROOT:CANONICAL drop N>BLEN BESIDE-B REPLACE
-   t tu N>BLEN BESIDE-TEXT-B REPLACE ;
+   {: p:str t:str :}
+   p SOURCE-ROOT:CANONICAL drop BESIDE-B BYTES!
+   t BESIDE-TEXT-B BYTES! ;
 
 : BESIDE ( [ str str -- ] -- )
    {: each :}
-   BESIDE-B SPAN$ BLEN>N BESIDE-TEXT-B SPAN$ BLEN>N each execute ;
+   BESIDE-B SPAN$ BLEN>N >str BESIDE-TEXT-B SPAN$ BLEN>N >str each execute ;
 
 : CHECKS-BESIDE ( str str -- )  [: BESIDE ;] CHECKS-WITH ;
 
 : PACKET-FROM$ ( n -- str )
-   LSP-CHECK:VERIFY-OUT$ {: at:n a:^ u:n :}
-   at u min {: from:n :}
-   a from + u from - {: p:^ pu:n :}
-   p pu 10 STR:INDEX-OF MATCH option
-      none OF p pu ENDOF
-      some OF IDX>N p swap ENDOF
+   LSP-CHECK:VERIFY-OUT$ {: at:n a:str :}
+   at a STR:LEN min {: from:n :}
+   a STR:DATA from + a STR:LEN from - >str {: p:str :}
+   p 10 STR:INDEX-OF MATCH option
+      none OF p ENDOF
+      some OF IDX>N p STR:DATA swap >str ENDOF
    ;MATCH ;
 
 \ The raw text of a top-level member of the packet, a string's between its
 \ quotes, and whether it is a string.
 : MEMBER$ ( str str -- str bool )
-   {: a:^ u:n k:^ ku:n :}
-   JSON-ST a u JSON:READ-INIT
+   {: s:str k:str :}
+   JSON-ST s JSON:READ-INIT
    JSON:READ-NEXT drop
-   k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
-   JSON:READ-TOKEN >r JSON:READ-SPAN$ rot JSON:READ-CLOSE r> JSON:T-STR = ;
+   k JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
+   JSON:READ-TOKEN >r JSON:READ-SPAN$ swap JSON:READ-CLOSE r> JSON:T-STR = ;
 
 \ A note with a string value as the server writes its line; any other value
 \ is passed over.
 : NOTE+ ( JSON:reader -- JSON:reader )
-   JSON:READ-SPAN$ {: k:^ ku:n :}
+   JSON:READ-SPAN$ {: k:str :}
    JSON:READ-NEXT JSON:T-STR <> if JSON:READ-SKIP-VALUE exit then
-   s" \n" EXP+ k ku EXP+ s" : " EXP+ JSON:READ-SPAN$ EXP+ ;
+   s" \n" EXP+ k EXP+ s" : " EXP+ JSON:READ-SPAN$ EXP+ ;
 
 : NOTES+ ( str -- )
-   {: a:^ u:n :}
-   JSON-ST a u JSON:READ-INIT
+   {: s:str :}
+   JSON-ST s JSON:READ-INIT
    JSON:READ-NEXT drop
    s" notes" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE exit then
    JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE exit then
@@ -1683,33 +1684,33 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 \ The evaluated place's source line as the server writes its line.
 : EVALUATED+ ( str -- )
-   {: a:^ u:n :}
-   JSON-ST a u JSON:READ-INIT
+   {: s:str :}
+   JSON-ST s JSON:READ-INIT
    JSON:READ-NEXT drop
    s" evaluated" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE exit then
    JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE exit then
    s" source_line" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE exit then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE exit then
-   JSON:READ-SPAN$ rot JSON:READ-CLOSE
+   JSON:READ-SPAN$ swap JSON:READ-CLOSE
    s" \nevaluated: " EXP+ EXP+ ;
 
 : MESSAGE+ ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    s\" \"" EXP+
-   a u s" message" MEMBER$ if EXP+ else 2drop then
-   a u EVALUATED+
-   a u NOTES+
-   a u s" help" MEMBER$ over 0 > and
-   if s" \nhelp: " EXP+ EXP+ else 2drop then
+   s s" message" MEMBER$ if EXP+ else drop then
+   s EVALUATED+
+   s NOTES+
+   s s" help" MEMBER$ over STR:LEN 0 > and
+   if s" \nhelp: " EXP+ EXP+ else drop then
    s\" \"" EXP+ ;
 
 \ The publish the next frame must be, for the document or the file at PATH,
 \ with this version, or without one for -1: begun, up to its list's bracket.
 : EXPECT ( str n -- )
-   {: p:^ pu:n v:n :}
+   {: p:str v:n :}
    EXP-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" EXP+
-   p pu URI-OF EXP+ s\" \"," EXP+
+   p URI-OF EXP+ s\" \"," EXP+
    v 0 >= if s\" \"version\":" EXP+ v INT$ EXP+ s" ," EXP+ then
    s\" \"diagnostics\":[" EXP+ ;
 
@@ -1723,27 +1724,27 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s\" }}" EXP+ ;
 
 : PACKET-FOR ( str -- str )
-   {: c:^ cu:n :}
-   PACKET-NEXT @ PACKET-FROM$ {: a:^ u:n :}
-   SB-RESET LABEL$ SB-APPEND s" : a packet for " SB-APPEND c cu SB-APPEND SB$ T-LABEL
-   u 0 > TTRUE
-   u 0= if a u exit then
-   PACKET-NEXT @ u + 1+ PACKET-NEXT !
-   a u ;
+   {: c:str :}
+   PACKET-NEXT @ PACKET-FROM$ {: a:str :}
+   SB-RESET LABEL$ SB-APPEND s" : a packet for " SB-APPEND c SB-APPEND SB$ T-LABEL
+   a STR:LEN 0 > TTRUE
+   a STR:LEN 0= if a exit then
+   PACKET-NEXT @ a STR:LEN + 1+ PACKET-NEXT !
+   a ;
 
 : CODED+ ( str str -- )
-   {: c:^ cu:n a:^ u:n :}
-   s\" ,\"code\":\"" EXP+ c cu EXP+
-   s\" \",\"source\":\"habu\",\"message\":" EXP+ a u MESSAGE+
-   s\" ,\"data\":" EXP+ a u EXP+ s" }" EXP+ ;
+   {: c:str s:str :}
+   s\" ,\"code\":\"" EXP+ c EXP+
+   s\" \",\"source\":\"habu\",\"message\":" EXP+ s MESSAGE+
+   s\" ,\"data\":" EXP+ s EXP+ s" }" EXP+ ;
 
 : DIAG+ ( n n n n n str -- )
-   {: l1:n c1:n l2:n c2:n sev:n c:^ cu:n :}
-   c cu PACKET-FOR {: a:^ u:n :}
-   u 0= if exit then
+   {: l1:n c1:n l2:n c2:n sev:n c:str :}
+   c PACKET-FOR {: a:str :}
+   a STR:LEN 0= if exit then
    l1 c1 l2 c2 RANGE+
    s\" ,\"severity\":" EXP+ sev INT$ EXP+
-   c cu a u CODED+ ;
+   c a CODED+ ;
 
 : PUBLISHES ( -- )
    s" ]}}" EXP+
@@ -1767,18 +1768,18 @@ variable PUB-COUNT
    {: count:n :}
    count PUB-COUNT !
    count 0 ?do
-      i count BATCH-WAIT$ HEAR-FOR NEXT-BODY {: body:^ len:n :}
-      body PUB-BODIES i ptr-field !
-      len i PUB-LENS !
+      i count BATCH-WAIT$ HEAR-FOR NEXT-BODY {: body:str :}
+      body STR:DATA PUB-BODIES i ptr-field !
+      body STR:LEN i PUB-LENS !
       false i PUB-USED !
    loop ;
 
 : PUBLISHES-ANY ( -- )
    s" ]}}" EXP+
-   EXP$ {: want:^ wantu:n :}
+   EXP$ {: want:str :}
    PUB-COUNT @ 0 ?do
       i PUB-USED @ 0= if
-         PUB-BODIES i ptr-field @ i PUB-LENS @ want wantu STR:= if
+         PUB-BODIES i ptr-field @ i PUB-LENS @ >str want STR:= if
             true i PUB-USED ! unloop exit
          then
       then
@@ -1794,22 +1795,22 @@ variable PUB-COUNT
 \ request marks the end of the batch, so every preceding frame must be an
 \ empty diagnostic publication.
 : CLEANUP-REPLY? ( str -- bool )
-   2dup s\" {\"jsonrpc\":\"2.0\",\"id\":99999999,\"error\":{\"code\":-32601,\"message\":\"" STR:STARTS-WITH?
+   dup s\" {\"jsonrpc\":\"2.0\",\"id\":99999999,\"error\":{\"code\":-32601,\"message\":\"" STR:STARTS-WITH?
    >r s\" \"}}" STR:ENDS-WITH? r> and ;
 
 : CLEANUP-EMPTY? ( str -- bool )
-   2dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" STR:STARTS-WITH?
+   dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" STR:STARTS-WITH?
    >r s\" \",\"diagnostics\":[]}}" STR:ENDS-WITH? r> and ;
 
 : CLEANUP-DRAIN ( -- )
    begin
-      HEAR NEXT-BODY 2dup CLEANUP-REPLY? if 2drop exit then
+      HEAR NEXT-BODY dup CLEANUP-REPLY? if drop exit then
       CLEANUP-EMPTY? LABEL$ T-LABEL TTRUE
    again ;
 
 : TALK ( str [ -- ] -- )
-   {: a:^ u:n turns :}
-   a u CONVERSATION
+   {: s:str turns :}
+   s CONVERSATION
    SHARED? @ 0= if turns HELD exit then
    0 SENT !
    CHECKED-MS >MS PROCESS:DEADLINE-AT DEADLINE !
@@ -1828,10 +1829,10 @@ variable PUB-COUNT
    ARCHIVE-STREAMS
    TRACE-APPEND
    WORKSPACE? @ if
-      DIR$ N>BLEN PATH-B REPLACE s" /workspace" N>BLEN PATH-B APPEND-SPAN
-      PATH-B SPAN$ BLEN>N s" /fixtures" ARTIFACT$ FS:RENAME-FILE
-      DIR$ N>BLEN PATH-B REPLACE s" /workspace" N>BLEN PATH-B APPEND-SPAN
-      PATH-B SPAN$ BLEN>N FS:MAKE-DIR
+      DIR$ PATH-B BYTES! s" /workspace" PATH-B BYTES+
+      PATH-B SPAN$ BLEN>N >str s" /fixtures" ARTIFACT$ FS:RENAME-FILE
+      DIR$ PATH-B BYTES! s" /workspace" PATH-B BYTES+
+      PATH-B SPAN$ BLEN>N >str FS:MAKE-DIR
    then ;
 
 \ Holds the conversation of this name, whose turns end its input before exit
@@ -1839,8 +1840,8 @@ variable PUB-COUNT
 \ the server wrote once its input ended, among those read to its stdout's end
 \ (HEAR). It must exit RC, nothing past them.
 : TALK-CUT ( str [ -- ] [ -- ] n -- )
-   {: a:^ u:n turns after rc:n :}
-   a u CONVERSATION
+   {: a:str turns after rc:n :}
+   a CONVERSATION
    turns rc HELD-BY 0= if exit then
    after execute
    ENDS ;
@@ -1936,9 +1937,9 @@ variable PUB-COUNT
 
 \ A close naming textDocument twice, the first copy this URI.
 : CLOSE-TWICE ( str -- )
-   {: u:^ uu:n :}
+   {: u:str :}
    PAR-B CLEAR
-   s\" {\"textDocument\":{\"uri\":" PAR+ u uu PAR+
+   s\" {\"textDocument\":{\"uri\":" PAR+ u PAR+
    s\" },\"textDocument\":{}}" PAR+
    s" textDocument/didClose" PAR$ TELL ;
 
@@ -1979,10 +1980,10 @@ variable PUB-COUNT
 : TEXT-F ( -- str )  s" : F ( n -- n ) drop ;" ;
 
 : F-LISTED ( str n -- )
-   {: p:^ pu:n v:n :}
-   TEXT-F p pu CHECKS
-   p pu s" refused" COMPLETED
-   p pu v EXPECT 0 15 0 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
+   {: p:str v:n :}
+   TEXT-F p CHECKS
+   p s" refused" COMPLETED
+   p v EXPECT 0 15 0 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 : F-OPENED ( -- )
    SESSION-INITIALIZE
@@ -2080,8 +2081,8 @@ variable PUB-COUNT
 
 : BIG-TEXT ( -- )
    TXT-B CLEAR
-   BIG-LINES 0 ?do s\" ( twenty-byte line )\n" N>BLEN TXT-B APPEND-SPAN loop
-   TEXT-F N>BLEN TXT-B APPEND-SPAN ;
+   BIG-LINES 0 ?do s\" ( twenty-byte line )\n" TXT-B BYTES+ loop
+   TEXT-F TXT-B BYTES+ ;
 
 : BIG-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2104,23 +2105,23 @@ variable PUB-COUNT
 : DEP-TWO ( -- str )  s\" : D ( n n -- n ) + ;\n" ;
 
 : DEP-WRITTEN ( str -- )
-   {: a:^ u:n :}
-   DEP-PATH a u FS:WRITE-ALL ;
+   {: s:str :}
+   DEP-PATH s FS:WRITE-ALL ;
 
 \ The path the packets name dep.f by: its canonical one.
 : DEP-CANON ( -- str )  DEP-PATH SOURCE-ROOT:CANONICAL drop ;
 
 : LISTED ( str str n str -- )
-   {: t:^ tu:n p:^ pu:n v:n w:^ wu:n :}
-   t tu p pu CHECKS
-   p pu w wu COMPLETED
-   p pu v EXPECT PUBLISHES ;
+   {: t:str p:str v:n w:str :}
+   t p CHECKS
+   p w COMPLETED
+   p v EXPECT PUBLISHES ;
 
 : BATCH-LISTED ( str str n str -- )
-   {: t:^ tu:n p:^ pu:n v:n w:^ wu:n :}
-   t tu p pu CHECKS
-   p pu w wu COMPLETED
-   p pu v EXPECT PUBLISHES-ANY ;
+   {: t:str p:str v:n w:str :}
+   t p CHECKS
+   p w COMPLETED
+   p v EXPECT PUBLISHES-ANY ;
 
 \ The list at PATH, with this version or none for -1, holding the broken D's
 \ packet, which the test's last check found first.
@@ -2376,7 +2377,7 @@ variable PUB-COUNT
 USE-MAX 1 + constant OVER-USINGS
 
 : OVER-USINGS+ ( -- )
-   OVER-USINGS 0 ?do s\" using SOURCE-ROOT\n" N>BLEN TXT-B APPEND-SPAN loop ;
+   OVER-USINGS 0 ?do s\" using SOURCE-ROOT\n" TXT-B BYTES+ loop ;
 
 : OVER-USING-TEXT ( -- )
    TXT-B CLEAR  OVER-USINGS+ ;
@@ -2395,7 +2396,7 @@ USE-MAX 1 + constant OVER-USINGS
 \ verifier dies after writing H1's packet, which is published.
 : REFUSED-OVER-TEXT ( -- )
    TXT-B CLEAR
-   s\" : H1 ( n -- n ) NOSUCHWORD ;\n" N>BLEN TXT-B APPEND-SPAN
+   s\" : H1 ( n -- n ) NOSUCHWORD ;\n" TXT-B BYTES+
    OVER-USINGS+ ;
 
 : INCOMPLETE-PACKET-TURNS ( -- )
@@ -2547,8 +2548,8 @@ USE-MAX 1 + constant OVER-USINGS
 
 : DEFERRED-UNENDED-TEXT ( -- )
    TXT-B CLEAR
-   DEFERRED-IN-BODY N>BLEN TXT-B APPEND-SPAN
-   UNENDED N>BLEN TXT-B APPEND-SPAN ;
+   DEFERRED-IN-BODY TXT-B BYTES+
+   UNENDED TXT-B BYTES+ ;
 
 : DEFERRED-UNENDED-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2576,28 +2577,28 @@ USE-MAX 1 + constant OVER-USINGS
    s\" package QD\n: QUX-P ( -- n ) 5 ;\n: QE:QUX-Q ( -- n ) 6 ;\npublic\n: QUX-DEP ( -- n ) 3 ;\nEXPORT QE:QUX-Q\n;package\nvariable QUX-V\n" ;
 
 : SYMBOLS-ASK ( str str -- )
-   {: i:^ iu:n p:^ pu:n :}
+   {: id:str p:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"method\":\"workspace/symbol\",\"params\":" MSG+ p pu MSG+ s" }" MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
+   s\" ,\"method\":\"workspace/symbol\",\"params\":" MSG+ p MSG+ s" }" MSG+
    MSG$ FRAMED ;
 
 : SYMBOLS-START ( str -- )
-   {: i:^ iu:n :}
+   {: id:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+ s\" ,\"result\":[" MSG+ ;
 
 : SYMBOL+ ( str n str n n n str -- )
-   {: w:^ wu:n k:n u:^ uu:n l:n c1:n c2:n p:^ pu:n :}
+   {: w:str k:n u:str l:n c1:n c2:n p:str :}
    MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
-   s\" {\"name\":\"" MSG+ w wu MSG+
+   s\" {\"name\":\"" MSG+ w MSG+
    s\" \",\"kind\":" MSG+ k INT$ MSG+
-   s\" ,\"location\":{\"uri\":\"" MSG+ u uu MSG+
+   s\" ,\"location\":{\"uri\":\"" MSG+ u MSG+
    s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}" MSG+
-   pu 0 > if s\" ,\"containerName\":\"" MSG+ p pu MSG+ s\" \"" MSG+ then
+   p STR:LEN 0 > if s\" ,\"containerName\":\"" MSG+ p MSG+ s\" \"" MSG+ then
    s" }" MSG+ ;
 
 : SYMBOLS-END ( -- )
@@ -2623,42 +2624,42 @@ USE-MAX 1 + constant OVER-USINGS
    s" 3" SYMBOLS-START SYMBOLS-END ;
 
 : OUTLINE-HEAD ( str str -- )
-   {: i:^ iu:n p:^ pu:n :}
+   {: id:str p:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
    s\" ,\"method\":\"textDocument/documentSymbol\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
-   p pu URI-OF MSG+ ;
+   p URI-OF MSG+ ;
 
 : OUTLINE-ASK ( str str -- )  OUTLINE-HEAD s\" \"}}}" MSG+ MSG$ FRAMED ;
 
 
 : AT-ASK-WITH ( str str str n n str -- )
-   {: m:^ mu:n i:^ iu:n p:^ pu:n l:n c:n x:^ xu:n :}
+   {: m:str id:str p:str l:n c:n x:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"method\":\"" MSG+ m mu MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
+   s\" ,\"method\":\"" MSG+ m MSG+
    s\" \",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
-   p pu URI-OF MSG+
+   p URI-OF MSG+
    s\" \"},\"position\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c INT$ MSG+ s" }" MSG+
-   x xu MSG+ s" }}" MSG+
+   x MSG+ s" }}" MSG+
    MSG$ FRAMED ;
 
 : AT-ASK ( str str str n n -- )  s" " AT-ASK-WITH ;
 
 : DEFINITION-ASK ( str str n n -- )
-   {: i:^ iu:n p:^ pu:n l:n c:n :}
-   s" textDocument/definition" i iu p pu l c AT-ASK ;
+   {: id:str p:str l:n c:n :}
+   s" textDocument/definition" id p l c AT-ASK ;
 
 : DECLARATION-ASK ( str str n n -- )
-   {: i:^ iu:n p:^ pu:n l:n c:n :}
-   s" textDocument/declaration" i iu p pu l c AT-ASK ;
+   {: id:str p:str l:n c:n :}
+   s" textDocument/declaration" id p l c AT-ASK ;
 
 : LOCATED ( str str n n n -- )
-   {: i:^ iu:n u:^ uu:n l:n c1:n c2:n :}
+   {: id:str u:str l:n c1:n c2:n :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"result\":[{\"uri\":\"" MSG+ u uu MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
+   s\" ,\"result\":[{\"uri\":\"" MSG+ u MSG+
    s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
@@ -2795,10 +2796,10 @@ USE-MAX 1 + constant OVER-USINGS
 \ NAV-KEPT's body refused with its signature kept; NAV-LATER after them.
 : REDECLARED-TEXT ( -- )
    TXT-B CLEAR
-   s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" N>BLEN TXT-B APPEND-SPAN
-   256 0 ?do s"  n" N>BLEN TXT-B APPEND-SPAN loop
-   s\"  -- ) ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\n" N>BLEN TXT-B APPEND-SPAN
-   s\" TRUSTED: NAV-ODD ( -- ^ ) ;\n: NAV-KEPT ( -- n n ) 8 ;\n: NAV-LATER ( -- n ) 2 ;\n" N>BLEN TXT-B APPEND-SPAN ;
+   s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" TXT-B BYTES+
+   256 0 ?do s"  n" TXT-B BYTES+ loop
+   s\"  -- ) ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\n" TXT-B BYTES+
+   s\" TRUSTED: NAV-ODD ( -- ^ ) ;\n: NAV-KEPT ( -- n n ) 8 ;\n: NAV-LATER ( -- n ) 2 ;\n" TXT-B BYTES+ ;
 
 : RETAINED-PATH ( -- str )  s" retained.f" FIXTURE ;
 
@@ -2939,24 +2940,24 @@ USE-MAX 1 + constant OVER-USINGS
 
 : LENGTH-TEXT ( -- )
    TXT-B CLEAR
-   s\" : Q ( -- ) ;\n" N>BLEN TXT-B APPEND-SPAN
+   s\" : Q ( -- ) ;\n" TXT-B BYTES+
    3 0 ?do
       36 0 ?do
-         s" : " N>BLEN TXT-B APPEND-SPAN
-         s" QXZ" drop j + c@ TXT-B APPEND-BYTE
-         s" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" drop i + c@ TXT-B APPEND-BYTE
-         s\"  ( -- ) ;\n" N>BLEN TXT-B APPEND-SPAN
+         s" : " TXT-B BYTES+
+         s" QXZ" STR:DATA j + c@ TXT-B APPEND-BYTE
+         s" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" STR:DATA i + c@ TXT-B APPEND-BYTE
+         s\"  ( -- ) ;\n" TXT-B BYTES+
       loop
    loop ;
 
 variable LENGTH-N
 
-: LENGTH-DIR ( -- str )  s" dddd" drop LENGTH-N @ FIXTURE ;
+: LENGTH-DIR ( -- str )  s" dddd" STR:DATA LENGTH-N @ >str FIXTURE ;
 
 : LENGTH-PATH ( -- str )
-   LENGTH-DIR 2drop
-   s" /g.f" N>BLEN PATH-B APPEND-SPAN
-   PATH-B SPAN$ BLEN>N ;
+   LENGTH-DIR drop
+   s" /g.f" PATH-B BYTES+
+   PATH-B SPAN$ BLEN>N >str ;
 
 : LENGTH-TURNS ( -- )
    LENGTH-DIR FS:MAKE-DIR
@@ -2988,9 +2989,9 @@ variable LENGTH-N
    s\" require def-dep.f\n: DEF-USE ( -- n ) DEF-DEP DD:DEF-PUB + ;\n" ;
 
 : NOWHERE ( str -- )
-   {: i:^ iu:n :}
+   {: id:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[]}" MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+ s\" ,\"result\":[]}" MSG+
    HEAR
    MSG$ HEARD ;
 
@@ -3055,24 +3056,24 @@ DYNAMIC-BUFFER TREE-TEXT u8
    [: TREE-ROOM ;] SOURCE:READ-WHOLE-FILE ;
 \ The text of the file at PATH, held until the next read.
 : TREE$ ( str -- str )
-   TREE-READ 0 TREE-TEXT swap ;
+   TREE-READ 0 TREE-TEXT swap >str ;
 
 \ A file with no such line cannot hold the case's target.
 : LINE-START ( n str -- n )
-   {: size:n t:^ tu:n :}
+   {: size:n t:str :}
    size 0 ?do
       i 0= if 0 0= else i 1- TREE-TEXT c@ 10 = then
-      if i TREE-TEXT size i - t tu STR:STARTS-WITH? if i unloop exit then then
+      if i TREE-TEXT size i - >str t STR:STARTS-WITH? if i unloop exit then then
    loop
-   SB-RESET s" lsp-test: no line starts with " SB-APPEND t tu SB-APPEND
+   SB-RESET s" lsp-test: no line starts with " SB-APPEND t SB-APPEND
    SB$ EXIT-STATUS:FAILURE die ;
 
 \ PATH and the line, counted from 0 as LSP positions are, of the first line of
 \ the file there that starts with TEXT.
 : PATH-LINE ( str str -- str n )
-   {: p:^ pu:n t:^ tu:n :}
-   p pu TREE-READ t tu LINE-START {: at:n :}
-   p pu 0 at 0 ?do i TREE-TEXT c@ 10 = if 1+ then loop ;
+   {: p:str t:str :}
+   p TREE-READ t LINE-START {: at:n :}
+   p 0 at 0 ?do i TREE-TEXT c@ 10 = if 1+ then loop ;
 
 : URI-LINE ( str str -- str n )
    PATH-LINE {: at:n :} URI-OF at ;
@@ -3219,7 +3220,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : ENGINE-OPEN-SOURCE ( -- str )
    SCRIPT-ARGV-PATH TREE-READ {: size:n :}
    32 size s" : SCRIPT-ARGC " LINE-START TREE-TEXT c!
-   0 TREE-TEXT size ;
+   0 TREE-TEXT size >str ;
 
 : ENGINE-OPEN-TURNS ( -- )
    SESSION-INITIALIZE
@@ -3387,7 +3388,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : TEXT-DEF-C-SWAPPED ( -- str )
    TXT-B CLEAR
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-TWO DEF-ONE + ;\n"
-   N>BLEN TXT-B APPEND-SPAN
+   TXT-B BYTES+
    OVER-USINGS+
    TXT$ ;
 
@@ -3502,10 +3503,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ ---- hover -------------------------------------------------------------------
 
 : INITIALIZE-AS ( str -- )
-   {: f:^ fu:n :}
+   {: f:str :}
    MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{\"textDocument\":{\"hover\":{\"contentFormat\":" MSG+
-   f fu MSG+ s" }}}}}" MSG+
+   f MSG+ s" }}}}}" MSG+
    MSG$ FRAMED ;
 
 : MARKDOWN-CLIENT ( -- )
@@ -3513,10 +3514,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : PLAIN-CLIENT ( -- )  s\" [\"plaintext\"]" INITIALIZE-AS ;
 
 : HOVER-ASK ( str str n n -- )
-   {: i:^ iu:n p:^ pu:n l:n c:n :}
-   s" textDocument/hover" i iu p pu l c AT-ASK ;
+   {: id:str p:str l:n c:n :}
+   s" textDocument/hover" id p l c AT-ASK ;
 
-: HV+ ( str -- )  N>BLEN TXT-B APPEND-SPAN ;
+: HV+ ( str -- )  TXT-B BYTES+ ;
 
 \ A path as a hover names its file: relative to the working directory, which
 \ the server shares, when the file lies inside it, else the path.
@@ -3525,11 +3526,11 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ The next frame answers the request with this id's JSON text with a hover of
 \ this kind, whose value TXT-B holds, over characters C1 to C2 of line L.
 : HOVERED ( str str n n n -- )
-   {: i:^ iu:n k:^ ku:n l:n c1:n c2:n :}
+   {: id:str k:str l:n c1:n c2:n :}
    PAR-B CLEAR TXT$ TEXT+
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
-   s\" ,\"result\":{\"contents\":{\"kind\":\"" MSG+ k ku MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
+   s\" ,\"result\":{\"contents\":{\"kind\":\"" MSG+ k MSG+
    s\" \",\"value\":" MSG+ PAR$ MSG+
    s\" },\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
@@ -3618,9 +3619,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ The lines of word W, which definer K made with effect E on 1-based line L,
 \ as Markdown.
 : MADE-MD ( str str str n -- )
-   {: k:^ ku:n w:^ wu:n e:^ eu:n l:n :}
-   TXT-B CLEAR s\" ```habu\n" HV+ k ku HV+ s"  " HV+ w wu HV+
-   s"  ( " HV+ e eu HV+ s\"  )\n\\ package hv-m, hover-made.f:" HV+
+   {: k:str w:str e:str l:n :}
+   TXT-B CLEAR s\" ```habu\n" HV+ k HV+ s"  " HV+ w HV+
+   s"  ( " HV+ e HV+ s\"  )\n\\ package hv-m, hover-made.f:" HV+
    SB-RESET l FMT:SB-INT SB$ HV+ s\" \n```" HV+ ;
 
 \ Asks for the hover at 0-based line L, character C of the checked document.
@@ -3650,9 +3651,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ The lines of CVT-T's converter W, of effect E, as Markdown.
 : CVT-MD ( str str -- )
-   {: w:^ wu:n e:^ eu:n :}
-   TXT-B CLEAR s\" ```habu\nDEFTYPE " HV+ w wu HV+
-   s"  ( " HV+ e eu HV+ s\"  )\n\\ package hv-p, hover-cvt.f:4\n```" HV+ ;
+   {: w:str e:str :}
+   TXT-B CLEAR s\" ```habu\nDEFTYPE " HV+ w HV+
+   s"  ( " HV+ e HV+ s\"  )\n\\ package hv-p, hover-cvt.f:4\n```" HV+ ;
 
 \ A qualified use's whole spelling is neither converter's word,
 \ so the server compares its tail, the bytes after its colon.
@@ -3723,8 +3724,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ ---- document highlight ------------------------------------------------------
 
 : HIGHLIGHT-ASK ( str str n n -- )
-   {: i:^ iu:n p:^ pu:n l:n c:n :}
-   s" textDocument/documentHighlight" i iu p pu l c AT-ASK ;
+   {: id:str p:str l:n c:n :}
+   s" textDocument/documentHighlight" id p l c AT-ASK ;
 
 \ The highlight the answer SYMBOLS-START began lists next: a Text one from
 \ character C1 to C2 of line L.
@@ -3739,8 +3740,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ The next frame answers the request with this id's JSON text with DEF-ONE's
 \ declaring token and its two uses, in TEXT-DEF-A moved this many lines down.
 : DEF-ONE-LIT ( str n -- )
-   {: i:^ iu:n down:n :}
-   i iu SYMBOLS-START
+   {: id:str down:n :}
+   id SYMBOLS-START
    down 2 9 HIGHLIGHT+
    down 1+ 19 26 HIGHLIGHT+
    down 2 + 32 39 HIGHLIGHT+
@@ -3919,9 +3920,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" package P\npublic\ninclude hl-case.f\n;package\npackage Q\npublic\ninclude hl-case.f\n;package\n: HL-BOTH ( -- n ) P:K Q:k + ;\n" ;
 
 : HL-CASE-DEF+ ( str str -- )
-   {: w:^ wu:n p:^ pu:n :}
-   s\" {\"kind\":\":\",\"class\":\"word\",\"word\":\"" PAR+ w wu PAR+
-   s\" \",\"package\":\"" PAR+ p pu PAR+
+   {: w:str p:str :}
+   s\" {\"kind\":\":\",\"class\":\"word\",\"word\":\"" PAR+ w PAR+
+   s\" \",\"package\":\"" PAR+ p PAR+
    s\" \",\"visibility\":\"public\",\"effect\":\"-- n\",\"file\":" PAR+
    HL-CASE-PATH TEXT+ s\" ,\"byte_start\":2,\"byte_end\":3}\n" PAR+ ;
 
@@ -3934,10 +3935,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" ,\"target_start\":2,\"target_end\":3}\n" PAR+ ;
 
 : HL-NULL-AT ( n n n str -- )
-   {: slot:n line:n ch:n l:^ lu:n :}
+   {: slot:n line:n ch:n l:str :}
    slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
    line ch LSP-TEXT:OFFSET-AT {: at:n :}
-   l lu T-LABEL
+   l T-LABEL
    HL-W MSG-TEXT @ JSON:OPEN slot at LSP-HIGHLIGHT:ANSWER
    JSON:WRITTEN$ s" null" T$=
    HL-W JSON:CLOSE ;
@@ -3947,14 +3948,14 @@ DYNAMIC-BUFFER TREE-TEXT u8
    PAR-B CLEAR
    s\" {\"file\":" PAR+ HL-REREAD-PATH TEXT+
    s\" }\n{\"file\":" PAR+ HL-CASE-PATH TEXT+ s\" }\n" PAR+
-   PAR$ nip {: files:n :}
+   PAR$ STR:LEN {: files:n :}
    s" K" s" p" HL-CASE-DEF+
    s" k" s" q" HL-CASE-DEF+
-   PAR$ nip {: defs:n :}
+   PAR$ STR:LEN {: defs:n :}
    107 110 HL-CASE-USE+
    111 114 HL-CASE-USE+
-   PAR$ {: a:^ u:n :}
-   a files  a files + defs files -  a defs + u defs -  NULL$ slot true
+   PAR$ {: a:str :}
+   a STR:DATA files >str  a STR:DATA files + defs files - >str  a STR:DATA defs + a STR:LEN defs - >str  NULL$ slot true
    LSP-DEFS:DEFS-KEEP
    slot 8 20 s" highlight-case-reread: P:K" HL-NULL-AT
    slot 8 24 s" highlight-case-reread: Q:k" HL-NULL-AT ;
@@ -3970,17 +3971,17 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ ---- semantic tokens ---------------------------------------------------------
 
 : TOKENS-ASK ( str str -- )
-   {: i:^ iu:n p:^ pu:n :}
+   {: id:str p:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
    s\" ,\"method\":\"textDocument/semanticTokens/full\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
-   p pu URI-OF MSG+ s\" \"}}}" MSG+
+   p URI-OF MSG+ s\" \"}}}" MSG+
    MSG$ FRAMED ;
 
 : TOKENS-START ( str -- )
-   {: i:^ iu:n :}
+   {: id:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":{\"data\":[" MSG+ ;
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+ s\" ,\"result\":{\"data\":[" MSG+ ;
 
 \ The token the answer TOKENS-START began lists next, as LSP encodes one: the
 \ lines after the last token's line, the characters after the last token's
@@ -4101,9 +4102,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
 create SNAP-B HDR-BYTES allot
 create WAS-B HDR-BYTES allot
 
-: SNAP$ ( -- str )  SNAP-B SPAN$ BLEN>N ;
-: WAS$ ( -- str )  WAS-B SPAN$ BLEN>N ;
-: SNAP+ ( str -- )  N>BLEN SNAP-B APPEND-SPAN ;
+: SNAP$ ( -- str )  SNAP-B SPAN$ BLEN>N >str ;
+: WAS$ ( -- str )  WAS-B SPAN$ BLEN>N >str ;
+: SNAP+ ( str -- )  SNAP-B BYTES+ ;
 : SNAP-INT+ ( n -- )  s"  " SNAP+ INT$ SNAP+ ;
 
 : ID-INC-PATH ( -- str )  s" id-inc.f" FIXTURE ;
@@ -4129,17 +4130,17 @@ create WAS-B HDR-BYTES allot
    ;MATCH ;
 
 : ID-OPEN ( str str -- n )
-   {: p:^ pu:n t:^ tu:n :}
-   p pu URI-OF 1 p pu t tu LSP-DOCS:DOC-OPEN
-   p pu URI-OF LSP-DOCS:DOC-FIND MATCH option
+   {: p:str t:str :}
+   p URI-OF 1 p t LSP-DOCS:DOC-OPEN
+   p URI-OF LSP-DOCS:DOC-FIND MATCH option
       some OF ENDOF
       none OF s" identities: open" T-LABEL false TTRUE -1 ENDOF
    ;MATCH ;
 
 : ID-KEEP ( n str -- )
-   {: slot:n l:^ lu:n :}
+   {: slot:n l:str :}
    slot LSP-DOCS:DOC-TEXT$ slot LSP-DOCS:DOC-PATH$ ID-CHECK {: ok:bool :}
-   l lu T-LABEL ok TTRUE
+   l T-LABEL ok TTRUE
    LSP-CHECK:VERIFY-FILES$ LSP-CHECK:VERIFY-DEFS$ LSP-CHECK:VERIFY-USES$
    LSP-CHECK:VERIFY-UNREAD$ slot ok
    LSP-DEFS:DEFS-KEEP ;
@@ -4176,7 +4177,7 @@ create WAS-B HDR-BYTES allot
    SNAP-B CLEAR
    a SNAP-SLOT b SNAP-SLOT ;
 
-: WAS! ( -- )  SNAP$ N>BLEN WAS-B REPLACE ;
+: WAS! ( -- )  SNAP$ WAS-B BYTES! ;
 
 : DECLS-AT ( n n n n -- n )
    {: slot:n g:n s:n e:n :}
@@ -4186,25 +4187,25 @@ create WAS-B HDR-BYTES allot
    loop ;
 
 : VISIT-OF ( n n n n str str n -- n )
-   {: slot:n g:n s:n e:n nm:^ nu:n p:^ pu:n v:n :}
+   {: slot:n g:n s:n e:n nm:str p:str v:n :}
    slot LSP-DEFS:DEFS-DECL-RANGE ?do
       i LSP-DEFS:DECL-GROUP g =
       i LSP-DEFS:DECL-BYTES e = swap s = and and
-      i LSP-DEFS:DECL-NAME$ nm nu STR:= and
-      i LSP-DEFS:DECL-PACKAGE$ p pu STR:= and
+      i LSP-DEFS:DECL-NAME$ nm STR:= and
+      i LSP-DEFS:DECL-PACKAGE$ p STR:= and
       i LSP-DEFS:DECL-VIS v = and
       if i LSP-DEFS:DECL-VISIT unloop exit then
    loop
    0 ;
 
 : USE-NAMES ( n n str str str -- )
-   {: slot:n u:n nm:^ nu:n p:^ pu:n l:^ lu:n :}
-   l lu T-LABEL u LSP-DEFS:USE-NAME$ nm nu T$=
-   l lu T-LABEL u LSP-DEFS:USE-PACKAGE$ p pu T$=
-   l lu T-LABEL u LSP-DEFS:USE-VISIT 0 > TTRUE
+   {: slot:n u:n nm:str p:str l:str :}
+   l T-LABEL u LSP-DEFS:USE-NAME$ nm T$=
+   l T-LABEL u LSP-DEFS:USE-PACKAGE$ p T$=
+   l T-LABEL u LSP-DEFS:USE-VISIT 0 > TTRUE
    u LSP-DEFS:USE-TARGET {: s:n e:n :}
-   slot u LSP-DEFS:USE-GROUP s e nm nu p pu u LSP-DEFS:USE-VIS VISIT-OF
-   l lu T-LABEL u LSP-DEFS:USE-VISIT T= ;
+   slot u LSP-DEFS:USE-GROUP s e nm p u LSP-DEFS:USE-VIS VISIT-OF
+   l T-LABEL u LSP-DEFS:USE-VISIT T= ;
 
 : ID-INCLUDED ( n -- )
    {: slot:n :}
@@ -4295,20 +4296,20 @@ create WAS-B HDR-BYTES allot
    s\" require cmpl-dep.f\npackage CMPA\n: CMPL-NEW ( -- n ) 5 ;\n: CMPL-TWO ( -- n ) CMPL-NEW CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire src/lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
 
 : COMPLETION-ASK ( str str n n -- )
-   {: i:^ iu:n p:^ pu:n l:n c:n :}
-   s" textDocument/completion" i iu p pu l c AT-ASK ;
+   {: id:str p:str l:n c:n :}
+   s" textDocument/completion" id p l c AT-ASK ;
 
 : ITEMS-START ( str -- )
-   {: i:^ iu:n :}
+   {: id:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
    s\" ,\"result\":{\"isIncomplete\":false,\"items\":[" MSG+ ;
 
 : ITEM+ ( str str -- )
-   {: w:^ wu:n d:^ du:n :}
+   {: w:str d:str :}
    MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
-   s\" {\"label\":\"" MSG+ w wu MSG+ s\" \"" MSG+
-   du 0 > if s\" ,\"detail\":\"" MSG+ d du MSG+ s\" \"" MSG+ then
+   s\" {\"label\":\"" MSG+ w MSG+ s\" \"" MSG+
+   d STR:LEN 0 > if s\" ,\"detail\":\"" MSG+ d MSG+ s\" \"" MSG+ then
    s" }" MSG+ ;
 
 : ITEMS-END ( -- )
@@ -4454,39 +4455,39 @@ create WAS-B HDR-BYTES allot
 \ verifier dies, its load reported, and exits without a verdict.
 : TEXT-LK-OVER ( -- str )
    TXT-B CLEAR
-   TEXT-LK-ONE N>BLEN TXT-B APPEND-SPAN
+   TEXT-LK-ONE TXT-B BYTES+
    OVER-USINGS+
    TXT$ ;
 
 : LINKS-ASK ( str str -- )
-   {: i:^ iu:n p:^ pu:n :}
+   {: id:str p:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
    s\" ,\"method\":\"textDocument/documentLink\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
-   p pu URI-OF MSG+ s\" \"}}}" MSG+
+   p URI-OF MSG+ s\" \"}}}" MSG+
    MSG$ FRAMED ;
 
 : LINKS-START ( str -- )
-   {: i:^ iu:n :}
+   {: id:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+ s\" ,\"result\":[" MSG+ ;
 
 : LINK+ ( n n n str -- )
-   {: l:n c1:n c2:n p:^ pu:n :}
+   {: l:n c1:n c2:n p:str :}
    MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c2 INT$ MSG+
-   s\" }},\"target\":\"" MSG+ p pu URI-OF MSG+ s\" \"" MSG+ ;
+   s\" }},\"target\":\"" MSG+ p URI-OF MSG+ s\" \"" MSG+ ;
 
 : READ-LINK+ ( n n n str -- )  LINK+ s" }" MSG+ ;
 
 : HELD-LINK+ ( n n n str -- )
-   {: l:n c1:n c2:n p:^ pu:n :}
-   l c1 c2 p pu LINK+
+   {: l:n c1:n c2:n p:str :}
+   l c1 c2 p LINK+
    TXT-B CLEAR
-   s" held " HV+ p pu WHERE+
+   s" held " HV+ p WHERE+
    s" : this loader did not read it; the engine provides it or it was already recorded." HV+
    PAR-B CLEAR TXT$ TEXT+
    s\" ,\"tooltip\":" MSG+ PAR$ MSG+ s" }" MSG+ ;
@@ -4600,25 +4601,25 @@ create WAS-B HDR-BYTES allot
 create WS-B HDR-BYTES allot
 variable WS-ROOT-U
 
-: WS+ ( str -- )  N>BLEN WS-B APPEND-SPAN ;
-: WS$ ( -- str )  WS-B SPAN$ BLEN>N ;
+: WS+ ( str -- )  WS-B BYTES+ ;
+: WS$ ( -- str )  WS-B SPAN$ BLEN>N >str ;
 
 : IN-GRAPH ( str -- str )
-   {: a:^ u:n :}
-   SB-RESET s" graph/" SB-APPEND a u SB-APPEND SB$ FIXTURE ;
+   {: s:str :}
+   SB-RESET s" graph/" SB-APPEND s SB-APPEND SB$ FIXTURE ;
 
 : WS-DIR ( str -- )  IN-GRAPH FS:MAKE-DIR ;
 
 : WS-FILE ( str str -- )
-   {: n:^ nu:n t:^ tu:n :}
-   n nu IN-GRAPH t tu FS:WRITE-ALL ;
+   {: n:str t:str :}
+   n IN-GRAPH t FS:WRITE-ALL ;
 
 : WS-CANON ( str -- str )  IN-GRAPH SOURCE-ROOT:CANONICAL drop ;
 
 : WS-NAME ( str -- str )
-   {: a:^ u:n :}
-   u WS-ROOT-U @ < if a u exit then
-   a WS-ROOT-U @ + u WS-ROOT-U @ - ;
+   {: s:str :}
+   s STR:LEN WS-ROOT-U @ < if s exit then
+   s STR:DATA WS-ROOT-U @ + s STR:LEN WS-ROOT-U @ - >str ;
 
 \ 1: a1 loads b1, which loads f1; u1 loads nothing. 2: a2 loads b2, which
 \ loads f2 on disk and nothing open. 3: c3 loads nothing on disk and f3
@@ -4681,7 +4682,7 @@ variable WS-ROOT-U
    loop
    LSP-WORKSPACE:UNREADABLE 0 ?do
       s" ; " WS+
-      i LSP-WORKSPACE:UNREADABLE$ 2swap WS-NAME WS+ s" : " WS+ WS+
+      i LSP-WORKSPACE:UNREADABLE$ swap WS-NAME WS+ s" : " WS+ WS+
    loop
    WS$ ;
 
@@ -4689,24 +4690,24 @@ variable WS-ROOT-U
 \ the second, must be these. WS-B holds the first's path while the second's
 \ is made.
 : REACHES ( str str str -- )
-   {: f:^ fu:n d:^ du:n w:^ wu:n :}
-   WS-B CLEAR f fu WS-CANON WS+
-   WS$ d du WS-CANON [: WS-OPENS ;] LSP-WORKSPACE:REACHING
-   SB-RESET s" workspace-reaching: " SB-APPEND f fu SB-APPEND s" , " SB-APPEND d du SB-APPEND
+   {: f:str d:str w:str :}
+   WS-B CLEAR f WS-CANON WS+
+   WS$ d WS-CANON [: WS-OPENS ;] LSP-WORKSPACE:REACHING
+   SB-RESET s" workspace-reaching: " SB-APPEND f SB-APPEND s" , " SB-APPEND d SB-APPEND
    SB$ T-LABEL
-   WS-ANSWER$ w wu T$= ;
+   WS-ANSWER$ w T$= ;
 
 : REACHES-AGAIN ( str str -- )
-   {: f:^ fu:n w:^ wu:n :}
-   WS-B CLEAR f fu WS-CANON WS+
+   {: f:str w:str :}
+   WS-B CLEAR f WS-CANON WS+
    WS$ LSP-WORKSPACE:REACHING-AGAIN
-   SB-RESET s" workspace-reaching: again " SB-APPEND f fu SB-APPEND
+   SB-RESET s" workspace-reaching: again " SB-APPEND f SB-APPEND
    SB$ T-LABEL
-   WS-ANSWER$ w wu T$= ;
+   WS-ANSWER$ w T$= ;
 
 : WORKSPACE-REACHING ( -- )
    WS-TREE
-   s" graph" FIXTURE SOURCE-ROOT:CANONICAL drop nip 1+ WS-ROOT-U !
+   s" graph" FIXTURE SOURCE-ROOT:CANONICAL drop STR:LEN 1+ WS-ROOT-U !
    s" w" IN-GRAPH LSP-WORKSPACE:ROOT+
    s" w/f1.f" s" w/a1.f" s" w/f1.f w/a1.f w/b1.f" REACHES
    s" w/b1.f" s" w/b1.f w/a1.f" REACHES-AGAIN
@@ -4746,8 +4747,8 @@ variable WS-ROOT-U
 : OPEN-URI ( str -- str )  FIXTURE URI-OF ;
 
 : REFS-FILE ( str str -- )
-   {: n:^ nu:n t:^ tu:n :}
-   n nu FIXTURE t tu FS:WRITE-ALL ;
+   {: n:str t:str :}
+   n FIXTURE t FS:WRITE-ALL ;
 
 : REFS-DIR ( str -- )  FIXTURE FS:MAKE-DIR ;
 
@@ -4790,11 +4791,11 @@ variable WS-ROOT-U
 
 \ A shared workspace session has already initialized with its fixed root.
 : INITIALIZE-WITH ( str -- )
-   {: m:^ mu:n :}
+   {: m:str :}
    SHARED? @ if exit then
    MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}," MSG+
-   m mu MSG+ s" }}" MSG+
+   m MSG+ s" }}" MSG+
    MSG$ FRAMED ;
 
 : ROOT-URI+ ( str -- )
@@ -4809,13 +4810,13 @@ variable WS-ROOT-U
 : DECL-NOT ( -- str )  s\" ,\"context\":{\"includeDeclaration\":false}" ;
 
 : REFS-ASK ( str str n n str -- )
-   {: i:^ iu:n p:^ pu:n l:n c:n x:^ xu:n :}
-   s" textDocument/references" i iu p pu l c x xu AT-ASK-WITH ;
+   {: id:str p:str l:n c:n x:str :}
+   s" textDocument/references" id p l c x AT-ASK-WITH ;
 
 : REF+ ( str n n n -- )
-   {: u:^ uu:n l:n c1:n c2:n :}
+   {: u:str l:n c1:n c2:n :}
    MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
-   s\" {\"uri\":\"" MSG+ u uu MSG+
+   s\" {\"uri\":\"" MSG+ u MSG+
    s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
@@ -4838,18 +4839,18 @@ variable WS-ROOT-U
 \ whose gather left N files out, begun in EXP: NAMED+ adds each file,
 \ NAMED-END hears it.
 : NOT-APPLIED ( str n -- )
-   {: i:^ iu:n n:n :}
+   {: id:str n:n :}
    EXP-B CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" EXP+ i iu EXP+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" EXP+ id EXP+
    s\" ,\"error\":{\"code\":-32803,\"message\":\"Rename not applied: " EXP+ n NOT-COVERED ;
 
 \ The file at this canonical path left out, named relative to the working
 \ directory the server shares, and why.
 : NAMED+ ( str str -- )
-   {: p:^ pu:n w:^ wu:n :}
+   {: p:str w:str :}
    s" \n" EXP+
-   p pu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE EXP+
-   s" : " EXP+ w wu EXP+ ;
+   p SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE EXP+
+   s" : " EXP+ w EXP+ ;
 
 : NAMED-END ( -- )
    s\" \"}}" EXP+
@@ -4864,19 +4865,19 @@ variable WS-ROOT-U
    NEXT-BODY EXP$ STR:= ;
 
 : ELSEWHERE+ ( str n str -- )
-   {: p:^ pu:n l:n s:^ su:n :}
-   p pu CANON s" the token at line " NAMED+
+   {: p:str l:n s:str :}
+   p CANON s" the token at line " NAMED+
    l INT$ EXP+
    s"  is bound to another word under " EXP+
-   s su CANON SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE EXP+ ;
+   s CANON SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE EXP+ ;
 
 : FAILED ( str str -- )
-   {: i:^ iu:n p:^ pu:n :}
+   {: id:str p:str :}
    HEAR
    OUT-AT @ {: from:n :}
-   i iu -32803 REFUSED
-   OUT-SPAN SPAN:$ drop from + OUT-AT @ from -
-   p pu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE STR:CONTAINS?
+   id -32803 REFUSED
+   OUT-SPAN SPAN:$ STR:DATA from + OUT-AT @ from - >str
+   p SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE STR:CONTAINS?
    s" -32803 names the file" HOLDS ;
 
 : ROOK-DECL+ ( -- )  REF-A-PATH URI-OF 0 2 6 REF+ ;
@@ -5041,8 +5042,8 @@ variable WS-ROOT-U
    s" 3" SYMBOLS-START s" refs-life/g.f" DISK-URI 0 2 5 REF+ SYMBOLS-END ;
 
 : UNV-ANSWER ( str bool n -- )
-   {: i:^ iu:n opened:bool at:n :}
-   i iu SYMBOLS-START
+   {: id:str opened:bool at:n :}
+   id SYMBOLS-START
    s" refs-unv/w/f.f" DISK-URI 0 2 6 REF+
    s" refs-unv/w/d.f" OPEN-URI 1 14 18 REF+
    opened if s" refs-unv/w/s.f" OPEN-URI else s" refs-unv/w/s.f" DISK-URI then
@@ -5675,7 +5676,7 @@ variable WS-ROOT-U
    SAY
    SESSION-CAPABILITIES
    PR-DECL-A-PATH TEXT-PR-A 1 OPENS
-   PRIM-SOURCE-PATH 2dup TREE$ 1 OPENS
+   PRIM-SOURCE-PATH dup TREE$ 1 OPENS
    STREAM
    2 PUBLISH-BATCH
    TEXT-PR-A PR-DECL-A-PATH 1 s" verified" BATCH-LISTED
@@ -5784,10 +5785,10 @@ variable PROBE-DECLS
    TXT$ ;
 
 : BI-SOURCE-SHIFT$ ( str -- str )
-   {: path:^ pathu:n :}
+   {: path:str :}
    TXT-B CLEAR
    s\" \n" HV+
-   path pathu TREE$ HV+
+   path TREE$ HV+
    TXT$ ;
 
 : BI-SOURCE-UNENDED$ ( -- str )
@@ -5870,7 +5871,7 @@ variable PROBE-DECLS
    SYMBOLS-END
    HEAR s" 10" -32803 REFUSED
    HEAR s" 11" -32803 REFUSED
-   SCRIPT-ARGV-PATH 2dup TREE$ 1 OPENS
+   SCRIPT-ARGV-PATH dup TREE$ 1 OPENS
    STREAM
    SCRIPT-ARGV-PATH 1 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -5882,7 +5883,7 @@ variable PROBE-DECLS
    SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 REF+ BI-USES+ SYMBOLS-END
    1 NAMED SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
    s" 6" SYMBOLS-START BI-USES+ SYMBOLS-END
-   SCRIPT-ARGV-PATH BI-SOURCE-SHIFT$ SCRIPT-ARGV-PATH 2swap 2 CHANGES
+   SCRIPT-ARGV-PATH BI-SOURCE-SHIFT$ SCRIPT-ARGV-PATH swap 2 CHANGES
    SAY
    SCRIPT-ARGV-PATH 2 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -5894,7 +5895,7 @@ variable PROBE-DECLS
    s" 14" SYMBOLS-START
    SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " URI-LINE 1+ 2 13 REF+
    BI-USES+ SYMBOLS-END
-   BI-SOURCE-FAKE$ SCRIPT-ARGV-PATH 2swap 3 CHANGES
+   BI-SOURCE-FAKE$ SCRIPT-ARGV-PATH swap 3 CHANGES
    SAY
    SCRIPT-ARGV-PATH 3 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -5908,7 +5909,7 @@ variable PROBE-DECLS
    s" 8" SYMBOLS-START SYMBOLS-END
    1 NAMED SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
    s" 9" SYMBOLS-START BI-USES+ SYMBOLS-END
-   BI-SOURCE-UNENDED$ SCRIPT-ARGV-PATH 2swap 4 CHANGES
+   BI-SOURCE-UNENDED$ SCRIPT-ARGV-PATH swap 4 CHANGES
    SAY
    SCRIPT-ARGV-PATH 4 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -5918,21 +5919,21 @@ variable PROBE-DECLS
    s" 15" NOWHERE
    1 NAMED SCRIPT-ARGV-PATH s" built-in source cannot be located" NAMED+ NAMED-END
    s" 16" SYMBOLS-START BI-USES+ SYMBOLS-END
-   BI-SOURCE-UNBALANCED$ SCRIPT-ARGV-PATH 2swap 5 CHANGES
+   BI-SOURCE-UNBALANCED$ SCRIPT-ARGV-PATH swap 5 CHANGES
    SAY
    SCRIPT-ARGV-PATH 5 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 17" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 17" NOWHERE
-   BI-SOURCE-RETIRED$ SCRIPT-ARGV-PATH 2swap 6 CHANGES
+   BI-SOURCE-RETIRED$ SCRIPT-ARGV-PATH swap 6 CHANGES
    SAY
    SCRIPT-ARGV-PATH 6 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 18" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 18" NOWHERE
-   BI-SOURCE-REPLACED$ SCRIPT-ARGV-PATH 2swap 7 CHANGES
+   BI-SOURCE-REPLACED$ SCRIPT-ARGV-PATH swap 7 CHANGES
    SAY
    SCRIPT-ARGV-PATH 7 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -5943,14 +5944,14 @@ variable PROBE-DECLS
    s" 19" NOWHERE
    s" 20" SYMBOLS-START SYMBOLS-END
    s" 22" SYMBOLS-START SYMBOLS-END
-   BI-SOURCE-TRUST-UNENDED$ SCRIPT-ARGV-PATH 2swap 8 CHANGES
+   BI-SOURCE-TRUST-UNENDED$ SCRIPT-ARGV-PATH swap 8 CHANGES
    SAY
    SCRIPT-ARGV-PATH 8 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 21" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 21" NOWHERE
-   BI-SOURCE-USING-CRASH$ SCRIPT-ARGV-PATH 2swap 9 CHANGES
+   BI-SOURCE-USING-CRASH$ SCRIPT-ARGV-PATH swap 9 CHANGES
    SAY
    SCRIPT-ARGV-PATH 9 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -5959,21 +5960,21 @@ variable PROBE-DECLS
    s" 23" NOWHERE
    \ A refused cast is skipped as a refused declaration is: the accepted one
    \ before it is located.
-   BI-SOURCE-CAST-REFUSED$ SCRIPT-ARGV-PATH 2swap 10 CHANGES
+   BI-SOURCE-CAST-REFUSED$ SCRIPT-ARGV-PATH swap 10 CHANGES
    SAY
    SCRIPT-ARGV-PATH 10 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 24" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 24" SCRIPT-ARGV-PATH URI-OF 0 2 13 LOCATED
-   BI-SOURCE-REPLACED$ SCRIPT-ARGV-PATH 2swap 11 CHANGES
+   BI-SOURCE-REPLACED$ SCRIPT-ARGV-PATH swap 11 CHANGES
    SAY
    SCRIPT-ARGV-PATH 11 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 25" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 25" NOWHERE
-   BI-SOURCE-REFUSED$ SCRIPT-ARGV-PATH 2swap 12 CHANGES
+   BI-SOURCE-REFUSED$ SCRIPT-ARGV-PATH swap 12 CHANGES
    SAY
    SCRIPT-ARGV-PATH 12 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -5982,35 +5983,35 @@ variable PROBE-DECLS
    SAY
    s" 26" NOWHERE
    s" 27" SCRIPT-ARGV-PATH URI-OF 1 2 18 LOCATED
-   BI-SOURCE-PARSED$ SCRIPT-ARGV-PATH 2swap 13 CHANGES
+   BI-SOURCE-PARSED$ SCRIPT-ARGV-PATH swap 13 CHANGES
    SAY
    SCRIPT-ARGV-PATH 13 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 28" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 28" NOWHERE
-   BI-SOURCE-UNTERM$ SCRIPT-ARGV-PATH 2swap 14 CHANGES
+   BI-SOURCE-UNTERM$ SCRIPT-ARGV-PATH swap 14 CHANGES
    SAY
    SCRIPT-ARGV-PATH 14 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 29" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 29" NOWHERE
-   BI-SOURCE-DEFERRED$ SCRIPT-ARGV-PATH 2swap 15 CHANGES
+   BI-SOURCE-DEFERRED$ SCRIPT-ARGV-PATH swap 15 CHANGES
    SAY
    SCRIPT-ARGV-PATH 15 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 30" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 30" NOWHERE
-   BI-SOURCE-OPAQUE$ SCRIPT-ARGV-PATH 2swap 16 CHANGES
+   BI-SOURCE-OPAQUE$ SCRIPT-ARGV-PATH swap 16 CHANGES
    SAY
    SCRIPT-ARGV-PATH 16 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 31" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 31" NOWHERE
-   BI-SOURCE-REPLACED-DEFINER$ SCRIPT-ARGV-PATH 2swap 17 CHANGES
+   BI-SOURCE-REPLACED-DEFINER$ SCRIPT-ARGV-PATH swap 17 CHANGES
    SAY
    SCRIPT-ARGV-PATH 17 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -6018,7 +6019,7 @@ variable PROBE-DECLS
    SAY
    s" 32" NOWHERE
    \ A refused structural declaration must not hide a later opaque call.
-   BI-SOURCE-REFUSED-OPAQUE$ SCRIPT-ARGV-PATH 2swap 18 CHANGES
+   BI-SOURCE-REFUSED-OPAQUE$ SCRIPT-ARGV-PATH swap 18 CHANGES
    SAY
    SCRIPT-ARGV-PATH 18 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -6028,14 +6029,14 @@ variable PROBE-DECLS
    s" 33" NOWHERE
    s" 34" SYMBOLS-START SYMBOLS-END
    \ Without the call, the accepted declaration survives that same refusal.
-   BI-SOURCE-REFUSED-TRUST$ SCRIPT-ARGV-PATH 2swap 19 CHANGES
+   BI-SOURCE-REFUSED-TRUST$ SCRIPT-ARGV-PATH swap 19 CHANGES
    SAY
    SCRIPT-ARGV-PATH 19 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 35" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 35" SCRIPT-ARGV-PATH URI-OF 0 2 13 LOCATED
-   BI-SOURCE-TRUST$ SCRIPT-ARGV-PATH 2swap 20 CHANGES
+   BI-SOURCE-TRUST$ SCRIPT-ARGV-PATH swap 20 CHANGES
    SAY
    SCRIPT-ARGV-PATH 20 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -6071,12 +6072,12 @@ variable PROBE-DECLS
    BI-OTHER-PATH URI-OF 1 20 39 REF+
    SYMBOLS-END
    s" 5" NOWHERE
-   s" src/habu/code-bytes.f" IN-TREE 2dup TREE$ 1 OPENS
+   s" src/habu/code-bytes.f" IN-TREE dup TREE$ 1 OPENS
    STREAM
    s" src/habu/code-bytes.f" IN-TREE 1 EXPECT PUBLISHES
    BI-OTHER-PATH 1 EXPECT PUBLISHES
    s" src/habu/code-bytes.f" IN-TREE BI-SOURCE-SHIFT$
-   s" src/habu/code-bytes.f" IN-TREE 2swap 2 CHANGES
+   s" src/habu/code-bytes.f" IN-TREE swap 2 CHANGES
    SAY
    s" src/habu/code-bytes.f" IN-TREE 2 EXPECT PUBLISHES
    BI-OTHER-PATH 1 EXPECT PUBLISHES
@@ -6100,13 +6101,13 @@ variable PROBE-DECLS
    s" 8" AIO-PTR-PATH 0 11 DECL-TOO REFS-ASK
    SAY
    s" 8" SYMBOLS-START SYMBOLS-END
-   BI-SOURCE-TRUST-DOES$ AIO-PTR-PATH 2swap 2 CHANGES
+   BI-SOURCE-TRUST-DOES$ AIO-PTR-PATH swap 2 CHANGES
    SAY
    AIO-PTR-PATH 2 EXPECT PUBLISHES
    s" 9" AIO-PTR-PATH 0 11 DECL-TOO REFS-ASK
    SAY
    s" 9" SYMBOLS-START SYMBOLS-END
-   BI-SOURCE-CHECKED-DOES$ AIO-PTR-PATH 2swap 3 CHANGES
+   BI-SOURCE-CHECKED-DOES$ AIO-PTR-PATH swap 3 CHANGES
    SAY
    AIO-PTR-PATH 3 EXPECT PUBLISHES
    s" 10" AIO-PTR-PATH 0 3 DECL-TOO REFS-ASK
@@ -6145,13 +6146,13 @@ variable PROBE-DECLS
 \ ---- rename ------------------------------------------------------------------
 
 : PREPARE-ASK ( str str n n -- )
-   {: i:^ iu:n p:^ pu:n l:n c:n :}
-   s" textDocument/prepareRename" i iu p pu l c AT-ASK ;
+   {: id:str p:str l:n c:n :}
+   s" textDocument/prepareRename" id p l c AT-ASK ;
 
 : RANGED ( str n n n -- )
-   {: i:^ iu:n l:n c1:n c2:n :}
+   {: id:str l:n c1:n c2:n :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
    s\" ,\"result\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
@@ -6206,8 +6207,8 @@ variable PROBE-DECLS
    HEAR s" 15" NULL-RESULT ;
 
 : RENAME-ASK ( str str n n str -- )
-   {: i:^ iu:n p:^ pu:n l:n c:n x:^ xu:n :}
-   s" textDocument/rename" i iu p pu l c x xu AT-ASK-WITH ;
+   {: id:str p:str l:n c:n x:str :}
+   s" textDocument/rename" id p l c x AT-ASK-WITH ;
 
 : CROW ( -- str )  s\" ,\"newName\":\"CROW\"" ;
 
@@ -6226,24 +6227,24 @@ variable PROBE-DECLS
    HEAR s" 5" -32803 REFUSED ;
 
 : EDITS-START ( str -- )
-   {: i:^ iu:n :}
+   {: id:str :}
    MSG-CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
+   s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
    s\" ,\"result\":{\"changes\":{" MSG+ ;
 
 : EDITS-IN ( str -- )
-   {: u:^ uu:n :}
+   {: u:str :}
    MSG$ s" {" STR:ENDS-WITH? 0= if s" ]," MSG+ then
-   s\" \"" MSG+ u uu MSG+ s\" \":[" MSG+ ;
+   s\" \"" MSG+ u MSG+ s\" \":[" MSG+ ;
 
 : EDIT-AS+ ( n n n str -- )
-   {: l:n c1:n c2:n t:^ tu:n :}
+   {: l:n c1:n c2:n t:str :}
    MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c2 INT$ MSG+
-   s\" }},\"newText\":\"" MSG+ t tu MSG+ s\" \"}" MSG+ ;
+   s\" }},\"newText\":\"" MSG+ t MSG+ s\" \"}" MSG+ ;
 : EDIT+ ( n n n -- )  s" CROW" EDIT-AS+ ;
 
 : EDITS-END ( -- )
@@ -6582,9 +6583,9 @@ variable PROBE-DECLS
 \ and between each literal's quotes, in the answer to the request with this
 \ id's JSON text.
 : RNN-EDITS ( str str -- )
-   {: i:^ iu:n t:^ tu:n :}
-   i iu EDITS-START RNN-PATH URI-OF EDITS-IN
-   0 2 6 t tu EDIT-AS+  3 17 21 t tu EDIT-AS+  4 15 19 t tu EDIT-AS+  5 3 7 t tu EDIT-AS+
+   {: id:str t:str :}
+   id EDITS-START RNN-PATH URI-OF EDITS-IN
+   0 2 6 t EDIT-AS+  3 17 21 t EDIT-AS+  4 15 19 t EDIT-AS+  5 3 7 t EDIT-AS+
    EDITS-END ;
 
 : RENAME-NAMED-TURNS ( -- )
@@ -6640,9 +6641,9 @@ variable PROBE-DECLS
 \ ---- cancellation ------------------------------------------------------------
 
 : CANCELS ( str -- )
-   {: i:^ iu:n :}
+   {: id:str :}
    PAR-B CLEAR
-   s\" {\"id\":" PAR+ i iu PAR+ s" }" PAR+
+   s\" {\"id\":" PAR+ id PAR+ s" }" PAR+
    s" $/cancelRequest" PAR$ TELL ;
 
 : CANCEL-CMP-TURNS ( -- )
@@ -6762,12 +6763,12 @@ variable PROBE-DECLS
 \ d.f and e.f alone opened and ROOK's declaration asked about, by this id's
 \ JSON text, in one turn.
 : PAIR-START ( str -- )
-   {: i:^ iu:n :}
+   {: id:str :}
    HALT-TREE
    SESSION-INITIALIZE
    s" refs-halt/d.f" FIXTURE TEXT-RF 1 OPENS
    s" refs-halt/e.f" FIXTURE TEXT-HE 1 OPENS
-   i iu s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   id s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
    SAY
    SESSION-CAPABILITIES
    s" refs-halt/d.f" FIXTURE 1 CLEAN ;
@@ -6775,8 +6776,8 @@ variable PROBE-DECLS
 \ The answer to the request with this id's JSON text: the declaration and
 \ e.f's use.
 : PAIR-ANSWER ( str -- )
-   {: i:^ iu:n :}
-   i iu SYMBOLS-START
+   {: id:str :}
+   id SYMBOLS-START
    s" refs-halt/d.f" OPEN-URI 0 2 6 REF+
    s" refs-halt/e.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
@@ -6840,7 +6841,7 @@ variable PROBE-DECLS
 \ big-frame's comment lines alone: about 700 KB.
 : BIG-QUIET ( -- )
    TXT-B CLEAR
-   BIG-LINES 0 ?do s\" ( twenty-byte line )\n" N>BLEN TXT-B APPEND-SPAN loop ;
+   BIG-LINES 0 ?do s\" ( twenty-byte line )\n" TXT-B BYTES+ loop ;
 
 \ The document is src/lib/string.f, which the engine provides, so nothing
 \ checks its text.
@@ -6918,11 +6919,11 @@ variable PROBE-DECLS
    CHECKED-MS >MS PROCESS:DEADLINE-AT DEADLINE ! ;
 
 : SESSION-RUN ( str [ -- ] [ -- renders nominal roots ] -- )
-   {: a:^ u:n init cases :}
-   a u N>BLEN SESSION-B REPLACE
+   {: a:str init cases :}
+   a SESSION-B BYTES!
    init SESSION-INIT !
    cases SESSION-CASES !
-   a u CONVERSATION
+   a CONVERSATION
    [: [: SESSION-TURNS ;] FINISHED ;] 0 HELD-BY if
       s" 2" NULL-RESULT ENDS
       TRACE-APPEND
@@ -7106,7 +7107,7 @@ public
    WAS-B READY
    WS-B READY
    LSP-DEFS:DEFS-PREPARE
-   s" habu-lsp-test" FS:MKTEMP-DIR N>BLEN DIR-B REPLACE
+   s" habu-lsp-test" FS:MKTEMP-DIR DIR-B BYTES!
    T-RESET ;
 
 \ These rooted cases share one initialize and a freshly written fixture tree.
