@@ -12,6 +12,8 @@ require src/lib/process.f
 require src/lib/fd-lock.f
 require src/lib/fd.f
 require src/lib/pty.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/aio.f
 require src/lib/task.f
 require src/lib/prelude.f
@@ -75,12 +77,19 @@ variable IO-GO-R                                 \ child-side release gate
    ev FD:POLLERR FD:POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
    ev FD:POLLIN and 0 <> ;
 
-\ What the master had to give once the loop answered: the bytes read, or -1 for
-\ a hang-up or an end of file. POLLNVAL is a broken descriptor, not an exit.
-: IO-READ-READY ( n fd ^u8 n -- n ) {: ev:n m:fd buf:^ cap:n :}
+: IO-READ-SPAN ( fd SPAN:span<u8> -- n ) {: m:fd s :}
+   s SPAN:$ {: room:str :}
+   m FD>N room STR:DATA room STR:LEN read ;
+
+\ What the master had to give once the loop answered: the bytes appended, or -1
+\ for a hang-up or an end of file. POLLNVAL is a broken descriptor, not an exit.
+: IO-READ-READY ( n fd ^VEC:vector<u8> n -- n )
+   {: ev:n m:fd v:^ cap:n :}
    ev FD:POLLNVAL and 0 <> if E-PROC-OUTPUT throw then
    ev FD:POLLIN and 0= if -1 exit then
-   m FD>N buf cap read {: got:n :}
+   v VEC:COUNT {: old:n :}
+   m v cap VEC:EXTEND IO-READ-SPAN {: got:n :}
+   v old got 0 max + VEC:RESIZE
    got 0 > if got exit then
    -1 ;
 
@@ -313,20 +322,22 @@ public
    idx DONE@ IO-CLOSE-FD
    -1 >FD idx DONE! ;
 
-\ Wait up to ms for the target's output and read what is there into the buffer:
-\ the byte count, 0 when nothing arrived in time, -1 once the target's side is
-\ gone (hang-up or end of file). A broken descriptor throws, and so does an
-\ empty buffer, which could otherwise only masquerade as a hang-up. The wait is
-\ one POLL on the AIO loop and one AWAIT, with ms -1 the unbounded wait
-\ POLL spells the same way. AIO:START comes first: a wait with no loop running
-\ is E-AIO-STATE. It answers ONE read, never a whole reply: a caller waiting for
-\ text loops to its marker under one absolute deadline (PROCESS:DEADLINE-AT).
-: AWAIT-BYTES ( process-pty-handle ^u8 n n -- process-pty-handle n ) {: buf:^ cap:n ms:n :}
+\ Wait up to ms for the target's output and append at most n bytes of what is
+\ there: the count appended, 0 when nothing arrived in time, -1 once the
+\ target's side is gone (hang-up or end of file). A broken descriptor throws,
+\ and so does an n below one, which could otherwise only masquerade as a
+\ hang-up. The wait is one POLL on the AIO loop and one AWAIT, with ms -1 the
+\ unbounded wait POLL spells the same way. AIO:START comes first: a wait with
+\ no loop running is E-AIO-STATE. It answers ONE read, never a whole reply: a
+\ caller waiting for text loops to its marker under one absolute deadline
+\ (PROCESS:DEADLINE-AT).
+: AWAIT-BYTES ( process-pty-handle ^VEC:vector<u8> n n -- process-pty-handle n )
+   {: v:^ cap:n ms:n :}
    cap 0 <= if E-PROC-OUTPUT throw then
    HANDLE-MASTER@ {: m:fd :}
    m AIO:READABLE ms >MS AIO:WAIT-READY
    MATCH AIO:readiness
-      ready OF m buf cap IO-READ-READY ENDOF
+      ready OF m v cap IO-READ-READY ENDOF
       timed-out OF 0 ENDOF
       refused OF drop E-PROC-OUTPUT throw ENDOF
    ;MATCH ;

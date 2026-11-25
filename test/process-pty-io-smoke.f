@@ -8,6 +8,8 @@ require src/lib/aio.f
 require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/task.f
+require src/lib/heap.f
+require src/lib/vector.f
 
 package PTY-IO-SMOKE
 
@@ -22,7 +24,7 @@ create FDS-BASE FDS-CAP allot      \ the listing with no target alive
 create FDS-SEEN FDS-CAP allot      \ the listing while a target is gated
 create FDS-ERR FDS-CAP allot
 variable FDS-BASE-U
-create SIGNAL-BYTES 64 allot
+TYPED-VARIABLE SIGNAL-BYTES ^VEC:vector<u8>   \ SIGNAL-OUTPUT's
 variable TGT-PID
 variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, closes on exit
 variable IN-SCOPE                         \ set by the halted task's body once its target is up
@@ -172,21 +174,23 @@ TASK:MIN-STACK TASK:TASK HALTEE
    PROCESS-PTY:LAUNCH
    1000 prof-rate 1000000 prof-on
    mono-ns {: started:n :}
-   SIGNAL-BYTES 64 100 PROCESS-PTY:AWAIT-BYTES {: quiet:n :}
+   SIGNAL-BYTES @ 64 100 PROCESS-PTY:AWAIT-BYTES {: quiet:n :}
    mono-ns started - {: elapsed:n :}
    \ A negative timeout is POLL's own unbounded wait, signals or not.
-   SIGNAL-BYTES 64 -1 PROCESS-PTY:AWAIT-BYTES {: got:n :}
+   SIGNAL-BYTES @ 64 -1 PROCESS-PTY:AWAIT-BYTES drop
    prof-off
    quiet 0 T=
    elapsed 90000000 >= TTRUE
    elapsed 1000000000 < TTRUE
-   SIGNAL-BYTES got >str s" habu-pty-eintr" T$= ;
+   SIGNAL-BYTES @ VEC:BYTES s" habu-pty-eintr" T$= ;
 
 : SIGNAL-OUTPUT ( -- )
    PROC-ARGV-RESET
    s" -c" PROC-ARGV+
    s" sleep 0.3; printf %s habu-pty-eintr" PROC-ARGV+
-   s" /bin/sh" [: SIGNAL-OUTPUT-BODY ;] PROCESS-PTY:WITH-TTY-TARGET ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW SIGNAL-BYTES !
+   s" /bin/sh" [: SIGNAL-OUTPUT-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
+   SIGNAL-BYTES @ VEC:DELETE ;
 
 \ ---- no other spawn inherits the target's descriptors -------------------------
 \ `ls /dev/fd` lists its open descriptors, its own directory's among them. While

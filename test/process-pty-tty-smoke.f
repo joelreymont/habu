@@ -13,6 +13,8 @@ require src/lib/aio.f
 require src/lib/test.f
 require src/lib/task.f                 \ TASK:SLEEP between probes of a sleeper's pid
 require src/lib/engine-candidate.f
+require src/lib/heap.f
+require src/lib/vector.f
 
 package PTY-TTY-SMOKE
 
@@ -20,6 +22,9 @@ using PTY-HARNESS
 
 $64 constant STEP-MS               \ one poll blocks at most this long
 $0A constant PROBE-MS              \ the pause between two probes of its pid
+$200 constant STEP-CAP             \ one read's most: the harness room always holds it
+
+TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
 
 \ The engine under test: the gate's freshly built candidate when it exported
 \ one, else the running engine itself (src/lib/engine-candidate.f).
@@ -32,13 +37,15 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ src/lib/pty-harness.f's. The reads and waits are this file's: the bytes come
 \ through the supervisor's linear handle, which the module's descriptor reader
 \ cannot take.
-\ Read what is ready within STEP-MS into the harness buffer and append it: the
+\ Read what is ready within STEP-MS and append it to the harness buffer: the
 \ count, 0 for a quiet poll, -1 once the target's side is gone. The linear
 \ handle stays on top of the stack, which is why this step is here and not in
 \ the module.
 : READ-STEP ( process-pty-handle -- process-pty-handle n )
-   ROOM$ str> STEP-MS PROCESS-PTY:AWAIT-BYTES {: n:n :}
-   n 0 > if n TOOK then
+   STEP-BYTES @ {: v:^ :}
+   v 0 VEC:RESIZE
+   v STEP-CAP STEP-MS PROCESS-PTY:AWAIT-BYTES {: n:n :}
+   n 0 > if v VEC:BYTES PTY-HARNESS:APPEND then
    n ;
 
 \ What the target said so far: the end of every failed wait's diagnostic, which
@@ -247,8 +254,9 @@ public
 \ end, so a case's throw passes on with no loop running.
 : RUN ( -- )
    T-RESET
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW STEP-BYTES !
    AIO:START
-   [: CASES ;] [: AIO:STOP ;] finally
+   [: CASES ;] [: AIO:STOP STEP-BYTES @ VEC:DELETE ;] finally
    T-REPORT
    s" process-pty-tty-smoke: ok" type cr ;
 

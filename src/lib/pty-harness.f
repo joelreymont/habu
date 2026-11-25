@@ -125,14 +125,16 @@ public
    -1 WEND ! ;
 
 
-\ Write room for a reader this module does not own, compacted first so the span
-\ is never empty; the reader hands back what it wrote with TOOK.
+private
+
+\ Write room after the bytes, compacted first so the span is never empty; the
+\ writer hands back what it wrote with TOOK.
 : ROOM$ ( -- str )
    KEEP-TAIL!
    RBUF RN @ +  BUF-CAP RN @ - >str ;
 
 
-\ The count is what the reader wrote into ROOM$: never negative, never past the
+\ The count is what the writer wrote into ROOM$: never negative, never past the
 \ room, so the cursor never moves back or past the buffer.
 : TOOK ( n -- ) {: got:n :}
    RN @ {: old:n :}
@@ -140,7 +142,6 @@ public
    old got + RN !
    old SCAN-WATCHES ;
 
-private
 
 : READ-CHUNK ( fd -- n ) {: f:fd :}
    ROOM$ {: room:str :}
@@ -149,6 +150,16 @@ private
    got ;
 
 public
+
+\ Bytes a reader this module does not own read, appended after ROOM$'s
+\ compaction, which leaves room for more than TAIL-KEEP bytes; more than the
+\ room holds is E-PTY-CAPACITY.
+: APPEND ( str -- ) {: s:str :}
+   ROOM$ {: room:str :}
+   s STR:LEN room STR:LEN > if E-PTY-CAPACITY throw then
+   s STR:DATA room STR:DATA s STR:LEN BYTE-COPY
+   s STR:LEN TOOK ;
+
 
 \ One poll and, when the descriptor has bytes, one read: above zero for bytes
 \ appended, 0 for a quiet poll (an errno included), below zero once the far side
