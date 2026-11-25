@@ -4,6 +4,10 @@
 \ over the first build's out root and cold into a fresh one. Then its linker.f
 \ gains a comment line and is built both ways again: linker.f exports CHECK's
 \ private words while the checker files are linked from their objects.
+\ The kernel and engine builds load util.f at startup, where their loads agree,
+\ so the first build keeps one object of it; they load icode.f after startup,
+\ where their loads differ, so the padded warm build, which reruns the kernel
+\ build, rewrites no object of icode.f the first build wrote.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -22,6 +26,10 @@ private
 PATH-CAP BUFFER: ROOT     variable ROOT-U
 PATH-CAP BUFFER: JOINED
 PATH-CAP BUFFER: JOINED-2
+PATH-CAP BUFFER: OBJ-ROOT   variable OBJ-ROOT-U   \ out-warm's obj directory
+PATH-CAP BUFFER: KEPT-ROOT  variable KEPT-ROOT-U  \ the first build's icode.f objects
+variable SEEN-N                                   \ the walk's paths its word counts
+variable ALL-SAME                                 \ SAME-ICODE's copies all match
 
 : ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
 
@@ -57,6 +65,56 @@ PATH-CAP BUFFER: JOINED-2
    s" tree/src/habu/linker.f" AT$
    s\" \n\\ warm-engine\n" FS:APPEND-FILE ;
 
+\ The path below root.
+: BELOW$ ( str str -- str ) {: p:str root:str :}
+   p STR:DATA root STR:LEN 1 + +  p STR:LEN root STR:LEN - 1 -  >str ;
+
+: OBJ-ROOT$ ( -- str ) OBJ-ROOT OBJ-ROOT-U @ >str ;
+: KEPT-ROOT$ ( -- str ) KEPT-ROOT KEPT-ROOT-U @ >str ;
+
+: UTIL-SEEN ( str -- )
+   s" /tree/src/core/util.f.hfo" STR:ENDS-WITH? if 1 SEEN-N +! then ;
+
+\ An object of icode.f, copied to its path below KEPT-ROOT.
+: KEEP-ICODE ( str -- )
+   {: p:str :}
+   p s" /tree/src/arch/arm64/icode.f.hfo" STR:ENDS-WITH? 0= if exit then
+   1 SEEN-N +!
+   KEPT-ROOT$ p OBJ-ROOT$ BELOW$ JOINED FS:JOIN-PATH {: ju:n :}
+   JOINED ju >str {: dst:str :}
+   JOINED  ju dst FS:BASENAME STR:LEN - 1 -  >str FS:MAKE-DIRS
+   p dst FS:COPY-FILE-STREAM ;
+
+\ A copy the object at its path below OBJ-ROOT still matches.
+: SAME-ICODE ( str -- )
+   {: c:str :}
+   1 SEEN-N +!
+   OBJ-ROOT$ c KEPT-ROOT$ BELOW$ JOINED FS:JOIN-PATH {: ju:n :}
+   c JOINED ju >str CHAIN-RUN:SAME-FILES? 0= if false ALL-SAME ! then ;
+
+\ The files below dir the word counts.
+: WALKED ( str [ str -- ] -- n )
+   {: d:str q :}
+   0 SEEN-N !
+   d q FS:WALK-FILES
+   SEEN-N @ ;
+
+: SHARED-UTIL ( -- )
+   s" the kernel and engine builds share util.f's object" T-LABEL
+   OBJ-ROOT$ ['] UTIL-SEEN WALKED 1 T= ;
+
+: KEEP-ICODES ( -- )
+   s" the first build writes an object of icode.f" T-LABEL
+   OBJ-ROOT$ ['] KEEP-ICODE WALKED 0 > TTRUE ;
+
+\ Run before the noted copy's warm build, which writes into out-warm again.
+: SAME-ICODES ( -- )
+   s" the padded warm build rewrites no object of icode.f" T-LABEL
+   KEPT-ROOT$ FS:EXISTS? 0= if false TTRUE exit then
+   true ALL-SAME !
+   KEPT-ROOT$ ['] SAME-ICODE WALKED drop
+   ALL-SAME @ TTRUE ;
+
 : SAME? ( str str -- bool )
    {: a:str b:str :}
    ROOT$ a JOINED FS:JOIN-PATH {: ju:n :}
@@ -66,9 +124,12 @@ PATH-CAP BUFFER: JOINED-2
 : BUILDS ( CMD:command -- CMD:command )
    s" the copy builds cold" T-LABEL
    s" out-warm" s" first-hb" BUILD
+   SHARED-UTIL
+   KEEP-ICODES
    PAD
    s" the padded copy builds warm" T-LABEL
    s" out-warm" s" warm-hb" BUILD
+   SAME-ICODES
    s" the padded copy builds cold" T-LABEL
    s" out-cold" s" cold-hb" BUILD
    NOTE
@@ -78,6 +139,8 @@ PATH-CAP BUFFER: JOINED-2
    s" out-cold-2" s" cold-hb-2" BUILD ;
 
 : CHECKS ( -- )
+   ROOT$ s" out-warm/obj" OBJ-ROOT FS:JOIN-PATH OBJ-ROOT-U !
+   ROOT$ s" icode" KEPT-ROOT FS:JOIN-PATH KEPT-ROOT-U !
    s" tree" AT$ TREE-COPY:BUILD-SOURCES
    s" tmp" AT$ FS:MAKE-DIRS
    [: BUILDS ;] CMD:WITH-COMMAND

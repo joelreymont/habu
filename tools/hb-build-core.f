@@ -200,7 +200,8 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    BOOT-FILES:BASELIB BOOT-FILES:RESTLIB or ['] ROW BOOT-FILES:EACH
    BOOT-FILES:ARGV ['] ROW BOOT-FILES:EACH
    BOOT-FILES:INTERNAL ['] ROW BOOT-FILES:EACH
-   BOOT-FILES:TOPROW ['] ROW BOOT-FILES:EACH ;
+   BOOT-FILES:TOPROW ['] ROW BOOT-FILES:EACH
+   LINKER:STARTED ;
 
 
 : RUNTIME-FILES ( -- )
@@ -575,14 +576,8 @@ SUM-U 32 + constant HEAD-U
 
 public
 
-\ Writes this tree's kernel object, an engine's or a stripped program's, in
-\ hb's object directory, the tree's writer laying its bytes and this tool
-\ writing the file, unless the last one written there still holds; then reads
-\ the object adopted or written, by the path its checksum names, for the
-\ builds that follow. A build's registry starts empty, so the writer's files
-\ load from this tree; a kernel build shares a program build's objects. The
-\ build and its adoption run from the tree's root, whatever the caller's, so
-\ the inputs file records that root and holds for every caller.
+\ Writes this tree's kernel object unless the last one written still holds (ADOPT?), then reads it for the builds
+\ that follow; run from the tree's root with an empty registry, its files load from the tree whatever the caller's root.
 : KERNEL-BUILD ( bool RTARGET:resolved-target -- )
    {: engine:bool target:RTARGET:resolved-target :}
    engine KERNEL-ENGINE? !  target TARGET !

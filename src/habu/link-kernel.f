@@ -80,6 +80,25 @@ EXPORT CHECK:PRIM-ATOM
 EXPORT CHECK:PRIM-CLOSE
 EXPORT CHECK:PRIMS-END
 
+\ Both row sources, hb's and the kernel object's, reach the checker through these STATE- words into ROWS-CTX; each
+\ tag fixes the fields after it and a text carries its length, so equal rows digest alike and different rows apart.
+SHA256-CTX-BYTES BUFFER: ROWS-CTX
+8 BUFFER: ROWS-NUM
+
+: ROWS-BEGIN ( -- ) ROWS-CTX SHA256-BEGIN ;
+: ROW-N+ ( n -- ) ROWS-NUM LE:U64!  ROWS-CTX ROWS-NUM 8 >str SHA256-FEED ;
+: ROW-STR+ ( str -- ) {: s:str :}  s STR:LEN ROW-N+  ROWS-CTX s SHA256-FEED ;
+: ROW-FLAG+ ( bool -- ) if 1 else 0 then ROW-N+ ;
+
+: STATE-NAME ( str -- ) dup 0 ROW-N+ ROW-STR+  PRIM-NAME ;
+: STATE-OPEN ( str -- ) dup 1 ROW-N+ ROW-STR+  PRIM-OPEN ;
+: STATE-ATOM ( n -- ) dup 2 ROW-N+ ROW-N+  PRIM-ATOM ;
+
+: STATE-CLOSE ( str bool bool -- )
+   {: pkg:str trusted:bool fixed:bool :}
+   3 ROW-N+  pkg ROW-STR+  trusted ROW-FLAG+  fixed ROW-FLAG+
+   pkg trusted fixed PRIM-CLOSE ;
+
 package NATIVE
 
 \ The host-entry table, ascending by host entry: HOSTS[i] is where a running
@@ -231,13 +250,13 @@ variable PATH-U
       1 OWNED-ROWS +!
    then
    kind PRIM-SPEC:K-PRIM =  owned or if
-      name PRIM-OPEN
-      atoms 0 ?do NEXT PRIM-ATOM loop
-      pkg  trusted 0<>  fixed 0<>  PRIM-CLOSE
+      name STATE-OPEN
+      atoms 0 ?do NEXT STATE-ATOM loop
+      pkg  trusted 0<>  fixed 0<>  STATE-CLOSE
       exit
    then
    atoms 8 * SKIP
-   kind PRIM-SPEC:K-ELAB = if name PRIM-NAME exit then
+   kind PRIM-SPEC:K-ELAB = if name STATE-NAME exit then
    BAD ;
 
 

@@ -79,6 +79,7 @@ EXPORT XREF:RETIRE-IF-TASKS
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
+TYPED-VARIABLE STARTED? bool         \ the build's shared start has ended (STARTED)
 TYPED-VARIABLE TARGET RTARGET:resolved-target   \ the target the build's program runs on
 \ The machines of an object's even and odd emissions: SHADOW fixes them while the shadow it
 \ opens stands.
@@ -168,6 +169,11 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : LAYOUT-START ( -- n )
    OBJECT-LAYOUT? if s" DATA-START" NATIVE:SYM exit then
    DATA-START ;
+
+\ The size of the target's DATA, which kernel code and the profiler band's place are laid by.
+: LAYOUT-SIZE ( -- n )
+   OBJECT-LAYOUT? if s" DATA-SIZE" NATIVE:SYM exit then
+   DATA-SIZE ;
 
 : LAYOUT-CEILING ( -- n )
    OBJECT-LAYOUT? if s" DP-CEILING-OFF" NATIVE:SYM exit then
@@ -676,12 +682,28 @@ PTR-VARIABLE OBJ-BASE
       KEY-BYTES +  a over + LE:U64@ +  8 +
    repeat ;
 
+\ The basis, in lower-case hex: the SHA-256 of the rows PRIMS-IN stated and the layout, what a compile types and
+\ lays by that neither the target nor HEADER-CK states; builds that differ in it share no object.
+32 BUFFER: BASIS-SUM
+64 BUFFER: BASIS-HEX
+
+: BASIS! ( -- )
+   LAYOUT-START ROW-N+  LAYOUT-SIZE ROW-N+  LAYOUT-CEILING ROW-N+
+   ROWS-CTX BASIS-SUM SHA256-END
+   BASIS-SUM BASIS-HEX SHA256>HEX ;
+
 \ The object of FILE-KEY's part FILE-PART. A source named a.f.2 or a.f+1 shares the name of a.f's second load or
 \ second part: each fails the other's object at HEADER-CK's key and compiles.
 : OBJECT$ ( -- str )
    OBJ-NAME @ 0 VEC:RESIZE
    TARGET @ RTARGET:PROFILE$ OBJ-NAME @ VEC:APPEND  s" /" OBJ-NAME @ VEC:APPEND
-   ENGINE? @ if s" engine" else KERNEL? @ if s" kernel" else s" app" then then OBJ-NAME @ VEC:APPEND
+   BASIS-HEX 64 OBJ-NAME @ VEC:APPEND
+   \ The modes share the objects of the shared start's parts (STARTED?); a later part follows its build's own loads, so
+   \ the mode names it too: an engine build and a REPL build are both mode engine and still share it.
+   STARTED? @ if
+      s" /" OBJ-NAME @ VEC:APPEND
+      ENGINE? @ if s" engine" else KERNEL? @ if s" kernel" else s" app" then then OBJ-NAME @ VEC:APPEND
+   then
    FILE-KEY CANON$ {: p:^ pu:n :}
    pu 0 >  if p c@ FS:SLASH = else false then 0= if s" /" OBJ-NAME @ VEC:APPEND then
    p pu OBJ-NAME @ VEC:APPEND
@@ -5425,12 +5447,12 @@ EXPORT CHECK:DROP-FACTS
    {: k:n :}
    k PRIM-SPEC:KIND@ {: kind:n :}
    kind PRIM-SPEC:K-PRIM =  kind PRIM-SPEC:K-PKG-PRIVATE = or if
-      k PRIM-SPEC:NAME$ PRIM-OPEN
-      k PRIM-SPEC:CODE-LEN@ 0 ?do  k i PRIM-SPEC:CODE@ PRIM-ATOM  loop
-      k PRIM-SPEC:PKG$  k PRIM-SPEC:TRUSTED-ONLY?  k PRIM-SPEC:FIXED-ABI?  PRIM-CLOSE
+      k PRIM-SPEC:NAME$ STATE-OPEN
+      k PRIM-SPEC:CODE-LEN@ 0 ?do  k i PRIM-SPEC:CODE@ STATE-ATOM  loop
+      k PRIM-SPEC:PKG$  k PRIM-SPEC:TRUSTED-ONLY?  k PRIM-SPEC:FIXED-ABI?  STATE-CLOSE
       exit
    then
-   kind PRIM-SPEC:K-ELAB = if k PRIM-SPEC:NAME$ PRIM-NAME then ;
+   kind PRIM-SPEC:K-ELAB = if k PRIM-SPEC:NAME$ STATE-NAME then ;
 
 : OWNED@ ( n n -- n ) {: r:n f:n :} r OWNED-CELLS * f + OWNED @ ;
 
@@ -5456,8 +5478,8 @@ EXPORT CHECK:DROP-FACTS
    src XREF-FLAGS  DNAME-IMM DNAME-WIDE or  and  want SET-FLAGS
    r 5 OWNED$  want FACTS! ;
 
-\ After IMAGE-IN, the records OWNED+ gathered as BUILT row 0, laid before any file as header data: key the empty path's, which no
-\ load has; piece 0 at time 0, its content following from hb, whose stamp names the objects' dir (BUILD-OUT:OBJ$).
+\ After IMAGE-IN, the records OWNED+ gathered as BUILT row 0, laid before any file as header data, keyed by the empty
+\ path, which no load has: piece 0 at time 0, its records fixed by hb's own and the rows PRIMS-IN states.
 : OWNED-RECORDS ( -- )
    FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !  false HOLDS-HEADER !
    OWNED-N @ 0 ?do i MAKE-OWNED loop
@@ -5471,16 +5493,18 @@ EXPORT CHECK:DROP-FACTS
 \ texts, which those rows render.
 : PRIMS-IN ( -- )
    0 OWNED-N !  0 OWNED-TEXT-N !
+   ROWS-BEGIN
    OBJECT-ROWS? if
       NATIVE:STATE-PRIMS
       NATIVE:OWNED-N 0 ?do  i NATIVE:OWNED-PKG$  i NATIVE:OWNED-NAME$  OWNED+  loop
-      exit
+   else
+      PRIM-SPEC:COUNT 0 ?do i STATE-HB-ROW loop
+      PRIMS-END
+      PRIM-SPEC:COUNT 0 ?do
+         i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if  i PRIM-SPEC:PKG$  i PRIM-SPEC:NAME$  OWNED+  then
+      loop
    then
-   PRIM-SPEC:COUNT 0 ?do i STATE-HB-ROW loop
-   PRIMS-END
-   PRIM-SPEC:COUNT 0 ?do
-      i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if  i PRIM-SPEC:PKG$  i PRIM-SPEC:NAME$  OWNED+  then
-   loop ;
+   BASIS! ;
 
 : OPEN ( -- )
    0 COMPILED-N !  0 LINKED-N !
@@ -5599,8 +5623,12 @@ public
    target TARGET !
    mode modeu s" engine" STR:= ENGINE? !
    mode modeu s" kernel" STR:= KERNEL? !
+   false STARTED? !
    body BODY !
    [: ['] RUN ['] CLOSE finally ;] INTERPRETER:WITHOUT-PACKAGE ;
+
+\ Ends the build's shared start: up to here every mode's build has loaded the same files in the same order.
+: STARTED ( -- ) true STARTED? ! ;
 
 \ The kernel object at the path, written by a kernel build: the engine and
 \ program builds that follow lay their space as its kernel reads it and link it.

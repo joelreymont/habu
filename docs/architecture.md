@@ -228,10 +228,10 @@ each is in the build with the time the part's object recorded:
 - the source root it starts in, each root its compile looked up and each
   environment variable it read, which must answer as they did.
 
-**hb's identity is its own stamp.** Objects are saved at `<out>/obj/<hb's
-stamp>/<target>/<mode>/<source path>.hfo`, so a new hb compiles every file
-once. hb-build replaces its output only when the image differs apart from its
-signature, and writes a file it generates only when the text differs.
+**hb's identity is its own stamp.** Objects are saved under `<out>/obj/<hb's
+stamp>/`, so a new hb compiles every file once. hb-build replaces its output
+only when the image differs apart from its signature, and writes a file it
+generates only when the text differs.
 
 **A damaged object stops the build.** hb syncs an object before it renames it
 into place (src/lib/fs-mutate.f REPLACE-CACHED), so a crash leaves the old
