@@ -14,6 +14,7 @@ require src/habu/layout.f
 require src/lib/arena.f
 require src/lib/span.f
 require src/lib/vector.f
+require src/compiler/native/relax.f
 
 package X64CODE
 using X64ASM
@@ -27,14 +28,17 @@ private
 
 -1 constant UNBOUND
 
-\ JMP, JCC, CALL, (rel32), JMP8, JCC8, (rel8) and MOVABS, (abs64) emit a zero
-\ field, the last bytes of the instruction, and record it as a site of the
-\ label; a rel is measured from the field's end. Label numbers count up across
-\ streams and are never reused, so a label held past its stream's link or reset
-\ names no label of the next one. A site's kind names its field's width.
+\ JMP, JCC, CALL, LEA-REL, (rel32), JMP8, JCC8, (rel8) and MOVABS, (abs64) emit
+\ a zero field, the last bytes of the instruction, and record it as a site of
+\ the label; a rel is measured from the field's end. Label numbers count up
+\ across streams and are never reused, so a label held past its stream's link or
+\ reset names no label of the next one. A site's kind names its field's width.
+\ A SITE-BRANCH is a rel8 field whose branch may still grow; the instruction's
+\ first byte, just before the field, is its short opcode, EB or 70+cc.
 0 constant SITE-REL8
 1 constant SITE-REL32
 2 constant SITE-ABS64
+3 constant SITE-BRANCH
 
 \ The sink's bytes live in an arena: a cross-build runs this file on its host,
 \ and the heap here is the target's.
@@ -46,7 +50,7 @@ variable NSITE                       \ sites this stream has recorded
 DYNAMIC-BUFFER LBL-AT n              \ label less LBL-BASE -> its offset, or UNBOUND
 DYNAMIC-BUFFER SITE-AT n             \ site -> the byte offset of its field
 DYNAMIC-BUFFER SITE-LBL n            \ site -> its label's index in LBL-AT
-DYNAMIC-BUFFER SITE-KIND n           \ site -> SITE-REL8, SITE-REL32 or SITE-ABS64
+DYNAMIC-BUFFER SITE-KIND n           \ site -> its SITE- kind
 \ Control never passes on from the byte before an end: a row is the bytes
 \ [END-FROM, END-AT), a run of data or an instruction's last byte. Rows ascend.
 variable NEND
@@ -68,7 +72,7 @@ private
 : REJECT ( str -- ) EXIT-STATUS:ENCODE die ;
 
 : SITE-WIDTH ( n -- n ) {: kind:n :}
-   kind SITE-REL8 = if 1 exit then
+   kind SITE-REL8 =  kind SITE-BRANCH =  or if 1 exit then
    kind SITE-REL32 = if 4 exit then
    8 ;
 
@@ -225,6 +229,13 @@ public
    0 >REL ASM-SINK ENC-CALL-REL32
    k SITE-REL32 END-SITE ;
 
+\ lea r, [rip+disp32]: a rip-relative displacement is measured from the
+\ instruction's end, which is its field's end.
+: LEA-REL, ( r64 label -- )
+   ?KNOWN {: r:r64 k:n :}
+   r 0 MEM-RIP ASM-SINK ENC-LEA
+   k SITE-REL32 END-SITE ;
+
 \ The site is X64ASM's own statement of where the immediate starts.
 : MOVABS, ( r64 label -- )
    ?KNOWN {: r:r64 k:n :}
@@ -244,9 +255,84 @@ public
    8 0 ?do v i 8 * rshift $FF and ASM-SINK VEC:PUSH c! loop
    from DATA+ ;
 
+private
+
+\ ---- placing growing branches ------------------------------------------------
+: GROWING? ( -- bool )
+   false NSITE @ 0 ?do i SITE-KIND @ SITE-BRANCH = or loop ;
+
+\ Branch k's growth, its opcode read at its raw first byte.
+: GROWTH ( n n -- n ) {: k:n d:n :}
+   CODE k RELAX:BR-AT @ + c@  d BRANCH-GROWTH ;
+
+: FILE-BRANCHES ( -- )
+   RELAX:RESET
+   NSITE @ 0 ?do
+      i SITE-KIND @ SITE-BRANCH = if
+         i SITE-END ?IN-CODE
+         i SITE-END BRANCH-HOLE -  i SITE-TARGET  BRANCH-HOLE RELAX:BRANCH+ drop
+      then
+   loop ;
+
+\ The placed bytes, each branch in its final form with a zero displacement.
+: PLACED-CODE ( -- ^VEC:vector<u8> )
+   SINK-ARENA @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW {: new:^ :}
+   ASM-SINK new s" " RELAX:COPY
+   RELAX:BRANCHES 0 ?do
+      i RELAX:BR-AT @ {: at:n :}
+      new at RELAX:PLACED VEC:AT  CODE at + c@  i RELAX:BR-LEN @  0 BRANCH-PUT
+   loop
+   new ;
+
+\ Branch k's site x: its field ends the branch's final form.
+: BRANCH-SITE ( n n -- ) {: k:n x:n :}
+   k RELAX:BR-LEN @ {: growth:n :}
+   growth 0= if SITE-REL8 else SITE-REL32 then {: kind:n :}
+   k RELAX:BR-AT @ RELAX:PLACED  BRANCH-HOLE +  growth +  kind SITE-WIDTH -
+   x SITE-AT !
+   kind x SITE-KIND ! ;
+
+: PLACE-SITES ( -- )
+   0
+   NSITE @ 0 ?do
+      i SITE-KIND @ SITE-BRANCH = if  dup i BRANCH-SITE  1 +
+      else  i SITE-AT @ RELAX:PLACED  i SITE-AT !  then
+   loop drop ;
+
+: PLACE-LABELS ( -- )
+   NLBL @ LBL-BASE @ - 0 ?do
+      i LBL-AT @ {: at:n :}
+      at UNBOUND <> if  at RELAX:LANDED  i LBL-AT !  then
+   loop ;
+
+\ A row keeps its length and is anchored at its end.
+: PLACE-ENDS ( -- )
+   NEND @ 0 ?do
+      i END-AT  i END-FROM -  {: len:n :}
+      i END-AT RELAX:PLACED {: at:n :}
+      at len -  i END-FROMS !
+      at i END-ATS !
+   loop
+   DATA-END @ UNBOUND <> if  DATA-END @ RELAX:PLACED  DATA-END !  then
+   LAST-LBL @ UNBOUND <> if  LAST-LBL @ RELAX:PLACED  LAST-LBL !  then ;
+
+public
+
+\ A driver calls it after the last instruction and before it reads any code
+\ offset, as gas and LLVM lay out a section once: each growing branch takes the
+\ shortest form that reaches, and every field, label and end moves with it.
+\ RELAX's state is shared with tier 0, so a stream with none leaves it alone.
+: PLACE-BRANCHES ( -- )
+   GROWING? 0= if exit then
+   FILE-BRANCHES
+   0 ['] GROWTH RELAX:SIZE
+   PLACE-SITES PLACE-LABELS PLACE-ENDS
+   PLACED-CODE SINK ! ;
+
 \ The linker keeps labels through map writing. Other callers finish the stream
 \ with ASM-LINK, which also releases its labels and sites.
 : FIXUPS! ( n -- ) {: base:n :}
+   PLACE-BRANCHES
    NSITE @ 0 ?do base i SITE-CHECK loop
    NSITE @ 0 ?do base i SITE-PATCH loop ;
 
