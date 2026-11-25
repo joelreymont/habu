@@ -24,8 +24,7 @@ public
 : DOES-CHECK ( str str -- n )
    {: b:str s:str :}
    BIND-UNJUDGED @ 0<> if b s CHECK-DOES-UNJUDGED! exit then
-   \ CHECK-DOES! has no row, so it takes each str as two halves.
-   b STR:DATA b STR:LEN  s STR:DATA s STR:LEN  CHECK-DOES! ;
+   b s CHECK-DOES! ;
 
 EXPORT DOES-REPORT
 
