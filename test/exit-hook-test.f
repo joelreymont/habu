@@ -3,7 +3,8 @@
 \ built program keeps from its build, a queue its build defined included. A
 \ child registers inside this fixture's temp root, so a failing case leaves its
 \ evidence where the fixture removes it; it resolves
-\ `require src/lib/fs-mutate.f` against the checkout (cwd).
+\ `require src/lib/fs-mutate.f` against the checkout: the cwd, else the tree
+\ above the engine.
 \ A child is judged by what it left on disk or its exit code, a built program
 \ by what it printed or removed.
 require src/lib/test.f
@@ -14,8 +15,11 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/process-cwd.f
+require test/pcap-result.f
 require src/lib/engine-candidate.f
 require src/lib/fmt.f
+require tools/chain-run.f
 
 package EXIT-HOOK-TEST
 
@@ -27,6 +31,8 @@ create TEXT-BUF TEXT-CAP allot
 create ROOT-BUF PATH-CAP allot
 create SCRIPT-BUF PATH-CAP allot
 create TREE-BUF PATH-CAP allot
+create DRIVER-BUF PATH-CAP allot
+create HOME-BUF PATH-CAP allot
 variable TEXT-U
 variable ROOT-U
 variable SCRIPT-U
@@ -97,19 +103,31 @@ variable TREE-U
    TREE$ PROC-ARGV+
    RUN-ARGS ;
 
-\ hb-build with the flag, if any, the script as its source and the case's path
-\ as its -o.
-: RUN-BUILD-AS ( str -- n n n ) {: flag:str :}
+\ hb-build at the driver path with the flag, if any, the script as its source
+\ and the case's path as its -o.
+: BUILD-ARGV ( str str -- ) {: driver:str flag:str :}
    SCRIPT$ TEXT$ FS:ATOMIC-WRITE-FILE
    PROC-ARGV-ENV-RESET
    s" --load" PROC-ARGV+
-   s" tools/hb-build.f" PROC-ARGV+
+   driver PROC-ARGV+
    s" --" PROC-ARGV+
    flag STR:LEN 0<> if flag PROC-ARGV+ then
    SCRIPT$ PROC-ARGV+
    s" -o" PROC-ARGV+
-   TREE$ PROC-ARGV+
-   RUN-ARGS ;
+   TREE$ PROC-ARGV+ ;
+
+: RUN-BUILD-AS ( str -- n n n ) {: flag:str :}
+   s" tools/hb-build.f" flag BUILD-ARGV RUN-ARGS ;
+
+\ RUN-BUILD-AS run in the directory, which names the checkout's hb-build.f
+\ whole.
+: RUN-BUILD-IN ( str str -- n n n ) {: flag:str dir:str :}
+   SOURCE-ROOT:CWD$ s" tools/hb-build.f" DRIVER-BUF FS:JOIN-PATH {: u:n :}
+   DRIVER-BUF u >str flag BUILD-ARGV
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ dir
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE PCAP-RESULT:>N ;
 
 : RUN-BUILD ( -- n n n ) NULL$ RUN-BUILD-AS ;
 
@@ -509,6 +527,21 @@ variable RUN-FILE-U
    s" a built program prints the record of a code its throw carries none for" T-LABEL
    EXPECT-CASE-RECORD ;
 
+\ A third build, run in the fixture's root outside the tree, since the build's
+\ directory is the boundary: it names hb's files under the tree as a build run
+\ in the tree does, so it writes the same program.
+: CASE-REPL-AWAY ( -- )
+   RECORD-TEXT
+   s" repl-record-away" TREE-PATH
+   s" --repl" ROOT$ RUN-BUILD-IN {: outu:n erru:n rc:n :}
+   s" a --repl build run outside the tree builds its program" T-LABEL
+   outu erru rc 0 EXPECT-RC
+   rc 0<> if exit then
+   EXPECT-CASE-RECORD
+   s" it writes the program a --repl build run in the tree writes" T-LABEL
+   ROOT$ s" repl-record-out" HOME-BUF FS:JOIN-PATH {: u:n :}
+   TREE$ HOME-BUF u >str CHAIN-RUN:SAME-FILES? TTRUE ;
+
 \ A second build: a --repl program runs MAIN from hb's own command line, not from
 \ the entry a plain build gives it.
 : CASE-REPL-RECORD ( -- )
@@ -518,7 +551,8 @@ variable RUN-FILE-U
    s" a --repl program prints the record of its MAIN's uncaught throw" T-LABEL
    outu erru rc 0 EXPECT-RC
    rc 0<> if exit then
-   EXPECT-CASE-RECORD ;
+   EXPECT-CASE-RECORD
+   CASE-REPL-AWAY ;
 
 \ hb-build dies after a failed build has unmapped its source's own AT-EXIT; it
 \ starts a build because only a build closes the source's space before the exit.

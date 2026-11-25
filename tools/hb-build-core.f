@@ -218,11 +218,13 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
       a i + 1 TEXT+
    loop ;
 
-\ A registry row below the tree root by its tree-relative name. A program's row
-\ outside it keeps its canonical path; hb's is refused.
+\ A registry row below the engine's source root, which the build reads hb's
+\ files from, by its name under it: the product matches a require against its
+\ rows under its own engine root, a Habu tree. A program's row outside the root
+\ keeps its canonical path; hb's is refused.
 : REG-ROW ( str bool -- )
    {: a:^ u:n engine:bool :}
-   SOURCE-ROOT:CWD$ {: c:^ cu:n :}
+   SOURCE-ROOT:ENGINE$ {: c:^ cu:n :}
    u cu 1 + > if a cu c cu STR:= a cu + c@ FS:SLASH = and else false then
    {: below:bool :}
    below 0= engine and if a u LOADING  E-BUILD-PATH throw then
