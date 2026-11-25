@@ -341,6 +341,8 @@ variable HELD                         \ nonzero while x29 holds the index
    {: d:vreg s:vreg :}
    d REG s REG ENC-MOV W ;
 
+: BASE ( vreg -- ) REG XREG-RBASE ENC-MOV W ;
+
 : EXCHANGE ( vreg vreg -- )
    {: a:vreg b:vreg :}
    TMP a REG ENC-MOV W
@@ -699,6 +701,7 @@ variable HELD                         \ nonzero while x29 holds the index
    ['] FILL k EMIT-FILL-XT !
    ['] DSP+ k EMIT-DSP+-XT !
    ['] MOV k EMIT-MOV-XT !
+   ['] BASE k EMIT-BASE-XT !
    ['] EXCHANGE k EMIT-EXCHANGE-XT !
    ['] PLACE:SLOTS k EMIT-SLOTS-XT !
    ['] SLOT-STORE k EMIT-SLOT-STORE-XT !

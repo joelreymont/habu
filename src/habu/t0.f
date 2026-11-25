@@ -1368,6 +1368,8 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    v o r EMIT-ADDR-DATA
    r PUSH-REG ;
 
+: PUSH-BASE ( -- ) ROOM ALLOC {: r:vreg :}  r EMIT-BASE  r PUSH-REG ;
+
 : DO-FETCH ( ^u8 -- ) {: a:^ :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
@@ -1785,8 +1787,6 @@ DYNAMIC-BUFFER OP-START n            \ by operation code: its primitive's start
    code 1+ OP-START-RESERVE  code OP-HI @ max OP-HI !
    r XREF-REC XREF-START code OP-START ! ;
 
-\ data-base's kernel record, which THROWS-AT calls.
-variable BASE-REC
 variable CATCH-REC                   \ catch's
 
 : OPS-MAP ( -- )
@@ -1808,8 +1808,8 @@ variable CATCH-REC                   \ catch's
    s" c!" 47 OP-MAP  s" byte-view" 48 OP-MAP  s" cell-view" 49 OP-MAP
    s" PTR>N" 50 OP-MAP  s" str>" 51 OP-MAP  s" chars" 52 OP-MAP
    s" NULL-PTR" 53 OP-MAP  s" u16@" 54 OP-MAP  s" u32@" 55 OP-MAP
-   s" u16!" 56 OP-MAP  s" u32!" 57 OP-MAP
-   s" data-base" SEEDED BASE-REC !  s" catch" SEEDED CATCH-REC ! ;
+   s" u16!" 56 OP-MAP  s" u32!" 57 OP-MAP  s" data-base" 58 OP-MAP
+   s" catch" SEEDED CATCH-REC ! ;
 
 : MAP-OPS ( -- ) OP-MAPPED @ 0= if OPS-MAP then ;
 
@@ -1904,23 +1904,21 @@ DYNAMIC-BUFFER COUNT-SLOT n
    repeat drop
    L-N @ 0<> if L-N @ EMIT-SLOTS then ;
 
-\ The address of this thread's throw count pushed, for the token at offset loc.
-: THROWS-AT ( n -- ) {: loc:n :}
-   SPILL-ALL  BASE-REC @ XREF-REC REC-START loc EMIT-CALL
-   THROWS-CELL PUSH-CONST [: + ;] OP-ADD true ALU2 ;
+\ The address of this thread's throw count pushed.
+: THROWS-AT ( -- ) PUSH-BASE  THROWS-CELL PUSH-CONST [: + ;] OP-ADD true ALU2 ;
 
-\ After the call at offset loc of a counted catch: count or (code = 0) into
-\ slot s. CMP0 would hand the flag to an `if` after `catch`.
-: KEEP-COUNT ( n n -- ) {: s:n loc:n :}
-   loc THROWS-AT  CELL-W FETCH
+\ After the call of a counted catch: count or (code = 0) into slot s. CMP0
+\ would hand the flag to an `if` after `catch`.
+: KEEP-COUNT ( n -- ) {: s:n :}
+   THROWS-AT  CELL-W FETCH
    OVER1  TOP MAT  TOP REMOVE  0 CC-EQ PUSH-FLAG-LIT
    [: or ;] OP-OR true ALU2
    TOP MAT s EMIT-SLOT-STORE  TOP REMOVE ;
 
-\ Before the `throw` at offset loc of the code of the catch whose count slot s
-\ keeps: the stamp := (stamp = kept) ? count + 1 : stamp, the throw's number.
-: THROW-ON ( n n -- ) {: s:n loc:n :}
-   loc THROWS-AT
+\ Before a `throw` of the code of the catch whose count slot s keeps: the
+\ stamp := (stamp = kept) ? count + 1 : stamp, the throw's number.
+: THROW-ON ( n -- ) {: s:n :}
+   THROWS-AT
    DUP1 CELL-W FETCH  1 PUSH-CONST [: + ;] OP-ADD true ALU2
    SWAP1  STAMP-CELL THROWS-CELL - PUSH-CONST [: + ;] OP-ADD true ALU2
    DUP1 CELL-W FETCH
@@ -2031,6 +2029,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
       55 of a CELL1 4 >WIDTH FETCH true endof
       56 of a CELL1 2 >WIDTH STORE true endof
       57 of a CELL1 4 >WIDTH STORE true endof
+      58 of PUSH-BASE true endof
       NO-INLINE
    endcase ;
 
@@ -2271,11 +2270,11 @@ EXPORT CHECK:WF-N@
    to 0= if a u NO-CODE then
    ORD @ 1- {: k:n :}
    k COUNT-SLOT @ {: s:n :}
-   k ROW-A1 @ 0<>  s 0< 0= and if s loc THROW-ON then
+   k ROW-A1 @ 0<>  s 0< 0= and if s THROW-ON then
    r k CATCH-SHIFT {: d:n :}
    d 0<> if LOSE to loc d EVEN-CALL
    else to flags DKIND:MASK and r loc WORD-CALL then
-   k ROW-A1 @ 0=  s 0< 0= and if s loc KEEP-COUNT then ;
+   k ROW-A1 @ 0=  s 0< 0= and if s KEEP-COUNT then ;
 
 : NAME-TOKEN ( str n n -- )
    {: a:^ u:n r:n loc:n :}

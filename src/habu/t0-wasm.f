@@ -270,6 +270,8 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : MOV ( vreg vreg -- ) {: d:vreg s:vreg :}
    s GET-REG  d SET-REG ;
 
+: BASE ( vreg -- ) WPROF:DATA-VA I64,  SET-REG ;
+
 : EXCHANGE ( vreg vreg -- ) {: a:vreg b:vreg :}
    a GET-REG  b GET-REG  a SET-REG  b SET-REG ;
 
@@ -616,6 +618,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    ['] FILL k EMIT-FILL-XT !
    ['] DSP+ k EMIT-DSP+-XT !
    ['] MOV k EMIT-MOV-XT !
+   ['] BASE k EMIT-BASE-XT !
    ['] EXCHANGE k EMIT-EXCHANGE-XT !
    ['] SLOTS k EMIT-SLOTS-XT !
    ['] SLOT-STORE k EMIT-SLOT-STORE-XT !

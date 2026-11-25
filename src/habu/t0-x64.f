@@ -312,6 +312,8 @@ variable STEPPED                      \ nonzero when the last access moved rbx
    {: d:vreg s:vreg :}
    d REG s REG SINK ENC-MOV-RR ;
 
+: BASE ( vreg -- ) REG DATA-REG SINK ENC-MOV-RR ;
+
 : EXCHANGE ( vreg vreg -- )
    {: a:vreg b:vreg :}
    a REG b REG SINK ENC-XCHG-RR ;
@@ -839,6 +841,7 @@ variable STEPPED                      \ nonzero when the last access moved rbx
    ['] FILL k EMIT-FILL-XT !
    ['] DSP+ k EMIT-DSP+-XT !
    ['] MOV k EMIT-MOV-XT !
+   ['] BASE k EMIT-BASE-XT !
    ['] EXCHANGE k EMIT-EXCHANGE-XT !
    ['] PLACE:SLOTS k EMIT-SLOTS-XT !
    ['] SLOT-STORE k EMIT-SLOT-STORE-XT !

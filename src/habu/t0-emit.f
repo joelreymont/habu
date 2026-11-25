@@ -295,6 +295,7 @@ ARCHES TYPED-BUFFER EMIT-LIT-XT [ n vreg -- ]
 ARCHES TYPED-BUFFER EMIT-ADDR-DATA-XT [ n n vreg -- ]
 ARCHES TYPED-BUFFER EMIT-ADDR-CODE-XT [ n vreg -- ]
 ARCHES TYPED-BUFFER EMIT-ADDR-QUOT-XT [ n vreg -- ]
+ARCHES TYPED-BUFFER EMIT-BASE-XT [ vreg -- ]
 ARCHES TYPED-BUFFER EMIT-PUSH-XT [ vreg n -- ]
 ARCHES TYPED-BUFFER EMIT-PUSH-LIT-XT [ n n -- ]
 ARCHES TYPED-BUFFER EMIT-POP-XT [ vreg n -- ]
@@ -318,6 +319,9 @@ ARCHES TYPED-BUFFER EMIT-SLOT-LOAD-XT [ vreg n -- ]
 \ The address of quotation unit n, which EMIT-QUOT-OPEN begins later.
 : EMIT-ADDR-QUOT ( n vreg -- )
    dup CACHE-DROP  CUR @ EMIT-ADDR-QUOT-XT @ execute ;
+
+\ The running task's data base, `data-base`'s value.
+: EMIT-BASE ( vreg -- ) dup CACHE-DROP  CUR @ EMIT-BASE-XT @ execute ;
 
 \ The data stack grows up. EMIT-SPILL, EMIT-SPILL-LIT and EMIT-FILL address the
 \ cell k cells above the stack pointer without moving it; EMIT-DSP+ moves it by
