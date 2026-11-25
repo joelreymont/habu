@@ -1145,7 +1145,7 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \ instruction byte as a little-endian u32, then its kind as a u8 at
 \ SITE-KIND-OFF. The row names the instruction, as a bit names the BL word or a
 \ chain's first MOVZ; the patched field is at +1 of a call and at
-\ +MOVABS-IMM-OFF of a literal.
+\ +2 of a literal.
 \
 \ Both views are declared on every target.
 \

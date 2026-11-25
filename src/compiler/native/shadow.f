@@ -62,6 +62,7 @@ DYNAMIC-BUFFER CALL-TGT n            \ the absolute address it goes to
 variable N-ADDRS
 DYNAMIC-BUFFER ADDR-OFF n            \ where an address chain starts
 DYNAMIC-BUFFER ADDR-KIND n           \ which kind of address it carries
+DYNAMIC-BUFFER ADDR-VALUE n          \ the address
 
 \ SOURCE-FUNCTION's table over HM: a host entry to the first published emission
 \ and function holding it. It covers emissions [0, SOURCE-N); a query adds the
@@ -212,9 +213,11 @@ private
    NEMIT:ADDR-SITES {: n:n :}
    k0 n + ADDR-OFF-RESERVE
    k0 n + ADDR-KIND-RESERVE
+   k0 n + ADDR-VALUE-RESERVE
    n 0 ?do
       i NEMIT:ADDR-SITE@ k0 i + ADDR-OFF !
       i NEMIT:ADDR-SITE-KIND@ k0 i + ADDR-KIND !
+      i NEMIT:ADDR-SITE-VALUE@ k0 i + ADDR-VALUE !
    loop ;
 
 : EM-RESERVE ( n -- ) {: n:n :}
@@ -352,7 +355,7 @@ private
    EM-PATCH-RELEASE  EM-PATCH-TGT-RELEASE  EM-HOST-RELEASE
    FUN-OFF-RELEASE  FUN-SOURCE-RELEASE
    CALL-OFF-RELEASE  CALL-KIND-RELEASE  CALL-TGT-RELEASE
-   ADDR-OFF-RELEASE  ADDR-KIND-RELEASE
+   ADDR-OFF-RELEASE  ADDR-KIND-RELEASE  ADDR-VALUE-RELEASE
    SOURCE-KEYS-RELEASE  SOURCE-USED-RELEASE  SOURCE-EM-RELEASE  SOURCE-FUN-RELEASE
    REC-IDX-RELEASE  REC-EM-RELEASE  REC-ENTRY-RELEASE  PATCHED-RELEASE ;
 
@@ -634,6 +637,9 @@ EXPORT TRIM
 
 : ADDR-SITE-KIND@ ( n n -- n )
    ADDR-ROW ADDR-KIND @ ;
+
+: ADDR-SITE-VALUE@ ( n n -- n )
+   ADDR-ROW ADDR-VALUE @ ;
 
 seal-package
 

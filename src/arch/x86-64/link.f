@@ -11,17 +11,6 @@ private
 package X64
 private
 
-: SPAN? ( n n n -- bool )
-   {: size:n at:n width:n :}
-   at 0 >= width size <= and at size width - <= and ;
-
-: ADDRESS? ( str n n -- bool )
-   {: b:^ size:n at:n kind:n :}
-   kind NEMIT:ADDR-CODE = kind NEMIT:ADDR-DATA = or
-   size at 10 SPAN? and 0= if false exit then
-   b at + {: p:^ :}
-   p c@ $FE and $48 = p 1+ c@ $F8 and $B8 = and ;
-
 : REL32 ( n -- n )
    dup -2147483648 < over 2147483647 > or if
       s" x64link: rel32 target is out of reach" EXIT-STATUS:ENCODE die
@@ -38,15 +27,9 @@ public
    {: to:n at:n p:^ :}
    to p 2 + LE:U64! ;
 
-: ADDRESS@ ( str n n -- n bool )
-   {: b:^ size:n at:n kind:n :}
-   b size at kind ADDRESS? 0= if 0 false exit then
-   b at + 2 + LE:U64@ true ;
-
-: ADDRESS! ( n ^u8 n n n -- bool )
+: ADDRESS! ( n ^u8 n n n -- )
    {: v:n b:^ size:n at:n kind:n :}
-   b size at kind ADDRESS? 0= if false exit then
-   v b at + 2 + LE:U64! true ;
+   v b at + 2 + LE:U64! ;
 
 : PATCH ( n ^u8 n [ n -- n ] [ n -- n ] -- )
    {: e:n dst:^ at:n data resolve :}
@@ -57,9 +40,8 @@ public
    loop
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE@ {: s:n :}
-      e i NSHADOW:ADDR-SITE-KIND@ {: kind:n :}
-      dst e NSHADOW:SIZE s kind ADDRESS@ drop
-      kind NEMIT:ADDR-DATA = if data else resolve then execute
+      e i NSHADOW:ADDR-SITE-VALUE@
+      e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if data else resolve then execute
       dst s + 2 + LE:U64!
    loop ;
 

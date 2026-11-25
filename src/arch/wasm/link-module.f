@@ -187,8 +187,7 @@ variable KERNEL-N                    \ the kernel routines this link added
    e FIRST @ k + {: f:n :}
    f DEAD @ 0<> if exit then
    at 1+ e k NSHADOW:FUNCTION-OFFSET@ - {: field:n :}
-   e c SITE-VALUE {: v:n has:bool :}
-   has 0= if E-COMP-STATE throw then
+   e c SITE-VALUE {: v:n :}
    e c NSHADOW:ADDR-SITE-KIND@ {: kind:n :}
    kind NEMIT:ADDR-DATA = if f field NEMIT:ADDR-DATA  v DATA-OFFSET  WLINK:ADDRESS+ exit then
    kind NEMIT:ADDR-CODE <> if E-COMP-STATE throw then

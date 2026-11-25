@@ -196,7 +196,7 @@ target-free: it emits through the emitter the target selects.
 - **Calls between compiled words** use the ARM64 internal convention: stack
   cells in memory, live values in registers within a routine.
 - **Literals.** `mov r64, imm64` is the one relocatable literal, one site to
-  patch (`src/habu/address-carrier.f`).
+  patch.
 - **Traps** use the same mmap protections; the handler reads `RIP` and `RSP`.
 
 ### The shadow

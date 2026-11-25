@@ -14,12 +14,10 @@ package LINKER
 private
 package ARM64
 
-\ The data address chain at p, inside bytes ending at end, its value through data.
-: DATA-ROW ( ^u8 ^u8 [ n -- n ] -- )
-   {: p:^ end:^ data :}
-   p end ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
-   p  p size ADDRESS-CARRIER:CHAIN-VALUE data execute  size
-   ADDRESS-CARRIER:SET-CHAIN-VALUE ;
+\ The address chain at p, inside bytes ending at end, made to hold v.
+: CHAIN! ( n ^u8 ^u8 -- )
+   {: v:n p:^ end:^ :}
+   p v  p end ADDRESS-CARRIER:CHAIN-SIZE  ADDRESS-CARRIER:SET-CHAIN-VALUE ;
 
 public
 
@@ -56,48 +54,19 @@ public
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE@ {: s:n :}
       dst s + {: p:^ :}
-      e i NSHADOW:ADDR-SITE-KIND@ {: kind:n :}
-      kind NEMIT:ADDR-DATA = if
-         p end data DATA-ROW
+      e i NSHADOW:ADDR-SITE-VALUE@ {: v:n :}
+      e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
+         v data execute  p end CHAIN!
       else
-         p ADDRESS-CARRIER:ADDR-CHAIN-BYTES ADDRESS-CARRIER:CHAIN-VALUE
-         resolve execute  at s +  p CODE-ADDRESS!
+         v resolve execute  at s +  p CODE-ADDRESS!
       then
    loop ;
 
 
-private
-
-\ The size of the chain a row of kind holds at site in emission bytes b, s of them: a code
-\ chain is ADDR-CHAIN-BYTES long, a data chain whole; 0 when no such chain is there.
-: SITE-SIZE ( str n n -- n )
-   {: b:^ s:n site:n kind:n :}
-   site 0<  site 3 and 0<>  or  site s >=  or if 0 exit then
-   b site +  b s +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
-   kind NEMIT:ADDR-CODE = if
-      size ADDRESS-CARRIER:ADDR-CHAIN-BYTES = if size else 0 then exit
-   then
-   kind NEMIT:ADDR-DATA = if size exit then
-   0 ;
-
-public
-
-\ The address value emission bytes b, s of them, hold at site for a row of kind, and whether
-\ they hold one there.
-: ADDRESS@ ( str n n -- n bool )
-   {: b:^ s:n site:n kind:n :}
-   b s site kind SITE-SIZE {: size:n :}
-   size 0= if 0 false exit then
-   b site +  size ADDRESS-CARRIER:CHAIN-VALUE  true ;
-
-
-\ v written as the address value at site of a row of kind in emission bytes b, s of them;
-\ false, with nothing written, where ADDRESS@ answers false.
-: ADDRESS! ( n ^u8 n n n -- bool )
+\ v written as the address value at site of a row of kind in emission bytes b, s of them.
+: ADDRESS! ( n ^u8 n n n -- )
    {: v:n b:^ s:n site:n kind:n :}
-   b s site kind SITE-SIZE {: size:n :}
-   size 0= if false exit then
-   b site +  v size ADDRESS-CARRIER:SET-CHAIN-VALUE  true ;
+   v  b site +  b s +  CHAIN! ;
 
 ;package
 ;package

@@ -1,12 +1,9 @@
 split-str
-\ address-carrier.f - pure address shapes and value codecs, shared by capture,
-\ link and file inspection without capture buffers or assembler state. A matching
+\ address-carrier.f - the arm64 address chain shapes and their writer. A matching
 \ shape grants no provenance: callers still need the declared site map or a
 \ created-owner record. Its own package, not RELOC: the engine bakes
 \ layout.f, which owns RELOC, and the image tools that load this file on a
 \ product engine may not reopen it (docs/forth-card.md § 6).
-
-require src/core/exit-status.f
 
 package ADDRESS-CARRIER
 public
@@ -22,8 +19,6 @@ $1F constant ADDR-RD-MASK
 $D2C00000 constant DATA-MOVZ2
 $F2800000 constant DATA-MOVK0
 
-\ The one reader and writer of a chain's value, for the capture's site scan, the
-\ capture merge's rebase and any later consumer.
 private
 
 \ The chain's own instruction word, a private copy as every reader of this
@@ -35,15 +30,6 @@ private
    w p c!  w 8 rshift p 1+ c!  w 16 rshift p 2 + c!  w 24 rshift p 3 + c! ;
 
 public
-
-\ The four immediate fields as one value, whatever register the chain names: the
-\ immediate sits just above the destination-register field, which is what
-\ ADDR-RD-BITS is the width of.
-: CHAINV ( ^u8 -- n ) {: p:^ :}
-   p W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and
-   p 4 + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and 16 lshift or
-   p 8 + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and 32 lshift or
-   p 12 + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and 48 lshift or ;
 
 \ Re-encode a full 64-bit value into an existing chain, keeping each word's
 \ opcode and destination register, so it rewrites a chain in any register.
@@ -74,59 +60,11 @@ public
    p 12 + W32@ ADDR-OPC-MASK and $F2E00000 rd or <> or if 0 exit then
    ADDR-CHAIN-BYTES ;
 
-\ Live carriers hold absolute addresses; captured DATA sites hold window
-\ coordinates until the boot rebase. The same fields carry either number.
-: CHAIN-VALUE ( str -- n ) {: p:^ size:n :}
-   size ADDR-CHAIN-BYTES = if p CHAINV exit then
-   size DATA-CHAIN-BYTES <> if
-      s" E-ADDRESS-CHAIN" REJECTION:OPEN
-      s" `ADDRESS-CARRIER:CHAIN-VALUE` was given the size " REJECTION:EMIT-STR
-      size REJECTION:EMIT-N  s" , which no address chain has" REJECTION:EMIT-STR
-      REJECTION:HELP
-      s" pass the size `ADDRESS-CARRIER:CHAIN-SIZE` answers for the chain" REJECTION:EMIT-STR
-      EXIT-STATUS:REJECTED REJECTION:STOP
-   then
-   0 3 0 ?do
-      p i 4 * + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and
-      2 i - 16 * lshift or
-   loop ;
-
 : SET-CHAIN-VALUE ( str n -- ) {: p:^ val:n size:n :}
    size ADDR-CHAIN-BYTES = if p val SET-CHAIN exit then
    3 0 ?do
       p i 4 * + W32@ ADDR-OPC-MASK and
       val 2 i - 16 * rshift ADDR-IMM-MASK and ADDR-RD-BITS lshift or
       p i 4 * + W32!
-   loop ;
-
-\ The same three questions for the x86-64 address site.
-\ x86-64 spells the address as one `mov r64, imm64`: REX.W (B names the high
-\ bank), B8+rd, eight immediate bytes, so the site is ten bytes and its patch
-\ eight bytes at offset two. REX.R and REX.X have nothing to name without ModRM
-\ or SIB, so MOVABS-SITE? admits exactly $48 and $49 and opcodes B8..BF: the
-\ register may vary, the shape may not. test/x86-64-seam.f exercises it.
-$FE constant MOVABS-REX-MASK
-$48 constant MOVABS-REX-W
-$F8 constant MOVABS-OP-MASK
-$B8 constant MOVABS-OP
-10 constant MOVABS-BYTES
-2 constant MOVABS-IMM-OFF
-8 constant MOVABS-IMM-BYTES
-
-: MOVABS-SITE? ( ^u8 -- bool ) {: p:^ :}
-   p c@ MOVABS-REX-MASK and MOVABS-REX-W =
-   p 1+ c@ MOVABS-OP-MASK and MOVABS-OP = and ;
-
-: MOVABSV ( ^u8 -- n ) {: p:^ :}
-   0
-   MOVABS-IMM-BYTES 0 ?do
-      p MOVABS-IMM-OFF + i + c@  i 8 * lshift  or
-   loop ;
-
-\ Re-encode a full 64-bit value into an existing site, keeping the prefix and
-\ the opcode - and so the destination register - exactly as they were.
-: SET-MOVABS ( ^u8 n -- ) {: p:^ val:n :}
-   MOVABS-IMM-BYTES 0 ?do
-      val i 8 * rshift $FF and  p MOVABS-IMM-OFF + i + c!
    loop ;
 ;package

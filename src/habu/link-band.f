@@ -235,30 +235,18 @@ variable UNSAFE-COUNT
 
 
 
-\ The address value machine a's emission bytes b, s of them, hold at site for a row of
-\ kind, and whether they hold one there, read by a's part of LINKER.
-: ADDRESS@ ( CTARGET:arch str n n -- n bool )
-   {: a:CTARGET:arch b:^ s:n site:n kind:n :}
-   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:ADDRESS@ exit then
-   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if b s site kind X64:ADDRESS@ exit then
-   b s site kind WASM:ADDRESS@ ;
-
-
-\ v written as ADDRESS@ reads it, by a's part of LINKER; false, with nothing written,
-\ where ADDRESS@ answers false.
-: ADDRESS! ( n CTARGET:arch ^u8 n n n -- bool )
+\ v written as the address value at site, a row of kind's, in machine a's emission
+\ bytes b, s of them.
+: ADDRESS! ( n CTARGET:arch ^u8 n n n -- )
    {: v:n a:CTARGET:arch b:^ s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if v b s site kind ARM64:ADDRESS! exit then
    a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if v b s site kind X64:ADDRESS! exit then
    v b s site kind WASM:ADDRESS! ;
 
 
-\ Emission e's address site k's value and whether it holds one, read as the emission's
-\ machine encodes it.
-: SITE-VALUE ( n n -- n bool )
-   {: e:n k:n :}
-   e NSHADOW:ARCH@  e NSHADOW:BYTES  e NSHADOW:SIZE  e k NSHADOW:ADDR-SITE@
-   e k NSHADOW:ADDR-SITE-KIND@  ADDRESS@ ;
+\ Emission e's address site k's value.
+: SITE-VALUE ( n n -- n )
+   NSHADOW:ADDR-SITE-VALUE@ ;
 
 
 \ Emission e's function at offset v, or -1: a site of a Wasm emission naming that
@@ -290,8 +278,7 @@ variable UNSAFE-COUNT
       e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if
          e i NSHADOW:ADDR-SITE@ {: at:n :}
          at from >=  at to < and if
-            e i SITE-VALUE {: v:n has:bool :}
-            has if e v visit VISIT-OUTSIDE then
+            e  e i SITE-VALUE  visit VISIT-OUTSIDE
          then
       then
    loop ;

@@ -615,6 +615,11 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
    kind ADDR-QUOT-KIND = if NEMIT:ADDR-CODE exit then
    kind ;
 
+: NEMIT-VALUE ( n n -- n )
+   {: to:n kind:n :}
+   kind ADDR-QUOT-KIND = if to EMIT-UNIT exit then
+   to ;
+
 \ The callback stub's offset, or -1 while NCBSTUB is not armed (THE CALLBACK STUB).
 : EMIT-CB-STUB ( -- n )
    NCBSTUB:ARMED? 0= if -1 exit then
@@ -635,7 +640,8 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
       i CALL-AT @  i CALL-KIND-AT @  i CALL-TO @  0  i CALL-LOC @  NEMIT:CALL-SITE+
    loop
    N-ADDRS @ 0 ?do
-      i ADDR-AT @  i ADDR-KIND-AT @ NEMIT-KIND  i ADDR-ORIGIN @  NEMIT:ADDR-SITE+
+      i EMIT-ADDR-ROW {: at:n kind:n to:n :}
+      at  kind NEMIT-KIND  to kind NEMIT-VALUE  i ADDR-ORIGIN @  NEMIT:ADDR-SITE+
    loop
    NEMIT:SEAL ;
 

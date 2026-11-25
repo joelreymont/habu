@@ -34,6 +34,7 @@ DYNAMIC-BUFFER CALL-LOC-BUF n        \ retained definition-body offset
 variable N-ADDRS
 DYNAMIC-BUFFER ADDR-OFF-BUF n        \ where an address chain starts
 DYNAMIC-BUFFER ADDR-KIND-BUF n       \ which kind of address it carries
+DYNAMIC-BUFFER ADDR-VALUE-BUF n      \ the address, or its own function's offset
 DYNAMIC-BUFFER ADDR-ORIGIN-BUF n     \ exact DATA declaration, -1 otherwise
 
 : SEAL-CK ( -- )
@@ -130,6 +131,9 @@ ADDR-CODE constant ADDR-KIND-MAX
 : ADDR-SITE-KIND@ ( n -- n )
    SEAL-CK N-ADDRS @ ROW-CK ADDR-KIND-BUF @ ;
 
+: ADDR-SITE-VALUE@ ( n -- n )
+   SEAL-CK N-ADDRS @ ROW-CK ADDR-VALUE-BUF @ ;
+
 : ADDR-SITE-ORIGIN@ ( n -- n )
    SEAL-CK N-ADDRS @ ROW-CK ADDR-ORIGIN-BUF @ ;
 
@@ -194,14 +198,17 @@ ADDR-CODE constant ADDR-KIND-MAX
    loc k CALL-LOC-BUF !
    k 1+ N-CALLS ! ;
 
-: ADDR-SITE+ ( n n n -- ) {: off:n kind:n origin:n :}
+: ADDR-SITE+ ( n n n n -- )
+   {: off:n kind:n value:n origin:n :}
    OPEN-CK off OFFSET-CK drop
    N-ADDRS @ {: k:n :}
    k 1+ ADDR-OFF-BUF-RESERVE
    k 1+ ADDR-KIND-BUF-RESERVE
+   k 1+ ADDR-VALUE-BUF-RESERVE
    k 1+ ADDR-ORIGIN-BUF-RESERVE
    off k ADDR-OFF-BUF !
    kind k ADDR-KIND-BUF !
+   value k ADDR-VALUE-BUF !
    origin k ADDR-ORIGIN-BUF !
    k 1+ N-ADDRS ! ;
 

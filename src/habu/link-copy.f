@@ -277,8 +277,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
       e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
          e i NSHADOW:ADDR-SITE@ {: at:n :}
          at from >=  at to < and if
-            e i SITE-VALUE {: v:n has:bool :}
-            has if v visit execute then
+            e i SITE-VALUE visit execute
          then
       then
    loop ;

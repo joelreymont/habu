@@ -1525,10 +1525,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    {: e:n at:n :}
    -1  e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
-         e i SITE-VALUE {: w:n held:bool :}
-         held if
-            w at <= if w max then
-         then
+         e i SITE-VALUE {: w:n :}
+         w at <= if w max then
       then
    loop ;
 
@@ -1931,8 +1929,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    1 PIECES @ U64+  v rbase - PIECES @ U64+ true ;
 
 
-\ One emission of CODE+; address values are read from the shadow's bytes:
-\ PIECES' copy has them cleared.
+\ One emission of CODE+, the address values in its bytes cleared.
 : EMISSION-CODE+ ( n -- )
    {: e:n :}
    e NSHADOW:SIZE {: s:n :}
@@ -1959,8 +1956,8 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE@ {: at:n :}
       e i NSHADOW:ADDR-SITE-KIND@ {: kind:n :}
-      e i SITE-VALUE drop {: v:n :}
-      0  e NSHADOW:ARCH@  PIECES @ BYTES$ drop off +  s  at  kind  ADDRESS! drop
+      e i SITE-VALUE {: v:n :}
+      0  e NSHADOW:ARCH@  PIECES @ BYTES$ drop off +  s  at  kind  ADDRESS!
       at PIECES @ U64+
       kind NEMIT:ADDR-CODE = {: code:bool :}
       code if
@@ -2076,7 +2073,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    {: e:n :}
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
-         e i SITE-VALUE if unloop exit then drop
+         e i SITE-VALUE unloop exit
       then
    loop
    -1 ;
@@ -4366,8 +4363,8 @@ EXPORT TFAM:TFAM-N@
       RD-U64 RD-U64 {: site:n k:n :}
       RD-REF RESOLVE {: v:n :}
       k 0= if NEMIT:ADDR-CODE else NEMIT:ADDR-DATA then {: nk:n :}
-      v  e EM-ARCH  copy  s  site  nk  ADDRESS! drop
-      site nk -1 NEMIT:ADDR-SITE+
+      v  e EM-ARCH  copy  s  site  nk  ADDRESS!
+      site nk v -1 NEMIT:ADDR-SITE+
       k 0<> if site HOST-ADDR+ then
    loop
    RD-U64 {: p:n :}
