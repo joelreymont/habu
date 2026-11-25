@@ -26,9 +26,10 @@
 \ pending per connection; a send copies its statement and parameters. A SQL
 \ rejection is the result's `failed` outcome with SQLSTATE and message. A
 \ TASK:HALT ends a wait and leaves the connection to the task's own cleanup:
-\ CLOSE, or ABANDON under a halt. Each WITH- word runs one operation and the
-\ body over its result, then clears it whether the body returns or throws; the
-\ body hands the token back. The token does not survive a throw out of the
+\ CLOSE, or ABANDON under a halt; LIVE? is false where it ended a
+\ transaction's body, which closes it. Each WITH- word runs one operation and
+\ the body over its result, then clears it whether the body returns or throws;
+\ the body hands the token back. The token does not survive a throw out of the
 \ body, so the scope keeps its packed handle in the running task's SCOPE-HEAD
 \ cell, where the cleanup reads it. A nested scope saves the cell in RES-OUTER
 \ under its own slot and its cleanup puts it back, so each cleanup retires its
@@ -212,7 +213,7 @@ TASK:+USER REFUSED-TEXT ^VEC:vector<u8>
 \ reader row's) or a loss (REFUSED-TEXT's).
 TASK:+USER REFUSED-KIND n
 \ Nonzero while ABORT-TX's ROLLBACK runs: an operation's start and CONN-LOST
-\ then leave REFUSED-KIND as the body's failure left it.
+\ then leave REFUSED-KIND as the failure being rolled back left it.
 TASK:+USER REFUSED-HOLD n
 
 : CONN-CAP ( -- n ) CONN-CAPACITY @ ;
@@ -1431,11 +1432,8 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot RETIRE-RES-SLOT ;
 
 
-\ BEGIN, COMMIT and ROLLBACK are this module's own fixed statements and take no
-\ parameters, so they run out of a small per-connection buffer and never touch
-\ the arena. That is what lets a caller build parameters BEFORE
-\ WITH-TRANSACTION and spend them inside the body, which is the only way into a
-\ quotation that may not read the caller's locals.
+\ BEGIN, COMMIT and ROLLBACK run from a per-connection buffer, never the arena,
+\ so parameters staged before WITH-TRANSACTION survive into its body.
 : VERB-TEXT! ( n str -- ^u8 )
    {: slot:n s:str :}
    s STR:LEN 0 <= if E-STATEMENT throw then
@@ -1443,7 +1441,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    s slot VERB-BUF VERB-CAP SPAN:MAKE FFI:CSTR ;
 
 
-: RUN-VERB ( n str -- n )
+: SEND-VERB ( n str -- n )
    {: slot:n s:str :}
    slot OP-DEADLINE {: deadline:n :}
    OP-START
@@ -1454,13 +1452,14 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    LIB-SEND-QUERY-PARAMS {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
-   slot deadline WAIT-QUERY RESULT-SLOT ;
+   deadline ;
 
 
 \ A transaction verb must succeed or the caller's framing is a lie, so a server
 \ refusal is E-EXEC rather than an outcome the caller could ignore.
-: VERB ( n str -- ) {: slot:n s:str :}
-   slot s RUN-VERB {: res:n :}
+: WAIT-VERB ( n n -- )
+   {: slot:n deadline:n :}
+   slot deadline WAIT-QUERY RESULT-SLOT {: res:n :}
    res RESULT-STATUS {: status:n :}
    status PGRES-COMMAND-OK <> if
       res CLEAR-SLOT
@@ -1469,14 +1468,25 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    res CLEAR-SLOT ;
 
 
+: VERB ( n str -- ) {: slot:n s:str :}
+   slot s SEND-VERB {: deadline:n :}
+   slot deadline WAIT-VERB ;
+
+
 : BEGIN-TX ( n -- ) {: slot:n :}
    slot s" BEGIN" VERB
    1 slot CONN-TX! ;
 
 
+\ PostgreSQL answers COMMIT of a failed transaction, or of none, with no error.
+\ Open until COMMIT is sent: a throw before the send is rolled back, none after.
 : COMMIT-TX ( n -- ) {: slot:n :}
+   OP-START
+   slot CONN-PG@ LIB-TRANSACTION-STATUS {: status:n :}
+   status TRANS-IDLE = status TRANS-INERROR = or if E-EXEC throw then
+   slot s" COMMIT" SEND-VERB {: deadline:n :}
    0 slot CONN-TX!
-   slot s" COMMIT" VERB ;
+   slot deadline WAIT-VERB ;
 
 
 : ROLLBACK-TX ( n -- ) {: slot:n :}
@@ -1890,9 +1900,9 @@ public
 \ NOTIFIED? and NOTIFIED are not bounded. On expiry the connection closes and
 \ the operation throws E-DEADLINE. While the bound is nonzero, every close but
 \ an explicit CLOSE - expiry, a transport or readiness failure, an exception
-\ caught while waiting, a failed ROLLBACK under a body's throw - finishes it
-\ without the cancel, as ABANDON does, since a cancel to an unreachable server
-\ would stretch the bound; the primary exception stands.
+\ caught while waiting, a failed ROLLBACK, a halt in a transaction's body -
+\ finishes it without the cancel, as ABANDON does, since a cancel to an
+\ unreachable server would stretch the bound; the primary exception stands.
 : DEADLINE! ( connection ms -- )
    {: handle:connection bound:ms :}
    handle CONN-SLOT {: slot:n :}
@@ -1954,40 +1964,35 @@ public
 
 private
 
-\ The ROLLBACK under a body's throw, which stays primary: a ROLLBACK that fails
-\ leaves the transaction's state unknown, so the connection is abandoned. The
-\ handle, not the slot, is checked after it, since a ROLLBACK that expired has
-\ already closed the connection and freed the slot for another task.
+\ A halted task must not wait on the server, and a ROLLBACK that fails leaves
+\ the transaction's state unknown: both close the connection.
 : ABORT-TX ( connection -- )
    {: handle:connection :}
    handle LIVE? 0= if exit then
    handle CONN-SLOT {: slot:n :}
+   slot CONN-TX@ 0= if exit then
+   TASK:HALTED? if handle ABANDON exit then
    1 REFUSED-HOLD !
    slot [: [: dup ROLLBACK-TX ;] catch ;] [: 0 REFUSED-HOLD ! ;] finally
    {: stale:n code:n :}
    code 0= if exit then
+   \ A ROLLBACK that expired has closed the connection and freed its slot.
    handle LIVE? if handle CONN-SLOT ABANDON-SLOT then ;
 
 public
 
 
-\ The body receives the connection and returns it, which is what lets it cross
-\ the catch boundary. A throw rolls back and reaches the caller unchanged; a
-\ ROLLBACK that fails closes the connection, whose transaction state is then
-\ unknown, and the body's code still goes on. The handle is resolved again
-\ after the body, which may have closed the connection and let another CONNECT
-\ reuse its slot: a closed one gets no ROLLBACK, and a COMMIT on one is
-\ E-HANDLE. A nested WITH-TRANSACTION is E-TRANSACTION: PostgreSQL ignores a
-\ nested BEGIN and the inner COMMIT would end the outer transaction.
-: WITH-TRANSACTION ( connection [ connection -- connection ] -- )
+\ Commits when the body returns. Its throw rolls back and goes on; a halt in it,
+\ or a ROLLBACK that fails, closes the connection. Nested is E-TRANSACTION.
+: WITH-TRANSACTION ( R connection [ R -- S ] -- S )
    {: handle:connection body :}
    handle CONN-SLOT {: slot:n :}
+   \ PostgreSQL ignores a nested BEGIN, so an inner COMMIT would end this one.
    slot CONN-TX@ 0 <> if E-TRANSACTION throw then
    slot BEGIN-TX
-   handle body catch nip {: code:n :}
-   code 0= if handle CONN-SLOT COMMIT-TX exit then
-   handle ABORT-TX
-   code throw ;
+   \ The body may close the connection and let another CONNECT take its slot.
+   [: body execute handle CONN-SLOT COMMIT-TX ;]
+   [: handle ABORT-TX ;] finally ;
 
 
 : OUTCOME ( PG:result -- PG:result outcome )

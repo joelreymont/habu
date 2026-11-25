@@ -439,7 +439,7 @@ TYPED-VARIABLE LOST-B PG:connection
    code 0<> if code throw then ;
 
 : REFUSE-IN-TX ( -- )
-   LOST-A @ [: REFUSE-END ;] PG:WITH-TRANSACTION ;
+   LOST-A @ dup [: REFUSE-END ;] PG:WITH-TRANSACTION drop ;
 
 : ROLLBACK-LOST ( -- )
    s" a lost ROLLBACK keeps the body's refusal" T-LABEL
@@ -457,7 +457,7 @@ TYPED-VARIABLE LOST-B PG:connection
    code 0<> if code throw then ;
 
 : LOSE-IN-TX ( -- )
-   LOST-B @ [: LOSE-END ;] PG:WITH-TRANSACTION ;
+   LOST-B @ dup [: LOSE-END ;] PG:WITH-TRANSACTION drop ;
 
 : ROLLBACK-KEEPS ( -- )
    s" a ROLLBACK keeps the body's loss" T-LABEL

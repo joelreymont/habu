@@ -904,9 +904,8 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ The parameters are built BEFORE the transaction opens, which is the only way
-\ into a body that may not read the caller's locals: BEGIN must leave the
-\ pending list alone.
+\ The parameters are built before the transaction opens, so BEGIN must leave
+\ the pending list alone.
 : COMMIT-BODY ( PG:connection -- PG:connection )
    dup IDLE? TFALSE
    dup s" insert into pqt (id, label, note) values ($1, $2, null)"
@@ -917,7 +916,7 @@ TYPED-VARIABLE HELD-ID n
    c PARAMS
    c 901 INT+
    c s" kept" TEXT+
-   c [: COMMIT-BODY ;] WITH-TRANSACTION
+   c [: c COMMIT-BODY drop ;] WITH-TRANSACTION
    c IDLE? TTRUE
    c s" begin" EXEC-OK
    c IDLE? TFALSE
@@ -927,6 +926,58 @@ TYPED-VARIABLE HELD-ID n
    c 901 INT+
    c s" select label from pqt where id = $1"
    [: 0 >ROW 0 >COL TEXT$ s" kept" T$= ;] WITH-RESULT
+   c ;
+
+
+: COUNTED-BODY ( PG:connection -- n )
+   dup s" insert into pqt (id, label, note) values (902, 'counted', null)"
+   EXEC-OK
+   902 COUNT-ID ;
+
+
+: ANSWER-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" a transaction's body answers a value read inside it" T-LABEL
+   c [: c COUNTED-BODY ;] WITH-TRANSACTION 1 T=
+   c IDLE? TTRUE
+   c 902 COUNT-ID 1 T=
+   c ;
+
+
+: SOFT-FAIL-BODY ( PG:connection -- PG:connection )
+   dup s" insert into pqt (id, label, note) values (970, 'soft', null)"
+   EXEC-OK
+   dup s" select 1/0" EXEC-TAG TAG-FAILED T= ;
+
+
+: SOFT-FAIL-RUN ( PG:connection -- PG:connection )
+   dup [: SOFT-FAIL-BODY ;] WITH-TRANSACTION ;
+
+
+: SOFT-FAIL-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" a body that returns after a failed statement rolls back with E-EXEC" T-LABEL
+   c [: SOFT-FAIL-RUN ;] catch {: stale code:n :}
+   code E-EXEC T=
+   c IDLE? TTRUE
+   c 970 COUNT-ID 0 T=
+   c ;
+
+
+: OWN-END-BODY ( PG:connection -- PG:connection )
+   dup s" insert into pqt (id, label, note) values (973, 'ended', null)"
+   EXEC-OK
+   dup s" rollback" EXEC-OK ;
+
+
+: OWN-END-RUN ( PG:connection -- PG:connection )
+   dup [: OWN-END-BODY ;] WITH-TRANSACTION ;
+
+
+: OWN-END-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" a body that ended its own transaction throws E-EXEC" T-LABEL
+   c [: OWN-END-RUN ;] catch {: stale code:n :}
+   code E-EXEC T=
+   c IDLE? TTRUE
+   c 973 COUNT-ID 0 T=
    c ;
 
 
@@ -1630,6 +1681,61 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    c ;
 
 
+: UNREAD-BODY ( PG:connection -- PG:connection )
+   dup s" insert into pqt (id, label, note) values (971, 'unread', null)"
+   EXEC-OK
+   dup s" select 1" SEND ;
+
+
+: UNREAD-RUN ( PG:connection -- PG:connection )
+   dup [: UNREAD-BODY ;] WITH-TRANSACTION ;
+
+
+\ The backend of a connection wrongly left open never goes, so it is closed.
+: UNREAD-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" a body that returns with a statement pending commits nothing" T-LABEL
+   OPEN {: p :}
+   p BACKEND {: pid:n :}
+   p [: UNREAD-RUN ;] catch {: stale code:n :}
+   code E-STATEMENT T=
+   p PG:LIVE? dup TFALSE if p PG:CLOSE then
+   c pid AWAIT-GONE
+   c 971 COUNT-ID 0 T=
+   c ;
+
+
+: TX-PAUSE ( -- )
+   0 EXIT-CONN @
+   s" insert into pqt (id, label, note) values (972, 'halted', null)"
+   EXEC-OK
+   1 EXIT-STARTED atomic!
+   begin TASK:PAUSE again ;
+
+
+: TX-PAUSED ( -- )
+   OPEN dup 0 EXIT-CONN !
+   dup BACKEND EXIT-BACKEND atomic!
+   [: TX-PAUSE ;] WITH-TRANSACTION ;
+
+
+: TX-HALT-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" a halt inside a transaction closes its connection at once" T-LABEL
+   0 EXIT-STARTED !
+   ['] TX-PAUSED EXIT-WORKER TASK:ACTIVATE
+   AWAIT-STARTED
+   mono-ns {: halted:n :}
+   EXIT-WORKER TASK:HALT
+   EXIT-WORKER TASK:JOIN MATCH result
+      ok OF drop E-EXEC throw ENDOF
+      err OF E-TASK-NO-RESULT T= ENDOF
+   ;MATCH
+   halted ELAPSED-MS PROMPT-MS < TTRUE
+   EXIT-LIVE @ TFALSE
+   c EXIT-BACKEND atomic@ AWAIT-GONE
+   c 972 COUNT-ID 0 T=
+   c ;
+
+
 $7F000001 constant LOOPBACK
 variable LISTENER-PORT
 TASK:MIN-STACK TASK:TASK SILENT-WORKER
@@ -2162,6 +2268,9 @@ PW-RIGHT!
    ORIGIN-CASES
    ROLLBACK-CASES
    COMMIT-CASES
+   ANSWER-CASES
+   SOFT-FAIL-CASES
+   OWN-END-CASES
    LEFT-BODY-CASES
    UNIQUE-CASES
    BAD-COLUMN-CASES
@@ -2181,6 +2290,8 @@ PW-RIGHT!
    OWNER-CASES
    EXIT-CASES
    CANCEL-CASES
+   UNREAD-CASES
+   TX-HALT-CASES
    LOST-CONNECTION-CASES
    DEADLINE-CASES
    NOTIFY-CASES
