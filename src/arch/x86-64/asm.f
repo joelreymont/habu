@@ -253,6 +253,11 @@ private
    W64 $83 base 3 rshift dst R64>N REG-NUM 0 s RR-ENC
    imm s EMIT-B ;
 
+: ALU-MI8 ( n mem imm8 ^VEC:vector<u8> -- ) {: base:n m:mem v:imm8 s:^ :}
+   v IMM8>N ?SIMM8 {: imm:n :}
+   W64 $83 base 3 rshift m 0 s RM-ENC
+   imm s EMIT-B ;
+
 : ALU-RI32 ( n r64 imm32 ^VEC:vector<u8> -- ) {: base:n dst:r64 v:imm32 s:^ :}
    v IMM32>N ?SIMM32 {: imm:n :}
    W64 $81 base 3 rshift dst R64>N REG-NUM 0 s RR-ENC
@@ -387,6 +392,7 @@ public
 : ENC-ADD-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}   $00 d m s ALU-RM ;
 : ENC-ADD-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}  $00 sr m s ALU-MR ;
 : ENC-ADD-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: d:r64 v:imm8 s:^ :}   $00 d v s ALU-RI8 ;
+: ENC-ADD-MI8 ( mem imm8 ^VEC:vector<u8> -- ) {: m:mem v:imm8 s:^ :}   $00 m v s ALU-MI8 ;
 : ENC-ADD-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 v:imm32 s:^ :} $00 d v s ALU-RI32 ;
 
 : ENC-OR-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}   $08 d sr s ALU-RR ;

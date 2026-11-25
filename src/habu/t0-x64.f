@@ -770,9 +770,8 @@ variable STEPPED                      \ nonzero when the last access moved rbx
    LABEL:LOOP-OPEN  1 HELD ! ;
 
 : LOOP-POP ( -- )
-   RAX LTOP
-   RAX STACK-ABI:LOOP-FRAME-BYTES >IMM8 SINK ENC-SUB-RI8
-   RAX LTOP!
+   DATA-REG LOOPSP-CELL MEM-OFF
+   STACK-ABI:LOOP-FRAME-BYTES negate >IMM8 SINK ENC-ADD-MI8
    0 HELD ! ;
 
 : LOOP-I ( vreg -- )

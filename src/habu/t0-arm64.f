@@ -623,8 +623,7 @@ variable HELD                         \ nonzero while x29 holds the index
    LTOP
    ADR ADR STACK-ABI:LOOP-FRAME-BYTES ENC-ADDI W
    LTOP!
-   s REG ADR LIDX-OFF true XFER
-   l REG ADR LLIM-OFF true XFER
+   s REG l REG ADR LIDX-OFF ENC-STP W
    IDX s REG ENC-MOV W ;
 
 \ The head binds with x29 holding the index: the entry arrives from LOOP-PUSH

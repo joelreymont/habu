@@ -60,6 +60,7 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    RAX RCX MEM-AT SINK ENC-ADD-MR   s" 480101" X=
    \ llvm-mc: addq $7, %rax
    RAX 7 >IMM8 SINK ENC-ADD-RI8   s" 4883c007" X=
+   RBX 72 MEM-OFF -16 >IMM8 SINK ENC-ADD-MI8   s" 48834348f0" X=
    \ llvm-mc: addq $1000, %rcx
    RCX 1000 >IMM32 SINK ENC-ADD-RI32   s" 4881c1e8030000" X=
    \ llvm-mc: orq %r15, %r8
