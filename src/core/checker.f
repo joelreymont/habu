@@ -19584,9 +19584,9 @@ variable TCLOSE  variable TBEST  variable TREACH
          -1 UNDEFERR !  0 OK !  -1 FAILSET !  RES-TRUE EXIT
       THEN
    THEN
-   SGSEEN @ 0= IF RES-FALSE EXIT THEN
    id INTRINSIC-CREATE <> IF RES-FALSE EXIT THEN
    WRAP-MADE!
+   SGSEEN @ 0= IF RES-FALSE EXIT THEN
    \ The intrinsic parses its created name without moving either stack. Native
    \ elaboration calls that exact binding, so its judged site needs call facts.
    REC-ON @ IF

@@ -473,7 +473,11 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
       s" `does>` needs a word this definition creates" CDD-NOT-CERTIFIED
    s" a head that bends before a word's first call is still rejected" T-LABEL
    s" : CDD-PB5 ( -- ) false if then depth drop create 5 , does> ( -- n ) @ ;"
-      s" `does>` needs a word this definition creates" CDD-NOT-CERTIFIED ;
+      s" `does>` needs a word this definition creates" CDD-NOT-CERTIFIED
+   s" a head with no signature creates its word, typed by the clause" T-LABEL
+   s" : CDD-PB6 create , does> ( -- n ) @ ;" TEST-EVAL:RC 0 T=
+   s" 5 CDD-PB6 CDD-PB6W  CDD-PB6W" TEST-EVAL:N 5 T=
+   s" : CDD-PB7 ( -- bool ) CDD-PB6W ;" s" error[E-MISMATCH]" CDD-NOT-CERTIFIED ;
 
 \ Section 16: the qualified definer's created word gives the clause's cells.
 : CDD-SECTION-QUALIFIED ( -- )
