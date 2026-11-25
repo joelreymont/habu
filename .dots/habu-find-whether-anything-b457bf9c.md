@@ -1,6 +1,6 @@
 ---
 title: Delete the site maps nothing reads
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-13T20:36:26.779107+01:00"
@@ -12,4 +12,4 @@ Acceptance: a search (names fold case) finds no reader of the three; what nothin
 
 Depends: none.
 
-Claim: unassigned.
+Claim: agent=jerry workspace=.jj-ws.noindex/jerry-maps.
