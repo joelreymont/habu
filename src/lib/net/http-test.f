@@ -89,7 +89,9 @@ $2000 constant SCRIPT-CAP
 10 constant LF
 $2F constant SLASH
 $2E constant DOT-BYTE
--9990 constant E-BOOM             \ this file's own fixture refusals, outside every lib block
+\ This file's own fixture refusals, outside every lib block; E-BOOM is declared
+\ so that a request-failure line names it.
+-9990 s" the http test threw it" ERROR:CODE E-BOOM
 -9991 constant E-HOOK
 -9992 constant E-RENDER
 -9993 constant E-HOOK-OTHER
@@ -1273,7 +1275,9 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 \ A server reports each fault on fd 2 under the id its client is given. For one
 \ server fd 2 is a file, read back while it runs or after the stop.
-$4000 constant ERR-CAP            \ a server's fault lines: one per peer of a full job queue
+\ A full job queue's fault lines: a connection's and a request's for each
+\ queued peer and the gated one, each under 256 bytes.
+HTTP-TEST:QUEUED 1+ 2 * $100 * constant ERR-CAP
 
 variable ERR-PATH-U
 variable ERR-U
@@ -2627,6 +2631,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 \ A handler that lets its failed body read's throw out is that read's refusal
 \ alone: the hook runs once for it and no fault is logged.
 : ERROR-HOOK-CASE ( -- )
+   s" the error hook runs once per failure and each fault is logged" T-LABEL
    TRACE-RESET
    0 RENDERS !
    [: RENDER-THROWS ;] HTTP:ON-ERROR
@@ -2638,7 +2643,8 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    HTTP:KILLED-TASKS 0 T=
    READ-STDERR
    ERR$ s\"  error http: request r0-1 failed, throw -9992\n" STR:CONTAINS? TTRUE
-   ERR$ s\"  error http: request r0-2 failed, throw -9990\n" STR:CONTAINS? TTRUE
+   ERR$ s\"  error http: request r0-2 failed, throw -9990 HTTP-TEST:E-BOOM: the http test threw it\n"
+   STR:CONTAINS? TTRUE
    ERR$ s\"  error http: request r0-2 failed, throw -9992\n" STR:CONTAINS? TTRUE
    ERR$ s\"  error http: request r0-4 failed, throw -9992\n" STR:CONTAINS? TTRUE
    ERR$ s" failed, throw -9347" STR:CONTAINS? TFALSE

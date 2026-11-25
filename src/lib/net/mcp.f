@@ -1381,7 +1381,7 @@ CAST: HELD>N ( held -- n )
 \ The slot's outcome, given the code passed to the host.
 : OUTCOME+ ( n -- )
    {: code:n :}
-   code 0<> if s" fault " LOG:TEXT+  code LOG:INT+ exit then
+   code 0<> if s" fault " LOG:TEXT+  code LOG:CODE+ exit then
    SLOT STAGE @ SENT = if REPLY+ exit then
    SLOT STAGE @ HELD = if s" held" LOG:TEXT+ exit then
    s" notified" LOG:TEXT+ ;
@@ -1566,13 +1566,14 @@ public
 \ are as without LOG, `-` when no method was read. outcome is `ok`, `tool
 \ error: <text>` (a schema refusal's included), `error <code>: <message>` for
 \ a JSON-RPC error (UNKNOWN-TOOL's included), `held` for a call HOLD kept,
-\ `notified` for a notification, or `fault <code>` for a throw passed to the
-\ host. A tools/call with params.arguments then writes a LOG DEBUG line,
-\ `req <id> arguments <arguments>`, the arguments as sent, which may hold
-\ what an info line must not. FINISH writes a held call's own line, `req <id>
-\ tools/call <name> -> <outcome>`, with the id of the request that held it. A
-\ text past 4096 bytes is cut at a character boundary and followed by
-\ ` [<n> B]`, n its length.
+\ `notified` for a notification, or `fault <code> <name>: <text>`, name and
+\ text when the code is declared, for a throw passed to the host. A
+\ tools/call with params.arguments then writes a LOG DEBUG line, `req <id>
+\ arguments <arguments>`, the arguments as sent, which may hold what an info
+\ line must not. FINISH writes a held call's own line, `req <id> tools/call
+\ <name> -> <outcome>`, with the id of the request that held it. A text past
+\ 4096 bytes is cut at a character boundary and followed by ` [<n> B]`, n its
+\ length.
 \ It lasts across STOP; E-STATE while HTTP serves.
 : LOG ( -- )
    HTTP:RUNNING? if E-STATE throw then

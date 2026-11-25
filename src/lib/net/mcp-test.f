@@ -2041,6 +2041,12 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    W-RESET REQ-HEAD W+ id iu W+ S\"  tools/call wait -> ok\n" W+
    LOG$ W$ STR:CONTAINS? TTRUE ;
 
+\ A fault outcome's declared code and the line's end: `<code> <name>: <text>`.
+: FAULT-W+ ( n -- )
+   {: code:n :}
+   code FMT:INT$ W+  s"  " W+  code ERROR:NAME$ W+
+   s" : " W+  code ERROR:TEXT$ W+  S\" \n" W+ ;
+
 \ The sole worker logs the fault after the client sees the closed connection,
 \ and before it serves the next request.
 : FAULT-SEEN ( -- )
@@ -2051,7 +2057,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    [: FAULT-SEEN ;] CAPTURED
    s" MCP:LOG logs a throw passed to the host as a fault" T-LABEL
    W-RESET S\"  tools/call wait -> fault " W+
-   MCP:E-STATE FMT:INT$ W+ S\" \n" W+
+   MCP:E-STATE FAULT-W+
    W$ REQ-LOGGED ;
 
 : LOGGED-FREED ( -- )
@@ -2063,7 +2069,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    s" MCP:LOG logs a throw after the result as a fault" T-LABEL
    [: LEGACY S\" {\"late\":1}" WAIT-LEGACY POST 500 T= ;] CAPTURED
    W-RESET S\"  tools/call wait -> fault " W+
-   MCP:E-STATE FMT:INT$ W+ S\" \n" W+
+   MCP:E-STATE FAULT-W+
    W$ REQ-LOGGED ;
 
 : LOGGED-ANSWER ( -- )

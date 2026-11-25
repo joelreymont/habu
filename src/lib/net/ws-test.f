@@ -1720,12 +1720,16 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    ['] RESTARTED AWAITED drop
    WS:STOP ;
 
-\ The line WS logs after its stamp when its task ends on this code.
+\ The line WS logs after its stamp when its task ends on this declared code.
 : TASK-LINE ( n -- )
    {: code:n :}
    SB-RESET
    s"  error ws: task failed, throw " SB-APPEND
-   code ERR-THROW ;
+   code FMT:SB-INT
+   s"  " SB-APPEND  code ERROR:NAME$ SB-APPEND
+   s" : " SB-APPEND  code ERROR:TEXT$ SB-APPEND
+   LF SB-APPEND-C
+   SB$ ERR-W ;
 
 \ AIO is filled while a handshake holds its slot, so the poll WS's task makes
 \ for the new socket is refused.

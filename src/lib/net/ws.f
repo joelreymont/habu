@@ -40,7 +40,8 @@ NEWTYPE socket
 \ none, 1006 when the stream ended without one (section 7.1.5). A handler
 \ runs on a request worker (HTTP:SUBMIT) and may block; its socket's next
 \ call waits for it. Its throw is one LOG line, tag ws, `socket <handle>
-\ failed, throw <code>`, and a throw on `opened` or a message also closes
+\ failed, throw <code> <name>: <text>`, name and text when the code is
+\ declared, and a throw on `opened` or a message also closes
 \ the socket under 1011. A peer that breaks the protocol fails the
 \ connection: 1002 for a frame the codec refuses or one out of order, 1007
 \ for text that is not UTF-8, 1009 for a message past MESSAGE-MAX. A ping is
@@ -623,7 +624,7 @@ RUN-IDLE RUN !
    {: idx:n code:n :}
    LOG:ERROR s" ws" LOG:LINE
    s" socket " LOG:TEXT+  idx HANDLE LOG:INT+
-   s"  failed, throw " LOG:TEXT+  code LOG:INT+
+   s"  failed, throw " LOG:TEXT+  code LOG:CODE+
    LOG:;LINE ;
 
 
@@ -1249,7 +1250,7 @@ ENUM course
 : REPORT-END ( n -- )
    {: code:n :}
    LOG:ERROR s" ws" LOG:LINE
-   s" task failed, throw " LOG:TEXT+  code LOG:INT+
+   s" task failed, throw " LOG:TEXT+  code LOG:CODE+
    LOG:;LINE ;
 
 

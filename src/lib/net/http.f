@@ -189,7 +189,7 @@ private
    {: idx:n code:n :}
    LOG:ERROR s" http" LOG:LINE
    s" request " LOG:TEXT+  idx SLOT-ID$ LOG:TEXT+
-   s"  failed, throw " LOG:TEXT+  code LOG:INT+
+   s"  failed, throw " LOG:TEXT+  code LOG:CODE+
    LOG:;LINE ;
 
 
@@ -694,14 +694,14 @@ variable EXIT-HOOK-N
    [: SELF-SLOT TAKEN-ARG @ TCP4:>CONNECTION SERVE-CONNECTION ;] catch {: code:n :}
    code 0= if exit then
    LOG:ERROR s" http" LOG:LINE
-   s" connection failed, throw " LOG:TEXT+  code LOG:INT+
+   s" connection failed, throw " LOG:TEXT+  code LOG:CODE+
    LOG:;LINE
    DROP-SERVING ;
 
 
 : REPORT-CALL ( n -- ) {: code:n :}
    LOG:ERROR s" http" LOG:LINE
-   s" call failed, throw " LOG:TEXT+  code LOG:INT+
+   s" call failed, throw " LOG:TEXT+  code LOG:CODE+
    LOG:;LINE ;
 
 
@@ -884,7 +884,7 @@ variable EXIT-HOOK-N
    code 0= if exit then
    code E-AIO-FULL <> code E-AIO-POLL-BOUND <> and if code throw then
    LOG:WARN s" http" LOG:LINE
-   s" poll refused, throw " LOG:TEXT+  code LOG:INT+
+   s" poll refused, throw " LOG:TEXT+  code LOG:CODE+
    LOG:;LINE
    ACCEPT-PAUSE ;
 
@@ -1405,8 +1405,9 @@ public
 
 \ Queues the call `n q execute` for a request worker, which runs it as it runs
 \ a request: WORKER-SLOT holds there, the ON-WORKER-START resources are open,
-\ and a throw is one LOG:ERROR line, tag http, `call failed, throw <code>`,
-\ before the worker goes on. Calls and connections are taken in the order they
+\ and a throw is one LOG:ERROR line, tag http, `call failed, throw <code>
+\ <name>: <text>`, name and text when the code is declared, before the worker
+\ goes on. Calls and connections are taken in the order they
 \ were queued. It never waits: the queue's columns grow to hold every job, so
 \ a caller always finds room for each call it has outstanding, and only a
 \ mapping the memory refuses throws. Outside a run, or once STOP has begun, it
