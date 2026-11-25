@@ -2,8 +2,8 @@
 \ (src/habu/kernel-x64.f DEFINITION,) in the booted harness, cross-built for an
 \ x86-64 peer. Each image puts the code region at rest before calling the rows,
 \ so a row that writes outside its window faults (the crash handler dumps and
-\ dies by SIGSEGV); CLOSED, checks each window after a row writes a record. The
-\ host writes each image; running them is the peer's.
+\ dies by SIGSEGV); CLOSED, checks each window after a row writes a record.
+require src/core/exit-status.f
 require test/x86-64-boot-harness.f
 
 package X64K-DEFINITION
@@ -153,8 +153,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 : CLOSED, ( n -- ) {: k:n :}
    k DREC * X64KERNEL:REC-FLAGS + X64HARNESS:PROBE,  X64HARNESS:FAULTED X64HARNESS:EXPECT-POP, ;
 
-\ ---- the rows that exit 0 -----------------------------------------------------
-\ Each of these exits 0:
+\ ---- the writers --------------------------------------------------------------
 \ - hb-x64-kernel-namespace-record builds the index, publishes a namespace row
 \   with a private wid past a seeded record and checks its index, its two fresh
 \   wids, its flags cell and WIDN-CELL; xref-search-wl then finds it under a
@@ -195,7 +194,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \ - hb-x64-kernel-def-abort-scope preserves a catch frame's HND, return and
 \   loop depths while clearing compile mode.
 \ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
-\ pending record and exits 21.
+\ pending record.
 : NAMESPACE-RECORD-CASE, ( -- )
    s" core" 0 0 X64HARNESS:RECORD,                    \ record 0
    FIRST-WID WIDN-CELL X64HARNESS:CELL!,
@@ -283,7 +282,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \ The block after the first capture maps it; after a second, which fills the
 \ text to FIRST-CAP in place; and after a third, which grows it. Each image
 \ checks one stage: an image has FIRST-CASE through CASE-END - 1 for its
-\ statuses (test/x86-64-peer-harness.f STATUS), eight past IMAGE's two.
+\ statuses (test/x86-64-peer-harness.f STATUS), eight past CLOSE's two.
 : MAPPED, ( -- )
    HELLO$ APPEND, ;
 : FILLED, ( -- )
@@ -386,26 +385,10 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    12 RSP-CELL X64HARNESS:EXPECT-CELL,
    13 LOOPSP-CELL X64HARNESS:EXPECT-CELL, ;
 
-\ ---- the refusals -------------------------------------------------------------
+\ ---- the rejections -----------------------------------------------------------
 \ The armed images exit a rejection before any store, with nothing on fd 2
-\ except the 79 images' E-TASK-COMPILE record:
-\ - 79, a row called on a task's or callback's DATA, one image for each row that guards:
-\   -namespace-record-live-armed, -namespace-private-live-armed,
-\   -alias-record-live-armed, -def-open-live-armed.
-\ - 83, EXIT-STATUS:SEAL-VIOLATION: def-open of a live name that differs only
-\   in case (-def-open-case-armed), namespace-private on a row whose [8] is set
-\   (-namespace-private-set-armed), an alias of a DNAME-INT source
-\   (-alias-record-int-armed), package-scope! `-1 5`
-\   (-package-scope-clear-armed), a 17-byte def-open with CP 32 bytes below the
-\   code ceiling (-def-open-ceiling-armed), body-capture with BODYLEN one byte
-\   past the capacity (-body-append-full-armed), and trust-sig!, created-sig! and
-\   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
-\   -def-close-armed), and def-close on a definition opened with no compiler
-\   (-def-close-tier-armed).
-\ - 84, EXIT-STATUS:SEAL-WORDLIST, after the seal: alias-record into
-\   OWNER-API-PRI-WID (-alias-record-prot-armed) and def-open into
-\   OWNER-API-PUB-WID (-def-open-prot-armed), the protected wordlists.
-\ Each call but for its refusal is one the row admits.
+\ except the live images' E-TASK-COMPILE record. Each call but for its rejection
+\ is one the row admits.
 : NAMESPACE-LIVE, ( -- ) LIVE,  s" ns" BOTH-WIDS NAMESPACE, ;
 
 : PRIVATE-LIVE, ( -- )
@@ -458,14 +441,21 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    AFTER-SEAL,
    s" w" OWNER-API-PUB-WID 0 DEF-OPEN, ;
 
-\ One image: the boot, the case the quotation emits, the depth and balance
-\ checks and the exit.
+: CLOSE ( str -- )
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   X64HARNESS:BOOT-CLOSE, ;
+
 : IMAGE ( [ -- ] bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    execute
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED,
-   path X64HARNESS:BOOT-CLOSE, ;
+   path CLOSE ;
+
+: ARMED ( [ -- ] n str -- ) {: status:n path:str :}
+   false X64HARNESS:BOOT-OPEN,
+   status X64HARNESS:EXPECT-EXIT
+   execute
+   path CLOSE ;
 
 : WRITERS ( -- )
    [: NAMESPACE-RECORD-CASE, ;] false s" hb-x64-kernel-namespace-record" TMP-PATH IMAGE
@@ -487,26 +477,39 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    [: DEF-ABORT-SCOPE-CASE, ;] false s" hb-x64-kernel-def-abort-scope" TMP-PATH IMAGE
    [: DEF-OPEN-CASE, ;] true s" hb-x64-kernel-definition-negative" TMP-PATH IMAGE ;
 
-: REFUSALS ( -- )
-   [: NAMESPACE-LIVE, ;] false s" hb-x64-kernel-namespace-record-live-armed" TMP-PATH IMAGE
-   [: PRIVATE-LIVE, ;] false s" hb-x64-kernel-namespace-private-live-armed" TMP-PATH IMAGE
-   [: ALIAS-LIVE, ;] false s" hb-x64-kernel-alias-record-live-armed" TMP-PATH IMAGE
-   [: DEF-OPEN-LIVE, ;] false s" hb-x64-kernel-def-open-live-armed" TMP-PATH IMAGE
-   [: CASE-PAIR, ;] false s" hb-x64-kernel-def-open-case-armed" TMP-PATH IMAGE
-   [: PRIVATE-SET, ;] false s" hb-x64-kernel-namespace-private-set-armed" TMP-PATH IMAGE
-   [: ALIAS-INT, ;] false s" hb-x64-kernel-alias-record-int-armed" TMP-PATH IMAGE
-   [: -1 5 SCOPE, ;] false
-   s" hb-x64-kernel-package-scope-clear-armed" TMP-PATH IMAGE
-   [: CEILING, ;] false s" hb-x64-kernel-def-open-ceiling-armed" TMP-PATH IMAGE
-   [: FULL, ;] false s" hb-x64-kernel-body-append-full-armed" TMP-PATH IMAGE
-   [: s" trust-sig!" SIG, ;] false s" hb-x64-kernel-trust-sig-armed" TMP-PATH IMAGE
-   [: s" created-sig!" SIG, ;] false
-   s" hb-x64-kernel-created-sig-armed" TMP-PATH IMAGE
-   [: s" def-close" X64HARNESS:CALL-ROW, ;] false
-   s" hb-x64-kernel-def-close-armed" TMP-PATH IMAGE
-   [: NO-COMP-CLOSE, ;] false s" hb-x64-kernel-def-close-tier-armed" TMP-PATH IMAGE
-   [: ALIAS-PROT, ;] false s" hb-x64-kernel-alias-record-prot-armed" TMP-PATH IMAGE
-   [: DEF-OPEN-PROT, ;] false s" hb-x64-kernel-def-open-prot-armed" TMP-PATH IMAGE ;
+: REJECTIONS ( -- )
+   [: NAMESPACE-LIVE, ;] EXIT-STATUS:TASK-COMPILE
+   s" hb-x64-kernel-namespace-record-live-armed" TMP-PATH ARMED
+   [: PRIVATE-LIVE, ;] EXIT-STATUS:TASK-COMPILE
+   s" hb-x64-kernel-namespace-private-live-armed" TMP-PATH ARMED
+   [: ALIAS-LIVE, ;] EXIT-STATUS:TASK-COMPILE
+   s" hb-x64-kernel-alias-record-live-armed" TMP-PATH ARMED
+   [: DEF-OPEN-LIVE, ;] EXIT-STATUS:TASK-COMPILE
+   s" hb-x64-kernel-def-open-live-armed" TMP-PATH ARMED
+   [: CASE-PAIR, ;] EXIT-STATUS:SEAL-VIOLATION
+   s" hb-x64-kernel-def-open-case-armed" TMP-PATH ARMED
+   [: PRIVATE-SET, ;] EXIT-STATUS:SEAL-VIOLATION
+   s" hb-x64-kernel-namespace-private-set-armed" TMP-PATH ARMED
+   [: ALIAS-INT, ;] EXIT-STATUS:SEAL-VIOLATION
+   s" hb-x64-kernel-alias-record-int-armed" TMP-PATH ARMED
+   [: -1 5 SCOPE, ;] EXIT-STATUS:SEAL-VIOLATION
+   s" hb-x64-kernel-package-scope-clear-armed" TMP-PATH ARMED
+   [: CEILING, ;] EXIT-STATUS:SEAL-VIOLATION
+   s" hb-x64-kernel-def-open-ceiling-armed" TMP-PATH ARMED
+   [: FULL, ;] EXIT-STATUS:SEAL-VIOLATION
+   s" hb-x64-kernel-body-append-full-armed" TMP-PATH ARMED
+   [: s" trust-sig!" SIG, ;] EXIT-STATUS:SEAL-VIOLATION
+   s" hb-x64-kernel-trust-sig-armed" TMP-PATH ARMED
+   [: s" created-sig!" SIG, ;] EXIT-STATUS:SEAL-VIOLATION
+   s" hb-x64-kernel-created-sig-armed" TMP-PATH ARMED
+   [: s" def-close" X64HARNESS:CALL-ROW, ;] EXIT-STATUS:SEAL-VIOLATION
+   s" hb-x64-kernel-def-close-armed" TMP-PATH ARMED
+   [: NO-COMP-CLOSE, ;] EXIT-STATUS:SEAL-VIOLATION
+   s" hb-x64-kernel-def-close-tier-armed" TMP-PATH ARMED
+   [: ALIAS-PROT, ;] EXIT-STATUS:SEAL-WORDLIST
+   s" hb-x64-kernel-alias-record-prot-armed" TMP-PATH ARMED
+   [: DEF-OPEN-PROT, ;] EXIT-STATUS:SEAL-WORDLIST
+   s" hb-x64-kernel-def-open-prot-armed" TMP-PATH ARMED ;
 
 public
 
@@ -514,7 +517,7 @@ public
    T-RESET
    X64HARNESS:INIT
    WRITERS
-   REFUSALS
+   REJECTIONS
    X64HARNESS:DISPOSE
    T-REPORT ;
 

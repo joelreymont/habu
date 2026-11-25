@@ -1,7 +1,7 @@
 \ x86-64-kernel-atomics.f - the atomics and publication rows of the x86-64
 \ kernel (src/habu/kernel-x64.f) in the booted harness, cross-built for an
-\ x86-64 peer. The host checks each image's ELF header; running them is the
-\ peer's.
+\ x86-64 peer.
+require src/core/exit-status.f
 require src/habu/code-span.f
 require test/x86-64-boot-harness.f
 
@@ -38,8 +38,7 @@ using X64RT
    found X64HARNESS:EXPECT-POP,
    after 0 X64HARNESS:EXPECT-SCRATCH, ;
 
-\ Ten checks, the harness's whole budget. hb-x64-kernel-atomics exits 0;
-\ hb-x64-kernel-atomics-negative expects the wrong stored value and exits 21.
+\ Ten checks, the harness's whole budget.
 : ROWS, ( -- )
    STORE-FETCH,  ADD,
    SUM NEW SUM NEW CAS,
@@ -55,8 +54,6 @@ using X64RT
 \ ---- the publication rows ----------------------------------------------------
 \ RX addresses stay protected while the separate alias accepts engine writes.
 \ PROBE, asks clock_gettime to write through RX and must receive -EFAULT.
-\ The case images exit 0. Of the armed images, -sites-kind-armed and
-\ -sites-full-armed exit 103, EXIT-STATUS:SITE; the others exit 83.
 $1000 constant PAGE
 42 constant ANSWER                     \ what the published routine answers
 99 constant PATCHED                    \ what it answers once patch32 rewrites it
@@ -320,36 +317,37 @@ LONG-TAIL CELL + constant LONG-PAD
    0 X64HARNESS:PUSH,  dst X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
    s" code-publish" X64HARNESS:CALL-ROW, ;
 
-: IMAGE ( [ -- ] str -- ) {: path:str :}
+: IMAGE ( [ -- ] n str -- ) {: status:n path:str :}
    false X64HARNESS:BOOT-OPEN,
+   status X64HARNESS:EXPECT-EXIT
    execute
    path X64HARNESS:BOOT-CLOSE, ;
 
 : PUBLICATION ( -- )
-   [: WINDOW-CASE, ;] s" hb-x64-kernel-prot-window" TMP-PATH IMAGE
-   [: WINDOW-CLOSED-CASE, ;] s" hb-x64-kernel-prot-window-closed" TMP-PATH IMAGE
-   [: PUBLISH-CASE, ;] s" hb-x64-kernel-publish" TMP-PATH IMAGE
-   [: PUBLISH-FILL-CASE, ;] s" hb-x64-kernel-publish-fill" TMP-PATH IMAGE
-   [: SITES-CASE, ;] s" hb-x64-kernel-sites" TMP-PATH IMAGE
-   [: RETARGET-CASE, ;] s" hb-x64-kernel-retarget" TMP-PATH IMAGE
-   [: RECLAIM-GLOBAL-CASE, ;] s" hb-x64-kernel-reclaim-global" TMP-PATH IMAGE
-   [: DOES-CASE, ;] s" hb-x64-kernel-does" TMP-PATH IMAGE
-   [: DOES-LONG-CASE, ;] s" hb-x64-kernel-does-long" TMP-PATH IMAGE
-   [: DICT-SIZE 1+ 1 PUBLISH-ARMED, ;] s" hb-x64-kernel-publish-armed" TMP-PATH IMAGE
+   [: WINDOW-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-prot-window" TMP-PATH IMAGE
+   [: WINDOW-CLOSED-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-prot-window-closed" TMP-PATH IMAGE
+   [: PUBLISH-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-publish" TMP-PATH IMAGE
+   [: PUBLISH-FILL-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-publish-fill" TMP-PATH IMAGE
+   [: SITES-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-sites" TMP-PATH IMAGE
+   [: RETARGET-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-retarget" TMP-PATH IMAGE
+   [: RECLAIM-GLOBAL-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-reclaim-global" TMP-PATH IMAGE
+   [: DOES-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-does" TMP-PATH IMAGE
+   [: DOES-LONG-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-does-long" TMP-PATH IMAGE
+   [: DICT-SIZE 1+ 1 PUBLISH-ARMED, ;] EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-publish-armed" TMP-PATH IMAGE
    [: DICT-SIZE REGION DICT-SIZE - 1+ PUBLISH-ARMED, ;]
-   s" hb-x64-kernel-publish-past-armed" TMP-PATH IMAGE
+   EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-publish-past-armed" TMP-PATH IMAGE
    [: 100 s" callmap-set" AT-ROW,  100 s" addrmap-set" AT-ROW, ;]
-   s" hb-x64-kernel-sites-kind-armed" TMP-PATH IMAGE
+   EXIT-STATUS:SITE s" hb-x64-kernel-sites-kind-armed" TMP-PATH IMAGE
    [: RELOC:SITE-CAP RELOC:SITE-N-CELL X64HARNESS:CELL!,
       100 s" callmap-set" AT-ROW, ;]
-   s" hb-x64-kernel-sites-full-armed" TMP-PATH IMAGE
+   EXIT-STATUS:SITE s" hb-x64-kernel-sites-full-armed" TMP-PATH IMAGE
    [: REGION s" callmap-set" AT-ROW, ;]
-   s" hb-x64-kernel-sites-outside-armed" TMP-PATH IMAGE
-   [: 0 1 1 RETARGET, ;] s" hb-x64-kernel-retarget-armed" TMP-PATH IMAGE
+   EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-sites-outside-armed" TMP-PATH IMAGE
+   [: 0 1 1 RETARGET, ;] EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-retarget-armed" TMP-PATH IMAGE
    [: 0 CODE-SPAN:FULL 0 RETARGET, ;]
-   s" hb-x64-kernel-retarget-empty-armed" TMP-PATH IMAGE
+   EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-retarget-empty-armed" TMP-PATH IMAGE
    [: 0 CODE-SPAN:RAW-MAX 1+ 0 RETARGET, ;]
-   s" hb-x64-kernel-retarget-raw-armed" TMP-PATH IMAGE ;
+   EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-retarget-raw-armed" TMP-PATH IMAGE ;
 
 public
 

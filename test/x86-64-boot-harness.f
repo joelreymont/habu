@@ -41,7 +41,7 @@ public
    ASM-RESET
    X64CODE:LBL EXIT-CELL !  X64CODE:LBL ENTRY-CELL !  X64CODE:LBL BOOT-END-CELL !
    FIRST-CASE CASE-NEXT !
-   negative if FIRST-CASE else 0 then WRONG-AT !
+   negative if FIRST-CASE else 0 then dup WRONG-AT !  EXPECT-EXIT
    X64KERNEL:FLOORREC-NEW BOOT-END-LBL true X64BOOT:START,
    ENTRY-LBL JMP,
    ENGINE-PRIMS:RESET
@@ -90,7 +90,8 @@ public
    RAX DATA-REG BOOT-SCRATCH-OFF off + MEM-OFF ASM-SINK ENC-MOV-RM
    want EXPECT, ;
 
-\ A row that ends the process ends the image with its own status.
+\ A row that ends the process ends the image with its own status, which the
+\ test states.
 : BOOT-CLOSE, ( str -- )
    RDI ZERO-REG,
    EXIT,

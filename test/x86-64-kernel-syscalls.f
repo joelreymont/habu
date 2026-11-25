@@ -1,8 +1,6 @@
 \ x86-64-kernel-syscalls.f - the syscall rows of src/habu/kernel-x64.f in the
-\ booted harness, cross-built for an x86-64 peer. The host checks each image's
-\ ELF header; running them is the peer's. The file rows work relative to the
-\ working directory and remove what they create, so a peer runs them in a
-\ writable scratch directory.
+\ booted harness, cross-built for an x86-64 peer. The file rows work relative to
+\ the working directory, a writable one, and remove what they create.
 require test/x86-64-boot-harness.f
 require src/lib/vector.f
 
@@ -11,8 +9,6 @@ using X64ASM
 using X64CODE
 using X64RT
 
-\ hb-x64-kernel-syscalls exits 0; -negative expects the wrong balance and exits
-\ 21.
 : BUILD ( bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    X64HARNESS:EXPECT-BALANCED,
@@ -427,9 +423,8 @@ $410 constant PID2
    s" exit 0" 3 SH-REQ,
    REQ AT, s" spawn-fds" ROW  EBADF negate WANT ;
 
-\ A row image: the case, then the stack checks every case ends with. It exits 0
-\ when every check held, else FIRST-CASE upward at the first that did not (at
-\ most ten checks).
+\ A row image: the case, then the stack checks every case ends with, at most
+\ ten checks in all.
 : ROWS ( [ -- ] str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    execute

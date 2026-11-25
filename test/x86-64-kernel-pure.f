@@ -200,18 +200,8 @@ public
 private
 
 \ ---- the images --------------------------------------------------------------
-\ Each image is one case, with the status its peer must see:
-\    hb-x64-kernel-pure                 0  every case set of test/prim-cases.f
-\                                          and test/prim-float-cases.f
-\    hb-x64-kernel-pure-negative       21  the same, its first check expecting
-\                                          a wrong answer: `x64k-pure: dup
-\                                          overload 0 case 1` on fd 2
-\    hb-x64-kernel-pure-fdot            0  f. of eleven doubles, read back
-\                                          through a pipe on fd 1
 : OPEN-IMAGE ( bool -- ) X64HARNESS:BOOT-OPEN, ;
 
-\ The host checks each image's ELF header; the peer runs each and must see its
-\ status.
 : CLOSE-IMAGE ( str -- )
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,

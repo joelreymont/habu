@@ -148,18 +148,6 @@ $5ABE11 constant PUSHED
 
 public
 
-\ Each image is one case; the peer that runs it must see its status. The host
-\ checks each image's ELF header; running them is the peer's.
-\    hb-x64-kernel-task            0  pthread_create and pthread_join, found by
-\                                     DLSYM and called through ffi-call, run the
-\                                     entry on a thread
-\    hb-x64-kernel-task-call       0  the caller's rbp, rbx, r13, r14, r15,
-\                                     depth and balance survive ffi-call of the
-\                                     entry
-\    hb-x64-kernel-task-body       0  the body starts with the descriptor's r13,
-\                                     r14 and r15 and status HALT-REQ
-\    hb-x64-kernel-task-negative  21  the thread case, expecting a wrong answer
-\                                     from pthread_create
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT

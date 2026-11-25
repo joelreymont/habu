@@ -2,8 +2,7 @@
 \ publishes, cross-built for an x86-64 peer. Each image installs it from
 \ SIGNAL-ABI:STUB-CELL through SIGACTION-AT,, and raises the signal on its own
 \ pid with rbp on a zeroed DATA window: a stub reading the fd word through the
-\ DATA register instead of its absolute address writes nothing. The host checks
-\ each ELF header; the peer runs the images.
+\ DATA register instead of its absolute address writes nothing.
 require test/x86-64-boot-harness.f
 require src/os/linux/layout.f
 
@@ -107,12 +106,8 @@ $1000 constant WINDOW
 
 public
 
-\ Peer exit status: hb-x64-boot-signal 0 (FD-PTR-CELL names DATA-VA + FD-CELL;
-\ the read end yields the four bytes of 10, then nothing); -idle 0 (the fd word
-\ reads 0 at boot; with fd 0 a second write end the image survives the signal
-\ and the read yields nothing); -negative 21 (expects the wrong fd-word
-\ address). Without the stub, STUB-CELL reads 0, sigaction installs SIG_DFL and
-\ the image dies of SIGUSR1 (138 in a shell).
+\ Without the stub, STUB-CELL reads 0, sigaction installs SIG_DFL and the image
+\ dies of SIGUSR1.
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT

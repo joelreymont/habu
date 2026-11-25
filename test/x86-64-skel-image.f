@@ -1,11 +1,11 @@
 \ Cross-builds the x86-64 boot, X64BOOT's `_start`, into bare executables for an
-\ x86-64 peer; the host checks each image's ELF header, and running them is the
-\ peer's.
+\ x86-64 peer.
 
 \ boot-x64.f loads the x86-64 seam, so it comes before the harness, which would
 \ otherwise load the seam into its own private wordlist.
 require src/habu/boot-x64.f
 require src/habu/task-abi.f
+require src/core/exit-status.f
 require src/arch/x86-64/rt.f
 require test/x86-64-peer-harness.f
 
@@ -13,6 +13,10 @@ package X64SKEL
 using X64ASM
 using X64CODE
 using X64RT
+
+11 constant SIGSEGV
+3 constant ARGC                                 \ the image's path, a and b
+70 constant FLOOR-EXIT
 
 : REG ( n -- r64 ) >R64 ;
 
@@ -93,7 +97,7 @@ DATA-START $100 + constant TCB-OFF
       else RAX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-SUB-RI32 then
    RAX ASM-SINK ENC-JMP-REG ;
 
-: BUILD ( n str -- ) {: pushes:n path:str :}
+: BUILD ( n str [ CMD:command -- CMD:command ] -- ) {: pushes:n path:str args :}
    ASM-RESET
    LBL LBL {: floor:label code-end:label :}
    floor code-end false X64BOOT:START,
@@ -130,10 +134,10 @@ DATA-START $100 + constant TCB-OFF
    floor LBL,
    ENGINE-GPR:X64-DSTACK REG
    ENGINE-GPR:X64-RBASE REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RDI 70 >IMM32 ASM-SINK ENC-MOV-RI32
+   RDI FLOOR-EXIT >IMM32 ASM-SINK ENC-MOV-RI32
    NR-EXIT-GROUP SYS,
    code-end LBL,
-   path X64HARNESS:WRITE ;
+   path args X64HARNESS:WRITE-WITH ;
 
 
 public
@@ -142,13 +146,13 @@ public
 \ writes one cell through every address the boot published (the return and
 \ DO/LOOP stack bases, DP, and through the region's alias the code region and
 \ its code pointer) and exits with argc read through the user area from
-\ ARGC-CELL: `hb-x64-skel a b` exits 3.
+\ ARGC-CELL.
 \ -negative pushes one cell more, onto the guard page: the E-STACK-BOUNDS
-\ record on fd 2 and 102. -underflow reads below an empty data stack; the
-\ floor recovery resets its cursor and exits 70 (no catch handler). The fetch
+\ record on fd 2. -underflow reads below an empty data stack; the floor
+\ recovery resets its cursor and exits (no catch handler). The fetch
 \ images jump outside the image: a fetch's rip says nothing of the code that
-\ ran, so the handler dumps, reading through no RBP, and dies by SIGSEGV, 139
-\ in a shell. -guard-fetch jumps into the data stack's low guard page.
+\ ran, so the handler dumps, reading through no RBP, and dies by the signal.
+\ -guard-fetch jumps into the data stack's low guard page.
 \ -foreign-fetch faults outside every owned stack with an aligned, unmapped
 \ RBP, -gap-fetch between text and REGION with the same RBP. The task images
 \ jump into the guard page below or above a task's data stack, the same with
@@ -158,16 +162,20 @@ public
    STACK-ABI:BOOT-BYTES CELL / {: full:n :}
    T-RESET
    X64HARNESS:INIT
-   full s" hb-x64-skel" TMP-PATH BUILD
-   full 1+ s" hb-x64-skel-negative" TMP-PATH BUILD
-   -1 s" hb-x64-skel-underflow" TMP-PATH BUILD
-   -2 s" hb-x64-skel-guard-fetch" TMP-PATH BUILD
-   -3 s" hb-x64-skel-foreign-fetch" TMP-PATH BUILD
-   -8 s" hb-x64-skel-gap-fetch" TMP-PATH BUILD
-   -4 s" hb-x64-skel-task-low-fetch" TMP-PATH BUILD
-   -5 s" hb-x64-skel-task-high-fetch" TMP-PATH BUILD
-   -6 s" hb-x64-skel-released-fetch" TMP-PATH BUILD
-   -7 s" hb-x64-skel-switched-fetch" TMP-PATH BUILD
+   ARGC X64HARNESS:EXPECT-EXIT
+   full s" hb-x64-skel" TMP-PATH [: s" a" CMD:ARG+ s" b" CMD:ARG+ ;] BUILD
+   EXIT-STATUS:STACK-BOUNDS X64HARNESS:EXPECT-EXIT
+   full 1+ s" hb-x64-skel-negative" TMP-PATH [: ;] BUILD
+   FLOOR-EXIT X64HARNESS:EXPECT-EXIT
+   -1 s" hb-x64-skel-underflow" TMP-PATH [: ;] BUILD
+   SIGSEGV X64HARNESS:EXPECT-SIGNAL
+   -2 s" hb-x64-skel-guard-fetch" TMP-PATH [: ;] BUILD
+   -3 s" hb-x64-skel-foreign-fetch" TMP-PATH [: ;] BUILD
+   -8 s" hb-x64-skel-gap-fetch" TMP-PATH [: ;] BUILD
+   -4 s" hb-x64-skel-task-low-fetch" TMP-PATH [: ;] BUILD
+   -5 s" hb-x64-skel-task-high-fetch" TMP-PATH [: ;] BUILD
+   -6 s" hb-x64-skel-released-fetch" TMP-PATH [: ;] BUILD
+   -7 s" hb-x64-skel-switched-fetch" TMP-PATH [: ;] BUILD
    X64HARNESS:DISPOSE
    T-REPORT ;
 

@@ -1,22 +1,21 @@
 \ x86-64-kernel-policy.f - policy-admit and policy-seal in a booted x86 ELF.
-\ The peer runs these images and checks their exact status and the
-\ `error[E-POLICY]` record or die line each writes to stderr:
+\ Each rejected image writes an `error[E-POLICY]` record or die line to stderr:
 \
-\ hb-x64-kernel-policy-admit       0   PDEP's bit and the NDICT watermark hold
-\ hb-x64-kernel-policy-sealed    107   record "the vocabulary is sealed"
-\ hb-x64-kernel-policy-reseal    107   record "the vocabulary is sealed"
-\ hb-x64-kernel-policy-missing   107   record "no package has the name the
-\                                       program admits", package NOPE
-\ hb-x64-kernel-policy-bound     107   die line "E-POLICY habu: policy: package
-\                                       wid above the bound"
-\ hb-x64-kernel-policy-keyword   107   record "a package publishes a word
-\                                       spelled like a keyword", package PKW,
-\                                       keyword DUP
+\ hb-x64-kernel-policy-sealed    record "the vocabulary is sealed"
+\ hb-x64-kernel-policy-reseal    record "the vocabulary is sealed"
+\ hb-x64-kernel-policy-missing   record "no package has the name the
+\                                program admits", package NOPE
+\ hb-x64-kernel-policy-bound     die line "E-POLICY habu: policy: package
+\                                wid above the bound"
+\ hb-x64-kernel-policy-keyword   record "a package publishes a word
+\                                spelled like a keyword", package PKW,
+\                                keyword DUP
 \
 \ These cases distinguish a missing namespace, a bad wordlist bound, a missed
 \ keyword callback, early bit publication, an ineffective seal and an unbalanced
 \ caller stack. The real vocabulary suite loads src/lib/vocabulary.f through the captured
 \ interpreter; these ELFs isolate the primitive's machine boundary.
+require src/core/exit-status.f
 require test/x86-64-boot-harness.f
 
 package X64K-POLICY
@@ -97,21 +96,24 @@ using X64RT
    X64KERNEL:HIDX-BUILD,
    s" PKW" ADMIT, ;
 
-: IMAGE ( [ -- ] str -- ) {: path:str :}
+: IMAGE ( [ -- ] n str -- ) {: status:n path:str :}
    false X64HARNESS:BOOT-OPEN,
+   status X64HARNESS:EXPECT-EXIT
    execute
    path X64HARNESS:BOOT-CLOSE, ;
 
 public
 
 : RUN ( -- )
+   T-RESET
    X64HARNESS:INIT
-   [: ADMITTED, ;] s" hb-x64-kernel-policy-admit" TMP-PATH IMAGE
-   [: SEALED-ADMIT, ;] s" hb-x64-kernel-policy-sealed" TMP-PATH IMAGE
-   [: SEALED-SEAL, ;] s" hb-x64-kernel-policy-reseal" TMP-PATH IMAGE
-   [: MISSING, ;] s" hb-x64-kernel-policy-missing" TMP-PATH IMAGE
-   [: BOUND, ;] s" hb-x64-kernel-policy-bound" TMP-PATH IMAGE
-   [: KEYWORD, ;] s" hb-x64-kernel-policy-keyword" TMP-PATH IMAGE ;
+   [: ADMITTED, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-policy-admit" TMP-PATH IMAGE
+   [: SEALED-ADMIT, ;] EXIT-STATUS:POLICY s" hb-x64-kernel-policy-sealed" TMP-PATH IMAGE
+   [: SEALED-SEAL, ;] EXIT-STATUS:POLICY s" hb-x64-kernel-policy-reseal" TMP-PATH IMAGE
+   [: MISSING, ;] EXIT-STATUS:POLICY s" hb-x64-kernel-policy-missing" TMP-PATH IMAGE
+   [: BOUND, ;] EXIT-STATUS:POLICY s" hb-x64-kernel-policy-bound" TMP-PATH IMAGE
+   [: KEYWORD, ;] EXIT-STATUS:POLICY s" hb-x64-kernel-policy-keyword" TMP-PATH IMAGE
+   X64HARNESS:DISPOSE T-REPORT ;
 
 ;using
 ;using

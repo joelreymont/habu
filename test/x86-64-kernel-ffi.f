@@ -1,7 +1,6 @@
 \ x86-64-kernel-ffi.f - the FFI rows of src/habu/kernel-x64.f FFI, in the booted
 \ harness, cross-built for an x86-64 peer: one case per image. No libc symbol
 \ takes nine integer arguments, so a stub stands in.
-\ The host checks each image's ELF header; running them is the peer's.
 require test/x86-64-boot-harness.f
 require src/lib/vector.f
 
@@ -240,8 +239,6 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
 
 public
 
-\ The peer must see status 0 from each image but hb-x64-kernel-ffi-negative,
-\ FIRST-CASE 21 (it expects the wrong difference of the two pids).
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT

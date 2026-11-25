@@ -735,7 +735,7 @@ SUITE x86-64-emit
 ;SUITE
 
 \ The x86-64 boot skeleton, src/habu/boot-x64.f, and its guard-page twin, for the
-\ peer to run: `hb-x64-skel a b` exits 3 and hb-x64-skel-negative exits 102.
+\ peer to run.
 SUITE x86-64-skel-image
    test/x86-64-skel-image.f
 ;SUITE
@@ -747,9 +747,8 @@ SUITE x86-64-main-entry
 ;SUITE
 
 \ The x86-64 kernel's rows (src/habu/kernel-x64.f) in the booted harness,
-\ test/x86-64-boot-harness.f, for the peer to run. Each file has one negative
-\ image that exits 21; its header names the statuses the peer must see.
-\ They load the x86-64 seam globally, as skel-image does, so each is a suite.
+\ test/x86-64-boot-harness.f, for the peer to run. They load the x86-64 seam
+\ globally, as skel-image does, so each is a suite.
 SUITE x86-64-kernel-syscalls
    test/x86-64-kernel-syscalls.f
 ;SUITE
@@ -786,13 +785,12 @@ SUITE x86-64-kernel-pure
    test/x86-64-kernel-pure.f
 ;SUITE
 
-\ The sampling profiler's rows, src/habu/prof-x64.f, in the booted harness: its
-\ header names the statuses the peer must see.
+\ The sampling profiler's rows, src/habu/prof-x64.f, in the booted harness.
 SUITE x86-64-kernel-prof
    test/x86-64-kernel-prof.f
 ;SUITE
 \ The signal stub src/habu/boot-x64.f START, publishes, installed and raised in
-\ the booted harness; its header names the statuses the peer must see.
+\ the booted harness.
 SUITE x86-64-boot-signal
    test/x86-64-boot-signal.f
 ;SUITE
@@ -812,8 +810,7 @@ SUITE x86-64-kernel-crash
    test/x86-64-kernel-crash.f
 ;SUITE
 
-\ The definition writers of the x86-64 kernel in the booted harness; the
-\ header names the status each image exits with.
+\ The definition writers of the x86-64 kernel in the booted harness.
 SUITE x86-64-kernel-definition
    test/x86-64-kernel-definition.f
 ;SUITE

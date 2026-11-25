@@ -1,6 +1,10 @@
 \ x86-64-peer-harness.f - the checks, exit and ELF writer of the images an
-\ x86-64 peer runs: an image stages after ASM-RESET and ends with WRITE.
+\ x86-64 peer runs: an image stages after ASM-RESET and ends with WRITE. An
+\ x86-64 Linux host is its own peer: WRITE runs the image there and checks that
+\ it ends as the test states.
 require src/lib/test.f
+require src/lib/test/ending.f
+require src/lib/process-command.f
 require src/habu/fdio.f
 require src/lib/heap.f
 require src/habu/sign-id.f
@@ -31,6 +35,7 @@ private
 variable EXIT-CELL                   \ the label every check exits through
 variable CASE-NEXT                   \ the status the next case check exits with
 variable WRONG-AT                    \ the check a negative image fails, or 0
+variable ENDING                      \ the image's exit status, or its signal negated
 
 : EXIT-LBL ( -- label ) EXIT-CELL @ >LABEL ;
 
@@ -92,13 +97,36 @@ TYPED-VARIABLE IMPORT-BUF ^VEC:vector<u8>
       0 IMPORT-BUF @ VEC:PUSH c!
    loop ;
 
+: ENDED= ( str str str PROCESS:ending -- )
+   ENDING @ dup 0< if
+      negate T-ENDING-SIGNALED=
+   else
+      T-ENDING-EXITED=
+   then ;
+
+\ The image runs where it was written: the file rows need a writable directory.
+: RUN-IMAGE ( CMD:command str [ CMD:command -- CMD:command ] -- CMD:command )
+   {: path:str args :}
+   CMD:RESET  args execute
+   path SOURCE-ROOT:DIRNAME CMD:CWD!
+   path PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME {: ended :}
+   CMD:OUT$ {: out:str :}  CMD:ERR$ {: err:str :}
+   s" the image ends as its test states" T-LABEL
+   path out err ended ENDED= ;
+
 public
+
+\ The image written next exits with this status or dies by this signal, as do
+\ those after it until the next statement or BOOT-OPEN,.
+: EXPECT-EXIT ( n -- ) ENDING ! ;
+: EXPECT-SIGNAL ( n -- ) negate ENDING ! ;
 
 \ The address the next routine appended lands at, so the one it is emitted at.
 : POSITION ( -- n ) TEXT-VA ASM-LEN + ;
 
-\ Write the staged stream as it stands: byte 0 is the ELF entry.
-: WRITE ( str -- ) {: path:str :}
+\ Write the staged stream as it stands: byte 0 is the ELF entry. The quotation
+\ adds the arguments the image runs with.
+: WRITE-WITH ( str [ CMD:command -- CMD:command ] -- ) {: path:str args :}
    TEXT-VA ASM-LINK
    CODE ASM-LEN >str TEXT-VA IMPORTS$ s" " ELF:BUILD-X64   \ no DATA, so an empty carrier
    s" x64-peer" ELF:SET-SIGID ELF:CODESIG2
@@ -106,7 +134,12 @@ public
    s" ELF names x86-64 and enters this fixture's code" T-LABEL
    $12 M-OFF M-LE32@ $FFFF and 62 T=
    $18 M-OFF M-LE32@ TEXT-VA T=
-   $1C M-OFF M-LE32@ 0 T= ;
+   $1C M-OFF M-LE32@ 0 T=
+   HB-TARGET-LINUX-X86-64? if
+      [: path args RUN-IMAGE ;] CMD:WITH-COMMAND
+   then ;
+
+: WRITE ( str -- ) [: ;] WRITE-WITH ;
 
 \ The sink every image is staged in and the import names, held across the
 \ images of one run.

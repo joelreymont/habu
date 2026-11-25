@@ -1,7 +1,6 @@
 \ x86-64-kernel-control.f - the control rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f CONTROL,) in the booted harness, cross-built for an
-\ x86-64 peer. Each image is one case; the host checks its ELF header, and the
-\ peer that runs it must see the status the images section lists.
+\ x86-64 peer. Each image is one case.
 require src/core/exit-status.f
 require test/x86-64-boot-harness.f
 
@@ -165,49 +164,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    ROUTINE  0 PUSH,  0 PUSH,  rc PUSH,  s" die" ROW,  ;ROUTINE ;
 
 \ ---- images ------------------------------------------------------------------
-\ Each image and the status its peer must see:
-\
-\    hb-x64-kernel-control            0  evaluate hands the two cells of its text
-\                                        to the word its provided cell holds
-\    hb-x64-kernel-control-negative  21  the same, expecting the wrong depth
-\    hb-x64-kernel-eval-range         0  evaluate-range hands its four cells to
-\                                        the word its provided cell holds
-\    hb-x64-kernel-execute            0  execute; 2>r, 2r@ and 2r>; both arms of
-\                                        execute-floor
-\    hb-x64-kernel-catch              0  catch with no throw, then a throw from
-\                                        a nested call that moved the data,
-\                                        return, loop and machine stacks
-\    hb-x64-kernel-finally            0  the cleanup runs after a body that
-\                                        returns and after one that throws,
-\                                        whose code is rethrown even when
-\                                        the cleanup throws too
-\    hb-x64-kernel-source-unit        0  a clean callback, residue, a nested
-\                                        throw and an exactly full stack return
-\                                        restore the caller's stack and extent
-\    hb-x64-kernel-eval-closed        0  clean, residue, throw and a real low
-\                                        guard fault return the segment to a
-\                                        pool
-\    hb-x64-kernel-throw-close        0  a throw out of an open code window
-\                                        closes the band before catch resumes
-\    hb-x64-kernel-floorrec           0  the data-floor recovery entry empties
-\                                        the faulting stack and throws
-\                                        E-UNDERFLOW
-\    hb-x64-kernel-stack-clear        0  the trusted recovery row empties only
-\                                        the current data stack
-\    hb-x64-kernel-throw             42  42 throw with no handler: the reporter
-\                                        returns with the scratch registers
-\                                        clobbered
-\    hb-x64-kernel-throw-report      50  the reporter exits with the code plus 8
-\    hb-x64-kernel-die                5  `hb: die` and LF on fd 2; the exit hook
-\                                        returns with the scratch registers
-\                                        clobbered
-\    hb-x64-kernel-die-hook           6  the exit hook dies with 6, so its cell
-\                                        was cleared before the call
-\    hb-x64-kernel-die-throw         50  a catch around a die whose exit hook
-\                                        throws 42: the throw is uncaught, so
-\                                        the reporter exits with the code plus 8
-\    hb-x64-kernel-die-wide          85  an rc past 255
-
 : BUILD-EVALUATE ( bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    s" 1 2 +" X64HARNESS:PUSH-TEXT,
@@ -225,6 +181,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    0 X64HARNESS:EXPECT-DEPTH,
    path X64HARNESS:BOOT-CLOSE, ;
 
+\ Clean, residue, throw and a real low guard fault return the segment to a pool.
 : BUILD-EVAL-CLOSED ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    0 EVAL-CLEAN PROVIDED-XT:EVALUATE-CLOSED-CELL XT!,
@@ -261,6 +218,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    X64HARNESS:EXPECT-BALANCED,
    path X64HARNESS:BOOT-CLOSE, ;
 
+\ A throw out of an open code window closes the band before catch resumes.
 : BUILD-THROW-CLOSE ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    5 PUSH,  THROW-WINDOW PUSH-XT,  s" catch" ROW,
@@ -270,6 +228,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    X64HARNESS:EXPECT-BALANCED,
    path X64HARNESS:BOOT-CLOSE, ;
 
+\ The data-floor recovery entry empties the faulting stack before it throws.
 : BUILD-FLOORREC ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    5 PUSH,  FLOOR-THROW PUSH-XT,  s" catch" ROW,
@@ -300,6 +259,8 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    X64HARNESS:EXPECT-BALANCED,
    path X64HARNESS:BOOT-CLOSE, ;
 
+\ The throw comes from a nested call that moved the data, return, loop and
+\ machine stacks.
 : BUILD-CATCH ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    11 PUSH,
@@ -313,6 +274,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    0 LOOPSP-CELL EXPECT-CELL,
    path X64HARNESS:BOOT-CLOSE, ;
 
+\ The body's code is rethrown even when the cleanup throws too.
 : BUILD-FINALLY ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    5 PUSHES PUSH-XT,  CLEANUP PUSH-XT,  s" finally" ROW,
@@ -326,6 +288,8 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    0 HND-CELL EXPECT-CELL,
    path X64HARNESS:BOOT-CLOSE, ;
 
+\ A clean callback, residue, a nested throw and an exactly full stack return
+\ restore the caller's stack and extent.
 : BUILD-SOURCE-UNIT ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    7 PUSH,  NOTHING CLOSED-OF CALL,  7 EXPECT-POP,
@@ -341,15 +305,18 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    path X64HARNESS:BOOT-CLOSE, ;
 
 \ An uncaught THROWN-CODE throw with a reporter installed.
-: BUILD-THROW ( [ -- label ] str -- ) {: path:str :}
+: BUILD-THROW ( [ -- label ] n str -- ) {: status:n path:str :}
    false X64HARNESS:BOOT-OPEN,
+   status X64HARNESS:EXPECT-EXIT
    execute UNCGH-CELL XT!,
    THROWN-CODE PUSH,  s" throw" ROW,
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ die with rc n, a message and an exit hook installed.
-: BUILD-DIE ( [ -- label ] n str -- ) {: rc:n path:str :}
+\ die with rc n, a message and an exit hook installed. The hook of -die-hook dies
+\ itself, and ends the image only if its cell was cleared before the call.
+: BUILD-DIE ( [ -- label ] n n str -- ) {: rc:n status:n path:str :}
    false X64HARNESS:BOOT-OPEN,
+   status X64HARNESS:EXPECT-EXIT
    execute EXIT-HOOK-CELL XT!,
    s" hb: die" X64HARNESS:PUSH-TEXT,  rc PUSH,  s" die" ROW,
    path X64HARNESS:BOOT-CLOSE, ;
@@ -359,6 +326,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \ reaches the reporter instead of resuming the catch and returning from die.
 : BUILD-DIE-THROW ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   THROWN-CODE REPORT-SHIFT + X64HARNESS:EXPECT-EXIT
    REPORTS-EXIT UNCGH-CELL XT!,
    THROWN-CODE THROWS EXIT-HOOK-CELL XT!,
    5 DIES PUSH-XT,  s" catch" ROW,
@@ -366,6 +334,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 
 : BUILD-DIE-WIDE ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:UNCAUGHT X64HARNESS:EXPECT-EXIT
    s" hb: die" X64HARNESS:PUSH-TEXT,  256 PUSH,  s" die" ROW,
    path X64HARNESS:BOOT-CLOSE, ;
 
@@ -385,10 +354,11 @@ public
    s" hb-x64-kernel-throw-close" TMP-PATH BUILD-THROW-CLOSE
    s" hb-x64-kernel-floorrec" TMP-PATH BUILD-FLOORREC
    s" hb-x64-kernel-stack-clear" TMP-PATH BUILD-STACK-CLEAR
-   [: REPORTS-BACK ;] s" hb-x64-kernel-throw" TMP-PATH BUILD-THROW
-   [: REPORTS-EXIT ;] s" hb-x64-kernel-throw-report" TMP-PATH BUILD-THROW
-   [: RETURNS-CLOBBERED ;] 5 s" hb-x64-kernel-die" TMP-PATH BUILD-DIE
-   [: 6 DIES ;] 5 s" hb-x64-kernel-die-hook" TMP-PATH BUILD-DIE
+   [: REPORTS-BACK ;] THROWN-CODE s" hb-x64-kernel-throw" TMP-PATH BUILD-THROW
+   [: REPORTS-EXIT ;] THROWN-CODE REPORT-SHIFT +
+   s" hb-x64-kernel-throw-report" TMP-PATH BUILD-THROW
+   [: RETURNS-CLOBBERED ;] 5 5 s" hb-x64-kernel-die" TMP-PATH BUILD-DIE
+   [: 6 DIES ;] 5 6 s" hb-x64-kernel-die-hook" TMP-PATH BUILD-DIE
    s" hb-x64-kernel-die-throw" TMP-PATH BUILD-DIE-THROW
    s" hb-x64-kernel-die-wide" TMP-PATH BUILD-DIE-WIDE
    X64HARNESS:DISPOSE

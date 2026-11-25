@@ -1,8 +1,7 @@
 \ x86-64-kernel-engine.f - the engine-state rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f) in the booted harness, cross-built for an x86-64
-\ peer. RUN names every image and its builder's comment states its exit status
-\ (0 unless stated); the peer runs each and compares its status and its fd-1 and
-\ fd-2 bytes. The host checks each image's ELF header only.
+\ peer.
+require src/core/exit-status.f
 require src/habu/address-cells.f
 require test/x86-64-boot-harness.f
 require src/os/linux/layout.f
@@ -14,11 +13,13 @@ PROT-PAGE-MAX constant FILL-BYTES
 create FILL FILL-BYTES allot
 
 \ TASK-LIVE-GUARD, then an empty data stack. With no task live, as the boot
-\ leaves TASKS-LIVE-CELL, the guard passes; -negative expects the wrong depth
-\ and exits 21; -armed marks a task live first and exits 79.
+\ leaves TASKS-LIVE-CELL, the guard passes; -armed marks a task live first.
 : BUILD ( bool bool str -- ) {: negative:bool armed:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
-   armed if 1 TASKS-LIVE-CELL X64HARNESS:CELL!, then
+   armed if
+      EXIT-STATUS:TASK-COMPILE X64HARNESS:EXPECT-EXIT
+      1 TASKS-LIVE-CELL X64HARNESS:CELL!,
+   then
    X64KERNEL:TASK-LIVE-GUARD,
    0 X64HARNESS:EXPECT-DEPTH,
    path X64HARNESS:BOOT-CLOSE, ;
@@ -142,25 +143,28 @@ $1122334455667788 constant CELL-VALUE
    path X64HARNESS:BOOT-CLOSE, ;
 
 \ DP may reach the ceiling; one byte past it throws E-DATA-SPACE, which nothing
-\ catches or reports: exit 85, fd 2 empty.
+\ catches or reports: fd 2 is empty.
 : BUILD-HEAP-HIGH ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:UNCAUGHT X64HARNESS:EXPECT-EXIT
    HEAP-BOUNDS,
    X64KERNEL:DP-CEILING DATA-START - ALLOT,
    s" here" ROW  X64KERNEL:DP-CEILING X64HARNESS:EXPECT-POP-DATA,
    1 ALLOT,
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ One byte below the floor throws E-DATA-SPACE: exit 85, fd 2 empty.
+\ One byte below the floor throws E-DATA-SPACE: fd 2 is empty.
 : BUILD-HEAP-LOW ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:UNCAUGHT X64HARNESS:EXPECT-EXIT
    HEAP-BOUNDS,
    -1 ALLOT,
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ `,` on a task's thread exits 79.
+\ `,` on a task's thread.
 : BUILD-HEAP-ARMED ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:TASK-COMPILE X64HARNESS:EXPECT-EXIT
    1 TASK-TCB-CELL X64HARNESS:CELL!,
    1 X64HARNESS:PUSH,  s" ," ROW
    path X64HARNESS:BOOT-CLOSE, ;
@@ -238,19 +242,22 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    0 X64HARNESS:EXPECT-DEPTH,
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ Each of these ends in one hook row's fd-2 rejection and exits 70.
+\ Each of these ends in one hook row's fd-2 rejection.
 : BUILD-HOOKS-CHECK ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:REJECTED X64HARNESS:EXPECT-EXIT
    DICT-SIZE CHECK-HOOK!
    path X64HARNESS:BOOT-CLOSE, ;
 
 : BUILD-HOOKS-REPLACED ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:REJECTED X64HARNESS:EXPECT-EXIT
    64 PREFLIGHT!  128 PREFLIGHT!
    path X64HARNESS:BOOT-CLOSE, ;
 
 : BUILD-HOOKS-EMPTY ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:REJECTED X64HARNESS:EXPECT-EXIT
    0 X64HARNESS:PUSH,  s" set-preflight" ROW
    path X64HARNESS:BOOT-CLOSE, ;
 
@@ -328,9 +335,10 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:EXPECT-DEPTH,
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ The companion's place with no clause pending exits 83.
+\ The companion's place with no clause pending.
 : BUILD-APPEND-FOREIGN ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:SEAL-VIOLATION X64HARNESS:EXPECT-EXIT
    PENDING,  6 NDICT!,  6 APPEND,
    path X64HARNESS:BOOT-CLOSE, ;
 
@@ -372,9 +380,10 @@ REGION SLOT-BYTES - constant TOP-SLOT
    path X64HARNESS:BOOT-CLOSE, ;
 
 \ A pending table the drain meets without a checker to take it: DRAIN-PRETRUST
-\ writes `trust-decl` on fd 2 and exits 89.
+\ writes `trust-decl` on fd 2.
 : BUILD-PENDING ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:INTERNAL X64HARNESS:EXPECT-EXIT
    PENDING-DEFERS,
    s" DRAIN-PRETRUST" ROW
    path X64HARNESS:BOOT-CLOSE, ;
@@ -447,25 +456,27 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:EXPECT-DEPTH,
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ An xt! over a cell ptr-cell-mark marked exits 96 with E-XTKIND on fd 2.
+\ An xt! over a cell ptr-cell-mark marked: E-XTKIND on fd 2.
 : BUILD-ADDR-KIND ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:ADDRESS-CELL X64HARNESS:EXPECT-EXIT
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
    CELL-VALUE X64HARNESS:PUSH, 0 X64HARNESS:PUSH-SCRATCH, s" xt!" ROW
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ A ptr-cell-mark whose cell runs past the data band exits 96 with E-XTBAND
-\ on fd 2.
+\ A ptr-cell-mark whose cell runs past the data band: E-XTBAND on fd 2.
 : BUILD-ADDR-BAND ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:ADDRESS-CELL X64HARNESS:EXPECT-EXIT
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
    LINUX-LAYOUT:DATA-SIZE CELL - 1+ X64HARNESS:PUSH-DATA, s" ptr-cell-mark" ROW
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ A ptr-cell-mark with no address-cell header exits 96 with E-XTCELL on fd 2.
+\ A ptr-cell-mark with no address-cell header: E-XTCELL on fd 2.
 : BUILD-ADDR-HEADER ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   EXIT-STATUS:ADDRESS-CELL X64HARNESS:EXPECT-EXIT
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
    path X64HARNESS:BOOT-CLOSE, ;
 

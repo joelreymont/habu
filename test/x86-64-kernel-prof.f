@@ -1,9 +1,9 @@
 \ x86-64-kernel-prof.f - the profiler rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f PROFILER,, src/habu/prof-x64.f) in the booted harness,
-\ cross-built for an x86-64 peer. The host checks only the build; the peer runs
-\ each image and must see its status (the table above RUN). A spin waiting for a
-\ tick is bounded, so a missing tick fails its check instead of hanging. Each
-\ case's word states what it checks.
+\ cross-built for an x86-64 peer. A spin waiting for a tick is bounded, so a
+\ missing tick fails its check instead of hanging. Each case's word states what
+\ it checks.
+require src/core/exit-status.f
 require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/wl.f
@@ -787,8 +787,9 @@ variable GOT-N
       C-NE turn JCC,
    SKEWED RECALL,  0 WANT ;
 
-\ prof-rate -1 with no handler: the throw exits EXIT-STATUS:UNCAUGHT.
+\ prof-rate -1 with no handler.
 : RATE-REJECTED-CASE ( -- )
+   EXIT-STATUS:UNCAUGHT X64HARNESS:EXPECT-EXIT
    -1 N,  s" prof-rate" ROW ;
 
 \ prof-rate RATE, then -1 under catch: the code is E-PROF-RATE, and the rate
@@ -801,8 +802,9 @@ variable GOT-N
    ARMED-CHECK, ;
 
 \ -1 in ARN-USEC, which only a write past prof-rate can leave: prof-on's arm
-\ is rejected, named on fd 2, exit EXIT-STATUS:SYSTEM.
+\ is rejected, named on fd 2.
 : ARM-REJECTED-CASE ( -- )
+   EXIT-STATUS:SYSTEM X64HARNESS:EXPECT-EXIT
    RATE N,  s" prof-rate" ROW
    R8 ARENA,  RAX -1 IMM,  RAX R8 ARN-USEC MEM-OFF STORE,
    0 N,  s" prof-on" ROW ;
@@ -814,21 +816,6 @@ variable GOT-N
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    path X64HARNESS:BOOT-CLOSE, ;
-
-\ Each image's exit status, as the peer must see it:
-\    hb-x64-kernel-prof                0
-\    hb-x64-kernel-prof-negative      21  B's spin is expected to fail
-\    hb-x64-kernel-prof-shared-stack   0
-\    hb-x64-kernel-prof-report         0
-\    hb-x64-kernel-prof-trim           0
-\    hb-x64-kernel-prof-retired        0
-\    hb-x64-kernel-prof-limit          0  its forked child exits 99
-\    hb-x64-kernel-prof-slow           0
-\    hb-x64-kernel-prof-resets         0
-\    hb-x64-kernel-prof-rate-rejected  85  E-PROF-RATE uncaught
-\    hb-x64-kernel-prof-rate-caught    0
-\    hb-x64-kernel-prof-arm-rejected   71  `hb: prof-on: cannot arm the interval
-\                                         timer`
 
 public
 

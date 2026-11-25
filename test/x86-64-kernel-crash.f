@@ -2,8 +2,7 @@
 \ installs, in the booted harness, cross-built for an x86-64 peer. Each image
 \ forks a child that faults with a pipe on fd 2; the parent checks the wait
 \ status and every byte the handler wrote but rsp's sixteen digits, and exits 0
-\ when each held. Without the handler none exits 0. The host checks each image's
-\ ELF header; running them is the peer's.
+\ when each held. Without the handler none exits 0.
 require src/lib/string.f
 require src/core/exit-status.f
 require src/habu/stack-abi.f
@@ -161,10 +160,13 @@ $0706050403020100 constant CELL-A
 $0E0D0C0A09080B0F constant CELL-B
 $1716151413121110 constant CELL-C
 
+\ A jump to a page that is never mapped, with every register but rsp distinct
+\ and rbp not canonical.
 : CRASH-CHILD ( -- )
    WILD-RBP REGS,  UNMAPPED JUMP,
    SIGSEGV WILD-RBP UNMAPPED 0 0 0 DUMP-TEXT ;
 
+\ rbp is not canonical: no guard case reads it for a SIGILL.
 : ILL-CHILD ( -- )
    WILD-RBP REGS,
    X64HARNESS:POSITION {: rip:n :}
@@ -178,6 +180,7 @@ $1716151413121110 constant CELL-C
    LINUX-LAYOUT:DATA-VA REGS,  CP-VA JUMP,
    SIGILL LINUX-LAYOUT:DATA-VA CP-VA CELL-A CELL-B CELL-C DUMP-TEXT ;
 
+\ The cell past the region reads 0.
 : REGION-END-CHILD ( -- )
    CELL-A LAST-VA CELL - POKE,  CELL-B LAST-VA POKE,
    LINUX-LAYOUT:DATA-VA REGS,  LAST-VA JUMP,
@@ -300,38 +303,6 @@ $1716151413121110 constant CELL-C
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    path X64HARNESS:BOOT-CLOSE, ;
-
-\ The images and the status the peer that runs each must see:
-\
-\    hb-x64-kernel-crash             0  every register but rsp distinct, rbp
-\                                       not canonical, a jump to $1000, which
-\                                       is never mapped: the dump, then death
-\                                       by the SIGSEGV itself,
-\                                       its three code lines 0
-\    hb-x64-kernel-crash-negative   21  the same, expecting the wrong status
-\    hb-x64-kernel-crash-region      0  rbp DATA and a jump to a ud2 at CP, in
-\                                       the code region: SIGILL, rip CP and the
-\                                       24 bytes the child wrote around it
-\    hb-x64-kernel-crash-region-end  0  the same at the region's last cell:
-\                                       the cell past the region reads 0
-\    hb-x64-kernel-crash-ill         0  ud2 with rbp not canonical: SIGILL,
-\                                       which no guard case reads rbp for
-\    hb-x64-kernel-crash-data        0  a push past the data stack's capacity:
-\                                       exit 102 and the record naming it
-\    hb-x64-kernel-crash-return      0  a store at the return stack's end
-\    hb-x64-kernel-crash-loop        0  a store below the loop stack's base
-\    hb-x64-kernel-crash-machine     0  a call to itself, forever: exit 102
-\                                       and the machine stack's record
-\    hb-x64-kernel-crash-past       0  rbp not canonical and a jump to the
-\                                       first byte past the region, PAST-VA,
-\                                       never mapped: the dump,
-\                                       its three code lines 0
-\    hb-x64-kernel-crash-region-guard
-\                                    0  code at CP, storing below the loop
-\                                       stack's base: 102 and its record
-\    hb-x64-kernel-crash-zero-base   0  the loop stack's base cell zeroed and
-\                                       a store at LOOP-BYTES: no stack, so
-\                                       exit 110 and the memory fault's record
 
 public
 

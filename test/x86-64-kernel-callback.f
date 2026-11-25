@@ -1,9 +1,9 @@
 \ x86-64-kernel-callback.f - emitted SysV callback-entry E2E.
-\ Run the produced ELFs on x86-64: the qsort image exits 0 after libc calls a
-\ Habu comparator through ffi-call. The two rejection images exit 106 with an
-\ E-CALLBACK record on stderr that names slot 0: unbound "C called a callback
-\ whose slot is not bound", no-frame "C called the callback outside the foreign
-\ call that passed it".
+\ In the qsort image libc calls a Habu comparator through ffi-call. The two
+\ rejection images write an E-CALLBACK record on stderr that names slot 0:
+\ unbound "C called a callback whose slot is not bound", no-frame "C called the
+\ callback outside the foreign call that passed it".
+require src/core/exit-status.f
 require test/x86-64-boot-harness.f
 require src/lib/vector.f
 
@@ -104,7 +104,9 @@ QSORT-FN CELL + constant THUNK
    0 CB-OWNER X64HARNESS:EXPECT-CELL,
    ;
 
-: CALL-ENTRY, ( -- )  STUB,  RAX ASM-SINK ENC-CALL-REG ;
+: CALL-ENTRY, ( -- )
+   EXIT-STATUS:CALLBACK X64HARNESS:EXPECT-EXIT
+   STUB,  RAX ASM-SINK ENC-CALL-REG ;
 
 : UNBOUND-CASE ( -- )
    ROWS CB-ROWS X64HARNESS:DATA-ADDR!,
