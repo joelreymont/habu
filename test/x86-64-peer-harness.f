@@ -132,7 +132,8 @@ public
 \ adds the arguments the image runs with.
 : WRITE-WITH ( str [ CMD:command -- CMD:command ] -- ) {: path:str args :}
    TEXT-VA ASM-LINK
-   CODE ASM-LEN >str TEXT-VA IMPORTS$ s" " ELF:BUILD-X64   \ no DATA, so an empty carrier
+   CODE ASM-LEN >str TEXT-VA IMPORTS$ LINUX-LAYOUT:CARRIER-VA VA>N s" "
+   ELF:BUILD-X64   \ no DATA, so an empty carrier
    s" x64-peer" ELF:SET-SIGID ELF:CODESIG2
    path DRV-WRITE-IMAGE
    s" ELF names x86-64 and enters this fixture's code" T-LABEL

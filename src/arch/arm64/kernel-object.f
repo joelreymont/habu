@@ -130,6 +130,7 @@ variable K0                          \ the kernel's first word position
    s" DICT" LDICT A64ICODE:LABEL@ LSYM+
    s" TEXT-VA" TEXT-VA SYM+
    s" DATA-VA" DATA-VA VA>N SYM+
+   HB-TARGET-LINUX? if s" CARRIER-VA" LINUX-LAYOUT:CARRIER-VA VA>N SYM+ then
    s" DATA-START" DATA-START SYM+
    s" DATA-SIZE" DATA-SIZE SYM+
    s" DP-CEILING-OFF" DATA-SIZE PROF-CNT-BYTES - SYM+

@@ -9,8 +9,9 @@ split-str
 \ brk heap starts above it and nothing mapped before entry takes its range, and
 \ the boot maps the region's views over it.
 \
-\ The carrier is a read-write PT_LOAD at LINUX-LAYOUT:CARRIER-VA, past the DATA
-\ window, that holds DATA's initial pages for the boot to move into the window.
+\ The carrier is a read-write PT_LOAD at the address the build's kernel names,
+\ past the DATA window, that holds DATA's initial pages for the boot to move
+\ into the window.
 \ Its bytes end the file, from the PAGE-BYTES boundary after the read-write
 \ tail.
 \
@@ -136,6 +137,7 @@ variable ELF-TEXT-SIZE
 PTR-VARIABLE TEXT
 PTR-VARIABLE CARRIER-A
 variable CARRIER-N
+variable CARRIER-BASE                \ the carrier's load address
 
 : ELF-PAGE-UP ( n -- n )
    X64 @ PAGE-BYTES {: page:n :}
@@ -212,7 +214,7 @@ private
    PT-LOAD PF-RW 0 REGION-OFF ELF-VA 0 REGION X64 @ PAGE-BYTES ELF-PHDR, ;
 
 : ELF-CARRIER-PHDR, ( -- )
-   PT-LOAD PF-RW ELF-CARRIER-AT LINUX-LAYOUT:CARRIER-VA VA>N CARRIER-N @ dup
+   PT-LOAD PF-RW ELF-CARRIER-AT CARRIER-BASE @ CARRIER-N @ dup
    X64 @ PAGE-BYTES ELF-PHDR, ;
 
 \ The loads ascend by address: text, read-write tail, code region, carrier.
@@ -327,12 +329,13 @@ private
    ELF-CARRIER,
    M-HERE MLEN! ;
 
-: CARRIER! ( str -- ) CARRIER-N ! CARRIER-A ! ;
+: CARRIER! ( n str -- ) CARRIER-N ! CARRIER-A ! CARRIER-BASE ! ;
 
 public
-\ The program as an ELF file whose code maps at the address, its GOT binding
-\ the import names given and its carrier holding the bytes given last.
-: BUILD-IMAGE ( asm n str str -- img )
+\ The program as an ELF file whose code maps at the first address, its GOT
+\ binding the import names given and its carrier, loaded at the second
+\ address, holding the bytes given last.
+: BUILD-IMAGE ( asm n str n str -- img )
    CARRIER!
    IMPORT-NAMES:SPAN!
    false X64 ! ASM-CODELEN!
@@ -342,7 +345,7 @@ public
    IMG-PHASE ;
 
 \ The same ELF layout, with the x86-64 loader and relocation number.
-: BUILD-X64 ( str n str str -- img )
+: BUILD-X64 ( str n str n str -- img )
    CARRIER!
    IMPORT-NAMES:SPAN!
    LINUX-LAYOUT:CODE-OFF - VMBASE ! CODELEN ! TEXT ! true X64 !
@@ -445,12 +448,14 @@ private
    s" elf: a program header the linker does not write" CHECK
    off DYN-HDR UNIQUE! ;
 
-\ The carrier is the read-write load at CARRIER-VA; of the others the code
-\ region's holds no file bytes.
+\ Of the read-write loads, the code region's holds no file bytes; of the others,
+\ in header order, which ELF keeps ascending by address, the first is the
+\ read-write tail and the second the carrier.
 : RW-PHDR ( n -- ) {: off:n :}
    off RW-LOAD? 0= if exit then
-   off P-VA LINUX-LAYOUT:CARRIER-VA VA>N = if off CARRIER-HDR UNIQUE! exit then
-   off  off P-FILESZ 0= if REGION-HDR else RW-HDR then  UNIQUE! ;
+   off P-FILESZ 0= if off REGION-HDR UNIQUE! exit then
+   RW-HDR @ 0= if off RW-HDR ! exit then
+   off CARRIER-HDR UNIQUE! ;
 
 : PHDR-AT ( n -- n ) ELF-PHDR-SZ * 32 U64@ + ;
 
