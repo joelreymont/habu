@@ -2649,9 +2649,10 @@ s" TDPB3 ( -- tdpbres<n n,n> )"    CHECK-QUIET-CANDIDATE! 0 T=
 \ constructor and MATCH effects for a NAMED multi-cell layout-family arg.
 \ TDPN1-3 identity-check; TDPN4-7 construct and certify: the payload input and
 \ the layout-bundle output expand to the arg-aware width (TFC-PAY-ROW), and the
-\ family's type args come from the declared output (TFC-ARGS!), so
-\ option<tdpbw2>'s tag sits at slot 2 (declared family width would put it at
-\ slot 1). TDPA1-3 reject: wrong-width payload two ways, cross-family bundle.
+\ family's type args come from the payload, or from the declared output where
+\ the payload leaves one open, so option<tdpbw2>'s tag sits at slot 2 (declared
+\ family width would put it at slot 1). TDPA1-3 reject: wrong-width payload two
+\ ways, cross-family bundle.
 \ The raw multi-token runs (TDPB1-3) stay rejected.
 STRUCTURE tdpbw2 FIELD x n FIELD y n ;STRUCTURE
 s" TDPN1 ( tdpbopt<tdpbw2> -- tdpbopt<tdpbw2> )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -2662,12 +2663,12 @@ s" TDPN4 ( tdpbw2 -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T
 s" TDPN5 ( -- tdpbopt<tdpbw2> ) TDPBOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPN6 ( tdpbw2 -- tdpbres<tdpbw2,n> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
-\ TDPA1: the output run is read at the width it is laid at, so it prints as one
-\ tdpbopt<tdpbw2>; test/type-ctor-suite.f CLFC-RT-SOME proves that width.
+\ TDPA1: the payload makes a tdpbopt<n>; the declared output it meets is read at its laid
+\ width, so it prints as one tdpbopt<tdpbw2>.
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" STR:CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"inferred\":\"n -- tdpbopt<tdpbw2>\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"expected\":\"tdpbopt<tdpbw2>\"" STR:CONTAINS? TTRUE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
@@ -2696,12 +2697,12 @@ REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
-\ TDNA1's expected renders tdnres<tdnw2,n> whole: its width-3 instance has its
-\ tag at slot 2, so the full run compacts to the sum type.
+\ TDNA1's expected renders tdnopt<tdnres<tdnw2,n>> whole: its width-3 inner instance has its
+\ tag at slot 2, so the full run compacts to the sum types.
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" STR:CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"expected\":\"tdnres<tdnw2,n>\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"expected\":\"tdnopt<tdnres<tdnw2,n>>\"" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" STR:CONTAINS? TTRUE

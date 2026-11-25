@@ -15,12 +15,12 @@
 \ the outer difference. Pass 2 can only add pads, so a variant that needs fewer
 \ than its declared share (negative extra) fails closed.
 \
-\ A generated MAKE takes its family arguments from the declared output; UNMAKE
-\ runs the same step backwards, seeded only from the live value it takes apart.
-\ With no declared output, MAKE and SOME take them from their payloads on the
-\ stack. A quotation body has no live input, so a quoted UNMAKE checks through
-\ the stored effect and fails closed at a wide instantiation, while a quoted
-\ MAKE seeds from the declared output.
+\ A generated MAKE or SOME takes each family argument its payloads on the stack
+\ carry from them, and any other from the declared output; UNMAKE runs the same
+\ step backwards, seeded only from the live value it takes apart. A quotation
+\ body has no live input, so a quoted UNMAKE checks through the stored effect
+\ and fails closed at a wide instantiation, while a quoted MAKE seeds from the
+\ declared output.
 
 require src/lib/adt/result.f
 require src/lib/string.f
@@ -782,6 +782,15 @@ SUMTYPE zb VARIANT blob zbb ;VARIANT VARIANT pair n ^n ;VARIANT ;SUMTYPE
 REJECTION:CAPTURE  s" 1 TYPED-BUFFER ZB-ROW zb" TCE-CATCH 70 T=
 REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
+
+\ A constructor's payload on the stack decides the arguments it carries, whatever
+\ the declared output says; the declared output decides only the others.
+ENUM zsflag up down ;ENUM
+ENUM zsbox<a> VARIANT full FIELD v a ;VARIANT VARIANT empty ;VARIANT ;ENUM
+s" : ZS-X ( -- option<zsflag> ) 3 OPTION:SOME drop construct zsflag up OPTION:SOME ;" TCE-CATCH 0 T=
+s" : ZS-Y ( -- result<n,n> result<zsflag,n> ) 7 RESULT:OK construct zsflag up RESULT:OK ;" TCE-CATCH 0 T=
+s" : ZS-Z ( -- option<n> option<zsflag> ) 3 OPTION:SOME construct zsflag up OPTION:SOME ;" TCE-CATCH 0 T=
+s" : ZS-B ( -- zsbox<zsflag> ) 3 ZSBOX:FULL drop construct zsflag up ZSBOX:FULL ;" TCE-CATCH 0 T=
 
 T-REPORT
 

@@ -2773,12 +2773,18 @@ sections above.
 - **Nominal declaration placement and inference matter.** A `DEFTYPE` handed
   out by a definer's `does>` body must be public, so a reader can resolve the
   stored signature; a private one is `E-BAD-STORED-SIGNATURE`. A generated
-  constructor takes its family's arguments from the declared output, else from
-  its payloads on the stack: `( kk -- ) OPTION:SOME drop` builds an
-  `option<kk>`. Constructing
-  only `RESULT:OK` leaves the error type variable of `result<a,b>` free;
-  that variable cannot unify with a nominal enum or family. Use a result
-  family whose error alternatives are nullary, such as
+  constructor takes each argument its payloads on the stack carry from them:
+  in `( -- option<flag> ) 3 OPTION:SOME drop construct flag up OPTION:SOME`
+  the first `OPTION:SOME` builds an `option<n>`. An argument no payload on
+  the stack carries comes from the rightmost instance of the family in the
+  declared output where that instance has an argument wider than a cell or of
+  a layout family such as an enum, whichever output the value becomes:
+  `( -- option<n> option<flag> ) OPTION:NONE OPTION:NONE` builds two
+  `option<flag>` and is `E-MISMATCH`. A quotation body holds no payloads on
+  its stack. Constructing only `RESULT:OK` without such a declared output
+  leaves the error type of `result<a,b>` a one-cell variable, which a later,
+  wider error type cannot meet (`` `b` in `OK`'s effect is one cell ``). Use
+  a result family whose error alternatives are nullary, such as
   `ENUM foo-result<a>` with a payload-bearing success variant and nullary
   error variants. Spell an arity-one family with its argument in
   an effect (`family<PKG:t>`) and bare in `MATCH family`; the other form

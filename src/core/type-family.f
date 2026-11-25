@@ -201,7 +201,7 @@ EXPORT CHECK:CHECKER-TYPE-MARK-COVERS?
 EXPORT CHECK:CHECKER-USING$
 EXPORT CHECK:CHECKER-USING-N
 EXPORT CHECK:CK-REC-WID
-EXPORT CHECK:CONSTRUCT-DECL-LAYOUT
+EXPORT CHECK:CONSTRUCT-DECL-TERM
 EXPORT CHECK:CONSTRUCT-WIDE-STAGED-REJECT
 EXPORT CHECK:CT-FIND
 EXPORT CHECK:CT-LINEAR?
@@ -4465,59 +4465,109 @@ EXPORT CHECK:OK
    REPEAT 2drop RES-TRUE ;
 
 
-\ The value DEPTH cells below the live top: a whole hidden group answers its term, width and true;
-\ a non-hidden cell, open ones included, 0 1 false; a stale or missing cell or a partial group width 0.
-: TFC-LIVE-GROUP ( n -- n n bool )
+\ The value DEPTH cells below the live top and its width: a whole hidden group's logical term, any
+\ other cell's type at width 1; width 0 for a stale or missing cell or a partial group.
+: TFC-LIVE-GROUP ( n -- n n )
    {: depth:n :}
    DCUR @ depth
    BEGIN dup 0 > WHILE                        \ ( row cells-left )
-      over R-RES TAG S-PUSH <> IF 2drop 0 0 RES-FALSE EXIT THEN
+      over R-RES TAG S-PUSH <> IF 2drop 0 0 EXIT THEN
       swap R-RES P>REST swap 1 -
    REPEAT drop {: row:n :}
    row R-RES {: node:n :}
-   node TAG S-PUSH <> IF 0 0 RES-FALSE EXIT THEN
+   node TAG S-PUSH <> IF 0 0 EXIT THEN
    node P>TYPE T-RES {: t:n :}
-   t TAG T-STALE = IF 0 0 RES-FALSE EXIT THEN
-   t HIDDEN-PARAM? 0= IF 0 1 RES-FALSE EXIT THEN
+   t TAG T-STALE = IF 0 0 EXIT THEN
+   t HIDDEN-PARAM? 0= IF t 1 EXIT THEN
    t T-WIDTH {: w:n :}
-   row t PARAM>FAM w 1 - TFC-GROUP-CELLS? 0= IF 0 0 RES-FALSE EXIT THEN
-   t MK-LOGICAL w RES-TRUE ;
+   row t PARAM>FAM w 1 - TFC-GROUP-CELLS? 0= IF 0 0 EXIT THEN
+   t MK-LOGICAL w ;
 
 
-\ Payload J of VID over the value DEPTH cells down: a bare family parameter over a whole hidden
-\ group takes the group's type. Answers the next payload's depth, -1 for no seed.
-: TFC-LIVE-PAY ( n n n -- n )
-   {: j:n depth:n vid:n :}
-   depth TFC-LIVE-GROUP {: lt:n w:n group:bool :}
-   w 0= IF -1 EXIT THEN
-   vid j SUMV-PAY-ROOT SCHEMA-ROOT@ {: node:n :}
-   group node SCHEMA-PARAM? and IF lt node SCHEMA-A@ cells TFC-VARS + ! THEN
+\ The family parameters schema NODE names, one bit each, wherever they sit.
+: SCH-PARAM-MASK ( n -- n ) {: node:n :}
+   node SCHEMA-PARAM? IF 1 node SCHEMA-A@ lshift EXIT THEN
+   node SCHEMA-PTR? IF node SCHEMA-A@ RECURSE EXIT THEN
+   node SCHEMA-APP? IF
+      0  node SCHEMA-C@ 0 ?do node SCHEMA-B@ i + SCHEMA-ROOT@ RECURSE or loop
+      EXIT
+   THEN
+   node SCHEMA-QUOT? IF
+      0  SCH-QUOT-ROWS 0 ?do
+         node i SCHEMA-QUOT-ROW@ {: row:n :}
+         row SCHEMA-ROW-OK? IF
+            row SCHEMA-ROW-COUNT@ 0 ?do row i SCHEMA-ROW-ELEM@ RECURSE or loop
+         THEN
+      loop EXIT
+   THEN
+   0 ;
+
+
+\ Binds each parameter schema NODE names to its closed part of T, through pointers and same-family
+\ applications, and answers those it decides; a quotation decides all it names and binds none.
+: TFC-MATCH-PAY ( n n -- n ) {: node:n t:n :}
+   t T-RES {: r:n :}
+   node SCHEMA-PARAM? IF
+      r TYPE-REP-CLOSED? 0= IF 0 EXIT THEN
+      r node SCHEMA-A@ cells TFC-VARS + !
+      1 node SCHEMA-A@ lshift EXIT
+   THEN
+   node SCHEMA-QUOT? IF node SCH-PARAM-MASK EXIT THEN
+   node SCHEMA-PTR? IF
+      r TAG T-PTR <> IF 0 EXIT THEN
+      node SCHEMA-A@ r PTR>INNER RECURSE EXIT
+   THEN
+   node SCHEMA-APP? 0= IF 0 EXIT THEN
+   r TAG T-PARAM <> IF 0 EXIT THEN
+   r PARAM>FAM node SCHEMA-A@ <> IF 0 EXIT THEN
+   0  node SCHEMA-C@ 0 ?do
+      node SCHEMA-B@ i + SCHEMA-ROOT@  r i PARAM>ARG  RECURSE or
+   loop ;
+
+
+\ Payload J of VID over the value DEPTH cells down: MASK with the parameters that value decides
+\ (TFC-MATCH-PAY) and the next payload's depth, or MASK and -1 where the stack holds no whole value.
+: TFC-LIVE-PAY ( n n n n -- n n )
+   {: mask:n j:n depth:n vid:n :}
+   depth TFC-LIVE-GROUP {: lt:n w:n :}
+   w 0= IF mask -1 EXIT THEN
+   vid j SUMV-PAY-ROOT SCHEMA-ROOT@ lt TFC-MATCH-PAY  mask or
    depth w + ;
 
 
-\ The args VID's payloads on the stack give FAM, walked from the top payload down; a parameter no
-\ payload sets stays fresh. A payload of width 0, or a term SEED-TERM? refuses, is no seed.
-: TFC-LIVE-SEED ( n n -- n bool )
+\ Mints FAM's vars and binds those VID's payloads on the stack decide, from the top payload down
+\ to the first the stack does not hold whole; answers the parameters they decide.
+: TFC-LIVE-VARS ( n n -- n )
+   {: fam:n vid:n :}
+   fam TFAM-ARITY@ TFC-MINT-VARS
+   vid SUMV-PAY-N {: np:n :}
+   0 0                                        \ ( mask depth )
+   np 0 ?do
+      dup 0 < IF leave THEN
+      np 1 - i -  swap vid TFC-LIVE-PAY
+   loop drop ;
+
+
+\ Sets each parameter MASK leaves out to its argument in the topmost closed instance of FAM in
+\ the declared output, whichever output the constructed value becomes.
+: TFC-DECL-VARS ( n n -- )
+   {: fam:n mask:n :}
+   fam CONSTRUCT-DECL-TERM 0= IF drop EXIT THEN
+   {: t:n :}
+   fam TFAM-ARITY@ 0 ?do
+      1 i lshift mask and 0= IF t i PARAM>ARG i cells TFC-VARS + ! THEN
+   loop ;
+
+
+\ The seed: each parameter a payload on the stack decides comes from it, any other from the
+\ declared output; an open seed fails closed at the step.
+: TFC-SEED ( n n -- n bool )
    {: fam:n vid:n :}
    fam TFAM-ARITY@ 0= IF 0 RES-FALSE EXIT THEN
-   fam TFAM-ARITY@ TFC-MINT-VARS
-   vid SUMV-PAY-N 1 - 0
-   BEGIN over 0 >= WHILE                      \ ( payload depth )
-      2dup vid TFC-LIVE-PAY nip
-      dup 0 < IF 2drop 0 RES-FALSE EXIT THEN
-      swap 1 - swap
-   REPEAT 2drop
+   fam  fam vid TFC-LIVE-VARS  TFC-DECL-VARS
    fam TFC-FAM-TERM {: t:n :}
    t SEED-TERM? IF t RES-TRUE EXIT THEN
    0 RES-FALSE ;
-
-
-\ The seed: FAM's first bundle in the declared output when that seeds (CONSTRUCT-DECL-LAYOUT), else
-\ the payloads' (TFC-LIVE-SEED); with neither, vars stay fresh and a multi-cell value fails closed.
-: TFC-SEED ( n n -- n bool )
-   {: fam:n vid:n :}
-   fam CONSTRUCT-DECL-LAYOUT IF RES-TRUE EXIT THEN drop
-   fam vid TFC-LIVE-SEED ;
 
 
 \ The construct step for (FAM, VID) over DT SEEDED, which TFC-SEED answers before TFC-ARGS! rewrites

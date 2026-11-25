@@ -3319,10 +3319,8 @@ variable TWALK-D
    pid cells PARAMWG + @ TWALK-GEN @ <> IF -1 EXIT THEN
    pid cells PARAMWC + @ ;
 
-\ With any? false, find the named type variable for the occurs check; with any?
-\ true, find any unresolved type or row variable for closedness.
-\ Representation closedness excludes scope identities and the complete fixed
-\ read-view representation.
+\ Whether t holds v (any? false: the occurs check) or any unresolved variable;
+\ rep skips variables no layout depends on: scopes, fixed read views, quotations.
 : TYPE-VAR-WALK ( n n bool bool -- bool ) {: v:n t:n any:bool rep:bool :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -3348,6 +3346,7 @@ variable TWALK-D
       v x F>SECOND any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       v x F>BODY any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
+      rep IF RES-FALSE EXIT THEN
       \ A block part is no type argument: an unbound one leaves the type closed.
       v x Q>DIN any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       v x Q>DOUT any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
@@ -6310,13 +6309,6 @@ variable UF-NEED   variable UF-HAVE
       t over PARAM>ARG LAYOUT-PARAM? IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
-
-: CONSTRUCT-DECL-LAYOUT ( n -- n bool ) {: fam:n :}
-   fam TFAM-ARITY* 0= IF 0 RES-FALSE EXIT THEN
-   fam CONSTRUCT-DECL-TERM 0= IF drop 0 RES-FALSE EXIT THEN
-   {: t:n :}
-   t SEED-TERM? IF t RES-TRUE EXIT THEN
-   0 RES-FALSE ;
 
 \ The live top of the data row when it is a term of FAM, a hidden cell of its
 \ bundle or a logical term.
