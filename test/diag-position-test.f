@@ -683,6 +683,25 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    1 s" message" s" rendered source may change what it does" FIELD-HAS
    1 s" W" 2 10 39 40 FX-PATH$ CANON$ FX$ AT-IN ;
 
+\ A quotation that reads a local, stored where it outlives the local, differs
+\ from its slot only in the locals it reads, which no rendered row shows: the
+\ E-LOCAL-ESCAPE writes no expected or found rows that would read the same.
+: TEST-LOCAL-ESCAPE-ROWS ( -- )
+   s" a stored quotation that reads a local" T-LABEL
+   SB-RESET
+   s" TYPED-VARIABLE V [ -- ]" SB-APPEND LF+
+   s" : RUN ( [ -- ] -- ) V ! ;" SB-APPEND LF+
+   s" : PUT ( n -- ) {: s :} [: s drop ;] RUN ;" SB-APPEND LF+
+   s" local-escape-rows.f" FIXTURE!
+   s" --verify-only" CHECK
+   0 s" code" s" E-LOCAL-ESCAPE" FIELD=
+   0 s" RUN" 3 37 86 89 AT
+   GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
+   0 GJA-LINE$ GJA-PARSE s" notes" GJA-FIELD? 0= IF drop EXIT THEN
+   {: notes:SPAN:span<u8> :}
+   notes s" expected" FIELD-ABSENT
+   notes s" found" FIELD-ABSENT ;
+
 \ --verify-only fails a body whose trusted-only tick it meets under unknown
 \ order: it stops there.
 : TEST-TICK-STOPPED ( -- )
@@ -4215,6 +4234,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-SOURCE-IMMEDIATE
    TEST-UNDEFINE-ABSENT
    TEST-UNDEFINE-RENDERED
+   TEST-LOCAL-ESCAPE-ROWS
    TEST-TICK-STOPPED
    TEST-PROGRAM-TARGET-WORD
    TEST-PARSES-REJECT

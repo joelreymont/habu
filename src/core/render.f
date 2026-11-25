@@ -2157,6 +2157,9 @@ EXPORT TFAM:SUMV-PAY-N
    MDIAG @ MD-TAIL-ESCAPE = IF ESCAPE-NOTES EXIT THEN
    MDIAG @ MD-ROW-CYCLE = IF CYCLE-NOTES EXIT THEN
    MDIAG @ MD-LOOP-NARROWED =  MDIAG @ MD-INPUT-NARROWED = or IF NARROWED-NOTES EXIT THEN
+   \ An escaping quotation differs only in its block part, the locals it reads,
+   \ which no rendered row shows: its expected and found rows would read the same.
+   MDIAG @ MD-LOCAL-ESCAPE = IF EXIT THEN
    AT-PIN
    DEXP @ 0 <> IF DEXP @ DACT @ PAIR-NOTES  FAMILY-NOTES THEN
    DF-ACT @ 0 <>  DEXP @ 0= and IF
