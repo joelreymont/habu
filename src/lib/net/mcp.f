@@ -10,17 +10,28 @@
 \ dispatches, a notification included, as one LOG:INFO line `mcp: <method>`, then a
 \ tools/call's params.name or a resources/read's params.uri when it is a string,
 \ written between its quotes as sent, never the arguments, without LOG; with it,
-\ LOG's lines after the answer, each ending ` in <n> ms` from the request's start,
-\ ANSWER's entry or, for FINISH's, the holding request's start, and the arguments
-\ and each reply text that may quote them at debug. ANSWER answers one JSON-RPC
-\ message that came by another transport into a vector, as HANDLE answers a
-\ 2026-07-28 request with no transport headers, its log lines included. VISIBLE! hides a tool
-\ from a caller its hook refuses; it does not apply to resources, which every caller may list
-\ and read. A tools/call of a tool the caller cannot call, unknown or hidden, is -32602,
-\ as UNKNOWN-TOOL states.
+\ one line after the answer, `req <id> <method> <target> -> <outcome> in <n> ms`, at
+\ LOG ERROR for a fault and LOG INFO otherwise. id is the HTTP:REQUEST-ID$ of HANDLE's
+\ request or the id ANSWER is given; method and target are as without LOG, `-` when no
+\ method was read; n is whole milliseconds from the request's start, ANSWER's entry or,
+\ for FINISH's line, the holding request's start. outcome is `ok`, `tool error` (a schema
+\ rejection's included), `error <code>: <message>` for a JSON-RPC error (UNKNOWN-TOOL's
+\ included), `error <code>` alone for a body JSON-RPC does not read as a message, `held`
+\ for a call HOLD kept, `notified` for a notification, or `fault <code> <name>: <text>`,
+\ name and text when the code is declared, for a throw answered -32603. A tools/call with
+\ params.arguments then writes `req <id> arguments <arguments>` at debug, as sent, and a
+\ tool error and an unread body write `req <id> tool error: <text>` and
+\ `req <id> error <code>: <text>` there: all may hold what an info line must not. A text
+\ past 4096 bytes is cut at a character boundary and followed by ` [<n> B]`, n its length.
+\ FINISH writes a held call's lines, with the id of the request that held it. ANSWER
+\ answers one JSON-RPC message that came by another transport into a vector, as HANDLE
+\ answers a 2026-07-28 request with no transport headers, its log lines included.
+\ VISIBLE! hides a tool from a caller its hook rejects; it does not apply to resources,
+\ which every caller may list and read. A tools/call of a tool the caller cannot call,
+\ unknown or hidden, is -32602, as UNKNOWN-TOOL states.
 \ A tool body gets the arguments' object, borrowed for the call, and gives its
 \ result once through RESULT, RESULT-META to give the result a _meta object, RESULT-CONTENT
-\ to give the result's content blocks, or RESULT-ERROR for a tool error, refused arguments
+\ to give the result's content blocks, or RESULT-ERROR for a tool error, rejected arguments
 \ included; bodies may run at once on several HTTP workers. A body that must wait gives its
 \ worker back: HOLD takes the call's connection and keeps the call in a row of the held
 \ table, and the body returns with no result; later FINISH, on any request
@@ -1654,27 +1665,8 @@ public
    INSTRUCTIONS ! ;
 
 
-\ From the next HTTP:START on, each message HANDLE or ANSWER takes writes one
-\ LOG line, tag mcp, once it is answered, in place of the line before
-\ dispatch: `req <id> <method> <target> -> <outcome> in <n> ms`, at LOG ERROR
-\ for a fault and LOG INFO otherwise. id is the HTTP:REQUEST-ID$ of HANDLE's
-\ request, `-` under ANSWER; method and target are as without LOG, `-` when no
-\ method was read; n is whole milliseconds from the request's start, or
-\ ANSWER's entry. outcome is `ok`, `tool error` (a schema rejection's
-\ included), `error <code>: <message>` for a JSON-RPC error (UNKNOWN-TOOL's
-\ included), `error <code>` alone for a body JSON-RPC does not read as a
-\ message, `held` for a call HOLD kept, `notified` for a notification, or
-\ `fault <code> <name>: <text>`, name and text when the code is declared, for
-\ a throw answered -32603. A tools/call with params.arguments then writes a
-\ LOG DEBUG line, `req <id> arguments <arguments>`, the arguments as sent; a
-\ tool error and an unread body write one with their text,
-\ `req <id> tool error: <text>` and `req <id> error <code>: <text>`: all may
-\ hold what an info line must not. FINISH writes a held call's own lines,
-\ `req <id> tools/call <name> -> <outcome> in <n> ms` and a tool error's text,
-\ with the id of the request that held it and n from that request's start. A
-\ text past 4096 bytes is cut at a character boundary and followed by
-\ ` [<n> B]`, n its length.
-\ It lasts across STOP; E-STATE while HTTP serves.
+\ From the next HTTP:START on each message answered writes its LOG lines; it lasts
+\ across STOP. E-STATE while HTTP serves.
 : LOG ( -- )
    HTTP:RUNNING? if E-STATE throw then
    1 LOGGING ! ;
