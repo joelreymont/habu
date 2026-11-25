@@ -8,8 +8,8 @@ split-str
 \ The image offsets are ELF64 format facts: IMAGE-TEXT-SIZE-OFF is the first
 \ program header's p_filesz (64-byte header, then type, flags, offset, vaddr and
 \ paddr). DATA-VA is a Linux fixed mapping, not an architecture
-\ fact: 13 GiB is as free above a non-PIE image at $400000 and its brk on x86_64
-\ as it is on aarch64.
+\ fact: 13 GiB is as free above a non-PIE image at $400000 on x86_64 as it is
+\ on aarch64.
 \
 \ DATA is one lazy anonymous reservation of DATA-SIZE bytes at DATA-VA, taken by
 \ the boot before Habu code runs, charged only for the pages it touches and
@@ -27,6 +27,10 @@ split-str
 \ 36-bit arm64 address space ends inside it, and a 39-bit kernel in the legacy
 \ bottom-up layout (vm.legacy_va_layout=1, setarch -L or an unlimited stack)
 \ maps the loader and libraries from TASK_SIZE/4 = 128 GiB up, inside it.
+\
+\ The image's carrier, the read-write load that holds DATA's initial pages,
+\ loads at CARRIER-VA, just past the window, so no mapping bounds its size; the
+\ kernel starts the brk heap after it.
 
 package LINUX-LAYOUT
 public
@@ -35,6 +39,7 @@ $1000 constant IMAGE-TEXT-CONTENT-ADJ
 0 constant IMAGE-TEXT-TRAILER-ADJ
 $340000000 constant DATA-VA
 $4000000000 constant DATA-SIZE
+DATA-VA DATA-SIZE + constant CARRIER-VA
 $1000 constant CODE-OFF
 $400000 constant IMAGE-VA
 ;package

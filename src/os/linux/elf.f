@@ -9,10 +9,10 @@ split-str
 \ brk heap starts above it and nothing mapped before entry takes its range, and
 \ the boot maps the region's views over it.
 \
-\ The carrier is a read-write PT_LOAD at the image's base plus CARRIER-OFF,
-\ past the code region and below DATA-VA, that holds DATA's initial pages for
-\ the boot to move into the window. Its bytes end the file, from the
-\ PAGE-BYTES boundary after the read-write tail.
+\ The carrier is a read-write PT_LOAD at LINUX-LAYOUT:CARRIER-VA, past the DATA
+\ window, that holds DATA's initial pages for the boot to move into the window.
+\ Its bytes end the file, from the PAGE-BYTES boundary after the read-write
+\ tail.
 \
 \ OPEN reads the extents of such an executable: the ELF header, its six
 \ program headers (the text's PT_LOAD, the read-write tail's PT_LOAD, PT_INTERP,
@@ -212,7 +212,7 @@ private
    PT-LOAD PF-RW 0 REGION-OFF ELF-VA 0 REGION X64 @ PAGE-BYTES ELF-PHDR, ;
 
 : ELF-CARRIER-PHDR, ( -- )
-   PT-LOAD PF-RW ELF-CARRIER-AT CARRIER-OFF ELF-VA CARRIER-N @ dup
+   PT-LOAD PF-RW ELF-CARRIER-AT LINUX-LAYOUT:CARRIER-VA VA>N CARRIER-N @ dup
    X64 @ PAGE-BYTES ELF-PHDR, ;
 
 \ The loads ascend by address: text, read-write tail, code region, carrier.
@@ -306,13 +306,9 @@ private
    ELF-CARRIER-AT M-OFF M-PAD-OFF
    CARRIER-A @ CARRIER-N @ M-BYTES ;
 
-\ The checks come first: the buffer holds the carrier, which they bound.
 : BUILD-ELF ( -- )
    TEXTSZ ELF-RW-SZ + REGION-OFF > if
       s" elf: the text overlaps the runtime code region" EXIT-STATUS:IMAGE die
-   then
-   VMBASE @ CARRIER-OFF + CARRIER-N @ + LINUX-LAYOUT:DATA-VA > if
-      s" elf: the DATA carrier passes DATA-VA" EXIT-STATUS:IMAGE die
    then
    ELF-TABLES-END LINUX-LAYOUT:CODE-OFF > if
       SB-RESET  s" elf: " SB-APPEND  IMPORT-NAMES:COUNT FMT:SB-U
@@ -449,11 +445,11 @@ private
    s" elf: a program header the linker does not write" CHECK
    off DYN-HDR UNIQUE! ;
 
-\ The carrier is the read-write load at CARRIER-OFF; of the others the code
+\ The carrier is the read-write load at CARRIER-VA; of the others the code
 \ region's holds no file bytes.
 : RW-PHDR ( n -- ) {: off:n :}
    off RW-LOAD? 0= if exit then
-   off P-VA RX-VA - CARRIER-OFF = if off CARRIER-HDR UNIQUE! exit then
+   off P-VA LINUX-LAYOUT:CARRIER-VA VA>N = if off CARRIER-HDR UNIQUE! exit then
    off  off P-FILESZ 0= if REGION-HDR else RW-HDR then  UNIQUE! ;
 
 : PHDR-AT ( n -- n ) ELF-PHDR-SZ * 32 U64@ + ;
