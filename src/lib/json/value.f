@@ -19,9 +19,9 @@ split-str
 \ container's start on a stack that grows with its depth, so a walk of any
 \ depth takes constant machine stack.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the text a value borrows and
-\ the vector APPEND-STRING grows. The cursor record and AT's decoded token
-\ live in MEM scopes, the cursor's depth mapping in a mapping of its own, and
-\ the key storage, WALK's stack of starts and WITH-STRING's decoded text on
+\ the vector APPEND-STRING grows. The cursor record lives in a MEM scope,
+\ the cursor's depth mapping in a mapping of its own, and the key storage,
+\ WALK's stack of starts, WITH-STRING's decoded text and AT's decoded token on
 \ the heap, all released on return or throw. No module state.
 
 require src/lib/memory.f
@@ -53,23 +53,21 @@ private
    state doc at len + INIT-STATE
    at state CURSOR-POS ! ;
 
-: RUN-BODY ( R ^cursor ^u8 [ R ^cursor ^u8 -- S ] -- S )
+: RUN-BODY ( R ^cursor [ R ^cursor -- S ] -- S )
    execute ;
 
 \ WITH-RECORD zero-fills the record, so it owns no mapping until it grows one.
-: CURSOR-SCOPE ( R ^cursor ^u8 value [ R ^cursor ^u8 -- S ] -- S )
-   {: state:^ base:^ v body :}
+: CURSOR-SCOPE ( R ^cursor value [ R ^cursor -- S ] -- S )
+   {: state:^ v body :}
    state v OPEN-AT
-   state base body
+   state body
    [: RUN-BODY ;] [: state MORE-RELEASE ;] finally ;
 
-\ Runs body on a cursor at the value's first byte and n bytes of
-\ zero-filled scratch, both released on return or throw.
-: WITH-CURSOR ( R value n [ R ^cursor ^u8 -- S ] -- S )
-   {: v extra:n body :}
-   [type] cursor
-   [: extra MEM:BYTES-ALLOC-LEN [: drop v body CURSOR-SCOPE ;] MEM:WITH-BYTES ;]
-   MEM:WITH-RECORD ;
+\ Runs body on a cursor at the value's first byte, released on return or
+\ throw.
+: WITH-CURSOR ( R value [ R ^cursor -- S ] -- S )
+   {: v body :}
+   [type] cursor [: v body CURSOR-SCOPE ;] MEM:WITH-RECORD ;
 
 \ Pushes k as the lo of an object opened inside m others.
 : OPEN-OBJECT ( ^keys n -- n ) {: keys:^ m:n :}
@@ -121,8 +119,8 @@ public
 \ member name, decoded, throws E-MEMBER at the repeat earliest in the text.
 : PARSE ( str -- value ) {: text:^ u:n :}
    text u REQUIRE-SOURCE
-   text 0 u VALUE-MAKE 0
-   [: drop [: CHECK-KEYS ;] WITH-KEYS ;] WITH-CURSOR
+   text 0 u VALUE-MAKE
+   [: [: CHECK-KEYS ;] WITH-KEYS ;] WITH-CURSOR
    text u TRIMMED ;
 
 : TEXT$ ( value -- str )
@@ -286,23 +284,23 @@ private
 public
 
 : EACH ( R value [ R value -- R ] -- R ) {: v body :}
-   v 0 [: drop s" walk only an array with JSON:EACH"
+   v [: s" walk only an array with JSON:EACH"
       [: body execute true ;] ELEMENTS ;] WITH-CURSOR ;
 
 \ The name is the key as written, a string value.
 : EACH-MEMBER ( R value [ R value value -- R ] -- R )
    {: v body :}
-   v 0 [: drop s" walk only an object with JSON:EACH-MEMBER"
+   v [: s" walk only an object with JSON:EACH-MEMBER"
       [: body execute true ;] MEMBERS ;] WITH-CURSOR ;
 
 : EACH-WHILE ( R value [ R value -- R bool ] -- R )
    {: v body :}
-   v 0 [: drop s" walk only an array with JSON:EACH-WHILE" body ELEMENTS ;]
+   v [: s" walk only an array with JSON:EACH-WHILE" body ELEMENTS ;]
    WITH-CURSOR ;
 
 : EACH-MEMBER-WHILE ( R value [ R value value -- R bool ] -- R )
    {: v body :}
-   v 0 [: drop s" walk only an object with JSON:EACH-MEMBER-WHILE" body MEMBERS ;]
+   v [: s" walk only an object with JSON:EACH-MEMBER-WHILE" body MEMBERS ;]
    WITH-CURSOR ;
 
 \ An event WALK gives. A name is the member's name as written, a string value;
@@ -352,7 +350,7 @@ public
 \ close after them. It stops after the event the body answers false.
 : WALK ( R value [ R event -- R bool ] -- R ) {: v body :}
    HEAP:ALLOCATOR 0 [type] n VEC:NEW {: starts:^ :}
-   [: v 0 [: drop starts body EVENTS ;] WITH-CURSOR ;]
+   [: v [: starts body EVENTS ;] WITH-CURSOR ;]
    [: starts VEC:DELETE ;] finally ;
 
 private
@@ -386,9 +384,9 @@ private
    state name u FIND-INNER 0= if OPTION:NONE exit then
    state TOKEN-VALUE OPTION:SOME ;
 
-: POINTED ( ^cursor str ^u8 -- option<value> )
-   {: state:^ p:^ u:n room:^ :}
-   state p u room SEEK {: at:n len:n found:bool :}
+: POINTED ( ^cursor str ^VEC:vector<u8> -- option<value> )
+   {: state:^ p:^ u:n out:^ :}
+   state p u out SEEK {: at:n len:n found:bool :}
    found 0= if OPTION:NONE exit then
    state CURSOR-SRC @ at len VALUE-MAKE OPTION:SOME ;
 
@@ -397,18 +395,20 @@ public
 \ The member of that decoded name. A value that is not an object, or an
 \ object without the member, throws E-MEMBER.
 : GET ( value str -- value ) {: v name:^ u:n :}
-   v 0 [: drop name u MEMBER-VALUE ;] WITH-CURSOR ;
+   v [: name u MEMBER-VALUE ;] WITH-CURSOR ;
 
 \ None for an object without the member; a value that is not an object
 \ throws E-MEMBER.
 : FIND ( value str -- option<value> ) {: v name:^ u:n :}
-   v 0 [: drop name u MEMBER-OPTION ;] WITH-CURSOR ;
+   v [: name u MEMBER-OPTION ;] WITH-CURSOR ;
 
 \ The value the RFC 6901 pointer names from this one, none for no such place.
 \ A pointer POINTER? rejects throws E-JSON-POINTER before anything is read.
 : AT ( value str -- option<value> ) {: v p:^ u:n :}
    p u POINTER? 0= if E-JSON-POINTER throw then
-   v u [: p u rot POINTED ;] WITH-CURSOR ;
+   HEAP:ALLOCATOR u [type] u8 VEC:NEW {: out:^ :}
+   [: v [: p u out POINTED ;] WITH-CURSOR ;]
+   [: out VEC:DELETE ;] finally ;
 
 private
 
@@ -464,7 +464,7 @@ public
    v STRING? 0= if false exit then
    v INSIDE$ 2dup ESCAPED? 0= if want len STR:= exit then
    2drop
-   v 0 [: drop want len MATCH-AT ;] WITH-CURSOR ;
+   v [: want len MATCH-AT ;] WITH-CURSOR ;
 
 \ The text is lent for the call only: the bytes inside the quotes when the
 \ string holds no escape, else its decoding in a vector of its own.
@@ -474,7 +474,7 @@ public
       2drop
    then
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: text:^ :}
-   [: v 0 [: drop text body DECODE-RUN ;] WITH-CURSOR ;]
+   [: v [: text body DECODE-RUN ;] WITH-CURSOR ;]
    [: text VEC:DELETE ;] finally ;
 
 \ Appends the string's decoded bytes after the vector's own.
@@ -483,13 +483,13 @@ public
       v INSIDE$ 2dup ESCAPED? 0= if out VEC:APPEND exit then
       2drop
    then
-   v 0 [: drop dup NEXT-STRING out DECODE-APPEND ;] WITH-CURSOR ;
+   v [: dup NEXT-STRING out DECODE-APPEND ;] WITH-CURSOR ;
 
 \ A number whose value is whole and fits a signed cell.
 : >N ( value -- n )
    {: v :}
    v WHOLE-VALUE MATCH option
-     none OF v 0 [: drop NOT-WHOLE ;] WITH-CURSOR ENDOF
+     none OF v [: NOT-WHOLE ;] WITH-CURSOR ENDOF
      some OF ENDOF
    ;MATCH ;
 
@@ -499,7 +499,7 @@ public
    v FIRST-BYTE {: b:n :}
    b CH-T = if true exit then
    b CH-F = if false exit then
-   v 0 [: drop BOOL-AT ;] WITH-CURSOR ;
+   v [: BOOL-AT ;] WITH-CURSOR ;
 
 private
 
@@ -510,6 +510,6 @@ public
 
 \ Throws E-MEMBER at the value's first byte with this expected text and fix.
 : REJECT ( value str str -- ) {: v ea:^ eu:n fa:^ fu:n :}
-   v 0 [: drop ea eu fa fu VALUE-REJECT ;] WITH-CURSOR ;
+   v [: ea eu fa fu VALUE-REJECT ;] WITH-CURSOR ;
 
 ;package

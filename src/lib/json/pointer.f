@@ -7,19 +7,21 @@ split-str
 \ decoded token names; on an array the cursor skips the elements before the
 \ index. The named value's span is taken where the cursor stands.
 \ The empty pointer names the value itself. A token, ~1 and ~0 decoded into
-\ room, names the first member of an object whose decoded name it equals (RFC
-\ 6901 leaves repeated names open), or on an array element k for 0 or a digit
-\ 1-9 then digits, when k is below its length; - and any other token, and any
-\ token on a scalar, name no place. The cursor's end bounds an index.
+\ a vector, names the first member of an object whose decoded name it equals
+\ (RFC 6901 leaves repeated names open), or on an array element k for 0 or a
+\ digit 1-9 then digits, when k is below its length; - and any other token,
+\ and any token on a scalar, name no place. The cursor's end bounds an index.
 \ POINTER-SPAN runs SEEK on a reader over the whole text, then READ-FINISH
 \ reads the rest, so a text that is not one valid JSON value throws the
 \ reader's code whatever the pointer names.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the text and the pointer.
-\ POINTER-SPAN holds its cursor and the decoded token in storage of its own,
-\ released before it answers or throws. No module state.
+\ POINTER-SPAN holds its cursor in a MEM scope and the decoded token in a heap
+\ vector, both released before it answers or throws. No module state.
 
 require src/lib/error.f
 require src/lib/memory.f
+require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/span.f
 require src/lib/string.f
 require src/lib/utf8-scalar.f
@@ -64,17 +66,19 @@ private
    c TILDE <> if c in 1+ exit then
    p in 1+ + c@ ZERO = if TILDE else SLASH then in 2 + ;
 
-: UNESCAPE-PUT ( n n ^u8 ^u8 -- n n )
-   {: in:n out:n p:^ room:^ :}
+: UNESCAPE-PUT ( n ^u8 ^VEC:vector<u8> -- n )
+   {: in:n p:^ out:^ :}
    p in UNESCAPE-STEP {: c:n next:n :}
-   c room out + c!
-   next out 1+ ;
+   c out VEC:PUSH c!
+   next ;
 
-\ Decodes token bytes from..end into room and answers their count: ~1 is a
-\ slash, ~0 a tilde, in one pass, so ~01 is a tilde then 1.
-: UNESCAPE ( ^u8 n n ^u8 -- n )
-   {: p:^ from:n end:n room:^ :}
-   from 0 begin over end < while p room UNESCAPE-PUT repeat nip ;
+\ Empties the vector, decodes token bytes from..end into it and answers them:
+\ ~1 is a slash, ~0 a tilde, in one pass, so ~01 is a tilde then 1.
+: UNESCAPE ( ^u8 n n ^VEC:vector<u8> -- str )
+   {: p:^ from:n end:n out:^ :}
+   out 0 VEC:RESIZE
+   from begin dup end < while p out UNESCAPE-PUT repeat drop
+   out VEC:BYTES ;
 
 \ Index k, digit byte c: the index with c appended, false for a byte that is
 \ not a digit or an index at or past cap.
@@ -119,42 +123,42 @@ private
 
 \ Takes the token after the slash at at; answers the offset after the token
 \ and whether it names a place.
-: TOKEN-STEP ( ^cursor n str ^u8 n -- n bool )
-   {: state:^ at:n p:^ u:n room:^ cap:n :}
+: TOKEN-STEP ( ^cursor n str ^VEC:vector<u8> n -- n bool )
+   {: state:^ at:n p:^ u:n out:^ cap:n :}
    p u at 1+ TOKEN-END {: end:n :}
-   p at 1+ end room UNESCAPE {: len:n :}
-   state room len cap DESCEND end swap ;
+   state  p at 1+ end out UNESCAPE  cap DESCEND end swap ;
 
 \ Takes every token of the pointer from the value the cursor is on; false at
 \ the first that names no place.
-: FOLLOW ( ^cursor ^u8 n ^u8 n -- bool )
-   {: state:^ p:^ u:n room:^ cap:n :}
+: FOLLOW ( ^cursor str ^VEC:vector<u8> n -- bool )
+   {: state:^ p:^ u:n out:^ cap:n :}
    0 begin dup u < while
-      state swap p u room cap TOKEN-STEP 0= if drop false exit then
+      state swap p u out cap TOKEN-STEP 0= if drop false exit then
    repeat drop true ;
 
 \ The offset and length of the value the pointer names from the value the
 \ cursor reads next, and true; 0 0 false for no such place.
-: SEEK ( ^cursor str ^u8 -- n n bool )
-   {: state:^ p:^ u:n room:^ :}
+: SEEK ( ^cursor str ^VEC:vector<u8> -- n n bool )
+   {: state:^ p:^ u:n out:^ :}
    state NEXT-INNER drop
-   state p u room state CURSOR-SRC-LEN @ FOLLOW
+   state p u out state CURSOR-SRC-LEN @ FOLLOW
    0= if 0 0 false exit then
    state ANY-SPAN-INNER {: at:^ len:n :}
    at state CURSOR-SRC @ - len true ;
 
 \ The place's offset and length in the text, and whether it is there. The
 \ reader reads the whole text on either answer.
-: LOCATE ( ^cursor str str ^u8 -- n n bool )
-   {: rec:^ text:^ tu:n p:^ u:n room:^ :}
+: LOCATE ( ^cursor str str ^VEC:vector<u8> -- n n bool )
+   {: rec:^ text:^ tu:n p:^ u:n out:^ :}
    rec text tu READ-INIT
-   READER>STATE p u room SEEK {: at:n len:n found:bool :}
+   READER>STATE p u out SEEK {: at:n len:n found:bool :}
    READ-FINISH at len found ;
 
 : LOCATE-WITH ( str str ^cursor -- n n bool )
    {: text:^ tu:n p:^ u:n rec:^ :}
-   [: rec text tu p u  u MEM:BYTES-ALLOC-LEN [: drop LOCATE ;] MEM:WITH-BYTES ;]
-   [: rec MORE-RELEASE ;] finally ;
+   HEAP:ALLOCATOR u [type] u8 VEC:NEW {: out:^ :}
+   [: [: rec text tu p u out LOCATE ;] [: rec MORE-RELEASE ;] finally ;]
+   [: out VEC:DELETE ;] finally ;
 
 public
 

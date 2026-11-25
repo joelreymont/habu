@@ -75,7 +75,7 @@ public
 : COPY-VALUE ( JSON:value ^JSON:writer -- ^JSON:writer )
    {: v w :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: text:^ :}
-   [: w v 0 [: drop text COPY-WALK ;] WITH-CURSOR ;]
+   [: w v [: text COPY-WALK ;] WITH-CURSOR ;]
    [: text VEC:DELETE ;] finally ;
 
 ;package
