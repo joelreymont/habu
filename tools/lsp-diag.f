@@ -1,4 +1,3 @@
-split-str
 \ lsp-diag.f - the checker's packets (tools/check-verify-core.f schema-1 JSON,
 \ one per line, each naming its file by canonical absolute path) published as LSP
 \ diagnostics for the checked document and each other file they name. A line
@@ -58,8 +57,8 @@ variable ITEMS                           \ and the diagnostics in it so far
 : FILE$ ( -- str )  FILE-B @ VEC:BYTES ;
 
 : ERR ( str -- )
-   {: a:^ u:n :}
-   FD:STDERR a u FD:WRITE-FULL ;
+   {: s:str :}
+   FD:STDERR s FD:WRITE-FULL ;
 
 \ ---- packets -------------------------------------------------------------------
 
@@ -67,26 +66,26 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ string file; any line that is not one JSON value throws.
 : SCAN ( -- )
    FILE-B @ 0 VEC:RESIZE
-   JSON-ST LINE-A @ LINE-U @ READ-INIT
+   JSON-ST LINE-A @ LINE-U @ >str READ-INIT
    READ-NEXT T-OBJ <> if READ-CLOSE exit then
    s" file" READ-FIND-KEY 0= if READ-CLOSE exit then
    READ-TOKEN T-STR <> if READ-CLOSE exit then
-   FILE-B @ READ-STR 2drop
+   FILE-B @ READ-STR drop
    READ-FINISH ;
 
 \ Whether the line is a diagnostic: an object whose file names an absolute
 \ path, which FILE$ then holds.
 : SCREENED ( str -- bool )
-   {: a:^ u:n :}
-   a LINE-A !
-   u LINE-U !
+   {: s:str :}
+   s STR:DATA LINE-A !
+   s STR:LEN LINE-U !
    [: SCAN ;] catch {: code:n :}
    code 0<> if
       code JSON:INPUT-FAULT? 0= if code throw then
       FILE-B @ 0 VEC:RESIZE
    then
-   FILE$ {: f:^ fu:n :}
-   fu 0 > if f c@ SLASH = exit then
+   FILE$ {: f:str :}
+   f STR:LEN 0 > if f STR:DATA c@ SLASH = exit then
    false ;
 
 \ ---- diagnostics ---------------------------------------------------------------
@@ -102,37 +101,37 @@ variable ITEMS                           \ and the diagnostics in it so far
 : QUOTE ( ^JSON:writer -- ^JSON:writer )  s\" \"" WRITE-RAW ;
 
 : QUOTED ( ^JSON:writer str -- ^JSON:writer )
-   {: a:^ u:n :}
-   QUOTE a u WRITE-RAW QUOTE ;
+   {: s:str :}
+   QUOTE s WRITE-RAW QUOTE ;
 
 : SEVERITY ( ^JSON:writer str -- ^JSON:writer )
-   s" severity" STRING-MEMBER 0= if 2drop exit then
-   {: v:^ vu:n :}
-   v vu s" error" STR:= if WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit then
-   v vu s" warning" STR:= if WRITE-COMMA s" severity" WARNING-SEVERITY WRITE-FIELD-U then ;
+   s" severity" STRING-MEMBER 0= if drop exit then
+   {: v:str :}
+   v s" error" STR:= if WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit then
+   v s" warning" STR:= if WRITE-COMMA s" severity" WARNING-SEVERITY WRITE-FIELD-U then ;
 
 : CODE-FIELD ( ^JSON:writer str -- ^JSON:writer )
-   s" code" STRING-MEMBER 0= if 2drop exit then
-   {: c:^ cu:n :}
-   WRITE-COMMA s" code" WRITE-KEY c cu QUOTED ;
+   s" code" STRING-MEMBER 0= if drop exit then
+   {: c:str :}
+   WRITE-COMMA s" code" WRITE-KEY c QUOTED ;
 
 : HELP-LINE ( ^JSON:writer str -- ^JSON:writer )
-   s" help" STRING-MEMBER over 0 > and 0= if 2drop exit then
-   {: s:^ su:n :}
-   s" \nhelp: " WRITE-RAW s su WRITE-RAW ;
+   s" help" STRING-MEMBER over STR:LEN 0 > and 0= if drop exit then
+   {: s:str :}
+   s" \nhelp: " WRITE-RAW s WRITE-RAW ;
 
 \ A note with a string value as its line; any other value is passed over.
 : NOTE-LINE ( JSON:reader ^JSON:writer -- JSON:reader )
    {: w :}
-   READ-SPAN$ {: k:^ ku:n :}
+   READ-SPAN$ {: k:str :}
    READ-NEXT T-STR <> if READ-SKIP-VALUE exit then
-   READ-SPAN$ {: v:^ vu:n :}
-   w s" \n" WRITE-RAW k ku WRITE-RAW s" : " WRITE-RAW
-   v vu WRITE-RAW drop ;
+   READ-SPAN$ {: v:str :}
+   w s" \n" WRITE-RAW k WRITE-RAW s" : " WRITE-RAW
+   v WRITE-RAW drop ;
 
 : NOTES ( ^JSON:writer str -- ^JSON:writer )
-   {: w a:^ u:n :}
-   JSON-ST a u READ-INIT
+   {: w s:str :}
+   JSON-ST s READ-INIT
    READ-NEXT drop
    s" notes" READ-FIND-KEY 0= if READ-CLOSE w exit then
    READ-TOKEN T-OBJ <> if READ-CLOSE w exit then
@@ -140,35 +139,35 @@ variable ITEMS                           \ and the diagnostics in it so far
    READ-CLOSE w ;
 
 : EVALUATED-LINE ( ^JSON:writer str -- ^JSON:writer )
-   {: w a:^ u:n :}
-   JSON-ST a u READ-INIT
+   {: w s:str :}
+   JSON-ST s READ-INIT
    READ-NEXT drop
    s" evaluated" READ-FIND-KEY 0= if READ-CLOSE w exit then
    READ-TOKEN T-OBJ <> if READ-CLOSE w exit then
    s" source_line" READ-FIND-KEY 0= if READ-CLOSE w exit then
    READ-TOKEN T-STR <> if READ-CLOSE w exit then
-   READ-SPAN$ {: v:^ vu:n :}
+   READ-SPAN$ {: v:str :}
    READ-CLOSE
-   w s" \nevaluated: " WRITE-RAW v vu WRITE-RAW ;
+   w s" \nevaluated: " WRITE-RAW v WRITE-RAW ;
 
 : MESSAGE ( ^JSON:writer str -- ^JSON:writer )
-   {: a:^ u:n :}
+   {: s:str :}
    QUOTE
-   a u s" message" STRING-MEMBER if WRITE-RAW else 2drop then
-   a u EVALUATED-LINE
-   a u NOTES
-   a u HELP-LINE
+   s s" message" STRING-MEMBER if WRITE-RAW else drop then
+   s EVALUATED-LINE
+   s NOTES
+   s HELP-LINE
    QUOTE ;
 
 : DIAGNOSTIC ( ^JSON:writer str -- ^JSON:writer )
-   {: a:^ u:n :}
+   {: s:str :}
    WRITE-OBJECT-START
-   a u RANGE
-   a u SEVERITY
-   a u CODE-FIELD
+   s RANGE
+   s SEVERITY
+   s CODE-FIELD
    WRITE-COMMA s" source" s" habu" WRITE-FIELD-S
-   WRITE-COMMA s" message" WRITE-KEY a u MESSAGE
-   WRITE-COMMA s" data" a u WRITE-FIELD-RAW
+   WRITE-COMMA s" message" WRITE-KEY s MESSAGE
+   WRITE-COMMA s" data" s WRITE-FIELD-RAW
    WRITE-OBJECT-END ;
 
 \ ---- lists ---------------------------------------------------------------------
@@ -176,11 +175,11 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ A publishDiagnostics notification begun for the URI, with the version when
 \ there is one, up to its diagnostics' opening bracket.
 : OPENING ( str option<n> -- ^JSON:writer )
-   {: u:^ uu:n v :}
+   {: u:str v :}
    W PUB-OUT @ JSON:OPEN
    s" textDocument/publishDiagnostics" NOTIFY
    WRITE-OBJECT-START
-   s" uri" u uu WRITE-FIELD-S WRITE-COMMA
+   s" uri" u WRITE-FIELD-S WRITE-COMMA
    v MATCH option
       some OF >r s" version" r> WRITE-FIELD-INT WRITE-COMMA ENDOF
       none OF ENDOF
@@ -190,16 +189,16 @@ variable ITEMS                           \ and the diagnostics in it so far
 : CLOSING ( ^JSON:writer -- )
    WRITE-ARRAY-END WRITE-OBJECT-END END
    {: w :}
-   w WRITTEN$ {: a:^ u:n :}
+   w WRITTEN$ {: s:str :}
    w JSON:CLOSE
-   FD:STDOUT a u CONTENT-LENGTH:SEND ;
+   FD:STDOUT s CONTENT-LENGTH:SEND ;
 
 : ITEM ( str -- )
-   {: a:^ u:n :}
-   a u SCREENED 0= if exit then
-   FILE$ LIST-A @ LIST-U @ STR:= 0= if exit then
+   {: s:str :}
+   s SCREENED 0= if exit then
+   FILE$ LIST-A @ LIST-U @ >str STR:= 0= if exit then
    ITEMS @ 0 > if W WRITE-COMMA drop then
-   W a u DIAGNOSTIC drop
+   W s DIAGNOSTIC drop
    1 ITEMS +! ;
 
 \ The list for the file in LIST-A, its positions counted in the text TEXT!
@@ -207,12 +206,12 @@ variable ITEMS                           \ and the diagnostics in it so far
 : LIST ( str option<n> -- )
    OPENING drop
    0 ITEMS !
-   PKTS-A @ PKTS-U @ [: ITEM ;] EACH-LINE
+   PKTS-A @ PKTS-U @ >str [: ITEM ;] EACH-LINE
    W CLOSING ;
 
 : LIST-URI ( -- str )
-   LIST-A @ LIST-U @ URI-SPAN URI:PATH>FILE {: n:n :}
-   URI-SPAN SPAN:$ drop n ;
+   LIST-A @ LIST-U @ >str URI-SPAN URI:PATH>FILE {: n:n :}
+   URI-SPAN SPAN:$ STR:DATA n >str ;
 
 \ ---- the files besides the document ---------------------------------------------
 \ The document's own list always goes out, with its version, empty when no packet
@@ -239,40 +238,40 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ Whether another open document's last check published a list for this path;
 \ each such document waits for a check again.
 : CLAIMED? ( str -- bool )
-   {: f:^ fu:n :}
+   {: f:str :}
    false
    DOC-SLOTS 0 ?do
       i SELF @ <> i DOC-LIVE? and if
-         i DOC-DEPS$ f fu HAS-LINE? if i DOC-DIRTY drop true then
+         i DOC-DEPS$ f HAS-LINE? if i DOC-DIRTY drop true then
       then
    loop ;
 
 \ Appends the path, LF-ended, to the files published; answers that copy, which
 \ outlives FILE-B's bytes.
 : KEEP-NEW ( str -- str )
-   {: f:^ fu:n :}
-   NEW$ nip {: at:n :}
-   f fu NEW-B @ VEC:APPEND
+   {: f:str :}
+   NEW$ STR:LEN {: at:n :}
+   f NEW-B @ VEC:APPEND
    s\" \n" NEW-B @ VEC:APPEND
-   NEW$ drop at + fu ;
+   NEW$ STR:DATA at + f STR:LEN >str ;
 
 : DEP ( str -- )
-   {: a:^ u:n :}
-   a u SCREENED 0= if s" lsp: " ERR a u ERR s\" \n" ERR exit then
+   {: s:str :}
+   s SCREENED 0= if s" lsp: " ERR s ERR s\" \n" ERR exit then
    FILE$ SELF @ DOC-CANON$ STR:= if exit then
    NEW$ FILE$ HAS-LINE? if exit then
    FILE$ HELD-OPEN? if exit then
-   FILE$ KEEP-NEW LIST-U ! LIST-A !
-   LIST-A @ LIST-U @ FILE-SNAPSHOT!
+   FILE$ KEEP-NEW dup STR:LEN LIST-U ! STR:DATA LIST-A !
+   LIST-A @ LIST-U @ >str FILE-SNAPSHOT!
    LIST-URI OPTION:NONE LIST ;
 
 : WITHDRAW ( str -- )
-   {: f:^ fu:n :}
-   NEW$ f fu HAS-LINE? if exit then
-   f fu SHOWN? if exit then
-   f fu CLAIMED? if exit then
-   f LIST-A !
-   fu LIST-U !
+   {: f:str :}
+   NEW$ f HAS-LINE? if exit then
+   f SHOWN? if exit then
+   f CLAIMED? if exit then
+   f STR:DATA LIST-A !
+   f STR:LEN LIST-U !
    LIST-URI OPTION:NONE OPENING CLOSING ;
 
 public
@@ -284,15 +283,15 @@ public
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW NEW-B ! ;
 
 : PUBLISH ( n str -- )
-   {: slot:n p:^ pu:n :}
-   p PKTS-A !
-   pu PKTS-U !
+   {: slot:n p:str :}
+   p STR:DATA PKTS-A !
+   p STR:LEN PKTS-U !
    slot SELF !
    NEW-B @ 0 VEC:RESIZE
-   slot DOC-CANON$ LIST-U ! LIST-A !
+   slot DOC-CANON$ dup STR:LEN LIST-U ! STR:DATA LIST-A !
    slot DOC-TEXT$ TEXT!
    slot DOC-URI$ slot DOC-VERSION@ OPTION:SOME LIST
-   p pu [: DEP ;] EACH-LINE
+   p [: DEP ;] EACH-LINE
    slot DOC-DEPS$ [: WITHDRAW ;] EACH-LINE
    NEW$ slot DOC-DEPS! ;
 

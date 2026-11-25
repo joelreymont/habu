@@ -1,4 +1,3 @@
-split-str
 \ lsp-references.f - textDocument/references for source declarations and built-in words: SELECT
 \ takes the declaration a position of open document D selects and gathers every use that
 \ completed checks of the files whose loads reach its file bound.
@@ -194,9 +193,9 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
 
 : POOL$ ( n n -- str )
    {: at:n u:n :}
-   at POOL u ;
+   at POOL u >str ;
 
-: P$ ( -- str )  0 P-B P-U @ ;
+: P$ ( -- str )  0 P-B P-U @ >str ;
 : NAME$ ( -- str )  NAME-AT @ NAME-U @ POOL$ ;
 : PKG$ ( -- str )  PKG-AT @ PKG-U @ POOL$ ;
 : D$ ( -- str )  D-AT @ D-U @ POOL$ ;
@@ -214,21 +213,21 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
 \ The bytes appended to POOL: their offset there. They never lie in POOL,
 \ which the append may move.
 : POOL+ ( str -- n )
-   {: a:^ u:n :}
+   {: s:str :}
    POOL-U @ {: at:n :}
-   at u + 1+ POOL-RESERVE
-   a at POOL u BYTE-COPY
-   u POOL-U +!
+   at s STR:LEN + 1+ POOL-RESERVE
+   s STR:DATA at POOL s STR:LEN BYTE-COPY
+   s STR:LEN POOL-U +!
    at ;
 
 : MSG+ ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    MSG-U @ {: at:n :}
-   at u + 1+ MSG-RESERVE
-   a at MSG u BYTE-COPY
-   u MSG-U +! ;
+   at s STR:LEN + 1+ MSG-RESERVE
+   s STR:DATA at MSG s STR:LEN BYTE-COPY
+   s STR:LEN MSG-U +! ;
 
-: MSG$ ( -- str )  0 MSG MSG-U @ ;
+: MSG$ ( -- str )  0 MSG MSG-U @ >str ;
 
 : SHOWN$ ( str -- str )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE ;
 
@@ -256,11 +255,11 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    true SPELT ! ;
 
 : REFUSE ( str str -- )
-   {: p:^ pu:n w:^ wu:n :}
+   {: p:str w:str :}
    0 MSG-U !
-   p pu SHOWN$ MSG+
+   p SHOWN$ MSG+
    s" : " MSG+
-   w wu MSG+
+   w MSG+
    true REFUSED !
    false FOUND ! ;
 
@@ -278,31 +277,31 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
 
 \ Neither string lies in POOL.
 : MISS+ ( str str -- )
-   {: p:^ u:n w:^ wu:n :}
-   p u POOL+ {: at:n :}
-   w wu POOL+ {: why:n :}
-   at u why wu NAMED! ;
+   {: s:str w:str :}
+   s POOL+ {: at:n :}
+   w POOL+ {: why:n :}
+   at s STR:LEN why w STR:LEN NAMED! ;
 
 \ Subject K named, for this reason, which does not lie in POOL.
 : SUBJECT-MISS+ ( n str -- )
-   {: s:n w:^ wu:n :}
+   {: s:n w:str :}
    s SUBS @ {: k:n :}
-   w wu POOL+ {: why:n :}
-   k K-PATH KNOWN@ k K-PATH-U KNOWN@ why wu NAMED! ;
+   w POOL+ {: why:n :}
+   k K-PATH KNOWN@ k K-PATH-U KNOWN@ why w STR:LEN NAMED! ;
 
 : NAMED? ( str -- bool )
-   {: a:^ u:n :}
+   {: s:str :}
    MISS-N @ 0 ?do
-      i M-PATH MISS@ i M-PATH-U MISS@ POOL$ a u STR:= if true unloop exit then
+      i M-PATH MISS@ i M-PATH-U MISS@ POOL$ s STR:= if true unloop exit then
    loop
    false ;
 
 : SPAN-IN ( n n -- str n )
    {: from:n to:n :}
-   LSP-TEXT:TEXT$ {: t:^ tu:n :}
-   from 0 max tu min {: a:n :}
-   to a max tu min {: b:n :}
-   t a + b a - a ;
+   LSP-TEXT:TEXT$ {: t:str :}
+   from 0 max t STR:LEN min {: a:n :}
+   to a max t STR:LEN min {: b:n :}
+   t STR:DATA a + b a - >str a ;
 
 public
 
@@ -312,11 +311,11 @@ public
 \ when the token is qualified, after its qualifier when the
 \ bytes after it spell the tail; else -1.
 : TAIL-FROM ( n n -- n )
-   SPAN-IN {: w:^ wu:n a:n :}
-   w wu NAME$ STR:=CI if a exit then
-   w wu QUALIFIER-AT {: at:n :}
+   SPAN-IN {: w:str a:n :}
+   w NAME$ STR:=CI if a exit then
+   w QUALIFIER-AT {: at:n :}
    at 0 < if -1 exit then
-   w at + wu at - NAME$ STR:=CI if a at + else -1 then ;
+   w STR:DATA at + w STR:LEN at - >str NAME$ STR:=CI if a at + else -1 then ;
 
 private
 
@@ -324,16 +323,16 @@ private
 \ files placed in, added when it is none of them: its index. The URI names
 \ the source text whose positions the caller supplies.
 : FILE-AT ( str str -- n )
-   {: a:^ u:n ua:^ uu:n :}
+   {: s:str us:str :}
    FILE-N @ 0 ?do
-      i FILE$ a u STR:= if i unloop exit then
+      i FILE$ s STR:= if i unloop exit then
    loop
    FILE-N @ {: f:n :}
    f 1+ FILE-CELLS * FILES-RESERVE
-   a u POOL+ f F-PATH FILE!
-   u f F-PATH-U FILE!
-   ua uu POOL+ f F-URI FILE!
-   uu f F-URI-U FILE!
+   s POOL+ f F-PATH FILE!
+   s STR:LEN f F-PATH-U FILE!
+   us POOL+ f F-URI FILE!
+   us STR:LEN f F-URI-U FILE!
    0 f F-AGAIN FILE!
    f 1+ FILE-N !
    f ;
@@ -371,21 +370,21 @@ private
 \ The first of known files LOW to HIGH, HIGH excluded, in BY-PATH's order,
 \ whose path does not come before path A.
 : KNOWN-FROM ( str n n -- n )
-   {: a:^ u:n low:n high:n :}
+   {: s:str low:n high:n :}
    low high >= if low exit then
    low high low - 2 / + {: mid:n :}
-   mid BY-PATH @ KNOWN$ a u LSP-WORKSPACE:PATH<
-   if a u mid 1+ high else a u low mid then
+   mid BY-PATH @ KNOWN$ s LSP-WORKSPACE:PATH<
+   if s mid 1+ high else s low mid then
    recurse ;
 
 \ The file at this canonical path, which does not lie in POOL, known, AT-th
 \ in BY-PATH's order: its index.
 : KNOWN+ ( str n -- n )
-   {: a:^ u:n at:n :}
+   {: s:str at:n :}
    KNOWN-N @ {: k:n :}
    k 1+ KNOWN-CELLS * KNOWN-RESERVE
-   a u POOL+ k K-PATH KNOWN!
-   u k K-PATH-U KNOWN!
+   s POOL+ k K-PATH KNOWN!
+   s STR:LEN k K-PATH-U KNOWN!
    -1 k K-SUB KNOWN!
    0 k K-READ KNOWN!
    0 k K-CONSUMED KNOWN!
@@ -398,12 +397,12 @@ private
 \ The known file at this canonical path, which does not lie in POOL, known
 \ when it is not yet: its index.
 : KNOWN-AT ( str -- n )
-   {: a:^ u:n :}
-   a u 0 KNOWN-N @ KNOWN-FROM {: at:n :}
+   {: s:str :}
+   s 0 KNOWN-N @ KNOWN-FROM {: at:n :}
    at KNOWN-N @ < if
-      at BY-PATH @ KNOWN$ a u STR:= if at BY-PATH @ exit then
+      at BY-PATH @ KNOWN$ s STR:= if at BY-PATH @ exit then
    then
-   a u at KNOWN+ ;
+   s at KNOWN+ ;
 
 : READ! ( n n -- )
    {: k:n by:n :}
@@ -439,8 +438,8 @@ private
 \ ---- the declaration -----------------------------------------------------------
 
 : KEY? ( str str n -- bool )
-   {: w:^ wu:n k:^ ku:n v:n :}
-   w wu NAME$ STR:=  k ku PKG$ STR:= and  v KEY-VIS @ = and ;
+   {: w:str k:str v:n :}
+   w NAME$ STR:=  k PKG$ STR:= and  v KEY-VIS @ = and ;
 
 : DECL-KEY? ( n -- bool )
    {: d:n :}
@@ -463,10 +462,10 @@ private
    u USE-GROUP g = if u USE-TARGET TOKEN? else false then ;
 
 : P-PATH! ( str -- )
-   {: a:^ u:n :}
-   u 1+ P-B-RESERVE
-   a 0 P-B u BYTE-COPY
-   u P-U ! ;
+   {: s:str :}
+   s STR:LEN 1+ P-B-RESERVE
+   s STR:DATA 0 P-B s STR:LEN BYTE-COPY
+   s STR:LEN P-U ! ;
 
 : P! ( n -- )
    {: g:n :}
@@ -474,28 +473,28 @@ private
    g GROUP-PATH$ P-PATH! ;
 
 : NAME! ( str str -- )
-   {: w:^ wu:n k:^ ku:n :}
-   w wu POOL+ NAME-AT !
-   wu NAME-U !
-   k ku POOL+ PKG-AT !
-   ku PKG-U ! ;
+   {: w:str k:str :}
+   w POOL+ NAME-AT !
+   w STR:LEN NAME-U !
+   k POOL+ PKG-AT !
+   k STR:LEN PKG-U ! ;
 
 : TEXT-OF! ( str -- )
-   {: a:^ u:n :}
-   a u DOC-HOLDING MATCH option
+   {: s:str :}
+   s DOC-HOLDING MATCH option
       some OF DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
-      none OF a u LSP-TEXT:FILE-TEXT! ENDOF
+      none OF s LSP-TEXT:FILE-TEXT! ENDOF
    ;MATCH ;
 
 \ The engine image records source paths relative to its source root.
 : ENGINE-PATH! ( str -- )
-   {: rel:^ relu:n :}
-   SOURCE-ROOT:ENGINE$ {: root:^ rootu:n :}
-   rootu relu + 2 + P-B-RESERVE
-   root 0 P-B rootu BYTE-COPY
-   47 rootu P-B c!
-   rel rootu 1+ P-B relu BYTE-COPY
-   rootu relu + 1+ P-U ! ;
+   {: rel:str :}
+   SOURCE-ROOT:ENGINE$ {: root:str :}
+   root STR:LEN rel STR:LEN + 2 + P-B-RESERVE
+   root STR:DATA 0 P-B root STR:LEN BYTE-COPY
+   47 root STR:LEN P-B c!
+   rel STR:DATA root STR:LEN 1+ P-B rel STR:LEN BYTE-COPY
+   root STR:LEN rel STR:LEN + 1+ P-U ! ;
 
 \ A checked use carries the live origin's path and original span as its stable
 \ compiled-binding locator. An older packet may have an empty target end.
@@ -510,7 +509,7 @@ private
    {: sym:n found:bool :}
    found 0= if 0 false exit then
    sym ENGINE-ORIGIN:TARGET
-   {: rel:^ relu:n start:n stop:n name:^ nameu:n live:bool :}
+   {: rel:str start:n stop:n name:str live:bool :}
    live start at = and end 0= stop end = or and
    if sym true else 0 false then ;
 
@@ -519,10 +518,10 @@ private
 : FROM-BUILTIN ( n -- )
    {: sym:n :}
    sym ENGINE-ORIGIN:TARGET
-   {: rel:^ relu:n start:n stop:n name:^ nameu:n live:bool :}
+   {: rel:str start:n stop:n name:str live:bool :}
    live 0= if exit then
-   rel relu ENGINE-PATH!
-   name nameu s" " NAME!
+   rel ENGINE-PATH!
+   name s" " NAME!
    start TS ! stop TE !
    sym BUILTIN-SYM !
    true FOUND !
@@ -540,9 +539,9 @@ private
 : FROM-PRIMITIVE ( n -- )
    {: row:n :}
    row PRIM-ROW !
-   PRIM-SOURCE:ENGINE-PATH$ {: path:^ pathu:n ready:bool :}
+   PRIM-SOURCE:ENGINE-PATH$ {: path:str ready:bool :}
    ready 0= if exit then
-   path pathu P-PATH!
+   path P-PATH!
    row PRIM-SPEC:NAME$ row PRIM-SPEC:PKG$ NAME!
    true FOUND !
    false SOURCE-LOCATED !
@@ -625,8 +624,8 @@ private
 : AT-DECL ( n n -- )
    {: slot:n d:n :}
    d FROM-DECL
-   slot G @ TOKEN-WHY {: w:^ wu:n :}
-   wu 0<> if P$ w wu REFUSE then ;
+   slot G @ TOKEN-WHY {: w:str :}
+   w STR:LEN 0<> if P$ w REFUSE then ;
 
 : AT-TOKEN-IN ( n n n -- )
    {: slot:n g:n at:n :}
@@ -645,10 +644,10 @@ private
 \ A name token selects the same canonical row as a use of that word.
 : AT-PRIMITIVE-TOKEN ( n n -- )
    {: slot:n at:n :}
-   PRIM-SOURCE:ENGINE-PATH$ {: path:^ pathu:n ready:bool :}
+   PRIM-SOURCE:ENGINE-PATH$ {: path:str ready:bool :}
    ready 0= if exit then
-   slot DOC-CANON$ path pathu STR:= 0= if exit then
-   path pathu TEXT-OF!
+   slot DOC-CANON$ path STR:= 0= if exit then
+   path TEXT-OF!
    LSP-TEXT:TEXT$ at PRIM-SOURCE:MARKER-IN
    {: marker:n start:n end:n located:bool :}
    located if -2 marker - FROM-PRIMITIVE then ;
@@ -657,9 +656,9 @@ private
 \ image symbol from its declaration.
 : AT-BUILTIN-TOKEN ( n n -- )
    {: slot:n at:n :}
-   slot DOC-CANON$ {: path:^ pathu:n :}
-   path pathu TEXT-OF!
-   path pathu at LSP-TEXT:TEXT$ SOURCE-INDEX:SYMBOL-IN
+   slot DOC-CANON$ {: path:str :}
+   path TEXT-OF!
+   path at LSP-TEXT:TEXT$ SOURCE-INDEX:SYMBOL-IN
    {: sym:n found:bool :}
    found if sym FROM-BUILTIN then ;
 
@@ -699,7 +698,7 @@ private
    IMPLICIT? SOURCE-LOCATED @ 0= and if
       BUILTIN-SYM @ 0 > if s" built-in source cannot be located"
       else s" primitive source cannot be located" then
-      P$ 2swap MISS+
+      P$ swap MISS+
       exit
    then
    IMPLICIT? 0= if
@@ -710,9 +709,9 @@ private
          none OF P$ LSP-TEXT:DISK-CURRENT? 0= if P$ s" changed while locating source" REFUSE exit then ENDOF
       ;MATCH
    then
-   TS @ TE @ SPAN-IN drop {: a:^ u:n :}
-   a u POOL+ TOK-AT !
-   u TOK-U !
+   TS @ TE @ SPAN-IN drop {: s:str :}
+   s POOL+ TOK-AT !
+   s STR:LEN TOK-U !
    IMPLICIT? if P$ P$ DEP-URI$
    else G @ GROUP-PATH$ G @ GROUP-SOURCE-URI$ then
    FILE-AT TS @ TE @ LOC+
@@ -723,9 +722,9 @@ private
 \ A file whose loads the walk could not find named, unless it is P or D,
 \ whose checks say what they read.
 : UNREAD+ ( str str -- )
-   {: p:^ pu:n w:^ wu:n :}
-   p pu P$ STR:= p pu D$ STR:= or if exit then
-   p pu w wu MISS+ ;
+   {: p:str w:str :}
+   p P$ STR:= p D$ STR:= or if exit then
+   p w MISS+ ;
 
 \ P is the first subject, so that its own uses are read even when the walk
 \ gives none at its path; pass 2 gives none of them.
@@ -733,9 +732,9 @@ private
 \ an implicit word needs no load.
 : SUBJECTS! ( n -- )
    {: slot:n :}
-   slot DOC-CANON$ {: a:^ u:n :}
-   a u POOL+ D-AT !
-   u D-U !
+   slot DOC-CANON$ {: s:str :}
+   s POOL+ D-AT !
+   s STR:LEN D-U !
    IMPLICIT? if
       [: -1 swap DOC-EACH-BUT ;] LSP-WORKSPACE:ALL-SUBJECTS
       LSP-WORKSPACE:REFUSED? if
@@ -790,8 +789,8 @@ private
    {: slot:n g:n :}
    g GROUP-STAMPED? 0= if s" no consistent source revision" exit then
    g G @ GROUP-SAME? 0= if s" source revision differs" exit then
-   slot g DECL-WHY {: w:^ wu:n :}
-   wu 0<> if w wu exit then
+   slot g DECL-WHY {: w:str :}
+   w STR:LEN 0<> if w exit then
    slot g USE-WHY ;
 
 \ Whether the check of the subject in this slot, whose group for P is G,
@@ -830,8 +829,8 @@ private
    s"  at line " MSG+
    SB-RESET LOC-N @ 1- L-LINE LOC@ 1+ FMT:SB-INT SB$ MSG+
    s"  also declares " MSG+
-   d DECL-PACKAGE$ {: k:^ ku:n :}
-   ku 0<> if k ku MSG+ s" :" MSG+ then
+   d DECL-PACKAGE$ {: k:str :}
+   k STR:LEN 0<> if k MSG+ s" :" MSG+ then
    d DECL-NAME$ MSG+
    s" , whose uses a rename would not edit" MSG+
    MSG$ POOL+ RX-AT !
@@ -897,8 +896,8 @@ private
 
 : CONTRIBUTED ( n -- )
    {: g:n :}
-   PROBE g WHY {: w:^ wu:n :}
-   wu 0<> if BY-VERIFIED PROBE-READS CUR @ w wu SUBJECT-MISS+ exit then
+   PROBE g WHY {: w:str :}
+   w STR:LEN 0<> if BY-VERIFIED PROBE-READS CUR @ w SUBJECT-MISS+ exit then
    BY-PLACING PROBE-READS
    g PLACED
    PROBE g OTHER-VISIT? if DECL-CONFLICT then ;
@@ -910,13 +909,13 @@ private
 \ The subject being gathered held for SETTLE with its check's verdict, which
 \ does not lie in POOL.
 : PENDING+ ( str -- )
-   {: w:^ wu:n :}
-   w wu POOL+ {: why:n :}
+   {: w:str :}
+   w POOL+ {: why:n :}
    PENDING-N @ {: k:n :}
    k 1+ PENDING-CELLS * PENDING-RESERVE
    CUR @ k X-SUB PENDING!
    why k X-WHY PENDING!
-   wu k X-WHY-U PENDING!
+   w STR:LEN k X-WHY-U PENDING!
    k 1+ PENDING-N ! ;
 
 \ A check that read no P has no matching bindings, but may report uses of
@@ -943,15 +942,15 @@ private
    1+ SRC-RESERVE 0 SRC ;
 
 : READ-SRC ( str -- str )
-   {: path:^ pathu:n :}
-   path pathu FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}
-   path pathu [: SRC-ROOM ;] SOURCE:READ-WHOLE-FILE SRC-U !
-   path pathu FS:FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
+   {: path:str :}
+   path FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}
+   path [: SRC-ROOM ;] SOURCE:READ-WHOLE-FILE SRC-U !
+   path FS:FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
    size after = msec amsec = and mns amns = and
    csec acsec = and cns acns = and 0= if VERIFY:E-SOURCE-READ throw then
    size SRC-SIZE ! msec SRC-MSEC ! mns SRC-MNS !
    csec SRC-CSEC ! cns SRC-CNS !
-   path pathu ;
+   path ;
 
 : SRC-STAMP! ( -- )
    CUR$ SRC-SIZE @ SRC-MSEC @ SRC-MNS @ SRC-CSEC @ SRC-CNS @
@@ -962,11 +961,11 @@ private
    1 BATCH-N +! ;
 
 : FROM-TEXT ( str n -- )
-   {: a:^ u:n owner:n :}
-   a u CUR$ NAME$ owner [: CONTRIBUTE ;] LSP-CHECK:USES ;
+   {: s:str owner:n :}
+   s CUR$ NAME$ owner [: CONTRIBUTE ;] LSP-CHECK:USES ;
 
 : FROM-DISK ( -- )
-   CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
+   CUR$ [: READ-SRC ;] catch {: code:n :} drop
    code 0<> if
       code VERIFY:E-SOURCE-READ =  code E-FS-CHANGED =  or if
          CUR @ s" changed while read" SUBJECT-MISS+ exit
@@ -975,7 +974,7 @@ private
       CUR @ s" cannot be read" SUBJECT-MISS+ exit
    then
    SRC-STAMP!
-   0 SRC SRC-U @ -1 FROM-TEXT ;
+   0 SRC SRC-U @ >str -1 FROM-TEXT ;
 
 \ Pending subject K named by its check's verdict, unless a check whose uses
 \ are placed read its file, or any verified check did when pass 2 gave it: that
@@ -1137,10 +1136,10 @@ public
 \ A queued edit to a subject or to a file a completed probe read can change
 \ the answer being gathered. Other open documents do not affect this request.
 : TOUCHES? ( str -- bool )
-   {: path:^ pathu:n :}
+   {: path:str :}
    KNOWN-N @ 0 ?do
       i K-SUB KNOWN@ 0 >= i K-CONSUMED KNOWN@ 0 > or if
-         i KNOWN$ path pathu STR:= if true unloop exit then
+         i KNOWN$ path STR:= if true unloop exit then
       then
    loop
    false ;
@@ -1173,19 +1172,19 @@ public
    at 1+ lane WAVE-N ! ;
 
 : WAVE-TEXT ( str n -- )
-   {: a:^ u:n owner:n :}
-   a u BATCH-TEXT
+   {: s:str owner:n :}
+   s BATCH-TEXT
    BATCH-N @ 1- WAVE-ENTRY
    WAVE-LANE @ REF-CHUNK * WAVE-LANE @ WAVE-N @ 1- + {: entry:n :}
    owner entry WAVE-OWNER ! ;
 
 : WAVE-DISK ( -- )
-   CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
+   CUR$ [: READ-SRC ;] catch {: code:n :} drop
    code 0<> if
       code VERIFY:E-SOURCE-READ <> code LSP-TEXT:FS-RC? 0= and if code throw then
       -1 WAVE-ENTRY exit
    then
-   0 SRC SRC-U @ -1 WAVE-TEXT
+   0 SRC SRC-U @ >str -1 WAVE-TEXT
    WAVE-LANE @ REF-CHUNK * WAVE-LANE @ WAVE-N @ 1- + {: entry:n :}
    1 entry WAVE-DISK? !
    entry 5 * {: at:n :}
@@ -1291,11 +1290,11 @@ public
    MSG$ ;
 
 : WARNING ( ^JSON:writer -- ^JSON:writer )
-   s" References may be incomplete" UNCOVERED$ {: m:^ mu:n :}
+   s" References may be incomplete" UNCOVERED$ {: m:str :}
    s" window/showMessage" JSON-RPC:NOTIFY
    WRITE-OBJECT-START
    s" type" WARNING-TYPE WRITE-FIELD-U WRITE-COMMA
-   s" message" m mu WRITE-FIELD-S
+   s" message" m WRITE-FIELD-S
    WRITE-OBJECT-END ;
 
 \ How many locations the request answers; location K's URI, the range from

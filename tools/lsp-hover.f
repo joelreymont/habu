@@ -1,4 +1,3 @@
-split-str
 \ lsp-hover.f - textDocument/hover: the declaration a token in an open document
 \ declares or binds to, as the document's last completed check stated it.
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer belongs to the server's one task.
@@ -41,17 +40,17 @@ variable TARGET-G                        \ and the group of the record it shows
 : RECORD-LINES ( n n -- )
    {: g:n r:n :}
    r REC-KIND$ V+ s"  " V+ r REC-WORD$ V+
-   r REC-EFFECT$ {: e:^ eu:n :}
-   eu 0 > if s"  ( " V+ e eu V+ s"  )" V+ then
+   r REC-EFFECT$ {: e:str :}
+   e STR:LEN 0 > if s"  ( " V+ e V+ s"  )" V+ then
    NL s" \ " V+
-   r REC-PACKAGE$ {: p:^ pu:n :}
-   pu 0 > if s" package " V+ p pu V+ s" , " V+ then
+   r REC-PACKAGE$ {: p:str :}
+   p STR:LEN 0 > if s" package " V+ p V+ s" , " V+ then
    g GROUP-PATH$ WHERE+ s" :" V+
    r REC-RANGE 2drop drop 1+ SB-RESET FMT:SB-INT SB$ V+ ;
 
 : USE-LINES ( str n -- )
-   {: t:^ tu:n u:n :}
-   t tu u USE-WORD$ V+
+   {: t:str u:n :}
+   t u USE-WORD$ V+
    NL s" \ " V+ u USE-GROUP GROUP-PATH$ WHERE+ ;
 
 : CONTENTS ( bool -- ^JSON:writer )
@@ -66,16 +65,16 @@ variable TARGET-G                        \ and the group of the record it shows
 
 \ Leaves the record's group in TARGET-G.
 : TARGET-REC ( str n -- option<n> )
-   {: t:^ tu:n u:n :}
+   {: t:str u:n :}
    u USE-GROUP dup TARGET-G !
-   u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED ;
+   u USE-TARGET t u USE-WORD$ GROUP-REC-NAMED ;
 
 : USE-HOVER ( str n bool -- )
-   {: t:^ tu:n u:n md:bool :}
+   {: t:str u:n md:bool :}
    md OPEN
-   t tu u TARGET-REC MATCH option
+   t u TARGET-REC MATCH option
       some OF TARGET-G @ swap RECORD-LINES ENDOF
-      none OF t tu u USE-LINES ENDOF
+      none OF t u USE-LINES ENDOF
    ;MATCH
    u USE-BYTES {: from:n to:n :}
    md CONTENTS
@@ -121,7 +120,7 @@ public
    w OUT !
    VALUE-B @ 0 VEC:RESIZE
    slot at DEFS-USE-AT MATCH option
-      some OF slot LSP-DOCS:DOC-TEXT$ rot md USE-HOVER ENDOF
+      some OF slot LSP-DOCS:DOC-TEXT$ swap md USE-HOVER ENDOF
       none OF slot at md DEF-HOVER ENDOF
    ;MATCH
    w ;

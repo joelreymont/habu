@@ -1,4 +1,3 @@
-split-str
 \ An absolute server entry must load its own implementation when the client
 \ starts it from a project directory containing older Habu tool sources.
 \ The printed artifact keeps both server conversations and their fixtures.
@@ -30,19 +29,19 @@ create BODY 4096 allot
    MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
 : PROJECT-PATH ( str -- str )
-   PROJECT PROJECT-U @ 2swap PATH FS:JOIN-PATH PATH-U !
-   PATH PATH-U @ ;
+   PROJECT PROJECT-U @ >str swap PATH FS:JOIN-PATH PATH-U !
+   PATH PATH-U @ >str ;
 
 : SERVER-ENTRY ( str -- str )
-   SOURCE-ROOT:ENGINE$ 2swap SERVER FS:JOIN-PATH SERVER-U !
-   SERVER SERVER-U @ ;
+   SOURCE-ROOT:ENGINE$ swap SERVER FS:JOIN-PATH SERVER-U !
+   SERVER SERVER-U @ >str ;
 
 : POISON ( str -- )
    PROJECT-PATH s\" 86 throw\n" FS:WRITE-ALL ;
 
 : SETUP ( -- )
-   s" hb-lsp-entry" FS:MKTEMP-DIR {: d:^ du:n :}
-   d PROJECT du BYTE-COPY  du PROJECT-U !
+   s" hb-lsp-entry" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA PROJECT d STR:LEN BYTE-COPY  d STR:LEN PROJECT-U !
    s" tools" PROJECT-PATH FS:MAKE-DIRS
    s" src/core" PROJECT-PATH FS:MAKE-DIRS
    s" src/habu" PROJECT-PATH FS:MAKE-DIRS
@@ -51,21 +50,21 @@ create BODY 4096 allot
    s" tools/check-verify-child-lib.f" POISON
    s" src/habu/verify-source.f" POISON
    s" dep.f" PROJECT-PATH s\" : DEP ( -- n ) 1 ;\n" FS:WRITE-ALL
-   s" subject.f" PROJECT-PATH {: p:^ pu:n :}
-   p SUBJECT pu BYTE-COPY  pu SUBJECT-U !
-   SUBJECT SUBJECT-U @ s\" require dep.f\n: A ( -- n ) DEP ;\n: B ( -- n ) A ;\n" FS:WRITE-ALL
-   s" tools/lsp.f" SERVER-ENTRY 2drop
-   s" tools/check-verify-child.f" SERVER-ENTRY drop CHILD SERVER-U @ BYTE-COPY
+   s" subject.f" PROJECT-PATH {: p:str :}
+   p STR:DATA SUBJECT p STR:LEN BYTE-COPY  p STR:LEN SUBJECT-U !
+   SUBJECT SUBJECT-U @ >str s\" require dep.f\n: A ( -- n ) DEP ;\n: B ( -- n ) A ;\n" FS:WRITE-ALL
+   s" tools/lsp.f" SERVER-ENTRY drop
+   s" tools/check-verify-child.f" SERVER-ENTRY STR:DATA CHILD SERVER-U @ BYTE-COPY
    SERVER-U @ CHILD-U !
-   s" tools/lsp.f" SERVER-ENTRY 2drop ;
+   s" tools/lsp.f" SERVER-ENTRY drop ;
 
 : STAGE ( CMD:command str -- CMD:command )
-   {: entry:^ entryu:n :}
-   PROJECT PROJECT-U @ CMD:CWD!
+   {: entry:str :}
+   PROJECT PROJECT-U @ >str CMD:CWD!
    \ Exercise a cold image build here, then reuse it for the nested entry.
    s" HABU_OUT" s" out" PROJECT-PATH CMD:ENV+
    s" --load" CMD:ARG+
-   entry entryu CMD:ARG+ ;
+   entry CMD:ARG+ ;
 
 : QUOTED ( str -- )
    s" s" SB-APPEND 34 SB-APPEND-C 32 SB-APPEND-C
@@ -73,31 +72,31 @@ create BODY 4096 allot
 
 \ Keep the inherited root at the entry tree while loading the entry by its
 \ absolute path. With this nesting, CURRENT$ names that root, not the file.
-: NESTED ( str -- str ) {: entry:^ u:n :}
+: NESTED ( str -- str ) {: entry:str :}
    SB-RESET s" : NESTED-LOAD ( -- ) " SB-APPEND
-   entry u SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME QUOTED
+   entry SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME QUOTED
    s"  [: " SB-APPEND
-   entry u QUOTED
+   entry QUOTED
    s\"  required ;] SOURCE-ROOT:WITH ;\nNESTED-LOAD\n"
    SB-APPEND
-   s" driver.f" PROJECT-PATH {: path:^ pathu:n :}
-   path DRIVER pathu BYTE-COPY pathu DRIVER-U !
-   DRIVER DRIVER-U @ SB$ FS:WRITE-ALL
-   DRIVER DRIVER-U @ ;
+   s" driver.f" PROJECT-PATH {: path:str :}
+   path STR:DATA DRIVER path STR:LEN BYTE-COPY path STR:LEN DRIVER-U !
+   DRIVER DRIVER-U @ >str SB$ FS:WRITE-ALL
+   DRIVER DRIVER-U @ >str ;
 
 \ A document request forces the server to run its verifier child.
 \ Loading the entry and reaching EOF alone never crosses that boundary.
 : FRAME ( -- )
-   SB$ {: a:^ u:n :}
-   a BODY u BYTE-COPY
-   SB-RESET s" Content-Length: " SB-APPEND u FMT:SB-U
+   SB$ {: s:str :}
+   s STR:DATA BODY s STR:LEN BYTE-COPY
+   SB-RESET s" Content-Length: " SB-APPEND s STR:LEN FMT:SB-U
    s\" \r\n\r\n" SB-APPEND
-   SB$ {: h:^ hu:n :}
-   h WIRE WIRE-U @ + hu BYTE-COPY hu WIRE-U +!
-   BODY WIRE WIRE-U @ + u BYTE-COPY u WIRE-U +! ;
+   SB$ {: h:str :}
+   h STR:DATA WIRE WIRE-U @ + h STR:LEN BYTE-COPY h STR:LEN WIRE-U +!
+   BODY WIRE WIRE-U @ + s STR:LEN BYTE-COPY s STR:LEN WIRE-U +! ;
 
 : URI+ ( -- )
-   s" file://" SB-APPEND SUBJECT SUBJECT-U @ SB-APPEND ;
+   s" file://" SB-APPEND SUBJECT SUBJECT-U @ >str SB-APPEND ;
 
 : CONVERSATION ( -- )
    0 WIRE-U !
@@ -116,38 +115,38 @@ create BODY 4096 allot
    URI+ s\" \"}}}" SB-APPEND FRAME ;
 
 : STREAM-PATH ( str str -- str )
-   {: name:^ nameu:n suffix:^ suffixu:n :}
-   SB-RESET name nameu SB-APPEND suffix suffixu SB-APPEND
+   {: name:str suffix:str :}
+   SB-RESET name SB-APPEND suffix SB-APPEND
    SB$ PROJECT-PATH ;
 
 \ A child has no deadline: its cold image build takes as long as the host's
 \ load makes it, and a hung row is named by its WAIT line.
 : SERVER-RUN ( str str CMD:command -- CMD:command )
-   >r {: entry:^ entryu:n name:^ nameu:n :} r>
-   entry entryu STAGE
+   >r {: entry:str name:str :} r>
+   entry STAGE
    CONVERSATION
-   WIRE WIRE-U @ CMD:IN!
+   WIRE WIRE-U @ >str CMD:IN!
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-RC RC>N {: rc:n :}
-   CMD:OUT$ {: out:^ outu:n :}
-   CMD:ERR$ {: err:^ erru:n :}
-   name nameu s" .in" STREAM-PATH WIRE WIRE-U @ FS:WRITE-ALL
-   name nameu s" .out" STREAM-PATH out outu FS:WRITE-ALL
-   name nameu s" .err" STREAM-PATH err erru FS:WRITE-ALL
-   rc 1 <> if err erru type cr then rc 1 T=
-   err erru s\" lsp: input ended before exit\n" T$=
-   out outu s\" \"version\":1,\"diagnostics\":[]" STR:CONTAINS? TTRUE
-   out outu s\" \"id\":2,\"result\":[{\"range\":{\"start\":{\"line\":1,\"character\":2},\"end\":{\"line\":1,\"character\":3}},\"kind\":1}" STR:CONTAINS? TTRUE
-   out outu s\" \"id\":3,\"result\":[{\"range\":" STR:CONTAINS? TTRUE
-   out outu s" dep.f" PROJECT-PATH STR:CONTAINS? TTRUE ;
+   CMD:OUT$ {: out:str :}
+   CMD:ERR$ {: err:str :}
+   name s" .in" STREAM-PATH WIRE WIRE-U @ >str FS:WRITE-ALL
+   name s" .out" STREAM-PATH out FS:WRITE-ALL
+   name s" .err" STREAM-PATH err FS:WRITE-ALL
+   rc 1 <> if err type cr then rc 1 T=
+   err s\" lsp: input ended before exit\n" T$=
+   out s\" \"version\":1,\"diagnostics\":[]" STR:CONTAINS? TTRUE
+   out s\" \"id\":2,\"result\":[{\"range\":{\"start\":{\"line\":1,\"character\":2},\"end\":{\"line\":1,\"character\":3}},\"kind\":1}" STR:CONTAINS? TTRUE
+   out s\" \"id\":3,\"result\":[{\"range\":" STR:CONTAINS? TTRUE
+   out s" dep.f" PROJECT-PATH STR:CONTAINS? TTRUE ;
 
 : SERVER-CASE ( str str -- )
    [: SERVER-RUN ;] CMD:WITH-COMMAND ;
 
 : CHILD-RUN ( str CMD:command -- CMD:command )
-   >r {: entry:^ entryu:n :} r>
-   entry entryu STAGE
+   >r {: entry:str :} r>
+   entry STAGE
    s" --" CMD:ARG+
-   SUBJECT SUBJECT-U @ CMD:ARG+
+   SUBJECT SUBJECT-U @ >str CMD:ARG+
    s\" \nrequire dep.f\n: A ( -- n ) DEP ;\n" CMD:IN!
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-RC RC>N {: rc:n :}
    rc 0 <> if CMD:ERR$ type cr then rc 0 T=
@@ -160,11 +159,11 @@ public
 
 : TEST ( -- )
    SETUP
-   SERVER SERVER-U @ s" direct" SERVER-CASE
-   CHILD CHILD-U @ CHILD-CASE
-   SERVER SERVER-U @ NESTED s" nested" SERVER-CASE
-   CHILD CHILD-U @ NESTED CHILD-CASE
-   s" artifact: " type PROJECT PROJECT-U @ type cr
+   SERVER SERVER-U @ >str s" direct" SERVER-CASE
+   CHILD CHILD-U @ >str CHILD-CASE
+   SERVER SERVER-U @ >str NESTED s" nested" SERVER-CASE
+   CHILD CHILD-U @ >str NESTED CHILD-CASE
+   s" artifact: " type PROJECT PROJECT-U @ >str type cr
    T-REPORT ;
 
 ;package

@@ -1,4 +1,3 @@
-split-str
 \ lsp-links.f - textDocument/documentLink: one DocumentLink per load the
 \ document's last completed check reported (LSP-DOCS:DOC-LOADS$), in order. Range:
 \ the loader's operand (LSP-TEXT:RANGE); target: the open document holding the
@@ -33,15 +32,15 @@ variable SHOWN-N                         \ and the links written so far
 \ The member whose key the reader is at, decoded; one a link needs nothing
 \ of, passed over.
 : MEMBER ( JSON:reader -- JSON:reader )
-   s" path" READ-STR-EQ? if READ-NEXT drop PATH-B @ READ-STR 2drop exit then
+   s" path" READ-STR-EQ? if READ-NEXT drop PATH-B @ READ-STR drop exit then
    s" outcome" READ-STR-EQ? if READ-NEXT drop s" held" READ-STR-EQ? HELD ! exit then
    READ-NEXT drop READ-SKIP-VALUE ;
 
 : DECODE ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    PATH-B @ 0 VEC:RESIZE
    false HELD !
-   JSON-ST a u READ-INIT
+   JSON-ST s READ-INIT
    READ-NEXT drop
    begin READ-NEXT T-KEY = while MEMBER repeat
    READ-CLOSE ;
@@ -57,12 +56,12 @@ variable SHOWN-N                         \ and the links written so far
    TIP$ ;
 
 : LINK ( str -- )
-   {: a:^ u:n :}
-   a u DECODE
+   {: s:str :}
+   s DECODE
    OUT @
    SHOWN-N @ 0 > if WRITE-COMMA then
    WRITE-OBJECT-START
-   a u LSP-TEXT:RANGE WRITE-COMMA
+   s LSP-TEXT:RANGE WRITE-COMMA
    s" target" PATH$ LSP-DEFS:DEP-URI$ WRITE-FIELD-S
    HELD @ if WRITE-COMMA s" tooltip" HELD-TIP WRITE-FIELD-S then
    WRITE-OBJECT-END drop

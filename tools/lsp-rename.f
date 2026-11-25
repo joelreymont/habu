@@ -1,4 +1,3 @@
-split-str
 \ lsp-rename.f - the language server's rename. A rename edits a token's tail alone,
 \ its bytes after a qualifier's colon, so the new name the client asks for is a tail
 \ and a qualifier stays. PREPARED and ANSWER refuse nothing once LSP-REFERENCES has
@@ -28,16 +27,16 @@ private
 \ Whether these bytes read as a qualified name, or with a second colon as
 \ one no word has: their first colon is neither first nor last.
 : QUALIFIES? ( str -- bool )
-   {: a:^ u:n :}
-   a u [char] : STR:INDEX-OF MATCH option
-      some OF IDX>N {: k:n :} k 0 >  k u 1- <  and ENDOF
+   {: s:str :}
+   s [char] : STR:INDEX-OF MATCH option
+      some OF IDX>N {: k:n :} k 0 >  k s STR:LEN 1- <  and ENDOF
       none OF false ENDOF
    ;MATCH ;
 
 : ANY-BYTE? ( str [ n -- bool ] -- bool )
-   {: a:^ u:n test :}
-   u 0 ?do
-      a i + c@ test execute if true unloop exit then
+   {: s:str test :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ test execute if true unloop exit then
    loop
    false ;
 
@@ -71,22 +70,22 @@ public
 \ holds a quote or a backslash, which a string literal naming the word (a use before
 \ a call of a names: word) could not spell.
 : WHY$ ( str -- str )
-   {: a:^ u:n :}
-   u 0= if s" the new name is empty" exit then
-   a u [: LINT-LEX:ENGINE-DELIM? ;] ANY-BYTE? if
+   {: s:str :}
+   s STR:LEN 0= if s" the new name is empty" exit then
+   s [: LINT-LEX:ENGINE-DELIM? ;] ANY-BYTE? if
       s" the new name holds a space or a control byte" exit
    then
-   a u QUALIFIES? if s" the new name holds a colon that qualifies it" exit then
-   a u [: QUOTE = ;] ANY-BYTE? if s" the new name holds a quote" exit then
-   a u [: BACKSLASH = ;] ANY-BYTE? if s" the new name holds a backslash" exit then
+   s QUALIFIES? if s" the new name holds a colon that qualifies it" exit then
+   s [: QUOTE = ;] ANY-BYTE? if s" the new name holds a quote" exit then
+   s [: BACKSLASH = ;] ANY-BYTE? if s" the new name holds a backslash" exit then
    s" " ;
 
 \ Why a name WHY$ passes cannot be written over the tails the gather placed, else
 \ empty: it holds a colon and a tail follows a qualifier, giving the token a name no
 \ word has (CHECKER-QUALIFIED?).
 : QUALIFIED-WHY$ ( str -- str )
-   {: a:^ u:n :}
-   a u [: [char] : = ;] ANY-BYTE? 0= if s" " exit then
+   {: s:str :}
+   s [: [char] : = ;] ANY-BYTE? 0= if s" " exit then
    LSP-REFERENCES:LOCATIONS 0 ?do
       i LSP-REFERENCES:LOC-QUALIFIED? if
          s" the new name holds a colon and a use is qualified" unloop exit
@@ -99,7 +98,7 @@ public
 \ location, then the uses by file, P's first (LSP-REFERENCES:SETTLE), so
 \ each URI's locations are one run.
 : ANSWER ( ^JSON:writer str -- ^JSON:writer )
-   {: name:^ nu:n :}
+   {: name:str :}
    WRITE-OBJECT-START
    s" changes" WRITE-KEY WRITE-OBJECT-START
    LSP-REFERENCES:LOCATIONS 0 ?do
@@ -111,7 +110,7 @@ public
       then
       WRITE-OBJECT-START
       i LSP-REFERENCES:LOC-TAIL LSP-TEXT:RANGE-AT WRITE-COMMA
-      s" newText" name nu WRITE-FIELD-S
+      s" newText" name WRITE-FIELD-S
       WRITE-OBJECT-END
    loop
    WRITE-ARRAY-END

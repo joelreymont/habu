@@ -1,4 +1,3 @@
-split-str
 \ lsp-source-index.f - locate an image word in current engine source. The verifier
 \ child scans the supplied bytes (LSP-CHECK:INDEX-BYTES) and returns surviving
 \ declaration identities; this file matches them to the path and name span
@@ -39,18 +38,18 @@ variable END
 variable RESULT-SYM
 
 : ID! ( str str n -- )
-   {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
-   pkgu 1 max ID-PKG-RESERVE
-   tailu 1 max ID-TAIL-RESERVE
-   pkg 0 ID-PKG pkgu BYTE-COPY  pkgu ID-PKG-U !
-   tail 0 ID-TAIL tailu BYTE-COPY  tailu ID-TAIL-U !
+   {: pkg:str tail:str vis:n :}
+   pkg STR:LEN 1 max ID-PKG-RESERVE
+   tail STR:LEN 1 max ID-TAIL-RESERVE
+   pkg STR:DATA 0 ID-PKG pkg STR:LEN BYTE-COPY  pkg STR:LEN ID-PKG-U !
+   tail STR:DATA 0 ID-TAIL tail STR:LEN BYTE-COPY  tail STR:LEN ID-TAIL-U !
    vis ID-VIS ! ;
 
 : ID=? ( str str n -- bool )
-   {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
-   vis ID-VIS @ = pkgu ID-PKG-U @ = and tailu ID-TAIL-U @ = and
-   pkg pkgu 0 ID-PKG ID-PKG-U @ STR:= and
-   tail tailu 0 ID-TAIL ID-TAIL-U @ STR:= and ;
+   {: pkg:str tail:str vis:n :}
+   vis ID-VIS @ = pkg STR:LEN ID-PKG-U @ = and tail STR:LEN ID-TAIL-U @ = and
+   pkg 0 ID-PKG ID-PKG-U @ >str STR:= and
+   tail 0 ID-TAIL ID-TAIL-U @ >str STR:= and ;
 
 : VISIBILITY ( JSON:reader -- JSON:reader )
    s" global" JSON:READ-STR-EQ? if SYM-GLOBAL ROW-VIS ! exit then
@@ -59,10 +58,10 @@ variable RESULT-SYM
 
 : MEMBER ( JSON:reader -- JSON:reader )
    s" package" JSON:READ-STR-EQ? if
-      JSON:READ-NEXT drop ROW-PKG @ JSON:READ-STR 2drop 1 ROW-FIELDS +! exit
+      JSON:READ-NEXT drop ROW-PKG @ JSON:READ-STR drop 1 ROW-FIELDS +! exit
    then
    s" decl_name" JSON:READ-STR-EQ? if
-      JSON:READ-NEXT drop ROW-TAIL @ JSON:READ-STR 2drop 2 ROW-FIELDS +! exit
+      JSON:READ-NEXT drop ROW-TAIL @ JSON:READ-STR drop 2 ROW-FIELDS +! exit
    then
    s" visibility" JSON:READ-STR-EQ? if
       JSON:READ-NEXT drop VISIBILITY 4 ROW-FIELDS +! exit
@@ -81,10 +80,10 @@ variable RESULT-SYM
    c @ ;
 
 : DECODE ( str -- bool )
-   {: a:^ u:n :}
+   {: s:str :}
    ROW-PKG MADE 0 VEC:RESIZE  ROW-TAIL MADE 0 VEC:RESIZE
    -1 ROW-VIS !  0 ROW-START !  0 ROW-END !  0 ROW-FIELDS !
-   JSON-ST a u JSON:READ-INIT
+   JSON-ST s JSON:READ-INIT
    JSON:READ-NEXT drop
    begin JSON:READ-NEXT JSON:T-KEY = while MEMBER repeat
    JSON:READ-CLOSE
@@ -112,14 +111,14 @@ variable RESULT-SYM
    DECODE if ROW-SELECT then ;
 
 : ROWS ( -- )
-   LSP-CHECK:VERIFY-INDEX$ {: a:^ u:n :}
-   0 begin dup u < while
+   LSP-CHECK:VERIFY-INDEX$ {: s:str :}
+   0 begin dup s STR:LEN < while
       {: at:n :}
-      a at + u at - 10 STR:INDEX-OF MATCH option
+      s STR:DATA at + s STR:LEN at - >str 10 STR:INDEX-OF MATCH option
          some OF IDX>N ENDOF
-         none OF u at - ENDOF
+         none OF s STR:LEN at - ENDOF
       ;MATCH {: len:n :}
-      a at + len LINE
+      s STR:DATA at + len >str LINE
       at len + 1+
    repeat drop ;
 
@@ -137,12 +136,12 @@ variable RESULT-SYM
 
 \ The path must be in the image's own source tree; return its relative part.
 : RELATIVE ( str -- str bool )
-   {: path:^ pathu:n :}
-   SOURCE-ROOT:ENGINE$ {: root:^ rootu:n :}
-   pathu rootu 1+ <= if NULL$ false exit then
-   path rootu root rootu STR:= 0= if NULL$ false exit then
-   path rootu + c@ 47 <> if NULL$ false exit then
-   path rootu 1+ + pathu rootu 1+ - true ;
+   {: path:str :}
+   SOURCE-ROOT:ENGINE$ {: root:str :}
+   path STR:LEN root STR:LEN 1+ <= if NULL$ false exit then
+   path STR:DATA root STR:LEN >str root STR:= 0= if NULL$ false exit then
+   path STR:DATA root STR:LEN + c@ 47 <> if NULL$ false exit then
+   path STR:DATA root STR:LEN 1+ + path STR:LEN root STR:LEN 1+ - >str true ;
 
 : MATCH-ORIGIN ( n -- )
    {: sym:n :}
@@ -163,27 +162,27 @@ public
 \ openers still scan. A prefix file with a top-level dictionary call has no
 \ source locations.
 : TARGET-IN ( n str str -- n n bool )
-   {: sym:n path:^ pathu:n src:^ srcu:n :}
+   {: sym:n path:str src:str :}
    sym ENGINE-ORIGIN:TARGET
-   {: rel:^ relu:n old:n old-end:n name:^ nameu:n live:bool :}
+   {: rel:str old:n old-end:n name:str live:bool :}
    live 0= if 0 0 false exit then
-   path pathu RELATIVE {: got:^ gotu:n in-root:bool :}
+   path RELATIVE {: got:str in-root:bool :}
    in-root 0= if 0 0 false exit then
-   got gotu rel relu STR:= 0= if 0 0 false exit then
+   got rel STR:= 0= if 0 0 false exit then
    sym VERIFY:SYM-IDENTITY ID!
    0 MODE !
-   src srcu path pathu SCAN
+   src path SCAN
    COUNT @ 1 = if START @ END @ true else 0 0 false then ;
 
 : SYMBOL-IN ( str n str -- n bool )
-   {: path:^ pathu:n byte:n src:^ srcu:n :}
-   path pathu RELATIVE {: rel:^ relu:n in-root:bool :}
+   {: path:str byte:n src:str :}
+   path RELATIVE {: rel:str in-root:bool :}
    in-root 0= if 0 false exit then
    1 MODE !  byte CURSOR !
-   src srcu path pathu SCAN
+   src path SCAN
    COUNT @ 1 <> if 0 false exit then
    0 COUNT !
-   rel relu ['] MATCH-ORIGIN ENGINE-ORIGIN:EACH-IN
+   rel ['] MATCH-ORIGIN ENGINE-ORIGIN:EACH-IN
    COUNT @ 1 = if RESULT-SYM @ true else 0 false then ;
 
 ;package

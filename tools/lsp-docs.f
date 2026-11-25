@@ -1,4 +1,3 @@
-split-str
 \ lsp-docs.f - the documents a language client has open: URI, path, text and
 \ version as the client last sent them, and what the server's checks keep.
 \ A closed document frees its vectors and its slot; an open takes the first free
@@ -39,15 +38,15 @@ variable NEXT-ID
 : BYTES$ ( ^^VEC:vector<u8> -- str )  @ VEC:BYTES ;
 
 : KEEP ( str ^^VEC:vector<u8> -- )
-   {: a:^ u:n at:^ :}
+   {: s:str at:^ :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
    v at !
-   a u v VEC:APPEND ;
+   s v VEC:APPEND ;
 
 : STORE ( str ^^VEC:vector<u8> -- )
-   {: a:^ u:n at:^ :}
+   {: s:str at:^ :}
    at @ 0 VEC:RESIZE
-   a u at @ VEC:APPEND ;
+   s at @ VEC:APPEND ;
 
 : FREE-SLOT ( -- n )
    SLOT-COUNT @ 0 ?do i LIVE? 0= if i unloop exit then loop
@@ -56,10 +55,10 @@ variable NEXT-ID
    1 SLOT-COUNT +! ;
 
 : HOLDER ( str [ ^entry -- ^^VEC:vector<u8> ] -- option<n> )
-   {: a:^ u:n field :}
+   {: s:str field :}
    SLOT-COUNT @ 0 ?do
       i LIVE? if
-         i SLOTS field execute BYTES$ a u STR:= if i OPTION:SOME unloop exit then
+         i SLOTS field execute BYTES$ s STR:= if i OPTION:SOME unloop exit then
       then
    loop
    OPTION:NONE ;
@@ -133,8 +132,8 @@ public
    false e ENTRY-LIVE ! ;
 
 : DOC-CHANGE ( n n str -- )
-   {: slot:n v:n t:^ tu:n :}
-   t tu slot SLOTS ENTRY-TEXT STORE
+   {: slot:n v:n t:str :}
+   t slot SLOTS ENTRY-TEXT STORE
    v slot SLOTS ENTRY-VERSION !
    slot DOC-DIRTY ;
 
@@ -143,13 +142,13 @@ private
 \ A document in a free slot. Its path's canonical spelling comes first, so a
 \ path without one throws before anything changes.
 : ADD ( str n str str -- )
-   {: u:^ uu:n v:n p:^ pu:n t:^ tu:n :}
-   p pu SOURCE-ROOT:CANONICAL drop {: c:^ cu:n :}
+   {: u:str v:n p:str t:str :}
+   p SOURCE-ROOT:CANONICAL drop {: c:str :}
    FREE-SLOT {: slot:n :}
-   u uu slot SLOTS ENTRY-URI KEEP
-   p pu slot SLOTS ENTRY-PATH KEEP
-   t tu slot SLOTS ENTRY-TEXT KEEP
-   c cu slot SLOTS ENTRY-CANON KEEP
+   u slot SLOTS ENTRY-URI KEEP
+   p slot SLOTS ENTRY-PATH KEEP
+   t slot SLOTS ENTRY-TEXT KEEP
+   c slot SLOTS ENTRY-CANON KEEP
    NULL$ slot SLOTS ENTRY-DEPS KEEP
    NULL$ slot SLOTS ENTRY-LOADS KEEP
    v slot SLOTS ENTRY-VERSION !
@@ -164,10 +163,10 @@ public
 \ what its checks published. A path holding a NUL, or whose canonical spelling
 \ passes PATH-CAP, throws E-PATH-NUL or E-PATH-RANGE, and nothing opens.
 : DOC-OPEN ( str n str str -- )
-   {: u:^ uu:n v:n p:^ pu:n t:^ tu:n :}
-   u uu DOC-FIND MATCH option
-      some OF v t tu DOC-CHANGE ENDOF
-      none OF u uu v p pu t tu ADD ENDOF
+   {: u:str v:n p:str t:str :}
+   u DOC-FIND MATCH option
+      some OF v t DOC-CHANGE ENDOF
+      none OF u v p t ADD ENDOF
    ;MATCH ;
 
 ;package

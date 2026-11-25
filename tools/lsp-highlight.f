@@ -1,4 +1,3 @@
-split-str
 \ lsp-highlight.f - textDocument/documentHighlight: the token that declares a
 \ word in an open document and every use of it there, from the last verified
 \ check. STORAGE CLASS. CALLER-OWNED: no state; the writer is the caller's, the
@@ -19,8 +18,8 @@ private
 1 constant TEXT-KIND                     \ DocumentHighlightKind.Text
 
 : NAMED ( str n -- option<n> )
-   {: t:^ tu:n u:n :}
-   u USE-GROUP u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED ;
+   {: t:str u:n :}
+   u USE-GROUP u USE-TARGET t u USE-WORD$ GROUP-REC-NAMED ;
 
 \ LISTED: whether an item came before, for the comma; it holds after.
 : ITEM ( ^JSON:writer bool n n -- ^JSON:writer bool )
@@ -34,11 +33,11 @@ private
 
 \ A use that names no record there is of no word.
 : OF-WORD? ( str n n n n n -- bool )
-   {: t:^ tu:n u:n g:n ts:n te:n rec:n :}
+   {: t:str u:n g:n ts:n te:n rec:n :}
    u USE-GROUP g <> if false exit then
    u USE-TARGET {: us:n ue:n :}
    us ts <> ue te <> or if false exit then
-   t tu u NAMED MATCH option
+   t u NAMED MATCH option
       some OF rec = ENDOF
       none OF false ENDOF
    ;MATCH ;
@@ -48,11 +47,11 @@ private
 \ Text highlights: the checker states no read or write.
 : HIGHLIGHTS ( ^JSON:writer n n n n n -- ^JSON:writer )
    {: slot:n g:n ts:n te:n rec:n :}
-   slot LSP-DOCS:DOC-TEXT$ {: t:^ tu:n :}
+   slot LSP-DOCS:DOC-TEXT$ {: t:str :}
    WRITE-ARRAY-START false
    g GROUP-OWN? if ts te ITEM then
    slot DEFS-USE-RANGE ?do
-      t tu i g ts te rec OF-WORD? if i USE-BYTES ITEM then
+      t i g ts te rec OF-WORD? if i USE-BYTES ITEM then
    loop
    drop WRITE-ARRAY-END ;
 
