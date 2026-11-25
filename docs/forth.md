@@ -2384,7 +2384,7 @@ runtime or analysis layer.
   misaligned unless `align` precedes it. Every target's cells are eight
   little-endian bytes; `@` and `!` reach a cell at any byte address, and the
   cell of `atomic@`, `atomic!`, `atomic-add` or `atomic-cas` must be
-  cell-aligned.
+  cell-aligned, the four bytes of `atomic-u32@` or `atomic-u32!` 4-byte-aligned.
 - **A created body's data follows its `create` before the next definition or
   row.** A colon definition's `;` may lay its facts text at `here`, a length
   cell then its bytes, then `align`; data written after that `;` lands past

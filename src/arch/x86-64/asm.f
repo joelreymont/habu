@@ -743,6 +743,9 @@ public
 : ENC-XCHG-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}
    W64 $87 sr R64>N REG-NUM m 0 s RM-ENC ;
 
+: ENC-XCHG32-MR ( r32 mem ^VEC:vector<u8> -- ) {: sr:r32 m:mem s:^ :}
+   W32 $87 sr R32>N REG-NUM m 0 s RM-ENC ;
+
 : ENC-LOCK-XADD-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}
    $0FC1 sr m s LOCK-RM ;
 

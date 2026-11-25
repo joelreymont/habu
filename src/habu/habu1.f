@@ -1604,6 +1604,10 @@ private
    A G-POP  A A LDAR,  A G-PUSH ;
 : BATSTORE ( -- )   \ atomic! ( a ^a -- ) : STLR x9,[x10]
    B G-POP A G-POP  A B STLR, ;
+: BATFETCH32 ( -- )   \ atomic-u32@ ( ^u8 -- n ) : LDAR w9,[x9], zero-extended
+   A G-POP  A A LDARW,  A G-PUSH ;
+: BATSTORE32 ( -- )   \ atomic-u32! ( n ^u8 -- ) : STLR w9,[x10]
+   B G-POP A G-POP  A B STLRW, ;
 : BATADD ( -- )     \ atomic-add ( delta addr -- old ) : LDADDAL x9,x9,[x10]
    B G-POP A G-POP  A A B LDADDAL,  A G-PUSH ;
 : BATCAS ( -- )     \ atomic-cas ( expected new addr -- actual ) : CASAL x9,x10,[x11]
@@ -3901,6 +3905,7 @@ package ENGINE-EMIT
    s" +!" ['] BPLUSSTORE FPRIM
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM
    s" atomic@" ['] BATFETCH FPRIM-L  s" atomic!" ['] BATSTORE FPRIM
+   s" atomic-u32@" ['] BATFETCH32 FPRIM-L  s" atomic-u32!" ['] BATSTORE32 FPRIM
    s" atomic-add" ['] BATADD FPRIM  s" atomic-cas" ['] BATCAS FPRIM  s" fence" ['] BFENCE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
    s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L ;

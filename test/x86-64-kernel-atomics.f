@@ -38,6 +38,30 @@ using X64RT
    found X64HARNESS:EXPECT-POP,
    after 0 X64HARNESS:EXPECT-SCRATCH, ;
 
+\ A value wider than 32 bits, with bit 31 set, over a cell of ones: the store
+\ keeps the four bytes beside its word, and the load zero-extends.
+$18000004D constant WIDE
+$8000004D constant U32
+$FFFFFFFF8000004D constant U32-LOW
+9 constant HIGH-U32
+$98000004D constant U32-BOTH
+
+: U32-AT, ( n n n n -- ) {: v:n off:n cell:n got:n :}
+   v X64HARNESS:PUSH,  off X64HARNESS:PUSH-SCRATCH,
+   s" atomic-u32!" X64HARNESS:CALL-ROW,
+   cell 0 X64HARNESS:EXPECT-SCRATCH,
+   off X64HARNESS:PUSH-SCRATCH,
+   s" atomic-u32@" X64HARNESS:CALL-ROW,
+   got X64HARNESS:EXPECT-POP, ;
+
+: U32-CASE, ( -- )
+   -1 X64HARNESS:PUSH,  0 X64HARNESS:PUSH-SCRATCH,
+   s" atomic!" X64HARNESS:CALL-ROW,
+   WIDE 0 U32-LOW U32 U32-AT,
+   HIGH-U32 4 U32-BOTH HIGH-U32 U32-AT,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED, ;
+
 \ Ten checks, the harness's whole budget.
 : ROWS, ( -- )
    STORE-FETCH,  ADD,
@@ -356,6 +380,7 @@ public
    X64HARNESS:INIT
    false s" hb-x64-kernel-atomics" TMP-PATH BUILD
    true s" hb-x64-kernel-atomics-negative" TMP-PATH BUILD
+   [: U32-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-atomic-u32" TMP-PATH IMAGE
    PUBLICATION
    X64HARNESS:DISPOSE
    T-REPORT ;

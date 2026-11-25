@@ -28,10 +28,12 @@ $28 constant OP-I32-LOAD
 $29 constant OP-I64-LOAD
 $2B constant OP-F64-LOAD
 $31 constant OP-I64-LOAD8-U
+$35 constant OP-I64-LOAD32-U
 $36 constant OP-I32-STORE
 $37 constant OP-I64-STORE
 $39 constant OP-F64-STORE
 $3C constant OP-I64-STORE8
+$3E constant OP-I64-STORE32
 $40 constant OP-MEMORY-GROW          \ followed by its memory index
 $41 constant OP-I32-CONST
 $42 constant OP-I64-CONST

@@ -1,7 +1,9 @@
 split-str
-\ le.f - fixed-width little-endian integers in a caller's bytes: io_uring ring
-\ fields, a C `int` out-parameter, a socklen, a compiler data slot, at the
+\ le.f - fixed-width little-endian integers in a caller's bytes: io_uring
+\ entries, a C `int` out-parameter, a socklen, a compiler data slot, at the
 \ contract's width and any alignment.
+\ The 16- and 32-bit words are several byte accesses, so memory another thread or
+\ the kernel reads or writes at the same time is not theirs.
 \ It needs only engine words, so src/lib/ffi-abi.f can require it.
 \ STORAGE CLASS. CALLER-OWNED: no module state.
 

@@ -2665,6 +2665,16 @@ private
    1 X64RT:G-POP  0 X64RT:G-POP
    RAX RCX MEM-AT ASM-SINK ENC-XCHG-MR ;
 
+\ A 32-bit load zero-extends.
+: ATOMIC-U32-FETCH, ( -- )
+   0 X64RT:G-POP
+   0 >R32 RAX MEM-AT ASM-SINK ENC-MOV32-RM
+   0 X64RT:G-PUSH ;
+
+: ATOMIC-U32-STORE, ( -- )
+   1 X64RT:G-POP  0 X64RT:G-POP
+   0 >R32 RCX MEM-AT ASM-SINK ENC-XCHG32-MR ;
+
 \ atomic-add ( n ^n -- n ), answering the value the cell held.
 : ATOMIC-ADD, ( -- )
    1 X64RT:G-POP  0 X64RT:G-POP
@@ -2684,6 +2694,8 @@ public
 : ATOMICS, ( -- )
    s" atomic@" [: ATOMIC-FETCH, ;] PRIM
    s" atomic!" [: ATOMIC-STORE, ;] PRIM
+   s" atomic-u32@" [: ATOMIC-U32-FETCH, ;] PRIM
+   s" atomic-u32!" [: ATOMIC-U32-STORE, ;] PRIM
    s" atomic-add" [: ATOMIC-ADD, ;] PRIM
    s" atomic-cas" [: ATOMIC-CAS, ;] PRIM
    s" fence" [: ASM-SINK ENC-MFENCE ;] PRIM ;

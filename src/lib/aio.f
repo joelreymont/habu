@@ -5,8 +5,8 @@
 \ A submission with no loop is E-AIO-STATE. Linux uses
 \ io_uring from 5.10, the first long-term kernel with every opcode used;
 \ Darwin uses src/lib/aio-macos.f.
-\ A ring holds records for at most half its completion entries, so its
-\ completion queue never overflows: 6.17's overflow path can drop a completion.
+\ A ring holds records for at most half its completion entries, which keeps its
+\ completion queue from overflowing: AIO never flushes the overflow list.
 \ A stage that would pass that retires the active ring and opens one of double
 \ the completion entries, up to AIO-CQ-ENTRIES; the loop closes a retired ring
 \ once its last record is freed.
@@ -377,24 +377,24 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    rg RING-SQE-BASE @ slot SQE-BYTES * + ;
 
 : SQ-TAIL@ ( ^ring -- n ) {: rg:^ :}
-   rg rg RING-SQ-TAIL-OFF @ SQ-AT LE:U32@ ;
+   rg rg RING-SQ-TAIL-OFF @ SQ-AT atomic-u32@ ;
 
 : SQ-TAIL! ( ^ring n -- ) {: rg:^ tail:n :}
-   tail rg rg RING-SQ-TAIL-OFF @ SQ-AT LE:U32! ;
+   tail rg rg RING-SQ-TAIL-OFF @ SQ-AT atomic-u32! ;
 
 : SQ-HEAD@ ( ^ring -- n ) {: rg:^ :}
-   rg rg RING-SQ-HEAD-OFF @ SQ-AT LE:U32@ ;
+   rg rg RING-SQ-HEAD-OFF @ SQ-AT atomic-u32@ ;
 
 : CQ-HEAD@ ( ^ring -- n ) {: rg:^ :}
-   rg rg RING-CQ-HEAD-OFF @ CQ-AT LE:U32@ ;
+   rg rg RING-CQ-HEAD-OFF @ CQ-AT atomic-u32@ ;
 
 : CQ-HEAD! ( ^ring n -- ) {: rg:^ head:n :}
-   head rg rg RING-CQ-HEAD-OFF @ CQ-AT LE:U32! ;
+   head rg rg RING-CQ-HEAD-OFF @ CQ-AT atomic-u32! ;
 
-\ The fence after the read is what makes the entries below it visible to this
-\ thread.
+\ The load's acquire order is what makes the entries below the tail visible to
+\ this thread.
 : CQ-TAIL-ACQUIRE ( ^ring -- n ) {: rg:^ :}
-   rg rg RING-CQ-TAIL-OFF @ CQ-AT LE:U32@ fence ;
+   rg rg RING-CQ-TAIL-OFF @ CQ-AT atomic-u32@ ;
 
 : CQE-AT ( ^ring n -- ^u8 ) {: rg:^ head:n :}
    head rg RING-CQ-MASK @ and CQE-BYTES *
@@ -617,12 +617,10 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 : SQE-CLEAR ( ^ring n -- ) {: rg:^ slot:n :}
    SQE-BYTES 0 ?do 0 rg slot SQE-AT i + c! loop ;
 
-\ The array entry and the SQE are both written before the tail moves, and the
-\ fence between them is what makes the kernel see a whole entry when it sees the
-\ new tail.
+\ The array entry and the SQE are written before the tail moves, and the tail's
+\ store keeps that order: a kernel that sees the new tail sees the whole entry.
 : SQ-PUBLISH ( ^ring n -- ) {: rg:^ slot:n :}
-   slot rg rg RING-SQ-ARRAY-OFF @ slot 4 * + SQ-AT LE:U32!
-   fence
+   slot rg rg RING-SQ-ARRAY-OFF @ slot 4 * + SQ-AT atomic-u32!
    rg rg SQ-TAIL@ 1 + $FFFFFFFF and SQ-TAIL! ;
 
 : ENTER-CALL ( ^ring n n n -- n )
@@ -721,13 +719,11 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    fl id REC REC.FLAGS !
    id SETTLE ;
 
-\ The head store follows a fence, so the kernel never sees a slot released
-\ before this thread has read it.
+\ The head's store follows this thread's reads of the slot it releases.
 : DRAIN ( ^ring -- ) {: rg:^ :}
    rg CQ-TAIL-ACQUIRE {: tail:n :}
    begin rg CQ-HEAD@ tail <> while
       rg rg CQ-HEAD@ CQE-AT COMPLETE
-      fence
       rg rg CQ-HEAD@ 1 + $FFFFFFFF and CQ-HEAD!
    repeat ;
 
@@ -769,8 +765,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ The masks live in the rings themselves, so they are read once the mappings
 \ exist.
 : RING-OFFSETS ( ^ring -- ) {: rg:^ :}
-   rg RO-MASK P-SQ@ SQ-AT LE:U32@ rg RING-SQ-MASK !
-   rg RO-MASK P-CQ@ CQ-AT LE:U32@ rg RING-CQ-MASK ! ;
+   rg RO-MASK P-SQ@ SQ-AT atomic-u32@ rg RING-SQ-MASK !
+   rg RO-MASK P-CQ@ CQ-AT atomic-u32@ rg RING-CQ-MASK ! ;
 
 : RING-LENGTHS ( ^ring -- ) {: rg:^ :}
    P-SQ-N rg RING-SQ-ENTRIES !

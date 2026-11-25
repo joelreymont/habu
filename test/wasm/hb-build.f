@@ -1,12 +1,12 @@
 \ hb-build.f - `hb-build --target wasm` run by its command line, each module it
 \ writes validated by wasm-tools and run by bun (test/wasm/harness.f). A program
 \ whose build status, output or trap is under test has its own build process; the
-\ six that only run to status 0 share one. test/wasm/device.f runs it, as does
+\ seven that only run to status 0 share one. test/wasm/device.f runs it, as does
 \ `bin/hb --load test/wasm/hb-build.f` from the tree's root. The sources and
 \ modules stay in the printed directory.
 \
 \ A generated program fails check k by an uncaught `k throw`: status 1 and throw
-\ code k. In the module the six share, OUT's letters name the program a failed
+\ code k. In the module the seven share, OUT's letters name the program a failed
 \ check ran in.
 
 require src/lib/string.f
@@ -591,19 +591,31 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    SB$ s" grow.f" SOURCE! ;
 
 
+\ Package A in atomics.f: `fence` and the atomic words D does not call.
+: ATOMICS! ( -- )
+   SB-RESET
+   S\" package A\nprivate\nvariable CELL0\n: FAIL ( n -- ) throw ;\n" SB-APPEND
+   S\" : HALF ( n -- ^u8 ) CELL0 byte-view + ;\npublic\n: MAIN ( -- )\n" SB-APPEND
+   S\"    -1 CELL0 atomic!  fence  $80000006 0 HALF atomic-u32!\n" SB-APPEND
+   S\"    CELL0 atomic@ -1 32 lshift $80000006 or <> if 1 FAIL then\n" SB-APPEND
+   S\"    0 HALF atomic-u32@ $80000006 <> if 2 FAIL then ;\n;package\n" SB-APPEND
+   SB$ s" atomics.f" SOURCE! ;
+
+
 : PASS-CASE ( -- )
-   120 s" k.f" K!  D!  M!  X!  CATCH!  GROW!
+   120 s" k.f" K!  D!  M!  X!  CATCH!  GROW!  ATOMICS!
    0 TEXT-U !
    s" k.f" REQUIRE+  s" d.f" REQUIRE+  s" m.f" REQUIRE+
    s" execute.f" REQUIRE+  s" catch.f" REQUIRE+  s" grow.f" REQUIRE+
+   s" atomics.f" REQUIRE+
    S\" : MAIN ( -- ) 75 emit K:MAIN 68 emit D:MAIN 77 emit M:MAIN " TEXT+
-   S\" 88 emit X:MAIN 67 emit C:MAIN 71 emit G:MAIN ;\n" TEXT+
+   S\" 88 emit X:MAIN 67 emit C:MAIN 71 emit G:MAIN 65 emit A:MAIN ;\n" TEXT+
    TEXT TEXT-U @ >str s" pass.f" SOURCE!
-   s" six programs in one module each run to their end: recursion, a loop, variables and a quotation; division, max, invert and rshift, atomics and views; map-anon and munmap; execute; catch and finally; a DYNAMIC-BUFFER reserved larger" T-LABEL
+   s" seven programs in one module each run to their end: recursion, a loop, variables and a quotation; division, max, invert and rshift, atomics and views; map-anon and munmap; execute; catch and finally; a DYNAMIC-BUFFER reserved larger; the other atomics" T-LABEL
    s" pass.wasm" BUILD 0 T=
    RAN 0 T=
    WASM-HARNESS:THROW-CODE 0 T=
-   WASM-HARNESS:OUT$ s" KDMXCG" T$= ;
+   WASM-HARNESS:OUT$ s" KDMXCGA" T$= ;
 
 
 : SEGMENTS-CASE ( -- )

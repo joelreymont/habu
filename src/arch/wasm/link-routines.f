@@ -142,6 +142,9 @@ variable BUF-U
 
 
 \ ---- division, views and atomics
+\ A module runs one task, so each atomic is the plain access and `fence` does
+\ nothing.
+
 \ The cell stored at SP is the routine's one result: the top moves past it.
 : ONE-RESULT, ( -- )
    L-SP GET,  CELL-BYTES I32,  OP-I32-ADD B,  L-SP SET,  SP!, ;
@@ -186,9 +189,18 @@ variable BUF-U
    ONE-RESULT,
    0 I32,  OP-END B, ;
 
+\ A load ( a -- x ) by opcode op of alignment al.
+: LOAD-BODY ( n n -- )
+   {: op:n al:n :}
+   1 U32,  1 U32,  I32 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I32-WRAP-I64 B,
+   op al 0 MEM,
+   OP-I64-STORE ALIGN-64 0 MEM,
+   0 I32,  OP-END B, ;
 
-\ atomic-cas ( expected new a -- actual ); a module runs one task, so the plain
-\ compare and store is atomic.
+\ atomic-cas ( expected new a -- actual ).
 : CAS-BODY ( -- )
    2 U32,  1 U32,  I32 B,  2 U32,  I64 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  OP-I32-SUB B,  L-SP SET,
@@ -203,8 +215,7 @@ variable BUF-U
    ONE-RESULT,
    0 I32,  OP-END B, ;
 
-\ atomic-add ( delta a -- old ) stores old + delta at a; a module runs one task, so
-\ the plain load, add and store is atomic.
+\ atomic-add ( delta a -- old ) stores old + delta at a.
 : FETCH-ADD-BODY ( -- )
    2 U32,  1 U32,  I32 B,  2 U32,  I64 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
@@ -764,7 +775,11 @@ public
    name u s" str>" STR:=CI if VIEW-BODY BODY$ true exit then
    name u s" data" STR:=CI if DATA-BODY BODY$ true exit then
    name u s" len" STR:=CI if LEN-BODY BODY$ true exit then
+   name u s" fence" STR:=CI if VIEW-BODY BODY$ true exit then
+   name u s" atomic@" STR:=CI if OP-I64-LOAD ALIGN-64 LOAD-BODY BODY$ true exit then
    name u s" atomic!" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
+   name u s" atomic-u32@" STR:=CI if OP-I64-LOAD32-U ALIGN-32 LOAD-BODY BODY$ true exit then
+   name u s" atomic-u32!" STR:=CI if OP-I64-STORE32 ALIGN-32 STORE-BODY BODY$ true exit then
    name u s" atomic-cas" STR:=CI if CAS-BODY BODY$ true exit then
    name u s" atomic-add" STR:=CI if FETCH-ADD-BODY BODY$ true exit then
    \ ---- floats

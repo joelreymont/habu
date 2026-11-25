@@ -53,6 +53,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : AIO-TEST:RING-CQ ( n -- n )
    RINGS RING-CQ-ENTRIES @ ;
 
+\ A RINGS entry's completion tail and head, as the loop reads them.
+: AIO-TEST:CQ-TAIL ( n -- n ) RINGS CQ-TAIL-ACQUIRE ;
+: AIO-TEST:CQ-HEAD ( n -- n ) RINGS CQ-HEAD@ ;
+
 \ A RINGS entry's entries the kernel has not consumed, read under the facility.
 : AIO-TEST:RING-PENDING ( n -- n )
    AIO-LOCK TASK:GET RINGS SQ-PENDING AIO-LOCK TASK:RELEASE ;
@@ -100,6 +104,8 @@ $800 constant XFER-HALF
 $7F000001 constant LOOPBACK
 4 constant STREAM-BACKLOG
 $10 constant REUSE-N
+4000 constant TAIL-ROUNDS
+40 constant TAIL-EACH                 \ at most half the first ring
 
 : AIO-TEST-ALIGN8 ( -- )
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
@@ -130,9 +136,12 @@ variable OWN-EXIT-DONE
 variable REUSE-PARKED
 variable REUSE-CLOSED
 variable CLEAN-GOT
+variable TAIL-TORN
+variable TAIL-QUIT
 variable FULL-N
 variable FULL-I
 create MONO-SPEC 16 allot             \ a timespec: seconds, then nanoseconds
+2 TYPED-BUFFER HALVES n
 
 PROCESS-SYMBOLS
 FUNCTION: CLOCK-CALL clock_gettime ( n ^u8 -- i32 ) ;FUNCTION
@@ -208,6 +217,7 @@ TASK:MIN-STACK TASK:TASK OWN-EXIT-TASK
 TASK:MIN-STACK TASK:TASK REUSE-TASK
 TASK:MIN-STACK TASK:TASK LISTEN-TASK
 TASK:MIN-STACK TASK:TASK CLEAN-TASK
+TASK:MIN-STACK TASK:TASK TAIL-TASK
 TASK:MIN-STACK TASK:TASK FAN0
 TASK:MIN-STACK TASK:TASK FAN1
 TASK:MIN-STACK TASK:TASK FAN2
@@ -301,6 +311,41 @@ TASK:MIN-STACK TASK:TASK FAN7
    mono-ns {: t1:n :}
    t0 mid <= TTRUE
    mid t1 <= TTRUE ;
+
+\ A 32-bit store leaves the bytes either side of it, and a 32-bit load answers
+\ no bit past its four bytes.
+: CASE-U32-WORDS ( -- )
+   -1 0 HALVES !  -1 1 HALVES !
+   0 HALVES byte-view 4 + {: high:^ :}
+   $1800000FF high atomic-u32!
+   0 HALVES @ $800000FF 32 lshift $FFFFFFFF or T=
+   1 HALVES @ -1 T=
+   high atomic-u32@ $800000FF T= ;
+
+\ A whole read of the tail is never behind the last one or the head read before it,
+\ nor past the head read after it by more than the ring holds.
+: TAIL-LOOK ( n -- n ) {: was:n :}
+   0 CQ-HEAD {: below:n :}
+   0 CQ-TAIL {: tail:n :}
+   tail 0 CQ-HEAD - 0 RING-CQ >
+   tail below was max < or if 1 TAIL-TORN +! then
+   tail ;
+
+: TAIL-WORK ( -- )
+   0 begin TAIL-QUIT atomic@ 0= while TAIL-LOOK repeat drop ;
+
+: TAIL-ROUND ( -- )
+   TAIL-EACH 0 ?do 0 >MS AIO:TIMEOUT i GROW-TICKETS ! loop
+   TAIL-EACH 0 ?do i GROW-TICKETS @ AWAIT>N drop loop ;
+
+: CASE-TAIL-WHOLE ( -- )
+   0 TAIL-TORN !  0 TAIL-QUIT atomic!
+   ['] TAIL-WORK TAIL-TASK TASK:ACTIVATE
+   TAIL-ROUNDS 0 ?do TAIL-ROUND loop
+   1 TAIL-QUIT atomic!
+   TAIL-TASK AWAIT-END
+   TAIL-TASK TASK:KILL
+   TAIL-TORN @ 0 T= ;
 
 \ A timer, awaited on the main thread through its own park.
 : CASE-TIMER ( -- )
@@ -1021,7 +1066,8 @@ TASK:MIN-STACK TASK:TASK FAN7
    CASE-STOPPED-REJECTION
    AIO:START
    CASE-START-TWICE
-   HB-TARGET-LINUX-KERNEL? if CASE-FIRST-RING then
+   CASE-U32-WORDS
+   HB-TARGET-LINUX-KERNEL? if CASE-FIRST-RING CASE-TAIL-WHOLE then
    CASE-READABLE
    CASE-ALREADY-READY
    HB-TARGET-LINUX-KERNEL? if CASE-MONO-CLOCK then

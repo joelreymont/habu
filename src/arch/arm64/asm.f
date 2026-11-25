@@ -371,6 +371,10 @@ public
 
 : ENC-STLR ( n n -- n ) XR2 5 lshift or $C89FFC00 or MSK ;
 
+: ENC-LDARW ( n n -- n ) XR2 5 lshift or $88DFFC00 or MSK ;
+
+: ENC-STLRW ( n n -- n ) XR2 5 lshift or $889FFC00 or MSK ;
+
 \ A branch distance is in bytes from the branch; one that is not a whole
 \ instruction or that its field cannot hold throws E-A64EMIT-REACH.
 : ENC-B ( n -- n ) >REL26 $3FFFFFF and $14000000 or MSK ;

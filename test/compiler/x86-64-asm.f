@@ -316,6 +316,10 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    RAX RCX MEM-AT SINK ENC-XCHG-MR   s" 488701" X=
    \ llvm-mc: xchgq %r9, 8(%r12)
    R9 R12 8 MEM-OFF SINK ENC-XCHG-MR   s" 4d874c2408" X=
+   \ llvm-mc: xchgl %eax, (%rcx)
+   0 >R32 RCX MEM-AT SINK ENC-XCHG32-MR   s" 8701" X=
+   \ llvm-mc: xchgl %r9d, 8(%r12)
+   9 >R32 R12 8 MEM-OFF SINK ENC-XCHG32-MR   s" 45874c2408" X=
    \ llvm-mc: lock xaddq %rax, (%rcx)
    RAX RCX MEM-AT SINK ENC-LOCK-XADD-MR   s" f0480fc101" X=
    \ llvm-mc: lock xaddq %r10, (%r13)
