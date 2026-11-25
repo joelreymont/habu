@@ -1,4 +1,3 @@
-split-str
 \ load-argv-test.f - the `bin/hb --load` argv loader contract: each path becomes
 \ `s" <path>" required`, so src/core/include.f decides and a path the engine
 \ already carries loads once. Every case forks the real bin/hb: the contract
@@ -42,13 +41,13 @@ variable LA-MISS-U
 variable LA-DANGLING-U
 variable LA-DANGLING-LINK-U
 
-: LA-ROOT$ ( -- str )    LA-ROOT LA-ROOT-U @ ;
-: LA-PROBE$ ( -- str )   LA-PROBE LA-PROBE-U @ ;
-: LA-THROW$ ( -- str )   LA-THROW LA-THROW-U @ ;
-: LA-DECOY$ ( -- str )   LA-DECOY LA-DECOY-U @ ;
-: LA-MISS$ ( -- str )    LA-MISS LA-MISS-U @ ;
-: LA-DANGLING$ ( -- str ) LA-DANGLING LA-DANGLING-U @ ;
-: LA-DANGLING-LINK$ ( -- str ) LA-DANGLING-LINK LA-DANGLING-LINK-U @ ;
+: LA-ROOT$ ( -- str )    LA-ROOT LA-ROOT-U @ >str ;
+: LA-PROBE$ ( -- str )   LA-PROBE LA-PROBE-U @ >str ;
+: LA-THROW$ ( -- str )   LA-THROW LA-THROW-U @ >str ;
+: LA-DECOY$ ( -- str )   LA-DECOY LA-DECOY-U @ >str ;
+: LA-MISS$ ( -- str )    LA-MISS LA-MISS-U @ >str ;
+: LA-DANGLING$ ( -- str ) LA-DANGLING LA-DANGLING-U @ >str ;
+: LA-DANGLING-LINK$ ( -- str ) LA-DANGLING-LINK LA-DANGLING-LINK-U @ >str ;
 
 \ The probe both proves the run reached user source AND proves the seeded
 \ module is usable, so a case cannot pass by loading nothing at all.
@@ -66,9 +65,10 @@ variable LA-DANGLING-LINK-U
 
 : LA-SETUP ( -- )
    FS:CLEANUP-RESET
-   s" habu-load-argv" FS:MKTEMP-DIR {: a:^ u:n :}
-   a LA-ROOT u BYTE-COPY
-   u LA-ROOT-U !
+   s" habu-load-argv" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA LA-ROOT dir STR:LEN BYTE-COPY
+   dir STR:LEN LA-ROOT-U !
+
    LA-ROOT$ FS:CLEANUP-TREE+
    LA-ROOT$ s" probe.f"   LA-PROBE FS:JOIN-PATH LA-PROBE-U !
    LA-ROOT$ s" thrower.f" LA-THROW FS:JOIN-PATH LA-THROW-U !
@@ -97,8 +97,8 @@ variable LA-DANGLING-LINK-U
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-: LA-OUT$ ( n -- str ) {: u:n :}   LA-OUT u ;
-: LA-ERR$ ( n -- str ) {: u:n :}   LA-ERR u ;
+: LA-OUT$ ( n -- str ) {: u:n :}   LA-OUT u >str ;
+: LA-ERR$ ( n -- str ) {: u:n :}   LA-ERR u >str ;
 
 \ ---- cases -----------------------------------------------------------------
 

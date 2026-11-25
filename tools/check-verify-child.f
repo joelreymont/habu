@@ -1,4 +1,3 @@
-split-str
 \ check-verify-child.f - the verifier child LSP-CHECK:VERIFY-BYTES,
 \ LSP-CHECK:VERIFY-BYTES-AT and LSP-CHECK:PREVERIFY-BYTES run. Only
 \ tools/check-verify-core.f spawns it, on the engine src/lib/engine-candidate.f
@@ -161,21 +160,22 @@ create ROOT PATH-CAP allot   variable ROOT-U
 create OLD PATH-CAP allot    variable OLD-U
 
 : SAVE ( -- )
-   SOURCE-ROOT:ENGINE$ {: a:^ u:n :}
-   a OLD u BYTE-COPY  u OLD-U !
-   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop
-   SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME {: root:^ rootu:n :}
-   root ROOT rootu BYTE-COPY  rootu ROOT-U ! ;
+   SOURCE-ROOT:ENGINE$ {: e:str :}
+   e STR:DATA OLD e STR:LEN BYTE-COPY  e STR:LEN OLD-U !
+   SOURCE-ROOT:ACTIVE-SOURCE drop drop
+   SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME {: root:str :}
+   root STR:DATA ROOT root STR:LEN BYTE-COPY  root STR:LEN ROOT-U ! ;
 
 : LOAD ( -- ) s" tools/check-verify-child-lib.f" required ;
-: LOAD-ROOT ( -- ) ROOT ROOT-U @ [: LOAD ;] SOURCE-ROOT:WITH ;
+: LOAD-ROOT ( -- ) ROOT ROOT-U @ >str [: LOAD ;] SOURCE-ROOT:WITH ;
 
 public
 : START ( -- )
    SAVE
-   ROOT ROOT-U @ SOURCE-ROOT:ENGINE!
+   ROOT ROOT-U @ >str SOURCE-ROOT:ENGINE!
    [: LOAD-ROOT ;] catch {: rc:n :}
-   OLD OLD-U @ SOURCE-ROOT:ENGINE!
+   OLD OLD-U @ >str SOURCE-ROOT:ENGINE!
+
    rc 0<> if rc throw then ;
 ;package
 

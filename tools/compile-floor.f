@@ -1,4 +1,3 @@
-split-str
 \ compile-floor.f - the tier-0 per-definition compile floor: its mean and least.
 \   bin/hb --load tools/compile-floor.f [-- FLOOR-MS]   with FLOOR-MS: refuse
 \   a larger trivial-t0 mean, E-FLOOR-EXCEEDED. One line, us per definition:
@@ -44,39 +43,39 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 \ ---- refusal ----------------------------------------------------------------
 
-: EMIT-ERR ( str -- ) {: msg:^ mu :}
-   FD:STDERR FD>N msg mu write mu <> if
+: EMIT-ERR ( str -- ) {: msg:str :}
+   FD:STDERR FD>N msg write msg STR:LEN <> if
       s" compile-floor: stderr write failed" EXIT-STATUS:IOERR die
    then ;
 
-: REFUSE ( str n -- ) {: msg:^ mu thrown :}
-   msg mu EMIT-ERR
+: REFUSE ( str n -- ) {: msg:str thrown :}
+   msg EMIT-ERR
    thrown throw ;
 
 \ ---- building one set, before the clock starts ------------------------------
 \ The built set and its teardown load through `evaluate-closed`: definitions
 \ and undefines leave no cell.
 
-: SRC+ ( str n -- ) {: a:^ u ix :}
-   SRC-FILL @ u + SRC-CAP > if E-FLOOR-CAPACITY throw then
+: SRC+ ( str n -- ) {: s:str ix :}
+   SRC-FILL @ s STR:LEN + SRC-CAP > if E-FLOOR-CAPACITY throw then
    SRC-FILL @ SRC-OFF ix cells + !
-   u SRC-LEN ix cells + !
-   a SRC SRC-FILL @ + u BYTE-COPY
-   SRC-FILL @ u + SRC-FILL ! ;
+   s STR:LEN SRC-LEN ix cells + !
+   s STR:DATA SRC SRC-FILL @ + s STR:LEN BYTE-COPY
+   SRC-FILL @ s STR:LEN + SRC-FILL ! ;
 
-: BUILD-SET ( str str -- ) {: px:^ pu tx:^ tu :}
-   pu PREFIX-CAP > if E-FLOOR-CAPACITY throw then
-   px LIVE-PREFIX pu BYTE-COPY
-   pu PREFIX-U !
+: BUILD-SET ( str str -- ) {: px:str tx:str :}
+   px STR:LEN PREFIX-CAP > if E-FLOOR-CAPACITY throw then
+   px STR:DATA LIVE-PREFIX px STR:LEN BYTE-COPY
+   px STR:LEN PREFIX-U !
    0 SRC-FILL !
    SET-N 0 ?do
       SB-RESET
-      s" : " SB-APPEND  px pu SB-APPEND  i 1+ FMT:SB-U  tx tu SB-APPEND
+      s" : " SB-APPEND  px SB-APPEND  i 1+ FMT:SB-U  tx SB-APPEND
       SB$ i SRC+
    loop ;
 
 : DEF$ ( n -- str ) {: ix :}
-   SRC SRC-OFF ix cells + @ +  SRC-LEN ix cells + @ ;
+   SRC SRC-OFF ix cells + @ +  SRC-LEN ix cells + @ >str ;
 
 \ ---- the measured window ----------------------------------------------------
 \ Thread CPU time leaves out the neighbours' slices and a slow core only adds
@@ -106,7 +105,9 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 \ so TEARDOWN removes a measured set before the next is built.
 : UNDEF-ONE ( n -- ) {: ix :}
    SB-RESET
-   s" undefine " SB-APPEND  LIVE-PREFIX PREFIX-U @ SB-APPEND  ix FMT:SB-U
+   s" undefine " SB-APPEND
+   LIVE-PREFIX PREFIX-U @ >str SB-APPEND  ix FMT:SB-U
+
    SB$ evaluate-closed ;
 
 : TEARDOWN ( -- )
@@ -119,9 +120,9 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 \ COMPILE-SET defines every name in the set or throws, so TEARDOWN's count is
 \ exact; a throw leaves SET-LIVE? clear and the partial set in the dictionary,
 \ reachable only if compiling `1 +` fails, which kills the run anyway.
-: MEASURE ( str str -- ) {: px:^ pu tx:^ tu :}
+: MEASURE ( str str -- ) {: px:str tx:str :}
    TEARDOWN
-   px pu tx tu BUILD-SET
+   px tx BUILD-SET
    COMPILE-SET
    1 SET-LIVE? ! ;
 

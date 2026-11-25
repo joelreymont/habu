@@ -1,4 +1,3 @@
-split-str
 \ text.f — checked text/file helpers for native lint tools.
 
 require src/lib/string.f
@@ -48,20 +47,20 @@ $1000000 constant MAX-BYTES
    dup 0 <= IF drop 1 THEN ;
 
 : ALLOC ( n ^n -- ) {: size:n s:^ :}
-   size ALLOC-NEED MEM-ALLOC-64K-SPAN {: buf:^ cap:n :}
+   size ALLOC-NEED MEM-ALLOC-64K-SPAN {: span:str :}
    s BUF@ s CAP@ {: old:^ oldcap:n :}
-   cap s CAP!
-   buf s BUF!
+   span STR:LEN s CAP!
+   span STR:DATA s BUF!
    old 0= 0= IF old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES THEN ;
 
-: TOO-LARGE ( str n -- ) {: path:^ pathu:n size:n :}
-   s" lint-slab: file exceeds maximum: " type path pathu type cr
+: TOO-LARGE ( str n -- ) {: path:str size:n :}
+   s" lint-slab: file exceeds maximum: " type path type cr
    s" lint-slab: needed " type size .
    s" lint-slab: have " type MAX-BYTES .
    E-FS-CAPACITY throw ;
 
-: ENSURE-CAPACITY ( str n ^n -- ) {: path:^ pathu:n size:n s:^ :}
-   size MAX-BYTES > IF path pathu size TOO-LARGE THEN
+: ENSURE-CAPACITY ( str n ^n -- ) {: path:str size:n s:^ :}
+   size MAX-BYTES > IF path size TOO-LARGE THEN
    s BUF@ 0= size s CAP@ > or IF size s ALLOC THEN ;
 
 public
@@ -69,13 +68,13 @@ public
 \ Cells a caller must reserve for one slab: `create MY-SLAB LINT-SLAB:CELLS cells allot`.
 3 constant CELLS
 
-: LOAD ( str ^n -- ) {: path:^ pathu:n s:^ :}
-   path pathu FS:FILE-SIZE {: size:n :}
-   path pathu size s ENSURE-CAPACITY
-   path pathu s BUF@ s CAP@ FS:READ-ALL s LEN! ;
+: LOAD ( str ^n -- ) {: path:str s:^ :}
+   path FS:FILE-SIZE {: size:n :}
+   path size s ENSURE-CAPACITY
+   path s BUF@ s CAP@ FS:READ-ALL s LEN! ;
 
 : TEXT ( ^n -- str ) {: s:^ :}
-   s BUF@ s LEN@ ;
+   s BUF@ s LEN@ >str ;
 
 ;package
 
@@ -97,29 +96,34 @@ public
 ;package
 
 \ ---- string ops ------------------------------------------------------------
-: LINT-STR= ( str str -- bool ) {: a:^ u b:^ v :}
-   u v <> IF LINT-FALSE exit THEN
-   0 begin dup u < while
-      dup a + c@ over b + c@ <> IF drop LINT-FALSE exit THEN
+: LINT-STR= ( str str -- bool ) {: s:str t:str :}
+   s STR:LEN t STR:LEN <> IF LINT-FALSE exit THEN
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ over t STR:DATA + c@ <> IF
+         drop LINT-FALSE exit
+      THEN
       1+
    repeat drop LINT-TRUE ;
 
-: LINT-FIND-SUB ( str str -- option<n> ) {: a:^ u:n sa:^ su:n :}
-   su 0= IF 0 OPTION:SOME exit THEN
-   0 begin dup u su - <= while
-      dup a +  su  sa su LINT-STR= IF OPTION:SOME exit THEN  1+
+: LINT-FIND-SUB ( str str -- option<n> ) {: s:str ss:str :}
+   ss STR:LEN 0= IF 0 OPTION:SOME exit THEN
+   0 begin dup s STR:LEN ss STR:LEN - <= while
+      dup s STR:DATA +  ss STR:LEN >str  ss LINT-STR=
+      IF OPTION:SOME exit THEN  1+
    repeat  drop  OPTION:NONE ;
 
 \ ---- more string ops for the linters ----
 : LINT-BMOVE ( ^u8 str -- )
    \ A negative length copies nothing.
-   0 max BYTE-COPY ;
+   dup STR:DATA swap STR:LEN 0 max BYTE-COPY ;
 
 : LINT-FOLD ( n -- n )
    dup 64 > over 91 < and IF 32 + THEN ;
 
-: FOLD-TO ( str ^u8 -- ) {: a:^ u dst:^ :}
-   0 begin dup u < while  dup a + c@ LINT-FOLD  over dst + c!  1+  repeat  drop ;
+: FOLD-TO ( str ^u8 -- ) {: s:str dst:^ :}
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ LINT-FOLD  over dst + c!  1+
+   repeat  drop ;
 
 13 constant LINT-CR
 
@@ -140,27 +144,33 @@ public
 
 variable SN#
 : SPLIT-CLEAR  ( -- )  0 SN# ! ;
-: SPLIT+ ( str -- ) {: a:^ u:n :}
+: SPLIT+ ( str -- ) {: s:str :}
    SN# @ SMAX >= IF s" lint: split result overflow" EXIT-STATUS:FULL die THEN
-   a SN# @ SOFF !  u SLEN SN# @ cells + !  SN# @ 1+ SN# ! ;
+   s STR:DATA SN# @ SOFF !  s STR:LEN SLEN SN# @ cells + !  SN# @ 1+ SN# ! ;
 
 private
 
-: ADD-LINE ( str -- ) {: a:^ u:n :}              \ one line, trailing CR dropped
-   u 0 > IF a u 1- + c@ LINT-CR = IF a u 1- SPLIT+ exit THEN THEN
-   a u SPLIT+ ;
+: ADD-LINE ( str -- ) {: s:str :}              \ one line, trailing CR dropped
+   s STR:LEN 0 > IF
+      s STR:DATA s STR:LEN 1- + c@ LINT-CR = IF
+         s STR:DATA s STR:LEN 1- >str SPLIT+ exit
+      THEN
+   THEN
+   s SPLIT+ ;
 
 public
 
-: SPLIT-LINES ( str -- ) {: a:^ u:n :}
+: SPLIT-LINES ( str -- ) {: s:str :}
    SPLIT-CLEAR  0 MARK !  0 CUR !
-   begin CUR @ u < while
-      a CUR @ + c@ 10 = IF
-         a MARK @ +  CUR @ MARK @ -  ADD-LINE
+   begin CUR @ s STR:LEN < while
+      s STR:DATA CUR @ + c@ 10 = IF
+         s STR:DATA MARK @ +  CUR @ MARK @ - >str  ADD-LINE
          CUR @ 1+ MARK !
       THEN
       CUR @ 1+ CUR !
    repeat
-   MARK @ u < IF a MARK @ +  u MARK @ -  ADD-LINE THEN ;
+   MARK @ s STR:LEN < IF
+      s STR:DATA MARK @ +  s STR:LEN MARK @ - >str  ADD-LINE
+   THEN ;
 
 ;package

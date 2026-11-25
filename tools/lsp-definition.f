@@ -1,4 +1,3 @@
-split-str
 \ lsp-definition.f - textDocument/definition at a byte of an open document: the
 \ first use of its last completed check holding the byte (tools/lsp-defs.f), and
 \ the declaration it binds to as one Location: a source declaration's first record
@@ -37,10 +36,10 @@ TYPED-VARIABLE OUT ^JSON:writer
    g r REC-RANGE LOCATION-AT ;
 
 : TEXT-OF! ( str -- )
-   {: path:^ pathu:n :}
-   path pathu DOC-HOLDING MATCH option
+   {: path:str :}
+   path DOC-HOLDING MATCH option
       some OF DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
-      none OF path pathu LSP-TEXT:FILE-TEXT! ENDOF
+      none OF path LSP-TEXT:FILE-TEXT! ENDOF
    ;MATCH ;
 
 : BUILTIN-TARGET ( n n -- )
@@ -50,7 +49,7 @@ TYPED-VARIABLE OUT ^JSON:writer
    {: sym:n found:bool :}
    found 0= if exit then
    sym ENGINE-ORIGIN:TARGET
-   {: rel:^ relu:n at:n end:n name:^ nameu:n live:bool :}
+   {: rel:str at:n end:n name:str live:bool :}
    live at old = and old-end 0= old-end end = or and 0= if exit then
    g [: dup GROUP-PATH$ TEXT-OF! ;] catch {: rc:n :} drop
    rc 0<> if rc LSP-TEXT:FS-RC? 0= if rc throw then exit then

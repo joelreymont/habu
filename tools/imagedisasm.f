@@ -1,4 +1,3 @@
-split-str
 \ imagedisasm.f - disassemble a raw executable slice with Habu's ARM64 decoder.
 \ Run: bin/hb --load tools/imagedisasm.f -- image offset count
 
@@ -60,12 +59,12 @@ CAST: MAP>BYTES ( n -- ^u8 )
    acc 16 * digit + OPTION:SOME ;
 
 : IMGD-PARSE-HEX ( str -- option<n> )
-   {: a:^ u:n :}
-   u 0= IF OPTION:NONE EXIT THEN
+   {: s:str :}
+   s STR:LEN 0= IF OPTION:NONE EXIT THEN
    0 IMGD-HEX-I !
    0 IMGD-HEX-ACC !
-   BEGIN IMGD-HEX-I @ u < WHILE
-      a IMGD-HEX-I @ + c@ IMGD-HEX-DIGIT MATCH option
+   BEGIN IMGD-HEX-I @ s STR:LEN < WHILE
+      s STR:DATA IMGD-HEX-I @ + c@ IMGD-HEX-DIGIT MATCH option
         none OF OPTION:NONE EXIT ENDOF
         some OF IMGD-HEX-DIG ! ENDOF
       ;MATCH
@@ -78,16 +77,18 @@ CAST: MAP>BYTES ( n -- ^u8 )
    IMGD-HEX-ACC @ OPTION:SOME ;
 
 : IMGD-HEX-BODY ( str -- str bool )
-   {: a:^ u :}
-   u 1 > IF
-      a c@ 36 = IF a 1 + u 1 - STR:TRUE EXIT THEN
-   THEN
-   u 2 > IF
-      a c@ STR:ZERO = a 1 + c@ STR:ASCII-LOWER 120 = and IF
-         a 2 + u 2 - STR:TRUE EXIT
+   {: s:str :}
+   s STR:LEN 1 > IF
+      s STR:DATA c@ 36 = IF
+         s STR:DATA 1 + s STR:LEN 1 - >str STR:TRUE EXIT
       THEN
    THEN
-   a u STR:FALSE ;
+   s STR:LEN 2 > IF
+      s STR:DATA c@ STR:ZERO = s STR:DATA 1 + c@ STR:ASCII-LOWER 120 = and IF
+         s STR:DATA 2 + s STR:LEN 2 - >str STR:TRUE EXIT
+      THEN
+   THEN
+   s STR:FALSE ;
 
 public
 
@@ -120,7 +121,8 @@ private
 : IMGD-MAIN ( -- )
    IMGD-PARSE-ARGS
    IMGD-CHECK-RANGE
-   IMGD-IMG@ IMGD-OFF @ + IMGD-N @ DISASM ;
+   IMGD-IMG@ IMGD-OFF @ + IMGD-N @ >str DISASM ;
+
 
 : IMGD-RUN? ( -- )
    SCRIPT-ARGC 0 > IF IMGD-MAIN THEN ;

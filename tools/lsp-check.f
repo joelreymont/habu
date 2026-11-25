@@ -1,4 +1,3 @@
-split-str
 \ lsp-check.f - the language server's check of one open document through
 \ VERIFY-BYTES-AT (tools/check-verify-core.f), which runs none of the text.
 \ Every check reads each other open document in place of its file on disk,
@@ -43,8 +42,8 @@ variable BATCH-CODE
 variable BATCH-K
 
 : ERR ( str -- )
-   {: a:^ u:n :}
-   FD:STDERR a u FD:WRITE-FULL ;
+   {: s:str :}
+   FD:STDERR s FD:WRITE-FULL ;
 
 : NUMBER$ ( n -- str )  SB-RESET FMT:SB-INT SB$ ;
 
@@ -61,18 +60,18 @@ variable BATCH-K
 : NEWLINE ( -- )  s\" \n" ERR ;
 
 : RELAY ( -- )
-   VERIFY-LOG$ {: a:^ u:n :}
-   u 0= if exit then
-   a u ERR
-   a u + 1- c@ LF <> if NEWLINE then ;
+   VERIFY-LOG$ {: s:str :}
+   s STR:LEN 0= if exit then
+   s ERR
+   s STR:DATA s STR:LEN + 1- c@ LF <> if NEWLINE then ;
 
 \ A check that completed with this verdict: said only when the verifier wrote
 \ prose.
 : COMPLETED ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    true PUBLISHABLE !
-   VERIFY-LOG$ nip 0= if exit then
-   HEAD a u ERR NEWLINE RELAY ;
+   VERIFY-LOG$ STR:LEN 0= if exit then
+   HEAD s ERR NEWLINE RELAY ;
 
 : UNFINISHED ( PROCESS:ending -- )
    HEAD s" not checked: " ERR
@@ -99,9 +98,9 @@ variable BATCH-K
    ;MATCH ;
 
 : OUTCOME! ( str -- )
-   {: a:^ u:n :}
-   a OUTCOME-B u BYTE-COPY
-   u OUTCOME-U ! ;
+   {: s:str :}
+   s STR:DATA OUTCOME-B s STR:LEN BYTE-COPY
+   s STR:LEN OUTCOME-U ! ;
 
 : COMPLETE-OUTCOME ( str -- )
    true PUBLISHABLE ! OUTCOME! ;
@@ -126,7 +125,7 @@ variable BATCH-K
    ;MATCH ;
 
 : CHECKED ( -- )
-   SRC-A @ SRC-U @ SRC-P @ SRC-PU @ SRC-T @ SRC-TU @
+   SRC-A @ SRC-U @ >str SRC-P @ SRC-PU @ >str SRC-T @ SRC-TU @ >str
    [: -1 swap DOC-EACH-BUT ;] CHECK-MS >MS
    VERIFY-BYTES-OF USES-VERDICT ;
 
@@ -161,20 +160,20 @@ public
       VERIFY-UNREAD$ slot
       VERIFIED @ LSP-DEFS:DEFS-KEEP
    then
-   VERIFY-OUT$ nip 0<> PUBLISHABLE @ or if
+   VERIFY-OUT$ STR:LEN 0<> PUBLISHABLE @ or if
       slot VERIFY-OUT$ LSP-DIAG:PUBLISH
    then ;
 
 \ Checks the bytes as the file at the path, silently; a completed check is the
 \ store's probe (LSP-DEFS:DEFS-PROBE) only while GATHER runs.
 : USES ( str str str n [ -- ] -- )
-   {: a:^ u:n p:^ pu:n t:^ tu:n owner:n gather :}
-   a SRC-A !
-   u SRC-U !
-   p SRC-P !
-   pu SRC-PU !
-   t SRC-T !
-   tu SRC-TU !
+   {: s:str p:str t:str owner:n gather :}
+   s STR:DATA SRC-A !
+   s STR:LEN SRC-U !
+   p STR:DATA SRC-P !
+   p STR:LEN SRC-PU !
+   t STR:DATA SRC-T !
+   t STR:LEN SRC-TU !
    owner SRC-OWNER !
    false PUBLISHABLE !
    false VERIFIED !
@@ -229,7 +228,8 @@ public
    true ;
 
 \ What the last USES check came to: its verdict's name, or `throw N`.
-: OUTCOME$ ( -- str )  OUTCOME-B OUTCOME-U @ ;
+: OUTCOME$ ( -- str )  OUTCOME-B OUTCOME-U @ >str ;
+
 
 ;using
 ;package

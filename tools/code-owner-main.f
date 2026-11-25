@@ -1,4 +1,3 @@
-split-str
 \ code-owner-main.f - CLI entry.
 \ The argument is a REGION OFFSET, not an address: the region moves every boot, so
 \ an absolute address caught in one process is meaningless in this one.
@@ -16,9 +15,14 @@ package CODE-OWNER-CLI
    s" usage: --load tools/code-owner-main.f -- <region offset>"
    EXIT-STATUS:USAGE die ;
 
-: HEX-BODY ( str -- str bool ) {: a:^ u:n :}
-   u 1 > if a c@ 36 = if a 1 + u 1 - 0 0= exit then then
-   a u 0 0= 0= ;
+: HEX-BODY ( str -- str bool ) {: s:str :}
+   s STR:LEN 1 > if
+      s STR:DATA c@ 36 = if
+         s STR:DATA 1 + s STR:LEN 1 - >str 0 0= exit
+      then
+   then
+
+   s 0 0= 0= ;
 
 : DIGIT ( n -- n ) {: c:n :}
    c 48 >= c 57 <= and if c 48 - exit then
@@ -27,10 +31,10 @@ package CODE-OWNER-CLI
    -1 ;
 
 variable ACC
-: HEX>N ( str -- n ) {: a:^ u:n :}
+: HEX>N ( str -- n ) {: s:str :}
    0 ACC !
-   u 0 ?do
-      a i + c@ DIGIT {: d:n :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ DIGIT {: d:n :}
       d 0 < if s" code-owner: offset is not a number" EXIT-STATUS:USAGE die then
       ACC @ 16 * d + ACC !
    loop

@@ -1,4 +1,3 @@
-split-str
 \ hb-build.f - the native build command (tools/hb-build-lib.f).
 \   bin/hb --load tools/hb-build.f -- [--engine | --repl | --json-errors]
 \     [--target name] [--size-report] [--report-json] [source.f] -o out

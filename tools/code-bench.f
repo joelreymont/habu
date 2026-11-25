@@ -1,4 +1,3 @@
-split-str
 \ code-bench.f - run time of compiled code on the benchmark corpus.
 \ Run: bin/hb --load tools/code-bench.f -- <source-file>
 \ Per benchmark: `B <name> <run1> ... <run15> <median>` in microseconds of thread
@@ -67,7 +66,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 
 : EMIT-C ( n -- ) {: c :}
    c CHB c!
-   CHB 1 type ;
+   CHB 1 >str type ;
 
 : EMIT-DEC ( n -- )
    DEC-V !
@@ -98,15 +97,15 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 
 \ ---- the source under the text benchmarks -----------------------------------
 
-: TEXT$ ( -- str ) LINT-SOURCE:TEXT drop TEXT-N @ ;
+: TEXT$ ( -- str ) LINT-SOURCE:TEXT STR:DATA TEXT-N @ >str ;
 
-: LINES$ ( -- str ) LINT-SOURCE:TEXT drop LINES-N @ ;
+: LINES$ ( -- str ) LINT-SOURCE:TEXT STR:DATA LINES-N @ >str ;
 
 \ LINT-SPLIT:SPLIT-LINES dies rather than truncating when a file has more
 \ fields than its table holds, so the prefix handed to it is cut at MAX-LINES
 \ newlines instead of at a byte count that happens to work for one file.
 : LINE-LIMIT ( -- )
-   LINT-SOURCE:TEXT drop {: a:^ :}
+   LINT-SOURCE:TEXT STR:DATA {: a:^ :}
    0 {: seen :}
    TEXT-N @ LINES-N !
    seen TEXT-N @ 0 ?do
@@ -116,7 +115,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 
 : LOAD-SOURCE ( str -- )
    LINT-SOURCE:LOAD
-   LINT-SOURCE:TEXT nip {: got :}
+   LINT-SOURCE:TEXT STR:LEN {: got :}
    got 0= if s" code-bench: source file is empty" EXIT-STATUS:IOERR die then
    got TEXT-CAP > if TEXT-CAP else got then TEXT-N !
    LINE-LIMIT ;
@@ -132,7 +131,8 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
    ;MATCH ;
 
 : NEEDLE$ ( -- str )
-   LINT-SOURCE:TEXT drop TEXT-N @ NEEDLE-N @ - + NEEDLE-N @ ;
+   LINT-SOURCE:TEXT STR:DATA TEXT-N @ NEEDLE-N @ - +
+   NEEDLE-N @ >str ;
 
 : SEARCH-AT ( -- n ) TEXT$ NEEDLE$ LINT-FIND-SUB FOUND-AT ;
 
@@ -186,7 +186,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 
 : B-MOVE ( -- )
    MOVE-REPS 0 ?do
-      LINT-SOURCE:TEXT drop DEST TEXT-N @ LINT-BMOVE
+      LINT-SOURCE:TEXT STR:DATA DEST TEXT-N @ >str LINT-BMOVE
       DEST c@ SINK !
    loop ;
 
@@ -247,7 +247,8 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
    s" code-bench: " MSG+
    row ROW-NAME$ MSG+
    s"  computed a different result in a later round" MSG+
-   MSG MSG-N BUF-LEN@ EXIT-STATUS:FAILURE die ;
+   MSG MSG-N BUF-LEN@ >str EXIT-STATUS:FAILURE die ;
+
 
 \ One `xt` per benchmark would need a quotation the checker can call from a
 \ loop; naming the bodies and timing each in its own word costs one line each

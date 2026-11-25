@@ -1,4 +1,3 @@
-split-str
 \ lsp-completion.f - textDocument/completion: one item per spelling the checker
 \ offered at the cursor (LSP-CHECK:RUN-AT; LSP-CHECK:VERIFY-CANDIDATES$ lines as
 \ tools/check-verify-child.f states them), in its order, never incomplete: every
@@ -33,18 +32,18 @@ TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable ASKED                           \ the slot of the document asked about,
 variable SHOWN-N                         \ and the items written so far
 
-: WORD$ ( -- str )  0 WORD-B WORD-U @ ;
-: FILE$ ( -- str )  0 FILE-B FILE-U @ ;
+: WORD$ ( -- str )  0 WORD-B WORD-U @ >str ;
+: FILE$ ( -- str )  0 FILE-B FILE-U @ >str ;
 : D+ ( str -- )  DETAIL-B @ VEC:APPEND ;
 : DETAIL$ ( -- str )  DETAIL-B @ VEC:BYTES ;
 
 : STRING>WORD ( JSON:reader -- JSON:reader )
-   READ-SPAN$ nip {: raw:n :}
+   READ-SPAN$ STR:LEN {: raw:n :}
    raw 1 max WORD-B-RESERVE
    0 WORD-B raw READ-STR WORD-U ! ;
 
 : STRING>FILE ( JSON:reader -- JSON:reader )
-   READ-SPAN$ nip {: raw:n :}
+   READ-SPAN$ STR:LEN {: raw:n :}
    raw 1 max FILE-B-RESERVE
    0 FILE-B raw READ-STR FILE-U ! ;
 
@@ -60,12 +59,12 @@ variable SHOWN-N                         \ and the items written so far
 \ The candidate line's members decoded, each once; a member it lacks is empty
 \ or 0.
 : DECODE ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    0 WORD-U !
    0 FILE-U !
    0 TARGET-V !
    0 TARGET-END-V !
-   JSON-ST a u READ-INIT
+   JSON-ST s READ-INIT
    READ-NEXT drop
    begin READ-NEXT T-KEY = while MEMBER repeat
    READ-CLOSE ;
@@ -86,14 +85,15 @@ variable SHOWN-N                         \ and the items written so far
 \ no effect, gets none.
 : DETAIL ( n -- )
    {: r:n :}
-   r REC-EFFECT$ {: e:^ eu:n :}
-   r REC-PACKAGE$ {: p:^ pu:n :}
-   eu pu or 0= if exit then
+   r REC-EFFECT$ {: e:str :}
+   r REC-PACKAGE$ {: p:str :}
+   e STR:LEN p STR:LEN or 0= if exit then
    DETAIL-B @ 0 VEC:RESIZE
-   eu 0 > if s" ( " D+ e eu D+ s"  )" D+ then
-   pu 0 > if
-      eu 0 > if s"  " D+ then
-      s" \ package " D+ p pu D+
+   e STR:LEN 0 > if s" ( " D+ e D+ s"  )" D+ then
+   p STR:LEN 0 > if
+      e STR:LEN 0 > if s"  " D+ then
+      s" \ package " D+ p D+
+
    then
    OUT @ WRITE-COMMA s" detail" DETAIL$ WRITE-FIELD-S drop ;
 

@@ -1,4 +1,3 @@
-split-str
 \ gate-json-assert-core.f - native JSON assertion library for gate tests.
 
 require src/lib/error.f
@@ -28,69 +27,70 @@ variable GJA-LX
 : GJA-LINE-A@ ( n -- ^u8 )
    GJA-LINE-A @ ;
 
-: GJA-LINE-A! ( str -- )
-   GJA-LINE-A ! ;
-
 : GJA-FAIL ( str -- )
    EXIT-STATUS:FAILURE die ;
 
 : GJA-LINE! ( str n -- )
-   {: a:^ u k :}
-   a k GJA-LINE-A!
-   u k cells GJA-LINE-U + ! ;
+   {: s:str k :}
+   s STR:DATA k GJA-LINE-A !
+   s STR:LEN k cells GJA-LINE-U + ! ;
 
 : GJA-LINE$ ( n -- str )
    dup GJA-LINE-A@
-   swap cells GJA-LINE-U + @ ;
+   swap cells GJA-LINE-U + @ >str ;
 
 : GJA-LINE+ ( str -- )
+   {: s:str :}
    GJA-LINE# @ GJA-LINE-MAX >= IF s" too many JSON lines" GJA-FAIL THEN
-   dup 0 > IF
-      2dup + 1- c@ 13 = IF 1- THEN
+
+   s STR:LEN dup 0 > IF
+      s STR:DATA over + 1- c@ 13 = IF 1- THEN
    THEN
-   GJA-LINE# @ GJA-LINE!
+   s STR:DATA swap >str GJA-LINE# @ GJA-LINE!
    GJA-LINE# @ 1+ GJA-LINE# ! ;
 
 : GJA-SPLIT-LINES ( str -- )
-   {: a:^ u :}
+   {: s:str :}
    0 GJA-LINE# !
    0 GJA-LS !
    0 GJA-LX !
-   begin GJA-LX @ u < while
-      a GJA-LX @ + c@ 10 = IF
-         a GJA-LS @ + GJA-LX @ GJA-LS @ - GJA-LINE+
+   begin GJA-LX @ s STR:LEN < while
+      s STR:DATA GJA-LX @ + c@ 10 = IF
+         s STR:DATA GJA-LS @ + GJA-LX @ GJA-LS @ - >str GJA-LINE+
          GJA-LX @ 1+ GJA-LS !
       THEN
       GJA-LX @ 1+ GJA-LX !
    repeat
-   GJA-LS @ u < IF
-      a GJA-LS @ + u GJA-LS @ - GJA-LINE+
+   GJA-LS @ s STR:LEN < IF
+      s STR:DATA GJA-LS @ + s STR:LEN GJA-LS @ - >str GJA-LINE+
    THEN ;
 
 : GJA-OPEN ( SPAN:span<u8> -- JSON:reader )
-   SPAN:$ GJA-CURSOR -rot JSON:READ-INIT JSON:READ-NEXT drop ;
+   SPAN:$ GJA-CURSOR swap JSON:READ-INIT JSON:READ-NEXT drop ;
 
 \ Turn the current token into its borrowed source value, including quotes for
 \ strings. A container is walked to its close; a scalar keeps the cursor.
 : GJA-VALUE ( JSON:reader -- JSON:reader SPAN:span<u8> )
    JSON:READ-TOKEN {: kind:n :}
-   kind JSON:T-OBJ = kind JSON:T-ARR = or if JSON:READ-VALUE-SPAN$ SPAN:MAKE exit then
-   JSON:READ-SPAN$ {: a:^ u:n :}
-   kind JSON:T-STR = if a 1- u 2 + SPAN:MAKE exit then
-   a u SPAN:MAKE ;
+   kind JSON:T-OBJ = kind JSON:T-ARR = or if
+      JSON:READ-VALUE-SPAN$ dup STR:DATA swap STR:LEN SPAN:MAKE exit
+   then
+   JSON:READ-SPAN$ {: s:str :}
+   kind JSON:T-STR = if s STR:DATA 1- s STR:LEN 2 + SPAN:MAKE exit then
+   s STR:DATA s STR:LEN SPAN:MAKE ;
 
 : GJA-PARSE ( str -- SPAN:span<u8> )
-   {: a:^ u:n :}
-   GJA-CURSOR a u JSON:READ-INIT JSON:READ-NEXT drop
+   {: s:str :}
+   GJA-CURSOR s JSON:READ-INIT JSON:READ-NEXT drop
    JSON:READ-SKIP-VALUE JSON:READ-FINISH
-   a u SPAN:MAKE ;
+   s STR:DATA s STR:LEN SPAN:MAKE ;
 
 : GJA-KIND ( SPAN:span<u8> -- n )
    GJA-OPEN JSON:READ-TOKEN swap JSON:READ-CLOSE ;
 
 : GJA-FIELD? ( SPAN:span<u8> str -- SPAN:span<u8> bool )
-   {: value:SPAN:span<u8> key:^ keyu:n :}
-   value GJA-OPEN key keyu JSON:READ-FIND-KEY
+   {: value:SPAN:span<u8> key:str :}
+   value GJA-OPEN key JSON:READ-FIND-KEY
    if GJA-VALUE swap JSON:READ-CLOSE true exit then
    JSON:READ-CLOSE value false ;
 
@@ -107,9 +107,9 @@ variable GJA-LX
 
 
 : GJA-STR= ( SPAN:span<u8> str -- bool )
-   {: value:SPAN:span<u8> want:^ wantu:n :}
+   {: value:SPAN:span<u8> want:str :}
    value GJA-OPEN JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE GJA-FALSE exit then
-   want wantu JSON:READ-STR-EQ? swap JSON:READ-CLOSE ;
+   want JSON:READ-STR-EQ? swap JSON:READ-CLOSE ;
 
 : GJA-ASSERT-STR ( SPAN:span<u8> str -- )
    GJA-STR= 0= IF s" unexpected JSON string" GJA-FAIL THEN ;
@@ -117,23 +117,23 @@ variable GJA-LX
 : GJA-STRING-INTO ( SPAN:span<u8> ^u8 n -- str )
    {: value:SPAN:span<u8> dst:^ cap:n :}
    value GJA-OPEN JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" expected JSON string" GJA-FAIL then
-   dst cap JSON:READ-STR {: u:n :} JSON:READ-CLOSE dst u ;
+   dst cap JSON:READ-STR {: u:n :} JSON:READ-CLOSE dst u >str ;
 
 : GJA-STRING$ ( SPAN:span<u8> -- str )
    GJA-STR-BUF GJA-IN-CAP GJA-STRING-INTO ;
 
 : GJA-NONEMPTY-STR ( SPAN:span<u8> -- )
-   GJA-STRING$ nip 0= IF s" expected nonempty JSON string" GJA-FAIL THEN ;
+   GJA-STRING$ STR:LEN 0= IF s" expected nonempty JSON string" GJA-FAIL THEN ;
 
 : GJA-REQ-STRF ( SPAN:span<u8> str -- )
-   GJA-REQ GJA-STRING$ 2drop ;
+   GJA-REQ GJA-STRING$ drop ;
 
 : GJA-REQ-INTF ( SPAN:span<u8> str -- )
    GJA-REQ GJA-INT drop ;
 
 : GJA-ASSERT-INT-FIELD ( SPAN:span<u8> str n -- )
-   {: root:SPAN:span<u8> key:^ keyu want :}
-   root key keyu GJA-REQ GJA-INT want <> IF s" unexpected JSON integer field" GJA-FAIL THEN ;
+   {: root:SPAN:span<u8> key:str want :}
+   root key GJA-REQ GJA-INT want <> IF s" unexpected JSON integer field" GJA-FAIL THEN ;
 
 : GJA-HAS? ( SPAN:span<u8> str -- bool )
    GJA-FIELD? {: value:SPAN:span<u8> found:bool :} found ;
@@ -164,10 +164,12 @@ variable GJA-LX
 
 \ Fails naming the key the reader is on.
 : GJA-KEY-FAIL ( JSON:reader -- )
-   s" unexpected JSON field " {: p:^ pu:n :}
-   p GJA-STR-BUF pu BYTE-COPY
-   GJA-STR-BUF pu + GJA-IN-CAP pu - JSON:READ-STR {: u:n :} JSON:READ-CLOSE
-   GJA-STR-BUF pu u + GJA-FAIL ;
+   s" unexpected JSON field " {: p:str :}
+   p STR:DATA GJA-STR-BUF p STR:LEN BYTE-COPY
+   GJA-STR-BUF p STR:LEN + GJA-IN-CAP p STR:LEN - JSON:READ-STR
+   {: u:n :} JSON:READ-CLOSE
+   GJA-STR-BUF p STR:LEN u + >str GJA-FAIL ;
+
 
 \ Fails unless key? accepts each key of the object.
 : GJA-KEYS ( SPAN:span<u8> [ JSON:reader -- JSON:reader bool ] -- )

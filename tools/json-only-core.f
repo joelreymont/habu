@@ -1,4 +1,3 @@
-split-str
 \ json-only-core.f - JSON diagnostic line filter core.
 
 require src/lib/error.f
@@ -29,24 +28,29 @@ variable JSON-ONLY-ROW-OBJECT
 : JSON-ONLY-DEFAULT-FDS ( -- )
    FD:STDOUT FD:STDERR JSON-ONLY-FDS! ;
 
-: JSON-ONLY-WRITE ( n str -- ) {: fd a:^ u :}
-   u 0= IF exit THEN
-   fd a u write u <> IF s" json-only: write failed" EXIT-STATUS:IOERR die THEN ;
+: JSON-ONLY-WRITE ( n str -- ) {: fd s:str :}
+   s STR:LEN 0= IF exit THEN
+   fd s write s STR:LEN <> IF
+      s" json-only: write failed" EXIT-STATUS:IOERR die
+   THEN ;
+
 
 : JSON-ONLY-LF$ ( -- str )
    JSON-ONLY-LF-C JSON-ONLY-LF c!
-   JSON-ONLY-LF 1 ;
+   JSON-ONLY-LF 1 >str ;
 
 : JSON-ONLY-PROSE ( str -- )
-   {: a:^ u :}
-   JSON-ONLY-PROSE-FD @ a u JSON-ONLY-WRITE ;
+   {: s:str :}
+   JSON-ONLY-PROSE-FD @ s JSON-ONLY-WRITE ;
 
 : JSON-ONLY-JSON-LINE ( -- )
-   JSON-ONLY-JSON-FD @ JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ JSON-ONLY-WRITE
+   JSON-ONLY-JSON-FD @ JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ >str
+   JSON-ONLY-WRITE
    JSON-ONLY-JSON-FD @ JSON-ONLY-LF$ JSON-ONLY-WRITE ;
 
 : JSON-ONLY-OBJECT ( -- )
-   JSON-ONLY-READER JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ JSON:READ-INIT
+   JSON-ONLY-READER JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ >str
+   JSON:READ-INIT
    JSON:READ-NEXT {: kind:n :}
    begin JSON:READ-NEXT dup JSON:T-END <> while drop repeat drop
    JSON:READ-CLOSE
@@ -64,15 +68,16 @@ variable JSON-ONLY-ROW-OBJECT
 
 : JSON-ONLY-NEXT? ( -- bool )
    begin
-      JSON-ONLY-SOURCE @ JSON-ONLY-SOURCE-U @ JSON-ONLY-POS @ JSONL:SPLIT-LINE
-      0= if 2drop drop false exit then
+      JSON-ONLY-SOURCE @ JSON-ONLY-SOURCE-U @ >str
+      JSON-ONLY-POS @ JSONL:SPLIT-LINE
+      0= if drop drop false exit then
       JSON-ONLY-POS !
-      STR:TRIM JSON-ONLY-LINE-U ! JSON-ONLY-LINE !
+      STR:TRIM dup STR:LEN JSON-ONLY-LINE-U ! STR:DATA JSON-ONLY-LINE !
       JSON-ONLY-LINE-U @ 0 > if JSON-ONLY-OBJECT? if true exit then then
    again ;
 
 : JSON-ONLY-START? ( str -- bool )
-   JSON-ONLY-SOURCE-U ! JSON-ONLY-SOURCE !
+   dup STR:LEN JSON-ONLY-SOURCE-U ! STR:DATA JSON-ONLY-SOURCE !
    0 JSON-ONLY-POS !
    JSON-ONLY-NEXT? ;
 
@@ -83,8 +88,8 @@ variable JSON-ONLY-ROW-OBJECT
    until ;
 
 : JSON-ONLY-FILTER ( str -- )
-   2dup JSON-ONLY-START? IF
-      2drop
+   dup JSON-ONLY-START? IF
+      drop
       JSON-ONLY-EMIT-FOUND
    ELSE
       JSON-ONLY-PROSE

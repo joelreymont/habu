@@ -1,4 +1,3 @@
-split-str
 \ image-bytes-test.f - shared executable image byte writer regression.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f tools/image-bytes-test.f
 
@@ -91,11 +90,11 @@ using IMAGE-BYTES
 
 : IBT-WRITE-NEG ( -- )
    M-RESET 1 IMG-M8
-   s" x" drop -1 M-BYTES ;
+   s" x" STR:DATA -1 >str M-BYTES ;
 
 : IBT-WRITE-MAX ( -- )
    M-RESET 1 IMG-M8
-   s" x" drop -1 1 rshift M-BYTES ;
+   s" x" STR:DATA -1 1 rshift >str M-BYTES ;
 
 \ One pad to the last byte serves the three room boundaries in turn. A write is
 \ measured against the room left: `>LEN` is a cast, not a validator, and a length

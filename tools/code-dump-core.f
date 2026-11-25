@@ -1,4 +1,3 @@
-split-str
 \ code-dump-core.f - decode the exact live code span of a dictionary word.
 
 require src/habu/boot-cells.f
@@ -28,14 +27,14 @@ private
    loop
    s" code-dump: no live record begins at this xt" EXIT-STATUS:NOINPUT die ;
 
-: STEP ( str n -- n ) {: a:^ u:n pc:n :}
+: STEP ( str n -- n ) {: s:str pc:n :}
    pc FMT:.INT s" : " type
-   a u pc DUMP-DECODE:STEP cr ;
+   s pc DUMP-DECODE:STEP cr ;
 
-: WALK ( n str -- ) {: xt:n a:^ u:n :}
-   0 begin dup u < while
+: WALK ( n str -- ) {: xt:n s:str :}
+   0 begin dup s STR:LEN < while
       {: offset:n :}
-      a offset + u offset - xt offset + STEP
+      s STR:DATA offset + s STR:LEN offset - >str xt offset + STEP
       offset +
    repeat drop ;
 
@@ -46,8 +45,9 @@ public
 
 : DECODE ( n -- ) {: xt:n :}
    xt REC-FOR XREF-CODE-BYTES {: bytes:n :}
-   xt bytes CODE-BYTES:AT drop {: a:^ :}
-   xt a bytes WALK ;
+   xt bytes CODE-BYTES:AT STR:DATA {: a:^ :}
+   xt a bytes >str WALK ;
+
 
 : FIND-XT ( str -- n )
    get-current XREF-FIND-WL

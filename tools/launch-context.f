@@ -1,4 +1,3 @@
-split-str
 \ launch-context.f - print a process's launch context, this one's or a child's.
 \ `bin/hb --load tools/launch-context.f` reports this process: diff its `ctx `
 \ lines under each launcher. `... -- child` reports a capture-spawned child, whose
@@ -26,7 +25,8 @@ create ERR CAP allot
    s" tools/launch-context.f" ;
 
 : HB$ ( -- str )
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then ;
+   s" HABU_UNDER_TEST" GETENV
+   dup STR:LEN 0= if drop s" bin/hb" then ;
 
 : CHILD-ENV ( -- )
    PROC-ENV-RESET
@@ -39,8 +39,9 @@ create ERR CAP allot
 
 : REPORT-CAPTURE ( len len -- ) {: o:len e:len :}
    s" --- child report ---" type cr
-   OUT o LEN>N type
-   ERR e LEN>N type ;
+   OUT o LEN>N >str type
+   ERR e LEN>N >str type ;
+
 
 : SPAWN-CHILD ( -- )
    CHILD-ENV

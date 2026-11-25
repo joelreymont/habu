@@ -1,4 +1,3 @@
-split-str
 \ imgdump.f - habu image inspector.
 \ Run: bin/hb --load tools/imgdump.f -- <image> [image2]; --pc takes one or more
 \ addresses. One line per word: name $start $len (namespace rows carry their
@@ -78,15 +77,15 @@ CAST: MAP>BYTES ( n -- ^u8 )
    IMG-MMAP-PTR IB!
    IFD @ close
    ISZ @ IL !
-   IB@ IL @ MACHO:MAGIC? MACHO !
-   MACHO @ if IB@ IL @ MACHO:OPEN then ;
+   IB@ IL @ >str MACHO:MAGIC? MACHO !
+   MACHO @ if IB@ IL @ >str MACHO:OPEN then ;
 
 : READ-IMG
    IMG-PATH$ READ-IMG-PATH ;
 
 \ ---- hex printing ($-prefixed, lowercase) and char output ----
 create EB 4 allot
-: EMITC {: c :}  c EB c!  EB 1 type ;
+: EMITC {: c :}  c EB c!  EB 1 >str type ;
 : NIB {: n :}  n 10 < if n 48 + else n 87 + then ;
 create HB 24 allot
 variable HV  variable HP
@@ -102,7 +101,7 @@ variable HV  variable HP
    until
    HP @ 1 - HP !  36 HB HP @ + c!
    HN @ 1 + HN !
-   HB HP @ +  HN @ ;
+   HB HP @ +  HN @ >str ;
 : h. ( n -- )
    HEX$ type ;
 
@@ -145,11 +144,11 @@ variable HV  variable HP
 variable OKV
 \ FIND-DICT asks this at every 4-byte offset, where a garbage length can be 2^44: the loop
 \ stops at the first byte that is not printable ASCII.
-: PRN? {: a:^ u :} ( str -- bool )     \ a..a+u all printable ascii?
+: PRN? {: s:str :} ( str -- bool )     \ every byte printable ascii?
    1 OKV !
-   0 begin dup u < OKV @ 0<> and while
-     dup a + c@ 32 >  OKV @ and
-     over a + c@ 127 <  and  OKV !
+   0 begin dup s STR:LEN < OKV @ 0<> and while
+     dup s STR:DATA + c@ 32 >  OKV @ and
+     over s STR:DATA + c@ 127 <  and  OKV !
      1 +
    repeat drop
    OKV @ ;
@@ -172,7 +171,7 @@ variable OKV
 : E-NAME ( n -- str )
    {: o:n :}
    o E-NAME-OFF dup 0 < if s" imgdump: name out of range" EXIT-STATUS:DATAERR die then
-   IB@ +  o E-L ;
+   IB@ +  o E-L >str ;
 \ The name length floor is 0: a name length is a record field, not a
 \ plausibility test.
 : ENT? ( n -- bool )
@@ -186,7 +185,7 @@ variable OKV
    o E-E 0 < if IMG-FALSE exit then                 \ the raw field, never the rebased span
    o E-L 0 < if IMG-FALSE exit then
    o E-NAME-OFF dup 0 < if drop IMG-FALSE exit then
-   IB@ +  o E-L PRN? ;
+   IB@ +  o E-L >str PRN? ;
 
 \ The primitive table has no direct file header: its preceding count cell
 \ bounds the exact run, and a printable name anchors the candidate.
@@ -277,7 +276,6 @@ variable OKV
    READ-XTBASE XTBASE !
    FIND-DICT ;
 
-: A-NAME-P! ( str -- ) A-NAME-P-SLOT ! ;
 : A-NAME-U! ( n n -- ) cells A-NAME-U + ! ;
 : A-START! ( n n -- ) cells A-START + ! ;
 : A-LEN! ( n n -- ) cells A-LEN + ! ;
@@ -296,17 +294,25 @@ variable OKV
    c 48 >= c 57 <= and if c 48 - OPTION:SOME exit then
    OPTION:NONE ;
 
-: HEX-BODY ( str -- str bool ) {: a:^ u :}
-   u 1 > if a c@ 36 = if a 1 + u 1 - 0 0= exit then then
-   u 2 > if a c@ 48 = a 1 + c@ 120 = and if a 2 + u 2 - 0 0= exit then then
-   a u 0 0= 0= ;
+: HEX-BODY ( str -- str bool ) {: s:str :}
+   s STR:LEN 1 > if
+      s STR:DATA c@ 36 = if
+         s STR:DATA 1 + s STR:LEN 1 - >str 0 0= exit
+      then
+   then
+   s STR:LEN 2 > if
+      s STR:DATA c@ 48 = s STR:DATA 1 + c@ 120 = and if
+         s STR:DATA 2 + s STR:LEN 2 - >str 0 0= exit
+      then
+   then
+   s 0 0= 0= ;
 
-: PARSE-HEX ( str -- option<n> ) {: a:^ u:n :}   \ SOME parsed hex value, else NONE
-   u 0= if OPTION:NONE exit then
+: PARSE-HEX ( str -- option<n> ) {: s:str :}   \ SOME parsed hex value, else NONE
+   s STR:LEN 0= if OPTION:NONE exit then
    0 NUM-I !
    0 NUM-ACC !
-   begin NUM-I @ u < while
-      a NUM-I @ + c@ IMG-HEX-DIGIT? MATCH option
+   begin NUM-I @ s STR:LEN < while
+      s STR:DATA NUM-I @ + c@ IMG-HEX-DIGIT? MATCH option
         none OF OPTION:NONE exit ENDOF
         some OF NUM-DIG ! ENDOF
       ;MATCH
@@ -315,12 +321,12 @@ variable OKV
    repeat
    NUM-ACC @ OPTION:SOME ;
 
-: PARSE-DEC ( str -- option<n> ) {: a:^ u:n :}   \ SOME parsed decimal value, else NONE
-   u 0= if OPTION:NONE exit then
+: PARSE-DEC ( str -- option<n> ) {: s:str :}   \ SOME parsed decimal value, else NONE
+   s STR:LEN 0= if OPTION:NONE exit then
    0 NUM-I !
    0 NUM-ACC !
-   begin NUM-I @ u < while
-      a NUM-I @ + c@ DEC-DIGIT? MATCH option
+   begin NUM-I @ s STR:LEN < while
+      s STR:DATA NUM-I @ + c@ DEC-DIGIT? MATCH option
         none OF OPTION:NONE exit ENDOF
         some OF NUM-DIG ! ENDOF
       ;MATCH
@@ -335,7 +341,8 @@ variable OKV
 
 : CAPTURE-A-ENTRY {: o idx :} ( n n -- )
    idx DICT-CAP >= if s" imgdump: too many dict entries" EXIT-STATUS:FULL die then
-   o E-NAME idx A-NAME-U! idx A-NAME-P!
+   o E-NAME {: name:str :}
+   name STR:LEN idx A-NAME-U!  name STR:DATA idx A-NAME-P-SLOT !
    o E-S idx A-START!
    o E-CODE-BYTES idx A-LEN! ;
 
@@ -350,42 +357,45 @@ variable OKV
    repeat drop ;
 
 : PRINT-A-ENTRY {: idx :} ( n -- )
-   idx A-NAME-P@ idx A-NAME-U@ type 32 EMITC
+   idx A-NAME-P@ idx A-NAME-U@ >str type 32 EMITC
    idx A-START@ h. 32 EMITC
    idx A-LEN@ h. 10 EMITC ;
 
 : PRINT-B0 ( -- )
-   CMP-B0-P @ CMP-B0-U @ type 32 EMITC
+   CMP-B0-P @ CMP-B0-U @ >str type 32 EMITC
    CMP-B0-S @ h. 32 EMITC
    CMP-B0-L @ h. 10 EMITC ;
 
 : PRINT-A-NL {: idx :} ( n -- )
-   idx A-NAME-P@ idx A-NAME-U@ type 32 EMITC idx A-LEN@ h. 10 EMITC ;
+   idx A-NAME-P@ idx A-NAME-U@ >str type 32 EMITC
+   idx A-LEN@ h. 10 EMITC ;
 
 
 : PRINT-BAD-NL ( -- )
-   CMP-BAD-P @ CMP-BAD-U @ type 32 EMITC CMP-BAD-L @ h. 10 EMITC ;
+   CMP-BAD-P @ CMP-BAD-U @ >str type 32 EMITC
+   CMP-BAD-L @ h. 10 EMITC ;
 
 : CMP-NAME-LEN? {: o idx :} ( n n -- bool )
-   idx A-NAME-P@ idx A-NAME-U@ o E-NAME STR:=
+   idx A-NAME-P@ idx A-NAME-U@ >str o E-NAME STR:=
    idx A-LEN@ o E-CODE-BYTES = and ;
 
 : CMP-ENTRY {: o idx :} ( n n -- )
    idx 0= if
-      o E-NAME CMP-B0-U ! CMP-B0-P !
+      o E-NAME dup STR:LEN CMP-B0-U ! STR:DATA CMP-B0-P !
+
       o E-S CMP-B0-S !
       o E-CODE-BYTES CMP-B0-L !
    then
    CMP-NAME-LEN-DIFF @ if exit then
    idx A-N @ >= if
-      o E-NAME CMP-BAD-U ! CMP-BAD-P !
+      o E-NAME dup STR:LEN CMP-BAD-U ! STR:DATA CMP-BAD-P !
       o E-CODE-BYTES CMP-BAD-L !
       idx CMP-BAD-IDX !
       -1 CMP-NAME-LEN-DIFF !
       exit
    then
    o idx CMP-NAME-LEN? 0= if
-      o E-NAME CMP-BAD-U ! CMP-BAD-P !
+      o E-NAME dup STR:LEN CMP-BAD-U ! STR:DATA CMP-BAD-P !
       o E-CODE-BYTES CMP-BAD-L !
       -1 CMP-NAME-LEN-DIFF !
       idx CMP-BAD-IDX !

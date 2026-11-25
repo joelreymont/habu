@@ -1,4 +1,3 @@
-split-str
 \ hb-open-failure-test.f - from a directory that is not a checkout, the seeded
 \ product boots silently and opens no prefix source. tools/load-argv-test.f owns
 \ --load.
@@ -31,16 +30,16 @@ variable HOF-ROOT-U
 variable HOF-EXE-U
 
 : HOF-ROOT$ ( -- str )
-   HOF-ROOT HOF-ROOT-U @ ;
+   HOF-ROOT HOF-ROOT-U @ >str ;
 
 : HOF-EXE$ ( -- str )
-   HOF-EXE HOF-EXE-U @ ;
+   HOF-EXE HOF-EXE-U @ >str ;
 
 : HOF-SETUP ( -- )
    FS:CLEANUP-RESET
-   s" hb-open-failure" FS:MKTEMP-DIR {: a:^ u:n :}
-   a HOF-ROOT u BYTE-COPY
-   u HOF-ROOT-U !
+   s" hb-open-failure" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA HOF-ROOT dir STR:LEN BYTE-COPY
+   dir STR:LEN HOF-ROOT-U !
    HOF-ROOT$ FS:CLEANUP-TREE+
    HOF-ROOT$ s" hb" HOF-EXE FS:JOIN-PATH HOF-EXE-U !
    s" bin/hb" HOF-EXE$ FS:COPY-FILE-STREAM
@@ -54,7 +53,8 @@ variable HOF-EXE-U
 
 \ Run the copied engine with the empty temp dir as cwd; capture stdout/stderr/rc.
 : HOF-RUN ( -- n n n )
-   HOF-EXE$ HOF-ROOT$ HOF-IN 0
+   HOF-EXE$ HOF-ROOT$ HOF-IN 0 >str
+
    HOF-OUT HOF-CAP >LEN HOF-ERR HOF-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
    HOF-CAPTURE>N ;
