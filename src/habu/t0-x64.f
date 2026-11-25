@@ -27,9 +27,15 @@ split-str
 \ AHEAD says by how many cells the data stack's top lies above rbx, negative
 \ below: x86-64 has no writeback, so a push or pop moves AHEAD and SETTLE emits
 \ the sum as one lea, which keeps the codes, wherever control arrives or
-\ leaves. A word that compares and branches settles before its compare, since
-\ the CPU fuses the two only when they are adjacent. Cells above rbx may hold
-\ live values until SETTLE, so nothing asynchronous may write there.
+\ leaves. A byte displacement reaches 16 cells below rbx to 15 above; an access
+\ past it first moves rbx by the whole reach toward it, by a lea too, when the
+\ access is then within reach: a disp32 costs three bytes more at each access,
+\ the lea four once, and a run's accesses lie near one another. A copy between
+\ cells too far apart for one reach would move rbx back and forth, so the access
+\ after one that moved it does not. A word that compares and branches settles
+\ before its compare, since the CPU fuses the two only when they are adjacent.
+\ Cells above rbx may hold live values until SETTLE, so nothing asynchronous may
+\ write there.
 \
 \ A literal divisor v from 3 to 2^31 - 1, no power of two, divides by a multiply
 \ (Granlund and Montgomery, "Division by invariant integers using
@@ -79,6 +85,7 @@ using PLACE
 variable FLAGS                        \ nonzero while the condition codes are held
 variable HELD                         \ nonzero while r12 holds the index
 variable AHEAD
+variable STEPPED                      \ nonzero when the last access moved rbx
 
 0 constant FORM-JMP
 1 constant FORM-JCC
@@ -149,19 +156,40 @@ variable AHEAD
    r DATA-REG RSP-CELL MEM-OFF SINK ENC-MOV-MR ;
 
 \ ---- the data stack pointer --------------------------------------------------
-: SETTLE ( -- )
-   AHEAD @ {: k:n :}
+\ Move rbx up k cells; the stack's top stays.
+: RBX+ ( n -- ) {: k:n :}
    k 0 = if exit then
    DSP DSP k CELL * MEM-OFF SINK ENC-LEA
-   0 AHEAD ! ;
+   k negate AHEAD +! ;
+
+: SETTLE ( -- ) AHEAD @ RBX+ ;
 
 : DSP+ ( n -- ) AHEAD +! ;
 
+\ The cells above rbx a byte displacement reaches.
+-16 constant REACH-LOW
+15 constant REACH-HIGH
+
+: REACHED? ( n -- bool ) {: k:n :}
+   k REACH-LOW >= k REACH-HIGH <= and ;
+
+\ Whether an access that is past reach moves rbx by s to the cell k above it.
+: STEP? ( n n -- bool ) {: k:n s:n :}
+   k s - REACHED?  STEPPED @ 0=  and ;
+
+\ Bring the cell k cells above rbx in reach where that pays.
+: REACH ( n -- ) {: k:n :}
+   k REACHED? if 0 STEPPED ! exit then
+   k 0 < if REACH-LOW else REACH-HIGH then {: s:n :}
+   k s STEP? if s RBX+ 1 else 0 then STEPPED ! ;
+
 \ The cell k cells above the stack's top.
-: TOP-MEM ( n -- mem ) {: k:n :}  DSP AHEAD @ k + CELL * MEM-OFF ;
+: TOP-MEM ( n -- mem ) {: k:n :}
+   AHEAD @ k + REACH
+   DSP AHEAD @ k + CELL * MEM-OFF ;
 
 \ ---- PLACE's hooks -----------------------------------------------------------
-: UNIT-RESET ( -- ) 0 FLAGS !  0 HELD !  0 AHEAD ! ;
+: UNIT-RESET ( -- ) 0 FLAGS !  0 HELD !  0 AHEAD !  0 STEPPED ! ;
 
 : PROLOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
    bytes 0= if exit then
