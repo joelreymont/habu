@@ -3450,7 +3450,7 @@ variable LOAD-END
    held IF a u path pathu SOURCE-ROOT:REQUIRE-HELD  path pathu LOAD-HELD LOADED EXIT THEN
    REQUIRE-REG:MARK {: row:n :}
    path pathu REQUIRE-REG:STORE {: rp:^ rpu:n :}
-   row root rootu SOURCE-ROOT:REQUIRE-STORED {: id:n :}
+   a u row root rootu SOURCE-ROOT:REQUIRE-STORED {: id:n :}
    a u rp rpu root rootu id COMPOSE-OPEN ;
 
 : COMPOSE-REQUIRED ( str str -- )

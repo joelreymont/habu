@@ -23,14 +23,17 @@
 \ under an address-space limit runs, maps nothing.
 \
 \ A diagnostic spells the missing require for its reader: an engine root's file
-\ by its name there, unless that root holds that name; that one and any
-\ other by its path from the root the reader's next require resolves under,
-\ through `..` where it is not below it, or by its canonical path where the
-\ reader has no root. `require` reads one
+\ by its name there, unless that root holds that name; any other as the
+\ reader's require of the file nearest it is spelled, where that spelling names
+\ a directory above both, since a file's own requires resolve under each root
+\ its programs read it from; else by its path from the root the reader's next
+\ require resolves under, through `..` where it is not below it, or by its
+\ canonical path where the reader has no root. `require` reads one
 \ token, so a path with a blank is spelled for `required`.
 \
 \ The edges, (requirer, required) pairs, are an open-addressed set of cells
-\ at most half full: each pair is one key, the requirer's id above bit 32.
+\ at most half full: each pair is one key, the requirer's id above bit 32. A
+\ row per edge holds its key and, in EDGE-TEXTS, the require's spelling.
 \
 \ CHECK records each record it judges, with ASKS, the requires files made so
 \ far, as a compile read, so a link can judge the part's calls again.
@@ -46,12 +49,16 @@ SCRATCH-VARIABLE MINTED              \ the newest id
 PTR-VARIABLE EDGE-SET                \ 0 for an empty cell
 SCRATCH-VARIABLE EDGE-CAP            \ in cells, a power of 2
 SCRATCH-VARIABLE EDGE-N
+PTR-VARIABLE EDGE-KEYS               \ per edge, its key
+SCRATCH-VARIABLE EDGE-KEYS-CAP       \ in cells
+PTR-VARIABLE EDGE-TEXTS              \ per edge, its spelling's, as PATH-ROWS
+SCRATCH-VARIABLE EDGE-TEXTS-CAP      \ in cells
 SCRATCH-VARIABLE ASKED               \ the requires files made so far (EDGE)
 PTR-VARIABLE PATH-ROWS               \ per id, its path's offset and length
 SCRATCH-VARIABLE PATH-ROWS-CAP       \ in cells
 PTR-VARIABLE ROOT-ROWS               \ per id, its root's, as PATH-ROWS
 SCRATCH-VARIABLE ROOT-ROWS-CAP       \ in cells
-PTR-VARIABLE PATH-TEXT               \ the paths' bytes and the roots'
+PTR-VARIABLE PATH-TEXT               \ the paths', roots' and spellings' bytes
 SCRATCH-VARIABLE PATH-TEXT-CAP       \ in cells
 SCRATCH-VARIABLE PATH-TEXT-U         \ in bytes
 PERSISTED-PTR-VARIABLE CWD-BYTES     \ the working directory (CWD!)
@@ -192,6 +199,10 @@ private
    k s STR:LEN >= if 0 0= 0= exit then
    s STR:DATA k + c@ 47 = ;
 
+: DIR$ ( str -- str ) {: p:str :}
+   p STR:LEN begin 1 - dup p SLASH? until {: k:n :}
+   p STR:DATA k >str ;
+
 : PORTABLE? ( str -- bool ) {: s:str :} 0 s SLASH? 0= ;
 
 : SAME-AT? ( n str str -- bool ) {: k:n a:str b:str :}
@@ -281,9 +292,49 @@ SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER
    u 0= if id ROOT$ exit then
    rec SRCLOC:REC-ROOT + 0 ptr-field @  u >str ;
 
+: ENDS? ( str str -- bool ) {: s:str e:str :}
+   s STR:LEN e STR:LEN - {: h:n :}
+   h 0 < if 0 0= 0= exit then
+   e STR:LEN 0 ?do
+      i  s h PAST  e SAME-AT? 0= if 0 0= 0= unloop exit then
+   loop
+   0 0= ;
+
+: EDGE-FROM ( n -- n ) cells EDGE-KEYS @ + @ 32 rshift ;
+: EDGE-PATH$ ( n -- str ) cells EDGE-KEYS @ + @ $FFFFFFFF and PATH$ ;
+: EDGE-TEXT$ ( n -- str ) EDGE-TEXTS @ TEXT$ ;
+
+\ The bytes of edge i's path that name a directory holding path t too, where
+\ its spelling holds the rest; 0 where it does not.
+: COMMON ( str n -- n ) {: t:str i:n :}
+   i EDGE-PATH$ {: p:str :}
+   p PORTABLE? if 0 exit then
+   p  t DIR$  SHARED {: k:n :}
+   i EDGE-TEXT$  p k PAST  ENDS? if k else 0 then ;
+
+\ The edge of file from with the most bytes in common with path t, and those.
+: NEAREST ( str n -- n n ) {: t:str from:n :}
+   0 0  EDGE-N @ 0 ?do
+      i EDGE-FROM from = if
+         t i COMMON  2dup < if nip nip i swap else drop then
+      then
+   loop ;
+
+\ Path t spelled as file from's require nearest it, or nothing.
+: ALIKE ( str n -- str ) {: t:str from:n :}
+   t PORTABLE? if s" " exit then
+   t from NEAREST {: i:n k:n :}
+   k 0= if s" " exit then
+   i EDGE-TEXT$ {: s:str :}
+   s STR:LEN  i EDGE-PATH$ k PAST STR:LEN  - {: h:n :}
+   h 0= if t k PAST exit then
+   s STR:DATA h 1 - >str  t k PAST  UNDER ;
+
 \ The path by which file from requires file to: `..` n times, then the rest.
 : SPELLED ( n n -- n str ) {: to:n from:n :}
    to PATH$ {: t:str :}
+   t from ALIKE {: s:str :}
+   s STR:LEN 0 > if 0 s exit then
    from BASE$ {: r:str :}
    r STR:LEN 0= if 0 t exit then
    t r FROM-ROOT {: p:str :}
@@ -399,8 +450,9 @@ public
 \ The requires the text of any file made so far.
 : ASKS ( -- n ) ASKED @ ;
 
-\ The current file's text requires file id; text of no file grants nothing.
-: EDGE ( n -- ) {: to:n :}
+\ The current file's text requires, as it spells it, file id; text of no file
+\ grants nothing.
+: EDGE ( str n -- ) {: s:str to:n :}
    READING @ {: from:n :}
    from 0 <= if exit then
    ASKED @ 1 + ASKED !
@@ -411,7 +463,11 @@ public
    t  t EDGE-CAP @ key EDGE-PROBE cells +  {: at:^ :}
    at @ key = if exit then
    key at !
-   EDGE-N @ 1 + EDGE-N ! ;
+   EDGE-N @ {: n:n :}
+   EDGE-KEYS EDGE-KEYS-CAP n 1 + GROW-CELLS
+   key  EDGE-KEYS @ n cells + !
+   s n EDGE-TEXTS EDGE-TEXTS-CAP TEXT!
+   n 1 + EDGE-N ! ;
 
 \ The id of the file dictionary record idx came from.
 : RECORD-FILE ( n -- n )

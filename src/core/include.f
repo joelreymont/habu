@@ -2847,13 +2847,14 @@ public
 \ The current text requires path, which a require of a u selected and the
 \ registry holds.
 : REQUIRE-HELD ( str str -- )
-   REQUIRED-ID REQUIRES:EDGE ;
+   {: a:^ u:n path:^ pathu:n :}
+   a u  a u path pathu REQUIRED-ID  REQUIRES:EDGE ;
 
-\ Row, which a require just stored, gets a new file id, its requires resolved
-\ under root, and the current text requires it; answers the id.
-: REQUIRE-STORED ( n str -- n )
-   REQUIRE-REG:MINT {: id:n :}
-   id REQUIRES:EDGE
+\ Row, which a require of a u just stored, gets a new file id, its requires
+\ resolved under root, and the current text requires it; answers the id.
+: REQUIRE-STORED ( str n str -- n )
+   REQUIRE-REG:MINT {: a:^ u:n id:n :}
+   a u id REQUIRES:EDGE
    id ;
 
 private
@@ -2874,7 +2875,7 @@ private
    REQUIRE-REG:MARK {: row:n :}
    path pathu REQUIRE-REG:STORE {: row-path:^ row-pathu:n :}
    DISCOVERY? if exit then
-   row RESOLVED-ROOT$ REQUIRE-STORED {: id:n :}
+   a u row RESOLVED-ROOT$ REQUIRE-STORED {: id:n :}
    a u SRCLOC:ORIGIN$ {: t:^ tu:n :}
    [: t tu w wu row-path row-pathu id LOAD-RUN ;] catch {: rc:n :}
    rc 0 <> if

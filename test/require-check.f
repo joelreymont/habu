@@ -564,8 +564,22 @@ PATH-CAP BUFFER: FOUND   variable FOUND-U
    s\" s\q ..\q SOURCE-ROOT:ROOT!\nrequire sib.f\n"
    s\" : RQC-MOVED-M ( -- n ) RQC-MOVED ;\n" FOLLOWED-AFTER ;
 
+\ Two programs read shared/mid/main.f, under the roots shared/mid and shared/app:
+\ the line the first is told loads in the other.
+: SHARED-CASE ( CMD:command -- CMD:command )
+   s" and as the file spells its others, which a second program's root opens"
+   T-LABEL
+   s" shared/mid" IN-DIR FS:MAKE-DIRS  s" shared/app" IN-DIR FS:MAKE-DIRS
+   s" shared/mid/leaf.f" IN-DIR s\" : RQC-LEAF ( -- n ) 7 ;\n" FS:WRITE-ALL
+   s" shared/mid/sib.f" IN-DIR s\" require ../mid/leaf.f\n" FS:WRITE-ALL
+   s" shared/app/other.f" IN-DIR s\" require ../mid/main.f\n" FS:WRITE-ALL
+   s" shared/mid/main.f"
+   s\" require ../mid/sib.f\n"
+   s\" : RQC-LEAF-M ( -- n ) RQC-LEAF ;\n" FOLLOWED-AFTER
+   s" shared/app/other.f" LOAD-IN 0 T= ;
+
 : PATH-CASES ( CMD:command -- CMD:command )
-   OWN-NAME-CASE  BLANK-CASE  MOVED-CASE ;
+   OWN-NAME-CASE  BLANK-CASE  MOVED-CASE  SHARED-CASE ;
 
 \ check.f --verify-only of the file f: its rc.
 : VERIFY ( CMD:command str -- CMD:command n )

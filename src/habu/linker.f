@@ -4920,7 +4920,8 @@ EXPORT CHECK:TYPE-END
 
 
 \ The current file requires the file of the path spelled a u under root, which the registry holds.
-: LINK-REQUIRE ( str str -- ) ACT-ID REQUIRES:EDGE ;
+: LINK-REQUIRE ( str str -- ) {: a:^ u:n root:^ rootu:n :}
+   a u  a u root rootu ACT-ID  REQUIRES:EDGE ;
 
 \ The piece's acts (SKIP-ACTS), each under the root it was spelled in: a provide applied through `provided`; a
 \ require, whose path PART-FRESH? found the registry holding, records the edge its compile recorded, none for text a
