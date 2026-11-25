@@ -95,7 +95,7 @@ public
    RDI ZERO-REG,
    EXIT,
    BOOT-END-LBL X64CODE:LBL,
-   dup STR:DATA swap STR:LEN WRITE ;
+   WRITE ;
 
 private
 

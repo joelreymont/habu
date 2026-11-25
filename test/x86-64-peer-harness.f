@@ -98,11 +98,11 @@ public
 : POSITION ( -- n ) TEXT-VA ASM-LEN + ;
 
 \ Write the staged stream as it stands: byte 0 is the ELF entry.
-: WRITE ( ^u8 n -- ) {: path:^ pathu:n :}
+: WRITE ( str -- ) {: path:str :}
    TEXT-VA ASM-LINK
    CODE ASM-LEN >str TEXT-VA IMPORTS$ s" " ELF:BUILD-X64   \ no DATA, so an empty carrier
    s" x64-peer" ELF:SET-SIGID ELF:CODESIG2
-   path pathu >str DRV-WRITE-IMAGE
+   path DRV-WRITE-IMAGE
    s" ELF names x86-64 and enters this fixture's code" T-LABEL
    $12 M-OFF M-LE32@ $FFFF and 62 T=
    $18 M-OFF M-LE32@ TEXT-VA T=

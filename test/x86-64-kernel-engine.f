@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-engine.f - the engine-state rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f) in the booted harness, cross-built for an x86-64
 \ peer. RUN names every image and its builder's comment states its exit status
@@ -17,21 +16,21 @@ create FILL FILL-BYTES allot
 \ TASK-LIVE-GUARD, then an empty data stack. With no task live, as the boot
 \ leaves TASKS-LIVE-CELL, the guard passes; -negative expects the wrong depth
 \ and exits 21; -armed marks a task live first and exits 79.
-: BUILD ( bool bool ^u8 n -- ) {: negative:bool armed:bool path:^ pathu:n :}
+: BUILD ( bool bool str -- ) {: negative:bool armed:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    armed if 1 TASKS-LIVE-CELL X64HARNESS:CELL!, then
    X64KERNEL:TASK-LIVE-GUARD,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ Text past one PROT-PAGE-MAX behind the kernel, as the whole kernel will carry,
 \ so the read-write segment lands a page further on; it pushes the text's span.
-: BUILD-WINDOW ( str -- ) {: path:^ pathu:n :}
+: BUILD-WINDOW ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
-   FILL FILL-BYTES X64HARNESS:PUSH-TEXT,
+   FILL FILL-BYTES >str X64HARNESS:PUSH-TEXT,
    2 X64HARNESS:EXPECT-DEPTH,
    FILL-BYTES X64HARNESS:EXPECT-POP,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ The search images seed five records with X64HARNESS:RECORD. Without an index
 \ `bare-search-wl` and `xref-search-wl` scan the one wordlist; with HIDX-BUILD first
@@ -52,12 +51,12 @@ create FILL FILL-BYTES allot
    s" hidden" 0 DNAME-INT X64HARNESS:RECORD, ;
 
 \ Push a name and a wid and call the row.
-: ASK, ( str n str -- ) {: a:^ u:n wid:n row:^ rowu:n :}
-   a u X64HARNESS:PUSH-TEXT,
+: ASK, ( str n str -- ) {: s:str wid:n row:str :}
+   s X64HARNESS:PUSH-TEXT,
    wid X64HARNESS:PUSH,
-   row rowu X64HARNESS:CALL-ROW, ;
+   row X64HARNESS:CALL-ROW, ;
 
-: SEARCH, ( ^u8 n n -- ) s" bare-search-wl" ASK, ;
+: SEARCH, ( str n -- ) s" bare-search-wl" ASK, ;
 : XREF, ( str n -- ) s" xref-search-wl" ASK, ;
 
 \ Ten checks, the whole of an image's case statuses.
@@ -73,19 +72,19 @@ create FILL FILL-BYTES allot
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
 
-: BUILD-SEARCH ( bool str -- ) {: indexed:bool path:^ pathu:n :}
+: BUILD-SEARCH ( bool str -- ) {: indexed:bool path:str :}
    false X64HARNESS:BOOT-OPEN,
    SEED,
    indexed if X64KERNEL:HIDX-BUILD, then
    SEARCHES,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ eccwbv and hktfoj are names of one length whose keys share a first slot under
 \ wid 0, so the insert and the probe for hktfoj walk the chain past eccwbv's
 \ record. After the build, a record the index is not told of stays absent until
 \ HIDX-ADD, and another until HIDX-REBUILD, and one under WL:RETIRED is
 \ found by the scan the probe leaves that wid to.
-: BUILD-UPKEEP ( str -- ) {: path:^ pathu:n :}
+: BUILD-UPKEEP ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    SEED,
    s" eccwbv" 0 0 X64HARNESS:RECORD,                     \ record 5
@@ -106,18 +105,18 @@ create FILL FILL-BYTES allot
    s" alpha" 0 SEARCH,  1 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 $1122334455667788 constant CELL-VALUE
 
-: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 
 : ALLOT, ( n -- ) X64HARNESS:PUSH,  s" allot" ROW ;
 
 \ DP starts at the heap floor, DATA-START. Three bytes and an align reach the
 \ next cell; `,` fills it and c, stores the low byte of its cell alone. The walk
 \ returns to the floor.
-: BUILD-HEAP ( str -- ) {: path:^ pathu:n :}
+: BUILD-HEAP ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    3 ALLOT,  s" align" ROW
    CELL-VALUE X64HARNESS:PUSH,  s" ," ROW
@@ -130,28 +129,28 @@ $1122334455667788 constant CELL-VALUE
    -24 ALLOT,
    s" here" ROW  DATA-START X64HARNESS:EXPECT-POP-DATA,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ DP may reach the ceiling; one byte past it exits 89 with the DP line on fd 2.
-: BUILD-HEAP-HIGH ( str -- ) {: path:^ pathu:n :}
+: BUILD-HEAP-HIGH ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    X64KERNEL:DP-CEILING DATA-START - ALLOT,
    s" here" ROW  X64KERNEL:DP-CEILING X64HARNESS:EXPECT-POP-DATA,
    1 ALLOT,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ One byte below the floor exits 89.
-: BUILD-HEAP-LOW ( str -- ) {: path:^ pathu:n :}
+: BUILD-HEAP-LOW ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    -1 ALLOT,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ `,` on a task's thread exits 79.
-: BUILD-HEAP-ARMED ( str -- ) {: path:^ pathu:n :}
+: BUILD-HEAP-ARMED ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    1 TASK-TCB-CELL X64HARNESS:CELL!,
    1 X64HARNESS:PUSH,  s" ," ROW
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 $8000000000000000 constant MIN-CELL
 $7FFFFFFFFFFFFFFF constant MAX-CELL
@@ -162,7 +161,7 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
 \ fd 1: the four cells ., -1 and 0 u., "A B", "hello" and .s of 7 -3, one per
 \ line, the fixed bytes the ARM64 engine writes for the same values; .s leaves
 \ the cells, and depth counts them.
-: BUILD-PRINT ( str -- ) {: path:^ pathu:n :}
+: BUILD-PRINT ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    MIN-CELL DOT,  MAX-CELL DOT,  0 DOT,  -1 DOT,
    -1 X64HARNESS:PUSH,  s" u." ROW
@@ -173,9 +172,9 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    s" depth" ROW  2 X64HARNESS:EXPECT-POP,
    -3 X64HARNESS:EXPECT-POP,  7 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: TYPE, ( ^u8 n -- ) X64HARNESS:PUSH-TEXT,  s" type" ROW ;
+: TYPE, ( str -- ) X64HARNESS:PUSH-TEXT,  s" type" ROW ;
 : OUT! ( n -- ) GENIO-ABI:OUT-CELL X64HARNESS:CELL!, ;
 
 \ Device 1's write routine: `[`, the span it is handed, `]`. Its own output
@@ -186,7 +185,7 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
 \ fd 1: `[hi][42\n][Z]` through device 1, the funnel idle again and the
 \ caller's active device back afterwards; then `e` for a device with no row,
 \ `x` for an index past DEVICES and `b` while the funnel is busy.
-: BUILD-GENIO ( str -- ) {: path:^ pathu:n :}
+: BUILD-GENIO ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    BRACKET, GENIO-ABI:WRITE-OFF X64HARNESS:LABEL-CELL!,
    5 GENIO-ABI:ACTIVE-CELL X64HARNESS:CELL!,
@@ -198,7 +197,7 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    GENIO-ABI:DEVICES 1+ OUT!  s" x" TYPE,
    1 OUT!  1 GENIO-ABI:BUSY-CELL X64HARNESS:CELL!,  s" b" TYPE,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 : CHECK-HOOK! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-check" ROW ;
 : PREFLIGHT! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-preflight" ROW ;
@@ -209,7 +208,7 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
 \ so another preflight installs. `0 set-check` while off keeps the parked
 \ pair (the inner disarm of a nested window); re-arming the parked hook
 \ resumes its preflight, and any other hook starts without one.
-: BUILD-HOOKS ( str -- ) {: path:^ pathu:n :}
+: BUILD-HOOKS ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    0 CHECK-HOOK!
    s" check@" ROW  0 X64HARNESS:EXPECT-POP-REGION,
@@ -224,28 +223,28 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    DICT-SIZE 1- CHECK-HOOK!
    0 COMPILE-PREFLIGHT-CELL X64HARNESS:EXPECT-CELL,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ Each of these ends in one hook row's fd-2 refusal and exits 70.
-: BUILD-HOOKS-CHECK ( str -- ) {: path:^ pathu:n :}
+: BUILD-HOOKS-CHECK ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    DICT-SIZE CHECK-HOOK!
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-HOOKS-REPLACED ( str -- ) {: path:^ pathu:n :}
+: BUILD-HOOKS-REPLACED ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    64 PREFLIGHT!  128 PREFLIGHT!
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-HOOKS-EMPTY ( str -- ) {: path:^ pathu:n :}
+: BUILD-HOOKS-EMPTY ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    0 X64HARNESS:PUSH,  s" set-preflight" ROW
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 40 constant FIRST-WID                  \ WIDN-CELL before the first wordlist
 
 \ The getters answer what the boot published, and wordlist counts WIDN-CELL.
-: BUILD-STATE ( str -- ) {: path:^ pathu:n :}
+: BUILD-STATE ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    s" cp@" ROW  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    s" dbase@" ROW  0 X64HARNESS:EXPECT-POP-REGION,
@@ -259,13 +258,7 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    OTHER-WID CUR-CELL X64HARNESS:CELL!,  s" get-current" ROW  OTHER-WID X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
 
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ Boot, call one row and close: for a row that ends the image itself.
-: BUILD-CALL ( str str -- ) {: row:^ rowu:n path:^ pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   row rowu ROW
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 : CP!, ( n -- ) X64HARNESS:PUSH-REGION,  s" cp!" ROW ;
 
@@ -275,19 +268,19 @@ REGION SLOT-BYTES - constant TOP-SLOT
 
 \ cp! admits a code slot in [DICT-SIZE, TOP-SLOT] of the region, both bounds
 \ included, and cp@ reads each back.
-: BUILD-CP ( str -- ) {: path:^ pathu:n :}
+: BUILD-CP ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    TOP-SLOT CP!,  s" cp@" ROW  TOP-SLOT X64HARNESS:EXPECT-POP-REGION,
    DICT-SIZE 64 + CP!,  s" cp@" ROW  DICT-SIZE 64 + X64HARNESS:EXPECT-POP-REGION,
    DICT-SIZE CP!,  s" cp@" ROW  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 : NDICT!, ( n -- ) X64HARNESS:PUSH,  s" ndict!" ROW ;
 : NDICT?, ( n -- ) s" ndict@" ROW  X64HARNESS:EXPECT-POP, ;
 
 \ Lowering the count hides the records past it.
-: BUILD-NDICT ( str -- ) {: path:^ pathu:n :}
+: BUILD-NDICT ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    SEED,  X64KERNEL:HIDX-BUILD,
    5 NDICT?,
@@ -297,7 +290,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
    s" secret" OWNER-API-PRI-WID XREF,  0 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 : APPEND, ( n -- ) X64HARNESS:PUSH,  s" ndict-append" ROW ;
 
@@ -310,7 +303,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
 
 \ ndict-append counts the pending record and then, with a clause pending
 \ (CLAUSE-CELL), its companion one record past it; the index learns each as it lands.
-: BUILD-APPEND ( str -- ) {: path:^ pathu:n :}
+: BUILD-APPEND ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    PENDING,
    5 APPEND,  6 NDICT?,
@@ -320,23 +313,23 @@ REGION SLOT-BYTES - constant TOP-SLOT
    6 APPEND,  7 NDICT?,
    s" echo" 0 SEARCH,  7 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ The companion's place with no clause pending exits 83.
-: BUILD-APPEND-FOREIGN ( str -- ) {: path:^ pathu:n :}
+: BUILD-APPEND-FOREIGN ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    PENDING,  6 NDICT!,  6 APPEND,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ Slot n of the pending pre-trust defer table.
 : SLOT ( n -- n ) PD-SLOT * PD-TABLE-OFF PD-SLOTS-REL + + ;
 
 \ Stage a pending defer's name and signature in slot n.
-: DEFER-SLOT, ( str str n -- ) {: na:^ nu:n sa:^ su:n ix:n :}
-   nu ix SLOT PD-NLEN-OFF + X64HARNESS:CELL!,
-   na nu ix SLOT PD-NAME-OFF + X64HARNESS:TEXT!,
-   su ix SLOT PD-SLEN-OFF + X64HARNESS:CELL!,
-   sa su ix SLOT PD-SIG-OFF + X64HARNESS:TEXT!, ;
+: DEFER-SLOT, ( str str n -- ) {: ns:str ss:str ix:n :}
+   ns STR:LEN ix SLOT PD-NLEN-OFF + X64HARNESS:CELL!,
+   ns ix SLOT PD-NAME-OFF + X64HARNESS:TEXT!,
+   ss STR:LEN ix SLOT PD-SLEN-OFF + X64HARNESS:CELL!,
+   ss ix SLOT PD-SIG-OFF + X64HARNESS:TEXT!, ;
 
 : PENDING-DEFERS, ( -- )
    s" ab" s" ( -- )" 0 DEFER-SLOT,
@@ -355,7 +348,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
 
 \ DRAIN-PRETRUST replays the table from the top, slot 1 and then slot 0, and
 \ empties it; a second drain calls nothing.
-: BUILD-DRAIN ( str -- ) {: path:^ pathu:n :}
+: BUILD-DRAIN ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    PENDING-DEFERS,  DECL,
    s" DRAIN-PRETRUST" ROW
@@ -363,26 +356,26 @@ REGION SLOT-BYTES - constant TOP-SLOT
    s" DRAIN-PRETRUST" ROW
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ A pending table the drain meets without a checker to take it: DRAIN-PRETRUST
 \ writes `trust-decl` on fd 2 and exits 89.
-: BUILD-PENDING ( str -- ) {: path:^ pathu:n :}
+: BUILD-PENDING ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    PENDING-DEFERS,
    s" DRAIN-PRETRUST" ROW
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ wide-mark sets DNAME-WIDE on the newest record, hidden, and leaves the one
 \ before it alone. The record's pages start read and execute only, as a
 \ published record's are, so the row writes only through its alias.
-: BUILD-WIDE-MARK ( str -- ) {: path:^ pathu:n :}
+: BUILD-WIDE-MARK ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    SEED,  4 5 X64HARNESS:PROT-RECORD,  s" wide-mark" ROW
    DNAME-WIDE DNAME-INT or 6 or  4 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    6  3 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 : ADDRESS-HEADER, ( n -- ) {: cap:n :}
    0 RELOC:XTCELL-N-CELL X64HARNESS:CELL!,
@@ -392,7 +385,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 RELOC:XTCELL-N-CELL ADDRESS-CELLS:MODE-FIELD + X64HARNESS:CELL!, ;
 
 \ xt! stores into a scratch cell and ptr-cell-mark admits one.
-: BUILD-XT-STORE ( str -- ) {: path:^ pathu:n :}
+: BUILD-XT-STORE ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
    CELL-VALUE X64HARNESS:PUSH,  0 X64HARNESS:PUSH-SCRATCH,  s" xt!" ROW
@@ -406,9 +399,9 @@ REGION SLOT-BYTES - constant TOP-SLOT
    CELL X64HARNESS:PUSH-SCRATCH,  s" ptr-cell-mark" ROW
    2 RELOC:XTCELL-N-CELL X64HARNESS:EXPECT-CELL,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-ADDR-GROW ( str -- ) {: path:^ pathu:n :}
+: BUILD-ADDR-GROW ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    2 ADDRESS-HEADER,
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
@@ -421,11 +414,11 @@ REGION SLOT-BYTES - constant TOP-SLOT
    1 RELOC:XTCELL-N-CELL ADDRESS-CELLS:MODE-FIELD + X64HARNESS:EXPECT-CELL,
    8 RELOC:XTCELL-N-CELL ADDRESS-CELLS:CAP-FIELD + X64HARNESS:EXPECT-CELL,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ A task installs its private context in rbp while declaring a cell in the
 \ shared image DATA. The marker must find the one shared header and lock.
-: BUILD-ADDR-TASK ( str -- ) {: path:^ pathu:n :}
+: BUILD-ADDR-TASK ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
    0 X64HARNESS:PUSH-SCRATCH,
@@ -439,35 +432,35 @@ REGION SLOT-BYTES - constant TOP-SLOT
    X64HARNESS:SCRATCH-OFF RELOC:XTCELL-DATA-TAG or
       ADDRESS-CELLS:BOOT-OFF X64HARNESS:EXPECT-CELL,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ An xt! over a cell ptr-cell-mark marked exits 96 with E-XTKIND on fd 2.
-: BUILD-ADDR-KIND ( str -- ) {: path:^ pathu:n :}
+: BUILD-ADDR-KIND ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
    CELL-VALUE X64HARNESS:PUSH, 0 X64HARNESS:PUSH-SCRATCH, s" xt!" ROW
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ A ptr-cell-mark whose cell runs past the data band exits 96 with E-XTBAND
 \ on fd 2.
-: BUILD-ADDR-BAND ( str -- ) {: path:^ pathu:n :}
+: BUILD-ADDR-BAND ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
    LINUX-LAYOUT:DATA-SIZE CELL - 1+ X64HARNESS:PUSH-DATA, s" ptr-cell-mark" ROW
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ A ptr-cell-mark with no address-cell header exits 96 with E-XTCELL on fd 2.
-: BUILD-ADDR-HEADER ( str -- ) {: path:^ pathu:n :}
+: BUILD-ADDR-HEADER ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ Exercise the booted kernel's reader through its public primitive. Rejected
 \ tokens must discard any partial value and clear both flags.
 : NUM-CASE, ( str n n n -- )
-   {: a:^ u:n value:n float:n ok:n :}
-   a u X64HARNESS:PUSH-TEXT,
+   {: s:str value:n float:n ok:n :}
+   s X64HARNESS:PUSH-TEXT,
    s" num-parse" X64HARNESS:CALL-ROW,
    ok X64HARNESS:EXPECT-POP,
    float X64HARNESS:EXPECT-POP,
@@ -516,12 +509,12 @@ REGION SLOT-BYTES - constant TOP-SLOT
       s" -9223372036854775808.5" 0 0 0 NUM-CASE, exit then
    s" x64k-engine: invalid numeric card" 1 die ;
 
-: BUILD-NUM ( n str -- ) {: card:n path:^ pathu:n :}
+: BUILD-NUM ( n str -- ) {: card:n path:str :}
    false X64HARNESS:BOOT-OPEN,
    card NUM-CARD,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 public
 

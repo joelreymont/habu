@@ -46,7 +46,7 @@ using X64RT
    msg LBL,  S\" APP\n" ASM-SINK VEC:APPEND
    floor LBL,  RDI 70 IMM,  NR-EXIT-GROUP SYS,
    code-end LBL,
-   path STR:DATA path STR:LEN X64HARNESS:WRITE
+   path X64HARNESS:WRITE
    X64HARNESS:DISPOSE ;
 
 : RUN ( -- )

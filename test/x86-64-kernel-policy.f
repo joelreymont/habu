@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-policy.f - policy-admit and policy-seal in a booted x86 ELF.
 \ The peer runs these images and checks their exact status and the
 \ `error[E-POLICY]` record or die line each writes to stderr:
@@ -29,7 +28,7 @@ using X64RT
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
-: ROW, ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW, ( str -- ) X64HARNESS:CALL-ROW, ;
 
 \ The callback has the captured INTERPRETER policy check's effect: a public wid
 \ in, the first colliding spelling and a flag out. The normal arm returns no
@@ -49,15 +48,15 @@ using X64RT
 
 \ A namespace row's first cell is its public wid; the harness's RECORD, gives
 \ an ordinary code entry there, so replace only that field before indexing.
-: PACKAGE, ( ^u8 n n -- ) {: name:^ size:n wid:n :}
-   name size WL:NAMESPACE 0 X64HARNESS:RECORD,
+: PACKAGE, ( str n -- ) {: name:str wid:n :}
+   name WL:NAMESPACE 0 X64HARNESS:RECORD,
    wid 0 X64KERNEL:REC-CODE + X64HARNESS:REGION!, ;
 
 : ADMIT, ( str -- )
    X64HARNESS:PUSH-TEXT,  s" policy-admit" ROW, ;
 
-: READY, ( ^u8 n n -- ) {: name:^ size:n wid:n :}
-   name size wid PACKAGE,
+: READY, ( str n -- ) {: name:str wid:n :}
+   name wid PACKAGE,
    s" SAFE" wid 0 X64HARNESS:RECORD,
    X64KERNEL:HIDX-BUILD, ;
 
@@ -98,10 +97,10 @@ using X64RT
    X64KERNEL:HIDX-BUILD,
    s" PKW" ADMIT, ;
 
-: IMAGE ( [ -- ] ^u8 n -- ) {: path:^ size:n :}
+: IMAGE ( [ -- ] str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    execute
-   path size X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 public
 

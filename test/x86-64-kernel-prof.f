@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-prof.f - the profiler rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f PROFILER,, src/habu/prof-x64.f) in the booted harness,
 \ cross-built for an x86-64 peer. The host checks only the build; the peer runs
@@ -113,7 +112,7 @@ C-IX XREF-REC XREF-WORDLIST constant C-WID
 A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
-: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : LOAD, ( r64 mem -- ) ASM-SINK ENC-MOV-RM ;
@@ -376,7 +375,7 @@ TEXTS TEXT-CAP * BUFFER: TEXT-BYTES
 TEXTS TYPED-BUFFER TEXT-LEN n
 variable GOT-N
 
-: TEXT ( n -- ^u8 n ) {: k:n :}  TEXT-BYTES k TEXT-CAP * +  k TEXT-LEN @ ;
+: TEXT ( n -- str ) {: k:n :}  TEXT-BYTES k TEXT-CAP * +  k TEXT-LEN @ >str ;
 
 \ Run the quotation with this host's fd 1 on a pipe, put fd 1 back, which
 \ closes the pipe's last write end, and keep what the pipe holds as capture k.
@@ -514,10 +513,10 @@ variable GOT-N
 
 \ Check whether the latest captured report contains these bytes. This names
 \ a failed check with the sought text instead of spending a numbered status.
-: HAS, ( ^u8 n bool -- )
-   {: a:^ u:n present:bool :}
+: HAS, ( str bool -- )
+   {: s:str present:bool :}
    LBL LBL LBL LBL LBL {: next:label byte:label miss:label found:label done:label :}
-   a u X64HARNESS:PUSH-TEXT,
+   s X64HARNESS:PUSH-TEXT,
    R9 R64>N G-POP  RDI R64>N G-POP
    GOT AT,  RSI R64>N G-POP
    CAP-LEN RECALL,  RDX R64>N G-POP  RDX RSI ASM-SINK ENC-ADD-RR
@@ -536,7 +535,7 @@ variable GOT-N
    found LBL,  RAX 1 IMM,
    done LBL,
    RCX present if 1 else 0 then IMM,
-   a u X64HARNESS:CHECK-RCX, ;
+   s X64HARNESS:CHECK-RCX, ;
 
 \ ---- dictionary retirement and ordinal reuse -------------------------------------
 \ A cold record's span behind a jump.
@@ -701,9 +700,9 @@ variable GOT-N
 
 \ Check the count read into GOT and its bytes: 0 when GOT starts with the
 \ text, which the count must reach.
-: STARTS, ( str -- ) {: a:^ u:n :}
+: STARTS, ( str -- ) {: s:str :}
    LBL {: enough:label :}
-   a u X64HARNESS:PUSH-TEXT,
+   s X64HARNESS:PUSH-TEXT,
    GOT AT,
    RSI R64>N G-POP  R9 R64>N G-POP  RDI R64>N G-POP  RDX R64>N G-POP
    RAX ZERO-REG,
@@ -808,12 +807,12 @@ variable GOT-N
    0 N,  s" prof-on" ROW ;
 
 \ An image: the case, then the stack checks every case ends with.
-: BUILD ( [ -- ] bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
+: BUILD ( [ -- ] bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ Each image's exit status, as the peer must see it:
 \    hb-x64-kernel-prof                0

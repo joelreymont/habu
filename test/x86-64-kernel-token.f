@@ -1,4 +1,3 @@
-split-str
 \ parse-name walks the live source cursor, including its end-of-input answer.
 \ bare-tok-imm? follows the primary name binding and ignores used publics.
 \ Runtime CREATE dispatches through the captured handler. A defining word
@@ -16,7 +15,7 @@ using LINUX-LAYOUT
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 
-: INPUT, ( ^u8 n -- )
+: INPUT, ( str -- )
    X64HARNESS:PUSH-TEXT,
    RAX R64>N G-POP  RCX R64>N G-POP
    RCX DATA-REG X64HARNESS:SCRATCH-OFF MEM-OFF ASM-SINK ENC-MOV-MR
@@ -34,8 +33,8 @@ using LINUX-LAYOUT
    RAX R64>N G-PUSH
    off X64HARNESS:EXPECT-POP, ;
 
-: IMM?, ( str n -- ) {: a:^ u:n want:n :}
-   a u X64HARNESS:PUSH-TEXT,
+: IMM?, ( str n -- ) {: s:str want:n :}
+   s X64HARNESS:PUSH-TEXT,
    s" bare-tok-imm?" X64HARNESS:CALL-ROW,
    want X64HARNESS:EXPECT-POP, ;
 

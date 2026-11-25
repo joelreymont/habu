@@ -127,7 +127,7 @@ DATA-START $100 + constant TCB-OFF
    RDI 70 >IMM32 ASM-SINK ENC-MOV-RI32
    NR-EXIT-GROUP SYS,
    code-end LBL,
-   path STR:DATA path STR:LEN X64HARNESS:WRITE ;
+   path X64HARNESS:WRITE ;
 
 
 public

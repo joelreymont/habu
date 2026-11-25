@@ -1,4 +1,3 @@
-split-str
 \ Real x86-64 kernel images exercise bare-scope-find with and without the name
 \ index. The emitted ELFs remain in TMPDIR for replay on the x86-64 peer.
 require test/x86-64-boot-harness.f
@@ -9,8 +8,8 @@ using X64ASM
 using X64CODE
 using LINUX-LAYOUT
 
-: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
-: SCOPE, ( ^u8 n -- ) X64HARNESS:PUSH-TEXT,  s" bare-scope-find" ROW ;
+: ROW ( str -- ) X64HARNESS:CALL-ROW, ;
+: SCOPE, ( str -- ) X64HARNESS:PUSH-TEXT,  s" bare-scope-find" ROW ;
 
 \ -1 means the null record; every other expected value is a record index.
 : REC?, ( n -- ) dup 0 < if drop 0 X64HARNESS:EXPECT-POP, else X64HARNESS:EXPECT-ROW, then ;
@@ -87,12 +86,12 @@ using LINUX-LAYOUT
    X64HARNESS:EXPECT-BALANCED,
    s" hb-x64-scope-late-seed" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD ( bool n ^u8 n -- ) {: indexed:bool kind:n path:^ u:n :}
+: BUILD ( bool n str -- ) {: indexed:bool kind:n path:str :}
    false X64HARNESS:BOOT-OPEN,
    SEED,
    indexed if X64KERNEL:HIDX-BUILD, then
    kind CASE,
-   path u X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 : RUN ( -- )
    T-RESET
