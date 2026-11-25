@@ -92,9 +92,10 @@ variable SERIAL
 
 : NODE-ALLOC ( -- ^n ) NODE-CELLS >COUNT MEM-ALLOC-CELLS ;
 : ARCHIVE-ALLOC ( -- ^n ) ARCHIVE-CELLS >COUNT MEM-ALLOC-CELLS ;
-: BYTES-FREE ( ^u8 n -- ) BYTES-ALLOC-LEN RELEASE-BYTES ;
-: NODE-FREE ( ^n -- ) BYTE-VIEW NODE-CELLS cells BYTES-FREE ;
-: ARCHIVE-FREE ( ^n -- ) BYTE-VIEW ARCHIVE-CELLS cells BYTES-FREE ;
+: BYTES-FREE ( str -- ) {: b:str :}
+   b STR:DATA b STR:LEN BYTES-ALLOC-LEN RELEASE-BYTES ;
+: NODE-FREE ( ^n -- ) BYTE-VIEW NODE-CELLS cells >str BYTES-FREE ;
+: ARCHIVE-FREE ( ^n -- ) BYTE-VIEW ARCHIVE-CELLS cells >str BYTES-FREE ;
 
 : NEXT-ID-LOCKED ( -- n )
    SERIAL @ MAX-SIZE = if E-SIZE throw then
@@ -205,14 +206,14 @@ variable SERIAL
 : FREE-CHUNK ( ^n -- ^n )
    {: chunk:^ :}
    chunk CHUNK-LINK @
-   chunk BYTE-VIEW chunk CHUNK-TOTAL @ BYTES-FREE ;
+   chunk BYTE-VIEW chunk CHUNK-TOTAL @ >str BYTES-FREE ;
 
 : FREE-CHUNKS ( ^n -- )
    begin dup NULL? 0= while FREE-CHUNK repeat drop ;
 
 : FREE-BUFFER ( ^n -- ) {: node:^ :}
    node DATA-PTR @ NULL? 0= if
-      node DATA-PTR @ node CAPACITY @ BYTES-FREE
+      node DATA-PTR @ node CAPACITY @ >str BYTES-FREE
    then node NODE-FREE ;
 
 : FREE-BUFFERS ( ^n -- )
