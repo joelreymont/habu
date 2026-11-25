@@ -3108,7 +3108,7 @@ private
    XDS SP 16 LDR,
    SP SP 32 ADDI, ;
 
-\ evaluate-closed ( ^u8 n -- ): the text runs on a guarded stack of its own
+\ evaluate-closed ( str -- ): the text runs on a guarded stack of its own
 \ from the CLOSED-FREE-CELL pool; this frame holds the caller's base, capacity
 \ and cursor at [0] [8] [16] and the text's stack at [24], which CLOSED-LEAVE
 \ reads. PROVIDED-XT:EVALUATE-CLOSED-CELL's word runs the text under this
