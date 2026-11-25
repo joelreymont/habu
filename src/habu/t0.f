@@ -1807,7 +1807,8 @@ variable CATCH-REC                   \ catch's
    s" >str" 44 OP-MAP  s" data" 45 OP-MAP  s" len" 46 OP-MAP
    s" c!" 47 OP-MAP  s" byte-view" 48 OP-MAP  s" cell-view" 49 OP-MAP
    s" PTR>N" 50 OP-MAP  s" str>" 51 OP-MAP  s" chars" 52 OP-MAP
-   s" NULL-PTR" 53 OP-MAP
+   s" NULL-PTR" 53 OP-MAP  s" u16@" 54 OP-MAP  s" u32@" 55 OP-MAP
+   s" u16!" 56 OP-MAP  s" u32!" 57 OP-MAP
    s" data-base" SEEDED BASE-REC !  s" catch" SEEDED CATCH-REC ! ;
 
 : MAP-OPS ( -- ) OP-MAPPED @ 0= if OPS-MAP then ;
@@ -2026,6 +2027,10 @@ DYNAMIC-BUFFER COUNT-SLOT n
       51 of true endof
       52 of true endof
       53 of 0 PUSH-CONST true endof
+      54 of a CELL1 2 >WIDTH FETCH true endof
+      55 of a CELL1 4 >WIDTH FETCH true endof
+      56 of a CELL1 2 >WIDTH STORE true endof
+      57 of a CELL1 4 >WIDTH STORE true endof
       NO-INLINE
    endcase ;
 
