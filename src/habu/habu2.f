@@ -121,18 +121,6 @@ here BPL-KW - constant BPL-LEN
 ;package
 
 package ENGINE-EMIT
-: C-MCTX-SP-16! ( -- )
-   HB-TARGET-LINUX? IF
-      12 9 LINUX-MCTX-SP-OFF LDR,  12 12 16 SUBI,  12 9 LINUX-MCTX-SP-OFF STR, exit
-   THEN
-   12 9 MACOS-MCTX-SP-OFF LDR,  12 12 16 SUBI,  12 9 MACOS-MCTX-SP-OFF STR, ;
-
-: C-MCTX-PC+4! ( -- )
-   HB-TARGET-LINUX? IF
-      12 9 LINUX-MCTX-PC-OFF LDR,  12 12 4 ADDI,  12 9 LINUX-MCTX-PC-OFF STR, exit
-   THEN
-   12 9 MACOS-MCTX-PC-OFF LDR,  12 12 4 ADDI,  12 9 MACOS-MCTX-PC-OFF STR, ;
-
 : C-BP-HIT-SAVE ( -- )
    SP SP 80 SUBI,
    1 SP 0 STR,  4 SP 8 STR,  5 SP 16 STR,
@@ -175,75 +163,30 @@ package ENGINE-EMIT
    9 11 0 ADDI,  LFLUSH LABEL@ BL,
    8 SP 40 LDR,  12 0 MOVZ,  12 8 0 STR, ;
 
-\ Store the interrupted thread's link register at its (already lowered) stack
-\ pointer: the second half of the pre-indexed save, in the ucontext.
-: C-MCTX-LINK>SLOT ( -- )
-   HB-TARGET-LINUX? IF
-      12 9 LINUX-MCTX-SP-OFF LDR,  14 9 LINUX-MCTX-LR-OFF LDR,  14 12 0 STR, exit
-   THEN
-   12 9 MACOS-MCTX-SP-OFF LDR,  14 9 MACOS-MCTX-LR-OFF LDR,  14 12 0 STR, ;
-
-\ The opcode classes of an instruction that reads or sets PC, each as
-\ (word >> shift) [& mask] = value. The breakpoint handler below refuses to run
-\ such an instruction away from its address.
-0 ENC-B 26 rshift                constant CINL-B-OP
-0 C-EQ ENC-BCOND 24 rshift       constant CINL-BCOND-OP
-0 0 ENC-CBZ 25 rshift $3F and    constant CINL-CBZ-OP    \ cbz, cbnz, either width
-0 0 ENC-ADR 24 rshift $1F and    constant CINL-ADR-OP    \ adr, adrp
-$1B constant CINL-TBZ-OP         \ tbz, tbnz, either width: bits 30:25 = 011011
-$3B constant CINL-LDRLIT-MASK    \ ldr, ldrsw, prfm (literal), any register file:
-$18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
-
 : C-MCTX-PC<R12 ( -- )
    HB-TARGET-LINUX? IF 12 9 LINUX-MCTX-PC-OFF STR, exit THEN
    12 9 MACOS-MCTX-PC-OFF STR, ;
 
-\ Branch to `rel` when x13, the displaced instruction, reads or sets PC: the
-\ PC-relative classes, and blr, whose return address would be the trampoline's.
-\ Clobbers x14, x15.
-: C-BP-PCREL ( label -- ) {: rel:label :}
-   14 13 26 LSRI,  14 14 $1F ANDI,  14 CINL-B-OP CMPI,  C-EQ rel BCOND,   \ b, bl
-   14 13 24 LSRI,  14 CINL-BCOND-OP CMPI,  C-EQ rel BCOND,
-   14 13 25 LSRI,  14 14 $3F ANDI,  14 CINL-CBZ-OP CMPI,  C-EQ rel BCOND,
-   14 CINL-TBZ-OP CMPI,  C-EQ rel BCOND,
-   14 13 24 LSRI,  14 14 $1F ANDI,  14 CINL-ADR-OP CMPI,  C-EQ rel BCOND,
-   14 13 24 LSRI,  15 CINL-LDRLIT-MASK MOVZ,  14 14 15 AND,
-   14 CINL-LDRLIT-OP CMPI,  C-EQ rel BCOND,
-   15 $FFFFFC1F LIT64,  14 13 15 AND,  15 0 ENC-BLR LIT64,  14 15 CMP,  C-EQ rel BCOND, ;
-
-\ Resume at the slot's trampoline: [BPTRAMP-CELL] + index * 8, and the index * 8
-\ is the slot's offset in BPTAB, 32 bytes a slot, shifted right by two.
+\ The slot's index is its offset in BPTAB over 32 bytes.
 : C-BP-TRAMP ( -- )
-   14 8 XREG-RBASE SUB,  15 BPTAB-OFF LIT64,  14 14 15 SUB,  14 14 2 LSRI,
+   14 8 XREG-RBASE SUB,  15 BPTAB-OFF LIT64,  14 14 15 SUB,  14 14 5 LSRI,
+   15 BREAKPOINT:TRAMP MOVZ,  14 14 15 MUL,
    12 XREG-RBASE BPTRAMP-CELL LDR,  12 12 14 ADD,
-   C-MCTX-PC<R12 ;
+   9 SP 24 LDR,  C-MCTX-PC<R12 ;
 
-\ The emulated `str x30,[sp,#-16]!` lands over this signal frame's {fp, lr},
-\ which nothing reads back (sigreturn reads uc_mcontext; locals are off sp),
-\ and that address is the slot the resumed word's epilogue reads.
-: C-BP-EMULATE ( -- )
-   LBL LBL LBL {: framed:label oneshot:label done:label :}
-   9 SP 24 LDR,                                       \ the interrupted mcontext
-   8 SP 40 LDR,  13 8 8 LDR,                          \ the word the BRK replaced
-   14 W-LINKSAVE LIT64,  13 14 CMP,  C-EQ framed BCOND,
-   oneshot C-BP-PCREL
-      C-BP-TRAMP
-      done B,
-   oneshot LBL,
-      \ Give the word its instruction back and resume ON it: the breakpoint
-      \ degrades to one-shot, a visible loss, where running the instruction at
-      \ the wrong address is a wrong result.
-      C-BP-RESTORE-ONESHOT
-      done B,
-   framed LBL,
-      C-MCTX-SP-16!
-      C-MCTX-LINK>SLOT
-      C-MCTX-PC+4!
+\ A persistent slot resumes at its trampoline, a one-shot one on its entry.
+: C-BP-RESUME ( -- )
+   LBL LBL {: tramp:label done:label :}
+   8 SP 40 LDR,  15 8 24 LDR,  15 15 1 ANDI,  15 tramp CBNZ,
+   C-BP-RESTORE-ONESHOT
+   done B,
+   tramp LBL,
+   C-BP-TRAMP
    done LBL, ;
 
 : C-BP-SCAN ( label label label label -- )
    {: tno:label bscan:label bnext:label bhit:label :}
-   6 8 MOVZ,  7 0 MOVZ,
+   6 BREAKPOINT:SLOTS MOVZ,  7 0 MOVZ,
    bscan LBL,
       7 6 CMP,  C-GE tno BCOND,
       8 7 5 LSLI,  14 BPTAB-OFF LIT64,  8 8 14 ADD,  8 XREG-RBASE 8 ADD,
@@ -269,9 +212,9 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
       C-BP-WATCH-ROW  wloop B,
    wdone LBL, ;
 
-\ LTRAPH, the trap signal entry: a BPTAB hit is reported and resumed (one-shot
-\ restores the instruction, persistent runs C-BP-EMULATE); any other trap falls
-\ through to the crash dump with x2/x4 untouched.
+\ LTRAPH, the trap signal entry: a BPTAB hit past its skip count is reported,
+\ and every hit is resumed; any other trap falls through to the crash dump with
+\ x2/x4 untouched.
 : EMIT-TRAPH ( -- )
    LTRAPH LABEL@ LBL,
    LBL {: tno :}
@@ -279,22 +222,18 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    C-MCTX-PC>R10
    LBL {: bscan :}  LBL {: bnext :}  LBL {: bhit :}
    LBL {: sdump :}  LBL {: sdone :}  LBL {: wloop :}  LBL {: wdone :}
-   LBL {: emu :}  LBL {: fin :}
-   tno bscan bnext bhit C-BP-SCAN                    \ scan BPTAB[0..8)
+   LBL {: resume :}
+   tno bscan bnext bhit C-BP-SCAN
    \ slot layout: +0 addr  +8 saved-instr  +16 hits  +24 ctrl(skip<<1 | persist)
    bhit LBL,                                         \ x8=&slot x9=mctx x10=pc
    C-BP-HIT-SAVE                                     \ x15=ctrl  x12=skip
-   14 12 CMP,  C-LS emu BCOND,                       \ hits <= skip -> silent, just emulate
+   14 12 CMP,  C-LS resume BCOND,                    \ hits <= skip -> silent
    C-BP-PRINT-HIT
    C-BP-STACK-RANGE
    sdump sdone C-BP-STACK-DUMP
    wloop wdone C-BP-WATCH-DUMP
-   8 SP 40 LDR,  15 8 24 LDR,  15 15 1 ANDI,  15 emu CBNZ,   \ persistent -> emulate, keep BRK
-   C-BP-RESTORE-ONESHOT                              \ clear slot addr; resume re-runs orig
-   fin B,
-   emu LBL,
-   C-BP-EMULATE
-   fin LBL,
+   resume LBL,
+   C-BP-RESUME
    0 SP 8 LDR,  1 SP 0 LDR,  2 SP 16 LDR,  SP SP 80 ADDI,
    NR-SIGRETURN SYS,                                 \ sigreturn(uctx, infostyle, token)
    tno LBL,

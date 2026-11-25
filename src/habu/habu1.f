@@ -58,9 +58,6 @@ using SYSCALL
 package ENGINE-EMIT
 public
 $D65F03C0 constant W-RET
-
-\ 16 bytes: AArch64 sp stays 16-byte aligned.
-30 SP -16 ENC-STRPRE  constant W-LINKSAVE
 ;package
 using ENGINE-EMIT
 package ENGINE-EMIT

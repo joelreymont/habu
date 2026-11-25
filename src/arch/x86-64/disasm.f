@@ -3,7 +3,7 @@ split-str
 \ DIS1 receives the remaining bytes of one recorded code span and its live PC
 \ and prints the instruction; SPAN decodes the same way and prints nothing.
 \ DRIP is the offset of a rip-relative operand's disp32 (0: none), DREL a
-\ relative branch's distance from the byte after it.
+\ call's or jmp's distance from the byte after it.
 
 require src/lib/fmt.f
 
@@ -16,15 +16,14 @@ public
 -9512 constant E-LENGTH
 
 \ What an instruction does with its own address: nothing; names an operand by
-\ the disp32 at offset disp; calls, jumps or branches to the byte delta past
-\ the one after it; or pushes it (call r/m).
+\ the disp32 at offset disp; calls or jumps to the byte delta past the one
+\ after it; or another use (a jcc, call r/m).
 ENUM pc-use
    VARIANT none ;VARIANT
    VARIANT operand FIELD disp n ;VARIANT
    VARIANT call FIELD delta n ;VARIANT
    VARIANT jump FIELD delta n ;VARIANT
-   VARIANT branch FIELD cond n FIELD delta n ;VARIANT
-   VARIANT pushed ;VARIANT
+   VARIANT other ;VARIANT
 ;ENUM
 
 private
@@ -355,7 +354,6 @@ variable DQUIET
 : COND-BRANCH ( -- )
    PLAIN-PREFIX
    DOP @ $100 and 0<> if S32 else S8 then {: delta:n :}
-   delta DREL !
    DOP @ $F and JCC$ OUT GAP delta PRINT-REL ;
 
 : ALU? ( -- bool )
@@ -538,16 +536,17 @@ private
    DECODE-TWO if exit then
    UNKNOWN ;
 
-\ The decoder rejects the other users of rip, loop and jrcxz.
+\ The decoder rejects loop and jrcxz. `syscall`, whose rcx is its own rip, is
+\ none: tier 0 emits no syscall.
 : PC-USE ( -- pc-use )
    DOP @ {: op:n :}
-   op $FF = DREG @ 2 = and if construct pc-use pushed exit then
+   op $FF = DREG @ 2 = and
+   op $70 >= op $7F <= and or  op $180 >= op $18F <= and or if
+      construct pc-use other exit
+   then
    DRIP @ 0<> if DRIP @ construct pc-use operand exit then
    op $E8 = if DREL @ construct pc-use call exit then
    op $E9 = op $EB = or if DREL @ construct pc-use jump exit then
-   op $70 >= op $7F <= and  op $180 >= op $18F <= and  or if
-      op $F and DREL @ construct pc-use branch exit
-   then
    construct pc-use none ;
 
 public

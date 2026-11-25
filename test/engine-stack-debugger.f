@@ -35,9 +35,9 @@ package STACK-LIFECYCLE-TEST
    DEBUGGER-VALUES 2 T=
    DEBUGGER-LINES 7 T= ;
 
-\ T0 enters KEEP with `ret`, TWICE with a load, CALLS with `str x30,[sp,#-16]!`
-\ on arm64 and `call rel32` on x86-64, and QUOTES with that store and
-\ `lea rcx,[rip+d]`; the planted trap displaces each on every call.
+\ T0 enters KEEP with `ret`, TWICE with a load or `lea rbx,[rbx-8]`, CALLS with
+\ `str x30,[sp,#-16]!` or `call rel32`, QUOT with `adr` or `lea rcx,[rip+d]`,
+\ HOP with `b` or `jmp rel32`.
 : PERSISTENT-BOUNDARIES ( -- )
    s" persistent breakpoint on a leaf word resumes it" T-LABEL
    s" require src/habu/debug.f package PBP : KEEP ( n -- n ) ; ' KEEP DEBUG:BP* : GO ( -- ) 17 KEEP . 25 KEEP . ; GO ;package"
@@ -57,26 +57,15 @@ package STACK-LIFECYCLE-TEST
    OUT OUTLEN @ >str s" 42" STR:CONTAINS? TTRUE
    OUT OUTLEN @ >str s" 10" STR:CONTAINS? TTRUE
    DEBUGGER-HITS 2 T=
-   s" persistent breakpoint on a word that begins with a quotation" T-LABEL
-   S\" require src/habu/debug.f package PBP : QUOTES ( -- ) [: s\" q\" type ;] execute ; ' QUOTES DEBUG:BP* : GO ( -- ) QUOTES QUOTES ; GO ;package"
+   s" eight persistent breakpoints, each resuming at its own slot" T-LABEL
+   S\" require src/habu/debug.f package PBP : INC ( n -- n ) 1+ ; : KEEP ( n -- n ) ; : TWICE ( n -- n ) dup + ; : CALLS ( n -- n ) INC 2 * ; : QUOT ( -- [ -- ] ) [: s\" q\" type ;] ; : HOP ( n -- n ) INC ; : HOP2 ( n -- n ) TWICE ; : LESS ( n -- n ) 1- ; : DROPS ( n n -- n ) drop ; ' QUOT DEBUG:BP* ' HOP DEBUG:BP* ' HOP2 DEBUG:BP* ' TWICE DEBUG:BP* ' CALLS DEBUG:BP* ' KEEP DEBUG:BP* ' LESS DEBUG:BP* 1 ' DROPS DEBUG:BPN : ONCE ( n -- ) KEEP TWICE HOP HOP2 CALLS LESS 0 DROPS . QUOT execute ; : GO ( -- ) 1 ONCE 2 ONCE 3 ONCE ; GO ;package"
    CHILD-RC 0 T=
-   OUT OUTLEN @ >str s" qq" T$=
-   DEBUGGER-HITS 2 T= ;
-
-\ T0 enters HOP with a tail branch, `jmp rel32`; the arm64 handler makes a
-\ breakpoint on its `b` one-shot.
-: TAIL-BOUNDARIES ( -- )
-   s" persistent breakpoint on a tail word" T-LABEL
-   s" require src/habu/debug.f package PBP : INC ( n -- n ) 1+ ; : HOP ( n -- n ) INC ; ' HOP DEBUG:BP* : GO ( -- ) 20 HOP . 4 HOP . ; GO ;package"
-   CHILD-RC 0 T=
-   OUT OUTLEN @ >str S\" 21\n5\n" T$=
-   DEBUGGER-HITS 2 T= ;
+   OUT OUTLEN @ >str S\" 13\nq21\nq29\nq" T$=
+   DEBUGGER-HITS 26 T= ;
 
 public
 : DEBUGGER-RUN ( -- )
-   T-RESET DEBUGGER-BOUNDARIES PERSISTENT-BOUNDARIES
-   HB-TARGET-LINUX-X86-64? if TAIL-BOUNDARIES then
-   T-REPORT ;
+   T-RESET DEBUGGER-BOUNDARIES PERSISTENT-BOUNDARIES T-REPORT ;
 
 ;package
 

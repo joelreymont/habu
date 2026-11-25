@@ -99,12 +99,12 @@ and watch table after it executes.
 fires on every call, and `N ' WORD BPN` fires on every call after the first N
 (the supported conditional breakpoint). `BP-` removes, `BP.` lists.
 A persistent breakpoint runs the entry instruction out of line; on an entry
-that cannot run there it is one-shot. A hit prints `habu-bp:` with the pc and
-stack top, `habu-bp-lr:` with the address the word will return to, then the
-live data stack and watched cells, and resumes the word. Feed the `habu-bp-lr:`
-value to `tools/code-owner.f` (below) to name the caller: in a seeded engine
-that pair is the only way to answer "who called this?", because lldb cannot
-plant a breakpoint in the compiled code region at all.
+that cannot run there it is removed by its first call. A hit prints `habu-bp:`
+with the pc and stack top, `habu-bp-lr:` with the address the word will return
+to, then the live data stack and watched cells, and resumes the word. Feed the
+`habu-bp-lr:` value to `tools/code-owner.f` (below) to name the caller: in a
+seeded engine that pair is the only way to answer "who called this?", because
+lldb cannot plant a breakpoint in the compiled code region at all.
 Each word takes the target as an xt, which must be an instruction-aligned entry
 in the live compiled code region; engine-text primitives are rejected.
 

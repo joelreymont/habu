@@ -9,7 +9,7 @@ require test/pcap-result.f
 
 package STACK-LIFECYCLE-TEST
 
-$200 constant IO-CAP
+$1000 constant IO-CAP
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 variable OUTLEN
@@ -21,10 +21,8 @@ variable STATUS
    ENGINE-CANDIDATE:PATH$ src OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N STATUS ! ERRLEN ! OUTLEN ! ;
 
-\ A crashed child's dump outgrows IO-CAP on either stream, and its
-\ E-PROC-STDOUT-CAPACITY or E-PROC-STDERR-CAPACITY uncaught would end the file
-\ without naming the case. The case fails under its label, and the
-\ empty capture and -1 fail the checks after it.
+\ A child's output past IO-CAP fails its case under its label: uncaught, the
+\ throw would end the file without naming the case.
 : CHILD-TRUNCATED ( -- n )
    T-NEXT s" child output exceeded the capture" T-ASSERT-DETAIL
    0 OUTLEN ! 0 ERRLEN ! -1 ;

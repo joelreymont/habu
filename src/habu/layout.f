@@ -195,11 +195,16 @@ $36A8 constant INE-CELL
 \ counting as one and a restated token not. Only differences are read.
 $36B0 constant TOKENS-CELL
 \ BPTRAMP-CELL: the code address of the persistent-breakpoint trampolines,
-\ BPTRAMP-BYTES of trap instructions, reserved in the code band: eight slots,
-\ each an instruction and a branch back, 8 bytes on arm64 and on x86-64 up to
-\ 15 bytes of instruction and a 5-byte jmp rel32.
+\ BREAKPOINT:BYTES of trap instructions reserved in the code band.
 $36C0 constant BPTRAMP-CELL
-: BPTRAMP-BYTES ( -- n ) HB-TARGET-LINUX-X86-64? if 160 exit then 64 ;
+package BREAKPOINT
+public
+8 constant SLOTS
+\ The longest form: two words and a quad on arm64, a 15-byte instruction and
+\ `jmp rel32` on x86-64.
+: TRAMP ( -- n ) HB-TARGET-LINUX-X86-64? if 20 exit then 16 ;
+: BYTES ( -- n ) SLOTS TRAMP * ;
+;package
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL

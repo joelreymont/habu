@@ -1,12 +1,14 @@
 split-str
 \ debug.f - breakpoints on compiled words: a trap at a word's entry (BRK #0 on
 \ arm64, int3 on x86-64), served by the engine's SIGTRAP handler, which prints
-\ habu-bp:, pc and the stack top, then removes (one-shot) or re-arms
-\ (persistent) it. Up to 8.
+\ habu-bp:, pc and the stack top, then removes it (one-shot) or resumes past it
+\ (persistent) at its slot's trampoline, which does what the entry instruction
+\ does and goes on where it does.
 \ With debug-watch.f and stepper.f it makes package DEBUG; the rest is private,
 \ so a program keeps its own FIND, FREE or STEP.
 
 require src/core/exit-status.f
+require src/lib/le.f
 HB-TARGET-LINUX-X86-64? 0= [if] require src/arch/arm64/asm.f [then]
 HB-TARGET-LINUX-X86-64? [if] require src/arch/x86-64/disasm.f [then]
 require src/habu/code-bytes.f
@@ -15,23 +17,15 @@ require src/habu/stepper.f
 
 package DEBUG
 
-\ A trampoline slot's bytes: BPTRAMP-BYTES holds MAXBP of them.
-: TRAMP-BYTES ( -- n ) HB-TARGET-LINUX-X86-64? if 20 exit then 8 ;
-
 public
 
-BPTRAMP-BYTES TRAMP-BYTES / constant MAXBP
-
-\ Debugger-owned refusal range, outside the library and build-tool ranges.
+\ Debugger-owned rejection range, outside the library and build-tool ranges.
 -9300 constant E-BP-FIRST
 -9309 constant E-BP-LAST
 -9300 s" a breakpoint address is not an aligned instruction of the live compiled code, or a persistent breakpoint has no trampoline"
    ERROR:CODE E-BP-TARGET
 
 private
-
-: W32@ ( ^u8 -- n ) {: a :}
-   a c@  a 1 + c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
 
 : SLOT-OFF ( n -- n )
    32 * BPTAB-OFF + ;
@@ -63,37 +57,79 @@ CAST: XT>N ( [ R -- S ] -- n )
 : CODE! ( n n -- ) {: w at :}
    w  at 4 CODE-BYTES:AT drop  BP-PATCH32 ;
 
-\ A persistent breakpoint runs its entry instruction out of line: slot idx owns
-\ the TRAMP-BYTES at [BPTRAMP-CELL] + idx * TRAMP-BYTES, which do what the
-\ instruction does at the entry and go on where it does. The block is reserved
-\ in the code band once, before any breakpoint, so a branch there reaches
-\ anywhere in the region (REGION is far inside b's 128 MB and jmp rel32's 2 GB)
-\ and nothing is ever freed while a slot points at it: reserving at CP during
-\ BPADD would hand the block to a failed REPL line's CP rollback. It starts as
-\ traps, so a stray jump traps and a capture's walk over the gap finds no
-\ fall-through into the next definition.
+\ The block is reserved at boot: a failed REPL line's CP rollback would free one
+\ reserved here. A branch from it reaches the whole region.
 : TRAMP@ ( -- n ) data-base BPTRAMP-CELL + @ ;
+
+\ One word of trap instructions: brk #0, or four int3.
+: TRAPS ( -- n ) HB-TARGET-LINUX-X86-64? if $CCCCCCCC exit then $D4200000 ;
+
+\ The trampoline being written: its address, its bytes and how many are written.
+variable TRAMP-AT
+create TRAMP-BUF BREAKPOINT:TRAMP allot
+variable TRAMP-U
+
+: TRAMP-OPEN ( n -- )
+   TRAMP-AT !  0 TRAMP-U !
+   BREAKPOINT:TRAMP 0 ?do TRAPS TRAMP-BUF i + LE:U32! 4 +loop ;
+
+: DWORD+ ( n -- ) TRAMP-BUF TRAMP-U @ + LE:U32!  4 TRAMP-U +! ;
+
+: TRAMP-STORE ( -- )
+   BREAKPOINT:TRAMP 0 ?do
+      TRAMP-BUF i + LE:U32@ TRAMP-AT @ i + CODE!
+   4 +loop ;
 
 HB-TARGET-LINUX-X86-64? 0= [if]
 
-$D4200000 constant BRK0
-
 \ The word that plants the trap at an entry, and the one that restores the
 \ entry from the word a slot saved.
-: TRAP-WORD ( ^u8 -- n ) drop BRK0 ;
+: TRAP-WORD ( ^u8 -- n ) drop TRAPS ;
 : RESTORED ( n ^u8 -- n ) drop ;
 : ALIGNED? ( n -- bool ) 3 and 0= ;
 
-\ Slot idx's trampoline for the instruction at `at`: that instruction, then
-\ `b at+4`, whose displacement from the trampoline's second word is at - t.
-\ The handler degrades an instruction that reads or sets PC to one-shot when it
-\ hits, so every instruction gets one.
-: TRAMP! ( n n -- bool )
-   {: at idx :}
-   idx TRAMP-BYTES * TRAMP@ + {: t :}
-   at 4 CODE-BYTES:AT drop W32@ t CODE!
-   at t - A64ASM:ENC-B  t 4 + CODE!
-   true ;
+: B+ ( n -- ) TRAMP-AT @ TRAMP-U @ + - A64ASM:ENC-B DWORD+ ;
+
+: OP? ( n n n -- bool ) {: w:n mask:n op:n :}
+   w mask and op = ;
+
+\ The byte distance w's signed field of so many bits from bit lo holds in words.
+: DELTA ( n n n -- n ) {: w:n lo:n bits:n :}
+   1 bits 1 - lshift {: sign:n :}
+   w lo rshift  sign 2 * 1 - and  sign xor sign - 4 * ;
+
+\ adr's distance in bytes, adrp's in pages.
+: ADR-DELTA ( n -- n ) {: w:n :}
+   w 5 19 DELTA  w 29 rshift 3 and + ;
+
+\ w's register becomes v: `ldr xd,[pc,#8]`, the branch, then v's quad.
+: VALUE+ ( n n n -- ) {: next:n w:n v:n :}
+   w 31 and $58000040 or DWORD+  next B+
+   v DWORD+  v 32 rshift DWORD+ ;
+
+\ Whether w does the same anywhere: a br or ret, an exception or system word,
+\ or no branch at all.
+: COPIES? ( n -- bool ) {: w:n :}
+   w $FFBFFC1F $D61F0000 OP?
+   w $FE000000 $D4000000 OP? or
+   w $1C000000 $14000000 OP? 0= or ;
+
+\ Append the words that do at the trampoline what w does at `at`; false: w has
+\ none. A literal load's are longer than a slot.
+: RELOCATED? ( n n -- bool ) {: at:n w:n :}
+   at 4 + {: next:n :}
+   w $3B000000 $18000000 OP? if false exit then           \ a literal load
+   w $FC000000 $14000000 OP? if at w 0 26 DELTA + B+ true exit then
+   w $9F000000 $10000000 OP? if                           \ adr
+      next w  at w ADR-DELTA +  VALUE+ true exit
+   then
+   w $9F000000 $90000000 OP? if                           \ adrp
+      next w  at $FFF invert and w ADR-DELTA 12 lshift +  VALUE+ true exit
+   then
+   w COPIES? dup if w DWORD+ next B+ then ;
+
+: ENTRY+ ( n -- bool ) {: at:n :}
+   at  at 4 CODE-BYTES:AT drop LE:U32@  RELOCATED? ;
 
 [then]
 
@@ -104,8 +140,8 @@ $FFFFFF00 constant ABOVE-BYTE0
 
 \ int3 takes the entry's first byte and leaves the three after it, which may
 \ begin another breakpoint's word.
-: TRAP-WORD ( ^u8 -- n ) W32@ ABOVE-BYTE0 and INT3 or ;
-: RESTORED ( n ^u8 -- n ) W32@ ABOVE-BYTE0 and swap $FF and or ;
+: TRAP-WORD ( ^u8 -- n ) LE:U32@ ABOVE-BYTE0 and INT3 or ;
+: RESTORED ( n ^u8 -- n ) LE:U32@ ABOVE-BYTE0 and swap $FF and or ;
 : ALIGNED? ( n -- bool ) drop true ;
 
 \ Whether X64DIS decodes the instruction at code; a throw from outside the
@@ -116,20 +152,7 @@ $FFFFFF00 constant ABOVE-BYTE0
    rc X64DIS:E-LAST < rc X64DIS:E-FIRST > or if rc throw then
    false ;
 
-\ The trampoline being written: its address, its bytes and how many there are.
-variable TRAMP-AT
-create TRAMP-BUF TRAMP-BYTES allot
-variable TRAMP-U
-
-: TRAMP-OPEN ( n -- )
-   TRAMP-AT !  0 TRAMP-U !
-   TRAMP-BYTES 0 ?do INT3 TRAMP-BUF i + c! loop ;
-
-: BYTE+ ( n -- )
-   $FF and TRAMP-BUF TRAMP-U @ + c!  1 TRAMP-U +! ;
-
-: DWORD+ ( n -- ) {: w:n :}
-   4 0 ?do w i 8 * rshift BYTE+ loop ;
+: BYTE+ ( n -- ) TRAMP-BUF TRAMP-U @ + c!  1 TRAMP-U +! ;
 
 : BYTES+ ( str -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ BYTE+ loop ;
@@ -140,24 +163,19 @@ variable TRAMP-U
 
 : JMP+ ( n -- ) $E9 BYTE+ REL32+ ;
 
+\ The code region lies below 2 GB, so `push imm32` holds a return address.
 : PUSH+ ( n -- ) $68 BYTE+ DWORD+ ;
-
-: JCC+ ( n n -- ) {: cond:n to:n :}
-   $0F BYTE+ $80 cond + BYTE+ to REL32+ ;
 
 \ The instruction with the disp32 at offset disp, which counts from the
 \ instruction's end, moved from `at` to the trampoline.
 : MOVED+ ( n str n -- ) {: at:n code:^ len:n disp:n :}
    code disp BYTES+
-   code disp + W32@ at TRAMP-AT @ - + DWORD+
+   code disp + LE:U32@ at TRAMP-AT @ - + DWORD+
    disp 4 + {: done:n :}
    code done + len done - BYTES+ ;
 
-\ The bytes that do at the trampoline what the len-byte instruction at code
-\ does at `at`, or false: no trampoline. A callee returns to the byte after
-\ the call itself; `push imm32` holds that address, the code region lying
-\ below 2 GB. `call r/m` gets none, as loop and jrcxz, which X64DIS rejects:
-\ tier 0 begins no unit with them.
+\ Append the bytes that do at the trampoline what the len-byte instruction at
+\ code does at `at`. Tier 0 begins no unit with the jcc or call r/m of `other`.
 : RELOCATED? ( n str X64DIS:pc-use -- bool )
    {: at:n code:^ len:n use:X64DIS:pc-use :}
    at len + {: next:n :}
@@ -168,28 +186,22 @@ variable TRAMP-U
       call OF {: delta:n :}
          next PUSH+ next delta + JMP+ true ENDOF
       jump OF next + JMP+ true ENDOF
-      branch OF {: cond:n delta:n :}
-         cond next delta + JCC+ next JMP+ true ENDOF
-      pushed OF false ENDOF
+      other OF false ENDOF
    ;MATCH ;
 
-: TRAMP-STORE ( -- )
-   TRAMP-BYTES 0 ?do
-      TRAMP-BUF i + W32@ TRAMP-AT @ i + CODE!
-   4 +loop ;
-
-\ Slot idx's trampoline for the instruction at `at`; false when X64DIS rejects
-\ the instruction or it has no out-of-line form. The longest is 20 bytes, a
-\ 15-byte instruction and `jmp rel32`.
-: TRAMP! ( n n -- bool )
-   {: at:n idx:n :}
+: ENTRY+ ( n -- bool ) {: at:n :}
    at  cp@ at - 15 min  CODE-BYTES:AT {: code:^ u:n :}
    code u DECODES? 0= if false exit then
-   idx TRAMP-BYTES * TRAMP@ + TRAMP-OPEN
    code u X64DIS:SPAN {: len:n use:X64DIS:pc-use :}
-   at code len use RELOCATED? dup if TRAMP-STORE then ;
+   at code len use RELOCATED? ;
 
 [then]
+
+\ Slot idx's trampoline for the instruction at `at`; false when it has no
+\ out-of-line form.
+: TRAMP! ( n n -- bool ) {: at:n idx:n :}
+   idx BREAKPOINT:TRAMP * TRAMP@ + TRAMP-OPEN
+   at ENTRY+ dup if TRAMP-STORE then ;
 
 \ A slot is filled while its address field holds a code pointer; an empty slot
 \ holds BP-NULL, whose address reads 0.
@@ -199,38 +211,36 @@ variable TRAMP-U
 \ matches, so an address of 0 finds nothing.
 : FIND ( n -- n )
    {: at :}
-   0 BEGIN dup MAXBP < WHILE
+   0 BEGIN dup BREAKPOINT:SLOTS < WHILE
       dup FILLED? IF dup BP-SLOT-ADDR @ NULL-PTR - at = IF exit THEN THEN
       1 + REPEAT  drop -1 ;
 
 \ An empty slot, else -1.
 : FREE ( -- n )
-   0 BEGIN dup MAXBP < WHILE  dup FILLED? 0= IF exit THEN  1 + REPEAT  drop -1 ;
+   0 BEGIN dup BREAKPOINT:SLOTS < WHILE  dup FILLED? 0= IF exit THEN  1 + REPEAT  drop -1 ;
 
-\ BPADD ( xt ctrl -- ) : record + plant. ctrl = (skip << 1) | persistent, and
-\ persistent is cleared when TRAMP! answers false.
 : BP-SET-SLOT ( str n -- ) {: xt:^ ctrl idx :}
    xt idx BP-SLOT-ADDR !
-   xt W32@ idx BP-SLOT-INSTR !
+   xt LE:U32@ idx BP-SLOT-INSTR !
    0 idx BP-SLOT-HITS !
    ctrl idx BP-SLOT-CTRL ! ;
 
+\ ctrl = (skip << 1) | persistent; an entry with no trampoline gets 0, one-shot
+\ with no skip.
 : BPADD ( n n -- ) {: at ctrl :}
-   \ patch32 runs in engine text while opening the target's pages RW. An
-   \ engine-text target can remove X from the patcher itself. Only the live
-   \ compiled region is supported; refuse before publishing a slot or patching.
-   \ That region lies inside CODE-BYTES:AT's code band, so AT never rejects it.
+   \ patch32 stores through the region's alias, so a target lies in the live
+   \ compiled region, which CODE-BYTES:AT never rejects.
    at dbase@ DICT-SIZE + <  at cp@ 4 - > or  at ALIGNED? 0= or if
       E-BP-TARGET throw
    then
    at FIND 0 < 0= IF exit THEN                \ already set
    ctrl 1 and 0<>  TRAMP@ 0=  and if E-BP-TARGET throw then
    FREE dup 0 < IF
-      drop s" bp: table full (8)" type EXIT-STATUS:FULL throw
+      drop s" bp: table full" type EXIT-STATUS:FULL throw
    THEN   \ recoverable in the REPL
    {: idx :}
    at 4 CODE-BYTES:AT drop {: xt:^ :}
-   ctrl  ctrl 1 and 0<> if  at idx TRAMP! 0= if 1 invert and then  then {: kept :}
+   ctrl  ctrl 1 and 0<> if  at idx TRAMP! 0= if drop 0 then  then {: kept :}
    xt kept idx BP-SET-SLOT
    xt TRAP-WORD xt BP-PATCH32 ;
 
@@ -250,7 +260,7 @@ public
    BP-NULL idx BP-SLOT-ADDR ! ;
 
 : BP. ( -- )                                  \ list active breakpoints (addrs)
-   0 BEGIN dup MAXBP < WHILE
+   0 BEGIN dup BREAKPOINT:SLOTS < WHILE
       dup BP-SLOT-ADDR @ dup BP-NULL = 0= IF NULL-PTR BYTE-VIEW - . cr ELSE drop THEN
       1 + REPEAT  drop ;
 
