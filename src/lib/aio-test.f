@@ -526,9 +526,9 @@ TASK:MIN-STACK TASK:TASK FAN7
 \ The bytes at file offset `off` are the pattern's, and the pattern's period is
 \ no divisor of the offsets this suite reads at, so a chunk read at the wrong
 \ offset does not match.
-: PAT-CHECK ( ^u8 n n -- bool ) {: buf off:n cnt:n :}
-   cnt 0 ?do
-      buf i + c@ off i + PAT-C <> if 0 0= 0= unloop exit then
+: PAT-CHECK ( str n -- bool ) {: s:str off:n :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ off i + PAT-C <> if 0 0= 0= unloop exit then
    loop
    0 0= ;
 
@@ -565,7 +565,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    fd >FD buf cap count off AIO:READ AIO:AWAIT-XFER
       {: rbuf rcap:NUM:alloc-byte-len out:AIO:outcome :}
    out OUTCOME>N {: got:n :}
-   got 0 > if rbuf at got PAT-CHECK TTRUE then
+   got 0 > if rbuf got >str at PAT-CHECK TTRUE then
    rbuf rcap MEM:RELEASE-BYTES
    got ;
 
@@ -878,7 +878,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    XFER-ALLOC {: rbuf rcap:NUM:alloc-byte-len :}
    got 0 > if
       num rbuf XFER-N read REUSE-N T=
-      rbuf 0 REUSE-N PAT-CHECK TTRUE
+      rbuf REUSE-N >str 0 PAT-CHECK TTRUE
    then
    rbuf rcap MEM:RELEASE-BYTES
    sbuf scap MEM:RELEASE-BYTES
