@@ -177,7 +177,7 @@ TABLES-RELEASED TABLES !
 public
 
 1 constant WORD                 \ KIND@: whitespace-delimited word token
-2 constant COMMENT              \ KIND@: `( ... )` or `.( ... )` comment, body via CONTENT
+2 constant COMMENT              \ KIND@: `( ... )` comment, body via CONTENT
 3 constant REGISTRY             \ KIND@: one complete primitive-axiom row
 
 1 constant BAD-STRING           \ ERROR-KIND@: a string literal has no closing quote or holds a bad escape
@@ -314,29 +314,16 @@ private
    POS @ 1+ SRC-U @ >= if true exit then
    SRC@ POS @ 1+ + c@ ENGINE-DELIM? ;
 
-\ Emit one COMMENT token for a paren-delimited inert span whose opener is already
-\ consumed, so POS sits on the first body byte. The token spans from the opener
-\ site the caller recorded in START through the closing `)`; an opener that never
-\ closes ends the span at end of input, which is not a diagnostic because the
-\ unread text is inert either way.
-: PAREN-BODY ( -- )
+\ Emit one COMMENT token from the `(` at POS through its `)`; one that never
+\ closes ends at end of input.
+: PAREN-COMMENT ( -- )
+   ADV drop
    POS @ CSTART !
    TO-PAREN
    POS @ CSTART @ - CLEN !
    END? 0= if ADV drop then
    COMMENT CUR$ START @ START-LINE @ START-COL @
    BODY-A BODY-U ADD ;
-
-: PAREN-COMMENT ( -- )
-   ADV drop PAREN-BODY ;
-
-\ `.( ... )` is the printing comment. The engine reads its opener with
-\ `parse-name`, so `.(` arrives on the word path as a whole token and `.(X)` is
-\ an ordinary word, as `(CMP)` is. Its body becomes a COMMENT token whose CONTENT
-\ is the body: read word at a time, the body would yield a declaration the
-\ engine never performs.
-: PRINT-OPEN? ( str -- bool )
-   s" .(" STR:= ;
 
 \ Primitive-axiom rows. The engine reads a row's name (and a package row's
 \ package) with `parse-name`, so a row may name a primitive `s"`, `c"`, `."`,
@@ -557,15 +544,6 @@ private
    CUR$ SOURCE-SYNTAX:ROW-OPENER? 0= if false exit then
    NAME-POS? 0= ;
 
-\ The same name-position rule a row opener obeys: after a body opener or
-\ `undefine` the engine parses the next word as a name and never executes it, so
-\ `: .( ( -- ) ;` DEFINES a word spelled `.(` instead of opening a printing
-\ comment.
-: PRINT-START? ( -- bool )
-   CUR$ PRINT-OPEN? 0= if false exit then
-   NAME-POS? if false exit then
-   LOCAL-START? 0= ;
-
 \ A parsing keyword the engine runs reads the next token raw, so `['] (` opens no
 \ comment; a name after a body opener or `undefine`, or a live local, takes
 \ nothing.
@@ -631,8 +609,6 @@ private
       CUR$ ROW-FAMILY SCAN-ROW
       exit
    then
-   \ `.(` is already consumed by the word scan, so the print body starts at POS.
-   PRINT-START? if PAREN-BODY exit then
    PARSER-START? if ADD-WORD RAW-OPERAND exit then
    CUR$ {: a:^ u:n :}
    START @ START-LINE @ START-COL @ {: byte:n line:n col:n :}

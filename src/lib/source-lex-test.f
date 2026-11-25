@@ -240,59 +240,15 @@ variable REG-I
    4 LINT-LEX:TOKEN s" 2drop" ASSERT$
    5 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
-\ `.( ... )` is the printing comment. Its body is text the engine prints, never
-\ code, so the whole span is one inert COMMENT token and the declaration spelled
-\ inside it must not reach a consumer. `.(X)` has no delimiter after the opener,
-\ so `parse-name` returns one ordinary word instead, and an opener that never
-\ closes ends at end of input.
-: TEST-LEXER-PRINT-PAREN ( -- )
-   s" .( -9001 constant E-XA )  -9001 constant E-XB" LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 4 ASSERT=
-   0 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
-   0 LINT-LEX:TOKEN s" .( -9001 constant E-XA )" ASSERT$
-   0 LINT-LEX:CONTENT s"  -9001 constant E-XA " ASSERT$
-   0 LINT-LEX:BYTE@ 0 ASSERT=  0 LINT-LEX:LINE@ 1 ASSERT=  0 LINT-LEX:COL@ 1 ASSERT=
-   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=   1 LINT-LEX:TOKEN s" -9001" ASSERT$
-   2 LINT-LEX:TOKEN s" constant" ASSERT$
-   3 LINT-LEX:TOKEN s" E-XB" ASSERT$
-   s" .(X) drop" LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 2 ASSERT=
-   0 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=   0 LINT-LEX:TOKEN s" .(X)" ASSERT$
-   1 LINT-LEX:TOKEN s" drop" ASSERT$
-   s" dup .(" LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 2 ASSERT=
-   0 LINT-LEX:TOKEN s" dup" ASSERT$
-   1 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
-   1 LINT-LEX:TOKEN s" .(" ASSERT$
-   1 LINT-LEX:CONTENT STR:LEN 0 ASSERT= ;
-
-\ After a definer the engine parses the next word as a name and never executes
-\ it, so `: .( ( -- ) cr ;` DEFINES a word spelled `.(` and the `( -- )` after it
-\ is that definition's own stack comment. The later `.( hi )` still prints.
-: TEST-LEXER-PRINT-NAME-POS ( -- )
-   s" : .( ( -- ) cr ; .( hi ) dup" LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 7 ASSERT=
-   0 LINT-LEX:TOKEN s" :" ASSERT$
-   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    1 LINT-LEX:TOKEN s" .(" ASSERT$
-   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  -- " ASSERT$
-   3 LINT-LEX:TOKEN s" cr" ASSERT$
-   4 LINT-LEX:TOKEN s" ;" ASSERT$
-   5 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 5 LINT-LEX:CONTENT s"  hi " ASSERT$
-   6 LINT-LEX:TOKEN s" dup" ASSERT$ ;
-
 \ An operand is data and names nothing: after `' :` the `:` defines nothing, so
-\ the `.(` after it opens a printing comment.
+\ the `char` after it takes the `(`.
 : TEST-LEXER-OPERAND-NAMES-NOTHING ( -- )
-   s" ' : .( z ) x" LINT-LEX:SOURCE
+   s" ' : char ( x" LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 4 ASSERT=
+   LINT-LEX:COUNT 5 ASSERT=
    1 LINT-LEX:TOKEN s" :" ASSERT$
-   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  z " ASSERT$
-   3 LINT-LEX:TOKEN s" x" ASSERT$ ;
+   3 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=  3 LINT-LEX:TOKEN s" (" ASSERT$
+   4 LINT-LEX:TOKEN s" x" ASSERT$ ;
 
 \ A parsing keyword the engine runs takes the next whitespace-delimited token raw,
 \ whatever it spells: `char \` is one word and hides nothing after it, and
@@ -362,12 +318,12 @@ variable REG-I
    8 LINT-LEX:TOKEN s" char" ASSERT$      8 LINT-LEX:OPERAND? 0= ASSERT
    9 LINT-LEX:OPERAND? ASSERT
    11 LINT-LEX:TOKEN s" x" ASSERT$        11 LINT-LEX:OPERAND? ASSERT
-   s\" TRUSTED: .( ( -- n ) char \\ x\n; kernel: .( ( -- n ) char \\ y\n;"
+   s\" TRUSTED: char ( -- n ) char \\ x\n; kernel: char ( -- n ) char \\ y\n;"
    LINT-LEX:SOURCE
    LINT-LEX:COUNT 10 ASSERT=
-   1 LINT-LEX:TOKEN s" .(" ASSERT$        2 LINT-LEX:CONTENT s"  -- n " ASSERT$
+   1 LINT-LEX:TOKEN s" char" ASSERT$      2 LINT-LEX:CONTENT s"  -- n " ASSERT$
    4 LINT-LEX:TOKEN s" ;" ASSERT$
-   6 LINT-LEX:TOKEN s" .(" ASSERT$        7 LINT-LEX:CONTENT s"  -- n " ASSERT$
+   6 LINT-LEX:TOKEN s" char" ASSERT$      7 LINT-LEX:CONTENT s"  -- n " ASSERT$
    9 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
 \ OPERAND scans the rest of the source again from its token with the locals that
@@ -748,8 +704,6 @@ variable REG-I
    TEST-LEXER
    TEST-LEXER-PAREN-NAME
    TEST-LEXER-PAREN-CALL
-   TEST-LEXER-PRINT-PAREN
-   TEST-LEXER-PRINT-NAME-POS
    TEST-LEXER-OPERAND-NAMES-NOTHING
    TEST-LEXER-PARSER-OPERAND
    TEST-LEXER-LOCAL-NAMES

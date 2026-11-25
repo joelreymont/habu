@@ -638,6 +638,10 @@ PATH-CAP BUFFER: FOUND   variable FOUND-U
    s" require-check/definer-rest.f:4:1" VERIFY-REJECTS
    s" error[E-UNDEFINED]: cannot find word `RQC-REST-NAME`" ERR-HAS
    REST-LAST-HEAD ERR-HAS
+   s" and `.(`, which no word is" T-LABEL
+   s" test/fixtures/require-check/print-paren.f"
+   s" error[E-UNDEFINED]: cannot find word `.(`"
+   s" require-check/print-paren.f:2:20" VERIFY-REJECTS
    s" test/fixtures/require-check/text-good.f"
    s" and passes a call only evaluated text makes" VERIFIES
    s" test/fixtures/require-check/built-good.f"

@@ -498,9 +498,6 @@ variable FLAG-N
    2dup NORMAL-STRING-OPENER? IF 2drop 0 0= EXIT THEN
    ESCAPED-STRING-OPENER? ;
 
-: PRINT-OPENER? ( str -- bool )
-   s" .(" STR:= ;
-
 : SKIP-ESCAPED-QUOTE ( -- )
    0 FOUND !
    begin SCAN-I @ SOURCE-U @ < while
@@ -701,12 +698,11 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
       2dup SHEBANG? IF 2drop 10 SKIP-PAST ELSE
       2dup COMMENT-END dup 0<> IF nip nip SKIP-PAST ELSE drop
       SKIP-STRINGS @ 0= IF 2dup LOCAL? IF EXIT THEN THEN
-      2dup PRINT-OPENER? IF 2drop 41 SKIP-PAST ELSE
       SKIP-STRINGS @ 0= 0= IF
          2dup ESCAPED-STRING-OPENER? IF LIT-KIND SKIP-ESCAPED-QUOTE RECORD-ESCAPED-STRING ELSE
          2dup NORMAL-STRING-OPENER? IF LIT-KIND 34 SKIP-PAST 3 RECORD-SKIPPED-STRING ELSE EXIT THEN THEN
       ELSE EXIT THEN
-      THEN THEN THEN
+      THEN THEN
       CSR-SKIPPED
    AGAIN ;
 
