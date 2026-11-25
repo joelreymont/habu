@@ -555,10 +555,10 @@ async function browser() {
       assert.equal(sights, "occluded 01030303 10",
         `the key test fails behind the caster and passes beside it, around it and ` +
         `past it from the softbox's edge, got ${sights}`);
-      // A resize before the next draw leaves the key test the last draw's.
-      // After an SVG display.f's resize turn draws nothing, so the key test
-      // runs between them. At 2 by 2 pixels shade would be one pixel, whose
-      // centre lies under the caster.
+      // A resize before the next draw leaves both tests the last draw's.
+      // After an SVG display.f's resize turn draws nothing, so occlude runs
+      // between them. At 2 by 2 pixels shade would be one pixel, whose centre
+      // lies under the caster, and depth would have samples no small box covers.
       const sized = async (side) => {
         const before = await evaluate(`document.querySelector("canvas").width`);
         await evaluate(`(() => { const { style } = document.querySelector("canvas");
@@ -570,10 +570,7 @@ async function browser() {
       await sized("2px");
       await command("key");
       const shrunk = (await state()).text;
-      // The view test reads the depth the resize made, of the new size.
-      const keyBits = (text) => text.split(" ")[1].match(/../g).map((b) => parseInt(b, 16) & 2);
-      assert.deepEqual(keyBits(shrunk), keyBits(sights),
-        `the key test after a resize answers the last draw's, got ${shrunk}`);
+      assert.equal(shrunk, sights, `occlude after a resize answers the last draw's, got ${shrunk}`);
       // Each draw after a resize shades at the buffer's size.
       await evaluate(`box(${JSON.stringify(down)})`);
       await sized("");

@@ -158,10 +158,9 @@
 //     drawn surface passes). A box with corners on both sides of the view's
 //     near plane passes: only its faces are drawn, and the plane can cut every
 //     face away while its inside is in view. After a draw of 0 rows, and until
-//     the next draw after a resize for the view test or after a ground of b 0
-//     for the key test, nothing is drawn, so every box in view passes; the key
-//     test after a resize answers the last draw. The ground leaves no depth,
-//     so it hides no box
+//     the next draw after a ground of b 0 for the key test, nothing is drawn,
+//     so every box in view passes; both tests after a resize answer the last
+//     draw. The ground leaves no depth, so it hides no box
 //   17 ground: a, b a span of 40 bytes, ten f32: nx, ny, nz, d, the world
 //     plane n·p + d = 0, n of any nonzero length toward the side that is up,
 //     then the casters' box, its lowest x, y, z then its highest, in world,

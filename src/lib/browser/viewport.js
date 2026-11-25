@@ -908,13 +908,16 @@ function grouped(rows, count, origin) {
 // the 4 bytes WebGPU's sizes and writes need, and the instance and highlight
 // buffers grow when a write needs more. draw samples 4 times per pixel: into
 // a 4x colour texture resolved into the canvas's, then discarded, against a
-// 4x depth texture. The depth texture keeps the last draw's depth, cleared
-// to 1 when made, the matrix buffer its matrix and the view buffer studio's
+// 4x depth texture, both of the drawing buffer's size, which draw makes
+// again when that size has changed. The depth texture keeps the last draw's
+// depth, the matrix buffer its matrix and the view buffer studio's
 // view of the ground held then and of the last view viewer gave, the identity
 // matrix's before any. While a ground is held, marks exist with area, the
 // caster pass's attachment SHADOW_SIDE square, and with shade, half the
 // drawing buffer's size rounded up, which a draw that shades makes again when
-// the buffer's size has changed (resize). A draw
+// the buffer's size has changed, writing shadeMatrix with it. So each stays
+// the last draw's until the next, and occlude after a resize answers the last
+// draw. A draw
 // whose eye is above the plane and whose key's volume is not null first
 // draws every row into marks along the key, ORs the marks into their
 // levels, draws V into shade, then draws the catcher first in its main
@@ -1025,14 +1028,6 @@ function setup(canvas, context, device, release, fail) {
   });
   const light = device.createBuffer({ size: 160, usage: UNIFORM | COPY_DST });
   const shadeMatrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
-  const cleared = (texture) => {
-    const encoder = device.createCommandEncoder();
-    encoder.beginRenderPass({ colorAttachments: [], depthStencilAttachment: {
-      view: texture.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store",
-    } }).end();
-    device.queue.submit([encoder.finish()]);
-    return texture;
-  };
   let plane = null; // the ground's plane held, or null
   let casters = null; // the casters' box held with it
   const bound = (user, entries) => device.createBindGroup({
@@ -1081,10 +1076,10 @@ function setup(canvas, context, device, release, fail) {
     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
   const texelDepth = device.createTexture({ size: [1, 1], format: "depth24plus",
     usage: GPUTextureUsage.RENDER_ATTACHMENT });
-  const depthTexture = () => cleared(device.createTexture({
+  const depthTexture = () => device.createTexture({
     size: [canvas.width, canvas.height], format: "depth24plus", sampleCount: 4,
     usage: GPUTextureUsage.RENDER_ATTACHMENT,
-  }));
+  });
   const colorTexture = () => device.createTexture({
     size: [canvas.width, canvas.height], format, sampleCount: 4,
     usage: GPUTextureUsage.RENDER_ATTACHMENT,
@@ -1146,15 +1141,6 @@ function setup(canvas, context, device, release, fail) {
     vertices.destroy();
     indices.destroy();
     meshes.delete(handle);
-  };
-
-  // shade and shadeMatrix stay the last draw's until the next draw that
-  // shades remakes both, so an occlude before it answers the last draw's key.
-  const resize = () => {
-    depth.destroy();
-    color.destroy();
-    depth = depthTexture();
-    color = colorTexture();
   };
 
   const ground = (held, box) => {
@@ -1226,6 +1212,12 @@ function setup(canvas, context, device, release, fail) {
       shading.setBindGroup(0, shadows.seen);
       shading.draw(6);
       shading.end();
+    }
+    if (depth.width !== canvas.width || depth.height !== canvas.height) {
+      depth.destroy();
+      color.destroy();
+      depth = depthTexture();
+      color = colorTexture();
     }
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
@@ -1358,7 +1350,7 @@ function setup(canvas, context, device, release, fail) {
     }
   };
 
-  return { mesh, unmesh, highlight, ground, draw, pick, occlude, resize, release };
+  return { mesh, unmesh, highlight, ground, draw, pick, occlude, release };
 }
 
 function modifiers(e) {
@@ -1577,7 +1569,6 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
     if (!sized) {
       canvas.width = width;
       canvas.height = height;
-      renderer.resize();
     }
     told = ratio();
     send(() => module.resize());
