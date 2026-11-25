@@ -1307,13 +1307,15 @@ variable STLN   PTR-VARIABLE STLA-P   PTR-VARIABLE STLC-P   variable STL-CAP
 \ cell `catch` left stale (STALE-WHY).
 variable TOP-UNKNOWN
 
-\ Unification trail: one entry (var-id << 4 | tag) per binding, compression
-\ link or provenance, kind raise or scope raise.
+\ Unification trail: one entry (id << 4 | tag) per binding, compression link, provenance,
+\ kind or scope raise, run record or left call.
 4096 constant TRAIL-INIT
 SCRATCH{
 PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
 PTR-VARIABLE TRAIL-OLD-P   \ by trail index: the value a kind, scope, link or provenance entry replaced
-variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (ROWS-PIN), 0 none
+variable TRAIL-PIN   \ trail height + 1 where the rejection's rows were pinned (ROWS-PIN), 0 none
+variable LEFT-CALL   \ 1 + the start of the first token whose quotation only the run can judge, 0 none
+variable LEFT-END    \ that token's end
 }SCRATCH
 : TRAIL ( -- ^n ) TRAIL-P @ ;
 : TRAIL-OLD ( -- ^n ) TRAIL-OLD-P @ ;
@@ -1327,7 +1329,7 @@ variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (RO
 
 
 \ Tags: 0 TVT, 1 RVT, 2 kind, 3 NLINEAR, 4 run record (TRAIL-RAN), 5 a run's
-\ first record, 8 NSCOPE, 12 TVT link, 13 RVT link, 14 TVP.
+\ first record, 6 LEFT-CALL, 8 NSCOPE, 12 TVT link, 13 RVT link, 14 TVP.
 : TRAIL-PUSH ( n n -- )
    {: id:n tag:n :}
    TRAIL-N @ 1 + TRAIL-ENSURE
@@ -1358,6 +1360,7 @@ variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (RO
    tag 0=  tag 12 = or IF TVT off + EXIT THEN
    tag 1 =  tag 13 = or IF RVT off + EXIT THEN
    tag 8 = IF NSCOPE off + EXIT THEN
+   tag 6 = IF LEFT-CALL EXIT THEN
    tag 3 = IF NLINEAR off + EXIT THEN
    tag 14 = IF TVP off + EXIT THEN
    TVK off + ;
@@ -3448,8 +3451,7 @@ variable TWALK-D
 
 SCRATCH{
 variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type, 3 = a quotation's block part,
-\ 4 = a cast's stored type may hold a linear value, 5 = it hands out an atom or a width,
-\ 6 = a scope, or a quotation with a fact its type lacks, met an NS-LEFT variable
+\ 4 = a cast's stored type may hold a linear value, 5 = it hands out an atom or a width
 variable QUOT-HIT        \ true when the last NO-SCOPE? walk failed at a quotation's block part
 }SCRATCH
 
@@ -4200,19 +4202,26 @@ PTR-VARIABLE CAST-SEEN-P   variable CAST-SEEN-CAP   variable CAST-SEEN-N
 
 EXPORT CHECKER-QUOT-FRESH:HELD
 
-\ The SCOPE-HIT of term binding variable id, which hands a variable its own
-\ state; 0 when it may. An NS-LEFT variable is a block part: a variable or a scope.
-: BIND-SCOPE-HIT ( n n -- n ) {: term:n id:n :}
-   id NSCOPE-OF NS-LEFT = IF
-      term T-RES dup ISVAR IF PAY NS-LEFT NSCOPE-RAISE-TO 0 ELSE drop 6 THEN EXIT
-   THEN
-   term NO-SCOPE? IF 0 ELSE STORE-HIT THEN ;
+variable FAILB  variable FAILE   \ the pin's span, the current token's while no failure is pinned
+
+\ The trail holds the record, so a trial taken back takes it back.
+: LEFT-CALL! ( -- )
+   LEFT-CALL @ 0 <> IF EXIT THEN
+   0 6 TRAIL-PUSH
+   FAILB @ 1+ LEFT-CALL !  FAILE @ LEFT-END ! ;
+
+\ An NS-LEFT variable is a block part: it binds a variable, which takes its
+\ state, or a block's scope, which only the run can judge.
+: LEFT-BIND ( n -- )
+   T-RES dup ISVAR IF PAY NS-LEFT NSCOPE-RAISE-TO ELSE drop LEFT-CALL! THEN ;
 
 : TV! ( n n -- )
    {: term:n id:n :}
-   id NSCOPE@ IF term id BIND-SCOPE-HIT dup 0 <> IF
-      SCOPE-HIT ! term id MK-VAR U-FAIL EXIT
-   THEN drop THEN
+   id NSCOPE-OF NS-LEFT = IF term LEFT-BIND ELSE
+      id NSCOPE@ IF term NO-SCOPE? 0= IF
+         STORE-HIT SCOPE-HIT ! term id MK-VAR U-FAIL EXIT
+      THEN THEN
+   THEN
    id NLINEAR@ IF
       TWALK-RESET term NLINEAR-SPREAD*
       term STORED-TERM-HIT dup 0 <> IF
@@ -5190,24 +5199,19 @@ defer U-DRAIN-XT ( n -- )
    dup 3 and  dup 0= IF drop 3 THEN  swap ROLE-NEG and ROLE-NEG xor or ;
 
 
-: BLOCK-LEFT? ( n -- bool )
-   T-RES dup ISVAR IF PAY NSCOPE-OF NS-LEFT = ELSE drop RES-FALSE THEN ;
-
 \ A block part that must read no local rejects a block's scope as a local's
-\ escape (SCOPE-HIT 3); one left to the run leaves the body there (6).
-: BLOCK-HIT! ( n -- ) BLOCK-LEFT? IF 6 ELSE 3 THEN SCOPE-HIT ! ;
-
+\ escape (SCOPE-HIT 3).
 : BLOCK-PAIR ( n n -- ) {: got:n want:n :}
    got Q>BLOCK T-RES {: a:n :}   want Q>BLOCK T-RES {: b:n :}
    a ISVAR b ISVAR and IF
       a PAY b PAY <> IF a b PAY TV! THEN EXIT
    THEN
    a ISVAR IF
-      a PAY NSCOPE@ IF a BLOCK-HIT! a b U-FAIL EXIT THEN
+      a PAY NSCOPE-OF NS-KEPT = IF 3 SCOPE-HIT ! a b U-FAIL EXIT THEN
       b a PAY TV! EXIT
    THEN
    b ISVAR IF
-      b PAY NSCOPE@ IF b BLOCK-HIT! a b U-FAIL EXIT THEN
+      b PAY NSCOPE-OF NS-KEPT = IF 3 SCOPE-HIT ! a b U-FAIL EXIT THEN
       a b PAY TV! EXIT
    THEN
    a b <> IF 3 SCOPE-HIT ! a b U-FAIL THEN ;
@@ -5216,6 +5220,21 @@ defer U-DRAIN-XT ( n -- )
 \ The innermost open kept pair's role, 0 for none, and its wanted facts; the facts
 \ of the quotations its slot hands it to run; the last of those with a fact it lacks.
 variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-T
+
+\ The stated facts F has and G certainly lacks: only the run can tell an opaque G's.
+: FACTS-LACKED ( n n -- n ) {: f:n g:n :}
+   g CTL-OPAQUE and 0 <> IF 0 EXIT THEN
+   f g invert and CTL-STATABLE and ;
+
+\ F or G is opaque, so only the run can tell whether they state the same facts.
+: FACTS-LEFT? ( n n -- bool ) {: f:n g:n :}
+   f g or CTL-OPAQUE and 0 <>  f g and CTL-STATABLE and CTL-STATABLE <>  and ;
+
+\ F or G is opaque, so only the run can tell whether F has a stated fact G lacks.
+: KEPT-LEFT? ( n n -- bool ) {: f:n g:n :}
+   f g or CTL-OPAQUE and 0= IF RES-FALSE EXIT THEN
+   f CTL-OPAQUE and 0 <> IF CTL-STATABLE ELSE f THEN
+   g invert and CTL-STATABLE and 0 <> ;
 
 \ UNIFY-GEN moves on entry and exit: no stamp holds the facts, holds and kept
 \ roles a quotation pair changes.
@@ -5244,40 +5263,41 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    g Q>DOUT w Q>DOUT role PAIR-QUOT
    w Q>RIN g Q>RIN flip PAIR-QUOT
    g Q>ROUT w Q>ROUT role PAIR-QUOT
-   \ A block left to the run hides no failure of the quotation's own rows.
-   g Q>BLOCK BLOCK-LEFT?  w Q>BLOCK BLOCK-LEFT?  or {: left:bool :}
-   left 0= IF g w BLOCK-PAIR THEN   base U-DRAIN-XT
+   g w BLOCK-PAIR   base U-DRAIN-XT
    kept IF
       KEPT-RUN @ KEPT-RUN-T @
       kr0 KEPT-ROLE !  kw0 KEPT-WANT !  kn0 KEPT-RUN !  kt0 KEPT-RUN-T !
    ELSE 0 0 THEN {: run-t:n :}
    got Q>FACTS or {: has:n :}
    UOK @ IF HOLD-ESCAPE? IF upos CUR-UPOS !  got want U-FAIL  -1 TAIL-HIT ! THEN THEN
-   left UOK @ and IF upos CUR-UPOS !  g w BLOCK-PAIR THEN
-   has CTL-STATABLE and want Q>FACTS invert and {: lack:n :}
+   has want Q>FACTS FACTS-LACKED {: lack:n :}
+   keeps NS-LEFT =  lack 0 <> and {: left:bool :}
+   \ Only the run can tell a fact of a body the check left.
+   kept  has want Q>FACTS KEPT-LEFT? and
+   inv  has want Q>FACTS FACTS-LEFT? and  or {: opaque:bool :}
    UOK @ IF
-      inv IF got Q>FACTS want Q>FACTS xor CTL-STATABLE and 0 <> IF got want U-FAIL THEN THEN
-      kept lack 0 <> and IF
-         keeps NS-LEFT = IF 6 SCOPE-HIT ! ELSE
-            role ROLE-NEG and 0 <> {: input:bool :}
-            input IF want ELSE got Q>FACTS lack and 0= IF run-t ELSE 0 THEN THEN FACT-TERM !
-            input IF kr0 0 <> IF MD-FACT-INPUT ELSE MD-FACT-PASSED THEN
-            ELSE MD-FACT-UNSTATED THEN FACT-KIND !
-            has got Q-FACTS!  lack FACT-HIT !
-         THEN
-         got want U-FAIL
+      inv IF
+         has want Q>FACTS FACTS-LACKED  want Q>FACTS has FACTS-LACKED  or 0 <> IF got want U-FAIL THEN
+      THEN
+      kept left 0= and  lack 0 <> and IF
+         role ROLE-NEG and 0 <> {: input:bool :}
+         input IF want ELSE got Q>FACTS lack and 0= IF run-t ELSE 0 THEN THEN FACT-TERM !
+         input IF kr0 0 <> IF MD-FACT-INPUT ELSE MD-FACT-PASSED THEN
+         ELSE MD-FACT-UNSTATED THEN FACT-KIND !
+         has got Q-FACTS!  lack FACT-HIT !  got want U-FAIL
       THEN
    THEN
    \ Facts are not trailed: a rolled-back trial can only add facts.
    TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE
-      kept IF has got Q-FACTS! THEN
+      left opaque or IF LEFT-CALL! ELSE kept IF has got Q-FACTS! THEN THEN
       handed IF
          got Q>FACTS KEPT-RUN @ or KEPT-RUN !
          got Q>FACTS CTL-STATABLE and KEPT-WANT @ invert and 0 <> IF got KEPT-RUN-T ! THEN
       THEN
       join IF g Q>FACTS w Q>FACTS or {: f:n :}  f g Q-FACTS!  f w Q-FACTS! THEN
       runs IF got Q>FACTS w Q>FACTS or w Q-FACTS! THEN
-      runs  role ROLE-D2 and 0 <> and  INPUT-KIND? and IF got INH-CHARGE THEN
+      \ The load rejects a left quotation its callee keeps, so one it accepts is run.
+      runs left or  role ROLE-D2 and 0 <> and  INPUT-KIND? and IF got INH-CHARGE THEN
    THEN
    -1 HOLD-N +!
    1 UNIFY-GEN +! ;
@@ -5775,7 +5795,6 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    need TOKBUF-GROW ;
 
 variable TOKIX  variable FAILIX
-variable FAILB  variable FAILE
 \ The pin is a call in the definition's own body: no tick's operand and in no quotation.
 variable PIN-BODY-CALL
 SCRATCH{
@@ -5974,7 +5993,7 @@ global
 7 constant DW-RENDERED       \ a word whose meaning rendered source may change
 8 constant DW-ROOTS          \ a top-level call that may move the source root
 9 constant DW-COUNT          \ a buffer byte count naming a constant only the run defines
-10 constant DW-QUOT          \ a word or join may keep a quotation it must not, as only the run can tell
+10 constant DW-QUOT          \ a quotation only the run can judge: whether it is kept, or what it does
 private
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
@@ -6013,10 +6032,9 @@ variable DEFER-STOP   \ -1 when the next deferral warning is where the check sto
    FAILSET @ 0 <> IF EXIT THEN
    code MDIAG ! ;
 
--1 constant UNSEEN-NAME   \ LEFT-WHY of an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
 SCRATCH{
 variable UNJ-TOK          \ inside an unjudged token: the splice is armed
-variable LEFT-WHY         \ why the definition is left to the run: 0, UNSEEN-NAME or a DW- code
+variable UNSEEN           \ an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
 }SCRATCH
 
 \ No failure is pinned yet; inside an unjudged token, that token has not failed.
@@ -6028,10 +6046,10 @@ variable LEFT-WHY         \ why the definition is left to the run: 0, UNSEEN-NAM
 : UNCK-RAISE ( -- )
    PIN-OPEN? IF -1 UNCK ! THEN ;
 
-\ Defers the definition to the run for cause why only while the pin is open: a
-\ failure pinned before it decides it (the limit: UNSEEN-MARK$).
-: LEFT-RAISE ( n -- ) {: why:n :}
-   PIN-OPEN? IF why LEFT-WHY ! THEN
+\ A name a rendering statement may define defers the definition only while the
+\ pin is open: a failure pinned before it decides it (the limit: UNSEEN-MARK$).
+: UNSEEN-RAISE ( -- )
+   PIN-OPEN? IF -1 UNSEEN ! THEN
    UNCK-RAISE ;
 
 : LIN-TAINT-SCAN ( -- )
@@ -6097,7 +6115,6 @@ TAIL-CAPTURE-DEFAULT
    SCOPE-HIT @ 3 = IF MD-LOCAL-ESCAPE MDIAG! THEN
    SCOPE-HIT @ 4 = IF MD-STORED-LINEAR MDIAG! THEN
    SCOPE-HIT @ 5 = IF MD-STORED-CLASS MDIAG! THEN
-   SCOPE-HIT @ 6 = IF DW-QUOT LEFT-RAISE THEN
    \ a cell with no type left to read answers before any rule about which type
    \ it is
    STALE-HIT @ 0 <> IF
@@ -11844,7 +11861,7 @@ UIX-RESET
          x E-RES Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.B !
          x E-RES Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.C !
          x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.D !
-         x E-RES Q>FACTS CTL-STATABLE and r@ E-WPTR EN.E !
+         x E-RES Q>FACTS CTL-STATABLE CTL-OPAQUE or and r@ E-WPTR EN.E !
          x E-RES Q>BLOCK TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.I !
          r>
       endof
@@ -16691,7 +16708,7 @@ variable EFFQ-DOUT          \ dout row offset
 : EFF-A@   ( n -- n )   E-PTR EN.A @ ;      \ EN.A field (head term offset)
 : EFF-B@   ( n -- n )   E-PTR EN.B @ ;      \ EN.B field (rest-of-row offset)
 : EFF-C@   ( n -- n )   E-PTR EN.C @ ;      \ EN.C field (on a row cell: width+1; on a quot: rin)
-: EFF-E@   ( n -- n )   E-PTR EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: its stated facts)
+: EFF-E@   ( n -- n )   E-PTR EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: its stated facts and CTL-OPAQUE)
 
 \ Without it `( option<n> n -- )` and `( a b n -- )` agree on term count, cell
 \ count and every family.
@@ -18856,7 +18873,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    THEN
    why DW-QUOT = IF
       s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
-      s"  on to the run because only the run can tell whether a quotation is kept"
+      s"  on to the run because only the run can tell whether a quotation is kept or what it does"
       REJECTION:EMIT-STR EXIT
    THEN
    s" the check cannot follow the source from " REJECTION:EMIT-STR  t tu DW-CODE
@@ -18870,7 +18887,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    why DW-RENDERED = IF s" may depend on rendered source" REJECTION:EMIT-STR EXIT THEN
    why DW-ROOTS = IF s" may move the source root" REJECTION:EMIT-STR EXIT THEN
    why DW-COUNT = IF s" value known only to the run" REJECTION:EMIT-STR EXIT THEN
-   why DW-QUOT = IF s" a quotation may be kept" REJECTION:EMIT-STR EXIT THEN
+   why DW-QUOT = IF s" a quotation only the run can judge" REJECTION:EMIT-STR EXIT THEN
    s" not checked from here" REJECTION:EMIT-STR ;
 \ What lifts the deferral, or what the run does where nothing can; a `parses:`
 \ row's or rendered source's has nothing to write, so no help.
@@ -18905,10 +18922,9 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       REJECTION:EMIT-STR EXIT
    THEN
    why DW-QUOT = IF
-      s" use a quotation that reads no local and does only what the type that takes it states, "
-      REJECTION:EMIT-STR
-      s" or state the rest in that type, and the check goes on past "
-      REJECTION:EMIT-STR  t tu DW-CODE EXIT
+      s" use a quotation that reads no local, calls only words the check judges and does only "
+      REJECTION:EMIT-STR  s" what the type that takes it states, " REJECTION:EMIT-STR
+      s" or state the rest in that type, and the check judges " REJECTION:EMIT-STR  t tu DW-CODE EXIT
    THEN
    s" rewrite the code from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on with words whose effects the check knows" REJECTION:EMIT-STR ;
@@ -19429,7 +19445,7 @@ package CHECK
 SCRATCH{
 variable SV-FV    variable SV-SPN   variable SV-PFN   variable SV-FACTS
 variable SV-QEN   variable SV-PTRN  variable SV-STLN
-variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK  variable SV-LEFT-WHY
+variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
 variable SV-FSET  variable SV-DEXP  variable SV-DEND  variable SV-DACT  variable SV-RSBAD  variable SV-DF-ACT  variable SV-DF-EXP
 variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG  variable SV-MCELL  variable SV-MCELL-VAR
 variable SV-SGBAD
@@ -19454,7 +19470,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    FV @ SV-FV !  TRAIL-N @ SV-TRAIL !  TRAIL-PIN @ SV-PIN !
    SPN @ SV-SPN !  CATCH-PF-N @ SV-PFN !  FACTS @ SV-FACTS !
    QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
-   OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !  LEFT-WHY @ SV-LEFT-WHY !
+   OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DEND @ SV-DEND !  DACT @ SV-DACT !  RSBAD @ SV-RSBAD !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
    \ the reason and its cells are part of the cursor a trial may abandon
@@ -19489,7 +19505,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    SV-FV @ FV !
    SV-SPN @ SPN !  SV-PFN @ CATCH-PF-N !  SV-FACTS @ FACTS !
    SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
-   SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !  SV-LEFT-WHY @ LEFT-WHY !
+   SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DEND @ DEND !  SV-DACT @ DACT !  SV-RSBAD @ RSBAD !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !  SV-MCELL @ MDIAG-CELL !  SV-MCELL-VAR @ MDIAG-CELL-VAR !
@@ -20589,7 +20605,7 @@ variable CHECKER-PREFIX-ROLLBACK
    a u UNSEEN-COVERS?
    {: unseen:bool :}
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
-   unseen IF UNSEEN-NAME LEFT-RAISE ELSE UNCK-RAISE THEN
+   unseen IF UNSEEN-RAISE ELSE UNCK-RAISE THEN
    unseen ;
 
 EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
@@ -23095,13 +23111,6 @@ EXPORT CHECKER-TAPE:K-UNREACHED
    FAILSET @ 0= IF FAIL-PIN! ELSE 2drop THEN ;
 private
 
-\ The pinned token in the source the pre-verifier read, not in its reused body buffer,
-\ and the deferral's cause as a DW- code, 0 for a name.
-: CHECKER-VERIFY-DEFERRED-BODY ( -- ^u8 n n )
-   TBASE@ FAILB @ + REJECTION:>SOURCE drop {: start:n :}
-   TBASE@ FAILE @ + REJECTION:>SOURCE drop {: end:n :}
-   REJECTION:SOURCE$ drop start +  end start -  LEFT-WHY @ 0 max ;
-
 \ Whether the signature token SGBAD names lies in the text at A U; an empty one
 \ at the text's end, where a signature ended early, does.
 : SGBAD-IN? ( str -- bool ) {: a:^ u:n :}
@@ -24034,7 +24043,7 @@ EXPORT CHECKER-TAPE:K-IS
    IS-TARGET-TOK? 0= IF K-IS -1 0 EVENT!  MD-IS-MISSING MDIAG!  IS-FAIL EXIT THEN
    IS-TARGET-SYM {: sym:n :}
    K-IS  BIND-REC @ REC>INDEX  0 EVENT!
-   sym 0=  IS-TA@ IS-TU @ UNSEEN-COVERS?  and IF TICK-PIN  UNSEEN-NAME LEFT-RAISE  EXIT THEN
+   sym 0=  IS-TA@ IS-TU @ UNSEEN-COVERS?  and IF TICK-PIN  UNSEEN-RAISE  EXIT THEN
    sym DFER-FIND-SYM 0= IF sym IS-TARGET-FAIL EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
@@ -24230,10 +24239,13 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    dup REFUSAL !  CAPTURE-CLEAR
    USING-KIND? IF USING-SAVE THEN ;
 
-\ The first token the load cannot compile takes the pin from every failure before it,
-\ else the first name a used public rejects (CUSING) does, else the first failure keeps it.
+: LEFT-OFF? ( -- bool ) UNSEEN @ 0 <>  UNFIT @ 0=  and ;   \ an effect too deep to record is never left to the run
+
+\ A body left to the run keeps its pin. Else the first token the load cannot compile takes it from
+\ every failure before, else the first name a used public rejects (CUSING), else the first failure.
 : REFUSAL-STEP ( str -- )
    {: a:^ u:n :}
+   LEFT-OFF? IF EXIT THEN
    CREFUSE @ 0 <>  RCOMPILE @ 0=  and IF
       CRTGT @ IF TARGET-PIN! ELSE a u FAIL-PIN! THEN
       CREFUSE @ REFUSAL-TAKE  -1 RCOMPILE !  EXIT
@@ -24242,7 +24254,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
       a u FAIL-PIN!  CUSING @ REFUSAL-TAKE  EXIT
    THEN
    \ Past a token left to the run a failed check names no rejection; the checks at ; do.
-   FAILSET @ 0 <>  REFUSAL @ 0=  and  LEFT-WHY @ 0=  and IF REFUSAL-OF REFUSAL ! THEN ;
+   FAILSET @ 0 <>  REFUSAL @ 0=  and  UNSEEN @ 0=  and IF REFUSAL-OF REFUSAL ! THEN ;
 
 : CF-OPEN? ( -- bool )
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  CHECKER-MATCH-MODE @ 0 <>  or ;
@@ -24260,10 +24272,10 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    FAILB @ FAILTU @ + FAILE ! ;
 
 \ Rejects a structure open at closer CA CU, or at the given closer, as the load's
-\ compiler does, unless a compile rejection holds the pin.
+\ compiler does, unless a compile rejection or a token left to the run holds the pin.
 : CLOSER-REFUSE ( str -- )
    {: ca:^ cu:n :}
-   CF-OPEN? 0=  RCOMPILE @ 0 <>  or IF EXIT THEN
+   CF-OPEN? 0=  RCOMPILE @ 0 <>  or  LEFT-OFF? or IF EXIT THEN
    TBASE @ REJECTION:CLOSES? IF REJECTION:CLOSER$ nip ELSE cu THEN 0= IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
       CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN
@@ -24371,10 +24383,10 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    ERROR-TEXT:DIGITS$ {: a:^ u:n :}
    a TYPE-LIT-DIGITS u CCOPY  u TYPE-LIT-U ! ;
 
-\ A refused span is the load's refusal unless an earlier compile refusal holds
-\ it, pinned on the span, or on `[type]` when the span is empty.
+\ A rejected span is the load's rejection, pinned on the span or on `[type]` when it is empty, unless
+\ an earlier compile rejection or a token left to the run holds the pin.
 : TYPE-LIT-FAIL ( n n -- ) {: s:n e:n :}
-   RCOMPILE @ 0=  CREFUSE @ 0=  and IF
+   RCOMPILE @ 0=  CREFUSE @ 0= and  LEFT-OFF? 0= and IF
       MD-TYPE-FORM MDIAG !  RF-REASON REFUSAL-TAKE  -1 RCOMPILE !
       e s > IF
          s TADDR e s - FAIL-PIN!  s FAILB !  FAILB @ FAILTU @ + FAILE !
@@ -25134,7 +25146,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
    0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !  0 PIN-BODY-CALL !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
-   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 LEFT-WHY !  0 QUALBAD !  0 CAPREQ !
+   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 LEFT-CALL !  0 QUALBAD !  0 CAPREQ !
    0 NP-ORIG-N !  0 CALL-MINT-N !  0 RECUR-MAP-N !  0 RECUR-INST-N !
    CLEAR  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !

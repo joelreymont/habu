@@ -992,8 +992,8 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
 \ yields; a pinned rejection stands.
 : UNFIT-UNCHECKABLE ( -- )
    UNFIT @ 0= IF EXIT THEN
-   LEFT-WHY @ 0 <> IF
-      0 LEFT-WHY !  0 UNDEFERR !
+   UNSEEN @ 0 <> IF
+      0 UNSEEN !  0 UNDEFERR !
       RCOMPILE @ 0 <> IF EXIT THEN
       MD-EFFECT-DEPTH MDIAG !  UNCK-RAISE  EXIT
    THEN
@@ -1010,13 +1010,28 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
    THEN
    UNFIT-UNCHECKABLE ;
 
-\ LEFT-WHY is raised only while no failure is pinned, so it outranks every later one; a
-\ bad declaration outranks it, since the declaration is what gets recorded.
+\ UNSEEN is raised only while no failure is pinned, so only a bad declaration, which is
+\ what gets recorded, outranks it; a left call decides a body nothing else does.
 : CHECK-VERDICT ( -- n )
    SGBAD @ 0 <> IF REFUSAL-UNCHECKABLE? IF VERDICT-UNCHECKABLE ELSE VERDICT-REFUSED THEN EXIT THEN
-   LEFT-WHY @ 0 <> IF VERDICT-DEFERRED EXIT THEN
-   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REFUSAL@ RF-UNDEF =  or IF VERDICT-REFUSED ELSE
-   UNCK @ 0 <> IF VERDICT-UNCHECKABLE ELSE OK @ THEN THEN ;
+   UNSEEN @ 0 <> IF VERDICT-DEFERRED EXIT THEN
+   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REFUSAL@ RF-UNDEF =  or IF VERDICT-REFUSED EXIT THEN
+   UNCK @ 0 <> IF VERDICT-UNCHECKABLE EXIT THEN
+   OK @ 0 <>  LEFT-CALL @ 0 <>  and IF VERDICT-DEFERRED ELSE OK @ THEN ;
+
+\ A call left the body to the run, and the walk read its every token.
+: LEFT-AT-CALL? ( -- bool ) DVERD @ VERDICT-DEFERRED =  UNSEEN @ 0=  and ;
+
+\ Where a deferred body is left to the run, in the source the pre-verifier read, not in
+\ its reused body buffer, and a left call's cause as a DW- code, 0 for any other's.
+: CHECKER-VERIFY-DEFERRED-BODY ( -- ^u8 n n )
+   DVERD @ VERDICT-DEFERRED =  LEFT-CALL @ 0 <>  and
+   UNSEEN @ 0=  LEFT-CALL @ 1 -  FAILB @ <  or  and {: call:bool :}
+   call IF LEFT-CALL @ 1 -  LEFT-END @ ELSE FAILB @ FAILE @ THEN {: b:n e:n :}
+   TBASE@ b + REJECTION:>SOURCE drop {: start:n :}
+   TBASE@ e + REJECTION:>SOURCE drop {: end:n :}
+   REJECTION:SOURCE$ drop start +  end start -
+   call IF DW-QUOT ELSE 0 THEN ;
 
 \ `cast: NAME ( in -- out )` is a declaration: the engine's reader keyword
 \ publishes an identity word and asks CHECKER-DEFCAST to prove the declared
@@ -1542,8 +1557,9 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    CK-CLOSE-CLEAR
    \ An unjudged scan's call rows are the width authority whatever its verdict
    \ (UNJ-SPLICE), so a rejected TRUSTED: body still states its call rows.
-   dup -1 = NMU @ 0 > and  BWIN-UNJUDGED @ 0 <> or IF CALL-FINALIZE WF-NOTE-SCAN THEN
-   dup -1 = NMU @ 0 > and IF
+   dup VERDICT-CHECKED =  LEFT-AT-CALL? or  NMU @ 0 >  and {: walked:bool :}
+   walked  BWIN-UNJUDGED @ 0 <> or IF CALL-FINALIZE WF-NOTE-SCAN THEN
+   walked IF
       NMA @ NMU @ PUBLISH-REFUSALS
       \ Every fact below is about the symbol the definition is recorded under,
       \ never about what its name binds: the lookup cannot see a definition the
@@ -1590,9 +1606,9 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
       THEN
       sym CK-CLOSE!
    THEN
-   \ Deferred: recorded so a caller binds and a duplicate is refused, with only
-   \ the may-claims the walk saw (INHSET) and CTL-OPAQUE for those it did not.
-   dup 2 =  NMU @ 0 >  and  CHECK-SIG? and
+   \ A token unseen: recorded so a caller binds and a duplicate is rejected, with
+   \ only the may-claims the walk saw (INHSET) and CTL-OPAQUE for those it did not.
+   dup VERDICT-DEFERRED =  UNSEEN @ 0 <>  and  NMU @ 0 >  and  CHECK-SIG? and
    TORDER-ACTIVE @ TORDER-PARENT-GATE < and IF
       NMA @ NMU @ CHECK-REC-ADMIT
       NMA @ NMU @ INHSET @ CTL-OPAQUE or NORET-ADD

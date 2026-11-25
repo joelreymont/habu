@@ -1789,6 +1789,15 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    FX-PATH$ PROC-ARGV+
    LAUNCHED ;
 
+\ The load exits RC after its record for CODE, placed at AT after the fixture's
+\ path (`:line:column`, or nothing for a record with no place).
+: LOADED-AT ( str str n -- )
+   {: c:str at:str rc:n :}
+   SB-RESET s" error[" SB-APPEND c SB-APPEND s" ]" SB-APPEND
+   SB$ rc LOADED
+   SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND at SB-APPEND
+   GT-ERR$ SB$ STR:CONTAINS? TTRUE ;
+
 : MADE-LINES ( -- )
    SB-RESET
    s" : MK ( -- ) create ; parses: MK 1" SB-APPEND LF+
@@ -1797,7 +1806,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : LEFT-AT ( n str n n n n -- )
    {: k:n tok:str line:n col:n bs:n be:n :}
    k s" code" s" W-CHECK-DEFERRED" FIELD=
-   k s" message" s" whether a quotation is kept" FIELD-HAS
+   k s" message" s" only the run can tell whether a quotation is kept or what it does" FIELD-HAS
    k tok line col bs be AT ;
 
 \ The check cannot follow MADE, so it does not know what RUN and PRUN do with a
@@ -1819,7 +1828,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 7 T=
    2 s" RUN" 4 36 121 124 LEFT-AT
-   2 s" help" s" use a quotation that reads no local and does only what the type that takes it states, or state the rest in that type, and the check goes on past `RUN`" FIELD=
+   2 s" help" s" use a quotation that reads no local, calls only words the check judges and does only what the type that takes it states, or state the rest in that type, and the check judges `RUN`" FIELD=
    3 s" VIA" 6 40 196 199 LEFT-AT
    4 s" RUN" 7 61 262 265 LEFT-AT
    6 s" P:PRUN" 9 40 378 384 LEFT-AT
@@ -1880,10 +1889,219 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" code" s" E-LOCAL-ESCAPE" FIELD=
    0 s" RUN" 2 36 63 66 AT ;
 
+\ The check, past K records, rejects with code C where the load does.
+: REJECTED-BOTH ( n str str str n n n n -- )
+   {: k:n c:str tok:str at:str line:n col:n bs:n be:n :}
+   s" --verify-only" CHECK
+   GJA-LINE# @ k 1 + T=
+   k s" code" c FIELD=
+   k tok line col bs be AT
+   c at 70 LOADED-AT ;
+
+: RUN-LINES ( -- )
+   MADE-LINES
+   s" : RUN ( [ -- n ] -- n ) MADE drop execute ;" SB-APPEND LF+ ;
+
+\ A call whose quotation only the run can judge hides no other judgement of its body.
+: TEST-QUOT-LEFT-JUDGED ( -- )
+   s" a token left to the run after a left call" T-LABEL
+   MADE-LINES
+   s" TYPED-VARIABLE KEPT [ -- n ]" SB-APPEND LF+
+   s" : RUN ( [ -- n ] -- n ) MADE drop KEPT ! 5 ;" SB-APPEND LF+
+   s" : U ( n -- n ) {: a:n :} [: a ;] RUN MADE drop ;" SB-APPEND LF+
+   s" left-twice.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" RUN" 5 34 149 152 LEFT-AT
+   s" E-LOCAL-ESCAPE" s" :5:34" 70 LOADED-AT
+   s" a rejection after a left call" T-LABEL
+   RUN-LINES
+   s" : PUT ( n -- n ) {: a:n :} [: a ;] RUN true + ;" SB-APPEND LF+
+   s" left-later.f" FIXTURE!
+   2 s" E-MISMATCH" s" +" s" :4:45" 4 45 130 131 REJECTED-BOTH
+   s" another input of a left call" T-LABEL
+   MADE-LINES
+   s" : RUN2 ( n [ -- n ] -- n ) MADE drop execute + ;" SB-APPEND LF+
+   s" : U8 ( n -- n ) {: a:n :} true [: a ;] RUN2 ;" SB-APPEND LF+
+   s" left-input.f" FIXTURE!
+   2 s" E-MISMATCH" s" RUN2" s" :4:40" 4 40 130 134 REJECTED-BOTH
+   MADE-LINES
+   s" : RUN2 ( n [ -- n ] -- n ) MADE drop execute + ;" SB-APPEND LF+
+   s" : U8 ( n -- n ) {: a:n :} 1 [: a ;] RUN2 ;" SB-APPEND LF+
+   s" left-input-right.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" RUN2" 4 37 127 131 LEFT-AT
+   s" " 0 LOADED
+   s" a quotation that reads a local, handed to RECURSE" T-LABEL
+   RUN-LINES
+   s" : REC ( [ -- n ] n -- n ) {: q n :} n 0 > if q RUN drop [: n ;] n 1 - RECURSE else n then ;" SB-APPEND LF+
+   s" left-recurse.f" FIXTURE!
+   2 s" E-LOCAL-ESCAPE" s" RECURSE" s" :4:71" 4 71 156 163 REJECTED-BOTH
+   s" a stored quotation after a left call" T-LABEL
+   RUN-LINES
+   s" TYPED-VARIABLE KEPT [ -- n ]" SB-APPEND LF+
+   s" : U ( n -- n ) {: a:n :} [: a ;] dup RUN swap KEPT ! ;" SB-APPEND LF+
+   s" left-stored.f" FIXTURE!
+   2 s" E-LOCAL-ESCAPE" s" !" s" :5:52" 5 52 166 167 REJECTED-BOTH
+   s" a stop after a left call" T-LABEL
+   RUN-LINES
+   s" : IM ( -- ) ; immediate" SB-APPEND LF+
+   s" : PUT ( n -- ) {: a:n :} [: a ;] RUN drop IM ['] ffi-call drop ;" SB-APPEND LF+
+   s" left-stopped.f" FIXTURE!
+   s" --verify-only" 1 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" code" s" W-CHECK-STOPPED" FIELD=
+   2 s" message" s" the check cannot follow the source from `ffi-call` on" FIELD-HAS
+   2 s" ffi-call" 5 50 159 167 FX-PATH$ CANON$ FX$ AT-IN
+   s" a name no word can have, after a left call" T-LABEL
+   RUN-LINES
+   s" : U ( n -- n ) {: a:n :} [: a ;] RUN P:X:Y ;" SB-APPEND LF+
+   s" left-name.f" FIXTURE!
+   2 s" E-BAD-QUALIFIED" s" P:X:Y" s" :4:38" 4 38 123 128 REJECTED-BOTH
+   s" a name no word can have, after one the run defines" T-LABEL
+   MADE-LINES
+   s" : U ( -- n ) MADE P:X:Y ;" SB-APPEND LF+
+   s" made-name.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 2 T=
+   1 s" code" s" W-CHECK-DEFERRED" FIELD=
+   1 s" message" s" the check cannot follow the source from `MADE` on" FIELD-HAS
+   1 s" MADE" 3 14 55 59 AT
+   s" E-BAD-QUALIFIED" s" :3:19" 70 LOADED-AT
+   s" left calls in an arm, in a quotation, twice in one body and in a trial taken back" T-LABEL
+   RUN-LINES
+   s" : ONCE ( [ -- n ] -- n ) MADE drop execute ;" SB-APPEND LF+
+   s" : ARM ( n -- n ) {: a:n :} a 0 > if [: a ;] RUN exit then a ;" SB-APPEND LF+
+   s" : TWO ( n -- n ) {: a:n :} [: a ;] RUN [: a ;] ONCE + ;" SB-APPEND LF+
+   s" : LIT ( n -- n ) {: a:n :} [: a [: a ;] RUN + ;] execute ;" SB-APPEND LF+
+   s" TYPED-VARIABLE KEPT [ -- n ]" SB-APPEND LF+
+   s" : GETQ ( -- [ -- n ] ) MADE drop KEPT @ ;" SB-APPEND LF+
+   s" : TRY ( n -- ) {: a:n :} [: a ;] [: drop 1 GETQ ;] catch drop drop drop ;" SB-APPEND LF+
+   s" left-calls.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 7 T=
+   3 s" RUN" 5 45 175 178 LEFT-AT
+   4 s" RUN" 6 36 228 231 LEFT-AT
+   5 s" RUN" 7 41 289 292 LEFT-AT
+   s" " 0 LOADED ;
+
+\ A body left to the run only by a call, REG, keeps what its walk found, so its
+\ callers are judged by it.
+: LATE-LINES ( -- )
+   MADE-LINES
+   s" : LATE ( -- ) MADE drop ;" SB-APPEND LF+
+   s" TYPED-VARIABLE KV [ -- ]" SB-APPEND LF+ ;
+
+: REG-LINES ( -- )
+   LATE-LINES
+   s" : REG ( -- ) [: LATE ;] KV ! ;" SB-APPEND LF+ ;
+
+: TEST-QUOT-LEFT-RECORD ( -- )
+   s" a parameter kept by a body left at another call" T-LABEL
+   LATE-LINES
+   s" TYPED-VARIABLE KN [ -- n ]" SB-APPEND LF+
+   s" : REG ( [ -- n ] -- ) KN !  [: LATE ;] KV ! ;" SB-APPEND LF+
+   s" : U ( n -- ) {: a:n :} [: a ;] REG ;" SB-APPEND LF+
+   s" record-local.f" FIXTURE!
+   3 s" E-LOCAL-ESCAPE" s" REG" s" :7:32" 7 32 197 200 REJECTED-BOTH
+   s" a parameter's facts, kept by a body left at another call" T-LABEL
+   LATE-LINES
+   s" : REG ( [ -- ] -- ) KV !  [: LATE ;] KV ! ;" SB-APPEND LF+
+   s" : U ( -- ) [: parse-name drop ;] REG ;" SB-APPEND LF+
+   s" record-fact.f" FIXTURE!
+   3 s" E-MISMATCH" s" REG" s" :6:34" 6 34 170 173 REJECTED-BOTH
+   s" an inferred effect of a body left at a call" T-LABEL
+   LATE-LINES
+   s" : REG [: LATE ;] KV ! 5 ;" SB-APPEND LF+
+   s" : U ( -- ) REG true + drop ;" SB-APPEND LF+
+   s" record-inferred.f" FIXTURE!
+   3 s" E-MISMATCH" s" +" s" :6:21" 6 21 139 140 REJECTED-BOTH
+   s" a parameter only run by a body left at another call" T-LABEL
+   LATE-LINES
+   s" : REG ( [ -- n ] -- n ) execute  [: LATE ;] KV ! ;" SB-APPEND LF+
+   s" : U ( n -- n ) {: a:n :} [: a ;] REG ;" SB-APPEND LF+
+   s" record-run.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" !" 5 48 140 141 LEFT-AT
+   s" " 0 LOADED
+   s" a row for a body left at a call" T-LABEL
+   REG-LINES
+   s" parses: REG 1" SB-APPEND LF+
+   s" record-parses-row.f" FIXTURE!
+   3 s" E-PARSES-ROW" s" REG" s" :6:9" 6 9 132 135 REJECTED-BOTH
+   REG-LINES
+   s" generates: REG ( -- )" SB-APPEND LF+
+   s" record-generates-row.f" FIXTURE!
+   3 s" E-GENERATES-ROW" s" REG" s" :6:12" 6 12 135 138 REJECTED-BOTH
+   s" quotations that call a body left at a call" T-LABEL
+   REG-LINES
+   s" TYPED-VARIABLE K2 [ -- ]" SB-APPEND LF+
+   s" : INST ( -- ) [: REG ;] K2 ! ;" SB-APPEND LF+
+   s" : INST2 ( -- ) [: INST ;] K2 ! ;" SB-APPEND LF+
+   s" record-called.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" !" 5 28 120 121 LEFT-AT
+   s" " 0 LOADED
+   s" a wrapper of a definer, left at a call" T-LABEL
+   LATE-LINES
+   s" TYPED-VARIABLE KP [ -- parses ]" SB-APPEND LF+
+   s" : DF ( n -- ) create , does> ( -- n ) @ ;" SB-APPEND LF+
+   s" : DF2 ( -- ) 5 DF ['] LATE KP ! ;" SB-APPEND LF+
+   s" DF2 W1" SB-APPEND LF+
+   s" : USE ( -- n ) W1 1 + ;" SB-APPEND LF+
+   s" record-wrapper.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" !" 7 31 197 198 LEFT-AT
+   s" " 0 LOADED ;
+
+\ LATE calls a word only rendered text defines, which parses.
+: RENDERED-LATE-LINES ( -- )
+   SB-RESET
+   s\" : GEN ( -- ) s\" : MADE ( -- ) parse-name drop ;\" evaluate-closed ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s" : LATE ( -- ) MADE ;" SB-APPEND LF+ ;
+
+: STORE-LINE ( -- )
+   s" : W2 ( ^a a -- ) {: p:^ v :} v p ! ;" SB-APPEND LF+ ;
+
+: STORE-USE ( -- )
+   STORE-LINE
+   s" : USE ( -- ) KV [: LATE ;] W2 ;" SB-APPEND LF+ ;
+
 \ A quotation with a fact its parameter's type lacks is left to the run where the
 \ callee's body was, and rejected where a checked body keeps it.
 : PARSE-USE ( -- )
    s" : USE ( -- ) [: parse-name drop ;] RUN ;" SB-APPEND LF+ ;
+
+\ USE keeps what GETQ's line returns in a cell that states no fact; its `!` is
+\ at byte BS.
+: GETQ-KEPT ( str n -- ) {: getq:str bs:n :}
+   RENDERED-LATE-LINES
+   s" TYPED-VARIABLE KV [ -- ]" SB-APPEND LF+
+   getq SB-APPEND LF+
+   s" : USE ( -- ) GETQ KV ! ;" SB-APPEND LF+
+   s" fact-returned-lacks.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" !" 6 22 bs bs 1 + LEFT-AT
+   s" E-MISMATCH" s" :6:22" 70 LOADED-AT ;
+
+\ STOQ's line keeps a quotation in a cell that states `parses`; USE's call of it
+\ is at byte BS.
+: STOQ-KEPT ( str n -- ) {: stoq:str bs:n :}
+   RENDERED-LATE-LINES
+   s" TYPED-VARIABLE KP [ -- parses ]" SB-APPEND LF+
+   stoq SB-APPEND LF+
+   s" : USE ( -- ) [: parse-name drop ;] 0 STOQ ;" SB-APPEND LF+
+   s" fact-joined.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 4 T=
+   3 s" STOQ" 6 38 bs bs 4 + LEFT-AT
+   s" " 0 LOADED ;
 
 : TEST-QUOT-LEFT-FACT ( -- )
    s" a quotation that parses, handed to a body left to the run" T-LABEL
@@ -1905,6 +2123,65 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    GJA-LINE# @ 3 T=
    2 s" RUN" 5 36 143 146 LEFT-AT
    s" error[E-MISMATCH]" 70 LOADED
+   s" a quotation that runs one that parses through a body left to the run" T-LABEL
+   MADE-LINES
+   s" TYPED-VARIABLE KEPT [ -- ]" SB-APPEND LF+
+   s" : RUN ( [ -- ] -- ) MADE drop execute ;" SB-APPEND LF+
+   s" : USE ( -- ) [: [: parse-name drop ;] RUN ;] KEPT ! ;" SB-APPEND LF+
+   s" fact-left-inner.f" FIXTURE!
+   2 s" E-MISMATCH" s" !" s" :5:51" 5 51 159 160 REJECTED-BOTH
+   s" a quotation that calls a body left to the run, kept" T-LABEL
+   MADE-LINES
+   s" TYPED-VARIABLE KEPT [ -- ]" SB-APPEND LF+
+   s" : LATE ( -- ) MADE drop ;" SB-APPEND LF+
+   s" : USE ( -- ) [: LATE ;] KEPT ! ;" SB-APPEND LF+
+   s" fact-calls-left.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" !" 5 30 124 125 LEFT-AT
+   s" " 0 LOADED
+   s" a quotation that parses through a body left to the run, kept" T-LABEL
+   RENDERED-LATE-LINES
+   s" TYPED-VARIABLE KV [ -- ]" SB-APPEND LF+
+   s" : USE ( -- ) [: LATE ;] KV ! ;" SB-APPEND LF+
+   s" fact-parses-left.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" !" 5 28 144 145 LEFT-AT
+   s" E-MISMATCH" s" :5:28" 70 LOADED-AT
+   s" a quotation that calls a body left to the run, and the type of a cell" T-LABEL
+   RENDERED-LATE-LINES
+   s" TYPED-VARIABLE KV [ -- ]" SB-APPEND LF+
+   STORE-USE
+   s" fact-cell-lacks.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" W2" 6 28 181 183 LEFT-AT
+   s" E-MISMATCH" s" :6:28" 70 LOADED-AT
+   RENDERED-LATE-LINES
+   s" TYPED-VARIABLE KV [ -- parses ]" SB-APPEND LF+
+   STORE-USE
+   s" fact-cell-states.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" W2" 6 28 188 190 LEFT-AT
+   s" " 0 LOADED
+   s" a quotation that calls a body left to the run, returned by an unsigned body" T-LABEL
+   s" : GETQ [: LATE ;] ;" 158 GETQ-KEPT
+   s" : GETQ ['] LATE ;" 156 GETQ-KEPT
+   RENDERED-LATE-LINES
+   s" TYPED-VARIABLE KP [ -- parses ]" SB-APPEND LF+
+   STORE-LINE
+   s" : GETQ [: LATE ;] ;" SB-APPEND LF+
+   s" : USE ( -- ) KP GETQ W2 ;" SB-APPEND LF+
+   s" fact-returned-states.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" W2" 7 22 202 204 LEFT-AT
+   s" " 0 LOADED
+   s" a quotation that parses, kept with one that calls a body left to the run" T-LABEL
+   s" : STOQ {: q n :} n 0= if [: LATE ;] else q then KP ! ;" 216 STOQ-KEPT
+   s" : STOQ 0= if drop [: LATE ;] then KP ! ;" 202 STOQ-KEPT
    s" a quotation that parses, kept by a checked body" T-LABEL
    SB-RESET
    s" TYPED-VARIABLE KEPT [ -- ]" SB-APPEND LF+
@@ -1988,15 +2265,6 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" --verify-only" CHECK
    GJA-LINE# @ 1 T=
    0 s" message" QUAL-MSG$ FIELD= ;
-
-\ The load exits RC after its record for CODE, placed at AT after the fixture's
-\ path (`:line:column`, or nothing for a record with no place).
-: LOADED-AT ( str str n -- )
-   {: c:str at:str rc:n :}
-   SB-RESET s" error[" SB-APPEND c SB-APPEND s" ]" SB-APPEND
-   SB$ rc LOADED
-   SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND at SB-APPEND
-   GT-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ The fixture path names NAME under the test's root, without making it.
 : NAMED! ( str -- ) {: name:str :}
@@ -3577,7 +3845,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MYK ( n -- ) MADE drop create dup , 0= if does> ( -- n ) @ ;"
    s" made-does-open.f" MADE-FIXTURE
    s" E-CONTROL-OPEN" s" does>" 3 45 86 91 RUN-REFUSED-AT
-   s" MK" 2 34 s" does>" 3 45 86 91 VERIFY-ONLY-AT
+   s" MK" 2 34 s" MADE" 3 16 57 61 VERIFY-ONLY-AT
    s" an if open at does> on the line after a head call the run decides" T-LABEL
    SB-RESET
    s" : MK ( -- ) create ; parses: MK 1" SB-APPEND LF+
@@ -4316,6 +4584,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-DERIVE-BYTES-FIELD
    TEST-DEFER-SUGGEST
    TEST-QUOT-LEFT
+   TEST-QUOT-LEFT-JUDGED
+   TEST-QUOT-LEFT-RECORD
    TEST-QUOT-LEFT-FACT
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON
