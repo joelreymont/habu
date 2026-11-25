@@ -1632,24 +1632,21 @@ variable MDV-I   variable MDV-F
    s" render: a rejection with no code" EXIT-STATUS:INTERNAL die ;
 : NM-SPAN ( -- str )
    NMOFF @ TADDR NMU @ >str ;
-\ The return rows `return_stack` names, expected then actual: a rejected read's
-\ and the row it met (RSR-EXP), a quotation literal's own when its seal rejected
-\ it (RSBAD 3, 4), else the definition's.
+\ The return rows return_stack names, expected then actual: a rejected read's
+\ or unify's (RSR-EXP), a quotation literal's own (RSBAD 3, 4), else the body's.
 : RS-ROWS ( -- n n )
    RSR-EXP @ 0 <> IF RSR-EXP @ RSR-ACT @ EXIT THEN
-   RSBAD @ 3 >= IF QRS-EXP @ QRS-ACT @ EXIT THEN
+   RSBAD @ 3 =  RSBAD @ 4 = or IF QRS-EXP @ QRS-ACT @ EXIT THEN
    SGHASR @ IF SGROUT @ ELSE RBROW @ THEN  RCUR @ ;
-
-: RS-REASON$ ( -- str )
-   RSBAD @ 2 = IF s" return stack: this reads below the return-stack cells pushed here" EXIT THEN
-   RSBAD @ 3 = IF s" return stack: the quotation leaves its return row unbalanced" EXIT THEN
-   RSBAD @ 4 = IF s" return stack: the quotation reads below the return-stack cells it pushed" EXIT THEN
-   s" return stack: the return row does not balance at exit" ;
 
 : RS-LABEL$ ( -- str )
    RSBAD @ 2 = IF s" reads below the definition's return cells" EXIT THEN
    RSBAD @ 3 = IF s" quotation's return row unbalanced" EXIT THEN
    RSBAD @ 4 = IF s" reads below the quotation's return cells" EXIT THEN
+   RSBAD @ 5 = IF s" paths leave different return cells" EXIT THEN
+   RSBAD @ 6 = IF s" back edge changes a return cell" EXIT THEN
+   RSBAD @ 7 = IF s" takes other return cells" EXIT THEN
+   RSBAD @ 8 = IF s" return cells differ from the declared ones" EXIT THEN
    s" return row unbalanced" ;
 
 : ROWS-REJECTION? ( n -- bool )
@@ -2025,6 +2022,27 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    THEN
    s"  reads the source after it and no `parses:` row says how many tokens" EMIT-STR ;
 
+\ A message naming the rows that failed to meet (RSBAD 5 to 8).
+: RS-MEET ( str str -- ) {: a:str b:str :}
+   AT-PIN  a EMIT-STR  RSR-EXP @ ROW-WORD  b EMIT-STR  RSR-ACT @ ROW-WORD  ;AT-PIN ;
+: RS-MESSAGE ( -- )
+   RSBAD @ 2 = IF s" return stack: this reads below the return-stack cells pushed here" EMIT-STR EXIT THEN
+   RSBAD @ 3 = IF s" return stack: the quotation leaves its return row unbalanced" EMIT-STR EXIT THEN
+   RSBAD @ 4 = IF s" return stack: the quotation reads below the return-stack cells it pushed" EMIT-STR EXIT THEN
+   RSBAD @ 5 = IF
+      s" return stack: the paths that meet here leave different return cells, " s"  and " RS-MEET EXIT
+   THEN
+   RSBAD @ 6 = IF
+      s" return stack: the loop's back edge changes the return cells from " s"  to " RS-MEET EXIT
+   THEN
+   RSBAD @ 7 = IF
+      s" return stack: this takes " s"  on the return stack, which holds " RS-MEET EXIT
+   THEN
+   RSBAD @ 8 = IF
+      s" return stack: the signature declares " s"  on the return stack at exit; the body leaves " RS-MEET EXIT
+   THEN
+   s" return stack: the return row does not balance at exit" EMIT-STR ;
+
 : DIAG-MESSAGE ( -- )
    DKIND case
       RF-MISMATCH of AT-PIN MISMATCH-MESSAGE ;AT-PIN endof
@@ -2039,7 +2057,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
       RF-SIG of SIG-MESSAGE endof
       RF-NP of NP-MESSAGE endof
       RF-DEAD of DEAD-MESSAGE endof
-      RF-RETURN of RS-REASON$ EMIT-STR endof
+      RF-RETURN of RS-MESSAGE endof
       RF-REASON of REASON-MESSAGE endof
       RF-UNCHECKABLE of s"  cannot be checked here" TOK-MESSAGE endof
       s" render: a rejection with no message" EXIT-STATUS:INTERNAL die
@@ -2182,7 +2200,6 @@ EXPORT TFAM:SUMV-PAY-N
    MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ SIG-RTRIM EMIT-STR EXIT THEN
    DECLARABLE ;
 
-\ A rejected read's rows stand at its pin, before the read bound them.
 : RS-NOTES ( -- )
    RSR-EXP @ 0= IF RS-ROWS PAIR-NOTES EXIT THEN
    AT-PIN RS-ROWS PAIR-NOTES ;AT-PIN ;
@@ -2490,6 +2507,22 @@ PTR-VARIABLE HOLDER-FIRST
    THEN
    RSBAD @ 4 = IF
       s" read or pop with `r@` and `r>` only cells this quotation pushed with `>r`"
+      EMIT-STR EXIT
+   THEN
+   RSBAD @ 5 = IF
+      s" leave the same return cells, of the same types, on every path that meets here; take back with `r>` before an `exit` or `leave` any cell pushed since the entry"
+      EMIT-STR EXIT
+   THEN
+   RSBAD @ 6 = IF
+      s" keep each return cell's type on every pass, or take it back with `r>` before the loop ends"
+      EMIT-STR EXIT
+   THEN
+   RSBAD @ 7 = IF
+      s" give it the return cells its effect takes: push or take back cells with `>r` and `r>` before it"
+      EMIT-STR EXIT
+   THEN
+   RSBAD @ 8 = IF
+      s" leave the return cells the signature declares: take back with `r>` every cell the body pushes with `>r`, keeping each one's type"
       EMIT-STR EXIT
    THEN
    s" take back with `r>` every cell the definition pushes with `>r` before it exits"

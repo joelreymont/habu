@@ -1558,6 +1558,51 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" rwide.f" FIXTURE!
    s" E-RETURN-STACK" s" 2r>" 2 19 63 66 REJECTED-AT  false READS-BELOW ;
 
+\ A return cell whose type changes on one path is rejected where the paths
+\ meet, naming both return rows as they stood before they met.
+: RETURN-MEET ( str str -- ) {: exp:str act:str :}
+   0 s" expected" exp NOTE=
+   0 s" found" act NOTE= ;
+: TEST-RETURN-MEET ( -- )
+   s" an until pass that changes a return cell's type" T-LABEL
+   s" : W ( n -- ) 0 >r begin r> drop true >r 1 - dup 0= until drop r> drop ;"
+      s" rmeet-until.f" LINE-FIXTURE
+   s" E-RETURN-STACK" s" until" 1 52 51 56 REJECTED-AT
+   0 s" message" s" return stack: the loop's back edge changes the return cells from n to bool" FIELD=
+   0 s" help" s" keep each return cell's type on every pass, or take it back with `r>` before the loop ends" FIELD=
+   s" n" s" bool" RETURN-MEET
+   s" an again pass that changes it" T-LABEL
+   s" : W ( n -- ) 0 >r begin r> drop true >r again ;" s" rmeet-again.f" LINE-FIXTURE
+   s" E-RETURN-STACK" s" again" 1 41 40 45 REJECTED-AT
+   0 s" message" s" return stack: the loop's back edge changes the return cells from n to bool" FIELD=
+   s" n" s" bool" RETURN-MEET
+   s" a while repeat pass that changes it" T-LABEL
+   s" : W ( n -- ) 0 >r begin r> drop true >r 1 - dup 0= while repeat drop r> drop ;"
+      s" rmeet-repeat.f" LINE-FIXTURE
+   s" E-RETURN-STACK" s" repeat" 1 58 57 63 REJECTED-AT
+   0 s" message" s" return stack: the loop's back edge changes the return cells from n to bool" FIELD=
+   s" n" s" bool" RETURN-MEET
+   s" a ?do loop pass that changes it" T-LABEL
+   s" : W ( n -- ) 0 >r 3 0 ?do r> drop true >r loop drop r> drop ;" s" rmeet-loop.f" LINE-FIXTURE
+   s" E-RETURN-STACK" s" loop" 1 43 42 46 REJECTED-AT
+   0 s" message" s" return stack: the loop's back edge changes the return cells from n to bool" FIELD=
+   s" n" s" bool" RETURN-MEET
+   s" an if arm that changes it" T-LABEL
+   s" : W ( n -- ) 0 >r 0= if r> drop true >r then r> drop ;" s" rmeet-then.f" LINE-FIXTURE
+   s" E-RETURN-STACK" s" then" 1 41 40 44 REJECTED-AT
+   0 s" message" s" return stack: the paths that meet here leave different return cells, bool and n" FIELD=
+   s" bool" s" n" RETURN-MEET
+   s" an exit that leaves a changed return cell" T-LABEL
+   s" : W ( n -- ) 0 >r 0= if r> drop true >r exit then r> drop ;" s" rmeet-exit.f" LINE-FIXTURE
+   s" E-RETURN-STACK" s" drop" 1 54 53 57 REJECTED-AT
+   0 s" message" s" return stack: the paths that meet here leave different return cells, nothing and bool" FIELD=
+   s" (nothing)" s" bool" RETURN-MEET
+   s" a body that leaves a return cell the signature does not declare" T-LABEL
+   s" : X ( n | U -- | U ) >r ;" s" rmeet-decl.f" LINE-FIXTURE
+   s" E-RETURN-STACK" s" >r" 1 22 21 23 REJECTED-AT
+   0 s" message" s" return stack: the signature declares nothing on the return stack at exit; the body leaves n" FIELD=
+   s" (nothing)" s" n" RETURN-MEET ;
+
 \ A stack word over an open layout is rejected by the step path's mismatch,
 \ whatever else is among its operands: a proof or an expanded layout beside it
 \ does not send it to the transport path, which has no reason to give.
@@ -4961,6 +5006,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-ESCAPED-PATH
    TEST-REJECTION-ORDER
    TEST-REPAIR-FOLLOWS
+   TEST-RETURN-MEET
    TEST-OPEN-LAYOUT-XPORT
    TEST-LIVE-BRANCHES
    TEST-TICK-TARGET

@@ -6266,36 +6266,41 @@ variable SG-ROWS-PUBLISH
    THEN
    -1 FAILSET ! ;
 
-\ The return row's twin latches the reason and RSBAD only: claiming DEXP/DACT
-\ too would relabel every return-stack mismatch as a value mismatch.
+\ The return row's twin latches the reason, RSBAD and the rows only: claiming
+\ DEXP/DACT too would relabel every return-stack mismatch as a value mismatch.
 SCRATCH{
-variable RSBAD   \ the first failure is the return row's: 1 a row that does not fit, 2 a frame borrowed below; 3 and 4 the same for a quotation literal's own row
+variable RSBAD   \ the first failure is the return row's: 1 a row that does not fit at exit, 2 a frame borrowed below; 3 and 4 the same for a quotation literal's own row; rows that fail to meet: 5 paths that meet, 6 a loop's back edge and entry, 7 a call's or quotation's return rows, 8 the declared return rows at exit
 }SCRATCH
 \ The quotation literal's own return rows, base and current, latched with RSBAD
 \ 3 or 4: CF-SEMIQ restores the definition's before the field is rendered.
 variable QRS-EXP   variable QRS-ACT
-: RS-CAPTURE ( -- )
+\ The return rows a rejected read or unify met, expected then found, pinned at
+\ the trail height before it: they render as they stood before it bound them.
+variable RSR-EXP   variable RSR-ACT
+: RS-CAPTURE ( n n n n -- ) {: mark:n exp:n act:n why:n :}
+   exp RSR-EXP !  act RSR-ACT !  mark 1 + TRAIL-PIN !
    CELL-DIAG!
-   1 RSBAD !
+   why RSBAD !
    -1 FAILSET ! ;
 
-
-: RSUNI-JOIN ( n -- )
-   {: s:n :}
-   RCUR @ s UNIFY-JOIN
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF RS-CAPTURE THEN
+\ The answer of a unify of RCUR with s begun at trail height mark: a failure
+\ latches both rows for the reason why.
+: RSUNI-END ( bool n n n -- ) {: mark:n s:n why:n :}
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF mark s RCUR @ why RS-CAPTURE THEN
    OK @ and OK ! ;
 
+: RSUNI-JOIN ( n -- ) {: s:n :}
+   TRAIL-N @  RCUR @ s UNIFY-JOIN  swap s 5 RSUNI-END ;
+
+\ A loop's back edge into its entry return row s.
+: RSUNI-LOOP ( n -- ) {: s:n :}
+   TRAIL-N @  RCUR @ s UNIFY-JOIN  swap s 6 RSUNI-END ;
 
 : RSUNI-IN {: s:n :}
-   RCUR @ s UNIFY-IN
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF RS-CAPTURE THEN
-   OK @ and OK ! ;
+   TRAIL-N @  RCUR @ s UNIFY-IN  swap s 7 RSUNI-END ;
 
 : RSUNI-COERCE {: s:n :}
-   RCUR @ s UNIFY-COERCE
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF RS-CAPTURE THEN
-   OK @ and OK ! ;
+   TRAIL-N @  RCUR @ s UNIFY-COERCE  swap s 8 RSUNI-END ;
 
 SCRATCH{
 variable UF-NEED   variable UF-HAVE
@@ -6779,10 +6784,6 @@ $10 constant LOST-INIT
    THEN
    0 OK ! ;
 
-\ The read's row and the return row it met, latched with the trail height
-\ before their unify as the pin: the rows as they stood before the read bound
-\ the base.
-variable RSR-EXP   variable RSR-ACT
 : RS-READ-UNDER! ( n n n -- ) {: mark:n rin:n pre:n :}   \ r> r@ 2r> 2r@ : the read's rejection
    FAILSET @ 0= IF  rin RSR-EXP !  pre RSR-ACT !  mark 1 + TRAIL-PIN !  THEN
    RS-UNDERFLOW!
@@ -19598,7 +19599,7 @@ SCRATCH{
 variable SV-FV    variable SV-SPN   variable SV-PFN   variable SV-FACTS
 variable SV-QEN   variable SV-PTRN  variable SV-STLN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
-variable SV-FSET  variable SV-DEXP  variable SV-DEND  variable SV-DACT  variable SV-RSBAD  variable SV-DF-ACT  variable SV-DF-EXP
+variable SV-FSET  variable SV-DEXP  variable SV-DEND  variable SV-DACT  variable SV-RSBAD  variable SV-RSR-EXP  variable SV-RSR-ACT  variable SV-DF-ACT  variable SV-DF-EXP
 variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG  variable SV-MCELL  variable SV-MCELL-VAR
 variable SV-SGBAD
 PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
@@ -19624,6 +19625,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DEND @ SV-DEND !  DACT @ SV-DACT !  RSBAD @ SV-RSBAD !
+   RSR-EXP @ SV-RSR-EXP !  RSR-ACT @ SV-RSR-ACT !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
    \ the reason and its cells are part of the cursor a trial may abandon
    MDIAG @ SV-MDIAG !  MDIAG-CELL @ SV-MCELL !  MDIAG-CELL-VAR @ SV-MCELL-VAR !
@@ -19659,6 +19661,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DEND @ DEND !  SV-DACT @ DACT !  SV-RSBAD @ RSBAD !
+   SV-RSR-EXP @ RSR-EXP !  SV-RSR-ACT @ RSR-ACT !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !  SV-MCELL @ MDIAG-CELL !  SV-MCELL-VAR @ MDIAG-CELL-VAR !
    SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
@@ -22652,7 +22655,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
      PATH-LIVE? IF
         CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
+        CF@A SUNI-JOIN  CF@RA RSUNI-LOOP
         OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
      THEN
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
@@ -22664,7 +22667,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 : CF-BACK-JOIN ( n -- ) {: loops:n :}
    CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
    CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-   CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
+   CF@A SUNI-JOIN  CF@RA RSUNI-LOOP
    OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
    loops CF-LOOPS= ;
 
