@@ -2097,18 +2097,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    BACK-BUF got SPAN:TAKE SPAN:$ WANT$ T$= ;
 
 
-10 constant RETRY-MS
-
-\ AIO:STOP is E-AIO-BUSY until the loop has drained every record, so the stop
-\ is retried until it has.
-: AIO-STOP ( -- )
-   begin
-      [: AIO:STOP ;] catch {: code:n :}
-      code 0= if exit then
-      code E-AIO-BUSY <> if code throw then
-      RETRY-MS >MS TASK:SLEEP
-   again ;
-
 \ Each run's own files, so runs in one tree share none.
 : PATHS-MAKE ( -- )
    s" ws-test" FS:MKTEMP-DIR {: dir:str :}
@@ -2167,7 +2155,7 @@ public
    s" every handler returned" T-LABEL
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=
-   AIO-STOP
+   AIO:STOP
    ACCEPTED TASK:SEMAPHORE-DESTROY
    FILLED TASK:SEMAPHORE-DESTROY
    UNHELD TASK:SEMAPHORE-DESTROY

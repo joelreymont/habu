@@ -125,8 +125,13 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 : MAC-FCNTL ( n n n -- n ) MAC-FCNTL-CALL MAC-RESULT ;
 
 : MAC-NOTIFY ( -- n )
-   MAC-WRITE-FD @ MAC-BYTE 1 >str MAC-WRITE MAC-RESULT
-   dup 1 = swap MAC-AGAIN negate = or if 0 else E-AIO-ENTER then ;
+   begin
+      MAC-WRITE-FD @ MAC-BYTE 1 >str MAC-WRITE MAC-RESULT
+      dup 1 = over MAC-AGAIN negate = or if drop 0 exit then
+      ERR-INTR negate <> if
+         s" aio: wake pipe write failed" EXIT-STATUS:IOERR die
+      then
+   again ;
 
 : MAC-CLEAR-WAKE ( -- )
    begin
@@ -229,7 +234,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    MAC-POLLS-LEN MEM:ALLOC-BYTES drop MAC-POLLS !
    [: MAC-PIPE ;] catch dup 0<> if MAC-POLLS-FREE throw then drop ;
 
-\ STOP has seen every record free, so no descriptor is counted.
+\ A loop that threw may leave descriptors counted; their rows go with the table.
 : MAC-CLOSE ( -- )
    MAC-READ-FD @ close MAC-WRITE-FD @ close
    -1 MAC-READ-FD ! -1 MAC-WRITE-FD !
@@ -319,8 +324,8 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
       AIO-LOCK TASK:GET MAC-PREPARE {: timeout:n slots:n :} AIO-LOCK TASK:RELEASE
       MAC-POLLS @ slots timeout MAC-POLL MAC-RESULT
       dup 0 < if ERR-INTR negate <> if E-AIO-ENTER throw then else drop then
-      AIO-LOCK TASK:GET MAC-COLLECT AIO-LOCK TASK:RELEASE
-      RING-STOP atomic@ 0 <> if exit then
+      AIO-LOCK TASK:GET MAC-COLLECT LOOP-ENDED? AIO-LOCK TASK:RELEASE
+      if exit then
    again ;
 
 : INSTALL-MAC-HOST ( -- )

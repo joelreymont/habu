@@ -73,6 +73,19 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    0 RINGS-MAX 0 ?do i RINGS RING-STATE @ RING-FREE <> if 1 + then loop
    AIO-LOCK TASK:RELEASE ;
 
+\ White-box: forgotten as a short enter leaves it (0), or with its cancel staged (1).
+: AIO-TEST:FORGET ( ticket n -- ) {: t:ticket staged:n :}
+   AIO-LOCK TASK:GET
+   staged t TICKET>REC REC.CANCELING !
+   t TICKET>REC REC.IDX @ REC-FORGET
+   AIO-LOCK TASK:RELEASE ;
+
+: AIO-TEST:BUSY? ( -- bool )
+   ANY-BUSY? ;
+
+: AIO-TEST:FREE? ( ticket -- bool )
+   TICKET>REC REC.STATE atomic@ STATE-FREE = ;
+
 \ The loop's task, so a case can hold it busy and make START's activation fail.
 : AIO-TEST:LOOP-TASK ( -- ^n )
    AIO-LOOP ;
@@ -125,6 +138,7 @@ variable FAN-READY
 variable FAN-DURING
 variable ANY-CANCELLED
 variable HALT-PARKED
+variable LATE-RC
 variable P-R
 variable P-W
 variable XFER-PATH-U
@@ -265,18 +279,6 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 : AWAIT-END ( ^n -- )
    [: dup TASK:DONE? ;] TEST-WAIT:POLL drop ;
-
-\ The scrub a halted task runs cancels its operations, and the cancels have to
-\ reach the kernel and come back before the ring is idle, so the stop is retried
-\ rather than asserted on the first try.
-: STOPPED? ( -- bool )
-   [: AIO:STOP ;] catch {: code:n :}
-   code 0= if true exit then
-   code E-AIO-BUSY <> if code throw then
-   false ;
-
-: STOP-LOOP ( -- )
-   [: STOPPED? ;] TEST-WAIT:POLL ;
 
 : C1-WORK ( -- )
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL AWAIT>N C1-GOT ! ;
@@ -819,9 +821,8 @@ TASK:MIN-STACK TASK:TASK FAN7
    P-R @ >FD buf cap XFER-N 0 AIO:READ XFER-TICKET-DROP
    1 XFER-FORGET-DONE atomic! ;
 
-\ The ring goes idle, so STOP is not E-AIO-BUSY: the record came back. And a
-\ write(2) out of the pages the transfer held is EFAULT instead of a byte into
-\ the pipe: the mapping is gone.
+\ STOP has waited for the record, so a write(2) out of the pages the transfer
+\ held is EFAULT instead of a byte into the pipe: the mapping is gone.
 : CASE-XFER-FORGOTTEN ( -- )
    0 XFER-FORGET-DONE !
    P-R P-W PIPE-OPEN
@@ -829,7 +830,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    XFER-FORGET-DONE 1 XFER-FORGET-TASK TEST-WAIT:FOR-CELL
    XFER-FORGET-TASK AWAIT-END
    XFER-FORGET-TASK TASK:KILL
-   STOP-LOOP
+   AIO:STOP
    P-W @ FORGET-PTR @ 1 >str write 0 < TTRUE
    P-R P-W PIPE-CLOSE
    AIO:START ;
@@ -853,9 +854,28 @@ TASK:MIN-STACK TASK:TASK FAN7
    OWN-EXIT-TASK AWAIT-END
    OWN-EXIT-TASK TASK:KILL
    OWN-EXIT-MARK @ 1 T=
-   STOP-LOOP
+   AIO:STOP
    P-R P-W PIPE-CLOSE
    AIO:START ;
+
+: LATE-WORK ( -- )
+   [: LONE-TICKET @ AIO-TEST:FREE? ;] TEST-WAIT:POLL
+   [: TIMER-MS >MS AIO:TIMEOUT TICKET-DROP ;] catch LATE-RC !
+   P-W @ POKE ;
+
+\ On Linux the second poll's cancel counts as staged, so STOP waits until the late
+\ task, once a pass has freed the first, meets STOPPING and pokes the pipe.
+: CASE-STOP-FORGOTTEN ( -- )
+   P-R P-W PIPE-OPEN
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
+   LONE-TICKET @ 0 AIO-TEST:FORGET
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL 1 AIO-TEST:FORGET
+   ['] LATE-WORK HALT-TASK TASK:ACTIVATE
+   AIO:STOP  AIO-TEST:BUSY? TFALSE
+   HALT-TASK AWAIT-END  HALT-TASK TASK:KILL
+   LATE-RC @ E-AIO-STATE T=
+   AIO:START  1 >MS AIO:TIMEOUT AWAIT>N MARK-TIMED-OUT T=
+   P-R P-W PIPE-CLOSE ;
 
 \ A task halted while parked in AWAIT: the wait's finally cancels the record, so
 \ the loop never wakes a TCB the join has released and the ring goes idle
@@ -874,7 +894,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    HALT-TASK TASK:HALT
    HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
-   STOP-LOOP
+   AIO:STOP
    P-R P-W PIPE-CLOSE ;
 
 \ XC connected to the listener; the accepted end comes back.
@@ -1094,6 +1114,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    CASE-XFER-BOUNDS
    CASE-XFER-FORGOTTEN
    CASE-OWN-EXIT
+   CASE-STOP-FORGOTTEN
    CASE-HALTED-REUSE
    CASE-HALTED-ANY-REUSE
    CASE-HALTED-CLEANUP-IO

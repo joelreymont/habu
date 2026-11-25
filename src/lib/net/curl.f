@@ -1643,9 +1643,6 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
    CURL-LOCK TASK:RELEASE ;
 
 
-\ Every wait this loop holds is ended and awaited before the task returns: a
-\ record still in flight is what AIO:STOP rejects, and a ticket nobody awaits is
-\ a record nobody frees.
 : GROUP-DRAIN ( -- )
    FD-SETSIZE 0 ?do i FD-MASK@ 0 <> if i FD-DROP then loop
    WAKE-TICKET @ UNWAIT

@@ -2,7 +2,7 @@
 \ ticket and AWAITs it; one loop task waits on the eventfd every ring signals,
 \ drains the rings and TASK:WAKEs each owner.
 \ START the loop before the first wait; main keeps compiling while it runs.
-\ A submission with no loop is E-AIO-STATE. Linux uses
+\ A submission with no loop, or one STOP is ending, is E-AIO-STATE. Linux uses
 \ io_uring from 5.10, the first long-term kernel with every opcode used;
 \ Darwin uses src/lib/aio-macos.f.
 \ A ring holds records for at most half its completion entries, which keeps its
@@ -10,6 +10,16 @@
 \ A stage that would pass that retires the active ring and opens one of double
 \ the completion entries, up to AIO-CQ-ENTRIES; the loop closes a retired ring
 \ once its last record is freed.
+\ STOP. RUNNING: each record is free, forgotten (no task waits for it; its last
+\ completion frees it) or live. STOP with a live record is E-AIO-BUSY and
+\ changes nothing. Otherwise one hold of AIO-LOCK cancels every forgotten record,
+\ enters what short enters left in the rings, wakes the loop and sets RING-STOP;
+\ a failure is thrown and the state stays RUNNING. STOPPING: a second STOP is
+\ E-AIO-STATE, and the loop ends at a pass that leaves every record free; a
+\ forgotten record's completions wake it until then. ENDED: STOP has joined the
+\ loop, whose throw it then throws, and closes the host's queues. START is one
+\ hold of AIO-LOCK; its last steps clear RING-STOP and set RING-LIVE, so one that
+\ throws changes neither.
 \ STORAGE CLASS. PROCESS-WIDE: rings, records and loop, under one TASK:FACILITY.
 \ SINK, outside it, which every waker's task writes and none reads.
 \ TASK-LOCAL: AIO-REGISTERED and AIO-PARKED, a submitting task's own cells.
@@ -270,7 +280,6 @@ SCRATCH-VARIABLE REC-LIVE           \ records claimed and not yet freed, at most
 variable GROUP-N                    \ the groups GROUP defined, which a build keeps
 SCRATCH-VARIABLE RING-LIVE          \ the loop is running
 SCRATCH-VARIABLE RING-STOP
-SCRATCH-VARIABLE RING-READY         \ the facility has been initialized once
 \ The eventfd every ring signals as it posts a completion, and HOST-WAKE
 \ writes, open from START to STOP, which leaves -1.
 SCRATCH-VARIABLE WAKE-FD
@@ -584,21 +593,26 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    0 r REC.HOLD ! 0 r REC.CANCELING !
    TASK:SELF idx REC-OWNER ! ;
 
-\ Read from the record states themselves, so what STOP rejects is exactly a
-\ record not yet free, whoever claimed or released it.
-: CHUNK-BUSY? ( n n -- bool ) {: c:n len:n :}
-   len 0 ?do
-      c i CHUNK-REC REC.STATE atomic@ STATE-FREE <> if true unloop exit then
+\ The caller holds AIO-LOCK.
+: ANY-STATE? ( [ n -- bool ] -- bool ) {: q :}
+   REC-CAP 0 ?do
+      i REC-STATE@ q execute if true unloop exit then
    loop
    false ;
 
 : ANY-BUSY? ( -- bool )
-   CHUNK-FIRST RECS-FIRST
-   begin over 0<> while
-      2dup CHUNK-BUSY? if 2drop true exit then
-      2 * swap CHUNK-NEXT swap
-   repeat
-   2drop false ;
+   [: STATE-FREE <> ;] ANY-STATE? ;
+
+: ANY-LIVE? ( -- bool )
+   [: dup STATE-FREE <> swap STATE-FORGET <> and ;] ANY-STATE? ;
+
+\ Read under AIO-LOCK, after the pass that collected the completions.
+: LOOP-ENDED? ( -- bool )
+   RING-STOP atomic@ 0= if false exit then
+   ANY-BUSY? 0= ;
+
+: REC-FORGET ( n -- )
+   STATE-FORGET swap REC REC.STATE atomic! ;
 
 \ ---- submission --------------------------------------------------------------
 \ The entries published but not yet consumed by the kernel. The indexes are
@@ -640,11 +654,12 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    rc 0 < if s" io_uring_enter errno " DIAG-ERRNO then
    E-AIO-ENTER ;
 
-\ A short enter may leave this record's entry in its ring, so the record is
-\ forgotten: a late completion frees it, and the next stage enters what stayed.
+\ A short enter may leave entries in the ring: the record and its link are
+\ forgotten, freed by their completions once a stage or STOP enters the rest.
 : SUBMIT-OR-FORGET ( ^ring n -- n ) {: rg:^ idx:n :}
    rg ENTER-SUBMIT dup 0= if exit then
-   STATE-FORGET idx REC REC.STATE atomic! ;
+   idx REC REC.PEER @ dup 0 >= if REC-FORGET else drop then
+   idx REC-FORGET ;
 
 : SPEC! ( n ^u8 -- ) {: ms:n spec :}
    ms MS-PER-S / spec LE:U64!
@@ -861,8 +876,9 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
          i RINGS dup RING-STATE @ RING-FREE <> if DRAIN else drop then
       loop
       RETIRED-CLOSE
+      LOOP-ENDED?
       AIO-LOCK TASK:RELEASE
-      RING-STOP atomic@ 0 <> if exit then
+      if exit then
    again ;
 
 \ ---- the public operations' locked bodies ------------------------------------
@@ -884,18 +900,18 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    k ACTIVE !
    k RINGS 0 ;
 
-\ A stage enters only the ring it publishes on, and a full one takes no stage,
-\ so every stage first enters each open ring's leftovers, retrying a failure.
-: LEFT-ENTER ( -- )
-   RINGS-MAX 0 ?do
+\ A stage enters only the ring it publishes on and a full ring takes no stage,
+\ so every stage and STOP first enter each ring's leftovers: 0 or E-AIO-ENTER.
+: LEFT-ENTER ( -- n )
+   0 RINGS-MAX 0 ?do
       i RINGS dup RING-STATE @ RING-FREE <> if
-         dup SQ-PENDING 0<> if ENTER-SUBMIT drop else drop then
+         dup SQ-PENDING 0<> if ENTER-SUBMIT or else drop then
       else drop then
    loop ;
 
 \ The ring a stage claims n records on, and 0, or a code.
 : RING-FOR ( n -- ^ring n ) {: want:n :}
-   LEFT-ENTER
+   LEFT-ENTER drop
    ACTIVE @ RINGS {: rg:^ :}
    REC-LIVE @ want + AIO-RECS-MAX > if rg E-AIO-FULL exit then
    rg RING-RECS-LIVE @ want + rg RING-CQ-ENTRIES @ 2 / <= if rg 0 exit then
@@ -977,7 +993,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    r REC.KIND @ KIND-LINK = if 0 exit then
    r REC.CANCELING @ 0<> if 0 exit then
    target REC-RING @ {: rg:^ :}
-   LEFT-ENTER
+   LEFT-ENTER drop
    rg 1 SQ-ROOM? 0= if E-AIO-FULL exit then
    r REC.PENDING @ 1 + r REC.PENDING !
    1 r REC.CANCELING !
@@ -1046,8 +1062,7 @@ INSTALL-HOST
 \ entry in that task's exit chain, so a task that submits keeps its own
 \ cleanups: they run beside this one, newest registration first.
 
-\ A cancel is rejected only after an enter that failed or was taken short, or
-\ after a failed write to Darwin's wake pipe.
+\ A cancel is rejected only after an enter that failed or was taken short.
 : TRY-CANCEL ( n -- ) {: target:n :}
    target HOST-CANCEL drop ;
 
@@ -1056,7 +1071,7 @@ INSTALL-HOST
    st STATE-FREE = st STATE-FORGET = or if exit then
    idx REC-OWNER @ FFI:>CELL me <> if exit then
    st STATE-DONE = if idx REC-DISCARD exit then
-   STATE-FORGET idx REC REC.STATE atomic!
+   idx REC-FORGET
    idx TRY-CANCEL ;
 
 : G-RELEASE-HELD ( ^n n -- ) {: e:^ me:n :}
@@ -1160,7 +1175,8 @@ INSTALL-HOST
 : SUBMIT-ENTER ( -- )
    RUNNING-CHECK
    ENSURE-SCRUB
-   AIO-LOCK TASK:GET ;
+   AIO-LOCK TASK:GET
+   RING-STOP atomic@ 0<> if AIO-LOCK TASK:RELEASE E-AIO-STATE throw then ;
 
 \ Until the caller holds the handle, no REC-FREE caller reaches a record whose
 \ stage answered 0.
@@ -1283,6 +1299,34 @@ INSTALL-HOST
    g [: GROUP-LOOP ;] [: GROUP-GIVE-BACK ;] finally {: at:n :}
    g at G-TAKE-AT ;
 
+\ ---- the start and the stop --------------------------------------------------
+\ The caller of the next two holds AIO-LOCK; each answers 0 or a code.
+: FORGOTTEN-CANCEL ( -- n )
+   REC-CAP 0 ?do
+      i REC-STATE@ STATE-FORGET = if
+         i HOST-CANCEL dup 0<> if unloop exit then drop
+      then
+   loop
+   0 ;
+
+: STOP-STAGE ( -- n )
+   RING-STOP atomic@ 0<> if E-AIO-STATE exit then
+   ANY-LIVE? if E-AIO-BUSY exit then
+   FORGOTTEN-CANCEL dup 0<> if exit then drop
+   LEFT-ENTER dup 0<> if exit then drop
+   HOST-WAKE dup 0<> if exit then drop
+   1 RING-STOP atomic!
+   0 ;
+
+: START-LOCKED ( -- )
+   RING-LIVE atomic@ 0 <> if E-AIO-STATE throw then
+   RECS-CLEAR
+   HOST-SETUP
+   [: ['] LOOP-BODY AIO-LOOP TASK:ACTIVATE ;] catch {: code:n :}
+   code 0 <> if HOST-CLOSE code throw then
+   0 RING-STOP atomic!
+   1 RING-LIVE ! ;
+
 \ The fd as the kernel's int reads it: Darwin's row table sees at most 31 bits.
 : FD-INT ( fd -- n )
    FD>N FFI:>I32 ;
@@ -1300,42 +1344,33 @@ public
 \ Sets up the host's queues and starts the completion task. A second start is
 \ E-AIO-STATE; a START that throws leaves nothing for STOP.
 : START ( -- )
-   RING-LIVE @ 0 <> if E-AIO-STATE throw then
-   RING-READY @ 0= if AIO-LOCK TASK:FACILITY-INIT 1 RING-READY ! then
-   RECS-CLEAR
-   0 RING-STOP atomic!
-   HOST-SETUP
-   1 RING-LIVE !
-   [: ['] LOOP-BODY AIO-LOOP TASK:ACTIVATE ;] catch {: code:n :}
-   code 0 <> if HOST-CLOSE 0 RING-LIVE ! code throw then ;
+   AIO-LOCK TASK:GET
+   [: START-LOCKED ;] catch {: code:n :}
+   AIO-LOCK TASK:RELEASE
+   code 0<> if code throw then ;
 
-\ Every ticket must have been awaited or cancelled and drained first: a record
-\ still in flight is E-AIO-BUSY, because unmapping a ring under the kernel is
-\ not a thing a caller can be allowed to ask for.
 : STOP ( -- )
    RUNNING-CHECK
-   ANY-BUSY? if E-AIO-BUSY throw then
-   1 RING-STOP atomic!
    AIO-LOCK TASK:GET
-   HOST-WAKE {: rc:n :}
+   STOP-STAGE {: rc:n :}
    AIO-LOCK TASK:RELEASE
    rc 0 <> if rc throw then
    AIO-LOOP TASK:JOIN MATCH result
-      ok OF drop ENDOF
-      err OF throw ENDOF
-   ;MATCH
+      ok OF drop 0 ENDOF
+      err OF ENDOF
+   ;MATCH {: code:n :}
    HOST-CLOSE
-   0 RING-LIVE ! ;
+   0 RING-LIVE atomic!
+   code 0 <> if code throw then ;
 
 \ True between a START that returned and the STOP that gives the host's queues back.
 : RUNNING? ( -- bool )
    RING-LIVE @ 0 <> ;
 
 \ Waits for a descriptor to carry one of the events in the mask. ms is a
-\ deadline in milliseconds, or -1 for no deadline. A submission with no loop
-\ running is E-AIO-STATE; a full kernel ring on Linux is E-AIO-FULL, and a
-\ descriptor past Darwin's per-call poll bound is E-AIO-POLL-BOUND. Either
-\ leaves nothing submitted.
+\ deadline in milliseconds, or -1 for no deadline. A full kernel ring on Linux is
+\ E-AIO-FULL and a descriptor past Darwin's per-call poll bound is
+\ E-AIO-POLL-BOUND; either leaves nothing submitted.
 : POLL ( fd n ms -- ticket ) {: f:fd events:n timeout:ms :}
    SUBMIT-ENTER
    f FD-INT events timeout MS>N HOST-POLL SUBMIT-LEAVE REC >TICKET ;

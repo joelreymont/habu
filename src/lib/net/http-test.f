@@ -2835,20 +2835,6 @@ variable REFUSED-CODE
    HTTP:RUNNING? TFALSE ;
 
 
-10 constant RETRY-MS              \ between tries, so the loop task gets the core
-
-
-\ A task killed inside a wait leaves its record in flight until the loop drains
-\ the kernel's cancel completion, and AIO:STOP is E-AIO-BUSY until it does.
-: AIO-STOP ( -- )
-   begin
-      [: AIO:STOP ;] catch {: code:n :}
-      code 0= if exit then
-      code E-AIO-BUSY <> if code throw then
-      RETRY-MS >MS TASK:SLEEP
-   again ;
-
-
 40 constant BIG-DIRS
 80 constant LONG-NAMES
 $78 constant LONG-NAME-BYTES
@@ -3513,7 +3499,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    GATED-HOOK-CASE
    RES @ VEC:DELETE
    ROOT$ FS:REMOVE-TREE
-   AIO-STOP ;
+   AIO:STOP ;
 
 
 T-RESET

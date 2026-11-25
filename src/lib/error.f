@@ -790,10 +790,10 @@ generates: FAULT ( -- n )
 -9285 s" poll refused the self-pipe's read end with an errno" ERROR:FAULT E-SIGNAL-POLL
 -9286 s" closing an end of the self-pipe failed" ERROR:FAULT E-SIGNAL-CLOSE
 -9290 s" the host's queues could not be set up: io_uring_setup, a ring mapping, the eventfd or its registration on Linux; the self-pipe or its non-blocking mark on Darwin" ERROR:FAULT E-AIO-SETUP
--9291 s" the host refused a submission or the loop's wait: io_uring_enter refused or took fewer entries than offered, or the eventfd failed, on Linux; the self-pipe write or poll failed on Darwin" ERROR:FAULT E-AIO-ENTER
--9292 s" no loop running, or a second START" ERROR:CODE E-AIO-STATE
+-9291 s" the host failed a submission or the loop's wait: io_uring_enter failed or took fewer entries than offered, or the eventfd failed, on Linux; poll failed on Darwin" ERROR:FAULT E-AIO-ENTER
+-9292 s" no loop running, STOP ending it, or a second START" ERROR:CODE E-AIO-STATE
 -9293 s" the kernel's io_uring ring is full: no submission entry free, or as many operations in flight as half the completion ring holds" ERROR:CODE E-AIO-FULL
--9294 s" STOP with an operation still in flight" ERROR:CODE E-AIO-BUSY
+-9294 s" STOP with an operation its task has still to await" ERROR:CODE E-AIO-BUSY
 -9295 s" the group is empty, holds no such ticket, or names no defined group" ERROR:CODE E-AIO-GROUP
 -9296 s" a transfer count past its allocation or below zero, a file offset below -1, or a socket address length not positive" ERROR:CODE E-AIO-BOUNDS
 -9297 s" Darwin's poll(2) takes at most OPEN_MAX (10240) descriptors per call, and one more would be needed" ERROR:CODE E-AIO-POLL-BOUND
