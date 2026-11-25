@@ -272,16 +272,6 @@ private
    idx NOT-FOUND ;
 
 
-\ x86-64 refuses a quotation that reads a local, so the slot travels through
-\ the task.
-: RUN-HANDLER ( -- )
-   SELF-SLOT DISPATCH ;
-
-
-: RENDER-FAULT ( -- )
-   SELF-SLOT FAULT-RESPONSE ;
-
-
 \ The offer ends with the handler. True when the handler took the connection.
 : WITHDRAW ( n -- bool ) {: idx:n :}
    idx HOLDER @ TAKEN =
@@ -301,13 +291,13 @@ private
 \ when the handler took the connection, which is then owed no answer at all.
 : HANDLE-REQUEST ( n -- bool ) {: idx:n :}
    OFFERED idx HOLDER !
-   [: RUN-HANDLER ;] catch {: code:n :}
+   [: idx DISPATCH ;] catch {: code:n :}
    idx code FAULT? {: fault:bool :}
    fault if idx code REPORT-FAULT then
    idx WITHDRAW if true exit then
    fault 0= if false exit then
    500 idx SLOT-STATUS!
-   [: RENDER-FAULT ;] catch {: failed:n :}
+   [: idx FAULT-RESPONSE ;] catch {: failed:n :}
    idx failed HOOK-FAULT
    false ;
 
@@ -408,11 +398,7 @@ private
    sent ;
 
 
-\ The refusal REFUSE stored as the slot's status: x86-64 refuses a quotation
-\ that reads a local.
-: RENDER-REFUSAL ( -- )
-   SELF-SLOT {: idx:n :}
-   idx SLOT-STATUS@ {: status:n :}
+: RENDER-REFUSAL ( n n -- ) {: idx:n status:n :}
    status 400 = if idx RESPONSE-OF 400 s" bad_request"
       s" the request line or a header is not valid HTTP" ERROR! exit then
    status 413 = if idx RESPONSE-OF 413 s" body_too_large"
@@ -431,7 +417,7 @@ private
    idx DROP-ANSWER
    0 idx KEEP-ALIVE!
    status idx SLOT-STATUS!
-   [: RENDER-REFUSAL ;] catch {: failed:n :}
+   [: idx status RENDER-REFUSAL ;] catch {: failed:n :}
    idx failed HOOK-FAULT
    conn idx SENT 0= if construct served silent exit then
    construct served answered ;
@@ -469,7 +455,7 @@ private
    idx code REPORT-FAULT
    idx ANSWER-MADE? 0= if construct served silent exit then
    500 idx SLOT-STATUS!
-   [: RENDER-FAULT ;] catch {: failed:n :}
+   [: idx FAULT-RESPONSE ;] catch {: failed:n :}
    idx failed HOOK-FAULT
    conn idx SENT if construct served answered exit then
    construct served silent ;
@@ -713,14 +699,9 @@ variable EXIT-HOOK-N
    LOG:;LINE ;
 
 
-\ x86-64 refuses a quotation that reads a local, so the call travels through
-\ the worker's row.
-: CALL-TAKEN ( -- )
-   SELF-SLOT TAKEN-ARG @ SELF-SLOT TAKEN-RUN @ execute ;
-
-
 : RUN-CALL ( -- )
-   [: CALL-TAKEN ;] catch {: code:n :}
+   SELF-SLOT {: w:n :}
+   [: w TAKEN-ARG @ w TAKEN-RUN @ execute ;] catch {: code:n :}
    code 0 <> if code REPORT-CALL then ;
 
 
@@ -1176,10 +1157,9 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    1 PARK-OPEN ! ;
 
 
-\ Everything a running server holds beyond its listener. The count is read from
-\ the cell because x86-64 refuses a quotation that reads a local.
-: OPEN-RESOURCES ( -- )
-   WORKER-COUNT @ ARENA-OPEN
+\ Everything a running server holds beyond its listener.
+: OPEN-RESOURCES ( n -- ) {: workers:n :}
+   workers ARENA-OPEN
    0 JOB-AT !
    0 JOB-N !
    0 ITEMS TASK:SEMAPHORE-INIT
@@ -1491,7 +1471,7 @@ STRUCTURE config DERIVE addr
    0 STARTED !
    0 ACCEPTED-COUNT !
    address port BIND-LISTENER
-   [: OPEN-RESOURCES ;] catch {: code:n :}
+   [: workers OPEN-RESOURCES ;] catch {: code:n :}
    code 0 <> if RELEASE-RESOURCES code throw then
    1 RUNNING !
    START-WORKERS {: launch-code:n :}

@@ -11,10 +11,8 @@ split-str
 \ runs for in ACTIVE-CELL, runs the operation and puts the caller's row back,
 \ also when the operation throws, so an operation of the caller's device that
 \ runs afterwards still sees itself as SELF. An operation that may throw runs
-\ under `catch` through a RUN-*-OP word that reads its row from ACTIVE-CELL,
-\ because x86-64 refuses a quotation that reads a local. EMIT and WRITE skip
-\ that catch: their operations throw only a memory fault, and the catch that
-\ takes it puts ACTIVE-CELL back itself.
+\ under `catch`. EMIT and WRITE skip that catch: their operations throw only a
+\ memory fault, and the catch that takes it puts ACTIVE-CELL back itself.
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
@@ -352,22 +350,6 @@ private
    INSTALL-TERMINAL
    IN-PTR @ LIVE-ROW ;
 
-
-: RUN-CLOSE-OP ( -- )
-   ACTIVE-ROW OP-CLOSE @ execute ;
-
-: RUN-FLUSH-OP ( -- )
-   ACTIVE-ROW OP-FLUSH @ execute ;
-: RUN-KEY-OP ( n -- n )
-   drop ACTIVE-ROW OP-KEY @ execute ;
-: RUN-READY-OP ( bool -- bool )
-   drop ACTIVE-ROW OP-READY @ execute ;
-\ The buffer stays under the count read, so the catch preserves the shape.
-: RUN-READ-OP ( ^u8 n -- ^u8 n )
-   over swap ACTIVE-ROW OP-READ @ execute ;
-: RUN-ACCEPT-OP ( str -- str )
-   over swap ACTIVE-ROW OP-ACCEPT @ execute ;
-
 \ Everything the row was, undone, ending with the release: the generation has
 \ to be visible before another task can take the row.
 : RETIRE-ROW ( n -- ) {: idx:n :}
@@ -407,7 +389,7 @@ public
    OUT-ROW {: idx:n :}
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   [: RUN-FLUSH-OP ;] catch {: code:n :}
+   [: idx OP-FLUSH @ execute ;] catch {: code:n :}
    prev ACTIVE-PTR !
    code 0<> if code throw then
    idx FAULT-CHECK ;
@@ -417,7 +399,7 @@ public
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   0 [: RUN-KEY-OP ;] catch {: code:n :}
+   0 [: drop idx OP-KEY @ execute ;] catch {: code:n :}
    prev ACTIVE-PTR !
    code 0<> if code throw then ;
 
@@ -426,7 +408,7 @@ public
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   false [: RUN-READY-OP ;] catch {: code:n :}
+   false [: drop idx OP-READY @ execute ;] catch {: code:n :}
    prev ACTIVE-PTR !
    code 0<> if code throw then ;
 
@@ -435,7 +417,9 @@ public
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   bytes cap [: RUN-READ-OP ;] catch {: code:n :}
+   bytes cap
+   \ The buffer stays under the count read, so the catch preserves the shape.
+   [: over swap idx OP-READ @ execute ;] catch {: code:n :}
    prev ACTIVE-PTR !
    code 0<> if code throw then
    nip ;
@@ -455,7 +439,7 @@ public
    idx TERMINAL-ROW <> if idx CLAIM-CLOSE then
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   [: RUN-CLOSE-OP ;] catch {: code:n :}
+   [: idx OP-CLOSE @ execute ;] catch {: code:n :}
    prev ACTIVE-PTR !
    idx TERMINAL-ROW <> if idx RETIRE-ROW then
    code 0 <> if code throw then ;
@@ -493,7 +477,8 @@ TASK:+USER IO-LINE ^VEC:vector<u8>
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   bytes cap [: RUN-ACCEPT-OP ;] catch {: code:n :}
+   bytes cap
+   [: over swap idx OP-ACCEPT @ execute ;] catch {: code:n :}
    prev ACTIVE-PTR !
    code 0<> if code throw then
    nip ;

@@ -192,8 +192,8 @@ TYPED-VARIABLE RES ^VEC:vector<u8>
    answer 503 s" unavailable" s" the database is unavailable" HTTP:ERROR! ;
 
 
-\ The id the pattern bound travels to the body through these cells, which the
-\ body quotation reads back: x86-64 refuses a quotation that reads a local.
+\ HTTP:JSON! keeps its body quotation in the slot, so the body reads what the
+\ pattern bound from these cells.
 PTR-VARIABLE ITEM-ID-A
 variable ITEM-ID-N
 PTR-VARIABLE ITEM-QUERY-A
