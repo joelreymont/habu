@@ -1,4 +1,3 @@
-split-str
 \ A definition whose effect is inferred from a fresh-region producer mints a new
 \ region per call, exactly as a declared producer does: two calls never share an
 \ allocation, one call's shared outputs still do. Each refused program runs in
@@ -18,15 +17,15 @@ variable PROG-U
 : PRELUDE$ ( -- str )
    s" -1 REJECTION:JSON ! package RQ public defer RG-ONE ( -- fresh-region-a ) defer RG-PAIR ( -- fresh-region-a fresh-region-a ) defer RG-DIFF ( -- fresh-region-a fresh-region-b ) : SAME-ID ( x x -- ) 2drop ; : USE-INF RG-ONE ; : USE-PAIR RG-PAIR ; : USE-DIFF RG-DIFF ; : NEST USE-INF ; " ;
 
-: PROGRAM ( ^u8 n -- ^u8 n )
-   {: case:^ caseu:n :}
+: PROGRAM ( str -- str )
+   {: case:str :}
    0 PROG-U !
    PRELUDE$ PROG PROG-CAP PROG-U BUF-APPEND
-   case caseu PROG PROG-CAP PROG-U BUF-APPEND
+   case PROG PROG-CAP PROG-U BUF-APPEND
    s"  ;package" PROG PROG-CAP PROG-U BUF-APPEND
-   PROG PROG-U @ ;
+   PROG PROG-U @ >str ;
 
-: REFUSED ( ^u8 n -- )
+: REFUSED ( str -- )
    PROGRAM 70 s\" \"code\":\"E-RIGID-REGION-MISMATCH\"" SUBJECT:REFUSED? TTRUE ;
 
 public

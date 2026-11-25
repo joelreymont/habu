@@ -1,4 +1,3 @@
-split-str
 \ program-diagnostic-quiet-count.f - a multi-error load counts only the refusals
 \ it renders, for test/program-diagnostics-test.f QUIET-COUNT-ONCE. A quiet scan
 \ (CHECK-QUIET-CANDIDATE!, a `TRUSTED:` body's) adds nothing; a refused colon
@@ -7,7 +6,7 @@ package PROGRAM-DIAG-QUIET-COUNT
 public
 : START ( -- ) CHECK:MULTI-ERR-BEGIN ;
 : FINISH ( -- n ) CHECK:MULTI-ERR-END ;
-: FOUND ( ^u8 n -- n ) get-current search-wl 0<> if 1 else 0 then ;
+: FOUND ( str -- n ) get-current search-wl 0<> if 1 else 0 then ;
 ;package
 
 PROGRAM-DIAG-QUIET-COUNT:START

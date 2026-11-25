@@ -1,4 +1,3 @@
-split-str
 \ A definition held open across tty lines. The line reader is compiled code
 \ that runs between the lines, and the open definition holds the compile
 \ loop's bands RW; its end of input is a rejection, rc 70, since no input
@@ -13,7 +12,7 @@ using PTY-HARNESS
 
 \ Only the prompt after an answer shows the child reading raw again, so a step
 \ waits for that one and ^D goes only after a step that saw it.
-: STEP ( ^u8 n -- bool )
+: STEP ( str -- bool )
    BUF-CLEAR SEND-LINE WAIT-ANSWER ;
 
 : OPEN ( -- bool )

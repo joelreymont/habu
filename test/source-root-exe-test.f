@@ -1,4 +1,3 @@
-split-str
 \ source-root-exe-test.f - the engine finds its source root from its executable
 \ (src/core/include.f SOURCE-ROOT:ENGINE$), with no environment variable: an
 \ editor starts a language server in a working directory it cannot choose. The
@@ -56,83 +55,83 @@ variable OUT-U
 variable ERR-U
 variable RC
 
-: GATE$ ( -- str ) GATE GATE-U @ ;
-: TOP$ ( -- str ) TOP TOP-U @ ;
-: FOREIGN$ ( -- str ) FOREIGN FOREIGN-U @ ;
-: HB$ ( -- str ) HB HB-U @ ;
-: B-ROOT$ ( -- str ) B-ROOT B-ROOT-U @ ;
-: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
+: GATE$ ( -- str ) GATE GATE-U @ >str ;
+: TOP$ ( -- str ) TOP TOP-U @ >str ;
+: FOREIGN$ ( -- str ) FOREIGN FOREIGN-U @ >str ;
+: HB$ ( -- str ) HB HB-U @ >str ;
+: B-ROOT$ ( -- str ) B-ROOT B-ROOT-U @ >str ;
+: OUT$ ( -- str ) OUT OUT-U @ >str ;
+: ERR$ ( -- str ) ERR ERR-U @ >str ;
 
 : COPY! ( str ^u8 ^n -- )
-   {: a:^ u:n dst:^ lenp:^ :}
-   u CAP > if E-FS-CAPACITY throw then
-   a dst u BYTE-COPY u lenp ! ;
+   {: s:str dst:^ lenp:^ :}
+   s STR:LEN CAP > if E-FS-CAPACITY throw then
+   s STR:DATA dst s STR:LEN BYTE-COPY s STR:LEN lenp ! ;
 
 \ <tmp>/<rel> in one of three buffers, so a call can hold an engine and two
 \ paths at once.
 : A$ ( str -- str )
-   {: rel:^ relu:n :}
-   TOP$ rel relu PA FS:JOIN-PATH PA swap ;
+   {: rel:str :}
+   TOP$ rel PA FS:JOIN-PATH PA swap >str ;
 
 : B$ ( str -- str )
-   {: rel:^ relu:n :}
-   TOP$ rel relu PB FS:JOIN-PATH PB swap ;
+   {: rel:str :}
+   TOP$ rel PB FS:JOIN-PATH PB swap >str ;
 
 : HB-AT$ ( str -- str )
-   {: rel:^ relu:n :}
-   TOP$ rel relu PE FS:JOIN-PATH PE swap ;
+   {: rel:str :}
+   TOP$ rel PE FS:JOIN-PATH PE swap >str ;
 
 \ <gate tree>/<rel>
 : GATE-B$ ( str -- str )
-   {: rel:^ relu:n :}
-   GATE$ rel relu PB FS:JOIN-PATH PB swap ;
+   {: rel:str :}
+   GATE$ rel PB FS:JOIN-PATH PB swap >str ;
 
-: LINE ( ^u8 n -- ) SB-APPEND 10 SB-APPEND-C ;
+: LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
 
 : PROG-RESET ( -- ) 0 PROG-U ! ;
 
 : PLINE ( str -- )
-   {: a:^ u:n :}
-   PROG-U @ u + 1+ PROG-CAP > if E-STR-CAPACITY throw then
-   a PROG PROG-U @ + u BYTE-COPY
-   10 PROG PROG-U @ u + + c!
-   PROG-U @ u + 1+ PROG-U ! ;
+   {: s:str :}
+   PROG-U @ s STR:LEN + 1+ PROG-CAP > if E-STR-CAPACITY throw then
+   s STR:DATA PROG PROG-U @ + s STR:LEN BYTE-COPY
+   10 PROG PROG-U @ s STR:LEN + + c!
+   PROG-U @ s STR:LEN + 1+ PROG-U ! ;
 
-: PROG$ ( -- str ) PROG PROG-U @ ;
+: PROG$ ( -- str ) PROG PROG-U @ >str ;
 
 : YN-LINE ( -- )
    S\" : YN ( bool -- ) if s\q yes\q else s\q no\q then type cr ;" PLINE ;
 
 \ `<word> <tmp>/<rel>` as a program line.
 : PATH-LINE ( str str -- )
-   {: word:^ wordu:n rel:^ relu:n :}
-   SB-RESET word wordu SB-APPEND s"  " SB-APPEND rel relu A$ SB-APPEND SB$ PLINE ;
+   {: word:str rel:str :}
+   SB-RESET word SB-APPEND s"  " SB-APPEND rel A$ SB-APPEND SB$ PLINE ;
 
-: TEXT ( ^u8 n ^u8 n -- )
-   {: name:^ nameu:n text:^ textu:n :}
-   name nameu A$ text textu FS:WRITE-ALL ;
+: TEXT ( str str -- )
+   {: name:str text:str :}
+   name A$ text FS:WRITE-ALL ;
 
 \ <tmp>/<link> names <gate tree>/<sub>.
 : GATE-LINK ( str str -- )
-   {: sub:^ subu:n link:^ linku:n :}
-   sub subu GATE-B$ link linku A$ FS:MAKE-SYMLINK ;
+   {: sub:str link:str :}
+   sub GATE-B$ link A$ FS:MAKE-SYMLINK ;
 
 \ <tmp>/<rel> is a copy of the engine under test: a symlink would resolve to
 \ the candidate's own location.
 : PLACE-ENGINE ( str -- )
-   {: rel:^ relu:n :}
-   HB$ rel relu A$ FS:COPY-FILE-STREAM
-   rel relu A$ FS:CHMOD-X ;
+   {: rel:str :}
+   HB$ rel A$ FS:COPY-FILE-STREAM
+   rel A$ FS:CHMOD-X ;
 
 \ <tmp>/b/<path> is a real copy of the gate tree's file: a symlink back would
 \ resolve to the gate tree.
 : B-COPY ( str -- )
-   {: a:^ u:n :}
-   a u FS:FILE? 0= if exit then
-   B-ROOT$ a u CWD$ RELATIVE COPY-DST FS:JOIN-PATH {: size:n :}
-   COPY-DST size DIRNAME FS:MAKE-DIRS
-   a u COPY-DST size FS:COPY-FILE-STREAM ;
+   {: s:str :}
+   s FS:FILE? 0= if exit then
+   B-ROOT$ s CWD$ RELATIVE COPY-DST FS:JOIN-PATH {: size:n :}
+   COPY-DST size >str DIRNAME FS:MAKE-DIRS
+   s COPY-DST size >str FS:COPY-FILE-STREAM ;
 
 : B-TREE ( -- )
    s" b" A$ B-ROOT B-ROOT-U COPY!
@@ -140,10 +139,10 @@ variable RC
    s" test/fixtures/source-root-exe" [: B-COPY ;] FS:WALK-FILES ;
 
 \ A package whose one word answers n, standing in for a file the engine bakes.
-: MARKER ( ^u8 n n -- )
-   {: name:^ nameu:n value:n :}
+: MARKER ( str n -- )
+   {: name:str value:n :}
    SB-RESET
-   s" package " SB-APPEND name nameu LINE
+   s" package " SB-APPEND name LINE
    s" public" LINE
    s" : MARK ( -- n ) " SB-APPEND value FMT:SB-U s"  ;" LINE
    s" ;package" LINE ;
@@ -157,11 +156,11 @@ variable RC
    s" ;package" LINE ;
 
 \ A package that names itself as it loads, standing in for a library file.
-: DECOY ( ^u8 n -- )
-   {: name:^ nameu:n :}
+: DECOY ( str -- )
+   {: name:str :}
    SB-RESET
-   s" package " SB-APPEND name nameu LINE
-   S\" : HELLO ( -- ) s\q " SB-APPEND name nameu SB-APPEND S\" \q type cr ;" LINE
+   s" package " SB-APPEND name LINE
+   S\" : HELLO ( -- ) s\q " SB-APPEND name SB-APPEND S\" \q type cr ;" LINE
    s" HELLO" LINE
    s" ;package" LINE ;
 
@@ -181,14 +180,14 @@ variable DEEP-U
 \ deep and DEEP-LEVELS nested <name>s below it, built in DEEP: the path can
 \ outgrow the string builder.
 : DEEP-DIRS ( -- )
-   s" deep" {: a:^ u:n :}
-   a DEEP u BYTE-COPY u DEEP-U !
+   s" deep" {: s:str :}
+   s STR:DATA DEEP s STR:LEN BYTE-COPY s STR:LEN DEEP-U !
    DEEP-LEVELS 0 ?do
       [char] / DEEP DEEP-U @ + c!
       LONG DEEP DEEP-U @ + 1+ LONG-NAME BYTE-COPY
       LONG-NAME 1+ DEEP-U +!
    loop
-   DEEP DEEP-U @ A$ FS:MAKE-DIRS ;
+   DEEP DEEP-U @ >str A$ FS:MAKE-DIRS ;
 
 \ Each case runs a fresh child of a copy of the engine under test
 \ (src/lib/engine-candidate.f), placed in the layout it needs.
@@ -266,21 +265,21 @@ variable DEEP-U
 \ to a root.
 : CHILD-ENV ( -- )
    PROC-ENV-RESET
-   s" TMPDIR" GETENV {: tmp:^ tmpu:n :}
-   tmpu 0= if exit then
-   s" TMPDIR" tmp tmpu PROC-ENV-SET ;
+   s" TMPDIR" GETENV {: tmp:str :}
+   tmp STR:LEN 0= if exit then
+   s" TMPDIR" tmp PROC-ENV-SET ;
 
 : RUN-ARGS ( str str -- )
-   {: exe:^ exeu:n cwd:^ cwdu:n :}
+   {: exe:str cwd:str :}
    CHILD-ENV
-   exe exeu cwd cwdu
+   exe cwd
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT! ;
 
 : RUN-EXE ( str str str -- )
-   {: exe:^ exeu:n cwd:^ cwdu:n in:^ inu:n :}
+   {: exe:str cwd:str in:str :}
    CHILD-ENV
-   exe exeu cwd cwdu in inu
+   exe cwd in
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT! ;
 
@@ -295,43 +294,43 @@ variable DEEP-U
    s" child stderr:" type cr ERR$ type ;
 
 \ Exactly this stdout and exit status, and nothing on stderr.
-: EXPECT ( ^u8 n n -- )
-   {: want:^ wantu:n rc:n :}
-   RC @ rc = OUT$ want wantu STR:= and ERR-U @ 0= and 0= if SHOW then
+: EXPECT ( str n -- )
+   {: want:str rc:n :}
+   RC @ rc = OUT$ want STR:= and ERR-U @ 0= and 0= if SHOW then
    RC @ rc T=
-   OUT$ want wantu T$=
+   OUT$ want T$=
    ERR-U @ 0 T= ;
 
-: STDOUT ( ^u8 n -- )
-   {: want:^ wantu:n :}
-   OUT$ want wantu STR:= 0= if SHOW then
-   OUT$ want wantu T$= ;
+: STDOUT ( str -- )
+   {: want:str :}
+   OUT$ want STR:= 0= if SHOW then
+   OUT$ want T$= ;
 
 \ The loader's rejection of the missing request name, which it looked for at
 \ <dir>/<name> among others, a rejection.
 : CANNOT-OPEN ( str str -- )
-   {: dir:^ diru:n name:^ nameu:n :}
+   {: dir:str name:str :}
    SB-RESET s" error[E-MISSING-SOURCE]: cannot open `" SB-APPEND
-   name nameu SB-APPEND 96 SB-APPEND-C
+   name SB-APPEND 96 SB-APPEND-C
    RC @ 70 = ERR$ SB$ STR:CONTAINS? and 0= if SHOW then
    RC @ 70 T=
    ERR$ SB$ STR:CONTAINS? TTRUE
-   SB-RESET dir diru SB-APPEND 47 SB-APPEND-C name nameu SB-APPEND
+   SB-RESET dir SB-APPEND 47 SB-APPEND-C name SB-APPEND
    ERR$ SB$ STR:CONTAINS? dup 0= if SHOW then TTRUE ;
 
 \ A rejection record: exit 70, nothing on stdout, this code on
 \ stderr.
-: REJECTED ( ^u8 n -- )
-   {: code:^ codeu:n :}
-   RC @ 70 = OUT-U @ 0= and ERR$ code codeu STR:CONTAINS? and 0= if SHOW then
+: REJECTED ( str -- )
+   {: code:str :}
+   RC @ 70 = OUT-U @ 0= and ERR$ code STR:CONTAINS? and 0= if SHOW then
    RC @ 70 T=
    OUT-U @ 0 T=
-   ERR$ code codeu STR:CONTAINS? TTRUE ;
+   ERR$ code STR:CONTAINS? TTRUE ;
 
 \ The record says this too.
-: SAYS ( ^u8 n -- )
-   {: want:^ wantu:n :}
-   ERR$ want wantu STR:CONTAINS? dup 0= if SHOW then TTRUE ;
+: SAYS ( str -- )
+   {: want:str :}
+   ERR$ want STR:CONTAINS? dup 0= if SHOW then TTRUE ;
 
 \ The root, whether a frozen row answers, then a library only a root holds.
 : ROOT-PROGRAM ( -- )
@@ -346,10 +345,10 @@ variable DEEP-U
    s" require test/fixtures/source-root-exe/inner.f" PLINE ;
 
 : FROM-FOREIGN ( str -- )
-   {: exe:^ exeu:n :}
+   {: exe:str :}
    PROC-ARGV-RESET
    ROOT-PROGRAM
-   exe exeu FOREIGN$ PROG$ RUN-EXE
+   exe FOREIGN$ PROG$ RUN-EXE
    SB-RESET s" tree" A$ LINE s" yes" LINE
    SB$ 0 EXPECT ;
 
@@ -546,22 +545,22 @@ variable DEEP-U
    SB-RESET 96 SB-APPEND-C s" foreign/x.f" A$ SB-APPEND
    s" ` is a boot file outside the engine root" SB-APPEND SB$ SAYS ;
 
-: CD-PROG ( str -- ) {: rel:^ relu:n :}
-   PROG-RESET s" source-root:cd" rel relu PATH-LINE ;
+: CD-PROG ( str -- ) {: rel:str :}
+   PROG-RESET s" source-root:cd" rel PATH-LINE ;
 
 \ CD's rejection naming <tmp>/<rel>, and why.
 : CD-WANT ( str str -- )
-   {: rel:^ relu:n want:^ wantu:n :}
+   {: rel:str want:str :}
    s" error[E-SOURCE-ROOT]" REJECTED
-   SB-RESET s" `source-root:cd` got `" SB-APPEND rel relu A$ SB-APPEND 96 SB-APPEND-C SB$ SAYS
-   want wantu SAYS ;
+   SB-RESET s" `source-root:cd` got `" SB-APPEND rel A$ SB-APPEND 96 SB-APPEND-C SB$ SAYS
+   want SAYS ;
 
 : CD-REFUSED ( str str str -- )
-   {: label:^ labelu:n rel:^ relu:n want:^ wantu:n :}
-   label labelu T-LABEL
-   rel relu CD-PROG
+   {: label:str rel:str want:str :}
+   label T-LABEL
+   rel CD-PROG
    RUN-TREE
-   rel relu want wantu CD-WANT ;
+   rel want CD-WANT ;
 
 \ The canon fails behind a parent with no search permission, as it does for a
 \ missing directory; the parent's mode comes back even when the run throws, so
@@ -586,7 +585,7 @@ variable DEEP-U
 : CD-TOO-LONG ( -- )
    s" a current path longer than a loader path is rejected by name" T-LABEL
    PROG-RESET s" SOURCE-ROOT:CD" s" deep" PATH-LINE
-   DEEP-LEVELS 1+ 0 do SB-RESET s" SOURCE-ROOT:CD " SB-APPEND LONG LONG-NAME SB-APPEND SB$ PLINE loop
+   DEEP-LEVELS 1+ 0 do SB-RESET s" SOURCE-ROOT:CD " SB-APPEND LONG LONG-NAME >str SB-APPEND SB$ PLINE loop
    RUN-TREE
    s" error[E-PATH-RANGE]" REJECTED
    s" `SOURCE-ROOT:CD` got a path" SAYS

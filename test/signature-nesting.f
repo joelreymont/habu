@@ -1,4 +1,3 @@
-split-str
 \ signature-nesting.f - a signature nested past the parser's limits is rejected
 \ by name through the real load path: a 33rd nested binder, and pointees or
 \ quotations nested past EFFECT-DEPTH-MAX. An effect with more than 64
@@ -44,20 +43,20 @@ TYPED-VARIABLE SRC-U len
    SRC-U BUF-RESET ;
 : S+ ( str -- )
    SRC-BUF CAP SRC-U BUF-APPEND ;
-: SRC$ ( -- ^u8 n )
-   SRC-BUF SRC-U @ LEN>N ;
+: SRC$ ( -- str )
+   SRC-BUF SRC-U @ LEN>N >str ;
 
 
 : S+N ( str n -- )
-   {: a:^ u:n k:n :}
-   k 0 ?do a u S+ loop ;
+   {: s:str k:n :}
+   k 0 ?do s S+ loop ;
 
 
 \ A colon definition NAME whose input is k binders nested around a quotation.
-: BINDERS ( ^u8 n n -- )
-   {: name:^ nameu:n k:n :}
+: BINDERS ( str n -- )
+   {: name:str k:n :}
    SRC-RESET
-   s" : " S+  name nameu S+  s"  ( " S+
+   s" : " S+  name S+  s"  ( " S+
    s" forall<a," k S+N  s" [ -- ]" S+  s" >" k S+N
    s"  -- ) drop ;" S+ ;
 
@@ -176,25 +175,25 @@ TYPED-VARIABLE SRC-U len
 variable ERR-U
 
 \ The text in SRC-BUF, run as the subject, exits 70 and names why on stderr.
-: REFUSES ( ^u8 n -- )
-   {: why:^ whyu:n :}
+: REFUSES ( str -- )
+   {: why:str :}
    SRC$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
-   SRC$ OUT outu LEN>N ERR erru LEN>N oc 70 T-ENDING-EXITED=
-   ERR erru LEN>N why whyu STR:CONTAINS? TTRUE ;
+   SRC$ OUT outu LEN>N >str ERR erru LEN>N >str oc 70 T-ENDING-EXITED=
+   ERR erru LEN>N >str why STR:CONTAINS? TTRUE ;
 
 \ The text in SRC-BUF, run as the subject, exits 0: a facts text that cannot
 \ say an effect ends the load with status 89.
 : LOADS ( -- )
    SRC$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
-   SRC$ OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED= ;
+   SRC$ OUT outu LEN>N >str ERR erru LEN>N >str oc 0 T-ENDING-EXITED= ;
 
 \ The last REFUSES's stderr also holds this text, gutters dropped.
 : SAID ( str -- )
-   {: a:^ u:n :}
-   ERR ERR-U @ a u REJECTION-TEXT:HAS? TTRUE ;
+   {: s:str :}
+   ERR ERR-U @ >str s REJECTION-TEXT:HAS? TTRUE ;
 
 
 : PACKET-OPEN ( -- )   REJECTION:CAPTURE  0 0= REJECTION:JSON ! ;
@@ -218,10 +217,10 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 \ A caller passes CODE, TOKEN and WHY as packet fields in text; SRC-BUF's packet
 \ holds all three: checked as a candidate, or compiled to walk a does> clause.
 : PACKET-HOLDS ( str str str -- )
-   {: code:^ codeu:n token:^ tokenu:n why:^ whyu:n :}
-   REJECTION:BUFFER$ code codeu STR:CONTAINS? TTRUE
-   REJECTION:BUFFER$ token tokenu STR:CONTAINS? TTRUE
-   REJECTION:BUFFER$ why whyu STR:CONTAINS? TTRUE
+   {: code:str token:str why:str :}
+   REJECTION:BUFFER$ code STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ token STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ why STR:CONTAINS? TTRUE
    0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
 

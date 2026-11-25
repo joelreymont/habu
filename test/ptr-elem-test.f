@@ -1,4 +1,3 @@
-split-str
 \ ptr-elem-test.f - a pointer's element type is part of the checker type.
 \ `^u8` and `^n` are refused for each other in both directions at every
 \ place types meet; value widening (u8 -> n) is unchanged. Each case is a whole
@@ -26,10 +25,10 @@ private
 -1 constant CERTIFIED
 0 constant REFUSED
 
-: REJECTS ( ^u8 n -- )
+: REJECTS ( str -- )
    CHECK-QUIET-CANDIDATE! REFUSED T= ;
 
-: CERTIFIES ( ^u8 n -- )
+: CERTIFIES ( str -- )
    CHECK-QUIET-CANDIDATE! CERTIFIED T= ;
 
 \ ---- direct call ------------------------------------------------------------

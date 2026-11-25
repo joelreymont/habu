@@ -1,4 +1,3 @@
-split-str
 \ rigid-region-suite.f - checker fixtures for the rigid host-allocation identity
 \ domains: a host allocation's REGION, EXTENT and GENERATION are fresh atoms
 \ (fresh-region-*, fresh-extent-*, fresh-gen-*) minted per constructor call and
@@ -117,7 +116,7 @@ T-RESET
 \ JSON.
 variable RR-JSON-WAS   REJECTION:JSON @ RR-JSON-WAS !   false REJECTION:JSON !
 : RR-CHECK ( str -- n ) REJECTION:CAPTURE CHECK-CANDIDATE! ;
-: RR-DIAG? ( str -- bool ) REJECTION:BUFFER$ 2swap STR:CONTAINS? ;
+: RR-DIAG? ( str -- bool ) REJECTION:BUFFER$ swap STR:CONTAINS? ;
 
 \ (1) two accesses within one region+generation certify.
 s" C-CERT ( -- ) RR-SHARE RR-UEQ"  RR-CHECK -1 T=

@@ -1,4 +1,3 @@
-split-str
 \ Four tasks take refused reserves at once: each refusal builds an E-MEM-MAP
 \ record (REJECTION MAP-PASS), and each task captures every record it catches
 \ and checks it is the whole record its own request names, as the main thread
@@ -42,8 +41,8 @@ $400000000000000 constant BIG-N
 : EXPECT ( [ -- ] ^u8 ^n -- ) {: try exp:^ expu:^ :}
    REJECTION:CAPTURE
    try catch drop  REJECTION:SEND-SAVED
-   REJECTION:BUFFER$ EXP-CAP min {: a:^ u:n :}
-   a exp u ARENA-COPY  u expu !
+   REJECTION:BUFFER$ dup STR:DATA swap STR:LEN EXP-CAP min {: a:^ u:n :}
+   a exp u >str ARENA-COPY  u expu !
    REJECTION:CAPTURE  REJECTION:BUFFER-OFF ;
 
 : GATE ( -- )
@@ -52,19 +51,19 @@ $400000000000000 constant BIG-N
 
 \ One round: a caught E-MEM-MAP whose sent record is exp counts in caught, any
 \ other outcome in odd.
-: ONE ( [ -- ] ^u8 n ^n ^n -- ) {: try exp:^ expu:n caught:^ odd:^ :}
+: ONE ( [ -- ] str ^n ^n -- ) {: try exp:str caught:^ odd:^ :}
    REJECTION:CAPTURE
    try catch {: rc:n :}
    rc E-MEM-MAP = if
       REJECTION:SEND-SAVED
-      REJECTION:BUFFER$ exp expu T-STR= if 1 caught atomic-add drop exit then
+      REJECTION:BUFFER$ exp T-STR= if 1 caught atomic-add drop exit then
    then
    1 odd atomic-add drop ;
 
 \ The capture is emptied and off at the end, so the task's ending sends nothing.
-: SPIN ( [ -- ] ^u8 n ^n ^n -- ) {: try exp:^ expu:n caught:^ odd:^ :}
+: SPIN ( [ -- ] str ^n ^n -- ) {: try exp:str caught:^ odd:^ :}
    GATE
-   ROUNDS-N 0 ?do try exp expu caught odd ONE loop
+   ROUNDS-N 0 ?do try exp caught odd ONE loop
    REJECTION:CAPTURE  REJECTION:BUFFER-OFF ;
 
 : JOIN ( ^n -- n ) {: worker:^ :}
@@ -73,8 +72,8 @@ $400000000000000 constant BIG-N
    worker TASK:KILL ;
 
 \ `ok` when the task caught every round and ended with no throw, else its counts.
-: SHOW ( ^u8 n ^n ^n n -- ) {: a:^ u:n caught:^ odd:^ rc:n :}
-   a u type
+: SHOW ( str ^n ^n n -- ) {: s:str caught:^ odd:^ rc:n :}
+   s type
    caught @ ROUNDS-N =  odd @ 0= and  rc 0= and if s"  ok" type cr exit then
    s"  caught " type  caught @ .  s" odd " type  odd @ .  s" rc " type  rc .  cr ;
 
@@ -84,10 +83,10 @@ public
    ['] TRY-A EXP-A EXP-A-U EXPECT  ['] TRY-B EXP-B EXP-B-U EXPECT
    ['] TRY-C EXP-C EXP-C-U EXPECT  ['] TRY-D EXP-D EXP-D-U EXPECT
    0 READY atomic! 0 START atomic!
-   [: ['] TRY-A EXP-A EXP-A-U @ CAUGHT-A ODD-A SPIN ;] WORKER-A TASK:ACTIVATE
-   [: ['] TRY-B EXP-B EXP-B-U @ CAUGHT-B ODD-B SPIN ;] WORKER-B TASK:ACTIVATE
-   [: ['] TRY-C EXP-C EXP-C-U @ CAUGHT-C ODD-C SPIN ;] WORKER-C TASK:ACTIVATE
-   [: ['] TRY-D EXP-D EXP-D-U @ CAUGHT-D ODD-D SPIN ;] WORKER-D TASK:ACTIVATE
+   [: ['] TRY-A EXP-A EXP-A-U @ >str CAUGHT-A ODD-A SPIN ;] WORKER-A TASK:ACTIVATE
+   [: ['] TRY-B EXP-B EXP-B-U @ >str CAUGHT-B ODD-B SPIN ;] WORKER-B TASK:ACTIVATE
+   [: ['] TRY-C EXP-C EXP-C-U @ >str CAUGHT-C ODD-C SPIN ;] WORKER-C TASK:ACTIVATE
+   [: ['] TRY-D EXP-D EXP-D-U @ >str CAUGHT-D ODD-D SPIN ;] WORKER-D TASK:ACTIVATE
    begin READY atomic@ 4 < while TASK:PAUSE repeat
    1 START atomic!
    WORKER-A JOIN {: ra:n :}  WORKER-B JOIN {: rb:n :}
@@ -105,11 +104,11 @@ public
    T-RESET
    s" REJECTION-TASKS-TEST:RACE" OUT OUT-CAP >LEN ERR OUT-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
-   s" REJECTION-TASKS-TEST:RACE" OUT outu LEN>N ERR erru LEN>N oc 0
+   s" REJECTION-TASKS-TEST:RACE" OUT outu LEN>N >str ERR erru LEN>N >str oc 0
    s" four tasks building rejection records at once exit 0" T-LABEL
    T-ENDING-EXITED=
    s" each task caught its own whole record every round, and stdout holds only the results" T-LABEL
-   OUT outu LEN>N
+   OUT outu LEN>N >str
    S\" A ok\nB ok\nC ok\nD ok\n"
    T$=
    s" no record reached stderr" T-LABEL

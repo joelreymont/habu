@@ -1,4 +1,3 @@
-split-str
 \ seal.f - seal regressions: a sealed package, and every engine package hb's
 \ build seals, rejects a definition into it, under --load and in a SUBJECT fork.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
@@ -33,51 +32,51 @@ create SLV-OUT SLV-CAP allot
 create SLV-ERR SLV-CAP allot
 create SLV-EMPTY 1 allot            \ zero-length stdin
 
-: SLV-COPY! ( str ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
-   u PATH-CAP > if E-FS-CAPACITY throw then
-   src dst u BYTE-COPY
-   u lenp ! ;
+: SLV-COPY! ( str ^u8 ^n -- ) {: src:str dst:^ lenp:^ :}
+   src STR:LEN PATH-CAP > if E-FS-CAPACITY throw then
+   src STR:DATA dst src STR:LEN BYTE-COPY
+   src STR:LEN lenp ! ;
 
 : SLV-ROOT ( -- str )
-   SLV-ROOT-BUF SLV-ROOT-U @ ;
+   SLV-ROOT-BUF SLV-ROOT-U @ >str ;
 
 : SLV-CHILD ( -- str )
-   SLV-CHILD-BUF SLV-CHILD-U @ ;
+   SLV-CHILD-BUF SLV-CHILD-U @ >str ;
 
 : SLV-LF ( -- )
    10 SB-APPEND-C ;
 
-: SLV-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:^ u:n :}
+: SLV-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:str :}
    erru LEN>N SLV-ERR-U !  outu LEN>N SLV-OUT-U !
    oc MATCH PROCESS:ending
      exited OF SLV-RC ! 0 0= SLV-EXITED ! ENDOF
      signaled OF SLV-RC ! 0 0= 0= SLV-EXITED ! ENDOF
-     timeout OF src u SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ T-TIMED-OUT ENDOF
+     timeout OF src SLV-OUT SLV-OUT-U @ >str SLV-ERR SLV-ERR-U @ >str T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: SLV-RUN-LOAD ( str -- ) {: src:^ u:n :}
-   SLV-CHILD src u FS:WRITE-ALL
+: SLV-RUN-LOAD ( str -- ) {: src:str :}
+   SLV-CHILD src FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
    SLV-CHILD PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$  SLV-EMPTY 0  SLV-OUT SLV-CAP >LEN
+   ENGINE-CANDIDATE:PATH$  SLV-EMPTY 0 >str  SLV-OUT SLV-CAP >LEN
    SLV-ERR SLV-CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   src u SLV-STORE! ;
+   src SLV-STORE! ;
 
 \ Fixtures run in SUBJECT forks of the sealed candidate.
-: SLV-SUBJECT ( str -- ) {: src:^ u:n :}
-   src u SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
-   PROCESS:WAIT-FOREVER SUBJECT:RUN src u SLV-STORE! ;
+: SLV-SUBJECT ( str -- ) {: src:str :}
+   src SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
+   PROCESS:WAIT-FOREVER SUBJECT:RUN src SLV-STORE! ;
 
-: SLV-ERR$ ( -- str )  SLV-ERR SLV-ERR-U @ ;
+: SLV-ERR$ ( -- str )  SLV-ERR SLV-ERR-U @ >str ;
 
 \ Publishing into a protected WID is rejected with exit 70 and an
 \ E-SEALED-PACKAGE record naming the word it would add.
-: SLV-ASSERT-PROT-PUBLISH ( str -- ) {: prose:^ proseu:n :}
+: SLV-ASSERT-PROT-PUBLISH ( str -- ) {: prose:str :}
    SLV-EXITED @ TTRUE
    SLV-RC @ 70 T=
    SLV-ERR$ s" error[E-SEALED-PACKAGE]" STR:CONTAINS? TTRUE
-   SLV-ERR$ prose proseu STR:CONTAINS? TTRUE ;
+   SLV-ERR$ prose STR:CONTAINS? TTRUE ;
 
 : SLV-LINE ( str -- )
    SB-APPEND SLV-LF ;
@@ -123,8 +122,8 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 : SLV-PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" habu-seal" FS:MKTEMP-DIR {: a:^ u:n :}
-   a u SLV-ROOT-BUF SLV-ROOT-U SLV-COPY!
+   s" habu-seal" FS:MKTEMP-DIR {: root:str :}
+   root SLV-ROOT-BUF SLV-ROOT-U SLV-COPY!
    SLV-ROOT FS:CLEANUP-TREE+
    SLV-ROOT s" forge.f" SLV-CHILD-BUF FS:JOIN-PATH SLV-CHILD-U ! ;
 

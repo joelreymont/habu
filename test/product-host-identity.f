@@ -1,4 +1,3 @@
-split-str
 \ product-host-identity.f - the same target tree built by its ordinary
 \ engine and by a host with one extra primitive must produce identical
 \ executable and name map. The variant is built from a private source copy.
@@ -39,22 +38,22 @@ create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
 variable RC
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: TREE$ ( -- str ) TREE TREE-U @ ;
-: VARIANT$ ( -- str ) VARIANT-ROOT VARIANT-ROOT-U @ ;
-: TMP$ ( -- str ) TMP TMP-U @ ;
-: BASE$ ( -- str ) BASE BASE-U @ ;
-: REF$ ( -- str ) REF REF-U @ ;
-: HOST$ ( -- str ) HOST HOST-U @ ;
-: REBUILT$ ( -- str ) REBUILT REBUILT-U @ ;
-: DEST$ ( -- str ) DEST DEST-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: TREE$ ( -- str ) TREE TREE-U @ >str ;
+: VARIANT$ ( -- str ) VARIANT-ROOT VARIANT-ROOT-U @ >str ;
+: TMP$ ( -- str ) TMP TMP-U @ >str ;
+: BASE$ ( -- str ) BASE BASE-U @ >str ;
+: REF$ ( -- str ) REF REF-U @ >str ;
+: HOST$ ( -- str ) HOST HOST-U @ >str ;
+: REBUILT$ ( -- str ) REBUILT REBUILT-U @ >str ;
+: DEST$ ( -- str ) DEST DEST-U @ >str ;
 
-: ROOT-PATH! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ up:^ :}
-   ROOT$ a u dst FS:JOIN-PATH up ! ;
+: ROOT-PATH! ( str ^u8 ^n -- ) {: s:str dst:^ up:^ :}
+   ROOT$ s dst FS:JOIN-PATH up ! ;
 
 : SETUP ( -- )
-   s" product-host-identity" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT u BYTE-COPY u ROOT-U !
+   s" product-host-identity" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA ROOT dir STR:LEN BYTE-COPY dir STR:LEN ROOT-U !
    s" tree" TREE TREE-U ROOT-PATH!
    s" variant" VARIANT-ROOT VARIANT-ROOT-U ROOT-PATH!
    s" tmp" TMP TMP-U ROOT-PATH! TMP$ FS:MAKE-DIRS
@@ -72,21 +71,21 @@ variable RC
 : ARM-ROW$ ( -- str ) S\" \n   s\" host-extra\" ['] BCR FPRIM-L" ;
 
 : INSERT-ROW ( str str str -- )
-   {: path:^ pathu:n anchor:^ anchoru:n row:^ rowu:n :}
-   VARIANT$ path pathu DEST FS:JOIN-PATH DEST-U !
+   {: path:str anchor:str row:str :}
+   VARIANT$ path DEST FS:JOIN-PATH DEST-U !
    DEST$ FS:FILE-SIZE {: size:n :}
    size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:^ len :}
    DEST$ buf size FS:READ-ALL size <> if
       s" product-host-identity: short variant source read" EXIT-STATUS:IOERR die
    then
-   buf size anchor anchoru STR:FIND-SUB MATCH option
+   buf size >str anchor STR:FIND-SUB MATCH option
       none OF
          s" product-host-identity: primitive insertion anchor missing" EXIT-STATUS:FAILURE die
       ENDOF
       some OF IDX>N {: at:n :}
-         DEST$ buf at FS:WRITE-ALL
-         DEST$ row rowu FS:APPEND-FILE
-         DEST$ buf at + size at - FS:APPEND-FILE
+         DEST$ buf at >str FS:WRITE-ALL
+         DEST$ row FS:APPEND-FILE
+         DEST$ buf at + size at - >str FS:APPEND-FILE
       ENDOF
    ;MATCH
    buf len MEM:RELEASE-BYTES ;
@@ -104,7 +103,7 @@ variable RC
    ;MATCH ;
 
 : SUCCESS ( -- )
-   RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
+   RC @ 0<> if OUT OUT-U @ >str type ERR ERR-U @ >str type then
    RC @ 0 T= ;
 
 : ARGV+ ( str -- ) PROC-ARGV+ ;
@@ -114,34 +113,35 @@ variable RC
    PROC-ENV-INHERIT-MISSING ;
 
 \ engine builds the tree it runs in into path.
-: BUILD ( ^u8 n ^u8 n ^u8 n -- )
-   {: engine:^ engineu:n tree:^ treeu:n path:^ pathu:n :}
+: BUILD ( str str str -- )
+   {: engine:str tree:str path:str :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" ARGV+
    s" tools/hb-build.f" ARGV+
    s" --" ARGV+
    s" --engine" ARGV+
    s" -o" ARGV+
-   path pathu ARGV+
+   path ARGV+
    ENV!
-   engine engineu tree treeu
+   engine tree
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
    SUCCESS ;
 
 : NAMES! ( str ^u8 ^n -- )
-   {: path:^ pathu:n dst:^ up:^ :}
-   pathu s" .map" nip + PATH-CAP > if E-FS-PATH throw then
-   path dst pathu BYTE-COPY
-   s" .map" dst pathu + swap BYTE-COPY
-   pathu s" .map" nip + up ! ;
+   {: path:str dst:^ up:^ :}
+   s" .map" {: ext:str :}
+   path STR:LEN ext STR:LEN + PATH-CAP > if E-FS-PATH throw then
+   path STR:DATA dst path STR:LEN BYTE-COPY
+   ext STR:DATA dst path STR:LEN + ext STR:LEN BYTE-COPY
+   path STR:LEN ext STR:LEN + up ! ;
 
 : SAME-PRODUCT ( str str -- )
-   {: a:^ au:n b:^ bu:n :}
-   a au b bu CHAIN-RUN:SAME-FILES? TTRUE
-   a au NAME-A NAME-A-U NAMES!
-   b bu NAME-B NAME-B-U NAMES!
-   NAME-A NAME-A-U @ NAME-B NAME-B-U @ CHAIN-RUN:SAME-FILES? TTRUE ;
+   {: a:str b:str :}
+   a b CHAIN-RUN:SAME-FILES? TTRUE
+   a NAME-A NAME-A-U NAMES!
+   b NAME-B NAME-B-U NAMES!
+   NAME-A NAME-A-U @ >str NAME-B NAME-B-U @ >str CHAIN-RUN:SAME-FILES? TTRUE ;
 
 \ The seed may predate this tree's compiler. Build both hosts from these copied
 \ sources, then ask each host to build the identical unmodified tree.

@@ -1,4 +1,3 @@
-split-str
 \ A bare tail names the word its scope holds, and the checker certifies that
 \ word: the one the compiler calls. Package REOPEN-BIND
 \ (test/reopen-binding-lib.f) publishes @, dup and + with effects the engine's
@@ -26,7 +25,7 @@ s" RE-CONTROL ( -- n ) REC 2 NTH" CHECK-QUIET-CANDIDATE! -1 T=
 \ is the package fetch.
 : RE-GET ( -- n )
    REC          \ not yet a fetch: @ in a comment is no token
-   s" @ !" 2drop
+   s" @ !" drop
    2 @ ;
 
 \ Bare and qualified in one body are one word.

@@ -1,4 +1,3 @@
-split-str
 \ Named entries own root-relative dependencies; canonical identity deduplicates.
 require src/lib/string.f
 require src/lib/test.f
@@ -41,25 +40,25 @@ public
 : BUMP ( n -- ) LOADED +! ;
 private
 
-: COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
-   a dst u BYTE-COPY u lenp ! ;
+: COPY! ( str ^u8 ^n -- ) {: s:str dst:^ lenp:^ :}
+   s STR:DATA dst s STR:LEN BYTE-COPY s STR:LEN lenp ! ;
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: A$ ( -- str ) APP-A APP-A-U @ ;
-: B$ ( -- str ) APP-B APP-B-U @ ;
-: FALLBACK$ ( -- str ) FALLBACK FALLBACK-U @ ;
-: A-PATH ( str -- str ) A$ 2swap JOIN ;
-: B-PATH ( str -- str ) B$ 2swap JOIN ;
-: FALLBACK-PATH ( str -- str ) FALLBACK$ 2swap JOIN ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: A$ ( -- str ) APP-A APP-A-U @ >str ;
+: B$ ( -- str ) APP-B APP-B-U @ >str ;
+: FALLBACK$ ( -- str ) FALLBACK FALLBACK-U @ >str ;
+: A-PATH ( str -- str ) A$ swap JOIN ;
+: B-PATH ( str -- str ) B$ swap JOIN ;
+: FALLBACK-PATH ( str -- str ) FALLBACK$ swap JOIN ;
 
 : RESTORED ( -- )
-   CURRENT$ SAVED-ROOT SAVED-ROOT-U @ T$=
-   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SAVED-TOP SAVED-TOP-U @ T$= ;
+   CURRENT$ SAVED-ROOT SAVED-ROOT-U @ >str T$=
+   SOURCE-ROOT:ACTIVE-SOURCE drop drop SAVED-TOP SAVED-TOP-U @ >str T$= ;
 
 : PREP ( -- )
    FS:CLEANUP-RESET 0 LOADED !
    CURRENT$ SAVED-ROOT SAVED-ROOT-U COPY!
-   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SAVED-TOP SAVED-TOP-U COPY!
+   SOURCE-ROOT:ACTIVE-SOURCE drop drop SAVED-TOP SAVED-TOP-U COPY!
    s" habu-source-root" FS:MKTEMP-DIR CANONICAL TTRUE ROOT ROOT-U COPY!
    ROOT$ FS:CLEANUP-TREE+
    ROOT$ s" a" JOIN APP-A APP-A-U COPY!
@@ -92,13 +91,13 @@ private
 : ALIASES ( -- )
    s" src/leaf.f" A-PATH TARGET TARGET-U COPY!
    s" src/alias.f" A-PATH LINK LINK-U COPY!
-   TARGET TARGET-U @ LINK LINK-U @ FS:MAKE-SYMLINK
+   TARGET TARGET-U @ >str LINK LINK-U @ >str FS:MAKE-SYMLINK
    s" src/./nested/../leaf.f" A-PATH required
-   LINK LINK-U @ required
-   TARGET TARGET-U @ required
+   LINK LINK-U @ >str required
+   TARGET TARGET-U @ >str required
    LOADED @ 111 T=
-   LINK LINK-U @ included
-   TARGET TARGET-U @ included
+   LINK LINK-U @ >str included
+   TARGET TARGET-U @ >str included
    LOADED @ 113 T= RESTORED ;
 
 : PROVIDED-MISSING ( -- )
@@ -125,11 +124,20 @@ private
    REJECTION:BUFFER-OFF
    RESTORED ;
 
+\ Quotation bodies that take a str: a quotation literal moves its input as one
+\ cell, so each str it takes goes to a word whose row says str.
+: NUL-READ ( str -- str ) drop s\" a\zb.f" SOURCE-ROOT:READ-OS ;
+: NUL-CANON ( str -- str bool ) drop s\" a\zb.f" true ;
+: RELATIVE-CANON ( str -- str bool ) drop s" src/core/include.f" true ;
+: LONG-READ ( str -- str ) drop LONG-PATH CAP >str SOURCE-ROOT:READ-OS ;
+: LEAF-BYTES ( str str -- ) drop s" 1 SOURCE-ROOT-TEST:BUMP" T$= CURRENT$ A$ T$= 1 BUMP ;
+: SUPPLIED-BYTES ( str str -- ) drop s" 2 SOURCE-ROOT-TEST:BUMP" T$= CURRENT$ A$ T$= 1 BUMP ;
+
 : READ-NUL ( -- )
    s" a path holding a 0 byte is rejected by SOURCE-ROOT:READ-OS" T-LABEL
    REJECTION:CAPTURE
    [: [: SOURCE-ROOT:CANON-OS ;]
-      [: 2drop s\" a\zb.f" SOURCE-ROOT:READ-OS ;]
+      [: NUL-READ ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
    70 TTHROWSQ
    REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
@@ -141,7 +149,7 @@ private
 : CANON-NUL ( -- )
    s" a supplied canon's answer holding a 0 byte is rejected, naming SOURCE-INPUT:CANON" T-LABEL
    REJECTION:CAPTURE
-   [: [: 2drop s\" a\zb.f" true ;]
+   [: [: NUL-CANON ;]
       [: SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
    70 TTHROWSQ
@@ -155,7 +163,7 @@ private
 : CANON-RELATIVE ( -- )
    s" a supplied canon's answer not beginning with / is rejected, naming SOURCE-INPUT:CANON" T-LABEL
    REJECTION:CAPTURE
-   [: [: 2drop s" src/core/include.f" true ;]
+   [: [: RELATIVE-CANON ;]
       [: SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH required ;] SOURCE-INPUT:WITH ;]
    70 TTHROWSQ
@@ -171,7 +179,7 @@ private
    CAP 0 ?do 97 LONG-PATH i + c! loop
    REJECTION:CAPTURE
    [: [: SOURCE-ROOT:CANON-OS ;]
-      [: 2drop LONG-PATH CAP SOURCE-ROOT:READ-OS ;]
+      [: LONG-READ ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
    70 TTHROWSQ
    REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
@@ -193,18 +201,18 @@ private
 : WITH-OPENS ( -- )
    s" SOURCE-ROOT:WITH-BYTES and WITH-SUPPLIED open a file under the root their caller passes" T-LABEL
    0 LOADED !
-   s" main.f" B-PATH RESOLVE drop 2drop
+   s" main.f" B-PATH RESOLVE drop drop
    A$ s" src/leaf.f" A-PATH
-   [: 2drop s" 1 SOURCE-ROOT-TEST:BUMP" T$= CURRENT$ A$ T$= 1 BUMP ;] WITH-BYTES
+   [: LEAF-BYTES ;] WITH-BYTES
    A$ s" src/leaf.f" A-PATH s" 2 SOURCE-ROOT-TEST:BUMP"
-   [: 2drop s" 2 SOURCE-ROOT-TEST:BUMP" T$= CURRENT$ A$ T$= 1 BUMP ;] WITH-SUPPLIED
+   [: SUPPLIED-BYTES ;] WITH-SUPPLIED
    LOADED @ 2 T= RESTORED ;
 
 : WITH-LONG ( -- )
    s" a root path of WORK-BYTES is rejected by SOURCE-ROOT:WITH, which the record names" T-LABEL
    CAP 2 * 0 ?do 97 LONG-ROOT i + c! loop
    REJECTION:CAPTURE
-   [: LONG-ROOT CAP 2 * [: ;] SOURCE-ROOT:WITH ;] 70 TTHROWSQ
+   [: LONG-ROOT CAP 2 * >str [: ;] SOURCE-ROOT:WITH ;] 70 TTHROWSQ
    REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
    REJECTION:BUFFER$
    s" error[E-PATH-RANGE]: `SOURCE-ROOT:WITH` got a path" STR:STARTS-WITH? TTRUE
@@ -230,9 +238,9 @@ private
 
 : INVOCATION$ ( -- str ) ROOT$ s" invoke" JOIN ;
 
-: ENGINE-LINK ( str -- ) {: name:^ nameu:n :}
-   CWD$ name nameu JOIN TARGET TARGET-U COPY!
-   TARGET TARGET-U @ INVOCATION$ name nameu JOIN FS:MAKE-SYMLINK ;
+: ENGINE-LINK ( str -- ) {: name:str :}
+   CWD$ name JOIN TARGET TARGET-U COPY!
+   TARGET TARGET-U @ >str INVOCATION$ name JOIN FS:MAKE-SYMLINK ;
 
 : PREP-ENGINE-ALIASES ( -- )
    INVOCATION$ FS:MAKE-DIR
@@ -241,7 +249,7 @@ private
    ROOT$ s" other/src/lib" JOIN FS:MAKE-DIRS
    ROOT$ s" other/src/lib/error.f" JOIN s" 100 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL
    ROOT$ s" other/nested" JOIN TARGET TARGET-U COPY!
-   TARGET TARGET-U @ INVOCATION$ s" branch" JOIN FS:MAKE-SYMLINK
+   TARGET TARGET-U @ >str INVOCATION$ s" branch" JOIN FS:MAKE-SYMLINK
    s" src/lib" A-PATH FS:MAKE-DIRS s" src/lib" B-PATH FS:MAKE-DIRS
    s" src/lib/error.f" A-PATH s" 1 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL
    s" src/lib/error.f" B-PATH s" 10 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL ;
@@ -259,9 +267,9 @@ private
    CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCAP-RESULT:>N {: outu:n erru:n rc:n :}
-   rc 0 <> if CHILD-OUT outu type CHILD-ERR erru type then
+   rc 0 <> if CHILD-OUT outu >str type CHILD-ERR erru >str type then
    rc 0 T= erru 0 T=
-   CHILD-OUT outu s" source root aliases: ok" STR:CONTAINS? TTRUE
+   CHILD-OUT outu >str s" source root aliases: ok" STR:CONTAINS? TTRUE
    RESTORED ;
 
 \ Each file resumes after its child. Distinct entry/exit ordinals expose
@@ -306,13 +314,13 @@ private
 : DEEP-PATH ( str n -- str )
    SB-RESET DEEP-NAME+ SB$ A-PATH ;
 
-: DEEP-MAKE ( str bool -- ) {: prefix:^ prefixu:n fail:bool :}
-   prefix prefixu A-PATH FS:MAKE-DIRS
+: DEEP-MAKE ( str bool -- ) {: prefix:str fail:bool :}
+   prefix A-PATH FS:MAKE-DIRS
    DEEP-COUNT 0 ?do
-      prefix prefixu i DEEP-PATH TARGET TARGET-U COPY!
+      prefix i DEEP-PATH TARGET TARGET-U COPY!
       SB-RESET i FMT:SB-U S\"  SOURCE-ROOT-TEST:ENTER\n" SB-APPEND
       i DEEP-COUNT 1- < if
-         S\" s\" " SB-APPEND prefix prefixu i 1+ DEEP-NAME+
+         S\" s\" " SB-APPEND prefix i 1+ DEEP-NAME+
          fail i 2 mod 0= or if
             S\" \" included\n" SB-APPEND
          else
@@ -324,7 +332,7 @@ private
          then
       then
       i FMT:SB-U S\"  SOURCE-ROOT-TEST:LEAVE-FRAME\n" SB-APPEND
-      TARGET TARGET-U @ SB$ FS:WRITE-ALL
+      TARGET TARGET-U @ >str SB$ FS:WRITE-ALL
    loop ;
 
 : DEEP-THROW ( -- )
@@ -337,7 +345,7 @@ private
    40 EVAL-N ! EVAL-DOWN EVAL-N @ 47 T=
    [: 40 EVAL-N ! EVAL-FAIL ;] 9133 TTHROWSQ
    RESTORED
-   s" [package] nip 0 T=" evaluate-closed
+   s" [package] STR:LEN 0 T=" evaluate-closed
    40 EVAL-N ! EVAL-DOWN EVAL-N @ 47 T= ;
 
 : DEEP-LOADS ( -- )
@@ -371,18 +379,18 @@ create CHUNK LARGE-CHUNK allot
 
 : LARGE-CHUNKS+ ( n -- )
    {: count:n :}
-   count 0 ?do TARGET TARGET-U @ CHUNK LARGE-CHUNK FS:APPEND-FILE loop ;
+   count 0 ?do TARGET TARGET-U @ >str CHUNK LARGE-CHUNK >str FS:APPEND-FILE loop ;
 
 : LARGE-MAKE ( -- )
    s" large" A-PATH FS:MAKE-DIRS
    LARGE-CHUNK 0 ?do i LARGE-BYTE CHUNK i + c! loop
    s" large/small.f" A-PATH s" 1 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
    s" large/big.f" A-PATH TARGET TARGET-U COPY!
-   TARGET TARGET-U @ CHUNK LARGE-CHUNK FS:WRITE-ALL
+   TARGET TARGET-U @ >str CHUNK LARGE-CHUNK >str FS:WRITE-ALL
    LARGE-HALF 1- LARGE-CHUNKS+
-   TARGET TARGET-U @ S\" include large/small.f\n" FS:APPEND-FILE
+   TARGET TARGET-U @ >str S\" include large/small.f\n" FS:APPEND-FILE
    LARGE-HALF LARGE-CHUNKS+
-   TARGET TARGET-U @ S\" 10 SOURCE-ROOT-TEST:BUMP\n" FS:APPEND-FILE
+   TARGET TARGET-U @ >str S\" 10 SOURCE-ROOT-TEST:BUMP\n" FS:APPEND-FILE
    s" large/outer.f" A-PATH
       S\" require large/big.f\nrequire large/big.f\ninclude large/big.f\n100 SOURCE-ROOT-TEST:BUMP\n"
       FS:WRITE-ALL ;
@@ -402,16 +410,16 @@ PATH-CAP 1+ 2 * constant JOIN-WORK
 -1 1 rshift constant MAX-CELL
 create JOIN-SRC JOIN-WORK allot
 
-: JOIN-ROOT$ ( n -- str ) JOIN-SRC swap ;
+: JOIN-ROOT$ ( n -- str ) JOIN-SRC swap >str ;
 
 : JOIN-ROOM ( -- )
    JOIN-WORK 0 ?do 97 JOIN-SRC i + c! loop
    47 JOIN-SRC c!
    s" a root twice PATH-CAP long joins whole" T-LABEL
-   JOIN-WORK 3 - JOIN-ROOT$ s" x" JOIN nip JOIN-WORK 1- T=
+   JOIN-WORK 3 - JOIN-ROOT$ s" x" JOIN STR:LEN JOIN-WORK 1- T=
    s" a root length of -1 or the maximum cell is rejected" T-LABEL
-   [: -1 JOIN-ROOT$ s" x" JOIN 2drop ;] E-PATH-RANGE TTHROWSQ
-   [: MAX-CELL JOIN-ROOT$ s" x" JOIN 2drop ;] E-PATH-RANGE TTHROWSQ ;
+   [: -1 JOIN-ROOT$ s" x" JOIN drop ;] E-PATH-RANGE TTHROWSQ
+   [: MAX-CELL JOIN-ROOT$ s" x" JOIN drop ;] E-PATH-RANGE TTHROWSQ ;
 
 : DIRNAMES ( -- )
    s" a bare relative name's directory is the current directory" T-LABEL

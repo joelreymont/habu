@@ -1,4 +1,3 @@
-split-str
 \ require-cap-test.f - the require inventory grows past 512 entries (the first
 \ case) and through another growth step (the second). Each case forks a SUBJECT
 \ child that resets the require registry, flips DISCOVERY so synthetic paths
@@ -27,17 +26,17 @@ variable EXITED?
 
 \ A child program that fills the require table to K entries.
 
-: FORGE$ ( -- str )  FORGE-BUF FORGE-U @ ;
+: FORGE$ ( -- str )  FORGE-BUF FORGE-U @ >str ;
 
 : FORGE-C ( n -- ) {: c:n :}
    FORGE-U @ 1+ FORGE-CAP > if s" require-cap: forge overflow" EXIT-STATUS:FAILURE die then
    c FORGE-BUF FORGE-U @ + c!
    FORGE-U @ 1+ FORGE-U ! ;
 
-: FORGE-APPEND ( str -- ) {: a:^ u:n :}
-   FORGE-U @ u + FORGE-CAP > if s" require-cap: forge overflow" EXIT-STATUS:FAILURE die then
-   a FORGE-BUF FORGE-U @ + u BYTE-COPY
-   FORGE-U @ u + FORGE-U ! ;
+: FORGE-APPEND ( str -- ) {: s:str :}
+   FORGE-U @ s STR:LEN + FORGE-CAP > if s" require-cap: forge overflow" EXIT-STATUS:FAILURE die then
+   s STR:DATA FORGE-BUF FORGE-U @ + s STR:LEN BYTE-COPY
+   FORGE-U @ s STR:LEN + FORGE-U ! ;
 
 : FORGE-LINE ( n -- ) {: i:n :}        \ one fresh require: "require p<a-z><a-z>"
    s" require p" FORGE-APPEND
@@ -57,22 +56,22 @@ variable EXITED?
    s" SAME-COUNT" FORGE-APPEND  10 FORGE-C
    FORGE$ ;
 
-: STORE ( len len PROCESS:ending ^u8 n -- ) {: outu:len erru:len oc src:^ u:n :}
+: STORE ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:str :}
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
      exited OF   RC-N ! -1 EXITED? ! ENDOF
      signaled OF RC-N !  0 EXITED? ! ENDOF
-     timeout OF src u OUT-BUF outu LEN>N ERR-BUF ERR-U @ T-TIMED-OUT ENDOF
+     timeout OF src OUT-BUF outu LEN>N >str ERR-BUF ERR-U @ >str T-TIMED-OUT ENDOF
    ;MATCH ;
 
 : RUN-CHILD ( n -- )
-   FORGE-GEN {: src:^ u:n :}
-   src u
+   FORGE-GEN {: src:str :}
+   src
    OUT-BUF IO-CAP >LEN
    ERR-BUF IO-CAP >LEN
    PROCESS:WAIT-FOREVER
    SUBJECT:RUN                          \ -- out-len err-len PROCESS:ending
-   src u STORE ;
+   src STORE ;
 
 : ASSERT-LOADS ( -- )                   \ child accepted every require and exited clean
    EXITED? @ TTRUE

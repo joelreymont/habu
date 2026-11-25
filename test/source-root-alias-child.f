@@ -1,4 +1,3 @@
-split-str
 \ Fresh engine in a checkout whose lib, src and test directories are symlinks.
 require src/lib/test.f
 
@@ -13,27 +12,27 @@ public
 : BUMP ( n -- ) LOADED +! ;
 private
 
-: ROOT$ ( -- ^u8 n ) 0 SCRIPT-ARGV$ ;
+: ROOT$ ( -- str ) 0 SCRIPT-ARGV$ ;
 
-: PATH! ( str -- ) {: a:^ u:n :}
-   u PATH-CAP > if E-FS-CAPACITY throw then
-   a PATH-BUF u BYTE-COPY u PATH-U ! ;
+: PATH! ( str -- ) {: s:str :}
+   s STR:LEN PATH-CAP > if E-FS-CAPACITY throw then
+   s STR:DATA PATH-BUF s STR:LEN BYTE-COPY s STR:LEN PATH-U ! ;
 
-: PATH$ ( -- ^u8 n ) PATH-BUF PATH-U @ ;
+: PATH$ ( -- str ) PATH-BUF PATH-U @ >str ;
 
 \ JOIN storage is resolver scratch; each query may overwrite it. Retain the
 \ requested spelling so every consumer sees the same original bytes.
-: KNOWN ( ^u8 n -- )
+: KNOWN ( str -- )
    PATH!
    PATH$ REQUIRE-REG:ENGINE-PROVIDES? TTRUE
-   PATH$ RESOLVE TTRUE 2drop
-   PATH$ ENTRY-RESOLVE TTRUE 2drop
+   PATH$ RESOLVE TTRUE drop
+   PATH$ ENTRY-RESOLVE TTRUE drop
    PATH$ required ;
 
-: UNKNOWN ( ^u8 n -- )
+: UNKNOWN ( str -- )
    PATH!
    PATH$ REQUIRE-REG:ENGINE-PROVIDES? TFALSE
-   PATH$ RESOLVE TFALSE 2drop ;
+   PATH$ RESOLVE TFALSE drop ;
 
 : PORTABLE ( -- )
    REQUIRE-REG:COUNT {: before:n :}
@@ -47,10 +46,10 @@ private
    REQUIRE-REG:COUNT before T=
    REQUIRE-REG:SNAPSHOT
    s" src/lib/error.f" REQUIRE-REG:ENGINE-PROVIDES? TTRUE
-   s" src/lib/error.f" RESOLVE TFALSE 2drop
+   s" src/lib/error.f" RESOLVE TFALSE drop
    REQUIRE-REG:RESTORE ;
 
-: OWNED ( ^u8 n -- )
+: OWNED ( str -- )
    [: s" src/lib/error.f" required ;] WITH ;
 
 : DISTINCT ( -- )

@@ -1,4 +1,3 @@
-split-str
 \ prop-test.f - property-based checker soundness in Habu: generates typed
 \ definitions, checks them, runs the certified ones in process (`evaluate`) and
 \ exits 1 when a certified definition's out-arity differs from its declaration
@@ -67,15 +66,15 @@ create BBUF BBUF-CAP allot   variable BLEN     \ the body
 create PBUF PBUF-CAP allot  variable PBUF-U   \ the full def / the runner
 variable SA  variable SU  variable PJ  variable NJ
 variable RUN-SEED  variable N  variable RI
-: PROP-B+  ( str -- ) {: a:^ u:n :}
-   0 begin dup u < while
-      dup a + c@  BBUF BLEN @ + c!
+: PROP-B+  ( str -- ) {: s:str :}
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@  BBUF BLEN @ + c!
       BLEN @ 1+ BLEN !
       1+
    repeat drop ;
-: P+  ( str -- ) {: a:^ u:n :}
-   0 begin dup u < while
-      dup a + c@  PBUF PBUF-U @ + c!
+: P+  ( str -- ) {: s:str :}
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@  PBUF PBUF-U @ + c!
       PBUF-U @ 1+ PBUF-U !
       1+
    repeat drop ;
@@ -93,8 +92,8 @@ variable TFLAG                             \ sig element type: 0 = i64 (concrete
    c PBUF PBUF-U @ + c!
    PBUF-U @ 1+ PBUF-U ! ;
 : POS. ( -- )  s" seed " type RUN-SEED @ FMT:.INT  s"  iteration " type RI @ FMT:.INT ;
-: DEF. ( -- )  PBUF PBUF-U @ type cr ;
-: BODY. ( -- )  BBUF BLEN @ type cr ;
+: DEF. ( -- )  PBUF PBUF-U @ >str type cr ;
+: BODY. ( -- )  BBUF BLEN @ >str type cr ;
 
 variable DEP  variable NIN  variable DOUT  variable K
 variable LOCN                              \ fresh mid-body local name counter (z0, z1, ...)
@@ -112,7 +111,7 @@ variable PERT?                             \ declared out perturbed away from th
 \ self-test asserts each one is generated and certifies.
 : OP-LOOP$   ( -- str )  s" 3 0 ?do loop " ;
 : OP-LEAVE$  ( -- str )  s" 3 0 ?do leave loop " ;
-: OP-STR$    ( -- str )  S\" s\" x\" 2drop " ;
+: OP-STR$    ( -- str )  S\" s\" x\" drop " ;
 : OP-QUOT0$  ( -- str )  s" [: ;] execute " ;
 : OP-BRANCH$ ( -- str )  s" dup 0= if 1+ else 1- then " ;
 : OP-RSTK$   ( -- str )  s" >r r> " ;
@@ -159,7 +158,7 @@ variable STEPS  variable GI
    0 GI ! begin GI @ STEPS @ < while  PROP-STEP  GI @ 1+ GI !  repeat ;
 : HEAD  ( n n n -- ) {: name-ch:n in-arity:n out-arity:n :}
    0 PBUF-U !  s" : " P+  name-ch PC  s"  ( " P+  in-arity PTY  s" -- " P+  out-arity PTY  s" ) " P+ ;
-: BODY+  ( -- )  BBUF BLEN @ P+  s" ; " P+ ;
+: BODY+  ( -- )  BBUF BLEN @ >str P+  s" ; " P+ ;
 : GEN  ( -- )   \ PBUF := ": G ( i64*NIN -- i64*DOUT ) <body> ;"
    0 TFLAG !
    4 RND%  3 RND% 0 = if -1 else 0 then GEN-BODY
@@ -194,8 +193,8 @@ private
 PTR-VARIABLE SRC-A
 variable SRC-U
 
-: SRC$ ( -- ^u8 n )
-   SRC-A @ SRC-U @ ;
+: SRC$ ( -- str )
+   SRC-A @ SRC-U @ >str ;
 
 : COMPILE ( -- )
    SRC$ evaluate-closed ;
@@ -207,10 +206,10 @@ TBUF-CAP BUFFER: TBUF
 variable TBUF-U
 
 : TBUF+ ( str -- )
-   {: a:^ u:n :}
-   TBUF-U @ u + TBUF-CAP > IF  E-STR-CAPACITY throw  THEN
-   a TBUF TBUF-U @ + u BYTE-COPY
-   TBUF-U @ u + TBUF-U ! ;
+   {: s:str :}
+   TBUF-U @ s STR:LEN + TBUF-CAP > IF  E-STR-CAPACITY throw  THEN
+   s STR:DATA TBUF TBUF-U @ + s STR:LEN BYTE-COPY
+   TBUF-U @ s STR:LEN + TBUF-U ! ;
 
 \ A program reaches a refused candidate's body only through TRUSTED:, so
 \ COMPILE-TRUSTED compiles `TRUSTED` and its `: G ( ... ) <body> ;` unenforced.
@@ -228,10 +227,10 @@ variable TBUF-U
 \ A refusal is rc 70 with the checker's diagnostic captured; any other
 \ nonzero rc, an engine refusal after certification among them, is rethrown.
 : CHK  ( str -- )
-   SRC-U !
-   SRC-A !
+   dup STR:LEN SRC-U !
+   STR:DATA SRC-A !
    REJECTION:CAPTURE
-   ['] COMPILE catch  REJECTION:BUFFER$ nip {: rc:n diag-u:n :}
+   ['] COMPILE catch  REJECTION:BUFFER$ STR:LEN {: rc:n diag-u:n :}
    REJECTION:BUFFER-OFF
    rc 0= IF  -1 VERD !  EXIT  THEN
    rc 70 <>  diag-u 0=  or IF  rc throw  THEN
@@ -247,11 +246,11 @@ variable MEAS-OUT
 \ types, so it runs as the body of a TRUSTED: definition it defines and calls.
 : MEAS-PBUF ( -- )
    0 TBUF-U !
-   s" TRUSTED: PROP-MEASURE ( -- ) " TBUF+  PBUF PBUF-U @ TBUF+
+   s" TRUSTED: PROP-MEASURE ( -- ) " TBUF+  PBUF PBUF-U @ >str TBUF+
    s"  MEAS-OUT ! ; PROP-MEASURE" TBUF+
-   [: TBUF TBUF-U @ TEST-EVAL:RC  MEAS-RC ;] TRIAL ;
+   [: TBUF TBUF-U @ >str TEST-EVAL:RC  MEAS-RC ;] TRIAL ;
 : RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
-   RUN1  PBUF PBUF-U @ TEST-EVAL:RC  MEAS-RC ;
+   RUN1  PBUF PBUF-U @ >str TEST-EVAL:RC  MEAS-RC ;
 : FC-SET-ARITY ( n n -- )
    FC-MEAS !  FC-EXP !  1 FC-KIND !  PROP-NFC @ 1+ PROP-NFC ! ;
 : FC-SET-TRAP ( n -- )
@@ -274,10 +273,10 @@ variable MEAS-OUT
 \ are capped/quiet but the finding is fatal either way: the NSI/NCI
 \ counters fail the run at the summary (FINISH) and fail the shard (SHARD-CHILD).
 variable SWEEP-QUIET
-: LOG-META  ( str -- ) {: a:^ u:n :}
+: LOG-META  ( str -- ) {: s:str :}
    SWEEP-QUIET @ if exit then
-   s" prop-test: metamorphic " type a u type s"  inconsistency: " type POS. cr
-   s" variant: " type PBUF PBUF-U @ type cr
+   s" prop-test: metamorphic " type s type s"  inconsistency: " type POS. cr
+   s" variant: " type PBUF PBUF-U @ >str type cr
    s" body: " type BODY. ;
 
 \ Metamorphic subsumption: an i64-certified body must also certify under the
@@ -287,7 +286,7 @@ variable SWEEP-QUIET
 variable NSUB
 variable NSI
 : SUBSUME  ( -- )   \ pre: BBUF/NIN/DOUT is the certified i64 program G
-   [: 1 TFLAG !  83 NIN @ DOUT @ HEAD  BODY+  0 TFLAG !  PBUF PBUF-U @ CHK
+   [: 1 TFLAG !  83 NIN @ DOUT @ HEAD  BODY+  0 TFLAG !  PBUF PBUF-U @ >str CHK
    VERD @ -1 = IF  NSUB @ 1+ NSUB !  83 NIN @ DOUT @ MEASURE
    ELSE  NSI @ LOG-LIMIT < IF s" subsumption" LOG-META THEN  NSI @ 1+ NSI !  THEN
    ;] TRIAL ;
@@ -299,11 +298,11 @@ variable NCI
 variable CAI  variable CAO  variable CBO
 : COMPOSE  ( -- )
    [: 0 TFLAG !
-   3 RND% 0 GEN-BODY  NIN @ CAI !  DEP @ CAO !  88 CAI @ CAO @ HEAD  BODY+  PBUF PBUF-U @ CHK   \ X=88
+   3 RND% 0 GEN-BODY  NIN @ CAI !  DEP @ CAO !  88 CAI @ CAO @ HEAD  BODY+  PBUF PBUF-U @ >str CHK   \ X=88
    VERD @ -1 = IF
-      CAO @ 0 GEN-BODY  DEP @ CBO !  89 CAO @ CBO @ HEAD  BODY+  PBUF PBUF-U @ CHK              \ Y=89
+      CAO @ 0 GEN-BODY  DEP @ CBO !  89 CAO @ CBO @ HEAD  BODY+  PBUF PBUF-U @ >str CHK              \ Y=89
       VERD @ -1 = IF
-         0 PBUF-U ! s" : Z ( " P+  CAI @ PTY  s" -- " P+  CBO @ PTY  s" ) X Y ; " P+  PBUF PBUF-U @ CHK   \ Z=90
+         0 PBUF-U ! s" : Z ( " P+  CAI @ PTY  s" -- " P+  CBO @ PTY  s" ) X Y ; " P+  PBUF PBUF-U @ >str CHK   \ Z=90
          VERD @ -1 = IF  NCMP @ 1+ NCMP !  90 CAI @ CBO @ MEASURE
          ELSE  NCI @ LOG-LIMIT < IF s" composition" LOG-META THEN  NCI @ 1+ NCI !  THEN
       THEN
@@ -322,13 +321,13 @@ variable BSAVE
 \ A predicate run under TRIAL leaves its answer here: a trial returns nothing.
 TYPED-VARIABLE TRIAL-FLAG bool
 : FCFAIL?  ( -- bool )   \ does the current BBUF certify AND run to an arity != DOUT (or trap)?
-   [: REBUILD-G  PBUF PBUF-U @ CHK
+   [: REBUILD-G  PBUF PBUF-U @ >str CHK
    VERD @ -1 = IF  71 NIN @ RUN-MEAS
       LAST-TRAP @ 0= 0= IF  0 0=  ELSE  LAST-MEAS @ DOUT @ <>  THEN
    ELSE  0 0= 0=  THEN  TRIAL-FLAG ! ;] TRIAL  TRIAL-FLAG @ ;
-: STILLCERT? ( -- bool )  [: REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  TRIAL-FLAG ! ;] TRIAL  TRIAL-FLAG @ ;
+: STILLCERT? ( -- bool )  [: REBUILD-G  PBUF PBUF-U @ >str CHK  VERD @ -1 =  TRIAL-FLAG ! ;] TRIAL  TRIAL-FLAG @ ;
 : CONFIRM-FR? ( -- bool )
-   [: PBUF PBUF-U @ COMPILE-TRUSTED
+   [: PBUF PBUF-U @ >str COMPILE-TRUSTED
    0 = IF  71 NIN @ RUN-MEAS
       LAST-TRAP @ IF  0 0= 0=  ELSE  LAST-MEAS @ DOUT @ =  THEN
    ELSE  0 0= 0=  THEN  TRIAL-FLAG ! ;] TRIAL  TRIAL-FLAG @ ;
@@ -348,7 +347,7 @@ TYPED-VARIABLE TRIAL-FLAG bool
 variable NFC0
 : CHECK-G  ( -- )
    GEN
-   PBUF PBUF-U @ CHK
+   PBUF PBUF-U @ >str CHK
    VERD @ -1 = IF                            \ CERTIFIED: measured out-arity must equal declared
       NCERT @ 1+ NCERT !
       PROP-NFC @ NFC0 !  71 NIN @ DOUT @ MEASURE
@@ -378,7 +377,7 @@ variable NFC0
    NCMP @ FMT:.INT s"  composition runs; " type
    NSI @ NCI @ +  FMT:.INT s"  inconsistency(ies)" type cr ;
 
-: BAIT  ( ^u8 n -- )
+: BAIT  ( str -- )
    CHK
    VERD @ -1 = IF
       s" prop-test: BAIT certified - checker soundness regressed!" EXIT-STATUS:FAILURE die
@@ -399,7 +398,8 @@ variable NFC0
 create ALPHA-SEEN ALPHA-N allot
 variable PH-I  variable PH-J  variable PH-HIT
 variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
-: PROP-HAS? ( str str -- bool ) {: a:^ u:n b:^ v:n :}
+: PROP-HAS? ( str str -- bool ) {: s:str k:str :}
+   s STR:DATA s STR:LEN k STR:DATA k STR:LEN {: a:^ u:n b:^ v:n :}
    v 0= IF 0 0= exit THEN
    0 PH-I !
    begin PH-I @ v + u <= while
@@ -429,7 +429,7 @@ variable CERT-I
    [: 0 BLEN !  CERT-I @ ALPHA-CERT$ PROP-B+
    0 LOC? !  0 TFLAG !  1 NIN !  1 DOUT !
    71 1 1 HEAD  BODY+
-   PBUF PBUF-U @ CHK
+   PBUF PBUF-U @ >str CHK
    VERD @ -1 <> IF
       s" prop-test: alphabet class REJECTED: " type CERT-I @ ALPHA-CERT$ type cr
       s" prop-test: alphabet self-test FAILED (class no longer certifies)" EXIT-STATUS:FAILURE die
@@ -441,7 +441,7 @@ variable CERT-I
    repeat ;
 : ALPHA-SCAN ( -- )
    0 ALPHA-J ! begin ALPHA-J @ ALPHA-N < while
-      BBUF BLEN @ ALPHA-J @ ALPHA-DET$ PROP-HAS? IF 1 ALPHA-SEEN ALPHA-J @ + c! THEN
+      BBUF BLEN @ >str ALPHA-J @ ALPHA-DET$ PROP-HAS? IF 1 ALPHA-SEEN ALPHA-J @ + c! THEN
       ALPHA-J @ 1+ ALPHA-J !
    repeat ;
 : ALPHA-MISSING ( -- n )   \ first unseen class, or -1 when all seen
@@ -468,13 +468,13 @@ variable CERT-I
    0 BLEN !  s" dup drop 1+ 1- negate 1+ 1- " PROP-B+  1 NIN !  1 DOUT !
    BLEN @  [: STILLCERT? ;] SHRINK  BLEN @  >  0= IF
       s" prop-test: self-test SHRINK BROKEN (no reduction)" EXIT-STATUS:FAILURE die THEN
-   s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PBUF-U @ type s" )" type cr ;
+   s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PBUF-U @ >str type s" )" type cr ;
 
 \ No generated seed reaches CONFIRM-FR?, so this drives it: a bool into `+` is
 \ refused yet leaves the declared one cell.
 : SELFTEST-FR ( -- )
    0 BLEN !  s" 0 0= + " PROP-B+  1 NIN !  1 DOUT !  REBUILD-G
-   PBUF PBUF-U @ CHK  VERD @ -1 = IF
+   PBUF PBUF-U @ >str CHK  VERD @ -1 = IF
       s" prop-test: self-test FR canary CERTIFIED (no rejected body to confirm)"
       EXIT-STATUS:FAILURE die
    THEN
@@ -538,27 +538,27 @@ create BUF 64 allot
       s" prop-test: output-depth self-test rejected an exact match" EXIT-STATUS:FAILURE die
    then ;
 
-: BUILD-CHECK-CASE-RUNNER ( str -- ) {: ops:^ opsu:n :}
+: BUILD-CHECK-CASE-RUNNER ( str -- ) {: ops:str :}
    0 PBUF-U !
    s" CANARY depth BASE ! " P+
-   ops opsu P+
+   ops P+
    s" PROP-PC depth BASE @ - CLEAR-MEAS VERIFY" P+ ;
 
 PTR-VARIABLE CASE-DEF  variable CASE-DEFU
 PTR-VARIABLE CASE-OPS  variable CASE-OPSU
 variable CASE-EXP
 : CHECK-CASE ( str str n -- )
-   CASE-EXP !  CASE-OPSU !  CASE-OPS !  CASE-DEFU !  CASE-DEF !
-   [: CASE-DEF @ CASE-DEFU @ CHK
+   CASE-EXP !  dup STR:LEN CASE-OPSU !  STR:DATA CASE-OPS !  dup STR:LEN CASE-DEFU !  STR:DATA CASE-DEF !
+   [: CASE-DEF @ CASE-DEFU @ >str CHK
    VERD @ -1 <> if
-      s" prop-test: primitive candidate rejected: " type CASE-DEF @ CASE-DEFU @ type cr
+      s" prop-test: primitive candidate rejected: " type CASE-DEF @ CASE-DEFU @ >str type cr
       s" prop-test: primitive semantic case failed" EXIT-STATUS:FAILURE die
    then
    CASE-EXP @ DOUT !
-   CASE-OPS @ CASE-OPSU @ BUILD-CHECK-CASE-RUNNER
+   CASE-OPS @ CASE-OPSU @ >str BUILD-CHECK-CASE-RUNNER
    MEAS-PBUF
    OUT-OK? 0= if
-      s" prop-test: primitive runtime mismatch: " type CASE-DEF @ CASE-DEFU @ type cr
+      s" prop-test: primitive runtime mismatch: " type CASE-DEF @ CASE-DEFU @ >str type cr
       LAST-TRAP @ if
          s" prop-test: primitive reached below its declared inputs" EXIT-STATUS:FAILURE die
       then
@@ -651,10 +651,10 @@ variable CASE-EXP
    s" : PROP-PC ( n ^n -- ) +! ; " s" 7 BUF " 0 CHECK-CASE
    s" : PROP-PC ( ^u8 -- u8 ) c@ ; " s" BUF " 1 CHECK-CASE
    s" : PROP-PC ( u8 ^u8 -- ) c! ; " s" 7 BUF " 0 CHECK-CASE
-   s" : PROP-PC ( ^u8 -- ^u8 n ) count ; " s" BUF " 2 CHECK-CASE
-   s" : PROP-PC ( ^u8 n -- ) type ; " s" BUF 0 " 0 CHECK-CASE
-   s" : PROP-PC ( ^u8 n ^u8 n -- bool ) str:= ; " s" BUF 3 BUF 3 " 1 CHECK-CASE
-   s" : PROP-PC ( ^u8 n ^u8 n -- bool ) str:=ci ; " s" BUF 3 BUF 3 " 1 CHECK-CASE
+   s" : PROP-PC ( ^u8 -- str ) count ; " s" BUF " 2 CHECK-CASE
+   s" : PROP-PC ( str -- ) type ; " s" BUF 0 " 0 CHECK-CASE
+   s" : PROP-PC ( str str -- bool ) str:= ; " s" BUF 3 BUF 3 " 1 CHECK-CASE
+   s" : PROP-PC ( str str -- bool ) str:=ci ; " s" BUF 3 BUF 3 " 1 CHECK-CASE
    s" : PROP-PC ( ^u8 -- n ) rd32 ; " s" BUF " 1 CHECK-CASE ;
 
 : FLOAT-CASES ( -- )

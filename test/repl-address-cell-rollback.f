@@ -1,4 +1,3 @@
-split-str
 \ Exercise the tty line boundary, not evaluate-closed's separate recovery.
 require src/lib/test.f
 require src/lib/pty-harness.f
@@ -15,7 +14,7 @@ using PTY-HARNESS
 \ in the cooked window and is read as a NUL, never as the end of file STOP means.
 : PROMPT ( -- ) s" habu> " WAIT-FOR TTRUE ;
 : PROMPT-AFTER ( str -- ) s" habu> " WAIT-AFTER TTRUE ;
-: STEP ( ^u8 n -- )
+: STEP ( str -- )
    BUF-CLEAR SEND-LINE WAIT-ANSWER TTRUE ;
 \ The terminal carries both of the child's streams, so BUF$ is its stdout and
 \ there is no stderr apart from it.
@@ -25,11 +24,11 @@ using PTY-HARNESS
    ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-ENDING-EXITED=
    CLOSE-MASTER ;
 
-: KEPT-CASE ( str str -- ) {: bad:^ badu:n next:^ nextu:n :}
+: KEPT-CASE ( str str -- ) {: bad:str next:str :}
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY PROMPT
    s" require test/repl-address-cell-probe.f" STEP
    s" REPL-ROWS:SAVE" STEP
-   BUF-CLEAR bad badu SEND-LINE
+   BUF-CLEAR bad SEND-LINE
    s" error[E-UNDEFINED]" s" `NOSUCH-WORD`" WAIT-AFTER TTRUE
    s" `NOSUCH-WORD`" PROMPT-AFTER
    s" REPL-ROWS:KEPT" STEP
@@ -38,7 +37,7 @@ using PTY-HARNESS
    \ A failed precondition is already red: a later row count would only
    \ obscure it.
    kept if
-      next nextu STEP
+      next STEP
       s" REPL-ROWS:ADDED" STEP
       s" rows-added-pass" IN-BUF? TTRUE
    then

@@ -1,4 +1,3 @@
-split-str
 \ process-term-child.f - a capture child for the end-of-capture cases.
 \
 \ Run: bin/hb --load test/process-term-child.f -- <marker> <mode>
@@ -19,8 +18,8 @@ package PROCESS-TERM-CHILD
 : READY ( -- )
    1 s" ready" write drop ;
 
-: MODE? ( str -- bool ) {: a:^ u:n :}
-   1 SCRIPT-ARGV$ a u STR:= ;
+: MODE? ( str -- bool ) {: s:str :}
+   1 SCRIPT-ARGV$ s STR:= ;
 
 : ANSWER ( n -- ) {: sig:n :}
    s" exit" MODE? 0= if exit then

@@ -1,4 +1,3 @@
-split-str
 \ The OS bridge copies only a complete canonical C string into caller storage.
 require src/lib/test.f
 require src/lib/fs.f
@@ -37,7 +36,7 @@ variable LINK-N
    OUT EXPECT-N @ 2 + + c@ $5A T=
    CLEAR
    EXPECT-N @ 1+ CWD EXPECT-N @ T=
-   OUT 1+ EXPECT-N @ EXPECT EXPECT-N @ T$=
+   OUT 1+ EXPECT-N @ >str EXPECT EXPECT-N @ >str T$=
    OUT c@ $5A T=
    OUT EXPECT-N @ 2 + + c@ $5A T=
    CLEAR
@@ -49,18 +48,18 @@ variable LINK-N
 
 
 : SYMLINK ( -- )
-   s" habu-realpath" FS:MKTEMP-DIR {: root:^ rootu:n :}
-   root rootu FS:CLEANUP-TREE+
-   root rootu s" target.f" TARGET FS:JOIN-PATH TARGET-N !
-   root rootu s" alias.f" LINK FS:JOIN-PATH LINK-N !
-   TARGET TARGET-N @ s" target" FS:WRITE-ALL
-   TARGET TARGET-N @ LINK LINK-N @ FS:MAKE-SYMLINK
-   TARGET TARGET-N @ FS:>PATHZ EXPECT CAP realpath dup 0 > TTRUE EXPECT-N !
-   LINK LINK-N @ FS:>PATHZ OUT CAP realpath EXPECT-N @ T=
-   OUT EXPECT-N @ EXPECT EXPECT-N @ T$=
-   LINK LINK-N @ FS:REMOVE-FILE
+   s" habu-realpath" FS:MKTEMP-DIR {: root:str :}
+   root FS:CLEANUP-TREE+
+   root s" target.f" TARGET FS:JOIN-PATH TARGET-N !
+   root s" alias.f" LINK FS:JOIN-PATH LINK-N !
+   TARGET TARGET-N @ >str s" target" FS:WRITE-ALL
+   TARGET TARGET-N @ >str LINK LINK-N @ >str FS:MAKE-SYMLINK
+   TARGET TARGET-N @ >str FS:>PATHZ EXPECT CAP realpath dup 0 > TTRUE EXPECT-N !
+   LINK LINK-N @ >str FS:>PATHZ OUT CAP realpath EXPECT-N @ T=
+   OUT EXPECT-N @ >str EXPECT EXPECT-N @ >str T$=
+   LINK LINK-N @ >str FS:REMOVE-FILE
    CLEAR
-   LINK LINK-N @ FS:>PATHZ OUT 1+ PATH-CAP realpath -1 T=
+   LINK LINK-N @ >str FS:>PATHZ OUT 1+ PATH-CAP realpath -1 T=
    UNTOUCHED ;
 
 

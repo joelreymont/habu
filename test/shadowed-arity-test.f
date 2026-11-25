@@ -1,4 +1,3 @@
-split-str
 \ shadowed-arity-test.f - a package public whose own bare tail a private word of
 \ the same package claims. A bare tail binds the open package's private wordlist
 \ first and the native compiler reads the contract from that binding, so effects
@@ -16,17 +15,17 @@ private
 T-RESET
 
 TYPED-VARIABLE SAE-A ^u8   variable SAE-U
-: SAE-GO ( -- )  SAE-A @ SAE-U @ evaluate-closed ;
+: SAE-GO ( -- )  SAE-A @ SAE-U @ >str evaluate-closed ;
 
 public
 
 \ One source string per case, answering its throw code (0 = accepted): the code
 \ comes back from the string that carried the second definition, so the refusal
 \ is seen at the definition, not at the build.
-: SAE-CATCH ( str -- n )  SAE-U ! SAE-A !  [: SAE-GO ;] catch ;
+: SAE-CATCH ( str -- n )  dup STR:LEN SAE-U ! STR:DATA SAE-A !  [: SAE-GO ;] catch ;
 
 \ The captured rejection record contains the text.
-: SAID ( str -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u STR:CONTAINS? TTRUE ;
+: SAID ( str -- )  {: s:str :}  REJECTION:BUFFER$ s STR:CONTAINS? TTRUE ;
 
 ;package
 
@@ -164,7 +163,7 @@ s\" : SAT-UP-CK ( -- ) SAT-UP:SAT-UP-USE 7 <> if s\q the tombstone bound its tai
 \ After `undefine` of a private word its public twin binds (SAT-DV).
 s\" package SAT-DV\n: SAT-DV-X ( n -- n ) 1 + ;\npublic\n: SAT-DV-X ( ^u8 -- n ) drop 5 ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
-s\" package SAT-DV\nundefine SAT-DV-X\npublic\n: SAT-DV-USE ( -- n ) s\q ab\q drop SAT-DV-X ;\n;package"
+s\" package SAT-DV\nundefine SAT-DV-X\npublic\n: SAT-DV-USE ( -- n ) s\q ab\q STR:DATA SAT-DV-X ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" : SAT-DV-CK ( -- ) SAT-DV:SAT-DV-USE 5 <> if s\q the retired private twin bound its tail\q 1 die then ;\nSAT-DV-CK"
    SHADOWED-ARITY:SAE-CATCH 0 T=
