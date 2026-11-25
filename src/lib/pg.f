@@ -7,8 +7,9 @@
 \ A transport failure that throws E-EXEC closes the connection. PG:REJECTED$
 \ (src/lib/pg-rows.f) answers the text of the task's last operation's failure.
 \ A libpq notice is one LOG line tagged pg, its level read from the message's
-\ leading word: ERROR, FATAL, PANIC and a severity PG does not know at error
-\ level, WARNING at warn level. NOTICE, INFO, DEBUG and LOG notices are dropped.
+\ leading word: ERROR and a severity PG does not know at error level, WARNING at
+\ warn level, FATAL and PANIC, which end the connection and whose text reaches
+\ the caller, at debug level. NOTICE, INFO, DEBUG and LOG notices are dropped.
 \
 \ Each connection stages a call in one OS mapping, its arena, sized to the call
 \ being built: the statement bytes, every parameter with its NUL and the
@@ -1004,6 +1005,15 @@ $7FFFFFFF constant NOTICE-MAX
    s v VEC:APPEND ;
 
 
+: ENDING? ( str -- bool ) {: s:str :}
+   s s" FATAL:" STR:STARTS-WITH?
+   s s" PANIC:" STR:STARTS-WITH? or ;
+
+: NOTICE-LEVEL ( str -- LOG:level ) {: s:str :}
+   s ENDING? if LOG:DEBUG exit then
+   s s" WARNING:" STR:STARTS-WITH? if LOG:WARN exit then
+   LOG:ERROR ;
+
 \ libpq's PQnoticeProcessor: arg is the slot's pending cell, and the message is
 \ libpq's for the call, which comes only inside a call a task makes.
 : NOTICE-LOG ( ^u8 ^u8 -- )
@@ -1011,9 +1021,8 @@ $7FFFFFFF constant NOTICE-MAX
    msg NULL-ADDR? if exit then
    msg dup NOTICE-LEN >str -TRAILING-LF {: m:str :}
    m NOTICE-DROPPED? if exit then
-   m s" WARNING:" STR:STARTS-WITH? if LOG:WARN else LOG:ERROR then
-   s" pg" LOG:LINE  m LOG:TEXT+  LOG:;LINE
-   m s" FATAL:" STR:STARTS-WITH? pending CELL-VIEW @ 0= and if m REJECTED+ then ;
+   m NOTICE-LEVEL s" pg" LOG:LINE  m LOG:TEXT+  LOG:;LINE
+   m ENDING? pending CELL-VIEW @ 0= and if m REJECTED+ then ;
 
 CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 ' NOTICE-LOG NOTICE-BODY !
@@ -1111,8 +1120,8 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ True when a read with nothing in flight ends the connection, which it closes.
 \ The record is empty on entry: its caller ran OP-START, and text in it after
-\ PQisBusy is the FATAL NOTICE-LOG kept.
-\ libpq appends to its message until the next send; PQisBusy parses a FATAL.
+\ PQisBusy is the FATAL or PANIC NOTICE-LOG kept.
+\ libpq appends to its message until the next send; PQisBusy parses either.
 : IDLE-LOST? ( n -- bool ) {: slot:n :}
    slot MESSAGE$ STR:LEN {: u:n :}
    slot CONN-PG@ LIB-CONSUME-INPUT 0<>

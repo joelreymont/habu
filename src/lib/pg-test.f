@@ -1996,10 +1996,8 @@ variable PATH-U
    a PG:LIVE? TTRUE
    s" a wait on a lost connection closes it and fails at once" T-LABEL
    b a BACKEND TERMINATE
-   \ The wait logs the backend's FATAL: captured here, off the run's stderr.
-   PATH-MAKE  PATH$ STDERR:CAPTURE
    mono-ns {: cut:n :}
-   [: a [: NOTIFY-LONG ;] E-EXEC REJECTS ;] [: STDERR:;CAPTURE ;] finally
+   a [: NOTIFY-LONG ;] E-EXEC REJECTS
    cut ELAPSED-MS PROMPT-MS < TTRUE
    a PG:LIVE? TFALSE
    s" a wait on a closed connection is rejected" T-LABEL
@@ -2083,7 +2081,6 @@ variable HEARD-U
 TYPED-VARIABLE FILE-B ^VEC:vector<u8>   \ the capture file's bytes, read back
 variable ALL-LINES
 variable BARE-LINES
-variable PG-LINES
 variable WARN-LINES
 
 
@@ -2104,14 +2101,6 @@ variable WARN-LINES
    s s" WARNING:" STR:STARTS-WITH? or ;
 
 
-: PG-ERROR? ( str -- bool ) {: s:str :}
-   s STR:LEN DATE:TIME-LEN < if false exit then
-   s STR:DATA DATE:TIME-LEN + s STR:LEN DATE:TIME-LEN - >str {: r:str :}
-   r s"  error pg: " STR:STARTS-WITH?
-   r s" terminating connection due to administrator command" STR:CONTAINS?
-   and ;
-
-
 : PG-WARN? ( str -- bool ) {: s:str :}
    s STR:LEN DATE:TIME-LEN < if false exit then
    s STR:DATA DATE:TIME-LEN + s STR:LEN DATE:TIME-LEN - >str s"  warn pg: WARNING:  w" STR:= ;
@@ -2121,12 +2110,11 @@ variable WARN-LINES
    s STR:LEN 0= if exit then
    1 ALL-LINES +!
    s BARE? if 1 BARE-LINES +! then
-   s PG-ERROR? if 1 PG-LINES +! then
    s PG-WARN? if 1 WARN-LINES +! then ;
 
 
 : LINES-COUNT ( str -- ) {: at:str :}
-   0 ALL-LINES !  0 BARE-LINES !  0 PG-LINES !  0 WARN-LINES !
+   0 ALL-LINES !  0 BARE-LINES !  0 WARN-LINES !
    0 begin
       at swap STR:LF swap STR:SPLIT-NEXT
    while
@@ -2141,12 +2129,11 @@ variable WARN-LINES
 
 
 \ The terminated backend's FATAL reaches a while it is idle, so the wait's
-\ PQnotifies hands it to libpq's notice processor. PG logs nothing on the
-\ loss: the one line is the processor's.
+\ PQnotifies hands it to libpq's notice processor.
 : NOTICE-CASES ( -- )
    OPEN {: a :}
    OPEN {: b :}
-   s" a FATAL read while idle is one LOG line, not bare libpq text" T-LABEL
+   s" a FATAL read while idle is no line" T-LABEL
    b a BACKEND TERMINATE
    PATH-MAKE
    PATH$ STDERR:CAPTURE
@@ -2156,10 +2143,9 @@ variable WARN-LINES
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW FILE-B !
    [: FILE$ LINES-COUNT ;] [: FILE-B @ VEC:DELETE  NULL-PTR FILE-B ! ;] finally
    BARE-LINES @ 0 T=
-   PG-LINES @ 1 T=
    s" a WARNING is one warn line; NOTICE and INFO add none" T-LABEL
    WARN-LINES @ 1 T=
-   ALL-LINES @ 2 T=
+   ALL-LINES @ 1 T=
    b PG:CLOSE ;
 
 
