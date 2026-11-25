@@ -28,6 +28,12 @@ using X64RT
 \ Write one cell at the address a register holds.
 : TOUCH, ( r64 -- ) {: r:r64 :}  r r MEM-AT ASM-SINK ENC-MOV-MR ;
 
+\ Write one cell at the region address a register holds, through its RW alias.
+: TOUCH-REGION, ( r64 -- ) {: r:r64 :}
+   RCX r ASM-SINK ENC-MOV-RR
+   RCX ENGINE-GPR:X64-RBASE REG REGION-ALIAS:DELTA-CELL MEM-OFF ASM-SINK ENC-ADD-RM
+   RCX TOUCH, ;
+
 \ Write one cell at the address the DATA cell at `off` holds.
 : TOUCH-CELL, ( n -- ) {: off:n :}
    RCX ENGINE-GPR:X64-RBASE REG off MEM-OFF ASM-SINK ENC-MOV-RM
@@ -115,8 +121,8 @@ DATA-START $100 + constant TCB-OFF
          STACK-ABI:RETURN-BASE-CELL TOUCH-CELL,
          STACK-ABI:LOOP-BASE-CELL TOUCH-CELL,
          DP-CELL TOUCH-CELL,
-         ENGINE-GPR:X64-DBASE REG TOUCH,
-         ENGINE-GPR:X64-CP REG TOUCH,
+         ENGINE-GPR:X64-DBASE REG TOUCH-REGION,
+         ENGINE-GPR:X64-CP REG TOUCH-REGION,
          RDI ENGINE-GPR:X64-RBASE REG ARGC-CELL MEM-OFF ASM-SINK ENC-MOV-RM
          NR-EXIT-GROUP SYS,
    then then then then
@@ -134,17 +140,20 @@ public
 
 \ hb-x64-skel pushes the boot data stack full (STACK-ABI:BOOT-BYTES of cells),
 \ writes one cell through every address the boot published (the return and
-\ DO/LOOP stack bases, DP, the code region and its code pointer) and exits with
-\ argc read through the user area from ARGC-CELL: `hb-x64-skel a b` exits 3.
-\ -negative pushes one cell more, onto the guard page: the boot's crash handler
-\ writes `hb: stack bounds exceeded (data)` on fd 2 and exits 102. -underflow
-\ reads below an empty data stack; the floor recovery resets its cursor and
-\ exits 70 (no catch handler). -guard-fetch jumps into the data stack's low
-\ guard page: an instruction fetch there is a bounds fault (102), never an
-\ underdepth throw. -foreign-fetch faults outside every owned stack with an
-\ aligned, unmapped RBP: the handler dumps it and dies by SIGSEGV without
-\ dereferencing RBP. -gap-fetch faults between text and REGION with the same
-\ RBP; that unmapped gap cannot authorize a DATA descriptor either.
+\ DO/LOOP stack bases, DP, and through the region's alias the code region and
+\ its code pointer) and exits with argc read through the user area from
+\ ARGC-CELL: `hb-x64-skel a b` exits 3.
+\ -negative pushes one cell more, onto the guard page: the E-STACK-BOUNDS
+\ record on fd 2 and 102. -underflow reads below an empty data stack; the
+\ floor recovery resets its cursor and exits 70 (no catch handler). The fetch
+\ images jump outside the image: a fetch's rip says nothing of the code that
+\ ran, so the handler dumps, reading through no RBP, and dies by SIGSEGV, 139
+\ in a shell. -guard-fetch jumps into the data stack's low guard page.
+\ -foreign-fetch faults outside every owned stack with an aligned, unmapped
+\ RBP, -gap-fetch between text and REGION with the same RBP. The task images
+\ jump into the guard page below or above a task's data stack, the same with
+\ the task's region unmapped (-released-), or with the task's stack in the
+\ main DATA's cells too (-switched-).
 : RUN ( -- )
    STACK-ABI:BOOT-BYTES CELL / {: full:n :}
    T-RESET

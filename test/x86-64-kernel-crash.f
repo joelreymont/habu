@@ -2,10 +2,12 @@
 \ installs, in the booted harness, cross-built for an x86-64 peer. Each image
 \ forks a child that faults with a pipe on fd 2; the parent checks the wait
 \ status and every byte the handler wrote but rsp's sixteen digits, and exits 0
-\ when each held. Without the handler every image exits 21. The host checks each
-\ image's ELF header; running them is the peer's.
+\ when each held. Without the handler none exits 0. The host checks each image's
+\ ELF header; running them is the peer's.
 require src/lib/string.f
+require src/core/exit-status.f
 require src/habu/stack-abi.f
+require src/habu/fault-record.f
 require test/x86-64-boot-harness.f
 require src/os/linux/layout.f
 require src/lib/fd.f
@@ -26,6 +28,7 @@ $400 constant GOT-CAP
 
 $80 constant WCOREFLAG                          \ wait4's core bit: the peer's RLIMIT_CORE
 102 8 lshift constant NAMED
+EXIT-STATUS:MEMORY-FAULT 8 lshift constant THROWN
 11 constant SIGSEGV
 4 constant SIGILL
 $1000 constant UNMAPPED                         \ below vm.mmap_min_addr
@@ -37,7 +40,6 @@ REGION-VA DICT-SIZE + constant CP-VA            \ where the boot leaves r15
 REGION-VA REGION + CELL - constant LAST-VA      \ the region's last cell
 REGION-VA REGION + constant PAST-VA             \ never mapped
 $0B0F008948 constant STORE-CODE                 \ 48 89 00 0f 0b: mov [rax], rax; ud2
-5 constant PROT-RX                              \ PROT_READ|PROT_EXEC
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : ROW ( str -- ) X64HARNESS:CALL-ROW, ;
@@ -115,9 +117,23 @@ RBP R64>N TURNED constant WILD-RBP
    rip VALUE-LINE
    lo MEMORY-LINE  mid MEMORY-LINE  hi MEMORY-LINE ;
 
-\ A guard hit's one line, compared whole.
-: LINE-TEXT ( str -- )
-   0 WANT-N !  WANT-TEXT  WANT-N @ SKIP-AT ! ;
+\ The records, compared whole: no word's code holds the rip of an image's
+\ stream, so each has an `at` note.
+: RECORD-TEXT ( str -- )  0 WANT-N !  WANT-TEXT ;
+: AT-LINE ( n -- )  s"   = at: 0x" WANT-TEXT  VALUE-LINE ;
+: RECORD-END ( -- )  STR:LF WANT-BYTE  WANT-N @ SKIP-AT ! ;
+
+: BOUNDS-TEXT ( str n -- ) {: msg:str rip:n :}
+   s" error[E-STACK-BOUNDS]: " RECORD-TEXT
+   msg WANT-TEXT  STR:LF WANT-BYTE
+   rip AT-LINE
+   s"   = help: " WANT-TEXT  FAULT-RECORD:CRS-HELP$ WANT-TEXT
+   STR:LF WANT-BYTE  RECORD-END ;
+
+: FAULT-TEXT ( n n -- ) {: addr:n rip:n :}
+   S\" error[E-MEMORY-FAULT]: a read or write faulted\n" RECORD-TEXT
+   s"   = address: 0x" WANT-TEXT  addr VALUE-LINE
+   rip AT-LINE  RECORD-END ;
 
 \ ---- the children ------------------------------------------------------------
 \ Each emits what a child does once fd 2 is the pipe, which never comes back,
@@ -133,15 +149,16 @@ RBP R64>N TURNED constant WILD-RBP
 : JUMP, ( n -- ) {: to:n :}
    to  X64HARNESS:POSITION JMP-BYTES +  -  >REL ASM-SINK ENC-JMP-REL32 ;
 
+\ Store a cell at a region address, through the region's RW alias.
 : POKE, ( n n -- ) {: v:n at:n :}
-   RCX at >IMM64 ASM-SINK ENC-MOV-RI64
+   RCX at >IMM64 ASM-SINK ENC-MOV-RI64  RCX X64KERNEL:WRITE-ALIAS,
    RAX v >IMM64 ASM-SINK ENC-MOV-RI64
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
-\ The code cells a region image writes: bytes 00 to 17 in address order, so
-\ each line counts up and a byte out of place shows.
+\ The code cells a region image writes: each byte from 00 to 17 once, so a byte
+\ out of place shows. CELL-B begins with ud2, 0f 0b.
 $0706050403020100 constant CELL-A
-$0F0E0D0C0B0A0908 constant CELL-B
+$0E0D0C0A09080B0F constant CELL-B
 $1716151413121110 constant CELL-C
 
 : CRASH-CHILD ( -- )
@@ -154,17 +171,17 @@ $1716151413121110 constant CELL-C
    ASM-SINK ENC-UD2
    SIGILL WILD-RBP rip 0 0 0 DUMP-TEXT ;
 
-\ The region is mapped read-write, never executable, so the jump faults with
-\ rip at its target.
+\ The region is executable, and read-only through its own address, so the jump
+\ runs CELL-B's ud2.
 : REGION-CHILD ( -- )
    CELL-A CP-VA CELL - POKE,  CELL-B CP-VA POKE,  CELL-C CP-VA CELL + POKE,
    LINUX-LAYOUT:DATA-VA REGS,  CP-VA JUMP,
-   SIGSEGV LINUX-LAYOUT:DATA-VA CP-VA CELL-A CELL-B CELL-C DUMP-TEXT ;
+   SIGILL LINUX-LAYOUT:DATA-VA CP-VA CELL-A CELL-B CELL-C DUMP-TEXT ;
 
 : REGION-END-CHILD ( -- )
    CELL-A LAST-VA CELL - POKE,  CELL-B LAST-VA POKE,
    LINUX-LAYOUT:DATA-VA REGS,  LAST-VA JUMP,
-   SIGSEGV LINUX-LAYOUT:DATA-VA LAST-VA CELL-A CELL-B 0 DUMP-TEXT ;
+   SIGILL LINUX-LAYOUT:DATA-VA LAST-VA CELL-A CELL-B 0 DUMP-TEXT ;
 
 \ A push with rbx at the data stack's base plus the capacity the boot
 \ published: the first byte of its high guard page.
@@ -172,28 +189,32 @@ $1716151413121110 constant CELL-C
    ENGINE-GPR:X64-DSTACK >R64 {: dsp:r64 :}
    dsp DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    dsp DATA-REG STACK-ABI:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM
+   X64HARNESS:POSITION {: rip:n :}
    0 G-PUSH
-   S\" hb: stack bounds exceeded (data)\n" LINE-TEXT ;
+   FAULT-RECORD:CRS-DATA$ rip BOUNDS-TEXT ;
 
 \ A store at the return stack's end, its high guard page.
 : RETURN-CHILD ( -- )
    RAX DATA-REG STACK-ABI:RETURN-BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   X64HARNESS:POSITION {: rip:n :}
    RAX RAX STACK-ABI:RETURN-BYTES MEM-OFF ASM-SINK ENC-MOV-MR
-   S\" hb: stack bounds exceeded (return)\n" LINE-TEXT ;
+   FAULT-RECORD:CRS-RET$ rip BOUNDS-TEXT ;
 
 \ A store one cell below the loop stack's base, its low guard page.
 : LOOP-CHILD ( -- )
    RAX DATA-REG STACK-ABI:LOOP-BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   X64HARNESS:POSITION {: rip:n :}
    RAX RAX CELL negate MEM-OFF ASM-SINK ENC-MOV-MR
-   S\" hb: stack bounds exceeded (loop)\n" LINE-TEXT ;
+   FAULT-RECORD:CRS-LOOP$ rip BOUNDS-TEXT ;
 
 \ A call to itself, forever: the return addresses walk rsp down the machine
 \ stack until a push lands in the kernel's guard below it, where no signal
 \ frame fits; the handler runs on the alternate stack START, registered.
 : MACHINE-CHILD ( -- )
    LBL {: self:label :}
+   X64HARNESS:POSITION {: rip:n :}
    self LBL,  self CALL,
-   S\" hb: stack bounds exceeded (machine)\n" LINE-TEXT ;
+   FAULT-RECORD:CRS-MACHINE$ rip BOUNDS-TEXT ;
 
 \ A jump to the first byte past the region, which nothing maps: rip one past
 \ the span whose rbp the guard cases read, so rbp, not canonical, is never
@@ -203,29 +224,24 @@ $1716151413121110 constant CELL-C
    SIGSEGV WILD-RBP PAST-VA 0 0 0 DUMP-TEXT ;
 
 \ The loop stack's guard hit from code in the region: the cell at CP holds
-\ mov [rax], rax and then ud2, which dumps should the store land, made
-\ read-execute, and runs with rax one cell below the loop stack's base.
-\ mprotect widens the cell to its page; should it fail, the fetch at CP
-\ faults instead and the dump fails the status check.
+\ mov [rax], rax and then ud2, which dumps should the store land, and runs with
+\ rax one cell below the loop stack's base.
 : REGION-GUARD-CHILD ( -- )
    STORE-CODE CP-VA POKE,
-   RDI CP-VA >IMM64 ASM-SINK ENC-MOV-RI64
-   RSI CELL >IMM32 ASM-SINK ENC-MOV-RI32
-   RDX PROT-RX >IMM32 ASM-SINK ENC-MOV-RI32
-   NR-MPROTECT SYS,
    RAX DATA-REG STACK-ABI:LOOP-BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX CELL negate >IMM32 ASM-SINK ENC-ADD-RI32
    CP-VA JUMP,
-   S\" hb: stack bounds exceeded (loop)\n" LINE-TEXT ;
+   FAULT-RECORD:CRS-LOOP$ CP-VA BOUNDS-TEXT ;
 
 \ The loop stack's base cell zeroed and a store at LOOP-BYTES, where its high
-\ guard page would stand were zero a base. A zero base is no stack: the dump.
+\ guard page would stand were zero a base. A zero base is no stack: the memory
+\ fault, thrown.
 : ZERO-BASE-CHILD ( -- )
    0 STACK-ABI:LOOP-BASE-CELL X64HARNESS:CELL!,
    LINUX-LAYOUT:DATA-VA REGS,
    X64HARNESS:POSITION {: rip:n :}
    RAX  STACK-ABI:LOOP-BYTES rip RIP-STORE-BYTES + -  MEM-RIP ASM-SINK ENC-MOV-MR
-   SIGSEGV LINUX-LAYOUT:DATA-VA rip 0 0 0 DUMP-TEXT ;
+   STACK-ABI:LOOP-BYTES rip FAULT-TEXT ;
 
 \ ---- the image ---------------------------------------------------------------
 \ After fork: the child, whose answer is 0, takes the pipe's write end as fd 2
@@ -293,30 +309,29 @@ $1716151413121110 constant CELL-C
 \                                       by the SIGSEGV itself,
 \                                       its three code lines 0
 \    hb-x64-kernel-crash-negative   21  the same, expecting the wrong status
-\    hb-x64-kernel-crash-region      0  rbp DATA and a jump to CP in the
-\                                       read-write code region: rip CP and the
+\    hb-x64-kernel-crash-region      0  rbp DATA and a jump to a ud2 at CP, in
+\                                       the code region: SIGILL, rip CP and the
 \                                       24 bytes the child wrote around it
 \    hb-x64-kernel-crash-region-end  0  the same at the region's last cell:
 \                                       the cell past the region reads 0
 \    hb-x64-kernel-crash-ill         0  ud2 with rbp not canonical: SIGILL,
 \                                       which no guard case reads rbp for
 \    hb-x64-kernel-crash-data        0  a push past the data stack's capacity:
-\                                       exit 102 and the line naming it
+\                                       exit 102 and the record naming it
 \    hb-x64-kernel-crash-return      0  a store at the return stack's end
 \    hb-x64-kernel-crash-loop        0  a store below the loop stack's base
 \    hb-x64-kernel-crash-machine     0  a call to itself, forever: exit 102
-\                                       and the machine stack's line
+\                                       and the machine stack's record
 \    hb-x64-kernel-crash-past       0  rbp not canonical and a jump to the
 \                                       first byte past the region, PAST-VA,
 \                                       never mapped: the dump,
 \                                       its three code lines 0
 \    hb-x64-kernel-crash-region-guard
-\                                    0  code at CP, made read-execute, storing
-\                                       below the loop stack's base: 102 and
-\                                       the loop line
+\                                    0  code at CP, storing below the loop
+\                                       stack's base: 102 and its record
 \    hb-x64-kernel-crash-zero-base   0  the loop stack's base cell zeroed and
 \                                       a store at LOOP-BYTES: no stack, so
-\                                       the dump
+\                                       exit 110 and the memory fault's record
 
 public
 
@@ -325,8 +340,8 @@ public
    X64HARNESS:INIT
    [: CRASH-CHILD ;] SIGSEGV false s" hb-x64-kernel-crash" TMP-PATH IMAGE
    [: CRASH-CHILD ;] SIGSEGV true s" hb-x64-kernel-crash-negative" TMP-PATH IMAGE
-   [: REGION-CHILD ;] SIGSEGV false s" hb-x64-kernel-crash-region" TMP-PATH IMAGE
-   [: REGION-END-CHILD ;] SIGSEGV false s" hb-x64-kernel-crash-region-end" TMP-PATH IMAGE
+   [: REGION-CHILD ;] SIGILL false s" hb-x64-kernel-crash-region" TMP-PATH IMAGE
+   [: REGION-END-CHILD ;] SIGILL false s" hb-x64-kernel-crash-region-end" TMP-PATH IMAGE
    [: ILL-CHILD ;] SIGILL false s" hb-x64-kernel-crash-ill" TMP-PATH IMAGE
    [: DATA-CHILD ;] NAMED false s" hb-x64-kernel-crash-data" TMP-PATH IMAGE
    [: RETURN-CHILD ;] NAMED false s" hb-x64-kernel-crash-return" TMP-PATH IMAGE
@@ -334,7 +349,7 @@ public
    [: MACHINE-CHILD ;] NAMED false s" hb-x64-kernel-crash-machine" TMP-PATH IMAGE
    [: PAST-CHILD ;] SIGSEGV false s" hb-x64-kernel-crash-past" TMP-PATH IMAGE
    [: REGION-GUARD-CHILD ;] NAMED false s" hb-x64-kernel-crash-region-guard" TMP-PATH IMAGE
-   [: ZERO-BASE-CHILD ;] SIGSEGV false s" hb-x64-kernel-crash-zero-base" TMP-PATH IMAGE
+   [: ZERO-BASE-CHILD ;] THROWN false s" hb-x64-kernel-crash-zero-base" TMP-PATH IMAGE
    X64HARNESS:DISPOSE
    T-REPORT ;
 

@@ -584,7 +584,8 @@ variable CRS-THROW
    NR-SIGRETURN SYS, ;                           \ sigreturn(uctx, infostyle, token)
 
 \ x9 = nonzero if the interrupted sp lies in the signal stack this thread
-\ registered, as sigaltstack(NULL, old) answers it; zero when none is. Not the
+\ registered, as sigaltstack(NULL, old) answers it; zero when none is. An sp of
+\ ss_sp is off it: C-SIGNAL-STACK leaves the thread's own sp there. Not the
 \ ucontext's flags: Linux records there the flags the thread registered, never
 \ SS_ONSTACK. Writes x0, x9, x10 and the system call's registers; x1, the
 \ trampoline's infostyle on macOS, is kept in the frame across the call.
@@ -597,7 +598,7 @@ variable CRS-THROW
    9 0 MOVZ,
    10 SP SIGSTK-FLAGS LDRW,  10 10 SIGSTK-DISABLE ANDI,  10 off CBNZ,
    C-CRASH-SP>R9
-   10 SP 0 LDR,  9 9 10 SUB,                     \ sp - ss_sp, unsigned
+   10 SP 0 LDR,  9 9 10 SUB,  9 9 1 SUBI,        \ sp - 1 - ss_sp, unsigned
    10 SP SIGSTK-SIZE LDR,  9 10 CMP,  9 C-CC CSET,
    off LBL,
    SP SP SIGSTK-FRAME ADDI, ;
