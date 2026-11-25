@@ -22,7 +22,7 @@ package PG
 
 public
 
--9321 s" the server refused a query, a statement answered no rows where rows were read, or rows where EXEC expects none"
+-9321 s" the server rejected a query, a statement answered no rows where rows were read, or rows where EXEC expects none"
    ERROR:CODE E-QUERY
 -9322 s" the query answered no row, or a column its reader cannot read" ERROR:CODE E-ROW
 -9323 s" more tasks read rows or run queries than the declared readers" ERROR:CODE E-READERS
@@ -202,8 +202,9 @@ public
 
 
 \ The text of the task's last operation's failure, empty when it left none, valid
-\ until the task's next operation or failure; CLOSE and ABANDON leave it.
-: REFUSED$ ( -- str )
+\ until the task's next operation or failure; CLOSE, ABANDON and a column reader
+\ leave it.
+: REJECTED$ ( -- str )
    REJECTED-TEXT @ NULL-PTR = if s" " exit then
    REJECTED-TEXT @ VEC:BYTES ;
 

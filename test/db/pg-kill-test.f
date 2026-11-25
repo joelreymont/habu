@@ -186,7 +186,7 @@ PROCESS:NO-FD FIFO-RD !
 \ test/gate-pool.f GT-POOL-GRACE-MS (walked and killed as it stands); a kill
 \ during initdb, whose backend holds a segment (the harness sends initdb
 \ SIGTERM; a case would need initdb slowed past the grace); two rows colliding
-\ (no TCP port; mkdir refuses an existing name). test/db/pg-cluster.f ends red
+\ (no TCP port; mkdir fails on an existing name). test/db/pg-cluster.f ends red
 \ unless its server's clean stop exits 0.
 : EXPECT-GONE ( -- )
    s" no process under the row is left" T-LABEL

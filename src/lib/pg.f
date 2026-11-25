@@ -4,7 +4,7 @@
 \ registry CONFIGURE sizes, holding the libpq pointer, the owning task and a
 \ generation: a stale handle is E-CLEARED, another task's E-HANDLE (docs/design.md
 \ "Models taken from other Forths"). A task that needs two databases opens two.
-\ A transport failure that throws E-EXEC closes the connection. PG:REFUSED$
+\ A transport failure that throws E-EXEC closes the connection. PG:REJECTED$
 \ (src/lib/pg-rows.f) answers the text of the task's last operation's failure.
 \ A libpq notice is one LOG line tagged pg, its level read from the message's
 \ leading word: ERROR, FATAL, PANIC and a severity PG does not know at error
@@ -64,7 +64,7 @@ package PG
 
 public
 
--9250 s" the server refused the conninfo, or libpq could not build a connection"
+-9250 s" the server rejected the conninfo, or libpq could not build a connection"
    ERROR:CODE E-CONNECT
 -9251 s" transport/readiness failure, no result, rejected transaction verb or failed cancel"
    ERROR:CODE E-EXEC
@@ -92,7 +92,7 @@ DEFTYPE COL
 
 SUMTYPE connect-result
    VARIANT connected connection ;VARIANT
-   VARIANT refused str ;VARIANT
+   VARIANT rejected str ;VARIANT
 ;SUMTYPE
 
 \ The failure strings are the SQLSTATE and the server's primary message, or
@@ -110,7 +110,7 @@ SUMTYPE progress
    VARIANT waiting fd n ;VARIANT
    VARIANT connected connection ;VARIANT
    VARIANT completed PG:result ;VARIANT
-   VARIANT refused str ;VARIANT
+   VARIANT rejected str ;VARIANT
 ;SUMTYPE
 
 private
@@ -1080,7 +1080,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot ['] KEEP-REJECTION catch nip {: code:n :}
    slot CLOSE-SLOT drop
    code 0<> if code throw then
-   REJECTED-TEXT @ VEC:BYTES PG-PROGRESS:REFUSED ;
+   REJECTED-TEXT @ VEC:BYTES PG-PROGRESS:REJECTED ;
 
 
 : KEEP-LOSS ( n -- n )
@@ -1292,7 +1292,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
          ENDOF
          connected OF PG-PROGRESS:CONNECTED exit ENDOF
          completed OF PG-PROGRESS:COMPLETED exit ENDOF
-         refused OF PG-PROGRESS:REFUSED exit ENDOF
+         rejected OF PG-PROGRESS:REJECTED exit ENDOF
       ;MATCH
    again ;
 
@@ -1301,7 +1301,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    WAIT-PROGRESS MATCH progress
       completed OF RESULT>N ENDOF
       connected OF drop E-EXEC throw ENDOF
-      refused OF drop E-EXEC throw ENDOF
+      rejected OF drop E-EXEC throw ENDOF
       waiting OF 2drop E-EXEC throw ENDOF
    ;MATCH ;
 
@@ -1662,7 +1662,7 @@ public
 
 \ CONNECT-START hands back an attempt owned by the calling task. An attempt
 \ libpq rejects at once is rejected at the first POLL or AWAIT. A rejection's
-\ text, like a result's report, has no final newline; it is PG:REFUSED$'s, so
+\ text, like a result's report, has no final newline; it is PG:REJECTED$'s, so
 \ it stays readable until the same task's next operation or failure.
 \ A conninfo libpq cannot parse throws E-CONNECT and keeps no text, because
 \ libpq's parse message can quote the conninfo's values, a password among them.
@@ -1742,7 +1742,7 @@ public
    CONNECT-START dup CONNECTION>N CONNECT-HEAD !
    [: AWAIT-ATTEMPT ;] [: FINISH-ATTEMPT ;] finally MATCH progress
       connected OF PG-CONNECT--RESULT:CONNECTED ENDOF
-      refused OF PG-CONNECT--RESULT:REFUSED ENDOF
+      rejected OF PG-CONNECT--RESULT:REJECTED ENDOF
       waiting OF 2drop E-CONNECT throw ENDOF
       completed OF RESULT>N RESULT-SLOT CLEAR-SLOT E-CONNECT throw ENDOF
    ;MATCH ;

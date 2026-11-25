@@ -24,8 +24,8 @@ variable HOLD                       \ the FIFO's write end
 
 : REPORT ( str -- ) {: s:str :}
    HOLD @ {: fd:n :}
-   fd s write s STR:LEN <> if s" pg-hold: report refused" EXIT-STATUS:IOERR die then
-   fd s\" \n" write 1 <> if s" pg-hold: report refused" EXIT-STATUS:IOERR die then ;
+   fd s write s STR:LEN <> if s" pg-hold: report failed" EXIT-STATUS:IOERR die then
+   fd s\" \n" write 1 <> if s" pg-hold: report failed" EXIT-STATUS:IOERR die then ;
 
 \ The offset of line n, counted from 1, in the first u bytes of TEXT; -1 when
 \ they hold fewer lines.
@@ -51,7 +51,7 @@ using PG
    1 1 CONFIGURE
    0 SCRIPT-ARGV$ s" " CONNECT MATCH PG:connect-result
       connected OF ENDOF
-      refused OF type cr s" pg-hold: connect refused" EXIT-STATUS:UNAVAILABLE die ENDOF
+      rejected OF type cr s" pg-hold: connect rejected" EXIT-STATUS:UNAVAILABLE die ENDOF
    ;MATCH ;
 
 \ The one value a one-row, one-column query answers, reported.

@@ -8,9 +8,9 @@
 \
 \ Loaded without the argument, the file dies naming the harness. There is no
 \ skip. The main task reads records whose spans must outlive their result's
-\ scope, every NULL arm and every refusal, and runs EXEC and QUERY with the
-\ refusal text each leaves; two worker tasks then read at the same time and
-\ each must keep its own bytes and refusal text, and a third worker is one
+\ scope, every NULL arm and every rejection, and runs EXEC and QUERY with the
+\ rejection text each leaves; two worker tasks then read at the same time and
+\ each must keep its own bytes and rejection text, and a third worker is one
 \ reader past the declaration, whose EXEC must send nothing.
 \
 \ Both sides are connected at once. The second reads only while the first holds
@@ -32,7 +32,7 @@ package PG-TEST
 3 constant CONNECTIONS            \ the most this file holds at once
 64 constant RESULTS               \ live results across every connection
 3 constant READERS                \ the main task and two workers
-\ More reads than RESULTS, so a refusal that left its result behind would
+\ More reads than RESULTS, so a rejection that left its result behind would
 \ end in PG:E-CAPACITY before the loop does.
 70 constant OVER-RESULTS
 $5000 constant LONG-TEXT          \ a text longer than an arena's first chunk
@@ -48,7 +48,7 @@ TYPED-VARIABLE CONN PG:connection
    CONNECTIONS RESULTS PG:CONFIGURE
    s" " PG:CONNECT MATCH PG:connect-result
       connected OF ENDOF
-      refused OF drop PG:E-CONNECT throw ENDOF
+      rejected OF drop PG:E-CONNECT throw ENDOF
    ;MATCH ;
 
 : PERSON-SQL$ ( -- str )
@@ -122,7 +122,7 @@ TYPED-VARIABLE CONN PG:connection
    5 PG:COL-BOOL TFALSE ;
 
 
-\ Each refusal throws out of its own scope, which clears the result.
+\ Each rejection throws out of its own scope, which clears the result.
 : NULL-TEXT ( -- )
    2 [: 2 PG:COL-TEXT drop ;] ON-PERSON ;
 
@@ -135,11 +135,11 @@ TYPED-VARIABLE CONN PG:connection
 
 : GRACE-CASES ( -- )
    2 [: GRACE-ROW ;] ON-PERSON
-   s" COL-TEXT refuses NULL" T-LABEL
+   s" COL-TEXT rejects NULL" T-LABEL
    [: NULL-TEXT ;] PG:E-ROW TTHROWSQ
-   s" COL-BOOL refuses NULL" T-LABEL
+   s" COL-BOOL rejects NULL" T-LABEL
    [: NULL-BOOL ;] PG:E-ROW TTHROWSQ
-   s" COL-INT of NULL is PG's refusal" T-LABEL
+   s" COL-INT of NULL is PG's rejection" T-LABEL
    [: NULL-INT ;] PG:E-TYPE TTHROWSQ ;
 
 
@@ -199,7 +199,7 @@ TYPED-VARIABLE CONN PG:connection
    LONG-READ ;
 
 
-: EACH-REFUSES ( [ -- ] n -- ) {: q want:n :}
+: EACH-REJECTS ( [ -- ] n -- ) {: q want:n :}
    OVER-RESULTS 0 ?do q want TTHROWSQ loop ;
 
 
@@ -207,7 +207,7 @@ TYPED-VARIABLE CONN PG:connection
    CONN @ 99 NAMES-OF drop drop drop ;
 
 
-: REFUSED-QUERY ( -- )
+: REJECTED-QUERY ( -- )
    CONN @ PG:PARAMS
    CONN @ s" select nothing from nowhere" [: PG:ROWS-OR-THROW ;] PG:WITH-RESULT ;
 
@@ -240,30 +240,30 @@ TYPED-VARIABLE CONN PG:connection
    [: 1 PG:COL-BOOL swap ;] PG:BY-ID drop ;
 
 
-: REFUSAL-CASES ( -- )
+: REJECTION-CASES ( -- )
    s" E-ROW on no row" T-LABEL
-   [: NO-SUCH ;] PG:E-ROW EACH-REFUSES
-   s" E-QUERY on a refused query" T-LABEL
-   [: REFUSED-QUERY ;] PG:E-QUERY EACH-REFUSES
+   [: NO-SUCH ;] PG:E-ROW EACH-REJECTS
+   s" E-QUERY on a rejected query" T-LABEL
+   [: REJECTED-QUERY ;] PG:E-QUERY EACH-REJECTS
    s" E-QUERY on a command with no rows" T-LABEL
-   [: NO-ROWS-COMMAND ;] PG:E-QUERY EACH-REFUSES
-   s" ONE-INT refuses a NULL" T-LABEL
-   [: NULL-COUNT ;] PG:E-ROW EACH-REFUSES
-   s" ONE-INT refuses no row" T-LABEL
-   [: EMPTY-COUNT ;] PG:E-ROW EACH-REFUSES
-   s" a decoder's refusal inside BY-ID" T-LABEL
-   [: BAD-DECODE ;] PG:E-ROW EACH-REFUSES
+   [: NO-ROWS-COMMAND ;] PG:E-QUERY EACH-REJECTS
+   s" ONE-INT rejects a NULL" T-LABEL
+   [: NULL-COUNT ;] PG:E-ROW EACH-REJECTS
+   s" ONE-INT rejects an empty result" T-LABEL
+   [: EMPTY-COUNT ;] PG:E-ROW EACH-REJECTS
+   s" a decoder's rejection inside BY-ID" T-LABEL
+   [: BAD-DECODE ;] PG:E-ROW EACH-REJECTS
    s" COL-BOOL of a binary column is PG's E-TYPE" T-LABEL
-   [: BINARY-BOOL ;] PG:E-TYPE EACH-REFUSES ;
+   [: BINARY-BOOL ;] PG:E-TYPE EACH-REJECTS ;
 
 
 : REJECTION-NAMES ( str -- ) {: s:str :}
-   PG:REFUSED$ s" 42P01: " STR:STARTS-WITH? TTRUE
-   PG:REFUSED$ s STR:CONTAINS? TTRUE ;
+   PG:REJECTED$ s" 42P01: " STR:STARTS-WITH? TTRUE
+   PG:REJECTED$ s STR:CONTAINS? TTRUE ;
 
 
 : NO-REJECTION ( -- )
-   PG:REFUSED$ STR:LEN 0 T= ;
+   PG:REJECTED$ STR:LEN 0 T= ;
 
 
 : EXEC-ON ( str -- ) {: s:str :}
@@ -298,42 +298,42 @@ TYPED-VARIABLE CONN PG:connection
 
 
 : STATEMENT-CASES ( -- )
-   s" EXEC of a refused statement" T-LABEL
+   s" EXEC of a rejected statement" T-LABEL
    [: s" insert into exec_missing_q values (1)" EXEC-ON ;] PG:E-QUERY TTHROWSQ
-   s" EXEC's refusal text" T-LABEL
+   s" EXEC's rejection text" T-LABEL
    s" exec_missing_q" REJECTION-NAMES
-   s" a refusal's text is the primary message, without the DETAIL" T-LABEL
+   s" a rejection's text is the primary message, without the DETAIL" T-LABEL
    [: DUPLICATE-ADA ;] PG:E-QUERY TTHROWSQ
-   PG:REFUSED$
+   PG:REJECTED$
    S\" 23505: duplicate key value violates unique constraint \qperson_pkey\q"
    T$=
    s" EXEC of DDL" T-LABEL
    [: s" create table gadget (id bigint)" EXEC-ON ;] 0 TTHROWSQ
-   s" a successful EXEC empties the refusal text" T-LABEL
+   s" a successful EXEC empties the rejection text" T-LABEL
    NO-REJECTION
    s" EXEC of a statement answering rows" T-LABEL
    [: s" select 1" EXEC-ON ;] PG:E-QUERY TTHROWSQ
    NO-REJECTION
-   s" QUERY of a refused statement" T-LABEL
+   s" QUERY of a rejected statement" T-LABEL
    [: s" select * from query_missing_q" QUERY-ON ;] PG:E-QUERY TTHROWSQ
-   s" QUERY's refusal text" T-LABEL
+   s" QUERY's rejection text" T-LABEL
    s" query_missing_q" REJECTION-NAMES
    s" QUERY's body sees the rows" T-LABEL
    CONN @ PG:PARAMS
    CONN @ s" select i * 10 from generate_series(1, 3) i" [: GENERATED-ROWS ;] PG:QUERY
    30 T= 3 T=
-   s" a successful QUERY empties the refusal text" T-LABEL
+   s" a successful QUERY empties the rejection text" T-LABEL
    NO-REJECTION
    s" QUERY of a command answering no rows" T-LABEL
    [: s" update person set nick = nick where id = 99" QUERY-ON ;] PG:E-QUERY TTHROWSQ
-   s" BY-ID's refusal text" T-LABEL
+   s" BY-ID's rejection text" T-LABEL
    [: BY-ID-MISSING ;] PG:E-QUERY TTHROWSQ
    s" by_id_missing_q" REJECTION-NAMES
-   s" ONE-INT's refusal text" T-LABEL
+   s" ONE-INT's rejection text" T-LABEL
    [: ONE-INT-MISSING ;] PG:E-QUERY TTHROWSQ
    s" one_int_missing_q" REJECTION-NAMES
-   s" ROWS-OR-THROW's refusal text" T-LABEL
-   [: REFUSED-QUERY ;] PG:E-QUERY TTHROWSQ
+   s" ROWS-OR-THROW's rejection text" T-LABEL
+   [: REJECTED-QUERY ;] PG:E-QUERY TTHROWSQ
    s" nowhere" REJECTION-NAMES ;
 
 
@@ -399,7 +399,7 @@ TYPED-VARIABLE LOST-B PG:connection
 
 
 : A-ENDED ( -- )
-   PG:REFUSED$ s" terminating connection due to administrator command"
+   PG:REJECTED$ s" terminating connection due to administrator command"
    STR:CONTAINS? TTRUE ;
 
 
@@ -415,7 +415,7 @@ TYPED-VARIABLE LOST-B PG:connection
    CLOSE-AB ;
 
 
-: LOSS-AFTER-REFUSAL ( -- )
+: LOSS-AFTER-REJECTION ( -- )
    s" a loss after a rejection answers the loss" T-LABEL
    OPEN-AB
    A-PID END-A
@@ -447,7 +447,7 @@ TYPED-VARIABLE LOST-B PG:connection
       completed OF ENDOF
       connected OF drop PG:E-EXEC throw ENDOF
       waiting OF 2drop PG:E-EXEC throw ENDOF
-      refused OF drop PG:E-EXEC throw ENDOF
+      rejected OF drop PG:E-EXEC throw ENDOF
    ;MATCH ;
 
 : AWAIT-END ( -- )
@@ -514,7 +514,7 @@ TYPED-VARIABLE LOST-B PG:connection
 
 : IDLE-LOSS-TEXT ( -- )
    LOST-A @ PG:LIVE? TFALSE
-   PG:REFUSED$
+   PG:REJECTED$
    s" FATAL:  terminating connection due to administrator command"
    T$= ;
 
@@ -573,7 +573,7 @@ TYPED-VARIABLE LOST-B PG:connection
    ANSWERED-THEN-END
    REJECT-B PG:E-QUERY T=
    [: AWAIT-A ;] 0 TTHROWSQ
-   PG:REFUSED$ S\" 42P01: relation \qlost_missing_q\q does not exist" T$=
+   PG:REJECTED$ S\" 42P01: relation \qlost_missing_q\q does not exist" T$=
    CLOSE-AB ;
 
 
@@ -649,7 +649,7 @@ TYPED-VARIABLE LOST-B PG:connection
    s" create temp table dup_t (x int unique deferrable initially deferred)" RUN
    [: CONN @ REJECT-ON ;] PG:E-QUERY TTHROWSQ
    [: CONN @ [: DUPLICATE-KEYS ;] PG:WITH-TRANSACTION ;] PG:E-EXEC TTHROWSQ
-   PG:REFUSED$
+   PG:REJECTED$
    S\" 23505: duplicate key value violates unique constraint \qdup_t_x_key\q"
    T$=
    s" a COMMIT of a failed transaction keeps the rejected statement's text" T-LABEL
@@ -686,7 +686,7 @@ TYPED-VARIABLE LOST-B PG:connection
 2 TYPED-BUFFER SIDE-KEPT n
 2 TYPED-BUFFER SIDE-CODE n
 TYPED-VARIABLE THIRD-CONN PG:connection
-variable SIDE-REFUSED
+variable SIDE-REJECTED
 variable THIRD-CODE
 variable THIRD-EXEC-CODE
 variable THIRD-FAIL
@@ -728,8 +728,8 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    k SIDE-CONN @ k 1 + NAME-OF {: name:str :}
    k 0= if
       [: 0 SIDE-MISSING ;] catch PG:E-QUERY =
-      PG:REFUSED$ s" side_missing_q" STR:CONTAINS? and
-      if 1 else 0 then SIDE-REFUSED !
+      PG:REJECTED$ s" side_missing_q" STR:CONTAINS? and
+      if 1 else 0 then SIDE-REJECTED !
    then
    k ARRIVE
    begin ARRIVED atomic@ 2 < while TASK:PAUSE repeat
@@ -777,7 +777,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 : TASK-CASES ( -- )
    [: s" select * from main_missing_q" QUERY-ON ;] PG:E-QUERY TTHROWSQ
-   0 SIDE-REFUSED !
+   0 SIDE-REJECTED !
    0 ARRIVED ! 0 FINISHED !
    2 0 ?do 0 i SIDE-ARRIVED ! 0 i SIDE-KEPT ! 0 i SIDE-CODE ! loop
    ['] SIDE-A-WORK SIDE-A TASK:ACTIVATE
@@ -791,9 +791,9 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    0 SIDE-KEPT @ 1 T=
    s" the second reader kept its bytes" T-LABEL
    1 SIDE-KEPT @ 1 T=
-   s" a worker's refusal text is its own" T-LABEL
-   SIDE-REFUSED @ 1 T=
-   s" a worker's refusal leaves the main task's text" T-LABEL
+   s" a worker's rejection text is its own" T-LABEL
+   SIDE-REJECTED @ 1 T=
+   s" a worker's rejection leaves the main task's text" T-LABEL
    s" main_missing_q" REJECTION-NAMES
    \ Both workers keep their rows; a third task is one reader too many.
    ['] THIRD-WORK THIRD-TASK TASK:ACTIVATE
@@ -816,10 +816,10 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    GRACE-CASES
    PAGE-CASES
    LONG-CASES
-   REFUSAL-CASES
+   REJECTION-CASES
    STATEMENT-CASES
    LOST-CASES
-   LOSS-AFTER-REFUSAL
+   LOSS-AFTER-REJECTION
    ROLLBACK-LOST
    ROLLBACK-KEEPS
    ENDED-LOSS

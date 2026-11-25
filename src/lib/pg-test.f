@@ -57,7 +57,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    CONNECTIONS RESULTS CONFIGURE
    CONNINFO$ s" " CONNECT MATCH PG:connect-result
       connected OF ENDOF
-      refused OF type cr E-CONNECT throw ENDOF
+      rejected OF type cr E-CONNECT throw ENDOF
    ;MATCH ;
 
 
@@ -93,13 +93,13 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    EXEC-TAG TAG-OK T= ;
 
 
-\ Port 1 is refused before any protocol runs, so the arm carries libpq's own
-\ message and no connection is left behind.
-: PORT-REFUSED$ ( -- str )
+\ A connection to port 1 fails before any protocol runs, so the arm carries
+\ libpq's own message and no connection is left behind.
+: PORT-REJECTED$ ( -- str )
    s" host=127.0.0.1 port=1 dbname=none user=none" s" " CONNECT
    MATCH PG:connect-result
       connected OF PG:CLOSE s" " ENDOF
-      refused OF ENDOF
+      rejected OF ENDOF
    ;MATCH ;
 
 
@@ -113,16 +113,16 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    dup PG:CLOSE ;
 
 
-: AWAIT-REFUSED ( str -- )
-   s" " CONNECT-START {: refused :}
-   refused PG:AWAIT MATCH PG:progress
-      refused OF drop true ENDOF
+: AWAIT-REJECTED ( str -- )
+   s" " CONNECT-START {: rejected :}
+   rejected PG:AWAIT MATCH PG:progress
+      rejected OF drop true ENDOF
       connected OF PG:CLOSE false ENDOF
       waiting OF 2drop false ENDOF
       completed OF CLEAR false ENDOF
    ;MATCH TTRUE
-   refused PG:LIVE? TFALSE
-   refused [: CLOSE-KEEP ;] catch {: stale code:n :}
+   rejected PG:LIVE? TFALSE
+   rejected [: CLOSE-KEEP ;] catch {: stale code:n :}
    code E-HANDLE T= ;
 
 
@@ -145,52 +145,52 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : CONNECT-CASES ( -- )
-   PORT-REFUSED$ {: p:str :}
+   PORT-REJECTED$ {: p:str :}
    p STR:LEN 0 > TTRUE
    p ENDS-LF? TFALSE
-   s" an attempt on a closed port is refused by AWAIT" T-LABEL
-   s" host=127.0.0.1 port=1 dbname=none user=none" AWAIT-REFUSED ;
+   s" an attempt on a closed port is rejected by AWAIT" T-LABEL
+   s" host=127.0.0.1 port=1 dbname=none user=none" AWAIT-REJECTED ;
 
 
-\ The cluster refuses a missing database after the protocol starts, so the
+\ The cluster rejects a missing database after the protocol starts, so the
 \ text is the server's and grows with the name.
 : MISSING-DB ( str -- PG:connect-result )
    {: name:str :}
    SB-RESET CONNINFO$ SB-APPEND s"  dbname=" SB-APPEND name SB-APPEND
    SB$ s" " CONNECT ;
 
-: REFUSED$ ( PG:connect-result -- str )
+: REJECTED$ ( PG:connect-result -- str )
    MATCH PG:connect-result
       connected OF PG:CLOSE E-CONNECT throw ENDOF
-      refused OF ENDOF
+      rejected OF ENDOF
    ;MATCH ;
 
 
-variable LONG-REFUSED-U
-TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
+variable LONG-REJECTED-U
+TASK:MIN-STACK TASK:TASK LONG-REJECTED-WORKER
 
-: LONG-REFUSED ( -- )
-   s" pgtest_refused_with_a_much_longer_missing_database_name_xyz" MISSING-DB
-   REFUSED$ STR:LEN LONG-REFUSED-U !
+: LONG-REJECTED ( -- )
+   s" pgtest_rejected_with_a_much_longer_missing_database_name_xyz" MISSING-DB
+   REJECTED$ STR:LEN LONG-REJECTED-U !
    0 TASK:RETURN ;
 
 
-\ The second refusal claims the slot the first freed, the lowest free one, as no
-\ other slot frees between them.
-: REFUSAL-TEXT-CASES ( -- )
-   s" a refusal's text survives a longer refusal in another task" T-LABEL
-   s" pgtest_refused" MISSING-DB REFUSED$ {: r:str :}
+\ The second rejection claims the slot the first freed, the lowest free one, as
+\ no other slot frees between them.
+: REJECTION-TEXT-CASES ( -- )
+   s" a rejection's text survives a longer rejection in another task" T-LABEL
+   s" pgtest_rejected" MISSING-DB REJECTED$ {: r:str :}
    r STR:LEN 0 > TTRUE
    r ENDS-LF? TFALSE
    r STR:LEN MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: copy:^ cu :}
    r STR:DATA copy r STR:LEN BYTE-COPY
-   0 LONG-REFUSED-U !
-   ['] LONG-REFUSED LONG-REFUSED-WORKER TASK:ACTIVATE
-   LONG-REFUSED-WORKER TASK:JOIN MATCH result
+   0 LONG-REJECTED-U !
+   ['] LONG-REJECTED LONG-REJECTED-WORKER TASK:ACTIVATE
+   LONG-REJECTED-WORKER TASK:JOIN MATCH result
       ok OF 0 T= ENDOF
       err OF throw ENDOF
    ;MATCH
-   LONG-REFUSED-U @ r STR:LEN > TTRUE
+   LONG-REJECTED-U @ r STR:LEN > TTRUE
    r copy r STR:LEN >str T$=
    copy cu MEM:RELEASE-BYTES ;
 
@@ -201,11 +201,11 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
    s" host=/nonexistent-habu-pgtest port=5432 dbname=none user=none" ;
 
 
-: SOCKET-REFUSAL-CASES ( -- )
-   s" a connection libpq rejects at once is refused with its text" T-LABEL
-   SOCKET-CONNINFO$ s" " CONNECT REFUSED$ STR:LEN 0 > TTRUE
-   s" an attempt libpq rejects at once is refused by AWAIT" T-LABEL
-   SOCKET-CONNINFO$ AWAIT-REFUSED ;
+: SOCKET-REJECTION-CASES ( -- )
+   s" a connection libpq rejects at once answers its text" T-LABEL
+   SOCKET-CONNINFO$ s" " CONNECT REJECTED$ STR:LEN 0 > TTRUE
+   s" an attempt libpq rejects at once is rejected by AWAIT" T-LABEL
+   SOCKET-CONNINFO$ AWAIT-REJECTED ;
 
 
 \ The attempt keeps no slot, as CAPACITY-CASES then needs.
@@ -273,7 +273,7 @@ TYPED-VARIABLE HELD-ID n
       c PG:POLL MATCH PG:progress
          waiting OF AWAIT-READY ENDOF
          connected OF exit ENDOF
-         refused OF drop E-CONNECT throw ENDOF
+         rejected OF drop E-CONNECT throw ENDOF
          completed OF CLEAR E-CONNECT throw ENDOF
       ;MATCH
       TASK:PAUSE
@@ -288,7 +288,7 @@ TYPED-VARIABLE HELD-ID n
          waiting OF AWAIT-READY ENDOF
          completed OF exit ENDOF
          connected OF drop E-EXEC throw ENDOF
-         refused OF drop E-EXEC throw ENDOF
+         rejected OF drop E-EXEC throw ENDOF
       ;MATCH
       TASK:PAUSE
    again ;
@@ -309,7 +309,7 @@ TYPED-VARIABLE HELD-ID n
       waiting OF 2drop true ENDOF
       completed OF CLEAR false ENDOF
       connected OF drop false ENDOF
-      refused OF drop false ENDOF
+      rejected OF drop false ENDOF
    ;MATCH TTRUE
    waiter [: SEND-SELECT ;] catch {: held code:n :}
    code E-STATEMENT T=
@@ -322,13 +322,13 @@ TYPED-VARIABLE HELD-ID n
    waiter s" select pg_advisory_unlock(987654)::int" POLL-EXEC CLEAR
    waiter PG:CLOSE ;
 
-: SEND-REFUSED ( PG:connection -- PG:connection ) {: c :}
+: SEND-REJECTED ( PG:connection -- PG:connection ) {: c :}
    c [: SEND-SELECT ;] catch {: held code:n :}
    code E-CAPACITY T=
    c ;
 
 : HOLD-RESULTS ( PG:connection n -- PG:connection ) {: c k:n :}
-   k 0= if c SEND-REFUSED exit then
+   k 0= if c SEND-REJECTED exit then
    c s" select 7" POLL-EXEC c k 1- RECURSE swap CLEAR ;
 
 : RESULT-CAPACITY-CASES ( -- )
@@ -346,7 +346,7 @@ TYPED-VARIABLE HELD-ID n
       waiting OF 2drop ENDOF
       connected OF drop ENDOF
       completed OF CLEAR ENDOF
-      refused OF drop ENDOF
+      rejected OF drop ENDOF
    ;MATCH
    c ;
 
@@ -494,7 +494,7 @@ TYPED-VARIABLE HELD-ID n
    c PARAMS
    c HEX-BYTES 3 >str BINARY+
    c s" pqt_hex" [: HEX-ANSWER ;] WITH-PREPARED
-   s" BINARY+ refuses a length past a C int and keeps what is staged" T-LABEL
+   s" BINARY+ rejects a length past a C int and keeps what is staged" T-LABEL
    c PARAMS
    c s" kept" TEXT+
    c [: HUGE-BINARY ;] catch {: stale-huge huge-code:n :}
@@ -601,7 +601,7 @@ TYPED-VARIABLE HELD-ID n
 
 \ A deferred constraint fails the COMMIT, not the insert, with a message longer
 \ than any the copy has held (this runs before LONG-MESSAGE-CASES). The
-\ transaction verb's refusal is E-EXEC, not an OUTCOME, so a `failed` span held
+\ transaction verb's rejection is E-EXEC, not an OUTCOME, so a `failed` span held
 \ from before stays mapped and unchanged.
 : DEFERRED-INSERT ( PG:connection -- PG:connection )
    dup s" insert into held_t values (1)" EXEC-OK ;
@@ -719,7 +719,7 @@ TYPED-VARIABLE HELD-ID n
    c s" selec 1"
    [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 42601" T$= ;] WITH-DESCRIPTION
    c s" select 1" EXEC-TAG TAG-ROWS T=
-   s" describe refuses a pending parameter list" T-LABEL
+   s" describe rejects a pending parameter list" T-LABEL
    c 1 INT+
    c [: DESCRIBE-PENDING ;] catch {: stale-pending pending-code:n :}
    pending-code E-STATEMENT T=
@@ -1099,7 +1099,7 @@ TYPED-VARIABLE HELD-ID n
 
 
 \ An empty statement would reach the server as PGRES_EMPTY_QUERY, whose result
-\ carries no SQLSTATE and no message at all - so the module refuses
+\ carries no SQLSTATE and no message at all - so the module rejects
 \ it by name instead.
 : EMPTY-STATEMENT-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: EXEC-EMPTY ;] catch {: stale-exec code:n :}
@@ -1147,7 +1147,7 @@ TYPED-VARIABLE HELD-ID n
    dup s" select 1" [: HAND-OUTER ;] WITH-RESULT ;
 
 
-\ CLEAR refuses the body's own token, before the body could hand back another.
+\ CLEAR rejects the body's own token, before the body could hand back another.
 variable CLEAR-RETURNED
 
 : SWAP-TOKEN ( PG:connection PG:result -- PG:connection PG:result )
@@ -1290,7 +1290,7 @@ variable STMT-U
 : PARAM-COUNT-CASES ( PG:connection -- PG:connection ) {: c :}
    WIDE-STATEMENT
    c BIND-WIDE drop
-   s" a 65536th parameter is refused and leaves the 65535 to run" T-LABEL
+   s" a 65536th parameter is rejected and leaves the 65535 to run" T-LABEL
    c [: BIND-PAST-MAX ;] catch {: stale-param code:n :}
    code E-CAPACITY T=
    c STMT$
@@ -1308,17 +1308,17 @@ variable STMT-U
 
 
 \ With nothing staged the fill is zero and the same length wraps no sum: the
-\ arena asks for a MEM-MAX-N-byte mapping, and the mapping is what refuses it.
+\ arena asks for a MEM-MAX-N-byte mapping, and the mapping is what fails.
 : ADD-LONE-HUGE-TEXT ( PG:connection -- PG:connection )
    dup PARAMS
    dup BIG$ STR:DATA MEM-MAX-N 1- >str TEXT+ ;
 
 
 : PARAM-LENGTH-CASES ( PG:connection -- PG:connection ) {: c :}
-   s" TEXT+ refuses a length that would wrap the arena fill" T-LABEL
+   s" TEXT+ rejects a length that would wrap the arena fill" T-LABEL
    c [: ADD-HUGE-TEXT ;] catch {: stale-param code:n :}
    code E-CAPACITY T=
-   s" TEXT+ of that length on an empty list is refused by the allocator" T-LABEL
+   s" TEXT+ of that length on an empty list fails in the allocator" T-LABEL
    c [: ADD-LONE-HUGE-TEXT ;] catch {: stale-lone lone-code:n :}
    lone-code E-MEM-MAP T=
    c PARAMS
@@ -1381,7 +1381,7 @@ variable STMT-U
    dup s" select 1" [: ;] WITH-SCRIPT ;
 
 
-: SCRIPT-REFUSAL-CASES ( PG:connection -- PG:connection ) {: c :}
+: SCRIPT-REJECTION-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: SCRIPT-EMPTY ;] catch {: stale-empty code:n :}
    code E-STATEMENT T=
    c [: SCRIPT-WITH-PARAMS ;] catch {: stale-params param-code:n :}
@@ -1410,7 +1410,7 @@ variable STMT-U
    c s" copy (select 1) to stdout" COPY-OUT-FAILS
    s" COPY TO STDOUT of 200000 rows fails" T-LABEL
    c s" copy (select generate_series(1,200000)) to stdout" COPY-OUT-FAILS
-   s" COPY FROM STDIN fails with the server's report of PG's refusal" T-LABEL
+   s" COPY FROM STDIN fails with the server's report of PG's rejection" T-LABEL
    c s" create temp table pqtcopy (id int)" EXEC-OK
    c s" copy pqtcopy from stdin"
    [: OUTCOME-TAG TAG-FAILED T=
@@ -1448,7 +1448,7 @@ variable STMT-U
 
 
 \ CLOSE owns whatever results the connection still holds, so libpq keeps no
-\ orphan PGresult and the body's token refuses afterwards. The scope still
+\ orphan PGresult and the body's token is rejected afterwards. The scope still
 \ retires the slot, so the case runs one more time than there are slots.
 : CLOSE-UNDER ( PG:connection -- PG:connection )
    dup dup s" select 1" [: swap PG:CLOSE ROWS drop ;] WITH-RESULT ;
@@ -1486,7 +1486,7 @@ variable STMT-U
 
 
 \ A handle laundered into shared typed storage still belongs to the task that
-\ made it. The worker presents the main task's connection and is refused
+\ made it. The worker presents the main task's connection and is rejected
 \ before any libpq call.
 1 TYPED-BUFFER SHARED-CONN PG:connection
 variable FOREIGN-CODE
@@ -1515,7 +1515,7 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
 
 
 \ The task owns the returned CONNECT-START handle. Its AT-EXIT callback must
-\ close a live attempt and leave an auto-retired refusal alone.
+\ close a live attempt and leave a rejected one, already retired, alone.
 1 TYPED-BUFFER EXIT-CONN PG:connection
 TYPED-VARIABLE EXIT-LIVE bool
 variable EXIT-STARTED
@@ -1531,11 +1531,11 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    CONNINFO$ s" " CONNECT-START 0 EXIT-CONN !
    0 TASK:RETURN ;
 
-: EXIT-REFUSED ( -- )
+: EXIT-REJECTED ( -- )
    s" host=127.0.0.1 port=1 dbname=none user=none" s" "
    CONNECT-START 0 EXIT-CONN !
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
-      refused OF drop ENDOF
+      rejected OF drop ENDOF
       connected OF PG:CLOSE E-CONNECT throw ENDOF
       waiting OF 2drop E-CONNECT throw ENDOF
       completed OF CLEAR E-CONNECT throw ENDOF
@@ -1546,7 +1546,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    CONNINFO$ s" " CONNECT-START 0 EXIT-CONN !
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
       connected OF drop ENDOF
-      refused OF drop E-CONNECT throw ENDOF
+      rejected OF drop E-CONNECT throw ENDOF
       waiting OF 2drop E-CONNECT throw ENDOF
       completed OF CLEAR E-CONNECT throw ENDOF
    ;MATCH
@@ -1561,7 +1561,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
       completed OF CLEAR ENDOF
       connected OF drop E-EXEC throw ENDOF
       waiting OF 2drop E-EXEC throw ENDOF
-      refused OF drop E-EXEC throw ENDOF
+      rejected OF drop E-EXEC throw ENDOF
    ;MATCH
    0 TASK:RETURN ;
 
@@ -1585,7 +1585,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    EXIT-JOIN
    EXIT-LIVE @ TTRUE
    0 EXIT-CONN @ PG:LIVE? TFALSE
-   ['] EXIT-REFUSED EXIT-WORKER TASK:ACTIVATE
+   ['] EXIT-REJECTED EXIT-WORKER TASK:ACTIVATE
    EXIT-JOIN
    EXIT-LIVE @ TFALSE
    0 EXIT-CONN @ PG:LIVE? TFALSE ;
@@ -1643,7 +1643,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
       completed OF OUTCOME-TAG TAG-OK T= CLEAR ENDOF
       connected OF PG:CLOSE E-EXEC throw ENDOF
       waiting OF 2drop E-EXEC throw ENDOF
-      refused OF drop E-EXEC throw ENDOF
+      rejected OF drop E-EXEC throw ENDOF
    ;MATCH
    c s" select value from pqtcancel order by id"
    [: 0 >ROW 0 >COL INT 0 T= 1 >ROW 0 >COL INT 1 T= ;] WITH-RESULT
@@ -1752,7 +1752,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
 : SILENT-CONNECT ( -- )
    LISTENER-CONNINFO$ s" " CONNECT MATCH PG:connect-result
       connected OF PG:CLOSE ENDOF
-      refused OF drop ENDOF
+      rejected OF drop ENDOF
    ;MATCH
    0 TASK:RETURN ;
 
@@ -1837,9 +1837,9 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    peer s TCP4:WRITE STATUS-ERRNO 0 T= ;
 
 \ libpq drops a connection whose reply breaks the protocol, so pg.f's next send
-\ on it is refused: E-EXEC, and the connection is closed with it.
-: REFUSED-SEND-CASES ( -- )
-   s" a send libpq refuses throws E-EXEC and closes the connection" T-LABEL
+\ on it fails: E-EXEC, and the connection is closed with it.
+: FAILED-SEND-CASES ( -- )
+   s" a failed send throws E-EXEC and closes the connection" T-LABEL
    FILL-PEER
    LISTENER {: lis :}
    LISTENER-CONNINFO$ s" " CONNECT-START {: c :}
@@ -1896,7 +1896,7 @@ MEM-MAX-N constant FOREVER-MS
 : NOTIFY-IN-TX ( PG:connection -- PG:connection )
    dup [: NOTIFY-NOW ;] WITH-TRANSACTION ;
 
-: REFUSES ( PG:connection [ PG:connection -- PG:connection ] n -- )
+: REJECTS ( PG:connection [ PG:connection -- PG:connection ] n -- )
    {: c body want:n :}
    c body catch {: stale code:n :}
    code want T= ;
@@ -1981,30 +1981,30 @@ variable PATH-U
    idle ELAPSED-MS {: took:n :}
    took BOUND-MS >= TTRUE
    took BOUND-MS PROMPT-MS + < TTRUE
-   s" a wait in a transaction, failed or not, with a statement pending or out of range is refused" T-LABEL
-   a [: NOTIFY-IN-TX ;] E-TRANSACTION REFUSES
+   s" a wait in a transaction, failed or not, with a statement pending or out of range is rejected" T-LABEL
+   a [: NOTIFY-IN-TX ;] E-TRANSACTION REJECTS
    a IDLE? TTRUE
    a s" begin" EXEC-OK
-   a [: NOTIFY-NOW ;] E-TRANSACTION REFUSES
+   a [: NOTIFY-NOW ;] E-TRANSACTION REJECTS
    a s" select 1/0" EXEC-TAG TAG-FAILED T=
-   a [: NOTIFY-NOW ;] E-TRANSACTION REFUSES
+   a [: NOTIFY-NOW ;] E-TRANSACTION REJECTS
    a s" rollback" EXEC-OK
    a s" select 1" SEND
-   a [: NOTIFY-NOW ;] E-STATEMENT REFUSES
+   a [: NOTIFY-NOW ;] E-STATEMENT REJECTS
    a RESULT-POLL CLEAR
-   a [: NOTIFY-NEGATIVE ;] E-BOUND REFUSES
+   a [: NOTIFY-NEGATIVE ;] E-BOUND REJECTS
    a PG:LIVE? TTRUE
-   s" a wait on a lost connection closes it and is refused at once" T-LABEL
+   s" a wait on a lost connection closes it and fails at once" T-LABEL
    b a BACKEND TERMINATE
    \ The wait logs the backend's FATAL: captured here, off the run's stderr.
    PATH-MAKE  PATH$ STDERR:CAPTURE
    mono-ns {: cut:n :}
-   [: a [: NOTIFY-LONG ;] E-EXEC REFUSES ;] [: STDERR:;CAPTURE ;] finally
+   [: a [: NOTIFY-LONG ;] E-EXEC REJECTS ;] [: STDERR:;CAPTURE ;] finally
    cut ELAPSED-MS PROMPT-MS < TTRUE
    a PG:LIVE? TFALSE
-   s" a wait on a closed connection is refused" T-LABEL
+   s" a wait on a closed connection is rejected" T-LABEL
    b PG:CLOSE
-   b [: NOTIFY-NOW ;] E-HANDLE REFUSES
+   b [: NOTIFY-NOW ;] E-HANDLE REJECTS
    NOTE-HALT-CASES ;
 
 
@@ -2047,7 +2047,7 @@ variable HEARD-U
       waiting OF drop ENDOF
       completed OF CLEAR E-EXEC throw ENDOF
       connected OF drop E-EXEC throw ENDOF
-      refused OF drop E-EXEC throw ENDOF
+      rejected OF drop E-EXEC throw ENDOF
    ;MATCH ;
 
 
@@ -2063,7 +2063,7 @@ variable HEARD-U
    b s" select pg_advisory_lock(987655)" EXEC-TAG TAG-ROWS T=
    a s" select pg_advisory_xact_lock(987655)" SEND
    a PENDING-SOCKET {: socket:fd :}
-   a [: ENDED-NOW ;] E-STATEMENT REFUSES
+   a [: ENDED-NOW ;] E-STATEMENT REJECTS
    b s" select pg_advisory_unlock(987655)" EXEC-TAG TAG-ROWS T=
    a RESULT-POLL OUTCOME-TAG TAG-ROWS T= CLEAR
    s" a notification ENDED? reads stays for NOTIFIED?" T-LABEL
@@ -2150,7 +2150,7 @@ variable WARN-LINES
    b a BACKEND TERMINATE
    PATH-MAKE
    PATH$ STDERR:CAPTURE
-   [: a [: NOTIFY-LONG ;] E-EXEC REFUSES  b RAISES ;]
+   [: a [: NOTIFY-LONG ;] E-EXEC REJECTS  b RAISES ;]
    [: STDERR:;CAPTURE ;] finally
    a PG:LIVE? TFALSE
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW FILE-B !
@@ -2210,7 +2210,7 @@ PW-RIGHT!
 : SIGNED-IN? ( PG:connect-result -- bool )
    MATCH PG:connect-result
       connected OF PG:CLOSE true ENDOF
-      refused OF drop false ENDOF
+      rejected OF drop false ENDOF
    ;MATCH ;
 
 
@@ -2245,8 +2245,8 @@ PW-RIGHT!
    PW-CONNINFO$ PW-RIGHT$ CONNECT SIGNED-IN? TTRUE
    s" a password argument overrides the one the conninfo holds" T-LABEL
    PW-HELD$ PW-RIGHT$ CONNECT SIGNED-IN? TTRUE
-   s" a wrong password argument is refused and its text omits it" T-LABEL
-   PW-CONNINFO$ PW-WRONG$ CONNECT REFUSED$
+   s" a wrong password argument is rejected and its text omits it" T-LABEL
+   PW-CONNINFO$ PW-WRONG$ CONNECT REJECTED$
    PW-WRONG$ STR:CONTAINS? TFALSE
    c ;
 
@@ -2284,7 +2284,7 @@ PW-RIGHT!
    SCRIPT-OK-CASES
    SCRIPT-FAIL-CASES
    SCRIPT-TX-CASES
-   SCRIPT-REFUSAL-CASES
+   SCRIPT-REJECTION-CASES
    COPY-CASES
    SCOPE-CASES
    OWNER-CASES
@@ -2306,9 +2306,9 @@ PW-RIGHT!
 
 
 : LOOP-CASES ( -- )
-   CONNECT-CASES REFUSAL-TEXT-CASES SOCKET-REFUSAL-CASES MALFORMED-CASES
+   CONNECT-CASES REJECTION-TEXT-CASES SOCKET-REJECTION-CASES MALFORMED-CASES
    CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
-   HALT-CONNECT-CASES REFUSED-SEND-CASES AIO-FAIL-CASES SERVER-CASES ;
+   HALT-CONNECT-CASES FAILED-SEND-CASES AIO-FAIL-CASES SERVER-CASES ;
 
 \ AIO:STOP runs whatever the cases threw; a code it throws replaces theirs.
 : MAIN ( -- )
