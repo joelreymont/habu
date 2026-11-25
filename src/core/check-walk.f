@@ -533,11 +533,11 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
 \ The step a dead token, a locals group's token or a field loan's name takes
 \ before any other; true when it took one. A is its unfolded spelling.
 : MODE-TOK? ( ^u8 -- bool ) {: a:^ :}
-   TKF TKFU @ LIVE-TOKEN? 0= IF
+   TKF TKFU @ >str LIVE-TOKEN? 0= IF
       PATH-MAY? 0= IF -1 DEADERR !  0 OK !  TKF TKFU @ >str DEAD-TOK  RES-TRUE EXIT THEN
       DW-MAYDIE LEFT-CALL!  PATH-LIVE PATH!
    THEN
-   LMODE @ IF a TKF TKFU @ LOC-TOK  RES-TRUE EXIT THEN
+   LMODE @ IF a TKF TKFU @ >str LOC-TOK  RES-TRUE EXIT THEN
    FIELD-LOAN-PENDING @ IF TKF TKFU @ >str SCOPE-FIELD-TOK  RES-TRUE EXIT THEN
    RES-FALSE ;
 
@@ -645,7 +645,7 @@ private
    CK-ENTRY-U @ 0= IF EXIT THEN
    NMA @ NMU @ >str CK-ENTRY-A @ CK-ENTRY-U @ >str STR:=CI 0= IF EXIT THEN
    SGA @ SGU @ >str SIG-TRIM s" --" STR:= IF EXIT THEN
-   AUTHORITY {: pa:^ pu:n mode:n ok:bool :}
+   AUTHORITY {: pkg:str mode:n ok:bool :}
    ok 0=  mode CHECKER-PACKAGE-NONE <>  or IF EXIT THEN
    NMOFF @ TADDR NMU @ >str {: ns:str :}
    TSTART @ 1 - {: from:n :}
@@ -846,7 +846,7 @@ EXPORT CHECKER-ITEMS:ITEM-COUNT
 : ITEM-FAIL-SPELL ( n -- )
    ITEM-LOCAL-NODE 0= IF drop 0 FAILTU ! EXIT THEN
    EFFECT-TYPE TYPE-TEXT {: s:str :}
-   s STR:LEN TOKBUF-ENSURE  s STR:DATA FAILTK s STR:LEN >str CCOPY
+   s STR:LEN TOKBUF-ENSURE  s STR:DATA FAILTK s STR:LEN CCOPY
    s STR:LEN FAILTU ! ;
 
 : ITEM-STEP ( n -- ) {: i:n :}
@@ -1505,7 +1505,7 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    DECLARED-ROW-REPORTS? IF EXIT THEN
    CHECK-SIG? SGBAD @ 0= and UNFIT @ 0= and IF
       NMA @ NMU @ >str CHECK-REC-ADMIT
-      NMA @ NMU @ 0 NORET-ADD
+      NMA @ NMU @ >str 0 NORET-ADD
       NMA @ NMU @ >str  NMOFF @ TADDR NMU @ >str  RES-FALSE CHECKER-USIG-CERT-ADD-PENDING
       RECOVERY-RECORD
       NMA @ NMU @ >str CHECKER-RECORD-SYM CK-CLOSE!
@@ -1521,7 +1521,7 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    CELLS-NONE UNREC-DIN !  CELLS-NONE UNREC-DOUT !
    WRITE-WINDOW-CK
    -1 PARSE-COMPLETE !
-   s STR:DATA s STR:LEN CHECK-RESET
+   s CHECK-RESET
    DOES-SPLIT @ 0 <> IF s" does>" ELSE s" ;" THEN CHECK-SCAN
    DOES-SPLIT @ 0 <>  TORDER-SCAN-UNKNOWN @ 0=  and IF s" does>" DOES-UNMADE-REJECT THEN
    \ A definition left to the run makes only itself, so it marks its own name.
@@ -1648,7 +1648,7 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    dup VERDICT-DEFERRED =  UNSEEN @ 0 <>  and  NMU @ 0 >  and  CHECK-SIG? and
    TORDER-ACTIVE @ TORDER-PARENT-GATE < and IF
       NMA @ NMU @ >str CHECK-REC-ADMIT
-      NMA @ NMU @ INHSET @ CTL-OPAQUE or CTL-MAYDEAD or NORET-ADD
+      NMA @ NMU @ >str INHSET @ CTL-OPAQUE or CTL-MAYDEAD or NORET-ADD
       NMA @ NMU @ >str  NMOFF @ TADDR NMU @ >str  RES-TRUE CHECKER-USIG-CERT-ADD-PENDING
    THEN
    dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and
@@ -1960,7 +1960,7 @@ EXPORT CHECKER-OVERLAY:OPEN?
 \ source recorded; one opened while the overlay is open leaves them to it.
 : CHECKER-VERIFY-PKG-START ( -- )
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF NESTED-REJECT THEN
-   AUTHORITY 0= IF CHECKER-PKG-CONTEXT-REJECT THEN 2drop drop
+   AUTHORITY 0= IF CHECKER-PKG-CONTEXT-REJECT THEN drop drop
    OPEN? IF VERIFY-WINDOW-SHARED ELSE VERIFY-WINDOW-OWNED THEN {: win:n :}
    win VERIFY-WINDOW-OWNED = IF RBF-PUSH THEN
    [: RES-FALSE -1 OPEN-SCOPE ;] catch {: rc:n :}
@@ -2072,7 +2072,7 @@ EXPORT CHECK:WRITE-WINDOW-CK
 : SCAN ( str -- bool )
    0 CHECKER-PREFIX-MISS !
    CHECKER-PREFIX-CUT @ CHECKER-PREFIX-ROLLBACK !
-   dup STR:DATA swap STR:LEN CHECK-RESET
+   CHECK-RESET
    s" " CHECK-SCAN                     \ a prefix: no closer
    CHECKER-PREFIX-MISS @ 0= ;
 
@@ -2145,7 +2145,7 @@ global
    rc 0= IF v ELSE 0 THEN {: verdict:n :}
    0 VSIG !
    ARMED @ 0 <> {: recording:bool :}
-   unknown 0= recording and IF s STR:DATA s STR:LEN verdict DONE THEN
+   unknown 0= recording and IF s verdict DONE THEN
    verdict ;
 private
 
@@ -2368,7 +2368,7 @@ package CHECK
 \ the CREATE stub pushes the data-field address before it.
 : CLAUSE-START ( str str -- bool )
    {: bs:str ss:str :}
-   bs STR:DATA bs STR:LEN CHECK-RESET
+   bs CHECK-RESET
    -1 CLAUSE-WALK !
    0 TOK0 !
    ss STR:DATA SGA !  ss STR:LEN SGU !
@@ -2430,7 +2430,7 @@ package CHECK
    \ the next record after it is the CREATED word's, so what this walk armed
    \ dies here, before the tape's observer, which may reject the clause.
    WRAP-CLEAR
-   ARMED @ IF bs STR:DATA bs STR:LEN DVERD @ DONE THEN ;
+   ARMED @ IF bs DVERD @ DONE THEN ;
 
 \ The retained engine reaches CHECK-DOES! at the `;` of a definition it is
 \ compiling, before that definition's own body is checked and recorded, so the
@@ -2547,7 +2547,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ Rejects the top-level token a u for WHY, WALK's code, as the load does: it
 \ judges the require of a shadowed global before the shadow.
 : WALK-REJECT ( str n -- ) {: s:str why:n :}
-   0 s BIND-REC @ USE-CHECK  s STR:DATA s STR:LEN why RAISE ;
+   0 s BIND-REC @ USE-CHECK  s why RAISE ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
 \ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
@@ -2558,7 +2558,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 : TOP-ANSWER ( str bool -- n )
    {: s:str runs:bool :}
    runs  s LITERAL-RANGE?  and IF s REJECTION:LITERAL-RANGE  TOP-END EXIT THEN
-   s STR:DATA s STR:LEN WALK {: sym:n why:n :}
+   s WALK {: sym:n why:n :}
    why 0 <> IF s why WALK-REJECT THEN
    sym HIDDEN-REC? {: hidden:bool :}
    CHECKER-QBAD-TOK @ 0= IF
@@ -2586,7 +2586,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ pre-pass reads itself, so TOP-ANSWER never judges it.
 : REQUIRED-TOP ( str -- )
    {: s:str :}
-   s STR:DATA s STR:LEN WALK {: sym:n why:n :}
+   s WALK {: sym:n why:n :}
    CHECKER-QBAD-TOK @ 0 <> IF EXIT THEN
    why 0 <> IF s why WALK-REJECT THEN
    s sym TOP-BOUND-SYM {: s2:n rec:^ ok:bool :}
@@ -2605,7 +2605,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    {: s:str :}
    WRITE-WINDOW-CK
    [: -1 BWIN-UNJUDGED !  -1 VSIG !
-      0 [: drop s STR:DATA s STR:LEN CHECK-RESET  SCAN-HELD  0 ;] SCAN nip
+      0 [: drop s CHECK-RESET  SCAN-HELD  0 ;] SCAN nip
       0 BWIN-UNJUDGED !
       DEF-RESUMED  SIG-EFF-DROP  SIG-UNRES-CLEAR  WRAP-CLEAR ;]
    CELLS-KEPT {: rc:n :}
@@ -2920,10 +2920,10 @@ private
 
 : ROW-UNBOUND ( str -- n )
    {: s:str :}
-   s STR:DATA s STR:LEN WALK nip {: why:n :}
+   s WALK nip {: why:n :}
    why E-USING-SHADOW-GLOBAL = IF PARSES-SHADOW EXIT THEN
    why E-USING-AMBIGUOUS = IF PARSES-AMBIGUOUS EXIT THEN
-   why 0 <> IF s STR:DATA s STR:LEN why RAISE -1 EXIT THEN
+   why 0 <> IF s why RAISE -1 EXIT THEN
    CHECKER-QBAD-TOK @ IF PARSES-QUALIFIED EXIT THEN
    s UNSEEN-COVERS? IF -1 EXIT THEN
    PARSES-UNDEFINED ;
@@ -4149,7 +4149,7 @@ FACTS-READ-INSTALL
 : PRIM-NAME ( str -- ) PE-SYM-OF drop ;
 
 \ Opens a row with an effect; PRIM-ATOM runs each of its atoms.
-: PRIM-OPEN ( str -- ) dup STR:DATA swap STR:LEN PE-OPEN  0 PE-SPEC-TOS ! ;
+: PRIM-OPEN ( str -- ) PE-OPEN  0 PE-SPEC-TOS ! ;
 
 : PRIM-ATOM ( n -- ) PE-SPEC-ATOM ;
 

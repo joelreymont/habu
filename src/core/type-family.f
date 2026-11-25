@@ -3783,7 +3783,7 @@ defer TFC-QUOT-ROW ( n n n -- n )   \ ( rownode base mode -- row )
          1 +
       REPEAT drop
       node SCHEMA-A@ {: fam:n :}
-      base fam TFAM-NAME$ dup STR:DATA swap STR:LEN fam MK-PARAM EXIT
+      base fam TFAM-NAME$ fam MK-PARAM EXIT
    THEN
    node SCHEMA-QUOT? IF                       \ xt-carrying payload: din/dout share a
       FRESH MK-QROW {: dbase:n :}             \ data base, rin/rout a return base: the
@@ -3942,7 +3942,7 @@ TFC-QUOT-ROW-INSTALL
    record PARAM-SCR+
    fid PF-NAME$ MK-ATOM PARAM-SCR+
    field PARAM-SCR+
-   base s" field" dup STR:DATA swap STR:LEN FIELD-FAM @ MK-PARAM off bytes RES-TRUE ;
+   base s" field" FIELD-FAM @ MK-PARAM off bytes RES-TRUE ;
 
 \ A value owns only the fields in its instantiated schema. Reconstruct a field
 \ term with the same substitution used by MAKE/UNMAKE and MATCH; this avoids
@@ -4022,7 +4022,7 @@ TFAM-INST-LIN-INSTALL
 : EFFECT-OWNER ( n -- n ) {: span:n :}
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup span < WHILE dup EFFECT-VAR PARAM-SCR+ 1 + REPEAT drop
-   base s" effect" dup STR:DATA swap STR:LEN -1 MK-PARAM ;
+   base s" effect" -1 MK-PARAM ;
 
 \ One more than the largest parameter index a schema node holds, 0 for none.
 : PARAM-SPAN ( n -- n ) {: node:n :}
@@ -4144,7 +4144,7 @@ TFAM-MEMBERS-INSTALL
 : TFAM-FRESH-TERM ( n -- n ) {: fam:n :}
    PARAM-SCR-N @ {: base:n :}
    fam TFAM-ARITY@ 0 ?do fam i FRESH-PARAM PARAM-SCR+ loop
-   base fam TFAM-NAME$ dup STR:DATA swap STR:LEN fam MK-PARAM ;
+   base fam TFAM-NAME$ fam MK-PARAM ;
 
 \ A field accessor's input row over a fresh row BASE, `^F<..>`, from the
 \ committed field id FID, and its family term TERM, whose arguments the field's
@@ -4168,7 +4168,7 @@ TFAM-MEMBERS-INSTALL
    {: fam:n :}
    PARAM-SCR-N @ {: pbase:n :}
    CC-U8 MK-CON PARAM-SCR+
-   pbase fam TFAM-NAME$ dup STR:DATA swap STR:LEN fam MK-PARAM ;
+   pbase fam TFAM-NAME$ fam MK-PARAM ;
 
 \ A plain field accessor's rows and byte offset, from the committed field id
 \ FID: it takes `^F<..>` and answers `^T`, T the field's type over the
@@ -4203,11 +4203,11 @@ TFAM-MEMBERS-INSTALL
    C2-INIT-FAM @ 0 ar 3 + FRESH-LETTERED {: scope:n :}
    PARAM-SCR-N @ {: base:n :}
    scope PARAM-SCR+ term PARAM-SCR+
-   base s" init" dup STR:DATA swap STR:LEN C2-INIT-FAM @ MK-PARAM {: elem:n :}
+   base s" init" C2-INIT-FAM @ MK-PARAM {: elem:n :}
    PARAM-SCR-N @ {: vbase:n :}
    3 0 ?do C2-MUT-FAM @ i ar i + FRESH-LETTERED PARAM-SCR+ loop
    elem PARAM-SCR+
-   vbase s" mut-view" dup STR:DATA swap STR:LEN C2-MUT-FAM @ MK-PARAM ;
+   vbase s" mut-view" C2-MUT-FAM @ MK-PARAM ;
 
 \ An initialized field accessor's rows and field id, from its shape and the
 \ committed field id FID: INIT-GET takes the receiver and answers it and the
@@ -4301,7 +4301,7 @@ TFAM-MEMBERS-INSTALL
       TFC-I @ cells TFC-VARS + @ PARAM-SCR+
       TFC-I @ 1 + TFC-I !
    REPEAT
-   base fam TFAM-NAME$ dup STR:DATA swap STR:LEN fam MK-PARAM ;
+   base fam TFAM-NAME$ fam MK-PARAM ;
 
 \ A product's MAKE or UNMAKE rows over FAM's lettered variables, from its make
 \ or unmake variant: MAKE takes the fields and answers the value, UNMAKE the

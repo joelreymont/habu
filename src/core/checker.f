@@ -1,4 +1,3 @@
-split-str
 \ The stack-effect checker: the declaration owner and its arenas, the scan of
 \ each definition, and the effect store and records the compiler reads.
 \
@@ -901,10 +900,10 @@ EXPORT CHECK:SCRATCH-OPEN
 \ Rejects with message m, label l and help h; given no token, the record
 \ stands at the token being read.
 : SCRATCH-REJECT ( str str str -- )
-   {: m:^ mu:n l:^ lu:n h:^ hu:n :}
-   s" E-SCRATCH" REJECTION:OPEN  m mu REJECTION:EMIT-STR
-   NULL-PTR 0 REJECTION:AT  l lu REJECTION:EMIT-STR
-   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   {: m:str l:str h:str :}
+   s" E-SCRATCH" REJECTION:OPEN  m REJECTION:EMIT-STR
+   NULL-PTR 0 >str REJECTION:AT  l REJECTION:EMIT-STR
+   REJECTION:HELP  h REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : SCRATCH{ ( -- )
@@ -1245,10 +1244,10 @@ private
    kind TVK-MOVED = IF s" moved" EXIT THEN
    s" " ;
 
-: TAG>KIND ( str -- n ) {: a:^ u:n :}
-   u 0 = IF TVK-ANY EXIT THEN
+: TAG>KIND ( str -- n ) {: s:str :}
+   s STR:LEN 0 = IF TVK-ANY EXIT THEN
    TVK-MOVED 1 + 1 ?do
-      i KIND>TAG$ a u STR:= IF i unloop EXIT THEN
+      i KIND>TAG$ s STR:= IF i unloop EXIT THEN
    loop
    TVK-ANY ;
 
@@ -1705,14 +1704,14 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : TERM-NAMES ( -- ^u8 ) TERM-NAME-P @ ;
 \ A source inside the pool stays readable across the grow: SR-GROW keeps the
 \ old bytes.
-: TERM-NAME+ ( str -- n ) {: a:^ u:n :}
-   TERM-NAME-N @ u + TERM-NAME-CAP @ > IF
-      TERM-NAME-N @ u + TERM-NAME-CAP @ 2 * max TERM-NAME-INIT max {: nc:n :}
+: TERM-NAME+ ( str -- n ) {: s:str :}
+   TERM-NAME-N @ s STR:LEN + TERM-NAME-CAP @ > IF
+      TERM-NAME-N @ s STR:LEN + TERM-NAME-CAP @ 2 * max TERM-NAME-INIT max {: nc:n :}
       TERM-NAME-P @ TERM-NAME-CAP @ nc SR-GROW TERM-NAME-P !
       nc TERM-NAME-CAP !
    THEN
-   a TERM-NAMES TERM-NAME-N @ + u ARENA-COPY
-   TERM-NAME-N @ dup u + TERM-NAME-N ! ;
+   s STR:DATA TERM-NAMES TERM-NAME-N @ + s STR:LEN >str ARENA-COPY
+   TERM-NAME-N @ dup s STR:LEN + TERM-NAME-N ! ;
 : RIGID-RESET ( -- )
    1 RIGID-N !   1 RGN-N !   1 EXT-N !   1 GEN-N !   1 RGN-MARK !   0 FB-N ! ;
 \ Shared catch-all domain: fresh-mask-* and every non-domain fresh atom mint
@@ -1737,10 +1736,10 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
    GEN-N @ dup 1+ GEN-N ! ;
 \ A fresh name's domain past its stripped `fresh-` prefix: 1 region, 2 extent,
 \ 3 generation, 0 for mask- and any other name (the RIGID-FRESH space).
-: RIGID-NAME-DOMAIN ( str -- n ) {: a:^ u:n :}
-   u 7 >= IF a 7 s" region-" STR:= IF 1 EXIT THEN THEN
-   u 7 >= IF a 7 s" extent-" STR:= IF 2 EXIT THEN THEN
-   u 4 >= IF a 4 s" gen-"    STR:= IF 3 EXIT THEN THEN
+: RIGID-NAME-DOMAIN ( str -- n ) {: s:str :}
+   s STR:LEN 7 >= IF s STR:DATA 7 >str s" region-" STR:= IF 1 EXIT THEN THEN
+   s STR:LEN 7 >= IF s STR:DATA 7 >str s" extent-" STR:= IF 2 EXIT THEN THEN
+   s STR:LEN 4 >= IF s STR:DATA 4 >str s" gen-"    STR:= IF 3 EXIT THEN THEN
    0 ;
 : RIGID-AK-MINT ( str -- n )
    RIGID-NAME-DOMAIN {: d:n :}
@@ -1748,10 +1747,10 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
    d 2 = IF EXT-FRESH EXIT THEN
    d 3 = IF GEN-FRESH EXIT THEN
    RIGID-FRESH ;
-: MK-ATOM-K ( str n -- n ) {: a:^ u:n k:n :}
+: MK-ATOM-K ( str n -- n ) {: s:str k:n :}
    ATOMN @ 1 + ATOM-ENSURE
-   a u TERM-NAME+ ATOMN @ ATOMA-FIELD !
-   u ATOMN @ cells ATOMU + !
+   s TERM-NAME+ ATOMN @ ATOMA-FIELD !
+   s STR:LEN ATOMN @ cells ATOMU + !
    k ATOMN @ cells ATOMK + !
    ATOMN @ TAG-SHIFT lshift T-ATOM or
    ATOMN @ 1 + ATOMN ! ;
@@ -1879,11 +1878,11 @@ variable C2-STOW-FAM -1 C2-STOW-FAM ! \ package C2-MEM's stow-layout
 \ rows a token is checked against read each str as ^u8 n.
 variable CHECKER-SPLIT-STR  0 CHECKER-SPLIT-STR !
 \ Whether a file's source begins with the line split-str, which marks the file.
-: SPLIT-STR-FILE? ( str -- bool ) {: a:^ u:n :}
-   u 9 < IF 0 0= 0= EXIT THEN
-   a 9 s" split-str" STR:= 0= IF 0 0= 0= EXIT THEN
-   u 9 = IF 0 0= EXIT THEN
-   a 9 + c@ 10 = ;
+: SPLIT-STR-FILE? ( str -- bool ) {: s:str :}
+   s STR:LEN 9 < IF 0 0= 0= EXIT THEN
+   s STR:DATA 9 >str s" split-str" STR:= 0= IF 0 0= 0= EXIT THEN
+   s STR:LEN 9 = IF 0 0= EXIT THEN
+   s STR:DATA 9 + c@ 10 = ;
 
 \ The `tile` and `uniform` family ids, captured by type-family.f at
 \ registration. A word whose declared effect consumes a `tile` and produces a
@@ -2012,7 +2011,7 @@ VERIFY-WINDOW-NONE CHECKER-VERIFY-WINDOW !
    CHECKER-PACKAGE-U @ 0= IF
       s" " 0 0= 0= EXIT
    THEN
-   SYM-STR CHECKER-PACKAGE-NAME @ + CHECKER-PACKAGE-U @ 0 0= ;
+   SYM-STR CHECKER-PACKAGE-NAME @ + CHECKER-PACKAGE-U @ >str 0 0= ;
 
 \ The boot provider names the open package from the mirror: the engine's
 \ package cells only say whether one is open.
@@ -2037,7 +2036,7 @@ CHECKER-PKG-LIVE-DEFAULT
    s" E-PKG-CONTEXT" REJECTION:OPEN
    s" no authenticated package context: the current wordlist is neither the open package's public nor its private one, nor the top level's"
    REJECTION:EMIT-STR
-   NULL-PTR 0 REJECTION:AT  s" no package context" REJECTION:EMIT-STR
+   NULL-PTR 0 >str REJECTION:AT  s" no package context" REJECTION:EMIT-STR
    REJECTION:HELP
    s" define and verify at top level or in a `public`, `private` or `global` section inside `package ... ;package`"
    REJECTION:EMIT-STR
@@ -2052,14 +2051,14 @@ EXPORT CHECK:CK-USE-ENGINE-DEPTH
 EXPORT CHECK:PKG-LIVE-XT
 \ The open package's name and section, and whether the current wordlist is a
 \ definition context: one of its sections, or the global wordlist outside one.
-: AUTHORITY ( -- ^u8 n n bool )
-   PKG-LIVE-XT {: a:^ u:n ok:bool :}
+: AUTHORITY ( -- str n bool )
+   PKG-LIVE-XT {: s:str ok:bool :}
    ok 0= IF s" " CHECKER-PACKAGE-NONE 0 0= 0= EXIT THEN
    get-current {: cur:n :}
-   u 0= IF s" " CHECKER-PACKAGE-NONE cur BOOT:GLOBAL-WL = EXIT THEN
-   cur data-base PKG-PUB-CELL + @ = IF a u CHECKER-PACKAGE-PUBLIC 0 0= EXIT THEN
-   cur data-base PKG-PRI-CELL + @ = IF a u CHECKER-PACKAGE-PRIVATE 0 0= EXIT THEN
-   cur BOOT:GLOBAL-WL = IF a u CHECKER-PACKAGE-GLOBAL 0 0= EXIT THEN
+   s STR:LEN 0= IF s" " CHECKER-PACKAGE-NONE cur BOOT:GLOBAL-WL = EXIT THEN
+   cur data-base PKG-PUB-CELL + @ = IF s CHECKER-PACKAGE-PUBLIC 0 0= EXIT THEN
+   cur data-base PKG-PRI-CELL + @ = IF s CHECKER-PACKAGE-PRIVATE 0 0= EXIT THEN
+   cur BOOT:GLOBAL-WL = IF s CHECKER-PACKAGE-GLOBAL 0 0= EXIT THEN
    s" " CHECKER-PACKAGE-NONE 0 0= 0= ;
 ;package
 package CHECK
@@ -2077,13 +2076,13 @@ EXPORT CHECKER-RESOLVE:AUTHORITY
 : CHECKER-PKG-CONTEXT ( -- str n )
    AUTHORITY IF EXIT THEN
    TOP-STEP @ 0= IF CHECKER-PKG-CONTEXT-REJECT THEN
-   2drop drop s" " CHECKER-PACKAGE-NONE ;
+   drop drop s" " CHECKER-PACKAGE-NONE ;
 
 : CHECKER-AUTH-PACKAGE$ ( -- str )
    CHECKER-PKG-CONTEXT drop ;
 
 : CHECKER-AUTH-PACKAGE-MODE@ ( -- n )
-   CHECKER-PKG-CONTEXT >r 2drop r> ;
+   CHECKER-PKG-CONTEXT >r drop r> ;
 
 : CHECKER-AUTH-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-NONE <> ;
@@ -2129,13 +2128,13 @@ UK-EXACT UNIFY-KIND !
    PARAM-SCR-N @ 1 + PARAM-SCR-N ! ;
 \ `base` is the caller's scratch mark: MK-PARAM rewinds the shared scratch to
 \ `base`, never to 0, so nested and replayed builds keep a parent's pushed args.
-: MK-PARAM {: base:n a:^ u:n fam:n :}
+: MK-PARAM {: base:n s:str fam:n :}
    PARAMN @ 1 + PARAM-ENSURE
    PARAM-SCR-N @ base - {: argc:n :}
    argc PARG-ENSURE
    PARG-N @ {: start:n :}
-   a u TERM-NAME+ PARAMN @ PARAMA-FIELD !
-   u PARAMN @ cells PARAMU + !
+   s TERM-NAME+ PARAMN @ PARAMA-FIELD !
+   s STR:LEN PARAMN @ cells PARAMU + !
    fam PARAMN @ cells PARAMFAM + !
    argc PARAMN @ cells PARAMC + !
    start PARAMN @ cells PARAMOFF + !
@@ -2328,8 +2327,8 @@ variable EXT-REDX-FAM   0 EXT-REDX-FAM !
 \ Every argument slot answers width-bearing, the conservative answer, which
 \ keeps an open instance unexpanded.
 : TFAM-QUERY-DEFAULTS ( -- )
-   [: 2drop 2drop 0 RES-FALSE ;] is TFAM-RESOLVE-XT
-   [: 2drop RES-FALSE ;] is TFAM-CLAIMED?-XT
+   [: drop drop 0 RES-FALSE ;] is TFAM-RESOLVE-XT
+   [: drop RES-FALSE ;] is TFAM-CLAIMED?-XT
    [: drop 0 ;] is TFAM-ARITY-XT
    [: drop RES-FALSE ;] is TFAM-LAYOUT?-XT
    [: drop RES-FALSE ;] is TFAM-CELL?-XT
@@ -2637,8 +2636,8 @@ CWIN-BOOT-DEFAULT
 : FIELD-ATOM-SAME? ( n n -- bool ) {: a:n b:n :}
    a T-RES TAG T-ATOM <> IF RES-FALSE EXIT THEN
    b T-RES TAG T-ATOM <> IF RES-FALSE EXIT THEN
-   a T-RES ATOM>A a T-RES ATOM>U
-   b T-RES ATOM>A b T-RES ATOM>U STR:= ;
+   a T-RES ATOM>A a T-RES ATOM>U >str
+   b T-RES ATOM>A b T-RES ATOM>U >str STR:= ;
 
 : FIELD-ID-SAME? ( n n -- bool ) {: a:n b:n :}
    a T-RES FIELD-REC b T-RES FIELD-REC FIELD-ATOM-SAME? 0= IF RES-FALSE EXIT THEN
@@ -2928,25 +2927,25 @@ EXPORT CHECKER-REG:GROW
    CT-STR-ENSURE ;
 
 \ CT-ROOM may relocate the pool, so the base is read after it.
-: CT-COPY ( str -- n n ) {: a:^ u:n :}
-   u CT-ROOM
+: CT-COPY ( str -- n n ) {: s:str :}
+   s STR:LEN CT-ROOM
    CT-STR-U @ {: off:n :}
    CT-STR off + CT-DST!
    0 CT-J !
-   begin CT-J @ u < while
-      a CT-J @ + c@ CT-DST@ CT-J @ + c!
+   begin CT-J @ s STR:LEN < while
+      s STR:DATA CT-J @ + c@ CT-DST@ CT-J @ + c!
       CT-J @ 1 + CT-J !
    repeat
-   CT-STR-U @ u + CT-STR-U !
-   off u ;
+   CT-STR-U @ s STR:LEN + CT-STR-U !
+   off s STR:LEN ;
 
 : CT-ADVANCE ( n -- )
    1 + dup CTN @ > IF CTN ! ELSE drop THEN ;
 
-: CT-SET ( str n n n n -- ) {: a:^ u:n code:n class:n width:n sign:n :}
+: CT-SET ( str n n n n -- ) {: s:str code:n class:n width:n sign:n :}
    WRITE-WINDOW-CK
    code CT-ENSURE
-   a u CT-COPY {: off:n len:n :}
+   s CT-COPY {: off:n len:n :}
    off code cells CT-NAME-A + !
    len code cells CT-NAME-U + !
    class code cells CT-CLASS + !
@@ -2966,7 +2965,7 @@ EXPORT CHECKER-REG:GROW
    CT-CLASS ctn CTN @ ARENA-CELLS-ZERO    CT-WIDTH ctn CTN @ ARENA-CELLS-ZERO
    CT-SIGN ctn CTN @ ARENA-CELLS-ZERO
    CT-PKG-A ctn CTN @ ARENA-CELLS-ZERO    CT-PKG-U ctn CTN @ ARENA-CELLS-ZERO
-   CT-STR ctu +  CT-STR-U @ ctu -  ARENA-ZERO
+   CT-STR ctu +  CT-STR-U @ ctu - >str ARENA-ZERO
    ctn CTN !
    ctu CT-STR-U ! ;
 
@@ -3038,27 +3037,27 @@ ENTRIES-PENDING 0 CELL-ROW+
 
 : CT-NAME$ ( n -- str )
    dup CT-NAME-PTR
-   swap cells CT-NAME-U + @ ;
+   swap cells CT-NAME-U + @ >str ;
 
 : CT-PKG$ ( n -- str ) {: code:n :}
    code cells CT-PKG-A + @ CT-STR swap +
-   code cells CT-PKG-U + @ ;
+   code cells CT-PKG-U + @ >str ;
 
-: CT-PKG! ( str n -- ) {: a:^ u:n code:n :}
-   a u CT-COPY {: off:n len:n :}
+: CT-PKG! ( str n -- ) {: s:str code:n :}
+   s CT-COPY {: off:n len:n :}
    off code cells CT-PKG-A + !
    len code cells CT-PKG-U + ! ;
 
-: CT-NAME= ( str n -- bool ) {: a:^ u:n code:n :}
-   code CT-NAME$ a u STR:= ;
+: CT-NAME= ( str n -- bool ) {: s:str code:n :}
+   code CT-NAME$ s STR:= ;
 
 ;package
 package CHECKER-RESOLVE
 public
 \ The record a wordlist holds under a name, NULL-PTR for none. The lookup is a
 \ dependency of the part that asks, as if its source spelled the name.
-: WL-PROBE ( str n -- ^n ) {: a:^ u:n wid:n :}
-   a u wid COMPILE-READS:NAME+  a u wid xref-search-wl ;
+: WL-PROBE ( str n -- ^n ) {: s:str wid:n :}
+   s wid COMPILE-READS:NAME+  s wid xref-search-wl ;
 ;package
 package CHECK
 
@@ -3106,8 +3105,8 @@ CAST: REC-CELLS ( ^n -- ^^u8 )
    {: rec:^ :}
    rec CK-REC-FLAGS-SLOT DICT-CELL@ {: flags:n :}
    flags DNAME-LEN-MASK and {: u:n :}
-   flags DNAME-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
-   rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
+   flags DNAME-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u >str EXIT THEN
+   rec CK-REC-NAME-SLOT cells + BYTE-VIEW u >str ;
 CAST: AS-VALUE ( n -- [ -- n ] )
 \ A cell, not a local: a local bound after the body ran would read what it left.
 variable VALUE-BASE   0 VALUE-BASE !
@@ -3137,11 +3136,11 @@ variable VALUE-BASE   0 VALUE-BASE !
 ;package
 package CHECK
 
-\ A new linear type `a u` owned by package `pa pu` ("" for none).
-: CT-LINEAR-SET ( str str -- ) {: a:^ u:n pa:^ pu:n :}
+\ A new linear type `s` owned by package `ps` ("" for none).
+: CT-LINEAR-SET ( str str -- ) {: s:str ps:str :}
    CTN @ {: code:n :}
-   a u code CT-LINEAR 64 CS-NONE CT-SET
-   pa pu code CT-PKG!
+   s code CT-LINEAR 64 CS-NONE CT-SET
+   ps code CT-PKG!
    LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
 
 private
@@ -3157,11 +3156,11 @@ variable HB-CEILING   0 HB-CEILING !
 \ A linear type's type entry is named for the type, its text `linear pkg`, `-`
 \ for none; a family's text starts with a number.
 : HEAD$ ( -- str ) s" linear " ;
-: ENTRY-PKG$ ( str -- str ) {: a:^ u:n :}
-   HEAD$ nip {: hu:n :}
-   a hu + u hu - {: pa:^ pu:n :}
-   pa pu s" -" STR:= IF pa 0 EXIT THEN
-   pa pu ;
+: ENTRY-PKG$ ( str -- str ) {: s:str :}
+   HEAD$ STR:LEN {: hu:n :}
+   s STR:DATA hu + s STR:LEN hu - >str {: p:str :}
+   p s" -" STR:= IF p STR:DATA 0 >str EXIT THEN
+   p ;
 
 EXPORT CHECKER-RESOLVE:REC-AT
 
@@ -3170,7 +3169,7 @@ EXPORT CHECKER-RESOLVE:REC-AT
 : FACTS@ ( n -- str )
    {: ix:n :}
    ix REC-AT CK-REC-FACTS-SLOT cells + @ {: off:n :}
-   off 0 <= IF NULL-PTR BYTE-VIEW 0 EXIT THEN
+   off 0 <= IF NULL-PTR BYTE-VIEW 0 >str EXIT THEN
    data-base BOOT:DP-CEILING-CELL + @ {: ceiling:n :}
    BUILDING? ix BUILD-FIRST @ >= and IF
       IMAGE-BASE ceiling
@@ -3182,12 +3181,12 @@ EXPORT CHECKER-RESOLVE:REC-AT
    NULL-PTR BYTE-VIEW base + off + {: a:^ :}
    a CELL - CELL-VIEW @ {: u:n :}
    u 0 < u size off - > or IF s" checker: facts text outside DATA" EXIT-STATUS:INTERNAL die THEN
-   a u ;
+   a u >str ;
 
-: LINEAR-TEXT? ( str -- bool ) {: a:^ u:n :}
-   HEAD$ nip {: hu:n :}
-   u hu < IF RES-FALSE EXIT THEN
-   a hu HEAD$ STR:= ;
+: LINEAR-TEXT? ( str -- bool ) {: s:str :}
+   HEAD$ STR:LEN {: hu:n :}
+   s STR:LEN hu < IF RES-FALSE EXIT THEN
+   s STR:DATA hu >str HEAD$ STR:= ;
 
 EXPORT CHECKER-RESOLVE:CK-REC-NAME$
 EXPORT CHECKER-RESOLVE:REC>INDEX
@@ -3197,32 +3196,32 @@ EXPORT BOOT:TYPES-WL
 
 \ The probe is no dependency of the part: the part that reads every pending entry
 \ probes each one's name, which its source need not spell.
-: LINEAR-ENTRY ( str -- n ) {: a:^ u:n :}
+: LINEAR-ENTRY ( str -- n ) {: s:str :}
    TYPES-WL {: wid:n :}
    wid 0= IF -1 EXIT THEN
-   a u wid xref-search-wl {: rec:^ :}
+   s wid xref-search-wl {: rec:^ :}
    rec NULL-PTR = IF -1 EXIT THEN
-   rec CK-REC-NAME$ a u STR:= 0= IF -1 EXIT THEN
+   rec CK-REC-NAME$ s STR:= 0= IF -1 EXIT THEN
    rec REC>INDEX {: ix:n :}
    ix FACTS@ LINEAR-TEXT? 0= IF -1 EXIT THEN
    ix ;
 
 \ The compile that wrote the entry checked the name.
-: READ-LINEAR ( str -- n ) {: a:^ u:n :}
-   a u LINEAR-ENTRY {: ix:n :}
+: READ-LINEAR ( str -- n ) {: s:str :}
+   s LINEAR-ENTRY {: ix:n :}
    ix -1 = IF 0 EXIT THEN
    CTN @ {: code:n :}
-   a u ix FACTS@ ENTRY-PKG$ CT-LINEAR-SET
+   s ix FACTS@ ENTRY-PKG$ CT-LINEAR-SET
    code ;
 
-: CT-FIND ( str -- n ) {: a:^ u:n :}
+: CT-FIND ( str -- n ) {: s:str :}
    1 CT-I !
    begin CT-I @ CTN @ < while
-      a u CT-I @ CT-NAME= IF CT-I @ exit THEN
+      s CT-I @ CT-NAME= IF CT-I @ exit THEN
       CT-I @ 1 + CT-I !
    repeat
    ENTRIES-PENDING @ 0= IF 0 EXIT THEN
-   a u READ-LINEAR ;
+   s READ-LINEAR ;
 
 : INT-FAM? ( n -- bool ) {: code:n :}
    code CT-INT? ;
@@ -3275,17 +3274,17 @@ EXPORT BOOT:TYPES-WL
 : ATOM-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 ATOM>K t2 ATOM>K <> IF RES-FALSE EXIT THEN
    t1 ATOM>K 0 < IF RES-FALSE EXIT THEN              \ rigid template slot -> never unify
-   t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U STR:= ;
+   t1 ATOM>A t1 ATOM>U >str t2 ATOM>A t2 ATOM>U >str STR:= ;
 
-: FRESH-REGION-NAME? ( str -- bool ) {: name:^ bytes:n :}
-   bytes 7 < IF RES-FALSE EXIT THEN
-   name 7 s" region-" STR:= ;
+: FRESH-REGION-NAME? ( str -- bool ) {: name:str :}
+   name STR:LEN 7 < IF RES-FALSE EXIT THEN
+   name STR:DATA 7 >str s" region-" STR:= ;
 
 : FRESH-REGION-TEMPLATE? ( n -- bool ) {: term:n :}
    term T-RES {: t:n :}
    t TAG T-ATOM <> IF RES-FALSE EXIT THEN
    t ATOM>K 0 >= IF RES-FALSE EXIT THEN
-   t ATOM>A t ATOM>U FRESH-REGION-NAME? ;
+   t ATOM>A t ATOM>U >str FRESH-REGION-NAME? ;
 
 64 constant FO-INIT-CAP
 create FO-BOOT FO-INIT-CAP cells allot
@@ -3589,9 +3588,9 @@ variable QUOT-STATE   \ the NSCOPE state KEEP-QUOTS* gives each block
 
 : E-AK-SAME? ( n n -- bool ) {: t1:n t2:n :}
    t1 ATOM>K t2 ATOM>K <> IF RES-FALSE EXIT THEN
-   t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U STR:= ;
+   t1 ATOM>A t1 ATOM>U >str t2 ATOM>A t2 ATOM>U >str STR:= ;
 : FB-MINT ( n -- n ) {: name:n :}
-   name ATOM>A name ATOM>U  name ATOM>A name ATOM>U RIGID-AK-MINT  MK-ATOM-K ;
+   name ATOM>A name ATOM>U >str  name ATOM>A name ATOM>U >str RIGID-AK-MINT  MK-ATOM-K ;
 
 ;package
 package CHECKER-QUOT-FRESH
@@ -3913,7 +3912,7 @@ EXPORT CHECK:TWALK-SHALLOWER
       1 +
    REPEAT drop
    x base ARGS-SAME? IF base PARAM-SCR-N !  t EXIT THEN
-   base x PARAM>NAME-A x PARAM>NAME-U x PARAM>FAM MK-PARAM {: copy:n :}
+   base x PARAM>NAME-A x PARAM>NAME-U >str x PARAM>FAM MK-PARAM {: copy:n :}
    x PARAM>HID copy PAY cells PARAMHID + !
    copy ;
 
@@ -4234,17 +4233,18 @@ variable FAILB  variable FAILE   \ the pin's span, the current token's while no 
 
 \ The trail holds the record, so a trial taken back takes it back. A pinned
 \ failure decides the body, so a call after it records nothing. The record
-\ names the call NA NU, empty for none.
-: LEFT-NAMED! ( str n -- ) {: na:^ nu:n why:n :}
+\ names the call NS, empty for none.
+: LEFT-NAMED! ( str n -- ) {: ns:str why:n :}
    LEFT-CALL @ 0 <>  FAILSET @ 0 <>  or IF EXIT THEN
    0 6 TRAIL-PUSH
    FAILB @ 1+ LEFT-CALL !  FAILE @ LEFT-END !  why LEFT-WHY !
-   na LEFT-NAME-A !  nu LEFT-NAME-U ! ;
+   ns STR:DATA LEFT-NAME-A !  ns STR:LEN LEFT-NAME-U ! ;
 
-: LEFT-CALL! ( n -- ) {: why:n :} NULL-PTR 0 why LEFT-NAMED! ;
+: LEFT-CALL! ( n -- ) {: why:n :} NULL-PTR 0 >str why LEFT-NAMED! ;
 
-: MAY-CALL! ( str -- ) MAY-CALL-U !  MAY-CALL-A ! ;
-: MAY-CALL$ ( -- str ) MAY-CALL-A @ MAY-CALL-U @ ;
+: MAY-CALL! ( str -- ) {: s:str :}
+   s STR:DATA MAY-CALL-A !  s STR:LEN MAY-CALL-U ! ;
+: MAY-CALL$ ( -- str ) MAY-CALL-A @ MAY-CALL-U @ >str ;
 
 \ An NS-LEFT variable is a block part: it binds a variable, which takes its
 \ state, or a block's scope, which only the run can judge.
@@ -4369,7 +4369,7 @@ variable FAILB  variable FAILE   \ the pin's span, the current token's while no 
       src over PARAM>ARG PARAM-SCR+
       1 +
    REPEAT drop
-   base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: t:n :}
+   base src PARAM>NAME-A src PARAM>NAME-U >str src PARAM>FAM MK-PARAM {: t:n :}
    slot 1 + t PAY cells PARAMHID + !
    t ;
 \ Slots 0..W-2 are payload, W-1 the tag.
@@ -4384,7 +4384,7 @@ variable FAILB  variable FAILE   \ the pin's span, the current token's while no 
       src over PARAM>ARG PARAM-SCR+
       1 +
    REPEAT drop
-   base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: lg:n :}
+   base src PARAM>NAME-A src PARAM>NAME-U >str src PARAM>FAM MK-PARAM {: lg:n :}
    src0 T-RES TAG T-STALE = IF lg MK-STALE ELSE lg THEN ;
 \ Physical order: slot 0 deepest, tag (W-1) on top.
 : LAYOUT-PUSH-FIELDS ( n n -- n ) {: type:n row:n :}
@@ -4691,7 +4691,7 @@ variable XT-DECL
 : OPAQUE-XT? ( n -- bool )
    T-RES {: t:n :}
    t TAG T-ATOM <> IF RES-FALSE EXIT THEN
-   t ATOM>K 0= IF t ATOM>A t ATOM>U s" xt" STR:= ELSE RES-FALSE THEN ;
+   t ATOM>K 0= IF t ATOM>A t ATOM>U >str s" xt" STR:= ELSE RES-FALSE THEN ;
 
 : FENCE-WHY ( n n -- n ) {: t:n kind:n :}
    t ISVAR IF t PAY kind TVK-RAISE-TO FENCE-OK EXIT THEN
@@ -4729,7 +4729,7 @@ variable XT-DECL
    t TAG T-ATOM <> IF RES-FALSE EXIT THEN
    t ATOM>K 0 <= IF RES-FALSE EXIT THEN
    t ATOM>U 7 < IF RES-FALSE EXIT THEN
-   t ATOM>A 7 s" region-" STR:= ;
+   t ATOM>A 7 >str s" region-" STR:= ;
 : SCOPE-BLOCK? ( n n -- bool ) {: vid:n term:n :}
    term T-RES {: t:n :}
    t TAG T-SCOPE = IF
@@ -5814,7 +5814,7 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
 : TOKBUF-ALLOC ( n -- ^u8 ) {: bytes:n :}
    bytes map-anon 0 <> IF drop bytes s" the checker's token buffer" REJECTION:MAP-PASS THEN ;
 
-: CCOPY ( ^u8 str -- ) {: a:^ d:^ u:n :}
+: CCOPY ( ^u8 ^u8 n -- ) {: a:^ d:^ u:n :}
    0 BEGIN dup u < WHILE
       dup a + c@
       over d + c!
@@ -5858,12 +5858,12 @@ PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
 : TADDR ( n -- ^u8 )
    TBASE@ swap + ;
 
-: DEAD-OWNER! ( str -- )
-   DEADTU !  DEADTA ! ;
+: DEAD-OWNER! ( str -- ) {: s:str :}
+   s STR:LEN DEADTU !  s STR:DATA DEADTA ! ;
 
 \ The path ends at the token TSTART..TI, which E-DEAD-CODE names.
 : TOKEN-DEAD! ( -- )
-   TSTART @ TADDR  TI @ TSTART @ -  DEAD-OWNER!  PATH-DEAD PATH! ;
+   TSTART @ TADDR  TI @ TSTART @ - >str  DEAD-OWNER!  PATH-DEAD PATH! ;
 
 : TBYTE@ ( n -- n )
    TADDR c@ ;
@@ -6057,8 +6057,8 @@ PTR-VARIABLE DEFER-NAME-A  variable DEFER-NAME-U   \ the call it names, empty fo
 \ The source pre-pass records a deferral's cause, the call it names and whether
 \ the check stops there, before it reports the deferral; the warning reads and
 \ clears them.
-: CHECKER-DEFER-WHY! ( n str bool -- ) {: why:n na:^ nu:n stop:bool :}
-   why DEFER-WHY !  na DEFER-NAME-A !  nu DEFER-NAME-U !
+: CHECKER-DEFER-WHY! ( n str bool -- ) {: why:n ns:str stop:bool :}
+   why DEFER-WHY !  ns STR:DATA DEFER-NAME-A !  ns STR:LEN DEFER-NAME-U !
    stop IF -1 ELSE 0 THEN DEFER-STOP ! ;
 
 : MDIAG! ( n -- ) {: code:n :}
@@ -6516,12 +6516,12 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    s" " ;
 
 : TAG>CTL-FLAG ( str -- n )
-   {: a:^ u:n :}
+   {: s:str :}
    63 0 ?do
-      i CTL-BIT>TAG$ a u STR:= IF 1 i lshift unloop EXIT THEN
+      i CTL-BIT>TAG$ s STR:= IF 1 i lshift unloop EXIT THEN
    loop
    0 ;
-\ The fact a quotation type's token a u states, 0 when it states none.
+\ The fact a quotation type's token s states, 0 when it states none.
 : STATED-FLAG ( str -- n ) TAG>CTL-FLAG CTL-STATABLE and ;
 
 
@@ -6921,7 +6921,7 @@ EXPORT CHECKER-QUOT-FRESH:REQUOT
       t PARAM-SCR-N @ base - PARAM>ARG RECURSE PARAM-SCR+
    REPEAT
    t base ARGS-SAME? IF base PARAM-SCR-N !  x0 EXIT THEN
-   base t PARAM>NAME-A t PARAM>NAME-U t PARAM>FAM MK-PARAM {: copy:n :}
+   base t PARAM>NAME-A t PARAM>NAME-U >str t PARAM>FAM MK-PARAM {: copy:n :}
    t PARAM>HID copy PAY cells PARAMHID + !
    copy ;
 
@@ -7587,7 +7587,7 @@ variable VRC-RVN
 
 : VREC-NAME$ ( n -- str ) {: id:n :}
    id VREC-NAME-PTR
-   id cells VREC-NAME-U + @ ;
+   id cells VREC-NAME-U + @ >str ;
 
 : VREC-START@ ( n -- n )
    cells VREC-START + @ ;
@@ -7601,13 +7601,13 @@ variable VRC-RVN
 : VREC-RVN@ ( n -- n )
    cells VREC-RVN + @ ;
 
-: VREC-MATCH? ( str n -- bool ) {: a:^ u:n id:n :}
-   id VREC-NAME$ a u STR:= ;
+: VREC-MATCH? ( str n -- bool ) {: s:str id:n :}
+   id VREC-NAME$ s STR:= ;
 
-: VREC-FIND ( str -- n bool ) {: a:^ u:n :}
+: VREC-FIND ( str -- n bool ) {: s:str :}
    0 VREC-I !
    BEGIN VREC-I @ VREC-N @ < WHILE
-      a u VREC-I @ VREC-MATCH? IF VREC-I @ RES-TRUE EXIT THEN
+      s VREC-I @ VREC-MATCH? IF VREC-I @ RES-TRUE EXIT THEN
       VREC-I @ 1 + VREC-I !
    REPEAT
    0 RES-FALSE ;
@@ -7647,17 +7647,17 @@ variable VRC-RVN
    VREC-STR-U @ add + VREC-STR-GROW ;
 \ The ENSURE may relocate the pool, so the base is read after it; the used mark
 \ is the offset either way.
-: VREC-STR-COPY ( str -- n n ) {: a:^ u:n :}
-   u VREC-STR-ENSURE
+: VREC-STR-COPY ( str -- n n ) {: s:str :}
+   s STR:LEN VREC-STR-ENSURE
    VREC-STR-U @ {: off:n :}
    VREC-STR off + {: dst:^ :}
    0 VREC-I !
-   BEGIN VREC-I @ u < WHILE
-      a VREC-I @ + c@ dst VREC-I @ + c!
+   BEGIN VREC-I @ s STR:LEN < WHILE
+      s STR:DATA VREC-I @ + c@ dst VREC-I @ + c!
       VREC-I @ 1 + VREC-I !
    REPEAT
-   VREC-STR-U @ u + VREC-STR-U !
-   off u ;
+   VREC-STR-U @ s STR:LEN + VREC-STR-U !
+   off s STR:LEN ;
 
 : VREC-NODE-NEW ( n -- n ) {: tag:n :}
    VREC-NODE-ENSURE
@@ -7691,7 +7691,7 @@ variable VRC-RVN
    VRN-G dn VREC-NODE-N @ ARENA-CELLS-ZERO    VRN-H dn VREC-NODE-N @ ARENA-CELLS-ZERO
    VRN-I dn VREC-NODE-N @ ARENA-CELLS-ZERO
    VNARG an VNARG-N @ ARENA-CELLS-ZERO
-   VREC-STR su +  VREC-STR-U @ su -  ARENA-ZERO
+   VREC-STR su +  VREC-STR-U @ su - >str ARENA-ZERO
    rn VREC-N !  fn VREC-FIELD-N !  dn VREC-NODE-N !  an VNARG-N !  su VREC-STR-U ! ;
 
 : VREC-MAP-RESET-ONE ( ^n -- ) {: p:^ :}
@@ -7718,8 +7718,8 @@ variable VRC-RVN
       VRC-RVN @ 1 + VRC-RVN !
    THEN @ ;
 
-: VREC-COPY-STR ( str n -- ) {: a:^ u:n node:n :}
-   a u VREC-STR-COPY {: off:n len:n :}
+: VREC-COPY-STR ( str n -- ) {: s:str node:n :}
+   s VREC-STR-COPY {: off:n len:n :}
    off node VN.A!
    len node VN.B! ;
 
@@ -7784,13 +7784,13 @@ variable VRC-RVN
       endof
       T-ATOM of
          VR-ATOM VREC-NODE-NEW {: node:n :}
-         x VREC-RES ATOM>A x VREC-RES ATOM>U node VREC-COPY-STR
+         x VREC-RES ATOM>A x VREC-RES ATOM>U >str node VREC-COPY-STR
          x VREC-RES ATOM>K node VN.C!
          node
       endof
       T-PARAM of
          VR-PARAM VREC-NODE-NEW {: node:n :}
-         x VREC-RES PARAM>NAME-A x VREC-RES PARAM>NAME-U node VREC-COPY-STR
+         x VREC-RES PARAM>NAME-A x VREC-RES PARAM>NAME-U >str node VREC-COPY-STR
          x VREC-RES PARAM>ARGC {: argc:n :}
          argc node VN.C!
          x VREC-RES PARAM>FAM node VN.H!            \ resolved family-id (identity)
@@ -7843,19 +7843,19 @@ variable VRC-RVN
 : VREC-I-AK-IDX ( n -- n )
    negate 1 - ;
 
-: VREC-I-AK ( str n -- str n ) {: a:^ u:n k:n :}
-   k 0 >= IF a u k EXIT THEN
+: VREC-I-AK ( str n -- str n ) {: s:str k:n :}
+   k 0 >= IF s k EXIT THEN
    k VREC-I-AK-IDX {: idx:n :}
    idx VRI-AK-ENSURE
-   idx cells VRI-AK + dup @ UNBOUND = IF a u RIGID-AK-MINT over ! THEN @
+   idx cells VRI-AK + dup @ UNBOUND = IF s RIGID-AK-MINT over ! THEN @
    {: id:n :}
-   a u id ;
+   s id ;
 
 : VREC-BYTE+ ( ^u8 n -- ^u8 )
    + ;
 
 : VREC-I-STR ( n -- str ) {: node:n :}
-   VREC-STR node VN.A@ VREC-BYTE+ node VN.B@ ;
+   VREC-STR node VN.A@ VREC-BYTE+ node VN.B@ >str ;
 
 : VREC-INST ( n -- n ) {: node:n :}
    node 0= IF 0 EXIT THEN
@@ -7974,27 +7974,27 @@ variable FAM-K
 : FAM-IDX>KEY ( n -- n )
    1+ negate ;
 
-: FAM-MATCH? ( str n -- bool ) {: a:^ u:n idx:n :}
-   idx FAM-A@ idx FAM-U-FIELD @ a u STR:= ;
+: FAM-MATCH? ( str n -- bool ) {: s:str idx:n :}
+   idx FAM-A@ idx FAM-U-FIELD @ >str s STR:= ;
 
-: FAM-FIND ( str -- n bool ) {: a:^ u:n :}
+: FAM-FIND ( str -- n bool ) {: s:str :}
    0 FAM-I !
    BEGIN FAM-I @ FAM-N @ < WHILE
-      a u FAM-I @ FAM-MATCH? IF FAM-I @ RES-TRUE EXIT THEN
+      s FAM-I @ FAM-MATCH? IF FAM-I @ RES-TRUE EXIT THEN
       FAM-I @ 1 + FAM-I !
    REPEAT
    0 RES-FALSE ;
 
-: FAM-ADD ( str -- n ) {: a:^ u:n :}
+: FAM-ADD ( str -- n ) {: s:str :}
    FAM-N @ 1 + FAM-ENSURE
-   a FAM-N @ FAM-A-FIELD !
-   u FAM-N @ FAM-U-FIELD !
+   s STR:DATA FAM-N @ FAM-A-FIELD !
+   s STR:LEN FAM-N @ FAM-U-FIELD !
    FAM-N @ FAM-IDX>KEY
    FAM-N @ 1 + FAM-N ! ;
 
-: FAM-MARK ( str -- n ) {: a:^ u:n :}
-   a u FAM-FIND IF FAM-IDX>KEY EXIT THEN drop
-   a u FAM-ADD ;
+: FAM-MARK ( str -- n ) {: s:str :}
+   s FAM-FIND IF FAM-IDX>KEY EXIT THEN drop
+   s FAM-ADD ;
 
 : DIGIT? {: c :} c 47 > c 58 < and ;
 
@@ -8059,21 +8059,21 @@ variable TORDER-SCAN-UNKNOWN
 variable TORDER-DEPTH
 
 : TORDER-SCAN! ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    TORDER-SCOPE @ 0= TORDER-DEPTH @ 1 <> or TORDER-USED @ 0 <> or IF EXIT THEN
-   a TORDER-A @ = u TORDER-U @ = and 0= IF EXIT THEN
+   s STR:DATA TORDER-A @ = s STR:LEN TORDER-U @ = and 0= IF EXIT THEN
    -1 TORDER-USED !
    TORDER-KIND @ TORDER-ACTIVE ! ;
 
 \ The answer belongs to this owner instance and to the first matching scan
 \ inside the action. A different owner cannot interpret its symbol identities.
 : WITH-TICK-ORDER ( str n ^u8 [ -- ] -- bool )
-   {: a:^ u:n order:n owner:^ q :}
+   {: s:str order:n owner:^ q :}
    TORDER-A @ TORDER-U @ TORDER-KIND @
    TORDER-SCOPE @ TORDER-USED @ TORDER-ACTIVE @ TORDER-UNCERTAIN @ TORDER-SCAN-UNKNOWN @
    {: olda:^ oldu:n oldorder:n
       oldscope:n oldused:n oldactive:n olduncertain:n oldscan:n :}
-   a TORDER-A !  u TORDER-U !
+   s STR:DATA TORDER-A !  s STR:LEN TORDER-U !
    order TORDER-GATE = order TORDER-PARENT-GATE = or
    owner CHECKER-REG:DECLARATIONS <> and IF
       order TORDER-PARENT-GATE = IF TORDER-PARENT-UNKNOWN ELSE TORDER-UNKNOWN THEN
@@ -8155,21 +8155,21 @@ variable CUSING              \ the using rejection the walk raised at this token
    REJECTION @ 0 <> IF REJECTION @ EXIT THEN
    REJECTION-OF ;
 
-\ The offset of the text at A U in the checked text, -1 when it lies outside.
+\ The offset of the text at S in the checked text, -1 when it lies outside.
 : CHECKED-OFF ( str -- n )
-   {: a:^ u:n :}
-   a TBASE @ - {: off:n :}
-   off 0 <  off u + TBLEN @ >  or IF -1 EXIT THEN
+   {: s:str :}
+   s STR:DATA TBASE @ - {: off:n :}
+   off 0 <  off s STR:LEN + TBLEN @ >  or IF -1 EXIT THEN
    off ;
 
-\ A rejection raised past the walk pins its own token A U as kind KIND over the
+\ A rejection raised past the walk pins its own token S as kind KIND over the
 \ walk's pin: at its offset in the checked text, else at that text's first byte.
 : PIN-REJECTED! ( str n -- )
-   {: a:^ u:n kind:n :}
-   u TOKBUF-ENSURE
-   a FAILTK u CCOPY  u FAILTU !
-   a u CHECKED-OFF {: off:n :}
-   off 0 < IF 0 FAILB !  0 FAILE ! ELSE off FAILB !  off u + FAILE ! THEN
+   {: s:str kind:n :}
+   s STR:LEN TOKBUF-ENSURE
+   s STR:DATA FAILTK s STR:LEN CCOPY  s STR:LEN FAILTU !
+   s CHECKED-OFF {: off:n :}
+   off 0 < IF 0 FAILB !  0 FAILE ! ELSE off FAILB !  off s STR:LEN + FAILE ! THEN
    0 FAILIX !  kind REJECTION !  -1 FAILSET !
    CRTGT @ 0=  QDEPTH @ 0=  and PIN-BODY-CALL ! ;
 
@@ -8192,7 +8192,8 @@ variable CUSING              \ the using rejection the walk raised at this token
 : HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
 
 \ int literal: d+ | -d+ | $h+ | -$h+ (the engine's number tokens)
-: ALLDIG? {: a u :}
+: ALLDIG? {: s:str :}
+   s STR:DATA s STR:LEN {: a u :}
    0 NDI !  0 NDH !
    u 0 > IF a c@ 45 = IF 1 NDI ! THEN THEN
    u NDI @ > IF a NDI @ + c@ 36 = IF NDI @ 1 + NDI !  1 NDH ! THEN THEN
@@ -8211,14 +8212,14 @@ variable CUSING              \ the using rejection the walk raised at this token
    dots valid c 47 > c 58 < and and ;
 
 : FLODIG? ( str -- bool )
-   {: a:^ u:n :}
-   u 2 < IF RES-FALSE EXIT THEN
-   0 RES-TRUE a c@ 45 = IF 1 ELSE 0 THEN
-   BEGIN dup u < WHILE
-      dup >r a swap + c@ FLODIG-CHAR r> 1 +
+   {: s:str :}
+   s STR:LEN 2 < IF RES-FALSE EXIT THEN
+   0 RES-TRUE s STR:DATA c@ 45 = IF 1 ELSE 0 THEN
+   BEGIN dup s STR:LEN < WHILE
+      dup >r s STR:DATA swap + c@ FLODIG-CHAR r> 1 +
    REPEAT drop
    swap 1 = and
-   a u 1 - + c@ 46 = IF drop RES-FALSE THEN ;
+   s STR:DATA s STR:LEN 1 - + c@ 46 = IF drop RES-FALSE THEN ;
 
 1 constant PE-ACTIVE
 2 constant PE-TRUSTED-ONLY       \ prim is a trust boundary: rejected from CHECKED code, TRUSTED: only
@@ -8263,16 +8264,16 @@ PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
 \ other than f, n and r, or, in facts text only, an ordinal from 23. Ordinals
 \ run densely from 23, so one at or past the text's length plus 23 names none.
 : SIG-VAR-SLOT ( str -- n )
-   {: a:^ u:n :}
-   u 1 = IF
-      a c@ dup LOWER? over 102 <> and over 110 <> and over 114 <> and
+   {: s:str :}
+   s STR:LEN 1 = IF
+      s STR:DATA c@ dup LOWER? over 102 <> and over 110 <> and over 114 <> and
       IF 97 - ELSE drop -1 THEN EXIT
    THEN
-   SIG-FACTS-MODE @ 0= u 0 = or IF -1 EXIT THEN
-   a c@ 48 = IF -1 EXIT THEN
+   SIG-FACTS-MODE @ 0= s STR:LEN 0 = or IF -1 EXIT THEN
+   s STR:DATA c@ 48 = IF -1 EXIT THEN
    \ The value stops growing at SL plus 23, so no digit run overflows.
-   0 0 BEGIN over SL @ 23 + < over u < and WHILE
-      a over + c@ dup DIGIT? 0= IF drop 2drop -1 EXIT THEN
+   0 0 BEGIN over SL @ 23 + < over s STR:LEN < and WHILE
+      s STR:DATA over + c@ dup DIGIT? 0= IF drop 2drop -1 EXIT THEN
       48 - rot 10 * + swap 1 +
    REPEAT drop
    dup 23 < over SL @ 23 + >= or IF drop -1 EXIT THEN
@@ -8306,21 +8307,21 @@ PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
    0 SGBAD-LOCAL !
    SGBAD-SYNTAX-KIND SGBAD-KIND ! ;
 
-: SGBAD-SET ( str n -- ) {: a u kind :}
+: SGBAD-SET ( str n -- ) {: s:str kind :}
    SGBAD @ IF exit THEN
    -1 SGBAD !
-   a SGBAD-A !
-   u SGBAD-U !
+   s STR:DATA SGBAD-A !
+   s STR:LEN SGBAD-U !
    kind SGBAD-KIND ! ;
 
 : SGBAD-SYNTAX! ( str -- )
    SGBAD-SYNTAX-KIND SGBAD-SET ;
-\ Rejects token A U unless it is EA EU, the word the parser expects there.
-: SIG-EXPECTED ( str str -- ) {: a:^ u:n ea:^ eu:n :}
-   a u ea eu STR:= IF EXIT THEN
+\ Rejects token S unless it is ES, the word the parser expects there.
+: SIG-EXPECTED ( str str -- ) {: s:str es:str :}
+   s es STR:= IF EXIT THEN
    SGBAD @ IF EXIT THEN
-   ea SGBAD-EXP-A !  eu SGBAD-EXP-U !
-   a u SGBAD-SYNTAX! ;
+   es STR:DATA SGBAD-EXP-A !  es STR:LEN SGBAD-EXP-U !
+   s SGBAD-SYNTAX! ;
 : SGBAD-UNSUPPLIED! ( str -- )
    SGBAD-UNSUPPLIED-KIND SGBAD-SET ;
 : SGBAD-UNSUPPLIED? ( -- bool )
@@ -8339,9 +8340,9 @@ PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
    SGBAD-SCHEME-KIND SGBAD-SET ;
 : SGBAD-SCHEME? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-SCHEME-KIND = and ;
-: SGBAD-AMBIG! ( str n -- ) {: a:^ u:n used:n :}
+: SGBAD-AMBIG! ( str n -- ) {: s:str used:n :}
    SGBAD @ 0= IF used SGBAD-USED ! THEN
-   a u SGBAD-AMBIG-KIND SGBAD-SET ;
+   s SGBAD-AMBIG-KIND SGBAD-SET ;
 : SGBAD-AMBIG? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-AMBIG-KIND = and ;
 : SGBAD-BAREPTR! ( str -- )
@@ -8349,9 +8350,9 @@ PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
 : SGBAD-BAREPTR? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-BAREPTR-KIND = and ;
 : SGBAD-ARITY! ( str n n -- )  \ family applied to the wrong number of args
-   {: a:^ u:n decl:n got:n :}     \ first-wins: latch the counts with the token
+   {: s:str decl:n got:n :}     \ first-wins: latch the counts with the token
    SGBAD @ 0= IF decl SGBAD-AR-DECL !  got SGBAD-AR-GOT ! THEN
-   a u SGBAD-ARITY-KIND SGBAD-SET ;
+   s SGBAD-ARITY-KIND SGBAD-SET ;
 : SGBAD-ARITY? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-ARITY-KIND = and ;
 : SGBAD-DEPTH? ( -- bool )
@@ -8374,15 +8375,15 @@ global
 private
 : SIG-UNRES-CLEAR ( -- )
    0 SIG-UNRES !  NULL-PTR SIG-UNRES-A !  0 SIG-UNRES-U ! ;
-: SIG-UNRES! ( str -- ) {: a:^ u:n :}
+: SIG-UNRES! ( str -- ) {: s:str :}
    SIG-UNRES @ IF EXIT THEN
-   -1 SIG-UNRES !  a SIG-UNRES-A !  u SIG-UNRES-U ! ;
+   -1 SIG-UNRES !  s STR:DATA SIG-UNRES-A !  s STR:LEN SIG-UNRES-U ! ;
 
 \ The source verifier consumes a quiet unresolved-type outcome through this
 \ operation. The latch stays private to the checker, including on a cold boot
 \ whose sealed prefix has no external rows for its storage cells.
 : CHECKER-SIG-UNRES-TAKE ( -- str bool )
-   SIG-UNRES-A @ SIG-UNRES-U @ SIG-UNRES @ 0= 0=
+   SIG-UNRES-A @ SIG-UNRES-U @ >str SIG-UNRES @ 0= 0=
    SIG-UNRES-CLEAR ;
 
 \ Installed by the nominal resolver once its package and grammar rules exist.
@@ -8392,64 +8393,64 @@ defer TYPE-MAY-ARRIVE-XT ( str -- bool nominal )
 : BAD-SIG-TYPE ( str -- n )
    SGBAD-UNKNOWN!
    1 MK-CON ;
-: SIG-PREFIX? ( str str -- bool ) {: a:^ u:n p:^ v:n :}
-   u v < IF RES-FALSE EXIT THEN
-   a v p v STR:= ;
-: ATOM-TOK? ( str -- bool ) {: a:^ u:n :}
-   a u s" space-" SIG-PREFIX? IF RES-TRUE EXIT THEN
-   a u s" extent-" SIG-PREFIX? IF RES-TRUE EXIT THEN
-   a u s" mask-" SIG-PREFIX? IF RES-TRUE EXIT THEN
-   a u s" block-" SIG-PREFIX? IF RES-TRUE EXIT THEN
-   a u s" geom-" SIG-PREFIX? IF RES-TRUE EXIT THEN    \ blocked 2-D shared / micro-tile geometry
-   a u s" parity-" SIG-PREFIX? IF RES-TRUE EXIT THEN   \ pipeline double-buffer parity
-   a u s" align-" SIG-PREFIX? ;
-: FRESH-ATOM-TOK? ( str -- bool ) {: a:^ u:n :}
-   a u s" fresh-region-" SIG-PREFIX? IF RES-TRUE EXIT THEN
-   a u s" fresh-extent-" SIG-PREFIX? IF RES-TRUE EXIT THEN
-   a u s" fresh-gen-" SIG-PREFIX? IF RES-TRUE EXIT THEN
-   a u s" fresh-mask-" SIG-PREFIX? ;
+: SIG-PREFIX? ( str str -- bool ) {: s:str p:str :}
+   s STR:LEN p STR:LEN < IF RES-FALSE EXIT THEN
+   s STR:DATA p STR:LEN >str p STR:= ;
+: ATOM-TOK? ( str -- bool ) {: s:str :}
+   s s" space-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   s s" extent-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   s s" mask-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   s s" block-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   s s" geom-" SIG-PREFIX? IF RES-TRUE EXIT THEN    \ blocked 2-D shared / micro-tile geometry
+   s s" parity-" SIG-PREFIX? IF RES-TRUE EXIT THEN   \ pipeline double-buffer parity
+   s s" align-" SIG-PREFIX? ;
+: FRESH-ATOM-TOK? ( str -- bool ) {: s:str :}
+   s s" fresh-region-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   s s" fresh-extent-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   s s" fresh-gen-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   s s" fresh-mask-" SIG-PREFIX? ;
 : XT-TOK? ( str -- bool ) s" xt" STR:= ;   \ a ticked engine primitive's token
 \ Facts text writes a fresh atom with its ordinal, `fresh-region-b-a`.
-: FRESH-ORD? ( str -- bool ) {: a:^ u:n :}
-   u 9 < IF RES-FALSE EXIT THEN
-   a u + 2 - c@ 45 =  a u + 1 - c@ LOWER?  and ;
+: FRESH-ORD? ( str -- bool ) {: s:str :}
+   s STR:LEN 9 < IF RES-FALSE EXIT THEN
+   s STR:DATA s STR:LEN + 2 - c@ 45 =  s STR:DATA s STR:LEN + 1 - c@ LOWER?  and ;
 
 \ In facts text the whole token keys the atom, so one ordinal read twice is one
 \ identity and two ordinals of one name are two.
-: FRESH-ATOM>TYPE ( str -- n ) {: a:^ u:n :}
-   a u FAM-MARK FAM-K !
-   SIG-FACTS-MODE @ 0= IF a 6 + u 6 - FAM-K @ MK-ATOM-K EXIT THEN
-   a u FRESH-ORD? 0= IF a u SGBAD-SYNTAX!  a 6 + u 6 - FAM-K @ MK-ATOM-K EXIT THEN
-   a 6 + u 8 - FAM-K @ MK-ATOM-K ;
+: FRESH-ATOM>TYPE ( str -- n ) {: s:str :}
+   s FAM-MARK FAM-K !
+   SIG-FACTS-MODE @ 0= IF s STR:DATA 6 + s STR:LEN 6 - >str FAM-K @ MK-ATOM-K EXIT THEN
+   s FRESH-ORD? 0= IF s SGBAD-SYNTAX!  s STR:DATA 6 + s STR:LEN 6 - >str FAM-K @ MK-ATOM-K EXIT THEN
+   s STR:DATA 6 + s STR:LEN 8 - >str FAM-K @ MK-ATOM-K ;
 \ The package a signature parse resolves bare family tails in: the checked
 \ definition's package, or the one SIGSCOPE! names.
 variable SIGSCOPE-ON   0 SIGSCOPE-ON !
 PTR-VARIABLE SIGSCOPE-P
 variable SIGSCOPE-U
-: SIGSCOPE! ( str -- ) {: a:^ u:n :}
-   a SIGSCOPE-P !  u SIGSCOPE-U !  -1 SIGSCOPE-ON ! ;
+: SIGSCOPE! ( str -- ) {: s:str :}
+   s STR:DATA SIGSCOPE-P !  s STR:LEN SIGSCOPE-U !  -1 SIGSCOPE-ON ! ;
 : SIGSCOPE-OFF ( -- ) 0 SIGSCOPE-ON ! ;
 : SIG-SCOPE$ ( -- str )
-   SIGSCOPE-ON @ IF SIGSCOPE-P @ SIGSCOPE-U @ ELSE CHECKER-AUTH-PACKAGE$ THEN ;
+   SIGSCOPE-ON @ IF SIGSCOPE-P @ SIGSCOPE-U @ >str ELSE CHECKER-AUTH-PACKAGE$ THEN ;
 
-: SIG-FAM? ( str -- n bool ) {: a:^ u:n :}
-   SIG-SCOPE$ a u TFAM-RESOLVE* ;
-: TYPE-VAR-TOK? ( str -- bool ) {: a:^ u:n :}
-   u 1 = IF a c@ LOWER? EXIT THEN
+: SIG-FAM? ( str -- n bool ) {: s:str :}
+   SIG-SCOPE$ s TFAM-RESOLVE* ;
+: TYPE-VAR-TOK? ( str -- bool ) {: s:str :}
+   s STR:LEN 1 = IF s STR:DATA c@ LOWER? EXIT THEN
    RES-FALSE ;
 : TOK-TYPE ( str -- n )
-   {: a:^ u:n :}
-   a c@ {: c:n :}
-   SIG-FACTS-MODE @ 0 <> u 1 > and c 39 = and IF a 1 + u 1 - MK-ATOM EXIT THEN   \ facts text's `'NAME` atom
-   u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
-   u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
-   u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
-   a u CON-OF dup 0 <> IF MK-CON ELSE drop     \ i64/u8/u32/cell/char/str/addr/bool
-   a u FRESH-ATOM-TOK? IF a u FRESH-ATOM>TYPE ELSE
-   a u ATOM-TOK? IF a u MK-ATOM ELSE
-   a u XT-TOK? IF OPAQUE-XT ELSE
-   a u SIG-VAR-SLOT dup 0 >= IF SLOT>VAR ELSE drop
-   a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN THEN ;
+   {: s:str :}
+   s STR:DATA c@ {: c:n :}
+   SIG-FACTS-MODE @ 0 <> s STR:LEN 1 > and c 39 = and IF s STR:DATA 1 + s STR:LEN 1 - >str MK-ATOM EXIT THEN   \ facts text's `'NAME` atom
+   s STR:LEN 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
+   s STR:LEN 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
+   s STR:LEN 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
+   s CON-OF dup 0 <> IF MK-CON ELSE drop     \ i64/u8/u32/cell/char/str/addr/bool
+   s FRESH-ATOM-TOK? IF s FRESH-ATOM>TYPE ELSE
+   s ATOM-TOK? IF s MK-ATOM ELSE
+   s XT-TOK? IF OPAQUE-XT ELSE
+   s SIG-VAR-SLOT dup 0 >= IF SLOT>VAR ELSE drop
+   s BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 \ Typed local annotations (LOCAL-TYPE, below SIG-TYPE) share the signature type
 \ grammar.
@@ -8477,9 +8478,9 @@ variable PKHAVE
 : PKA! ( ^u8 -- )
    PKA ! ;
 
-: PK! ( str -- )
-   PKU !
-   PKA!
+: PK! ( str -- ) {: s:str :}
+   s STR:LEN PKU !
+   s STR:DATA PKA!
    -1 PKHAVE ! ;
 
 : PKRESET ( -- )
@@ -8501,31 +8502,31 @@ variable PKHAVE
 : SIG-INK? ( -- bool )
    SI @ SL @ >= IF RES-FALSE EXIT THEN
    SB@ SI @ + c@ dup 32 > swap SIG-DELIM-CHAR? 0= and ;
-\ ( a 0 ) at the text's end, A just past its last byte; a token PK! pushed back
-\ comes first.
+\ Empty at the text's end, its data just past the last byte; a token PK!
+\ pushed back comes first.
 : NEXT-SIG-TOK ( -- str )
-   PKHAVE @ IF 0 PKHAVE ! PKA@ PKU @ EXIT THEN
+   PKHAVE @ IF 0 PKHAVE ! PKA@ PKU @ >str EXIT THEN
    BEGIN SIG-SPACE? WHILE SI @ 1 + SI ! REPEAT
-   SI @ SL @ < 0= IF SB@ SL @ + 0 EXIT THEN
+   SI @ SL @ < 0= IF SB@ SL @ + 0 >str EXIT THEN
    SB@ SI @ + SS!
-   SB@ SI @ + c@ SIG-DELIM-CHAR? IF SI @ 1 + SI ! SS@ 1 EXIT THEN
+   SB@ SI @ + c@ SIG-DELIM-CHAR? IF SI @ 1 + SI ! SS@ 1 >str EXIT THEN
    BEGIN SIG-INK? WHILE SI @ 1 + SI ! REPEAT
-   SS@ SB@ SI @ + SS@ - ;
+   SS@ SB@ SI @ + SS@ - >str ;
 
 \ A malformed contract must reject, never parse as some other effect.
-: EXPECT-SIG ( str -- ) {: ea:^ eu:n :}
-   NEXT-SIG-TOK ea eu SIG-EXPECTED ;
+: EXPECT-SIG ( str -- ) {: es:str :}
+   NEXT-SIG-TOK es SIG-EXPECTED ;
 
 : UPPER? ( n -- bool ) {: c:n :} c 64 > c 91 < and ;
-: ROW-LEAD? ( str -- bool ) {: a:^ u:n :}
-   u 1 <> IF RES-FALSE EXIT THEN
-   a c@ UPPER? ;
+: ROW-LEAD? ( str -- bool ) {: s:str :}
+   s STR:LEN 1 <> IF RES-FALSE EXIT THEN
+   s STR:DATA c@ UPPER? ;
 : DELIM? ( str -- bool )                       \ stack terminator
-   {: a:^ u:n :}
-   u 0 = IF RES-TRUE EXIT THEN
-   a u s" --" STR:= IF RES-TRUE EXIT THEN
-   a u s" ]"  STR:= IF RES-TRUE EXIT THEN
-   a u s" |"  STR:= ;
+   {: s:str :}
+   s STR:LEN 0 = IF RES-TRUE EXIT THEN
+   s s" --" STR:= IF RES-TRUE EXIT THEN
+   s s" ]"  STR:= IF RES-TRUE EXIT THEN
+   s s" |"  STR:= ;
 
 \ The token `ptr` names no type: a pointer is `^T` (SIG-CARET?) and `ptr<...>` is
 \ the family. SIG-TYPE rejects it as an unknown type even where a family of that
@@ -8537,33 +8538,33 @@ variable PKHAVE
 \ a `[` after it, so a `^` token alone has a pointee only when the source byte
 \ after it is `[`; a blank, another split character or the text's end after it
 \ leaves the pointer bare (SIG-CARET-BARE?).
-: SIG-CARET? ( str -- bool ) {: a:^ u:n :}
-   u 1 < IF RES-FALSE EXIT THEN
-   a c@ 94 = ;
-: SIG-CARET-BARE? ( str -- bool ) {: a:^ u:n :}
-   u 1 <> IF RES-FALSE EXIT THEN
-   a NULL-PTR - SB@ NULL-PTR - - 1 + SL @ < 0= IF RES-TRUE EXIT THEN
-   a 1 + c@ 91 <> ;
+: SIG-CARET? ( str -- bool ) {: s:str :}
+   s STR:LEN 1 < IF RES-FALSE EXIT THEN
+   s STR:DATA c@ 94 = ;
+: SIG-CARET-BARE? ( str -- bool ) {: s:str :}
+   s STR:LEN 1 <> IF RES-FALSE EXIT THEN
+   s STR:DATA NULL-PTR - SB@ NULL-PTR - - 1 + SL @ < 0= IF RES-TRUE EXIT THEN
+   s STR:DATA 1 + c@ 91 <> ;
 \ The pointee's first token of a `^` token SIG-CARET-BARE? passes: the rest of
 \ the token, else the `[` the lexer split from it.
-: SIG-CARET-POINTEE ( str -- str ) {: a:^ u:n :}
-   u 1 = IF NEXT-SIG-TOK EXIT THEN
-   a 1 + u 1 - ;
+: SIG-CARET-POINTEE ( str -- str ) {: s:str :}
+   s STR:LEN 1 = IF NEXT-SIG-TOK EXIT THEN
+   s STR:DATA 1 + s STR:LEN 1 - >str ;
 
 : SIG-NEST ( n n -- n ) {: depth:n c:n :}
    c 60 = c 91 = or IF depth 1 + EXIT THEN
    c 62 = c 93 = or IF depth 1 - EXIT THEN
    depth ;
-: CHECKER-TYPE-SPAN-STEP ( n str -- n bool ) {: depth:n a:^ u:n :}
-   depth u 0 ?do a i + c@ SIG-NEST loop {: after:n :}
+: CHECKER-TYPE-SPAN-STEP ( n str -- n bool ) {: depth:n s:str :}
+   depth s STR:LEN 0 ?do s STR:DATA i + c@ SIG-NEST loop {: after:n :}
    after 0 > IF after RES-FALSE EXIT THEN
-   after a u s" ^" STR:= 0= ;
+   after s s" ^" STR:= 0= ;
 \ No type spelling holds `;` or `;]`, so a body's `[type]` span ends before
 \ one, never past the end of its definition or quotation.
-: TYPE-SPAN-END? ( str -- bool ) {: a:^ u:n :}
-   a u s" ;" STR:=  a u s" ;]" STR:=  or ;
-: CHECKER-TYPE-SPAN-BREAK? ( str -- bool ) {: a:^ u:n :}
-   RES-FALSE u 0 ?do a i + c@ 10 = or loop ;
+: TYPE-SPAN-END? ( str -- bool ) {: s:str :}
+   s s" ;" STR:=  s s" ;]" STR:=  or ;
+: CHECKER-TYPE-SPAN-BREAK? ( str -- bool ) {: s:str :}
+   RES-FALSE s STR:LEN 0 ?do s STR:DATA i + c@ 10 = or loop ;
 
 \ An effect spells a type exactly as declared, so `CELL` and `PTR` are types
 \ beside `cell`. A name holding `(` (40), `"` (34) or `\` (92) is
@@ -8576,64 +8577,65 @@ variable PKHAVE
    c 40 = IF RES-TRUE EXIT THEN
    c 34 = IF RES-TRUE EXIT THEN
    c 92 = ;
-: TYPE-BAD-CHAR? ( str -- bool ) {: a:^ u:n :}
-   u 0 > IF a c@ 94 = IF RES-TRUE EXIT THEN THEN
-   0 begin dup u < while
-      a over + c@ TYPE-BAD-BYTE? IF drop RES-TRUE EXIT THEN
+: TYPE-BAD-CHAR? ( str -- bool ) {: s:str :}
+   s STR:LEN 0 > IF s STR:DATA c@ 94 = IF RES-TRUE EXIT THEN THEN
+   0 begin dup s STR:LEN < while
+      s STR:DATA over + c@ TYPE-BAD-BYTE? IF drop RES-TRUE EXIT THEN
       1+
    repeat drop RES-FALSE ;
 
-: TYPE-RESERVED? ( str -- bool ) {: a:^ u:n :}
-   a u DELIM? IF RES-TRUE EXIT THEN
-   a u s" [" STR:= IF RES-TRUE EXIT THEN
-   a u ROW-LEAD? IF RES-TRUE EXIT THEN
-   a u STATED-FLAG 0 <> IF RES-TRUE EXIT THEN
-   a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
-   a u s" field" STR:= IF RES-TRUE EXIT THEN
-   a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
-   a u TFAM-CLAIMED?-XT IF RES-TRUE EXIT THEN
-   a u ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u XT-TOK? IF RES-TRUE EXIT THEN
-   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
-   a u TYPE-BAD-CHAR? ;
+: TYPE-RESERVED? ( str -- bool ) {: s:str :}
+   s DELIM? IF RES-TRUE EXIT THEN
+   s s" [" STR:= IF RES-TRUE EXIT THEN
+   s ROW-LEAD? IF RES-TRUE EXIT THEN
+   s STATED-FLAG 0 <> IF RES-TRUE EXIT THEN
+   s VREC-FIND IF drop RES-TRUE EXIT THEN drop
+   s s" field" STR:= IF RES-TRUE EXIT THEN
+   s CT-FIND 0 <> IF RES-TRUE EXIT THEN
+   s TFAM-CLAIMED?-XT IF RES-TRUE EXIT THEN
+   s ATOM-TOK? IF RES-TRUE EXIT THEN
+   s XT-TOK? IF RES-TRUE EXIT THEN
+   s FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
+   s TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
+   s TYPE-BAD-CHAR? ;
 
 \ Writes the record of a DEFLINEAR name a that names a type already or a
 \ reserved name, through its help; the caller ends it.
-: CHECKER-LINEAR-TAKEN ( str -- ) {: a:^ u:n :}
+: CHECKER-LINEAR-TAKEN ( str -- ) {: s:str :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
-   s" `DEFLINEAR " REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `DEFLINEAR " REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` names a type that already exists or a reserved name" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" already a type or reserved" REJECTION:EMIT-STR
+   s REJECTION:AT  s" already a type or reserved" REJECTION:EMIT-STR
    s" rule" REJECTION:NOTE
    s" a type's name is no type, type variable, atom or `field`, and holds none of "
    REJECTION:EMIT-STR
    S\" `<`, `>`, `,`, `[`, `]`, `(`, `)`, `\q` or `\\`" REJECTION:EMIT-STR
    REJECTION:HELP  s" give the linear type a name no other type has" REJECTION:EMIT-STR ;
 
-: CT-ADD-LINEAR ( str str -- ) {: a:^ u:n pa:^ pu:n :}
-   a u TYPE-RESERVED? IF a u CHECKER-LINEAR-TAKEN  EXIT-STATUS:REJECTED REJECTION:STOP THEN
-   a u pa pu CT-LINEAR-SET ;
+: CT-ADD-LINEAR ( str str -- ) {: s:str ps:str :}
+   s TYPE-RESERVED? IF s CHECKER-LINEAR-TAKEN  EXIT-STATUS:REJECTED REJECTION:STOP THEN
+   s ps CT-LINEAR-SET ;
 
 \ A linear type's type entry text, the form CHECK:HEAD$ states.
 private
 PTR-VARIABLE LINEAR-TEXT-P        \ the head and the package, grown on demand
 SCRATCH-VARIABLE LINEAR-TEXT-CAP  \ LINEAR-TEXT-P's room, in cells
 : LINEAR-TEXT ( -- ^u8 ) LINEAR-TEXT-P @ ;
-: TEXT+ ( ^u8 n n -- ) {: a:^ u:n at:n :}
-   u 0 ?do a i + c@ LINEAR-TEXT at + i + c! loop ;
+: TEXT+ ( str n -- ) {: s:str at:n :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ LINEAR-TEXT at + i + c! loop ;
 : TYPE-END ( -- n ) CTN @ ;
 : LINEAR? ( n -- bool ) CT-LINEAR? ;
 : TYPE-NAME$ ( n -- str ) CT-NAME$ ;
 
 \ Linear type code's entry text, in a buffer the next call reuses.
 : LINEAR-TEXT$ ( n -- str )
-   CT-PKG$ {: pa:^ pu:n :}
-   pu 0= IF s" -" ELSE pa pu THEN {: a:^ u:n :}
-   HEAD$ {: ha:^ hu:n :}
-   LINEAR-TEXT-P LINEAR-TEXT-CAP  hu u + CELL / 1 +  1 ARENA-ROWS-ENSURE
-   ha hu 0 TEXT+  a u hu TEXT+
-   LINEAR-TEXT hu u + ;
+   CT-PKG$ {: p:str :}
+   p STR:LEN 0= IF s" -" ELSE p THEN {: s:str :}
+   HEAD$ {: h:str :}
+   h STR:LEN s STR:LEN + {: u:n :}
+   LINEAR-TEXT-P LINEAR-TEXT-CAP  u CELL / 1 +  1 ARENA-ROWS-ENSURE
+   h 0 TEXT+  s h STR:LEN TEXT+
+   LINEAR-TEXT u >str ;
 
 \ SIG-QUOT-XT needs PSTACK, defined below SIG-TYPE, so it is bound just after
 \ PSTACK; nothing reaches it before then.
@@ -8642,27 +8644,27 @@ defer SIG-BINDER-BODY-XT ( -- n nominal )
 defer SIG-TYPE-XT ( str -- n nominal )
 
 : SIG-PARENT-NAME? ( str n -- bool )
-   {: a:^ u:n bound:n :}
-   a u SIG-VAR-SLOT {: slot:n :}
+   {: s:str bound:n :}
+   s SIG-VAR-SLOT {: slot:n :}
    slot 0 >= slot bound <> and ;
 
 
 : SIG-PARENT-ROOT ( str n -- n )
-   {: a:^ u:n bound:n :}
-   a u bound SIG-PARENT-NAME? 0= IF a u SGBAD-SYNTAX! 0 EXIT THEN
-   a u SIG-VAR-SLOT SLOT>VAR {: parent:n :}
+   {: s:str bound:n :}
+   s bound SIG-PARENT-NAME? 0= IF s SGBAD-SYNTAX! 0 EXIT THEN
+   s SIG-VAR-SLOT SLOT>VAR {: parent:n :}
    parent TAG T-VAR = IF
-      parent PAY TVK@ dup ANY-KIND? swap TVK-SCOPE = or 0= IF a u SGBAD-SYNTAX! THEN
+      parent PAY TVK@ dup ANY-KIND? swap TVK-SCOPE = or 0= IF s SGBAD-SYNTAX! THEN
       parent PAY TVK-SCOPE!
    ELSE
-      parent TAG T-BVAR <> IF a u SGBAD-SYNTAX! THEN
-      parent B>DOMAIN BIND-SCOPE <> IF a u SGBAD-SYNTAX! THEN
+      parent TAG T-BVAR <> IF s SGBAD-SYNTAX! THEN
+      parent B>DOMAIN BIND-SCOPE <> IF s SGBAD-SYNTAX! THEN
    THEN
    parent ;
 
 : SIG-INSIDE-ROOTS ( n -- n n ) {: bound:n :}
-   NEXT-SIG-TOK 2dup s" [" STR:= IF
-      2drop NEXT-SIG-TOK bound SIG-PARENT-ROOT {: parent:n :}
+   NEXT-SIG-TOK dup s" [" STR:= IF
+      drop NEXT-SIG-TOK bound SIG-PARENT-ROOT {: parent:n :}
       s" ," EXPECT-SIG
       NEXT-SIG-TOK SIG-TYPE-XT {: second:n :}
       s" ]" EXPECT-SIG
@@ -8678,16 +8680,16 @@ defer SIG-TYPE-XT ( str -- n nominal )
 \ The binder's name shadows only its NMAP slot. Row names inside the
 \ quotation still share their surrounding R/S/U map.
 : SIG-FORALL-DOMAIN ( n -- n ) {: domain:n :}
-   NEXT-SIG-TOK 2dup s" <" STR:= 0= IF s" <" SIG-EXPECTED 1 MK-CON EXIT THEN 2drop
-   NEXT-SIG-TOK {: name:^ width:n :}
-   name width SIG-VAR-SLOT {: bound:n :}
-   bound 0 < IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+   NEXT-SIG-TOK dup s" <" STR:= 0= IF s" <" SIG-EXPECTED 1 MK-CON EXIT THEN drop
+   NEXT-SIG-TOK {: name:str :}
+   name SIG-VAR-SLOT {: bound:n :}
+   bound 0 < IF name SGBAD-SYNTAX! 1 MK-CON EXIT THEN
    BIND-DEPTH @ BINDER-DEPTH-MAX >= IF
-      name width SGBAD-BINDERS-KIND SGBAD-SET  SIG-STOP  1 MK-CON EXIT
+      name SGBAD-BINDERS-KIND SGBAD-SET  SIG-STOP  1 MK-CON EXIT
    THEN
-   NEXT-SIG-TOK 2dup s" inside" STR:= IF
+   NEXT-SIG-TOK dup s" inside" STR:= IF
       domain BIND-SCOPE <> IF SGBAD-SYNTAX! 1 MK-CON EXIT THEN
-      2drop bound SIG-INSIDE-ROOTS
+      drop bound SIG-INSIDE-ROOTS
    ELSE PK! 0 0 THEN {: parent:n second:n :}
    bound NMAP-SLOT @ {: saved:n :}
    BIND-DEPTH @ negate 2 - bound NMAP-SLOT !
@@ -8695,7 +8697,7 @@ defer SIG-TYPE-XT ( str -- n nominal )
    BIND-DEPTH @ 1 + BIND-DEPTH !
    s" ," EXPECT-SIG
    SIG-BINDER-BODY-XT {: body:n :}
-   body TAG T-QUOT <> body TAG T-FORALL <> and IF name width SGBAD-SYNTAX! THEN
+   body TAG T-QUOT <> body TAG T-FORALL <> and IF name SGBAD-SYNTAX! THEN
    s" >" EXPECT-SIG
    BIND-DEPTH @ 1 - BIND-DEPTH !
    \ The body may have grown NMAP, so the slot is looked up again.
@@ -8712,9 +8714,9 @@ defer SIG-TYPE-XT ( str -- n nominal )
    r TAG T-PARAM <> IF RES-FALSE EXIT THEN         \ var/con: not a concrete extent
    r PARAM>FAM  EXT-PROD-FAM @ =  EXT-PROD-FAM @ 0 <>  and ;
 
-: SIG-END-PARAM {: base:n a:^ u:n fam:n :}
+: SIG-END-PARAM {: base:n s:str fam:n :}
    PARAM-SCR-N @ base - {: got:n :}
-   got fam TFAM-ARITY* <> IF a u fam TFAM-ARITY* got SGBAD-ARITY! THEN
+   got fam TFAM-ARITY* <> IF s fam TFAM-ARITY* got SGBAD-ARITY! THEN
    got fam TFAM-ARITY* = IF
       got 0 ?do
          fam i TFAM-SCOPE-SLOT-XT IF
@@ -8722,9 +8724,9 @@ defer SIG-TYPE-XT ( str -- n nominal )
             scope ISVAR IF
                scope PAY TVK@ dup ANY-KIND? swap TVK-SCOPE = or IF
                   scope PAY TVK-SCOPE!
-               ELSE a u SGBAD-SYNTAX! THEN
-            ELSE scope TAG T-BVAR <> IF a u SGBAD-SYNTAX! ELSE
-               scope B>DOMAIN BIND-SCOPE <> IF a u SGBAD-SYNTAX! THEN
+               ELSE s SGBAD-SYNTAX! THEN
+            ELSE scope TAG T-BVAR <> IF s SGBAD-SYNTAX! ELSE
+               scope B>DOMAIN BIND-SCOPE <> IF s SGBAD-SYNTAX! THEN
             THEN THEN
          THEN
          fam i TFAM-REGION-SLOT-XT IF
@@ -8732,72 +8734,72 @@ defer SIG-TYPE-XT ( str -- n nominal )
             region ISVAR IF
                region PAY TVK@ dup ANY-KIND? swap TVK-REGION = or IF
                   region PAY TVK-REGION!
-               ELSE a u SGBAD-SYNTAX! THEN
+               ELSE s SGBAD-SYNTAX! THEN
             ELSE region TAG T-BVAR = IF
-               region B>DOMAIN BIND-REGION <> IF a u SGBAD-SYNTAX! THEN
-            ELSE fam C2-ROOT-FAM @ = IF a u SGBAD-SYNTAX!
+               region B>DOMAIN BIND-REGION <> IF s SGBAD-SYNTAX! THEN
+            ELSE fam C2-ROOT-FAM @ = IF s SGBAD-SYNTAX!
             ELSE region ROOT-REGION? region FRESH-REGION-TEMPLATE? or 0= IF
-               a u SGBAD-SYNTAX! THEN
+               s SGBAD-SYNTAX! THEN
             THEN THEN THEN
          THEN
       loop
    THEN
    fam EXT-REDX-FAM @ =  EXT-REDX-FAM @ 0 <> and  got 1 = and IF
-      base cells PARAM-SCR + @ EXT-REDX-BAD-ARG? IF a u SGBAD-SYNTAX! THEN
+      base cells PARAM-SCR + @ EXT-REDX-BAD-ARG? IF s SGBAD-SYNTAX! THEN
    THEN
-   base a u fam MK-PARAM ;
+   base s fam MK-PARAM ;
 
 \ `base` marks the shared scratch depth on entry, so a nested family's MK-PARAM
 \ rewinds to its own base and leaves the parent's pushed args intact. A `ptr`
 \ without `<` must always reach the unknown-type rejection below, even when `ptr`
 \ is a live family: only `family<...>` takes the family branch.
-: SIG-TYPE-ONE ( str -- n ) {: a:^ u:n :}
-   u 0= IF a u SGBAD-SYNTAX! 1 MK-CON EXIT THEN
-   a u SIG-CARET? IF
-      a u SIG-CARET-BARE? IF a u SGBAD-BAREPTR! 1 MK-CON EXIT THEN
-      a u SIG-CARET-POINTEE SIG-TYPE-XT MK-PTR EXIT
+: SIG-TYPE-ONE ( str -- n ) {: s:str :}
+   s STR:LEN 0= IF s SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+   s SIG-CARET? IF
+      s SIG-CARET-BARE? IF s SGBAD-BAREPTR! 1 MK-CON EXIT THEN
+      s SIG-CARET-POINTEE SIG-TYPE-XT MK-PTR EXIT
    THEN
-   a u s" [" STR:= IF SIG-QUOT-XT EXIT THEN
-   a u s" forall" STR:= IF SIG-FORALL EXIT THEN
-   a u s" forall-region" STR:= IF SIG-FORALL-REGION EXIT THEN
-   a u SIG-FAM? IF {: fam:n :}
-      NEXT-SIG-TOK 2dup s" <" STR:= IF
-         2drop PARAM-SCR-N @ {: base:n :}
+   s s" [" STR:= IF SIG-QUOT-XT EXIT THEN
+   s s" forall" STR:= IF SIG-FORALL EXIT THEN
+   s s" forall-region" STR:= IF SIG-FORALL-REGION EXIT THEN
+   s SIG-FAM? IF {: fam:n :}
+      NEXT-SIG-TOK dup s" <" STR:= IF
+         drop PARAM-SCR-N @ {: base:n :}
          BEGIN
-            NEXT-SIG-TOK 2dup s" >" STR:= IF 2drop base a u fam SIG-END-PARAM EXIT THEN
-            2dup DELIM? IF SGBAD-SYNTAX! base a u fam MK-PARAM EXIT THEN
+            NEXT-SIG-TOK dup s" >" STR:= IF drop base s fam SIG-END-PARAM EXIT THEN
+            dup DELIM? IF SGBAD-SYNTAX! base s fam MK-PARAM EXIT THEN
             SIG-TYPE-XT
             PARAM-SCR+
-            NEXT-SIG-TOK 2dup s" ," STR:= IF 2drop ELSE
-            2dup s" >" STR:= IF 2drop base a u fam SIG-END-PARAM EXIT ELSE
-               SGBAD-SYNTAX! base a u fam MK-PARAM EXIT
+            NEXT-SIG-TOK dup s" ," STR:= IF drop ELSE
+            dup s" >" STR:= IF drop base s fam SIG-END-PARAM EXIT ELSE
+               SGBAD-SYNTAX! base s fam MK-PARAM EXIT
             THEN THEN
          AGAIN
       ELSE
          PK!
-         a u SIG-PTR-TOK? 0= IF
-            PARAM-SCR-N @ a u fam SIG-END-PARAM EXIT
+         s SIG-PTR-TOK? 0= IF
+            PARAM-SCR-N @ s fam SIG-END-PARAM EXIT
          THEN
       THEN
    ELSE drop THEN
-   a u SIG-PTR-TOK? IF
-      a u BAD-SIG-TYPE
+   s SIG-PTR-TOK? IF
+      s BAD-SIG-TYPE
    ELSE
-      a u TOK-TYPE {: term:n :}
-      SGBAD-UNKNOWN? SGBAD-A @ a = and SGBAD-U @ u = and
-      IF a u TYPE-MAY-ARRIVE-XT ELSE RES-FALSE THEN
+      s TOK-TYPE {: term:n :}
+      SGBAD-UNKNOWN? SGBAD-A @ s STR:DATA = and SGBAD-U @ s STR:LEN = and
+      IF s TYPE-MAY-ARRIVE-XT ELSE RES-FALSE THEN
       IF
-         SGBAD-CLEAR  a u SIG-UNRES!
-         NEXT-SIG-TOK 2dup s" <" STR:= IF
-            2drop
+         SGBAD-CLEAR  s SIG-UNRES!
+         NEXT-SIG-TOK dup s" <" STR:= IF
+            drop
             BEGIN
-               NEXT-SIG-TOK 2dup s" >" STR:= IF 2drop term EXIT THEN
-               dup 0= IF 2drop a u SGBAD-SYNTAX! term EXIT THEN
-               2dup DELIM? IF 2drop a u SGBAD-SYNTAX! term EXIT THEN
-               2dup s" --" STR:= IF 2drop a u SGBAD-SYNTAX! term EXIT THEN
+               NEXT-SIG-TOK dup s" >" STR:= IF drop term EXIT THEN
+               dup STR:LEN 0= IF drop s SGBAD-SYNTAX! term EXIT THEN
+               dup DELIM? IF drop s SGBAD-SYNTAX! term EXIT THEN
+               dup s" --" STR:= IF drop s SGBAD-SYNTAX! term EXIT THEN
                SIG-TYPE-XT drop
-               NEXT-SIG-TOK 2dup s" >" STR:= IF 2drop term EXIT THEN
-               2dup s" ," STR:= IF 2drop ELSE SGBAD-SYNTAX! term EXIT THEN
+               NEXT-SIG-TOK dup s" >" STR:= IF drop term EXIT THEN
+               dup s" ," STR:= IF drop ELSE SGBAD-SYNTAX! term EXIT THEN
             AGAIN
          ELSE PK! THEN
       THEN
@@ -8807,12 +8809,12 @@ defer SIG-TYPE-XT ( str -- n nominal )
 \ A type opened past EFFECT-DEPTH-MAX levels stops the text, so no deeper term
 \ reaches the walkers; a row's earlier entries are bounded once the row is
 \ built.
-: SIG-TYPE ( str -- n ) {: a:^ u:n :}
+: SIG-TYPE ( str -- n ) {: s:str :}
    SIG-LEVEL @ EFFECT-DEPTH-MAX >= IF
-      a u SGBAD-DEPTH-KIND SGBAD-SET  SIG-STOP  1 MK-CON EXIT
+      s SGBAD-DEPTH-KIND SGBAD-SET  SIG-STOP  1 MK-CON EXIT
    THEN
    SIG-LEVEL @ 1 + SIG-LEVEL !
-   a u SIG-TYPE-ONE
+   s SIG-TYPE-ONE
    SIG-LEVEL @ 1 - SIG-LEVEL ! ;
 
 : SIG-BINDER-BODY ( -- n ) NEXT-SIG-TOK SIG-TYPE ;
@@ -8831,12 +8833,12 @@ SIG-BINDER-BODY-INSTALL
 
 \ A text's one type and whether nothing follows it, read against NMAP and the
 \ family registry as they stand, so it names the definition's type variables.
-: TYPE-SPAN-READ ( str -- n bool ) {: a:^ u:n :}
+: TYPE-SPAN-READ ( str -- n bool ) {: s:str :}
    SB@ SL @ SI @ SS@ PKA@ PKU @ PKHAVE @
    {: sb:^ sl:n si:n ss:^ pka:^ pku:n pkh:n :}
-   a SB!  u SL !  0 SI !  PKRESET
+   s STR:DATA SB!  s STR:LEN SL !  0 SI !  PKRESET
    NEXT-SIG-TOK SIG-TYPE
-   NEXT-SIG-TOK nip 0=
+   NEXT-SIG-TOK STR:LEN 0=
    sb SB!  sl SL !  si SI !  ss SS!
    pka PKA!  pku PKU !  pkh PKHAVE ! ;
 
@@ -8853,14 +8855,14 @@ SIG-BINDER-BODY-INSTALL
 \ A bare `^`, which SIG-TYPE rejects, is read first: its pointee is STORED, and
 \ a one-cell use of it (`p @`) makes it one cell.
 : LOCAL-TYPE ( str -- n )
-   {: a:^ u:n :}
-   a u s" ^" STR:= IF FRESH dup TVK-STORED! MK-VAR MK-PTR EXIT THEN
-   u 0= IF a 0 SGBAD-SYNTAX! LOC-ANN-FAILS EXIT THEN
+   {: s:str :}
+   s s" ^" STR:= IF FRESH dup TVK-STORED! MK-VAR MK-PTR EXIT THEN
+   s STR:LEN 0= IF s STR:DATA 0 >str SGBAD-SYNTAX! LOC-ANN-FAILS EXIT THEN
    SGBAD @ {: sg0:n :}        \ only a NEW verdict is this annotation's: a signature
                               \ that already failed keeps its own diagnostic
-   a u TYPE-SPAN-READ
-   0= IF drop a u BAD-LOC-ANN THEN
-   SGBAD @ sg0 0= and IF a u BAD-LOC-ANN nip THEN ;
+   s TYPE-SPAN-READ
+   0= IF drop s BAD-LOC-ANN THEN
+   SGBAD @ sg0 0= and IF s BAD-LOC-ANN nip THEN ;
 
 : RVAR-OF {: c :}  c 65 - cells ROWMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-ROW ;
 
@@ -8930,31 +8932,31 @@ variable SQUOT-N   0 SQUOT-N !
    rin R-RES TAG S-PUSH = IF RES-FALSE EXIT THEN
    rin R-RES rout R-RES = ;
 : RCLAUSE-CHECK ( n n -- )
-   RCLAUSE-NEUTRAL? 0= IF SB@ SL @ SGBAD-RETURN! THEN ;
+   RCLAUSE-NEUTRAL? 0= IF SB@ SL @ >str SGBAD-RETURN! THEN ;
 
-\ One token a u of a stack side: a type joins the row, a fact word joins the facts. A fact word
+\ One token s of a stack side: a type joins the row, a fact word joins the facts. A fact word
 \ where OK says the side may not end in facts does not parse; it is stated once and only fact
 \ words follow it.
-: PSTACK-TOK ( n n str bool -- n n ) {: row:n facts:n a:^ u:n ok:bool :}
-   a u STATED-FLAG {: flag:n :}
+: PSTACK-TOK ( n n str bool -- n n ) {: row:n facts:n s:str ok:bool :}
+   s STATED-FLAG {: flag:n :}
    flag 0 <> IF
-      ok 0= IF a u SGBAD-SYNTAX! row facts EXIT THEN
-      facts flag and 0 <> IF a u SGBAD-SYNTAX! THEN
+      ok 0= IF s SGBAD-SYNTAX! row facts EXIT THEN
+      facts flag and 0 <> IF s SGBAD-SYNTAX! THEN
       row facts flag or EXIT
    THEN
-   facts 0 <> IF a u SGBAD-SYNTAX! THEN
-   a u s" [" STR:= IF a u SIG-TYPE row MK-PUSH facts EXIT THEN
-   a u VREC-FIND IF row swap VREC-PUSH-FIELDS facts EXIT THEN drop
-   a u SIG-TYPE row PUSH-LOGICAL facts ;
+   facts 0 <> IF s SGBAD-SYNTAX! THEN
+   s s" [" STR:= IF s SIG-TYPE row MK-PUSH facts EXIT THEN
+   s VREC-FIND IF row swap VREC-PUSH-FIELDS facts EXIT THEN drop
+   s SIG-TYPE row PUSH-LOGICAL facts ;
 
 \ Answers a stack side's row on TAIL and the facts it states, 0 when none.
 : PSTACK ( n bool -- n n ) {: tail:n ok:bool :}
-   NEXT-SIG-TOK 2dup ROW-LEAD? IF
-      drop c@ RVAR-OF
+   NEXT-SIG-TOK dup ROW-LEAD? IF
+      STR:DATA c@ RVAR-OF
    ELSE PK! tail THEN
    0
    BEGIN
-     NEXT-SIG-TOK 2dup DELIM? IF PK! EXIT THEN
+     NEXT-SIG-TOK dup DELIM? IF PK! EXIT THEN
      ok PSTACK-TOK
    AGAIN ;
 
@@ -8968,10 +8970,10 @@ variable SQUOT-N   0 SQUOT-N !
    qdbase RES-FALSE PSTACK drop {: qin:n :}
    s" --" EXPECT-SIG
    qdbase RES-TRUE PSTACK {: qout:n dfacts:n :}
-   NEXT-SIG-TOK 2dup s" |" STR:= IF
+   NEXT-SIG-TOK dup s" |" STR:= IF
       \ The facts follow the last outputs.
-      dfacts 0 <> IF 2dup SGBAD-SYNTAX! THEN
-      2drop
+      dfacts 0 <> IF dup SGBAD-SYNTAX! THEN
+      drop
       qrbase RES-FALSE PSTACK drop {: qrin:n :}
       s" --" EXPECT-SIG
       qrbase RES-TRUE PSTACK {: qrout:n rfacts:n :}
@@ -8989,7 +8991,7 @@ variable SQUOT-N   0 SQUOT-N !
    q ;
 : SIG-QUOT-INSTALL ( -- ) [: SIG-PARSE-QUOT ;] is SIG-QUOT-XT ;
 SIG-QUOT-INSTALL
-: TYPE-CERTAIN ( str -- bool ) 2drop RES-FALSE ;
+: TYPE-CERTAIN ( str -- bool ) drop RES-FALSE ;
 : TYPE-CERTAIN-INSTALL ( -- ) [: TYPE-CERTAIN ;] is TYPE-MAY-ARRIVE-XT ;
 TYPE-CERTAIN-INSTALL
 
@@ -9076,7 +9078,7 @@ PTR-VARIABLE ROOT-VAR-P   variable ROOT-VAR-CAP   variable ROOT-VAR-N
 : ROOT-GENERIC ( n -- n ) {: x:n :}
    PARAM-SCR-N @ {: base:n :}
    x PARAM>FAM TFAM-ARITY* 0 ?do FRESH MK-VAR PARAM-SCR+ loop
-   base x PARAM>NAME-A x PARAM>NAME-U x PARAM>FAM MK-PARAM ;
+   base x PARAM>NAME-A x PARAM>NAME-U >str x PARAM>FAM MK-PARAM ;
 : ROOT-VAR-MARK ( n n n n -- ) {: at:n g:n pol:n x:n :}
    g PARAM>ARGC 0 ?do
       g i PARAM>ARG T-RES x = IF at i + ROOT-SLOT dup @ pol or swap ! THEN
@@ -9502,35 +9504,35 @@ variable ROOT-SET-W
 \ outputs; answers both rows and the facts stated.
 : PSIDE ( n bool -- n n n ) {: dtail:n ok:bool :}
    dtail ok PSTACK {: drow:n dfacts:n :}
-   NEXT-SIG-TOK 2dup s" |" STR:= IF
-      dfacts 0 <> IF 2dup SGBAD-SYNTAX! THEN
-      2drop  -1 SGHASR !  RRTAIL ok PSTACK {: rrow:n rfacts:n :}
+   NEXT-SIG-TOK dup s" |" STR:= IF
+      dfacts 0 <> IF dup SGBAD-SYNTAX! THEN
+      drop  -1 SGHASR !  RRTAIL ok PSTACK {: rrow:n rfacts:n :}
       drow rrow dfacts rfacts or
    ELSE PK! drow RR-SHARED @ dfacts THEN ;
 
 \ The rules a signature's rows pass, parsed or built; a rejection sets SGBAD at
-\ the token A U. HASR says the rows carry a return clause, whose check names
+\ the token S. HASR says the rows carry a return clause, whose check names
 \ the parse's text. SCOPE-SUPPLIED? reads the inputs from PD-IN and PR-IN.
 : SIG-ROWS-CHECK ( str n n n n bool bool -- )
-   {: a:^ u:n din:n dout:n rin:n rout:n hasr:bool ctor:bool :}
+   {: s:str din:n dout:n rin:n rout:n hasr:bool ctor:bool :}
    din PD-IN !  rin PR-IN !
    SGBAD @ IF EXIT THEN
    \ The supplied check runs last and SGBAD-SET is first-wins, so its own kind
    \ is latched only when the return-clause, sort and forall checks passed.
    hasr IF rin rout RCLAUSE-CHECK THEN
    din SCOPE-SORT? dout SCOPE-SORT? and
-   rin SCOPE-SORT? rout SCOPE-SORT? and and 0= IF a u SGBAD-SYNTAX! THEN
+   rin SCOPE-SORT? rout SCOPE-SORT? and and 0= IF s SGBAD-SYNTAX! THEN
    din RES-TRUE FORALL-PLACE? dout RES-FALSE FORALL-PLACE? and
    rin RES-FALSE FORALL-PLACE? rout RES-FALSE FORALL-PLACE? and and 0= IF
-      a u SGBAD-SYNTAX! THEN
+      s SGBAD-SYNTAX! THEN
    \ Skipped for facts text, whose cast view pack has outputs no input
    \ supplies, and a generated constructor, whose value holds only its payload.
    SIG-FACTS-MODE @ 0= ctor 0= and IF
       0 SGBAD-ROOT !
       dout SCOPE-SUPPLIED? IF rout SCOPE-SUPPLIED? ELSE RES-FALSE THEN
       IF
-         din dout rin rout ROOT-SUPPLIED? 0= IF -1 SGBAD-ROOT !  a u SGBAD-UNSUPPLIED! THEN
-      ELSE a u SGBAD-UNSUPPLIED! THEN
+         din dout rin rout ROOT-SUPPLIED? 0= IF -1 SGBAD-ROOT !  s SGBAD-UNSUPPLIED! THEN
+      ELSE s SGBAD-UNSUPPLIED! THEN
    THEN ;
 
 : PSIG ( -- n n n n )
@@ -9541,129 +9543,129 @@ variable ROOT-SET-W
    dr RES-FALSE PSIDE drop  PR-IN ! PD-IN !
    s" --" EXPECT-SIG
    dr SIG-STATES-FACTS @ PSIDE  PD-FACTS !  PR-OUT ! PD-OUT !
-   NEXT-SIG-TOK dup 0 <> IF SGBAD-SYNTAX! ELSE 2drop THEN
-   SB@ SL @ PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ SGHASR @ RES-FALSE
+   NEXT-SIG-TOK dup STR:LEN 0 <> IF SGBAD-SYNTAX! ELSE drop THEN
+   SB@ SL @ >str PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ SGHASR @ RES-FALSE
    SIG-ROWS-CHECK
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
 : TAG-VAR ( str bool bool -- n )
-   {: a:^ u:n vars:bool rows:bool :}
+   {: s:str vars:bool rows:bool :}
    vars IF
-      a u SIG-VAR-SLOT dup 0 >= IF NMAP-SLOT @ dup 0 < IF drop -1 THEN EXIT THEN
+      s SIG-VAR-SLOT dup 0 >= IF NMAP-SLOT @ dup 0 < IF drop -1 THEN EXIT THEN
       drop
    THEN
-   u 1 <> IF -1 EXIT THEN
-   rows a c@ UPPER? and IF a c@ 65 - cells ROWMAP + @ dup 0 < IF drop -1 THEN EXIT THEN
+   s STR:LEN 1 <> IF -1 EXIT THEN
+   rows s STR:DATA c@ UPPER? and IF s STR:DATA c@ 65 - cells ROWMAP + @ dup 0 < IF drop -1 THEN EXIT THEN
    -1 ;
 
 
 
 : SIG-MASK ( str -- n )
-   {: ta:^ tu:n :}
-   NEXT-SIG-TOK {: a:^ u:n :}
-   u 0 = IF ta tu SGBAD-SYNTAX! 0 EXIT THEN
-   a u num-parse {: v:n flt:bool ok:bool :}
+   {: ts:str :}
+   NEXT-SIG-TOK {: t:str :}
+   t STR:LEN 0 = IF ts SGBAD-SYNTAX! 0 EXIT THEN
+   t num-parse {: v:n flt:bool ok:bool :}
    ok  flt 0=  and  v 0 >=  and  v XFER-MASK-ALL <=  and IF v EXIT THEN
-   a u SGBAD-SYNTAX!  0 ;
+   t SGBAD-SYNTAX!  0 ;
 
 
 : SIG-THROWS ( str -- )
-   {: ta:^ tu:n :}
-   SIG-CTL @ CTL-THROW and 0 <> IF ta tu SGBAD-SYNTAX! THEN
-   ta tu SIG-MASK {: dmask:n :}
-   ta tu SIG-MASK {: rmask:n :}
+   {: ts:str :}
+   SIG-CTL @ CTL-THROW and 0 <> IF ts SGBAD-SYNTAX! THEN
+   ts SIG-MASK {: dmask:n :}
+   ts SIG-MASK {: rmask:n :}
    SIG-CTL @ CTL-THROW or  dmask rmask XFER-PACK SIG-CTL ! ;
 
 
 \ The writer leaves out a tag with no input, so `nonzero 0 0` is rejected too.
 : SIG-NONZERO-TAG ( str -- )
-   {: ta:^ tu:n :}
-   SIG-NONZERO @ 0 <> IF ta tu SGBAD-SYNTAX! THEN
-   ta tu SIG-MASK {: div:n :}
-   ta tu SIG-MASK {: thr:n :}
+   {: ts:str :}
+   SIG-NONZERO @ 0 <> IF ts SGBAD-SYNTAX! THEN
+   ts SIG-MASK {: div:n :}
+   ts SIG-MASK {: thr:n :}
    div thr NONZERO-PACK {: nz:n :}
-   nz 0 = IF ta tu SGBAD-SYNTAX! THEN
+   nz 0 = IF ts SGBAD-SYNTAX! THEN
    nz SIG-NONZERO ! ;
 
 
 : SIG-INTRINSIC ( str -- )
-   {: ta:^ tu:n :}
-   SIG-CTL @ CTL-INTRINSIC-MASK and 0 <> IF ta tu SGBAD-SYNTAX! THEN
-   NEXT-SIG-TOK {: a:^ u:n :}
-   u 0 = IF ta tu SGBAD-SYNTAX! EXIT THEN
+   {: ts:str :}
+   SIG-CTL @ CTL-INTRINSIC-MASK and 0 <> IF ts SGBAD-SYNTAX! THEN
+   NEXT-SIG-TOK {: t:str :}
+   t STR:LEN 0 = IF ts SGBAD-SYNTAX! EXIT THEN
    32 1 ?do
-      i INTRINSIC-NAME$ a u STR:= IF
+      i INTRINSIC-NAME$ t STR:= IF
          SIG-CTL @ i INTRINSIC>CTL or SIG-CTL !  unloop EXIT
       THEN
    loop
-   a u SGBAD-SYNTAX! ;
+   t SGBAD-SYNTAX! ;
 
 
 : SIG-CTL-TAG ( str -- bool )
-   {: ta:^ tu:n :}
-   ta tu TAG>CTL-FLAG {: flag:n :}
+   {: ts:str :}
+   ts TAG>CTL-FLAG {: flag:n :}
    flag 0 <> IF
-      SIG-CTL @ flag and 0 <> IF ta tu SGBAD-SYNTAX! THEN
+      SIG-CTL @ flag and 0 <> IF ts SGBAD-SYNTAX! THEN
       SIG-CTL @ flag or SIG-CTL !  RES-TRUE EXIT
    THEN
-   ta tu s" throws" STR:= IF ta tu SIG-THROWS RES-TRUE EXIT THEN
-   ta tu s" nonzero" STR:= IF ta tu SIG-NONZERO-TAG RES-TRUE EXIT THEN
-   ta tu s" intrinsic" STR:= IF ta tu SIG-INTRINSIC RES-TRUE EXIT THEN
+   ts s" throws" STR:= IF ts SIG-THROWS RES-TRUE EXIT THEN
+   ts s" nonzero" STR:= IF ts SIG-NONZERO-TAG RES-TRUE EXIT THEN
+   ts s" intrinsic" STR:= IF ts SIG-INTRINSIC RES-TRUE EXIT THEN
    RES-FALSE ;
 
 
 : TAG>PE ( str -- n )
-   {: a:^ u:n :}
-   a u s" primitive" STR:= IF PE-ACTIVE EXIT THEN
-   a u s" trusted-only" STR:= IF PE-TRUSTED-ONLY EXIT THEN
-   a u s" top-only" STR:= IF PE-TOP-ONLY EXIT THEN
+   {: s:str :}
+   s s" primitive" STR:= IF PE-ACTIVE EXIT THEN
+   s s" trusted-only" STR:= IF PE-TRUSTED-ONLY EXIT THEN
+   s s" top-only" STR:= IF PE-TOP-ONLY EXIT THEN
    0 ;
 
 
-\ A token ended by blanks alone, as `parse-name` reads one: 0 at the end.
+\ A token ended by blanks alone, as `parse-name` reads one: empty at the end.
 : SIG-RAW-TOK ( -- str )
    BEGIN SIG-SPACE? WHILE SI @ 1 + SI ! REPEAT
    SI @ {: from:n :}
    BEGIN SI @ SL @ < IF SB@ SI @ + c@ 32 > ELSE RES-FALSE THEN
    WHILE SI @ 1 + SI ! REPEAT
-   SB@ from +  SI @ from - ;
+   SB@ from +  SI @ from - >str ;
 
 
 \ The end of the last terminator before a standalone `)`, from LAST, the end of
 \ the one read; -1 when the text ends first.
 : SIG-TERMS-END ( n -- n )
    {: last:n :}
-   SIG-RAW-TOK {: a:^ u:n :}
-   u 0= IF -1 EXIT THEN
-   a u s" )" STR:= IF last EXIT THEN
+   SIG-RAW-TOK {: t:str :}
+   t STR:LEN 0= IF -1 EXIT THEN
+   t s" )" STR:= IF last EXIT THEN
    SI @ RECURSE ;
 
 
-\ `( E1 E2 )`: the terminators, blank-separated; 0 0 for a malformed list.
+\ `( E1 E2 )`: the terminators, blank-separated; empty for a malformed list.
 : SIG-TERMS ( -- str )
-   SIG-RAW-TOK s" (" STR:= 0= IF NULL-PTR 0 EXIT THEN
-   SIG-RAW-TOK {: a:^ u:n :}
-   u 0=  a u s" )" STR:=  or IF NULL-PTR 0 EXIT THEN
-   SI @ u - {: from:n :}
+   SIG-RAW-TOK s" (" STR:= 0= IF NULL-PTR 0 >str EXIT THEN
+   SIG-RAW-TOK {: t:str :}
+   t STR:LEN 0=  t s" )" STR:=  or IF NULL-PTR 0 >str EXIT THEN
+   SI @ t STR:LEN - {: from:n :}
    SI @ SIG-TERMS-END {: to:n :}
-   to 0 < IF NULL-PTR 0 EXIT THEN
-   SB@ from +  to from - ;
+   to 0 < IF NULL-PTR 0 >str EXIT THEN
+   SB@ from +  to from - >str ;
 
 
-\ `parses N`, and `parses-through N ( E1 E2 )` when THROUGH, the count CA CU
+\ `parses N`, and `parses-through N ( E1 E2 )` when THROUGH, the count CS
 \ read: the word's `parses:` row, which carries CTL-PARSES.
 : SIG-PARSES-TAG ( str str bool -- )
-   {: ta:^ tu:n ca:^ cu:n through:bool :}
-   SIG-PARSES @ 0 < 0= IF ta tu SGBAD-SYNTAX! EXIT THEN
-   SIG-CTL @ CTL-PARSES and 0 <> IF ta tu SGBAD-SYNTAX! EXIT THEN
+   {: ts:str cs:str through:bool :}
+   SIG-PARSES @ 0 < 0= IF ts SGBAD-SYNTAX! EXIT THEN
+   SIG-CTL @ CTL-PARSES and 0 <> IF ts SGBAD-SYNTAX! EXIT THEN
    SIG-CTL @ CTL-PARSES or SIG-CTL !
-   cu 0 = IF ta tu SGBAD-SYNTAX! EXIT THEN
-   ca cu num-parse {: v:n flt:bool ok:bool :}
-   ok 0=  flt or  v 0 <  or IF ca cu SGBAD-SYNTAX! EXIT THEN
+   cs STR:LEN 0 = IF ts SGBAD-SYNTAX! EXIT THEN
+   cs num-parse {: v:n flt:bool ok:bool :}
+   ok 0=  flt or  v 0 <  or IF cs SGBAD-SYNTAX! EXIT THEN
    through IF
-      SIG-TERMS {: la:^ lu:n :}
-      lu 0= IF ta tu SGBAD-SYNTAX! EXIT THEN
-      la SIG-PARSES-A !  lu SIG-PARSES-U !
+      SIG-TERMS {: l:str :}
+      l STR:LEN 0= IF ts SGBAD-SYNTAX! EXIT THEN
+      l STR:DATA SIG-PARSES-A !  l STR:LEN SIG-PARSES-U !
    THEN
    v SIG-PARSES ! ;
 
@@ -9671,100 +9673,104 @@ variable ROOT-SET-W
 \ `parses` alone is CTL-PARSES's tag; `parses N` is the flag with its row, so
 \ a text holding the row never holds the lone flag too.
 : SIG-PARSES-ROW? ( str -- bool )
-   {: ta:^ tu:n :}
-   NEXT-SIG-TOK {: ca:^ cu:n :}
-   ca cu num-parse {: v:n flt:bool ok:bool :}
-   ok 0= IF ca cu PK! RES-FALSE EXIT THEN
-   ta tu ca cu RES-FALSE SIG-PARSES-TAG RES-TRUE ;
+   {: ts:str :}
+   NEXT-SIG-TOK {: c:str :}
+   c num-parse {: v:n flt:bool ok:bool :}
+   ok 0= IF c PK! RES-FALSE EXIT THEN
+   ts c RES-FALSE SIG-PARSES-TAG RES-TRUE ;
 
 
 : SIG-PE-TAG ( str -- bool )
-   {: ta:^ tu:n :}
-   ta tu TAG>PE {: bit:n :}
+   {: ts:str :}
+   ts TAG>PE {: bit:n :}
    bit 0 <> IF
-      SIG-PE @ bit and 0 <> IF ta tu SGBAD-SYNTAX! RES-TRUE EXIT THEN
+      SIG-PE @ bit and 0 <> IF ts SGBAD-SYNTAX! RES-TRUE EXIT THEN
       SIG-PE @ bit or SIG-PE !  RES-TRUE EXIT THEN
    RES-FALSE ;
 
 
 : SIG-QUOT-NUM ( str -- n )
-   {: ta:^ tu:n :}
-   NEXT-SIG-TOK {: ca:^ cu:n :}
-   cu 0 = IF ta tu SGBAD-SYNTAX! 0 EXIT THEN
-   ca cu num-parse {: v:n flt:bool ok:bool :}
-   ok 0=  flt or  v 1 < or  v SQUOT-N @ > or IF ca cu SGBAD-SYNTAX! 0 EXIT THEN
+   {: ts:str :}
+   NEXT-SIG-TOK {: c:str :}
+   c STR:LEN 0 = IF ts SGBAD-SYNTAX! 0 EXIT THEN
+   c num-parse {: v:n flt:bool ok:bool :}
+   ok 0=  flt or  v 1 < or  v SQUOT-N @ > or IF c SGBAD-SYNTAX! 0 EXIT THEN
    v ;
 
 
 \ `block N M`: quotation M's block part is quotation N's, N before M.
 : SIG-BLOCK-TAG ( str -- )
-   {: ta:^ tu:n :}
-   ta tu SIG-QUOT-NUM {: lo:n :}  lo 0 = IF EXIT THEN
-   ta tu SIG-QUOT-NUM {: hi:n :}  hi 0 = IF EXIT THEN
-   lo hi < 0= IF ta tu SGBAD-SYNTAX! EXIT THEN
+   {: ts:str :}
+   ts SIG-QUOT-NUM {: lo:n :}  lo 0 = IF EXIT THEN
+   ts SIG-QUOT-NUM {: hi:n :}  hi 0 = IF EXIT THEN
+   lo hi < 0= IF ts SGBAD-SYNTAX! EXIT THEN
    lo SQUOT@ hi SQUOT@ BLOCK-PAIR ;
 
 
 \ `noblock N`: quotation N's block part, a variable, must read no local.
 : SIG-NOBLOCK-TAG ( str -- )
-   {: ta:^ tu:n :}
-   ta tu SIG-QUOT-NUM {: q:n :}  q 0 = IF EXIT THEN
+   {: ts:str :}
+   ts SIG-QUOT-NUM {: q:n :}  q 0 = IF EXIT THEN
    q SQUOT@ Q>BLOCK T-RES {: b:n :}
-   b ISVAR 0= IF ta tu SGBAD-SYNTAX! EXIT THEN
+   b ISVAR 0= IF ts SGBAD-SYNTAX! EXIT THEN
    b PAY NSCOPE! ;
 
 
 : SIG-TAG ( str -- )
-   {: ta:^ tu:n :}
-   ta tu SIG-PE-TAG IF EXIT THEN
-   ta tu s" parses" STR:= IF ta tu SIG-PARSES-ROW? IF EXIT THEN THEN
-   ta tu s" parses-through" STR:= IF
-      ta tu NEXT-SIG-TOK RES-TRUE SIG-PARSES-TAG EXIT
+   {: ts:str :}
+   ts SIG-PE-TAG IF EXIT THEN
+   ts s" parses" STR:= IF ts SIG-PARSES-ROW? IF EXIT THEN THEN
+   ts s" parses-through" STR:= IF
+      ts NEXT-SIG-TOK RES-TRUE SIG-PARSES-TAG EXIT
    THEN
-   ta tu s" block" STR:= IF ta tu SIG-BLOCK-TAG EXIT THEN
-   ta tu s" noblock" STR:= IF ta tu SIG-NOBLOCK-TAG EXIT THEN
-   ta tu TAG>KIND {: kind:n :}
-   ta tu s" noscope" STR:= {: ns:bool :}
-   ta tu s" nolinear" STR:= {: nl:bool :}
+   ts s" block" STR:= IF ts SIG-BLOCK-TAG EXIT THEN
+   ts s" noblock" STR:= IF ts SIG-NOBLOCK-TAG EXIT THEN
+   ts TAG>KIND {: kind:n :}
+   ts s" noscope" STR:= {: ns:bool :}
+   ts s" nolinear" STR:= {: nl:bool :}
    kind RVK-QUOT =  kind RVK-INFERRED =  or {: rk:bool :}
    kind TVK-ANY =  ns 0=  and  nl 0=  and IF
-      ta tu SIG-CTL-TAG 0= IF ta tu SGBAD-SYNTAX! THEN EXIT
+      ts SIG-CTL-TAG 0= IF ts SGBAD-SYNTAX! THEN EXIT
    THEN
-   NEXT-SIG-TOK {: la:^ lu:n :}
-   lu 0 = IF ta tu SGBAD-SYNTAX! EXIT THEN
-   la lu  rk 0=  ns rk or  TAG-VAR {: id:n :}
-   id 0 < IF la lu SGBAD-SYNTAX! EXIT THEN
+   NEXT-SIG-TOK {: l:str :}
+   l STR:LEN 0 = IF ts SGBAD-SYNTAX! EXIT THEN
+   l rk 0=  ns rk or  TAG-VAR {: id:n :}
+   id 0 < IF l SGBAD-SYNTAX! EXIT THEN
    ns IF id NSCOPE! EXIT THEN
    nl IF id NLINEAR! EXIT THEN
    kind id TVK! ;
 
 
 : SIG-REST ( str -- str bool )
-   {: ta:^ tu:n :}
-   SIG-SPACE? 0= IF ta tu SGBAD-SYNTAX!  NULL-PTR 0 RES-FALSE EXIT THEN
+   {: ts:str :}
+   SIG-SPACE? 0= IF ts SGBAD-SYNTAX!  NULL-PTR 0 >str RES-FALSE EXIT THEN
    SL @ SI @ - 1 - {: u:n :}
-   u 1 < IF ta tu SGBAD-SYNTAX!  NULL-PTR 0 RES-FALSE EXIT THEN
-   SB@ SI @ + 1 +  u  RES-TRUE ;
+   u 1 < IF ts SGBAD-SYNTAX!  NULL-PTR 0 >str RES-FALSE EXIT THEN
+   SB@ SI @ + 1 +  u >str  RES-TRUE ;
 
 
 \ The tags after a facts text's effect, read while NMAP and ROWMAP still hold
 \ PSIG's names.
 : SIG-TAGS ( -- )
-   BEGIN NEXT-SIG-TOK dup 0 <> WHILE
-      2dup s" creates-effect" STR:= IF
-         SIG-REST IF SIG-CREATES-U !  SIG-CREATES-A ! ELSE 2drop THEN EXIT
+   BEGIN NEXT-SIG-TOK dup STR:LEN 0 <> WHILE
+      dup s" creates-effect" STR:= IF
+         SIG-REST IF
+            dup STR:LEN SIG-CREATES-U !  STR:DATA SIG-CREATES-A !
+         ELSE drop THEN EXIT
       THEN
-      2dup s" overload" STR:= IF
-         SIG-REST IF SIG-OVERLOAD-U !  SIG-OVERLOAD-A ! ELSE 2drop THEN EXIT
+      dup s" overload" STR:= IF
+         SIG-REST IF
+            dup STR:LEN SIG-OVERLOAD-U !  STR:DATA SIG-OVERLOAD-A !
+         ELSE drop THEN EXIT
       THEN
       SIG-TAG
-   REPEAT 2drop ;
+   REPEAT drop ;
 
 
 : FACTS-CLOSE ( -- n )
-   BEGIN NEXT-SIG-TOK dup 0 <> WHILE
+   BEGIN NEXT-SIG-TOK dup STR:LEN 0 <> WHILE
       s" )" STR:= IF SI @ EXIT THEN
-   REPEAT 2drop -1 ;
+   REPEAT drop -1 ;
 
 
 \ A text of tags alone, a primitive's the checker types by what it does,
@@ -9784,22 +9790,22 @@ variable ROOT-SET-W
    -1 SIG-PARSES !  NULL-PTR SIG-PARSES-A !  0 SIG-PARSES-U !
    NULL-PTR SIG-CREATES-A !  0 SIG-CREATES-U !
    NULL-PTR SIG-OVERLOAD-A !  0 SIG-OVERLOAD-U !
-   PKRESET NEXT-SIG-TOK {: ta:^ tu:n :}
-   ta tu s" (" STR:= {: open:bool :}
-   open 0=  tu 0 >  and IF PARSE-TAGS EXIT THEN
+   PKRESET NEXT-SIG-TOK {: t:str :}
+   t s" (" STR:= {: open:bool :}
+   open 0=  t STR:LEN 0 >  and IF PARSE-TAGS EXIT THEN
    SI @ {: from:n :}
    open IF FACTS-CLOSE ELSE -1 THEN {: close:n :}
-   close 0 < IF SB@ len SGBAD-SYNTAX!  0 SL !  0 SI !  PSIG EXIT THEN
+   close 0 < IF SB@ len >str SGBAD-SYNTAX!  0 SL !  0 SI !  PSIG EXIT THEN
    close 1 - SL !  from SI !
    PSIG
    len SL !  close SI !  PKRESET
    SIG-TAGS ;
 
 
-: PARSE-SIG-RAW ( str -- n n n n ) {: a:^ u:n :}
+: PARSE-SIG-RAW ( str -- n n n n ) {: s:str :}
    SIG-UNRES-CLEAR
-   a SB!
-   u SL !
+   s STR:DATA SB!
+   s STR:LEN SL !
    0 SI !
    SIG-FACTS-MODE @ IF PARSE-FACTS EXIT THEN
    PSIG {: din:n dout:n rin:n rout:n :}
@@ -9815,14 +9821,14 @@ variable FB-PASS                     \ 0 mints the caller's names, else makes th
 : FB-SITE ( ^n bool -- ) {: cell:^ caller:bool :}
    cell @ {: t:n :}
    FB-PASS @ 0= IF
-      caller IF PD-ATOM0 @  t ATOM>K  t ATOM>A t ATOM>U RIGID-AK-MINT  ATOM-REKEY THEN
+      caller IF PD-ATOM0 @  t ATOM>K  t ATOM>A t ATOM>U >str RIGID-AK-MINT  ATOM-REKEY THEN
       EXIT
    THEN
    t ATOM>K negate 1- {: idx:n :}
    FB-P FB-CAP idx 1+ FB-ROW ARENA-ROWS-ENSURE
    idx FB-VAR @ 0= IF
       FRESH {: id:n :}
-      t ATOM>A t ATOM>U FRESH-REGION-NAME? IF id TVK-REGION! THEN
+      t ATOM>A t ATOM>U >str FRESH-REGION-NAME? IF id TVK-REGION! THEN
       id MK-VAR idx FB-VAR !
       t idx FB-NAME !
       idx 1+ FB-N @ max FB-N !
@@ -9944,12 +9950,12 @@ variable LBI-LINEAR   \ the rejected stored type parsed and may hold a linear va
    SGBAD-CLEAR SIG-UNRES-CLEAR
    PKRESET FAM-RESET ;
 
-: STORAGE-PARSE? ( str -- bool ) {: a:^ u:n :}
+: STORAGE-PARSE? ( str -- bool ) {: s:str :}
    STORAGE-RESET
-   a SB!  u SL !  0 SI !
-   NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
+   s STR:DATA SB!  s STR:LEN SL !  0 SI !
+   NEXT-SIG-TOK dup STR:LEN 0= IF drop RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
-   NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
+   NEXT-SIG-TOK dup STR:LEN 0 <> LBI-BAD ! drop
    SGBAD @ 0 <> LBI-BAD @ 0 <> or 0= ;
 
 \ A scheme is a callback input only, so no storage holds one at any depth. A
@@ -10053,11 +10059,11 @@ variable LBI-LINEAR   \ the rejected stored type parsed and may hold a linear va
 : VREC-ROOM ( -- )
    VREC-ENSURE ;
 
-: VREC-BEGIN ( str -- n ) {: a:^ u:n :}
+: VREC-BEGIN ( str -- n ) {: s:str :}
    WRITE-WINDOW-CK
    VREC-ROOM
    VREC-N @ {: id:n :}
-   a u VREC-STR-COPY {: off:n len:n :}
+   s VREC-STR-COPY {: off:n len:n :}
    id 1 + VREC-N !
    off id cells VREC-NAME-A + !
    len id cells VREC-NAME-U + !
@@ -10073,38 +10079,38 @@ variable LBI-LINEAR   \ the rejected stored type parsed and may hold a linear va
    VRC-RVN @ id cells VREC-RVN + ! ;
 
 : VREC-FIELD-WRAP ( str str n -- n )
-   {: rec:^ recu:n fld:^ fldu:n typ:n :}
+   {: rec:str fld:str typ:n :}
    PARAM-SCR-N @ {: base:n :}
-   rec recu MK-ATOM PARAM-SCR+
-   fld fldu MK-ATOM PARAM-SCR+
+   rec MK-ATOM PARAM-SCR+
+   fld MK-ATOM PARAM-SCR+
    typ PARAM-SCR+
    base s" field" FIELD-FAM @ MK-PARAM ;
 
 : VREC-FIELD-STORE ( str str n -- )
-   {: rec:^ recu:n fld:^ fldu:n typ:n :}
-   rec recu fld fldu typ VREC-FIELD-WRAP VREC-COPY VREC-FIELD! ;
+   {: rec:str fld:str typ:n :}
+   rec fld typ VREC-FIELD-WRAP VREC-COPY VREC-FIELD! ;
 
-: VREC-ATOM-COPY= ( str n -- bool ) {: a:^ u:n node:n :}
+: VREC-ATOM-COPY= ( str n -- bool ) {: s:str node:n :}
    node VN.TAG@ VR-ATOM <> IF RES-FALSE EXIT THEN
-   node VREC-I-STR a u STR:= ;
+   node VREC-I-STR s STR:= ;
 
-: VREC-FIELD-NAME= ( str n -- bool ) {: a:^ u:n node:n :}
+: VREC-FIELD-NAME= ( str n -- bool ) {: s:str node:n :}
    node VN.TAG@ VR-PARAM <> IF RES-FALSE EXIT THEN
-   a u node 1 VN>ARG VREC-ATOM-COPY= ;   \ field name is arg[1] of field<rec,name,type>
+   s node 1 VN>ARG VREC-ATOM-COPY= ;   \ field name is arg[1] of field<rec,name,type>
 
-: VREC-FIELD-DUP? ( str n -- bool ) {: a:^ u:n id:n :}
+: VREC-FIELD-DUP? ( str n -- bool ) {: s:str id:n :}
    id VREC-START@ VREC-J !
    BEGIN VREC-J @ VREC-FIELD-N @ < WHILE
-      a u VREC-J @ VREC-FIELD@ VREC-FIELD-NAME= IF RES-TRUE EXIT THEN
+      s VREC-J @ VREC-FIELD@ VREC-FIELD-NAME= IF RES-TRUE EXIT THEN
       VREC-J @ 1 + VREC-J !
    REPEAT
    RES-FALSE ;
 
-: VREC-FIELD-BAD? ( str -- bool ) {: a:^ u:n :}
-   u 0= IF RES-TRUE EXIT THEN
-   a u s" (" STR:= IF RES-TRUE EXIT THEN
-   a u s" \" STR:= IF RES-TRUE EXIT THEN
-   a u DELIM? ;
+: VREC-FIELD-BAD? ( str -- bool ) {: s:str :}
+   s STR:LEN 0= IF RES-TRUE EXIT THEN
+   s s" (" STR:= IF RES-TRUE EXIT THEN
+   s s" \" STR:= IF RES-TRUE EXIT THEN
+   s DELIM? ;
 
 \ Why a record is rejected, 0 when it is not.
 1 constant VREC-WHY-NAME     \ the name is a type already, or reserved
@@ -10124,57 +10130,57 @@ variable VREC-TYPE-U
 : VREC-REJECT ( n -- n n ) VREC-AT @ swap ;
 
 \ Takes the token the type parser rejected as the field's type when it lies in
-\ field text f fu; else the type's first token stays.
-: VREC-BAD-TOKEN ( str -- ) {: f:^ fu:n :}
+\ field text f; else the type's first token stays.
+: VREC-BAD-TOKEN ( str -- ) {: f:str :}
    SGBAD @ 0= IF EXIT THEN
    SGBAD-U @ 0= IF EXIT THEN
-   SGBAD-A @ f < IF EXIT THEN
-   SGBAD-A @ SGBAD-U @ + f fu + > IF EXIT THEN
+   SGBAD-A @ f STR:DATA < IF EXIT THEN
+   SGBAD-A @ SGBAD-U @ + f STR:DATA f STR:LEN + > IF EXIT THEN
    SGBAD-A @ VREC-TYPE-A !  SGBAD-U @ VREC-TYPE-U ! ;
 
 : VREC-TYPE-REJECT ( str -- n n )
    VREC-BAD-TOKEN  VREC-WHY-TYPE VREC-REJECT ;
 
 : VREC-PARSE-FIELDS ( n str str -- n n )
-   {: id:n rec:^ recu:n fields:^ fieldsu:n :}
+   {: id:n rec:str fields:str :}
    SIG-UNRES-CLEAR
-   fields SB! fieldsu SL ! 0 SI !
+   fields STR:DATA SB! fields STR:LEN SL ! 0 SI !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
-   fieldsu VREC-AT !
+   fields STR:LEN VREC-AT !
    0 VREC-TYPE-U !
    BEGIN
-      NEXT-SIG-TOK dup 0= IF 2drop fieldsu 0 EXIT THEN
-      over fields - VREC-AT !  0 VREC-TYPE-U !
-      2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop VREC-WHY-FIELD VREC-REJECT EXIT THEN
-      2dup id VREC-FIELD-DUP? IF 2drop VREC-WHY-DUP VREC-REJECT EXIT THEN
-      NEXT-SIG-TOK dup 0= IF 2drop 2drop fields fieldsu VREC-TYPE-REJECT EXIT THEN
-      2dup VREC-TYPE-U ! VREC-TYPE-A !
+      NEXT-SIG-TOK dup STR:LEN 0= IF drop fields STR:LEN 0 EXIT THEN
+      dup STR:DATA fields STR:DATA - VREC-AT !  0 VREC-TYPE-U !
+      dup VREC-FIELD-BAD? IF dup SGBAD-SYNTAX! drop VREC-WHY-FIELD VREC-REJECT EXIT THEN
+      dup id VREC-FIELD-DUP? IF drop VREC-WHY-DUP VREC-REJECT EXIT THEN
+      NEXT-SIG-TOK dup STR:LEN 0= IF drop drop fields VREC-TYPE-REJECT EXIT THEN
+      dup dup STR:LEN VREC-TYPE-U ! STR:DATA VREC-TYPE-A !
       SIG-TYPE
       dup SCOPED-TYPE? IF
-         drop 2drop VREC-WHY-SCOPED VREC-REJECT EXIT
+         drop drop VREC-WHY-SCOPED VREC-REJECT EXIT
       THEN
-      >r rec recu 2swap r> VREC-FIELD-STORE
-      SGBAD @ IF fields fieldsu VREC-TYPE-REJECT EXIT THEN
+      >r rec swap r> VREC-FIELD-STORE
+      SGBAD @ IF fields VREC-TYPE-REJECT EXIT THEN
    AGAIN ;
 
 : VREC-DEFINE ( n str str -- n n )
-   {: id:n rec:^ recu:n fields:^ fieldsu:n :}
-   id rec recu fields fieldsu VREC-PARSE-FIELDS {: at:n why:n :}
+   {: id:n rec:str fields:str :}
+   id rec fields VREC-PARSE-FIELDS {: at:n why:n :}
    why 0 <> IF at why EXIT THEN
-   VREC-FIELD-N @ id VREC-START@ = IF fieldsu VREC-WHY-EMPTY EXIT THEN
+   VREC-FIELD-N @ id VREC-START@ = IF fields STR:LEN VREC-WHY-EMPTY EXIT THEN
    id VREC-FINISH
    at 0 ;
 
 \ Registers the record, or leaves every record table as it found it and
 \ answers the byte offset of the field it rejects and why.
 : VREC-TRY ( str str -- n n )
-   {: name:^ nameu:n fields:^ fieldsu:n :}
-   name nameu TYPE-RESERVED? IF 0 VREC-WHY-NAME EXIT THEN
+   {: name:str fields:str :}
+   name TYPE-RESERVED? IF 0 VREC-WHY-NAME EXIT THEN
    VREC-N @ VREC-FIELD-N @ VREC-NODE-N @ VNARG-N @ VREC-STR-U @
    {: rn:n fn:n dn:n an:n su:n :}
-   name nameu VREC-BEGIN {: id:n :}
-   id name nameu fields fieldsu VREC-DEFINE {: at:n why:n :}
+   name VREC-BEGIN {: id:n :}
+   id name fields VREC-DEFINE {: at:n why:n :}
    why 0 <> IF rn fn dn an su VREC-REWIND THEN
    SIG-UNRES @ 0 <> why 0= and IF
       rn fn dn an su VREC-REWIND
@@ -10189,23 +10195,23 @@ variable VREC-TYPE-U
 
 \ The token of field text f that starts at byte at: a delimiter alone, else the
 \ bytes up to a blank or a delimiter.
-: VREC-TOKEN ( str n -- str ) {: f:^ fu:n at:n :}
+: VREC-TOKEN ( str n -- str ) {: f:str at:n :}
    at BEGIN
-      dup fu < IF f over + c@ dup 32 > swap SIG-DELIM-CHAR? 0= and ELSE RES-FALSE THEN
+      dup f STR:LEN < IF f STR:DATA over + c@ dup 32 > swap SIG-DELIM-CHAR? 0= and ELSE RES-FALSE THEN
    WHILE 1 + REPEAT
    {: e:n :}
-   e at = at fu < and IF at 1 + ELSE e THEN {: end:n :}
-   f at + end at - ;
+   e at = at f STR:LEN < and IF at 1 + ELSE e THEN {: end:n :}
+   f STR:DATA at + end at - >str ;
 
-\ The label of the rejected field token t tu: the checker reads a `(` as a
+\ The label of the rejected field token t: the checker reads a `(` as a
 \ signature and a `\` as a comment wherever either stands.
-: VREC-FIELD-LABEL ( str -- str ) {: t:^ tu:n :}
-   t tu s" (" STR:= IF s" a signature, not a name" EXIT THEN
-   t tu s" \" STR:= IF s" a comment, not a name" EXIT THEN
+: VREC-FIELD-LABEL ( str -- str ) {: t:str :}
+   t s" (" STR:= IF s" a signature, not a name" EXIT THEN
+   t s" \" STR:= IF s" a comment, not a name" EXIT THEN
    s" not a field name" ;
 
-: VREC-OF ( str -- ) {: a:^ u:n :}
-   s" ` of value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+: VREC-OF ( str -- ) {: s:str :}
+   s" ` of value record `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    96 REJECTION:EMIT1 ;
 
 \ Writes the record of value record a's rejection why (VREC-TRY), through its
@@ -10213,67 +10219,67 @@ variable VREC-TYPE-U
 \ no field, where t is not read, and at the type VREC-TRY left in VREC-TYPE-A
 \ when a field's type is rejected. The caller ends it.
 : CHECKER-RECORD-REJECT ( str str n -- )
-   {: a:^ u:n t:^ tu:n why:n :}
+   {: s:str t:str why:n :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
    why VREC-WHY-NAME = IF
-      s" value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" value record `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
       s" ` names a type that already exists or a reserved name" REJECTION:EMIT-STR
-      a u REJECTION:AT  s" already a type or reserved" REJECTION:EMIT-STR
+      s REJECTION:AT  s" already a type or reserved" REJECTION:EMIT-STR
       REJECTION:HELP  s" give the value record a name no other type has"
       REJECTION:EMIT-STR
    THEN
    why VREC-WHY-EMPTY = IF
-      s" value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" value record `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
       s" ` has no fields" REJECTION:EMIT-STR
-      a u REJECTION:AT  s" no fields" REJECTION:EMIT-STR
+      s REJECTION:AT  s" no fields" REJECTION:EMIT-STR
       REJECTION:HELP
       s" list each field's name and type before `END-VALUE-RECORD`, as `x n`"
       REJECTION:EMIT-STR
    THEN
    why VREC-WHY-FIELD = IF
-      96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
+      96 REJECTION:EMIT1  t REJECTION:EMIT-STR
       s" ` cannot name a field of value record `" REJECTION:EMIT-STR
-      a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
-      t tu REJECTION:AT  t tu VREC-FIELD-LABEL REJECTION:EMIT-STR
+      s REJECTION:EMIT-STR  96 REJECTION:EMIT1
+      t REJECTION:AT  t VREC-FIELD-LABEL REJECTION:EMIT-STR
       REJECTION:HELP  s" name each field with a word and give its type, as `x n`"
       REJECTION:EMIT-STR
    THEN
    why VREC-WHY-DUP = IF
-      s" field `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  a u VREC-OF
+      s" field `" REJECTION:EMIT-STR  t REJECTION:EMIT-STR  s VREC-OF
       s"  is declared twice" REJECTION:EMIT-STR
-      t tu REJECTION:AT  s" declared again" REJECTION:EMIT-STR
+      t REJECTION:AT  s" declared again" REJECTION:EMIT-STR
       REJECTION:HELP  s" give each field of `" REJECTION:EMIT-STR
-      a u REJECTION:EMIT-STR  s" ` a name of its own" REJECTION:EMIT-STR
+      s REJECTION:EMIT-STR  s" ` a name of its own" REJECTION:EMIT-STR
    THEN
    why VREC-WHY-TYPE = VREC-TYPE-U @ 0= and IF
-      s" field `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  a u VREC-OF
+      s" field `" REJECTION:EMIT-STR  t REJECTION:EMIT-STR  s VREC-OF
       s"  has no type" REJECTION:EMIT-STR
-      t tu REJECTION:AT  s" no type follows" REJECTION:EMIT-STR
+      t REJECTION:AT  s" no type follows" REJECTION:EMIT-STR
       REJECTION:HELP  s" write a declared type after the field's name, as `"
-      REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  s"  n`" REJECTION:EMIT-STR
+      REJECTION:EMIT-STR  t REJECTION:EMIT-STR  s"  n`" REJECTION:EMIT-STR
    THEN
    why VREC-WHY-TYPE = VREC-TYPE-U @ 0 > and IF
-      s" field `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  a u VREC-OF
+      s" field `" REJECTION:EMIT-STR  t REJECTION:EMIT-STR  s VREC-OF
       s"  has an unknown or malformed type" REJECTION:EMIT-STR
-      VREC-TYPE-A @ VREC-TYPE-U @ REJECTION:AT  s" not a valid type" REJECTION:EMIT-STR
+      VREC-TYPE-A @ VREC-TYPE-U @ >str REJECTION:AT  s" not a valid type" REJECTION:EMIT-STR
       REJECTION:HELP  s" write a declared type after the field's name, as `"
-      REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  s"  n`" REJECTION:EMIT-STR
+      REJECTION:EMIT-STR  t REJECTION:EMIT-STR  s"  n`" REJECTION:EMIT-STR
    THEN
    why VREC-WHY-SCOPED = IF
-      s" field `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  a u VREC-OF
+      s" field `" REJECTION:EMIT-STR  t REJECTION:EMIT-STR  s VREC-OF
       s"  has a type with a scoped dependency" REJECTION:EMIT-STR
-      VREC-TYPE-A @ VREC-TYPE-U @ REJECTION:AT  s" scoped type" REJECTION:EMIT-STR
+      VREC-TYPE-A @ VREC-TYPE-U @ >str REJECTION:AT  s" scoped type" REJECTION:EMIT-STR
       REJECTION:HELP  s" give the field a type that names no callback scope"
       REJECTION:EMIT-STR
    THEN ;
 
 \ VALUE-RECORD's registrar: a bad record is rejected at the field at fault, or
 \ at the record's name.
-: CHECKER-DEFRECORD ( ^u8 n ^u8 n -- )
-   {: name:^ nameu:n fields:^ fieldsu:n :}
-   name nameu fields fieldsu VREC-TRY {: at:n why:n :}
+: CHECKER-DEFRECORD ( str str -- )
+   {: name:str fields:str :}
+   name fields VREC-TRY {: at:n why:n :}
    why 0= IF EXIT THEN
-   name nameu  fields fieldsu at VREC-TOKEN  why CHECKER-RECORD-REJECT
+   name  fields at VREC-TOKEN  why CHECKER-RECORD-REJECT
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Structured internal effects. Textual signatures are source-boundary input
@@ -10517,8 +10523,8 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    0 DL-N !  0 DLB-N !  0 PU-N !  0 DL-NEW ! ;
 
 : CHECKER-DECL-AT! ( str n n n -- )
-   {: name:^ nameu:n visit:n start:n end:n :}
-   name DL-NA !  nameu DL-NU !
+   {: name:str visit:n start:n end:n :}
+   name STR:DATA DL-NA !  name STR:LEN DL-NU !
    visit DL-VISIT !  start DL-START !  end DL-END !  1 DL-ON ! ;
 
 : CHECKER-DECL-AT-OFF ( -- )
@@ -10534,11 +10540,11 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    DLB-P DLB-CAP DLB-N @ u + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE ;
 
 : DLB-ADD ( str -- n )
-   {: a:^ u:n :}
-   u DLB-ROOM
+   {: s:str :}
+   s STR:LEN DLB-ROOM
    DLB-N @ {: off:n :}
-   a  DLB-P @ off +  u ARENA-COPY
-   off u + DLB-N !
+   s STR:DATA  DLB-P @ off +  s STR:LEN >str ARENA-COPY
+   off s STR:LEN + DLB-N !
    off ;
 
 \ Records only append above the rows a rewind kept, so the table stays
@@ -10557,9 +10563,9 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    DL-N @ 1 + DL-N ! ;
 
 : DL-ROW-NAMED ( n str n n n -- )
-   {: rec1:n a:^ u:n visit:n start:n end:n :}
-   a u DLB-ADD {: noff:n :}
-   rec1 1 - visit start end noff u DL-ROW+ ;
+   {: rec1:n s:str visit:n start:n end:n :}
+   s DLB-ADD {: noff:n :}
+   rec1 1 - visit start end noff s STR:LEN DL-ROW+ ;
 
 \ A generated registration runs between NAV-PAUSE and NAV-RESUME so it does
 \ not take the location armed for the statement that generates it.
@@ -10612,7 +10618,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
 
 : DL-NAME$ ( n -- str )            \ borrowed until the next row
    DL-NAME-AT {: off:n u:n :}
-   DLB-P @ off +  u ;
+   DLB-P @ off +  u >str ;
 
 : DL-ROW-OF ( n -- n bool )
    {: rec1:n :}
@@ -10657,11 +10663,11 @@ USIGS-CLEAR
 
 : UB! {: c :}  c USIGS UEND @ + c!  UEND @ 1 + UEND ! ;
 
-: UBS ( str -- ) {: a:^ u:n :}
+: UBS ( str -- ) {: s:str :}
    0 BEGIN
-      dup u <
+      dup s STR:LEN <
    WHILE
-      dup a + c@ UB!
+      dup s STR:DATA + c@ UB!
       1 +
    REPEAT drop ;
 
@@ -10728,11 +10734,11 @@ variable SYM-ID
 
 : SYM-PKG$ ( n -- str )
    dup SYM-PKG-A-FIELD @ SYM-STR swap +
-   swap SYM-ROW SYM.PKG-U @ ;
+   swap SYM-ROW SYM.PKG-U @ >str ;
 
 : SYM-NAME$ ( n -- str )
    dup SYM-NAME-A-FIELD @ SYM-STR swap +
-   swap SYM-ROW SYM.NAME-U @ ;
+   swap SYM-ROW SYM.NAME-U @ >str ;
 
 : SYM-STR-GROW ( n -- ) {: need:n :}
    need SYM-STR-CAP-V @ 2 * max {: nc:n :}
@@ -10745,15 +10751,15 @@ variable SYM-ID
 
 \ A span inside the store is a stored, folded name: a copy would keep it twice,
 \ and a growth during the copy would read the abandoned pool.
-: SYM-COPY-FOLD ( str -- n n ) {: a:^ u:n :}
-   a NULL-PTR - SYM-STR NULL-PTR - - {: at:n :}
-   u 0 > at 0 >= and at u + SYM-STR-U @ <= and IF at u EXIT THEN
-   u SYM-STR-ENSURE
+: SYM-COPY-FOLD ( str -- n n ) {: s:str :}
+   s STR:DATA NULL-PTR - SYM-STR NULL-PTR - - {: at:n :}
+   s STR:LEN 0 > at 0 >= and at s STR:LEN + SYM-STR-U @ <= and IF at s STR:LEN EXIT THEN
+   s STR:LEN SYM-STR-ENSURE
    SYM-STR-U @ {: off:n :}
    SYM-STR off + {: dst:^ :}
-   u 0 ?do a i + c@ STR:ASCII-LOWER dst i + c! loop
-   SYM-STR-U @ u + SYM-STR-U !
-   off u ;
+   s STR:LEN 0 ?do s STR:DATA i + c@ STR:ASCII-LOWER dst i + c! loop
+   SYM-STR-U @ s STR:LEN + SYM-STR-U !
+   off s STR:LEN ;
 
 ;package
 package CHECKER-REG
@@ -10763,10 +10769,10 @@ CAST: REG-PTR-CELLS ( ^u8 -- ^^u8 )
 package CHECK
 
 : SYM-MATCH? ( str n str n -- bool )
-   {: pkg pkgu:n vis:n name nameu:n id:n :}
+   {: pkg:str vis:n name:str id:n :}
    id SYM-ROW SYM.VIS @ vis <> IF RES-FALSE EXIT THEN
-   id SYM-PKG$ pkg pkgu STR:=CI 0= IF RES-FALSE EXIT THEN
-   id SYM-NAME$ name nameu STR:=CI ;
+   id SYM-PKG$ pkg STR:=CI 0= IF RES-FALSE EXIT THEN
+   id SYM-NAME$ name STR:=CI ;
 
 \ --- symbol hash index and current-state cache
 0 constant HT-BKT
@@ -10852,24 +10858,24 @@ HIDX-MEM-CLEAR
 : HIDX-H+ ( n -- )
    STR:ASCII-LOWER HIDX-H @ FNV:STEP HIDX-H ! ;
 
-: HIDX-H$ ( str -- ) {: a:^ u:n :}
-   0 begin dup u < while
-      dup a + c@ HIDX-H+
+: HIDX-H$ ( str -- ) {: s:str :}
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ HIDX-H+
       1 +
    repeat drop ;
 
-: HIDX-HASH ( str n str -- n ) {: pkg pkgu:n vis:n name nameu:n :}
+: HIDX-HASH ( str n str -- n ) {: pkg:str vis:n name:str :}
    FNV:BASIS HIDX-H !
-   pkg pkgu HIDX-H$
+   pkg HIDX-H$
    vis HIDX-H+
-   name nameu HIDX-H$
+   name HIDX-H$
    HIDX-H @ SYM-CAP 1 - and ;
 
 : HIDX-BKT ( n -- ^n )
    HT-BKT HIDX-CELL ;
 
-: HIDX-STR-BKT ( str n -- ^n ) {: a:^ u:n tbl:n :}
-   FNV:BASIS HIDX-H ! a u HIDX-H$
+: HIDX-STR-BKT ( str n -- ^n ) {: s:str tbl:n :}
+   FNV:BASIS HIDX-H ! s HIDX-H$
    HIDX-H @ SYM-CAP 1 - and tbl HIDX-CELL ;
 
 : HIDX-PKG-BKT ( str -- ^n )
@@ -10985,47 +10991,47 @@ HIDX-MEM-CLEAR
 : HIDX-DFR-DEP+ ( n -- )
    HIDX-DFR-HI @ max HIDX-DFR-HI ! ;
 
-: SYM-FIND ( str n str -- n bool ) {: pkg pkgu:n vis:n name nameu:n :}
+: SYM-FIND ( str n str -- n bool ) {: pkg:str vis:n name:str :}
    HIDX-ENSURE
-   pkg pkgu vis name nameu HIDX-HASH HIDX-BKT @ HIDX-CUR !
+   pkg vis name HIDX-HASH HIDX-BKT @ HIDX-CUR !
    begin HIDX-CUR @ 0 <> while
-      pkg pkgu vis name nameu HIDX-CUR @ SYM-MATCH? IF HIDX-CUR @ RES-TRUE EXIT THEN
+      pkg vis name HIDX-CUR @ SYM-MATCH? IF HIDX-CUR @ RES-TRUE EXIT THEN
       HIDX-CUR @ HT-NEXT HIDX-CELL @ HIDX-CUR !
    repeat
    0 RES-FALSE ;
 
-: SYM-PKG-INTERN ( str -- n n ) {: a:^ u:n :}
-   u 0= IF 0 0 EXIT THEN
+: SYM-PKG-INTERN ( str -- n n ) {: s:str :}
+   s STR:LEN 0= IF 0 0 EXIT THEN
    HIDX-ENSURE
-   a u HIDX-PKG-BKT @
+   s HIDX-PKG-BKT @
    begin dup 0 <> while
-      dup SYM-PKG$ a u STR:=CI IF SYM-PKG-A-FIELD @ u EXIT THEN
+      dup SYM-PKG$ s STR:=CI IF SYM-PKG-A-FIELD @ s STR:LEN EXIT THEN
       HT-PKG-NEXT HIDX-CELL @
    repeat drop
-   a u SYM-COPY-FOLD ;
+   s SYM-COPY-FOLD ;
 
-: SYM-PKG! ( str n -- ) {: a:^ u:n id:n :}
-   a u SYM-PKG-INTERN {: off:n len:n :}
+: SYM-PKG! ( str n -- ) {: s:str id:n :}
+   s SYM-PKG-INTERN {: off:n len:n :}
    off id SYM-PKG-A-FIELD !
    len id SYM-ROW SYM.PKG-U ! ;
 
-: SYM-NAME-INTERN ( str -- n n ) {: a:^ u:n :}
+: SYM-NAME-INTERN ( str -- n n ) {: s:str :}
    HIDX-ENSURE
-   a u HIDX-NAME-BKT @
+   s HIDX-NAME-BKT @
    begin dup 0 <> while
-      dup SYM-NAME$ a u STR:=CI IF SYM-NAME-A-FIELD @ u EXIT THEN
+      dup SYM-NAME$ s STR:=CI IF SYM-NAME-A-FIELD @ s STR:LEN EXIT THEN
       HT-NAME-NEXT HIDX-CELL @
    repeat drop
-   a u SYM-COPY-FOLD ;
+   s SYM-COPY-FOLD ;
 
-: SYM-NAME! ( str n -- ) {: a:^ u:n id:n :}
-   a u SYM-NAME-INTERN {: off:n len:n :}
+: SYM-NAME! ( str n -- ) {: s:str id:n :}
+   s SYM-NAME-INTERN {: off:n len:n :}
    off id SYM-NAME-A-FIELD !
    len id SYM-ROW SYM.NAME-U ! ;
 
-: SYM-SET ( str n str n -- ) {: pkg pkgu:n vis:n name nameu:n id:n :}
-   pkg pkgu id SYM-PKG!
-   name nameu id SYM-NAME!
+: SYM-SET ( str n str n -- ) {: pkg:str vis:n name:str id:n :}
+   pkg id SYM-PKG!
+   name id SYM-NAME!
    vis id SYM-ROW SYM.VIS ! ;
 
 : SYM-CAP-NEXT ( n -- n ) {: need:n :}
@@ -11126,12 +11132,12 @@ EXPORT POINTER-STORAGE:DATA-CELL
    SYM-N @ SYM-CAP-V @ < IF exit THEN
    SYM-N @ 1 + SYM-GROW ;
 
-: SYM-INTERN ( str n str -- n ) {: pkg pkgu:n vis:n name nameu:n :}
-   nameu 0= IF s" checker: empty symbol name" EXIT-STATUS:INTERNAL die THEN
-   pkg pkgu vis name nameu SYM-FIND IF EXIT THEN drop
+: SYM-INTERN ( str n str -- n ) {: pkg:str vis:n name:str :}
+   name STR:LEN 0= IF s" checker: empty symbol name" EXIT-STATUS:INTERNAL die THEN
+   pkg vis name SYM-FIND IF EXIT THEN drop
    SYM-ENSURE
    SYM-N @ SYM-ID !
-   pkg pkgu vis name nameu SYM-ID @ SYM-SET
+   pkg vis name SYM-ID @ SYM-SET
    SYM-ID @ 1 + SYM-N !
    HIDX-VALID @ IF SYM-ID @ HIDX-SYM+ THEN
    SYM-ID @ ;
@@ -11435,12 +11441,12 @@ PTR-VARIABLE ELET-WAIT-P   variable ELET-WAIT-CAP   variable ELET-WAIT-N
    E-WEND@ argc cells + CELL + E-WENSURE
    E-WEND@ dup argc cells + E-WEND! ;
 
-: E-COPY-STR ( str ^u8 -- ) {: a:^ u:n p:^ :}
+: E-COPY-STR ( str ^u8 -- ) {: s:str p:^ :}
    E-WEND@ p EN.A !
-   u p EN.B !
-   E-WEND@ u + UALIGN CELL + E-WENSURE
-   a E-WBASE E-WEND@ + u ARENA-COPY
-   E-WEND@ u + UALIGN E-WEND! ;
+   s STR:LEN p EN.B !
+   E-WEND@ s STR:LEN + UALIGN CELL + E-WENSURE
+   s STR:DATA E-WBASE E-WEND@ + s STR:LEN >str ARENA-COPY
+   E-WEND@ s STR:LEN + UALIGN E-WEND! ;
 
 : E-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
@@ -11624,7 +11630,7 @@ UIX-RESET
    tg EN-ATOM = tg EN-PARAM = or ;
 
 : E-KEY-STR ( n -- str ) {: p:n :}
-   USIGS p E-PTR EN.A @ +  p E-PTR EN.B @ ;
+   USIGS p E-PTR EN.A @ +  p E-PTR EN.B @ >str ;
 
 : EH0 ( -- ) FNV:BASIS UIX-H ! ;
 : EH+ ( n -- ) UIX-H @ FNV:STEP UIX-H ! ;
@@ -11639,8 +11645,8 @@ UIX-RESET
       1 +
    REPEAT drop
    p E-KEY-STR? IF
-      p E-KEY-STR {: a:^ u:n :}
-      UIX-H @ a u FNV:BYTES UIX-H !
+      p E-KEY-STR {: t:str :}
+      UIX-H @ t FNV:BYTES UIX-H !
    THEN
    UIX-H @ ;
 
@@ -11927,7 +11933,7 @@ UIX-RESET
       endof
       T-ATOM of
          EN-ATOM E-NODE-NEW E-WOFF >r
-         x E-RES ATOM>A x E-RES ATOM>U r@ E-WPTR E-COPY-STR
+         x E-RES ATOM>A x E-RES ATOM>U >str r@ E-WPTR E-COPY-STR
          x E-RES E-AK-SLOT r@ E-WPTR EN.C !
          r>
       endof
@@ -12358,8 +12364,8 @@ ON-USE-DEFAULT
    {: sym:n :}
    sym SYM-ROW SYM.VIS @ {: vis:n :}
    vis SYM-PUBLIC = if -1 exit then
-   sym SYM-PKG$ {: pkg:^ pkgu:n :}
-   sym SYM-NAME$ {: name:^ nameu:n :}
+   sym SYM-PKG$ {: pkg:str :}
+   sym SYM-NAME$ {: name:str :}
    PRIM-SPEC:COUNT 0 ?do
       i PRIM-SPEC:KIND@ {: kind:n :}
       vis SYM-GLOBAL = if
@@ -12367,17 +12373,17 @@ ON-USE-DEFAULT
       else
          kind PRIM-SPEC:K-PKG-PRIVATE =
       then if
-         i PRIM-SPEC:PKG$ pkg pkgu STR:=CI
-         i PRIM-SPEC:NAME$ name nameu STR:=CI and if i unloop exit then
+         i PRIM-SPEC:PKG$ pkg STR:=CI
+         i PRIM-SPEC:NAME$ name STR:=CI and if i unloop exit then
       then
    loop
    -1 ;
 
-\ SYM spelled at A U: the use's range, the bound record's offset+1 (0 for a
+\ SYM spelled as T: the use's range, the bound record's offset+1 (0 for a
 \ primitive), symbol and location (0 0 0 when absent), true; false when there
 \ is nothing to report.
 : NAV-USE-AT ( n str -- n n n n n n n bool )
-   {: sym:n a:^ u:n :}
+   {: sym:n t:str :}
    sym 0= IF NAV-NO-USE EXIT THEN
    sym USIG-NEWEST-VISIBLE {: rec1:n :}
    rec1 0= IF sym USIG-NEWEST 0 <> IF NAV-NO-USE EXIT THEN THEN
@@ -12387,16 +12393,16 @@ ON-USE-DEFAULT
    ELSE
       sym NAV-PRIM-ROW dup 0 >= IF -2 swap - 0 0 ELSE drop 0 0 0 THEN
    THEN {: v:n ds:n de:n :}
-   a REJECTION:>SOURCE {: s:n mapped:bool :}
+   t STR:DATA REJECTION:>SOURCE {: s:n mapped:bool :}
    mapped 0= IF NAV-NO-USE EXIT THEN
-   s s u + rec1 sym v ds de RES-TRUE ;
+   s s t STR:LEN + rec1 sym v ds de RES-TRUE ;
 
 \ A body's uses wait in the pending table until the entry that walked it
 \ publishes them (NAV-PUBLISH): CHECK! its body's, CHECKER-SOURCE-DOES!
 \ a clause's. A row keeps its record's offset so a rewind drops it. Outside a
 \ uses scope nothing reads a use, so none is looked up.
 : NAV-USE ( n str -- )
-   USES-OPEN @ 0= IF 2drop drop EXIT THEN
+   USES-OPEN @ 0= IF drop drop EXIT THEN
    NAV-USE-AT 0= IF 2drop 2drop 2drop drop EXIT THEN
    {: s:n e:n rec1:n sym:n v:n ds:n de:n :}
    PU-P PU-CAP PU-N @ 1 + PU-ROW ARENA-ROWS-ENSURE
@@ -12407,7 +12413,7 @@ ON-USE-DEFAULT
 
 \ A use outside a body is published at once.
 : NAV-USE-NOW ( n str -- )
-   USES-OPEN @ 0= IF 2drop drop EXIT THEN
+   USES-OPEN @ 0= IF drop drop EXIT THEN
    NAV-USE-AT 0= IF 2drop 2drop 2drop drop EXIT THEN
    {: s:n e:n rec1:n sym:n v:n ds:n de:n :}
    s e sym v ds de CHECKER-ON-USE ;
@@ -12437,7 +12443,7 @@ ON-USE-DEFAULT
 \ ---- completion: the cursor a body check fires at ------------------------------
 \ A candidate: its spelling, then its declaration's visit, start and end.
 defer CHECKER-ON-CAND ( str n n n -- )
-: NO-CAND ( str n n n -- ) 2drop 2drop drop ;
+: NO-CAND ( str n n n -- ) 2drop drop drop ;
 variable CUR-AT                         \ the armed offset in the checked text, -1 none
 variable CUR-OWNED                      \ a check took the arm and runs
 variable CUR-DONE                       \ the check reached the cursor
@@ -12450,14 +12456,14 @@ PTR-VARIABLE CB-P   variable CB-CAP   variable CB-N    \ their spellings: cells,
 5 constant CUR-ROW                       \ spelling offset, length, visit, start, end
 \ WORD did WHAT while a cursor or an enumeration runs; FIX says what to write.
 : CURSOR-NESTED ( str str str -- )
-   {: w:^ wu:n what:^ whatu:n fix:^ fixu:n :}
+   {: w:str what:str fix:str :}
    s" E-CURSOR-NESTED" REJECTION:OPEN
-   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR
-   what whatu REJECTION:EMIT-STR
-   REJECTION:HELP  fix fixu REJECTION:EMIT-STR
+   96 REJECTION:EMIT1  w REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR
+   what REJECTION:EMIT-STR
+   REJECTION:HELP  fix REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
-: CURSOR-BUSY ( str -- ) {: w:^ wu:n :}
-   w wu s" ran while a check owns the cursor or a visitor runs"
+: CURSOR-BUSY ( str -- ) {: w:str :}
+   w s" ran while a check owns the cursor or a visitor runs"
    s" arm, disarm or enumerate before the check runs or after it returns, never from a visitor"
    CURSOR-NESTED ;
 
@@ -12468,7 +12474,7 @@ CUR-DEFAULT
 
 \ The owner slot: arm the next checked text's cursor at N for visitor XT, or
 \ disarm with a negative N.
-: CHECKER-CURSOR! ( n [ ^u8 n n n n -- ] -- )
+: CHECKER-CURSOR! ( n [ str n n n -- ] -- )
    CUR-OWNED @ 0 <>  VIS-OPEN @ 0 <> or  IF
       s" CHECKER-CURSOR!" CURSOR-BUSY
    THEN
@@ -12494,19 +12500,19 @@ CUR-DEFAULT
 \ Keep a candidate for the owner's exit, its spelling and location copied: the
 \ enumeration lends the spelling for the call only.
 : CUR-PEND ( str n n n -- )
-   {: a:^ u:n v:n s:n e:n :}
+   {: t:str v:n s:n e:n :}
    CUR-RP CUR-RCAP CUR-RN @ 1 + CUR-ROW ARENA-ROWS-ENSURE
-   CB-P CB-CAP CB-N @ u + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
-   a  CB-N @ CB-AT  u ARENA-COPY
+   CB-P CB-CAP CB-N @ t STR:LEN + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
+   t STR:DATA  CB-N @ CB-AT  t STR:LEN >str ARENA-COPY
    CUR-RP CUR-RN @ CUR-ROW NAV-CELL {: p:^ :}
-   CB-N @ p !  u p CELL + !  v p 2 cells + !  s p 3 cells + !  e p 4 cells + !
-   CB-N @ u + CB-N !
+   CB-N @ p !  t STR:LEN p CELL + !  v p 2 cells + !  s p 3 cells + !  e p 4 cells + !
+   CB-N @ t STR:LEN + CB-N !
    CUR-RN @ 1 + CUR-RN ! ;
 
 : CUR-SEND ( n -- )
    {: i:n :}
    CUR-RP i CUR-ROW NAV-CELL {: p:^ :}
-   p @ CB-AT  p CELL + @  p 2 cells + @  p 3 cells + @  p 4 cells + @  CHECKER-ON-CAND ;
+   p @ CB-AT  p CELL + @ >str  p 2 cells + @  p 3 cells + @  p 4 cells + @  CHECKER-ON-CAND ;
 
 : CUR-PUBLISH ( -- )
    -1 VIS-OPEN !
@@ -12744,28 +12750,28 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
 : SYM-REWIND ( n n -- ) {: symn:n symu:n :}
    symn HIDX-SYMS-RETIRE
    SYMS CELL-VIEW  symn SYM-REC CELL / *  SYM-N @ SYM-REC CELL / *  ARENA-CELLS-ZERO
-   SYM-STR symu +  SYM-STR-U @ symu -  ARENA-ZERO
+   SYM-STR symu +  SYM-STR-U @ symu - >str ARENA-ZERO
    symn SYM-N !
    symu SYM-STR-U ! ;
 
-\ The token SGBAD names in text SA SU: where the parse read it, or, when that is
-\ a copy the source does not hold, at SGA SGU where the checked text has SA SU's bytes.
+\ The token SGBAD names in text SS: where the parse read it, or, when that is
+\ a copy the source does not hold, at SGA SGU where the checked text has SS's bytes.
 : SGBAD-AT ( str -- ^u8 )
-   {: sa:^ su:n :}
+   {: ss:str :}
    SGBAD-A @ REJECTION:>SOURCE nip IF SGBAD-A @ EXIT THEN
-   SGBAD-A @ sa - {: off:n :}
-   off 0 <  off SGBAD-U @ + su >  or IF SGBAD-A @ EXIT THEN
-   SGA @ SGU @ CHECKED-OFF 0 < IF SGBAD-A @ EXIT THEN
-   SGA @ SGU @ sa su STR:= 0= IF SGBAD-A @ EXIT THEN
+   SGBAD-A @ ss STR:DATA - {: off:n :}
+   off 0 <  off SGBAD-U @ + ss STR:LEN >  or IF SGBAD-A @ EXIT THEN
+   SGA @ SGU @ >str CHECKED-OFF 0 < IF SGBAD-A @ EXIT THEN
+   SGA @ SGU @ >str ss STR:= 0= IF SGBAD-A @ EXIT THEN
    SGA @ off + ;
 
-\ The token SGBAD names in rejected text SA SU, a stored signature or a
-\ storage type, or AT ATU when SGBAD names none or the whole text.
+\ The token SGBAD names in rejected text SS, a stored signature or a
+\ storage type, or AT when SGBAD names none or the whole text.
 : SGBAD-TOKEN ( str str -- str )
-   {: sa:^ su:n at:^ atu:n :}
-   SGBAD @ 0=  SGBAD-U @ 0=  or  SGBAD-A @ sa =  SGBAD-U @ su =  and  or
-   IF at atu EXIT THEN
-   sa su SGBAD-AT SGBAD-U @ ;
+   {: ss:str at:str :}
+   SGBAD @ 0=  SGBAD-U @ 0=  or  SGBAD-A @ ss STR:DATA =  SGBAD-U @ ss STR:LEN =  and  or
+   IF at EXIT THEN
+   ss SGBAD-AT SGBAD-U @ >str ;
 
 \ Pins SGBAD-TOKEN; never a token the walk pinned.
 : SGBAD-PIN ( str str -- )
@@ -12788,14 +12794,14 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
 
 : CHECKER-USING-N ( -- n ) CK-USE-SCAN-N ;
 : CHECKER-USING$ ( n -- str ) {: ix:n :}
-   ix CK-USE-SLOT ix CK-USE-LEN@ ;
+   ix CK-USE-SLOT ix CK-USE-LEN@ >str ;
 
 ;package
 package CHECKER-RESOLVE
 : TOP-NAME$ ( -- str )
    data-base ENCLOSING:REC + @ {: outer:n :}
    outer 0 <> IF outer ELSE data-base PKG-REC-CELL + @ THEN {: top:n :}
-   top 0= IF NULL-PTR 0 EXIT THEN
+   top 0= IF NULL-PTR 0 >str EXIT THEN
    top dbase@ - DREC / REC-AT CK-REC-NAME$ ;
 
 EXPORT CHECKER-REG:SCRATCH{
@@ -12810,21 +12816,21 @@ SCRATCH-VARIABLE HEAD-KEY-CAP     \ HEAD-KEY-P's room, in cells
 
 \ The row of the open package's part `TOP:<name>`, NULL-PTR when no package is
 \ open or no such part is recorded.
-: PART-ROW ( str -- ^n ) {: a:^ u:n :}
-   TOP-NAME$ {: ta:^ tu:n :}
-   tu 1 + u + {: ku:n :}
-   tu 0= IF NULL-PTR EXIT THEN
+: PART-ROW ( str -- ^n ) {: s:str :}
+   TOP-NAME$ {: t:str :}
+   t STR:LEN 1 + s STR:LEN + {: ku:n :}
+   t STR:LEN 0= IF NULL-PTR EXIT THEN
    HEAD-KEY-P HEAD-KEY-CAP  ku CELL / 1 +  1 ARENA-ROWS-ENSURE
-   ta HEAD-KEY tu ARENA-COPY
-   $3A HEAD-KEY tu + c!
-   a HEAD-KEY tu 1 + + u ARENA-COPY
-   HEAD-KEY ku BOOT:NAMESPACE-WL WL-PROBE ;
+   t STR:DATA HEAD-KEY t STR:LEN >str ARENA-COPY
+   $3A HEAD-KEY t STR:LEN + c!
+   s STR:DATA HEAD-KEY t STR:LEN 1 + + s STR:LEN >str ARENA-COPY
+   HEAD-KEY ku >str BOOT:NAMESPACE-WL WL-PROBE ;
 \ The row a qualifier's head names here, NULL-PTR for none: in A or its
 \ part `A:<head>` first, then a top-level package.
-: HEAD-ROW ( str -- ^n ) {: a:^ u:n :}
-   a u PART-ROW  dup NULL-PTR <> IF EXIT THEN
+: HEAD-ROW ( str -- ^n ) {: s:str :}
+   s PART-ROW  dup NULL-PTR <> IF EXIT THEN
    drop
-   a u BOOT:NAMESPACE-WL WL-PROBE ;
+   s BOOT:NAMESPACE-WL WL-PROBE ;
 ;package
 package CHECK
 
@@ -12833,44 +12839,44 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 
 \ How many colons the name holds, and the index of its first, -1 for none.
 : CHECKER-COLON-SCAN ( str -- n n )
-   {: a:^ u:n :}
-   0 -1 0 BEGIN dup u < WHILE
-      a over + c@ $3A = IF
+   {: s:str :}
+   0 -1 0 BEGIN dup s STR:LEN < WHILE
+      s STR:DATA over + c@ $3A = IF
          >r  dup 0 < IF drop r@ THEN  swap 1 + swap  r>
       THEN
       1 +
    REPEAT drop ;
 
 \ A name's tail as written: past its one inner colon, if it has one.
-: ROW-TAIL$ ( str -- str ) {: a:^ u:n :}
-   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
-   cn 1 <>  ci 0 =  or  ci u 1 - =  or IF a u EXIT THEN
-   a ci + 1 +  u ci - 1 - ;
+: ROW-TAIL$ ( str -- str ) {: s:str :}
+   s CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 1 <>  ci 0 =  or  ci s STR:LEN 1 - =  or IF s EXIT THEN
+   s STR:DATA ci + 1 +  s STR:LEN ci - 1 - >str ;
 
 \ The using mirror and a sym hold a package's name folded; its row spells it
 \ as the program wrote it. A name no row holds is answered as given.
-: PACKAGE-NAME$ ( str -- str ) {: a:^ u:n :}
-   u 0= IF a u EXIT THEN
-   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: row:^ :}
-   row NULL-PTR = IF a u EXIT THEN
+: PACKAGE-NAME$ ( str -- str ) {: s:str :}
+   s STR:LEN 0= IF s EXIT THEN
+   s BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: row:^ :}
+   row NULL-PTR = IF s EXIT THEN
    row CK-REC-NAME$ ;
 
 \ A used package's qualifier here, its row's tail, and whether that tail
 \ reaches it here rather than a part of the open package of that name.
-: USED-QUAL ( str -- str bool ) {: a:^ u:n :}
-   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: row:^ :}
-   a u PACKAGE-NAME$ ROW-TAIL$ {: ta:^ tu:n :}
-   ta tu  ta tu HEAD-ROW row = ;
+: USED-QUAL ( str -- str bool ) {: s:str :}
+   s BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: row:^ :}
+   s PACKAGE-NAME$ ROW-TAIL$ {: t:str :}
+   t  t HEAD-ROW row = ;
 
-\ a u is the tail of a used package that a part of the open package hides.
-: EMIT-HIDER ( str -- ) {: a:^ u:n :}
+\ S is the tail of a used package that a part of the open package hides.
+: EMIT-HIDER ( str -- ) {: s:str :}
    s" rename the part `" REJECTION:EMIT-STR
-   a u PART-ROW CK-REC-NAME$ REJECTION:EMIT-STR
-   s" `, which hides package `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s PART-ROW CK-REC-NAME$ REJECTION:EMIT-STR
+   s" `, which hides package `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` here" REJECTION:EMIT-STR ;
 
-: EMIT-QUALIFIED ( str str -- ) {: p:^ pu:n w:^ wu:n :}
-   p pu REJECTION:EMIT-STR  58 REJECTION:EMIT1  w wu REJECTION:EMIT-STR ;
+: EMIT-QUALIFIED ( str str -- ) {: p:str w:str :}
+   p REJECTION:EMIT-STR  58 REJECTION:EMIT1  w REJECTION:EMIT-STR ;
 
 \ Using slot ix is set in mask and no earlier slot set in it names its package.
 : UPKG-FIRST? ( n n -- bool ) {: ix:n mask:n :}
@@ -12883,7 +12889,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 : UPKG-QUAL ( n -- str bool ) CHECKER-USING$ USED-QUAL ;
 : UPKG-REACHED? ( n n -- bool ) {: ix:n mask:n :}
    ix mask UPKG-FIRST? 0= IF RES-FALSE EXIT THEN
-   ix UPKG-QUAL nip nip ;
+   ix UPKG-QUAL nip ;
 : UPKG-N ( n -- n ) {: mask:n :}
    0  CHECKER-USING-N 0 ?DO i mask UPKG-REACHED? IF 1 + THEN LOOP ;
 
@@ -12899,26 +12905,26 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 : UPKG-SEP ( n n -- ) {: k:n n:n :}
    k 0= IF EXIT THEN
    k 1 + n = IF s"  or " ELSE s" , " THEN REJECTION:EMIT-STR ;
-\ The qualified spelling of a u in each package its qualifier reaches here.
-: UPKG-SPELLINGS ( str n -- ) {: a:^ u:n mask:n :}
+\ The qualified spelling of s in each package its qualifier reaches here.
+: UPKG-SPELLINGS ( str n -- ) {: s:str mask:n :}
    mask UPKG-N {: n:n :}
    0  CHECKER-USING-N 0 ?DO
       i mask UPKG-REACHED? IF
          dup n UPKG-SEP
-         96 REJECTION:EMIT1  i UPKG-QUAL drop a u EMIT-QUALIFIED
+         96 REJECTION:EMIT1  i UPKG-QUAL drop s EMIT-QUALIFIED
          96 REJECTION:EMIT1  1 +
       THEN
    LOOP drop ;
-\ The packages note and the help of a u, a `what` public in each package of
+\ The packages note and the help of s, a `what` public in each package of
 \ mask: the spellings that reach one here, then the part hiding each other.
-: UPKG-HELP ( str str n -- ) {: wa:^ wu:n a:^ u:n mask:n :}
+: UPKG-HELP ( str str n -- ) {: ws:str s:str mask:n :}
    mask UPKG-NOTE
    REJECTION:HELP
    mask UPKG-N {: n:n :}
    n 0 <> IF
       s" write the package's name before the " REJECTION:EMIT-STR
-      wa wu REJECTION:EMIT-STR  s" , as " REJECTION:EMIT-STR
-      a u mask UPKG-SPELLINGS
+      ws REJECTION:EMIT-STR  s" , as " REJECTION:EMIT-STR
+      s mask UPKG-SPELLINGS
    THEN
    n  CHECKER-USING-N 0 ?DO
       i mask UPKG-FIRST?  i mask UPKG-REACHED? 0=  and IF
@@ -12926,14 +12932,14 @@ EXPORT CHECKER-RESOLVE:PART-ROW
          i UPKG-QUAL drop EMIT-HIDER  1 +
       THEN
    LOOP drop ;
-\ The packages note and the help of the ambiguous family tail a u.
-: SGBAD-AMBIG-HELP ( str -- ) {: a:^ u:n :}
-   s" type family" a u SGBAD-USED @ UPKG-HELP ;
+\ The packages note and the help of the ambiguous family tail s.
+: SGBAD-AMBIG-HELP ( str -- ) {: s:str :}
+   s" type family" s SGBAD-USED @ UPKG-HELP ;
 
-\ The label for SGBAD's kind of fault, A U for a fault of no other kind. The
+\ The label for SGBAD's kind of fault, S for a fault of no other kind. The
 \ return and unsupplied kinds name the whole row, so their label sits on the
 \ caller's fallback: a signature's declaring name, or the storage type.
-: SGBAD-LABEL$ ( str -- str ) {: a:^ u:n :}
+: SGBAD-LABEL$ ( str -- str ) {: s:str :}
    SGBAD-RETURN? IF s" its signature moves the return stack" EXIT THEN
    SGBAD-AMBIG? IF s" ambiguous here" EXIT THEN
    SGBAD-UNKNOWN? IF s" no type has this name" EXIT THEN
@@ -12943,86 +12949,86 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    SGBAD-DEPTH? IF s" nested too deep to record" EXIT THEN
    SGBAD-UNSUPPLIED? SGBAD-ROOT @ and IF s" it gives a `C2-MEM:root<a>` view no input supplies" EXIT THEN
    SGBAD-UNSUPPLIED? IF s" its outputs name a variable no input supplies" EXIT THEN
-   a u ;
+   s ;
 
 \ A row is deep by its cells or by the types it nests.
 : DEPTH-SUGGEST$ ( -- str )
    s" keep bulk values in a buffer instead of on the stack, and name an inner callback's effect in a word of its own" ;
 
 : CODE-SPAN ( str -- ) 96 REJECTION:EMIT1 REJECTION:EMIT-STR 96 REJECTION:EMIT1 ;
-: SGBAD-ARITY-FIX ( str -- ) {: t:^ tu:n :}
-   s" give " REJECTION:EMIT-STR  t tu CODE-SPAN  32 REJECTION:EMIT1
+: SGBAD-ARITY-FIX ( str -- ) {: t:str :}
+   s" give " REJECTION:EMIT-STR  t CODE-SPAN  32 REJECTION:EMIT1
    SGBAD-AR-DECL @ REJECTION:EMIT-U
    SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN
    REJECTION:EMIT-STR ;
 \ In a local's annotation l starts the pin FAILTK FAILTU, the local's token
 \ `l:type` that holds t, so the example is that token with `^u8` for `ptr`.
-: SGBAD-UNKNOWN-FIX ( str str -- ) {: t:^ tu:n l:^ lu:n :}
-   t tu s" ptr" STR:= IF
+: SGBAD-UNKNOWN-FIX ( str str -- ) {: t:str l:str :}
+   t s" ptr" STR:= IF
       s" spell a pointer `^T`, `^` joined to the type it points at, as in `" REJECTION:EMIT-STR
-      lu 0= IF s" ^u8`" REJECTION:EMIT-STR EXIT THEN
-      SGBAD-LOCAL @ 1 = IF l lu REJECTION:EMIT-STR  s" :^u8`" REJECTION:EMIT-STR EXIT THEN
-      l  t l -  REJECTION:EMIT-STR  s" ^u8" REJECTION:EMIT-STR
-      t tu +  FAILTK FAILTU @ +  over -  REJECTION:EMIT-STR  96 REJECTION:EMIT1 EXIT
+      l STR:LEN 0= IF s" ^u8`" REJECTION:EMIT-STR EXIT THEN
+      SGBAD-LOCAL @ 1 = IF l REJECTION:EMIT-STR  s" :^u8`" REJECTION:EMIT-STR EXIT THEN
+      l STR:DATA  t STR:DATA l STR:DATA -  >str REJECTION:EMIT-STR  s" ^u8" REJECTION:EMIT-STR
+      t STR:DATA t STR:LEN +  FAILTK FAILTU @ +  over -  >str REJECTION:EMIT-STR  96 REJECTION:EMIT1 EXIT
    THEN
    s" write a type in scope or a one-letter type variable in place of " REJECTION:EMIT-STR
-   t tu CODE-SPAN ;
+   t CODE-SPAN ;
 
 \ Whether a type token starts after byte c: a blank, `<`, `,`, `[` or `^`.
 : TOKEN-LEAD? ( n -- bool ) {: c:n :}
    c 32 <=  c 60 = or  c 44 = or  c 91 = or  c 94 = or ;
-\ The offset of the first `forall<` that starts a token of a u, or u when it
+\ The offset of the first `forall<` that starts a token of s, or its length when it
 \ holds none; one inside a longer name, as in `forallish<`, is not a binder.
-: FORALL-AT ( str -- n ) {: a:^ u:n :}
-   0 BEGIN dup 7 + u <= WHILE
-      a over + 7 s" forall<" STR:= IF
+: FORALL-AT ( str -- n ) {: s:str :}
+   0 BEGIN dup 7 + s STR:LEN <= WHILE
+      s STR:DATA over + 7 >str s" forall<" STR:= IF
          dup 0= IF EXIT THEN
-         a over + 1 - c@ TOKEN-LEAD? IF EXIT THEN
+         s STR:DATA over + 1 - c@ TOKEN-LEAD? IF EXIT THEN
       THEN
       1 +
-   REPEAT drop u ;
+   REPEAT drop s STR:LEN ;
 
-\ The offset of the `>` that closes the first `<` at or past offset i of a u,
-\ or u when none does.
-: ANGLE-CLOSE ( str n -- n ) {: a:^ u:n i:n :}
-   0 i BEGIN dup u < WHILE
-      a over + c@ 60 = IF swap 1 + swap THEN
-      a over + c@ 62 = IF
+\ The offset of the `>` that closes the first `<` at or past offset i of s,
+\ or its length when none does.
+: ANGLE-CLOSE ( str n -- n ) {: s:str i:n :}
+   0 i BEGIN dup s STR:LEN < WHILE
+      s STR:DATA over + c@ 60 = IF swap 1 + swap THEN
+      s STR:DATA over + c@ 62 = IF
          swap 1 - swap
          over 0= IF nip EXIT THEN
       THEN
       1 +
    REPEAT nip ;
-\ The first binder in a u, `forall` through the `>` that closes it; a u when it
+\ The first binder in s, `forall` through the `>` that closes it; s when it
 \ holds none.
-: FORALL-SPAN ( str -- str ) {: a:^ u:n :}
-   a u FORALL-AT {: i:n :}
-   i u = IF a u EXIT THEN
-   a i +  a u i ANGLE-CLOSE 1 + u min i - ;
-\ Emits a u with each binder's head, as `forall<p,`, and its closing `>` cut,
+: FORALL-SPAN ( str -- str ) {: s:str :}
+   s FORALL-AT {: i:n :}
+   i s STR:LEN = IF s EXIT THEN
+   s STR:DATA i +  s i ANGLE-CLOSE 1 + s STR:LEN min i - >str ;
+\ Emits s with each binder's head, as `forall<p,`, and its closing `>` cut,
 \ so the binder's body stands in its place.
-: EMIT-UNBOUND ( str -- ) {: a:^ u:n :}
-   a u FORALL-AT {: i:n :}
-   a i REJECTION:EMIT-STR
-   i u = IF EXIT THEN
-   a u i ANGLE-CLOSE {: e:n :}
-   i BEGIN dup e < IF a over + c@ 44 <> ELSE RES-FALSE THEN WHILE 1 + REPEAT
+: EMIT-UNBOUND ( str -- ) {: s:str :}
+   s FORALL-AT {: i:n :}
+   s STR:DATA i >str REJECTION:EMIT-STR
+   i s STR:LEN = IF EXIT THEN
+   s i ANGLE-CLOSE {: e:n :}
+   i BEGIN dup e < IF s STR:DATA over + c@ 44 <> ELSE RES-FALSE THEN WHILE 1 + REPEAT
    1 + e min {: b:n :}
-   a b +  e b -  RECURSE
-   e u < IF a e + 1 +  u e - 1 -  RECURSE THEN ;
-\ The help of a verdict other than the ambiguous one: t tu is the token it
-\ rejects, l lu the local whose annotation that is, empty in a signature.
-: SGBAD-FIX ( str str -- ) {: t:^ tu:n l:^ lu:n :}
+   s STR:DATA b +  e b -  >str RECURSE
+   e s STR:LEN < IF s STR:DATA e + 1 +  s STR:LEN e - 1 - >str  RECURSE THEN ;
+\ The help of a verdict other than the ambiguous one: t is the token it
+\ rejects, l the local whose annotation that is, empty in a signature.
+: SGBAD-FIX ( str str -- ) {: t:str l:str :}
    SGBAD-RETURN? IF
       s" remove the return-stack clause, or write `| U -- U` with one row variable on both sides"
       REJECTION:EMIT-STR EXIT
    THEN
-   SGBAD-UNKNOWN? IF t tu l lu SGBAD-UNKNOWN-FIX EXIT THEN
+   SGBAD-UNKNOWN? IF t l SGBAD-UNKNOWN-FIX EXIT THEN
    SGBAD-BAREPTR? IF
       s" follow `^` with its element type, as `^u8` or `^a`" REJECTION:EMIT-STR EXIT
    THEN
-   SGBAD-ARITY? IF t tu SGBAD-ARITY-FIX EXIT THEN
-   SGBAD-BINDERS? lu 0= and IF
+   SGBAD-ARITY? IF t SGBAD-ARITY-FIX EXIT THEN
+   SGBAD-BINDERS? l STR:LEN 0= and IF
       s" name an inner callback's effect in a word of its own, so this signature nests fewer binders"
       REJECTION:EMIT-STR EXIT
    THEN
@@ -13038,38 +13044,40 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    \ A local's annotation holds no binder: the example is it with each one cut.
    SGBAD-SCHEME? SGBAD-BINDERS? or IF
       s" write the type without `forall`: its type variables are then the definition's, as in `"
-      REJECTION:EMIT-STR  l lu 1 + REJECTION:EMIT-STR
-      l lu 1 + +  FAILTK FAILTU @ +  over -  EMIT-UNBOUND  96 REJECTION:EMIT1 EXIT
+      REJECTION:EMIT-STR  l STR:DATA l STR:LEN 1 + >str REJECTION:EMIT-STR
+      l STR:DATA l STR:LEN 1 + +  FAILTK FAILTU @ +  over - >str
+      EMIT-UNBOUND  96 REJECTION:EMIT1 EXIT
    THEN
-   lu 0= IF
+   l STR:LEN 0= IF
       s" write the stack effect as `( inputs -- outputs )`, type tokens on each side of one `--`"
       REJECTION:EMIT-STR EXIT
    THEN
-   s" write one whole type after `" REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR
-   s" :`, as in `" REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR  s" :n`" REJECTION:EMIT-STR ;
+   s" write one whole type after `" REJECTION:EMIT-STR  l REJECTION:EMIT-STR
+   s" :`, as in `" REJECTION:EMIT-STR  l REJECTION:EMIT-STR  s" :n`" REJECTION:EMIT-STR ;
 
-\ The help of stored signature sa su's rejection, declared at at atu. A fix
+\ The help of stored signature ss's rejection, declared at AT. A fix
 \ names the token SGBAD rejects, even when it is the whole row.
-: SGBAD-HELP ( str str -- ) {: sa:^ su:n at:^ atu:n :}
-   SGBAD-AMBIG? IF sa su at atu SGBAD-TOKEN SGBAD-AMBIG-HELP EXIT THEN
-   REJECTION:HELP  sa su SGBAD-AT SGBAD-U @  over 0 SGBAD-FIX ;
+: SGBAD-HELP ( str str -- ) {: ss:str at:str :}
+   SGBAD-AMBIG? IF ss at SGBAD-TOKEN SGBAD-AMBIG-HELP EXIT THEN
+   REJECTION:HELP  ss SGBAD-AT {: p:^ :}
+   p SGBAD-U @ >str  p 0 >str SGBAD-FIX ;
 
 : SIG-WS? {: c :}  c 32 <= ;
-: SIG-LTRIM ( str -- str ) {: a:^ u:n :}
-   0 BEGIN dup u < WHILE
-      dup a + c@ SIG-WS? 0= IF dup a + u rot - EXIT THEN
+: SIG-LTRIM ( str -- str ) {: s:str :}
+   0 BEGIN dup s STR:LEN < WHILE
+      dup s STR:DATA + c@ SIG-WS? 0= IF dup s STR:DATA + s STR:LEN rot - >str EXIT THEN
       1 +
-   REPEAT drop a 0 ;
-: SIG-RTRIM ( str -- str ) {: a:^ u:n :}
-   u BEGIN dup 0 > WHILE
-      a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
-   REPEAT drop a 0 ;
+   REPEAT drop s STR:DATA 0 >str ;
+: SIG-RTRIM ( str -- str ) {: s:str :}
+   s STR:LEN BEGIN dup 0 > WHILE
+      s STR:DATA over 1 - + c@ SIG-WS? IF 1 - ELSE s STR:DATA swap >str EXIT THEN
+   REPEAT drop s STR:DATA 0 >str ;
 : SIG-TRIM ( str -- str )  SIG-LTRIM SIG-RTRIM ;
-: FIRST-TOKEN ( str -- str ) {: a:^ u:n :}
+: FIRST-TOKEN ( str -- str ) {: s:str :}
    0 BEGIN
-      dup u < IF a over + c@ SIG-WS? 0= ELSE RES-FALSE THEN
+      dup s STR:LEN < IF s STR:DATA over + c@ SIG-WS? 0= ELSE RES-FALSE THEN
    WHILE 1 + REPEAT
-   a swap ;
+   s STR:DATA swap >str ;
 
 : DEPTH-REASON$ ( -- str )
    s" effect too deep to record" ;
@@ -13087,31 +13095,31 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    SGBAD-BINDERS? IF BINDERS-REASON EXIT THEN
    DEPTH-REASON$ REJECTION:EMIT-STR  DEPTH-COUNTS ;
 
-\ Prints the rejection of stored signature SA SU declared at the name AT ATU as
+\ Prints the rejection of stored signature SS declared at the name AT as
 \ read, placed at SGBAD-TOKEN, up to its help; the caller ends it. A generated
 \ word (a STRUCTURE's MAKE) has no signature text, so no note quotes one.
 : SGBAD-REJECTION ( str str -- )
-   {: sa:^ su:n at:^ atu:n :}
+   {: ss:str at:str :}
    SGBAD-AMBIG? IF s" E-USING-AMBIGUOUS" ELSE s" E-BAD-STORED-SIGNATURE" THEN
    REJECTION:OPEN
-   s" the signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
+   s" the signature of `" REJECTION:EMIT-STR  at REJECTION:EMIT-STR
    s" ` cannot be recorded" REJECTION:EMIT-STR
-   sa su at atu SGBAD-TOKEN REJECTION:AT
+   ss at SGBAD-TOKEN REJECTION:AT
    s" the signature does not parse here" SGBAD-LABEL$ REJECTION:EMIT-STR
-   sa su SIG-TRIM {: ta:^ tu:n :}
-   tu 0 > IF s" signature" REJECTION:NOTE  ta tu REJECTION:EMIT-CUT THEN
+   ss SIG-TRIM {: t:str :}
+   t STR:LEN 0 > IF s" signature" REJECTION:NOTE  t REJECTION:EMIT-CUT THEN
    SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
-   sa su at atu SGBAD-HELP ;
+   ss at SGBAD-HELP ;
 
 \ AT is the declaring name as the caller read it, which the record names and
 \ places.
 : USIG-ADD-BAD ( str str -- )
-   {: sa:^ su:n at:^ atu:n :}
+   {: ss:str at:str :}
    WRITE-WINDOW-CK                       \ a rejection moves the latches too
    0 RECW !                              \ no record stored: nothing to publish wide
-   sa su at atu SGBAD-REJECTION
+   ss at SGBAD-REJECTION
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
-   sa su at atu SGBAD-PIN
+   ss at SGBAD-PIN
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ An effect with these rows deeper than a record holds is a stored signature
@@ -13119,51 +13127,51 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 \ bound it passes. The result is false after that rejection returns, true when
 \ the rows fit.
 : USIG-DEPTH-FITS? ( str str n n n n -- bool )
-   {: sa:^ su:n at:^ atu:n din:n dout:n rin:n rout:n :}
+   {: ss:str at:str din:n dout:n rin:n rout:n :}
    din dout rin rout ROWS-DEPTH {: depth:n :}
    depth EFFECT-DEPTH-MAX <= if RES-TRUE exit then
-   sa su SGBAD-DEPTH-KIND SGBAD-SET
-   sa su at atu USIG-ADD-BAD RES-FALSE ;
+   ss SGBAD-DEPTH-KIND SGBAD-SET
+   ss at USIG-ADD-BAD RES-FALSE ;
 
 : SGBAD-UNFIT! ( str n n n n -- )
-   {: sa:^ su:n din:n dout:n rin:n rout:n :}
+   {: ss:str din:n dout:n rin:n rout:n :}
    din dout rin rout ROWS-DEPTH {: depth:n :}
-   depth EFFECT-DEPTH-MAX > IF sa su SGBAD-DEPTH-KIND SGBAD-SET THEN ;
+   depth EFFECT-DEPTH-MAX > IF ss SGBAD-DEPTH-KIND SGBAD-SET THEN ;
 
-\ The binder that opens a scope scheme in signature SA SU, `forall` through
-\ its `<`; the declaring name AT ATU when the text holds none.
+\ The binder that opens a scope scheme in signature SS, `forall` through
+\ its `<`; the declaring name AT when the text holds none.
 : SCHEME-BINDER ( str str -- str )
-   {: sa:^ su:n at:^ atu:n :}
-   sa su FORALL-AT {: start:n :}
-   start su = IF at atu EXIT THEN
-   start BEGIN dup su < IF sa over + c@ 60 <> ELSE RES-FALSE THEN WHILE 1 + REPEAT
+   {: ss:str at:str :}
+   ss FORALL-AT {: start:n :}
+   start ss STR:LEN = IF at EXIT THEN
+   start BEGIN dup ss STR:LEN < IF ss STR:DATA over + c@ 60 <> ELSE RES-FALSE THEN WHILE 1 + REPEAT
    {: end:n :}
-   end su < IF sa start +  end start - 1 + EXIT THEN
-   at atu ;
+   end ss STR:LEN < IF ss STR:DATA start +  end start - 1 + >str EXIT THEN
+   at ;
 
-\ A stored signature SA SU, declared at the name AT ATU as read, that binds a
+\ A stored signature SS, declared at the name AT as read, that binds a
 \ callback scope.
 : USIG-SCHEME-REJECT ( str str -- )
-   {: sa:^ su:n at:^ atu:n :}
+   {: ss:str at:str :}
    s" E-BAD-SIGNATURE" REJECTION:OPEN
-   s" the declared signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
+   s" the declared signature of `" REJECTION:EMIT-STR  at REJECTION:EMIT-STR
    s" ` binds a callback scope" REJECTION:EMIT-STR
-   sa su at atu SCHEME-BINDER REJECTION:AT
+   ss at SCHEME-BINDER REJECTION:AT
    s" binder in a declared signature" REJECTION:EMIT-STR
-   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-CUT
+   s" signature" REJECTION:NOTE  ss SIG-TRIM REJECTION:EMIT-CUT
    REJECTION:HELP
-   s" drop the binder from the signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
+   s" drop the binder from the signature of `" REJECTION:EMIT-STR  at REJECTION:EMIT-STR
    s" `: only a checked `:` definition binds a callback scope" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Records the rows of signature text SA; LEFT, the check left the body they declare
 \ to the run. Answers the row's outcome.
 : USIG-ADD-ROWS ( str str n n n n bool bool -- n )
-   {: sa:^ su:n at:^ atu:n din dout rin rout external:bool left:bool :}
-   SGBAD @ if sa su at atu USIG-ADD-BAD CHECKER-ROW:REJECTED exit then
+   {: ss:str at:str din dout rin rout external:bool left:bool :}
+   SGBAD @ if ss at USIG-ADD-BAD CHECKER-ROW:REJECTED exit then
    SIG-UNRES @ IF CHECKER-ROW:QUIET EXIT THEN
-   sa su din dout rin rout SGBAD-UNFIT!
-   SGBAD @ if sa su at atu USIG-ADD-BAD CHECKER-ROW:REJECTED exit then
+   ss din dout rin rout SGBAD-UNFIT!
+   SGBAD @ if ss at USIG-ADD-BAD CHECKER-ROW:REJECTED exit then
    left IF din LEAVE-QUOTS  dout LEAVE-QUOTS ELSE din KEEP-QUOTS  dout KEEP-QUOTS THEN
    din dout rin rout SGHASR @ external E-ADD-EFFECT
    CHECKER-ROW:KEPT ;
@@ -13171,17 +13179,17 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 \ AT is the declaring name as read. Answers the row's outcome,
 \ CHECKER-ROW:REJECTED only after a rejection that returns.
 : USIG-ADD-AS ( str str bool -- n )
-   {: sa:^ su:n at:^ atu:n external:bool :}
+   {: ss:str at:str external:bool :}
    NEW
    SGBAD-CLEAR
-   sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
+   ss PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
    \ No check verifies these rows, so none may bring a callback binder; a signature
    \ that did not parse gets USIG-ADD-ROWS's record instead.
    din SCHEME-TYPE? dout SCHEME-TYPE? or
    rin SCHEME-TYPE? or rout SCHEME-TYPE? or  SGBAD @ 0= and IF
-      sa su at atu USIG-SCHEME-REJECT
+      ss at USIG-SCHEME-REJECT
    THEN
-   sa su at atu din dout rin rout external RES-FALSE USIG-ADD-ROWS ;
+   ss at din dout rin rout external RES-FALSE USIG-ADD-ROWS ;
 
 : USIG-SYM@ ( ^u8 -- n )
    ER.SYM @ ;
@@ -13233,16 +13241,16 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 : E-I-AK-IDX ( n -- n )
    negate 1 - ;
 
-: E-I-AK ( str n -- str n ) {: a:^ u:n k:n :}
-   k 0 >= if a u k exit then
+: E-I-AK ( str n -- str n ) {: s:str k:n :}
+   k 0 >= if s k exit then
    k E-I-AK-IDX dup 1+ EI-AK-ENSURE
    dup 1+ EI-AK-HW @ max EI-AK-HW !
-   EI-AK dup @ UNBOUND = if a u RIGID-AK-MINT over ! then @
+   EI-AK dup @ UNBOUND = if s RIGID-AK-MINT over ! then @
    {: id:n :}
-   a u id ;
+   s id ;
 
 : E-I-STR ( ^u8 ^u8 -- str ) {: node:^ pool:^ :}
-   pool node EN.A @ + node EN.B @ ;
+   pool node EN.A @ + node EN.B @ >str ;
 
 \ The variable E-AK-BIND gave the slot of record key k, else 0.
 : E-AK-BOUND ( n -- n ) {: k:n :}
@@ -13259,9 +13267,9 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    k E-I-AK-IDX {: idx:n :}
    idx 1+ EI-AK-ENSURE
    idx EI-AK-VAR @ 0 <> IF EXIT THEN
-   node USIGS E-I-STR {: a:^ u:n :}
+   node USIGS E-I-STR {: t:str :}
    FRESH MK-VAR idx EI-AK-VAR !
-   a u 0 MK-ATOM-K idx EI-AK-NAME !
+   t 0 MK-ATOM-K idx EI-AK-NAME !
    idx 1+ EI-AK-HW @ max EI-AK-HW ! ;
 
 : E-AK-BIND ( n -- ) {: off:n :}
@@ -13652,10 +13660,10 @@ create RECUR-MARK NP-CAP cells allot
    THEN
    held TAG T-ATOM <> IF -1 EXIT THEN
    held ATOM>K 0 <= IF -1 EXIT THEN
-   held ATOM>A held ATOM>U RIGID-NAME-DOMAIN ;
+   held ATOM>A held ATOM>U >str RIGID-NAME-DOMAIN ;
 
 : E-AK-NAME-DOMAIN ( n -- n )
-   EI-AK-NAME @ dup ATOM>A swap ATOM>U RIGID-NAME-DOMAIN ;
+   EI-AK-NAME @ dup ATOM>A swap ATOM>U >str RIGID-NAME-DOMAIN ;
 
 : E-AK-CLASH? ( n n n -- bool ) {: j:n held:n de:n :}
    j EI-AK-VAR @ {: v:n :}
@@ -14032,8 +14040,8 @@ variable PRM-FIRST
       1 +
    REPEAT drop RES-FALSE ;
 
-: PE-SYM-OF ( str -- n ) {: a:^ u:n :}
-   s" " SYM-GLOBAL a u SYM-INTERN ;
+: PE-SYM-OF ( str -- n ) {: s:str :}
+   s" " SYM-GLOBAL s SYM-INTERN ;
 
 : PE-N ( -- n ) CC-N MK-CON ;
 : PE-R ( -- n ) CC-R MK-CON ;
@@ -14075,8 +14083,8 @@ variable PE-EFF-ID
 : PE-NA! ( ^u8 -- )
    PE-NA ! ;
 
-: PE-OPEN ( ^u8 n -- ) {: a:^ u:n :}
-   a PE-NA!  u PE-NU !
+: PE-OPEN ( str -- ) {: s:str :}
+   s STR:DATA PE-NA!  s STR:LEN PE-NU !
    NEW
    SGBAD-CLEAR
    FRESH MK-ROW dup PE-BASE ! dup PE-DIN ! PE-DOUT !
@@ -14096,7 +14104,7 @@ variable PE-EFF-ID
    THEN ;
 
 : PE-CLOSE ( -- )
-   PE-NA@ PE-NU @ PE-SYM-OF PE-CLOSE-SYM ;
+   PE-NA@ PE-NU @ >str PE-SYM-OF PE-CLOSE-SYM ;
 
 : PE-IN ( n -- )
    PE-DIN @ PUSH-TERM PE-DIN ! ;
@@ -14316,8 +14324,8 @@ DFERS-P DFER-CAP-V 1 DFER-END STORE+
    c $5A > IF c EXIT THEN
    c $20 or ;
 
-: CHECKER-PACKAGE-COPY ( str -- ) {: a:^ u:n :}
-   a u SYM-PKG-INTERN  CHECKER-PACKAGE-U !  CHECKER-PACKAGE-NAME ! ;
+: CHECKER-PACKAGE-COPY ( str -- ) {: s:str :}
+   s SYM-PKG-INTERN  CHECKER-PACKAGE-U !  CHECKER-PACKAGE-NAME ! ;
 
 global
 \ --- `using`-scope import mirror. The engine owns the live using depth in one
@@ -14330,9 +14338,9 @@ private
 package CHECKER-USE
 EXPORT CHECK:CK-USE-NAMES
 EXPORT CHECK:SYM-PKG-INTERN
-\ Slot d names package a u, interned folded in SYM-STR.
-: NAME! ( str n -- ) {: a:^ u:n d:n :}
-   a u SYM-PKG-INTERN {: off:n len:n :}
+\ Slot d names package s, interned folded in SYM-STR.
+: NAME! ( str n -- ) {: s:str d:n :}
+   s SYM-PKG-INTERN {: off:n len:n :}
    off d 2 * cells CK-USE-NAMES + !
    len d 2 * 1 + cells CK-USE-NAMES + ! ;
 ;package
@@ -14387,13 +14395,13 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 
 \ Copies the text: a caller's buffer is reused before the linker reads it.
 : HOLD-FACTS ( str n -- )
-   {: a:^ u:n ix:n :}
-   a  u ix HOLD  u ARENA-COPY ;
+   {: s:str ix:n :}
+   s STR:DATA  s STR:LEN ix HOLD  s STR:LEN >str ARENA-COPY ;
 
 
 : HELD-ENTRY ( n -- n str )
    {: k:n :}
-   k 0 HELD-CELL @   HELD-TEXT k 1 HELD-CELL @ +   k 2 HELD-CELL @ ;
+   k 0 HELD-CELL @   HELD-TEXT k 1 HELD-CELL @ +   k 2 HELD-CELL @ >str ;
 
 
 \ Keeps the first N entries; texts lie in entry order, so theirs end with entry N-1's.
@@ -14406,17 +14414,17 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 \ A laid text is interned only. A retirement places nothing: it applied as it
 \ was held. Nor does a trusted symbol: its text is a later write.
 : PLACE-FACT ( n -- )
-   HELD-ENTRY {: ix:n a:^ u:n :}
-   ix HELD-LAID = IF a u INTERN:TEXT drop EXIT THEN
+   HELD-ENTRY {: ix:n t:str :}
+   ix HELD-LAID = IF t INTERN:TEXT drop EXIT THEN
    ix 0 < IF EXIT THEN
-   u 0= IF 0 ix record-facts! EXIT THEN
-   a u INTERN:TEXT IMAGE-BASE - ix record-facts! ;
+   t STR:LEN 0= IF 0 ix record-facts! EXIT THEN
+   t INTERN:TEXT IMAGE-BASE - ix record-facts! ;
 
 \ Stores the interned text's offset in the record's bytes 32-39.
 : FACTS! ( str n -- )
-   {: a:^ u:n ix:n :}
-   BUILDING? IF a u ix HOLD-FACTS EXIT THEN
-   a u INTERN:TEXT  data-base NULL-PTR - -  ix record-facts! ;
+   {: s:str ix:n :}
+   BUILDING? IF s ix HOLD-FACTS EXIT THEN
+   s INTERN:TEXT  data-base NULL-PTR - -  ix record-facts! ;
 \ Interns a text no record holds: a definer's created effect its words look up.
 : LAY-FACTS ( str -- )
    BUILDING? IF -1 HOLD-FACTS EXIT THEN
@@ -14424,10 +14432,10 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 \ Stores the text's offset if it is interned, else 0, so no stale one stays; an
 \ empty text stores 0. It never lays a text: a created body is open at `here`.
 : FIND-FACTS! ( str n -- )
-   {: a:^ u:n ix:n :}
-   BUILDING? IF a u ix HOLD-FACTS EXIT THEN
-   u 0= IF 0 ix record-facts! EXIT THEN
-   a u INTERN:FIND {: body:n :}
+   {: s:str ix:n :}
+   BUILDING? IF s ix HOLD-FACTS EXIT THEN
+   s STR:LEN 0= IF 0 ix record-facts! EXIT THEN
+   s INTERN:FIND {: body:n :}
    body 0= IF 0 ELSE body data-base NULL-PTR - - THEN
    ix record-facts! ;
 
@@ -14442,7 +14450,7 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
    ix at CELL-VIEW !   wid at CELL + CELL-VIEW !   ndict@ at 2 cells + CELL-VIEW ! ;
 \ Entry k's retired record, the wordlist cell it had and the record count at the hold.
 : HELD-RETIRED@ ( n -- n n n )
-   HELD-FACT@ drop nip {: a:^ :}
+   HELD-FACT@ nip STR:DATA {: a:^ :}
    a CELL-VIEW @   a CELL + CELL-VIEW @   a 2 cells + CELL-VIEW @ ;
 \ Holds that an amender changed record ix's facts after its
 \ text was written, and sym, the symbol they are read from. Neither can write
@@ -14454,7 +14462,7 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
    ix at CELL-VIEW !   sym at CELL + CELL-VIEW ! ;
 \ Entry k's amended record and its symbol.
 : HELD-AMENDED@ ( n -- n n )
-   HELD-FACT@ drop nip {: a:^ :}
+   HELD-FACT@ nip STR:DATA {: a:^ :}
    a CELL-VIEW @   a CELL + CELL-VIEW @ ;
 \ Keeps the first n entries.
 : DROP-FACTS ( n -- ) HELD-KEEP ;
@@ -14467,12 +14475,12 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 
 EXPORT CHECKER-USE:NAME!
 
-: CHECKER-USING ( str -- ) {: a:^ u:n :}
+: CHECKER-USING ( str -- ) {: s:str :}
    CK-USE-DEPTH {: d:n :}
    d USE-MAX >= IF s" checker: using stack overflow" EXIT-STATUS:INTERNAL die THEN
-   a u HEAD-ROW {: row:^ :}
-   row NULL-PTR = IF a u ELSE row CK-REC-NAME$ THEN {: ra:^ ru:n :}
-   ra ru d NAME! ;
+   s HEAD-ROW {: row:^ :}
+   row NULL-PTR = IF s ELSE row CK-REC-NAME$ THEN {: r:str :}
+   r d NAME! ;
 ;package
 package CHECKER-REG
 EXPORT CHECK:CHECKER-USING
@@ -14510,8 +14518,8 @@ variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the usin
    THEN
    E-USING-SHADOW-GLOBAL ;
 
-: CK-WL-CLAIMS? ( str n -- bool ) {: a:^ u:n wid:n :}
-   a u wid search-wl 0 <> ;
+: CK-WL-CLAIMS? ( str n -- bool ) {: s:str wid:n :}
+   s wid search-wl 0 <> ;
 
 global
 \ --- generated-constructor protection. CTOR-PROT-DEFAULTS answers no to every
@@ -14524,59 +14532,59 @@ defer CTOR-OWNER-XT ( str -- str str bool nominal )   \ the family a ctor packag
 defer CTOR-WORD?-XT ( str -- bool nominal )
 defer CTOR-EXTEND?-XT ( str -- bool nominal )    \ new tail in a closed ctor package?
 : CTOR-PROT-DEFAULTS ( -- )
-   [: drop 0 over 0 RES-FALSE ;] is CTOR-OWNER-XT
-   [: 2drop RES-FALSE ;] is CTOR-WORD?-XT
-   [: 2drop RES-FALSE ;] is CTOR-EXTEND?-XT ;
+   [: STR:DATA dup 0 >str swap 0 >str RES-FALSE ;] is CTOR-OWNER-XT
+   [: drop RES-FALSE ;] is CTOR-WORD?-XT
+   [: drop RES-FALSE ;] is CTOR-EXTEND?-XT ;
 CTOR-PROT-DEFAULTS
 
-: CTOR-WORD-REJECT ( str -- ) {: a:^ u:n :}
+: CTOR-WORD-REJECT ( str -- ) {: s:str :}
    s" E-CTOR-PROTECTED" REJECTION:OPEN
-   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   96 REJECTION:EMIT1  s REJECTION:EMIT-STR
    s" ` is a generated constructor, which `undefine` cannot remove"
    REJECTION:EMIT-STR
-   a u REJECTION:AT  s" generated constructor" REJECTION:EMIT-STR
+   s REJECTION:AT  s" generated constructor" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" keep `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" keep `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` and define your own word under another name" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ Package a u, written t tu, bears the name of the constructor package of
-\ family na nu of package pa pu, empty for a top-level family.
+\ Package s, written t, bears the name of the constructor package of
+\ family ns of package ps, empty for a top-level family.
 : CTOR-PKG-REJECT ( str str str str -- )
-   {: a:^ u:n t:^ tu:n pa:^ pu:n na:^ nu:n :}
+   {: s:str t:str ps:str ns:str :}
    s" E-CTOR-PROTECTED" REJECTION:OPEN
-   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   96 REJECTION:EMIT1  s REJECTION:EMIT-STR
    s" ` bears the name of the constructor package of the family `"
    REJECTION:EMIT-STR
-   pu 0 <> IF pa pu REJECTION:EMIT-STR  58 REJECTION:EMIT1 THEN
-   na nu REJECTION:EMIT-STR
+   ps STR:LEN 0 <> IF ps REJECTION:EMIT-STR  58 REJECTION:EMIT1 THEN
+   ns REJECTION:EMIT-STR
    s" `, so no source may open it" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" constructor package" REJECTION:EMIT-STR
+   t REJECTION:AT  s" constructor package" REJECTION:EMIT-STR
    REJECTION:HELP
    s" put your words in a package of another name, as `package " REJECTION:EMIT-STR
-   t tu REJECTION:EMIT-STR  s" -WORDS`" REJECTION:EMIT-STR
+   t REJECTION:EMIT-STR  s" -WORDS`" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The name with each `:` spelled `-`: a bare name outside the package.
-: CTOR-BARE ( str -- ) {: a:^ u:n :}
-   0 BEGIN dup u < WHILE
-      dup a + c@ dup $3A = IF drop $2D THEN REJECTION:EMIT1
+: CTOR-BARE ( str -- ) {: s:str :}
+   0 BEGIN dup s STR:LEN < WHILE
+      dup s STR:DATA + c@ dup $3A = IF drop $2D THEN REJECTION:EMIT1
       1 +
    REPEAT drop ;
 
-: CTOR-EXTEND-REJECT ( str -- ) {: a:^ u:n :}
+: CTOR-EXTEND-REJECT ( str -- ) {: s:str :}
    s" E-CTOR-PROTECTED" REJECTION:OPEN
-   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   96 REJECTION:EMIT1  s REJECTION:EMIT-STR
    s" ` would add a word to a package of generated constructors"
    REJECTION:EMIT-STR
-   a u REJECTION:AT  s" constructor package" REJECTION:EMIT-STR
+   s REJECTION:AT  s" constructor package" REJECTION:EMIT-STR
    REJECTION:HELP
    s" define it under a name of your own, as `" REJECTION:EMIT-STR
-   a u CTOR-BARE  96 REJECTION:EMIT1
+   s CTOR-BARE  96 REJECTION:EMIT1
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: CHECKER-UNDEFINE-GUARD ( str -- ) {: a:^ u:n :}
-   a u CTOR-WORD?-XT IF a u CTOR-WORD-REJECT THEN ;
+: CHECKER-UNDEFINE-GUARD ( str -- ) {: s:str :}
+   s CTOR-WORD?-XT IF s CTOR-WORD-REJECT THEN ;
 
 \ The package whose public wordlist the engine keeps in using slot n: its name
 \ and whether a live namespace row publishes that wid.
@@ -14599,8 +14607,8 @@ EXPORT CHECK:USE-SLOT-XT
 EXPORT CHECKER-USE:NAME!
 \ The engine's wid is each slot's truth, so the slot's name is read back from it.
 : SLOT ( n -- ) {: d:n :}
-   d USE-SLOT-XT {: a:^ u:n ok:bool :}
-   ok IF a u d NAME! EXIT THEN
+   d USE-SLOT-XT {: t:str ok:bool :}
+   ok IF t d NAME! EXIT THEN
    0 d 2 * 1 + cells CK-USE-NAMES + ! ;
 
 : SLOTS ( -- )
@@ -14612,26 +14620,26 @@ EXPORT CHECKER-RESOLVE:AUTHORITY
 \ AUTHORITY cannot authenticate keeps the notifications' mirror while a package is open, else sets top level.
 : MIRROR ( -- )
    SLOTS
-   AUTHORITY {: a:^ u:n mode:n ok:bool :}
+   AUTHORITY {: t:str mode:n ok:bool :}
    ok 0=  data-base PKG-PUB-CELL + @ 0 <>  and IF EXIT THEN
    ok 0=  mode CHECKER-PACKAGE-NONE =  or IF
       CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
       0 CHECKER-PACKAGE-U !
       EXIT
    THEN
-   a u CHECKER-PACKAGE-COPY
+   t CHECKER-PACKAGE-COPY
    mode CHECKER-PACKAGE-MODE ! ;
 : SCOPE ( -- ) MIRROR ;
 ' SCOPE CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:PKG-RESYNC-OFF + xt!
 ;package
 package CHECK
 
-\ The package name a u has a colon it may not have.
-: PACKAGE-COLON-REJECT ( str -- ) {: a:^ u:n :}
+\ The package name s has a colon it may not have.
+: PACKAGE-COLON-REJECT ( str -- ) {: s:str :}
    s" E-PKG-CONTEXT" REJECTION:OPEN
-   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   96 REJECTION:EMIT1  s REJECTION:EMIT-STR
    s" ` is not a package name or a part's path" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" not a package name" REJECTION:EMIT-STR
+   s REJECTION:AT  s" not a package name" REJECTION:EMIT-STR
    REJECTION:HELP
    s" name a package without `:`; inside package A, `package B` opens its part `A:B`"
    REJECTION:EMIT-STR
@@ -14653,25 +14661,25 @@ variable CHECKER-QBAD-TOK
 
 \ A non-edge first colon with a second colon anywhere is a malformed qualified
 \ name and must never resolve.
-: CHECKER-QUALIFIED? ( str -- bool ) {: a:^ u:n :}
+: CHECKER-QUALIFIED? ( str -- bool ) {: s:str :}
    0 CHECKER-QBAD-TOK !
-   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+   s CHECKER-COLON-SCAN {: cn:n ci:n :}
    cn 0= IF RES-FALSE EXIT THEN
    ci 0= IF RES-FALSE EXIT THEN
-   ci u 1 - = IF RES-FALSE EXIT THEN
+   ci s STR:LEN 1 - = IF RES-FALSE EXIT THEN
    cn 1 <> IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
-   a ci HEAD-ROW {: row:^ :}
-   row NULL-PTR = IF a ci ELSE row CK-REC-NAME$ THEN
-   CHECKER-QU ! CHECKER-QA!
-   a ci + 1 + CHECKER-TA!
-   u ci - 1 - CHECKER-TU !
+   s STR:DATA ci >str HEAD-ROW {: row:^ :}
+   row NULL-PTR = IF s STR:DATA ci >str ELSE row CK-REC-NAME$ THEN
+   dup STR:LEN CHECKER-QU ! STR:DATA CHECKER-QA!
+   s STR:DATA ci + 1 + CHECKER-TA!
+   s STR:LEN ci - 1 - CHECKER-TU !
    RES-TRUE ;
 
 : CHECKER-QPKG$ ( -- str )
-   CHECKER-QA@ CHECKER-QU @ ;
+   CHECKER-QA@ CHECKER-QU @ >str ;
 
 : CHECKER-QTAIL$ ( -- str )
-   CHECKER-TA@ CHECKER-TU @ ;
+   CHECKER-TA@ CHECKER-TU @ >str ;
 
 ;package
 package CHECKER-RESOLVE
@@ -14697,21 +14705,21 @@ variable SEALS-N
    SEAL-ROWS-P @ i 2 * cells + ;
 
 : SEAL-NAME$ ( n -- str ) {: i:n :}
-   SEALS i SEAL-AT @ +  i SEAL-AT CELL + @ ;
+   SEALS i SEAL-AT @ +  i SEAL-AT CELL + @ >str ;
 
-: SOURCE-SEALED? ( str -- bool ) {: a:^ u:n :}
+: SOURCE-SEALED? ( str -- bool ) {: s:str :}
    SEALS-N @ 0 ?do
-      i SEAL-NAME$ a u STR:=CI IF RES-TRUE unloop EXIT THEN
+      i SEAL-NAME$ s STR:=CI IF RES-TRUE unloop EXIT THEN
    loop
    RES-FALSE ;
 
-: SOURCE-SEAL ( str -- ) {: a:^ u:n :}
+: SOURCE-SEAL ( str -- ) {: s:str :}
    SEALS-U @ {: off:n :}  SEALS-N @ {: at:n :}
-   SEALS-P SEALS-CAP off u + ARENA-BYTES-ENSURE
+   SEALS-P SEALS-CAP off s STR:LEN + ARENA-BYTES-ENSURE
    SEAL-ROWS-P SEAL-ROWS-CAP at 1 + 2 ARENA-ROWS-ENSURE
-   a SEALS off + u ARENA-COPY
-   off at SEAL-AT !  u at SEAL-AT CELL + !
-   off u + SEALS-U !  at 1 + SEALS-N ! ;
+   s STR:DATA SEALS off + s STR:LEN >str ARENA-COPY
+   off at SEAL-AT !  s STR:LEN at SEAL-AT CELL + !
+   off s STR:LEN + SEALS-U !  at 1 + SEALS-N ! ;
 
 : SOURCE-SEALS-CLEAR ( -- ) 0 SEALS-N !  0 SEALS-U ! ;
 
@@ -14722,9 +14730,9 @@ variable SEALS-N
    row CK-REC-NAME$ SOURCE-SEALED? ;
 
 \ The package row a qualified EXPORT operand names, NULL-PTR for none.
-: EXPORT-OWNER ( str -- ^n ) {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? 0= IF NULL-PTR EXIT THEN
-   a  a u CHECKER-COLON-SCAN nip HEAD-ROW ;
+: EXPORT-OWNER ( str -- ^n ) {: s:str :}
+   s CHECKER-QUALIFIED? 0= IF NULL-PTR EXIT THEN
+   s STR:DATA  s CHECKER-COLON-SCAN nip >str HEAD-ROW ;
 
 \ Row ROW's private word that the tail of EXPORT-OWNER's last operand names,
 \ NULL-PTR for none: nothing may split another name between the two.
@@ -14738,89 +14746,89 @@ variable SEALS-N
 : TOP-KEYWORDS ( -- str )
    s" package public private global ;package host target seal-package using ;using export split-str : kernel: trusted: create variable constant defer cast: linear: immediate" ;
 
-\ The end of the spelling that starts at s in list k ku.
-: KEYWORD-END ( str n -- n ) {: k:^ ku:n s:n :}
-   s BEGIN dup ku < WHILE  k over + c@ 32 = IF EXIT THEN  1 + REPEAT ;
-\ The id of top-level keyword t tu, folding case, or -1.
-: TOP-KEYWORD-ID ( str -- n ) {: t:^ tu:n :}
-   TOP-KEYWORDS {: k:^ ku:n :}
-   0 0 BEGIN over ku < WHILE
+\ The end of the spelling that starts at s in list k.
+: KEYWORD-END ( str n -- n ) {: k:str s:n :}
+   s BEGIN dup k STR:LEN < WHILE  k STR:DATA over + c@ 32 = IF EXIT THEN  1 + REPEAT ;
+\ The id of top-level keyword t, folding case, or -1.
+: TOP-KEYWORD-ID ( str -- n ) {: t:str :}
+   TOP-KEYWORDS {: k:str :}
+   0 0 BEGIN over k STR:LEN < WHILE
       {: s:n id:n :}
-      k ku s KEYWORD-END {: e:n :}
-      t tu  k s +  e s -  STR:=CI IF id EXIT THEN
+      k s KEYWORD-END {: e:n :}
+      t  k STR:DATA s +  e s -  >str STR:=CI IF id EXIT THEN
       e 1 +  id 1 +
    REPEAT
    2drop -1 ;
 : TOP-KEYWORD? ( str -- bool ) TOP-KEYWORD-ID 0 >= ;
 \ The top-level parsers, whose body forms are `[char]` and `[']`.
-: TOP-PARSER? ( str -- bool ) {: a:^ u:n :}
-   a u s" char" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" '" STR:=CI IF RES-TRUE EXIT THEN
+: TOP-PARSER? ( str -- bool ) {: s:str :}
+   s s" char" STR:=CI IF RES-TRUE EXIT THEN
+   s s" '" STR:=CI IF RES-TRUE EXIT THEN
    RES-FALSE ;
 
 \ The keywords a body's compiler reads before it looks a word up: a word named
 \ by one could never be called from a body.
 : BODY-KEYWORD? ( str -- bool )
-   {: a:^ u:n :}
+   {: w:str :}
    S\" if then else begin until again while repeat case of endof endcase construct match ;match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {: postpone"
-   {: t:^ tu:n :}
-   0 BEGIN dup tu < WHILE
+   {: t:str :}
+   0 BEGIN dup t STR:LEN < WHILE
       {: s:n :}
-      t tu s KEYWORD-END {: e:n :}
-      a u  t s +  e s -  STR:=CI IF RES-TRUE EXIT THEN
+      t s KEYWORD-END {: e:n :}
+      w  t STR:DATA s +  e s - >str  STR:=CI IF RES-TRUE EXIT THEN
       e 1 +
    REPEAT
    drop RES-FALSE ;
 
 \ A spelling no definition may take. `host` and `target` may name a word,
 \ which their top-level use then rejects (E-SECTION-WORD).
-: NAME-KEYWORD? ( str -- bool ) {: a:^ u:n :}
-   a u BODY-KEYWORD? IF RES-TRUE EXIT THEN
-   a u s" host" STR:=CI IF RES-FALSE EXIT THEN
-   a u s" target" STR:=CI IF RES-FALSE EXIT THEN
-   a u TOP-KEYWORD? IF RES-TRUE EXIT THEN
-   a u s" ;" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" :}" STR:=CI IF RES-TRUE EXIT THEN
-   a u TOP-PARSER? ;
+: NAME-KEYWORD? ( str -- bool ) {: s:str :}
+   s BODY-KEYWORD? IF RES-TRUE EXIT THEN
+   s s" host" STR:=CI IF RES-FALSE EXIT THEN
+   s s" target" STR:=CI IF RES-FALSE EXIT THEN
+   s TOP-KEYWORD? IF RES-TRUE EXIT THEN
+   s s" ;" STR:=CI IF RES-TRUE EXIT THEN
+   s s" :}" STR:=CI IF RES-TRUE EXIT THEN
+   s TOP-PARSER? ;
 
-: DEF-KEYWORD-REJECT ( str str -- ) {: a:^ u:n t:^ tu:n :}
+: DEF-KEYWORD-REJECT ( str str -- ) {: s:str t:str :}
    s" E-RESERVED-DEFINITION" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` is a keyword and cannot name a definition" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" reserved keyword" REJECTION:EMIT-STR
+   t REJECTION:AT  s" reserved keyword" REJECTION:EMIT-STR
    REJECTION:HELP
    s" give the definition a name that is not a keyword" REJECTION:EMIT-STR ;
 
-: DEF-NUMBER-REJECT ( str str -- ) {: a:^ u:n t:^ tu:n :}
+: DEF-NUMBER-REJECT ( str str -- ) {: s:str t:str :}
    s" E-NUMERIC-DEFINITION" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` reads as a number and cannot name a definition" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" reads as a number" REJECTION:EMIT-STR
+   t REJECTION:AT  s" reads as a number" REJECTION:EMIT-STR
    REJECTION:HELP
    s" give the definition a name that does not read as a number" REJECTION:EMIT-STR ;
 
-: NAME-NUMERIC? ( str -- bool ) {: a:^ u:n :}
-   a u ALLDIG? 0 <>  a u FLODIG? or ;
+: NAME-NUMERIC? ( str -- bool ) {: s:str :}
+   s ALLDIG? 0 <>  s FLODIG? or ;
 
 \ A name's tail past its one inner colon; a name with none, an edge one or
 \ more than one stays whole, so `:}` and `foo:` are judged as written.
-: NAME-TAIL$ ( str -- str ) {: a:^ u:n :}
-   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
-   cn 1 <>  ci 0 =  or  ci u 1 - =  or IF a u EXIT THEN
-   a ci + 1 +  u ci - 1 - ;
+: NAME-TAIL$ ( str -- str ) {: s:str :}
+   s CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 1 <>  ci 0 =  or  ci s STR:LEN 1 - =  or IF s EXIT THEN
+   s STR:DATA ci + 1 +  s STR:LEN ci - 1 - >str ;
 
 public
-\ Writes the record of a keyword or number name a u (a qualified one's tail),
-\ placed at t tu, and answers whether it did; the caller ends it.
-: DEF-NAME-REJECT? ( str str -- bool ) {: a:^ u:n t:^ tu:n :}
-   a u NAME-TAIL$ {: na:^ nu:n :}
-   na nu NAME-KEYWORD? if na nu t tu DEF-KEYWORD-REJECT RES-TRUE exit then
-   na nu NAME-NUMERIC? if na nu t tu DEF-NUMBER-REJECT RES-TRUE exit then
+\ Writes the record of a keyword or number name s (a qualified one's tail),
+\ placed at t, and answers whether it did; the caller ends it.
+: DEF-NAME-REJECT? ( str str -- bool ) {: s:str t:str :}
+   s NAME-TAIL$ {: tail:str :}
+   tail NAME-KEYWORD? if tail t DEF-KEYWORD-REJECT RES-TRUE exit then
+   tail NAME-NUMERIC? if tail t DEF-NUMBER-REJECT RES-TRUE exit then
    RES-FALSE ;
-\ Whether DEF-NAME-REJECT? would reject a u, for a gate that writes no record.
-: DEF-NAME-BAD? ( str -- bool ) {: a:^ u:n :}
-   a u NAME-TAIL$ {: na:^ nu:n :}
-   na nu NAME-KEYWORD?  na nu NAME-NUMERIC?  or ;
+\ Whether DEF-NAME-REJECT? would reject s, for a gate that writes no record.
+: DEF-NAME-BAD? ( str -- bool ) {: s:str :}
+   s NAME-TAIL$ {: tail:str :}
+   tail NAME-KEYWORD?  tail NAME-NUMERIC?  or ;
 private
 
 \ The private word a qualified EXPORT operand names, NULL-PTR for none. Until
@@ -14839,45 +14847,45 @@ private
    row PACKAGE-SEALED? 0= IF RES-FALSE EXIT THEN
    row OWNER-PRIVATE NULL-PTR <> ;
 
-\ Rejects the operand a u, which EXPORT-SEALED? holds for, naming the package
+\ Rejects the operand s, which EXPORT-SEALED? holds for, naming the package
 \ as the operand writes it.
-: EXPORT-SEALED ( str -- ) {: a:^ u:n :}
-   a  a u CHECKER-COLON-SCAN nip {: pa:^ pu:n :}
+: EXPORT-SEALED ( str -- ) {: s:str :}
+   s STR:DATA  s CHECKER-COLON-SCAN nip >str {: p:str :}
    s" E-SEALED-PACKAGE" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` is private to `" REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
+   s" ` is private to `" REJECTION:EMIT-STR  p REJECTION:EMIT-STR
    s" `, which is sealed" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" private to a sealed package" REJECTION:EMIT-STR
+   s REJECTION:AT  s" private to a sealed package" REJECTION:EMIT-STR
    REJECTION:HELP  s" call or export a public word of `" REJECTION:EMIT-STR
-   pa pu REJECTION:EMIT-STR
+   p REJECTION:EMIT-STR
    s" ` instead: no other package may export a sealed package's private word"
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A keyword that names no word is read before any lookup, so no export can
 \ name it.
-: EXPORT-KEYWORD ( str -- ) {: a:^ u:n :}
-   a u TOP-KEYWORD? IF  s" a top-level keyword"  s" at top level"
-   ELSE  a u BODY-KEYWORD? 0= IF EXIT THEN
+: EXPORT-KEYWORD ( str -- ) {: s:str :}
+   s TOP-KEYWORD? IF  s" a top-level keyword"  s" at top level"
+   ELSE  s BODY-KEYWORD? 0= IF EXIT THEN
       s" a keyword of a definition's body"  s" inside a definition"
-   THEN {: k:^ ku:n w:^ wu:n :}
+   THEN {: k:str w:str :}
    s" E-EXPORT-UNDEFINED" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` is " REJECTION:EMIT-STR  k ku REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
+   s" ` is " REJECTION:EMIT-STR  k REJECTION:EMIT-STR
    s" , not a word, so no package can export it" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" keyword, not a word" REJECTION:EMIT-STR
-   REJECTION:HELP  s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s REJECTION:AT  s" keyword, not a word" REJECTION:EMIT-STR
+   REJECTION:HELP  s" write `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
+   s" ` " REJECTION:EMIT-STR  w REJECTION:EMIT-STR
    s" : a keyword needs no export" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ Writes the record of a `;package`, the token t tu, that closes package a u,
+\ Writes the record of a `;package`, the token t, that closes package s,
 \ which its file or string did not open, through its help; the caller ends it.
-: PKG-OUTSIDE-REJECT ( str str -- ) {: a:^ u:n t:^ tu:n :}
+: PKG-OUTSIDE-REJECT ( str str -- ) {: s:str t:str :}
    s" E-PKG-CONTEXT" REJECTION:OPEN
-   s" `;package` closes `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `;package` closes `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" `, which this file or string did not open" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" opened outside this file or string" REJECTION:EMIT-STR
+   t REJECTION:AT  s" opened outside this file or string" REJECTION:EMIT-STR
    REJECTION:HELP  s" close a package in the file or string that opens it"
    REJECTION:EMIT-STR ;
 ;package
@@ -14913,10 +14921,10 @@ public
 \ Restates the token read last, so a record placed at it names another token.
 : TOKEN! ( ^u8 n -- ) data-base TKL-CELL + ! LAST-TOKEN ! ;
 
-\ Records the copy c cu of a string literal whose text in the source is t tu;
-\ NULL-PTR 0 for both drops the record.
-: LITERAL! ( str str -- ) {: c:^ cu:n t:^ tu:n :}
-   c COPY-A !  cu COPY-U !  t TEXT-A !  tu TEXT-U !
+\ Records the copy c of a string literal whose text in the source is t; an
+\ empty str at NULL-PTR for both drops the record.
+: LITERAL! ( str str -- ) {: c:str t:str :}
+   c STR:DATA COPY-A !  c STR:LEN COPY-U !  t STR:DATA TEXT-A !  t STR:LEN TEXT-U !
    data-base INB-CELL + @ REC-INB !  data-base TOKENS-CELL + @ REC-TOKENS ! ;
 
 private
@@ -14927,24 +14935,24 @@ private
    data-base TOKENS-CELL + @ REC-TOKENS @ - {: k:n :}
    k 0 =  k 1 =  or ;
 
-\ The source text of the last string literal when a u is exactly its copy and
-\ its record holds, else NULL-PTR 0.
-: LITERAL$ ( str -- str ) {: a:^ u:n :}
-   a COPY-A @ =  u COPY-U @ =  and IF
-      HELD? IF TEXT-A @ TEXT-U @ EXIT THEN
+\ The source text of the last string literal when s is exactly its copy and
+\ its record holds, else empty at NULL-PTR.
+: LITERAL$ ( str -- str ) {: s:str :}
+   s STR:DATA COPY-A @ =  s STR:LEN COPY-U @ =  and IF
+      HELD? IF TEXT-A @ TEXT-U @ >str EXIT THEN
    THEN
-   NULL-PTR 0 ;
+   NULL-PTR 0 >str ;
 public
 
-\ The source bytes a nonempty a u stands for: itself where a source holds it,
-\ else the literal it copies where a source holds that; else NULL-PTR 0.
-: ORIGIN$ ( str -- str ) {: a:^ u:n :}
-   u 0 <= IF NULL-PTR 0 EXIT THEN
-   a REJECTION:PLACES-IN? IF a u EXIT THEN
-   a u LITERAL$ {: t:^ tu:n :}
-   t NULL-PTR = IF NULL-PTR 0 EXIT THEN
-   t REJECTION:PLACES-IN? IF t tu EXIT THEN
-   NULL-PTR 0 ;
+\ The source bytes a nonempty s stands for: itself where a source holds it,
+\ else the literal it copies where a source holds that; else empty at NULL-PTR.
+: ORIGIN$ ( str -- str ) {: s:str :}
+   s STR:LEN 0 <= IF NULL-PTR 0 >str EXIT THEN
+   s STR:DATA REJECTION:PLACES-IN? IF s EXIT THEN
+   s LITERAL$ {: t:str :}
+   t STR:DATA NULL-PTR = IF NULL-PTR 0 >str EXIT THEN
+   t STR:DATA REJECTION:PLACES-IN? IF t EXIT THEN
+   NULL-PTR 0 >str ;
 
 \ The token read last and true when it finds the same word as w; else w and false.
 \ A w of length 0 is spelled by no token.
@@ -14952,8 +14960,8 @@ public
    wu 0= IF w wu 0 0= 0= EXIT THEN
    TOKEN$ {: t:^ tu:n :}
    tu 0= IF w wu 0 0= 0= EXIT THEN
-   w wu scope-find drop drop drop {: wrec:^ :}
-   t tu scope-find drop drop drop {: trec:^ :}
+   w wu >str scope-find drop drop drop {: wrec:^ :}
+   t tu >str scope-find drop drop drop {: trec:^ :}
    wrec NULL-PTR = trec NULL-PTR = or IF w wu 0 0= 0= EXIT THEN
    trec 0 DICT-CELL@ wrec 0 DICT-CELL@ = IF t tu 0 0= EXIT THEN
    w wu 0 0= 0= ;
@@ -14999,8 +15007,8 @@ public
    u used FITS-AFTER? IF EXIT THEN
    s" E-CODE-SPACE-FULL" REJECTION:OPEN
    s" the code space is full at `" REJECTION:EMIT-STR
-   t tu REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" no code space left" REJECTION:EMIT-STR
+   t tu >str REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   t tu >str REJECTION:AT  s" no code space left" REJECTION:EMIT-STR
    REJECTION:HELP
    s" load fewer or smaller definitions into this image" REJECTION:EMIT-STR
    EXIT-STATUS:FULL REJECTION:STOP ;
@@ -15137,13 +15145,13 @@ variable SNAP-N
 
 : DATA@ ( n -- n ) {: off:n :} data-base off + @ ;
 : DATA! ( n n -- ) {: v:n off:n :} v data-base off + ! ;
-: ROW@ ( str -- n ) {: p:^ k:n :} p k cells + cell-view @ ;
-: ROW! ( n str -- ) {: v:n p:^ k:n :} v p k cells + cell-view ! ;
+: ROW@ ( ^u8 n -- n ) {: p:^ k:n :} p k cells + cell-view @ ;
+: ROW! ( n ^u8 n -- ) {: v:n p:^ k:n :} v p k cells + cell-view ! ;
 : SNAP ( n -- ^u8 ) ROW-CELLS * cells SNAPS-P @ BYTE-VIEW + ;
 \ Entry K of a pair table (LOG, HIDDEN): a record's index, then its wid.
-: IX@ ( str -- n ) 2 * ROW@ ;
-: WID@ ( str -- n ) 2 * 1 + ROW@ ;
-: PAIR! ( n n str -- ) {: ix:n wid:n t:^ k:n :}
+: IX@ ( ^u8 n -- n ) 2 * ROW@ ;
+: WID@ ( ^u8 n -- n ) 2 * 1 + ROW@ ;
+: PAIR! ( n n ^u8 n -- ) {: ix:n wid:n t:^ k:n :}
    ix t k 2 * ROW!
    wid t k 2 * 1 + ROW! ;
 
@@ -15175,22 +15183,22 @@ EXPORT CHECK:SYM.VIS
    r 0= IF -1 EXIT THEN
    r dbase@ - DREC / ;
 : NS-ROW ( str -- ^n ) BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE ;
-: ROOM ( ^u8 n -- ) {: a:^ u:n :}
+: ROOM ( str -- ) {: s:str :}
    ndict@ DICT-CAP < IF EXIT THEN
-   a u a u REJECTION:DICTIONARY-FULL ;
+   s s REJECTION:DICTIONARY-FULL ;
 
 public
 \ A colon at an edge or a second colon is rejected, as namespace-record
 \ rejects them; a new row takes a private wid as well when OWN is true.
-: NS-ENSURE ( str bool -- ^n ) {: a:^ u:n own:bool :}
-   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
-   cn 1 >  cn 1 =  ci 0 =  ci u 1 - = or  and  or IF a u PACKAGE-COLON-REJECT THEN
-   a u NS-ROW {: rec:^ :}
+: NS-ENSURE ( str bool -- ^n ) {: s:str own:bool :}
+   s CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 1 >  cn 1 =  ci 0 =  ci s STR:LEN 1 - = or  and  or IF s PACKAGE-COLON-REJECT THEN
+   s NS-ROW {: rec:^ :}
    rec NULL-PTR <> IF rec EXIT THEN
-   a u ROOM
-   a u a u 0 CODE-SPACE:ROOM
-   a u own namespace-record drop
-   a u NS-ROW ;
+   s ROOM
+   s STR:DATA s STR:LEN  s STR:DATA s STR:LEN  0 CODE-SPACE:ROOM
+   s own namespace-record drop
+   s NS-ROW ;
 private
 
 EXPORT CHECKER-USE:SOURCE-FLOOR
@@ -15255,7 +15263,7 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
 : PENDING-REJECT ( -- )
    s" E-VERIFY-WINDOW" REJECTION:OPEN
    s" the checker's replay ran inside a definition while a task is live" REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" replays inside a definition" REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ >str REJECTION:AT  s" replays inside a definition" REJECTION:EMIT-STR
    REJECTION:HELP
    s" verify source after `;` ends the definition, or while no task is live" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
@@ -15304,9 +15312,9 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
 
 : SYM-WID ( n -- n ) {: sym:n :}
    sym SYM-ROW SYM.VIS @ SYM-GLOBAL = IF BOOT:GLOBAL-WL EXIT THEN
-   sym SYM-PKG$ {: pa:^ pu:n :}
-   pu 0= IF BOOT:GLOBAL-WL EXIT THEN
-   pa pu RES-TRUE NS-ENSURE {: rec:^ :}
+   sym SYM-PKG$ {: p:str :}
+   p STR:LEN 0= IF BOOT:GLOBAL-WL EXIT THEN
+   p RES-TRUE NS-ENSURE {: rec:^ :}
    sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
    rec CELL + @ ;
 
@@ -15319,18 +15327,18 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    rec NULL-PTR = IF 0 RES-FALSE EXIT THEN
    rec @ RES-TRUE ;
 
-: TARGET ( ^u8 n -- ^u8 n n bool ) {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? IF QTARGET EXIT THEN
-   CHECKER-QBAD-TOK @ 0 <> IF a u 0 RES-FALSE EXIT THEN
-   a u get-current RES-TRUE ;
+: TARGET ( str -- str n bool ) {: s:str :}
+   s CHECKER-QUALIFIED? IF QTARGET EXIT THEN
+   CHECKER-QBAD-TOK @ 0 <> IF s 0 RES-FALSE EXIT THEN
+   s get-current RES-TRUE ;
 
 : LANDS-REC ( str -- ^n )
-   {: a:^ u:n :}
+   {: s:str :}
    ON @ 0= IF NULL-PTR EXIT THEN
-   a u TARGET 0= IF 2drop drop NULL-PTR EXIT THEN
+   s TARGET 0= IF drop drop NULL-PTR EXIT THEN
    CHECKER-RESOLVE:WL-PROBE ;
 
-: LANDS ( ^u8 n -- n )
+: LANDS ( str -- n )
    LANDS-REC {: rec:^ :}
    rec NULL-PTR = IF -1 EXIT THEN
    rec REC>IX ;
@@ -15415,8 +15423,8 @@ EXPORT CHECKER-RESOLVE:CK-REC-VALUE
 \ it: left live, the clause would still answer to its own name, `R;does`, after
 \ `undefine R`. The test reads the parent's wid, so it runs before the parent
 \ is retired.
-: RETIRE1 ( str n -- bool ) {: a:^ u:n wid:n :}
-   a u wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
+: RETIRE1 ( str n -- bool ) {: s:str wid:n :}
+   s wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec NULL-PTR = IF RES-FALSE EXIT THEN
    rec REC>IX {: ix:n :}
    rec CK-REC-WID {: own:n :}
@@ -15515,30 +15523,30 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ Whether NAME lands on a record from before the overlay whose does> shape is
 \ not that of the replayed definition, which makes a clause when CLAUSE is true.
 : OTHER-SHAPE? ( str bool -- bool )
-   {: a:^ u:n clause:bool :}
-   a u LANDS {: ix:n :}
+   {: s:str clause:bool :}
+   s LANDS {: ix:n :}
    ix 0 <  ix MARK @ >=  or IF RES-FALSE EXIT THEN
    ix CLAUSE-OF 0 >=  clause xor ;
 
 \ The clause of the replayed `create ... does>` definer NAME: a record in NAME's
 \ wordlist named NAME's tail plus the companion suffix. A clause name already
 \ taken is rejected at NAME, the definer's name as written.
-: CLAUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n ca:^ cu:n :}
+: CLAUSE ( str str -- ) {: s:str c:str :}
    ON @ 0=  PEND-CELL DATA@ 0 <>  or IF EXIT THEN
-   a u TARGET 0= IF 2drop drop EXIT THEN
-   {: ta:^ tu:n wid:n :}
-   ta tu wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
+   s TARGET 0= IF drop drop EXIT THEN
+   {: t:str wid:n :}
+   t wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec NULL-PTR = IF EXIT THEN
    rec REC>IX {: ix:n :}
    ix MARK @ < IF EXIT THEN
-   u tu - {: q:n :}
-   ca q +  cu q -  {: cta:^ ctu:n :}
-   cta ctu ROOM
-   cta ctu wid CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF
-      ta tu DOES-CLAUSE:SUFFIX$ a u REJECTION:CLAUSE-TAKEN
+   s STR:LEN t STR:LEN - {: q:n :}
+   c STR:DATA q +  c STR:LEN q - >str {: ct:str :}
+   ct ROOM
+   ct wid CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF
+      t DOES-CLAUSE:SUFFIX$ s REJECTION:CLAUSE-TAKEN
       EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
-   cta ctu wid replay-record
+   ct wid replay-record
    ix ndict@ 1 - PAIRS-P PAIRS-CAP PAIRS-N PAIR+ ;
 
 \ Whether REC, the record a lookup bound, has its does> clause still in its
@@ -15550,16 +15558,16 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ The room an export NAME of a does> definer needs for its clause CNAME in the
 \ current wordlist, rejected at NAME. A wordlist already holding NAME holds the
 \ export's twin.
-: EXPORT-ROOM ( str str -- ) {: a:^ u:n ca:^ cu:n :}
-   a u get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
-   ca cu get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF EXIT THEN
-   a u DOES-CLAUSE:SUFFIX$ a u REJECTION:CLAUSE-TAKEN
+: EXPORT-ROOM ( str str -- ) {: s:str cs:str :}
+   s get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
+   cs get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF EXIT THEN
+   s DOES-CLAUSE:SUFFIX$ s REJECTION:CLAUSE-TAKEN
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ Opens the package at path a u in its private section; one a qualified
+\ Opens the package at path s in its private section; one a qualified
 \ definition made, with a public wordlist only, gets its private one here.
-: OPEN-PACKAGE ( str -- ) {: a:^ u:n :}
-   a u RES-TRUE NS-ENSURE {: rec:^ :}
+: OPEN-PACKAGE ( str -- ) {: s:str :}
+   s RES-TRUE NS-ENSURE {: rec:^ :}
    rec CELL + @ 0= IF rec GRANT THEN
    USE-DEPTH-CELL DATA@ USE-PKG-SAVE-CELL DATA!
    rec REC>IX get-current package-scope!
@@ -15585,7 +15593,7 @@ EXPORT CHECKER-RESOLVE:CK-REC-NAME$
 : CLOSE-PACKAGE ( -- )
    PKG-PUB-CELL DATA@ 0= IF EXIT THEN
    PKG-OUTSIDE-CELL DATA@ 0 <> IF
-      PKG-REC-CELL SCOPE-IX REC-AT CK-REC-NAME$  NULL-PTR 0 PKG-OUTSIDE-REJECT
+      PKG-REC-CELL SCOPE-IX REC-AT CK-REC-NAME$  NULL-PTR 0 >str PKG-OUTSIDE-REJECT
       EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    PKG-PARENT-CELL DATA@ CUR-CELL DATA!
@@ -15597,41 +15605,41 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 
 \ A name with no row gets NS-ENSURE's placeholder; the run rejects USING-UNKNOWN.
 \ NAME, not the slot CHECKER-USE:NAME! folds to lower case, spells a new row.
-: OPEN-USING ( str -- ) {: a:^ u:n :}
-   a u CHECKER-USING
-   a u CHECKER-COLON-SCAN drop 0 <> IF
-      a u REJECTION:USING-BAD-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
+: OPEN-USING ( str -- ) {: s:str :}
+   s CHECKER-USING
+   s CHECKER-COLON-SCAN drop 0 <> IF
+      s REJECTION:USING-BAD-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
-   a u HEAD-ROW {: row:^ :}
-   row NULL-PTR = IF a u RES-TRUE NS-ENSURE ELSE row THEN {: rec:^ :}
+   s HEAD-ROW {: row:^ :}
+   row NULL-PTR = IF s RES-TRUE NS-ENSURE ELSE row THEN {: rec:^ :}
    USE-DEPTH-CELL DATA@ {: d:n :}
    rec @ d cells USE-WIDS-OFF + DATA!
    d 1 + USE-DEPTH-CELL DATA! ;
 
-\ `;using`, the token t tu, closes only an import the open package or the
+\ `;using`, the token t, closes only an import the open package or the
 \ replayed source opened: one opened before `package` is at or below the depth
 \ `;package` restores, so closing it would come undone there, and the engine
 \ rejects closing one the source inherited, at or below
 \ CHECKER-USE:SOURCE-FLOOR, in an evaluated buffer.
-: CLOSE-USING ( str -- ) {: t:^ tu:n :}
+: CLOSE-USING ( str -- ) {: t:str :}
    USE-DEPTH-CELL DATA@ {: d:n :}
    d 0 <= IF
-      t tu REJECTION:USING-UNBALANCED  EXIT-STATUS:REJECTED REJECTION:STOP
+      t REJECTION:USING-UNBALANCED  EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    PKG-PUB-CELL DATA@ 0 <>  d USE-PKG-SAVE-CELL DATA@ <=  and IF
-      t tu s" package" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
+      t s" package" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    d SOURCE-FLOOR @ <= IF
-      t tu s" file" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
+      t s" file" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    d 1 - USE-DEPTH-CELL DATA! ;
 
 \ `undefine NAME`: every live record of the name in the wordlist it acts in is
 \ retired and logged, a seeded primitive's as well.
-: RETIRE ( ^u8 n -- ) {: a:^ u:n :}
-   a u TARGET 0= IF 2drop drop EXIT THEN
-   {: ta:^ tu:n wid:n :}
-   BEGIN ta tu wid RETIRE1 0= UNTIL ;
+: RETIRE ( str -- ) {: s:str :}
+   s TARGET 0= IF drop drop EXIT THEN
+   {: t:str wid:n :}
+   BEGIN t wid RETIRE1 0= UNTIL ;
 ;package
 
 \ What `package` opens: PART-GUARD at `package`, PART-PATH at the name; what
@@ -15660,14 +15668,14 @@ NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
 
 : ENTER-SECTION ( n n -- ) {: cell:n off:n :}
    off OWNER-RUN  data-base cell + @ data-base CUR-CELL + ! ;
-\ `package`, the token being read, opens a part where w wu says; the help
-\ h hu says what to do instead.
-: PART-REJECT ( str str -- ) {: w:^ wu:n h:^ hu:n :}
+\ `package`, the token being read, opens a part where w says; the help
+\ h says what to do instead.
+: PART-REJECT ( str str -- ) {: w:str h:str :}
    s" E-PKG-CONTEXT" REJECTION:OPEN
    s" `package` opens a part of `" REJECTION:EMIT-STR  TOP-NAME$ REJECTION:EMIT-STR
-   s" ` " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
-   NULL-PTR 0 REJECTION:AT  s" a part opens here" REJECTION:EMIT-STR
-   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   s" ` " REJECTION:EMIT-STR  w REJECTION:EMIT-STR
+   NULL-PTR 0 >str REJECTION:AT  s" a part opens here" REJECTION:EMIT-STR
+   REJECTION:HELP  h REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A part opens in its package's private section, in its buffer, under no using
@@ -15694,16 +15702,16 @@ NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
    THEN ;
 
 \ NAME, or `A:NAME` in package A.
-: PART-PATH ( str -- str ) {: a:^ u:n :}
-   TOP-NAME$ {: pa:^ pu:n :}
-   a u CHECKER-COLON-SCAN drop 0 <> IF a u PACKAGE-COLON-REJECT THEN
-   pu 0= IF a u EXIT THEN
-   pu 1 + u + {: ku:n :}
+: PART-PATH ( str -- str ) {: s:str :}
+   TOP-NAME$ {: p:str :}
+   s CHECKER-COLON-SCAN drop 0 <> IF s PACKAGE-COLON-REJECT THEN
+   p STR:LEN 0= IF s EXIT THEN
+   p STR:LEN 1 + s STR:LEN + {: ku:n :}
    PATH-KEY-P PATH-KEY-CAP  ku CELL / 1 +  1 ARENA-ROWS-ENSURE
-   pa PATH-KEY pu ARENA-COPY
-   $3A PATH-KEY pu + c!
-   a PATH-KEY pu 1 + + u ARENA-COPY
-   PATH-KEY ku ;
+   p STR:DATA PATH-KEY p STR:LEN >str ARENA-COPY
+   $3A PATH-KEY p STR:LEN + c!
+   s STR:DATA PATH-KEY p STR:LEN 1 + + s STR:LEN >str ARENA-COPY
+   PATH-KEY ku >str ;
 
 : PUBLIC-SECTION ( -- )
    PKG-PUB-CELL NCOMP-DISPATCH:DECL-PUBLIC-OFF ENTER-SECTION ;
@@ -15724,12 +15732,12 @@ EXPORT CHECKER-OVERLAY:CLOSE-USING
 
 EXPORT CHECKER-OVERLAY:OPEN-PACKAGE
 
-\ The path a u, then the name as written t tu.
-: CHECKER-PACKAGE ( str str -- ) {: a:^ u:n t:^ tu:n :}
-   a u CTOR-OWNER-XT {: pa:^ pu:n na:^ nu:n owned:bool :}
-   owned IF a u t tu pa pu na nu CTOR-PKG-REJECT THEN
-   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF a u OPEN-PACKAGE THEN
-   a u CHECKER-PACKAGE-COPY
+\ The path s, then the name as written t.
+: CHECKER-PACKAGE ( str str -- ) {: s:str t:str :}
+   s CTOR-OWNER-XT {: p:str ns:str owned:bool :}
+   owned IF s t p ns CTOR-PKG-REJECT THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF s OPEN-PACKAGE THEN
+   s CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
 ;package
 package CHECKER-REG
@@ -15770,7 +15778,7 @@ EXPORT CHECKER-OVERLAY:CLOSE-PACKAGE
 
 : CHECKER-END-PACKAGE ( -- )
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF CLOSE-PACKAGE THEN
-   SYM-STR CHECKER-PACKAGE-NAME @ + CHECKER-PACKAGE-U @ CHECKER-COLON-SCAN {: ci:n :} drop
+   SYM-STR CHECKER-PACKAGE-NAME @ + CHECKER-PACKAGE-U @ >str CHECKER-COLON-SCAN {: ci:n :} drop
    ci 0 >= IF
       CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE !  ci CHECKER-PACKAGE-U ! EXIT
    THEN
@@ -15794,7 +15802,7 @@ EXPORT CHECKER-OVERLAY:RESTORE-SCOPE
 : NESTED-REJECT ( -- )
    s" E-VERIFY-WINDOW" REJECTION:OPEN
    s" a source verification started inside another one's window" REJECTION:EMIT-STR
-   NULL-PTR 0 REJECTION:AT  s" started here" REJECTION:EMIT-STR
+   NULL-PTR 0 >str REJECTION:AT  s" started here" REJECTION:EMIT-STR
    REJECTION:HELP
    s" verify one source at a time: start the next after this one returns"
    REJECTION:EMIT-STR
@@ -15846,33 +15854,33 @@ private
 
 \ The message names the declared word: the definer for STG-NO-NAME, the name
 \ itself for STG-MALFORMED-NAME and STG-COLON-END.
-: STGR-MESSAGE ( str n -- ) {: na:^ nu:n why:n :}
+: STGR-MESSAGE ( str n -- ) {: ns:str why:n :}
    why STG-NO-NAME = IF
-      na nu CODE-SPAN  s"  has no name on its line" REJECTION:EMIT-STR EXIT
+      ns CODE-SPAN  s"  has no name on its line" REJECTION:EMIT-STR EXIT
    THEN
    why STG-NO-TYPE = IF
-      na nu CODE-SPAN  s"  has no type on its line" REJECTION:EMIT-STR EXIT
+      ns CODE-SPAN  s"  has no type on its line" REJECTION:EMIT-STR EXIT
    THEN
    why STG-NO-COUNT = IF
-      na nu CODE-SPAN  s"  has no count before its definer" REJECTION:EMIT-STR EXIT
+      ns CODE-SPAN  s"  has no count before its definer" REJECTION:EMIT-STR EXIT
    THEN
    why STG-MALFORMED-NAME = IF
-      s" the name " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" the name " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  has more than one inner `:`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-COLON-END = IF
-      s" the name " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" the name " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  ends in `:`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-BAD-COUNT = IF
-      s" the count of " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" the count of " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  is outside the buffer's extent" REJECTION:EMIT-STR EXIT
    THEN
    why STG-COUNT-WORD = IF
-      s" the count of " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" the count of " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  names no `( -- n )` word" REJECTION:EMIT-STR EXIT
    THEN
-   s" the type of " REJECTION:EMIT-STR  na nu CODE-SPAN
+   s" the type of " REJECTION:EMIT-STR  ns CODE-SPAN
    why STG-UNKNOWN-TYPE = IF s"  names no known type" REJECTION:EMIT-STR EXIT THEN
    why STG-MALFORMED-TYPE = IF s"  does not parse" REJECTION:EMIT-STR EXIT THEN
    why STG-SCHEME-TYPE = IF
@@ -15903,7 +15911,7 @@ private
    why STG-WIDTH-TYPE = IF s" width in a stored type" EXIT THEN
    why STG-LINEAR-TYPE = IF s" stored type may hold a linear value" EXIT THEN
    why STG-LAYOUT-TYPE = IF s" type a layout buffer cannot lay out" EXIT THEN
-   why STG-EFFECT-TYPE = IF EFFECT-TYPE-FAM @ UNSTORED-REASON drop 2drop EXIT THEN
+   why STG-EFFECT-TYPE = IF EFFECT-TYPE-FAM @ UNSTORED-REASON drop drop EXIT THEN
    why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
    why STG-COLON-END = IF s" name ends in ':'" EXIT THEN
    why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
@@ -15912,89 +15920,89 @@ private
    why STG-NO-NAME = IF s" no name follows this definer on its line" EXIT THEN
    s" no count precedes this declaration" ;
 
-\ Whether a u, a name less its final `:`, is nonempty and has the colons
+\ Whether s, a name less its final `:`, is nonempty and has the colons
 \ CHECKER-LBUF-NAME-OK? takes; its other rules still judge the name.
-: STG-DROPPED-OK? ( str -- bool ) {: a:^ u:n :}
-   u 0= IF RES-FALSE EXIT THEN
-   a u + 1 - c@ 58 = IF RES-FALSE EXIT THEN
-   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+: STG-DROPPED-OK? ( str -- bool ) {: s:str :}
+   s STR:LEN 0= IF RES-FALSE EXIT THEN
+   s STR:DATA s STR:LEN + 1 - c@ 58 = IF RES-FALSE EXIT THEN
+   s CHECKER-COLON-SCAN {: cn:n ci:n :}
    ci 0=  cn 2 <  or ;
 
-: STGR-HELP ( str str n -- ) {: na:^ nu:n ta:^ tu:n why:n :}
+: STGR-HELP ( str str n -- ) {: ns:str ts:str why:n :}
    why STG-NO-NAME = IF
-      s" write the storage's name after " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" write the storage's name after " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  on the same line" REJECTION:EMIT-STR EXIT
    THEN
    why STG-NO-TYPE = IF
-      s" write the type of " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" write the type of " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  after it on the same line" REJECTION:EMIT-STR EXIT
    THEN
    why STG-NO-COUNT = IF
       s" put a positive count before the definer of " REJECTION:EMIT-STR
-      na nu CODE-SPAN
+      ns CODE-SPAN
       s" : a literal, a constant or an expression" REJECTION:EMIT-STR EXIT
    THEN
    why STG-MALFORMED-NAME = IF
-      s" rename " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" rename " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  with at most one inner `:`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-COLON-END = IF
-      nu 1 = IF s" write a name in place of `:`" REJECTION:EMIT-STR EXIT THEN
-      na nu CHECKER-COLON-SCAN drop 1 > IF
-         na nu 1 - STG-DROPPED-OK? IF
+      ns STR:LEN 1 = IF s" write a name in place of `:`" REJECTION:EMIT-STR EXIT THEN
+      ns CHECKER-COLON-SCAN drop 1 > IF
+         ns STR:DATA ns STR:LEN 1 - >str STG-DROPPED-OK? IF
             s" drop the final `:`" REJECTION:EMIT-STR EXIT
          THEN
-         s" rename " REJECTION:EMIT-STR  na nu CODE-SPAN
+         s" rename " REJECTION:EMIT-STR  ns CODE-SPAN
          s"  with at most one inner `:` and none at its end"
          REJECTION:EMIT-STR EXIT
       THEN
-      s" write the word after " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" write the word after " REJECTION:EMIT-STR  ns CODE-SPAN
       s" , as in `pkg:name`, or drop the `:`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-BAD-COUNT = IF
-      s" replace " REJECTION:EMIT-STR  ta tu CODE-SPAN
+      s" replace " REJECTION:EMIT-STR  ts CODE-SPAN
       s"  with a positive count whose elements fit in memory" REJECTION:EMIT-STR EXIT
    THEN
    why STG-COUNT-WORD = IF
-      s" replace " REJECTION:EMIT-STR  ta tu CODE-SPAN
+      s" replace " REJECTION:EMIT-STR  ts CODE-SPAN
       s"  with a literal, a constant or a `( -- n )` word" REJECTION:EMIT-STR EXIT
    THEN
    why STG-UNKNOWN-TYPE = IF
-      s" declare the type " REJECTION:EMIT-STR  ta tu CODE-SPAN
-      s"  before " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" declare the type " REJECTION:EMIT-STR  ts CODE-SPAN
+      s"  before " REJECTION:EMIT-STR  ns CODE-SPAN
       s" , or correct its name" REJECTION:EMIT-STR EXIT
    THEN
    why STG-MALFORMED-TYPE = IF
-      s" write one whole type after " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" write one whole type after " REJECTION:EMIT-STR  ns CODE-SPAN
       s" , such as `n`, `^t` or `[ n -- n ]`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-SCHEME-TYPE = IF
-      s" declare " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" declare " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  with a closed type; a scheme is only a callback's input" REJECTION:EMIT-STR EXIT
    THEN
    why STG-XT-TYPE = IF
-      s" declare " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" declare " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  with a quotation type such as `[ n -- n ]` in place of `xt`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-WIDTH-TYPE = IF
-      s" declare " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" declare " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  as `n` and store the width's bytes, read with `width>n`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-LINEAR-TYPE = IF
-      s" keep a linear value on the stack, not in " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" keep a linear value on the stack, not in " REJECTION:EMIT-STR  ns CODE-SPAN
       s" ; name a callable over one with `defer`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-EFFECT-TYPE = IF
-      EFFECT-TYPE-FAM @ UNSTORED-REASON drop 2swap 2drop REJECTION:EMIT-STR EXIT
+      EFFECT-TYPE-FAM @ UNSTORED-REASON drop nip REJECTION:EMIT-STR EXIT
    THEN
    why STG-LAYOUT-TYPE = IF
-      s" give " REJECTION:EMIT-STR  na nu CODE-SPAN
+      s" give " REJECTION:EMIT-STR  ns CODE-SPAN
       s"  a declared family: a NEWTYPE or DEFTYPE with no arguments, or a non-empty"
       REJECTION:EMIT-STR
       s"  ENUM, SUMTYPE or STRUCTURE holding no view, region or linear value"
       REJECTION:EMIT-STR EXIT
    THEN
-   s" declare " REJECTION:EMIT-STR  na nu CODE-SPAN
+   s" declare " REJECTION:EMIT-STR  ns CODE-SPAN
    s"  with a closed, copyable type its definer stores, such as `n`" REJECTION:EMIT-STR ;
 
 : STGR-END ( -- )
@@ -16003,100 +16011,100 @@ private
 
 \ The declared name, the rejected token and the STG- reason.
 : CHECKER-STORAGE-REJECT ( str str n -- )
-   {: na:^ nu:n ta:^ tu:n why:n :}
-   s" E-BAD-STORAGE" REJECTION:OPEN  na nu why STGR-MESSAGE
-   ta tu REJECTION:AT  why STGR-REASON$ REJECTION:EMIT-STR
-   REJECTION:HELP  na nu ta tu why STGR-HELP
+   {: ns:str ts:str why:n :}
+   s" E-BAD-STORAGE" REJECTION:OPEN  ns why STGR-MESSAGE
+   ts REJECTION:AT  why STGR-REASON$ REJECTION:EMIT-STR
+   REJECTION:HELP  ns ts why STGR-HELP
    STGR-END ;
 
-\ Family tail ta tu in the type of na nu is public in more than one used
+\ Family tail ts in the type of ns is public in more than one used
 \ package.
-: STGR-AMBIG ( str str -- ) {: na:^ nu:n ta:^ tu:n :}
+: STGR-AMBIG ( str str -- ) {: ns:str ts:str :}
    s" E-USING-AMBIGUOUS" REJECTION:OPEN
-   s" the type of " REJECTION:EMIT-STR  na nu CODE-SPAN
-   s"  names type family " REJECTION:EMIT-STR  ta tu CODE-SPAN
+   s" the type of " REJECTION:EMIT-STR  ns CODE-SPAN
+   s"  names type family " REJECTION:EMIT-STR  ts CODE-SPAN
    s" , which is public in more than one used package" REJECTION:EMIT-STR
-   ta tu REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
-   ta tu SGBAD-AMBIG-HELP
+   ts REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
+   ts SGBAD-AMBIG-HELP
    STGR-END ;
 
-\ Type ta tu of na nu does not parse: SGBAD holds the fault's kind and the
+\ Type ts of ns does not parse: SGBAD holds the fault's kind and the
 \ token the parse stopped on, none where the type ended early.
-: STGR-MALFORMED ( str str -- ) {: na:^ nu:n ta:^ tu:n :}
-   s" E-BAD-STORAGE" REJECTION:OPEN  na nu STG-MALFORMED-TYPE STGR-MESSAGE
-   ta tu ta tu SGBAD-TOKEN REJECTION:AT
+: STGR-MALFORMED ( str str -- ) {: ns:str ts:str :}
+   s" E-BAD-STORAGE" REJECTION:OPEN  ns STG-MALFORMED-TYPE STGR-MESSAGE
+   ts ts SGBAD-TOKEN REJECTION:AT
    s" the type does not parse here" SGBAD-LABEL$ REJECTION:EMIT-STR
-   REJECTION:HELP  na nu ta tu STG-MALFORMED-TYPE STGR-HELP
+   REJECTION:HELP  ns ts STG-MALFORMED-TYPE STGR-HELP
    STGR-END ;
 
 \ A count the definer took at run time has no token of its own: the record
 \ states its value v and stands at the name, which the definer read.
-: CHECKER-STORAGE-COUNT-REJECT ( str n -- ) {: na:^ nu:n v:n :}
+: CHECKER-STORAGE-COUNT-REJECT ( str n -- ) {: ns:str v:n :}
    s" E-BAD-STORAGE" REJECTION:OPEN
-   s" the count of " REJECTION:EMIT-STR  na nu CODE-SPAN
+   s" the count of " REJECTION:EMIT-STR  ns CODE-SPAN
    s"  is " REJECTION:EMIT-STR  v REJECTION:EMIT-N
    s" , outside the buffer's extent" REJECTION:EMIT-STR
-   na nu REJECTION:AT  STG-BAD-COUNT STGR-REASON$ REJECTION:EMIT-STR
-   REJECTION:HELP  s" give " REJECTION:EMIT-STR  na nu CODE-SPAN
+   ns REJECTION:AT  STG-BAD-COUNT STGR-REASON$ REJECTION:EMIT-STR
+   REJECTION:HELP  s" give " REJECTION:EMIT-STR  ns CODE-SPAN
    s"  a positive count whose elements fit in memory" REJECTION:EMIT-STR
    STGR-END ;
 
 \ A definer with no name on its line declares no word, so it is rejected at its
 \ own token, which stands in for the word.
-: CHECKER-STORAGE-NAME-REJECT ( str -- ) {: da:^ du:n :}
-   da du da du STG-NO-NAME CHECKER-STORAGE-REJECT ;
+: CHECKER-STORAGE-NAME-REJECT ( str -- ) {: ds:str :}
+   ds ds STG-NO-NAME CHECKER-STORAGE-REJECT ;
 
 \ A published storage name has at most one inner ':' and does not end in one.
-: CHECKER-LBUF-NAME-OK? ( str -- bool ) {: a:^ u:n :}
-   a u a u DEF-NAME-REJECT? IF STGR-END RES-FALSE EXIT THEN
-   u 0 > IF a u + 1 - c@ 58 = IF
-      a u a u STG-COLON-END CHECKER-STORAGE-REJECT RES-FALSE EXIT
+: CHECKER-LBUF-NAME-OK? ( str -- bool ) {: s:str :}
+   s s DEF-NAME-REJECT? IF STGR-END RES-FALSE EXIT THEN
+   s STR:LEN 0 > IF s STR:DATA s STR:LEN + 1 - c@ 58 = IF
+      s s STG-COLON-END CHECKER-STORAGE-REJECT RES-FALSE EXIT
    THEN THEN
-   a u CHECKER-QUALIFIED? drop
+   s CHECKER-QUALIFIED? drop
    CHECKER-QBAD-TOK @ 0 <> IF
-      a u a u STG-MALFORMED-NAME CHECKER-STORAGE-REJECT RES-FALSE EXIT
+      s s STG-MALFORMED-NAME CHECKER-STORAGE-REJECT RES-FALSE EXIT
    THEN
-   a u CTOR-EXTEND?-XT IF a u CTOR-EXTEND-REJECT THEN
+   s CTOR-EXTEND?-XT IF s CTOR-EXTEND-REJECT THEN
    RES-TRUE ;
 
 \ The storage registrars below record a definer's accessor for the source
 \ pre-pass, their one caller, which runs them inside its window.
 
-: CHECKER-GLOBAL-SYM ( str -- n ) {: a u:n :}
-   s" " SYM-GLOBAL a u SYM-INTERN ;
+: CHECKER-GLOBAL-SYM ( str -- n ) {: s:str :}
+   s" " SYM-GLOBAL s SYM-INTERN ;
 
-: CHECKER-GLOBAL-SYM? ( str -- n ) {: a u:n :}
-   s" " SYM-GLOBAL a u SYM-FIND IF EXIT THEN drop 0 ;
+: CHECKER-GLOBAL-SYM? ( str -- n ) {: s:str :}
+   s" " SYM-GLOBAL s SYM-FIND IF EXIT THEN drop 0 ;
 
-: CHECKER-PUBLIC-SYM ( str str -- n ) {: pkg pkgu:n a u:n :}
-   pkg pkgu SYM-PUBLIC a u SYM-INTERN ;
+: CHECKER-PUBLIC-SYM ( str str -- n ) {: pkg:str s:str :}
+   pkg SYM-PUBLIC s SYM-INTERN ;
 
-: CHECKER-PUBLIC-SYM? ( str str -- n ) {: pkg pkgu:n a u:n :}
-   pkg pkgu SYM-PUBLIC a u SYM-FIND IF EXIT THEN drop 0 ;
+: CHECKER-PUBLIC-SYM? ( str str -- n ) {: pkg:str s:str :}
+   pkg SYM-PUBLIC s SYM-FIND IF EXIT THEN drop 0 ;
 
-: CHECKER-PKG-SYM ( str n str -- n ) {: pkg pkgu:n vis:n a u:n :}
-   pkg pkgu vis a u SYM-INTERN ;
+: CHECKER-PKG-SYM ( str n str -- n ) {: pkg:str vis:n s:str :}
+   pkg vis s SYM-INTERN ;
 
-: CHECKER-PKG-SYM? ( str n str -- n ) {: pkg pkgu:n vis:n a u:n :}
-   pkg pkgu vis a u SYM-FIND IF EXIT THEN drop 0 ;
+: CHECKER-PKG-SYM? ( str n str -- n ) {: pkg:str vis:n s:str :}
+   pkg vis s SYM-FIND IF EXIT THEN drop 0 ;
 
-: CHECKER-RECORD-SYM ( str -- n ) {: a u:n :}
-   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
+: CHECKER-RECORD-SYM ( str -- n ) {: s:str :}
+   s CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
-   CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n vis:n :}
+   CHECKER-PKG-CONTEXT {: pkg:str vis:n :}
    vis CHECKER-PACKAGE-NONE <>  vis CHECKER-PACKAGE-GLOBAL <>  and IF
-      pkg pkgu vis a u CHECKER-PKG-SYM EXIT
+      pkg vis s CHECKER-PKG-SYM EXIT
    THEN
-   a u CHECKER-GLOBAL-SYM ;
+   s CHECKER-GLOBAL-SYM ;
 
-: CHECKER-RECORD-SYM? ( str -- n ) {: a u:n :}
-   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
+: CHECKER-RECORD-SYM? ( str -- n ) {: s:str :}
+   s CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
-   CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n vis:n :}
+   CHECKER-PKG-CONTEXT {: pkg:str vis:n :}
    vis CHECKER-PACKAGE-NONE <>  vis CHECKER-PACKAGE-GLOBAL <>  and IF
-      pkg pkgu vis a u CHECKER-PKG-SYM? EXIT
+      pkg vis s CHECKER-PKG-SYM? EXIT
    THEN
-   a u CHECKER-GLOBAL-SYM? ;
+   s CHECKER-GLOBAL-SYM? ;
 
 \ The spans are the symbol pool's, borrowed until the next intern can grow it.
 : CHECKER-SYM-IDENTITY ( n -- str str n )
@@ -16104,8 +16112,8 @@ private
    sym SYM-PKG$ sym SYM-NAME$ sym SYM-ROW SYM.VIS @ ;
 
 \ A tombstone means the name is being defined afresh.
-: OWN-RECORD ( str -- n ) {: a:^ u:n :}
-   a u CHECKER-RECORD-SYM? dup 0= IF EXIT THEN
+: OWN-RECORD ( str -- n ) {: s:str :}
+   s CHECKER-RECORD-SYM? dup 0= IF EXIT THEN
    USIG-NEWEST dup 0= IF EXIT THEN
    dup 1 - E-PTR ER.ACTIVE @ {: off1:n state:n :}
    state EFF-DELETED = IF 0 EXIT THEN
@@ -16168,10 +16176,10 @@ variable CK-PEND-IX
    off1 CK-PEND-FLOOR @ >  ndict@ CK-PEND-IX @ =  and 0= IF RES-FALSE EXIT THEN
    off1 1 - E-PTR ER.ACTIVE @ EFF-DELETED <> ;
 
-: CK-PENDING-SYM ( str -- n ) {: a:^ u:n :}
+: CK-PENDING-SYM ( str -- n ) {: s:str :}
    CK-CLOSED-SYM @ CK-CLOSED-IX @ CK-CLOSED-OFF @ CK-PEND-SYM {: last:n :}
    last 0=  CHK-CAND @ 0=  and IF 0 EXIT THEN
-   a u CHECKER-RECORD-SYM? {: sym:n :}
+   s CHECKER-RECORD-SYM? {: sym:n :}
    sym 0= IF 0 EXIT THEN
    sym last = IF sym EXIT THEN
    sym CK-SCOPE-PENDING? IF sym EXIT THEN
@@ -16184,17 +16192,17 @@ variable CK-PEND-IX
    LOOP
    -1 ;
 
-: CK-USED-SYM@ ( str n -- n ) {: a:^ u:n ix:n :}
+: CK-USED-SYM@ ( str n -- n ) {: s:str ix:n :}
    ix 0 < IF 0 EXIT THEN
-   ix CK-USE-SLOT ix CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF EXIT THEN drop 0 ;
+   ix CK-USE-SLOT ix CK-USE-LEN@ >str SYM-PUBLIC s SYM-FIND IF EXIT THEN drop 0 ;
 
 \ The packages a using rejection names: every package the lookup met, not only the
 \ two scope-find reports.
-: CK-USED-MARK ( str -- ) {: a:^ u:n :}
+: CK-USED-MARK ( str -- ) {: s:str :}
    0 CK-USED-MASK !
    CK-USE-SCAN-N 0 ?DO
-      a u data-base USE-WIDS-OFF + i cells + @ CHECKER-RESOLVE:WL-PROBE NULL-PTR <>
-      a u i CK-USED-SYM@ SYM-BEYOND? 0=  and IF
+      s data-base USE-WIDS-OFF + i cells + @ CHECKER-RESOLVE:WL-PROBE NULL-PTR <>
+      s i CK-USED-SYM@ SYM-BEYOND? 0=  and IF
          1 i lshift CK-USED-MASK @ or CK-USED-MASK !
       THEN
    LOOP ;
@@ -16203,59 +16211,59 @@ variable CK-PEND-IX
 package CHECKER-RESOLVE
 \ The package a part's path `A:B` names first: A, whose words a part binds
 \ bare where the engine finds them in the enclosing package's wordlists.
-: TOP$ ( str -- str ) {: a:^ u:n :}
-   a  a u CHECKER-COLON-SCAN nip ;
+: TOP$ ( str -- str ) {: s:str :}
+   s STR:DATA  s CHECKER-COLON-SCAN nip >str ;
 ;package
 package CHECK
 
 EXPORT CHECKER-RESOLVE:TOP$
 
-: CK-REC-BIND ( str ^n -- n ) {: a:^ u:n rec:^ :}
+: CK-REC-BIND ( str ^n -- n ) {: s:str rec:^ :}
    rec CK-REC-WID {: wid:n :}
-   a u CHECKER-QUALIFIED? IF
+   s CHECKER-QUALIFIED? IF
       \ NAME:tail with NAME open reaches the global tail
       wid WL:GLOBAL? IF CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? EXIT THEN
       CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT
    THEN
-   PKG-LIVE-XT drop {: pkg:^ pkgu:n :}
-   wid WL:GLOBAL? IF a u CHECKER-GLOBAL-SYM? EXIT THEN
-   wid data-base PKG-PRI-CELL + @ = IF pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? EXIT THEN
-   wid data-base PKG-PUB-CELL + @ = IF pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? EXIT THEN
-   wid data-base ENCLOSING:PRI + @ = IF pkg pkgu TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? EXIT THEN
-   wid data-base ENCLOSING:PUB + @ = IF pkg pkgu TOP$ SYM-PUBLIC a u CHECKER-PKG-SYM? EXIT THEN
-   a u wid CK-USED-INDEX CK-USED-SYM@ ;
+   PKG-LIVE-XT drop {: pkg:str :}
+   wid WL:GLOBAL? IF s CHECKER-GLOBAL-SYM? EXIT THEN
+   wid data-base PKG-PRI-CELL + @ = IF pkg SYM-PRIVATE s CHECKER-PKG-SYM? EXIT THEN
+   wid data-base PKG-PUB-CELL + @ = IF pkg SYM-PUBLIC s CHECKER-PKG-SYM? EXIT THEN
+   wid data-base ENCLOSING:PRI + @ = IF pkg TOP$ SYM-PRIVATE s CHECKER-PKG-SYM? EXIT THEN
+   wid data-base ENCLOSING:PUB + @ = IF pkg TOP$ SYM-PUBLIC s CHECKER-PKG-SYM? EXIT THEN
+   s wid CK-USED-INDEX CK-USED-SYM@ ;
 
 \ A keyword's axiom: the global symbol of a bare name the engine holds no record
 \ for. Those live below the user region USIG-NEWEST indexes.
-: CK-AXIOM-SYM ( str -- n ) {: a:^ u:n :}
-   a u CHECKER-GLOBAL-SYM? {: sym:n :}
+: CK-AXIOM-SYM ( str -- n ) {: s:str :}
+   s CHECKER-GLOBAL-SYM? {: sym:n :}
    sym 0= IF 0 EXIT THEN
    sym USIG-NEWEST 0 <> IF 0 EXIT THEN
    sym ;
 
-: USED-BEYOND? ( str ^n -- bool ) {: a:^ u:n rec:^ :}
-   a u rec CK-REC-WID CK-USED-INDEX CK-USED-SYM@ SYM-BEYOND? ;
+: USED-BEYOND? ( str ^n -- bool ) {: s:str rec:^ :}
+   s rec CK-REC-WID CK-USED-INDEX CK-USED-SYM@ SYM-BEYOND? ;
 
 EXPORT CHECKER-OVERLAY:HIDE
 EXPORT CHECKER-RESOLVE:bare-scope-find
 
 : HIDE-BEYOND? ( ^n ^n ^n str -- bool )
-   {: rec:^ used:^ used2:^ a:^ u:n :}
+   {: rec:^ used:^ used2:^ s:str :}
    rec 0= 0= IF
-      a u rec CK-REC-BIND SYM-BEYOND? IF rec HIDE RES-TRUE EXIT THEN
+      s rec CK-REC-BIND SYM-BEYOND? IF rec HIDE RES-TRUE EXIT THEN
    THEN
    used 0= 0= IF
-      a u used USED-BEYOND? IF used HIDE RES-TRUE EXIT THEN
+      s used USED-BEYOND? IF used HIDE RES-TRUE EXIT THEN
    THEN
    used2 0= 0= IF
-      a u used2 USED-BEYOND? IF used2 HIDE RES-TRUE EXIT THEN
+      s used2 USED-BEYOND? IF used2 HIDE RES-TRUE EXIT THEN
    THEN
    RES-FALSE ;
 
-: HIDE-FIND ( str -- ^n ^n ^n n ) {: a:^ u:n :}
-   a u bare-scope-find
-   BEGIN 2over 2over drop a u HIDE-BEYOND? WHILE
-      2drop 2drop  a u bare-scope-find
+: HIDE-FIND ( str -- ^n ^n ^n n ) {: s:str :}
+   s bare-scope-find
+   BEGIN 2over 2over drop s HIDE-BEYOND? WHILE
+      2drop 2drop  s bare-scope-find
    REPEAT ;
 
 EXPORT CHECKER-OVERLAY:UNHIDE
@@ -16274,9 +16282,9 @@ variable BIND-SEEDED
 
 variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
 
-: RECOVERY-USED-BIND ( str -- n ) {: a:^ u:n :}
+: RECOVERY-USED-BIND ( str -- n ) {: s:str :}
    CK-USE-SCAN-N 0 ?DO
-      a u i CK-USED-SYM@ RECOVERY-LIVE {: sym:n :}
+      s i CK-USED-SYM@ RECOVERY-LIVE {: sym:n :}
       sym 0 <> IF sym UNLOOP EXIT THEN
    LOOP 0 ;
 
@@ -16298,39 +16306,39 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
    CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? RECOVERY-LIVE
    dup 0 <> IF EXIT THEN drop
    rec 0= 0= IF 0 EXIT THEN
-   CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n mode:n :}
+   CHECKER-PKG-CONTEXT {: pkg:str mode:n :}
    mode CHECKER-PACKAGE-NONE = IF 0 EXIT THEN
-   CHECKER-QPKG$ pkg pkgu STR:=CI 0= IF 0 EXIT THEN
+   CHECKER-QPKG$ pkg STR:=CI 0= IF 0 EXIT THEN
    CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? RECOVERY-LIVE ;
 
-: RECOVERY-BIND ( str ^n -- n ) {: a:^ u:n rec:^ :}
-   a u CHECKER-QUALIFIED? IF rec RECOVERY-QUALIFIED EXIT THEN
+: RECOVERY-BIND ( str ^n -- n ) {: s:str rec:^ :}
+   s CHECKER-QUALIFIED? IF rec RECOVERY-QUALIFIED EXIT THEN
    rec RECOVERY-RANK {: rank:n :}
-   CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n mode:n :}
+   CHECKER-PKG-CONTEXT {: pkg:str mode:n :}
    mode CHECKER-PACKAGE-NONE <> IF
       rank RB-PRIVATE > IF
-         pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? RECOVERY-LIVE
+         pkg SYM-PRIVATE s CHECKER-PKG-SYM? RECOVERY-LIVE
          dup 0 <> IF EXIT THEN drop
       THEN
       rank RB-PUBLIC > IF
-         pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? RECOVERY-LIVE
+         pkg SYM-PUBLIC s CHECKER-PKG-SYM? RECOVERY-LIVE
          dup 0 <> IF EXIT THEN drop
       THEN
       data-base ENCLOSING:PUB + @ 0 <> IF
          rank RB-ENCLOSING-PRIVATE > IF
-            pkg pkgu TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? RECOVERY-LIVE
+            pkg TOP$ SYM-PRIVATE s CHECKER-PKG-SYM? RECOVERY-LIVE
             dup 0 <> IF EXIT THEN drop
          THEN
          rank RB-ENCLOSING-PUBLIC > IF
-            pkg pkgu TOP$ SYM-PUBLIC a u CHECKER-PKG-SYM? RECOVERY-LIVE
+            pkg TOP$ SYM-PUBLIC s CHECKER-PKG-SYM? RECOVERY-LIVE
             dup 0 <> IF EXIT THEN drop
          THEN
       THEN
    THEN
    rank RB-GLOBAL > IF
-      a u CHECKER-GLOBAL-SYM? RECOVERY-LIVE dup 0 <> IF EXIT THEN drop
+      s CHECKER-GLOBAL-SYM? RECOVERY-LIVE dup 0 <> IF EXIT THEN drop
    THEN
-   rank RB-NONE = IF a u RECOVERY-USED-BIND EXIT THEN
+   rank RB-NONE = IF s RECOVERY-USED-BIND EXIT THEN
    0 ;
 
 \ Reads a bound record's facts text into the stores the first time a lookup binds
@@ -16357,45 +16365,45 @@ package CHECK
 
 EXPORT CHECKER-RESOLVE:USED-ONLY?
 
-: LIVE-BIND ( ^u8 n -- n n ) {: a:^ u:n :}
+: LIVE-BIND ( str -- n n ) {: w:str :}
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    0 BIND-SEEDED !
-   a u CHECKER-QUALIFIED? 0= IF
+   w CHECKER-QUALIFIED? 0= IF
       CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
-      AUTHORITY 0= TOP-STEP @ 0= and IF 2drop drop 0 EXIT-STATUS:REJECTED EXIT THEN
-      2drop drop
+      AUTHORITY 0= TOP-STEP @ 0= and IF drop drop 0 EXIT-STATUS:REJECTED EXIT THEN
+      drop drop
    THEN
-   a u CK-PENDING-SYM {: pending:n :}
+   w CK-PENDING-SYM {: pending:n :}
    pending 0 <> IF
       ndict@ BIND-PEND-IX !  pending USIG-NEWEST BIND-PEND-OFF !
       \ The checker may still call this declaration pending after the engine
       \ has published its record. A later name query could bind another.
-      a u HORIZON-FIND {: held:^ used:^ used2:^ flags:n :}
+      w HORIZON-FIND {: held:^ used:^ used2:^ flags:n :}
       held 0= 0= flags SCOPE-FIND-AMBIGUOUS and 0= and IF
          held CK-REC-WID WL:GLOBAL? 0= used 0= or IF held BIND-REC ! THEN
       THEN
       pending 0 EXIT
    THEN
-   a u HORIZON-FIND {: rec:^ used:^ used2:^ flags:n :}
+   w HORIZON-FIND {: rec:^ used:^ used2:^ flags:n :}
    flags BIND-SCOPE-SEEDED and BIND-SEEDED !
    MULTI-ERR? BODY-WALK @ WRITE-WINDOW @ or 0 <> and IF
-      a u rec RECOVERY-BIND {: rsym:n :}
+      w rec RECOVERY-BIND {: rsym:n :}
       rsym 0 <> IF rsym 0 EXIT THEN
    THEN
    rec used USED-ONLY? IF -1 WALK-USED ! THEN
    flags SCOPE-FIND-AMBIGUOUS and 0 <> {: two:bool :}
    rec 0= IF
-      two IF -1 USING-UNBOUND !  a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
-      a u CHECKER-QUALIFIED? IF 0 0 EXIT THEN
-      a u CK-AXIOM-SYM 0 EXIT
+      two IF -1 USING-UNBOUND !  w CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
+      w CHECKER-QUALIFIED? IF 0 0 EXIT THEN
+      w CK-AXIOM-SYM 0 EXIT
    THEN
    rec FACTS-READ-XT
-   a u rec CK-REC-BIND {: sym:n :}
+   w rec CK-REC-BIND {: sym:n :}
    rec BIND-REC !
    rec CK-REC-WID WL:GLOBAL? IF                       \ a used public exporting the bound global's tail
-      two IF a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
+      two IF w CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
       used 0= 0= IF
-         a u CK-USED-MARK
+         w CK-USED-MARK
          used CK-REC-WID CK-USED-INDEX {: ix:n :}
          0  ix CK-SHADOW-CAPTURE  EXIT
       THEN
@@ -16403,42 +16411,42 @@ EXPORT CHECKER-RESOLVE:USED-ONLY?
    -1 WALK-REC !
    sym 0 ;
 
-\ s su is both a global word and a public of used package p pu. Writes the
+\ s is both a global word and a public of used package p. Writes the
 \ record through its help and leaves it open: the caller ends it.
 : USING-SHADOW-REJECT ( str str -- )
-   {: s:^ su:n p:^ pu:n :}
-   p pu PACKAGE-NAME$ {: pa:^ pn:n :}
-   p pu USED-QUAL {: qa:^ qn:n reach:bool :}
+   {: s:str p:str :}
+   p PACKAGE-NAME$ {: ps:str :}
+   p USED-QUAL {: q:str reach:bool :}
    s" E-USING-SHADOW-GLOBAL" REJECTION:OPEN
-   96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   96 REJECTION:EMIT1  s REJECTION:EMIT-STR
    s" ` is both a global word and a public of used package `"
    REJECTION:EMIT-STR
-   pa pn REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   s su REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
-   s" global" REJECTION:NOTE  s su REJECTION:EMIT-STR
-   s" package" REJECTION:NOTE  pa pn s su EMIT-QUALIFIED
+   ps REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   s REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
+   s" global" REJECTION:NOTE  s REJECTION:EMIT-STR
+   s" package" REJECTION:NOTE  ps s EMIT-QUALIFIED
    REJECTION:HELP
    reach 0= IF
       s" rename one of the two: the global word has no qualified form, "
       REJECTION:EMIT-STR
-      s" and the part `" REJECTION:EMIT-STR  qa qn PART-ROW CK-REC-NAME$ REJECTION:EMIT-STR
-      s" ` hides package `" REJECTION:EMIT-STR  qa qn REJECTION:EMIT-STR
+      s" and the part `" REJECTION:EMIT-STR  q PART-ROW CK-REC-NAME$ REJECTION:EMIT-STR
+      s" ` hides package `" REJECTION:EMIT-STR  q REJECTION:EMIT-STR
       s" ` here" REJECTION:EMIT-STR  EXIT
    THEN
-   s" write `" REJECTION:EMIT-STR  qa qn s su EMIT-QUALIFIED
+   s" write `" REJECTION:EMIT-STR  q s EMIT-QUALIFIED
    s" ` to call the package's word, or rename one of the two: "
    REJECTION:EMIT-STR
    s" the global word has no qualified form" REJECTION:EMIT-STR ;
 
-\ The bare token s su is public in each package whose using slot is set in
+\ The bare token s is public in each package whose using slot is set in
 \ mask. Writes the record through its help and leaves it open: the caller ends
 \ it.
-: USING-AMBIGUOUS-REJECT ( str n -- ) {: s:^ su:n mask:n :}
+: USING-AMBIGUOUS-REJECT ( str n -- ) {: s:str mask:n :}
    s" E-USING-AMBIGUOUS" REJECTION:OPEN
-   96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   96 REJECTION:EMIT1  s REJECTION:EMIT-STR
    s" ` is public in more than one used package" REJECTION:EMIT-STR
-   s su REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
-   s" word" s su mask UPKG-HELP ;
+   s REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
+   s" word" s mask UPKG-HELP ;
 
 ;package
 package CHECKER-RESOLVE
@@ -16446,7 +16454,7 @@ EXPORT CHECK:USING-UNBOUND
 EXPORT CHECK:WALK-REC
 EXPORT CHECK:WALK-USED
 EXPORT CHECK:LIVE-BIND
-: WALK ( ^u8 n -- n n )
+: WALK ( str -- n n )
    0 USING-UNBOUND !  0 WALK-REC !  0 WALK-USED !
    LIVE-BIND ;
 
@@ -16466,23 +16474,23 @@ EXPORT CHECK:USING-AMBIGUOUS-REJECT
 EXPORT CHECK:OK
 \ Inside a body token's walk (USING-HOLD) a using rejection renders nothing and
 \ throws nothing: the scan's end raises it if the definition is rejected for it.
-: RAISE ( ^u8 n n -- )
-   {: s:^ su:n why:n :}
+: RAISE ( str n -- )
+   {: s:str why:n :}
    why EXIT-STATUS:REJECTED = IF CHECKER-PKG-CONTEXT-REJECT THEN
    USING-HOLD @ IF
       CUSING @ 0 <> IF EXIT THEN
-      s USH-TOK-A !  su USH-TOK-U !
+      s STR:DATA USH-TOK-A !  s STR:LEN USH-TOK-U !
       why E-USING-SHADOW-GLOBAL = IF RF-USHADOW ELSE RF-UAMBIG THEN CUSING !
       CRTGT @ 0 <>  USING-UNBOUND @ 0 <>  or IF CUSING @ CREJECT! THEN
       0 OK !  -1 FAILSET !
       EXIT
    THEN
    why E-USING-SHADOW-GLOBAL = IF
-      s su SYM-STR USH-PKG-A @ + USH-PKG-U @ USING-SHADOW-REJECT
+      s SYM-STR USH-PKG-A @ + USH-PKG-U @ >str USING-SHADOW-REJECT
       EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    why E-USING-AMBIGUOUS = IF
-      s su CK-USED-MASK @ USING-AMBIGUOUS-REJECT
+      s CK-USED-MASK @ USING-AMBIGUOUS-REJECT
       EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    s" checker: CHECKER-RESOLVE:RAISE got a code LIVE-BIND never answers" EXIT-STATUS:INTERNAL die ;
@@ -16513,25 +16521,25 @@ EXPORT CHECKER-RESOLVE:RAISE
    REJECTION @ USING-KIND? 0= IF EXIT THEN
    UHELD-PKG-A @ USH-PKG-A !  UHELD-PKG-U @ USH-PKG-U !
    UHELD-MASK @ CK-USED-MASK !
-   UHELD-TOK-A @ UHELD-TOK-U @
+   UHELD-TOK-A @ UHELD-TOK-U @ >str
    REJECTION @ RF-USHADOW = IF E-USING-SHADOW-GLOBAL ELSE E-USING-AMBIGUOUS THEN
    RAISE ;
 
 EXPORT CHECKER-RESOLVE:WALK
 
-\ `a u` is the token to resolve, `s su` its spelling for a rejection to name.
+\ `t` is the token to resolve, `s` its spelling for a rejection to name.
 : CHECKER-BIND-WHY ( str str -- n n )
-   {: a:^ u:n s:^ su:n :}
-   a u WALK {: sym:n why:n :}
-   why 0 <> IF s su why RAISE THEN
+   {: t:str s:str :}
+   t WALK {: sym:n why:n :}
+   why 0 <> IF s why RAISE THEN
    sym why ;
 
 : CHECKER-BIND ( str str -- n )
    CHECKER-BIND-WHY drop ;
 
 : CHECKER-FIND-ACTIVE-SYM ( str -- n )
-   {: a:^ u:n :}
-   a u a u CHECKER-BIND ;
+   {: s:str :}
+   s s CHECKER-BIND ;
 
 : CHECKER-TRUSTED-TICK? ( str -- bool )
    CHECKER-FIND-ACTIVE-SYM PRIM-TRUSTED-SYM? ;
@@ -16551,10 +16559,10 @@ package CHECK
 \ The symbol the walk binds, 0 when it binds nothing, and true when it deferred
 \ one of those two rejections: a name the load rejects, not one it lacks.
 : CHECKER-QUIET-WALK ( str -- n bool )
-   {: a:^ u:n :}
-   a u WALK {: sym:n why:n :}
+   {: s:str :}
+   s WALK {: sym:n why:n :}
    why 0= IF sym RES-FALSE EXIT THEN
-   why FQSYM-DEFERRED? 0= IF a u why RAISE THEN
+   why FQSYM-DEFERRED? 0= IF s why RAISE THEN
    0 RES-TRUE ;
 
 : CHECKER-FIND-QUIET-SYM ( str -- n )
@@ -16567,8 +16575,8 @@ package CHECK
 
 : CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
 
-: CHECKER-UNSEEN-MARK-IN ( str n -- ) {: pkg:^ pkgu:n vis:n :}
-   pkg pkgu vis UNSEEN-MARK$ CHECKER-PKG-SYM drop ;
+: CHECKER-UNSEEN-MARK-IN ( str n -- ) {: pkg:str vis:n :}
+   pkg vis UNSEEN-MARK$ CHECKER-PKG-SYM drop ;
 
 \ `unseen NAME` marks the one word NAME the run may define, and `unresolved
 \ nominal type NAME` the one type.
@@ -16576,23 +16584,23 @@ PTR-VARIABLE MARK-NAME-P        \ the mark, grown on demand
 SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
 
 \ PREFIX then NAME, valid until the next call.
-: MARK-NAME$ ( str str -- str ) {: pa:^ pu:n a:^ u:n :}
-   MARK-NAME-P MARK-NAME-CAP pu u + ARENA-BYTES-ENSURE
+: MARK-NAME$ ( str str -- str ) {: ps:str s:str :}
+   MARK-NAME-P MARK-NAME-CAP ps STR:LEN s STR:LEN + ARENA-BYTES-ENSURE
    MARK-NAME-P @ {: buf:^ :}
-   pa buf pu ARENA-COPY
-   a buf pu + u ARENA-COPY
-   buf pu u + ;
+   ps STR:DATA buf ps STR:LEN >str ARENA-COPY
+   s STR:DATA buf ps STR:LEN + s STR:LEN >str ARENA-COPY
+   buf ps STR:LEN s STR:LEN + >str ;
 
-: UNSEEN-NAME$ ( str -- str ) s" unseen " 2swap MARK-NAME$ ;
-: TYPE-MARK-NAME$ ( str -- str ) s" unresolved nominal type " 2swap MARK-NAME$ ;
+: UNSEEN-NAME$ ( str -- str ) s" unseen " swap MARK-NAME$ ;
+: TYPE-MARK-NAME$ ( str -- str ) s" unresolved nominal type " swap MARK-NAME$ ;
 
 \ Marks NAME in the wordlist a definition of it would land in.
-: CHECKER-UNSEEN-NAME ( str -- ) {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? IF
+: CHECKER-UNSEEN-NAME ( str -- ) {: s:str :}
+   s CHECKER-QUALIFIED? IF
       CHECKER-QPKG$ CHECKER-QTAIL$ UNSEEN-NAME$
       CHECKER-PUBLIC-SYM drop EXIT
    THEN
-   a u UNSEEN-NAME$ CHECKER-RECORD-SYM drop ;
+   s UNSEEN-NAME$ CHECKER-RECORD-SYM drop ;
 
 \ Whether the type just read fails only on a name the run may still define.
 : STORAGE-UNRESOLVED? ( -- bool )
@@ -16601,92 +16609,92 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
 \ A missing nominal leaves no allocation or row; for a layout buffer (lay), a
 \ bare or pointed-to xt or another unstorable type is STG-LAYOUT-TYPE.
 : STORAGE-TYPE-REJECT ( str str bool -- )
-   {: na:^ nu:n ta:^ tu:n lay:bool :}
-   tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REJECT EXIT THEN
+   {: ns:str ts:str lay:bool :}
+   ts STR:LEN 0= IF ns ns STG-NO-TYPE CHECKER-STORAGE-REJECT EXIT THEN
    STORAGE-UNRESOLVED? IF E-CHECKER-STORAGE-UNRESOLVED throw THEN
-   SGBAD-AMBIG? IF na nu SGBAD-A @ SGBAD-U @ STGR-AMBIG EXIT THEN
+   SGBAD-AMBIG? IF ns SGBAD-A @ SGBAD-U @ >str STGR-AMBIG EXIT THEN
    SGBAD-UNKNOWN? IF
-      na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REJECT EXIT
+      ns SGBAD-A @ SGBAD-U @ >str STG-UNKNOWN-TYPE CHECKER-STORAGE-REJECT EXIT
    THEN
-   SGBAD @ IF na nu ta tu STGR-MALFORMED EXIT THEN
+   SGBAD @ IF ns ts STGR-MALFORMED EXIT THEN
    LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE
    LBI-XT @ IF STG-XT-TYPE ELSE
    LBI-WIDTH @ IF STG-WIDTH-TYPE ELSE
    LBI-EFFECT @ IF STG-EFFECT-TYPE ELSE
    LBI-LINEAR @ IF STG-LINEAR-TYPE ELSE STG-UNSTORABLE-TYPE
    THEN THEN THEN THEN THEN {: why:n :}
-   na nu ta tu
+   ns ts
    why STG-XT-TYPE =  LBI-T @ LAYOUT-PARAM? 0= and
    why STG-UNSTORABLE-TYPE = or  lay and
    IF STG-LAYOUT-TYPE ELSE why THEN
    CHECKER-STORAGE-REJECT ;
 
-: CHECKER-STORAGE-TYPE-REJECT ( str str -- ) {: na:^ nu:n ta:^ tu:n :}
-   STORAGE-UNRESOLVED? IF na nu CHECKER-UNSEEN-NAME THEN
-   na nu ta tu RES-FALSE STORAGE-TYPE-REJECT ;
+: CHECKER-STORAGE-TYPE-REJECT ( str str -- ) {: ns:str ts:str :}
+   STORAGE-UNRESOLVED? IF ns CHECKER-UNSEEN-NAME THEN
+   ns ts RES-FALSE STORAGE-TYPE-REJECT ;
 
-: CHECKER-LAYOUT-TYPE-REJECT ( str str -- ) {: na:^ nu:n ta:^ tu:n :}
-   STORAGE-UNRESOLVED? IF na nu CHECKER-UNSEEN-NAME THEN
-   na nu ta tu RES-TRUE STORAGE-TYPE-REJECT ;
+: CHECKER-LAYOUT-TYPE-REJECT ( str str -- ) {: ns:str ts:str :}
+   STORAGE-UNRESOLVED? IF ns CHECKER-UNSEEN-NAME THEN
+   ns ts RES-TRUE STORAGE-TYPE-REJECT ;
 
 \ Marks the nominal type NAME, which the run may register, where its
 \ declaration lands.
 : CHECKER-TYPE-MARK ( str -- ) TYPE-MARK-NAME$ CHECKER-RECORD-SYM drop ;
 
 \ Whether the wordlist holds the nominal-types mark or NAME's own.
-: TYPE-MARK-IN? ( str n str -- bool ) {: pkg:^ pkgu:n vis:n a:^ u:n :}
-   pkg pkgu vis TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
-   pkg pkgu vis a u TYPE-MARK-NAME$ CHECKER-PKG-SYM? 0 <> ;
+: TYPE-MARK-IN? ( str n str -- bool ) {: pkg:str vis:n s:str :}
+   pkg vis TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+   pkg vis s TYPE-MARK-NAME$ CHECKER-PKG-SYM? 0 <> ;
 
 \ Asked only after the nominal resolver found no family.
-: CHECKER-TYPE-MARK-COVERS? ( str -- bool ) {: a:^ u:n :}
+: CHECKER-TYPE-MARK-COVERS? ( str -- bool ) {: s:str :}
    RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
-   a u CHECKER-QUALIFIED? IF
+   s CHECKER-QUALIFIED? IF
       CHECKER-QPKG$ SYM-PUBLIC CHECKER-QTAIL$ TYPE-MARK-IN? IF RES-TRUE EXIT THEN
       CHECKER-QPKG$ SIG-SCOPE$ STR:=CI IF
          CHECKER-QPKG$ SYM-PRIVATE CHECKER-QTAIL$ TYPE-MARK-IN? EXIT
       THEN RES-FALSE EXIT
    THEN
    CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
-   SIG-SCOPE$ {: pkg:^ pkgu:n :}
-   pkgu 0 <> IF
-      pkg pkgu SYM-PRIVATE a u TYPE-MARK-IN? IF RES-TRUE EXIT THEN
-      pkg pkgu SYM-PUBLIC a u TYPE-MARK-IN? IF RES-TRUE EXIT THEN
-      pkg pkgu CHECKER-COLON-SCAN drop 0 <> IF
-         pkg pkgu TOP$ SYM-PRIVATE a u TYPE-MARK-IN? IF RES-TRUE EXIT THEN
+   SIG-SCOPE$ {: pkg:str :}
+   pkg STR:LEN 0 <> IF
+      pkg SYM-PRIVATE s TYPE-MARK-IN? IF RES-TRUE EXIT THEN
+      pkg SYM-PUBLIC s TYPE-MARK-IN? IF RES-TRUE EXIT THEN
+      pkg CHECKER-COLON-SCAN drop 0 <> IF
+         pkg TOP$ SYM-PRIVATE s TYPE-MARK-IN? IF RES-TRUE EXIT THEN
       THEN
    THEN
-   s" " SYM-GLOBAL a u TYPE-MARK-IN? IF RES-TRUE EXIT THEN
+   s" " SYM-GLOBAL s TYPE-MARK-IN? IF RES-TRUE EXIT THEN
    CHECKER-USING-N 0 ?DO
-      i CHECKER-USING$ SYM-PUBLIC a u TYPE-MARK-IN? IF
+      i CHECKER-USING$ SYM-PUBLIC s TYPE-MARK-IN? IF
          RES-TRUE unloop EXIT
       THEN
    LOOP
    RES-FALSE ;
 
 \ Whether the wordlist holds the unseen-products mark or NAME's own.
-: UNSEEN-IN? ( str n str -- bool ) {: pkg:^ pkgu:n vis:n a:^ u:n :}
-   pkg pkgu vis UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
-   pkg pkgu vis a u UNSEEN-NAME$ CHECKER-PKG-SYM? 0 <> ;
+: UNSEEN-IN? ( str n str -- bool ) {: pkg:str vis:n s:str :}
+   pkg vis UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+   pkg vis s UNSEEN-NAME$ CHECKER-PKG-SYM? 0 <> ;
 
 \ Every wordlist CHECKER-FIND-ACTIVE-SYM walks for a token.
-: UNSEEN-COVERS? ( str -- bool ) {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? IF
+: UNSEEN-COVERS? ( str -- bool ) {: s:str :}
+   s CHECKER-QUALIFIED? IF
       CHECKER-QPKG$ SYM-PUBLIC CHECKER-QTAIL$ UNSEEN-IN? IF RES-TRUE EXIT THEN
    THEN
    CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
-   CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n mode:n :}
+   CHECKER-PKG-CONTEXT {: pkg:str mode:n :}
    mode CHECKER-PACKAGE-NONE <> IF
-      pkg pkgu SYM-PRIVATE a u UNSEEN-IN? IF RES-TRUE EXIT THEN
-      pkg pkgu SYM-PUBLIC a u UNSEEN-IN? IF RES-TRUE EXIT THEN
+      pkg SYM-PRIVATE s UNSEEN-IN? IF RES-TRUE EXIT THEN
+      pkg SYM-PUBLIC s UNSEEN-IN? IF RES-TRUE EXIT THEN
       data-base ENCLOSING:PUB + @ 0 <> IF
-         pkg pkgu TOP$ SYM-PRIVATE a u UNSEEN-IN? IF RES-TRUE EXIT THEN
-         pkg pkgu TOP$ SYM-PUBLIC a u UNSEEN-IN? IF RES-TRUE EXIT THEN
+         pkg TOP$ SYM-PRIVATE s UNSEEN-IN? IF RES-TRUE EXIT THEN
+         pkg TOP$ SYM-PUBLIC s UNSEEN-IN? IF RES-TRUE EXIT THEN
       THEN
    THEN
-   s" " SYM-GLOBAL a u UNSEEN-IN? IF RES-TRUE EXIT THEN
+   s" " SYM-GLOBAL s UNSEEN-IN? IF RES-TRUE EXIT THEN
    CK-USE-SCAN-N 0 ?DO
-      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u UNSEEN-IN? IF unloop RES-TRUE EXIT THEN
+      i CK-USE-SLOT i CK-USE-LEN@ >str SYM-PUBLIC s UNSEEN-IN? IF unloop RES-TRUE EXIT THEN
    LOOP
    RES-FALSE ;
 
@@ -16708,8 +16716,8 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
    THEN
    FEP-HIT? ;
 
-: CHECKER-FIND-USIG ( str -- bool ) {: a:^ u:n :}
-   a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
+: CHECKER-FIND-USIG ( str -- bool ) {: s:str :}
+   s CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
 
 : CHECKER-ROWS-END ( -- n ) UEND @ ;
 
@@ -16722,9 +16730,9 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
       mark USIGS-RESTORE-END
    THEN ;
 
-: CHECKER-FIND-ACTIVE-SIG ( str -- ) {: a:^ u:n :}
+: CHECKER-FIND-ACTIVE-SIG ( str -- ) {: s:str :}
    FEP-CLEAR
-   a u CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM drop ;
+   s CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM drop ;
 
 : FIND-SIG-SYM ( n -- bool ) {: sym:n :}
    FEP-CLEAR
@@ -16941,7 +16949,7 @@ variable BWIN-N   variable BWIN-CAP   variable UWIN-VALID
    THEN
    i 1+ BWIN-N ! ;
 
-: REC-BINDING-ROW ( n -- str ) {: ord:n :}
+: REC-BINDING-ROW ( n -- ^u8 n ) {: ord:n :}
    ord 0< ord REC-IX @ >= or IF
       CHECKER-OWNER-ABI:E-COMP-BINDING throw THEN
    0 BWIN-N @
@@ -16954,7 +16962,7 @@ variable BWIN-N   variable BWIN-CAP   variable UWIN-VALID
    THEN
    NULL-PTR 0 ;
 
-: REC-UNJUDGED-BINDING ( n -- str )
+: REC-UNJUDGED-BINDING ( n -- ^u8 n )
    UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:E-COMP-BINDING throw THEN
    REC-BINDING-ROW ;
 
@@ -17054,7 +17062,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 
 \ Match its selected effect as well as the seeded record so a user refinement
 \ cannot inherit that machine fact.
-: SELECTED-PRIM-ABI? ( str -- bool )
+: SELECTED-PRIM-ABI? ( ^u8 n -- bool )
    {: row:^ eff:n :}
    row CHECKER-OWNER-ABI:BOUND-CTL cells + CELL-VIEW @
       CHECKER-OWNER-ABI:BOUND-SEEDED and 0= IF RES-FALSE EXIT THEN
@@ -17372,20 +17380,20 @@ private
    CHECKER-RECORD-SYM RES-TRUE DFER-ADD-SYM ;
 
 ;package
-\ Rejects the record name a u, placed at the token at atu: a name given as a
+\ Rejects the record name s, placed at token AT: a name given as a
 \ string, as `define-word`'s, is not the token the load stands on.
 package CHECKER-RESOLVE
 private
-: REJECT-QUALIFIED ( str str -- ) {: a:^ u:n at:^ atu:n :}
+: REJECT-QUALIFIED ( str str -- ) {: s:str at:str :}
    s" E-BAD-QUALIFIED-RECORD" REJECTION:OPEN
-   s" the record name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" the record name `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` has more than one `:`" REJECTION:EMIT-STR
-   at atu REJECTION:AT  s" malformed qualified name" REJECTION:EMIT-STR
+   at REJECTION:AT  s" malformed qualified name" REJECTION:EMIT-STR
    s" rule" REJECTION:NOTE
    s" one `:` not at an edge selects a package, and a second `:` names no word"
    REJECTION:EMIT-STR
    REJECTION:HELP
-   s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" write `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` with one `:` between the package and the word, as `PKG:WORD`"
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
@@ -17396,21 +17404,21 @@ EXPORT CHECKER-RESOLVE:REJECT-QUALIFIED
 \ No row may carry 0: a defer row keyed 0 is DFERS' terminator and hides every
 \ later row, and an effect row keyed 0 is anonymous.
 : CHECKER-RECORD-NAME-AT ( str str -- str )
-   {: a:^ u:n at:^ atu:n :}
-   a u CHECKER-RECORD-SYM {: sym:n :}
-   sym 0= IF a u at atu REJECT-QUALIFIED THEN
+   {: s:str at:str :}
+   s CHECKER-RECORD-SYM {: sym:n :}
+   sym 0= IF s at REJECT-QUALIFIED THEN
    sym CHECKER-REC-SYM !
-   a u ;
+   s ;
 
 : CHECKER-RECORD-NAME ( str -- str )
-   2dup CHECKER-RECORD-NAME-AT ;
+   dup CHECKER-RECORD-NAME-AT ;
 
 
 : CHECKER-REC-NAME-AT! ( str str -- )
-   CHECKER-RECORD-NAME-AT CHECKER-REC-U ! CHECKER-REC-A ! ;
+   CHECKER-RECORD-NAME-AT dup STR:LEN CHECKER-REC-U ! STR:DATA CHECKER-REC-A ! ;
 
 : CHECKER-REC-NAME! ( str -- )
-   2dup CHECKER-REC-NAME-AT! ;
+   dup CHECKER-REC-NAME-AT! ;
 
 : CHECKER-REC-A@ ( -- ^u8 )
    CHECKER-REC-A @ ;
@@ -17418,21 +17426,21 @@ EXPORT CHECKER-RESOLVE:REJECT-QUALIFIED
 : CHECKER-REC-U@ ( -- n )
    CHECKER-REC-U @ ;
 
-\ A U: the armed name, or the part of it the record is kept under.
+\ S: the armed name, or the part of it the record is kept under.
 : DL-TAKE-AS ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    DL-NEW @ {: rec1:n :}
    0 DL-NEW !
    rec1 0= IF EXIT THEN
    DL-ON @ IF
-      rec1 a u DL-VISIT @ DL-START @ DL-END @ DL-ROW-NAMED EXIT
+      rec1 s DL-VISIT @ DL-START @ DL-END @ DL-ROW-NAMED EXIT
    THEN
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF
-      rec1 CHECKER-REC-A@ CHECKER-REC-U@ ROW-TAIL$ 0 0 0 DL-ROW-NAMED
+      rec1 CHECKER-REC-A@ CHECKER-REC-U@ >str ROW-TAIL$ 0 0 0 DL-ROW-NAMED
    THEN ;
 
 : DL-TAKE ( -- )
-   DL-NA @ DL-NU @ DL-TAKE-AS ;
+   DL-NA @ DL-NU @ >str DL-TAKE-AS ;
 
 EXPORT CHECKER-OVERLAY:DUPLICATE?
 EXPORT CHECKER-OVERLAY:LANDS-REC
@@ -17440,16 +17448,16 @@ EXPORT CHECKER-OVERLAY:LANDS-REC
 \ The duplicate guard of a certifying record. It interns nothing, and
 \ reads the facts NAME lands on first, so an unused engine word is found.
 : CHECKER-CERT-DUP? ( str -- bool )
-   {: a:^ u:n :}
+   {: s:str :}
    CHK-CAND @ 0 <>  CHK-PROBE @ 0 <>  and IF RES-FALSE EXIT THEN
-   a u DUPLICATE? IF RES-TRUE EXIT THEN
+   s DUPLICATE? IF RES-TRUE EXIT THEN
    CHK-CAND @ 0 <> IF
       PASS-FLOOR @ 0 <= IF RES-FALSE EXIT THEN
-      a u OWN-RECORD PASS-FLOOR @ >= EXIT
+      s OWN-RECORD PASS-FLOOR @ >= EXIT
    THEN
-   a u LANDS-REC {: rec:^ :}
+   s LANDS-REC {: rec:^ :}
    rec NULL-PTR <> IF rec FACTS-READ-XT THEN
-   a u CHECKER-RECORD-SYM? {: sym:n :}
+   s CHECKER-RECORD-SYM? {: sym:n :}
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym FEP-OFF@ 1 - PE-ROW-EFF? 0= ;
 
@@ -17465,9 +17473,9 @@ EXPORT CHECKER-OVERLAY:OTHER-SHAPE?
 : CHECKER-DEFINED-HERE? ( str -- bool )
    CHECKER-FIND-USIG ;
 
-\ The name t tu, the token that defines it again, is rejected.
+\ The name, the token that defines it again, is rejected.
 : CHECKER-DUP-DEFINITION ( str -- )
-   2dup REJECTION:DUPLICATE EXIT-STATUS:REJECTED REJECTION:STOP ;
+   dup REJECTION:DUPLICATE EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 global
 \ --- a package public whose own bare tail a private word of the package claims --
@@ -17486,15 +17494,15 @@ private
 \ scope. Nothing is interned: nothing is written yet. Answers the twin and the
 \ section the word is defined in; a qualified name is defined public.
 : SBA-PRIVATE-TWIN ( str -- n n )
-   {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? IF
+   {: s:str :}
+   s CHECKER-QUALIFIED? IF
       CHECKER-QPKG$ SYM-PRIVATE CHECKER-QTAIL$ CHECKER-PKG-SYM? SYM-VISIBLE
       CHECKER-PACKAGE-PUBLIC EXIT
    THEN
    CHECKER-QBAD-TOK @ IF 0 CHECKER-PACKAGE-NONE EXIT THEN
-   CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n vis:n :}
+   CHECKER-PKG-CONTEXT {: pkg:str vis:n :}
    vis CHECKER-PACKAGE-PUBLIC <>  vis CHECKER-PACKAGE-GLOBAL <>  and IF 0 vis EXIT THEN
-   pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-VISIBLE  vis ;
+   pkg SYM-PRIVATE s CHECKER-PKG-SYM? SYM-VISIBLE  vis ;
 
 \ The widths come from the check, not the store: the rule runs before the
 \ append, so the word has no row to read. Both sides are in cells, what the
@@ -17505,23 +17513,23 @@ private
    out REJECTION:EMIT-U  41 REJECTION:EMIT1 ;
 
 \ The public: the private twin's package, spelled by its row, and the
-\ definition's name as written, p pu. The twin's sym holds both folded.
-: SBA-PUBLIC ( n str -- ) {: sym:n p:^ pu:n :}
+\ definition's name as written, p. The twin's sym holds both folded.
+: SBA-PUBLIC ( n str -- ) {: sym:n p:str :}
    sym SYM-PKG$ PACKAGE-NAME$
-   p pu ROW-TAIL$ EMIT-QUALIFIED ;
+   p ROW-TAIL$ EMIT-QUALIFIED ;
 
 \ The word as its section names it: a global word bare, a public one qualified.
-: SBA-WORD ( n n str -- ) {: sym:n vis:n p:^ pu:n :}
-   vis CHECKER-PACKAGE-GLOBAL = IF p pu REJECTION:EMIT-STR EXIT THEN
-   sym p pu SBA-PUBLIC ;
+: SBA-WORD ( n n str -- ) {: sym:n vis:n p:str :}
+   vis CHECKER-PACKAGE-GLOBAL = IF p REJECTION:EMIT-STR EXIT THEN
+   sym p SBA-PUBLIC ;
 
 : SBA-SECTION$ ( n -- str ) {: vis:n :}
    vis CHECKER-PACKAGE-GLOBAL = IF s" global" EXIT THEN  s" public" ;
 
 : SCOPE-SYM-WID ( n -- n ) {: sym:n :}
-   sym SYM-PKG$ {: pkg:^ pkgu:n :}
-   pkgu 0= IF BOOT:GLOBAL-WL EXIT THEN
-   pkg pkgu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
+   sym SYM-PKG$ {: pkg:str :}
+   pkg STR:LEN 0= IF BOOT:GLOBAL-WL EXIT THEN
+   pkg BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec NULL-PTR = IF -1 EXIT THEN
    sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
    sym SYM-ROW SYM.VIS @ SYM-PRIVATE <> IF -1 EXIT THEN
@@ -17537,44 +17545,44 @@ private
    wid 0 < IF NULL-PTR EXIT THEN
    sym SYM-NAME$ wid CHECKER-RESOLVE:WL-PROBE ;
 
-\ Row name RA RU's last NU bytes, when they spell name NA NU and are the whole
-\ row name or follow a qualifier's `:`.
-: DECL-TAIL ( str str -- str bool ) {: ra:^ ru:n na:^ nu:n :}
-   nu ru > IF na nu RES-FALSE EXIT THEN
-   ra ru nu - + {: ta:^ :}
-   ta nu na nu STR:=CI 0= IF na nu RES-FALSE EXIT THEN
-   ta nu  ru nu = IF RES-TRUE EXIT THEN
-   ta 1 - c@ 58 = ;
+\ Row name RS's last bytes, when they spell name NS and are the whole row name
+\ or follow a qualifier's `:`.
+: DECL-TAIL ( str str -- str bool ) {: rs:str ns:str :}
+   ns STR:LEN rs STR:LEN > IF ns RES-FALSE EXIT THEN
+   rs STR:DATA rs STR:LEN ns STR:LEN - +  ns STR:LEN >str {: t:str :}
+   t ns STR:=CI 0= IF ns RES-FALSE EXIT THEN
+   t  rs STR:LEN ns STR:LEN = IF RES-TRUE EXIT THEN
+   t STR:DATA 1 - c@ 58 = ;
 
 \ The verifier compiles nothing, so only a declaration keeps the source's case;
 \ it may write a qualifier first.
 : SYM-SPELLING$ ( n -- str ) {: sym:n :}
    sym USIG-NEWEST-VISIBLE DL-ROW-OF {: i:n named:bool :}
    named IF
-      i DL-NAME$ sym SYM-NAME$ DECL-TAIL IF EXIT THEN 2drop
+      i DL-NAME$ sym SYM-NAME$ DECL-TAIL IF EXIT THEN drop
    THEN
    sym VIS-SYM-REC {: rec:^ :}
    rec NULL-PTR <> IF rec CK-REC-NAME$ EXIT THEN
    sym SYM-NAME$ ;
 
 \ The DECLARED rows and the name of the colon definition about to be published,
-\ then that name as written, p pu, where the record is placed.
+\ then that name as written, p, where the record is placed.
 : SHADOW-ARITY-CK ( n n str str -- )
-   {: din:n dout:n a:^ u:n p:^ pu:n :}
-   a u SBA-PRIVATE-TWIN {: priv:n vis:n :}
+   {: din:n dout:n s:str p:str :}
+   s SBA-PRIVATE-TWIN {: priv:n vis:n :}
    priv 0= IF EXIT THEN
    priv SBA-CELLS {: pin:n pout:n :}
    pin CELLS-NONE = pout CELLS-NONE = or IF EXIT THEN
    din ROW-CELLS dout ROW-CELLS {: nin:n nout:n :}
    nin pin =  nout pout =  and IF EXIT THEN
-   p pu RF-REJECTED PIN-REJECTED!   \ the definition's name, not the walk's token
+   p RF-REJECTED PIN-REJECTED!   \ the definition's name, not the walk's token
    s" E-SHADOWED-ARITY" REJECTION:OPEN
-   vis SBA-SECTION$ REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR  priv vis p pu SBA-WORD
+   vis SBA-SECTION$ REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR  priv vis p SBA-WORD
    s" ` has a different stack effect from its package's private `" REJECTION:EMIT-STR
    priv SYM-SPELLING$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   p pu REJECTION:AT
+   p REJECTION:AT
    s" its name binds the private word" REJECTION:EMIT-STR
-   vis SBA-SECTION$ REJECTION:NOTE  priv vis p pu SBA-WORD  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
+   vis SBA-SECTION$ REJECTION:NOTE  priv vis p SBA-WORD  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
    s" private" REJECTION:NOTE  priv SYM-SPELLING$ REJECTION:EMIT-STR  32 REJECTION:EMIT1  pin pout SBA-CELLS-TXT
    REJECTION:HELP
    s" declare the same stack effect on both, as the private word's `" REJECTION:EMIT-STR
@@ -17583,16 +17591,16 @@ private
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : USIG-CERT-ADMIT ( str str -- )
-   {: na:^ nu:n at:^ atu:n :}
-   na nu CTOR-EXTEND?-XT IF at atu CTOR-EXTEND-REJECT THEN
-   na nu CHECKER-CERT-DUP? IF at atu CHECKER-DUP-DEFINITION THEN
-   na nu at atu CHECKER-REC-NAME-AT!
+   {: ns:str at:str :}
+   ns CTOR-EXTEND?-XT IF at CTOR-EXTEND-REJECT THEN
+   ns CHECKER-CERT-DUP? IF at CHECKER-DUP-DEFINITION THEN
+   ns at CHECKER-REC-NAME-AT!
    0 DL-NEW ! ;
 
 : CHECKER-USIG-CERT-ADD ( str str -- )
-   {: sa:^ su:n na:^ nu:n :}
-   na nu na nu USIG-CERT-ADMIT
-   sa su na nu RES-TRUE USIG-ADD-AS drop
+   {: ss:str ns:str :}
+   ns ns USIG-CERT-ADMIT
+   ss ns RES-TRUE USIG-ADD-AS drop
    DL-TAKE ;
 
 EXPORT CHECKER-EFFECT-AUTHORITY:CERTIFIED?
@@ -17632,8 +17640,8 @@ PTR-VARIABLE OWNQ-P   variable OWNQ-CAP   variable OWNQ-N
 \ CHECK's publication of a declared signature. Its rejections were asked by
 \ PUBLISH-REJECTIONS before the definition's first write.
 : CHECKER-USIG-CERT-PARSED ( str -- )
-   {: na:^ nu:n :}
-   NMOFF @ TADDR nu 2dup CHECKER-REC-NAME-AT!
+   {: ns:str :}
+   NMOFF @ TADDR ns STR:LEN >str dup CHECKER-REC-NAME-AT!
    SG-ROWS-N @ 0 <> IF
       SG-ROWS-RESOLVE
       -1 SG-ROWS-PUBLISH !
@@ -17642,20 +17650,20 @@ PTR-VARIABLE OWNQ-P   variable OWNQ-CAP   variable OWNQ-N
        dup 0 <> IF throw THEN drop
    ELSE CHECKER-PUBLISH-PARSED THEN ;
 
-\ Publishes certified rows as built, under the signature text SA SU, which only
+\ Publishes certified rows as built, under the signature text SS, which only
 \ a rejection names. Only USIG-ADD-AS's depth bound can trip.
 : CHECKER-ROWS-PUBLISH ( str str n n n n bool -- )
-   {: sa:^ su:n na:^ nu:n din:n dout:n rin:n rout:n hasr:bool :}
-   na nu na nu USIG-CERT-ADMIT
-   sa su na nu  din dout rin rout  USIG-DEPTH-FITS? 0= IF DL-TAKE EXIT THEN
+   {: ss:str ns:str din:n dout:n rin:n rout:n hasr:bool :}
+   ns ns USIG-CERT-ADMIT
+   ss ns  din dout rin rout  USIG-DEPTH-FITS? 0= IF DL-TAKE EXIT THEN
    din KEEP-QUOTS  dout KEEP-QUOTS
    din dout rin rout hasr RES-TRUE E-ADD-EFFECT DL-TAKE ;
 
 \ Publishes a cast's certified rows as parsed: a reparse rejects a view pack
 \ and drops the marks a gate raised.
 : CHECKER-USIG-CERT-ROWS ( str str -- )
-   {: sa:^ su:n na:^ nu:n :}
-   sa su na nu  SGWIN @ SGWOUT @ SGWRIN @ SGWROUT @ SGHASR @  CHECKER-ROWS-PUBLISH ;
+   {: ss:str ns:str :}
+   ss ns  SGWIN @ SGWOUT @ SGWRIN @ SGWROUT @ SGHASR @  CHECKER-ROWS-PUBLISH ;
 
 $7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
 \ The scratch every stored type is spelled into in the checker's registration.
@@ -17672,10 +17680,10 @@ variable LBUF-INFO-W
    c LBUF-SIG-BUF LBUF-SIG-U @ + c!
    LBUF-SIG-U @ 1 + LBUF-SIG-U ! ;
 
-: LBUF-SIG-APP ( str -- ) {: a:^ u:n :}
+: LBUF-SIG-APP ( str -- ) {: s:str :}
    0 LBUF-SIG-I !
-   BEGIN LBUF-SIG-I @ u < WHILE
-      a LBUF-SIG-I @ + c@ LBUF-SIG-C,
+   BEGIN LBUF-SIG-I @ s STR:LEN < WHILE
+      s STR:DATA LBUF-SIG-I @ + c@ LBUF-SIG-C,
       LBUF-SIG-I @ 1 + LBUF-SIG-I !
    REPEAT ;
 
@@ -17699,124 +17707,124 @@ EXPORT CHECK:MK-CON
 EXPORT CHECK:MK-PUSH
 EXPORT CHECK:UNIFY-IN
 EXPORT CHECKER-RESOLVE:REJECTS?
-: BY-EFFECT? ( str -- bool ) {: a:^ u:n :}
-   a u REJECTS? IF RES-FALSE EXIT THEN
-   a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
+: BY-EFFECT? ( str -- bool ) {: s:str :}
+   s REJECTS? IF RES-FALSE EXIT THEN
+   s EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
    EFFECT-DIN-N 0 <> IF RES-TRUE EXIT THEN
    FEP @ E-INST-RESET
    EFFQ-DIN @ E-INST {: din:n :}
    EFFQ-DOUT @ E-INST  CC-N MK-CON din MK-PUSH  UNIFY-IN ;
 
 : COUNT-OK? ( str str n -- bool )
-   {: na:^ nu:n a:^ u:n width:n :}
-   u 0= IF na nu na nu STG-NO-COUNT CHECKER-STORAGE-REJECT RES-FALSE EXIT THEN
-   a u num-parse {: v:n flt:bool ok:bool :}
+   {: ns:str s:str width:n :}
+   s STR:LEN 0= IF ns ns STG-NO-COUNT CHECKER-STORAGE-REJECT RES-FALSE EXIT THEN
+   s num-parse {: v:n flt:bool ok:bool :}
    flt 0= ok and IF
       v width CHECKER-LBUF-EXTENT? IF RES-TRUE EXIT THEN
-      na nu a u STG-BAD-COUNT CHECKER-STORAGE-REJECT RES-FALSE EXIT
+      ns s STG-BAD-COUNT CHECKER-STORAGE-REJECT RES-FALSE EXIT
    THEN
-   a u BY-EFFECT? IF RES-TRUE EXIT THEN
-   na nu a u STG-COUNT-WORD CHECKER-STORAGE-REJECT RES-FALSE ;
+   s BY-EFFECT? IF RES-TRUE EXIT THEN
+   ns s STG-COUNT-WORD CHECKER-STORAGE-REJECT RES-FALSE ;
 ;package
 package CHECK
 
-: CHECKER-LBUF-SIG$ ( str -- str ) {: type:^ typeu:n :}
+: CHECKER-LBUF-SIG$ ( str -- str ) {: type:str :}
    0 LBUF-SIG-U !
    s" n -- ^" LBUF-SIG-APP
-   type typeu LBUF-SIG-APP
-   LBUF-SIG-BUF LBUF-SIG-U @ ;
+   type LBUF-SIG-APP
+   LBUF-SIG-BUF LBUF-SIG-U @ >str ;
 
 EXPORT CHECKER-LBUF:COUNT-OK?
 
 : CHECKER-DEFLAYOUT-BUFFER
    ( str str str -- )
-   {: type:^ typeu:n count:^ countu:n name:^ nameu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   type typeu CHECKER-LAYOUT-INFO 0= IF
+   {: type:str count:str name:str :}
+   name CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type CHECKER-LAYOUT-INFO 0= IF
       2drop
       STORAGE-UNRESOLVED? IF
-         name nameu count countu 1 COUNT-OK? 0= IF EXIT THEN
+         name count 1 COUNT-OK? 0= IF EXIT THEN
       THEN
-      name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT EXIT
+      name type CHECKER-LAYOUT-TYPE-REJECT EXIT
    THEN
    nip LBUF-INFO-W !
-   name nameu count countu LBUF-INFO-W @ COUNT-OK? 0= IF EXIT THEN
-   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+   name count LBUF-INFO-W @ COUNT-OK? 0= IF EXIT THEN
+   type CHECKER-LBUF-SIG$ name CHECKER-USIG-CERT-ADD ;
 
-: CHECKER-STORAGE-VAR-SIG$ ( str -- str ) {: type:^ typeu:n :}
+: CHECKER-STORAGE-VAR-SIG$ ( str -- str ) {: type:str :}
    0 LBUF-SIG-U !
    s" -- ^" LBUF-SIG-APP
-   type typeu LBUF-SIG-APP
-   LBUF-SIG-BUF LBUF-SIG-U @ ;
+   type LBUF-SIG-APP
+   LBUF-SIG-BUF LBUF-SIG-U @ >str ;
 
 : CHECKER-DEFTYPED-BUFFER
    ( str str str -- )
-   {: type:^ typeu:n count:^ countu:n name:^ nameu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   type typeu CHECKER-STORAGE-INFO 0= IF
+   {: type:str count:str name:str :}
+   name CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type CHECKER-STORAGE-INFO 0= IF
       drop
       STORAGE-UNRESOLVED? IF
-         name nameu count countu 1 COUNT-OK? 0= IF EXIT THEN
+         name count 1 COUNT-OK? 0= IF EXIT THEN
       THEN
-      name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+      name type CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    LBUF-INFO-W !
-   name nameu count countu LBUF-INFO-W @ COUNT-OK? 0= IF EXIT THEN
-   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+   name count LBUF-INFO-W @ COUNT-OK? 0= IF EXIT THEN
+   type CHECKER-LBUF-SIG$ name CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-DEFTYPED-VARIABLE
    ( str str -- )
-   {: type:^ typeu:n name:^ nameu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   type typeu CHECKER-STORAGE-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+   {: type:str name:str :}
+   name CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type CHECKER-STORAGE-INFO 0= IF
+      drop name type CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    drop                                    \ single cell: extent is one slot, width unused here
-   type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+   type CHECKER-STORAGE-VAR-SIG$ name CHECKER-USIG-CERT-ADD ;
 
 \ Byte-strided arrays (compiler workspace arrays, a task's slot rows) admit u8
 \ as well as stored cell types; their accessor keeps the ordinary typed signature.
 : CHECKER-DEFBYTE-BUFFER
    ( str str str -- )
-   {: type:^ typeu:n count:^ countu:n name:^ nameu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   type typeu CHECKER-DYNAMIC-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+   {: type:str count:str name:str :}
+   name CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type CHECKER-DYNAMIC-INFO 0= IF
+      drop name type CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    LBUF-INFO-W !
-   name nameu count countu LBUF-INFO-W @ COUNT-OK? 0= IF EXIT THEN
-   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+   name count LBUF-INFO-W @ COUNT-OK? 0= IF EXIT THEN
+   type CHECKER-LBUF-SIG$ name CHECKER-USIG-CERT-ADD ;
 
 
 : CHECKER-DEFCWORK-SPAN
    ( str str str -- )
-   {: type:^ typeu:n count:^ countu:n name:^ nameu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   type typeu CHECKER-DYNAMIC-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+   {: type:str count:str name:str :}
+   name CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type CHECKER-DYNAMIC-INFO 0= IF
+      drop name type CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    LBUF-INFO-W !
-   name nameu count countu LBUF-INFO-W @ COUNT-OK? 0= IF EXIT THEN
-   type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+   name count LBUF-INFO-W @ COUNT-OK? 0= IF EXIT THEN
+   type CHECKER-STORAGE-VAR-SIG$ name CHECKER-USIG-CERT-ADD ;
 
 \ A workspace variable lives in the same moving mapping as the arrays, so its
 \ element must pass CHECKER-DYNAMIC-INFO before the typed-variable rules.
 : CHECKER-DEFCWORK-VARIABLE ( str str -- )
-   {: type:^ typeu:n name:^ nameu:n :}
-   type typeu CHECKER-DYNAMIC-INFO nip IF
-      type typeu name nameu CHECKER-DEFTYPED-VARIABLE EXIT
+   {: type:str name:str :}
+   type CHECKER-DYNAMIC-INFO nip IF
+      type name CHECKER-DEFTYPED-VARIABLE EXIT
    THEN
-   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   name nameu type typeu CHECKER-STORAGE-TYPE-REJECT ;
+   name CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   name type CHECKER-STORAGE-TYPE-REJECT ;
 
 \ A task's single slot admits what a storage definer's declaration line admits.
 : CHECKER-DEFSLOT ( str str -- )
-   {: type:^ typeu:n name:^ nameu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   type typeu CHECKER-DYNAMIC-INFO nip 0= IF
-      name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+   {: type:str name:str :}
+   name CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type CHECKER-DYNAMIC-INFO nip 0= IF
+      name type CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
-   type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+   type CHECKER-STORAGE-VAR-SIG$ name CHECKER-USIG-CERT-ADD ;
 
 \ The allocator binds the actual generated accessor only after its DATA cells
 \ exist. A verifier's projected signature, an alias, or an imported effect has
@@ -17854,105 +17862,105 @@ variable LBUF-NM-I
 
 : LBUF-NM-BUF ( -- ^u8 ) LBUF-NM-P @ ;
 
-: LBUF-NM-APP ( str -- ) {: a:^ u:n :}
-   LBUF-NM-P LBUF-NM-CAP LBUF-NM-U @ u + ARENA-BYTES-ENSURE
+: LBUF-NM-APP ( str -- ) {: s:str :}
+   LBUF-NM-P LBUF-NM-CAP LBUF-NM-U @ s STR:LEN + ARENA-BYTES-ENSURE
    0 LBUF-NM-I !
-   BEGIN LBUF-NM-I @ u < WHILE
-      a LBUF-NM-I @ + c@  LBUF-NM-BUF LBUF-NM-U @ + c!
+   BEGIN LBUF-NM-I @ s STR:LEN < WHILE
+      s STR:DATA LBUF-NM-I @ + c@  LBUF-NM-BUF LBUF-NM-U @ + c!
       LBUF-NM-U @ 1 + LBUF-NM-U !
       LBUF-NM-I @ 1 + LBUF-NM-I !
    REPEAT ;
 
 : CHECKER-LBUF-SUFFIXED$ ( str str -- str )
-   {: name:^ nameu:n sfx:^ sfxu:n :}
+   {: name:str sfx:str :}
    0 LBUF-NM-U !
-   name nameu LBUF-NM-APP
-   sfx sfxu LBUF-NM-APP
-   LBUF-NM-BUF LBUF-NM-U @ ;
+   name LBUF-NM-APP
+   sfx LBUF-NM-APP
+   LBUF-NM-BUF LBUF-NM-U @ >str ;
 
 \ When the type just read is unresolved, marks NAME+S1 and NAME+S2, the words a
 \ storage definer derives from NAME.
 : CHECKER-UNSEEN-PAIR ( str str str -- )
-   {: name:^ nameu:n s1:^ s1u:n s2:^ s2u:n :}
+   {: name:str s1:str s2:str :}
    STORAGE-UNRESOLVED? 0= IF EXIT THEN
-   name nameu s1 s1u CHECKER-LBUF-SUFFIXED$ CHECKER-UNSEEN-NAME
-   name nameu s2 s2u CHECKER-LBUF-SUFFIXED$ CHECKER-UNSEEN-NAME ;
+   name s1 CHECKER-LBUF-SUFFIXED$ CHECKER-UNSEEN-NAME
+   name s2 CHECKER-LBUF-SUFFIXED$ CHECKER-UNSEEN-NAME ;
 
 \ A storage definer that makes only NAME+S1 and NAME+S2 rejects an unstorable
 \ TYPE, marking those two when it is unresolved.
 : CHECKER-DERIVED-TYPE-REJECT ( str str str str -- )
-   {: name:^ nameu:n s1:^ s1u:n s2:^ s2u:n type:^ typeu:n :}
-   name nameu s1 s1u s2 s2u CHECKER-UNSEEN-PAIR
-   name nameu type typeu RES-FALSE STORAGE-TYPE-REJECT ;
+   {: name:str s1:str s2:str type:str :}
+   name s1 s2 CHECKER-UNSEEN-PAIR
+   name type RES-FALSE STORAGE-TYPE-REJECT ;
 
 \ A suffix row is generated: its registration runs paused, its signature and
 \ name passed through cells to the quotation.
 PTR-VARIABLE SFX-SIG-A   variable SFX-SIG-U
 PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
 : CHECKER-DEFSUFFIX-NAME ( str str str -- )
-   {: name:^ nameu:n sfx:^ sfxu:n sig:^ sigu:n :}
-   name nameu sfx sfxu CHECKER-LBUF-SUFFIXED$ {: gen:^ genu:n :}
-   gen genu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   sig SFX-SIG-A !  sigu SFX-SIG-U !  gen SFX-GEN-A !  genu SFX-GEN-U !
+   {: name:str sfx:str sig:str :}
+   name sfx CHECKER-LBUF-SUFFIXED$ {: gen:str :}
+   gen CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   sig STR:DATA SFX-SIG-A !  sig STR:LEN SFX-SIG-U !  gen STR:DATA SFX-GEN-A !  gen STR:LEN SFX-GEN-U !
    NAV-PAUSE {: on:n new:n :}
-   [: SFX-SIG-A @ SFX-SIG-U @ SFX-GEN-A @ SFX-GEN-U @ CHECKER-USIG-CERT-ADD ;]
+   [: SFX-SIG-A @ SFX-SIG-U @ >str SFX-GEN-A @ SFX-GEN-U @ >str CHECKER-USIG-CERT-ADD ;]
       catch {: rc:n :}
    on new NAV-RESUME
    rc 0 <> IF rc throw THEN ;
 
 : CHECKER-DEFDYNAMIC-BUFFER
    ( str str -- )
-   {: type:^ typeu:n name:^ nameu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   type typeu CHECKER-DYNAMIC-INFO 0= IF
+   {: type:str name:str :}
+   name CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type CHECKER-DYNAMIC-INFO 0= IF
       drop
-      name nameu s" -RESERVE" s" -RELEASE" CHECKER-UNSEEN-PAIR
-      name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+      name s" -RESERVE" s" -RELEASE" CHECKER-UNSEEN-PAIR
+      name type CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    drop                                    \ two control cells: the extent is dynamic
-   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
-   name nameu s" -RESERVE" s" n --" CHECKER-DEFSUFFIX-NAME
-   name nameu s" -RELEASE" s" --" CHECKER-DEFSUFFIX-NAME ;
+   type CHECKER-LBUF-SIG$ name CHECKER-USIG-CERT-ADD
+   name s" -RESERVE" s" n --" CHECKER-DEFSUFFIX-NAME
+   name s" -RELEASE" s" --" CHECKER-DEFSUFFIX-NAME ;
 
 : CHECKER-DEFARENA ( str str -- )
-   {: type:^ typeu:n name:^ nameu:n :}
+   {: type:str name:str :}
    0 LBUF-SIG-U !
-   s" ^ARENA:arena -- ^" LBUF-SIG-APP  type typeu LBUF-SIG-APP
-   name nameu s" -NEW" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
+   s" ^ARENA:arena -- ^" LBUF-SIG-APP  type LBUF-SIG-APP
+   name s" -NEW" LBUF-SIG-BUF LBUF-SIG-U @ >str CHECKER-DEFSUFFIX-NAME
    0 LBUF-SIG-U !
-   s" ^ARENA:arena [ ^" LBUF-SIG-APP  type typeu LBUF-SIG-APP
-   s"  -- ] -- ^" LBUF-SIG-APP  type typeu LBUF-SIG-APP
-   name nameu s" -NEW-DISPOSE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
+   s" ^ARENA:arena [ ^" LBUF-SIG-APP  type LBUF-SIG-APP
+   s"  -- ] -- ^" LBUF-SIG-APP  type LBUF-SIG-APP
+   name s" -NEW-DISPOSE" LBUF-SIG-BUF LBUF-SIG-U @ >str CHECKER-DEFSUFFIX-NAME ;
 
 : CHECKER-DEFHEAP ( str str -- )
-   {: type:^ typeu:n name:^ nameu:n :}
+   {: type:str name:str :}
    0 LBUF-SIG-U !
-   s" -- ^" LBUF-SIG-APP  type typeu LBUF-SIG-APP
-   name nameu s" -NEW" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
+   s" -- ^" LBUF-SIG-APP  type LBUF-SIG-APP
+   name s" -NEW" LBUF-SIG-BUF LBUF-SIG-U @ >str CHECKER-DEFSUFFIX-NAME
    0 LBUF-SIG-U !
-   s" ^" LBUF-SIG-APP  type typeu LBUF-SIG-APP  s"  --" LBUF-SIG-APP
-   name nameu s" -RELEASE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
+   s" ^" LBUF-SIG-APP  type LBUF-SIG-APP  s"  --" LBUF-SIG-APP
+   name s" -RELEASE" LBUF-SIG-BUF LBUF-SIG-U @ >str CHECKER-DEFSUFFIX-NAME ;
 
 \ Its count arrives at the bind, so the line carries none.
 : CHECKER-DEFDEFER-LAYOUT-BUFFER
    ( str str -- )
-   {: type:^ typeu:n name:^ nameu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   type typeu CHECKER-LAYOUT-INFO 0= IF
+   {: type:str name:str :}
+   name CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type CHECKER-LAYOUT-INFO 0= IF
       2drop
-      name nameu s" -BIND" s" -GROW" CHECKER-UNSEEN-PAIR
-      name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT EXIT
+      name s" -BIND" s" -GROW" CHECKER-UNSEEN-PAIR
+      name type CHECKER-LAYOUT-TYPE-REJECT EXIT
    THEN
    2drop
-   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
-   name nameu s" -BIND" s" n --" CHECKER-DEFSUFFIX-NAME
-   name nameu s" -GROW" s" n --" CHECKER-DEFSUFFIX-NAME ;
+   type CHECKER-LBUF-SIG$ name CHECKER-USIG-CERT-ADD
+   name s" -BIND" s" n --" CHECKER-DEFSUFFIX-NAME
+   name s" -GROW" s" n --" CHECKER-DEFSUFFIX-NAME ;
 
 \ CHECK's publication of an inferred effect. Its duplicate question was asked
 \ by PUBLISH-REJECTIONS before the first write.
 : CHECKER-USIG-CERT-CURRENT ( str -- )
-   {: na:^ nu:n :}
-   na nu  NMOFF @ TADDR nu  CHECKER-REC-NAME-AT!
+   {: ns:str :}
+   ns  NMOFF @ TADDR ns STR:LEN  >str CHECKER-REC-NAME-AT!
    BROW @ DCUR @ 0 0 RES-FALSE
    CERTIFIED? E-ADD-EFFECT DL-TAKE
    RECOVERY-USED? IF RECOVERY-RECORD THEN ;
@@ -18082,7 +18090,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 : NORET-RESTORE-END ( n -- ) {: newend:n :}
    newend RECORD-CONTROL-REWIND-XT
    newend NRX-TRUNCATE
-   NORETS newend +  NORET-END @ newend -  ARENA-ZERO
+   NORETS newend +  NORET-END @ newend - >str ARENA-ZERO
    newend NORET-END !
    NORET-TERM ;
 
@@ -18327,7 +18335,7 @@ private
 \ The record is anonymous: it is not the definer's effect, and sym 0 keeps it
 \ out of every per-symbol lookup.
 : CREATED-RECORD-BUILD ( str -- n )
-   {: sa:^ su:n :}
+   {: ss:str :}
    WRITE-WINDOW-CK                       \ before the record symbol and parser move
    CHECKER-REC-SYM @
    {: was:n :}
@@ -18335,13 +18343,13 @@ private
    NEW
    SGBAD-CLEAR
    RES-TRUE SIG-RAW-DEFINER!
-   sa su PARSE-SIG-RAW
+   ss PARSE-SIG-RAW
    RES-FALSE SIG-RAW-DEFINER!
    SGBAD @ 0 <> SIG-UNRES @ 0 <> or IF
       2drop 2drop  was CHECKER-REC-SYM !  0 EXIT
    THEN
    {: din:n dout:n rin:n rout:n :}
-   sa su din dout rin rout SGBAD-UNFIT!
+   ss din dout rin rout SGBAD-UNFIT!
    SGBAD @ IF was CHECKER-REC-SYM !  0 EXIT THEN
    \ This parse holds nothing a clause's check learned of a quotation input.
    din KEEP-QUOTS  dout KEEP-QUOTS
@@ -18437,29 +18445,29 @@ package CHECK
 
 \ The name-keyed appender records NO intact evidence: every caller of it has
 \ none to give.
-: NORET-ADD {: a:^ u:n flag:n :}
-   a u CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
+: NORET-ADD {: s:str flag:n :}
+   s CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
 
-: NORET-SYM-AXIOM {: sym:n a:^ u:n flag:n nonzero:n :}
+: NORET-SYM-AXIOM {: sym:n s:str flag:n nonzero:n :}
    sym BUILD-SYM-END @ < 0= IF
       s" checker: the kernel object has no row for " ERROR-TEXT:TYPE
-      a u ERROR-TEXT:TYPE
+      s ERROR-TEXT:TYPE
       S\" , which a no-return axiom names\n" ERROR-TEXT:TYPE
       s" " EXIT-STATUS:INTERNAL die
    THEN
    sym flag 0 0 sym NORET-CREATES@ sym NORET-SOURCE@ nonzero NORET-APPEND ;
 
-: NORET-AXIOM {: a:^ u:n flag:n :}
-   a u PE-SYM-OF a u flag 0 NORET-SYM-AXIOM ;
+: NORET-AXIOM {: s:str flag:n :}
+   s PE-SYM-OF s flag 0 NORET-SYM-AXIOM ;
 
 \ The axiom of a word that divides by the inputs DIV and throws the inputs
 \ THROW, as a body's NORET.NONZERO masks.
-: NORET-NONZERO-AXIOM {: a:^ u:n flag:n div:n throw:n :}
-   a u PE-SYM-OF a u flag div throw NONZERO-PACK NORET-SYM-AXIOM ;
+: NORET-NONZERO-AXIOM {: s:str flag:n div:n throw:n :}
+   s PE-SYM-OF s flag div throw NONZERO-PACK NORET-SYM-AXIOM ;
 
 \ The axiom of a primitive whose one row is private to package PKG.
-: NORET-PRIVATE-AXIOM {: pkg:^ pkgu:n a:^ u:n flag:n :}
-   pkg pkgu SYM-PRIVATE a u SYM-INTERN  a u flag 0 NORET-SYM-AXIOM ;
+: NORET-PRIVATE-AXIOM {: pkg:str s:str flag:n :}
+   pkg SYM-PRIVATE s SYM-INTERN  s flag 0 NORET-SYM-AXIOM ;
 
 \ The axioms of the symbols KEYWORD-ROWS interns, a product's whole prefix.
 : KEYWORD-AXIOMS ( -- )
@@ -18567,7 +18575,7 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
 
 \ The table is baked, so the retired rows' bytes are zeroed.
 : PROW-REWIND ( n -- ) {: n:n :}
-   n PROW-END @ < IF PROW n +  PROW-END @ n -  ARENA-ZERO THEN
+   n PROW-END @ < IF PROW n +  PROW-END @ n - >str ARENA-ZERO THEN
    n PROW-END ! ;
 
 : PROW-ENSURE ( n -- ) {: need:n :}
@@ -18576,16 +18584,16 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
    PROW-P PROW-CAP-V @ nc GROW
    nc PROW-CAP-V ! ;
 
-\ Copies terminator A U and a blank to byte LEN of the terminators of the row
+\ Copies terminator S and a blank to byte LEN of the terminators of the row
 \ the table's end would hold; the bytes copied so far.
 : PROW-TERM+ ( str n -- n )
-   {: a:^ u:n len:n :}
+   {: s:str len:n :}
    WRITE-WINDOW-CK
    PROW-END @ PROW-HEAD + len + {: at:n :}
-   at u + 1 + PROW-ENSURE
-   a  PROW at +  u ARENA-COPY
-   32  PROW at + u +  c!
-   len u + 1 + ;
+   at s STR:LEN + 1 + PROW-ENSURE
+   s STR:DATA  PROW at +  s STR:LEN >str ARENA-COPY
+   32  PROW at + s STR:LEN +  c!
+   len s STR:LEN + 1 + ;
 
 \ Keeps sym's row: count CNT and the LEN bytes PROW-TERM+ copied.
 : PROW-ADD ( n n n -- )
@@ -18600,27 +18608,27 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
    end PROW-END ! ;
 
 : PROW-BLANKS ( str n -- n )
-   {: a:^ u:n i:n :}
-   i BEGIN dup u < IF dup a + c@ 32 <= ELSE RES-FALSE THEN WHILE 1 + REPEAT ;
+   {: s:str i:n :}
+   i BEGIN dup s STR:LEN < IF dup s STR:DATA + c@ 32 <= ELSE RES-FALSE THEN WHILE 1 + REPEAT ;
 
 : PROW-INK ( str n -- n )
-   {: a:^ u:n i:n :}
-   i BEGIN dup u < IF dup a + c@ 32 > ELSE RES-FALSE THEN WHILE 1 + REPEAT ;
+   {: s:str i:n :}
+   i BEGIN dup s STR:LEN < IF dup s STR:DATA + c@ 32 > ELSE RES-FALSE THEN WHILE 1 + REPEAT ;
 
-\ Copies each blank-separated terminator of A U from index I on, after the
+\ Copies each blank-separated terminator of S from index I on, after the
 \ LEN bytes copied before; the bytes copied.
 : PROW-TERMS+ ( str n n -- n )
-   {: a:^ u:n i:n len:n :}
-   a u i PROW-BLANKS {: from:n :}
-   from u < 0= IF len EXIT THEN
-   a u from PROW-INK {: to:n :}
-   a from +  to from -  len PROW-TERM+ {: next:n :}
-   a u to next RECURSE ;
+   {: s:str i:n len:n :}
+   s i PROW-BLANKS {: from:n :}
+   from s STR:LEN < 0= IF len EXIT THEN
+   s from PROW-INK {: to:n :}
+   s STR:DATA from +  to from -  >str len PROW-TERM+ {: next:n :}
+   s to next RECURSE ;
 
-\ Keeps sym's row: count CNT and terminators A U, blank-separated.
+\ Keeps sym's row: count CNT and terminators S, blank-separated.
 : PROW-ADD-TEXT ( n n str -- )
-   {: sym:n cnt:n a:^ u:n :}
-   a u 0 0 PROW-TERMS+ {: len:n :}
+   {: sym:n cnt:n s:str :}
+   s 0 0 PROW-TERMS+ {: len:n :}
    sym cnt len PROW-ADD ;
 
 : PROW-NEXT ( n -- n )
@@ -18635,10 +18643,10 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
       dup PROW.SYM PROW@ sym = IF nip dup 1 + swap THEN
       PROW-NEXT
    REPEAT drop {: row:n :}
-   sym 0=  row 0=  or IF 0 PROW 0 RES-FALSE EXIT THEN
+   sym 0=  row 0=  or IF 0 PROW 0 >str RES-FALSE EXIT THEN
    row 1 - {: at:n :}
-   at PROW.COUNT PROW@ 0 < IF 0 PROW 0 RES-FALSE EXIT THEN
-   at PROW.COUNT PROW@  PROW at + PROW-HEAD +  at PROW.LEN PROW@
+   at PROW.COUNT PROW@ 0 < IF 0 PROW 0 >str RES-FALSE EXIT THEN
+   at PROW.COUNT PROW@  PROW at + PROW-HEAD +  at PROW.LEN PROW@ >str
    RES-TRUE ;
 
 \ Undefining retires every fact the name carried, through NORET-APPEND: the
@@ -18661,11 +18669,11 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
 \ HELD-UNDEFINE's text: the package's length, a cell, the visibility, a byte,
 \ then the package and the tail (CHECKER-SYM-IDENTITY).
 : HOLD-UNDEFINE ( n -- )
-   CHECKER-SYM-IDENTITY {: pkg:^ pkgu:n name:^ nameu:n vis:n :}
-   CELL 1 + pkgu + nameu +  HELD-UNDEFINE HOLD {: at:^ :}
-   pkgu at CELL-VIEW !   vis at CELL + c!
-   pkg  at CELL 1 + +  pkgu ARENA-COPY
-   name  at CELL 1 + + pkgu +  nameu ARENA-COPY ;
+   CHECKER-SYM-IDENTITY {: pkg:str name:str vis:n :}
+   CELL 1 + pkg STR:LEN + name STR:LEN +  HELD-UNDEFINE HOLD {: at:^ :}
+   pkg STR:LEN at CELL-VIEW !   vis at CELL + c!
+   pkg STR:DATA  at CELL 1 + +  pkg STR:LEN >str ARENA-COPY
+   name STR:DATA  at CELL 1 + + pkg STR:LEN +  name STR:LEN >str ARENA-COPY ;
 \ `undefine` of the name the checker resolved to sym, held while a build's
 \ space is open, so a link of the file's object replays it (READ-UNDEFINE).
 : UNDEFINE ( n -- )
@@ -18674,17 +18682,17 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
    sym UNDEFINE-SYM ;
 \ Replays the undefine HOLD-UNDEFINE held.
 : READ-UNDEFINE ( str -- )
-   {: a:^ u:n :}
-   a CELL-VIEW @ {: pkgu:n :}
-   a CELL + c@ {: vis:n :}
-   a CELL 1 + + {: pkg:^ :}
-   pkg pkgu vis  pkg pkgu +  u CELL 1 + - pkgu -  SYM-INTERN {: sym:n :}
+   {: s:str :}
+   s STR:DATA CELL-VIEW @ {: pkgu:n :}
+   s STR:DATA CELL + c@ {: vis:n :}
+   s STR:DATA CELL 1 + + {: pkg:^ :}
+   pkg pkgu >str vis  pkg pkgu +  s STR:LEN CELL 1 + - pkgu - >str  SYM-INTERN {: sym:n :}
    CHECKER-REC-SYM @ {: was:n :}
    sym UNDEFINE-SYM
    was CHECKER-REC-SYM ! ;
 private
 
-: CHECKER-DEFLINEAR ( ^u8 n -- )
+: CHECKER-DEFLINEAR ( str -- )
    CHECKER-AUTH-PACKAGE$ CT-ADD-LINEAR ;
 
 SCRATCH{
@@ -18740,19 +18748,19 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 \ their spelling is the word. Every other row is an engine word a package or a
 \ redefinition can shadow, asked only when `core` says the token binds the
 \ engine's own word (CTL-CORE-OP, TOK-CORE-OP?).
-: RS-TOK? {: a u core :}
+: RS-TOK? {: s:str core :}
    -1 RSH !
-   a u s" >r" STR:= IF RS->R ELSE
-   a u s" r>" STR:= IF RSR> ELSE
-   a u s" r@" STR:= IF RSR@ ELSE
+   s s" >r" STR:= IF RS->R ELSE
+   s s" r>" STR:= IF RSR> ELSE
+   s s" r@" STR:= IF RSR@ ELSE
    core IF
-      a u s" 2>r" STR:= IF RS2->R ELSE
-      a u s" 2r>" STR:= IF RS2R> ELSE
-      a u s" 2r@" STR:= IF RS2R@ ELSE
-      a u s" execute" STR:= IF RSEXEC ELSE
-      a u s" catch" STR:= IF RSCATCH ELSE
-      a u s" finally" STR:= IF RSFINALLY ELSE
-      a u s" c2-invoke" STR:= IF RS-C2-INVOKE ELSE
+      s s" 2>r" STR:= IF RS2->R ELSE
+      s s" 2r>" STR:= IF RS2R> ELSE
+      s s" 2r@" STR:= IF RS2R@ ELSE
+      s s" execute" STR:= IF RSEXEC ELSE
+      s s" catch" STR:= IF RSCATCH ELSE
+      s s" finally" STR:= IF RSFINALLY ELSE
+      s s" c2-invoke" STR:= IF RS-C2-INVOKE ELSE
       0 RSH ! THEN THEN THEN THEN THEN THEN THEN
    ELSE 0 RSH ! THEN
    THEN THEN THEN
@@ -18760,8 +18768,8 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 
 : CTL-MASKS-SYM ( n -- n n ) CTL-WORD-SYM dup XFER-DMASK swap XFER-RMASK ;
 
-: CTL-MASKS ( str -- n n ) {: a:^ u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM CTL-MASKS-SYM ;
+: CTL-MASKS ( str -- n n ) {: s:str :}
+   s CHECKER-FIND-ACTIVE-SYM CTL-MASKS-SYM ;
 
 \ `id INTRINSIC`, at top level right after the source definition of an engine
 \ word, tags it as that engine word, as `immediate` marks the latest word. A
@@ -18790,25 +18798,25 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 \ When the engine's global wordlist claims the token: the global symbol the
 \ store keeps that engine word's facts under (0 when it holds none).
 : ENGINE-WORD-SYM ( str -- n bool )
-   {: a:^ u:n :}
-   a u CHECKER-GLOBAL-SYM? SYM-DELETED? IF 0 RES-FALSE EXIT THEN
-   a u BOOT:GLOBAL-WL CK-WL-CLAIMS? 0= IF 0 RES-FALSE EXIT THEN
-   a u CHECKER-GLOBAL-SYM? RES-TRUE ;
+   {: s:str :}
+   s CHECKER-GLOBAL-SYM? SYM-DELETED? IF 0 RES-FALSE EXIT THEN
+   s BOOT:GLOBAL-WL CK-WL-CLAIMS? 0= IF 0 RES-FALSE EXIT THEN
+   s CHECKER-GLOBAL-SYM? RES-TRUE ;
 
 \ The engine compiles a TRUSTED: body's call to a global a used public shadows
 \ as a call to the global, so the shadow the quiet walk defers falls back here.
 : CHECKER-RUN-SYM ( str -- n bool )
-   {: a:^ u:n :}
-   a u CHECKER-FIND-QUIET-SYM dup 0 <> IF RES-TRUE EXIT THEN drop
-   a u ENGINE-WORD-SYM ;
+   {: s:str :}
+   s CHECKER-FIND-QUIET-SYM dup 0 <> IF RES-TRUE EXIT THEN drop
+   s ENGINE-WORD-SYM ;
 
 \ The engine's top-level find looks for the tail of PKG:TAIL in the global
 \ wordlist when PKG is the open package and its public wordlist lacks the tail.
 : OPEN-TAIL-GLOBAL? ( str -- n bool )
-   {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? 0= IF 0 RES-FALSE EXIT THEN
-   CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n mode:n :}
-   mode CHECKER-PACKAGE-NONE =  CHECKER-QPKG$ pkg pkgu STR:=CI 0=  or IF
+   {: s:str :}
+   s CHECKER-QUALIFIED? 0= IF 0 RES-FALSE EXIT THEN
+   CHECKER-PKG-CONTEXT {: pkg:str mode:n :}
+   mode CHECKER-PACKAGE-NONE =  CHECKER-QPKG$ pkg STR:=CI 0=  or IF
       0 RES-FALSE EXIT
    THEN
    CHECKER-QTAIL$ ENGINE-WORD-SYM ;
@@ -18825,44 +18833,44 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    wid 0= IF NULL-PTR EXIT THEN
    CHECKER-QTAIL$ wid CHECKER-RESOLVE:WL-PROBE ;
 
-\ ENGINE-WORD-SYM's answer with the global wordlist's record of a u, or of its
+\ ENGINE-WORD-SYM's answer with the global wordlist's record of s, or of its
 \ tail: CK-WL-CLAIMS? made that name the part's dependency.
 : ENGINE-WORD-REC ( n bool str -- n ^n bool )
-   {: sym:n ok:bool a:^ u:n :}
+   {: sym:n ok:bool s:str :}
    ok 0= IF sym NULL-PTR RES-FALSE EXIT THEN
-   a u CHECKER-QUALIFIED? IF CHECKER-QTAIL$ ELSE a u THEN
+   s CHECKER-QUALIFIED? IF CHECKER-QTAIL$ ELSE s THEN
    BOOT:GLOBAL-WL xref-search-wl {: rec:^ :}
    sym rec RES-TRUE ;
 
 \ A cold published package primitive may have no user record. A successful walk
 \ can also select a dictionary record before the lazy checker symbol exists.
 : TOP-BOUND-SYM ( str n -- n ^n bool )
-   {: a:^ u:n sym:n :}
+   {: s:str sym:n :}
    BIND-REC @ {: rec:^ :}
    sym 0 <> IF
       sym USIG-NEWEST-VISIBLE 0 <> IF sym rec RES-TRUE EXIT THEN
-      a u CHECKER-QUALIFIED? 0= IF
-         a u BOOT:GLOBAL-WL CK-WL-CLAIMS? IF sym rec RES-TRUE EXIT THEN
+      s CHECKER-QUALIFIED? 0= IF
+         s BOOT:GLOBAL-WL CK-WL-CLAIMS? IF sym rec RES-TRUE EXIT THEN
       THEN
    THEN
    WALK-REC @ IF sym rec RES-TRUE EXIT THEN
-   a u CHECKER-QUALIFIED? IF
+   s CHECKER-QUALIFIED? IF
       TOP-PUBLIC-REC {: pub:^ :}
       pub NULL-PTR <> IF sym pub RES-TRUE EXIT THEN
-      a u OPEN-TAIL-GLOBAL? a u ENGINE-WORD-REC EXIT
+      s OPEN-TAIL-GLOBAL? s ENGINE-WORD-REC EXIT
    THEN
-   a u ENGINE-WORD-SYM a u ENGINE-WORD-REC ;
+   s ENGINE-WORD-SYM s ENGINE-WORD-REC ;
 
 \ 0 and false when `using` rejects it: the load runs no word for a shadowed or
 \ ambiguous name, so no engine word of that name stands in.
 : CHECKER-TOP-SYM ( str -- n bool )
-   {: a:^ u:n :}
-   a u WALK {: sym:n why:n :}
+   {: s:str :}
+   s WALK {: sym:n why:n :}
    why 0 <> IF
-      why FQSYM-DEFERRED? 0= IF a u why RAISE THEN
+      why FQSYM-DEFERRED? 0= IF s why RAISE THEN
       0 RES-FALSE EXIT
    THEN
-   a u sym TOP-BOUND-SYM nip ;
+   s sym TOP-BOUND-SYM nip ;
 
 : TOP-CONTROL ( n -- n bool ) {: sym:n :}
    sym 0 <> IF sym CTL-FLAGS-SYM sym DFER-FIND-SYM EXIT THEN
@@ -18877,8 +18885,8 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 \ May the word define words no source text spells? A deferred word may: it runs
 \ whatever word was set, a renderer or a definer among them.
 : CHECKER-VERIFY-RENDERS ( str n -- bool )
-   {: a:^ u:n mask:n :}
-   a u CHECKER-TOP-SYM IF
+   {: s:str mask:n :}
+   s CHECKER-TOP-SYM IF
       TOP-CONTROL {: flags:n deferred:bool :}
       mask CTL-NOMINAL and 0 <> IF flags deferred TYPES-MARK THEN
       flags mask and 0 <> deferred or
@@ -18894,75 +18902,75 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    -1 ;
 
 \ A deferral's token in backticks.
-: DW-CODE ( str -- ) {: t:^ tu:n :}
-   96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
-\ What the check left to the run at the token t tu, and why; NA NU is the call
+: DW-CODE ( str -- ) {: t:str :}
+   96 REJECTION:EMIT1  t REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+\ What the check left to the run at the token t, and why; NS is the call
 \ a DW-MAYJOIN names.
-: DW-MESSAGE ( str n str -- ) {: t:^ tu:n why:n na:^ nu:n :}
+: DW-MESSAGE ( str n str -- ) {: t:str why:n ns:str :}
    why DW-PARSER = IF
-      s" the check leaves the source after " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves the source after " REJECTION:EMIT-STR  t DW-CODE
       s"  to the run because no `parses:` row says what it reads" REJECTION:EMIT-STR EXIT
    THEN
    why DW-DEFER = IF
-      s" the check leaves the source after " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves the source after " REJECTION:EMIT-STR  t DW-CODE
       s"  to the run because a deferred word may read any of it" REJECTION:EMIT-STR EXIT
    THEN
    why DW-PARSES = IF
-      s" the check leaves to the run what " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves to the run what " REJECTION:EMIT-STR  t DW-CODE
       s"  reads, and goes on after the operands its `parses:` row states" REJECTION:EMIT-STR EXIT
    THEN
    why DW-RENDERER = IF
-      s" the check leaves the source " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves the source " REJECTION:EMIT-STR  t DW-CODE
       s"  renders to the run because no `generates:` row or group declares it" REJECTION:EMIT-STR EXIT
    THEN
    why DW-TYPE = IF
-      s" the check leaves type " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves type " REJECTION:EMIT-STR  t DW-CODE
       s"  to the run because no declaration the check completed declares it" REJECTION:EMIT-STR EXIT
    THEN
    why DW-RENDERED = IF
-      s" the check leaves " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves " REJECTION:EMIT-STR  t DW-CODE
       s"  to the run because rendered source may change what it does" REJECTION:EMIT-STR EXIT
    THEN
    why DW-ROOTS = IF
-      s" the check leaves the source after " REJECTION:EMIT-STR  t tu DW-CODE
-      s"  to the run because " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves the source after " REJECTION:EMIT-STR  t DW-CODE
+      s"  to the run because " REJECTION:EMIT-STR  t DW-CODE
       s"  may move the source root" REJECTION:EMIT-STR EXIT
    THEN
    why DW-COUNT = IF
-      s" the check leaves buffer byte count " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves buffer byte count " REJECTION:EMIT-STR  t DW-CODE
       s"  to the run because only the run defines its value" REJECTION:EMIT-STR EXIT
    THEN
    why DW-CATCH = IF
-      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t DW-CODE
       s"  on to the run because only the run can tell whether what " REJECTION:EMIT-STR
-      t tu DW-CODE  s"  runs throws" REJECTION:EMIT-STR EXIT
+      t DW-CODE  s"  runs throws" REJECTION:EMIT-STR EXIT
    THEN
    why DW-QUOT = IF
-      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t DW-CODE
       s"  on to the run because only the run can tell whether a quotation is kept or what it does"
       REJECTION:EMIT-STR EXIT
    THEN
    why DW-TAKES = IF
-      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t DW-CODE
       s"  on to the run because only the run can tell which types " REJECTION:EMIT-STR
-      t tu DW-CODE  s"  takes" REJECTION:EMIT-STR EXIT
+      t DW-CODE  s"  takes" REJECTION:EMIT-STR EXIT
    THEN
    why DW-ZERO = IF
-      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t DW-CODE
       s"  on to the run because only the run can tell whether " REJECTION:EMIT-STR
-      t tu DW-CODE  s"  divides by or throws its 0" REJECTION:EMIT-STR EXIT
+      t DW-CODE  s"  divides by or throws its 0" REJECTION:EMIT-STR EXIT
    THEN
    why DW-MAYDIE = IF
-      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t DW-CODE
       s"  on to the run because only the run can tell whether the call before it returns"
       REJECTION:EMIT-STR EXIT
    THEN
    why DW-MAYJOIN = IF
-      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t DW-CODE
       s"  on to the run because only the run can tell whether " REJECTION:EMIT-STR
-      na nu DW-CODE  s"  returns" REJECTION:EMIT-STR EXIT
+      ns DW-CODE  s"  returns" REJECTION:EMIT-STR EXIT
    THEN
-   s" the check cannot follow the source from " REJECTION:EMIT-STR  t tu DW-CODE
+   s" the check cannot follow the source from " REJECTION:EMIT-STR  t DW-CODE
    s"  on and leaves it to the run" REJECTION:EMIT-STR ;
 : DW-LABEL ( n -- ) {: why:n :}
    why DW-PARSER = IF s" parses with no `parses:` row" REJECTION:EMIT-STR EXIT THEN
@@ -18982,27 +18990,27 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    s" not checked from here" REJECTION:EMIT-STR ;
 \ What lifts the deferral, or what the run does where nothing can; a `parses:`
 \ row's or rendered source's has nothing to write, so no help.
-: DW-HELP ( str n str -- ) {: t:^ tu:n why:n na:^ nu:n :}
+: DW-HELP ( str n str -- ) {: t:str why:n ns:str :}
    why DW-PARSES =  why DW-RENDERED =  or IF EXIT THEN
    REJECTION:HELP
    why DW-PARSER = IF
-      s" write `parses: " REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
-      s"  n` or `parses-through: " REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
-      s"  n ( END )` after the definition of " REJECTION:EMIT-STR  t tu DW-CODE
+      s" write `parses: " REJECTION:EMIT-STR  t REJECTION:EMIT-STR
+      s"  n` or `parses-through: " REJECTION:EMIT-STR  t REJECTION:EMIT-STR
+      s"  n ( END )` after the definition of " REJECTION:EMIT-STR  t DW-CODE
       s" , or call it through a word that has such a row" REJECTION:EMIT-STR EXIT
    THEN
    why DW-DEFER = IF
-      s" call " REJECTION:EMIT-STR  t tu DW-CODE  s"  from a definition" REJECTION:EMIT-STR EXIT
+      s" call " REJECTION:EMIT-STR  t DW-CODE  s"  from a definition" REJECTION:EMIT-STR EXIT
    THEN
    why DW-RENDERER = IF
-      s" if " REJECTION:EMIT-STR  t tu DW-CODE
+      s" if " REJECTION:EMIT-STR  t DW-CODE
       s"  makes a word from the name after it, write `generates: " REJECTION:EMIT-STR
-      t tu REJECTION:EMIT-STR
+      t REJECTION:EMIT-STR
       s"  ( effect )` after its definition, or declare a foreign function with a `FUNCTION:` group"
       REJECTION:EMIT-STR EXIT
    THEN
    why DW-TYPE = IF
-      s" declare " REJECTION:EMIT-STR  t tu DW-CODE
+      s" declare " REJECTION:EMIT-STR  t DW-CODE
       s"  before its use; a declaration left to the run is reported at its own warning" REJECTION:EMIT-STR EXIT
    THEN
    why DW-ROOTS = IF
@@ -19015,10 +19023,10 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    why DW-QUOT = IF
       s" use a quotation that reads no local, calls only words the check judges and does only "
       REJECTION:EMIT-STR  s" what the type that takes it states, " REJECTION:EMIT-STR
-      s" or state the rest in that type, and the check judges " REJECTION:EMIT-STR  t tu DW-CODE EXIT
+      s" or state the rest in that type, and the check judges " REJECTION:EMIT-STR  t DW-CODE EXIT
    THEN
    why DW-TAKES = IF
-      s" write the types " REJECTION:EMIT-STR  t tu DW-CODE
+      s" write the types " REJECTION:EMIT-STR  t DW-CODE
       s"  takes in its signature in place of its type variables, and the check judges the types of each use"
       REJECTION:EMIT-STR EXIT
    THEN
@@ -19028,46 +19036,46 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    THEN
    why DW-ZERO = IF
       s" keep the words the check leaves to the run out of all that " REJECTION:EMIT-STR
-      t tu DW-CODE  s"  calls, and the check judges the 0" REJECTION:EMIT-STR EXIT
+      t DW-CODE  s"  calls, and the check judges the 0" REJECTION:EMIT-STR EXIT
    THEN
    why DW-MAYDIE = IF
       s" keep the words the check leaves to the run out of all that the call before "
-      REJECTION:EMIT-STR  t tu DW-CODE
+      REJECTION:EMIT-STR  t DW-CODE
       s"  calls, and the check judges whether it returns" REJECTION:EMIT-STR EXIT
    THEN
    why DW-MAYJOIN = IF
       s" keep the words the check leaves to the run out of all that " REJECTION:EMIT-STR
-      na nu DW-CODE  s"  calls, and the check judges whether it returns" REJECTION:EMIT-STR EXIT
+      ns DW-CODE  s"  calls, and the check judges whether it returns" REJECTION:EMIT-STR EXIT
    THEN
-   s" rewrite the code from " REJECTION:EMIT-STR  t tu DW-CODE
+   s" rewrite the code from " REJECTION:EMIT-STR  t DW-CODE
    s"  on with words whose effects the check knows" REJECTION:EMIT-STR ;
 
-\ A deferral warns at its token a u. Its cause and stop clear once written, so
+\ A deferral warns at its token s. Its cause and stop clear once written, so
 \ one whose site records no cause says only that the check could not follow it.
 : CHECKER-VERIFY-DEFERRED ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    DEFER-WHY @ {: why:n :}
    DEFER-NAME-A @ DEFER-NAME-U @ {: na:^ nu:n :}
    DEFER-STOP @ 0 <> {: stop:bool :}
    stop IF s" W-CHECK-STOPPED" ELSE s" W-CHECK-DEFERRED" THEN REJECTION:WARN
-   a u why na nu DW-MESSAGE
+   s why na nu >str DW-MESSAGE
    stop IF
-      s" ; the check stops at " REJECTION:EMIT-STR  a u DW-CODE
+      s" ; the check stops at " REJECTION:EMIT-STR  s DW-CODE
       s"  and checks nothing after it in this file or any file that loads it"
       REJECTION:EMIT-STR
    THEN
-   a u REJECTION:AT  why DW-LABEL
-   a u why na nu DW-HELP
+   s REJECTION:AT  why DW-LABEL
+   s why na nu >str DW-HELP
    REJECTION:KEEP
    0 DEFER-WHY !  0 DEFER-STOP !  NULL-PTR DEFER-NAME-A !  0 DEFER-NAME-U ! ;
 
 \ The body is asserted, never judged, but what running it may do is what its
 \ calls may do, and one bound nowhere may name any word, so it brings them all.
 : CHECKER-VERIFY-REACH ( str str -- )
-   {: a:^ u:n na:^ nu:n :}
-   a u CHECKER-RUN-SYM IF CTL-FLAGS-SYM CTL-INHERITED and
+   {: s:str ns:str :}
+   s CHECKER-RUN-SYM IF CTL-FLAGS-SYM CTL-INHERITED and
    ELSE drop CTL-INHERITED THEN {: reach:n :}
-   na nu CHECKER-RECORD-SYM {: rec:n :}
+   ns CHECKER-RECORD-SYM {: rec:n :}
    rec CTL-WORD-SYM {: ctl:n :}
    ctl XFER-FLAGS {: old:n :}
    old reach or old = IF EXIT THEN
@@ -19075,8 +19083,8 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 
 \ A private or ABI-only row is not a callable source effect. Primitive-only rows
 \ are excluded.
-: CHECKER-RESOLVES? ( str -- bool ) {: a:^ u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+: CHECKER-RESOLVES? ( str -- bool ) {: s:str :}
+   s CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym EFFECT-EXTERNAL-SYM? ;
 
@@ -19118,14 +19126,14 @@ package CHECK
 : CHECKER-CREATES-SYM? ( n -- n )           \ sym's created effect, offset+1, 0 = not a definer
    NORET-CREATES@ ;
 
-: CHECKER-RECORD-CREATED ( str n -- bool ) {: na:^ nu:n dsym:n :}
+: CHECKER-RECORD-CREATED ( str n -- bool ) {: ns:str dsym:n :}
    dsym CHECKER-CREATES-SYM? dup 0= IF drop RES-FALSE EXIT THEN
    1 - E-PTR {: rec:^ :}
    NEW
    rec E-INST-RESET
    rec E-DIN@ E-INST  rec E-DOUT@ E-INST
    rec E-RIN@ E-INST  rec E-ROUT@ E-INST
-   na nu CHECKER-REC-NAME!
+   ns CHECKER-REC-NAME!
    rec E-HASR@ 0 <> RES-TRUE E-ADD-EFFECT DL-TAKE
    RES-TRUE ;
 
@@ -19295,14 +19303,14 @@ variable NZ-IN   variable NZ-TAKEN   variable NZ-DIV   variable NZ-THROW
 \ --- retired-token set --------------------------------------------------------
 \ An undefined token only makes CHECK return 1, and later source could define a
 \ global of the same spelling, so a bare global use rejects with verdict 0.
-: RETIRED-TOK? ( str -- bool ) {: a:^ u:n :}
-   a u s" pf-begin" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" pf-add" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" pf-publish" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" pf-release" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" pf-finalize" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" pf-commit" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" pf-rollback" STR:=CI ;
+: RETIRED-TOK? ( str -- bool ) {: s:str :}
+   s s" pf-begin" STR:=CI IF RES-TRUE EXIT THEN
+   s s" pf-add" STR:=CI IF RES-TRUE EXIT THEN
+   s s" pf-publish" STR:=CI IF RES-TRUE EXIT THEN
+   s s" pf-release" STR:=CI IF RES-TRUE EXIT THEN
+   s s" pf-finalize" STR:=CI IF RES-TRUE EXIT THEN
+   s s" pf-commit" STR:=CI IF RES-TRUE EXIT THEN
+   s s" pf-rollback" STR:=CI ;
 
 \ --- unsafe definers ----------------------------------------------------------
 \ Unsafety is a property of the word, not its spelling.
@@ -19319,19 +19327,19 @@ variable NZ-IN   variable NZ-TAKEN   variable NZ-DIV   variable NZ-THROW
    sym CTL-FLAGS-SYM CTL>INTRINSIC {: id:n :}
    id INTRINSIC-PARSES >= id INTRINSIC-DECLARATION <= and ;
 
-: CLAUSE-NAME ( str -- str ) {: na:^ nu:n :}
-   DOES-CLAUSE:SUFFIX$ {: sa:^ su:n :}
-   nu su + TOKBUF-ENSURE
-   na NMB nu CCOPY
-   sa NMB nu + su CCOPY
-   NMB nu su + ;
+: CLAUSE-NAME ( str -- str ) {: ns:str :}
+   DOES-CLAUSE:SUFFIX$ {: ss:str :}
+   ns STR:LEN ss STR:LEN + TOKBUF-ENSURE
+   ns STR:DATA NMB ns STR:LEN CCOPY
+   ss STR:DATA NMB ns STR:LEN + ss STR:LEN CCOPY
+   NMB ns STR:LEN ss STR:LEN + >str ;
 
 EXPORT CHECKER-OVERLAY:CLAUSE
 
-\ The clause record of the does> definer or export NA NU in a replay, under the
+\ The clause record of the does> definer or export NS in a replay, under the
 \ name as written, which CLAUSE reads before anything writes NMB again.
-: CHECKER-SOURCE-CLAUSE ( str -- ) {: na:^ nu:n :}
-   na nu  na nu CLAUSE-NAME  CLAUSE ;
+: CHECKER-SOURCE-CLAUSE ( str -- ) {: ns:str :}
+   ns  ns CLAUSE-NAME  CLAUSE ;
 
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
 \ `EXPORT NAME` in an open package section publishes NAME's effect under NAME's
@@ -19354,66 +19362,66 @@ global
 7197 constant E-LINEAR-SCOPE  \ the row is outside its owner's private section
 private
 
-: EXPORT-TAIL$ ( str -- str ) {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? IF CHECKER-QTAIL$ EXIT THEN
-   a u ;
+: EXPORT-TAIL$ ( str -- str ) {: s:str :}
+   s CHECKER-QUALIFIED? IF CHECKER-QTAIL$ EXIT THEN
+   s ;
 
-\ Each names the operand a u as the program wrote it.
-: EXPORT-UNSAFE ( str -- ) {: a:^ u:n :}
+\ Each names the operand s as the program wrote it.
+: EXPORT-UNSAFE ( str -- ) {: s:str :}
    s" E-EXPORT-UNSAFE" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` is an internal engine word, which no package may export" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" internal to the engine" REJECTION:EMIT-STR
+   s REJECTION:AT  s" internal to the engine" REJECTION:EMIT-STR
    REJECTION:HELP  s" export a public word instead" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: EXPORT-DECLARATION ( str -- ) {: a:^ u:n :}
+: EXPORT-DECLARATION ( str -- ) {: s:str :}
    s" E-EXPORT-UNSAFE" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` is a declaration hb runs under its own name, so no package may export it"
    REJECTION:EMIT-STR
-   a u REJECTION:AT  s" declaration" REJECTION:EMIT-STR
-   REJECTION:HELP  s" call `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s REJECTION:AT  s" declaration" REJECTION:EMIT-STR
+   REJECTION:HELP  s" call `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` at top level instead of exporting it" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: EXPORT-PRIM ( str -- ) {: a:^ u:n :}
+: EXPORT-PRIM ( str -- ) {: s:str :}
    s" E-EXPORT-PRIM" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` is a primitive, which a package cannot export" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" primitive" REJECTION:EMIT-STR
-   REJECTION:HELP  s" call `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s REJECTION:AT  s" primitive" REJECTION:EMIT-STR
+   REJECTION:HELP  s" call `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` directly: a primitive is visible in every package" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: EXPORT-JUDGED ( str -- ) {: a:^ u:n :}
+: EXPORT-JUDGED ( str -- ) {: s:str :}
    s" E-EXPORT-PRIM" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` is built into the checker, which judges each use by what it does,"
    REJECTION:EMIT-STR  s"  so it has no effect to export" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" built in" REJECTION:EMIT-STR
+   s REJECTION:AT  s" built in" REJECTION:EMIT-STR
    REJECTION:HELP  s" drop the export: `" REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR  s" ` is visible in every package" REJECTION:EMIT-STR
+   s REJECTION:EMIT-STR  s" ` is visible in every package" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: EXPORT-UNDEFINED ( str -- ) {: a:^ u:n :}
+: EXPORT-UNDEFINED ( str -- ) {: s:str :}
    s" E-EXPORT-UNDEFINED" REJECTION:OPEN
-   s" cannot find word `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" cannot find word `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` to export" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" not found" REJECTION:EMIT-STR
-   REJECTION:HELP  s" define `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s REJECTION:AT  s" not found" REJECTION:EMIT-STR
+   REJECTION:HELP  s" define `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` before exporting it, or check its spelling" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The source's own definition was rejected, so its row holds no checked effect.
-: EXPORT-REJECTED ( str -- ) {: a:^ u:n :}
+: EXPORT-REJECTED ( str -- ) {: s:str :}
    s" E-EXPORT-UNDEFINED" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` was rejected where it is defined, so it has no checked effect to export"
    REJECTION:EMIT-STR
-   a u REJECTION:AT  s" rejected definition" REJECTION:EMIT-STR
+   s REJECTION:AT  s" rejected definition" REJECTION:EMIT-STR
    REJECTION:HELP  s" fix the definition of `" REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR  s" ` before exporting it" REJECTION:EMIT-STR
+   s REJECTION:EMIT-STR  s" ` before exporting it" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
@@ -19421,33 +19429,33 @@ EXPORT CHECKER-RESOLVE:EXPORT-SEALED?
 EXPORT CHECKER-RESOLVE:EXPORT-SEALED
 EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
 
-\ The operand a u binds the public SYM of a package it uses.
-: EXPORT-USED ( str n -- ) {: a:^ u:n sym:n :}
-   sym SYM-PKG$ PACKAGE-NAME$ {: pa:^ pn:n :}
-   sym SYM-PKG$ USED-QUAL {: qa:^ qn:n reach:bool :}
+\ The operand s binds the public SYM of a package it uses.
+: EXPORT-USED ( str n -- ) {: s:str sym:n :}
+   sym SYM-PKG$ PACKAGE-NAME$ {: p:str :}
+   sym SYM-PKG$ USED-QUAL {: q:str reach:bool :}
    s" E-EXPORT-UNDEFINED" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` is a public of used package `" REJECTION:EMIT-STR  pa pn REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
+   s" ` is a public of used package `" REJECTION:EMIT-STR  p REJECTION:EMIT-STR
    s" `, and EXPORT does not search used packages" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" used, not in this package's scope" REJECTION:EMIT-STR
+   s REJECTION:AT  s" used, not in this package's scope" REJECTION:EMIT-STR
    REJECTION:HELP
    reach IF
-      s" write `EXPORT " REJECTION:EMIT-STR  qa qn a u EMIT-QUALIFIED
+      s" write `EXPORT " REJECTION:EMIT-STR  q s EMIT-QUALIFIED
       s" `" REJECTION:EMIT-STR
-   ELSE qa qn EMIT-HIDER THEN
+   ELSE q EMIT-HIDER THEN
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ Rejects the operand a u, which names no word EXPORT may take. SYM is
+\ Rejects the operand s, which names no word EXPORT may take. SYM is
 \ EXPORT-SYM's symbol; WALK-USED still describes the walk that bound it.
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row lives at offset 0.
-: EXPORT-MISS ( str n -- ) {: a:^ u:n sym:n :}
-   sym PRIM-FIRST-IDX 0 <> IF a u EXPORT-PRIM THEN
-   sym CTL-FLAGS-SYM CTL-IDENTITY and 0 <> IF a u EXPORT-JUDGED THEN
-   sym 0= IF a u EXPORT-KEYWORD THEN
-   WALK-USED @ 0 <>  sym 0 <>  and IF a u sym EXPORT-USED THEN
-   a u EXPORT-SEALED? IF a u EXPORT-SEALED THEN
-   a u EXPORT-UNDEFINED ;
+: EXPORT-MISS ( str n -- ) {: s:str sym:n :}
+   sym PRIM-FIRST-IDX 0 <> IF s EXPORT-PRIM THEN
+   sym CTL-FLAGS-SYM CTL-IDENTITY and 0 <> IF s EXPORT-JUDGED THEN
+   sym 0= IF s EXPORT-KEYWORD THEN
+   WALK-USED @ 0 <>  sym 0 <>  and IF s sym EXPORT-USED THEN
+   s EXPORT-SEALED? IF s EXPORT-SEALED THEN
+   s EXPORT-UNDEFINED ;
 
 \ A prefix probe observes only misses in the token it just captured; earlier
 \ body text is the caller's and may still await its own `;`.
@@ -19455,39 +19463,39 @@ variable CHECKER-PREFIX-ACTIVE
 
 \ The require check of a call outside a prefix probe that the source read spells,
 \ by REC's slot; with no record, by the file of SYM's effect record.
-: USE-CHECK ( n str ^n -- ) {: sym:n a:^ u:n rec:^ :}
+: USE-CHECK ( n str ^n -- ) {: sym:n s:str rec:^ :}
    CHECKER-PREFIX-ACTIVE @ 0 <> IF EXIT THEN
-   a REJECTION:RENDERED? IF EXIT THEN
-   rec NULL-PTR <> IF a u rec REC>INDEX REQUIRES:CHECK EXIT THEN
+   s STR:DATA REJECTION:RENDERED? IF EXIT THEN
+   rec NULL-PTR <> IF s rec REC>INDEX REQUIRES:CHECK EXIT THEN
    sym 0= IF EXIT THEN
    sym USIG-NEWEST-VISIBLE {: rec1:n :}
    rec1 0= IF EXIT THEN                    \ a kernel primitive
-   a u rec1 1 - E-PTR ER.FILE @ REQUIRES:CHECK-FILE ;
+   s rec1 1 - E-PTR ER.FILE @ REQUIRES:CHECK-FILE ;
 
-\ The operand a u names SYM, whose record is PRIV, EXPORT-SYM's, else the one
+\ The operand s names SYM, whose record is PRIV, EXPORT-SYM's, else the one
 \ its scope finds.
-: EXPORT-RESOLVE ( str n ^n -- ) {: a:^ u:n sym:n priv:^ :}
-   sym HOST-DECLARATION-SYM? IF a u EXPORT-DECLARATION THEN
-   sym PRIM-TRUSTED-SYM? IF a u EXPORT-UNSAFE THEN
+: EXPORT-RESOLVE ( str n ^n -- ) {: s:str sym:n priv:^ :}
+   sym HOST-DECLARATION-SYM? IF s EXPORT-DECLARATION THEN
+   sym PRIM-TRUSTED-SYM? IF s EXPORT-UNSAFE THEN
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? WALK-USED @ 0= and
    \ A primitive a package owns is one of its private words; a global one is not.
-   sym PRIM-FIRST-IDX 0 <>  sym SYM-PKG$ nip 0 <>  and  or
-   0= IF a u sym EXPORT-MISS THEN
-   priv NULL-PTR = IF a u HORIZON-FIND 2drop drop ELSE priv THEN {: rec:^ :}
-   sym a u NAV-USE-NOW  sym a u rec USE-CHECK ;
+   sym PRIM-FIRST-IDX 0 <>  sym SYM-PKG$ STR:LEN 0 <>  and  or
+   0= IF s sym EXPORT-MISS THEN
+   priv NULL-PTR = IF s HORIZON-FIND 2drop drop ELSE priv THEN {: rec:^ :}
+   sym s NAV-USE-NOW  sym s rec USE-CHECK ;
 
 \ The symbol an EXPORT operand names and, when its scope finds no word, the
 \ private record CHECKER-RESOLVE:EXPORT-PRIVATE finds instead, else NULL-PTR.
-: EXPORT-SYM ( str -- n ^n ) {: a:^ u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+: EXPORT-SYM ( str -- n ^n ) {: s:str :}
+   s CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym 0 <> IF sym NULL-PTR EXIT THEN
-   a u EXPORT-PRIVATE {: rec:^ :}
+   s EXPORT-PRIVATE {: rec:^ :}
    rec NULL-PTR = IF 0 rec EXIT THEN
    \ A record linked from its object has no symbol until its facts are read;
    \ the read scans names of its own, so this one is scanned again.
    rec FACTS-READ-XT
-   a u CHECKER-QUALIFIED? drop
+   s CHECKER-QUALIFIED? drop
    CHECKER-QPKG$ SYM-PRIVATE CHECKER-QTAIL$ CHECKER-PKG-SYM? rec ;
 
 : EXPORT-EFF-INST ( ^u8 -- n n n n bool ) {: h:^ :}
@@ -19502,72 +19510,72 @@ variable CHECKER-PREFIX-ACTIVE
    0 0 RES-FALSE ;
 
 : EXPORT-RECORD ( str bool -- )
-   {: ta:^ tu:n carries:bool :}
-   ta tu CHECKER-CERT-DUP? IF ta tu CHECKER-DUP-DEFINITION THEN
-   ta tu carries CHECKER-CERT-SHAPE-DUP? IF ta tu CHECKER-DUP-DEFINITION THEN
-   ta tu CHECKER-REC-NAME! ;
+   {: ts:str carries:bool :}
+   ts CHECKER-CERT-DUP? IF ts CHECKER-DUP-DEFINITION THEN
+   ts carries CHECKER-CERT-SHAPE-DUP? IF ts CHECKER-DUP-DEFINITION THEN
+   ts CHECKER-REC-NAME! ;
 
 \ Its entry names the word it is, the source's own word when the source is an
 \ export too, so one hop from any export reaches the word.
-: EXPORT-META-COPY ( str n -- ) {: a:^ u:n src:n :}
-   src DFER-FIND-SYM IF a u EXPORT-TAIL$ DFER-ADD THEN
+: EXPORT-META-COPY ( str n -- ) {: s:str src:n :}
+   src DFER-FIND-SYM IF s EXPORT-TAIL$ DFER-ADD THEN
    src CTL-FLAGS-SYM ALIAS-CTL {: ctl:n :}
    src CTL-MASKS-SYM {: dm:n rm:n :}
    src NORET-CREATES@ {: creates:n :}
-   a u EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm creates
+   s EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm creates
    src CHECKER-SYM-SOURCE src NORET-NONZERO@ NORET-APPEND ;
 
 EXPORT CHECKER-OVERLAY:CARRIES?
 
 \ An export of a does> definer publishes the definer's clause too, under the
 \ clause's name in the export's wordlist. PRIV is EXPORT-SYM's record.
-: EXPORT-CARRIES? ( str ^n -- bool ) {: a:^ u:n priv:^ :}
+: EXPORT-CARRIES? ( str ^n -- bool ) {: s:str priv:^ :}
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF RES-FALSE EXIT THEN
    priv NULL-PTR <> IF priv CARRIES? EXIT THEN
-   a u HORIZON-FIND 2drop drop CARRIES? ;
+   s HORIZON-FIND 2drop drop CARRIES? ;
 
 \ Only an armed name is scanned: the qualified-name scan leaves its state for
 \ the checker's next read.
 : DL-TAKE-TAIL ( -- )
    DL-ON @ 0= IF DL-TAKE EXIT THEN
-   DL-NA @ DL-NU @ EXPORT-TAIL$ DL-TAKE-AS ;
+   DL-NA @ DL-NU @ >str EXPORT-TAIL$ DL-TAKE-AS ;
 
 EXPORT CHECKER-OVERLAY:EXPORT-ROOM
 
 \ The source symbol is read once, before the export's record is published:
 \ inside a replay the operand's spelling can bind the published tail after.
-: CHECKER-EXPORT-SOURCE ( str -- n ^n ) {: a:^ u:n :}
-   a u EXPORT-SYM {: src:n priv:^ :}
-   a u src priv EXPORT-RESOLVE
+: CHECKER-EXPORT-SOURCE ( str -- n ^n ) {: s:str :}
+   s EXPORT-SYM {: src:n priv:^ :}
+   s src priv EXPORT-RESOLVE
    src priv ;
 
 : CHECKER-EXPORT-ROW ( str n ^n bool -- )
-   {: a:^ u:n src:n priv:^ publish:bool :}
-   a u priv EXPORT-CARRIES? {: carries:bool :}
+   {: s:str src:n priv:^ publish:bool :}
+   s priv EXPORT-CARRIES? {: carries:bool :}
    FEP @ RECOVERY-ROW? {: recovery:bool :}
    \ A failed declaration's row is uncertified outside its own run, and no copy
    \ can carry that.
-   FEP @ ER.ACTIVE @ EFF-RECOVERY = recovery 0= and IF a u EXPORT-REJECTED THEN
+   FEP @ ER.ACTIVE @ EFF-RECOVERY = recovery 0= and IF s EXPORT-REJECTED THEN
    NEW
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
-   a u EXPORT-TAIL$ carries EXPORT-RECORD
+   s EXPORT-TAIL$ carries EXPORT-RECORD
    carries IF
-      a u EXPORT-TAIL$ {: xa:^ xu:n :}
-      xa xu xa xu CLAUSE-NAME EXPORT-ROOM
+      s EXPORT-TAIL$ {: x:str :}
+      x x CLAUSE-NAME EXPORT-ROOM
    THEN
    src EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
    DL-NEW @ {: effect:n :}
    DL-TAKE-TAIL
    recovery IF RECOVERY-RECORD THEN
-   a u src EXPORT-META-COPY
-   carries IF a u EXPORT-TAIL$ CHECKER-SOURCE-CLAUSE THEN
+   s src EXPORT-META-COPY
+   carries IF s EXPORT-TAIL$ CHECKER-SOURCE-CLAUSE THEN
    \ Only the declaration callback has an engine alias to link to this row.
    publish IF
       CHECKER-REC-SYM @ effect RECORD-PEND!
    THEN ;
 
-: CHECKER-EXPORT-DECL ( str -- ) {: a:^ u:n :}
-   a u  a u CHECKER-EXPORT-SOURCE  RES-TRUE CHECKER-EXPORT-ROW ;
+: CHECKER-EXPORT-DECL ( str -- ) {: s:str :}
+   s  s CHECKER-EXPORT-SOURCE  RES-TRUE CHECKER-EXPORT-ROW ;
 ;package
 package CHECKER-REG
 EXPORT CHECK:CHECKER-EXPORT-DECL
@@ -19700,13 +19708,13 @@ variable TCLOSE  variable TBEST  variable TREACH
    TSOK @ 0 <> ;
 \ A literal's value as the engine parses it (a real's bits).
 : FLOAT-LITERAL-ADMITTED? ( str -- n bool )
-   {: a:^ u:n :}
-   a u num-parse {: v:n flt:bool ok:bool :}
+   {: s:str :}
+   s num-parse {: v:n flt:bool ok:bool :}
    v  flt ok and ;
 
 : INTEGER-LITERAL-ADMITTED? ( str -- n bool )
-   {: a:^ u:n :}
-   a u num-parse {: v:n flt:bool ok:bool :}
+   {: s:str :}
+   s num-parse {: v:n flt:bool ok:bool :}
    v  flt 0= ok and ;
 
 \ Whether the walk reads the engine's body text, whole or a prefix of it.
@@ -19755,20 +19763,20 @@ EXPORT CHECKER-TAPE:K-REAL
 \ A token with a number's shape whose value does not fit in a cell, which the
 \ load cannot compile either.
 : LITERAL-RANGE? ( str -- bool )
-   {: a:^ u:n :}
-   a u ALLDIG?  a u FLODIG?  or 0= IF RES-FALSE EXIT THEN
-   a u num-parse nip nip 0= ;
+   {: s:str :}
+   s ALLDIG?  s FLODIG?  or 0= IF RES-FALSE EXIT THEN
+   s num-parse nip nip 0= ;
 
 : LITERAL-TOK? ( str -- bool )
-   {: a:^ u:n :}
-   a u LITERAL-RANGE? IF
+   {: s:str :}
+   s LITERAL-RANGE? IF
       MD-LITERAL-RANGE MDIAG-COMPILE!  0 OK !  -1 FAILSET !  RES-TRUE EXIT
    THEN
-   a u ALLDIG? IF
-      a u INTEGER-LITERAL-ADMITTED? drop INT-STEP  RES-TRUE EXIT
+   s ALLDIG? IF
+      s INTEGER-LITERAL-ADMITTED? drop INT-STEP  RES-TRUE EXIT
    THEN
-   a u FLODIG? IF
-      a u FLOAT-LITERAL-ADMITTED? drop
+   s FLODIG? IF
+      s FLOAT-LITERAL-ADMITTED? drop
       K-REAL swap 0 EVENT!  STEP-R-OUT  RES-TRUE EXIT
    THEN
    RES-FALSE ;
@@ -19830,7 +19838,7 @@ variable WFN-OFF   variable WFN-ROW   variable WFN-K
 : WF-FACT@ ( n -- n n n ) {: i:n :} i WF-OFF@  i WF-POS@  i WF-WIDTH@ ;
 
 : WF-ROW-COPY ( n n -- ) {: src:n dst:n :}
-   src WF-ROW BYTE-VIEW dst WF-ROW BYTE-VIEW WF-REC ARENA-COPY ;
+   src WF-ROW BYTE-VIEW dst WF-ROW BYTE-VIEW WF-REC >str ARENA-COPY ;
 
 : WF-KEY< ( n n n -- bool ) {: off:n pos:n row:n :}
    off row WF-OFF@ < if RES-TRUE exit then
@@ -20077,7 +20085,7 @@ private
       x PARAM>ARGC 0 ?do
          x i PARAM>ARG depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER PARAM-SCR+
       loop
-      base x PARAM>NAME-A x PARAM>NAME-U x PARAM>FAM MK-PARAM {: copy:n :}
+      base x PARAM>NAME-A x PARAM>NAME-U >str x PARAM>FAM MK-PARAM {: copy:n :}
       x PARAM>HID copy PAY cells PARAMHID + !
       copy EXIT
    THEN
@@ -20501,8 +20509,8 @@ defer NAMED-OPERAND-XT ( -- )
 \ A qualified token keeps its symbol but no identity: both compilers match an
 \ operator row on the bare spelling alone.
 : TOK-IDENTITY ( n str -- n )
-   {: sym:n a:^ u:n :}
-   a u CHECKER-QUALIFIED? IF 0 EXIT THEN
+   {: sym:n s:str :}
+   s CHECKER-QUALIFIED? IF 0 EXIT THEN
    sym CTL-FLAGS-SYM CTL-IDENTITY and ;
 
 
@@ -20616,10 +20624,10 @@ PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
    RES-TRUE ;
 
 : REC-HOME-SYM ( ^n -- n ) {: rec:^ :}
-   rec REC-HOME drop {: pa:^ pu:n vis:n :}
-   rec CK-REC-NAME$ {: a:^ u:n :}
-   vis SYM-GLOBAL = IF a u CHECKER-GLOBAL-SYM? EXIT THEN
-   pa pu vis a u CHECKER-PKG-SYM? ;
+   rec REC-HOME drop {: p:str vis:n :}
+   rec CK-REC-NAME$ {: t:str :}
+   vis SYM-GLOBAL = IF t CHECKER-GLOBAL-SYM? EXIT THEN
+   p vis t CHECKER-PKG-SYM? ;
 
 \ The token is bound to nothing, as a number is.
 : BIND-CLEAR ( -- )
@@ -20639,7 +20647,7 @@ PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
    -1 WALK-REC !
    prec REC-HOME-SYM ;
 
-: BIND-FILL ( n n str -- ) {: sym:n why:n a:^ u:n :}
+: BIND-FILL ( n n str -- ) {: sym:n why:n s:str :}
    sym TOK-SYM !
    BIND-REC @ TOK-REC !
    BIND-PEND-IX @ TOK-PEND-IX !
@@ -20648,32 +20656,32 @@ PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
    TOK-SYM @ CTL-FLAGS-SYM CTL-DEAD and 0= IF 0 ELSE 1 THEN TOK-DEAD !
    WALK-REC @ TOK-LIVE-REC !
    why 0= IF
-      TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ NAV-USE
-      TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ TOK-REC @ USE-CHECK
+      TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ >str NAV-USE
+      TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ >str TOK-REC @ USE-CHECK
       TOK-SYM @ CTL-FLAGS-SYM CTL-NAMES and 0 <> IF NAMED-OPERAND-XT THEN
    THEN
-   TOK-SYM @ a u TOK-IDENTITY TOK-CTL ! ;
+   TOK-SYM @ s TOK-IDENTITY TOK-CTL ! ;
 
 EXPORT CHECKER-ITEMS:POSTPONED-REC
 
 \ Made on the first ask for the token DO-TOK1 is reading, and read by every
 \ later reader of that token. A rejection the lookup raises names the token as
-\ DO-TOK1 read it; `a u` may be the fold the body walk keeps in scratch.
+\ DO-TOK1 read it; `s` may be the fold the body walk keeps in scratch.
 : BIND-TOK ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    TOK-DONE @ IF EXIT THEN
    BIND-CLEAR
-   a u ALLDIG?  a u FLODIG?  or IF EXIT THEN
+   s ALLDIG?  s FLODIG?  or IF EXIT THEN
    BIND-START
-   TSTART @ u POSTPONED-REC {: prec:^ :}
+   TSTART @ s STR:LEN POSTPONED-REC {: prec:^ :}
    prec NULL-PTR <> IF prec BIND-PREC 0
-   ELSE a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND-WHY THEN
-   a u BIND-FILL ;
+   ELSE s TOK-SPELL-A @ TOK-SPELL-U @ >str CHECKER-BIND-WHY THEN
+   s BIND-FILL ;
 
-\ A CALL item's token, spelled a u, binds the record rec.
-: BIND-RECORD ( ^n str -- ) {: rec:^ a:^ u:n :}
+\ A CALL item's token, spelled s, binds the record rec.
+: BIND-RECORD ( ^n str -- ) {: rec:^ s:str :}
    BIND-CLEAR  BIND-START
-   rec BIND-PREC 0 a u BIND-FILL ;
+   rec BIND-PREC 0 s BIND-FILL ;
 
 
 EXPORT CHECKER-TAPE:K-CONTROL
@@ -20693,9 +20701,9 @@ EXPORT CHECKER-TAPE:K-NAME
 \ Once a token's role is a source call, keep its original resolution even when
 \ a later type step rejects. The declared ABI is selected by that symbol,
 \ before judgment or publication can change the active name.
-: BIND-SOURCE-CALL ( str -- ) {: a:^ u:n :}
-   a u BIND-TOK
-   a u ALLDIG? a u FLODIG? or IF EXIT THEN
+: BIND-SOURCE-CALL ( str -- ) {: s:str :}
+   s BIND-TOK
+   s ALLDIG? s FLODIG? or IF EXIT THEN
    TOK-REC @ REC>INDEX {: ix:n :}
    K-NAME ix 0 EVENT!
    ix 0< IF RS-KEYWORD THEN
@@ -20742,10 +20750,10 @@ variable CHECKER-PREFIX-ROLLBACK
 \ A name no row answers is E-UNDEFINED (E-BAD-QUALIFIED when malformed); true
 \ when the run may define it.
 : CALL-UNDEFINED ( str -- bool )
-   {: a:^ u:n :}
+   {: s:str :}
    TSTART @ dup PREFIX-MISS-AT
    -1 UNDEFERR !
-   a u UNSEEN-COVERS?
+   s UNSEEN-COVERS?
    {: unseen:bool :}
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    unseen IF UNSEEN-RAISE ELSE UNCK-RAISE THEN
@@ -20756,9 +20764,9 @@ EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
 \ A name the walk rejected for a `using` is not undefined. No definition, now or
 \ later, makes a keyword a word.
 : REJECT-UNDEFINED ( str -- )
-   CUSING @ 0 <> IF 2drop EXIT THEN
-   2dup BODY-KEYWORD? IF
-      2drop RF-KEYWORD CREJECT!  0 OK !  -1 FAILSET !  EXIT
+   CUSING @ 0 <> IF drop EXIT THEN
+   dup BODY-KEYWORD? IF
+      drop RF-KEYWORD CREJECT!  0 OK !  -1 FAILSET !  EXIT
    THEN
    CALL-UNDEFINED IF EXIT THEN
    CHECKER-QBAD-TOK @ 0 <> IF RF-QUAL ELSE RF-UNDEF THEN CREJECT! ;
@@ -20813,30 +20821,30 @@ EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
       WF-POS-I @ 1 + WF-POS-I !
    REPEAT ;
 
-: WF-XPORT-K ( str -- n ) {: a:^ u:n :}
-   a u s" rot"   STR:= IF 3 EXIT THEN
-   a u s" -rot"  STR:= IF 3 EXIT THEN
-   a u s" 2swap" STR:= IF 4 EXIT THEN
-   a u s" 2over" STR:= IF 4 EXIT THEN
-   a u s" swap"  STR:= IF 2 EXIT THEN
-   a u s" over"  STR:= IF 2 EXIT THEN
-   a u s" nip"   STR:= IF 2 EXIT THEN
-   a u s" tuck"  STR:= IF 2 EXIT THEN
-   a u s" 2dup"  STR:= IF 2 EXIT THEN
-   a u s" 2drop" STR:= IF 2 EXIT THEN
-   a u s" 2>r"   STR:= IF 2 EXIT THEN
-   a u s" 2r>"   STR:= IF 2 EXIT THEN
-   a u s" 2r@"   STR:= IF 2 EXIT THEN
+: WF-XPORT-K ( str -- n ) {: s:str :}
+   s s" rot"   STR:= IF 3 EXIT THEN
+   s s" -rot"  STR:= IF 3 EXIT THEN
+   s s" 2swap" STR:= IF 4 EXIT THEN
+   s s" 2over" STR:= IF 4 EXIT THEN
+   s s" swap"  STR:= IF 2 EXIT THEN
+   s s" over"  STR:= IF 2 EXIT THEN
+   s s" nip"   STR:= IF 2 EXIT THEN
+   s s" tuck"  STR:= IF 2 EXIT THEN
+   s s" 2dup"  STR:= IF 2 EXIT THEN
+   s s" 2drop" STR:= IF 2 EXIT THEN
+   s s" 2>r"   STR:= IF 2 EXIT THEN
+   s s" 2r>"   STR:= IF 2 EXIT THEN
+   s s" 2r@"   STR:= IF 2 EXIT THEN
    1 ;
-: WF-XPORT-RROW? ( str -- bool ) {: a:^ u:n :}
-   a u s" r>"  STR:= IF RES-TRUE EXIT THEN
-   a u s" r@"  STR:= IF RES-TRUE EXIT THEN
-   a u s" 2r>" STR:= IF RES-TRUE EXIT THEN
-   a u s" 2r@" STR:= IF RES-TRUE EXIT THEN
+: WF-XPORT-RROW? ( str -- bool ) {: s:str :}
+   s s" r>"  STR:= IF RES-TRUE EXIT THEN
+   s s" r@"  STR:= IF RES-TRUE EXIT THEN
+   s s" 2r>" STR:= IF RES-TRUE EXIT THEN
+   s s" 2r@" STR:= IF RES-TRUE EXIT THEN
    RES-FALSE ;
-: WF-XPORT-RECORD ( str -- ) {: a:^ u:n :}
-   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @ {: row:n :}
-   a u WF-XPORT-K {: k:n :}
+: WF-XPORT-RECORD ( str -- ) {: s:str :}
+   s WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @ {: row:n :}
+   s WF-XPORT-K {: k:n :}
    row k TSTART @ WF-ROW-SCAN
    TSTART @ WFN-OFF !  row WFN-ROW !  k WFN-K ! ;
 
@@ -20990,9 +20998,9 @@ variable XG-N   variable XG-TN   variable XG-ROW
       1 -
    REPEAT drop ;
 
-: XG-REPLAY ( n str -- n ) {: a:^ u:n :}   \ ( row -- row ) push groups per index digit
-   0 BEGIN dup u < WHILE
-      dup a + c@ 48 -
+: XG-REPLAY ( n str -- n ) {: t:str :}   \ ( row -- row ) push groups per index digit
+   0 BEGIN dup t STR:LEN < WHILE
+      dup t STR:DATA + c@ 48 -
       rot swap XG-PUSH-GROUP swap
       1 +
    REPEAT drop ;
@@ -21001,18 +21009,18 @@ variable XG-N   variable XG-TN   variable XG-ROW
    XG-LEN gi cells + @ 1 <> IF RES-FALSE EXIT THEN
    gi XG-TERM0@ T-RES ISVAR ;
 
-: XG-SEQ-COUNT ( n str -- n ) {: gi:n a:^ u:n :}
+: XG-SEQ-COUNT ( n str -- n ) {: gi:n s:str :}
    0
-   0 BEGIN dup u < WHILE
-      dup a + c@ 48 - gi = IF swap 1 + swap THEN
+   0 BEGIN dup s STR:LEN < WHILE
+      dup s STR:DATA + c@ 48 - gi = IF swap 1 + swap THEN
       1 +
    REPEAT drop ;
 
-: XG-TAINT-SEQ ( str -- ) {: a:^ u:n :}
+: XG-TAINT-SEQ ( str -- ) {: s:str :}
    LIN-ANY? 0= IF EXIT THEN
    0 BEGIN dup XG-N @ < WHILE
       dup XG-GROUP-VAR? IF
-         dup a u XG-SEQ-COUNT 1 <> IF
+         dup s XG-SEQ-COUNT 1 <> IF
             dup XG-TERM0@ T-RES PAY LIN-TAINT
          THEN
       THEN
@@ -21021,44 +21029,44 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 \ output permutation of each data transport as group-index digits, bottom->top
 \ (group 0 = pre-op top-of-stack operand).
-: XP-DATA-SEQ$ ( str -- str ) {: a:^ u:n :}
-   a u s" dup"   STR:= IF s" 00" EXIT THEN
-   a u s" drop"  STR:= IF s" " EXIT THEN
-   a u s" swap"  STR:= IF s" 01" EXIT THEN
-   a u s" over"  STR:= IF s" 101" EXIT THEN
-   a u s" nip"   STR:= IF s" 0" EXIT THEN
-   a u s" tuck"  STR:= IF s" 010" EXIT THEN
-   a u s" rot"   STR:= IF s" 102" EXIT THEN
-   a u s" -rot"  STR:= IF s" 021" EXIT THEN
-   a u s" 2dup"  STR:= IF s" 1010" EXIT THEN
-   a u s" 2drop" STR:= IF s" " EXIT THEN
-   a u s" 2swap" STR:= IF s" 1032" EXIT THEN
-   a u s" 2over" STR:= IF s" 321032" EXIT THEN
+: XP-DATA-SEQ$ ( str -- str ) {: s:str :}
+   s s" dup"   STR:= IF s" 00" EXIT THEN
+   s s" drop"  STR:= IF s" " EXIT THEN
+   s s" swap"  STR:= IF s" 01" EXIT THEN
+   s s" over"  STR:= IF s" 101" EXIT THEN
+   s s" nip"   STR:= IF s" 0" EXIT THEN
+   s s" tuck"  STR:= IF s" 010" EXIT THEN
+   s s" rot"   STR:= IF s" 102" EXIT THEN
+   s s" -rot"  STR:= IF s" 021" EXIT THEN
+   s s" 2dup"  STR:= IF s" 1010" EXIT THEN
+   s s" 2drop" STR:= IF s" " EXIT THEN
+   s s" 2swap" STR:= IF s" 1032" EXIT THEN
+   s s" 2over" STR:= IF s" 321032" EXIT THEN
    s" checker: transport seq for non-transport" EXIT-STATUS:INTERNAL die ;
 
-: XP-RS? ( str -- bool ) {: a:^ u:n :}
-   a u WF-XPORT-RROW? IF RES-TRUE EXIT THEN
-   a u s" >r" STR:= IF RES-TRUE EXIT THEN
-   a u s" 2>r" STR:= ;
+: XP-RS? ( str -- bool ) {: s:str :}
+   s WF-XPORT-RROW? IF RES-TRUE EXIT THEN
+   s s" >r" STR:= IF RES-TRUE EXIT THEN
+   s s" 2>r" STR:= ;
 
-: XP-RS-KEEP? ( str -- bool ) {: a:^ u:n :}
-   a u s" r@" STR:= IF RES-TRUE EXIT THEN
-   a u s" 2r@" STR:= ;
+: XP-RS-KEEP? ( str -- bool ) {: s:str :}
+   s s" r@" STR:= IF RES-TRUE EXIT THEN
+   s s" 2r@" STR:= ;
 
 : XP-RS-SEQ$ ( str -- str )   \ rs transfer order (bottom->top; RS2->R parity)
    WF-XPORT-K 1 = IF s" 0" ELSE s" 10" THEN ;
 
-: XPORT-RS-APPLY ( str -- ) {: a:^ u:n :}
-   a u WF-XPORT-RROW? IF
-      a u XP-RS-KEEP? IF
-         XG-ROW @ a u XP-RS-SEQ$ XG-REPLAY RCUR !
+: XPORT-RS-APPLY ( str -- ) {: s:str :}
+   s WF-XPORT-RROW? IF
+      s XP-RS-KEEP? IF
+         XG-ROW @ s XP-RS-SEQ$ XG-REPLAY RCUR !
       ELSE
          XG-ROW @ RCUR !
       THEN
-      DCUR @ a u XP-RS-SEQ$ XG-REPLAY DCUR !
+      DCUR @ s XP-RS-SEQ$ XG-REPLAY DCUR !
    ELSE
       XG-ROW @ DCUR !
-      RCUR @ a u XP-RS-SEQ$ XG-REPLAY RCUR !
+      RCUR @ s XP-RS-SEQ$ XG-REPLAY RCUR !
    THEN ;
 
 \ The transport already chose its operand groups and replay sequence. Name the
@@ -21066,9 +21074,9 @@ variable XG-N   variable XG-TN   variable XG-ROW
 : C2-XPORT-TERM? ( n -- bool )
    dup SCOPED-TYPE? swap LIN-TYPE-COUNT 0 > and ;
 
-: C2-XPORT-REJECT ( str -- ) {: a:^ u:n :}
-   a u XP-RS? IF
-      a u XP-RS-KEEP? 0= IF EXIT THEN
+: C2-XPORT-REJECT ( str -- ) {: s:str :}
+   s XP-RS? IF
+      s XP-RS-KEEP? 0= IF EXIT THEN
       0 BEGIN dup XG-N @ < WHILE
          dup XG-TERM0@ {: term:n :}
          term C2-XPORT-TERM? IF
@@ -21076,11 +21084,11 @@ variable XG-N   variable XG-TN   variable XG-ROW
          1 +
       REPEAT drop EXIT
    THEN
-   a u XP-DATA-SEQ$ {: seq:^ count:n :}
+   s XP-DATA-SEQ$ {: seq:str :}
    0 BEGIN dup XG-N @ < WHILE
       dup XG-TERM0@ {: term:n :}
       term C2-XPORT-TERM? IF
-         dup seq count XG-SEQ-COUNT
+         dup seq XG-SEQ-COUNT
          dup 1 > IF drop term MD-C2-COPY C2-REJECT drop EXIT THEN
          0= IF term MD-C2-DROP C2-REJECT drop EXIT THEN
       THEN
@@ -21097,43 +21105,43 @@ variable XG-N   variable XG-TN   variable XG-ROW
 \ The return row is no call row's to describe: r> and its kin take nothing from
 \ the data row, and >r leaves nothing on it.
 : XPORT-CALL ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    FRESH MK-ROW {: base:n :}
-   a u WF-XPORT-RROW? IF
+   s WF-XPORT-RROW? IF
       base  base XG-PUSH-ALL
-   ELSE a u XP-RS? IF
+   ELSE s XP-RS? IF
       base XG-PUSH-ALL  base
    ELSE
-      base XG-PUSH-ALL  base a u XP-DATA-SEQ$ XG-REPLAY
+      base XG-PUSH-ALL  base s XP-DATA-SEQ$ XG-REPLAY
    THEN THEN
    CALL-DOUT !  CALL-DIN !
    CALL-FREEZE ;
 
 : XPORT-APPLY ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    LIN-SNAPSHOT {: bef:n rbef:n :}
-   a u WF-XPORT-RROW? IF RS-AT-BASE? ELSE STEP-AT-BASE? THEN {: based:bool :}   \ the row read, measured before XG-READ binds its tail
-   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
-   0  a u WF-XPORT-K 0 ?do   \ ( row cells ): each operand's logical cell of known width expanded
+   s WF-XPORT-RROW? IF RS-AT-BASE? ELSE STEP-AT-BASE? THEN {: based:bool :}   \ the row read, measured before XG-READ binds its tail
+   s WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
+   0  s WF-XPORT-K 0 ?do   \ ( row cells ): each operand's logical cell of known width expanded
       2dup ROW-DROP-N R-RES  dup TAG S-PUSH <> IF drop leave THEN
       P>TYPE CELL-TERMS  over +  rot swap ROW-EXPAND-TERMS swap
       2dup ROW-DROP-N R-RES P>TYPE T-RES  dup HIDDEN-PARAM? IF T-WIDTH ELSE drop 1 THEN  +
    loop drop
-   a u WF-XPORT-K  XG-READ 0= IF EXIT THEN
+   s WF-XPORT-K  XG-READ 0= IF EXIT THEN
    based IF XG-TN @ UF-NEED ! THEN
    based  UF-NEED @ UF-HAVE @ >  and {: under:bool :}   \ the read spent the caller's frame
-   OK @ under and  a u WF-XPORT-RROW? 0= and IF STEP-UNDERFLOW! THEN
-   REC-ON @ IF a u XPORT-CALL THEN
-   a u XP-RS? IF
-      a u XPORT-RS-APPLY
-      OK @ under and  a u WF-XPORT-RROW? and IF RS-UNDERFLOW! THEN   \ r> and its kin: below the return cells pushed here
+   OK @ under and  s WF-XPORT-RROW? 0= and IF STEP-UNDERFLOW! THEN
+   REC-ON @ IF s XPORT-CALL THEN
+   s XP-RS? IF
+      s XPORT-RS-APPLY
+      OK @ under and  s WF-XPORT-RROW? and IF RS-UNDERFLOW! THEN   \ r> and its kin: below the return cells pushed here
    ELSE
-      XG-ROW @ a u XP-DATA-SEQ$ XG-REPLAY DCUR !
-      a u XP-DATA-SEQ$ XG-TAINT-SEQ
+      XG-ROW @ s XP-DATA-SEQ$ XG-REPLAY DCUR !
+      s XP-DATA-SEQ$ XG-TAINT-SEQ
    THEN
    OK @ IF
       bef rbef LIN-DELTA
-      dup 0 <> IF 0 OK !  a u C2-XPORT-REJECT THEN
+      dup 0 <> IF 0 OK !  s C2-XPORT-REJECT THEN
       LIN-REJECT
    THEN ;
 
@@ -21173,14 +21181,14 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 : XP-OPEN-IN-K? ( n n -- bool ) XP-OPEN-GROUP 0 >= ;
 
-: XPORT-STEP? ( str -- bool ) {: a:^ u:n :}
+: XPORT-STEP? ( str -- bool ) {: s:str :}
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN
-   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
-   dup a u WF-XPORT-K XP-OPEN-IN-K? IF drop RES-FALSE EXIT THEN
-   dup a u WF-XPORT-K XP-BUNDLE-IN-K?
-   swap a u WF-XPORT-K XP-META-IN-K? or 0= IF RES-FALSE EXIT THEN
-   a u XPORT-APPLY
-   a u XP-RS? 0= IF NZ-MOVED THEN
+   s WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
+   dup s WF-XPORT-K XP-OPEN-IN-K? IF drop RES-FALSE EXIT THEN
+   dup s WF-XPORT-K XP-BUNDLE-IN-K?
+   swap s WF-XPORT-K XP-META-IN-K? or 0= IF RES-FALSE EXIT THEN
+   s XPORT-APPLY
+   s XP-RS? 0= IF NZ-MOVED THEN
    RES-TRUE ;
 
 \ The type of the topmost cell above the row's tail var holding a layout value
@@ -21265,7 +21273,7 @@ PTR-VARIABLE LOC-HW-P   variable LOC-HW-CAP   variable LOCSEQ
    idx 1 - cells LOCEND + @ ;
 : LOC-NAME$ ( n -- str ) {: idx:n :}
    idx LOC-START {: start:n :}
-   LOCNB start +  idx cells LOCEND + @ start - ;
+   LOCNB start +  idx cells LOCEND + @ start - >str ;
 : LOC-HW ( -- ^n ) LOC-HW-P @ ;
 : LOC-HW-GROW-CAP ( n -- n ) {: need:n :}
    LOC-HW-CAP @ LOC-HW-MAX-CELLS 2 / <= IF LOC-HW-CAP @ 2 * need max LOC-HW-INIT max EXIT THEN
@@ -21280,25 +21288,25 @@ PTR-VARIABLE LOC-HW-P   variable LOC-HW-CAP   variable LOCSEQ
 \ The no-op default keeps the call effect-known and drops the name span,
 \ length and type.
 defer LOCSHOWXT ( str n -- )
-: LOCSHOW-DEFAULT ( -- ) [: 2drop drop ;] is LOCSHOWXT ;
+: LOCSHOW-DEFAULT ( -- ) [: drop drop ;] is LOCSHOWXT ;
 LOCSHOW-DEFAULT
 variable #CFC
 
-: LCOLON ( str -- n ) {: a:^ u:n :}
-   0 BEGIN dup u < WHILE
-      dup a + c@ 58 = IF EXIT THEN
+: LCOLON ( str -- n ) {: s:str :}
+   0 BEGIN dup s STR:LEN < WHILE
+      dup s STR:DATA + c@ 58 = IF EXIT THEN
       1 +
    REPEAT ;
 
 \ The type is read from the declaration's raw bytes: CT-FIND matches a
 \ DEFLINEAR name by its declared spelling, so the folded `pkg:own` names
 \ nothing where `PKG:own` names the linear type.
-: LOC-SHOW-SUFFIX? ( str -- bool ) {: a:^ u:n :}
-   u 1 = if a c@ 63 = exit then
+: LOC-SHOW-SUFFIX? ( str -- bool ) {: s:str :}
+   s STR:LEN 1 = if s STR:DATA c@ 63 = exit then
    RES-FALSE ;
 
-: LOC-SUFFIX$ ( str n -- str ) {: a:^ u:n col:n :}
-   a col + 1 +  u col - 1 - ;
+: LOC-SUFFIX$ ( str n -- str ) {: s:str col:n :}
+   s STR:DATA col + 1 +  s STR:LEN col - 1 - >str ;
 
 : LOC-SHOW-OFF! ( n -- ) {: idx:n :}
    0 idx cells LOCSHOW + ! ;
@@ -21351,15 +21359,15 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
 
 \ Makes the slot at #LOC for the name's raw spelling, which a reference must
 \ match; the name's bytes follow the previous local's.
-: LOC-OPEN ( str -- ) {: a:^ u:n :}
+: LOC-OPEN ( str -- ) {: s:str :}
    #LOC @ {: ix:n :}
    ix 1 + LOC-ENSURE
    ix LOC-START {: off:n :}
-   off u + LOCNB-ENSURE
+   off s STR:LEN + LOCNB-ENSURE
    LOCSEQ @ 1 + LOC-HW-ENSURE
    ix LOC-SHOW-OFF!
-   a  LOCNB off +  u CCOPY
-   off u + ix cells LOCEND + !
+   s STR:DATA  LOCNB off +  s STR:LEN CCOPY
+   off s STR:LEN + ix cells LOCEND + !
    FRESH MK-VAR ix cells LOCTV + !
    0 ix cells LOCVAL + !
    1 ix cells LOCW + !
@@ -21369,25 +21377,25 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    LOCSEQ @ 1 + LOCSEQ ! ;
 
 \ Types the slot LOC-OPEN made with term T; a type scheme is rejected at the
-\ first binder in the type's spelling A U.
-: LOC-TYPED ( str n -- ) {: a:^ u:n t:n :}
-   t SCHEME-TYPE? IF a u FORALL-SPAN SGBAD-SCHEME! LOC-ANN-FAILS ELSE t LOC-ANN-TERM THEN
+\ first binder in the type's spelling S.
+: LOC-TYPED ( str n -- ) {: s:str t:n :}
+   t SCHEME-TYPE? IF s FORALL-SPAN SGBAD-SCHEME! LOC-ANN-FAILS ELSE t LOC-ANN-TERM THEN
    #LOC @ LOC-TYPE-SET ;
 
-\ The annotation A U after a local's colon. A verdict it gives names a token of
-\ A U and records that token's offset from the colon; one a failed signature
+\ The annotation S after a local's colon. A verdict it gives names a token of
+\ S and records that token's offset from the colon; one a failed signature
 \ gave keeps its own.
-: LOC-ANN ( str -- ) {: a:^ u:n :}
-   a u LOC-SHOW-SUFFIX? IF #LOC @ LOC-SHOW-ON! EXIT THEN
+: LOC-ANN ( str -- ) {: s:str :}
+   s LOC-SHOW-SUFFIX? IF #LOC @ LOC-SHOW-ON! EXIT THEN
    SGBAD @ {: sg0:n :}
-   a u  a u LOCAL-TYPE  LOC-TYPED
-   SGBAD @ sg0 0= and IF SGBAD-A @ a - 1 + SGBAD-LOCAL ! THEN ;
+   s  s LOCAL-TYPE  LOC-TYPED
+   SGBAD @ sg0 0= and IF SGBAD-A @ s STR:DATA - 1 + SGBAD-LOCAL ! THEN ;
 
 : LOC-ADD ( ^u8 str -- )   \ raw declaration, folded declaration, their shared length
-   {: ra:^ a:^ u:n :}
-   a u LCOLON {: col:n :}
-   ra col LOC-OPEN
-   col u < IF ra u col LOC-SUFFIX$ LOC-ANN THEN
+   {: ra:^ t:str :}
+   t LCOLON {: col:n :}
+   ra col >str LOC-OPEN
+   col t STR:LEN < IF ra t STR:LEN >str col LOC-SUFFIX$ LOC-ANN THEN
    #LOC @ 1 + #LOC ! ;
 
 \ Linear values may not launder through locals: a local reference re-pushes its
@@ -21654,12 +21662,12 @@ EXPORT CHECKER-TAPE:K-LOCAL-CLOSE
 \ exits on OK 0 and binds no cell to them; an unjudged scan sets OK afresh for
 \ each token, so its LOC-BIND binds them as the runtime does.
 : LOC-TOK
-   {: ra a u :}
+   {: ra t:str :}
    NZ-MOVED
-   a u s" :}" STR:= IF LOC-CLOSE ELSE
-   ra a u LOC-ADD
-   a u s" --" STR:= IF LOCALBAD-DASH LOC-GROUP-REJECT THEN
-   a u s" |" STR:= IF LOCALBAD-BAR LOC-GROUP-REJECT THEN THEN ;
+   t s" :}" STR:= IF LOC-CLOSE ELSE
+   ra t LOC-ADD
+   t s" --" STR:= IF LOCALBAD-DASH LOC-GROUP-REJECT THEN
+   t s" |" STR:= IF LOCALBAD-BAR LOC-GROUP-REJECT THEN THEN ;
 
 : LOC-BEGIN ( -- )
    NZ-MOVED
@@ -21888,11 +21896,11 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    li LOC-PUSH-REF  NZ-MOVED ;
 
 : LOC-REF?
-   {: a u :}
+   {: t:str :}
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
      LI @ 1 - LI !
-     a u  LI @ LOC-NAME$  STR:= IF
+     t  LI @ LOC-NAME$  STR:= IF
        LI @ LOC-REF-AT  -1 LRF !
      THEN
    REPEAT  LRF @ ;
@@ -22933,7 +22941,7 @@ variable MSKIP   \ matches open in a rejected match the walk reads unmodeled (CH
 : RIGID-ATOM-DOMAIN ( n -- n )   \ 0 none / 1 region / 2 extent / 3 gen
    T-RES dup TAG T-ATOM <> IF drop 0 EXIT THEN
    dup ATOM>K 0 <= IF drop 0 EXIT THEN            \ only an instantiated fresh id carries a domain
-   dup ATOM>A swap ATOM>U RIGID-NAME-DOMAIN ;
+   dup ATOM>A swap ATOM>U >str RIGID-NAME-DOMAIN ;
 : RIGID-DIAG-CLASSIFY ( -- )
    REJECTION@ RF-MISMATCH <> IF EXIT THEN
    DF-EXP @ 0= IF EXIT THEN
@@ -22954,10 +22962,10 @@ variable MSKIP   \ matches open in a rejected match the walk reads unmodeled (CH
    MATCH-REJECT  1 MSKIP !  4 CHECKER-MATCH-MODE ! ;
 
 : MATCH-SKIP-TOK ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    EV-OPERAND                                \ an abandoned match compiles nothing
-   a u s" match" STR:= IF 1 MSKIP +! EXIT THEN
-   a u s" ;match" STR:= 0= IF EXIT THEN
+   s s" match" STR:= IF 1 MSKIP +! EXIT THEN
+   s s" ;match" STR:= 0= IF EXIT THEN
    -1 MSKIP +!
    MSKIP @ 0= IF 0 CHECKER-MATCH-MODE ! THEN ;
 
@@ -23074,32 +23082,32 @@ variable MTCH-W                      \ the bundle width the walk below really co
 \ A control keyword's code is its place in this list, the K-CONTROL event's
 \ a0; -1 for any other spelling.
 : CF-CODE ( str -- n )
-   {: a:^ u:n :}
-   a u s" [:" STR:= IF 0 EXIT THEN
-   a u s" ;]" STR:= IF 1 EXIT THEN
-   a u s" if" STR:= IF 2 EXIT THEN
-   a u s" else" STR:= IF 3 EXIT THEN
-   a u s" then" STR:= IF 4 EXIT THEN
-   a u s" case" STR:= IF 5 EXIT THEN
-   a u s" of" STR:= IF 6 EXIT THEN
-   a u s" endof" STR:= IF 7 EXIT THEN
-   a u s" endcase" STR:= IF 8 EXIT THEN
-   a u s" ;match" STR:= IF 9 EXIT THEN
-   a u s" begin" STR:= IF 10 EXIT THEN
-   a u s" until" STR:= IF 11 EXIT THEN
-   a u s" again" STR:= IF 12 EXIT THEN
-   a u s" while" STR:= IF 13 EXIT THEN
-   a u s" repeat" STR:= IF 14 EXIT THEN
-   a u s" do" STR:= IF 15 EXIT THEN
-   a u s" ?do" STR:= IF 16 EXIT THEN
-   a u s" loop" STR:= IF 17 EXIT THEN
-   a u s" +loop" STR:= IF 18 EXIT THEN
-   a u s" i" STR:= IF 19 EXIT THEN
-   a u s" j" STR:= IF 20 EXIT THEN
-   a u s" exit" STR:= IF 21 EXIT THEN
-   a u s" leave" STR:= IF 22 EXIT THEN
-   a u s" unloop" STR:= IF 23 EXIT THEN
-   a u s" recurse" STR:= IF 24 EXIT THEN
+   {: s:str :}
+   s s" [:" STR:= IF 0 EXIT THEN
+   s s" ;]" STR:= IF 1 EXIT THEN
+   s s" if" STR:= IF 2 EXIT THEN
+   s s" else" STR:= IF 3 EXIT THEN
+   s s" then" STR:= IF 4 EXIT THEN
+   s s" case" STR:= IF 5 EXIT THEN
+   s s" of" STR:= IF 6 EXIT THEN
+   s s" endof" STR:= IF 7 EXIT THEN
+   s s" endcase" STR:= IF 8 EXIT THEN
+   s s" ;match" STR:= IF 9 EXIT THEN
+   s s" begin" STR:= IF 10 EXIT THEN
+   s s" until" STR:= IF 11 EXIT THEN
+   s s" again" STR:= IF 12 EXIT THEN
+   s s" while" STR:= IF 13 EXIT THEN
+   s s" repeat" STR:= IF 14 EXIT THEN
+   s s" do" STR:= IF 15 EXIT THEN
+   s s" ?do" STR:= IF 16 EXIT THEN
+   s s" loop" STR:= IF 17 EXIT THEN
+   s s" +loop" STR:= IF 18 EXIT THEN
+   s s" i" STR:= IF 19 EXIT THEN
+   s s" j" STR:= IF 20 EXIT THEN
+   s s" exit" STR:= IF 21 EXIT THEN
+   s s" leave" STR:= IF 22 EXIT THEN
+   s s" unloop" STR:= IF 23 EXIT THEN
+   s s" recurse" STR:= IF 24 EXIT THEN
    -1 ;
 
 EXPORT CHECKER-RESOLVE:NAME-KEYWORD?
@@ -23157,19 +23165,19 @@ variable SKI  variable SKF
 : CHECKER-STRING-LEAD? ( n -- bool )
    dup CHECKER-SC-LEAD? swap $2E = or ;
 
-: NORMAL-STRING-OPENER? ( str -- bool ) {: a:^ u:n :}
-   u 2 <> IF RES-FALSE EXIT THEN
-   a 1 CHECKER-BYTE@ $22 <> IF RES-FALSE EXIT THEN
-   a 0 CHECKER-BYTE@ CHECKER-STRING-LEAD? ;
+: NORMAL-STRING-OPENER? ( str -- bool ) {: s:str :}
+   s STR:LEN 2 <> IF RES-FALSE EXIT THEN
+   s STR:DATA 1 CHECKER-BYTE@ $22 <> IF RES-FALSE EXIT THEN
+   s STR:DATA 0 CHECKER-BYTE@ CHECKER-STRING-LEAD? ;
 
-: ESCAPED-STRING-OPENER? ( str -- bool ) {: a:^ u:n :}
-   u 3 <> IF RES-FALSE EXIT THEN
-   a 1 CHECKER-BYTE@ $5C <> IF RES-FALSE EXIT THEN
-   a 2 CHECKER-BYTE@ $22 <> IF RES-FALSE EXIT THEN
-   a 0 CHECKER-BYTE@ CHECKER-STRING-LEAD? ;
+: ESCAPED-STRING-OPENER? ( str -- bool ) {: s:str :}
+   s STR:LEN 3 <> IF RES-FALSE EXIT THEN
+   s STR:DATA 1 CHECKER-BYTE@ $5C <> IF RES-FALSE EXIT THEN
+   s STR:DATA 2 CHECKER-BYTE@ $22 <> IF RES-FALSE EXIT THEN
+   s STR:DATA 0 CHECKER-BYTE@ CHECKER-STRING-LEAD? ;
 
 : STRING-OPENER? ( str -- bool )
-   2dup NORMAL-STRING-OPENER? IF 2drop RES-TRUE EXIT THEN
+   dup NORMAL-STRING-OPENER? IF drop RES-TRUE EXIT THEN
    ESCAPED-STRING-OPENER? ;
 
 : PARSE-LIT? ( str -- bool ) s" [char]" STR:= ;
@@ -23231,19 +23239,19 @@ variable SPAY-ARMED   \ was the token before this one?
 \ definition: the skip that found the closing quote steps over the byte after
 \ each backslash unjudged.
 : SPAY-BYTES ( -- str )
-   SPAY-ESC @ 0= IF SPAY-B @ TADDR  SPAY-U @ EXIT THEN
-   SPAY-B @ TADDR  SPAY-U @  SDEC  ESCAPE:DECODE 0= IF 0 OK ! THEN
-   SDEC swap ;
+   SPAY-ESC @ 0= IF SPAY-B @ TADDR  SPAY-U @ >str EXIT THEN
+   SPAY-B @ TADDR  SPAY-U @ >str  SDEC  ESCAPE:DECODE 0= IF 0 OK ! THEN
+   SDEC swap >str ;
 
 : STRING-PAYLOAD-STEP ( -- )
    TI @ {: before:n :}
-   TKF TKFU @ ESCAPED-STRING-OPENER? IF
+   TKF TKFU @ >str ESCAPED-STRING-OPENER? IF
       SKIP-ESCAPED-STRING-PAYLOAD
       \ Decoding here places a bad escape's rejection at the opener.
-      SKF @ IF before -1 SPAY-RECORD  SPAY-BYTES 2drop THEN
+      SKF @ IF before -1 SPAY-RECORD  SPAY-BYTES drop THEN
       EXIT
    THEN
-   TKF TKFU @ NORMAL-STRING-OPENER? 0= IF EXIT THEN
+   TKF TKFU @ >str NORMAL-STRING-OPENER? 0= IF EXIT THEN
    SKIP-STRING-PAYLOAD
    SKF @ IF before 0 SPAY-RECORD THEN ;
 
@@ -23264,70 +23272,70 @@ variable CPAY-ON
 
 : LITERAL-PAYLOAD-STEP ( -- )
    STRING-PAYLOAD-STEP
-   TKF TKFU @ PARSE-LIT? IF
+   TKF TKFU @ >str PARSE-LIT? IF
       SKIP-PARSE-LIT-PAYLOAD
       CPAY-U @ 0 > CPAY-ON !
    THEN ;
 
-: DEAD-CLOSE? {: a u :}
-   a u s" else"   STR:= IF RES-TRUE EXIT THEN
-   a u s" then"   STR:= IF RES-TRUE EXIT THEN
-   a u s" loop"   STR:= IF RES-TRUE EXIT THEN
-   a u s" +loop"  STR:= IF RES-TRUE EXIT THEN
-   a u s" endof"  STR:= IF RES-TRUE EXIT THEN
-   a u s" endcase" STR:= IF RES-TRUE EXIT THEN
-   a u s" repeat" STR:= IF RES-TRUE EXIT THEN
-   a u s" again"  STR:= IF RES-TRUE EXIT THEN
-   a u s" ;]"     STR:= IF RES-TRUE EXIT THEN
+: DEAD-CLOSE? {: t:str :}
+   t s" else"   STR:= IF RES-TRUE EXIT THEN
+   t s" then"   STR:= IF RES-TRUE EXIT THEN
+   t s" loop"   STR:= IF RES-TRUE EXIT THEN
+   t s" +loop"  STR:= IF RES-TRUE EXIT THEN
+   t s" endof"  STR:= IF RES-TRUE EXIT THEN
+   t s" endcase" STR:= IF RES-TRUE EXIT THEN
+   t s" repeat" STR:= IF RES-TRUE EXIT THEN
+   t s" again"  STR:= IF RES-TRUE EXIT THEN
+   t s" ;]"     STR:= IF RES-TRUE EXIT THEN
    RES-FALSE ;
 
-: LIVE-TOKEN? {: a u :}
+: LIVE-TOKEN? {: t:str :}
    PATH-LIVE? IF RES-TRUE EXIT THEN
-   a u DEAD-CLOSE? ;
+   t DEAD-CLOSE? ;
 
 EXPORT CHECKER-TAPE:K-UNREACHED
 
 \ A token no path reaches is bound as a call and files K-UNREACHED, which T0
 \ rejects.
-: DEAD-TOK ( str -- ) {: a:^ u:n :}
-   a u BIND-SOURCE-CALL
+: DEAD-TOK ( str -- ) {: s:str :}
+   s BIND-SOURCE-CALL
    K-UNREACHED 0 0 EVENT! ;
 
-: TOKFOLD ( str -- bool ) {: a:^ u:n :}
-   u TOKBUF-ENSURE
-   0 BEGIN dup u < WHILE
-     dup a + c@  dup 64 >  over 91 <  and IF 32 or THEN
+: TOKFOLD ( str -- bool ) {: s:str :}
+   s STR:LEN TOKBUF-ENSURE
+   0 BEGIN dup s STR:LEN < WHILE
+     dup s STR:DATA + c@  dup 64 >  over 91 <  and IF 32 or THEN
      over TKF + c!  1 +
    REPEAT drop
-   u TKFU !  RES-TRUE ;
+   s STR:LEN TKFU !  RES-TRUE ;
 : FAIL-SPAN! ( -- )
    TSTART @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
 : FAIL-PIN! ( str -- )
-   {: a:^ u:n :}
-   u TOKBUF-ENSURE
-   a FAILTK u CCOPY
-   u FAILTU !
+   {: s:str :}
+   s STR:LEN TOKBUF-ENSURE
+   s STR:DATA FAILTK s STR:LEN CCOPY
+   s STR:LEN FAILTU !
    TOKIX @ FAILIX !
    CRTGT @ 0=  QDEPTH @ 0=  and PIN-BODY-CALL !
    FAIL-SPAN! ;
 
 : CAP-FAIL ( str -- )
-   FAILSET @ 0= IF FAIL-PIN! ELSE 2drop THEN ;
+   FAILSET @ 0= IF FAIL-PIN! ELSE drop THEN ;
 private
 
-\ Whether the signature token SGBAD names lies in the text at A U; an empty one
+\ Whether the signature token SGBAD names lies in the text at S; an empty one
 \ at the text's end, where a signature ended early, does.
-: SGBAD-IN? ( str -- bool ) {: a:^ u:n :}
-   SGBAD-A @ a < IF RES-FALSE EXIT THEN
-   SGBAD-A @ SGBAD-U @ + a u + > IF RES-FALSE EXIT THEN
+: SGBAD-IN? ( str -- bool ) {: s:str :}
+   SGBAD-A @ s STR:DATA < IF RES-FALSE EXIT THEN
+   SGBAD-A @ SGBAD-U @ + s STR:DATA s STR:LEN + > IF RES-FALSE EXIT THEN
    RES-TRUE ;
 
 \ Whether that token lies in the checked text or in a signature text SGA SGU the source
 \ map places; not an interned copy.
 : SGBAD-IN-SOURCE? ( -- bool )
-   TBASE @ TBLEN @ SGBAD-IN? IF RES-TRUE EXIT THEN
-   SGA @ SGU @ SGBAD-IN? 0= IF RES-FALSE EXIT THEN
+   TBASE @ TBLEN @ >str SGBAD-IN? IF RES-TRUE EXIT THEN
+   SGA @ SGU @ >str SGBAD-IN? 0= IF RES-FALSE EXIT THEN
    SGBAD-A @ REJECTION:>SOURCE nip 0= IF RES-FALSE EXIT THEN
    SGBAD-A @ SGBAD-U @ + REJECTION:>SOURCE nip ;
 
@@ -23361,16 +23369,16 @@ private
 
 \ The registration TRUST-DECL and TRUST-RAW share; it answers the row's outcome.
 : TRUST-USIG-SYM! ( str str n -- n )
-   {: na:^ nu:n sa:^ su:n sym:n :}
-   na CHECKER-REC-A !  nu CHECKER-REC-U !
+   {: ns:str ss:str sym:n :}
+   ns STR:DATA CHECKER-REC-A !  ns STR:LEN CHECKER-REC-U !
    \ A nonzero SYM keys the row and the name is only rejected when malformed:
    \ a does> after a rejected definition passes it empty; interning that dies 89.
-   sym 0= IF na nu na nu CHECKER-RECORD-NAME-AT 2drop ELSE
-      na nu CHECKER-QUALIFIED? drop
-      CHECKER-QBAD-TOK @ IF na nu na nu CHECKER-RECORD-NAME-AT 2drop THEN
+   sym 0= IF ns ns CHECKER-RECORD-NAME-AT drop ELSE
+      ns CHECKER-QUALIFIED? drop
+      CHECKER-QBAD-TOK @ IF ns ns CHECKER-RECORD-NAME-AT drop THEN
       sym CHECKER-REC-SYM !
    THEN
-   sa su  na nu RES-TRUE USIG-ADD-AS ;
+   ss  ns RES-TRUE USIG-ADD-AS ;
 
 : TRUST-USIG! ( str str -- n )
    0 TRUST-USIG-SYM! ;
@@ -23386,12 +23394,12 @@ private
 \ The step is unconditional: a latch in any other state dies here.
 \ Source cannot call it: a row registered here asks nothing, so it would record
 \ any effect for a name in the open section's wordlist.
-: TRUST-DECL-ROW ( ^u8 n ^u8 n -- n )
-   {: na:^ nu:n sa:^ su:n :}
+: TRUST-DECL-ROW ( str str -- n )
+   {: ns:str ss:str :}
    WRITE-WINDOW-CK                       \ before the does> latch steps
    DOES-EFF-STEP
    0 DL-NEW !
-   na nu sa su TRUST-USIG!
+   ns ss TRUST-USIG!
    {: row:n :}
    DL-TAKE
    \ A quiet row comes only from the verifier's pre-pass, whose quiet types
@@ -23404,26 +23412,26 @@ private
    \ cells for a later catch.
    PD-IN @ SCOPED-TYPE? PR-IN @ SCOPED-TYPE? or IF CTL-THROW or THEN {: extra:n :}
    extra 0 <>  row CHECKER-ROW:KEPT =  and IF
-      na nu CHECKER-RECORD-SYM? {: sym:n :}
+      ns CHECKER-RECORD-SYM? {: sym:n :}
       sym sym CTL-FLAGS-SYM extra or 0 0 NORET-ADD-SYM
    THEN
    CHECKER-REC-SYM @ CK-CLOSE!                  \ published after this, as a checked one is
    row ;
 
-: TRUST-DECL-REJECTED? ( ^u8 n ^u8 n -- bool )
+: TRUST-DECL-REJECTED? ( str str -- bool )
    TRUST-DECL-ROW CHECKER-ROW:REJECTED = ;
 
 \ EFFECT-OFF's registrar, which only a defer's declaration reaches, so its
 \ outputs may end in fact words.
-: TRUST-DECL ( ^u8 n ^u8 n -- )
+: TRUST-DECL ( str str -- )
    RES-TRUE SIG-STATES-FACTS !
    [: TRUST-DECL-ROW ;] [: RES-FALSE SIG-STATES-FACTS ! ;] finally drop ;
 ' TRUST-DECL CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + xt!
 ' TRUST-DECL-REJECTED? CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DECL-ROW-OFF + xt!
 
-: CHECKER-DEFER ( str -- ) {: a:^ u:n :}
-   a u CTOR-EXTEND?-XT IF a u CTOR-EXTEND-REJECT THEN
-   a u CHECKER-RECORD-NAME DFER-ADD
+: CHECKER-DEFER ( str -- ) {: s:str :}
+   s CTOR-EXTEND?-XT IF s CTOR-EXTEND-REJECT THEN
+   s CHECKER-RECORD-NAME DFER-ADD
    \ Any word may be installed, so a call may throw and keeps no input intact.
    CHECKER-REC-SYM @ {: sym:n :}
    sym sym CTL-FLAGS-SYM CTL-THROW or 0 0 NORET-ADD-SYM ;
@@ -23450,17 +23458,17 @@ private
 \ A created word's row, registered in raw-definer mode, the only path that
 \ publishes a created word: every type variable is TVK-RAW, so the cell read
 \ back cannot bind a nominal family.
-: TRUST-RAW {: na:^ nu:n sa:^ su:n :}
+: TRUST-RAW {: ns:str ss:str :}
    \ A does> patch publishes under the symbol LASTC's record links, if any.
    LASTC-LINK-SYM {: linked:n :}
    RES-TRUE SIG-RAW-DEFINER!
    0 DL-NEW !
    \ Off on every exit, not restored: raw registration never nests, and a
    \ latched mode would seal later ordinary signatures.
-   na nu sa su linked [: TRUST-USIG-SYM! drop ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally
+   ns ss linked [: TRUST-USIG-SYM! drop ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally
    DL-NEW @ {: effect:n :}
    DL-TAKE
-   linked 0= IF na nu CHECKER-RECORD-SYM? ELSE linked THEN {: sym:n :}
+   linked 0= IF ns CHECKER-RECORD-SYM? ELSE linked THEN {: sym:n :}
    \ A created word takes no CTL-INHERITED fact: those come from the hook's walk
    \ of an interpret-mode `create`, read as a call to it.
    sym CTL-FLAGS-SYM {: flags:n :}
@@ -23488,22 +23496,22 @@ DRAIN-PRETRUST
 \ Whether the raw token is a live local's declared spelling; a differently-cased
 \ spelling is not this local.
 variable RTL-I                        \ retired-token local scan index
-: LOC-NAME? ( str -- bool ) {: a:^ u:n :}
+: LOC-NAME? ( str -- bool ) {: s:str :}
    0 RTL-I !
    BEGIN RTL-I @ #LOC @ < WHILE
-      a u  RTL-I @ LOC-NAME$  STR:=
+      s  RTL-I @ LOC-NAME$  STR:=
          IF RES-TRUE EXIT THEN
       RTL-I @ 1 + RTL-I !
    REPEAT RES-FALSE ;
 
 \ Locals shadow retirement as they shadow every other resolution: the
 \ checker resolves a local before any dictionary lookup.
-: RETIRED-GLOBAL? ( str -- bool ) {: a:^ u:n :}
-   a u RETIRED-TOK? 0= IF RES-FALSE EXIT THEN
-   a u LOC-NAME? IF RES-FALSE EXIT THEN
-   a u BIND-TOK
+: RETIRED-GLOBAL? ( str -- bool ) {: s:str :}
+   s RETIRED-TOK? 0= IF RES-FALSE EXIT THEN
+   s LOC-NAME? IF RES-FALSE EXIT THEN
+   s BIND-TOK
    TOK-SYM @ dup 0= IF drop RES-TRUE EXIT THEN
-   a u CHECKER-GLOBAL-SYM? = ;
+   s CHECKER-GLOBAL-SYM? = ;
 
 \ A retired token is E-UNDEFINED, as the interpreter names it, not E-UNSAFE: its
 \ caller moves to the owning package's API.
@@ -23579,18 +23587,18 @@ SIMM-ONS-P SIMM-CAP-V CELL TABLE+
 
 EXPORT CHECKER-OVERLAY:RETIRE
 
-: CHECKER-UNDEFINE ( str -- ) {: a:^ u:n :}
-   a u CHECKER-UNDEFINE-GUARD
-   a u CHECKER-RECORD-NAME 2drop
+: CHECKER-UNDEFINE ( str -- ) {: s:str :}
+   s CHECKER-UNDEFINE-GUARD
+   s CHECKER-RECORD-NAME drop
    CHECKER-REC-SYM @ {: sym:n :}
    sym UNDEFINE
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF EXIT THEN
-   a u RETIRE
+   s RETIRE
    sym SOURCE-IMM? IF sym 0 SIMM-APPEND THEN ;
 
-\ A U spells the word SYM names.
-: TOK-SYM-IMM? ( str n -- bool ) {: a:^ u:n sym:n :}
-   a u tok-imm? 0 <> IF RES-TRUE EXIT THEN
+\ S spells the word SYM names.
+: TOK-SYM-IMM? ( str n -- bool ) {: s:str sym:n :}
+   s tok-imm? 0 <> IF RES-TRUE EXIT THEN
    sym SOURCE-IMM? ;
 
 public
@@ -23601,23 +23609,23 @@ public
 -6 constant IMM-ROOTS
 private
 
-\ The tokens immediate A U (SYM) reads: its kept `parses:` count, else 0 when the walk saw no fact
+\ The tokens immediate S (SYM) reads: its kept `parses:` count, else 0 when the walk saw no fact
 \ but CTL-OPAQUE; else why a body rejects it, a negative IMM- answer.
-: IMM-READS ( str n -- n ) {: a:^ u:n sym:n :}
-   a u sym TOK-SYM-IMM? 0= IF IMM-NONE EXIT THEN
-   a u EFFECT-QUERY 0= IF IMM-EFFECT EXIT THEN
+: IMM-READS ( str n -- n ) {: s:str sym:n :}
+   s sym TOK-SYM-IMM? 0= IF IMM-NONE EXIT THEN
+   s EFFECT-QUERY 0= IF IMM-EFFECT EXIT THEN
    EFFECT-DIN-N 0 <>  EFFECT-DOUT-N 0 <>  or IF IMM-EFFECT EXIT THEN
    sym CTL-FLAGS-SYM CTL-INHERITED and {: facts:n :}
    facts CTL-PARSES CTL-OPAQUE or CTL-ROOTS or invert and 0 <> IF IMM-WRITES EXIT THEN
    facts CTL-ROOTS and 0 <> IF IMM-ROOTS EXIT THEN
    facts 0= IF 0 EXIT THEN
-   sym PROW-FIND {: cnt:n t:^ tu:n kept:bool :}
-   kept  tu 0=  and IF cnt EXIT THEN
+   sym PROW-FIND {: cnt:n t:str kept:bool :}
+   kept  t STR:LEN 0=  and IF cnt EXIT THEN
    facts CTL-PARSES and 0 <> IF IMM-UNREAD EXIT THEN
    0 ;
 
 : NAME-IMM-READS ( str -- n )
-   2dup CHECKER-FIND-ACTIVE-SYM IMM-READS ;
+   dup CHECKER-FIND-ACTIVE-SYM IMM-READS ;
 
 ;package
 package CHECKER-PREFLIGHT
@@ -23657,10 +23665,10 @@ EXPORT CHECK:TOK-SYM-IMM?
    REPEAT
    drop RES-TRUE ;
 
-: FORCED? ( str -- bool ) {: a:^ u:n :}
+: FORCED? ( str -- bool ) {: s:str :}
    ACTIVE @ 0= IF RES-FALSE EXIT THEN
    TAIL-WS? 0= IF RES-FALSE EXIT THEN
-   a u TARGET-A@ TARGET-U @ STR:=CI ;
+   s TARGET-A@ TARGET-U @ >str STR:=CI ;
 
 ;package
 package CHECK
@@ -23682,16 +23690,16 @@ variable OPERANDS-SPENT
 package CHECKER-PREFLIGHT
 EXPORT CHECK:DICT-CELL@
 
-: BODY-TOK? ( str -- bool ) {: a:^ u:n :}
-   a u FORCED? IF RES-TRUE EXIT THEN
-   a u CHECKER-FIND-ACTIVE-SYM  BIND-REC @  {: sym:n rec:^ :}
+: BODY-TOK? ( str -- bool ) {: s:str :}
+   s FORCED? IF RES-TRUE EXIT THEN
+   s CHECKER-FIND-ACTIVE-SYM  BIND-REC @  {: sym:n rec:^ :}
    sym CHECKER-FIND-USIG-SYM 0= IF
       rec NULL-PTR = IF RES-FALSE EXIT THEN
       rec CK-REC-WID WL:PRIMITIVES <> IF RES-FALSE EXIT THEN
       rec CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-IMM and 0 <> EXIT
    THEN
-   a u sym IMM-READS 0 >= IF RES-FALSE EXIT THEN
-   a u sym TOK-SYM-IMM? ;
+   s sym IMM-READS 0 >= IF RES-FALSE EXIT THEN
+   s sym TOK-SYM-IMM? ;
 
 ;package
 package CHECK
@@ -23718,20 +23726,20 @@ defer VIS-VISIT ( str n n n -- )
 : VS-CELL ( n -- ^n ) cells VS-P @ swap + ;
 
 : VS-HASH ( str -- n )
-   {: a:^ u:n :}
-   0  u 0 ?do 31 *  a i + c@ STR:ASCII-LOWER + loop ;
+   {: s:str :}
+   0  s STR:LEN 0 ?do 31 *  s STR:DATA i + c@ STR:ASCII-LOWER + loop ;
 
 : VS-ENTRY$ ( n -- str )
    {: e:n :}
    VE-P e VE-ROW NAV-CELL {: p:^ :}
-   p @ VB-AT  p CELL + @ ;
+   p @ VB-AT  p CELL + @ >str ;
 
-\ The slot A U folds to: the one holding it, or the empty one it would take.
+\ The slot S folds to: the one holding it, or the empty one it would take.
 : VS-SLOT ( str -- n )
-   {: a:^ u:n :}
-   a u VS-HASH VS-CAP @ 1 - and VS-I !
+   {: s:str :}
+   s VS-HASH VS-CAP @ 1 - and VS-I !
    BEGIN VS-I @ VS-CELL @ 0 <> WHILE
-      a u  VS-I @ VS-CELL @ 1 - VS-ENTRY$  STR:=CI IF VS-I @ EXIT THEN
+      s  VS-I @ VS-CELL @ 1 - VS-ENTRY$  STR:=CI IF VS-I @ EXIT THEN
       VS-I @ 1 + VS-CAP @ 1 - and VS-I !
    REPEAT
    VS-I @ ;
@@ -23749,18 +23757,18 @@ defer VIS-VISIT ( str n n n -- )
    VS-N @ 0 ?do  i 1 +  i VS-ENTRY$ VS-SLOT VS-CELL !  loop
    old oldcap cells ARENA-UNMAP ;
 
-\ Put A U in the set; true when it was not there.
+\ Put S in the set; true when it was not there.
 : VS-ADD? ( str -- bool )
-   {: a:^ u:n :}
+   {: s:str :}
    VS-N @ 1 + 2 * VS-CAP @ > IF VS-GROW THEN
-   a u VS-SLOT {: i:n :}
+   s VS-SLOT {: i:n :}
    i VS-CELL @ 0 <> IF RES-FALSE EXIT THEN
    VE-P VE-CAP VS-N @ 1 + VE-ROW ARENA-ROWS-ENSURE
-   VB-P VB-CAP VB-N @ u + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
-   a  VB-N @ VB-AT  u ARENA-COPY
+   VB-P VB-CAP VB-N @ s STR:LEN + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
+   s STR:DATA  VB-N @ VB-AT  s STR:LEN >str ARENA-COPY
    VE-P VS-N @ VE-ROW NAV-CELL {: p:^ :}
-   VB-N @ p !  u p CELL + !
-   VB-N @ u + VB-N !
+   VB-N @ p !  s STR:LEN p CELL + !
+   VB-N @ s STR:LEN + VB-N !
    VS-N @ 1 + i VS-CELL !
    VS-N @ 1 + VS-N !
    RES-TRUE ;
@@ -23772,25 +23780,25 @@ defer VIS-VISIT ( str n n n -- )
    VQ-P VQ-CAP 1 ARENA-ROWS-RELEASE ;
 
 : VIS-PREFIX? ( str -- bool )
-   {: a:^ u:n :}
-   u VIS-U @ < IF RES-FALSE EXIT THEN
-   a VIS-U @ VIS-A @ VIS-U @ STR:=CI ;
+   {: s:str :}
+   s STR:LEN VIS-U @ < IF RES-FALSE EXIT THEN
+   s STR:DATA VIS-U @ >str  VIS-A @ VIS-U @ >str STR:=CI ;
 
 \ Some PKG:tail starts with the prefix, folded: PKG starts with it, or it
 \ starts with PKG and a colon.
 : VIS-PKG? ( str -- bool )
-   {: qa:^ qu:n :}
-   VIS-U @ qu <= IF qa VIS-U @ VIS-A @ VIS-U @ STR:=CI EXIT THEN
-   VIS-A @ qu + c@ 58 <> IF RES-FALSE EXIT THEN
-   qa qu VIS-A @ qu STR:=CI ;
+   {: qs:str :}
+   VIS-U @ qs STR:LEN <= IF qs STR:DATA VIS-U @ >str  VIS-A @ VIS-U @ >str STR:=CI EXIT THEN
+   VIS-A @ qs STR:LEN + c@ 58 <> IF RES-FALSE EXIT THEN
+   qs VIS-A @ qs STR:LEN >str STR:=CI ;
 
 : VIS-QPREFIX? ( str str -- bool )
-   {: qa:^ qu:n a:^ u:n :}
-   qa qu VIS-PKG? 0= IF RES-FALSE EXIT THEN
-   VIS-U @ qu - 1 - {: ru:n :}
+   {: qs:str s:str :}
+   qs VIS-PKG? 0= IF RES-FALSE EXIT THEN
+   VIS-U @ qs STR:LEN - 1 - {: ru:n :}
    ru 0 <= IF RES-TRUE EXIT THEN
-   u ru < IF RES-FALSE EXIT THEN
-   a ru  VIS-A @ qu + 1 +  ru STR:=CI ;
+   s STR:LEN ru < IF RES-FALSE EXIT THEN
+   s STR:DATA ru >str  VIS-A @ qs STR:LEN + 1 +  ru >str STR:=CI ;
 
 \ The dictionary record a walk's selection of SYM binds: the one the engine's
 \ lookup found under live authority (WALK-REC), else the symbol's own.
@@ -23802,8 +23810,8 @@ defer VIS-VISIT ( str n n n -- )
 \ The engine word a top-level find reaches when the walk selected no record:
 \ PKG's public record of PKG:TAIL, else the global record of the tail or bare name.
 : VIS-ENGINE-REC ( str -- ^n )
-   {: a:^ u:n :}
-   a u CHECKER-QUALIFIED? 0= IF a u BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE EXIT THEN
+   {: s:str :}
+   s CHECKER-QUALIFIED? 0= IF s BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE EXIT THEN
    TOP-PUBLIC-REC {: rec:^ :}
    rec NULL-PTR <> IF rec EXIT THEN
    CHECKER-QTAIL$ BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE ;
@@ -23811,33 +23819,33 @@ defer VIS-VISIT ( str n n n -- )
 \ The selections, each with the symbol, its newest visible record+1 and the
 \ dictionary record it binds, then whether the top-level walk rejected the name.
 : VIS-TOP-PICK ( str -- n n ^n bool bool )
-   {: a:^ u:n :}
-   a u WALK {: sym:n why:n :}
+   {: s:str :}
+   s WALK {: sym:n why:n :}
    why 0 <> IF 0 0 NULL-PTR RES-FALSE RES-TRUE EXIT THEN
    CHECKER-QBAD-TOK @ 0 <> IF 0 0 NULL-PTR RES-FALSE RES-FALSE EXIT THEN
-   a u sym TOP-BOUND-SYM nip {: s2:n ok:bool :}
+   s sym TOP-BOUND-SYM nip {: s2:n ok:bool :}
    ok 0= IF 0 0 NULL-PTR RES-FALSE RES-FALSE EXIT THEN
    s2 0 <> IF
       s2  s2 USIG-NEWEST-VISIBLE  s2 VIS-WALK-REC  RES-TRUE RES-FALSE EXIT
    THEN
    WALK-REC @ IF 0 0 BIND-REC @ RES-TRUE RES-FALSE EXIT THEN
-   a u VIS-ENGINE-REC {: rec:^ :}
+   s VIS-ENGINE-REC {: rec:^ :}
    rec NULL-PTR = IF 0 0 NULL-PTR RES-FALSE RES-FALSE EXIT THEN
    0 0 rec RES-TRUE RES-FALSE ;
 
 : VIS-BODY-PICK ( str -- n n ^n bool bool )
-   {: a:^ u:n :}
-   a u WALK {: sym:n why:n :}
+   {: s:str :}
+   s WALK {: sym:n why:n :}
    why 0 <>  sym 0=  WALK-REC @ 0=  and  or IF
       0 0 NULL-PTR RES-FALSE RES-FALSE EXIT
    THEN
    sym  sym 0= IF 0 ELSE sym USIG-NEWEST-VISIBLE THEN  sym VIS-WALK-REC
    RES-TRUE RES-FALSE ;
 
-\ Select A U with every walk output put back after, and control and liveness when CONTROLS.
+\ Select S with every walk output put back after, and control and liveness when CONTROLS.
 \ A name the top-level walk rejected is not found, its control word BINDING-REJECTED alone.
 : VIS-PICK ( str n bool -- n n ^n n bool )
-   {: a:^ u:n kind:n controls:bool :}
+   {: s:str kind:n controls:bool :}
    BIND-REC @ {: s-br:^ :}
    BIND-PEND-IX @ BIND-PEND-OFF @ BIND-SEEDED @ {: s-bpi:n s-bpo:n s-bs:n :}
    CK-USED-MASK @ {: s-um:n :}
@@ -23848,7 +23856,7 @@ defer VIS-VISIT ( str n n n -- )
    HIDX-H @ HIDX-I @ HIDX-CUR @ USX-BP @ USX-BN @ {: s-hh:n s-hi:n s-hc:n s-xp:n s-xn:n :}
    PRM-FIRST @ PE-I @ NORET-CTL @ NORET-FMEND @ NRX-POS @
    {: s-pf:n s-pe:n s-nc:n s-nf:n s-np:n :}
-   kind CHECKER-OWNER-ABI:VISIBLE-TOP = IF a u VIS-TOP-PICK ELSE a u VIS-BODY-PICK THEN
+   kind CHECKER-OWNER-ABI:VISIBLE-TOP = IF s VIS-TOP-PICK ELSE s VIS-BODY-PICK THEN
    {: sym:n rec1:n drec:^ ok:bool rejected:bool :}
    controls IF
       sym 0= IF drec NULL-PTR <> ELSE
@@ -23880,8 +23888,8 @@ defer VIS-VISIT ( str n n n -- )
 \ and its control word. A rejection, missing binding, invisible symbol or
 \ tombstone answers three zeroes.
 : TOP-BINDING-REC ( str -- n n n ^n )
-   {: a:^ u:n :}
-   a u CHECKER-OWNER-ABI:VISIBLE-TOP RES-TRUE VIS-PICK
+   {: s:str :}
+   s CHECKER-OWNER-ABI:VISIBLE-TOP RES-TRUE VIS-PICK
    {: sym:n eff1:n drec:^ ctl:n found:bool :}
    found IF sym eff1 ctl drec ELSE 0 0 0 NULL-PTR THEN ;
 
@@ -23890,8 +23898,8 @@ defer VIS-VISIT ( str n n n -- )
 \ The source pre-pass's binding query: it reports and marks nothing, and keeps the
 \ control word of a name the walk rejected, which TOP-BINDING answers as 0.
 : CHECKER-VERIFY-TOP-BINDING ( str -- n n n )
-   {: a:^ u:n :}
-   a u CHECKER-OWNER-ABI:VISIBLE-TOP RES-TRUE VIS-PICK
+   {: s:str :}
+   s CHECKER-OWNER-ABI:VISIBLE-TOP RES-TRUE VIS-PICK
    {: sym:n eff1:n drec:^ ctl:n found:bool :}
    found IF sym eff1 ctl ELSE 0 0 ctl THEN ;
 
@@ -23901,37 +23909,37 @@ defer VIS-VISIT ( str n n n -- )
    VIS-KIND @ CHECKER-OWNER-ABI:VISIBLE-BODY =  VIS-QUAL @ 0 = and ;
 
 : VIS-LOCAL= ( str n -- bool )
-   {: a:^ u:n ix:n :}
-   a u  ix LOC-NAME$  STR:= ;
+   {: s:str ix:n :}
+   s  ix LOC-NAME$  STR:= ;
 
-\ A live local below IX is spelled A U exactly: that spelling is the local's.
+\ A live local below IX is spelled S exactly: that spelling is the local's.
 : VIS-HELD? ( str n -- bool )
-   {: a:^ u:n ix:n :}
+   {: s:str ix:n :}
    VIS-LOCALS? 0= IF RES-FALSE EXIT THEN
-   ix 0 ?do a u i VIS-LOCAL= IF RES-TRUE UNLOOP EXIT THEN loop
+   ix 0 ?do s i VIS-LOCAL= IF RES-TRUE UNLOOP EXIT THEN loop
    RES-FALSE ;
 
 \ PKG:NAME, in VQ. Neither PKG nor NAME lies in VQ, so its growth moves
 \ neither.
 : VIS-QSPELL ( str str -- str )
-   {: qa:^ qu:n a:^ u:n :}
-   qu 1 + u + {: len:n :}
+   {: qs:str s:str :}
+   qs STR:LEN 1 + s STR:LEN + {: len:n :}
    VQ-P VQ-CAP len CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
-   qa  0 VQ-AT  qu ARENA-COPY
-   58  qu VQ-AT  c!
-   a  qu 1 + VQ-AT  u ARENA-COPY
-   0 VQ-AT len ;
+   qs STR:DATA  0 VQ-AT  qs STR:LEN >str ARENA-COPY
+   58  qs STR:LEN VQ-AT  c!
+   s STR:DATA  qs STR:LEN 1 + VQ-AT  s STR:LEN >str ARENA-COPY
+   0 VQ-AT len >str ;
 
 \ The qualifier a candidate behind PKG is spelled with: the prefix's own as
 \ typed, else the spelling of the namespace record PKG names, a part's own
 \ name after `<top>:`, else PKG as its source holds it.
 : VIS-QUALIFIER ( str -- str )
-   {: qa:^ qu:n :}
-   VIS-PU @ 0 <> IF VIS-PA @ VIS-PU @ EXIT THEN
-   qa qu HEAD-ROW {: row:^ :}
-   row NULL-PTR = IF qa qu EXIT THEN
-   row CK-REC-NAME$ {: ra:^ ru:n :}
-   ra ru qu - + qu ;
+   {: qs:str :}
+   VIS-PU @ 0 <> IF VIS-PA @ VIS-PU @ >str EXIT THEN
+   qs HEAD-ROW {: row:^ :}
+   row NULL-PTR = IF qs EXIT THEN
+   row CK-REC-NAME$ {: r:str :}
+   r STR:DATA r STR:LEN qs STR:LEN - + qs STR:LEN >str ;
 
 \ A selection's name and its declaration's location, from the selection alone;
 \ 0 0 0 where it has no location.
@@ -23939,7 +23947,7 @@ defer VIS-VISIT ( str n n n -- )
    {: sym:n rec1:n drec:^ :}
    rec1 DL-ROW-OF {: i:n named:bool :}
    named IF
-      i DL-NAME$ sym SYM-NAME$ DECL-TAIL IF i DL-AT drop EXIT THEN 2drop
+      i DL-NAME$ sym SYM-NAME$ DECL-TAIL IF i DL-AT drop EXIT THEN drop
    THEN
    drec NULL-PTR <> IF drec CK-REC-NAME$ 0 0 0 EXIT THEN
    sym SYM-SPELLING$ 0 0 0 ;
@@ -23947,35 +23955,35 @@ defer VIS-VISIT ( str n n n -- )
 \ The spelling a selection is offered as, and its location: its name, behind
 \ the candidate's qualifier PKG when it has one (0 bytes for none).
 : VIS-SPELL ( str n n ^n -- str n n n )
-   {: qa:^ qu:n sym:n rec1:n drec:^ :}
-   sym rec1 drec VIS-NAME {: a:^ u:n v:n s:n e:n :}
-   qu 0= IF a u v s e EXIT THEN
-   qa qu VIS-QUALIFIER a u VIS-QSPELL  v s e ;
+   {: qs:str sym:n rec1:n drec:^ :}
+   sym rec1 drec VIS-NAME {: t:str v:n s:n e:n :}
+   qs STR:LEN 0= IF t v s e EXIT THEN
+   qs VIS-QUALIFIER t VIS-QSPELL  v s e ;
 
 \ Offer the candidate generated as NAME behind PKG (0 bytes for a bare one)
 \ when its whole spelling is new to the set and it binds, as its selection
 \ spells and locates it, unless a local holds that exact spelling.
 : VIS-OFFER ( str str -- )
-   {: qa:^ qu:n a:^ u:n :}
-   qu 0= IF a u ELSE qa qu a u VIS-QSPELL THEN {: fa:^ fu:n :}
-   fa fu VS-ADD? 0= IF EXIT THEN
-   fa fu VIS-KIND @ RES-FALSE VIS-PICK swap drop {: sym:n rec1:n drec:^ ok:bool :}
+   {: q:str t:str :}
+   q STR:LEN 0= IF t ELSE q t VIS-QSPELL THEN {: f:str :}
+   f VS-ADD? 0= IF EXIT THEN
+   f VIS-KIND @ RES-FALSE VIS-PICK swap drop {: sym:n rec1:n drec:^ ok:bool :}
    ok 0= IF EXIT THEN
-   qa qu sym rec1 drec VIS-SPELL {: sa:^ su:n v:n s:n e:n :}
-   sa su #LOC @ VIS-HELD? IF EXIT THEN
-   sa su v s e VIS-VISIT ;
+   q sym rec1 drec VIS-SPELL {: ss:str v:n s:n e:n :}
+   ss #LOC @ VIS-HELD? IF EXIT THEN
+   ss v s e VIS-VISIT ;
 
 : VIS-QWORD ( str str -- )
-   {: qa:^ qu:n a:^ u:n :}
-   qu 0= IF EXIT THEN
-   qa qu a u VIS-QPREFIX? 0= IF EXIT THEN
-   qa qu a u VIS-OFFER ;
+   {: qs:str s:str :}
+   qs STR:LEN 0= IF EXIT THEN
+   qs s VIS-QPREFIX? 0= IF EXIT THEN
+   qs s VIS-OFFER ;
 
 : VIS-WORD ( str -- )
-   {: a:^ u:n :}
-   VIS-QUAL @ IF VIS-PA @ VIS-PU @ a u VIS-QWORD EXIT THEN
-   a u VIS-PREFIX? IF NULL-PTR 0 a u VIS-OFFER THEN
-   VIS-OA @ VIS-OU @ a u VIS-QWORD ;
+   {: s:str :}
+   VIS-QUAL @ IF VIS-PA @ VIS-PU @ >str s VIS-QWORD EXIT THEN
+   s VIS-PREFIX? IF NULL-PTR 0 >str s VIS-OFFER THEN
+   VIS-OA @ VIS-OU @ >str s VIS-QWORD ;
 
 : VIS-SYMS ( -- )
    SYM-N @ 1 ?do
@@ -23985,13 +23993,13 @@ defer VIS-VISIT ( str n n n -- )
 \ The qualifier PKG's words are spelled behind here: a top-level package's name,
 \ B for part A:B where B names that part, else 0 bytes (no qualifier names it).
 : VIS-PKG-QUAL ( str -- str )
-   {: a:^ u:n :}
-   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
-   cn 0= IF a u EXIT THEN
-   a ci + 1 + u ci - 1 - {: ba:^ bu:n :}
-   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: part:^ :}
-   part NULL-PTR <>  ba bu HEAD-ROW part =  and IF ba bu EXIT THEN
-   a 0 ;
+   {: s:str :}
+   s CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 0= IF s EXIT THEN
+   s STR:DATA ci + 1 + s STR:LEN ci - 1 - >str {: b:str :}
+   s BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: part:^ :}
+   part NULL-PTR <>  b HEAD-ROW part =  and IF b EXIT THEN
+   s STR:DATA 0 >str ;
 
 : VIS-PSYMS ( -- )
    SYM-N @ 1 ?do
@@ -23999,12 +24007,12 @@ defer VIS-VISIT ( str n n n -- )
    loop ;
 
 : VIS-WL ( str n -- )
-   {: qa:^ qu:n wid:n :}
+   {: qs:str wid:n :}
    ndict@ 0 ?do
       i REC-AT {: rec:^ :}
       rec CK-REC-WID wid = IF
-         rec CK-REC-NAME$ {: a:^ u:n :}
-         u 0 <> IF qa qu a u VIS-QWORD THEN
+         rec CK-REC-NAME$ {: t:str :}
+         t STR:LEN 0 <> IF qs t VIS-QWORD THEN
       THEN
    loop ;
 
@@ -24012,10 +24020,10 @@ defer VIS-VISIT ( str n n n -- )
 : VIS-PACKAGE ( ^n -- )
    {: rec:^ :}
    rec @ {: wid:n :}
-   rec CK-REC-NAME$ VIS-PKG-QUAL {: a:^ u:n :}
-   wid 0=  u 0=  or IF EXIT THEN
-   a u VIS-PKG? 0= IF EXIT THEN
-   a u wid VIS-WL ;
+   rec CK-REC-NAME$ VIS-PKG-QUAL {: t:str :}
+   wid 0=  t STR:LEN 0=  or IF EXIT THEN
+   t VIS-PKG? 0= IF EXIT THEN
+   t wid VIS-WL ;
 
 : VIS-PACKAGES ( -- )
    ndict@ 0 ?do
@@ -24025,10 +24033,10 @@ defer VIS-VISIT ( str n n n -- )
 
 : VIS-LOCAL ( n -- )
    {: ix:n :}
-   ix LOC-NAME$ {: a:^ u:n :}
-   a u VIS-PREFIX? 0= IF EXIT THEN
-   a u ix VIS-HELD? IF EXIT THEN
-   a u 0 0 0 VIS-VISIT ;
+   ix LOC-NAME$ {: t:str :}
+   t VIS-PREFIX? 0= IF EXIT THEN
+   t ix VIS-HELD? IF EXIT THEN
+   t 0 0 0 VIS-VISIT ;
 
 : VIS-LOCALS ( -- )
    VIS-LOCALS? 0= IF EXIT THEN
@@ -24038,8 +24046,8 @@ defer VIS-VISIT ( str n n n -- )
 \ for are asked too. The selection, not this record, spells what is offered.
 : VIS-RECS ( -- )
    ndict@ 0 ?do
-      i REC-AT CK-REC-NAME$ {: a:^ u:n :}
-      u 0 <> IF a u VIS-WORD THEN
+      i REC-AT CK-REC-NAME$ {: t:str :}
+      t STR:LEN 0 <> IF t VIS-WORD THEN
    loop ;
 
 : VIS-RUN ( -- )
@@ -24055,28 +24063,28 @@ defer VIS-VISIT ( str n n n -- )
 \ PKG:, the edge colon the split leaves an ordinary name; 0 bytes for any other
 \ prefix.
 : VIS-SPLIT ( str -- )
-   {: a:^ u:n :}
-   0 VIS-QUAL !  a VIS-PA !  0 VIS-PU !
-   a u CHECKER-QUALIFIED? IF -1 VIS-QUAL !  u CHECKER-TU @ - 1 - VIS-PU ! EXIT THEN
+   {: s:str :}
+   0 VIS-QUAL !  s STR:DATA VIS-PA !  0 VIS-PU !
+   s CHECKER-QUALIFIED? IF -1 VIS-QUAL !  s STR:LEN CHECKER-TU @ - 1 - VIS-PU ! EXIT THEN
    CHECKER-QBAD-TOK @ IF EXIT THEN
-   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
-   cn 1 =  ci u 1 - = and  u 1 > and IF u 1 - VIS-PU ! THEN ;
+   s CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 1 =  ci s STR:LEN 1 - = and  s STR:LEN 1 > and IF s STR:LEN 1 - VIS-PU ! THEN ;
 
 \ The qualifier the open package's words are spelled behind, 0 bytes when none
 \ is open or the engine's package record names no package context.
 : VIS-OPEN-PKG ( -- )
-   AUTHORITY {: pa:^ pu:n mode:n ok:bool :}
-   pa VIS-OA !  0 VIS-OU !
+   AUTHORITY {: p:str mode:n ok:bool :}
+   p STR:DATA VIS-OA !  0 VIS-OU !
    ok 0=  mode CHECKER-PACKAGE-NONE =  or IF EXIT THEN
-   pa pu VIS-PKG-QUAL VIS-OU ! VIS-OA ! ;
+   p VIS-PKG-QUAL dup STR:LEN VIS-OU ! STR:DATA VIS-OA ! ;
 
 \ Enumerate for KIND under PREFIX to the visitor already set.
 : VIS-ENUM ( str n -- )
-   {: a:^ u:n kind:n :}
+   {: s:str kind:n :}
    CHECKER-QBAD-TOK @ {: s-qb:n :}
    CHECKER-QA @ CHECKER-QU @ CHECKER-TA @ CHECKER-TU @ {: s-qa:^ s-qu:n s-ta:^ s-tu:n :}
-   a VIS-A !  u VIS-U !  kind VIS-KIND !
-   a u VIS-SPLIT
+   s STR:DATA VIS-A !  s STR:LEN VIS-U !  kind VIS-KIND !
+   s VIS-SPLIT
    VIS-OPEN-PKG
    -1 VIS-OPEN !
    [: VIS-RUN ;] catch {: rc:n :}
@@ -24095,7 +24103,7 @@ EXPORT CHECK:VIS-VISIT
 EXPORT CHECK:VIS-ENUM
 \ The owner slot: the spellings that bind under PREFIX at a position of KIND
 \ (CHECKER-OWNER-ABI:VISIBLE-*), each to VISIT once with its location.
-: EACH-VISIBLE ( ^u8 n n [ ^u8 n n n n -- ] -- )
+: EACH-VISIBLE ( str n [ str n n n -- ] -- )
    CUR-OWNED @ 0 <>  VIS-OPEN @ 0 <> or  IF
       s" CHECKER-RESOLVE:EACH-VISIBLE" CURSOR-BUSY
    THEN
@@ -24156,18 +24164,18 @@ variable IS-PEND-U                   \ and its length
 
 : IS-NEXT-TOKEN ( -- str bool )
    IS-SKIP-WS
-   TI @ TBLEN @ >= IF TBASE@ 0 RES-FALSE EXIT THEN
+   TI @ TBLEN @ >= IF TBASE@ 0 >str RES-FALSE EXIT THEN
    TI @ IS-TOFF !
    TI @ TADDR IS-TA!
    0 IS-TU !
    BEGIN TI @ TBLEN @ < WHILE
       TI @ TBYTE@ IS-WS? IF
-         IS-TA@ IS-TU @ RES-TRUE EXIT
+         IS-TA@ IS-TU @ >str RES-TRUE EXIT
       THEN
       IS-TU @ 1 + IS-TU !
       TI @ 1 + TI !
    REPEAT
-   IS-TA@ IS-TU @ RES-TRUE ;
+   IS-TA@ IS-TU @ >str RES-TRUE ;
 
 : IS-FAIL ( -- )
    0 OK !
@@ -24175,7 +24183,7 @@ variable IS-PEND-U                   \ and its length
 
 \ The operand IS-NEXT-TOKEN read takes the pin.
 : TARGET-PIN! ( -- )
-   IS-TA@ IS-TU @ FAIL-PIN!  0 PIN-BODY-CALL !
+   IS-TA@ IS-TU @ >str FAIL-PIN!  0 PIN-BODY-CALL !
    IS-TOFF @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
 
@@ -24208,18 +24216,18 @@ variable IS-PEND-U                   \ and its length
    CUR-LIVE? 0= IF EXIT THEN
    CUR-AT @ gap < IF -1 CUR-DONE ! EXIT THEN
    CUR-AT @  IS-TOFF @ IS-TU @ +  > IF EXIT THEN
-   IS-TA@  CUR-AT @ IS-TOFF @ - 0 max  CHECKER-OWNER-ABI:VISIBLE-NAMED CUR-FIRE ;
+   IS-TA@  CUR-AT @ IS-TOFF @ - 0 max >str  CHECKER-OWNER-ABI:VISIBLE-NAMED CUR-FIRE ;
 
 \ No operand before the text's end: a cursor in that last gap fires it empty.
 : CUR-NAMED-END ( n -- )
    {: gap:n :}
    CUR-LIVE? 0= IF EXIT THEN
    CUR-AT @ gap < IF -1 CUR-DONE ! EXIT THEN
-   TBASE@ 0 CHECKER-OWNER-ABI:VISIBLE-NAMED CUR-FIRE ;
+   TBASE@ 0 >str CHECKER-OWNER-ABI:VISIBLE-NAMED CUR-FIRE ;
 
 : IS-TARGET-TOK? ( -- bool )
    TI @ {: gap:n :}
-   IS-NEXT-TOKEN 0= IF 2drop gap CUR-NAMED-END 0 PARSE-COMPLETE ! RES-FALSE EXIT THEN
+   IS-NEXT-TOKEN 0= IF drop gap CUR-NAMED-END 0 PARSE-COMPLETE ! RES-FALSE EXIT THEN
    gap CUR-NAMED
    TOKFOLD drop
    IS-PEND-ARM
@@ -24233,9 +24241,9 @@ variable IS-PEND-U                   \ and its length
       prec FACTS-READ-XT  prec BIND-REC !  0 BIND-PEND-IX !  -1 WALK-REC !
       prec REC-HOME-SYM EXIT
    THEN
-   TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND-WHY {: sym:n why:n :}
+   TKF TKFU @ >str IS-TA@ IS-TU @ >str CHECKER-BIND-WHY {: sym:n why:n :}
    why 0= IF
-      sym IS-TA@ IS-TU @ NAV-USE  sym IS-TA@ IS-TU @ BIND-REC @ USE-CHECK
+      sym IS-TA@ IS-TU @ >str NAV-USE  sym IS-TA@ IS-TU @ >str BIND-REC @ USE-CHECK
    THEN
    sym 0= CHECKER-PREFIX-ACTIVE @ and IF
       IS-TOFF @ TSTART @ PREFIX-MISS-AT
@@ -24248,9 +24256,9 @@ EXPORT CHECKER-TAPE:K-IS
    IS-TARGET-TOK? 0= IF K-IS -1 0 EVENT!  MD-IS-MISSING MDIAG!  IS-FAIL EXIT THEN
    IS-TARGET-SYM {: sym:n :}
    K-IS  BIND-REC @ REC>INDEX  0 EVENT!
-   sym 0=  IS-TA@ IS-TU @ UNSEEN-COVERS?  and IF TICK-PIN  UNSEEN-RAISE  EXIT THEN
+   sym 0=  IS-TA@ IS-TU @ >str UNSEEN-COVERS?  and IF TICK-PIN  UNSEEN-RAISE  EXIT THEN
    sym DFER-FIND-SYM 0= IF sym IS-TARGET-FAIL EXIT THEN
-   TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
+   TKF TKFU @ >str CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
    \ The defer's term states the defer's facts, which a stored callable must not exceed.
    FEP @ EFF-QUOT {: q:n :}
@@ -24299,7 +24307,7 @@ EXPORT CHECKER-TAPE:K-IS
    THEN
    sym HIDDEN-REC? 0= IF RES-FALSE EXIT THEN
    TICK-PIN
-   TKF TKFU @ CALL-UNDEFINED drop
+   TKF TKFU @ >str CALL-UNDEFINED drop
    PE-N BTICK-PUSH
    RES-TRUE ;
 
@@ -24334,7 +24342,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
    sym DECLARATION-SYM? IF TICK-PIN REJECT-UNSAFE EXIT THEN
    K-TICK  BIND-REC @ REC>INDEX  0 EVENT!
-   TKF TKFU @ BODY-KEYWORD? IF TKF TKFU @ REJECT-UNDEFINED EXIT THEN
+   TKF TKFU @ >str BODY-KEYWORD? IF TKF TKFU @ >str REJECT-UNDEFINED EXIT THEN
    sym TICK-REJECTED? IF EXIT THEN
    \ A mover's token may be executed, so the body may move the root as a call does.
    sym CTL-FLAGS-SYM CTL-ROOTS and INHSET @ or INHSET !
@@ -24346,7 +24354,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
       FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE BTICK-PUSH
       TICK-PIN  sym FEP @ LEFT-TYPES
    ELSE
-      sym 0=  rec 0=  and IF TKF TKFU @ REJECT-UNDEFINED THEN
+      sym 0=  rec 0=  and IF TKF TKFU @ >str REJECT-UNDEFINED THEN
       OPAQUE-XT BTICK-PUSH
    THEN ;
 
@@ -24354,25 +24362,25 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
 \ --- layout stack-op typing -------------------
 \ The stack words that move a layout value as one unit, by folded spelling; a
 \ token is one only when it binds the engine's own word (TOK-CORE-OP?).
-: LAYOUT-XPORT-TOK? ( str -- bool ) {: a:^ u:n :}
-   a u s" dup"   STR:= IF RES-TRUE EXIT THEN
-   a u s" drop"  STR:= IF RES-TRUE EXIT THEN
-   a u s" swap"  STR:= IF RES-TRUE EXIT THEN
-   a u s" over"  STR:= IF RES-TRUE EXIT THEN
-   a u s" nip"   STR:= IF RES-TRUE EXIT THEN
-   a u s" tuck"  STR:= IF RES-TRUE EXIT THEN
-   a u s" rot"   STR:= IF RES-TRUE EXIT THEN
-   a u s" -rot"  STR:= IF RES-TRUE EXIT THEN
-   a u s" 2dup"  STR:= IF RES-TRUE EXIT THEN
-   a u s" 2drop" STR:= IF RES-TRUE EXIT THEN
-   a u s" 2swap" STR:= IF RES-TRUE EXIT THEN
-   a u s" 2over" STR:= IF RES-TRUE EXIT THEN
-   a u s" >r"    STR:= IF RES-TRUE EXIT THEN
-   a u s" r>"    STR:= IF RES-TRUE EXIT THEN
-   a u s" r@"    STR:= IF RES-TRUE EXIT THEN
-   a u s" 2>r"   STR:= IF RES-TRUE EXIT THEN
-   a u s" 2r>"   STR:= IF RES-TRUE EXIT THEN
-   a u s" 2r@"   STR:= ;
+: LAYOUT-XPORT-TOK? ( str -- bool ) {: s:str :}
+   s s" dup"   STR:= IF RES-TRUE EXIT THEN
+   s s" drop"  STR:= IF RES-TRUE EXIT THEN
+   s s" swap"  STR:= IF RES-TRUE EXIT THEN
+   s s" over"  STR:= IF RES-TRUE EXIT THEN
+   s s" nip"   STR:= IF RES-TRUE EXIT THEN
+   s s" tuck"  STR:= IF RES-TRUE EXIT THEN
+   s s" rot"   STR:= IF RES-TRUE EXIT THEN
+   s s" -rot"  STR:= IF RES-TRUE EXIT THEN
+   s s" 2dup"  STR:= IF RES-TRUE EXIT THEN
+   s s" 2drop" STR:= IF RES-TRUE EXIT THEN
+   s s" 2swap" STR:= IF RES-TRUE EXIT THEN
+   s s" 2over" STR:= IF RES-TRUE EXIT THEN
+   s s" >r"    STR:= IF RES-TRUE EXIT THEN
+   s s" r>"    STR:= IF RES-TRUE EXIT THEN
+   s s" r@"    STR:= IF RES-TRUE EXIT THEN
+   s s" 2>r"   STR:= IF RES-TRUE EXIT THEN
+   s s" 2r>"   STR:= IF RES-TRUE EXIT THEN
+   s s" 2r@"   STR:= ;
 
 \ --- construct form: `construct family variant` is a reserved checker token
 \ protocol, not a word lookup. DO-TOK1 captures both operands before locals,
@@ -24395,7 +24403,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 \ A WIDE INSTANTIATION IS REJECTED: `F:AT` bakes the family's committed width,
 \ which describes the layout only while every type argument is one cell.
 : RECORD-AT-REJECT ( -- )
-   MD-RECORD-AT-WIDE MDIAG!  TKF TKFU @ CAP-FAIL  0 OK ! ;
+   MD-RECORD-AT-WIDE MDIAG!  TKF TKFU @ >str CAP-FAIL  0 OK ! ;
 : RECORD-AT-EXACT? ( n -- bool ) {: famterm:n :}   \ declared layout == instantiated layout
    famterm TFAM-INST-WIDTH-XT  famterm PARAM>FAM TFAM-WIDTH@*  = ;
 : RECORD-AT-STEP ( n -- )
@@ -24420,13 +24428,13 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 \ is asked only when the token binds that word (TOK-INTRINSIC, TOK-CORE-OP?);
 \ any other binding of the spelling goes on to DO-TOK and is judged by its own
 \ recorded effect.
-: SPELLED-STEP? ( str -- bool ) {: a:^ u:n :}
-   a u TOK-INTRINSIC {: id:n :}
-   a u BIND-SOURCE-CALL
-   LAYOUT-XPORT @ IF a u WF-XPORT-RECORD THEN   \ width facts from the pre-op row
+: SPELLED-STEP? ( str -- bool ) {: s:str :}
+   s TOK-INTRINSIC {: id:n :}
+   s BIND-SOURCE-CALL
+   LAYOUT-XPORT @ IF s WF-XPORT-RECORD THEN   \ width facts from the pre-op row
    id INTRINSIC-HIDE-ROW = IF HIDROW-STEP? EXIT THEN   \ depth/.s fail closed over a wide or open-width value
-   a u XPORT-STEP? IF RES-TRUE EXIT THEN
-   a u a u TOK-CORE-OP? RS-TOK? IF RES-TRUE EXIT THEN
+   s XPORT-STEP? IF RES-TRUE EXIT THEN
+   s s TOK-CORE-OP? RS-TOK? IF RES-TRUE EXIT THEN
    id INTRINSIC-RECORD-AT = IF RECORD-AT-STEP? EXIT THEN
    RES-FALSE ;
 
@@ -24437,7 +24445,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 : NAME-TOK ( -- )
    TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  TSTART @ NMOFF !  0 TOK0 !
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <>  CHK-PROBE @ 0=  and IF
-      NMA @ NMU @ OWN-RECORD
+      NMA @ NMU @ >str OWN-RECORD
    ELSE 0 THEN
    BIND-HORIZON ! ;
 
@@ -24450,14 +24458,14 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 \ A body left to the run keeps its pin. Else the first token the load cannot compile takes it from
 \ every failure before, else the first name a used public rejects (CUSING), else the first failure.
 : REJECTION-STEP ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    LEFT-OFF? IF EXIT THEN
    CREJECT @ 0 <>  RCOMPILE @ 0=  and IF
-      CRTGT @ IF TARGET-PIN! ELSE a u FAIL-PIN! THEN
+      CRTGT @ IF TARGET-PIN! ELSE s FAIL-PIN! THEN
       CREJECT @ REJECTION-TAKE  -1 RCOMPILE !  EXIT
    THEN
    CUSING @ 0 <>  RCOMPILE @ 0=  and  REJECTION @ USING-KIND? 0=  and IF
-      a u FAIL-PIN!  CUSING @ REJECTION-TAKE  EXIT
+      s FAIL-PIN!  CUSING @ REJECTION-TAKE  EXIT
    THEN
    \ Past a token left to the run a failed check names no rejection; the checks at ; do.
    FAILSET @ 0 <>  REJECTION @ 0=  and  UNSEEN @ 0=  and IF REJECTION-OF REJECTION ! THEN ;
@@ -24465,48 +24473,48 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 : CF-OPEN? ( -- bool )
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  CHECKER-MATCH-MODE @ 0 <>  or ;
 
-\ The span of closer CA CU: one past the body's end, or the given closer's own bytes.
+\ The span of closer CS: one past the body's end, or the given closer's own bytes.
 : CLOSER-SPAN ( str -- n n )
-   {: ca:^ cu:n :}
+   {: cs:str :}
    TBASE @ REJECTION:CLOSES? IF
-      REJECTION:CLOSER$ swap TBASE @ -  tuck +  EXIT
+      REJECTION:CLOSER$ dup STR:LEN swap STR:DATA TBASE @ -  tuck +  EXIT
    THEN
-   TBLEN @  dup cu + ;
+   TBLEN @  dup cs STR:LEN + ;
 
-\ Pins the closer CA CU at its span.
+\ Pins the closer CS at its span.
 : CLOSER-PIN! ( str -- )
-   {: ca:^ cu:n :}
-   TBASE @ REJECTION:CLOSES? IF REJECTION:CLOSER$ ELSE ca cu THEN FAIL-PIN!
-   ca cu CLOSER-SPAN  FAILE !  FAILB ! ;
+   {: cs:str :}
+   TBASE @ REJECTION:CLOSES? IF REJECTION:CLOSER$ ELSE cs THEN FAIL-PIN!
+   cs CLOSER-SPAN  FAILE !  FAILB ! ;
 
-\ Leaves the body to the run at closer CA CU for WHY, naming the call NA NU; the
+\ Leaves the body to the run at closer CS for WHY, naming the call NS; the
 \ current token's span stays.
 : CLOSER-LEFT! ( str str n -- )
-   {: ca:^ cu:n na:^ nu:n why:n :}
+   {: cs:str ns:str why:n :}
    FAILB @ FAILE @ {: b:n e:n :}
-   ca cu CLOSER-SPAN  FAILE !  FAILB !
-   na nu why LEFT-NAMED!
+   cs CLOSER-SPAN  FAILE !  FAILB !
+   ns why LEFT-NAMED!
    b FAILB !  e FAILE ! ;
 
-\ Rejects a structure open at closer CA CU, or at the given closer, as the load's
+\ Rejects a structure open at closer CS, or at the given closer, as the load's
 \ compiler does, unless a compile rejection or a token left to the run holds the pin.
 : CLOSER-REJECT ( str -- )
-   {: ca:^ cu:n :}
+   {: cs:str :}
    CF-OPEN? 0=  RCOMPILE @ 0 <>  or  LEFT-OFF? or IF EXIT THEN
-   TBASE @ REJECTION:CLOSES? IF REJECTION:CLOSER$ nip ELSE cu THEN 0= IF EXIT THEN
+   TBASE @ REJECTION:CLOSES? IF REJECTION:CLOSER$ STR:LEN ELSE cs STR:LEN THEN 0= IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
       CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN
    THEN {: why:n :}
    why MDIAG !  RF-REASON REJECTION-TAKE  -1 RCOMPILE !
-   ca cu CLOSER-PIN!
+   cs CLOSER-PIN!
    why CF-FAIL ;
 
-\ Rejects a does> head, closed by CA CU, that walked no straight-line `create`
+\ Rejects a does> head, closed by CS, that walked no straight-line `create`
 \ or definer call, unless an earlier rejection holds the pin.
 : DOES-UNMADE-REJECT ( str -- )
-   {: ca:^ cu:n :}
+   {: cs:str :}
    WRAPMADE @ 0 <>  OK @ 0=  or  FAILSET @ 0 <>  or IF EXIT THEN
-   ca cu CLOSER-PIN!
+   cs CLOSER-PIN!
    MD-DOES-UNMADE CF-FAIL ;
 
 \ A failed unjudged token no step settled drops its steps' width facts and
@@ -24533,30 +24541,30 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    a i + c@ CHECKER-FOLD-C PKG-LIT-NAME i + c! ;
 
 : PKG-LIT-NAME$ ( -- str )
-   PKG-LIT-NAME PKG-LIT-U @ ;
+   PKG-LIT-NAME PKG-LIT-U @ >str ;
 
 \ A body's `[package]` compiles the open package's name by its primitive row:
 \ the name of the record the engine's package cell holds, which a definition
 \ published into another namespace (`: Q:Y`) does not change.
 : PKG-LIT-TOK ( str -- )
    PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
-   PKG-LIVE-XT 0= IF CHECKER-PKG-CONTEXT-REJECT THEN {: a:^ u:n :}
-   PKG-LIT-P PKG-LIT-CAP  u CELL / 1 +  1 ARENA-ROWS-ENSURE
-   0 BEGIN dup u < WHILE
-      a over PKG-LIT-COPY-C
+   PKG-LIVE-XT 0= IF CHECKER-PKG-CONTEXT-REJECT THEN {: t:str :}
+   PKG-LIT-P PKG-LIT-CAP  t STR:LEN CELL / 1 +  1 ARENA-ROWS-ENSURE
+   0 BEGIN dup t STR:LEN < WHILE
+      t STR:DATA over PKG-LIT-COPY-C
       1 +
    REPEAT drop
-   u PKG-LIT-U !  -1 PPAY-ON ! ;
+   t STR:LEN PKG-LIT-U !  -1 PPAY-ON ! ;
 
 \ One token of a `[type]` span read at depth d: the depth after it, then 0 to
 \ read on, 1 when the spelling is done, 2 when the text ended or a `;` or
 \ `;]` came first, which is left unread.
 : TYPE-SPAN-TOK ( n -- n n ) {: d:n :}
    TI @ {: back:n :}
-   IS-NEXT-TOKEN {: a:^ u:n got:bool :}
+   IS-NEXT-TOKEN {: t:str got:bool :}
    got 0= IF 0 PARSE-COMPLETE !  d 2 EXIT THEN
-   a u TYPE-SPAN-END? IF back TI !  d 2 EXIT THEN
-   d a u CHECKER-TYPE-SPAN-STEP IF 1 ELSE 0 THEN ;
+   t TYPE-SPAN-END? IF back TI !  d 2 EXIT THEN
+   d t CHECKER-TYPE-SPAN-STEP IF 1 ELSE 0 THEN ;
 
 \ The span after `[type]` as the offsets of its first byte and of the byte
 \ after it, and whether it holds a whole spelling.
@@ -24570,7 +24578,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 \ closed type, and whether it fails only on a name the run may still define.
 \ The definition's own SGBAD verdict outlives the read, and so does its
 \ SIG-UNRES unless the read leaves the span to the run; LBI-T holds the term.
-: TYPE-LIT-INFO ( str -- n bool bool ) {: a:^ u:n :}
+: TYPE-LIT-INFO ( str -- n bool bool ) {: s:str :}
    SGBAD @ SGBAD-A @ SGBAD-U @ SGBAD-KIND @ {: sg:n sga:^ sgu:n sgk:n :}
    SGBAD-AR-DECL @ SGBAD-AR-GOT @ {: ard:n arg:n :}
    SGBAD-EXP-A @ SGBAD-EXP-U @ SGBAD-USED @ SGBAD-LOCAL @
@@ -24579,7 +24587,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    SGBAD-CLEAR SIG-UNRES-CLEAR
    0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-EFFECT !
    0 LBI-LINEAR !
-   a u TYPE-SPAN-READ swap T-RES {: one:bool t:n :}
+   s TYPE-SPAN-READ swap T-RES {: one:bool t:n :}
    t LBI-T !  one 0= LBI-BAD !
    SGBAD @ 0= one and IF ARENA-TERM-INFO ELSE 0 RES-FALSE THEN
    STORAGE-UNRESOLVED? {: unres:bool :}
@@ -24597,8 +24605,8 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    base s" width" WIDTH-FAM @ MK-PARAM ;
 
 : TYPE-LIT-DIGITS! ( n -- )
-   ERROR-TEXT:DIGITS$ {: a:^ u:n :}
-   a TYPE-LIT-DIGITS u CCOPY  u TYPE-LIT-U ! ;
+   ERROR-TEXT:DIGITS$ {: t:str :}
+   t STR:DATA TYPE-LIT-DIGITS t STR:LEN CCOPY  t STR:LEN TYPE-LIT-U ! ;
 
 \ A rejected span is the load's rejection, pinned on the span or on `[type]` when it is empty, unless
 \ an earlier compile rejection or a token left to the run holds the pin.
@@ -24606,9 +24614,9 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    RCOMPILE @ 0=  CREJECT @ 0= and  LEFT-OFF? 0= and IF
       MD-TYPE-FORM MDIAG !  RF-REASON REJECTION-TAKE  -1 RCOMPILE !
       e s > IF
-         s TADDR e s - FAIL-PIN!  s FAILB !  FAILB @ FAILTU @ + FAILE !
+         s TADDR e s - >str FAIL-PIN!  s FAILB !  FAILB @ FAILTU @ + FAILE !
       ELSE
-         TOK-SPELL-A @ TOK-SPELL-U @ FAIL-PIN!
+         TOK-SPELL-A @ TOK-SPELL-U @ >str FAIL-PIN!
       THEN
    THEN
    0 OK !  -1 FAILSET ! ;
@@ -24617,7 +24625,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 \ later token moves, and pushes a width of a fresh type no later token
 \ rejects.
 : TYPE-LIT-DEFER ( -- )
-   SIG-UNRES-A @ SIG-UNRES-U @ FAIL-PIN!
+   SIG-UNRES-A @ SIG-UNRES-U @ >str FAIL-PIN!
    SIG-UNRES-A @ TBASE@ - FAILB !  FAILB @ SIG-UNRES-U @ + FAILE !
    -1 FAILSET !
    FRESH MK-VAR TYPE-LIT-WIDTH STEP-TYPE-OUT ;
@@ -24626,7 +24634,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 \ width<T>.
 : TYPE-LIT-TOK ( -- )
    TYPE-LIT-SPAN {: s:n e:n whole:bool :}
-   whole IF s TADDR e s - TYPE-LIT-INFO ELSE 0 RES-FALSE RES-FALSE THEN
+   whole IF s TADDR e s - >str TYPE-LIT-INFO ELSE 0 RES-FALSE RES-FALSE THEN
    {: bytes:n ok:bool unres:bool :}
    unres IF TYPE-LIT-DEFER EXIT THEN
    ok 0= IF s e TYPE-LIT-FAIL EXIT THEN
@@ -24648,7 +24656,7 @@ variable POST-A0
    -1 TOK-LIVE-REC ! ;
 
 : POSTPONE-UNDEFINED ( -- )
-   TICK-PIN  TKF TKFU @ REJECT-UNDEFINED  IS-FAIL ;
+   TICK-PIN  TKF TKFU @ >str REJECT-UNDEFINED  IS-FAIL ;
 
 \ W's record, the pending one when W is the definition being compiled, and W's
 \ symbol.
@@ -24672,9 +24680,9 @@ variable POST-A0
 
 \ A postponed token names its record even where a local of its spelling is
 \ in scope.
-: BODY-LOC-REF? ( str -- bool ) {: a:^ u:n :}
-   TSTART @ u POSTPONED-REC NULL-PTR <> IF RES-FALSE EXIT THEN
-   a u LOC-REF? ;
+: BODY-LOC-REF? ( str -- bool ) {: s:str :}
+   TSTART @ s STR:LEN POSTPONED-REC NULL-PTR <> IF RES-FALSE EXIT THEN
+   s LOC-REF? ;
 
 SCRATCH{
 \ BROW's open tail when a transport token began with no `:` signature in
@@ -24700,30 +24708,30 @@ variable XPORT-TAIL
 \ Answers whether the token is unjudged, and the OK, UNCK and FAILSET it came
 \ in with, for DO-TOK-TAIL.
 : DO-TOK-HEAD ( str -- bool n n n )
-   {: a:^ u:n :}
+   {: s:str :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
-   a TOK-SPELL-A !  u TOK-SPELL-U !  0 CREJECT !  0 CRTGT !
+   s STR:DATA TOK-SPELL-A !  s STR:LEN TOK-SPELL-U !  0 CREJECT !  0 CRTGT !
    0 CUSING !  -1 USING-HOLD !
-   a u TOKFOLD drop
+   s TOKFOLD drop
    BWIN-UNJUDGED @ 0 <> {: unj:bool :}       \ judged per token: OK := incoming AND this token
    OK @ {: ok-in:n :}  UNCK @ {: unck-in:n :}    \ an uncheckable token fails with OK still set
    FAILSET @ {: pin-in:n :}
    unj IF
       -1 OK !  0 UNCK !  -1 UNJ-TOK !  0 UNJ-SPLICED !  DCUR @ UNJ-PD !  RCUR @ UNJ-PR !  WF-N @ UNJ-WF0 !
    THEN
-   a u CAP-FAIL
+   s CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
    FENCE-OK RAW-FENCE !  0 CELL-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 STALE-SELF !  0 SCOPE-HIT !
-   TKF TKFU @ s" xt!" STR:= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
-   TKF TKFU @ LAYOUT-XPORT-TOK? IF
-      TKF TKFU @ TOK-CORE-OP?
+   TKF TKFU @ >str s" xt!" STR:= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
+   TKF TKFU @ >str LAYOUT-XPORT-TOK? IF
+      TKF TKFU @ >str TOK-CORE-OP?
    ELSE RES-FALSE THEN LAYOUT-XPORT !  XPORT-TAIL-ARM
    NZ-OTHER NZ-IN !
    unj ok-in unck-in pin-in ;
 
 : DO-TOK-TAIL ( str bool n n n -- )
-   {: a:^ u:n unj:bool ok-in:n unck-in:n pin-in:n :}
+   {: s:str unj:bool ok-in:n unck-in:n pin-in:n :}
    XPORT-TAIL-MOVE  WF-NOTE-STEP
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
@@ -24745,7 +24753,7 @@ variable XPORT-TAIL
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    0 USING-HOLD !
-   a u REJECTION-STEP
+   s REJECTION-STEP
    TOKIX @ 1 + TOKIX ! ;
 
 \ A declared type variable must remain a distinct variable after checking the
@@ -24890,17 +24898,17 @@ variable SD-MOVES   \ a checked `:` signature's rows: its body proves MOVED
 : BODY-KINDS-DERIVE ( -- )
    SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ RES-TRUE STORED-DERIVE-ROWS ;
 
-\ Child NA NU's built rows, kinded and checked as a parsed signature's (CTOR: a
+\ Child NS's built rows, kinded and checked as a parsed signature's (CTOR: a
 \ generated constructor's); a rejection records a bad one. Answers offset+1.
 : CHECKER-CHILD-ROWS ( str n n bool -- n )
-   {: na:^ nu:n din:n dout:n ctor:bool :}
+   {: ns:str din:n dout:n ctor:bool :}
    din dout 0 0 RES-FALSE RES-FALSE STORED-DERIVE-ROWS
    SGBAD-CLEAR
-   NULL-PTR 0 din dout 0 0 RES-FALSE ctor SIG-ROWS-CHECK
+   NULL-PTR 0 >str din dout 0 0 RES-FALSE ctor SIG-ROWS-CHECK
    SGBAD @ IF
-      na nu na nu USIG-CERT-ADMIT
-      NULL-PTR 0 na nu USIG-ADD-BAD DL-TAKE
-   ELSE NULL-PTR 0 na nu din dout 0 0 RES-FALSE CHECKER-ROWS-PUBLISH THEN
+      ns ns USIG-CERT-ADMIT
+      NULL-PTR 0 >str ns USIG-ADD-BAD DL-TAKE
+   ELSE NULL-PTR 0 >str ns din dout 0 0 RES-FALSE CHECKER-ROWS-PUBLISH THEN
    CHECKER-REC-SYM @ CK-CLOSE!
    CHECKER-REC-SYM @ USIG-NEWEST-VISIBLE ;
 
@@ -25241,21 +25249,21 @@ EXPORT CHECK:TKF
 
 \ It asks the two predicates DO-TOK's own literal step asks, so the tape cannot
 \ disagree with the checker about what a literal is.
-: KIND ( ^u8 n -- n ) {: a:^ u:n :}
-   a u ALLDIG? IF K-INT EXIT THEN
-   a u FLODIG? IF K-REAL EXIT THEN
+: KIND ( str -- n ) {: s:str :}
+   s ALLDIG? IF K-INT EXIT THEN
+   s FLODIG? IF K-REAL EXIT THEN
    K-NAME ;
 
-: SCAN-TOKEN ( str -- ) {: a:^ u:n :}
-   a u SCAN-XT ;
+: SCAN-TOKEN ( str -- ) {: s:str :}
+   s SCAN-XT ;
 
 \ One token as the reader consumed it: bytes, byte offset in the scanned text,
 \ bytes of text spanned, class, and whether it is the definition's name token
 \ (parsed by the outer interpreter before compiling starts). The spanned length
 \ equals the byte count for these three classes and is carried because the
 \ string class differs.
-: TOKEN ( ^u8 n n n -- ) {: a:^ u:n off:n first:n :}
-   a u off u  first 0 = IF a u KIND ELSE K-NAME THEN  first TOKEN-XT
+: TOKEN ( str n n -- ) {: s:str off:n first:n :}
+   s off s STR:LEN  first 0 = IF s KIND ELSE K-NAME THEN  first TOKEN-XT
    REC-STEP ;
 
 \ The kind an `s"`, `c"` or `."` payload compiles, read from its opener, the
@@ -25267,18 +25275,18 @@ EXPORT CHECK:TKF
 
 \ A string literal of KIND: its decoded BODY and the span its payload occupied,
 \ or a `[package]` or `postpone` handle's keyword; never the name token.
-: STRING ( ^u8 n n n n -- ) {: a:^ u:n off:n ru:n kind:n :}
-   a u off ru kind 0 TOKEN-XT
+: STRING ( str n n n -- ) {: s:str off:n ru:n kind:n :}
+   s off ru kind 0 TOKEN-XT
    REC-STEP ;
 
-: CHARACTER ( ^u8 n n n -- ) {: a:^ u:n off:n ru:n :}
-   a u off ru K-CHAR 0 TOKEN-XT
+: CHARACTER ( str n n -- ) {: s:str off:n ru:n :}
+   s off ru K-CHAR 0 TOKEN-XT
    REC-STEP ;
 
 \ A number the checker computed: its spelling is the value in decimal, its span
 \ the source that names it (`[type] T`).
-: INTEGER ( ^u8 n n n -- ) {: a:^ u:n off:n ru:n :}
-   a u off ru K-INT 0 TOKEN-XT
+: INTEGER ( str n n -- ) {: s:str off:n ru:n :}
+   s off ru K-INT 0 TOKEN-XT
    REC-STEP ;
 
 \ What the checker judged the token at ordinal ORD to be, in the vocabulary
@@ -25296,9 +25304,9 @@ EXPORT CHECK:TKF
    EV-P ord EV-LO @ - EV-ROW NAV-CELL {: p:^ :}
    p @  p CELL + @  p 2 cells + @ ;
 
-: DONE ( ^u8 n n -- ) {: a:^ u:n verdict:n :}
+: DONE ( str n -- ) {: s:str verdict:n :}
    -1 TELLING !
-   a u verdict [: DONE-XT ;] [: 0 TELLING ! ;] finally ;
+   s verdict [: DONE-XT ;] [: 0 TELLING ! ;] finally ;
 
 ;package
 package CHECK
@@ -25316,15 +25324,15 @@ SCRATCH{
 variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 other
 }SCRATCH
 
-: ZSUMMARY-TOKEN ( str -- ) {: a:^ u:n :}
+: ZSUMMARY-TOKEN ( str -- ) {: s:str :}
    ZSHAPE @ 0= IF
-      a u s" 0=" STR:= IF
-         a u TOK-CORE-OP? IF 1 ZSHAPE ! EXIT THEN
+      s s" 0=" STR:= IF
+         s TOK-CORE-OP? IF 1 ZSHAPE ! EXIT THEN
       THEN
-      a u s" 0" STR:= IF 2 ZSHAPE ! EXIT THEN
+      s s" 0" STR:= IF 2 ZSHAPE ! EXIT THEN
    ELSE ZSHAPE @ 2 = IF
-      a u s" <>" STR:= IF
-         a u TOK-CORE-OP? IF 3 ZSHAPE ! EXIT THEN
+      s s" <>" STR:= IF
+         s TOK-CORE-OP? IF 3 ZSHAPE ! EXIT THEN
       THEN
    THEN THEN
    -1 ZSHAPE ! ;
@@ -25372,13 +25380,13 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !  0 CLAUSE-WALK !  0 WALK-ITEMS !
    NZ-RESET ;
 
-: CHECK-RESET {: a u :}
+: CHECK-RESET {: t:str :}
    WRITE-WINDOW-CK
-   a u TORDER-SCAN!
+   t TORDER-SCAN!
    RES-FALSE RECOVERY-USED!
    FO-RESET
-   u TOKBUF-ENSURE
-   a TBASE !  u TBLEN !  NEW
+   t STR:LEN TOKBUF-ENSURE
+   t STR:DATA TBASE !  t STR:LEN TBLEN !  NEW
    CHECK-CLEAR
    DOES-EFF-STEP ;                     \ only the check that FOLLOWS a clause is its definer's
 
@@ -25400,7 +25408,7 @@ EXPORT CHECKER-TAPE:TOKEN
 : SCAN-PEND-REPORT ( -- )
    IS-PEND @ 0= IF EXIT THEN
    0 IS-PEND !
-   IS-PEND-OFF @ TADDR  IS-PEND-U @  IS-PEND-OFF @  0  TOKEN ;
+   IS-PEND-OFF @ TADDR  IS-PEND-U @ >str  IS-PEND-OFF @  0  TOKEN ;
 
 EXPORT CHECKER-TAPE:K-CHAR
 EXPORT CHECKER-TAPE:STRING-KIND
@@ -25439,13 +25447,13 @@ EXPORT CHECKER-TAPE:COUNTED-MAX
 
 \ A counted literal's decoded body of u bytes past its count byte is rejected at
 \ its opener, the token at TSTART.
-: SPAY-COUNTED-CK ( str -- str ) {: a:^ u:n :}
+: SPAY-COUNTED-CK ( str -- str ) {: s:str :}
    STRING-KIND K-COUNTED-STRING =
-   u COUNTED-MAX >  and IF
-      TSTART @ TADDR SCAN-U @  COUNTED-MAX REJECTION:COUNTED-RANGE
+   s STR:LEN COUNTED-MAX >  and IF
+      TSTART @ TADDR SCAN-U @ >str  COUNTED-MAX REJECTION:COUNTED-RANGE
       EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
-   a u ;
+   s ;
 
 EXPORT CHECKER-TAPE:CHARACTER
 EXPORT CHECKER-TAPE:STRING
@@ -25458,7 +25466,7 @@ EXPORT CHECKER-TAPE:INTEGER
    REC-COMMIT
    EV-COMMIT
    CPAY-ON @ IF
-      CPAY-B @ TADDR CPAY-U @ TSTART @ TI @ TSTART @ -
+      CPAY-B @ TADDR CPAY-U @ >str TSTART @ TI @ TSTART @ -
       CHARACTER
       SCAN-PEND-REPORT EXIT
    THEN
@@ -25473,10 +25481,10 @@ EXPORT CHECKER-TAPE:INTEGER
       SCAN-PEND-REPORT EXIT
    THEN
    TPAY-ON @ IF
-      TYPE-LIT-DIGITS TYPE-LIT-U @  TSTART @  TI @ TSTART @ -  INTEGER
+      TYPE-LIT-DIGITS TYPE-LIT-U @ >str  TSTART @  TI @ TSTART @ -  INTEGER
       SCAN-PEND-REPORT EXIT
    THEN
-   TSTART @ TADDR  SCAN-U @  TSTART @  SCAN-TOK0 @  TOKEN
+   TSTART @ TADDR  SCAN-U @ >str  TSTART @  SCAN-TOK0 @  TOKEN
    SCAN-PEND-REPORT ;
 
 EXPORT CHECKER-TAPE:ARMED
@@ -25506,7 +25514,7 @@ EXPORT CHECKER-TAPE:ARMED
    TOK0 @ 0 <>  LMODE @ 0 <> or  FIELD-LOAN-PENDING @ 0 <> or  CONM @ 0 <> or  CHECKER-MATCH-MODE @ 0 <> or IF
       -1 CUR-DONE ! EXIT
    THEN
-   TSTART @ TADDR  CUR-AT @ TSTART @ - 0 max  CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
+   TSTART @ TADDR  CUR-AT @ TSTART @ - 0 max >str  CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
 
 \ The '( ... )' that opens at TI: where, and whether it is the signature.
 variable CUR-OPEN   variable CUR-PSIG
@@ -25522,12 +25530,12 @@ variable CUR-OPEN   variable CUR-PSIG
    CUR-AT @ CUR-GAP @ < IF -1 CUR-DONE ! EXIT THEN
    CUR-AT @ TI @ > IF EXIT THEN
    CUR-PSIG @ 0 <>  CUR-AT @ CUR-OPEN @ >  or IF -1 CUR-DONE ! EXIT THEN
-   TBASE@ 0 CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
+   TBASE@ 0 >str CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
 
 : CUR-END ( -- )
    CUR-LIVE? 0= IF EXIT THEN
    CUR-AT @ CUR-GAP @ < IF -1 CUR-DONE ! EXIT THEN
-   TBASE@ 0 CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
+   TBASE@ 0 >str CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
 
 \ Installs a parsed signature's rows ( din dout rin rout ); true when a type it
 \ names is unresolved, which ends the walk.
@@ -25611,10 +25619,10 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in a string
 
 : ANNOT-REC-SYM ( ^n -- n ) {: rec:^ :}
-   rec REC-HOME drop {: pa:^ pu:n vis:n :}
-   rec CK-REC-NAME$ {: a:^ u:n :}
-   vis SYM-GLOBAL = IF a u CHECKER-GLOBAL-SYM EXIT THEN
-   pa pu vis a u CHECKER-PKG-SYM ;
+   rec REC-HOME drop {: p:str vis:n :}
+   rec CK-REC-NAME$ {: t:str :}
+   vis SYM-GLOBAL = IF t CHECKER-GLOBAL-SYM EXIT THEN
+   p vis t CHECKER-PKG-SYM ;
 
 : CTL-ADD-REC ( ^n n -- ) {: rec:^ flag:n :}
    rec ANNOT-REC-SYM {: sym:n :}

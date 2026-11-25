@@ -176,7 +176,7 @@ CAST: >SNAP ( n -- snap )
    {: name:str :}
    kw name REJECTION:NOT-A-NAME
    name name DEF-NAME-REJECT? IF EXIT-STATUS:REJECTED REJECTION:STOP THEN
-   name dup STR:DATA swap STR:LEN CHECKER-DEFLINEAR ;
+   name CHECKER-DEFLINEAR ;
 NOMINAL-PROVIDER
 INTRINSIC-DECLARATION INTRINSIC
 private
@@ -210,7 +210,7 @@ global
       THEN
       dup VRDEF-END? IF
          STR:DATA {: e:^ :}
-         name dup STR:DATA swap STR:LEN  f e f - CHECKER-DEFRECORD
+         name  f e f - >str CHECKER-DEFRECORD
          EXIT
       THEN
       drop parse-name
