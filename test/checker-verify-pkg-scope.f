@@ -1,4 +1,3 @@
-split-str
 \ checker-verify-pkg-scope.f - the checker's verifier package scope hands the
 \ caller's package back byte for byte. VERIFY:SOURCE-BUF-IN-SCOPE saves the
 \ caller's package name, length and mode and restores them on leaving; entering
@@ -22,30 +21,30 @@ variable SRC-U
 \ x86-64 refuses a quotation that reads a local, so the source span travels
 \ through these two cells to the caught body.
 : ACT ( -- )
-   SRC-A @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
+   SRC-A @ SRC-U @ >str VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 public
 
 \ Replay one source span in the caller's live package context; 0 means the
 \ verifier accepted both the package context and the source.
-: REPLAY ( ^u8 n -- n ) {: a:^ u:n :}
-   a SRC-A !
-   u SRC-U !
+: REPLAY ( str -- n ) {: s:str :}
+   s STR:DATA SRC-A !
+   s STR:LEN SRC-U !
    [: ACT ;] catch ;
 
 \ Replay in a neutral scope, which starts at top level with no imports.
-: REPLAY-NEUTRAL ( str -- n ) {: a:^ u:n :}
-   a SRC-A !
-   u SRC-U !
+: REPLAY-NEUTRAL ( str -- n ) {: s:str :}
+   s STR:DATA SRC-A !
+   s STR:LEN SRC-U !
    [: [: ACT ;] CHECK:SCOPED ;] catch ;
 
 \ Diagnostics are collected in prose, not printed, so the rejecting case reports
 \ its own text instead of leaving a rejection on the gate's stderr.
-: REPLAY-QUIET ( str -- n ) {: a:^ u:n :}
+: REPLAY-QUIET ( str -- n ) {: s:str :}
    REJECTION:CAPTURE
    REJECTION:JSON @ {: was:n :}
    false REJECTION:JSON !
-   a u REPLAY {: rc:n :}
+   s REPLAY {: rc:n :}
    was REJECTION:JSON !
    REJECTION:BUFFER-OFF
    rc ;

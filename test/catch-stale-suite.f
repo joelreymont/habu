@@ -1,4 +1,3 @@
-split-str
 \ catch-stale-suite.f - the cells a caught throw leaves stale.
 \     bin/hb --load test/catch-stale-suite.f
 \
@@ -84,7 +83,7 @@ variable CS-TICK
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : CS-CODE? ( str -- )
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ swap STR:CONTAINS? TTRUE ;
 : CS-CODE-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 \ A body's stale read is the catch's, never the interpret row's unknown cell,
 \ so its help keeps the value in a local before the catch.
@@ -226,7 +225,7 @@ create CS-PRODUCT-PATH PATH-CAP allot
 
 : CS-PRODUCT$ ( -- str )
    SOURCE-ROOT:CWD$ CS-HB$ CS-PRODUCT-PATH FS:JOIN-PATH {: u:n :}
-   CS-PRODUCT-PATH u ;
+   CS-PRODUCT-PATH u >str ;
 
 : CS-ENV! ( -- )
    PROC-ENV-RESET
@@ -243,13 +242,13 @@ variable CS-IMAGE-PATH-U
 variable CS-CHILD-OUT-U
 variable CS-CHILD-ERR-U
 
-: CS-IMAGE-ROOT$ ( -- str ) CS-IMAGE-ROOT-BUF CS-IMAGE-ROOT-U @ ;
-: CS-IMAGE$ ( -- str ) CS-IMAGE-PATH-BUF CS-IMAGE-PATH-U @ ;
+: CS-IMAGE-ROOT$ ( -- str ) CS-IMAGE-ROOT-BUF CS-IMAGE-ROOT-U @ >str ;
+: CS-IMAGE$ ( -- str ) CS-IMAGE-PATH-BUF CS-IMAGE-PATH-U @ >str ;
 
 : CS-IMAGE-PREPARE ( -- )
-   s" habu-catch-success" FS:MKTEMP-DIR {: path:^ size:n :}
-   path CS-IMAGE-ROOT-BUF size BYTE-COPY
-   size CS-IMAGE-ROOT-U !
+   s" habu-catch-success" FS:MKTEMP-DIR {: path:str :}
+   path STR:DATA CS-IMAGE-ROOT-BUF path STR:LEN BYTE-COPY
+   path STR:LEN CS-IMAGE-ROOT-U !
    CS-IMAGE-ROOT$ FS:CLEANUP-TREE+
    CS-IMAGE-ROOT$ s" built-hb" CS-IMAGE-PATH-BUF FS:JOIN-PATH
    CS-IMAGE-PATH-U ! ;
@@ -277,19 +276,19 @@ variable CS-CHILD-ERR-U
    S\" s\" test/catch-success-image-consumer.f\" included\n"
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
-   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image: ok" STR:CONTAINS? TTRUE
-   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-fresh: ok" STR:CONTAINS? TTRUE ;
+   CS-CHILD-OUT CS-CHILD-OUT-U @ >str s" catch-image: ok" STR:CONTAINS? TTRUE
+   CS-CHILD-OUT CS-CHILD-OUT-U @ >str s" catch-image-fresh: ok" STR:CONTAINS? TTRUE ;
 
 : CS-SAVED-REFUSAL ( str str -- )
-   {: src:^ size:n want:^ wantu:n :}
+   {: src:str want:str :}
    PROC-ARGV-RESET
    CS-ENV!
-   CS-IMAGE$ src size
+   CS-IMAGE$ src
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 70 T=
-   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-load: began" STR:CONTAINS? TTRUE
-   CS-CHILD-ERR CS-CHILD-ERR-U @ s" error[E-STALE-READ]: stale cell" STR:CONTAINS? TTRUE
-   CS-CHILD-ERR CS-CHILD-ERR-U @ want wantu STR:CONTAINS? TTRUE ;
+   CS-CHILD-OUT CS-CHILD-OUT-U @ >str s" catch-image-load: began" STR:CONTAINS? TTRUE
+   CS-CHILD-ERR CS-CHILD-ERR-U @ >str s" error[E-STALE-READ]: stale cell" STR:CONTAINS? TTRUE
+   CS-CHILD-ERR CS-CHILD-ERR-U @ >str want STR:CONTAINS? TTRUE ;
 
 : CS-IMAGE-BODY ( -- )
    CS-IMAGE-BUILD
@@ -475,9 +474,9 @@ STRUCTURE cspt
 \ A4's shape, run: the caught body reads the address and throws, and the catch
 \ hands back the SAME address with the throw code on top.
 16 BUFFER: CS-BUF
-: CS-RT ( ^u8 -- str ) [: dup c@ drop E-CS-BOOM throw ;] catch ;
+: CS-RT ( ^u8 -- ^u8 n ) [: dup c@ drop E-CS-BOOM throw ;] catch ;
 
-: CS-CRT ( ^u8 -- str ) [: WMAYBE ;] catch ;
+: CS-CRT ( ^u8 -- ^u8 n ) [: WMAYBE ;] catch ;
 
 \ A body that returns 9 for selector 0 and throws a computed 0 for selector 1:
 \ the catch answers E-THROW-ZERO for it, so the success arm reads no cell the
@@ -500,9 +499,9 @@ STRUCTURE cspt
 : CS-SECTION-RESHAPE ( -- )
    s" a catch that changes the stack" T-LABEL
    s" S1 ( str -- n ) [: JSON:PARSE ;] catch nip" CHECK-QUIET-CANDIDATE! -1 T=
-   s" S2 ( str -- n ) [: JSON:PARSE ;] catch drop JSON:TEXT$ nip" CS-CODE<
+   s" S2 ( str -- n ) [: JSON:PARSE ;] catch drop JSON:TEXT$ STR:LEN" CS-CODE<
    CS-STALE?  CS-CODE-END
-   s" S3 ( str -- n ) [: JSON:PARSE ;] catch {: code:n :} code 0<> if code throw then JSON:TEXT$ nip"
+   s" S3 ( str -- n ) [: JSON:PARSE ;] catch {: code:n :} code 0<> if code throw then JSON:TEXT$ STR:LEN"
       CHECK-QUIET-CANDIDATE! -1 T=
    \ more, fewer and as many cells as it took, read under the guard
    s" S4 ( n -- n n ) [: WNUMBER dup ;] catch {: code:n :} code 0<> if code throw then"
@@ -546,7 +545,7 @@ STRUCTURE cspt
 \ keeps its edge (T7, T8).
 : WREPL ( ^u8 -- ^u8 ) drop CS-BUF E-CS-BOOM throw ;
 TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
-: CS-TRT ( ^u8 -- str ) ['] WMAYBE catch ;
+: CS-TRT ( ^u8 -- ^u8 n ) ['] WMAYBE catch ;
 
 : CS-SECTION-TICK ( -- )
    s" ticked callees" T-LABEL
@@ -581,7 +580,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    \ leaves nothing where its window was, so the bind reaches below the inputs;
    \ only a `[: … ;]` literal that never returns keeps its window, never a tick
    s" T11 ( ^u8 -- n ) ['] WBOOM catch {: v code:n :} code" CS-CODE<
-   s\" \"code\":\"E-STALE-READ\"" REJECTION:BUFFER$ 2swap STR:CONTAINS? TFALSE
+   s\" \"code\":\"E-STALE-READ\"" REJECTION:BUFFER$ swap STR:CONTAINS? TFALSE
    CS-CODE-END
    \ and the intact cell is honest at run time through the tick as well: WMAYBE
    \ reads the byte and throws, and the catch hands back the address pushed here

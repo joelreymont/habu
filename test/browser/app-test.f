@@ -229,8 +229,8 @@ variable BEFORE-U
 
 \ Each answered, notified, file and chunk run frees its delivery.
 : FREED-CASE ( -- )
-   s" freed: four rounds of deliveries end with the memory one does" str>
-   MOD MOD-U @ [: s" rpc" TYPED+  s" 1" s" result.json" ANSWER-RPC+
+   s" freed: four rounds of deliveries end with the memory one does"
+   MOD MOD-U @ >str [: s" rpc" TYPED+  s" 1" s" result.json" ANSWER-RPC+
       NOTIFY+  FILE+  s" read start" TYPED+ ;]
    BROWSER-MEMORY-TEST:FREED ;
 

@@ -1,4 +1,3 @@
-split-str
 \ A stripped build keeps bytes no span declares as bytes, and checks a declared
 \ cell whatever window it lies in.
 \ The first subject lays two ERROR:CODE rows whose text is the 8 address bytes
@@ -89,32 +88,32 @@ variable ROOTED-IMAGE-U
 create LOADED LOADED-CAP allot
 variable LOADED-U
 
-: SUBJECT$ ( -- str ) SUBJECT SUBJECT-U @ ;
-: IMAGE$ ( -- str ) IMAGE IMAGE-U @ ;
-: RECORD$ ( -- str ) RECORD RECORD-U @ ;
-: REFUSED$ ( -- str ) REFUSED REFUSED-U @ ;
-: PROBE$ ( -- str ) PROBE PROBE-U @ ;
-: PROBE-ROOT$ ( -- str ) PROBE-ROOT PROBE-ROOT-U @ ;
-: PROBE-INNER$ ( -- str ) PROBE-INNER PROBE-INNER-U @ ;
-: PROBE-OUT$ ( -- str ) PROBE-OUT PROBE-OUT-U @ ;
-: PROBE-IMAGE$ ( -- str ) PROBE-IMAGE PROBE-IMAGE-U @ ;
-: RESOLVES$ ( -- str ) RESOLVES RESOLVES-U @ ;
-: RESOLVES-OUT$ ( -- str ) RESOLVES-OUT RESOLVES-OUT-U @ ;
-: RESOLVES-IMAGE$ ( -- str ) RESOLVES-IMAGE RESOLVES-IMAGE-U @ ;
-: LOADED$ ( -- str ) LOADED LOADED-U @ ;
-: ENVTOP$ ( -- str ) ENVTOP ENVTOP-U @ ;
-: ENVTOP-OUT$ ( -- str ) ENVTOP-OUT ENVTOP-OUT-U @ ;
-: ENVTOP-IMAGE$ ( -- str ) ENVTOP-IMAGE ENVTOP-IMAGE-U @ ;
-: ROOTED$ ( -- str ) ROOTED ROOTED-U @ ;
-: ROOTED-DIR$ ( -- str ) ROOTED-DIR ROOTED-DIR-U @ ;
-: ROOTED-HELPER$ ( -- str ) ROOTED-HELPER ROOTED-HELPER-U @ ;
-: ROOTED-SHARED$ ( -- str ) ROOTED-SHARED ROOTED-SHARED-U @ ;
-: ROOTED-OUT$ ( -- str ) ROOTED-OUT ROOTED-OUT-U @ ;
-: ROOTED-IMAGE$ ( -- str ) ROOTED-IMAGE ROOTED-IMAGE-U @ ;
+: SUBJECT$ ( -- str ) SUBJECT SUBJECT-U @ >str ;
+: IMAGE$ ( -- str ) IMAGE IMAGE-U @ >str ;
+: RECORD$ ( -- str ) RECORD RECORD-U @ >str ;
+: REFUSED$ ( -- str ) REFUSED REFUSED-U @ >str ;
+: PROBE$ ( -- str ) PROBE PROBE-U @ >str ;
+: PROBE-ROOT$ ( -- str ) PROBE-ROOT PROBE-ROOT-U @ >str ;
+: PROBE-INNER$ ( -- str ) PROBE-INNER PROBE-INNER-U @ >str ;
+: PROBE-OUT$ ( -- str ) PROBE-OUT PROBE-OUT-U @ >str ;
+: PROBE-IMAGE$ ( -- str ) PROBE-IMAGE PROBE-IMAGE-U @ >str ;
+: RESOLVES$ ( -- str ) RESOLVES RESOLVES-U @ >str ;
+: RESOLVES-OUT$ ( -- str ) RESOLVES-OUT RESOLVES-OUT-U @ >str ;
+: RESOLVES-IMAGE$ ( -- str ) RESOLVES-IMAGE RESOLVES-IMAGE-U @ >str ;
+: LOADED$ ( -- str ) LOADED LOADED-U @ >str ;
+: ENVTOP$ ( -- str ) ENVTOP ENVTOP-U @ >str ;
+: ENVTOP-OUT$ ( -- str ) ENVTOP-OUT ENVTOP-OUT-U @ >str ;
+: ENVTOP-IMAGE$ ( -- str ) ENVTOP-IMAGE ENVTOP-IMAGE-U @ >str ;
+: ROOTED$ ( -- str ) ROOTED ROOTED-U @ >str ;
+: ROOTED-DIR$ ( -- str ) ROOTED-DIR ROOTED-DIR-U @ >str ;
+: ROOTED-HELPER$ ( -- str ) ROOTED-HELPER ROOTED-HELPER-U @ >str ;
+: ROOTED-SHARED$ ( -- str ) ROOTED-SHARED ROOTED-SHARED-U @ >str ;
+: ROOTED-OUT$ ( -- str ) ROOTED-OUT ROOTED-OUT-U @ >str ;
+: ROOTED-IMAGE$ ( -- str ) ROOTED-IMAGE ROOTED-IMAGE-U @ >str ;
 \ a line the probe's --load output must hold, naming its canonical directory
 create WANT PATH-CAP 2 * allot
 variable WANT-U
-: WANT$ ( -- str ) WANT WANT-U @ ;
+: WANT$ ( -- str ) WANT WANT-U @ >str ;
 
 \ The text is the kept block's own first 8 bytes, so no image byte but the
 \ rows' holds the address. KEPT is a PTR-VARIABLE, which a save writes as null.
@@ -154,16 +153,16 @@ variable WANT-U
 : HELPER-2$ ( -- str ) S\" : HELPER-K ( -- n ) 2 ;\n" ;
 
 \ Each subject is its own hb-build: a refusal ends the build.
-: BUILD-ARGV ( str str -- ) {: src:^ srcu:n out:^ outu:n :}
+: BUILD-ARGV ( str str -- ) {: src:str out:str :}
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ s" tools/hb-build.f" GE-ARG+
-   s" --" GE-ARG+ src srcu GE-ARG+
-   s" -o" GE-ARG+ out outu GE-ARG+ ;
+   s" --" GE-ARG+ src GE-ARG+
+   s" -o" GE-ARG+ out GE-ARG+ ;
 
 : BUILD-RUN ( -- )
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER GE-RUN-ENV ;
 
-: HB-BUILD ( ^u8 n ^u8 n -- )
+: HB-BUILD ( str str -- )
    GE-HB-RESET BUILD-ARGV BUILD-RUN ;
 
 : BUILD ( -- )
@@ -192,13 +191,13 @@ variable WANT-U
    PROBE-INNER$ INNER-SOURCE$ FS:WRITE-ALL
    PROBE$ PROBE-SOURCE$ FS:WRITE-ALL ;
 
-: WANT+ ( str -- ) {: a:^ u:n :}
-   a WANT WANT-U @ + u BYTE-COPY  u WANT-U +! ;
+: WANT+ ( str -- ) {: s:str :}
+   s STR:DATA WANT WANT-U @ + s STR:LEN BYTE-COPY  s STR:LEN WANT-U +! ;
 
-: WANT! ( str str -- ) {: label:^ labelu:n tail:^ tailu:n :}
-   0 WANT-U !  label labelu WANT+
+: WANT! ( str str -- ) {: label:str tail:str :}
+   0 WANT-U !  label WANT+
    PROBE$ SOURCE-ROOT:DIRNAME SOURCE-ROOT:CANONICAL drop WANT+
-   tail tailu WANT+  S\" \n" WANT+ ;
+   tail WANT+  S\" \n" WANT+ ;
 
 : PROBE-LOAD ( -- )
    GE-HB-RESET
@@ -206,9 +205,9 @@ variable WANT-U
    s" --load" GE-ARG+ PROBE$ GE-ARG+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" hb --load of a file whose loads read the loader" GE-EXPECT-OK
-   GT-OUT$ {: a:^ u:n :}
-   u LOADED-CAP > if s" the probe's --load output fits its buffer" GE-FAIL then
-   a LOADED u BYTE-COPY  u LOADED-U !
+   GT-OUT$ {: out:str :}
+   out STR:LEN LOADED-CAP > if s" the probe's --load output fits its buffer" GE-FAIL then
+   out STR:DATA LOADED out STR:LEN BYTE-COPY  out STR:LEN LOADED-U !
    s" inner root! " s" /sub/root" WANT!
    WANT$ s" a required file's ROOT! makes its directory the current root" GE-EXPECT-OUT-HAS
    s" probe current " s" " WANT!
@@ -253,10 +252,10 @@ variable WANT-U
 \ A build into ENVTOP-OUT with HABU_TEST_SIDE the value, unset for NULL-PTR,
 \ that compiles the top level when fresh is true, then a run printing want.
 : ENVTOP-BUILD ( str bool str -- )
-   {: val:^ valu:n fresh:bool want:^ wantu:n :}
+   {: val:str fresh:bool want:str :}
    GE-HB-RESET
    s" HABU_OUT" ENVTOP-OUT$ PROC-ENV-SET
-   val NULL-PTR <> if s" HABU_TEST_SIDE" val valu PROC-ENV-SET then
+   val STR:DATA NULL-PTR <> if s" HABU_TEST_SIDE" val PROC-ENV-SET then
    ENVTOP$ ENVTOP-IMAGE$ BUILD-ARGV BUILD-RUN
    s" build of a file whose top level reads HABU_TEST_SIDE" GE-EXPECT-OK
    GT-OUT$ s" envtop top level" STR:CONTAINS? {: seen:bool :}
@@ -267,17 +266,17 @@ variable WANT-U
    ENVTOP-IMAGE$ GE-ARGV+
    ENVTOP-IMAGE$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" the program built from envtop.f" GE-EXPECT-OK
-   want wantu s" the length of HABU_TEST_SIDE the program's compile read" GE-EXPECT-OUT ;
+   want s" the length of HABU_TEST_SIDE the program's compile read" GE-EXPECT-OUT ;
 
 : ENVTOP-BUILDS ( -- )
    ENVTOP$ ENVTOP-SOURCE$ FS:WRITE-ALL
    s" ab" true S\" 2\n" ENVTOP-BUILD
    s" abcd" true S\" 4\n" ENVTOP-BUILD
    s" abcd" false S\" 4\n" ENVTOP-BUILD
-   NULL-PTR 0 true S\" 0\n" ENVTOP-BUILD ;
+   NULL-PTR 0 >str true S\" 0\n" ENVTOP-BUILD ;
 
-: EXPECT-OUT-LACKS ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-OUT$ want wantu STR:CONTAINS? if label labelu GE-FAIL then ;
+: EXPECT-OUT-LACKS ( str str -- ) {: want:str label:str :}
+   GT-OUT$ want STR:CONTAINS? if label GE-FAIL then ;
 
 : ROOTED-WRITE ( -- )
    ROOTED-DIR$ FS:MAKE-DIRS
@@ -285,12 +284,12 @@ variable WANT-U
    ROOTED-SHARED$ SHARED-SOURCE$ FS:WRITE-ALL
    ROOTED$ ROOTED-SOURCE$ FS:WRITE-ALL ;
 
-: ROOTED-RUN ( str -- ) {: want:^ wantu:n :}
+: ROOTED-RUN ( str -- ) {: want:str :}
    GE-HB-RESET
    ROOTED-IMAGE$ GE-ARGV+
    ROOTED-IMAGE$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" the program built from a file whose ROOT! reaches its require" GE-EXPECT-OK
-   want wantu s" MAIN's line, from the words the ROOT!-reached files define" GE-EXPECT-OUT ;
+   want s" MAIN's line, from the words the ROOT!-reached files define" GE-EXPECT-OUT ;
 
 : ROOTED-LINE$ ( -- str ) S\" rooted main from beside and shared\n" ;
 
@@ -337,20 +336,20 @@ variable C-B-U
 variable C-H-U
 variable C-LINK-U
 variable C-REL-U
-: C-DIR$ ( -- str ) C-DIR C-DIR-U @ ;
-: C-MAIN$ ( -- str ) C-MAIN C-MAIN-U @ ;
-: C-OUT$ ( -- str ) C-OUT C-OUT-U @ ;
-: C-IMAGE$ ( -- str ) C-IMAGE C-IMAGE-U @ ;
-: C-A$ ( -- str ) C-A C-A-U @ ;
-: C-H$ ( -- str ) C-H C-H-U @ ;
-: C-LINK$ ( -- str ) C-LINK C-LINK-U @ ;
-: C-REL$ ( -- str ) C-REL C-REL-U @ ;
+: C-DIR$ ( -- str ) C-DIR C-DIR-U @ >str ;
+: C-MAIN$ ( -- str ) C-MAIN C-MAIN-U @ >str ;
+: C-OUT$ ( -- str ) C-OUT C-OUT-U @ >str ;
+: C-IMAGE$ ( -- str ) C-IMAGE C-IMAGE-U @ >str ;
+: C-A$ ( -- str ) C-A C-A-U @ >str ;
+: C-H$ ( -- str ) C-H C-H-U @ >str ;
+: C-LINK$ ( -- str ) C-LINK C-LINK-U @ >str ;
+: C-REL$ ( -- str ) C-REL C-REL-U @ >str ;
 
 \ main.f's text: a root and a helper's path, each up to PATH-CAP, and the code around them
 PATH-CAP 2 * 256 + constant TXT-CAP
 create TXT TXT-CAP allot
 variable TXT-U
-: TXT$ ( -- str ) TXT TXT-U @ ;
+: TXT$ ( -- str ) TXT TXT-U @ >str ;
 64 constant NAME-CAP
 create C-NAME NAME-CAP allot
 variable C-NAME-U
@@ -358,53 +357,53 @@ variable C-NAME-U
 create LBL LBL-CAP allot
 variable LBL-U
 
-: APPEND ( ^u8 n ^u8 ^n n -- ) {: a:^ u:n dst:^ up:^ cap:n :}
-   up @ u + cap > if s" a case's text fits its buffer" GE-FAIL then
-   a dst up @ + u BYTE-COPY  u up +! ;
+: APPEND ( str ^u8 ^n n -- ) {: s:str dst:^ up:^ cap:n :}
+   up @ s STR:LEN + cap > if s" a case's text fits its buffer" GE-FAIL then
+   s STR:DATA dst up @ + s STR:LEN BYTE-COPY  s STR:LEN up +! ;
 
 : TXT+ ( str -- ) TXT TXT-U TXT-CAP APPEND ;
 
-: LABEL ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   0 LBL-U !  C-NAME C-NAME-U @ LBL LBL-U LBL-CAP APPEND
-   s" : " LBL LBL-U LBL-CAP APPEND  a u LBL LBL-U LBL-CAP APPEND
-   LBL LBL-U @ ;
+: LABEL ( str -- str ) {: s:str :}
+   0 LBL-U !  C-NAME C-NAME-U @ >str LBL LBL-U LBL-CAP APPEND
+   s" : " LBL LBL-U LBL-CAP APPEND  s LBL LBL-U LBL-CAP APPEND
+   LBL LBL-U @ >str ;
 
-: IN-CASE ( str ^u8 -- n ) {: name:^ nameu:n dst:^ :} C-DIR$ name nameu dst FS:JOIN-PATH ;
+: IN-CASE ( str ^u8 -- n ) {: name:str dst:^ :} C-DIR$ name dst FS:JOIN-PATH ;
 
-: CASE-OPEN ( str -- ) {: name:^ nameu:n :}
-   0 C-NAME-U !  name nameu C-NAME C-NAME-U NAME-CAP APPEND
-   name nameu C-DIR GT-PATH C-DIR-U !  C-DIR$ FS:MAKE-DIRS
+: CASE-OPEN ( str -- ) {: name:str :}
+   0 C-NAME-U !  name C-NAME C-NAME-U NAME-CAP APPEND
+   name C-DIR GT-PATH C-DIR-U !  C-DIR$ FS:MAKE-DIRS
    s" main.f" C-MAIN IN-CASE C-MAIN-U !
    s" out" C-OUT IN-CASE C-OUT-U !
    s" program" C-IMAGE IN-CASE C-IMAGE-U ! ;
 
-: HELPER-DIR ( str ^u8 ^n str -- ) {: name:^ nameu:n dst:^ up:^ text:^ textu:n :}
-   name nameu dst IN-CASE up !  dst up @ FS:MAKE-DIRS
-   dst up @ s" helper.f" C-H FS:JOIN-PATH C-H-U !
-   C-H$ text textu FS:WRITE-ALL ;
+: HELPER-DIR ( str ^u8 ^n str -- ) {: name:str dst:^ up:^ text:str :}
+   name dst IN-CASE up !  dst up @ >str FS:MAKE-DIRS
+   dst up @ >str s" helper.f" C-H FS:JOIN-PATH C-H-U !
+   C-H$ text FS:WRITE-ALL ;
 
 \ main.f: a top-level line, then the root expression TXT holds after MAIN-START, ROOT!, a
 \ require of the helper and a MAIN that prints its value.
 : MAIN-START ( -- ) 0 TXT-U !  S\" s\q case top level\q type cr\n" TXT+ ;
-: MAIN-END ( str -- ) {: h:^ hu:n :}
-   S\"  SOURCE-ROOT:ROOT!\nrequire " TXT+  h hu TXT+  S\" \n: MAIN ( -- ) HELPER-K . ;\n" TXT+
+: MAIN-END ( str -- ) {: h:str :}
+   S\"  SOURCE-ROOT:ROOT!\nrequire " TXT+  h TXT+  S\" \n: MAIN ( -- ) HELPER-K . ;\n" TXT+
    C-MAIN$ TXT$ FS:WRITE-ALL ;
 
-: CASE-BUILD ( str str -- ) {: out:^ outu:n image:^ imageu:n :}
+: CASE-BUILD ( str str -- ) {: out:str image:str :}
    GE-HB-RESET
-   s" HABU_OUT" out outu PROC-ENV-SET
-   C-MAIN$ image imageu BUILD-ARGV BUILD-RUN
+   s" HABU_OUT" out PROC-ENV-SET
+   C-MAIN$ image BUILD-ARGV BUILD-RUN
    s" the build of main.f" LABEL GE-EXPECT-OK ;
 
-: CASE-RUN ( str str -- ) {: image:^ imageu:n want:^ wantu:n :}
+: CASE-RUN ( str str -- ) {: image:str want:str :}
    GE-HB-RESET
-   image imageu GE-ARGV+
-   image imageu PROCESS:WAIT-FOREVER GE-RUN-ENV
+   image GE-ARGV+
+   image PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" the program built from main.f" LABEL GE-EXPECT-OK
-   want wantu s" the program prints the value of the helper its root reaches" LABEL GE-EXPECT-OUT ;
+   want s" the program prints the value of the helper its root reaches" LABEL GE-EXPECT-OUT ;
 
 : WARM ( -- ) C-OUT$ C-IMAGE$ CASE-BUILD ;
-: WARM-RUN ( str -- ) {: want:^ wantu:n :} C-IMAGE$ want wantu CASE-RUN ;
+: WARM-RUN ( str -- ) {: want:str :} C-IMAGE$ want CASE-RUN ;
 
 : SYMLINK-CASE ( -- )
    s" symlink" CASE-OPEN
@@ -430,9 +429,9 @@ PATH-CAP 2 - constant LONG-ROOT
 \ sets the root. The helper is required by absolute path: under that root its path would pass PATH-CAP.
 : LONG-CASE ( -- )
    s" long" CASE-OPEN
-   C-DIR$ SOURCE-ROOT:CANONICAL drop {: c:^ cu:n :}
-   LONG-ROOT cu - 1 - REL!
-   c cu C-REL$ C-A FS:JOIN-PATH C-A-U !
+   C-DIR$ SOURCE-ROOT:CANONICAL drop {: c:str :}
+   LONG-ROOT c STR:LEN - 1 - REL!
+   c C-REL$ C-A FS:JOIN-PATH C-A-U !
    C-A-U @ LONG-ROOT <> if s" the long root is LONG-ROOT bytes" LABEL GE-FAIL then
    C-A$ FS:MAKE-DIRS
    s" h.f" C-H IN-CASE C-H-U !
@@ -458,21 +457,21 @@ create G-IMAGE PATH-CAP allot
 variable G-LIB-U
 variable G-OUT-U
 variable G-IMAGE-U
-: G-OUT$ ( -- str ) G-OUT G-OUT-U @ ;
-: G-IMAGE$ ( -- str ) G-IMAGE G-IMAGE-U @ ;
+: G-OUT$ ( -- str ) G-OUT G-OUT-U @ >str ;
+: G-IMAGE$ ( -- str ) G-IMAGE G-IMAGE-U @ >str ;
 \ The bytes of the file at the path, in storage its size makes.
-: PROGRAM-BYTES ( str -- str ) {: p:^ pu:n :}
-   p pu FS:FILE-SIZE MEM-ALLOC-BYTES {: b:^ bu:n :}
-   p pu b bu FS:READ-ALL {: got:n :}
-   b got ;
+: PROGRAM-BYTES ( str -- str ) {: p:str :}
+   p FS:FILE-SIZE MEM-ALLOC-BYTES {: b:^ bu:n :}
+   p b bu FS:READ-ALL {: got:n :}
+   b got >str ;
 
 \ lib.f as the text, built into the out root and run.
-: GAP-BUILD ( str str str -- ) {: lib:^ libu:n out:^ outu:n image:^ imageu:n :}
-   G-LIB G-LIB-U @ lib libu FS:WRITE-ALL
-   out outu image imageu CASE-BUILD
+: GAP-BUILD ( str str str -- ) {: lib:str out:str image:str :}
+   G-LIB G-LIB-U @ >str lib FS:WRITE-ALL
+   out image CASE-BUILD
    GE-HB-RESET
-   image imageu GE-ARGV+
-   image imageu PROCESS:WAIT-FOREVER GE-RUN-ENV
+   image GE-ARGV+
+   image PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" the program built from main.f" LABEL GE-EXPECT-OK
    S\" 7\n9\n" s" the program prints LIVE-V and the cell below STK-END's pointer" LABEL GE-EXPECT-OUT ;
 
@@ -489,10 +488,10 @@ variable G-IMAGE-U
    then ;
 
 \ lib.f as lib's text and main.f as main's, built into the out root and refused.
-: ADDRESS-REFUSED ( str str -- ) {: lib:^ libu:n main:^ mainu:n :}
+: ADDRESS-REFUSED ( str str -- ) {: lib:str main:str :}
    s" lib.f" G-LIB IN-CASE G-LIB-U !
-   G-LIB G-LIB-U @ lib libu FS:WRITE-ALL
-   C-MAIN$ main mainu FS:WRITE-ALL
+   G-LIB G-LIB-U @ >str lib FS:WRITE-ALL
+   C-MAIN$ main FS:WRITE-ALL
    GE-HB-RESET
    s" HABU_OUT" C-OUT$ PROC-ENV-SET
    C-MAIN$ C-IMAGE$ BUILD-ARGV BUILD-RUN
@@ -532,7 +531,7 @@ variable G-IMAGE-U
 : OPTION-CASE ( -- )
    s" option" CASE-OPEN
    s" lib.f" G-LIB IN-CASE G-LIB-U !
-   G-LIB G-LIB-U @ OPTION-LIB$ FS:WRITE-ALL
+   G-LIB G-LIB-U @ >str OPTION-LIB$ FS:WRITE-ALL
    C-MAIN$ OPTION-MAIN$ FS:WRITE-ALL
    WARM
    GE-HB-RESET
@@ -558,7 +557,7 @@ variable G-IMAGE-U
 : DEFER-CASE ( -- )
    s" defer" CASE-OPEN
    s" lib.f" G-LIB IN-CASE G-LIB-U !
-   G-LIB G-LIB-U @ DEFER-LIB$ FS:WRITE-ALL
+   G-LIB G-LIB-U @ >str DEFER-LIB$ FS:WRITE-ALL
    C-MAIN$ DEFER-MAIN$ FS:WRITE-ALL
    WARM
    GE-HB-RESET
@@ -576,7 +575,7 @@ variable G-IMAGE-U
 : QUEUE-CASE ( -- )
    s" queue" CASE-OPEN
    s" lib.f" G-LIB IN-CASE G-LIB-U !
-   G-LIB G-LIB-U @ QUEUE-LIB$ FS:WRITE-ALL
+   G-LIB G-LIB-U @ >str QUEUE-LIB$ FS:WRITE-ALL
    C-MAIN$ QUEUE-MAIN$ FS:WRITE-ALL
    WARM
    GE-HB-RESET

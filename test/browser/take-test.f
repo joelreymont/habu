@@ -87,8 +87,8 @@ public
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    TAKEN-CASE
    THROWN-CASE
-   s" four take-then-free cycles end with the memory one does" str>
-      MOD MOD-U @ [: s" --typed" ARG+ s" take" ARG+ s" --typed" ARG+ s" next" ARG+ ;]
+   s" four take-then-free cycles end with the memory one does"
+      MOD MOD-U @ >str [: s" --typed" ARG+ s" take" ARG+ s" --typed" ARG+ s" next" ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
    T-REPORT ;
 

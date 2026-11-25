@@ -103,19 +103,19 @@ public
    s" SVG/input records, scenes, identities, refusals and CLI" T-LABEL
    peer 0 T=
    OUT OUT-U @ >str type ERR ERR-U @ >str type
-   s" four fetched answers end with the memory one does" str>
-      MOD MOD-U @ [: \ the answer follows the typed "fetch" that asks for it
+   s" four fetched answers end with the memory one does"
+      MOD MOD-U @ >str [: \ the answer follows the typed "fetch" that asks for it
          s" --typed" ARG+ s" fetch" ARG+
          s" --answer" ARG+ s" 200" ARG+ FILE FILE-U @ >str ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
-   s" four loads end with the memory one does" str>
-      MOD MOD-U @ [: s" --load" ARG+ FILE FILE-U @ >str ARG+ ;]
+   s" four loads end with the memory one does"
+      MOD MOD-U @ >str [: s" --load" ARG+ FILE FILE-U @ >str ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
-   s" four focus turns end with the memory one does" str>
-      MOD MOD-U @ [: s" --focus" ARG+ s" 000102030405060708090a0b0c0d0e0f" ARG+ ;]
+   s" four focus turns end with the memory one does"
+      MOD MOD-U @ >str [: s" --focus" ARG+ s" 000102030405060708090a0b0c0d0e0f" ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
-   s" four highlight turns end with the memory one does" str>
-      MOD MOD-U @ [: s" --highlight" ARG+ s" 0f0e0d0c0b0a09080706050403020100" ARG+ ;]
+   s" four highlight turns end with the memory one does"
+      MOD MOD-U @ >str [: s" --highlight" ARG+ s" 0f0e0d0c0b0a09080706050403020100" ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
    T-REPORT ;
 

@@ -339,8 +339,8 @@ PATH-CAP BUFFER: FILE
 \ Four rounds of a tagged request and its answer end with the memory one round
 \ does: each typed and each answered run frees its delivery.
 : FREED-CASE ( -- )
-   s" freed: four answered requests end with the memory one does" str>
-   MOD MOD-U @ [: s" x" TYPED+  ID1$ 201 s" zff.bin" ANSWER-ID+ ;]
+   s" freed: four answered requests end with the memory one does"
+   MOD MOD-U @ >str [: s" x" TYPED+  ID1$ 201 s" zff.bin" ANSWER-ID+ ;]
    BROWSER-MEMORY-TEST:FREED ;
 
 : MALFORMED ( str str -- )

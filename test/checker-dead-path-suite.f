@@ -1,4 +1,3 @@
-split-str
 \ checker-dead-path-suite.f - which calls end a path.
 \
 \ A call ends its path when the word its token resolves to never returns,
@@ -82,7 +81,7 @@ public
 package DEADPATH-OWN
 public
 
-: DIE ( ^u8 n -- )
+: DIE ( str -- )
    3 die ;
 
 : THROW ( n -- )

@@ -223,13 +223,13 @@ PATH-CAP BUFFER: FILE
    s" id" s" an occlude needs a positive id, got 0" REJECT ;
 
 : FREED-CASES ( -- )
-   s" four typed turns end with the memory one does" str>
-      MOD MOD-U @ [: s" redraw" TYPED+ ;] BROWSER-MEMORY-TEST:FREED
-   s" four key turns end with the memory one does" str>
-      MOD MOD-U @ [: s" --key" ARG+ s" Escape" ARG+ 8 N-ARG+ ;]
+   s" four typed turns end with the memory one does"
+      MOD MOD-U @ >str [: s" redraw" TYPED+ ;] BROWSER-MEMORY-TEST:FREED
+   s" four key turns end with the memory one does"
+      MOD MOD-U @ >str [: s" --key" ARG+ s" Escape" ARG+ 8 N-ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
-   s" four occluded turns end with the memory one does" str>
-      MOD MOD-U @
+   s" four occluded turns end with the memory one does"
+      MOD MOD-U @ >str
       [: s" occlude" TYPED+ s" --occluded" ARG+ s" 0100" ARG+ ;]
       BROWSER-MEMORY-TEST:FREED ;
 

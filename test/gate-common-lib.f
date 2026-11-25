@@ -283,7 +283,7 @@ variable GE-EVAL-SRC-U
    FS:READ-ALL GE-RD !
    GE-SRC-U @ GE-RD @ + GE-SRC-U ! ;
 
-: GE-ARG+ ( ^u8 n -- )
+: GE-ARG+ ( str -- )
    2dup GE-ARGV+
    PROC-ARGV+ ;
 

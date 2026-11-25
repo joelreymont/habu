@@ -115,7 +115,7 @@ public
    status 0 T=
    OUT want STR:LEN >str want T$=
    want STR:LEN MEMORY-NEXT
-   OUT OUT-U @ BROWSER-MEMORY-TEST:MEMORY {: base:n :}
+   OUT OUT-U @ >str BROWSER-MEMORY-TEST:MEMORY {: base:n :}
    DIR DIR-U @ >str s" payload.bin" FILE FS:JOIN-PATH FILE-U !
    s" each freed keystroke's pages serve the next, and the fetched bytes keep their checksum" T-LABEL
    true HOST 0 T=
@@ -129,7 +129,7 @@ public
    OUT all STR:LEN >str all T$=
    all STR:LEN MEMORY-NEXT
    s" 1000 keystrokes leave memory as the first run left it" T-LABEL
-   OUT OUT-U @ BROWSER-MEMORY-TEST:MEMORY base T=
+   OUT OUT-U @ >str BROWSER-MEMORY-TEST:MEMORY base T=
    T-REPORT ;
 
 ;package

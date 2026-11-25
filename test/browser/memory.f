@@ -26,13 +26,13 @@ public
 
 \ The number on the "memory" line host-cli's --memory prints after the
 \ output's other lines; E-PROC-OUTPUT without one.
-: MEMORY ( ^u8 n -- n )
-   {: out:^ u:n :}
-   out u >str s\" \nmemory " STR:FIND-SUB MATCH option
+: MEMORY ( str -- n )
+   {: out:str :}
+   out s\" \nmemory " STR:FIND-SUB MATCH option
       none OF E-PROC-OUTPUT throw ENDOF
       some OF IDX>N ENDOF
    ;MATCH 8 + {: at:n :}
-   out at + u at - >str STR:TRIM STR:>NUMBER? MATCH option
+   out STR:DATA at + out STR:LEN at - >str STR:TRIM STR:>NUMBER? MATCH option
       none OF E-PROC-OUTPUT throw ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -54,14 +54,14 @@ private
    {: outu:len erru:len rc:n :}
    rc 0<> if ERR erru LEN>N >str type cr then
    label T-LABEL rc 0 T=
-   OUT outu LEN>N MEMORY ;
+   OUT outu LEN>N >str MEMORY ;
 
 public
 
-: FREED ( ^u8 n ^u8 n [ -- ] -- )
-   {: label:^ lu:n mod:^ mu:n steps :}
-   label lu >str mod mu >str steps 1 MEMORY-AFTER {: one:n :}
-   label lu >str mod mu >str steps 4 MEMORY-AFTER {: four:n :}
-   label lu >str T-LABEL four one T= ;
+: FREED ( str str [ -- ] -- )
+   {: label:str mod:str steps :}
+   label mod steps 1 MEMORY-AFTER {: one:n :}
+   label mod steps 4 MEMORY-AFTER {: four:n :}
+   label T-LABEL four one T= ;
 
 ;package
