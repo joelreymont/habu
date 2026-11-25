@@ -1,4 +1,3 @@
-split-str
 \ ffi-callback.f - C callbacks into checked Habu: CALLBACK: NAME ( in -- out )
 \ clauses ;CALLBACK declares a C entry; FFI-CB:ENTRY binds it to a context
 \ (src/lib/task.f CONTEXT-BIND) and answers the C function pointer.
@@ -239,58 +238,58 @@ variable OPEN
 
 \ A message that ends quoting the token the user wrote.
 : TOKEN-REJECT ( str str str -- )
-   {: m:^ mu:n t:^ tu:n h:^ hu:n :}
-   FFI:SYNTAX-OPEN  m mu REJECTION:EMIT-STR
-   s" '" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
-   s" '" REJECTION:EMIT-STR  h hu FFI:HELP-STOP ;
+   {: m:str t:str h:str :}
+   FFI:SYNTAX-OPEN  m REJECTION:EMIT-STR
+   s" '" REJECTION:EMIT-STR  t REJECTION:EMIT-STR
+   s" '" REJECTION:EMIT-STR  h FFI:HELP-STOP ;
 
 \ The next token src gives. Its bytes stay where the source holds them while
 \ the declaration is read, so it lives on the stack.
 : TOK@ ( [ -- str ] -- str )
-   execute {: a:^ u:n :}
-   u 0= if
+   execute {: s:str :}
+   s STR:LEN 0= if
       s" the text ends inside the callback declaration"
       s" complete it: CALLBACK: NAME ( in -- out ) clauses ;CALLBACK"
       FFI:SYNTAX-REJECT
    then
-   a u ;
+   s ;
 
 : TOO-MANY ( n str -- )
-   {: cap:n k:^ ku:n :}
+   {: cap:n k:str :}
    FFI:ARITY-OPEN
    s" a callback takes at most " REJECTION:EMIT-STR
-   cap REJECTION:EMIT-U  k ku REJECTION:EMIT-STR
+   cap REJECTION:EMIT-U  k REJECTION:EMIT-STR
    s" pass the rest in memory through a ^u8 argument"
    FFI:HELP-STOP ;
 
 \ A ':' at either end of the name, with nothing on one side.
-: EDGE-COLON? ( str -- bool ) {: a:^ u:n :}
-   a c@ [char] : =  a u + 1 - c@ [char] : = or ;
+: EDGE-COLON? ( str -- bool ) {: s:str :}
+   s STR:DATA c@ [char] : =  s STR:DATA s STR:LEN + 1 - c@ [char] : = or ;
 
 : COLON-HELP$ ( -- str )
    s" name it NAME, or PACKAGE:NAME for a word in package PACKAGE" ;
 
 \ The name's words are NAME, NAME-BODY and the like: one ':' between a
 \ package and a word makes them the package's; any other ':' names nothing.
-: NAME! ( str -- ) {: a:^ u:n :}
-   a u [char] : STR:COUNT-CHAR 1 > if
-      s" more than one ':' in callback name " a u COLON-HELP$
+: NAME! ( str -- ) {: s:str :}
+   s [char] : STR:COUNT-CHAR 1 > if
+      s" more than one ':' in callback name " s COLON-HELP$
       TOKEN-REJECT
    then
-   a u EDGE-COLON? if
-      s" an empty package or word beside ':' in callback name " a u
+   s EDGE-COLON? if
+      s" an empty package or word beside ':' in callback name " s
       COLON-HELP$ TOKEN-REJECT
    then
    NAME CODEGEN:RESET
-   a u NAME CODEGEN:APPEND-STRING ;
+   s NAME CODEGEN:APPEND-STRING ;
 
 : NAME$ ( -- str )
    NAME CODEGEN:CONTENTS ;
 
-: NAME+ ( str -- str ) {: a:^ u:n :}
+: NAME+ ( str -- str ) {: s:str :}
    WORD-NAME CODEGEN:RESET
    NAME$ WORD-NAME CODEGEN:APPEND-STRING
-   a u WORD-NAME CODEGEN:APPEND-STRING
+   s WORD-NAME CODEGEN:APPEND-STRING
    WORD-NAME CODEGEN:CONTENTS ;
 
 : ARG+ ( n n -- ) {: i:n by:n :}
@@ -307,62 +306,62 @@ variable OPEN
    i 1 + f ;
 
 : IN-TOKEN ( n n str -- n n )
-   {: i:n f:n a:^ u:n :}
-   a u s" n" STR:= if i f BY-N INT+ exit then
-   a u s" i32" STR:= if i f BY-I32 INT+ exit then
-   a u s" u32" STR:= if i f BY-U32 INT+ exit then
-   a u s" str" STR:= if i f BY-STR INT+ BY-LEN INT+ exit then
-   a u 1 min s" ^" STR:= if
-      a u s" ^u8" STR:= 0= if
-         s" expected u8 after ^, found " a 1 + u 1 -
+   {: i:n f:n s:str :}
+   s s" n" STR:= if i f BY-N INT+ exit then
+   s s" i32" STR:= if i f BY-I32 INT+ exit then
+   s s" u32" STR:= if i f BY-U32 INT+ exit then
+   s s" str" STR:= if i f BY-STR INT+ BY-LEN INT+ exit then
+   s STR:DATA s STR:LEN 1 min >str s" ^" STR:= if
+      s s" ^u8" STR:= 0= if
+         s" expected u8 after ^, found " s STR:DATA 1 + s STR:LEN 1 - >str
          s" a pointer argument is ^u8" TOKEN-REJECT
       then
       i f BY-PTR INT+ exit
    then
-   a u s" r" STR:= if
+   s s" r" STR:= if
       f FLOAT-REGS >= if FLOAT-REGS s"  float arguments" TOO-MANY then
       f BY-R ARG+
       i f 1 + exit
    then
-   s" unknown argument type " a u
+   s" unknown argument type " s
    s" an argument is n, i32, u32, r, str or ^u8" TOKEN-REJECT ;
 
 : OUT-TOKEN ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    RES-KIND @ R-NONE <> if
       s" a callback has at most one result"
       s" keep one result after --: n, i32, u32 or r"
       FFI:SYNTAX-REJECT
    then
-   a u s" r" STR:= if R-FLOAT RES-KIND ! exit then
-   a u s" n" STR:= a u s" i32" STR:= or a u s" u32" STR:= or if
+   s s" r" STR:= if R-FLOAT RES-KIND ! exit then
+   s s" n" STR:= s s" i32" STR:= or s s" u32" STR:= or if
       R-VALUE RES-KIND ! exit
    then
-   s" unknown result type " a u
+   s" unknown result type " s
    s" a result is n, i32, u32 or r; no result is nothing after --"
    TOKEN-REJECT ;
 
 \ One input token: true at the -- that ends the inputs.
 : INPUT? ( n n [ -- str ] -- n n bool )
-   TOK@ {: i:n f:n a:^ u:n :}
-   a u s" --" STR:= if i f true exit then
-   a u s" )" STR:= if
+   TOK@ {: i:n f:n s:str :}
+   s s" --" STR:= if i f true exit then
+   s s" )" STR:= if
       s" expected '--' before ')'"
       s" write the effect as ( in -- out )"
       FFI:SYNTAX-REJECT
    then
-   i f a u IN-TOKEN false ;
+   i f s IN-TOKEN false ;
 
 \ One output token: true at the ) that ends the effect.
 : OUTPUT? ( [ -- str ] -- bool )
-   TOK@ {: a:^ u:n :}
-   a u s" )" STR:= if true exit then
-   a u s" --" STR:= if
+   TOK@ {: s:str :}
+   s s" )" STR:= if true exit then
+   s s" --" STR:= if
       s" a second '--' in the effect"
       s" write one -- between the arguments and the result"
       FFI:SYNTAX-REJECT
    then
-   a u OUT-TOKEN false ;
+   s OUT-TOKEN false ;
 
 : INPUTS ( [ -- str ] -- ) {: src :} 0 0 begin src INPUT? until 2drop ;
 : OUTPUTS ( [ -- str ] -- ) {: src :} begin src OUTPUT? until ;
@@ -402,7 +401,7 @@ variable OPEN
    s" n" ;
 
 : ROW+ ( str -- )
-   dup 0= if 2drop exit then
+   dup STR:LEN 0= if drop exit then
    ROW-TEXT CODEGEN:APPEND-STRING  32 ROW-TEXT CODEGEN:APPEND-BYTE ;
 
 \ The body's row: the arguments as it takes them, then its result.
@@ -412,7 +411,8 @@ variable OPEN
    s" --" ROW+
    RES-KIND @ R-FLOAT = if s" r" ROW+ then
    RES-KIND @ R-VALUE = if s" n" ROW+ then
-   ROW-TEXT CODEGEN:CONTENTS 1 - ;
+   ROW-TEXT CODEGEN:CONTENTS {: s:str :}
+   s STR:DATA s STR:LEN 1 - >str ;
 
 0 constant P-BODY
 1 constant P-DISPATCH
@@ -430,27 +430,27 @@ variable OPEN
 
 \ A type a row spells. NAMED reads a qualified family as that package's
 \ wherever the definer runs; a pointer takes READ-TYPE.
-: ROW-TYPE ( str -- EFFECT:type ) {: a:^ u:n :}
-   a c@ [char] ^ = if a u EFFECT:READ-TYPE exit then
-   a u EFFECT:NAMED ;
+: ROW-TYPE ( str -- EFFECT:type ) {: s:str :}
+   s STR:DATA c@ [char] ^ = if s EFFECT:READ-TYPE exit then
+   s EFFECT:NAMED ;
 
 \ The row's types from byte at on: inputs until --, outputs after it.
 : ROW-ITEMS ( EFFECT:type bool str n -- EFFECT:type )
-   {: out:bool a:^ u:n at:n :}
-   a u 32 at STR:SPLIT-NEXT {: p:^ pu:n next:n more:bool :}
+   {: out:bool s:str at:n :}
+   s 32 at STR:SPLIT-NEXT {: p:str next:n more:bool :}
    more 0= if exit then
-   p pu s" --" STR:= if true a u next RECURSE exit then
-   p pu ROW-TYPE  out if EFFECT:OUT else EFFECT:IN then
-   out a u next RECURSE ;
+   p s" --" STR:= if true s next RECURSE exit then
+   p ROW-TYPE  out if EFFECT:OUT else EFFECT:IN then
+   out s next RECURSE ;
 
-: ROW>EFFECT ( str -- EFFECT:type ) {: a:^ u:n :}
-   EFFECT:EMPTY false a u 0 ROW-ITEMS ;
+: ROW>EFFECT ( str -- EFFECT:type ) {: s:str :}
+   EFFECT:EMPTY false s 0 ROW-ITEMS ;
 
 \ Opens product P: its typed variable, or its definition.
 : OPEN-PRODUCT ( n -- )
-   PRODUCT {: a:^ u:n row:^ rowu:n var:bool :}
-   var if a u row rowu ROW>EFFECT EFFECT:VARIABLE-OF exit then
-   a u row rowu ROW>EFFECT define-word ;
+   PRODUCT {: name:str row:str var:bool :}
+   var if name row ROW>EFFECT EFFECT:VARIABLE-OF exit then
+   name row ROW>EFFECT define-word ;
 
 \ NAME-DISPATCH ( -- ): [: NAME-BODY BODY-CHECK <reads> NAME-BODY @ execute
 \ <store> ;] k kind RUN
@@ -504,34 +504,34 @@ public
 : READ-CALLBACK ( [ -- str ] -- str ) {: src :}
    R-NONE RES-KIND !  0 READS !
    \ A name may sit on a later line, so only '(' says it is missing.
-   src TOK@ 2dup s" (" STR:= if
+   src TOK@ dup s" (" STR:= if
       s" expected a callback name, found " s" ("
       s" write CALLBACK: NAME ( in -- out )" TOKEN-REJECT
    then
-   2dup NAME! {: na:^ nu:n :}
-   src TOK@ {: a:^ u:n :}
-   a u s" (" STR:= 0= if
-      s" expected '(' after the callback name, found " a u
+   dup NAME! {: na:str :}
+   src TOK@ {: s:str :}
+   s s" (" STR:= 0= if
+      s" expected '(' after the callback name, found " s
       s" write CALLBACK: NAME ( in -- out )" TOKEN-REJECT
    then
    src INPUTS
    src OUTPUTS
-   na nu ;
+   na ;
 
 : OPEN-CALLBACK ( -- )
-   SRCLOC:TOKEN$ {: t:^ tu:n :}
+   SRCLOC:TOKEN$ >str {: t:str :}
    \ An open declaration is rejected before this one's name is read or claimed.
-   t tu [: ;] NESTED-REJECT
+   t [: ;] NESTED-REJECT
    0 FB-SET !
-   [: parse-name ;] READ-CALLBACK {: na:^ nu:n :}
-   SRCLOC:TOKEN$ {: e:^ eu:n :}
+   [: parse-name ;] READ-CALLBACK {: na:str :}
+   SRCLOC:TOKEN$ >str {: e:str :}
    \ A claim is rejected at the name, whose words it claims: the name itself first.
-   na nu SRCLOC:TOKEN!
-   na nu na nu LBUF:CLAIM-NAME
-   [: drop 2drop na nu LBUF:CLAIM-NAME ;] PRODUCTS
-   e eu SRCLOC:TOKEN!
+   na STR:DATA na STR:LEN SRCLOC:TOKEN!
+   na na LBUF:CLAIM-NAME
+   [: drop drop na LBUF:CLAIM-NAME ;] PRODUCTS
+   e STR:DATA e STR:LEN SRCLOC:TOKEN!
    1 OPEN !
-   t tu s" ;CALLBACK" ['] DISCARD OPENED ;
+   t s" ;CALLBACK" ['] DISCARD OPENED ;
 
 : SET-FALLBACK ( n -- ) {: v:n :}
    OPEN @ 0= if FALLBACK-REJECT then

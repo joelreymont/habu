@@ -1,4 +1,3 @@
-split-str
 \ fs-anchored.f - descriptor-anchored lookup, and on Linux the opens, links,
 \ renames, removals, directories and stats of one name under a directory
 \ descriptor, and the path an open descriptor names. A walk owns its task's
@@ -90,13 +89,13 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    $8000 $80000 or $800 or $100 or ;
 
 : A-SNAPSHOT ( str ^u8 -- ^u8 )
-   {: src:^ u:n work:^ :}
-   u 0 <= u PATH-CAP > or if E-FS-PATH throw then
+   {: src:str work:^ :}
+   src STR:LEN 0 <= src STR:LEN PATH-CAP > or if E-FS-PATH throw then
    work A-PATH-BUF {: dst:^ :}
-   src u dst PATHZ-CAP SPAN:MAKE FFI:CSTR ;
-: A-COMPONENT-END ( str n -- n ) {: path:^ u:n at:n :}
-   at begin dup u < while
-      path over + c@ SLASH = if exit then
+   src dst PATHZ-CAP SPAN:MAKE FFI:CSTR ;
+: A-COMPONENT-END ( str n -- n ) {: path:str at:n :}
+   at begin dup path STR:LEN < while
+      path STR:DATA over + c@ SLASH = if exit then
       1+
    repeat ;
 \ Whether path's bytes from up to stop are a name: not empty, . or ..
@@ -110,22 +109,22 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : A-COMPONENT-OK ( ^u8 n n -- )
    A-COMPONENT? 0= if E-FS-PATH throw then ;
 : A-VALIDATE ( str bool -- n )
-   {: path:^ u:n base:bool :}
-   path c@ SLASH = {: absolute:bool :}
+   {: path:str base:bool :}
+   path STR:DATA c@ SLASH = {: absolute:bool :}
    absolute base 0= and if E-FS-PATH throw then
-   u 1 = base and if
+   path STR:LEN 1 = base and if
       absolute if 1 exit then
-      path c@ DOT = if 1 exit then
+      path STR:DATA c@ DOT = if 1 exit then
    then
    absolute if 1 else 0 then {: start:n :}
-   start begin dup u < while
+   start begin dup path STR:LEN < while
       {: at:n :}
-      path u at A-COMPONENT-END {: stop:n :}
-      path at stop A-COMPONENT-OK
-      stop u < if stop 1 + else stop then
+      path at A-COMPONENT-END {: stop:n :}
+      path STR:DATA at stop A-COMPONENT-OK
+      stop path STR:LEN < if stop 1 + else stop then
    repeat
    drop
-   path u 1 - + c@ SLASH = if E-FS-PATH throw then
+   path STR:DATA path STR:LEN 1 - + c@ SLASH = if E-FS-PATH throw then
    start ;
 
 \ A directory the walk passes through needs search permission only, as
@@ -137,9 +136,9 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : A-OPEN-BASE ( ^u8 n ^u8 -- ) {: path:^ flags:n work:^ :}
    path c@ SLASH = if
-      AT-CWD S\" /\z" drop flags OPEN-AT-CALL
+      AT-CWD S\" /\z" STR:DATA flags OPEN-AT-CALL
    else
-      AT-CWD S\" .\z" drop flags OPEN-AT-CALL
+      AT-CWD S\" .\z" STR:DATA flags OPEN-AT-CALL
    then
    dup 0 < if drop E-FS-OPEN ERRNO-FAIL then
    work A-CUR! ;
@@ -156,38 +155,38 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ component through FFI:CSTR! inside this call's snapshot, never in the caller's
 \ path.
 : A-WALK ( str n ^u8 n bool -- )
-   {: path:^ u:n start:n work:^ parent:n file:bool :}
-   start begin dup u < while
+   {: path:str start:n work:^ parent:n file:bool :}
+   start begin dup path STR:LEN < while
       {: at:n :}
-      path u at A-COMPONENT-END {: stop:n :}
-      stop at - path at + PATHZ-CAP at - SPAN:MAKE FFI:CSTR! drop
-      stop u = file A-FLAGS {: flags:n :}
+      path at A-COMPONENT-END {: stop:n :}
+      stop at - path STR:DATA at + PATHZ-CAP at - SPAN:MAKE FFI:CSTR! drop
+      stop path STR:LEN = file A-FLAGS {: flags:n :}
       work A-CUR@ dup 0 < if drop parent then {: from:n :}
-      work from path at + flags A-OPEN-NEXT
-      stop u < if stop 1 + else stop then
+      work from path STR:DATA at + flags A-OPEN-NEXT
+      stop path STR:LEN < if stop 1 + else stop then
    repeat drop ;
 
 : A-OPEN-RUN ( str ^u8 -- str ^u8 )
-   {: src:^ u:n work:^ :}
-   src u work A-SNAPSHOT {: path:^ :}
-   path u true A-VALIDATE {: start:n :}
-   path start u = false A-FLAGS work A-OPEN-BASE
-   path u start work -1 false A-WALK
-   src u work ;
+   {: src:str work:^ :}
+   src work A-SNAPSHOT {: path:^ :}
+   path src STR:LEN >str true A-VALIDATE {: start:n :}
+   path start src STR:LEN = false A-FLAGS work A-OPEN-BASE
+   path src STR:LEN >str start work -1 false A-WALK
+   src work ;
 : A-OPEN-AT-RUN ( fd str ^u8 -- fd str ^u8 )
-   {: anchor:fd src:^ u:n work:^ :}
-   src u work A-SNAPSHOT {: path:^ :}
-   path u false A-VALIDATE {: start:n :}
-   path u start work anchor FD>N false A-WALK
-   anchor src u work ;
+   {: anchor:fd src:str work:^ :}
+   src work A-SNAPSHOT {: path:^ :}
+   path src STR:LEN >str false A-VALIDATE {: start:n :}
+   path src STR:LEN >str start work anchor FD>N false A-WALK
+   anchor src work ;
 
 \ The walk's descriptor, its code (0 when it opened) and that code's cause.
-: A-DIR-AT ( fd str -- n n n ) {: anchor:fd src:^ u:n :}
+: A-DIR-AT ( fd str -- n n n ) {: anchor:fd src:str :}
    COMPILE-READS:MISS
    0 CAUSE!
    A-WORK {: work:^ :}
-   anchor src u work [: A-OPEN-AT-RUN ;] catch {: code:n :}
-   drop 2drop drop
+   anchor src work [: A-OPEN-AT-RUN ;] catch {: code:n :}
+   drop drop drop
    ERRNO {: cause:n :}
    work A-CUR@ {: opened:n :}
    code 0= if -1 work A-CUR! then
@@ -210,7 +209,9 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       FFI:ERRNO dup A-INTERRUPTED = if drop else CAUSE! E-FS-IO throw then
    again ;
 : A-READ-CONTENT ( ^u8 SPAN:span<u8> -- n ) {: work:^ dst :}
-   dst SPAN:$ {: output:^ cap:n :}
+   dst SPAN:$ {: out:str :}
+   out STR:DATA {: output:^ :}
+   out STR:LEN {: cap:n :}
    0 begin dup cap < while
       {: done:n :}
       work output done + cap done - A-READ-STEP {: got:n :}
@@ -222,13 +223,13 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    extra 0 > if E-FS-CAPACITY throw then
    cap ;
 : A-READ-RUN ( fd str SPAN:span<u8> ^u8 -- fd str SPAN:span<u8> ^u8 )
-   {: anchor:fd src:^ u:n dst work:^ :}
-   src u work A-SNAPSHOT {: path:^ :}
-   path u false A-VALIDATE {: start:n :}
-   path u start work anchor FD>N true A-WALK
+   {: anchor:fd src:str dst work:^ :}
+   src work A-SNAPSHOT {: path:^ :}
+   path src STR:LEN >str false A-VALIDATE {: start:n :}
+   path src STR:LEN >str start work anchor FD>N true A-WALK
    work A-REGULAR
    work dst A-READ-CONTENT work A-RESULT-CELL A-SLOT !
-   anchor src u dst work ;
+   anchor src dst work ;
 
 \ openat's flags for OPEN-DIR-FOLLOW, without O_NOFOLLOW. Darwin: O_SEARCH
 \ (O_EXEC $40000000 with O_DIRECTORY)|O_CLOEXEC, xnu bsd/sys/fcntl.h. Linux:
@@ -244,9 +245,9 @@ public
 \ it, every link followed; a path inside a tree the program does not trust
 \ opens with OPEN-DIR. Search only: the descriptor is the AT words' anchor
 \ and the caller's. A failure is E-FS-OPEN with its errno in FS:ERRNO.
-: OPEN-DIR-FOLLOW ( str -- fd ) {: src:^ u:n :}
+: OPEN-DIR-FOLLOW ( str -- fd ) {: src:str :}
    COMPILE-READS:MISS
-   AT-CWD src u >PATHZ A-FOLLOW-FLAGS OPEN-AT-CALL {: dir:n :}
+   AT-CWD src >PATHZ A-FOLLOW-FLAGS OPEN-AT-CALL {: dir:n :}
    dir 0 < if E-FS-OPEN ERRNO-FAIL then
    dir >FD ;
 
@@ -255,12 +256,12 @@ public
 \ empty, negative or over-PATH-CAP path and an empty, repeated, trailing, . or
 \ .. component throw E-FS-PATH, a NUL E-FFI-NUL (.cache and a..b are
 \ ordinary names). A failed syscall leaves its errno in FS:ERRNO, a rejection 0.
-: OPEN-DIR ( str -- fd ) {: src:^ u:n :}
+: OPEN-DIR ( str -- fd ) {: src:str :}
    COMPILE-READS:MISS
    0 CAUSE!
    A-WORK {: work:^ :}
-   src u work [: A-OPEN-RUN ;] catch {: code:n :}
-   drop 2drop
+   src work [: A-OPEN-RUN ;] catch {: code:n :}
+   drop drop
    ERRNO {: cause:n :}
    work A-CUR@ {: opened:n :}
    code 0= if -1 work A-CUR! then
@@ -282,12 +283,12 @@ public
 \ past a full span (excess is E-FS-CAPACITY); the span is unspecified after a
 \ throw.
 : READ-FILE-AT ( fd str SPAN:span<u8> -- n )
-   {: anchor:fd src:^ u:n dst :}
+   {: anchor:fd src:str dst :}
    COMPILE-READS:MISS
    0 CAUSE!
    A-WORK {: work:^ :}
-   anchor src u dst work [: A-READ-RUN ;] catch {: code:n :}
-   drop 2drop 2drop
+   anchor src dst work [: A-READ-RUN ;] catch {: code:n :}
+   drop drop drop drop
    ERRNO {: cause:n :}
    work A-RESULT-CELL A-SLOT @ {: got:n :}
    work code cause A-FINISH
@@ -320,11 +321,11 @@ $1000 constant A-EMPTY-PATH                  \ AT_EMPTY_PATH
 : A-TEMP-FLAGS ( -- n )
    A-TMPFILE A-DIRECTORY or A-RDWR or A-NOFOLLOW or A-CLOEXEC or ;
 
-: A-NAME? ( str -- bool ) {: name:^ u:n :}
-   u 0 <= u PATH-CAP > or if false exit then
-   name u 0 A-COMPONENT-END u <> if false exit then
-   name u NUL-AT u <> if false exit then
-   name 0 u A-COMPONENT? ;
+: A-NAME? ( str -- bool ) {: name:str :}
+   name STR:LEN 0 <= name STR:LEN PATH-CAP > or if false exit then
+   name 0 A-COMPONENT-END name STR:LEN <> if false exit then
+   name NUL-AT name STR:LEN <> if false exit then
+   name STR:DATA 0 name STR:LEN A-COMPONENT? ;
 
 : A-REJECT ( -- ) EINVAL CAUSE! ;
 : A-DONE ( n -- bool )
@@ -335,10 +336,10 @@ $1000 constant A-EMPTY-PATH                  \ AT_EMPTY_PATH
    0 CAUSE! rc >FD OPTION:SOME ;
 
 : A-OPEN-NAME ( fd str n -- option<fd> )
-   {: dir:fd name:^ u:n flags:n :}
+   {: dir:fd name:str flags:n :}
    COMPILE-READS:MISS
-   name u A-NAME? 0= if A-REJECT OPTION:NONE exit then
-   dir FD>N name u >PATHZ flags OPEN-AT-CALL A-OPENED ;
+   name A-NAME? 0= if A-REJECT OPTION:NONE exit then
+   dir FD>N name >PATHZ flags OPEN-AT-CALL A-OPENED ;
 
 : A-DIGIT-COUNT ( n -- n )
    1 swap begin dup 9 > while 10 / swap 1+ swap repeat drop ;
@@ -352,14 +353,14 @@ $1000 constant A-EMPTY-PATH                  \ AT_EMPTY_PATH
 : A-SIGNED ( n ^u8 -- n ) {: v:n dst:^ :}
    v 0 >= if v dst A-DIGITS exit then
    $2D dst c!  v negate dst 1+ A-DIGITS 1+ ;
-: A-UNLINK ( fd str n -- bool ) {: dir:fd name:^ u:n flags:n :}
-   name u A-NAME? 0= if A-REJECT false exit then
-   dir FD>N name u >PATHZ flags UNLINK-AT-CALL A-DONE ;
+: A-UNLINK ( fd str n -- bool ) {: dir:fd name:str flags:n :}
+   name A-NAME? 0= if A-REJECT false exit then
+   dir FD>N name >PATHZ flags UNLINK-AT-CALL A-DONE ;
 
 : A-RENAME ( fd str fd str n -- bool )
-   {: from:fd src:^ su:n to:fd dst:^ du:n flags:n :}
-   src su A-NAME? dst du A-NAME? and 0= if A-REJECT false exit then
-   from FD>N src su >PATHZ to FD>N dst du >PATHZ2 flags
+   {: from:fd src:str to:fd dst:str flags:n :}
+   src A-NAME? dst A-NAME? and 0= if A-REJECT false exit then
+   from FD>N src >PATHZ to FD>N dst >PATHZ2 flags
    RENAMEAT2-CALL A-DONE ;
 
 public
@@ -378,11 +379,11 @@ public
 \ /proc/self/fd/<fd>, NUL-terminated, until this task's FS builds a path.
 \ No FMT word renders the fd: FMT's number buffer may hold the caller's text.
 : FD-LINKZ ( fd -- ^u8 )
-   PATHZ-BUF SPAN:$ drop {: z:^ :}
-   s" /proc/self/fd/" {: prefix:^ pu:n :}
-   prefix z pu BYTE-COPY
-   FD>N z pu + A-SIGNED {: du:n :}
-   0 z pu du + + c!  z ;
+   PATHZ-BUF SPAN:$ STR:DATA {: z:^ :}
+   s" /proc/self/fd/" {: prefix:str :}
+   prefix STR:DATA z prefix STR:LEN BYTE-COPY
+   FD>N z prefix STR:LEN + A-SIGNED {: du:n :}
+   0 z prefix STR:LEN du + + c!  z ;
 \ The text of /proc/self/fd/<fd>: the path, " (deleted)" after it once unlinked.
 \ readlink cuts silently, so a count that fills the buffer is E-FS-CAPACITY.
 : FD-PATH ( fd ^u8 n -- n ) {: file:fd buf:^ cap:n :}
@@ -395,13 +396,13 @@ public
 \ An unnamed regular file of mode 0600 in the directory, which TRY-LINK-AT
 \ names. A failure is E-FS-OPEN with its errno in FS:ERRNO.
 : TEMP-AT ( fd -- fd ) {: dir:fd :}
-   dir FD>N S\" .\z" drop A-TEMP-FLAGS MODE-PRIVATE-FILE OPENAT-CALL
+   dir FD>N S\" .\z" STR:DATA A-TEMP-FLAGS MODE-PRIVATE-FILE OPENAT-CALL
    dup 0 < if drop E-FS-OPEN ERRNO-FAIL then
    0 CAUSE! >FD ;
 \ Names the open file in the directory; an existing name is EEXIST.
-: TRY-LINK-AT ( fd fd str -- bool ) {: file:fd dir:fd name:^ u:n :}
-   name u A-NAME? 0= if A-REJECT false exit then
-   file FD>N S\" \z" drop dir FD>N name u >PATHZ
+: TRY-LINK-AT ( fd fd str -- bool ) {: file:fd dir:fd name:str :}
+   name A-NAME? 0= if A-REJECT false exit then
+   file FD>N S\" \z" STR:DATA dir FD>N name >PATHZ
    A-EMPTY-PATH A-LINK-CALL A-DONE ;
 \ Source then target; an existing target is replaced.
 : TRY-RENAME-AT ( fd str fd str -- bool )
@@ -415,15 +416,15 @@ public
 : TRY-REMOVE-DIR-AT ( fd str -- bool )
    AT-REMOVEDIR A-UNLINK ;
 \ The last n is the new directory's mode, before the umask.
-: TRY-MAKE-DIR-AT ( fd str n -- bool ) {: dir:fd name:^ u:n mode:n :}
-   name u A-NAME? 0= if A-REJECT false exit then
-   dir FD>N name u >PATHZ mode A-MKDIR-CALL A-DONE ;
+: TRY-MAKE-DIR-AT ( fd str n -- bool ) {: dir:fd name:str mode:n :}
+   name A-NAME? 0= if A-REJECT false exit then
+   dir FD>N name >PATHZ mode A-MKDIR-CALL A-DONE ;
 \ The entry itself, never a symlink's target, into the buffer STAT-MODE@
 \ and the rest read.
-: TRY-STAT-AT ( fd str -- bool ) {: dir:fd name:^ u:n :}
+: TRY-STAT-AT ( fd str -- bool ) {: dir:fd name:str :}
    COMPILE-READS:MISS
-   name u A-NAME? 0= if A-REJECT false exit then
-   dir FD>N name u >PATHZ STAT-BUF AT-NOFOLLOW STAT-AT-CALL
+   name A-NAME? 0= if A-REJECT false exit then
+   dir FD>N name >PATHZ STAT-BUF AT-NOFOLLOW STAT-AT-CALL
    A-DONE dup if LIBC>STAT then ;
 [then]
 

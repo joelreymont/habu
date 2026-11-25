@@ -1,4 +1,3 @@
-split-str
 \ float.f - checked decimal string -> IEEE-double parsing of
 \ [+|-] digits [. digits] [ (e|E) [+|-] digits ]. It keeps 18 significant digits
 \ and folds the rest into the exponent before scaling; binary64 arithmetic
@@ -83,8 +82,8 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    then ;
 
 
-: FL-KEEP-DIGITS ( str -- ) {: a:^ u:n :}
-   u 0 ?do a i + c@ STR:DIGIT-VALUE FL-KEEP-DIGIT loop ;
+: FL-KEEP-DIGITS ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ STR:DIGIT-VALUE FL-KEEP-DIGIT loop ;
 
 
 : FL-SIG-VALUE ( n -- r )
@@ -92,30 +91,30 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    FL-MANT @ s>f swap FL-SCALE-F ;
 
 \ ---- field splitting ------------------------------------------------------
-: FL-STRIP-SIGN ( str -- str bool ) {: a:^ u :}
-   u 0= if a 0 0 0= 0= exit then
-   a c@ STR:MINUS = if a 1+ u 1- 0 0= exit then
-   a c@ STR:PLUS  = if a 1+ u 1- 0 0= 0= exit then
-   a u 0 0= 0= ;
-: FL-FIND-E ( str -- option<idx> ) {: a:^ u:n :}
-   a u FL-E-LOWER STR:INDEX-OF MATCH option
-     none OF a u FL-E-UPPER STR:INDEX-OF ENDOF
+: FL-STRIP-SIGN ( str -- str bool ) {: s:str :}
+   s STR:LEN 0= if s 0 0= 0= exit then
+   s STR:DATA c@ STR:MINUS = if s STR:DATA 1+ s STR:LEN 1- >str 0 0= exit then
+   s STR:DATA c@ STR:PLUS  = if s STR:DATA 1+ s STR:LEN 1- >str 0 0= 0= exit then
+   s 0 0= 0= ;
+: FL-FIND-E ( str -- option<idx> ) {: s:str :}
+   s FL-E-LOWER STR:INDEX-OF MATCH option
+     none OF s FL-E-UPPER STR:INDEX-OF ENDOF
      some OF OPTION:SOME ENDOF
    ;MATCH ;
 
 \ STR>FLOAT accepts signs, exponent notation and a trailing dot beyond the
 \ engine literal grammar. For the spellings that are engine-shaped decimals,
 \ ask the engine's own reader whether its cell accumulators admit the value.
-: FL-ENGINE-DECIMAL? ( str -- bool ) {: a:^ u:n :}
-   u 0= if 0 0= 0= exit then
-   a c@ STR:PLUS = if 0 0= 0= exit then
-   a u FL-FIND-E MATCH option
+: FL-ENGINE-DECIMAL? ( str -- bool ) {: s:str :}
+   s STR:LEN 0= if 0 0= 0= exit then
+   s STR:DATA c@ STR:PLUS = if 0 0= 0= exit then
+   s FL-FIND-E MATCH option
      none OF 0 0= 0= ENDOF
      some OF drop 0 0= ENDOF
    ;MATCH if 0 0= 0= exit then
-   a u FL-DOT STR:INDEX-OF MATCH option
+   s FL-DOT STR:INDEX-OF MATCH option
      none OF 0 0= 0= ENDOF
-     some OF IDX>N u 1- <> ENDOF
+     some OF IDX>N s STR:LEN 1- <> ENDOF
    ;MATCH ;
 
 \ EMIT-NUM's decimal literal limits: the integer magnitude and fractional
@@ -123,10 +122,10 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
 \ scale admits at most 18 fractional digits. A native literal's overflow is
 \ rejected even when STR>FLOAT's more general exponent parser could scale it.
 : FL-ADMIT-INT? ( str -- bool )
-   {: a:^ u:n :}
+   {: s:str :}
    0
-   u 0 ?do
-      a i + c@ {: c:n :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ {: c:n :}
       c [char] 0 < c [char] 9 > or if drop false unloop exit then
       c [char] 0 - {: digit:n :}
       dup FL-MAX-I64 digit - 10 / > if drop false unloop exit then
@@ -134,54 +133,54 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    loop drop true ;
 
 : FL-ENGINE-DECIMAL-ADMITTED? ( str -- bool )
-   {: a0:^ u0:n :}
-   a0 u0 FL-ENGINE-DECIMAL? 0= if true exit then
-   a0 u0 FL-STRIP-SIGN drop {: a:^ u:n :}
-   a u FL-DOT STR:INDEX-OF MATCH option
+   {: a0:str :}
+   a0 FL-ENGINE-DECIMAL? 0= if true exit then
+   a0 FL-STRIP-SIGN drop {: s:str :}
+   s FL-DOT STR:INDEX-OF MATCH option
       none OF false exit ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: dot:n :}
-   a dot FL-ADMIT-INT? 0= if false exit then
-   u dot 1+ - {: frac:n :}
+   s STR:DATA dot >str FL-ADMIT-INT? 0= if false exit then
+   s STR:LEN dot 1+ - {: frac:n :}
    frac 0= frac FL-ENGINE-FRAC-DIGITS > or if false exit then
-   a dot 1+ + frac FL-ADMIT-INT? ;
+   s STR:DATA dot 1+ + frac >str FL-ADMIT-INT? ;
 
 \ ---- significand (no sign, no exponent) -----------------------------------
-: FL-SCALED-SIG ( str n -- option<r> ) {: a:^ u:n exponent:n :}
-   a u FL-DOT STR:INDEX-OF MATCH option                  \ split at the dot: ilen fa flen
-     none OF u  a u +  0 ENDOF                        \ no dot: int = whole string, empty fraction
-     some OF IDX>N {: dpos:n :} dpos  a dpos 1+ +  u dpos 1+ - ENDOF
+: FL-SCALED-SIG ( str n -- option<r> ) {: s:str exponent:n :}
+   s FL-DOT STR:INDEX-OF MATCH option                  \ split at the dot: ilen fa flen
+     none OF s STR:LEN  s STR:DATA s STR:LEN +  0 ENDOF                        \ no dot: int = whole string, empty fraction
+     some OF IDX>N {: dpos:n :} dpos  s STR:DATA dpos 1+ +  s STR:LEN dpos 1+ - ENDOF
    ;MATCH {: ilen:n fa:^ flen:n :}
    ilen flen + 0= if OPTION:NONE exit then       \ no digits at all: "" and "." rejected
-   ilen 0 > if a ilen STR:DIGITS? 0= if OPTION:NONE exit then then
-   flen 0 > if fa flen STR:DIGITS? 0= if OPTION:NONE exit then then
+   ilen 0 > if s STR:DATA ilen >str STR:DIGITS? 0= if OPTION:NONE exit then then
+   flen 0 > if fa flen >str STR:DIGITS? 0= if OPTION:NONE exit then then
    flen negate FL-RESET-SIG
-   a ilen FL-KEEP-DIGITS
-   fa flen FL-KEEP-DIGITS
+   s STR:DATA ilen >str FL-KEEP-DIGITS
+   fa flen >str FL-KEEP-DIGITS
    exponent FL-SIG-VALUE OPTION:SOME ;
 
 \ ---- exponent -------------------------------------------------------------
-: FL-EXP-AT ( str n -- n ) {: a:^ u epos :}
-   a epos 1+ + u epos 1+ - STR:>NUMBER? MATCH option
+: FL-EXP-AT ( str n -- n ) {: s:str epos :}
+   s STR:DATA epos 1+ + s STR:LEN epos 1+ - >str STR:>NUMBER? MATCH option
      none OF 0 FL-VALID ! ENDOF
      some OF FL-EXPV ! ENDOF
    ;MATCH
    epos ;
-: FL-PARSE-EXP ( str -- n ) {: a:^ u:n :}
-   a u FL-FIND-E MATCH option
-     none OF 0 FL-EXPV ! u ENDOF                    \ no exponent: exp 0, mantissa = whole string
-     some OF IDX>N {: epos:n :} a u epos FL-EXP-AT ENDOF
+: FL-PARSE-EXP ( str -- n ) {: s:str :}
+   s FL-FIND-E MATCH option
+     none OF 0 FL-EXPV ! s STR:LEN ENDOF                    \ no exponent: exp 0, mantissa = whole string
+     some OF IDX>N {: epos:n :} s epos FL-EXP-AT ENDOF
    ;MATCH ;
 
 \ ---- public entry ---------------------------------------------------------
-: STR>FLOAT ( str -- option<r> ) {: a0:^ u0:n :}
-   a0 u0 FL-ENGINE-DECIMAL-ADMITTED? {: admitted:bool :}
+: STR>FLOAT ( str -- option<r> ) {: a0:str :}
+   a0 FL-ENGINE-DECIMAL-ADMITTED? {: admitted:bool :}
    -1 FL-VALID !
-   a0 u0 FL-STRIP-SIGN {: a:^ u neg :}
-   a u FL-PARSE-EXP {: mlen :}
+   a0 FL-STRIP-SIGN {: s:str neg :}
+   s FL-PARSE-EXP {: mlen :}
    admitted 0= if OPTION:NONE exit then
-   u 0= FL-VALID @ 0= or if OPTION:NONE exit then
-   a mlen FL-EXPV @ FL-SCALED-SIG MATCH option
+   s STR:LEN 0= FL-VALID @ 0= or if OPTION:NONE exit then
+   s STR:DATA mlen >str FL-EXPV @ FL-SCALED-SIG MATCH option
      none OF OPTION:NONE exit ENDOF
      some OF ENDOF
    ;MATCH

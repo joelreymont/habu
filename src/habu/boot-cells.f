@@ -1,4 +1,3 @@
-split-str
 \ boot-cells.f - the header cells the boot writes. Its startup row loads it
 \ before checker.f, which reads it.
 package BOOT

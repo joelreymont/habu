@@ -1,4 +1,3 @@
-split-str
 \ code-bytes.f - the one bounded way a checked body reads the bytes at a code
 \ address. An engine code address is a number (XREF-START, an xt, a span walk);
 \ AT is the only place it becomes a pointer, through the private cast N>U8, and
@@ -59,6 +58,6 @@ public
 
 : AT ( n n -- str ) {: at:n bytes:n :}
    at bytes IN-CODE? 0= if at bytes OUTSIDE then
-   at N>U8 bytes ;
+   at N>U8 bytes >str ;
 
 ;package

@@ -1,4 +1,3 @@
-split-str
 \ fmt.f - checked number formatting, package FMT: appenders into src/lib/string.f's
 \ SB and direct printers. Integers render through a private buffer, so FMT:.U,
 \ FMT:.INT and FMT:INT$ leave SB alone; FMT:F.N has no bounded width and resets
@@ -56,7 +55,7 @@ BAND-AGREE
    FMT-NUM-U @ 1+ FMT-NUM-U ! ;
 
 : NUM$ ( -- str )
-   FMT-NUM-BUF FMT-NUM-U @ ;
+   FMT-NUM-BUF FMT-NUM-U @ >str ;
 
 : DIGITS>NUM ( n -- )                      \ nonnegative magnitude, most significant digit first
    dup 10 < if FMT-ZERO + NUM-C+ exit then
@@ -136,10 +135,10 @@ public
    places 0= if NUM$ SB-APPEND exit then
    value 0= if FMT-ZERO SB-APPEND-C exit then
 
-   NUM$ {: num-p:^ width:n :}
+   NUM$ {: num:str :}
    value 0 < if 1 else 0 then {: sign:n :}
-   num-p sign + {: p:^ :}
-   width sign - {: digits:n :}
+   num STR:DATA sign + {: p:^ :}
+   num STR:LEN sign - {: digits:n :}
    0 FMT-IX !
    begin
       FMT-IX @ places < FMT-IX @ digits < and
@@ -150,7 +149,7 @@ public
 
    sign 0<> if STR:MINUS SB-APPEND-C then
    digits places > if
-      p digits places - SB-APPEND
+      p digits places - >str SB-APPEND
    else
       FMT-ZERO SB-APPEND-C
    then
@@ -159,9 +158,9 @@ public
    FMT-DOT SB-APPEND-C
    digits places < if
       places digits - 0 ?do FMT-ZERO SB-APPEND-C loop
-      p digits FMT-IX @ - SB-APPEND
+      p digits FMT-IX @ - >str SB-APPEND
    else
-      p digits places - + frac SB-APPEND
+      p digits places - + frac >str SB-APPEND
    then ;
 
 private

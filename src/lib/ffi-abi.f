@@ -1,4 +1,3 @@
-split-str
 \ ffi-abi.f - checked AAPCS64 and SysV FFI calls, package FFI. AAPCS64 passes
 \ eight integer and eight float registers, SysV six and eight. FUNCTION: is the
 \ only call surface: its word names a row, never an address, and the row and
@@ -325,34 +324,34 @@ public
 
 private
 \ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
-: LIB-ROW@ ( n -- str ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
+: LIB-ROW@ ( n -- str ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ >str ;
 
 \ A load failure reports when a call first resolves its symbol, in any task:
 \ one write of a record built in the caller's own bytes.
 : PUT ( ^u8 n str -- ^u8 n )
-   {: line:^ at:n s:^ su:n :}
-   s line at + su BYTE-COPY
-   line at su + ;
+   {: line:^ at:n s:str :}
+   s STR:DATA line at + s STR:LEN BYTE-COPY
+   line at s STR:LEN + ;
 
 : HELP-LEAD$ ( -- str ) s\" \n  = help: " ;
 
 \ The help line h ends a record; HELP-LEN is its length.
 : HELP-PUT ( ^u8 n str -- str )
-   {: line:^ at:n h:^ hu:n :}
-   line at HELP-LEAD$ PUT h hu PUT s\" \n" PUT ;
+   {: line:^ at:n h:str :}
+   line at HELP-LEAD$ PUT h PUT s\" \n" PUT >str ;
 
-: HELP-LEN ( n -- n ) HELP-LEAD$ nip + 1+ ;
+: HELP-LEN ( n -- n ) HELP-LEAD$ STR:LEN + 1+ ;
 
 : RECORD-BODY ( str str str str str str ^u8 NUM:alloc-byte-len -- )
-   {: a:^ au:n b:^ bu:n c:^ cu:n d:^ du:n e:^ eu:n h:^ hu:n line:^ extent:NUM:alloc-byte-len :}
-   line 0 a au PUT b bu PUT c cu PUT d du PUT e eu PUT
-   h hu HELP-PUT ERROR-TEXT:TYPE ;
+   {: a:str b:str c:str d:str e:str h:str line:^ extent:NUM:alloc-byte-len :}
+   line 0 a PUT b PUT c PUT d PUT e PUT
+   h HELP-PUT ERROR-TEXT:TYPE ;
 
 \ A record whose header line is the parts a to e, then the help h.
 : REPORT ( str str str str str str -- )
-   {: a:^ au:n b:^ bu:n c:^ cu:n d:^ du:n e:^ eu:n h:^ hu:n :}
-   a au b bu c cu d du e eu h hu
-   au bu + cu + du + eu + hu HELP-LEN + MEM:BYTES-ALLOC-LEN
+   {: a:str b:str c:str d:str e:str h:str :}
+   a b c d e h
+   a STR:LEN b STR:LEN + c STR:LEN + d STR:LEN + e STR:LEN + h STR:LEN HELP-LEN + MEM:BYTES-ALLOC-LEN
    [: RECORD-BODY ;] MEM:WITH-BYTES ;
 
 : OPEN-HEAD$ ( -- str )
@@ -367,13 +366,13 @@ private
 \ replaces it, and dlerror's NULL means it kept none.
 : REASON$ ( n n n -- str str )
    {: why:n tried:n lib:n :}
-   why 0 <> lib tried = and if s" : " why CELL>PTR dup ZLEN exit then
+   why 0 <> lib tried = and if s" : " why CELL>PTR dup ZLEN >str exit then
    s" " s" " ;
 
 : NOTE-LEN ( n n n -- n )
    {: why:n tried:n lib:n :}
-   why tried lib REASON$ {: s:^ su:n r:^ ru:n :}
-   NOTE$ nip lib LIB-ROW@ nip + 1+ su + ru + ;
+   why tried lib REASON$ {: s:str r:str :}
+   NOTE$ STR:LEN lib LIB-ROW@ STR:LEN + 1+ s STR:LEN + r STR:LEN + ;
 
 \ The notes' length from lib along next.
 : NOTES-LEN ( n n n -- n )
@@ -384,20 +383,21 @@ private
 
 : NOTE-PUT ( ^u8 n n n n -- str )
    {: line:^ at:n why:n tried:n lib:n :}
-   why tried lib REASON$ {: s:^ su:n r:^ ru:n :}
-   line at NOTE$ PUT lib LIB-ROW@ PUT s" '" PUT s su PUT r ru PUT ;
+   why tried lib REASON$ {: s:str r:str :}
+   line at NOTE$ PUT lib LIB-ROW@ PUT s" '" PUT s PUT r PUT >str ;
 
 \ One note per library from lib along next.
 : NOTES-PUT ( ^u8 n n n n -- str )
    {: line:^ at:n why:n tried:n lib:n :}
-   lib 0= if line at exit then
-   line at why tried lib NOTE-PUT
-   why tried lib 1 - LIB-NEXT@ RECURSE ;
+   lib 0= if line at >str exit then
+   line at why tried lib NOTE-PUT {: s:str :}
+   s STR:DATA s STR:LEN why tried lib 1 - LIB-NEXT@ RECURSE ;
 
 : OPEN-BODY ( n n n ^u8 NUM:alloc-byte-len -- )
    {: why:n tried:n lib:n line:^ extent:NUM:alloc-byte-len :}
    line 0 OPEN-HEAD$ PUT lib LIB-ROW@ PUT s" '" PUT
-   why tried lib NOTES-PUT OPEN-HELP$ HELP-PUT
+   why tried lib NOTES-PUT {: s:str :}
+   s STR:DATA s STR:LEN OPEN-HELP$ HELP-PUT
    ERROR-TEXT:TYPE ;
 
 \ lib heads the chain the record names.
@@ -405,8 +405,8 @@ private
    {: dlerr:n tried:n lib:n :}
    FFI-BUF 0 dlerr ffi-call-n {: why:n :}
    why tried lib
-   OPEN-HEAD$ nip lib LIB-ROW@ nip + 1+
-   why tried lib NOTES-LEN + OPEN-HELP$ nip HELP-LEN + MEM:BYTES-ALLOC-LEN
+   OPEN-HEAD$ STR:LEN lib LIB-ROW@ STR:LEN + 1+
+   why tried lib NOTES-LEN + OPEN-HELP$ STR:LEN HELP-LEN + MEM:BYTES-ALLOC-LEN
    [: OPEN-BODY ;] MEM:WITH-BYTES ;
 
 \ The first handle from lib along next and the library that holds it, or 0 and
@@ -449,7 +449,7 @@ private
 
 \ lib 0 is the process's own symbols.
 : SYMBOL-REPORT ( n n -- ) {: idx:n lib:n :}
-   SYMBOL-HEAD$ idx FN-NAME idx NAME-LEN
+   SYMBOL-HEAD$ idx FN-NAME idx NAME-LEN >str
    lib 0= if
       s" ' among the process's symbols" s" " s" " PROCESS-HELP$
       REPORT exit
@@ -505,19 +505,19 @@ public
 
 \ FFI is the only library code that writes a terminator.
 private
-\ A 0 byte among the u bytes at b would end the C string early.
+\ A 0 byte among the bytes of s would end the C string early.
 : NUL-CHECK ( str -- )
-   {: b u :}
-   u 0 ?do b i + c@ 0= if E-FFI-NUL throw then loop ;
+   {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ 0= if E-FFI-NUL throw then loop ;
 
 \ The span's base once u bytes and their 0 fit in it: u < reach, which cannot
 \ overflow as u+1 can.
 : CSTR-FIT ( n SPAN:span<u8> -- ^u8 )
    {: u s :}
    u 0 < if E-SPAN-LENGTH throw then
-   s SPAN:$ {: b l :}
-   u l >= if E-SPAN-CAPACITY throw then
-   b ;
+   s SPAN:$ {: buf:str :}
+   u buf STR:LEN >= if E-SPAN-CAPACITY throw then
+   buf STR:DATA ;
 
 public
 : CSTR-ROOM ( n -- n ) 1+ ;
@@ -525,18 +525,18 @@ public
 : CSTR! ( n SPAN:span<u8> -- ^u8 )
    {: u s :}
    u s CSTR-FIT {: b :}
-   b u NUL-CHECK
+   b u >str NUL-CHECK
    0 b u + c!
    b ;
 
 \ Every rejection comes before a byte is written, so a rejected destination keeps
 \ what it held.
 : CSTR ( str SPAN:span<u8> -- ^u8 )
-   {: src u s :}
-   u s CSTR-FIT {: b :}
-   src u NUL-CHECK
-   src u s SPAN:COPY
-   0 b u + c!
+   {: src:str s :}
+   src STR:LEN s CSTR-FIT {: b :}
+   src NUL-CHECK
+   src s SPAN:COPY
+   0 b src STR:LEN + c!
    b ;
 
 private
@@ -563,10 +563,10 @@ private
 : STACK-CELLS ( -- n ) FFI-MAX-ARGS ;
 
 \ Render into the caller's CODEGEN buffer; the caller owns the returned span.
-: LIBRARY-NAME$ ( str n ^n -- str ) {: base:^ u:n version:n buf:^ :}
+: LIBRARY-NAME$ ( str n ^n -- str ) {: base:str version:n buf:^ :}
    buf CODEGEN:RESET
    s" lib" buf CODEGEN:APPEND-STRING
-   base u buf CODEGEN:APPEND-STRING
+   base buf CODEGEN:APPEND-STRING
    HB-TARGET-MACOS? if
       s" ." buf CODEGEN:APPEND-STRING
       version buf CODEGEN:APPEND-DECIMAL
@@ -580,22 +580,22 @@ private
 : PROCESS ( -- n ) 0 ;
 
 : LIB-INDEX ( str n -- n )
-   {: path:^ u:n next:n :}
+   {: path:str next:n :}
    LIB-N @ 0 ?do
-      i LIB-LEN@ u = i LIB-NEXT@ next = and if
-         path u i LIB-PATH u STR:= if i 1+ unloop exit then
+      i LIB-LEN@ path STR:LEN = i LIB-NEXT@ next = and if
+         path i LIB-PATH path STR:LEN >str STR:= if i 1+ unloop exit then
       then
    loop
    0 ;
 
 : LIBRARY-PATH-OR ( str n -- n )
-   {: path:^ u:n next:n :}
-   path u next LIB-INDEX dup 0<> if exit then drop
+   {: path:str next:n :}
+   path next LIB-INDEX dup 0<> if exit then drop
    LIB-NEW
-   path u LIB-N @ PATH-FIELD CSTR drop
+   path LIB-N @ PATH-FIELD CSTR drop
    LIB-N @ 1+ LIB-N !
    LIB-N @ {: row:n :}
-   u row 1- LIB-LEN!
+   path STR:LEN row 1- LIB-LEN!
    0 row 1- LIB-HANDLE!
    0 row 1- LIB-FAILED!
    next row 1- LIB-NEXT!
@@ -640,20 +640,20 @@ private
 
 : CALL-STRUCT-PTR ( n -- ^u8 ) CALL-STRUCT drop CELL>PTR ;
 
-: REG-STORE ( n str -- ) {: v:n dst:^ len:n :}
-   len 0 ?do v i 8 * rshift $FF and dst i + c! loop ;
+: REG-STORE ( n str -- ) {: v:n dst:str :}
+   dst STR:LEN 0 ?do v i 8 * rshift $FF and dst STR:DATA i + c! loop ;
 
 \ A by-value record is read at exactly its width: cell k holds bytes
 \ 8k..8k+7, little-endian, and the last cell's bytes past len are zero.
-: RECORD-CELL ( str n -- n ) {: src:^ len:n k:n :}
-   0 len k 8 * - 8 min 0 ?do src k 8 * + i + c@ i 8 * lshift or loop ;
+: RECORD-CELL ( str n -- n ) {: src:str k:n :}
+   0 src STR:LEN k 8 * - 8 min 0 ?do src STR:DATA k 8 * + i + c@ i 8 * lshift or loop ;
 
 : RECORD-WORDS ( n -- n ) 1- 8 / 1+ ;
 
 : RECORD-COPY ( str n -- n )
-   {: src:^ len:n pay:n :}
-   len RECORD-WORDS 0 ?do
-      src len i RECORD-CELL pay i + cells STACK-VALUE!
+   {: src:str pay:n :}
+   src STR:LEN RECORD-WORDS 0 ?do
+      src i RECORD-CELL pay i + cells STACK-VALUE!
    loop
    pay cells FFI-STACK-SLOT PTR>CELL ;
 
@@ -662,67 +662,67 @@ private
 \ does a larger one on SysV, always in stack cells. A larger one on AAPCS64 is
 \ copied into stack cells from cell pay and passed by address in register reg
 \ or the stack cell at byte offset pos.
-: STRUCT-REGS! ( str n -- ) {: src:^ len:n reg:n :}
-   len RECORD-WORDS 0 ?do src len i RECORD-CELL reg i + VALUE! loop ;
+: STRUCT-REGS! ( str n -- ) {: src:str reg:n :}
+   src STR:LEN RECORD-WORDS 0 ?do src i RECORD-CELL reg i + VALUE! loop ;
 
 : STRUCT-STACK! ( str n -- )
-   {: src:^ len:n pos:n :}
-   len RECORD-WORDS 0 ?do
-      src len i RECORD-CELL pos i cells + STACK-VALUE!
+   {: src:str pos:n :}
+   src STR:LEN RECORD-WORDS 0 ?do
+      src i RECORD-CELL pos i cells + STACK-VALUE!
    loop ;
 
-: STRUCT-COPY-REG! ( str n n -- ) {: src:^ len:n pay:n reg:n :}
-   src len pay RECORD-COPY reg VALUE! ;
+: STRUCT-COPY-REG! ( str n n -- ) {: src:str pay:n reg:n :}
+   src pay RECORD-COPY reg VALUE! ;
 
-: STRUCT-COPY-STACK! ( str n n -- ) {: src:^ len:n pay:n pos:n :}
-   src len pay RECORD-COPY pos STACK-VALUE! ;
+: STRUCT-COPY-STACK! ( str n n -- ) {: src:str pay:n pos:n :}
+   src pay RECORD-COPY pos STACK-VALUE! ;
 
 \ A record of len bytes returned in two registers lands at exactly its width;
 \ one larger than 16 bytes is already in place through the hidden pointer.
 : STORE-RESULT ( n n n ^u8 -- ) {: lo:n hi:n len:n dst:^ :}
    len 16 > if exit then
-   lo dst len 8 min REG-STORE
-   len 8 > if hi dst 8 + len 8 - REG-STORE then ;
+   lo dst len 8 min >str REG-STORE
+   len 8 > if hi dst 8 + len 8 - >str REG-STORE then ;
 
 \ Whether row idx is the declaration of name in library lib with spills stack
 \ cells and relocation mask reloc, a row's identity: no call reads an
 \ argument count from its row. The stored symbol's length decides along with
 \ its bytes, so neither a prefix nor a name holding a 0 byte matches a row.
 : SAME-FN? ( str n n n n -- bool )
-   {: name:^ u:n lib:n spills:n reloc:n idx:n :}
+   {: name:str lib:n spills:n reloc:n idx:n :}
    idx FN-LIB@ lib <> if false exit then
    idx FN-SPILL@ spills <> if false exit then
    idx FN-RELOC@ reloc <> if false exit then
-   idx NAME-LEN u <> if false exit then
-   name u idx FN-NAME u STR:= ;
+   idx NAME-LEN name STR:LEN <> if false exit then
+   name idx FN-NAME name STR:LEN >str STR:= ;
 
 \ The symbol and its 0 byte are allotted where the declaration is accepted and
 \ never move; the row's pointer cell reaches them across a save or a link.
-: NAME-STORE ( str n -- ) {: name:^ u:n idx:n :}
-   name u NUL-CHECK
+: NAME-STORE ( str n -- ) {: name:str idx:n :}
+   name NUL-CHECK
    here BYTE-VIEW {: b:^ :}
-   u 1+ allot
-   name b u BYTE-COPY
-   0 b u + c!
+   name STR:LEN 1+ allot
+   name STR:DATA b name STR:LEN BYTE-COPY
+   0 b name STR:LEN + c!
    b idx NAME-CELL !
-   u idx FN-NAME-LEN-OFF FN-FIELD ! ;
+   name STR:LEN idx FN-NAME-LEN-OFF FN-FIELD ! ;
 
 \ The row of name in library lib with spills and reloc, or -1 for none.
 : FN-INDEX ( str n n n -- n )
-   {: name:^ u:n lib:n spills:n reloc:n :}
+   {: name:str lib:n spills:n reloc:n :}
    FN-N @ 0 ?do
-      name u lib spills reloc i SAME-FN? if i unloop exit then
+      name lib spills reloc i SAME-FN? if i unloop exit then
    loop
    -1 ;
 
 \ The row of name in library lib with spills and reloc: the existing one, else
 \ a new unresolved row.
 : DECLARE-ROW ( str n n n -- n )
-   {: name:^ u:n lib:n spills:n reloc:n :}
-   name u lib spills reloc FN-INDEX dup 0 >= if exit then drop
+   {: name:str lib:n spills:n reloc:n :}
+   name lib spills reloc FN-INDEX dup 0 >= if exit then drop
    FN-NEW
    FN-N @ {: idx:n :}
-   name u idx NAME-STORE
+   name idx NAME-STORE
    FN-N @ 1+ FN-N !
    spills idx FN-SPILL-OFF FN-FIELD !
    reloc idx FN-RELOC-OFF FN-FIELD !
@@ -855,10 +855,10 @@ $10 constant TYPE-CAP
 
 \ An input type's C size in bytes.
 : TYPE-SIZE ( str -- n )
-   {: a:^ u:n :}
-   a u s" u8" STR:= a u s" char" STR:= or if 1 exit then
-   a u s" u16" STR:= if 2 exit then
-   a u s" u32" STR:= a u s" i32" STR:= or a u s" f32" STR:= or if 4 exit then
+   {: s:str :}
+   s s" u8" STR:= s s" char" STR:= or if 1 exit then
+   s s" u16" STR:= if 2 exit then
+   s s" u32" STR:= s s" i32" STR:= or s s" f32" STR:= or if 4 exit then
    8 ;
 
 0 constant R-NONE
@@ -968,8 +968,8 @@ SCRATCH-VARIABLE SCOPE-SET
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : HELP-END ( str -- )
-   {: h:^ hu:n :}
-   REJECTION:HELP  h hu REJECTION:EMIT-STR  STOP-REJECTION ;
+   {: h:str :}
+   REJECTION:HELP  h REJECTION:EMIT-STR  STOP-REJECTION ;
 
 public
 
@@ -983,8 +983,8 @@ public
    DEFINER-PLACE HELP-END ;
 
 : SYNTAX-REJECT ( str str -- )
-   {: m:^ mu:n h:^ hu:n :}
-   SYNTAX-OPEN  m mu REJECTION:EMIT-STR  h hu HELP-STOP ;
+   {: m:str h:str :}
+   SYNTAX-OPEN  m REJECTION:EMIT-STR  h HELP-STOP ;
 
 private
 
@@ -995,65 +995,65 @@ private
 \ read from their spans.
 
 : TOK$ ( -- str )
-   0 TOK-BUF TOK-U @ ;
+   0 TOK-BUF TOK-U @ >str ;
 
-: TOK! ( str -- ) {: a:^ u:n :}
-   u 0= if
+: TOK! ( str -- ) {: s:str :}
+   s STR:LEN 0= if
       s" the line ended before the declaration did"
       s" write FUNCTION: NAME symbol ( inputs -- output ) on one line"
       SYNTAX-REJECT
    then
-   u TOK-BUF-RESERVE
-   a 0 TOK-BUF u BYTE-COPY
-   u TOK-U ! ;
+   s STR:LEN TOK-BUF-RESERVE
+   s STR:DATA 0 TOK-BUF s STR:LEN BYTE-COPY
+   s STR:LEN TOK-U ! ;
 
 : TOK@ ( [ -- str ] -- )
    execute TOK! ;
 
 : TOK-SPAN ( [ -- str ] -- str )
-   execute 2dup TOK! ;
+   execute dup TOK! ;
 
 : TOK-IS? ( str -- bool )
    TOK$ STR:= ;
 
 : NAME! ( -- )
-   TOK$ {: a:^ u:n :}
-   u NAME-BUF-RESERVE
-   a 0 NAME-BUF u BYTE-COPY
-   u NAME-U ! ;
+   TOK$ {: s:str :}
+   s STR:LEN NAME-BUF-RESERVE
+   s STR:DATA 0 NAME-BUF s STR:LEN BYTE-COPY
+   s STR:LEN NAME-U ! ;
 
 : SYM! ( -- )
-   TOK$ {: a:^ u:n :}
-   u SYM-BUF-RESERVE
-   a 0 SYM-BUF u BYTE-COPY
-   u SYM-U ! ;
+   TOK$ {: s:str :}
+   s STR:LEN SYM-BUF-RESERVE
+   s STR:DATA 0 SYM-BUF s STR:LEN BYTE-COPY
+   s STR:LEN SYM-U ! ;
 
 \ The base's length before a target's suffix in it: `.dylib` or `.so` at its
 \ end, else `.so.` within it; its whole length when it holds none.
-: SUFFIX-CUT ( str -- n ) {: a:^ u:n :}
-   a u s" .dylib" STR:ENDS-WITH? if u 6 - exit then
-   a u s" .so" STR:ENDS-WITH? if u 3 - exit then
-   a u s" .so." STR:FIND-SUB MATCH option
-      none OF u ENDOF
+: SUFFIX-CUT ( str -- n ) {: s:str :}
+   s s" .dylib" STR:ENDS-WITH? if s STR:LEN 6 - exit then
+   s s" .so" STR:ENDS-WITH? if s STR:LEN 3 - exit then
+   s s" .so." STR:FIND-SUB MATCH option
+      none OF s STR:LEN ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
 
-\ The base the source spells t tu is copied out of the token buffer because
+\ The base the source spells t is copied out of the token buffer because
 \ reading the version token overwrites it.
-: BASE! ( str -- ) {: t:^ tu:n :}
-   TOK$ {: a:^ u:n :}
-   a u SUFFIX-CUT {: cut:n :}
-   cut u < if
+: BASE! ( str -- ) {: t:str :}
+   TOK$ {: s:str :}
+   s SUFFIX-CUT {: cut:n :}
+   cut s STR:LEN < if
       s" E-FFI-LIBRARY" REJECTION:OPEN
-      s" the base `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" the base `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
       s" ` is already spelled for a target" REJECTION:EMIT-STR
-      t tu SRCLOC:TOKEN$ REJECTION:KEPT REJECTION:AT  s" a target's suffix" REJECTION:EMIT-STR
+      t SRCLOC:TOKEN$ >str REJECTION:KEPT REJECTION:AT  s" a target's suffix" REJECTION:EMIT-STR
       REJECTION:HELP  s" give VERSIONED-LIBRARY the bare name, `" REJECTION:EMIT-STR
-      a cut REJECTION:EMIT-STR  96 REJECTION:EMIT1  STOP-REJECTION
+      s STR:DATA cut >str REJECTION:EMIT-STR  96 REJECTION:EMIT1  STOP-REJECTION
    then
-   u BASE-BUF-RESERVE
-   a 0 BASE-BUF u BYTE-COPY
-   u BASE-U ! ;
+   s STR:LEN BASE-BUF-RESERVE
+   s STR:DATA 0 BASE-BUF s STR:LEN BYTE-COPY
+   s STR:LEN BASE-U ! ;
 
 : >VERSION ( str -- n )
    STR:PARSE-POS MATCH option
@@ -1067,18 +1067,18 @@ private
 
 \ The name the base and version make, held in LIB-NAME until the next is made.
 : VERSION-NAME$ ( n -- str ) {: version:n :}
-   0 BASE-BUF BASE-U @ version LIB-NAME LIBRARY-NAME$ ;
+   0 BASE-BUF BASE-U @ >str version LIB-NAME LIBRARY-NAME$ ;
 
-\ Rejects the version's name, at the base the source spells t tu, when a
+\ Rejects the version's name, at the base the source spells t, when a
 \ library path's field cannot hold it.
-: CHECK-NAME ( str n -- ) {: t:^ tu:n version:n :}
-   version VERSION-NAME$ {: name:^ nu:n :}
-   nu LIB-PATH-CAP 1 - > if
+: CHECK-NAME ( str n -- ) {: t:str version:n :}
+   version VERSION-NAME$ {: name:str :}
+   name STR:LEN LIB-PATH-CAP 1 - > if
       s" E-FFI-SYNTAX" s" the library name made from this base is longer than a path holds"
-      t tu SRCLOC:TOKEN$ REJECTION:KEPT s" too long" REJECTION:OPEN-AT
+      t SRCLOC:TOKEN$ >str REJECTION:KEPT s" too long" REJECTION:OPEN-AT
       LIB-PATH-CAP 1 - s" bytes" REJECTION:LIMIT
-      s" found" REJECTION:NOTE  nu REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
-      s" name" REJECTION:NOTE  name nu REJECTION:EMIT-STR
+      s" found" REJECTION:NOTE  name STR:LEN REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+      s" name" REJECTION:NOTE  name REJECTION:EMIT-STR
       s" shorten the base name, so `lib`, the base, the target's suffix and a version fit the limit"
       HELP-END
    then ;
@@ -1086,14 +1086,14 @@ private
 \ The list's rows, made from the last version to the first; the answer is the
 \ first version's row. Every name is checked before a row is added.
 : VERSION-ROWS ( str str -- n )
-   {: t:^ tu:n list:^ u:n :}
-   list u [char] , STR:INDEX-OF MATCH option
-      none OF u ENDOF
+   {: t:str list:str :}
+   list [char] , STR:INDEX-OF MATCH option
+      none OF list STR:LEN ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: cut:n :}
-   list cut >VERSION {: version:n :}
-   t tu version CHECK-NAME
-   cut u = if 0 else t tu list cut + 1+ u cut - 1- RECURSE then {: next:n :}
+   list STR:DATA cut >str >VERSION {: version:n :}
+   t version CHECK-NAME
+   cut list STR:LEN = if 0 else t list STR:DATA cut + 1+ list STR:LEN cut - 1- >str RECURSE then {: next:n :}
    version VERSION-NAME$ next LIBRARY-PATH-OR ;
 
 \ ---- the declared effect ---------------------------------------------------
@@ -1109,17 +1109,17 @@ private
 : ARG-PAY! ( n n -- ) {: v:n i:n :} v ARG-PAY i cells + ! ;
 
 : ARG-TEXT$ ( n -- str ) {: i:n :}
-   ARG-TEXT i TYPE-CAP * +  ARG-TEXT-U i cells + @ ;
+   ARG-TEXT i TYPE-CAP * +  ARG-TEXT-U i cells + @ >str ;
 
 \ Records the type text of the input ARG+ added last.
-: IN-TEXT ( str -- ) {: a:^ u:n :}
+: IN-TEXT ( str -- ) {: s:str :}
    ARG-N @ 1 - {: i:n :}
-   a ARG-TEXT i TYPE-CAP * + u BYTE-COPY
-   u ARG-TEXT-U i cells + ! ;
+   s STR:DATA ARG-TEXT i TYPE-CAP * + s STR:LEN BYTE-COPY
+   s STR:LEN ARG-TEXT-U i cells + ! ;
 
-: RES-TEXT! ( str -- ) {: a:^ u:n :}
-   a RES-TEXT u BYTE-COPY
-   u RES-TEXT-U ! ;
+: RES-TEXT! ( str -- ) {: s:str :}
+   s STR:DATA RES-TEXT s STR:LEN BYTE-COPY
+   s STR:LEN RES-TEXT-U ! ;
 
 : INPUTS-FULL ( -- )
    ARITY-OPEN
@@ -1137,7 +1137,9 @@ private
    ARG-N @ 1 + ARG-N ! ;
 
 \ A pointer is `^u8`, a byte span: a token that opens with `^` names one.
-: PTR-TOK? ( -- bool )  TOK$ 1 min s" ^" STR:= ;
+: PTR-TOK? ( -- bool )
+   TOK$ {: t:str :}
+   t STR:DATA t STR:LEN 1 min >str s" ^" STR:= ;
 
 \ Rejects a pointer token other than `^u8`.
 : PTR-TAIL ( -- )
@@ -1156,11 +1158,11 @@ private
 \ A declaration spells the C prototype's types; a role, a bool, an enum or a
 \ sum is Habu's, so the caller converts it.
 : TYPE-REJECT ( str str -- )
-   {: w:^ wu:n l:^ lu:n :}
+   {: w:str l:str :}
    SYNTAX-OPEN  s" '" REJECTION:EMIT-STR  TOK$ REJECTION:EMIT-STR
-   s" ' is not " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
-   s"  type: " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
-   s"  is " REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR
+   s" ' is not " REJECTION:EMIT-STR  w REJECTION:EMIT-STR
+   s"  type: " REJECTION:EMIT-STR  w REJECTION:EMIT-STR
+   s"  is " REJECTION:EMIT-STR  l REJECTION:EMIT-STR
    s" declare the C prototype's type and convert the value where the word is called"
    HELP-STOP ;
 
@@ -1177,14 +1179,14 @@ private
 \ Each type is read where it is written, so a rejected one names its token;
 \ DECLARED-EFFECT reads the recorded text again.
 : IN-TOKEN ( str -- )
-   {: a:^ u:n :}
-   a u TYPE-SIZE {: size:n :}
+   {: s:str :}
+   s TYPE-SIZE {: size:n :}
    PTR-TOK? if
-      PTR-TAIL  a u EFFECT:READ-TYPE drop
+      PTR-TAIL  s EFFECT:READ-TYPE drop
       K-POINTER size ARG+ s" ^u8" IN-TEXT exit
    then
    s" str" TOK-IS? if
-      a u EFFECT:READ-TYPE drop
+      s EFFECT:READ-TYPE drop
       K-POINTER 8 ARG+ s" str" IN-TEXT
       K-VALUE 8 ARG+ s" " IN-TEXT exit
    then
@@ -1195,9 +1197,9 @@ private
       K-VALUE size ARG+ s" n" IN-TEXT exit
    then
    s" r" TOK-IS? SCALAR? or 0= if IN-REJECT then
-   a u EFFECT:READ-TYPE drop
+   s EFFECT:READ-TYPE drop
    s" r" TOK-IS? if K-FLOAT else K-VALUE then size ARG+
-   a u IN-TEXT ;
+   s IN-TEXT ;
 
 : SCALAR-KIND ( -- n )
    s" u32" TOK-IS? if R-U32 exit then
@@ -1206,14 +1208,14 @@ private
    R-VALUE ;
 
 : OUT-TOKEN ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    RES-KIND @ R-NONE <> if
       s" a FUNCTION: declaration has at most one output"
       s" C returns one value: return the others through ^u8 inputs C writes"
       SYNTAX-REJECT
    then
    PTR-TOK? if
-      PTR-TAIL  a u EFFECT:READ-TYPE drop
+      PTR-TAIL  s EFFECT:READ-TYPE drop
       s" ^u8" RES-TEXT! R-POINTER RES-KIND ! exit
    then
    s" f32" TOK-IS? if s" r" RES-TEXT! R-FLOAT32 RES-KIND ! exit then
@@ -1221,7 +1223,7 @@ private
    s" nullable<u8>" TOK-IS? s" r" TOK-IS? or SCALAR? or 0= if
       OUT-REJECT
    then
-   a u EFFECT:READ-TYPE drop  a u RES-TEXT!
+   s EFFECT:READ-TYPE drop  s RES-TEXT!
    s" nullable<u8>" TOK-IS? if R-POINTER RES-KIND ! 1 RES-NULLABLE ! exit then
    s" r" TOK-IS? if R-FLOAT RES-KIND ! exit then
    SCALAR-KIND RES-KIND ! ;
@@ -1230,7 +1232,7 @@ private
    {: src :}
    begin
       src TOK-SPAN
-      s" --" TOK-IS? if 2drop exit then
+      s" --" TOK-IS? if drop exit then
       s" )" TOK-IS? if
          s" expected '--' before ')'"
          s" write the effect as ( inputs -- output ), '--' even with no output"
@@ -1243,7 +1245,7 @@ private
    {: src :}
    begin
       src TOK-SPAN
-      s" )" TOK-IS? if 2drop exit then
+      s" )" TOK-IS? if drop exit then
       s" --" TOK-IS? if
          s" a second '--' in the effect"
          s" write one '--', between the inputs and the output"
@@ -1541,49 +1543,49 @@ private
 
 : SPELLED$ ( -- str ) s" ' is spelled for the other target" ;
 
-: BASENAME ( str -- str ) {: path:^ u:n :}
-   0 u 0 ?do path i + c@ [char] / = if drop i 1+ then loop
-   {: start:n :} path start + u start - ;
+: BASENAME ( str -- str ) {: path:str :}
+   0 path STR:LEN 0 ?do path STR:DATA i + c@ [char] / = if drop i 1+ then loop
+   {: start:n :} path STR:DATA start + path STR:LEN start - >str ;
 
 : FOREIGN-SPELLING? ( str -- bool )
-   BASENAME {: path:^ u:n :}
+   BASENAME {: path:str :}
    HB-TARGET-MACOS? if
-      path u s" .dylib" STR:ENDS-WITH? if false exit then
-      path u s" .so" STR:ENDS-WITH? path u s" .so." STR:CONTAINS? or exit
+      path s" .dylib" STR:ENDS-WITH? if false exit then
+      path s" .so" STR:ENDS-WITH? path s" .so." STR:CONTAINS? or exit
    then
    HB-TARGET-LINUX? if
-      path u s" .dylib" STR:ENDS-WITH? exit
+      path s" .dylib" STR:ENDS-WITH? exit
    then
    E-FFI-LIBRARY throw ;
 
 \ A path in the other target's spelling.
-: SPELLING-REJECT ( str -- ) {: path:^ u:n :}
+: SPELLING-REJECT ( str -- ) {: path:str :}
    s" E-FFI-LIBRARY" REJECTION:OPEN
-   s" library '" REJECTION:EMIT-STR  path u REJECTION:EMIT-STR
+   s" library '" REJECTION:EMIT-STR  path REJECTION:EMIT-STR
    SPELLED$ REJECTION:EMIT-STR
    TARGET-HELP$ HELP-STOP ;
 
-: CHECK-SPELLING ( str -- ) {: path:^ u:n :}
-   path u FOREIGN-SPELLING? if path u SPELLING-REJECT then ;
+: CHECK-SPELLING ( str -- ) {: path:str :}
+   path FOREIGN-SPELLING? if path SPELLING-REJECT then ;
 
 \ A path stands where `LIBRARY` read it. One the source does not hold, which a
 \ caller passed, stands at the token being run, and its bytes are not read.
-: CHECK-PATH ( str -- ) {: path:^ u:n :}
-   u 0 <= if
+: CHECK-PATH ( str -- ) {: path:str :}
+   path STR:LEN 0 <= if
       s" E-FFI-SYNTAX" s" the library path is empty"
-      SRCLOC:TOKEN$ s" expected a library path after this" REJECTION:OPEN-AT
+      SRCLOC:TOKEN$ >str s" expected a library path after this" REJECTION:OPEN-AT
       s" write the library's path or file name after LIBRARY, on its line"
       HELP-END
    then
-   u LIB-PATH-CAP >= if
+   path STR:LEN LIB-PATH-CAP >= if
       SYNTAX-OPEN  s" the library path is longer than a path can be" REJECTION:EMIT-STR
-      path u SRCLOC:TOKEN$ REJECTION:KEPT REJECTION:AT  s" too long" REJECTION:EMIT-STR
+      path SRCLOC:TOKEN$ >str REJECTION:KEPT REJECTION:AT  s" too long" REJECTION:EMIT-STR
       LIB-PATH-CAP 1 - s" bytes" REJECTION:LIMIT
-      s" found" REJECTION:NOTE  u REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+      s" found" REJECTION:NOTE  path STR:LEN REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
       s" name the library by its file name, which the loader searches for"
       HELP-END
    then
-   path u CHECK-SPELLING ;
+   path CHECK-SPELLING ;
 
 
 \ The cells holding a larger record's copy address, which the call moves to
@@ -1604,7 +1606,7 @@ private
 \ stack cells and this plan's relocation mask.
 : SLOT ( n -- n )
    {: stk:n :}
-   0 SYM-BUF SYM-U @ CUR-LIB @ stk RELOC-MASK DECLARE-ROW ;
+   0 SYM-BUF SYM-U @ >str CUR-LIB @ stk RELOC-MASK DECLARE-ROW ;
 
 \ A niche value's zero cell is none, so `some` of the returned cell reads NULL as none.
 \ AAPCS64 and SysV leave the register bits above a u8, u16 or u32 result
@@ -1663,10 +1665,10 @@ private
 : DECLARED-EFFECT ( -- EFFECT:type )
    EFFECT:EMPTY
    ARG-N @ 0 ?do
-      i ARG-TEXT$ dup 0 <> if EFFECT:READ-TYPE EFFECT:IN else 2drop then
+      i ARG-TEXT$ dup STR:LEN 0 <> if EFFECT:READ-TYPE EFFECT:IN else drop then
    loop
    RES-KIND @ R-NONE = if exit then
-   RES-TEXT RES-TEXT-U @ EFFECT:READ-TYPE EFFECT:OUT ;
+   RES-TEXT RES-TEXT-U @ >str EFFECT:READ-TYPE EFFECT:OUT ;
 
 \ Splits a str based at argument B into ^u8 n; a generated body takes no
 \ >r, so the one-cell arguments above it wait in a `{:` group.
@@ -1705,7 +1707,7 @@ private
 : EMIT ( n n -- )
    {: stk:n kind:n :}
    stk SLOT {: slot:n :}
-   0 NAME-BUF NAME-U @ DECLARED-EFFECT define-word
+   0 NAME-BUF NAME-U @ >str DECLARED-EFFECT define-word
    stk kind slot BODY ;
 
 \ The selection scope is the current wordlist, not the loading file:
@@ -1722,9 +1724,9 @@ private
 \ The record is placed at the declaration's FUNCTION: token, which the
 \ declaration was read past.
 : SCOPE-REJECT ( str -- )
-   {: m:^ mu:n :}
+   {: m:str :}
    OPENER-A @ OPENER-U @ SRCLOC:TOKEN!
-   s" E-FFI-LIBRARY" REJECTION:OPEN  m mu REJECTION:EMIT-STR
+   s" E-FFI-LIBRARY" REJECTION:OPEN  m REJECTION:EMIT-STR
    s" select one before it in its own package section, or at top level for a top-level declaration, with LIBRARY, VERSIONED-LIBRARY or PROCESS-SYMBOLS"
    HELP-STOP ;
 
@@ -1755,15 +1757,15 @@ private
 \ The token that opened the declaration still open or skipped, as its reader
 \ gave it; empty when none is.
 : OPENER$ ( -- str )
-   OPENER-A @ OPENER-U @ ;
+   OPENER-A @ OPENER-U @ >str ;
 
 \ The read-head transition from the FUNCTION: token at SRCLOC:TOKEN$: answers the
 \ name token, which `named` gets once the declaration is read, before it opens.
 : READ-FUNCTION ( [ -- str ] [ str -- ] -- str )
    {: src named :}
-   SRCLOC:TOKEN$ {: t:^ tu:n :}
+   SRCLOC:TOKEN$ >str {: t:str :}
    [: OPEN? if
-         OPENER$ s" ;FUNCTION" t tu SOURCE-ROOT:UNCLOSED
+         OPENER$ s" ;FUNCTION" t SOURCE-ROOT:UNCLOSED
          CLOSED  CLOSED!
          EXIT-STATUS:REJECTED REJECTION:STOP
       then
@@ -1773,8 +1775,8 @@ private
       src TOK-SPAN NAME!
       src TOK@ SYM!
       src EFFECT
-      2dup named execute
-      construct decl-state open DECL !  t OPENER-A !  tu OPENER-U ! ;] KEEP-REST ;
+      dup named execute
+      construct decl-state open DECL !  t STR:DATA OPENER-A !  t STR:LEN OPENER-U ! ;] KEEP-REST ;
 
 CAST: AS-TARGET ( n -- [ str -- str n ] )
 
@@ -1783,11 +1785,11 @@ public
 \ Read before its library is checked, so an unreadable one is a syntax record;
 \ a taken name is rejected at its source token before anything opens.
 : OPEN-FUNCTION ( -- )
-   SRCLOC:TOKEN$ [: ;] NESTED-REJECT
+   SRCLOC:TOKEN$ >str [: ;] NESTED-REJECT
    [: parse-name ;]
    [: data-base PROVIDED-XT:TARGET-CELL + @ AS-TARGET
-      execute drop 2drop ;]
-   READ-FUNCTION 2drop
+      execute drop drop ;]
+   READ-FUNCTION drop
    OPENER$ s" ;FUNCTION" ['] DISCARD OPENED
    CHECK-SCOPE ;
 
@@ -1833,11 +1835,11 @@ private
 : DECLARED-TEXTS ( [ str -- ] -- )
    {: put :}
    ARG-N @ 0 ?do
-      i ARG-TEXT$ dup 0 <> if put execute else 2drop then
+      i ARG-TEXT$ dup STR:LEN 0 <> if put execute else drop then
    loop
    s" --" put execute
    RES-KIND @ R-NONE = if exit then
-   RES-TEXT RES-TEXT-U @ put execute ;
+   RES-TEXT RES-TEXT-U @ >str put execute ;
 
 : NOT-OPEN ( -- )
    s" a clause outside a FUNCTION: declaration"
@@ -1962,15 +1964,15 @@ private
 
 \ VERSIONED-LIBRARY's next operand from src, copied; with none left the record
 \ stands at the token read last, which why labels.
-: LIB-OPERAND ( [ -- str ] str -- str ) {: src why:^ whyu:n :}
-   src execute {: a:^ u:n :}
-   u 0= if
+: LIB-OPERAND ( [ -- str ] str -- str ) {: src why:str :}
+   src execute {: s:str :}
+   s STR:LEN 0= if
       s" VERSIONED-LIBRARY" s" a base and a version list"
-      SRCLOC:TOKEN$ why whyu REJECTION:MISSING-OPERAND
+      SRCLOC:TOKEN$ >str why REJECTION:MISSING-OPERAND
       s" write the base and its versions after VERSIONED-LIBRARY, as `VERSIONED-LIBRARY z 1,2`"
       REJECTION:EMIT-STR  STOP-REJECTION
    then
-   a u TOK!  a u ;
+   s TOK!  s ;
 
 public
 
@@ -1978,15 +1980,15 @@ public
 : SET-STRUCT-RESULT ( n -- ) [: STRUCT-RESULT-CLAUSE ;] KEEP-REST ;
 : SET-STRUCT-ARG ( n n -- ) [: STRUCT-ARG-CLAUSE ;] KEEP-REST ;
 
-: SELECT-LIBRARY ( str -- ) {: path:^ u:n :}
-   path u [: CHECK-PATH ;] KEEP-REST
-   path u LIBRARY-PATH CUR-LIB !
+: SELECT-LIBRARY ( str -- ) {: path:str :}
+   path [: CHECK-PATH ;] KEEP-REST
+   path LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
 
 : SELECT-VERSIONED-LIBRARY ( -- )
    [: parse-name ;] {: src :}
-   [: src s" no base follows" LIB-OPERAND 2dup BASE!
-      src s" no version list follows" LIB-OPERAND 2drop TOK$ VERSION-ROWS CUR-LIB !
+   [: src s" no base follows" LIB-OPERAND dup BASE!
+      src s" no version list follows" LIB-OPERAND drop TOK$ VERSION-ROWS CUR-LIB !
       RECORD-SCOPE ;]
    KEEP-REST ;
 

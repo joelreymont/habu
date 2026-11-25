@@ -1,4 +1,3 @@
-split-str
 \ The engine owns address-cell declarations. Readers acquire a fresh span:
 \ appending a row may move its backing storage, but never changes a row's index.
 
@@ -78,21 +77,21 @@ private
 
 \ The header in DATA bytes [data, data+bytes): its rows and count.
 : READ-HEADER ( str -- ^n n )
-   {: data:^ bytes:n :}
-   data RELOC:XTCELL-N-CELL + cell-view {: h:^ :}
+   {: data:str :}
+   data STR:DATA RELOC:XTCELL-N-CELL + cell-view {: h:^ :}
    h HEADER-MODE {: mode:n :}
    h CAP-FIELD + @ {: cap:n :}
    mode 0= if
       h BASE-FIELD + @ {: base:n :}
-      base cap bytes WITHIN
-      data base + cell-view h @ exit
+      base cap data STR:LEN WITHIN
+      data STR:DATA base + cell-view h @ exit
    then
    h OWN-ROWS h @ ;
 
 public
 
 : LIVE-SPAN ( -- ^n n )
-   data-base BYTE-VIEW here data-base - READ-HEADER ;
+   data-base BYTE-VIEW here data-base - >str READ-HEADER ;
 
 : ROW@ ( n -- n ) {: row:n :}
    LIVE-SPAN {: base:^ count:n :}
@@ -163,8 +162,8 @@ public
 
 \ Reads a DATA copy's table: its rows lie in the copy or, once grown, in a mapping
 \ this process made.
-: DATA-SPAN ( str -- ^n n ) {: data:^ bytes:n :}
-   bytes RELOC:XTCELL-N-CELL HEADER-BYTES + < if REJECT then
-   data bytes READ-HEADER ;
+: DATA-SPAN ( str -- ^n n ) {: data:str :}
+   data STR:LEN RELOC:XTCELL-N-CELL HEADER-BYTES + < if REJECT then
+   data READ-HEADER ;
 
 ;package

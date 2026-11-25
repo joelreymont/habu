@@ -1,4 +1,3 @@
-split-str
 \ boot-files.f - the files every engine loads at startup below the checker, in
 \ load order. A build walks this one list for the provide rows and the loads,
 \ each phase projecting the rows of its parts.
@@ -33,9 +32,9 @@ private
 \ A record is three cells - part, kind, path length - then the path bytes,
 \ padded to a cell.
 : ROW ( n n str -- )
-   {: part:n kind:n a:^ u:n :}
-   part ,  kind ,  u ,
-   u 0 ?do a i + c@ c, loop
+   {: part:n kind:n s:str :}
+   part ,  kind ,  s STR:LEN ,
+   s STR:LEN 0 ?do s STR:DATA i + c@ c, loop
    align ;
 
 
@@ -145,7 +144,7 @@ here ROWS - constant ROWS-LEN
 
 : PATH@ ( n -- str )
    {: off:n :}
-   ROWS off + 3 cells +  ROWS off + 2 cells + @ ;
+   ROWS off + 3 cells +  ROWS off + 2 cells + @ >str ;
 
 
 \ The offset of the record after the one at off: its path rounded up to a cell.

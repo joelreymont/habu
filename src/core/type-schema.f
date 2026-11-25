@@ -1,4 +1,3 @@
-split-str
 \ type-schema.f — persistent schema node arena for the checker's type families
 \ (TFAM): families, variants and product fields store schema roots, never live
 \ checker variables, and the checker instantiates them per use. Node fields hold
@@ -117,19 +116,19 @@ SCRATCH-VARIABLE SCH-MODE        \ 0 persistent, 1 transient
 
 \ WORD was given V, which is WHAT; FIX says what to pass instead.
 : SCHEMA-BAD ( n str str str -- )
-   {: v:n w:^ wu:n what:^ whatu:n fix:^ fixu:n :}
+   {: v:n w:str what:str fix:str :}
    s" E-SCHEMA-BAD" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
-   s" ` was given " REJECTION:EMIT-STR  what whatu REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  w REJECTION:EMIT-STR
+   s" ` was given " REJECTION:EMIT-STR  what REJECTION:EMIT-STR
    s" value" REJECTION:NOTE  v REJECTION:EMIT-N
-   REJECTION:HELP  fix fixu REJECTION:EMIT-STR
+   REJECTION:HELP  fix REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A persistent node or root never names a transient one.
-: KEEP-CK ( n str -- ) {: id:n w:^ wu:n :}
+: KEEP-CK ( n str -- ) {: id:n w:str :}
    TRANSIENT-MODE? IF EXIT THEN
    id TRANSIENT-BASE >= IF
-      id w wu s" a transient node outside transient mode"
+      id w s" a transient node outside transient mode"
       s" pass a node made outside transient mode" SCHEMA-BAD
    THEN ;
 

@@ -1,4 +1,3 @@
-split-str
 \ float32.f - exact scalar IEEE-754 F32 narrowing and widening; byte marshalling
 \ is src/lib/float32-buffer.f. Neither word throws.
 \ NARROW rounds to nearest, ties to even, keeps signed zero, underflows gradually

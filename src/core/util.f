@@ -1,4 +1,3 @@
-split-str
 \ util.f — shared helpers for the checked core. Load before src/core/checker.f.
 
 \ First source-prefix record. Its dictionary index is resolved
@@ -58,11 +57,11 @@ public
    DIGITS-CAP DIGIT-AT !
    dup 0 > if negate then
    begin dup 10 mod negate $30 + DIGIT+ 10 / dup 0= until drop
-   DIGITS DIGIT-AT @ +  DIGITS-CAP DIGIT-AT @ - ;
+   DIGITS DIGIT-AT @ +  DIGITS-CAP DIGIT-AT @ - >str ;
 
 \ Descriptor 2; a failed write has nowhere further to be reported.
-: TYPE ( str -- ) {: a:^ u:n :}
-   2 a u write drop ;
+: TYPE ( str -- ) {: s:str :}
+   2 s write drop ;
 
 ;package
 

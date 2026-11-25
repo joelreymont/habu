@@ -1,4 +1,3 @@
-split-str
 \ address-carrier.f - the arm64 data address chain shape and its writer. A matching
 \ shape grants no provenance: callers still need an address site row or a
 \ created-owner record. Its own package, not RELOC: the engine bakes

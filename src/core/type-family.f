@@ -1,4 +1,3 @@
-split-str
 \ type-family.f: package TFAM, the family (TFAM), variant (SUMV), product-field
 \ and logical-layout registries for the checker; loaded unchecked in the checker
 \ prefix after type-schema.f. Records key on (package, canonical lowercase tail);
@@ -151,18 +150,18 @@ EXPORT CHECKER-REG:GROW
 : TF-STR-SCRUB ( n n -- ) {: lo:n hi:n :} \ zero the pool bytes [lo,hi); see PF-SCRUB
    hi lo ?do 0 TF-STR i + c! loop ;
 
-: TF-INTERN ( str -- n ) {: a:^ u:n :}
-   u TF-STR-ENSURE                        \ grow first, then cache a stable base
+: TF-INTERN ( str -- n ) {: s:str :}
+   s STR:LEN TF-STR-ENSURE                        \ grow first, then cache a stable base
    TF-STR-U @ {: off:n :}
-   0 BEGIN dup u < WHILE
+   0 BEGIN dup s STR:LEN < WHILE
       {: i:n :}
-      a i + c@   TF-STR off + i + c!
+      s STR:DATA i + c@   TF-STR off + i + c!
       i 1 +
    REPEAT drop
-   TF-STR-U @ u + TF-STR-U !
+   TF-STR-U @ s STR:LEN + TF-STR-U !
    off ;
 : TF-OFF$ ( n n -- str ) {: off:n u:n :}
-   TF-STR off + u ;
+   TF-STR off + u >str ;
 
 \ canonical tail validation. Declarations accept only lowercase tokens; the
 \ registry never folds case, so an uppercase/mixed-case token is rejected here.
@@ -174,14 +173,14 @@ EXPORT CHECKER-REG:GROW
    c TF-DIGIT? IF RES-TRUE EXIT THEN
    c 45 = ;                                                  \ '-'
 
-: TF-HIDDEN? ( str -- bool ) {: a:^ u:n :}   \ compaction-hidden field name
-   u 0= IF RES-FALSE EXIT THEN
-   a c@ 64 = ;                                              \ leading '@'
+: TF-HIDDEN? ( str -- bool ) {: s:str :}   \ compaction-hidden field name
+   s STR:LEN 0= IF RES-FALSE EXIT THEN
+   s STR:DATA c@ 64 = ;                                              \ leading '@'
 
-: TF-HYPHEN-BAD? ( str n -- bool ) {: a:^ u:n i:n :}   \ '-' at an edge or doubled
+: TF-HYPHEN-BAD? ( str n -- bool ) {: s:str i:n :}   \ '-' at an edge or doubled
    i 0 = IF RES-TRUE EXIT THEN                      \ leading '-a'
-   i u 1 - = IF RES-TRUE EXIT THEN                  \ trailing 'a-'
-   a i + 1 - c@ 45 = ;                              \ previous byte also '-' -> 'a--b'
+   i s STR:LEN 1 - = IF RES-TRUE EXIT THEN                  \ trailing 'a-'
+   s STR:DATA i + 1 - c@ 45 = ;                              \ previous byte also '-' -> 'a--b'
 
 EXPORT CHECK:ARENA-BYTES-ENSURE
 EXPORT CHECK:ARENA-ROWS-ENSURE
@@ -315,19 +314,19 @@ EXPORT CHECK:UNMAKE-SEED-LAYOUT
 EXPORT CHECK:WIDTH-FAM
 EXPORT CHECK:WRITE-WINDOW-CK
 
-: TF-CANON? ( str -- bool ) {: a:^ u:n :}    \ tailbytes + internal single '-' + >=1 letter
-   u 0= IF RES-FALSE EXIT THEN
-   0 BEGIN dup u < WHILE
+: TF-CANON? ( str -- bool ) {: s:str :}    \ tailbytes + internal single '-' + >=1 letter
+   s STR:LEN 0= IF RES-FALSE EXIT THEN
+   0 BEGIN dup s STR:LEN < WHILE
       {: i:n :}
-      a i + c@ TF-TAILBYTE? 0= IF RES-FALSE EXIT THEN
-      a i + c@ 45 = IF
-         a u i TF-HYPHEN-BAD? IF RES-FALSE EXIT THEN
+      s STR:DATA i + c@ TF-TAILBYTE? 0= IF RES-FALSE EXIT THEN
+      s STR:DATA i + c@ 45 = IF
+         s i TF-HYPHEN-BAD? IF RES-FALSE EXIT THEN
       THEN
       i 1 +
    REPEAT drop
-   0 BEGIN dup u < WHILE                             \ require at least one letter
+   0 BEGIN dup s STR:LEN < WHILE                             \ require at least one letter
       {: i:n :}
-      a i + c@ TF-LOWER? IF RES-TRUE EXIT THEN
+      s STR:DATA i + c@ TF-LOWER? IF RES-TRUE EXIT THEN
       i 1 +
    REPEAT drop
    RES-FALSE ;
@@ -586,10 +585,10 @@ variable PF-GEN   variable PF-GEN-N
 
 \ --- matching and lookup.
 
-: TFAM-PKG-MATCH? ( str n -- bool ) {: pa:^ pu:n id:n :}
-   id TFAM-PKG$ pa pu STR:=CI ;
-: TFAM-NAME-MATCH? ( str n -- bool ) {: na:^ nu:n id:n :}
-   id TFAM-NAME$ na nu STR:= ;
+: TFAM-PKG-MATCH? ( str n -- bool ) {: ps:str id:n :}
+   id TFAM-PKG$ ps STR:=CI ;
+: TFAM-NAME-MATCH? ( str n -- bool ) {: ns:str id:n :}
+   id TFAM-NAME$ ns STR:= ;
 
 \ --- tail index (TFX). TFAM-FIND-IN asks about one tail, so it walks the rows
 \ sharing its hash bucket instead of [0, TFAM-N). Rows are pushed on their
@@ -621,8 +620,8 @@ variable TFX-CUR              \ private bucket-walk cursor
 \ Hashes the exact bytes, because TFAM-NAME-MATCH? compares the exact bytes:
 \ registry tails are canonical lowercase, so a non-canonical token misses here
 \ for the same reason it misses the comparison.
-: TFX-HASH ( str -- n ) {: na:^ nu:n :}
-   FNV:BASIS na nu FNV:BYTES TFX-SLOTS 1 - and ;
+: TFX-HASH ( str -- n ) {: ns:str :}
+   FNV:BASIS ns FNV:BYTES TFX-SLOTS 1 - and ;
 
 : TFX-ROW-BKT ( n -- ^n ) {: id:n :}
    id TFAM-NAME$ TFX-HASH TFX-BKT ;
@@ -695,13 +694,13 @@ variable TFX-CUR              \ private bucket-walk cursor
 \ exact (package,tail) — the qualified-lookup and duplicate-detection primitive.
 
 : TFAM-FIND-IN ( str str -- n bool )
-   {: pa:^ pu:n na:^ nu:n :}
+   {: ps:str ns:str :}
    TFX-ENSURE
-   na nu TFX-HASH TFX-BKT @ TFX-CUR !
+   ns TFX-HASH TFX-BKT @ TFX-CUR !
    BEGIN TFX-CUR @ 0 <> WHILE
       TFX-CUR @ 1 - {: id:n :}
-      pa pu id TFAM-PKG-MATCH? IF
-         na nu id TFAM-NAME-MATCH? IF id RES-TRUE EXIT THEN
+      ps id TFAM-PKG-MATCH? IF
+         ns id TFAM-NAME-MATCH? IF id RES-TRUE EXIT THEN
       THEN
       id TF-REC@ TF.TAILNEXT @ TFX-CUR !
    REPEAT
@@ -716,20 +715,20 @@ variable TFX-CUR              \ private bucket-walk cursor
    REPEAT drop ;
 
 : TFAM-DECL ( str n str n n -- n )
-   {: pa:^ pu:n vis:n na:^ nu:n arity:n kind:n :}
+   {: ps:str vis:n ns:str arity:n kind:n :}
    WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
-   na nu TF-REQUIRE-CANON
-   pa pu na nu TFAM-FIND-IN IF drop E-TFAM-DUP throw THEN drop   \ FIND returns (id-or-0 flag); drop the id
+   ns TF-REQUIRE-CANON
+   ps ns TFAM-FIND-IN IF drop E-TFAM-DUP throw THEN drop   \ FIND returns (id-or-0 flag); drop the id
    TF-ENSURE
    TFX-ENSURE                             \ before the slot is committed; see TFX-ADD
    TFAM-N @ {: id:n :}
-   pa pu TF-INTERN {: poff:n :}
-   na nu TF-INTERN {: noff:n :}
+   ps TF-INTERN {: poff:n :}
+   ns TF-INTERN {: noff:n :}
    id 1 + TFAM-N !                        \ commit the slot before writing it (VREC style)
    id TF-REC@ {: r:^ :}
-   poff r TF.PKG-OFF !   pu r TF.PKG-U !
+   poff r TF.PKG-OFF !   ps STR:LEN r TF.PKG-U !
    vis r TF.VIS !
-   noff r TF.NAME-OFF !  nu r TF.NAME-U !
+   noff r TF.NAME-OFF !  ns STR:LEN r TF.NAME-U !
    arity r TF.ARITY !    kind r TF.KIND !
    TF-PK-N @ r TF.PK-START !
    TL-STACK-CELL-TAG r TF.LAYOUT !
@@ -922,18 +921,18 @@ variable VNX-CUR              \ private bucket-walk cursor
 : CPX-LINK ( n -- ^n ) {: id:n :}
    id cells CPX-L-P @ + ;
 
-: VNX-FOLD ( n str -- n ) {: h:n a:^ u:n :}   \ folded bytes into h
-   h 0 BEGIN dup u < WHILE
-      dup a + c@ STR:ASCII-LOWER rot FNV:STEP swap
+: VNX-FOLD ( n str -- n ) {: h:n s:str :}   \ folded bytes into h
+   h 0 BEGIN dup s STR:LEN < WHILE
+      dup s STR:DATA + c@ STR:ASCII-LOWER rot FNV:STEP swap
       1 +
    REPEAT drop ;
 
-: VNX-HASH ( n str -- n ) {: fam:n a:^ u:n :}   \ family, tail
-   FNV:BASIS fam FNV:STEP  a u VNX-FOLD
+: VNX-HASH ( n str -- n ) {: fam:n s:str :}   \ family, tail
+   FNV:BASIS fam FNV:STEP  s VNX-FOLD
    VNX-SLOTS 1 - and ;
 
-: CPX-HASH ( str str -- n ) {: pa:^ pu:n ta:^ tu:n :}   \ package, tail
-   FNV:BASIS pa pu VNX-FOLD  ta tu VNX-FOLD
+: CPX-HASH ( str str -- n ) {: ps:str ts:str :}   \ package, tail
+   FNV:BASIS ps VNX-FOLD  ts VNX-FOLD
    VNX-SLOTS 1 - and ;
 
 : VNX-ROW-BKT ( n -- ^n ) {: id:n :}
@@ -1011,32 +1010,32 @@ variable VNX-CUR              \ private bucket-walk cursor
 
 variable TF-CW-COL          \ first-colon split position
 PTR-VARIABLE TF-CW-HEAD-A   variable TF-CW-HEAD-U   \ the split head, resolved
-: TF-CW-HEAD$ ( -- str ) TF-CW-HEAD-A @ TF-CW-HEAD-U @ ;
-: SUMV-CTOR-PKG-MATCH? ( str n -- bool ) {: a:^ u:n id:n :}
+: TF-CW-HEAD$ ( -- str ) TF-CW-HEAD-A @ TF-CW-HEAD-U @ >str ;
+: SUMV-CTOR-PKG-MATCH? ( str n -- bool ) {: s:str id:n :}
    id SUMV-REC@ SV.CTOR-PKG-U @ 0= IF RES-FALSE EXIT THEN
-   id SUMV-CTOR-PKG$ a u STR:=CI ;
+   id SUMV-CTOR-PKG$ s STR:=CI ;
 
 : TFAM-OWNER ( n -- str str bool ) {: fam:n :}
    fam TFAM-PKG$ fam TFAM-NAME$ RES-TRUE ;
 
-\ The package and name of the family whose constructor package a u is: a
+\ The package and name of the family whose constructor package s is: a
 \ recorded ctor package, or a part `TOP:X` where X is one of a family of TOP.
-: TFAM-CTOR-OWNER ( str -- str str bool ) {: a:^ u:n :}
-   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+: TFAM-CTOR-OWNER ( str -- str str bool ) {: s:str :}
+   s CHECKER-COLON-SCAN {: cn:n ci:n :}
    cn 1 =  ci 0 >  and {: part:bool :}
    SUMV-N @ 0 ?do
-      a u i SUMV-CTOR-PKG-MATCH? IF i SUMV-FAM@ TFAM-OWNER unloop EXIT THEN
+      s i SUMV-CTOR-PKG-MATCH? IF i SUMV-FAM@ TFAM-OWNER unloop EXIT THEN
       part IF
-         a ci + 1 +  u ci - 1 -  i SUMV-CTOR-PKG-MATCH? IF
-            a ci  i SUMV-FAM@ TFAM-PKG$ STR:=CI IF
+         s STR:DATA ci + 1 +  s STR:LEN ci - 1 - >str  i SUMV-CTOR-PKG-MATCH? IF
+            s STR:DATA ci >str  i SUMV-FAM@ TFAM-PKG$ STR:=CI IF
                i SUMV-FAM@ TFAM-OWNER unloop EXIT
             THEN
          THEN
       THEN
-   loop a 0 a 0 RES-FALSE ;
+   loop s STR:DATA 0 >str s STR:DATA 0 >str RES-FALSE ;
 
 : TFAM-CTOR-PKG? ( str -- bool )
-   TFAM-CTOR-OWNER {: pa:^ pu:n na:^ nu:n owned:bool :} owned ;
+   TFAM-CTOR-OWNER {: p:str n:str owned:bool :} owned ;
 
 EXPORT CHECKER-RESOLVE:CK-REC-NAME$
 EXPORT CHECKER-RESOLVE:HEAD-ROW
@@ -1044,42 +1043,45 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 \ The package a qualifier's head names here, as a word's qualifier does: the
 \ open package's part first, then a top-level package; a head no record holds
 \ stays as given.
-: TFQ-HEAD$ ( str -- str ) {: a:^ u:n :}
-   a u HEAD-ROW {: row:^ :}
-   row NULL-PTR = IF a u EXIT THEN
+: TFQ-HEAD$ ( str -- str ) {: s:str :}
+   s HEAD-ROW {: row:^ :}
+   row NULL-PTR = IF s EXIT THEN
    row CK-REC-NAME$ ;
 
-: TF-CW-SPLIT? ( str -- bool ) {: a:^ u:n :}   \ first non-edge ':' -> TF-CW-COL
+: TF-CW-SPLIT? ( str -- bool ) {: s:str :}   \ first non-edge ':' -> TF-CW-COL
    -1 TF-CW-COL !
-   u 0 ?do
-      a i + c@ 58 = IF i TF-CW-COL ! leave THEN
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ 58 = IF i TF-CW-COL ! leave THEN
    loop
-   TF-CW-COL @ 0 > TF-CW-COL @ u 1 - < and
-   dup IF a TF-CW-COL @ TFQ-HEAD$ TF-CW-HEAD-U ! TF-CW-HEAD-A ! THEN ;
-: TFAM-CTOR-WORD-AT? ( str n -- bool ) {: a:^ u:n id:n :}   \ split name = ctor id?
+   TF-CW-COL @ 0 > TF-CW-COL @ s STR:LEN 1 - < and
+   dup IF
+      s STR:DATA TF-CW-COL @ >str TFQ-HEAD$
+      dup STR:LEN TF-CW-HEAD-U ! STR:DATA TF-CW-HEAD-A !
+   THEN ;
+: TFAM-CTOR-WORD-AT? ( str n -- bool ) {: s:str id:n :}   \ split name = ctor id?
    TF-CW-HEAD$ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 -  id SUMV-NAME$ STR:=CI ;
+   s STR:DATA TF-CW-COL @ + 1 +  s STR:LEN TF-CW-COL @ - 1 - >str  id SUMV-NAME$ STR:=CI ;
 
-: TF-CW-TAIL$ ( str -- str ) {: a:^ u:n :}   \ name tail after the split colon
-   a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 - ;
+: TF-CW-TAIL$ ( str -- str ) {: s:str :}   \ name tail after the split colon
+   s STR:DATA TF-CW-COL @ + 1 +  s STR:LEN TF-CW-COL @ - 1 - >str ;
 
-: TFAM-DERIVED-TAIL? ( str -- bool ) {: a:^ u:n :}   \ a fixed generator-owned derived tail?
-   a u s" eq" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" hash" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" tag>" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" tag" STR:=CI ;
+: TFAM-DERIVED-TAIL? ( str -- bool ) {: s:str :}   \ a fixed generator-owned derived tail?
+   s s" eq" STR:=CI IF RES-TRUE EXIT THEN
+   s s" hash" STR:=CI IF RES-TRUE EXIT THEN
+   s s" tag>" STR:=CI IF RES-TRUE EXIT THEN
+   s s" tag" STR:=CI ;
 
-: TFAM-DERIVED-KIND-TAIL? ( str n -- bool ) {: a:^ u:n fam:n :}   \ derived tail the FAMILY generates
-   a u s" eq" STR:=CI IF fam TFAM-DERIVE-EQ? EXIT THEN
-   a u s" hash" STR:=CI IF fam TFAM-DERIVE-HASH? EXIT THEN
-   a u s" tag>" STR:=CI IF fam TFAM-DERIVE-TAG? EXIT THEN   \ enums only
+: TFAM-DERIVED-KIND-TAIL? ( str n -- bool ) {: s:str fam:n :}   \ derived tail the FAMILY generates
+   s s" eq" STR:=CI IF fam TFAM-DERIVE-EQ? EXIT THEN
+   s s" hash" STR:=CI IF fam TFAM-DERIVE-HASH? EXIT THEN
+   s s" tag>" STR:=CI IF fam TFAM-DERIVE-TAG? EXIT THEN   \ enums only
    fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
-   a u s" tag" STR:=CI ;                  \ tag rides ANY derive on sum/enum
+   s s" tag" STR:=CI ;                  \ tag rides ANY derive on sum/enum
 
-: TFAM-DERIVED-AT? ( str n -- bool ) {: a:^ u:n id:n :}   \ split name = id-family derived word?
+: TFAM-DERIVED-AT? ( str n -- bool ) {: s:str id:n :}   \ split name = id-family derived word?
    id SUMV-FAM@ TFAM-DERIVE-ANY? 0= IF RES-FALSE EXIT THEN
    TF-CW-HEAD$ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u TF-CW-TAIL$ id SUMV-FAM@ TFAM-DERIVED-KIND-TAIL? ;
+   s TF-CW-TAIL$ id SUMV-FAM@ TFAM-DERIVED-KIND-TAIL? ;
 
 \ The QUALIFIED half of the generated-word scan. Its private half, and the two
 \ recognizers that join them, sit beside TF-CTOR-PRIV$ below: a recognizer must
@@ -1087,18 +1089,18 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 \ A constructor word's head and tail are its variant's package and tail, so
 \ only the rows in their CPX bucket can be one. A derived word is recognized
 \ from its family, not a row, so only the derived tails still walk the store.
-: TF-CTOR-QUAL-FIND ( str -- n bool ) {: a:^ u:n :}   \ family, found
-   a u TF-CW-TAIL$ {: ta:^ tu:n :}
+: TF-CTOR-QUAL-FIND ( str -- n bool ) {: s:str :}   \ family, found
+   s TF-CW-TAIL$ {: t:str :}
    VNX-ENSURE
-   TF-CW-HEAD$ ta tu CPX-HASH CPX-BKT @ VNX-CUR !
+   TF-CW-HEAD$ t CPX-HASH CPX-BKT @ VNX-CUR !
    BEGIN VNX-CUR @ 0 <> WHILE
       VNX-CUR @ 1 - {: id:n :}
-      a u id TFAM-CTOR-WORD-AT? IF id SUMV-FAM@ RES-TRUE EXIT THEN
+      s id TFAM-CTOR-WORD-AT? IF id SUMV-FAM@ RES-TRUE EXIT THEN
       id CPX-LINK @ VNX-CUR !
    REPEAT
-   ta tu TFAM-DERIVED-TAIL? 0= IF 0 RES-FALSE EXIT THEN
+   t TFAM-DERIVED-TAIL? 0= IF 0 RES-FALSE EXIT THEN
    SUMV-N @ 0 ?do
-      a u i TFAM-DERIVED-AT? IF i SUMV-FAM@ RES-TRUE unloop EXIT THEN
+      s i TFAM-DERIVED-AT? IF i SUMV-FAM@ RES-TRUE unloop EXIT THEN
    loop 0 RES-FALSE ;
 
 ;package
@@ -1106,37 +1108,37 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 package TFAM
 private
 
-: SUMV-MATCH? ( n str n -- bool ) {: fam:n na:^ nu:n id:n :}
+: SUMV-MATCH? ( n str n -- bool ) {: fam:n ns:str id:n :}
    id SUMV-FAM@ fam = 0= IF RES-FALSE EXIT THEN
-   id SUMV-NAME$ na nu STR:= ;
+   id SUMV-NAME$ ns STR:= ;
 
 \ The lowest matching row: a chain runs newest first, so the last match it meets
 \ is the lowest.
-: SUMV-FIND ( n str -- n bool ) {: fam:n na:^ nu:n :}
+: SUMV-FIND ( n str -- n bool ) {: fam:n ns:str :}
    VNX-ENSURE
    -1
-   fam na nu VNX-HASH VNX-BKT @ VNX-CUR !
+   fam ns VNX-HASH VNX-BKT @ VNX-CUR !
    BEGIN VNX-CUR @ 0 <> WHILE
       VNX-CUR @ 1 - {: id:n :}
-      fam na nu id SUMV-MATCH? IF drop id THEN
+      fam ns id SUMV-MATCH? IF drop id THEN
       id VNX-LINK @ VNX-CUR !
    REPEAT
    dup 0 < IF drop 0 RES-FALSE EXIT THEN
    RES-TRUE ;
 
 : SUMV-ADD ( n str n n n n -- n )
-   {: fam:n na:^ nu:n tag:n ss:n sc:n pc:n :}
+   {: fam:n ns:str tag:n ss:n sc:n pc:n :}
    WRITE-WINDOW-CK
-   na nu TF-REQUIRE-CANON
-   fam na nu SUMV-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
+   ns TF-REQUIRE-CANON
+   fam ns SUMV-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    SUMV-ENSURE
    VNX-ENSURE                             \ size the index before the slot is committed
    SVX-SYNC                               \ catch an outside rewind before the stamp moves
    SUMV-N @ {: id:n :}
-   na nu TF-INTERN {: noff:n :}
+   ns TF-INTERN {: noff:n :}
    id 1 + SUMV-N !
    id SUMV-REC@ {: r:^ :}
-   fam r SV.FAM !   noff r SV.NAME-OFF !   nu r SV.NAME-U !
+   fam r SV.FAM !   noff r SV.NAME-OFF !   ns STR:LEN r SV.NAME-U !
    \ An empty schema range is start 0 count 0, as for TFAM-VAR-RANGE!.
    tag r SV.TAG !   sc 0= IF 0 ELSE ss THEN r SV.SCH-START !
    sc r SV.SCH-COUNT !   pc r SV.PAYCELLS !
@@ -1166,32 +1168,32 @@ variable TF-CTOR-U               \ derived-name length
    TF-CTOR-P TF-CTOR-CAP  TF-CTOR-U @ CELL / 1 +  1 ARENA-ROWS-ENSURE
    TF-CTOR-BUF TF-CTOR-U @ + c!
    TF-CTOR-U @ 1 + TF-CTOR-U ! ;
-: TF-CTOR-ESC ( str -- ) {: a:^ u:n :}   \ one uppercased '-'->'--' escaped segment
-   0 BEGIN dup u < WHILE
+: TF-CTOR-ESC ( str -- ) {: s:str :}   \ one uppercased '-'->'--' escaped segment
+   0 BEGIN dup s STR:LEN < WHILE
       {: i:n :}
-      a i + c@ dup 45 = IF
+      s STR:DATA i + c@ dup 45 = IF
          drop 45 TF-CTOR-C, 45 TF-CTOR-C,
       ELSE TF-UPPER-C TF-CTOR-C, THEN
       i 1 +
    REPEAT drop ;
-: TF-CTOR-TAIL ( str -- ) {: a:^ u:n :}      \ raw uppercased private tail
-   0 BEGIN dup u < WHILE
+: TF-CTOR-TAIL ( str -- ) {: s:str :}      \ raw uppercased private tail
+   0 BEGIN dup s STR:LEN < WHILE
       {: i:n :}
-      a i + c@ TF-UPPER-C TF-CTOR-C,
+      s STR:DATA i + c@ TF-UPPER-C TF-CTOR-C,
       i 1 +
    REPEAT drop ;
 : TF-CTOR-BUILD-ESCAPED ( str str -- )   \ (pkg tail)
-   {: pa:^ pu:n ta:^ tu:n :}
+   {: ps:str ts:str :}
    0 TF-CTOR-U !
-   pu 0 > IF pa pu TF-CTOR-ESC  45 TF-CTOR-C, THEN
-   ta tu TF-CTOR-ESC ;
+   ps STR:LEN 0 > IF ps TF-CTOR-ESC  45 TF-CTOR-C, THEN
+   ts TF-CTOR-ESC ;
 
 \ The tail must already be canonical lowercase.
 
 : TF-CTOR-PKG$ ( str str -- str )
-   {: pa:^ pu:n ta:^ tu:n :}
-   pa pu ta tu TF-CTOR-BUILD-ESCAPED
-   TF-CTOR-BUF TF-CTOR-U @ ;
+   {: ps:str ts:str :}
+   ps ts TF-CTOR-BUILD-ESCAPED
+   TF-CTOR-BUF TF-CTOR-U @ >str ;
 
 \ Two spellings, on purpose:
 \   public   PKG-FAMILY:MEMBER  in the reserved constructor namespace
@@ -1207,68 +1209,68 @@ variable TF-CTOR-U               \ derived-name length
 \ checker records any single-non-edge-colon name as that package's public
 \ symbol before it consults the open package (checker.f CHECKER-RECORD-SYM).
 : TF-CTOR-PRIV$ ( str str -- str )
-   {: ta:^ tu:n ma:^ mu:n :}
+   {: ts:str ms:str :}
    0 TF-CTOR-U !
-   ta tu TF-CTOR-TAIL
+   ts TF-CTOR-TAIL
    45 TF-CTOR-C,
-   ma mu TF-CTOR-TAIL
-   TF-CTOR-BUF TF-CTOR-U @ ;
+   ms TF-CTOR-TAIL
+   TF-CTOR-BUF TF-CTOR-U @ >str ;
 
 \ A private family's generated words are its rows' private spellings, a
 \ product's make and unmake rows included, and its derived words: the
 \ family's private prefix and a tail TFAM-DERIVED-KIND-TAIL? accepts, the
 \ qualified half's rule. A name no row or derived tail spells is the package's
 \ own word: beside a private `SUMTYPE colour`, `undefine COLOUR-MAKE` succeeds.
-: TF-PRIV-NAME? ( str n -- bool ) {: a:^ u:n fam:n :}   \ = a row of THIS family?
+: TF-PRIV-NAME? ( str n -- bool ) {: s:str fam:n :}   \ = a row of THIS family?
    fam TFAM-VAR-START@ {: vstart:n :}
    fam TFAM-VAR-COUNT@ 0 ?do
-      a u  fam TFAM-NAME$ vstart i + SUMV-NAME$ TF-CTOR-PRIV$  STR:=CI
+      s  fam TFAM-NAME$ vstart i + SUMV-NAME$ TF-CTOR-PRIV$  STR:=CI
          IF RES-TRUE unloop EXIT THEN
    loop RES-FALSE ;
 
-: TF-PRIV-DERIVED? ( str n -- bool ) {: a:^ u:n fam:n :}
+: TF-PRIV-DERIVED? ( str n -- bool ) {: s:str fam:n :}
    fam TFAM-DERIVE-ANY? 0= IF RES-FALSE EXIT THEN
-   fam TFAM-NAME$ a 0 TF-CTOR-PRIV$ {: pa:^ pu:n :}   \ FAMILY-
-   u pu <= IF RES-FALSE EXIT THEN
-   a pu pa pu STR:=CI 0= IF RES-FALSE EXIT THEN
-   a pu +  u pu -  fam TFAM-DERIVED-KIND-TAIL? ;
+   fam TFAM-NAME$ s STR:DATA 0 >str TF-CTOR-PRIV$ {: p:str :}   \ FAMILY-
+   s STR:LEN p STR:LEN <= IF RES-FALSE EXIT THEN
+   s STR:DATA p STR:LEN >str p STR:=CI 0= IF RES-FALSE EXIT THEN
+   s STR:DATA p STR:LEN +  s STR:LEN p STR:LEN - >str  fam TFAM-DERIVED-KIND-TAIL? ;
 
 \ A private or OPAQUE family's generated words resolve only while its package
 \ is open; outside it the name belongs to whoever spells it.
-: TF-CTOR-PRIV-FAM? ( str n -- bool ) {: a:^ u:n fam:n :}
+: TF-CTOR-PRIV-FAM? ( str n -- bool ) {: s:str fam:n :}
    fam TFAM-GEN-PUBLIC? IF RES-FALSE EXIT THEN
    fam TFAM-VAR-COUNT@ 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u fam TF-PRIV-NAME? IF RES-TRUE EXIT THEN
-   a u fam TF-PRIV-DERIVED? ;
+   s fam TF-PRIV-NAME? IF RES-TRUE EXIT THEN
+   s fam TF-PRIV-DERIVED? ;
 
-: TF-CTOR-PRIV-FIND ( str -- n bool ) {: a:^ u:n :}   \ family, found
+: TF-CTOR-PRIV-FIND ( str -- n bool ) {: s:str :}   \ family, found
    TFAM-N @ 0 ?do
-      a u i TF-CTOR-PRIV-FAM? IF i RES-TRUE unloop EXIT THEN
+      s i TF-CTOR-PRIV-FAM? IF i RES-TRUE unloop EXIT THEN
    loop 0 RES-FALSE ;
 
 \ `DERIVE addr` and `init` members are recognized from the field registry,
 \ declared further down, so the scan is an xt bound there.
 defer TFAM-ADDR-FIND-XT ( str -- n bool )
 
-: TF-GEN-FIND ( str -- n bool ) {: a:^ u:n :}
-   a u TF-CW-SPLIT? IF
-      a u TF-CTOR-QUAL-FIND IF RES-TRUE EXIT THEN
+: TF-GEN-FIND ( str -- n bool ) {: s:str :}
+   s TF-CW-SPLIT? IF
+      s TF-CTOR-QUAL-FIND IF RES-TRUE EXIT THEN
    ELSE
-      a u TF-CTOR-PRIV-FIND IF RES-TRUE EXIT THEN
+      s TF-CTOR-PRIV-FIND IF RES-TRUE EXIT THEN
    THEN
-   drop  a u TFAM-ADDR-FIND-XT ;
+   drop  s TFAM-ADDR-FIND-XT ;
 
 : TFAM-CTOR-WORD? ( str -- bool )   \ exact generated word?
    TF-GEN-FIND nip ;
 
-\ The type whose generated word a definition of a u here would repeat, and true;
+\ The type whose generated word a definition of s here would repeat, and true;
 \ a bare spelling repeats one only in the package's private section.
-: TFAM-GENERATOR ( str -- str bool ) {: a:^ u:n :}
-   a u TF-GEN-FIND {: fam:n hit:bool :}
+: TFAM-GENERATOR ( str -- str bool ) {: s:str :}
+   s TF-GEN-FIND {: fam:n hit:bool :}
    hit 0= IF s" " RES-FALSE EXIT THEN
-   a u TF-CW-SPLIT? 0= IF
+   s TF-CW-SPLIT? 0= IF
       CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF
          s" " RES-FALSE EXIT
       THEN
@@ -1284,11 +1286,11 @@ private
 \ The generated-word test runs first: it answers every generated definition
 \ from the tail index, while the package test walks the variant store and is
 \ needed only for a name the generator does not own.
-: TFAM-CTOR-EXTEND? ( str -- bool ) {: a:^ u:n :}   \ new tail in a ctor package?
-   a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
-   TF-CW-HEAD$ {: ha:^ hu:n :}
-   a u TFAM-CTOR-WORD? IF RES-FALSE EXIT THEN
-   ha hu TFAM-CTOR-PKG? ;
+: TFAM-CTOR-EXTEND? ( str -- bool ) {: s:str :}   \ new tail in a ctor package?
+   s TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
+   TF-CW-HEAD$ {: h:str :}
+   s TFAM-CTOR-WORD? IF RES-FALSE EXIT THEN
+   h TFAM-CTOR-PKG? ;
 
 \ shared fields, keyed by (family-id, optional-variant-id, field tail).
 \ PF-N includes the open declaration's provisional rows; PF-COMMIT-N is the
@@ -1863,15 +1865,15 @@ TFAM-STORE-MASK-INSTALL
    fam TFAM-STORE-MASK  1 slot lshift and 0 <> ;
 
 
-: PF-MATCH? ( n n str n -- bool ) {: fam:n var:n na:^ nu:n id:n :}
+: PF-MATCH? ( n n str n -- bool ) {: fam:n var:n ns:str id:n :}
    id PF-REC@ {: r:^ :}
    fam var r PF-ROW-OWNER? 0= IF RES-FALSE EXIT THEN
-   r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ na nu STR:= ;
+   r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ ns STR:= ;
 
-: PF-FIND ( n n str -- n bool ) {: fam:n var:n na:^ nu:n :}
+: PF-FIND ( n n str -- n bool ) {: fam:n var:n ns:str :}
    0 BEGIN dup PF-COMMIT-N @ < WHILE
       {: i:n :}
-      fam var na nu i PF-MATCH? IF i RES-TRUE EXIT THEN
+      fam var ns i PF-MATCH? IF i RES-TRUE EXIT THEN
       i 1 +
    REPEAT drop
    0 RES-FALSE ;
@@ -1881,19 +1883,19 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
 
 0 constant PF-FLAGS-NONE
 
-: TF-GRAMMAR-KEYWORD? ( str -- bool ) {: a:^ u:n :}
-   a u s" variant" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" ;variant" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" newtype" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" sumtype" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" ;sumtype" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" enum" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" ;enum" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" field" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" buffer" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" policy" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" derive" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" scratch-only" STR:=CI ;
+: TF-GRAMMAR-KEYWORD? ( str -- bool ) {: s:str :}
+   s s" variant" STR:=CI IF RES-TRUE EXIT THEN
+   s s" ;variant" STR:=CI IF RES-TRUE EXIT THEN
+   s s" newtype" STR:=CI IF RES-TRUE EXIT THEN
+   s s" sumtype" STR:=CI IF RES-TRUE EXIT THEN
+   s s" ;sumtype" STR:=CI IF RES-TRUE EXIT THEN
+   s s" enum" STR:=CI IF RES-TRUE EXIT THEN
+   s s" ;enum" STR:=CI IF RES-TRUE EXIT THEN
+   s s" field" STR:=CI IF RES-TRUE EXIT THEN
+   s s" buffer" STR:=CI IF RES-TRUE EXIT THEN
+   s s" policy" STR:=CI IF RES-TRUE EXIT THEN
+   s s" derive" STR:=CI IF RES-TRUE EXIT THEN
+   s s" scratch-only" STR:=CI ;
 
 ;package
 
@@ -1908,10 +1910,10 @@ public
 
 \ The text after the last colon of a name, or the whole name when there is
 \ none: a package path's last segment.
-: LAST-SEGMENT$ ( str -- str ) {: a:^ u:n :}
-   u 0 ?do
-      a u i - 1 - + c@ 58 = IF a u i - + i unloop EXIT THEN
-   loop a u ;
+: LAST-SEGMENT$ ( str -- str ) {: s:str :}
+   s STR:LEN 0 ?do
+      s STR:DATA s STR:LEN i - 1 - + c@ 58 = IF s STR:DATA s STR:LEN i - + i >str unloop EXIT THEN
+   loop s ;
 
 private
 
@@ -1932,35 +1934,35 @@ EXPORT TFAM:TF-GRAMMAR-KEYWORD?
 EXPORT TFAM:TF-HIDDEN?
 EXPORT TFAM:TF-REQUIRE-CANON
 EXPORT TFAM:TFAM-FIND-IN
-: RESERVED? ( str -- bool ) {: a:^ u:n :}
-   u 1 = IF RES-TRUE EXIT THEN
-   a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
-   a u CON-OF 0 <> IF RES-TRUE EXIT THEN
-   a u ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u XT-TOK? IF RES-TRUE EXIT THEN
-   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u TF-GRAMMAR-KEYWORD? ;
+: RESERVED? ( str -- bool ) {: s:str :}
+   s STR:LEN 1 = IF RES-TRUE EXIT THEN
+   s VREC-FIND IF drop RES-TRUE EXIT THEN drop
+   s CON-OF 0 <> IF RES-TRUE EXIT THEN
+   s ATOM-TOK? IF RES-TRUE EXIT THEN
+   s XT-TOK? IF RES-TRUE EXIT THEN
+   s FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
+   s TF-GRAMMAR-KEYWORD? ;
 
-\ Name `na nu` spells `<qa>:<ta>`, its qualifier folded as a signature folds it
+\ Name `ns` spells `<qs>:<ts>`, its qualifier folded as a signature folds it
 \ (TFQ-SPLIT?).
 : QUAL-NAME? ( str str str -- bool )
-   {: na:^ nu:n qa:^ qu:n ta:^ tu:n :}
-   nu qu tu + 1 + <> IF RES-FALSE EXIT THEN
-   na qu + c@ 58 <> IF RES-FALSE EXIT THEN
-   na qu qa qu STR:=CI 0= IF RES-FALSE EXIT THEN
-   na qu + 1 + tu ta tu STR:= ;
+   {: ns:str qs:str ts:str :}
+   ns STR:LEN qs STR:LEN ts STR:LEN + 1 + <> IF RES-FALSE EXIT THEN
+   ns STR:DATA qs STR:LEN + c@ 58 <> IF RES-FALSE EXIT THEN
+   ns STR:DATA qs STR:LEN >str qs STR:=CI 0= IF RES-FALSE EXIT THEN
+   ns STR:DATA qs STR:LEN + 1 + ts STR:LEN >str ts STR:= ;
 
 \ A DEFLINEAR or VALUE-RECORD name `B:tail` exists, B the open package path's
 \ last segment: the declaration TFAM-CLAIMED? rejects when the family comes first.
-: QUAL-NOMINAL? ( str -- bool ) {: a:^ u:n :}
+: QUAL-NOMINAL? ( str -- bool ) {: s:str :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
-   CHECKER-AUTH-PACKAGE$ LAST-SEGMENT$ {: qa:^ qu:n :}
-   qa qu TF-HIDDEN? IF RES-FALSE EXIT THEN
+   CHECKER-AUTH-PACKAGE$ LAST-SEGMENT$ {: q:str :}
+   q TF-HIDDEN? IF RES-FALSE EXIT THEN
    CTN @ 1 ?do
-      i CT-NAME$ qa qu a u QUAL-NAME? IF RES-TRUE unloop EXIT THEN
+      i CT-NAME$ q s QUAL-NAME? IF RES-TRUE unloop EXIT THEN
    loop
    VREC-N @ 0 ?do
-      i VREC-NAME$ qa qu a u QUAL-NAME? IF RES-TRUE unloop EXIT THEN
+      i VREC-NAME$ q s QUAL-NAME? IF RES-TRUE unloop EXIT THEN
    loop RES-FALSE ;
 
 public
@@ -1969,10 +1971,10 @@ public
 \ variant gate (sumtype.f): a family is taken wherever the declaring scope
 \ resolves it, a global family in every scope and a package family inside its
 \ package.
-: FAMILY-TAKEN? ( str -- bool ) {: a:^ u:n :}
-   s" " a u TFAM-FIND-IN nip IF RES-TRUE EXIT THEN
+: FAMILY-TAKEN? ( str -- bool ) {: s:str :}
+   s" " s TFAM-FIND-IN nip IF RES-TRUE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
-   CHECKER-AUTH-PACKAGE$ a u TFAM-FIND-IN nip ;
+   CHECKER-AUTH-PACKAGE$ s TFAM-FIND-IN nip ;
 
 \ The family-name gate every family definer asks: SUMTYPE and NEWTYPE
 \ (sumtype.f) and the STRUCTURE and ENUM front ends. A family tail must be one an
@@ -1986,18 +1988,18 @@ public
 \ as an unknown type, a family no effect could name; without the value record
 \ row `ENUM vr` loaded in a package after `VALUE-RECORD vr`, one name naming
 \ two kinds.
-: FAMILY-RESERVED? ( str -- bool ) {: a:^ u:n :}
-   a u SIG-PTR-TOK? IF RES-TRUE EXIT THEN
-   a u QUAL-NOMINAL? IF RES-TRUE EXIT THEN
-   a u RESERVED? ;
+: FAMILY-RESERVED? ( str -- bool ) {: s:str :}
+   s SIG-PTR-TOK? IF RES-TRUE EXIT THEN
+   s QUAL-NOMINAL? IF RES-TRUE EXIT THEN
+   s RESERVED? ;
 
 \ A variant defines a word in its family's package, so no keyword may name it.
-: VARIANT-REQUIRE ( str -- ) {: a:^ u:n :}
-   u 0= IF E-TDECL-SYNTAX throw THEN
-   a u DEF-NAME-BAD? IF TFAM:E-TDECL-DEF-NAME throw THEN
-   a u TF-REQUIRE-CANON
-   a u RESERVED? IF E-TDECL-NAME throw THEN
-   a u FAMILY-TAKEN? IF E-TDECL-NAME throw THEN ;
+: VARIANT-REQUIRE ( str -- ) {: s:str :}
+   s STR:LEN 0= IF E-TDECL-SYNTAX throw THEN
+   s DEF-NAME-BAD? IF TFAM:E-TDECL-DEF-NAME throw THEN
+   s TF-REQUIRE-CANON
+   s RESERVED? IF E-TDECL-NAME throw THEN
+   s FAMILY-TAKEN? IF E-TDECL-NAME throw THEN ;
 
 seal-package
 
@@ -2009,20 +2011,20 @@ private
 \ A field tail may not spell a declaration word (TF-GRAMMAR-KEYWORD?) or a
 \ generated-operation name, on every path that registers a field row: the
 \ STRUCTURE and ENUM front ends, through PF-ADD.
-: PF-RESERVED? ( str -- bool ) {: a:^ u:n :}
-   a u TF-GRAMMAR-KEYWORD? IF RES-TRUE EXIT THEN
-   a u s" make" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" unmake" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" tag" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" eq" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" hash" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" order" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" encode" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" decode" STR:=CI ;
+: PF-RESERVED? ( str -- bool ) {: s:str :}
+   s TF-GRAMMAR-KEYWORD? IF RES-TRUE EXIT THEN
+   s s" make" STR:=CI IF RES-TRUE EXIT THEN
+   s s" unmake" STR:=CI IF RES-TRUE EXIT THEN
+   s s" tag" STR:=CI IF RES-TRUE EXIT THEN
+   s s" eq" STR:=CI IF RES-TRUE EXIT THEN
+   s s" hash" STR:=CI IF RES-TRUE EXIT THEN
+   s s" order" STR:=CI IF RES-TRUE EXIT THEN
+   s s" encode" STR:=CI IF RES-TRUE EXIT THEN
+   s s" decode" STR:=CI ;
 
-: PF-NAME-REQUIRE ( str -- ) {: a:^ u:n :}
-   a u TF-REQUIRE-CANON
-   a u PF-RESERVED? IF E-PF-NAME throw THEN ;
+: PF-NAME-REQUIRE ( str -- ) {: s:str :}
+   s TF-REQUIRE-CANON
+   s PF-RESERVED? IF E-PF-NAME throw THEN ;
 
 : PF-FAM-LIVE? ( n -- bool ) {: fam:n :} fam 0 >= fam TFAM-N @ < and ;
 
@@ -2231,28 +2233,28 @@ defer TFAM-SCH-ROW-ARITY ( n n -- n )   \ ( owner rownode -- bad-idx ) forward r
 : TFAM-SCH-ROW-ARITY-INSTALL ( -- ) [: TFAM-SCH-ROW-ARITY-IMPL ;] is TFAM-SCH-ROW-ARITY ;
 TFAM-SCH-ROW-ARITY-INSTALL
 
-: PF-DUP? ( n n str -- bool ) {: fam:n var:n na:^ nu:n :}
+: PF-DUP? ( n n str -- bool ) {: fam:n var:n ns:str :}
    fam var FVX-FIRST
    BEGIN dup 0 <> WHILE
       dup 1 - PF-REC@ {: r:^ :}
       fam var r PF-ROW-OWNER? IF
-         r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ na nu STR:= IF drop RES-TRUE EXIT THEN
+         r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ ns STR:= IF drop RES-TRUE EXIT THEN
       THEN
       FVX-NEXT
    REPEAT
    drop RES-FALSE ;
 
 : PF-ADD ( n n str n n n n n n n -- )
-   {: fam:n var:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+   {: fam:n var:n ns:str sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    WRITE-WINDOW-CK
-   na nu PF-NAME-REQUIRE
-   fam var na nu PF-DUP? IF E-TFAM-DUP throw THEN
+   ns PF-NAME-REQUIRE
+   fam var ns PF-DUP? IF E-TFAM-DUP throw THEN
    PF-ENSURE
-   na nu TF-INTERN {: noff:n :}
+   ns TF-INTERN {: noff:n :}
    PF-N @ {: id:n :}
    id PF-REC@ {: r:^ :}
    fam r PF.FAM !   var r PF.VAR !
-   noff r PF.NAME-OFF !   nu r PF.NAME-U !   sch r PF.SCH !
+   noff r PF.NAME-OFF !   ns STR:LEN r PF.NAME-U !   sch r PF.SCH !
    slot r PF.SLOT !   cellsn r PF.CELLS !
    boff r PF.BYTE-OFF !   bytesn r PF.BYTES !
    al r PF.ALIGN !   flags r PF.FLAGS !   0 r PF.ACCESSOR-SYM !
@@ -2357,73 +2359,73 @@ seal-package
 package TFAM
 private
 
-: TFAM-ADDR-FIELD-TAIL? ( str n -- bool ) {: a:^ u:n fam:n :}   \ tail names a COMMITTED field of fam
+: TFAM-ADDR-FIELD-TAIL? ( str n -- bool ) {: s:str fam:n :}   \ tail names a COMMITTED field of fam
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
       fs i + {: id:n :}
       id PF-N@ < IF
-         id PF-NAME$ a u STR:=CI IF RES-TRUE unloop EXIT THEN
+         id PF-NAME$ s STR:=CI IF RES-TRUE unloop EXIT THEN
       THEN
    loop RES-FALSE ;
 
-: TFAM-ADDR-FIXED-TAIL? ( str -- bool ) {: a:^ u:n :}   \ a fixed addr member tail
-   a u s" at" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" bytes" STR:=CI IF RES-TRUE EXIT THEN
-   a u s" cells" STR:=CI ;
+: TFAM-ADDR-FIXED-TAIL? ( str -- bool ) {: s:str :}   \ a fixed addr member tail
+   s s" at" STR:=CI IF RES-TRUE EXIT THEN
+   s s" bytes" STR:=CI IF RES-TRUE EXIT THEN
+   s s" cells" STR:=CI ;
 
-: TFAM-ADDR-TAIL? ( str n -- bool ) {: a:^ u:n fam:n :}   \ member tail the FAMILY generates
+: TFAM-ADDR-TAIL? ( str n -- bool ) {: s:str fam:n :}   \ member tail the FAMILY generates
    fam TFAM-DERIVE-ADDR? 0= IF RES-FALSE EXIT THEN
-   a u TFAM-ADDR-FIXED-TAIL? IF RES-TRUE EXIT THEN
-   a u fam TFAM-ADDR-FIELD-TAIL? ;
+   s TFAM-ADDR-FIXED-TAIL? IF RES-TRUE EXIT THEN
+   s fam TFAM-ADDR-FIELD-TAIL? ;
 
-: TFAM-ADDR-AT? ( str n -- bool ) {: a:^ u:n id:n :}   \ split name = id-family accessor?
+: TFAM-ADDR-AT? ( str n -- bool ) {: s:str id:n :}   \ split name = id-family accessor?
    TF-CW-HEAD$ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u TF-CW-TAIL$ id SUMV-FAM@ TFAM-ADDR-TAIL? ;
+   s TF-CW-TAIL$ id SUMV-FAM@ TFAM-ADDR-TAIL? ;
 
 \ The private spelling carries no colon, so the member is recovered by deriving
 \ each candidate spelling and comparing, as TFAM-PRIV-MEMBER? does.
-: TFAM-ADDR-PRIV-FIXED? ( str n -- bool ) {: a:^ u:n fam:n :}
-   a u  fam TFAM-NAME$ s" at"    TF-CTOR-PRIV$ STR:=CI IF RES-TRUE EXIT THEN
-   a u  fam TFAM-NAME$ s" bytes" TF-CTOR-PRIV$ STR:=CI IF RES-TRUE EXIT THEN
-   a u  fam TFAM-NAME$ s" cells" TF-CTOR-PRIV$ STR:=CI ;
+: TFAM-ADDR-PRIV-FIXED? ( str n -- bool ) {: s:str fam:n :}
+   s  fam TFAM-NAME$ s" at"    TF-CTOR-PRIV$ STR:=CI IF RES-TRUE EXIT THEN
+   s  fam TFAM-NAME$ s" bytes" TF-CTOR-PRIV$ STR:=CI IF RES-TRUE EXIT THEN
+   s  fam TFAM-NAME$ s" cells" TF-CTOR-PRIV$ STR:=CI ;
 
-: TFAM-ADDR-PRIV-FIELD? ( str n -- bool ) {: a:^ u:n fam:n :}
+: TFAM-ADDR-PRIV-FIELD? ( str n -- bool ) {: s:str fam:n :}
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
       fs i + {: id:n :}
       id PF-N@ < IF
-         a u  fam TFAM-NAME$ id PF-NAME$ TF-CTOR-PRIV$ STR:=CI IF RES-TRUE unloop EXIT THEN
+         s  fam TFAM-NAME$ id PF-NAME$ TF-CTOR-PRIV$ STR:=CI IF RES-TRUE unloop EXIT THEN
       THEN
    loop RES-FALSE ;
 
-: TFAM-ADDR-PRIV-AT? ( str n -- bool ) {: a:^ u:n id:n :}
+: TFAM-ADDR-PRIV-AT? ( str n -- bool ) {: s:str id:n :}
    id SUMV-FAM@ {: fam:n :}
    fam TFAM-GEN-PUBLIC? IF RES-FALSE EXIT THEN
    fam TFAM-DERIVE-ADDR? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u fam TFAM-ADDR-PRIV-FIXED? IF RES-TRUE EXIT THEN
-   a u fam TFAM-ADDR-PRIV-FIELD? ;
+   s fam TFAM-ADDR-PRIV-FIXED? IF RES-TRUE EXIT THEN
+   s fam TFAM-ADDR-PRIV-FIELD? ;
 
 \ Both spellings, over the variant rows every addr family owns (a STRUCTURE with
 \ fields always has its make/unmake pair; visiting a family twice is free).
-: TFAM-ADDR-QUAL-FIND ( str -- n bool ) {: a:^ u:n :}
+: TFAM-ADDR-QUAL-FIND ( str -- n bool ) {: s:str :}
    0 BEGIN dup SUMV-N @ < WHILE
       {: j:n :}
-      a u j TFAM-ADDR-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
+      s j TFAM-ADDR-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
       j 1 +
    REPEAT drop 0 RES-FALSE ;
 
-: TFAM-ADDR-PRIV-FIND ( str -- n bool ) {: a:^ u:n :}
+: TFAM-ADDR-PRIV-FIND ( str -- n bool ) {: s:str :}
    0 BEGIN dup SUMV-N @ < WHILE
       {: j:n :}
-      a u j TFAM-ADDR-PRIV-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
+      s j TFAM-ADDR-PRIV-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
       j 1 +
    REPEAT drop 0 RES-FALSE ;
 
-: TFAM-ADDR-FIND ( str -- n bool ) {: a:^ u:n :}   \ accessor family
-   a u TF-CW-SPLIT? IF a u TFAM-ADDR-QUAL-FIND EXIT THEN
-   a u TFAM-ADDR-PRIV-FIND ;
+: TFAM-ADDR-FIND ( str -- n bool ) {: s:str :}   \ accessor family
+   s TF-CW-SPLIT? IF s TFAM-ADDR-QUAL-FIND EXIT THEN
+   s TFAM-ADDR-PRIV-FIND ;
 
 \ A FIELD name is canonical, while the two public initialized members add a
 \ final @ or !. Keep the suffix in its own buffer: TF-CTOR-PRIV$ builds into
@@ -2433,30 +2435,30 @@ SCRATCH-VARIABLE TF-INIT-CAP     \ TF-INIT-P's room, in cells
 : TF-INIT-TAIL ( -- ^u8 ) TF-INIT-P @ ;
 
 : TFAM-INIT-MEMBER$ ( n bool -- str ) {: fid:n store:bool :}
-   fid PF-NAME$ {: a:^ u:n :}
-   TF-INIT-P TF-INIT-CAP  u CELL / 1 +  1 ARENA-ROWS-ENSURE
-   u 0 ?do a i + c@ TF-UPPER-C TF-INIT-TAIL i + c! loop
-   store IF 33 ELSE 64 THEN TF-INIT-TAIL u + c!
-   TF-INIT-TAIL u 1 + ;
+   fid PF-NAME$ {: s:str :}
+   TF-INIT-P TF-INIT-CAP  s STR:LEN CELL / 1 +  1 ARENA-ROWS-ENSURE
+   s STR:LEN 0 ?do s STR:DATA i + c@ TF-UPPER-C TF-INIT-TAIL i + c! loop
+   store IF 33 ELSE 64 THEN TF-INIT-TAIL s STR:LEN + c!
+   TF-INIT-TAIL s STR:LEN 1 + >str ;
 
-: TFAM-INIT-TAIL? ( str n -- bool ) {: a:^ u:n fam:n :}
+: TFAM-INIT-TAIL? ( str n -- bool ) {: s:str fam:n :}
    fam TFAM-DERIVE-INIT? 0= IF RES-FALSE EXIT THEN
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
       fs i + {: fid:n :}
       fid PF-N@ < IF
-         a u fid RES-FALSE TFAM-INIT-MEMBER$ STR:=CI IF RES-TRUE unloop EXIT THEN
-         a u fid RES-TRUE TFAM-INIT-MEMBER$ STR:=CI IF RES-TRUE unloop EXIT THEN
+         s fid RES-FALSE TFAM-INIT-MEMBER$ STR:=CI IF RES-TRUE unloop EXIT THEN
+         s fid RES-TRUE TFAM-INIT-MEMBER$ STR:=CI IF RES-TRUE unloop EXIT THEN
       THEN
    loop RES-FALSE ;
 
-: TFAM-INIT-QUAL-AT? ( str n -- bool ) {: a:^ u:n id:n :}
+: TFAM-INIT-QUAL-AT? ( str n -- bool ) {: s:str id:n :}
    id SUMV-FAM@ {: fam:n :}
    fam TFAM-GEN-PUBLIC? 0= IF RES-FALSE EXIT THEN
    TF-CW-HEAD$ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u TF-CW-TAIL$ fam TFAM-INIT-TAIL? ;
+   s TF-CW-TAIL$ fam TFAM-INIT-TAIL? ;
 
-: TFAM-INIT-PRIV-AT? ( str n -- bool ) {: a:^ u:n id:n :}
+: TFAM-INIT-PRIV-AT? ( str n -- bool ) {: s:str id:n :}
    id SUMV-FAM@ {: fam:n :}
    fam TFAM-DERIVE-INIT? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
@@ -2466,34 +2468,34 @@ SCRATCH-VARIABLE TF-INIT-CAP     \ TF-INIT-P's room, in cells
       fs i + {: fid:n :}
       fid PF-N@ < IF
          fam TFAM-GEN-PUBLIC? 0= IF
-            a u fam TFAM-NAME$ fid RES-FALSE TFAM-INIT-MEMBER$
+            s fam TFAM-NAME$ fid RES-FALSE TFAM-INIT-MEMBER$
                TF-CTOR-PRIV$ STR:=CI IF RES-TRUE unloop EXIT THEN
-            a u fam TFAM-NAME$ fid RES-TRUE TFAM-INIT-MEMBER$
+            s fam TFAM-NAME$ fid RES-TRUE TFAM-INIT-MEMBER$
                TF-CTOR-PRIV$ STR:=CI IF RES-TRUE unloop EXIT THEN
          THEN
       THEN
    loop RES-FALSE ;
 
-: TFAM-INIT-QUAL-FIND ( str -- n bool ) {: a:^ u:n :}
+: TFAM-INIT-QUAL-FIND ( str -- n bool ) {: s:str :}
    0 BEGIN dup SUMV-N @ < WHILE
       {: j:n :}
-      a u j TFAM-INIT-QUAL-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
+      s j TFAM-INIT-QUAL-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
       j 1 +
    REPEAT drop 0 RES-FALSE ;
 
-: TFAM-INIT-PRIV-FIND ( str -- n bool ) {: a:^ u:n :}
+: TFAM-INIT-PRIV-FIND ( str -- n bool ) {: s:str :}
    0 BEGIN dup SUMV-N @ < WHILE
       {: j:n :}
-      a u j TFAM-INIT-PRIV-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
+      s j TFAM-INIT-PRIV-AT? IF j SUMV-FAM@ RES-TRUE EXIT THEN
       j 1 +
    REPEAT drop 0 RES-FALSE ;
 
-: TFAM-INIT-FIND ( str -- n bool ) {: a:^ u:n :}
-   a u TF-CW-SPLIT? IF a u TFAM-INIT-QUAL-FIND EXIT THEN
-   a u TFAM-INIT-PRIV-FIND ;
+: TFAM-INIT-FIND ( str -- n bool ) {: s:str :}
+   s TF-CW-SPLIT? IF s TFAM-INIT-QUAL-FIND EXIT THEN
+   s TFAM-INIT-PRIV-FIND ;
 
 : TFAM-ADDR-FIND-INSTALL ( -- )
-   [: 2dup TFAM-ADDR-FIND IF nip nip RES-TRUE EXIT THEN
+   [: dup TFAM-ADDR-FIND IF nip RES-TRUE EXIT THEN
       drop TFAM-INIT-FIND ;] is TFAM-ADDR-FIND-XT ;
 TFAM-ADDR-FIND-INSTALL
 
@@ -2882,8 +2884,8 @@ REGISTER-STR
 \ context (preverify parent and runtime child), so both see identical families.
 
 : TFAM-REG-CELL ( str n -- )
-   {: na:^ nu:n ar:n :}
-   s" " CHECKER-PACKAGE-PUBLIC na nu ar TK-CELL TFAM-DECL drop ;
+   {: ns:str ar:n :}
+   s" " CHECKER-PACKAGE-PUBLIC ns ar TK-CELL TFAM-DECL drop ;
 
 \ `ptr<space,elem>` is a parametric pointer (T-PARAM, resolved here); the plain
 \ pointer is `^elem` (MK-PTR, checker.f SIG-TYPE), and a `ptr` without `<` names
@@ -2944,8 +2946,8 @@ s" redx"       1 TFAM-REG-CELL
 \ verifier and runtime child agree.
 
 : PTX-FAM-ID ( str -- n )   \ resolve a GLOBAL family name to its id (0 if none)
-   {: na:^ nu:n :}
-   s" " na nu TFAM-FIND-IN IF ELSE drop 0 THEN ;
+   {: ns:str :}
+   s" " ns TFAM-FIND-IN IF ELSE drop 0 THEN ;
 s" tile"    PTX-FAM-ID PTX-TILE-FAM !
 s" uniform" PTX-FAM-ID PTX-UNIFORM-FAM !
 \ The WAIT step ( cpp-committed<p> -- cpp-ready<p> ) retires the copy group and
@@ -3115,15 +3117,15 @@ PTR-VARIABLE ED-BUF   SCRATCH-VARIABLE ED-CAP   variable ED-N    \ a family's de
 PTR-VARIABLE ES-BUF   SCRATCH-VARIABLE ES-CAP   variable ES-N    \ schema nodes read, not yet rooted
 create ET-CH 8 allot
 
-\ Appends a u to the byte store pv, whose length cell is nv.
+\ Appends s to the byte store pv, whose length cell is nv.
 : ENTRY-S, ( str ^^u8 ^n ^n -- )
-   {: a:^ u:n pv:^ capv:^ nv:^ :}
-   pv capv  nv @ u +  ARENA-BYTES-ENSURE
-   u 0 ?do a i + c@  pv @ nv @ i + +  c! loop
-   nv @ u + nv ! ;
+   {: s:str pv:^ capv:^ nv:^ :}
+   pv capv  nv @ s STR:LEN +  ARENA-BYTES-ENSURE
+   s STR:LEN 0 ?do s STR:DATA i + c@  pv @ nv @ i + +  c! loop
+   nv @ s STR:LEN + nv ! ;
 
 : ET-S, ( str -- ) ET-BUF ET-CAP ET-N ENTRY-S, ;
-: ET-C, ( n -- ) ET-CH c!  ET-CH 1 ET-S, ;
+: ET-C, ( n -- ) ET-CH c!  ET-CH 1 >str ET-S, ;
 : ET-SEP ( -- ) ET-N @ 0 <> IF 32 ET-C, THEN ;
 
 
@@ -3141,27 +3143,27 @@ create ET-CH 8 allot
    v ET-DIGITS ;
 
 
-: ET-NAME ( str -- ) {: a:^ u:n :}
+: ET-NAME ( str -- ) {: s:str :}
    ET-SEP
-   u 0= IF 45 ET-C, EXIT THEN
-   a u ET-S, ;
+   s STR:LEN 0= IF 45 ET-C, EXIT THEN
+   s ET-S, ;
 
 
 : ET-FAM ( n -- ) {: id:n :}
    ET-SEP
-   id TFAM-PKG$ {: pa:^ pu:n :}
-   pu 0 <> IF pa pu ET-S,  58 ET-C, THEN
+   id TFAM-PKG$ {: p:str :}
+   p STR:LEN 0 <> IF p ET-S,  58 ET-C, THEN
    id TFAM-NAME$ ET-S, ;
 
 
-: EN-NAME ( str str -- str ) {: pa:^ pu:n na:^ nu:n :}
+: EN-NAME ( str str -- str ) {: ps:str ns:str :}
    0 EN-N !
-   pu 0 <> IF
-      pa pu EN-BUF EN-CAP EN-N ENTRY-S,
+   ps STR:LEN 0 <> IF
+      ps EN-BUF EN-CAP EN-N ENTRY-S,
       s" :" EN-BUF EN-CAP EN-N ENTRY-S,
    THEN
-   na nu EN-BUF EN-CAP EN-N ENTRY-S,
-   EN-BUF @ EN-N @ ;
+   ns EN-BUF EN-CAP EN-N ENTRY-S,
+   EN-BUF @ EN-N @ >str ;
 
 
 : ED-HAS? ( n -- bool ) {: fam:n :}
@@ -3229,8 +3231,8 @@ create ET-CH 8 allot
 
 : ET-SYM ( n -- ) {: sym:n :}
    sym 0= IF s" " ET-NAME EXIT THEN
-   sym CHECKER-SYM-IDENTITY {: pa:^ pu:n ta:^ tu:n vis:n :}
-   vis ET-NUM  pa pu ET-NAME  ta tu ET-NAME ;
+   sym CHECKER-SYM-IDENTITY {: p:str t:str vis:n :}
+   vis ET-NUM  p ET-NAME  t ET-NAME ;
 
 
 : ET-VARIANT ( n -- ) {: v:n :}
@@ -3272,63 +3274,63 @@ create ET-CH 8 allot
    id TFAM-FLD-COUNT@ ET-NUM
    id TFAM-FLD-COUNT@ 0 ?do id TFAM-FLD-START@ i + id TFAM-VAR-START@ ET-FIELD loop
    id LAY-FIND IF 1 ET-NUM ET-LAY ELSE drop 0 ET-NUM THEN
-   ET-BUF @ ET-N @ ;
+   ET-BUF @ ET-N @ >str ;
 
 PTR-VARIABLE ER-P   variable ER-U          \ the rest of the text being read
 
 \ The index of the last ':' in a name, -1 for none.
-: LAST-COLON ( str -- n ) {: a:^ u:n :}
-   -1 0 BEGIN dup u < WHILE
+: LAST-COLON ( str -- n ) {: s:str :}
+   -1 0 BEGIN dup s STR:LEN < WHILE
       {: i:n :}
-      a i + c@ 58 = IF drop i THEN
+      s STR:DATA i + c@ 58 = IF drop i THEN
       i 1 +
    REPEAT drop ;
 
 
 \ `pkg:tail` as package and tail, split at the last colon; a bare tail is
 \ package "". False for an edge colon.
-: SPLIT-NAME ( str -- str str bool ) {: a:^ u:n :}
-   a u LAST-COLON {: c:n :}
-   c 0 < IF a 0 a u RES-TRUE EXIT THEN
-   c 0 = c u 1 - = or IF a 0 a u RES-FALSE EXIT THEN
-   a c  a c + 1 +  u c - 1 -  RES-TRUE ;
+: SPLIT-NAME ( str -- str str bool ) {: s:str :}
+   s LAST-COLON {: c:n :}
+   c 0 < IF s STR:DATA 0 >str s RES-TRUE EXIT THEN
+   c 0 = c s STR:LEN 1 - = or IF s STR:DATA 0 >str s RES-FALSE EXIT THEN
+   s STR:DATA c >str  s STR:DATA c + 1 +  s STR:LEN c - 1 - >str  RES-TRUE ;
 
 
 \ The bytes before the first blank.
-: ER-LEN ( str -- n ) {: a:^ u:n :}
-   0 BEGIN dup u < WHILE
-      dup a + c@ 32 = IF EXIT THEN
+: ER-LEN ( str -- n ) {: s:str :}
+   0 BEGIN dup s STR:LEN < WHILE
+      dup s STR:DATA + c@ 32 = IF EXIT THEN
       1 +
    REPEAT ;
 
 
 : ER-TOKEN ( -- str )
    ER-P @ ER-U @ {: a:^ u:n :}
-   a u ER-LEN {: k:n :}
+   a u >str ER-LEN {: k:n :}
    k u < IF a k + 1 + ER-P !  u k - 1 - ER-U !
    ELSE a u + ER-P !  0 ER-U ! THEN
-   a k ;
+   a k >str ;
 
 
-: ER-DIGITS ( str -- n ) {: a:^ u:n :}
-   0 0 BEGIN dup u < WHILE
+: ER-DIGITS ( str -- n ) {: s:str :}
+   0 0 BEGIN dup s STR:LEN < WHILE
       {: acc:n i:n :}
-      a i + c@ 48 - {: d:n :}
+      s STR:DATA i + c@ 48 - {: d:n :}
       acc 10 * d +  i 1 +
    REPEAT drop ;
 
 
 \ A decimal cell, with a leading - when negative.
-: ER-INT ( str -- n ) {: a:^ u:n :}
-   a c@ 45 = IF a 1 + u 1 - ER-DIGITS negate EXIT THEN
-   a u ER-DIGITS ;
+: ER-INT ( str -- n ) {: s:str :}
+   s STR:DATA c@ 45 = IF s STR:DATA 1 + s STR:LEN 1 - >str ER-DIGITS negate EXIT THEN
+   s ER-DIGITS ;
 : ER-NUM ( -- n ) ER-TOKEN ER-INT ;
 
 
 : ER-NAME$ ( -- str )
-   ER-TOKEN {: a:^ u:n :}
-   u 1 = IF a c@ 45 = IF a 0 EXIT THEN THEN
-   a u ;
+   ER-TOKEN {: s:str :}
+   s STR:LEN 1 = IF s STR:DATA c@ 45 = IF s STR:DATA 0 >str EXIT THEN THEN
+   s ;
 
 
 \ A family the registry holds, by its exact name.
@@ -3354,7 +3356,7 @@ PTR-VARIABLE ER-P   variable ER-U          \ the rest of the text being read
 \ A node's children are built and staged before its own roots are pushed, so
 \ each node's roots stay contiguous.
 : ER-NODE ( -- n )
-   ER-TOKEN drop c@ {: c:n :}
+   ER-TOKEN STR:DATA c@ {: c:n :}
    c 80 = IF ER-NUM SCHEMA-PARAM EXIT THEN
    c 67 = IF ER-TOKEN CT-FIND SCHEMA-CON EXIT THEN
    c 42 = IF recurse SCHEMA-PTR EXIT THEN
@@ -3380,32 +3382,32 @@ PTR-VARIABLE ER-P   variable ER-U          \ the rest of the text being read
 
 
 : ER-SYM ( -- n )
-   ER-TOKEN {: a:^ u:n :}
-   u 1 = IF a c@ 45 = IF 0 EXIT THEN THEN
-   a u ER-INT {: vis:n :}
-   ER-NAME$ {: pa:^ pu:n :}
-   ER-TOKEN {: ta:^ tu:n :}
-   pa pu vis ta tu CHECKER-PKG-SYM ;
+   ER-TOKEN {: s:str :}
+   s STR:LEN 1 = IF s STR:DATA c@ 45 = IF 0 EXIT THEN THEN
+   s ER-INT {: vis:n :}
+   ER-NAME$ {: p:str :}
+   ER-TOKEN {: t:str :}
+   p vis t CHECKER-PKG-SYM ;
 
 
 \ Reads one variant of family id.
 : ER-VARIANT ( n -- ) {: id:n :}
-   ER-TOKEN {: na:^ nu:n :}
+   ER-TOKEN {: ns:str :}
    ER-NUM {: tag:n :}
    ER-NUM {: pc:n :}
-   ER-NAME$ {: ca:^ cu:n :}
+   ER-NAME$ {: cs:str :}
    ER-SYM {: sym:n :}
    ER-NUM {: k:n :}
    ES-N @ {: mark:n :}
    k 0 ?do ER-NODE ES-PUSH loop
    mark ES-ROOTS {: ss:n :}
-   id na nu tag ss k pc SUMV-ADD {: v:n :}
-   cu 0 <> IF v ca cu TF-INTERN cu SUMV-CTOR-PKG! THEN
+   id ns tag ss k pc SUMV-ADD {: v:n :}
+   cs STR:LEN 0 <> IF v cs TF-INTERN cs STR:LEN SUMV-CTOR-PKG! THEN
    sym 0 <> IF v sym SUMV-CTOR-SYM! THEN ;
 
 
 : ER-FIELD ( n n -- ) {: id:n vstart:n :}
-   ER-TOKEN {: na:^ nu:n :}
+   ER-TOKEN {: ns:str :}
    ER-NUM {: vo:n :}
    vo 0 < IF PF-NO-VARIANT ELSE vstart vo + THEN {: var:n :}
    ER-NUM {: slot:n :}
@@ -3417,16 +3419,16 @@ PTR-VARIABLE ER-P   variable ER-U          \ the rest of the text being read
    ER-SYM {: sym:n :}
    ER-NODE SCHEMA-ROOT+ {: root:n :}
    PF-N @ {: fid:n :}
-   id var na nu root slot nc boff nb al flags PF-ADD
+   id var ns root slot nc boff nb al flags PF-ADD
    fid sym FIELD-SYM! ;
 
 
 \ The family's declaration and its scalar rows, before the families it names.
-: ER-HEAD ( str str n -- n ) {: pa:^ pu:n ta:^ tu:n ix:n :}
+: ER-HEAD ( str str n -- n ) {: ps:str ts:str ix:n :}
    ER-NUM {: kind:n :}
    ER-NUM {: vis:n :}
    ER-NUM {: arity:n :}
-   pa pu vis ta tu arity kind TFAM-DECL {: id:n :}
+   ps vis ts arity kind TFAM-DECL {: id:n :}
    id ix ENTRY!
    arity 0 ?do id i ER-NUM TFAM-PK! loop
    id ER-NUM TFAM-LAYOUT!
@@ -3485,11 +3487,11 @@ EXPORT BOOT:TYPES-WL
 \ The record of family `pkg:tail`'s type entry while one is still to be read,
 \ else NULL-PTR. The probe is no dependency of the part: a linked piece gave the entry.
 : ER-PROBE ( str str -- ^n )
-   {: pa:^ pu:n na:^ nu:n :}
+   {: ps:str ns:str :}
    ENTRIES-PENDING @ 0= IF NULL-PTR EXIT THEN
    TYPES-WL {: wid:n :}
    wid 0= IF NULL-PTR EXIT THEN
-   pa pu na nu EN-NAME wid xref-search-wl {: rec:^ :}
+   ps ns EN-NAME wid xref-search-wl {: rec:^ :}
    rec NULL-PTR = IF NULL-PTR EXIT THEN
    \ A linear type's entry shares the wordlist; its text starts `linear`, which is no family.
    rec REC>INDEX FACTS@ LINEAR-TEXT? IF NULL-PTR EXIT THEN
@@ -3500,13 +3502,13 @@ EXPORT BOOT:TYPES-WL
 : ER-READ ( ^n -- n ) {: rec:^ :}
    rec REC>INDEX {: ix:n :}
    ER-P @ ER-U @ {: sp:^ su:n :}
-   ix FACTS@ ER-U ! ER-P !
+   ix FACTS@ dup STR:LEN ER-U ! STR:DATA ER-P !
    rec CK-REC-NAME$ SPLIT-NAME drop  ix ER-HEAD {: id:n :}
    ER-NUM 0 ?do
       ER-TOKEN SPLIT-NAME drop
-      {: qa:^ qu:n ta:^ tu:n :}
-      qa qu ta tu TFAM-FIND-IN nip 0= IF
-         qa qu ta tu ER-PROBE recurse drop
+      {: qs:str ts:str :}
+      qs ts TFAM-FIND-IN nip 0= IF
+         qs ts ER-PROBE recurse drop
       THEN
    loop
    id ER-BODY
@@ -3516,16 +3518,16 @@ EXPORT BOOT:TYPES-WL
 \ TFAM-FIND-IN, else the family's type entry `pkg:tail` read into the registry
 \ (ER-READ).
 : TFAM-FIND ( str str -- n bool )
-   {: pa:^ pu:n na:^ nu:n :}
-   pa pu na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN drop
-   pa pu na nu ER-PROBE {: rec:^ :}
+   {: ps:str ns:str :}
+   ps ns TFAM-FIND-IN IF RES-TRUE EXIT THEN drop
+   ps ns ER-PROBE {: rec:^ :}
    rec NULL-PTR = IF 0 RES-FALSE EXIT THEN
    rec ER-READ RES-TRUE ;
 
 \ The family a spelling names exactly, with no scope or fallback: a bare tail is
 \ package "", else path:tail split at the last colon.
 : TFAM-FIND-SPELLED ( str -- n bool )
-   SPLIT-NAME 0= IF 2drop 2drop 0 RES-FALSE EXIT THEN
+   SPLIT-NAME 0= IF drop drop 0 RES-FALSE EXIT THEN
    TFAM-FIND ;
 
 
@@ -3549,19 +3551,19 @@ EXPORT BOOT:TYPES-WL
    0 ENTRIES-PENDING ! ;
 
 
-\ A `using` import names its package's public families: the family tail na nu
+\ A `using` import names its package's public families: the family tail ns
 \ names in the package of using slot ix.
-: TFAM-USED-FIND ( n str -- n bool ) {: ix:n na:^ nu:n :}
-   ix CHECKER-USING$ na nu TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
+: TFAM-USED-FIND ( n str -- n bool ) {: ix:n ns:str :}
+   ix CHECKER-USING$ ns TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-PUBLIC? IF id RES-TRUE ELSE 0 RES-FALSE THEN ;
 
 \ Repeating an import still names the same family; two distinct matches throw
 \ E-TFAM-AMBIG.
-: TFAM-FIND-USED ( str -- n bool ) {: na:^ nu:n :}
+: TFAM-FIND-USED ( str -- n bool ) {: ns:str :}
    -1 TF-PUB !
    CHECKER-USING-N 0 ?DO
-      i na nu TFAM-USED-FIND IF
+      i ns TFAM-USED-FIND IF
          {: id:n :}
          TF-PUB @ 0< IF id TF-PUB !
          ELSE id TF-PUB @ <> IF E-TFAM-AMBIG throw THEN THEN
@@ -3569,10 +3571,10 @@ EXPORT BOOT:TYPES-WL
    LOOP
    TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
 
-\ Bit i set when using slot i offers the family tail na nu.
-: TFAM-USED-MASK ( str -- n ) {: na:^ nu:n :}
+\ Bit i set when using slot i offers the family tail ns.
+: TFAM-USED-MASK ( str -- n ) {: ns:str :}
    0  CHECKER-USING-N 0 ?DO
-      i na nu TFAM-USED-FIND nip IF 1 i lshift or THEN
+      i ns TFAM-USED-FIND nip IF 1 i lshift or THEN
    LOOP ;
 
 \ A bare tail resolves as a bare word does: the active package's exact row
@@ -3581,19 +3583,19 @@ EXPORT BOOT:TYPES-WL
 \ `PKG:tail` or an import. At top level the first exact lookup is already
 \ global. Compaction-hidden `@name` tokens never resolve.
 : TFAM-RESOLVE ( str str -- n bool )
-   {: pa:^ pu:n na:^ nu:n :}
-   na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
-   pa pu na nu TFAM-FIND IF RES-TRUE EXIT THEN
+   {: ps:str ns:str :}
+   ns TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
+   ps ns TFAM-FIND IF RES-TRUE EXIT THEN
    drop
-   pa pu CHECKER-COLON-SCAN drop 0 <> IF
-      pa pu TOP$ na nu TFAM-FIND IF RES-TRUE EXIT THEN
+   ps CHECKER-COLON-SCAN drop 0 <> IF
+      ps TOP$ ns TFAM-FIND IF RES-TRUE EXIT THEN
       drop
    THEN
-   pu 0 <> IF
-      s" " na nu TFAM-FIND IF RES-TRUE EXIT THEN
+   ps STR:LEN 0 <> IF
+      s" " ns TFAM-FIND IF RES-TRUE EXIT THEN
       drop
    THEN
-   na nu TFAM-FIND-USED ;
+   ns TFAM-FIND-USED ;
 
 PTR-VARIABLE TFQ-P
 SCRATCH-VARIABLE TFQ-CAP          \ TFQ-P's room, in cells
@@ -3603,22 +3605,22 @@ variable TFQ-U
 PTR-VARIABLE TFQ-TA   variable TFQ-TU  \ qualified tail token
 variable TFQ-COLON
 
-: TFQ-FOLD-COPY ( str -- ) {: a:^ u:n :}
-   TFQ-P TFQ-CAP  u CELL / 1 +  1 ARENA-ROWS-ENSURE
-   0 BEGIN dup u < WHILE
+: TFQ-FOLD-COPY ( str -- ) {: s:str :}
+   TFQ-P TFQ-CAP  s STR:LEN CELL / 1 +  1 ARENA-ROWS-ENSURE
+   0 BEGIN dup s STR:LEN < WHILE
       {: i:n :}
-      a i + c@ STR:ASCII-LOWER  TFQ-BUF i + c!
+      s STR:DATA i + c@ STR:ASCII-LOWER  TFQ-BUF i + c!
       i 1 +
    REPEAT drop
-   u TFQ-U ! ;
+   s STR:LEN TFQ-U ! ;
 
 \ One non-edge ':' splits qualifier and tail (engine FIND parity) and folds the
 \ written qualifier into TFQ-BUF.
-: TFQ-SPLIT? ( str -- bool ) {: a:^ u:n :}
+: TFQ-SPLIT? ( str -- bool ) {: s:str :}
    -1 TFQ-COLON !
-   0 BEGIN dup u < WHILE
+   0 BEGIN dup s STR:LEN < WHILE
       {: i:n :}
-      a i + c@ 58 = IF
+      s STR:DATA i + c@ 58 = IF
          TFQ-COLON @ 0 < 0= IF RES-FALSE EXIT THEN   \ second ':' -> malformed
          i TFQ-COLON !
       THEN
@@ -3626,10 +3628,10 @@ variable TFQ-COLON
    REPEAT drop
    TFQ-COLON @ 0 < IF RES-FALSE EXIT THEN
    TFQ-COLON @ 0 = IF RES-FALSE EXIT THEN            \ leading ':'
-   TFQ-COLON @ u 1 - = IF RES-FALSE EXIT THEN        \ trailing ':'
-   a TFQ-COLON @ TFQ-FOLD-COPY
-   a TFQ-COLON @ + 1 + TFQ-TA !
-   u TFQ-COLON @ - 1 - TFQ-TU !
+   TFQ-COLON @ s STR:LEN 1 - = IF RES-FALSE EXIT THEN        \ trailing ':'
+   s STR:DATA TFQ-COLON @ >str TFQ-FOLD-COPY
+   s STR:DATA TFQ-COLON @ + 1 + TFQ-TA !
+   s STR:LEN TFQ-COLON @ - 1 - TFQ-TU !
    RES-TRUE ;
 
 \ How a family token resolved: SR-AMBIG is a bare tail two used packages make
@@ -3639,39 +3641,39 @@ variable TFQ-COLON
 2 constant SR-AMBIG
 3 constant SR-HIDDEN
 
-\ The split tail's family in package qa, seen from package pa.
+\ The split tail's family in package qs, seen from package ps.
 : TFAM-QUAL-IN ( str str -- n n )
-   {: qa:^ qu:n pa:^ pu:n :}
-   TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 SR-ABSENT EXIT THEN
-   qa qu TFQ-TA @ TFQ-TU @ TFAM-FIND 0= IF drop 0 SR-ABSENT EXIT THEN
+   {: qs:str ps:str :}
+   TFQ-TA @ TFQ-TU @ >str TF-CANON? 0= IF 0 SR-ABSENT EXIT THEN
+   qs TFQ-TA @ TFQ-TU @ >str TFAM-FIND 0= IF drop 0 SR-ABSENT EXIT THEN
    {: id:n :}
    id TFAM-PUBLIC? IF id SR-FOUND EXIT THEN
-   qa qu pa pu STR:=CI IF id SR-FOUND EXIT THEN   \ own private rows
+   qs ps STR:=CI IF id SR-FOUND EXIT THEN   \ own private rows
    0 SR-HIDDEN ;
 
-: TFAM-QUAL-RESOLVE ( str -- n n ) {: pa:^ pu:n :}
-   TFQ-BUF TFQ-U @ TFQ-HEAD$ pa pu TFAM-QUAL-IN ;
+: TFAM-QUAL-RESOLVE ( str -- n n ) {: ps:str :}
+   TFQ-BUF TFQ-U @ >str TFQ-HEAD$ ps TFAM-QUAL-IN ;
 
 \ A qualified spelling's family in the package its qualifier names as
-\ written, which no part of package pa shadows; a bare one answers false.
+\ written, which no part of package ps shadows; a bare one answers false.
 : TFAM-EXACT-RESOLVE ( str str -- n bool )
-   {: pa:^ pu:n na:^ nu:n :}
-   na nu TFQ-SPLIT? 0= IF 0 RES-FALSE EXIT THEN
-   TFQ-BUF TFQ-U @ pa pu TFAM-QUAL-IN SR-FOUND = ;
+   {: ps:str ns:str :}
+   ns TFQ-SPLIT? 0= IF 0 RES-FALSE EXIT THEN
+   TFQ-BUF TFQ-U @ >str ps TFAM-QUAL-IN SR-FOUND = ;
 
-\ The family token na nu names in package pa and how it resolved; an ambiguous
+\ The family token ns names in package ps and how it resolved; an ambiguous
 \ public tail (E-TFAM-AMBIG) answers SR-AMBIG.
 : TFAM-SIG-RESOLVE ( str str -- n n )
-   {: pa:^ pu:n na:^ nu:n :}
+   {: ps:str ns:str :}
    SIG-FACTS-MODE @ IF   \ facts may start "@:"
-      na nu TFAM-FIND-SPELLED IF SR-FOUND ELSE SR-ABSENT THEN EXIT
+      ns TFAM-FIND-SPELLED IF SR-FOUND ELSE SR-ABSENT THEN EXIT
    THEN
-   na nu TF-HIDDEN? IF 0 SR-ABSENT EXIT THEN
-   na nu TFQ-SPLIT? IF
-      SIG-EXACT-MODE @ IF TFQ-BUF TFQ-U @ pa pu TFAM-QUAL-IN EXIT THEN
-      pa pu TFAM-QUAL-RESOLVE EXIT
+   ns TF-HIDDEN? IF 0 SR-ABSENT EXIT THEN
+   ns TFQ-SPLIT? IF
+      SIG-EXACT-MODE @ IF TFQ-BUF TFQ-U @ >str ps TFAM-QUAL-IN EXIT THEN
+      ps TFAM-QUAL-RESOLVE EXIT
    THEN
-   [: pa pu na nu TFAM-RESOLVE ;] catch {: id flag rc:n :}
+   [: ps ns TFAM-RESOLVE ;] catch {: id flag rc:n :}
    rc 0= IF id flag IF SR-FOUND ELSE SR-ABSENT THEN EXIT THEN
    rc E-TFAM-AMBIG = IF 0 SR-AMBIG EXIT THEN
    rc throw ;
@@ -3679,48 +3681,48 @@ variable TFQ-COLON
 \ The checker's TFAM-RESOLVE-XT target: an ambiguous tail fails the parse as
 \ SGBAD's ambiguous kind, with the using slots that offer it.
 : TFAM-PARSE-RESOLVE ( str str -- n bool )
-   {: pa:^ pu:n na:^ nu:n :}
-   pa pu na nu TFAM-SIG-RESOLVE {: id:n sr:n :}
-   sr SR-AMBIG = IF na nu  na nu TFAM-USED-MASK  SGBAD-AMBIG! THEN
+   {: ps:str ns:str :}
+   ps ns TFAM-SIG-RESOLVE {: id:n sr:n :}
+   sr SR-AMBIG = IF ns  ns TFAM-USED-MASK  SGBAD-AMBIG! THEN
    id  sr SR-FOUND = ;
 
 \ The signature parser asks this only after its normal family and concrete
 \ lookups missed. An ambiguous public tail, another package's private family, a
 \ malformed qualifier or a noncanonical family tail is not an absent
 \ declaration a quiet producer may explain.
-: TFAM-MAY-ARRIVE? ( str -- bool ) {: a:^ u:n :}
-   SIG-SCOPE$ a u TFAM-SIG-RESOLVE nip {: sr:n :}
+: TFAM-MAY-ARRIVE? ( str -- bool ) {: s:str :}
+   SIG-SCOPE$ s TFAM-SIG-RESOLVE nip {: sr:n :}
    sr SR-AMBIG =  sr SR-HIDDEN = or IF RES-FALSE EXIT THEN
-   a u TFQ-SPLIT? IF TFQ-TA @ TFQ-TU @ TF-CANON?
-   ELSE a u TF-CANON? THEN
-   IF a u CHECKER-TYPE-MARK-COVERS? ELSE RES-FALSE THEN ;
+   s TFQ-SPLIT? IF TFQ-TA @ TFQ-TU @ >str TF-CANON?
+   ELSE s TF-CANON? THEN
+   IF s CHECKER-TYPE-MARK-COVERS? ELSE RES-FALSE THEN ;
 
 : TFAM-MAY-ARRIVE-INSTALL ( -- )
    [: TFAM-MAY-ARRIVE? ;] is TYPE-MAY-ARRIVE-XT ;
 TFAM-MAY-ARRIVE-INSTALL
 
 \ The row's package is the qualifier, or a part `A:<qualifier>`.
-: TFAM-QUAL-PKG? ( str n -- bool ) {: qa:^ qu:n id:n :}
-   id TFAM-PKG$ {: pa:^ pu:n :}
-   pa pu qa qu STR:=CI IF RES-TRUE EXIT THEN
-   pu qu 1 + < IF RES-FALSE EXIT THEN
-   pa pu qu - 1 - + c@ 58 <> IF RES-FALSE EXIT THEN
-   pa pu qu - + qu qa qu STR:=CI ;
+: TFAM-QUAL-PKG? ( str n -- bool ) {: qs:str id:n :}
+   id TFAM-PKG$ {: p:str :}
+   p qs STR:=CI IF RES-TRUE EXIT THEN
+   p STR:LEN qs STR:LEN 1 + < IF RES-FALSE EXIT THEN
+   p STR:DATA p STR:LEN qs STR:LEN - 1 - + c@ 58 <> IF RES-FALSE EXIT THEN
+   p STR:DATA p STR:LEN qs STR:LEN - + qs STR:LEN >str qs STR:=CI ;
 
 \ Some scope reads this signature token as a family, which a DEFLINEAR or
 \ VALUE-RECORD name may not be (forth.md "Declaring your own scalar types").
-: TFAM-CLAIMED? ( str -- bool ) {: na:^ nu:n :}
+: TFAM-CLAIMED? ( str -- bool ) {: ns:str :}
    READ-PENDING
-   na nu TF-HIDDEN? IF RES-FALSE EXIT THEN
-   na nu TFQ-SPLIT? IF TFQ-TA @ TFQ-TU @ TFQ-BUF TFQ-U @
-   ELSE na nu NULL-PTR 0 THEN {: ta:^ tu:n qa:^ qu:n :}
+   ns TF-HIDDEN? IF RES-FALSE EXIT THEN
+   ns TFQ-SPLIT? IF TFQ-TA @ TFQ-TU @ >str TFQ-BUF TFQ-U @ >str
+   ELSE ns NULL-PTR 0 >str THEN {: ts:str qs:str :}
    TFX-ENSURE
-   ta tu TFX-HASH TFX-BKT @ TFX-CUR !
+   ts TFX-HASH TFX-BKT @ TFX-CUR !
    BEGIN TFX-CUR @ 0 <> WHILE
       TFX-CUR @ 1 - {: id:n :}
-      ta tu id TFAM-NAME-MATCH? IF
-         qu 0= IF RES-TRUE EXIT THEN
-         qa qu id TFAM-QUAL-PKG? IF RES-TRUE EXIT THEN
+      ts id TFAM-NAME-MATCH? IF
+         qs STR:LEN 0= IF RES-TRUE EXIT THEN
+         qs id TFAM-QUAL-PKG? IF RES-TRUE EXIT THEN
       THEN
       id TF-REC@ TF.TAILNEXT @ TFX-CUR !
    REPEAT
@@ -3781,7 +3783,7 @@ defer TFC-QUOT-ROW ( n n n -- n )   \ ( rownode base mode -- row )
          1 +
       REPEAT drop
       node SCHEMA-A@ {: fam:n :}
-      base fam TFAM-NAME$ fam MK-PARAM EXIT
+      base fam TFAM-NAME$ dup STR:DATA swap STR:LEN fam MK-PARAM EXIT
    THEN
    node SCHEMA-QUOT? IF                       \ xt-carrying payload: din/dout share a
       FRESH MK-QROW {: dbase:n :}             \ data base, rin/rout a return base: the
@@ -3928,10 +3930,10 @@ TFC-QUOT-ROW-INSTALL
    fid PF-BYTE-OFF@ fid PF-CELLS@ fid PF-BYTES@ RES-TRUE ;
 
 : INIT-FIELD-NAME? ( n str -- n n n bool )
-   {: record:n name:^ size:n :}
+   {: record:n name:str :}
    record INIT-RECORD? 0= IF drop drop drop 0 0 0 RES-FALSE EXIT THEN
    drop drop drop
-   record T-RES PARAM>FAM PF-NO-VARIANT name size PF-FIND
+   record T-RES PARAM>FAM PF-NO-VARIANT name PF-FIND
    0= IF drop 0 0 0 RES-FALSE EXIT THEN
    {: fid:n :}
    fid record INIT-FIELD? 0= IF 2drop 2drop 0 0 0 RES-FALSE EXIT THEN
@@ -3940,7 +3942,7 @@ TFC-QUOT-ROW-INSTALL
    record PARAM-SCR+
    fid PF-NAME$ MK-ATOM PARAM-SCR+
    field PARAM-SCR+
-   base s" field" FIELD-FAM @ MK-PARAM off bytes RES-TRUE ;
+   base s" field" dup STR:DATA swap STR:LEN FIELD-FAM @ MK-PARAM off bytes RES-TRUE ;
 
 \ A value owns only the fields in its instantiated schema. Reconstruct a field
 \ term with the same substitution used by MAKE/UNMAKE and MATCH; this avoids
@@ -4020,7 +4022,7 @@ TFAM-INST-LIN-INSTALL
 : EFFECT-OWNER ( n -- n ) {: span:n :}
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup span < WHILE dup EFFECT-VAR PARAM-SCR+ 1 + REPEAT drop
-   base s" effect" -1 MK-PARAM ;
+   base s" effect" dup STR:DATA swap STR:LEN -1 MK-PARAM ;
 
 \ One more than the largest parameter index a schema node holds, 0 for none.
 : PARAM-SPAN ( n -- n ) {: node:n :}
@@ -4142,7 +4144,7 @@ TFAM-MEMBERS-INSTALL
 : TFAM-FRESH-TERM ( n -- n ) {: fam:n :}
    PARAM-SCR-N @ {: base:n :}
    fam TFAM-ARITY@ 0 ?do fam i FRESH-PARAM PARAM-SCR+ loop
-   base fam TFAM-NAME$ fam MK-PARAM ;
+   base fam TFAM-NAME$ dup STR:DATA swap STR:LEN fam MK-PARAM ;
 
 \ A field accessor's input row over a fresh row BASE, `^F<..>`, from the
 \ committed field id FID, and its family term TERM, whose arguments the field's
@@ -4166,7 +4168,7 @@ TFAM-MEMBERS-INSTALL
    {: fam:n :}
    PARAM-SCR-N @ {: pbase:n :}
    CC-U8 MK-CON PARAM-SCR+
-   pbase fam TFAM-NAME$ fam MK-PARAM ;
+   pbase fam TFAM-NAME$ dup STR:DATA swap STR:LEN fam MK-PARAM ;
 
 \ A plain field accessor's rows and byte offset, from the committed field id
 \ FID: it takes `^F<..>` and answers `^T`, T the field's type over the
@@ -4201,11 +4203,11 @@ TFAM-MEMBERS-INSTALL
    C2-INIT-FAM @ 0 ar 3 + FRESH-LETTERED {: scope:n :}
    PARAM-SCR-N @ {: base:n :}
    scope PARAM-SCR+ term PARAM-SCR+
-   base s" init" C2-INIT-FAM @ MK-PARAM {: elem:n :}
+   base s" init" dup STR:DATA swap STR:LEN C2-INIT-FAM @ MK-PARAM {: elem:n :}
    PARAM-SCR-N @ {: vbase:n :}
    3 0 ?do C2-MUT-FAM @ i ar i + FRESH-LETTERED PARAM-SCR+ loop
    elem PARAM-SCR+
-   vbase s" mut-view" C2-MUT-FAM @ MK-PARAM ;
+   vbase s" mut-view" dup STR:DATA swap STR:LEN C2-MUT-FAM @ MK-PARAM ;
 
 \ An initialized field accessor's rows and field id, from its shape and the
 \ committed field id FID: INIT-GET takes the receiver and answers it and the
@@ -4299,7 +4301,7 @@ TFAM-MEMBERS-INSTALL
       TFC-I @ cells TFC-VARS + @ PARAM-SCR+
       TFC-I @ 1 + TFC-I !
    REPEAT
-   base fam TFAM-NAME$ fam MK-PARAM ;
+   base fam TFAM-NAME$ dup STR:DATA swap STR:LEN fam MK-PARAM ;
 
 \ A product's MAKE or UNMAKE rows over FAM's lettered variables, from its make
 \ or unmake variant: MAKE takes the fields and answers the value, UNMAKE the
@@ -4433,8 +4435,8 @@ EXPORT CHECK:OK
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-: TFAM-CONSTRUCT-FAM ( str -- n bool ) {: na:^ nu:n :}   \ folded family token -> id
-   TFAM-ACTIVE-PKG$ na nu TFAM-FIND 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+: TFAM-CONSTRUCT-FAM ( str -- n bool ) {: ns:str :}   \ folded family token -> id
+   TFAM-ACTIVE-PKG$ ns TFAM-FIND 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    TFAM-CONSTRUCT-KIND ;
 
 \ A node's family under the owner rule a spelled one meets: the active
@@ -4589,8 +4591,8 @@ EXPORT CHECK:OK
       dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open value/row: stay staged fail-closed
    THEN ;
 
-: TFAM-CONSTRUCT-STEP ( str n -- bool ) {: na:^ nu:n fam:n :}
-   fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG-COMPILE! RES-FALSE EXIT THEN
+: TFAM-CONSTRUCT-STEP ( str n -- bool ) {: ns:str fam:n :}
+   fam ns SUMV-FIND 0= IF drop MD-CON-VAR MDIAG-COMPILE! RES-FALSE EXIT THEN
    {: vid:n :}
    fam vid 2dup TFC-SEED TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;
@@ -4721,8 +4723,8 @@ EXPORT CHECK:OK
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-FAM-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-: TFAM-MATCH-FAM ( str -- n bool ) {: na:^ nu:n :}   \ folded family token
-   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE {: id:n sr:n :}
+: TFAM-MATCH-FAM ( str -- n bool ) {: ns:str :}   \ folded family token
+   TFAM-ACTIVE-PKG$ ns TFAM-SIG-RESOLVE {: id:n sr:n :}
    sr SR-AMBIG = IF MD-FAM-AMBIG MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    sr SR-FOUND <> IF MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id TFAM-MATCH-KIND ;
@@ -4733,8 +4735,8 @@ EXPORT CHECK:OK
    TFAM-NODE-FAM 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    TFAM-MATCH-KIND ;
 
-: TFAM-MATCH-VARIANT ( str n -- n bool ) {: na:^ nu:n fam:n :}
-   fam na nu SUMV-FIND ;
+: TFAM-MATCH-VARIANT ( str n -- n bool ) {: ns:str fam:n :}
+   fam ns SUMV-FIND ;
 
 : TFAM-MATCH-PAY ( n n n -- n ) {: vid:n term:n row:n :}   \ variant payload onto row
    term T-RES TFC-ARGS!
@@ -4801,16 +4803,16 @@ EXPORT CHECK:OK
    id TFAM-SUM? id TFAM-ENUM? or ;
 
 : TFL-FOLD$ ( str -- str )      \ fold a raw engine token (shared TKF buffer)
-   TOKFOLD drop TKF TKFU @ ;
+   TOKFOLD drop TKF TKFU @ >str ;
 
-: TFL-CON-FAM? ( str -- n bool ) {: na:^ nu:n :}   \ owner-only scope
-   TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
+: TFL-CON-FAM? ( str -- n bool ) {: ns:str :}   \ owner-only scope
+   TFAM-ACTIVE-PKG$ ns TFL-FOLD$ TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-: TFL-MATCH-FAM? ( str -- n bool ) {: na:^ nu:n :}   \ signature scope
-   TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-SIG-RESOLVE SR-FOUND <> IF drop 0 RES-FALSE EXIT THEN
+: TFL-MATCH-FAM? ( str -- n bool ) {: ns:str :}   \ signature scope
+   TFAM-ACTIVE-PKG$ ns TFL-FOLD$ TFAM-SIG-RESOLVE SR-FOUND <> IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;

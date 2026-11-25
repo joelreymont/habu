@@ -1,4 +1,3 @@
-split-str
 \ fs-identity.f - file identity through symlinks. SAMEFILE is true when both paths
 \ exist and name one device and inode; an ENOENT path is not the same file, any
 \ other stat failure is E-FS-STAT. SAME-OPEN-FILE? compares open descriptors,
@@ -41,8 +40,8 @@ FUNCTION: STAT-CALL stat ( ^u8 ^u8 -- i32 )
 
 
 : CHECK-PATH ( str -- )
-   {: text bytes:n :}
-   bytes 0 <= bytes PATH-CAP > or if E-FS-PATH throw then ;
+   {: text:str :}
+   text STR:LEN 0 <= text STR:LEN PATH-CAP > or if E-FS-PATH throw then ;
 
 
 \ 0 when the stat filled the block, else the errno it failed with.
@@ -67,29 +66,29 @@ FUNCTION: STAT-CALL stat ( ^u8 ^u8 -- i32 )
 \ split cannot address past what SAMEFILE allocated. Device and inode are 0 0
 \ when the stat failed; the errno is on top.
 : IDENTITY ( str SPAN:span<u8> -- n n n )
-   {: text bytes:n work :}
-   text bytes CHECK-PATH
-   text bytes  work STAT-CAP PATHZ-CAP SPAN:SUB  PATHZ-INTO {: z:^ :}
-   text bytes z COMPILE-READS:FILE+
+   {: text:str work :}
+   text CHECK-PATH
+   text  work STAT-CAP PATHZ-CAP SPAN:SUB  PATHZ-INTO {: z:^ :}
+   text z COMPILE-READS:FILE+
    z work 0 STAT-CAP SPAN:SUB STAT-ERRNO {: errno:n :}
    errno 0= if work 0 SPAN:AT DEVICE-INODE else 0 0 then
    errno ;
 
 
 : COMPARE-IDENTITIES ( str str ^u8 NUM:alloc-byte-len -- bool )
-   ALLOCATION>SPAN {: left left-bytes:n right right-bytes:n work :}
-   left left-bytes work IDENTITY STAT-EXISTS? {: left-device:n left-inode:n left-exists:bool :}
-   right right-bytes work IDENTITY STAT-EXISTS? {: right-device:n right-inode:n right-exists:bool :}
+   ALLOCATION>SPAN {: left:str right:str work :}
+   left work IDENTITY STAT-EXISTS? {: left-device:n left-inode:n left-exists:bool :}
+   right work IDENTITY STAT-EXISTS? {: right-device:n right-inode:n right-exists:bool :}
    left-exists right-exists and left-device right-device = and left-inode right-inode = and ;
 
 
 : LOOKUP-IDENTITY ( str ^u8 NUM:alloc-byte-len -- n n )
-   ALLOCATION>SPAN {: text bytes:n work :}
-   text bytes work IDENTITY 0<> if E-FS-STAT throw then ;
+   ALLOCATION>SPAN {: text:str work :}
+   text work IDENTITY 0<> if E-FS-STAT throw then ;
 
 : INSPECT-IDENTITY ( str ^u8 NUM:alloc-byte-len -- n n bool )
-   ALLOCATION>SPAN {: text bytes:n work :}
-   text bytes work IDENTITY STAT-INSPECTED? ;
+   ALLOCATION>SPAN {: text:str work :}
+   text work IDENTITY STAT-INSPECTED? ;
 
 : SAME-OPEN-FILE? ( fd fd -- bool )
    STAT-CAP BYTES-ALLOC-LEN [: COMPARE-FDS ;] WITH-BYTES ;
