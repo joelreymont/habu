@@ -1,5 +1,5 @@
 ---
-title: Make the ARM64 assembler refuse catchably
+title: Make the ARM64 assembler reject catchably
 status: open
 priority: 2
 issue-type: task

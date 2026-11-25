@@ -1,5 +1,5 @@
 ---
-title: Refuse CR and LF in HTTP response header names and values
+title: Reject CR and LF in HTTP response header names and values
 status: open
 priority: 2
 issue-type: task

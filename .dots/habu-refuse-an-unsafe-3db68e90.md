@@ -1,5 +1,5 @@
 ---
-title: Refuse an unsafe token after an earlier failure
+title: Reject an unsafe token after an earlier failure
 status: open
 priority: 2
 issue-type: task

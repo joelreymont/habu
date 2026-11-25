@@ -1,5 +1,5 @@
 ---
-title: Name the primitive in every kernel task refusal
+title: Name the primitive in every kernel task rejection
 status: open
 priority: 2
 issue-type: task

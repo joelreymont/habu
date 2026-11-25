@@ -18,4 +18,4 @@ Campaign lane only; do not dispatch. It lists its leaves under blocks: so it sta
 Ownership: krait (Intel lane).
 Claim: unassigned.
 
-From the T0 location lane: the x86-64 capture records no body-source rows (kernel-x64.f BODY-APPEND-BODY), so its native refusals print no location.
+From the T0 location lane: the x86-64 capture records no body-source rows (kernel-x64.f BODY-APPEND-BODY), so its native rejections print no location.

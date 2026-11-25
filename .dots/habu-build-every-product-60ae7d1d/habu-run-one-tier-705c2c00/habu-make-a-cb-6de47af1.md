@@ -21,7 +21,7 @@ What the design must do.
 - Remove the 16 stubs, `callback-entry`, FFI:CALLBACK-ENTRY, FFI-CB:ENTRY-ADDRESS and the public INSTALL-ENTRY; test/x86-64-kernel-callback.f (SUITE at test/gate-stdlib-cases.f:741), which tests `callback-entry`'s slot range, goes with the primitive.
 - Write `callback-stub` once in the typed definers (src/habu/interpreter.f, which every machine runs: src/habu/runtime.f:9), with COMP-BODY:callback and the ruled names and shape above. Each machine differs only in the code it generates, so arm64 and x86-64 reach the thunk the same way.
 - Fold FFI-CB into FFI. FFI is sealed in hb (src/lib/ffi-abi.f seal-package; `hb --load tools/check.f -- src/lib/ffi-abi.f` answers E-ENGINE-PROVIDED) and src/lib/ffi-callback.f is not built into hb (the same check runs it), so the fold must build the callback code into hb or open no definition into FFI after its seal.
-- Find every generated word by name, never by the latest definition: a definition the compiler refuses in a multi-error load is abandoned and the load reads on (src/habu/interpreter.f:1905-1910 DEF-COMPILE).
+- Find every generated word by name, never by the latest definition: a definition the compiler rejects in a multi-error load is abandoned and the load reads on (src/habu/interpreter.f:1905-1910 DEF-COMPILE).
 
 Acceptance: a CALLBACK: program built for arm64 calls its Habu word from C through the entry its definition made; `rg -i --no-ignore` finds no CB-POOL, callback-entry, CALLBACK-STUB-CELL, CALLBACK-ENTRY-CELL, NCBSTUB or package FFI-CB in src/ or test/; the ffi-callback and ffi-callback-growth suite tests (test/gate-stdlib-cases.f:434, :440) pass.
 

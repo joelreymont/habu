@@ -1,5 +1,5 @@
 ---
-title: STR>FLOAT refuses 19+ digits, misrounds
+title: STR>FLOAT rejects 19+ digits, misrounds
 status: open
 priority: 2
 issue-type: task

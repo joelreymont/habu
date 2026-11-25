@@ -21,8 +21,8 @@ Acceptance cases:
 - Same-source AOT bytes are stable (Kaizen's differed in ADR immediates).
 - An app file that requires built-in files links.
 - A killed build does not poison the linker's object store.
-- Inline data in a code member relinks right or is refused.
-- An engine build that meets a refusal in its checked prefix reports it and exits with the build's rc, not "stack bounds exceeded".
+- Inline data in a code member relinks right or is rejected.
+- An engine build that meets a rejection in its checked prefix reports it and exits with the build's rc, not "stack bounds exceeded".
 - A written product knows its text end (src/habu/code-bytes.f bounds the baked text band [rbase, dbase@)), with layout.f per OS.
 - No host compiler or checker write lands in product DATA while a target space is open: the per-file DATA attribution names any byte no product declaration owns.
 - src/habu/xref.f requires boot-cells.f, wl.f and layout.f instead of its comment's load-order rule (:1-4) once the arm64 cold prefix records each file as it loads.

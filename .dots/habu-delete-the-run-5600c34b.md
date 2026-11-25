@@ -1,5 +1,5 @@
 ---
-title: Delete the run-time task-compile and callback-define refusals
+title: Delete the run-time task-compile and callback-define rejections
 status: open
 priority: 2
 issue-type: task

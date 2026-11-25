@@ -1,5 +1,5 @@
 ---
-title: Refuse an unlinked image in OWN-PATH
+title: Reject an unlinked image in OWN-PATH
 status: open
 priority: 2
 issue-type: task

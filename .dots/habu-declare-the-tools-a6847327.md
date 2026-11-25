@@ -6,14 +6,14 @@ issue-type: task
 created-at: "2026-09-18T10:24:05.100828+03:00"
 ---
 
-Problem: habu-refuse-ptr-field-331a9731 designs two checker refusals that land last, after the tree is moved off the shapes they refuse: a `ptr-field` whose base's pointee is not a pointer, and a `byte-view` whose base's pointee is a pointer or an unfenced type variable. This dot is that design's tools lanes (A7 tools and tests, B2 tool records; their lane text is gone). The tools still hold storage in those shapes. `ptr-field` over a ( ptr n ) base: tools/lint/text.f:27 (LINT-SLAB:BUF-FIELD; a slab is three caller-owned cells, backing pointer, capacity and length), tools/check-core.f:148 and :1378, tools/json-only-core.f:32, tools/lsp-test-lib.f:1755 and :1765. `byte-view`: tools/image-size-lib.f:43, tools/image-names.f:56 and :152, tools/sha256-file-test.f:247. Existing bounds checks do not establish the pointer-cell type these rules need, so a tool the rule refuses stops loading when the refusal lands.
+Problem: habu-reject-ptr-field-331a9731 designs two checker rejections that land last, after the tree is moved off the shapes they reject: a `ptr-field` whose base's pointee is not a pointer, and a `byte-view` whose base's pointee is a pointer or an unfenced type variable. This dot is that design's tools lanes (A7 tools and tests, B2 tool records; their lane text is gone). The tools still hold storage in those shapes. `ptr-field` over a ( ptr n ) base: tools/lint/text.f:27 (LINT-SLAB:BUF-FIELD; a slab is three caller-owned cells, backing pointer, capacity and length), tools/check-core.f:148 and :1378, tools/json-only-core.f:32, tools/lsp-test-lib.f:1755 and :1765. `byte-view`: tools/image-size-lib.f:43, tools/image-names.f:56 and :152, tools/sha256-file-test.f:247. Existing bounds checks do not establish the pointer-cell type these rules need, so a tool the rule rejects stops loading when the rejection lands.
 
-Acceptance: each listed site whose base the designed rule refuses reads through a declared pointer cell (PTR-VARIABLE, TYPED-VARIABLE NAME ptr t, a declared record's generated accessor) or a private `CAST:` in its owning package, with bounds, published sizes and behaviour unchanged; a site the rule admits stays as it is, and the report says which sites were which. Not every private pointer/length pair has to become a record, and no tree-wide count of `ptr-field` is a goal.
+Acceptance: each listed site whose base the designed rule rejects reads through a declared pointer cell (PTR-VARIABLE, TYPED-VARIABLE NAME ptr t, a declared record's generated accessor) or a private `CAST:` in its owning package, with bounds, published sizes and behaviour unchanged; a site the rule admits stays as it is, and the report says which sites were which. Not every private pointer/length pair has to become a record, and no tree-wide count of `ptr-field` is a goal.
 
 Files: the tools files above.
 
-Verify: the check, build or JSON end-to-end tests selected from the changed paths pass; a change to shared checker code also needs the repository native suite on a matching engine; once 331a9731's refusal is on a candidate engine, the changed tools load under it.
+Verify: the check, build or JSON end-to-end tests selected from the changed paths pass; a change to shared checker code also needs the repository native suite on a matching engine; once 331a9731's rejection is on a candidate engine, the changed tools load under it.
 
-Depends: none (331a9731's refusal comes after this).
+Depends: none (331a9731's rejection comes after this).
 
 Ownership: unassigned. Claim: unassigned.

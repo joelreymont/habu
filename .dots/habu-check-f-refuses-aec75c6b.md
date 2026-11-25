@@ -1,5 +1,5 @@
 ---
-title: "check.f refuses src/arch/wasm/leb.f: FIELD is a reserved definition"
+title: "check.f rejects src/arch/wasm/leb.f: FIELD is a reserved definition"
 status: open
 priority: 2
 issue-type: task

@@ -25,10 +25,10 @@ entries keep its checks. Keep this task open until that measurement
 establishes whether a useful residual optimization exists. Other repeated path
 checks in READLINK, writes and WRITABLE-ROOT are outside the measured walk.
 
-Any justified change must preserve path length limits, embedded-NUL refusal
+Any justified change must preserve path length limits, embedded-NUL rejection
 before copying, capacity/terminator error distinctions, empty-path OS behavior,
 copy overlap semantics and exact syscall failure cause. If validation is
 reused across mutation, a successful call followed by an interior-NUL mutation
-must refuse rather than open a truncated prefix; traversal callback mutation
-must also refuse. Habu owns the library; Dots owns caller migration. Queue
+must reject rather than open a truncated prefix; traversal callback mutation
+must also reject. Habu owns the library; Dots owns caller migration. Queue
 after the incremental/CELL release.
