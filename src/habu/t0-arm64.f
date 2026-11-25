@@ -412,16 +412,42 @@ variable HELD                         \ nonzero while x29 holds the index
    v TMP LIT-R
    d REG d REG TMP ENC-MUL W ;
 
+\ rd becomes rn, plus 2^k - 1 when rn is negative, so that dropping its low k
+\ bits rounds toward zero; k is 1 to 62.
+: ROUNDED ( n n n -- )
+   {: rd:n rn:n k:n :}
+   k 1 = if rd rn rn 63 ENC-ADD-LSR W exit then
+   TMP rn 63 ENC-ASRI W
+   rd rn TMP 64 k - ENC-ADD-LSR W ;
+
+\ r less r rounded toward zero to a multiple of 2^k.
+: MOD-POW2 ( n n -- )
+   {: r:n k:n :}
+   k 0= if 0 r LIT-R exit then
+   ADR r k ROUNDED
+   ADR ADR 1 k lshift negate >LIMM ENC-ANDI W
+   r r ADR ENC-SUB W ;
+
+: DIV-POW2 ( n n -- )
+   {: r:n k:n :}
+   k 0= if exit then
+   r r k ROUNDED
+   r r k ENC-ASRI W ;
+
 \ `sdiv` appears only here and in MOD-LIT, whose divisor is never 0 or -1:
 \ the hardware answers 0 for a zero divisor.
 : DIV-LIT ( vreg n -- )
    {: d:vreg v:n :}
+   v POW2-EXP {: k:n :}
+   k 0 >= if d REG k DIV-POW2 exit then
    v TMP LIT-R
    d REG d REG TMP ENC-SDIV W ;
 
 : MOD-LIT ( vreg n -- )
    {: d:vreg v:n :}
    d REG {: r:n :}
+   v POW2-EXP {: k:n :}
+   k 0 >= if r k MOD-POW2 exit then
    v TMP LIT-R
    ADR r TMP ENC-SDIV W
    r ADR TMP r ENC-MSUB W ;

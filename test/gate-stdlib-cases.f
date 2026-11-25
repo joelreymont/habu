@@ -264,6 +264,10 @@ SUITE compiler-integer-literals
    test/compiler/integer-literals.f
 ;SUITE
 
+SUITE compiler-divide-literal
+   test/compiler/divide-literal.f
+;SUITE
+
 SUITE interpreter-number
    test/interpreter-number.f
 ;SUITE

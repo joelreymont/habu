@@ -30,6 +30,13 @@ split-str
 \ leaves. A word that compares and branches settles before its compare, since
 \ the CPU fuses the two only when they are adjacent. Cells above rbx may hold
 \ live values until SETTLE, so nothing asynchronous may write there.
+\
+\ A literal divisor v from 3 to 2^31 - 1, no power of two, divides by a multiply
+\ (Granlund and Montgomery, "Division by invariant integers using
+\ multiplication", 1994). With m = floor(2^(64+s) / v) + 1, the quotient of x is
+\ floor(x m / 2^(64+s)), plus 1 when x is negative, for every cell x when
+\ m v - 2^(64+s) is at most 2^(s+1). RECIPROCAL answers the m of the least such
+\ s; some s below 31 is one, and its m is below 2^64.
 
 require src/lib/error.f
 require src/lib/vector.f
@@ -375,33 +382,125 @@ variable AHEAD
    {: d:vreg s:vreg :}
    d REG s REG SINK ENC-IMUL-RR ;
 
+: MUL-R ( r64 n -- )
+   {: r:r64 v:n :}
+   v SHORT? if r r v >IMM8 SINK ENC-IMUL-RRI8 exit then
+   r r v >IMM32 SINK ENC-IMUL-RRI32 ;
+
 : MUL-LIT ( vreg n -- )
    {: d:vreg v:n :}
-   v SHORT? if d REG d REG v >IMM8 SINK ENC-IMUL-RRI8 exit then
-   d REG d REG v >IMM32 SINK ENC-IMUL-RRI32 ;
+   d REG v MUL-R ;
 
-\ idiv divides rdx:rax and writes rax and rdx, and rdx is a vreg, so it is
-\ saved on the machine stack unless d is rdx. The divisor goes into d once
-\ the dividend is in rax; when d is rdx, which cqo writes, into rcx, saved
-\ instead. The saved register is the only one restored, so every vreg but d
-\ keeps its value.
-: DIVIDE ( vreg n bool -- )
-   {: d:vreg v:n rem:bool :}
-   d REG {: dr:r64 :}
-   dr R64>N RDX R64>N = {: in-rdx:bool :}
-   in-rdx if RCX else dr then {: sr:r64 :}
-   in-rdx if RCX else RDX then {: saved:r64 :}
-   saved SINK ENC-PUSH
-   RAX dr SINK ENC-MOV-RR
-   v sr LIT-R
+\ idiv and the one-operand imul write rax and rdx, and rdx is a vreg, so it is
+\ saved on the machine stack unless d is rdx; then rcx stands in for d and is
+\ saved instead. The saved register is the only one restored, so every vreg
+\ but d keeps its value.
+: IN-RDX? ( r64 -- bool ) R64>N RDX R64>N = ;
+: STAND-IN ( r64 -- r64 ) dup IN-RDX? if drop RCX then ;
+: SAVED ( r64 -- r64 ) IN-RDX? if RCX else RDX then ;
+
+: MOV-R ( r64 r64 -- )
+   {: d:r64 s:r64 :}
+   d R64>N s R64>N <> if d s SINK ENC-MOV-RR then ;
+
+\ The divisor goes into d or its stand-in, which cqo does not write, once the
+\ dividend is in rax.
+: DIVIDE ( r64 n bool -- )
+   {: r:r64 v:n rem:bool :}
+   r STAND-IN {: w:r64 :}
+   r SAVED SINK ENC-PUSH
+   RAX r SINK ENC-MOV-RR
+   v w LIT-R
    SINK ENC-CQO
-   sr SINK ENC-IDIV
-   rem if RDX else RAX then {: res:r64 :}
-   res R64>N dr R64>N <> if dr res SINK ENC-MOV-RR then
-   saved SINK ENC-POP ;
+   w SINK ENC-IDIV
+   r rem if RDX else RAX then MOV-R
+   r SAVED SINK ENC-POP ;
 
-: DIV-LIT ( vreg n -- ) false DIVIDE ;
-: MOD-LIT ( vreg n -- ) true DIVIDE ;
+\ rax becomes what makes dropping the low k bits of r + rax round toward zero,
+\ 2^k - 1 when r is negative, else 0, and is added to r; k is 1 to 62.
+: BIAS ( r64 n -- )
+   {: r:r64 k:n :}
+   RAX r SINK ENC-MOV-RR
+   k 1 > if RAX 63 >IMM8 SINK ENC-SAR-RI8 then
+   RAX 64 k - >IMM8 SINK ENC-SHR-RI8
+   r RAX SINK ENC-ADD-RR ;
+
+: LOW-BITS ( vreg n -- )
+   {: d:vreg k:n :}
+   1 k lshift 1- {: mask:n :}
+   mask IMM? if d mask OP-AND OP-LIT exit then
+   d 64 k - SH-LEFT SHIFT-LIT
+   d 64 k - SH-RIGHT SHIFT-LIT ;
+
+: DIV-POW2 ( vreg n -- )
+   {: d:vreg k:n :}
+   k 0= if exit then
+   d REG k BIAS
+   d REG k >IMM8 SINK ENC-SAR-RI8 ;
+
+: MOD-POW2 ( vreg n -- )
+   {: d:vreg k:n :}
+   k 0= if 0 d LIT exit then
+   d REG k BIAS
+   d k LOW-BITS
+   d REG RAX SINK ENC-SUB-RR ;
+
+: RECIP? ( n -- bool ) {: v:n :}  v 0 > v $80000000 < and ;
+
+\ The quotient and remainder of 2^(64+s) by v, which is above 2^s, in two digits
+\ of 32 bits: no dividend here passes 2^63.
+: POW-DIV ( n n -- n n )
+   {: s:n v:n :}
+   1 s 32 + lshift v /mod {: r:n hi:n :}
+   r 32 lshift v /mod {: rem:n lo:n :}
+   hi 32 lshift lo or rem ;
+
+: RECIPROCAL ( n -- n n ) {: v:n :}
+   31 0 ?do
+      i v POW-DIV v swap - 2 i lshift <= if 1+ i unloop exit then
+      drop
+   loop
+   E-OPERAND throw ;
+
+\ rdx becomes floor(r m / 2^(64+s)); imul reads an m past 2^63 as m - 2^64, so
+\ r is added back.
+: HIGH-MUL ( r64 n n -- )
+   {: r:r64 m:n s:n :}
+   m RAX LIT-R
+   r SINK ENC-IMUL1
+   m 0 < if RDX r SINK ENC-ADD-RR then
+   s 0 > if RDX s >IMM8 SINK ENC-SAR-RI8 then ;
+
+\ r becomes the quotient, rdx plus r's sign bit.
+: RECIP-QUOT ( r64 -- ) {: r:r64 :}
+   r 63 >IMM8 SINK ENC-SHR-RI8
+   r RDX SINK ENC-ADD-RR ;
+
+: RECIP-DIV ( r64 n bool -- )
+   {: r:r64 v:n rem:bool :}
+   r STAND-IN {: w:r64 :}
+   r SAVED SINK ENC-PUSH
+   w r MOV-R
+   w v RECIPROCAL HIGH-MUL
+   rem if
+      RAX w SINK ENC-MOV-RR
+      RAX RECIP-QUOT
+      RAX v MUL-R
+      w RAX SINK ENC-SUB-RR
+   else
+      w RECIP-QUOT
+   then
+   r w MOV-R
+   r SAVED SINK ENC-POP ;
+
+: DIVIDE-LIT ( vreg n bool -- )
+   {: d:vreg v:n rem:bool :}
+   v POW2-EXP {: k:n :}
+   k 0 >= if d k rem if MOD-POW2 else DIV-POW2 then exit then
+   d REG v rem v RECIP? if RECIP-DIV else DIVIDE then ;
+
+: DIV-LIT ( vreg n -- ) false DIVIDE-LIT ;
+: MOD-LIT ( vreg n -- ) true DIVIDE-LIT ;
 
 : NEG ( vreg -- ) REG SINK ENC-NEG ;
 : NOT ( vreg -- ) REG SINK ENC-NOT ;

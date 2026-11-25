@@ -238,6 +238,10 @@ public
 : ENC-ADD-LSL ( n n n n -- n )
    ?SHIFT {: sh:n :} XR3 sh 10 lshift $8B000000 or RRR ;
 
+\ add xd, xn, xm, lsr #sh: the shift type is 01 (LSR).
+: ENC-ADD-LSR ( n n n n -- n )
+   ?SHIFT {: sh:n :} XR3 sh 10 lshift $8B400000 or RRR ;
+
 : ENC-AND ( n n n -- n ) XR3 $8A000000 RRR ;
 
 : ENC-ORR ( n n n -- n ) XR3 $AA000000 RRR ;

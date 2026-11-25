@@ -389,6 +389,13 @@ ARCHES TYPED-BUFFER EMIT-IMM?-XT [ n -- bool ]
    over CACHE-DROP  CUR @ EMIT-DIV-LIT-XT @ execute ;
 : EMIT-MOD-LIT ( vreg n -- )
    over CACHE-DROP  CUR @ EMIT-MOD-LIT-XT @ execute ;
+
+\ k when n is 2^k and k is 0 to 62, else -1.
+: POW2-EXP ( n -- n )
+   {: n:n :}
+   63 0 ?do 1 i lshift n = if i unloop exit then loop
+   -1 ;
+
 : EMIT-NEG ( vreg -- ) dup CACHE-DROP  CUR @ EMIT-NEG-XT @ execute ;
 : EMIT-NOT ( vreg -- ) dup CACHE-DROP  CUR @ EMIT-NOT-XT @ execute ;
 
