@@ -1,4 +1,3 @@
-split-str
 \ build-profile.f - build hb, or a program, under Habu's own profiler, which
 \ names the words the build runs (perf sees one anonymous mapping).
 \ Run: bin/hb --load tools/build-profile.f -- [--target name] (--engine | source.f) <out> <text-report> <json-report>
@@ -54,20 +53,21 @@ variable REPORT-FD
 \ The option's name, resolved as tools/hb-build.f resolves its --target.
 : TARGET ( -- RTARGET:resolved-target )
    OPTION? 0= if RTARGET:HOST-TARGET exit then
-   1 SCRIPT-ARGV$ {: a:^ u:n :}
-   a u RTARGET:PLATFORM? 0= if
+   1 SCRIPT-ARGV$ {: name:str :}
+   name RTARGET:PLATFORM? 0= if
       2 s" build-profile: unknown target " write drop
-      a u EXIT-STATUS:USAGE die
+      name EXIT-STATUS:USAGE die
    then
-   a u RTARGET:RESOLVE ;
+   name RTARGET:RESOLVE ;
+
 
 \ The reports are written by the engine straight to fd 1, which is what makes
 \ them safe to take from a signal handler. Pointing fd 1 at a file for the
 \ length of one report is therefore the whole of "write it to a file".
-: REDIRECT ( str -- ) {: pa:^ pu:n :}
+: REDIRECT ( str -- ) {: ps:str :}
    1 F-DUPFD REPORT-FD-MIN fcntl SAVED-OUT !
    SAVED-OUT @ 0 < if s" build-profile: cannot save stdout" EXIT-STATUS:IOERR die then
-   pa pu FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open REPORT-FD !
+   ps FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open REPORT-FD !
    REPORT-FD @ 0 < if s" build-profile: cannot open a report file" EXIT-STATUS:IOERR die then
    REPORT-FD @ 1 dup2 0 < if s" build-profile: cannot redirect stdout" EXIT-STATUS:IOERR die then ;
 

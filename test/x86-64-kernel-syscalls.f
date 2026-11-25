@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-syscalls.f - the syscall rows of src/habu/kernel-x64.f in the
 \ booted harness, cross-built for an x86-64 peer. The host checks each image's
 \ ELF header; running them is the peer's. The file rows work relative to the
@@ -14,11 +13,11 @@ using X64RT
 
 \ hb-x64-kernel-syscalls exits 0; -negative expects the wrong balance and exits
 \ 21.
-: BUILD ( bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
+: BUILD ( bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    X64HARNESS:EXPECT-BALANCED,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ Scratch the harness hands out (PUSH-SCRATCH,): two kept cells, then the
 \ buffers rows write.
@@ -77,7 +76,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 
-: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
@@ -112,11 +111,11 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 : RECALL, ( n -- ) AT, FETCH, ;        \ ( -- x ) from one
 
 \ Push the address of a NUL-terminated copy of the string, behind a jump.
-: PATH, ( ^u8 n -- ) {: a:^ u:n :}
+: PATH, ( str -- ) {: s:str :}
    LBL LBL {: text:label past:label :}
    past JMP,
    text LBL,
-   a u ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
+   s ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
    past LBL,
    RAX text MOVABS,  0 G-PUSH ;
 
@@ -239,11 +238,11 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 : QUIT, ( n -- ) {: rc:n :} QUIET, rc N, s" die" ROW ;
 
 \ argv = /bin/sh -c text, envp = text or nothing.
-: SH-ARGV, ( str -- ) {: a:^ u:n :}
+: SH-ARGV, ( str -- ) {: s:str :}
    s" /bin/sh" PATH, ARGV KEEP,  s" -c" PATH, ARGV CELL + KEEP,
-   a u PATH, ARGV 2 CELL * + KEEP,  0 N, ARGV 3 CELL * + KEEP, ;
-: ENV, ( ^u8 n -- ) {: a:^ u:n :}
-   a u PATH, ENVP KEEP,  0 N, ENVP CELL + KEEP, ;
+   s PATH, ARGV 2 CELL * + KEEP,  0 N, ARGV 3 CELL * + KEEP, ;
+: ENV, ( str -- ) {: s:str :}
+   s PATH, ENVP KEEP,  0 N, ENVP CELL + KEEP, ;
 : NO-ENV, ( -- ) 0 N, ENVP KEEP, ;
 
 \ A child that makes itself a group leader exits 7 when that worked, and one
@@ -381,8 +380,8 @@ $410 constant PID2
 : FD-SLOT, ( n n -- ) {: fd:n slot:n :}  fd N, FDS slot CELL * + KEEP, ;
 
 \ A request running sh with the text, over the map at FDS of n slots.
-: SH-REQ, ( str n -- ) {: a:^ u:n nfds:n :}
-   a u SH-ARGV,  NO-ENV,
+: SH-REQ, ( str n -- ) {: s:str nfds:n :}
+   s SH-ARGV,  NO-ENV,
    s" /bin/sh" PATH, SPAWN-ABI:PATH REQ-CELL,  ARGV AT, SPAWN-ABI:ARGV REQ-CELL,
    ENVP AT, SPAWN-ABI:ENVP REQ-CELL,  0 N, SPAWN-ABI:CWD REQ-CELL,
    FDS AT, SPAWN-ABI:FDS REQ-CELL,  nfds N, SPAWN-ABI:NFDS REQ-CELL,
@@ -431,12 +430,12 @@ $410 constant PID2
 \ A row image: the case, then the stack checks every case ends with. It exits 0
 \ when every check held, else FIRST-CASE upward at the first that did not (at
 \ most ten checks).
-: ROWS ( [ -- ] ^u8 n -- ) {: path:^ pathu:n :}
+: ROWS ( [ -- ] str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 public
 

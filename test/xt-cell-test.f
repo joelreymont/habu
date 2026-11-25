@@ -1,4 +1,3 @@
-split-str
 \ xt-cell-test.f - xt<effect> storage cells.
 \ `TYPED-VARIABLE NAME [ in -- out ]` declares a code cell whose @ recovers
 \ xt<E> as a T-QUOT: a typed store fit-checks W's certified effect against E,
@@ -30,8 +29,9 @@ TYPED-VARIABLE HKN [ [ n -- n ] -- n ]
 
 \ define-time reject verdicts (evaluate-closed under catch)
 TYPED-VARIABLE XC-A ^u8  variable XC-U
-: XC-RUN ( -- ) XC-A @ XC-U @ evaluate-closed ;
-: XC-EVAL ( str -- n ) XC-U ! XC-A ! [: XC-RUN ;] catch ;
+: XC-RUN ( -- ) XC-A @ XC-U @ >str evaluate-closed ;
+: XC-EVAL ( str -- n )
+   dup STR:LEN XC-U ! STR:DATA XC-A ! [: XC-RUN ;] catch ;
 
 \ ---- checker seam: store / fetch / execute fit-checks ------------------------
 : XC-SECTION-CHECKER ( -- )
@@ -122,7 +122,8 @@ STRUCTURE xbox<a> FIELD item a ;STRUCTURE
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : XC-CODE? ( str -- )   \ assert the captured diagnostic names this code
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ swap STR:CONTAINS? TTRUE ;
+
 : XC-CODE-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
 \ The raw cell and the defer below are compiled here, because a candidate binds

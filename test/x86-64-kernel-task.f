@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-task.f - the task entry of the x86-64 kernel
 \ (src/habu/kernel-x64.f TASK,) in the booted harness, cross-built for an
 \ x86-64 peer. `task-entry` answers a SysV function taking a TASK-ABI
@@ -41,7 +40,7 @@ $5ABE11 constant PUSHED
 $B0B0B0B0B0 constant CALLER-RBX
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
-: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : DESC-FIELD ( n -- n ) DESC + ;
@@ -91,10 +90,10 @@ $B0B0B0B0B0 constant CALLER-RBX
 \ ---- the thread ---------------------------------------------------------------
 \ Push the function dlsym finds for the name, whose bytes sit NUL-terminated
 \ behind a jump.
-: SYM, ( str -- ) {: a:^ u:n :}
+: SYM, ( str -- ) {: s:str :}
    LBL LBL {: name:label past:label :}
    past JMP,
-   name LBL,  a u ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
+   name LBL,  s ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
    past LBL,
    RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
 
@@ -150,12 +149,12 @@ $B0B0B0B0B0 constant CALLER-RBX
    TASK-ABI:HALT-REQ REGION SAW-STATUS + X64HARNESS:EXPECT-CELL, ;
 
 \ An image: the case, then the stack checks every case ends with.
-: BUILD ( [ -- ] bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
+: BUILD ( [ -- ] bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 public
 

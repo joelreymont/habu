@@ -1,4 +1,3 @@
-split-str
 \ chain-run.f - the checked generation-chain driver.
 \ Run: bin/hb --load tools/chain-run-build.f -- host gen1 gen2 gen3 TMPDIR
 \ Each child inherits only the caller's environment plus the private TMPDIR and
@@ -38,33 +37,34 @@ DYNAMIC-BUFFER FILES u8
    E-BUILD-STATUS throw ;
 
 : BUILD-IN ( str str str CMD:command -- CMD:command )
-   >r {: host:^ hostu out:^ outu tmp:^ tmpu :} r>
+   >r {: host:str out:str tmp:str :} r>
    s" --load" CMD:ARG+
    s" tools/hb-build.f" CMD:ARG+
    s" --" CMD:ARG+
    s" --engine" CMD:ARG+
    s" -o" CMD:ARG+
-   out outu CMD:ARG+
-   s" TMPDIR" tmp tmpu CMD:ENV+
-   s" HABU_UNDER_TEST" host hostu CMD:ENV+
-   host hostu BUILD-MS >MS CMD:RUN-RC MATCH result
+   out CMD:ARG+
+   s" TMPDIR" tmp CMD:ENV+
+   s" HABU_UNDER_TEST" host CMD:ENV+
+   host BUILD-MS >MS CMD:RUN-RC MATCH result
       ok OF drop ENDOF
       err OF BUILD-FAILED ENDOF
    ;MATCH
-   out outu FS:EXISTS? 0= if E-BUILD-PATH throw then ;
+   out FS:EXISTS? 0= if E-BUILD-PATH throw then ;
 
 : BUILD ( str str str -- )
    [: BUILD-IN ;] CMD:WITH-COMMAND ;
 
-\ Both files, A's bytes then B's. The byte reserved past them keeps index AU
+\ Both files, A's bytes then B's. The byte reserved past them keeps B's start
 \ inside the reserve when B is empty.
-: READ-FILES ( str str -- str str ) {: a:^ au:n b:^ bu:n :}
-   a au FS:FILE-SIZE {: as:n :}
-   b bu FS:FILE-SIZE {: bs:n :}
+: READ-FILES ( str str -- str str ) {: a:str b:str :}
+   a FS:FILE-SIZE {: as:n :}
+   b FS:FILE-SIZE {: bs:n :}
    as bs + 1 + FILES-RESERVE
-   a au 0 FILES as FS:READ-ALL as <> if E-FS-IO throw then
-   b bu as FILES bs FS:READ-ALL bs <> if E-FS-IO throw then
-   0 FILES as  as FILES bs ;
+   a 0 FILES as FS:READ-ALL as <> if E-FS-IO throw then
+   b as FILES bs FS:READ-ALL bs <> if E-FS-IO throw then
+   0 FILES as >str  as FILES bs >str ;
+
 
 public
 

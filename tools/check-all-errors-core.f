@@ -1,4 +1,3 @@
-split-str
 \ check-all-errors-core.f - the --all-errors checker core: checks sources as a
 \ load runs them, in one checker scope and one multi-error session, and reports
 \ every rejected definition and lexer defect, one record each through package
@@ -57,9 +56,9 @@ TYPED-VARIABLE CA-COMPOSE-ENTRY bool    \ the composed bytes are entry text
 : CA-FILE-A! ( ^u8 -- )
    CA-FILE-A ! ;
 
-: CA-ERR ( str -- ) {: a:^ u:n :}
-   u 0= IF exit THEN
-   CA-OUT-FD @ a u write u <> IF E-FS-IO throw THEN ;
+: CA-ERR ( str -- ) {: s:str :}
+   s STR:LEN 0= IF exit THEN
+   CA-OUT-FD @ s write s STR:LEN <> IF E-FS-IO throw THEN ;
 
 \ Runs the action with the records it writes captured, then hands them to the
 \ report; the capture ends on the throwing path too.
@@ -72,13 +71,13 @@ TYPED-VARIABLE CA-COMPOSE-ENTRY bool    \ the composed bytes are entry text
 
 \ ---- the bytes of the file a record names ----------------------------------
 
-: CA-SOURCE-BUF! ( str -- ) {: a:^ u:n :}
-   u CA-SRC-U !
-   a CA-SRC-A! ;
+: CA-SOURCE-BUF! ( str -- ) {: s:str :}
+   s STR:LEN CA-SRC-U !
+   s STR:DATA CA-SRC-A! ;
 
-: CA-START ( str -- ) {: labela:^ labelu:n :}
-   labelu CA-FILE-U !
-   labela CA-FILE-A! ;
+: CA-START ( str -- ) {: labels:str :}
+   labels STR:LEN CA-FILE-U !
+   labels STR:DATA CA-FILE-A! ;
 
 : CA-WORD-END ( n -- n )                \ the byte past the source word at byte n
    begin dup CA-SRC-U @ < if CA-SRC-A@ over + c@ 32 > else false then while
@@ -90,14 +89,14 @@ TYPED-VARIABLE CA-COMPOSE-ENTRY bool    \ the composed bytes are entry text
 \ A record of this core places its token in the bytes read, as the file the
 \ label names.
 : CA-ARM ( -- )
-   CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
-   CA-SRC-A@ CA-SRC-U @ 1 1 0 REJECTION:SOURCE! ;
+   CA-FILE-A@ CA-FILE-U @ >str REJECTION:FILE!
+   CA-SRC-A@ CA-SRC-U @ >str 1 1 0 REJECTION:SOURCE! ;
 
 \ The token a lexer defect sits at, read out of the source at its own width: a
 \ string's opener, the token a row's rule rejects, or empty at the source's end.
 : CA-LEX-TOKEN$ ( -- str )
    LINT-LEX:ERROR-BYTE@ {: at:n :}
-   CA-SRC-A@ at +  at CA-WORD-END at - ;
+   CA-SRC-A@ at +  at CA-WORD-END at - >str ;
 
 : CA-LEX-ROW? ( -- bool )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
@@ -115,7 +114,7 @@ TYPED-VARIABLE CA-COMPOSE-ENTRY bool    \ the composed bytes are entry text
 \ The record of the bytes read when the lexer finds a defect in them; true when
 \ it wrote one.
 : CA-LEX ( -- bool )
-   CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
+   CA-SRC-A@ CA-SRC-U @ >str LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= IF false exit THEN
    CA-LEX-RECORD true ;
 
@@ -134,16 +133,17 @@ variable CA-COMPOSING                   \ the run is a composition
    0 ;
 
 : CA-CHECK-SOURCE ( -- )
-   CA-SRC-A@ CA-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
+   CA-SRC-A@ CA-SRC-U @ >str VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : CA-CHECK-COMPOSE-VERIFY ( -- )
-   CA-SRC-A@ CA-SRC-U @ CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @
+   CA-SRC-A@ CA-SRC-U @ >str
+   CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @ >str
    CA-COMPOSE-ENTRY @ if VERIFY:SOURCE-COMPOSE-ENTRY-IN-SCOPE exit then
-   CA-COMPOSE-LABEL-A @ CA-COMPOSE-LABEL-U @
+   CA-COMPOSE-LABEL-A @ CA-COMPOSE-LABEL-U @ >str
    VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
 : CA-CHECK-COMPOSE ( -- )
-   CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @ SOURCE-ROOT:DIRNAME
+   CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @ >str SOURCE-ROOT:DIRNAME
    [: CA-CHECK-COMPOSE-VERIFY ;] SOURCE-ROOT:WITH ;
 
 : CA-CHECK ( -- )
@@ -152,7 +152,7 @@ variable CA-COMPOSING                   \ the run is a composition
 \ The scan's records, captured from the first to the last; a stop other than a
 \ rejection's is thrown on.
 : CA-RUN-CAPTURED ( -- n )
-   CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
+   CA-FILE-A@ CA-FILE-U @ >str REJECTION:FILE!
    [: CA-CHECK ;] catch {: rc:n :}
    rc 0 <> rc EXIT-STATUS:REJECTED <> and IF rc throw THEN
    rc CA-STOPPED
@@ -193,9 +193,9 @@ private
    compose CA-COMPOSING !
    [: report CA-RUN-BODY ;] SESSION ;
 
-: CA-COMPOSE-AT ( str bool -- ) {: path:^ pathu:n entry:bool :}
+: CA-COMPOSE-AT ( str bool -- ) {: path:str entry:bool :}
    entry CA-COMPOSE-ENTRY !
-   path CA-COMPOSE-PATH-A !  pathu CA-COMPOSE-PATH-U !
+   path STR:DATA CA-COMPOSE-PATH-A !  path STR:LEN CA-COMPOSE-PATH-U !
    CA-FILE-A@ CA-COMPOSE-LABEL-A !  CA-FILE-U @ CA-COMPOSE-LABEL-U ! ;
 
 public
@@ -206,25 +206,25 @@ public
 \ and rejects a loader form discovery rejects, or a file it cannot read, where
 \ it meets it.
 : COMPOSE-BUF ( str str str -- )
-   {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
-   [: label labelu CA-START
-      src srcu CA-SOURCE-BUF!
-      path pathu false CA-COMPOSE-AT
+   {: src:str path:str label:str :}
+   [: label CA-START
+      src CA-SOURCE-BUF!
+      path false CA-COMPOSE-AT
       true false CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
 \ COMPOSE-BUF of entry text, whose records name REJECTION:NO-FILE$.
 : COMPOSE-ENTRY ( str str -- )
-   {: src:^ srcu:n path:^ pathu:n :}
+   {: src:str path:str :}
    [: REJECTION:NO-FILE$ CA-START
-      src srcu CA-SOURCE-BUF!
-      path pathu true CA-COMPOSE-AT
+      src CA-SOURCE-BUF!
+      path true CA-COMPOSE-AT
       true false CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
 \ Check the given source bytes under the given label as one unit: a loader
 \ statement in them loads nothing, and a top-level token is not resolved.
-: BUF ( str str -- ) {: labela:^ labelu:n srca:^ srcu:n :}
-   [: labela labelu CA-START
-      srca srcu CA-SOURCE-BUF!
+: BUF ( str str -- ) {: labels:str srcs:str :}
+   [: labels CA-START
+      srcs CA-SOURCE-BUF!
       false true CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
 ;package

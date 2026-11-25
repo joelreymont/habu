@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-ffi.f - the FFI rows of src/habu/kernel-x64.f FFI, in the booted
 \ harness, cross-built for an x86-64 peer: one case per image. No libc symbol
 \ takes nine integer arguments, so a stub stands in.
@@ -27,7 +26,7 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 \ address pushed below that.
 8 constant ENTRY-RSP-LOW
 
-: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
@@ -74,10 +73,10 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    ARGS AT, FPS AT, STK AT, nstack N, ;
 
 \ A NUL-terminated copy of a string behind a jump, and its label.
-: C-TEXT, ( str -- label ) {: a:^ u:n :}
+: C-TEXT, ( str -- label ) {: s:str :}
    LBL LBL {: text:label past:label :}
    past JMP,
-   text LBL,  a u ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
+   text LBL,  s ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
    past LBL,
    text ;
 
@@ -231,13 +230,13 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
    0 ABI, s" snprintf" LIBC, s" ffi-call-abi" ROW  PRINTED WANT
    FLOATS-TEXT OUT X64HARNESS:EXPECT-SCRATCH, ;
 
-: BUILD ( [ -- ] bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
+: BUILD ( [ -- ] bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    ARGS,
    execute
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 public
 

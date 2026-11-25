@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-pure.f - the pure-op rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f PURE,) in the booted harness, cross-built for an x86-64
 \ peer. The cases are the parity gate's: test/prim-cases.f and
@@ -38,16 +37,16 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
 : RCX! ( n -- ) {: v:n :}  RCX v >IMM64 ASM-SINK ENC-MOV-RI64 ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
-: CALL ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: CALL ( str -- ) X64HARNESS:CALL-ROW, ;
 
 \ ---- the subject and its case text -------------------------------------------
-: SUBJ$ ( -- str ) SUBJ-BUF SUBJ-U @ ;
+: SUBJ$ ( -- str ) SUBJ-BUF SUBJ-U @ >str ;
 
-: SUBJ! ( str -- ) {: a:^ u:n :}
-   u 0= if s" x64k-pure: CASES needs a primitive name" SETUP-RC die then
-   u SUBJ-CAP > if s" x64k-pure: primitive name too long" SETUP-RC die then
-   a SUBJ-BUF u BYTE-COPY
-   u SUBJ-U ! ;
+: SUBJ! ( str -- ) {: s:str :}
+   s STR:LEN 0= if s" x64k-pure: CASES needs a primitive name" SETUP-RC die then
+   s STR:LEN SUBJ-CAP > if s" x64k-pure: primitive name too long" SETUP-RC die then
+   s STR:DATA SUBJ-BUF s STR:LEN BYTE-COPY
+   s STR:LEN SUBJ-U ! ;
 
 \ `x64k-pure: <name> overload <n> case <k>`, the text a failing check writes,
 \ in the string builder: PUSH-TEXT, copies it into the image.
@@ -232,9 +231,9 @@ $40 constant GOT-CAP
 
 \ ( -- diff ): the OR of the XORs of the text's bytes and the bytes the read
 \ left at GOT, 0 when they agree.
-: SAME, ( ^u8 n -- ) {: a:^ u:n :}
+: SAME, ( str -- ) {: s:str :}
    LBL LBL {: top:label done:label :}
-   a u X64HARNESS:PUSH-TEXT,  RCX R64>N G-POP  RDI R64>N G-POP
+   s X64HARNESS:PUSH-TEXT,  RCX R64>N G-POP  RDI R64>N G-POP
    GOT AT,  RSI R64>N G-POP
    RAX ZERO-REG,
    top LBL,
@@ -248,10 +247,10 @@ $40 constant GOT-CAP
    0 G-PUSH ;
 
 \ A double's bits through f., and the line it must write.
-: FDOT ( n str -- ) {: bits:n a:^ u:n :}
+: FDOT ( n str -- ) {: bits:n s:str :}
    CASE+  bits N,  ROW
-   RFD RECALL,  GOT AT,  GOT-CAP N,  s" read" CALL  u WANT
-   a u SAME,  0 WANT  SETTLED ;
+   RFD RECALL,  GOT AT,  GOT-CAP N,  s" read" CALL  s STR:LEN WANT
+   s SAME,  0 WANT  SETTLED ;
 
 \ The pipe, its write end made fd 1 and its read end kept.
 : FDOT-PIPE ( -- )

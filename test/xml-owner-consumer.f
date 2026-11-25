@@ -1,4 +1,3 @@
-split-str
 \ A document opens a runtime-sized set of wire parts, retains only owners and
 \ lexical ranges, closes its parsing cursors, then edits those parts later.
 require src/lib/test.f
@@ -41,19 +40,19 @@ variable BAD-LAST
 variable INVALID-LAST
 
 : UTF16$ ( str bool -- str )
-   {: ascii size:n little:bool :}
-   size WIRE-CAP 2 - 2 / > if XML:E-CAPACITY throw then
+   {: ascii:str little:bool :}
+   ascii STR:LEN WIRE-CAP 2 - 2 / > if XML:E-CAPACITY throw then
    little if $FF WIRE c! $FE WIRE 1+ c!
    else $FE WIRE c! $FF WIRE 1+ c! then
-   size 0 ?do
-      ascii i + c@ {: byte:n :}
+   ascii STR:LEN 0 ?do
+      ascii STR:DATA i + c@ {: byte:n :}
       little if
          byte WIRE i 2 * 2 + + c! 0 WIRE i 2 * 3 + + c!
       else
          0 WIRE i 2 * 2 + + c! byte WIRE i 2 * 3 + + c!
       then
    loop
-   WIRE size 2 * 2 + ;
+   WIRE ascii STR:LEN 2 * 2 + >str ;
 
 : PART$ ( n bool -- str )
    {: index:n malformed:bool :}
@@ -75,9 +74,9 @@ variable INVALID-LAST
 
 : STREAM-FILL ( ^n SPAN:span<u8> -- n )
    {: pos:^ output :}
-   STREAM$ {: source size:n :}
-   pos @ size >= if 0 exit then
-   source pos @ + c@ output 0 SPAN:U8!
+   STREAM$ {: source:str :}
+   pos @ source STR:LEN >= if 0 exit then
+   source STR:DATA pos @ + c@ output 0 SPAN:U8!
    1 pos +! 1 ;
 
 : CLEARED ( -- ^VEC:vector<u8> ) DECODED @ dup 0 VEC:RESIZE ;
@@ -123,13 +122,14 @@ variable INVALID-LAST
    index 1+ ATTR-LEN-RESERVE index 1+ TEXT-OFF-RESERVE
    index 1+ TEXT-LEN-RESERVE
    index index COUNT @ 1- = BAD-LAST @ 0<> and PART$
-   {: wire size:n :}
-   size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES
+   {: wire:str :}
+   wire STR:LEN MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES
    {: original original-size:NUM:alloc-byte-len :}
-   wire original size >LEN BYTE-COPY-LEN
+   wire STR:DATA original wire STR:LEN >LEN BYTE-COPY-LEN
    original index ORIGINALS ! original-size index ORIGINAL-SIZES !
    ORIGINAL-COUNT @ 1+ ORIGINAL-COUNT !
-   HEAP:ALLOCATOR original size XML:SOURCE-INIT XML:SOURCE-OWN index OWNERS !
+   HEAP:ALLOCATOR original wire STR:LEN >str XML:SOURCE-INIT XML:SOURCE-OWN
+   index OWNERS !
    OWNER-COUNT @ 1+ OWNER-COUNT !
    index PARSE-PART ;
 
@@ -157,9 +157,9 @@ variable INVALID-LAST
 : CHECK-OWNER ( n -- )
    {: index:n :}
    index OWNERS @ {: owner :}
-   owner XML:OWNER-BOM$ nip 2 index 3 mod 0= if 1+ then T=
-   owner XML:OWNER-ORIGINAL$ nip 0 > TTRUE
-   owner XML:OWNER-LEXICAL$ nip 0 > TTRUE
+   owner XML:OWNER-BOM$ STR:LEN 2 index 3 mod 0= if 1+ then T=
+   owner XML:OWNER-ORIGINAL$ STR:LEN 0 > TTRUE
+   owner XML:OWNER-LEXICAL$ STR:LEN 0 > TTRUE
    owner XML:OWNER-ENCODING
    index 3 mod 0= if XML-ENCODING:UTF8 else
       index 3 mod 1 = if XML-ENCODING:UTF16-LE else XML-ENCODING:UTF16-BE then
@@ -169,7 +169,7 @@ variable INVALID-LAST
 
 : REPARSE ( n -- )
    {: written:n :}
-   HEAP:ALLOCATOR WRITTEN written XML:SOURCE-INIT
+   HEAP:ALLOCATOR WRITTEN written >str XML:SOURCE-INIT
    RD XML:INIT-SOURCE
    XML-KIND:START NEXT=
    XML:ATTR-NEXT TTRUE
@@ -188,7 +188,7 @@ variable INVALID-LAST
    owner index TEXT-OFF @ OFF>N 2 + >OFF
    index 3 mod 0= if 4 else 9 then >LEN
    XML:OWNER-RANGE {: text-off:off text-len:len :}
-   owner owner XML:OWNER-LEXICAL$ nip >OFF 0 >LEN XML:OWNER-RANGE
+   owner owner XML:OWNER-LEXICAL$ STR:LEN >OFF 0 >LEN XML:OWNER-RANGE
    {: end-off:off end-len:len :}
    end-len LEN>N 0 T=
    owner s" Q" XML:OWNER-ENCODE-SIZE
@@ -202,31 +202,34 @@ variable INVALID-LAST
    {: text-size:n :}
    owner s" <!--late-->" out XML:OWNER-ENCODE
    out VEC:COUNT attr-size - text-size - {: tail-size:n :}
-   out VEC:BYTES drop {: encoded :}
-   owner XML:OWNER-ORIGINAL$ {: original original-size:n :}
-   end-off OFF>N original-size T=
-   HEAP:ALLOCATOR original original-size EDIT:INIT
-   attr-off attr-len encoded attr-size EDIT:REPLACE
-   text-off text-len encoded attr-size + text-size EDIT:REPLACE
-   end-off end-len encoded attr-size + text-size + tail-size EDIT:REPLACE
+   out VEC:BYTES STR:DATA {: encoded :}
+   owner XML:OWNER-ORIGINAL$ {: original:str :}
+   end-off OFF>N original STR:LEN T=
+   HEAP:ALLOCATOR original EDIT:INIT
+   attr-off attr-len encoded attr-size >str EDIT:REPLACE
+   text-off text-len encoded attr-size + text-size >str EDIT:REPLACE
+   end-off end-len encoded attr-size + text-size + tail-size >str
+   EDIT:REPLACE
    WRITTEN OUTPUT-CAP EDIT:WRITE {: written:n :}
    EDIT:CLOSE
    out VEC:DELETE
-   WRITTEN attr-off OFF>N original attr-off OFF>N T$=
-   WRITTEN BYTE-VIEW index 3 mod 0= if 3 else 2 then
-   original index 3 mod 0= if 3 else 2 then T$=
+   WRITTEN attr-off OFF>N >str
+   original STR:DATA attr-off OFF>N >str T$=
+   WRITTEN BYTE-VIEW index 3 mod 0= if 3 else 2 then >str
+   original STR:DATA index 3 mod 0= if 3 else 2 then >str T$=
    attr-off OFF>N {: a:n :} attr-len LEN>N {: ar:n :}
    text-off OFF>N {: t:n :} text-len LEN>N {: tr:n :}
-   WRITTEN a attr-size + + t a ar + -
-   original a ar + + t a ar + - T$=
-   WRITTEN t attr-size ar - + text-size + + original-size t tr + -
-   original t tr + + original-size t tr + - T$=
+   WRITTEN a attr-size + + t a ar + - >str
+   original STR:DATA a ar + + t a ar + - >str T$=
+   WRITTEN t attr-size ar - + text-size + +
+   original STR:LEN t tr + - >str
+   original STR:DATA t tr + + original STR:LEN t tr + - >str T$=
    written REPARSE
    index 3 mod 0= if s" part-utf8.xml" else
       index 3 mod 1 = if s" part-utf16le.xml" else s" part-utf16be.xml" then
    then
-   0 SCRIPT-ARGV$ 2swap INPUT FS:JOIN-PATH INPUT swap
-   WRITTEN written FS:WRITE-ALL ;
+   0 SCRIPT-ARGV$ swap INPUT FS:JOIN-PATH INPUT swap >str
+   WRITTEN written >str FS:WRITE-ALL ;
 
 : LIFETIME ( -- )
    0 OWNERS @ XML:OWNER-CLOSE
@@ -238,7 +241,7 @@ variable INVALID-LAST
    6 WRITE-PART 0 WRITE-PART
    6 1 ?do i WRITE-PART loop
    LIFETIME
-   6 OWNERS @ XML:OWNER-LEXICAL$ nip 0 > TTRUE
+   6 OWNERS @ XML:OWNER-LEXICAL$ STR:LEN 0 > TTRUE
    CLOSE-PARTS ;
 
 \ The source takes its storage from the arena, between the blocks asked for
@@ -249,9 +252,10 @@ variable INVALID-LAST
    a ARENA:ALLOCATOR s" <r q='a&amp;b'>Ax&#x1F600;Y</r>" true UTF16$
    XML:SOURCE-INIT XML:SOURCE-OWN {: owner :}
    a 1 ARENA:ALLOC drop NULL-PTR - {: after:n :}
-   owner XML:OWNER-LEXICAL$ {: lexical size:n :}
-   lexical NULL-PTR - before > TTRUE
-   lexical NULL-PTR - size + after <= TTRUE
+   owner XML:OWNER-LEXICAL$ {: lexical:str :}
+   lexical STR:DATA NULL-PTR - before > TTRUE
+   lexical STR:DATA NULL-PTR - lexical STR:LEN + after <= TTRUE
+
    RD owner XML:OWNER-READER
    XML-KIND:START NEXT=
    XML:ATTR-NEXT TTRUE

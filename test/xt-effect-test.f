@@ -1,4 +1,3 @@
-split-str
 \ xt-effect-test.f - xt<effect> value regressions (docs/design.md "Typed top
 \ level"). `['] W` is xt<effect(W)>, a T-QUOT of W's certified effect;
 \ execute, catch and is fit-check it by quotation unification
@@ -34,33 +33,33 @@ create XE-OUT XE-CAP allot
 create XE-ERR XE-CAP allot
 create XE-EMPTY 1 allot
 
-: XE-COPY! ( str ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
-   u PATH-CAP > if E-FS-CAPACITY throw then
-   src dst u BYTE-COPY
-   u lenp ! ;
+: XE-COPY! ( str ^u8 ^n -- ) {: src:str dst:^ lenp:^ :}
+   src STR:LEN PATH-CAP > if E-FS-CAPACITY throw then
+   src STR:DATA dst src STR:LEN BYTE-COPY
+   src STR:LEN lenp ! ;
 
-: XE-ROOT ( -- str ) XE-ROOT-BUF XE-ROOT-U @ ;
-: XE-CHILD ( -- str ) XE-CHILD-BUF XE-CHILD-U @ ;
-: XE-OUT$ ( -- str ) XE-OUT XE-OUT-U @ ;
-: XE-ERR$ ( -- str ) XE-ERR XE-ERR-U @ ;
+: XE-ROOT ( -- str ) XE-ROOT-BUF XE-ROOT-U @ >str ;
+: XE-CHILD ( -- str ) XE-CHILD-BUF XE-CHILD-U @ >str ;
+: XE-OUT$ ( -- str ) XE-OUT XE-OUT-U @ >str ;
+: XE-ERR$ ( -- str ) XE-ERR XE-ERR-U @ >str ;
 
 : XE-STORE! ( len len PROCESS:ending str -- )
-   {: outu:len erru:len oc src:^ srcu:n :}
+   {: outu:len erru:len oc src:str :}
    outu LEN>N XE-OUT-U !  erru LEN>N XE-ERR-U !
    oc MATCH PROCESS:ending
      exited OF XE-RC ! 0 0= XE-EXITED ! ENDOF
      signaled OF XE-RC ! 0 0= 0= XE-EXITED ! ENDOF
-     timeout OF src srcu XE-OUT$ XE-ERR$ T-TIMED-OUT ENDOF
+     timeout OF src XE-OUT$ XE-ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: XE-RUN ( str -- ) {: src:^ srcu:n :}
-   XE-CHILD src srcu FS:WRITE-ALL
+: XE-RUN ( str -- ) {: src:str :}
+   XE-CHILD src FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
    XE-CHILD PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$  XE-EMPTY 0  XE-OUT XE-CAP >LEN
+   ENGINE-CANDIDATE:PATH$  XE-EMPTY 0 >str  XE-OUT XE-CAP >LEN
    XE-ERR XE-CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   src srcu XE-STORE! ;
+   src XE-STORE! ;
 
 : XE-LF ( -- ) 10 SB-APPEND-C ;
 : XE-LINE ( str -- ) SB-APPEND XE-LF ;
@@ -82,9 +81,9 @@ create XE-EMPTY 1 allot
    S\" drop .\" <<UNCK>>\" cr ;" XE-LINE ;
 
 \ The child prints "<tag><<CERT>>" or "<tag><<REJ>>"; cand must hold no '"'.
-: XE-CASE-LINE ( str str -- ) {: ta:^ tu:n ca:^ cu:n :}
-   S\" .\" " SB-APPEND  ta tu SB-APPEND  S\" \"  " SB-APPEND
-   S\" s\" " SB-APPEND  ca cu SB-APPEND  S\" \" CHECK-CANDIDATE! XE-SHOW" XE-LINE ;
+: XE-CASE-LINE ( str str -- ) {: ts:str cs:str :}
+   S\" .\" " SB-APPEND  ts SB-APPEND  S\" \"  " SB-APPEND
+   S\" s\" " SB-APPEND  cs SB-APPEND  S\" \" CHECK-CANDIDATE! XE-SHOW" XE-LINE ;
 
 \ All value cases run in one child; the parent reads "<tag><verdict>" back.
 : XE-VALUES-PROG$ ( -- str )
@@ -101,7 +100,7 @@ create XE-EMPTY 1 allot
    SB$ ;
 
 \ ---- assertions --------------------------------------------------------------
-: XE-HAS ( str -- ) XE-OUT$ 2swap STR:CONTAINS? TTRUE ;
+: XE-HAS ( str -- ) XE-OUT$ swap STR:CONTAINS? TTRUE ;
 
 \ v9 (`['] A +`) is the scalar-sink case: the retype has no consumer lookahead, so
 \ the tick is a T-QUOT that cannot unify with +'s `n` input and the body REJECTS.
@@ -167,7 +166,7 @@ create XE-EMPTY 1 allot
 
 \ Two used packages exporting one tail, and one body line to compile against
 \ them: the refusals a tick shares with a call.
-: XE-AMB-PROG$ ( str -- str ) {: a:^ u:n :}
+: XE-AMB-PROG$ ( str -- str ) {: s:str :}
    SB-RESET
    s" require src/lib/error.f" XE-LINE
    s" package XEU-A  public  : XEU-W ( n -- n ) 1 + ;  ;package" XE-LINE
@@ -175,7 +174,7 @@ create XE-EMPTY 1 allot
    s" using XEU-A" XE-LINE
    s" using XEU-B" XE-LINE
    s" package XEU-AMB" XE-LINE
-   a u XE-LINE
+   s XE-LINE
    s" ;package" XE-LINE
    SB$ ;
 
@@ -212,10 +211,10 @@ create XE-EMPTY 1 allot
 
 \ ---- fact words in a quotation type -------------------------------------------
 \ Each program runs in its own child: a rejection ends its load.
-: XE-FACT-REJECTED ( str str -- ) {: src:^ srcu:n want:^ wantu:n :}
-   src srcu XE-RUN
+: XE-FACT-REJECTED ( str str -- ) {: src:str want:str :}
+   src XE-RUN
    XE-EXITED @ TTRUE  XE-RC @ 70 T=
-   XE-ERR$ want wantu STR:CONTAINS? TTRUE ;
+   XE-ERR$ want STR:CONTAINS? TTRUE ;
 
 : XE-FACT-WORDS ( -- )
    s" a fact word is stated once" T-LABEL
@@ -498,8 +497,8 @@ create XE-EMPTY 1 allot
 
 : XE-PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" habu-xe" FS:MKTEMP-DIR {: a:^ u:n :}
-   a u XE-ROOT-BUF XE-ROOT-U XE-COPY!
+   s" habu-xe" FS:MKTEMP-DIR XE-ROOT-BUF XE-ROOT-U XE-COPY!
+
    XE-ROOT FS:CLEANUP-TREE+
    XE-ROOT s" cand.f" XE-CHILD-BUF FS:JOIN-PATH XE-CHILD-U ! ;
 

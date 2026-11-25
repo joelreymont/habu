@@ -1,4 +1,3 @@
-split-str
 \ x86-64-peer-harness.f - the checks, exit and ELF writer of the images an
 \ x86-64 peer runs: an image stages after ASM-RESET and ends with WRITE.
 require src/lib/test.f
@@ -101,9 +100,9 @@ public
 \ Write the staged stream as it stands: byte 0 is the ELF entry.
 : WRITE ( ^u8 n -- ) {: path:^ pathu:n :}
    TEXT-VA ASM-LINK
-   CODE ASM-LEN TEXT-VA IMPORTS$ s" " ELF:BUILD-X64   \ no DATA, so an empty carrier
+   CODE ASM-LEN >str TEXT-VA IMPORTS$ s" " ELF:BUILD-X64   \ no DATA, so an empty carrier
    s" x64-peer" ELF:SET-SIGID ELF:CODESIG2
-   path pathu DRV-WRITE-IMAGE
+   path pathu >str DRV-WRITE-IMAGE
    s" ELF names x86-64 and enters this fixture's code" T-LABEL
    $12 M-OFF M-LE32@ $FFFF and 62 T=
    $18 M-OFF M-LE32@ TEXT-VA T=

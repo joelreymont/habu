@@ -1,4 +1,3 @@
-split-str
 \ Cross-builds the x86-64 boot, X64BOOT's `_start`, into bare executables for an
 \ x86-64 peer; the host checks each image's ELF header, and running them is the
 \ peer's.
@@ -88,7 +87,7 @@ DATA-START $100 + constant TCB-OFF
       else RAX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-SUB-RI32 then
    RAX ASM-SINK ENC-JMP-REG ;
 
-: BUILD ( n ^u8 n -- ) {: pushes:n path:^ pathu:n :}
+: BUILD ( n str -- ) {: pushes:n path:str :}
    ASM-RESET
    LBL LBL {: floor:label code-end:label :}
    floor code-end false X64BOOT:START,
@@ -128,7 +127,8 @@ DATA-START $100 + constant TCB-OFF
    RDI 70 >IMM32 ASM-SINK ENC-MOV-RI32
    NR-EXIT-GROUP SYS,
    code-end LBL,
-   path pathu X64HARNESS:WRITE ;
+   path STR:DATA path STR:LEN X64HARNESS:WRITE ;
+
 
 public
 

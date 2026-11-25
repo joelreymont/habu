@@ -1,4 +1,3 @@
-split-str
 \ End-to-end ZIP:OPEN refusal under an unusable TMPDIR. A child engine runs
 \ test/zip-temp-source.f with TMPDIR naming a regular file, so the source
 \ snapshot cannot be created and OPEN throws FS:MKTEMP's E-FS-DIR with no memory
@@ -24,16 +23,16 @@ create OUT CAP allot variable OUT-U
 create ERR CAP allot variable ERR-U
 variable RC
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: BAD$ ( -- str ) BAD BAD-U @ ;
-: ARCHIVE$ ( -- str ) ARCHIVE ARCHIVE-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: BAD$ ( -- str ) BAD BAD-U @ >str ;
+: ARCHIVE$ ( -- str ) ARCHIVE ARCHIVE-U @ >str ;
 
 \ BAD is a regular file, so FS:MKTEMP refuses a TMPDIR naming it (E-FS-DIR)
 \ and OPEN passes that code on.
 : SETUP ( -- )
-   s" zip-temp" FS:MKTEMP-DIR {: a:^ u:n :}
-   a u FS:CLEANUP-TREE+
-   a ROOT u BYTE-COPY u ROOT-U !
+   s" zip-temp" FS:MKTEMP-DIR {: s:str :}
+   s FS:CLEANUP-TREE+
+   s STR:DATA ROOT s STR:LEN BYTE-COPY s STR:LEN ROOT-U !
    ROOT$ s" not-a-dir" BAD FS:JOIN-PATH BAD-U !
    ROOT$ s" temp.zip" ARCHIVE FS:JOIN-PATH ARCHIVE-U !
    BAD$ s" x" FS:WRITE-ALL ;
@@ -50,9 +49,10 @@ variable RC
    ARCHIVE$ PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE PCAP-RESULT:>N RC ! ERR-U ! OUT-U !
-   RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
+   RC @ 0<> if OUT OUT-U @ >str type ERR ERR-U @ >str type then
    RC @ 0 T=
-   OUT OUT-U @ s" test: ok" STR:CONTAINS? TTRUE ;
+   OUT OUT-U @ >str s" test: ok" STR:CONTAINS? TTRUE ;
+
 
 public
 

@@ -1,4 +1,3 @@
-split-str
 \ Run one public XML owner consumer from source; its deterministic edited XML
 \ artifacts go in a temporary tree the process removes at exit.
 require src/lib/test.f
@@ -26,24 +25,24 @@ create FILE-BYTES FILE-CAP allot
 create EXPECTED FILE-CAP allot
 variable RC
 
-: ROOT$ ( -- str ) ROOT ROOT-U @ ;
-: FILE$ ( str -- str ) {: rel:^ size:n :}
-   ROOT$ rel size PATH FS:JOIN-PATH PATH swap ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: FILE$ ( str -- str ) {: rel:str :}
+   ROOT$ rel PATH FS:JOIN-PATH PATH swap >str ;
 
 : RUN-INPUT ( str str -- )
-   {: program size:n input input-size:n :}
+   {: program:str input:str :}
    PROC-ENV-INHERIT-MISSING
-   program size SOURCE-ROOT:CWD$ input input-size
+   program SOURCE-ROOT:CWD$ input
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : NEED-OK ( -- )
-   RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
+   RC @ 0<> if OUT OUT-U @ >str type ERR ERR-U @ >str type then
    RC @ 0 T= ;
 
-: MARKER ( str -- ) {: marker size:n :}
-   OUT OUT-U @ marker size STR:CONTAINS? TTRUE ;
+: MARKER ( str -- ) {: marker:str :}
+   OUT OUT-U @ >str marker STR:CONTAINS? TTRUE ;
 
 : ENTRY$ ( -- str ) s" source-run.f" FILE$ ;
 
@@ -76,7 +75,7 @@ variable RC
 
 : UTF8-ARTIFACT ( -- )
    s" part-utf8.xml" FILE-READ
-   FILE-BYTES swap
+   FILE-BYTES swap >str
    s\" \xEF\xBB\xBF<r q='aQb'>Ax🚗Y</r><!--keep--><!--late-->" T$= ;
 
 : PUT-UNIT ( n bool n -- n )
@@ -91,11 +90,11 @@ variable RC
    at 2 + ;
 
 : PUT-ASCII ( str bool n -- n )
-   {: chars size:n little:bool at:n :}
-   size 0 ?do
-      chars i + c@ little at i 2 * + PUT-UNIT drop
+   {: chars:str little:bool at:n :}
+   chars STR:LEN 0 ?do
+      chars STR:DATA i + c@ little at i 2 * + PUT-UNIT drop
    loop
-   at size 2 * + ;
+   at chars STR:LEN 2 * + ;
 
 : EXPECT16 ( bool -- str )
    {: little:bool :}
@@ -105,20 +104,21 @@ variable RC
    $D83D little after-prefix PUT-UNIT {: after-high:n :}
    $DE97 little after-high PUT-UNIT {: after-pair:n :}
    s" Y</r><!--keep--><!--late-->" little after-pair PUT-ASCII
-   EXPECTED swap ;
+   EXPECTED swap >str ;
 
 : UTF16-ARTIFACT ( bool -- )
    {: little:bool :}
    little if s" part-utf16le.xml" else s" part-utf16be.xml" then
    FILE-READ {: actual:n :}
-   little EXPECT16 FILE-BYTES actual 2swap T$= ;
+   little EXPECT16 FILE-BYTES actual >str swap T$= ;
 
 public
 : RUN ( -- )
    T-RESET
-   s" xml-owner-e2e" FS:MKTEMP-DIR {: root:^ size:n :}
-   root size FS:CLEANUP-TREE+
-   root ROOT size BYTE-COPY size ROOT-U !
+   s" xml-owner-e2e" FS:MKTEMP-DIR {: root:str :}
+   root FS:CLEANUP-TREE+
+   root STR:DATA ROOT root STR:LEN BYTE-COPY root STR:LEN ROOT-U !
+
    SOURCE-RUN REFUSALS
    UTF8-ARTIFACT true UTF16-ARTIFACT false UTF16-ARTIFACT
    T-REPORT ;
