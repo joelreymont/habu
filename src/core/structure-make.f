@@ -1,4 +1,3 @@
-split-str
 \ structure-make.f: a product family's sealed MAKE / UNMAKE (package
 \ STRUCTURE-MAKE), built by sumtype.f's constructor machinery, and its `DERIVE
 \ addr` accessor surface. Loads just before structure-decl.f; ;STRUCTURE for a

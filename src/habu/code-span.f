@@ -1,4 +1,3 @@
-split-str
 \ Dictionary code lengths retain the legacy body-before-final-slot convention.
 \ Bit 31 marks an exact span instead: no instruction follows the recorded body.
 \ An exact span is any byte count from 1 to MASK, because an x86-64 routine may
@@ -29,20 +28,20 @@ private
 \ Rejects V given to the public word W: WHAT says what V is not, OK the values
 \ the word takes, TEST the CODE-SPAN word that answers whether a value is one.
 : BAD ( n str str str str -- )
-   {: v:n w:^ wu:n what:^ whatu:n ok:^ oku:n test:^ testu:n :}
+   {: v:n w:str what:str ok:str test:str :}
    s" E-CODE-SPAN" REJECTION:OPEN
-   s" `CODE-SPAN:" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s" `CODE-SPAN:" REJECTION:EMIT-STR  w REJECTION:EMIT-STR
    s" ` was given " REJECTION:EMIT-STR  v REJECTION:EMIT-N
-   s" , which is not " REJECTION:EMIT-STR  what whatu REJECTION:EMIT-STR
-   s" takes" REJECTION:NOTE  ok oku REJECTION:EMIT-STR
+   s" , which is not " REJECTION:EMIT-STR  what REJECTION:EMIT-STR
+   s" takes" REJECTION:NOTE  ok REJECTION:EMIT-STR
    REJECTION:HELP
-   s" test the value with `CODE-SPAN:" REJECTION:EMIT-STR  test testu REJECTION:EMIT-STR
+   s" test the value with `CODE-SPAN:" REJECTION:EMIT-STR  test REJECTION:EMIT-STR
    s" ` first and pass only one it accepts" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: LENGTH-CK ( n str -- ) {: raw:n w:^ wu:n :}
+: LENGTH-CK ( n str -- ) {: raw:n w:str :}
    raw VALID? 0= if
-      raw w wu s" a dictionary code length"
+      raw w s" a dictionary code length"
       s" whole 4-byte instructions, or bit 31 set over 1 to 2147483647 bytes"
       s" VALID?" BAD
    then ;

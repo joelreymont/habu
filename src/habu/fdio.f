@@ -1,4 +1,3 @@
-split-str
 \ fdio.f - write a whole span to a file descriptor, or die naming the failure.
 \ Its own file so a booted engine can require it: driver-io.f reaches MBUF and
 \ the image writer. A short write is retried; a write returning zero or an
@@ -24,15 +23,15 @@ variable U
 : MORE? ( -- bool ) OFF @ U @ < ;
 
 : STEP ( -- )
-   FD @ DST LEFT write WR !
+   FD @ DST LEFT >str write WR !
    WR @ 0 <= if s" fdio: write failed" EXIT-STATUS:IOERR die then
    OFF @ WR @ + OFF ! ;
 
 public
 
 : WALL ( n str -- )
-   U !
-   A!
+   dup STR:LEN U !
+   STR:DATA A!
    FD !
    0 OFF !
    begin MORE? while STEP repeat ;

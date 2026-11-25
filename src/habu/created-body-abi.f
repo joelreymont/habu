@@ -1,4 +1,3 @@
-split-str
 \ created-body-abi.f - the record flag and engine cells that bound a created
 \ word's body. Loaded before checker.f at startup, so the checker and
 \ src/habu/layout.f, which loads after it, read one definition.

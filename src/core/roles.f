@@ -1,4 +1,3 @@
-split-str
 \ roles.f — nominal scalar role conversions baked into hb.
 \
 \ The checker treats roles such as idx/len/fd as distinct nominal cell types.
@@ -40,20 +39,20 @@ EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-DECLARATION
 EXPORT CHECK:NOMINAL-PROVIDER
 EXPORT CHECK:SR-GROW
-: DTC+ ( str -- ) {: a:^ u:n :}
-   DTC-U @ u + DTC-CAP @ > IF
-      DTC-U @ u + DTC-CAP @ 2 * max DTC-INIT max {: nc:n :}
+: DTC+ ( str -- ) {: s:str :}
+   DTC-U @ s STR:LEN + DTC-CAP @ > IF
+      DTC-U @ s STR:LEN + DTC-CAP @ 2 * max DTC-INIT max {: nc:n :}
       DTC-P @ DTC-CAP @ nc SR-GROW DTC-P !
       nc DTC-CAP !
    THEN
-   a DTC-BUF DTC-U @ + u ARENA-COPY
-   DTC-U @ u + DTC-U ! ;
+   s STR:DATA  DTC-BUF DTC-U @ + s STR:LEN >str  ARENA-COPY
+   DTC-U @ s STR:LEN + DTC-U ! ;
 
 : DTC-NAME$ ( -- str )
-   DTC-BUF DTC-NAME-OFF @ + DTC-NAME-U @ ;
+   DTC-BUF DTC-NAME-OFF @ + DTC-NAME-U @ >str ;
 
 : DTC-SIG$ ( -- str )
-   DTC-BUF DTC-SIG-OFF @ + DTC-SIG-U @ ;
+   DTC-BUF DTC-SIG-OFF @ + DTC-SIG-U @ >str ;
 
 \ The buffer carries two spans and nothing else: DTC-NAME$ and DTC-SIG$ are
 \ read separately, so no declaration text is built here.
@@ -69,26 +68,26 @@ EXPORT CHECK:SR-GROW
    DTC-U @ DTC-SIG-OFF @ - DTC-SIG-U ! ;
 
 \ DTC+, with each byte a-z in upper case.
-: DTC-UPPER+ ( str -- ) {: a:^ u:n :}
-   a u DTC+
-   DTC-BUF DTC-U @ u - + {: at:^ :}
-   0 BEGIN dup u < WHILE
+: DTC-UPPER+ ( str -- ) {: s:str :}
+   s DTC+
+   DTC-BUF DTC-U @ s STR:LEN - + {: at:^ :}
+   0 BEGIN dup s STR:LEN < WHILE
       dup at + c@ dup 97 < over 122 > or 0= IF 32 - THEN  over at + c!
       1+
    REPEAT drop ;
 
-\ >NAME ( base -- tail ) of surface SA SU, tail TA TU and base BA BU, which is
+\ >NAME ( base -- tail ) of surface SS, tail TS and base BS, which is
 \ `n` for a one-cell nominal.
-: DTC-BUILD-IN ( str str str -- ) {: sa:^ su:n ta:^ tu:n ba:^ bu:n :}
+: DTC-BUILD-IN ( str str str -- ) {: ss:str ts:str bs:str :}
    DTC-BEGIN
-   s" >" DTC+ sa su DTC+ DTC-NAME-END
-   ba bu DTC+ s"  -- " DTC+ ta tu DTC+ DTC-SIG-END ;
+   s" >" DTC+ ss DTC+ DTC-NAME-END
+   bs DTC+ s"  -- " DTC+ ts DTC+ DTC-SIG-END ;
 
 \ NAME>BASE ( tail -- base ), the base in upper case in the name: NAME>N for `n`.
-: DTC-BUILD-OUT ( str str str -- ) {: sa:^ su:n ta:^ tu:n ba:^ bu:n :}
+: DTC-BUILD-OUT ( str str str -- ) {: ss:str ts:str bs:str :}
    DTC-BEGIN
-   sa su DTC+ s" >" DTC+ ba bu DTC-UPPER+ DTC-NAME-END
-   ta tu DTC+ s"  -- " DTC+ ba bu DTC+ DTC-SIG-END ;
+   ss DTC+ s" >" DTC+ bs DTC-UPPER+ DTC-NAME-END
+   ts DTC+ s"  -- " DTC+ bs DTC+ DTC-SIG-END ;
 
 \ The role conversions are casts, not trusted declarations: a bad cast is
 \ rejected at its declaration, while `TRUSTED: L ( n -- ^u8 ) ;` records any
@@ -167,16 +166,17 @@ CAST: >SNAP ( n -- snap )
 
 \ The definer just read has no name after it.
 : DEF-NO-NAME ( -- )
-   SRCLOC:TOKEN$ SRCLOC:TOKEN$ s" no name follows" REJECTION:MISSING-NAME
+   SRCLOC:TOKEN$ >str SRCLOC:TOKEN$ >str s" no name follows"
+   REJECTION:MISSING-NAME
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : DEFLINEAR ( -- )
-   SRCLOC:TOKEN$ {: kw:^ ku:n :}
-   parse-name dup 0= IF DEF-NO-NAME THEN
-   {: name:^ nameu:n :}
-   kw ku name nameu REJECTION:NOT-A-NAME
-   name nameu name nameu DEF-NAME-REJECT? IF EXIT-STATUS:REJECTED REJECTION:STOP THEN
-   name nameu CHECKER-DEFLINEAR ;
+   SRCLOC:TOKEN$ >str {: kw:str :}
+   parse-name dup STR:LEN 0= IF DEF-NO-NAME THEN
+   {: name:str :}
+   kw name REJECTION:NOT-A-NAME
+   name name DEF-NAME-REJECT? IF EXIT-STATUS:REJECTED REJECTION:STOP THEN
+   name dup STR:DATA swap STR:LEN CHECKER-DEFLINEAR ;
 NOMINAL-PROVIDER
 INTRINSIC-DECLARATION INTRINSIC
 private
@@ -184,13 +184,13 @@ private
 : VRDEF-END? ( str -- bool )
    s" END-VALUE-RECORD" STR:=CI ;
 
-\ The source ends inside value record a u. It is written through its help, and
+\ The source ends inside value record s. It is written through its help, and
 \ the caller stops it.
-: VRDEF-UNCLOSED ( str -- ) {: a:^ u:n :}
+: VRDEF-UNCLOSED ( str -- ) {: s:str :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
-   s" value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" value record `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
    s" ` has no `END-VALUE-RECORD`" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" source ends first" REJECTION:EMIT-STR
+   s REJECTION:AT  s" source ends first" REJECTION:EMIT-STR
    REJECTION:HELP  s" end the field list with `END-VALUE-RECORD`" REJECTION:EMIT-STR ;
 
 global
@@ -198,21 +198,22 @@ global
 \ parse-name never refills the input, so the span is the record's own bytes and
 \ a rejected field is placed.
 : VALUE-RECORD ( -- )
-   SRCLOC:TOKEN$ {: kw:^ ku:n :}
-   parse-name dup 0= IF DEF-NO-NAME THEN
-   {: name:^ nameu:n :}
-   kw ku name nameu REJECTION:NOT-A-NAME
-   name nameu name nameu DEF-NAME-REJECT? IF EXIT-STATUS:REJECTED REJECTION:STOP THEN
-   parse-name over {: f:^ :}
+   SRCLOC:TOKEN$ >str {: kw:str :}
+   parse-name dup STR:LEN 0= IF DEF-NO-NAME THEN
+   {: name:str :}
+   kw name REJECTION:NOT-A-NAME
+   name name DEF-NAME-REJECT? IF EXIT-STATUS:REJECTED REJECTION:STOP THEN
+   parse-name dup STR:DATA {: f:^ :}
    BEGIN
-      dup 0= IF
-         name nameu VRDEF-UNCLOSED  EXIT-STATUS:REJECTED REJECTION:STOP
+      dup STR:LEN 0= IF
+         name VRDEF-UNCLOSED  EXIT-STATUS:REJECTED REJECTION:STOP
       THEN
-      2dup VRDEF-END? IF
-         drop {: e:^ :}  name nameu f e f - CHECKER-DEFRECORD
+      dup VRDEF-END? IF
+         STR:DATA {: e:^ :}
+         name dup STR:DATA swap STR:LEN  f e f - CHECKER-DEFRECORD
          EXIT
       THEN
-      2drop parse-name
+      drop parse-name
    AGAIN ;
 NOMINAL-PROVIDER
 INTRINSIC-DECLARATION INTRINSIC

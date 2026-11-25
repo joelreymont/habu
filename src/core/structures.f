@@ -1,4 +1,3 @@
-split-str
 \ structures.f - checked structure and field defining words. Each field name is
 \ a child word sumtype.f's TDECL-CELL-CHILD, TDECL-PTR-CHILD or TDECL-BYTE-CHILD
 \ makes: a fixed body that adds the field's offset, and a typed effect. A field
@@ -21,37 +20,38 @@ variable STRUCT-OPEN
    swap BYTE-VIEW swap + ;
 
 \ w names the word that runs, for the rejection.
-: STRUCT-REQUIRE-OPEN ( str -- ) {: w:^ wu:n :}
+: STRUCT-REQUIRE-OPEN ( str -- ) {: w:str :}
    STRUCT-OPEN @ 0 <> if exit then
    s" E-BAD-DECLARATION" REJECTION:OPEN
-   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+   96 REJECTION:EMIT1  w REJECTION:EMIT-STR
    s" ` is outside a structure" REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" no structure open" REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ >str REJECTION:AT  s" no structure open" REJECTION:EMIT-STR
    REJECTION:HELP  s" open a structure with `BEGIN-STRUCTURE name` before `" REJECTION:EMIT-STR
-   w wu REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   w REJECTION:EMIT-STR  96 REJECTION:EMIT1
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ The field word w, at the source token t tu, has no name after it. It is
+\ The field word w, at the source token t, has no name after it. It is
 \ written through its help, and the caller stops it.
-: STRUCT-NO-NAME ( str str -- ) {: w:^ wu:n t:^ tu:n :}
-   w wu s" a field name" t tu s" no name follows"
+: STRUCT-NO-NAME ( str str -- ) {: w:str t:str :}
+   w s" a field name" t s" no name follows"
    REJECTION:MISSING-OPERAND
    s" write the field's name after the word, as `" REJECTION:EMIT-STR
-   w wu REJECTION:EMIT-STR  s"  tag`" REJECTION:EMIT-STR ;
+   w REJECTION:EMIT-STR  s"  tag`" REJECTION:EMIT-STR ;
 
 \ The field's name, which the live input holds next; with none left the
 \ source token is the field word, as the source spells it.
 : STRUCT-NAME ( -- str )
-   parse-name dup 0= if
-      SRCLOC:TOKEN$ SRCLOC:TOKEN$ STRUCT-NO-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
+   parse-name dup STR:LEN 0= if
+      SRCLOC:TOKEN$ >str SRCLOC:TOKEN$ >str STRUCT-NO-NAME
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then ;
 
-: STRUCT-UNALIGNED ( n str -- ) {: off:n fa:^ fu:n :}
+: STRUCT-UNALIGNED ( n str -- ) {: off:n fs:str :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
-   s" pointer field `" REJECTION:EMIT-STR  fa fu REJECTION:EMIT-STR
+   s" pointer field `" REJECTION:EMIT-STR  fs REJECTION:EMIT-STR
    s" ` starts at byte " REJECTION:EMIT-STR  off REJECTION:EMIT-U
    s" , not on a cell boundary" REJECTION:EMIT-STR
-   fa fu REJECTION:AT  s" not on a cell boundary" REJECTION:EMIT-STR
+   fs REJECTION:AT  s" not on a cell boundary" REJECTION:EMIT-STR
    s" offset" REJECTION:NOTE  off REJECTION:EMIT-U
    s" cell" REJECTION:NOTE  CELL REJECTION:EMIT-U
    REJECTION:HELP
@@ -73,25 +73,25 @@ variable STRUCT-OPEN
 \ abandon action is a named word: a quotation before `create` is a bend, and
 \ `does>` needs its `create` before any bend.
 : BEGIN-STRUCTURE ( -- ^n n )
-   SRCLOC:TOKEN$ s" END-STRUCTURE" ['] STRUCT-ABANDON OPENED
+   SRCLOC:TOKEN$ >str s" END-STRUCTURE" ['] STRUCT-ABANDON OPENED
    create ndict@ STRUCT-OPEN !
    here 0 , 0 does> ( -- n ) @ ;
 
 : +FIELD ( ^a n n -- ^a n )
    s" +FIELD" STRUCT-REQUIRE-OPEN
-   over STRUCT-NAME rot TDECL-CELL-CHILD
+   over STRUCT-NAME swap TDECL-CELL-CHILD
    + ;
 
 : PTR-FIELD: ( ^a n -- ^a n )
    s" PTR-FIELD:" STRUCT-REQUIRE-OPEN
-   dup STRUCT-NAME {: off:n fa:^ fu:n :}
-   off CELL mod 0 <> if off fa fu STRUCT-UNALIGNED then
-   fa fu off TDECL-PTR-CHILD
+   dup STRUCT-NAME {: off:n fs:str :}
+   off CELL mod 0 <> if off fs STRUCT-UNALIGNED then
+   fs off TDECL-PTR-CHILD
    CELL + ;
 
 : CFIELD: ( ^a n -- ^a n )
    s" CFIELD:" STRUCT-REQUIRE-OPEN
-   dup STRUCT-NAME rot TDECL-BYTE-CHILD
+   dup STRUCT-NAME swap TDECL-BYTE-CHILD
    1 + ;
 
 : END-STRUCTURE ( ^n n -- )

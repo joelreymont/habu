@@ -1,4 +1,3 @@
-split-str
 \ debug.f - breakpoints on compiled words: a trap at a word's entry (BRK #0 on
 \ arm64, int3 on x86-64), served by the engine's SIGTRAP handler, which prints
 \ habu-bp:, pc and the stack top, then removes it (one-shot) or resumes past it
@@ -56,7 +55,7 @@ private
 CAST: XT>N ( [ R -- S ] -- n )
 
 : CODE! ( n n -- ) {: w at :}
-   w  at 4 CODE-BYTES:AT drop  BP-PATCH32 ;
+   w  at 4 CODE-BYTES:AT STR:DATA  BP-PATCH32 ;
 
 \ The block is reserved at boot: a failed REPL line's CP rollback would free one
 \ reserved here. A branch from it reaches the whole region.
@@ -130,7 +129,7 @@ HB-TARGET-LINUX-X86-64? 0= [if]
    w COPIES? dup if w DWORD+ next B+ then ;
 
 : ENTRY+ ( n -- bool ) {: at:n :}
-   at  at 4 CODE-BYTES:AT drop LE:U32@  RELOCATED? ;
+   at  at 4 CODE-BYTES:AT STR:DATA LE:U32@  RELOCATED? ;
 
 [then]
 
@@ -147,16 +146,16 @@ $FFFFFF00 constant ABOVE-BYTE0
 
 \ Whether X64DIS decodes the instruction at code; a throw from outside the
 \ decoder's block throws on.
-: DECODES? ( str -- bool ) {: code:^ u:n :}
-   [: code u X64DIS:SPAN drop drop ;] catch {: rc:n :}
+: DECODES? ( str -- bool ) {: code:str :}
+   [: code X64DIS:SPAN drop drop ;] catch {: rc:n :}
    rc 0= if true exit then
    rc X64DIS:E-LAST < rc X64DIS:E-FIRST > or if rc throw then
    false ;
 
 : BYTE+ ( n -- ) TRAMP-BUF TRAMP-U @ + c!  1 TRAMP-U +! ;
 
-: BYTES+ ( str -- ) {: a:^ u:n :}
-   u 0 ?do a i + c@ BYTE+ loop ;
+: BYTES+ ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ BYTE+ loop ;
 
 \ A rel32 counts from the byte after it.
 : REL32+ ( n -- )
@@ -169,21 +168,22 @@ $FFFFFF00 constant ABOVE-BYTE0
 
 \ The instruction with the disp32 at offset disp, which counts from the
 \ instruction's end, moved from `at` to the trampoline.
-: MOVED+ ( n str n -- ) {: at:n code:^ len:n disp:n :}
-   code disp BYTES+
-   code disp + LE:U32@ at TRAMP-AT @ - + DWORD+
+: MOVED+ ( n str n -- ) {: at:n code:str disp:n :}
+   code STR:DATA {: a:^ :}
+   a disp >str BYTES+
+   a disp + LE:U32@ at TRAMP-AT @ - + DWORD+
    disp 4 + {: done:n :}
-   code done + len done - BYTES+ ;
+   a done +  code STR:LEN done -  >str BYTES+ ;
 
-\ Append the bytes that do at the trampoline what the len-byte instruction at
-\ code does at `at`. Tier 0 begins no unit with the jcc or call r/m of `other`.
+\ Append the bytes that do at the trampoline what the instruction code
+\ does at `at`. Tier 0 begins no unit with the jcc or call r/m of `other`.
 : RELOCATED? ( n str X64DIS:pc-use -- bool )
-   {: at:n code:^ len:n use:X64DIS:pc-use :}
-   at len + {: next:n :}
+   {: at:n code:str use:X64DIS:pc-use :}
+   at code STR:LEN + {: next:n :}
    use MATCH X64DIS:pc-use
-      none OF code len BYTES+ next JMP+ true ENDOF
+      none OF code BYTES+ next JMP+ true ENDOF
       operand OF {: disp:n :}
-         at code len disp MOVED+ next JMP+ true ENDOF
+         at code disp MOVED+ next JMP+ true ENDOF
       call OF {: delta:n :}
          next PUSH+ next delta + JMP+ true ENDOF
       jump OF next + JMP+ true ENDOF
@@ -191,10 +191,10 @@ $FFFFFF00 constant ABOVE-BYTE0
    ;MATCH ;
 
 : ENTRY+ ( n -- bool ) {: at:n :}
-   at  cp@ at - 15 min  CODE-BYTES:AT {: code:^ u:n :}
-   code u DECODES? 0= if false exit then
-   code u X64DIS:SPAN {: len:n use:X64DIS:pc-use :}
-   at code len use RELOCATED? ;
+   at  cp@ at - 15 min  CODE-BYTES:AT {: code:str :}
+   code DECODES? 0= if false exit then
+   code X64DIS:SPAN {: len:n use:X64DIS:pc-use :}
+   at  code STR:DATA len >str  use RELOCATED? ;
 
 [then]
 
@@ -220,7 +220,7 @@ $FFFFFF00 constant ABOVE-BYTE0
 : FREE ( -- n )
    0 BEGIN dup BREAKPOINT:SLOTS < WHILE  dup FILLED? 0= IF exit THEN  1 + REPEAT  drop -1 ;
 
-: BP-SET-SLOT ( str n -- ) {: xt:^ ctrl idx :}
+: BP-SET-SLOT ( ^u8 n n -- ) {: xt:^ ctrl idx :}
    xt idx BP-SLOT-ADDR !
    xt LE:U32@ idx BP-SLOT-INSTR !
    0 idx BP-SLOT-HITS !
@@ -240,7 +240,7 @@ $FFFFFF00 constant ABOVE-BYTE0
       drop s" bp: table full" type cr EXIT-STATUS:FULL throw
    THEN   \ recoverable in the REPL
    {: idx :}
-   at 4 CODE-BYTES:AT drop {: xt:^ :}
+   at 4 CODE-BYTES:AT STR:DATA {: xt:^ :}
    ctrl  ctrl 1 and 0<> if  at idx TRAMP! 0= if drop 0 then  then {: kept :}
    xt kept idx BP-SET-SLOT
    xt TRAP-WORD xt BP-PATCH32 ;

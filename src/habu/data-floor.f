@@ -1,4 +1,3 @@
-split-str
 \ data-floor.f - raising the DATA floor to `here`. A caller that publishes
 \ storage allots it first, then raises the floor; the package holds no
 \ storage of its own.

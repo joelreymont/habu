@@ -1,4 +1,3 @@
-split-str
 \ escape.f - decoding an escaped string literal's span, package ESCAPE.
 \
 \ A literal (`s\"`, `c\"`, `.\"`) runs to a closing double quote; LETTER
@@ -92,13 +91,13 @@ public
    2drop ;
 
 
-\ The bytes the u bytes at src decode to, written at dst, which holds u bytes: a
+\ The bytes src decodes to, written at dst, which holds as many bytes as src: a
 \ decoded text is never longer than its spelling. Answers the count written and
 \ whether every escape was whole; a bad one stops the decode with the bytes
 \ before it written.
-: DECODE ( str ^u8 -- n bool ) {: src:^ u:n dst:^ :}
-   src u + {: e:^ :}
-   src 0
+: DECODE ( str ^u8 -- n bool ) {: src:str dst:^ :}
+   src STR:DATA src STR:LEN + {: e:^ :}
+   src STR:DATA 0
    begin over e < while
       {: p:^ k:n :}
       p e STEP {: b:n nx:^ ok:bool :}

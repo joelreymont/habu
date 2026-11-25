@@ -1,4 +1,3 @@
-split-str
 \ intern-table.f - the string tables, package INTERN's first part: a build
 \ space's and hb's own. Loaded before checker.f by each core prefix so the
 \ checker can reach it; src/habu/intern.f reopens INTERN.
@@ -44,30 +43,30 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 : BODY$ ( n -- str )
    {: body:n :}
    NULL-PTR BYTE-VIEW body +
-   body CELL - 0 CELL-AT @ ;
+   body CELL - 0 CELL-AT @ >str ;
 
 
 : SLOT-ENDS? ( n ^n str -- bool )
-   {: k:n t:^ a:^ u:n :}
+   {: k:n t:^ s:str :}
    t k SLOT-CELL @ {: body:n :}
    body 0= if 0 0= exit then
-   body BODY$ a u STR:= ;
+   body BODY$ s STR:= ;
 
 
-\ The slot holding the body equal to a u, else the empty slot it goes in: one
+\ The slot holding the body equal to s, else the empty slot it goes in: one
 \ exists, since a table is never more than half full (LAY).
 : SLOT-FOR ( ^n str -- n )
-   {: t:^ a:^ u:n :}
+   {: t:^ s:str :}
    t SIZE-CELL @ 1- {: mask:n :}
-   FNV:BASIS32 a u FNV:BYTES32 mask and
-   begin dup t a u SLOT-ENDS? 0= while 1+ mask and repeat ;
+   FNV:BASIS32 s FNV:BYTES32 mask and
+   begin dup t s SLOT-ENDS? 0= while 1+ mask and repeat ;
 
 
 : SLOT-PUT ( ^n n -- )
    {: t:^ body:n :}
    body  t  t body BODY$ SLOT-FOR  SLOT-CELL !
    1 t FILLED-CELL +!
-   body BODY$ nip body +  t HIGHEST-CELL @  max  t HIGHEST-CELL ! ;
+   body BODY$ STR:LEN body +  t HIGHEST-CELL @  max  t HIGHEST-CELL ! ;
 
 
 \ The slots grow, so they are mapped outside DATA.
@@ -110,14 +109,14 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 \ One `allot` bounds and zeroes the length cell, the text and the byte past it;
 \ no `,`, so the cell never joins a created body's grid. It ends aligned.
 : LAY ( ^n str -- n )
-   {: t:^ a:^ u:n :}
+   {: t:^ s:str :}
    t FILLED-CELL @ 1+ 2 *  t SIZE-CELL @ > if t WIDEN then
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - {: head:n :}
-   CELL u 1 + + allot
-   u head 0 CELL-AT !
+   CELL s STR:LEN 1 + + allot
+   s STR:LEN head 0 CELL-AT !
    head CELL + {: address:n :}
    NULL-PTR BYTE-VIEW address + {: dst:^ :}
-   u 0 ?do a i + c@ dst i + c! loop
+   s STR:LEN 0 ?do s STR:DATA i + c@ dst i + c! loop
    align
    t address SLOT-PUT
    address ;
@@ -177,7 +176,7 @@ private
    t k SLOT-CELL @ {: body:n :}
    body 0= if exit then
    0 t k SLOT-CELL !
-   body BODY$ nip body + limit <= if t body SLOT-PUT then ;
+   body BODY$ STR:LEN body + limit <= if t body SLOT-PUT then ;
 
 
 \ The address cell comes first: the other cells mean nothing while it is 0.
@@ -197,20 +196,20 @@ private
 
 public
 
-\ The address of the body equal to a u in the current table, as its distance
+\ The address of the body equal to s in the current table, as its distance
 \ from NULL-PTR (DP-CELL's units); 0 when none.
 : FIND ( str -- n )
-   {: a:^ u:n :}
+   {: s:str :}
    REWIND-REJECT
    TABLE {: t:^ :}
-   t  t a u SLOT-FOR  SLOT-CELL @ ;
+   t  t s SLOT-FOR  SLOT-CELL @ ;
 
 
 : TEXT ( str -- n )
-   {: a:^ u:n :}
-   a u FIND {: body:n :}
+   {: s:str :}
+   s FIND {: body:n :}
    body 0 <> if body exit then
-   TABLE a u LAY ;
+   TABLE s LAY ;
 
 
 \ Forgets every text that ends above n (DP-CELL's units).
