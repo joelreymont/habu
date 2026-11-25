@@ -1,4 +1,3 @@
-split-str
 \ create-axiom-test.f - `create`'s effect row (src/habu/prims.f `EPRIM: create
 \ EPRIM;`) is empty: `create` parses a name and defines it (src/habu/habu1.f
 \ BCREATE); the word gets `-- ^a` from its definer (src/habu/interpreter.f
@@ -45,7 +44,7 @@ private
 : LOAD-PTR-A ( -- )      s" : CAX-B2 ( -- ^a ) create ;" evaluate-closed ;
 : LOAD-N ( -- )          s" : CAX-B3 ( -- n ) create ;" evaluate-closed ;
 : LOAD-ENUM-HALF ( -- )  s" : CAX-B4 ( n -- n ) dup create , 1 + ;" evaluate-closed ;
-: LOAD-IN-STRING ( -- )  s\" : CAX-B5 ( -- ^u8 n ) s\q create\q ;" evaluate-closed ;
+: LOAD-IN-STRING ( -- )  s\" : CAX-B5 ( -- str ) s\q create\q ;" evaluate-closed ;
 : LOAD-IN-COMMENT ( -- ) s" : CAX-B6 ( -- ) ( create ) ;" evaluate-closed ;
 \ `here` hands back a raw storage address, so its wrapper declares `^n`: a
 \ parametric pointee over raw storage is E-NONPARAMETRIC-EFFECT (docs/forth.md

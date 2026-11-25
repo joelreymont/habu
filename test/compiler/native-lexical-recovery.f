@@ -1,4 +1,3 @@
-split-str
 \ Body capture keeps local and parser-operand scope lexical: a failed
 \ nested parser operand rolls back its opener before capture resumes; a local
 \ spelled like a control word, the string opener or a parser word is a local
@@ -19,7 +18,7 @@ public
 \ in its arm. The opener after `then` is the global string word again.
 : NLS-STRING-WORD ( bool -- n )
    if 7 {: s":n :} s" else 0 then
-   s" global" 2drop ;
+   s" global" drop ;
 
 \ A local spelled like a parser word takes no operand: `;` closes the body.
 : NLS-LOCAL-CHAR ( -- n ) 5 {: char:n :} char ;
@@ -27,7 +26,7 @@ public
 \ A head local ends at `does>`: the clause's string opener is the string word.
 : NLS-DOES-STRING ( n -- )
    {: s":n :}
-   create s" , does> ( -- ^u8 n ) drop s" a ; b" ;
+   create s" , does> ( -- str ) drop s" a ; b" ;
 5 NLS-DOES-STRING NLS-DOES-WORD
 
 \ The first semicolon is a parser operand; only the second closes the body.
@@ -50,7 +49,7 @@ package NATIVE-LEXICAL-RECOVERY
    s"    ['] LEXBAD catch .  LEXREST evaluate-closed  postpone ; ;" GE-SRC-LINE
    s" MAKE-LEXWORD" GE-SRC-LINE
    s" LEXWORD ." GE-SRC-LINE
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ >str PROCESS:WAIT-FOREVER GE-RUN-STDIN
    s" caught parser operand refusal" GE-EXPECT-OK
    S\" 70\n7\n" s" caught parser operand refusal" GE-EXPECT-OUT
    s" NEVER-BOUND" s" caught parser operand refusal" GE-EXPECT-ERR-HAS ;

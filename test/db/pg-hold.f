@@ -1,4 +1,3 @@
-split-str
 \ pg-hold.f - the case file test/db/pg-kill-test.f has the pg harness run. It
 \ connects with the conninfo of its one script argument and writes two lines on
 \ the FIFO PG_HOLD_FIFO names: the server's socket directory, and line 7 of its
@@ -23,9 +22,9 @@ create PIDFILE PATH-CAP allot
 create TEXT PIDFILE-CAP allot
 variable HOLD                       \ the FIFO's write end
 
-: REPORT ( ^u8 n -- ) {: a:^ u:n :}
+: REPORT ( str -- ) {: s:str :}
    HOLD @ {: fd:n :}
-   fd a u write u <> if s" pg-hold: report refused" EXIT-STATUS:IOERR die then
+   fd s write s STR:LEN <> if s" pg-hold: report refused" EXIT-STATUS:IOERR die then
    fd s\" \n" write 1 <> if s" pg-hold: report refused" EXIT-STATUS:IOERR die then ;
 
 \ The offset of line n, counted from 1, in the first u bytes of TEXT; -1 when
@@ -44,7 +43,7 @@ variable HOLD                       \ the FIFO's write end
    at 0 < if s" pg-hold: postmaster.pid is short" EXIT-STATUS:FAILURE die then
    at begin dup u < if TEXT over + c@ NEWLINE <> else false then while 1+ repeat
    {: stop:n :}
-   TEXT at + stop at - ;
+   TEXT at + stop at - >str ;
 
 using PG
 
@@ -52,18 +51,18 @@ using PG
    1 1 CONFIGURE
    0 SCRIPT-ARGV$ s" " CONNECT MATCH PG:connect-result
       connected OF ENDOF
-      refused OF type cr s" pg-hold: connect refused" EXIT-STATUS:UNAVAILABLE die ENDOF
+      refused OF >str type cr s" pg-hold: connect refused" EXIT-STATUS:UNAVAILABLE die ENDOF
    ;MATCH ;
 
 \ The one value a one-row, one-column query answers, reported.
-: REPORT-SHOW ( PG:connection str -- ) {: c:PG:connection q:^ qu:n :}
-   c q qu [: 0 >ROW 0 >COL TEXT$ REPORT ;] WITH-RESULT ;
+: REPORT-SHOW ( PG:connection str -- ) {: c:PG:connection q:str :}
+   c q [: 0 >ROW 0 >COL TEXT$ REPORT ;] WITH-RESULT ;
 
 : REPORT-SEGMENT ( PG:connection -- ) {: c:PG:connection :}
    c s" show data_directory"
    [: 0 >ROW 0 >COL TEXT$ s" postmaster.pid" PIDFILE FS:JOIN-PATH swap ;] WITH-RESULT
    {: pu:n :}
-   PIDFILE pu TEXT PIDFILE-CAP FS:READ-ALL {: u:n :}
+   PIDFILE pu >str TEXT PIDFILE-CAP FS:READ-ALL {: u:n :}
    SHM-LINE u LINE$ REPORT ;
 
 \ It opens the FIFO's write end first (src/lib/test/fifo.f), never closed.

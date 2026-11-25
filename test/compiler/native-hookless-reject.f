@@ -1,4 +1,3 @@
-split-str
 \ native-hookless-reject.f - a definition the checker refuses is refused naming
 \ it and the token refused, and keeps no row.
 
@@ -19,32 +18,32 @@ variable RC
 \ Texts that outrun a source line.
 create TEXT CAP allot                  variable TEXT-U
 
-: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
+: OUT$ ( -- str ) OUT OUT-U @ >str ;
+: ERR$ ( -- str ) ERR ERR-U @ >str ;
 
-: TEXT$ ( -- ^u8 n ) TEXT TEXT-U BUF-LEN@ ;
-: TEXT+ ( ^u8 n -- ) TEXT CAP TEXT-U BUF-APPEND ;
+: TEXT$ ( -- str ) TEXT TEXT-U BUF-LEN@ >str ;
+: TEXT+ ( str -- ) TEXT CAP TEXT-U BUF-APPEND ;
 
 : SHOW ( bool -- bool )
    dup 0= if OUT$ type ERR$ type then ;
 
-: SAYS ( ^u8 n -- ) {: a:^ u:n :}
-   ERR$ a u STR:CONTAINS? SHOW TTRUE ;
+: SAYS ( str -- ) {: s:str :}
+   ERR$ s STR:CONTAINS? SHOW TTRUE ;
 
-: PRINTS ( ^u8 n -- ) {: a:^ u:n :}
-   OUT$ a u STR:CONTAINS? SHOW TTRUE ;
+: PRINTS ( str -- ) {: s:str :}
+   OUT$ s STR:CONTAINS? SHOW TTRUE ;
 
-: SUBJECT-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:^ u:n :}
+: SUBJECT-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:str :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !
    oc MATCH PROCESS:ending
-      timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
+      timeout OF src OUT$ ERR$ T-TIMED-OUT ENDOF
       exited OF RC ! ENDOF
       signaled OF drop -1 RC ! ENDOF
    ;MATCH ;
 
-: SESSION ( ^u8 n -- ) {: src:^ u:n :}
-   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
-   src u SUBJECT-STORE! ;
+: SESSION ( str -- ) {: src:str :}
+   src OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+   src SUBJECT-STORE! ;
 
 \ The checker's ambiguity rejection makes the native compiler exit with the
 \ reject status, naming the callee and the packages that publish it.

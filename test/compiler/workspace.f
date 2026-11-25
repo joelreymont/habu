@@ -1,4 +1,3 @@
-split-str
 \ workspace.f - CWORK storage: the declaring package's own words capture none
 \ of its accessors, and no checked source reaches the mapping's cells.
 
@@ -53,9 +52,9 @@ public
 create CWK-FOOB 1 allot
 
 \ The text `value CWORK-VARIABLE <name><i> n`.
-: CWK-SRC$ ( n str n -- str ) {: value:n na:^ nu:n i:n :}
+: CWK-SRC$ ( n str n -- str ) {: value:n ns:str i:n :}
    SB-RESET  value FMT:SB-INT  s"  CWORK-VARIABLE " SB-APPEND
-   na nu SB-APPEND  i FMT:SB-INT  s"  n" SB-APPEND  SB$ ;
+   ns SB-APPEND  i FMT:SB-INT  s"  n" SB-APPEND  SB$ ;
 
 \ Declares CWK-Di with a default for more i than the default table holds.
 : CWK-FILL ( -- )
@@ -67,12 +66,12 @@ create CWK-ERR CWK-CAP allot
 
 \ A full default table ends the process, so CWK-FILL runs in a child.
 : CWK-FULL ( -- )
-   s" CWKT:CWK-FILL" {: src:^ srcu:n :}
-   src srcu CWK-OUT CWK-CAP >LEN CWK-ERR CWK-CAP >LEN PROCESS:WAIT-FOREVER
+   s" CWKT:CWK-FILL" {: src:str :}
+   src CWK-OUT CWK-CAP >LEN CWK-ERR CWK-CAP >LEN PROCESS:WAIT-FOREVER
    SUBJECT:RUN {: outl:len errl:len oc :}
-   CWK-ERR errl LEN>N {: err:^ erru:n :}
-   src srcu CWK-OUT outl LEN>N err erru oc 77 T-ENDING-EXITED=
-   err erru
+   CWK-ERR errl LEN>N >str {: err:str :}
+   src CWK-OUT outl LEN>N >str err oc 77 T-ENDING-EXITED=
+   err
    s" compiler workspace: the default table is full at DEFAULT-CAP rows"
    STR:CONTAINS? TTRUE ;
 ;package

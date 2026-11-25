@@ -1,4 +1,3 @@
-split-str
 \ raw-cell-pointer-refusals.f - rejected programs for "a raw storage cell never
 \ holds an address". Every mention of a raw storage word (variable, create,
 \ constant, here) re-freshens its published `-- ^a`, so an `n` stored through
@@ -53,11 +52,11 @@ private
 : RETURN-REASON$ ( -- str )
    S\" \"message\":\"return stack: the return row does not balance at exit\"" ;
 
-: HAS? ( ^u8 n -- )
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
+: HAS? ( str -- )
+   REJECTION:BUFFER$ swap STR:CONTAINS? TTRUE ;
 
 : LACKS? ( str -- )
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? TFALSE ;
+   REJECTION:BUFFER$ swap STR:CONTAINS? TFALSE ;
 
 \ Each shape is refused with its own named diagnostic (the code and the prose
 \ naming what was laundered), not a bare mismatch.
@@ -220,10 +219,10 @@ private
 
 \ A `create`d byte buffer is the honest use of raw storage: the pointee binds to
 \ the scalar `u8` con.
-\ Control: a `create`d byte buffer handed to `type` certifies.
+\ Control: a `create`d byte buffer made a str by `>str` certifies.
 : CASE-BYTE-BUFFER ( -- )
    s" a create'd byte buffer still certifies through type" T-LABEL
-   [: s" : RCP-SHOW ( -- ) RCP-BYTES 4 type ;" evaluate-closed ;] 0 TTHROWSQ ;
+   [: s" : RCP-SHOW ( -- ) RCP-BYTES 4 >str type ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ The latch is raised inside the unifier, so a row that is then thrown away can
 \ raise it: TRY-PRIMS tries each candidate, and `V @ cell+` refuses the `^a

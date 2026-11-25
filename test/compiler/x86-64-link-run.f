@@ -1,4 +1,3 @@
-split-str
 \ Build and run one x86-64 program twice in the same output directory.
 \ The ELF must stay byte-identical across the cold and warm builds.
 require src/lib/test.f
@@ -19,9 +18,9 @@ SHA256-FILE-CTX-BYTES BUFFER: HASH
 32 BUFFER: COLD
 32 BUFFER: WARM
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: SOURCE$ ( -- str ) SOURCE SOURCE-U @ ;
-: EXE$ ( -- str ) EXE EXE-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: SOURCE$ ( -- str ) SOURCE SOURCE-U @ >str ;
+: EXE$ ( -- str ) EXE EXE-U @ >str ;
 
 : SHOW ( CMD:command n -- CMD:command )
    s" x64-link-run: exit " type . cr
@@ -57,13 +56,14 @@ SHA256-FILE-CTX-BYTES BUFFER: HASH
    [: BUILD RUN-IMAGE COLD DIGEST
       BUILD RUN-IMAGE WARM DIGEST
       s" cold and warm images are byte-identical" T-LABEL
-      COLD 32 WARM 32 T$= ;] CMD:WITH-COMMAND ;
+      COLD 32 >str WARM 32 >str T$= ;] CMD:WITH-COMMAND ;
 
 public
 : RUN ( -- )
    T-RESET
-   s" habu-x64-link" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT u BYTE-COPY u ROOT-U !
+   s" habu-x64-link" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA ROOT dir STR:LEN BYTE-COPY
+   dir STR:LEN ROOT-U !
    ROOT$ s" program.f" SOURCE FS:JOIN-PATH SOURCE-U !
    ROOT$ s" program" EXE FS:JOIN-PATH EXE-U !
    s" test/fixtures/x64-link-main.f" SOURCE$ FS:COPY-FILE-STREAM

@@ -1,4 +1,3 @@
-split-str
 \ A definition its definer opened stays open while text is evaluated into it:
 \ the text's own refusal reaches its catch before the definer's `;`.
 require src/lib/test.f
@@ -40,8 +39,8 @@ variable IS-CODE
    code 0= if s" NEP-BAD-HOST 5 T=" evaluate-closed then ;
 
 \ : NAME E TEXT ; with the definition opened by define-word.
-: MAKE-TEXT ( str EFFECT:type str -- ) {: ta:^ tu:n :}
-   define-word ta tu evaluate-closed postpone ; ;
+: MAKE-TEXT ( str EFFECT:type str -- ) {: text:str :}
+   define-word text evaluate-closed postpone ; ;
 
 \ : NAME ( n -- n ) 1 + ; where the text's refusal is caught.
 : MAKE-PART ( str -- )

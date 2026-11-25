@@ -1,4 +1,3 @@
-split-str
 \ A local answers to its declared spelling byte for byte; word lookup stays
 \ case-insensitive, so another spelling is the word (global, package public,
 \ builtin, loop index, control word) or undefined. The checker (src/core/checker.f
@@ -20,19 +19,19 @@ variable ERR-U
 variable RC
 variable EXITED
 
-: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
+: OUT$ ( -- str ) OUT OUT-U @ >str ;
+: ERR$ ( -- str ) ERR ERR-U @ >str ;
 
-: STORE ( len len PROCESS:ending ^u8 n -- ) {: outu:len erru:len oc src:^ u:n :}
+: STORE ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:str :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !
    oc MATCH PROCESS:ending
       exited OF RC ! true EXITED ! ENDOF
       signaled OF RC ! false EXITED ! ENDOF
-      timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
+      timeout OF src OUT$ ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: RUN-SOURCE ( str -- ) {: src:^ u:n :}
-   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN src u STORE ;
+: RUN-SOURCE ( str -- ) {: src:str :}
+   src OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN src STORE ;
 
 : EXPECT-RC ( n -- ) {: want:n :}
    EXITED @ 0= RC @ want <> or if ERR$ type OUT$ type then

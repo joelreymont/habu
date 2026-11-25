@@ -1,4 +1,3 @@
-split-str
 require src/lib/test.f
 require src/arch/tic6x/asm.f
 require src/arch/tic6x/sim.f
@@ -60,8 +59,8 @@ variable REMAINDER
    RESET FILL-REGISTERS x 4 A! y 4 B!
    PROGRAM$ CALL drop ;
 
-: CHECK ( bool ^u8 n -- ) {: ok:bool text size:n :}
-   ok 0= if 1 FAILURES +! s" eabi: " type text size type s"  x=" type 4 A@ FMT:.INT s"  y=" type 4 B@ FMT:.INT cr then ;
+: CHECK ( bool str -- ) {: ok:bool text:str :}
+   ok 0= if 1 FAILURES +! s" eabi: " type text type s"  x=" type 4 A@ FMT:.INT s"  y=" type 4 B@ FMT:.INT cr then ;
 
 
 \ The oracle's verdict on the division helper in HELPER after a call on x y:
@@ -313,7 +312,7 @@ create DOUBLES
 
 : REFUSALS ( -- )
    [: 10 EMIT-HELPER ;] C6XEABI:E-OPERAND TTHROWSQ
-   [: -1 HELPER-NAME$ 2drop ;] C6XEABI:E-OPERAND TTHROWSQ
+   [: -1 HELPER-NAME$ drop ;] C6XEABI:E-OPERAND TTHROWSQ
    [: 0 64 PERMITTED? drop ;] C6XEABI:E-OPERAND TTHROWSQ ;
 
 

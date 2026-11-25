@@ -1,4 +1,3 @@
-split-str
 \ shadow-kinds.f - each kind of definition, loaded by the typed loop at tier 0
 \ under a native arm64 shadow: its shadow routine against T0's host routine.
 
@@ -57,7 +56,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
 : MARK? ( n -- bool ) {: at:n :}
    at 4 + SRC-U @ > if false exit then
    at 0= if true else SRC at 1- + c@ 10 = then
-   SRC at + 4 s" \ ==" STR:= and ;
+   SRC at + 4 >str s" \ ==" STR:= and ;
 
 \ The first section line at or past from, or the end of the text.
 : NEXT-MARK ( n -- n ) {: from:n :}
@@ -70,7 +69,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
 
 : .SECTION ( n -- ) {: at:n :}
    at MARK? 0= if s" requires" type exit then
-   SRC at 5 + +  at LINE-END at 5 + -  type ;
+   SRC at 5 + +  at LINE-END at 5 + -  >str type ;
 
 : FAIL-HEAD ( str -- )
    s" FAIL " type type s" : " type
@@ -82,7 +81,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
 : READ-SECTION ( n n -- ) {: first:n end:n :}
    first SEC-FIRST !  end SEC-END !
    NSHADOW:RECORDS {: rows:n :}
-   [: SRC SRC-U @ SEC-FIRST @ SEC-END @ INTERPRETER:EVAL-FRAMED-RANGE ;] catch {: rc:n :}
+   [: SRC SRC-U @ >str SEC-FIRST @ SEC-END @ INTERPRETER:EVAL-FRAMED-RANGE ;] catch {: rc:n :}
    rc 0<> if
       s" FAIL " type first .SECTION s" : threw " type rc .N
       s"  after filing " type NSHADOW:RECORDS rows - .N s"  shadow rows" type cr
@@ -103,7 +102,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
 : .HEX ( n -- ) {: v:n :}
    s" $" type
    8 0 ?do
-      s" 0123456789ABCDEF" drop  v 28 i 4 * - rshift $F and +  c@ emit
+      s" 0123456789ABCDEF" STR:DATA  v 28 i 4 * - rshift $F and +  c@ emit
    loop ;
 
 : SKIP? ( n -- bool )

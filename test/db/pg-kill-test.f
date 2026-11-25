@@ -1,4 +1,3 @@
-split-str
 \ pg-kill-test.f - a pg row the pool kills leaves no server process, no
 \ shared-memory segment and no socket directory behind. It runs
 \ test/db/pg-cluster.f as a pool's one row with test/db/pg-hold.f as its case
@@ -48,9 +47,9 @@ false REPORTED !
 true FIFO-DONE !
 PROCESS:NO-FD FIFO-RD !
 
-: SOCKETS$ ( -- str )  LINE LINE-U @ ;
+: SOCKETS$ ( -- str )  LINE LINE-U @ >str ;
 
-: FIFO$ ( -- str )    FIFO FIFO-U @ ;
+: FIFO$ ( -- str )    FIFO FIFO-U @ >str ;
 
 \ A new FIFO for the case, its read end open before the row starts, so the
 \ harness's open of the write end does not wait. The harness and the case
@@ -108,11 +107,11 @@ PROCESS:NO-FD FIFO-RD !
 \ The second field of the segment line, whose fields postmaster.pid
 \ right-aligns in nine columns; -1 when it holds no number there.
 : SHMID ( -- n )
-   SHM SHM-U @ STR:LTRIM {: a:^ u:n :}
-   0 begin dup u < if a over + c@ STR:SPACE <> else false then while 1+ repeat
-   begin dup u < if a over + c@ STR:SPACE = else false then while 1+ repeat
+   SHM SHM-U @ >str STR:LTRIM {: s:str :}
+   0 begin dup s STR:LEN < if s STR:DATA over + c@ STR:SPACE <> else false then while 1+ repeat
+   begin dup s STR:LEN < if s STR:DATA over + c@ STR:SPACE = else false then while 1+ repeat
    {: at:n :}
-   a at + u at - STR:>NUMBER? MATCH option
+   s STR:DATA at + s STR:LEN at - >str STR:>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;

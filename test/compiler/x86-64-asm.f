@@ -1,4 +1,3 @@
-split-str
 \ x86-64-asm.f - the x86_64 encoder suite (package X64ASM,
 \ src/arch/x86-64/asm.f). Each expected byte string came from
 \ `llvm-mc -triple=x86_64 -show-encoding` (LLVM 22.1.8) on the source line in
@@ -34,17 +33,17 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    a i 2 * + c@ HEX-DIGIT 4 lshift
    a i 2 * 1 + + c@ HEX-DIGIT or ;
 
-: SPAN=HEX? ( ^u8 n str -- bool ) {: da:^ dlen:n ea:^ eu:n :}
-   eu 2 mod 0<> if FMATH:E-DOMAIN throw then
-   dlen eu 2 / <> if false exit then
-   dlen 0 ?do
-      ea i HEX-BYTE da i + c@ <> if false unloop exit then
+: SPAN=HEX? ( str str -- bool ) {: d:str e:str :}
+   e STR:LEN 2 mod 0<> if FMATH:E-DOMAIN throw then
+   d STR:LEN e STR:LEN 2 / <> if false exit then
+   d STR:LEN 0 ?do
+      e STR:DATA i HEX-BYTE d STR:DATA i + c@ <>
+      if false unloop exit then
    loop
    true ;
 
-: X= ( ^u8 n -- ) {: ea:^ eu:n :}
-   SINK VEC:BYTES {: da:^ dlen:n :}
-   da dlen ea eu SPAN=HEX? TTRUE
+: X= ( str -- ) {: e:str :}
+   SINK VEC:BYTES e SPAN=HEX? TTRUE
    SINK 0 VEC:RESIZE ;
 
 \ asm.f has one encoding per operation, so cases avoid rax immediates and shift

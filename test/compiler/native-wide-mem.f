@@ -1,4 +1,3 @@
-split-str
 \ native-wide-mem.f - production multi-cell typed loads and stores.
 
 require test/compiler/native-eval-fixture.f
@@ -128,10 +127,11 @@ CAST: W2>CELLS ( ^w2 -- ^n )
 
 \ ---- a column store's three rows -------------------------------------------
 : E-COL+ ( str n n -- )
-   {: h:^ u:n al:n k:n :} h u al NWM-COL:MAKE k COL-AT ! ;
+   {: s:str al:n k:n :}
+   s STR:DATA s STR:LEN al NWM-COL:MAKE k COL-AT ! ;
 
 : E-COL-HDR ( n -- str )
-   COL-AT @ NWM-COL:UNMAKE drop ;
+   COL-AT @ NWM-COL:UNMAKE drop >str ;
 
 : E-COL-AL ( n -- n )
    COL-AT @ NWM-COL:UNMAKE nip nip ;
@@ -194,7 +194,7 @@ CAST: W2>CELLS ( ^w2 -- ^n )
 \ reader SPENDS the payload rather than tokenising it, so the literal is one tape
 \ row whose bytes are many.
 : E-STR ( n -- n )
-   s" @ ! @ ! @" 2drop
+   s" @ ! @ ! @" drop
    W2-AT @ NWM-W2:UNMAKE 3 * swap 5 * + ;
 
 

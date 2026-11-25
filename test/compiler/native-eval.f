@@ -1,4 +1,3 @@
-split-str
 \ The closed evaluation boundary: `evaluate-closed` runs source on a data
 \ stack of its own and rejects residue with a record, which is what lets a
 \ checked word evaluate source.
@@ -14,8 +13,8 @@ public
 \ The nested cases' inner texts. A text cannot spell a string literal inside
 \ its own literal, so it reaches an inner text through a word, and the word is
 \ public because the texts run after this package has closed.
-: INNER-DEPTH$ ( -- ^u8 n ) s" depth 0 T=" ;
-: INNER-RESIDUE$ ( -- ^u8 n ) s" 1 2" ;
+: INNER-DEPTH$ ( -- str ) s" depth 0 T=" ;
+: INNER-RESIDUE$ ( -- str ) s" 1 2" ;
 
 \ W claims one cell and adds two, the lie a trusted body can tell: a checked text
 \ that hands it one is admitted and reaches one cell under its floor at run
@@ -28,11 +27,11 @@ TRUSTED: W ( n -- n ) + dup SEEN ! ;
 : GETW ( -- [ n -- n ] ) [: W ;] ;
 : CLEAN ( -- [ -- ] ) [: ;] ;
 TRUSTED: PLUS-XT ( -- [ n -- n ] ) ['] + ;
-: INNER-UNDER$ ( -- ^u8 n ) s" 1 ' NATIVE-EVAL-TEST:W execute" ;
+: INNER-UNDER$ ( -- str ) s" 1 ' NATIVE-EVAL-TEST:W execute" ;
 
-: INNER-OPEN$ ( -- ^u8 n ) s" : NATIVE-EVAL-E ( -- n ) 1" ;
+: INNER-OPEN$ ( -- str ) s" : NATIVE-EVAL-E ( -- n ) 1" ;
 
-: INNER-THROW$ ( -- ^u8 n ) s" depth 0 T= 7 throw" ;
+: INNER-THROW$ ( -- str ) s" depth 0 T= 7 throw" ;
 
 private
 
@@ -190,7 +189,7 @@ s" BUMPED" MAKE-BUMPED
 \ refusal, caught inside the definer, leaves its definition compiling, as it
 \ does for any buffer begun inside one.
 variable CAUGHT
-: MAKE-REFUSED ( ^u8 n -- )
+: MAKE-REFUSED ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    [: s" NATIVE-EVAL-NO-WORD" evaluate-closed ;] catch CAUGHT !
    s" 5" evaluate-closed postpone ; ;
@@ -205,7 +204,7 @@ variable CAUGHT
 
 \ `is` and its target are captured in two passes, so a refused target takes
 \ back `is` too: a definition left holding `is` refuses at its `;`.
-: MAKE-REFUSED-IS ( ^u8 n -- )
+: MAKE-REFUSED-IS ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    [: s" is NATIVE-EVAL-NO-DEFER" evaluate-closed ;] catch CAUGHT !
    s" 5" evaluate-closed postpone ; ;
@@ -233,7 +232,7 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N 102 T=
    nip LEN>N {: erru:n :}
    s" and names the data stack" T-LABEL
-   ERR erru S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
+   ERR erru >str S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
    STR:STARTS-WITH? TTRUE ;
 
 \ RESIDUE's text with no catch around it.
@@ -243,8 +242,8 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and its record counts the cells it left" T-LABEL
-   ERR erru s" error[E-EVAL-RESIDUE]" STR:CONTAINS? TTRUE
-   ERR erru s" = cells: 2" STR:CONTAINS? TTRUE ;
+   ERR erru >str s" error[E-EVAL-RESIDUE]" STR:CONTAINS? TTRUE
+   ERR erru >str s" = cells: 2" STR:CONTAINS? TTRUE ;
 
 \ The same reach outside any closed text: the child's text runs a compiled
 \ word through execute with one cell on the stack it was given.
@@ -257,9 +256,9 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N 67 T=
    nip LEN>N {: erru:n :}
    s" and the uncaught throw is E-UNDERFLOW's -9851" T-LABEL
-   ERR erru E-UNDERFLOW TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE
+   ERR erru >str E-UNDERFLOW TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE
    s" and is no stack bounds exit" T-LABEL
-   ERR erru s" E-STACK-BOUNDS" STR:CONTAINS? TFALSE ;
+   ERR erru >str s" E-STACK-BOUNDS" STR:CONTAINS? TFALSE ;
 
 \ UNFINISHED's text with no catch around it. The child inherits this
 \ process's dictionary, which UNFINISHED left holding NATIVE-EVAL-D.
@@ -272,10 +271,10 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and names the definition and where the text ran" T-LABEL
-   ERR erru s" error[E-VS-UNTERMINATED-DEFINITION]: " STR:CONTAINS? TTRUE
-   ERR erru s" the definition of `NATIVE-EVAL-F`" STR:CONTAINS? TTRUE
-   ERR erru s" = evaluated: : NATIVE-EVAL-F ( -- n ) 42" STR:CONTAINS? TTRUE
-   ERR erru s" never closed" STR:CONTAINS? TTRUE ;
+   ERR erru >str s" error[E-VS-UNTERMINATED-DEFINITION]: " STR:CONTAINS? TTRUE
+   ERR erru >str s" the definition of `NATIVE-EVAL-F`" STR:CONTAINS? TTRUE
+   ERR erru >str s" = evaluated: : NATIVE-EVAL-F ( -- n ) 42" STR:CONTAINS? TTRUE
+   ERR erru >str s" never closed" STR:CONTAINS? TTRUE ;
 
 \ ---- a definition a thrown text takes back keeps no row ----------------------
 \ A text that throws takes back what it defined, and its frame cuts the
@@ -287,24 +286,24 @@ variable TEXT-U
 variable OUT-U
 variable ERR-U
 
-: TEXT+ ( ^u8 n -- ) TEXT IO-CAP TEXT-U BUF-APPEND ;
+: TEXT+ ( str -- ) TEXT IO-CAP TEXT-U BUF-APPEND ;
 
 : TEXT-RC ( -- n )
-   TEXT TEXT-U BUF-LEN@ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+   TEXT TEXT-U BUF-LEN@ >str OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N {: rc:n :}
    LEN>N ERR-U !  LEN>N OUT-U !  rc ;
 
-: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
+: OUT$ ( -- str ) OUT OUT-U @ >str ;
 
-: SAYS ( ^u8 n -- ) {: a:^ u:n :}
-   ERR ERR-U @ a u STR:CONTAINS? TTRUE ;
+: SAYS ( str -- ) {: s:str :}
+   ERR ERR-U @ >str s STR:CONTAINS? TTRUE ;
 
 \ A text that defines X-FORGET and then throws takes X-FORGET back, row and
 \ all, so the next X-FORGET is no duplicate.
 : NAME-THROWN ( -- )
    s" a definition its text threw back leaves its name free" T-LABEL
    TEXT-U BUF-RESET
-   S\" TRUSTED: EVAL-X-FORGET ( -- ) s\" : X-FORGET ( -- n ) 1 ; 77 throw\" evaluate ; " TEXT+
+   S\" TRUSTED: EVAL-X-FORGET ( -- ) s\" : X-FORGET ( -- n ) 1 ; 77 throw\" dup STR:DATA swap STR:LEN evaluate ; " TEXT+
    s" ' EVAL-X-FORGET catch . cr " TEXT+
    s" : X-FORGET ( -- n ) 2 ; X-FORGET . cr" TEXT+
    TEXT-RC 0 T=
@@ -317,7 +316,7 @@ variable ERR-U
    s" a definition its text threw back does not type a later caller" T-LABEL
    TEXT-U BUF-RESET
    s" : X-FORGET ( -- n ) 1 ; " TEXT+
-   S\" TRUSTED: EVAL-X-FORGET ( -- ) s\" : X-FORGET ( -- n n ) 1 2 ; 77 throw\" evaluate ; " TEXT+
+   S\" TRUSTED: EVAL-X-FORGET ( -- ) s\" : X-FORGET ( -- n n ) 1 2 ; 77 throw\" dup STR:DATA swap STR:LEN evaluate ; " TEXT+
    s" package Q-FORGET public ' EVAL-X-FORGET catch . cr " TEXT+
    s" : T-FORGET ( -- n n ) X-FORGET ; ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT-RC 70 T=
@@ -328,9 +327,9 @@ variable ERR-U
 
 : CHECKED ( -- )
    s" a checked body naming evaluate is refused" T-LABEL
-   s" NATIVE-EVAL-OPEN ( ^u8 n -- ) evaluate" CHECK! 0 T=
+   s" NATIVE-EVAL-OPEN ( str -- ) evaluate" CHECK! 0 T=
    s" a checked body naming evaluate-closed certifies" T-LABEL
-   s" NATIVE-EVAL-CLOSED ( ^u8 n -- ) evaluate-closed" CHECK! -1 T= ;
+   s" NATIVE-EVAL-CLOSED ( str -- ) evaluate-closed" CHECK! -1 T= ;
 
 : RUN ( -- )
    T-RESET

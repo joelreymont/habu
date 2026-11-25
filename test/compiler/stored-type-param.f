@@ -1,4 +1,3 @@
-split-str
 \ stored-type-param.f - a type variable that occurs only where a type is stored,
 \ behind a pointer or in a family slot the family's width does not read, stands
 \ for any stored type, a two-cell record included, while the word's body needs
@@ -157,7 +156,7 @@ private
 : HELD-ADDR ( ^held<turn> -- n ) NULL-PTR - ;
 : HELD-STEP ( -- bool ) 0 HELDS 1 STORED-HELD:AT  1 HELDS = ;
 \ The offset of mark's span in a held<turn>.
-: MARK-AT ( -- n ) 0 HELDS STORED-HELD:MARK SPAN:$ drop NULL-PTR -  0 HELDS HELD-ADDR - ;
+: MARK-AT ( -- n ) 0 HELDS STORED-HELD:MARK SPAN:$ STR:DATA NULL-PTR -  0 HELDS HELD-ADDR - ;
 
 
 : ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
@@ -166,8 +165,8 @@ private
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
-: HAS? ( ^u8 n -- )
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
+: HAS? ( str -- )
+   REJECTION:BUFFER$ swap STR:CONTAINS? TTRUE ;
 
 \ The refusal is a mismatch at the call token the string names.
 : MISMATCH-AT ( str -- )
@@ -485,25 +484,25 @@ variable RC-LEN
 \ The texts below are joined from pieces that each fit a line; RC-CAP holds
 \ the longest.
 : RC+ ( str -- )
-   {: a:^ u:n :}
-   a  RC-SRC RC-LEN @ +  u BYTE-COPY
-   RC-LEN @ u + RC-LEN ! ;
+   {: s:str :}
+   s STR:DATA  RC-SRC RC-LEN @ +  s STR:LEN BYTE-COPY
+   RC-LEN @ s STR:LEN + RC-LEN ! ;
 
 \ A word in RC-CAST whose recursive call's instance of t the step word binds,
 \ before the body hands t to the cast >ELEM.
 : RC-RECURSE$ ( str str -- str )
-   {: na:^ nu:n sa:^ su:n :}
+   {: ns:str ss:str :}
    0 RC-LEN !
-   s" package RC-CAST : " RC+  na nu RC+
-   s"  ( ^u8 n -- ^t ) 0 <> IF dup 0 RECURSE " RC+  sa su RC+
+   s" package RC-CAST : " RC+  ns RC+
+   s"  ( ^u8 n -- ^t ) 0 <> IF dup 0 RECURSE " RC+  ss RC+
    s"  THEN >ELEM ; ;package" RC+
-   RC-SRC RC-LEN @ ;
+   RC-SRC RC-LEN @ >str ;
 
 : RC-OTHER$ ( -- str )
    0 RC-LEN !
    s" : RC-OTHER ( ^t n -- ^t ) dup 0 = IF drop EXIT THEN " RC+
    s" drop RC-CAST:NV 0 RECURSE drop ;" RC+
-   RC-SRC RC-LEN @ ;
+   RC-SRC RC-LEN @ >str ;
 
 : CASE-RC-LINEAR ( -- )
    s" a recursive call meets the restriction the body adds later" T-LABEL

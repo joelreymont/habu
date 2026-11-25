@@ -1,4 +1,3 @@
-split-str
 \ native-rstack-input.f - no signature written in source declares a return-stack
 \ cell: a written `|` clause carries one row variable, the same on both sides
 \ (docs/forth.md "The return-stack clause"), and the checker refuses any other
@@ -22,41 +21,41 @@ create ERR CAP allot
 variable OUT-U
 variable ERR-U
 
-: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
+: OUT$ ( -- str ) OUT OUT-U @ >str ;
+: ERR$ ( -- str ) ERR ERR-U @ >str ;
 
-: EXEC ( ^u8 n -- len len PROCESS:ending ) {: src:^ u:n :}
+: EXEC ( str -- len len PROCESS:ending ) {: src:str :}
    PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$  src u  OUT CAP >LEN  ERR CAP >LEN
+   ENGINE-CANDIDATE:PATH$  src  OUT CAP >LEN  ERR CAP >LEN
    PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
-: SHOW ( ^u8 n n -- ) {: src:^ u:n before:n :}
+: SHOW ( str n -- ) {: src:str before:n :}
    T-FAILURES before = if exit then
-   s" program:" type cr src u type
+   s" program:" type cr src type
    s" stderr:" type cr ERR$ type ;
 
 \ One admitted run: the child exits 0 and prints exactly WANT.
-: ADMITTED ( ^u8 n ^u8 n ^u8 n -- )
-   {: label:^ lu:n src:^ u:n want:^ wu:n :}
+: ADMITTED ( str str str -- )
+   {: label:str src:str want:str :}
    T-FAILURES {: before:n :}
-   src u EXEC {: outu:len erru:len oc :}
+   src EXEC {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
-   label lu T-LABEL  src u OUT$ ERR$ oc 0 T-ENDING-EXITED=
-   label lu T-LABEL  OUT$ want wu T$=
-   src u before SHOW ;
+   label T-LABEL  src OUT$ ERR$ oc 0 T-ENDING-EXITED=
+   label T-LABEL  OUT$ want T$=
+   src before SHOW ;
 
 \ One refused run: the child exits RC, prints nothing, and its stderr begins
 \ with DIAG, the record's headline, and holds NOTE.
-: REFUSED ( ^u8 n ^u8 n ^u8 n ^u8 n n -- )
-   {: label:^ lu:n src:^ u:n diag:^ du:n note:^ nu:n rc:n :}
+: REFUSED ( str str str str n -- )
+   {: label:str src:str diag:str note:str rc:n :}
    T-FAILURES {: before:n :}
-   src u EXEC {: outu:len erru:len oc :}
+   src EXEC {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
-   label lu T-LABEL  src u OUT$ ERR$ oc rc T-ENDING-EXITED=
-   label lu T-LABEL  OUT$ s" " T$=
-   label lu T-LABEL  ERR ERR-U @ du min diag du T$=
-   label lu T-LABEL  ERR$ note nu STR:CONTAINS? TTRUE
-   src u before SHOW ;
+   label T-LABEL  src OUT$ ERR$ oc rc T-ENDING-EXITED=
+   label T-LABEL  OUT$ s" " T$=
+   label T-LABEL  ERR ERR-U @ diag STR:LEN min >str diag T$=
+   label T-LABEL  ERR$ note STR:CONTAINS? TTRUE
+   src before SHOW ;
 
 \ ---- refused at the declaration ----------------------------------------------
 \ Held here: an input, output or both-sides cell (rs1, rs2); a TRUSTED:

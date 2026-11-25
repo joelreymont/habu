@@ -1,4 +1,3 @@
-split-str
 \ shadow-kinds-fixture.f - one definition of each kind, read by
 \ test/compiler/shadow-kinds.f through the typed interpret loop at tier 0 while
 \ an arm64 shadow is open. Each `\ ==` line starts a section the driver reads

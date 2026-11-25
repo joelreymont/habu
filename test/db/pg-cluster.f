@@ -1,4 +1,3 @@
-split-str
 \ pg-cluster.f - src/lib/pg-test.f and src/lib/pg-rows-test.f against a private
 \ PostgreSQL cluster.
 \
@@ -65,34 +64,34 @@ NO-FD HOLD !
 false UP !
 false STOPPED !
 
-: INITDB$ ( -- str )    INITDB INITDB-U @ ;
-: POSTGRES$ ( -- str )  POSTGRES POSTGRES-U @ ;
-: ROOT$ ( -- ^u8 n )      ROOT ROOT-U @ ;
-: SOCKETS$ ( -- str )   SOCKETS SOCKETS-U @ ;
-: DATA$ ( -- str )      DATA DATA-U @ ;
-: LOG$ ( -- str )       LOG LOG-U @ ;
-: INITDB-LOG$ ( -- str ) INITDB-LOG INITDB-LOG-U @ ;
-: PIDFILE$ ( -- str )   PIDFILE PIDFILE-U @ ;
-: CONNINFO$ ( -- str )  CONNINFO CONNINFO-U @ ;
+: INITDB$ ( -- str )    INITDB INITDB-U @ >str ;
+: POSTGRES$ ( -- str )  POSTGRES POSTGRES-U @ >str ;
+: ROOT$ ( -- str )      ROOT ROOT-U @ >str ;
+: SOCKETS$ ( -- str )   SOCKETS SOCKETS-U @ >str ;
+: DATA$ ( -- str )      DATA DATA-U @ >str ;
+: LOG$ ( -- str )       LOG LOG-U @ >str ;
+: INITDB-LOG$ ( -- str ) INITDB-LOG INITDB-LOG-U @ >str ;
+: PIDFILE$ ( -- str )   PIDFILE PIDFILE-U @ >str ;
+: CONNINFO$ ( -- str )  CONNINFO CONNINFO-U @ >str ;
 : CONNINFO+ ( str -- )  CONNINFO TEXT-CAP CONNINFO-U BUF-APPEND ;
-: ARG+ ( ^u8 n -- )       PROC-ARGV+ ;
+: ARG+ ( str -- )       PROC-ARGV+ ;
 
 \ initdb and postgres on PATH are a gate requirement on every host
 \ (docs/bootstrap.md "Requirements"): a missing one fails the row, never skips
 \ it.
-: TOOL ( ^u8 n ^u8 -- n ) {: name:^ size:n dst:^ :}
-   name size dst FIND-EXECUTABLE MATCH option
+: TOOL ( str ^u8 -- n ) {: name:str dst:^ :}
+   name dst FIND-EXECUTABLE MATCH option
       none OF
          s" pg-cluster: required executable missing on PATH: " type
-         name size type cr
+         name type cr
          s" " E-PROC-PATH die
       ENDOF
       some OF ENDOF
    ;MATCH ;
 
-: SOCKETS! ( str -- ) {: a:^ u:n :}
-   u PATH-CAP > if E-FS-PATH throw then
-   a SOCKETS u BYTE-COPY  u SOCKETS-U ! ;
+: SOCKETS! ( str -- ) {: s:str :}
+   s STR:LEN PATH-CAP > if E-FS-PATH throw then
+   s STR:DATA SOCKETS s STR:LEN BYTE-COPY  s STR:LEN SOCKETS-U ! ;
 
 \ sun_path holds 104 bytes on macOS and 108 on Linux, and a pool slot's TMPDIR
 \ takes about 100 of them, so under the gate pool the socket goes in
@@ -101,13 +100,13 @@ false STOPPED !
 \ FMT-ROOT! does. A made directory's name lives in the per-task band the next
 \ FS:MKTEMP-DIR-IN reuses, so each is copied out before the other is made.
 : MAKE-DIRS ( -- )
-   s" habu-pg" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT u BYTE-COPY  u ROOT-U !
+   s" habu-pg" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA ROOT dir STR:LEN BYTE-COPY  dir STR:LEN ROOT-U !
    ROOT$ FS:CLEANUP-TREE+
-   s" HB_SOCK_TMP" GETENV dup 0 > if
+   s" HB_SOCK_TMP" GETENV dup STR:LEN 0 > if
       SOCKETS!
    else
-      2drop s" habu-pg" FS:MKTEMP-DIR SOCKETS!
+      drop s" habu-pg" FS:MKTEMP-DIR SOCKETS!
       SOCKETS$ FS:CLEANUP-TREE+
    then
    ROOT$ s" data" DATA FS:JOIN-PATH DATA-U !
@@ -131,27 +130,27 @@ false STOPPED !
    s" LC_ALL" s" C" PROC-ENV-SET ;
 
 : EXITED-0? ( PROCESS:ending str -- bool )
-   {: what:^ whatu:n :}
+   {: what:str :}
    MATCH PROCESS:ending
       exited OF
-         s" pg-cluster: " type what whatu type
+         s" pg-cluster: " type what type
          dup 0= if drop s"  ok" type cr true exit then
          s"  exited " type FMT:.INT
       ENDOF
       signaled OF
-         s" pg-cluster: " type what whatu type
+         s" pg-cluster: " type what type
          s"  died of signal " type FMT:.INT
       ENDOF
       timeout OF
-         s" pg-cluster " type what whatu type s" : a deadline expired" type
+         s" pg-cluster " type what type s" : a deadline expired" type
       ENDOF
    ;MATCH
    cr false ;
 
-: SHOW-LOG ( str -- ) {: path:^ pathu:n :}
-   path pathu FS:EXISTS? 0= if exit then
-   path pathu OUT CAPTURE-CAP FS:READ-ALL {: n:n :}
-   OUT n type ;
+: SHOW-LOG ( str -- ) {: path:str :}
+   path FS:EXISTS? 0= if exit then
+   path OUT CAPTURE-CAP FS:READ-ALL {: n:n :}
+   OUT n >str type ;
 
 
 \ A negative ms waits with no deadline. macOS cannot watch a process that has
@@ -167,7 +166,7 @@ false STOPPED !
 
 
 : OPEN-NULL ( -- n )
-   s\" /dev/null\z" drop open-rd {: fd:n :}
+   s\" /dev/null\z" STR:DATA open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
@@ -227,7 +226,7 @@ false STOPPED !
    got 0 <= if false exit then
    STATUS-LINE got LINE-AT {: at:n :}
    at 0 < if false exit then
-   OUT at + got at - s" ready" STR:STARTS-WITH? ;
+   OUT at + got at - >str s" ready" STR:STARTS-WITH? ;
 
 \ A server that outlives ms is killed with its tree (src/lib/process-tree.f) and
 \ leaves its shared-memory segment.
@@ -248,9 +247,9 @@ false STOPPED !
 
 \ The engine's stdout and stderr are this process's, so its report reaches the
 \ row's log as it runs.
-: CASE-SPAWN ( str -- ) {: file:^ fileu:n :}
+: CASE-SPAWN ( str -- ) {: file:str :}
    PROC-ARGV-ENV-RESET
-   s" --load" ARG+ file fileu ARG+
+   s" --load" ARG+ file ARG+
    s" --" ARG+ CONNINFO$ ARG+
    ENV!
    OPEN-NULL {: in:n :}
@@ -328,9 +327,9 @@ false STOPPED !
 \ outlives such a SIGKILL, logging to <root>/initdb.log: wait for it or SIGTERM
 \ it (it then removes <root>/data), then remove the directories.
 
-: SAY-THROW ( str n -- ) {: what:^ whatu:n code:n :}
+: SAY-THROW ( str n -- ) {: what:str code:n :}
    code 0= if exit then
-   s" pg-cluster: " type what whatu type s"  threw " type code FMT:.INT cr ;
+   s" pg-cluster: " type what type s"  threw " type code FMT:.INT cr ;
 
 \ The server and initdb's backend each make a SysV shared-memory segment, keyed
 \ by the data directory's inode, that only their own exit removes. A SIGKILLed
@@ -355,9 +354,9 @@ false STOPPED !
    ;MATCH ;
 
 \ A failed run exits 1. A caught signal is answered first.
-: FAIL-ROW ( str -- ) {: msg:^ msgu:n :}
+: FAIL-ROW ( str -- ) {: msg:str :}
    SIGNAL-CHECK
-   msg msgu EXIT-STATUS:FAILURE die ;
+   msg EXIT-STATUS:FAILURE die ;
 
 \ A caught signal is answered here.
 \ A negative ms waits with no deadline, and the answer is then always true.
@@ -388,7 +387,7 @@ false STOPPED !
 \ is trusted. The server listens on no TCP port, so local rules cover every case.
 : HBA! ( -- )
    DATA$ s" pg_hba.conf" HBA FS:JOIN-PATH {: u:n :}
-   HBA u S\" local all habu_pw scram-sha-256\nlocal all all trust\n"
+   HBA u >str S\" local all habu_pw scram-sha-256\nlocal all all trust\n"
    FS:WRITE-ALL ;
 
 : READY? ( -- bool )
@@ -403,11 +402,11 @@ false STOPPED !
 
 \ Each case file runs in a child engine given the conninfo; the first to fail
 \ ends the run.
-: RUN-FILE ( ^u8 n -- bool ) {: file:^ fileu:n :}
-   file fileu CASE-SPAWN
+: RUN-FILE ( str -- bool ) {: file:str :}
+   file CASE-SPAWN
    CASE-WATCH @ -1 ENDED-WITHIN? drop
    CASE-REAP
-   file fileu EXITED-0? ;
+   file EXITED-0? ;
 
 \ The case files are the script arguments, or src/lib/pg-test.f and then
 \ src/lib/pg-rows-test.f when there are none.
@@ -422,13 +421,13 @@ false STOPPED !
 
 \ The first file to fail ends the run; the answer is the last file run and
 \ whether it passed.
-: CASES ( -- ^u8 n bool )
+: CASES ( -- str bool )
    CASE-N 1- 0 ?do
-      i CASE$ 2dup RUN-FILE 0= if false unloop exit then 2drop
+      i CASE$ dup RUN-FILE 0= if false unloop exit then drop
    loop
-   CASE-N 1- CASE$ 2dup RUN-FILE ;
+   CASE-N 1- CASE$ dup RUN-FILE ;
 
-: SERVE ( -- ^u8 n bool )
+: SERVE ( -- str bool )
    READY? 0= if s" postgres start" false exit then
    true UP !
    CASES ;
@@ -441,7 +440,7 @@ false STOPPED !
 \ FIFO's write end (src/lib/test/fifo.f) goes into initdb and the postmaster,
 \ whose forks inherit it; the case engine opens it by path.
 : OPEN-HOLD ( -- )
-   s" PG_HOLD_FIFO" GETENV nip 0= if exit then
+   s" PG_HOLD_FIFO" GETENV STR:LEN 0= if exit then
    s" PG_HOLD_FIFO" TEST-FIFO:WRITER FD>N HOLD ! ;
 
 \ The log is shown for a server that never came up, once STOP has ended it:
@@ -457,11 +456,11 @@ false STOPPED !
    HBA!
    SIGNAL-CHECK
    START
-   [: SERVE ;] [: END ;] finally {: what:^ whatu:n passed:bool :}
+   [: SERVE ;] [: END ;] finally {: what:str passed:bool :}
    SIGNAL-CHECK
    UP @ 0= if LOG$ SHOW-LOG then
    passed STOPPED @ and if exit then
-   passed 0= if s" pg-cluster: " type what whatu type s"  failed" type cr then
+   passed 0= if s" pg-cluster: " type what type s"  failed" type cr then
    s" " FAIL-ROW ;
 
 MAIN
