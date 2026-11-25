@@ -1,4 +1,3 @@
-split-str
 \ effect.f - the type and effect values a definer builds a definition from: a
 \ type is a schema node, an effect a type whose node is a quotation, its
 \ inputs and outputs deepest first, and `define-word` opens a definition from a
@@ -30,13 +29,13 @@ public
 
 \ The built-in type the spelling names (`n`, `u8`), else the family it names as
 \ source where the definer runs would, over fresh parameters; else rejected.
-: NAMED ( str -- type ) {: a:^ u:n :}
-   TYPE-OP-ABI:NAMED a NULL-PTR - u OP ;
+: NAMED ( str -- type ) {: s:str :}
+   TYPE-OP-ABI:NAMED s STR:DATA NULL-PTR - s STR:LEN OP ;
 
 \ The one type the text spells (`^u8`, `nullable<u8>`), read as a declaration
 \ where the definer runs reads it; a letter is rejected.
-: READ-TYPE ( str -- type ) {: a:^ u:n :}
-   TYPE-OP-ABI:READ a NULL-PTR - u OP ;
+: READ-TYPE ( str -- type ) {: s:str :}
+   TYPE-OP-ABI:READ s STR:DATA NULL-PTR - s STR:LEN OP ;
 
 : PTR ( type -- type ) {: t:type :}
    TYPE-OP-ABI:PTR t TYPE>N 0 OP ;

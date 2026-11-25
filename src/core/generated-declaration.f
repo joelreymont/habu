@@ -1,4 +1,3 @@
-split-str
 \ generated-declaration.f: the declaration layer's shared parts, loaded before
 \ structure-decl.f: DECL-REJECT (the rejection record), DECL-REPLAY (a pre-lexed
 \ token stream), the checker-frame and constructor-generation participants, and
@@ -45,12 +44,12 @@ SLOTS PTR-U8-TABLE SLOT-SRC-A        \ the span a slot was copied from: its byte
 create SLOT-SRC-U  SLOTS cells allot  \ and its length
 
 : SRC! ( str n -- )   \ span, slot
-   {: a:^ u:n s:n :}
-   a SLOT-SRC-A s ptr-field !
-   u s cells SLOT-SRC-U + ! ;
+   {: sp:str s:n :}
+   sp STR:DATA SLOT-SRC-A s ptr-field !
+   sp STR:LEN s cells SLOT-SRC-U + ! ;
 : SRC@ ( n -- str )
    {: s:n :}
-   SLOT-SRC-A s ptr-field @  s cells SLOT-SRC-U + @ ;
+   SLOT-SRC-A s ptr-field @  s cells SLOT-SRC-U + @ >str ;
 
 public
 
@@ -67,30 +66,30 @@ private
 
 : CAPPED ( n -- n ) SPAN-CAP min ;
 
-: COPY-BYTES ( str ^u8 -- ) {: a:^ u:n d:^ :}
-   0 BEGIN dup u < WHILE
-      dup a + c@  over d + c!
+: COPY-BYTES ( str ^u8 -- ) {: s:str d:^ :}
+   0 BEGIN dup s STR:LEN < WHILE
+      dup s STR:DATA + c@  over d + c!
       1 +
    REPEAT drop ;
 
 \ Copies a span's first CAPPED bytes to d; a capped copy's last MARK-LEN bytes
 \ become "...", so it never presents a prefix as the whole name.
-: CAP-COPY ( str ^u8 -- ) {: a:^ u:n d:^ :}
-   u CAPPED {: len:n :}
-   a len d COPY-BYTES
-   u SPAN-CAP > IF
+: CAP-COPY ( str ^u8 -- ) {: s:str d:^ :}
+   s STR:LEN CAPPED {: len:n :}
+   s STR:DATA len >str d COPY-BYTES
+   s STR:LEN SPAN-CAP > IF
       len MARK-LEN - BEGIN dup len < WHILE
          MARK-BYTE over d + c!
          1 +
       REPEAT drop
    THEN ;
 
-: SLOT! ( str n -- ) {: a:^ u:n s:n :}   \ span, slot
-   u CAPPED s cells SPAN-LEN + !
-   a u s SPAN-CAP * SPAN-BUF + CAP-COPY
-   a u s SRC! ;
+: SLOT! ( str n -- ) {: sp:str s:n :}   \ span, slot
+   sp STR:LEN CAPPED s cells SPAN-LEN + !
+   sp s SPAN-CAP * SPAN-BUF + CAP-COPY
+   sp s SRC! ;
 : SLOT@ ( n -- str ) {: s:n :}
-   s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
+   s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ >str ;
 
 \ The offending token: the span it was copied from while its source still
 \ holds it, so the rejection places it; else the copy. SPAN-CAP bounds only
@@ -118,9 +117,9 @@ PERSISTED-PTR-VARIABLE NEWEST
 : ROW-PREV ( ^n -- ^n ) 0 ptr-field @ ;
 : ROW-CODE ( ^n -- n ) cell+ @ ;
 : ROW-REASON$ ( ^n -- str ) {: r:^ :}
-   r 4 cells + BYTE-VIEW  r 2 cells + @ ;
+   r 4 cells + BYTE-VIEW  r 2 cells + @ >str ;
 : ROW-FIX$ ( ^n -- str ) {: r:^ :}
-   r 4 cells +  r 2 cells + @ PADDED +  BYTE-VIEW  r 3 cells + @ ;
+   r 4 cells +  r 2 cells + @ PADDED +  BYTE-VIEW  r 3 cells + @ >str ;
 
 \ The newest row that explains a code, NULL-PTR when none does.
 : REASON-ROW ( n -- ^n ) {: code:n :}
@@ -172,36 +171,36 @@ public
 
 \ REJECT ( reason fix code -- code ) answers the code instead of throwing it, so
 \ each reject site spells its own `throw` and the thrown value is visible there.
-: REJECT ( str str n -- n ) {: wa:^ wu:n fa:^ fu:n code:n :}
-   wa wu fa fu code EXPECT
+: REJECT ( str str n -- n ) {: ws:str fs:str code:n :}
+   ws fs code EXPECT
    code ;
 
 \ Reflection for the suites: what the record would report right now.
 : KIND$ ( -- str ) S-KIND SLOT@ ;
 : FAMILY$ ( -- str ) S-FAMILY SLOT@ ;
 : TOKEN$ ( -- str ) S-TOKEN SLOT@ ;
-: REASON$ ( n -- str ) PICK-REASON 2drop ;
+: REASON$ ( n -- str ) PICK-REASON drop ;
 
 private
 
 \ A sealed record's word note is read before AT-FAMILY, whose TOKEN! disarms it.
 \ A variant or field name is read only after the family name passed the name rule.
 : RENDER ( n -- ) {: code:n :}
-   TOKEN-SPAN@ {: ta:^ tu:n :}
-   code E-USING-AMBIGUOUS = IF KIND$ FAMILY$ ta tu TDECL-AMBIG-DIAG EXIT THEN
+   TOKEN-SPAN@ {: ts:str :}
+   code E-USING-AMBIGUOUS = IF KIND$ FAMILY$ ts TDECL-AMBIG-DIAG EXIT THEN
    code E-TDECL-SEALED = IF FAMILY$ TDECL-SEALED-WORD AT-FAMILY TOKEN-SPAN@ REJECTION:SEALED EXIT THEN
-   code TFAM:E-TDECL-DEF-NAME = IF FAMILY$ ta tu DEF-NAME-REJECT? 0= IF ta tu ta tu DEF-NAME-REJECT? drop THEN EXIT THEN
-   KIND$ FAMILY$ ta tu  code PICK-REASON  ta tu code TDECL-WORD-NOTE  TDECL-DIAG ;
+   code TFAM:E-TDECL-DEF-NAME = IF FAMILY$ ts DEF-NAME-REJECT? 0= IF ts ts DEF-NAME-REJECT? drop THEN EXIT THEN
+   KIND$ FAMILY$ ts  code PICK-REASON  ts code TDECL-WORD-NOTE  TDECL-DIAG ;
 
 EXPORT CHECK:MULTI-ERR?
 EXPORT TYPE-DECL:TDECL-NAME-PREFLIGHT-XT
 public
 
-\ The seal of the declaration whose header is a u, judged at its
+\ The seal of the declaration whose header is s, judged at its
 \ family name alone, before the header's parameters are parsed.
-: SEAL-FAMILY ( str -- ) {: a:^ u:n :}
-   a u DECL-FAMILY-NAME {: ca:^ cu:n :}
-   cu 0 > IF ca cu FAMILY!  ca cu TDECL-NAME-PREFLIGHT-XT  a u FAMILY! THEN ;
+: SEAL-FAMILY ( str -- ) {: s:str :}
+   s DECL-FAMILY-NAME {: cs:str :}
+   cs STR:LEN 0 > IF cs FAMILY!  cs TDECL-NAME-PREFLIGHT-XT  s FAMILY! THEN ;
 
 \ Whether a declaration's catch throws code n on: a status in 1..255 was printed
 \ where it arose, and a code no reason explains is no declaration's.
@@ -224,18 +223,18 @@ public
 \ EXPLAIN ( reason fix code -- ): the code's owner calls it once, at load,
 \ reading its own constant. Each copy follows its allot: allot zeroes reused
 \ space it hands out, padding included.
-: EXPLAIN ( str str n -- ) {: a:^ u:n fa:^ fu:n code:n :}
+: EXPLAIN ( str str n -- ) {: s:str fs:str code:n :}
    code REASON-ROW NULL-PTR <> IF E-REASON-DUP throw THEN
    datum here CELL-VIEW {: row:^ :}
    here ptr-cell-mark 0 ,
    NEWEST @ row 0 ptr-field !
-   code ,  u ,  fu ,
+   code ,  s STR:LEN ,  fs STR:LEN ,
    here BYTE-VIEW {: d:^ :}
-   u PADDED allot
-   a u d COPY-BYTES
+   s STR:LEN PADDED allot
+   s d COPY-BYTES
    here BYTE-VIEW {: fd:^ :}
-   fu PADDED allot
-   fa fu fd COPY-BYTES
+   fs STR:LEN PADDED allot
+   fs fd COPY-BYTES
    row NEWEST ! ;
 
 private
@@ -309,34 +308,34 @@ variable RP-HEAD-U     PTR-VARIABLE RP-HEAD-A
 variable RP-BODY-U     PTR-VARIABLE RP-BODY-A
 variable RP-SCAN-I     \ scan cursor within the body buffer
 
-: RP-HEAD! ( str -- ) RP-HEAD-U ! RP-HEAD-A ! ;
-: RP-HEAD@ ( -- str ) RP-HEAD-A @ RP-HEAD-U @ ;
-: RP-BODY! ( str -- ) RP-BODY-U ! RP-BODY-A ! ;
-: RP-BODY@ ( -- str ) RP-BODY-A @ RP-BODY-U @ ;
+: RP-HEAD! ( str -- ) dup STR:LEN RP-HEAD-U ! STR:DATA RP-HEAD-A ! ;
+: RP-HEAD@ ( -- str ) RP-HEAD-A @ RP-HEAD-U @ >str ;
+: RP-BODY! ( str -- ) dup STR:LEN RP-BODY-U ! STR:DATA RP-BODY-A ! ;
+: RP-BODY@ ( -- str ) RP-BODY-A @ RP-BODY-U @ >str ;
 
 : RP-SEP? ( n -- bool ) {: c:n :}
    c RP-SPACE = c RP-TAB = or c RP-LF = or c RP-CR = or ;
 
-: RP-SKIP ( str -- n ) {: a:^ u:n :}   \ first non-separator offset at/after the cursor
+: RP-SKIP ( str -- n ) {: s:str :}   \ first non-separator offset at/after the cursor
    RP-SCAN-I @
-   BEGIN dup u < WHILE
-      dup a + c@ RP-SEP? 0= IF EXIT THEN
+   BEGIN dup s STR:LEN < WHILE
+      dup s STR:DATA + c@ RP-SEP? 0= IF EXIT THEN
       1 +
    REPEAT ;
 
-: RP-TOKEN-END ( str n -- n ) {: a:^ u:n s:n :}   \ offset one past the token starting at s
+: RP-TOKEN-END ( str n -- n ) {: sp:str s:n :}   \ offset one past the token starting at s
    s
-   BEGIN dup u < WHILE
-      dup a + c@ RP-SEP? IF EXIT THEN
+   BEGIN dup sp STR:LEN < WHILE
+      dup sp STR:DATA + c@ RP-SEP? IF EXIT THEN
       1 +
    REPEAT ;
 
 : RP-BODY-NEXT ( -- str )         \ next body token; zero length once the buffer is spent
-   RP-BODY@ {: a:^ u:n :}
-   a u RP-SKIP {: s:n :}
-   a u s RP-TOKEN-END {: e:n :}
+   RP-BODY@ {: b:str :}
+   b RP-SKIP {: s:n :}
+   b s RP-TOKEN-END {: e:n :}
    e RP-SCAN-I !
-   a s +  e s - ;
+   b STR:DATA s +  e s - >str ;
 
 public
 
@@ -354,8 +353,8 @@ public
 \ declaration reading a spent buffer.
 : RP-RELEASE ( -- )
    0 RP-OPEN? !  0 RP-HEAD? !
-   NULL-PTR 0 RP-HEAD!
-   NULL-PTR 0 RP-BODY!
+   NULL-PTR 0 >str RP-HEAD!
+   NULL-PTR 0 >str RP-BODY!
    0 RP-SCAN-I ! ;
 
 \ RP-NEXT: the family name once, the body tokens, then zero-length forever, the
@@ -366,8 +365,8 @@ public
    RP-BODY-NEXT ;
 
 : RP-RUN ( str str [ -- ] -- )
-   {: na:^ nu:n ba:^ bu:n body :}
-   na nu ba bu RP-CLAIM
+   {: ns:str bs:str body :}
+   ns bs RP-CLAIM
    body catch {: rc:n :}
    RP-RELEASE
    rc 0 <> IF rc throw THEN ;
@@ -485,12 +484,12 @@ public
 7192 constant E-UNRESOLVED          \ private replay outcome after rollback
 
 : REQUIRE-DERIVABLE ( str n n -- )
-   {: ta:^ tu:n fam:n node:n :}
+   {: ts:str fam:n node:n :}
    fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or 0= IF EXIT THEN
-   fam node TDECL-DERIVE-WHY {: wa:^ wu:n fa:^ fu:n :}
-   wu 0= IF EXIT THEN
-   ta tu DECL-REJECT:TOKEN!
-   wa wu fa fu E-TDECL-DERIVE DECL-REJECT:REJECT throw ;
+   fam node TDECL-DERIVE-WHY {: ws:str fs:str :}
+   ws STR:LEN 0= IF EXIT THEN
+   ts DECL-REJECT:TOKEN!
+   ws fs E-TDECL-DERIVE DECL-REJECT:REJECT throw ;
 
 110 constant ASCII-N
 102 constant ASCII-F
@@ -517,10 +516,10 @@ variable SEEN-END            \ this declaration's terminator has been consumed
 public
 \ TERMINATOR? ( token -- bool ) : the token is the running declaration's
 \ terminator; a span a front end reads ahead stops there (SD-SPAN-REST).
-: TERMINATOR? ( str -- bool ) TERM-A @ TERM-U @ STR:=CI ;
+: TERMINATOR? ( str -- bool ) TERM-A @ TERM-U @ >str STR:=CI ;
 private
-: PEND! ( str -- ) PEND-U ! PEND-A ! ;
-: PEND@ ( -- str ) PEND-A @ PEND-U @ ;
+: PEND! ( str -- ) dup STR:LEN PEND-U ! STR:DATA PEND-A ! ;
+: PEND@ ( -- str ) PEND-A @ PEND-U @ >str ;
 PTR-VARIABLE HEAD-A   variable HEAD-U   variable HEAD-I   \ a span read ahead, re-read token by token before the source
 : HEAD-CLEAR ( -- ) NULL-PTR HEAD-A ! 0 HEAD-U ! 0 HEAD-I ! ;
 
@@ -547,45 +546,45 @@ public
 
 \ The byte that ends the comment a token opens: the line's end after `\`, `)`
 \ after `(`; 0 for any other token.
-: COMMENT-END ( str -- n ) {: a:^ u:n :}
-   u 1 <> IF 0 EXIT THEN
-   a c@ 92 = IF 10 EXIT THEN
-   a c@ 40 = IF 41 EXIT THEN
+: COMMENT-END ( str -- n ) {: s:str :}
+   s STR:LEN 1 <> IF 0 EXIT THEN
+   s STR:DATA c@ 92 = IF 10 EXIT THEN
+   s STR:DATA c@ 40 = IF 41 EXIT THEN
    0 ;
 
 private
 
-: TICKS ( str -- ) {: a:^ u:n :}
-   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+: TICKS ( str -- ) {: s:str :}
+   96 REJECTION:EMIT1  s REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
 \ An unclosed `(` runs to the input's end, where the cursor stays: no body is left to resync.
-: UNCLOSED ( str -- ) {: a:^ u:n :}
+: UNCLOSED ( str -- ) {: s:str :}
    s" E-UNTERMINATED-COMMENT" REJECTION:OPEN
-   s" the comment " REJECTION:EMIT-STR  a u TICKS
+   s" the comment " REJECTION:EMIT-STR  s TICKS
    s"  opens is never closed" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" the comment opens here" REJECTION:EMIT-STR
+   s REJECTION:AT  s" the comment opens here" REJECTION:EMIT-STR
    REJECTION:HELP  s" close the comment with " REJECTION:EMIT-STR  s" )" TICKS
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ Skips the live input past the comment token a u opens, as code skips one.
-: SKIP-COMMENT ( str n -- ) {: a:^ u:n c:n :}
+\ Skips the live input past the comment token s opens, as code skips one.
+: SKIP-COMMENT ( str n -- ) {: s:str c:n :}
    INPUT-AT @ INPUT-END @ {: p:^ e:^ :}
    p BEGIN dup e < IF dup c@ c <> ELSE NO THEN WHILE 1 + REPEAT
    dup e < IF 1 + INPUT-AT ! EXIT THEN
    INPUT-AT !
-   c 41 = IF a u UNCLOSED THEN ;
+   c 41 = IF s UNCLOSED THEN ;
 
 public
 
-: TYPE! ( str -- ) TYPE-U ! TYPE-A ! ;
-: TYPE@ ( -- str ) TYPE-A @ TYPE-U @ ;
+: TYPE! ( str -- ) dup STR:LEN TYPE-U ! STR:DATA TYPE-A ! ;
+: TYPE@ ( -- str ) TYPE-A @ TYPE-U @ >str ;
 
 \ MISSING! ( span why -- ) : only the run can resolve the span, for cause why.
 \ A replay reports the first span and cause (REPLAY-OUTCOME).
 : MISSING! ( str n -- )
    -1 FIELD-MISS !
-   MISS-U @ 0 <> IF drop 2drop EXIT THEN
-   MISS-WHY !  MISS-U !  MISS-A ! ;
+   MISS-U @ 0 <> IF drop drop EXIT THEN
+   MISS-WHY !  dup STR:LEN MISS-U !  STR:DATA MISS-A ! ;
 : MISSING? ( -- bool ) MISS-U @ 0 <> ;
 
 : SEEN-CLEAR ( -- ) 0 SEEN-U ! ;
@@ -593,7 +592,7 @@ public
 \ HEAD! ( span -- ) : retain a span the front end read ahead of its grammar;
 \ RAW hands it back token by token before reading the source again (ENUM's
 \ mode selection reads to the first variant before registering the family).
-: HEAD! ( str -- ) HEAD-U ! HEAD-A !  0 HEAD-I ! ;
+: HEAD! ( str -- ) dup STR:LEN HEAD-U ! STR:DATA HEAD-A !  0 HEAD-I ! ;
 
 \ The next token, raw as `parse-name` or the replay gives it: a family name read
 \ here takes a `(` or `\` as the name.
@@ -605,7 +604,7 @@ public
 \ replay stream (DECL-REPLAY) as lexed; RAW reads the pushback and lookahead first.
 : SOURCE-NEXT ( -- str )
    DECL-REPLAY:RP-ACTIVE? IF SOURCE-TOKEN EXIT THEN
-   BEGIN SOURCE-TOKEN 2dup COMMENT-END dup 0 <> WHILE SKIP-COMMENT REPEAT
+   BEGIN SOURCE-TOKEN dup COMMENT-END dup 0 <> WHILE SKIP-COMMENT REPEAT
    drop ;
 
 private
@@ -621,7 +620,7 @@ private
       a HEAD-I @ + c@ 32 > ELSE NO THEN WHILE
       HEAD-I @ 1+ HEAD-I !
    REPEAT
-   a start +  HEAD-I @ start - ;
+   a start +  HEAD-I @ start - >str ;
 
 \ Moves past the next byte c in the span, or to its end.
 : HEAD-PAST ( n -- ) {: c:n :}
@@ -634,7 +633,7 @@ private
 
 \ A live span holds the comments SOURCE-NEXT skipped, so they are skipped again.
 : HEAD-NEXT ( -- str )
-   BEGIN HEAD-TOKEN 2dup COMMENT-END dup 0 <> WHILE nip nip HEAD-PAST REPEAT
+   BEGIN HEAD-TOKEN dup COMMENT-END dup 0 <> WHILE nip HEAD-PAST REPEAT
    drop
    HEAD-I @ HEAD-U @ = IF HEAD-CLEAR THEN ;
 
@@ -646,32 +645,32 @@ private
 public
 
 : NEXT ( -- str )                 \ next body token, recorded for diagnostics
-   RAW 2dup TERMINATOR? IF -1 SEEN-END ! THEN
-   2dup DECL-REJECT:TOKEN! ;
-: UNGET ( str -- ) 2dup TERMINATOR? IF 0 SEEN-END ! THEN PEND! ;
+   RAW dup TERMINATOR? IF -1 SEEN-END ! THEN
+   dup DECL-REJECT:TOKEN! ;
+: UNGET ( str -- ) dup TERMINATOR? IF 0 SEEN-END ! THEN PEND! ;
 : NAME-TOKEN ( -- str )           \ a name, recorded, never the terminator
-   SOURCE-TOKEN 2dup DECL-REJECT:TOKEN! ;
+   SOURCE-TOKEN dup DECL-REJECT:TOKEN! ;
 
 : POLICY-CODE ( str -- n )         \ policy name -> layout code (or reject)
-   dup 0= IF 2drop s" missing layout policy name"
+   dup STR:LEN 0= IF drop s" missing layout policy name"
       s" name a policy after `POLICY`: `stack-cell-tag`, `packed-tag` or `niche-null`"
       E-TDECL-POLICY DECL-REJECT:REJECT throw THEN
-   2dup s" stack-cell-tag" STR:=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
-   2dup s" packed-tag" STR:=CI IF 2drop TL-PACKED-TAG EXIT THEN
-   2dup s" niche-null" STR:=CI IF 2drop TL-NICHE EXIT THEN
-   2drop s" unknown layout policy"
+   dup s" stack-cell-tag" STR:=CI IF drop TL-STACK-CELL-TAG EXIT THEN
+   dup s" packed-tag" STR:=CI IF drop TL-PACKED-TAG EXIT THEN
+   dup s" niche-null" STR:=CI IF drop TL-NICHE EXIT THEN
+   drop s" unknown layout policy"
    s" name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`"
    E-TDECL-POLICY DECL-REJECT:REJECT throw ;
 
 private
 
 : SEEN? ( str -- bool )
-   {: a:^ u:n :}
+   {: s:str :}
    0 SEEN-I !
    BEGIN SEEN-I @ SEEN-U @ < WHILE
       SEEN-I @ SEEN-LEN @ {: len:n :}
-      len u = IF
-         SEEN SEEN-I @ + CELL + len a u STR:= IF YES EXIT THEN
+      len s STR:LEN = IF
+         SEEN SEEN-I @ + CELL + len >str s STR:= IF YES EXIT THEN
       THEN
       SEEN-I @ len SEEN-REC + SEEN-I !
    REPEAT NO ;
@@ -684,39 +683,39 @@ public
 \ validated, rejected as a duplicate of one recorded since SEEN-CLEAR with the
 \ caller's help text, the one its loader gives, and recorded.
 : NAME-CHECK ( str str -- )
-   {: a:^ u:n f:^ fu:n :}
-   a u DECL-REJECT:TOKEN!
-   s" duplicate field name" f fu TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
-   a u PF-NAME-REQUIRE
-   a u SEEN? IF TFAM:E-TFAM-DUP throw THEN
-   SEEN-P SEEN-CAP  SEEN-U @ u SEEN-REC + CELL /  1 ARENA-ROWS-ENSURE
-   u SEEN-U @ SEEN-LEN !
+   {: s:str f:str :}
+   s DECL-REJECT:TOKEN!
+   s" duplicate field name" f TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
+   s PF-NAME-REQUIRE
+   s SEEN? IF TFAM:E-TFAM-DUP throw THEN
+   SEEN-P SEEN-CAP  SEEN-U @ s STR:LEN SEEN-REC + CELL /  1 ARENA-ROWS-ENSURE
+   s STR:LEN SEEN-U @ SEEN-LEN !
    0 SEEN-I !
-   BEGIN SEEN-I @ u < WHILE
-      a SEEN-I @ + c@
+   BEGIN SEEN-I @ s STR:LEN < WHILE
+      s STR:DATA SEEN-I @ + c@
       SEEN SEEN-U @ + CELL + SEEN-I @ + c!
       SEEN-I @ 1+ SEEN-I !
    REPEAT
-   SEEN-U @ u SEEN-REC + SEEN-U ! ;
+   SEEN-U @ s STR:LEN SEEN-REC + SEEN-U ! ;
 
 private
 
 EXPORT TYPE-DECL:TDECL-TXN-XT
 
 : RESET ( -- )                          \ base state, on both exits of DRIVE and at load
-   NULL-PTR 0 PEND!  HEAD-CLEAR  NULL-PTR 0 TYPE!
+   NULL-PTR 0 >str PEND!  HEAD-CLEAR  NULL-PTR 0 >str TYPE!
    NULL-PTR TERM-A !  0 TERM-U !  0 SEEN-END !  0 FIELD-MISS !  SEEN-CLEAR ;
 
 : SKIP-BODY ( str -- )             \ to the terminator, or end of input
-   {: ta:^ tu:n :}
+   {: ts:str :}
    BEGIN
-      RAW dup 0= IF 2drop EXIT THEN
-      2dup ta tu STR:=CI IF 2drop EXIT THEN
-      2drop
+      RAW dup STR:LEN 0= IF drop EXIT THEN
+      dup ts STR:=CI IF drop EXIT THEN
+      drop
    AGAIN ;
 : RESYNC ( str -- )
-   SEEN-END @ IF 2drop EXIT THEN
-   MULTI-ERR? 0= IF 2drop EXIT THEN
+   SEEN-END @ IF drop EXIT THEN
+   MULTI-ERR? 0= IF drop EXIT THEN
    SKIP-BODY ;
 
 \ DRIVE ( terminator body -- code ) : one declaration through the transaction,
@@ -725,13 +724,13 @@ EXPORT TYPE-DECL:TDECL-TXN-XT
 \ the catch (docs/forth.md, checked catch): the quotation is stack-preserving,
 \ so the xt is dropped after it.
 : DRIVE ( str [ -- renders parses nominal ] -- n )
-   {: ta:^ tu:n body :}
+   {: ts:str body :}
    MISS-CLEAR RESET
-   ta TERM-A !  tu TERM-U !
+   ts STR:DATA TERM-A !  ts STR:LEN TERM-U !
    body [: dup TDECL-TXN-XT ;] catch {: rc:n :} drop
    rc 0= IF RESET 0 EXIT THEN
    QUOT-ROLLBACK
-   ta tu RESYNC
+   ts RESYNC
    RESET
    rc E-UNRESOLVED <> IF MISS-CLEAR THEN
    rc DECL-REJECT:THROWN-ON? IF DECL-REJECT:FORGET-SRC rc throw THEN
@@ -740,30 +739,30 @@ EXPORT TYPE-DECL:TDECL-TXN-XT
 \ The missing span after rollback and its cause; 0 for none.
 : REPLAY-END ( n -- str n )
    dup E-UNRESOLVED = IF
-      drop MISS-A @ MISS-U @ MISS-WHY @
+      drop MISS-A @ MISS-U @ >str MISS-WHY @
       0 DECL-REJECT:GUARD-CODE
       MISS-CLEAR EXIT THEN
    DECL-REJECT:GUARD-CODE
-   NULL-PTR 0 0 ;
+   NULL-PTR 0 >str 0 ;
 
 public
 
 \ RUN ( kind terminator body -- ) : one live declaration.
 : RUN ( str str [ -- renders parses nominal ] -- )
-   {: ka:^ ku:n ta:^ tu:n body :}
-   ka ku DECL-REJECT:OPEN
-   ta tu body DRIVE DECL-REJECT:GUARD-CODE ;
+   {: ks:str ts:str body :}
+   ks DECL-REJECT:OPEN
+   ts body DRIVE DECL-REJECT:GUARD-CODE ;
 
 \ REPLAY-OUTCOME ( name body-text kind terminator body -- span why ) : register
 \ a declaration from tokens a tool has already lexed, defining no word, and
 \ answer the first span it leaves to the run and the deferral cause, or 0 for
 \ none. DRIVE throws E-UNRESOLVED on: no reason explains it.
 : REPLAY-OUTCOME ( str str str str [ -- renders parses nominal ] -- str n )
-   {: na:^ nu:n ba:^ bu:n ka:^ ku:n ta:^ tu:n body :}
-   na nu ba bu DECL-REPLAY:RP-CLAIM
-   ka ku DECL-REJECT:OPEN
+   {: ns:str bs:str ks:str ts:str body :}
+   ns bs DECL-REPLAY:RP-CLAIM
+   ks DECL-REJECT:OPEN
    YES OUTCOME-NAMES !
-   [: ta tu body DRIVE ;] catch {: code rc:n :}
+   [: ts body DRIVE ;] catch {: code rc:n :}
    0 OUTCOME-NAMES !
    DECL-REPLAY:RP-RELEASE
    rc 0= IF code REPLAY-END EXIT THEN

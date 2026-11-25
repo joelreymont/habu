@@ -1,4 +1,3 @@
-split-str
 \ pointer-storage.f - scratch storage and the global cells that hold an address.
 
 \ Scratch storage (docs/forth-card.md § 4): n bytes, rounded up to cells, at an aligned `here`.

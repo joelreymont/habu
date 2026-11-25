@@ -1,4 +1,3 @@
-split-str
 \ The first source-prefix record in the running engine's dictionary.
 require src/core/exit-status.f
 require src/habu/xref.f

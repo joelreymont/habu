@@ -1,4 +1,3 @@
-split-str
 \ dynamic-storage.f - checked transient allocation behind DYNAMIC-BUFFER
 \ and HEAP. A buffer record is a head cell holding the mapping (`^^a`)
 \ and the control block right behind it (capacity and registry slot + 1;
@@ -240,28 +239,28 @@ EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-DECLARATION
 EXPORT CHECK:STG-NO-NAME
 : DECLARE ( -- )
-   SRCLOC:TOKEN$ {: run:^ runu:n :}
-   LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
-   nu 0= if
-      s" DYNAMIC-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
+   SRCLOC:TOKEN$ >str {: run:str :}
+   LBUF:STORAGE-LINE-TOKEN {: ns:str :}
+   ns STR:LEN 0= if
+      s" DYNAMIC-BUFFER" run STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   run runu na nu REJECTION:NOT-A-NAME
-   LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
-   na nu na nu LBUF:LBUF-NAME-OK? 0= if exit then
-   na nu s" -RESERVE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
-   na nu s" -RELEASE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
-   ta tu CHECKER-DYNAMIC-INFO 0= if
+   run ns REJECTION:NOT-A-NAME
+   LBUF:STORAGE-PARSE-TYPE {: ts:str :}
+   ns ns LBUF:LBUF-NAME-OK? 0= if exit then
+   ns s" -RESERVE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
+   ns s" -RELEASE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
+   ts CHECKER-DYNAMIC-INFO 0= if
       drop
-      na nu s" -RESERVE" s" -RELEASE" CHECKER-UNSEEN-PAIR
-      na nu ta tu CHECKER-STORAGE-TYPE-REJECT exit
+      ns s" -RESERVE" s" -RELEASE" CHECKER-UNSEEN-PAIR
+      ns ts CHECKER-STORAGE-TYPE-REJECT exit
    then
    {: bytes:n :}
-   na nu CHILD-ABI:DYNAMIC ['] ELEMENT AS-ENTRY ta tu CHILD drop
+   ns CHILD-ABI:DYNAMIC ['] ELEMENT AS-ENTRY ts CHILD drop
    here {: v:^ :}
    WIDTH-OFF SCRATCH-ALLOT  bytes ,
-   na nu s" -RESERVE" LBUF:LBUF-SUFFIXED CHILD-ABI:RESERVE
+   ns s" -RESERVE" LBUF:LBUF-SUFFIXED CHILD-ABI:RESERVE
    ['] ENSURE AS-ENTRY s" " CHILD drop  v LBUF:LDEFER-CELL
-   na nu s" -RELEASE" LBUF:LBUF-SUFFIXED CHILD-ABI:RELEASE
+   ns s" -RELEASE" LBUF:LBUF-SUFFIXED CHILD-ABI:RELEASE
    ['] EMPTY AS-ENTRY s" " CHILD drop  v LBUF:LDEFER-CELL ;
 
 \ `HEAP NAME t` declares NAME-NEW ( -- ^t ), a fresh zero-filled record of
@@ -271,26 +270,26 @@ EXPORT CHECK:STG-NO-NAME
 \ record is its own OS mapping, so the OS rounds it up to a page; each child
 \ holds the declared type's width.
 : DECLARE-HEAP ( -- )
-   SRCLOC:TOKEN$ {: run:^ runu:n :}
-   LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
-   nu 0= if
-      s" HEAP" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
+   SRCLOC:TOKEN$ >str {: run:str :}
+   LBUF:STORAGE-LINE-TOKEN {: ns:str :}
+   ns STR:LEN 0= if
+      s" HEAP" run STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   run runu na nu REJECTION:NOT-A-NAME
-   LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
-   na nu CHECKER-LBUF-NAME-OK? 0= if exit then
-   na nu LBUF:SEAL-NAME
-   na nu s" -NEW" LBUF:LBUF-SUFFIX-OK? 0= if exit then
-   na nu s" -RELEASE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
-   ta tu CHECKER-DYNAMIC-INFO 0= if
+   run ns REJECTION:NOT-A-NAME
+   LBUF:STORAGE-PARSE-TYPE {: ts:str :}
+   ns CHECKER-LBUF-NAME-OK? 0= if exit then
+   ns LBUF:SEAL-NAME
+   ns s" -NEW" LBUF:LBUF-SUFFIX-OK? 0= if exit then
+   ns s" -RELEASE" LBUF:LBUF-SUFFIX-OK? 0= if exit then
+   ts CHECKER-DYNAMIC-INFO 0= if
       drop
-      na nu s" -NEW" s" -RELEASE" ta tu CHECKER-DERIVED-TYPE-REJECT exit
+      ns s" -NEW" s" -RELEASE" ts CHECKER-DERIVED-TYPE-REJECT exit
    then
    {: bytes:n :}
-   na nu s" -NEW" LBUF:LBUF-SUFFIXED CHILD-ABI:HEAP-NEW
-   ['] MAP-RECORD AS-ENTRY ta tu CHILD drop  bytes ,
-   na nu s" -RELEASE" LBUF:LBUF-SUFFIXED CHILD-ABI:HEAP-RELEASE
-   ['] UNMAP-RECORD AS-ENTRY ta tu CHILD drop  bytes , ;
+   ns s" -NEW" LBUF:LBUF-SUFFIXED CHILD-ABI:HEAP-NEW
+   ['] MAP-RECORD AS-ENTRY ts CHILD drop  bytes ,
+   ns s" -RELEASE" LBUF:LBUF-SUFFIXED CHILD-ABI:HEAP-RELEASE
+   ['] UNMAP-RECORD AS-ENTRY ts CHILD drop  bytes , ;
 
 global
 

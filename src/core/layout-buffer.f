@@ -1,4 +1,3 @@
-split-str
 \ layout-buffer.f: the generative storage definers LAYOUT-BUFFER (the only
 \ introduction form for `^layout`), DEFER-LAYOUT-BUFFER, TYPED-VARIABLE and
 \ TYPED-BUFFER, each making its words as typed children and laying each child's
@@ -53,10 +52,10 @@ variable LBUF-BYTES
    c LBUF-GEN LBUF-GEN-U @ + c!
    LBUF-GEN-U @ 1 + LBUF-GEN-U ! ;
 
-: LBUF-APP ( str -- ) {: a:^ u:n :}
+: LBUF-APP ( str -- ) {: s:str :}
    0 LBUF-I !
-   begin LBUF-I @ u < while
-      a LBUF-I @ + c@ LBUF-C,
+   begin LBUF-I @ s STR:LEN < while
+      s STR:DATA LBUF-I @ + c@ LBUF-C,
       LBUF-I @ 1 + LBUF-I !
    repeat ;
 
@@ -99,14 +98,14 @@ EXPORT CHECK:TAG
 EXPORT TYPE-DECL:TDECL-STORED-CHILD
 EXPORT TYPE-DECL:TDECL-NODE-CHILD
 : LBUF-VALIDATE ( n str str -- bool )
-   {: count:n name:^ nameu:n type:^ typeu:n :}
-   type typeu CHECKER-LAYOUT-INFO 0= if
-      2drop name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT LBUF-FALSE exit
+   {: count:n name:str type:str :}
+   type CHECKER-LAYOUT-INFO 0= if
+      2drop name type CHECKER-LAYOUT-TYPE-REJECT LBUF-FALSE exit
    then
    LBUF-W ! drop
    count LBUF-N !
    count LBUF-W @ LBUF-EXTENT? 0= if
-      drop name nameu count CHECKER-STORAGE-COUNT-REJECT LBUF-FALSE exit
+      drop name count CHECKER-STORAGE-COUNT-REJECT LBUF-FALSE exit
    then
    LBUF-BYTES ! LBUF-TRUE ;
 
@@ -118,17 +117,17 @@ public
    data-base PROVIDED-XT:SEAL-CELL + @ AS-SEAL-NAME execute ;
 
 \ A name a sealed package would take is rejected before a taken one, which is
-\ rejected at t tu, the name as the source holds it.
-: CLAIM-NAME ( str str -- ) {: name:^ nameu:n t:^ tu:n :}
-   name nameu SEAL-NAME
-   name nameu CHECKER-DEFINED-HERE? if name nameu t tu REJECT-DUPLICATE then
-   name nameu get-current search-wl 0 <> if name nameu t tu REJECT-DUPLICATE then ;
+\ rejected at t, the name as the source holds it.
+: CLAIM-NAME ( str str -- ) {: name:str t:str :}
+   name SEAL-NAME
+   name CHECKER-DEFINED-HERE? if name t REJECT-DUPLICATE then
+   name get-current search-wl 0 <> if name t REJECT-DUPLICATE then ;
 
 \ A name the checker rejects answers false, and the definer defines nothing:
 \ the checker has reported it.
-: LBUF-NAME-OK? ( str str -- bool ) {: name:^ nameu:n t:^ tu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= if LBUF-FALSE exit then
-   name nameu t tu CLAIM-NAME
+: LBUF-NAME-OK? ( str str -- bool ) {: name:str t:str :}
+   name CHECKER-LBUF-NAME-OK? 0= if LBUF-FALSE exit then
+   name t CLAIM-NAME
    LBUF-TRUE ;
 
 private
@@ -153,15 +152,15 @@ public
 
 \ The answer stays in LBUF-GEN until the next LBUF-CLEAR.
 : LBUF-SUFFIXED ( str str -- str )
-   {: name:^ nameu:n sfx:^ sfxu:n :}
-   LBUF-CLEAR  name nameu LBUF-APP  sfx sfxu LBUF-APP
-   LBUF-GEN LBUF-GEN-U @ ;
+   {: name:str sfx:str :}
+   LBUF-CLEAR  name LBUF-APP  sfx LBUF-APP
+   LBUF-GEN LBUF-GEN-U @ >str ;
 
 \ Every derived name (NAME-BIND, NAME-GROW, NAME-RESERVE, NAME-RELEASE) is
 \ guarded like the declared one, so a collision fails loudly instead of
 \ rebinding a word.
-: LBUF-SUFFIX-OK? ( str str -- bool ) {: name:^ nameu:n sfx:^ sfxu:n :}
-   name nameu sfx sfxu LBUF-SUFFIXED name nameu LBUF-NAME-OK? ;
+: LBUF-SUFFIX-OK? ( str str -- bool ) {: name:str sfx:str :}
+   name sfx LBUF-SUFFIXED name LBUF-NAME-OK? ;
 
 private
 
@@ -252,15 +251,15 @@ SCRATCH-VARIABLE CLS-CAP
 
 \ The storage name, of type text, whose element's cell at holds the kinds of
 \ its class, each in another variant.
-: MIXED-REJECT ( str str n -- ) {: name:^ nameu:n type:^ typeu:n at:n :}
+: MIXED-REJECT ( str str n -- ) {: name:str type:str at:n :}
    at CLS c@ {: class:n :}
    s" E-BAD-STORAGE" REJECTION:OPEN
-   s" the type " REJECTION:EMIT-STR  type typeu CODE-SPAN
-   s"  of " REJECTION:EMIT-STR  name nameu CODE-SPAN
+   s" the type " REJECTION:EMIT-STR  type CODE-SPAN
+   s"  of " REJECTION:EMIT-STR  name CODE-SPAN
    s"  holds " REJECTION:EMIT-STR  class KINDS$ REJECTION:EMIT-STR
    s"  in cell " REJECTION:EMIT-STR  at REJECTION:EMIT-N
    s"  of an element, each in another variant" REJECTION:EMIT-STR
-   type typeu REJECTION:AT
+   type REJECTION:AT
    s" a saved cell must hold one kind in every variant" REJECTION:EMIT-STR
    REJECTION:HELP  s" keep the " REJECTION:EMIT-STR
    class CELL-PTR and 0= 0= if s" address" else s" quotation" then REJECTION:EMIT-STR
@@ -270,14 +269,14 @@ SCRATCH-VARIABLE CLS-CAP
 
 \ Rejects the storage name, of type text and term, when two variants put
 \ different kinds in one cell of its element.
-: MIXED-HELD? ( str str n -- bool ) {: name:^ nameu:n type:^ typeu:n term:n :}
+: MIXED-HELD? ( str str n -- bool ) {: name:str type:str term:n :}
    term CLASSIFY-ELEMENT MIXED-CELL {: at:n :}
    at 0< if LBUF-FALSE exit then
-   name nameu type typeu at MIXED-REJECT LBUF-TRUE ;
+   name type at MIXED-REJECT LBUF-TRUE ;
 
-: MARK-CELLS ( ^n str -- ) {: base:^ kinds:^ width:n :}
-   width 0 ?do
-      kinds i + c@ {: class:n :}
+: MARK-CELLS ( ^n str -- ) {: base:^ kinds:str :}
+   kinds STR:LEN 0 ?do
+      kinds STR:DATA i + c@ {: class:n :}
       base i cells + {: cell:^ :}
       class CELL-PTR = if cell ptr-cell-mark then
       class CELL-CODE = if cell @ cell xt! then
@@ -286,7 +285,7 @@ SCRATCH-VARIABLE CLS-CAP
 : STORAGE-MARK-FIXED ( ^n n -- ) {: base:^ term:n :}
    term CLASSIFY-ELEMENT {: width:n :}
    LBUF-N @ 0 ?do
-      base i width * cells + CLS-BASE width MARK-CELLS
+      base i width * cells + CLS-BASE width >str MARK-CELLS
    loop ;
 
 \ A type node is read where its text would be parsed (STORAGE-PARSE?), into
@@ -297,19 +296,19 @@ SCRATCH-VARIABLE CLS-CAP
 
 public
 
-: NODE-TYPE-REJECT ( str -- ) {: name:^ nameu:n :}
+: NODE-TYPE-REJECT ( str -- ) {: name:str :}
    LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
-   name nameu LBUF-GEN LBUF-GEN-U @ CHECKER-STORAGE-TYPE-REJECT ;
+   name LBUF-GEN LBUF-GEN-U @ >str CHECKER-STORAGE-TYPE-REJECT ;
 
 : NODE-STORAGE-TERM ( n -- n bool ) NODE-READ LBI-TERM ;
 
 \ Rejects the storage name, of type text, when the type puts an address and
 \ another kind in one cell; a type the checker cannot read answers false.
-: MIXED-SAVED? ( str str -- bool ) {: name:^ nameu:n type:^ typeu:n :}
-   type typeu CHECKER-STORAGE-TERM 0= if drop LBUF-FALSE exit then
+: MIXED-SAVED? ( str str -- bool ) {: name:str type:str :}
+   type CHECKER-STORAGE-TERM 0= if drop LBUF-FALSE exit then
    {: term:n :}
    term HAS-ADDRESS? 0= if LBUF-FALSE exit then
-   name nameu type typeu term MIXED-HELD? ;
+   name type term MIXED-HELD? ;
 
 private
 
@@ -325,9 +324,9 @@ private
 \ Quotation cells belong to the image even while null; the term walk declares
 \ each code and address cell of these DATA allocations for capture.
 : STORAGE-BIND ( n ^n n str bool -- )
-   {: handle:n base:^ count:n type:^ typeu:n hasaddr:bool :}
+   {: handle:n base:^ count:n type:str hasaddr:bool :}
    hasaddr if
-      base type typeu TYPE-TERM STORAGE-MARK-FIXED
+      base type TYPE-TERM STORAGE-MARK-FIXED
    then
    handle base count CHECKER-STORAGE-BIND ;
 
@@ -353,38 +352,38 @@ public
 \ token on a later line it reads none and leaves the cursor where it found it.
 : STORAGE-LINE-TOKEN ( -- str )
    data-base INP-CELL + @ {: at:n :}
-   parse-name {: a:^ u:n :}
-   a NULL-PTR - at - {: gap:n :}
-   a gap - gap CHECKER-TYPE-SPAN-BREAK? if
-      at data-base INP-CELL + !  a 0 exit
+   parse-name {: s:str :}
+   s STR:DATA NULL-PTR - at - {: gap:n :}
+   s STR:DATA gap - gap >str CHECKER-TYPE-SPAN-BREAK? if
+      at data-base INP-CELL + !  s STR:DATA 0 >str exit
    then
-   a u ;
+   s ;
 
 \ Whether the next token on the line is the SCRATCH-ONLY clause, consumed; any
 \ other is left unread.
 : SCRATCH-CLAUSE? ( -- bool )
-   STORAGE-LINE-TOKEN {: ta:^ tu:n :}
-   tu 0= IF 0 0= 0= EXIT THEN
-   ta tu s" scratch-only" STR:=CI IF 0 0= EXIT THEN
-   ta STORAGE-UNREAD  0 0= 0= ;
+   STORAGE-LINE-TOKEN {: ts:str :}
+   ts STR:LEN 0= IF 0 0= 0= EXIT THEN
+   ts s" scratch-only" STR:=CI IF 0 0= EXIT THEN
+   ts STR:DATA STORAGE-UNREAD  0 0= 0= ;
 
 private
 
 : STORAGE-MORE? ( n bool -- n bool ) {: depth:n ended:bool :}
    ended if depth LBUF-FALSE exit then
-   depth 0 > if parse-name else STORAGE-LINE-TOKEN then {: a:^ u:n :}
-   u 0= if depth LBUF-FALSE exit then
-   a STGT-A !  u STGT-U !  depth LBUF-TRUE ;
+   depth 0 > if parse-name else STORAGE-LINE-TOKEN then {: s:str :}
+   s STR:LEN 0= if depth LBUF-FALSE exit then
+   s STR:DATA STGT-A !  s STR:LEN STGT-U !  depth LBUF-TRUE ;
 
 public
 
 \ The whole spelling from a first token on the name's line, ended where the
 \ checker ends one or, while no `<` or `[` is open, at the end of its line.
 : STORAGE-PARSE-TYPE ( -- str )
-   STORAGE-LINE-TOKEN STGT-U !  STGT-A !
+   STORAGE-LINE-TOKEN dup STR:LEN STGT-U !  STR:DATA STGT-A !
    STGT-A @ STGT-START !
-   0 begin STGT-A @ STGT-U @ CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
-   STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - ;
+   0 begin STGT-A @ STGT-U @ >str CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
+   STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - >str ;
 
 private
 
@@ -412,7 +411,7 @@ private
    cb KINDS cells + @ {: wc:n :}
    wc 0= if exit then
    cb KINDS 1 + cells + BYTE-VIEW {: kinds:^ :}
-   count 0 ?do base i wc * cells + kinds wc MARK-CELLS loop ;
+   count 0 ?do base i wc * cells + kinds wc >str MARK-CELLS loop ;
 
 \ ---- DEFER-LAYOUT-BUFFER: a column sized by the model at build time ----------
 \ The accessor reads the region cell on every call, so an index survives
@@ -507,81 +506,81 @@ CAST: AS-CHILD-RUN ( n -- [ str n n str -- n ] )
 
 \ Makes the buffer child NAME over TYPE and answers its effect handle.
 : BUFFER-CHILD ( str str -- n )
-   {: name:^ nameu:n type:^ typeu:n :}
-   name nameu CHILD-ABI:BUFFER ['] ELEMENT AS-ENTRY
-   type typeu CHILD ;
+   {: name:str type:str :}
+   name CHILD-ABI:BUFFER ['] ELEMENT AS-ENTRY
+   type CHILD ;
 
 \ Lays a deferred block's KINDS cell and class bytes, classified once here for
 \ every bind to mark by.
-: LAY-KINDS ( str bool -- ) {: type:^ typeu:n hasaddr:bool :}
+: LAY-KINDS ( str bool -- ) {: type:str hasaddr:bool :}
    hasaddr 0= if 0 , exit then
-   type typeu TYPE-TERM CLASSIFY-ELEMENT {: width:n :}
+   type TYPE-TERM CLASSIFY-ELEMENT {: width:n :}
    width ,
    width 0 ?do i CLS c@ c, loop
    LBUF-ALIGN ;
 
 \ Lays NAME's -BIND and -GROW companions over the block v.
-: COMPANIONS ( str ^n -- ) {: name:^ nameu:n v:^ :}
-   name nameu s" -BIND" LBUF-SUFFIXED CHILD-ABI:BIND
+: COMPANIONS ( str ^n -- ) {: name:str v:^ :}
+   name s" -BIND" LBUF-SUFFIXED CHILD-ABI:BIND
    ['] BIND AS-RESIZE-ENTRY s" " CHILD drop  v LDEFER-CELL
-   name nameu s" -GROW" LBUF-SUFFIXED CHILD-ABI:GROW
+   name s" -GROW" LBUF-SUFFIXED CHILD-ABI:GROW
    ['] GROW AS-RESIZE-ENTRY s" " CHILD drop  v LDEFER-CELL ;
 
 \ ---- LAYOUT-BUFFER ------------------------------------------------------------
 \ Makes the buffer child NAME and lays its block: the header, bound to LBUF-N
 \ elements of LBUF-W cells, then the elements, which the checker binds.
 : LBUF-CHILD ( str str bool bool -- )
-   {: name:^ nameu:n type:^ typeu:n hasaddr:bool scratch:bool :}
-   name nameu type typeu BUFFER-CHILD {: handle:n :}
+   {: name:str type:str hasaddr:bool scratch:bool :}
+   name type BUFFER-CHILD {: handle:n :}
    here {: v:^ :}
    HEAD-CELLS cells ,  LBUF-N @ ,  LBUF-N @ ,  LBUF-W @ ,
    scratch if LBUF-BYTES @ SCRATCH-ALLOT else LBUF-BYTES @ allot then
    v HEAD-CELLS cells + {: base:^ :}
-   handle base LBUF-N @ type typeu hasaddr STORAGE-BIND ;
+   handle base LBUF-N @ type hasaddr STORAGE-BIND ;
 
 global
 
 : LAYOUT-BUFFER ( n -- ) {: count:n :}
-   SRCLOC:TOKEN$ {: run:^ runu:n :}
-   STORAGE-LINE-TOKEN {: name:^ nameu:n :}
-   nameu 0= if
-      s" LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
+   SRCLOC:TOKEN$ >str {: run:str :}
+   STORAGE-LINE-TOKEN {: name:str :}
+   name STR:LEN 0= if
+      s" LAYOUT-BUFFER" run STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   run runu name nameu REJECTION:NOT-A-NAME
-   STORAGE-PARSE-TYPE {: type:^ typeu:n :}
-   name nameu name nameu LBUF-NAME-OK? 0= if exit then
-   count name nameu type typeu LBUF-VALIDATE 0= if exit then
-   name nameu type typeu MIXED-SAVED? if exit then
-   type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
-   name nameu type typeu hasaddr LBUF-FALSE LBUF-CHILD ;
+   run name REJECTION:NOT-A-NAME
+   STORAGE-PARSE-TYPE {: type:str :}
+   name name LBUF-NAME-OK? 0= if exit then
+   count name type LBUF-VALIDATE 0= if exit then
+   name type MIXED-SAVED? if exit then
+   type STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
+   name type hasaddr LBUF-FALSE LBUF-CHILD ;
 INTRINSIC-DECLARATION INTRINSIC
 
 : DEFER-LAYOUT-BUFFER ( -- )
-   SRCLOC:TOKEN$ {: run:^ runu:n :}
-   STORAGE-LINE-TOKEN {: name:^ nameu:n :}
-   nameu 0= if
-      s" DEFER-LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
+   SRCLOC:TOKEN$ >str {: run:str :}
+   STORAGE-LINE-TOKEN {: name:str :}
+   name STR:LEN 0= if
+      s" DEFER-LAYOUT-BUFFER" run STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   run runu name nameu REJECTION:NOT-A-NAME
-   STORAGE-PARSE-TYPE {: type:^ typeu:n :}
-   name nameu name nameu LBUF-NAME-OK? 0= if exit then
-   name nameu s" -BIND" LBUF-SUFFIX-OK? 0= if exit then
-   name nameu s" -GROW" LBUF-SUFFIX-OK? 0= if exit then
-   type typeu CHECKER-LAYOUT-INFO 0= if
+   run name REJECTION:NOT-A-NAME
+   STORAGE-PARSE-TYPE {: type:str :}
+   name name LBUF-NAME-OK? 0= if exit then
+   name s" -BIND" LBUF-SUFFIX-OK? 0= if exit then
+   name s" -GROW" LBUF-SUFFIX-OK? 0= if exit then
+   type CHECKER-LAYOUT-INFO 0= if
       2drop
-      name nameu s" -BIND" s" -GROW" CHECKER-UNSEEN-PAIR
-      name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT exit
+      name s" -BIND" s" -GROW" CHECKER-UNSEEN-PAIR
+      name type CHECKER-LAYOUT-TYPE-REJECT exit
    then
    LBUF-W !  drop
-   name nameu type typeu MIXED-SAVED? if exit then
-   type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
-   name nameu CHILD-ABI:DEFERRED ['] DEFERRED-ELEMENT AS-ENTRY
-   type typeu CHILD {: handle:n :}
+   name type MIXED-SAVED? if exit then
+   type STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
+   name CHILD-ABI:DEFERRED ['] DEFERRED-ELEMENT AS-ENTRY
+   type CHILD {: handle:n :}
    here {: v:^ :}
    here ptr-cell-mark 0 ,  0 ,  0 ,  LBUF-W @ ,
-   type typeu hasaddr LAY-KINDS
+   type hasaddr LAY-KINDS
    handle v CHECKER-STORAGE-DEFER
-   name nameu v COMPANIONS ;
+   name v COMPANIONS ;
 INTRINSIC-DECLARATION INTRINSIC
 
 private
@@ -592,86 +591,86 @@ private
 
 \ Sizes COUNT elements of W cells each; false once a count outside the extent
 \ is rejected.
-: STORAGE-SIZE ( n n str -- bool ) {: count:n w:n name:^ nameu:n :}
+: STORAGE-SIZE ( n n str -- bool ) {: count:n w:n name:str :}
    w LBUF-W !
    count LBUF-N !
    count LBUF-W @ LBUF-EXTENT? 0= if
-      drop name nameu count CHECKER-STORAGE-COUNT-REJECT LBUF-FALSE exit
+      drop name count CHECKER-STORAGE-COUNT-REJECT LBUF-FALSE exit
    then
    LBUF-BYTES ! LBUF-TRUE ;
 
 : STORAGE-VALIDATE ( n str str -- bool )
-   {: count:n name:^ nameu:n type:^ typeu:n :}
-   type typeu CHECKER-STORAGE-INFO 0= if
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT LBUF-FALSE exit
+   {: count:n name:str type:str :}
+   type CHECKER-STORAGE-INFO 0= if
+      drop name type CHECKER-STORAGE-TYPE-REJECT LBUF-FALSE exit
    then
-   count swap name nameu STORAGE-SIZE ;
+   count swap name STORAGE-SIZE ;
 
 : NODE-VALIDATE ( n str n -- bool )
-   {: count:n name:^ nameu:n node:n :}
+   {: count:n name:str node:n :}
    node NODE-READ LBI-CELLS 0= if
-      drop name nameu NODE-TYPE-REJECT LBUF-FALSE exit
+      drop name NODE-TYPE-REJECT LBUF-FALSE exit
    then
-   count swap name nameu STORAGE-SIZE ;
+   count swap name STORAGE-SIZE ;
 
 global
 
 : TYPED-BUFFER ( n -- ) {: count:n :}
-   SRCLOC:TOKEN$ {: run:^ runu:n :}
-   STORAGE-LINE-TOKEN {: name:^ nameu:n :}
-   nameu 0= if
-      s" TYPED-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
+   SRCLOC:TOKEN$ >str {: run:str :}
+   STORAGE-LINE-TOKEN {: name:str :}
+   name STR:LEN 0= if
+      s" TYPED-BUFFER" run STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   run runu name nameu REJECTION:NOT-A-NAME
-   STORAGE-PARSE-TYPE {: type:^ typeu:n :}
+   run name REJECTION:NOT-A-NAME
+   STORAGE-PARSE-TYPE {: type:str :}
    SCRATCH-CLAUSE? {: scratch:bool :}
-   name nameu name nameu LBUF-NAME-OK? 0= if exit then
-   count name nameu type typeu STORAGE-VALIDATE 0= if exit then
+   name name LBUF-NAME-OK? 0= if exit then
+   count name type STORAGE-VALIDATE 0= if exit then
    scratch 0= if
-      name nameu type typeu MIXED-SAVED? if exit then
+      name type MIXED-SAVED? if exit then
    then
-   scratch if LBUF-FALSE else type typeu STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
-   name nameu type typeu hasaddr scratch LBUF-CHILD ;
+   scratch if LBUF-FALSE else type STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
+   name type hasaddr scratch LBUF-CHILD ;
 INTRINSIC-DECLARATION INTRINSIC
 
 \ A missing name is rejected at the token that ran the definer, which the
 \ message names.
 : TYPED-VARIABLE ( -- )
-   SRCLOC:TOKEN$ {: run:^ runu:n :}
-   STORAGE-LINE-TOKEN {: name:^ nameu:n :}
-   nameu 0= if
-      s" TYPED-VARIABLE" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
+   SRCLOC:TOKEN$ >str {: run:str :}
+   STORAGE-LINE-TOKEN {: name:str :}
+   name STR:LEN 0= if
+      s" TYPED-VARIABLE" run STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   run runu name nameu REJECTION:NOT-A-NAME
-   STORAGE-PARSE-TYPE {: type:^ typeu:n :}
+   run name REJECTION:NOT-A-NAME
+   STORAGE-PARSE-TYPE {: type:str :}
    SCRATCH-CLAUSE? {: scratch:bool :}
-   name nameu name nameu LBUF-NAME-OK? 0= if exit then
-   1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
+   name name LBUF-NAME-OK? 0= if exit then
+   1 name type STORAGE-VALIDATE 0= if exit then
    scratch 0= if
-      name nameu type typeu MIXED-SAVED? if exit then
+      name type MIXED-SAVED? if exit then
    then
-   scratch if LBUF-FALSE else type typeu STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
-   name nameu type typeu TDECL-STORED-CHILD {: handle:n :}
+   scratch if LBUF-FALSE else type STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
+   name type TDECL-STORED-CHILD {: handle:n :}
    here {: v:^ :}
    scratch if LBUF-BYTES @ SCRATCH-ALLOT else LBUF-BYTES @ allot then
-   handle v 1 type typeu hasaddr STORAGE-BIND ;
+   handle v 1 type hasaddr STORAGE-BIND ;
 INTRINSIC-DECLARATION INTRINSIC
 
 public
 
 \ TYPED-VARIABLE's run over the name and the type node, which no text spells:
 \ a definer's variable (EFFECT:VARIABLE-OF), through PROVIDED-XT:VARIABLE-CELL.
-: TYPED-VARIABLE-NODE ( str n -- ) {: name:^ nameu:n node:n :}
-   nameu 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REJECT exit then
-   name nameu name nameu LBUF-NAME-OK? 0= if exit then
-   1 name nameu node NODE-VALIDATE 0= if exit then
+: TYPED-VARIABLE-NODE ( str n -- ) {: name:str node:n :}
+   name STR:LEN 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REJECT exit then
+   name name LBUF-NAME-OK? 0= if exit then
+   1 name node NODE-VALIDATE 0= if exit then
    node NODE-HAS-ADDRESS? {: hasaddr:bool :}
    hasaddr if
       node NODE-TERM {: term:n :}
       LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
-      name nameu LBUF-GEN LBUF-GEN-U @ term MIXED-HELD? if exit then
+      name LBUF-GEN LBUF-GEN-U @ >str term MIXED-HELD? if exit then
    then
-   name nameu node TDECL-NODE-CHILD {: handle:n :}
+   name node TDECL-NODE-CHILD {: handle:n :}
    here {: v:^ :}
    LBUF-BYTES @ allot
    handle v 1 node hasaddr NODE-BIND ;

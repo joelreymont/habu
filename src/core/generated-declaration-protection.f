@@ -1,14 +1,13 @@
-split-str
 \ generated-declaration-protection.f - the runner DECLARATION-TRANSACTION:RUN.
 
 package TYPE-DECL
 private
 package DECLARATION-TRANSACTION
 
-\ a u is qualified: DICTIONARY-RECORDS asks NAMESPACED? first.
-: NAMESPACE-EXISTS? ( str -- bool ) {: a:^ u:n :}
-   a u XREF-QUAL-INDEX {: split:n :}
-   a split HEAD-ROW XREF-FOUND? ;
+\ s is qualified: DICTIONARY-RECORDS asks NAMESPACED? first.
+: NAMESPACE-EXISTS? ( str -- bool ) {: s:str :}
+   s XREF-QUAL-INDEX {: split:n :}
+   s STR:DATA split >str HEAD-ROW XREF-FOUND? ;
 
 \ A generated declaration is qualified exactly when it reserves a constructor
 \ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
@@ -16,13 +15,13 @@ package DECLARATION-TRANSACTION
    XREF-QUAL-INDEX 0 >= ;
 
 \ words, the count a declaration generates, is at least 1.
-: DICTIONARY-RECORDS ( str n -- n ) {: a:^ u:n words:n :}
-   a u NAMESPACED? 0= IF words EXIT THEN
-   a u NAMESPACE-EXISTS? IF words EXIT THEN
+: DICTIONARY-RECORDS ( str n -- n ) {: s:str words:n :}
+   s NAMESPACED? 0= IF words EXIT THEN
+   s NAMESPACE-EXISTS? IF words EXIT THEN
    words 1 + ;
 
-: PLAN-PREFLIGHT ( str n -- ) {: a:^ u:n words:n :}
-   a u  a u words DICTIONARY-RECORDS
+: PLAN-PREFLIGHT ( str n -- ) {: s:str words:n :}
+   s  s words DICTIONARY-RECORDS
    GENERATED-DECL-DICTIONARY:PREFLIGHT ;
 
 EXPORT TYPE-DECL:TDECL-CAPACITY-PREFLIGHT-XT

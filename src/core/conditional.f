@@ -1,4 +1,3 @@
-split-str
 \ conditional.f - `[if]` and `[then]` choose text at a file's top level, as a
 \ target's files are chosen:
 \ `HB-TARGET-MACOS? [if] require src/lib/power/macos.f [then]`. A false answer
@@ -14,18 +13,18 @@ private EXPORT BOOT:data-base global
 \ The `[if]` token is kept at entry: parse-name moves the token cells.
 : [if] ( bool -- )
    if exit then
-   data-base TKA-CELL + 0 ptr-field @  data-base TKL-CELL + @
-   {: ta:^ tu:n :}
+   data-base TKA-CELL + 0 ptr-field @  data-base TKL-CELL + @ >str
+   {: ts:str :}
    1 begin dup 0 > while
-      parse-name dup 0= if
+      parse-name dup STR:LEN 0= if
          s" E-UNTERMINATED-IF" REJECTION:OPEN
          s" `[if]` has no matching `[then]` before the source ends"
          REJECTION:EMIT-STR
-         ta tu REJECTION:AT  s" opened here" REJECTION:EMIT-STR
+         ts REJECTION:AT  s" opened here" REJECTION:EMIT-STR
          REJECTION:HELP  s" close it with `[then]`" REJECTION:EMIT-STR
          EXIT-STATUS:REJECTED REJECTION:STOP
       then
-      2dup s" [if]" STR:=CI if 2drop 1 + else
+      dup s" [if]" STR:=CI if drop 1 + else
          s" [then]" STR:=CI if 1 - then
       then
    repeat drop ;

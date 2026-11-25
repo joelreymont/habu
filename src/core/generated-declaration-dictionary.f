@@ -1,4 +1,3 @@
-split-str
 \ generated-declaration-dictionary.f - a declaration's dictionary savepoint
 \ (record count, code and data high-waters), rolled back on reject. Declarations
 \ never nest, so the savepoint is three cells. WIDN is never rolled back
@@ -47,10 +46,10 @@ public
    DP-MARK @ NULL-PTR -  data-base DATA-FLOOR-CELL + @ base +  max
    DATA-REWIND ;
 
-\ Rejects a declaration whose first word is a u when its n records do not fit,
+\ Rejects a declaration whose first word is s when its n records do not fit,
 \ placed at the token read last, where the declaration ran out of room.
-: PREFLIGHT ( str n -- ) {: a:^ u:n n:n :}
-   n DICT-CAP ndict@ - > IF a u SRCLOC:TOKEN$ REJECTION:DICTIONARY-FULL THEN ;
+: PREFLIGHT ( str n -- ) {: s:str n:n :}
+   n DICT-CAP ndict@ - > IF s SRCLOC:TOKEN$ >str REJECTION:DICTIONARY-FULL THEN ;
 
 private
 

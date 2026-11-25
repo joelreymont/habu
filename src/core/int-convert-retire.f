@@ -1,4 +1,3 @@
-split-str
 \ int-convert-retire.f — retires the raw casts, which retype an n
 \ without masking it.
 

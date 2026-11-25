@@ -1,4 +1,3 @@
-split-str
 \ decl-event.f: the event log of the one open STRUCTURE or ENUM declaration
 \ (package DECL-EVENT); the front ends only recognise tokens. Both emit the same
 \ DEV-K-FIELD event; only the variant selector, held here, differs. The runner
@@ -161,15 +160,15 @@ public
 \ OPAQUE needs a package: the generated words land in the declaring package's
 \ private wordlist, which a top-level family lacks.
 : OPAQUE ( n -- ) {: fam:n :}
-   fam TFAM-PKG$ nip 0= IF E-DEV-OPAQUE-PACKAGE throw THEN
+   fam TFAM-PKG$ STR:LEN 0= IF E-DEV-OPAQUE-PACKAGE throw THEN
    DEV-K-OPAQUE DEV-CUR-HAS-KIND? IF E-DEV-DUP-OPAQUE throw THEN
    DEV-K-OPAQUE DEV-NO-VARIANT DEV-NO-FIELD DEV-EMIT ;
 
 \ Named-field variants carry no positional payload schema (ss=sc=pc=0); their
 \ field rows are found downstream by (family, variant id).
-: VARIANT ( n str -- ) {: fam:n na:^ nu:n :}
-   na nu TYPE-NAME:VARIANT-REQUIRE
-   fam na nu DEV-VAR-ORD @ 0 0 0 SUMV-ADD {: vid:n :}
+: VARIANT ( n str -- ) {: fam:n ns:str :}
+   ns TYPE-NAME:VARIANT-REQUIRE
+   fam ns DEV-VAR-ORD @ 0 0 0 SUMV-ADD {: vid:n :}
    vid DEV-CUR-VAR !
    DEV-VAR-ORD @ 1 + DEV-VAR-ORD !
    DEV-K-VARIANT vid DEV-NO-FIELD DEV-EMIT ;
@@ -180,17 +179,17 @@ public
 \ PF-ADD throws before the event (E-TFAM-DUP, E-PF-NAME, E-TFAM-CASE), so a malformed
 \ field emits none and leaves the ordinal untouched; the event carries the row's id.
 : FIELD ( n str n n n n n n n -- )
-   {: fam:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags PF-ADD
+   {: fam:n ns:str sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+   fam DEV-CUR-VAR @ ns sch slot cellsn boff bytesn al flags PF-ADD
    DEV-K-FIELD DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT
    DEV-FLD-ORD @ 1 + DEV-FLD-ORD ! ;
 
 \ A pointer does not own (TFCL-NODE? stops at it), so `^<linear>` would let
 \ its family copy and drop a linear value.
 : REQUIRE-POINTEE ( n str -- n )
-   {: node:n why:^ whyu:n :}
+   {: node:n why:str :}
    node TFCL-NODE? IF
-      why whyu s" hold the linear value in the field itself, never beneath `^`"
+      why s" hold the linear value in the field itself, never beneath `^`"
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
    THEN
    node ;
@@ -198,18 +197,18 @@ public
 \ REQUIRE-POINTEE on each pointee in a field type, as SCH-STORE-MASK walks it;
 \ again at close, as a pointee naming the declared family was judged fieldless.
 : REQUIRE-POINTEES ( n str -- )
-   {: node:n why:^ whyu:n :}
+   {: node:n why:str :}
    node SCHEMA-PTR? IF
-      node SCHEMA-A@ why whyu REQUIRE-POINTEE why whyu RECURSE EXIT THEN
+      node SCHEMA-A@ why REQUIRE-POINTEE why RECURSE EXIT THEN
    node SCHEMA-APP? IF
       node SCHEMA-B@ {: start:n :}
-      node SCHEMA-C@ 0 ?do start i + SCHEMA-ROOT@ why whyu RECURSE loop EXIT
+      node SCHEMA-C@ 0 ?do start i + SCHEMA-ROOT@ why RECURSE loop EXIT
    THEN
    node SCHEMA-QUOT? IF
       SCH-QUOT-ROWS 0 ?do
          node i SCHEMA-QUOT-ROW@ {: row:n :}
          row SCHEMA-ROW-OK? IF
-            row SCHEMA-ROW-COUNT@ 0 ?do row i SCHEMA-ROW-ELEM@ why whyu RECURSE loop
+            row SCHEMA-ROW-COUNT@ 0 ?do row i SCHEMA-ROW-ELEM@ why RECURSE loop
          THEN
       loop
    THEN ;

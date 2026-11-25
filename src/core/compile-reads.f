@@ -1,4 +1,3 @@
-split-str
 \ compile-reads.f - what a compile reads besides its source: the roots it looked
 \ up and what they resolved to, the environment variables it read, the texts it
 \ spells, the names it looked up and the files it read.
@@ -97,22 +96,23 @@ create CALL-BUF 2 cells SCRATCH-ALLOT    \ CALL+'s first, then second bytes
    off CELL + CELL@ off 2 cells + CELL@ + PAD 3 cells + ;
 
 : SAME? ( n n str str -- bool )
-   {: off:n kind:n a:^ u:n b:^ v:n :}
+   {: off:n kind:n as:str bs:str :}
+   as STR:LEN bs STR:LEN {: u:n v:n :}
    off CELL@ kind =  off CELL + CELL@ u = and  off 2 cells + CELL@ v = and if
-      off 3 cells + AT u a u STR:=
-      off 3 cells + u + AT v b v STR:= and exit
+      off 3 cells + AT u >str as STR:=
+      off 3 cells + u + AT v >str bs STR:= and exit
    then
    0 0= 0= ;
 
 : HASH ( n str str -- n )
-   {: kind:n a:^ u:n b:^ v:n :}
-   FNV:BASIS kind FNV:STEP  a u FNV:BYTES  b v FNV:BYTES ;
+   {: kind:n as:str bs:str :}
+   FNV:BASIS kind FNV:STEP  as FNV:BYTES  bs FNV:BYTES ;
 
 : HASH-AT ( n -- n )
    {: off:n :}
    off CELL + CELL@ {: u:n :}
-   off CELL@  off 3 cells + AT u
-   off 3 cells + u + AT  off 2 cells + CELL@ HASH ;
+   off CELL@  off 3 cells + AT u >str
+   off 3 cells + u + AT  off 2 cells + CELL@ >str HASH ;
 
 \ Slot i of the index holds a read's offset plus 1, or 0 when empty.
 : SLOT ( n -- ^n ) cells IDX @ + CELL-VIEW ;
@@ -123,16 +123,16 @@ create CALL-BUF 2 cells SCRATCH-ALLOT    \ CALL+'s first, then second bytes
    HOME begin dup SLOT @ 0= 0= while NEXT repeat ;
 
 : STOP? ( n n str str -- bool )
-   {: i:n kind:n a:^ u:n b:^ v:n :}
+   {: i:n kind:n as:str bs:str :}
    i SLOT @ {: s:n :}
    s 0= if 0 0= exit then
-   s 1- kind a u b v SAME? ;
+   s 1- kind as bs SAME? ;
 
 \ The slot holding this read, else the empty slot it would take.
 : PROBE ( n str str -- n )
-   {: kind:n a:^ u:n b:^ v:n :}
-   kind a u b v HASH HOME
-   begin dup kind a u b v STOP? 0= while NEXT repeat ;
+   {: kind:n as:str bs:str :}
+   kind as bs HASH HOME
+   begin dup kind as bs STOP? 0= while NEXT repeat ;
 
 : INSERT ( n -- )
    {: off:n :}
@@ -141,10 +141,10 @@ create CALL-BUF 2 cells SCRATCH-ALLOT    \ CALL+'s first, then second bytes
 \ A failed map marks the recording missed and throws E-MEM-MAP carrying its
 \ record.
 : FRESH ( n str -- ^u8 )
-   {: bytes:n m:^ mu:n :}
+   {: bytes:n m:str :}
    bytes map-anon 0= 0= if
       ST-MISSED STATUS !
-      drop bytes m mu REJECTION:MAP-PASS
+      drop bytes m REJECTION:MAP-PASS
    then ;
 
 \ APPEND grows the index before a read would fill over half its slots, so
@@ -162,7 +162,7 @@ create CALL-BUF 2 cells SCRATCH-ALLOT    \ CALL+'s first, then second bytes
    CAP @ 2 * need max ROOM-MIN max {: cap:n :}
    cap s" a recording of a compile's reads" FRESH
    {: fresh:^ :}
-   MAP @ fresh USED @ ARENA-COPY
+   MAP @ fresh USED @ >str ARENA-COPY
    MAP @ CAP @ UNMAP
    fresh MAP !
    cap CAP ! ;
@@ -182,22 +182,23 @@ public
 private
 
 \ Word w, which the program called, gave a span of length n.
-: NEGATIVE ( str n -- ) {: w:^ wu:n n:n :}
+: NEGATIVE ( str n -- ) {: w:str n:n :}
    s" E-PATH-RANGE" REJECTION:OPEN
-   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+   96 REJECTION:EMIT1  w REJECTION:EMIT-STR
    s" ` got a length of " REJECTION:EMIT-STR  n REJECTION:EMIT-N
    REJECTION:HELP  s" pass the span's own length, 0 or more" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ w is the word the program called.
 : APPEND ( str n str str -- )
-   {: w:^ wu:n kind:n a:^ u:n b:^ v:n :}
+   {: w:str kind:n as:str bs:str :}
+   as STR:LEN bs STR:LEN {: u:n v:n :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
-   u 0 < if w wu u NEGATIVE then
-   v 0 < if w wu v NEGATIVE then
+   u 0 < if w u NEGATIVE then
+   v 0 < if w v NEGATIVE then
    FILLED @ 1+ 2 * SLOTS @ > if GROW then
-   kind a u b v PROBE {: place:n :}
+   kind as bs PROBE {: place:n :}
    place SLOT @ 0= 0= if exit then
    USED @ {: off:n :}
    u v + PAD 3 cells + {: size:n :}
@@ -205,8 +206,8 @@ private
    kind off AT CELL-VIEW !
    u off CELL + AT CELL-VIEW !
    v off 2 cells + AT CELL-VIEW !
-   a off 3 cells + AT u ARENA-COPY
-   b off 3 cells + u + AT v ARENA-COPY
+   as STR:DATA off 3 cells + AT u >str ARENA-COPY
+   bs STR:DATA off 3 cells + u + AT v >str ARENA-COPY
    size 3 cells - u v + ?do 0 off 3 cells + i + AT c! loop
    off size + USED !
    off 1+ place SLOT !  FILLED @ 1+ FILLED ! ;
@@ -237,31 +238,33 @@ public
 
 \ The active recording's bytes, valid until its next append or its end.
 : READS$ ( -- str )
-   STATUS @ ST-OFF = if NULL-PTR 0 exit then
-   MAP @ USED @ ;
+   STATUS @ ST-OFF = if NULL-PTR 0 >str exit then
+   MAP @ USED @ >str ;
 
 \ A root's absolute spelling and its canonical directory.
-: ROOT+ ( str str -- ) {: a:^ u:n b:^ v:n :}
-   s" COMPILE-READS:ROOT+" ROOT-READ a u b v APPEND ;
+: ROOT+ ( str str -- ) {: as:str bs:str :}
+   s" COMPILE-READS:ROOT+" ROOT-READ as bs APPEND ;
 
 \ An environment variable's name and value; a NULL-PTR value is an absent one.
-: ENV+ ( str str -- ) {: a:^ u:n b:^ v:n :}
-   b NULL-PTR = if s" COMPILE-READS:ENV+" ENV-ABSENT a u b 0 APPEND exit then
-   s" COMPILE-READS:ENV+" ENV-READ a u b v APPEND ;
+: ENV+ ( str str -- ) {: as:str bs:str :}
+   bs STR:DATA NULL-PTR = if
+      s" COMPILE-READS:ENV+" ENV-ABSENT as NULL-PTR 0 >str APPEND exit
+   then
+   s" COMPILE-READS:ENV+" ENV-READ as bs APPEND ;
 
 \ A text whose names the part depends on as if its source spelled them. One of
 \ length 0 or less records nothing.
-: TEXT+ ( str -- ) {: a:^ u:n :}
-   u 0 <= if exit then
-   s" COMPILE-READS:TEXT+" TEXT-READ a u a 0 APPEND ;
+: TEXT+ ( str -- ) {: s:str :}
+   s STR:LEN 0 <= if exit then
+   s" COMPILE-READS:TEXT+" TEXT-READ s s STR:DATA 0 >str APPEND ;
 
 \ A name looked up in a wordlist, which the part depends on as if its source
 \ spelled it; the wordlist cell is the second bytes, little-endian.
-: NAME+ ( str n -- ) {: a:^ u:n wid:n :}
+: NAME+ ( str n -- ) {: s:str wid:n :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
    wid WID-BUF CELL-VIEW !
-   s" COMPILE-READS:NAME+" NAME-READ a u WID-BUF CELL APPEND ;
+   s" COMPILE-READS:NAME+" NAME-READ s WID-BUF CELL >str APPEND ;
 
 \ The record at dictionary index idx, which the require check judged after
 \ asks requires were made; both cells little-endian.
@@ -270,7 +273,7 @@ public
    STATUS @ ST-OFF = if exit then
    idx CALL-BUF CELL-VIEW !  asks CALL-BUF CELL + CELL-VIEW !
    s" COMPILE-READS:CALL+" CALL-READ
-   CALL-BUF CELL  CALL-BUF CELL + CELL APPEND ;
+   CALL-BUF CELL >str  CALL-BUF CELL + CELL >str APPEND ;
 
 private
 
@@ -281,16 +284,16 @@ EXPORT CHECKER-RESOLVE:bare-tok-imm?
 global
 
 \ The name's code cell in wordlist wid, or 0; a dependency of the part that asks.
-: search-wl ( str n -- n ) {: a:^ u:n wid:n :}
-   a u wid NAME+  a u wid bare-search-wl ;
+: search-wl ( str n -- n ) {: s:str wid:n :}
+   s wid NAME+  s wid bare-search-wl ;
 
 \ The search order's binding of the name, a dependency as the part's text is.
-: scope-find ( str -- ^n ^n ^n n ) {: a:^ u:n :}
-   a u TEXT+  a u bare-scope-find ;
+: scope-find ( str -- ^n ^n ^n n ) {: s:str :}
+   s TEXT+  s bare-scope-find ;
 
 \ The name's immediate flag (2) or 0, a dependency as scope-find's name is.
-: tok-imm? ( str -- n ) {: a:^ u:n :}
-   a u TEXT+  a u bare-tok-imm? ;
+: tok-imm? ( str -- n ) {: s:str :}
+   s TEXT+  s bare-tok-imm? ;
 
 private
 
@@ -322,26 +325,26 @@ public
 private
 
 : STAMP+ ( str n str n n n -- )
-   {: w:^ wu:n kind:n a:^ u:n sec:n ns:n size:n :}
+   {: w:str kind:n s:str sec:n ns:n size:n :}
    sec STAMP-BUF CELL-VIEW !
    ns STAMP-BUF CELL + CELL-VIEW !
    size STAMP-BUF 2 cells + CELL-VIEW !
-   w wu kind a u STAMP-BUF 3 cells APPEND ;
+   w kind s STAMP-BUF 3 cells >str APPEND ;
 
 public
 
 \ A path a word reads and z, its NUL-terminated copy, recorded with its STAMP
 \ while a recording is active; on a thread other than main, MISS.
-: FILE+ ( str ^u8 -- ) {: a:^ u:n z:^ :}
+: FILE+ ( str ^u8 -- ) {: s:str z:^ :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
-   s" COMPILE-READS:FILE+" FILE-READ a u z STAT-BUF stat64 STAT-STAMP STAMP+ ;
+   s" COMPILE-READS:FILE+" FILE-READ s z STAT-BUF stat64 STAT-STAMP STAMP+ ;
 
 \ FILE+ of a path a word reads without following a symlink at its end, which
 \ LSTAMP stats.
-: LFILE+ ( str ^u8 -- ) {: a:^ u:n z:^ :}
+: LFILE+ ( str ^u8 -- ) {: s:str z:^ :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
-   s" COMPILE-READS:LFILE+" FILE-LREAD a u z STAT-BUF lstat64 STAT-STAMP STAMP+ ;
+   s" COMPILE-READS:LFILE+" FILE-LREAD s z STAT-BUF lstat64 STAT-STAMP STAMP+ ;
 
 ;package

@@ -1,4 +1,3 @@
-split-str
 \ path.f - the engine's C paths: one capacity, one copier, one shared scratch.
 \
 \ PATH-CAP is the tree's one path capacity, in bytes without the NUL: a path one
@@ -13,14 +12,14 @@ split-str
 7134 constant E-PATH-RANGE   \ path length negative, or no room for it and its NUL
 7165 constant E-PATH-NUL     \ a path holds a 0 byte, which would end it early
 : PATHZ ( str ^u8 n -- )
-   {: a:^ u d:^ room :}
-   u 0 < IF E-PATH-RANGE throw THEN
-   u room >= IF E-PATH-RANGE throw THEN
-   0 BEGIN dup u < WHILE
-      dup a + c@  dup 0= IF E-PATH-NUL throw THEN  over d + c!  1 +
-   REPEAT drop  0 d u + c! ;
+   {: s:str d:^ room :}
+   s STR:LEN 0 < IF E-PATH-RANGE throw THEN
+   s STR:LEN room >= IF E-PATH-RANGE throw THEN
+   0 BEGIN dup s STR:LEN < WHILE
+      dup s STR:DATA + c@  dup 0= IF E-PATH-NUL throw THEN  over d + c!  1 +
+   REPEAT drop  0 d s STR:LEN + c! ;
 create PZB PATH-CAP 1 + allot
 
 : PATH0 ( str -- ^u8 )
-   {: a:^ u :}
-   a u PZB PATH-CAP 1 + PATHZ  PZB ;     \ shared scratch
+   {: s:str :}
+   s PZB PATH-CAP 1 + PATHZ  PZB ;     \ shared scratch

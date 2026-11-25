@@ -1,4 +1,3 @@
-split-str
 \ exit-status.f - the status a process exits with, each named once.
 \ A status from 64 to 78 means what sysexits(3) says; Habu's own reasons are 79
 \ and above.
