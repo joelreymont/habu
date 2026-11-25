@@ -1,4 +1,3 @@
-split-str
 \ mark.f - stores NOTHING's xt into its own FIRST, then count.f's SPARE, then its
 \ own SECOND, so the build's cell rows hold an earlier file's cell between two of
 \ this file's: a warm build's program must not depend on the order cells were

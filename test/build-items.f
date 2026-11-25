@@ -586,8 +586,8 @@ public
    exited TTRUE
    e s" error[E-UNDEFINED]: reads built local 9, which no `{:` group bound before it"
    STR:CONTAINS? TTRUE
-   e s\" 14 | s\" BI-UNBOUND\" MAKE-UNBOUND" STR:CONTAINS? TTRUE
-   e s" unbound.f:14:16" STR:CONTAINS? TTRUE ;
+   e s\" 13 | s\" BI-UNBOUND\" MAKE-UNBOUND" STR:CONTAINS? TTRUE
+   e s" unbound.f:13:16" STR:CONTAINS? TTRUE ;
 
 \ A call an evaluated string appends is placed in no line of the file whose
 \ text opened the definition: the string's offsets are not the file's.
@@ -735,7 +735,7 @@ PATH-CAP BUFFER: PATH
    70 SHOW {: rc:n :}
    CMD:ERR$ s" `C2-MEM:WITH-INIT` is a scoped entry, which only a direct call may reach"
    STR:CONTAINS? TTRUE
-   CMD:ERR$ s" scoped-tick.f:8:" STR:CONTAINS? TTRUE
+   CMD:ERR$ s" scoped-tick.f:7:" STR:CONTAINS? TTRUE
    rc 70 T= ;
 
 : CHECKS ( -- ) [: STORED C2-BYTES CAP-GROWN TICK ;] CMD:WITH-COMMAND ;

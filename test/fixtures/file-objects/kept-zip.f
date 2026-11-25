@@ -1,4 +1,3 @@
-split-str
 \ kept-zip.f - the file kept-main.f requires.
 
 require src/lib/string.f
@@ -19,12 +18,14 @@ variable ROOT-LEN
 create PATH PATH-CAP allot
 
 : OPEN-COPY ( -- ZIP:archive )
-   s" habu-kept-zip" FS:MKTEMP-DIR {: dir:^ len:n :}
-   dir ROOT len BYTE-COPY  len ROOT-LEN !
-   ROOT len s" kept.zip" PATH FS:JOIN-PATH {: path-len:n :}
-   PATH path-len ZIP-TEST:ORIGINAL$ FS:WRITE-ALL
-   PATH path-len ZIP:OPEN
-   ROOT ROOT-LEN @ FS:REMOVE-TREE ;
+   s" habu-kept-zip" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA ROOT dir STR:LEN BYTE-COPY
+   dir STR:LEN ROOT-LEN !
+   ROOT ROOT-LEN @ >str s" kept.zip" PATH FS:JOIN-PATH
+   PATH swap >str {: path:str :}
+   path ZIP-TEST:ORIGINAL$ FS:WRITE-ALL
+   path ZIP:OPEN
+   ROOT ROOT-LEN @ >str FS:REMOVE-TREE ;
 
 TYPED-VARIABLE OLD ZIP:archive
 OPEN-COPY OLD !

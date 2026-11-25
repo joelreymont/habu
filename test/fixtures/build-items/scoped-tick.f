@@ -1,4 +1,3 @@
-split-str
 \ scoped-tick.f - a program whose definition ticks C2-MEM:WITH-INIT, a scoped
 \ entry its build made: the build rejects it, rc 70.
 

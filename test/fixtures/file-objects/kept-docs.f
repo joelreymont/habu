@@ -1,4 +1,3 @@
-split-str
 \ kept-docs.f - the file kept-main.f requires.
 
 require src/lib/memory.f
@@ -14,10 +13,11 @@ private
 
 \ The text lies in memory the build does not own, as a program's input does.
 : READ-COPY ( -- n )
-   FIRST$ {: s:^ u:n :}
+   FIRST$ {: s:str :}
+   s STR:LEN {: u:n :}
    u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: a:^ :}
-   s a u BYTE-COPY
-   a u WORD-DOCS:FILE
+   s STR:DATA a u BYTE-COPY
+   a u >str WORD-DOCS:FILE
    WORD-DOCS:COUNT
    a u MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    WORD-DOCS:RESET ;

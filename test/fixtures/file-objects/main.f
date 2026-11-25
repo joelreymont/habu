@@ -1,4 +1,3 @@
-split-str
 \ main.f - the program's entry, RUN. Its top level stores a quotation into its
 \ own cell and 5 into count.f's counter; RUN bumps twice, to 7, prints Hi when
 \ the count is 7 and ok when DOUBLE agrees. AT-EDGE answers shape.f's EDGE,
@@ -24,7 +23,7 @@ variable NOWHERE  NOWHERE ptr-cell-mark
 variable KEEP-COLORS  ' COLORS KEEP-COLORS xt!
 variable KEEP-EDGE  ' AT-EDGE KEEP-EDGE xt!
 public
-: HI-TEXT ( -- ^u8 n ) s" ( -- ) " ;
+: HI-TEXT ( -- str ) s" ( -- ) " ;
 : RUN ( -- )
    FILE-OBJECTS-SHAPE:BUMP  Q @ XT execute
    FILE-OBJECTS-COUNT:TALLY @ 7 = if FILE-OBJECTS-COUNT:HI then

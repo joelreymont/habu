@@ -1,4 +1,3 @@
-split-str
 \ long-type.f - a definer whose stray built local has a type text longer than
 \ the token buffers' first capacity, so its rejection grows them.
 
@@ -6,10 +5,11 @@ package BITEM-LONG
 private
 
 5000 BUFFER: TEXT  variable TEXT-U
-: TEXT$ ( -- ^u8 n ) TEXT TEXT-U @ ;
-: ADD ( ^u8 n -- )
-   {: a:^ u:n :}
-   a TEXT TEXT-U @ + u BYTE-COPY  u TEXT-U +! ;
+: TEXT$ ( -- str ) TEXT TEXT-U @ >str ;
+: ADD ( str -- )
+   {: s:str :}
+   s STR:DATA TEXT TEXT-U @ + s STR:LEN BYTE-COPY
+   s STR:LEN TEXT-U +! ;
 : ELEM ( -- ) 17 0 ?do s" ^" ADD loop  s" u8 " ADD ;
 
 \ [ ^^…^u8 … -- ]: 228 inputs of 17 carets, 4566 bytes, above checker.f

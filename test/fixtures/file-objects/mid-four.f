@@ -1,4 +1,3 @@
-split-str
 \ mid-four.f - four parts, each request a clean cut; only the second calls
 \ FILE-OBJECTS-MID-W:W, so a change of W's file compiles that part alone.
 

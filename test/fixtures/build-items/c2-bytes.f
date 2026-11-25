@@ -1,4 +1,3 @@
-split-str
 \ c2-bytes.f - a program that requires src/lib/c2-memory.f, whose package a
 \ build seals before program source, and copies a byte into owned bytes.
 
@@ -22,7 +21,7 @@ private
 
 public
 : PRINT ( -- )
-   DOC$ nip MEM:BYTES-ALLOC-LEN [: PRINT-ROOT ;] C2-MEM:WITH-MUT ;
+   DOC$ STR:LEN MEM:BYTES-ALLOC-LEN [: PRINT-ROOT ;] C2-MEM:WITH-MUT ;
 ;package
 
 : MAIN ( -- ) s" bitem-c2-bytes: " type BITEM-C2-BYTES:PRINT cr ;

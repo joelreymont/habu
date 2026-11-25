@@ -1,4 +1,3 @@
-split-str
 \ build.f - test/file-objects.f's child, which builds the fixtures here in the out root HABU_OUT names.
 \ Its arguments: the kernel object every build links, then the mode, if any (MODE$).
 
@@ -26,7 +25,7 @@ PATH-CAP BUFFER: PROG-BUF
 
 : PROG$ ( -- str )
    BUILD-OUT:BASE$ s" prog" PROG-BUF FS:JOIN-PATH {: u:n :}
-   PROG-BUF u ;
+   PROG-BUF u >str ;
 
 : PAD ( -- ) s" test/fixtures/file-objects/pad.f" included ;
 : RESIDUE ( -- ) s" test/fixtures/file-objects/residue.f" included ;
@@ -58,9 +57,9 @@ PATH-CAP BUFFER: PROG-BUF
 : FACTS? ( -- bool ) MODE$ s" facts" STR:= ;
 
 \ The case's code is the one wanted, or the build ends rc 1 with the message.
-: EXPECT ( n n ^u8 n -- )
-   {: rc:n want:n msg:^ msgu:n :}
-   rc want <> if msg msgu EXIT-STATUS:FAILURE die then ;
+: EXPECT ( n n str -- )
+   {: rc:n want:n msg:str :}
+   rc want <> if msg EXIT-STATUS:FAILURE die then ;
 
 : STOP-FILE ( -- )
    s" test/fixtures/file-objects/count.f" included
@@ -109,10 +108,10 @@ CAST: >CELL ( n -- [ -- ^n ] )
 CAST: >RUN ( n -- [ -- ] )
 
 \ The host entry of the build's word named by the string.
-: ENTRY ( ^u8 n -- n ) XREF-FIND XREF-START ;
+: ENTRY ( str -- n ) XREF-FIND XREF-START ;
 
 \ The build's word named by the string becomes its program's entry.
-: ENTRY! ( ^u8 n -- ) ENTRY >RUN APP-ENTRY:XT! ;
+: ENTRY! ( str -- ) ENTRY >RUN APP-ENTRY:XT! ;
 
 \ The record's name, then its fields.
 : RECORD. ( n -- )
@@ -162,15 +161,15 @@ PATH-CAP BUFFER: FOURTH-BUF
 PATH-CAP BUFFER: FIFTH-BUF
 
 : DIR$ ( str -- str )
-   {: d:^ du:n :}
-   BUILD-OUT:BASE$ d du DIR-BUF FS:JOIN-PATH {: u:n :}
-   DIR-BUF u ;
+   {: d:str :}
+   BUILD-OUT:BASE$ d DIR-BUF FS:JOIN-PATH {: u:n :}
+   DIR-BUF u >str ;
 
 \ The named file in the directory under the out root, joined into the buffer.
-: FILE-IN ( str str ^u8 -- ^u8 n )
-   {: d:^ du:n name:^ nameu:n dst:^ :}
-   d du DIR$ name nameu dst FS:JOIN-PATH {: u:n :}
-   dst u ;
+: FILE-IN ( str str ^u8 -- str )
+   {: d:str name:str dst:^ :}
+   d DIR$ name dst FS:JOIN-PATH {: u:n :}
+   dst u >str ;
 
 : EDIT-A$ ( -- str ) s" edit" s" a.f" FIRST-BUF FILE-IN ;
 : TAIL-C$ ( -- str ) s" tail" s" c.f" FIRST-BUF FILE-IN ;
@@ -198,8 +197,8 @@ PATH-CAP BUFFER: FIFTH-BUF
 
 \ The text, then three builds' results; the caller ends the line.
 : RESULTS. ( str n n n -- )
-   {: a:^ u:n one:n two:n three:n :}
-   a u type  one FMT:.INT space  two FMT:.INT space  three FMT:.INT ;
+   {: s:str one:n two:n three:n :}
+   s type  one FMT:.INT space  two FMT:.INT space  three FMT:.INT ;
 
 : MIXED-BUILD ( -- n )
    [: s" app" RTARGET:HOST-TARGET [: s" test/fixtures/file-objects/count.f" included  SHAPE ;] LINKER:WITH ;]
@@ -451,20 +450,20 @@ PATH-CAP BUFFER: FIFTH-BUF
 \ s.f with NOTE's and ALPHA's strings, the word whose string table entry 0 points at, the size it stores and the
 \ literal the quotation it stores in HOOK answers.
 : STORES-S! ( str str str str str -- )
-   {: note:^ noteu:n alpha:^ alphau:n entry:^ entryu:n size:^ sizeu:n lit:^ litu:n :}
+   {: note:str alpha:str entry:str size:str lit:str :}
    STORES-S$ s\" package FILE-OBJECTS-STORES-S public\n: NOTE ( -- str ) s\" " FS:WRITE-ALL
-   STORES-S$ note noteu FS:APPEND-FILE
+   STORES-S$ note FS:APPEND-FILE
    STORES-S$ s\" \" ;\n: ALPHA ( -- str ) s\" " FS:APPEND-FILE
-   STORES-S$ alpha alphau FS:APPEND-FILE
+   STORES-S$ alpha FS:APPEND-FILE
    STORES-S$ s\" \" ;\n: BETA ( -- str ) s\" beta\" ;\n2 PERSISTED-PTR-U8-TABLE T\n;package\nFILE-OBJECTS-STORES-S:"
    FS:APPEND-FILE
-   STORES-S$ entry entryu FS:APPEND-FILE
+   STORES-S$ entry FS:APPEND-FILE
    STORES-S$ s\"  str> drop FILE-OBJECTS-STORES-S:T 0 ptr-field !\nFILE-OBJECTS-STORES-S:BETA str> drop FILE-OBJECTS-STORES-S:T 1 ptr-field !\n"
    FS:APPEND-FILE
    STORES-S$ s" FILE-OBJECTS-STORES-S:T FILE-OBJECTS-STORES:TABLE !  " FS:APPEND-FILE
-   STORES-S$ size sizeu FS:APPEND-FILE
+   STORES-S$ size FS:APPEND-FILE
    STORES-S$ s\"  FILE-OBJECTS-STORES:SIZE !\n: INSTALL ( -- ) [: " FS:APPEND-FILE
-   STORES-S$ lit litu FS:APPEND-FILE
+   STORES-S$ lit FS:APPEND-FILE
    STORES-S$ s\"  ;] FILE-OBJECTS-STORES:HOOK xt! ;\nINSTALL\n" FS:APPEND-FILE ;
 
 \ r.f reads h.f's TABLE, SIZE and HOOK, which s.f stores: NOTE's edit compiles s.f alone, and a new entry 0, SIZE, entry
@@ -495,8 +494,10 @@ PATH-CAP BUFFER: FIFTH-BUF
 variable SEEN-Q   \ the linked Q of the last own or through build, -1 when it threw
 PATH-CAP BUFFER: SEQ-DIR  variable SEQ-DIR-U   \ the directory the build loads from: LINKER:WITH keeps its quotation
 
-: SEQ-DIR! ( str -- ) {: d:^ du:n :}  d SEQ-DIR du BYTE-COPY  du SEQ-DIR-U ! ;
-: SEQ-DIR$ ( -- str ) SEQ-DIR SEQ-DIR-U @ ;
+: SEQ-DIR! ( str -- )
+   {: d:str :}
+   d STR:DATA SEQ-DIR d STR:LEN BYTE-COPY  d STR:LEN SEQ-DIR-U ! ;
+: SEQ-DIR$ ( -- str ) SEQ-DIR SEQ-DIR-U @ >str ;
 
 CAST: >ANSWER ( n -- [ -- n ] )
 
@@ -505,8 +506,8 @@ CAST: >ANSWER ( n -- [ -- n ] )
 \ The line's text, then four builds' compiled counts and Qs, then a cold build's
 \ of the last sources.
 : COLD-WARM. ( str n n n n n n n n n n -- )
-   {: a:^ u:n one:n two:n three:n four:n q1:n q2:n q3:n q4:n cold:n qc:n :}
-   a u one two three RESULTS.  space four FMT:.INT
+   {: s:str one:n two:n three:n four:n q1:n q2:n q3:n q4:n cold:n qc:n :}
+   s one two three RESULTS.  space four FMT:.INT
    s"  q " type  q1 FMT:.INT space  q2 FMT:.INT space  q3 FMT:.INT space  q4 FMT:.INT
    s"  cold " type  cold FMT:.INT  s"  q " type  qc FMT:.INT cr ;
 
@@ -516,15 +517,15 @@ CAST: >ANSWER ( n -- [ -- n ] )
 \ The directory's p.f, whose INSTALL stores in p.f's own HOOK a quotation answering the literal. A rewrite of a file
 \ compiles it whatever its bytes, so an edit writes p.f alone.
 : OWN-P! ( str str -- )
-   {: d:^ du:n lit:^ litu:n :}
-   d du OWN-P$ s\" package FILE-OBJECTS-OWN public variable HOOK\n: INSTALL ( -- ) [: " FS:WRITE-ALL
-   d du OWN-P$ lit litu FS:APPEND-FILE
-   d du OWN-P$ s\"  ;] HOOK xt! ;\nINSTALL\n;package\n" FS:APPEND-FILE ;
+   {: d:str lit:str :}
+   d OWN-P$ s\" package FILE-OBJECTS-OWN public variable HOOK\n: INSTALL ( -- ) [: " FS:WRITE-ALL
+   d OWN-P$ lit FS:APPEND-FILE
+   d OWN-P$ s\"  ;] HOOK xt! ;\nINSTALL\n;package\n" FS:APPEND-FILE ;
 
 \ The directory's r.f, which runs HOOK's quotation.
 : OWN-R! ( str -- )
-   {: d:^ du:n :}
-   d du OWN-R$ s\" package FILE-OBJECTS-OWN-R\nCAST: XT ( n -- [ -- n ] )\npublic\nFILE-OBJECTS-OWN:HOOK @ XT execute constant Q\n;package\n"
+   {: d:str :}
+   d OWN-R$ s\" package FILE-OBJECTS-OWN-R\nCAST: XT ( n -- [ -- n ] )\npublic\nFILE-OBJECTS-OWN:HOOK @ XT execute constant Q\n;package\n"
    FS:WRITE-ALL ;
 
 : OWN-BUILD ( str -- n )
@@ -555,18 +556,18 @@ CAST: >ANSWER ( n -- [ -- n ] )
 
 \ The directory's p.f, whose MAKE answers a quotation answering the literal.
 : THROUGH-P! ( str str -- )
-   {: d:^ du:n lit:^ litu:n :}
-   d du THROUGH-P$ s\" package FILE-OBJECTS-THROUGH-P public\n: MAKE ( -- [ -- n ] ) [: " FS:WRITE-ALL
-   d du THROUGH-P$ lit litu FS:APPEND-FILE
-   d du THROUGH-P$ s\"  ;] ;\n;package\n" FS:APPEND-FILE ;
+   {: d:str lit:str :}
+   d THROUGH-P$ s\" package FILE-OBJECTS-THROUGH-P public\n: MAKE ( -- [ -- n ] ) [: " FS:WRITE-ALL
+   d THROUGH-P$ lit FS:APPEND-FILE
+   d THROUGH-P$ s\"  ;] ;\n;package\n" FS:APPEND-FILE ;
 
 \ The directory's h.f holding HOOK, m.f storing MAKE's answer into HOOK, and r.f running HOOK.
 : THROUGH-REST! ( str -- )
-   {: d:^ du:n :}
-   d du THROUGH-H$ s\" package FILE-OBJECTS-THROUGH public variable HOOK ;package\n" FS:WRITE-ALL
-   d du THROUGH-M$ s\" package FILE-OBJECTS-THROUGH-M public\n: STORE ( -- ) FILE-OBJECTS-THROUGH-P:MAKE FILE-OBJECTS-THROUGH:HOOK xt! ;\nSTORE\n;package\n"
+   {: d:str :}
+   d THROUGH-H$ s\" package FILE-OBJECTS-THROUGH public variable HOOK ;package\n" FS:WRITE-ALL
+   d THROUGH-M$ s\" package FILE-OBJECTS-THROUGH-M public\n: STORE ( -- ) FILE-OBJECTS-THROUGH-P:MAKE FILE-OBJECTS-THROUGH:HOOK xt! ;\nSTORE\n;package\n"
    FS:WRITE-ALL
-   d du THROUGH-R$ s\" package FILE-OBJECTS-THROUGH-R\nCAST: XT ( n -- [ -- n ] )\npublic\nFILE-OBJECTS-THROUGH:HOOK @ XT execute constant Q\n;package\n"
+   d THROUGH-R$ s\" package FILE-OBJECTS-THROUGH-R\nCAST: XT ( n -- [ -- n ] )\npublic\nFILE-OBJECTS-THROUGH:HOOK @ XT execute constant Q\n;package\n"
    FS:WRITE-ALL ;
 
 : THROUGH-BUILD ( str -- n )
@@ -601,22 +602,22 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
 \ The directory's a.f, which creates words until the number of records the text spells is free, counted from DICT-CAP,
 \ which a.f cannot spell, as a literal.
 : FULL-A! ( str str -- )
-   {: d:^ du:n free:^ freeu:n :}
-   d du FULL-A$ s\" package FILE-OBJECTS-FULL\ncreate NB 15000 allot\n: ENTRY ( n n -- ) {: k:n at:n :}\n" FS:WRITE-ALL
-   d du FULL-A$ s\"    15 0 do  s\" create F000000 \" str> drop i + c@  NB at 15 * + i + c!  loop\n" FS:APPEND-FILE
-   d du FULL-A$ s\"    k  6 0 do  dup 10 mod 48 +  NB at 15 * 13 + i - + c!  10 /  loop drop ;\n" FS:APPEND-FILE
-   d du FULL-A$ s\" : CHUNK ( n n -- ) {: first:n k:n :}\n   k 0 ?do  first i +  i ENTRY  loop\n" FS:APPEND-FILE
-   d du FULL-A$ s\"    NB k 15 * >str evaluate-closed ;\n: FILL ( n -- )\n   " FS:APPEND-FILE
-   d du FULL-A$ DICT-CAP FMT:INT$ FS:APPEND-FILE
-   d du FULL-A$ s\"  ndict@ - swap - {: t:n :}\n   t 0 ?do  i  t i - 1000 min  CHUNK  1000 +loop ;\n" FS:APPEND-FILE
-   d du FULL-A$ free freeu FS:APPEND-FILE
-   d du FULL-A$ s\"  FILL\n;package\n" FS:APPEND-FILE ;
+   {: d:str free:str :}
+   d FULL-A$ s\" package FILE-OBJECTS-FULL\ncreate NB 15000 allot\n: ENTRY ( n n -- ) {: k:n at:n :}\n" FS:WRITE-ALL
+   d FULL-A$ s\"    15 0 do  s\" create F000000 \" str> drop i + c@  NB at 15 * + i + c!  loop\n" FS:APPEND-FILE
+   d FULL-A$ s\"    k  6 0 do  dup 10 mod 48 +  NB at 15 * 13 + i - + c!  10 /  loop drop ;\n" FS:APPEND-FILE
+   d FULL-A$ s\" : CHUNK ( n n -- ) {: first:n k:n :}\n   k 0 ?do  first i +  i ENTRY  loop\n" FS:APPEND-FILE
+   d FULL-A$ s\"    NB k 15 * >str evaluate-closed ;\n: FILL ( n -- )\n   " FS:APPEND-FILE
+   d FULL-A$ DICT-CAP FMT:INT$ FS:APPEND-FILE
+   d FULL-A$ s\"  ndict@ - swap - {: t:n :}\n   t 0 ?do  i  t i - 1000 min  CHUNK  1000 +loop ;\n" FS:APPEND-FILE
+   d FULL-A$ free FS:APPEND-FILE
+   d FULL-A$ s\"  FILL\n;package\n" FS:APPEND-FILE ;
 
 \ The directory's b.f, three words spelling no name of a.f's.
 : FULL-B! ( str -- )
-   {: d:^ du:n :}
-   d du FULL-B$ s\" : FILE-OBJECTS-FULL-ONE ( -- n ) 1 ;\n: FILE-OBJECTS-FULL-TWO ( -- n ) 2 ;\n" FS:WRITE-ALL
-   d du FULL-B$ s\" : FILE-OBJECTS-FULL-THREE ( -- n ) 3 ;\n" FS:APPEND-FILE ;
+   {: d:str :}
+   d FULL-B$ s\" : FILE-OBJECTS-FULL-ONE ( -- n ) 1 ;\n: FILE-OBJECTS-FULL-TWO ( -- n ) 2 ;\n" FS:WRITE-ALL
+   d FULL-B$ s\" : FILE-OBJECTS-FULL-THREE ( -- n ) 3 ;\n" FS:APPEND-FILE ;
 
 \ A build of the directory's a.f and b.f, the records it prints captured.
 : FULL-BUILD ( str -- n )
@@ -629,17 +630,19 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
 
 \ Whether WARM-RECORD is the cold build's record, whose path names full-cold where the warm one's names full.
 : SAME-RECORD? ( -- bool )
-   REJECTION:BUFFER$ {: c:^ cu:n :}
+   REJECTION:BUFFER$ {: cs:str :}
+   cs STR:DATA cs STR:LEN {: c:^ cu:n :}
    WARM-RECORD WARM-RECORD-U @ {: w:^ wu:n :}
-   s" full-cold" DIR$ {: d:^ du:n :}
-   c cu d du STR:FIND-SUB MATCH option
+   s" full-cold" DIR$ {: d:str :}
+   d STR:LEN {: du:n :}
+   cs d STR:FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N du + 5 - ENDOF
    ;MATCH {: k:n :}
    k 0< if false exit then
    wu cu 5 - <> if false exit then
-   w k c k STR:= 0= if false exit then
-   w k + wu k - c k + 5 + wu k - STR:= ;
+   w k >str c k >str STR:= 0= if false exit then
+   w k + wu k - >str c k + 5 + wu k - >str STR:= ;
 
 \ a.f leaves eight records free, b.f links, and then two, fewer than b.f's three: b.f's object must not link past the
 \ dictionary's end, so b.f compiles and is rejected as a cold build of the same sources is. A fourth build, after
@@ -651,8 +654,9 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    s" full" FULL-BUILD {: two:n :}
    s" full" s" 2" FULL-A!
    s" full" FULL-BUILD {: three:n :}
-   REJECTION:BUFFER$ RECORD-CAP min {: a:^ u:n :}
-   a WARM-RECORD u BYTE-COPY  u WARM-RECORD-U !
+   REJECTION:BUFFER$ {: r:str :}
+   r STR:LEN RECORD-CAP min {: u:n :}
+   r STR:DATA WARM-RECORD u BYTE-COPY  u WARM-RECORD-U !
    s" full" FULL-BUILD {: four:n :}
    s" full-cold" s" 2" FULL-A!  s" full-cold" FULL-B!
    s" full-cold" FULL-BUILD {: cold:n :}
@@ -701,7 +705,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----
 
 \ The label, then a case's caught code, on a line of its own.
-: CODE. ( n ^u8 n -- ) {: rc:n a:^ u:n :}  a u type  rc FMT:.INT cr ;
+: CODE. ( n str -- ) {: rc:n s:str :}  s type  rc FMT:.INT cr ;
 
 : FACTS-AFTER ( -- n )
    [: s" : FOB-AFTER ( -- ) FILE-OBJECTS-COUNT:BUMP FILE-OBJECTS-COUNT:HI FILE-OBJECTS-COUNT:TALLY @ drop FILE-OBJECTS-LATE:ONE drop ;" evaluate-closed ;]

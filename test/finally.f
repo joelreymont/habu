@@ -1,4 +1,3 @@
-split-str
 \ Generic cleanup through the native engine, including both exception paths.
 require src/lib/test.f
 
@@ -62,8 +61,8 @@ TYPED-VARIABLE STORED [ -- ]
 : NESTED-THROWS ( -- ) [: INNER-THROWS ;] [: 3 LOG ;] finally ;
 
 
-: REJECT ( ^u8 n -- )
-   2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T= ;
+: REJECT ( str -- )
+   dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T= ;
 
 
 : RUN ( -- )

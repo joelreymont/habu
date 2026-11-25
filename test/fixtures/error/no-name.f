@@ -1,4 +1,3 @@
-split-str
 \ no-name.f - a code with no name after it is rejected with a record, rc 70
 \ (src/lib/error-test.f).
 
