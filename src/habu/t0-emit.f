@@ -156,31 +156,69 @@ variable PLACED-AT
 ARCHES TYPED-BUFFER EMIT-VREGS-N n
 : EMIT-VREGS ( -- n ) CUR @ EMIT-VREGS-N @ ;
 
-\ ---- the slots vregs hold ------------------------------------------------------
-\ A vreg is unknown or holds frame slot k, allocated or free. EMIT-SLOT-STORE
-\ ( v k ) and EMIT-SLOT-LOAD ( v k ): v holds k and the vreg that held k is
-\ unknown. Any other EMIT- word that writes v drops it: v is unknown. A call, a
-\ tail, a return, a label a branch lands on, a loop's head and a unit's start:
-\ every vreg is unknown; a branch's fallthrough changes none.
-variable CACHED                       \ bit v set: vreg v holds frame slot v CACHE-SLOT
-DYNAMIC-BUFFER CACHE-SLOT n           \ reserved to EMIT-VREGS by EMIT-OPEN
+\ ---- the cells vregs hold ------------------------------------------------------
+\ A vreg is unknown or holds a cell, allocated or free: frame slot k, whose key is
+\ k, or cell n of the record the unit was called with, whose key is n invert.
+\ EMIT-SLOT-STORE, EMIT-SLOT-LOAD and EMIT-ENV-LOAD: the vreg holds the cell, and
+\ the vreg that held it is unknown. Any other EMIT- word that writes a vreg makes
+\ it unknown. A call, a tail, a return, a loop's head, a counted loop's exit and a
+\ unit's start: every vreg is unknown; a branch's fallthrough changes none.
+\
+\ These are the facts. Any other label's facts are those all its live arrivals
+\ share: a branch's are the facts where it leaves, which a row keeps, and no
+\ emitter writes a vreg at a label. EMIT-ELSE, EMIT-THEN, EMIT-REPEAT,
+\ EMIT-ENDOF, and EMIT-ENDCASE, leave the facts to their caller.
+variable CACHED                       \ bit v set: vreg v holds the cell v CACHE-KEY
+DYNAMIC-BUFFER CACHE-KEY n            \ reserved to EMIT-VREGS by EMIT-OPEN
+DYNAMIC-BUFFER CACHE-MASK n           \ row k's CACHED, or NO-ARRIVAL
+DYNAMIC-BUFFER CACHE-KEYS n           \ row k's CACHE-KEY from k*EMIT-VREGS
+-1 constant NO-ARRIVAL                \ a row no arrival has reached
 
 : CACHE-CLEAR ( -- ) 0 CACHED ! ;
 
 : CACHE-DROP ( vreg -- )
    1 swap VREG>N lshift invert CACHED @ and CACHED ! ;
 
-\ The vreg that holds slot k, or -1; no two hold the same one.
-: SLOT-VREG ( n -- n ) {: k:n :}
+\ The vreg that holds the cell of key k, or -1; no two hold the same one.
+: KEY-VREG ( n -- n ) {: k:n :}
    0 CACHED @ begin dup 0<> while
-      dup 1 and 0<> if over CACHE-SLOT @ k = if drop exit then then
+      dup 1 and 0<> if over CACHE-KEY @ k = if drop exit then then
       1 rshift swap 1+ swap
    repeat 2drop -1 ;
 
 : CACHE-FILE ( vreg n -- ) {: v:vreg k:n :}
-   k SLOT-VREG dup 0< if drop else >VREG CACHE-DROP then
-   k v VREG>N CACHE-SLOT !
+   k KEY-VREG dup 0< if drop else >VREG CACHE-DROP then
+   k v VREG>N CACHE-KEY !
    1 v VREG>N lshift CACHED @ or CACHED ! ;
+
+: CACHE-ROOM ( n -- ) {: k:n :}
+   k 1+ CACHE-MASK-RESERVE  k 1+ EMIT-VREGS * CACHE-KEYS-RESERVE ;
+
+: CACHE-VOID ( n -- ) {: k:n :} NO-ARRIVAL k CACHE-MASK ! ;
+
+: KEPT-KEY ( n n -- ^n ) {: k:n v:n :} k EMIT-VREGS * v + CACHE-KEYS ;
+
+: CACHE-KEEP ( n -- ) {: k:n :}
+   CACHED @ k CACHE-MASK !
+   EMIT-VREGS 0 ?do i CACHE-KEY @ k i KEPT-KEY ! loop ;
+
+\ The facts are row k's, none without an arrival.
+: CACHE-TAKE ( n -- ) {: k:n :}
+   k CACHE-MASK @ 0 max CACHED !
+   EMIT-VREGS 0 ?do k i KEPT-KEY @ i CACHE-KEY ! loop ;
+
+\ The facts are those row k shares; one without an arrival adds no limit.
+: CACHE-MEET ( n -- ) {: k:n :}
+   k CACHE-MASK @ {: m:n :}
+   m NO-ARRIVAL = if exit then
+   m CACHED @ and CACHED !
+   EMIT-VREGS 0 ?do
+      i CACHE-KEY @ k i KEPT-KEY @ <> if i >VREG CACHE-DROP then
+   loop ;
+
+: CACHE-COPY ( n n -- ) {: from:n to:n :}
+   from CACHE-MASK @ to CACHE-MASK !
+   EMIT-VREGS 0 ?do from i KEPT-KEY @ to i KEPT-KEY ! loop ;
 
 \ ---- the body ----------------------------------------------------------------
 \ THE SINK. EMIT-OPEN empties the emitter's sink and the seam's rows; EMIT-CLOSE
@@ -225,7 +263,7 @@ CAST: CALLABLE>N ( [ R -- S ] -- n )
 
 : EMIT-OPEN ( -- )
    ROWS-CLEAR  0 PLACED-AT !  construct emission open PHASE !
-   EMIT-VREGS CACHE-SLOT-RESERVE  CACHE-CLEAR
+   EMIT-VREGS CACHE-KEY-RESERVE  CACHE-CLEAR
    CUR @ EMIT-OPEN-XT @ execute ;
 
 \ Begin quotation unit n, which EMIT-ADDR-QUOT named, and bind the address
@@ -335,7 +373,7 @@ ARCHES TYPED-BUFFER EMIT-ENV-LOAD-XT [ vreg n -- ]
 \ The vreg becomes cell n of the record the open unit was called with; cell 0
 \ is its code address.
 : EMIT-ENV-LOAD ( vreg n -- )
-   over CACHE-DROP  CUR @ EMIT-ENV-LOAD-XT @ FILLED execute ;
+   2dup invert CACHE-FILE  CUR @ EMIT-ENV-LOAD-XT @ FILLED execute ;
 
 \ ---- arithmetic --------------------------------------------------------------
 ARCHES TYPED-BUFFER EMIT-OP-XT [ vreg vreg alu -- ]
@@ -469,10 +507,10 @@ ARCHES TYPED-BUFFER EMIT-ENDCASE,-XT [ -- ]
 : EMIT-IF-CC, ( cc -- ) CUR @ EMIT-IF-CC,-XT @ execute ;
 
 \ `else`: past the second arm, then the open `if` lands here.
-: EMIT-ELSE, ( -- ) CACHE-CLEAR  CUR @ EMIT-ELSE,-XT @ execute ;
+: EMIT-ELSE, ( -- ) CUR @ EMIT-ELSE,-XT @ execute ;
 
 \ `then`: the innermost open forward branch lands here.
-: EMIT-THEN, ( -- ) CACHE-CLEAR  CUR @ EMIT-THEN,-XT @ execute ;
+: EMIT-THEN, ( -- ) CUR @ EMIT-THEN,-XT @ execute ;
 
 : EMIT-BEGIN, ( -- ) CACHE-CLEAR  CUR @ EMIT-BEGIN,-XT @ execute ;
 
@@ -485,7 +523,7 @@ ARCHES TYPED-BUFFER EMIT-ENDCASE,-XT [ -- ]
 : EMIT-WHILE-CC, ( cc -- ) CUR @ EMIT-WHILE-CC,-XT @ execute ;
 
 \ `repeat`: back to the head, then the innermost `while` exit lands here.
-: EMIT-REPEAT, ( -- ) CACHE-CLEAR  CUR @ EMIT-REPEAT,-XT @ execute ;
+: EMIT-REPEAT, ( -- ) CUR @ EMIT-REPEAT,-XT @ execute ;
 
 \ `until`: back to the head when the vreg is zero.
 : EMIT-UNTIL, ( vreg -- ) CUR @ EMIT-UNTIL,-XT @ execute ;
@@ -502,8 +540,8 @@ ARCHES TYPED-BUFFER EMIT-ENDCASE,-XT [ -- ]
 : EMIT-CASE, ( -- ) CUR @ EMIT-CASE,-XT @ execute ;
 : EMIT-OF, ( vreg vreg -- ) CUR @ EMIT-OF,-XT @ execute ;
 : EMIT-OF-LIT ( vreg n -- ) CUR @ EMIT-OF-LIT-XT @ execute ;
-: EMIT-ENDOF, ( -- ) CACHE-CLEAR  CUR @ EMIT-ENDOF,-XT @ execute ;
-: EMIT-ENDCASE, ( -- ) CACHE-CLEAR  CUR @ EMIT-ENDCASE,-XT @ execute ;
+: EMIT-ENDOF, ( -- ) CUR @ EMIT-ENDOF,-XT @ execute ;
+: EMIT-ENDCASE, ( -- ) CUR @ EMIT-ENDCASE,-XT @ execute ;
 
 \ ---- the return stack --------------------------------------------------------
 ARCHES TYPED-BUFFER EMIT-TOR-XT [ ^vreg n -- ]

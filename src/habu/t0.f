@@ -305,7 +305,7 @@ variable CS-N
 variable DEAD                        \ nonzero: the fallthrough is unreachable
 
 : LAY-ROOM ( n -- ) {: k:n :}
-   k 1+ EMIT-VREGS * CS-LAY-RESERVE  k 1+ CS-LAY-N-RESERVE ;
+   k 1+ EMIT-VREGS * CS-LAY-RESERVE  k 1+ CS-LAY-N-RESERVE  k CACHE-ROOM ;
 
 : LAY@ ( n n -- n ) {: k:n j:n :} k EMIT-VREGS * j + CS-LAY @ ;
 : LAY! ( n n n -- ) {: v:n k:n j:n :} v k EMIT-VREGS * j + CS-LAY ! ;
@@ -326,11 +326,11 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
 \ Entries may share a vreg (`dup`, `over`, a wide move's cell), and a vreg is
 \ free only once no entry holds it (RELEASE). An in-place write takes the entry
 \ through OWN, which copies a shared vreg first; a whole overwrite takes it
-\ through WRITE-TARGET, which relabels it to a fresh vreg. A comparison followed
+\ through WRITE-TARGET, which may relabel it to a fresh vreg. A comparison followed
 \ by `if`, `while` or `until` leaves its condition in the flags; otherwise it
 \ pushes its flag into a free vreg.
 \
-\ A local's read takes the vreg that holds its slot, sharing one an entry
+\ A local's read takes the vreg that holds its cell, sharing one an entry
 \ holds, and loads only when none does.
 0 constant K-REG
 1 constant K-CONST
@@ -392,17 +392,21 @@ variable FREE                       \ bit k set: no entry holds vreg k
    1 n lshift invert FREE @ and FREE !
    n >VREG ;
 
+\ The vregs of mask n that hold no cell.
+: SPARE ( n -- n ) CACHED @ invert and ;
+
+\ The lowest vreg of mask m, which is not 0, one that holds no cell first.
 : LOWEST ( n -- vreg ) {: m:n :}
-   0 begin 1 over lshift m and 0= while 1+ repeat CLAIM ;
+   m SPARE dup 0= if drop m then {: pick:n :}
+   0 begin 1 over lshift pick and 0= while 1+ repeat CLAIM ;
 
 \ A vreg no entry or TAKE holds. A caller holding a taken vreg ALLOCs only for
 \ an entry with none, at most EMIT-VREGS - 1 entries being left, so a vreg is
 \ free; with none taken, entries holding every vreg hold one each, so EVICT
-\ frees the bottom one's. A vreg that holds no slot is taken first.
+\ frees the bottom one's.
 : ALLOC ( -- vreg )
    FREE @ 0= if EVICT then
-   FREE @ CACHED @ invert and
-   dup 0= if drop FREE @ then LOWEST ;
+   FREE @ LOWEST ;
 
 : PUSH-REG ( vreg -- ) {: r:vreg :}
    K-REG r VREG>N VS-N @ ENTRY!
@@ -472,7 +476,8 @@ variable FREE                       \ bit k set: no entry holds vreg k
 
 : SHARED? ( n n -- bool ) {: k:n x:n :} k VS-VAL @ x HOLDERS 1 > ;
 
-\ A shared entry means a vreg is free, so ALLOC evicts nothing and k stays put.
+\ A vreg is free, as one is while k's is shared or KEEP-CELL? holds, so ALLOC
+\ evicts nothing and k stays put.
 : RELABEL ( n -- vreg ) {: k:n :}
    ALLOC {: d:vreg :}
    K-REG d VREG>N k ENTRY!
@@ -488,13 +493,19 @@ variable FREE                       \ bit k set: no entry holds vreg k
    d r EMIT-MOV
    d ;
 
+\ Whether r holds a cell and a free vreg holds none.
+: KEEP-CELL? ( vreg -- bool ) {: r:vreg :}
+   1 r VREG>N lshift CACHED @ and 0<>  FREE @ SPARE 0<>  and ;
+
 \ Entry k's vreg for an operation that overwrites it whole and reads the old
-\ value only as an input register: a shared entry gets a fresh vreg, and
-\ nothing is copied into it.
+\ value only as an input register: an entry that shares its vreg, or whose vreg
+\ KEEP-CELL? keeps, gets a fresh one, and nothing is copied into it. The old
+\ vreg may be free, so the caller emits before it allocates again.
 : WRITE-TARGET ( n -- vreg ) {: k:n :}
    k MAT {: r:vreg :}
-   k NO-ENTRY SHARED? 0= if r exit then
-   k RELABEL ;
+   k NO-ENTRY SHARED?  r KEEP-CELL?  or 0= if r exit then
+   k RELABEL
+   r RELEASE ;
 
 \ ---- inline operations -------------------------------------------------------
 : CONST? ( n -- bool ) VS-KIND @ K-CONST = ;
@@ -841,7 +852,7 @@ variable PENDING
 : CS-PUSH ( n n -- ) {: kind:n loc:n :}
    CS-N @ {: k:n :}
    k 1+ CS-KIND-RESERVE  k 1+ CS-LOC-RESERVE  k LAY-ROOM
-   kind k CS-KIND !  loc k CS-LOC !  -1 k CS-LAY-N !
+   kind k CS-KIND !  loc k CS-LOC !  -1 k CS-LAY-N !  k CACHE-VOID
    k 1+ CS-N ! ;
 
 : CS-POP2 ( n n -- ) {: a:n b:n :}
@@ -898,13 +909,15 @@ variable PENDING
 
 : RECORD ( n -- ) {: k:n :}
    VS-N @ k CS-LAY-N !
-   VS-N @ 0 ?do i VS-VAL @ k i LAY! loop ;
+   VS-N @ 0 ?do i VS-VAL @ k i LAY! loop
+   k CACHE-KEEP ;
 
 : SNAPSHOT ( n -- ) SETTLE RECORD ;
 
 : LAY-COPY ( n n -- ) {: from:n to:n :}
    from CS-LAY-N @ to CS-LAY-N !
-   EMIT-VREGS 0 ?do from i LAY@ to i LAY! loop ;
+   EMIT-VREGS 0 ?do from i LAY@ to i LAY! loop
+   from to CACHE-COPY ;
 
 \ FREE is rebuilt from the layout alone, so it is exactly the vregs no entry
 \ holds, whatever the entries it replaces or RECONCILE's moves left allocated.
@@ -986,6 +999,10 @@ variable PENDING
    d 0 < if k d negate RAISE then
    k ADOPT ;
 
+\ The facts where row k's branches land: the row's alone when the code before
+\ is dead, else those it shares with the current ones.
+: ARRIVE ( bool n -- ) swap if CACHE-TAKE else CACHE-MEET then ;
+
 : DO-IF ( -- )
    CS-N @ {: k:n :}
    CS-IF L-N @ CS-PUSH
@@ -1000,7 +1017,7 @@ variable PENDING
    f RELEASE ;
 
 \ The first arm's end is the layout `then` reconciles to; the second arm
-\ starts in the one `if` recorded. A dead first arm records none.
+\ starts in the one `if` recorded, with its facts. A dead first arm records none.
 : DO-ELSE ( -- )
    CS-IF CS-POP
    SCOPE-END
@@ -1009,7 +1026,7 @@ variable PENDING
    DEAD @ 0= {: live:bool :}
    live if k 1+ SNAPSHOT then
    EMIT-ELSE,
-   k ADOPT
+   k ADOPT  k CACHE-TAKE
    CS-ELSE L-N @ CS-PUSH
    live if k 1+ k LAY-COPY then ;
 
@@ -1021,8 +1038,10 @@ variable PENDING
    CS-ELSE CS-POP2
    SCOPE-END
    CS-N @ {: k:n :}
+   DEAD @ 0<>
    k CS-LAY-N @ 0 >= if k RECONCILE then
-   EMIT-THEN, ;
+   EMIT-THEN,
+   k ARRIVE ;
 
 : DO-BEGIN ( -- )
    CS-N @ {: k:n :}
@@ -1055,7 +1074,7 @@ variable PENDING
    CS-WHILE CS-POP
    SCOPE-END
    EMIT-REPEAT,
-   CS-N @ ADOPT ;
+   CS-N @ ADOPT  CS-N @ CACHE-TAKE ;
 
 : LAY-HOLDS? ( n vreg -- bool ) {: k:n r:vreg :}
    r VREG>N {: v:n :}
@@ -1200,27 +1219,39 @@ variable DO-N                       \ the open levels
    2 ENSURE
    TOP ENTRY-IMM? if OF-IMM else OF-REG then
    DROP1
-   CS-OF L-N @ CS-PUSH ;
+   CS-OF L-N @ CS-PUSH
+   CS-N @ 1- CACHE-KEEP ;
 
 : DO-OF ( -- )
    ARMS-AT CS-KIND @ CS-CASE <> if CONTROL-FAULT then
    OF-TEST ;
 
+\ The facts every live arm so far shares, in the row of the case or MATCH.
+: ARM-END ( -- )
+   DEAD @ if exit then
+   ARMS-AT {: k:n :}
+   k CACHE-MEET  k CACHE-KEEP ;
+
+\ The next arm starts with the facts of this arm's mismatch; a MATCH's last arm has
+\ no mismatch.
 : DO-ENDOF ( -- )
    CS-TOP-KIND {: kind:n :}
    CS-OF CS-LAST CS-POP2
    SCOPE-END
+   ARM-END
    LAND
-   kind CS-OF = if EMIT-ENDOF, then
+   kind CS-OF = if EMIT-ENDOF,  CS-N @ CACHE-TAKE then
    CS-ENDOF L-N @ CS-PUSH ;
 
 \ The default arm drops the selector, and every `endof` lands after the drop.
 : DO-ENDCASE ( -- )
    DROP1
+   DEAD @ 0<>
    LAND
    begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
    CS-CASE CS-POP
    EMIT-ENDCASE,
+   CS-N @ ARRIVE
    SCOPE-END ;
 
 \ ---- the rest of the keywords ------------------------------------------------
@@ -1487,22 +1518,24 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    loop
    drop -1 ;
 
-\ A vreg holding frame slot k.
-: SLOT-CELL ( n -- vreg ) {: k:n :}
-   k SLOT-VREG {: v:n :}
-   v 0< if ALLOC {: r:vreg :}  r k EMIT-SLOT-LOAD  r exit then
+\ A vreg holding the cell of key k.
+: KEY-CELL ( n -- vreg ) {: k:n :}
+   k KEY-VREG {: v:n :}
+   v 0< if
+      ALLOC {: r:vreg :}
+      r k  k 0< if invert EMIT-ENV-LOAD else EMIT-SLOT-LOAD then
+      r exit
+   then
    1 v lshift FREE @ and 0<> if v CLAIM exit then
    v >VREG ;
 
 \ A vreg holding cell i of local seq: from its frame slot, or in a reading quotation from its
 \ record. A local the record lacks is rejected at the token before the cursor.
 : LOCAL-CELL ( n n n -- vreg ) {: seq:n i:n at:n :}
-   READER @ 0< if seq L-SLOT @ i + SLOT-CELL exit then
+   READER @ 0< if seq L-SLOT @ i + KEY-CELL exit then
    seq at ENV-CELL {: c:n :}
    c 0< if ORD @ 1- ROW$ NO-LOCAL then
-   ALLOC {: r:vreg :}
-   r c i + EMIT-ENV-LOAD
-   r ;
+   c i + invert KEY-CELL ;
 
 EXPORT CHECKER-TAPE:K-UNREACHED
 
@@ -1592,12 +1625,13 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 : MATCH-CK ( bool -- ) 0= if ORD @ 1- ROW$ NO-FACTS then ;
 
 \ `;MATCH` closes the MATCH its arms' `endof`s sit on: the last arm falls
-\ through to it, and every other `endof` lands with it.
+\ through to it, and every other `endof` lands with it. Its row holds the facts
+\ all of them share.
 : CLOSE-MATCH ( -- )
    CS-TOP-KIND CS-MATCH <> MATCH-CK
    begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
    CS-MATCH CS-POP
-   EMIT-ENDCASE,
+   EMIT-ENDCASE,  CS-N @ CACHE-TAKE
    SCOPE-END ;
 
 EXPORT CHECKER-TAPE:K-MATCH
