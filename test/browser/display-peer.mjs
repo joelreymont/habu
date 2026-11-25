@@ -649,15 +649,20 @@ async function browser() {
         c >= greyed(Math.max(v - 0.1, 0)) - 1 && c <= greyed(Math.min(v + 0.1, 1)) + 1) ? [] : [k]));
     }
 
-    // Box A 40 mm a side at the origin and box B 80 x 80 x 200 at x 38, y
-    // -232, on the ground z = 0, drawn from the page and seen straight down,
-    // the screen's right along x + y and 270 world units to clip's 1 up the
-    // screen, so the key's rays rise toward -0.2631 x + 0.9648 y. Over a grid
-    // of ground points at least 6 from both feet, the greys are the traced
-    // rays', and at 27.98, 67.67, where rays see 0.371 of the softbox past A
-    // and B, the grey is 217 within its 6 band.
+    // Four scenes on the ground z = 0, drawn from the page and seen straight
+    // down, the screen's right along x + y and 270 world units to clip's 1 up
+    // the screen, so the key's rays rise toward -0.2631 x + 0.9648 y: box A
+    // 40 mm a side at the origin with box B 80 x 80 x 200 at x 38, y -232;
+    // A alone; a wall 300 x 4 x 200 beside a box 60 x 60 x 40; and a plate
+    // 120 x 120 x 10 floating at z 150 over a base 50 x 50 x 30. Over a grid
+    // of ground points at least 6 from every box seen from above, which hides
+    // the ground under the plate, the greys are the traced rays', and at
+    // 27.98, 67.67, where rays see 0.371 of the softbox past A and B, the
+    // grey is 217 within its 6 band.
     async function traced() {
       const A = [0, 0, 0, 40, 40, 40], B = [38, -232, 0, 118, -152, 200];
+      const wall = [-150, 0, 0, 150, 4, 200], low = [-30, 25, 0, 30, 85, 40];
+      const base = [-25, -25, 0, 25, 25, 30], plate = [-60, -60, 150, 60, 60, 160];
       const h = Math.SQRT1_2, point = [27.98, 67.67];
       const [, , width, height] = (await state()).canvas;
       const [sx, sy] = [height / width / 270, 1 / 270];
@@ -668,7 +673,8 @@ async function browser() {
       for (let y = 2; y < height; y += 5) for (let x = 2; x < width; x += 5)
         places.push([(2 * x + 1) / width - 1, 1 - (2 * y + 1) / height]);
       const seen = [];
-      for (const boxes of [[A, B], [A]]) {
+      for (const [scene, boxes] of [["A and B", [A, B]], ["A", [A]],
+        ["a wall and a low box", [wall, low]], ["a plate over a base", [base, plate]]]) {
         const all = [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b[k])))
           .concat([3, 4, 5].map((k) => Math.max(...boxes.map((b) => b[k]))));
         await evaluate(`subject.host.ground(Float32Array.of(0, 0, 1, 0),
@@ -680,14 +686,14 @@ async function browser() {
         const colours = await pixels(here);
         const wrong = off(colours, rays);
         const shaded = rays.filter((v) => v < 1).length;
-        assert.ok(shaded > 100 && wrong.length === 0, `under ${boxes.length} boxes the ` +
+        assert.ok(shaded > 100 && wrong.length === 0, `under ${scene} the ` +
           `ground's greys are the rays' at ${shaded} shaded points, got ${wrong.length} wrong, first ${wrong.slice(0, 8).map((k) =>
           `${colours[k]} at ${world(here[k])} for ${rays[k]}`).join("; ")}`);
+        if (scene !== "A and B") { seen.push(`${scene} ${shaded} shaded points`); continue; }
         const [at] = await pixels([[h * sx * (point[0] + point[1]), h * sy * (point[1] - point[0])]]);
-        if (boxes.length === 2)
-          assert.ok(at.every((v) => v >= 211 && v <= 224), `under A and B the grey at ` +
-            `27.98, 67.67 is the rays' ${greyed(shares([point], boxes, [h, h, 0])[0])}, got ${at}`);
-        seen.push(`${boxes.length} boxes ${shaded} shaded points, ${at} at 27.98, 67.67`);
+        assert.ok(at.every((v) => v >= 211 && v <= 224), `under A and B the grey at ` +
+          `27.98, 67.67 is the rays' ${greyed(shares([point], boxes, [h, h, 0])[0])}, got ${at}`);
+        seen.push(`${scene} ${shaded} shaded points, ${at} at 27.98, 67.67`);
       }
       const shot = await call("Page.captureScreenshot", { format: "png" });
       writeFileSync(join(output, "traced.png"), Buffer.from(shot.data, "base64"));
