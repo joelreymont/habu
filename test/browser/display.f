@@ -23,9 +23,10 @@
 \ sends occlude 9 of 4097 boxes, the last behind the left square, the others
 \ below every instance; its text gives bytes 4095 and 4096 in hex, the count
 \ of 1s and the id, since the echo holds 1024 bytes. Typed "key" sends
-\ occlude 10 of three boxes about the caster display-peer.mjs draws, x and y
-\ -0.25 to 0.25 and z 0 to 0.5: behind it from the key, beside it, and around
-\ the whole scene, across the light's near plane. Typed "pick", after
+\ occlude 10 of four boxes about the caster display-peer.mjs draws, x and y
+\ -0.25 to 0.25 and z 0 to 0.5: behind it from the whole softbox, beside it,
+\ around the whole scene, across the light's near plane, and behind it from
+\ the key's centre alone. Typed "pick", after
 \ "draw", picks with ids 1 to 4 a pixel of the left square's face 1, of the
 \ right square's face 0, of the background and one below the canvas, over the
 \ flat triangle's plane. Typed "nearer", after
@@ -315,11 +316,13 @@ TYPED-VARIABLE SHOWN held
    16 BOXES BYTES>N 4097 24 * 9 RECORD ;
 
 : KEYED ( -- )
-   \ x 0.1..0.2, then -0.4..-0.3, both y 0.3..0.4 and z 0..0.1; then -5..5.
+   \ x 0.1..0.2, then -0.4..-0.3, both y 0.3..0.4 and z 0..0.1; then -5..5;
+   \ then x 0.1..0.2, y 0.5..0.6 and z 0..0.1.
    0 $3DCCCCCD $3E99999A 0 $3E4CCCCD $3ECCCCCD $3DCCCCCD BOX
    1 $BECCCCCD $3E99999A 0 $BE99999A $3ECCCCCD $3DCCCCCD BOX
    2 $C0A00000 $C0A00000 $C0A00000 $40A00000 $40A00000 $40A00000 BOX
-   16 BOXES BYTES>N 72 10 RECORD ;
+   3 $3DCCCCCD $3F000000 0 $3E4CCCCD $3F19999A $3DCCCCCD BOX
+   16 BOXES BYTES>N 96 10 RECORD ;
 
 : UNMESH ( -- )
    INSTANCE-ROWS 72 + 1 DRAW  14 1 0 0 RECORD  INSTANCE-ROWS 72 + 1 DRAW ;

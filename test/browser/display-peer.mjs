@@ -543,14 +543,18 @@ async function browser() {
       assert.ok(grey(tiny), `the box at 1e-12 scale casts the shadow, got ${tiny}`);
       await command("ground");
       // display.f's key against the box at half scale inside the casters'
-      // box, the key's rays rising toward -x and -y: the camera sees the box
-      // behind the caster, the key does not, both see the box beside it, and
-      // the box across the light's near plane passes.
+      // box, the key's rays rising toward -x and -y: the camera sees all four
+      // boxes. The key test fails for the box behind the caster, whose every
+      // ray to the softbox meets it, and passes for the box beside it, the box
+      // around the scene, which clear rays cross, and the box at y 0.5..0.6,
+      // hidden from the key's centre but crossed by rays from the softbox's
+      // edge that pass the caster.
       await evaluate(`box(${JSON.stringify(down)}, 0.5)`);
       await command("key");
       const sights = (await state()).text;
-      assert.equal(sights, "occluded 010303 10",
-        `the key test fails behind the caster and passes beside it and around it, got ${sights}`);
+      assert.equal(sights, "occluded 01030303 10",
+        `the key test fails behind the caster and passes beside it, around it and ` +
+        `past it from the softbox's edge, got ${sights}`);
       // Tilted 45° about x, the camera's right is down's, so the turntable
       // keeps the key where it was; were the studio the view's own frame, the
       // key would stand nearly overhead and leave this floor point, x 0.6 and
@@ -566,7 +570,7 @@ async function browser() {
       assert.deepEqual(under, background, `a camera below the ground shows no shadow, got ${under}`);
       await command("key");
       const beneath = (await state()).text;
-      assert.equal(beneath, "occluded 010101 10", `a draw of no shadow passes no key test, got ${beneath}`);
+      assert.equal(beneath, "occluded 01010101 10", `a draw of no shadow passes no key test, got ${beneath}`);
       // zoomed looks down at world x 0.15..0.65 and y 0.55..1.05, past the
       // box's y 0.5: its centre is the floor point shade read, which the box
       // outside the view shades as a cast-only row and which is white with
@@ -593,7 +597,8 @@ async function browser() {
       await command("ground");
       await command("key");
       const remade = (await state()).text;
-      assert.equal(remade, "occluded 030303 10", `a shadow map made since the draw hides no box, got ${remade}`);
+      // Marks made since the draw are clear, so every ray is.
+      assert.equal(remade, "occluded 03030303 10", `marks made since the draw hide no box, got ${remade}`);
       await command("ground-none");
       await evaluate(`box(${JSON.stringify(down)})`);
       const [none] = await pixels(points);
@@ -704,8 +709,9 @@ async function browser() {
     }
 
     // Runs run, a function's source, on the page, and answers the last Light
-    // uniform the host wrote, the width of each shadow map it made, the
-    // plane of the last ground it was given and the page's text.
+    // uniform the host wrote, the width of each map it made, the caster pass's
+    // attachment, r8unorm and only that, the plane of the last ground it was
+    // given and the page's text.
     function lit(run) {
       return evaluate(`(async () => {
         const write = GPUQueue.prototype.writeBuffer, make = GPUDevice.prototype.createTexture;
@@ -717,7 +723,8 @@ async function browser() {
         };
         GPUDevice.prototype.createTexture = function (...args) {
           const texture = make.apply(this, args);
-          if (texture.format === "depth32float") maps.push(texture.width);
+          if (texture.format === "r8unorm" && texture.usage === GPUTextureUsage.RENDER_ATTACHMENT)
+            maps.push(texture.width);
           return texture;
         };
         subject.host.ground = (held, box) => { plane = held && Array.from(held); return ground(held, box); };

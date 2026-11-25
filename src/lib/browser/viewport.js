@@ -82,11 +82,11 @@
 // culling and may be open. hit, after vs, marks the nearest fragment in
 // pick's one texel, with 1 in its fourth channel to tell a hit from the clear.
 // The key casts the instances' soft shadow on the ground: caster draws every
-// row, cast-only (flags bit 1) or not, into a depth map SHADOW_SIDE square by
+// row, cast-only (flags bit 1) or not, into the map, SHADOW_SIDE square, by
 // light.clip, whose x and y run along the key softbox's tangents and cover
 // the key's volume (keyVolume) and whose depth runs away from the key over
 // the casters' box; stamp, its fragment, sets in marks, for every surface,
-// the hidden ones too, the height slices it covers in its texel; halve ORs
+// the height slices it covers in its texel; halve ORs
 // each level of marks' 2x2 texels into the next, up to one texel; seen finds,
 // at half the canvas's size, the share V of the softbox the ground sees past
 // the casters, as the share of its rays through the slices that clear them
@@ -107,8 +107,11 @@
 // (env(up, 1) + key V) / (env(up, 1) + key), key the key's irradiance on the
 // ground, in linear light and not tone-mapped, so an unshadowed ground reads
 // white as the clear does.
-// box draws one occlude box per instance, under the camera's matrix or
-// light.clip, as the 12 triangles of its faces:
+// occlude's key test draws each box's footprint, the ground whose rays can
+// cross it, in shade's pixels, where crossed passes when one of them crosses
+// the box and no marked slice.
+// box draws one occlude box per instance, under the camera's matrix, as the
+// 12 triangles of its faces:
 // vertex k takes corner corners[k], whose bit j picks the highest coordinate j
 // in place of the lowest. A box whose corners' clip z lie on both sides of 0,
 // the near plane, draws the full-viewport quad at depth 0 from vertices 0 to
@@ -365,9 +368,7 @@ fn span(a: u32, b: u32) -> vec2<u32> {
 }
 
 // A fragment marks the slices of its height give or take half its change to
-// the next texel, so a steep face leaves no gap between texel centres. A
-// fragment that writes storage runs before the depth test, so a surface the
-// map's depth hides is marked too.
+// the next texel, so a steep face leaves no gap between texel centres.
 @fragment fn stamp(f: Cast) {
   let d = 0.5 * fwidth(f.height);
   if (f.height > 0.0) {
@@ -468,21 +469,26 @@ fn traced(at: vec2<f32>, dir: vec2<f32>) -> f32 {
   return 1.0;
 }
 
-// V at the ground point q, light x and y, for shade's pixel px: ray i of 64
-// leaves q at c, -1 to 1 across the softbox, column i and row 19 i mod 64, a
+// Ray i of 64 from a ground point, in map texels per unit of height share: it
+// leaves at c, -1 to 1 across the softbox, column i and row 19 i mod 64, a
 // lattice taking each row and column once, and rises 1 + slope.c times as
-// fast as the key's. A 2x2 block of pixels takes its four turns, the pixel's
-// 16 rays i = 4 m + turn: shadow's four taps give each pixel all 64.
-fn visible(q: vec2<f32>, px: vec2<f32>) -> f32 {
-  let at = mapped(q) * f32(SIDE);
+// fast as the key's.
+fn ray(i: u32) -> vec2<f32> {
   let reach = 0.5 * f32(SIDE) * light.reach.z * light.reach.xy;
   let slope = light.ground.xy * light.reach.xy;
+  let c = (2.0 * vec2<f32>(vec2<u32>(i, (19u * i) % 64u)) + 1.0) / 64.0 - 1.0;
+  return reach * c * vec2<f32>(1.0, -1.0) / (1.0 + dot(slope, c));
+}
+
+// V at the ground point q, light x and y, for shade's pixel px. A 2x2 block of
+// pixels takes its four turns, the pixel's 16 rays i = 4 m + turn: shadow's
+// four taps give each pixel all 64.
+fn visible(q: vec2<f32>, px: vec2<f32>) -> f32 {
+  let at = mapped(q) * f32(SIDE);
   let turn = (u32(px.x) & 1u) + 2u * (u32(px.y) & 1u);
   var blocked = 0.0;
   for (var m = 0u; m < 16u; m++) {
-    let i = 4u * m + turn;
-    let c = (2.0 * vec2<f32>(vec2<u32>(i, (19u * i) % 64u)) + 1.0) / 64.0 - 1.0;
-    blocked += traced(at, reach * c * vec2<f32>(1.0, -1.0) / (1.0 + dot(slope, c)));
+    blocked += traced(at, ray(4u * m + turn));
   }
   return 1.0 - blocked / 16.0;
 }
@@ -503,6 +509,107 @@ fn visible(q: vec2<f32>, px: vec2<f32>) -> f32 {
   let key = 3.0 * keyward().y / PI;
   return vec4<f32>(encoded(vec3<f32>((ambient + key * v) / (ambient + key))),
     1.0);
+}
+
+// The lowest height share of slice k.
+fn bottom(k: u32) -> f32 {
+  return select(exp2((f32(k) - 64.0) / 10.0), 0.0, k == 0u);
+}
+
+// The height share of light-space point q.
+fn share(q: vec4<f32>) -> f32 {
+  return (plane(q.xy) - q.z) / light.reach.z;
+}
+
+// A box's footprint, the ground whose rays can cross it, in shade's pixels:
+// the ground's world point; the box grown by half a map texel in light x and
+// y and a slice in height share, as the world's axes take them, so a box at a
+// texel's or a slice's edge counts; and the world steps of a map texel in
+// light x and in y at a fixed height share, and of a unit of height share at
+// a fixed light x, y.
+struct Reach {
+  @builtin(position) at: vec4<f32>,
+  @location(0) world: vec3<f32>,
+  @location(1) @interpolate(flat) lo: vec3<f32>,
+  @location(2) @interpolate(flat) hi: vec3<f32>,
+  @location(3) @interpolate(flat) wx: vec3<f32>,
+  @location(4) @interpolate(flat) wy: vec3<f32>,
+  @location(5) @interpolate(flat) wh: vec3<f32>,
+}
+
+// The light-space rectangle of the grown box's corners in map texels,
+// widened the other way by how far the rays go up to its highest height
+// share, cut to the catcher's, and laid on the catcher's plane: light x, y is
+// affine along it, so the catcher's corners place it.
+@vertex fn footprint(@builtin(vertex_index) k: u32, @location(0) lo: vec3<f32>,
+    @location(1) hi: vec3<f32>) -> Reach {
+  let m = mat3x3<f32>(light.clip[0].xyz, light.clip[1].xyz, light.clip[2].xyz);
+  let inv = transpose(mat3x3<f32>(cross(m[1], m[2]), cross(m[2], m[0]),
+    cross(m[0], m[1]))) * (1.0 / dot(m[0], cross(m[1], m[2])));
+  let texel = 2.0 / f32(SIDE);
+  let wx = inv * vec3<f32>(texel, 0.0, light.ground.x * texel);
+  let wy = inv * vec3<f32>(0.0, -texel, -light.ground.y * texel);
+  let wh = inv * vec3<f32>(0.0, 0.0, -light.reach.z);
+  var top = -3e38;
+  for (var c = 0u; c < 8u; c++) {
+    let high = vec3<bool>((c & 1u) != 0u, (c & 2u) != 0u, (c & 4u) != 0u);
+    top = max(top, share(light.clip * vec4<f32>(select(lo, hi, high), 1.0)));
+  }
+  let s = slice(top);
+  let grow = 0.5 * abs(wx) + 0.5 * abs(wy) +
+    max(bottom(s + 1u) - bottom(s), bottom(1u)) * abs(wh);
+  let a = lo - grow;
+  let b = hi + grow;
+  var r0 = vec2<f32>(3e38);
+  var r1 = vec2<f32>(-3e38);
+  top = -3e38;
+  for (var c = 0u; c < 8u; c++) {
+    let high = vec3<bool>((c & 1u) != 0u, (c & 2u) != 0u, (c & 4u) != 0u);
+    let q = light.clip * vec4<f32>(select(a, b, high), 1.0);
+    r0 = min(r0, mapped(q.xy) * f32(SIDE));
+    r1 = max(r1, mapped(q.xy) * f32(SIDE));
+    top = max(top, share(q));
+  }
+  var most = vec2<f32>(0.0);
+  var least = vec2<f32>(0.0);
+  for (var i = 0u; i < 64u; i++) {
+    most = max(most, ray(i) * max(top, 0.0));
+    least = min(least, ray(i) * max(top, 0.0));
+  }
+  let e0 = mapped((light.clip * light.corners[0]).xy) * f32(SIDE);
+  let e2 = mapped((light.clip * light.corners[2]).xy) * f32(SIDE);
+  let f0 = max(r0 - most, min(e0, e2));
+  let f1 = max(min(r1 - least, max(e0, e2)), f0);
+  var order = array<vec2<f32>, 6>(vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0),
+    vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 1.0));
+  let u = (mix(f0, f1, order[k]) - e0) / (e2 - e0);
+  let p = light.corners[0] + u.x * (light.corners[1] - light.corners[0]) +
+    u.y * (light.corners[3] - light.corners[0]);
+  let c = clip * p;
+  return Reach(vec4<f32>(c.xy, 0.5 * c.w, c.w), p.xyz, a, b, wx, wy, wh);
+}
+
+// Whether the ray from world point p, going d a unit of height share, crosses
+// the box lo to hi at a height share of 0 or more.
+fn crosses(p: vec3<f32>, d: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> bool {
+  let safe = select(d, vec3<f32>(1e-30), abs(d) < vec3<f32>(1e-30));
+  let a = (lo - p) / safe;
+  let b = (hi - p) / safe;
+  let t0 = max(max(max(min(a.x, b.x), min(a.y, b.y)), min(a.z, b.z)), 0.0);
+  let t1 = min(min(max(a.x, b.x), max(a.y, b.y)), max(a.z, b.z));
+  return t0 <= t1;
+}
+
+// The key test passes at a ground point when one of visible's 64 rays there
+// crosses the box and no marked slice.
+@fragment fn crossed(f: Reach) {
+  let at = mapped((light.clip * vec4<f32>(f.world, 1.0)).xy) * f32(SIDE);
+  for (var i = 0u; i < 64u; i++) {
+    let d = ray(i);
+    if (crosses(f.world, d.x * f.wx + d.y * f.wy + f.wh, f.lo, f.hi) &&
+        traced(at, d) == 0.0) { return; }
+  }
+  discard;
 }
 
 fn corner(c: u32, lo: vec3<f32>, hi: vec3<f32>) -> vec4<f32> {
@@ -699,10 +806,10 @@ function keyVolume(m, box, a) {
 
 // The Light uniform, 40 f32s, for the key's volume keyVolume found with the
 // key's axes. The map's x and y cover M, so its texel is M's larger side over
-// SHADOW_SIDE; its depth runs over the casters' box
-// along the key, from its nearest corner, 0, to its farthest, 1, 1% to spare
-// at each end, so a cleared 1 holds none. reach.z is T, the casters' greatest
-// height above the plane, in units of depth. The catcher is the ground that
+// SHADOW_SIDE; its depth runs over the casters' box along the key, from its
+// nearest corner, 0, to its farthest, 1, 1% to spare at each end, so clipping
+// keeps a caster at either end. reach.z is T, the casters' greatest height
+// above the plane, in units of depth. The catcher is the ground that
 // can see M on its way to the softbox, M grown by reaches the other way, laid
 // on the plane: past it the catcher would draw only the clear's white. An
 // axis in which M has no extent takes a spare of a millionth of its largest
@@ -800,17 +907,17 @@ function grouped(rows, count, origin) {
 // 4x depth texture. The depth texture keeps the last draw's depth, cleared
 // to 1 when made, the matrix buffer its matrix and the view buffer studio's
 // view of the ground held then and of the last view viewer gave, the identity
-// matrix's before any. While a ground is held, a depth32float map
-// SHADOW_SIDE square, cleared to 1 when made, exists with marks and with
-// shade, half the drawing buffer's size rounded up, which a resize alone
-// makes again. A draw whose eye is above the plane and whose key's volume is
-// not null first draws every row into the map along the key, ORs the marks
+// matrix's before any. While a ground is held, marks exist with area, the
+// caster pass's attachment SHADOW_SIDE square, and with shade, half the
+// drawing buffer's size rounded up, which a resize alone makes again. A draw
+// whose eye is above the plane and whose key's volume is not null first
+// draws every row into marks along the key, ORs the marks
 // into their levels, draws V into shade, then draws the catcher first in its main pass, which draws only the
 // rows that are not cast-only; so does a pick's probe. With no ground or no
 // shadow a cast-only row draws nothing.
-// occlude draws its boxes against the depth, and under the light buffer's
-// matrix against the shadow map when the last draw drew a shadow and a map is
-// held, in passes of at most QUERIES occlusion queries, one per box, and reads
+// occlude draws its boxes against the depth, and their footprints into shade's
+// pixels against marks when the last draw drew a shadow and marks are held,
+// in passes of at most QUERIES occlusion queries, one per box, and reads
 // the resolved sample counts back through buffers of its own, released once
 // read, so a box passes a test when any sample does. pick,
 // single-sample, submits its probe draw of the last draw's runs before it
@@ -866,18 +973,19 @@ function setup(canvas, context, device, release, fail) {
     depthStencil: { format: "depth24plus", depthWriteEnabled: false, depthCompare: "less-equal" },
     multisample: { count: 4 },
   });
+  // The key test and the caster pass write no pixel: a render pass needs an
+  // attachment, which sets its size.
   const keyOccluder = device.createRenderPipeline({
     layout: "auto",
-    vertex: boxVertex,
+    vertex: { ...boxVertex, entryPoint: "footprint" },
+    fragment: { module, entryPoint: "crossed", targets: [{ format: "r8unorm", writeMask: 0 }] },
     primitive: { topology: "triangle-list", cullMode: "none" },
-    depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "less-equal" },
   });
   const caster = device.createRenderPipeline({
     layout: "auto",
     vertex: { module, entryPoint: "caster", buffers: layouts },
-    fragment: { module, entryPoint: "stamp", targets: [] },
+    fragment: { module, entryPoint: "stamp", targets: [{ format: "r8unorm", writeMask: 0 }] },
     primitive: { topology: "triangle-list", cullMode: "none" },
-    depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
   });
   const halver = device.createComputePipeline({ layout: "auto",
     compute: { module, entryPoint: "halve" } });
@@ -913,11 +1021,6 @@ function setup(canvas, context, device, release, fail) {
   });
   const light = device.createBuffer({ size: 160, usage: UNIFORM | COPY_DST });
   const shadeMatrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
-  // The Light uniform starts with its clip matrix.
-  const keyBoxBind = device.createBindGroup({
-    layout: keyOccluder.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: { buffer: light, size: 64 } }],
-  });
   const cleared = (texture) => {
     const encoder = device.createCommandEncoder();
     encoder.beginRenderPass({ colorAttachments: [], depthStencilAttachment: {
@@ -949,20 +1052,20 @@ function setup(canvas, context, device, release, fail) {
       [8, shadows.shade.createView()], [9, filtered]]);
   };
   const shadowMap = () => {
-    const map = cleared(device.createTexture({ size: [SHADOW_SIDE, SHADOW_SIDE],
-      format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT }));
+    const area = device.createTexture({ size: [SHADOW_SIDE, SHADOW_SIDE],
+      format: "r8unorm", usage: GPUTextureUsage.RENDER_ATTACHMENT });
     // Two u32s for each texel of every level, SHADOW_SIDE² + … + 1 of them.
     const marks = device.createBuffer({ size: 8 * (4 * SHADOW_SIDE ** 2 - 1) / 3,
       usage: STORAGE | COPY_DST });
-    shadows = { map, marks,
+    const viewed = [[0, { buffer: shadeMatrix }], [3, { buffer: light }], [7, { buffer: marks }]];
+    shadows = { area, marks,
       caster: bound(caster, [[3, { buffer: light }], [4, { buffer: marks }]]),
       halves: halvings.map((b) => bound(halver, [[5, { buffer: marks }], [6, { buffer: b }]])),
-      seen: bound(shader, [[0, { buffer: shadeMatrix }], [3, { buffer: light }],
-        [7, { buffer: marks }]]) };
+      seen: bound(shader, viewed), key: bound(keyOccluder, viewed) };
     shaded();
   };
   const unshadow = () => {
-    for (const name of ["map", "marks", "shade"]) shadows[name].destroy();
+    for (const name of ["area", "marks", "shade"]) shadows[name].destroy();
     shadows = null;
   };
   const probeMatrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
@@ -1083,16 +1186,15 @@ function setup(canvas, context, device, release, fail) {
     last.cast = cast !== null;
     const encoder = device.createCommandEncoder();
     if (cast) {
-      const { map, marks, shade } = shadows;
+      const { area, marks, shade } = shadows;
       device.queue.writeBuffer(light, 0, lit(cast, key));
       // shade's texel is two pixels square, so it overruns an odd canvas.
       device.queue.writeBuffer(shadeMatrix, 0,
         windowed(0, 0, 2 * shade.width, 2 * shade.height));
       // halve writes every texel above level 0.
       encoder.clearBuffer(marks, 0, 8 * SHADOW_SIDE ** 2);
-      const casting = encoder.beginRenderPass({ colorAttachments: [],
-        depthStencilAttachment: { view: map.createView(), depthClearValue: 1,
-          depthLoadOp: "clear", depthStoreOp: "store" } });
+      const casting = encoder.beginRenderPass({ colorAttachments: [{
+        view: area.createView(), loadOp: "clear", storeOp: "discard" }] });
       casting.setPipeline(caster);
       casting.setBindGroup(0, shadows.caster);
       if (count) casting.setVertexBuffer(1, instances);
@@ -1148,17 +1250,20 @@ function setup(canvas, context, device, release, fail) {
   };
 
   // boxes, six f32 each, lowest corner then highest -> a byte per box: 1 when
-  // any of its samples passed the last draw's depth, plus 2 when any passed
-  // the shadow map.
+  // any of its samples passed the last draw's depth, plus 2 when a ray of V
+  // crosses it and no marked slice: a box without 2 can go and leave V as is.
   const occlude = async (boxes) => {
     const count = boxes.length / 6;
     if (count === 0) return new Uint8Array(0);
     const held = device.createBuffer({ size: boxes.byteLength, usage: VERTEX, mappedAtCreation: true });
     new Float32Array(held.getMappedRange()).set(boxes);
     held.unmap();
-    // A test's bit is its place here.
-    const tests = [[occluder, boxBind, depth]];
-    if (last.cast && shadows) tests.push([keyOccluder, keyBoxBind, shadows.map]);
+    // A test's bit is its place here: its pipeline, bind group, vertex count
+    // and attachments.
+    const tests = [[occluder, boxBind, 36, () => ({ colorAttachments: [],
+      depthStencilAttachment: { view: depth.createView(), depthReadOnly: true } })]];
+    if (last.cast && shadows) tests.push([keyOccluder, shadows.key, 6, () => ({
+      colorAttachments: [{ view: shadows.shade.createView(), loadOp: "load", storeOp: "store" }] })]);
     // A test's counts, the u64s rounded up to the 256 bytes a resolve aligns to.
     const span = 256 * Math.ceil(count / 32);
     const size = tests.length * span;
@@ -1169,20 +1274,16 @@ function setup(canvas, context, device, release, fail) {
       const encoder = device.createCommandEncoder();
       for (let first = 0; first < count; first += QUERIES) {
         const n = Math.min(QUERIES, count - first);
-        tests.forEach(([tester, bound, texture], t) => {
+        tests.forEach(([tester, bound, vertices, attachments], t) => {
           const set = device.createQuerySet({ type: "occlusion", count: n });
           sets.push(set);
-          const pass = encoder.beginRenderPass({
-            colorAttachments: [],
-            depthStencilAttachment: { view: texture.createView(), depthReadOnly: true },
-            occlusionQuerySet: set,
-          });
+          const pass = encoder.beginRenderPass({ ...attachments(), occlusionQuerySet: set });
           pass.setPipeline(tester);
           pass.setBindGroup(0, bound);
           pass.setVertexBuffer(0, held);
           for (let i = 0; i < n; i++) {
             pass.beginOcclusionQuery(i);
-            pass.draw(36, 1, 0, first + i);
+            pass.draw(vertices, 1, 0, first + i);
             pass.endOcclusionQuery();
           }
           pass.end();
