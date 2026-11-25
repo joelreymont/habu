@@ -91,15 +91,15 @@ DEFTYPE COL
 
 SUMTYPE connect-result
    VARIANT connected connection ;VARIANT
-   VARIANT refused ^u8 n ;VARIANT
+   VARIANT refused str ;VARIANT
 ;SUMTYPE
 
-\ The failure spans are the SQLSTATE and libpq's whole report in the result's
+\ The failure strings are the SQLSTATE and libpq's whole report in the result's
 \ own bytes, or FAILED-SPANS' static text: each lives at least as long as TEXT$.
 SUMTYPE outcome
    VARIANT ok ;VARIANT
    VARIANT rows ;VARIANT
-   VARIANT failed ^u8 n ^u8 n ;VARIANT
+   VARIANT failed str str ;VARIANT
 ;SUMTYPE
 
 \ A dispatcher registers the waiting descriptor and event mask with its own
@@ -108,7 +108,7 @@ SUMTYPE progress
    VARIANT waiting fd n ;VARIANT
    VARIANT connected connection ;VARIANT
    VARIANT completed PG:result ;VARIANT
-   VARIANT refused ^u8 n ;VARIANT
+   VARIANT refused str ;VARIANT
 ;SUMTYPE
 
 private
@@ -1051,8 +1051,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot ['] KEEP-REFUSAL catch nip {: code:n :}
    slot CLOSE-SLOT drop
    code 0<> if code throw then
-   REFUSED-TEXT @ VEC:BYTES {: t:str :}
-   t STR:DATA t STR:LEN PG-PROGRESS:REFUSED ;
+   REFUSED-TEXT @ VEC:BYTES PG-PROGRESS:REFUSED ;
 
 
 \ CONN-LOST's copy; one that throws leaves the record empty.
@@ -1252,7 +1251,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    WAIT-PROGRESS MATCH progress
       completed OF RESULT>N ENDOF
       connected OF drop E-EXEC throw ENDOF
-      refused OF 2drop E-EXEC throw ENDOF
+      refused OF drop E-EXEC throw ENDOF
       waiting OF 2drop E-EXEC throw ENDOF
    ;MATCH ;
 
@@ -1526,8 +1525,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    res RESULT-STATUS {: status:n :}
    status PGRES-COMMAND-OK = if PG-OUTCOME:OK exit then
    status PGRES-TUPLES-OK = if PG-OUTCOME:ROWS exit then
-   res RES-PG@ FAILED-SPANS {: state:str msg:str :}
-   state STR:DATA state STR:LEN msg STR:DATA msg STR:LEN PG-OUTCOME:FAILED ;
+   res RES-PG@ FAILED-SPANS PG-OUTCOME:FAILED ;
 
 
 : SCOPE-ENTER ( n -- n ) {: raw:n :}

@@ -57,7 +57,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    CONNECTIONS RESULTS CONFIGURE
    CONNINFO$ s" " CONNECT MATCH PG:connect-result
       connected OF ENDOF
-      refused OF >str type cr E-CONNECT throw ENDOF
+      refused OF type cr E-CONNECT throw ENDOF
    ;MATCH ;
 
 
@@ -65,7 +65,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    OUTCOME MATCH PG:outcome
       ok OF TAG-OK ENDOF
       rows OF TAG-ROWS ENDOF
-      failed OF 2drop 2drop TAG-FAILED ENDOF
+      failed OF 2drop TAG-FAILED ENDOF
    ;MATCH ;
 
 
@@ -73,7 +73,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    OUTCOME MATCH PG:outcome
       ok OF s" <ok>" ENDOF
       rows OF s" <rows>" ENDOF
-      failed OF 2drop >str ENDOF
+      failed OF drop ENDOF
    ;MATCH ;
 
 
@@ -81,7 +81,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    OUTCOME MATCH PG:outcome
       ok OF s" " ENDOF
       rows OF s" " ENDOF
-      failed OF 2swap 2drop >str ENDOF
+      failed OF nip ENDOF
    ;MATCH ;
 
 
@@ -99,7 +99,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    s" host=127.0.0.1 port=1 dbname=none user=none" s" " CONNECT
    MATCH PG:connect-result
       connected OF PG:CLOSE s" " ENDOF
-      refused OF >str ENDOF
+      refused OF ENDOF
    ;MATCH ;
 
 
@@ -116,7 +116,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 : AWAIT-REFUSED ( str -- )
    s" " CONNECT-START {: refused :}
    refused PG:AWAIT MATCH PG:progress
-      refused OF 2drop true ENDOF
+      refused OF drop true ENDOF
       connected OF PG:CLOSE false ENDOF
       waiting OF 2drop false ENDOF
       completed OF CLEAR false ENDOF
@@ -162,7 +162,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 : REFUSED$ ( PG:connect-result -- str )
    MATCH PG:connect-result
       connected OF PG:CLOSE E-CONNECT throw ENDOF
-      refused OF >str ENDOF
+      refused OF ENDOF
    ;MATCH ;
 
 
@@ -273,7 +273,7 @@ TYPED-VARIABLE HELD-ID n
       c PG:POLL MATCH PG:progress
          waiting OF AWAIT-READY ENDOF
          connected OF exit ENDOF
-         refused OF 2drop E-CONNECT throw ENDOF
+         refused OF drop E-CONNECT throw ENDOF
          completed OF CLEAR E-CONNECT throw ENDOF
       ;MATCH
       TASK:PAUSE
@@ -288,7 +288,7 @@ TYPED-VARIABLE HELD-ID n
          waiting OF AWAIT-READY ENDOF
          completed OF exit ENDOF
          connected OF drop E-EXEC throw ENDOF
-         refused OF 2drop E-EXEC throw ENDOF
+         refused OF drop E-EXEC throw ENDOF
       ;MATCH
       TASK:PAUSE
    again ;
@@ -309,7 +309,7 @@ TYPED-VARIABLE HELD-ID n
       waiting OF 2drop true ENDOF
       completed OF CLEAR false ENDOF
       connected OF drop false ENDOF
-      refused OF 2drop false ENDOF
+      refused OF drop false ENDOF
    ;MATCH TTRUE
    waiter [: SEND-SELECT ;] catch {: held code:n :}
    code E-STATEMENT T=
@@ -346,7 +346,7 @@ TYPED-VARIABLE HELD-ID n
       waiting OF 2drop ENDOF
       connected OF drop ENDOF
       completed OF CLEAR ENDOF
-      refused OF 2drop ENDOF
+      refused OF drop ENDOF
    ;MATCH
    c ;
 
@@ -1484,7 +1484,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    s" host=127.0.0.1 port=1 dbname=none user=none" s" "
    CONNECT-START 0 EXIT-CONN !
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
-      refused OF 2drop ENDOF
+      refused OF drop ENDOF
       connected OF PG:CLOSE E-CONNECT throw ENDOF
       waiting OF 2drop E-CONNECT throw ENDOF
       completed OF CLEAR E-CONNECT throw ENDOF
@@ -1495,7 +1495,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    CONNINFO$ s" " CONNECT-START 0 EXIT-CONN !
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
       connected OF drop ENDOF
-      refused OF 2drop E-CONNECT throw ENDOF
+      refused OF drop E-CONNECT throw ENDOF
       waiting OF 2drop E-CONNECT throw ENDOF
       completed OF CLEAR E-CONNECT throw ENDOF
    ;MATCH
@@ -1510,7 +1510,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
       completed OF CLEAR ENDOF
       connected OF drop E-EXEC throw ENDOF
       waiting OF 2drop E-EXEC throw ENDOF
-      refused OF 2drop E-EXEC throw ENDOF
+      refused OF drop E-EXEC throw ENDOF
    ;MATCH
    0 TASK:RETURN ;
 
@@ -1592,7 +1592,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
       completed OF OUTCOME-TAG TAG-OK T= CLEAR ENDOF
       connected OF PG:CLOSE E-EXEC throw ENDOF
       waiting OF 2drop E-EXEC throw ENDOF
-      refused OF 2drop E-EXEC throw ENDOF
+      refused OF drop E-EXEC throw ENDOF
    ;MATCH
    c s" select value from pqtcancel order by id"
    [: 0 >ROW 0 >COL INT 0 T= 1 >ROW 0 >COL INT 1 T= ;] WITH-RESULT
@@ -1646,7 +1646,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
 : SILENT-CONNECT ( -- )
    LISTENER-CONNINFO$ s" " CONNECT MATCH PG:connect-result
       connected OF PG:CLOSE ENDOF
-      refused OF 2drop ENDOF
+      refused OF drop ENDOF
    ;MATCH
    0 TASK:RETURN ;
 
@@ -1941,7 +1941,7 @@ variable HEARD-U
       waiting OF drop ENDOF
       completed OF CLEAR E-EXEC throw ENDOF
       connected OF drop E-EXEC throw ENDOF
-      refused OF 2drop E-EXEC throw ENDOF
+      refused OF drop E-EXEC throw ENDOF
    ;MATCH ;
 
 
@@ -2104,7 +2104,7 @@ PW-RIGHT!
 : SIGNED-IN? ( PG:connect-result -- bool )
    MATCH PG:connect-result
       connected OF PG:CLOSE true ENDOF
-      refused OF 2drop false ENDOF
+      refused OF drop false ENDOF
    ;MATCH ;
 
 

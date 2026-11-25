@@ -48,7 +48,7 @@ TYPED-VARIABLE CONN PG:connection
    CONNECTIONS RESULTS PG:CONFIGURE
    s" " PG:CONNECT MATCH PG:connect-result
       connected OF ENDOF
-      refused OF 2drop PG:E-CONNECT throw ENDOF
+      refused OF drop PG:E-CONNECT throw ENDOF
    ;MATCH ;
 
 : PERSON-SQL$ ( -- str )

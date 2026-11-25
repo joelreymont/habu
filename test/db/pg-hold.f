@@ -51,7 +51,7 @@ using PG
    1 1 CONFIGURE
    0 SCRIPT-ARGV$ s" " CONNECT MATCH PG:connect-result
       connected OF ENDOF
-      refused OF >str type cr s" pg-hold: connect refused" EXIT-STATUS:UNAVAILABLE die ENDOF
+      refused OF type cr s" pg-hold: connect refused" EXIT-STATUS:UNAVAILABLE die ENDOF
    ;MATCH ;
 
 \ The one value a one-row, one-column query answers, reported.

@@ -221,7 +221,7 @@ public
    OUTCOME MATCH outcome
       ok OF NOT-REFUSED E-QUERY throw ENDOF
       rows OF NOT-REFUSED ENDOF
-      failed OF >str >r >str r> REFUSED ENDOF
+      failed OF REFUSED ENDOF
    ;MATCH ;
 
 
@@ -254,7 +254,7 @@ private
    OUTCOME MATCH outcome
       ok OF NOT-REFUSED ENDOF
       rows OF NOT-REFUSED E-QUERY throw ENDOF
-      failed OF >str >r >str r> REFUSED ENDOF
+      failed OF REFUSED ENDOF
    ;MATCH ;
 
 public
