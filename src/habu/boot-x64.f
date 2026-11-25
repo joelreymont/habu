@@ -150,14 +150,13 @@ private
 
 \ r13 = the code region, REGION bytes at the image base plus REGION-OFF, where
 \ the writer's PT_LOAD places it; r15 = its code area past the records;
-\ r14 = no records; rbx = 0. The twin of EM-MMAP-CODE-REGION.
+\ r14 = no records. The twin of EM-MMAP-CODE-REGION.
 : CODE-REGION, ( -- )
    RDI RBASE-REG REGION-OFF LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
    REGION MAP-ANON-PRIVATE-FIXED REGION-BAD @ >LABEL MAP-FIXED,
    DBASE-REG RDI ASM-SINK ENC-MOV-RR
    ENGINE-GPR:X64-CP >R64 DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
-   ENGINE-GPR:X64-NDICT >R64 ZERO-REG,
-   ENGINE-GPR:X64-INTERP >R64 ZERO-REG, ;
+   ENGINE-GPR:X64-NDICT >R64 ZERO-REG, ;
 
 \ rax = rdi = DATA, the DATA-SIZE reservation at DATA-VA, as
 \ EM-MMAP-DATA-REGION maps it.

@@ -202,20 +202,20 @@ variable WANT-N
    s" 48c7c100f0ffff" E+      \ llvm-mc: movq $-4096, %rcx
    s" 4839c1" E+ ;            \ llvm-mc: cmpq %rax, %rcx
 
-\ r12 points just past the top cell: a pop retreats then loads, a push stores
+\ rbx points just past the top cell: a pop retreats then loads, a push stores
 \ then advances.
 : RETREAT+ ( -- )
-   s" 4983ec08" E+ ;          \ llvm-mc: subq $8, %r12
+   s" 4883eb08" E+ ;          \ llvm-mc: subq $8, %rbx
 
 : PUBLISH-RAX+ ( -- )
-   s" 49890424" E+            \ llvm-mc: movq %rax, (%r12)
-   s" 4983c408" E+ ;          \ llvm-mc: addq $8, %r12
+   s" 488903" E+              \ llvm-mc: movq %rax, (%rbx)
+   s" 4883c308" E+ ;          \ llvm-mc: addq $8, %rbx
 
 : PROC-CASES ( -- )
    s" pidfd_open takes the pid in rdi and publishes fd or negative errno" T-LABEL
    BPROCWATCHOPEN
    RETREAT+
-   s" 498b3c24" E+            \ llvm-mc: movq (%r12), %rdi
+   s" 488b3b" E+              \ llvm-mc: movq (%rbx), %rdi
    s" 31f6" E+                \ llvm-mc: xorl %esi, %esi
    s" b8b2010000" E+          \ llvm-mc: movl $434, %eax
    TRAP-TAIL+
@@ -225,9 +225,9 @@ variable WANT-N
    s" kill takes the signal in rsi and the pid in rdi, and publishes rax" T-LABEL
    BKILLERRNO
    RETREAT+
-   s" 498b3424" E+            \ llvm-mc: movq (%r12), %rsi
+   s" 488b33" E+              \ llvm-mc: movq (%rbx), %rsi
    RETREAT+
-   s" 498b3c24" E+            \ llvm-mc: movq (%r12), %rdi
+   s" 488b3b" E+              \ llvm-mc: movq (%rbx), %rdi
    s" b83e000000" E+          \ llvm-mc: movl $62, %eax
    TRAP-TAIL+
    PUBLISH-RAX+
@@ -236,11 +236,11 @@ variable WANT-N
    s" execve takes envp, argv and pathz in rdx, rsi and rdi" T-LABEL
    BEXECVE
    RETREAT+
-   s" 498b1424" E+            \ llvm-mc: movq (%r12), %rdx
+   s" 488b13" E+              \ llvm-mc: movq (%rbx), %rdx
    RETREAT+
-   s" 498b3424" E+            \ llvm-mc: movq (%r12), %rsi
+   s" 488b33" E+              \ llvm-mc: movq (%rbx), %rsi
    RETREAT+
-   s" 498b3c24" E+            \ llvm-mc: movq (%r12), %rdi
+   s" 488b3b" E+              \ llvm-mc: movq (%rbx), %rdi
    s" b83b000000" E+          \ llvm-mc: movl $59, %eax
    TRAP-TAIL+
    PUBLISH-RAX+

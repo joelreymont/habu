@@ -8,7 +8,8 @@ split-str
 28 constant CP
 
 \ The general registers the running engine occupies.
-\ A compiled routine that writes one of these destroys the engine.
+\ A compiled routine that writes one of these destroys the engine, except
+\ X64-INDEX, which any callee may write.
 \ A register claimed here is refused by every GPR allocation path.
 \ Both targets' registers are declared on every target: this file cannot branch
 \ at top level and an ARM64 engine emits x86-64 code.
@@ -24,18 +25,17 @@ public
 1 CP lshift or
 constant A64-MASK
 
-\ X64-DSTACK is A64-DSTACK's twin; each of the four after rbx is the twin of
-\ the ARM64 constant at the head of this file named beside it; rbx has none.
-12 constant X64-DSTACK
-3 constant X64-INTERP          \ rbx, the interpreter register
+\ Each is the twin of the ARM64 register named beside it.
+3 constant X64-DSTACK          \ rbx, the data stack pointer: A64-DSTACK
+12 constant X64-INDEX          \ r12, the innermost loop index: t0-arm64's x29
 5 constant X64-RBASE           \ rbp, the user area: XREG-RBASE, x20
 13 constant X64-DBASE          \ r13, the code region the records live in: DBASE
 14 constant X64-NDICT          \ r14, the dictionary record count: NDICT
 15 constant X64-CP             \ r15, the code pointer: CP
 
-1 X64-INTERP lshift
+1 X64-DSTACK lshift
 1 X64-RBASE lshift or
-1 X64-DSTACK lshift or
+1 X64-INDEX lshift or
 1 X64-DBASE lshift or
 1 X64-NDICT lshift or
 1 X64-CP lshift or

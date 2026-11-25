@@ -28,16 +28,13 @@ STACK $100 + constant REGION
 0 constant SAW-R13
 8 constant SAW-R14
 16 constant SAW-R15
-24 constant SAW-RBX
-32 constant SAW-STATUS
+24 constant SAW-STATUS
 
-\ What the descriptor hands the task, and what the caller holds in rbx, which
-\ the task starts at 0.
+\ What the descriptor hands the task.
 $1300000013 constant DBASE-MARK
 $1400000014 constant NDICT-MARK
 $1500000015 constant CP-MARK
 $5ABE11 constant PUSHED
-$B0B0B0B0B0 constant CALLER-RBX
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : ROW ( str -- ) X64HARNESS:CALL-ROW, ;
@@ -55,7 +52,7 @@ $B0B0B0B0B0 constant CALLER-RBX
 : SAW!, ( r64 n -- ) {: r:r64 off:n :}  r RBP off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
 : BODY-WORDS, ( -- )
-   R13 SAW-R13 SAW!,  R14 SAW-R14 SAW!,  R15 SAW-R15 SAW!,  RBX SAW-RBX SAW!,
+   R13 SAW-R13 SAW!,  R14 SAW-R14 SAW!,  R15 SAW-R15 SAW!,
    RAX RBP TASK-TCB-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX TASK-ABI:STATUS-OFF MEM-OFF ASM-SINK ENC-MOV-RM
    RAX SAW-STATUS SAW!,
@@ -76,10 +73,6 @@ $B0B0B0B0B0 constant CALLER-RBX
    NDICT-MARK TASK-ABI:NDICT-OFF DESC-FIELD X64HARNESS:CELL!,
    CP-MARK TASK-ABI:CP-OFF DESC-FIELD X64HARNESS:CELL!,
    TASK-ABI:HALT-REQ TASK-ABI:STATUS-OFF DESC-FIELD X64HARNESS:CELL!, ;
-
-\ The caller's rbx is not the 0 the task starts with, so the entry must both
-\ zero it and bring it back.
-: CALLER-RBX, ( -- ) RBX CALLER-RBX >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
 \ ffi-call ( argbuf nargs fn -- ret ) of the entry on the descriptor.
 : ENTER, ( -- )
@@ -131,7 +124,6 @@ $B0B0B0B0B0 constant CALLER-RBX
 
 : CALL-CASE ( -- )
    BODY DESCRIBE,
-   CALLER-RBX,
    RBP HOLD,  RBX HOLD,  R13 HOLD,  R14 HOLD,  R15 HOLD,
    ENTER,  0 WANT
    R15 EXPECT-HELD,  R14 EXPECT-HELD,  R13 EXPECT-HELD,
@@ -140,12 +132,10 @@ $B0B0B0B0B0 constant CALLER-RBX
 \ The answer is CALL-CASE's to check; this case drops it.
 : BODY-CASE ( -- )
    BODY DESCRIBE,
-   CALLER-RBX,
    ENTER,  0 G-POP
    DBASE-MARK REGION SAW-R13 + X64HARNESS:EXPECT-CELL,
    NDICT-MARK REGION SAW-R14 + X64HARNESS:EXPECT-CELL,
    CP-MARK REGION SAW-R15 + X64HARNESS:EXPECT-CELL,
-   0 REGION SAW-RBX + X64HARNESS:EXPECT-CELL,
    TASK-ABI:HALT-REQ REGION SAW-STATUS + X64HARNESS:EXPECT-CELL, ;
 
 \ An image: the case, then the stack checks every case ends with.
@@ -167,7 +157,7 @@ public
 \                                     depth and balance survive ffi-call of the
 \                                     entry
 \    hb-x64-kernel-task-body       0  the body starts with the descriptor's r13,
-\                                     r14 and r15, rbx 0 and status HALT-REQ
+\                                     r14 and r15 and status HALT-REQ
 \    hb-x64-kernel-task-negative  21  the thread case, expecting a wrong answer
 \                                     from pthread_create
 : RUN ( -- )

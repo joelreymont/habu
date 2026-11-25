@@ -90,9 +90,9 @@ when their stated acceptance is met.
 
 ## Design facts that must not drift
 
-- VM registers: `rbp` is DATA, `r12` the data stack pointer, `r13`
-  the dictionary base, `r14` its record count, `r15` the code pointer and `rbx` the
-  interpreter register. `rsp` is reserved too, and nine registers are
+- VM registers: `rbp` is DATA, `rbx` the data stack pointer, `r12` the
+  innermost loop index, `r13` the dictionary base, `r14` its record count and
+  `r15` the code pointer. `rsp` is reserved too, and nine registers are
   allocatable. The SysV callee-saved set is exactly the VM set, so a foreign
   call needs no save block.
 - `mov r64, imm64` is the one relocatable literal, site kind `MOVABS`: 10

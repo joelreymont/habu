@@ -166,7 +166,7 @@ $1716151413121110 constant CELL-C
    LINUX-LAYOUT:DATA-VA REGS,  LAST-VA JUMP,
    SIGSEGV LINUX-LAYOUT:DATA-VA LAST-VA CELL-A CELL-B 0 DUMP-TEXT ;
 
-\ A push with r12 at the data stack's base plus the capacity the boot
+\ A push with rbx at the data stack's base plus the capacity the boot
 \ published: the first byte of its high guard page.
 : DATA-CHILD ( -- )
    ENGINE-GPR:X64-DSTACK >R64 {: dsp:r64 :}

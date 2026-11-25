@@ -67,9 +67,9 @@ variable FLAGS                        \ nonzero while the condition codes are he
 : SINK ( -- ^VEC:vector<u8> ) RAW @ ;
 
 \ A body's contract (src/habu/kernel-x64.f "A BODY'S CONTRACT"): rbp is DATA,
-\ r12 the data stack pointer, rbx and r13-r15 the other engine registers;
-\ compiled code writes none of them except r12 as the stack
-\ (src/arch/x86-64/rt.f G-PUSH, G-POP). The vregs are rcx rdx rsi rdi r8-r11;
+\ rbx the data stack pointer, r12 the loop index, which any callee may write,
+\ and r13-r15 the other engine registers; compiled code writes none of them
+\ except rbx as the stack (src/arch/x86-64/rt.f G-PUSH, G-POP). The vregs are rcx rdx rsi rdi r8-r11;
 \ rax is this file's temporary and holds no value between two of its words. A
 \ body is entered by `call`, leaves by `ret` and saves nothing; its frame on
 \ the machine stack is its own cells rounded to 16.

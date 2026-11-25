@@ -112,10 +112,11 @@ variable SCOPE-KIND-CELL
 : SCOPE-KIND-LBL ( -- label ) SCOPE-KIND-CELL @ >LABEL ;
 : EXIT-HOOK-LBL ( -- label ) X64BOOT:LEXITHOOK @ >LABEL ;
 
-\ A BODY'S CONTRACT. rbp is DATA, r12 the data stack, rbx and r13-r15 the other
-\ VM registers; rax rcx rdx rsi rdi and r8-r11 are scratch. A body is entered by
-\ `call` and leaves by the `ret` PRIM appends, so it calls a helper without a
-\ frame: one definer serves where habu1.f needs FPRIM and FPRIM-L.
+\ A BODY'S CONTRACT. rbp is DATA, rbx the data stack, r13-r15 the other VM
+\ registers and r12 the loop index, which any callee may write; rax rcx rdx rsi
+\ rdi and r8-r11 are scratch. A body is entered by `call` and leaves by the
+\ `ret` PRIM appends, so it calls a helper without a frame: one definer serves
+\ where habu1.f needs FPRIM and FPRIM-L.
 \
 \ The row being registered. Every body registers under a name src/habu/prims.f
 \ specifies: SPEC-CHECK checks each body, and ENGINE-PRIMS:COMPLETE refuses a
@@ -736,6 +737,7 @@ private
 1000000000 constant NS-PER-S
 
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
+: INDEX-REG ( -- r64 ) ENGINE-GPR:X64-INDEX >R64 ;
 : POP, ( r64 -- ) R64>N G-POP ;
 : PUSH, ( r64 -- ) R64>N G-PUSH ;
 : DROP, ( -- ) DSP CELL >IMM8 ASM-SINK ENC-SUB-RI8 ;
@@ -843,14 +845,13 @@ public
 \ in rdi rsi rdx rcx r8 r9 and xmm0..7, and the r10 cells at rax (a count >= 0)
 \ as its stack arguments; the answer is in rax/rdx or xmm0. al is set to n, the
 \ bound on vector arguments a variadic callee reads to decide whether it saves
-\ xmm0..7. The entry rsp waits in rbx, itself saved on the machine stack. The
-\ VM registers survive by the callee-saved rule; rax rcx rdx rsi rdi, r8-r11
-\ and the XMM registers do not. No private cell occupies the published Habu
-\ data stack while C calls back.
+\ xmm0..7. The entry rsp waits in r12, so a fault in the copy throws with the
+\ data stack pointer in its register. The other VM registers survive by the
+\ callee-saved rule; rax rcx rdx rsi rdi, r8-r12 and the XMM registers do not.
+\ No private cell occupies the published Habu data stack while C calls back.
 : SYSV-CALL, ( n -- ) {: vecs:n :}
    X64CODE:LBL X64CODE:LBL {: copy:label called:label :}
-   RBX ASM-SINK ENC-PUSH
-   RBX RSP ASM-SINK ENC-MOV-RR
+   INDEX-REG RSP ASM-SINK ENC-MOV-RR
    R11 ASM-SINK ENC-PUSH
    R11 R10 ASM-SINK ENC-MOV-RR  R11 3 >IMM8 ASM-SINK ENC-SHL-RI8
    RSP R11 ASM-SINK ENC-SUB-RR
@@ -862,11 +863,10 @@ public
    R11 RSP R10 CELL 0 MEM-IDX ASM-SINK ENC-MOV-MR
    C-NE copy JCC,
    called X64CODE:LBL,
-   R11 RBX CELL negate MEM-OFF ASM-SINK ENC-MOV-RM      \ the function below saved rbx
+   R11 INDEX-REG CELL negate MEM-OFF ASM-SINK ENC-MOV-RM  \ the function below the entry rsp
    RAX vecs IMM32,
    R11 ASM-SINK ENC-CALL-REG
-   RSP RBX ASM-SINK ENC-MOV-RR
-   RBX ASM-SINK ENC-POP ;
+   RSP INDEX-REG ASM-SINK ENC-MOV-RR ;
 
 \ Call the C function at rax with its integer register arguments only:
 \ SYSV-CALL,'s zero-cell case, with no vector arguments.
@@ -3896,7 +3896,7 @@ private
 \ The owner is claimed before any cursor is published. A nested outbound call
 \ on the same thread retains the claim; another thread dies 106 with the region
 \ untouched. Its record's `in` is the word at the primitive's return address,
-\ n bytes above rsp at entry: FAULT-OPEN, moves rsp, so rbx carries it, and r13
+\ n bytes above rsp at entry: FAULT-OPEN, moves rsp, so r12 carries it, and r13
 \ and r14, which the record never writes, still name the records.
 : CB-ENTER, ( n -- ) {: pushed:n :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL
@@ -3936,9 +3936,9 @@ private
    X64CODE:LBL {: past:label :}
    past JMP,
    busy X64CODE:LBL,
-   RBX RSP CBO-BYTES pushed + MEM-OFF ASM-SINK ENC-MOV-RM
+   INDEX-REG RSP CBO-BYTES pushed + MEM-OFF ASM-SINK ENC-MOV-RM
    s" E-CALLBACK" FAULT-RECORD:CB-CONTEXT-BUSY$ X64CRASH:FAULT-OPEN,
-   RDI RBX ASM-SINK ENC-MOV-RR  RSI DBASE-REG ASM-SINK ENC-MOV-RR
+   RDI INDEX-REG ASM-SINK ENC-MOV-RR  RSI DBASE-REG ASM-SINK ENC-MOV-RR
    RDX NDICT-REG ASM-SINK ENC-MOV-RR  X64CRASH:FAULT-IN,
    FAULT-RECORD:CB-CONTEXT-BUSY-HELP$ EXIT-STATUS:CALLBACK X64CRASH:FAULT-STOP,
    past X64CODE:LBL, ;
@@ -4100,14 +4100,12 @@ public
 
 private
 
-: INTERP-REG ( -- r64 ) ENGINE-GPR:X64-INTERP >R64 ;
-
 : SAVE-VM, ( -- )
-   INTERP-REG ASM-SINK ENC-PUSH  DATA-REG ASM-SINK ENC-PUSH  DSP ASM-SINK ENC-PUSH
+   INDEX-REG ASM-SINK ENC-PUSH  DATA-REG ASM-SINK ENC-PUSH  DSP ASM-SINK ENC-PUSH
    DBASE-REG ASM-SINK ENC-PUSH  NDICT-REG ASM-SINK ENC-PUSH  CP-REG ASM-SINK ENC-PUSH ;
 : RESTORE-VM, ( -- )
    CP-REG ASM-SINK ENC-POP  NDICT-REG ASM-SINK ENC-POP  DBASE-REG ASM-SINK ENC-POP
-   DSP ASM-SINK ENC-POP  DATA-REG ASM-SINK ENC-POP  INTERP-REG ASM-SINK ENC-POP ;
+   DSP ASM-SINK ENC-POP  DATA-REG ASM-SINK ENC-POP  INDEX-REG ASM-SINK ENC-POP ;
 
 \ The entry. The xt is called as execute calls one, and the body keeps rbp, so
 \ the TCB is read back through the region. The six pushes leave rsp 8 off the
@@ -4115,15 +4113,14 @@ private
 \ aligns rsp itself before any C call.
 : TASK-ENTRY, ( -- )
    SAVE-VM,
-   INTERP-REG RDI ASM-SINK ENC-MOV-RR          \ the descriptor across the registration
+   INDEX-REG RDI ASM-SINK ENC-MOV-RR           \ the descriptor across the registration
    X64BOOT:SIGNAL-STACK,                       \ this thread's own, below the pushes
-   RDI INTERP-REG ASM-SINK ENC-MOV-RR
+   RDI INDEX-REG ASM-SINK ENC-MOV-RR
    DATA-REG RDI TASK-ABI:REGION-OFF MOV-LOAD,
    DSP RDI TASK-ABI:STACK-OFF MOV-LOAD,
    DBASE-REG RDI TASK-ABI:DBASE-OFF MOV-LOAD,
    NDICT-REG RDI TASK-ABI:NDICT-OFF MOV-LOAD,
    CP-REG RDI TASK-ABI:CP-OFF MOV-LOAD,
-   INTERP-REG ZERO-REG,
    RDI DATA-REG TASK-TCB-CELL MOV-STORE,
    RAX RDI TASK-ABI:XT-OFF MOV-LOAD,
    CODE-SYNC,  RAX ASM-SINK ENC-CALL-REG
@@ -4278,7 +4275,6 @@ CBT-BYTES 6 cells + constant CBT-LR  \ above the six saved VM registers
    DBASE-REG R11 CB-DBASE MEM-OFF ASM-SINK ENC-MOV-RM
    NDICT-REG R11 CB-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
    CP-REG R11 CB-CP MEM-OFF ASM-SINK ENC-MOV-RM
-   INTERP-REG ZERO-REG,
    RAX ZERO-REG,
    R10 RSP CBT-OWNER-CLAIM MEM-OFF ASM-SINK ENC-MOV-RM
    R10 R10 ASM-SINK ENC-TEST-RR  C-E signal-had JCC,
