@@ -153,15 +153,6 @@ $100000000 constant U32-OVER
 : MOST-WIDE ( -- ) SMALL-IN 2 >str U32-OVER DECODE ;
 : DEFLATE-WIDE ( -- ) SMALL-IN U32-OVER >str DEFLATE-CASE ;
 
-\ The source is the destination vector's own bytes.
-: INSIDE ( [ str ^VEC:vector<u8> -- ] -- ) {: codec :}
-   FRESH {: v:^ :}
-   [: HELLO$ v VEC:APPEND v VEC:BYTES v codec execute ;]
-   [: v VEC:DELETE ;] finally ;
-: INFLATE-INSIDE ( -- ) [: SMALL-CAP ZLIB:INFLATE-RAW ;] INSIDE ;
-: DEFLATE-INSIDE ( -- ) [: ZLIB:DEFLATE-RAW ;] INSIDE ;
-: FRAMED-INSIDE ( -- ) [: SMALL-CAP ZLIB:INFLATE-FRAMED ;] INSIDE ;
-
 : SPAN-REFUSALS ( -- )
    s" negative, wide and null spans are refused before C" T-LABEL
    [: CRC-NEGATIVE ;] ZLIB:E-SIZE TTHROWSQ
@@ -173,10 +164,6 @@ $100000000 constant U32-OVER
    s" a negative or past-32-bit most is refused before C" T-LABEL
    [: MOST-NEGATIVE ;] ZLIB:E-SIZE TTHROWSQ
    [: MOST-WIDE ;] ZLIB:E-SIZE TTHROWSQ
-   s" a source in the destination vector is refused" T-LABEL
-   [: INFLATE-INSIDE ;] ZLIB:E-SIZE TTHROWSQ
-   [: DEFLATE-INSIDE ;] ZLIB:E-SIZE TTHROWSQ
-   [: FRAMED-INSIDE ;] ZLIB:E-SIZE TTHROWSQ
    STILL-WORKS ;
 
 \ Compresses SMALL-IN's first n bytes and decodes them back; answers the

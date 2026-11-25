@@ -1,8 +1,9 @@
 \ zlib.f - raw DEFLATE (RFC 1951), zlib-framed DEFLATE (RFC 1950) and CRC-32
 \ by libz. A codec word reads its source and appends to the caller's vector:
 \ deflate the whole stream, inflate at most the count it is given. A failure
-\ rethrows its code and leaves COUNT as it was, earlier bytes intact. libz
-\ allocates from init to the matching *End, which every path reaches.
+\ rethrows its code and leaves COUNT as it was, earlier bytes intact. The
+\ source must not lie in the vector's block: growing it may move the block.
+\ libz allocates from init to the matching *End, which every path reaches.
 \ STORAGE CLASS. TASK-LOCAL: the z_stream and the overflow byte are TASK:+USER
 \ rows, cleared after every call, so no address survives into a saved image.
 
@@ -17,7 +18,7 @@ public
 
 -9520 constant E-FIRST
 -9529 constant E-LAST
--9520 s" an invalid span, an overlap, a negative length, or a length or bound past 32 bits"
+-9520 s" an invalid span, a negative length, or a length or bound past 32 bits"
    ERROR:CODE E-SIZE
 -9521 s" the expanded stream is longer than the most the caller allows"
    ERROR:CODE E-CAPACITY
@@ -89,25 +90,12 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    [type] zstream width>n 0 ?do 0 STREAM BYTE-VIEW i + c! loop
    0 PROBE c! ;
 
-: ADDRESS ( ^u8 -- n ) NULL-PTR - ;
 
 \ libz counts lengths in 32 bits.
 : SPAN-CHECK ( str -- ) {: s:str :}
    s STR:LEN 0 < if E-SIZE throw then
    s STR:LEN U32-MAX > if E-SIZE throw then
    s STR:LEN 0<> s STR:DATA NULL-PTR = and if E-SIZE throw then ;
-
-: DISJOINT-CHECK ( str str -- )
-   {: a:str b:str :}
-   a STR:LEN 0= b STR:LEN 0= or if exit then
-   a STR:DATA ADDRESS b STR:DATA ADDRESS b STR:LEN + < b STR:DATA ADDRESS a STR:DATA ADDRESS a STR:LEN + < and if E-SIZE throw then ;
-
-\ Judged on the whole block before it grows: growth may move a source there,
-\ and the stream is written into its free room.
-: SOURCE-CHECK ( str ^VEC:vector<u8> -- )
-   {: src:str v:^ :}
-   src SPAN-CHECK
-   src  v 0 VEC:AT v VEC:CAP >str  DISJOINT-CHECK ;
 
 \ A framed stream that asks for a preset dictionary is data no caller can
 \ supply one for.
@@ -217,7 +205,7 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
 
 : DEFLATE-FOR ( str ^VEC:vector<u8> n -- )
    {: src:str v:^ window:n :}
-   src v SOURCE-CHECK
+   src SPAN-CHECK
    src STR:LEN window BOUND-FOR {: room:n :}
    v VEC:COUNT {: old:n :}
    [: src v room VEC:EXTEND SPAN:$ window DEFLATE-INTO ;] catch
@@ -226,7 +214,7 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
 
 : INFLATE-FOR ( str ^VEC:vector<u8> n n -- )
    {: src:str v:^ most:n window:n :}
-   src v SOURCE-CHECK
+   src SPAN-CHECK
    most 0 < most U32-MAX > or if E-SIZE throw then
    v VEC:COUNT {: old:n :}
    [: src v most VEC:EXTEND SPAN:$ window INFLATE-INTO ;] catch
