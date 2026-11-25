@@ -11,7 +11,7 @@ require src/core/roles.f
 require src/arch/x86-64/asm.f
 require src/os/linux/layout.f
 require src/habu/layout.f
-require src/lib/heap.f
+require src/lib/arena.f
 require src/lib/span.f
 require src/lib/vector.f
 
@@ -36,6 +36,9 @@ private
 1 constant SITE-REL32
 2 constant SITE-ABS64
 
+\ The sink's bytes live in an arena: a cross-build runs this file on its host,
+\ and the heap here is the target's.
+TYPED-VARIABLE SINK-ARENA ^ARENA:arena
 TYPED-VARIABLE SINK ^VEC:vector<u8>     \ NULL-PTR until SINK-OPEN makes it
 variable NLBL                        \ labels made since load
 variable LBL-BASE                    \ the number of this stream's first label
@@ -221,10 +224,12 @@ public
 
 : SINK-OPEN ( -- )
    SINK @ NULL-PTR <> if ASM-RESET else
-      HEAP:ALLOCATOR 0 [type] u8 VEC:NEW SINK !
+      ARENA:NEW SINK-ARENA !
+      SINK-ARENA @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW SINK !
    then ;
 
-: SINK-CLOSE ( -- ) FORGET ASM-SINK VEC:DELETE  NULL-PTR SINK ! ;
+: SINK-CLOSE ( -- )
+   FORGET  SINK-ARENA @ ARENA:RELEASE  NULL-PTR SINK-ARENA !  NULL-PTR SINK ! ;
 
 : BYTES, ( str -- ) ASM-SINK VEC:APPEND ;
 

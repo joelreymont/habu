@@ -13,7 +13,7 @@ split-str
 require src/core/exit-status.f
 require src/core/rejection.f
 require src/lib/string.f
-require src/lib/heap.f
+require src/lib/arena.f
 require src/lib/vector.f
 
 package FAULT-RECORD
@@ -21,12 +21,16 @@ public
 256 constant FAULT-FRAME
 DEFLINEAR FAULT-RECORD:record
 private
-: NEW-TEXT ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
-\ A file link zeroes scratch cells after each piece, so a text is made when
-\ first needed and deleted by the emitter that lays it.
+\ A file link zeroes scratch cells after each piece, so the texts are made when
+\ first needed and released by the emitter that lays them. They live in an arena:
+\ a cross-build runs this file on its host, and the heap here is the target's.
+TYPED-VARIABLE TEXTS ^ARENA:arena SCRATCH-ONLY
 TYPED-VARIABLE PROSE-TEXT ^VEC:vector<u8> SCRATCH-ONLY
 TYPED-VARIABLE JSON-TEXT ^VEC:vector<u8> SCRATCH-ONLY
 TYPED-VARIABLE GUARD-TEXT ^VEC:vector<u8> SCRATCH-ONLY
+: NEW-TEXT ( -- ^VEC:vector<u8> )
+   TEXTS @ NULL-PTR = if ARENA:NEW TEXTS ! then
+   TEXTS @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW ;
 : PROSE ( -- ^VEC:vector<u8> )
    PROSE-TEXT @ NULL-PTR = if NEW-TEXT PROSE-TEXT ! then
    PROSE-TEXT @ ;
@@ -41,9 +45,8 @@ public
 : FAULT-PROSE$ ( -- str ) PROSE VEC:BYTES ;
 : FAULT-JSON$ ( -- str ) JSON VEC:BYTES ;
 : FAULT-EMPTY ( -- )
-   PROSE-TEXT @ VEC:DELETE  NULL-PTR PROSE-TEXT !
-   JSON-TEXT @ VEC:DELETE  NULL-PTR JSON-TEXT !
-   GUARD-TEXT @ VEC:DELETE  NULL-PTR GUARD-TEXT ! ;
+   TEXTS @ ARENA:RELEASE  NULL-PTR TEXTS !
+   NULL-PTR PROSE-TEXT !  NULL-PTR JSON-TEXT !  NULL-PTR GUARD-TEXT ! ;
 private
 \ An open record carries its open part: its message, or a note.
 1 constant PART-MESSAGE
