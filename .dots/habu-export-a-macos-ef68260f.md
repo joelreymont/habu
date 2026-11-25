@@ -1,9 +1,9 @@
 ---
-title: Export a macOS engine without a crash
+title: Run an exported macOS engine on a Mac
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-25T18:10:26.238750+02:00"
 ---
 
-Problem: bin/hb --load tools/hb-build.f -- --engine --target macos-aarch64 -o OUT exits 139 (SIGSEGV) on Linux aarch64, seen 2026-11-25; not yet traced, nor run on master. Acceptance: the command exits 0 and writes an engine that the macOS target's tests accept. Depends: none. Claim: unassigned.
+Problem: a macos-aarch64 engine built on Linux (`bin/hb --load tools/hb-build.f -- --engine --target macos-aarch64 -o OUT`, rc 0) has not run on a Mac since the sessions left it. Acceptance: on a Mac the exported engine rebuilds itself byte for byte (before signing) and passes test/run.f. Depends: a reachable Mac. Claim: unassigned.
