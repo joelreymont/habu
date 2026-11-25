@@ -2564,6 +2564,8 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    PATH-HEADERS$ GET-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN FETCH
    subject HEADERS$ HEADER-EXACT
+   s" RETRY-AFTER answers the seconds the header names" T-LABEL
+   subject CURL:RETRY-AFTER 9 T=
    subject PATH-HEADERS-B$ URL-FOR CURL:URL! EXPECT-OK
    BODY-EMPTY
    subject BODY-CAP >LEN BODY CURL:START EXPECT-OK
@@ -2573,6 +2575,8 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    LAST-KIND @ KIND-RESPONSE T=
    BODY$ JSON$ T$=
    subject HEADERS-B$ HEADER-EXACT
+   s" RETRY-AFTER answers 0 for a reply with no such header" T-LABEL
+   subject CURL:RETRY-AFTER 0 T=
    subject PATH-HEADERS$ URL-FOR CURL:URL! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject HEADERS$ HEADER-EXACT

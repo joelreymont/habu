@@ -13,6 +13,7 @@
 \ OPEN allocates for a call until CLOSE; the module keeps no state.
 require src/lib/base64.f
 require src/lib/byte-buffer.f
+require src/lib/entropy.f
 require src/lib/f64-text.f
 require src/lib/error.f
 require src/lib/float32.f
@@ -30,6 +31,7 @@ require src/lib/reason.f
 require src/lib/secret.f
 require src/lib/span.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/task.f
 require src/lib/time.f
 require src/lib/vector.f
@@ -59,18 +61,19 @@ require src/lib/vector.f
 \ again inside SERVE or AWAIT, and SERVE keeps answering false. With
 \ RESEND-WAIT!, a send that fails in RESENDS?'s class once its request left,
 \ or in its key read at dispatch, has its line written, a dispatched one
-\ recorded, and the call rests, started, for the wait; SERVE answers false
-\ until RESEND-DUE, then it or AWAIT sends the same request again: body,
-\ journal input, purpose, model, tier as last sent and cache key. A CANCEL
-\ or REQUEST-STOP during the rest wakes the starter, and the call lands
-\ E-CANCELLED with a cancelled record when its request was dispatched. SERVE
-\ and AWAIT of a started call run on the task that started it; a halt pending
-\ at their take gives the transfer up, a ready answer included, and lands the
-\ call first, and one at a SERVE with nothing to take leaves it started; one
-\ served during a rest leaves it resting, and one served where a send that
-\ ended E-TIER is to be sent again lands the call with that send's outcome.
-\ A task that may be halted CANCELs, then AWAITs, each call still started in a
-\ finally, catching each AWAIT's fault.
+\ recorded, and the call rests, started, as long as the provider's
+\ Retry-After asked and a random time after it, whose bound doubles with each
+\ resend; SERVE answers false until RESEND-DUE, then it or AWAIT sends the
+\ same request again: body, journal input, purpose, model, tier as last sent
+\ and cache key. A CANCEL or REQUEST-STOP during the rest wakes the starter,
+\ and the call lands E-CANCELLED with a cancelled record when its request was
+\ dispatched. SERVE and AWAIT of a started call run on the task that started
+\ it; a halt pending at their take gives the transfer up, a ready answer
+\ included, and lands the call first, and one at a SERVE with nothing to take
+\ leaves it started; one served during a rest leaves it resting, and one
+\ served where a send that ended E-TIER is to be sent again lands the call
+\ with that send's outcome. A task that may be halted CANCELs, then AWAITs,
+\ each call still started in a finally, catching each AWAIT's fault.
 
 \ A journal's and a recorder's callbacks each get the caller's ctx unchanged.
 \ get fills the MODEL-owned buffer with one record on a hit, which restores
@@ -131,7 +134,7 @@ public
    ERROR:CODE E-CANCELLED
 -9710 s" a MODEL word ran out of turn: a busy or unopened call, a part or item outside building, SERVE or AWAIT unstarted or on another task, VECTOR@ or CONTENT$ without its result"
    ERROR:FAULT E-STATE
--9711 s" the provider is unavailable for now, with status 408, 429 or 5xx or a failed response's error code rate_limit_exceeded, server_error or server_is_overloaded: send the call again later"
+-9711 s" the provider is unavailable for now, with status 408, 429 or 5xx or a failed response's error code rate_limit_exceeded, slow_down, server_error or server_is_overloaded: send the call again later"
    ERROR:CODE E-UNAVAILABLE
 -9712 s" the provider cannot serve the request at the service tier it names for now (error code flex_unavailable) and generated nothing: TIER-RESEND! sends such a call again"
    ERROR:CODE E-TIER
@@ -212,8 +215,10 @@ CAST: >TOKENS ( ^u8 -- ^tokens )
 
 \ The installed recorder and the current call's accounting: the purpose
 \ PURPOSE! left pending, the label of the call in progress, whether its request
-\ reached the backend and when, its recorded call id, the recorder's fault and
-\ the libcurl code of the call's failed step, 0 when none.
+\ reached the backend and when, its recorded call id, the recorder's fault,
+\ the libcurl code of the call's failed step, 0 when none, and whether the
+\ provider throttled the send: HTTP 429, or an error coded
+\ rate_limit_exceeded or slow_down.
 STRUCTURE ledger DERIVE addr
    FIELD context n
    FIELD record [ n str -- n ]
@@ -228,6 +233,7 @@ STRUCTURE ledger DERIVE addr
    FIELD code n
    FIELD cancelled bool
    FIELD transport n
+   FIELD throttled bool
 ;STRUCTURE
 
 CAST: >LEDGER ( ^u8 -- ^ledger )
@@ -264,7 +270,7 @@ ENUM tier-step preferred resuming standard done ;ENUM
 ENUM tier-event settled tier-out halted ;ENUM
 \ The resend machine's states: sending, a send is out or has landed; begun, a
 \ rest just begun, sensed once more in the step that began it; resting, a
-\ send RESENDS? accepts waits RESEND-WAIT!'s time out; resuming, a due rest's
+\ send RESENDS? accepts waits its rest out; resuming, a due rest's
 \ resend begins; done sends no more.
 \ A landed send is settled, outside the work or stopped; a rest is early, due
 \ or stopped. A landed call's next send is begun, refused by a stop or CANCEL,
@@ -286,11 +292,13 @@ ENUM key-fault
 \ throws; step, the land machine's next; tier, the tier machine's; sent, the
 \ tier step the last send went out at; resend, the resend machine's state;
 \ due, the TIME:MONO-NS a resting call is sent again, 0 when it is not
-\ resting; report, the fault of a failed send whose line is still to be
-\ written, 0 when none; outer, the LANDING ACCOUNT replaced; key-read, how the
-\ send's key failed, in its read or at the provider; ending, the land
-\ machine's ending, none until the call lands and again once a resend's begin
-\ faults.
+\ resting; resends, how many rests this start has begun; retry-after, the
+\ seconds the last send's reply asked to wait, in its header or its error
+\ object, 0 for none or no reply; report, the fault of a failed send whose
+\ line is still to be written, 0 when none; outer, the LANDING ACCOUNT
+\ replaced; key-read, how the send's key failed, in its read or at the
+\ provider; ending, the land machine's ending, none until the call lands and
+\ again once a resend's begin faults.
 STRUCTURE receipt DERIVE addr
    FIELD status CURL:http-status
    FIELD code n
@@ -303,6 +311,8 @@ STRUCTURE receipt DERIVE addr
    FIELD sent tier-step
    FIELD resend resend-step
    FIELD due n
+   FIELD resends n
+   FIELD retry-after n
    FIELD report n
    FIELD outer n
    FIELD key-read key-fault
@@ -313,6 +323,12 @@ CAST: >RECEIPT ( ^u8 -- ^receipt )
 
 256 constant SCRATCH-INITIAL
 1000000 constant NS-PER-MS
+\ The first rest's bound, doubled with each resend; 33 doublings of it in ns
+\ are the most a cell holds.
+1000 constant FIRST-REST-MS
+33 constant DOUBLINGS-MAX
+\ The longest wait a Retry-After is given.
+900 constant RETRY-SECONDS-MAX
 \ No byte for this long ends a chat, count or compaction, curl 28 logged; an
 \ embedding reply comes whole, so its call ends at its caller's deadline. A
 \ thinking model's reasoning items arrive at most 9 s apart (OpenAI, measured
@@ -1283,10 +1299,13 @@ public
    c REQUIRE-REST
    on c MODEL-CALL:TIER-RESEND ! ;
 
-\ How many ms a send that ends in RESENDS?'s class rests before the same
-\ request is sent again, with no cap: each send is recorded and its line
-\ names the wait. A stop or CANCEL during the rest ends the call E-CANCELLED.
-\ 0, OPEN's, is off; below 0 is E-CONFIG.
+\ The most ms a send that ends in RESENDS?'s class rests before the same
+\ request is sent again when its reply names no Retry-After: a random time
+\ within the ms and within a second doubled with each resend. After a
+\ Retry-After, at most 15 minutes of it, the rest adds that random time to
+\ it. The resends have no cap: each send is recorded and its line names the
+\ rest. A stop or CANCEL during it ends the call E-CANCELLED. 0, OPEN's, is
+\ off; below 0 is E-CONFIG.
 : RESEND-WAIT! ( n ^call -- )
    {: ms:n c :}
    c REQUIRE-REST
@@ -2368,13 +2387,62 @@ private
    m JSON:STRING? 0= if exit then
    m [: c ERROR-BUF REPLACE$ ;] JSON:WITH-STRING ;
 
+\ Keeps that the provider throttled the send.
+: THROTTLED! ( ^call -- ) true swap LEDGER LEDGER-THROTTLED ! ;
+
+\ Keeps the longest wait, in seconds, the send's reply asked for.
+: RETRY-AFTER! ( n ^call -- )
+   RECEIPT RECEIPT-RETRY-AFTER tuck @ max swap ! ;
+
+\ OpenAI's error codes for a send it throttled.
+: THROTTLE-CODE? ( JSON:value -- bool )
+   {: v :}
+   v s" rate_limit_exceeded" JSON:STRING=
+   v s" slow_down" JSON:STRING= or ;
+
+\ The whole seconds the text gives, 0 for any other text.
+: SECONDS ( str -- n )
+   STR:PARSE-POS MATCH option
+      none OF 0 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+\ The seconds an error's headers ask in retry-after to wait, 0 for none.
+: HEADERS-WAIT ( JSON:value -- n )
+   {: v :}
+   v JSON:OBJECT? 0= if 0 exit then
+   v s" retry-after" JSON:FIND MATCH option
+      none OF 0 exit ENDOF
+      some OF ENDOF
+   ;MATCH {: t :}
+   t JSON:STRING? 0= if 0 exit then
+   t [: SECONDS ;] JSON:WITH-STRING ;
+
+\ The seconds a failed reply's error object asks to wait, 0 for none: OpenAI
+\ sends the reply's HTTP headers before the response fails, so an error event
+\ holds its own.
+: ERROR-WAIT ( JSON:value -- n )
+   s" headers" JSON:FIND MATCH option
+      none OF 0 ENDOF
+      some OF HEADERS-WAIT ENDOF
+   ;MATCH ;
+
+\ Keeps the wait an error object asks for and whether its code says the send
+\ was throttled.
+: KEEP-BACKOFF ( JSON:value ^call -- )
+   {: e c :}
+   e ERROR-WAIT c RETRY-AFTER!
+   e s" code" JSON:FIND [: THROTTLE-CODE? ;] FOUND? if c THROTTLED! then ;
+
 : ERROR-BODY ( JSON:value ^call -- )
    {: v c :}
    v JSON:OBJECT? 0= if exit then
    v s" error" JSON:FIND MATCH option
-      none OF ENDOF
-      some OF c ERROR-TEXT ENDOF
-   ;MATCH ;
+      none OF exit ENDOF
+      some OF ENDOF
+   ;MATCH {: e :}
+   e c ERROR-TEXT
+   e JSON:OBJECT? if e c KEEP-BACKOFF then ;
 
 \ A failed reply's body, none when it is not JSON.
 : FAILED-BODY ( ^call -- option<JSON:value> )
@@ -2384,7 +2452,8 @@ private
    code JSON:INPUT-FAULT? if OPTION:NONE exit then
    code throw ;
 
-\ Keeps a failed reply's provider message, when its body names one.
+\ Keeps a failed reply's provider message, wait and throttle, when its body
+\ names them.
 : KEEP-ERROR ( option<JSON:value> ^call -- )
    {: body c :}
    body MATCH option
@@ -2445,9 +2514,10 @@ private
    CONFIG-REJECT ;
 
 \ Throws the fault of a refused reply's status; a key the provider refused
-\ keeps that it did.
+\ keeps that it did, and a send answered 429 that it was throttled.
 : STATUS-THROW ( CURL:http-status ^call -- )
    {: status:CURL:http-status c :}
+   status CURL:HTTP-STATUS>N 429 = if c THROTTLED! then
    status STATUS-FAULT {: fault:n :}
    fault E-KEY = c KEYED? and if
       construct key-fault refused c KEY-FAULT!
@@ -2456,8 +2526,15 @@ private
    fault throw ;
 
 
-\ Keeps the transfer's status and reply; throws the fault of a cut or failed
-\ exchange or a refused reply.
+: CALL-HANDLE ( ^call -- CURL:handle )
+   MODEL-CALL:HANDLE @ MATCH option
+      none OF E-STATE throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+\ Keeps the transfer's status, reply and Retry-After, read before the handle
+\ is cleaned up; throws the fault of a cut or failed exchange or a refused
+\ reply.
 : RECEIPT-CHECK ( ^call -- ^call )
    {: c :}
    c RECEIPT {: r :}
@@ -2469,6 +2546,7 @@ private
    fault 0<> if fault throw then
    rc c LEDGER LEDGER-TRANSPORT !
    rc 0<> if E-TRANSPORT throw then
+   c CALL-HANDLE CURL:RETRY-AFTER c RETRY-AFTER!
    status CURL:HTTP-STATUS>N 200 <> if
       c FAILED-BODY {: body :}
       body c KEEP-ERROR
@@ -2476,12 +2554,6 @@ private
       status c STATUS-THROW
    then
    c ;
-
-: CALL-HANDLE ( ^call -- CURL:handle )
-   MODEL-CALL:HANDLE @ MATCH option
-      none OF E-STATE throw ENDOF
-      some OF ENDOF
-   ;MATCH ;
 
 \ Sets the next exchange: a POST of the body to the url.
 : AS-POST ( str str ^call -- )
@@ -2609,18 +2681,24 @@ private
    ;MATCH {: v :}
    v JSON:STRING? 0= if E-HTTP exit then
    v s" context_length_exceeded" JSON:STRING= if E-CAPACITY exit then
-   v s" rate_limit_exceeded" JSON:STRING= if E-UNAVAILABLE exit then
+   v THROTTLE-CODE? if E-UNAVAILABLE exit then
    v s" server_error" JSON:STRING= if E-UNAVAILABLE exit then
    v s" server_is_overloaded" JSON:STRING= if E-UNAVAILABLE exit then
    v s" flex_unavailable" JSON:STRING= if E-TIER exit then
    E-HTTP ;
 
-\ A failed reply keeps its error message as the call's error text.
+\ Keeps a failed reply's error message as the call's error text, the wait it
+\ asks for and whether its code says the send was throttled; answers the
+\ fault it names.
+: KEEP-FAILURE ( JSON:value ^call -- n )
+   {: e c :}
+   e c ERROR-TEXT
+   e c KEEP-BACKOFF
+   e CODE-FAULT ;
+
 : READ-FAILURE ( JSON:value ^call -- )
    {: v c :}
-   v s" error" OBJECT-MEMBER {: e :}
-   e c ERROR-TEXT
-   e CODE-FAULT throw ;
+   v s" error" OBJECT-MEMBER c KEEP-FAILURE throw ;
 
 \ Throws the fault of a reply whose status is other than completed.
 : REPLY-STATUS ( JSON:value ^call -- )
@@ -3066,9 +3144,7 @@ private
 \ An error event fails the response as a failed status does.
 : ERROR-EVENT ( JSON:value ^call -- )
    {: v c :}
-   v ERROR-AT {: e :}
-   e c ERROR-TEXT
-   e CODE-FAULT {: fault:n :}
+   v ERROR-AT c KEEP-FAILURE {: fault:n :}
    c STREAM {: s :}
    fault s STREAM-FAULT !
    true s STREAM-DONE ! ;
@@ -3638,7 +3714,8 @@ ENUM poll none fed spoiled done ;ENUM
    w SHA256-CTX-BYTES + 32 + 64 >str ;
 
 \ The call's accounting record, the JSON object RECORDER!'s record receives.
-\ outcome is ok, cancelled, tier_unavailable for E-TIER, else failed.
+\ outcome is ok, cancelled, tier_unavailable for E-TIER, else failed. A send
+\ the provider throttled has throttled true; any other has no such member.
 : CALL-RECORD ( ^call -- )
    {: c :}
    c LEDGER {: l :}
@@ -3684,6 +3761,9 @@ ENUM poll none fed spoiled done ;ENUM
    else fault 0<> if s" failed" else s" ok" then then then JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" fault" fault NONZERO COUNT-FIELD
    JSON:WRITE-COMMA s" http_status" c MODEL-CALL:HTTP-STATUS @ NONZERO COUNT-FIELD
+   l LEDGER-THROTTLED @ if
+      JSON:WRITE-COMMA s" throttled" true JSON:WRITE-FIELD-BOOL
+   then
    JSON:WRITE-COMMA s" incomplete_reason" c MODEL-CALL:INCOMPLETE-U @ 0<> if
       c CONTENT-BUF HELD c MODEL-CALL:INCOMPLETE-U @ SPAN:TAKE SPAN:$ JSON:WRITE-FIELD-S
    else JSON:WRITE-FIELD-NULL then
@@ -3744,8 +3824,10 @@ ENUM poll none fed spoiled done ;ENUM
    0 l LEDGER-FAULT !
    c RECORD-TEXT-BUF BUF:CLEAR
    0 l LEDGER-TRANSPORT !
+   false l LEDGER-THROTTLED !
    construct tier-step preferred c RECEIPT RECEIPT-TIER !
    construct resend-step sending c RECEIPT RECEIPT-RESEND !
+   0 c RECEIPT RECEIPT-RESENDS !
    l LEDGER-READY @ u 0= and if E-STATE throw then ;
 
 \ Keeps a dispatched request's fault and cut for its record.
@@ -3943,17 +4025,18 @@ private
    code c REPORT+
    LOG:;LINE ;
 
-\ The line of a send that rests, naming the wait in whole seconds rounded up,
-\ so a wait under a second is 1 s: a warning for a fault that clears without a
-\ person (the provider away, a failed transfer, a key store that did not
-\ answer), an error for one a person must fix.
-: REST-REPORT ( n ^call -- )
-   {: code:n c :}
+\ The line of a send that rests ms, naming the rest and which resend follows
+\ it, 1 the first: a warning for a fault that clears without a person (the
+\ provider away, a failed transfer, a key store that did not answer), an
+\ error for one a person must fix.
+: REST-REPORT ( n n ^call -- )
+   {: ms:n code:n c :}
    code E-UNAVAILABLE = code E-TRANSPORT = or code SECRET:E-UNAVAILABLE = or
    if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
    code c REPORT+
    s" ; sent again in " LOG:TEXT+
-   c MODEL-CALL:RESEND-WAIT @ 999 + 1000 / LOG:INT+ s"  s" LOG:TEXT+
+   ms LOG:INT+ s"  ms, resend " LOG:TEXT+
+   c RECEIPT RECEIPT-RESENDS @ LOG:INT+
    LOG:;LINE ;
 
 ENUM record-event kept faulted ;ENUM
@@ -4373,7 +4456,7 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
 ;DEFINE
 
 \ A send's or a replay's receipt: nothing replayed, failed, still to report,
-\ failing its key or ended yet.
+\ failing its key, asked to wait or ended yet.
 : RECEIPT-RESET ( ^call -- )
    {: c :}
    c RECEIPT {: r :}
@@ -4382,6 +4465,7 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
    c OUTCOME-TEXT-BUF BUF:CLEAR
    0 r RECEIPT-REPORT !
    construct key-fault none r RECEIPT-KEY-READ !
+   0 r RECEIPT-RETRY-AFTER !
    OPTION:NONE r RECEIPT-ENDING ! ;
 
 : SEND-BEGUN ( ^call -- )
@@ -4447,7 +4531,7 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
    TASK:HALT-DUE? if construct tier-event halted exit then
    construct tier-event tier-out ;
 
-\ A resend's ledger: nothing dispatched, recorded or failed yet.
+\ A resend's ledger: nothing dispatched, recorded, failed or throttled yet.
 : LEDGER-RESET ( ^call -- )
    {: c :}
    c LEDGER {: l :}
@@ -4455,15 +4539,17 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
    0 l LEDGER-CALL-ID !
    0 l LEDGER-FAULT !
    c RECORD-TEXT-BUF BUF:CLEAR
-   0 l LEDGER-TRANSPORT ! ;
+   0 l LEDGER-TRANSPORT !
+   false l LEDGER-THROTTLED ! ;
 
 \ Ends a call whose send a stop or CANCEL kept from being sent again, its
 \ outcome E-CANCELLED already, stored by the gate hold that decided so
 \ (RESEND-LOCKED, LAND-CANCELLED); a dispatched one is recorded cancelled,
-\ with no status, tier, usage or duration of its own.
+\ with no status, throttle, tier, usage or duration of its own.
 : CANCEL-RECORD ( ^call -- )
    {: c :}
    0 c MODEL-CALL:HTTP-STATUS !
+   false c LEDGER LEDGER-THROTTLED !
    c SERVED-BUF BUF:CLEAR
    c RESET-USAGE
    TIME:MONO-NS c LEDGER LEDGER-STARTED-NS !
@@ -4638,14 +4724,32 @@ private
    c REST-OUT? if construct sent-event outside exit then
    construct sent-event settled ;
 
-\ Writes the send's line, naming the wait, and starts the call again under
+\ The most ms the next rest's random part takes.
+: REST-BOUND ( ^call -- n )
+   {: c :}
+   FIRST-REST-MS c RECEIPT RECEIPT-RESENDS @ DOUBLINGS-MAX min lshift
+   c MODEL-CALL:RESEND-WAIT @ min ;
+
+\ A random ms of 0 to the bound; the bound, a legal rest, when the draw
+\ fails, which entropy.f has logged.
+: JITTER ( n -- n )
+   {: bound:n :}
+   [: ENTROPY:RANDOM ;] catch {: drawn code:n :}
+   code 0= if drawn 1 rshift bound 1+ mod exit then
+   code ENTROPY:E-FILL = if bound exit then
+   code throw ;
+
+\ Writes the send's line, naming the rest, and starts the call again under
 \ its gate with no transfer until it is due.
 : BEGIN-REST ( ^call -- )
    {: c :}
    c RECEIPT {: r :}
+   r RECEIPT-RETRY-AFTER @ RETRY-SECONDS-MAX min 1000 *
+   c REST-BOUND JITTER + {: ms:n :}
+   1 r RECEIPT-RESENDS +!
    r RECEIPT-REPORT @ {: code:n :}
-   code 0<> if 0 r RECEIPT-REPORT ! code c REST-REPORT then
-   TIME:MONO-NS c MODEL-CALL:RESEND-WAIT @ NS-PER-MS * + {: due:n :}
+   code 0<> if 0 r RECEIPT-REPORT ! ms code c REST-REPORT then
+   TIME:MONO-NS ms NS-PER-MS * + {: due:n :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    due r RECEIPT-DUE !
    construct call-state started c MODEL-CALL:STATE !

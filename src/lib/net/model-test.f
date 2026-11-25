@@ -21,6 +21,7 @@ require src/lib/reason.f
 require src/lib/secret.f
 require src/lib/span.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/task.f
 require src/lib/test.f
 require src/lib/test/stderr.f
@@ -165,6 +166,10 @@ variable SENT-U
 32 constant FAILURE-CAP
 create FAILURE FAILURE-CAP allot
 variable FAILURE-U
+\ The Retry-After seconds that response names, none while its length is 0.
+8 constant RETRY-CAP
+create RETRY-AFTER RETRY-CAP allot
+variable RETRY-AFTER-U
 TASK:SEMAPHORE HELD
 \ The handlers share this package's buffers, so one runs at a time
 \ (ALONE); the held stream gives its turn up while it waits.
@@ -613,6 +618,9 @@ $300000 constant BIG-U
 \ OpenAI's error event when its servers are overloaded.
 : OVERLOADED$ ( -- str )
    S\" {\qtype\q:\qerror\q,\qerror\q:{\qtype\q:\qservice_unavailable_error\q,\qcode\q:\qserver_is_overloaded\q,\qheaders\q:{\qx-retry-metadata\q:\qNO_MORE_RETRY\q,\qretry-after\q:\q6\q,\qretry-after-ms\q:\q6000\q},\qmessage\q:\qOur servers are currently overloaded. Please try again later.\q,\qparam\q:null},\qsequence_number\q:2}" ;
+\ A server_is_overloaded event whose retry-after is a number.
+: NUMBER-WAIT$ ( -- str )
+   S\" {\qtype\q:\qerror\q,\qerror\q:{\qtype\q:\qservice_unavailable_error\q,\qcode\q:\qserver_is_overloaded\q,\qheaders\q:{\qretry-after\q:6},\qmessage\q:\qoverloaded\q,\qparam\q:null},\qsequence_number\q:2}" ;
 \ OpenAI's error event when the flex tier has no room for the request.
 : FLEX-OUT$ ( -- str )
    S\" {\qtype\q:\qerror\q,\qerror\q:{\qtype\q:\qresource_unavailable\q,\qcode\q:\qflex_unavailable\q,\qheaders\q:{\qretry-after\q:\q300\q,\qretry-after-ms\q:\q300000\q,\qx-retry-metadata\q:\qNO_MORE_RETRY\q},\qmessage\q:\qFlex processing is temporarily unavailable. Please try again later or use standard processing.\q,\qparam\q:null},\qsequence_number\q:2}" ;
@@ -703,9 +711,13 @@ $300000 constant BIG-U
    t s" failed-other" STR:= if
       response [: s" invalid_prompt" s" bad prompt" FAILED ;] FAILED$ STREAMED exit
    then
+   t s" failed-slow" STR:= if
+      response [: s" slow_down" s" Slow down." FAILED ;] FAILED$ STREAMED exit
+   then
    t s" error-event" STR:= if response FLAT-ERROR$ true BAD-STREAM exit then
    t s" error-nested" STR:= if response NESTED-ERROR$ true BAD-STREAM exit then
    t s" error-overloaded" STR:= if response OVERLOADED$ true BAD-STREAM exit then
+   t s" error-number-wait" STR:= if response NUMBER-WAIT$ true BAD-STREAM exit then
    t s" flex-out" STR:= if response FLEX-OUT$ true BAD-STREAM exit then
    \ flex-out to a request that names a service tier, else valid's reply.
    t s" flex-then" STR:= if
@@ -766,6 +778,11 @@ $300000 constant BIG-U
       response [: S\" {\qerror\q:{\qmessage\q:\qoverloaded\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
+   t s" http-slow" STR:= if
+      response 503 HTTP:STATUS!
+      response [: S\" {\qerror\q:{\qmessage\q:\qSlow down.\q,\qcode\q:\qslow_down\q,\qheaders\q:{\qretry-after\q:\q4\q}}}" JSON:WRITE-RAW ;] HTTP:JSON!
+      exit
+   then
    t s" http-bad" STR:= if
       response 400 HTTP:STATUS!
       response [: S\" {\qerror\q:{\qmessage\q:\qbad request\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
@@ -794,13 +811,16 @@ $300000 constant BIG-U
    response 400 HTTP:STATUS! ;
 
 
-\ Responds to a request, of any route, as the scenario FAIL-NEXT named, once:
-\ true when one was named.
+\ Responds to a request, of any route, as the scenario FAIL-NEXT or FAIL-AFTER
+\ named, once: true when one was named.
 : FAILED-NEXT? ( HTTP:request HTTP:response -- bool )
    {: r:HTTP:request response:HTTP:response :}
    FAILURE-U atomic@ {: u:n :}
    u 0= if false exit then
    0 FAILURE-U atomic!
+   RETRY-AFTER-U @ 0<> if
+      response s" Retry-After" RETRY-AFTER RETRY-AFTER-U @ >str HTTP:HEADER!
+   then
    r response FAILURE u >str REPLY
    true ;
 
@@ -1128,13 +1148,17 @@ EXPORT WIDE-DIMS
 \ one past SENT-CAP fails the test.
 : SENT$ ( -- str ) SENT-U @ dup 0< if FAIL then SENT-BODY swap >str ;
 \ Answers the next chat, count, compaction or OpenAI embedding request as the
-\ chat scenario named, whatever its text, as a provider outage does; the request
-\ after it as its own text says.
-: FAIL-NEXT ( str -- )
-   {: s:str :}
+\ chat scenario named, whatever its text, as a provider outage does, its
+\ Retry-After the seconds' text, none when empty; the request after it as its
+\ own text says.
+: FAIL-AFTER ( str str -- )
+   {: s:str seconds:str :}
    s STR:LEN 0= s STR:LEN FAILURE-CAP > or if FAIL exit then
    s FAILURE FAILURE-CAP SPAN:MAKE SPAN:COPY
+   seconds RETRY-AFTER RETRY-CAP SPAN:MAKE SPAN:COPY
+   seconds STR:LEN RETRY-AFTER-U !
    s STR:LEN FAILURE-U atomic! ;
+: FAIL-NEXT ( str -- ) s" " FAIL-AFTER ;
 \ Waits until the peer has sent the held response's in_progress event.
 : AWAIT-HOLD ( -- ) HELD TAKE ;
 \ Lets the reply flex-gate holds go.
@@ -3206,6 +3230,50 @@ variable MATCHES   \ COUNT-BY's count
    SB-COUNT same before 1 NEW-LINES ;
 
 
+variable REST-LOW    \ the rest REST-LINE? looks for: its ms, at least this,
+variable REST-HIGH   \ at most this,
+variable REST-NTH    \ and the resend it names
+: REST-IS ( n n n -- ) REST-NTH ! REST-HIGH ! REST-LOW ! ;
+
+
+\ The text without its ending, and whether it had that ending.
+: LESS ( str str -- str bool )
+   {: s:str tail:str :}
+   s tail STR:ENDS-WITH? 0= if s false exit then
+   s STR:DATA s STR:LEN tail STR:LEN - >str true ;
+
+
+\ Whether the text is REST-IS's rest: `<ms> ms, resend <nth>`.
+: REST? ( str -- bool )
+   REST-NTH @ FMT:INT$ LESS 0= if drop false exit then
+   s"  ms, resend " LESS 0= if drop false exit then
+   STR:>NUMBER? MATCH option
+      none OF false ENDOF
+      some OF dup REST-LOW @ >= swap REST-HIGH @ <= and ENDOF
+   ;MATCH ;
+
+
+\ Whether a captured line, after its stamp, is the text, "; sent again in "
+\ and REST-IS's rest.
+: REST-LINE? ( str str -- bool )
+   {: line:str want:str :}
+   s" ; sent again in " {: again:str :}
+   DATE:TIME-LEN want STR:LEN + again STR:LEN + {: at:n :}
+   line STR:LEN at < if false exit then
+   line STR:DATA DATE:TIME-LEN + want STR:LEN >str want STR:=
+   line STR:DATA DATE:TIME-LEN + want STR:LEN + again STR:LEN >str again STR:= and
+   line STR:DATA at + line STR:LEN at - >str REST? and ;
+
+
+: REST-COUNT ( -- n ) [: REST-LINE? ;] COUNT-BY ;
+
+
+\ REST-COUNT is one more than `same` and LINES one more than `before`.
+: ONE-REST ( n n -- )
+   {: same:n before:n :}
+   REST-COUNT same before 1 NEW-LINES ;
+
+
 : NOTE$ ( -- str ) s" job 9 assemble" ;
 
 
@@ -3223,21 +3291,28 @@ variable MATCHES   \ COUNT-BY's count
    tail SB-APPEND ;
 
 
-\ Starts M's chat, which the provider answers 503: it is recorded failed and
-\ rests started, SERVE answering false and sending nothing, and the work
-\ task CANCELs it after ms. Answers SB-COUNT and LINES from before the start
-\ and whether the AWAIT's park took the CANCEL's wake.
+\ The last recorded row's send was throttled, or holds no throttled member.
+: THROTTLED ( -- ) s" throttled" ROW JSON:TEXT$ s" true" STR:= ASSERT ;
+: UNTHROTTLED ( -- ) ROW$ JSON:PARSE OBJECT s" throttled" HAS? 0= ASSERT ;
+
+
+\ Starts M's chat, which the provider answers 503 with a minute's Retry-After:
+\ it is recorded failed, not throttled, and rests started, SERVE answering
+\ false and sending nothing, and the work task CANCELs it after ms. Answers
+\ REST-COUNT and LINES from before the start and whether the AWAIT's park took
+\ the CANCEL's wake.
 : CANCELLED-REST ( n -- n n bool )
    WAKE-MS !
-   SB-COUNT LINES
+   REST-COUNT LINES
    DRAIN-HINTS
    RESEND-MARK
-   s" http-busy" MODEL-PEER:FAIL-NEXT
+   s" http-busy" s" 60" MODEL-PEER:FAIL-AFTER
    PURPOSE s" valid" PREP M MODEL:START
    SERVE-TO-REST
    SENDS-SINCE 1 = ASSERT
    ROWS-SINCE 1 = ASSERT
    s" outcome" ROW s" failed" STR-IS
+   UNTHROTTLED
    M MODEL:RESEND-DUE {: due:n :}
    M MODEL:SERVE 0= ASSERT
    M MODEL:RESEND-DUE due = ASSERT
@@ -3247,39 +3322,39 @@ variable MATCHES   \ COUNT-BY's count
 
 
 \ With RESEND-WAIT! a chat the provider answers 503 is recorded failed, its
-\ one line names the note and the wait, and it rests started: SERVE answers
+\ one line names the note and the rest, and it rests started: SERVE answers
 \ false and sends nothing until it is due, and a CANCEL from another task
 \ wakes the AWAIT parked on it, which ends at once with a cancelled record
 \ and no line. A CANCEL before the park leaves its wake pending on the
 \ starter, so the case cancels later until the park takes the wake.
 : RESTS-CANCELLED ( -- )
    60000 M MODEL:RESEND-WAIT!
-   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded; sent again in 60 s"
-   NOTED
+   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded" NOTED
+   60000 61000 1 REST-IS
    [: CANCELLED-REST ;] WAKE-TRIES {: same:n before:n :}
    SENDS-SINCE 1 = ASSERT
    ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
    M MODEL:RESEND-DUE 0= ASSERT
-   same before ONE-LINE ;
+   same before ONE-REST ;
 
 
-\ With a 1 s wait, whose line names 1 s, an AWAIT entered before the due
+\ With a 1 s wait and a Retry-After of 1 s, an AWAIT entered before the due
 \ time waits for it: the resend's journal lookup, which comes before its
 \ dispatch, runs at or after it. AWAIT gives the reply to the same body, its
 \ flex tier included, looked up and put under the same journal input.
 : RESTS-AWAITED ( -- )
    s" flex" M MODEL:SERVICE-TIER!
    1000 M MODEL:RESEND-WAIT!
-   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded; sent again in 1 s"
-   NOTED
-   SB-COUNT LINES {: same:n before:n :}
+   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded" NOTED
+   1000 2000 1 REST-IS
+   REST-COUNT LINES {: same:n before:n :}
    RESEND-MARK
-   s" http-busy" MODEL-PEER:FAIL-NEXT
+   s" http-busy" s" 1" MODEL-PEER:FAIL-AFTER
    PURPOSE s" valid" ASK
    M MODEL:START
    SERVE-TO-REST
-   same before ONE-LINE
+   same before ONE-REST
    GOT$ ASKED$ STR:= ASSERT
    KEEP-SENT
    0 GOT-U ! 0 GOT-NS ! 0 JOURNAL-INPUT-U !
@@ -3295,7 +3370,7 @@ variable MATCHES   \ COUNT-BY's count
    SENT-AGAIN
    GOT$ ASKED$ STR:= ASSERT
    INPUT$ ASKED$ STR:= ASSERT
-   same before ONE-LINE
+   same before ONE-REST
    s" " M MODEL:SERVICE-TIER! ;
 
 
@@ -3378,9 +3453,9 @@ variable LANDED-CANCELLED   \ CANCEL-ROW's CANCEL answer
 
 \ With RESEND-WAIT! a send whose key read the store refuses sends nothing and
 \ rests: its one line names the note, the key's service, account and reason
-\ and the wait. Sent again when due and refused the same way, it writes one
-\ more such line and no failure line; once the store answers, the resend is
-\ served.
+\ and the rest. Sent again when due and refused the same way, it writes one
+\ more such line, of the next resend, and no failure line; once the store
+\ answers, the resend is served.
 : KEY-RESTS ( -- )
    TEST-RECORDER
    1 M MODEL:RESEND-WAIT!
@@ -3389,19 +3464,20 @@ variable LANDED-CANCELLED   \ CANCEL-ROW's CANCEL answer
    KEY$ STORE
    s" warn" s" SECRET:E-UNAVAILABLE key service " NOTED
    SERVICE$ SB-APPEND s" , account " SB-APPEND ACCOUNT$ SB-APPEND
-   s" : store unavailable; sent again in 1 s" SB-APPEND
-   SB-COUNT LINES {: same:n before:n :}
+   s" : store unavailable" SB-APPEND
+   0 1 2 REST-IS REST-COUNT {: again:n :}
+   0 1 1 REST-IS REST-COUNT LINES {: same:n before:n :}
    SECRET:E-UNAVAILABLE READ-FAULT!
    RESEND-MARK
    PURPOSE s" valid" PREP M MODEL:START
    M MODEL:RESEND-DUE {: due:n :}
    due 0<> ASSERT
-   same before ONE-LINE
+   same before ONE-REST
    begin mono-ns due < while 1 >MS TASK:SLEEP repeat
    M MODEL:SERVE 0= ASSERT
    M MODEL:RESEND-DUE {: next:n :}
    next 0<> next due <> and ASSERT
-   SB-COUNT same before 2 NEW-LINES
+   0 1 2 REST-IS again before 1+ ONE-REST
    SENDS-SINCE 0= ASSERT
    ROWS-SINCE 0= ASSERT
    0 READ-FAULT!
@@ -3688,22 +3764,21 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 
 \ Starts M's chat with a 60 s RESEND-WAIT!. It rests on its first send, with
-\ `sends` requests since RESEND-MARK and one line, SB's text then the wait;
+\ `sends` requests since RESEND-MARK and one line, SB's text then the rest;
 \ a CANCEL then lands it E-CANCELLED with no more lines.
 : RESTS-ON ( n -- )
    {: sends:n :}
-   s" ; sent again in 60 s" SB-APPEND
-   SB-COUNT LINES {: same:n before:n :}
+   0 1000 1 REST-IS
+   REST-COUNT LINES {: same:n before:n :}
    RESEND-MARK
    PURPOSE s" valid" PREP M MODEL:START
-   SERVE-SETTLED 0= ASSERT
-   M MODEL:RESEND-DUE 0<> ASSERT
+   SERVE-TO-REST
    SENDS-SINCE sends = ASSERT
-   same before ONE-LINE
+   same before ONE-REST
    M MODEL:CANCEL ASSERT
    M MODEL:SERVE ASSERT
    AWAIT-CODE MODEL:E-CANCELLED = ASSERT
-   same before ONE-LINE ;
+   same before ONE-REST ;
 
 
 \ Starts M's chat of the text with a 60 s RESEND-WAIT!. Its one send lands
@@ -3801,15 +3876,15 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 
 \ With RESEND-WAIT! a resend the provider answers 503 again rests again:
-\ each failed send writes its one rest line and no failure line, and the
-\ third send is served.
+\ each failed send writes its one rest line, naming its resend, and no failure
+\ line, and the third send is served.
 : RESTS-AGAIN ( -- )
    0 [: BUSY-ROW ;] [: TEST-REJECT ;] M MODEL:RECORDER!
    1 M MODEL:RESEND-WAIT!
    NOTE$ M MODEL:LOG-NOTE!
-   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded; sent again in 1 s"
-   NOTED
-   SB-COUNT LINES {: same:n before:n :}
+   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded" NOTED
+   0 1 2 REST-IS REST-COUNT {: again:n :}
+   0 1 1 REST-IS REST-COUNT LINES {: same:n before:n :}
    RESEND-MARK
    s" http-busy" MODEL-PEER:FAIL-NEXT
    PURPOSE s" valid" PREP M MODEL:START
@@ -3818,10 +3893,126 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    SENDS-SINCE 3 = ASSERT
    ROWS-SINCE 3 = ASSERT
    s" outcome" ROW s" ok" STR-IS
-   SB-COUNT same before 2 NEW-LINES
+   REST-COUNT same 1+ = ASSERT
+   0 1 2 REST-IS again before 1+ ONE-REST
    TEST-RECORDER
    0 M MODEL:RESEND-WAIT!
    s" " M MODEL:LOG-NOTE! ;
+
+
+\ Starts M's chat, which the peer answers once as the scenario with the
+\ Retry-After, and serves it until it rests with a line of the note and
+\ REST-IS's rest; answers mono-ns before the start and RESEND-DUE.
+: RESTED ( str str -- n n )
+   {: s:str seconds:str :}
+   NOTE$ M MODEL:LOG-NOTE!
+   60000 M MODEL:RESEND-WAIT!
+   s" warn" s" MODEL:E-UNAVAILABLE status 429: rate limit" NOTED
+   REST-COUNT LINES {: same:n before:n :}
+   RESEND-MARK
+   s seconds MODEL-PEER:FAIL-AFTER
+   mono-ns
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-TO-REST
+   M MODEL:RESEND-DUE
+   same before ONE-REST ;
+
+
+\ CANCELs the resting M, which lands E-CANCELLED with one send since
+\ RESEND-MARK, its cancelled row not throttled.
+: REST-CUT ( -- )
+   M MODEL:CANCEL ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   SENDS-SINCE 1 = ASSERT
+   s" outcome" ROW s" cancelled" STR-IS
+   UNTHROTTLED
+   0 M MODEL:RESEND-WAIT!
+   s" " M MODEL:LOG-NOTE! ;
+
+
+\ A 429 with the Retry-After rests ms to a second more, and its row is
+\ throttled.
+: RETRY-RESTS ( str n -- )
+   {: seconds:str ms:n :}
+   ms ms 1000 + 1 REST-IS
+   s" http-error" seconds RESTED {: t0:n due:n :}
+   due t0 - ms 1000000 * >= ASSERT
+   due mono-ns - ms 1000 + 1000000 * <= ASSERT
+   THROTTLED
+   REST-CUT ;
+
+
+\ A Retry-After is rested whole, but past 15 minutes as 15 minutes.
+: RETRY-AFTER-REST ( -- )
+   s" 2" 2000 RETRY-RESTS
+   s" 9999999" 900000 RETRY-RESTS ;
+
+
+\ Starts M's chat, which the peer answers once as the scenario with the
+\ Retry-After; it rests E-UNAVAILABLE, ms to a second more.
+: RESTS-FROM ( str str n -- )
+   {: s:str seconds:str ms:n :}
+   NOTE$ M MODEL:LOG-NOTE!
+   60000 M MODEL:RESEND-WAIT!
+   RESEND-MARK
+   s seconds MODEL-PEER:FAIL-AFTER
+   mono-ns {: t0:n :}
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-TO-REST
+   M MODEL:RESEND-DUE {: due:n :}
+   due t0 - ms 1000000 * >= ASSERT
+   due mono-ns - ms 1000 + 1000000 * <= ASSERT
+   s" fault" ROW MODEL:E-UNAVAILABLE INT-IS ;
+
+
+\ RESTS-FROM, its row not throttled.
+: EVENT-RESTS ( str str n -- ) RESTS-FROM UNTHROTTLED REST-CUT ;
+
+
+\ An overloaded event whose headers ask 6 s rests that, or the HTTP header's
+\ Retry-After when that is longer; a retry-after that is a number asks none.
+: EVENT-REST ( -- )
+   s" error-overloaded" s" " 6000 EVENT-RESTS
+   s" error-overloaded" s" 8" 8000 EVENT-RESTS
+   s" error-number-wait" s" " 0 EVENT-RESTS ;
+
+
+\ A 503 whose body's error is coded slow_down rests the wait its headers ask,
+\ and its row is throttled.
+: SLOW-BODY ( -- )
+   s" http-slow" s" " 4000 RESTS-FROM
+   THROTTLED
+   REST-CUT ;
+
+
+\ A 429 with no Retry-After rests at most 1 s first.
+: FIRST-REST ( -- )
+   0 1000 1 REST-IS
+   s" http-error" s" " RESTED {: t0:n due:n :}
+   due mono-ns - 1000 1000000 * <= ASSERT
+   THROTTLED
+   REST-CUT ;
+
+
+\ A failed response coded slow_down rests, its row throttled, and is sent
+\ again; the served resend's row is not.
+: SLOW-DOWN ( -- )
+   1 M MODEL:RESEND-WAIT!
+   RESEND-MARK
+   s" failed-slow" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-TO-REST
+   ROWS-SINCE 1 = ASSERT
+   s" outcome" ROW s" failed" STR-IS
+   s" http_status" ROW 200 INT-IS
+   THROTTLED
+   AWAIT-CODE 0= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" ok" STR-IS
+   UNTHROTTLED
+   0 M MODEL:RESEND-WAIT! ;
 
 
 \ Stops M from another task WAKE-MS after it starts.
@@ -3833,19 +4024,19 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 
 \ Opens M again, as the stop stays with the call, and starts its chat, which
-\ rests on a 503; the work task REQUEST-STOPs it after ms. Answers SB-COUNT
-\ and LINES from before the start and whether the AWAIT's park took the
-\ stop's wake.
+\ rests on a 503 with a minute's Retry-After; the work task REQUEST-STOPs it
+\ after ms. Answers REST-COUNT and LINES from before the start and whether the
+\ AWAIT's park took the stop's wake.
 : STOPPED-REST ( n -- n n bool )
    WAKE-MS !
    M MODEL:CLOSE SETUP
    TEST-RECORDER
    60000 M MODEL:RESEND-WAIT!
    NOTE$ M MODEL:LOG-NOTE!
-   SB-COUNT LINES
+   REST-COUNT LINES
    DRAIN-HINTS
    RESEND-MARK
-   s" http-busy" MODEL-PEER:FAIL-NEXT
+   s" http-busy" s" 60" MODEL-PEER:FAIL-AFTER
    PURPOSE s" valid" PREP M MODEL:START
    SERVE-TO-REST
    ['] STOP-WORK-LATER WORK-TASK TASK:ACTIVATE
@@ -3858,13 +4049,13 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 \ before the park leaves its wake pending on the starter, so the case stops
 \ later until the park takes the wake.
 : STOP-REST ( -- )
-   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded; sent again in 60 s"
-   NOTED
+   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded" NOTED
+   60000 61000 1 REST-IS
    [: STOPPED-REST ;] WAKE-TRIES {: same:n before:n :}
    SENDS-SINCE 1 = ASSERT
    ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
-   same before ONE-LINE ;
+   same before ONE-REST ;
 
 
 \ With TIER-RESEND! on, a CANCEL of a send that landed E-TIER at the flex
@@ -3901,9 +4092,9 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    1 M MODEL:RESEND-WAIT!
    NOTE$ M MODEL:LOG-NOTE!
    0 [: BUSY-ROW ;] [: TEST-REJECT ;] M MODEL:RECORDER!
-   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded; sent again in 1 s"
-   NOTED
-   SB-COUNT LINES {: same:n before:n :}
+   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded" NOTED
+   0 1 1 REST-IS
+   REST-COUNT LINES {: same:n before:n :}
    RESEND-MARK
    PURPOSE s" flex-then" PREP M MODEL:START
    AWAIT-CODE 0= ASSERT
@@ -3914,7 +4105,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" requested_tier" ROW NULL-IS
    NO-TIER
    LINES before 2 + = ASSERT
-   SB-COUNT same 1+ = ASSERT
+   REST-COUNT same 1+ = ASSERT
    TEST-RECORDER
    0 M MODEL:RESEND-WAIT!
    s" " M MODEL:LOG-NOTE!
@@ -4791,7 +4982,8 @@ variable COUNTED-U
    RECORDED-RESEND RESTS LANDED-CANCEL KEY-RESTS
    CUT-REST HALT-AT-DUE CANCELLED-TWICE
    LOOKUP-FAULT PUT-FAULT CUT-KEY PROVIDER-KEY
-   WHAT-RESTS UNRECORDED-REST RESTS-AGAIN STOP-REST
+   WHAT-RESTS UNRECORDED-REST RESTS-AGAIN RETRY-AFTER-REST EVENT-REST SLOW-BODY
+   FIRST-REST SLOW-DOWN STOP-REST
    M MODEL:CLOSE
    SETUP ITEM-TURNS ITEM-ORDER ITEMS-ONLY ITEM-REFUSALS PINNED
    M MODEL:CLOSE

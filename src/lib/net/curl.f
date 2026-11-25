@@ -129,6 +129,7 @@ private
 30000 constant OPT-OFF                    \ CURLOPTTYPE_OFF_T
 $100000 constant INFO-STRING              \ CURLINFO_STRING
 $200000 constant INFO-LONG                \ CURLINFO_LONG
+$600000 constant INFO-OFF                 \ CURLINFO_OFF_T
 
 OPT-OBJECT 1 + constant OPT-WRITE-DATA    \ CURLOPT_WRITEDATA
 OPT-FUNCTION 11 + constant OPT-WRITE-FUNCTION  \ CURLOPT_WRITEFUNCTION
@@ -157,6 +158,7 @@ OPT-LONG 182 + constant OPT-REDIR-PROTO   \ CURLOPT_REDIR_PROTOCOLS
 OPT-OFF 146 + constant OPT-MAX-RECV       \ CURLOPT_MAX_RECV_SPEED_LARGE
 INFO-LONG 2 + constant INFO-STATUS        \ CURLINFO_RESPONSE_CODE
 INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
+INFO-OFF 57 + constant INFO-RETRY         \ CURLINFO_RETRY_AFTER
 
 3 constant GLOBAL-DEFAULT                 \ CURL_GLOBAL_DEFAULT
 0 constant CURLE-OK
@@ -2145,6 +2147,18 @@ public
    CURL-LOCK TASK:GET
    [: easy v LOCKED-HEADERS ;]
    [: CURL-LOCK TASK:RELEASE ;] finally ;
+
+
+\ The seconds an idle handle's last reply asked in Retry-After to wait, 0 for
+\ none: libcurl turns an HTTP date into the seconds until it, below 0 for one
+\ past. A handle in flight, which the loop drives, is E-STATE.
+: RETRY-AFTER ( handle -- n )
+   {: subject:handle :}
+   subject HANDLE-CELL {: easy:n :}
+   easy HANDLE-BUSY? if E-STATE throw then
+   INFO-CELL CELL-CLEAR
+   easy INFO-RETRY INFO-CELL GETINFO-CELL CURLE-OK <> if E-RESULT throw then
+   INFO-CELL LE:U64@ 0 max ;
 
 
 private
