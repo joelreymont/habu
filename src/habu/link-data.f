@@ -4,7 +4,7 @@ split-str
 \ after the routine band. A Mach-O image holds the copy as its non-zero cell
 \ runs, then the DATA list, the offset from DATA-VA of every cell holding a
 \ code address, which start-up adds the load offset to. An ELF image never
-\ moves: it holds a table of the copy's runs of PROT-PAGE-MAX pages that hold a
+\ moves: it holds a table of the copy's runs of ELF:PAGE-BYTES pages that hold a
 \ non-zero cell, whose bytes the writer's carrier load holds, and an empty
 \ list. The link also writes the header cells HEADER-CELLS names, and a Mach-O
 \ image lists the code ones. An engine's link adds the records: the target
@@ -413,9 +413,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 : CARRIER$ ( -- str ) 0 CARRIER CARRIER-N @ ;
 
-\ The copy in PROT-PAGE-MAX pages, the last one zero past the copy's end: the
-\ boot moves whole pages, and one image runs on every supported page size.
-: PAGE-CELLS ( -- n ) PROT-PAGE-MAX CELL / ;
+\ The copy in pages, the last one zero past the copy's end: the boot moves whole
+\ pages, and one image runs on every page size its machine's kernels have.
+: PAGE-BYTES ( -- n ) NATIVE:X64? ELF:PAGE-BYTES ;
+: PAGE-CELLS ( -- n ) PAGE-BYTES CELL / ;
 : PAGES ( -- n ) COPY-N PAGE-CELLS 1- + PAGE-CELLS / ;
 
 \ Whether page p holds a non-zero cell.
@@ -434,22 +435,22 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ Page p's bytes appended to the carrier.
 : CARRY-PAGE ( n -- )
-   PROT-PAGE-MAX * {: from:n :}
+   PAGE-BYTES * {: from:n :}
    CARRIER-N @ {: at:n :}
-   at PROT-PAGE-MAX + CARRIER-RESERVE
-   COPY-N CELL * from - PROT-PAGE-MAX min {: u:n :}
+   at PAGE-BYTES + CARRIER-RESERVE
+   COPY-N CELL * from - PAGE-BYTES min {: u:n :}
    from COPY-AT  at CARRIER  u BYTE-COPY
-   PROT-PAGE-MAX u ?do 0 at i + CARRIER c! loop
-   PROT-PAGE-MAX CARRIER-N +! ;
+   PAGE-BYTES u ?do 0 at i + CARRIER c! loop
+   PAGE-BYTES CARRIER-N +! ;
 
 : PAGE-RUN, ( n n -- )
    {: first:n end:n :}
-   first PROT-PAGE-MAX * NATIVE:U64,
-   end first - PROT-PAGE-MAX * NATIVE:U64,
+   first PAGE-BYTES * NATIVE:U64,
+   end first - PAGE-BYTES * NATIVE:U64,
    end first ?do i CARRY-PAGE loop ;
 
 \ An ELF image's copy as a table of runs [off u64][bytes u64], both multiples
-\ of PROT-PAGE-MAX, each a maximal run of pages holding a non-zero cell; the
+\ of PAGE-BYTES, each a maximal run of pages holding a non-zero cell; the
 \ pages go to CARRIER, and a page of zero cells is not carried.
 : PAGE-RUNS, ( -- )
    0 CARRIER-N !

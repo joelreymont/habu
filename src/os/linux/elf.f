@@ -1,7 +1,7 @@
 split-str
 \ elf.f - the ELF writer for Linux arm64 and x86-64. The kernel object
 \ supplies the libc names its GOT binds.
-\ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
+\ Every PT_LOAD sits on a PAGE-BYTES boundary so the text and the read-write
 \ tail never share a kernel page on any supported page size.
 \
 \ The code region is a PT_LOAD of REGION bytes at the image's base plus
@@ -12,7 +12,7 @@ split-str
 \ The carrier is a read-write PT_LOAD at the image's base plus CARRIER-OFF,
 \ past the code region and below DATA-VA, that holds DATA's initial pages for
 \ the boot to move into the window. Its bytes end the file, from the
-\ PROT-PAGE-MAX boundary after the read-write tail.
+\ PAGE-BYTES boundary after the read-write tail.
 \
 \ OPEN reads the extents of such an executable: the ELF header, its six
 \ program headers (the text's PT_LOAD, the read-write tail's PT_LOAD, PT_INTERP,
@@ -87,6 +87,10 @@ $401 constant ELF-R-AARCH64-GLOB-DAT
 ELF-DYNAMIC-SZ constant ELF-GOT-OFF
 
 public
+\ The bytes a load and a carried page of DATA are multiples of: the base page of
+\ an x86-64 kernel, the largest one of an ARM64 kernel.
+: PAGE-BYTES ( bool -- n ) if $1000 else PROT-PAGE-MAX then ;
+
 \ The libc symbols the loader binds into the GOT of the tree's kernel, in slot
 \ order, by C name; the kernel object carries them to the link.
 : IMPORT$ ( n -- str )
@@ -134,7 +138,8 @@ PTR-VARIABLE CARRIER-A
 variable CARRIER-N
 
 : ELF-PAGE-UP ( n -- n )
-   PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
+   X64 @ PAGE-BYTES {: page:n :}
+   page 1- + page negate and ;
 
 : ASM-CODELEN! ( -- )
    ASM-LEN CODELEN ! CODE TEXT ! ;
@@ -190,10 +195,10 @@ private
    align IMG-M64 ;
 
 : ELF-RX-PHDR, ( -- )
-   PT-LOAD PF-RX 0 VMBASE @ ELF-TEXT-SIZE @ dup PROT-PAGE-MAX ELF-PHDR, ;
+   PT-LOAD PF-RX 0 VMBASE @ ELF-TEXT-SIZE @ dup X64 @ PAGE-BYTES ELF-PHDR, ;
 
 : ELF-RW-PHDR, ( -- )
-   PT-LOAD PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-RW-SZ dup PROT-PAGE-MAX
+   PT-LOAD PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-RW-SZ dup X64 @ PAGE-BYTES
    ELF-PHDR, ;
 
 : ELF-INTERP-PHDR, ( -- )
@@ -204,11 +209,11 @@ private
    PT-DYNAMIC PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-DYNAMIC-SZ dup 8 ELF-PHDR, ;
 
 : ELF-REGION-PHDR, ( -- )
-   PT-LOAD PF-RW 0 REGION-OFF ELF-VA 0 REGION PROT-PAGE-MAX ELF-PHDR, ;
+   PT-LOAD PF-RW 0 REGION-OFF ELF-VA 0 REGION X64 @ PAGE-BYTES ELF-PHDR, ;
 
 : ELF-CARRIER-PHDR, ( -- )
    PT-LOAD PF-RW ELF-CARRIER-AT CARRIER-OFF ELF-VA CARRIER-N @ dup
-   PROT-PAGE-MAX ELF-PHDR, ;
+   X64 @ PAGE-BYTES ELF-PHDR, ;
 
 \ The loads ascend by address: text, read-write tail, code region, carrier.
 : ELF-PHDRS, ( -- )

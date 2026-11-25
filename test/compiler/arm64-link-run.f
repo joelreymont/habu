@@ -93,7 +93,7 @@ create PROG-BUF PATH-CAP allot
 
 \ The text load's size, the header field at IMAGE-TEXT-SIZE-OFF. An ELF file
 \ is larger: past the text come the read-write load, the pad to the next
-\ PROT-PAGE-MAX boundary and the carrier's DATA pages.
+\ page boundary and the carrier's DATA pages.
 : SMALLER ( str -- )
    {: file:str :}
    file PROG$ IMAGE-TEXT-SIZE-OFF TEXT-LOAD 8 FS:READ-AT
