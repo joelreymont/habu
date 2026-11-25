@@ -138,7 +138,7 @@ create FFI-T-SR-BUF 64 allot
    2.5 600 FFI-T-SR-DST FFI-T-TIME24-SECONDS
    1500 600 1 0 FFI-T-SR-TIME24
 
-   s" malformed struct-result declarations are refused" T-LABEL
+   s" malformed struct-result declarations are rejected" T-LABEL
    [: FFI-T-SR-ZERO ;]
    s" error[E-FFI-SYNTAX]: STRUCT-RESULT's byte count is not positive" FFI-T-RECORD
    [: FFI-T-SR-OUTPUT ;]

@@ -121,9 +121,9 @@ public
 \ is `expected <e>, found <f>; <fix>`, or `<argument> L:C: …` for JSON or base64.
 -9700 s" a setter, builder or key spec was given an invalid argument, or the provider answered 404 for an unknown model"
    ERROR:CODE E-CONFIG
--9701 s" the provider refused the key with 401 or 403, or the key item is missing, empty or not printable"
+-9701 s" the provider rejected the key with 401 or 403, or the key item is missing, empty or not printable"
    ERROR:CODE E-KEY
--9702 s" the provider refused the request for its size, or INPUT+ was given an input past INPUT-MAX"
+-9702 s" the provider rejected the request for its size, or INPUT+ was given an input past INPUT-MAX"
    ERROR:CODE E-CAPACITY
 -9703 s" the transfer failed, stalled, or its stream ended before the response did, and the provider may still finish and bill the response"
    ERROR:CODE E-TRANSPORT
@@ -256,14 +256,14 @@ STRUCTURE stream DERIVE addr
 CAST: >STREAM ( ^u8 -- ^stream )
 
 \ The land machine's steps: settling ends the call's transfer and lands it;
-\ recording runs the recorder; serving and refusing run it, then the put.
-ENUM land-step settling recording serving refusing landed ;ENUM
+\ recording runs the recorder; serving and rejecting run it, then the put.
+ENUM land-step settling recording serving rejecting landed ;ENUM
 \ How a run ended: cut by a CANCEL, alone or after an unsent or a sent
-\ send's failure; or replayed, replay-failed, served, unsent, refused or
+\ send's failure; or replayed, replay-failed, served, unsent, rejected or
 \ failed.
 ENUM ending
    cut cut-unsent cut-failed
-   replayed replay-failed served unsent refused failed
+   replayed replay-failed served unsent rejected failed
 ;ENUM
 \ The tier machine's states: preferred sends the call's tier; resuming begins
 \ the call again after a send that ended E-TIER; standard sends none; done
@@ -276,19 +276,19 @@ ENUM tier-event settled tier-out halted ;ENUM
 \ send RESENDS? accepts waits its rest out; resuming, a due rest's
 \ resend begins; done sends no more.
 \ A landed send is settled, outside the work or stopped; a rest is early, due
-\ or stopped. A landed call's next send is begun, refused by a stop or CANCEL,
+\ or stopped. A landed call's next send is begun, rejected by a stop or CANCEL,
 \ or faulted.
 ENUM resend-step sending begun resting resuming done ;ENUM
 ENUM sent-event settled outside stopped ;ENUM
 ENUM rest-event early due stopped ;ENUM
-ENUM begin-event begun refused faulted ;ENUM
+ENUM begin-event begun rejected faulted ;ENUM
 \ How the send's key failed: none when it did not; the item missing, empty
 \ or not printable (E-KEY); the store's access denied (SECRET:E-ACCESS), the
 \ store not answering for now (SECRET:E-UNAVAILABLE), or no store set up or
-\ the service or account invalid (SECRET:E-CONFIG); or the provider refused
+\ the service or account invalid (SECRET:E-CONFIG); or the provider rejected
 \ the key it was sent (E-KEY).
 ENUM key-fault
-   none missing empty unprintable denied unavailable config refused
+   none missing empty unprintable denied unavailable config rejected
 ;ENUM
 
 \ END-TRANSFER's status, code, spoiling fault and cut; outcome, the fault it
@@ -1272,7 +1272,7 @@ public
    else s s" CACHE-KEY!'s key" c CACHE-KEY-BUF REPLACE-SOME then ;
 
 \ The most output tokens, reasoning included, of each later chat request alone,
-\ 0 none; a chat's journal input names it, so a refusal replays only under it.
+\ 0 none; a chat's journal input names it, so a rejection replays only under it.
 : MAX-OUTPUT! ( n ^call -- )
    {: n:n c :}
    c UNPREPARE drop
@@ -1477,7 +1477,7 @@ public
 
 \ Reads service's model and base-url items into the closed settings s.
 \ An open s is E-STATE. An empty service, a missing or empty model item, or a
-\ non-empty base-url item BASE-URL! refuses is E-CONFIG; SECRET:E-CONFIG,
+\ non-empty base-url item BASE-URL! rejects is E-CONFIG; SECRET:E-CONFIG,
 \ SECRET:E-ACCESS and SECRET:E-UNAVAILABLE pass through. A failed open
 \ leaves s closed.
 : SETTINGS-OPEN ( str ^settings -- )
@@ -2217,16 +2217,16 @@ private
 : KEY-FAULT! ( key-fault ^call -- ) RECEIPT RECEIPT-KEY-READ ! ;
 
 \ Keeps how the key read failed and throws E-KEY.
-: KEY-REFUSE ( key-fault ^call -- ) KEY-FAULT! E-KEY throw ;
+: KEY-REJECT ( key-fault ^call -- ) KEY-FAULT! E-KEY throw ;
 
 \ A key is one or more bytes from ! to ~.
 : KEY-CHECK ( str ^call -- )
    {: s:str c :}
-   s STR:LEN 0= if construct key-fault empty c KEY-REFUSE then
+   s STR:LEN 0= if construct key-fault empty c KEY-REJECT then
    s STR:LEN 0 ?do
       s STR:DATA i + c@ {: b:n :}
       b 33 < b 126 > or if
-         construct key-fault unprintable c KEY-REFUSE
+         construct key-fault unprintable c KEY-REJECT
       then
    loop ;
 
@@ -2240,11 +2240,11 @@ private
    c KEY-LINE-BUF {: line:^ :}
    spec STR:DATA su >str spec STR:DATA su + spec STR:LEN su - >str
    line SECRET:READ
-   0= if construct key-fault missing c KEY-REFUSE then
+   0= if construct key-fault missing c KEY-REJECT then
    line VEC:SPAN KEY-PREFIX$ STR:LEN SPAN:SKIP SPAN:$ c KEY-CHECK ;
 
 
-\ How the store's refusal failed the key read; none for another fault.
+\ How the store's rejection failed the key read; none for another fault.
 : STORE-FAULT ( n -- key-fault )
    {: code:n :}
    code SECRET:E-ACCESS = if construct key-fault denied exit then
@@ -2362,8 +2362,8 @@ private
       some OF test execute ENDOF
    ;MATCH ;
 
-\ Whether OpenAI's error object names a refusal for size: by its code, or by
-\ its message, as an embeddings refusal with a null code does.
+\ Whether OpenAI's error object names a rejection for size: by its code, or by
+\ its message, as an embeddings rejection with a null code does.
 : OPENAI-SIZE? ( JSON:value -- bool )
    {: v :}
    v s" code" JSON:FIND [: SIZE-CODE? ;] FOUND?
@@ -2469,9 +2469,9 @@ private
    v JSON:OBJECT? 0= if false exit then
    v s" error" JSON:FIND [: SIZE-ERROR? ;] FOUND? ;
 
-\ Whether a failed reply refuses the request for its size: HTTP 413, or a 400
-\ whose body names the refusal.
-: SIZE-REFUSAL? ( option<JSON:value> ^call -- bool )
+\ Whether a failed reply rejects the request for its size: HTTP 413, or a 400
+\ whose body names the rejection.
+: SIZE-REJECTION? ( option<JSON:value> ^call -- bool )
    {: body c :}
    c MODEL-CALL:HTTP-STATUS @ 413 = if true exit then
    c MODEL-CALL:HTTP-STATUS @ 400 <> if false exit then
@@ -2486,7 +2486,7 @@ private
    c ;
 
 
-\ The fault a refused reply's status names when its body names no refusal for
+\ The fault a rejected reply's status names when its body names no rejection for
 \ size.
 : STATUS-FAULT ( CURL:http-status -- n )
    {: status:CURL:http-status :}
@@ -2516,14 +2516,14 @@ private
    s" pass GENERATION-MODEL! or PURPOSE-MODEL! a model the provider serves: it answered status 404"
    CONFIG-REJECT ;
 
-\ Throws the fault of a refused reply's status; a key the provider refused
+\ Throws the fault of a rejected reply's status; a key the provider rejected
 \ keeps that it did, and a send answered 429 that it was throttled.
 : STATUS-THROW ( CURL:http-status ^call -- )
    {: status:CURL:http-status c :}
    status CURL:HTTP-STATUS>N 429 = if c THROTTLED! then
    status STATUS-FAULT {: fault:n :}
    fault E-KEY = c KEYED? and if
-      construct key-fault refused c KEY-FAULT!
+      construct key-fault rejected c KEY-FAULT!
    then
    fault E-CONFIG = if c UNKNOWN-MODEL then
    fault throw ;
@@ -2536,7 +2536,7 @@ private
    ;MATCH ;
 
 \ Keeps the transfer's status, reply and Retry-After, read before the handle
-\ is cleaned up; throws the fault of a cut or failed exchange or a refused
+\ is cleaned up; throws the fault of a cut or failed exchange or a rejected
 \ reply.
 : RECEIPT-CHECK ( ^call -- ^call )
    {: c :}
@@ -2553,7 +2553,7 @@ private
    status CURL:HTTP-STATUS>N 200 <> if
       c FAILED-BODY {: body :}
       body c KEEP-ERROR
-      body c SIZE-REFUSAL? if E-CAPACITY throw then
+      body c SIZE-REJECTION? if E-CAPACITY throw then
       status c STATUS-THROW
    then
    c ;
@@ -2642,7 +2642,7 @@ private
    v s" output" ARRAY-MEMBER [: c READ-ITEM ;] JSON:EACH
    c MODEL-CALL:CONTENT-SEEN @ 0= if E-RESPONSE throw then ;
 
-\ A message in a tools reply: E-REFUSED if a part refuses, else E-RESPONSE.
+\ A message in a tools reply: E-REFUSED if a part is a refusal, else E-RESPONSE.
 : TOOL-MESSAGE ( JSON:value -- )
    s" content" ARRAY-MEMBER
    [: TYPE-OF s" refusal" JSON:STRING= if E-REFUSED throw then ;]
@@ -3222,7 +3222,7 @@ private
 
 
 \ The chunk is the reply until the first event, so a 200 that is no event
-\ stream is, and so is one whose event the decoder refuses as not UTF-8.
+\ stream is, and so is one whose event the decoder rejects as not UTF-8.
 : FEED-CHUNK ( SSE:decoder ^call -- )
    {: d:SSE:decoder c :}
    c STREAM {: s :}
@@ -3565,9 +3565,9 @@ ENUM poll none fed spoiled done ;ENUM
      ENDOF
    ;MATCH ;
 
-\ The fault a journaled refusal records, 0 for a reply.
-: JOURNAL-REFUSAL-FAULT ( JSON:value -- n )
-   s" refusal" JSON:FIND MATCH option
+\ The fault a journaled rejection records, 0 for a reply.
+: JOURNAL-REJECTION-FAULT ( JSON:value -- n )
+   s" rejection" JSON:FIND MATCH option
      none OF 0 ENDOF
      some OF {: r :}
         r JSON:STRING? 0= if E-RESPONSE throw then
@@ -3582,8 +3582,8 @@ ENUM poll none fed spoiled done ;ENUM
    0 c MODEL-CALL:HTTP-STATUS !
    c JOURNAL-OUT$ JSON:PARSE {: rec :}
    rec JSON:OBJECT? 0= if E-RESPONSE throw then
-   rec JOURNAL-REFUSAL-FAULT {: refusal:n :}
-   refusal 0<> if refusal throw then
+   rec JOURNAL-REJECTION-FAULT {: rejection:n :}
+   rejection 0<> if rejection throw then
    rec JOURNAL-ORIGIN
    rec s" configuration" OBJECT-MEMBER {: config :}
    c MODEL-CALL:KIND @ MATCH call-kind
@@ -3847,18 +3847,18 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-RECORD$ c MODEL-CALL:JOURNAL-PUT @ execute ;
 
-\ Whether the provider's reply refused the request for its size or did not
+\ Whether the provider's reply rejected the request for its size or did not
 \ finish: a fault the caller may answer by asking for less.
-: REFUSAL? ( n -- bool ) dup E-CAPACITY = swap E-INCOMPLETE = or ;
+: REJECTION? ( n -- bool ) dup E-CAPACITY = swap E-INCOMPLETE = or ;
 
-\ A refusal's record holds the call's configuration, the refusal, capacity or
+\ A rejection's record holds the call's configuration, the rejection, capacity or
 \ incomplete, the provider's reply as received, a reply cut short with the
 \ output it streamed or the size rejection's body, and the recorded call id
-\ when there is one. A replay reads only the refusal.
-: REFUSAL-PUT ( n ^call -- )
+\ when there is one. A replay reads only the rejection.
+: REJECTION-PUT ( n ^call -- )
    {: code:n c :}
    c RECORD-OPEN
-   JSON:WRITE-COMMA s" refusal" code E-CAPACITY = if s" capacity" else
+   JSON:WRITE-COMMA s" rejection" code E-CAPACITY = if s" capacity" else
       s" incomplete" then JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" response" c RESPONSE$ JSON:WRITE-FIELD-S
    c LEDGER LEDGER-CALL-ID @ {: id:n :}
@@ -3911,7 +3911,7 @@ public
 : INCOMPLETE-REASON$ ( ^call -- str )
    {: c :}
    c CONTENT-BUF HELD c MODEL-CALL:INCOMPLETE-U @ SPAN:TAKE SPAN:$ ;
-\ The last call's provider message from its refused HTTP reply or failed
+\ The last call's provider message from its rejected HTTP reply or failed
 \ response; empty when none.
 : ERROR$ ( ^call -- str ) ERROR-BUF BUFFER$ ;
 
@@ -3980,7 +3980,7 @@ private
       denied OF s" access denied" ENDOF
       unavailable OF s" store unavailable" ENDOF
       config OF s" store not set up, or service or account invalid" ENDOF
-      refused OF s" refused by the provider" ENDOF
+      rejected OF s" rejected by the provider" ENDOF
    ;MATCH ;
 
 : KEY-FAILED? ( ^call -- bool )
@@ -4021,10 +4021,10 @@ private
    code c CAUSE+
    c EVENTS+ ;
 
-\ One line for a failed call, a warning for a refusal.
+\ One line for a failed call, a warning for a rejection.
 : REPORT ( n ^call -- )
    {: code:n c :}
-   code REFUSAL? if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
+   code REJECTION? if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
    code c REPORT+
    LOG:;LINE ;
 
@@ -4076,7 +4076,7 @@ ENUM record-event kept faulted ;ENUM
    then
    fault 0= if construct ending served exit then
    c LEFT? 0= if construct ending unsent exit then
-   fault REFUSAL? if construct ending refused exit then
+   fault REJECTION? if construct ending rejected exit then
    construct ending failed ;
 
 \ The ending of a run a CANCEL ended before it landed: after a failure its
@@ -4186,12 +4186,12 @@ ENUM record-event kept faulted ;ENUM
    c RECORD-TEXT-BUF BUF:SPAN$ c OUTCOME-TEXT-BUF BUF:REPLACE
    c LAND-SERVED ;
 
-\ Journals a live refusal so a replay meets it at the same step and asks for
+\ Journals a live rejection so a replay meets it at the same step and asks for
 \ less with no request. A put fault replaces the outcome.
-: LAND-REFUSED ( ^call -- )
+: LAND-REJECTED ( ^call -- )
    {: c :}
    c MODEL-CALL:JOURNAL-READY @ 0= if exit then
-   c RECEIPT RECEIPT-OUTCOME @ c [: 2dup REFUSAL-PUT ;] catch {: put:n :} 2drop
+   c RECEIPT RECEIPT-OUTCOME @ c [: 2dup REJECTION-PUT ;] catch {: put:n :} 2drop
    put 0<> if put c OUTCOME! then ;
 
 : REPORT-OUTCOME ( ^call -- ) dup RECEIPT RECEIPT-OUTCOME @ swap REPORT ;
@@ -4233,7 +4233,7 @@ FSM:DEFINE LAND-MACHINE ( ^call ) land-step ending
       replay-failed  -               >landed
       served         -               >serving
       unsent         KEEP-UNSENT     >landed
-      refused        REPORT-OUTCOME  >refusing
+      rejected        REPORT-OUTCOME  >rejecting
       failed         KEEP-REPORT     >recording
    IN recording  RECORD-SENSE ( record-event )
       kept     -  >landed
@@ -4241,9 +4241,9 @@ FSM:DEFINE LAND-MACHINE ( ^call ) land-step ending
    IN serving  RECORD-SENSE ( record-event )
       kept     LAND-SERVED      >landed
       faulted  LAND-UNRECORDED  >landed
-   IN refusing  RECORD-SENSE ( record-event )
-      kept     LAND-REFUSED  >landed
-      faulted  LAND-REFUSED  >landed
+   IN rejecting  RECORD-SENSE ( record-event )
+      kept     LAND-REJECTED  >landed
+      faulted  LAND-REJECTED  >landed
    FINAL landed  -
 ;DEFINE
 
@@ -4350,7 +4350,7 @@ CAST: N>CALL ( n -- ^call )
       settling OF false ENDOF
       recording OF true ENDOF
       serving OF true ENDOF
-      refusing OF true ENDOF
+      rejecting OF true ENDOF
       landed OF false ENDOF
    ;MATCH ;
 
@@ -4509,7 +4509,7 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
             replay-failed OF false ENDOF
             served OF false ENDOF
             unsent OF false ENDOF
-            refused OF false ENDOF
+            rejected OF false ENDOF
             failed OF true ENDOF
          ;MATCH
       ENDOF
@@ -4517,7 +4517,7 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
 
 \ Whether the send that landed failed with E-TIER at a tier it named, with
 \ TIER-RESEND! on and its record kept. Its ending must be failed: a served or
-\ refused send whose journal put threw E-TIER is not sent again.
+\ rejected send whose journal put threw E-TIER is not sent again.
 : TIER-OUT? ( ^call -- bool )
    {: c :}
    c FAILED-ENDING?
@@ -4561,7 +4561,7 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
    c ACCOUNT ;
 
 \ How beginning a landed call's next send went, its fault n, run in the gate
-\ hold that begins it: begun; refused, E-CANCELLED, which RESEND-LOCKED
+\ hold that begins it: begun; rejected, E-CANCELLED, which RESEND-LOCKED
 \ stored as its outcome for a stop or CANCEL since the send landed; else
 \ faulted, the call landed with n stored here as its outcome and no ending,
 \ so a CANCEL once the gate is released finds it out of REST-OUT?'s and
@@ -4569,7 +4569,7 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
 : BEGIN-EVENT ( n ^call -- begin-event )
    {: code:n c :}
    code 0= if construct begin-event begun exit then
-   code E-CANCELLED = if construct begin-event refused exit then
+   code E-CANCELLED = if construct begin-event rejected exit then
    code c OUTCOME!
    OPTION:NONE c RECEIPT RECEIPT-ENDING !
    construct begin-event faulted ;
@@ -4610,7 +4610,7 @@ FSM:DEFINE TIER-MACHINE ( ^call ) tier-step tier-event
       halted    -            >done
    IN resuming  TIER-STANDARD ( begin-event )
       begun    SEND-STANDARD  >standard
-      refused  CANCEL-RECORD  >done
+      rejected  CANCEL-RECORD  >done
       faulted  -              >done
    IN standard  TIER-SENSE
       settled   -  >done
@@ -4645,7 +4645,7 @@ FSM:DEFINE TIER-MACHINE ( ^call ) tier-step tier-event
 public
 
 \ Whether fault n of the call is one RESEND-WAIT! rests: the provider away
-\ (E-UNAVAILABLE), a failed or stalled transfer (E-TRANSPORT), a refused key
+\ (E-UNAVAILABLE), a failed or stalled transfer (E-TRANSPORT), a rejected key
 \ (E-KEY), an unknown model (E-CONFIG with HTTP status 404), or the key
 \ store's SECRET:E-CONFIG, E-ACCESS or E-UNAVAILABLE from the key read at
 \ dispatch.
@@ -4674,7 +4674,7 @@ private
    asked ;
 
 \ Whether a run that ended so may rest: a send that failed once its request
-\ left, or went unsent in its key read. A served or refused send whose journal
+\ left, or went unsent in its key read. A served or rejected send whose journal
 \ put failed, a replay, a failed journal lookup and a cut run do not.
 : ENDING-RESTS? ( ending ^call -- bool )
    {: e c :}
@@ -4686,7 +4686,7 @@ private
       replay-failed OF false ENDOF
       served OF false ENDOF
       unsent OF c KEY-FAILED? ENDOF
-      refused OF false ENDOF
+      rejected OF false ENDOF
       failed OF true ENDOF
    ;MATCH ;
 
@@ -4794,7 +4794,7 @@ private
 : SERVE-HALT ( ^call -- ) drop 0 TASK:HALT-UNWIND ;
 
 \ Begins a resting call's resend under its gate: RESUME-LOCKED ends the rest
-\ and refuses a stop or CANCEL since the rest was sensed.
+\ and rejects a stop or CANCEL since the rest was sensed.
 : RESEND ( ^call -- begin-event ) [: RESUME-LOCKED ;] BEGIN-AGAIN ;
 
 \ Sends a begun resend's kept request again at the tier its last send went
@@ -4831,7 +4831,7 @@ FSM:DEFINE RESEND-MACHINE ( ^call ) resend-step sent-event
       stopped  LAND-CANCELLED  >done
    IN resuming  RESEND ( begin-event )
       begun    SEND-AGAIN      >sending
-      refused  CANCEL-RECORD   >done
+      rejected  CANCEL-RECORD   >done
       faulted  -               >sending
    FINAL done  -
 ;DEFINE
@@ -4885,7 +4885,7 @@ FSM:DEFINE RESEND-MACHINE ( ^call ) resend-step sent-event
 \ the tier machine. A resend that lands at once, or whose begin faulted,
 \ leaves the machine resuming until RESEND-MOVE stores sending outside the
 \ gate, so it reads REST-OUT? as sending does. Only LAND-CANCELLED lands a
-\ call resting, and RESEND's refused begin one resuming, each E-CANCELLED,
+\ call resting, and RESEND's rejected begin one resuming, each E-CANCELLED,
 \ which CANCEL-LOCKED's own check marks. Read under the call's gate.
 : RESEND-NEXT? ( ^call -- bool )
    {: c :}
@@ -5260,7 +5260,7 @@ public
 \ Restores, for the request JOURNAL-INPUT$ finished, a record a journal's put
 \ received for a chat call, as a journal hit does: its configuration, response,
 \ content and the call id its live call recorded; it answers the content as
-\ CHAT does and consumes the pending purpose. A saved refusal throws E-CAPACITY
+\ CHAT does and consumes the pending purpose. A saved rejection throws E-CAPACITY
 \ or E-INCOMPLETE. It sends nothing and records nothing. Without a request
 \ JOURNAL-INPUT$ finished since the last CHAT, START or REPLAY it is E-STATE;
 \ one that throws keeps the request as JOURNAL-INPUT$ says.

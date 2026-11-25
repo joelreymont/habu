@@ -40,7 +40,7 @@ Application-specific policy and model workflows stay out of the language core.
 ## Where findings go
 
 A finding goes where it is checked: a test or a code comment when either can
-hold it; [docs/forth.md](docs/forth.md) "Rules learned by refusal" and the card
+hold it; [docs/forth.md](docs/forth.md) "Rules learned by rejection" and the card
 for a language rule; [docs/bootstrap.md](docs/bootstrap.md),
 [test/AGENTS.md](test/AGENTS.md) or [docs/debugging.md](docs/debugging.md) for
 a build, test or diagnosis rule. Other reference material belongs in `docs/`.

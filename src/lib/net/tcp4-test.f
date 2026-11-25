@@ -187,7 +187,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    ;MATCH ;
 
 
-\ The bytes a queue count found; a count the OS refused fails the case and
+\ The bytes a queue count found; a count the OS rejected fails the case and
 \ answers -1.
 : QUEUED-BYTES ( TCP4:queue-result -- n )
    MATCH TCP4:queue-result
@@ -556,7 +556,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
 \ The loop is the program's to start, and a wait without one says so by name
 \ instead of falling back to a thread parked in poll(2).
 : T-NO-LOOP ( -- )
-   s" a wait with the loop stopped is refused by name" T-LABEL
+   s" a wait with the loop stopped is rejected by name" T-LABEL
    OPEN-PAIR
    AIO:STOP
    [: STOPPED-WAIT ;] E-AIO-STATE TTHROWSQ
@@ -723,7 +723,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    CLOSE-PAIR ;
 
 
-: T-REFUSED ( -- )
+: T-REJECTED ( -- )
    s" connecting where nothing listens fails with ECONNREFUSED" T-LABEL
    NEW-LISTENER PROBE-LISTENER !
    PROBE-LISTENER @ LISTENER-PORT PROBE-PORT !
@@ -1045,7 +1045,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    T-WAIT-IDLE
    T-WAIT-CLOSED
    T-WAIT-LISTENER
-   T-REFUSED
+   T-REJECTED
    T-READ-AFTER-CLOSE
    T-READ-WAITS
    T-TRY-READ

@@ -249,7 +249,7 @@ private
    NATIVE? past or if e else -1 then  e EM-HOST ! ;
 
 \ Room for the records is made here, so PUBLISH, which runs after publication
-\ has committed the engine's own routine, grows nothing and refuses nothing.
+\ has committed the engine's own routine, grows nothing and rejects nothing.
 : REC-RESERVE ( -- )
    N-RECS @ RECS-MAX + {: n:n :}
    n REC-IDX-RESERVE  n REC-EM-RESERVE  n REC-ENTRY-RESERVE ;

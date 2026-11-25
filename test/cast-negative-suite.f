@@ -14,7 +14,7 @@ require src/lib/process.f
 T-RESET
 
 \ Silences the expected rejection diagnostics: the production declarer emits one
-\ per refusal.
+\ per rejection.
 REJECTION:CAPTURE
 
 package CN
@@ -64,7 +64,7 @@ REJECTION:BUFFER$ s" cast-negative-suite.f" 49 s" cast: CNA3 ( n | U -- n | U )"
 REJECTION:BUFFER$ s\" ^^^^^^^^^^^ evaluates the text below\n= evaluated: cast: CNA3 ( n | U -- n | U )\n                   ^^^^ a return-stack effect\n= signature: n | U -- n | U\n= help: write the signature with no `|` clause\n" REJECTION-TEXT:HAS? TTRUE
 \ class: an atom is a phantom index, not a cell, and a pointer to one names no
 \ storage. A layout value wider than a cell is one term; a cast between values
-\ of different widths is refused as arity before its class is asked.
+\ of different widths is rejected as arity before its class is asked.
 s" cast: CNC1 ( n -- extent-a )"     CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC1`" CN-RUN:REJECTS
 s" cast: CNC2 ( n -- ^extent-a )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC2`" CN-RUN:REJECTS
 s" cast: CNC3 ( n -- CAST-NEG:wide )" CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNC3`" CN-RUN:REJECTS
@@ -73,7 +73,7 @@ REJECTION:BUFFER$ s" ^^^^ `n` is 1 cell, `cast-neg:wide` is 2" STR:CONTAINS? TTR
 REJECTION:BUFFER$ s" = help: give both sides the same width in cells: `n` is 1 cell, `cast-neg:wide` is 2" STR:CONTAINS? TTRUE
 \ Nor does the destination introduce an atom where a call, a read or a field
 \ projection yields a value: a produced row, a pointee and a layout argument
-\ refuse one as the bare term does, even in a private section, where the mint
+\ reject one as the bare term does, even in a private section, where the mint
 \ itself certifies. A quotation that only consumes an atom introduces none
 \ unless it is a pointee.
 package CN-ATOM
@@ -107,7 +107,7 @@ s" cast: CNWD13 ( ^[ -- xt ] -- ^[ -- n ] )"        CN-RUN:DECL s" error[E-CAST-
 \ undeclared family in the signature.
 s" cast: CNF1 ( n -- neverdecl )"    CN-RUN:DECL s" error[E-CAST-FAM]" s" `neverdecl`" CN-RUN:REJECTS
 \ A family applied to the wrong number of arguments is malformed the same way:
-\ the declaration is refused by name, not by a later death.
+\ the declaration is rejected by name, not by a later death.
 s" cast: CNF2 ( n -- cnpbox )"       CN-RUN:DECL s" error[E-CAST-FAM]" s" `cnpbox`" CN-RUN:REJECTS
 s" cast: CNF3 ( n -- ^cnpbox )"   CN-RUN:DECL s" error[E-CAST-FAM]" s" `cnpbox`" CN-RUN:REJECTS
 s" cast: CNF4 ( cnpbox<n,n> -- n )"  CN-RUN:DECL s" error[E-CAST-FAM]" s" `cnpbox`" CN-RUN:REJECTS
@@ -115,7 +115,7 @@ REJECTION:BUFFER$ s" = help: give `cnpbox` 1 type argument" STR:CONTAINS? TTRUE
 \ A cast's help is a definition's: `ptr` is told how to spell a pointer.
 s" cast: CNF5 ( ptr -- n )"          CN-RUN:DECL s" error[E-CAST-FAM]" s" `ptr`" CN-RUN:REJECTS
 REJECTION:BUFFER$ s" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`" STR:CONTAINS? TTRUE
-\ Any other signature fault, here a bare `^`, is refused before a walk reads
+\ Any other signature fault, here a bare `^`, is rejected before a walk reads
 \ the row, as a stored signature that does not parse is. The first fault names
 \ the class, so CNB1's wrong-arity `cnpbox` never reaches a walk.
 s" cast: CNB1 ( ^ -- cnpbox )"     CN-RUN:DECL s" error[E-BAD-STORED-SIGNATURE]" s" `CNB1`" CN-RUN:REJECTS
@@ -273,7 +273,7 @@ s" cast: CNN3 ( CN-EN:cnshade -- n )"    CN-RUN:DECL 0 T=
 ;package
 \ CN-OH's public section casts a value into CN's `cnfam`; its private section
 \ casts bytes into a pointer to CN-OQ's `oqbox` and a value into its own `ohold`
-\ that holds one. The pointer is a class mint, refused in a public section. Any
+\ that holds one. The pointer is a class mint, rejected in a public section. Any
 \ package projects out.
 package CN-OQ
 public
@@ -301,7 +301,7 @@ s" cast: CNE5 ( attn-stage-q -- n )"             CN-RUN:DECL 0 T=
 \ mint: a pointer or quotation destination is a class mint - it asserts that an
 \ integer is an address or code, which nothing checks - so it is declared only
 \ in a package's private section, where the package's own words are its only
-\ callers. Top level and a public section refuse it and leave no name behind.
+\ callers. Top level and a public section reject it and leave no name behind.
 s" cast: CNM1 ( n -- ^u8 )"                    CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM1`" CN-RUN:REJECTS
 s" CNM1" 0 search-wl 0= TTRUE
 s" cast: CNM2 ( n -- [ n -- n ] )"                CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM2`" CN-RUN:REJECTS
@@ -344,7 +344,7 @@ s" cast: CNM24 ( pfbox -- n )"                   CN-RUN:DECL 0 T=
 
 \ scope: a cast with a scoped term on either side is E-CAST-SCOPE, asked before
 \ the arity rule, which would read a view's two cells as two terms, except the
-\ view casts VIEW-CAST-CERTIFY admits. Each refusal leaves no name in the
+\ view casts VIEW-CAST-CERTIFY admits. Each rejection leaves no name in the
 \ private wordlist, which sees the private probe.
 package CN-VIEW
 variable CV-WID
@@ -370,7 +370,7 @@ s" CNV10" CV-ABSENT? TTRUE
 s" cast: CNV7 ( n -- init<i,n> )"                       CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV7`" CN-RUN:REJECTS
 s" CNV7" CV-ABSENT? TTRUE
 \ A qualified name selects that package's public wordlist, so the read-view
-\ unpack this section admits is refused under one, and once the package closes
+\ unpack this section admits is rejected under one, and once the package closes
 \ that wordlist holds no such name.
 s" cast: CN-VIEW:CNV9 ( read-view<p,q,u8> -- ^u8 n )" CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CN-VIEW:CNV9`" CN-RUN:REJECTS
 public
@@ -378,7 +378,7 @@ get-current constant CV-PUBLIC-WID
 s" cast: CNV8 ( read-view<p,q,u8> -- ^u8 n )"        CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV8`" CN-RUN:REJECTS
 ;package
 s" CNV9" CN-VIEW:CV-PUBLIC-WID search-wl 0= TTRUE
-\ The stored-signature intake still refuses an output variable no input
+\ The stored-signature intake still rejects an output variable no input
 \ supplies; a view whose variables its input supplies is a well-formed row.
 s" defer CNVD1 ( ^u8 n -- read-view<p,q,u8> )"       CN-RUN:DECL s" error[E-BAD-STORED-SIGNATURE]" s" `CNVD1`" CN-RUN:REJECTS
 s" defer CNVD2 ( read-view<p,q,u8> -- read-view<p,q,u8> )" CN-RUN:DECL 0 T=
@@ -437,7 +437,7 @@ public
    VERIFY:SOURCE-BUF ;
 
 \ The pre-pass reads public and private as it replays, so a mint certifies in a
-\ private section, with a checked caller beside it, and refuses in a public one.
+\ private section, with a checked caller beside it, and rejects in a public one.
 : CN-VRF-MINT ( -- )
    s" package CN-VRF-M CAST: CVM0 ( n -- ^u8 ) : CVM1 ( n -- u8 ) CVM0 c@ ; ;package"
    VERIFY:SOURCE-BUF ;
@@ -468,7 +468,7 @@ s" cast: CNS1 ( n -- CN:cnfam ) 42"              CN-RUN:DECL 70 T=
 s" CNS1" get-current search-wl 0= TFALSE        \ ... and the cast published anyway
 ;package
 
-\ The engine, not the checker, makes the last refusals: it writes them to fd 2
+\ The engine, not the checker, makes the last rejections: it writes them to fd 2
 \ and dies, which this suite's clean-stderr contract cannot host, so a child
 \ pins the exit status and the message.
 package CN-CHILD
@@ -520,7 +520,7 @@ s" error[E-MISSING-NAME]" s" `constant`" CN-CHILD:SAYS
 s" char"     CN-CHILD:RUN 70 T=
 s" error[E-MISSING-NAME]" s" `char`" CN-CHILD:SAYS
 \ The interpreter reads a whole definition before it binds the body's tokens,
-\ so at EOF this unfinished one is refused before [char] or ['] reads an operand.
+\ so at EOF this unfinished one is rejected before [char] or ['] reads an operand.
 s" : x [char]" CN-CHILD:RUN 70 T=
 s" error[E-VS-UNTERMINATED-DEFINITION]" s" `x`" CN-CHILD:SAYS
 s" '"        CN-CHILD:RUN 70 T=

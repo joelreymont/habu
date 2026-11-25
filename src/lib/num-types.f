@@ -11,7 +11,7 @@ package NUM
 public
 
 \ Raw storage cannot forge a role: a variable, create or constant cell is
-\ TVK-RAW (src/core/checker.f), which refuses an arity-zero family both ways; a
+\ TVK-RAW (src/core/checker.f), which rejects an arity-zero family both ways; a
 \ role is stored only through a typed definer (TYPED-VARIABLE, a TYPED-BUFFER
 \ element, a STRUCTURE field).
 NEWTYPE byte-len               \ nonnegative extent measured in bytes

@@ -95,7 +95,7 @@ public
 : REGS-SET ( n -- NREGFILE:regs )   MASK-CK MK-R ;
 
 \ The set holding exactly one register. A number no file this schema can describe
-\ holds is refused here rather than silently shifted out of the cell.
+\ holds is rejected here rather than silently shifted out of the cell.
 : REGS-REG ( n -- NREGFILE:regs )   REG-CK 1 swap lshift MK-R ;
 
 : REGS-WITH ( NREGFILE:regs NREGFILE:regs -- NREGFILE:regs )

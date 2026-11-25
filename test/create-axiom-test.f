@@ -72,7 +72,7 @@ private
    s" 99 CAX-B1 CAX-B1-NAME" TEST-EVAL:N 99 T=
    s" CAX-B1-NAME NULL-PTR -" TEST-EVAL:N 0 T<>
 
-   s" declaring the address it used to claim is refused at the token" T-LABEL
+   s" declaring the address it used to claim is rejected at the token" T-LABEL
    [: LOAD-PTR-A ;] 70 TTHROWSQ
 
    s" and so is any other output - the row states an effect, not a wildcard" T-LABEL
@@ -130,7 +130,7 @@ private
    s" CAX-MK" NDICT:SPELL-ARITY {: mkin:n mkout:n :}
    mkin 0 T=  mkout 0 T=
 
-   s" so a caller claiming a cell from it is refused, not certified" T-LABEL
+   s" so a caller claiming a cell from it is rejected, not certified" T-LABEL
    [: INFER-BAD ;] 70 TTHROWSQ
 
    s" and the caller that claims nothing certifies and runs" T-LABEL

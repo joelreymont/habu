@@ -351,7 +351,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    FLT-TEST-ENTRIES
    [: FLT-TOO-SMALL ;] E-FS-LIST-CAPACITY TTHROWSQ
    [: FLT-MISSING ;] E-FS-LIST-OPEN TTHROWSQ
-   FLT-ROOT$ FLT-NAMES 64 FS-LIST:NAMES 15 T=      \ a refused listing leaves the next one intact
+   FLT-ROOT$ FLT-NAMES 64 FS-LIST:NAMES 15 T=      \ a rejected listing leaves the next one intact
    FLT-SUB!
    FLT-TEST-NESTED
    FLT-TEST-TWO-TASKS

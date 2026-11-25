@@ -2245,7 +2245,7 @@ EXPORT CHECKER-RESOLVE:PUBLIC-SECTION
    RES-TRUE [: TDECL-ADDR-REPLAY-REG ;] TDECL-GEN-PLACED ;
 
 \ Makes DEFTYPE's converters over FAM, named from surface NA NU and base BA BU:
-\ >NAME then NAME>BASE, the base in upper case. A family refused under a
+\ >NAME then NAME>BASE, the base in upper case. A family rejected under a
 \ multi-error load is -1 and has no converters.
 : TDECL-CONVERTERS ( str str n -- )
    {: na:^ nu:n ba:^ bu:n fam:n :}

@@ -402,7 +402,7 @@ private
 
 public
 \ The nearest binary64 to a signed decimal/exponent text, ties to even, zero's
-\ sign kept; padding, hex, nonfinite values and trailing bytes are refused.
+\ sign kept; padding, hex, nonfinite values and trailing bytes are rejected.
 : PARSE ( str -- result<r,fault> )
    {: text:str :}
    text STR:LEN 0 < if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then

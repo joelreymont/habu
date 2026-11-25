@@ -106,7 +106,7 @@ private
    STORED
    DISARM ;
 
-: DECL-REFUSED ( str -- )
+: DECL-REJECTED ( str -- )
    {: src:str :}
    ARM
    [: src evaluate-closed ;] 70 TTHROWSQ
@@ -123,7 +123,7 @@ private
    s" : TW5 ( -- n ) [: [type] turn ;] execute width>n ; TW5" TEST-EVAL:N 16 T=
    s" : TW6 ( -- n ) [type] turn W1 ; TW6" TEST-EVAL:N 16 T= ;
 
-: FORM-REFUSED ( str -- )
+: FORM-REJECTED ( str -- )
    {: src:str :}
    ARM
    [: src evaluate-closed ;] 70 TTHROWSQ
@@ -138,16 +138,16 @@ private
    f HAS?
    DISARM ;
 
-: CASE-TYPE-FORM-REFUSED ( -- )
-   s" [type] refuses a type storage cannot hold" T-LABEL
-   s" : TX1 ( ^t -- n ) drop [type] t width>n ;" FORM-REFUSED
-   s" : TX2 ( ^t -- n ) drop [type] ^t width>n ;" FORM-REFUSED
-   s" : TX3 ( -- n ) [type] wtlin width>n ;" FORM-REFUSED
-   s" : TX4 ( -- n ) [type] wtbox width>n ;" FORM-REFUSED
-   s" : TX5 ( -- n ) [type] xt width>n ;" FORM-REFUSED
-   s" : TX6 ( -- n ) [type] width<n> width>n ;" FORM-REFUSED
-   s" : TX7 ( -- n ) [type] nosuch width>n ;" FORM-REFUSED
-   s" : TX8 ( -- n ) [type] ;" FORM-REFUSED
+: CASE-TYPE-FORM-REJECTED ( -- )
+   s" [type] rejects a type storage cannot hold" T-LABEL
+   s" : TX1 ( ^t -- n ) drop [type] t width>n ;" FORM-REJECTED
+   s" : TX2 ( ^t -- n ) drop [type] ^t width>n ;" FORM-REJECTED
+   s" : TX3 ( -- n ) [type] wtlin width>n ;" FORM-REJECTED
+   s" : TX4 ( -- n ) [type] wtbox width>n ;" FORM-REJECTED
+   s" : TX5 ( -- n ) [type] xt width>n ;" FORM-REJECTED
+   s" : TX6 ( -- n ) [type] width<n> width>n ;" FORM-REJECTED
+   s" : TX7 ( -- n ) [type] nosuch width>n ;" FORM-REJECTED
+   s" : TX8 ( -- n ) [type] ;" FORM-REJECTED
    s" : TX11 ( -- n ) drop [type] u32 width>n ;"
    S\" \"token\":\"u32\"" FORM-PINNED
    s" : TX12 ( -- n ) drop [type] ;"
@@ -157,7 +157,7 @@ private
 
 : CASE-TYPE-FORM-END ( -- )
    s" a [type] span ends where its definition or quotation ends" T-LABEL
-   s" : TX9 [type] ^ ;" FORM-REFUSED
+   s" : TX9 [type] ^ ;" FORM-REJECTED
    s" : TX10 ( -- n ) [: [type] ^ ;] drop 1 ;"
    S\" \"token\":\"^\"" FORM-PINNED ;
 
@@ -167,11 +167,11 @@ private
 
 : CASE-MEMBER ( -- )
    s" no declaration holds a width member" T-LABEL
-   s" STRUCTURE sw1 FIELD w width<n> ;STRUCTURE" DECL-REFUSED
-   s" STRUCTURE sw2<a> FIELD w width<a> ;STRUCTURE" DECL-REFUSED
-   s" STRUCTURE sw3 FIELD w ^width<n> ;STRUCTURE" DECL-REFUSED
-   s" STRUCTURE sw4 FIELD w option<width<n>> ;STRUCTURE" DECL-REFUSED
-   s" SUMTYPE stw VARIANT one width<n> ;VARIANT ;SUMTYPE" DECL-REFUSED ;
+   s" STRUCTURE sw1 FIELD w width<n> ;STRUCTURE" DECL-REJECTED
+   s" STRUCTURE sw2<a> FIELD w width<a> ;STRUCTURE" DECL-REJECTED
+   s" STRUCTURE sw3 FIELD w ^width<n> ;STRUCTURE" DECL-REJECTED
+   s" STRUCTURE sw4 FIELD w option<width<n>> ;STRUCTURE" DECL-REJECTED
+   s" SUMTYPE stw VARIANT one width<n> ;VARIANT ;SUMTYPE" DECL-REJECTED ;
 
 public
 
@@ -185,7 +185,7 @@ public
    CASE-STORAGE
    CASE-MEMBER
    CASE-TYPE-FORM
-   CASE-TYPE-FORM-REFUSED
+   CASE-TYPE-FORM-REJECTED
    CASE-TYPE-FORM-END
    CASE-TYPE-FORM-NAME
    T-REPORT ;

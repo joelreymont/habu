@@ -91,7 +91,7 @@ public
 
 \ Only while the last completed check was verified and its positions are of the
 \ text (LSP-DEFS:DEFS-VERIFIED?): a verified check reported every use it bound
-\ to a located declaration, so the list is complete. A refused or deferred check
+\ to a located declaration, so the list is complete. A rejected or deferred check
 \ may have stopped reporting at a point it does not state, and an incomplete one
 \ kept none: any other document answers null. A byte no use or definition token
 \ holds answers an empty list.

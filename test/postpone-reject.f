@@ -1,7 +1,7 @@
-\ postpone-refuse.f - a definition a definer builds is refused for compile, of
+\ postpone-reject.f - a definition a definer builds is rejected for compile, of
 \ a quotation literal and for a postponed word since undefined, and the next
-\ definition compiles; a definer is refused for postponing a word its tick is
-\ refused for; a catch abandons a definition opened inside it and keeps one
+\ definition compiles; a definer is rejected for postponing a word its tick is
+\ rejected for; a catch abandons a definition opened inside it and keeps one
 \ opened before it, and the lines after it run; an immediate that adds to a
 \ definition is rejected in the text a definer evaluates: uncaught, the
 \ rejection abandons the definition; caught, the definition is kept and a word
@@ -13,7 +13,7 @@ require src/lib/test/subject.f
 require src/lib/test/assert.f
 require src/lib/process.f
 
-package POSTPONE-REFUSE
+package POSTPONE-REJECT
 private
 
 \ : NAME ( n -- n ) 1 + ; through compile, of a quotation.
@@ -57,7 +57,7 @@ THROWN 99 T=
 REJECTION:CAPTURE  NESTED 70 T=  REJECTION:BUFFER-OFF
 REJECTION:BUFFER$ s" error[E-UNMODELED-IMMEDIATE]: `NESTED-IMM` runs while the definition compiles and may define words or add to a definition" STR:CONTAINS? TTRUE
 
-\ : NAME ( -- n ) 5 ; after a refusal the definer catches.
+\ : NAME ( -- n ) 5 ; after a rejection the definer catches.
 : MAKE-KEPT ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    [: [: 1 + ;] compile, ;] catch 70 T=
@@ -101,6 +101,6 @@ public
 ;package
 
 \ A skipped line fails nothing in its own process, so the case runs in a child.
-POSTPONE-REFUSE:RAW-CHILD
+POSTPONE-REJECT:RAW-CHILD
 
 T-REPORT

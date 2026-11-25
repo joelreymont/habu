@@ -110,7 +110,7 @@ TASK:MIN-STACK TASK:TASK READER
    fd 0 >= TTRUE
    fd HANDLE !
 
-   s" a device path holding a 0 byte is refused before the OS sees it" T-LABEL
+   s" a device path holding a 0 byte is rejected before the OS sees it" T-LABEL
    [: NUL-OPEN ;] E-FFI-NUL TTHROWSQ ;
 
 : READ-CASE ( -- )
@@ -222,7 +222,7 @@ TASK:MIN-STACK TASK:TASK READER
 
 \ test/serial.py's `disconnect` case pins `closed` then `error 5` on the poll(2)
 \ path; the loop answers the same, through the same two steps. The hang-up
-\ reaches the poll as POLLHUP, the read that follows it is refused with EAGAIN,
+\ reaches the poll as POLLHUP, the read that follows it is rejected with EAGAIN,
 \ and the answered bits are what makes that a hang-up rather than a retry.
 
 : HANGUP-CASE ( -- )

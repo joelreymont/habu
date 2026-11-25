@@ -165,7 +165,7 @@ create XE-EMPTY 1 allot
    SB$ ;
 
 \ Two used packages exporting one tail, and one body line to compile against
-\ them: the refusals a tick shares with a call.
+\ them: the rejections a tick shares with a call.
 : XE-AMB-PROG$ ( str -- str ) {: s:str :}
    SB-RESET
    s" require src/lib/error.f" XE-LINE
@@ -196,7 +196,7 @@ create XE-EMPTY 1 allot
    s" the probe's shape: ['] XEU-W drop and ['] XEU-P:XEU-W drop both leave 7" T-LABEL
    s" u6:7" XE-HAS  s" u7:7" XE-HAS ;
 
-: XE-USING-REFUSED ( -- )
+: XE-USING-REJECTED ( -- )
    s" ['] of a bare name two used packages export dies" T-LABEL
    s" : XEU-TICK ( -- n ) 7 ['] XEU-W drop ;" XE-AMB-PROG$ XE-RUN
    XE-AMB-DIED
@@ -511,7 +511,7 @@ create XE-EMPTY 1 allot
    XE-PREPARE
    XE-VALUES
    XE-USING
-   XE-USING-REFUSED
+   XE-USING-REJECTED
    XE-FACT-WORDS
    XE-DEFER-FACTS
    XE-KEPT-FACTS

@@ -267,7 +267,7 @@ variable OKV
    \ must have their ASLR slide removed before they are compared to the file.
    MACHO @ if MACHO:TEXT-VA exit then
    ELF-FIXED-BASE? 0= if
-      s" imgdump: image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base"
+      s" imgdump: image is not a fixed-base Habu ELF executable; not guessing the dictionary base"
       EXIT-STATUS:DATAERR die
    then
    ELF-ENTRY-OFF I@ ;

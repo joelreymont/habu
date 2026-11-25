@@ -289,7 +289,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 \ --- prof-on arms an interval of a second or more, prof-reset holds the clock
 \ for its clears, prof-rate throws a negative interval back to its caller, and a
-\ refused arm is named and fatal.
+\ rejected arm is named and fatal.
 \ GDB-DELAY ( n -- ): spin until n more nanoseconds have passed by mono-ns.
 : GDB-DELAY-SRC ( -- )
    s" : GDB-DELAY ( n -- ) mono-ns + begin dup mono-ns <= until drop ;" GE-SRC-LINE ;
@@ -354,9 +354,9 @@ variable GDB-SKEWED
    GE-SB-LF s"  --> " SB-APPEND at SB-APPEND GE-SB-LF
    SB$ ;
 
-\ prof-rate refuses a negative interval and one past the OS timer's longest,
+\ prof-rate rejects a negative interval and one past the OS timer's longest,
 \ keeping the rate; GDB-FIELD reads digits, so the code is printed negated.
-: GDB-PROFILER-RATE-REFUSED ( -- )
+: GDB-PROFILER-RATE-REJECTED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    s" -1 prof-rate" GE-SRC-LINE
@@ -366,17 +366,17 @@ variable GDB-SKEWED
    E-PROF-RATE s" <input>:1:4" GDB-THROWN$
    s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR-HAS
    GT-OUT$ STR:LEN 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then
-   S\" : GDB-REFUSE ( -- n ) [: -1 prof-rate ;] catch ; : GDB-PAST ( -- n ) [: 9223372036000000 prof-rate ;] catch ; : GDB-MAX ( -- n ) [: 100000000999999 prof-rate ;] catch ; GDB-MAX s\" within \" type . cr 250 prof-rate GDB-REFUSE negate s\" refused \" type . cr GDB-PAST negate s\" past \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
+   S\" : GDB-REJECT ( -- n ) [: -1 prof-rate ;] catch ; : GDB-PAST ( -- n ) [: 9223372036000000 prof-rate ;] catch ; : GDB-MAX ( -- n ) [: 100000000999999 prof-rate ;] catch ; GDB-MAX s\" within \" type . cr 250 prof-rate GDB-REJECT negate s\" rejected \" type . cr GDB-PAST negate s\" past \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
    GDB-PROF-RATE-RUN
    s" a caught prof-rate -1" GE-EXPECT-OK
-   GT-OUT$ s" refused" GDB-FIELD E-PROF-RATE negate <> if
+   GT-OUT$ s" rejected" GDB-FIELD E-PROF-RATE negate <> if
       s" prof-rate -1 threw another code than E-PROF-RATE" GE-FAIL
    then
    GT-OUT$ s" past" GDB-FIELD E-PROF-RATE negate <> if
       s" prof-rate past the OS timer's longest threw another code than E-PROF-RATE" GE-FAIL
    then
    GT-OUT$ s" within" GDB-FIELD 0 <> if
-      s" prof-rate refused 100000000999999, within both OS timers" GE-FAIL
+      s" prof-rate rejected 100000000999999, within both OS timers" GE-FAIL
    then
    GT-OUT$ s" usec" GDB-FIELD 250 <> if
       s" a caught prof-rate -1 or past the longest changed the rate the next prof-on arms" GE-FAIL
@@ -530,12 +530,12 @@ variable GDB-SKEWED
 
 \ An engine-text target can share a page with patch32 itself: opening that
 \ page RW removes execute permission from the patcher's next instruction.
-\ Refusal must precede both the patch and publication of a breakpoint slot, so
-\ BP. lists the one valid breakpoint after the refused arm and after a BP- of
+\ Rejection must precede both the patch and publication of a breakpoint slot, so
+\ BP. lists the one valid breakpoint after the rejected arm and after a BP- of
 \ an xt with none, and nothing once that one is removed.
 \ atomic-cas is a primitive, whose tick is an opaque xt no typed slot admits, so
 \ the child stores it through a TRUSTED setter.
-: GDB-BREAKPOINT-REFUSAL ( -- )
+: GDB-BREAKPOINT-REJECTION ( -- )
    GE-HB-RESET GE-SRC-RESET
    s" require src/habu/code-bytes.f" GE-SRC-LINE
    s" require src/habu/debug.f" GE-SRC-LINE
@@ -557,8 +557,8 @@ variable GDB-SKEWED
    at SB-APPEND S\" \n\n-9300\n" SB-APPEND
    at SB-APPEND S\" \n\n1\n" SB-APPEND
    at SB-APPEND S\" \n\n" SB-APPEND
-   SB$ s" named breakpoint refusal preserves the listing and code" GE-EXPECT-OUT
-   s" PASS: unsupported breakpoint refuses before changing slots or code" type cr ;
+   SB$ s" named breakpoint rejection preserves the listing and code" GE-EXPECT-OUT
+   s" PASS: unsupported breakpoint rejects before changing slots or code" type cr ;
 
 \ The debugger's names live in package DEBUG, so a program defines its own FIND
 \ and STEP beside the baked debugger.
@@ -604,13 +604,13 @@ variable GDB-SKEWED
    GDB-PROFILER-RATE
    GDB-PROFILER-SLOW
    GDB-PROFILER-RESETS
-   GDB-PROFILER-RATE-REFUSED
+   GDB-PROFILER-RATE-REJECTED
    GDB-PROFILER-INCLUSIVE
    GDB-PROFILER-ROW
    GDB-PROFILER-JSON-ALL
    GDB-PROFILER-RETIRED
    GDB-CODE-DUMP
-   GDB-BREAKPOINT-REFUSAL
+   GDB-BREAKPOINT-REJECTION
    GDB-DEBUG-NAMES
    GDB-DEBUG-SEALED
    GDB-BREAKPOINT-NATIVE

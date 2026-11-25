@@ -3,7 +3,7 @@ split-str
 \ positions take by default) and strict UTF-16LE conversion. UTF-8 is read with
 \ UTF8:NEXT (src/lib/utf8-scalar.f): each byte it answers as `raw-byte` is one
 \ unit, the width of its U+FFFD. A negative length or unit index is
-\ E-STR-BOUNDS, as UTF8:NEXT refuses a negative length.
+\ E-STR-BOUNDS, as UTF8:NEXT rejects a negative length.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/error.f

@@ -140,14 +140,14 @@ SUITE wasm-numeric
 ;SUITE
 
 \ WLEB, tier 0's Wasm LEB128: the shortest and padded forms at their
-\ edges, the call and address fields rewritten in place, and each refusal.
+\ edges, the call and address fields rewritten in place, and each rejection.
 SUITE wasm-leb
    test/wasm/leb.f
 ;SUITE
 
 \ WLINK, tier 0's Wasm linker, src/arch/wasm/link.f: modules wasm-tools
 \ assembles byte for byte, index and type order, patched call and address
-\ fields, the table, data cells and memory pages, W03 and each refusal.
+\ fields, the table, data cells and memory pages, W03 and each rejection.
 SUITE wasm-link
    test/wasm/link.f
 ;SUITE
@@ -288,8 +288,8 @@ SUITE raw-storage-load-seal
    test/raw-storage-load-seal-test.f
 ;SUITE
 
-SUITE raw-cell-pointer-refusals
-   test/compiler/raw-cell-pointer-refusals.f
+SUITE raw-cell-pointer-rejections
+   test/compiler/raw-cell-pointer-rejections.f
 ;SUITE
 
 SUITE stored-type-param
@@ -300,16 +300,16 @@ SUITE width-type
    test/compiler/width-type.f
 ;SUITE
 
-SUITE input-underflow-refusals
-   test/compiler/input-underflow-refusals.f
+SUITE input-underflow-rejections
+   test/compiler/input-underflow-rejections.f
 ;SUITE
 
-SUITE zero-operand-refusals
-   test/compiler/zero-operand-refusals.f
+SUITE zero-operand-rejections
+   test/compiler/zero-operand-rejections.f
 ;SUITE
 
-SUITE base-pointer-arith-refusals
-   test/compiler/base-pointer-arith-refusals.f
+SUITE base-pointer-arith-rejections
+   test/compiler/base-pointer-arith-rejections.f
 ;SUITE
 
 SUITE proc-capture-under-signals
@@ -514,7 +514,7 @@ SUITE http-basic
 ;SUITE
 
 \ MCP:HANDLE on a loopback port: both eras' handshakes, tools/list and
-\ tools/call, and the protocol's refusals, answered to CURL.
+\ tools/call, and the protocol's rejections, answered to CURL.
 SUITE mcp
    src/lib/net/mcp-test.f
 ;SUITE
@@ -576,7 +576,7 @@ SUITE test-model
    src/lib/net/test-model-test.f
 ;SUITE
 
-\ The HTTP listener through an accept refused for want of descriptors. Its own
+\ The HTTP listener through an accept rejected for want of descriptors. Its own
 \ row: it lowers RLIMIT_NOFILE and puts a pipe in place of stderr.
 SUITE http-accept-starved
    test/http-accept-starved.f
@@ -591,7 +591,7 @@ SUITE browser-host
 \ MCP-APP:PAGE+ and CODE+ of a small module: the kept prefix, the escaped
 \ title, the page id and app.js's base64 in one UTF-8 page, and CODE+'s same
 \ page id and the base64 of the view's files and the module; PAGE-ID$ as the
-\ page's id, FILE+'s member, and the refused title.
+\ page's id, FILE+'s member, and the rejected title.
 SUITE mcp-app
    src/lib/browser/app-test.f
 ;SUITE
@@ -877,14 +877,14 @@ SUITE storage-binding
 
 SUITE c2-records-source
    test/c2-records-program.f
-   test/c2-records-refusals.f
+   test/c2-records-rejections.f
    test/c2-records-lifecycle.f
    test/c2-records-scopes.f
 ;SUITE
 
 SUITE c2-view-record-source
    test/c2-view-record-source.f
-   test/c2-view-record-refusals.f
+   test/c2-view-record-rejections.f
 ;SUITE
 
 SUITE c2-bytes-rejections
@@ -906,7 +906,7 @@ SUITE c2-mut-records
 SUITE c2-loan-checker
    test/c2-loan-checker-positive.f
    test/c2-loan-checker-region.f
-   test/c2-loan-checker-refusal.f
+   test/c2-loan-checker-rejection.f
 ;SUITE
 
 SUITE c2-memory-runtime
@@ -917,17 +917,17 @@ SUITE c2-memory-source
    test/c2-memory-native-boundary.f
    test/c2-memory-program.f
    test/c2-init-program.f
-   test/c2-memory-refusals.f
-   test/c2-memory-scope-refusals.f
-   test/c2-init-refusals.f
+   test/c2-memory-rejections.f
+   test/c2-memory-scope-rejections.f
+   test/c2-init-rejections.f
    test/c2-owner-producer-program.f
-   test/c2-owner-producer-refusals.f
+   test/c2-owner-producer-rejections.f
    test/c2-owner-dispose.f
-   test/c2-forall-input-refusals.f
+   test/c2-forall-input-rejections.f
    test/c2-memory-entry.f
    test/c2-field-loan-kind.f
    test/c2-field-loan-program.f
-   test/c2-field-loan-refusals.f
+   test/c2-field-loan-rejections.f
    test/c2-field-loan-lifecycle.f
 ;SUITE
 
@@ -1065,9 +1065,9 @@ SUITE postpone-effect
 ;SUITE
 
 \ Apart from postpone-define, whose file is also a build source: a definition
-\ these cases refuse gives data space back, which a build refuses.
-SUITE postpone-refuse
-   test/postpone-refuse.f
+\ these cases reject gives data space back, which a build rejects.
+SUITE postpone-reject
+   test/postpone-reject.f
 ;SUITE
 
 SUITE build-items
@@ -1084,7 +1084,7 @@ SUITE engine-private
    test/engine-private-test.f
 ;SUITE
 
-SUITE shadowed-arity-refusal
+SUITE shadowed-arity-rejection
    test/shadowed-arity-test.f
 ;SUITE
 
@@ -1230,7 +1230,7 @@ SUITE process-reaper
    src/lib/process-reaper-test.f
 ;SUITE
 
-\ A tree walk the kernel refuses throws rather than reading the refusal as
+\ A tree walk the kernel rejects throws rather than reading the rejection as
 \ nobody there, and one at a capture's early end leaves the capture its own
 \ answer and names the walk's code.
 SUITE process-tree
@@ -1253,8 +1253,8 @@ SUITE deep-cwd
    test/deep-cwd-e2e.f
 ;SUITE
 
-SUITE include-refusal
-   test/include-refusal-e2e.f
+SUITE include-rejection
+   test/include-rejection-e2e.f
 ;SUITE
 
 SUITE whole-source-read
@@ -1456,7 +1456,7 @@ SUITE c2-init-schema
 ;SUITE
 
 SUITE c2-init-accessors
-   test/c2-init-accessor-refusals.f
+   test/c2-init-accessor-rejections.f
 ;SUITE
 
 SUITE c2-diagnostics

@@ -46,7 +46,7 @@ variable CHROME-U
 TYPED-VARIABLE WASM ^VEC:vector<u8>
 TYPED-VARIABLE PAGE ^VEC:vector<u8>
 TYPED-VARIABLE CODE ^VEC:vector<u8>
-\ A refused case's expected output, kept apart from SB, which labels build in.
+\ A rejected case's expected output, kept apart from SB, which labels build in.
 CAP BUFFER: BEFORE
 variable BEFORE-U
 
@@ -237,14 +237,14 @@ variable BEFORE-U
 
 : MALFORMED ( str str -- )
    {: cmd:str what:str :}
-   SB-RESET  s" refused " SB-APPEND  cmd SB-APPEND  s" : " SB-APPEND
+   SB-RESET  s" rejected " SB-APPEND  cmd SB-APPEND  s" : " SB-APPEND
    what SB-APPEND  SB$ T-LABEL ;
 
 
 \ Typed text whose run leaves a malformed record, after the steps already
 \ staged: the turn fails, and the host prints only the lines given and no rpc,
 \ after or read.
-: REFUSED ( str str -- )
+: REJECTED ( str str -- )
    {: cmd:str before:str :}
    cmd TYPED+
    cmd s" the turn fails" MALFORMED
@@ -255,18 +255,18 @@ variable BEFORE-U
 
 : REJECT ( str str -- )
    {: cmd:str why:str :}
-   HOST-OPEN  cmd s\" hello\n" REFUSED
+   HOST-OPEN  cmd s\" hello\n" REJECTED
    cmd s" the failure names the reason" MALFORMED
    ERR$ why STR:CONTAINS? TTRUE ;
 
 
-\ A read after the file event: its line is printed before the refusal.
+\ A read after the file event: its line is printed before the rejection.
 : REJECT-READ ( str str -- )
    {: cmd:str why:str :}
    HELLO  FILE-LINE
    SB$ {: s:str :}
    s STR:DATA BEFORE s STR:LEN BYTE-COPY  s STR:LEN BEFORE-U !
-   HOST-OPEN  FILE+  cmd BEFORE BEFORE-U @ >str REFUSED
+   HOST-OPEN  FILE+  cmd BEFORE BEFORE-U @ >str REJECTED
    cmd s" the failure names the reason" MALFORMED
    ERR$ why STR:CONTAINS? TTRUE ;
 
@@ -282,7 +282,7 @@ variable BEFORE-U
    s" read past" s" outside file 1's 10" REJECT-READ
    s" read unknown" s" which no file event delivered" REJECT-READ
    \ TextDecoder's wording is the engine's.
-   HOST-OPEN  s" bad utf8" s\" hello\n" REFUSED
+   HOST-OPEN  s" bad utf8" s\" hello\n" REJECTED
    s" bad utf8" s" the failure names the reason" MALFORMED
    ERR$ s" Invalid byte sequence" STR:CONTAINS?
    ERR$ s" encoded data was not valid" STR:CONTAINS?  or TTRUE ;

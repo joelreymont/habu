@@ -80,7 +80,7 @@ variable K0                          \ the kernel's first word position
    loop
    ;SECTION ;
 
-\ Refuses a pending chain on a label no emitter placed, which links as a branch
+\ Rejects a pending chain on a label no emitter placed, which links as a branch
 \ or address to its own site.
 : ?PLACED ( bool -- )
    if 8 else 4 then {: tails:n :}

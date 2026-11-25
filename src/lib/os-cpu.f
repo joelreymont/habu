@@ -34,21 +34,21 @@ FUNCTION: GETLOADAVG-CALL getloadavg ( ^u8 n -- i32 ) ;FUNCTION
    HB-TARGET-MACOS? if ONLN-MACOS else ONLN-LINUX then ;
 
 \ A call's answer the host gave in place of a fact, logged.
-: REFUSED ( str n -- ) {: what:str got:n :}
+: REJECTED ( str n -- ) {: what:str got:n :}
    LOG:ERROR s" os-cpu" LOG:LINE what LOG:TEXT+ s"  answered " LOG:TEXT+
       got LOG:INT+ LOG:;LINE ;
 
 : SAMPLE ( ^u8 NUM:alloc-byte-len -- r )
    drop {: buf :}
    buf 1 GETLOADAVG-CALL {: got :}
-   got 1 < if s" getloadavg" got REFUSED E-LOAD throw then
+   got 1 < if s" getloadavg" got REJECTED E-LOAD throw then
    buf CELL-VIEW @ IEEE754:BITS>F64 ;
 
 public
 
 : ONLINE ( -- n )
    ONLN SYSCONF-CALL {: count:n :}
-   count 1 < if s" sysconf" count REFUSED E-ONLINE throw then
+   count 1 < if s" sysconf" count REJECTED E-ONLINE throw then
    count ;
 
 : LOAD1 ( -- r )

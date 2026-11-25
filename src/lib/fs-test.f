@@ -307,7 +307,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    p FS-TEST-LONG PATH-CAP p STR:LEN - 1 - extra + >str FS-TEST-OUT FS:JOIN-PATH ;
 
 \ A negative length is malformed whatever the other length is. Each pair sums
-\ to exactly PATH-CAP, so only the sign can refuse it.
+\ to exactly PATH-CAP, so only the sign can reject it.
 : FS-TEST-JOIN-NEG-PARENT-LONG-NAME ( -- )
    s" root" STR:DATA -2 >str FS-TEST-LONG PATH-CAP 1 + >str FS-TEST-OUT FS:JOIN-PATH drop ;
 
@@ -401,7 +401,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    s" no-such-habu-fs-path-for-stdlib-test" FS:FILE? FS-TEST-FALSE
    s" no-such-habu-fs-path-for-stdlib-test" FS:DIR? FS-TEST-FALSE ;
 
-\ The OS takes a path of PATH-CAP bytes and refuses one byte more: ENAMETOOLONG.
+\ The OS takes a path of PATH-CAP bytes and rejects one byte more: ENAMETOOLONG.
 : FS-TEST-OS-PATH-CAP ( -- )
    FS-TEST-OS-PATH PATH-CAP 2 + [char] / FS-TEST-FILL
    PATH-CAP 2 + 0 ?do [char] . FS-TEST-OS-PATH i + c! 2 +loop
@@ -804,7 +804,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-PAR-B-TASK
    FS-TEST-PAR-B-TASK FS-TEST-JOIN-OK
    FS-TEST-PAR-BAD @ 0= FS-TEST-TRUE ;
 
-\ Replace a symlink between the two FS:FILE? checks. A refused write that has
+\ Replace a symlink between the two FS:FILE? checks. A rejected write that has
 \ already opened its target must close it; the lowest free fd stays unchanged.
 create FS-TEST-RACE-LIVE-BUF PATH-CAP allot
 create FS-TEST-RACE-NEXT-BUF PATH-CAP allot
@@ -812,7 +812,7 @@ variable FS-TEST-RACE-LIVE-U
 variable FS-TEST-RACE-NEXT-U
 variable FS-TEST-RACE-STOP
 variable FS-TEST-RACE-SWAPS
-variable FS-TEST-RACE-REFUSED
+variable FS-TEST-RACE-REJECTED
 variable FS-TEST-RACE-BAD
 TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
 
@@ -912,19 +912,19 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
    T-FAILURES 0 FS-TEST= ;
 
 
-: FS-TEST-RACED-REFUSAL ( -- )
+: FS-TEST-RACED-REJECTION ( -- )
    FS-TEST-BASE s" race-link" FS-TEST-RACE-LIVE-BUF FS-TEST-RACE-LIVE-U FS-TEST-PATH!
    FS-TEST-BASE s" race-next" FS-TEST-RACE-NEXT-BUF FS-TEST-RACE-NEXT-U FS-TEST-PATH!
    FS-TEST-IO-PATH FS-TEST-RACE-LIVE FS:MAKE-SYMLINK
    0 FS-TEST-RACE-STOP !  0 FS-TEST-RACE-SWAPS !
-   0 FS-TEST-RACE-REFUSED !  0 FS-TEST-RACE-BAD !
+   0 FS-TEST-RACE-REJECTED !  0 FS-TEST-RACE-BAD !
    FS-TEST-FREE-FD {: before:n :}
    before 0 >= FS-TEST-TRUE
    ['] FS-TEST-RACE-WORK FS-TEST-RACE-TASK TASK:ACTIVATE
    4000 0 do
       i 1 and 0<> if [: FS-TEST-RACE-LIVE s" x" FS:APPEND-FILE ;] catch
       else [: FS-TEST-RACE-LIVE s" x" FS:WRITE-ALL ;] catch then
-      dup E-FS-OPEN = if 1 FS-TEST-RACE-REFUSED +! drop
+      dup E-FS-OPEN = if 1 FS-TEST-RACE-REJECTED +! drop
       else 0<> if 1 FS-TEST-RACE-BAD +! then then
    loop
    1 FS-TEST-RACE-STOP atomic!
@@ -934,7 +934,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
       err OF 0 FS-TEST= ENDOF
    ;MATCH
    FS-TEST-RACE-SWAPS atomic@ 0 > FS-TEST-TRUE
-   FS-TEST-RACE-REFUSED @ 0 > FS-TEST-TRUE
+   FS-TEST-RACE-REJECTED @ 0 > FS-TEST-TRUE
    FS-TEST-RACE-BAD @ 0 FS-TEST=
    FS-TEST-FREE-FD before FS-TEST=
    FS-TEST-RACE-LIVE FS:REMOVE-FILE ;
@@ -1037,7 +1037,7 @@ variable VISITS
    FIFO$ FD:TRY-FIFO-WRITER OPENED? FS-TEST-FALSE
    FS-TEST-FREE-FD before FS-TEST= ;
 
-: REFUSALS ( -- )
+: REJECTIONS ( -- )
    T-RESET
    [: FS-TEST-BIG-PATH FD:TRY-FIFO-WRITER OPENED? drop ;] E-FS-OPEN TTHROWSQ
    [: s" no-such-habu-fs-path-for-stdlib-test" FD:TRY-FIFO-WRITER OPENED? drop ;]
@@ -1091,7 +1091,7 @@ public
    WALK-DIR
    PREDICATES
    NO-READER
-   REFUSALS
+   REJECTIONS
    READER ;
 
 ;package
@@ -1120,7 +1120,7 @@ public
    FS-TEST-FD-STAT
    FS-TEST-FD-LINKS
    FS-TEST-PARALLEL
-   FS-TEST-RACED-REFUSAL
+   FS-TEST-RACED-REJECTION
    FS-TEST-FIFO:RUN
    FS-TEST-THROWS
    FS-TEST-CLEANUP

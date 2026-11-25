@@ -54,7 +54,7 @@ variable VEC-N
 
 \ One verdict per row, written once. `V-CERT`, `V-UNCK` and `V-REJECT` are the
 \ model's three outcomes; the cases file maps the checker's -1 / 1 / 0 into
-\ them, so an uncheckable definition is never read as a refusal.
+\ them, so an uncheckable definition is never read as a rejection.
 
 public
 
@@ -95,11 +95,11 @@ private
 \ Eight rows about `construct`, a three-token form and a small state machine:
 \ the rules are the capture, the truncation test at the definition boundary, and
 \ the inline step that turns a variant payload into the family's bundle.
-\ The first pair is the step: certifies with its payload on the row, refused
+\ The first pair is the step: certifies with its payload on the row, rejected
 \ without it. The second pair is the capture: `construct` takes its two operands
 \ whatever they spell (`CONSTRUCT-TOK`, src/core/check-walk.f), so an operand naming
-\ no variant is refused as E-CONSTRUCT-UNKNOWN-VARIANT, and the same token outside
-\ the form as an undefined word. Both are refusals, so these rows cannot see an
+\ no variant is rejected as E-CONSTRUCT-UNKNOWN-VARIANT, and the same token outside
+\ the form as an undefined word. Both are rejections, so these rows cannot see an
 \ operand that fell through to word lookup; test/type-match-suite.f G16 pins the
 \ capture by its code.
 \ The third pair is the payload's owner: two variants of one family differing
@@ -114,7 +114,7 @@ private
 \ `TFAM-CONSTRUCT-FAM` (src/core/type-family.f) resolves a construct family in
 \ the active package only: checker-model-manifest.f supplies that scope, and
 \ checker-model-cases.f asserts CHECKER-AUTH-PACKAGE$ before asking the checker,
-\ so a missing family cannot make a refusal case pass.
+\ so a missing family cannot make a rejection case pass.
 : BUILD-CONSTRUCT-VECTORS ( -- )
    s" construct_builds_the_bundle_from_the_variant_payload"
       s" CMV19 ( n -- cmres ) construct cmres cmok"
@@ -122,7 +122,7 @@ private
    s" construct_without_its_payload_underflows"
       s" CMV20 ( -- cmres ) construct cmres cmok"
       V-REJECT VEC-ROW
-   s" an_unterminated_construct_is_refused_at_the_boundary"
+   s" an_unterminated_construct_is_rejected_at_the_boundary"
       s" CMV21 ( cmres -- cmres ) construct cmres"
       V-REJECT VEC-ROW
    s" a_construct_operand_is_captured_whatever_it_spells"
@@ -150,7 +150,7 @@ private
 \ variant names:
 \   - the first pops a three-cell bundle whole and certifies; a walk that
 \     stopped short would leave the rest of the bundle on the row and fail it;
-\   - the second names the same-width family and is refused; a pop that
+\   - the second names the same-width family and is rejected; a pop that
 \     compared cell counts, not the family id, would certify it.
 \ Both families are in the signature because a `MATCH` family token resolves as
 \ a signature type name does (`TFAM-MATCH-FAM`, src/core/type-family.f).
@@ -158,7 +158,7 @@ private
 \ Measured by mutating the checker, rebuilding the fixpoint and rerunning this
 \ gate: dropping the family test from `MATCH-SCRUT-CELL?` moves only the second
 \ row (to certified); walking a three-cell bundle as two moves only the first
-\ (to refused); walking every bundle as two fails the fixpoint self-check,
+\ (to rejected); walking every bundle as two fails the fixpoint self-check,
 \ because `FIND-EXECUTABLE-IN-PATH` (src/lib/process-env.f) matches an `option`
 \ whose payload is a multi-cell layout, so the second mutation names a width
 \ nothing in `src/lib/` uses.
@@ -166,7 +166,7 @@ private
    s" a_multi_cell_bundle_is_popped_whole"
       s" CMV27 ( cmtwin cmwide -- cmtwin n ) MATCH cmwide cmwa OF CHECKER-MODEL-CASES:DROP-N ENDOF cmwb OF CHECKER-MODEL-CASES:DROP-N ENDOF ;MATCH"
       V-CERT VEC-ROW
-   s" a_same_width_bundle_of_another_family_is_refused"
+   s" a_same_width_bundle_of_another_family_is_rejected"
       s" CMV28 ( cmtwin cmwide -- cmtwin n ) MATCH cmtwin cmta OF CHECKER-MODEL-CASES:DROP-N ENDOF cmtb OF CHECKER-MODEL-CASES:DROP-N ENDOF ;MATCH"
       V-REJECT VEC-ROW ;
 
@@ -175,16 +175,16 @@ private
 \ instantiation, from the counter its domain owns. Three pairs:
 \   - one call against two: `MK-REGION-PAIR` names one slot twice, so its two
 \     outputs carry one identity and the consumer certifies; two `MK-REGION`
-\     calls are two allocations and the same consumer is refused. A counter
+\     calls are two allocations and the same consumer is rejected. A counter
 \     that restarted or did not advance would certify the second row;
 \   - two domains at the same number: `MK-REGION` and `MK-GEN` each mint first
-\     in their own domain, so both ids are 1 and the row is still refused; a
+\     in their own domain, so both ids are 1 and the row is still rejected; a
 \     comparison of the number alone would certify it;
 \   - a declared input identity against an atom token: a `fresh-*` name the
 \     candidate's inputs declare is one identity its body holds
 \     (`SIG-INPUT-FRESH`), so naming it on both sides certifies; a `mask-*`
 \     token is an atom whose identity is its spelling, so the same shape
-\     certifies and differing spellings are refused.
+\     certifies and differing spellings are rejected.
 \ Measured by mutating the checker, rebuilding the fixpoint and rerunning this
 \ gate: dropping `ATOM-OK?`'s name comparison moves only the two-domain and
 \ differing-spelling rows (to certified); a per-domain counter that does not
@@ -217,7 +217,7 @@ private
    s" exit_requires_the_loop_resource_discharged"
       s" CMV35 ( -- ) 3 0 do exit loop"
       V-REJECT VEC-ROW
-   s" unloop_without_a_loop_is_refused"
+   s" unloop_without_a_loop_is_rejected"
       s" CMV36 ( -- ) unloop"
       V-REJECT VEC-ROW
    s" unloop_discharges_one_loop_for_exit"

@@ -60,7 +60,7 @@ STRUCTURE vectors DERIVE addr
 CAST: >VECTORS ( ^n -- ^vectors )
 
 \ Header cells, then the PATHZ and CWDZ byte regions. A
-\ pointer kept in a cell that declares none is refused.
+\ pointer kept in a cell that declares none is rejected.
 : OUTER ( ^n -- ^^n ) 0 ptr-field ;
 : INHERIT ( ^n -- ^n ) 1 cells + ;
 : CWD-LEN ( ^n -- ^n ) 2 cells + ;       \ 0: the child inherits this process's directory
@@ -207,7 +207,7 @@ LINEAR: ERASE ( CMD:command -- ^n )
 public
 
 \ The body hands back the token it was given; any other, such as an outer
-\ scope's token swapped in, is refused with CMD:E-HANDLE, and the scope still
+\ scope's token swapped in, is rejected with CMD:E-HANDLE, and the scope still
 \ frees exactly the context it opened. A throw out of the body loses the token
 \ with the stack and the cleanup frees by pointer, so `catch` belongs outside.
 : WITH-COMMAND ( R [ R CMD:command -- S CMD:command ] -- S )
@@ -238,7 +238,7 @@ private
    s  buf s STR:LEN FFI:CSTR-ROOM GROW  FFI:CSTR drop ;
 
 \ Offsets, not addresses: the buffer moves as it grows until PREPARE. A
-\ refused entry leaves no bytes and no offset.
+\ rejected entry leaves no bytes and no offset.
 : ENTRY ( ^VEC:vector<u8> ^VEC:vector<n> [ -- ] -- )
    {: buf:^ offs:^ w :}
    buf VEC:COUNT {: at:n :}
@@ -295,7 +295,7 @@ private
 public
 
 \ Run the child from this directory instead of the loader's. A missing path or a
-\ non-directory is refused here, before anything is spawned; RESET clears it.
+\ non-directory is rejected here, before anything is spawned; RESET clears it.
 : CWD! ( CMD:command str -- CMD:command ) {: s:str :}
    CTX {: h:^ :}
    s CWD-CHECK
@@ -312,7 +312,7 @@ public
 \ The child's fd child is the parent's fd parent in every run until RESET or the
 \ scope's end, applied after the stdio slots as PROCESS:FD applies it
 \ (src/lib/spawn.f). Each scope holds its own placements. CMD never closes a
-\ placed fd: a run refuses a closed one (PROCESS:CHECK-FD: E-PROC-SPAWN, EBADF in
+\ placed fd: a run rejects a closed one (PROCESS:CHECK-FD: E-PROC-SPAWN, EBADF in
 \ PROCESS:ERRNO) and no child runs. Either negative: E-PROC-OUTPUT.
 : FD+ ( CMD:command fd fd -- CMD:command )
    {: child:fd parent:fd :}
@@ -506,8 +506,8 @@ private
    h EXITED @ 0<> if h CODE @ PROCESS-ENDING:EXITED exit then
    h CODE @ PROCESS-ENDING:SIGNALED ;
 
-\ A refused path, deadline or closed placed fd throws before CAPTURE-RESET
-\ forgets the last run, so a refused run keeps the previous outcome; from the
+\ A rejected path, deadline or closed placed fd throws before CAPTURE-RESET
+\ forgets the last run, so a rejected run keeps the previous outcome; from the
 \ reset on, every throw reaches RUN-DONE. CHECK-PLACED also runs before CAPTURE
 \ opens the capture pipes, which could take a closed placed fd's number and hand
 \ the child a capture pipe in its place. RUNNING names the context only while its
@@ -536,8 +536,8 @@ public
 
 \ Run the prepared command at path, feed it the stdin and capture both streams
 \ whole; a deadline-killed run answers PROCESS-ENDING:TIMEOUT. A spawn failure, a
-\ refused path, deadline or placed fd and cancellation throw their own codes; a
-\ path, deadline or closed placed fd refused before the run leaves the previous
+\ rejected path, deadline or placed fd and cancellation throw their own codes; a
+\ path, deadline or closed placed fd rejected before the run leaves the previous
 \ outcome in place.
 : RUN-OUTCOME ( CMD:command str ms -- CMD:command PROCESS:ending )
    {: path:str timeout:ms :}

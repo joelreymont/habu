@@ -425,7 +425,7 @@ public
    nip ;
 
 \ The handle is dead afterwards: the row's generation moves on, so a later
-\ device that takes the row answers a different handle and this one is refused
+\ device that takes the row answers a different handle and this one is rejected
 \ with E-GENIO-STATE rather than routed to somebody else's connection. Closing
 \ the terminal is a no-op and never frees row 0. A device that was this task's
 \ current input or output leaves it on the terminal.
@@ -462,7 +462,7 @@ TASK:+USER IO-LINE ^VEC:vector<u8>
    TASK:SELF-N 0= if exit then
    [: LINE-DISPOSE ;] TASK:SELF TASK:AT-EXIT ;
 
-\ A refused registration releases the line it would have released, so a task's
+\ A rejected registration releases the line it would have released, so a task's
 \ live line always has its release armed.
 : LINE-OPEN ( -- )
    IO-LINE @ NULL-PTR <> if exit then

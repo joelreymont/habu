@@ -42,7 +42,7 @@ variable NCOVER
 variable NREF
 variable NPRIM-ROWS
 
-\ A refusing case's two operands. They are cells and not locals because the arm
+\ A rejecting case's two operands. They are cells and not locals because the arm
 \ runs inside the quotation `catch` takes, and a quotation captures nothing.
 variable DV-A
 variable DV-B
@@ -294,19 +294,19 @@ $3A constant COLON-B
    ns s" fsqrt" STR:= IF a IEEE754:BITS>F64 fsqrt IEEE754:F64>BITS EXIT THEN
    s" unary bits" ns NO-ARM ;
 
-\ A refusal is pinned by its code, the reference's held to the same; each arm
+\ A rejection is pinned by its code, the reference's held to the same; each arm
 \ drops what the body left, so a wrong answer fails the code comparison.
 : NN-THROW-PRIM ( str -- n ) {: ns:str :}
    ns s" /"    STR:= IF [: DV-A @ DV-B @ /    drop  ;] catch EXIT THEN
    ns s" mod"  STR:= IF [: DV-A @ DV-B @ mod  drop  ;] catch EXIT THEN
    ns s" /mod" STR:= IF [: DV-A @ DV-B @ /mod 2drop ;] catch EXIT THEN
-   s" refusing binary" ns NO-ARM ;
+   s" rejecting binary" ns NO-ARM ;
 
 : NN-THROW-REF ( str -- n ) {: ns:str :}
    ns s" /"    STR:= IF [: DV-A @ DV-B @ PRIM-REF:DIV    drop  ;] catch EXIT THEN
    ns s" mod"  STR:= IF [: DV-A @ DV-B @ PRIM-REF:REM    drop  ;] catch EXIT THEN
    ns s" /mod" STR:= IF [: DV-A @ DV-B @ PRIM-REF:DIVREM 2drop ;] catch EXIT THEN
-   s" refusing binary reference" ns NO-ARM ;
+   s" rejecting binary reference" ns NO-ARM ;
 
 \ A store/fetch pair round-trips the case value over the file's own fixtures and
 \ covers both rows. `PTR>N` reads no memory: the value is a byte offset into

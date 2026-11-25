@@ -27,7 +27,7 @@ FUNCTION: FREE-CALL free ( ^u8 -- ) ;FUNCTION
    p ;
 
 
-\ A refused realloc leaves the block as it was.
+\ A failed realloc leaves the block as it was.
 : RESIZE-BYTES ( ^u8 str n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    block new REALLOC-CALL {: moved:^ :}

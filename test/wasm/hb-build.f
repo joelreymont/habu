@@ -370,7 +370,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\"    ONE-PAGE 2 * 25 FRESH {: h:^ :}  h d >N AT 26 CHECK\n" TEXT+
    S\"    ONE-PAGE 27 FRESH {: t:^ :}  t d >N ONE-PAGE 2 * + AT 28 CHECK\n" TEXT+
    S\"    h ONE-PAGE 2 * 29 FREE-RUN  t ONE-PAGE 30 FREE-RUN ;\n" TEXT+
-   S\" : REFUSALS ( -- )\n   0 MAP -1 = 31 CHECK  0 AT 32 CHECK\n" TEXT+
+   S\" : REJECTIONS ( -- )\n   0 MAP -1 = 31 CHECK  0 AT 32 CHECK\n" TEXT+
    S\"    ONE-PAGE 33 FRESH {: p:^ :}  p 1 + ONE-PAGE UNMAP -1 = 34 CHECK  p ONE-PAGE 35 FREE-RUN\n" TEXT+
    S\"    NULL-PTR ONE-PAGE UNMAP -1 = 36 CHECK\n" TEXT+
    S\"    ONE-PAGE 37 FRESH {: q:^ :}  q ONE-PAGE 38 FREE-RUN  NULL-PTR ONE-PAGE UNMAP -1 = 39 CHECK\n" TEXT+
@@ -378,7 +378,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\"    -1 MAP -1 = 43 CHECK  0 AT 44 CHECK  1 32 lshift 1 + MAP -1 = 45 CHECK  0 AT 46 CHECK\n" TEXT+
    S\"    1 32 lshift MAP -1 = 47 CHECK  0 AT 48 CHECK\n" TEXT+
    S\"    ONE-PAGE 49 FRESH {: z:^ :}  z 0 UNMAP -1 = 50 CHECK  z ONE-PAGE 51 FREE-RUN ;\n" TEXT+
-   S\" public\n: MAIN ( -- ) TWO REUSE JOIN REFUSALS ;\n;package\n" TEXT+
+   S\" public\n: MAIN ( -- ) TWO REUSE JOIN REJECTIONS ;\n;package\n" TEXT+
    TEXT TEXT-U @ >str s" m.f" SOURCE! ;
 
 : TWICE-CASE ( -- )
@@ -421,7 +421,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : NO-MODULE ( -- )  MOD MOD-U @ >str FS:EXISTS? TFALSE ;
 
-: REFUSAL-CASES ( -- )
+: REJECTION-CASES ( -- )
    s" : MAIN ( -- ) here drop align ;" s" kernel.f" SOURCE!
    s" kernel words with no routine are each rejected by name with 70 and no module" T-LABEL
    s" kernel.wasm" BUILD 70 T=
@@ -458,17 +458,17 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" src/lib/ffi-abi.f:" ERR-HAS
    NO-MODULE
    s" : MAIN ( -- ) ;" s" unwritten.f" SOURCE!
-   s" an output path in a missing directory is refused with 64 and no module" T-LABEL
+   s" an output path in a missing directory is rejected with 64 and no module" T-LABEL
    s" missing/unwritten.wasm" BUILD 64 T=
    s" hb-build: no such output directory" ERR-HAS
    NO-MODULE
-   s" an engine build for Wasm is refused with 64 and no module" T-LABEL
+   s" an engine build for Wasm is rejected with 64 and no module" T-LABEL
    s" engine.wasm" BUILD-ENGINE 64 T=
    s" error[E-BUILD-USAGE]: a Wasm target builds a program, not an engine or a REPL" ERR-HAS
    s" help: build the engine or REPL for macos-aarch64, linux-aarch64 or linux-x86-64" ERR-HAS
    NO-MODULE
    s" : MAIN ( -- ) ;" s" repl.f" SOURCE!
-   s" a REPL build for Wasm is refused with 64 and no module" T-LABEL
+   s" a REPL build for Wasm is rejected with 64 and no module" T-LABEL
    s" repl.wasm" BUILD-REPL 64 T=
    s" error[E-BUILD-USAGE]: a Wasm target builds a program, not an engine or a REPL" ERR-HAS
    s" help: build the engine or REPL for macos-aarch64, linux-aarch64 or linux-x86-64" ERR-HAS
@@ -784,7 +784,7 @@ public
    TWICE-CASE
    DEFER-CASE
    DOES-CASE
-   REFUSAL-CASES
+   REJECTION-CASES
    THROW-CASES
    DIE-CASE
    BOUNDS-CASES

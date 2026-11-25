@@ -6,7 +6,7 @@
 // throw-code, out-base, out-len, fault-kind, fault-addr, err-base, err-len and
 // reserve. The module owns every byte of its memory, which may grow to
 // memory32's 65536 pages. For each delivery the host calls reserve(length),
-// which answers the address of fresh pages, at least one, or 0 when it refuses;
+// which answers the address of fresh pages, at least one, or 0 when it rejects;
 // the host copies the bytes there and runs the event that names them. The
 // module frees them (src/lib/browser/event.f) once it no longer needs them. An
 // empty delivery reserves nothing and is named 0, 0.
@@ -509,12 +509,12 @@ export class Module {
     }
   }
 
-  // Ends the instance for its host: a reply that arrives later is refused.
+  // Ends the instance for its host: a reply that arrives later is rejected.
   end() {
     this.ended ??= "the host ended the module";
   }
 
-  // Refuses the instance a trap, a hello of another revision or end() ended.
+  // Rejects the instance a trap, a hello of another revision or end() ended.
   live() {
     if (this.ended) throw new Error(this.ended);
   }
@@ -573,7 +573,7 @@ export class Module {
     return new Error(`fault kind ${kind} at ${this.x["fault-addr"]()}`, { cause: e });
   }
 
-  // Memory's bytes [a, a + n), refused unless they lie inside it.
+  // Memory's bytes [a, a + n), rejected unless they lie inside it.
   span(a, n) {
     const size = BigInt(this.x.memory.buffer.byteLength);
     if (a < 0n || n < 0n || a + n > size)
@@ -923,7 +923,7 @@ export class Module {
 
   // Copies a delivery's pieces, each a Uint8Array or an ArrayBuffer, in order
   // into pages the module reserves, which it then owns, and answers their
-  // address; refuses a delivery the module cannot reserve.
+  // address; rejects a delivery the module cannot reserve.
   place(...pieces) {
     this.live();
     const size = pieces.reduce((n, piece) => n + piece.byteLength, 0);

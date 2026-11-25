@@ -1,4 +1,4 @@
-\ raw-cell-pointer-refusals.f - rejected programs for "a raw storage cell never
+\ raw-cell-pointer-rejections.f - rejected programs for "a raw storage cell never
 \ holds an address". Every mention of a raw storage word (variable, create,
 \ constant, here) re-freshens its published `-- ^a`, so an `n` stored through
 \ one mention would come back from the next as an address `@`, `c@`, `!` or
@@ -58,9 +58,9 @@ private
 : LACKS? ( str -- )
    REJECTION:BUFFER$ swap STR:CONTAINS? TFALSE ;
 
-\ Each shape is refused with its own named diagnostic (the code and the prose
+\ Each shape is rejected with its own named diagnostic (the code and the prose
 \ naming what was laundered), not a bare mismatch.
-\ Every value-position refusal answers one code and one reason. Asserting the
+\ Every value-position rejection answers one code and one reason. Asserting the
 \ reason keeps the prose from silently becoming a different rule's prose.
 : NAMED ( -- )
    CODE$ HAS?  VALUE-REASON$ HAS? ;
@@ -68,7 +68,7 @@ private
 : NAMED-EXEC ( -- )
    CODE$ HAS?  EXEC-REASON$ HAS?  VALUE-REASON$ LACKS? ;
 
-\ The cases run the live engine's checker through `evaluate-closed`; a refusal
+\ The cases run the live engine's checker through `evaluate-closed`; a rejection
 \ is a throw out of the compile, not a value.
 : CASE-VARIABLE ( -- )
    s" a plain variable cannot answer an address it was never given" T-LABEL
@@ -78,7 +78,7 @@ private
    DISARM ;
 
 : CASE-VARIABLE-STORE ( -- )
-   s" and the write half of the same pun is refused at the store" T-LABEL
+   s" and the write half of the same pun is rejected at the store" T-LABEL
    ARM
    [: s" : RCP-POKE ( n n -- ) RCP-V ! RCP-V @ ! ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
@@ -101,7 +101,7 @@ private
    DISARM ;
 
 : CASE-HERE ( -- )
-   s" here's cell is raw storage and answers the same refusal" T-LABEL
+   s" here's cell is raw storage and answers the same rejection" T-LABEL
    ARM
    [: s" : RCP-HPEEK ( n -- n ) here ! here @ @ ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
@@ -110,13 +110,13 @@ private
 \ The byte door is the same door: `c@` wants a `^u8`, and a value out of a
 \ raw cell is no more a byte address than it is a cell address.
 : CASE-BYTE-FETCH ( -- )
-   s" the byte view of the pun is refused where the cell view is" T-LABEL
+   s" the byte view of the pun is rejected where the cell view is" T-LABEL
    ARM
    [: s" : RCP-BPEEK ( n -- u8 ) RCP-V ! RCP-V @ c@ ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
    DISARM ;
 
-\ The other direction. Refusing the fetch alone would leave the cell holding an
+\ The other direction. Rejecting the fetch alone would leave the cell holding an
 \ address for some other mention to read back.
 : CASE-POINTER-IN ( -- )
    s" and a real pointer cannot be put into a plain cell in the first place" T-LABEL
@@ -126,11 +126,11 @@ private
    DISARM ;
 
 \ The field door: `ptr-field`'s row is `^a n -- ^^b` with `b` free, and
-\ the value-position rule never sees that pointer, so the raw base is refused at
+\ the value-position rule never sees that pointer, so the raw base is rejected at
 \ the `ptr-field` token whatever the result is then used as.
 
 : CASE-FIELD-FORGE ( -- )
-   s" the field of a raw cell is refused, so the seal cannot be walked around" T-LABEL
+   s" the field of a raw cell is rejected, so the seal cannot be walked around" T-LABEL
    ARM
    [: s" : RCP-FORGE ( n -- n ) RCP-V ! RCP-V 0 ptr-field @ @ ;" evaluate-closed ;]
       70 TTHROWSQ
@@ -138,22 +138,22 @@ private
    DISARM ;
 
 \ The same program with a NOMINAL result, the forgery the seal in
-\ test/raw-storage-load-seal-test.f stops, written through the field: refused at
+\ test/raw-storage-load-seal-test.f stops, written through the field: rejected at
 \ the same token by the same code, since the base is judged before the row is
 \ applied.
 : CASE-FIELD-FORGE-NOMINAL ( -- )
-   s" and the nominal forgery through that field is refused at the same token" T-LABEL
+   s" and the nominal forgery through that field is rejected at the same token" T-LABEL
    ARM
    [: s" : RCP-FORGE-N ( n -- rcpthing ) RCP-V ! RCP-V 0 ptr-field @ @ ;" evaluate-closed ;]
       70 TTHROWSQ
    CODE$ HAS?  FIELD-REASON$ HAS?
    DISARM ;
 
-\ A refusal with no token to sit on: every token accepts the value (`@` takes
-\ `^a`, answers `a`) and only the DECLARED output row refuses it, after the
+\ A rejection with no token to sit on: every token accepts the value (`@` takes
+\ `^a`, answers `a`) and only the DECLARED output row rejects it, after the
 \ last token was checked. The reason is still the raw-cell one.
 : CASE-SIGNATURE-BOUNDARY ( -- )
-   s" the declared output row refuses it too, and names the same rule" T-LABEL
+   s" the declared output row rejects it too, and names the same rule" T-LABEL
    ARM
    [: s" : RCP-VBASE ( -- ^u8 ) RCP-V @ ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED
@@ -174,7 +174,7 @@ private
 \ The executable value: with `variable ZQW  : ZQWQ ( -- ^[ -- n ] ) ZQW ;  :
 \ I1 ( -- n ) ZQWQ @ execute ;`, `1 ZQW !  I1` would branch to address 1. The
 \ fetched value carries a declared quotation type, so the opaque-execute rule
-\ (which judges opacity, not provenance) never fires; the refusal lands on the
+\ (which judges opacity, not provenance) never fires; the rejection lands on the
 \ accessor, so the cell never gets a code type.
 
 : CASE-VARIABLE-AS-XT-CELL ( -- )
@@ -191,7 +191,7 @@ private
    NAMED-EXEC
    DISARM ;
 
-\ The write half. Refusing the accessor alone would leave `!` free to put a
+\ The write half. Rejecting the accessor alone would leave `!` free to put a
 \ quotation into the cell for a later mention to read back.
 : CASE-QUOTATION-STORE ( -- )
    s" a quotation cannot be stored into an undeclared cell either" T-LABEL
@@ -225,17 +225,17 @@ private
    [: s" : RCP-SHOW ( -- ) RCP-BYTES 4 >str type ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ The latch is raised inside the unifier, so a row that is then thrown away can
-\ raise it: TRY-PRIMS tries each candidate, and `V @ cell+` refuses the `^a
+\ raise it: TRY-PRIMS tries each candidate, and `V @ cell+` rejects the `^a
 \ -- ^a` row then succeeds on `n -- n`. A later rejection keeps its own
 \ reason.
 : CASE-ABANDONED-CANDIDATE ( -- )
-   s" a candidate row that was abandoned does not name the real refusal" T-LABEL
+   s" a candidate row that was abandoned does not name the real rejection" T-LABEL
    ARM
    [: s" : RCP-SPEC ( -- n ) RCP-V @ cell+ 0= ;" evaluate-closed ;] 70 TTHROWSQ
    CODE$ LACKS?  VALUE-REASON$ LACKS?
    DISARM ;
 
-\ The DECLARED code cells. A rule that also refused these would refuse every
+\ The DECLARED code cells. A rule that also rejected these would reject every
 \ hook the engine ships: the storage word mints the quotation type, so the cell
 \ is a code cell by declaration and its fetched value is executed with a known
 \ row.
@@ -274,9 +274,9 @@ private
    DISARM ;
 
 \ A TASK:+USER slot of n publishes `-- ^n`: a fetch through the value it
-\ holds is refused, without the raw-cell code.
+\ holds is rejected, without the raw-cell code.
 : CASE-TASK-SLOT ( -- )
-   s" a TASK:+USER slot's refusal is not the raw-cell one" T-LABEL
+   s" a TASK:+USER slot's rejection is not the raw-cell one" T-LABEL
    ARM
    [: s" : RCP-SPEEK ( -- n ) RCP-SLOT @ @ ;" evaluate-closed ;] 70 TTHROWSQ
    CODE$ LACKS?  VALUE-REASON$ LACKS?

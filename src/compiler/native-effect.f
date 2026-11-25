@@ -174,7 +174,7 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 : FPR-CK ( n -- n )
    dup 0 < if E-NEFF-FPR throw then ;
 
-\ Refuses any register the VM, the link register or the stack pointer took.
+\ Rejects any register the VM, the link register or the stack pointer took.
 : GPR-FIT ( n n -- )
    {: bits:n alloc:n :}
    bits alloc invert and 0<> if E-NEFF-GPR throw then ;
@@ -366,7 +366,7 @@ public
 
 private
 
-\ A repeated place is refused: no caller can put two values in one place.
+\ A repeated place is rejected: no caller can put two values in one place.
 : SEQ-PUT ( NEFF:placeseq n -- NEFF:placeseq )
    {: s:placeseq e:n :}
    s S-BITS SEQ-CK {: w:n :}
@@ -406,7 +406,7 @@ private
 
 public
 
-\ A slot position is refused rather than read as a register number.
+\ A slot position is rejected rather than read as a register number.
 : SEQ-REG@ ( NEFF:placeseq n -- n )
    SEQ-POSITION {: w:n p:n :}
    w SEQ-RANGE? if E-NEFF-KIND throw then
@@ -434,7 +434,7 @@ public
    set T-BITS TRAIT-CK want and want = ;
 
 \ ---- construction and validation ---------------------------------------------
-\ An impossible combination throws a named error, and ROUTINE refuses any
+\ An impossible combination throws a named error, and ROUTINE rejects any
 \ register the machine reserves. The validator checks only that the fields can
 \ hold together; whether the emitted code obeys the contract is the emitted
 \ control-flow verifier's.

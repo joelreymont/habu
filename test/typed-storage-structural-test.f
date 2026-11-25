@@ -21,13 +21,13 @@ DEFLINEAR tsslin
 
 \ Nominal, layout, typed-pointer and xt cells: test/typed-storage-test.f and
 \ test/xt-cell-test.f. Raw-cell pointer readings:
-\ test/compiler/raw-cell-pointer-refusals.f; the nominal mint:
+\ test/compiler/raw-cell-pointer-rejections.f; the nominal mint:
 \ test/typed-storage-test.f section 8.
 
 \ A raw `variable` types its cell with an open var each site instantiates
 \ afresh, so one raw cell certifies contradictory readings.
 \ 1. Closed STRUCTURAL cells: three scalar shapes a raw cell would blur, each
-\    pinned at its declaration, each refusing the other two.
+\    pinned at its declaration, each rejecting the other two.
 TYPED-VARIABLE TSSN n
 TYPED-VARIABLE TSSF bool
 TYPED-VARIABLE TSSP ^u8
@@ -48,7 +48,7 @@ TYPED-VARIABLE TSSP ^u8
    s" W4 ( -- bool ) TSSF @"           CHECK-QUIET-CANDIDATE! -1 T=
    s" W5 ( ^u8 -- ) TSSP !"         CHECK-QUIET-CANDIDATE! -1 T=
    s" W6 ( -- ^u8 ) TSSP @"         CHECK-QUIET-CANDIDATE! -1 T=
-   \ ... and every OTHER reading of the same cell is refused
+   \ ... and every OTHER reading of the same cell is rejected
    s" W7 ( bool -- ) TSSN !"           CHECK-QUIET-CANDIDATE! 0 T=
    s" W8 ( -- ^u8 ) TSSN @"         CHECK-QUIET-CANDIDATE! 0 T=
    s" W9 ( -- tssk ) TSSN @"           CHECK-QUIET-CANDIDATE! 0 T=
@@ -87,16 +87,16 @@ variable TSS-EVAL-U
    s" TYPED-VARIABLE TSS-OK-PN ^n" TSS-EVAL 0 T=
    s" TYPED-VARIABLE TSS-OK-PU ^u8" TSS-EVAL 0 T=
    s" TYPED-VARIABLE TSS-OK-PPU ^^u8" TSS-EVAL 0 T=
-   \ an OPEN var has nothing to pin, in either position: still refused
+   \ an OPEN var has nothing to pin, in either position: still rejected
    s" TYPED-VARIABLE TSS-BAD-A a" TSS-EVAL 70 T=
    s" TYPED-VARIABLE TSS-BAD-PA ^a" TSS-EVAL 70 T=
    \ a bare atom carries no effect to pin either
    s" TYPED-VARIABLE TSS-BAD-XT xt" TSS-EVAL 70 T=
-   \ a LINEAR con is closed and one cell, and still refused in BOTH positions:
+   \ a LINEAR con is closed and one cell, and still rejected in BOTH positions:
    \ noncopyable
    s" TYPED-VARIABLE TSS-BAD-LIN tsslin" TSS-EVAL 70 T=
    s" TYPED-VARIABLE TSS-BAD-PLIN ^tsslin" TSS-EVAL 70 T=
-   \ the refused names never reached the dictionary
+   \ the rejected names never reached the dictionary
    s" TSS-BAD-A" 0 search-wl 0= TTRUE
    s" TSS-BAD-PA" 0 search-wl 0= TTRUE
    s" TSS-BAD-XT" 0 search-wl 0= TTRUE
@@ -108,7 +108,7 @@ variable TSS-EVAL-U
 PTR-VARIABLE TSS-PV
 
 : SECTION-SUBCELL-REASON ( -- )
-   \ a stored u8/u16/char is refused ...
+   \ a stored u8/u16/char is rejected ...
    s" TYPED-VARIABLE TSS-BAD-U8 u8" TSS-EVAL 70 T=
    s" TYPED-VARIABLE TSS-BAD-U16 u16" TSS-EVAL 70 T=
    s" TSS-BAD-U8" 0 search-wl 0= TTRUE

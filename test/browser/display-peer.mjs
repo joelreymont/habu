@@ -60,19 +60,19 @@ for (const [command, reason] of [
   assert.equal(records.length, count, `${command} must not reach the host`);
 }
 await assert.rejects(module.focus(new Uint8Array(17)), /whole 16-byte identities/, "a partial identity");
-// A delivery the module cannot reserve, memory32's whole 4 GiB, is refused by
+// A delivery the module cannot reserve, memory32's whole 4 GiB, is rejected by
 // reserve before memory grows, and the instance keeps running.
 const memory = () => module.x.memory.buffer.byteLength;
 let before = memory();
 await assert.rejects(module.load(new Uint8Array(2 ** 32)),
   (e) => e instanceof RangeError && /cannot reserve 4294967296 bytes/.test(e.message), "an unreservable delivery");
-assert.equal(memory(), before, "a refused delivery must not grow memory");
+assert.equal(memory(), before, "a rejected delivery must not grow memory");
 // reserve answers 0 for an empty, negative, past-memory32 or past-bound count
 // and leaves memory as it was.
 for (const n of [0n, -1n, 2n ** 32n, 2n ** 32n + 1n]) assert.equal(module.x.reserve(n), 0n, `reserve(${n})`);
-assert.equal(memory(), before, "a refused reserve must not grow memory");
+assert.equal(memory(), before, "a rejected reserve must not grow memory");
 await module.load(Uint8Array.of(0, 255, 16));
-assert.deepEqual(records.at(-1), ["text", "load 00ff10"], "a later delivery after a refused one");
+assert.deepEqual(records.at(-1), ["text", "load 00ff10"], "a later delivery after a rejected one");
 // Echoing 32 identities passes ECHO's buffer, so each of these turns throws -1
 // and rejects with that throw's record above throw 85, the module's code for
 // an uncaught throw; the run still frees its delivery.
@@ -125,7 +125,7 @@ assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(origi
   "draw 2 4/8/0/-/ff7314/0/32768 5/9/0/-/ff7314/0/32768\n" +
   "ground 0 0 1 0 -0.5 -0.5 0 0.5 0.5 1\nground none\n" +
   `text load 00ff10\ntext focus ${"00".repeat(15)}ff\ntext highlight \n`);
-console.log("SVG/input protocol, independent copy, rejected records, identities, refused delivery, " +
+console.log("SVG/input protocol, independent copy, rejected records, identities, rejected delivery, " +
   "error text, mesh origins and CLI passed");
 
 if (chrome) await browser();
@@ -178,7 +178,7 @@ async function browser() {
       const request = GPUAdapter.prototype.requestDevice;
       GPUAdapter.prototype.requestDevice = async function (...args) { const d = await request.apply(this, args);
         devices.push(d); d.lost.then((info) => { d.reason = info.reason; });
-        if (window.breakPipeline) { breakPipeline = false; d.createRenderPipeline = () => { throw new Error('pipeline refused'); }; }
+        if (window.breakPipeline) { breakPipeline = false; d.createRenderPipeline = () => { throw new Error('pipeline rejected'); }; }
         return d; };
       window.canvas = document.querySelector('canvas');
       window.mountOne = () => mountOn(canvas);
@@ -804,15 +804,15 @@ async function browser() {
       await until(() => evaluate("devices[1].reason === 'destroyed'"));
       await call("Emulation.clearDeviceMetricsOverride");
 
-      // A canvas holding another context is refused before any device exists;
+      // A canvas holding another context is rejected before any device exists;
       // a setup step that throws once the device exists destroys it.
       const owned = await evaluate("devices.length");
       assert.equal(await evaluate(`(async () => { const c = document.createElement('canvas'); c.getContext('2d');
         try { await mountOn(c); return 'mounted'; } catch (e) { return String(e); } })()`),
         "Error: the canvas already has a context other than WebGPU");
-      assert.equal(await evaluate("devices.length"), owned, "a refused canvas requests no device");
+      assert.equal(await evaluate("devices.length"), owned, "a rejected canvas requests no device");
       assert.equal(await evaluate("(async () => { window.breakPipeline = true; try { await mountOne(); return 'mounted'; } catch (e) { return String(e); } })()"),
-        "Error: pipeline refused");
+        "Error: pipeline rejected");
       await until(() => evaluate(`devices[${owned}].reason === 'destroyed'`))
         .catch(() => assert.fail("a mount that fails after requesting its device destroys it"));
 
@@ -838,7 +838,7 @@ async function browser() {
       await evaluate("late");
       assert.equal(await evaluate("modules[0].turns"), ran, "a late reply runs no turn");
       assert.equal((await evaluate("records")).length, heard + 3, "a late reply reaches no callback");
-      console.log("Headless Chrome: viewport mount, turns, load, focus, highlight, dispose, remount, refused mounts and disposed replies passed");
+      console.log("Headless Chrome: viewport mount, turns, load, focus, highlight, dispose, remount, rejected mounts and disposed replies passed");
     }
   } catch (error) {
     failure = error; throw error;

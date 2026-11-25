@@ -2,7 +2,7 @@
 \ (src/lib/xml.f). Name spans keep their prefix; URI and ATTR-URI answer the
 \ resolved, decoded namespace URI. A default namespace applies to elements, not
 \ to unprefixed attributes. Duplicate expanded attribute names and invalid
-\ bindings are refused before the start event is returned.
+\ bindings are rejected before the start event is returned.
 \ PREFIX-URI resolves against the current scope, the start tag's own
 \ declarations included: `xml` to its implicit URI, the empty prefix to the
 \ default, no bytes when there is none.

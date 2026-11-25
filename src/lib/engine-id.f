@@ -61,7 +61,7 @@ FUNCTION: MAPPED-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 
 \ The kernel's byte count for the program's pathname in OWN-PATH-BUF; zero or
-\ negative when it refuses.
+\ negative when it rejects.
 : READ-OWN-PATH ( -- n )
    HB-TARGET-MACOS? if getpid OWN-PATH-BUF OWN-PATH-CAP SELF-PATH exit then
    HB-TARGET-LINUX-KERNEL? if

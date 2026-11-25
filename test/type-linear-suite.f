@@ -24,7 +24,7 @@ SUMTYPE lqmix<a,b>
 STRUCTURE lqp<a,b> FIELD w a ;STRUCTURE
 : LQPID ( lqp<ltok,ltok> -- lqp<ltok,ltok> ) ;
 \ a trusted forge of any type, and a checked word whose body hides one behind
-\ LQ2:ERR's effect: R14/R15 below keep both refused.
+\ LQ2:ERR's effect: R14/R15 below keep both rejected.
 TRUSTED: LFORGE ( -- a ) 0 ;
 : LFORGE-OK ( n -- lq2<a,n> ) drop LFORGE LQ2:OK ;
 
@@ -65,7 +65,7 @@ s" MR2=" type s" MR2 ( lq2<ltok,n> -- ) >r" CHECK-QUIET-CANDIDATE! 0 T=
 cr
 
 \ Copy-class words (dup/over/tuck/2dup, r@/2r@) raise the count and drop-class
-\ words (drop/nip/2drop) lower it, so LIN-CHECK refuses them.
+\ words (drop/nip/2drop) lower it, so LIN-CHECK rejects them.
 s" R1=" type s" B1 ( lq2<ltok,n> -- lq2<ltok,n> lq2<ltok,n> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" R2=" type s" B2 ( lq2<ltok,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" R3=" type s" B3 ( lq2<ltok,n> -- )" CHECK-QUIET-CANDIDATE! 0 T=
@@ -106,7 +106,7 @@ cr
 \ recurses through the args; LIN-TYPE-COUNT counts it at the outer tag). A
 \ linear moving into the payload is consumed once (NL1); MATCH reintroduces it
 \ once for the arm to consume, by re-mint (NL6) or free; any copy (NL2), loss
-\ (NL3/NL4) or match-then-drop (NL7) is refused; identity flows (NL5). Without
+\ (NL3/NL4) or match-then-drop (NL7) is rejected; identity flows (NL5). Without
 \ the recursion the outer bundle could be copied or dropped.
 SUMTYPE lopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" NL1=" type s" NC1 ( lq2<ltok,n> -- lopt<lq2<ltok,n>> ) LOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
@@ -184,7 +184,7 @@ cr
 
 \ A linear value under a generic layer is a different checker question from
 \ TC18: opt<lone> is linear through its type argument, answered by walking the
-\ argument list. opt<lone> and opt<plain> share a width, so refusing one and
+\ argument list. opt<lone> and opt<plain> share a width, so rejecting one and
 \ certifying the other answers linearity. Two generic layers pin the recursion;
 \ the store rows pin that `!` reaches the guard `@` does. Without the walk, `(
 \ ^opt<lone> -- opt<lone> ) @` certified.
@@ -210,19 +210,19 @@ cr
 \ No storage holds a type that may hold a linear value, so no package forges
 \ or drops another's token through a cell.
 : STORAGE-CASES ( -- )
-   s" a foreign cell that would forge a token is refused" T-LABEL
+   s" a foreign cell that would forge a token is rejected" T-LABEL
    s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package package TLINF private CAST: >CELLS ( n -- ^n ) CAST: Q>N ( [ -- n ] -- n ) public TYPED-VARIABLE HK [ -- TLINQ:tok ] : FORGE ( -- TLINQ:tok ) [: 42 ;] Q>N HK NULL-PTR - >CELLS ! HK @ execute ; : SHOW ( -- ) FORGE TLINQ:CLOSE . ; ;package TLINF:SHOW" 70
-   s" error[E-BAD-STORAGE]: the type of `HK`" SUBJECT:REFUSED? TTRUE
-   s" a foreign cell that would drop a token is refused" T-LABEL
+   s" error[E-BAD-STORAGE]: the type of `HK`" SUBJECT:REJECTED? TTRUE
+   s" a foreign cell that would drop a token is rejected" T-LABEL
    s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package package TLINL private CAST: >CELLS ( n -- ^n ) CAST: Q>N ( [ n -- ] -- n ) public TYPED-VARIABLE HK [ TLINQ:tok -- ] : LOSE ( TLINQ:tok -- ) [: drop ;] Q>N HK NULL-PTR - >CELLS ! HK @ execute ; : SHOW ( -- ) TLINQ:OPEN LOSE ; ;package TLINL:SHOW" 70
-   s" error[E-BAD-STORAGE]: the type of `HK`" SUBJECT:REFUSED? TTRUE
-   s" a cell over an open type variable, unequal row tails or a member is refused" T-LABEL
+   s" error[E-BAD-STORAGE]: the type of `HK`" SUBJECT:REJECTED? TTRUE
+   s" a cell over an open type variable, unequal row tails or a member is rejected" T-LABEL
    s" TYPED-VARIABLE TLIN-QA [ -- a ]" 70
-   s" error[E-BAD-STORAGE]: the type of `TLIN-QA`" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `TLIN-QA`" SUBJECT:REJECTED? TTRUE
    s" TYPED-VARIABLE TLIN-QR [ R -- S ]" 70
-   s" error[E-BAD-STORAGE]: the type of `TLIN-QR`" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `TLIN-QR`" SUBJECT:REJECTED? TTRUE
    s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; STRUCTURE hold FIELD fn [ -- TLINQ:tok ] ;STRUCTURE ;package TYPED-VARIABLE TLIN-QS TLINQ:hold" 70
-   s" error[E-BAD-STORAGE]: the type of `TLIN-QS`" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `TLIN-QS`" SUBJECT:REJECTED? TTRUE
    s" the owner, a defer over the token and a closed callable cell still load" T-LABEL
    s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package : TLIN-USE ( -- n ) TLINQ:OPEN TLINQ:CLOSE ; TLIN-USE drop" 0 SUBJECT:EXITED? TTRUE
    s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; defer D ( -- TLINQ:tok ) : INSTALL ( -- ) [: OPEN ;] is D ; ;package TLINQ:INSTALL : TLIN-USE ( -- n ) TLINQ:D TLINQ:CLOSE ; TLIN-USE drop" 0 SUBJECT:EXITED? TTRUE
@@ -231,7 +231,7 @@ cr
 
 \ Atomic memory operations: a closed-surface tripwire, not a linearity proof.
 \ The layout-aware transport step is selected by token name and only `@` and `!`
-\ have it, so every layout value is refused here, the non-linear control too;
+\ have it, so every layout value is rejected here, the non-linear control too;
 \ the `^n` rows prove the four words work. Opening layouts to the atomics
 \ turns the controls red; that change must add linearity rows.
 s" TA1=" type s" TA1 ( ^opt<lone> -- opt<lone> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
@@ -255,7 +255,7 @@ s" TA15=" type s" TA15 ( n ^n -- n ) atomic-add" CHECK-QUIET-CANDIDATE! -1 T=
 s" TA16=" type s" TA16 ( n n ^n -- n ) atomic-cas" CHECK-QUIET-CANDIDATE! -1 T=
 cr
 
-\ Both unified declarers also refuse `FIELD p ^<linear>`
+\ Both unified declarers also reject `FIELD p ^<linear>`
 \ (test/structure-decl-suite.f, test/enum-decl-suite.f); this file covers such a
 \ value once it is on a row.
 

@@ -119,18 +119,18 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
    CTX-B SHA1:FINISH
    s" 84983e441c3bd26ebaae4aa1f95129e5e54670f1" DIGEST= ;
 
-: REFUSALS ( -- )
-   s" START refuses a context one byte short" T-LABEL
+: REJECTIONS ( -- )
+   s" START rejects a context one byte short" T-LABEL
    [: CTX-SHORT SHA1:START ;] E-SPAN-CAPACITY TTHROWSQ
-   s" FEED refuses a context one byte short" T-LABEL
+   s" FEED rejects a context one byte short" T-LABEL
    [: CTX-SHORT s" abc" SHA1:FEED ;] E-SPAN-CAPACITY TTHROWSQ
-   s" FINISH refuses a context one byte short" T-LABEL
+   s" FINISH rejects a context one byte short" T-LABEL
    [: CTX-SHORT SHA1:FINISH HEX$ drop ;] E-SPAN-CAPACITY TTHROWSQ
    CTX-A SHA1:START
-   s" FEED refuses a negative length" T-LABEL
+   s" FEED rejects a negative length" T-LABEL
    [: CTX-A 0 A$ STR:DATA -1 >str SHA1:FEED ;] E-SPAN-LENGTH TTHROWSQ
    CANARY DG-SHORT SPAN:FILL
-   s" DIGEST! refuses a span one byte short" T-LABEL
+   s" DIGEST! rejects a span one byte short" T-LABEL
    [: CTX-A s" abc" SHA1:HASH DG-SHORT SHA1:DIGEST! ;] E-SPAN-CAPACITY TTHROWSQ
    s" and writes none of it" T-LABEL
    DG-SHORT 0 SPAN:U8@ CANARY T= ;
@@ -140,7 +140,7 @@ public
 : RUN ( -- )
    T-RESET
    FILL-A
-   FIPS MILLION-A BOUNDARIES FINISH-KEEPS-STREAM INTERLEAVED REFUSALS ;
+   FIPS MILLION-A BOUNDARIES FINISH-KEEPS-STREAM INTERLEAVED REJECTIONS ;
 
 ;package
 

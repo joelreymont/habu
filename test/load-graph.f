@@ -138,7 +138,7 @@ public
 : FILE-COUNT ( -- n )
    FILE-N @ ;
 
-\ The id of a file READ read, by any path naming it. Any other path is refused:
+\ The id of a file READ read, by any path naming it. Any other path is rejected:
 \ a file the walk never read has no loads to trust.
 : FILE-ID ( str -- n ) {: s:str :}
    s SOURCE-ROOT:CANONICAL drop PROBE!

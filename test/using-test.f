@@ -54,7 +54,7 @@ s" using UA using UA AW drop ;using ;using" UCE-CATCH 0 T=
 \ checked body resolves a used public (proves the checker resolution)
 s" using UA : UT-CB1 ( -- n ) AW 1 + ; UT-CB1 drop ;using" UCE-CATCH 0 T=
 \ Engine DATA offsets do not claim an application's imported word names.
-s" package URF public : REFUSAL-CELL ( n n -- ) 2drop ; ;package using URF : URF-CONSUME ( n n -- ) REFUSAL-CELL ; 1 2 URF-CONSUME ;using" UCE-CATCH 0 T=
+s" package URF public : REJECTION-CELL ( n n -- ) 2drop ; ;package using URF : URF-CONSUME ( n n -- ) REJECTION-CELL ; 1 2 URF-CONSUME ;using" UCE-CATCH 0 T=
 \ using inside a package block; the used public resolves in the public body
 s" package UH using UA public : UT-H1 ( -- n ) AW ; ;package UH:UT-H1 drop" UCE-CATCH 0 T=
 \ inner scope wins silently: the open package's own tail shadows a used tail
@@ -75,7 +75,7 @@ s" using UP : UT-BADP ( -- n ) SECP ; ;using" UCE-CATCH 70 T=
 s" AW drop" UCE-CATCH 70 T=
 \ ambiguous: AW resolves in two used packages (interpret)
 s" using UA using UC AW drop ;using ;using" UCE-CATCH 70 T=
-\ ambiguous in a compiled body: the checker refuses it (checker.f LIVE-BIND)
+\ ambiguous in a compiled body: the checker rejects it (checker.f LIVE-BIND)
 REJECTION:CAPTURE
 s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH 70 T=
 S\" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package\n" UCE-SAID
@@ -126,10 +126,10 @@ s" package UJ using UA public : UT-J1 ( -- n ) AW ; ;package AW drop" UCE-CATCH 
 
 \ === a package's ;using closes only the package's own usings ===
 \ `;package` restores the using depth the package opened at, so a `;using` inside
-\ the package that closes a using opened before it is refused by name instead of
+\ the package that closes a using opened before it is rejected by name instead of
 \ coming undone at `;package` and leaving AW resolving past it.
 s" using UA package UQ ;using ;package AW drop ;using" UCE-CATCH 70 T=
-\ the production source verifier refuses the same nesting
+\ the production source verifier rejects the same nesting
 REJECTION:CAPTURE
 s" using UA package UQ ;using ;package" VS-CATCH 70 T=
 S\" error[E-USING-OUTER]: `;using` would close a using opened outside this package\n" UCE-SAID
@@ -204,11 +204,11 @@ s" using USG : USG-R5 ( -- n ) NC ; ;using" UCE-CATCH 0 T=
 \ no using in scope: a bare global is never a shadow error (resolves to the global)
 s" MW drop" UCE-CATCH 0 T=
 
-\ The interpreter refuses the same collision at top level and as the operand of
+\ The interpreter rejects the same collision at top level and as the operand of
 \ `'`, by name, a throw its evaluate's caller catches. A qualified name, a tail
 \ no used package exports, a word the open package defines itself and a read
 \ after `;using` are unchanged. A buffer evaluated under its includer's using
-\ resolves through it, so it refuses too.
+\ resolves through it, so it rejects too.
 s" using USG MW drop ;using" UCE-CATCH 70 T=
 s" using USG ' MW drop ;using" UCE-CATCH 70 T=
 s" using USG USG:MW drop ;using" UCE-CATCH 0 T=
@@ -284,7 +284,7 @@ s" using UTP : UT-SECRET ( secret-id -- secret-id ) ; ;using" UCE-CATCH 70 T=
 \ A closed import no longer names its types.
 s" using UTA ;using : UT-CLOSED ( import-id -- import-id ) ;" UCE-CATCH 70 T=
 \ A public family no other package declares still needs its package imported
-\ or named: bare outside it is refused, under `using` it resolves.
+\ or named: bare outside it is rejected, under `using` it resolves.
 package UTD public NEWTYPE solo-id
 ;package
 s" : UT-SOLO-BARE ( solo-id -- solo-id ) ;" UCE-CATCH 70 T=
@@ -300,11 +300,11 @@ s" package OPKD public : OPKD-R ( -- n ) OPK-K ; ;package" UCE-CATCH 70 T=
 
 \ === a buffer closes only the usings it opens ===
 \ A load file is a using scope: a buffer's `;using` that would close a using its
-\ includer opened is refused by name, as inside a package. Closing UA for the
+\ includer opened is rejected by name, as inside a package. Closing UA for the
 \ buffer would let its `using UB` take UA's slot, and the depth restored at the
 \ buffer's end would leave the includer resolving BW where AW had been, on the
 \ clean and the throwing path alike. A using the buffer opened closes, and the
-\ verifier's replay refuses the inherited one the same way.
+\ verifier's replay rejects the inherited one the same way.
 using UA
 s" ;using using UB" UCE-CATCH 70 T=
 s" ;using using UB NO-SUCH-WORDX" UCE-CATCH 70 T=
@@ -336,7 +336,7 @@ REJECTION:BUFFER-OFF
 \ certifies against the word the engine binds and runs it, and a tail with
 \ nothing left to bind is undefined. The retired publics' effects differ from
 \ the words bound in their place, so a body certified against a retired one is
-\ refused. A checker that found the retired symbol would refuse the first two
+\ rejected. A checker that found the retired symbol would reject the first two
 \ shapes as E-USING-SHADOW-GLOBAL and E-USING-AMBIGUOUS.
 package URS public : drop ( n n -- ) 2drop ; undefine drop ;package
 package URA public : URW ( n -- n ) 1 + ; ;package

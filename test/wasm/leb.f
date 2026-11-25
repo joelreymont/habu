@@ -1,7 +1,7 @@
 \ leb.f - WLEB, the Wasm backend's LEB128: the shortest LEB of each integer type
 \ at the edges of its byte counts and its range, the padded call and address
 \ fields read at their offsets and rewritten in place, round trips across every
-\ bit width, and each refusal by its code.
+\ bit width, and each rejection by its code.
 
 require src/lib/test/assert.f
 require src/lib/span.f
@@ -43,7 +43,7 @@ variable STAGED-LEN
    c [char] a >= if c [char] a - $0A + exit then
    c [char] 0 - ;
 
-\ A refusal's quotation sees no locals, so the hex's bytes are staged, with
+\ A rejection's quotation sees no locals, so the hex's bytes are staged, with
 \ canaries past them.
 : STAGE ( str -- )
    {: s:str :}
@@ -202,7 +202,7 @@ variable STAGED-LEN
    MIN-N s" 8080808080808080807f" S64-PADS
    MAX-N s" ffffffffffffffffff00" S64-PADS ;
 
-\ ---- reading what Wasm admits, and refusing the rest ----------------------
+\ ---- reading what Wasm admits, and rejecting the rest ----------------------
 \ The staged bytes read as v and take len of them.
 : READS ( str [ str -- n n ] n n -- )
    {: s:str get v:n len:n :}
@@ -211,8 +211,8 @@ variable STAGED-LEN
    s T-LABEL len T=
    s T-LABEL v T= ;
 
-\ fail, run on the staged bytes, refuses with code.
-: REFUSES ( str [ -- ] n -- )
+\ fail, run on the staged bytes, rejects with code.
+: REJECTS ( str [ -- ] n -- )
    {: s:str fail code:n :}
    s STAGE
    s T-LABEL
@@ -227,33 +227,33 @@ variable STAGED-LEN
 
 \ Still marked for more at the type's last byte, whatever follows.
 : OVERLONG ( -- )
-   s" 8080808080" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-OVERLONG REFUSES
-   s" ffffffff8f00" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-OVERLONG REFUSES
-   s" 808080808000" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-OVERLONG REFUSES
-   s" ffffffffffffffffffff7f" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-OVERLONG REFUSES ;
+   s" 8080808080" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-OVERLONG REJECTS
+   s" ffffffff8f00" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-OVERLONG REJECTS
+   s" 808080808000" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-OVERLONG REJECTS
+   s" ffffffffffffffffffff7f" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-OVERLONG REJECTS ;
 
 : TRUNCATED ( -- )
-   s" " [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-TRUNCATED REFUSES
-   s" 80" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-TRUNCATED REFUSES
-   s" ffffffff" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-TRUNCATED REFUSES
-   s" 808080808080808080" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-TRUNCATED REFUSES
+   s" " [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-TRUNCATED REJECTS
+   s" 80" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-TRUNCATED REJECTS
+   s" ffffffff" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-TRUNCATED REJECTS
+   s" 808080808080808080" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-TRUNCATED REJECTS
    s" a negative length" T-LABEL
    [: STAGED SPAN:$ STR:DATA -1 >str WLEB:U32@ 2drop ;] E-SPAN-LENGTH TTHROWSQ ;
 
 \ A last byte with bits past the type: they must be zero, or copies of the sign.
 : OUT-OF-RANGE ( -- )
-   s" 8080808010" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-RANGE REFUSES
-   s" ffffffff1f" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-RANGE REFUSES
-   s" ffffffff0f" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-RANGE REFUSES
-   s" 8080808008" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-RANGE REFUSES
-   s" ffffffff77" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-RANGE REFUSES
-   s" ffffffffffffffffff01" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-RANGE REFUSES
-   s" 8080808080808080807e" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-RANGE REFUSES ;
+   s" 8080808010" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-RANGE REJECTS
+   s" ffffffff1f" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-RANGE REJECTS
+   s" ffffffff0f" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-RANGE REJECTS
+   s" 8080808008" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-RANGE REJECTS
+   s" ffffffff77" [: STAGED$ WLEB:S32@ 2drop ;] WLEB:E-RANGE REJECTS
+   s" ffffffffffffffffff01" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-RANGE REJECTS
+   s" 8080808080808080807e" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-RANGE REJECTS ;
 
-\ ---- refused writes --------------------------------------------------------
-\ fail, writing into OUT, refuses with code, and leaves the whole of OUT as the
+\ ---- rejected writes --------------------------------------------------------
+\ fail, writing into OUT, rejects with code, and leaves the whole of OUT as the
 \ canaries it was filled with.
-: WRITE-REFUSES ( str [ -- ] n -- )
+: WRITE-REJECTS ( str [ -- ] n -- )
    {: s:str fail code:n :}
    CANARY OUT SPAN:FILL
    s T-LABEL
@@ -261,63 +261,63 @@ variable STAGED-LEN
    s T-LABEL
    OUT CANARIES? TTRUE ;
 
-\ A value outside its type is refused before a byte is written.
+\ A value outside its type is rejected before a byte is written.
 : WRITE-RANGE ( -- )
    s" a u32 of 2^32"
-   [: U32-PAST OUT WLEB:U32! drop ;] WLEB:E-RANGE WRITE-REFUSES
+   [: U32-PAST OUT WLEB:U32! drop ;] WLEB:E-RANGE WRITE-REJECTS
    s" a negative u32"
-   [: -1 OUT WLEB:U32! drop ;] WLEB:E-RANGE WRITE-REFUSES
+   [: -1 OUT WLEB:U32! drop ;] WLEB:E-RANGE WRITE-REJECTS
    s" an s32 of 2^31"
-   [: S32-MAX 1+ OUT WLEB:S32! drop ;] WLEB:E-RANGE WRITE-REFUSES
+   [: S32-MAX 1+ OUT WLEB:S32! drop ;] WLEB:E-RANGE WRITE-REJECTS
    s" an s32 below -2^31"
-   [: S32-MAX invert 1- OUT WLEB:S32! drop ;] WLEB:E-RANGE WRITE-REFUSES
+   [: S32-MAX invert 1- OUT WLEB:S32! drop ;] WLEB:E-RANGE WRITE-REJECTS
    s" a padded u32 of 2^32"
-   [: U32-PAST OUT WLEB:U32-PAD! drop ;] WLEB:E-RANGE WRITE-REFUSES
+   [: U32-PAST OUT WLEB:U32-PAD! drop ;] WLEB:E-RANGE WRITE-REJECTS
    s" a negative padded u32"
-   [: -1 OUT WLEB:U32-PAD! drop ;] WLEB:E-RANGE WRITE-REFUSES ;
+   [: -1 OUT WLEB:U32-PAD! drop ;] WLEB:E-RANGE WRITE-REJECTS ;
 
-\ A span short of the LEB is refused before a byte is written, and an exact fit
+\ A span short of the LEB is rejected before a byte is written, and an exact fit
 \ is written whole.
 : CAPACITY ( -- )
    s" MAX-N's ten bytes in nine"
-   [: MAX-N OUT 9 SPAN:TAKE WLEB:S64! drop ;] E-SPAN-CAPACITY WRITE-REFUSES
+   [: MAX-N OUT 9 SPAN:TAKE WLEB:S64! drop ;] E-SPAN-CAPACITY WRITE-REJECTS
    s" and fills ten exactly" T-LABEL
    MAX-N OUT 10 SPAN:TAKE WLEB:S64! 10 T=
    s" a padded u32 in four bytes"
-   [: 0 OUT 4 SPAN:TAKE WLEB:U32-PAD! drop ;] E-SPAN-CAPACITY WRITE-REFUSES
+   [: 0 OUT 4 SPAN:TAKE WLEB:U32-PAD! drop ;] E-SPAN-CAPACITY WRITE-REJECTS
    s" a padded s64 in nine bytes"
-   [: 0 OUT 9 SPAN:TAKE WLEB:S64-PAD! drop ;] E-SPAN-CAPACITY WRITE-REFUSES ;
+   [: 0 OUT 9 SPAN:TAKE WLEB:S64-PAD! drop ;] E-SPAN-CAPACITY WRITE-REJECTS ;
 
-\ ---- refused fields and patches ---------------------------------------------
+\ ---- rejected fields and patches ---------------------------------------------
 \ A padded reader takes only a field of its width, inside the bytes.
-: FIELD-REFUSALS ( -- )
-   s" 10070b" [: STAGED$ CALL-AT WLEB:U32-PAD@ drop ;] WLEB:E-UNPADDED REFUSES
-   s" 427e0b" [: STAGED$ CALL-AT WLEB:S64-PAD@ drop ;] WLEB:E-UNPADDED REFUSES
-   s" 10" [: STAGED$ 2 WLEB:U32-PAD@ drop ;] E-SPAN-RANGE REFUSES ;
+: FIELD-REJECTIONS ( -- )
+   s" 10070b" [: STAGED$ CALL-AT WLEB:U32-PAD@ drop ;] WLEB:E-UNPADDED REJECTS
+   s" 427e0b" [: STAGED$ CALL-AT WLEB:S64-PAD@ drop ;] WLEB:E-UNPADDED REJECTS
+   s" 10" [: STAGED$ 2 WLEB:U32-PAD@ drop ;] E-SPAN-RANGE REJECTS ;
 
-\ patch, run on the staged code, refuses with code, and leaves the code as it
+\ patch, run on the staged code, rejects with code, and leaves the code as it
 \ was and the canaries past it.
-: PATCH-REFUSES ( str [ -- ] n -- )
+: PATCH-REJECTS ( str [ -- ] n -- )
    {: s:str patch code:n :}
-   s patch code REFUSES
+   s patch code REJECTS
    s T-LABEL
    STAGED$ HEX$ s T$=
    s T-LABEL
    STAGED STAGED-LEN @ SPAN:SKIP CANARIES? TTRUE ;
 
 \ A patch takes only a padded field of its width and a value of its type.
-: PATCH-REFUSALS ( -- )
-   s" 10070b" [: 9 STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-UNPADDED PATCH-REFUSES
-   s" 10ff7f0b" [: 9 STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-UNPADDED PATCH-REFUSES
-   s" 10808080" [: 9 STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-TRUNCATED PATCH-REFUSES
-   s" 10808080808000" [: 9 STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-OVERLONG PATCH-REFUSES
-   s" 10ffffffff1f" [: 9 STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-RANGE PATCH-REFUSES
-   s" 10808080800b" [: U32-PAST STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-RANGE PATCH-REFUSES
-   s" 10808080800b" [: 9 STAGED-SPAN 7 WLEB:U32-PATCH ;] E-SPAN-RANGE PATCH-REFUSES
-   s" 10808080800b" [: 9 STAGED-SPAN -1 WLEB:U32-PATCH ;] E-SPAN-RANGE PATCH-REFUSES
-   s" 427e0b" [: -2 STAGED-SPAN CALL-AT WLEB:S64-PATCH ;] WLEB:E-UNPADDED PATCH-REFUSES
+: PATCH-REJECTIONS ( -- )
+   s" 10070b" [: 9 STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-UNPADDED PATCH-REJECTS
+   s" 10ff7f0b" [: 9 STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-UNPADDED PATCH-REJECTS
+   s" 10808080" [: 9 STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-TRUNCATED PATCH-REJECTS
+   s" 10808080808000" [: 9 STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-OVERLONG PATCH-REJECTS
+   s" 10ffffffff1f" [: 9 STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-RANGE PATCH-REJECTS
+   s" 10808080800b" [: U32-PAST STAGED-SPAN CALL-AT WLEB:U32-PATCH ;] WLEB:E-RANGE PATCH-REJECTS
+   s" 10808080800b" [: 9 STAGED-SPAN 7 WLEB:U32-PATCH ;] E-SPAN-RANGE PATCH-REJECTS
+   s" 10808080800b" [: 9 STAGED-SPAN -1 WLEB:U32-PATCH ;] E-SPAN-RANGE PATCH-REJECTS
+   s" 427e0b" [: -2 STAGED-SPAN CALL-AT WLEB:S64-PATCH ;] WLEB:E-UNPADDED PATCH-REJECTS
    s" 42ffffffffffffffffff01" [: -2 STAGED-SPAN CALL-AT WLEB:S64-PATCH ;]
-      WLEB:E-RANGE PATCH-REFUSES ;
+      WLEB:E-RANGE PATCH-REJECTS ;
 
 \ ---- round trips ------------------------------------------------------------
 \ v written by put reads back through get from exactly the bytes put wrote.
@@ -360,7 +360,7 @@ public
    U32-EDGES S32-EDGES S64-EDGES
    IN-PLACE PADS
    ADMITS OVERLONG TRUNCATED OUT-OF-RANGE
-   WRITE-RANGE CAPACITY FIELD-REFUSALS PATCH-REFUSALS
+   WRITE-RANGE CAPACITY FIELD-REJECTIONS PATCH-REJECTIONS
    ROUND-TRIPS ;
 
 ;package

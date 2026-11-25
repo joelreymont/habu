@@ -1,4 +1,4 @@
-\ End-to-end ZIP:OPEN refusal under an unusable TMPDIR. A child engine runs
+\ End-to-end ZIP:OPEN rejection under an unusable TMPDIR. A child engine runs
 \ test/zip-temp-source.f with TMPDIR naming a regular file, so the source
 \ snapshot cannot be created and OPEN throws FS:MKTEMP's E-FS-DIR with no memory
 \ fallback.
@@ -28,7 +28,7 @@ variable RC
 : BAD$ ( -- str ) BAD BAD-U @ >str ;
 : ARCHIVE$ ( -- str ) ARCHIVE ARCHIVE-U @ >str ;
 
-\ BAD is a regular file, so FS:MKTEMP refuses a TMPDIR naming it (E-FS-DIR)
+\ BAD is a regular file, so FS:MKTEMP rejects a TMPDIR naming it (E-FS-DIR)
 \ and OPEN passes that code on.
 : SETUP ( -- )
    s" zip-temp" FS:MKTEMP-DIR {: s:str :}

@@ -109,7 +109,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
    if [: REJECTION:SOURCE-OFF ;] else [: REJECTION:CLOSER-OFF ;] then ;
 
 \ An immediate word met inside a definition, before it runs: one the checker
-\ has no model for is refused unless it parses nothing.
+\ has no model for is rejected unless it parses nothing.
 : IMMEDIATE-CHECK ( str str bool -- )
    drop
    {: ba:^ bu:n ta:^ tu:n :}
@@ -198,7 +198,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
    RQM @ 0= ;
 
 \ A does> clause's publication, once the definer's record ndict@ 1 - is
-\ appended: it refuses nothing and writes facts only there, as `: PKG:X` hands
+\ appended: it rejects nothing and writes facts only there, as `: PKG:X` hands
 \ it the tail X.
 : DOES-PUBLISHED ( str bool -- )
    {: a:^ u:n committed:bool :}
@@ -271,14 +271,14 @@ CAST: ROW-XT ( n -- [ str str -- bool ] )
    shape CHILD-ABI:HEAP-RELEASE = or  shape CHILD-ABI:ARENA-NEW = or
    shape CHILD-ABI:ARENA-DISPOSE = or ;
 
-\ A refused type is reported, naming the child, before the throw. A NODE other
+\ A rejected type is reported, naming the child, before the throw. A NODE other
 \ than 0 is the type, which TYPE does not spell.
 : STORED-ROWS ( str str n n -- n n )
    {: na:^ nu:n ta:^ tu:n shape:n node:n :}
    node 0 <> if node LBUF:NODE-STORAGE-TERM else ta tu CHECKER-STORAGE-TERM then
    0= if
       drop
-      node 0 <> if na nu LBUF:NODE-TYPE-REFUSE else na nu ta tu CHECKER-STORAGE-TYPE-REJECT then
+      node 0 <> if na nu LBUF:NODE-TYPE-REJECT else na nu ta tu CHECKER-STORAGE-TYPE-REJECT then
       EXIT-STATUS:REJECTED throw
    then
    shape swap TFAM-STORED-ROWS ;
@@ -296,7 +296,7 @@ CAST: ROW-XT ( n -- [ str str -- bool ] )
 : DECL-LINE ( str bool -- str str n )
    {: da:^ du:n whole:bool :}
    LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
-   nu 0= if da du CHECKER-STORAGE-NAME-REFUSE na 0 na 0 0 exit then
+   nu 0= if da du CHECKER-STORAGE-NAME-REJECT na 0 na 0 0 exit then
    da du na nu REJECTION:NOT-A-NAME
    LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
    na nu na nu LBUF:LBUF-NAME-OK? 0= if na nu ta tu 0 exit then
@@ -417,7 +417,7 @@ CAST: >BYTES ( n -- ^u8 )
 
 \ A rejected READ of the type xa xu, naming the token, or the type when the
 \ reason names none; why is the STG- reason no stored form holds it, else 0.
-: TEXT-TYPE-REFUSE ( str str n n str -- )
+: TEXT-TYPE-REJECT ( str str n n str -- )
    {: ta:^ tu:n wa:^ wu:n code:n why:n xa:^ xu:n :}
    tu 0= if xa xu else ta tu then {: na:^ nu:n :}
    code TYPE-DECL:E-TDECL-PAYLOAD = {: unknown:bool :}
@@ -444,7 +444,7 @@ CAST: >BYTES ( n -- ^u8 )
 
 \ Rejects a type variable's or region's letter in a type EFFECT:READ-TYPE was
 \ given, placed at the token the engine read last, which ran the definer.
-: TEXT-LETTER-REFUSE ( str str -- ) {: la:^ lu:n xa:^ xu:n :}
+: TEXT-LETTER-REJECT ( str str -- ) {: la:^ lu:n xa:^ xu:n :}
    s" E-BAD-SIGNATURE" REJECTION:OPEN
    s" the type '" REJECTION:EMIT-STR
    xa xu REJECTION:EMIT-STR  s" ' has the letter '" REJECTION:EMIT-STR
@@ -457,8 +457,8 @@ CAST: >BYTES ( n -- ^u8 )
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : TEXT-TYPE ( n n -- n ) {: a:n u:n :}
-   a >BYTES u [: a >BYTES u TEXT-TYPE-REFUSE ;]
-   [: a >BYTES u TEXT-LETTER-REFUSE ;] READ-TYPE ;
+   a >BYTES u [: a >BYTES u TEXT-TYPE-REJECT ;]
+   [: a >BYTES u TEXT-LETTER-REJECT ;] READ-TYPE ;
 
 : TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
    code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then

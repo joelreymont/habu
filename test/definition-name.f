@@ -1,6 +1,6 @@
 \ definition-name.f - the post-seal checker bridge, and a definition no
 \ authority can place in a package failing closed with exit status 70 and
-\ naming the refused state on fd 2. The suite runs it on HABU_UNDER_TEST.
+\ naming the rejected state on fd 2. The suite runs it on HABU_UNDER_TEST.
 
 require src/lib/error.f
 require src/lib/string.f

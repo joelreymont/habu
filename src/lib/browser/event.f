@@ -45,7 +45,7 @@ public
 : TAKE ( -- str )
    true TAKEN !  DELIVERY ;
 
-\ A refused unmap, of bytes no reserve handed out, is E-MEM-UNMAP. FREE writes
+\ A rejected unmap, of bytes no reserve handed out, is E-MEM-UNMAP. FREE writes
 \ the allocator's free-list entry into the pages, so a record that must show
 \ delivered bytes names a copy in module storage, or a taken delivery.
 : FREE ( ^u8 n -- )

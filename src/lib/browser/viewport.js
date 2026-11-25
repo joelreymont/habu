@@ -724,7 +724,7 @@ function lit(fitted, a) {
 
 // WebGPU on the canvas: setup's renderer, whose release destroys the device
 // and everything allocated from it. A canvas holding another context is
-// refused before a device exists; a later setup failure releases the device.
+// rejected before a device exists; a later setup failure releases the device.
 async function gpu(canvas, fail) {
   if (!navigator.gpu) throw new Error("this browser has no WebGPU");
   const context = canvas.getContext("webgpu");
@@ -1251,7 +1251,7 @@ const ID_HEX = /^[0-9a-fA-F]{32}$/;
 function packed(ids) {
   if (!Array.isArray(ids)) throw new TypeError("identities must be an array of 32-hex-digit strings");
   const bytes = new Uint8Array(ids.length * 16);
-  // By index, so a hole reads as undefined and is refused.
+  // By index, so a hole reads as undefined and is rejected.
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
     if (typeof id !== "string" || !ID_HEX.test(id))

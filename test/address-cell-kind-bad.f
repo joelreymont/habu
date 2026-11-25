@@ -8,7 +8,7 @@ PERSISTED-PTR-VARIABLE SLOT
 
 : TARGET ( -- n ) 4711 ;
 
-\ PERSISTED-PTR-VARIABLE declared SLOT as DATA; xt! must refuse the contradictory XT kind
+\ PERSISTED-PTR-VARIABLE declared SLOT as DATA; xt! must reject the contradictory XT kind
 \ before storing anything into the cell.
 CAST: >XT-CELL ( ^^n -- ^[ -- n ] )
 : SLOT-AS-XT ( -- ^[ -- n ] ) SLOT >XT-CELL ;

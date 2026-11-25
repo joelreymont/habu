@@ -256,7 +256,7 @@ PROCESS:NO-FD FEED-WR !
    true ;
 
 \ A definition that leaves nothing for its declared n, then end of file.
-: FEED-REFUSED? ( -- bool )
+: FEED-REJECTED? ( -- bool )
    s" : BAD ( -- n ) ;" FEED?
    FEED-WR PROCESS:CLOSE-CELL ;
 
@@ -335,18 +335,18 @@ PROCESS:NO-FD FEED-WR !
    s" signal: no process under check.f is left" T-LABEL
    GONE? TTRUE ;
 
-\ check.f answers a stop after its run however the run ended, and a refused
+\ check.f answers a stop after its run however the run ended, and a rejected
 \ program ends before any child is started: its capture row names pid 0, and a
 \ kill of pid 0 kills check.f's own process group. SIGTERM lands while check.f
-\ reads its program, so it answers once the program is refused. Nothing under
+\ reads its program, so it answers once the program is rejected. Nothing under
 \ check.f could open a FIFO: this case makes none and asserts check.f's status.
 : STDIN-BODY ( -- )
    CHECK-START-STDIN
    s" stdin: check.f read past what the pipe holds" T-LABEL
    FEED-PAD? TTRUE
    SIGNAL:SIGTERM CHECK-SIGNAL
-   s" stdin: check.f took the refused program" T-LABEL
-   FEED-REFUSED? TTRUE
+   s" stdin: check.f took the rejected program" T-LABEL
+   FEED-REJECTED? TTRUE
    CHECK-ENDED
    s" stdin: check.f's status names the signal" T-LABEL
    CHECK-REAP SIGNAL:SIGTERM KILLED-BY? TTRUE
@@ -381,7 +381,7 @@ PROCESS:NO-FD FEED-WR !
 \ The capture that waits on check.f's child kills it at the deadline and throws
 \ E-PROC-TIMEOUT. Uncaught, that is exit 85 and a bare code, and its kill ends
 \ the child alone, leaving the sleeper under init. check.f must exit 70, its
-\ refusal, with one record on stderr naming the subject and the deadline and
+\ rejection, with one record on stderr naming the subject and the deadline and
 \ nothing on stdout, and leak nothing:
 \ in its default mode with the run's output open and in --json-errors with it
 \ closed, so the deadline passes in each wait. check.f counts the deadline from
@@ -393,7 +393,7 @@ PROCESS:NO-FD FEED-WR !
    s" deadline: the subject came up under check.f" T-LABEL
    REPORT-READ? TTRUE
    DEADLINE-MS EXIT-MS + CHECK-ENDED-WITHIN
-   s" deadline: check.f exits its refusal status" T-LABEL
+   s" deadline: check.f exits its rejection status" T-LABEL
    CHECK-REAP PROCESS:STATUS>RC RC>N 70 T=
    s" deadline: one record on stderr names the subject and the deadline" T-LABEL
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL >str json LATE-RECORD$ T$=
@@ -470,7 +470,7 @@ PROCESS:NO-FD FEED-WR !
    LOUD$ PROC-ARGV+
    OPEN-NULL CHECK-SPAWN
    CHECK-ENDED
-   s" loud: check.f exits its refusal status" T-LABEL
+   s" loud: check.f exits its rejection status" T-LABEL
    CHECK-REAP PROCESS:STATUS>RC RC>N 70 T=
    s" loud: stderr is the stdout record alone" T-LABEL
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL >str
@@ -563,7 +563,7 @@ public
    SIGNAL:SIGTERM false SIGNAL-CASE
    s" check-signal: SIGTERM, the child's output closed" type cr
    SIGNAL:SIGTERM true SIGNAL-CASE
-   s" check-signal: SIGTERM before any child, a refused program on stdin" type cr
+   s" check-signal: SIGTERM before any child, a rejected program on stdin" type cr
    [: STDIN-BODY ;] [: CASE-END ;] finally
    s" check-signal: a run past its deadline" type cr
    false false LATE-CASE

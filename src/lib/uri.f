@@ -528,7 +528,7 @@ public
 \ `localhost` in any case, ending at the path's `/`: every answer is absolute.
 \ Each `%XX` decodes once, in either hex case; any other byte is copied, so a
 \ client that left a byte unescaped still names its file. A bare `?` or `#` is
-\ refused: RFC 8089 has no query or fragment, and a generic parser would split
+\ rejected: RFC 8089 has no query or fragment, and a generic parser would split
 \ the path there and name a different file. Another scheme is E-URI-SCHEME,
 \ anything else before the path E-URI-AUTHORITY, a `%` without two hex digits
 \ or a bare `?` or `#` E-URI-ESCAPE, a short span E-SPAN-CAPACITY and a

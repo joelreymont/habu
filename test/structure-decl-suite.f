@@ -233,7 +233,7 @@ public
 11 22 SDPRIVTEST:HGO 22 T= 11 T=                      \ declaration order + values round-trip
 SDPRIVTEST:HTAIL 7 T=                                 \ generation did not seal the private wordlist
 
-\ A second package and the global scope cannot resolve them: the probe is refused
+\ A second package and the global scope cannot resolve them: the probe is rejected
 \ as an undefined word (0). Contrasts: the same probe certifies inside
 \ the declaring package, and case 10's public family certifies from every scope.
 package SDPRIVTEST
@@ -250,7 +250,7 @@ public
 s" SDPG ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDPGT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ While its package is open, a private product's MAKE and UNMAKE refuse undefine
+\ While its package is open, a private product's MAKE and UNMAKE reject undefine
 \ by name, E-CTOR-PROTECTED; a word only sharing their prefix does not.
 package SDPRIVTEST
 private
@@ -572,7 +572,7 @@ s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgnoend`\n" DECL-DIAG:
 s" sdgnoend" s" missing ;STRUCTURE" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: end the declaration with `;STRUCTURE` after its last field\n" DECL-DIAG:HAS? TTRUE
 
-\ A self-referential field is refused during type resolution, before a width
+\ A self-referential field is rejected during type resolution, before a width
 \ query can enter the unfinished family.
 DECL-DIAG:PROSE
 s" STRUCTURE sdgself FIELD selffld sdgself ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -729,7 +729,7 @@ s" STRUCTURE sdsback FIELD id n FIELD back ^^sdsback ;STRUCTURE" TEST-EVAL:RC 0 
 s" STRUCTURE sdspspan FIELD id n FIELD s ^SPAN:span<sdspspan> ;STRUCTURE" TEST-EVAL:RC 0 T=
 
 \ A parametric family pointing at itself: pairing two of its applications ends,
-\ a generic and a concrete accessor certify, and a mismatched one is refused.
+\ a generic and a concrete accessor certify, and a mismatched one is rejected.
 STRUCTURE sdsplist<a> DERIVE addr FIELD v a FIELD next ^sdsplist<a> ;STRUCTURE
 s" SDSPG ( ^sdsplist<a> -- ^sdsplist<a> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDSPC ( ^sdsplist<n> -- ^sdsplist<n> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
@@ -1174,7 +1174,7 @@ DECL-DIAG:OFF
 \ boundary, so the linearity walk stops at the pointer node and the structure
 \ would read non-linear, copying and dropping freely with a linear resource
 \ behind the address. TFCL-NODE?, the node walk the linearity accounting
-\ trusts, refuses the con and family spellings alike at every depth:
+\ trusts, rejects the con and family spellings alike at every depth:
 \ `^^sdlbox` rejects on the inner recursion, anchoring the diagnostic on
 \ the family that owns the resource. A pointer to something that owns nothing
 \ (`^n`, `^sdlplain`) stays legal.
@@ -1187,7 +1187,7 @@ s" STRUCTURE sdlptr FIELD p ^sdlbox ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptr`\n" DECL-DIAG:HAS? TTRUE
 s" sdlbox" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
-\ the con spelling launders the same way, so the same rule refuses it, and the
+\ the con spelling launders the same way, so the same rule rejects it, and the
 \ diagnostic names the con it found rather than some enclosing family.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrcon FIELD p ^SDLIN:tok ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -1202,7 +1202,7 @@ s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptr2`\n" DECL-DIAG:H
 s" sdlbox" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ reaching the resource through a nested family or through a sum is still reaching
-\ it, so a pointer to either is refused for the same reason.
+\ it, so a pointer to either is rejected for the same reason.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrdeep FIELD p ^sdldeep ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrdeep`\n" DECL-DIAG:HAS? TTRUE
@@ -1220,7 +1220,7 @@ s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrlate`\n" DECL-DIA
 s" sdlbox" s" type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ `^` lets a field name its own family only inside the pointee: by value after
-\ it, or in the declaration after a refused pointee, the name is rejected.
+\ it, or in the declaration after a rejected pointee, the name is rejected.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlpquot FIELD q [ ^sdlpquot sdlpquot -- ] ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlpquot`\n" DECL-DIAG:HAS? TTRUE
@@ -1244,7 +1244,7 @@ s" STRUCTURE sdlptrok2 FIELD p ^^sdlplain ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE sdlptrn FIELD p ^n ;STRUCTURE" TEST-EVAL:RC 0 T=
 
 \ wrong role: the same words in the FIELD NAME position are names, never types.
-\ Neither resolves and neither is refused.
+\ Neither resolves and neither is rejected.
 s" STRUCTURE sdlptrrole FIELD ptr n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE sdlptrrole2 FIELD sdlbox n ;STRUCTURE" TEST-EVAL:RC 0 T=
 
@@ -1354,17 +1354,17 @@ STRUCTURE sdaw2 FIELD z n FIELD w n ;STRUCTURE       \ two cells
 s" SDAW1 ( ^sdagen<sdaw1> -- ^sdaw1 ) SDAGEN:V" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDAW2 ( ^sdagen<sdaw2> -- ^n ) SDAGEN:K" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ `record-at` scales by the caller's count, so it refuses a pointee whose
+\ `record-at` scales by the caller's count, so it rejects a pointee whose
 \ instantiated width is not the committed width: an argument wider than one
 \ cell moves every field past the first, which F:AT's baked multiplier and an
 \ accessor's baked offset assume away. A one-cell argument is not wide, so the
-\ refusal is about width, not about a family argument.
+\ rejection is about width, not about a family argument.
 s" SDAW3 ( ^sdagen<sdaw2> n -- ^sdagen<sdaw2> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDAW4 ( ^sdagen<sdaw1> n -- ^sdagen<sdaw1> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDAW5 ( ^sdaddr n -- ^sdaddr ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
 \ off a layout pointee the plain row answers, and it is `cells +` on any pointer.
 s" SDAW6 ( ^u8 n -- ^u8 ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
-\ the wide instantiation itself stays a perfectly ordinary type: what is refused
+\ the wide instantiation itself stays a perfectly ordinary type: what is rejected
 \ is the address surface over it, not the pointer.
 s" SDAW7 ( ^sdagen<sdaw2> -- n ) drop 0" CHECK-QUIET-CANDIDATE! -1 T=
 
@@ -1398,7 +1398,7 @@ s" SDQ-SIDES" TEST-EVAL:N 1122 T=
 \ the same field without the addr surface
 s" STRUCTURE sdqplain FIELD res option<sdqpair> ;STRUCTURE" TEST-EVAL:RC 0 T=
 
-\ a field named like a generated member is refused AT ITS OWN TOKEN, because the
+\ a field named like a generated member is rejected AT ITS OWN TOKEN, because the
 \ generator would otherwise render a name it had already defined.
 DECL-DIAG:PROSE
 s" STRUCTURE sdabad DERIVE addr FIELD at n ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -1425,7 +1425,7 @@ s" sdaempty" s" derived fields require a family with fields" DECL-DIAG:CAUSE? TT
 s\"   = help: add a `FIELD` to the structure, or drop `addr` and `init` from `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 
 \ the generated words are the family's own: a stray tail in its reserved
-\ constructor package is still refused, and an accessor cannot be undefined.
+\ constructor package is still rejected, and an accessor cannot be undefined.
 DECL-DIAG:PROSE
 s" undefine SDADDR:A" TEST-EVAL:RC 70 T=
 s" error[E-CTOR-PROTECTED]: `SDADDR:A`" DECL-DIAG:HAS? TTRUE
@@ -1454,9 +1454,9 @@ SDAPRIV:HGO 16 T= 6 T= 5 T=
 
 package SDAOTHER
 private
-\ The accessor name reaches nothing here: SDAP1 is refused as an undefined word
+\ The accessor name reaches nothing here: SDAP1 is rejected as an undefined word
 \ (0), as its diagnostic says. Its signature names no private type, which would
-\ be refused too; SDAP2 refuses for that type.
+\ be rejected too; SDAP2 rejects for that type.
 DECL-DIAG:PROSE
 s" SDAP1 ( n -- n ) HREC-X" CHECK-CANDIDATE! 0 T=
 s\" error[E-UNDEFINED]: cannot find word `HREC-X`\n" DECL-DIAG:HAS? TTRUE
@@ -1544,7 +1544,7 @@ public
 ;package
 SDACAPS:GO 2 T= 16 T= 11 T= 44 T=
 
-\ 16. OPAQUE is refused after a field, twice, on a fieldless family, in an ENUM and
+\ 16. OPAQUE is rejected after a field, twice, on a fieldless family, in an ENUM and
 \     outside a package; each reject keeps the field rows at their mark and renders.
 : REJ-MARK ( -- ) TYPE-FIELD:COUNT PFB ! ;
 : REJ-SAME ( -- ) TYPE-FIELD:COUNT PFB @ T= ;
@@ -1593,7 +1593,7 @@ s" OPAQUE" s" unexpected token in enum declaration" DECL-DIAG:CAUSE? TTRUE
 ;package
 
 \ Outside any package there is no private wordlist for the pair to land in: the
-\ clause refuses before any name is checked, the loader goes on, the name is free.
+\ clause rejects before any name is checked, the loader goes on, the name is free.
 DECL-DIAG:PROSE
 REJ-MARK
 s" STRUCTURE oloose OPAQUE FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -1637,7 +1637,7 @@ SDOPQ:OEQF TFALSE
 SDOPQ:OHSH TTRUE
 
 \ Another package names the type and reaches none of the words, under any
-\ spelling: the probe is refused as an undefined word (0), as section 13's SDPO is.
+\ spelling: the probe is rejected as an undefined word (0), as section 13's SDPO is.
 package SDOPQOTHER
 private
 s" SDOO ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
@@ -1650,7 +1650,7 @@ s" SDOT ( SDOPQ:obox -- SDOPQ:obox )" CHECK-QUIET-CANDIDATE! -1 T=
 public
 ;package
 
-\ A reject after generation (DERIVE init refuses a non-canonical record at
+\ A reject after generation (DERIVE init rejects a non-canonical record at
 \ commit, after MAKE/UNMAKE were placed privately) retires the privately
 \ placed words: the name is free and re-declaring it works.
 package SDOPQ

@@ -57,8 +57,8 @@ SCRATCH-VARIABLE SCR-CELL
 \ does> clause, so the published effect carries no type variable, `trust-raw`
 \ has nothing to seal, and the cell admits exactly the type named, both
 \ directions. The raw form is the control: it absorbs a scalar pointee, all
-\ DYNAMIC-BUFFER's control head needs; a raw cell refusing a pointer pointee is
-\ test/compiler/raw-cell-pointer-refusals.f's case. The pre-scan compiles
+\ DYNAMIC-BUFFER's control head needs; a raw cell rejecting a pointer pointee is
+\ test/compiler/raw-cell-pointer-rejections.f's case. The pre-scan compiles
 \ nothing: DPT, DPH and DPR bind through the checker overlay only while the
 \ neutral scope holding the scan is open, so the probes ask
 \ VERIFY:CANDIDATE-IN-SCOPE there.

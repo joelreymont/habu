@@ -36,7 +36,7 @@ variable HOLD                        \ the FIFO's write end
 : REPORT-PID ( -- )
    getpid REPORT !
    HOLD @ REPORT 1 cells >str write 1 cells <> if
-      s" gate-signal-row: report refused" EXIT-STATUS:IOERR die
+      s" gate-signal-row: report rejected" EXIT-STATUS:IOERR die
    then ;
 
 : PAUSE ( n -- ) {: ms:n :}
@@ -74,7 +74,7 @@ variable HOLD                        \ the FIFO's write end
    begin r FD>N SINK 64 read dup 0 > while drop repeat
    r FD>N close
    0< if
-      s" gate-signal-row: the helper's pipe refused a read" EXIT-STATUS:IOERR die
+      s" gate-signal-row: the helper's pipe rejected a read" EXIT-STATUS:IOERR die
    then ;
 
 \ Starts the HELPER, reports its pid and starts BURST-N writers one after

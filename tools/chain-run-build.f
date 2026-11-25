@@ -1,7 +1,7 @@
 \ chain-run-build.f - CLI entry for the checked generation-chain driver.
 \
 \ Exit status: EXIT-STATUS:SUCCESS at a fixpoint; EXIT-STATUS:USAGE for a
-\ refused command line; EXIT-STATUS:TIMEOUT when a build's deadline expired;
+\ rejected command line; EXIT-STATUS:TIMEOUT when a build's deadline expired;
 \ EXIT-STATUS:FAILURE for a non-fixpoint; ERROR:STATUS of any other throw,
 \ after the record it carries, if any, and `chain-run: uncaught throw code N`.
 

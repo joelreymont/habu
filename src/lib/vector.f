@@ -69,7 +69,7 @@ CAST: VECTOR> ( ^vector<t> -- ^u8 )
 public
 
 \ k zeroed elements, or E-VEC-CAPACITY for a negative k or more bytes than
-\ VEC-MAX-CELLS cells; a refused data request frees the header, then rethrows.
+\ VEC-MAX-CELLS cells; a rejected data request frees the header, then rethrows.
 : NEW ( ^ALLOC:allocator n width<t> -- ^vector<t> )
    {: al:^ k:n w :}
    w width>n {: wn:n :}

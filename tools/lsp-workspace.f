@@ -66,7 +66,7 @@ variable BAD-N
 variable F-AT                            \ F's offset and length in POOL,
 variable F-U
 variable D-NODE                          \ D's node
-TYPED-VARIABLE BLOCKED bool              \ whether a root refused it,
+TYPED-VARIABLE BLOCKED bool              \ whether a root rejected it,
 DYNAMIC-BUFFER BLOCK-B u8                \ and which
 variable BLOCK-U
 DYNAMIC-BUFFER ROOT-BYTES u8             \ the roots, kept between requests
@@ -76,7 +76,7 @@ variable ROOT-N
 variable CUR                             \ the node being followed,
 variable CUR-OPEN                        \ the open document whose text is read,
 variable CUR-ROOT                        \ and the root being walked
-\ POOL+ reserves a byte past those POOL names: the accessor refuses an index at
+\ POOL+ reserves a byte past those POOL names: the accessor rejects an index at
 \ capacity, and a string at the end, an empty one too, needs that address.
 
 : NODE@ ( n n -- n )  swap NODE-CELLS * + NODES @ ;
@@ -123,7 +123,7 @@ variable CUR-ROOT                        \ and the root being walked
    rc E-DISC-RETIRE = if s" E-DISC-RETIRE" true exit then
    s" " false ;
 
-: REFUSE ( str -- )
+: REJECT ( str -- )
    {: s:str :}
    s STR:LEN 1+ BLOCK-B-RESERVE
    s STR:DATA 0 BLOCK-B s STR:LEN BYTE-COPY
@@ -232,14 +232,14 @@ variable CUR-ROOT                        \ and the root being walked
 : WALK ( -- )
    CUR-ROOT @ ROOT-PATH$ [: WALKED? ;] [: FOUND ;] FS:WALK-FILES-IF ;
 
-\ A walk that fails with an E-FS-* code refuses the request, naming R; any
+\ A walk that fails with an E-FS-* code rejects the request, naming R; any
 \ other throw propagates.
 : WALK-ROOT ( n -- )
    {: r:n :}
    r CUR-ROOT !
    [: WALK ;] catch {: rc:n :}
    rc 0= if exit then
-   rc LSP-TEXT:FS-RC? if r ROOT-PATH$ REFUSE exit then
+   rc LSP-TEXT:FS-RC? if r ROOT-PATH$ REJECT exit then
    rc throw ;
 
 : WALK-ROOTS ( -- )
@@ -315,7 +315,7 @@ variable CUR-ROOT                        \ and the root being walked
    k PATH$ FS:FILE? if [: DISK-TEXT ;] FOLLOW then ;
 
 \ Harvest with the same open-document reader and root as expansion. A source
-\ refusal still gives the loads before it; a later row can let a retry read
+\ rejection still gives the loads before it; a later row can let a retry read
 \ farther. The node's edges are built only in the final expansion.
 : HARVEST-NODE ( n -- )
    {: k:n :}
@@ -501,8 +501,8 @@ public
    GIVE
    ORDER ;
 
-\ Whether the last REACHING refused, giving no subject, and the root it named.
-: REFUSED? ( -- bool )  BLOCKED @ ;
+\ Whether the last REACHING rejected, giving no subject, and the root it named.
+: REJECTED? ( -- bool )  BLOCKED @ ;
 : BLOCKED$ ( -- str )  0 BLOCK-B BLOCK-U @ >str ;
 
 : SUBJECTS ( -- n )  HIT-N @ ;

@@ -77,7 +77,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 \ A `%` at the end, with one digit, with a non-hex digit in either place, and a
 \ bare `?` or `#`, which would open a query or fragment a file URI cannot have.
-: ESCAPE-REFUSALS ( -- )
+: ESCAPE-REJECTIONS ( -- )
    [: s" file:///a%" DECODE-DROP ;] E-URI-ESCAPE TTHROWSQ
    [: s" file:///a%4" DECODE-DROP ;] E-URI-ESCAPE TTHROWSQ
    [: s" file:///a%G1" DECODE-DROP ;] E-URI-ESCAPE TTHROWSQ
@@ -98,7 +98,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 : NEGATIVE-LENGTH ( -- )
    s" file:///x" STR:DATA -1 >str DECODE-DROP ;
 
-\ A refusal writes nothing: the whole URI is checked, and the path's length
+\ A rejection writes nothing: the whole URI is checked, and the path's length
 \ measured against the span, before the first byte lands. A span of exactly the
 \ path's length is enough.
 : ALL-OR-NOTHING ( -- )
@@ -153,7 +153,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 : ENCODE-NEGATIVE ( -- )
    s" /x" STR:DATA -1 >str DST URI:PATH>FILE drop ;
 
-\ An encoding refused writes nothing, and a span of exactly the URI's length
+\ An encoding rejected writes nothing, and a span of exactly the URI's length
 \ is enough.
 : ENCODE-ALL-OR-NOTHING ( -- )
    CANARY DST FILL
@@ -453,7 +453,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    ESCAPES
    SCHEMES
    AUTHORITIES
-   ESCAPE-REFUSALS
+   ESCAPE-REJECTIONS
    ALL-OR-NOTHING
    ENCODE-FORMS
    ENCODE-ESCAPES

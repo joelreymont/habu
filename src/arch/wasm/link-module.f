@@ -35,8 +35,8 @@ DYNAMIC-BUFFER SLOTS n               \ function handle h's table slot, 0 for non
 DYNAMIC-BUFFER DEAD n                \ 1 when captured function h's body is `unreachable`
 DYNAMIC-BUFFER DEAD-BODY u8
 variable NFUN                        \ the handles added
-DYNAMIC-BUFFER REFUSED n             \ the host addresses no function answers, each once
-variable REFUSED-N
+DYNAMIC-BUFFER REJECTED n             \ the host addresses no function answers, each once
+variable REJECTED-N
 DYNAMIC-BUFFER KERNEL-HOST n         \ kernel routine r's host address
 DYNAMIC-BUFFER KERNEL-HANDLE n       \ kernel routine r's function handle
 variable KERNEL-N                    \ the kernel routines this link added
@@ -97,11 +97,11 @@ variable KERNEL-N                    \ the kernel routines this link added
    loop ;
 
 
-: REFUSE ( n -- )
+: REJECT ( n -- )
    {: a:n :}
-   REFUSED-N @ 0 ?do i REFUSED @ a = if unloop exit then loop
-   REFUSED-N @ 1+ REFUSED-RESERVE
-   a REFUSED-N @ REFUSED !  1 REFUSED-N +! ;
+   REJECTED-N @ 0 ?do i REJECTED @ a = if unloop exit then loop
+   REJECTED-N @ 1+ REJECTED-RESERVE
+   a REJECTED-N @ REJECTED !  1 REJECTED-N +! ;
 
 
 \ Host address a's kernel routine handle, or -1 when the module has no routine
@@ -122,7 +122,7 @@ variable KERNEL-N                    \ the kernel routines this link added
    h ;
 
 
-\ Host address a's function handle, or -1 once refused: a record's entry, a
+\ Host address a's function handle, or -1 once rejected: a record's entry, a
 \ quotation's function, then a kernel routine.
 : CALLEE ( n -- n )
    {: a:n :}
@@ -130,7 +130,7 @@ variable KERNEL-N                    \ the kernel routines this link added
    r 0 >= if
       r NSHADOW:EMISSION@ {: e2:n :}
       e2  r NSHADOW:ENTRY@  OWN-FUNCTION {: j:n :}
-      e2 PLACED @ 0= if a REFUSE -1 exit then
+      e2 PLACED @ 0= if a REJECT -1 exit then
       e2 FIRST @ j + exit
    then
    a NSHADOW:SOURCE-FUNCTION {: qe:n f:n :}
@@ -139,7 +139,7 @@ variable KERNEL-N                    \ the kernel routines this link added
    then
    a KERNEL-FUNCTION {: k:n :}
    k 0 >= if k exit then
-   a REFUSE -1 ;
+   a REJECT -1 ;
 
 
 \ Emission e's site value v: a function of e, else the host address CALLEE resolves.
@@ -216,7 +216,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 
 
 \ The record for host address a, through its help; the caller ends it.
-: REFUSED. ( n -- )
+: REJECTED. ( n -- )
    {: a:n :}
    a NAME-AT {: name:^ nameu:n :}
    s" E-WASM-NO-KERNEL-WORD" REJECTION:OPEN
@@ -231,18 +231,18 @@ variable KERNEL-N                    \ the kernel routines this link added
    s" call a word src/arch/wasm/kernel-words.f provides instead, or build for a native target"
    REJECTION:EMIT-STR ;
 
-: REFUSALS ( -- )
-   REFUSED-N @ 0= if exit then
-   REFUSED-N @ 0 ?do
-      i REFUSED @ REFUSED.
-      i 1+ REFUSED-N @ < if REJECTION:KEEP then
+: REJECTIONS ( -- )
+   REJECTED-N @ 0= if exit then
+   REJECTED-N @ 0 ?do
+      i REJECTED @ REJECTED.
+      i 1+ REJECTED-N @ < if REJECTION:KEEP then
    loop
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 \ Every placed emission's functions, in emission order, before any site is read.
 : EMISSIONS+ ( -- )
-   WLINK:RESET  0 NFUN !  0 REFUSED-N !  0 KERNEL-N !
+   WLINK:RESET  0 NFUN !  0 REJECTED-N !  0 KERNEL-N !
    NSHADOW:EMISSIONS FIRST-RESERVE
    NSHADOW:EMISSIONS 0 ?do
       -1 i FIRST !
@@ -273,7 +273,7 @@ public
    DATA+
    entry CALLEE {: h:n :}
    s" map-anon" NAMED-ENTRY KERNEL-FUNCTION WLINK:RESERVE!
-   REFUSALS
+   REJECTIONS
    0 COPY-AT DATA-IMAGE-LEN WLINK:DATA!
    path pathu  h WLINK:LINK  FS:ATOMIC-WRITE-FILE ;
 

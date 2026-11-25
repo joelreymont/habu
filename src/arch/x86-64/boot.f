@@ -13,7 +13,7 @@ using X64ASM
 using X64CODE
 
 \ Move each run [off][bytes] in [r9, last) from the carrier, rdi at its pages,
-\ to DATA-VA + off; the syscall keeps rdi, rsi and r9. A refused move dies.
+\ to DATA-VA + off; the syscall keeps rdi, rsi and r9. A failed move dies.
 : MOVE-RUNS, ( label label -- )
    {: first:label last:label :}
    LBL LBL LBL {: more:label bad:label done:label :}

@@ -632,7 +632,7 @@ variable SD-QUOT-AT
    TYPE-LEVEL @ 1 + TYPE-LEVEL ! ;
 
 \ SD-PARSE-NODE-ONE's grammar over the arguments of a family that may still arrive
-\ (SD-LOOSE-APP), building no application; an empty `<>` passes here and SD-APP refuses it.
+\ (SD-LOOSE-APP), building no application; an empty `<>` passes here and SD-APP rejects it.
 : SD-LOOSE-NODE-ONE ( str n -- n ) {: a:^ u:n i:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-LOOSE-PTR EXIT THEN drop
@@ -818,7 +818,7 @@ private
       s" drop `eq` and `hash` from `DERIVE`, or declare the structure with no type parameters"
       TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
 \ `addr` has no arity condition: an accessor projects the field schema at the
-\ caller's instantiation, and the checker refuses the one instantiation a baked
+\ caller's instantiation, and the checker rejects the one instantiation a baked
 \ offset would misdescribe (a type argument wider than one cell).
 : DERIVE-ONE ( str -- )
    2dup s" eq" STR:=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-EQ! DRV-EQ DECL-EVENT:DERIVE EXIT THEN
@@ -859,7 +859,7 @@ private
    NFLD @ 1 + NFLD ! ;
 \ A field named like a generated member (MAKE, UNMAKE, F:AT, F:BYTES, F:CELLS, a
 \ derived tail) would make the generator define a name twice, a die inside the
-\ plan. Refused only under DERIVE addr, which header clauses have fixed by now.
+\ plan. Rejected only under DERIVE addr, which header clauses have fixed by now.
 : MEMBER-CLASH? ( str -- bool )
    2dup s" make" STR:=CI IF 2drop YES EXIT THEN
    2dup s" unmake" STR:=CI IF 2drop YES EXIT THEN
@@ -918,7 +918,7 @@ private
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
 EXPORT CHECK:CHECKER-BIND
 EXPORT CHECKER-OVERLAY:VALUE
-\ The record a count name binds; a using refusal is raised as a bare call's.
+\ The record a count name binds; a using rejection is raised as a bare call's.
 : COUNT-REC ( str -- ^n ) {: a:^ u:n :}
    a u a u CHECKER-BIND drop
    a u scope-find drop drop drop ;

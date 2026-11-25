@@ -671,7 +671,7 @@ es-reso:T-LABEL-CAP 3 T=
 ES-RESO:t-label-cap 3 T=
 es-reso:t-label-cap 3 T=
 
-package ES-RES-REFUSE
+package ES-RES-REJECT
 
 public
 
@@ -680,7 +680,7 @@ public
 70 constant UNDEFINED
 
 \ The source travels through the quotation and back out, because x86-64
-\ refuses a quotation that reads a local.
+\ rejects a quotation that reads a local.
 : EVAL-KEEP ( str -- str )
    dup evaluate-closed ;
 
@@ -702,30 +702,30 @@ public
 
 1 REJECTION:QUIET +!
 s" engine resolution: an accepted source is the control" T-LABEL
-s" : ES-RES-CONTROL ( -- n ) T-LABEL-CAP ;" ES-RES-REFUSE:OUTCOME 0 T=
+s" : ES-RES-CONTROL ( -- n ) T-LABEL-CAP ;" ES-RES-REJECT:OUTCOME 0 T=
 s" engine resolution: the control resolved the global row" T-LABEL
 ES-RES-CONTROL 256 T=
-s" engine resolution: a public tail is refused bare outside" T-LABEL
-s" : ES-RES-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
-s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  REJECTION:BUFFER$ s" engine-suite.f" 39 s" : ES-RES-P1 ( -- n ) ES-RES-PUB ;" T-PLACED
-s" engine resolution: a private tail is refused qualified" T-LABEL
-s" : ES-RES-P2 ( -- n ) ES-RESO:ES-RES-PRIV ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
-s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  REJECTION:BUFFER$ s" engine-suite.f" 48 s" : ES-RES-P2 ( -- n ) ES-RESO:ES-RES-PRIV ;" T-PLACED
-s" engine resolution: a private tail is refused bare outside" T-LABEL
-s" : ES-RES-P3 ( -- n ) ES-RES-PRIV ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
-s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  REJECTION:BUFFER$ s" engine-suite.f" 40 s" : ES-RES-P3 ( -- n ) ES-RES-PRIV ;" T-PLACED
-s" engine resolution: an unknown package qualifier is refused" T-LABEL
-s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
-s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  REJECTION:BUFFER$ s" engine-suite.f" 55 s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" T-PLACED
-s" engine resolution: a duplicate tail is refused case-folded" T-LABEL
+s" engine resolution: a public tail is rejected bare outside" T-LABEL
+s" : ES-RES-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REJECT:CAPTURED ES-RES-REJECT:UNDEFINED T=
+s" error[E-UNDEFINED]" ES-RES-REJECT:HAS  REJECTION:BUFFER$ s" engine-suite.f" 39 s" : ES-RES-P1 ( -- n ) ES-RES-PUB ;" T-PLACED
+s" engine resolution: a private tail is rejected qualified" T-LABEL
+s" : ES-RES-P2 ( -- n ) ES-RESO:ES-RES-PRIV ;" ES-RES-REJECT:CAPTURED ES-RES-REJECT:UNDEFINED T=
+s" error[E-UNDEFINED]" ES-RES-REJECT:HAS  REJECTION:BUFFER$ s" engine-suite.f" 48 s" : ES-RES-P2 ( -- n ) ES-RESO:ES-RES-PRIV ;" T-PLACED
+s" engine resolution: a private tail is rejected bare outside" T-LABEL
+s" : ES-RES-P3 ( -- n ) ES-RES-PRIV ;" ES-RES-REJECT:CAPTURED ES-RES-REJECT:UNDEFINED T=
+s" error[E-UNDEFINED]" ES-RES-REJECT:HAS  REJECTION:BUFFER$ s" engine-suite.f" 40 s" : ES-RES-P3 ( -- n ) ES-RES-PRIV ;" T-PLACED
+s" engine resolution: an unknown package qualifier is rejected" T-LABEL
+s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" ES-RES-REJECT:CAPTURED ES-RES-REJECT:UNDEFINED T=
+s" error[E-UNDEFINED]" ES-RES-REJECT:HAS  REJECTION:BUFFER$ s" engine-suite.f" 55 s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" T-PLACED
+s" engine resolution: a duplicate tail is rejected case-folded" T-LABEL
 -1 REJECTION:QUIET +!  REJECTION:CAPTURE
-s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME 70 T=
+s" 9 constant t-label-cap" ES-RES-REJECT:OUTCOME 70 T=
 REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF  1 REJECTION:QUIET +!
-s" engine resolution: the global row survived the refusals" T-LABEL
+s" engine resolution: the global row survived the rejections" T-LABEL
 T-LABEL-CAP 256 T=
 s" evaluate: a computed 0 throw is rejected as E-THROW-ZERO" T-LABEL
-s" 5 5 - throw" ES-RES-REFUSE:OUTCOME E-THROW-ZERO T=
+s" 5 5 - throw" ES-RES-REJECT:OUTCOME E-THROW-ZERO T=
 variable ES-EVAL-AFTER
 : ES-EVAL-SKIPS ( -- n )
    0 ES-EVAL-AFTER !
@@ -734,7 +734,7 @@ variable ES-EVAL-AFTER
 s" evaluate: a 0 throw skips the rest of the caller's quotation" T-LABEL
 ES-EVAL-SKIPS 0 T=
 s" evaluate: a throw after the 0 throws answers its code" T-LABEL
-s" 7 throw" ES-RES-REFUSE:OUTCOME 7 T=
+s" 7 throw" ES-RES-REJECT:OUTCOME 7 T=
 -1 REJECTION:QUIET +!
 
 \ mid-body ( ... ) comments are comments, never a second signature.
@@ -776,7 +776,7 @@ s" COK-PTR-CELL-STORE ( ^n -- ) 0 swap !" T-CHECK-PASSES
 TYPED-VARIABLE ESB-BYTE-P ^u8
 : ESB-BYTE-HEAD ( -- ^u8 ) ESB-BYTE-P @ ;
 s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
-\ REC-SIG refusal is certified-but-unrecorded and must say which word and why.
+\ REC-SIG rejection is certified-but-unrecorded and must say which word and why.
 : T-CHECK-SAYS ( str str -- )
    {: src:str want:str :}
    REJECTION:CAPTURE
@@ -1132,7 +1132,7 @@ s" COK-QW-T6P ( -- ) 5 [: 1 + ;] false QW-T6P execute ." CHECK-CANDIDATE! 0 T<>
 REJECTION:CAPTURE
 s" a signed definition narrowing a quotation it ran certifies" T-LABEL
 s" COK-QW-G ( bool -- ) [: ;] swap IF dup execute drop [: swap ;] THEN 1 2 rot execute . ." CHECK-CANDIDATE! 0 T<>
-\ A keeper reached through a copied effect record refuses as QL-KEEP does: an EXPORT and a created
+\ A keeper reached through a copied effect record rejects as QL-KEEP does: an EXPORT and a created
 \ word, whose every quotation input counts as kept, so it has no runner twin.
 package ES-QL
 public
@@ -1475,14 +1475,14 @@ REJECTION:BUFFER$ s" = help: write the package's name before the type family, as
 REJECTION:BUFFER-OFF
 \ A variant payload naming that family is ambiguous too.
 s" a variant payload naming that family is rejected" T-LABEL
-s" SUMTYPE es-amb-sum VARIANT one es-amb<n> ;VARIANT ;SUMTYPE" ES-RES-REFUSE:CAPTURED 70 T=
+s" SUMTYPE es-amb-sum VARIANT one es-amb<n> ;VARIANT ;SUMTYPE" ES-RES-REJECT:CAPTURED 70 T=
 s" its record says the family is ambiguous" T-LABEL
-s" error[E-USING-AMBIGUOUS]: bad sumtype declaration `es-amb-sum`" ES-RES-REFUSE:HAS
-s" ^^^^^^ ambiguous type family" ES-RES-REFUSE:HAS
+s" error[E-USING-AMBIGUOUS]: bad sumtype declaration `es-amb-sum`" ES-RES-REJECT:HAS
+s" ^^^^^^ ambiguous type family" ES-RES-REJECT:HAS
 s" its note names both packages" T-LABEL
-s" = packages: ES-AMB-A, ES-AMB-B" ES-RES-REFUSE:HAS
+s" = packages: ES-AMB-A, ES-AMB-B" ES-RES-REJECT:HAS
 s" its help gives each qualified spelling" T-LABEL
-s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" ES-RES-REFUSE:HAS
+s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" ES-RES-REJECT:HAS
 ;using ;using
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
@@ -1722,7 +1722,7 @@ s" AGENTS.md" PATH0 0 access 0 T=
 s" /nonexistent-habu-fs" PATH0 0 access -1 T=
 package ES-PATH
 : NUL ( -- ) s\" a\zb" PATH0 drop ;
-s" PATH0 refuses a path holding a 0 byte" T-LABEL
+s" PATH0 rejects a path holding a 0 byte" T-LABEL
 ' NUL E-PATH-NUL TTHROWSQ
 ;package
 s" AGENTS.md" PATH0 ES-STB stat64 0 T=
@@ -1892,9 +1892,9 @@ TFQ TTRUE
 : TFG ( -- bool ) 5.0 3.0 f> ;
 TFG TTRUE
 
-\ A definition the checker refuses inside evaluate throws 70 and adds no record.
+\ A definition the checker rejects inside evaluate throws 70 and adds no record.
 variable ES-CPX-ND
-\ unsigned body with an unsafe token: the checker refuses it E-UNSAFE
+\ unsigned body with an unsafe token: the checker rejects it E-UNSAFE
 : ES-CPX-BAD$ ( -- str ) s" : CPX-BAD evaluate ;" ;
 \ a name longer than DNAME-INL: the definer copies it into code space before
 \ the entry
@@ -2484,7 +2484,7 @@ s" T-LABEL-CAPX" 0 search-wl 0 T=
 \ Evaluating a source publishes what it defines and nothing else, so a row's
 \ index is still ndict@ in the instant before it.
 ES-SWL:MARK-RET1
-s" : ES-SWL-U ( -- n ) 1 ;" ES-RES-REFUSE:OUTCOME 0 T=
+s" : ES-SWL-U ( -- n ) 1 ;" ES-RES-REJECT:OUTCOME 0 T=
 s" search-wl: a live global tail is its own row" T-LABEL
 s" ES-SWL-U" 0 search-wl  ES-SWL:RET1-XT T=
 undefine ES-SWL-U
@@ -2493,7 +2493,7 @@ s" ES-SWL-U" 0 search-wl 0 T=
 s" search-wl: the retired key still names it" T-LABEL
 s" ES-SWL-U" ES-SWL:RET-WID search-wl  ES-SWL:RET1-XT T=
 ES-SWL:MARK-RET2
-s" : ES-SWL-U ( -- n ) 2 ;" ES-RES-REFUSE:OUTCOME 0 T=
+s" : ES-SWL-U ( -- n ) 2 ;" ES-RES-REJECT:OUTCOME 0 T=
 s" search-wl: the replacement owns the tail" T-LABEL
 s" ES-SWL-U" 0 search-wl  ES-SWL:RET2-XT T=
 s" search-wl: one retired row is still the retired key's answer" T-LABEL

@@ -4,8 +4,8 @@ split-str
 \ transport check, unknown methods and tools, an unknown tool's name cut at 128 bytes, a
 \ body's result and tool error, an object schema's result as structuredContent and a
 \ non-object result under it, a result's _meta from RESULT-META in both eras and its
-\ refusals, an image and an embedded resource from RESULT-CONTENT in both eras and a text
-\ of the tool's own, an empty array of them and the refusals, bodies that give a bad
+\ rejections, an image and an embedded resource from RESULT-CONTENT in both eras and a text
+\ of the tool's own, an empty array of them and the rejections, bodies that give a bad
 \ result or none, malformed envelopes, params, arguments and JSON, ping, tools/list showing each
 \ descriptor as registered (annotations and _meta raw) with a non-object output schema's
 \ wrapper in its place, and ADD-TOOL's rejections of a bad descriptor or inputSchema. A
@@ -14,7 +14,7 @@ split-str
 \ 400 -32600 with no id. ui:// resources: the resources capability, resources/list and
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
-\ refusals. The info line a tools/call and a resources/read log, without arguments, and,
+\ rejections. The info line a tools/call and a resources/read log, without arguments, and,
 \ after MCP:LOG, each message's line after its answer with its outcome and no arguments;
 \ this file run as `-- debug` at HABU_LOG_LEVEL=debug, in a child engine, logs a
 \ tools/call's arguments under its id, cut past 4096 bytes, and a tool error's text.
@@ -28,15 +28,15 @@ split-str
 \ answers false under ANSWER; a body that throws after HOLD, and a FINISH that gives no
 \ result, answer the client -32603 on the connection HOLD took.
 \ MCP's client against the same server and plain routes: TOOLS across pages, CALL's
-\ result, one holding content blocks, isError, refusals, a reply past the first buffer,
+\ result, one holding content blocks, isError, rejections, a reply past the first buffer,
 \ timeouts of CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
 \ event-stream replies and one that is not UTF-8, a result naming isError twice, TOOLS's
-\ limit shared by its pages, CLOSE after a halt mid-receive, a closed client refused once
+\ limit shared by its pages, CLOSE after a halt mid-receive, a closed client rejected once
 \ its row is reused, REQUEST-STOP of TOOLS's second page, of an idle client and of a
 \ CALL, after which CALL and TOOLS throw sending nothing, a client on the row a stopped
 \ one left calling normally, and REQUEST-STOP of a closed one. Then /mcp guarded by
 \ BEARER:ADMIT?: VISIBLE! hiding a tool by the caller's claim from tools/list and
-\ tools/call, and refused while HTTP serves; a client's TOKEN!, E-DENIED for no token, an
+\ tools/call, and rejected while HTTP serves; a client's TOKEN!, E-DENIED for no token, an
 \ empty one and a 403, E-UNAVAILABLE for a 503 and a 429, E-RESPONSE for a 418, and
 \ TOKEN! of a closed client.
 \ Run: bin/hb --load src/lib/net/mcp-test.f
@@ -170,7 +170,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : ARM ( -- ) 0 ENTERED atomic! 0 RELEASED atomic! 0 LEFT atomic! ;
 : SETTLE ( -- ) [: LEFT atomic@ 0<> ;] TEST-WAIT:POLL ;
 
-\ A setter's refusal throws: the case cannot make its request on that handle.
+\ A setter's rejection throws: the case cannot make its request on that handle.
 : OK ( CURL:status -- )
    MATCH CURL:status
       ok OF ENDOF
@@ -364,7 +364,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : TOOL-ERROR ( -- )
    s" a body's RESULT-ERROR is an isError result" T-LABEL
    LEGACY
-   S\" {\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"refuse\"}}" POST
+   S\" {\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"reject\"}}" POST
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"content\":" SB-APPEND
    S\" [{\"type\":\"text\",\"text\":\"nope\"}],\"isError\":true}}" SB-APPEND
    200 SB$ ANSWERED ;
@@ -390,7 +390,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" ,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" SB-APPEND
    text tu SB-APPEND S\" \"}],\"isError\":true}}" SB-APPEND SB$ ;
 
-: STRICT-REFUSED ( -- )
+: STRICT-REJECTED ( -- )
    s" arguments outside the inputSchema are a tool error and the body does not run" T-LABEL
    LEGACY 70 FILTERS STRICT-CALL POST
    200 70 FILTERS-TEXT ERROR-REPLY ANSWERED
@@ -619,7 +619,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 SB$ ANSWERED ;
 
 
-: BLOCKS-REFUSED ( str str str -- )
+: BLOCKS-REJECTED ( str str str -- )
    {: label:^ lu:n args:^ au:n want:^ wu:n :}
    label lu T-LABEL
    0 BLOCKS-CODE atomic!
@@ -628,31 +628,31 @@ TASK:MIN-STACK TASK:TASK STALLER
    BLOCKS-TEXT BLOCKS-LEN want wu KEPT= ;
 
 
-: BLOCKS-REFUSALS ( -- )
+: BLOCKS-REJECTIONS ( -- )
    s" RESULT-CONTENT of an object, not an array, is answered -32603"
    S\" {\"flat\":1}"
    s" content 1:1: expected a JSON array of content blocks, found `{`; write the blocks in an array"
-   BLOCKS-REFUSED
+   BLOCKS-REJECTED
    s" RESULT-CONTENT of an array holding a number after a block is answered -32603"
    S\" {\"scalar\":1}"
    s" content 1:29: expected a content block object, found `1`; write each block as an object"
-   BLOCKS-REFUSED
+   BLOCKS-REJECTED
    s" RESULT-CONTENT of an object without a type is answered -32603"
    S\" {\"untyped\":1}"
    s" content 1:13: expected a member `type`, found `}`; give the block its `type`"
-   BLOCKS-REFUSED
+   BLOCKS-REJECTED
    s" RESULT-CONTENT of an object whose type is a number is answered -32603"
    S\" {\"numbered\":1}"
    s" content 1:10: expected `type` as a string, found `5`; write `type` as a JSON string"
-   BLOCKS-REFUSED
+   BLOCKS-REJECTED
    s" RESULT-CONTENT of an object repeating its type is answered -32603"
    S\" {\"twice\":1}"
    s" content 1:24: expected one member `type`, found `5`; remove the repeated `type`"
-   BLOCKS-REFUSED
+   BLOCKS-REJECTED
    s" RESULT-CONTENT of a text that is not JSON is answered -32603"
    S\" {\"broken\":1}"
    s" content 1:10: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`"
-   BLOCKS-REFUSED ;
+   BLOCKS-REJECTED ;
 
 
 : BAD-JSON ( -- )
@@ -708,7 +708,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 \ The open phase's tools after echo, as tools/list answers them.
 : LATER-ITEMS ( -- )
-   S\" {\"name\":\"refuse\",\"description\":\"Refuse every call.\"," W+
+   S\" {\"name\":\"reject\",\"description\":\"Reject every call.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\",\"properties\":{}}," W+
    s" {}" OUTPUT s" false}},{" W+
    S\" \"name\":\"raw\",\"description\":\"Answer text that is not JSON.\"," W+
@@ -772,7 +772,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : NAME-MISMATCH ( -- )
    s" a modern Mcp-Name naming another tool is -32020" T-LABEL
    13 ECHO-CALL {: h:CURL:handle a:^ u:n :}
-   h s" Mcp-Name: refuse" ADD a u POST
+   h s" Mcp-Name: reject" ADD a u POST
    400 S\" {\"jsonrpc\":\"2.0\",\"id\":13,\"error\":{\"code\":-32020,\"message\":\"Header mismatch\"}}"
    ANSWERED ;
 
@@ -1002,8 +1002,8 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" {\"name\":\"echo\",\"description\":\"Echo the arguments.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: MCP:RESULT ;] MCP:ADD-TOOL ;
 
-: ADD-REFUSE ( -- )
-   S\" {\"name\":\"refuse\",\"description\":\"Refuse every call.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":false}}"
+: ADD-REJECT ( -- )
+   S\" {\"name\":\"reject\",\"description\":\"Reject every call.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":false}}"
    [: 2drop s" nope" MCP:RESULT-ERROR ;] MCP:ADD-TOOL ;
 
 : ADD-RAW ( -- )
@@ -1105,27 +1105,27 @@ TASK:MIN-STACK TASK:TASK STALLER
    MCP:E-SCHEMA REASON:TEXT$ want wu T$=
    REASON:RELEASE ;
 
-: RESOURCE-REFUSALS ( -- )
-   s" ADD-RESOURCE refuses a descriptor without a uri" T-LABEL
+: RESOURCE-REJECTIONS ( -- )
+   s" ADD-RESOURCE rejects a descriptor without a uri" T-LABEL
    [: S\" {\"name\":\"x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:35: expected a member `uri`, found `}`; add `uri`" SAID
-   s" ADD-RESOURCE refuses an empty uri" T-LABEL
+   s" ADD-RESOURCE rejects an empty uri" T-LABEL
    [: S\" {\"uri\":\"\",\"name\":\"x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
    S\" descriptor 1:8: expected `uri` as a non-empty string, found `\"\"`; give `uri` a value" SAID
-   s" ADD-RESOURCE refuses a uri that is no string" T-LABEL
+   s" ADD-RESOURCE rejects a uri that is no string" T-LABEL
    [: S\" {\"uri\":5,\"name\":\"x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:8: expected `uri` as a string, found `5`; write `uri` as a JSON string" SAID
-   s" ADD-RESOURCE refuses a descriptor without a name" T-LABEL
+   s" ADD-RESOURCE rejects a descriptor without a name" T-LABEL
    [: S\" {\"uri\":\"ui://x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:39: expected a member `name`, found `}`; add `name`" SAID
-   s" ADD-RESOURCE refuses a descriptor without a mimeType" T-LABEL
+   s" ADD-RESOURCE rejects a descriptor without a mimeType" T-LABEL
    [: S\" {\"uri\":\"ui://x\",\"name\":\"x\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:27: expected a member `mimeType`, found `}`; add `mimeType`" SAID
-   s" ADD-RESOURCE refuses a text that is not UTF-8" T-LABEL
+   s" ADD-RESOURCE rejects a text that is not UTF-8" T-LABEL
    [: S\" {\"uri\":\"ui://x\",\"name\":\"x\",\"mimeType\":\"text/html\"}"
       S\" <p>\xff</p>" MCP:ADD-RESOURCE ;] MCP:E-SCHEMA TTHROWSQ
    s" page 1:4: expected UTF-8 text, found byte $FF; encode the page as UTF-8" SAID
-   s" ADD-RESOURCE refuses a registered uri, escaped" T-LABEL
+   s" ADD-RESOURCE rejects a registered uri, escaped" T-LABEL
    [: S\" {\"uri\":\"ui://test/widget\\u002ehtml\",\"name\":\"x\",\"mimeType\":\"text/html\"}"
       ADD-PAGE ;] MCP:E-DUPLICATE TTHROWSQ ;
 
@@ -1260,7 +1260,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : CLIENT-FAULT ( -- )
    s" CALL answers a tool error's result, isError true" T-LABEL
-   s" refuse" s" {}" ASK TTRUE
+   s" reject" s" {}" ASK TTRUE
    W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"nope\"}]," W+
    S\" \"isError\":true," W+ W-SERVER s" }" W+ W$ T$= ;
 
@@ -1371,7 +1371,7 @@ $A constant LF
    a u s" PASS" STR:CONTAINS? TFALSE
    a u s" WORD" STR:CONTAINS? TFALSE ;
 
-\ Port 1 refuses the connection.
+\ Port 1 rejects the connection.
 : CLIENT-SECRET ( -- )
    s" a failed exchange logs the URL's host, not its userinfo or query" T-LABEL
    s" http://user:SECRET@127.0.0.1:1/mcp?api_key=KEY" FAILED-ON SECRET-CUT
@@ -1391,7 +1391,7 @@ $A constant LF
    url ;
 
 : CLIENT-LONG ( -- )
-   s" a URL libcurl refuses to set logs curl 43 with its host, not its userinfo"
+   s" a URL libcurl does not set logs curl 43 with its host, not its userinfo"
    T-LABEL
    LONG-URL {: url :}
    url SPAN:$ FAILED-ON {: a:^ u:n :}
@@ -1505,9 +1505,9 @@ $A constant LF
    STALLER TASK:JOIN MATCH result ok OF ENDOF err OF ENDOF ;MATCH E-TASK-NO-RESULT T=
    1 RELEASED atomic! SETTLE
    CLOSED atomic@ 1 T=
-   s" CLOSE refuses a closed client" T-LABEL
+   s" CLOSE rejects a closed client" T-LABEL
    [: STALL-CLIENT @ MCP:CLOSE ;] MCP:E-STATE TTHROWSQ
-   s" a closed client is refused once OPEN reuses its row" T-LABEL
+   s" a closed client is rejected once OPEN reuses its row" T-LABEL
    s" /mcp" URL MCP:OPEN CLIENT !
    [: STALL-CLIENT @ MCP:CLOSE ;] MCP:E-STATE TTHROWSQ
    CLIENT @ MCP:CLOSE ;
@@ -1544,7 +1544,7 @@ $A constant LF
 
 \ A stopped client's CALL and TOOLS throw at once: /counted has had no
 \ request past the hits it had.
-: STOP-REFUSED ( n -- )
+: STOP-REJECTED ( n -- )
    {: hits:n :}
    ['] STOP-CALL MCP:E-TRANSFER TTHROWSQ
    ['] STOP-TOOLS MCP:E-TRANSFER TTHROWSQ
@@ -1557,7 +1557,7 @@ $A constant LF
    0 HITS atomic!
    s" /counted" URL MCP:OPEN STALL-CLIENT !
    STALL-CLIENT @ MCP:REQUEST-STOP
-   0 STOP-REFUSED
+   0 STOP-REJECTED
    STALL-CLIENT @ MCP:CLOSE
    s" a client OPEN gives the stopped one's row calls normally" T-LABEL
    s" /counted" URL MCP:OPEN STALL-CLIENT !
@@ -1568,16 +1568,16 @@ $A constant LF
    s" the stopped CALL logs nothing but the server's info line" T-LABEL
    LINES 0 T=
    s" then CALL and TOOLS throw, sending nothing" T-LABEL
-   2 STOP-REFUSED
+   2 STOP-REJECTED
    STALL-CLIENT @ MCP:CLOSE
-   s" REQUEST-STOP refuses a closed client" T-LABEL
+   s" REQUEST-STOP rejects a closed client" T-LABEL
    [: STALL-CLIENT @ MCP:REQUEST-STOP ;] MCP:E-STATE TTHROWSQ ;
 
 TYPED-VARIABLE NEVER MCP:client
 
 \ Every row is free, so a zero client must not match a free row's 0.
 : CLIENT-NEVER ( -- )
-   s" CLOSE refuses a client OPEN never gave" T-LABEL
+   s" CLOSE rejects a client OPEN never gave" T-LABEL
    [: NEVER @ MCP:CLOSE ;] MCP:E-STATE TTHROWSQ ;
 
 
@@ -1703,7 +1703,7 @@ variable KEY-SET-U
 : LISTED ( -- n ) LEGACY BEARING S\" {\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/list\"}" POST ;
 
 : HIDDEN-LIST ( -- )
-   s" tools/list leaves out the tools the hook refuses the caller, the first listed among them" T-LABEL
+   s" tools/list leaves out the tools the hook rejects the caller, the first listed among them" T-LABEL
    ZEN LISTED LIST-HEAD LATER-ITEMS WHOAMI-ENTRY s" ]}}" W+
    200 W$ ANSWERED ;
 
@@ -1749,7 +1749,7 @@ variable KEY-SET-U
    s" /mcp" URL MCP:OPEN CLIENT !
    s" a client without a token is E-DENIED" T-LABEL
    ['] CAPTURED-CALL MCP:E-DENIED TTHROWSQ
-   s" refused the client: status 401" REPLY-LOGGED
+   s" rejected the client: status 401" REPLY-LOGGED
    s" TOKEN! sends the token on TOOLS and CALL" T-LABEL
    ZEN CLIENT @ TOKEN$ MCP:TOKEN!
    OWNER
@@ -1763,7 +1763,7 @@ variable KEY-SET-U
    ['] CAPTURED-CALL MCP:E-DENIED TTHROWSQ
    CLIENT @ MCP:CLOSE
    s" a 403 is E-DENIED" T-LABEL
-   s" /denied" MCP:E-DENIED s" refused the client: status 403" PATH-THROWS
+   s" /denied" MCP:E-DENIED s" rejected the client: status 403" PATH-THROWS
    s" a 503 is E-UNAVAILABLE" T-LABEL
    s" /busy" MCP:E-UNAVAILABLE s" reports the server unavailable: status 503" PATH-THROWS
    s" a 429 is E-UNAVAILABLE" T-LABEL
@@ -1772,10 +1772,10 @@ variable KEY-SET-U
    s" /teapot" MCP:E-RESPONSE s" is not a success: status 418 body: short and stout" PATH-THROWS
    s" the log line leaves out the URL's userinfo" T-LABEL
    SB-RESET s" http://user:SECRET@127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U
-   s" /denied" SB-APPEND SB$ MCP:E-DENIED s" refused the client" URL-THROWS
+   s" /denied" SB-APPEND SB$ MCP:E-DENIED s" rejected the client" URL-THROWS
    LOG$ s" user" STR:CONTAINS? TFALSE
    LOG$ s" SECRET" STR:CONTAINS? TFALSE
-   s" TOKEN! refuses a closed client" T-LABEL
+   s" TOKEN! rejects a closed client" T-LABEL
    [: CLIENT @ s" t" MCP:TOKEN! ;] MCP:E-STATE TTHROWSQ
    s" no transfer is left in flight" T-LABEL
    [: CURL:LOOP-STOP ;] catch 0 T= ;
@@ -1787,7 +1787,7 @@ variable KEY-SET-U
    s" /keys" URL {: a:^ u:n :}
    a KEYS-URL u BYTE-COPY u KEYS-URL-U ! ;
 
-\ ISSUER! and VISIBLE! are refused while HTTP serves, so the server starts again
+\ ISSUER! and VISIBLE! are rejected while HTTP serves, so the server starts again
 \ on the port /keys's URL names, with two workers: ADMIT? fetches /keys from
 \ this same server and waits for the answer, which a sole worker could not give.
 : PROTECTED-CASES ( -- )
@@ -2119,7 +2119,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 \ Given the debug child's fd 2.
 : LOGGED-STRICT ( str -- )
    {: e:^ eu:n :}
-   s" MCP:LOG logs a schema refusal as a tool error, its text at debug" T-LABEL
+   s" MCP:LOG logs a schema rejection as a tool error, its text at debug" T-LABEL
    [: STRICT-ERROR ;] CAPTURED
    s"  tools/call strict -> tool error" REQ-LOGGED
    LOG$ FILTERS-TEXT STR:CONTAINS? TFALSE
@@ -2269,7 +2269,7 @@ create CHILD-ERR CHILD-CAP allot
    e eu DEBUG-HEAD W$ LINE-ID$ 2drop ;
 
 \ The server again, with LOG and every tool visible: LOG and VISIBLE! are
-\ refused while HTTP serves.
+\ rejected while HTTP serves.
 : LOGGED-CASES ( -- )
    HTTP:STOP
    HTTP:ROUTES-RESET
@@ -2304,38 +2304,38 @@ create CHILD-ERR CHILD-CAP allot
    s" test-server" s" 1.0" MCP:SERVER-INFO!
    GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
-   ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL ADD-SHAPE ADD-WIDGET ADD-PICK
+   ADD-ECHO ADD-REJECT ADD-RAW ADD-SILENT ADD-BIG ADD-STALL ADD-SHAPE ADD-WIDGET ADD-PICK
    ADD-FRAMED ADD-PICTURED ADD-WAIT ADD-STRICT
-   s" ADD-TOOL refuses a descriptor without a name" T-LABEL
+   s" ADD-TOOL rejects a descriptor without a name" T-LABEL
    [: S\" {\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:36: expected a member `name`, found `}`; add `name`" SAID
-   s" ADD-TOOL refuses a descriptor whose name is not a string" T-LABEL
+   s" ADD-TOOL rejects a descriptor whose name is not a string" T-LABEL
    [: S\" {\"name\":5,\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:9: expected `name` as a string, found `5`; write `name` as a JSON string" SAID
-   s" ADD-TOOL refuses a descriptor without an inputSchema" T-LABEL
+   s" ADD-TOOL rejects a descriptor without an inputSchema" T-LABEL
    [: S\" {\"name\":\"x\",\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:30: expected a member `inputSchema`, found `}`; add `inputSchema`" SAID
-   s" ADD-TOOL refuses a descriptor whose inputSchema is not an object" T-LABEL
+   s" ADD-TOOL rejects a descriptor whose inputSchema is not an object" T-LABEL
    [: S\" {\"name\":\"x\",\"inputSchema\":[],\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:27: expected `inputSchema` as a JSON object, found `[`; write `inputSchema` as an object" SAID
-   s" ADD-TOOL refuses a descriptor without an outputSchema" T-LABEL
+   s" ADD-TOOL rejects a descriptor without an outputSchema" T-LABEL
    [: S\" {\"name\":\"x\",\"inputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:29: expected a member `outputSchema`, found `}`; add `outputSchema`" SAID
-   s" ADD-TOOL refuses a descriptor whose outputSchema is not an object" T-LABEL
+   s" ADD-TOOL rejects a descriptor whose outputSchema is not an object" T-LABEL
    [: S\" {\"name\":\"x\",\"inputSchema\":{},\"outputSchema\":[]}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" outputSchema 1:1: expected a JSON object, found `[`; write it as one object" SAID
-   s" ADD-TOOL refuses a descriptor repeating a top-level key, escaped" T-LABEL
+   s" ADD-TOOL rejects a descriptor repeating a top-level key, escaped" T-LABEL
    [: S\" {\"name\":\"x\",\"n\\u0061me\":\"y\",\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    S\" descriptor 1:13: expected each top-level member once, found `\"n\\u0061me\"`; remove the repeated member, keeping one" SAID
-   s" ADD-TOOL refuses a descriptor that is not JSON" T-LABEL
+   s" ADD-TOOL rejects a descriptor that is not JSON" T-LABEL
    [: s" not json" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:1: expected `null`, found `not`; write the word in full and in lower case, or quote the text as a string" SAID
-   s" ADD-TOOL refuses a registered name written with an escape" T-LABEL
+   s" ADD-TOOL rejects a registered name written with an escape" T-LABEL
    [: S\" {\"name\":\"\\u0065cho\",\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-DUPLICATE TTHROWSQ
-   s" ADD-TOOL refuses a descriptor without a top-level name, one nested" T-LABEL
+   s" ADD-TOOL rejects a descriptor without a top-level name, one nested" T-LABEL
    [: S\" {\"inputSchema\":{\"name\":\"x\"},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:46: expected a member `name`, found `}`; add `name`" SAID
-   s" ADD-TOOL refuses an outputSchema repeating a top-level key" T-LABEL
+   s" ADD-TOOL rejects an outputSchema repeating a top-level key" T-LABEL
    [: S\" {\"name\":\"t\",\"inputSchema\":{},\"outputSchema\":{\"type\":\"object\",\"type\":\"string\"}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    S\" outputSchema 1:18: expected each top-level member once, found `\"type\"`; remove the repeated member, keeping one" SAID
    s" ADD-TOOL rejects an inputSchema JSON-SCHEMA:COMPILE does not take" T-LABEL
@@ -2357,21 +2357,21 @@ create CHILD-ERR CHILD-CAP allot
    S\" inputSchema 1:9: expected `type` as `\"object\"`, found `\"array\"`; write `type` as `\"object\"`" SAID
    WIDGET-RESOURCE PAGE MCP:ADD-RESOURCE
    PLAIN ADD-PAGE
-   RESOURCE-REFUSALS
+   RESOURCE-REJECTIONS
    0 ONE-WORKER SERVE-ON
-   s" ADD-TOOL refuses while HTTP serves" T-LABEL
+   s" ADD-TOOL rejects while HTTP serves" T-LABEL
    [: ADD-LATE ;] MCP:E-STATE TTHROWSQ
-   s" ADD-RESOURCE refuses while HTTP serves" T-LABEL
+   s" ADD-RESOURCE rejects while HTTP serves" T-LABEL
    [: S\" {\"uri\":\"ui://late\",\"name\":\"late\",\"mimeType\":\"text/html\"}" ADD-PAGE ;]
    MCP:E-STATE TTHROWSQ
-   s" INSTRUCTIONS! refuses while HTTP serves" T-LABEL
+   s" INSTRUCTIONS! rejects while HTTP serves" T-LABEL
    [: GUIDE$ MCP:INSTRUCTIONS! ;] MCP:E-STATE TTHROWSQ
    LEGACY-INITIALIZE LEGACY-INITIALIZED MODERN-DISCOVER UNSUPPORTED
    METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL LONG-UNKNOWN TOOL-ERROR
-   STRICT-REFUSED
+   STRICT-REJECTED
    TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT META-LEGACY META-MODERN META-EMPTY
    META-NOT-OBJECT META-REPEATED META-SERVER-INFO
-   BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-OWN-TEXT BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE NULL-ID RESPONSE-SENT
+   BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-OWN-TEXT BLOCKS-EMPTY BLOCKS-REJECTIONS BAD-ENVELOPE NULL-ID RESPONSE-SENT
    BAD-JSON LIST PING
    MODERN-LIST NAME-MISMATCH NAME-ABSENT META-MISMATCH NO-CAPABILITIES SCALAR-META
    NO-PARAMS MODERN-NOTIFICATION LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT PARAMS-NOT-OBJECT

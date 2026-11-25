@@ -1,5 +1,5 @@
 \ A definition its definer opened stays open while text is evaluated into it:
-\ the text's own refusal reaches its catch before the definer's `;`.
+\ the text's own rejection reaches its catch before the definer's `;`.
 require src/lib/test/assert.f
 
 package NATIVE-EVAL-PREFIX-TEST
@@ -13,19 +13,19 @@ variable IS-CODE
 : N>N ( -- EFFECT:type ) EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT ;
 : >N ( -- EFFECT:type ) EFFECT:EMPTY EFFECT:N EFFECT:OUT ;
 
-\ : NAME ( -- n ) 5 ; where a text that names no word is refused first.
+\ : NAME ( -- n ) 5 ; where a text that names no word is rejected first.
 : MAKE-BAD ( str -- )
    >N define-word
    [: s" NATIVE-EVAL-NO-WORD" evaluate-closed ;] catch BAD-CODE !
    s" 5" evaluate-closed postpone ; ;
 
-\ : NAME ( -- n ) 5 ; where a tick of no word is refused first.
+\ : NAME ( -- n ) 5 ; where a tick of no word is rejected first.
 : MAKE-BAD-TICK ( str -- )
    >N define-word
    [: s" ['] NATIVE-EVAL-NO-TARGET" evaluate-closed ;] catch TICK-CODE !
    s" 5" evaluate-closed postpone ; ;
 
-\ : NAME ( -- n ) 5 ; where an `is` of no word is refused first.
+\ : NAME ( -- n ) 5 ; where an `is` of no word is rejected first.
 : MAKE-BAD-IS ( str -- )
    >N define-word
    [: s" is NATIVE-EVAL-NO-TARGET" evaluate-closed ;] catch IS-CODE !
@@ -42,7 +42,7 @@ variable IS-CODE
 : MAKE-TEXT ( str EFFECT:type str -- ) {: text:str :}
    define-word text evaluate-closed postpone ; ;
 
-\ : NAME ( n -- n ) 1 + ; where the text's refusal is caught.
+\ : NAME ( n -- n ) 1 + ; where the text's rejection is caught.
 : MAKE-PART ( str -- )
    N>N define-word
    [: s" 1 + NATIVE-EVAL-NO-WORD" evaluate-closed ;] catch PART-CODE !

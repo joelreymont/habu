@@ -19,7 +19,7 @@ require src/lib/process-env.f
 require src/lib/fs.f
 require src/lib/process-argv.f
 
-\ Expected refusals are asserted, not printed.
+\ Expected rejections are asserted, not printed.
 REJECTION:CAPTURE
 
 package LIN-OWN
@@ -161,12 +161,12 @@ s" cast: LC1 ( n -- LIN-OWN:tok )"                 LIN-RUN:DECL
    s" error[E-CAST-LINEAR]" s" `cast: LC1`" s" a linear value would change hands" LIN-RUN:REJECTS-AT
 s" cast: LC2 ( LIN-OWN:tok -- n )"                 LIN-RUN:DECL
    s" error[E-CAST-LINEAR]" s" `cast: LC2`" s" a linear value would change hands" LIN-RUN:REJECTS-AT
-s" a refused row publishes no name" T-LABEL
+s" a rejected row publishes no name" T-LABEL
 s" LP1" ABSENT? TTRUE
 s" LP9" ABSENT? TTRUE
 s" LA1" ABSENT? TTRUE
 s" LC1" ABSENT? TTRUE
-s" the owner's public section refuses a row" T-LABEL
+s" the owner's public section rejects a row" T-LABEL
 public
 s" LINEAR: LS1 ( n -- LIN-OWN:tok )"               LIN-RUN:DECL
    s" error[E-LINEAR-SCOPE]" s" `linear: LS1`" s" outside its owner's private section" LIN-RUN:REJECTS-AT
@@ -245,7 +245,7 @@ public
 ;package
 s" the pre-pass certifies a row in the owner and its checked caller" T-LABEL
 ' LIN-VRF:OWNED catch 0 T=
-s" and refuses a public row, a foreign owner and a row with no token" T-LABEL
+s" and rejects a public row, a foreign owner and a row with no token" T-LABEL
 REJECTION:CAPTURE ' LIN-VRF:IN-PUBLIC catch s" error[E-LINEAR-SCOPE]" s" `linear: WM`" LIN-RUN:REJECTS
 REJECTION:CAPTURE ' LIN-VRF:FOREIGN catch s" error[E-LINEAR-OWNER]" s" `linear: YM`" LIN-RUN:REJECTS
 REJECTION:CAPTURE ' LIN-VRF:NO-TOKEN catch s" error[E-LINEAR-PAYLOAD]" s" `linear: ZM`" LIN-RUN:REJECTS
@@ -254,7 +254,7 @@ REJECTION:CAPTURE ' LIN-VRF:DISTINCT-TAILS catch s" error[E-CAST-ARITY]" s" `lin
 ' LIN-VRF:SAME-TAIL catch 0 T=
 REJECTION:CAPTURE ' LIN-VRF:CAST-TAIL catch s" error[E-CAST-ARITY]" s" `cast: LV-BAD-TAIL`" LIN-RUN:REJECTS
 
-\ ---- what the engine itself refuses at top level --------------------------------
+\ ---- what the engine itself rejects at top level --------------------------------
 \ The reader exits after these diagnostics, so each runs in a child. A forked
 \ child keeps the capture, so records go to stderr again for ERR$.
 REJECTION:BUFFER-OFF
@@ -282,7 +282,7 @@ variable ERR-U
 s" the keyword with nothing after it names itself" T-LABEL
 s" linear:" LIN-CHILD:RUN 70 T=
 s" error[E-MISSING-NAME]" s" `linear:`" LIN-CHILD:SAYS
-s" a row's bare call at an empty stack is refused by name" T-LABEL
+s" a row's bare call at an empty stack is rejected by name" T-LABEL
 s" package LCH public DEFLINEAR LCH:tok ;package package LCH LINEAR: LCM ( n -- LCH:tok ) LCM"
    LIN-CHILD:RUN 70 T=
 s" error[E-INPUT-UNDERFLOW]" LIN-CHILD:HAS  LIN-CHILD:ERR$ s" linear-suite.f" 4 s" LIN-CHILD:RUN 70 T=" T-PLACED
@@ -330,7 +330,7 @@ variable PROG-U
    path STR:DATA ROOT-BUF path STR:LEN BYTE-COPY path STR:LEN ROOT-U !
    ROOT-BUF ROOT-U @ >str FS:CLEANUP-TREE+ ;
 
-\ Ends as tools/check.f does: a refusal's status is the child's exit code.
+\ Ends as tools/check.f does: a rejection's status is the child's exit code.
 : CHECK-RUN ( -- )
    PATH$ LSP-CHECK:FILE
    LSP-CHECK:RUN ;
@@ -523,7 +523,7 @@ SLOTS TYPED-BUFFER KEPT-NS n
    s" tools/check.f certifies a module that mints in its owner" T-LABEL
    OK-FIXTURE s" lin-ok.f" CHECK
    RC @ 0 T=
-   s" and refuses a row in a public section by its code" T-LABEL
+   s" and rejects a row in a public section by its code" T-LABEL
    BAD-FIXTURE s" lin-bad.f" CHECK
    RC @ 70 T=
    ERR$ S\" \"code\":\"E-LINEAR-SCOPE\"" STR:CONTAINS? TTRUE
@@ -540,12 +540,12 @@ SLOTS TYPED-BUFFER KEPT-NS n
    RC @ 70 T=
    ERR$ s" error[E-LINEAR-SCOPE]: in `linear: MINT`" STR:CONTAINS? TTRUE
    ERR$ s" -lin-bad.f:4:" STR:CONTAINS? TTRUE
-   s" and refuses a qualified public destination" T-LABEL
+   s" and rejects a qualified public destination" T-LABEL
    QUAL-FIXTURE s" lin-qual.f" CHECK-PROSE
    RC @ 70 T=
    ERR$ s" error[E-LINEAR-SCOPE]: in `linear: LIN-FQ:MINT`, a qualified name publishes past the private section" STR:CONTAINS? TTRUE
    ERR$ s" lin-qual.f:6:" STR:CONTAINS? TTRUE
-   s" and refuses an identity whose stack tails differ" T-LABEL
+   s" and rejects an identity whose stack tails differ" T-LABEL
    TAIL-FIXTURE s" lin-tail.f" CHECK-PROSE
    RC @ 70 T=
    ERR$ s" error[E-CAST-ARITY]: in `linear: MINT`, the input and output rows end in different tails" STR:CONTAINS? TTRUE
@@ -578,7 +578,7 @@ SLOTS TYPED-BUFFER KEPT-NS n
    LINK-RUN
    OUT$ s" 42" STR:CONTAINS? TTRUE
    RC @ 0 T=
-   s" and a type declared twice is refused the same by both" T-LABEL
+   s" and a type declared twice is rejected the same by both" T-LABEL
    TWICE-SOURCE
    s" lb-twice.f" s" twice-objs" LINK-BUILD
    RC @  dup 0 T<>

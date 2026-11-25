@@ -300,7 +300,7 @@ TYPED-VARIABLE PAD-LEN len
    R BIG-BODY @ LONG TAKE BODY ;
 
 \ The reader's descriptor is closed under it, before a header and inside a body
-\ the buffer did not hold: the kernel refuses the read, and the reader is spent.
+\ the buffer did not hold: the kernel rejects the read, and the reader is spent.
 : TEST-READ-ERROR ( -- )
    s\" Content-Length: 2\r\n\r\n{}" FEED
    DONE

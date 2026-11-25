@@ -241,7 +241,7 @@ FUNCTION: SETSPECIFIC-CALL pthread_setspecific ( n n -- i32 ) ;FUNCTION
 FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
 
 \ Sets the host errno FS:ERRNO answers after an E-TASK-THREAD, 0 when the
-\ refused call gave none.
+\ rejected call gave none.
 : TASK-CAUSE! ( n -- )
    data-base FS-ABI:ERRNO-OFF + ! ;
 
@@ -532,7 +532,7 @@ SCRATCH-VARIABLE MAIN-PARK-READY
 
 \ A task never activated, only constructed, or ended has no run to hint at: the
 \ count would sit in a record its next activation is not entitled to, so all
-\ three are refused. The task can end, be released and open again between the
+\ three are rejected. The task can end, be released and open again between the
 \ state read and the post; the post still meets this TCB's one live park. A
 \ hint before the next run opens is drained there; a WAKE in flight as it opens
 \ lands in it, the one stale hint its re-check absorbs.
@@ -577,7 +577,7 @@ $4000 constant EXIT-CHUNK-BYTES
 2 cells constant EXIT-CHUNK-HEAD
 EXIT-CHUNK-BYTES EXIT-CHUNK-HEAD - EXIT-ROW-BYTES / constant EXIT-CHUNK-ROWS
 
-\ The one cell a registration compares against. The checker refuses `=` on two
+\ The one cell a registration compares against. The checker rejects `=` on two
 \ quotations (E-MISMATCH, "expected n n actual [ -- ] [ -- ]"), but a quotation
 \ in declared storage reads as a cell through the views, and the same `['] W`
 \ stored twice reads the same cell.
@@ -600,7 +600,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ] SCRATCH-ONLY
 \ The answer is single-assignment: the flag moves 0 -> 1 in one step and the
 \ first call wins, so neither a second call nor the task's own cleanup can
 \ replace a result the body already gave. A thread with no TCB has no task to
-\ answer for and is refused rather than writing into somebody's storage.
+\ answer for and is rejected rather than writing into somebody's storage.
 : TASK-RETURN ( n -- ) {: value:n :}
    TASK-SELF-N 0= if E-TASK-STATE throw then
    TASK-SELF {: self:^ :}
@@ -870,7 +870,7 @@ variable ROW-N
 : ROW-NAMES? ( n n -- bool ) {: k:n reg:n :}
    k ROW ROW-REGION atomic@ reg = ;
 
-\ Whether the thread a refused claim saw is inside row k by region reg. A
+\ Whether the thread a rejected claim saw is inside row k by region reg. A
 \ thread value comes only from that thread's own claim, and the thread entered
 \ by the region the row named then, which nothing moves until it leaves: bind,
 \ unbind and another task's end all take the row from 0, and the thunk only
@@ -889,7 +889,7 @@ variable ROW-N
    k ROW-MOVES atomic@ before = and ;
 
 \ A task's rows die with it, before its one DONE signal, so a DONE region is
-\ never named and no release path has to refuse. A thread inside a row naming
+\ never named and no release path has to reject. A thread inside a row naming
 \ the region is a contract breach the process ends on: a foreign thread that
 \ entered while this task ran is already dying 106 in the thunk (the context is
 \ busy, or outside any foreign call) and never releases the row. The task's
@@ -897,7 +897,7 @@ variable ROW-N
 \ has, and PAUSE does not end a task while its region holds a callback frame -
 \ so for that thread the die is a backstop: an ending beneath C's frames would
 \ leave C's call undrained.
-\ A refused claim is not that breach until ROW-INSIDE? finds the thread it saw
+\ A rejected claim is not that breach until ROW-INSIDE? finds the thread it saw
 \ inside by this region: the row may have moved since the first read, and the
 \ thread may have left it and entered again by another. A BUSY row is held by
 \ a mover for a few steps that wait on nothing, so the task yields and reads it
@@ -1176,7 +1176,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    TASK-CONSTRUCTED tcb TASK-STATE! ;
 
 \ Every resource above records its owner as soon as it succeeds. A later mmap
-\ or semaphore refusal leaves the task EMPTY, so no later release owns the
+\ or semaphore failure leaves the task EMPTY, so no later release owns the
 \ partial record; release it here before propagating the original error.
 : PREPARE ( ^n -- ) {: tcb:^ :}
    tcb TASK-CONSTRUCTED? if exit then
@@ -1331,7 +1331,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ ended) and the state is left alone: an ended task has no PAUSE to reach, and
 \ DONE is never overwritten by a request nobody can observe.
 \
-\ The park is posted DIRECTLY, not through TASK-WAKE, whose refusal of an ended
+\ The park is posted DIRECTLY, not through TASK-WAKE, whose rejection of an ended
 \ task is TASK:WAKE's own contract: the task may end, or be released, between
 \ the CAS and the post, and the post still meets a live park (PARK-CREATE). A
 \ count posted before the next run opens dies there; one in flight as it opens
@@ -1387,7 +1387,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 
 \ The row moves 0 -> BUSY before it is read, and the bind decides on what it
 \ reads under BUSY, where nothing else moves the row. A row that is not idle - a
-\ thread inside, or another bind, unbind or task end moving it - refuses
+\ thread inside, or another bind, unbind or task end moving it - rejects
 \ the bind, even when it names this context: a mover can still drop the row it
 \ holds, so its binding is not final.
 : CONTEXT-BIND ( n n -- ) {: ctx:n k:n :}
@@ -1440,9 +1440,9 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    TASK-STATE@ TASK-DONE = ;
 
 \ A join needs a task that is running or has ended, and exactly one joiner: a
-\ second joiner is refused instead of being made to wait for a signal the first
+\ second joiner is rejected instead of being made to wait for a signal the first
 \ has already taken. A task that was never activated and a task whose join has
-\ released it are the same EMPTY task and get the same refusal.
+\ released it are the same EMPTY task and get the same rejection.
 : TASK-JOIN-CHECK ( ^n -- ) {: tcb:^ :}
    tcb TASK-STATE@ {: st:n :}
    st TASK-RUNNING <> st TASK-HALT-REQ <> and st TASK-DONE <> and
@@ -1510,8 +1510,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    TASK-ABI:PARK-OFF 0 ?do 0 tcb i + ! CELL +loop
    TASK-TCB-BYTES TASK-ABI:PARK-OFF SEMAPHORE-BYTES + ?do 0 tcb i + ! CELL +loop ;
 
-\ Of two TASK:FREEs on one task only one proceeds and the other is refused; a
-\ task in any state but EMPTY is refused. The record is cleared before its claim
+\ Of two TASK:FREEs on one task only one proceeds and the other is rejected; a
+\ task in any state but EMPTY is rejected. The record is cleared before its claim
 \ says FREE, so TASK:NEW never takes a record holding the last task's rows.
 : TASK-FREE ( ^n -- ) {: tcb:^ :}
    tcb TCB-POOLED? 0= if E-TASK-STATE throw then
@@ -1598,7 +1598,7 @@ CAST: AS-CHILD-RUN ( n -- [ str n n str -- n ] )
 CAST: AS-SLOT-ENTRY ( [ ^n -- ^n ] -- n )
 CAST: AS-SLOTS-ENTRY ( [ n ^n -- ^n ] -- n )
 
-\ Every refusal comes before the child word exists. The child's body calls the
+\ Every rejection comes before the child word exists. The child's body calls the
 \ routine at entry.
 : USER-ROW ( n n n str -- )
    {: count:n shape:n entry:n da:^ du:n :}
@@ -1834,7 +1834,7 @@ TASK-MIN-STACK constant MIN-STACK
 \ Binds slot n to a context: the main region, the caller's own or
 \ CALLER-CONTEXT. Binding an idle slot to the context it names is a no-op; a
 \ slot naming another context, with a thread inside, or that another bind,
-\ unbind or task end is moving, is refused. A binding lives until
+\ unbind or task end is moving, is rejected. A binding lives until
 \ CONTEXT-UNBIND or the end of the task whose region it names; a program
 \ starts with every slot unbound.
 : CONTEXT-BIND ( n n -- )

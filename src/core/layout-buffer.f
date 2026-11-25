@@ -76,7 +76,7 @@ EXPORT CHECK:CHECKER-STORAGE-BIND
 EXPORT CHECK:CHECKER-STORAGE-COUNT-REJECT
 EXPORT CHECK:CHECKER-STORAGE-DEFER
 EXPORT CHECK:CHECKER-STORAGE-INFO
-EXPORT CHECK:CHECKER-STORAGE-NAME-REFUSE
+EXPORT CHECK:CHECKER-STORAGE-NAME-REJECT
 EXPORT CHECK:CHECKER-STORAGE-REJECT
 EXPORT CHECK:CHECKER-STORAGE-TERM
 EXPORT CHECK:CHECKER-STORAGE-TYPE-REJECT
@@ -297,7 +297,7 @@ SCRATCH-VARIABLE CLS-CAP
 
 public
 
-: NODE-TYPE-REFUSE ( str -- ) {: name:^ nameu:n :}
+: NODE-TYPE-REJECT ( str -- ) {: name:^ nameu:n :}
    LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
    name nameu LBUF-GEN LBUF-GEN-U @ CHECKER-STORAGE-TYPE-REJECT ;
 
@@ -610,7 +610,7 @@ private
 : NODE-VALIDATE ( n str n -- bool )
    {: count:n name:^ nameu:n node:n :}
    node NODE-READ LBI-CELLS 0= if
-      drop name nameu NODE-TYPE-REFUSE LBUF-FALSE exit
+      drop name nameu NODE-TYPE-REJECT LBUF-FALSE exit
    then
    count swap name nameu STORAGE-SIZE ;
 
@@ -662,7 +662,7 @@ public
 \ TYPED-VARIABLE's run over the name and the type node, which no text spells:
 \ a definer's variable (EFFECT:VARIABLE-OF), through PROVIDED-XT:VARIABLE-CELL.
 : TYPED-VARIABLE-NODE ( str n -- ) {: name:^ nameu:n node:n :}
-   nameu 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REFUSE exit then
+   nameu 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REJECT exit then
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu node NODE-VALIDATE 0= if exit then
    node NODE-HAS-ADDRESS? {: hasaddr:bool :}

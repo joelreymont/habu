@@ -143,7 +143,7 @@ variable LA-DANGLING-LINK-U
    erru LA-ERR$ LA-MISS$ STR:CONTAINS? TTRUE
    erru LA-ERR$ s" cannot open" STR:CONTAINS? TTRUE ;
 
-\ A path below a dangling directory symlink is refused naming the exact requested
+\ A path below a dangling directory symlink is rejected naming the exact requested
 \ path, not while canonicalizing the invocation root.
 : LA-DANGLING-PATH-NAMED ( -- )
    LA-ARGV0  LA-DANGLING$ LA-ARG

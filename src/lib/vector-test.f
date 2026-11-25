@@ -1,5 +1,5 @@
 \ vector-test.f - focused tests for the typed vector<t>: its elements, its
-\ growth through its allocator, and the frees DELETE and a refused NEW make.
+\ growth through its allocator, and the frees DELETE and a rejected NEW make.
 \ Run: bin/hb --load src/lib/vector-test.f
 
 require src/lib/error.f
@@ -45,7 +45,7 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
 
 : EMPTY ( ^ALLOC:allocator -- )
    {: al:^ :}
-   s" a vector of no elements has COUNT 0; a negative count is refused" T-LABEL
+   s" a vector of no elements has COUNT 0; a negative count is rejected" T-LABEL
    al 0 [type] n VEC:NEW {: v:^ :}
    v VEC:COUNT 0 T=
    v VEC:DELETE
@@ -124,7 +124,7 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
 
 : BAD-COUNTS ( ^ALLOC:allocator -- )
    {: al:^ :}
-   s" VEC:ENSURE, VEC:RESIZE, VEC:RESERVE, VEC:TRIM and VEC:APPEND refuse a negative count or one too big" T-LABEL
+   s" VEC:ENSURE, VEC:RESIZE, VEC:RESERVE, VEC:TRIM and VEC:APPEND reject a negative count or one too big" T-LABEL
    al 1 [type] n VEC:NEW {: v:^ :}
    [: v -1 VEC:ENSURE ;] E-VEC-CAPACITY TTHROWSQ
    [: v -1 VEC:RESIZE ;] E-VEC-CAPACITY TTHROWSQ
@@ -195,14 +195,14 @@ TYPED-VARIABLE AL ALLOC:allocator
    s" VEC:DELETE frees the data, then the header, through the vector's allocator" T-LABEL
    DELETE-SOME  DELETE-NONE ;
 
-: REFUSED ( -- )
-   s" a refused data request frees the header" T-LABEL
+: REJECTED ( -- )
+   s" a rejected data request frees the header" T-LABEL
    FREES @ {: f0:n :}  TOP @ {: h:n :}  ALLOCS @ {: a0:n :}
    [: AL 1000 [type] n VEC:NEW drop ;] E-MEM-SIZE TTHROWSQ
    ALLOCS @ a0 - 2 T=  FREES @ f0 - 1 T=  f0 FREED-AT @ h T= ;
 
-: REFUSED-GROWTH ( -- )
-   s" a growth the allocator refuses leaves the vector as it was" T-LABEL
+: REJECTED-GROWTH ( -- )
+   s" a growth the allocator rejects leaves the vector as it was" T-LABEL
    AL 3 [type] n VEC:NEW {: v:^ :}
    1 v 0 VEC:AT !  2 v 1 VEC:AT !  3 v 2 VEC:AT !
    [: v 1000 VEC:ENSURE ;] E-MEM-SIZE TTHROWSQ
@@ -273,7 +273,7 @@ public
    al CELLS-N  al CELLS-R  al RECORDS  al EMPTY
    al GROWS  al PUSH-TURNS  al ENSURED  al RESIZED  al EXTENDED
    al SPANS  al BAD-COUNTS  DELETE-NULL
-   DELETES  REFUSED  REFUSED-GROWTH  RESERVED  OUTSIDE-APPEND  LAST-APPEND  TRIMMED
+   DELETES  REJECTED  REJECTED-GROWTH  RESERVED  OUTSIDE-APPEND  LAST-APPEND  TRIMMED
    AMORTIZED
    a ARENA:RELEASE ;
 
@@ -293,7 +293,7 @@ VECT-RUN
 false [if] \ off until dot habu-add-the-checks-a49d054d
 : VECT-BOUNDS ( ^ALLOC:allocator -- )
    {: al:^ :}
-   s" VEC:AT refuses an index outside 0 to COUNT - 1" T-LABEL
+   s" VEC:AT rejects an index outside 0 to COUNT - 1" T-LABEL
    al 4 [type] n VEC:NEW {: v:^ :}
    [: v 4 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
    [: v -1 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ

@@ -5,7 +5,7 @@
 \ the prefix through every definer and patch path, the AOT seed and pass 2.
 \ A raw store into the RX view faults wherever it lands: the code at and above
 \ CP, the live code and dictionary below it, the control-flow stack. The read
-\ control pins that the refusal is about writability, not an unmapped address.
+\ control pins that the rejection is about writability, not an unmapped address.
 
 require src/lib/error.f
 require src/lib/process-fork.f
@@ -46,7 +46,7 @@ create ERR CAP allot
    s" TRUSTED: CW-FAR ( -- ) 0 cp@ $40000 + ! ; CW-FAR" TRAPS
    s" TRUSTED: CW-PAGE ( -- ) 0 cp@ PROT-PAGE-MAX + ! ; CW-PAGE" TRAPS
    s" TRUSTED: CW-AT ( -- ) 0 cp@ ! ; CW-AT" TRAPS
-   s" the same address reads, so the refusal is about writability" T-LABEL
+   s" the same address reads, so the rejection is about writability" T-LABEL
    s" TRUSTED: CW-READ ( -- ) cp@ $40000 + @ drop ; CW-READ" ACCEPTS
    s" the live code and the dictionary below CP are not writable either" T-LABEL
    s" TRUSTED: CW-LIVE ( -- ) 0 dbase@ DICT-SIZE + ! ; CW-LIVE" TRAPS

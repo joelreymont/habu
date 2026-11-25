@@ -100,7 +100,7 @@ public
    s" browser display fixture validates" T-LABEL
    MOD MOD-U @ >str WASM-HARNESS:VALID? TTRUE
    PEER {: peer:n :}
-   s" SVG/input records, scenes, identities, refusals and CLI" T-LABEL
+   s" SVG/input records, scenes, identities, rejections and CLI" T-LABEL
    peer 0 T=
    OUT OUT-U @ >str type ERR ERR-U @ >str type
    s" four fetched answers end with the memory one does"

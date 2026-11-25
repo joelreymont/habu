@@ -186,8 +186,8 @@ variable PCT-I
    0 T= 0 T= {: outu:n :}
    PCT-OUT outu >str s\" fresh\n" T$= ;
 
-: PCT-REFUSED-RESETS ( -- )
-   s" a refused cwd spawn leaves no staged argument" T-LABEL
+: PCT-REJECTED-RESETS ( -- )
+   s" a rejected cwd spawn leaves no staged argument" T-LABEL
    PCT-RESET PCT-STAGE-STALE
    [: s" /bin/echo" s" " -1 >FD -1 >FD -1 >FD
       PROC-CWD:SPAWN-ARGV-ENV-CWD-IO drop ;]
@@ -207,7 +207,7 @@ variable PCT-I
    PCT-RUN-EARLY-EOF
    PCT-RUN-MISSING-CWD
    [: PCT-CWD-TOO-LONG ;] E-PROC-OUTPUT TTHROWSQ
-   PCT-REFUSED-RESETS
+   PCT-REJECTED-RESETS
    [: PCT-NUL-CWD ;] E-FFI-NUL TTHROWSQ
    T-REPORT
    s" process-cwd-test: ok" type cr ;

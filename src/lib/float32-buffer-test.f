@@ -31,7 +31,7 @@ create BACK 4 cells allot
    0.0 SRC ! SRC @ IEEE754:F64>BITS 0 T=
    -13.25 SRC ! SRC @ IEEE754:F64>BITS $C02A800000000000 T= ;
 
-: REFUSALS ( -- )
+: REJECTIONS ( -- )
    s" BAD-REAL-INT-STORE ( ^n -- ) 1.0 swap !" CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-REAL-ADDRESS ( n -- ) 1.0 !" CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-REAL-ADD ( -- n ) 1.0 1 +" CHECK-QUIET-CANDIDATE! 0 T=
@@ -61,7 +61,7 @@ public
    SCALARS
    CELL-BITS
    ARRAYS
-   REFUSALS
+   REJECTIONS
    T-REPORT ;
 
 ;using

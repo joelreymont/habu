@@ -207,7 +207,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
       s" a none from TRY-OPEN-DIR-AT closes its traversal" T-LABEL
       FD-COUNT before 1+ T=
       [: ANCHOR @ >FD s" child/file" OUT 7 SPAN:TAKE FS:READ-FILE-AT drop ;] E-FS-CAPACITY TTHROWSQ
-      s" capacity refusal closes file descriptor" T-LABEL
+      s" capacity rejection closes file descriptor" T-LABEL
       FD-COUNT before 1+ T=
       root FS:CLOSE-DIR
       s" closing anchor restores descriptor inventory" T-LABEL
@@ -269,7 +269,7 @@ TASK:MIN-STACK TASK:TASK PAR-B
    [: SEARCH-B FS:OPEN-DIR FS:CLOSE-DIR ;] catch 0 T=
    SEARCH FS:OPEN-DIR {: top:fd :}
    [: top s" a/b/f" s" found" READ-CHECK ;] catch 0 T=
-   s" a link above the path is refused" T-LABEL
+   s" a link above the path is rejected" T-LABEL
    [: SEARCH-LINK-B FS:OPEN-DIR drop ;] E-FS-OPEN TTHROWSQ
    [: top s" l/b/f" READ$ drop ;] E-FS-OPEN TTHROWSQ
    top FS:CLOSE-DIR ;
@@ -315,8 +315,8 @@ create LINK-BUF PATH-CAP allot
    D s FS:TRY-STAT-AT TTRUE FS:STAT-SIZE@ ;
 : ABSENT ( str -- ) {: s:str :}
    D s FS:TRY-STAT-AT FS:ENOENT FALSE-WITH ;
-\ Runs q on each name every name word refuses.
-: REFUSED ( [ fd str -- ] -- ) {: q :}
+\ Runs q on each name every name word rejects.
+: REJECTED ( [ fd str -- ] -- ) {: q :}
    D s" " q execute  D s" ." q execute  D s" .." q execute
    D s" sub/x" q execute  D s\" a\zb" q execute
    D LONG PATH-CAP 1 + >str q execute ;
@@ -325,7 +325,7 @@ create LINK-BUF PATH-CAP allot
    D s" file" FS:TRY-OPEN-READ-AT OPENED-SIZE 8 T=
    D s" missing" FS:TRY-OPEN-READ-AT FS:ENOENT NONE-WITH
    D s" link" FS:TRY-OPEN-READ-AT FS:ELOOP NONE-WITH
-   [: FS:TRY-OPEN-READ-AT FS:EINVAL NONE-WITH ;] REFUSED ;
+   [: FS:TRY-OPEN-READ-AT FS:EINVAL NONE-WITH ;] REJECTED ;
 : WRITES ( -- )
    D s" file" FS:TRY-OPEN-WRITE-AT SOME {: f:fd :}
    f s" AT" FD:WRITE-FULL f FS:CLOSE-DIR
@@ -333,15 +333,15 @@ create LINK-BUF PATH-CAP allot
    D s" missing" FS:TRY-OPEN-WRITE-AT FS:ENOENT NONE-WITH
    s" missing" ABSENT
    D s" link" FS:TRY-OPEN-WRITE-AT FS:ELOOP NONE-WITH
-   [: FS:TRY-OPEN-WRITE-AT FS:EINVAL NONE-WITH ;] REFUSED ;
+   [: FS:TRY-OPEN-WRITE-AT FS:EINVAL NONE-WITH ;] REJECTED ;
 : ENTRIES ( -- )
    D s" file" FS:TRY-OPEN-ENTRY-AT OPENED-SIZE 8 T=
    s" an O_PATH open of a symlink pins the link itself" T-LABEL
    D s" link" FS:TRY-OPEN-ENTRY-AT OPENED-SIZE 4 T=
    D s" missing" FS:TRY-OPEN-ENTRY-AT FS:ENOENT NONE-WITH
-   [: FS:TRY-OPEN-ENTRY-AT FS:EINVAL NONE-WITH ;] REFUSED ;
+   [: FS:TRY-OPEN-ENTRY-AT FS:EINVAL NONE-WITH ;] REJECTED ;
 \ FD-PATH names the directory the descriptor holds, leaves FMT's text
-\ intact, refuses a buffer the name would fill, and refuses a closed
+\ intact, rejects a buffer the name would fill, and rejects a closed
 \ descriptor as E-FS-STAT with ENOENT.
 : FD-PATHS ( -- )
    $1ED 4 FMT:OCT-WIDTH$ {: mode:str :}
@@ -370,7 +370,7 @@ create LINK-BUF PATH-CAP allot
    D s" link" FS:TRY-STAT-AT TTRUE
    FS:STAT-MODE@ FS:S-IFMT and S-IFLNK T=  FS:STAT-SIZE@ 4 T=
    s" missing" ABSENT
-   [: FS:TRY-STAT-AT FS:EINVAL FALSE-WITH ;] REFUSED ;
+   [: FS:TRY-STAT-AT FS:EINVAL FALSE-WITH ;] REJECTED ;
 
 : MAKES ( -- )
    D s" made" 448 FS:TRY-MAKE-DIR-AT TTRUE FS:ERRNO 0 T=
@@ -385,7 +385,7 @@ create LINK-BUF PATH-CAP allot
    s" a removed directory takes no new entry" T-LABEL
    gone s" x" 448 FS:TRY-MAKE-DIR-AT FS:ENOENT FALSE-WITH
    gone FS:CLOSE-DIR
-   [: 448 FS:TRY-MAKE-DIR-AT FS:EINVAL FALSE-WITH ;] REFUSED ;
+   [: 448 FS:TRY-MAKE-DIR-AT FS:EINVAL FALSE-WITH ;] REJECTED ;
 
 : RENAME-TO ( fd str -- bool ) {: d:fd s:str :}
    D s" b" d s FS:TRY-RENAME-AT ;
@@ -402,10 +402,10 @@ create LINK-BUF PATH-CAP allot
    s" c" ABSENT s" b" STAT-SIZE 3 T=
    D s" a" D s" z" FS:TRY-RENAME-AT FS:ENOENT FALSE-WITH
    D s" a" D s" z" FS:TRY-RENAME-NEW-AT FS:ENOENT FALSE-WITH
-   [: D s" b" FS:TRY-RENAME-AT FS:EINVAL FALSE-WITH ;] REFUSED
-   [: D s" b" FS:TRY-RENAME-NEW-AT FS:EINVAL FALSE-WITH ;] REFUSED
-   [: RENAME-TO FS:EINVAL FALSE-WITH ;] REFUSED
-   [: RENAME-NEW-TO FS:EINVAL FALSE-WITH ;] REFUSED
+   [: D s" b" FS:TRY-RENAME-AT FS:EINVAL FALSE-WITH ;] REJECTED
+   [: D s" b" FS:TRY-RENAME-NEW-AT FS:EINVAL FALSE-WITH ;] REJECTED
+   [: RENAME-TO FS:EINVAL FALSE-WITH ;] REJECTED
+   [: RENAME-NEW-TO FS:EINVAL FALSE-WITH ;] REJECTED
    D s" sub" FS:TRY-OPEN-DIR-AT SOME {: sub:fd :}
    D s" b" sub s" b" FS:TRY-RENAME-AT TTRUE
    s" b" ABSENT  sub s" b" FS:TRY-STAT-AT TTRUE
@@ -420,8 +420,8 @@ create LINK-BUF PATH-CAP allot
    D s" made" FS:TRY-REMOVE-DIR-AT TTRUE
    s" made" ABSENT
    D s" made" FS:TRY-REMOVE-DIR-AT FS:ENOENT FALSE-WITH
-   [: FS:TRY-REMOVE-FILE-AT FS:EINVAL FALSE-WITH ;] REFUSED
-   [: FS:TRY-REMOVE-DIR-AT FS:EINVAL FALSE-WITH ;] REFUSED ;
+   [: FS:TRY-REMOVE-FILE-AT FS:EINVAL FALSE-WITH ;] REJECTED
+   [: FS:TRY-REMOVE-DIR-AT FS:EINVAL FALSE-WITH ;] REJECTED ;
 
 : LINK-AS ( fd str -- bool ) {: d:fd s:str :}
    TEMP @ >FD d s FS:TRY-LINK-AT ;
@@ -435,7 +435,7 @@ create LINK-BUF PATH-CAP allot
    FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG T=
    D s" kept" s" temp-bytes" READ-CHECK
    t D s" kept" FS:TRY-LINK-AT FS:EEXIST FALSE-WITH
-   [: LINK-AS FS:EINVAL FALSE-WITH ;] REFUSED
+   [: LINK-AS FS:EINVAL FALSE-WITH ;] REJECTED
    t FS:CLOSE-DIR
    D s" kept" FS:TRY-OPEN-READ-AT SOME {: plain:fd :}
    plain FD>N PLAIN !

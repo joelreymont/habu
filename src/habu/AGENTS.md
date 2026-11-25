@@ -1,7 +1,7 @@
 # src/habu — the native engine
 
 - `prims.f` — the one primitive table: name, effect and reference (`prim-ref.f`)
-  per row; `primitive-registry.f` refuses a body without a row and the reverse.
+  per row; `primitive-registry.f` rejects a body without a row and the reverse.
 - `habu1.f`, `habu2.f` — the ARM64 kernel builder: primitive bodies, then the
   kernel's routines (throw recovery, the exit hook);
   `rt.f` is its part.

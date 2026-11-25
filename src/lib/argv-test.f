@@ -243,7 +243,7 @@ variable TEST-FAIL
    0 POS$ s" kept" ASSERT$
    0 QUIET! ;
 
-: TEST-SPAN-REFUSALS ( -- )
+: TEST-SPAN-REJECTIONS ( -- )
    s" ARGV-SPAN-OK ( ^u8 len -- span ) SPAN-MAKE"
       CHECK-QUIET-CANDIDATE! -1 ASSERT=
    s" ARGV-SPAN-SWAP ( len ^u8 -- span ) SPAN-MAKE"
@@ -254,8 +254,8 @@ variable TEST-FAIL
       CHECK-QUIET-CANDIDATE! 0 ASSERT= ;
 
 \ FAIL writes its message, "usage: " and the usage text to stderr as they are,
-\ so a long usage text is a usage refusal like a short one; a negative message
-\ length is refused before anything is written.
+\ so a long usage text is a usage rejection like a short one; a negative message
+\ length is rejected before anything is written.
 4096 constant MSG-LEN
 create MSG-TEXT MSG-LEN allot
 
@@ -288,7 +288,7 @@ create MSG-TEXT MSG-LEN allot
    TEST-REPEATED-OPTIONS
    TEST-PARSE-ROLLBACK
    TEST-APPEND-BOUNDS
-   TEST-SPAN-REFUSALS ;
+   TEST-SPAN-REJECTIONS ;
 
 : REPORT ( -- )
    TEST-FAIL @ 0 = if

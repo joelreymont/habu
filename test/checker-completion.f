@@ -258,16 +258,16 @@ PTR-VARIABLE RUN-A   variable RUN-U
 \   token, inside it, after the last one;
 \ - the prefix holds bytes past the cursor, or misses bytes before it;
 \ - it fires on the definition's name, or inside its signature;
-\ - a cursor outlives its composition, after a refused body, a visitor's throw,
+\ - a cursor outlives its composition, after a rejected body, a visitor's throw,
 \   a use handler's throw or a scan stopped before the cursor, so the next
-\   composition offers with none set or the next cursor is refused;
+\   composition offers with none set or the next cursor is rejected;
 \ - a cursor a visitor sets fires in the open composition, or the next one
 \   loses it;
-\ - a refused body misses what binds;
+\ - a rejected body misses what binds;
 \ - a local is missed inside a quotation, or offered for a tick or `is` target;
 \ - two locals that differ only in case merge, or a spelling a local holds is
 \   offered as the word that local hides;
-\ - a refused spelling (one two used publics export) or a tombstone is offered;
+\ - a rejected spelling (one two used publics export) or a tombstone is offered;
 \ - the definition's own name is offered before it is declared;
 \ - the cursor changes the composition's throw, its census or its uses;
 \ - a word is offered twice, once for each source that names it;
@@ -281,7 +281,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 \   package of its name;
 \ - a candidate's location is not its selected declaration's: a declared word
 \   offered without its path and bytes, a word the selection hides lending its
-\   location, a refused redeclaration moving it, or a local or a word only the
+\   location, a rejected redeclaration moving it, or a local or a word only the
 \   dictionary holds offered with one;
 \ - an engine word the body has not used yet is missing;
 \ - a word is not spelled as it was declared: a declared word as its
@@ -289,7 +289,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
 \   package's, and the declared tail, a word only the dictionary holds as the
 \   dictionary holds it; or a word the selection hides lends its spelling to
 \   the one it selects;
-\ - a refused redeclaration renames the word it failed to replace, or a
+\ - a rejected redeclaration renames the word it failed to replace, or a
 \   spelling dies with the bytes it was declared in;
 \ - a word a neutral scope took back is offered in the next composition.
 \ A coverage limit, not an exact spelling: a name the checker generates with
@@ -401,7 +401,7 @@ PTR-VARIABLE RUN-A   variable RUN-U
    s" CMPDF" PLACED
    s" cmploc" ABSENT ;
 
-\ 3. What the scope refuses, and qualified names.
+\ 3. What the scope rejects, and qualified names.
 : CASE-AMBIGUOUS ( -- )
    s" cmp" KEPT-RESET
    s" using CMPX using CMPY : CMPU ( -- n ) CMPA ; ;using ;using" SUBJECT-OF
@@ -441,13 +441,13 @@ PTR-VARIABLE RUN-A   variable RUN-U
    s" CMPP:CMPPUB" PLACED
    s" CMPP:CMPPRI" ABSENT ;
 
-\ 5. A refused body, and what the cursor leaves.
+\ 5. A rejected body, and what the cursor leaves.
 : CASE-RELEASE ( -- )
    s" cmp" KEPT-RESET
    s" : CMPR ( -- n ) CMPA CMPNOPE ;" SUBJECT-OF
    dup s" CMPA CMPNOPE" 2 CURSOR-AT COMPOSE-AT
-   s" a refused body throws its refusal" T-LABEL 0 T<>
-   s" a refused body still offers what binds" T-LABEL
+   s" a rejected body throws its rejection" T-LABEL 0 T<>
+   s" a rejected body still offers what binds" T-LABEL
    s" CMPA" PLACED ;
 
 \ Whatever ended the last composition, no cursor outlives it: the next one,
@@ -481,7 +481,7 @@ variable THROW-AT
    s" cmp" KEPT-RESET
    s" : CMPR2 ( -- n ) CMPA CMPNOPE ;" SUBJECT-OF
    dup s" CMPA CMPNOPE" 2 CURSOR-AT COMPOSE-AT
-   s" the refused body's composition throws" T-LABEL 0 T<>
+   s" the rejected body's composition throws" T-LABEL 0 T<>
    NEXT-UNARMED
    s" cmp" KEPT-RESET
    s" : CMPW ( -- n ) CMPA ;" SUBJECT-OF  dup s" CMPA ;" 2 CURSOR-AT VERIFY:CURSOR!
@@ -578,7 +578,7 @@ variable USE-N   variable USE-SUM
    s" the certified body certifies" T-LABEL 0 T=
    s" : CMPE2 ( -- n ) CMPA CMPB ;" SUBJECT-OF
    dup s" CMPB ;" 2 CURSOR-AT OBSERVED
-   s" the refused body is refused" T-LABEL 0 T<> ;
+   s" the rejected body is rejected" T-LABEL 0 T<> ;
 
 \ 6. The selection spells what it binds.
 \ A global dscitem, the open package's DSCITEM and a body's local dscitem: the
@@ -612,7 +612,7 @@ variable USE-N   variable USE-SUM
    s" the hidden engine word lends it no spelling" T-LABEL
    s" BYTE-COPY" KEPT-AT 0 < TTRUE ;
 
-\ A refused redeclaration neither moves nor renames the word it failed to
+\ A rejected redeclaration neither moves nor renames the word it failed to
 \ replace: in a multi-error window, which goes past it as the verifier child's
 \ does, CMPA is offered as its first declaration wrote it, where that is.
 variable REJECTS
@@ -693,7 +693,7 @@ DEP-CAP BUFFER: DEP-BUF
 \ A bare prefix offers the package's publics behind its name, as the qualified
 \ prefix does: each as its selection spells and locates it - a replacement as
 \ its own declaration wrote it, where that declaration was - and nothing the
-\ selection refuses: a private word, a tombstone, or a public's own name inside
+\ selection rejects: a private word, a tombstone, or a public's own name inside
 \ its body. The qualifier is the one the prefix typed, else the package's own.
 : QAL$ ( -- str )
    s\" package QALP public : QALPUB ( -- n ) 30 ; : QALGONE ( -- n ) 31 ; undefine QALGONE\n: QALRE ( -- n ) 33 ; undefine QALRE : qalre ( -- n ) 34 ;\nprivate : QALPRI ( -- n ) 32 ; ;package package QalPk public : QalW ( -- n ) 35 ; ;package" ;

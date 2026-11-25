@@ -25,7 +25,7 @@ variable PKT-U
 : FILE$ ( -- str )
    FILE-PATH FILE-PATH-U @ >str ;
 
-\ dst receives s's bytes and up its length, refused past cap.
+\ dst receives s's bytes and up its length, rejected past cap.
 : KEEP! ( str ^u8 ^n n -- ) {: s:str dst:^ up:^ cap:n :}
    s STR:LEN cap > if E-STR-CAPACITY throw then
    s STR:DATA dst s STR:LEN BYTE-COPY

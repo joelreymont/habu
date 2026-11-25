@@ -3,7 +3,7 @@
 \ throw code out of a source text under `evaluate-closed`, so a test needs no
 \ `evaluate` wrapper of its own; THROWN-HEAD$ is the record line a throw nothing
 \ caught ends with. The measured rules are in docs/forth.md "Rules learned by
-\ refusal".
+\ rejection".
 \ STORAGE CLASS. PROCESS-WIDE: static source, result and head cells; one task at
 \ a time.
 

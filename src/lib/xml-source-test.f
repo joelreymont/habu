@@ -547,11 +547,11 @@ variable WIDE-BAD
    al s" <a/>" XML:SOURCE-INIT XML:SOURCE-OWN XML:OWNER-CLOSE
    ALLOC-TEST:TAKEN @ before > TTRUE
    ALLOC-TEST:TAKEN @ ALLOC-TEST:FREED @ T=
-   s" a source refused storage midway frees what it took" T-LABEL
+   s" a source rejected storage midway frees what it took" T-LABEL
    1
    begin
       {: k:n :}
-      0 ALLOC-TEST:TAKEN !  0 ALLOC-TEST:FREED !  k ALLOC-TEST:REFUSED !
+      0 ALLOC-TEST:TAKEN !  0 ALLOC-TEST:FREED !  k ALLOC-TEST:REJECTED !
       [: al LE$ XML:SOURCE-INIT XML:SOURCE-CLOSE ;] catch {: code:n :}
       ALLOC-TEST:TAKEN @ ALLOC-TEST:FREED @ T=
       code 0<>
@@ -559,7 +559,7 @@ variable WIDE-BAD
       code E-MEM-SIZE T=
       k 1+
    repeat
-   0 ALLOC-TEST:REFUSED ! ;
+   0 ALLOC-TEST:REJECTED ! ;
 
 \ MARKED holds a UTF-16 text built scalar by scalar; MARKED-AT holds, per
 \ lexical offset, the original offset that scalar was written at, or -1 inside

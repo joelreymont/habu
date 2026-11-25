@@ -1,6 +1,6 @@
-\ program-diagnostic-quiet-count.f - a multi-error load counts only the refusals
+\ program-diagnostic-quiet-count.f - a multi-error load counts only the rejections
 \ it renders, for test/program-diagnostics-test.f QUIET-COUNT-ONCE. A quiet scan
-\ (CHECK-QUIET-CANDIDATE!, a `TRUSTED:` body's) adds nothing; a refused colon
+\ (CHECK-QUIET-CANDIDATE!, a `TRUSTED:` body's) adds nothing; a rejected colon
 \ definition prints its diagnostic and adds 1.
 package PROGRAM-DIAG-QUIET-COUNT
 public

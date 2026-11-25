@@ -3,8 +3,8 @@
 \ cannot be fetched, key selection among an EC key, an encryption key and the
 \ token's, the 401 challenges, plain and naming METADATA!'s URL, its scope or
 \ both, a METADATA! URL holding a quote or CR LF or lacking the well-known
-\ segment and a scope holding a quote or two spaces refused, ISSUER!, CLIENT!
-\ and METADATA! refusing http but to a loopback IP literal, the metadata
+\ segment and a scope holding a quote or two spaces rejected, ISSUER!, CLIENT!
+\ and METADATA! rejecting http but to a loopback IP literal, the metadata
 \ route's body, malformed tokens, alg none, crit and HS256, repeated member
 \ names, aud, iss, exp and nbf, claim strings, CLAIM-HOLDS? on string, scope,
 \ number and absent claims and an array holding nested values and an escape,
@@ -263,7 +263,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    code EARLY-CODE atomic! ;
 
 
-\ A setter's refusal throws: the case cannot make its request on that handle.
+\ A setter's rejection throws: the case cannot make its request on that handle.
 : OK ( CURL:status -- )
    MATCH CURL:status
       ok OF ENDOF
@@ -315,7 +315,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 
 : SEND ( -- n ) s" /claims" OPEN BEARING FINISH ;
 
-: REFUSED ( n str -- )
+: REJECTED ( n str -- )
    {: status:n want:str :}
    SB-RESET s" WWW-Authenticate: " SB-APPEND want SB-APPEND
    13 SB-APPEND-C 10 SB-APPEND-C
@@ -323,23 +323,23 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    BODY @ VEC:COUNT 0 T=
    status 401 T= ;
 
-: CHALLENGED ( n -- ) s" Bearer" REFUSED ;
-: INVALID ( n -- ) S\" Bearer error=\"invalid_token\"" REFUSED ;
+: CHALLENGED ( n -- ) s" Bearer" REJECTED ;
+: INVALID ( n -- ) S\" Bearer error=\"invalid_token\"" REJECTED ;
 : NAMED ( n -- )
    S\" Bearer resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource\""
-   REFUSED ;
+   REJECTED ;
 : NAMED-INVALID ( n -- )
    S\" Bearer error=\"invalid_token\", resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource\""
-   REFUSED ;
+   REJECTED ;
 : BOTH ( n -- )
    S\" Bearer resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource/mcp\", scope=\"tender.read tender.write offline_access\""
-   REFUSED ;
+   REJECTED ;
 : BOTH-INVALID ( n -- )
    S\" Bearer error=\"invalid_token\", resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource/mcp\", scope=\"tender.read tender.write offline_access\""
-   REFUSED ;
-: SCOPED ( n -- ) S\" Bearer scope=\"tender.read tender.write offline_access\"" REFUSED ;
+   REJECTED ;
+: SCOPED ( n -- ) S\" Bearer scope=\"tender.read tender.write offline_access\"" REJECTED ;
 : SCOPED-INVALID ( n -- )
-   S\" Bearer error=\"invalid_token\", scope=\"tender.read tender.write offline_access\"" REFUSED ;
+   S\" Bearer error=\"invalid_token\", scope=\"tender.read tender.write offline_access\"" REJECTED ;
 
 : ANSWERED ( n str -- )
    {: status:n want:str :}
@@ -623,7 +623,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    4 MODE atomic!
    KID-C CURRENT MINT SEND BOTH-INVALID
    HITS atomic@ 5 T=
-   s" the cached key set stays after a fetched one is refused" T-LABEL
+   s" the cached key set stays after a fetched one is rejected" T-LABEL
    KID-A CURRENT MINT SEND WANT-WHO ANSWERED
    HITS atomic@ 5 T= ;
 
@@ -810,7 +810,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    BEARER:ISSUER! ;
 
 \ The key set's URL names the port the first START's port 0 chose, and
-\ ISSUER! is refused while serving: the server starts again on that port.
+\ ISSUER! is rejected while serving: the server starts again on that port.
 : SERVE-CASES ( -- )
    AIO:START
    VECTORS
@@ -830,7 +830,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    HTTP:STOP
    URL-CASES
    ISSUE
-   \ METADATA! is refused while serving, so its challenges are immutable
+   \ METADATA! is rejected while serving, so its challenges are immutable
    \ configuration for a server's run: each statement gets a start of its own.
    MCP$ SCOPE$ BEARER:METADATA!
    PORT @ SERVE-ON
@@ -848,7 +848,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    \ The second statement replaces the first.
    REPLACED$ SCOPE$ BEARER:METADATA!
    METADATA$ s" " BEARER:METADATA!
-   \ A refused call installs neither of its texts: METADATA$'s challenges stay
+   \ A rejected call installs neither of its texts: METADATA$'s challenges stay
    \ in force, as METADATA asserts.
    s" METADATA! with a quote in its URL throws E-OPERAND" T-LABEL
    [: s\" https://bearer-test.example/.well-known/oauth-protected-resource/\"x"

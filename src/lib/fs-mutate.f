@@ -110,7 +110,7 @@ private
 : CLEANUP-PATH ( n -- str ) {: idx :}
    idx CLEANUP-SLOT idx CLEANUP-AT @ SPAN:TAKE SPAN:$ ;
 
-\ Under the lock. A refused mapping leaves the row, its capacity and N as found.
+\ Under the lock. A failed mapping leaves the row, its capacity and N as found.
 : CLEANUP-GROW ( -- )
    CLEANUP-CAP @ {: cap :}
    cap 2 * CLEANUP-FIRST max {: grown :}
@@ -209,7 +209,7 @@ private
 
 
 \ The directory opens one depth down, O_NOFOLLOW, so a link swapped in since
-\ the stat is refused, never followed. The name is staged before that depth's
+\ the stat is rejected, never followed. The name is staged before that depth's
 \ frame is made: a child's name lies in its parent's dirent block, which
 \ growing the frames moves.
 : OPEN-AT ( ^n n str -- ) {: ctx:^ parent:n name:^ u:n :}
@@ -265,7 +265,7 @@ private
    u ;
 
 \ Caught as a whole, so one site closes the descriptors and releases the frames
-\ for every way out, a root refused by ROOT-LEN's stat included.
+\ for every way out, a root rejected by ROOT-LEN's stat included.
 : REMOVE-RUN ( ^n str -- ^n str ) {: ctx:^ a:^ u :}
    ctx AT-CWD a a u ROOT-LEN REMOVE-AT
    ctx a u ;
@@ -336,7 +336,7 @@ private
 : COPY-PREPARE-DST ( n n -- n n )
    2dup >FD swap >FD swap PREPARE-DST ;
 
-\ Runs before the source opens, so a refused destination has nothing to close.
+\ Runs before the source opens, so a rejected destination has nothing to close.
 \ The answer lives in the PATHZ2 buffer, which opening the source leaves alone.
 : COPY-DST-PATHZ ( str -- ^u8 ) {: dst:^ dstu :}
    dst dstu EXISTS? if
@@ -379,7 +379,7 @@ private
    repeat drop ;
 
 \ The WITH-BYTES body: the scope's bytes are this copy's buffer, mapped before
-\ either file opens, so a refused mapping leaves nothing to close.
+\ either file opens, so a failed mapping leaves nothing to close.
 : COPY-SCOPE ( str str ^u8 NUM:alloc-byte-len -- )
    MEM:ALLOCATION>SPAN {: src:^ srcu dst:^ dstu buf :}
    dst dstu COPY-DST-PATHZ {: dstz:^ :}
@@ -432,7 +432,7 @@ ATOMIC-RETRIES 1- U-DIGITS + constant SIBLING-LEN-MAX
 \ is a destination's directory with its slash, or empty for a name relative to
 \ that directory's descriptor. A prefix that leaves no room within PATH-CAP
 \ for the longest sibling name is E-FS-CAPACITY whatever the seed, a semantic
-\ refusal.
+\ rejection.
 : BUILD-SIBLING ( str n n -- str ) {: pre:^ preu seed attempt :}
    CAUSE-CLEAR
    preu 0 < if E-FS-PATH throw then
@@ -495,7 +495,7 @@ public
    file >FD ;
 
 \ The existing file at the path, opened for reading and writing, close-on-exec.
-\ A link as the last component is refused, never followed: E-FS-OPEN with
+\ A link as the last component is rejected, never followed: E-FS-OPEN with
 \ FS:ERRNO the host's answer, ELOOP on Linux. Every failure is E-FS-OPEN with
 \ its errno in FS:ERRNO.
 : OPEN-RDWR-NOFOLLOW ( str -- fd ) {: path:^ pathu :}
@@ -506,7 +506,7 @@ public
 private
 \ Create and open one candidate with the exclusive flags and mode: its
 \ descriptor, -1 when the name is taken, E-FS-OPEN with the host's cause for
-\ any other refusal.
+\ any other rejection.
 : OPEN-CANDIDATE ( str n n -- n )
    {: path:^ pathu flags mode :}
    path pathu >PATHZ flags mode OPEN-CALL {: fd :}
@@ -657,7 +657,7 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    repeat drop
    E-FS-IO ERRNO-FAIL ;
 
-\ Darwin's fcntl cmd, or fsync on a file system that refuses it and elsewhere.
+\ Darwin's fcntl cmd, or fsync on a file system that rejects it and elsewhere.
 : FCNTL-SYNC ( n n -- n ) {: fd cmd :}
    HB-TARGET-MACOS? if
       fd cmd 0 FCNTL-CALL 0= if fd exit then
@@ -1073,7 +1073,7 @@ public
 
 private
 \ realpath of a temp root into this task's PATHZ2 buffer: the canonical
-\ spelling's length, below 0 when realpath refuses the root. FS:MKTEMP-DIR-IN
+\ spelling's length, below 0 when realpath rejects the root. FS:MKTEMP-DIR-IN
 \ and FS:MKTEMP build and make their candidates through TMP-PATH-BUF and
 \ >PATHZ only, so the spelling stands through every attempt.
 : TEMP-REAL ( str -- n )
@@ -1222,9 +1222,9 @@ private
    code 0<> if code EXIT-REPORT then ;
 
 \ REGISTRATION IS SAFE FROM ANY TASK although the table is the process's: it
-\ runs under CLEANUP-LOCK, which a refusal releases too. The row grows
+\ runs under CLEANUP-LOCK, which a rejection releases too. The row grows
 \ when it is full, the slot is written, and only then is it counted, so every
-\ counted slot names a path and a refused registration - a path past PATH-CAP
+\ counted slot names a path and a rejected registration - a path past PATH-CAP
 \ (E-FS-PATH) or a row that cannot grow - leaves the count it found.
 : CLEANUP-APPEND ( str n -- ) {: a:^ u kind :}
    CLEANUP-N @ {: idx :}

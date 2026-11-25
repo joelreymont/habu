@@ -30,7 +30,7 @@ suite runs in two to three minutes, five at most.
   repeatable artifact. Never write unit tests after the code.
 - The suite keeps the self-build fixpoint, one rejected program per type rule,
   programs at boundaries hb's own build never reaches, a capacity limit a real
-  program can reach and a refusal of a malformed saved file, made by
+  program can reach and a rejection of a malformed saved file, made by
   corrupting the file on disk. It drops tests of what the self-build proves, of
   machinery being replaced, of one tool agreeing with another, of the harness,
   of in-memory state no real input reaches (a hand-built table, a forged token,

@@ -55,7 +55,7 @@ public
 \ A new FIFO in dir, named fifo-<k> by a count no earlier MAKE of this process
 \ used, so a writer a failed case left cannot open a later case's. Its path goes
 \ to dst (PATH-CAP bytes); the read end is nonblocking and close-on-exec. A
-\ refused mkfifo or open throws E-FS-OPEN.
+\ failed mkfifo or open throws E-FS-OPEN.
 : MAKE ( str ^u8 -- n fd ) {: dir:str dst:^ :}
    MADE @ 1+ MADE !
    SB-RESET s" fifo-" SB-APPEND MADE @ FMT:SB-INT
@@ -77,7 +77,7 @@ public
 \ PROC-SPAWN-ARGV-ENV-IO with one descriptor more: the staged argv and env,
 \ stdin, stdout and stderr (a negative one inherits this process's), and the
 \ write end w at its own number in the child; a negative w maps none. The
-\ staging is reset once the request holds its copy, so a refused spawn, which
+\ staging is reset once the request holds its copy, so a failed spawn, which
 \ throws E-PROC-SPAWN, leaves none.
 : SPAWN ( str fd fd fd fd -- pid ) {: s:str in:fd out:fd err:fd w:fd :}
    s PROC-ARGV-PREPARE {: pathz:^ argv :}

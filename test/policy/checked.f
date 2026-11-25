@@ -1,2 +1,2 @@
-\ checked.f - the checker still refuses a body that breaks its effect.
+\ checked.f - the checker still rejects a body that breaks its effect.
 : BAD ( -- n ) ;

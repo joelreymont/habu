@@ -8,7 +8,7 @@
 \ no more than 50 calendar years after now.
 \ FORMAT-YMD and FORMAT-EPOCH-UTC throw E-TIME-CAPACITY for a buffer shorter than
 \ LEN / TIME-LEN and E-TIME-RANGE for a year outside 0..9999, which four digits
-\ cannot write; FORMAT-EPOCH-UTC also refuses negative epoch seconds.
+\ cannot write; FORMAT-EPOCH-UTC also rejects negative epoch seconds.
 \ STORAGE CLASS. CALLER-OWNED: output goes to the caller's buffer; no module state.
 
 require src/lib/error.f

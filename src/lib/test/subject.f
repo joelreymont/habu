@@ -122,9 +122,9 @@ public
    STATUS-ERR erru LEN>N >str  exited outu LEN>N 0= and ;
 
 \ Whether src, run as the subject, exited with code want, wrote nothing to
-\ stdout and named why on stderr: a refusal the engine or the checker reports
+\ stdout and named why on stderr: a rejection the engine or the checker reports
 \ before anything runs.
-: REFUSED? ( str n str -- bool )
+: REJECTED? ( str n str -- bool )
    {: why:str :}
    REJECTED {: err:str ok:bool :}
    ok  err why STR:CONTAINS? and ;

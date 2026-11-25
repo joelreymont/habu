@@ -267,7 +267,7 @@ export function svg(bytes) {
     if (drag?.id === e.pointerId) drag = null;
   });
   // A data: URL, the one image source beyond 'self' that an MCP Apps host's
-  // img-src grants (ext-apps 2026-01-26, Security); blob: images are refused.
+  // img-src grants (ext-apps 2026-01-26, Security); blob: images are rejected.
   next.src = `data:image/svg+xml;base64,${bytes.toBase64()}`;
   // Before the key buttons, which then lie over it.
   canvas.after(next);

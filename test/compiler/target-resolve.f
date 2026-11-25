@@ -1,4 +1,4 @@
-\ Registered target-action acceptance. Each printed label and refusal is
+\ Registered target-action acceptance. Each printed label and rejection is
 \ repeatable with `bin/hb --load test/compiler/target-resolve.f`.
 require src/lib/test/assert.f
 require src/compiler/target/model.f

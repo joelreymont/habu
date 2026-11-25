@@ -1,6 +1,6 @@
 \ A failed later stack allocation leaves no earlier task mappings behind.
 \ PREPARE maps three guarded stacks, then a region; an address-space limit
-\ LIMIT-PAGES above the warm process admits two stacks and refuses the third's
+\ LIMIT-PAGES above the warm process admits two stacks and rejects the third's
 \ reserve, whatever the region's size.
 require src/core/exit-status.f
 require src/lib/test/assert.f
@@ -67,7 +67,7 @@ TASK:MIN-STACK TASK:TASK WORKER
       RLIMIT-AS OLD-LIMIT SET-LIMIT 0 <> if
          s" task-prepare-failure: cannot restore address-space limit" EXIT-STATUS:SYSTEM die
       then
-      s" later task allocation is refused" T-LABEL
+      s" later task allocation is rejected" T-LABEL
       rc E-MEM-MAP T=
       s" task remains empty" T-LABEL
       TASK-ABI:STATUS-OFF TCB@ TASK-ABI:EMPTY T=

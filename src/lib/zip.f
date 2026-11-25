@@ -1,7 +1,7 @@
 \ zip.f - indexed ZIP reading and byte-preserving replacement; libzip
 \ (src/lib/zip-ffi.f) decompresses. Every word checks that the archive is live
 \ (ZIP:E-HANDLE) and the entry its own (ZIP:E-ENTRY). No error quotes a member.
-\ ZIP:E-OPEN, E-READ and E-SIZE refuse the archive's bytes or report a libzip
+\ ZIP:E-OPEN, E-READ and E-SIZE reject the archive's bytes or report a libzip
 \ failure, and E-SIZE a caller's length too; a host fault ZIP sees keeps the
 \ host's code (FS:MKTEMP's, E-FS-OPEN, E-FS-IO).
 \ STORAGE CLASS. TASK-LOCAL: libzip's stat record and the drain bytes,

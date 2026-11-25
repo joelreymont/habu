@@ -16,7 +16,7 @@ private
 -9649 constant E-LAST
 public
 -9640 s" no keep-awake backend on this target" ERROR:FAULT E-PLATFORM
--9641 s" the OS refused to create or release the hold, or its name is not UTF-8" ERROR:CODE E-ASSERTION
+-9641 s" creating or releasing the hold failed, or its name is not UTF-8" ERROR:CODE E-ASSERTION
 
 DEFLINEAR POWER:awake
 
@@ -42,7 +42,7 @@ public
 : KEEP-AWAKE ( str -- POWER:awake )
    KEEP-HOOK >AWAKE ;
 
-\ The token is spent before the release's outcome is known: a refused release
+\ The token is spent before the release's outcome is known: a rejected release
 \ throws E-ASSERTION with no token left to retry.
 : ALLOW-SLEEP ( POWER:awake -- )
    AWAKE> ALLOW-HOOK ;

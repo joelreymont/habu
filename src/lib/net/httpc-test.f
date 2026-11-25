@@ -696,7 +696,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    w r SHUT-PIPE
    END-CASE ;
 
-\ A loopback port bound but not listening refuses every connection.
+\ A loopback port bound but not listening rejects every connection.
 : TEST-CONNECT ( -- )
    TEST-TLS-PEER:LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
    MATCH TCP4:bind-result
@@ -809,32 +809,32 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    OVERSIZE-BY ;
 
 \ A marked request's first NEXT answers its fault.
-: REFUSED ( HTTPC:fault -- ) {: f:HTTPC:fault :}
+: REJECTED ( HTTPC:fault -- ) {: f:HTTPC:fault :}
    LINK s" " HTTPC:SEND  WIDE-SPAN READ-ALL
    f false FAULT-IS ;
 
-\ The good request after the refused ones accepts every connection the
-\ refused ones would have made, so ACCEPTS counts them.
-: TEST-REFUSED ( -- )
+\ The good request after the rejected ones accepts every connection the
+\ rejected ones would have made, so ACCEPTS counts them.
+: TEST-REJECTED ( -- )
    construct script reuse SMALL-ROOM BEGIN-IN
    s" GET" s" /case" PREPARE  LINK ALPHABET$ HTTPC:HEADER+
    s" a request head larger than the room fails `oversize`" T-LABEL
-   HTTPC-FAULT:OVERSIZE REFUSED
+   HTTPC-FAULT:OVERSIZE REJECTED
    s" GET" s" /case" PREPARE  LINK S\" X-Bad: a\rb" HTTPC:HEADER+
    s" a CR in a header line fails `malformed`" T-LABEL
-   HTTPC-FAULT:MALFORMED REFUSED
+   HTTPC-FAULT:MALFORMED REJECTED
    s" GET" s" /a b" PREPARE
    s" a SP in the target fails `malformed`" T-LABEL
-   HTTPC-FAULT:MALFORMED REFUSED
+   HTTPC-FAULT:MALFORMED REJECTED
    ASK WIDE-SPAN READ-ALL
-   s" refused requests dial nothing" T-LABEL
+   s" rejected requests dial nothing" T-LABEL
    200 s" first" ANSWER-IS
    ACCEPTS @ 1 T=
    s" GET" s" /a b" PREPARE
-   s" a refused request over a held connection" T-LABEL
-   HTTPC-FAULT:MALFORMED REFUSED
+   s" a rejected request over a held connection" T-LABEL
+   HTTPC-FAULT:MALFORMED REJECTED
    ASK WIDE-SPAN READ-ALL
-   s" a refused request drops the held connection" T-LABEL
+   s" a rejected request drops the held connection" T-LABEL
    200 s" second" ANSWER-IS
    ACCEPTS @ 2 T=
    0 PER-CONN @ 1 T=
@@ -1089,7 +1089,7 @@ create LONG-TRUST PATH-CAP 1 + allot    \ a trust path FS cannot spell
    OPEN-FDS open T= ;
 
 \ An https origin at the plain server, opened in a record full of stale
-\ bytes, trusting the path: each SEND dials, and TLS refuses the path
+\ bytes, trusting the path: each SEND dials, and TLS rejects the path
 \ before it makes anything. The server has closed DONE connections.
 : UNREAD-PATH ( str n -- ) {: t:str done:n :}
    SPOIL  s" 127.0.0.1" PORT-CELL @ HTTPS-ORIGIN!
@@ -1318,7 +1318,7 @@ public
    TEST-TOTAL
    TEST-MALFORMED
    TEST-OVERSIZE
-   TEST-REFUSED
+   TEST-REJECTED
    TEST-CLOSE
    TEST-WOKEN
    TEST-UNWOKEN

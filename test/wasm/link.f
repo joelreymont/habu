@@ -110,7 +110,7 @@ TYPED-VARIABLE WANT-U len
 : WANT$ ( -- str )
    WANT-BUF WANT-U @ LEN>N >str ;
 
-\ ---- refusals ----------------------------------------------------------------------
+\ ---- rejections ----------------------------------------------------------------------
 : LINK0 ( -- )  0 WLINK:LINK drop ;
 
 0 constant ADDR-NONE                 \ the address kind of a field holding no address
@@ -210,11 +210,11 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    s" 042802400b0900418080042802100b0900418080042802200b0900418080042903280b0900418080042802580b0900418080" W+
    s" 042802500b0b0100" W+
    0 MOD-U @ HEX$ WANT$ T$=
-   s" an entry in the aligned frame is refused though its type is the entry's" T-LABEL
+   s" an entry in the aligned frame is rejected though its type is the entry's" T-LABEL
    [: 1 WLINK:LINK drop ;] E-WLINK-ARITY TTHROWSQ
-   s" an entry taking a lane is refused" T-LABEL
+   s" an entry taking a lane is rejected" T-LABEL
    [: 2 WLINK:LINK drop ;] E-WLINK-ARITY TTHROWSQ
-   s" an entry answering a lane is refused" T-LABEL
+   s" an entry answering a lane is rejected" T-LABEL
    [: 4 WLINK:LINK drop ;] E-WLINK-ARITY TTHROWSQ ;
 
 : ADD0 ( n n n -- )
@@ -379,10 +379,10 @@ $350000 constant PAGE-53-END
    s" 656e008f01" W+
    S-EXPORT SECTION$ WANT$ T$= ;
 
-\ ---- refused rows -------------------------------------------------------------------
+\ ---- rejected rows -------------------------------------------------------------------
 \ Kernel 0 returns, 1 calls 0 at 4 and 2 holds the image's end at 2; slot 1 is
 \ function 0 and the image's cell at 8 its descriptor. It links, so each
-\ refusal below is the one row added to it.
+\ rejection below is the one row added to it.
 : BASE ( -- )
    WLINK:RESET
    IMAGE-FILL
@@ -397,72 +397,72 @@ $350000 constant PAGE-53-END
    0 LINKED ;
 
 : ENTRY-ROWS ( -- )
-   s" an entry past the functions is refused" T-LABEL
+   s" an entry past the functions is rejected" T-LABEL
    BASE  [: 3 WLINK:LINK drop ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" an entry below zero is refused" T-LABEL
+   s" an entry below zero is rejected" T-LABEL
    BASE  [: -1 WLINK:LINK drop ;] E-WLINK-UNRESOLVED TTHROWSQ ;
 
 : RESERVE-ROWS ( -- )
-   s" a reserve callee past the functions is refused" T-LABEL
+   s" a reserve callee past the functions is rejected" T-LABEL
    BASE  3 WLINK:RESERVE!  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" a reserve callee outside the aligned frame is refused" T-LABEL
+   s" a reserve callee outside the aligned frame is rejected" T-LABEL
    BASE  0 WLINK:RESERVE!  [: LINK0 ;] E-WLINK-ARITY TTHROWSQ ;
 
 : CALL-ROWS ( -- )
-   s" a call of no function is refused" T-LABEL
+   s" a call of no function is rejected" T-LABEL
    BASE  1 4 3 WLINK:CALL+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" a call site in no function is refused" T-LABEL
+   s" a call site in no function is rejected" T-LABEL
    BASE  3 4 0 WLINK:CALL+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" a call field that is not padded is refused" T-LABEL
+   s" a call field that is not padded is rejected" T-LABEL
    BASE  0 BODY-U !  0 B, $20 B, 0 B, $10 B, 0 B, $0B B,  0 0 0 ADD0
    3 4 0 WLINK:CALL+  [: LINK0 ;] WLEB:E-UNPADDED TTHROWSQ
-   s" a call field past its function's body is refused" T-LABEL
+   s" a call field past its function's body is rejected" T-LABEL
    BASE  1 11 0 WLINK:CALL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ ;
 
 : ADDRESS-ROWS ( -- )
-   s" an address site in no function is refused" T-LABEL
+   s" an address site in no function is rejected" T-LABEL
    BASE  3 2 NEMIT:ADDR-DATA 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" a data address past the image's end is refused" T-LABEL
+   s" a data address past the image's end is rejected" T-LABEL
    BASE  2 2 NEMIT:ADDR-DATA 17 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" a data address below the image is refused" T-LABEL
+   s" a data address below the image is rejected" T-LABEL
    BASE  2 2 NEMIT:ADDR-DATA -1 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" a code address past the table is refused" T-LABEL
+   s" a code address past the table is rejected" T-LABEL
    BASE  2 2 NEMIT:ADDR-CODE 2 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" a code address of slot 0, which holds no function, is refused" T-LABEL
+   s" a code address of slot 0, which holds no function, is rejected" T-LABEL
    BASE  2 2 NEMIT:ADDR-CODE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" an address of kind none names nothing and is refused" T-LABEL
+   s" an address of kind none names nothing and is rejected" T-LABEL
    BASE  2 2 ADDR-NONE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" an address of a kind past code is refused" T-LABEL
+   s" an address of a kind past code is rejected" T-LABEL
    BASE  2 2 NEMIT:ADDR-CODE 1+ 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-KIND TTHROWSQ
-   s" an address of a kind below none is refused" T-LABEL
+   s" an address of a kind below none is rejected" T-LABEL
    BASE  2 2 ADDR-NONE 1- 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-KIND TTHROWSQ
-   s" an address field that is not padded is refused" T-LABEL
+   s" an address field that is not padded is rejected" T-LABEL
    BASE  0 BODY-U !  0 B, $42 B, 0 B, $1A B, $41 B, 0 B, $0B B,  0 0 0 ADD0
    3 2 NEMIT:ADDR-DATA 0 WLINK:ADDRESS+  [: LINK0 ;] WLEB:E-UNPADDED TTHROWSQ ;
 
 : SLOT-ROWS ( -- )
-   s" a table slot of no function is refused" T-LABEL
+   s" a table slot of no function is rejected" T-LABEL
    BASE  3 WLINK:TABLE+ drop  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" a cell past the image's end is refused" T-LABEL
+   s" a cell past the image's end is rejected" T-LABEL
    BASE  9 NEMIT:ADDR-DATA 0 WLINK:DATA-CELL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ
-   s" a cell below the image is refused" T-LABEL
+   s" a cell below the image is rejected" T-LABEL
    BASE  -1 NEMIT:ADDR-DATA 0 WLINK:DATA-CELL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ
-   s" a cell at MAX-N, whose end would wrap, is refused" T-LABEL
+   s" a cell at MAX-N, whose end would wrap, is rejected" T-LABEL
    BASE  MAX-N NEMIT:ADDR-DATA 0 WLINK:DATA-CELL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ
-   s" a cell addressing past the image's end is refused" T-LABEL
+   s" a cell addressing past the image's end is rejected" T-LABEL
    BASE  0 NEMIT:ADDR-DATA 17 WLINK:DATA-CELL+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" an image of a negative length is refused" T-LABEL
+   s" an image of a negative length is rejected" T-LABEL
    [: IMAGE-BUF -1 >str WLINK:DATA! ;] E-SPAN-LENGTH TTHROWSQ ;
 
 \ ---- memory ---------------------------------------------------------------------
 $100000000 constant MEMORY32-BYTES     \ 65536 pages of 64 KiB
 
-\ DATA! refuses on the length alone, before it reserves or reads a byte, so BIG
+\ DATA! rejects on the length alone, before it reserves or reads a byte, so BIG
 \ need not hold the bytes these lengths name.
 : MEMORY-ROW ( -- )
-   s" an image ending one byte past memory32's 4 GiB is refused" T-LABEL
+   s" an image ending one byte past memory32's 4 GiB is rejected" T-LABEL
    [: 1 ZEROS  MEMORY32-BYTES WPROF:DATA-VA - 1+ >str WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ
-   s" an image of MAX-N bytes, whose end would wrap, is refused" T-LABEL
+   s" an image of MAX-N bytes, whose end would wrap, is rejected" T-LABEL
    [: 1 ZEROS MAX-N >str WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ ;
 
 public

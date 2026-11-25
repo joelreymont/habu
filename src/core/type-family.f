@@ -418,7 +418,7 @@ variable TF-PK-N   0 TF-PK-N !
 
 
 \ Each boot store holds the built-in families this file declares, so a written
-\ program keeps them in its DATA: the linker refuses a cell into mapped memory.
+\ program keeps them in its DATA: the linker rejects a cell into mapped memory.
 64 constant TF-CAP-INIT
 variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !
 : TF-CAP ( -- n ) TF-CAP-V @ ;
@@ -513,7 +513,7 @@ private
 
 \ A boxed value is one pointer and a niche value one cell with the discriminant
 \ folded into the payload, so the width branch keys on the policy before the
-\ kind. Only TFAM-LAYOUT! reaches them (the POLICY clause refuses boxed).
+\ kind. Only TFAM-LAYOUT! reaches them (the POLICY clause rejects boxed).
 
 : TFAM-BOXED-OR-NICHE? ( n -- bool ) {: id:n :}   \ policy collapses the value to one cell
    id TFAM-LAYOUT-POLICY@ {: p:n :}
@@ -1495,7 +1495,7 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
 \ generated constructor asks several times, so without the memo an ENUM's
 \ constructors are quadratic in its variants.
 \ Each answer is memoized per family under TFM-EPOCH: a cell stamped with the
-\ current epoch holds the answer a walk would give. A refusal is a throw and is
+\ current epoch holds the answer a walk would give. A rejection is a throw and is
 \ never memoized. Process-local, like VNX.
 
 0 constant TFM-LINEAR
@@ -1951,7 +1951,7 @@ EXPORT TFAM:TFAM-FIND-IN
    na qu + 1 + tu ta tu STR:= ;
 
 \ A DEFLINEAR or VALUE-RECORD name `B:tail` exists, B the open package path's
-\ last segment: the declaration TFAM-CLAIMED? refuses when the family comes first.
+\ last segment: the declaration TFAM-CLAIMED? rejects when the family comes first.
 : QUAL-NOMINAL? ( str -- bool ) {: a:^ u:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ LAST-SEGMENT$ {: qa:^ qu:n :}
@@ -1977,7 +1977,7 @@ public
 \ The family-name gate every family definer asks: SUMTYPE and NEWTYPE
 \ (sumtype.f) and the STRUCTURE and ENUM front ends. A family tail must be one an
 \ effect reads as that family. The effect parser reads a value record name
-\ (checker.f PSTACK) ahead of any family, refuses a bare `ptr` (SIG-PTR-TOK?)
+\ (checker.f PSTACK) ahead of any family, rejects a bare `ptr` (SIG-PTR-TOK?)
 \ as an unknown type even where a family of that tail resolves, and reads an
 \ atom-shaped tail as an atom wherever the family does not resolve; its other
 \ readings (`[`, stack syntax, row variables, split characters) are never
@@ -2348,7 +2348,7 @@ seal-package
 \ generated ADDRESS accessors (`DERIVE addr`):
 \ one word per field plus AT / BYTES / CELLS, in the spellings and wordlists the
 \ family's constructors use. A public family's accessors are new tails in its
-\ reserved constructor package, which TFAM-CTOR-EXTEND? would otherwise refuse,
+\ reserved constructor package, which TFAM-CTOR-EXTEND? would otherwise reject,
 \ and an undefine of one must answer E-CTOR-PROTECTED. This block follows the
 \ field registry because a field tail is the member name. Only committed field
 \ rows are read, the range the generator reads, so a name asked about while the
@@ -4373,7 +4373,7 @@ EXPORT CHECK:OK
 \ A negative extra on a construct (the widest declared variant is not the
 \ widest instantiated one, or a non-widest variant grows more) is a
 \ contradiction: its lowering pushes the declared pads and can only add cells,
-\ so no sound lowering exists and it is refused unconditionally, a candidate
+\ so no sound lowering exists and it is rejected unconditionally, a candidate
 \ probe included. A MATCH arm reads only the instantiated pads.
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
    MD-CONSTRUCT-WIDE MDIAG!  0 OK ! -1 FAILSET ! ;
@@ -4408,7 +4408,7 @@ EXPORT CHECK:OK
 \
 \ The compiler models the stack cell by cell and needs the pad count itself:
 \ MWIN-CELLS! files it under this `of` token. An arm whose term is not closed
-\ latches nothing: the cell-accurate consumer then refuses the definition by
+\ latches nothing: the cell-accurate consumer then rejects the definition by
 \ name. A niche family counts its bundle, so its empty arm files one pad and the
 \ other none.
 : TFAM-MATCH-PADS-RECORD ( n n -- ) {: vid:n term:n :}

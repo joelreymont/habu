@@ -2,10 +2,10 @@
 \ importing or launching another row's entry silently runs that suite twice.
 \
 \ The guard walks the load graph, from every file a running row loads through
-\ every import and launch. A load of another running row's entry is refused,
+\ every import and launch. A load of another running row's entry is rejected,
 \ naming the file and line that makes it, and so is a preload that is another
 \ running row's entry. A file may name itself; two rows sharing an entry are
-\ refused, naming both.
+\ rejected, naming both.
 
 require src/lib/error.f
 require src/lib/fmt.f

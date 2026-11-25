@@ -53,17 +53,17 @@ variable STATUS
 \ A push past the capacity and a return/loop frame past its region both exit
 \ 102; only the message says which, so every call
 \ site names the stack it expects.
-: REFUSED-DATA ( str -- )
+: REJECTED-DATA ( str -- )
    CHILD-RC 102 T=
    ERR ERRLEN @ >str S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
    T-PREFIX= ;
 
-: REFUSED-RETURN ( str -- )
+: REJECTED-RETURN ( str -- )
    CHILD-RC 102 T=
    ERR ERRLEN @ >str S\" error[E-STACK-BOUNDS]: the return stack ran past its bounds\n"
    T-PREFIX= ;
 
-: REFUSED-LOOP ( str -- )
+: REJECTED-LOOP ( str -- )
    CHILD-RC 102 T=
    ERR ERRLEN @ >str S\" error[E-STACK-BOUNDS]: the loop stack ran past its bounds\n"
    T-PREFIX= ;
@@ -86,7 +86,7 @@ variable STATUS
    CHILD-RC 0 T=
    s" and one cell more overflows the data stack" T-LABEL
    S\" : X ( -- ) s\" test/engine-stack-cross-throw.f\" included ; : FILL ( n -- ) dup 0= if drop exit then dup 1 - recurse drop ; : GO ( -- ) ['] X catch drop STACK-ABI:BOOT-BYTES 8 / FILL ; GO"
-   REFUSED-DATA ;
+   REJECTED-DATA ;
 
 \ A data request below the base is the one rejection with a name: the checker
 \ rejects a bare call on a shallower stack before the body runs, names the token
@@ -104,7 +104,7 @@ variable STATUS
    CHILD-RC 0 T=
    OUT OUTLEN @ >str S\" 22\n11\n-1\n" T$=
    s" whole return transfer needs two free slots" T-LABEL
-   s" : EDGE ( n -- ) dup 0= if drop 11 22 2>r 2r> 2drop exit then 1 >r 1 - recurse r> drop ; STACK-ABI:RETURN-CELLS 1 - EDGE" REFUSED-RETURN ;
+   s" : EDGE ( n -- ) dup 0= if drop 11 22 2>r 2r> 2drop exit then 1 >r 1 - recurse r> drop ; STACK-ABI:RETURN-CELLS 1 - EDGE" REJECTED-RETURN ;
 
 : PRIMITIVE-BOUNDARIES ( -- )
    PRIMITIVE-RETURN
@@ -115,6 +115,6 @@ variable STATUS
    CHILD-RC 0 T=
    s" one loop frame past the region" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
-   REFUSED-LOOP ;
+   REJECTED-LOOP ;
 
 ;package

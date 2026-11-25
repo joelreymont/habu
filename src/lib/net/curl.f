@@ -439,8 +439,8 @@ CAST: >BYTES ( n -- ^u8 )
 
 \ A body the limit cut short is `truncated` whatever code ends the transfer:
 \ 23 over HTTP/1.1, 56 over HTTP/2 on libcurl 8.7.1.
-: BODY-RC ( n bool -- n ) {: rc:n refused:bool :}
-   refused if CURLE-OK else rc then ;
+: BODY-RC ( n bool -- n ) {: rc:n rejected:bool :}
+   rejected if CURLE-OK else rc then ;
 
 
 : FIRST-ERROR ( n n -- n ) {: prior:n next:n :}
@@ -1015,7 +1015,7 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
    REC-COUNT 0 ?do i REC-RELEASE loop ;
 
 
-\ A handle is in at most one record at a time - START refuses a second one - so
+\ A handle is in at most one record at a time - START rejects a second one - so
 \ the first match is the only match. This is how a task finds its own transfer:
 \ asking libcurl about a handle the loop may be driving is exactly what it must
 \ not do.
@@ -1235,8 +1235,8 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
    idx LEAVING? if
       headers headeru BYTES-RELEASE idx LEAVE-DONE CURLM-OK exit
    then
-   idx REC CLOSED? {: refused:bool :}
-   rc refused BODY-RC headrc FIRST-ERROR
+   idx REC CLOSED? {: rejected:bool :}
+   rc rejected BODY-RC headrc FIRST-ERROR
    headers headeru CAPTURE-RC FIRST-ERROR {: outcome:n :}
    outcome CURLE-OK <> if
       headers headeru BYTES-RELEASE
@@ -1246,7 +1246,7 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
    then
    idx REC-EASY@ STATUS-TRY {: status:n valid:bool :}
    valid 0= if headers headeru BYTES-RELEASE E-RESULT throw then
-   idx status refused RESULT-STORE
+   idx status rejected RESULT-STORE
    idx REC-EASY@ headers headeru VALID-WHOLE STATE-PUBLISH
    idx SETTLE
    CURLM-OK ;
@@ -1797,7 +1797,7 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
 
 
 : PIPE-FAILED ( n n -- ) {: code:n e:n :}
-   s" the host refused the wake pipe: " LOOP-LINE
+   s" the wake pipe was not made: " LOOP-LINE
    code LOG:CODE+ e CAUSE+ LOOP-FAILED ;
 
 
@@ -1952,7 +1952,7 @@ private
    kind status u rc STREAM-RESULT-BUILD ;
 
 \ The owner's side of a full window, on its own task: the room, then ready
-\ under CURL-LOCK. A refused RESERVE gives the transfer up, then rethrows.
+\ under CURL-LOCK. A rejected RESERVE gives the transfer up, then rethrows.
 : WINDOW-GROW ( n -- ) {: idx:n :}
    idx REC {: r:^ :}
    r VEC@ {: v:^ :}
@@ -1974,7 +1974,7 @@ public
 \ vector reserved to its count plus len before START never waits. A START with
 \ no loop running, and a second START on a handle already in flight, are
 \ E-STATE. The records grow with the transfers in flight, so no count of them
-\ is refused.
+\ is rejected.
 : START ( handle len ^VEC:vector<u8> -- status )
    {: subject:handle limit:len v:^ :}
    limit LEN>N 0 AT-LEAST

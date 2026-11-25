@@ -1139,7 +1139,7 @@ private
 \ A pointer is `^u8`, a byte span: a token that opens with `^` names one.
 : PTR-TOK? ( -- bool )  TOK$ 1 min s" ^" STR:= ;
 
-\ Refuses a pointer token other than `^u8`.
+\ Rejects a pointer token other than `^u8`.
 : PTR-TAIL ( -- )
    s" ^u8" TOK-IS? 0= if
       s" expected 'u8' after '^'"

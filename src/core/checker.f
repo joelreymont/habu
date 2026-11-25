@@ -12,12 +12,12 @@ split-str
 \ CHECKER-REG:}SCRATCH bracket and mark as scratch, so an image holds them at
 \ none, NULL and 0.
 \
-\ The trail pin: ROWS-PIN marks the trail height at a refusal. Between AT-PIN
+\ The trail pin: ROWS-PIN marks the trail height at a rejection. Between AT-PIN
 \ and ;AT-PIN every store made since the pin is undone, so the tables read as
 \ they stood at the pin; ;AT-PIN takes back the view's own compression stores
 \ before it restores. An unwind below the pin takes back bindings the pin saw,
 \ so the pin falls with it, and AT-PIN still takes back every binding made
-\ after the refusal.
+\ after the rejection.
 \
 \ Recursive calls: RECURSE instantiates the effect SIG-EFF-CACHE! built
 \ before the body ran, so the kind and restrictions the body later gives a
@@ -58,12 +58,12 @@ split-str
 \ with a linear type (KEEP's `over`, a quotation's `dup FREE`). Two rules close
 \ that gap. LIN-EFF-PASS: a var in an applied effect that binds to a linear
 \ type must occur equally on the input and output sides of the whole effect,
-\ quotation sub-effects included (KEEP, one in and two out, is refused; DIP
+\ quotation sub-effects included (KEEP, one in and two out, is rejected; DIP
 \ and swap pass). A generated constructor, MAKE or UNMAKE row moves exactly
 \ its payload, so `LQ2:ERR ( b -- lq2<a,b> )` mints an err without an `a`; an
 \ ordinary word with the same effect is still counted. LIN-TAINT and
 \ LIN-TAINT-SCAN: a var copied or dropped while polymorphic is tainted, and
-\ refused if it later resolves to a linear type (`[: dup FREE ;]`). The
+\ rejected if it later resolves to a linear type (`[: dup FREE ;]`). The
 \ discipline runs once a DEFLINEAR type is declared, and also while a type
 \ entry may be unread, since a body checked before the read would escape it.
 \
@@ -77,8 +77,8 @@ split-str
 \
 \ The compile window: a callback that runs while a definition compiles changes
 \ nothing. After the native compiler's scan returns, it opens WRITE-WINDOW with
-\ the code a write is refused with, and shuts it with 0 before its own writes
-\ and on every exit. Each refusal comes before the first state the pending
+\ the code a write is rejected with, and shuts it with 0 before its own writes
+\ and on every exit. Each rejection comes before the first state the pending
 \ definition reads moves, so WRITE-WINDOW-CK stands at the only appenders of
 \ the checker's stores and type registries, and before any writer that moves a
 \ latch or the record symbol first.
@@ -87,7 +87,7 @@ split-str
 \ cp.async wait from committed to ready, lowers to `bar.sync` and deadlocks
 \ under divergent predication. E-ADD-EFFECT detects the shape from the
 \ recorded din and dout rows (PTX-BARRIER-ROWS?) and flags CTL-BARRIER; the
-\ call-site check refuses such a call inside an open control frame.
+\ call-site check rejects such a call inside an open control frame.
 \
 \ Term-walk depth: the recursive term walkers bracket each RECURSE with
 \ TWALK-DEEPER and TWALK-SHALLOWER, and each public wrapper resets the depth
@@ -114,8 +114,8 @@ split-str
 \ it resolved the same way (OUTPUT-COPY). Whole-bundle transports (dup, swap,
 \ >r and kin) move the group by row surgery (XPORT-STEP?). A layout whose
 \ width reads an open argument (LAYOUT-WIDTH-OPEN?) stays one logical cell: a
-\ transport would bind it to a fresh var, which LAYOUT-XPORT-ALLOW? refuses
-\ because an open layout may be linear, and LOC-BIND refuses a locals capture
+\ transport would bind it to a fresh var, which LAYOUT-XPORT-ALLOW? rejects
+\ because an open layout may be linear, and LOC-BIND rejects a locals capture
 \ of one; every other touch fails closed. The width and group questions see
 \ through a stale wrapper and the type question does not: `catch` stales a
 \ window one cell at a time, and a group walker asked on the wrapper would
@@ -133,12 +133,12 @@ split-str
 \
 \ Raw cells: a raw storage definer (create, variable, constant) mints a RAW
 \ type var, and a fetch from the cell yields that var. RAW-OK? admits a plain
-\ scalar, a role con or an atom and raises a var argument to RAW; it refuses a
+\ scalar, a role con or an atom and raises a var argument to RAW; it rejects a
 \ nominal family or layout value, which would forge an arity-0 family
 \ identity, a linear con, a pointer and an executable value. Role cons stay
 \ admitted because the engine's code generator raw-stores them. Each mention
 \ of an undeclared cell re-freshens its scheme's var, so an admitted pointer
-\ would launder an integer into an address (`V ! V @ @`); refusing the value
+\ would launder an integer into an address (`V ! V @ @`); rejecting the value
 \ at the binding fences every consumer at once. A cell that holds an address
 \ or code is declared (PTR-VARIABLE, TYPED-VARIABLE, TYPED-BUFFER,
 \ DYNAMIC-BUFFER, `defer`, `xt!`) and its storage word mints the type, so
@@ -156,11 +156,11 @@ split-str
 \ stops a nominal only at the first pointee, so blocking the pointer term
 \ itself closes every depth. The permissive arm still meets, so a wrapper
 \ that publishes a derived pointer as `( -- ^a )` restricts its own
-\ quantifier and NP-CHECK refuses it. An executable value is fenced before
+\ quantifier and NP-CHECK rejects it. An executable value is fenced before
 \ the null's permissive arm, or `( -- ^[ -- n ] ) NULL-PTR 8 +` would run
 \ at address 8; so a declared code cell cannot be compared with the null, and
 \ an empty one is read through a number-typed accessor of the same address.
-\ That refusal records FENCE-EXEC in RAW-FENCE: at every base the repair is to
+\ That rejection records FENCE-EXEC in RAW-FENCE: at every base the repair is to
 \ declare the cell that holds the xt.
 \
 \ Hold frames: while a quotation is compared with a declared callable, the
@@ -206,7 +206,7 @@ split-str
 \ binds it and checking goes on; the boundary check alone would pin the last
 \ token, so the token that spends the frame is asked instead. Both depths are
 \ read before that step's unify, since afterwards a bound tail makes the two
-\ rows one, and the refusal waits for the unify to succeed, so a step both
+\ rows one, and the rejection waits for the unify to succeed, so a step both
 \ short and mistyped is answered as a mismatch.
 \
 \ Throw masks: `catch` restores both stacks' depth, never their contents, so a
@@ -254,7 +254,7 @@ split-str
 \ carries, else RBROW), or inside a quotation literal the literal's own RBROW.
 \ A read short of cells does not fail where it reads: the base is an open row,
 \ so the unify binds it. So a read measures the row before the unify, as
-\ STEP-BORROWS? measures the data row, and is refused at its own token once
+\ STEP-BORROWS? measures the data row, and is rejected at its own token once
 \ the unify has fit (RS-BORROWS?). The final balance check rejects net growth,
 \ and a return base bound with no read (CHECK-NO-BORROW, QUOT-RSEAL); loop
 \ joins unify RCUR too.
@@ -281,26 +281,26 @@ split-str
 \ letter; this is not the declaration parameter alphabet. Facts text names a
 \ variable past the letters by its ordinal.
 \
-\ The refusal a definition's diagnostic names: one failure refuses a
+\ The rejection a definition's diagnostic names: one failure rejects a
 \ definition, and every diagnostic field describes that one, chosen by load
 \ order. The body compiles before `;` checks anything, so the first body token
 \ the load cannot compile (undefined word, retired global, unbindable local,
-\ unmodeled immediate, unreadable construct or match) refuses it (CREFUSE,
-\ taken by REFUSAL-STEP). A name `using` makes the walk refuse
+\ unmodeled immediate, unreadable construct or match) rejects it (CREJECT,
+\ taken by REJECTION-STEP). A name `using` makes the walk reject
 \ (CHECKER-RESOLVE:RAISE) is such a token when ticked or when no global binds
 \ it. Otherwise, in order: the first name a used public shadows a global for
 \ or makes ambiguous beside one (CUSING); a signature that does not parse
-\ (SGBAD-FAIL!); the first token whose check fails (REFUSAL-OF); the checks at
-\ `;` (REFUSAL@).
+\ (SGBAD-FAIL!); the first token whose check fails (REJECTION-OF); the checks at
+\ `;` (REJECTION@).
 \
 \ Stored type spans: a storage declaration's stored type is read token by
 \ token at run time and at the gate. The spelling ends at the first token
 \ other than a `^` prefix that leaves no bracket open, counting the `<` `[`
 \ `>` `]` NEXT-SIG-TOK splits out, so a pointer chain, family application and
 \ spaced quotation or scheme reach SIG-TYPE whole; a stray closer ends it and
-\ SIG-TYPE refuses it. The name stands on the definer's line and the type's
+\ SIG-TYPE rejects it. The name stands on the definer's line and the type's
 \ first token on the name's: a missing name or type is rejected by name
-\ (CHECKER-STORAGE-NAME-REFUSE, CHECKER-STORAGE-TYPE-REJECT). While a `<` or
+\ (CHECKER-STORAGE-NAME-REJECT, CHECKER-STORAGE-TYPE-REJECT). While a `<` or
 \ `[` is open the spelling reads on across lines; with none open it ends at
 \ its line, and SIG-TYPE rejects a span the source leaves open.
 \
@@ -436,7 +436,7 @@ split-str
 \ run in the other order and a latch left armed would teach the next record
 \ that an ordinary word creates something. Every body check steps it: a
 \ certified clause becomes a body check under way, and any other state clears.
-\ Only that body check's record takes it (DOES-EFF-TAKE); a refused clause
+\ Only that body check's record takes it (DOES-EFF-TAKE); a rejected clause
 \ clears instead of arming, and a publication clears what it left. The
 \ unjudged scan is no body check: on return it restores the latch, a TRUSTED:
 \ definer's publication steps it, and on a throw it clears. A wrapper of a
@@ -531,23 +531,23 @@ split-str
 \ never recorded is the engine's own word and stays. NAME-TOK sets a horizon
 \ only inside the verifier window, so the overlay is open whenever one is set.
 \
-\ The binder's answers: LIVE-BIND answers its refusals rather than raising
-\ them. It leaves ( sym why ), why 0 or the code of the refusal it reached:
+\ The binder's answers: LIVE-BIND answers its rejections rather than raising
+\ them. It leaves ( sym why ), why 0 or the code of the rejection it reached:
 \ EXIT-STATUS:REJECTED when no authority names a package context for a bare
 \ token, E-USING-SHADOW-GLOBAL when a used public also exports the tail a
 \ global binds, E-USING-AMBIGUOUS when two used publics export it and nothing
-\ earlier binds it or the global does. Under a refusal sym is no answer. It
-\ renders nothing: a using refusal leaves the used packages holding the tail
+\ earlier binds it or the global does. Under a rejection sym is no answer. It
+\ renders nothing: a using rejection leaves the used packages holding the tail
 \ marked in CK-USED-MASK for the raise to name. CHECKER-BIND raises the
-\ refusal (CHECKER-RESOLVE:RAISE); a caller that only asks reads why. A name
-\ the split refuses (a malformed qualified name, or a length that describes no
-\ memory) binds nothing. A sym of 0 without a refusal does not prove the load
+\ rejection (CHECKER-RESOLVE:RAISE); a caller that only asks reads why. A name
+\ the split rejects (a malformed qualified name, or a length that describes no
+\ memory) binds nothing. A sym of 0 without a rejection does not prove the load
 \ cannot bind the name, since the engine holds words no checker symbol names
 \ (one defined while checking was off); LIVE-BIND sets WALK-REC when
 \ its answer is the record the engine's lookup found.
 \
 \ Native multi-error recovery: under a hook the native compiler abandons a
-\ refused definition instead of publishing it, so in a multi-error run the
+\ rejected definition instead of publishing it, so in a multi-error run the
 \ engine's lookup cannot see the recovery row (RECOVERY-ROW?) of a word a
 \ later definition calls; on x86-64 every definition is native. A recovery row
 \ is sound only while a body is checked or compiled: the native compiler
@@ -562,7 +562,7 @@ split-str
 \ package's private then public wordlist, inside a part its package's private
 \ then public one, the globals, then the used publics in import order. A
 \ qualified name asks its package's public row, and the global row when that
-\ package is open. A hookless compile finds a refused definition by this bind.
+\ package is open. A hookless compile finds a rejected definition by this bind.
 \
 \ Rendering marks: a top-level statement that calls a CTL-RENDERS word defines
 \ words, and may register nominal types, from text the source pre-pass never
@@ -593,16 +593,16 @@ split-str
 \ a bare tail private-first, so a public definition whose bare tail a private
 \ word of the same package claims does not bind its own name, and the native
 \ compiler would elaborate the public word against the private word's arity.
-\ The pair stays legal; E-SHADOWED-ARITY refuses only two declared effects that
+\ The pair stays legal; E-SHADOWED-ARITY rejects only two declared effects that
 \ move different numbers of cells, at the second definition, and only for a
 \ colon definition with a declared signature. A pair whose widths cannot be
-\ judged is left to the native compiler's own arity refusal.
+\ judged is left to the native compiler's own arity rejection.
 \
 \ Buffer counts: a buffer definer's count is the token before the definer,
 \ read and never run, since no static pass models the interpret stack. An
 \ integer token is the count, held to the definer's extent bound; no token is
 \ no count. A count named by a word certifies by that word's effect, and a
-\ refused or undefined name refuses. A word that takes input ends an
+\ rejected or undefined name rejects. A word that takes input ends an
 \ expression the line computes, which the definer bounds at load. A word that
 \ takes none must hand a `( n -- )` consumer its value: return stack untouched
 \ and an output row that unifies with its input row plus one `n`. So a
@@ -624,7 +624,7 @@ split-str
 \
 \ Storable layouts: `!` and `@` through a `^family<..>` address move the
 \ pointee's whole logical value, and the address type picks the arm: a bare
-\ `^a` store of a layout value stays refused, a mismatched family fails
+\ `^a` store of a layout value stays rejected, a mismatched family fails
 \ ordinary unification, an `n` cannot enter an enum slot, and a fetched value
 \ is born typed. Every closed non-linear layout width is admitted, and its
 \ registry width is recorded as a width fact before the step changes the row.
@@ -645,16 +645,16 @@ split-str
 \ definition pushed, is an underflow measured as a plain step measures it. An
 \ operand carrying a proof or lost metadata takes this path too, scalars
 \ included. An operand that is a layout cell of open width sends the whole op
-\ to the one-cell path, which refuses it: an open width reads a payload
+\ to the one-cell path, which rejects it: an open width reads a payload
 \ variable that may bind linear. A group moves whole, and the op's linear
 \ count is taken before and checked after: a move keeps it, while a copy
-\ raises it and a drop lowers it, both refused. A hidden group's linear
+\ raises it and a drop lowers it, both rejected. A hidden group's linear
 \ payload counts once, at its tag. A one-cell variable group the op copies or
 \ drops may launder a linear value, so it is tainted. An argument still open
 \ in an expanded group is one the width does not read: it occurs only under a
 \ pointer, a quotation or an unread slot, owns no payload, and has nothing to
 \ launder. A linear group captured into a local leaves the counted rows, so
-\ the same check refuses the bind.
+\ the same check rejects the bind.
 \
 \ Locals: `{: a b :}` pops and binds names to type variables, and a reference
 \ pushes its binding; a later group binds only its own names. A local is known
@@ -664,7 +664,7 @@ split-str
 \ the locals words the raw token beside the folded one; folding changes no
 \ byte count and moves no `:`, so one colon position serves both.
 \
-\ Unjudged local binds: a local bind refused in an unjudged scan still binds at
+\ Unjudged local binds: a local bind rejected in an unjudged scan still binds at
 \ run time, so each local takes the cells the run binds into it. A declared
 \ local takes its type's cells, and a layout its full group, though the local
 \ holds the group's one-cell tag term; an undeclared local takes the cell group
@@ -697,7 +697,7 @@ split-str
 \ seen bitsets. Every structural failure latches MREJ, a hard reject ranked
 \ above uncheckable. Only a width-expanded bundle matches, linear included; a
 \ layout whose width reads an open argument is one logical cell with no
-\ payload cells, and is refused.
+\ payload cells, and is rejected.
 \
 \ String payloads: the reader spends a string literal's payload without
 \ tokenising it and reports the bytes to the stage that compiles the literal.
@@ -710,7 +710,7 @@ split-str
 \ consumed and its escapes validated; an invalid escape spends the rest of the
 \ payload and leaves SKF clear.
 \
-\ Source map: a refusal packet names where its token lies in the checked file.
+\ Source map: a rejection packet names where its token lies in the checked file.
 \ A driver that checks text it copied out of a file arms REJECTION:SOURCE! with
 \ the scanned bytes and the file line, column and byte of their first byte, and
 \ before each check hands REJECTION:MAP! the text it built with a table of the
@@ -1128,7 +1128,7 @@ TV-CLEAR
 8 constant TVK-REGION  \ a rigid allocation domain, never a value or scope
 9 constant TVK-CELL    \ a declared or fetched physical cell; cannot later become wide
 \ TVK-BASE-ONLY is a pattern, not a fence: the base operand of a pointer-distance
-\ row. It binds only the pointee of a base address (BASE-KIND?) and refuses
+\ row. It binds only the pointee of a base address (BASE-KIND?) and rejects
 \ every other term, so that row matches
 \ `X NULL-PTR -` without equating X's pointee with the null's: a distance reads
 \ no storage. It never outlives its row: RAW-BLOCK? either binds it into the
@@ -1480,7 +1480,7 @@ SCRATCH{
 variable HOLD-N
 }SCRATCH
 \ Cost only: every compression store is trailed, but the unwind that ends a failed
-\ trial or refused comparison undoes it, so compression waits until both close.
+\ trial or rejected comparison undoes it, so compression waits until both close.
 : COMPRESS? ( -- bool ) TRIAL-DEPTH @ HOLD-N @ or 0= ;
 variable TCMP                            \ path-compression walk cursor
 
@@ -4544,7 +4544,7 @@ variable NMOFF                           \ its token's offset in the checked tex
    t LAYOUT-MEM-OK? ;
 
 SCRATCH{
-\ Why an undeclared cell or a base address refused this token's value: a FENCE-
+\ Why an undeclared cell or a base address rejected this token's value: a FENCE-
 \ reason, FENCE-OK for none.
 variable RAW-FENCE
 \ Why a variable met a type it may not take in this token's unify: one of these
@@ -4568,7 +4568,7 @@ variable FACT-TERM
 106 constant MD-FACT-PASSED  \ a quotation is passed a quotation its input type does not state, with no type that keeps it (FACT-HIT, FACT-TERM)
 \ The fact record's kind, set with FACT-HIT.
 variable FACT-KIND
-\ Which base address refused a nominal or a pointer in this token's unify:
+\ Which base address rejected a nominal or a pointer in this token's unify:
 \ 0 none, TVK-NULL the null, TVK-DBASE the DATA region.
 variable BASE-PTR-HIT
 \ A `stale<t>` met a type this token's unify demanded. It holds the stale term
@@ -5946,7 +5946,7 @@ private
 111 constant MD-C2-ROOT-INIT \ WITH-INIT hands a view whose region is not `root<a>` to a callback that takes one
 90 constant MD-FIELD-NAME    \ the body ends after `WITH-FIELD` before its field name
 91 constant MD-CALLBACK-NOT-GENERIC \ a scope the call opens occurs in its rows or outside it (SCOPE-INTRO-FENCE)
-92 constant MD-SCOPED-TICK   \ a body ticks a scoped entry, which only a direct call reaches (TICK-REFUSED?)
+92 constant MD-SCOPED-TICK   \ a body ticks a scoped entry, which only a direct call reaches (TICK-REJECTED?)
 93 constant MD-C2-INIT-RECORD \ a C2 entry's record operand is no fixed-cell record it can initialize (INIT-VALUE-OK?, INIT-RECORD?)
 94 constant MD-C2-FIELD-UNKNOWN \ WITH-FIELD names no field of the record (SCOPE-FIELD-STEP)
 95 constant MD-DOES-UNMADE   \ a head reaches `does>` with no straight-line `create` or definer call (DOES-UNMADE-REJECT)
@@ -5972,7 +5972,7 @@ private
 57 constant MD-UNLOOP-JOIN   \ paths meet with different loops unlooped (CF-LOOPS=)
 58 constant MD-CF-OPEN       \ a control structure open at the definition's end
 
-\ Uncheckable, not refused (UNCK-REASON?).
+\ Uncheckable, not rejected (UNCK-REASON?).
 60 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
 61 constant MD-RECURSE-DOES  \ a RECURSE in a does> clause, which calls the defining word (CF-RECURSE)
 
@@ -6007,7 +6007,7 @@ variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
 variable MDIAG-SEEN   \ nonexhaustive: seen-bitset offset (MSEEN pool, per-check)
 variable MDIAG-VCNT   \ nonexhaustive: variant count
-variable MDIAG-NEED   \ underflow: cells the refused step's input row needs
+variable MDIAG-NEED   \ underflow: cells the rejected step's input row needs
 variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 variable MDIAG-LITV   \ literal misfit: the literal's value
 variable MDIAG-LITT   \ literal misfit: the type code it does not fit
@@ -6075,7 +6075,7 @@ variable UNSEEN           \ an undefined token a rendering statement in scope ma
 : LIN-CHECK ( n n -- )
    LIN-DELTA LIN-REJECT ;
 
-\ A C2 refusal names one logical value, even when its machine row contains
+\ A C2 rejection names one logical value, even when its machine row contains
 \ hidden fields. Catch's stale wrapper remains visible around that value.
 : C2-LOGICAL ( n -- n )
    T-RES dup TAG T-STALE = IF
@@ -6100,14 +6100,14 @@ variable UNSEEN           \ an undefined token a rendering statement in scope ma
    THEN
    CVLIVE @ DVAR ! ;
 
-\ The escape refusal's rows render the instant it is named: later tokens go on
+\ The escape rejection's rows render the instant it is named: later tokens go on
 \ binding the rows it compared.
 defer TAIL-CAPTURE-XT ( -- )
 : TAIL-CAPTURE-DEFAULT ( -- ) [: ;] is TAIL-CAPTURE-XT ;
 TAIL-CAPTURE-DEFAULT
 
 
-\ The cell disciplines refuse INSIDE the unify, so both captures below ask the
+\ The cell disciplines reject INSIDE the unify, so both captures below ask the
 \ same question the instant their unify answers false and while the pin is open.
 : CELL-DIAG! ( -- )
    SCOPE-HIT @ 1 = IF MD-SCOPE-STORE MDIAG! THEN
@@ -6125,22 +6125,22 @@ TAIL-CAPTURE-DEFAULT
    RAW-FENCE @ FENCE-EXEC = IF MD-RAW-EXEC MDIAG! THEN
    RAW-FENCE @ FENCE-PTR = IF MD-RAW-PTR MDIAG! THEN
    RAW-FENCE @ FENCE-FAMILY = IF MD-RAW-FAMILY MDIAG! THEN
-   CELL-HIT @ 0 <> IF   \ the type copied only when this refusal latches the reason
+   CELL-HIT @ 0 <> IF   \ the type copied only when this rejection latches the reason
       MDIAG @  CELL-HIT @ MDIAG!  MDIAG @ <> IF
          CELL-HIT-TYPE @ MDIAG-CELL !  ONE-CELL-VAR @ MDIAG-CELL-VAR !
       THEN
    THEN
-   FACT-HIT @ 0 <> IF   \ the facts copied only when this refusal latches the reason
+   FACT-HIT @ 0 <> IF   \ the facts copied only when this rejection latches the reason
       MDIAG @  FACT-KIND @ MDIAG!  MDIAG @ <> IF
          FACT-HIT @ MDIAG-CELL !  FACT-TERM @ MDIAG-CELL-VAR !
       THEN
    THEN
    BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN
    BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN
-   TAIL-HIT @ IF   \ captured only when this refusal latches the reason
+   TAIL-HIT @ IF   \ captured only when this rejection latches the reason
       MDIAG @  MD-TAIL-ESCAPE MDIAG!  MDIAG @ <> IF TAIL-CAPTURE-XT THEN
    THEN
-   LIT-HIT @ IF   \ the value and type copied only when this refusal latches the reason
+   LIT-HIT @ IF   \ the value and type copied only when this rejection latches the reason
       MDIAG @  MD-LIT-FIT MDIAG!  MDIAG @ <> IF LIT-V @ MDIAG-LITV !  LIT-T @ MDIAG-LITT ! THEN
    THEN ;
 
@@ -6288,9 +6288,9 @@ variable UF-NEED   variable UF-HAVE
    THEN
    0 OK ! ;
 
-\ A call's input unify, refused at its token when it reaches below the
+\ A call's input unify, rejected at its token when it reaches below the
 \ declared inputs by its fixed cells or by binding the sealed base row.
-: STEP-CALL ( n -- bool bool ) {: din:n :}   \ fit, refused for underflow
+: STEP-CALL ( n -- bool bool ) {: din:n :}   \ fit, rejected for underflow
    DCUR @ {: pre:n :}
    din STEP-BORROWS? {: borrows:bool :}
    STEP-AT-BASE? IF SGDBASE @ R-RES TAG S-ROW = ELSE RES-FALSE THEN {: open:bool :}
@@ -6395,7 +6395,7 @@ $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
 
 \ Control word bits: 0-7 and 13-18 flags with 16 the defer bit, 8-12 the INTRINSIC id, 19 the verifier
-\ query's refused-name mark, 20-39 and 40-59 the intact masks, 60 CTL-ROOTS, 61 CTL-OPAQUE.
+\ query's rejected-name mark, 20-39 and 40-59 the intact masks, 60 CTL-ROOTS, 61 CTL-OPAQUE.
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
 CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -6732,7 +6732,7 @@ $10 constant LOST-INIT
    rin ROW-CELLS UF-NEED !
    UF-NEED @ UF-HAVE @ > ;
 
-\ The read fit only by binding the return base: refused here, so the pin is the
+\ The read fit only by binding the return base: rejected here, so the pin is the
 \ read's token (CAP-FAIL).
 : RS-UNDERFLOW! ( -- )
    FAILSET @ 0=  OK @ and IF
@@ -7635,7 +7635,7 @@ variable VRC-RVN
    node VREC-FIELD-N @ cells VREC-FIELDS + !
    VREC-FIELD-N @ 1 + VREC-FIELD-N ! ;
 
-\ The checker frame's restore and CHECKER-TRY-RECORD's refusals lower the five
+\ The checker frame's restore and CHECKER-TRY-RECORD's rejections lower the five
 \ marks only through here. An image carries every store's slack, so the records
 \ it retires are zeroed first: a later image then bakes no retired record.
 : VREC-REWIND ( n n n n n -- ) {: rn:n fn:n dn:n an:n su:n :}
@@ -8074,18 +8074,18 @@ variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family 
 12 constant RF-UNCHECKABLE   \ a token of unknown effect (UNCK)
 13 constant RF-MISMATCH      \ a stack row that does not fit (DEXP)
 14 constant RF-RETURN        \ a return row that does not fit (RSBAD)
-15 constant RF-REJECTED      \ a refusal with no finer name
+15 constant RF-REJECTED      \ a rejection with no finer name
 global
 16 constant RF-USHADOW       \ a bare name a used public shadows a global for (E-USING-SHADOW-GLOBAL)
 17 constant RF-UAMBIG        \ a bare name two used publics export (E-USING-AMBIGUOUS)
 private
 18 constant RF-KEYWORD       \ a keyword named where a word is needed (a tick's or postpone's operand)
 SCRATCH{
-variable REFUSAL             \ the RF-* kind the diagnostic names; 0 = none chosen yet
-variable CREFUSE             \ the RF-* kind the load refuses this token for while compiling; 0 = none
-variable CRTGT               \ CREFUSE refuses the word this token ticks, not the token
-variable RCOMPILE            \ a compile-time refusal holds the diagnostic
-variable CUSING              \ the using refusal the walk raised at this token; 0 = none
+variable REJECTION             \ the RF-* kind the diagnostic names; 0 = none chosen yet
+variable CREJECT             \ the RF-* kind the load rejects this token for while compiling; 0 = none
+variable CRTGT               \ CREJECT rejects the word this token ticks, not the token
+variable RCOMPILE            \ a compile-time rejection holds the diagnostic
+variable CUSING              \ the using rejection the walk raised at this token; 0 = none
 }SCRATCH
 
 : USING-KIND? ( n -- bool )
@@ -8094,14 +8094,14 @@ variable CUSING              \ the using refusal the walk raised at this token; 
 
 \ Asked when the first failing token ends, or at `;` when none failed: each
 \ check raises its flag where it fails, so the flags present are that failure's.
-: REFUSAL-OF ( -- n )
+: REJECTION-OF ( -- n )
    DEADERR @ IF RF-DEAD EXIT THEN
    SGBAD @ IF RF-SIG EXIT THEN
    NPBAD @ IF RF-NP EXIT THEN
    CAPREQ @ IF RF-CAP EXIT THEN
    UNSAFE @ IF RF-UNSAFE EXIT THEN
    LINLOCBAD @ IF RF-LINLOCAL EXIT THEN
-   LOCALBAD @ IF RF-LOCAL EXIT THEN   \ a group token the checker refuses (LOC-GROUP-REJECT)
+   LOCALBAD @ IF RF-LOCAL EXIT THEN   \ a group token the checker rejects (LOC-GROUP-REJECT)
    MDIAG @ 0 <> IF RF-REASON EXIT THEN
    UNDEFERR @ IF RF-UNDEF EXIT THEN
    UNCK @ IF RF-UNCHECKABLE EXIT THEN
@@ -8109,10 +8109,10 @@ variable CUSING              \ the using refusal the walk raised at this token; 
    RSBAD @ 0 <> IF RF-RETURN EXIT THEN
    RF-REJECTED ;
 
-\ Every diagnostic field names this refusal.
-: REFUSAL@ ( -- n )
-   REFUSAL @ 0 <> IF REFUSAL @ EXIT THEN
-   REFUSAL-OF ;
+\ Every diagnostic field names this rejection.
+: REJECTION@ ( -- n )
+   REJECTION @ 0 <> IF REJECTION @ EXIT THEN
+   REJECTION-OF ;
 
 \ The offset of the text at A U in the checked text, -1 when it lies outside.
 : CHECKED-OFF ( str -- n )
@@ -8121,32 +8121,32 @@ variable CUSING              \ the using refusal the walk raised at this token; 
    off 0 <  off u + TBLEN @ >  or IF -1 EXIT THEN
    off ;
 
-\ A refusal raised past the walk pins its own token A U as kind KIND over the
+\ A rejection raised past the walk pins its own token A U as kind KIND over the
 \ walk's pin: at its offset in the checked text, else at that text's first byte.
-: PIN-REFUSED! ( str n -- )
+: PIN-REJECTED! ( str n -- )
    {: a:^ u:n kind:n :}
    u TOKBUF-ENSURE
    a FAILTK u CCOPY  u FAILTU !
    a u CHECKED-OFF {: off:n :}
    off 0 < IF 0 FAILB !  0 FAILE ! ELSE off FAILB !  off u + FAILE ! THEN
-   0 FAILIX !  kind REFUSAL !  -1 FAILSET !
+   0 FAILIX !  kind REJECTION !  -1 FAILSET !
    CRTGT @ 0=  QDEPTH @ 0=  and PIN-BODY-CALL ! ;
 
-\ A token refused twice keeps the first: preflight refuses an unmodeled
+\ A token rejected twice keeps the first: preflight rejects an unmodeled
 \ immediate before anything resolves it, so one the checker cannot resolve
-\ either is refused as the immediate.
-: CREFUSE! ( n -- )
-   CREFUSE @ 0 <> IF drop EXIT THEN
-   CREFUSE ! ;
+\ either is rejected as the immediate.
+: CREJECT! ( n -- )
+   CREJECT @ 0 <> IF drop EXIT THEN
+   CREJECT ! ;
 
 \ A compile-time reason (a construct or match family that resolves nothing, a
-\ control-flow word the load cannot compile) names the refusal unless an earlier
-\ compile-time refusal holds the diagnostic or refused this token, whatever reason
+\ control-flow word the load cannot compile) names the rejection unless an earlier
+\ compile-time rejection holds the diagnostic or rejected this token, whatever reason
 \ an earlier check latched.
 : MDIAG-COMPILE! ( n -- )
    {: code:n :}
-   RCOMPILE @  CREFUSE @ 0 <>  or IF EXIT THEN
-   code MDIAG !  RF-REASON CREFUSE ! ;
+   RCOMPILE @  CREJECT @ 0 <>  or IF EXIT THEN
+   code MDIAG !  RF-REASON CREJECT ! ;
 
 : HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
 
@@ -8345,7 +8345,7 @@ private
    SIG-UNRES-CLEAR ;
 
 \ Installed by the nominal resolver once its package and grammar rules exist.
-\ A pre-install parse retains the ordinary unknown-type refusal.
+\ A pre-install parse retains the ordinary unknown-type rejection.
 defer TYPE-MAY-ARRIVE-XT ( str -- bool nominal )
 
 : BAD-SIG-TYPE ( str -- n )
@@ -8471,7 +8471,7 @@ variable PKHAVE
    BEGIN SIG-INK? WHILE SI @ 1 + SI ! REPEAT
    SS@ SB@ SI @ + SS@ - ;
 
-\ A malformed contract must refuse, never parse as some other effect.
+\ A malformed contract must reject, never parse as some other effect.
 : EXPECT-SIG ( str -- ) {: ea:^ eu:n :}
    NEXT-SIG-TOK ea eu SIG-EXPECTED ;
 
@@ -8487,7 +8487,7 @@ variable PKHAVE
    a u s" |"  STR:= ;
 
 \ The token `ptr` names no type: a pointer is `^T` (SIG-CARET?) and `ptr<...>` is
-\ the family. SIG-TYPE refuses it as an unknown type even where a family of that
+\ the family. SIG-TYPE rejects it as an unknown type even where a family of that
 \ tail resolves, and FAMILY-RESERVED? keeps it from naming a family.
 : SIG-PTR-TOK? ( str -- bool )
    s" ptr" STR:= ;
@@ -8526,9 +8526,9 @@ variable PKHAVE
 
 \ An effect spells a type exactly as declared, so `CELL` and `PTR` are types
 \ beside `cell`. A name holding `(` (40), `"` (34) or `\` (92) is
-\ refused wherever that byte sits: where source names the type again, check.f's
+\ rejected wherever that byte sits: where source names the type again, check.f's
 \ lexer can read such a token as a comment or string opener. A name beginning
-\ with `^` (94) is refused: an effect reads it as a pointer (SIG-CARET?).
+\ with `^` (94) is rejected: an effect reads it as a pointer (SIG-CARET?).
 : TYPE-BAD-BYTE? ( n -- bool ) {: c:n :}
    c SIG-DELIM-CHAR? IF RES-TRUE EXIT THEN
    c 41 = IF RES-TRUE EXIT THEN
@@ -8630,7 +8630,7 @@ defer SIG-TYPE-XT ( str -- n nominal )
    bound SIG-PARENT-ROOT 0 ;
 
 \ A nesting limit ends the signature text where it is passed: nothing nested
-\ deeper is read, built or walked, and no later token latches a refusal.
+\ deeper is read, built or walked, and no later token latches a rejection.
 : SIG-STOP ( -- )
    SL @ SI !  PKRESET ;
 
@@ -8708,7 +8708,7 @@ defer SIG-TYPE-XT ( str -- n nominal )
 
 \ `base` marks the shared scratch depth on entry, so a nested family's MK-PARAM
 \ rewinds to its own base and leaves the parent's pushed args intact. A `ptr`
-\ without `<` must always reach the unknown-type refusal below, even when `ptr`
+\ without `<` must always reach the unknown-type rejection below, even when `ptr`
 \ is a live family: only `family<...>` takes the family branch.
 : SIG-TYPE-ONE ( str -- n ) {: a:^ u:n :}
    u 0= IF a u SGBAD-SYNTAX! 1 MK-CON EXIT THEN
@@ -8849,7 +8849,7 @@ variable SQUOT-N   0 SQUOT-N !
       ELSE drop THEN
    loop ;
 
-\ NP-ROWS-CHECK refused a root bound to fixed cells, so each root is an unbound
+\ NP-ROWS-CHECK rejected a root bound to fixed cells, so each root is an unbound
 \ row, which E-ROW-KIND publishes as TVK-ANY.
 : SG-ROWS-RESOLVE ( -- )
    SG-ROWS-N @ 0 ?do
@@ -9467,7 +9467,7 @@ variable ROOT-SET-W
       drow rrow dfacts rfacts or
    ELSE PK! drow RR-SHARED @ dfacts THEN ;
 
-\ The rules a signature's rows pass, parsed or built; a refusal sets SGBAD at
+\ The rules a signature's rows pass, parsed or built; a rejection sets SGBAD at
 \ the token A U. HASR says the rows carry a return clause, whose check names
 \ the parse's text. SCOPE-SUPPLIED? reads the inputs from PD-IN and PR-IN.
 : SIG-ROWS-CHECK ( str n n n n bool bool -- )
@@ -9839,11 +9839,11 @@ SCRATCH{
 variable LBI-T
 }SCRATCH
 variable LBI-BAD
-variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
-variable LBI-XT       \ the refused stored type parsed and names `xt`
-variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
-variable LBI-EFFECT   \ the refused stored type parsed and holds an EFFECT:type
-variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear value
+variable LBI-SCHEME   \ the rejected stored type parsed and holds a scheme
+variable LBI-XT       \ the rejected stored type parsed and names `xt`
+variable LBI-WIDTH    \ the rejected stored type parsed and holds a `width<t>`
+variable LBI-EFFECT   \ the rejected stored type parsed and holds an EFFECT:type
+variable LBI-LINEAR   \ the rejected stored type parsed and may hold a linear value
 
 \ A stored `xt` would be an engine code address, which no image relocation kind
 \ follows across a restore. A quotation's rows hold no cell.
@@ -9935,8 +9935,8 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE ;
 
-\ A sub-cell integer con is refused as the direct stored type: a stored `u8`
-\ would mint `( -- ^u8 )`, and cell `@` over `^u8` is refused.
+\ A sub-cell integer con is rejected as the direct stored type: a stored `u8`
+\ would mint `( -- ^u8 )`, and cell `@` over `^u8` is rejected.
 : STORAGE-SUBCELL-CON? ( n -- bool ) {: c:n :}
    c CC-U8 = c CC-U16 = or c CC-U32 = or c CC-CHAR = or ;
 : STORAGE-STRUCT-CON? ( n -- bool ) {: t:n :}
@@ -10126,7 +10126,7 @@ variable VREC-TYPE-U
    at 0 ;
 
 \ Registers the record, or leaves every record table as it found it and
-\ answers the byte offset of the field it refuses and why.
+\ answers the byte offset of the field it rejects and why.
 : VREC-TRY ( str str -- n n )
    {: name:^ nameu:n fields:^ fieldsu:n :}
    name nameu TYPE-RESERVED? IF 0 VREC-WHY-NAME EXIT THEN
@@ -11549,7 +11549,7 @@ UIX-RESET
    E-PTR EN.TAG @ ;
 
 \ How many cells decide this node's shape. 0 means the tag is not one this file
-\ writes, and E-INTERN refuses to intern such a node.
+\ writes, and E-INTERN does not intern such a node.
 : E-KEY-N ( n -- n ) {: p:n :}
    p E-NODE-TAG {: tg:n :}
    tg EN-CON = IF 1 EXIT THEN
@@ -12656,7 +12656,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:PUBLISH
 
 \ --- stored-signature intake (USIG-ADD-AS).
 
-\ A MULTI-ERROR load counts each refused definition and goes on.
+\ A MULTI-ERROR load counts each rejected definition and goes on.
 variable MULTI-ERR
 0 MULTI-ERR !
 variable MULTI-ERR-BASE   \ REJECTION:TALLY at MULTI-ERR-BEGIN
@@ -12728,7 +12728,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
 
 \ Pins SGBAD-TOKEN; never a token the walk pinned.
 : SGBAD-PIN ( str str -- )
-   SGBAD-TOKEN RF-SIG PIN-REFUSED! ;
+   SGBAD-TOKEN RF-SIG PIN-REJECTED! ;
 
 \ A neutral replay starts at zero and may overwrite caller rows, so rollback
 \ savepoints preserve the rows alongside the depth.
@@ -13066,7 +13066,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 \ places.
 : USIG-ADD-BAD ( str str -- )
    {: sa:^ su:n at:^ atu:n :}
-   WRITE-WINDOW-CK                       \ a refusal moves the latches too
+   WRITE-WINDOW-CK                       \ a rejection moves the latches too
    0 RECW !                              \ no record stored: nothing to publish wide
    sa su at atu SGBAD-REJECTION
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
@@ -13074,8 +13074,8 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ An effect with these rows deeper than a record holds is a stored signature
-\ no record can hold, whatever path records it: refused as a bad one by the
-\ bound it passes. The result is false after that refusal returns, true when
+\ no record can hold, whatever path records it: rejected as a bad one by the
+\ bound it passes. The result is false after that rejection returns, true when
 \ the rows fit.
 : USIG-DEPTH-FITS? ( str str n n n n -- bool )
    {: sa:^ su:n at:^ atu:n din:n dout:n rin:n rout:n :}
@@ -13466,9 +13466,9 @@ PTR-VARIABLE LVM-IN-P   PTR-VARIABLE LVM-OUT-P   variable LVM-CAP
    de 2 = IF MD-RIGID-EXTENT EXIT THEN
    MD-RIGID-GEN ;
 
-\ A refused identity is captured as a one-cell mismatch: a new identity of the
+\ A rejected identity is captured as a one-cell mismatch: a new identity of the
 \ name's domain against the one held.
-: RIGID-HELD-REFUSE ( n n -- ) {: held:n want:n :}
+: RIGID-HELD-REJECT ( n n -- ) {: held:n want:n :}
    FAILSET @ 0= IF
       0 UF-SET !  -1 CUR-UPOS !
       held want U-FAIL
@@ -13655,7 +13655,7 @@ PTR-VARIABLE CALL-MINT-P   variable CALL-MINT-CAP   variable CALL-MINT-N
    held ISVAR 0= IF held EXIT THEN
    held NP-DECLARED? IF held EXIT THEN
    name FB-MINT {: id:n :}
-   held PAY id RAW-BLOCK? IF held id RIGID-HELD-REFUSE held EXIT THEN
+   held PAY id RAW-BLOCK? IF held id RIGID-HELD-REJECT held EXIT THEN
    id held PAY TV!
    id CALL-MINT+
    id ;
@@ -13681,7 +13681,7 @@ EXPORT CHECKER-QUOT-FRESH:CALLED
    da de = IF idx held de E-AK-CLASH-BELOW? 0= IF EXIT THEN THEN
    de 0 <> da 0 >= and IF de da RIGID-DOMAIN-REASON MDIAG! THEN
    held ISVAR IF held NP-DECLARED? IF MD-RIGID-XDOM MDIAG! THEN THEN
-   held  idx EI-AK-NAME @ FB-MINT  RIGID-HELD-REFUSE ;
+   held  idx EI-AK-NAME @ FB-MINT  RIGID-HELD-REJECT ;
 
 : E-AK-CLAIM ( -- )
    0 BEGIN dup EI-AK-HW @ <  OK @ 0 <>  and WHILE
@@ -13906,7 +13906,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-REWIND
    UEND !
    UTERM! ;
 
-\ Marks the just-registered prim a trust boundary: a checked caller is refused,
+\ Marks the just-registered prim a trust boundary: a checked caller is rejected,
 \ a TRUSTED: body (never checked) may use it.
 : PRIM-TRUSTED-ONLY! ( -- ) PE-TRUSTED-ONLY PE-LAST-FLAG! ;
 
@@ -13942,7 +13942,7 @@ variable PRM-FIRST
    sym PRIM-FIRST-IDX dup 0 = IF EXIT THEN
    1 - PE-EFF@ ;
 
-\ A refused declaration is available only to the current multi-error run's
+\ A rejected declaration is available only to the current multi-error run's
 \ checker walk. It never becomes an engine binding or an executable source row.
 : RECOVERY-LIVE ( n -- n )
    {: sym:n :}
@@ -14449,13 +14449,13 @@ global
 \ A `generates:` row the checker cannot keep.
 7153 constant E-GENERATES-ROW
 private
-variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine's own lookup refuses it
+variable USING-UNBOUND   \ no global binds the tail the walk rejected: the engine's own lookup rejects it
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
 variable WALK-USED       \ the record the walk bound is only a used public's (LIVE-BIND)
 SCRATCH{
 PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the diagnostic's token as written
 variable USH-PKG-A   variable USH-PKG-U     \ the used package's folded name, its SYM-STR offset (renders PKG:WORD)
-variable USING-HOLD      \ a body token's walk holds its using refusal for the selector (DO-TOK1)
+variable USING-HOLD      \ a body token's walk holds its using rejection for the selector (DO-TOK1)
 variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the using diagnostics
 }SCRATCH
 
@@ -14567,7 +14567,7 @@ EXPORT CHECKER-USE:NAME!
 
 EXPORT CHECKER-RESOLVE:AUTHORITY
 
-\ After that recovery the mirror is set from the restored scope, else every later replay refuses E-PKG-CONTEXT. A scope
+\ After that recovery the mirror is set from the restored scope, else every later replay rejects E-PKG-CONTEXT. A scope
 \ AUTHORITY cannot authenticate keeps the notifications' mirror while a package is open, else sets top level.
 : MIRROR ( -- )
    SLOTS
@@ -14742,7 +14742,7 @@ variable SEALS-N
    a u s" :}" STR:=CI IF RES-TRUE EXIT THEN
    a u TOP-PARSER? ;
 
-: DEF-KEYWORD-REFUSE ( str str -- ) {: a:^ u:n t:^ tu:n :}
+: DEF-KEYWORD-REJECT ( str str -- ) {: a:^ u:n t:^ tu:n :}
    s" E-RESERVED-DEFINITION" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` is a keyword and cannot name a definition" REJECTION:EMIT-STR
@@ -14750,7 +14750,7 @@ variable SEALS-N
    REJECTION:HELP
    s" give the definition a name that is not a keyword" REJECTION:EMIT-STR ;
 
-: DEF-NUMBER-REFUSE ( str str -- ) {: a:^ u:n t:^ tu:n :}
+: DEF-NUMBER-REJECT ( str str -- ) {: a:^ u:n t:^ tu:n :}
    s" E-NUMERIC-DEFINITION" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` reads as a number and cannot name a definition" REJECTION:EMIT-STR
@@ -14773,8 +14773,8 @@ public
 \ placed at t tu, and answers whether it did; the caller ends it.
 : DEF-NAME-REJECT? ( str str -- bool ) {: a:^ u:n t:^ tu:n :}
    a u NAME-TAIL$ {: na:^ nu:n :}
-   na nu NAME-KEYWORD? if na nu t tu DEF-KEYWORD-REFUSE RES-TRUE exit then
-   na nu NAME-NUMERIC? if na nu t tu DEF-NUMBER-REFUSE RES-TRUE exit then
+   na nu NAME-KEYWORD? if na nu t tu DEF-KEYWORD-REJECT RES-TRUE exit then
+   na nu NAME-NUMERIC? if na nu t tu DEF-NUMBER-REJECT RES-TRUE exit then
    RES-FALSE ;
 \ Whether DEF-NAME-REJECT? would reject a u, for a gate that writes no record.
 : DEF-NAME-BAD? ( str -- bool ) {: a:^ u:n :}
@@ -15033,7 +15033,7 @@ variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it op
 variable OUTSIDE0
 
 \ The undo log, at most one pair per record: a replayed `undefine`'s index and
-\ wid, or a GRANT row's with BOOT:NAMESPACE-WL, a wid record-wid! refuses.
+\ wid, or a GRANT row's with BOOT:NAMESPACE-WL, a wid record-wid! rejects.
 PTR-VARIABLE LOG-P
 variable LOG-CAP
 variable LOG-N
@@ -15554,7 +15554,7 @@ EXPORT CHECKER-RESOLVE:CK-REC-NAME$
 
 EXPORT CHECKER-RESOLVE:HEAD-ROW
 
-\ A name with no row gets NS-ENSURE's placeholder; the run refuses USING-UNKNOWN.
+\ A name with no row gets NS-ENSURE's placeholder; the run rejects USING-UNKNOWN.
 \ NAME, not the slot CHECKER-USE:NAME! folds to lower case, spells a new row.
 : OPEN-USING ( str -- ) {: a:^ u:n :}
    a u CHECKER-USING
@@ -15779,7 +15779,7 @@ EXPORT CHECK:CHECKER-VERIFY-FILE
 ;package
 package CHECK
 
-\ --- storage declaration refusals ---------------------------------------------
+\ --- storage declaration rejections ---------------------------------------------
 1 constant STG-UNKNOWN-TYPE     \ the type names nothing the checker knows
 2 constant STG-MALFORMED-TYPE   \ the type does not parse
 global
@@ -16000,9 +16000,9 @@ private
    s"  a positive count whose elements fit in memory" REJECTION:EMIT-STR
    STGR-END ;
 
-\ A definer with no name on its line declares no word, so it is refused at its
+\ A definer with no name on its line declares no word, so it is rejected at its
 \ own token, which stands in for the word.
-: CHECKER-STORAGE-NAME-REFUSE ( str -- ) {: da:^ du:n :}
+: CHECKER-STORAGE-NAME-REJECT ( str -- ) {: da:^ du:n :}
    da du da du STG-NO-NAME CHECKER-STORAGE-REJECT ;
 
 \ A published storage name has at most one inner ':' and does not end in one.
@@ -16147,7 +16147,7 @@ variable CK-PEND-IX
    ix 0 < IF 0 EXIT THEN
    ix CK-USE-SLOT ix CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF EXIT THEN drop 0 ;
 
-\ The packages a using refusal names: every package the lookup met, not only the
+\ The packages a using rejection names: every package the lookup met, not only the
 \ two scope-find reports.
 : CK-USED-MARK ( str -- ) {: a:^ u:n :}
    0 CK-USED-MASK !
@@ -16413,7 +16413,7 @@ EXPORT CHECK:USING-HOLD
 EXPORT CHECK:CUSING
 EXPORT CHECK:USH-TOK-A
 EXPORT CHECK:USH-TOK-U
-EXPORT CHECK:CREFUSE!
+EXPORT CHECK:CREJECT!
 EXPORT CHECK:CRTGT
 EXPORT CHECK:FAILSET
 EXPORT CHECK:CK-USED-MASK
@@ -16423,8 +16423,8 @@ EXPORT CHECK:USH-PKG-U
 EXPORT CHECK:USING-SHADOW-REJECT
 EXPORT CHECK:USING-AMBIGUOUS-REJECT
 EXPORT CHECK:OK
-\ Inside a body token's walk (USING-HOLD) a using refusal renders nothing and
-\ throws nothing: the scan's end raises it if the definition is refused for it.
+\ Inside a body token's walk (USING-HOLD) a using rejection renders nothing and
+\ throws nothing: the scan's end raises it if the definition is rejected for it.
 : RAISE ( ^u8 n n -- )
    {: s:^ su:n why:n :}
    why EXIT-STATUS:REJECTED = IF CHECKER-PKG-CONTEXT-REJECT THEN
@@ -16432,7 +16432,7 @@ EXPORT CHECK:OK
       CUSING @ 0 <> IF EXIT THEN
       s USH-TOK-A !  su USH-TOK-U !
       why E-USING-SHADOW-GLOBAL = IF RF-USHADOW ELSE RF-UAMBIG THEN CUSING !
-      CRTGT @ 0 <>  USING-UNBOUND @ 0 <>  or IF CUSING @ CREFUSE! THEN
+      CRTGT @ 0 <>  USING-UNBOUND @ 0 <>  or IF CUSING @ CREJECT! THEN
       0 OK !  -1 FAILSET !
       EXIT
    THEN
@@ -16447,14 +16447,14 @@ EXPORT CHECK:OK
    s" checker: CHECKER-RESOLVE:RAISE got a code LIVE-BIND never answers" EXIT-STATUS:INTERNAL die ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME be
-\ refused? It raises and renders nothing.
-: REFUSES? ( str -- bool )
+\ rejected? It raises and renders nothing.
+: REJECTS? ( str -- bool )
    WALK nip 0 <> ;
 ;package
 package CHECK
 
-\ The using refusal the selector took: its token and what the walk captured for
-\ it, kept from the later lookups and refusals that move them.
+\ The using rejection the selector took: its token and what the walk captured for
+\ it, kept from the later lookups and rejections that move them.
 SCRATCH{
 PTR-VARIABLE UHELD-TOK-A   variable UHELD-TOK-U
 variable UHELD-PKG-A   variable UHELD-PKG-U
@@ -16469,16 +16469,16 @@ variable UHELD-MASK
 EXPORT CHECKER-RESOLVE:RAISE
 
 : USING-RAISE ( -- )
-   REFUSAL @ USING-KIND? 0= IF EXIT THEN
+   REJECTION @ USING-KIND? 0= IF EXIT THEN
    UHELD-PKG-A @ USH-PKG-A !  UHELD-PKG-U @ USH-PKG-U !
    UHELD-MASK @ CK-USED-MASK !
    UHELD-TOK-A @ UHELD-TOK-U @
-   REFUSAL @ RF-USHADOW = IF E-USING-SHADOW-GLOBAL ELSE E-USING-AMBIGUOUS THEN
+   REJECTION @ RF-USHADOW = IF E-USING-SHADOW-GLOBAL ELSE E-USING-AMBIGUOUS THEN
    RAISE ;
 
 EXPORT CHECKER-RESOLVE:WALK
 
-\ `a u` is the token to resolve, `s su` its spelling for a refusal to name.
+\ `a u` is the token to resolve, `s su` its spelling for a rejection to name.
 : CHECKER-BIND-WHY ( str str -- n n )
    {: a:^ u:n s:^ su:n :}
    a u WALK {: sym:n why:n :}
@@ -16502,13 +16502,13 @@ EXPORT CHECK:CHECKER-TRUSTED-TICK?
 ;package
 package CHECK
 
-\ The two used-scope refusals belong to the definition being checked. Anything
+\ The two used-scope rejections belong to the definition being checked. Anything
 \ else the walk throws propagates, so the pre-pass reports it.
 : FQSYM-DEFERRED? ( n -- bool ) {: code:n :}
    code E-USING-SHADOW-GLOBAL =  code E-USING-AMBIGUOUS =  or ;
 
 \ The symbol the walk binds, 0 when it binds nothing, and true when it deferred
-\ one of those two refusals: a name the load refuses, not one it lacks.
+\ one of those two rejections: a name the load rejects, not one it lacks.
 : CHECKER-QUIET-WALK ( str -- n bool )
    {: a:^ u:n :}
    a u WALK {: sym:n why:n :}
@@ -16697,7 +16697,7 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
 
 \ ---- effect-read export API -------------------------------------------------
 \ FIND-SIG, E-DIN@/E-DOUT@, E-PTR and the EN-* accessors are sig-less, so the
-\ sealed checker refuses them.
+\ sealed checker rejects them.
 
 variable EFFQ-OK            \ bool: last EFFECT-QUERY resolved an active effect
 variable EFFQ-DIN           \ din row offset (E-OFF) of the queried effect, 0 = none
@@ -17526,7 +17526,7 @@ private
    pin CELLS-NONE = pout CELLS-NONE = or IF EXIT THEN
    din ROW-CELLS dout ROW-CELLS {: nin:n nout:n :}
    nin pin =  nout pout =  and IF EXIT THEN
-   p pu RF-REJECTED PIN-REFUSED!   \ the definition's name, not the walk's token
+   p pu RF-REJECTED PIN-REJECTED!   \ the definition's name, not the walk's token
    s" E-SHADOWED-ARITY" REJECTION:OPEN
    vis SBA-SECTION$ REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR  priv vis p pu SBA-WORD
    s" ` has a different stack effect from its package's private `" REJECTION:EMIT-STR
@@ -17588,8 +17588,8 @@ PTR-VARIABLE OWNQ-P   variable OWNQ-CAP   variable OWNQ-N
    CERTIFIED? E-ADD-EFFECT DL-TAKE
    RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
-\ CHECK's publication of a declared signature. Its refusals were asked by
-\ PUBLISH-REFUSALS before the definition's first write.
+\ CHECK's publication of a declared signature. Its rejections were asked by
+\ PUBLISH-REJECTIONS before the definition's first write.
 : CHECKER-USIG-CERT-PARSED ( str -- )
    {: na:^ nu:n :}
    NMOFF @ TADDR nu 2dup CHECKER-REC-NAME-AT!
@@ -17602,7 +17602,7 @@ PTR-VARIABLE OWNQ-P   variable OWNQ-CAP   variable OWNQ-N
    ELSE CHECKER-PUBLISH-PARSED THEN ;
 
 \ Publishes certified rows as built, under the signature text SA SU, which only
-\ a refusal names. Only USIG-ADD-AS's depth bound can trip.
+\ a rejection names. Only USIG-ADD-AS's depth bound can trip.
 : CHECKER-ROWS-PUBLISH ( str str n n n n bool -- )
    {: sa:^ su:n na:^ nu:n din:n dout:n rin:n rout:n hasr:bool :}
    na nu na nu USIG-CERT-ADMIT
@@ -17610,7 +17610,7 @@ PTR-VARIABLE OWNQ-P   variable OWNQ-CAP   variable OWNQ-N
    din KEEP-QUOTS  dout KEEP-QUOTS
    din dout rin rout hasr RES-TRUE E-ADD-EFFECT DL-TAKE ;
 
-\ Publishes a cast's certified rows as parsed: a reparse refuses a view pack
+\ Publishes a cast's certified rows as parsed: a reparse rejects a view pack
 \ and drops the marks a gate raised.
 : CHECKER-USIG-CERT-ROWS ( str str -- )
    {: sa:^ su:n na:^ nu:n :}
@@ -17657,9 +17657,9 @@ EXPORT CHECK:FEP
 EXPORT CHECK:MK-CON
 EXPORT CHECK:MK-PUSH
 EXPORT CHECK:UNIFY-IN
-EXPORT CHECKER-RESOLVE:REFUSES?
+EXPORT CHECKER-RESOLVE:REJECTS?
 : BY-EFFECT? ( str -- bool ) {: a:^ u:n :}
-   a u REFUSES? IF RES-FALSE EXIT THEN
+   a u REJECTS? IF RES-FALSE EXIT THEN
    a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
    EFFECT-DIN-N 0 <> IF RES-TRUE EXIT THEN
    FEP @ E-INST-RESET
@@ -17908,7 +17908,7 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    name nameu s" -GROW" s" n --" CHECKER-DEFSUFFIX-NAME ;
 
 \ CHECK's publication of an inferred effect. Its duplicate question was asked
-\ by PUBLISH-REFUSALS before the first write.
+\ by PUBLISH-REJECTIONS before the first write.
 : CHECKER-USIG-CERT-CURRENT ( str -- )
    {: na:^ nu:n :}
    na nu  NMOFF @ TADDR nu  CHECKER-REC-NAME-AT!
@@ -18191,7 +18191,7 @@ private
    RECORD-LINK-OCC ;
 
 \ Reclaiming code can retire an occurrence while its ordinal remains in NDICT.
-\ Only that expected selection refusal means the saved link is stale.
+\ Only that expected selection rejection means the saved link is stale.
 : RECORD-LINK-MATCH? ( n n -- bool )
    {: ord:n saved:n :}
    [: ord RECORD-LINK-SELECT ;] catch
@@ -18708,7 +18708,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 \ replay never runs this line; the definition's end keeps the identity its
 \ symbol carries.
 \ The row declarers' ids also publish CTL-PARSES: each reads its row, but its
-\ trusted body calls the registrar the scan refuses, so no checked body records
+\ trusted body calls the registrar the scan rejects, so no checked body records
 \ the flag its parse-name calls give.
 : INTRINSIC-CTL ( n -- n ) {: id:n :}
    id INTRINSIC>CTL
@@ -18793,7 +18793,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    THEN
    a u ENGINE-WORD-SYM a u ENGINE-WORD-REC ;
 
-\ 0 and false when `using` refuses it: the load runs no word for a shadowed or
+\ 0 and false when `using` rejects it: the load runs no word for a shadowed or
 \ ambiguous name, so no engine word of that name stands in.
 : CHECKER-TOP-SYM ( str -- n bool )
    {: a:^ u:n :}
@@ -19203,7 +19203,7 @@ EXPORT CHECKER-OVERLAY:CLAUSE
 global
 
 \ CAST: legality rejects. A cast retypes between two single-cell machine types;
-\ the gate refuses anything wider.
+\ the gate rejects anything wider.
 7129 constant E-CAST-ARITY    \ identity sig is not one term per side over the same row
 7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
@@ -19798,12 +19798,12 @@ variable WFN-OFF   variable WFN-ROW   variable WFN-K
    val P>TYPE T-RES TAG T-STALE = IF val P>TYPE EXIT THEN
    val count 1 - RECURSE ;
 
-: STORE-STALE-REFUSE? ( n -- bool )
+: STORE-STALE-REJECT? ( n -- bool )
    DCUR @ swap STORE-STALE-TYPE dup 0= IF drop RES-FALSE EXIT THEN
    dup STALE-WHY C2-REJECT RES-TRUE ;
 
 : CELL-STORE-TOK ( bool -- ) {: layout:bool :}
-   1 STORE-STALE-REFUSE? IF EXIT THEN
+   1 STORE-STALE-REJECT? IF EXIT THEN
    layout IF LAYOUT-MEM-INNER IF LAYOUT-STORE-STEP EXIT THEN drop THEN
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
    STORE-QUOT-CONTRACT {: contract:n retained:bool :}
@@ -19815,7 +19815,7 @@ variable WFN-OFF   variable WFN-ROW   variable WFN-K
    bad IF MEM-BYTE-PTR-REJECT THEN ;
 
 : ATOMIC-CAS-TOK ( -- )
-   2 STORE-STALE-REFUSE? IF EXIT THEN
+   2 STORE-STALE-REJECT? IF EXIT THEN
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
    STORE-QUOT-CONTRACT {: contract:n retained:bool :}
    retained IF contract QCON-BEGIN THEN
@@ -19826,7 +19826,7 @@ variable WFN-OFF   variable WFN-ROW   variable WFN-K
    bad IF MEM-BYTE-PTR-REJECT THEN ;
 
 \ `ptr-field` is one prim row for every base, so the base is checked here
-\ before the row applies: a base whose pointee is still a RAW var is refused.
+\ before the row applies: a base whose pointee is still a RAW var is rejected.
 : RAW-FIELD-BASE? ( n -- bool )
    R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN        \ the field index
    P>REST R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN \ the base
@@ -19834,7 +19834,7 @@ variable WFN-OFF   variable WFN-ROW   variable WFN-K
    PTR>INNER T-RES dup ISVAR 0= IF drop RES-FALSE EXIT THEN
    PAY TVK-RAW? ;
 
-\ This one refuses the token outright rather than failing a unify, so it names
+\ This one rejects the token outright rather than failing a unify, so it names
 \ itself here: the pin is this token and FAILSET is still clear.
 : RAW-FIELD-TOK? ( -- bool )
    DCUR @ RAW-FIELD-BASE? 0= IF RES-FALSE EXIT THEN
@@ -20514,7 +20514,7 @@ PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
 EXPORT CHECKER-ITEMS:POSTPONED-REC
 
 \ Made on the first ask for the token DO-TOK1 is reading, and read by every
-\ later reader of that token. A refusal the lookup raises names the token as
+\ later reader of that token. A rejection the lookup raises names the token as
 \ DO-TOK1 read it; `a u` may be the fold the body walk keeps in scratch.
 : BIND-TOK ( str -- )
    {: a:^ u:n :}
@@ -20548,7 +20548,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
 EXPORT CHECKER-TAPE:K-NAME
 
 \ Once a token's role is a source call, keep its original resolution even when
-\ a later type step refuses. The declared ABI is selected by that symbol,
+\ a later type step rejects. The declared ABI is selected by that symbol,
 \ before judgment or publication can change the active name.
 : BIND-SOURCE-CALL ( str -- ) {: a:^ u:n :}
    a u BIND-TOK
@@ -20571,18 +20571,18 @@ EXPORT CHECKER-TAPE:K-NAME
 \ This run's recovery fact applies and is a recovery use under any authority, an
 \ unjudged scan's too: the native compiler withholds the definition that used
 \ it.
-0 constant CALL-REFUSED
+0 constant CALL-REJECTED
 1 constant CALL-APPLIES
 2 constant CALL-RECOVERS
 3 constant CALL-PRIMS
 
 : CALL-AUTHORITY ( n -- n ) {: sym:n :}
-   sym PRIM-TRUSTED-SYM? IF CALL-REFUSED EXIT THEN
+   sym PRIM-TRUSTED-SYM? IF CALL-REJECTED EXIT THEN
    FEP @ RECOVERY-ROW? IF CALL-RECOVERS EXIT THEN
    ENFORCED? 0= IF CALL-APPLIES EXIT THEN
    sym EFFECT-EXTERNAL-SYM? IF CALL-APPLIES EXIT THEN
    sym PRIM-ROWS-SYM? IF CALL-PRIMS EXIT THEN
-   FEP @ ER.ACTIVE @ EFF-RECOVERY = IF CALL-REFUSED EXIT THEN
+   FEP @ ER.ACTIVE @ EFF-RECOVERY = IF CALL-REJECTED EXIT THEN
    CALL-APPLIES ;
 
 variable CHECKER-PREFIX-CUT
@@ -20610,15 +20610,15 @@ variable CHECKER-PREFIX-ROLLBACK
 
 EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
 
-\ A name the walk refused for a `using` is not undefined. No definition, now or
+\ A name the walk rejected for a `using` is not undefined. No definition, now or
 \ later, makes a keyword a word.
-: REFUSE-UNDEFINED ( str -- )
+: REJECT-UNDEFINED ( str -- )
    CUSING @ 0 <> IF 2drop EXIT THEN
    2dup BODY-KEYWORD? IF
-      2drop RF-KEYWORD CREFUSE!  0 OK !  -1 FAILSET !  EXIT
+      2drop RF-KEYWORD CREJECT!  0 OK !  -1 FAILSET !  EXIT
    THEN
    CALL-UNDEFINED IF EXIT THEN
-   CHECKER-QBAD-TOK @ 0 <> IF RF-QUAL ELSE RF-UNDEF THEN CREFUSE! ;
+   CHECKER-QBAD-TOK @ 0 <> IF RF-QUAL ELSE RF-UNDEF THEN CREJECT! ;
 
 : ZERO-USE-TEST ( n n -- ) {: pre:n prer:n :}
    OK @ 0= IF EXIT THEN
@@ -21055,7 +21055,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
    REPEAT RES-FALSE ;
 
 \ depth/.s count raw cells, so over a wide value or one of open width they fail
-\ closed; the type and pin are taken only when this refusal names the reason.
+\ closed; the type and pin are taken only when this rejection names the reason.
 : HIDROW-STEP? ( -- bool )
    DCUR @ ROW-UNCOUNTABLE 0= IF drop RES-FALSE EXIT THEN
    {: wide:n :}
@@ -21193,13 +21193,13 @@ variable #CFC
 \ rejection holds the diagnostic.
 : LOC-REJECT ( -- )
    RCOMPILE @ 0= IF
-      LOCALBAD-SCOPE LOCALBAD-KIND !  RF-LOCAL CREFUSE!
+      LOCALBAD-SCOPE LOCALBAD-KIND !  RF-LOCAL CREJECT!
    THEN
    -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
 
 \ A locals group names only locals: `--` declares no outputs, the signature
 \ does, and `|` opens no uninitialised locals. The load binds either token as a
-\ local, so this is a check failure, not a compile-time refusal.
+\ local, so this is a check failure, not a compile-time rejection.
 : LOC-GROUP-REJECT ( n -- ) {: kind:n :}
    FAILSET @ 0=  RCOMPILE @ 0=  and IF kind LOCALBAD-KIND ! THEN
    -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
@@ -21465,7 +21465,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    loop -1 ;
 
 : LOC-BIND
-   \ A prior refusal may leave a partially bound row; the names are already parsed.
+   \ A prior rejection may leave a partially bound row; the names are already parsed.
    OK @ 0= IF FRESH MK-ROW DCUR ! EXIT THEN
    FRESH {: tail:n :}
    tail MK-ROW LGRP @ BEGIN dup #LOC @ < WHILE
@@ -21478,7 +21478,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    cap  #LOC @ LGRP @ -  UNSIZED-FIX
    cap  #LOC @ LGRP @ -  TSTART @ WF-ROW-SCAN
    \ A captured cell LOC-BUNDLE-ROW leaves open-width binds as one cell of a
-   \ wider value: the bind refuses it, typed or not.
+   \ wider value: the bind rejects it, typed or not.
    cap  #LOC @ LGRP @ -  XP-OPEN-GROUP {: open:n :}
    open 0 >= IF
       drop
@@ -21495,7 +21495,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    \ An unsigned definition's own inputs show no open cell; the declared
    \ type still has to be of known width.
    OK @ IF LOC-OPEN-DECL dup 0 >= IF cap swap LOC-OPEN-FAIL ELSE drop THEN THEN
-   unj IF   \ a bind that held leaves whole rows: a later refusal of this token splices nothing
+   unj IF   \ a bind that held leaves whole rows: a later rejection of this token splices nothing
       OK @ IF -1 UNJ-SPLICED ! ELSE decl pre rpre wf0 LOC-UNJ-BIND THEN
    THEN
    LOC-SHOW-GROUP
@@ -21824,17 +21824,17 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
 \ The frames are the compiler's only while every token was walked: a word after
 \ a terminating word is skipped (DEADERR), and an opener skipped so leaves its
 \ closer no frame here though the compiler has one.
-: CF-REFUSE ( n -- )
+: CF-REJECT ( n -- )
    DEADERR @ 0= IF MDIAG-COMPILE! ELSE drop THEN ;
 
 \ A control-flow word over no frame or another kind's is one the compiler
-\ refuses, for the reason why.
+\ rejects, for the reason why.
 : CF-AT? ( n n n -- bool )
    {: k1:n k2:n why:n :}
    CF-MT? 0= IF
       CF@K k1 =  CF@K k2 =  or IF RES-TRUE EXIT THEN
    THEN
-   why CF-REFUSE  why CF-FAIL  RES-FALSE ;
+   why CF-REJECT  why CF-FAIL  RES-FALSE ;
 
 : CF-LOOPS= ( n -- )
    CF-LOOPS @ <> IF MD-UNLOOP-JOIN CF-FAIL THEN ;
@@ -21876,7 +21876,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    dup 0= IF drop RES-FALSE EXIT THEN
    ROW-OPEN? 0= ;
 
-\ A read below the return base is refused at its own token; this catches a
+\ A read below the return base is rejected at its own token; this catches a
 \ return base bound with no read.
 : CHECK-NO-BORROW ( -- )
    SGDBASE @ ROW-BORROWED? IF 0 OK ! THEN
@@ -21931,14 +21931,14 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    RES-TRUE ;
 
 \ Whether a reason leaves its definition uncheckable, where every other reason
-\ refuses one.
+\ rejects one.
 : UNCK-REASON? ( n -- bool )
    {: why:n :}
    why MD-EFFECT-DEPTH =
    why MD-RECURSE-SIG =  or  why MD-RECURSE-DOES =  or ;
 
-: REFUSAL-UNCHECKABLE? ( -- bool )
-   REFUSAL@ {: k:n :}
+: REJECTION-UNCHECKABLE? ( -- bool )
+   REJECTION@ {: k:n :}
    k RF-UNCHECKABLE =  k RF-REASON = MDIAG @ UNCK-REASON? and  or ;
 
 \ Records term, a signature block variable, under the id its cached effect gives
@@ -22523,9 +22523,9 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 : CF-J ( -- )
    1 CF-LOOP-FIND 0 < IF MD-NO-OUTER-LOOP CF-FAIL ELSE STEP-N-OUT THEN ;
 
-\ Whether a DO is open anywhere in the definition. The load's compiler refuses
+\ Whether a DO is open anywhere in the definition. The load's compiler rejects
 \ a `leave` while compiling it only when none is:
-\ one a quotation keeps from its DO compiles, and its check refuses it.
+\ one a quotation keeps from its DO compiles, and its check rejects it.
 : CF-ANY-DO? ( -- bool )
    0 BEGIN dup #CFC @ < WHILE
       dup CF-ROW CF.KND @ 5 = IF drop RES-TRUE EXIT THEN
@@ -22539,7 +22539,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    -1 WRAPBENT !
    CF-FINDDO {: doidx:n :}
    doidx 0< IF
-      CF-ANY-DO? 0= IF MD-NO-LOOP CF-REFUSE THEN
+      CF-ANY-DO? 0= IF MD-NO-LOOP CF-REJECT THEN
       MD-NO-LOOP CF-FAIL
    ELSE
      doidx 1 + CF-LOOPS=
@@ -22723,10 +22723,10 @@ variable MSEEN-N   0 MSEEN-N !
    REPEAT drop RES-TRUE ;
 
 SCRATCH{
-variable CHECKER-MATCH-MODE      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 3 expecting of | 4 refused, read unmodeled
+variable CHECKER-MATCH-MODE      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 3 expecting of | 4 rejected, read unmodeled
 variable MPEND   \ pending variant SUMV id between the variant token and its OF (-1 poisoned)
 variable MREJ    \ match structural-reject latch: forces verdict 0, never uncheckable
-variable MSKIP   \ matches open in a refused match the walk reads unmodeled (CHECKER-MATCH-MODE 4)
+variable MSKIP   \ matches open in a rejected match the walk reads unmodeled (CHECKER-MATCH-MODE 4)
 }SCRATCH
 
 : RIGID-ATOM-DOMAIN ( n -- n )   \ 0 none / 1 region / 2 extent / 3 gen
@@ -22734,7 +22734,7 @@ variable MSKIP   \ matches open in a refused match the walk reads unmodeled (CHE
    dup ATOM>K 0 <= IF drop 0 EXIT THEN            \ only an instantiated fresh id carries a domain
    dup ATOM>A swap ATOM>U RIGID-NAME-DOMAIN ;
 : RIGID-DIAG-CLASSIFY ( -- )
-   REFUSAL@ RF-MISMATCH <> IF EXIT THEN
+   REJECTION@ RF-MISMATCH <> IF EXIT THEN
    DF-EXP @ 0= IF EXIT THEN
    DF-ACT @ 0= IF EXIT THEN
    DF-EXP @ RIGID-ATOM-DOMAIN {: de:n :}
@@ -22742,7 +22742,7 @@ variable MSKIP   \ matches open in a refused match the walk reads unmodeled (CHE
    de 0= IF EXIT THEN
    da 0= IF EXIT THEN
    de da RIGID-DOMAIN-REASON MDIAG !
-   RF-REASON REFUSAL ! ;
+   RF-REASON REJECTION ! ;
 
 : MATCH-REJECT ( -- )
    0 OK !  -1 FAILSET !  -1 MREJ !  0 CHECKER-MATCH-MODE ! ;
@@ -23083,7 +23083,7 @@ variable CPAY-ON
 EXPORT CHECKER-TAPE:K-UNREACHED
 
 \ A token no path reaches is bound as a call and files K-UNREACHED, which T0
-\ refuses.
+\ rejects.
 : DEAD-TOK ( str -- ) {: a:^ u:n :}
    a u BIND-SOURCE-CALL
    K-UNREACHED 0 0 EVENT! ;
@@ -23150,16 +23150,16 @@ private
    SGBAD-SPAN!
    0 FAILIX !
    SGBAD-DEPTH? IF
-      MD-EFFECT-DEPTH MDIAG!  UNCK-RAISE  RF-REASON REFUSAL !
-   ELSE RF-SIG REFUSAL ! THEN
+      MD-EFFECT-DEPTH MDIAG!  UNCK-RAISE  RF-REASON REJECTION !
+   ELSE RF-SIG REJECTION ! THEN
    -1 FAILSET ! ;
 
 \ The registration TRUST-DECL and TRUST-RAW share; it answers the row's outcome.
 : TRUST-USIG-SYM! ( str str n -- n )
    {: na:^ nu:n sa:^ su:n sym:n :}
    na CHECKER-REC-A !  nu CHECKER-REC-U !
-   \ A nonzero SYM keys the row and the name is only refused when malformed:
-   \ a does> after a refused definition passes it empty; interning that dies 89.
+   \ A nonzero SYM keys the row and the name is only rejected when malformed:
+   \ a does> after a rejected definition passes it empty; interning that dies 89.
    sym 0= IF na nu na nu CHECKER-RECORD-NAME-AT 2drop ELSE
       na nu CHECKER-QUALIFIED? drop
       CHECKER-QBAD-TOK @ IF na nu na nu CHECKER-RECORD-NAME-AT 2drop THEN
@@ -23303,7 +23303,7 @@ variable RTL-I                        \ retired-token local scan index
 \ A retired token is E-UNDEFINED, as the interpreter names it, not E-UNSAFE: its
 \ caller moves to the owning package's API.
 : REJECT-RETIRED ( -- )
-   -1 RETIRED !  -1 UNDEFERR !  RF-UNDEF CREFUSE!  0 OK !  -1 FAILSET ! ;
+   -1 RETIRED !  -1 UNDEFERR !  RF-UNDEF CREJECT!  0 OK !  -1 FAILSET ! ;
 
 \ CAP-FAIL pinned this token if it is the first failure; MDIAG! must precede
 \ FAILSET (it latches only while the pin is open).
@@ -23314,7 +23314,7 @@ variable RTL-I                        \ retired-token local scan index
 \ An IMMEDIATE word executes at compile time, so a checked body that names one
 \ contributes an empty runtime step while the checker would apply its declared
 \ effect: a wrong certificate. A signature-carrying live-dictionary immediate in
-\ a checked body is therefore refused.
+\ a checked body is therefore rejected.
 
 SCRATCH{
 variable IMMERR
@@ -23492,7 +23492,7 @@ EXPORT CHECK:DICT-CELL@
 package CHECK
 
 : REJECT-IMMEDIATE ( -- )
-   -1 IMMERR !  RF-IMM CREFUSE!  0 OK !  -1 FAILSET ! ;
+   -1 IMMERR !  RF-IMM CREJECT!  0 OK !  -1 FAILSET ! ;
 
 \ ---- completion: the spellings that bind at a position -------------------------
 PTR-VARIABLE VS-P   variable VS-CAP   variable VS-N   variable VS-I   \ slots: entry+1
@@ -23604,7 +23604,7 @@ defer VIS-VISIT ( str n n n -- )
    CHECKER-QTAIL$ BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE ;
 
 \ The selections, each with the symbol, its newest visible record+1 and the
-\ dictionary record it binds, then whether the top-level walk refused the name.
+\ dictionary record it binds, then whether the top-level walk rejected the name.
 : VIS-TOP-PICK ( str -- n n ^n bool bool )
    {: a:^ u:n :}
    a u WALK {: sym:n why:n :}
@@ -23630,7 +23630,7 @@ defer VIS-VISIT ( str n n n -- )
    RES-TRUE RES-FALSE ;
 
 \ Select A U with every walk output put back after, and control and liveness when CONTROLS.
-\ A name the top-level walk refused is not found, its control word BINDING-REFUSED alone.
+\ A name the top-level walk rejected is not found, its control word BINDING-REJECTED alone.
 : VIS-PICK ( str n bool -- n n ^n n bool )
    {: a:^ u:n kind:n controls:bool :}
    BIND-REC @ {: s-br:^ :}
@@ -23644,7 +23644,7 @@ defer VIS-VISIT ( str n n n -- )
    PRM-FIRST @ PE-I @ NORET-CTL @ NORET-FMEND @ NRX-POS @
    {: s-pf:n s-pe:n s-nc:n s-nf:n s-np:n :}
    kind CHECKER-OWNER-ABI:VISIBLE-TOP = IF a u VIS-TOP-PICK ELSE a u VIS-BODY-PICK THEN
-   {: sym:n rec1:n drec:^ ok:bool refused:bool :}
+   {: sym:n rec1:n drec:^ ok:bool rejected:bool :}
    controls IF
       sym 0= IF drec NULL-PTR <> ELSE
          sym SYM-VISIBLE 0 <>
@@ -23664,15 +23664,15 @@ defer VIS-VISIT ( str n n n -- )
    s-ub USING-UNBOUND !  s-wr WALK-REC !  s-wu WALK-USED !
    s-hh HIDX-H !  s-hi HIDX-I !  s-hc HIDX-CUR !  s-xp USX-BP !  s-xn USX-BN !
    s-pf PRM-FIRST !  s-pe PE-I !  s-nc NORET-CTL !  s-nf NORET-FMEND !  s-np NRX-POS !
-   refused IF
-      0 0 NULL-PTR CHECKER-OWNER-ABI:BINDING-REFUSED RES-FALSE EXIT
+   rejected IF
+      0 0 NULL-PTR CHECKER-OWNER-ABI:BINDING-REJECTED RES-FALSE EXIT
    THEN
    controls live 0= and IF 0 0 NULL-PTR 0 RES-FALSE EXIT THEN
    sym rec1 drec ctl ok ;
 
 \ The same top-level selection used by CHECKER-TOP-SYM, with the symbol,
 \ its visible effect record's offset + 1 (0 for a primitive or an axiom),
-\ and its control word. A refusal, missing binding, invisible symbol or
+\ and its control word. A rejection, missing binding, invisible symbol or
 \ tombstone answers three zeroes.
 : TOP-BINDING-REC ( str -- n n n ^n )
    {: a:^ u:n :}
@@ -23683,7 +23683,7 @@ defer VIS-VISIT ( str n n n -- )
 : TOP-BINDING ( str -- n n n ) TOP-BINDING-REC drop ;
 
 \ The source pre-pass's binding query: it reports and marks nothing, and keeps the
-\ control word of a name the walk refused, which TOP-BINDING answers as 0.
+\ control word of a name the walk rejected, which TOP-BINDING answers as 0.
 : CHECKER-VERIFY-TOP-BINDING ( str -- n n n )
    {: a:^ u:n :}
    a u CHECKER-OWNER-ABI:VISIBLE-TOP RES-TRUE VIS-PICK
@@ -23974,7 +23974,7 @@ variable IS-PEND-U                   \ and its length
    IS-TOFF @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
 
-\ A refused tick or `is` names its target, moving the pin off the `[']` or `is`
+\ A rejected tick or `is` names its target, moving the pin off the `[']` or `is`
 \ DO-TOK1 set.
 : TICK-PIN ( -- )
    FAILSET @ 0 <> IF EXIT THEN
@@ -24021,7 +24021,7 @@ variable IS-PEND-U                   \ and its length
    RES-TRUE ;
 
 \ The symbol the swallowed target names: its fold resolves, and the token as
-\ written names a refusal, so a raised shadow locates in the file.
+\ written names a rejection, so a raised shadow locates in the file.
 : IS-TARGET-SYM ( -- n )
    IS-TOFF @ IS-TU @ POSTPONED-REC {: prec:^ :}
    prec NULL-PTR <> IF
@@ -24081,11 +24081,11 @@ EXPORT CHECKER-TAPE:K-IS
 \ A CHECKED TICK USES ITS CALLEE'S CALL AUTHORITY: an ABI-only row cannot
 \ authorize the quotation any more than a direct call. Inside the owner its
 \ private row binds and CALL-AUTHORITY admits the tick. Outside, a bound ABI
-\ row refuses E-CAP-TRUSTED, an EXPORT alias included, and a hidden record
+\ row rejects E-CAP-TRUSTED, an EXPORT alias included, and a hidden record
 \ E-UNDEFINED.
-: OWNED-TICK-REFUSED? ( n -- bool ) {: sym:n :}
+: OWNED-TICK-REJECTED? ( n -- bool ) {: sym:n :}
    FEP-HIT? IF
-      sym CALL-AUTHORITY CALL-REFUSED = IF
+      sym CALL-AUTHORITY CALL-REJECTED = IF
          FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
          0 OK !  -1 FAILSET !
          RES-TRUE EXIT
@@ -24099,18 +24099,18 @@ EXPORT CHECKER-TAPE:K-IS
    RES-TRUE ;
 
 
-\ Files the refusal a tick of SYM meets, true when it files one; when it
+\ Files the rejection a tick of SYM meets, true when it files one; when it
 \ files none, FEP holds SYM's user signature, if it has one.
-: TICK-REFUSED? ( n -- bool ) {: sym:n :}
+: TICK-REJECTED? ( n -- bool ) {: sym:n :}
    sym SCOPE-AUTH-SYM? IF
       TICK-PIN  MD-SCOPED-TICK MDIAG!  0 OK ! -1 FAILSET ! RES-TRUE EXIT
    THEN
    sym PRIM-TRUSTED-SYM? IF
       TORDER-ACTIVE @ TORDER-GATE = TORDER-ACTIVE @ TORDER-PARENT-GATE = or
-      IF RF-CAP CREFUSE! THEN
+      IF RF-CAP CREJECT! THEN
       TORDER-ACTIVE @ TORDER-UNKNOWN =
       TORDER-ACTIVE @ TORDER-PARENT-UNKNOWN = or
-      RCOMPILE @ 0= and CREFUSE @ 0= and IF
+      RCOMPILE @ 0= and CREJECT @ 0= and IF
          TARGET-PIN!  -1 TORDER-UNCERTAIN !  -1 TORDER-SCAN-UNKNOWN !
       THEN
       FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
@@ -24118,19 +24118,19 @@ EXPORT CHECKER-TAPE:K-IS
    THEN
    FEP-CLEAR
    sym CHECKER-FIND-USIG-SYM drop
-   sym OWNED-TICK-REFUSED? ;
+   sym OWNED-TICK-REJECTED? ;
 
 EXPORT CHECKER-TAPE:K-TICK
 EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
 
 : BTICK-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
-   -1 CRTGT !                              \ the load's tick refuses its target while compiling
+   -1 CRTGT !                              \ the load's tick rejects its target while compiling
    IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
    sym DECLARATION-SYM? IF TICK-PIN REJECT-UNSAFE EXIT THEN
    K-TICK  BIND-REC @ REC>INDEX  0 EVENT!
-   TKF TKFU @ BODY-KEYWORD? IF TKF TKFU @ REFUSE-UNDEFINED EXIT THEN
-   sym TICK-REFUSED? IF EXIT THEN
+   TKF TKFU @ BODY-KEYWORD? IF TKF TKFU @ REJECT-UNDEFINED EXIT THEN
+   sym TICK-REJECTED? IF EXIT THEN
    \ A mover's token may be executed, so the body may move the root as a call does.
    sym CTL-FLAGS-SYM CTL-ROOTS and INHSET @ or INHSET !
    FEP-HIT? IF
@@ -24140,7 +24140,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
       THEN
       FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE BTICK-PUSH
    ELSE
-      sym 0=  rec 0=  and IF TKF TKFU @ REFUSE-UNDEFINED THEN
+      sym 0=  rec 0=  and IF TKF TKFU @ REJECT-UNDEFINED THEN
       OPAQUE-XT BTICK-PUSH
    THEN ;
 
@@ -24186,7 +24186,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 
 \ --- record-at consumes `^F` and a cell count and answers `^F`,
 \ preserving the family, so nothing is retyped and bounds stay the caller's.
-\ A WIDE INSTANTIATION IS REFUSED: `F:AT` bakes the family's committed width,
+\ A WIDE INSTANTIATION IS REJECTED: `F:AT` bakes the family's committed width,
 \ which describes the layout only while every type argument is one cell.
 : RECORD-AT-REJECT ( -- )
    MD-RECORD-AT-WIDE MDIAG!  TKF TKFU @ CAP-FAIL  0 OK ! ;
@@ -24235,26 +24235,26 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    ELSE 0 THEN
    BIND-HORIZON ! ;
 
-: REFUSAL-TAKE ( n -- )
-   dup REFUSAL !  CAPTURE-CLEAR
+: REJECTION-TAKE ( n -- )
+   dup REJECTION !  CAPTURE-CLEAR
    USING-KIND? IF USING-SAVE THEN ;
 
 : LEFT-OFF? ( -- bool ) UNSEEN @ 0 <>  UNFIT @ 0=  and ;   \ an effect too deep to record is never left to the run
 
 \ A body left to the run keeps its pin. Else the first token the load cannot compile takes it from
 \ every failure before, else the first name a used public rejects (CUSING), else the first failure.
-: REFUSAL-STEP ( str -- )
+: REJECTION-STEP ( str -- )
    {: a:^ u:n :}
    LEFT-OFF? IF EXIT THEN
-   CREFUSE @ 0 <>  RCOMPILE @ 0=  and IF
+   CREJECT @ 0 <>  RCOMPILE @ 0=  and IF
       CRTGT @ IF TARGET-PIN! ELSE a u FAIL-PIN! THEN
-      CREFUSE @ REFUSAL-TAKE  -1 RCOMPILE !  EXIT
+      CREJECT @ REJECTION-TAKE  -1 RCOMPILE !  EXIT
    THEN
-   CUSING @ 0 <>  RCOMPILE @ 0=  and  REFUSAL @ USING-KIND? 0=  and IF
-      a u FAIL-PIN!  CUSING @ REFUSAL-TAKE  EXIT
+   CUSING @ 0 <>  RCOMPILE @ 0=  and  REJECTION @ USING-KIND? 0=  and IF
+      a u FAIL-PIN!  CUSING @ REJECTION-TAKE  EXIT
    THEN
    \ Past a token left to the run a failed check names no rejection; the checks at ; do.
-   FAILSET @ 0 <>  REFUSAL @ 0=  and  UNSEEN @ 0=  and IF REFUSAL-OF REFUSAL ! THEN ;
+   FAILSET @ 0 <>  REJECTION @ 0=  and  UNSEEN @ 0=  and IF REJECTION-OF REJECTION ! THEN ;
 
 : CF-OPEN? ( -- bool )
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  CHECKER-MATCH-MODE @ 0 <>  or ;
@@ -24273,14 +24273,14 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 
 \ Rejects a structure open at closer CA CU, or at the given closer, as the load's
 \ compiler does, unless a compile rejection or a token left to the run holds the pin.
-: CLOSER-REFUSE ( str -- )
+: CLOSER-REJECT ( str -- )
    {: ca:^ cu:n :}
    CF-OPEN? 0=  RCOMPILE @ 0 <>  or  LEFT-OFF? or IF EXIT THEN
    TBASE @ REJECTION:CLOSES? IF REJECTION:CLOSER$ nip ELSE cu THEN 0= IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
       CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN
    THEN {: why:n :}
-   why MDIAG !  RF-REASON REFUSAL-TAKE  -1 RCOMPILE !
+   why MDIAG !  RF-REASON REJECTION-TAKE  -1 RCOMPILE !
    ca cu CLOSER-PIN!
    why CF-FAIL ;
 
@@ -24386,8 +24386,8 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 \ A rejected span is the load's rejection, pinned on the span or on `[type]` when it is empty, unless
 \ an earlier compile rejection or a token left to the run holds the pin.
 : TYPE-LIT-FAIL ( n n -- ) {: s:n e:n :}
-   RCOMPILE @ 0=  CREFUSE @ 0= and  LEFT-OFF? 0= and IF
-      MD-TYPE-FORM MDIAG !  RF-REASON REFUSAL-TAKE  -1 RCOMPILE !
+   RCOMPILE @ 0=  CREJECT @ 0= and  LEFT-OFF? 0= and IF
+      MD-TYPE-FORM MDIAG !  RF-REASON REJECTION-TAKE  -1 RCOMPILE !
       e s > IF
          s TADDR e s - FAIL-PIN!  s FAILB !  FAILB @ FAILTU @ + FAILE !
       ELSE
@@ -24431,7 +24431,7 @@ variable POST-A0
    -1 TOK-LIVE-REC ! ;
 
 : POSTPONE-UNDEFINED ( -- )
-   TICK-PIN  TKF TKFU @ REFUSE-UNDEFINED  IS-FAIL ;
+   TICK-PIN  TKF TKFU @ REJECT-UNDEFINED  IS-FAIL ;
 
 \ W's record, the pending one when W is the definition being compiled, and W's
 \ symbol.
@@ -24486,7 +24486,7 @@ variable XPORT-TAIL
    {: a:^ u:n :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
-   a TOK-SPELL-A !  u TOK-SPELL-U !  0 CREFUSE !  0 CRTGT !
+   a TOK-SPELL-A !  u TOK-SPELL-U !  0 CREJECT !  0 CRTGT !
    0 CUSING !  -1 USING-HOLD !
    a u TOKFOLD drop
    BWIN-UNJUDGED @ 0 <> {: unj:bool :}       \ judged per token: OK := incoming AND this token
@@ -24510,7 +24510,7 @@ variable XPORT-TAIL
    XPORT-TAIL-MOVE  WF-NOTE-STEP
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
-   \ The raw-cell and base-address refusals name themselves where they are
+   \ The raw-cell and base-address rejections name themselves where they are
    \ raised. The flags are dropped here because TRY-PRIMS applies candidate
    \ rows in turn and the next token must start clean.
    FENCE-OK RAW-FENCE !  0 CELL-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 STALE-SELF !  0 SCOPE-HIT !  0 XT-DECL !
@@ -24528,7 +24528,7 @@ variable XPORT-TAIL
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    0 USING-HOLD !
-   a u REFUSAL-STEP
+   a u REJECTION-STEP
    TOKIX @ 1 + TOKIX ! ;
 
 \ A declared type variable must remain a distinct variable after checking the
@@ -25088,7 +25088,7 @@ package CHECK
 
 -1 constant VERDICT-CHECKED
 global
-0 constant VERDICT-REFUSED
+0 constant VERDICT-REJECTED
 1 constant VERDICT-UNCHECKABLE
 2 constant VERDICT-DEFERRED
 private
@@ -25123,7 +25123,7 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
 
 EXPORT CHECKER-QUOT-FRESH:CLEAR
 
-\ Every scan starts here, so a scan inside the compile window is refused first,
+\ Every scan starts here, so a scan inside the compile window is rejected first,
 \ before the reset clears the latches the pending definition's publication
 \ reads (WRITE-WINDOW-CK).
 : CHECK-CLEAR ( -- )
@@ -25144,7 +25144,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 TOKIX !  0 FAILIX !  VERDICT-NONE DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEF-LSC !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
-   0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !  0 PIN-BODY-CALL !
+   0 REJECTION !  0 CREJECT !  0 CRTGT !  0 RCOMPILE !  0 CUSING !  0 PIN-BODY-CALL !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
    0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 LEFT-CALL !  0 QUALBAD !  0 CAPREQ !
    0 NP-ORIG-N !  0 CALL-MINT-N !  0 RECUR-MAP-N !  0 RECUR-INST-N !

@@ -9,7 +9,7 @@ split-str
 \ quotation sees every path, the root and directories included, before the walk
 \ stats it; false skips the path and all it holds. Below the root the walk skips
 \ special files, links stat cannot follow and entries gone since the read; any
-\ other entry stat refuses, and a root that is neither a file nor a directory,
+\ other entry stat rejects, and a root that is neither a file nor a directory,
 \ is E-FS-STAT. The walk closes every descriptor it opened however it ends, and
 \ a callback's path is valid only during the callback. Two walks in flight
 \ cover disjoint trees: getdirentries64 on a directory removed meanwhile
@@ -95,7 +95,7 @@ $2F constant SLASH
 
 \ Read at once after an E-FS-* or E-FS-LIST-* throw from fs.f, fs-list.f, fs-anchored.f or
 \ an fs-mutate.f word that says so, or an E-TASK-THREAD from task.f: the throw's host
-\ errno, or 0 for a semantic refusal.
+\ errno, or 0 for a semantic rejection.
 : ERRNO ( -- n )
    data-base FS-ABI:ERRNO-OFF + @ ;
 
@@ -320,7 +320,7 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
 : REC! ( n ^n -- )
    FRAME-REC-CELL CUR-FIELD ! ;
 
-\ Nothing else is allocated yet, so a refused mapping leaves nothing to release.
+\ Nothing else is allocated yet, so a failed mapping leaves nothing to release.
 : WALK-MAP ( ^n -- ) {: ctx:^ :}
    WALK-FRAMES0 FRAME-BYTES * MEM-ALLOC-BYTES drop ctx WALK-FRAMES !
    WALK-FRAMES0 ctx WALK-CAP !
@@ -334,7 +334,7 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
 \ Make frame d exist before a descent writes it; a descent asks for one frame
 \ past the deepest, so doubling always suffices. The handle names the new
 \ mapping first and its new frames are closed before the depth reaches them; a
-\ refused mapping leaves the walk on its old frames, where CLOSE-WALK still
+\ failed mapping leaves the walk on its old frames, where CLOSE-WALK still
 \ finds every descriptor.
 : ENSURE-DEPTH ( ^n n -- ) {: ctx:^ d :}
    ctx WALK-CAP @ {: cap :}
@@ -350,8 +350,8 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
 
 public
 \ FS owns the length gate: a caller's path longer than PATH-CAP, stored or
-\ opened as given, is E-FS-PATH, the refusal every fs consumer tests for.
-\ FFI:CSTR owns the copy, the terminator and the 0-byte refusal (E-FFI-NUL),
+\ opened as given, is E-FS-PATH, the rejection every fs consumer tests for.
+\ FFI:CSTR owns the copy, the terminator and the 0-byte rejection (E-FFI-NUL),
 \ bounded by the destination's reach.
 : PATHZ-INTO ( str SPAN:span<u8> -- ^u8 )
    {: a:^ u dst :}
@@ -806,7 +806,7 @@ FUNCTION: UNLINK-AT-CALL unlinkat ( n ^u8 n -- i32 ) ;FUNCTION
 
 public
 \ openat's flags for a directory: O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC,
-\ so a symlink in the last component is refused, never followed. Darwin: xnu
+\ so a symlink in the last component is rejected, never followed. Darwin: xnu
 \ bsd/sys/fcntl.h. Linux arm64: arch/arm64 asm/fcntl.h overrides the generic
 \ directory/nofollow bits; x86-64 uses the generic bits.
 : OPEN-DIR-FLAGS ( -- n )
@@ -887,7 +887,7 @@ private
    dup ctx N! 0 > ;
 
 \ The root reaches the depth-0 slot before any >PATHZ judges it, so the length
-\ gate's refusal is made here.
+\ gate's rejection is made here.
 : WALK-ROOT! ( ^n str -- ) {: ctx:^ a:^ u :}
    CAUSE-CLEAR
    u 0 < if E-FS-PATH throw then

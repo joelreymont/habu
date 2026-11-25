@@ -69,8 +69,8 @@ defer MK-REGION-PAIR ( -- fresh-region-a fresh-region-a )
 private
 
 \ ---- the shared program vectors ----------------------------------------------
-\ `CHECK-QUIET-CANDIDATE!` answers -1 certified, 1 uncheckable, 0 refused; the
-\ mapping is written once so an uncheckable never reads as a refusal.
+\ `CHECK-QUIET-CANDIDATE!` answers -1 certified, 1 uncheckable, 0 rejected; the
+\ mapping is written once so an uncheckable never reads as a rejection.
 
 : VERDICT-OF ( n -- n ) {: answer:n :}
    answer -1 = if V-CERT exit then
@@ -86,7 +86,7 @@ private
 \ ---- where these vectors have to be asked ------------------------------------
 \ Every `construct` row resolves its family in the active package
 \ (src/core/type-family.f TFAM-CONSTRUCT-FAM).
-\ Asked elsewhere, the certifying rows refuse and the refusing rows pass for the
+\ Asked elsewhere, the certifying rows reject and the rejecting rows pass for the
 \ wrong reason (`family not declared in the active package`).
 
 public

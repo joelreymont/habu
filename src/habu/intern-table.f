@@ -158,9 +158,9 @@ private
    OWN-TABLE ;
 
 
-\ In a space the refusal comes before any lookup: a found address may sit above
+\ In a space the rejection comes before any lookup: a found address may sit above
 \ a lowered DP.
-: REWIND-REFUSE ( -- )
+: REWIND-REJECT ( -- )
    SPACE? if
       data-base DPHW-CELL + @ 0 <> if E-INTERN-REWIND throw then
    then ;
@@ -201,7 +201,7 @@ public
 \ from NULL-PTR (DP-CELL's units); 0 when none.
 : FIND ( str -- n )
    {: a:^ u:n :}
-   REWIND-REFUSE
+   REWIND-REJECT
    TABLE {: t:^ :}
    t  t a u SLOT-FOR  SLOT-CELL @ ;
 

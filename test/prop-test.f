@@ -36,7 +36,7 @@ require src/lib/test/eval.f
 package PROP-TEST
 private
 
-variable VERD                     \ CHK's last verdict: -1 certified, 0 refused
+variable VERD                     \ CHK's last verdict: -1 certified, 0 rejected
 
 variable BASE  variable MC
 \ Drains an arbitrary residual row while preserving its measured depth.
@@ -211,7 +211,7 @@ variable TBUF-U
    s STR:DATA TBUF TBUF-U @ + s STR:LEN BYTE-COPY
    TBUF-U @ s STR:LEN + TBUF-U ! ;
 
-\ A program reaches a refused candidate's body only through TRUSTED:, so
+\ A program reaches a rejected candidate's body only through TRUSTED:, so
 \ COMPILE-TRUSTED compiles `TRUSTED` and its `: G ( ... ) <body> ;` unenforced.
 : COMPILE-TRUSTED ( str -- n )
    0 TBUF-U !  s" TRUSTED" TBUF+  TBUF+
@@ -224,8 +224,8 @@ variable TBUF-U
    0 PBUF-U !
    0 RJ ! begin RJ @ in-arity < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
    name-ch PC  s"  depth CLEAR-MEAS MEAS-OUT !" P+ ;
-\ A refusal is rc 70 with the checker's diagnostic captured; any other
-\ nonzero rc, an engine refusal after certification among them, is rethrown.
+\ A rejection is rc 70 with the checker's diagnostic captured; any other
+\ nonzero rc, an engine rejection after certification among them, is rethrown.
 : CHK  ( str -- )
    dup STR:LEN SRC-U !
    STR:DATA SRC-A !
@@ -471,7 +471,7 @@ variable CERT-I
    s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PBUF-U @ >str type s" )" type cr ;
 
 \ No generated seed reaches CONFIRM-FR?, so this drives it: a bool into `+` is
-\ refused yet leaves the declared one cell.
+\ rejected yet leaves the declared one cell.
 : SELFTEST-FR ( -- )
    0 BLEN !  s" 0 0= + " PROP-B+  1 NIN !  1 DOUT !  REBUILD-G
    PBUF PBUF-U @ >str CHK  VERD @ -1 = IF

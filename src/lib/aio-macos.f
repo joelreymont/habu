@@ -21,7 +21,7 @@ private
 4 constant MAC-NONBLOCK
 8 constant MAC-POLL-BYTES
 
-\ Darwin's poll(2) refuses more than OPEN_MAX (sys/syslimits.h) entries in one
+\ Darwin's poll(2) rejects more than OPEN_MAX (sys/syslimits.h) entries in one
 \ call with EINVAL. One entry is the wake pipe's and every other a distinct
 \ descriptor in flight, so a submission that would need one more descriptor is
 \ E-AIO-POLL-BOUND. The pollfd array is that size, mapped while the loop runs
@@ -220,8 +220,8 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 : MAC-PIPE-OPEN ( -- )
    FD:PIPE FD>N MAC-WRITE-FD ! FD>N MAC-READ-FD ! ;
 
-\ Both ends come close-on-exec from FD:PIPE; a refused pipe or mark is
-\ E-AIO-SETUP, as a refused non-blocking mark is.
+\ Both ends come close-on-exec from FD:PIPE; a rejected pipe or mark is
+\ E-AIO-SETUP, as a rejected non-blocking mark is.
 : MAC-PIPE ( -- )
    [: MAC-PIPE-OPEN ;] catch {: code:n :}
    code E-FS-IO = if E-AIO-SETUP throw then

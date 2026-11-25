@@ -145,7 +145,7 @@ TYPED-VARIABLE TSL tsres<n,n>
    0 TLB-GET 11 T=
    1 TLB-GET 22 T= ;
 
-\ 5. Define-time admissibility rejects — a stored type is the checker's refusal,
+\ 5. Define-time admissibility rejects — a stored type is the checker's rejection,
 \    and a count outside the buffer's extent is rejected at its token
 : TS-SECTION-ADMISSIBILITY ( -- )
    s" TYPED-VARIABLE BAD-OPEN ^a" TS-EVAL 70 T=

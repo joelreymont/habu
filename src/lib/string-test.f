@@ -237,7 +237,7 @@ variable STR-TEST-BUF2-LEN
    ;MATCH STR-ASSERT ;
 
 \ The end of readable memory: a word that reads a byte of a span it should have
-\ refused faults here instead of answering.
+\ rejected faults here instead of answering.
 : STR-TEST-EDGE ( -- ^u8 )
    0 0 GUARD-PAGE:TAIL ;
 
@@ -507,7 +507,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    sign STR-TEST-SIGNED u STR:>NUMBER? STR-TEST-DROP-N ;
 
 \ Each span ends at the inaccessible page, so a read before the length check
-\ faults. Unrefused, STR:INDEX-OF, STR:COUNT-CHAR and STR:SPLIT-NEXT answer NONE, 0 and no
+\ faults. With no rejection, STR:INDEX-OF, STR:COUNT-CHAR and STR:SPLIT-NEXT answer NONE, 0 and no
 \ more fields, the trims an empty string, STR:DIGITS? and STR:DIGITS<= true, and
 \ the parsers SOME 0.
 : STR-TEST-SCAN-NEGATIVE ( -- )

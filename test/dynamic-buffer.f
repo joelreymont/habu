@@ -28,7 +28,7 @@ create RAW-CTL 0 , 0 ,
 create MARK 8 allot
 variable RAW
 
-\ Declaration refusals are measured by evaluating the line and catching its
+\ Declaration rejections are measured by evaluating the line and catching its
 \ code.
 TYPED-VARIABLE DB-EVAL-A ^u8
 variable DB-EVAL-U

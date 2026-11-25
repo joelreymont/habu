@@ -4,7 +4,7 @@
 \ The head is read before the handler runs; the body only when the handler
 \ first asks for it (BODY$). Limits are answered, not thrown: a head past
 \ HEAD-CAP is 431, a body past the route or server cap is 413, a transfer coding
-\ other than chunked is 501, and anything the grammar refuses is 400.
+\ other than chunked is 501, and anything the grammar rejects is 400.
 \ DEADLINES. HTTP's START deadline bounds each head; a configured body timeout
 \ starts at the handler's first BODY$, otherwise that same deadline also bounds
 \ the body. Before its deadline a fill reads what the
@@ -30,7 +30,7 @@ package HTTP
 
 private
 
-\ How one request ended: complete, refused with a status (400, 431, 413, 501),
+\ How one request ended: complete, rejected with a status (400, 431, 413, 501),
 \ or over before a request arrived (the peer left, the idle deadline passed,
 \ the connection failed, a stop was raised while it was quiet).
 SUMTYPE parse-result
@@ -58,9 +58,9 @@ SUMTYPE parse-result
    ;MATCH ;
 
 
-\ The status a refused request is answered with; a result nothing answers
+\ The status a rejected request is answered with; a result nothing answers
 \ (the peer left, or the connection failed) has no status.
-: REFUSAL-STATUS ( parse-result -- n )
+: REJECTION-STATUS ( parse-result -- n )
    MATCH parse-result
       complete OF 0 ENDOF
       malformed OF 400 ENDOF
@@ -804,7 +804,7 @@ private
    v STR:TRIM s" chunked" STR:=CI ;
 
 
-\ The body framing the head declares, refused from the headers alone before
+\ The body framing the head declares, rejected from the headers alone before
 \ any handler runs (RFC 9112 6.3): both framings at once or a malformed length
 \ is 400, a coding other than chunked 501, a length over the cap 413.
 : CHECK-BODY ( n n -- parse-result ) {: idx:n cap:n :}
@@ -905,7 +905,7 @@ E-HTTP-BODY-READ constant E-BODY-READ
    idx BODY-DECLARED? if UNREAD else WHOLE then idx BODY-STATE ! ;
 
 
-: BODY-REFUSED? ( n -- bool )
+: BODY-REJECTED? ( n -- bool )
    READ-RESULT @ COMPLETE? 0= ;
 
 
@@ -939,7 +939,7 @@ E-HTTP-BODY-READ constant E-BODY-READ
    ;MATCH ;
 
 
-\ A refused 100 ends the body read as a broken connection ends it.
+\ A rejected 100 ends the body read as a broken connection ends it.
 : ANSWER-EXPECT ( n -- ) {: idx:n :}
    idx EXPECTS-CONTINUE? 0= if exit then
    idx SERVING @ s\" HTTP/1.1 100 Continue\r\n\r\n" WRITE-SPAN if exit then
@@ -1020,7 +1020,7 @@ public
 \ The body is read off the connection the first time BODY$ asks, inside the
 \ request's own handler, and every later ask returns the same bytes.
 \ A read that does not complete throws out of the handler, and the request is
-\ answered with that read's refusal (413, 400) whatever the handler set, or not
+\ answered with that read's rejection (413, 400) whatever the handler set, or not
 \ at all when the peer left or the deadline passed. Asked from another task it
 \ is E-HANDLE; after the handler or its TAKE-OVER, E-STATE. A body the handler
 \ never asked for closes the connection after the answer.

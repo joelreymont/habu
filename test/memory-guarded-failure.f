@@ -55,10 +55,10 @@ FUNCTION: PAGE-SIZE getpagesize ( -- i32 ) ;FUNCTION
    6 PROGRAM c!
    FILTER-IN-PROG
    PR-SET-NO-NEW-PRIVS 1 0 0 0 PRCTL-NO-PRIV 0 <> if
-      s" memory-guarded-failure: no_new_privs refused" EXIT-STATUS:SYSTEM die
+      s" memory-guarded-failure: no_new_privs rejected" EXIT-STATUS:SYSTEM die
    then
    PR-SET-SECCOMP SECCOMP-FILTER PROGRAM 0 0 PRCTL-SECCOMP 0 <> if
-      s" memory-guarded-failure: seccomp filter refused" EXIT-STATUS:SYSTEM die
+      s" memory-guarded-failure: seccomp filter rejected" EXIT-STATUS:SYSTEM die
    then ;
 
 : STATM-PAGES ( -- n )
@@ -81,7 +81,7 @@ FUNCTION: PAGE-SIZE getpagesize ( -- i32 ) ;FUNCTION
       VM-BYTES START-VM !
       INSTALL-FILTER
       ['] FAIL-REMAP catch {: rc:n :}
-      s" fixed writable mmap is refused" T-LABEL
+      s" fixed writable mmap is rejected" T-LABEL
       rc E-MEM-MAP T=
       s" failed guarded allocation releases its reserved span" T-LABEL
       VM-BYTES START-VM @ T=

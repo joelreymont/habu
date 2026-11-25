@@ -52,11 +52,11 @@ private
 : FLOOR ( -- )
    s" a text reaching below the caller's depth throws 70" T-LABEL
    UNDER
-   s" the refused text leaves the caller's cell" T-LABEL
+   s" the rejected text leaves the caller's cell" T-LABEL
    7 T= ;
 
-: REFUSED ( -- )
-   s" a definition the checker refuses throws 70" T-LABEL
+: REJECTED ( -- )
+   s" a definition the checker rejects throws 70" T-LABEL
    [: s" : NATIVE-EVAL-BAD ( -- n ) 1 2 ;" evaluate-closed ;] 70 TTHROWSQ ;
 
 : DEPTH0 ( -- )
@@ -141,7 +141,7 @@ private
    s" an inner text's reach throws E-UNDERFLOW through the outer text" T-LABEL
    XT-NESTED 5 T=  SEEN @ 0 T= ;
 
-\ A text that ends inside a definition it opened is refused as every buffer
+\ A text that ends inside a definition it opened is rejected as every buffer
 \ is, and the open definition is aborted: the next text is interpreted rather
 \ than compiled into it, and its name resolves to nothing until it is defined
 \ again. The interpretation probe runs before any other text because a throw
@@ -155,7 +155,7 @@ private
    70 T= ;
 
 : UNFINISHED ( -- )
-   s" a text that ends inside a definition is refused, rc 70" T-LABEL
+   s" a text that ends inside a definition is rejected, rc 70" T-LABEL
    0 SEEN !
    UNFIN
    s" and leaves the caller's cell" T-LABEL
@@ -178,7 +178,7 @@ private
 
 \ A definer that runs a text while its definition is open: the text compiles
 \ into that definition and ends with it still open, which is not a definition
-\ the text opened, so it is not refused.
+\ the text opened, so it is not rejected.
 : BUMP ( -- ) SEEN @ 1 + SEEN ! ;
 : MAKE-BUMPED ( str -- ) EFFECT:EMPTY define-word s" BUMP" evaluate-closed postpone ; ;
 s" BUMPED" MAKE-BUMPED
@@ -187,34 +187,34 @@ s" BUMPED" MAKE-BUMPED
    s" a text run inside the caller's open definition compiles into it" T-LABEL
    0 SEEN !  BUMPED  SEEN @ 1 T= ;
 
-\ : NAME ( -- n ) 5 ; after a text whose token the compile refuses: the
-\ refusal, caught inside the definer, leaves its definition compiling, as it
+\ : NAME ( -- n ) 5 ; after a text whose token the compile rejects: the
+\ rejection, caught inside the definer, leaves its definition compiling, as it
 \ does for any buffer begun inside one.
 variable CAUGHT
-: MAKE-REFUSED ( str -- )
+: MAKE-REJECTED ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    [: s" NATIVE-EVAL-NO-WORD" evaluate-closed ;] catch CAUGHT !
    s" 5" evaluate-closed postpone ; ;
 
-: CALLER-OPEN-REFUSED ( -- )
-   s" a text refused inside the caller's open definition is caught there" T-LABEL
+: CALLER-OPEN-REJECTED ( -- )
+   s" a text rejected inside the caller's open definition is caught there" T-LABEL
    0 CAUGHT !
-   S\" package NATIVE-EVAL-TEST public s\" HOST\" MAKE-REFUSED ;package" evaluate-closed
+   S\" package NATIVE-EVAL-TEST public s\" HOST\" MAKE-REJECTED ;package" evaluate-closed
    CAUGHT @ 70 T=
    s" and the caller's definition goes on compiling" T-LABEL
    s" NATIVE-EVAL-TEST:HOST 5 T=" evaluate-closed ;
 
-\ `is` and its target are captured in two passes, so a refused target takes
-\ back `is` too: a definition left holding `is` refuses at its `;`.
-: MAKE-REFUSED-IS ( str -- )
+\ `is` and its target are captured in two passes, so a rejected target takes
+\ back `is` too: a definition left holding `is` rejects at its `;`.
+: MAKE-REJECTED-IS ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    [: s" is NATIVE-EVAL-NO-DEFER" evaluate-closed ;] catch CAUGHT !
    s" 5" evaluate-closed postpone ; ;
 
-: CALLER-OPEN-IS-REFUSED ( -- )
-   s" a refused `is` target is taken back with its `is`" T-LABEL
+: CALLER-OPEN-IS-REJECTED ( -- )
+   s" a rejected `is` target is taken back with its `is`" T-LABEL
    0 CAUGHT !
-   S\" package NATIVE-EVAL-TEST public s\" HOST-IS\" MAKE-REFUSED-IS ;package" evaluate-closed
+   S\" package NATIVE-EVAL-TEST public s\" HOST-IS\" MAKE-REJECTED-IS ;package" evaluate-closed
    CAUGHT @ 70 T=
    s" NATIVE-EVAL-TEST:HOST-IS 5 T=" evaluate-closed ;
 
@@ -313,7 +313,7 @@ variable ERR-U
 
 \ The same text inside Q-FORGET: T-FORGET's X-FORGET is the global ( -- n ),
 \ not the thrown-back Q-FORGET:X-FORGET ( -- n n ), so T-FORGET ( -- n n ) is
-\ refused; typed against the thrown row it would certify and run one cell short.
+\ rejected; typed against the thrown row it would certify and run one cell short.
 : ROW-THROWN ( -- )
    s" a definition its text threw back does not type a later caller" T-LABEL
    TEXT-U BUF-RESET
@@ -328,17 +328,17 @@ variable ERR-U
    s" the stack holds n after this" SAYS ;
 
 : CHECKED ( -- )
-   s" a checked body naming evaluate is refused" T-LABEL
+   s" a checked body naming evaluate is rejected" T-LABEL
    s" NATIVE-EVAL-OPEN ( str -- ) evaluate" CHECK! 0 T=
    s" a checked body naming evaluate-closed certifies" T-LABEL
    s" NATIVE-EVAL-CLOSED ( str -- ) evaluate-closed" CHECK! -1 T= ;
 
 : RUN ( -- )
    T-RESET
-   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-THROW
+   DEFINES RESIDUE FLOOR REJECTED DEPTH0 NESTED FLOOR-THROW
    LOOP-THROW XT-UNDER
    UNFINISHED
-   UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED OVERFLOW
+   UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REJECTED CALLER-OPEN-IS-REJECTED OVERFLOW
    RESIDUE-RECORD TOP-LEVEL
    UNFINISHED-LINE
    NAME-THROWN ROW-THROWN

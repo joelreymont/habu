@@ -10,7 +10,7 @@
 \ the build keeps them all the same.
 \ The second subject stores a dictionary-record address in a declared DATA
 \ cell laid with `allot`. The record lies outside hb's data and the build's
-\ space, so the linker refuses the file's object, which cannot name it.
+\ space, so the linker rejects the file's object, which cannot name it.
 \ The third subject is a file and a file it requires, each reading the loader at
 \ top level: SOURCE-ROOT:ACTIVE-SOURCE, CURRENT$, and CURRENT$ inside a WITH;
 \ the required file then sets its root with SOURCE-ROOT:ROOT!, which its load's
@@ -49,7 +49,7 @@ private
 create SUBJECT PATH-CAP allot
 create IMAGE PATH-CAP allot
 create RECORD PATH-CAP allot
-create REFUSED PATH-CAP allot
+create REJECTED PATH-CAP allot
 create PROBE PATH-CAP allot
 create PROBE-ROOT PATH-CAP allot
 create PROBE-INNER PATH-CAP allot
@@ -70,7 +70,7 @@ create ROOTED-IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 variable RECORD-U
-variable REFUSED-U
+variable REJECTED-U
 variable PROBE-U
 variable PROBE-ROOT-U
 variable PROBE-INNER-U
@@ -96,7 +96,7 @@ variable LOADED-U
 : SUBJECT$ ( -- str ) SUBJECT SUBJECT-U @ >str ;
 : IMAGE$ ( -- str ) IMAGE IMAGE-U @ >str ;
 : RECORD$ ( -- str ) RECORD RECORD-U @ >str ;
-: REFUSED$ ( -- str ) REFUSED REFUSED-U @ >str ;
+: REJECTED$ ( -- str ) REJECTED REJECTED-U @ >str ;
 : PROBE$ ( -- str ) PROBE PROBE-U @ >str ;
 : PROBE-ROOT$ ( -- str ) PROBE-ROOT PROBE-ROOT-U @ >str ;
 : PROBE-INNER$ ( -- str ) PROBE-INNER PROBE-INNER-U @ >str ;
@@ -157,7 +157,7 @@ variable WANT-U
 : HELPER-1$ ( -- str ) S\" : HELPER-K ( -- n ) 1 ;\n" ;
 : HELPER-2$ ( -- str ) S\" : HELPER-K ( -- n ) 2 ;\n" ;
 
-\ Each subject is its own hb-build: a refusal ends the build.
+\ Each subject is its own hb-build: a rejection ends the build.
 : BUILD-ARGV ( str str -- ) {: src:str out:str :}
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ s" tools/hb-build.f" GE-ARG+
@@ -184,7 +184,7 @@ variable WANT-U
 
 : BUILD-RECORD ( -- )
    RECORD$ RECORD-SOURCE$ FS:WRITE-ALL
-   RECORD$ REFUSED$ HB-BUILD
+   RECORD$ REJECTED$ HB-BUILD
    s" stripped build of a record pointer in a declared DATA cell" GE-EXPECT-NONZERO
    s" outside hb's data and the build's space" s" the record-pointer rejection's found"
    GE-EXPECT-ERR-HAS
@@ -492,8 +492,8 @@ variable G-IMAGE-U
       s" dead variables around the data MAIN reads leave the program's bytes as they are" LABEL GE-FAIL
    then ;
 
-\ lib.f as lib's text and main.f as main's, built into the out root and refused.
-: ADDRESS-REFUSED ( str str -- ) {: lib:str main:str :}
+\ lib.f as lib's text and main.f as main's, built into the out root and rejected.
+: ADDRESS-REJECTED ( str str -- ) {: lib:str main:str :}
    s" lib.f" G-LIB IN-CASE G-LIB-U !
    G-LIB G-LIB-U @ >str lib FS:WRITE-ALL
    C-MAIN$ main FS:WRITE-ALL
@@ -503,28 +503,28 @@ variable G-IMAGE-U
    70 s" the build of main.f" LABEL GE-EXPECT-RC
    s" LINKER:E-ADDRESS" s" the build's error" LABEL GE-EXPECT-ERR-HAS ;
 
-\ A cell holding the address where a file's data ends, past its last datum, is refused.
+\ A cell holding the address where a file's data ends, past its last datum, is rejected.
 : FILE-END-CASE ( -- )
    s" file-end" CASE-OPEN
    S\" PERSISTED-PTR-VARIABLE P  create U 8 allot  42 U !  U 16 + P !\n"
    S\" require lib.f\n: MAIN ( -- ) P @ NULL-PTR - P NULL-PTR - - .  P @ 16 - @ . ;\n"
-   ADDRESS-REFUSED ;
+   ADDRESS-REJECTED ;
 
 \ A later file's cell holding the address where a required file's data ends, which lies in the gap the later file's
-\ data starts after, is refused.
+\ data starts after, is rejected.
 : LATER-END-CASE ( -- )
    s" later-end" CASE-OPEN
    S\" create U 8 allot  42 U !\n"
    S\" require lib.f\nPERSISTED-PTR-VARIABLE P\nU 16 + P !\n: MAIN ( -- ) P @ 16 - @ . ;\n"
-   ADDRESS-REFUSED ;
+   ADDRESS-REJECTED ;
 
 \ The STRUCTURE's texts are laid after lib.f's data, so the address where U's extent ends lies in the cell LAY sets
-\ apart before them, in no extent: refused.
+\ apart before them, in no extent: rejected.
 : EXTENT-END-CASE ( -- )
    s" extent-end" CASE-OPEN
    S\" STRUCTURE pair FIELD a n FIELD b n ;STRUCTURE\ncreate U 8 allot  42 U !\n"
    S\" require lib.f\nPERSISTED-PTR-VARIABLE P\nU 16 + P !\n: MAIN ( -- ) P @ NULL-PTR - U NULL-PTR - - .  P @ 16 - @ . ;\n"
-   ADDRESS-REFUSED ;
+   ADDRESS-REJECTED ;
 
 \ A sum's cell is an address cell when any variant puts an address in it, so `some` of a variable's address in an
 \ `option<^n>`, whose first variant is `none`, is relocated, and `none` stored over a heap address leaves a null.
@@ -545,12 +545,12 @@ variable G-IMAGE-U
    s" the program built from main.f" LABEL GE-EXPECT-OK
    S\" 42\n1\n" s" the program prints the variable `some` holds, then `none`" LABEL GE-EXPECT-OUT ;
 
-\ A heap address in an `option<^n>` is refused.
+\ A heap address in an `option<^n>` is rejected.
 : HEAP-CASE ( -- )
    s" heap" CASE-OPEN
    S\" require src/lib/adt/option.f\nrequire src/lib/memory.f\n1 TYPED-BUFFER HEAP-ROW option<^n>\n1 >COUNT MEM-ALLOC-CELLS OPTION:SOME 0 HEAP-ROW !\n"
    S\" require lib.f\n: MAIN ( -- ) 0 HEAP-ROW @ MATCH option none OF 1 . ENDOF some OF @ . ENDOF ;MATCH ;\n"
-   ADDRESS-REFUSED ;
+   ADDRESS-REJECTED ;
 
 \ A build lays a deferred buffer's region apart from its block, so the block reaches it through a marked address
 \ cell: bound and filled at top level, the region's address cell is relocated and its number kept.
@@ -593,14 +593,14 @@ variable G-IMAGE-U
    s" live-queue" CASE-OPEN
    S\" require src/lib/queue.f\n4 QUEUE:QUEUE JOBS\nJOBS QUEUE:INIT\n"
    S\" require lib.f\nrequire src/lib/queue.f\n: MAIN ( -- ) 7 JOBS QUEUE:PUSH JOBS QUEUE:POP . ;\n"
-   ADDRESS-REFUSED ;
+   ADDRESS-REJECTED ;
 
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
    s" application" IMAGE GT-PATH IMAGE-U !
    s" record.f" RECORD GT-PATH RECORD-U !
-   s" refused" REFUSED GT-PATH REFUSED-U !
+   s" rejected" REJECTED GT-PATH REJECTED-U !
    s" probe.f" PROBE GT-PATH PROBE-U !
    s" sub/root" PROBE-ROOT GT-PATH PROBE-ROOT-U !
    s" sub/inner.f" PROBE-INNER GT-PATH PROBE-INNER-U !
@@ -625,7 +625,7 @@ variable G-IMAGE-U
    ROOTED-WRITE ROOTED-BUILD ROOTED-REBUILD ROOTED-CHANGED
    SYMLINK-CASE LONG-CASE GAP-CASE FILE-END-CASE LATER-END-CASE EXTENT-END-CASE
    OPTION-CASE HEAP-CASE DEFER-CASE QUEUE-CASE LIVE-QUEUE-CASE
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, a program whose bytes dead variables around its data leave as they are, and refused builds storing the address where a file's data or an extent ends, in that file or a later one, a variable's address in a sum's second variant, run, a heap address there, refused, a deferred buffer bound at top level holding an address and a number, run, a queue the top level destroyed, run, and one it left live, refused" type cr ;
+   s" PASS: a stripped build of shifted and aligned address bytes, a rejected record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, a program whose bytes dead variables around its data leave as they are, and rejected builds storing the address where a file's data or an extent ends, in that file or a later one, a variable's address in a sum's second variant, run, a heap address there, rejected, a deferred buffer bound at top level holding an address and a number, run, a queue the top level destroyed, run, and one it left live, rejected" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;

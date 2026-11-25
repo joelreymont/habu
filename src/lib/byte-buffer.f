@@ -49,7 +49,7 @@ private
 
 \ A capacity or length must lie in [0, MAX-BYTES]; the `byte-len` cast does not
 \ check it. A growth need is len + delta on raw cells, so a sum past MAX-BYTES
-\ wraps below zero, which CHECK-NEED refuses.
+\ wraps below zero, which CHECK-NEED rejects.
 : CHECK-CAP ( n -- ) {: cap:n :}
    cap 0= if E-BUF-CAPACITY throw then ;
 : CHECK-NEED ( n -- ) {: need:n :}
@@ -78,7 +78,7 @@ private
    buf DATA@ buf CAP-RAW@ SPAN:MAKE ;
 
 \ Install only after all source bytes have been copied; release is last, so a
-\ refused grow leaves the old block owned and intact.
+\ rejected grow leaves the old block owned and intact.
 : INSTALL-STORAGE ( ^a SPAN:span<u8> SPAN:span<u8> -- )
    {: buf:^ d old :}
    d SPAN:$ {: dp:^ cap:n :}
@@ -222,12 +222,12 @@ public
 
 \ RESIZE makes the capacity exactly n, at least the length, larger or smaller,
 \ and keeps the active bytes; zero is E-BUF-CAPACITY. The new block is made and
-\ filled before the old one is released, so a refused allocation throws with the
+\ filled before the old one is released, so a failed allocation throws with the
 \ buffer as it was.
 : RESIZE ( ^a NUM:byte-len -- ) {: buf:^ n:NUM:byte-len :}
    buf n BLEN>N RESIZE-RAW ;
 
-\ n zero on a dead header is E-BUF-CAPACITY, as INIT; a refused growth leaves a
+\ n zero on a dead header is E-BUF-CAPACITY, as INIT; a failed growth leaves a
 \ live one empty at its old capacity.
 : RESET ( ^a NUM:byte-len -- ) {: buf:^ n:NUM:byte-len :}
    buf LIVE? 0= if buf n INIT exit then

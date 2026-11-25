@@ -146,7 +146,7 @@ s" 2026/06/16" DATE-PARSE-BAD
 90061 s" 1970-01-02T01:01:01Z" DATE-TIMESTAMP=
 
 \ FORMAT-YMD writes four year digits, so it formats years 0 through 9999 and
-\ refuses any other year rather than writing its low four digits.
+\ rejects any other year rather than writing its low four digits.
 2932896 s" 9999-12-31" DATE-FORMAT=
 -719468 s" 0000-03-01" DATE-FORMAT=
 253402300799 s" 9999-12-31T23:59:59Z" DATE-TIMESTAMP=

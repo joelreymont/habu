@@ -280,7 +280,7 @@ variable CS-CHILD-ERR-U
    CS-CHILD-OUT CS-CHILD-OUT-U @ >str s" catch-image: ok" STR:CONTAINS? TTRUE
    CS-CHILD-OUT CS-CHILD-OUT-U @ >str s" catch-image-fresh: ok" STR:CONTAINS? TTRUE ;
 
-: CS-SAVED-REFUSAL ( str str -- )
+: CS-SAVED-REJECTION ( str str -- )
    {: src:str want:str :}
    PROC-ARGV-RESET
    CS-ENV!
@@ -295,12 +295,12 @@ variable CS-CHILD-ERR-U
    CS-IMAGE-BUILD
    CS-IMAGE-RUN
    S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-wrong-status.f\" included\n"
-      s" catch-success-wrong-status.f:10:18" CS-SAVED-REFUSAL
+      s" catch-success-wrong-status.f:10:18" CS-SAVED-REJECTION
    S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-override.f\" included\n"
-      s" catch-success-override.f:11:24" CS-SAVED-REFUSAL ;
+      s" catch-success-override.f:11:24" CS-SAVED-REJECTION ;
 
 : CS-SECTION-IMAGE ( -- )
-   s" a built hb executes a guarded catch and still refuses forged proof" T-LABEL
+   s" a built hb executes a guarded catch and still rejects forged proof" T-LABEL
    FS:CLEANUP-RESET
    CS-IMAGE-PREPARE
    [: CS-IMAGE-BODY ;] catch {: code:n :}
@@ -318,7 +318,7 @@ variable CS-CHILD-ERR-U
    s" R7 ( ^u8 -- ^u8 n ) [: FINW ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END
    \ a join: the loop needs the cell's type on the back edge, and WMAYBE's
-   \ evidence is what carries it there (with WBOOM in its place this is refused,
+   \ evidence is what carries it there (with WBOOM in its place this is rejected,
    \ and no refinement ever un-stales a cell)
    s" R8 ( ^u8 -- ^u8 ) begin [: WMAYBE ;] catch 0= until" CHECK-QUIET-CANDIDATE! -1 T=
    s" R8B ( ^u8 -- ^u8 ) begin [: WBOOM CS-BUF ;] catch 0= until" CS-CODE<
@@ -427,7 +427,7 @@ STRUCTURE cspt
    s" B4 ( option<cspt> -- n ) [: CS-BUNDLE-THROW ;] catch {: rc:n :} MATCH option none OF 0 ENDOF some OF CATCH--STALE--TEST-CSPT:UNMAKE + ENDOF ;MATCH"
       CS-CODE<  CS-STALE?  CS-CODE-END
    \ an untyped local holds the whole bundle and gives it back stale in every
-   \ cell: it still drops in one, and it still refuses to be read
+   \ cell: it still drops in one, and it still cannot be read
    s" B5 ( option<cspt> -- ) [: CS-BUNDLE-THROW ;] catch {: o rc:n :} o drop"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" B6 ( option<cspt> -- n ) [: CS-BUNDLE-THROW ;] catch {: o rc:n :} o CS-READ-BUNDLE" CS-CODE<
@@ -442,7 +442,7 @@ STRUCTURE cspt
    0 CS-TICK ! CS-SOME CS-BUNDLE-GUARD 0 T=
    \ B1's shape, run: the drops agree with the checker on the bundle's width
    CS-PT CS-SOME CS-BUNDLE-RT E-CS-BOOM T=
-   \ an option a generic constructor built inline refuses to be read
+   \ an option a generic constructor built inline cannot be read
    s" B10 ( -- n ) 5 OPTION:SOME [: CS-NUM-THROW ;] catch drop MATCH option none OF 0 ENDOF some OF ENDOF ;MATCH"
       CS-CODE<  CS-STALE?  CS-CODE-END
    CS-INLINE-RT 0 T= ;
@@ -459,7 +459,7 @@ STRUCTURE cspt
 
 : CS-SECTION-WIDTHS ( -- )
    s" widths" T-LABEL
-   \ the cell above the deepest was consumed: reading it is refused ...
+   \ the cell above the deepest was consumed: reading it is rejected ...
    s" W1 ( -- n ) 1 2 9 OPTION:SOME ['] CS-REPL-OPT ['] CS-WIDE-KEEP catch drop drop {: o :} nip"
       CS-CODE<  CS-STALE?  CS-CODE-END
    \ ... and the deepest is intact
@@ -555,7 +555,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    CS-STALE?  CS-CODE-END
    \ R6's twin: the callee that only reads its input keeps the address typed
    s" T2 ( ^u8 -- ^u8 n ) ['] WMAYBE catch" CHECK-QUIET-CANDIDATE! -1 T=
-   \ the callee that replaces it does not, and the refusal names the read
+   \ the callee that replaces it does not, and the rejection names the read
    s" T3 ( ^u8 -- n ) ['] WREPL catch {: v code:n :} v c@" CS-CODE<
    CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END
    \ per cell, as C6/C7: WKEEPTOP keeps the top of its window ...

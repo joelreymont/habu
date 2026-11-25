@@ -43,7 +43,7 @@ public
 : CHECK-STORAGE ( -- )
    [: 1+ ;] INSTALL-N 41 N-CALLBACK @ execute 42 T= ;
 
-: CHECK-REFUSALS ( -- )
+: CHECK-REJECTIONS ( -- )
    s" a view cannot be erased into a raw pointer" T-LABEL
    s" : C2-RAW ( read-view<p,q,u8> -- ^u8 ) ;" 70 SUBJECT:EXITED? TTRUE
    s" the element type is invariant" T-LABEL
@@ -81,7 +81,7 @@ public
    s" defer C2-DEFER ( a -- a ) NEWTYPE c2-dholder<a> : C2-DEFER-STORE ( [ c2-dholder<read-view<p,q,u8>> -- c2-dholder<read-view<p,q,u8>> ] -- ) is C2-DEFER ;" 70 SUBJECT:EXITED? TTRUE
    s" a phantom wrapper cannot erase a scoped dependency" T-LABEL
    s" NEWTYPE c2-phantom<a> CAST: C2-ERASE ( c2-phantom<read-view<p,q,u8>> -- n )"
-      70 s" error[E-CAST-SCOPE]: in `cast: C2-ERASE`, a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
+      70 s" error[E-CAST-SCOPE]: in `cast: C2-ERASE`, a scoped cast is not two cells on each side" SUBJECT:REJECTED? TTRUE
    s" exclusive views remain inadmissible until loan accounting" T-LABEL
    s" : C2-MUT ( mut-view<p,q,u8> -- ) drop ;" 70 SUBJECT:EXITED? TTRUE
    s" legacy value records cannot declare a scoped field" T-LABEL
@@ -93,6 +93,6 @@ public
 
 T-RESET
 C2-READ-EFFECTS:CHECK-STORAGE
-C2-READ-EFFECTS:CHECK-REFUSALS
+C2-READ-EFFECTS:CHECK-REJECTIONS
 T-REPORT
 s" c2-read-effects: ok" type cr

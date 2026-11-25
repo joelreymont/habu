@@ -184,15 +184,15 @@ variable FFI-T-SCOPE-AFTER
    s" public PROCESS-SYMBOLS FUNCTION: FFI-T-XD getpid ( -- n ) ;FUNCTION private"
    evaluate-closed ;
 
-\ A refused declaration is ABANDONED, not left half open. The refusal below
+\ A rejected declaration is ABANDONED, not left half open. The rejection below
 \ counts more inputs than the effect has; the good declaration after it must
 \ still compile, and the pair must leave the stack where it found it. Without
-\ that the next declaration in a file refuses too and the first diagnostic names
+\ that the next declaration in a file rejects too and the first diagnostic names
 \ the wrong one.
 variable FFI-T-PAIR-BEFORE
 variable FFI-T-PAIR-AFTER
 
-: FFI-T-REFUSED-CLAUSE ( -- )
+: FFI-T-REJECTED-CLAUSE ( -- )
    s" FUNCTION: FFI-T-XA getpid ( ^u8 -- n ) 9 VARIADIC ;FUNCTION"
    evaluate-closed ;
 : FFI-T-GOOD-AFTER ( -- )
@@ -254,7 +254,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\" FUNCTION: ZZ-ALIAS getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
    FFI-T-LIBS-SRC+
    s\" : ZZ-CHECK ( -- )\n" FFI-T-SRC+
-   s\"    ZZ-BASE 0 <= ZZ-ALIAS 0 <= or if s\" getpid refused\" 1 die then\n" FFI-T-SRC+
+   s\"    ZZ-BASE 0 <= ZZ-ALIAS 0 <= or if s\" getpid rejected\" 1 die then\n" FFI-T-SRC+
    s\"    ZZ-LIB-CHECK\n" FFI-T-SRC+
    s\"    s\" growth-alias:ok\" type cr ;\nZZ-CHECK\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
@@ -303,7 +303,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    then
    s\" \" evaluate-closed loop ;\nSELECT-REPEATED\n" FFI-T-SRC+
    s\" FUNCTION: PID-B getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
-   s\" : RUN ( -- ) ZZ-LIB-A:PID-A 0 > PID-B 0 > and if s\" shared-library:ok\" type cr else s\" getpid refused\" 1 die then ;\nRUN\n;package\n" FFI-T-SRC+
+   s\" : RUN ( -- ) ZZ-LIB-A:PID-A 0 > PID-B 0 > and if s\" shared-library:ok\" type cr else s\" getpid rejected\" 1 die then ;\nRUN\n;package\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
 : FFI-T-LIBRARY-SHARED ( -- )
@@ -554,7 +554,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 
 \ A path one byte longer than the table holds, whose bytes end at an
-\ inaccessible page: the length is refused before the spelling check reads it.
+\ inaccessible page: the length is rejected before the spelling check reads it.
 : FFI-T-GUARDED-PATH ( -- )
    PATH-CAP 1+ [char] a GUARD-PAGE:TAIL
    PATH-CAP 1+ 1+ >str FFI:SELECT-LIBRARY ;
@@ -887,9 +887,9 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-SCOPE-AFTER FFI-T-DEPTH!
    FFI-T-SCOPE-AFTER @ FFI-T-SCOPE-BEFORE @ T=
 
-   s" a refused declaration is abandoned, not left open" T-LABEL
+   s" a rejected declaration is abandoned, not left open" T-LABEL
    FFI-T-PAIR-BEFORE FFI-T-DEPTH!
-   [: FFI-T-REFUSED-CLAUSE ;]
+   [: FFI-T-REJECTED-CLAUSE ;]
    s" error[E-FFI-SYNTAX]: VARIADIC's fixed count is not from 1 to the inputs declared" FFI-T-RECORD
    [: FFI-T-GOOD-AFTER ;] 0 TTHROWSQ
    FFI-T-PAIR-AFTER FFI-T-DEPTH!
@@ -916,7 +916,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
       [: s" /opt/build.so.cache/libx" FFI:SELECT-LIBRARY ;] 0 TTHROWSQ
       FFI:SELECT-PROCESS
    then
-   s" a negative or over-long length is refused before a byte is copied or read" T-LABEL
+   s" a negative or over-long length is rejected before a byte is copied or read" T-LABEL
    [: FFI-T-CSTR-SRC -1 >str FFI-T-CSTR-DST FFI:CSTR drop ;]
    E-SPAN-LENGTH TTHROWSQ
    [: FFI-T-CSTR-SRC STR:MIN-I64 >str FFI-T-CSTR-DST FFI:CSTR drop ;]
@@ -927,10 +927,10 @@ create FFI-T-LONG FFI-T-LONG-U allot
    [: FFI-T-CSTR-SRC STR:MIN-I64 >str FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
    [: FFI-T-GUARDED-PATH ;] 70 TTHROWSQ
    -1 REJECTION:QUIET +!
-   s" a string holding a 0 byte is refused before it reaches C" T-LABEL
+   s" a string holding a 0 byte is rejected before it reaches C" T-LABEL
    0 FFI-T-CSTR-DST SPAN:FILL
    [: s\" a\zb" FFI-T-CSTR-DST FFI:CSTR drop ;] E-FFI-NUL TTHROWSQ
-   FFI-T-CSTR-DST SPAN:$ STR:DATA c@ 0 T=                  \ a refused copy wrote nothing
+   FFI-T-CSTR-DST SPAN:$ STR:DATA c@ 0 T=                  \ a rejected copy wrote nothing
    [: s\" lib\zz" FFI:SELECT-LIBRARY ;] E-FFI-NUL TTHROWSQ
    s" a version list opens the first version present, in the order written" T-LABEL
    FFI-T-LISTED-CALL

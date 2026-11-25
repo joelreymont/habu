@@ -165,7 +165,7 @@ package UDG-MINIMUM
 public
 
 : BOUNDARY ( -- )
-   s" 255-cell defer still refuses an empty interpret stack" T-LABEL
+   s" 255-cell defer still rejects an empty interpret stack" T-LABEL
    255 MIN-SIG$ drop
    s" MINIMUM-PROBE" UDG-LINE
    SB$ UDG-EXEC:SUBJECT

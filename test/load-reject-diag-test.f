@@ -1,6 +1,6 @@
 \ load-reject-diag-test.f - a rejecting `bin/hb --load` must identify itself: a
-\ checked load refusal exits 70 with a named diagnostic on stderr; an
-\ unmodeled immediate in a TRUSTED: body is refused by the checker's preflight
+\ checked load rejection exits 70 with a named diagnostic on stderr; an
+\ unmodeled immediate in a TRUSTED: body is rejected by the checker's preflight
 \ as it is read, before any compiler sees it. Covers the direct --load,
 \ require-chain and checked-body legs on generated fixtures; the child engine is
 \ HABU_UNDER_TEST when set, else the running engine. A file `?TARGET` stops is
@@ -253,7 +253,7 @@ variable RC
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" FS:WRITE-ALL
    BODY$ s" : LRD-Y ( n -- n ) drop ;" FS:WRITE-ALL
    \ The byte pointer comes from a declared cell: a raw `variable` hands out no
-   \ address (E-RAW-CELL-PTR), which would refuse the fixture one definition
+   \ address (E-RAW-CELL-PTR), which would reject the fixture one definition
    \ before the token these cases pin.
    BPS$ s" TYPED-VARIABLE LRD-P ^u8 : LRD-BASE ( -- ^u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" FS:WRITE-ALL
    BPF$ s" TYPED-VARIABLE LRD-Q ^u8 : LRD-QBASE ( -- ^u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
@@ -450,7 +450,7 @@ undefine include
    ERR$ S\" = expected: ^a\n" STR:CONTAINS? TTRUE
    ERR$ S\" = found: ^u8\n" STR:CONTAINS? TTRUE ;
 
-\ Each control-flow case is a load of its own: a load stops at its first refusal.
+\ Each control-flow case is a load of its own: a load stops at its first rejection.
 \ Its record HEAD names the reason, placed at the token at PLACE.
 : CF-RUN ( str str str -- )
    {: src:str head:str place:str :}
@@ -586,63 +586,63 @@ undefine include
       BODY-REJECT-AT
    ERR$ s" = range: a cell holds `-9223372036854775808` to `9223372036854775807`" STR:CONTAINS? TTRUE ;
 
-\ A top-level `target` beside the program's own TARGET could mean either, and is refused by name.
+\ A top-level `target` beside the program's own TARGET could mean either, and is rejected by name.
 : TEST-SECTION-CLASH ( -- )
-   s" a section word beside a word of its name is refused" T-LABEL
+   s" a section word beside a word of its name is rejected" T-LABEL
    BODY$ S\" package LRD-CLASH\n: TARGET ( -- ) ;\ntarget\n;package\n" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-SECTION-WORD]: `target` is the section word, and a word of that name is in scope"
       s" :3:1" BODY-REJECT-AT ;
 
-\ T0, arm64's tier 0, refuses a body no scan certified at its first token the
+\ T0, arm64's tier 0, rejects a body no scan certified at its first token the
 \ scan could not bind or no path reaches.
 : TEST-T0-UNBOUND ( -- )
-   s" T0 refuses a MATCH variant with no OF" T-LABEL
+   s" T0 rejects a MATCH variant with no OF" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOOF ( n -- n ) construct lrd-choice scalar MATCH lrd-choice scalar 10 + ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-MATCH]: a `MATCH` arm's variant is not followed by `of` at `10`"
       s" :1:159" BODY-REJECT-AT
-   s" T0 refuses a MATCH with no value proved under it" T-LABEL
+   s" T0 rejects a MATCH with no value proved under it" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-UNDER ( -- n ) MATCH lrd-choice empty OF 0 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-MATCH]: the compiler has no family facts for `lrd-choice`"
       s" :1:112" BODY-REJECT-AT
-   s" T0 refuses a MATCH over an unknown family" T-LABEL
+   s" T0 rejects a MATCH over an unknown family" T-LABEL
    BODY$ s" TRUSTED: LRD-NOFAM ( n -- n ) 5 swap MATCH lrd-nofam empty OF 1 ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-MATCH]: the compiler has no family facts for `lrd-nofam`"
       s" :1:44" BODY-REJECT-AT
-   s" T0 refuses a MATCH over an unknown variant at the variant" T-LABEL
+   s" T0 rejects a MATCH over an unknown variant at the variant" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOVAR ( lrd-choice -- n ) MATCH lrd-choice bogus OF 1 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-MATCH]: the compiler has no family facts for `bogus`"
       s" :1:134" BODY-REJECT-AT
-   s" T0 refuses dead code after exit" T-LABEL
+   s" T0 rejects dead code after exit" T-LABEL
    BODY$ s" TRUSTED: LRD-DEAD ( -- n ) 1 exit DUP ; LRD-DEAD . cr" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-CONTROL]: no path reaches `DUP`" s" :1:35" BODY-REJECT-AT
    ERR$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
-   s" T0 refuses a dead string literal at its opener" T-LABEL
+   s" T0 rejects a dead string literal at its opener" T-LABEL
    BODY$ S\" TRUSTED: LRD-DEADS ( -- n ) 1 exit s\" ab\" drop ;" FS:WRITE-ALL
    BODY$ RUN
    S\" error[E-T0-CONTROL]: no path reaches `s\"`" s" :1:36" BODY-REJECT-AT
    ERR$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
-   s" T0 refuses a dead quotation inside a quotation at its opener" T-LABEL
+   s" T0 rejects a dead quotation inside a quotation at its opener" T-LABEL
    BODY$ s" TRUSTED: LRD-DEADQ ( -- [ -- n ] ) [: 1 exit [: 2 ;] ;] ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-CONTROL]: no path reaches `[:`" s" :1:46" BODY-REJECT-AT
    ERR$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
-   s" T0 refuses a dead string holding ;] inside a quotation at its opener" T-LABEL
+   s" T0 rejects a dead string holding ;] inside a quotation at its opener" T-LABEL
    BODY$ S\" TRUSTED: LRD-DEADQS ( -- [ -- n ] ) [: 1 exit s\" a ;] b\" drop ;] ;" FS:WRITE-ALL
    BODY$ RUN
    S\" error[E-T0-CONTROL]: no path reaches `s\"`" s" :1:47" BODY-REJECT-AT
    ERR$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
-   s" T0 refuses a construct of an unknown variant" T-LABEL
+   s" T0 rejects a construct of an unknown variant" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-BADVAR ( -- n ) construct lrd-choice bogus 1 ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-MATCH]: the compiler has no family facts for `bogus`"
       s" :1:128" BODY-REJECT-AT
-   s" T0 refuses a construct of an unknown family" T-LABEL
+   s" T0 rejects a construct of an unknown family" T-LABEL
    BODY$ s" TRUSTED: LRD-BADFAM ( -- n ) construct lrd-nofam scalar 1 ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-MATCH]: the compiler has no family facts for `lrd-nofam`"
@@ -668,22 +668,22 @@ undefine include
    s" error[E-NELAB-BUNDLE]: the body of `W6` loses the width of a multi-cell value"
       s" :1:182" BODY-REJECT-AT ;
 
-\ A refused step in a TRUSTED: body lowers as the raw effect the scan splices,
+\ A rejected step in a TRUSTED: body lowers as the raw effect the scan splices,
 \ so `2dup` over a two-cell view copies two cells.
 : TEST-T0-RAW-SPLIT ( -- )
-   s" T0 compiles a refused TRUSTED: step as its raw effect" T-LABEL
+   s" T0 compiles a rejected TRUSTED: step as its raw effect" T-LABEL
    BODY$ s" require src/lib/c2-memory.f require src/lib/c2-bytes.f TRUSTED: LRD-SPLIT ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> ^u8 n ) 2dup ; variable LRD-LEN variable LRD-LEN2 : LRD-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) LRD-SPLIT LRD-LEN ! drop C2-BYTES:MUT-LENGTH swap LRD-LEN2 ! ; : LRD-RUN ( -- ) C2-MEM:OWNER-SIZE [: LRD-ROOT ;] C2-MEM:WITH-MUT ; LRD-RUN LRD-LEN @ . LRD-LEN2 @ . cr" FS:WRITE-ALL
    BODY$ RUN S\" 8\n8\n" ASSERT-OK-OUT ;
 
-\ A refused `!` of a two-cell product in a TRUSTED: body splices its own typed
+\ A rejected `!` of a two-cell product in a TRUSTED: body splices its own typed
 \ rows and keeps their width fact, so it stores both cells.
 : TEST-T0-RAW-STORE ( -- )
-   s" T0 compiles a refused TRUSTED: store at its field width" T-LABEL
+   s" T0 compiles a rejected TRUSTED: store at its field width" T-LABEL
    BODY$ s" STRUCTURE lrd-pt FIELD x n FIELD y n ;STRUCTURE TYPED-VARIABLE LRD-PV lrd-pt TRUSTED: LRD-SET ( n n ^lrd-pt -- ) ! ; : LRD-STORE ( -- n ) 7 3 4 LRD-PV LRD-SET ; LRD-STORE . depth . cr" FS:WRITE-ALL
    BODY$ RUN S\" 7\n0\n" ASSERT-OK-OUT ;
 
 \ A storage declaration whose definer cannot size its type is the checker's
-\ refusal, named for the declared word in HEAD and placed at the unknown type.
+\ rejection, named for the declared word in HEAD and placed at the unknown type.
 : STORAGE-REJECT ( str str -- ) {: src:str head:str :}
    BODY$ src FS:WRITE-ALL
    BODY$ RUN
@@ -691,7 +691,7 @@ undefine include
    ERR$ s" ^ unknown type" STR:CONTAINS? TTRUE ;
 
 : TEST-STORAGE ( -- )
-   s" undefined storage types are named refusals" T-LABEL
+   s" undefined storage types are named rejections" T-LABEL
    s" 4 TYPED-BUFFER LRD-STG-TB lrd-stg-none" 
       s" error[E-BAD-STORAGE]: the type of `LRD-STG-TB`" STORAGE-REJECT
    s" TYPED-VARIABLE LRD-STG-TV lrd-stg-none" 
@@ -739,8 +739,8 @@ undefine include
    s" error[E-SEALED-PACKAGE]: `NDICT:FOO` would change a sealed package"
       s" :1:3" 70 CODE-REJECT-AT ;
 
-\ A name a sealed package already holds is refused as sealed, as the check
-\ refuses it: the seal is asked before the duplicate.
+\ A name a sealed package already holds is rejected as sealed, as the check
+\ rejects it: the seal is asked before the duplicate.
 : TEST-SEALED-DUPLICATE ( -- )
    s" a duplicate definition into a sealed package names the seal" T-LABEL
    S\" package SP\npublic\n: A ( -- ) ;\nseal-package\n;package\n: SP:A ( -- ) ;\n"
@@ -774,23 +774,23 @@ undefine include
    s" lrd-zz-undefined" s" not found" ASSERT-EVALUATED ;
 
 \ A slice of the file's own bytes that the file `evaluate`s is file text, so a
-\ refusal in it names the file's line of the refused token, whichever writer
-\ refuses it.
+\ rejection in it names the file's line of the rejected token, whichever writer
+\ rejects it.
 : TEST-EVALUATED-SLICE ( -- )
-   s" an evaluated slice of the file is refused at its line" T-LABEL
+   s" an evaluated slice of the file is rejected at its line" T-LABEL
    BODY$ S\" \n\nparse-name lrd-zz-undefined evaluate\n" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-UNDEFINED]: cannot find word `lrd-zz-undefined`" s" :3:12"
       BODY-REJECT-AT
-   s" the checker places a refusal in an evaluated slice on the same line" T-LABEL
+   s" the checker places a rejection in an evaluated slice on the same line" T-LABEL
    BODY$ S\" \n\n5 parse-name c@ evaluate drop\n" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-MISMATCH]: `c@` takes ^u8" s" :3:14" BODY-REJECT-AT
-   s" the native compiler places a refusal in a slice past the evaluating line" T-LABEL
+   s" the native compiler places a rejection in a slice past the evaluating line" T-LABEL
    BODY$ S\" \n\nparse-name x str> drop 29 + 27 evaluate\n: LRD-QQ ( -- )\n5 c@ drop ;\n" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-MISMATCH]: `c@` takes ^u8" s" :5:3" BODY-REJECT-AT
-   s" the native compiler places a refusal at the closing ; of a slice" T-LABEL
+   s" the native compiler places a rejection at the closing ; of a slice" T-LABEL
    BODY$ S\" \n\nparse-name x str> drop 29 + 29 evaluate\nTRUSTED: LRD-SF ( -- ) 0 if\n;\n" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-CONTROL]: a control structure is still open at `;`" s" :5:1"
@@ -828,10 +828,10 @@ undefine include
       place BODY-REJECT-AT ;
 
 : TEST-OPEN-AT-CLOSE ( -- )
-   s" an if open at a later line's ; is refused on the line of the ;" T-LABEL
+   s" an if open at a later line's ; is rejected on the line of the ;" T-LABEL
    BODY$ S\" : LRD-OI ( bool -- ) if\n\n;\n" FS:WRITE-ALL
    s" :3:1" ASSERT-CLOSE-LINE
-   s" a does> clause leaving an if open is refused on the line of its ;" T-LABEL
+   s" a does> clause leaving an if open is rejected on the line of its ;" T-LABEL
    BODY$ S\" : LRD-MKO ( n -- ) create ,\ndoes> ( -- )\n@ 0= if\n;\n" FS:WRITE-ALL
    s" :4:1" ASSERT-CLOSE-LINE ;
 
@@ -844,10 +844,10 @@ undefine include
    s" error[E-UNCLOSED]: `FUNCTION:` is still open when `include` loads a file"
    s" :3:1" BODY-REJECT-AT ;
 
-\ A stored signature the declaration refuses is placed on its refused token's
+\ A stored signature the declaration rejects is placed on its rejected token's
 \ line, not the name's.
 : TEST-BAD-SIGNATURE-LINE ( -- )
-   s" a refused stored signature on a later line is refused on that line" T-LABEL
+   s" a rejected stored signature on a later line is rejected on that line" T-LABEL
    BODY$ S\" TRUSTED: LRD-BS\n  ( -- nosuch:fam )\n  1 ;\n" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `LRD-BS` cannot be recorded"
@@ -890,7 +890,7 @@ undefine include
       s" :4:33" BODY-REJECT-AT
    ERR$ s" = found: [ str str n n -- renders parses nominal ]" STR:CONTAINS? TTRUE ;
 
-\ A refused `cast:` names its code, place, word and reason.
+\ A rejected `cast:` names its code, place, word and reason.
 : TEST-CAST ( -- )
    s" a cast of one cell into three names its arity" T-LABEL
    BODY$ s" cast: LRD-WIDE ( n -- ^u8 n )" FS:WRITE-ALL
@@ -898,7 +898,7 @@ undefine include
    s" error[E-CAST-ARITY]: in `cast: LRD-WIDE`, the output is not one term over the stack below"
       s" :1:7" BODY-REJECT-AT ;
 
-\ A checked body that calls a word acting on source or checker state is refused
+\ A checked body that calls a word acting on source or checker state is rejected
 \ E-UNSAFE, naming the word and why, placed at the call, with evaluate-closed as
 \ the help.
 : TEST-UNSAFE ( -- )
@@ -1470,7 +1470,7 @@ variable LONG-U
    ASSERT-IMM-DIAG ;
 
 : TEST-IMM-TRUSTED ( -- )
-   s" trusted body cannot bypass unmodeled immediate refusal" T-LABEL
+   s" trusted body cannot bypass unmodeled immediate rejection" T-LABEL
    TRUSTED$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    1 105 s" LRD-TRUST-IMM"
@@ -1491,28 +1491,28 @@ variable LONG-U
    root s" notes" GJA-REQ s" word" GJA-REQ s" drop" GJA-ASSERT-STR
    root GJA-RECORD-FORM ;
 
-\ T0 refuses a body no scan certified where the checker's scan bound nothing
+\ T0 rejects a body no scan certified where the checker's scan bound nothing
 \ or `is` names no deferred word.
 : TEST-UNCERTIFIED-MALFORMED ( -- )
-   s" a trusted quotation reading its definition's local is refused" T-LABEL
+   s" a trusted quotation reading its definition's local is rejected" T-LABEL
    BODY$ s" TRUSTED: LRD-QLOCAL ( n -- n ) {: a:n :} [: a ;] execute ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-UNDEFINED]: cannot find word `a`" s" :1:45" BODY-REJECT-AT
-   s" a trusted quotation reading its definition's numeric local is refused" T-LABEL
+   s" a trusted quotation reading its definition's numeric local is rejected" T-LABEL
    BODY$ s" TRUSTED: LRD-QNUM ( n -- n ) {: 1:n :} [: 1 ;] execute ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-UNDEFINED]: cannot find word `1`" s" :1:43" BODY-REJECT-AT
-   s" a trusted is with no target is refused" T-LABEL
+   s" a trusted is with no target is rejected" T-LABEL
    BODY$ s" TRUSTED: LRD-NO-TARGET ( -- ) [: ;] is ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-DEFER]: `is` names no deferred word" s" :1:37" BODY-REJECT-AT
    ERR$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
-   s" a trusted is naming no word is refused" T-LABEL
+   s" a trusted is naming no word is rejected" T-LABEL
    BODY$ s" TRUSTED: LRD-NO-DEFER ( -- ) [: ;] is LRD-NO-SUCH-DEFER ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-DEFER]: cannot find deferred word `LRD-NO-SUCH-DEFER`"
       s" :1:39" BODY-REJECT-AT
-   s" a trusted is naming a colon word is refused" T-LABEL
+   s" a trusted is naming a colon word is rejected" T-LABEL
    BODY$ s" : LRD-PLAIN ( -- ) ; TRUSTED: LRD-IS-PLAIN ( -- ) [: ;] is LRD-PLAIN ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-DEFER]: `LRD-PLAIN` is not a deferred word" s" :1:60"

@@ -52,12 +52,12 @@ variable OCC-BAD
    r RBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
 \ mmap(rdi, len, prot, flags, -1, 0) with the address already in rdi, which the
-\ syscall keeps. SYS, leaves CF set when the kernel refused.
+\ syscall keeps. SYS, leaves CF set when the call failed.
 : MMAP, ( n n n -- ) {: len:n prot:n flags:n :}
    RSI len IMM,  RDX prot IMM,  R10 flags IMM,  R8 -1 IMM,  R9 ZERO-REG,
    NR-MMAP SYS, ;
 
-\ Map `len` read/write bytes exactly at rdi with `flags`. A refusal returns
+\ Map `len` read/write bytes exactly at rdi with `flags`. A failure returns
 \ -errno (NOREPLACE's EEXIST among them) and a moved mapping another address,
 \ so one comparison catches both.
 : MAP-FIXED, ( n n label -- ) {: len:n flags:n bad:label :}
@@ -224,7 +224,7 @@ private
 4 constant SIGNO-BYTES
 
 \ The fd word's absolute address. DATA is mapped at DATA-VA and DATA-REGION,
-\ refuses a boot the kernel answered elsewhere, so this one address names the
+\ rejects a boot the kernel answered elsewhere, so this one address names the
 \ same word for the life of the process, whatever task is running.
 : FD-WORD-VA ( -- n ) LINUX-LAYOUT:DATA-VA VA>N SIGNAL-ABI:FD-CELL + ;
 
@@ -316,7 +316,7 @@ UC-GREGS 16 CELL * + constant UC-RIP
 \ joins the flags. The action is built on the machine stack and rsp comes back
 \ where it was. The handler is stored before anything is clobbered, so any
 \ register but rsp, and rdi under SIGACTION-AT,, may hold it. It clobbers rax
-\ rcx rdx rsi rdi r10 r11 and leaves CF set when the kernel refused, as SYS,
+\ rcx rdx rsi rdi r10 r11 and leaves CF set when the call failed, as SYS,
 \ does: the lea that gives the frame back keeps the flags. SIGACTION-RDI,
 \ installs it for the signal rdi holds.
 : SIGACTION-RDI, ( n r64 label -- ) {: flags:n handler:r64 rest:label :}
@@ -368,7 +368,7 @@ $08000000 constant SA-ONSTACK
 
 \ The way out of the code that registered: SS_DISABLE, then the caller gives
 \ the band back. Its result goes unchecked because it cannot fail off the
-\ alternate stack: the one refusal of a well-formed disable is a thread running
+\ alternate stack: the one failure of a well-formed disable is a thread running
 \ on its alternate stack, and rsp is below the band. It clobbers rax rcx rdi
 \ rsi r11.
 : SIGNAL-STACK-OFF, ( -- )
@@ -842,7 +842,7 @@ variable HEX-AT
 
 \ Install the handler at a label for crash.f's signals, each returning through
 \ the restorer at the other, on the alternate stack SIGNAL-STACK, registered.
-\ Unchecked, as crash.f's install is: a refused install leaves that signal's
+\ Unchecked, as crash.f's install is: a rejected install leaves that signal's
 \ default action.
 : INSTALL-CRASH, ( label label -- ) {: at:label rest:label :}
    SA-SIGINFO SA-ONSTACK or {: flags:n :}

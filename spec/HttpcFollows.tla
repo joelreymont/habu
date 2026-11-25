@@ -7,7 +7,7 @@
 EXTENDS Httpc
 T == INSTANCE HttpcTable
 Walks(l) ==
-    CASE l = <<"starting", "marked", "down">> -> Refused
+    CASE l = <<"starting", "marked", "down">> -> Rejected
       [] l = <<"starting", "none", "resolving">> -> Unheld
       [] l = <<"starting", "idle", "probing">> -> Kept
       [] l = <<"starting", "busy", "resolving">> -> Busy

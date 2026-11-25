@@ -41,11 +41,11 @@ variable MAC-KEY-N
 variable MSG-N
 variable MAC-WANT-N
 
--9999 constant E-VECTOR              \ this file's own fixture refusal, outside every lib block
+-9999 constant E-VECTOR              \ this file's own fixture rejection, outside every lib block
 
 
 \ A vector is written the way its table prints it: a target buffer, then the hex
-\ groups or repeat counts that fill it. The cursor refuses to run past the
+\ groups or repeat counts that fill it. The cursor does not run past the
 \ target's capacity, so a mistyped fixture fails here and not inside libcrypto.
 
 TYPED-VARIABLE FILL-CELL ^u8
@@ -340,7 +340,7 @@ variable RSA-ISSUE-N
    RSA-BAD CRYPTO:RS256-MAX-BYTES 1+ >str RSA-E 3 >str
    JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str CRYPTO:RS256-VERIFY? ;
 
-: RSA-KEY-REFUSALS ( -- )
+: RSA-KEY-REJECTIONS ( -- )
    s" malformed JWK integers are key errors" T-LABEL
    [: RSA-N 0 >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
       CRYPTO:RS256-VERIFY? drop ;] CRYPTO:E-KEY TTHROWSQ
@@ -778,8 +778,8 @@ variable RSA-CASE-N
    FILLED RSA-CASE-N ! ;
 
 
-: RSA-PRIVATE-REFUSALS ( -- )
-   s" EC, RSA-PSS, encrypted, legacy and inconsistent private keys refuse" T-LABEL
+: RSA-PRIVATE-REJECTIONS ( -- )
+   s" EC, RSA-PSS, encrypted, legacy and inconsistent private keys reject" T-LABEL
    RSA-CASE-EC
    RSA-CASE-REJECTED
    RSA-CASE-PSS
@@ -799,7 +799,7 @@ variable RSA-CASE-N
    s" inline hyphen cannot hide appended DER from PEM validation" T-LABEL
    RSA-CASE-INLINE-HIDDEN-DER
    RSA-CASE-REJECTED
-   s" base64 after padding and inline footer refuse" T-LABEL
+   s" base64 after padding and inline footer reject" T-LABEL
    RSA-CASE-AFTER-PAD
    RSA-CASE-REJECTED
    RSA-CASE-INLINE-FOOTER
@@ -1002,11 +1002,11 @@ create RSA-LARGE-E 9 allot
    RSA-LARGE-VECTOR
    RSA-E3-VECTOR
    RSA-ODD-WIDTH
-   RSA-PRIVATE-REFUSALS
+   RSA-PRIVATE-REJECTIONS
    RSA-PRIVATE-CRLF
    RSA-PRIVATE-MARKER-SPACE
    RSA-CONCURRENT
-   RSA-KEY-REFUSALS
+   RSA-KEY-REJECTIONS
    RSA-SIGNATURE-CASES
    RSA-OUTPUT-CASES
    RSA-NONCE-TRIP

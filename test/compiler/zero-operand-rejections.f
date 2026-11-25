@@ -1,4 +1,4 @@
-\ zero-operand-refusals.f - rejected programs for "a literal 0 is rejected
+\ zero-operand-rejections.f - rejected programs for "a literal 0 is rejected
 \ where it reaches an input the callee always divides by or throws": the
 \ engine's `/`, `mod`, `/mod` and `throw`, and a word that divides by or throws
 \ its input on every call that returns, through another such word too. The
@@ -55,24 +55,24 @@ private
 : DV-HALVE ( -- ) ['] HALVE is DV ;
 DV-HALVE
 
-\ ---- the refusals ------------------------------------------------------------
+\ ---- the rejections ------------------------------------------------------------
 
 : CASE-DIV ( -- )
-   s" a literal 0 divisor of / is refused at the /" T-LABEL
+   s" a literal 0 divisor of / is rejected at the /" T-LABEL
    ARM
    [: s" : ZD1 ( n -- n ) 0 / ;" evaluate-closed ;] 70 TTHROWSQ
    DIV-ZERO  s" /" TOKEN?
    DISARM ;
 
 : CASE-MOD-CARRIED ( -- )
-   s" a literal 0 carried by stack words is refused at the mod" T-LABEL
+   s" a literal 0 carried by stack words is rejected at the mod" T-LABEL
    ARM
    [: s" : ZD2 ( n -- n ) 0 dup drop mod ;" evaluate-closed ;] 70 TTHROWSQ
    DIV-ZERO  s" mod" TOKEN?
    DISARM ;
 
 : CASE-TOP-DIVMOD ( -- )
-   s" a literal 0 divisor at top level is refused at the /mod" T-LABEL
+   s" a literal 0 divisor at top level is rejected at the /mod" T-LABEL
    ARM
    [: s" 7 0 /mod" evaluate-closed ;] 70 TTHROWSQ
    DIV-ZERO  s" /mod" TOKEN?
@@ -81,21 +81,21 @@ DV-HALVE
 \ `dup` and `drop` each load, step and save the interpret row, so the literal
 \ reaches `mod` only if its value survives the saves.
 : CASE-TOP-MOD-CARRIED ( -- )
-   s" a literal 0 kept across top-level steps is refused at the mod" T-LABEL
+   s" a literal 0 kept across top-level steps is rejected at the mod" T-LABEL
    ARM
    [: s" 7 0 dup drop mod" evaluate-closed ;] 70 TTHROWSQ
    DIV-ZERO  s" mod" TOKEN?
    DISARM ;
 
 : CASE-THROW ( -- )
-   s" a literal 0 throw code is refused at the throw" T-LABEL
+   s" a literal 0 throw code is rejected at the throw" T-LABEL
    ARM
    [: s" : ZT1 ( -- ) 0 throw ;" evaluate-closed ;] 70 TTHROWSQ
    THROW-ZERO  s" throw" TOKEN?
    DISARM ;
 
 : CASE-TOP-THROW ( -- )
-   s" a literal 0 throw code at top level is refused at the throw" T-LABEL
+   s" a literal 0 throw code at top level is rejected at the throw" T-LABEL
    ARM
    [: s" 0 throw" evaluate-closed ;] 70 TTHROWSQ
    THROW-ZERO  s" throw" TOKEN?

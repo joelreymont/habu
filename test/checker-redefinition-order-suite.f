@@ -8,7 +8,7 @@ package REDEFINITION-ORDER-TEST
 T-RESET
 variable TC                    \ last caught throw code
 
-\ Each caller has its own name, so a refusal is the checker's and never
+\ Each caller has its own name, so a rejection is the checker's and never
 \ a duplicate definition.
 : SCX-DEF1 ( -- ) s" : SCXA ( n -- n ) ;" evaluate-closed ;
 : SCX-UNDEF ( -- ) s" undefine SCXA" evaluate-closed ;
@@ -24,7 +24,7 @@ variable TC                    \ last caught throw code
 : SCX-USE6 ( -- ) s" : SCXU6 ( n n n -- n ) SCXA ;" evaluate-closed ;
 : SCX-USE7 ( -- ) s" : SCXU7 ( n n n -- n ) SCXA ;" evaluate-closed ;
 
-s" a caller of a word not yet defined is refused" T-LABEL
+s" a caller of a word not yet defined is rejected" T-LABEL
 ' SCX-USE0 catch TC !   TC @ 0 <> TTRUE
 ' SCX-DEF1 catch TC !   TC @ 0 T=
 s" a caller is held to the first effect" T-LABEL
@@ -56,7 +56,7 @@ s" a definition after a deletion answers again" T-LABEL
 s" an arm ending in a word whose body throws need not reach the join" T-LABEL
 ' SCX-CTLUSE1 catch TC !  TC @ 0 T=
 ' SCX-CTLREDEF catch TC !  TC @ 0 T=
-s" after a redefinition that returns, the same arm is refused" T-LABEL
+s" after a redefinition that returns, the same arm is rejected" T-LABEL
 ' SCX-CTLUSE2 catch TC !  TC @ 0 <> TTRUE
 
 T-REPORT

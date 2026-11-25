@@ -1,7 +1,7 @@
 \ guard-page.f - test-only caller bytes that end where readable memory ends.
 \ A word that must bound a length before it reads is proved to by bytes followed
 \ by an inaccessible page: claimed one past the tail, a read before the bound
-\ faults and a bound that runs first refuses. The page sits between two
+\ faults and a bound that runs first rejects. The page sits between two
 \ inaccessible ones (MEM:ALLOC-GUARDED), mapped once and refilled on every call.
 \ STORAGE CLASS. PROCESS-WIDE: one task uses the guarded page at a time.
 

@@ -550,7 +550,7 @@ SUM-U 32 + constant HEAD-U
 
 \ hb and a REPL program run where hb runs, so only a program builds for Wasm:
 \ ENGINE and REPL call this before they make anything.
-: REFUSE-WASM ( RTARGET:resolved-target -- )
+: REJECT-WASM ( RTARGET:resolved-target -- )
    TARGET-WASM? if
       s" E-BUILD-USAGE" REJECTION:OPEN
       s" a Wasm target builds a program, not an engine or a REPL" REJECTION:EMIT-STR
@@ -604,7 +604,7 @@ public
 \ answers when the build writes.
 : ENGINE ( [ -- str ] RTARGET:resolved-target -- )
    {: out target:RTARGET:resolved-target :}
-   target REFUSE-WASM
+   target REJECT-WASM
    out OUT-Q !
    true target KERNEL-BUILD  ENGINE-END!
    s" engine" target ['] ENGINE-BODY LINK ;
@@ -613,7 +613,7 @@ public
 \ and write it to the path the quotation answers when the build writes.
 : REPL ( str [ -- str ] RTARGET:resolved-target -- )
    {: src:^ srcu:n out target:RTARGET:resolved-target :}
-   target REFUSE-WASM
+   target REJECT-WASM
    src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    true target KERNEL-BUILD  REPL-END!
    s" engine" target ['] REPL-BODY LINK ;

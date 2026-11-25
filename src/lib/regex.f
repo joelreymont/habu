@@ -83,7 +83,7 @@ $10FFFF constant MOST-POINT
 $FFFD constant REPLACEMENT
 $5C constant BACKSLASH
 -1 constant UNBOUNDED
-\ Sizes stop here, so none wraps: the arena refuses a program this large
+\ Sizes stop here, so none wraps: the arena rejects a program this large
 \ with E-MEM-MAP.
 MEM-MAX-N INST-BYTES / 4 / constant SIZE-CAP
 \ The most pairs one class byte adds: `\S` adds 11 for its 2 bytes.

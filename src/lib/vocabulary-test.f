@@ -121,13 +121,13 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ A rejection the engine throws: the record's first line and its place,
 \ status 70, no output.
-: REFUSES ( str str str -- )
+: REJECTS ( str str str -- )
    {: name:str line:str place:str :}
    name 70 line place s" " SAYS ;
 
-: TIER0-REFUSES ( str str str -- )
+: TIER0-REJECTS ( str str str -- )
    {: name:str line:str place:str :}
-   TIER0 name line place REFUSES ;
+   TIER0 name line place REJECTS ;
 
 \ A harness the engine stops with an E-POLICY record: its first line, the
 \ notes span, the stdout.
@@ -147,12 +147,12 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : ESCAPED ( -- )
    TIER0 s" escaped" 0 s" " S\" Bracket \\ \"Café\"Bracket \\ \"Café\"" RUNS
    TIER0 s" escaped-tail" 70 s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/escaped-tail.f:3:" S\" Bracket \\ \"Café\"" SAYS
-   s" escaped-body-tail" s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/escaped-body-tail.f:2:" TIER0-REFUSES
-   s" escaped-c" S\" error[E-POLICY]: `C\\\q` is not in the vocabulary this source may use" s" test/policy/escaped-c.f:2:" TIER0-REFUSES
-   s" escaped-dotq" S\" error[E-POLICY]: `.\\\q` is not in the vocabulary this source may use" s" test/policy/escaped-dotq.f:2:" TIER0-REFUSES ;
+   s" escaped-body-tail" s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/escaped-body-tail.f:2:" TIER0-REJECTS
+   s" escaped-c" S\" error[E-POLICY]: `C\\\q` is not in the vocabulary this source may use" s" test/policy/escaped-c.f:2:" TIER0-REJECTS
+   s" escaped-dotq" S\" error[E-POLICY]: `.\\\q` is not in the vocabulary this source may use" s" test/policy/escaped-dotq.f:2:" TIER0-REJECTS ;
 
 \ The seal removes words; it does not change what an admitted program does, what
-\ the checker refuses, how a throw ends the process, or the refusal of a source
+\ the checker rejects, how a throw ends the process, or the rejection of a source
 \ that ends inside a definition.
 : ADMITTED ( -- )
    TIER0 s" ok" 0 s" " OK-OUT$ RUNS
@@ -163,67 +163,67 @@ variable CODE                          \ the last child's exit code, -1 when it 
    LOCALS ESCAPED ;
 
 : LOADERS ( -- )
-   s" bypass" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/bypass.f:2:" TIER0-REFUSES
-   s" included" s" error[E-POLICY]: `included` is not in the vocabulary this source may use" s" test/policy/included.f:1:" TIER0-REFUSES
-   s" evaluate" s" error[E-POLICY]: `evaluate` is not in the vocabulary this source may use" s" test/policy/evaluate.f:1:" TIER0-REFUSES ;
+   s" bypass" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/bypass.f:2:" TIER0-REJECTS
+   s" included" s" error[E-POLICY]: `included` is not in the vocabulary this source may use" s" test/policy/included.f:1:" TIER0-REJECTS
+   s" evaluate" s" error[E-POLICY]: `evaluate` is not in the vocabulary this source may use" s" test/policy/evaluate.f:1:" TIER0-REJECTS ;
 
 : KEYWORDS ( -- )
-   s" trusted" s" error[E-POLICY]: `trusted:` is not in the vocabulary this source may use" s" test/policy/trusted.f:1:" TIER0-REFUSES
-   s" tick" s" error[E-POLICY]: `'` is not in the vocabulary this source may use" s" test/policy/tick.f:2:" TIER0-REFUSES
-   s" string" S\" error[E-POLICY]: `c\q` is not in the vocabulary this source may use" s" test/policy/string.f:2:" TIER0-REFUSES ;
+   s" trusted" s" error[E-POLICY]: `trusted:` is not in the vocabulary this source may use" s" test/policy/trusted.f:1:" TIER0-REJECTS
+   s" tick" s" error[E-POLICY]: `'` is not in the vocabulary this source may use" s" test/policy/tick.f:2:" TIER0-REJECTS
+   s" string" S\" error[E-POLICY]: `c\q` is not in the vocabulary this source may use" s" test/policy/string.f:2:" TIER0-REJECTS ;
 
 \ A global a used package also exports is outside the vocabulary before it is
-\ shadowed: the seal refuses it ahead of the shadowing rule, as in a body.
+\ shadowed: the seal rejects it ahead of the shadowing rule, as in a body.
 \ A package loaded before the seal, admitted or not, cannot be reopened: inside
 \ it its private words come first. ok.f reopens the design's own package.
 : SCOPES ( -- )
-   s" using-ffi" s" error[E-POLICY]: `NOW` is not in the vocabulary this source may use" s" test/policy/using-ffi.f:3:" TIER0-REFUSES
-   s" shadow" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/shadow.f:3:" TIER0-REFUSES
-   s" private" s" error[E-POLICY]: `PDEP:HIDDEN` is not in the vocabulary this source may use" s" test/policy/private.f:2:" TIER0-REFUSES
-   s" reopen" s" error[E-POLICY]: package `PDEP` predates the seal, so sealed source cannot reopen it" s" test/policy/reopen.f:2:" TIER0-REFUSES
-   s" reopen-foreign" s" error[E-POLICY]: package `PFOREIGN` predates the seal, so sealed source cannot reopen it" s" test/policy/reopen-foreign.f:2:" TIER0-REFUSES
-   s" foreign-call" s" error[E-POLICY]: `PFOREIGN:LEAK` is not in the vocabulary this source may use" s" test/policy/foreign-call.f:2:" TIER0-REFUSES
-   s" undefined" s" error[E-POLICY]: `NOSUCHWORD` is not in the vocabulary this source may use" s" test/policy/undefined.f:1:" TIER0-REFUSES ;
+   s" using-ffi" s" error[E-POLICY]: `NOW` is not in the vocabulary this source may use" s" test/policy/using-ffi.f:3:" TIER0-REJECTS
+   s" shadow" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/shadow.f:3:" TIER0-REJECTS
+   s" private" s" error[E-POLICY]: `PDEP:HIDDEN` is not in the vocabulary this source may use" s" test/policy/private.f:2:" TIER0-REJECTS
+   s" reopen" s" error[E-POLICY]: package `PDEP` predates the seal, so sealed source cannot reopen it" s" test/policy/reopen.f:2:" TIER0-REJECTS
+   s" reopen-foreign" s" error[E-POLICY]: package `PFOREIGN` predates the seal, so sealed source cannot reopen it" s" test/policy/reopen-foreign.f:2:" TIER0-REJECTS
+   s" foreign-call" s" error[E-POLICY]: `PFOREIGN:LEAK` is not in the vocabulary this source may use" s" test/policy/foreign-call.f:2:" TIER0-REJECTS
+   s" undefined" s" error[E-POLICY]: `NOSUCHWORD` is not in the vocabulary this source may use" s" test/policy/undefined.f:1:" TIER0-REJECTS ;
 
 : WIDENING ( -- )
-   s" allow-call" s" error[E-POLICY]: `VOCABULARY:ALLOW-PACKAGE` is not in the vocabulary this source may use" s" test/policy/allow-call.f:2:" TIER0-REFUSES
-   s" seal-call" s" error[E-POLICY]: `VOCABULARY:RESTRICT` is not in the vocabulary this source may use" s" test/policy/seal-call.f:2:" TIER0-REFUSES ;
+   s" allow-call" s" error[E-POLICY]: `VOCABULARY:ALLOW-PACKAGE` is not in the vocabulary this source may use" s" test/policy/allow-call.f:2:" TIER0-REJECTS
+   s" seal-call" s" error[E-POLICY]: `VOCABULARY:RESTRICT` is not in the vocabulary this source may use" s" test/policy/seal-call.f:2:" TIER0-REJECTS ;
 
-\ Tier 0 refuses at its compile rows and call lookup.
+\ Tier 0 rejects at its compile rows and call lookup.
 : BODIES ( -- )
-   s" capture" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/capture.f:2:" TIER0-REFUSES
-   s" execute" s" error[E-POLICY]: `execute` is not in the vocabulary this source may use" s" test/policy/execute.f:1:" TIER0-REFUSES
-   s" store" s" error[E-POLICY]: `!` is not in the vocabulary this source may use" s" test/policy/store.f:1:" TIER0-REFUSES
-   s" arith" s" error[E-POLICY]: `+` is not in the vocabulary this source may use" s" test/policy/arith.f:1:" TIER0-REFUSES
-   s" dotq" S\" error[E-POLICY]: `.\q` is not in the vocabulary this source may use" s" test/policy/dotq.f:2:" TIER0-REFUSES
-   s" used" s" error[E-POLICY]: `LEAK` is not in the vocabulary this source may use" s" test/policy/used.f:3:" TIER0-REFUSES ;
+   s" capture" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/capture.f:2:" TIER0-REJECTS
+   s" execute" s" error[E-POLICY]: `execute` is not in the vocabulary this source may use" s" test/policy/execute.f:1:" TIER0-REJECTS
+   s" store" s" error[E-POLICY]: `!` is not in the vocabulary this source may use" s" test/policy/store.f:1:" TIER0-REJECTS
+   s" arith" s" error[E-POLICY]: `+` is not in the vocabulary this source may use" s" test/policy/arith.f:1:" TIER0-REJECTS
+   s" dotq" S\" error[E-POLICY]: `.\q` is not in the vocabulary this source may use" s" test/policy/dotq.f:2:" TIER0-REJECTS
+   s" used" s" error[E-POLICY]: `LEAK` is not in the vocabulary this source may use" s" test/policy/used.f:3:" TIER0-REJECTS ;
 
 \ A keyword the native compiler models itself, a character literal, a call to
 \ the definition being compiled and a `:}` outside a `{:` group are neither
-\ records nor numbers: tier 0 refuses each at the token, before the compiler or
+\ records nor numbers: tier 0 rejects each at the token, before the compiler or
 \ the checker reads the body. `[package]`, in the design span, compiles.
 : MODELED ( -- )
    TIER0 s" package-literal" 0 s" " s" pdesign-name" RUNS
-   s" begin" s" error[E-POLICY]: `begin` is not in the vocabulary this source may use" s" test/policy/begin.f:1:" TIER0-REFUSES
-   s" recurse" s" error[E-POLICY]: `recurse` is not in the vocabulary this source may use" s" test/policy/recurse.f:1:" TIER0-REFUSES
-   s" quote" s" error[E-POLICY]: `[:` is not in the vocabulary this source may use" s" test/policy/quote.f:1:" TIER0-REFUSES
-   s" btick" s" error[E-POLICY]: `[']` is not in the vocabulary this source may use" s" test/policy/btick.f:2:" TIER0-REFUSES
-   s" char-literal" s" error[E-POLICY]: `[char]` is not in the vocabulary this source may use" s" test/policy/char-literal.f:2:" TIER0-REFUSES
-   s" self" s" error[E-POLICY]: `R` is not in the vocabulary this source may use" s" test/policy/self.f:1:" TIER0-REFUSES
-   s" exit" s" error[E-POLICY]: `exit` is not in the vocabulary this source may use" s" test/policy/exit.f:1:" TIER0-REFUSES
-   s" bracket" s" error[E-POLICY]: `[` is not in the vocabulary this source may use" s" test/policy/bracket.f:2:" TIER0-REFUSES
-   s" postpone" s" error[E-POLICY]: `postpone` is not in the vocabulary this source may use" s" test/policy/postpone.f:1:" TIER0-REFUSES
-   s" rstack" s" error[E-POLICY]: `>r` is not in the vocabulary this source may use" s" test/policy/rstack.f:1:" TIER0-REFUSES
-   s" do" s" error[E-POLICY]: `do` is not in the vocabulary this source may use" s" test/policy/do.f:1:" TIER0-REFUSES
-   s" stray-close" s" error[E-POLICY]: `:}` is not in the vocabulary this source may use" s" test/policy/stray-close.f:1:" TIER0-REFUSES ;
+   s" begin" s" error[E-POLICY]: `begin` is not in the vocabulary this source may use" s" test/policy/begin.f:1:" TIER0-REJECTS
+   s" recurse" s" error[E-POLICY]: `recurse` is not in the vocabulary this source may use" s" test/policy/recurse.f:1:" TIER0-REJECTS
+   s" quote" s" error[E-POLICY]: `[:` is not in the vocabulary this source may use" s" test/policy/quote.f:1:" TIER0-REJECTS
+   s" btick" s" error[E-POLICY]: `[']` is not in the vocabulary this source may use" s" test/policy/btick.f:2:" TIER0-REJECTS
+   s" char-literal" s" error[E-POLICY]: `[char]` is not in the vocabulary this source may use" s" test/policy/char-literal.f:2:" TIER0-REJECTS
+   s" self" s" error[E-POLICY]: `R` is not in the vocabulary this source may use" s" test/policy/self.f:1:" TIER0-REJECTS
+   s" exit" s" error[E-POLICY]: `exit` is not in the vocabulary this source may use" s" test/policy/exit.f:1:" TIER0-REJECTS
+   s" bracket" s" error[E-POLICY]: `[` is not in the vocabulary this source may use" s" test/policy/bracket.f:2:" TIER0-REJECTS
+   s" postpone" s" error[E-POLICY]: `postpone` is not in the vocabulary this source may use" s" test/policy/postpone.f:1:" TIER0-REJECTS
+   s" rstack" s" error[E-POLICY]: `>r` is not in the vocabulary this source may use" s" test/policy/rstack.f:1:" TIER0-REJECTS
+   s" do" s" error[E-POLICY]: `do` is not in the vocabulary this source may use" s" test/policy/do.f:1:" TIER0-REJECTS
+   s" stray-close" s" error[E-POLICY]: `:}` is not in the vocabulary this source may use" s" test/policy/stray-close.f:1:" TIER0-REJECTS ;
 
 \ At tier 0 a keyword row would answer a global name before any lookup, and a
 \ pass-2 row a token of a body holding a wide value, which tier 0 lowers again.
 : NAMES ( -- )
    TIER0 s" kwname" 70 s" error[E-RESERVED-DEFINITION]: `begin` is a keyword and cannot name a definition" s" test/policy/kwname.f:2:" s" " SAYS
-   s" own-keyword" s" error[E-POLICY]: `dup` is not in the vocabulary this source may use" s" test/policy/own-keyword.f:4:" TIER0-REFUSES
-   s" defname-p2" s" error[E-POLICY]: `tuck` is not in the vocabulary this source may use" s" test/policy/defname-p2.f:2:" TIER0-REFUSES
-   s" own-p2-keyword" s" error[E-POLICY]: `tuck` is not in the vocabulary this source may use" s" test/policy/own-p2-keyword.f:5:" TIER0-REFUSES
+   s" own-keyword" s" error[E-POLICY]: `dup` is not in the vocabulary this source may use" s" test/policy/own-keyword.f:4:" TIER0-REJECTS
+   s" defname-p2" s" error[E-POLICY]: `tuck` is not in the vocabulary this source may use" s" test/policy/defname-p2.f:2:" TIER0-REJECTS
+   s" own-p2-keyword" s" error[E-POLICY]: `tuck` is not in the vocabulary this source may use" s" test/policy/own-p2-keyword.f:5:" TIER0-REJECTS
    TIER0 s" defname-interpret" 70 s" error[E-RESERVED-DEFINITION]: `create` is a keyword and cannot name a definition" s" test/policy/defname-interpret.f:2:" s" " SAYS
    TIER0 s" defname-endloc" 70 s" error[E-RESERVED-DEFINITION]: `:}` is a keyword and cannot name a definition" s" test/policy/defname-endloc.f:4:" s" " SAYS ;
 
@@ -250,14 +250,14 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : BOUND ( -- )
    s" allow-bound" HARNESS!
    s" " 107 s" E-POLICY habu: policy: package wid above the bound lr " s" " RUNS
-   s" far" s" error[E-POLICY]: `PBIG:FAR` is not in the vocabulary this source may use" s" test/policy/far.f:2:" REFUSES ;
+   s" far" s" error[E-POLICY]: `PBIG:FAR` is not in the vocabulary this source may use" s" test/policy/far.f:2:" REJECTS ;
 
 \ A harness that bound the loaded-bytes seam to a reader that runs nothing:
 \ a sealed load still runs its file and still rejects what the seal does.
 : SEAM ( -- )
    s" allow-seam" HARNESS!
    s" ok" 0 s" " OK-OUT$ RUNS
-   s" bypass" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/bypass.f:2:" REFUSES ;
+   s" bypass" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/bypass.f:2:" REJECTS ;
 
 \ A record that names a path outside the root, whose head is the same for each.
 : ROOT$ ( -- str ) s" error[E-POLICY]: `" ;
@@ -291,16 +291,16 @@ PATH-CAP 1 + BUFFER: AT-BUF
 : CONFINED ( -- )
    s" allow-root" HARNESS!
    s" confined/scene" 0 s" " S\" 42\n" RUNS
-   s" confined/unrequired" s" error[E-UNREQUIRED]: `VALUE:ANSWER` is defined in `test/policy/confined/value.f`, which `test/policy/confined/unrequired.f` does not require" s" test/policy/confined/unrequired.f:4:" REFUSES
-   s" confined/parent" ROOT$ s" `../outside.f` lies outside the source root" REFUSES
-   s" confined/known" ROOT$ s" `../dep.f` lies outside the source root" REFUSES
-   s" confined/library" ROOT$ s" `src/lib/string.f` lies outside the source root" REFUSES
-   s" confined/absolute" ROOT$ s" `/etc/passwd` lies outside the source root" REFUSES
-   s" confined/symlink" ROOT$ s" `link.f` lies outside the source root" REFUSES
-   s" confined/forbidden" s" error[E-POLICY]: `included` is not in the vocabulary this source may use" s" test/policy/confined/forbidden.f:1:" REFUSES
-   s" confined/body" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/confined/body.f:1:" REFUSES
-   s" confined/string-required" s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/confined/string-required.f:1:" REFUSES
-   s" confined/root-call" s" error[E-POLICY]: `VOCABULARY:SOURCE-ROOT!` is not in the vocabulary this source may use" s" test/policy/confined/root-call.f:1:" REFUSES
+   s" confined/unrequired" s" error[E-UNREQUIRED]: `VALUE:ANSWER` is defined in `test/policy/confined/value.f`, which `test/policy/confined/unrequired.f` does not require" s" test/policy/confined/unrequired.f:4:" REJECTS
+   s" confined/parent" ROOT$ s" `../outside.f` lies outside the source root" REJECTS
+   s" confined/known" ROOT$ s" `../dep.f` lies outside the source root" REJECTS
+   s" confined/library" ROOT$ s" `src/lib/string.f` lies outside the source root" REJECTS
+   s" confined/absolute" ROOT$ s" `/etc/passwd` lies outside the source root" REJECTS
+   s" confined/symlink" ROOT$ s" `link.f` lies outside the source root" REJECTS
+   s" confined/forbidden" s" error[E-POLICY]: `included` is not in the vocabulary this source may use" s" test/policy/confined/forbidden.f:1:" REJECTS
+   s" confined/body" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/confined/body.f:1:" REJECTS
+   s" confined/string-required" s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/confined/string-required.f:1:" REJECTS
+   s" confined/root-call" s" error[E-POLICY]: `VOCABULARY:SOURCE-ROOT!` is not in the vocabulary this source may use" s" test/policy/confined/root-call.f:1:" REJECTS
    s" allow-root-direct" HARNESS!
    s" " 70 ROOT$ s" /test/policy/confined/link.f` lies outside the source root" s" " SAYS
    s" allow-root-preflight" HARNESS!
@@ -317,13 +317,13 @@ PATH-CAP 1 + BUFFER: AT-BUF
    s" " 0 s" error[E-POLICY]: the source policy is already sealed" s" test/policy/allow-root-scope-seal.f:14:" S\" 70\n70\n70\n70\n\n" SAYS ;
 
 \ A definer's built words call the names a sealed table gives as the table's
-\ text would: an ACTION outside the vocabulary is refused at its name, and
+\ text would: an ACTION outside the vocabulary is rejected at its name, and
 \ `require` is one: only a top-level token may name it.
 : BUILT ( -- )
    s" allow-fsm" HARNESS!
    s" fsm-table" 0 s" " s" " RUNS
-   s" fsm-action" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/fsm-action.f:3:36" REFUSES
-   s" fsm-require" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/fsm-require.f:3:36" REFUSES ;
+   s" fsm-action" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/fsm-action.f:3:36" REJECTS
+   s" fsm-require" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/fsm-require.f:3:36" REJECTS ;
 
 public
 

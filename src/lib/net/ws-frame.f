@@ -144,7 +144,7 @@ public
 \ Writes a header as this sender sends it and answers its size, 2 to HEADER-MAX.
 \ Each length takes its shortest form, so every header written decodes to the
 \ header given and every header DECODE-HEADER accepts encodes back to its
-\ bytes. It refuses what a sender must not write, with DECODE-HEADER's codes,
+\ bytes. It rejects what a sender must not write, with DECODE-HEADER's codes,
 \ and a span too small for the header with E-SPAN-CAPACITY, before a byte.
 : ENCODE-HEADER ( header sender SPAN:span<u8> -- n ) {: h who s :}
    h WS-HEADER:UNMAKE {: fin:bool op len:n key:n :}
@@ -166,7 +166,7 @@ public
 
 
 \ Reads the header at the start of the n bytes held, sent by this sender, whose
-\ payload may be no longer than the bound. It refuses as soon as the held bytes
+\ payload may be no longer than the bound. It rejects as soon as the held bytes
 \ break the protocol: a reserved bit is E-WS-RSV (no extension is negotiated),
 \ a reserved opcode E-WS-OPCODE, a fragmented control frame or one past 125
 \ bytes E-WS-CONTROL, a wrong mask bit for the sender E-WS-MASK, an extended

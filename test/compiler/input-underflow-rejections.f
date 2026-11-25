@@ -1,9 +1,9 @@
-\ input-underflow-refusals.f - rejected programs for "a definition may not
-\ consume below its declared inputs". The refusal names the consuming token and
+\ input-underflow-rejections.f - rejected programs for "a definition may not
+\ consume below its declared inputs". The rejection names the consuming token and
 \ both counts. Controls: a short and mistyped call keeps its own mismatch, and a
 \ body spending exactly what it declared still certifies. The record's declared
 \ effect is the signature's rows, whatever the body bound. Cases run through
-\ `evaluate-closed`, the path `bin/hb --load` takes; a refusal is a throw.
+\ `evaluate-closed`, the path `bin/hb --load` takes; a rejection is a throw.
 
 require src/lib/test/assert.f
 require src/lib/string.f
@@ -15,7 +15,7 @@ require src/lib/string.f
 : UFC2 ( n n -- ) 2drop ;
 SUMTYPE rb<a> VARIANT rf a ;VARIANT ;SUMTYPE   \ a multi-cell value
 
-\ The cell a speculative candidate refuses before the real row is applied.
+\ The cell a speculative candidate rejects before the real row is applied.
 variable IUF-V
 
 package INPUT-UNDERFLOW-TEST
@@ -76,7 +76,7 @@ private
 \ ---- the shortfall itself ----------------------------------------------------
 
 : CASE-BARE ( -- )
-   s" a call with nothing on the stack is refused at the call" T-LABEL
+   s" a call with nothing on the stack is rejected at the call" T-LABEL
    ARM
    [: s" : IUF-BARE ( -- n ) UFC 0 ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" UFC" TOKEN?  s" 1" s" 0" SHORT-BY?
@@ -92,9 +92,9 @@ private
 
 \ catch's code cell carries a proof, so a stack word over it moves the cells by
 \ row surgery (checker.f XPORT-APPLY); the word that reaches under the declared
-\ inputs still owns the refusal.
+\ inputs still owns the rejection.
 : CASE-SWAP-OVER-PROOF ( -- )
-   s" a swap over a proof-carrying cell is refused at the swap" T-LABEL
+   s" a swap over a proof-carrying cell is rejected at the swap" T-LABEL
    ARM
    [: s" : IUF-XSWAP ( -- ) [: ;] catch swap drop drop ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" swap" TOKEN?  s" 2" s" 1" SHORT-BY?
@@ -118,68 +118,68 @@ private
 
 \ `>r` and `2>r` move one-cell rows by the step path when no proof is among
 \ their operands (checker.f RS->R, RS2->R); the transfer that reaches under the
-\ declared inputs owns the refusal, not the `;` that finds the borrow.
+\ declared inputs owns the rejection, not the `;` that finds the borrow.
 : CASE-TO-R ( -- )
-   s" a >r with nothing on the stack is refused at the >r" T-LABEL
+   s" a >r with nothing on the stack is rejected at the >r" T-LABEL
    ARM
    [: s" : IUF-TOR ( -- ) >r r> drop ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" >r" TOKEN?  s" 1" s" 0" SHORT-BY?
    DISARM ;
 
 : CASE-TWO-TO-R ( -- )
-   s" a 2>r over one cell is refused at the 2>r" T-LABEL
+   s" a 2>r over one cell is rejected at the 2>r" T-LABEL
    ARM
    [: s" : IUF-2TOR ( -- ) 1 2>r 2r> 2drop ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" 2>r" TOKEN?  s" 2" s" 1" SHORT-BY?
    DISARM ;
 
 : CASE-SECOND-TO-R ( -- )
-   s" the >r that empties past the declared inputs is refused" T-LABEL
+   s" the >r that empties past the declared inputs is rejected" T-LABEL
    ARM
    [: s" : IUF-TOR2 ( -- ) 1 >r >r 2r> 2drop ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" >r" TOKEN?  s" 1" s" 0" SHORT-BY?
    DISARM ;
 
 \ The first `>r` moves catch's proof-carrying cell by row surgery; the second
-\ takes the step path and owns the refusal.
+\ takes the step path and owns the rejection.
 : CASE-TO-R-AFTER-PROOF ( -- )
-   s" a >r after a proof-carrying cell moved is refused at that >r" T-LABEL
+   s" a >r after a proof-carrying cell moved is rejected at that >r" T-LABEL
    ARM
    [: s" : IUF-XTOR ( -- ) [: ;] catch >r >r 2r> 2drop ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" >r" TOKEN?  s" 1" s" 0" SHORT-BY?
    DISARM ;
 
 : CASE-TWO-TO-R-IN-ARM ( -- )
-   s" a 2>r in an if arm is refused at the 2>r, not at then" T-LABEL
+   s" a 2>r in an if arm is rejected at the 2>r, not at then" T-LABEL
    ARM
    [: s" : IUF-ARM2TOR ( f -- ) if 1 2>r 2r> 2drop then ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" 2>r" TOKEN?  s" 2" s" 1" SHORT-BY?
    DISARM ;
 
 \ Binding the declared input into a local does not make another one appear; the
-\ call still owns the refusal.
+\ call still owns the rejection.
 : CASE-AFTER-LOCALS ( -- )
-   s" a call after a locals binding is still refused at the call" T-LABEL
+   s" a call after a locals binding is still rejected at the call" T-LABEL
    ARM
    [: s" : IUF-LOC ( n -- n ) {: x:n :} UFC x ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" UFC" TOKEN?  s" 1" s" 0" SHORT-BY?
    DISARM ;
 
-\ The binder consumes too, so an underflowing `{: :}` group is refused at the
+\ The binder consumes too, so an underflowing `{: :}` group is rejected at the
 \ token that closes it rather than somewhere later in the body.
 : CASE-LOCALS-BINDER ( -- )
-   s" a locals group with nothing to bind is refused at its own closer" T-LABEL
+   s" a locals group with nothing to bind is rejected at its own closer" T-LABEL
    ARM
    [: s" : IUF-BIND ( -- ) {: x:n :} ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" :}" TOKEN?
    DISARM ;
 
-\ A refusal raised on a candidate row the checker then abandons must not put its
-\ name on this one. `IUF-V @ cell+` refuses the `^a -- ^a` candidate
+\ A rejection raised on a candidate row the checker then abandons must not put its
+\ name on this one. `IUF-V @ cell+` rejects the `^a -- ^a` candidate
 \ (raw cell, no address) before succeeding on `n -- n`, and the underflow two
 \ tokens later is what the reader has to be sent to.
 : CASE-OVER-ABANDONED-CANDIDATE ( -- )
-   s" an abandoned candidate's refusal does not rename this one" T-LABEL
+   s" an abandoned candidate's rejection does not rename this one" T-LABEL
    ARM
    [: s" : IUF-SPEC ( -- n ) IUF-V @ cell+ drop drop 0 ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" drop" TOKEN?
@@ -235,7 +235,7 @@ private
 \ A does> clause declares its own signature, not the created word's runtime
 \ effect the checker walks it against (its inputs and the data-field address).
 : CASE-DECLARED-CLAUSE ( -- )
-   s" a refused does> clause's declared effect is its signature as written" T-LABEL
+   s" a rejected does> clause's declared effect is its signature as written" T-LABEL
    ARM
    [: s" : IUF-DOES-UF ( n -- ) create , does> ( n -- n ) @ + + ;" evaluate-closed ;] 70 TTHROWSQ
    NAMED  s" n -- n" DECLARED?
@@ -272,30 +272,30 @@ private
    S\" \"code\":\"E-BAD-SIGNATURE\"" HAS?  S\" \"declared\":" LACKS?
    DISARM ;
 
-\ ---- the refusal's rows ------------------------------------------------------
+\ ---- the rejection's rows ------------------------------------------------------
 
-\ The drops after a refused `then` reach under the declared inputs and bind the
-\ row below them; the refusal's rows are still those `then` saw.
-: CASE-ROWS-AT-REFUSAL ( -- )
-   s" a refusal's rows take no binding a later token makes" T-LABEL
+\ The drops after a rejected `then` reach under the declared inputs and bind the
+\ row below them; the rejection's rows are still those `then` saw.
+: CASE-ROWS-AT-REJECTION ( -- )
+   s" a rejection's rows take no binding a later token makes" T-LABEL
    ARM
    [: s" : IUF-LATE ( ^u8 bool -- ) if 1 then drop drop drop ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH$ HAS?  s" then" TOKEN?
    s" ^u8" s" ^u8 n" ROWS?
    DISARM ;
 
-\ A row variable a later token specialises keeps its letter in the refusal's rows.
+\ A row variable a later token specialises keeps its letter in the rejection's rows.
 : CASE-ROWS-NAMES ( -- )
-   s" a refusal's rows keep the letters a later token binds" T-LABEL
+   s" a rejection's rows keep the letters a later token binds" T-LABEL
    ARM
    [: s" : IUF-NAMES ( a b bool -- ) if 1 else 0 0 = then rot 1 + drop drop ;" evaluate-closed ;] 70 TTHROWSQ
    s" a b bool" s" a b n" ROWS?
    DISARM ;
 
-\ The help is read from the rows the refused call saw, not from the deeper rows
+\ The help is read from the rows the rejected call saw, not from the deeper rows
 \ the drops after it bind: a mistyped value, not a missing one.
 : CASE-ROWS-REPAIR ( -- )
-   s" a refusal's help reads the rows its token saw" T-LABEL
+   s" a rejection's help reads the rows its token saw" T-LABEL
    ARM
    [: s" : IUF-LATE-CALL ( ^u8 bool -- ) UFC2 drop drop drop drop ;" evaluate-closed ;] 70 TTHROWSQ
    s" n n" s" ^u8 bool" ROWS?  s" convert or replace the value" HAS?
@@ -367,7 +367,7 @@ public
    CASE-DECLARED-CLAUSE-RECURSE
    CASE-DECLARED-BAD-SIG
    CASE-DECLARED-CLAUSE-BAD-SIG
-   CASE-ROWS-AT-REFUSAL
+   CASE-ROWS-AT-REJECTION
    CASE-ROWS-NAMES
    CASE-ROWS-REPAIR
    CASE-MISTYPED-CALL

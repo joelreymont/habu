@@ -588,17 +588,17 @@ private
 \ A build compiles a second copy of this file into the program it builds, and
 \ there LOADER answers hb's record: the copy's loading words would run its own
 \ registry, buffers and frames over hb's. The build's loader does every load,
-\ at a file's top level, so in a build the copy's loads refuse (BUILD-REFUSE).
+\ at a file's top level, so in a build the copy's loads reject (BUILD-REJECT).
 : OWN-LOADER? ( -- bool ) LOADER LOADER-REC = ;
 
 public
 
-\ The resolver does not refuse: RESOLVE loads nothing, and in a build it
+\ The resolver does not reject: RESOLVE loads nothing, and in a build it
 \ searches the process's current root, so a word may ask where a file lies.
-\ Each loading word refuses before it writes a row: a row a caught refusal
+\ Each loading word rejects before it writes a row: a row a caught rejection
 \ left would lie outside the build's space. Public for provided, which this
 \ file defines outside SOURCE-ROOT. w is the word the program called.
-: BUILD-REFUSE ( str str -- ) {: w:^ wu:n path:^ pathu:n :}
+: BUILD-REJECT ( str str -- ) {: w:^ wu:n path:^ pathu:n :}
    OWN-LOADER? if exit then
    w wu path pathu path pathu
    s" a word may not load or provide while a build runs"
@@ -1884,7 +1884,7 @@ public
 
 : LOAD ( str str str [ n n -- nominal ] -- ) LOAD-XT @ execute ;
 \ A runner calls the file's quotation as `0 sourceu q execute` with nothing of
-\ its own beneath it; the quotation throws for a refused file.
+\ its own beneath it; the quotation throws for a rejected file.
 : USE ( [ str str str [ n n -- nominal ] -- renders nominal roots ] -- ) LOAD-XT ! ;
 : CURRENT ( -- [ str str str [ n n -- nominal ] -- renders nominal roots ] ) LOAD-XT @ ;
 : RESET ( -- ) [: ORDINARY ;] LOAD-XT ! ;
@@ -1953,7 +1953,7 @@ private
    u 0= if exit then
    a u munmap 0 < if s" events: cannot release an event table" INCLUDE-DIE then ;
 
-\ The caller publishes the answer and CAP once this returns, so a refusal
+\ The caller publishes the answer and CAP once this returns, so a rejection
 \ throws while OLD is still the one published.
 : EVENT-REMAP ( ^u8 n n n -- ^u8 )
    {: old:^ oldcap:n used:n cap:n :}
@@ -2172,7 +2172,7 @@ variable LAST-LOAD-EVAL-OK
       drop frame HEADER-BYTES +
    then ;
 
-\ The engine's refusals name their place from these four cells and
+\ The engine's rejections name their place from these four cells and
 \ nothing else decides when they are right: PUBLISH-LOCATION republishes them
 \ when the top frame, its size, execution copy or root-run count changes, so
 \ they name the file being read, or 0 for none (the REPL, a stdin session, the
@@ -2269,7 +2269,7 @@ private
 : SOURCE ( -- ^u8 ) s" SOURCE-ROOT:SOURCE" CHECK-ACTIVE TOP@ HEADER-BYTES + ;
 
 \ TOP and the published location, the only pointers into a filling frame, move
-\ only once the fresh mapping is made: a refusal leaves the old one published.
+\ only once the fresh mapping is made: a rejection leaves the old one published.
 : GROW ( n n -- )
    {: want:n keep:n :}
    TOP@ {: frame:^ :}
@@ -2294,7 +2294,7 @@ private
 
 \ Rejects PATH unless the top frame awaits its bytes, FR-SIZE -1 from PUSH to HOLD:
 \ a word's read finds its own file's frame held, or no frame; in a build, hb's.
-: READ-REFUSE ( str -- ) {: path:^ pathu:n :}
+: READ-REJECT ( str -- ) {: path:^ pathu:n :}
    TOP@ 0= 0= if TOP@ FR-SIZE + CELL-VIEW @ -1 = if exit then then
    s" SOURCE-ROOT:READ-OS" path pathu path pathu
    s" is not the file a load is opening"
@@ -2378,7 +2378,7 @@ public
 \ The loader's reader, public so a reader installed with SOURCE-INPUT:USE may
 \ call it from READ-SOURCE; it fills the top frame only while that awaits its bytes.
 : READ-OS ( str -- str )
-   s" SOURCE-ROOT:READ-OS" 2over GIVEN-CHECK 2dup READ-REFUSE INCLUDE-READ-ALL ;
+   s" SOURCE-ROOT:READ-OS" 2over GIVEN-CHECK 2dup READ-REJECT INCLUDE-READ-ALL ;
 
 private
 
@@ -2452,7 +2452,7 @@ public
 
 \ The process's root stream (stdin, or the `--load` stream) runs open, as the
 \ engine's own loop runs it: it may leave cells on the stack and the process
-\ still exits 0. The stream's text is no file's, so a refusal in it names none:
+\ still exits 0. The stream's text is no file's, so a rejection in it names none:
 \ run while a file is open, it counts itself on that file's frame, which then
 \ publishes no location until the stream returns or throws.
 : ROOT-RUNS+ ( n -- ) {: k:n :}
@@ -2669,7 +2669,7 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 \ A loaded file's DATA starts and ends on a cell, so its bytes are a function
 \ of its own source and a stored object installs whatever earlier files
 \ allotted. A throw skips the end align, which does not matter: a load that
-\ threw refuses the parent's object, so no stored segment continues the
+\ threw rejects the parent's object, so no stored segment continues the
 \ parent's data from there.
 : LOAD-UNIT ( -- )
    LOAD-BYTES
@@ -2736,7 +2736,7 @@ public
 \ No WITH scope opens, so the frame's root is CURRENT$, at the top level the
 \ program's directory.
 : RUN-PROGRAM ( str -- ) {: a:^ u:n :}
-   s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REFUSE
+   s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REJECT
    PROGRAM-ID @ {: was:n :}
    NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER:RESOLVE {: path:^ pathu:n exists:bool :}
    path pathu a u NULL-PTR 0 CONFINE-AS INCLUDE-PATH0 drop
@@ -2779,7 +2779,7 @@ public
 : WITH-BYTES ( str str n [ str str -- ] -- )
    {: root:^ rootu:n path:^ pathu:n id:n q :}
    s" SOURCE-ROOT:WITH-BYTES" path pathu GIVEN-CHECK
-   s" SOURCE-ROOT:WITH-BYTES" path pathu BUILD-REFUSE
+   s" SOURCE-ROOT:WITH-BYTES" path pathu BUILD-REJECT
    path pathu CONFINE INCLUDE-PATH0 drop
    s" SOURCE-ROOT:WITH-BYTES" root rootu ROOT-ENTER {: old:^ oldu:n base:n :}
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
@@ -2796,7 +2796,7 @@ public
 : WITH-SUPPLIED ( str str str n [ str str -- ] -- )
    {: root:^ rootu:n path:^ pathu:n src:^ srcu:n id:n q :}
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu GIVEN-CHECK
-   s" SOURCE-ROOT:WITH-SUPPLIED" path pathu BUILD-REFUSE
+   s" SOURCE-ROOT:WITH-SUPPLIED" path pathu BUILD-REJECT
    path pathu CONFINE INCLUDE-PATH0 drop
    s" SOURCE-ROOT:WITH-SUPPLIED" root rootu ROOT-ENTER {: old:^ oldu:n base:n :}
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
@@ -2870,7 +2870,7 @@ private
    {: w:^ wu:n a:^ u:n path:^ pathu:n known:bool :}
    a u path pathu REQUIRED-KIND known REQUIRE-STATE EVENT-RECORD
    known if a u path pathu REQUIRE-HELD exit then
-   w wu path pathu BUILD-REFUSE
+   w wu path pathu BUILD-REJECT
    REQUIRE-REG:MARK {: row:n :}
    path pathu REQUIRE-REG:STORE {: row-path:^ row-pathu:n :}
    DISCOVERY? if exit then
@@ -2889,7 +2889,7 @@ public
 : INCLUDED-AS ( str str -- )
    {: w:^ wu:n a:^ u:n :}
    w wu a u [: LOADER-FIND ;] LOADER:RESOLVE drop {: path:^ pathu:n :}
-   w wu path pathu BUILD-REFUSE
+   w wu path pathu BUILD-REJECT
    a u path pathu SOURCE-EVENT:KIND-INCLUDED SOURCE-EVENT:STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
    a u SRCLOC:ORIGIN$
@@ -2932,7 +2932,7 @@ global
 : provided ( str -- )
    {: a:^ u:n :}
    s" provided" a u [: RESOLVE-AT ;] RESOLVE {: path:^ pathu:n known:bool :}
-   s" provided" path pathu SOURCE-ROOT:BUILD-REFUSE
+   s" provided" path pathu SOURCE-ROOT:BUILD-REJECT
    a u path pathu SOURCE-EVENT:KIND-PROVIDED known REQUIRE-STATE EVENT-RECORD
    known if exit then
    path pathu REQUIRE-REG:STORE 2drop ;
@@ -3032,7 +3032,7 @@ public
    require-xt POLICY-ROOT-SET ;
 
 \ Scope a root and require owner for reusable source checks. A callback that
-\ seals leaves the new policy root and refuses the attempted return to the old.
+\ seals leaves the new policy root and rejects the attempted return to the old.
 : POLICY-WITH-ROOT ( str [ -- ] [ -- renders parses nominal roots ]
    -- )
    {: path:^ u:n q require-xt :}

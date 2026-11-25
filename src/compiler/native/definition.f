@@ -1,7 +1,7 @@
 split-str
 \ definition.f - the compiler-neutral step around one pending definition's
 \ lowering: staging, the checker scan and verdict, name and arity checks,
-\ publication by kind, the pending callback stub, and retraction on refusal.
+\ publication by kind, the pending callback stub, and retraction on rejection.
 \ src/habu/t0.f calls it on every target.
 
 require src/core/exit-status.f
@@ -148,7 +148,7 @@ public
 
 private
 
-\ A refused clause is reported as CHECK:DEFINITION reports a refused body: the
+\ A rejected clause is reported as CHECK:DEFINITION reports a rejected body: the
 \ checker's reason, then its reject status, which the run names the
 \ definition under. The clause is named by the caller, from its open unit.
 : CLAUSE-CK ( n str -- )
@@ -181,7 +181,7 @@ public
    \ The clause's scan clears the checker's recovery flag, so keep the head's.
    RECOVERY-USED? M-HEAD-RECOVERY ! ;
 
-\ The `does>` clause, named for a refusal by the unit's name. The checker's
+\ The `does>` clause, named for a rejection by the unit's name. The checker's
 \ token ordinal first steps past the `does>` keyword between the two bodies.
 : CHECK-DOES-CLAUSE ( str -- n )
    {: na:^ nu:n :}
@@ -210,7 +210,7 @@ EXPORT CHECK:CHECKER-ROWS-END
 EXPORT CHECK:MULTI-ERR?
 \ A multi-error run whose reader recovers from E-COMP-RECOVERY: that reader
 \ sets RECOVER-CELL around the compile it calls (layout.f). Under any other
-\ reader a refusal is E-COMP-VERDICT.
+\ reader a rejection is E-COMP-VERDICT.
 : RECOVERING? ( -- bool )
    MULTI-ERR?
    data-base NCOMP-DISPATCH:RECOVER-CELL + @ 0<> and ;
@@ -279,9 +279,9 @@ public
 \ author's private definition, qualified when a public definition names a
 \ different wordlist. A TRUSTED: effect is registered under that same spelling.
 \
-\ ARITY-NONE is refused here. Only a definition with no recordable
-\ declaration reaches the refusal (no signature, an unparsable one, or one with
-\ a scope scheme): CHECK:DEFINITION has refused every uncertified body. After a
+\ ARITY-NONE is rejected here. Only a definition with no recordable
+\ declaration reaches the rejection (no signature, an unparsable one, or one with
+\ a scope scheme): CHECK:DEFINITION has rejected every uncertified body. After a
 \ certified scan nothing reaches it either: a package opened and closed by the source is
 \ E-COMP-NAME, an unsigned body answers its inferred effect, and one whose
 \ effect is unrecorded (W-EFFECT-NOT-RECORDED) answers the checker's
@@ -293,7 +293,7 @@ public
 
 private
 
-\ ---- publication and refusal -------------------------------------------------
+\ ---- publication and rejection -------------------------------------------------
 \ Room for the offsets is made before the commit, so nothing past it throws.
 : KEEP-OFFSETS ( -- )
    NEMIT:FUNCTIONS {: n:n :}
@@ -316,7 +316,7 @@ public
 
 private
 
-\ Drops a refused definition's rows from M-ROWS on, or its does> frame, so a
+\ Drops a rejected definition's rows from M-ROWS on, or its does> frame, so a
 \ redefinition is no duplicate.
 : RETRACT ( -- )
    M-DOES @ 0<> if
@@ -350,7 +350,7 @@ public
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The `;` that ends the definition: the token the engine read last, whose
-\ address in the input places a refusal there on its line.
+\ address in the input places a rejection there on its line.
 : CLOSE$ ( -- str ) READ-AT @ data-base TKL-CELL + @ ;
 
 private

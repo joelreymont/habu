@@ -59,7 +59,7 @@ variable RC
    s" public source load opens, edits and cleans multiple parts" T-LABEL
    NEED-OK s" xml-owner-consumer: ok" MARKER ;
 
-: REFUSALS ( -- )
+: REJECTIONS ( -- )
    s" a linear source cannot be saved in a dynamic record" T-LABEL
    s" DYNAMIC-BUFFER BAD XML:source" TEST-EVAL:RC 70 T=
    s" the owner constructor stays private" T-LABEL
@@ -120,7 +120,7 @@ public
    root FS:CLEANUP-TREE+
    root STR:DATA ROOT root STR:LEN BYTE-COPY root STR:LEN ROOT-U !
 
-   SOURCE-RUN REFUSALS
+   SOURCE-RUN REJECTIONS
    UTF8-ARTIFACT true UTF16-ARTIFACT false UTF16-ARTIFACT
    T-REPORT ;
 ;package

@@ -55,7 +55,7 @@ global
 \ ---- a cell whose pointee the declaration chooses -----------------------------
 \ The clause names the pointee. `create` publishes through `trust-raw`, which
 \ mints every type variable TVK-RAW, and a raw pointee absorbs a scalar and
-\ refuses a pointer: the definers above never hold the address of an address, so
+\ rejects a pointer: the definers above never hold the address of an address, so
 \ neither can hold a pointer table's base. A spelled-out pointee has no variable,
 \ so the cell's type is exactly what the clause says.
 \

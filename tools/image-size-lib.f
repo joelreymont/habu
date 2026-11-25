@@ -21,7 +21,7 @@ split-str
 \   read-write load's dynamic section and slots.
 \ An ELF records no length for the code, so the code ends where the map's rows
 \ do and its classes sum by construction; ELF-TEXT-END checks that end instead.
-\ A Wasm module is refused by name.
+\ A Wasm module is rejected by name.
 
 require src/lib/le.f
 require src/lib/fmt.f
@@ -57,14 +57,14 @@ variable OTHER-SIZE
 
 : ELF? ( -- bool ) IMG@ ILEN @ ELF:MAGIC? ;
 
-: REFUSAL$ ( -- str )
+: REJECTION$ ( -- str )
    IMG@ LE:U32@ $6D736100 = if
       s" image-size: a Wasm module, which this report does not read" exit
    then
    s" image-size: not a Habu program" ;
 
-: REFUSE ( -- )
-   ELF? IMG@ ILEN @ MACHO:MAGIC? or 0= if REFUSAL$ EXIT-STATUS:DATAERR die then ;
+: REJECT ( -- )
+   ELF? IMG@ ILEN @ MACHO:MAGIC? or 0= if REJECTION$ EXIT-STATUS:DATAERR die then ;
 
 : OPEN ( -- )
    ELF? if IMG@ ILEN @ ELF:OPEN exit then
@@ -207,7 +207,7 @@ public
 : MEASURE ( str -- )
    {: path:^ pathu:n :}
    path pathu READ-IMAGE
-   REFUSE
+   REJECT
    OPEN
    path pathu MAP-CHECK
    path pathu IMAGE-NAMES:LOAD

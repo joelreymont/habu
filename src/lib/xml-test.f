@@ -528,15 +528,15 @@ CAST: TOKEN>N ( XML:kind -- n )
    [: ABANDON-REINIT ;] RELEASES ;
 
 \ A failed build gives back what it took: a rejected INIT, and an INIT-INPUT
-\ refused at each of its requests in turn until one build succeeds.
+\ rejected at each of its requests in turn until one build succeeds.
 : FAILED-BUILDS ( -- )
    s" a rejected INIT keeps nothing" T-LABEL
    [: [: RD ALLOC-TEST:COUNTING s\" \xFF\xFE<\z" INIT XML:CLOSE ;] catch
       E-ENCODING T= ;] RELEASES
-   s" a refused INIT-INPUT request keeps nothing" T-LABEL
+   s" a rejected INIT-INPUT request keeps nothing" T-LABEL
    1 begin
       {: k:n :}
-      0 ALLOC-TEST:TAKEN !  0 ALLOC-TEST:FREED !  k ALLOC-TEST:REFUSED !
+      0 ALLOC-TEST:TAKEN !  0 ALLOC-TEST:FREED !  k ALLOC-TEST:REJECTED !
       s" <a/>" 1 $7FFFFFFFFFFFFFFF INPUT-SET
       [: RD ALLOC-TEST:COUNTING INPUT-POS ['] INPUT-FILL INIT-INPUT XML:CLOSE ;]
       catch {: code:n :}
@@ -545,7 +545,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    while
       code E-MEM-SIZE T=  k 1+
    repeat
-   0 ALLOC-TEST:REFUSED ! ;
+   0 ALLOC-TEST:REJECTED ! ;
 
 \ One tag of WIDE-PREFIXES declarations and as many attributes p0:a, p1:a, ...
 \ URI i has URI-SCALARS scalars, U+0061 or U+20061 by the bits of i. The two
@@ -997,7 +997,7 @@ variable SEEN
    s\" <a></a \xC0\x80>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
    INPUT-FAILURE E-MALFORMED T=
    E-MALFORMED s" 1:8: expected `>`, found byte $C0; write that byte here, or correct the markup before it" SAID
-   s" a rejected reader refuses a further NEXT" T-LABEL
+   s" a rejected reader rejects a further NEXT" T-LABEL
    s\" <a>\n&bogus;</a>" 2 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
    ['] DRAIN catch E-ENTITY T=
    E-ENTITY s" 2:1: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&bogus;`; write `&amp;` for a literal `&`, and end each reference with `;`" SAID

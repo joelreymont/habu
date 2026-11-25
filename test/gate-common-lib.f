@@ -66,7 +66,7 @@ variable GE-EVAL-SRC-U
 \ Spawns pathz with argv and envp, over this process's environment, as the
 \ capture child, its stdin on in and its stdout and stderr on the capture pipes,
 \ and records its pid. Stack-preserving under catch, so GE-LAUNCH-RC answers a
-\ refusal's code.
+\ rejection's code.
 : GE-LAUNCH ( ^u8 ^^u8 ^^u8 fd -- ^u8 ^^u8 ^^u8 fd )
    {: pathz:^ argv:^ envp:^ in:fd :}
    pathz dup ZLEN >str PROCESS:NEW
@@ -85,7 +85,7 @@ variable GE-EVAL-SRC-U
    PROC-ARGV-ENV-RESET
    code ;
 
-\ A refused launch prints its errno and ends the capture with its code.
+\ A rejected launch prints its errno and ends the capture with its code.
 : GE-LAUNCHED ( n -- ) {: code:n :}
    code 0= if exit then
    GE-SPAWN-FAIL.

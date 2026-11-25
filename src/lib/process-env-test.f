@@ -310,7 +310,7 @@ TASK:SEMAPHORE PET-ENV-START
    0 T= 0 T= {: outu:n :}
    PET-OUT outu >str s\" fresh\n" T$= ;
 
-: PET-REFUSED-RESETS ( -- )
+: PET-REJECTED-RESETS ( -- )
    PET-RESET PET-STAGE-STALE
    [: s" " -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-IO drop ;]
    E-PROC-OUTPUT TTHROWSQ
@@ -436,7 +436,7 @@ DYNAMIC-BUFFER ERR u8
    0 OUT 10 >str s" before-out" T$=
    0 ERR 10 >str s" before-err" T$= ;
 
-: REFUSE ( n -- ^u8 )
+: REJECT ( n -- ^u8 )
    drop E-STR-CAPACITY throw ;
 
 : SINK-FAILS ( [ n -- ^u8 ] [ n -- ^u8 ] -- )
@@ -457,9 +457,9 @@ public
    NO-DEADLINE
    BUSY-TIMEOUT
    CLEANED
-   [: [: REFUSE ;] [: ERR-ROOM ;] SINK-FAILS ;] E-STR-CAPACITY TTHROWSQ
+   [: [: REJECT ;] [: ERR-ROOM ;] SINK-FAILS ;] E-STR-CAPACITY TTHROWSQ
    CLEANED
-   [: [: OUT-ROOM ;] [: REFUSE ;] SINK-FAILS ;] E-STR-CAPACITY TTHROWSQ
+   [: [: OUT-ROOM ;] [: REJECT ;] SINK-FAILS ;] E-STR-CAPACITY TTHROWSQ
    CLEANED
    OUT-RELEASE ERR-RELEASE ;
 
@@ -559,7 +559,7 @@ public
 
 \ A length is checked before a byte of the caller's text is read. The text holds
 \ no `=` and ends at an inaccessible page, so a scan that runs first reads past
-\ it; a negative length, or one whose row would not fit a cell, is refused unread.
+\ it; a negative length, or one whose row would not fit a cell, is rejected unread.
 7 constant PET-READABLE                  \ bytes of `x` before the inaccessible page
 
 : PET-UNREAD ( -- ^u8 )
@@ -577,7 +577,7 @@ public
 : PET-DEF-UNREAD ( n -- ) {: nameu:n :}
    PET-RESET PET-UNREAD nameu >str s" " PROC-ENV-DEFAULT+ ;
 
-\ The same refusals for a value after the readable name AB.
+\ The same rejections for a value after the readable name AB.
 : PET-VAL-ROW-UNREAD ( n -- ) {: valu:n :}
    PET-RESET s" AB" PET-UNREAD valu >str PROC-ENV+ ;
 
@@ -587,7 +587,7 @@ public
 : PET-VAL-DEF-UNREAD ( n -- ) {: valu:n :}
    PET-RESET s" AB" PET-UNREAD valu >str PROC-ENV-DEFAULT+ ;
 
-\ A refused row leaves nothing staged in either table.
+\ A rejected row leaves nothing staged in either table.
 : PET-NONE-STAGED ( -- )
    PROC-ENV-N @ COUNT>N 0 T=
    PROC-ENV-DEF-N @ COUNT>N 0 T= ;
@@ -726,7 +726,7 @@ public
    s" env-many-rows" [: PET-MANY:ENV-ROWS ;] PET-CASE
    s" default-many-rows" [: PET-MANY:DEFAULT-ROWS ;] PET-CASE
    s" argv-env-capture-result" [: PET-RUN-ARGV-ENV-CAPTURE-RESULT ;] PET-CASE
-   s" refused-resets" [: PET-REFUSED-RESETS ;] PET-CASE
+   s" rejected-resets" [: PET-REJECTED-RESETS ;] PET-CASE
    s" env-outcome-false" [: PET-RUN-ENV-OUTCOME-FALSE ;] PET-CASE
    s" env-outcome-timeout" [: PET-RUN-ENV-OUTCOME-TIMEOUT ;] PET-CASE
    s" env-stdin-outcome" [: PET-RUN-ENV-STDIN-OUTCOME ;] PET-CASE

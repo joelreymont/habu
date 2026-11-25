@@ -94,7 +94,7 @@ DYNAMIC-BUFFER SD-F-U n
 DYNAMIC-BUFFER SD-F-HEAD n
 variable SD-F-N
 \ A record's offset is where its name starts, or for a nameless record where
-\ its keyword does, and its span the source it names there: a refusal at the
+\ its keyword does, and its span the source it names there: a rejection at the
 \ record points at both.
 DYNAMIC-BUFFER SD-R-OFF n
 DYNAMIC-BUFFER SD-R-SPAN n
@@ -378,7 +378,7 @@ variable SD-X-N
    s STR:DATA col >str ;
 
 \ A bare use reaches the record's package; where the record may name either of
-\ two packages and the use reaches one, discovery cannot know which: refused.
+\ two packages and the use reaches one, discovery cannot know which: rejected.
 : SD-R-OPEN? ( n -- bool ) {: r:n :}
    r SD-R-IDS {: ids:n :}
    false
@@ -397,7 +397,7 @@ variable SD-X-N
    s STR:DATA pkg STR:LEN + c@ $3A <> if false exit then
    s STR:DATA pkg STR:LEN 1+ + tail STR:LEN >str tail STR:=CI ;
 
-\ A package opened inside another is a part (the engine refuses every other
+\ A package opened inside another is a part (the engine rejects every other
 \ nested `package`), whose close returns to it.
 : SD-C-PACKAGE-OPEN ( n -- ) {: row:n :}
    SD-C-PKG @ -1 <> if SD-C-PKG @ SD-C-OUTER ! then
@@ -560,7 +560,7 @@ variable SD-X-N
    repeat drop false ;
 
 \ A bare spelling uses a package's enabled, not bare-off ROW only where
-\ SD-R-SEEN?; elsewhere the replay refuses and a harvest reads on to record it.
+\ SD-R-SEEN?; elsewhere the replay rejects and a harvest reads on to record it.
 : SD-R-USE-OK? ( n n n -- bool ) {: off:n len:n row:n :}
    row SD-R-DISABLED @ 0= {: on:bool :}
    off len SD-TOK$ SD-QCOLON 0 >= if on exit then
@@ -702,7 +702,7 @@ variable SD-X-N
    repeat
    start SD-I @ start - ;
 
-\ The next token, kept as the token read last when there is one: a refusal
+\ The next token, kept as the token read last when there is one: a rejection
 \ names the form discovery read last, and the source's end names none.
 : SD-RAW ( -- n n )
    SD-NEXT {: off:n len:n :}
@@ -825,7 +825,7 @@ DYNAMIC-BUFFER SD-DEC u8
 \ A literal holding a bad escape is a bad string literal: the engine rejects it
 \ where the load stops. The walk ends there, follows nothing and rejects
 \ nothing; the check rejects it at its opener.
-: SD-REFUSED-LITERAL ( -- )
+: SD-REJECTED-LITERAL ( -- )
    SD-U @ SD-I ! ;
 
 \ An escaped literal's path is what the engine's literal makes of its payload,
@@ -834,7 +834,7 @@ DYNAMIC-BUFFER SD-DEC u8
    s STR:LEN 1+ SD-DEC-RESERVE
    0 SD-DEC {: dst:^ :}
    s dst ESCAPE:DECODE {: k:n ok:bool :}
-   ok 0= if SD-REFUSED-LITERAL exit then
+   ok 0= if SD-REJECTED-LITERAL exit then
    dst k >str SD-LITERAL-FILL ;
 
 \ The literal whose opener SD-I stands after: SD-I steps past its closing quote.
@@ -874,7 +874,7 @@ DYNAMIC-BUFFER SD-DEC u8
    s s" mutual" STR:=CI if $100 exit then
    0 ;
 
-\ A definition or retirement of a loader or family name refuses nothing, but
+\ A definition or retirement of a loader or family name rejects nothing, but
 \ a later use with that spelling is ambiguous (SD-CHECK-USE).
 : SD-SHADOW ( str -- )
    SD-TAIL$ {: s:str :}
@@ -1112,7 +1112,7 @@ DYNAMIC-BUFFER SD-DEC u8
 \ operand. A definition's opener and, outside a definition, an engine definer,
 \ a package keyword and `undefine` take the next token as the name they give,
 \ take or retire, a loader word's too, and load nothing; a name missing at the
-\ source's end is theirs to refuse. A name given or retired is a loader word's
+\ source's end is theirs to reject. A name given or retired is a loader word's
 \ spelling replaced.
 : SD-STEP ( n n -- )
    {: off:n len:n :}
@@ -1293,7 +1293,7 @@ public
 : ROWS-PASS-END ( -- ) SD-R-PASS-END ;
 : ROWS-PASS-STABLE? ( -- bool ) SD-R-PASS-STABLE @ 0<> ;
 
-\ The caller's discovery run keeps its events up to a source refusal. They
+\ The caller's discovery run keeps its events up to a source rejection. They
 \ give consumers a closure to harvest before their final expansion.
 : HARVEST ( [ -- ] -- ) {: q :}
    SOURCE-EVENT:RESET

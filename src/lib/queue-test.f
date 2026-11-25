@@ -1,4 +1,4 @@
-\ queue-test.f - bounded queue shapes, blocking, refusals and a producer soak.
+\ queue-test.f - bounded queue shapes, blocking, rejections and a producer soak.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -14,7 +14,7 @@ require src/lib/test/wait.f
 
 package QUEUE-TEST
 
-4 QUEUE:QUEUE Q-RING             \ fills, wraps and refuses
+4 QUEUE:QUEUE Q-RING             \ fills, wraps and rejects
 1 QUEUE:QUEUE Q-ONE              \ one slot: the blocking handshake
 8 QUEUE:QUEUE Q-SOAK             \ deliberately smaller than the soak's load
 2 QUEUE:QUEUE Q-COLD             \ never initialized
@@ -112,7 +112,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    [: Q-COLD QUEUE:COUNT drop ;] E-QUEUE-STATE TTHROWSQ ;
 
 \ The handle is an index this package minted, so a cell that never was one is
-\ refused by its bounds instead of reaching a record.
+\ rejected by its bounds instead of reaching a record.
 : QUEUE-TEST-HANDLE ( -- )
    [: Q-NO-SUCH-QUEUE QUEUE:>QUEUE QUEUE:COUNT drop ;] E-QUEUE-OPERAND TTHROWSQ
    [: -1 QUEUE:>QUEUE QUEUE:COUNT drop ;] E-QUEUE-OPERAND TTHROWSQ ;
@@ -140,8 +140,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" QT-COUNT-SEM ( TASK:sem -- n ) QUEUE:COUNT"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ ---- definition-time refusals ------------------------------------------------
-\ A definer parses the name it defines, so a refusal at a definition aborts the
+\ ---- definition-time rejections ------------------------------------------------
+\ A definer parses the name it defines, so a rejection at a definition aborts the
 \ load that carries it: these two are reachable only through a child engine.
 
 : Q-SRC+ ( str -- )

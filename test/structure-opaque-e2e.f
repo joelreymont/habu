@@ -1,5 +1,5 @@
 \ End-to-end OPAQUE structure clause on the engine under test: tools/check.f
-\ replays the fixture and certifies OP's own calls, and refuses a consumer that
+\ replays the fixture and certifies OP's own calls, and rejects a consumer that
 \ reaches the pair through OP's public wordlist. The same check replays
 \ test/fixtures/big-decl.f. A temporary tree holds every source the children
 \ ran and every child log until the process exits.
@@ -49,12 +49,12 @@ private
    s" tools/check.f replays the declarations and certifies OP's own calls" T-LABEL
    NEED-OK ;
 
-\ The check stops at the first refusal, so ROUND, OP's restored public section,
-\ certified before FORGE was refused.
+\ The check stops at the first rejection, so ROUND, OP's restored public section,
+\ certified before FORGE was rejected.
 : FORGE ( -- )
    s" test/structure-opaque-forge.f" VERIFY-ARGS RUN-HERE
    s" forge.out" s" forge.err" SAVE-LOG
-   s" tools/check.f refuses the replayed pair through OP's public wordlist" T-LABEL
+   s" tools/check.f rejects the replayed pair through OP's public wordlist" T-LABEL
    RC@ 70 T=
    S\" \"code\":\"E-UNDEFINED\"" ERR-HAS
    S\" \"line\":5," ERR-HAS

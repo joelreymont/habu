@@ -1,6 +1,6 @@
 \ target-policy.f - acceptance suite for the compiler target/policy binding.
 \ Covers src/compiler/digest.f, target.f, numeric-policy.f and binding.f through
-\ their public words: a missing or role-swapped field is a checker refusal and
+\ their public words: a missing or role-swapped field is a checker rejection and
 \ an incoherent combination a named throw with its code.
 
 require src/lib/test/assert.f
@@ -186,7 +186,7 @@ private
       CTARGET:CONTRACT FUSED TRY-BIND ;] E-CBIND-CONTRACT TTHROWSQ
    [: A64-NO-FP STRICT CBIND:BIND DROP-BINDING ;] 0 TTHROWSQ ;
 
-\ CHECK-QUIET-CANDIDATE! answers -1 certified, 0 refused.
+\ CHECK-QUIET-CANDIDATE! answers -1 certified, 0 rejected.
 : STATIC-REJECTS ( -- )
    s" CTP-OK ( CTARGET:arch CTARGET:abi CTARGET:endian CTARGET:ptr-width CTARGET:features -- CTARGET:contract ) CTARGET:CONTRACT"
       CHECK-QUIET-CANDIDATE! -1 T=

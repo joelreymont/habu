@@ -124,10 +124,10 @@ variable WALKED                          \ how many of them pass 2 did not give,
 variable FOLLOWED                        \ how many locations it took the files of,
 DYNAMIC-BUFFER OTHERS n                  \ the uses of the tail bound to other words,
 variable OTHER-N
-DYNAMIC-BUFFER MSG u8                    \ and why it is refused, or its warning
+DYNAMIC-BUFFER MSG u8                    \ and why it is rejected, or its warning
 variable MSG-U
 TYPED-VARIABLE FOUND bool                \ whether a declaration is selected,
-TYPED-VARIABLE REFUSED bool              \ whether the request is refused,
+TYPED-VARIABLE REJECTED bool              \ whether the request is rejected,
 TYPED-VARIABLE SPELT bool                \ and whether its tokens spell the tail
 TYPED-VARIABLE DECLARED bool             \ whether the declaration is placed
 variable G                               \ the declaration: D's check's group for P,
@@ -174,7 +174,7 @@ variable SRC-CNS
 REF-LANES REF-CHUNK * 5 * TYPED-BUFFER WAVE-META n
 REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
 \ POOL, MSG and P-B hold a byte past those they name, which their writes
-\ reserve: an accessor refuses an index at its capacity, and an empty string
+\ reserve: an accessor rejects an index at its capacity, and an empty string
 \ still needs the address of index 0.
 
 : LOC@ ( n n -- n )  swap LOC-CELLS * + LOCS @ ;
@@ -248,20 +248,20 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    0 MSG-U !
    1 MSG-RESERVE
    false FOUND !
-   false REFUSED !
+   false REJECTED !
    false DECLARED !
    -1 PRIM-ROW !
    false SOURCE-LOCATED !
    0 BUILTIN-SYM !
    true SPELT ! ;
 
-: REFUSE ( str str -- )
+: REJECT ( str str -- )
    {: p:str w:str :}
    0 MSG-U !
    p SHOWN$ MSG+
    s" : " MSG+
    w MSG+
-   true REFUSED !
+   true REJECTED !
    false FOUND ! ;
 
 \ The file whose path is at this offset and length in POOL named, for the
@@ -587,7 +587,7 @@ private
       u USE-BYTES TAIL-FROM 0 < if false SPELT ! then
       exit
    then
-   u USE-VISIT 0 < if slot DOC-CANON$ s" the use has no declaration identity" REFUSE exit then
+   u USE-VISIT 0 < if slot DOC-CANON$ s" the use has no declaration identity" REJECT exit then
    u FROM-USE
    u USE-BYTES TAIL-FROM 0 < if false SPELT ! then ;
 
@@ -626,7 +626,7 @@ private
    {: slot:n d:n :}
    d FROM-DECL
    slot G @ TOKEN-WHY {: w:str :}
-   w STR:LEN 0<> if P$ w REFUSE then ;
+   w STR:LEN 0<> if P$ w REJECT then ;
 
 : AT-TOKEN-IN ( n n n -- )
    {: slot:n g:n at:n :}
@@ -674,8 +674,8 @@ private
 
 : ANCHORED ( n -- )
    {: slot:n :}
-   slot HELD 1 <> if P$ s" the check does not hold the declaration once" REFUSE exit then
-   G @ GROUP-STAMPED? 0= if P$ s" the check states no consistent source revision" REFUSE then ;
+   slot HELD 1 <> if P$ s" the check does not hold the declaration once" REJECT exit then
+   G @ GROUP-STAMPED? 0= if P$ s" the check states no consistent source revision" REJECT then ;
 
 : LOCATE ( n n -- )
    {: slot:n at:n :}
@@ -703,11 +703,11 @@ private
       exit
    then
    IMPLICIT? 0= if
-      G @ GROUP-TEXT-FRESH? 0= if P$ s" changed since it was checked" REFUSE exit then
+      G @ GROUP-TEXT-FRESH? 0= if P$ s" changed since it was checked" REJECT exit then
    else
       P$ DOC-HOLDING MATCH option
          some OF drop ENDOF
-         none OF P$ LSP-TEXT:DISK-CURRENT? 0= if P$ s" changed while locating source" REFUSE exit then ENDOF
+         none OF P$ LSP-TEXT:DISK-CURRENT? 0= if P$ s" changed while locating source" REJECT exit then ENDOF
       ;MATCH
    then
    TS @ TE @ SPAN-IN drop {: s:str :}
@@ -738,16 +738,16 @@ private
    s STR:LEN D-U !
    IMPLICIT? if
       [: -1 swap DOC-EACH-BUT ;] LSP-WORKSPACE:ALL-SUBJECTS
-      LSP-WORKSPACE:REFUSED? if
-         LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REFUSE exit
+      LSP-WORKSPACE:REJECTED? if
+         LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REJECT exit
       then
       LSP-WORKSPACE:SUBJECTS 0 ?do i LSP-WORKSPACE:SUBJECT$ SUBJECT+ loop
       SUB-N @ WALKED !
       exit
    then
    P$ D$ [: -1 swap DOC-EACH-BUT ;] LSP-WORKSPACE:REACHING
-   LSP-WORKSPACE:REFUSED? if
-      LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REFUSE exit
+   LSP-WORKSPACE:REJECTED? if
+      LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REJECT exit
    then
    LSP-WORKSPACE:UNREADABLE 0 ?do i LSP-WORKSPACE:UNREADABLE$ UNREAD+ loop
    P$ SUBJECT+
@@ -1066,7 +1066,7 @@ public
 : RENAME-VERIFIED? ( n -- bool )
    {: slot:n :}
    slot DEFS-VERIFIED? if true exit then
-   slot DOC-CANON$ s" its check is not verified" REFUSE
+   slot DOC-CANON$ s" its check is not verified" REJECT
    false ;
 
 : PRIMITIVE? ( -- bool )  IMPLICIT? ;
@@ -1074,19 +1074,19 @@ public
 
 \ Selects the declaration at this byte of the text of the open document in
 \ this slot, which positions count in, and places it, finding no subjects:
-\ textDocument/prepareRename answers from it; or refuses the request.
+\ textDocument/prepareRename answers from it; or rejects the request.
 : PLACE ( n n -- )  true LOCATED ;
 
 \ Selects the declaration at this byte of the text of the open document in
 \ this slot, which positions count in, places it when the request includes
-\ it, and finds the subjects; or refuses the request. D's last completed check
-\ must be of D's current text, whether verified, refused or deferred.
+\ it, and finds the subjects; or rejects the request. D's last completed check
+\ must be of D's current text, whether verified, rejected or deferred.
 : SELECT ( n n bool -- )
    {: slot:n at:n too:bool :}
    slot at too LOCATED
    FOUND @ if slot SUBJECTS! then ;
 
-: REFUSED? ( -- bool )  REFUSED @ ;
+: REJECTED? ( -- bool )  REJECTED @ ;
 : BLOCKED$ ( -- str )  MSG$ ;
 
 \ Whether a declaration is selected, and the bytes its token starts and ends

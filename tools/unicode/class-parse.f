@@ -336,7 +336,7 @@ private
    pair countp @ pairs SLOT !
    countp @ 1+ countp ! ;
 
-\ The pinned file lists only Open and Close rows; a None row is refused.
+\ The pinned file lists only Open and Close rows; a None row is rejected.
 : BRACKET+ ( n n n -- ) {: cp:n pair:n type:n :}
    type OPEN-TYPE = if
       cp pair 0 OPEN-CP 0 OPEN-PAIR OPEN-N PAIR-APPEND exit

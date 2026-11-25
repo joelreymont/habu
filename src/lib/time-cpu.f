@@ -31,7 +31,7 @@ FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ^u8 -- i32 )
 
 public
 
-\ Throws E-TIME-CLOCK when the host refuses the clock.
+\ Throws E-TIME-CLOCK when the clock read fails.
 : THREAD-CPU-NS ( -- n )
    THREAD-CPU-CLOCK CPU-SPEC BYTE-VIEW CLOCK-GETTIME-CALL
    0 <> if E-TIME-CLOCK throw then

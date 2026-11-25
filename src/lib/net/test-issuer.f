@@ -405,7 +405,7 @@ private
    JSON:WRITE-OBJECT-START s" error" SLOT WHY @ SPAN:$ JSON:WRITE-FIELD-S JSON:WRITE-OBJECT-END ;
 
 \ The error code is a literal.
-: REFUSE ( HTTP:response n str -- )
+: REJECT ( HTTP:response n str -- )
    {: answer:HTTP:response status:n why:str :}
    why str> SPAN:MAKE SLOT WHY !
    answer status HTTP:STATUS!
@@ -416,31 +416,31 @@ private
    t 0 [char] ; FIND {: end:n :}
    t STR:DATA end >str STR:TRIM s" application/x-www-form-urlencoded" STR:=CI ;
 
-\ The grant the form asks for, issued or refused as Entra v2 answers; no
+\ The grant the form asks for, issued or rejected as Entra v2 answers; no
 \ audience, or one that is not UTF-8 (claims are JSON text), no token
 \ (RFC 6749 §5.2). A public client may only refresh.
 : GRANT ( HTTP:response -- )
    {: answer:HTTP:response :}
    GRANT-TYPE s" client_credentials" FIELD= {: credentials:bool :}
    GRANT-TYPE s" refresh_token" FIELD= {: refreshing:bool :}
-   credentials OBO? or refreshing or 0= if answer 400 s" unsupported_grant_type" REFUSE exit then
-   refreshing 0= PUBLIC? and if answer 401 s" invalid_client" REFUSE exit then
+   credentials OBO? or refreshing or 0= if answer 400 s" unsupported_grant_type" REJECT exit then
+   refreshing 0= PUBLIC? and if answer 401 s" invalid_client" REJECT exit then
    AUDIENCE$ {: aud:str :}
-   aud STR:LEN 0= aud UTF8:VALID? 0= or if answer 400 s" invalid_request" REFUSE exit then
+   aud STR:LEN 0= aud UTF8:VALID? 0= or if answer 400 s" invalid_request" REJECT exit then
    credentials if CREDENTIALS answer ISSUE exit then
    refreshing if
-      [: drop REFRESH-TOKEN VERIFIED? ;] STEP 0= if answer 400 s" invalid_grant" REFUSE exit then
+      [: drop REFRESH-TOKEN VERIFIED? ;] STEP 0= if answer 400 s" invalid_grant" REJECT exit then
       answer RENEW exit
    then
-   [: drop ASSERTION VERIFIED? ;] STEP 0= if answer 400 s" invalid_grant" REFUSE exit then
+   [: drop ASSERTION VERIFIED? ;] STEP 0= if answer 400 s" invalid_grant" REJECT exit then
    ON-BEHALF answer ISSUE ;
 
 : TOKEN-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    READY
-   asked FORM-TYPE? 0= if answer 400 s" invalid_request" REFUSE exit then
-   asked HTTP:BODY$ FORM! 0= if answer 400 s" invalid_request" REFUSE exit then
-   CLIENT? 0= if answer 401 s" invalid_client" REFUSE exit then
+   asked FORM-TYPE? 0= if answer 400 s" invalid_request" REJECT exit then
+   asked HTTP:BODY$ FORM! 0= if answer 400 s" invalid_request" REJECT exit then
+   CLIENT? 0= if answer 401 s" invalid_client" REJECT exit then
    answer GRANT ;
 
 : MINT-ROUTE ( HTTP:request HTTP:response -- )

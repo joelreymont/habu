@@ -1,5 +1,5 @@
 \ own-p2-keyword.f - a design word named after a row only a body holding a wide
-\ local dispatches; sealed, the name is refused where it is defined.
+\ local dispatches; sealed, the name is rejected where it is defined.
 package MINE
 public
 : tuck ( -- n ) 5 ;

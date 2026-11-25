@@ -169,7 +169,7 @@ MEM-MAX-CELLS MEM-CELL-BYTES * constant JW-MAX-N
    JW-LF s 0 SPAN:U8!
    w ;
 
-\ A refusal leaves the length, depth and layout unchanged.
+\ A rejection leaves the length, depth and layout unchanged.
 : JW-TOKEN ( ^writer n -- ^writer )
    {: w count:n :}
    w JW-OUT drop
@@ -289,7 +289,7 @@ private
    dup 10 < if JW-ZERO + else 87 + then ;
 
 \ A width is at most six, so the sum fits a cell for any span in memory; the
-\ checked adds of the delimiters and separator refuse it exactly when a running
+\ checked adds of the delimiters and separator reject it exactly when a running
 \ checked sum would.
 : JW-ESC-N ( str -- n ) {: a:^ u:n :}
    JW-ESC-W BYTE-VIEW {: w:^ :}
@@ -405,7 +405,7 @@ private
    w JW-ASCII@ if a u s JW-ASCII-INTO exit then
    a u s JW-ESC-INTO ;
 
-\ Each source byte needs at least one output byte, so refuse a span longer than
+\ Each source byte needs at least one output byte, so reject a span longer than
 \ the output can grow to before reading it, then text that is not UTF-8. A quoted
 \ string or key is a token, so its width reserves any due break with it; a
 \ string part never breaks.

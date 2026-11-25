@@ -105,7 +105,7 @@ variable LPROFJSON   variable LPROFNUM   variable LPROFPCT   variable LPROFNAME
 variable LPROFSYNC   variable LPROFROW
 private
 
-\ The refusal is a die because this file loads inside the engine-build window,
+\ The rejection is a die because this file loads inside the engine-build window,
 \ which has no src/lib/ in it.
 : PROF-TARGET-OK ( -- )
    HB-TARGET-LINUX? if exit then
@@ -893,7 +893,7 @@ private
    10 OS-TIMER-NOW  10 0 ARN-LAST STR, ;
 
 \ x0 = arena: the interval split for setitimer. The signed divide keeps an
-\ interval below 0 negative, which C-PROF-TIMER's arm refuses rather than
+\ interval below 0 negative, which C-PROF-TIMER's arm rejects rather than
 \ reading it as years. Clobbers x9-x11.
 : C-PROF-TIMER-FRAME ( -- )
    C-PROF-USEC>R10
@@ -903,7 +903,7 @@ private
    9 SP 0 STR,  10 SP 8 STR,
    9 SP 16 STR,  10 SP 24 STR, ;
 
-\ A refused setitimer is named and fatal: the phase would sample nothing and
+\ A failed setitimer is named and fatal: the phase would sample nothing and
 \ report zeros.
 : C-PROF-TIMER ( -- )
    LBL LBL {: ok msg :}

@@ -1,7 +1,7 @@
 \ checker-verify-pkg-scope.f - the checker's verifier package scope hands the
 \ caller's package back byte for byte. VERIFY:SOURCE-BUF-IN-SCOPE saves the
 \ caller's package name, length and mode and restores them on leaving; entering
-\ again refuses with E-PKG-CONTEXT unless the mirror equals the live record, so
+\ again rejects with E-PKG-CONTEXT unless the mirror equals the live record, so
 \ a second replay from the same open package is the exact test of the restore.
 
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f
@@ -19,7 +19,7 @@ private
 TYPED-VARIABLE SRC-A ^u8
 variable SRC-U
 
-\ x86-64 refuses a quotation that reads a local, so the source span travels
+\ x86-64 rejects a quotation that reads a local, so the source span travels
 \ through these two cells to the caught body.
 : ACT ( -- )
    SRC-A @ SRC-U @ >str VERIFY:SOURCE-BUF-IN-SCOPE ;

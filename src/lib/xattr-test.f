@@ -4,8 +4,8 @@
 \ Failure modes: ADD replaces an existing value; SET does not create or does
 \ not replace; GET answers a missing name, or a value longer than its buffer,
 \ as anything but absent and oversize, or an empty value as absent; ERASE of a
-\ missing name throws; a 255-byte name is refused; a name the kernel refuses
-\ reads as oversize; a refused call is not E-XATTR with its errno.
+\ missing name throws; a 255-byte name is rejected; a name the kernel rejects
+\ reads as oversize; a rejected call is not E-XATTR with its errno.
 
 require src/lib/test/assert.f
 require src/lib/span.f
@@ -106,7 +106,7 @@ variable CLOSED-FD
 : EMPTY-GET ( -- ) FD@ s" " BUF XATTR:GET drop ;
 
 : NAMES ( -- )
-   s" refused names" T-LABEL
+   s" rejected names" T-LABEL
    [: LONG-GET ;] XATTR:E-XATTR TTHROWSQ
    FS:ERRNO FS:ERANGE T=
    [: EMPTY-GET ;] XATTR:E-XATTR TTHROWSQ

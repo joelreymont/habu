@@ -304,7 +304,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ ---- Moving bytes
 
-\ After a refused send or receive: true to try again, after a wait for the
+\ After a rejected send or receive: true to try again, after a wait for the
 \ events when the socket was not ready; else the fault WHY is kept.
 : RETRY? ( ^conn n n fault -- bool ) {: c e:n events:n why:fault :}
    e EINTR = if true exit then
@@ -531,7 +531,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    ;MATCH ;
 
 \ Drops any held connection and keeps the mark's fault.
-: REFUSE ( ^conn -- ) {: c :}
+: REJECT ( ^conn -- ) {: c :}
    c HANG-UP
    c CONN-MARK @ MATCH option
       some OF c swap 0 FAIL ENDOF
@@ -740,7 +740,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    repeat drop true ;
 
 \ The first line, held whole with LEAD? true; keeps the status and x. A
-\ line with no CRLF held, or a status outside 100 to 599, is refused.
+\ line with no CRLF held, or a status outside 100 to 599, is rejected.
 : STATUS? ( ^conn -- bool ) {: c :}
    c ROOM {: r:^ :}
    c 0 LINE-AT 12 < if false exit then
@@ -1021,7 +1021,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 FSM:DEFINE LIFECYCLE ( ^conn ) phase intake
    IN starting  INTAKE ( intake )
-      marked   REFUSE   >down
+      marked   REJECT   >down
       none     -        >resolving
       idle     -        >probing
       busy     HANG-UP  >resolving

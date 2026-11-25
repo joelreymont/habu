@@ -7,7 +7,7 @@ split-str
 \
 \ A does> clause gets a record of its own. LDOESPATCH patches the created
 \ word's RET into `b D`, D inside the defining word's body. As a record, D is an
-\ entry resolved by name like every BL; a name plus byte delta is refused, since
+\ entry resolved by name like every BL; a name plus byte delta is rejected, since
 \ a branch must not depend on a callee's interior. The record overlaps
 \ its parent's span and trims nothing: the inliner, the snapshot and the size
 \ census read that span. Its name is the parent's plus `;does`: the parent's
@@ -22,7 +22,7 @@ split-str
 \ caller hands, replay-widn!'s, the band bounds below. A pending definition is
 \ part of the scope: replay-open moves its record out of slot NDICT, which the
 \ first replay record takes, and clears PEND-CELL; replay-close puts the record
-\ back in slot NDICT and PEND-CELL back. Both refuse such a definition while a
+\ back in slot NDICT and PEND-CELL back. Both reject such a definition while a
 \ task is live: a live task keeps the overlay's code, which would split the
 \ definition's body. While the latch is set, replay-record and namespace-record
 \ raise HW as they publish. The owner publishes through nothing else, nothing
@@ -30,7 +30,7 @@ split-str
 \ [the saved NDICT, HW) is the overlay's and a record above HW is another
 \ writer's. Every other record or wid writer dies while the latch is set, so a
 \ definition pends in an open overlay only through a raw store to PEND-CELL,
-\ which reaches the pending-definition refusals, as a raw ndict! reaches the
+\ which reaches the pending-definition rejections, as a raw ndict! reaches the
 \ HW one.
 require src/core/exit-status.f
 require src/lib/fmt.f
@@ -547,7 +547,7 @@ private
 \ A LASTC of zero names no record: none was created since boot, or the one it
 \ named was retired by a motion that lowered NDICT. A LASTC whose wordlist cell
 \ is WL:RETIRED names a record `undefine` retired in place, which leaves NDICT
-\ alone. Either is refused before anything is patched, recoverable inside
+\ alone. Either is rejected before anything is patched, recoverable inside
 \ evaluate like the other definition errors.
 : EMIT-NONE ( label -- ) {: have:label :}
    LBL LBL LBL {: none:label class:label msg:label :}
@@ -633,7 +633,7 @@ package DEFWRITE
 public
 
 \ The comparisons are unsigned and never wrap: a CP already at the ceiling, and
-\ a length no region holds (a negative one among them), are refused rather than
+\ a length no region holds (a negative one among them), are rejected rather than
 \ added. x12 = the length. Clobbers x11, x15 and the flags.
 : NAME-ROOM ( label -- ) {: full:label :}
    LBL {: fits:label :}
@@ -763,9 +763,9 @@ public
 \ a row, so no reader sees a half-written one. FPRIM frames x30 around each.
 package DEFWRITE
 
-\ The refusal at the label: the text and the primitive's lr, which BLs in the
+\ The rejection at the label: the text and the primitive's lr, which BLs in the
 \ body replace and the frame keeps.
-: REFUSE-AT ( str label n -- ) {: a:^ u:n at:label rc:n :}
+: REJECT-AT ( str label n -- ) {: a:^ u:n at:label rc:n :}
    at LBL,  0 CALLER-LR,  a u rc DIE-LINE, ;
 
 \ x<dst> = the address of record x<ix>; dst and ix differ.
@@ -905,7 +905,7 @@ variable LREPLAYTRAP
    9 NDICT 1 SUBI,  9 G-PUSH
    done B,
    s" E-SEAL-VIOLATION habu: namespace-record with a definition pending, no record room, an empty name or one reaching the code ceiling, a colon at an edge or twice, or a name already recorded"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ namespace-private ( n -- )
@@ -925,7 +925,7 @@ variable LREPLAYTRAP
    14 14 1 ADDI,  14 XREG-RBASE WIDN-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: namespace-private index not a live package row below NDICT, or a row that has a private wordlist"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ alias-record ( ^u8 n n n -- ) name, source index, wid
@@ -963,9 +963,9 @@ variable LREPLAYTRAP
    PUBLISH,
    done B,
    s" E-SEAL-VIOLATION habu: alias-record with a marker wid, a definition pending, a source that is no live definition or is internal, no record room, an empty name or one reaching the code ceiling, or a name taken"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    s" E-SEAL-WORDLIST habu: alias-record into a wordlist protected by the seal"
-   prot EXIT-STATUS:SEAL-WORDLIST REFUSE-AT
+   prot EXIT-STATUS:SEAL-WORDLIST REJECT-AT
    done LBL, ;
 
 \ package-scope! ( n n -- )
@@ -1014,7 +1014,7 @@ variable LREPLAYTRAP
    1 XREG-RBASE PKG-PARENT-CELL STR,  9 XREG-RBASE PKG-REC-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: package-scope! row not a live package row below NDICT with a private wordlist, a part outside a package or inside a part, or -1 with a parent"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ replay-open ( -- )
@@ -1037,7 +1037,7 @@ variable LREPLAYTRAP
    14 1 MOVZ,  14 8 REPLAY-SCOPE:LATCH BAND-OFF STR,
    done B,
    s" E-SEAL-VIOLATION habu: replay-open with an overlay open, or a definition pending while a task is live"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ replay-record ( ^u8 n n -- ) name, wid: a codeless record, whose entry
@@ -1065,7 +1065,7 @@ variable LREPLAYTRAP
    HW-RAISE,
    done B,
    s" E-SEAL-VIOLATION habu: replay-record with a marker wid, no overlay, a definition pending, no record room, an empty name or one reaching the code ceiling, or a name taken"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ record-wid! ( n n -- ) wid, index: the overlay retires a record with wid -2
@@ -1098,7 +1098,7 @@ variable LREPLAYTRAP
    HIDX-EMIT:LREKEY LABEL@ BL,
    done B,
    s" E-SEAL-VIOLATION habu: record-wid! with no overlay, an index at or past NDICT, or an old or new wid neither a wordlist nor a retired marker"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ record-rekey ( n -- ) index, below NDICT: the body checks nothing.
@@ -1134,7 +1134,7 @@ variable LREPLAYTRAP
    14 14 1 ADDI,  14 XREG-RBASE WIDN-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: replay-private with no overlay, an index not a live package row below NDICT, a grant to a row that has one, or a take-back below the saved WIDN"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ replay-close ( -- ): every check comes before the first store, and the parked
@@ -1175,13 +1175,13 @@ variable LREPLAYTRAP
    DREC 0 do  14 XREG-RBASE REPLAY-SCOPE:PEND-REC i + STR,  CELL +loop
    done B,
    s" E-SEAL-VIOLATION habu: replay-close with no overlay, a definition pending, a parked definition while a task is live, NDICT below the saved count or above HW, CP below the saved CP, or WIDN below the saved WIDN"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ replay-widn! ( n -- ): put WIDN back to N, a mark the owner read while the
 \ overlay was open, as a rollback inside the overlay drops what it made since
 \ the mark. The records ndict! drops and the private wids replay-private takes
-\ back held every wid at or above N, so none is handed out twice. It refuses no
+\ back held every wid at or above N, so none is handed out twice. It rejects no
 \ overlay, N below the saved WIDN, which would hand out again a wid from before
 \ the overlay, and N above WIDN, both compared unsigned. A mark is never below
 \ the saved WIDN, so replay-close's WIDN check keeps holding.
@@ -1196,7 +1196,7 @@ variable LREPLAYTRAP
    13 XREG-RBASE WIDN-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: replay-widn! with no overlay, or a mark below the saved WIDN or above WIDN"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ def-open ( ^u8 n n n -- ) name, wid, kind
@@ -1231,9 +1231,9 @@ variable LREPLAYTRAP
    14 COMP-LATCH  14 XREG-RBASE NCOMP-DISPATCH:COMP-LATCH-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: def-open with a bad kind, a marker wid, a definition pending, CP at the code ceiling, no record room, an empty name or one reaching the code ceiling, or a name taken"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    s" E-SEAL-WORDLIST habu: def-open into a wordlist protected by the seal"
-   prot EXIT-STATUS:SEAL-WORDLIST REFUSE-AT
+   prot EXIT-STATUS:SEAL-WORDLIST REJECT-AT
    done LBL, ;
 
 \ body-capture ( ^u8 n -- ): LBCS is the capture `:` appends through; it grows
@@ -1248,7 +1248,7 @@ variable LREPLAYTRAP
    LBCS LABEL@ BL,
    done B,
    s" E-SEAL-VIOLATION habu: body-capture past the body text capacity or wrapping"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ ( ^u8 n -- ): the span into the cells aoff and uoff while a
@@ -1259,7 +1259,7 @@ variable LREPLAYTRAP
    9 XREG-RBASE PEND-CELL LDR,  9 bad CBZ,
    11 XREG-RBASE aoff STR,  12 XREG-RBASE uoff STR,
    done B,
-   a u bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   a u bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 \ trust-sig! ( ^u8 n -- )
@@ -1290,7 +1290,7 @@ variable LREPLAYTRAP
    NATIVE-CLOSE
    done B,
    s" E-SEAL-VIOLATION habu: def-close with no definition pending or no compiler latched"
-   bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
+   bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    done LBL, ;
 
 ;package
@@ -1415,7 +1415,7 @@ public
       0 10 0 ADDI,  NR-CLOSE SYS,  C-CS vfail BCOND,
       0 9 0 ADDI,  vdone B,
       vfail LBL,
-         s" hb: the system refused the code region's views; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)"
+         s" hb: mapping the code region's views failed; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)"
          EXIT-STATUS:SYSTEM DIE-LINE,
       vdone LBL,
    ELSE
@@ -1441,7 +1441,7 @@ public
       \ read from the flag, not guessed from the shape of x0.
       C-CC rok BCOND,
          3 REGION PROT-PAGE-MAX + LIT64,
-         s" hb: the system refused the code region; raise the address-space limit (ulimit -v) above its size in bytes:"
+         s" hb: mapping the code region failed; raise the address-space limit (ulimit -v) above its size in bytes:"
          EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE,
       rok LBL,
       9 PROT-PAGE-MAX 1 - MOVZ,  0 0 9 ADD,
@@ -1463,7 +1463,7 @@ public
       13 SP 0 LDR,  14 SP 8 LDR,  15 SP 16 LDR,  0 SP 24 LDR,  SP SP 32 ADDI,
       adone B,
       afail LBL,
-         s" hb: the system refused the code region's writable alias; raise the address-space limit (ulimit -v)"
+         s" hb: mapping the code region's writable alias failed; raise the address-space limit (ulimit -v)"
          EXIT-STATUS:SYSTEM DIE-LINE,
       adone LBL,
    THEN ;
@@ -1480,7 +1480,7 @@ public
    5 DATA-VA VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
       3 DATA-SIZE LIT64,
-      s" hb: the system refused the fixed data region; raise the address-space limit (ulimit -v) above its size in bytes:"
+      s" hb: mapping the fixed data region failed; raise the address-space limit (ulimit -v) above its size in bytes:"
       EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE,
    dvok LBL, ;
 
@@ -1773,7 +1773,7 @@ public
 \ xt! ( q ^q -- ): store an execution token into a persisted cell and declare
 \ the cell. `defer` and `is` declare cells known at compile time; a table of
 \ dispatch cells picks its cell at run time, so only the store knows. The
-\ declaration runs first, so a cell LMARK refuses is never written; LMARK wants
+\ declaration runs first, so a cell LMARK rejects is never written; LMARK wants
 \ the cell in x9, so the token is parked in x11 (scratch here; LMARK preserves
 \ x9 and saves the rest). Registered framed: LMARK is a BL.
 : BXTSTORE ( -- )
@@ -2083,7 +2083,7 @@ private
    OVERLAY-EMIT:LDIE LABEL@ LBL,
    9 -9852 LIT64,  LFAULTREC LABEL@ B, ;                  \ -9852 = E-OVERLAY-OPEN
 
-\ The system refused to grow the body text block: it throws -9853, E-BODY-TEXT.
+\ Growing the body text block failed: it throws -9853, E-BODY-TEXT.
 \ Nothing is stored before the grow fails, so the throw is safe to catch.
 : EM-BODY-GROW-DIE ( -- )
    LBGROWFAIL LABEL@ LBL,

@@ -35,6 +35,6 @@ public
 : CHECK ( -- )
    OPEN-COPY {: own:ZIP:archive :}
    [: OLD @ ZIP:COUNT drop ;] catch {: code:n :}
-   code ZIP:E-HANDLE = if ." zip refused" cr else ." zip " code . cr then
+   code ZIP:E-HANDLE = if ." zip rejected" cr else ." zip " code . cr then
    own ZIP:CLOSE ;
 ;package

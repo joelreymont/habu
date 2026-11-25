@@ -58,7 +58,7 @@ using SYSCALL
 
 HB-TARGET-LINUX? [if]
 \ Move each run [off][bytes] in [x6, x7) from the carrier, x10 at its pages,
-\ to DATA + off. A refused move dies.
+\ to DATA + off. A failed move dies.
 : PLACE-RUNS, ( label label label -- )
    {: text0:label start:label end:label :}
    LBL LBL LBL {: more:label moved:label done:label :}
@@ -70,7 +70,7 @@ HB-TARGET-LINUX? [if]
       0 10 0 ADDI,  2 1 0 ADDI,  3 MREMAP-MOVE-FIXED MOVZ,  4 11 0 ADDI,
       NR-MREMAP SYS,
       0 11 CMP,  C-EQ moved BCOND,
-         s" hb: the system refused to move the image's data into the fixed data region; mremap answered:"
+         s" hb: moving the image's data into the fixed data region failed; mremap answered:"
          EXIT-STATUS:SYSTEM 0 DIE-LINE-VALUE,
       moved LBL,
       10 10 1 ADD,  more B,

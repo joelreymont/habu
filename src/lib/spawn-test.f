@@ -346,8 +346,8 @@ variable DEAD-FD
 \ 11: an explicit slot keeps its closed parent fd, unlike a default one (case 12).
 \ The second closed fd is the one pipe2 gives the Linux error pipe's write end,
 \ so a source equal to it must still be EBADF, not the pipe placed on the slot.
-: TEST-REFUSALS ( -- )
-   s" a negative child fd, an empty directory, a bad name and a closed parent fd are refused" T-LABEL
+: TEST-REJECTIONS ( -- )
+   s" a negative child fd, an empty directory, a bad name and a closed parent fd are rejected" T-LABEL
    [: s" /bin/sh" PROCESS:NEW -1 >FD 1 >FD PROCESS:FD PROCESS:SPAWN drop ;] E-PROC-OUTPUT TTHROWSQ
    [: s" /bin/sh" PROCESS:NEW s" " PROCESS:CWD PROCESS:SPAWN drop ;] E-PROC-PATH TTHROWSQ
    [: s" /bin/sh" PROCESS:NEW s" " s" v" PROCESS:ENV PROCESS:SPAWN drop ;] E-PROC-ENV TTHROWSQ
@@ -362,10 +362,10 @@ variable DEAD-FD
    PROCESS:ERRNO EBADF T= ;
 
 
-\ 11a: each string a request copies is refused at the copy, so no child runs on
+\ 11a: each string a request copies is rejected at the copy, so no child runs on
 \ a truncated one.
 : TEST-NUL ( -- )
-   s" a 0 byte in a path, argument, environment name or value, or directory is refused" T-LABEL
+   s" a 0 byte in a path, argument, environment name or value, or directory is rejected" T-LABEL
    [: s\" /usr/bin/\ztrue" PROCESS:NEW PROCESS:SPAWN drop ;] E-FFI-NUL TTHROWSQ
    [: s" /usr/bin/true" PROCESS:NEW s\" a\zb" PROCESS:ARG PROCESS:SPAWN drop ;] E-FFI-NUL TTHROWSQ
    [: s" /usr/bin/true" PROCESS:NEW s" K" s\" b\zC=x" PROCESS:ENV PROCESS:SPAWN drop ;] E-FFI-NUL TTHROWSQ
@@ -408,7 +408,7 @@ variable DEAD-FD
 
 \ 14
 : TEST-CHECK-FD ( -- )
-   s" CHECK-FD refuses a closed fd with EBADF; an open one leaves ERRNO" T-LABEL
+   s" CHECK-FD rejects a closed fd with EBADF; an open one leaves ERRNO" T-LABEL
    3 CLOSED-FD DEAD-FD !
    [: DEAD-FD @ >FD PROCESS:CHECK-FD ;] E-PROC-SPAWN TTHROWSQ
    PROCESS:ERRNO EBADF T=
@@ -428,7 +428,7 @@ public
    TEST-OVERRIDE
    TEST-ARGV-CHUNKS
    TEST-MISSING
-   TEST-REFUSALS
+   TEST-REJECTIONS
    TEST-NUL
    TEST-CLOSED-STDIO
    TEST-DISCARD

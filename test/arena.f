@@ -2,7 +2,7 @@
 \ zeroed, cell-aligned and distinct, NAME-NEW-DISPOSE's actions run once,
 \ newest first, at the arena's reset or release, a public declaration publishes
 \ NAME-NEW, a HEAP or DYNAMIC-BUFFER element holds an arena handle, and a
-\ refused declaration defines neither of its two words.
+\ rejected declaration defines neither of its two words.
 require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/arena.f
@@ -68,7 +68,7 @@ variable EVAL-U
 \ EVAL with its rejection record unprinted.
 : QUIET-EVAL ( str -- n ) 1 REJECTION:QUIET +! EVAL -1 REJECTION:QUIET +! ;
 
-\ The refusals counted and the throw code when the text is evaluated under the
+\ The rejections counted and the throw code when the text is evaluated under the
 \ multi-error load state.
 : MULTI ( str -- n n ) CHECK:MULTI-ERR-BEGIN EVAL CHECK:MULTI-ERR-END ;
 
@@ -194,8 +194,8 @@ public
 private
 
 
-: REFUSALS ( -- )
-   s" a refused element type defines neither of the two words" T-LABEL
+: REJECTIONS ( -- )
+   s" a rejected element type defines neither of the two words" T-LABEL
    s" ARENA BAD u16" EVAL 70 T=
    s" BAD" NO-WORDS
    s" ARENA WORSE no-such-type" EVAL 70 T=
@@ -214,7 +214,7 @@ private
    s" a name whose derived word is taken defines neither word" T-LABEL
    s" ARENA TAKEN n" QUIET-EVAL 70 T=
    s" TAKEN" s" -NEW" ABSENT
-   s" a refusal counted by a multi-error load defines nothing" T-LABEL
+   s" a rejection counted by a multi-error load defines nothing" T-LABEL
    s" ARENA MBAD u16" MULTI 1 T= 0 T=
    s" MBAD" NO-WORDS
    s" a name whose word is taken in the other section defines neither word" T-LABEL
@@ -229,7 +229,7 @@ private
    s" ARENA:NEW dup ARENA-TEST:QUAL-NEW drop ARENA:RELEASE" EVAL 0 T=
    s" : QUAL-USE ( ^ARENA:arena -- ^n ) [: drop ;] ARENA-TEST:QUAL-NEW-DISPOSE ;"
    EVAL 0 T=
-   s" and refuses one whose word is taken in that package's private section" T-LABEL
+   s" and rejects one whose word is taken in that package's private section" T-LABEL
    s" public ARENA ARENA-TEST:TAKEN n" QUIET-EVAL 70 T=  s" private" EVAL 0 T=
    s" ARENA ARENA-TEST:PUBDIS n" QUIET-EVAL 70 T=
    s" ARENA ARENA-FIX:PRECS n" QUIET-EVAL 70 T= ;
@@ -269,7 +269,7 @@ private
    E2E-TREE:OUT$ s" deferred to the run" STR:CONTAINS? 0= TTRUE
    E2E-TREE:ERR$ STR:LEN 0 T=
    E2E-TREE:RC@ 0 T=
-   s" and refuses each called with the wrong effect" T-LABEL
+   s" and rejects each called with the wrong effect" T-LABEL
    s" test/arena-wrong.f" VERIFY-FILE
    E2E-TREE:ERR$ S\" \"code\":\"" STR:COUNT-SUB 2 T=
    E2E-TREE:ERR$ S\" \"code\":\"E-MISMATCH\"" STR:COUNT-SUB 2 T=
@@ -290,7 +290,7 @@ private
 
 : RUN ( -- )
    T-RESET
-   RECORDS DISPOSALS CAPTURE VISIBILITY HANDLES REFUSALS VERIFY-USES ;
+   RECORDS DISPOSALS CAPTURE VISIBILITY HANDLES REJECTIONS VERIFY-USES ;
 
 RUN
 
@@ -302,7 +302,7 @@ public
    s" ARENA TOP n" EVAL 0 T=
    s" ARENA:NEW dup TOP-NEW drop ARENA:RELEASE" EVAL 0 T=
    s" : TOP-USE ( ^ARENA:arena -- ^n ) [: drop ;] TOP-NEW-DISPOSE ;" EVAL 0 T=
-   s" and a qualified one whose word is taken in that package's private section is refused" T-LABEL
+   s" and a qualified one whose word is taken in that package's private section is rejected" T-LABEL
    s" ARENA ARENA-FIX:TOP-TAKEN n" QUIET-EVAL 70 T= ;
 
 ;package

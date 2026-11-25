@@ -1,4 +1,4 @@
-\ ffi-callback-child.f - one scenario per run, since a refusal ends the process;
+\ ffi-callback-child.f - one scenario per run, since a rejection ends the process;
 \ the released case runs two that exit 0, and grown-bind exits 0 unless its
 \ binding was lost.
 \ Run: bin/hb --load test/ffi-callback-child.f -- <case>
@@ -41,7 +41,7 @@ using FFI-CB
    s" sleeping: a thread is parked on its own context" type cr
    1 GATE atomic!
    10000 >MS TASK:SLEEP
-   s" ffi-callback-child: sleeping was not refused" EXIT-STATUS:FAILURE die ;
+   s" ffi-callback-child: sleeping was not rejected" EXIT-STATUS:FAILURE die ;
 
 : SORT-STALE ( -- )
    OUTER 10 ROW-FILL
@@ -52,7 +52,7 @@ using FFI-CB
    SORT-PLAIN if s" unbound: sorted while bound" type cr then
    CMP UNBIND
    SORT-STALE
-   s" ffi-callback-child: unbound was not refused" EXIT-STATUS:FAILURE die ;
+   s" ffi-callback-child: unbound was not rejected" EXIT-STATUS:FAILURE die ;
 
 : WORKER-STALE ( -- )
    ['] WORK-ENDS WORKER-B TASK:ACTIVATE
@@ -60,7 +60,7 @@ using FFI-CB
       s" worker-stale: the worker sorted and ended bound" type cr
    then
    SORT-STALE
-   s" ffi-callback-child: worker-stale was not refused" EXIT-STATUS:FAILURE die ;
+   s" ffi-callback-child: worker-stale was not rejected" EXIT-STATUS:FAILURE die ;
 
 \ PARK sees the halt and returns; TASK:PAUSE only yields while a comparison
 \ runs, so qsort completes and the worker ends after C returns; KILL joins it.
@@ -129,7 +129,7 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
    s" caller-thread: the slot is bound to the caller's context" type cr
    fn 1 THREAD-START STARTED
    10000 >MS TASK:SLEEP
-   s" ffi-callback-child: caller-thread was not refused" EXIT-STATUS:FAILURE die ;
+   s" ffi-callback-child: caller-thread was not rejected" EXIT-STATUS:FAILURE die ;
 
 \ Left unbound until a text that grows the tables binds it and throws.
 CALLBACK: CMP-GROWN ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK

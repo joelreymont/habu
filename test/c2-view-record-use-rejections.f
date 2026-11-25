@@ -2,7 +2,7 @@
 require src/lib/test/assert.f
 require src/lib/test/subject.f
 
-package C2-VIEW-RECORD-USE-REFUSALS
+package C2-VIEW-RECORD-USE-REJECTIONS
 public
 
 : CASES ( -- )
@@ -14,9 +14,9 @@ public
    s" : C2V-BAD ( ^c2vpair read-view<p,q,c2vpair> -- read-view<p,q,c2vpair> ) C2-VIEW-RECORD-GENERICS:FETCH-DROP ;" 70 SUBJECT:EXITED? TTRUE
    s" a defer cannot retain a narrower cell-copy implementation" T-LABEL
    s" defer C2V-COPY-T ( ^t ^t -- ) : C2V-COPY-CELL ( ^t ^t -- ) swap @ swap ! ; : C2V-INSTALL ( -- ) [: C2V-COPY-CELL ;] is C2V-COPY-T ; C2V-INSTALL : C2V-CALL-ONE ( ^n ^n -- ) C2V-COPY-T ;" 70 SUBJECT:EXITED? TTRUE
-   s" a typed quotation cell over a type variable is refused at its declaration" T-LABEL
+   s" a typed quotation cell over a type variable is rejected at its declaration" T-LABEL
    s" TYPED-VARIABLE C2V-SLOT [ ^t ^t -- ]" 70
-   s" error[E-BAD-STORAGE]: the type of `C2V-SLOT` may hold a linear value" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `C2V-SLOT` may hold a linear value" SUBJECT:REJECTED? TTRUE
    s" a defer accepts a fully generic pointer-only implementation" T-LABEL
    s" defer C2V-PASS-T ( ^t ^t -- ) : C2V-PASS ( ^t ^t -- ) 2drop ; : C2V-INSTALL ( -- ) [: C2V-PASS ;] is C2V-PASS-T ; C2V-INSTALL : C2V-CALL-ONE ( ^n ^n -- ) C2V-PASS-T ;" 0 SUBJECT:EXITED? TTRUE
    s" a defer cannot retain a fixed-row implementation as a generic row" T-LABEL

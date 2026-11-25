@@ -1,6 +1,6 @@
 \ diag-json-escape.f - a --json-errors packet escapes every control byte. RFC
 \ 8259 section 7 forbids a raw byte below 0x20 in a JSON string, and a client
-\ refuses the whole packet for one. A control byte is a blank inside a stack
+\ rejects the whole packet for one. A control byte is a blank inside a stack
 \ effect, so none reaches a token, and `( n<c>jesc-nosuch -- n )` carries each
 \ c from 0x00 to 0x1F into an unknown-signature-type packet's source text.
 \ Every row of a stream must parse as strict JSON, its "source_line" must

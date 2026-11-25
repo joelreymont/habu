@@ -35,7 +35,7 @@ LOW32 $FFFFFFFF T=
 WIDE -1 T=
 
 \ Signatures: a word declared with a wider or different output would let the
-\ result pass where its declared type is refused, or refuse a fitting use.
+\ result pass where its declared type is rejected, or reject a fitting use.
 s" : P ( n -- u8 ) >U8 ;" DEF-RC 0 T=  REJECTION:BUFFER-OFF
 s" : X8 ( n -- bool ) >U8 ;" DEF-RC 70 T=  s" E-MISMATCH" s" found: u8" SAYS
 s" : X16 ( n -- bool ) >U16 ;" DEF-RC 70 T=  s" E-MISMATCH" s" found: u16" SAYS

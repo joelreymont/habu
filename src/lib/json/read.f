@@ -60,7 +60,7 @@ DEFLINEAR JSON:reader
 \ object, so a document nested at most 64 deep parses with no allocation; more
 \ is the mapping holding the rest, more-cells cells of it, grown by doubling,
 \ and more-cells 0 means the record owns no mapping. No valid document is
-\ refused for its depth; a failed growth is recorded as the reader's failure.
+\ rejected for its depth; a failed growth is recorded as the reader's failure.
 STRUCTURE cursor OPAQUE DERIVE addr
    FIELD src ^u8
    FIELD src-len n
@@ -775,7 +775,7 @@ create UNESC-MAP
       dup BACKSLASH = if
          drop state SCAN-ESC
       else
-         \ A control byte is no UTF-8 lead, so SCAN-UTF8 refuses it.
+         \ A control byte is no UTF-8 lead, so SCAN-UTF8 rejects it.
          state swap SCAN-UTF8
       then
    again ;

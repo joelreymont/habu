@@ -227,7 +227,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
 
 \ AWAIT with the loop stopped is E-AIO-STATE, like every other wait on the loop;
 \ src/lib/serial-test.f and src/lib/signal-test.f pin that
-\ refusal, and this suite does not.
+\ rejection, and this suite does not.
 \
 \ The loop is started after the last definition and stopped at the end.
 : RUN ( -- )

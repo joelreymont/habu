@@ -64,7 +64,7 @@ package PROGRAM-DIAGNOSTICS
    path rc marker text NEGATIVE
    text path EXPECT-DIE-LINE ;
 
-\ A bootstrap-created word's cell refused where its signature promises another
+\ A bootstrap-created word's cell rejected where its signature promises another
 \ type: the record names both.
 : CREATED-MISMATCH ( str str str -- )
    {: path:str want:str found:str :}
@@ -225,24 +225,24 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : MAP-HELP$ ( -- str )
    s" = help: raise the process's address-space limit (ulimit -v), or reserve less storage" ;
 
-\ A refused storage mapping throws E-MEM-MAP carrying its one record, which
+\ A failed storage mapping throws E-MEM-MAP carrying its one record, which
 \ has no place, as no run-time record has one.
 : MAP-REJECT-CASE ( str str -- )
    {: path:str count:str :}
    path RUN-LOAD
    EXIT-STATUS:SYSTEM path GE-EXPECT-RC
    RECORDS 1 <> if path GE-FAIL then
-   s" error[E-MEM-MAP]: the system refused " path GE-EXPECT-ERR-HAS
+   s" error[E-MEM-MAP]: the system gave no " path GE-EXPECT-ERR-HAS
    count path GE-EXPECT-ERR-HAS
    MAP-HELP$ path GE-EXPECT-ERR-HAS
    s"  --> " path GE-EXPECT-ERR-LACKS ;
 
 : MAP-REJECTS ( -- )
    s" test/program-diagnostic-map-size.f"
-      S\" refused 9223372036854775808 bytes of storage for a dynamic buffer\n"
+      S\" gave no 9223372036854775808 bytes of storage for a dynamic buffer\n"
       MAP-REJECT-CASE
    s" test/program-diagnostic-map-big.f"
-      S\" refused 2305843009213693952 bytes of storage for a dynamic buffer\n"
+      S\" gave no 2305843009213693952 bytes of storage for a dynamic buffer\n"
       MAP-REJECT-CASE ;
 
 create BIG-PATH PATH-CAP allot
@@ -290,7 +290,7 @@ variable BIG-U
    path GE-SRC-BUF GE-SRC-U @ >str FS:WRITE-ALL
    $2000000 GE-SRC-CAP / 1- 0 ?do path GE-SRC-BUF GE-SRC-U @ >str FS:APPEND-FILE loop ;
 
-\ A refused source frame is one E-MEM-MAP record naming the file.
+\ A failed source frame is one E-MEM-MAP record naming the file.
 : MAP-FRAME ( n -- ) {: limit:n :}
    s" map-frame" {: label:str :}
    SB-RESET  s" ulimit -v " SB-APPEND  limit FMT:SB-U
@@ -298,7 +298,7 @@ variable BIG-U
    GE-HB-RESET  s" -c" GE-ARG+  SB$ GE-ARG+
    s" /bin/sh" PROCESS:WAIT-FOREVER GE-RUN-ENV
    RECORDS 1 <> if label GE-FAIL then
-   s" error[E-MEM-MAP]: the system refused " label GE-EXPECT-ERR-HAS
+   s" error[E-MEM-MAP]: the system gave no " label GE-EXPECT-ERR-HAS
    s"  for a source frame" label GE-EXPECT-ERR-HAS
    SB-RESET  S\" \n  = file: " SB-APPEND  BIG$ SB-APPEND  S\" \n" SB-APPEND
    SB$ label GE-EXPECT-ERR-HAS
@@ -314,7 +314,7 @@ variable BIG-U
    s" = help: give `PDC-LEN` str: convert or replace the value before it" path GE-EXPECT-ERR-HAS
    s" = help: give `PDC-TWO` n n: convert or replace the value before it" path GE-EXPECT-ERR-HAS ;
 
-\ A refused reserve of the engine's own, the stdin stream's text, is one
+\ A failed reserve of the engine's own, the stdin stream's text, is one
 \ E-MEM-MAP record whose help holds though the program reserved nothing, and
 \ exits SYSTEM.
 : MAP-STREAM ( n -- ) {: limit:n :}
@@ -324,7 +324,7 @@ variable BIG-U
    GE-HB-RESET  s" -c" GE-ARG+  SB$ GE-ARG+
    s" /bin/sh" PROCESS:WAIT-FOREVER GE-RUN-ENV
    RECORDS 1 <> if label GE-FAIL then
-   s" error[E-MEM-MAP]: the system refused " label GE-EXPECT-ERR-HAS
+   s" error[E-MEM-MAP]: the system gave no " label GE-EXPECT-ERR-HAS
    MAP-HELP$ label GE-EXPECT-ERR-HAS
    EXIT-STATUS:SYSTEM label GE-EXPECT-RC ;
 

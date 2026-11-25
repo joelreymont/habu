@@ -1,14 +1,14 @@
-\ xt-cell-band-bad.f - `xt!` refuses a cell outside DATA, before the store.
+\ xt-cell-band-bad.f - `xt!` rejects a cell outside DATA, before the store.
 \ The address-cell table is keyed by a cell's DATA offset, and both its
 \ declaration and the link, which gives each listed cell its image value, touch
 \ the eight bytes at that offset. The fixture's cell is a fresh anonymous mmap
 \ page, which the kernel places far from DATA (measured about 4.6e12 bytes below
 \ data-base on macos-arm64).
 
-\ The refusal is a process exit, not a throw: the declarer is engine machine
+\ The rejection is a process exit, not a throw: the declarer is engine machine
 \ code beneath the catch machinery, and a half-declared address table must not
 \ reach a link. STORED prints only if the store went through, so its absence
-\ from the expected stdout proves the refusal precedes the mutation.
+\ from the expected stdout proves the rejection precedes the mutation.
 
 require src/lib/error.f
 

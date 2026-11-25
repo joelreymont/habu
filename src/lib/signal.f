@@ -83,7 +83,7 @@ SA-LINUX-BYTES SA-MACOS-BYTES max constant SA-BUF-BYTES
 1 constant SIG-MIN
 
 \ The range sigaction installs on the wider of the two hosts. macOS stops at 31,
-\ where a number between 32 and 64 passes this check and is refused by sigaction
+\ where a number between 32 and 64 passes this check and is rejected by sigaction
 \ itself: E-SIGNAL-INSTALL rather than E-SIGNAL-NUMBER, named either way.
 64 constant SIG-MAX
 
@@ -92,13 +92,13 @@ create SA-OLD SA-BUF-BYTES allot   \ sigaction fills this; its prior content is 
 
 \ The two values kept from the main task's region, and the pipe they arm.
 \ FD-WORD-A holds a POINTER and is declared as one: a raw `variable` read through
-\ `0 ptr-field` is a raw base the pointer rule refuses, and PTR-VARIABLE gives
+\ `0 ptr-field` is a raw base the pointer rule rejects, and PTR-VARIABLE gives
 \ the slot the pointer type outright, for the cost of a bare cell load.
 SCRATCH-VARIABLE STUB-A            \ the stub's runtime address, as sa_handler
 PTR-VARIABLE FD-WORD-A             \ the ADDRESS of the process-wide fd word
 SCRATCH-VARIABLE CAUGHT            \ bit (sig-1) per signal RELEASE restores
 \ Set before the stub goes in and cleared after it is replaced, so no forked
-\ child keeps it. A refused CATCH's bit stays: sigaction refuses its reset too.
+\ child keeps it. A rejected CATCH's bit stays: sigaction rejects its reset too.
 SCRATCH-VARIABLE STUBBED           \ bit (sig-1) per signal CHILD-RESET resets
 SCRATCH-VARIABLE READ-FD-CELL
 SCRATCH-VARIABLE WRITE-FD-CELL
@@ -205,8 +205,8 @@ FUNCTION: SIGACTION-CALL sigaction ( n ^u8 ^u8 -- i32 )
 : MARK-PIPE ( fd fd -- fd fd )
    over FD:NONBLOCK! dup FD:NONBLOCK! ;
 
-\ Both ends are non-blocking: a full pipe refuses the stub's write rather than park
-\ the signalled thread, and a read that lost the bytes to another task is refused.
+\ Both ends are non-blocking: a full pipe rejects the stub's write rather than park
+\ the signalled thread, and a read that lost the bytes to another task is rejected.
 : OPEN-PIPE ( -- )
    FD:PIPE {: r:fd w:fd :}
    r w [: MARK-PIPE ;] catch {: code:n :}
@@ -236,7 +236,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ^u8 ^u8 -- i32 )
    [: CHILD-RESET ;] FORK-CHILD:REGISTER ;
 REGISTER-RESET
 
-\ Both ends are closed before either failure is named, so a refused close never
+\ Both ends are closed before either failure is named, so a rejected close never
 \ leaks the other end.
 : CLOSE-PIPE ( n n -- ) {: r:n w:n :}
    r close-rc {: rrc:n :}
@@ -247,7 +247,7 @@ REGISTER-RESET
 \ the deadline as the poll's own linked timeout, and an AWAIT. A signal reaches
 \ no thread parked here, so there is no -EINTR to restart.
 \
-\ A refused read is only ever the lost race when POLLIN put the bytes there in
+\ A rejected read is only ever the lost race when POLLIN put the bytes there in
 \ the first place, so the answered bits are read and not just counted: POLLNVAL,
 \ and a bare POLLERR, are a read end gone behind the facility's back and would
 \ otherwise be re-read against the deadline forever. The kernel answers that
@@ -266,19 +266,19 @@ REGISTER-RESET
 \ all: a short read is a torn number the stub guarantees against, not a partial
 \ delivery to be resumed.
 \
-\ A REFUSED read is the lost race. The engine collapses every failed syscall but
+\ A REJECTED read is the lost race. The engine collapses every failed syscall but
 \ poll to a bare -1 (src/habu/habu1.f, "THE ERRNO RULE FOR THIS FILE'S SYSCALL
 \ WRAPPERS"), so there is no errno here to branch on - and on a non-blocking
 \ descriptor this facility owns, reading four bytes into its own span with a
-\ write end held open for the facility's life, EAGAIN is the only refusal the
+\ write end held open for the facility's life, EAGAIN is the only rejection the
 \ kernel has left: the bytes poll saw went to another task in between. EINTR
 \ cannot appear, because read is one of the calls SA_RESTART restarts.
--1 constant SIGNO-REFUSED
+-1 constant SIGNO-REJECTED
 
 : SIGNO@ ( -- n )
    SIGNO-BUF CELL ZERO-BYTES
    READ-FD FD>N SIGNO-BUF SIGNO-BYTES read {: got:n :}
-   got 0 < if SIGNO-REFUSED exit then
+   got 0 < if SIGNO-REJECTED exit then
    got SIGNO-BYTES <> if E-SIGNAL-READ throw then
    SIGNO-BUF cell-view @ ;
 
@@ -347,14 +347,14 @@ public
 \ set, or a poll that a signal interrupts - and so runs no AIO loop.
 : TAKE ( -- signal-result )
    NEED-READY
-   SIGNO@ dup SIGNO-REFUSED = if
+   SIGNO@ dup SIGNO-REJECTED = if
       drop SIGNAL-SIGNAL--RESULT:TIMEOUT exit
    then
    SIGNAL-SIGNAL--RESULT:SIGNAL ;
 
 \ Readable now, without consuming: a zero-length window, which the kernel serves
 \ inline for a descriptor that is already ready. "Ready" is not "readable": a
-\ read end that is gone is the refusal READABLE-WITHIN? names, never a true that
+\ read end that is gone is the rejection READABLE-WITHIN? names, never a true that
 \ would send a caller into the WAIT that names it.
 : PENDING? ( -- bool )
    NEED-READY
@@ -368,7 +368,7 @@ public
    begin
       window MS>N 0 < if window else deadline PROCESS:LEFT-MS then
       READABLE-WITHIN? 0= if SIGNAL-SIGNAL--RESULT:TIMEOUT exit then
-      SIGNO@ dup SIGNO-REFUSED <> if SIGNAL-SIGNAL--RESULT:SIGNAL exit then
+      SIGNO@ dup SIGNO-REJECTED <> if SIGNAL-SIGNAL--RESULT:SIGNAL exit then
       drop
    again ;
 

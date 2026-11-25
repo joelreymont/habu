@@ -1,4 +1,4 @@
-\ arm64-link-data-bad.f - a program whose link LINKER:WRITE refuses, one per
+\ arm64-link-data-bad.f - a program whose link LINKER:WRITE rejects, one per
 \ process, chosen by the first script argument: `data`, a cell declared as a
 \ DATA pointer that holds an address outside the build's space, read by the
 \ entry, since a stripped link checks only the data its entry reaches; `eval`,
@@ -32,13 +32,13 @@ CAST: ENTRY-XT ( n -- [ -- ] )
    s" variable LD-BAD  1 LD-BAD !  LD-BAD ptr-cell-mark" evaluate-closed
    s" : LD-BAD-READ ( -- ) LD-BAD @ drop ;" evaluate-closed
    s" LD-BAD-READ" WORD-XT  APP-ENTRY:XT!  WRITE
-   s" arm64-link-data-bad: the DATA pointer was not refused" EXIT-STATUS:FAILURE die ;
+   s" arm64-link-data-bad: the DATA pointer was not rejected" EXIT-STATUS:FAILURE die ;
 
 
 : EVAL-BODY ( -- )
    s\" : LD-EV ( -- ) s\" \" evaluate-closed ;" evaluate-closed
    s" LD-EV" WORD-XT  APP-ENTRY:XT!  WRITE
-   s" arm64-link-data-bad: the evaluate-closed call was not refused" EXIT-STATUS:FAILURE die ;
+   s" arm64-link-data-bad: the evaluate-closed call was not rejected" EXIT-STATUS:FAILURE die ;
 
 
 public

@@ -24,7 +24,7 @@ CAST: ENTRY-XT ( n -- [ -- ] )
    APP-ENTRY:XT!
    s" ARM64-PLACE-UNSAFE-ARMED" type cr
    1 SCRIPT-ARGV$ LINKER:WRITE
-   s" arm64-place-unsafe: PL-MAKE was not refused" EXIT-STATUS:FAILURE die ;
+   s" arm64-place-unsafe: PL-MAKE was not rejected" EXIT-STATUS:FAILURE die ;
 
 
 public

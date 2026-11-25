@@ -385,7 +385,7 @@ create ERR CAPTURE-CAP allot
 : CUT-DATA ( -- ) 7 KEEP-FIRST ;
 : CUT-BEYOND ( -- ) 9 KEEP-FIRST ;
 
-: REFUSES ( str str -- )
+: REJECTS ( str str -- )
    {: source:str want:str :}
    source OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
@@ -393,28 +393,28 @@ create ERR CAPTURE-CAP allot
    outu LEN>N 0 T=
    ERR erru LEN>N >str want T$= ;
 
-: REFUSAL-CASES ( -- )
-   s" a site whose label was never bound refuses the link" T-LABEL
-   s" UNRESOLVED" S\" x64code: unresolved label\n" REFUSES
-   s" a rel8 site one byte past either end of its reach refuses the link" T-LABEL
-   s" REL8-FAR-FWD" S\" x64code: rel8 out of reach\n" REFUSES
-   s" REL8-FAR-BACK" S\" x64code: rel8 out of reach\n" REFUSES
+: REJECTION-CASES ( -- )
+   s" a site whose label was never bound rejects the link" T-LABEL
+   s" UNRESOLVED" S\" x64code: unresolved label\n" REJECTS
+   s" a rel8 site one byte past either end of its reach rejects the link" T-LABEL
+   s" REL8-FAR-FWD" S\" x64code: rel8 out of reach\n" REJECTS
+   s" REL8-FAR-BACK" S\" x64code: rel8 out of reach\n" REJECTS
    s" a label binds once" T-LABEL
-   s" REDEFINED" S\" x64code: label redefined\n" REFUSES
-   s" a label number not yet made is refused at its site" T-LABEL
-   s" FOREIGN" S\" x64code: unknown label\n" REFUSES
-   s" a label held past the link or reset that ended its stream is refused" T-LABEL
-   s" STALE-LINKED" S\" x64code: unknown label\n" REFUSES
-   s" STALE-RESET" S\" x64code: unknown label\n" REFUSES
-   s" a site the sink was cleared under without ASM-RESET refuses the link" T-LABEL
-   s" TRUNCATED" S\" x64code: label or site past the end of the code\n" REFUSES
+   s" REDEFINED" S\" x64code: label redefined\n" REJECTS
+   s" a label number not yet made is rejected at its site" T-LABEL
+   s" FOREIGN" S\" x64code: unknown label\n" REJECTS
+   s" a label held past the link or reset that ended its stream is rejected" T-LABEL
+   s" STALE-LINKED" S\" x64code: unknown label\n" REJECTS
+   s" STALE-RESET" S\" x64code: unknown label\n" REJECTS
+   s" a site the sink was cleared under without ASM-RESET rejects the link" T-LABEL
+   s" TRUNCATED" S\" x64code: label or site past the end of the code\n" REJECTS
    s" a kept site names no cut code" T-LABEL
-   s" CUT-LABEL" S\" x64code: a kept site names cut code\n" REFUSES
+   s" CUT-LABEL" S\" x64code: a kept site names cut code\n" REJECTS
    s" a cut splits no site and no data" T-LABEL
-   s" CUT-SITE" S\" x64code: a cut splits a site\n" REFUSES
-   s" CUT-DATA" S\" x64code: a cut splits data\n" REFUSES
+   s" CUT-SITE" S\" x64code: a cut splits a site\n" REJECTS
+   s" CUT-DATA" S\" x64code: a cut splits data\n" REJECTS
    s" a cut keeps no bytes past the code" T-LABEL
-   s" CUT-BEYOND" S\" x64code: cut ranges malformed\n" REFUSES ;
+   s" CUT-BEYOND" S\" x64code: cut ranges malformed\n" REJECTS ;
 
 : RUN ( -- )
    T-RESET
@@ -426,7 +426,7 @@ create ERR CAPTURE-CAP allot
    PROC-CASES
    LINK-CASES
    CUT-CASES
-   REFUSAL-CASES
+   REJECTION-CASES
    SINK-CLOSE
    T-REPORT ;
 

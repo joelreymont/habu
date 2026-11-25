@@ -74,7 +74,7 @@ CAST: >ACTION ( ^u8 -- ^action )
 
 
 \ `first-top` keeps the first chunk's top while a later chunk is newest. A
-\ refused mapping throws E-MEM-MAP before the arena changes.
+\ failed mapping throws E-MEM-MAP before the arena changes.
 : GROW ( ^arena n -- )
    {: a:^ need:n :}
    a NEWEST nip {: last:n :}
@@ -127,7 +127,7 @@ CAST: >ACTION ( ^u8 -- ^action )
    NULL-PTR a ARENA-PARENT ! ;
 
 
-\ Answers the chunk before c, and E-MEM-UNMAP when the unmap was refused.
+\ Answers the chunk before c, and E-MEM-UNMAP when the unmap was rejected.
 : UNMAP-CHUNK ( ^chunk -- ^chunk n )
    {: c:^ :}
    c CHUNK-PREV @
@@ -173,13 +173,13 @@ CAST: >ACTION ( ^u8 -- ^action )
    loop false ;
 
 
-\ Answers E-MEM-UNMAP when the unmap of a's first chunk was refused, else 0.
+\ Answers E-MEM-UNMAP when the unmap of a's first chunk was rejected, else 0.
 : UNMAP-FIRST ( ^arena -- n )
    BYTE-VIEW FIRST-BYTES munmap 0< if E-MEM-UNMAP else 0 then ;
 
 
 \ The released arena's first chunk is zeroed and kept, or unmapped when every
-\ spare cell is full. Answers E-MEM-UNMAP when the unmap was refused, else 0.
+\ spare cell is full. Answers E-MEM-UNMAP when the unmap was rejected, else 0.
 : GIVE-BACK ( ^arena -- n )
    {: a:^ :}
    0 a BYTE-VIEW a ARENA-TOP @ SPAN:MAKE SPAN:FILL
@@ -273,7 +273,7 @@ public
    a len EXTENT BUMP len ;
 
 
-\ The allocation and its action share one bump, so a refused mapping leaves
+\ The allocation and its action share one bump, so a failed mapping leaves
 \ neither. The action runs on this address: the block is never resized.
 : ALLOC-DISPOSE ( ^arena n [ ^u8 -- ] -- ^u8 n )
    {: a:^ len:n run :}
@@ -292,7 +292,7 @@ public
 : RELEASE ( ^arena -- ) dup NULL-PTR = if drop exit then false SETTLE RETHROW ;
 
 
-\ Each spare a task has not taken is unmapped; the first refusal is rethrown
+\ Each spare a task has not taken is unmapped; the first rejection is rethrown
 \ as E-MEM-UNMAP after the rest.
 : TRIM ( -- )
    0 SPARE-N 0 do

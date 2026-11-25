@@ -387,7 +387,7 @@ variable BUF-U
    3 BR, ;
 
 \ A run of L-PAGES pages holding L-BYTES in L-PTR, L-IOR 0, by first fit, else
-\ growth; a count outside 1 through 2^32 or a refused growth leaves L-IOR -1.
+\ growth; a count outside 1 through 2^32 or a failed growth leaves L-IOR -1.
 : MAP-RUN, ( -- )
    -1 I64,  L-IOR SET,
    BLOCK,
@@ -408,7 +408,7 @@ variable BUF-U
       L-CUR GET,  BYTES-OF,  L-PTR SET,  0 I64,  L-IOR SET,
    OP-END B, ;
 
-\ map-anon ( bytes -- ptr ior ): MAP-RUN,'s run, 0 -1 when refused.
+\ map-anon ( bytes -- ptr ior ): MAP-RUN,'s run, 0 -1 when rejected.
 : MAP-BODY ( -- )
    ALLOC-LOCALS,  CELL-BYTES SP-AT,  CELL-BYTES 2 * STACK-ROOM,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-BYTES SET,
@@ -495,7 +495,7 @@ variable BUF-U
    OP-I64-ADD B,  L-NEED GET,  OP-I64-ADD B, ;
 
 \ L-BYTES becomes the larger of twice the capacity in ctx field cap and the
-\ length plus L-NEED, or -1, which map-anon refuses, for an L-NEED past 2^32.
+\ length plus L-NEED, or -1, which map-anon rejects, for an L-NEED past 2^32.
 : STREAM-WANT, ( n -- )
    {: cap:n :}
    cap CTX@,  OP-I64-EXTEND-I32-U B,  1 I64,  OP-I64-SHL B,
@@ -506,8 +506,8 @@ variable BUF-U
    L-END GET,  L-BYTES GET,  L-END GET,  L-BYTES GET,  OP-I64-GT-U B,  OP-SELECT B,
    L-BYTES SET, ;
 
-\ A refused growth records EXIT-STATUS:STREAM-GROW with STREAM-END, and traps.
-: STREAM-REFUSED, ( -- )
+\ A failed growth records EXIT-STATUS:STREAM-GROW with STREAM-END, and traps.
+: STREAM-REJECTED, ( -- )
    L-IOR GET,  OP-I32-WRAP-I64 B,  IF,
       L-CTX GET,  EXIT-STATUS:STREAM-GROW I32,
       OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
@@ -520,7 +520,7 @@ variable BUF-U
 : STREAM-GROW, ( n n n -- )
    {: base:n cap:n fixed:n :}
    base CTX@,  L-OLD SET,
-   cap STREAM-WANT,  MAP-RUN,  STREAM-REFUSED,
+   cap STREAM-WANT,  MAP-RUN,  STREAM-REJECTED,
    L-PTR GET,  OP-I32-WRAP-I64 B,  L-OLD GET,  L-LEN GET,
    OP-MISC B,  MISC-MEMORY-COPY U32,  MEMORY-0 B,  MEMORY-0 B,
    cap CTX@,  OP-I64-EXTEND-I32-U B,  L-BYTES SET,

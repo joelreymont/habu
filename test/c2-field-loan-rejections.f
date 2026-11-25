@@ -4,7 +4,7 @@ require src/lib/test/subject.f
 require src/lib/c2-memory.f
 require test/c2-field-loan-wrapper.f
 
-package C2-FIELD-LOAN-REFUSALS
+package C2-FIELD-LOAN-REJECTIONS
 public
 STRUCTURE other DERIVE init FIELD left n FIELD right n ;STRUCTURE
 
@@ -19,7 +19,7 @@ STRUCTURE other DERIVE init FIELD left n FIELD right n ;STRUCTURE
    s" an outer scalar cannot be substituted for its Pair field" T-LABEL
    s" : FL-SCALAR-CB ( mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>> -- mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>> ) ; : FL-SCALAR ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> ) [: FL-SCALAR-CB ;] C2-MEM:WITH-FIELD guard ;" 70 SUBJECT:EXITED? TTRUE
    s" a same-layout different record cannot be a field callback" T-LABEL
-   s" : FL-OTHER-CB ( mut-view<b,j,c,init<i,C2-FIELD-LOAN-REFUSALS:other>> -- mut-view<b,j,c,init<i,C2-FIELD-LOAN-REFUSALS:other>> ) ; : FL-OTHER ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> ) [: FL-OTHER-CB ;] C2-MEM:WITH-FIELD inner ;" 70 SUBJECT:EXITED? TTRUE
+   s" : FL-OTHER-CB ( mut-view<b,j,c,init<i,C2-FIELD-LOAN-REJECTIONS:other>> -- mut-view<b,j,c,init<i,C2-FIELD-LOAN-REJECTIONS:other>> ) ; : FL-OTHER ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> ) [: FL-OTHER-CB ;] C2-MEM:WITH-FIELD inner ;" 70 SUBJECT:EXITED? TTRUE
    s" a parent cannot be duplicated across its field loan" T-LABEL
    s" : FL-PARENT-COPY ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> ) dup [: ;] C2-MEM:WITH-FIELD inner swap drop ;" 70 SUBJECT:EXITED? TTRUE
    s" a child view cannot escape its callback" T-LABEL
@@ -29,7 +29,7 @@ STRUCTURE other DERIVE init FIELD left n FIELD right n ;STRUCTURE
    s" a caught throwing field callback cannot reuse its parent" T-LABEL
    s" : FL-CB-THROW ( mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>> -- mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>> ) 1 throw ; : FL-TAKE ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> ) [: FL-CB-THROW ;] C2-MEM:WITH-FIELD inner ; : FL-CATCH ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> ) [: FL-TAKE ;] catch drop C2--FIELD--LOAN--WRAPPER-OUTER:GUARD@ drop ;" 70 SUBJECT:EXITED? TTRUE
    s" a does> clause cannot leave a field loan pending" T-LABEL
-   s" : FL-CLAUSE ( -- ) create 0 , does> ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> [ n -- n ] ) drop [: ;] C2-MEM:WITH-FIELD ;" 70 s" error[E-MISSING-NAME]: `C2-MEM:WITH-FIELD` names the field it lends, and the definition ends first" SUBJECT:REFUSED? TTRUE
+   s" : FL-CLAUSE ( -- ) create 0 , does> ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> [ n -- n ] ) drop [: ;] C2-MEM:WITH-FIELD ;" 70 s" error[E-MISSING-NAME]: `C2-MEM:WITH-FIELD` names the field it lends, and the definition ends first" SUBJECT:REJECTED? TTRUE
    s" the field keeps the parent's initialization lifetime" T-LABEL
    s" : FL-INIT ( mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>> -- mut-view<b,j,c,init<j,C2-FIELD-LOAN-WRAPPER:pair>> ) ;" 70 SUBJECT:EXITED? TTRUE
    s" scope entry tick cannot turn the field operation into a value" T-LABEL
@@ -37,7 +37,7 @@ STRUCTURE other DERIVE init FIELD left n FIELD right n ;STRUCTURE
    s" a scoped child view cannot be stored globally" T-LABEL
    s" TYPED-VARIABLE FL-GLOBAL mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>>" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
-   s" c2-field-loan-refusals: ok" type cr ;
+   s" c2-field-loan-rejections: ok" type cr ;
 ;package
 
-C2-FIELD-LOAN-REFUSALS:RUN
+C2-FIELD-LOAN-REJECTIONS:RUN

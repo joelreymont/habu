@@ -84,7 +84,7 @@ variable MUTEX
    \ GROW holds the lock, and the exit actions die runs may take it.
    REG @ old REG-BYTES munmap 0< if
       UNLOCK
-      s" dynamic storage: the system refused to unmap this process's own mapping"
+      s" dynamic storage: unmapping this process's own mapping failed"
       EXIT-STATUS:SYSTEM die
    then
    fresh REG !
@@ -141,7 +141,7 @@ variable MUTEX
    LOCK
    cb @ old munmap 0< if
       UNLOCK
-      s" dynamic storage: the system refused to unmap this process's own mapping"
+      s" dynamic storage: unmapping this process's own mapping failed"
       EXIT-STATUS:SYSTEM die
    then
    fresh cap cb ctl PUBLISH
@@ -161,7 +161,7 @@ public
    LOCK
    cb @ cap munmap 0< if
       UNLOCK
-      s" dynamic storage: the system refused to unmap this process's own mapping"
+      s" dynamic storage: unmapping this process's own mapping failed"
       EXIT-STATUS:SYSTEM die
    then
    ctl UNREGISTER
@@ -216,7 +216,7 @@ CONTROL-CELLS 1+ cells constant WIDTH-OFF
 
 : UNMAP-RECORD ( ^a ^n -- )
    @ munmap 0< if
-      s" dynamic storage: the system refused to unmap this process's own mapping"
+      s" dynamic storage: unmapping this process's own mapping failed"
       EXIT-STATUS:SYSTEM die
    then ;
 
@@ -231,7 +231,7 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 
 EXPORT CHECK:CHECKER-DYNAMIC-INFO
 EXPORT CHECK:CHECKER-LBUF-NAME-OK?
-EXPORT CHECK:CHECKER-STORAGE-NAME-REFUSE
+EXPORT CHECK:CHECKER-STORAGE-NAME-REJECT
 EXPORT CHECK:CHECKER-STORAGE-REJECT
 EXPORT CHECK:CHECKER-STORAGE-TYPE-REJECT
 EXPORT CHECK:CHECKER-UNSEEN-PAIR

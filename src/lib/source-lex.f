@@ -69,7 +69,7 @@ variable IN-BODY                \ those tokens end inside a definition body
 : SRC! ( ^u8 -- )
    SRC-A ! ;
 
-\ NULL-PTR goes in before NEW: a refused NEW leaves no vector to delete twice.
+\ NULL-PTR goes in before NEW: a rejected NEW leaves no vector to delete twice.
 : INIT-ONE ( ^^VEC:vector<n> -- )
    {: c:^ :}
    c @ VEC:DELETE  NULL-PTR c !
@@ -142,7 +142,7 @@ TABLES-RELEASED TABLES !
    LOCAL-V @ VEC:DELETE  NULL-PTR LOCAL-V !
    LDEPTH-V @ VEC:DELETE  NULL-PTR LDEPTH-V ! ;
 
-\ The state is partial before any table is made: a refused NEW leaves partial,
+\ The state is partial before any table is made: a rejected NEW leaves partial,
 \ and the retry makes each table again.
 : RESET-TABLES ( -- )
    TABLES @

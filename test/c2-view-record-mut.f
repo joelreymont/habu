@@ -13,8 +13,8 @@ private
 
 public
 
-\ A refused STRUCTURE exits 70: the checker renders the declaration's refusal
-\ before it throws the refusal's code.
+\ A rejected STRUCTURE exits 70: the checker renders the declaration's rejection
+\ before it throws the rejection's code.
 : RUN ( -- )
    T-RESET
    s" a region parameter cannot also be a value" T-LABEL

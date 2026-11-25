@@ -41,7 +41,7 @@ create GPO-SLEEP-PFD 8 allot
 \ needs - its reaper, or the child it watches - must not throw: that would
 \ unwind its copy of this test's stack and run the test on in the child. It
 \ exits instead, and its parent reports that status.
-: GPO-REFUSED ( n -- ) {: code:n :}
+: GPO-REJECTED ( n -- ) {: code:n :}
    s" gate-pool-orphan-test: a child ended on throw " type code .
    EXIT-STATUS:FAILURE GPO-EXIT ;
 
@@ -84,25 +84,25 @@ create GPO-SLEEP-PFD 8 allot
    rd cpid PROC-FORK:SPAWN-REAPER drop
    rd cpid ;
 
-\ No reaper watches C once P's arm is refused, so P ends C before it exits.
-: GSR-REFUSED ( n pid -- ) {: code:n cpid:pid :}
+\ No reaper watches C once P's arm is rejected, so P ends C before it exits.
+: GSR-REJECTED ( n pid -- ) {: code:n cpid:pid :}
    cpid PROCESS:SIGKILL PROCESS:KILL-RAW drop
    cpid PID>N wait-status drop
-   code GPO-REFUSED ;
+   code GPO-REJECTED ;
 
 \ P makes C its own group leader before arming, so the reaper's setpgid join
-\ always succeeds. A refused fork of C ends P first: a negative pid must never
+\ always succeeds. A failed fork of C ends P first: a negative pid must never
 \ reach the kill.
 : GSR-PARENT ( fd fd fd fd -- ) {: rd:fd wr:fd ar:fd aw:fd :}
    PROC-FORK:RAW {: cpid:pid :}
-   cpid PID>N 0 < if E-PROC-SPAWN GPO-REFUSED then
+   cpid PID>N 0 < if E-PROC-SPAWN GPO-REJECTED then
    cpid PID>N 0= if rd wr ar aw GSR-CHILD then
    cpid cpid PROC-FORK:SET-PGID drop
    ar FD>N close
    aw FD>N close
    rd cpid [: GSR-ARM ;] catch {: arm:n :}
    2drop
-   arm 0<> if arm cpid GSR-REFUSED then
+   arm 0<> if arm cpid GSR-REJECTED then
    rd FD>N close
    GPO-IDLE
    EXIT-STATUS:SUCCESS GPO-EXIT ;

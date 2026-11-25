@@ -119,7 +119,7 @@ FUNCTION: SIGDEL-CALL sigdelset ( ^u8 n -- i32 )
 public
 
 \ A caught stop signal reaches the child after its resets, under the default
-\ action. A refusal throws before the fork, but a refused fork answers pid < 0.
+\ action. A rejection throws before the fork, but a failed fork answers pid < 0.
 : RAW ( -- pid )
    COMPILE-READS:MISS
    SIGSET-BYTES 2 * MEM:BYTES-ALLOC-LEN
@@ -139,8 +139,8 @@ public
 \ Signal the process group led by pid (kill(-pid, sig)); pid must be a group
 \ leader (its child set `0 0 PROC-FORK:SET-PGID`), so this reaches its grandchildren.
 \ A pid at or below 1 leads no such group: kill(0) is the caller's own group and
-\ kill(-1) every process the caller may signal, so it is refused, as
-\ src/lib/process-tree.f KILL-TREE refuses one.
+\ kill(-1) every process the caller may signal, so it is rejected, as
+\ src/lib/process-tree.f KILL-TREE rejects one.
 : KILL-GROUP ( pid n -- rc ) {: pid:pid sig:n :}
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    pid PID>N negate >PID sig PROCESS:KILL-RAW ;

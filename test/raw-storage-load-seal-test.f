@@ -2,7 +2,7 @@
 \ `bin/hb --load` definer path.
 \ The engine creates every cell as this file loads, so the checker sees only the
 \ native definers' effects (test/pointer-storage-test.f re-drives
-\ verify-source). CHECK-QUIET-CANDIDATE! verdicts: -1 certified, 0 refused, 1
+\ verify-source). CHECK-QUIET-CANDIDATE! verdicts: -1 certified, 0 rejected, 1
 \ unresolvable.
 
 require src/lib/error.f
@@ -29,7 +29,7 @@ create BYTE-CELL 256 allot
 : CELL-DEFINER ( -- ) create 0 , does> ( -- a ) @ ;
 CELL-DEFINER DOES-CELL
 
-\ ---- the forgeries: every one of these must be refused -----------------------
+\ ---- the forgeries: every one of these must be rejected -----------------------
 \ Each stores a plain integer (or nothing at all) and reads the cell back as the
 \ nominal family. There is no converter anywhere, so certifying any of them
 \ means the nominal seal can be bypassed through raw storage.

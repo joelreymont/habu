@@ -71,7 +71,7 @@
            0           0                   0  PN-P
 ;CASES
 
-\ Rows 2-3 run this subtraction; test/compiler/base-pointer-arith-refusals.f types them.
+\ Rows 2-3 run this subtraction; test/compiler/base-pointer-arith-rejections.f types them.
 4 CASES -                              \ (^a ^a -- n)
            8           3                   5  PP-N
            3           8                  -5  PP-N

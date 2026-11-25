@@ -697,7 +697,7 @@ public
    1 NADDRS +! ;
 
 \ The data image, in place of any before it. An image whose end from WPROF's
-\ DATA base passes memory32's 65536 pages is refused before a byte is reserved.
+\ DATA base passes memory32's 65536 pages is rejected before a byte is reserved.
 : DATA! ( str -- )
    {: a u:n :}
    u 0 < if E-SPAN-LENGTH throw then

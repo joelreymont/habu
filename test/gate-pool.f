@@ -340,7 +340,7 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-SOCK-PATH-U-PTR ( idx -- ^n )
    IDX>N cells GT-POOL-SOCK-PATH-US + ;
 
-\ The code the last refused removal of the slot's directories threw, 0 while
+\ The code the last rejected removal of the slot's directories threw, 0 while
 \ they all went (GT-POOL-CHILD-TMP-REMOVE).
 : GT-POOL-SCRATCH-CODE-PTR ( idx -- ^n )
    IDX>N cells GT-POOL-SCRATCH-CODES + ;
@@ -512,7 +512,7 @@ GT-POOL-ABORT-BARE!
 \ (GT-POOL-CHILD-SOCK!). A pool given HB_SOCK_TMP uses that directory itself:
 \ the pool that made it removes it with this process's test, and this process's
 \ own sockets live there too, so this pool never registers or removes it. A
-\ root of its own there would add about 27 bytes per level; postgres refuses a
+\ root of its own there would add about 27 bytes per level; postgres rejects a
 \ socket path past 103 bytes on macOS.
 \
 \ A pool without HB_SOCK_TMP makes its root under /tmp, not TMPDIR: TMPDIR's
@@ -845,7 +845,7 @@ variable GT-POOL-CPU-NS
    drop
    code 0<> if code GT-POOL-THROW then ;
 
-\ macOS refuses a watch on a process that has already exited (ESRCH): that row
+\ macOS rejects a watch on a process that has already exited (ESRCH): that row
 \ has ended.
 : GT-POOL-WATCH-OPEN ( idx -- ) {: idx:idx :}
    idx GT-POOL-PID@ PID>N proc-watch-open {: w:n :}

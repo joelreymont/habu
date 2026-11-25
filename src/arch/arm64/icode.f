@@ -273,9 +273,9 @@ public
    I-KIND @ I-W @ cells FXK + !
    I-W @ FX-LINK ;
 
-\ ---- what a reach refusal names ----------------------------------------------
+\ ---- what a reach rejection names ----------------------------------------------
 \ BR-EMIT, ADR, and FX-FILL set I-RSITE and I-RTARGET before FX-REACH, which
-\ prints them in bytes when it refuses; FX-CLEAR's fixed distances always fit.
+\ prints them in bytes when it rejects; FX-CLEAR's fixed distances always fit.
 variable I-RSITE                    \ byte offset of the instruction under assembly
 variable I-RTARGET                  \ byte offset it has to reach
 variable I-RDELTA                   \ signed byte distance it would need
@@ -316,7 +316,7 @@ variable IDEC-N                     \ fill cursor: digits land backwards from th
    IDEC-BUF IDEC-N @ CODE-BYTE+  IDEC-CAP IDEC-N @ - ;
 
 \ `die` takes one span, so the line is composed first; separate writes would
-\ interleave with other stderr output. Outgrowing IMSG-CAP is a refusal, not a
+\ interleave with other stderr output. Outgrowing IMSG-CAP is a rejection, not a
 \ truncated line.
 $20 constant IMSG-PREFIX-CAP        \ `icode: cond branch out of reach` is the longest
 $8 constant IMSG-LABEL-CAP          \ ` target=` is the longest field label
@@ -335,7 +335,7 @@ variable IMSG-V
    \ Any source can call IMSG+, so the length is compared with the room left: in
    \ a sum, a length near the maximum cell wraps back under the capacity.
    IMSG-U @ 0 <  IMSG-U @ IMSG-CAP IMSG-N @ - >  or if
-      s" icode: a reach refusal outgrew its own message buffer" EXIT-STATUS:ENCODE die
+      s" icode: a reach rejection outgrew its own message buffer" EXIT-STATUS:ENCODE die
    then
    0 BEGIN dup IMSG-U @ < WHILE
       dup IMSG-A@ swap CODE-BYTE+ c@  IMSG-BUF IMSG-N @ CODE-BYTE+ c!
@@ -584,7 +584,7 @@ PTR-VARIABLE CUT-SRC
 \ A site's two words are split when only one is kept: kept words stay adjacent.
 : PAIR-SPLIT? ( n -- bool ) dup SITE-KEPT? swap 1 + SITE-KEPT? xor ;
 
-\ Refuses a pending reference sited in the region (FXS holds its old site), a
+\ Rejects a pending reference sited in the region (FXS holds its old site), a
 \ kept reference naming cut code and a cut that splits a two-word reference.
 : ?REFS ( -- )
    0 CUT-I !

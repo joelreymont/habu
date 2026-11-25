@@ -131,7 +131,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 
 \ The OS answers a path too long for it; the copy's mapping is released on
-\ every exit, the refusal of a 0 byte included.
+\ every exit, the rejection of a 0 byte included.
 : PATH-OPEN ( str -- n )
    {: text:str :}
    text text STR:LEN FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN

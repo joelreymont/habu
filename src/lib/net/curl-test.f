@@ -142,7 +142,7 @@ create STREAM-GOT STREAM-U allot
 create STREAM-CHUNK STREAM-CAP allot
 create STREAM-CHUNK-TWO STREAM-CAP allot
 create RETRY-POLLS 16 allot             \ two pollfd rows: pooled socket and listener
-create CAPTURE-BUF PATH-CAP allot       \ the path the refused start's stderr goes to
+create CAPTURE-BUF PATH-CAP allot       \ the path the rejected start's stderr goes to
 create BORROWED-BUF 3 allot             \ FORM$'s length
 create LIMITS 16 allot                  \ struct rlimit: soft, then hard
 $40 constant SOFT-LIMIT                 \ the descriptor limit the starved start sets
@@ -1154,7 +1154,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    HEADER$ want T$= ;
 
 
-: HEADER-REFUSED ( CURL:handle -- ) {: subject:CURL:handle :}
+: HEADER-REJECTED ( CURL:handle -- ) {: subject:CURL:handle :}
    subject HEADER-HANDLE !
    HEADER VEC:COUNT {: before:n :}
    s" unavailable response headers leave the vector untouched" T-LABEL
@@ -1427,7 +1427,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject s" PUT" str> CURL:METHOD! EXPECT-OK
    subject ECHO-FETCH
    subject CURL:RESET EXPECT-OK
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject PATH-ECHO$ URL-FOR CURL:URL! EXPECT-OK
    subject s" X-After: 2" CURL:HEADER+ EXPECT-OK
    subject ECHO-FETCH
@@ -1438,7 +1438,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    NO-BODY-HEADERS
    subject FILE-URL$ CURL:URL! EXPECT-OK
    subject BODY-CAP >LEN FETCH
-   s" RESET restores INIT's refusal of a file:// URL" T-LABEL
+   s" RESET restores INIT's rejection of a file:// URL" T-LABEL
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 1 T=
    subject CURL:CLEANUP ;
@@ -1521,7 +1521,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 : TEST-RESPONSE-HEADERS ( -- )
    PATH-HEADERS$ GET-READY {: subject:CURL:handle :}
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject BODY-CAP >LEN FETCH
    s" PERFORM retains the exact status-headed block and duplicate fields" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
@@ -1532,7 +1532,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject BODY-CAP >LEN FETCH
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 1 T=
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject CURL:CLEANUP
    HEADER$ HEADERS$ T$= ;
 
@@ -1583,7 +1583,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : TEST-TIMEOUT ( -- )
    STALL-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN FETCH
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject CURL:CLEANUP
    s" a server that never answers ends as CURLE_OPERATION_TIMEDOUT" T-LABEL
    LAST-KIND @ KIND-FAILED T=
@@ -1599,7 +1599,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 18 T=
    LAST-CODE @ CURL:>CODE CURL:LOST? TTRUE
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject CURL:CLEANUP ;
 
 
@@ -1614,7 +1614,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject CURL:CLEANUP ;
 
 
-: TEST-REFUSED ( -- )
+: TEST-REJECTED ( -- )
    s" a free loopback port is found and closed again" T-LABEL
    CLOSED-LISTENER CLOSED-PORT LISTEN-LOOPBACK TTRUE
    CLOSED-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER SERVER-STATUS
@@ -1682,7 +1682,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    listener TCP4:CLOSE-LISTENER SERVER-STATUS ;
 
 
-\ libcurl gives 35 for a refused TLS handshake, such as this plain HTTP answer, as
+\ libcurl gives 35 for a rejected TLS handshake, such as this plain HTTP answer, as
 \ for one cut off; neither sent the request, so LOST? takes both.
 : TEST-TLS-PLAIN ( -- )
    s" a listener for the plain peer opens on loopback" T-LABEL
@@ -1792,7 +1792,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : TEST-NO-URL ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject BODY-CAP >LEN FETCH
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject CURL:CLEANUP
    s" a handle with no URL fails and carries the curl code" T-LABEL
    LAST-KIND @ KIND-FAILED T=
@@ -1804,7 +1804,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject FILE-URL$ CURL:URL! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
-   s" a file:// URL is refused and its bytes never reach the buffer" T-LABEL
+   s" a file:// URL is rejected and its bytes never reach the buffer" T-LABEL
    FILE$ FS:FILE? TTRUE
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 1 T=
@@ -1859,20 +1859,20 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject CURL:CLEANUP ;
 
 
-: TEST-REFUSALS ( -- )
-   s" a handle that was never opened is refused" T-LABEL
+: TEST-REJECTIONS ( -- )
+   s" a handle that was never opened is rejected" T-LABEL
    [: NULL-HANDLE ;] CURL:E-STATE TTHROWSQ
-   s" a NUL inside a URL is refused, never silently cut" T-LABEL
+   s" a NUL inside a URL is rejected, never silently cut" T-LABEL
    [: EMBEDDED-NUL ;] E-FFI-NUL TTHROWSQ
-   s" a CR inside a header line is refused, never sent as a line of its own" T-LABEL
+   s" a CR inside a header line is rejected, never sent as a line of its own" T-LABEL
    [: S\" X-A: 1\rX-B: 2" SPLIT-HEADER ;] CURL:E-OPERAND TTHROWSQ
-   s" an LF inside a header line is refused, never sent as a line of its own" T-LABEL
+   s" an LF inside a header line is rejected, never sent as a line of its own" T-LABEL
    [: S\" X-A: 1\nX-B: 2" SPLIT-HEADER ;] CURL:E-OPERAND TTHROWSQ
-   s" a negative body length is refused" T-LABEL
+   s" a negative body length is rejected" T-LABEL
    [: NEGATIVE-BODY ;] CURL:E-OPERAND TTHROWSQ
-   s" a low-speed rate below zero is refused" T-LABEL
+   s" a low-speed rate below zero is rejected" T-LABEL
    [: LOW-SPEED-RATE ;] CURL:E-OPERAND TTHROWSQ
-   s" a low-speed window past the C long ceiling is refused" T-LABEL
+   s" a low-speed window past the C long ceiling is rejected" T-LABEL
    [: LOW-SPEED-WINDOW ;] CURL:E-OPERAND TTHROWSQ
    s" a handle takes the disabling pair, a real one and the largest window" T-LABEL
    LOW-SPEED-PAIRS ;
@@ -2149,8 +2149,8 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    PATH-STREAM$ GET-READY {: subject:CURL:handle :}
    subject OWNER-HANDLE !
    subject CURL:STREAM-START EXPECT-OK
-   subject HEADER-REFUSED
-   s" RESET refuses a handle whose transfer is in flight" T-LABEL
+   subject HEADER-REJECTED
+   s" RESET rejects a handle whose transfer is in flight" T-LABEL
    [: OWNER-HANDLE @ CURL:RESET drop ;] CURL:E-STATE TTHROWSQ
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
    subject STREAM-FIRST
@@ -2174,26 +2174,26 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject CURL:CLEANUP ;
 
 
-: AWAIT-STREAM-REFUSED ( -- )
+: AWAIT-STREAM-REJECTED ( -- )
    OWNER-HANDLE @ CURL:AWAIT DROP-FETCH ;
 
-: NEXT-WHOLE-REFUSED ( -- )
+: NEXT-WHOLE-REJECTED ( -- )
    OWNER-HANDLE @ STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT drop ;
 
-: NEXT-ZERO-REFUSED ( -- )
+: NEXT-ZERO-REJECTED ( -- )
    OWNER-HANDLE @ STREAM-CHUNK 0 >LEN CURL:NEXT drop ;
 
 : OWNER-NEXT-WORK ( -- )
-   [: NEXT-WHOLE-REFUSED ;] catch OWNER-RC ! ;
+   [: NEXT-WHOLE-REJECTED ;] catch OWNER-RC ! ;
 
 
 : CASE-STREAM-MODES ( -- )
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
    subject OWNER-HANDLE !
    subject CURL:STREAM-START EXPECT-OK
-   s" AWAIT and a zero span refuse a streaming transfer" T-LABEL
-   [: AWAIT-STREAM-REFUSED ;] CURL:E-STATE TTHROWSQ
-   [: NEXT-ZERO-REFUSED ;] CURL:E-OPERAND TTHROWSQ
+   s" AWAIT and a zero span reject a streaming transfer" T-LABEL
+   [: AWAIT-STREAM-REJECTED ;] CURL:E-STATE TTHROWSQ
+   [: NEXT-ZERO-REJECTED ;] CURL:E-OPERAND TTHROWSQ
    ['] OWNER-NEXT-WORK OWNER-TASK TASK:ACTIVATE
    OWNER-TASK AWAIT-END
    OWNER-TASK TASK:KILL
@@ -2214,7 +2214,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    PATH-HELLO$ GET-READY {: whole:CURL:handle :}
    whole OWNER-HANDLE !
    whole BODY-CAP >LEN BODY CURL:START EXPECT-OK
-   [: NEXT-WHOLE-REFUSED ;] CURL:E-STATE TTHROWSQ
+   [: NEXT-WHOLE-REJECTED ;] CURL:E-STATE TTHROWSQ
    whole AWAIT-ONE
    LAST-KIND @ KIND-RESPONSE T=
    whole CURL:CLEANUP ;
@@ -2290,7 +2290,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
       response OF drop false TTRUE ENDOF
       failed OF dup CURL:LOST? TTRUE CURL:CODE>N 18 T= ENDOF
    ;MATCH
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject CURL:CLEANUP ;
 
 
@@ -2318,7 +2318,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
       response OF drop false TTRUE ENDOF
       failed OF CURL:CODE>N 56 T= ENDOF
    ;MATCH
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject CURL:CLEANUP ;
 
 
@@ -2332,7 +2332,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
       response OF drop false TTRUE ENDOF
       failed OF dup CURL:LOST? TTRUE CURL:CODE>N 18 T= ENDOF
    ;MATCH
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject CURL:CLEANUP ;
 
 
@@ -2342,7 +2342,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    s" a started reply cut inside its header block fails as CURLE_PARTIAL_FILE" T-LABEL
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 18 T=
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject CURL:CLEANUP ;
 
 
@@ -2352,7 +2352,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject CURL:STREAM-START EXPECT-OK
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT-ARM
    [: HEADER-HANDLE @ CURL:NEXT-READY? ;] TEST-WAIT:POLL
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    s" a stream cut after a 103 block fails as CURLE_GOT_NOTHING" T-LABEL
    subject CURL:NEXT-TAKE
    MATCH CURL:chunk-result
@@ -2569,7 +2569,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    subject PATH-HEADERS-B$ URL-FOR CURL:URL! EXPECT-OK
    BODY-EMPTY
    subject BODY-CAP >LEN BODY CURL:START EXPECT-OK
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject AWAIT-ONE
    s" AWAIT publishes replacement headers only after collection" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
@@ -2590,7 +2590,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    two BODY-CAP >LEN v CURL:START EXPECT-OK
    two AWAIT-ONE
    two HEADERS-B$ HEADER-EXACT
-   one HEADER-REFUSED
+   one HEADER-REJECTED
    one AWAIT-ONE
    one HEADERS$ HEADER-EXACT
    two HEADERS-B$ HEADER-EXACT
@@ -2646,7 +2646,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    bad BODY-CAP >LEN BODY CURL:START EXPECT-OK
    STALL-GROUP 1- 0 ?do i MANY-START loop
    bad AWAIT-ONE
-   bad HEADER-REFUSED
+   bad HEADER-REJECTED
    bad CURL:CLEANUP
    s" a stalled transfer ends as CURLE_OPERATION_TIMEDOUT and alone" T-LABEL
    LAST-KIND @ KIND-FAILED T=
@@ -2668,7 +2668,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    before WAIT-HIT
    subject CURL:CANCEL
    subject AWAIT-ONE
-   subject HEADER-REFUSED
+   subject HEADER-REJECTED
    subject CURL:CLEANUP
    s" a cancelled transfer in flight ends as CURLE_ABORTED_BY_CALLBACK, local, not lost" T-LABEL
    LAST-KIND @ KIND-FAILED T=
@@ -2686,7 +2686,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    PATH-HELLO$ GET-READY OWNER-HANDLE !
    RESULT-RESET
    OWNER-HANDLE @ BODY-CAP >LEN BODY CURL:START EXPECT-OK
-   s" the loop refuses to stop while a transfer is in flight" T-LABEL
+   s" the loop does not stop while a transfer is in flight" T-LABEL
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
    ['] OWNER-WORK OWNER-TASK TASK:ACTIVATE
    OWNER-TASK AWAIT-END
@@ -2730,7 +2730,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    s" a submitter halted in AWAIT ends and the loop stops after it" T-LABEL
    HALT-RC @ 0 T=
    STOP-LOOP
-   HALT-HANDLE @ HEADER-REFUSED
+   HALT-HANDLE @ HEADER-REJECTED
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
@@ -3002,7 +3002,7 @@ variable DEFER-RETURNED
    CURL:LOOP-START
    START-STALL
    ['] CLEANUP-WORK HALT-TASK TASK:ACTIVATE
-   s" CLEANUP of a transfer another task started is refused" T-LABEL
+   s" CLEANUP of a transfer another task started is rejected" T-LABEL
    HALT-TASK TASK:JOIN MATCH result
       ok OF drop false TTRUE ENDOF
       err OF CURL:E-STATE T= ENDOF
@@ -3051,7 +3051,7 @@ variable DEFER-RETURNED
    STOP-LOOP
    DONE-COLLECTED atomic@ 0 T=
    s" a completed transfer abandoned by its waiter has no headers" T-LABEL
-   DONE-HANDLE @ HEADER-REFUSED
+   DONE-HANDLE @ HEADER-REJECTED
    DONE-HANDLE @ CURL:CLEANUP ;
 
 
@@ -3227,24 +3227,24 @@ TIGHT-FILL
    dup 4 VEC:RESERVE ;
 
 
-\ A growth the allocator refuses leaves no record in flight: the handle starts
+\ A growth the allocator rejects leaves no record in flight: the handle starts
 \ again.
 : TIGHT-RUN ( ^VEC:vector<u8> ^VEC:vector<u8> -- ) {: v:^ tight:^ :}
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
    subject 7 >LEN tight CURL:START EXPECT-OK
-   s" AWAIT throws the growth the allocator refused" T-LABEL
+   s" AWAIT throws the growth the allocator rejected" T-LABEL
    [: subject CURL:AWAIT DROP-FETCH ;] E-MEM-SIZE TTHROWSQ
    subject 7 >LEN v CURL:START EXPECT-OK
    subject AWAIT-ONE
    s" a handle whose AWAIT threw starts again" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    v VEC:BYTES HELLO$ T$=
-   s" PERFORM throws the growth the allocator refused" T-LABEL
+   s" PERFORM throws the growth the allocator rejected" T-LABEL
    [: subject 7 >LEN tight CURL:PERFORM DROP-FETCH ;] E-MEM-SIZE TTHROWSQ
    subject CURL:CLEANUP ;
 
 
-: VEC-REFUSED ( ^VEC:vector<u8> -- ) {: v:^ :}
+: VEC-REJECTED ( ^VEC:vector<u8> -- ) {: v:^ :}
    NEW-TIGHT {: tight:^ :}
    [: v tight TIGHT-RUN ;] [: tight VEC:DELETE ;] finally ;
 
@@ -3261,17 +3261,17 @@ TIGHT-FILL
    [: VEC-NO-LIMIT ;] VEC-CASE
    [: VEC-CUT-RESUMED ;] VEC-CASE
    [: VEC-CUT-RESUMED-H2 ;] VEC-CASE
-   [: VEC-REFUSED ;] VEC-CASE ;
+   [: VEC-REJECTED ;] VEC-CASE ;
 
 
 : TEST-MULTI ( -- )
    PATH-HELLO$ GET-READY COLD-HANDLE !
-   s" a transfer started before the loop is running is refused" T-LABEL
+   s" a transfer started before the loop is running is rejected" T-LABEL
    [: START-COLD ;] CURL:E-STATE TTHROWSQ
    [: START-COLD-STREAM ;] CURL:E-STATE TTHROWSQ
    COLD-HANDLE @ CURL:CLEANUP
    CURL:LOOP-START
-   s" a second LOOP-START is refused" T-LABEL
+   s" a second LOOP-START is rejected" T-LABEL
    [: CURL:LOOP-START ;] CURL:E-STATE TTHROWSQ
    PARITY-WHOLE
    CASE-RETRY-DEFAULT
@@ -3352,7 +3352,7 @@ TIGHT-FILL
    RLIMIT-NOFILE LIMITS SET-LIMIT 0 T= ;
 
 
-\ Duplicates stdin until the limit refuses one: true when it did.
+\ Duplicates stdin until the limit rejects one: true when it did.
 : FILL ( -- bool )
    0 FILLED !
    begin
@@ -3380,19 +3380,19 @@ TIGHT-FILL
 
 \ With the descriptor table full, LOOP-START cannot open its wake pipe; curl's
 \ global init ran in an earlier test, so the pipe is the first fd it needs.
-: TEST-PIPE-REFUSED ( -- )
+: TEST-PIPE-REJECTED ( -- )
    RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
    LIMITS @ SAVED-LIMIT !
    s" stderr.txt" CAPTURE-BUF UNDER-ROOT {: u:n :}
    ARENA:NEW {: a:^ :}
    AIO:START
-   s" a refused wake pipe is CURL:E-LOOP" T-LABEL
+   s" a failed wake pipe is CURL:E-LOOP" T-LABEL
    [: STARVED-START ;] CAPTURE-BUF u >str a STDERR:CAPTURING
    {: text:str :}
    AIO:STOP
    CURL:E-LOOP T=
-   s" CURL logs the refused pipe and the code it was refused with" T-LABEL
-   text s"  error curl: the host refused the wake pipe: " STR:CONTAINS? TTRUE
+   s" CURL logs the rejected pipe and the code it was rejected with" T-LABEL
+   text s"  error curl: the wake pipe was not made: " STR:CONTAINS? TTRUE
    text E-FS-IO ERROR:NAME$ STR:CONTAINS? TTRUE
    s" CURL logs the host's text for EMFILE" T-LABEL
    text FS:EMFILE FS:ERRNO$ STR:CONTAINS? TTRUE
@@ -3473,19 +3473,19 @@ public
    TEST-TIMEOUT
    TEST-CUT-HEAD
    TEST-CR-END
-   TEST-REFUSED
+   TEST-REJECTED
    TEST-MALFORMED
    TEST-TLS-PLAIN
    TEST-LOW-SPEED
    TEST-NO-URL
    TEST-FILE-SCHEME
-   TEST-REFUSALS
+   TEST-REJECTIONS
    TEST-LONG-TEXT
    TEST-HOST:SNAPSHOT
    AIO:START
    TEST-MULTI
    AIO:STOP
-   TEST-PIPE-REFUSED
+   TEST-PIPE-REJECTED
    TEST-WITH-LOOPS
    OPT-IN
    TEARDOWN

@@ -91,7 +91,7 @@ public
 -32801 constant CONTENT-MODIFIED         \ LSP's ContentModified
 -32803 constant REQUEST-FAILED           \ LSP's RequestFailed
 \ The longest body taken, room for a document's whole text escaped. A header
-\ that announces more is refused before any of the body is read.
+\ that announces more is rejected before any of the body is read.
 64 1024 * 1024 * constant MAX-BODY
 
 private
@@ -790,7 +790,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    i CHECK-CURRENT? 0= if exit then
    AT-BYTE!
    AT-SLOT @ AT-BYTE @ WITH-DECL @ LSP-REFERENCES:SELECT
-   LSP-REFERENCES:REFUSED? if
+   LSP-REFERENCES:REJECTED? if
       i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
       exit
    then
@@ -804,7 +804,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
       false exit
    then
-   LSP-REFERENCES:REFUSED? if
+   LSP-REFERENCES:REJECTED? if
       i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
       false exit
    then

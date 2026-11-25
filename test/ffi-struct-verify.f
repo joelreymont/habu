@@ -2,7 +2,7 @@
 \ --verify-only, reads FUNCTION: declarations. Loaded by
 \ src/lib/ffi-test.f inside package FFI-TEST. Each
 \ declaration is its own source, checked in a verifier child that stops at its
-\ first refusal. Sources select PROCESS-SYMBOLS (LIBRARY leaves the rest of
+\ first rejection. Sources select PROCESS-SYMBOLS (LIBRARY leaves the rest of
 \ its file to the run and would hide the clauses) and name no defined symbol,
 \ so a clean certify shows the check resolves none.
 
@@ -36,11 +36,11 @@ variable FFI-SV-SRC-U
 : FFI-SV-WRITE ( -- )
    s" test/ffi-sv.f" E2E-TREE:AT-A FFI-SV-SRC$ FS:WRITE-ALL ;
 
-\ 0 verified, 1 refused, 2 any other verdict.
+\ 0 verified, 1 rejected, 2 any other verdict.
 : FFI-SV-KIND ( LSP-CHECK:verdict -- n )
    MATCH LSP-CHECK:verdict
       verified OF 0 ENDOF
-      refused OF 1 ENDOF
+      rejected OF 1 ENDOF
       engine-provided OF 2 ENDOF
       held OF 2 ENDOF
       incomplete OF {: status :} 2 ENDOF
@@ -90,7 +90,7 @@ variable FFI-SV-SRC-U
    LSP-CHECK:VERIFY-OUT$ s STR:CONTAINS? TTRUE ;
 
 
-\ The source certifies: verified, and no packet, deferred or refused.
+\ The source certifies: verified, and no packet, deferred or rejected.
 : FFI-SV-CLEAN ( n -- )
    {: kind:n :}
    kind 0<> LSP-CHECK:VERIFY-OUT$ S\" \"code\":" STR:CONTAINS? or IF FFI-SV-SHOW THEN
@@ -104,8 +104,8 @@ variable FFI-SV-SRC-U
    FFI-SV-CLEAN ;
 
 
-\ The source is refused, with CODE in a packet.
-: FFI-SV-REFUSES ( n str -- )
+\ The source is rejected, with CODE in a packet.
+: FFI-SV-REJECTS ( n str -- )
    {: kind:n code:str :}
    kind 1 <> IF FFI-SV-SHOW THEN
    kind 1 T=
@@ -118,28 +118,28 @@ variable FFI-SV-SRC-U
    kind 2 T=
    w FFI-SV-SAYS ;
 
-: FFI-SV-REFUSED ( str str -- )
+: FFI-SV-REJECTED ( str str -- )
    {: decl:str code:str :}
    decl FFI-SV-RUN
-   code FFI-SV-REFUSES ;
+   code FFI-SV-REJECTS ;
 
-: FFI-SV-REFUSE ( str str -- )
+: FFI-SV-REJECT ( str str -- )
    {: decl:str code:str :}
    decl T-LABEL
-   decl code FFI-SV-REFUSED ;
+   decl code FFI-SV-REJECTED ;
 
 
 \ A rejection's record names the load's code.
 : FFI-SV-SYNTAX ( str str -- )
    {: decl:str msg:str :}
-   decl S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSE
+   decl S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REJECT
    FFI-T-SRC CODEGEN:RESET
    S\" \"message\":\"" FFI-T-SRC+
    msg FFI-T-SRC+
    S\" \"" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS FFI-SV-SAYS ;
 : FFI-SV-ARITY ( str -- )
-   S\" \"code\":\"E-FFI-ARITY\"" FFI-SV-REFUSE ;
+   S\" \"code\":\"E-FFI-ARITY\"" FFI-SV-REJECT ;
 
 \ A struct plan the check rejects with E-FFI-ARITY prints the load's record,
 \ its header and its help, placed at ;FUNCTION with the definer's label.
@@ -225,8 +225,8 @@ variable FFI-SV-SRC-U
    FFI-SV-SYNTAX
    s" ( ^u8 -- n ) 0 129 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
    s" ( n n n n n n n n ^u8 -- n ) 8 113 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
-   s" sixteen record payloads that wrap 2^64 are refused" T-LABEL
-   FFI-SV-WRAP$ S\" \"code\":\"E-FFI-ARITY\"" FFI-SV-REFUSED FFI-SV-STAGED ;
+   s" sixteen record payloads that wrap 2^64 are rejected" T-LABEL
+   FFI-SV-WRAP$ S\" \"code\":\"E-FFI-ARITY\"" FFI-SV-REJECTED FFI-SV-STAGED ;
 
 
 : FFI-SV-STRUCT-RESULT ( -- )
@@ -261,7 +261,7 @@ variable FFI-SV-SRC-U
    {: src:str msg:str tok:str :}
    src T-LABEL
    src FFI-SV-SOURCE
-   S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSES
+   S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REJECTS
    msg FFI-SV-SAYS
    tok FFI-SV-SAYS ;
 
@@ -285,7 +285,7 @@ variable FFI-SV-SRC-U
    \ A declaration still open when the next opens is rejected at its opener.
    s" FUNCTION: FFI-SV no_symbol ( -- ) FUNCTION: FFI-SW no_symbol ( -- ) ;FUNCTION"
    dup T-LABEL  FFI-SV-SOURCE
-   S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REFUSES
+   S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REJECTS
    S\" \"message\":\"`FUNCTION:` is still open at `FUNCTION:`\""
    FFI-SV-SAYS
    S\" \"column\":1," FFI-SV-SAYS
@@ -294,14 +294,14 @@ variable FFI-SV-SRC-U
    \ resolves its path.
    S\" FUNCTION: FFI-SV no_symbol ( -- )\ninclude ffi-sv-none.f\n;FUNCTION"
    dup T-LABEL  FFI-SV-SOURCE
-   S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REFUSES
+   S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REJECTS
    S\" \"message\":\"`FUNCTION:` is still open when `include` loads a file\""
    FFI-SV-SAYS
    S\" \"column\":1," FFI-SV-SAYS
    S\" \"help\":\"close it with `;FUNCTION` before `include`\"" FFI-SV-SAYS
    S\" BEGIN-STRUCTURE FFI-SV-S\ninclude ffi-sv-none.f\nEND-STRUCTURE"
    dup T-LABEL  FFI-SV-SOURCE
-   S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REFUSES
+   S\" \"code\":\"E-UNCLOSED\"" FFI-SV-REJECTS
    S\" \"message\":\"`BEGIN-STRUCTURE` is still open when `include` loads a file\""
    FFI-SV-SAYS
    S\" \"column\":1," FFI-SV-SAYS
@@ -373,10 +373,10 @@ variable FFI-SV-SRC-U
 : FFI-SV-GROUP-CLOSE ( -- )
    s" FUNCTION: FFI-SV no_symbol ( ^u8 n -- i32 ) ;FUNCTION : FFI-SV-F1 ( -- ) FFI-SV-NOSUCH ;"
    dup T-LABEL  FFI-SV-SOURCE
-   S\" \"code\":\"E-UNDEFINED\"" FFI-SV-REFUSES
+   S\" \"code\":\"E-UNDEFINED\"" FFI-SV-REJECTS
    s" FUNCTION: FFI-SV no_symbol ( ^u8 n -- i32 ) ;FUNCTION : FFI-SV-F2 ( ^u8 -- n ) {: buf :} buf 1 FFI-SV {: got:i32 :} buf CELL-VIEW @ ;"
    dup T-LABEL  FFI-SV-SOURCE
-   S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" FFI-SV-REFUSES ;
+   S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" FFI-SV-REJECTS ;
 
 \ A program's own `;FUNCTION` closes no group: called at top level, this
 \ defer stops the check, and the run rejects the group.
@@ -408,12 +408,12 @@ variable FFI-SV-SRC-U
 
 \ A re-export of the declarer's word is that word (docs/forth.md, EXPORT): the
 \ load binds the alias, bare inside its package or qualified outside it, to
-\ STRUCT-ARG's code and refuses the clause, so the check refuses it with the
+\ STRUCT-ARG's code and rejects the clause, so the check rejects it with the
 \ load's code. The load runs in a child for FFI-SV-SHADOWED's reason.
 : FFI-SV-ALIASED ( str -- )
    {: src:str :}
    SB-RESET FFI-SV-REQUIRE$ SB-APPEND src SB-APPEND
-   FFI-SV-CHECK S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSES
+   FFI-SV-CHECK S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REJECTS
    FFI-SV-WRITE
    s" test/ffi-sv.f" E2E-TREE:ARGS
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON

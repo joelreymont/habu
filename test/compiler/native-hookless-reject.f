@@ -1,5 +1,5 @@
-\ native-hookless-reject.f - a definition the checker refuses is refused naming
-\ it and the token refused, and keeps no row.
+\ native-hookless-reject.f - a definition the checker rejects is rejected naming
+\ it and the token rejected, and keeps no row.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -50,35 +50,35 @@ create TEXT CAP allot                  variable TEXT-U
 \ reject status, naming the callee and the packages that publish it.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : AMBIGUOUS-CALLEE ( -- )
-   s" an ambiguous bare callee is refused naming the callee" T-LABEL
+   s" an ambiguous bare callee is rejected naming the callee" T-LABEL
    s" package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
    RC @ 70 T=
    s" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package" SAYS
    s" = packages: UA, UC" SAYS ;
 
-\ A used public that shadows a global is refused the same way.
+\ A used public that shadows a global is rejected the same way.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : SHADOWING-CALLEE ( -- )
-   s" a bare callee a used public shadows is refused naming the callee" T-LABEL
+   s" a bare callee a used public shadows is rejected naming the callee" T-LABEL
    s" : SW ( -- n ) 11 ; package US public : SW ( -- n ) 33 ; ;package using US : UT-SHADOW ( -- n ) SW ; ;using" SESSION
    RC @ 70 T=
    s" error[E-USING-SHADOW-GLOBAL]: `SW` is both a global word and a public of used package `US`" SAYS
    s" = package: US:SW" SAYS ;
 
-\ A TRUSTED: row whose stored signature does not parse is refused at that token.
+\ A TRUSTED: row whose stored signature does not parse is rejected at that token.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : BAD-SIGNATURE ( -- )
-   s" a refused stored signature is refused naming its token" T-LABEL
+   s" a rejected stored signature is rejected naming its token" T-LABEL
    s" TRUSTED: TB8 ( -- nosuch:fam ) 1 NOSUCHWORD ;" SESSION
    RC @ 70 T=
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `TB8` cannot be recorded" SAYS
    s" = evaluated: TRUSTED: TB8 ( -- nosuch:fam )" SAYS
    s" no type has this name" SAYS ;
 
-\ A public whose private twin moves other cells is refused at its own name.
+\ A public whose private twin moves other cells is rejected at its own name.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : SHADOWED-ARITY ( -- )
-   s" a public its private tail shadows is refused naming the definition" T-LABEL
+   s" a public its private tail shadows is rejected naming the definition" T-LABEL
    s" package SAT-A : F ( n n -- n ) + ; public : F ( n -- n ) 1 + ; ;package" SESSION
    RC @ 70 T=
    s" error[E-SHADOWED-ARITY]: public `SAT-A:F` has a different stack effect" SAYS
@@ -87,10 +87,10 @@ create TEXT CAP allot                  variable TEXT-U
 
 \ A TRUSTED: body whose `@` cannot be applied over a two-cell family value
 \ loses that value's width, so nothing can place its cells; a checked does>
-\ clause that applies `@` to one is refused for the type first.
+\ clause that applies `@` to one is rejected for the type first.
 \ Its own process: the rejection's status ends it, and is tested.
 : INCOMPLETE-SCAN ( -- )
-   s" a scan that loses a wide value's width is refused" T-LABEL
+   s" a scan that loses a wide value's width is rejected" T-LABEL
    TEXT-U BUF-RESET
    s" ENUM hr-v VARIANT none ;VARIANT VARIANT some FIELD x n ;VARIANT ;ENUM " TEXT+
    S\" : HR-TRY ( -- n ) [: s\" TRUSTED: HR-DEF ( n -- ) create , does> ( -- n ) @ construct hr-v some @ ;\" evaluate-closed ;] catch ; " TEXT+
@@ -103,21 +103,21 @@ create TEXT CAP allot                  variable TEXT-U
    s" error[E-NELAB-BUNDLE]: the body of `HR-LOST` loses the width of a multi-cell value" SAYS
    s" = family: hr-v" SAYS ;
 
-\ ---- a refused definition keeps no row ---------------------------------------
+\ ---- a rejected definition keeps no row ---------------------------------------
 : P-W+ ( -- ) s" package P-FORGET public : W-FORGET ( -- n ) 2 ; ;package " TEXT+ ;
 : Q-USING-P+ ( -- ) s" package Q-FORGET public using P-FORGET " TEXT+ ;
 
-\ TRY-FORGET prints the refusal's code, 70. A row kept
-\ from the refused ( -- n n ) would certify a T-FORGET ( -- n n ) over
+\ TRY-FORGET prints the rejection's code, 70. A row kept
+\ from the rejected ( -- n n ) would certify a T-FORGET ( -- n n ) over
 \ W-FORGET.
-: REFUSED+ ( -- )
+: REJECTED+ ( -- )
    S\" : TRY-FORGET ( -- n ) [: s\" : W-FORGET ( -- n n ) 3 ;\" evaluate-closed ;] catch ; " TEXT+
    s" TRY-FORGET . cr " TEXT+ ;
 
-\ The refused W-FORGET keeps no row, so T-FORGET binds P-FORGET:W-FORGET.
-: REFUSED-CAUGHT ( -- )
-   s" a caught refusal leaves a call to the used package's word" T-LABEL
-   TEXT-U BUF-RESET P-W+ Q-USING-P+ REFUSED+
+\ The rejected W-FORGET keeps no row, so T-FORGET binds P-FORGET:W-FORGET.
+: REJECTED-CAUGHT ( -- )
+   s" a caught rejection leaves a call to the used package's word" T-LABEL
+   TEXT-U BUF-RESET P-W+ Q-USING-P+ REJECTED+
    s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT$ SESSION
    RC @ 70 T=
@@ -133,7 +133,7 @@ public
    BAD-SIGNATURE
    SHADOWED-ARITY
    INCOMPLETE-SCAN
-   REFUSED-CAUGHT
+   REJECTED-CAUGHT
    T-REPORT ;
 
 ;package

@@ -66,7 +66,7 @@ defer RR-XGEN3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-
 
 \ Region-generic words, for a body whose own inputs declare a fresh region. A
 \ mut-view is exclusive, so the two-view consumer is a `defer` (a body that drops
-\ one is refused).
+\ one is rejected).
 : RR-MPASS ( matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ) ;
 : RR-VPASS ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) ;
 : RR-VTAKE ( [ mut-view<p,q,a,u8> -- ] -- ) drop ;
@@ -182,7 +182,7 @@ s" must stay parametric" RR-DIAG? TTRUE
 s" C-FDOM ( span<space-global,f32,fresh-region-b> span<space-global,f32,fresh-gen-b> -- ) RR-UBOX"  RR-CHECK 0 T=
 s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 \ (22) a fresh region the body supplies, in a callback's input, is one the body
-\ mints; handed an input's region instead, it is refused.
+\ mints; handed an input's region instead, it is rejected.
 s" C-FMINT ( [ matrix<space-global,fresh-region-b,f32,f32> -- ] -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-OWN"  RR-CHECK -1 T=
 s" C-FCBIN ( matrix<space-global,fresh-region-b,f32,f32> [ matrix<space-global,fresh-region-c,f32,f32> -- ] -- ) execute"  RR-CHECK 0 T=
 s" rigid host: region mismatch" RR-DIAG? TTRUE
@@ -198,7 +198,7 @@ s" C-FQCB ( matrix<space-global,a,f32,f32> [ matrix<space-global,fresh-region-b,
 s" must stay parametric" RR-DIAG? TTRUE
 \ (25) a does> clause holds fresh regions as a colon body does: (16)'s pass is
 \ admitted and takes a checked caller's allocation, a minted output region
-\ reaches a checked caller, and (18)'s new output region is refused.
+\ reaches a checked caller, and (18)'s new output region is rejected.
 s" : RR-DFPASS ( n -- ) create , does> ( matrix<space-global,fresh-region-b,f32,f32> -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-MPASS ;"  TEST-EVAL:RC  0 T=
 s" 0 RR-DFPASS RR-DFP"  TEST-EVAL:RC  0 T=
 s" : RR-DFCALL ( -- matrix<space-global,fresh-region-c,f32,f32> ) RR-OWN RR-DFP ;"  TEST-EVAL:RC  0 T=
@@ -225,7 +225,7 @@ s" C-CALLGEN ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) RR-VFRESH"  RR-CHECK -
 \ may take its allocation, since a body admits nothing from the two differing.
 s" C-CALL2 ( -- ) RR-OWN RR-OWN RR-MF2"  RR-CHECK -1 T=
 s" C-CALLMIX ( -- ) RR-OWN dup RR-MMIX"  RR-CHECK -1 T=
-\ (28) one allocation into two fresh inputs is refused, and so is a caller's
+\ (28) one allocation into two fresh inputs is rejected, and so is a caller's
 \ quantifier, which may be the other input's allocation.
 s" C-CALLSAME ( -- ) RR-OWN dup RR-MF2"  RR-CHECK 0 T=
 s" rigid host: region mismatch" RR-DIAG? TTRUE

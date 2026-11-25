@@ -44,7 +44,7 @@ $11 constant MAP-SHARED-FIXED
 \ "DATA-VA is free" a checked fact: an occupied range fails with EEXIST instead
 \ of being replaced, which is why MAP_FIXED $10 (it overrides NOREPLACE) is not
 \ in the set. A kernel before 4.17 treats NOREPLACE as a hint and may map
-\ elsewhere; the boot's compare of the result with DATA-VA refuses that too.
+\ elsewhere; the boot's compare of the result with DATA-VA rejects that too.
 $104022 constant MAP-DATA-RESERVE
 \ MREMAP-MOVE-FIXED moves a mapping to an exact address, replacing what is
 \ mapped there: MREMAP_MAYMOVE 1 | MREMAP_FIXED 2.

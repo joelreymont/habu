@@ -1,6 +1,6 @@
 \ lsp-rename.f - the language server's rename. A rename edits a token's tail alone,
 \ its bytes after a qualifier's colon, so the new name the client asks for is a tail
-\ and a qualifier stays. PREPARED and ANSWER refuse nothing once LSP-REFERENCES has
+\ and a qualifier stays. PREPARED and ANSWER reject nothing once LSP-REFERENCES has
 \ selected and placed the declaration.
 \ STORAGE CLASS. CALLER-OWNED: no state; the writer is the caller's, the selection
 \ and locations LSP-REFERENCES's, the uses tools/lsp-defs.f's.

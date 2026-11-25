@@ -124,17 +124,17 @@ TYPED-VARIABLE SRC-U len
    s"  drop" 70 S+N ;
 
 
-\ A definition refused at a `THEN` whose arm changes the depth over an empty
+\ A definition rejected at a `THEN` whose arm changes the depth over an empty
 \ stack, followed by k `1 drop` pairs the walk still steps through.
 : STRAY-THEN ( n -- )
    {: k:n :}
    SRC-RESET  s" SN-STRAY ( bool -- ) IF 1 THEN" S+  s"  1 drop" k S+N ;
 
 
-\ This thread's CPU nanoseconds for one quiet check of k pairs, which refuses.
+\ This thread's CPU nanoseconds for one quiet check of k pairs, which rejects.
 : STRAY-NS ( n -- n )
    STRAY-THEN
-   TIME:THREAD-CPU-NS  SRC$ CHECK-QUIET-CANDIDATE! VERDICT-REFUSED T=
+   TIME:THREAD-CPU-NS  SRC$ CHECK-QUIET-CANDIDATE! VERDICT-REJECTED T=
    TIME:THREAD-CPU-NS swap - ;
 
 \ A 23-parameter family nested k deep in its last slot, a word whose input it
@@ -178,7 +178,7 @@ TYPED-VARIABLE SRC-U len
 variable ERR-U
 
 \ The text in SRC-BUF, run as the subject, exits 70 and names why on stderr.
-: REFUSES ( str -- )
+: REJECTS ( str -- )
    {: why:str :}
    SRC$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
@@ -193,7 +193,7 @@ variable ERR-U
    {: outu:len erru:len oc :}
    SRC$ OUT outu LEN>N >str ERR erru LEN>N >str oc 0 T-ENDING-EXITED= ;
 
-\ The last REFUSES's stderr also holds this text, gutters dropped.
+\ The last REJECTS's stderr also holds this text, gutters dropped.
 : SAID ( str -- )
    {: s:str :}
    ERR ERR-U @ >str s REJECTION-TEXT:HAS? TTRUE ;
@@ -201,7 +201,7 @@ variable ERR-U
 
 : PACKET-OPEN ( -- )   REJECTION:CAPTURE  0 0= REJECTION:JSON ! ;
 
-\ REFUSES reads prose from a fork that inherits the format, and a run under
+\ REJECTS reads prose from a fork that inherits the format, and a run under
 \ `tools/check.f --json-errors` starts in JSON; a packet sets prose back.
 variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 
@@ -227,7 +227,7 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
    0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
 
-\ CHECK-CANDIDATE! also answers ANSWER: VERDICT-REFUSED or VERDICT-UNCHECKABLE.
+\ CHECK-CANDIDATE! also answers ANSWER: VERDICT-REJECTED or VERDICT-UNCHECKABLE.
 : PACKET-HAS ( str str str n -- )
    {: answer:n :}
    PACKET-OPEN  SRC$ CHECK-CANDIDATE! answer T=  PACKET-HOLDS ;
@@ -240,55 +240,55 @@ public
 
 : RUN ( -- )
    T-RESET
-   s" 33 nested binders refuse by the binder limit" T-LABEL
+   s" 33 nested binders reject by the binder limit" T-LABEL
    s" SN-BINDERS-33" 33 BINDERS
-   s" error[E-BAD-SIGNATURE]: more than 32 nested binders at `a`" REFUSES
+   s" error[E-BAD-SIGNATURE]: more than 32 nested binders at `a`" REJECTS
    s" 32 nested binders check" T-LABEL
    s" SN-BINDERS-32" 32 BINDERS
    SRC$ TEST-EVAL:RC 0 T=
    s" a 23-parameter family nested 24 deep checks" T-LABEL
    24 WIDE  SRC$ TEST-EVAL:RC 0 T=
-   s" 9000 nested pointees refuse by the depth limit" T-LABEL
+   s" 9000 nested pointees reject by the depth limit" T-LABEL
    9000 POINTEES
-   s" effect too deep to record (more than 2048 levels)" REFUSES
-   s" 4500 nested quotations refuse by the depth limit" T-LABEL
+   s" effect too deep to record (more than 2048 levels)" REJECTS
+   s" 4500 nested quotations reject by the depth limit" T-LABEL
    4500 QUOTATIONS
-   s" effect too deep to record (more than 2048 levels)" REFUSES
+   s" effect too deep to record (more than 2048 levels)" REJECTS
    s" a word whose input quotation nests 65 deep checks" T-LABEL
    65 QUOT-CALL  LOADS
-   s" a definition's signature nested past the depth limit refuses by it" T-LABEL
+   s" a definition's signature nested past the depth limit rejects by it" T-LABEL
    1025 DEF-QUOTATIONS
-   s" effect too deep to record (more than 2048 levels)" REFUSES
-   s" a local's type nested past the depth limit refuses by it" T-LABEL
+   s" effect too deep to record (more than 2048 levels)" REJECTS
+   s" a local's type nested past the depth limit rejects by it" T-LABEL
    1025 LOCAL-QUOTATIONS
-   S\" error[E-BAD-SIGNATURE]: effect too deep to record (more than 2048 levels) at `[` in the annotation of local `x`\n" REFUSES
+   S\" error[E-BAD-SIGNATURE]: effect too deep to record (more than 2048 levels) at `[` in the annotation of local `x`\n" REJECTS
    s" 70 nested IFs check and run" T-LABEL
    70 NESTED-IFS
    SRC$ TEST-EVAL:RC 0 T=  s" true SN-IFS-70" TEST-EVAL:RC 0 T=
    s" 70 nested DO loops each unlooped exit with a value" T-LABEL
    70 NESTED-DOS
    SRC$ TEST-EVAL:RC 0 T=  s" SN-DOS" TEST-EVAL:N 7 T=
-   s" an undefined word is refused and writes a rejected packet" T-LABEL
+   s" an undefined word is rejected and writes a rejected packet" T-LABEL
    SRC-RESET  s" SN-UNDEF ( -- ) SN-NO-SUCH-WORD" S+
    S\" \"code\":\"E-UNDEFINED\"" S\" \"token\":\"SN-NO-SUCH-WORD\""
-   S\" \"message\":\"cannot find word `SN-NO-SUCH-WORD`\"" VERDICT-REFUSED PACKET-HAS
-   s" a word the engine holds that no row answers is refused and writes a rejected packet" T-LABEL
+   S\" \"message\":\"cannot find word `SN-NO-SUCH-WORD`\"" VERDICT-REJECTED PACKET-HAS
+   s" a word the engine holds that no row answers is rejected and writes a rejected packet" T-LABEL
    SRC-RESET  s" SN-PRIVPRIM ( -- ) 0 0 0 xref-retarget" S+
    S\" \"code\":\"E-UNDEFINED\"" S\" \"token\":\"xref-retarget\""
-   S\" \"message\":\"cannot find word `xref-retarget`\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"message\":\"cannot find word `xref-retarget`\"" VERDICT-REJECTED PACKET-HAS
    s" a call's wrong input over cells below is a type fault over the same cells" T-LABEL
    SRC-RESET  s" : SN-CF ( n bool -- ) drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" SN-CALLB ( n -- ) 1 2 SN-CF drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-CF\""
-   S\" \"expected\":\"n bool\",\"found\":\"n n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"n bool\",\"found\":\"n n\"" VERDICT-REJECTED PACKET-HAS
    s" a RECURSE's wrong input over cells below is a type fault over the same cells" T-LABEL
    SRC-RESET  s" SN-RC1 ( n bool -- ) IF dup 1 RECURSE THEN drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"RECURSE\""
-   S\" \"expected\":\"n bool\",\"found\":\"n n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"n bool\",\"found\":\"n n\"" VERDICT-REJECTED PACKET-HAS
    s" a quotation's wrong condition over cells below is a type fault over the same cells" T-LABEL
    SRC-RESET  s" SN-Q1 ( -- ) [: 0 0= 1 IF THEN drop ;] drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"IF\""
-   S\" \"expected\":\"bool\",\"found\":\"n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"bool\",\"found\":\"n\"" VERDICT-REJECTED PACKET-HAS
    s" a does> clause's wrong condition over cells below is a type fault over the same cells" T-LABEL
    SRC-RESET  s" : SN-DO1 ( n -- ) create , does> ( -- ) drop 0 0= 1 IF THEN drop ;" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"IF\""
@@ -296,37 +296,37 @@ public
    s" a loop body that leaves one more cell over 70 cells is a surplus" T-LABEL
    BIGLOOP-TEXT
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"LOOP\""
-   S\" \"help\":\"drop the extra value" VERDICT-REFUSED PACKET-HAS
+   S\" \"help\":\"drop the extra value" VERDICT-REJECTED PACKET-HAS
    s" a surplus value over cells below stays a surplus" T-LABEL
    SRC-RESET  s" SN-SU1 ( n -- n ) 1" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"1\""
-   S\" \"expected\":\"n\",\"found\":\"n n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"n\",\"found\":\"n n\"" VERDICT-REJECTED PACKET-HAS
    s" a generic bundle input over a caller's group is a type fault over the same cells" T-LABEL
    SRC-RESET  s" STRUCTURE snz<a,b> FIELD fst a FIELD snd b ;STRUCTURE" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" : SN-SNZ ( n n -- snz<n,n> ) SNZ:MAKE ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" : SN-LHT ( snz<a,b> bool -- ) drop SNZ:UNMAKE drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" SN-LH1 ( n -- ) 1 2 SN-SNZ 3 SN-LHT drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-LHT\""
-   S\" \"expected\":\"snz<a,b> bool\",\"found\":\"snz<n,n> n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"snz<a,b> bool\",\"found\":\"snz<n,n> n\"" VERDICT-REJECTED PACKET-HAS
    s" a group input over a generic bundle is a type fault over the same cells" T-LABEL
    SRC-RESET  s" : SN-LHN ( snz<n,n> bool -- ) drop SNZ:UNMAKE drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" SN-LH2 ( n snz<a,b> -- ) 3 SN-LHN drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-LHN\""
-   S\" \"expected\":\"snz<n,n> bool\",\"found\":\"snz<a,b> n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"snz<n,n> bool\",\"found\":\"snz<a,b> n\"" VERDICT-REJECTED PACKET-HAS
    s" a scalar input over a generic bundle is a type fault" T-LABEL
    SRC-RESET  s" SN-GL0 ( snz<a,b> -- ) 1+ drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"1+\""
-   S\" \"expected\":\"n\",\"found\":\"snz<a,b>\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"n\",\"found\":\"snz<a,b>\"" VERDICT-REJECTED PACKET-HAS
    s" a generic bundle input over scalars is a type fault" T-LABEL
    SRC-RESET  s" : SN-TGL ( snz<a,b> -- ) SNZ:UNMAKE drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" SN-GM2 ( n -- ) 7 8 9 SN-TGL drop" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-TGL\""
-   S\" \"expected\":\"snz<a,b>\",\"found\":\"n n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"snz<a,b>\",\"found\":\"n n\"" VERDICT-REJECTED PACKET-HAS
    s" an if arm that turns a cell into a group is a depth fault counted in cells" T-LABEL
    SRC-RESET  s" SN-IFZ ( n bool -- n ) IF dup SN-SNZ THEN" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"THEN\""
-   S\" \"message\":\"the if arm changes the stack's depth\"" VERDICT-REFUSED PACKET-HAS
-   s" the tokens after a refusal check in time linear in their count" T-LABEL
+   S\" \"message\":\"the if arm changes the stack's depth\"" VERDICT-REJECTED PACKET-HAS
+   s" the tokens after a rejection check in time linear in their count" T-LABEL
    \ Eight times the tokens takes about 8 times the CPU time when each token's
    \ cost is bounded, and up to 64 when it grows with the tokens before it.
    1000 STRAY-NS {: small:n :}   8000 STRAY-NS {: big:n :}
@@ -334,26 +334,26 @@ public
    s" a quotation's wrong input over its open input is a type fault over the same values" T-LABEL
    SRC-RESET  s" SN-QS2 ( n -- ) [: 1 SN-CF ;] execute" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-CF\""
-   S\" \"expected\":\"n bool\",\"found\":\"n n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"n bool\",\"found\":\"n n\"" VERDICT-REJECTED PACKET-HAS
    s" a quotation's wrong input over a group it takes from below is a type fault" T-LABEL
    SRC-RESET  s" SN-QG ( snz<n,n> -- ) [: 1 SN-LHN ;] execute" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-LHN\""
-   S\" \"expected\":\"snz<n,n> bool\",\"found\":\"snz<n,n> n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"snz<n,n> bool\",\"found\":\"snz<n,n> n\"" VERDICT-REJECTED PACKET-HAS
    s" an unsigned definition's wrong input over its inferred input is a type fault" T-LABEL
    SRC-RESET  s" SN-QI 1 SN-CF" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-CF\""
-   S\" \"expected\":\"n bool\",\"found\":\"n n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"n bool\",\"found\":\"n n\"" VERDICT-REJECTED PACKET-HAS
    s" a call short against a declared empty input is a missing producer" T-LABEL
    SRC-RESET  s" SN-S ( -- ) 1 SN-CF" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-CF\""
-   S\" \"expected\":\"n bool\",\"found\":\"n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"n bool\",\"found\":\"n\"" VERDICT-REJECTED PACKET-HAS
    s" a call short against a named row is a missing producer" T-LABEL
    SRC-RESET  s" SN-SX ( R [ R -- S ] -- S ) execute 1 SN-CF" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"SN-CF\""
-   S\" \"expected\":\"n bool\",\"found\":\"n\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"expected\":\"n bool\",\"found\":\"n\"" VERDICT-REJECTED PACKET-HAS
    s" a RECURSE with no declared effect is uncheckable for want of one, and says to declare one" T-LABEL
    RECURSE-NOSIG
-   s" error[E-UNCHECKABLE]: recursion needs a declared stack effect" REFUSES
+   s" error[E-UNCHECKABLE]: recursion needs a declared stack effect" REJECTS
    s" = evaluated: : SN-DOWN dup 0 > IF 1 - RECURSE THEN ;" SAID  s" no effect to call" SAID
    s" help: declare the definition's stack effect after its name" SAID
    s" a RECURSE with no declared effect writes an uncheckable packet that says why" T-LABEL
@@ -371,7 +371,7 @@ public
    PACKET-PASSES
    s" a RECURSE in a does> clause is uncheckable for calling the defining word, and says where to recurse" T-LABEL
    RECURSE-DOES
-   s" error[E-UNCHECKABLE]: recurse in a does> clause would call the defining word" REFUSES
+   s" error[E-UNCHECKABLE]: recurse in a does> clause would call the defining word" REJECTS
    s" = evaluated: : SN-MK ( n -- ) create , does>" SAID  s" inside a `does>` clause" SAID
    s" help: move the recursion into a named word" SAID
    s" a RECURSE in a does> clause writes an uncheckable packet that says why" T-LABEL
@@ -386,9 +386,9 @@ public
    ADD-BLANKS  SRC$ TEST-EVAL:RC 0 T=   s" 1 2 SN-ADD" TEST-EVAL:N 3 T=
    s" a line break after a comma inside a family loads" T-LABEL
    RESULT-LINE  SRC$ TEST-EVAL:RC 0 T=
-   s" an unknown type that ends a line refuses by its name alone" T-LABEL
+   s" an unknown type that ends a line rejects by its name alone" T-LABEL
    UNKNOWN-LINE
-   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `sn-nosuch`" REFUSES
+   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `sn-nosuch`" REJECTS
    s" a word with no signature that drops a callee's quotation loads" T-LABEL
    QUOT-NIP  LOADS
    s" a word with no signature that passes a quotation over a value loads" T-LABEL
@@ -397,93 +397,93 @@ public
    QUOT-PAIR  LOADS
    s" a type mismatch prints its expected and found rows" T-LABEL
    SRC-RESET  s" : SN-MIS ( -- bool ) 1 ;" S+
-   s" error[E-MISMATCH]: SN-MIS ends with n on the stack; its signature promises bool" REFUSES
+   s" error[E-MISMATCH]: SN-MIS ends with n on the stack; its signature promises bool" REJECTS
    s" = expected: bool" SAID  s" = found: n" SAID
    s" a bare ^ in a signature is rejected for its missing element type" T-LABEL
    SRC-RESET  s" : SN-BP ( ^ -- ) drop ;" S+
-   s" error[E-BARE-PTR-SIGNATURE]: `^` needs an element type" REFUSES
+   s" error[E-BARE-PTR-SIGNATURE]: `^` needs an element type" REJECTS
    s" a ^ a blank parts from its element type is a bare ^" T-LABEL
    SRC-RESET  s" : SN-BPU ( ^ u8 -- ) drop ;" S+
-   s" error[E-BARE-PTR-SIGNATURE]: `^` needs an element type" REFUSES
+   s" error[E-BARE-PTR-SIGNATURE]: `^` needs an element type" REJECTS
    SRC-RESET  s" SN-BPU ( ^ u8 -- ) drop" S+
    S\" \"code\":\"E-BARE-PTR-SIGNATURE\"" S\" \"token\":\"^\""
-   S\" \"message\":\"`^` needs an element type\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"message\":\"`^` needs an element type\"" VERDICT-REJECTED PACKET-HAS
    s" ptr in a signature is an unknown type: a pointer is ^T" T-LABEL
    SRC-RESET  s" : SN-PTR ( ptr u8 -- ) drop ;" S+
-   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr`" REFUSES
+   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr`" REJECTS
    S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`\n" SAID
    SRC-RESET  s" SN-PTR ( ptr u8 -- ) drop" S+
    S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"token\":\"ptr\""
-   S\" \"message\":\"unknown type `ptr` in signature\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"message\":\"unknown type `ptr` in signature\"" VERDICT-REJECTED PACKET-HAS
    s" ptr in a local's annotation is an unknown type" T-LABEL
    SRC-RESET  s" : SN-PTRL ( ^u8 -- ) {: p:ptr :} ;" S+
-   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REFUSES
+   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REJECTS
    S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:^u8`\n" SAID
    SRC-RESET  s" SN-PTRL ( ^u8 -- ) {: p:ptr :}" S+
    S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"token\":\"ptr\""
-   S\" \"message\":\"unknown type `ptr` in the annotation of local `p`\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"message\":\"unknown type `ptr` in the annotation of local `p`\"" VERDICT-REJECTED PACKET-HAS
    s" an unknown type inside a local's annotation is named, placed and helped as in a signature" T-LABEL
    SRC-RESET  s" : SN-NU ( n -- ) {: p:option<ptr> :} ;" S+
-   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REFUSES
+   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REJECTS
    S\" ^ evaluates the text below\n" SAID
    S\" = evaluated: : SN-NU ( n -- ) {: p:option<ptr> :} ;\n                                          ^^^ unknown type\n" SAID
    S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:option<^u8>`\n" SAID
    s" a `ptr` after a local's `^` is helped by the annotation with `^u8` in its place" T-LABEL
    SRC-RESET  s" : SN-NP ( n -- ) {: p:^ptr :} ;" S+
-   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REFUSES
+   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REJECTS
    S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:^^u8`\n" SAID
    s" a local's annotation of the wrong arity names its family, then its local, and places the family" T-LABEL
    SRC-RESET  s" : SN-AR ( n -- ) {: p:option<n,n> :} ;" S+
-   s" error[E-WRONG-ARITY]: type family `option` in the annotation of local `p` takes 1 type argument, not 2" REFUSES
+   s" error[E-WRONG-ARITY]: type family `option` in the annotation of local `p` takes 1 type argument, not 2" REJECTS
    S\" ^ evaluates the text below\n" SAID
    S\" = evaluated: : SN-AR ( n -- ) {: p:option<n,n> :} ;\n                                   ^^^^^^ wrong number of type arguments\n" SAID
    S\" = help: give `option` 1 type argument\n" SAID
    s" a local's annotation that ends early names its local and asks for one whole type" T-LABEL
    SRC-RESET  s" : SN-EN ( n -- ) {: p:option< :} ;" S+
-   s" error[E-BAD-SIGNATURE]: the annotation of local `p` ends before it is complete" REFUSES
+   s" error[E-BAD-SIGNATURE]: the annotation of local `p` ends before it is complete" REJECTS
    S\" = help: write one whole type after `p:`, as in `p:n`\n" SAID
    s" an empty local's annotation ends before it is complete" T-LABEL
    SRC-RESET  s" : SN-EM ( n -- ) {: p: :} ;" S+
-   s" error[E-BAD-SIGNATURE]: the annotation of local `p` ends before it is complete" REFUSES
+   s" error[E-BAD-SIGNATURE]: the annotation of local `p` ends before it is complete" REJECTS
    S\" = help: write one whole type after `p:`, as in `p:n`\n" SAID
    s" a token a local's annotation cannot hold is named as unexpected there" T-LABEL
    SRC-RESET  s" : SN-DD ( n -- ) {: p:option<--> :} ;" S+
-   S\" error[E-BAD-SIGNATURE]: unexpected `--` in the annotation of local `p`\n" REFUSES
+   S\" error[E-BAD-SIGNATURE]: unexpected `--` in the annotation of local `p`\n" REJECTS
    s" a type scheme in a local's annotation is rejected as polymorphic: a local holds one type" T-LABEL
    SRC-RESET  s" : SN-LS ( n -- ) {: q:forall<p,[--]> :} ;" S+
-   s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES
+   s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REJECTS
    S\" ^ evaluates the text below\n" SAID
    S\" = evaluated: : SN-LS ( n -- ) {: q:forall<p,[--]> :} ;\n                                   ^^^^^^^^^^^^^^ a local holds one type\n" SAID
    S\" = help: write the type without `forall`: its type variables are then the definition's, as in `q:[--]`\n" SAID
    s" a nested type scheme in a local's annotation is placed and named by its binder, helped by the annotation without it" T-LABEL
    SRC-RESET  s" : SN-LP ( n -- ) {: q:^forall<p,[--]> :} ;" S+
-   s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES
+   s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REJECTS
    S\" = evaluated: : SN-LP ( n -- ) {: q:^forall<p,[--]> :} ;\n                                    ^^^^^^^^^^^^^^ a local holds one type\n" SAID
    S\" = help: write the type without `forall`: its type variables are then the definition's, as in `q:^[--]`\n" SAID
    s" a name that begins with forall holds no binder: the scheme inside it is placed and cut" T-LABEL
    SRC-RESET  s" NEWTYPE forallish<a> : SN-LX ( n -- ) {: q:forallish<forall<p,[--]>> :} drop ;" S+
-   s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REFUSES
+   s" error[E-BAD-SIGNATURE]: polymorphic type `forall<p,[--]>` in the annotation of local `q`" REJECTS
    S\" ^ evaluates the text below\n" SAID
    S\" = evaluated: NEWTYPE forallish<a> : SN-LX ( n -- ) {: q:forallish<forall<p,[--]>> :} drop ;\n                                                                  ^^^^^^^^^^^^^^ a local holds one type\n" SAID
    S\" = help: write the type without `forall`: its type variables are then the definition's, as in `q:forallish<[--]>`\n" SAID
    s" a declared signature's binder after a name that begins with forall is placed at the binder" T-LABEL
    SRC-RESET  s" NEWTYPE forallish<a> defer SN-SB ( forallish<n> forall<p,[--]> -- )" S+
-   s" error[E-BAD-SIGNATURE]: the declared signature of `SN-SB` binds a callback scope" REFUSES
+   s" error[E-BAD-SIGNATURE]: the declared signature of `SN-SB` binds a callback scope" REJECTS
    S\" ^ evaluates the text below\n" SAID
    S\" = evaluated: NEWTYPE forallish<a> defer SN-SB ( forallish<n> forall<p,[--]> -- )\n                                                             ^^^^^^^ binder in a declared signature\n" SAID
    S\" = signature: forallish<n> forall<p,[--]> --\n" SAID
    S\" = help: drop the binder from the signature of `SN-SB`: only a checked `:` definition binds a callback scope\n" SAID
    s" ptr in a stored signature is an unknown type: a pointer is ^T" T-LABEL
    SRC-RESET  s" defer SN-PTRD ( ptr -- )" S+
-   s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-PTRD` cannot be recorded" REFUSES
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-PTRD` cannot be recorded" REJECTS
    S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`\n" SAID
    s" a stored row that is one rejected token is placed at its name, helped by that token" T-LABEL
    SRC-RESET  s" defer SN-ARD (option)" S+
-   s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-ARD` cannot be recorded" REFUSES
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-ARD` cannot be recorded" REJECTS
    S\" = help: give `option` 1 type argument\n" SAID
    s" a body's tick of another package's private primitive is rejected as undefined" T-LABEL
    SRC-RESET  s" : SN-TICK ( -- ) ['] xref-retarget drop ;" S+
-   s" error[E-UNDEFINED]: cannot find word `xref-retarget`" REFUSES ;
+   s" error[E-UNDEFINED]: cannot find word `xref-retarget`" REJECTS ;
 
 \ Run while a package holding a rendering statement's mark is open, so MADE is
 \ a name the run may define to these texts and to no other.
@@ -494,11 +494,11 @@ public
    s" a covered name after a pinned reason keeps the reason" T-LABEL
    SRC-RESET  s" SN-LOOPLESS ( -- ) i drop MADE" S+
    S\" \"code\":\"E-NO-LOOP\"" S\" \"token\":\"i\""
-   S\" \"message\":\"no loop is open here\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"message\":\"no loop is open here\"" VERDICT-REJECTED PACKET-HAS
    s" a covered name after a pinned mismatch keeps the mismatch" T-LABEL
    SRC-RESET  s" SN-MISMATCH ( -- ) 1 IF THEN MADE" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"IF\""
-   S\" \"expected\":\"bool\",\"found\":\"n\"" VERDICT-REFUSED PACKET-HAS ;
+   S\" \"expected\":\"bool\",\"found\":\"n\"" VERDICT-REJECTED PACKET-HAS ;
 
 : REPORT ( -- )
    JSON-WAS @ REJECTION:JSON !

@@ -8,14 +8,14 @@
 \ no earlier read found. While the tasks read, the vault route holds each
 \ answer until two vault requests have been in flight at once, for 5 s at
 \ most. Fails on: a metadata origin with a trailing `/` bound; a vault URL
-\ with a trailing `/` refused; a value with JSON escapes read wrong or not
+\ with a trailing `/` rejected; a value with JSON escapes read wrong or not
 \ after the vector's bytes; a found item read again sending a request or
 \ answering other bytes; a 404 not a miss, changing the vector or not asked
 \ again; a 403, or a metadata 400 during a read, not E-ACCESS; a 503, or a
 \ metadata 410 during a read, not E-UNAVAILABLE; another service, an
 \ account with `/` or of 128 bytes not E-CONFIG, or sending a request; a
 \ malformed 200 vault or metadata answer's bytes in the JSON code's text; a
-\ write or erase admitted; an http URL to another host bound, or a refused
+\ write or erase admitted; an http URL to another host bound, or a rejected
 \ bind changing the bound store; tasks reading at once given another's
 \ value, or never two vault requests in flight at once.
 require src/lib/secret/azure.f
@@ -262,7 +262,7 @@ TASK:MIN-STACK TASK:TASK READER-7
    s" token-gone" SECRET:E-UNAVAILABLE READS-ITEM
    s" a metadata 400 during a read is E-ACCESS" T-LABEL
    400 IMDS-STATUS !
-   s" token-refused" SECRET:E-ACCESS READS-ITEM
+   s" token-rejected" SECRET:E-ACCESS READS-ITEM
    200 IMDS-STATUS ! ;
 
 
@@ -315,7 +315,7 @@ TASK:MIN-STACK TASK:TASK READER-7
    REASON:HIDDEN? TFALSE ;
 
 
-: TEST-REFUSALS ( -- )
+: TEST-REJECTIONS ( -- )
    ASKS @ {: seen:n :}
    s" another service is E-CONFIG with no request" T-LABEL
    [: s" org.habu.other" s" escaped" OUT SECRET:READ drop ;]
@@ -379,7 +379,7 @@ TASK:MIN-STACK TASK:TASK READER-7
 
 
 : CASES ( -- )
-   SERVE TEST-READS TEST-HELD TEST-HIDDEN TEST-REFUSALS TEST-TASKS ;
+   SERVE TEST-READS TEST-HELD TEST-HIDDEN TEST-REJECTIONS TEST-TASKS ;
 
 
 : TEST-MAIN ( -- )

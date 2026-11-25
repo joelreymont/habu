@@ -1,4 +1,4 @@
-\ A named enum fetch refusal identifies the checked definition.
+\ A named enum fetch rejection identifies the checked definition.
 package PROGRAM-DIAG-LOWER
 ENUM color red green ;ENUM
 ENUM lcnamed

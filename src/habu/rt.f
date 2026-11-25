@@ -77,7 +77,7 @@ public
    MAP-DONE LABEL@ B,
    MAP-BAD LABEL@ LBL,
    3 MAP-CAP @ STACK-ABI:PAGE-BYTES 3 * + LIT64,
-   s" hb: the system refused a guarded VM stack; raise the address-space limit (ulimit -v) above its size in bytes:"
+   s" hb: mapping a guarded VM stack failed; raise the address-space limit (ulimit -v) above its size in bytes:"
    EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE,
    MAP-DONE LABEL@ LBL, ;
 

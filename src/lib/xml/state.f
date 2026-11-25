@@ -635,7 +635,7 @@ private
 
 public
 \ The source stays in place under the reader's inputs, so a caller that
-\ catches a refusal still holds it to close.
+\ catches a rejection still holds it to close.
 : INIT-SOURCE ( XML:source ^cursor -- XML:source XML:reader )
    >r SRC-STATE r> swap SOURCE-READER ;
 
@@ -652,7 +652,7 @@ public
 
 private
 \ FAILED is true from NEXT's entry until it returns, so a NEXT that throws
-\ leaves the reader refusing every read.
+\ leaves the reader rejecting every read.
 : LIVE ( ^cursor -- )
    CURSOR-FAILED @ if E-STATE throw then ;
 

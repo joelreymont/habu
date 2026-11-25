@@ -1,7 +1,7 @@
 \ tmp-path-test.f - TMP-PATH holds a PATH-CAP path and no length wraps past it.
 \ TMP-PATH (src/os/env-base.f) answers TMPDIR, a slash and the caller's name in
 \ one buffer of PATH-CAP bytes, and ends the process with exit 90 when they do
-\ not fit. It can fail four ways: an exact fill refused, one byte too many
+\ not fit. It can fail four ways: an exact fill rejected, one byte too many
 \ admitted, a negative length taken as room, and a length whose sum with the
 \ root wraps back into range.
 
@@ -33,7 +33,7 @@ create ERR IO-CAP allot
    d STR:DATA ROOT d STR:LEN BYTE-COPY  d STR:LEN ROOT-U !
    ROOT$ FS:CLEANUP-TREE+ ;
 
-\ The refusal is a die, so each case is a child engine (test/tmp-path-child.f)
+\ The rejection is a die, so each case is a child engine (test/tmp-path-child.f)
 \ whose TMPDIR is this test's own directory.
 : RUN ( str -- n n n ) {: case:str :}   \ outu erru rc
    ENGINE-CANDIDATE:PATH$ {: engine:str :}
@@ -64,7 +64,7 @@ create ERR IO-CAP allot
    s" ... and nothing after it but the line end" T-LABEL
    OUT PATH-CAP + c@ LF T= ;
 
-: REFUSED ( str str -- ) {: case:str label:str :}
+: REJECTED ( str str -- ) {: case:str label:str :}
    case RUN {: outu:n erru:n rc:n :}
    label T-LABEL
    rc 90 T=
@@ -79,9 +79,9 @@ public
    T-RESET
    SETUP
    EXACT-CASE
-   s" over" s" one byte past PATH-CAP is refused with exit 90" REFUSED
-   s" negative" s" a negative length is refused, not taken as room" REFUSED
-   s" huge" s" the maximum cell is refused, not wrapped into range" REFUSED
+   s" over" s" one byte past PATH-CAP is rejected with exit 90" REJECTED
+   s" negative" s" a negative length is rejected, not taken as room" REJECTED
+   s" huge" s" the maximum cell is rejected, not wrapped into range" REJECTED
    FS:CLEANUP-RUN
    T-REPORT
    s" tmp-path-test: ok" type cr ;

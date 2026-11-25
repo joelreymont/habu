@@ -1,7 +1,7 @@
 \ stored-type-param.f - a type variable that occurs only where a type is stored,
 \ behind a pointer or in a family slot the family's width does not read, stands
 \ for any stored type, a two-cell record included, while the word's body needs
-\ no one-cell value of it. The refusals land at the call, never at the word.
+\ no one-cell value of it. The rejections land at the call, never at the word.
 \ A cast's stored variable takes any such type but one that may hold a linear
 \ value, an atom or a width, at every binding, through a generic caller too.
 require src/lib/test/assert.f
@@ -22,7 +22,7 @@ public
 TYPED-VARIABLE NV n
 ;package
 
-\ Public: the refused callers compile at run time, outside the package.
+\ Public: the rejected callers compile at run time, outside the package.
 package STORED
 
 public
@@ -168,7 +168,7 @@ private
 : HAS? ( str -- )
    REJECTION:BUFFER$ swap STR:CONTAINS? TTRUE ;
 
-\ The refusal is a mismatch at the call token the string names.
+\ The rejection is a mismatch at the call token the string names.
 : MISMATCH-AT ( str -- )
    HAS?  S\" \"code\":\"E-MISMATCH\"" HAS? ;
 
@@ -436,7 +436,7 @@ private
    s" a cast's stored variable takes n, r, u8, ^u8 and a record" T-LABEL
    ELEM-N TTRUE  ELEM-R TTRUE  ELEM-U8 TTRUE  ELEM-PTR TTRUE  ELEM-TURN TTRUE ;
 
-\ The refusal is the code the string names, at the call of STORED:AT.
+\ The rejection is the code the string names, at the call of STORED:AT.
 : CAST-AT ( str -- )
    HAS?  S\" \"token\":\"STORED:AT\"" HAS? ;
 
@@ -447,7 +447,7 @@ private
       70 TTHROWSQ
    S\" \"code\":\"E-CAST-LINEAR\"" CAST-AT
    DISARM
-   \ The stored kind refuses lrec before the cast does, as it does in CASE-LINEAR.
+   \ The stored kind rejects lrec before the cast does, as it does in CASE-LINEAR.
    ARM
    [: s" : STORED-R13 ( ^u8 -- ^STORED:lrec ) STORED:AT ;" evaluate-closed ;]
       70 TTHROWSQ

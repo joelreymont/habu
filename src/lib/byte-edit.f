@@ -2,7 +2,7 @@
 \ The editor takes its storage from the allocator INIT takes and grows it per
 \ edit; the source and borrowed replacements stay live until CLOSE. Edits are
 \ sorted and nonoverlapping, insertions at one offset keep call order, and a
-\ failed edit leaves the plan as it was. WRITE refuses a short or overlapping
+\ failed edit leaves the plan as it was. WRITE rejects a short or overlapping
 \ destination before copying. Qualify EDIT:CLOSE and EDIT:WRITE (also global
 \ tails). STORAGE CLASS. CALLER-OWNED: no module state.
 
@@ -99,7 +99,7 @@ private
       E-CAPACITY throw
    then ;
 
-\ PUSH grows the rows before any header cell changes, so a refused growth
+\ PUSH grows the rows before any header cell changes, so a failed growth
 \ leaves the plan as it was.
 : SAVE-EDIT ( ^header n n str -- )
    {: state start:n removed:n replacement:str :}

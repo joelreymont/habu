@@ -1,10 +1,10 @@
-\ Checker refusals for the opaque table control and its element loans.
+\ Checker rejections for the opaque table control and its element loans.
 require src/lib/test/assert.f
 require src/lib/test/subject.f
 require src/lib/c2-memory.f
 require test/c2-records-types.f
 
-package C2-RECORDS-REFUSALS
+package C2-RECORDS-REJECTIONS
 public
 
 : RUN ( -- )
@@ -59,8 +59,8 @@ public
    \ The bad stored signature is rendered before its code is thrown, so it exits 70.
    s" TRUSTED: C2-TABLE-FORGE ( -- records<b,i,a,C2-RECORDS-TYPES:pair> ) 0 0 ;" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
-   s" c2-records-refusals: ok" type cr ;
+   s" c2-records-rejections: ok" type cr ;
 
 ;package
 
-C2-RECORDS-REFUSALS:RUN
+C2-RECORDS-REJECTIONS:RUN

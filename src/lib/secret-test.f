@@ -1,5 +1,5 @@
 \ E2E of the public SECRET words with no store bound for one case, then over a
-\ host store bound with SECRET:STORE!. Fails on: no store bound refused as
+\ host store bound with SECRET:STORE!. Fails on: no store bound rejected as
 \ anything but E-CONFIG; a host store bypassed, called before the checks or
 \ masked; a read that loses the bytes the vector held or keeps the bytes of a
 \ read that failed or found nothing.
@@ -59,7 +59,7 @@ TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
 
 
 \ The host store holds one item; an empty service means none, since every
-\ word refuses an empty identifier before calling the store.
+\ word rejects an empty identifier before calling the store.
 CODEGEN:BUFFER HOST-SERVICE
 CODEGEN:BUFFER HOST-ACCOUNT
 CODEGEN:BUFFER HOST-VALUE
@@ -128,7 +128,7 @@ variable HOST-CALLS
 
 
 : TEST-HOST-CHECKS ( -- )
-   s" identifier and value checks refuse before the host store is called" T-LABEL
+   s" identifier and value checks reject before the host store is called" T-LABEL
    0 HOST-CALLS !
    [: s" " s" key" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
    [: s" host" s\" a\x00b" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ

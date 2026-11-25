@@ -79,7 +79,7 @@ BAND-AGREE
 
 \ Exactly `width` digits of the value's bit pattern, most significant first;
 \ a 64-bit cell holds 16 digits of 4 bits. Below full width the value must
-\ fit: the bits above the digits must be zero, which also refuses every
+\ fit: the bits above the digits must be zero, which also rejects every
 \ negative value.
 : HEX-WIDTH>NUM ( n n -- )
    {: value:n width:n :}
@@ -93,7 +93,7 @@ BAND-AGREE
    repeat drop ;
 
 \ Exactly `width` octal digits, most significant first. The bits above the
-\ digits must be zero, which also refuses every negative value.
+\ digits must be zero, which also rejects every negative value.
 : OCT-WIDTH>NUM ( n n -- )
    {: value:n width:n :}
    width 1 < width OCT-CELL-DIGITS > or if E-FMT-DOMAIN throw then

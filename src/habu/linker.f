@@ -151,7 +151,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
    NULL-PTR BYTE-VIEW BASE @ ROUTED-BYTES - +  SPACE-SIZE @ ROUTED-BYTES +  munmap
    0<> if E-MEM-UNMAP throw then ;
 
-\ Above hb's DATA: below it CHECKER-OWNER-GUARD refuses with E-COMP-OWNER.
+\ Above hb's DATA: below it CHECKER-OWNER-GUARD rejects with E-COMP-OWNER.
 : HINT ( -- n ) DATA-N DATA-SIZE + ;
 
 \ A build for another target than hb's own.
@@ -422,7 +422,7 @@ TYPED-VARIABLE UNDER-KNOWN bool     \ whether RESOLVE-UNDER's path under another
 \ `false LINK-FACTS` hands CHANGER+ (LINK-RETIRED, LINK-TEXT) only after COMPILED-TIME reads this.
 TYPED-VARIABLE CHANGED-EARLIER bool
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
-PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused reference names
+PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a rejected reference names
 variable FILE-PATH-N
 variable STORES-AT                   \ the offset in OBJECT of STORES' count, of the piece placed or object read
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
@@ -1598,7 +1598,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 
 \ Emission e's site holding v, a code address when code is true.
-: REFUSE-SITE ( n n n bool -- )
+: REJECT-SITE ( n n n bool -- )
    {: e:n site:n v:n code:bool :}
    s" LINKER:E-ADDRESS" REJECTION:OPEN
    s" the file's code names an address made while the build ran" REJECTION:EMIT-STR
@@ -1610,7 +1610,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 
 \ The space's cell at holding v, a code address when code is true.
-: REFUSE-CELL ( n n bool -- )
+: REJECT-CELL ( n n bool -- )
    {: at:n v:n code:bool :}
    at EXT-OF {: e:n :}
    e 0< if -1 else e 11 EXT @ then {: r:n :}
@@ -1974,7 +1974,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
          e i NSHADOW:CALL-SITE@ PIECES @ U64+
          kind NEMIT:TAIL = if 1 else 0 then PIECES @ U64+
          e i NSHADOW:CALL-TARGET@ {: t:n :}
-         e t SITE-REF+ 0= if e  e i NSHADOW:CALL-SITE@  t true REFUSE-SITE then
+         e t SITE-REF+ 0= if e  e i NSHADOW:CALL-SITE@  t true REJECT-SITE then
       then
    loop
    e NSHADOW:ADDR-SITES PIECES @ U64+
@@ -1990,14 +1990,14 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
       else
          1 PIECES @ U64+  v DATA-REF+
       then
-      0= if e at v code REFUSE-SITE then
+      0= if e at v code REJECT-SITE then
    loop
    p PIECES @ U64+
    p 0 >= if
       calls 0 > if calls 1 - else -1 then {: k:n :}
       k 0 >= if e k NSHADOW:PATCH-CALL? else false then if
          e k NSHADOW:CALL-TARGET@ {: t:n :}
-         e t SITE-REF+ 0= if e p t true REFUSE-SITE then
+         e t SITE-REF+ 0= if e p t true REJECT-SITE then
       else
          5 PIECES @ U64+
       then
@@ -2068,7 +2068,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    row SCRATCH-ROW?  v 0=  or if 5 PIECES @ U64+ exit then
    row DATA-ROW? {: data:bool :}
    data if v DATA-REF+ else v CODE-REF+ then if exit then
-   row ROW-AT v data 0= REFUSE-CELL ;
+   row ROW-AT v data 0= REJECT-CELL ;
 
 : BODY-U ( n -- n ) CELL - BASE @ - SPACE-AT @ ;
 
@@ -3256,7 +3256,7 @@ variable RD-AT
    a u  b LE:U64@  b 8 + LE:U64@  b 16 + LE:U64@  link STAMP-SAME? ;
 
 \ Whether the read of the kind (COMPILE-READS) reads the same now; false for a spelling holding a NUL, which ROOT?
-\ would refuse with a throw (E-PATH-NUL).
+\ would reject with a throw (E-PATH-NUL).
 : READ-HOLDS? ( n str str -- bool )
    {: kind:n a:^ u:n b:^ v:n :}
    a u NUL-FREE? 0= if false exit then
@@ -3358,7 +3358,7 @@ variable RD-AT
    RD-AT @ i ENTRY-OFFS !
    RD-U64 {: kind:n :}
    kind KIND-PRIVATE = if
-      \ A package holding a private wordlist gains none (INTERPRETER:PACKAGE-PRIVATE refuses it).
+      \ A package holding a private wordlist gains none (INTERPRETER:PACKAGE-PRIVATE rejects it).
       PKG-REF {: file:n r:n :}
       file 0<> if  r PRIVATE? if BAD else r GRANT+ then  then
       exit
@@ -4513,7 +4513,7 @@ EXPORT TFAM:TFAM-N@
       then
    then drop
    INTERPRETER:DEF-CLOSE
-   \ After publication, as PENDING-CK refuses IMM and INT on a pending row; it also restores the
+   \ After publication, as PENDING-CK rejects IMM and INT on a pending row; it also restores the
    \ wide bit the imports were given false for.
    flags want SET-FLAGS
    FILE-EM @ e + COPY-EDGES+  want start REC-EDGES!
@@ -4749,7 +4749,7 @@ EXPORT CHECK:PLACE-FACTS
       s" E-MEM-MAP" REJECTION:OPEN
       s" the system placed the linker's space of " REJECTION:EMIT-STR
       size ROUTED-BYTES + REJECTION:EMIT-U
-      s"  bytes below hb's data, where the checker refuses its stores"
+      s"  bytes below hb's data, where the checker rejects its stores"
       REJECTION:EMIT-STR
       REJECTION:HELP
       s" free that much address space above hb's data, which other mappings fill"
@@ -4844,7 +4844,7 @@ EXPORT CHECK:STORES-OPEN
    REJECTION:DROP-PENDING ;
 
 \ nested: a load another file's load requested, or a compiling file's tail. DP given back while open
-\ was given back outside the build's files (END-CK refuses it in one); DPHW-CELL stays nonzero to the close.
+\ was given back outside the build's files (END-CK rejects it in one); DPHW-CELL stays nonzero to the close.
 : GOING ( bool -- )
    {: nested:bool :}
    PROGRESS @
@@ -5620,7 +5620,7 @@ public
 
 \ Whether a build run now from the current root would load every record the INPUTS bytes log as it did, with no build
 \ open: the replay machine above, over the build's registry; false for empty bytes, bytes that run past their end or
-\ end inside a load, a path no FS call takes (PATH-OK?) and a spelling the resolver refuses (E-PATH-RANGE).
+\ end inside a load, a path no FS call takes (PATH-OK?) and a spelling the resolver rejects (E-PATH-RANGE).
 : INPUTS-HOLD? ( str -- bool )
    {: p:^ pu:n :}
    pu 0 <= if false exit then

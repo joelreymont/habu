@@ -1,7 +1,7 @@
-\ deftype-dup-bad.f - a duplicate DEFTYPE in one package is refused:
+\ deftype-dup-bad.f - a duplicate DEFTYPE in one package is rejected:
 \ CHECKER-DEFTYPE throws E-TFAM-DUP, which exits 70 uncaught because the
 \ checker rendered it. The ARMED marker proves the first declaration ran before
-\ the refusal. The same name in another package is not a duplicate.
+\ the rejection. The same name in another package is not a duplicate.
 
 require src/lib/type/deftype.f
 

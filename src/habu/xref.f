@@ -4,7 +4,7 @@ split-str
 \ none: the arm64 cold prefix loads it before it records the files it loaded,
 \ so a require would load one twice. A cold-prefix row (boot-files.f
 \ BOOT-FILES) loaded after check-hook.f with no `0 set-check` span, so the
-\ engine build checks it. tools/check.f refuses it alone: every engine already
+\ engine build checks it. tools/check.f rejects it alone: every engine already
 \ holds its words (E-DUPLICATE-DEFINITION).
 
 \ The cold prefix loads CODE-SPAN and DOES-CLAUSE before XREF.
@@ -55,7 +55,7 @@ public
 
 \ The dictionary index of a record address an engine cell holds as an integer.
 \ n must be a live record's address; 0 and unaligned addresses are not
-\ refused here (REC-LIVE? tests an address).
+\ rejected here (REC-LIVE? tests an address).
 : XREF-ADDR>INDEX ( n -- n ) dbase@ - DREC / ;
 
 \ The record at such an address, under the same precondition.
@@ -432,7 +432,7 @@ EXPORT BOOT:TYPES-WL
    wid WID-SEALED? ;
 
 public
-\ Whether a definition into wordlist wid is refused: wid is a sealed package's,
+\ Whether a definition into wordlist wid is rejected: wid is a sealed package's,
 \ the open package is sealed, or an open part's owner is sealed and wid is not
 \ the part's.
 : SEALED-TARGET? ( n -- bool ) {: wid:n :}
@@ -474,7 +474,7 @@ EXPORT TYPE-DECL:TDECL-THROW-AT
    s" " s" " TYPE-DECL:E-TDECL-SEALED TDECL-THROW-AT ;
 
 \ A family or generated name is the declaration's error where SEALED-TARGET?
-\ refuses it, or in a package the verified source sealed. A head resolves as the
+\ rejects it, or in a package the verified source sealed. A head resolves as the
 \ definition's does: a part is asked by its path.
 : CHECK ( str -- ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: q:n :}

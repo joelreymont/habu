@@ -116,7 +116,7 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
 : BAD-DEF$ ( -- str )  s" : TTY-BAD ( -- n ) drop ;" ;
 : ARITH$ ( -- str )    s" 6 7 * . cr" ;
 
-\ PIPE-STOPS: under WITH-TARGET a refused definition ends the child and the next
+\ PIPE-STOPS: under WITH-TARGET a rejected definition ends the child and the next
 \ line is never evaluated (the batch contract).
 : PIPE-STOPS-BODY ( process-pty-handle -- process-pty-handle )
    WATCH-RESET
@@ -133,9 +133,9 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
 : PIPE-STOPS ( -- )
    BUF-CLEAR
    HB$ [: PIPE-STOPS-BODY ;] PROCESS-PTY:WITH-TARGET
-   s" PASS: batch REPL over pipes stops at the refused definition" type cr ;
+   s" PASS: batch REPL over pipes stops at the rejected definition" type cr ;
 
-\ TTY-RECOVERS: under WITH-TTY-TARGET the child refuses BAD-DEF$, answers
+\ TTY-RECOVERS: under WITH-TTY-TARGET the child rejects BAD-DEF$, answers
 \ `6 7 * . cr` with 42 and prompts again.
 : TTY-RECOVERS ( -- )
    BUF-CLEAR
@@ -149,7 +149,7 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
       s" 42" PROMPT-AFTER!
       PROCESS-PTY:ALIVE? TTRUE
    ;] PROCESS-PTY:WITH-TTY-TARGET
-   s" PASS: REPL on a pseudo-terminal refuses, recovers and prompts again" type cr ;
+   s" PASS: REPL on a pseudo-terminal rejects, recovers and prompts again" type cr ;
 
 \ A normal checked structure needs no TRUSTED seed. Its constructor and
 \ projection run at the prompt as they do inside a checked definition; what the
@@ -172,7 +172,7 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
 : TTY-LAYOUT ( -- )
    BUF-CLEAR
    HB$ [: TTY-LAYOUT-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
-   s" PASS: a layout value runs at the REPL, and dup on it is refused" type cr ;
+   s" PASS: a layout value runs at the REPL, and dup on it is rejected" type cr ;
 
 \ The target starts a sleeper on its own terminal and prints 48879, then the
 \ sleeper's pid. The sleeper leads a group of its own; it ends with the target,

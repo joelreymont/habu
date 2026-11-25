@@ -180,7 +180,7 @@ public
 
 
 \ A short write is an error, never a silent truncation. A negative length is
-\ refused before the write, whose -1 error answer would equal a length of -1.
+\ rejected before the write, whose -1 error answer would equal a length of -1.
 : WRITE-ALL ( fd str -- ) {: f:fd s:str :}
    s STR:LEN 0 < if E-PTY-CAPACITY throw then
    f FD>N s write s STR:LEN <> if E-PTY-IO throw then ;
@@ -370,7 +370,7 @@ public
 \ Register a needle the reads from here on are asked about. The fact survives
 \ every compaction and every BUF-CLEAR, which is what a negative claim over a
 \ whole run needs; a match that straddles the registration point counts as seen,
-\ so the fact can only refuse a claim, never grant one wrongly.
+\ so the fact can only reject a claim, never grant one wrongly.
 : WATCH+ ( str -- watch ) {: s:str :}
    WATCH-N @ WATCH-CAP >= if E-PTY-CAPACITY throw then
    s STR:LEN 0 <= s STR:LEN NEEDLE-CAP > or if E-PTY-CAPACITY throw then

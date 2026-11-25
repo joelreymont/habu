@@ -4,7 +4,7 @@
 \ 11: PL-RUN's call, tail call and code address reach PL-LEAF, and its data
 \ address reaches PL-V, which the entry set to 1. tick prints 8: PL-TICK reaches
 \ PL-TOCK only through a code address. five prints 6: PL-FIVE's does> slot
-\ reaches PL-MAKE's clause, and the link is not refused though PL-MAKE's own
+\ reaches PL-MAKE's clause, and the link is not rejected though PL-MAKE's own
 \ body calls `create`. Each prints through the kernel primitive `.`, and run's
 \ map holds the kernel's `.` and `execute`. Each program's map names the fixture
 \ words its entry reaches and no other, and a second link of run writes the
@@ -145,7 +145,7 @@ create PROG-BUF PATH-CAP allot
    s" --load" CMD:ARG+  s" test/compiler/arm64-place-unsafe-bad.f" CMD:ARG+
    s" --" CMD:ARG+  HB-BUILD-CORE:KERNEL$ CMD:ARG+  s" make" PROG$ CMD:ARG+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   s" refusal: the child arms before the link" T-LABEL
+   s" rejection: the child arms before the link" T-LABEL
    CMD:OUT$ s\" ARM64-PLACE-UNSAFE-ARMED\n" T$=
    s" rejection: the child names the caller and the word" T-LABEL
    CMD:ERR$ s" error[E-CANNOT-RUN-STRIPPED]: `PL-MAKE` calls `create`" STR:CONTAINS? TTRUE
@@ -166,7 +166,7 @@ public
    [: RUN-FIVE ;] CMD:WITH-COMMAND
    RUN-MAP  TICK-MAP  FIVE-MAP
    SAME-BYTES
-   \ The refusal ends its process, so it runs in a child.
+   \ The rejection ends its process, so it runs in a child.
    [: UNSAFE-RUN ;] CMD:WITH-COMMAND
    ROOT$ FS:REMOVE-TREE
    T-REPORT ;

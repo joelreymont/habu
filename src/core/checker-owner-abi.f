@@ -105,7 +105,7 @@ $1B8 constant VERIFY-SOURCE-CLAUSE-OFF
 $1C0 constant VERIFY-CURSOR-OFF
 $1C8 constant VERIFY-EACH-VISIBLE-OFF
 \ The load's top-level find of a token, asked quietly ( ^u8 n -- sym eff1 ctl ), eff1 the
-\ visible effect record's offset + 1: 0 0 0 if nothing live binds it, 0 0 BINDING-REFUSED if refused.
+\ visible effect record's offset + 1: 0 0 0 if nothing live binds it, 0 0 BINDING-REJECTED if rejected.
 $1D0 constant VERIFY-TOP-BINDING-OFF
 \ The control word's facts its reader tests: the word may read the source after
 \ it, it is deferred, its string operand names a word (a `names:` row), a
@@ -118,8 +118,8 @@ $10000 constant BINDING-DEFER
 $20000 constant BINDING-NAMES
 $40000 constant BINDING-GENERATES
 1 60 lshift constant BINDING-ROOTS
-\ The top-level walk refused the name, as it does an ambiguous or shadowed one.
-$80000 constant BINDING-REFUSED
+\ The top-level walk rejected the name, as it does an ambiguous or shadowed one.
+$80000 constant BINDING-REJECTED
 $10 constant BINDING-CORE-OP
 8 constant BINDING-ID-SHIFT
 $1F00 constant BINDING-ID-MASK

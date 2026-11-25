@@ -90,7 +90,7 @@ variable BATCH-K
    VERIFY-BYTES-AT
    MATCH verdict
       verified OF true VERIFIED ! s" verified" COMPLETED ENDOF
-      refused OF s" refused" COMPLETED ENDOF
+      rejected OF s" rejected" COMPLETED ENDOF
       engine-provided OF s" engine-provided" COMPLETED ENDOF
       held OF HEAD s" not checked: the verifier's image holds it" ERR NEWLINE RELAY ENDOF
       incomplete OF UNFINISHED ENDOF
@@ -110,7 +110,7 @@ variable BATCH-K
 : USES-VERDICT ( verdict -- )
    MATCH verdict
       verified OF true VERIFIED ! s" verified" COMPLETE-OUTCOME ENDOF
-      refused OF s" refused" COMPLETE-OUTCOME ENDOF
+      rejected OF s" rejected" COMPLETE-OUTCOME ENDOF
       engine-provided OF s" engine-provided" COMPLETE-OUTCOME ENDOF
       held OF s" held" OUTCOME! ENDOF
       incomplete OF

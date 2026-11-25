@@ -1,5 +1,5 @@
 \ word-read-main.f - its top level runs a word that reads a file through the
-\ loader's reader, so the build refuses the read.
+\ loader's reader, so the build rejects the read.
 
 package FILE-OBJECTS-WORD-READ
 public

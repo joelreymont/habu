@@ -5,7 +5,7 @@
 \ directory, or another
 \ service, read; an item that is no regular file, a FIFO included, read or
 \ waited on; a write or erase admitted; a path that is no directory, a
-\ directory holding a NUL or an empty service bound, or a refused bind changing
+\ directory holding a NUL or an empty service bound, or a rejected bind changing
 \ the bound store.
 require src/lib/secret/dir.f
 require src/lib/secret.f
@@ -78,7 +78,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    SERVICE$ s" empty" OUT SECRET:READ TTRUE OUT VEC:COUNT 0 T= ;
 
 
-: TEST-REFUSALS ( -- )
+: TEST-REJECTIONS ( -- )
    s" an account naming no plain file is E-CONFIG" T-LABEL
    [: SERVICE$ s" a/b" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
    [: SERVICE$ s" ." OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
@@ -97,20 +97,20 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" key" s\" dir\x00value" FOUND ;
 
 
-: TEST-BIND-REFUSALS ( -- )
+: TEST-BIND-REJECTIONS ( -- )
    s" binding a regular file or a missing path is E-CONFIG" T-LABEL
    [: s" key" ENTRY SERVICE$ SECRET:DIR-BIND ;] SECRET:E-CONFIG TTHROWSQ
    [: s" absent" ENTRY SERVICE$ SECRET:DIR-BIND ;] SECRET:E-CONFIG TTHROWSQ
    s" binding a directory holding a NUL or an empty service is E-CONFIG" T-LABEL
    [: s\" \x00" ENTRY SERVICE$ SECRET:DIR-BIND ;] SECRET:E-CONFIG TTHROWSQ
    [: ROOT$ s" " SECRET:DIR-BIND ;] SECRET:E-CONFIG TTHROWSQ
-   s" a refused bind leaves the bound store" T-LABEL
+   s" a rejected bind leaves the bound store" T-LABEL
    s" key" s\" dir\x00value" FOUND ;
 
 
 : TEST-BOUND ( -- )
    ROOT$ SERVICE$ SECRET:DIR-BIND
-   TEST-READS TEST-REFUSALS TEST-BIND-REFUSALS ;
+   TEST-READS TEST-REJECTIONS TEST-BIND-REJECTIONS ;
 
 
 : TEST-MAIN ( -- )

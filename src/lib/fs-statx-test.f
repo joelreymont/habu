@@ -1,5 +1,5 @@
 \ fs-statx-test.f - FS-STATX:BIRTH, SUBVOLUME and PERMISSIONS on files made
-\ under the test's temporary directory, and their refusal of a closed one.
+\ under the test's temporary directory, and their rejection of a closed one.
 \ Run: bin/hb --load src/lib/fs-statx-test.f
 
 require src/lib/error.f

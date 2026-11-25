@@ -4,7 +4,7 @@ require src/lib/test/assert.f
 require src/lib/test/subject.f
 require test/c2-forall-input.f
 
-package C2-FORALL-INPUT-REFUSALS
+package C2-FORALL-INPUT-REJECTIONS
 public
 : RUN ( -- )
    T-RESET
@@ -23,7 +23,7 @@ public
    s" an unbounded generic scope cannot satisfy a child ceiling" T-LABEL
    s" package C2-FORALL-INPUT public : BOUND-GENERIC ( read-view<p,p,u8> forall<q inside p,[ read-view<p,q,u8> -- read-view<p,q,u8> ]> -- read-view<p,p,u8> ) TAKE-SCOPE ; ;package" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
-   s" c2-forall-input-refusals: ok" type cr ;
+   s" c2-forall-input-rejections: ok" type cr ;
 ;package
 
-C2-FORALL-INPUT-REFUSALS:RUN
+C2-FORALL-INPUT-REJECTIONS:RUN

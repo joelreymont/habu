@@ -1,7 +1,7 @@
 \ facts.f - resource and dependence facts of one word of the C66x subset
 \ src/arch/tic6x/asm.f constructs, read by the emitter's packet scheduler and
 \ the interpreter's packet checks (SPRUGH7 section 3.8). A word outside the
-\ subset is refused, never misjudged. The p bit is packet structure and ignored.
+\ subset is rejected, never misjudged. The p bit is packet structure and ignored.
 require src/lib/error.f
 
 package C6XFACTS

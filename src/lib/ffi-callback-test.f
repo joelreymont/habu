@@ -354,7 +354,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" CBT-RB-NEXT TASK:CALLER-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and
    s" CBT-RB-NEXT FFI-CB:UNBIND" evaluate-closed ;
 
-\ A caller bind leaves the row owner set; a bind to this context refuses it.
+\ A caller bind leaves the row owner set; a bind to this context rejects it.
 : CALLER-BOUND$ ( -- str )
    s" CALLBACK: CBT-RB-CALLER ( -- ) ;CALLBACK  CBT-RB-CALLER TASK:CALLER-CONTEXT FFI-CB:ENTRY drop  1 throw" ;
 
@@ -365,7 +365,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" CBT-RB-SELF TASK:SELF-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and
    s" CBT-RB-SELF FFI-CB:UNBIND" evaluate-closed ;
 
-\ Slot k refuses a bind to ctx while the binding a thrown text made holds it,
+\ Slot k rejects a bind to ctx while the binding a thrown text made holds it,
 \ then is unbound.
 : HELD? ( n n -- bool ) {: k:n ctx:n :}
    k DESCRIPTOR {: cb :}
@@ -569,14 +569,14 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    [: STRIPPED-BODY ;] [: GT-CLEANUP ;] finally ;
 
 \ The check reads a declaration, one beside a part named FFI-CB too, and its
-\ words, so it goes on past their uses and refuses the definition after them.
+\ words, so it goes on past their uses and rejects the definition after them.
 : VERIFY$ ( -- str )
    S\" require src/lib/ffi-callback.f\n: CBV-STEP ( n -- n ) 1 + ;\nCALLBACK: CBV ( n -- n ) 0 FALLBACK ;CALLBACK\n: CBV-SET ( -- ) ['] CBV-STEP CBV-BODY ! ;\n: CBV-USE ( -- FFI-CB:callback ) CBV ;\npackage CBV-PART\npackage FFI-CB\n: HELD ( -- ) ;\n;package\nCALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\n: CMP-USE ( -- ) CMP drop ;\n;package\n: CBV-BAD ( -- n ) 1 2 ;\n" ;
 
-: REFUSED? ( LSP-CHECK:verdict -- bool )
+: REJECTED? ( LSP-CHECK:verdict -- bool )
    MATCH LSP-CHECK:verdict
       verified OF false ENDOF
-      refused OF true ENDOF
+      rejected OF true ENDOF
       engine-provided OF false ENDOF
       held OF false ENDOF
       incomplete OF {: status :} false ENDOF
@@ -587,11 +587,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" ffi-callback-verify" GT-START
    s" subject.f" SUBJECT-BUF GT-PATH SUBJECT-U !
    VERIFY$ SUBJECT$ [: drop ;] PROCESS:WAIT-FOREVER true LSP-CHECK:VERIFY-BYTES
-   REFUSED? {: refused:bool :}
+   REJECTED? {: rejected:bool :}
    LSP-CHECK:VERIFY-OUT$ {: out:str :}
-   refused  out s" E-MISMATCH" STR:CONTAINS? and
+   rejected  out s" E-MISMATCH" STR:CONTAINS? and
    out s" CBV-BAD" STR:CONTAINS? and
-      s" it refuses the definition after the declaration: E-MISMATCH" FACT
+      s" it rejects the definition after the declaration: E-MISMATCH" FACT
    \ A wrong type on CBV or CBV-BODY, or a deferral, adds a record with its code.
    out S\" \"code\":" STR:COUNT-SUB 1 =
       s" it reports nothing else: it finds and types the declaration's words" FACT ;
@@ -695,7 +695,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : WANT-VERIFY ( -- )
    s" == the check of a callback declaration" W
-   s" ok   it refuses the definition after the declaration: E-MISMATCH" W
+   s" ok   it rejects the definition after the declaration: E-MISMATCH" W
    s" ok   it reports nothing else: it finds and types the declaration's words" W ;
 
 : WANT-CHILDREN ( -- )

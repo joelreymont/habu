@@ -19,8 +19,8 @@ split-str
 \ kernel configures outside CONFIG_EXPERT, CONFIG_ARM64_VA_BITS_39's 512 GiB,
 \ below its top-down mmap base, and DATA-VA + 2^38 = $4340000000 is the largest
 \ power-of-two window from DATA-VA that fits. A 38-bit width also meets the
-\ compiler's 48-bit address bound. The boot refuses with rc 71, which an engine
-\ names as "hb: the system refused the fixed data region; raise the
+\ compiler's 48-bit address bound. The boot rejects with rc 71, which an engine
+\ names as "hb: mapping the fixed data region failed; raise the
 \ address-space limit (ulimit -v) above its size in bytes: 0x0000004000000000",
 \ where the kernel will not reserve the window lazily (vm.overcommit_memory=2,
 \ or RLIMIT_AS or RLIMIT_DATA below it) or cannot place it: the expert-only

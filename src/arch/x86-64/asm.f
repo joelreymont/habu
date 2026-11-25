@@ -1,7 +1,7 @@
 split-str
 \ asm.f — x86_64 instruction encoders, package X64ASM.
 \ Operands are nominal types; every encoder screens an operand before it packs a
-\ bit, and a refusal is E-OPERAND. Destination comes first; a memory form takes
+\ bit, and a rejection is E-OPERAND. Destination comes first; a memory form takes
 \ the data register first and the memory operand second, stores included.
 \ An instruction is 1..15 bytes with no value form, so every ENC-* takes the byte
 \ sink, a vector<u8> (src/lib/vector.f), last and appends to it.
@@ -245,7 +245,7 @@ private
 : ALU-MR ( n r64 mem ^VEC:vector<u8> -- ) {: base:n src:r64 m:mem s:^ :}
    W64 base 1 + src R64>N REG-NUM m 0 s RM-ENC ;
 
-\ The immediate is screened BEFORE the first byte reaches the sink, so a refused
+\ The immediate is screened BEFORE the first byte reaches the sink, so a rejected
 \ instruction leaves no prefix of itself behind. Every immediate form below
 \ follows this order for the same reason.
 : ALU-RI8 ( n r64 imm8 ^VEC:vector<u8> -- ) {: base:n dst:r64 v:imm8 s:^ :}

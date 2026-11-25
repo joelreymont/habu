@@ -113,7 +113,7 @@ variable Q-N
    count idx Q-REC Q.SEMS ! ;
 
 \ Each handle is stored before the count moves, so what the count says the queue
-\ holds is exactly what it holds, even when the pool refuses part way.
+\ holds is exactly what it holds, even when the pool rejects part way.
 : Q-SEM-TAKE ( n -- ) {: idx:n :}
    NEW-SEMAPHORE OPTION:SOME idx idx Q-SEMS-N@ Q-SEM-SLOT !
    idx Q-SEMS-N@ 1 + idx Q-SEMS-N! ;
@@ -133,7 +133,7 @@ variable Q-N
    0 idx Q-ITEM-SEM SEMAPHORE-INIT
    1 idx Q-LOCK-SEM SEMAPHORE-INIT ;
 
-\ Either the queue ends up holding three open semaphores or none: a refusal part
+\ Either the queue ends up holding three open semaphores or none: a rejection part
 \ way gives back what it took and rethrows, so a failed INIT leaks no record.
 : Q-ARM-OR-DROP ( n -- ) {: idx:n :}
    idx [: dup Q-ARM ;] catch {: rc:n :}
@@ -206,7 +206,7 @@ variable Q-N
    v ;
 
 \ The free-slot count is the number of free slots exactly, so taking one without
-\ blocking is the whole refusal: false means the ring was full.
+\ blocking is the whole rejection: false means the ring was full.
 : Q-TRY-PUSH ( n n -- bool ) {: v:n idx:n :}
    idx Q-FREE-SEM TRY-WAIT-SEM 0= if 0 0= 0= exit then
    v idx Q-PUT-LOCKED

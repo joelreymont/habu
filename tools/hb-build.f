@@ -3,7 +3,7 @@
 \     [--target name] [--size-report] [--report-json] [source.f] -o out
 \ This tree's hb under --engine, a stripped program, or under --repl hb with the
 \ source's files, linked in this process (tools/hb-build-core.f). The source
-\ defines a checked global MAIN ( -- ), any other effect refused, which --repl's
+\ defines a checked global MAIN ( -- ), any other effect rejected, which --repl's
 \ hb runs before its REPL; top-level code runs once, at build time.
 \ --target names the build's target, a name RTARGET:PLATFORM? takes whose code
 \ the linker places; the host's by default.

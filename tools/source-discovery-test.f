@@ -1,5 +1,5 @@
 \ source-discovery-test.f - fixtures for the whole-file discovery pass
-\ (tools/source-discovery.f): its ordered load-event artifact and its refusals.
+\ (tools/source-discovery.f): its ordered load-event artifact and its rejections.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/memory.f src/lib/fs.f
 \ src/lib/fs-mutate.f src/lib/source.f tools/source-discovery.f tools/source-discovery-test.f
 
@@ -222,9 +222,9 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    0 SOURCE-EVENT:PATH@ s" sd-j.f" SDT-PATH T$=
    1 SOURCE-EVENT:PATH@ s" sd-k.f" SDT-PATH T$= ;
 
-\ An unclosed string is the walk's one refusal about text rather than a loader
+\ An unclosed string is the walk's one rejection about text rather than a loader
 \ (E-DISC-UNTERM). hb-build reads an application through this walk, so the
-\ source is refused before anything compiles it.
+\ source is rejected before anything compiles it.
 : SDT-TEST-UNTERM-STRING ( -- )
    s" unterm.f" S\" : L ( -- ) s\" sd-l.f\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-UNTERM SDT-STOPS ;
@@ -253,7 +253,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ The loader skips a comment as it skips blanks: a literal path, a `( … )` or `\`
 \ comment and the loader word are the literal load.
 \ A `c"` across a comment is still an opener (E-DISC-OPENER); a non-comment token
-\ between makes the path dynamic (E-DISC-DYNAMIC). A refused walk leaves no
+\ between makes the path dynamic (E-DISC-DYNAMIC). A rejected walk leaves no
 \ event: reading one past the log faults, so read one only when the walk left it.
 : SDT-COMMENTED-ONE ( str -- )
    {: s:str :}
@@ -273,7 +273,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ --- a loader form in a body is the run of a word no check runs ---------------
 
-\ The walk refuses nothing and records one event, the load of PATH.
+\ The walk rejects nothing and records one event, the load of PATH.
 : SDT-ONE-LOAD ( str -- ) {: ps:str :}
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    SOURCE-EVENT:COUNT 1 T=
@@ -287,7 +287,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ A loader word in a body after anything but a path literal is read past: a
 \ later literal load in the body is recorded, and a top-level loader taking no
-\ literal after `;` is refused at itself.
+\ literal after `;` is rejected at itself.
 : SDT-TEST-BODY-DYNAMIC ( -- )
    s" body-dyn.f" S\" : L ( str -- ) str> included ;\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
@@ -305,7 +305,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ --- a name is data, a loader word's too --------------------------------------
 
 \ A definition, export, package, using or `undefine` naming a loader word
-\ refuses nothing: each source loads, and the loader form after it is the one
+\ rejects nothing: each source loads, and the loader form after it is the one
 \ event.
 : SDT-TEST-LOADER-NAME ( -- )
    S\" package SDT-SH\n: include ( -- ) ;\nkernel: require ( -- ) ;\n;package\npackage SDT-SH2\nTRUSTED: include ( -- ) ;\n;package\ns\" sd-raw.f\" required\n"
@@ -316,14 +316,14 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" : U ( str -- ) undefine required ;\ns\" sd-raw.f\" required\n"
    s" sd-raw.f" SDT-ONE-EVENT ;
 
-\ SOURCE, as an entry, is refused with CODE at its loader word at OFF, LEN bytes
+\ SOURCE, as an entry, is rejected with CODE at its loader word at OFF, LEN bytes
 \ long.
 : SDT-REPLACED-AT ( str n n n -- ) {: s:str code:n off:n len:n :}
    s" replaced.f" s SDT-WRITE-ENTRY
    code off len SDT-STOPS-AT ;
 
 \ After the file defines or retires a loader word's name, a later loader form
-\ the walk reads with it is refused at the word; a body's other uses are calls
+\ the walk reads with it is rejected at the word; a body's other uses are calls
 \ it reads past.
 : SDT-TEST-LOADER-USE ( -- )
    S\" undefine require\n: require ( -- ) parse-name required ;\nrequire sd-raw.f\n"
@@ -375,7 +375,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" sd-raw.f" SDT-ONE-EVENT ;
 
 \ A package word may replace a family opener. The file really loads dep.f;
-\ discovery must include it or refuse at the ambiguous opener.
+\ discovery must include it or reject at the ambiguous opener.
 $100 constant SDT-LOAD-CAP
 create SDT-LOAD-OUT SDT-LOAD-CAP allot
 create SDT-LOAD-ERR SDT-LOAD-CAP allot
@@ -417,9 +417,9 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
 
 \ A library storage definer (src/core/layout-buffer.f, pointer-storage.f) is a
 \ word, not a keyword, so its operand is code: storage named with a loader
-\ word's spelling is refused at it, E-DISC-DYNAMIC at PROVIDED, though it loads
+\ word's spelling is rejected at it, E-DISC-DYNAMIC at PROVIDED, though it loads
 \ and checks. The walk has no wordlists: after a redefinition of the definer,
-\ `require x.f` as its operand loads x.f. A refusal is safe, a missed load is
+\ `require x.f` as its operand loads x.f. A rejection is safe, a missed load is
 \ not.
 : SDT-TEST-STORAGE-DEFINER ( -- )
    s" storage.f" S\" package CVT-RES\nTYPED-VARIABLE PROVIDED n\n;package\n" SDT-WRITE-ENTRY
@@ -427,7 +427,7 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
 
 \ The definers are interpret keywords: in a body one is a call that takes its
 \ name when the word runs. The `;` after `create` ends MK, so the top-level
-\ loader after it, which takes no literal, is refused at itself.
+\ loader after it, which takes no literal, is rejected at itself.
 : SDT-TEST-DEFINER-IN-BODY ( -- )
    s" definer-body.f" S\" : MK ( -- ) create ;\nrequired\n" SDT-WRITE-ENTRY
    E-DISC-DYNAMIC 21 8 SDT-STOPS-AT ;
@@ -473,7 +473,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    SDT-RANGE-STOP ;
 
 \ In a body the same loads are calls the word makes when it runs, which load
-\ nothing: a path the resolver refuses is nothing to follow or refuse.
+\ nothing: a path the resolver rejects is nothing to follow or reject.
 : SDT-TEST-BIG-STRING-BODY ( -- )
    s" big-body.f" S\" : L ( -- ) s\" " SDT-BIG SDT-X16$ S\" \" required ;\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ

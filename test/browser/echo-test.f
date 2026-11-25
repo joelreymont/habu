@@ -39,7 +39,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : SMALL$ ( -- str )  s" the fixture's bytes" ;
 : LANDED$ ( -- str )  s" landed: plate/top is 6 mm deep" ;
-: REFUSED$ ( -- str )  s" refused: no extrusion ends at that face" ;
+: REJECTED$ ( -- str )  s" rejected: no extrusion ends at that face" ;
 : DROPPED$ ( -- str )  s" dropped" ;
 
 : FILE! ( str str -- )
@@ -55,7 +55,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    d s" stale.wasm" STALE-MOD FS:JOIN-PATH STALE-MOD-U !
    SMALL$ s" small.bin" FILE!
    LANDED$ s" landed.txt" FILE!
-   REFUSED$ s" refused.txt" FILE!
+   REJECTED$ s" rejected.txt" FILE!
    DROPPED$ s" dropped.txt" FILE! ;
 
 : ARG+ ( str -- )  PROC-ARGV+ ;
@@ -188,13 +188,13 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : CHAINED-CASE ( -- )
    HOST-OPEN  200 s" small.bin" ANSWER+  s" dé" TYPED+
-   200 s" landed.txt" ANSWER+  200 s" small.bin" ANSWER+  422 s" refused.txt" ANSWER+
+   200 s" landed.txt" ANSWER+  200 s" small.bin" ANSWER+  422 s" rejected.txt" ANSWER+
    HOST SUCCEEDED
    STARTED  SMALL$ SUM-LINE
    s" dé" TEXT-LINE  s" dé" POST-LINE
    s" 200" TEXT-LINE  LANDED$ TEXT-LINE  s" fetch fixture" LINE
    SMALL$ SUM-LINE  s" dé" POST-LINE
-   s" 422" TEXT-LINE  REFUSED$ TEXT-LINE
+   s" 422" TEXT-LINE  REJECTED$ TEXT-LINE
    s" chained: a post's answer fetches, and that fetch goes before the second post" T-LABEL
    OUT OUT-U @ >str SB$ T$= ;
 
@@ -217,7 +217,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    TRAP$ {: t:str :}
    s" trapped: the host names the fault kind the module recorded" T-LABEL
    t s" fault kind 102 at " STR:STARTS-WITH? TTRUE
-   s" trapped: the waiting fetch's answer, a pointer and typed text are refused" T-LABEL
+   s" trapped: the waiting fetch's answer, a pointer and typed text are rejected" T-LABEL
    SB-RESET  t LINE  t ENDED-LINE  t ENDED-LINE  t ENDED-LINE
    ERR ERR-U @ >str SB$ T$= ;
 

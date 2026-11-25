@@ -27,22 +27,22 @@ create LIT-SRC LIT-SRC-CAP allot
    s" filling the boot stack short of the page by a margin succeeds" T-LABEL
    STACK-ABI:BOOT-BYTES 8 / FILL-MARGIN-CELLS - FILL-LITERALS$ CHILD-RC 0 T=
    s" filling the whole page overflows the data stack" T-LABEL
-   STACK-ABI:BOOT-BYTES 8 / FILL-LITERALS$ REFUSED-DATA ;
+   STACK-ABI:BOOT-BYTES 8 / FILL-LITERALS$ REJECTED-DATA ;
 
 \ Unbounded recursion goes through RECURSE inside BEGIN...AGAIN: a word is not
 \ in the dictionary inside its own definition, and a bare tail call (`1 recurse
-\ ;`) is refused at 'recurse' for its residual. The legacy compiler keeps return
+\ ;`) is rejected at 'recurse' for its residual. The legacy compiler keeps return
 \ and DO frames in the guarded VM stacks.
 
 : OVERFLOW-NAMES ( -- )
    s" unbounded data-stack recursion overflows (data)" T-LABEL
-   s" : X ( n -- ) begin dup recurse again ; 0 X" REFUSED-DATA
+   s" : X ( n -- ) begin dup recurse again ; 0 X" REJECTED-DATA
    s" unbounded return-stack recursion overflows (return)" T-LABEL
    s" : Y ( -- ) 1 >r recurse r> drop ; Y"
-   REFUSED-RETURN
+   REJECTED-RETURN
    s" unbounded DO-frame recursion overflows (loop)" T-LABEL
    s" : Z ( -- ) 1 0 do recurse loop ; Z"
-   REFUSED-LOOP ;
+   REJECTED-LOOP ;
 
 \ src/lib/task.f PREPARE gives each task guarded stacks (TASK-STACK-BYTES rounds
 \ up to whole guard pages). A task's overflow faults like the main thread's and
@@ -52,7 +52,7 @@ create LIT-SRC LIT-SRC-CAP allot
 : TASK-OVERFLOW ( -- )
    s" a task that overflows its own data stack exits 102 (data)" T-LABEL
    s" require src/lib/task.f : X ( n -- ) begin dup recurse again ; : X0 ( -- ) 0 X ; TASK:MIN-STACK TASK:TASK WORKER : GO ( -- ) ['] X0 WORKER TASK:ACTIVATE begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat ; GO"
-   REFUSED-DATA ;
+   REJECTED-DATA ;
 
 public
 : RUN-GUARD ( -- )

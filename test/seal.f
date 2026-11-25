@@ -103,7 +103,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" package SP" SLV-LINE  s" public" SLV-LINE  s" : A ( -- ) ;" SLV-LINE
    s" seal-package" SLV-LINE  s" EXPORT SP2:Z" SLV-LINE  s" ;package" SLV-LINE  SB$ ;
 
-\ A sealed package's record refuses a definition, a variable and an export into its
+\ A sealed package's record rejects a definition, a variable and an export into its
 \ wordlists, and a bare name inside it, naming the name token as written.
 : SLV-SEALED-DEFINE ( -- )
    s" : SP:B after SP's seal-package -> E-SEALED-PACKAGE naming SP:B, exit 70" T-LABEL

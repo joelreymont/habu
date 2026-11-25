@@ -119,7 +119,7 @@ $200000 DTK-GROW-RC E-LAYOUT-CEIL T=
 8 DTK-AT-GROW                        \ grow back within cap -> exposes [3,8), zeroes them
 5 DTK-GET 0 T=                       \ index 5 zeroed, not the stale 555
 
-\ The definer refuses the illegal types LAYOUT-BUFFER refuses.
+\ The definer rejects the illegal types LAYOUT-BUFFER rejects.
 DEFLINEAR dfl-lin
 SUMTYPE dfl-owned
    VARIANT hold dfl-lin ;VARIANT

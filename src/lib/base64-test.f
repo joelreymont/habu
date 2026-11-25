@@ -1,5 +1,5 @@
 \ base64-test.f - RFC 4648 base64: the section 10 vectors, the whole alphabet,
-\ every refusal, and the RFC 6455 handshake it exists to answer.
+\ every rejection, and the RFC 6455 handshake it exists to answer.
 \ Run: bin/hb --load src/lib/base64-test.f
 \ The alphabet case decodes the alphabet itself; its 48 bytes are what the
 \ system's `base64 -d` answers for it, so every character's value is pinned by
@@ -141,7 +141,7 @@ variable STAGED-LEN
    s" and decode back to every byte value" T-LABEL
    k OUT$ ALL SPAN:$ T$= ;
 
-\ A refusal runs in a quotation, which sees no locals, so its input is staged.
+\ A rejection runs in a quotation, which sees no locals, so its input is staged.
 : STAGE ( str -- ) {: s:str :}
    s STAGED SPAN:COPY
    s STR:LEN STAGED-LEN ! ;
@@ -149,12 +149,12 @@ variable STAGED-LEN
 : STAGED$ ( -- str )
    STAGED SPAN:$ STR:DATA STAGED-LEN @ >str ;
 
-: REFUSES ( str n -- ) {: s:str code:n :}
+: REJECTS ( str n -- ) {: s:str code:n :}
    s STAGE
    s T-LABEL
    [: STAGED$ OUT BASE64:DECODE drop ;] code TTHROWSQ ;
 
-: URL-REFUSES ( str n -- ) {: s:str code:n :}
+: URL-REJECTS ( str n -- ) {: s:str code:n :}
    s STAGE
    s T-LABEL
    [: STAGED$ OUT BASE64:DECODE-URL drop ;] code TTHROWSQ ;
@@ -163,19 +163,19 @@ variable STAGED-LEN
    code REASON:TEXT$ ws T$=
    REASON:RELEASE ;
 
-: URL-REFUSALS ( -- )
-   s" Z" E-BASE64-LENGTH URL-REFUSES
-   s" Zm9vZ" E-BASE64-LENGTH URL-REFUSES
+: URL-REJECTIONS ( -- )
+   s" Z" E-BASE64-LENGTH URL-REJECTS
+   s" Zm9vZ" E-BASE64-LENGTH URL-REJECTS
    E-BASE64-LENGTH s" 1:6: expected a length that leaves 0, 2 or 3 characters in the last group of four, found the end of the input; write the data as BASE64:ENCODE-URL writes it" SAID
-   s" Zg=" E-BASE64-PAD URL-REFUSES
-   s" Zg==" E-BASE64-PAD URL-REFUSES
+   s" Zg=" E-BASE64-PAD URL-REJECTS
+   s" Zg==" E-BASE64-PAD URL-REJECTS
    E-BASE64-PAD s" 1:3: expected a character of A-Z, a-z, 0-9, - or _, found `=`; leave `=` out: DECODE-URL takes no padding" SAID
-   s" Zm+v" E-BASE64-CHAR URL-REFUSES
-   s" Zm/v" E-BASE64-CHAR URL-REFUSES
-   s" Zm9 " E-BASE64-CHAR URL-REFUSES
+   s" Zm+v" E-BASE64-CHAR URL-REJECTS
+   s" Zm/v" E-BASE64-CHAR URL-REJECTS
+   s" Zm9 " E-BASE64-CHAR URL-REJECTS
    E-BASE64-CHAR s" 1:4: expected a character of A-Z, a-z, 0-9, - or _, found byte $20; write the data as BASE64:ENCODE-URL writes it" SAID
-   s" Zh" E-BASE64-PAD URL-REFUSES
-   s" Zm9" E-BASE64-PAD URL-REFUSES
+   s" Zh" E-BASE64-PAD URL-REJECTS
+   s" Zm9" E-BASE64-PAD URL-REJECTS
    E-BASE64-PAD s" 1:3: expected a character whose unused low bits are zero, found `9`; write the data as BASE64:ENCODE-URL writes it" SAID
    s" Zm9v" STAGE $80 STAGED 2 SPAN:U8!
    s" URL rejects a byte above ASCII" T-LABEL
@@ -186,7 +186,7 @@ variable STAGED-LEN
    s" Zm9vZg!" STAGE
    s" URL rejects a bad last group after a good one" T-LABEL
    [: STAGED$ OUT BASE64:DECODE-URL drop ;] E-BASE64-CHAR TTHROWSQ
-   s" URL refusal leaves the output untouched" T-LABEL
+   s" URL rejection leaves the output untouched" T-LABEL
    OUT 0 SPAN:U8@ CANARY T=
    OUT 3 SPAN:U8@ CANARY T=
    s" Zm9vZh" STAGE
@@ -220,17 +220,17 @@ variable STAGED-LEN
       E-SPAN-CAPACITY TTHROWSQ ;
 
 : LENGTHS ( -- )
-   s" Z" E-BASE64-LENGTH REFUSES
-   s" Zg=" E-BASE64-LENGTH REFUSES
-   s" Zm9vY" E-BASE64-LENGTH REFUSES
+   s" Z" E-BASE64-LENGTH REJECTS
+   s" Zg=" E-BASE64-LENGTH REJECTS
+   s" Zm9vY" E-BASE64-LENGTH REJECTS
    E-BASE64-LENGTH s" 1:6: expected a length that is a multiple of four, found the end of the input; write the data as BASE64:ENCODE writes it" SAID ;
 
 : CHARS ( -- )
-   s" Zm-v" E-BASE64-CHAR REFUSES
+   s" Zm-v" E-BASE64-CHAR REJECTS
    E-BASE64-CHAR s" 1:3: expected a character of A-Z, a-z, 0-9, + or /, found `-`; write the data as BASE64:ENCODE writes it" SAID
-   s" Zm_v" E-BASE64-CHAR REFUSES
-   s" Zm9 " E-BASE64-CHAR REFUSES
-   s" Zg=!" E-BASE64-CHAR REFUSES
+   s" Zm_v" E-BASE64-CHAR REJECTS
+   s" Zm9 " E-BASE64-CHAR REJECTS
+   s" Zg=!" E-BASE64-CHAR REJECTS
    s" Zm9v" STAGE $80 STAGED 2 SPAN:U8!
    s" a byte above ASCII" T-LABEL
    [: STAGED$ OUT BASE64:DECODE drop ;] E-BASE64-CHAR TTHROWSQ ;
@@ -268,16 +268,16 @@ variable STAGED-LEN
 \ Padding ends the last group and only it, and the bits it leaves below the
 \ last byte are zero: 'h' leaves 0001 and '9' leaves 01.
 : PADS ( -- )
-   s" ====" E-BASE64-PAD REFUSES
-   s" Z===" E-BASE64-PAD REFUSES
-   s" Zg=v" E-BASE64-PAD REFUSES
+   s" ====" E-BASE64-PAD REJECTS
+   s" Z===" E-BASE64-PAD REJECTS
+   s" Zg=v" E-BASE64-PAD REJECTS
    E-BASE64-PAD s" 1:3: expected a character of A-Z, a-z, 0-9, + or /, found `=`; use `=` only to end the last group" SAID
-   s" Zg==Zg==" E-BASE64-PAD REFUSES
-   s" Zh==" E-BASE64-PAD REFUSES
+   s" Zg==Zg==" E-BASE64-PAD REJECTS
+   s" Zh==" E-BASE64-PAD REJECTS
    E-BASE64-PAD s" 1:2: expected a character whose unused low bits are zero, found `h`; write the data as BASE64:ENCODE writes it" SAID
-   s" Zm9=" E-BASE64-PAD REFUSES ;
+   s" Zm9=" E-BASE64-PAD REJECTS ;
 
-\ A refusal writes nothing: not the valid first group of a bad input, and not
+\ A rejection writes nothing: not the valid first group of a bad input, and not
 \ a result the span has no room for. The exact fit is written.
 : CAPACITY ( -- )
    CANARY OUT SPAN:FILL
@@ -287,12 +287,12 @@ variable STAGED-LEN
    s" leaves the output as it was" T-LABEL
    OUT 0 SPAN:U8@ CANARY T=
    CANARY OUT-3 SPAN:FILL
-   s" ENCODE refuses a span one byte short" T-LABEL
+   s" ENCODE rejects a span one byte short" T-LABEL
    [: s" foo" OUT-3 BASE64:ENCODE drop ;] E-SPAN-CAPACITY TTHROWSQ
    s" and writes none of it" T-LABEL
    OUT-3 0 SPAN:U8@ CANARY T=
    CANARY OUT-2 SPAN:FILL
-   s" DECODE refuses a span one byte short" T-LABEL
+   s" DECODE rejects a span one byte short" T-LABEL
    [: s" Zm9v" OUT-2 BASE64:DECODE drop ;] E-SPAN-CAPACITY TTHROWSQ
    s" and writes none of it" T-LABEL
    OUT-2 0 SPAN:U8@ CANARY T=
@@ -300,18 +300,18 @@ variable STAGED-LEN
    s" foo" OUT-4 BASE64:ENCODE 4 T=
    s" DECODE fills a span of exactly three" T-LABEL
    s" Zm9v" OUT-3 BASE64:DECODE 3 T=
-   s" ENCODE refuses a negative length" T-LABEL
+   s" ENCODE rejects a negative length" T-LABEL
    [: 0 OUT$ STR:DATA -1 >str OUT BASE64:ENCODE drop ;] E-SPAN-LENGTH TTHROWSQ
-   s" DECODE refuses a negative length" T-LABEL
+   s" DECODE rejects a negative length" T-LABEL
    [: 0 OUT$ STR:DATA -1 >str OUT BASE64:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ
    [: 0 OUT$ STR:DATA MEM-MAX-N negate 1- >str OUT BASE64:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ
    \ Eight characters decode to at least four bytes, so a three-byte span is
-   \ refused before the input, which ends at an inaccessible page, is read.
+   \ rejected before the input, which ends at an inaccessible page, is read.
    s" DECODE measures the span before it reads the input" T-LABEL
    [: 7 [char] A GUARD-PAGE:TAIL 8 >str OUT-3 BASE64:DECODE drop ;] E-SPAN-CAPACITY TTHROWSQ
    [: 7 [char] A GUARD-PAGE:TAIL MEM-MAX-N 3 invert and >str OUT-3 BASE64:DECODE drop ;]
       E-SPAN-CAPACITY TTHROWSQ
-   s" ENCODE refuses a length whose encoded size wraps" T-LABEL
+   s" ENCODE rejects a length whose encoded size wraps" T-LABEL
    [: 0 OUT$ STR:DATA MEM-MAX-N 2 - >str OUT BASE64:ENCODE drop ;] E-SPAN-CAPACITY TTHROWSQ ;
 
 \ RFC 6455 section 1.3: the key decodes to sixteen bytes, and the accept value
@@ -330,7 +330,7 @@ public
 : RUN ( -- )
    T-RESET
    VECTORS ALPHABET ROUND-TRIP LENGTHS CHARS PADS CAPACITY HANDSHAKE
-   URL-VECTORS URL-ALPHABET PKCE URL-REFUSALS URL-CAPACITY EVERY-BYTE ;
+   URL-VECTORS URL-ALPHABET PKCE URL-REJECTIONS URL-CAPACITY EVERY-BYTE ;
 
 ;package
 

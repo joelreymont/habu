@@ -305,7 +305,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    flags FD:O-NONBLOCK and FD:O-NONBLOCK = ;
 
 
-\ Chunks that land before the pipe refuses one. PT-FILL-MAX bounds the loop, but
+\ Chunks that land before the pipe rejects one. PT-FILL-MAX bounds the loop, but
 \ a BLOCKING descriptor never reaches that bound: it stops inside write and
 \ stays there. Every caller proves PT-NONBLOCK-ARMED? first for that reason.
 : PT-FILL-FD ( n -- n ) {: wfd:n :}
@@ -325,7 +325,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    repeat ;
 
 
-\ The flag readback and the behaviour it buys: a full pipe refuses the next
+\ The flag readback and the behaviour it buys: a full pipe rejects the next
 \ write instead of blocking in it, and the same descriptor writes again once the
 \ reader drains. That recovery is what separates back pressure from a broken
 \ pipe, which no drain would fix and which this engine cannot tell apart by
@@ -345,7 +345,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-W @ close ;
 
 
-\ The capture loop's stdin writer under back pressure. A refused write must
+\ The capture loop's stdin writer under back pressure. A rejected write must
 \ leave the child's stdin open and its offset untouched, so the next POLLOUT
 \ under the capture deadline resumes the feed; closing there would truncate the
 \ child's input without a word.
@@ -689,11 +689,11 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
    done PT-HOLD-EXITED=
    eof waited done PT-HOLD-EVIDENCE ;
 
-\ Refused before any waitpid, while the held child lives: pids 0 and -1, a pid
+\ Rejected before any waitpid, while the held child lives: pids 0 and -1, a pid
 \ whose low 32 bits are the child's and one whose C int is minus the child's,
 \ its process group; a negative window, the largest cell and the first window
 \ past the cell. Released, the child still exits 5 to us.
-: TEST-WAIT-BOUNDED-REFUSALS ( -- )
+: TEST-WAIT-BOUNDED-REJECTIONS ( -- )
    PT-HOLD
    [: 0 PT-HOLD-MS PT-WAIT-AT drop ;] E-PROC-WAIT TTHROWSQ
    [: -1 PT-HOLD-MS PT-WAIT-AT drop ;] E-PROC-WAIT TTHROWSQ
@@ -712,7 +712,7 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 : TEST-WAIT-BOUNDED-EDGE ( -- )
    [: PT-NOT-A-CHILD PT-LONGEST-MS PT-WAIT-AT drop ;] E-PROC-WAIT TTHROWSQ ;
 
-\ The deadline every capture, poll and signal wait derives refuses the first
+\ The deadline every capture, poll and signal wait derives rejects the first
 \ window past the cell, rather than wrapping to a deadline already gone.
 : TEST-DEADLINE-PAST-CELL ( -- )
    [: PT-PAST-CELL-MS >MS PROCESS:DEADLINE-AT drop ;] E-PROC-TIMEOUT TTHROWSQ ;
@@ -778,13 +778,13 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    killed 0 T=
    PT-UNMARKED-SCRIPT s" " s" " oc PROCESS:SIGKILL T-ENDING-SIGNALED= ;
 
-\ Stands in for a spawn whose request is refused.
-: PT-REFUSED-SPAWN ( -- pid )
+\ Stands in for a spawn whose request is rejected.
+: PT-REJECTED-SPAWN ( -- pid )
    E-PROC-PATH throw ;
 
 : PT-THROWING-CAPTURE ( -- )
    PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
-   [: PT-REFUSED-SPAWN ;] PROCESS:CAPTURE-ADOPT-SPAWN ;
+   [: PT-REJECTED-SPAWN ;] PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 : TEST-CAPTURE-SPAWN-THROWS ( -- )
    [: PT-THROWING-CAPTURE ;] E-PROC-PATH TTHROWSQ
@@ -809,7 +809,7 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
 
 \ With a descriptor limit of 0 the capture's first pipe cannot open: the child
 \ never starts, and nothing the capture opened stays open.
-: TEST-CAPTURE-SETUP-REFUSED ( -- )
+: TEST-CAPTURE-SETUP-REJECTED ( -- )
    PT-RLIMIT-NOFILE PT-LIMITS PT-GET-LIMIT 0 T=
    PT-LIMITS @ {: saved:n :}
    0 PT-SOFT-LIMIT!
@@ -971,7 +971,7 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    PT-RUN-OUT$ STR:LEN 0 T=
    code 0 T= ;
 
-\ FD 0 names in, closed, and FD 3 out. RUN refuses the request before a
+\ FD 0 names in, closed, and FD 3 out. RUN rejects the request before a
 \ capture pipe can take in's number, so the child never writes ran to out.
 : PT-RUN-CLOSED-FD ( n n -- )
    {: in out :}
@@ -984,7 +984,7 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
 : TEST-RUN-CLOSED-FD ( -- )
    PT-RUN-FILES {: in out :}
    in close
-   s" run: an FD naming a closed parent fd is refused" T-LABEL
+   s" run: an FD naming a closed parent fd is rejected" T-LABEL
    [: in out PT-RUN-CLOSED-FD ;] E-PROC-SPAWN TTHROWSQ
    PROCESS:ERRNO FS:EBADF T=
    out close
@@ -1044,7 +1044,7 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    TEST-WAIT-FAIL
    TEST-WAIT-BOUNDED-STATUS
    TEST-WAIT-BOUNDED-EOF
-   TEST-WAIT-BOUNDED-REFUSALS
+   TEST-WAIT-BOUNDED-REJECTIONS
    TEST-WAIT-BOUNDED-EDGE
    TEST-DEADLINE-PAST-CELL
    TEST-WAIT-REACHES-DEADLINE
@@ -1070,7 +1070,7 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    TEST-STARVED-TIMEOUT
    TEST-RUN-CAPTURE-FD-CLEANUP
    TEST-CAPTURE-SPAWN-THROWS
-   TEST-CAPTURE-SETUP-REFUSED
+   TEST-CAPTURE-SETUP-REJECTED
    TEST-RUN-IO-CAT
    TEST-RUN-IO-FALSE
    TEST-RUN-CAPTURE-RESULT-OK

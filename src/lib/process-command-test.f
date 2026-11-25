@@ -214,7 +214,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    [: CMD:OUTCOME@ drop ;] catch E-PROC-SPAWN T=
    [: CMD:RC@ drop ;] catch E-PROC-SPAWN T= ;
 
-\ A deadline, path or closed placed fd refused before the run starts throws its
+\ A deadline, path or closed placed fd rejected before the run starts throws its
 \ own code and keeps the previous run's outcome and capture.
 : EXIT3$ ( -- str )  s" printf x; exit 3" ;
 
@@ -225,7 +225,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    EXIT3$ out err oc 3 T-ENDING-EXITED=
    out s" x" T$= ;
 
-: REFUSED-KEEPS ( CMD:command -- CMD:command )
+: REJECTED-KEEPS ( CMD:command -- CMD:command )
    s" -c" CMD:ARG+
    EXIT3$ CMD:ARG+
    s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME drop
@@ -242,7 +242,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 \ CWD!: the child runs from the given directory, proved by a relative-path
 \ effect (cat of a file that exists only there), so a symlinked or slash-ended
 \ temp base cannot fake a mismatch; the directory is registered for cleanup
-\ before the run so a throw does not leak it. A missing directory is refused
+\ before the run so a throw does not leak it. A missing directory is rejected
 \ before any spawn.
 create DIR PATH-CAP allot   variable DIR-U
 create REL PATH-CAP allot   variable REL-U
@@ -274,14 +274,14 @@ create REL PATH-CAP allot   variable REL-U
    s" BAD=NAME" s" x" CMD:ENV+ ;
 
 
-\ A string holding a NUL is refused and leaves the command as it was.
-: NUL-REFUSED ( CMD:command -- CMD:command )
+\ A string holding a NUL is rejected and leaves the command as it was.
+: NUL-REJECTED ( CMD:command -- CMD:command )
    s" kept" CMD:ARG+
    [: s\" a\zb" CMD:ARG+ ;] catch E-FFI-NUL T=
    s" /bin/echo" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ s\" kept\n" T$= ;
 
-: NUL-ENV-REFUSED ( CMD:command -- CMD:command )
+: NUL-ENV-REJECTED ( CMD:command -- CMD:command )
    CMD:ENV-HERMETIC
    s" K" s" v" CMD:ENV+
    [: s\" K=a\zb" CMD:ENV-ENTRY+ ;] catch E-FFI-NUL T=
@@ -397,7 +397,7 @@ create PIPE-BUF PIPE-CAP allot
 
 \ The parent writes `|parent` through its own fd, which throws if a run closed it,
 \ then one read takes all the pipe holds; the pipe is never empty, so it never
-\ blocks. A refused read throws E-FS-IO, as FD's reads do.
+\ blocks. A rejected read throws E-FS-IO, as FD's reads do.
 : DRAIN$ ( ^n ^n -- str )
    {: r:^ w:^ :}
    w @ >FD s" |parent" FD:WRITE-FULL
@@ -470,7 +470,7 @@ create PIPE-BUF PIPE-CAP allot
 : NEGATIVE-PARENT ( CMD:command -- CMD:command ) 3 >FD -1 >FD CMD:FD+ ;
 
 \ A closed parent fd at child fd 3, beside the open pipe at fd 4: the run is
-\ refused before a capture pipe can take the closed number, so the child, which
+\ rejected before a capture pipe can take the closed number, so the child, which
 \ would write `ran` to fd 4, never runs.
 : PLACED-CLOSED ( CMD:command -- CMD:command )
    FD:PIPE FD>N {: w :} FD>N {: r :}
@@ -698,10 +698,10 @@ variable YES-ADDR
    [: RUNAWAY ;] CMD:WITH-COMMAND
    YES-ADDR @ MAPPED -1 T= ;
 
-\ The inner body swaps and hands back the outer token. The inner scope refuses it
+\ The inner body swaps and hands back the outer token. The inner scope rejects it
 \ with CMD:E-HANDLE and closes its own context; the throw leaves the outer scope,
 \ which closes its own, before the outer body can run on a closed context. Both
-\ scopes' capture mappings are gone after the refusal, and a fresh scope then runs
+\ scopes' capture mappings are gone after the rejection, and a fresh scope then runs
 \ as usual.
 variable OUTER-ADDR
 variable INNER-ADDR
@@ -750,7 +750,7 @@ public
    [: RUN-FAILS ;] CMD:WITH-COMMAND
    [: [: RUN-TIMEOUT ;] CMD:WITH-COMMAND ;] E-PROC-TIMEOUT TTHROWSQ
    [: SPAWN-FAILS ;] CMD:WITH-COMMAND
-   [: REFUSED-KEEPS ;] CMD:WITH-COMMAND
+   [: REJECTED-KEEPS ;] CMD:WITH-COMMAND
    CWD
    [: [: CWD-MISSING ;] CMD:WITH-COMMAND ;] E-PROC-PATH TTHROWSQ
    [: [: BAD-ENV-NAME ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
@@ -759,8 +759,8 @@ public
    [: [: BAD-UNSET-NAME ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
    [: [: NUL-UNSET-NAME ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
    [: [: NEGATIVE-UNSET ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
-   [: NUL-REFUSED ;] CMD:WITH-COMMAND
-   [: NUL-ENV-REFUSED ;] CMD:WITH-COMMAND
+   [: NUL-REJECTED ;] CMD:WITH-COMMAND
+   [: NUL-ENV-REJECTED ;] CMD:WITH-COMMAND
    [: BOTH-STREAMS ;] CMD:WITH-COMMAND
    IN-FILL
    [: BIG-STDIN ;] CMD:WITH-COMMAND

@@ -368,7 +368,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 \ Blocks until a receive on the descriptor will not wait - there is data, the
 \ end of stream, or an error the receive reports - which is `ok`. A signal
-\ restarts the wait; any other refusal is `failed` with its errno.
+\ restarts the wait; any other rejection is `failed` with its errno.
 : DATA-READY ( n -- status ) {: fd:n :}
    begin
       fd POLLIN NO-TIMEOUT POLL-FD {: rc:n :}
@@ -444,7 +444,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ Blocks until a send on the descriptor will not wait - there is room, or an
 \ error the send reports - which is `ready`, or the mono-ns deadline passes,
 \ `idle`. A signal restarts the wait with what is left of it, so none stretches
-\ it; any other refusal is `failed` with its errno.
+\ it; any other rejection is `failed` with its errno.
 : ROOM-BY ( n n -- ready-result ) {: fd:n deadline:n :}
    begin
       fd POLLOUT deadline LEFT-MS POLL-FD {: rc:n :}
@@ -557,11 +557,11 @@ public
    construct accept-fault broken ;
 
 
-\ Blocks until the handshake completes or the OS refuses it. An interrupted
+\ Blocks until the handshake completes or the OS fails it. An interrupted
 \ CONNECT is `failed` with EINTR and its socket closed, because Linux goes on
 \ completing that connection asynchronously. The connection turns non-blocking
 \ only once connected, so the connect itself still blocks and answers the
-\ refusal.
+\ rejection.
 : CONNECT ( address port -- connect-result )
    ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-CONNECT--RESULT:FAILED exit then
    {: fd:n :}

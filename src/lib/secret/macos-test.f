@@ -3,7 +3,7 @@
 \ it runs by hand and in no suite. Fails on: a wrong item; missing read as
 \ empty; a read that loses the bytes the vector held; truncated or partial
 \ writes; an overwrite keeping old bytes or duplicating; an erase that leaves,
-\ misreports or overreaches; ids WRITE/ERASE take that READ refuses; native
+\ misreports or overreaches; ids WRITE/ERASE take that READ rejects; native
 \ leaks; source/AOT mismatch. macOS only, as Linux has no erase.
 HB-TARGET-MACOS? ?TARGET
 require src/lib/secret.f
@@ -114,7 +114,7 @@ TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
    TEST-OTHER$ s" first" s" service dummy" TEST-FOUND ;
 
 
-: TEST-REFUSALS ( -- )
+: TEST-REJECTIONS ( -- )
    s" identifiers reject empty, NUL and malformed UTF-8 on every word" T-LABEL
    [: s" " s" first" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
    [: TEST-SERVICE$ s" " OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
@@ -138,7 +138,7 @@ TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
 
 
 : TEST-RUN ( -- )
-   TEST-LOOKUP TEST-REPLACE TEST-ERASE TEST-REFUSALS ;
+   TEST-LOOKUP TEST-REPLACE TEST-ERASE TEST-REJECTIONS ;
 
 
 : TEST-NATIVE ( -- )

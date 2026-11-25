@@ -15,7 +15,7 @@ require src/core/compile-reads.f
 package FS-LIST
 public
 
-\ Semantic refusals clear FS:ERRNO. On Darwin a regular file opens for listing
+\ Semantic rejections clear FS:ERRNO. On Darwin a regular file opens for listing
 \ and getdirentries64 then fails EINVAL: E-READ keeps that as its cause through
 \ descriptor cleanup.
 E-FS-LIST-OPEN constant E-OPEN
@@ -228,14 +228,14 @@ public
    [type] listing [: EACH-TYPED-WITH ;] MEM:WITH-RECORD ;
 
 \ EACH-TYPED over a directory the caller opened and may read and search; the
-\ caller's descriptor and offset are untouched. A refused "." is E-FS-LIST-OPEN.
+\ caller's descriptor and offset are untouched. A rejected "." is E-FS-LIST-OPEN.
 : EACH-TYPED-AT ( fd [ str u8 -- ] -- )
    [type] listing [: EACH-TYPED-AT-WITH ;] MEM:WITH-RECORD ;
 
 
 \ The names except . and .. into the caller's buffer, newline-separated and in
 \ byte order, so two listings of one directory compare equal; answers the
-\ length. A name holding a newline is refused; a short buffer is E-FS-LIST-CAPACITY.
+\ length. A name holding a newline is rejected; a short buffer is E-FS-LIST-CAPACITY.
 : NAMES ( str ^u8 n -- n ) {: path:^ size:n dst:^ cap:n :}
    cap 0 < if FS:CAUSE-CLEAR E-CAPACITY throw then
    path size dst cap [type] listing [: NAMES-WITH ;] MEM:WITH-RECORD ;

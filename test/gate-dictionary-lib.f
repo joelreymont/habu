@@ -165,7 +165,7 @@ variable LABEL-U
    s" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
    s" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
    \ The trusted word leaves two cells under a one-cell row: a top-level second
-   \ `.` reads an unknown cell and is refused, so a TRUSTED: body prints both.
+   \ `.` reads an unknown cell and is rejected, so a TRUSTED: body prints both.
    s" TRUSTED: LONG-DICTIONARY-SHOW ( -- ) 9 LONG-DICTIONARY-TRUSTED . . ;" GE-SRC-LINE
    s" LONG-DICTIONARY-SHOW" GE-SRC-LINE ;
 
@@ -264,7 +264,7 @@ variable LABEL-U
    70 s" error[E-MISSING-SIGNATURE]: `does>` has no closed" s" hb trusted DOES> without created signature diagnostic" GE-EVAL-FORK-BAD ;
 
 \ Each failed `is` and `defer` names its cause; the message is asserted, as the
-\ exit codes alone are not distinct. The checker refuses the three `is` cases.
+\ exit codes alone are not distinct. The checker rejects the three `is` cases.
 : BAD-IS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -795,10 +795,10 @@ variable LABEL-U
    GE-SRC-RESET
    s" variable GD-TV" GE-SRC-LINE
    s" TYPED-VARIABLE GD-TV n" GE-SRC-LINE
-   70 s" error[E-DUPLICATE-DEFINITION]: `GD-TV` is already defined" s" TYPED-VARIABLE names a defined name it refuses" RUN-BAD-SOURCE
+   70 s" error[E-DUPLICATE-DEFINITION]: `GD-TV` is already defined" s" TYPED-VARIABLE names a defined name it rejects" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" TYPED-VARIABLE over n" GE-SRC-LINE
-   70 s" error[E-DUPLICATE-DEFINITION]: `over` is already defined" s" TYPED-VARIABLE names an engine word it refuses" RUN-BAD-SOURCE
+   70 s" error[E-DUPLICATE-DEFINITION]: `over` is already defined" s" TYPED-VARIABLE names an engine word it rejects" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" : dup ( n -- n n ) dup ;" GE-SRC-LINE
    70 s" error[E-DUPLICATE-DEFINITION]: `dup` is already defined" s" primitive shadow attempt rejects without undefine" RUN-BAD-SOURCE
@@ -1051,7 +1051,7 @@ variable LABEL-U
    s" P:H ." GE-SRC-LINE
    $46 s" P:H" s" package hides private qualified word" RUN-BAD-CHILD
    GE-SRC-RESET
-   \ The private word needs a name no global owns, or the child refuses BAD on
+   \ The private word needs a name no global owns, or the child rejects BAD on
    \ that global's type before reaching package visibility.
    s" package P" GE-SRC-LINE
    s" : GD-PRIV ( -- n ) 1 ;" GE-SRC-LINE

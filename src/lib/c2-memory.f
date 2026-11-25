@@ -339,7 +339,7 @@ public
 \ initial record `T`. It takes a live unique byte view and a complete,
 \ non-unique, non-stale fixed-cell product; a short capacity, incompatible
 \ field schema, open, unique or stale record, raw or shared authority,
-\ incompatible callback, or escape of `i` refuses. Return clears the
+\ incompatible callback, or escape of `i` rejects. Return clears the
 \ initialized extent and restores the original view and bound; throw and task
 \ halt close the scope.
 : WITH-INIT ( R ^u8 n n [ R ^u8 n -- S ^u8 n | U -- U ] stow-layout | U -- S ^u8 n | U )

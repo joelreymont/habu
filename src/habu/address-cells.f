@@ -30,7 +30,7 @@ $7FFFFFFFFFFFFFFF CELL / constant MAX-ROWS
 private
 EXPORT BOOT:data-base
 
-: REFUSE ( -- ) s" address-cells: invalid storage header" EXIT-STATUS:INTERNAL die ;
+: REJECT ( -- ) s" address-cells: invalid storage header" EXIT-STATUS:INTERNAL die ;
 
 : HEADER ( -- ^n ) data-base RELOC:XTCELL-N-CELL + ;
 
@@ -73,8 +73,8 @@ private
 
 \ Subtraction precedes addition/multiplication, including on malformed input.
 : WITHIN ( n n n -- ) {: off:n cap:n bytes:n :}
-   off 0 < off bytes > or if REFUSE then
-   cap bytes off - CELL / > if REFUSE then ;
+   off 0 < off bytes > or if REJECT then
+   cap bytes off - CELL / > if REJECT then ;
 
 \ The header in DATA bytes [data, data+bytes): its rows and count.
 : READ-HEADER ( str -- ^n n )
@@ -96,7 +96,7 @@ public
 
 : ROW@ ( n -- n ) {: row:n :}
    LIVE-SPAN {: base:^ count:n :}
-   row 0 < row count >= or if REFUSE then
+   row 0 < row count >= or if REJECT then
    base row cells + @ ;
 
 private
@@ -156,15 +156,15 @@ private
 public
 
 : REMOVE-SPAN ( n n -- ) {: first:n bytes:n :}
-   first 0 < bytes 0 < or if REFUSE then
-   first here data-base - > if REFUSE then
-   bytes here data-base - first - > if REFUSE then
+   first 0 < bytes 0 < or if REJECT then
+   first here data-base - > if REJECT then
+   bytes here data-base - first - > if REJECT then
    first first bytes + [: REMOVE-LOCKED ;] WITH-LOCK ;
 
 \ Reads a DATA copy's table: its rows lie in the copy or, once grown, in a mapping
 \ this process made.
 : DATA-SPAN ( str -- ^n n ) {: data:^ bytes:n :}
-   bytes RELOC:XTCELL-N-CELL HEADER-BYTES + < if REFUSE then
+   bytes RELOC:XTCELL-N-CELL HEADER-BYTES + < if REJECT then
    data bytes READ-HEADER ;
 
 ;package

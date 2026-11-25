@@ -18,7 +18,7 @@ no type and is private to the system package.
 
 **One primitive table.** Each primitive is one row that names it and states its
 effect. Each platform supplies one body per row, native code per instruction
-set, and the build refuses a body without a row or a row without a body. Where
+set, and the build rejects a body without a row or a row without a body. Where
 a primitive can be written without itself, a reference implementation in
 checked Habu runs beside every body in tests.
 
@@ -89,7 +89,7 @@ its package. System words are private words of the system package. There are
 no owner rows, caller checks or marks on records.
 
 **A sealed package cannot be reopened.** `package NAME` on a sealed package is
-refused. A build seals every package its engine files made before it reads
+rejected. A build seals every package its engine files made before it reads
 program source.
 
 **Stripping drops headers; reachability decides code.** `hb` keeps every
@@ -125,14 +125,14 @@ codegen with checking off: the checker records each construct with every value
 one cell wide, and the definer writes a null type.
 
 **A failed definition leaves the dictionary as it was.** A throw before `;` or
-a refusal at `;` rewinds `HERE` to the pending definition's type, drops its
+a rejection at `;` rewinds `HERE` to the pending definition's type, drops its
 events and clears the pending state. Its emission was never placed, so code
 space is untouched. The loop restores the source, package scope and used
 packages it saved on entry, then rethrows.
 
 **At top level, a word's type guards the stack.** The interpreter supplies the
 exact selected dictionary record to the checker, which applies that word's
-input and output effects and refuses a mismatch before the call, including a
+input and output effects and rejects a mismatch before the call, including a
 pointer or execution token stored in a numeric cell. See
 [design.md](design.md#typed-top-level).
 
@@ -185,7 +185,7 @@ and that form's record says which of its cells hold references. The linker
 writes each such cell as a reference to the object or function its value names,
 and copies every other cell as bytes. Nothing scans integers for pointers, and
 no registry lists pointer cells. A reference cell whose value is neither null
-nor inside the product's spaces is refused, naming the cell.
+nor inside the product's spaces is rejected, naming the cell.
 
 ## Builds
 
@@ -273,7 +273,7 @@ requiring its module fails to compile, naming the word.
 
 **Nothing is relocated because of its value.** A cell reaches the image as an
 address only because a declaration, a claim or a code row names it; the linker
-never reads an integer as a pointer. A value it cannot account for is refused,
+never reads an integer as a pointer. A value it cannot account for is rejected,
 naming the word, the cell and the value.
 
 ## Tools
@@ -316,15 +316,15 @@ process exits, so what ran leaves nothing behind, and its verdict is the load's.
 No definer acts: `require`, `create`, `STRUCTURE`, `SUMTYPE`, `ENUM`,
 `FUNCTION:` and the buffer and variable definers reach no file, process,
 signal, terminal or foreign-call primitive, only the stderr report and `die`
-of a refusal. The words that act are entry words such as `RUN` and `MAIN`.
+of a rejection. The words that act are entry words such as `RUN` and `MAIN`.
 
 **A check reports every independent error.** When the check sets the
-multi-error flag, a refused definition is rewound as always and the
-interpreter goes on at the next token. A mention of a refused word is
+multi-error flag, a rejected definition is rewound as always and the
+interpreter goes on at the next token. A mention of a rejected word is
 undefined. The tool counts a definition whose first defect is such a mention
-as refused, without reporting it. An error outside a definition ends the file.
+as rejected, without reporting it. An error outside a definition ends the file.
 
-**A lint that states a language rule is a refusal.** The definer refuses a
+**A lint that states a language rule is a rejection.** The definer rejects a
 reserved name, a broad `TRUSTED:` and a global that shadows a primitive. Facts
 about a whole program, such as the error codes it uses or its public
 signatures, come from walking the dictionary after the program loads.

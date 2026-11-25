@@ -1,7 +1,7 @@
 \ content-length.f - LSP/DAP Content-Length message framing over a blocking
 \ descriptor; the module knows nothing of what a body holds. NEXT-LENGTH reads a
 \ header block and BODY the body into the caller's span, so the module allocates
-\ nothing. Any refusal spends the reader: the stream has no boundary left.
+\ nothing. Any rejection spends the reader: the stream has no boundary left.
 \ STORAGE CLASS. CALLER-OWNED reader record and buffer; SEND's header row is a
 \ TASK:+USERS row, TASK-LOCAL.
 
@@ -21,7 +21,7 @@ public
 \ fd is the descriptor read; buf and cap the caller's buffer; pos is the first
 \ byte not yet taken and end the first not yet read; want is the body length
 \ NEXT-LENGTH answered and BODY has not read, -1 when none; max is the longest
-\ body taken. A cap of zero is a reader never bound, or one a refusal spent.
+\ body taken. A cap of zero is a reader never bound, or one a rejection spent.
 STRUCTURE reader DERIVE addr
    FIELD fd fd
    FIELD buf ^u8
@@ -62,13 +62,13 @@ private
    0 r CAP! ;
 
 \ Spends the reader and throws the code.
-: REFUSE ( ^reader n -- )
+: REJECT ( ^reader n -- )
    {: r code:n :}
    r SPEND
    code throw ;
 
-: MALFORMED ( ^reader -- )  E-CONTENT-LENGTH-MALFORMED REFUSE ;
-: TRUNCATED ( ^reader -- )  E-CONTENT-LENGTH-TRUNCATED REFUSE ;
+: MALFORMED ( ^reader -- )  E-CONTENT-LENGTH-MALFORMED REJECT ;
+: TRUNCATED ( ^reader -- )  E-CONTENT-LENGTH-TRUNCATED REJECT ;
 
 : LIVE ( ^reader -- )
    CAP@ 0= if E-CONTENT-LENGTH-STATE throw then ;
@@ -90,7 +90,7 @@ private
    held r END!
    r CAP@ held - {: room:n :}
    r FD@ FD>N  r BUF@ held +  room read {: k:n :}
-   k 0 < k room > or if r E-FS-IO REFUSE then
+   k 0 < k room > or if r E-FS-IO REJECT then
    held k + r END!
    k 0 > ;
 
@@ -226,7 +226,7 @@ private
    dup 0 < if r MALFORMED then ;
 
 \ The part of a body the buffer did not hold, read straight into the span. The
-\ reader is spent while FD reads, so a read the kernel refuses (E-FS-IO)
+\ reader is spent while FD reads, so a read the kernel rejects (E-FS-IO)
 \ leaves it spent; the whole body gives its capacity back.
 : REST ( ^reader SPAN:span<u8> n n -- )
    {: r s want:n k:n :}
@@ -278,7 +278,7 @@ public
 \ The next message's body length, or NONE when the stream ended on a message
 \ boundary, the one end of input that is not an error. End of file inside a
 \ header block or body is E-CONTENT-LENGTH-TRUNCATED; a block with no
-\ Content-Length, or two, is E-CONTENT-LENGTH-MALFORMED. A kernel read refusal
+\ Content-Length, or two, is E-CONTENT-LENGTH-MALFORMED. A kernel read rejection
 \ (E-FS-IO) spends the reader too: inside a body it may have taken bytes the
 \ caller never saw. A spent or unbound reader, or NEXT-LENGTH with a body
 \ pending, is E-CONTENT-LENGTH-STATE.

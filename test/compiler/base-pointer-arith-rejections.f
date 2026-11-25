@@ -1,5 +1,5 @@
-\ base-pointer-arith-refusals.f - rejected programs and controls for "a pointer
-\ derived from NULL-PTR holds a plain value". Each refusal answers E-RAW-CELL-PTR
+\ base-pointer-arith-rejections.f - rejected programs and controls for "a pointer
+\ derived from NULL-PTR holds a plain value". Each rejection answers E-RAW-CELL-PTR
 \ with a reason per kind. TVK-NULL is fenced in value position and permissive
 \ inside a pointee; an offset null meets as TVK-DBASE, fenced at every pointee
 \ depth with no input-only excuse. Candidates go to the live engine's checker
@@ -83,26 +83,26 @@ private
    REJECTION:BUFFER$ swap STR:CONTAINS? TFALSE ;
 
 \ Asserting the reason, not only the code, keeps each rule's prose its own.
-: REFUSED-CODE ( str -- )   \ leaves the diagnostic armed for the reason assertions
+: REJECTED-CODE ( str -- )   \ leaves the diagnostic armed for the reason assertions
    ARM
    CHECK-CANDIDATE! 0 T=
    CODE$ HAS?  RAW-REASON$ LACKS? ;
 
-: DB-REFUSED ( str -- )
-   REFUSED-CODE  DB-REASON$ HAS?  NULL-REASON$ LACKS?  DISARM ;
+: DB-REJECTED ( str -- )
+   REJECTED-CODE  DB-REASON$ HAS?  NULL-REASON$ LACKS?  DISARM ;
 
-: NULL-REFUSED ( str -- )
-   REFUSED-CODE  NULL-REASON$ HAS?  DB-REASON$ LACKS?  DISARM ;
+: NULL-REJECTED ( str -- )
+   REJECTED-CODE  NULL-REASON$ HAS?  DB-REASON$ LACKS?  DISARM ;
 
 \ The raw-cell rule answers its own prose for the same shape over an undeclared
 \ cell.
-: RAW-REFUSED ( str -- )
+: RAW-REJECTED ( str -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    CODE$ HAS?  RAW-REASON$ HAS?  DB-REASON$ LACKS?  NULL-REASON$ LACKS?
    DISARM ;
 
-: EXEC-REFUSED ( str -- )
+: EXEC-REJECTED ( str -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    CODE$ HAS?  EXEC-REASON$ HAS?
@@ -119,12 +119,12 @@ private
 \ (CASE-NULL-ZERO, the controls).
 : CASE-NULL-NOMINAL ( -- )
    s" a null plus an offset does not answer a nominal identity" T-LABEL
-   s" BPA-F ( n -- bpathing ) NULL-PTR + @" DB-REFUSED ;
+   s" BPA-F ( n -- bpathing ) NULL-PTR + @" DB-REJECTED ;
 
 \ Offset zero: the fence rides the pointee, not the `+` token.
 : CASE-NULL-ZERO ( -- )
-   s" the same refusal with no arithmetic at all: NULL-PTR @" T-LABEL
-   s" BPA-NZ ( -- bpathing ) NULL-PTR @" NULL-REFUSED ;
+   s" the same rejection with no arithmetic at all: NULL-PTR @" T-LABEL
+   s" BPA-NZ ( -- bpathing ) NULL-PTR @" NULL-REJECTED ;
 
 \ ---- the third door: an EXECUTION TOKEN out of a base address -----------------
 \ The opaque-execute rule judges opacity, not provenance, so the fence is here:
@@ -134,36 +134,36 @@ private
 \ price is CASE-NULL-XT-COMPARE.
 : CASE-NULL-XT-CELL ( -- )
    s" a null-derived address cannot be declared to hold an execution token" T-LABEL
-   s" BPA-NQ ( -- ^[ -- n ] ) NULL-PTR 8 +" EXEC-REFUSED ;
+   s" BPA-NQ ( -- ^[ -- n ] ) NULL-PTR 8 +" EXEC-REJECTED ;
 
 : CASE-NULL-XT-ZERO ( -- )
    s" NULL-PTR itself is no code cell" T-LABEL
-   s" BPA-NQZ ( -- ^[ -- n ] ) NULL-PTR" EXEC-REFUSED ;
+   s" BPA-NQZ ( -- ^[ -- n ] ) NULL-PTR" EXEC-REJECTED ;
 
 \ ---- the other half: an ADDRESS out of a base address ------------------------
 
 : CASE-NULL-POINTER ( -- )
-   s" a pointer fetched through a null-derived address is refused too" T-LABEL
-   s" BPA-G ( n -- ^n ) NULL-PTR + @" DB-REFUSED ;
+   s" a pointer fetched through a null-derived address is rejected too" T-LABEL
+   s" BPA-G ( n -- ^n ) NULL-PTR + @" DB-REJECTED ;
 
 \ ptr-cell! takes `!`'s cell-width rule; its prims.f row alone admits a `^u8`.
 : CASE-BYTE-PTR-CELL ( -- )
-   s" ptr-cell! refuses a byte pointer as its cell, as ! does" T-LABEL
+   s" ptr-cell! rejects a byte pointer as its cell, as ! does" T-LABEL
    ARM
    s" BPA-PCB ( u8 ^u8 -- ) ptr-cell!" CHECK-CANDIDATE! 0 T=
    S\" \"code\":\"E-MISMATCH\"" HAS?
    S\" \"expected\":\"^a\",\"found\":\"^u8\"" HAS?
    DISARM ;
 
-\ Controls: an undeclared raw cell refuses a two-deep pointer with its own
+\ Controls: an undeclared raw cell rejects a two-deep pointer with its own
 \ prose; the rules stay separate.
 : CASE-RAW-DEPTH-2-POINTER ( -- )
    s" an undeclared raw cell still answers the raw-storage reason" T-LABEL
-   s" BPA-R2 ( -- ^^n ) BPA-RAW" RAW-REFUSED ;
+   s" BPA-R2 ( -- ^^n ) BPA-RAW" RAW-REJECTED ;
 
 : CASE-RAW-DEPTH-2-NOMINAL ( -- )
    s" and so does the nominal spelling of it" T-LABEL
-   s" BPA-R2N ( -- ^^bpathing ) BPA-RAW" RAW-REFUSED ;
+   s" BPA-R2N ( -- ^^bpathing ) BPA-RAW" RAW-REJECTED ;
 
 \ ---- an OFFSET null meets as TVK-DBASE ---------------------------------------
 \ The arithmetic rows (`+`, `-` with an n, `1+`, `1-`, `cell+`, `char+`) keep
@@ -176,32 +176,32 @@ private
 
 : CASE-NULL-OFFSET-DEPTH-2 ( -- )
    s" a null plus an offset is not the address of an address" T-LABEL
-   s" BPA-NO2 ( n -- ^^n ) NULL-PTR +" DB-REFUSED ;
+   s" BPA-NO2 ( n -- ^^n ) NULL-PTR +" DB-REJECTED ;
 
 : CASE-NULL-OFFSET-NOMINAL-DEEP ( -- )
    s" nor the address of a pointer to a nominal" T-LABEL
-   s" BPA-NON ( n -- ^^bpathing ) NULL-PTR +" DB-REFUSED ;
+   s" BPA-NON ( n -- ^^bpathing ) NULL-PTR +" DB-REJECTED ;
 
 : CASE-NULL-OFFSET-PARAMETRIC ( -- )
    s" and neither does the parametric spelling of the same step" T-LABEL
-   s" BPA-NO7 ( n -- ^^n ) NULL-PTR swap +" DB-REFUSED ;
+   s" BPA-NO7 ( n -- ^^n ) NULL-PTR swap +" DB-REJECTED ;
 
-\ The refusal lands on the store into the typed cell.
+\ The rejection lands on the store into the typed cell.
 : CASE-NULL-OFFSET-TYPED-CELL ( -- )
    s" an offset null does not go into a cell declared to hold an address" T-LABEL
-   s" BPA-NO6 ( n -- ) NULL-PTR + BPA-PP !" DB-REFUSED ;
+   s" BPA-NO6 ( n -- ) NULL-PTR + BPA-PP !" DB-REJECTED ;
 
 : CASE-NULL-OFFSET-CELL-STEP ( -- )
-   s" cell+ steps the null the same way, and is refused the same way" T-LABEL
-   s" BPA-NOC ( -- ^^n ) NULL-PTR cell+" DB-REFUSED ;
+   s" cell+ steps the null the same way, and is rejected the same way" T-LABEL
+   s" BPA-NOC ( -- ^^n ) NULL-PTR cell+" DB-REJECTED ;
 
 : CASE-NULL-OFFSET-MINUS ( -- )
    s" and so does stepping it backwards by an integer" T-LABEL
-   s" BPA-NOM ( n -- ^^n ) NULL-PTR swap -" DB-REFUSED ;
+   s" BPA-NOM ( n -- ^^n ) NULL-PTR swap -" DB-REJECTED ;
 
 : CASE-NULL-OFFSET-FETCH ( -- )
-   s" a fetch that lands two deep through an offset null is refused" T-LABEL
-   s" BPA-NOF ( n -- ^n ) NULL-PTR + @ @" DB-REFUSED ;
+   s" a fetch that lands two deep through an offset null is rejected" T-LABEL
+   s" BPA-NOF ( n -- ^n ) NULL-PTR + @ @" DB-REJECTED ;
 
 \ The input-only excuse is the literal null's; an offset null is not one
 \ address.
@@ -221,19 +221,19 @@ private
 
 : CASE-NULL-OFFSET-VIA-WRAPPER ( -- )
    s" a checked stepper does not launder the offset either" T-LABEL
-   s" BPA-NOWR ( n -- ^^n ) NULL-PTR swap BPA-STEPPER" DB-REFUSED ;
+   s" BPA-NOWR ( n -- ^^n ) NULL-PTR swap BPA-STEPPER" DB-REJECTED ;
 
-\ Refusing only the fetch would leave the address in the cell for another read.
+\ Rejecting only the fetch would leave the address in the cell for another read.
 : CASE-NULL-OFFSET-POINTER-IN ( -- )
    s" a real pointer cannot be put into a cell an offset null reaches" T-LABEL
-   s" BPA-PS ( ^n n -- ) NULL-PTR + !" DB-REFUSED ;
+   s" BPA-PS ( ^n n -- ) NULL-PTR + !" DB-REJECTED ;
 
 \ ptr-cell! is checked as `!`, so its declaration does not excuse the cell.
 : CASE-NULL-OFFSET-POINTER-IN-PTR-CELL ( -- )
    s" nor through ptr-cell!, whose declaration does not excuse it" T-LABEL
-   s" BPA-PCS ( ^n n -- ) NULL-PTR + ptr-cell!" DB-REFUSED ;
+   s" BPA-PCS ( ^n n -- ) NULL-PTR + ptr-cell!" DB-REJECTED ;
 
-\ A quotation's inferred effect carries the pointee: the refusal lands on
+\ A quotation's inferred effect carries the pointee: the rejection lands on
 \ `execute`, not on the fetch inside the brackets.
 : CASE-NULL-OFFSET-THROUGH-QUOTATION ( -- )
    s" a quotation does not launder an offset null" T-LABEL
@@ -243,19 +243,19 @@ private
    DISARM ;
 
 \ PTR-VARIABLE seals its pointee TVK-RAW, so the meet is RAW (ANY < NULL < DBASE
-\ < RAW) and the raw rule answers first with its own prose; only the refusal is
+\ < RAW) and the raw rule answers first with its own prose; only the rejection is
 \ pinned here.
 : CASE-NULL-OFFSET-THROUGH-DECLARED-CELL ( -- )
-   s" a round trip through a declared pointer cell is refused by the raw rule" T-LABEL
+   s" a round trip through a declared pointer cell is rejected by the raw rule" T-LABEL
    s" BPA-RT ( -- bpathing ) NULL-PTR 8 + BPA-SLOT ! BPA-SLOT @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : CASE-NULL-OFFSET-DEPTH-3 ( -- )
    s" an offset null is not the address of a three-deep chain" T-LABEL
-   s" BPA-P3 ( -- ^^^n ) NULL-PTR 8 +" DB-REFUSED ;
+   s" BPA-P3 ( -- ^^^n ) NULL-PTR 8 +" DB-REJECTED ;
 
 : CASE-NULL-OFFSET-DEPTH-4 ( -- )
    s" the fence follows the chain however deep it is declared" T-LABEL
-   s" BPA-P4 ( -- ^^^^n ) NULL-PTR 8 +" DB-REFUSED ;
+   s" BPA-P4 ( -- ^^^^n ) NULL-PTR 8 +" DB-REJECTED ;
 
 \ NP-INVARS-WALK descends into a quotation parameter's rows, so `a` is
 \ input-only there too: `[: ( ^bpathing -- ) @ drop ;] BPA-FEED` reached the
@@ -270,7 +270,7 @@ private
 \ A quantifier named on both sides is still published: the caller picks the
 \ pointee again through `^bpathing BPA-LEAK @`.
 : CASE-NULL-OFFSET-PUBLISH-INOUT ( -- )
-   s" a wrapper that names the variable on both sides is refused too" T-LABEL
+   s" a wrapper that names the variable on both sides is rejected too" T-LABEL
    ARM
    s" BPA-LEAK ( ^a -- ^a ) drop NULL-PTR 8 +" CHECK-CANDIDATE! 0 T=
    NP-CODE$ HAS?  NP-SUGGEST$ HAS?
@@ -377,23 +377,23 @@ private
 \ A definition that declares `^a` may rely on `a` being closed and laid out,
 \ so its callers still pass it no open family.
 : CASE-DECLARED-POINTEE-CLOSED ( -- )
-   s" a declared ^a still refuses an open family" T-LABEL
+   s" a declared ^a still rejects an open family" T-LABEL
    s" BPA-D2O ( ^option<a> -- n ) BPA-NDIST" MISMATCH
    s" BPA-QRO ( ^option<a> -- ) BPA-QR" MISMATCH ;
 
 \ A byte view of a closed record shows no more than the view of each field
 \ (`rec FIELD BYTE-VIEW`). An open family has no layout yet, so the view still
-\ refuses a pointer to one.
+\ rejects a pointer to one.
 : CASE-RECORD-BYTE-VIEW ( -- )
    s" a byte view of a pointer to a closed record certifies" T-LABEL
    s" BPA-RBV ( ^bpa-rec -- ^u8 ) BYTE-VIEW" CERTIFIES
-   s" and of a pointer to an open family is still refused" T-LABEL
+   s" and of a pointer to an open family is still rejected" T-LABEL
    s" BPA-OBV ( ^option<a> -- ^u8 ) BYTE-VIEW" MISMATCH ;
 
 \ A base row matches only a base address's own pointee. An operand still being
 \ inferred -- a quotation's input, a signature-less word's input -- is not one,
 \ so a distance against a pointer to a nominal pairs both pointees, and the
-\ inferred input is that pointer: it takes `^bpathing` and refuses the null.
+\ inferred input is that pointer: it takes `^bpathing` and rejects the null.
 : CASE-DIST-INFERRED-OPERAND ( -- )
    s" an inferred operand of a distance takes the other pointee" T-LABEL
    s" BPA-QX ( ^bpathing -- n ) [: BPA-TV - ;] execute" CERTIFIES
@@ -410,7 +410,7 @@ private
 \ A null whose distance was taken is still the null: a read through it answers
 \ the null's suggestion.
 : CASE-NULL-DIST-READ ( -- )
-   s" a read through the null a distance was taken from is still refused" T-LABEL
+   s" a read through the null a distance was taken from is still rejected" T-LABEL
    ARM
    s" BPA-NDR ( ^a -- a ) NULL-PTR dup rot - drop @" CHECK-CANDIDATE! 0 T=
    NP-CODE$ HAS?  s" declare the pointee the null stands in for" HAS?
@@ -440,27 +440,27 @@ private
    s" BPA-HKACC ( -- ^[ -- n ] ) BPA-HK" CERTIFIES
    s" BPA-HKRUN ( -- n ) BPA-HK @ execute" CERTIFIES ;
 
-\ The price: the null comparison on a declared code cell is refused with the
+\ The price: the null comparison on a declared code cell is rejected with the
 \ cell shapes' reason. An empty code cell is read through a number-typed
 \ accessor of the same address, as src/lib/genio-core.f does for device rows,
 \ where a cleared row is ZERO.
 : CASE-NULL-XT-COMPARE ( -- )
-   s" comparing a code cell against the null is refused, and says why" T-LABEL
-   s" BPA-HKNULL ( -- bool ) BPA-HK NULL-PTR =" EXEC-REFUSED ;
+   s" comparing a code cell against the null is rejected, and says why" T-LABEL
+   s" BPA-HKNULL ( -- bool ) BPA-HK NULL-PTR =" EXEC-REJECTED ;
 
 \ A tick of an engine primitive is an opaque xt: a primitive's effect is its
 \ EPRIM: row at a call, and no row rides its xt. NULL-PTR is a primitive, so
-\ `['] NULL-PTR execute` is refused like `['] dup execute`; a quotation
+\ `['] NULL-PTR execute` is rejected like `['] dup execute`; a quotation
 \ that calls it carries the row.
-: OPAQUE-REFUSED ( str -- )
+: OPAQUE-REJECTED ( str -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    S\" \"code\":\"E-EXEC-OPAQUE-XT\"" HAS?
    DISARM ;
 
 : CASE-NULL-TICK ( -- )
-   s" executing a ticked NULL-PTR is refused as an opaque xt" T-LABEL
-   s" BPA-TKN ( -- bool ) ['] NULL-PTR execute 0=" OPAQUE-REFUSED
+   s" executing a ticked NULL-PTR is rejected as an opaque xt" T-LABEL
+   s" BPA-TKN ( -- bool ) ['] NULL-PTR execute 0=" OPAQUE-REJECTED
    s" and a quotation that calls NULL-PTR certifies" T-LABEL
    s" BPA-QKN ( -- bool ) [: NULL-PTR ;] execute 0=" CERTIFIES ;
 

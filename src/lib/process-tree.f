@@ -113,13 +113,13 @@ SCRATCH-VARIABLE WALKING            \ 1 while a walk, a CATCHES?, a CPU-NS or a 
 \ with 1 is not yet born. SIGSTOP and SIGKILL to a zombie succeed and do
 \ nothing.
 \
-\ A REFUSAL IS NOT AN ABSENCE. libproc answers a refused call the way it
+\ A REJECTION IS NOT AN ABSENCE. libproc answers a rejected call the way it
 \ answers an empty one - 0 bytes - and says which it was only in errno, which a
 \ call that succeeds leaves as it found it. A zombie or a missing pid leaves
 \ ESRCH, a sandbox that denies the call EPERM, and a pid or group nobody has
 \ lists nothing and leaves errno alone. So errno is cleared before each call
 \ and read after a short answer, and anything but a plain absence throws: a
-\ walk that took a refusal for "nobody there" would kill a tree it had not
+\ walk that took a rejection for "nobody there" would kill a tree it had not
 \ seen and report it whole.
 
 2 constant LIST-GROUP
@@ -244,9 +244,9 @@ FUNCTION: PID-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 \ when every thread of it shows one of the four.
 \
 \ A stat file or task directory that is gone (ENOENT or ESRCH) is a process or
-\ thread that ended since it was listed. A refused one (EACCES under hidepid,
+\ thread that ended since it was listed. A rejected one (EACCES under hidepid,
 \ say) leaves its member awake, so the walk stops it again and ends at
-\ SETTLE-MS; a listed pid whose stat is refused is not known to be a member
+\ SETTLE-MS; a listed pid whose stat is rejected is not known to be a member
 \ and is passed over.
 
 512 constant STAT-CAP
@@ -263,13 +263,13 @@ SCRATCH-VARIABLE STAT-PATH-U
 SCRATCH-VARIABLE TASK-DIR-U
 SCRATCH-VARIABLE CUR
 
-ENUM load DERIVE eq loaded gone refused ;ENUM
+ENUM load DERIVE eq loaded gone rejected ;ENUM
 
 \ Called straight after the open-rd or read that failed, or the FS-LIST:E-OPEN
 \ catch, while FS:ERRNO is still that failure's.
 : FAILURE ( -- load )
    FS:ERRNO FS:ENOENT = FS:ERRNO ESRCH = or
-   if LOAD-GONE else LOAD-REFUSED then ;
+   if LOAD-GONE else LOAD-REJECTED then ;
 
 : PATH+ ( str -- )
    STAT-PATH STAT-PATH-CAP STAT-PATH-U BUF-APPEND ;
@@ -282,7 +282,7 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
    s" /stat" PATH+
    STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ ;
 
-\ A live process's /proc file is never empty, so 0 bytes is refused.
+\ A live process's /proc file is never empty, so 0 bytes is rejected.
 : LOAD-INTO ( ^u8 ^u8 n ^n -- load )
    {: pathz:^ buf:^ cap:n used:^ :}
    pathz open-rd {: fd:n :}
@@ -290,7 +290,7 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
    fd buf cap read {: got:n :}
    got 0 < if FAILURE fd close exit then
    fd close
-   got 0= if LOAD-REFUSED exit then
+   got 0= if LOAD-REJECTED exit then
    got used !
    LOAD-LOADED ;
 
@@ -375,7 +375,7 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
    STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ LOAD-STAT MATCH load
       loaded OF TAKE-STATE SETTLED-STATE? ENDOF
       gone OF true ENDOF
-      refused OF false ENDOF
+      rejected OF false ENDOF
    ;MATCH 0= if AWAKE @ 1+ AWAKE ! then ;
 
 : THREADS-LIST ( -- )
@@ -383,7 +383,7 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
 
 \ A member with a thread awake is stopped again: a SIGCONT can resume it after
 \ it joined. One whose task directory is gone has ended; one whose task
-\ directory is refused stays awake.
+\ directory is rejected stays awake.
 : MEMBER-SETTLE-LINUX ( n -- ) {: pid:n :}
    AWAKE @ {: before:n :}
    TASK-DIR-U BUF-RESET
@@ -488,7 +488,7 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
 \
 \ Linux: /proc/<pid>/status holds the set as the line `SigCgt:` and sixteen hex
 \ digits (proc(5)). A status file that is gone is a process that ended; a
-\ refused one throws E-PROC-OUTPUT.
+\ rejected one throws E-PROC-OUTPUT.
 
 1 constant CTL-KERN
 14 constant KERN-PROC
@@ -557,7 +557,7 @@ FUNCTION: SYSCTL sysctl ( ^u8 n ^u8 ^u8 str -- i32 ) ;FUNCTION
    STATUS STATUS-CAP STATUS-U LOAD-INTO MATCH load
       loaded OF ENDOF
       gone OF false exit ENDOF
-      refused OF E-PROC-OUTPUT throw ENDOF
+      rejected OF E-PROC-OUTPUT throw ENDOF
    ;MATCH
    SIGCGT-AT HEX-AT sig CAUGHT-BIT? ;
 
@@ -652,7 +652,7 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ^u8 -- i32 ) ;FUNCTION
    TASK-DIR TASK-DIR-U BUF-LEN@ FS:>PATHZ LOAD-STAT MATCH load
       loaded OF ENDOF
       gone OF 0 exit ENDOF
-      refused OF E-PROC-OUTPUT throw ENDOF
+      rejected OF E-PROC-OUTPUT throw ENDOF
    ;MATCH
    TAKE-STATE drop
    TAKE-INT drop
@@ -765,7 +765,7 @@ public
 
 \ The CPU time, in nanoseconds, pid and every live process descended from it
 \ have run, user and system, with what each of them reaped; 0 once pid is
-\ reaped. Nothing is stopped. A refusal throws, as in a walk; an absence is
+\ reaped. Nothing is stopped. A rejection throws, as in a walk; an absence is
 \ none.
 : CPU-NS ( pid -- n ) {: pid:pid :}
    pid PID>N 1 <= if E-PROC-OUTPUT throw then

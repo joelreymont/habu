@@ -1,4 +1,4 @@
-\ Supply an output path and an unusable TMPDIR: OPEN refuses with E-FS-DIR.
+\ Supply an output path and an unusable TMPDIR: OPEN rejects with E-FS-DIR.
 require src/lib/zip.f
 require src/lib/zip-test-fixture.f
 require src/lib/fs.f

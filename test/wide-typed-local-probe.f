@@ -332,7 +332,7 @@ s" WLC-SCALAR-ANN ( pair -- n ) {: p:n :} 0 " NO
 s" WLC-PARAM-ANN ( opt<n> -- n ) {: o:opt<n> :} 0 " YES
 s" WLC-PARAM-ID ( opt<n> -- opt<n> ) {: o:opt<n> :} o " YES
 s" WLC-NESTED-ANN ( opt<opt<n>> -- opt<opt<n>> ) {: o:opt<opt<n>> :} o " YES
-\ ...and so are its refusals: a bare arity>0 tail, a wrong argument count and a
+\ ...and so are its rejections: a bare arity>0 tail, a wrong argument count and a
 \ wrong argument all reject with the signature diagnostics.
 s" WLC-ARITY-ANN ( opt<n> -- n ) {: o:opt :} 0 " NO
 s" WLC-ARITY2-ANN ( opt<n> -- n ) {: o:opt<n,n> :} 0 " NO
@@ -365,7 +365,7 @@ s" WLC-CTOR-OTHER-FAM ( n -- n ) OPTION:SOME {: r:result<n,n> :} 0 " NO
 s" WLC-CTOR-WRONG-ARG ( bool -- n ) OPTION:SOME {: r:option<n> :} 0 " NO
 s" WLC-CTOR-UNDERFLOW ( n -- option<n> ) OPTION:SOME {: r:option<n> z:n :} r " NO
 \ the cell bound whole keeps the stale lineage `catch` gave it, as a closed
-\ bundle does: WL-OUTER's caught result is refused.
+\ bundle does: WL-OUTER's caught result is rejected.
 variable WL-TICK
 : WL-NEW ( -- n ) WL-TICK @ 0= IF 1 throw THEN 31 ;
 : WL-NUM ( n -- n ) drop WL-NEW ;   \ a throw path that overwrote its input

@@ -32,7 +32,7 @@ SUBJ-CAP BUFFER: SUBJ-BUF
 variable SUBJ-U
 variable OVERLOAD
 variable CASE-N
-\ A refusing case's operands: the routine `catch` runs stages them, and a
+\ A rejecting case's operands: the routine `catch` runs stages them, and a
 \ quotation captures nothing.
 variable DV-A
 variable DV-B

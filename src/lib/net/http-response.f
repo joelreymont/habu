@@ -1,6 +1,6 @@
 \ http-response.f - the response a handler builds in its worker's slot: a
 \ status, header lines, a borrowed body span or a filed document, and the error
-\ answer every refusal shares, rendered by the one hook ON-ERROR installs
+\ answer every rejection shares, rendered by the one hook ON-ERROR installs
 \ (src/lib/net/http.f).
 require src/lib/net/http-request.f
 require src/lib/json.f
@@ -265,14 +265,14 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
 
 
 \ Whatever the body left behind, the writer is done with: a closed writer
-\ refuses every emitter, so a body quotation that kept its writer cannot write
+\ rejects every emitter, so a body quotation that kept its writer cannot write
 \ into the next request's answer.
 : CLOSE-JSON ( n -- ) {: idx:n :}
    idx JSON-W JSON:CLOSE ;
 
 
 \ The body's chain, from the slot's writer to the bytes it wrote, which become
-\ the response body in the slot's own vector. x86-64 refuses a quotation that
+\ the response body in the slot's own vector. x86-64 rejects a quotation that
 \ reads a local, so the body travels through the slot.
 : WRITE-JSON ( -- )
    SELF-SLOT {: idx:n :}
@@ -430,7 +430,7 @@ public
    idx SLOT-ID$ true ;
 
 
-\ Every refusal and fault this server answers, and any a handler answers
+\ Every rejection and fault this server answers, and any a handler answers
 \ itself, as the installed hook renders it; plain text until ON-ERROR says
 \ otherwise. Every hook renders on the answer less its body and the `Content-*`
 \ headers that describe it; the other headers the handler wrote stay.

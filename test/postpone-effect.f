@@ -1,9 +1,9 @@
 \ postpone-effect.f - an effect a definer builds renders as the signature its
 \ built word records, naming a private family by its package. A multi-error
-\ load that refuses a built body keeps its effect, which names the definer's
+\ load that rejects a built body keeps its effect, which names the definer's
 \ structure, for a caller in another package. A word built over
 \ EFFECT:READ-TYPE or EFFECT:NAMED of a type takes the type its text form
-\ declares, and READ-TYPE refuses a family the running package does not know.
+\ declares, and READ-TYPE rejects a family the running package does not know.
 \ A type held on the stack or in a local across a load that builds types keeps
 \ its own effect. No storage, field or payload holds one, at any depth, and a
 \ file that stores one is rejected at its storage, before a requirer reads it.
@@ -102,12 +102,12 @@ s" PE-XT-B ( n -- n ) PE-XT-W" CHECK-QUIET-CANDIDATE! 0 T=
 TYPED-VARIABLE EVAL-A ^u8
 variable EVAL-U
 : EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ >str evaluate-closed ;
-\ The refusals counted and the throw code when the text is evaluated under the
+\ The rejections counted and the throw code when the text is evaluated under the
 \ multi-error load state.
 : MULTI ( str -- n n ) {: s:str :}
    s STR:DATA EVAL-A !  s STR:LEN EVAL-U !  CHECK:MULTI-ERR-BEGIN [: EVAL-RUN ;] catch CHECK:MULTI-ERR-END ;
 
-\ The refused built word keeps its effect: its caller certifies, one refusal.
+\ The rejected built word keeps its effect: its caller certifies, one rejection.
 S\" s\" CELL-BROKEN\" POSTPONE-CELL:MAKE-CELL-BROKEN\n: CELL-USE ( -- ) POSTPONE-CELL:PD-CELL CELL-BROKEN drop ;"
    MULTI 1 T= 0 T=
 

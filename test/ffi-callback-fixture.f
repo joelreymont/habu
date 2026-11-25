@@ -147,7 +147,7 @@ CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
       GATE atomic@ 0<> TASK:HALTED? or
    until ;
 
-\ Bound and never reached: a thread C started is refused before its dispatch.
+\ Bound and never reached: a thread C started is rejected before its dispatch.
 : START-IMPL ( n -- n ) ;
 
 \ A comparator that keeps the thread it runs on.
@@ -193,7 +193,7 @@ CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 ' START-IMPL START-BODY !
 ' WHO-IMPL WHO-BODY !
 ' CMP-CALLER-IMPL CMP-CALLER-BODY !
-\ UNSET-BODY and UNSET-ONE-BODY are left unset: each dispatch has to refuse, not
+\ UNSET-BODY and UNSET-ONE-BODY are left unset: each dispatch has to reject, not
 \ execute the zero.
 
 \ ---- bindings -----------------------------------------------------------------

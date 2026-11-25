@@ -37,7 +37,7 @@ $100000 constant WORKER-STACK
 $40 constant JOB-SLOTS            \ connections queued before the listener waits for room
 $40 constant PARK-SLOTS           \ kept-alive connections parked at once
 $8 constant MAX-HOOKS             \ packages that give a worker a resource of its own
-$C8 constant LINGER-MS            \ how long a refused peer may still be sending
+$C8 constant LINGER-MS            \ how long a rejected peer may still be sending
 $100 constant LINGER-CAP          \ bytes one drain read takes from a lingering peer
 $C8 constant STOP-READ-MS         \ the longest the listener's pause or a waiting worker goes without reading the stop flag
 $C8 constant STOP-MARGIN-MS       \ over the longest park: scheduling slack and one window's parse
@@ -205,7 +205,7 @@ private
    idx DROP-BODY ;
 
 
-\ The error hook runs outside the handler's boundary for a refusal and for a
+\ The error hook runs outside the handler's boundary for a rejection and for a
 \ fault, under a catch of its own. A hook that throws there is reported like a
 \ handler's fault, whatever it built is dropped, and the client gets the plain
 \ text default under the status it was owed, so the worker still answers and
@@ -239,7 +239,7 @@ private
 
 \ Reads the validated head and selects its first route, whose explicit cap or
 \ the final server default bounds the body. A body framing the head alone
-\ refuses is answered here, before any handler runs; the body itself is read
+\ rejects is answered here, before any handler runs; the body itself is read
 \ only when the handler asks (BODY$). A stop raised while the connection is
 \ quiet before a request's first byte closes it.
 : READ-REQUEST ( TCP4:connection n n -- parse-result )
@@ -284,11 +284,11 @@ private
 
 
 \ A body read that did not complete throws E-BODY-READ out of its handler:
-\ ANSWER refuses the request, so that throw is no fault.
+\ ANSWER rejects the request, so that throw is no fault.
 : FAULT? ( n n -- bool ) {: idx:n code:n :}
    code 0= if false exit then
    code E-BODY-READ <> if true exit then
-   idx BODY-REFUSED? 0= ;
+   idx BODY-REJECTED? 0= ;
 
 
 \ Every fault answer is a 500, stored before the hook runs so that a hook that
@@ -414,10 +414,10 @@ private
    s" this server does not implement that transfer coding" ERROR! ;
 
 
-\ Answers a refused request with its status and closes after; a status of 0
+\ Answers a rejected request with its status and closes after; a status of 0
 \ (the peer left, the deadline passed, the connection failed) is no answer.
 \ Whatever a handler built is dropped first.
-: REFUSE ( TCP4:connection n n -- served ) {: conn:TCP4:connection idx:n status:n :}
+: REJECT ( TCP4:connection n n -- served ) {: conn:TCP4:connection idx:n status:n :}
    status 0= if construct served silent exit then
    idx DROP-ANSWER
    0 idx KEEP-ALIVE!
@@ -429,7 +429,7 @@ private
 
 
 \ A connection its handler took is the taker's, which closes it. A body read
-\ that did not complete is answered with that read's refusal (REFUSE), whatever
+\ that did not complete is answered with that read's rejection (REJECT), whatever
 \ the handler set; a body the handler did not read in full leaves unread bytes
 \ on the connection, which is closed after the answer.
 : ANSWER ( TCP4:connection n -- served ) {: conn:TCP4:connection idx:n :}
@@ -437,7 +437,7 @@ private
    idx HANDLE-REQUEST if
       construct served taken exit
    then
-   idx BODY-REFUSED? if conn idx idx READ-RESULT @ REFUSAL-STATUS REFUSE exit then
+   idx BODY-REJECTED? if conn idx idx READ-RESULT @ REJECTION-STATUS REJECT exit then
    idx BODY-UNREAD? if 0 idx KEEP-ALIVE! then
    conn idx SENT 0= if construct served silent exit then
    idx KEEP-ALIVE@ 0 <> if construct served keep-open exit then
@@ -471,10 +471,10 @@ private
    code 0 <> if conn idx code READ-FAULT exit then
    idx READ-RESULT @ {: result:parse-result :}
    result COMPLETE? if conn idx ANSWER exit then
-   result REFUSAL-STATUS {: status:n :}
+   result REJECTION-STATUS {: status:n :}
    status 0= if construct served silent exit then
    idx MAKE-ID
-   conn idx status REFUSE ;
+   conn idx status REJECT ;
 
 
 \ n is the worker's own slot, whose access line is written and which is
@@ -634,7 +634,7 @@ variable EXIT-HOOK-N
    from JOB-RUN @ to JOB-RUN ! ;
 
 
-\ A mapping refused part way throws with JOB-CAP unchanged.
+\ A mapping rejected part way throws with JOB-CAP unchanged.
 : JOB-GROW ( -- )
    JOB-CAP @ 2 * JOB-SLOTS max {: cap:n :}
    cap JOB-RESERVE
@@ -1035,7 +1035,7 @@ variable EXIT-HOOK-N
    rshift $FF and LOG:INT+ ;
 
 
-\ The step of BIND-LISTENER the OS refused, logged as
+\ The step of BIND-LISTENER the OS rejected, logged as
 \ `<step> <a.b.c.d>:<port> failed, errno <n>` before E-SOCKET.
 : REPORT-UNBOUND ( TCP4:errno n n str -- )
    {: cause:TCP4:errno address:n port:n step:str :}
@@ -1366,12 +1366,12 @@ public
    at 1+ EXIT-HOOK-N ! ;
 
 
-\ How every error answer is rendered: the refusals the server makes itself
+\ How every error answer is rendered: the rejections the server makes itself
 \ (400, 404, 405, 413, 431, 500, 501) and every ERROR! a handler calls, given
 \ the response, the status, a short code and a message. The hook sets the
 \ status and the body through the public response words; REQUEST-ID$ is the id
 \ the fault was reported under. It replaces the plain-text default, one line
-\ of `code: message (request id)`. For a refusal or a fault the hook runs
+\ of `code: message (request id)`. For a rejection or a fault the hook runs
 \ outside the handler's boundary under the worker's own catch: a hook that
 \ throws there is reported on stderr under the request id, and the client gets
 \ the plain-text default with code error_hook and the status it was owed, so
@@ -1404,7 +1404,7 @@ public
 \ goes on. Calls and connections are taken in the order they
 \ were queued. It never waits: the queue's columns grow to hold every job, so
 \ a caller always finds room for each call it has outstanding, and only a
-\ mapping the memory refuses throws. Outside a run, or once STOP has begun, it
+\ mapping the memory rejects throws. Outside a run, or once STOP has begun, it
 \ is E-STATE.
 : SUBMIT ( n [ n -- ] -- )
    JOB-LOCK TASK:GET

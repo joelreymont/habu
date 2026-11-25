@@ -387,7 +387,7 @@ $10000 constant WIDE-COUNT
    archive ZIP:CLOSE ;
 
 
-\ A span one byte past INT_MAX, the count macOS read refuses, reads the source.
+\ A span one byte past INT_MAX, the count macOS read rejects, reads the source.
 : FILE-SOURCE-WIDE ( -- )
    INPUT$ ORIGINAL$ FS:WRITE-ALL
    INPUT$ ZIP:OPEN-FILE {: archive:ZIP:archive :}

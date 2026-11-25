@@ -18,7 +18,7 @@ split-str
 \ and pty ends close-on-exec, or that child holds a writer and the parent never
 \ sees EOF. src/lib/fd-lock.f orders the mark against forks.
 \
-\ CAPTURE. A pipe, /dev/null or fcntl refused before the child exists throws
+\ CAPTURE. A pipe, /dev/null or fcntl rejected before the child exists throws
 \ E-PROC-SPAWN; a read or poll that fails once it runs, E-PROC-OUTPUT. A
 \ child that closes its input, or ends, before taking all of a stdin capture
 \ is no error: the capture stops writing, reads both streams to their end
@@ -32,8 +32,8 @@ split-str
 \ child while the parent's is closed. null is /dev/null, read-only as stdin
 \ and write-only as an output. pipe as stdin has RUN write the span's bytes
 \ and close the pipe; as an output RUN captures the stream into the span,
-\ whose length bounds it. A refusal before the child exists throws
-\ E-PROC-SPAWN, and a refused spawn leaves its errno in ERRNO. Once the child
+\ whose length bounds it. A rejection before the child exists throws
+\ E-PROC-SPAWN, and a failed spawn leaves its errno in ERRNO. Once the child
 \ runs, E-PROC-OUTPUT, E-PROC-WAIT, E-PROC-STDOUT-CAPACITY or
 \ E-PROC-STDERR-CAPACITY is thrown after its tree is ended and it is reaped.
 
@@ -175,7 +175,7 @@ public
 
 \ The bodies the RAW spawn words run under catch. Each builds a HERMETIC PROCESS
 \ request, so the child's environment is only the rows it is given; a RAW word
-\ answers the pid, or the negated errno of a refused spawn. process-argv.f,
+\ answers the pid, or the negated errno of a failed spawn. process-argv.f,
 \ process-env.f and process-cwd.f add the bodies for their shapes.
 package PROC-RAW
 private
@@ -271,7 +271,7 @@ public
    STATUS>ENDING ENDING>RC ;
 
 \ A throw code does not cross a process boundary: the uncaught-throw exit turns
-\ a negative code into EXIT-STATUS:UNCAUGHT, or SYSTEM for a refused map. A tool
+\ a negative code into EXIT-STATUS:UNCAUGHT, or SYSTEM for a failed map. A tool
 \ whose work can end on a deadline exits EXIT-STATUS:TIMEOUT for E-PROC-TIMEOUT,
 \ and the process that runs it throws E-PROC-TIMEOUT again on that status, so
 \ the verdict reaches the top of a chain of tools.
@@ -585,7 +585,7 @@ private
 
 public
 \ A capture's default stdin is EOF, whatever the parent's terminal or pipe; the
-\ fd sits in the capture record so a refused spawn closes it too.
+\ fd sits in the capture record so a failed spawn closes it too.
 : CAPTURE-NULL-INPUT ( -- fd )
    [: IN-R FS:O-RDONLY OPEN-NULL ;] FD-LOCK:WITH
    IN-R @ >FD ;
@@ -758,7 +758,7 @@ private
 \ A growing capture keeps an output stream in caller-owned storage: SINK, given
 \ a byte count, makes it hold at least that many bytes, keeping its bytes, and
 \ answers its byte 0, as a DYNAMIC-BUFFER u8's reserve then byte 0 do. A
-\ refused growth fails the capture as a read failure does.
+\ failed growth fails the capture as a read failure does.
 $10000 constant GROW-CHUNK
 
 \ SINK's first byte replaces the null one READ-GROWING hands in, since
@@ -824,7 +824,7 @@ private
    events FD:POLLNVAL and 0= 0= if E-PROC-OUTPUT THROW-CAPTURE then
    0 0= 0= ;
 
-\ A refused write on the non-blocking end is back pressure: the child stopped
+\ A rejected write on the non-blocking end is back pressure: the child stopped
 \ reading. The engine collapses every write errno to -1 and the caller has
 \ already asked poll whether the reader is gone, so the offset stays and the
 \ next POLLOUT under the deadline resumes; a short write advances by what
@@ -1112,7 +1112,7 @@ private
      pipe OF drop false ENDOF
    ;MATCH ;
 
-\ Refuses the slot's parent fd as CHECK-FD does; a slot naming no fd passes.
+\ Rejects the slot's parent fd as CHECK-FD does; a slot naming no fd passes.
 : CHECK-SLOT ( ^n n -- )
    {: h:^ slot :}
    h MAP @ slot VEC:AT @ {: parent :}

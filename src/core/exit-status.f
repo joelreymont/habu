@@ -12,7 +12,7 @@ public
 66 constant NOINPUT             \ an input the command line names does not exist
 69 constant UNAVAILABLE         \ a program or service the process needs is missing or did not answer
 70 constant REJECTED            \ Habu rejected the program's source
-71 constant SYSTEM              \ the system refused a resource: memory, a mapping, a descriptor, a close
+71 constant SYSTEM              \ the system gave no resource: memory, a mapping, a descriptor, a close
 74 constant IOERR               \ a file or stream could not be read, written or searched
 79 constant TASK-COMPILE        \ a definition or allot ran on a task's or callback's thread
 81 constant BL-RANGE            \ the mapped code region is out of BL reach from __text
@@ -33,7 +33,7 @@ public
 106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable
 107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary
 110 constant MEMORY-FAULT       \ a load or store by Habu code faulted
-111 constant STREAM-GROW        \ a Wasm run's OUT or ERR could not grow: the memory refused the pages
+111 constant STREAM-GROW        \ a Wasm run's OUT or ERR could not grow: the memory rejected the pages
 124 constant TIMEOUT            \ a child outlived its deadline, as timeout(1) exits
 127 constant EXEC               \ a spawned program could not be run, as sh(1) exits
 ;package

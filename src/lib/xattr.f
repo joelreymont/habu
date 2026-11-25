@@ -2,7 +2,7 @@
 \ fsetxattr and fremovexattr. A name is the whole attribute name, namespace
 \ included (`user.origin`); a value is bytes. An empty name, or one over 255
 \ bytes, throws E-XATTR with ERANGE as FS:ERRNO before any call; a name
-\ holding a NUL throws E-FFI-NUL. Any other refusal a word does not answer is
+\ holding a NUL throws E-FFI-NUL. Any other rejection a word does not answer is
 \ E-XATTR with the call's errno as FS:ERRNO, logged with its text.
 \ STORAGE CLASS. TASK-LOCAL: the name's C copy is one TASK:+USERS row.
 \ CALLER-OWNED: every value and GET's buffer.

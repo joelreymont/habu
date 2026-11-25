@@ -27,7 +27,7 @@ ENUM offscale DERIVE eq
 \ A nominal record over the ordinal of the row holding its facts: the words that
 \ read a description already bind a dozen typed locals, and a multi-cell value
 \ cannot be bound to one. Every reader bounds-checks the ordinal, so a forged
-\ record refuses. MACHINE answers the existing row for facts already declared,
+\ record rejects. MACHINE answers the existing row for facts already declared,
 \ so two descriptions of one machine are the same value.
 
 STRUCTURE mach DERIVE eq
@@ -40,7 +40,7 @@ private
 \ One row per DISTINCT machine. The capacity is not a bound on architectures: a
 \ backend declares its machine once and a test declaring variants of one declares
 \ few. Reaching it means something is describing a machine per call, which is a
-\ defect in that caller, so it is refused rather than grown around.
+\ defect in that caller, so it is rejected rather than grown around.
 
 15 constant ROW-N
 0 constant F-GPR-SIZE
@@ -211,7 +211,7 @@ public
 \ A backend describes its machine once at load and reports it from a constant,
 \ because a word that described one per call would pay for it on every register
 \ a pass names. A constant holds a number, so the number is here - and BY-ID
-\ refuses one no machine was declared under, so what comes back is a description
+\ rejects one no machine was declared under, so what comes back is a description
 \ or nothing.
 : ID ( NMACH:mach -- n )              NMACH-MACH:UNMAKE ROW-CK ;
 : BY-ID ( n -- NMACH:mach )           ROW-CK NMACH-MACH:MAKE ;
@@ -251,10 +251,10 @@ public
 \ ---- the link register -------------------------------------------------------
 \ Does this machine keep a return address in a register at all? A machine that
 \ does not is not a machine whose routines preserve or destroy one: their
-\ contracts declare the link effect `absent`, and NEFF refuses any other answer.
+\ contracts declare the link effect `absent`, and NEFF rejects any other answer.
 : LINK? ( NMACH:mach -- bool )        F-LINK F@ 0<> ;
 
-\ Which register that is. A machine without one is refused rather than answered
+\ Which register that is. A machine without one is rejected rather than answered
 \ with a number that would read as register zero.
 : LINK-GPR ( NMACH:mach -- n )
    F-LINK F@ {: lb:n :}

@@ -5,7 +5,7 @@
 \ CHANGES or LAST-ROWID miss an insert; EXEC runs only a text's first
 \ statement; a transaction keeps a failed body's rows, swallows its throw or
 \ stays open; WITH-READ holds off a writer; a throw in a statement's scope
-\ leaves the statement live, so CLOSE refuses; a malformed file, a full
+\ leaves the statement live, so CLOSE rejects; a malformed file, a full
 \ database or a held lock is thrown as another class; OPEN-READ follows a
 \ symlink, or writes.
 \ A reused statement keeps a failed step's error, or logs it twice; a write
@@ -216,7 +216,7 @@ create HELD 3 allot
    {: a:SQLITE:connection b:SQLITE:connection :}
    a [: a b READ-THEN-WRITE ;] SQLITE:WITH-TRANSACTION ;
 
-: WRITE-REFUSED ( SQLITE:connection SQLITE:connection -- )
+: WRITE-REJECTED ( SQLITE:connection SQLITE:connection -- )
    {: a:SQLITE:connection b:SQLITE:connection :}
    [: a b WRITE-HELD ;] SQLITE:E-SQL TTHROWSQ ;
 
@@ -224,7 +224,7 @@ create HELD 3 allot
 : BUSY ( SQLITE:connection SQLITE:connection -- )
    {: a:SQLITE:connection b:SQLITE:connection :}
    LOG$ STDERR:CAPTURE
-   [: a b WRITE-REFUSED ;]
+   [: a b WRITE-REJECTED ;]
    [: STDERR:;CAPTURE ;] finally
    LOG$ LOG-BUF LOG-CAP FS:READ-ALL {: n:n :}
    LOG-BUF n >str LINES 1 T=
@@ -257,15 +257,15 @@ create HELD 3 allot
 
 \ ---- 4: a throw in WITH-STATEMENT finalizes --------------------------------
 
-\ Inside the scope the statement is live, so SQLite refuses the close.
-: CLOSE-REFUSED ( SQLITE:connection -- )
+\ Inside the scope the statement is live, so SQLite rejects the close.
+: CLOSE-REJECTED ( SQLITE:connection -- )
    {: c:SQLITE:connection :}
    [: c SQLITE:CLOSE ;] SQLITE:E-SQL TTHROWSQ ;
 
 : THROW-INSIDE ( SQLITE:connection -- )
    {: c:SQLITE:connection :}
    c s" SELECT v FROM u WHERE v = ?"
-   [: c CLOSE-REFUSED 1 99 SQLITE:BIND-INT ;] SQLITE:WITH-STATEMENT ;
+   [: c CLOSE-REJECTED 1 99 SQLITE:BIND-INT ;] SQLITE:WITH-STATEMENT ;
 
 : FINALIZED ( -- )
    MAIN$ SQLITE:OPEN {: c:SQLITE:connection :}
@@ -275,7 +275,7 @@ create HELD 3 allot
 \ ---- 6b: a write that fails as it finishes --------------------------------
 
 \ A read in an open transaction keeps a SHARED lock on the rollback journal,
-\ so a writer's commit is refused while it lasts.
+\ so a writer's commit is rejected while it lasts.
 : HOLD-READ ( SQLITE:connection -- )
    {: b:SQLITE:connection :}
    b s" BEGIN" SQLITE:EXEC
@@ -285,7 +285,7 @@ create HELD 3 allot
    s" INSERT INTO u VALUES (20) RETURNING v"
    [: SQLITE:STEP TTRUE ;] SQLITE:WITH-STATEMENT ;
 
-: COMMIT-REFUSED ( SQLITE:connection -- )
+: COMMIT-REJECTED ( SQLITE:connection -- )
    {: a:SQLITE:connection :}
    a [: a s" INSERT INTO u VALUES (21)" SQLITE:EXEC ;]
    SQLITE:WITH-TRANSACTION ;
@@ -301,7 +301,7 @@ create HELD 3 allot
    0 a SQLITE:BUSY-MS!
    b HOLD-READ
    [: a RETURNING ;] SQLITE:E-SQL TTHROWSQ
-   [: a COMMIT-REFUSED ;] SQLITE:E-SQL TTHROWSQ
+   [: a COMMIT-REJECTED ;] SQLITE:E-SQL TTHROWSQ
    b s" ROLLBACK" SQLITE:EXEC
    a s" SELECT count(*) FROM u WHERE v IN (20, 21)" COUNT 0 T=
    a COMMIT-AGAIN
@@ -326,7 +326,7 @@ create HELD 3 allot
    SQLITE:E-FULL TTHROWSQ
    c SQLITE:CLOSE ;
 
-\ The insert that the lock refused succeeds once the lock is gone.
+\ The insert that the lock rejected succeeds once the lock is gone.
 : LOCKED ( -- )
    MAIN$ SQLITE:OPEN {: a:SQLITE:connection :}
    MAIN$ SQLITE:OPEN {: b:SQLITE:connection :}

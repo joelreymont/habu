@@ -1,6 +1,6 @@
-\ program-diagnostic-badsig.f - one refused signature per definer, each in its
+\ program-diagnostic-badsig.f - one rejected signature per definer, each in its
 \ own multi-error load, for test/program-diagnostics-test.f BADSIG-ONCE. The
-\ check refuses a colon definition's, the stored row a `TRUSTED:` or `defer`
+\ check rejects a colon definition's, the stored row a `TRUSTED:` or `defer`
 \ one's.
 package PROGRAM-DIAG-BADSIG
 public

@@ -1,5 +1,5 @@
 \ check-verify-core.f - check a subject's bytes as its file, in its load context, without running it.
-\ LSP-CHECK:VERIFY-BYTES answers what `bin/hb --load PATH` would refuse of the bytes, for a language
+\ LSP-CHECK:VERIFY-BYTES answers what `bin/hb --load PATH` would reject of the bytes, for a language
 \ server's buffer and `tools/check.f --verify-only`. The closure is composed over the bytes with PATH
 \ as the subject's identity, so a dependency that requires PATH back meets the bytes; a load of an
 \ open document other than PATH meets its text, the first of two for one path holding. A child
@@ -74,11 +74,11 @@ variable CHK-BYTES-U
 
 public
 
-\ Only verified and refused judge PATH, refused for any file of its closure;
+\ Only verified and rejected judge PATH, rejected for any file of its closure;
 \ deferred leaves its warnings' tokens to the run; held: verifier only.
 ENUM verdict
    VARIANT verified ;VARIANT
-   VARIANT refused ;VARIANT
+   VARIANT rejected ;VARIANT
    VARIANT engine-provided ;VARIANT
    VARIANT held ;VARIANT
    VARIANT incomplete FIELD status PROCESS:ending ;VARIANT
@@ -93,7 +93,7 @@ $0A constant VFY-LF
 \ The child's answer, from its result line.
 0 constant VFY-NONE
 1 constant VFY-VERIFIED
-2 constant VFY-REFUSED
+2 constant VFY-REJECTED
 3 constant VFY-HELD
 4 constant VFY-MISSING
 5 constant VFY-DEFERRED
@@ -330,7 +330,7 @@ variable VFY-EXE-U
 : VFY-ANSWER-AT ( n n -- n ) {: at:n end:n :}
    at VFY-OUT end at - >str {: s:str :}
    s s" check-verify: verified" STR:= if VFY-VERIFIED exit then
-   s s" check-verify: refused" STR:= if VFY-REFUSED exit then
+   s s" check-verify: rejected" STR:= if VFY-REJECTED exit then
    s s" check-verify: full" STR:= if VFY-FULL exit then
    s s" check-verify: deferred" STR:= if VFY-DEFERRED exit then
    s s" check-verify: stopped" STR:= if VFY-STOPPED exit then
@@ -535,10 +535,10 @@ variable VFY-EXE-U
 : VFY-VERDICT ( PROCESS:ending -- verdict ) {: o :}
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if LSP--CHECK-VERDICT:VERIFIED exit then
-      VFY-ANSWER @ VFY-REFUSED = if LSP--CHECK-VERDICT:REFUSED exit then
-      VFY-ANSWER @ VFY-MISSING = if LSP--CHECK-VERDICT:REFUSED exit then
-      VFY-ANSWER @ VFY-UNREAD = if LSP--CHECK-VERDICT:REFUSED exit then
-      VFY-ANSWER @ VFY-FULL = if LSP--CHECK-VERDICT:REFUSED exit then
+      VFY-ANSWER @ VFY-REJECTED = if LSP--CHECK-VERDICT:REJECTED exit then
+      VFY-ANSWER @ VFY-MISSING = if LSP--CHECK-VERDICT:REJECTED exit then
+      VFY-ANSWER @ VFY-UNREAD = if LSP--CHECK-VERDICT:REJECTED exit then
+      VFY-ANSWER @ VFY-FULL = if LSP--CHECK-VERDICT:REJECTED exit then
       VFY-ANSWER @ VFY-DEFERRED = if LSP--CHECK-VERDICT:DEFERRED exit then
       VFY-ANSWER @ VFY-STOPPED = if LSP--CHECK-VERDICT:DEFERRED exit then
       VFY-ANSWER @ VFY-HELD = if LSP--CHECK-VERDICT:HELD exit then
@@ -549,7 +549,7 @@ variable VFY-EXE-U
 : VFY-PREVERDICT ( PROCESS:ending -- result<n,PROCESS:ending> ) {: o :}
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if 0 RESULT:OK exit then
-      VFY-ANSWER @ VFY-REFUSED = if EXIT-STATUS:REJECTED RESULT:OK exit then
+      VFY-ANSWER @ VFY-REJECTED = if EXIT-STATUS:REJECTED RESULT:OK exit then
       VFY-ANSWER @ VFY-MISSING = if EXIT-STATUS:REJECTED RESULT:OK exit then
       VFY-ANSWER @ VFY-UNREAD = if EXIT-STATUS:IOERR RESULT:OK exit then
       VFY-ANSWER @ VFY-FULL = if EXIT-STATUS:FULL RESULT:OK exit then
@@ -630,12 +630,12 @@ public
 \ documents open that OPEN gives: OPEN is given a word taking an open
 \ document's canonical path and text, and calls it once for each. The records
 \ are packets when JSON is true and prose when false. A throw that ends the
-\ verification after its record refuses it: the record ends VERIFY-OUT$, after
+\ verification after its record rejects it: the record ends VERIFY-OUT$, after
 \ every record made before it, and VERIFY-STATUS says with what status. A
 \ loader's fault is such a stop: a loader form the composition rejects, a
 \ string or a locals group a file never closes, or a file a loader word names
 \ that is not there or cannot be read, which VERIFY-UNREAD$ names. An empty
-\ PATH is E-FS-PATH; an engine src/lib/engine-candidate.f refuses (E-FS-OPEN)
+\ PATH is E-FS-PATH; an engine src/lib/engine-candidate.f rejects (E-FS-OPEN)
 \ or a failed spawn throws as well. stdout is kept whole; more than 256 KiB of
 \ the child's stderr is E-PROC-STDERR-CAPACITY, VERIFY-OUT$ then holding every
 \ complete record received before it.
@@ -1127,13 +1127,13 @@ public
    true VFY-ENTRY !
    src path deadline json VFY-PREPASS-RUN ;
 
-\ What the last VERIFY-BYTES or PREVERIFY-BYTES failed with: 70 refused or a
+\ What the last VERIFY-BYTES or PREVERIFY-BYTES failed with: 70 rejected or a
 \ source missing, 74 one unreadable, 90 a full dictionary, 1 a stop, else 0.
 : VERIFY-STATUS ( -- n )
    VFY-ANSWER @ VFY-STOPPED = if EXIT-STATUS:FAILURE exit then
    VFY-ANSWER @ VFY-UNREAD = if EXIT-STATUS:IOERR exit then
    VFY-ANSWER @ VFY-FULL = if EXIT-STATUS:FULL exit then
-   VFY-ANSWER @ VFY-REFUSED =  VFY-ANSWER @ VFY-MISSING =  or if EXIT-STATUS:REJECTED exit then
+   VFY-ANSWER @ VFY-REJECTED =  VFY-ANSWER @ VFY-MISSING =  or if EXIT-STATUS:REJECTED exit then
    0 ;
 
 \ The file a loader of the last verification named that is not there or could

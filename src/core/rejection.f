@@ -23,7 +23,7 @@ EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
 : ROUND ( n -- n ) 1 cells 1 - +  1 cells negate and ;
 \ TEXT holds the record being built, TEXT-LEN bytes of it. Each growable room
 \ here but the pending one starts in TEXT-FIRST bytes of the block, so a record
-\ is written after the system refuses memory; a larger room is mapped.
+\ is written after the system runs out of memory; a larger room is mapped.
 16384 constant TEXT-FIRST                \ bytes of each first room
 \ The block holds every cell, buffer and first room of a record; the cells
 \ come first, each zero at its start, so FREE zeroes them as one run.
@@ -198,7 +198,7 @@ private
 \ Moves the room of c bytes at p, whose first room is f, to nc fresh bytes that
 \ hold its c bytes. The first room is the block's: it is zeroed, not unmapped.
 : ROOM-GROW ( ^u8 ^u8 n n -- ^u8 ) {: p:^ f:^ c:n nc:n :}
-   \ The record writer cannot report a refusal of its own room.
+   \ The record writer cannot report a rejection of its own room.
    nc map-anon 0 <> IF
       drop s" rejection: a record room's mmap failed" EXIT-STATUS:SYSTEM die
    THEN {: q:^ :}
@@ -232,7 +232,7 @@ private
    SAVED-P @ SAVED-BASE SAVED-CAP @ 0 u FIT  SAVED-CAP !  SAVED-P ! ;
 
 \ Doubles the pending room until n fit, keeping none of its bytes; false when the
-\ system refuses it. Only a build pends, in hb, which maps: no room is the block's.
+\ system gives none. Only a build pends, in hb, which maps: no room is the block's.
 : PENDING-ROOM ( n -- bool ) {: u:n :}
    PENDING-CAP @ {: c:n :}
    c u >= IF 0 0= EXIT THEN
@@ -1335,11 +1335,11 @@ public
    THEN
    cap EMIT-U  s"  bytes a path may have" EMIT-STR ;
 
-\ Throws E-MEM-MAP carrying the record of n bytes the system refused for what
+\ Throws E-MEM-MAP carrying the record of n bytes the system did not give for what
 \ the first str names, while loading the file the second names, if any.
 : MAP-PASS-FILE ( n str str -- ) {: bytes:n a:^ u:n f:^ fu:n :}
    s" E-MEM-MAP" OPEN
-   s" the system refused " EMIT-STR  bytes EMIT-U
+   s" the system gave no " EMIT-STR  bytes EMIT-U
    s"  bytes of storage" EMIT-STR
    u 0 > if s"  for " EMIT-STR  a u EMIT-STR then
    fu 0 > if s" file" NOTE  f fu EMIT-STR then
@@ -1348,7 +1348,7 @@ public
    EMIT-STR
    SAVE  E-MEM-MAP PASS ;
 
-\ Throws E-MEM-MAP carrying the record of n bytes the system refused for what
+\ Throws E-MEM-MAP carrying the record of n bytes the system did not give for what
 \ a u names, if anything.
 : MAP-PASS ( n str -- )
    s" " MAP-PASS-FILE ;

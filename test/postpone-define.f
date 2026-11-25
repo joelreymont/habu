@@ -3,9 +3,9 @@
 \ the word the definer found when it was compiled, whatever the building
 \ package defines: a global, the definer package's private word and its public
 \ one. The same body evaluated as text binds the building package's words,
-\ and literal or compile, with no definition open is refused. define-word
-\ takes the effect a definer built, a parametric one included, and refuses a
-\ type that is not an effect. A definition the checker refuses at the
+\ and literal or compile, with no definition open is rejected. define-word
+\ takes the effect a definer built, a parametric one included, and rejects a
+\ type that is not an effect. A definition the checker rejects at the
 \ definer's postpone ; is abandoned, and the next definition compiles. An
 \ effect holds at most 23 type parameters, numbered per effect however many
 \ the file made before. A STRUCTURE's AT answers its element in a package
@@ -211,10 +211,10 @@ s" = word: CUBE" HAS  REJECTION:BUFFER-OFF
 s" : AFTER ( -- n ) 7 ;" evaluate-closed
 AFTER 7 T=
 
-: RV-REFUSED ( -- n ) [: s" RV-BAD" POSTPONE-DEFINER:MAKE-RV ;] catch ;
+: RV-REJECTED ( -- n ) [: s" RV-BAD" POSTPONE-DEFINER:MAKE-RV ;] catch ;
 REJECTION:CAPTURE
-RV-REFUSED 70 T=
-s" error[E-NOT-EFFECT]" HAS  REJECTION:BUFFER$ s" postpone-define.f" 1 s" RV-REFUSED 70 T=" T-PLACED
+RV-REJECTED 70 T=
+s" error[E-NOT-EFFECT]" HAS  REJECTION:BUFFER$ s" postpone-define.f" 1 s" RV-REJECTED 70 T=" T-PLACED
 s" = word: RV-BAD" HAS  REJECTION:BUFFER-OFF
 s" : AFTER-RV ( -- n ) 8 ;" evaluate-closed
 AFTER-RV 8 T=

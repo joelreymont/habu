@@ -295,7 +295,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" drop" 1 32 31 35 AT ;
 
 \ Line 1 is a comment holding two- and four-byte characters; line 2 has a
-\ two-byte character in a string and in the refused token itself.
+\ two-byte character in a string and in the rejected token itself.
 : TEST-UTF8 ( -- )
    s" multibyte characters before and inside the token" T-LABEL
    SB-RESET
@@ -363,7 +363,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ top-level rejection in a file the subject requires names the required file and
 \ its own place.
 : TEST-TOP-DEP ( -- )
-   s" a top-level refusal in a required file names that file" T-LABEL
+   s" a top-level rejection in a required file names that file" T-LABEL
    SB-RESET
    s" variable DV" SB-APPEND LF+
    s" 1 drop" SB-APPEND LF+ LF+ LF+ LF+ LF+
@@ -767,7 +767,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" parses-count.f" FIXTURE!
    s" W" 1 9 8 9 ROW-REJECTED ;
 
-\ A refused `generates:` row is the verifier's own packet.
+\ A rejected `generates:` row is the verifier's own packet.
 : TEST-GENERATES ( -- )
    s" a generates: row naming no word" T-LABEL
    SB-RESET
@@ -785,7 +785,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" --verify-only" CHECK
    0 s" NOWHERE" 4 13 73 80 FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ A row on a word that reads no name after it is refused: kept, it makes the
+\ A row on a word that reads no name after it is rejected: kept, it makes the
 \ pre-pass take the token after the call of GEN as the made word.
 : TEST-GENERATES-READS-NONE ( -- )
    s" a generates: row on a word that reads no name" T-LABEL
@@ -856,7 +856,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" drop" 4 4 48 52 DEP-AT ;
 
 : TEST-COMPOSE-ALL ( -- )
-   s" --all-errors past a required file's refusal to the subject's" T-LABEL
+   s" --all-errors past a required file's rejection to the subject's" T-LABEL
    COMPOSE-FIXTURE
    s" --all-errors" CHECK
    GJA-LINE# @ 2 T=
@@ -986,15 +986,15 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" code" c FIELD= ;
 
 \ The composition check gives one packet, a rejection. Plain preverification
-\ uses this same composition verifier; REFUSED-MODES keeps representative
+\ uses this same composition verifier; REJECTED-MODES keeps representative
 \ checks across the mode boundary.
-: REFUSED-AT ( str str n n n n -- )
+: REJECTED-AT ( str str n n n n -- )
    {: c:str tok:str line:n col:n bs:n be:n :}
    s" --all-errors" CHECK
    c REJECTED-AS
    0 tok line col bs be AT ;
 
-: REFUSED-MODES-RC ( str str n n n n n -- )
+: REJECTED-MODES-RC ( str str n n n n n -- )
    {: c:str tok:str line:n col:n bs:n be:n rc:n :}
    s" " rc CHECK-EXIT
    c REJECTED-AS
@@ -1006,8 +1006,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    c REJECTED-AS
    0 tok line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-: REFUSED-MODES ( str str n n n n -- )
-   70 REFUSED-MODES-RC ;
+: REJECTED-MODES ( str str n n n n -- )
+   70 REJECTED-MODES-RC ;
 
 \ A named file that will not open is one record, which no source places: its
 \ message carries the reason the open failed.
@@ -1084,7 +1084,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    1 s" nosuchtwo" 3 13 83 92 AT ;
 
 \ A word ARENA derives that is taken in the other section is the duplicate,
-\ refused at the declared name.
+\ rejected at the declared name.
 : TEST-ARENA ( -- )
    s" an ARENA whose word is taken in the private section" T-LABEL
    SB-RESET
@@ -1108,14 +1108,14 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" ARENA X [ lin -- ]" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" arena-linear.f" FIXTURE!
-   s" E-BAD-STORAGE" s" [ lin -- ]" 3 9 32 42 REFUSED-MODES
+   s" E-BAD-STORAGE" s" [ lin -- ]" 3 9 32 42 REJECTED-MODES
    s" an ARENA whose element type hands out an atom" T-LABEL
    SB-RESET
    s" package P" SB-APPEND LF+
    s" ARENA X [ -- xt ]" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" arena-atom.f" FIXTURE!
-   s" E-BAD-STORAGE" s" [ -- xt ]" 2 9 18 27 REFUSED-MODES ;
+   s" E-BAD-STORAGE" s" [ -- xt ]" 2 9 18 27 REJECTED-MODES ;
 
 \ A storage type that does not parse is rejected at the token the parse stopped
 \ on, or on the type where the parse ran off its end.
@@ -1126,7 +1126,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" TYPED-VARIABLE XB [ n n ]" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" typed-var-malformed.f" FIXTURE!
-   s" E-BAD-STORAGE" s" ]" 2 25 34 35 REFUSED-MODES
+   s" E-BAD-STORAGE" s" ]" 2 25 34 35 REJECTED-MODES
    0 s" label" s" the type does not parse here" FIELD=
    s" a bare `^` storage type is rejected at the `^`" T-LABEL
    SB-RESET
@@ -1134,7 +1134,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" TYPED-VARIABLE XB ^" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" typed-var-bare-ptr.f" FIXTURE!
-   s" E-BAD-STORAGE" s" ^" 2 19 28 29 REFUSED-MODES
+   s" E-BAD-STORAGE" s" ^" 2 19 28 29 REJECTED-MODES
    0 s" label" s" `^` with no element type" FIELD= ;
 
 \ Under --verify-only the declaration pre-pass alone rejects the fixture; the
@@ -1166,10 +1166,10 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" E-BAD-DECLARATION" s" reserved name" s" PTR" 1 9 8 11 PREPASS-REJECTED
    s" an upper-case NEWTYPE name with parameters, at its bare name" T-LABEL
    s" NEWTYPE Foo<a>" s" newtype-case-params.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" Foo" 1 9 8 11 REFUSED-MODES
+   s" E-BAD-DECLARATION" s" Foo" 1 9 8 11 REJECTED-MODES
    s" a NEWTYPE header with parameters and no name, at the header" T-LABEL
    s" NEWTYPE <a>" s" newtype-params-no-name.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" <a>" 1 9 8 11 REFUSED-MODES
+   s" E-BAD-DECLARATION" s" <a>" 1 9 8 11 REJECTED-MODES
    s" a duplicate VALUE-RECORD field under --verify-only" T-LABEL
    s" VALUE-RECORD vr x n x n END-VALUE-RECORD" s" value-record-dup.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" declared again" s" x" 1 21 20 21 PREPASS-REJECTED
@@ -1235,69 +1235,69 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a comment holding a SUMTYPE's terminator" T-LABEL
    \ A commented `;SUMTYPE` closes nothing: the sum runs to the input's end.
    s" SUMTYPE shape VARIANT dot ;VARIANT \ ;SUMTYPE" s" sum-comment-end.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" shape" 1 9 8 13 REFUSED-MODES
+   s" E-BAD-DECLARATION" s" shape" 1 9 8 13 REJECTED-MODES
    0 s" label" s" missing ;SUMTYPE" FIELD=
    s" a comment in a closed VALUE-RECORD" T-LABEL
    s" VALUE-RECORD vr x n \ note" s" END-VALUE-RECORD" s" vrec-comment.f"
       TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 21 20 21 REFUSED-MODES
+   s" E-BAD-DECLARATION" s" \" 1 21 20 21 REJECTED-MODES
    0 s" label" s" a comment, not a name" FIELD=
    s" a closed paren comment in a VALUE-RECORD" T-LABEL
    s" VALUE-RECORD vr x n ( note )" s" END-VALUE-RECORD" s" vrec-paren.f"
       TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" (" 1 21 20 21 REFUSED-MODES
+   s" E-BAD-DECLARATION" s" (" 1 21 20 21 REJECTED-MODES
    0 s" label" s" a signature, not a name" FIELD= ;
 
 : TEST-PREPASS-NAME-COMMENT ( -- )
    s" a comment before an ENUM's name" T-LABEL
    s" ENUM \ note" s" colr red green ;ENUM" s" enum-name-comment.f"
       TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 6 5 6 REFUSED-MODES
+   s" E-BAD-DECLARATION" s" \" 1 6 5 6 REJECTED-MODES
    0 s" label" s" name must be a lowercase family tail" FIELD=
    s" a comment as a typed variable's name" T-LABEL
    s" TYPED-VARIABLE \ n" s" tvar-name-comment.f" LINE-FIXTURE
-   s" E-MISSING-NAME" s" \" 1 16 15 16 REFUSED-MODES
+   s" E-MISSING-NAME" s" \" 1 16 15 16 REJECTED-MODES
    0 s" label" s" a comment, not a name" FIELD= ;
 
 \ The load compiles a body before it checks the definition at `;`, so a body
-\ word it cannot compile, undefined or a local it cannot bind, refuses a
+\ word it cannot compile, undefined or a local it cannot bind, rejects a
 \ definition whose signature does not parse, at that word; any other error in
-\ the body leaves the refusal to the signature, at its type.
+\ the body leaves the rejection to the signature, at its type.
 : TEST-BAD-SIGNATURE ( -- )
    s" a signature that does not parse and an undefined word" T-LABEL
    s" : X ( n -- zz ) NOPE ;" s" badsig-undefined.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 17 16 20 REFUSED-MODES
+   s" E-UNDEFINED" s" NOPE" 1 17 16 20 REJECTED-MODES
    s" that signature alone" T-LABEL
    s" : X ( n -- zz ) 1 ;" s" badsig.f" LINE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-MODES
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REJECTED-MODES
    s" that undefined word alone" T-LABEL
    s" : X ( n -- n ) NOPE ;" s" undefined.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 16 15 19 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 16 15 19 REJECTED-AT
    s" that signature and an unsafe word" T-LABEL
    s" : X ( n -- zz ) evaluate ;" s" badsig-unsafe.f" LINE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REJECTED-AT
    s" that signature and a quotation local" T-LABEL
    s" : X ( n -- zz ) [: {: y:n :} ;] drop 1 ;" s" badsig-local.f" LINE-FIXTURE
-   s" E-BAD-LOCAL-SHAPE" s" {:" 1 20 19 21 REFUSED-MODES ;
+   s" E-BAD-LOCAL-SHAPE" s" {:" 1 20 19 21 REJECTED-MODES ;
 
-\ The load binds `--` and `|` in a locals group as locals; the checker refuses
+\ The load binds `--` and `|` in a locals group as locals; the checker rejects
 \ the definition at that token with the reason, and a body reference to it
-\ keeps that refusal rather than naming an undefined word.
+\ keeps that rejection rather than naming an undefined word.
 : TEST-LOCAL-GROUP ( -- )
    s" -- in a locals group" T-LABEL
    s" : X ( n -- n ) {: a -- b :} a ;" s" local-dash.f" LINE-FIXTURE
-   s" E-BAD-LOCAL-SHAPE" s" --" 1 21 20 22 REFUSED-MODES
+   s" E-BAD-LOCAL-SHAPE" s" --" 1 21 20 22 REJECTED-MODES
    0 s" message" s" a locals group names only locals; the signature declares the outputs" FIELD=
    s" | in a locals group" T-LABEL
    s" : X ( n n -- n ) {: a | :} a ;" s" local-bar.f" LINE-FIXTURE
-   s" E-BAD-LOCAL-SHAPE" s" |" 1 23 22 23 REFUSED-MODES
+   s" E-BAD-LOCAL-SHAPE" s" |" 1 23 22 23 REJECTED-MODES
    0 s" message" s" a locals group names only locals; Habu has no uninitialised locals" FIELD=
    s" a body reference to -- from a locals group" T-LABEL
    s" : X ( n -- n ) {: a -- b :} -- ;" s" local-dash-ref.f" LINE-FIXTURE
-   s" E-BAD-LOCAL-SHAPE" s" --" 1 21 20 22 REFUSED-MODES
+   s" E-BAD-LOCAL-SHAPE" s" --" 1 21 20 22 REJECTED-MODES
    s" a body reference to | from a locals group" T-LABEL
    s" : X ( n n -- n ) {: a | :} | ;" s" local-bar-ref.f" LINE-FIXTURE
-   s" E-BAD-LOCAL-SHAPE" s" |" 1 23 22 23 REFUSED-MODES ;
+   s" E-BAD-LOCAL-SHAPE" s" |" 1 23 22 23 REJECTED-MODES ;
 
 : RECORD-PLACED ( n str str str n n n n str -- )
    {: k:n code:str tok:str sp:str line:n col:n bs:n be:n path:str :}
@@ -1311,7 +1311,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" message" word FIELD-HAS ;
 
 \ STORED-PLACED for each check of the fixture, plain, --all-errors and
-\ --verify-only: each gives the refusal alone, never followed by its statement's
+\ --verify-only: each gives the rejection alone, never followed by its statement's
 \ throw.
 : STORED-AT ( str str n n n n -- )
    {: word:str tok:str line:n col:n bs:n be:n :}
@@ -1414,7 +1414,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    {: tok:str line:n col:n bs:n be:n :}
    s" E-BAD-QUALIFIED-RECORD" tok tok line col bs be 1 0 RECORD-AT ;
 
-\ A colon definition CHECK rejects: the plain check stops at that refusal, and
+\ A colon definition CHECK rejects: the plain check stops at that rejection, and
 \ --all-errors and --verify-only follow it with the record the rejected
 \ definition asks for its malformed name.
 : REJECTED-MALFORMED ( -- )
@@ -1428,7 +1428,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    GJA-LINE# @ 2 T=
    1 s" E-BAD-QUALIFIED-RECORD" s" P:Q:R" s" P:Q:R" 1 3 2 7 FX-PATH$ CANON$ RECORD-PLACED ;
 
-\ A record asked for a malformed qualified name is refused at the name its
+\ A record asked for a malformed qualified name is rejected at the name its
 \ declaration reads, whether the record is keyed by that name's fold (a `defer`,
 \ a `variable`), by the name as read (`undefine`) or by the name CHECK copied (a
 \ colon definition, certified, rejected or deferred to the run). --verify-only defers the `evaluate` that renders MADE.
@@ -1460,28 +1460,28 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" evaluate" 1 21 20 28 FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ The same order without a signature fault: a body word the load cannot
-\ compile refuses the definition at that word before any check made at `;`, and
+\ compile rejects the definition at that word before any check made at `;`, and
 \ otherwise the first token whose check fails does, its verdict included.
-: TEST-REFUSAL-ORDER ( -- )
+: TEST-REJECTION-ORDER ( -- )
    s" an undefined word before a trust-boundary word" T-LABEL
    s" : X ( n -- n ) NOPE evaluate ;" s" undef-unsafe.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 16 15 19 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 16 15 19 REJECTED-AT
    s" an undefined word after a trust-boundary word" T-LABEL
    s" : X ( n -- n ) evaluate NOPE ;" s" unsafe-undef.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 25 24 28 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 25 24 28 REJECTED-AT
    s" a malformed qualified call after a trust-boundary word" T-LABEL
    s" : X ( n -- n ) evaluate A:B:C ;" s" unsafe-qual.f" LINE-FIXTURE
-   s" E-BAD-QUALIFIED" s" A:B:C" 1 25 24 29 REFUSED-AT
+   s" E-BAD-QUALIFIED" s" A:B:C" 1 25 24 29 REJECTED-AT
    s" an unknown construct variant after a trust-boundary word" T-LABEL
    s" SUMTYPE rf VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- rf ) evaluate construct rf nope ;"
       s" unsafe-variant.f" LINE-FIXTURE
-   s" E-CONSTRUCT-UNKNOWN-VARIANT" s" nope" 1 81 80 84 REFUSED-AT
-   s" a mismatch before a refused locals group token" T-LABEL
+   s" E-CONSTRUCT-UNKNOWN-VARIANT" s" nope" 1 81 80 84 REJECTED-AT
+   s" a mismatch before a rejected locals group token" T-LABEL
    s" : X ( n -- n ) dup c@ {: a -- b :} a ;" s" mismatch-local.f" LINE-FIXTURE
-   s" E-MISMATCH" s" c@" 1 20 19 21 REFUSED-AT
+   s" E-MISMATCH" s" c@" 1 20 19 21 REJECTED-AT
    s" a mismatch before a quotation local" T-LABEL
    s" : X ( n -- n ) dup c@ [: {: y:n :} ;] drop 1 ;" s" mismatch-qlocal.f" LINE-FIXTURE
-   s" E-BAD-LOCAL-SHAPE" s" {:" 1 26 25 27 REFUSED-AT ;
+   s" E-BAD-LOCAL-SHAPE" s" {:" 1 26 25 27 REJECTED-AT ;
 
 \ A read below the return-stack cells pushed here is the return row's to repair,
 \ and its record says so.
@@ -1492,19 +1492,19 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
       0 s" message" s" return stack: this reads below the return-stack cells pushed here" FIELD=
    THEN ;
 
-\ A read below the return-stack cells pushed here is refused at the read, not
+\ A read below the return-stack cells pushed here is rejected at the read, not
 \ at the last token walked: the measure is taken before the read's unify binds
 \ the open return base.
 : TEST-REPAIR-FOLLOWS ( -- )
    s" a mismatch before an unbalanced return row" T-LABEL
    s" : X ( n -- ) >r 1 c@ ;" s" mismatch-rstack.f" LINE-FIXTURE
-   s" E-MISMATCH" s" c@" 1 19 18 20 REFUSED-AT
+   s" E-MISMATCH" s" c@" 1 19 18 20 REJECTED-AT
    s" a >r whose cell does not fit, as dup over that cell" T-LABEL
    SB-RESET
    s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE" SB-APPEND LF+
    s" : X ( rvbox<a> -- ) >r r> drop ;" SB-APPEND LF+
    s" rvbox-tor.f" FIXTURE!
-   s" E-MISMATCH" s" >r" 2 21 60 62 REFUSED-AT
+   s" E-MISMATCH" s" >r" 2 21 60 62 REJECTED-AT
    0 s" expected" s" a" NOTE=
    0 s" found" s" rvbox<b>" NOTE=
    0 s" family" s" rvbox" NOTE=
@@ -1513,76 +1513,76 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE" SB-APPEND LF+
    s" : X ( n rvbox<a> -- ) 2>r 2r> 2drop ;" SB-APPEND LF+
    s" rvbox-2tor.f" FIXTURE!
-   s" E-MISMATCH" s" 2>r" 2 23 62 65 REFUSED-AT
+   s" E-MISMATCH" s" 2>r" 2 23 62 65 REJECTED-AT
    0 s" expected" s" c a" NOTE=
    0 s" found" s" n rvbox<b>" NOTE=
    0 s" family" s" rvbox" NOTE=
    s" that unbalanced return row alone" T-LABEL
    s" : X ( n -- ) >r ;" s" rstack.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" >r" 1 14 13 15 REFUSED-AT
+   s" E-RETURN-STACK" s" >r" 1 14 13 15 REJECTED-AT
    0 s" message" s" return stack: the return row does not balance at exit" FIELD=
    s" an r> below the return cells pushed here" T-LABEL
    s" : X ( -- ) r> drop ;" s" rread.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" r>" 1 12 11 13 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 12 11 13 REJECTED-AT  false READS-BELOW
    s" an r@ below them" T-LABEL
    s" : X ( -- ) r@ drop ;" s" rfetch.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" r@" 1 12 11 13 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r@" 1 12 11 13 REJECTED-AT  false READS-BELOW
    s" a 2r> below them" T-LABEL
    s" : X ( -- ) 2r> 2drop ;" s" r2read.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" 2r>" 1 12 11 14 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" 2r>" 1 12 11 14 REJECTED-AT  false READS-BELOW
    s" a 2r@ below them" T-LABEL
    s" : X ( -- ) 2r@ 2drop ;" s" r2fetch.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" 2r@" 1 12 11 14 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" 2r@" 1 12 11 14 REJECTED-AT  false READS-BELOW
    s" an r> whose cell goes back with >r" T-LABEL
    s" : X ( -- ) r> >r ;" s" rround.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" r>" 1 12 11 13 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 12 11 13 REJECTED-AT  false READS-BELOW
    s" an r> in the else arm, whose if arm pushed its own" T-LABEL
    s" : X ( bool -- ) if 1 >r r> drop else r> drop then ;" s" relse.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" r>" 1 38 37 39 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 38 37 39 REJECTED-AT  false READS-BELOW
    s" an r> in a quotation literal" T-LABEL
    s" : X ( -- ) [: r> drop ;] drop ;" s" rquot.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" r>" 1 15 14 16 REFUSED-AT  true READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 15 14 16 REJECTED-AT  true READS-BELOW
    s" an r@ in a do loop, whose cells are not on the return row" T-LABEL
    s" : X ( n n -- ) do r@ drop loop ;" s" rloopf.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" r@" 1 19 18 20 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r@" 1 19 18 20 REJECTED-AT  false READS-BELOW
    s" an r> in a do loop" T-LABEL
    s" : X ( n n -- ) do r> drop loop ;" s" rloopr.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" r>" 1 19 18 20 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 19 18 20 REJECTED-AT  false READS-BELOW
    s" an r> below a return row the signature names" T-LABEL
    s" : X ( | U -- | U ) r> drop ;" s" rnamed.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" r>" 1 20 19 21 REFUSED-AT  false READS-BELOW
+   s" E-RETURN-STACK" s" r>" 1 20 19 21 REJECTED-AT  false READS-BELOW
    s" a 2r> that moves a record whole, one cell short" T-LABEL
    SB-RESET
    s" STRUCTURE pr2 FIELD x n FIELD y n ;STRUCTURE" SB-APPEND LF+
    s" : X ( pr2 -- ) >r 2r> drop drop ;" SB-APPEND LF+
    s" rwide.f" FIXTURE!
-   s" E-RETURN-STACK" s" 2r>" 2 19 63 66 REFUSED-AT  false READS-BELOW ;
+   s" E-RETURN-STACK" s" 2r>" 2 19 63 66 REJECTED-AT  false READS-BELOW ;
 
-\ A stack word over an open layout is refused by the step path's mismatch,
+\ A stack word over an open layout is rejected by the step path's mismatch,
 \ whatever else is among its operands: a proof or an expanded layout beside it
 \ does not send it to the transport path, which has no reason to give.
 : TEST-OPEN-LAYOUT-XPORT ( -- )
    s" an open layout under swap" T-LABEL
    s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE : X ( rvbox<a> n -- n rvbox<a> ) swap ;"
       s" open-layout.f" LINE-FIXTURE
-   s" E-MISMATCH" s" swap" 1 74 73 77 REFUSED-AT
+   s" E-MISMATCH" s" swap" 1 74 73 77 REJECTED-AT
    s" an open layout beside a proof under swap" T-LABEL
    s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE : X ( rvbox<a> -- n rvbox<a> ) [: ;] catch swap ;"
       s" open-layout-proof.f" LINE-FIXTURE
-   s" E-MISMATCH" s" swap" 1 84 83 87 REFUSED-AT
+   s" E-MISMATCH" s" swap" 1 84 83 87 REJECTED-AT
    s" an open layout beside an expanded layout under swap" T-LABEL
    s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE STRUCTURE pr2 FIELD x n FIELD y n ;STRUCTURE : X ( rvbox<a> pr2 -- pr2 rvbox<a> ) swap ;"
       s" open-layout-pr2.f" LINE-FIXTURE
-   s" E-MISMATCH" s" swap" 1 123 122 126 REFUSED-AT
+   s" E-MISMATCH" s" swap" 1 123 122 126 REJECTED-AT
    s" a stale open layout under drop, a non-linear family first" T-LABEL
    s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE STRUCTURE pr2 FIELD x n FIELD y n ;STRUCTURE : ID ( rvbox<a> -- rvbox<a> ) ; : X ( pr2 rvbox<a> bool -- pr2 ) [: ( rvbox<a> bool -- rvbox<a> bool ) >r ID r> dup if 1 throw then ;] catch drop drop drop ;"
       s" open-layout-stale-pr2.f" LINE-FIXTURE
-   s" E-STALE-READ" s" drop" 1 237 236 240 REFUSED-AT
+   s" E-STALE-READ" s" drop" 1 237 236 240 REJECTED-AT
    0 s" family" s" rvbox" NOTE=
    s" a stale open layout in a locals capture" T-LABEL
    s" STRUCTURE rvbox<a> FIELD v a ;STRUCTURE STRUCTURE pr2 FIELD x n FIELD y n ;STRUCTURE : ID ( rvbox<a> -- rvbox<a> ) ; : X ( pr2 rvbox<a> bool -- pr2 ) [: ( rvbox<a> bool -- rvbox<a> bool ) >r ID r> dup if 1 throw then ;] catch drop drop {: x :} ;"
       s" open-layout-stale-local.f" LINE-FIXTURE
-   s" E-STALE-READ" s" :}" 1 242 241 243 REFUSED-AT ;
+   s" E-STALE-READ" s" :}" 1 242 241 243 REJECTED-AT ;
 
 
 : LIT-FIXTURE ( str -- )
@@ -1599,7 +1599,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" literal.f" FIXTURE! ;
 
 
-: LIT-REFUSED ( str str -- )
+: LIT-REJECTED ( str str -- )
    {: text:str why:str :}
    text T-LABEL
    text LIT-FIXTURE
@@ -1617,29 +1617,29 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ A number literal in a body passes into a fixed-width input or output only when
 \ it fits; its fact rides stack words, the return stack, a local and equal joins.
-: TEST-LITERAL-REFUSED ( -- )
-   s" : X ( -- ) -1 U8C ;" s" literal `-1` does not fit `u8` (`0`..`255`)" LIT-REFUSED
-   s" : X ( -- ) 256 U8C ;" s" literal `256` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+: TEST-LITERAL-REJECTED ( -- )
+   s" : X ( -- ) -1 U8C ;" s" literal `-1` does not fit `u8` (`0`..`255`)" LIT-REJECTED
+   s" : X ( -- ) 256 U8C ;" s" literal `256` does not fit `u8` (`0`..`255`)" LIT-REJECTED
    s" : X ( -- ) 65536 U16C ;"
-   s" literal `65536` does not fit `u16` (`0`..`65535`)" LIT-REFUSED
+   s" literal `65536` does not fit `u16` (`0`..`65535`)" LIT-REJECTED
    s" : X ( -- ) 4294967296 U32C ;"
-   s" literal `4294967296` does not fit `u32` (`0`..`4294967295`)" LIT-REFUSED
+   s" literal `4294967296` does not fit `u32` (`0`..`4294967295`)" LIT-REJECTED
    s" : X ( -- ) 300 dup U8C drop ;"
-   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REJECTED
    s" : X ( -- ) 0 300 swap drop U8C ;"
-   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REJECTED
    s" : X ( -- ) 300 >r r> U8C ;"
-   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REJECTED
    s" : X ( bool -- ) if 300 else 300 then U8C ;"
-   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REJECTED
    s" : X ( ^u16 -- ) 70000 swap ! ;"
-   s" literal `70000` does not fit `u16` (`0`..`65535`)" LIT-REFUSED
+   s" literal `70000` does not fit `u16` (`0`..`65535`)" LIT-REJECTED
    \ The callable's variable takes `u16` from the pointee, which is demanded; a
    \ rule that treats every link between variables as provided accepts this.
    s" : X ( ^u16 -- ) 70000 swap [: ! ;] K ;"
-   s" literal `70000` does not fit `u16` (`0`..`65535`)" LIT-REFUSED
+   s" literal `70000` does not fit `u16` (`0`..`65535`)" LIT-REJECTED
    s" : X ( -- ) 300 {: c :} c U8C ;"
-   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED ;
+   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REJECTED ;
 
 
 : TEST-LITERAL-ACCEPTED ( -- )
@@ -1650,8 +1650,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : X ( -- ) 300 1 - U8C ;" LIT-ACCEPTED
    s" : X ( ^u16 -- ) 65 swap ! ;" LIT-ACCEPTED
    s" : X ( bool -- ) if 5 else 300 then U8C ;" LIT-ACCEPTED
-   \ The carried cell is an `n`, which passes into `u8`; a rule that refuses an
-   \ `n` there refuses this.
+   \ The carried cell is an `n`, which passes into `u8`; a rule that rejects an
+   \ `n` there rejects this.
    s" : X ( -- ) 300 begin dup U8C 1+ dup 310 = until drop ;" LIT-ACCEPTED
    s" : X ( -- ) 0 begin drop 5 dup 3 = until drop ;" LIT-ACCEPTED
    s" : X ( -- ) 300 0 swap drop U8C ;" LIT-ACCEPTED
@@ -1668,7 +1668,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 
 : TEST-LITERAL-FIT ( -- )
-   TEST-LITERAL-REFUSED
+   TEST-LITERAL-REJECTED
    TEST-LITERAL-ACCEPTED ;
 
 \ A match whose scrutinee does not fit, and a match or case one of whose
@@ -1677,18 +1677,18 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" an undefined word in a match whose scrutinee does not fit" T-LABEL
    s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF FIRST ENDOF ;MATCH SECOND ;"
       s" scrutinee-first.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" FIRST" 1 77 76 81 REFUSED-AT
+   s" E-UNDEFINED" s" FIRST" 1 77 76 81 REJECTED-AT
    s" an undefined word after that match" T-LABEL
    s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF 1 ENDOF ;MATCH SECOND ;"
       s" scrutinee-after.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" SECOND" 1 92 91 97 REFUSED-AT
+   s" E-UNDEFINED" s" SECOND" 1 92 91 97 REJECTED-AT
    s" an undefined word after a match branch that fails" T-LABEL
    s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( mres -- n ) MATCH mres ok OF 1 c@ ENDOF ;MATCH NOPE ;"
       s" match-branch-after.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 98 97 101 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 98 97 101 REJECTED-AT
    s" an undefined word after a case branch that fails" T-LABEL
    s" : X ( n -- n ) CASE 1 OF 1 c@ ENDOF ENDCASE NOPE ;" s" case-branch-after.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 45 44 48 REFUSED-AT ;
+   s" E-UNDEFINED" s" NOPE" 1 45 44 48 REJECTED-AT ;
 
 : CERTIFIED ( -- )
    s" " 0 CHECK-EXIT
@@ -1698,18 +1698,18 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 0 T= ;
 
-\ A word `[']` ticks that does not exist refuses the definition at that word
+\ A word `[']` ticks that does not exist rejects the definition at that word
 \ before a signature that does not parse and before an earlier failing check.
 : TEST-TICK-TARGET ( -- )
    s" a signature that does not parse and an undefined ticked word" T-LABEL
    s" : X ( n -- zz ) ['] NOPE ;" s" badsig-tick.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 21 20 24 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 21 20 24 REJECTED-AT
    s" an undefined ticked word after a trust-boundary word" T-LABEL
    s" : X ( n -- n ) evaluate ['] NOPE ;" s" unsafe-tick.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 29 28 32 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 29 28 32 REJECTED-AT
    s" an undefined ticked word alone" T-LABEL
    s" : X ( -- n ) ['] NOPE ;" s" tick-undefined.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 18 17 21 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 18 17 21 REJECTED-AT
    s" a defined ticked word" T-LABEL
    s" : X ( -- ) ['] dup drop ;" s" tick-defined.f" LINE-FIXTURE
    CERTIFIED ;
@@ -1737,7 +1737,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : MK-DEFERRED ( n n -- )
    s" W-CHECK-DEFERRED" MK-WARNED ;
 
-: RUN-REFUSED-AT ( str str n n n n -- )
+: RUN-REJECTED-AT ( str str n n n n -- )
    {: c:str tok:str line:n col:n bs:n be:n :}
    s" " CHECK
    c REJECTED-AS
@@ -1757,9 +1757,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    1 s" severity" s" warning" FIELD=
    1 tok 3 12 53 53 tok STR:LEN + FX-PATH$ CANON$ FX$ AT-IN ;
 
-: VERIFY-REFUSED-AT ( str str n n n n -- )
+: VERIFY-REJECT-AT ( str str n n n n -- )
    {: c:str tok:str line:n col:n bs:n be:n :}
-   c tok line col bs be RUN-REFUSED-AT
+   c tok line col bs be RUN-REJECTED-AT
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
    0 34 MK-DEFERRED
@@ -2885,21 +2885,21 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-BAD-ESCAPE ( -- )
    s" a bad escape" T-LABEL
    s\" s\\\" A\\yB\" 2drop" s" escaped-bad.f" LINE-FIXTURE
-   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REJECTED-MODES
    s" E-UNTERMINATED-STRING" s" :1:1" 70 LOADED-AT
    s" a bad escape before a string that never closes" T-LABEL
    SB-RESET
    s\" s\\\" A\\yB\" 2drop" SB-APPEND LF+
    s\" s\" abc" SB-APPEND LF+
    s" escaped-bad-unterminated.f" FIXTURE!
-   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REJECTED-MODES
    s" E-UNTERMINATED-STRING" s" :1:1" 70 LOADED-AT
    s" a bad escape in a body before a string that never closes" T-LABEL
    SB-RESET
    s\" : L ( -- ) s\\\" A\\yB\" 2drop ;" SB-APPEND LF+
    s\" s\" abc" SB-APPEND LF+
    s" escaped-bad-body-unterminated.f" FIXTURE!
-   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 12 11 14 REFUSED-MODES
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 12 11 14 REJECTED-MODES
    s" E-UNTERMINATED-STRING" s" :1:12" 70 LOADED-AT
    s" a definition that does not check before a string that never closes" T-LABEL
    SB-RESET
@@ -3104,27 +3104,27 @@ HB-TARGET-LINUX? 0= [if]
    s\" s\\\" inc-t\\yarget.f\" included" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-path.f" FIXTURE!
-   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REJECTED-MODES
    s" E-UNTERMINATED-STRING" s" :1:1" 70 LOADED-AT
    s" a bad escape in a loader's path in a body" T-LABEL
    SB-RESET
    s\" : L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-body-path.f" FIXTURE!
-   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 12 11 14 REFUSED-MODES
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 12 11 14 REJECTED-MODES
    s" E-UNTERMINATED-STRING" s" :1:12" 70 LOADED-AT
    s" a bad escape in a loader's path in a kernel: body" T-LABEL
    SB-RESET
    s\" kernel: L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-kernel-path.f" FIXTURE!
-   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 18 17 20 REFUSED-MODES
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 18 17 20 REJECTED-MODES
    s" E-UNTERMINATED-STRING" s" :1:18" 70 LOADED-AT ;
 
 \ A word a create caller made is bound, and typed `-- ^a`, by the run of that
 \ caller: its tick is admitted, and a call to it fails its check in source
 \ order, after a signature that does not parse and an earlier failing check. A
-\ name nothing defines is still the load's compiler's to refuse, before any
+\ name nothing defines is still the load's compiler's to reject, before any
 \ check. --verify-only does not run MK: with no row the call may read any of
 \ the rest, and --verify-only discovers nothing after it.
 : TEST-MADE ( -- )
@@ -3137,23 +3137,23 @@ HB-TARGET-LINUX? 0= [if]
    s" [']" VERIFY-DEFERS
    s" a signature that does not parse and a call of that word" T-LABEL
    s" : X ( -- zz ) MADE ;" s" made-badsig.f" MADE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REFUSED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REJECT-AT
    s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" 70 LOADED-AT
    s" a signature that does not parse and a tick of that word" T-LABEL
    s" : X ( -- zz ) ['] MADE drop ;" s" made-badsig-tick.f" MADE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REFUSED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REJECT-AT
    s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" 70 LOADED-AT
    s" that signature, a call of that word and a trust-boundary word" T-LABEL
    s" : X ( -- zz ) MADE evaluate ;" s" made-badsig-unsafe.f" MADE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REFUSED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REJECT-AT
    s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" 70 LOADED-AT
    s" a trust-boundary word before a call of that word" T-LABEL
    s" : X ( -- ) evaluate MADE ;" s" made-unsafe.f" MADE-FIXTURE
-   s" E-UNSAFE" s" evaluate" 3 12 53 61 VERIFY-REFUSED-AT
+   s" E-UNSAFE" s" evaluate" 3 12 53 61 VERIFY-REJECT-AT
    s" E-UNSAFE" s" :3:12" 70 LOADED-AT
    s" a call of that word, whose address X does not declare" T-LABEL
    s" : X ( -- ) MADE ;" s" made-call.f" MADE-FIXTURE
-   s" E-MISMATCH" s" MADE" 3 12 53 57 RUN-REFUSED-AT
+   s" E-MISMATCH" s" MADE" 3 12 53 57 RUN-REJECTED-AT
    s" MADE" VERIFY-DEFERS
    s" E-MISMATCH" s" :3:12" 70 LOADED-AT
    s" a signature that does not parse and a word nothing defines" T-LABEL
@@ -3164,19 +3164,19 @@ HB-TARGET-LINUX? 0= [if]
    s" E-UNDEFINED" s" :3:20" 70 LOADED-AT
    s" that signature and a call of MADE, with no row for MK" T-LABEL
    s" : MK ( -- ) create ;" s" : X ( -- zz ) MADE ;" s" made-stop.f" MK-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 RUN-REFUSED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 RUN-REJECTED-AT
    s" --verify-only" 1 CHECK-EXIT
    GJA-LINE# @ 1 T=
    0 21 s" W-CHECK-STOPPED" MK-WARNED
    s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" 70 LOADED-AT ;
 
 \ The fixture's first line: RAW-IMM, an immediate whose effect is not ( -- ),
-\ so the load refuses each body that compiles it before it runs.
+\ so the load rejects each body that compiles it before it runs.
 : RAW-IMM-LINE ( -- )
    SB-RESET
    s" : RAW-IMM ( n -- ) drop ; immediate" SB-APPEND LF+ ;
 
-\ A refusal in the run, before an immediate runs or at `;`, names its token's
+\ A rejection in the run, before an immediate runs or at `;`, names its token's
 \ place in the file though comments, blank lines, tabs and runs of spaces
 \ before it are not in the text the load checks.
 : TEST-RUN-CAPTURED ( -- )
@@ -3186,13 +3186,13 @@ HB-TARGET-LINUX? 0= [if]
    s"  2drop ( does> here ) " SB-APPEND 92 SB-APPEND-C s"  x does>" SB-APPEND LF+
    s"    RAW-IMM ;" SB-APPEND LF+
    s" imm-comments.f" FIXTURE!
-   s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 3 4 95 102 RUN-REFUSED-AT
+   s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 3 4 95 102 RUN-REJECTED-AT
    IMM-EFFECT-NOTES
    s" an unmodeled immediate after a paren comment on its line" T-LABEL
    RAW-IMM-LINE
    s" : P ( -- ) 1 drop ( a note ) RAW-IMM ;" SB-APPEND LF+
    s" imm-paren.f" FIXTURE!
-   s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 2 30 65 72 RUN-REFUSED-AT
+   s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 2 30 65 72 RUN-REJECTED-AT
    IMM-EFFECT-NOTES
    s" an unmodeled immediate after blank lines and tabs" T-LABEL
    RAW-IMM-LINE
@@ -3200,7 +3200,7 @@ HB-TARGET-LINUX? 0= [if]
    LF+ LF+
    TAB+ s"   RAW-IMM ;" SB-APPEND LF+
    s" imm-blanks.f" FIXTURE!
-   s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 5 4 60 67 RUN-REFUSED-AT
+   s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 5 4 60 67 RUN-REJECTED-AT
    IMM-EFFECT-NOTES
    s" a call of MADE, whose address X does not declare, after comments" T-LABEL
    SB-RESET
@@ -3209,7 +3209,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : X ( -- ) ( c ) " SB-APPEND 92 SB-APPEND-C s"  c" SB-APPEND LF+
    s"    MADE ;" SB-APPEND LF+
    s" made-call-comments.f" FIXTURE!
-   s" E-MISMATCH" s" MADE" 4 4 66 70 RUN-REFUSED-AT ;
+   s" E-MISMATCH" s" MADE" 4 4 66 70 RUN-REJECTED-AT ;
 
 \ The check with FLAG gives one record, the immediate `EV` at 2:38, which may
 \ write into the body it runs in.
@@ -3248,13 +3248,13 @@ HB-TARGET-LINUX? 0= [if]
    OPEN-LINES
    s\" s\" Q\" OPEN2 ( a comment ) ;" SB-APPEND LF+
    s" open-none.f" FIXTURE!
-   s" E-INPUT-UNDERFLOW" s" ;" 3 27 187 188 RUN-REFUSED-AT
+   s" E-INPUT-UNDERFLOW" s" ;" 3 27 187 188 RUN-REJECTED-AT
    s" a mismatch at a drop in the file after an evaluated one" T-LABEL
    OPEN-LINES
    s\" s\" Q\" OPEN3 ( a comment here )" SB-APPEND LF+
    s"   drop drop ;" SB-APPEND LF+
    s" open-after.f" FIXTURE!
-   s" E-MISMATCH" s" drop" 4 8 199 203 RUN-REFUSED-AT ;
+   s" E-MISMATCH" s" drop" 4 8 199 203 RUN-REJECTED-AT ;
 
 \ The fixture's first three lines: V reads one token, and M postpones it.
 : PP-LINES ( -- )
@@ -3512,7 +3512,7 @@ HB-TARGET-LINUX? 0= [if]
    SB-RESET
    s" SUMTYPE tdpos DERIVE eq VARIANT tag ;VARIANT ;SUMTYPE" SB-APPEND LF+
    s" variant-collide.f" FIXTURE!
-   s" E-BAD-DECLARATION" s" tag" 1 33 32 35 RUN-REFUSED-AT ;
+   s" E-BAD-DECLARATION" s" tag" 1 33 32 35 RUN-REJECTED-AT ;
 
 : TEST-DERIVE-PAYLOAD ( -- )
    s" a sum payload DERIVE eq cannot compare" T-LABEL
@@ -3520,14 +3520,14 @@ HB-TARGET-LINUX? 0= [if]
    s" SUMTYPE dpsum DERIVE eq VARIANT hold ^n ;VARIANT ;SUMTYPE"
    SB-APPEND LF+
    s" derive-payload.f" FIXTURE!
-   s" E-BAD-DECLARATION" s" ^n" 1 38 37 39 RUN-REFUSED-AT ;
+   s" E-BAD-DECLARATION" s" ^n" 1 38 37 39 RUN-REJECTED-AT ;
 
 : TEST-DERIVE-FIELD ( -- )
    s" a structure field DERIVE eq cannot compare" T-LABEL
    SB-RESET
    s" STRUCTURE dpst DERIVE eq FIELD f ^n ;STRUCTURE" SB-APPEND LF+
    s" derive-field.f" FIXTURE!
-   s" E-BAD-DECLARATION" s" ^n" 1 34 33 35 RUN-REFUSED-AT ;
+   s" E-BAD-DECLARATION" s" ^n" 1 34 33 35 RUN-REJECTED-AT ;
 
 : TEST-DERIVE-ENUM-FIELD ( -- )
    s" an enum field DERIVE eq cannot compare" T-LABEL
@@ -3535,14 +3535,14 @@ HB-TARGET-LINUX? 0= [if]
    s" ENUM dpen DERIVE eq VARIANT hold FIELD raw ^u8 ;VARIANT ;ENUM"
    SB-APPEND LF+
    s" derive-enum-field.f" FIXTURE!
-   s" E-BAD-DECLARATION" s" ^u8" 1 44 43 46 RUN-REFUSED-AT ;
+   s" E-BAD-DECLARATION" s" ^u8" 1 44 43 46 RUN-REJECTED-AT ;
 
 : TEST-DERIVE-BYTES-FIELD ( -- )
    s" a structure byte-pointer field DERIVE eq cannot compare" T-LABEL
    SB-RESET
    s" STRUCTURE dppr DERIVE eq FIELD b ^u8 ;STRUCTURE" SB-APPEND LF+
    s" derive-product-field.f" FIXTURE!
-   s" E-BAD-DECLARATION" s" ^u8" 1 34 33 36 RUN-REFUSED-AT ;
+   s" E-BAD-DECLARATION" s" ^u8" 1 34 33 36 RUN-REJECTED-AT ;
 
 : GEN-LINES ( -- )
    SB-RESET
@@ -3562,7 +3562,7 @@ HB-TARGET-LINUX? 0= [if]
    {: want:n k:n tok:str sug:str :}
    s" W-CHECK-DEFERRED" want k tok sug SUGGESTS ;
 
-\ A stop fails --verify-only when nothing is refused.
+\ A stop fails --verify-only when nothing is rejected.
 : STOP-SUGGESTS ( n str str -- )
    {: k:n tok:str sug:str :}
    s" W-CHECK-STOPPED" 1 k tok sug SUGGESTS
@@ -3712,139 +3712,139 @@ HB-TARGET-LINUX? 0= [if]
    s" " 0 CHECK-EXIT ;
 
 \ A control-flow word with no structure open, or another structure's, is one
-\ the load cannot compile: it refuses the definition at that word.
+\ the load cannot compile: it rejects the definition at that word.
 : TEST-CONTROL-ORPHAN ( -- )
    s" a signature that does not parse and a then with no if" T-LABEL
    s" : X ( n -- zz ) then ;" s" badsig-then.f" LINE-FIXTURE
-   s" E-CONTROL-ORPHAN" s" then" 1 17 16 20 REFUSED-MODES
+   s" E-CONTROL-ORPHAN" s" then" 1 17 16 20 REJECTED-MODES
    s" a then with no if before an undefined word" T-LABEL
    s" : X ( n -- n ) then NOPE ;" s" then-undefined.f" LINE-FIXTURE
-   s" E-CONTROL-ORPHAN" s" then" 1 16 15 19 REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" then" 1 16 15 19 REJECTED-AT
    0 s" message" s" this word closes nothing open here" FIELD=
    s" a trust-boundary word before a then with no if" T-LABEL
    s" : X ( n -- n ) evaluate then ;" s" unsafe-then.f" LINE-FIXTURE
-   s" E-CONTROL-ORPHAN" s" then" 1 25 24 28 REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" then" 1 25 24 28 REJECTED-AT
    s" an endcase with no case before an undefined word" T-LABEL
    s" : X ( n -- n ) endcase NOPE ;" s" endcase-undefined.f" LINE-FIXTURE
-   s" E-CONTROL-ORPHAN" s" endcase" 1 16 15 22 REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" endcase" 1 16 15 22 REJECTED-AT
    s" a signature that does not parse and a then closing a begin" T-LABEL
    s" : X ( n -- zz ) begin then ;" s" badsig-begin-then.f" LINE-FIXTURE
-   s" E-CONTROL-ORPHAN" s" then" 1 23 22 26 REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" then" 1 23 22 26 REJECTED-AT
    s" a leave outside every do before an undefined word" T-LABEL
    s" : X ( n -- n ) leave NOPE ;" s" leave-undefined.f" LINE-FIXTURE
-   s" E-NO-LOOP" s" leave" 1 16 15 20 REFUSED-AT ;
+   s" E-NO-LOOP" s" leave" 1 16 15 20 REJECTED-AT ;
 
 
 : TEST-CONTROL-REASON ( -- )
    s" a loop body that changes the stack's depth" T-LABEL
    s" : X ( n -- n ) 3 0 do dup loop ;" s" loop-depth.f" LINE-FIXTURE
-   s" E-MISMATCH" s" loop" 1 27 26 30 REFUSED-AT
+   s" E-MISMATCH" s" loop" 1 27 26 30 REJECTED-AT
    0 s" message" s" the loop body changes the stack's depth" FIELD=
    0 s" expected" s" n" NOTE=
    0 s" found" s" n n" NOTE=
    s" an if arm that changes the stack's depth" T-LABEL
    s" : X ( n bool -- n ) if 1 then ;" s" if-depth.f" LINE-FIXTURE
-   s" E-MISMATCH" s" then" 1 26 25 29 REFUSED-AT
+   s" E-MISMATCH" s" then" 1 26 25 29 REJECTED-AT
    0 s" message" s" the if arm changes the stack's depth" FIELD=
    0 s" expected" s" n" NOTE=
    0 s" found" s" n n" NOTE=
    s" if and else arms that leave different depths" T-LABEL
    s" : X ( n bool -- n ) if 1 else then ;" s" arms-depth.f" LINE-FIXTURE
-   s" E-MISMATCH" s" then" 1 31 30 34 REFUSED-AT
+   s" E-MISMATCH" s" then" 1 31 30 34 REJECTED-AT
    0 s" message" s" the if and else arms leave different stack depths" FIELD=
    0 s" expected" s" n" NOTE=
    0 s" found" s" n n" NOTE=
    s" an i outside every loop" T-LABEL
    s" : X ( -- ) i drop ;" s" i-outside.f" LINE-FIXTURE
-   s" E-NO-LOOP" s" i" 1 12 11 12 REFUSED-AT
+   s" E-NO-LOOP" s" i" 1 12 11 12 REJECTED-AT
    0 s" message" s" no loop is open here" FIELD=
    s" a j in a single loop" T-LABEL
    s" : X ( -- ) 3 0 do j drop loop ;" s" j-single.f" LINE-FIXTURE
-   s" E-NO-OUTER-LOOP" s" j" 1 19 18 19 REFUSED-AT
+   s" E-NO-OUTER-LOOP" s" j" 1 19 18 19 REJECTED-AT
    0 s" message" s" no outer loop is open here" FIELD=
    s" an exit inside a loop with no unloop" T-LABEL
    s" : X ( -- ) 3 0 do exit loop ;" s" exit-loop.f" LINE-FIXTURE
-   s" E-EXIT-IN-LOOP" s" exit" 1 19 18 22 REFUSED-AT
+   s" E-EXIT-IN-LOOP" s" exit" 1 19 18 22 REJECTED-AT
    0 s" message" s" exit inside a loop needs unloop first" FIELD=
    s" a loop body that changes the return stack's depth" T-LABEL
    s" : X ( -- ) 3 0 do 1 >r loop ;" s" loop-rdepth.f" LINE-FIXTURE
-   s" E-LOOP-RETURN-DEPTH" s" loop" 1 24 23 27 REFUSED-AT
+   s" E-LOOP-RETURN-DEPTH" s" loop" 1 24 23 27 REJECTED-AT
    0 s" message" s" the loop body changes the return stack's depth" FIELD=
    s" an if still open at ;" T-LABEL
    s" : X ( bool -- ) if ;" s" if-open.f" LINE-FIXTURE
-   s" E-CONTROL-OPEN" s" ;" 1 20 19 20 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 20 19 20 REJECTED-AT
    0 s" message" s" a control structure is still open at the end of the definition" FIELD=
    s" E-CONTROL-OPEN" s" :1:20" 70 LOADED-AT
-   s" an if still open at ; after a refused drop" T-LABEL
+   s" an if still open at ; after a rejected drop" T-LABEL
    s" : X ( -- ) drop 0 0= if ;" s" if-open-drop.f" LINE-FIXTURE
-   s" E-CONTROL-OPEN" s" ;" 1 25 24 25 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 25 24 25 REJECTED-AT
    0 s" message" s" a control structure is still open at the end of the definition" FIELD=
    s" E-CONTROL-OPEN" s" :1:25" 70 LOADED-AT
    s" a case still open at ;" T-LABEL
    s" : X ( n -- ) case ;" s" case-open.f" LINE-FIXTURE
-   s" E-CONTROL-OPEN" s" ;" 1 19 18 19 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 19 18 19 REJECTED-AT
    0 s" message" s" a control structure is still open at the end of the definition" FIELD=
    s" E-CONTROL-OPEN" s" :1:19" 70 LOADED-AT
    s" a loop that meets an if inside its do" T-LABEL
    s" : X ( -- ) 3 0 do 0 0= if loop then ;" s" loop-in-if.f" LINE-FIXTURE
-   s" E-CONTROL-ORPHAN" s" loop" 1 27 26 30 REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" loop" 1 27 26 30 REJECTED-AT
    0 s" message" s" this word closes nothing open here" FIELD=
    s" a loop that meets an if with no do open" T-LABEL
    s" : X ( -- ) 0 0= if loop then ;" s" loop-no-do.f" LINE-FIXTURE
-   s" E-NO-LOOP" s" loop" 1 20 19 23 REFUSED-AT
+   s" E-NO-LOOP" s" loop" 1 20 19 23 REJECTED-AT
    0 s" message" s" no loop is open here" FIELD=
    s" match arms that unloop different loops" T-LABEL
    SB-RESET
    s" ENUM choice first second ;ENUM" SB-APPEND LF+
    s" : LOB-MATCH ( choice -- ) 3 0 do dup MATCH choice first OF unloop ENDOF second OF ENDOF ;MATCH loop drop ;" SB-APPEND LF+
    s" match-unloop.f" FIXTURE!
-   s" E-UNLOOP-JOIN" s" ENDOF" 2 83 113 118 REFUSED-AT
+   s" E-UNLOOP-JOIN" s" ENDOF" 2 83 113 118 REJECTED-AT
    0 s" message" s" the paths that meet here have unlooped different loops" FIELD= ;
 
 \ The load's compiler takes a second else, as it takes an else over an if's
-\ frame: the check fails there, which leaves the refusal to a later undefined
+\ frame: the check fails there, which leaves the rejection to a later undefined
 \ word, a signature that does not parse and an earlier trust-boundary word.
 : TEST-SECOND-ELSE ( -- )
    s" a second else before an undefined word" T-LABEL
    s" : X ( bool -- ) if else else then NOPE ;" s" else2-undefined.f" LINE-FIXTURE
-   s" E-UNDEFINED" s" NOPE" 1 35 34 38 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 1 35 34 38 REJECTED-AT
    s" a signature that does not parse and a second else" T-LABEL
    s" : X ( bool -- zz ) if else else then ;" s" badsig-else2.f" LINE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 15 14 16 REFUSED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 15 14 16 REJECTED-AT
    s" a trust-boundary word before a second else" T-LABEL
    s" : X ( bool -- ) evaluate if else else then ;" s" unsafe-else2.f" LINE-FIXTURE
-   s" E-UNSAFE" s" evaluate" 1 17 16 24 REFUSED-AT
+   s" E-UNSAFE" s" evaluate" 1 17 16 24 REJECTED-AT
    s" a second else alone" T-LABEL
    s" : X ( bool -- ) if else else then ;" s" else2.f" LINE-FIXTURE
-   s" E-ELSE-TWICE" s" else" 1 25 24 28 REFUSED-AT
+   s" E-ELSE-TWICE" s" else" 1 25 24 28 REJECTED-AT
    0 s" message" s" this if already has an else" FIELD= ;
 
 \ A structure still open where its definition ends is one the load cannot
-\ compile: it refuses the definition at the `;`, or at the `does>` ending a
-\ definer's body. A definer whose head calls a word the run decides is refused
-\ as the load refuses it, never as a duplicate of itself, and --verify-only
+\ compile: it rejects the definition at the `;`, or at the `does>` ending a
+\ definer's body. A definer whose head calls a word the run decides is rejected
+\ as the load rejects it, never as a duplicate of itself, and --verify-only
 \ defers that head.
 : TEST-CONTROL-OPEN ( -- )
    s" a signature that does not parse and an if open at ;" T-LABEL
    s" : X ( n -- zz ) dup if ;" s" badsig-open.f" LINE-FIXTURE
-   s" E-CONTROL-OPEN" s" ;" 1 24 23 24 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 24 23 24 REJECTED-AT
    s" a called shadowed name and an IF open at ;" T-LABEL
    s" : SHADE ( -- ) ;" s"    SHADE IF ;" SHADOW-FIXTURE
    s" shade-open.f" FIXTURE!
-   s" E-CONTROL-OPEN" s" ;" 8 13 96 97 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 8 13 96 97 REJECTED-AT
    s" a trust-boundary word and an if open at ;" T-LABEL
    s" : X ( n -- n ) evaluate if ;" s" unsafe-open.f" LINE-FIXTURE
-   s" E-CONTROL-OPEN" s" ;" 1 28 27 28 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 28 27 28 REJECTED-AT
    s" dead code and an if open at ;" T-LABEL
    s" : X ( n -- n ) dup if exit 1 ;" s" dead-open.f" LINE-FIXTURE
-   s" E-CONTROL-OPEN" s" ;" 1 30 29 30 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 30 29 30 REJECTED-AT
    s" an if open at the does> ending a definer's body" T-LABEL
    s" : CONST ( n -- ) create dup , 0= if does> ( -- n ) @ ;" s" does-open.f" LINE-FIXTURE
-   s" E-CONTROL-OPEN" s" does>" 1 37 36 41 REFUSED-AT
+   s" E-CONTROL-OPEN" s" does>" 1 37 36 41 REJECTED-AT
    s" an if open at does> after a head call the run decides" T-LABEL
    s" : MYK ( n -- ) MADE drop create dup , 0= if does> ( -- n ) @ ;"
    s" made-does-open.f" MADE-FIXTURE
-   s" E-CONTROL-OPEN" s" does>" 3 45 86 91 RUN-REFUSED-AT
+   s" E-CONTROL-OPEN" s" does>" 3 45 86 91 RUN-REJECTED-AT
    s" MK" 2 34 s" MADE" 3 16 57 61 VERIFY-ONLY-AT
    s" an if open at does> on the line after a head call the run decides" T-LABEL
    SB-RESET
@@ -3853,39 +3853,39 @@ HB-TARGET-LINUX? 0= [if]
    s" : MYK ( n -- ) ( c ) MADE drop create dup ," SB-APPEND LF+
    s"    0= if does> ( -- n ) @ ;" SB-APPEND LF+
    s" made-does-open2.f" FIXTURE!
-   s" E-CONTROL-OPEN" s" does>" 4 10 95 100 RUN-REFUSED-AT
+   s" E-CONTROL-OPEN" s" does>" 4 10 95 100 RUN-REJECTED-AT
    s" an orphan then before does> after a head call the run decides" T-LABEL
    s" : MYK ( n -- ) MADE drop create dup , then does> ( -- n ) @ ;"
    s" made-does-then.f" MADE-FIXTURE
-   s" E-CONTROL-ORPHAN" s" then" 3 39 80 84 RUN-REFUSED-AT
+   s" E-CONTROL-ORPHAN" s" then" 3 39 80 84 RUN-REJECTED-AT
    s" an undefined head call and an if open at does>" T-LABEL
    s" : MYK ( n -- ) NOSUCH drop create dup , 0= if does> ( -- n ) @ ;"
    s" made-does-nosuch.f" MADE-FIXTURE
-   s" E-UNDEFINED" s" NOSUCH" 3 16 57 63 RUN-REFUSED-AT
+   s" E-UNDEFINED" s" NOSUCH" 3 16 57 63 RUN-REJECTED-AT
    s" an if open at the ; ending a does> clause" T-LABEL
    s" : CONST ( n -- ) create , does> ( -- n ) @ dup 0= if ;" s" clause-open.f" LINE-FIXTURE
-   s" E-CONTROL-OPEN" s" ;" 1 54 53 54 REFUSED-AT
+   s" E-CONTROL-OPEN" s" ;" 1 54 53 54 REJECTED-AT
    s" a match open at ;" T-LABEL
    SB-RESET
    s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE" SB-APPEND LF+
    s" : X ( mres -- n ) MATCH mres ok OF 1 ;" SB-APPEND LF+
    s" match-open.f" FIXTURE!
-   s" E-MATCH-UNTERMINATED" s" ;" 2 38 81 82 REFUSED-AT ;
+   s" E-MATCH-UNTERMINATED" s" ;" 2 38 81 82 REJECTED-AT ;
 
 \ A does> clause that walks no token and fails its end-of-body check is
-\ refused at its closing `;`, on that token's own line and bytes. The parses:
-\ row then names a refused word, a second packet only --all-errors gives.
+\ rejected at its closing `;`, on that token's own line and bytes. The parses:
+\ row then names a rejected word, a second packet only --all-errors gives.
 : TEST-EMPTY-CLAUSE ( -- )
-   s" an empty does> clause refused at its ;" T-LABEL
+   s" an empty does> clause rejected at its ;" T-LABEL
    s" : MYK ( n -- ) create drop does> ( -- ) ;" s" empty-clause.f" LINE-FIXTURE
-   s" E-MISMATCH" s" ;" 1 41 40 41 REFUSED-AT
-   s" an empty does> clause refused at its ; on a later line" T-LABEL
+   s" E-MISMATCH" s" ;" 1 41 40 41 REJECTED-AT
+   s" an empty does> clause rejected at its ; on a later line" T-LABEL
    SB-RESET
    s" : MYK ( n -- ) create drop" SB-APPEND LF+
    s"   does> ( -- )" SB-APPEND LF+
    s"   ;" SB-APPEND LF+
    s" empty-clause-lines.f" FIXTURE!
-   s" E-MISMATCH" s" ;" 3 3 44 45 REFUSED-AT
+   s" E-MISMATCH" s" ;" 3 3 44 45 REJECTED-AT
    s" E-MISMATCH" s" :3:3" 70 LOADED-AT
    s" an empty does> clause of a definer with a parses: row" T-LABEL
    s" : MK ( n -- ) create , does> ( -- ) ; parses: MK 1" s" empty-clause-parses.f" LINE-FIXTURE
@@ -3899,14 +3899,14 @@ HB-TARGET-LINUX? 0= [if]
    s" a structure still open at the file's end" T-LABEL
    s" BEGIN-STRUCTURE P" s" unclosed.f" LINE-FIXTURE
    s" E-UNCLOSED" s" :1:1" 70 LOADED-AT
-   s" E-UNCLOSED" s" BEGIN-STRUCTURE" 1 1 0 15 REFUSED-MODES
+   s" E-UNCLOSED" s" BEGIN-STRUCTURE" 1 1 0 15 REJECTED-MODES
    s" a structure opened inside an open one" T-LABEL
    SB-RESET
    s" BEGIN-STRUCTURE P" SB-APPEND LF+
    s" BEGIN-STRUCTURE Q" SB-APPEND LF+
    s" unclosed-nested.f" FIXTURE!
    s" E-UNCLOSED" s" :1:1" 70 LOADED-AT
-   s" E-UNCLOSED" s" BEGIN-STRUCTURE" 1 1 0 15 REFUSED-MODES
+   s" E-UNCLOSED" s" BEGIN-STRUCTURE" 1 1 0 15 REJECTED-MODES
    s" a FUNCTION: group still open at the file's end" T-LABEL
    SB-RESET
    s" require src/lib/ffi-abi.f" SB-APPEND LF+
@@ -3914,7 +3914,7 @@ HB-TARGET-LINUX? 0= [if]
    s" FUNCTION: F getpid ( -- i32 )" SB-APPEND LF+
    s" unclosed-ffi.f" FIXTURE!
    s" E-UNCLOSED" s" :3:1" 70 LOADED-AT
-   s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REFUSED-MODES
+   s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REJECTED-MODES
    s" a structure opened inside an open FUNCTION: group" T-LABEL
    SB-RESET
    s" require src/lib/ffi-abi.f" SB-APPEND LF+
@@ -3925,7 +3925,7 @@ HB-TARGET-LINUX? 0= [if]
    s" ;FUNCTION" SB-APPEND LF+
    s" unclosed-ffi-nested.f" FIXTURE!
    s" E-UNCLOSED" s" :3:1" 70 LOADED-AT
-   s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REFUSED-MODES ;
+   s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REJECTED-MODES ;
 
 : TAKEN$ ( -- str )
    s" `GP` is already defined in this wordlist" ;
@@ -4247,43 +4247,43 @@ HB-TARGET-LINUX? 0= [if]
    s" ;using" SB-APPEND LF+ ;
 
 \ A called name a used public shadows a global for, or two used publics export
-\ beside one, is refused by the load's check at `;`: after every word the load
+\ beside one, is rejected by the load's check at `;`: after every word the load
 \ cannot compile, wherever it stands, and before any other check. Ticked, or
 \ exported by two used publics and no global, the load's tick or lookup
-\ refuses it while compiling, in source order.
+\ rejects it while compiling, in source order.
 : TEST-USING-ORDER ( -- )
    s" a called shadowed name before an undefined word" T-LABEL
    s" : SHADE ( -- ) ;" s"    SHADE NOPE ;" SHADOW-FIXTURE
    s" shade-undefined.f" FIXTURE!
-   s" E-UNDEFINED" s" NOPE" 8 10 93 97 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 8 10 93 97 REJECTED-AT
    s" an undefined word before a called shadowed name" T-LABEL
    s" : SHADE ( -- ) ;" s"    NOPE SHADE ;" SHADOW-FIXTURE
    s" undefined-shade.f" FIXTURE!
-   s" E-UNDEFINED" s" NOPE" 8 4 87 91 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 8 4 87 91 REJECTED-AT
    s" an undefined word before a ticked shadowed name" T-LABEL
    s" : SHADE ( -- ) ;" s"    NOPE ['] SHADE drop ;" SHADOW-FIXTURE
    s" undefined-tick-shade.f" FIXTURE!
-   s" E-UNDEFINED" s" NOPE" 8 4 87 91 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 8 4 87 91 REJECTED-AT
    s" a trust-boundary word before a called shadowed name" T-LABEL
    s" : SHADE ( -- ) ;" s"    evaluate SHADE ;" SHADOW-FIXTURE
    s" unsafe-shade.f" FIXTURE!
-   s" E-USING-SHADOW-GLOBAL" s" SHADE" 8 13 96 101 REFUSED-AT
+   s" E-USING-SHADOW-GLOBAL" s" SHADE" 8 13 96 101 REJECTED-AT
    s" a section word two used publics export" T-LABEL
    s" package DPA1 public : TARGET ( -- ) ; ;package package DPA2 public : TARGET ( -- ) ; ;package using DPA1 using DPA2 target ;using ;using"
    s" section-ambiguous.f" LINE-FIXTURE
-   s" E-USING-AMBIGUOUS" s" target" 1 117 116 122 REFUSED-MODES
+   s" E-USING-AMBIGUOUS" s" target" 1 117 116 122 REJECTED-MODES
    s" a section word a global and a used public export" T-LABEL
    s" : TARGET ( -- ) ; package DPG1 public : TARGET ( -- ) ; ;package using DPG1 target ;using"
    s" section-shadow.f" LINE-FIXTURE
-   s" E-USING-SHADOW-GLOBAL" s" target" 1 77 76 82 REFUSED-MODES
+   s" E-USING-SHADOW-GLOBAL" s" target" 1 77 76 82 REJECTED-MODES
    s" a called name two used publics and a global export before an undefined word" T-LABEL
    true s"    AMB NOPE ;" AMBIG-FIXTURE
    s" ambig-global-undefined.f" FIXTURE!
-   s" E-UNDEFINED" s" NOPE" 13 8 140 144 REFUSED-AT
+   s" E-UNDEFINED" s" NOPE" 13 8 140 144 REJECTED-AT
    s" an undefined word before a name only two used publics export" T-LABEL
    false s"    NOPE AMB ;" AMBIG-FIXTURE
    s" undefined-ambig.f" FIXTURE!
-   s" E-UNDEFINED" s" NOPE" 13 4 136 140 REFUSED-AT ;
+   s" E-UNDEFINED" s" NOPE" 13 4 136 140 REJECTED-AT ;
 
 \ Package SP, holding A and sealed, in 53 bytes over five lines.
 : SEALED-SP+ ( -- )
@@ -4308,8 +4308,8 @@ HB-TARGET-LINUX? 0= [if]
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" SP:B" 6 3 55 59 AT ;
 
-\ A name a sealed package already holds is refused as sealed, as the load
-\ refuses it: the seal is asked before the duplicate.
+\ A name a sealed package already holds is rejected as sealed, as the load
+\ rejects it: the seal is asked before the duplicate.
 : TEST-SEALED-DUPLICATE ( -- )
    s" a duplicate definition into a sealed package names the seal" T-LABEL
    SB-RESET
@@ -4328,7 +4328,7 @@ HB-TARGET-LINUX? 0= [if]
    s" ;package" SB-APPEND LF+
    s" variable SP:X" SB-APPEND LF+
    s" sealed-dup-variable.f" FIXTURE!
-   s" E-SEALED-PACKAGE" s" SP:X" 6 10 60 64 70 REFUSED-MODES-RC
+   s" E-SEALED-PACKAGE" s" SP:X" 6 10 60 64 70 REJECTED-MODES-RC
    s" a duplicate export into a sealed package names the seal" T-LABEL
    SB-RESET
    s" package SP2" SB-APPEND LF+
@@ -4434,7 +4434,7 @@ HB-TARGET-LINUX? 0= [if]
    s" ;package" SB-APPEND LF+
    s" dp-held" SB-APPEND LF+
    s" undef-holder.f" FIXTURE!
-   s" E-UNDEFINED" s" dp-held" 5 1 51 58 REFUSED-MODES
+   s" E-UNDEFINED" s" dp-held" 5 1 51 58 REJECTED-MODES
    SB-RESET
    s" `dp-held` is public in `DP-HOLD`: " SB-APPEND
    s" write `DP-HOLD:dp-held`, or call it inside " SB-APPEND
@@ -4559,7 +4559,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-BAD-ESCAPE
    TEST-PRIM-ROW
    TEST-ESCAPED-PATH
-   TEST-REFUSAL-ORDER
+   TEST-REJECTION-ORDER
    TEST-REPAIR-FOLLOWS
    TEST-OPEN-LAYOUT-XPORT
    TEST-LIVE-BRANCHES

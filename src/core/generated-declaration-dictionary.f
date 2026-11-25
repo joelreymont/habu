@@ -17,7 +17,7 @@ EXPORT CODE-RECLAIM:TRUNCATE
 EXPORT XREF:RETIRE-IF-TASKS
 
 \ Rewinds DATA to cut, in DP-CELL's units, raising the release high-water to a
-\ DP it lowers, so the build refuses the data given back.
+\ DP it lowers, so the build rejects the data given back.
 : DATA-REWIND ( n -- )
    {: cut:n :}
    data-base NULL-PTR - {: base:n :}

@@ -198,7 +198,7 @@ CAST: W2>CELLS ( ^w2 -- ^n )
    W2-AT @ NWM-W2:UNMAKE 3 * swap 5 * + ;
 
 
-\ Dynamic compilation is needed only for the checker-refusal probe.
+\ Dynamic compilation is needed only for the checker-rejection probe.
 : EV-RC ( str -- n )
    NATIVE-EVAL:DEFINE-RC ;
 
@@ -265,8 +265,8 @@ CAST: W2>CELLS ( ^w2 -- ^n )
    0 E-CMT 27 T=
    0 E-STR 27 T= ;
 
-: REFUSED-CASE ( -- )
-   s" a cell load through a byte pointer remains a checker refusal" T-LABEL
+: REJECTED-CASE ( -- )
+   s" a cell load through a byte pointer remains a checker rejection" T-LABEL
    s" : NWM-BYTEP ( ^u8 n -- n ) drop @ ;" EV-RC 70 T= ;
 
 public
@@ -282,7 +282,7 @@ public
    DISPATCH-CASE
    WIDE-INST-CASE
    OFFSET-CASE
-   REFUSED-CASE
+   REJECTED-CASE
    T-REPORT
    s" native-wide-mem: ok" type cr ;
 

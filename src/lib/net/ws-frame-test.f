@@ -1,5 +1,5 @@
 \ ws-frame-test.f - the RFC 6455 frame codec: section 5.7's examples byte for
-\ byte, every length form at its edges, round trips, short headers, refusals.
+\ byte, every length form at its edges, round trips, short headers, rejections.
 \ Run: bin/hb --load src/lib/net/ws-frame-test.f
 \ Frames are hex, as section 5.7 prints them. A decoded header is checked by
 \ encoding it again: the RFC's examples pin the encoder byte for byte.
@@ -33,7 +33,7 @@ TYPED-VARIABLE WHO WS:sender
    c [char] a >= if c [char] a - $0A + exit then
    c [char] 0 - ;
 
-\ A case's bytes are staged, with the sender and the bound, because a refusal
+\ A case's bytes are staged, with the sender and the bound, because a rejection
 \ runs in a quotation and a quotation sees no locals.
 : STAGE ( str WS:sender n -- ) {: s:str who max:n :}
    s STR:LEN 2 / {: k:n :}
@@ -79,7 +79,7 @@ TYPED-VARIABLE WHO WS:sender
       frame OF drop drop s" a frame, not a need" T-FAIL-AS ENDOF
    ;MATCH ;
 
-: REFUSES ( str WS:sender n n -- ) {: s:str who max:n code:n :}
+: REJECTS ( str WS:sender n n -- ) {: s:str who max:n code:n :}
    s who max STAGE
    s T-LABEL
    [: DECODE-STAGED drop ;] code TTHROWSQ ;
@@ -201,49 +201,49 @@ TYPED-VARIABLE WHO WS:sender
    s" a reserved opcode" T-LABEL
    [: DECODE-STAGED drop ;] E-WS-OPCODE TTHROWSQ ;
 
-\ Each refusal is made from the fewest bytes that show it.
+\ Each rejection is made from the fewest bytes that show it.
 : FIRST-BYTE ( -- )
-   s" c1" WS-SENDER:SERVER LEN-MAX E-WS-RSV REFUSES
-   s" a1" WS-SENDER:SERVER LEN-MAX E-WS-RSV REFUSES
-   s" 91" WS-SENDER:SERVER LEN-MAX E-WS-RSV REFUSES
+   s" c1" WS-SENDER:SERVER LEN-MAX E-WS-RSV REJECTS
+   s" a1" WS-SENDER:SERVER LEN-MAX E-WS-RSV REJECTS
+   s" 91" WS-SENDER:SERVER LEN-MAX E-WS-RSV REJECTS
    $88 $83 do i RESERVED-OPCODE loop
    $90 $8B do i RESERVED-OPCODE loop
-   s" 08" WS-SENDER:SERVER LEN-MAX E-WS-CONTROL REFUSES
-   s" 09" WS-SENDER:SERVER LEN-MAX E-WS-CONTROL REFUSES
-   s" 0a" WS-SENDER:SERVER LEN-MAX E-WS-CONTROL REFUSES ;
+   s" 08" WS-SENDER:SERVER LEN-MAX E-WS-CONTROL REJECTS
+   s" 09" WS-SENDER:SERVER LEN-MAX E-WS-CONTROL REJECTS
+   s" 0a" WS-SENDER:SERVER LEN-MAX E-WS-CONTROL REJECTS ;
 
 : SECOND-BYTE ( -- )
-   s" 8105" WS-SENDER:CLIENT LEN-MAX E-WS-MASK REFUSES
-   s" 8185" WS-SENDER:SERVER LEN-MAX E-WS-MASK REFUSES
-   s" 82fe" WS-SENDER:SERVER LEN-MAX E-WS-MASK REFUSES
-   s" 897e" WS-SENDER:SERVER LEN-MAX E-WS-CONTROL REFUSES
-   s" 887f" WS-SENDER:SERVER LEN-MAX E-WS-CONTROL REFUSES
-   s" 89fe" WS-SENDER:CLIENT LEN-MAX E-WS-CONTROL REFUSES
+   s" 8105" WS-SENDER:CLIENT LEN-MAX E-WS-MASK REJECTS
+   s" 8185" WS-SENDER:SERVER LEN-MAX E-WS-MASK REJECTS
+   s" 82fe" WS-SENDER:SERVER LEN-MAX E-WS-MASK REJECTS
+   s" 897e" WS-SENDER:SERVER LEN-MAX E-WS-CONTROL REJECTS
+   s" 887f" WS-SENDER:SERVER LEN-MAX E-WS-CONTROL REJECTS
+   s" 89fe" WS-SENDER:CLIENT LEN-MAX E-WS-CONTROL REJECTS
    s" 897d" WS-SENDER:SERVER LEN-MAX 2 DECODES ;
 
 \ A length in a longer form than it needs, or with the 64-bit high bit set, is
-\ refused as soon as its bytes are held, before the key.
+\ rejected as soon as its bytes are held, before the key.
 : NOT-MINIMAL ( -- )
-   s" 827e0000" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REFUSES
-   s" 827e007d" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REFUSES
-   s" 827f000000000000007e" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REFUSES
-   s" 827f000000000000ffff" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REFUSES
-   s" 827f8000000000000000" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REFUSES
-   s" 827fffffffffffffffff" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REFUSES
-   s" 82fe007d" WS-SENDER:CLIENT LEN-MAX E-WS-LENGTH REFUSES ;
+   s" 827e0000" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REJECTS
+   s" 827e007d" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REJECTS
+   s" 827f000000000000007e" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REJECTS
+   s" 827f000000000000ffff" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REJECTS
+   s" 827f8000000000000000" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REJECTS
+   s" 827fffffffffffffffff" WS-SENDER:SERVER LEN-MAX E-WS-LENGTH REJECTS
+   s" 82fe007d" WS-SENDER:CLIENT LEN-MAX E-WS-LENGTH REJECTS ;
 
-\ A payload of exactly the bound is taken and one byte more is refused, in each
+\ A payload of exactly the bound is taken and one byte more is rejected, in each
 \ length form, and before the key.
 : AT-BOUND ( -- )
    s" 8205" WS-SENDER:SERVER 5 2 DECODES
-   s" 8205" WS-SENDER:SERVER 4 E-WS-TOO-BIG REFUSES
+   s" 8205" WS-SENDER:SERVER 4 E-WS-TOO-BIG REJECTS
    s" 827e0100" WS-SENDER:SERVER 256 4 DECODES
-   s" 827e0100" WS-SENDER:SERVER 255 E-WS-TOO-BIG REFUSES
+   s" 827e0100" WS-SENDER:SERVER 255 E-WS-TOO-BIG REJECTS
    s" 827f0000000000010000" WS-SENDER:SERVER 65536 10 DECODES
-   s" 827f0000000000010000" WS-SENDER:SERVER 65535 E-WS-TOO-BIG REFUSES
-   s" 82fe0100" WS-SENDER:CLIENT 255 E-WS-TOO-BIG REFUSES ;
+   s" 827f0000000000010000" WS-SENDER:SERVER 65535 E-WS-TOO-BIG REJECTS
+   s" 82fe0100" WS-SENDER:CLIENT 255 E-WS-TOO-BIG REJECTS ;
 
-: ENCODE-REFUSALS ( -- )
+: ENCODE-REJECTIONS ( -- )
    s" a fragmented ping" T-LABEL
    [: false WS-OPCODE:PING 0 0 WS-HEADER:MAKE WS-SENDER:SERVER PUT ;]
    E-WS-CONTROL TTHROWSQ
@@ -264,7 +264,7 @@ TYPED-VARIABLE WHO WS:sender
    [: true WS-OPCODE:TEXT 0 $100000000 WS-HEADER:MAKE WS-SENDER:CLIENT PUT ;]
    E-WS-MASK TTHROWSQ ;
 
-\ A span short of the header is refused before a byte is written, and an exact
+\ A span short of the header is rejected before a byte is written, and an exact
 \ fit is written whole.
 : CAPACITY ( -- )
    CANARY OUT SPAN:FILL
@@ -301,7 +301,7 @@ public
 : RUN ( -- )
    T-RESET
    RFC-ENCODE RFC-DECODE MASKS UNMASKS LENGTHS ROUND-TRIP SHORT
-   FIRST-BYTE SECOND-BYTE NOT-MINIMAL AT-BOUND ENCODE-REFUSALS CAPACITY CLOSES ;
+   FIRST-BYTE SECOND-BYTE NOT-MINIMAL AT-BOUND ENCODE-REJECTIONS CAPACITY CLOSES ;
 
 ;package
 

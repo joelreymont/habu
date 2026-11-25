@@ -123,8 +123,8 @@ public
    u MEM-MAX-N used - >= if MEM-MAX-N exit then
    used u + 1 + ;
 
-\ The size of one name=value row and its terminator, each length refused when
-\ negative before it is summed and the sum refused when it would not fit a
+\ The size of one name=value row and its terminator, each length rejected when
+\ negative before it is summed and the sum rejected when it would not fit a
 \ cell. Every row writer checks it before a byte of the name is read.
 : PROC-ENV-ROW-NEED ( n n -- n ) {: nameu valu :}
    nameu 0 < if E-PROC-ENV throw then
@@ -140,7 +140,7 @@ public
    repeat drop PROC-ENV-FALSE ;
 
 
-\ A name is refused empty or holding `=` or NUL: every reader of a row stops at
+\ A name is rejected empty or holding `=` or NUL: every reader of a row stops at
 \ its first NUL, so a NUL would make a shorter name of it.
 : PROC-ENV-CHECK-NAME ( str -- )
    {: a:^ u :}
@@ -156,7 +156,7 @@ public
    a c@ PROC-ENV-EQUAL = if E-PROC-ENV throw then
    a u PROC-ENV-HAS-EQUAL? 0= if E-PROC-ENV throw then ;
 
-\ The size is checked before the entry is read: a length past it is refused
+\ The size is checked before the entry is read: a length past it is rejected
 \ unread, never scanned for its `=`.
 : PROC-ENV-STORE-Z ( str -- ^u8 ) {: a:^ u :}
    u 0 < if E-PROC-ENV throw then

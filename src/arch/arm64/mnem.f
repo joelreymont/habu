@@ -17,7 +17,7 @@ ENGINE-GPR:A64-DSTACK constant XDS  31 constant SP
 
 : MOVN, ( n n -- )  0 MOVNHW EMITW ;
 
-\ The shift is in bits; a shift that is not a whole half is refused, not rounded.
+\ The shift is in bits; a shift that is not a whole half is rejected, not rounded.
 : MOVK, ( n n n -- )  $10 SCALE/ MOVKHW EMITW ;
 
 : ADD, ( n n n -- )  ENC-ADD EMITW ;

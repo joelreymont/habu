@@ -1,8 +1,8 @@
-\ Syntax and authority refusals through the real evaluator load path.
+\ Syntax and authority rejections through the real evaluator load path.
 require src/lib/test/assert.f
 require src/lib/test/subject.f
 
-package C2-LOAN-CHECKER-REFUSAL
+package C2-LOAN-CHECKER-REJECTION
 public
 : RUN ( -- )
    T-RESET
@@ -15,7 +15,7 @@ public
    s" a mutable view requires a region identity" T-LABEL
    s" : C2-BAD-REGION ( mut-view<p,q,u8,u8> -- ) drop ;" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
-   s" c2-loan-checker-refusal: ok" type cr ;
+   s" c2-loan-checker-rejection: ok" type cr ;
 ;package
 
-C2-LOAN-CHECKER-REFUSAL:RUN
+C2-LOAN-CHECKER-REJECTION:RUN

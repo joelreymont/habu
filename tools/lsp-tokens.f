@@ -128,7 +128,7 @@ public
    WRITE-OBJECT-END ;
 
 \ From the last completed check whatever its verdict, while its positions are
-\ of the text: a refused or deferred check stopped at a point, and what it
+\ of the text: a rejected or deferred check stopped at a point, and what it
 \ reported before is still what it bound. Otherwise, as while a check of the
 \ document runs, the list is empty. Positions count in the text from now on.
 : ANSWER ( ^JSON:writer n -- ^JSON:writer )

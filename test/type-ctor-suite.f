@@ -3,7 +3,7 @@
 \
 \ A parametric family's value is one logical cell while its arguments are
 \ variables; where an instantiation proves them non-linear it expands to its
-\ hidden fields at the concrete boundary, and a linear instantiation is refused.
+\ hidden fields at the concrete boundary, and a linear instantiation is rejected.
 \ UNMAKE's open input takes in the caller's hidden cells the same way. A nested
 \ application is as wide as its family at its arguments' widths, each parameter
 \ one cell at declaration and its argument's width under a term. Products and
@@ -178,7 +178,7 @@ SUMTYPE zsec
   VARIANT hide n ;VARIANT
 ;SUMTYPE
 ;package
-s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 0 T=   \ undefined word -> refused
+s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 0 T=   \ undefined word -> rejected
 
 \ rejected declarations generate nothing: a duplicate family neither redefines
 \ nor duplicates the existing constructor words (load survives = proof).
@@ -240,7 +240,7 @@ s" CONSTRUCT-BAD" type cr
 \ 1) bare dup/swap bind the PRIMS, not zwv's ZWV:DUP/ZWV:SWAP rows.
 s" LK1 ( n n -- n n ) swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" LK2 ( n -- n n ) dup"    CHECK-QUIET-CANDIDATE! -1 T=
-\ 2) a plain qualified colon def leaves bare `lkw` undefined (refused 0).
+\ 2) a plain qualified colon def leaves bare `lkw` undefined (rejected 0).
 : lkpkg:lkw ( n -- n ) 1 + ;
 s" LK3 ( n -- n ) lkw"       CHECK-QUIET-CANDIDATE! 0 T=
 \ 3) the qualified spelling resolves.
@@ -334,7 +334,7 @@ STRUCTURE phid
   FIELD v n
 ;STRUCTURE
 ;package
-s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 0 T=   \ undefined word -> refused
+s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 0 T=   \ undefined word -> rejected
 s" package zpt" TCE-PROTECTED
 s" package ZPT" TCE-PROTECTED
 s" undefine ZPT:MAKE" TCE-PROTECTED
@@ -553,8 +553,8 @@ s" WNSTBAD ( wopt<n> -- wnst ) WNST:NESTED" CHECK-QUIET-CANDIDATE! 0 T=
 \ that drop's variable cannot bind.
 s" WSXDROP ( wsx<a> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 s" WAPDROP ( wapplied<a> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-\ record-at refuses a widened application: wapplied<wleaf> is 4 cells over 3
-\ committed slots. An accessor refuses a family argument at any width, so only
+\ record-at rejects a widened application: wapplied<wleaf> is 4 cells over 3
+\ committed slots. An accessor rejects a family argument at any width, so only
 \ record-at reaches the width condition.
 s" WAPAT ( ^wapplied<wleaf> n -- ^wapplied<wleaf> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
 s" WAPAT1 ( ^wapplied<n> n -- ^wapplied<n> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=

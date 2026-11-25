@@ -1,4 +1,4 @@
-\ C2 refusals retain the operation and the logical owner or loan in both
+\ C2 rejections retain the operation and the logical owner or loan in both
 \ diagnostic formats. Every candidate runs through the real evaluator.
 require src/lib/string.f
 require src/lib/test/assert.f
@@ -16,7 +16,7 @@ $4000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: REFUSAL ( str str str str -- )
+: REJECTION ( str str str str -- )
    {: source:str operation:str culprit:str reason:str :}
    source OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: out-u:len err-u:len oc :}
@@ -37,31 +37,31 @@ public
    T-RESET
    s" exclusive copy names the copied view and over" T-LABEL
    s" : C2-DIAG-COPY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) 0 over drop ;"
-   s" second reference made" s" found: mut-view" s" error[E-C2-COPY]: exclusive value copied" REFUSAL
+   s" second reference made" s" found: mut-view" s" error[E-C2-COPY]: exclusive value copied" REJECTION
    s" JSON exclusive copy names the copied view and over" T-LABEL
    s" -1 REJECTION:JSON ! : C2-DIAG-COPY-J ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) 0 over drop ;"
-   S\" \"token\":\"over\"" S\" \"found\":\"mut-view" S\" \"code\":\"E-C2-COPY\"" REFUSAL
+   S\" \"token\":\"over\"" S\" \"found\":\"mut-view" S\" \"code\":\"E-C2-COPY\"" REJECTION
    s" exclusive drop names the discarded view and drop" T-LABEL
    s" : C2-DIAG-DROP ( mut-view<p,p,a,u8> -- ) drop ;"
-   s" only reference dropped" s" found: mut-view" s" error[E-C2-DROP]: exclusive value discarded" REFUSAL
+   s" only reference dropped" s" found: mut-view" s" error[E-C2-DROP]: exclusive value discarded" REJECTION
    s" JSON exclusive drop names the discarded view and drop" T-LABEL
    s" -1 REJECTION:JSON ! : C2-DIAG-DROP-J ( mut-view<p,p,a,u8> -- ) drop ;"
-   S\" \"token\":\"drop\"" S\" \"found\":\"mut-view" S\" \"code\":\"E-C2-DROP\"" REFUSAL
+   S\" \"token\":\"drop\"" S\" \"found\":\"mut-view" S\" \"code\":\"E-C2-DROP\"" REJECTION
    s" nested owner names the exclusive carrier" T-LABEL
    s" -1 REJECTION:JSON ! : C2-DIAG-OWNER ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) dup drop ;"
-   S\" \"token\":\"dup\"" S\" \"found\":\"c2-mem:owner" S\" \"code\":\"E-C2-COPY\"" REFUSAL
+   S\" \"token\":\"dup\"" S\" \"found\":\"c2-mem:owner" S\" \"code\":\"E-C2-COPY\"" REJECTION
    s" escaping child names the loan and the boundary operation" T-LABEL
    s" package C2-FORALL-INPUT public : C2-DIAG-ESCAPE ( R read-view<p,p,u8> forall<q,[ read-view<q,q,u8> -- read-view<q,q,u8> ]> forall<j inside p,[ read-view<p,j,u8> -- read-view<p,j,u8> read-view<p,j,u8> ]> | U -- S read-view<p,p,u8> | U ) {: loan :} GENERIC-SCOPE loan C2-MEM:WITH-READ ; ;package"
-   s" result outlives its scope" s" found: read-view" s" error[E-C2-SCOPE-ESCAPE]: scoped value escapes its owner or loan" REFUSAL
+   s" result outlives its scope" s" found: read-view" s" error[E-C2-SCOPE-ESCAPE]: scoped value escapes its owner or loan" REJECTION
    s" JSON escaping child names the loan and the boundary operation" T-LABEL
    s" -1 REJECTION:JSON ! package C2-FORALL-INPUT public : C2-DIAG-ESCAPE-J ( R read-view<p,p,u8> forall<q,[ read-view<q,q,u8> -- read-view<q,q,u8> ]> forall<j inside p,[ read-view<p,j,u8> -- read-view<p,j,u8> read-view<p,j,u8> ]> | U -- S read-view<p,p,u8> | U ) {: loan :} GENERIC-SCOPE loan C2-MEM:WITH-READ ; ;package"
-   S\" \"token\":\"C2-MEM:WITH-READ\"" S\" \"found\":\"read-view" S\" \"code\":\"E-C2-SCOPE-ESCAPE\"" REFUSAL
+   S\" \"token\":\"C2-MEM:WITH-READ\"" S\" \"found\":\"read-view" S\" \"code\":\"E-C2-SCOPE-ESCAPE\"" REJECTION
    s" stale table names the stale parent and record operation" T-LABEL
    s" : C2-DIAG-THROW ( records<b,i,a,C2-RECORDS-TYPES:pair> n -- records<b,i,a,C2-RECORDS-TYPES:pair> n ) swap 1 throw ; : C2-DIAG-STALE ( records<b,i,a,C2-RECORDS-TYPES:pair> -- records<b,i,a,C2-RECORDS-TYPES:pair> ) 0 ['] C2-DIAG-THROW catch drop drop 0 [: ;] C2-MEM:WITH-RECORD ;"
-   s" cell stale after `catch`" s" found: stale<records" s" error[E-STALE-READ]: stale cell:" REFUSAL
+   s" cell stale after `catch`" s" found: stale<records" s" error[E-STALE-READ]: stale cell:" REJECTION
    s" JSON stale table names the stale parent and record operation" T-LABEL
    s" -1 REJECTION:JSON ! : C2-DIAG-THROW-J ( records<b,i,a,C2-RECORDS-TYPES:pair> n -- records<b,i,a,C2-RECORDS-TYPES:pair> n ) swap 1 throw ; : C2-DIAG-STALE-J ( records<b,i,a,C2-RECORDS-TYPES:pair> -- records<b,i,a,C2-RECORDS-TYPES:pair> ) 0 ['] C2-DIAG-THROW-J catch drop drop 0 [: ;] C2-MEM:WITH-RECORD ;"
-   S\" \"token\":\"C2-MEM:WITH-RECORD\"" S\" \"found\":\"stale<records" S\" \"code\":\"E-STALE-READ\"" REFUSAL
+   S\" \"token\":\"C2-MEM:WITH-RECORD\"" S\" \"found\":\"stale<records" S\" \"code\":\"E-STALE-READ\"" REJECTION
    T-REPORT
    s" c2-diagnostics: ok" type cr ;
 ;package

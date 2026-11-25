@@ -366,7 +366,7 @@ $80 constant JWT-EVERY-N
    b STR:DATA JWT-FILL-N 1+ + c@ 97 T=
    b STR:DATA b STR:LEN 1 - + c@ [char] " T= ;
 
-: JWT-REFUSED-KEEPS$ ( [ -- ] str -- )   \ refusal left the document untouched
+: JWT-REJECTED-KEEPS$ ( [ -- ] str -- )   \ rejection left the document untouched
    {: want:str :}
    E-JSON-WRITE-CAPACITY TTHROWSQ
    JWT-A JSON:WRITTEN$ want T$= ;
@@ -379,13 +379,13 @@ $80 constant JWT-EVERY-N
    JWT-OPEN-A s" ab" JSON:WRITE-RAW
    s" k" s" v" STR:DATA -1 >str JSON:WRITE-FIELD-RAW drop ;
 
-: JWT-TEST-FIELD-REFUSAL ( -- )
+: JWT-TEST-FIELD-REJECTION ( -- )
    [: JWT-FIELD-S-BAD-VALUE ;] E-JSON-WRITE-SOURCE TTHROWSQ
    JWT-A JSON:WRITTEN$ s\" ab\"k\":" T$=
    [: JWT-FIELD-RAW-BAD-VALUE ;] E-JSON-WRITE-SOURCE TTHROWSQ
    JWT-A JSON:WRITTEN$ s\" ab\"k\":" T$= ;
 
-\ A writer that was never opened and one that was closed are both refused by
+\ A writer that was never opened and one that was closed are both rejected by
 \ name; neither reads or writes the caller's bytes.
 : JWT-FRESH-RAW ( -- )
    JWT-FRESH s" x" JSON:WRITE-RAW drop ;
@@ -460,7 +460,7 @@ $80 constant JWT-EVERY-N
    JSON:WRITE-STRING drop ;
 
 \ Every source byte takes at least one byte of output, so text longer than the
-\ output can grow to is refused before a byte of it is read: these bytes end at
+\ output can grow to is rejected before a byte of it is read: these bytes end at
 \ an inaccessible page, and the claim runs past them.
 : JWT-STRING-UNREAD ( n -- ) {: u:n :}
    JWT-OPEN-A JWT-TAIL-N [char] a GUARD-PAGE:TAIL u >str
@@ -576,17 +576,17 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
 : JWT-BAD-KEY ( -- )
    JWT-OPEN-AB JWT-FFFE 1 >str JSON:WRITE-KEY drop ;
 
-: JWT-BYTE-REFUSED ( [ -- ] -- )
+: JWT-BYTE-REJECTED ( [ -- ] -- )
    E-JSON-WRITE-BYTE TTHROWSQ
    JWT-A JSON:WRITTEN$ s" ab" T$= ;
 
 : JWT-TEST-UTF8 ( -- )
-   [: JWT-BAD-FFFE ;] JWT-BYTE-REFUSED
-   [: JWT-BAD-CONT ;] JWT-BYTE-REFUSED
-   [: JWT-BAD-TRUNCATED ;] JWT-BYTE-REFUSED
-   [: JWT-BAD-OVERLONG ;] JWT-BYTE-REFUSED
-   [: JWT-BAD-SURROGATE ;] JWT-BYTE-REFUSED
-   [: JWT-BAD-KEY ;] JWT-BYTE-REFUSED
+   [: JWT-BAD-FFFE ;] JWT-BYTE-REJECTED
+   [: JWT-BAD-CONT ;] JWT-BYTE-REJECTED
+   [: JWT-BAD-TRUNCATED ;] JWT-BYTE-REJECTED
+   [: JWT-BAD-OVERLONG ;] JWT-BYTE-REJECTED
+   [: JWT-BAD-SURROGATE ;] JWT-BYTE-REJECTED
+   [: JWT-BAD-KEY ;] JWT-BYTE-REJECTED
    JWT-UTF8-OK 9 >str JWT-RT-ENCODE JWT-RT-DECODE$
    JWT-UTF8-OK 9 >str T$= ;
 
@@ -692,7 +692,7 @@ create JWT-PARTS-WANT
 : JWT-KEY-BAD ( -- )
    JWT-OPEN-A 2 JSON:WRITE-INDENT! JSON:WRITE-OBJECT-START
    JWT-PARTS 4 + 1 >str JSON:WRITE-KEY drop ;
-: JWT-TEST-KEY-REFUSED ( -- )
+: JWT-TEST-KEY-REJECTED ( -- )
    [: JWT-KEY-BAD ;] E-JSON-WRITE-BYTE TTHROWSQ
    JWT-A JSON:WRITTEN$ s" {" T$=
    JWT-A JSON:WRITE-NULL JSON:WRITTEN$ s\" {\n  null" T$= ;
@@ -710,7 +710,7 @@ create JWT-PARTS-WANT
 : JWT-OBJECT-END-TOP ( -- ) JWT-OPEN-AB JSON:WRITE-OBJECT-END drop ;
 : JWT-ARRAY-END-TOP ( -- ) JWT-OPEN-AB JSON:WRITE-ARRAY-END drop ;
 
-: JWT-STATE-REFUSED ( [ -- ] -- )
+: JWT-STATE-REJECTED ( [ -- ] -- )
    E-JSON-WRITE-STATE TTHROWSQ
    JWT-A JSON:WRITTEN$ s" ab" T$= ;
 
@@ -725,15 +725,15 @@ create JWT-PARTS-WANT
 : JWT-CLOSED-PART ( -- ) JWT-CLOSED s" x" JSON:WRITE-STRING-PART drop ;
 : JWT-CLOSED-END ( -- ) JWT-CLOSED JSON:WRITE-STRING-END drop ;
 
-: JWT-TEST-LAYOUT-REFUSALS ( -- )
+: JWT-TEST-LAYOUT-REJECTIONS ( -- )
    [: JWT-PART-FF ;] E-JSON-WRITE-BYTE TTHROWSQ
    JWT-A JSON:WRITTEN$ s\" \"" T$=
    [: JWT-PART-HALF ;] E-JSON-WRITE-BYTE TTHROWSQ
    JWT-A JSON:WRITTEN$ s\" \"" T$=
-   [: JWT-INDENT!-NEG ;] JWT-BYTE-REFUSED
-   [: JWT-BREAK-WRAP ;] s" ab[[" JWT-REFUSED-KEEPS$
-   [: JWT-OBJECT-END-TOP ;] JWT-STATE-REFUSED
-   [: JWT-ARRAY-END-TOP ;] JWT-STATE-REFUSED
+   [: JWT-INDENT!-NEG ;] JWT-BYTE-REJECTED
+   [: JWT-BREAK-WRAP ;] s" ab[[" JWT-REJECTED-KEEPS$
+   [: JWT-OBJECT-END-TOP ;] JWT-STATE-REJECTED
+   [: JWT-ARRAY-END-TOP ;] JWT-STATE-REJECTED
    [: JWT-FRESH-INDENT! ;] E-JSON-WRITE-STATE TTHROWSQ
    [: JWT-FRESH-START ;] E-JSON-WRITE-STATE TTHROWSQ
    [: JWT-FRESH-PART ;] E-JSON-WRITE-STATE TTHROWSQ
@@ -764,7 +764,7 @@ create JWT-PARTS-WANT
    s\" {\n  \"a\": 1,\n  \"b\": 2\n}" T$= ;
 
 
-: JWT-STATE-KEEPS$ ( [ -- ] str -- )   \ refusal left the document untouched
+: JWT-STATE-KEEPS$ ( [ -- ] str -- )   \ rejection left the document untouched
    {: want:str :}
    E-JSON-WRITE-STATE TTHROWSQ
    JWT-A JSON:WRITTEN$ want T$= ;
@@ -783,20 +783,20 @@ create JWT-PARTS-WANT
    JSON:WRITE-OBJECT-END drop ;
 
 
-\ A writer closed right after a START still refuses a comma.
+\ A writer closed right after a START still rejects a comma.
 : JWT-CLOSED-OPEN-COMMA ( -- )
    JWT-OPEN-B JSON:WRITE-ARRAY-START JSON:CLOSE JWT-B JSON:WRITE-COMMA drop ;
 
 
-: JWT-TEST-COMMA-REFUSALS ( -- )
+: JWT-TEST-COMMA-REJECTIONS ( -- )
    [: JWT-COMMA-TWICE ;] s" [1," JWT-STATE-KEEPS$
    [: JWT-ARRAY-END-COMMA ;] s" [1," JWT-STATE-KEEPS$
    [: JWT-OBJECT-END-COMMA ;] s\" {\"a\":1," JWT-STATE-KEEPS$
    [: JWT-CLOSED-OPEN-COMMA ;] E-JSON-WRITE-STATE TTHROWSQ ;
 
 
-\ Calls the layout refuses, each on JWT-A; JWT-KEYED$ and JWT-QUOTING$ are
-\ what JWT-A holds when the refused call comes.
+\ Calls the layout rejects, each on JWT-A; JWT-KEYED$ and JWT-QUOTING$ are
+\ what JWT-A holds when the rejected call comes.
 : JWT-EMPTY$ ( -- str ) JWT-NAME 0 >str ;
 : JWT-KEYED ( -- ^JSON:writer ) JWT-OPEN-A JSON:WRITE-OBJECT-START s" k" JSON:WRITE-KEY ;
 : JWT-KEYED$ ( -- str ) s\" {\"k\":" ;
@@ -825,7 +825,7 @@ create JWT-PARTS-WANT
    JSON:WRITE-ARRAY-START 1 JSON:WRITE-U JSON:WRITE-COMMA s" x" JSON:WRITE-STRING JSON:WRITE-ARRAY-END ;
 
 
-\ A comma, string piece, END or token where JSON takes none is refused whole.
+\ A comma, string piece, END or token where JSON takes none is rejected whole.
 : JWT-TEST-LAYOUT-STATES ( -- )
    [: JWT-COMMA-FRESH ;] JWT-EMPTY$ JWT-STATE-KEEPS$
    [: JWT-COMMA-RESET ;] JWT-EMPTY$ JWT-STATE-KEEPS$
@@ -876,7 +876,7 @@ create JWT-PARTS-WANT
    JWT-TEST-GROW-DISPOSED-CLOSE
    JWT-TEST-SELF-RAW
    JWT-TEST-SELF-STRING
-   JWT-TEST-FIELD-REFUSAL
+   JWT-TEST-FIELD-REJECTION
    JWT-TEST-STATE
    JWT-TEST-ERRORS
    JWT-TEST-INT
@@ -891,10 +891,10 @@ create JWT-PARTS-WANT
    JWT-TEST-ASCII
    JWT-TEST-ASCII-RESET
    JWT-TEST-PARTS
-   JWT-TEST-KEY-REFUSED
-   JWT-TEST-LAYOUT-REFUSALS
+   JWT-TEST-KEY-REJECTED
+   JWT-TEST-LAYOUT-REJECTIONS
    JWT-TEST-COMMA-FIRST
-   JWT-TEST-COMMA-REFUSALS
+   JWT-TEST-COMMA-REJECTIONS
    JWT-TEST-LAYOUT-STATES
    JWT-TEST-CHECKER
    JWT-OUT-A @ VEC:DELETE  JWT-OUT-B @ VEC:DELETE  JWT-RT-OUT @ VEC:DELETE

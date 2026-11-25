@@ -163,7 +163,7 @@ variable GT-PROGRESS-START-NS
 
 10 constant GT-FD-HOLD-MIN               \ a held descriptor sits above the low ones
 2 constant GT-CAP-ROWS                   \ a frame's rows: stdout, then stderr
-\ Captures open at once: tests nest two, and one past the bound is refused
+\ Captures open at once: tests nest two, and one past the bound is rejected
 \ with E-TBL-BOUNDS before it takes a frame.
 8 constant GT-CAP-NEST-MAX
 \ The bytes one read of a capture file asks for.
@@ -195,7 +195,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    -1 FD:STDERR FD>N GT-CAP-READER ! ;
 
 \ A copy of fd at GT-FD-HOLD-MIN or above, close-on-exec from its first
-\ instant; -errno when the host refuses.
+\ instant; -errno when the call fails.
 : GT-CAP-DUP ( n -- n )
    FD:F-DUPFD-CLOEXEC GT-FD-HOLD-MIN fcntl ;
 
@@ -265,15 +265,15 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    b ;
 
 \ fd takes back the stream its row saved, and the row's descriptors close:
-\ 0, or E-PROC-OUTPUT when any of that is refused.
+\ 0, or E-PROC-OUTPUT when any of that is rejected.
 : GT-CAP-RELEASE ( n -- n )
    {: fd:n :}
    fd fd GT-CAP-SAVE @ GT-CAP-RESTORE
    fd GT-CAP-SAVE @ GT-CAP-CLOSE GT-CAP-FIRST
    fd GT-CAP-READER @ GT-CAP-CLOSE GT-CAP-FIRST ;
 
-\ Both rows are released whatever either refuses, then the frame goes and the
-\ first refusal is thrown.
+\ Both rows are released whatever either rejects, then the frame goes and the
+\ first rejection is thrown.
 : GT-CAP-LEAVE ( -- )
    FD:STDOUT FD>N GT-CAP-RELEASE
    FD:STDERR FD>N GT-CAP-RELEASE GT-CAP-FIRST {: rc:n :}
@@ -358,7 +358,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 : GT-TMPDIR-MAX ( n -- n )
    FS:TEMP-DIR-BASE-MAX 1- GT-NAME-MAX - ;
 
-\ A TMPDIR longer than that is refused once, here, before anything is made: a
+\ A TMPDIR longer than that is rejected once, here, before anything is made: a
 \ named failure with its length and the limit, then the report's exit. A row's
 \ own deeper paths are not checked here: the deepest, streaming-sha256's deep
 \ file (tools/sha256-file-test.f), must still fit PATH-CAP (src/lib/fs.f

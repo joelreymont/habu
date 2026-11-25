@@ -1,4 +1,4 @@
-\ A real OS refusal to grow the address-cell table runs in a child: its zero
+\ A growth of the address-cell table that fails runs in a child: its zero
 \ address-space limit is process-wide and its uncaught throw ends it.
 require src/lib/string.f
 require src/lib/test/assert.f

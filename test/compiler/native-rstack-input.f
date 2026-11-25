@@ -1,6 +1,6 @@
 \ native-rstack-input.f - no signature written in source declares a return-stack
 \ cell: a written `|` clause carries one row variable, the same on both sides
-\ (docs/forth.md "The return-stack clause"), and the checker refuses any other
+\ (docs/forth.md "The return-stack clause"), and the checker rejects any other
 \ clause at the declaration. Each case is one stdin-piped engine run.
 
 require src/lib/error.f
@@ -44,9 +44,9 @@ variable ERR-U
    label T-LABEL  OUT$ want T$=
    src before SHOW ;
 
-\ One refused run: the child exits RC, prints nothing, and its stderr begins
+\ One rejected run: the child exits RC, prints nothing, and its stderr begins
 \ with DIAG, the record's headline, and holds NOTE.
-: REFUSED ( str str str str n -- )
+: REJECTED ( str str str str n -- )
    {: label:str src:str diag:str note:str rc:n :}
    T-FAILURES {: before:n :}
    src EXEC {: outu:len erru:len oc :}
@@ -57,53 +57,53 @@ variable ERR-U
    label T-LABEL  ERR$ note STR:CONTAINS? TTRUE
    src before SHOW ;
 
-\ ---- refused at the declaration ----------------------------------------------
+\ ---- rejected at the declaration ----------------------------------------------
 \ Held here: an input, output or both-sides cell (rs1, rs2); a TRUSTED:
 \ declaration, stored rather than checked (RT1); a nested quotation type (RUNQ);
 \ a quotation literal or unsigned definition pushing or popping a caller's cell
 \ (QPUSH, QPOP, UREAD, UPOP); a primitive's return row, so a body that parks a
 \ value stops compiling (PARK).
-: REFUSALS ( -- )
+: REJECTIONS ( -- )
    s" rs1: a body replaces a declared return-stack cell"
    S\" : RC1 ( | n -- | n ) r> drop 0 >r ;\nTRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RC1 r> ;\nUSE . cr\n"
    s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` | n -- | n `"
-   s" --> <input>:1:8"  70 REFUSED
+   s" --> <input>:1:8"  70 REJECTED
    s" rs1: a TRUSTED: body replaces a declared return-stack cell"
    S\" TRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RT1 r> ;\nUSE . cr\n"
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `RT1` cannot be recorded"
-   s" |          ^^^ its signature moves the return stack"  70 REFUSED
+   s" |          ^^^ its signature moves the return stack"  70 REJECTED
    s" rs2: a body pops a declared return-stack input"
    S\" : RP ( | n -- n | ) r> ;\n: USE ( -- n ) 5 >r RP ;\nUSE . cr\n"
    s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` | n -- n | `"
-   s" --> <input>:1:7"  70 REFUSED
+   s" --> <input>:1:7"  70 REJECTED
    s" a quotation type moves a cell to the return stack"
    S\" : RUNQ ( n [ n -- | U -- U n ] | U -- n | U ) execute r> ;\n: USE ( -- n ) 5 [: >r ;] RUNQ ;\nUSE . cr\n"
    s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` n [ n -- | U -- U n ] | U -- n | U `"
-   s" --> <input>:1:9"  70 REFUSED
+   s" --> <input>:1:9"  70 REJECTED
    s" a generates: row declares a return-stack cell"
    S\" package GP\n: G ( n -- ) drop parse-name drop ;\ngenerates: G ( | -- | n )\npublic\n;package\n"
    s" error[E-GENERATES-ROW]: the `generates:` row names `G`"
-   s" its signature moves the return stack"  70 REFUSED
+   s" its signature moves the return stack"  70 REJECTED
    s" a bar on one side only"
    S\" : ONE ( R n | S -- R ) drop ;\n"
    s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` R n | S -- R `"
-   s" --> <input>:1:8"  70 REFUSED
+   s" --> <input>:1:8"  70 REJECTED
    s" a quotation literal pushes a cell its caller pops"
    S\" : QPUSH ( n -- n ) [: >r ;] execute r> ;\n: USE ( -- n ) 5 QPUSH ;\nUSE . cr\n"
    s" error[E-RETURN-STACK]: return stack: the quotation leaves its return row unbalanced"
-   s" --> <input>:1:26"  70 REFUSED
+   s" --> <input>:1:26"  70 REJECTED
    s" a quotation literal pops a cell its caller pushed"
    S\" : QPOP ( n -- n ) >r [: r> ;] execute ;\n: USE ( -- n ) 5 QPOP ;\nUSE . cr\n"
    s" error[E-RETURN-STACK]: return stack: the quotation reads below the return-stack cells it pushed"
-   s" --> <input>:1:25"  70 REFUSED
+   s" --> <input>:1:25"  70 REJECTED
    s" an unsigned definition reads a cell it did not push"
    S\" : UREAD r@ ;\n"
    s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here"
-   s" --> <input>:1:9"  70 REFUSED
+   s" --> <input>:1:9"  70 REJECTED
    s" an unsigned definition pops a cell it did not push"
    S\" : UPOP r> ;\n"
    s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here"
-   s" --> <input>:1:8"  70 REFUSED ;
+   s" --> <input>:1:8"  70 REJECTED ;
 
 \ ---- still admitted -----------------------------------------------------------
 \ A bar on one side only pairs the written row with a fresh one and is admitted,
@@ -121,7 +121,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   REFUSALS
+   REJECTIONS
    ADMISSIONS
    T-REPORT
    s" native-rstack-input: ok" type cr ;

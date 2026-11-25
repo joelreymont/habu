@@ -52,9 +52,9 @@ variable CODE-B
 : REOPEN ( -- )  [: ;] CAPTURED ;
 
 
-\ The refused capture neither truncates the open one's file nor moves fd 2.
+\ The rejected capture neither truncates the open one's file nor moves fd 2.
 : NESTED-CASE ( -- )
-   s" a capture inside a capture is refused" T-LABEL
+   s" a capture inside a capture is rejected" T-LABEL
    [: NESTED ;] CAPTURED
    FILE$ S\" before\nafter\n" T$=
    CODE-A @ STDERR:E-STATE T=

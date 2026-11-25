@@ -1,5 +1,5 @@
 \ A plain zero cannot prove that this caught reader returned normally.
-package CATCH-REFUSAL
+package CATCH-REJECTION
 private
 variable THROW-MODE
 : NEW-VALUE ( -- n ) THROW-MODE @ 0<> if 84 throw then 31 ;
@@ -10,8 +10,8 @@ public
    0 0= if value 1+ else 0 then ;
 ;package
 
-package CATCH-REFUSAL
+package CATCH-REJECTION
 public
 : EXERCISE ( -- ) 1 WRONG-STATUS drop ;
 ;package
-CATCH-REFUSAL:EXERCISE
+CATCH-REJECTION:EXERCISE

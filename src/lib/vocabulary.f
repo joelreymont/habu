@@ -18,14 +18,14 @@ public
 : ALLOW-PACKAGE ( str -- ) policy-admit ;
 
 \ Opt in to ordinary static require within this canonical searchable directory.
-\ The resolver and loader then refuse a canonical path outside it (`..`,
+\ The resolver and loader then reject a canonical path outside it (`..`,
 \ absolute, symlink, library fallback) before a registry hit or a read, in checks
 \ before RESTRICT and in the sealed load, the harness's `script-required` entry
 \ included.
 : SOURCE-ROOT! ( str -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-ROOT ;
 
 \ Scopes the root and the nested-require owner around one callback: restores both
-\ on return or throw, nests, refuses once sealed, and throws 70 on leaving if its
+\ on return or throw, nests, rejects once sealed, and throws 70 on leaving if its
 \ callback sealed.
 : WITH-SOURCE-ROOT ( str [ -- ] -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-WITH-ROOT ;
 

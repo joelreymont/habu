@@ -387,7 +387,7 @@ variable DEEP-U
    FOREIGN$ s" test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
 \ The tree's lib is missing, so its frozen rows answer by name, also under a
-\ discovery base, and a library is refused naming the owner's path.
+\ discovery base, and a library is rejected naming the owner's path.
 : PARTIAL ( -- )
    s" a tree without the library is the root, and nothing falls back" T-LABEL
    PROG-RESET
@@ -556,7 +556,7 @@ variable DEEP-U
    SB-RESET s" `source-root:cd` got `" SB-APPEND rel A$ SB-APPEND 96 SB-APPEND-C SB$ SAYS
    want SAYS ;
 
-: CD-REFUSED ( str str str -- )
+: CD-REJECTED ( str str str -- )
    {: label:str rel:str want:str :}
    label T-LABEL
    rel CD-PROG
@@ -668,10 +668,10 @@ variable DEEP-U
    RUN-TREE
    SB-RESET s" from cd" LINE s" cd/sub" A$ LINE SB$ 0 EXPECT
    s" CD to a missing directory is rejected by name" s" absent"
-   s" does not resolve to a directory" CD-REFUSED
+   s" does not resolve to a directory" CD-REJECTED
    CD-LOCKED
    s" CD to a file is rejected by name" s" cd/x.f"
-   s" is not a directory this process can search" CD-REFUSED
+   s" is not a directory this process can search" CD-REJECTED
    CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-IN-ROOT PATH-SAVED-IN-SCOPE
    PATH-STACK ;
 

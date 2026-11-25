@@ -36,9 +36,9 @@ product built on ARM64 is run on an x86-64 machine.
 ## Target contract
 
 `src/compiler/target.f` is the immutable contract every compilation carries:
-architecture, ABI, byte order, pointer width and features. It refuses only
+architecture, ABI, byte order, pointer width and features. It rejects only
 incoherent combinations, so a contract can be declared before any backend for
-it exists; an architecture with no loaded backend is refused at the first
+it exists; an architecture with no loaded backend is rejected at the first
 compiler stage. A named profile fixes the architecture, pointer width, foreign
 ABI, runtime, image format and Habu ABI; the Windows profiles are declarable
 products whose process and image services do not exist.
@@ -77,11 +77,11 @@ is SwiftX's ([swiftx.md](swiftx.md)), with the differences stated below.
 - Top level executes on the host. A data word answers there what it answers
   on the target, in either section: a constant its value, any other the
   address of its data.
-- A target word a cross-build runs is refused by name (`E-TARGET-WORD`),
+- A target word a cross-build runs is rejected by name (`E-TARGET-WORD`),
   whether top level names it or a host word calls it. A host word that names one compiles:
-  refusing it there would put every caller of a target word in a target
+  rejecting it there would put every caller of a target word in a target
   section too. `'` names a target word without calling it: its token can be
-  stored in data, and executing the token on the host is the same refusal.
+  stored in data, and executing the token on the host is the same rejection.
 - A host word reaches a build's data through data words (in an engine package
   also `data-base`), never through an address the target's layout fixes:
   during a build that address is the host's own memory.
@@ -155,8 +155,8 @@ never turned into a catchable error.
   whole field's range: an x86-64 `rel32` counts from the end of the
   instruction; a Wasm function, type or table reference is an index, written as
   a fixed-width padded LEB so linking never changes a length (Wasm "Linking").
-- A linker refuses before writing its first byte; nothing leaves the process
-  ahead of a refusal.
+- A linker rejects before writing its first byte; nothing leaves the process
+  ahead of a rejection.
 
 ## The NaN an operation makes
 
@@ -204,7 +204,7 @@ target-free: it emits through the emitter the target selects.
 A host word's names are bound as it compiles, so its target routine cannot be
 lowered later from the tape: while the shadow (`src/compiler/native/shadow.f`)
 is open, `src/habu/t0.f` walks the same tape for the target before the host,
-and a shadow refusal refuses the definition.
+and a shadow rejection rejects the definition.
 
 ### The OS seam
 
@@ -338,7 +338,7 @@ see Habu effects or types. Code inspection and patching have no Wasm form.
 ### Linking
 
 Every reachable definition is guest code, guest data, a kernel word the
-module provides or refused by name: native syscalls, `dlopen`, host addresses and code
+module provides or rejected by name: native syscalls, `dlopen`, host addresses and code
 pointers have no Wasm form. A target data builder lays out static bytes; no
 native dictionary or snapshot is copied in. Changing an index can change an
 LEB's length, so every call and address immediate is a padded LEB and the
@@ -453,7 +453,7 @@ explicitly and raises a named target-unknown error when none matches.
 ### Engine Primitives
 
 A new backend adds bodies under the `src/habu/prims.f` row names and declares
-no effects of its own; that file's header names the gates that refuse a body
+no effects of its own; that file's header names the gates that reject a body
 with no row and a row with no body.
 
 ### Native Compiler ABI
@@ -474,7 +474,7 @@ primitives read, whatever the machine's own flag convention.
 Signal handlers are target ABI boundaries: crash and profiler handlers use the
 target's `sigaction` frame, ucontext PC offset, `sigreturn` convention and
 signal list, and Linux `rt_sigaction` needs the sigset size. A handler written
-for one target refuses another at load rather than emit the wrong frame
+for one target rejects another at load rather than emit the wrong frame
 (`src/habu/prof.f`, `src/habu/prof-x64.f`).
 
 ### Executable Images

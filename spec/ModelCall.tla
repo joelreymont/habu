@@ -69,7 +69,7 @@ Settled(c) ==
     [resend EXCEPT ![c].step = "done", ![c].out = FALSE]
 (* A landed send is to be sent again by the tier machine (TIER-OUT? at    *)
 (* preferred, while the resend machine sends) or by a rest (REST-OUT?     *)
-(* while it sends or resumes: a resend landed at once or refused, its     *)
+(* while it sends or resumes: a resend landed at once or rejected, its     *)
 (* move on not yet stored). A landed call resting came only from          *)
 (* LAND-CANCELLED, whose E-CANCELLED outcome CANCEL-LOCKED's own check    *)
 (* marks (ecan), so RESEND-NEXT? answers false there.                     *)
@@ -87,7 +87,7 @@ Takers == {"serve", "await"}
 (* resent, a rest's resend landed at once or its begin faulted, the move   *)
 (* to sending not yet stored; sense, SENT-SENSE of a send landed at once;  *)
 (* publish, BEGIN-REST chosen and not yet published; begun, REST-SENSE of  *)
-(* a rest just published; cut, LAND-CANCELLED or a refused RESEND,         *)
+(* a rest just published; cut, LAND-CANCELLED or a rejected RESEND,         *)
 (* E-CANCELLED stored as the outcome under the gate, past the gate and     *)
 (* before CANCEL-RECORD; account, ACCOUNT of a landed receive or of        *)
 (* CANCEL-RECORD's cancelled record.                                       *)
@@ -240,9 +240,9 @@ TakeFault(c) == \E t \in Throws(c) : FaultAs(c, t)
 (* E-CANCELLED (cut, or cut-failed after a failure the send met first,     *)
 (* whose line it keeps). Only an end the provider sent may land E-TIER,    *)
 (* and only when the call was not cut: whether it does is chosen here, and *)
-(* so are the land machine's ending, kept in the receipt (served, refused  *)
+(* so are the land machine's ending, kept in the receipt (served, rejected  *)
 (* or failed; E-TIER is failed), and whether a failed send lands a fault   *)
-(* RESEND-WAIT! rests. A served or refused send's journal put may fail;    *)
+(* RESEND-WAIT! rests. A served or rejected send's journal put may fail;    *)
 (* its fault becomes the outcome, which REST-OUT? does not rest and        *)
 (* TIER-OUT? does not send again (t => e = "failed").                      *)
 Take(c) ==
@@ -262,7 +262,7 @@ Take(c) ==
        /\ ecan' = [ecan EXCEPT ![c] = cancelled[c]]
        /\ \E t \in IF cancelled[c] THEN {FALSE} ELSE BOOLEAN,
              e \in IF cancelled[c] THEN {"cut", "cut-failed"}
-                   ELSE {"served", "refused", "failed"} :
+                   ELSE {"served", "rejected", "failed"} :
           \E o \in IF e = "failed" /\ CanRest(c) THEN BOOLEAN ELSE {FALSE} :
              /\ t => e = "failed"
              /\ ~(t /\ o)
@@ -558,7 +558,7 @@ BegunSense(c) ==
                        sent, hcut>>
 
 (* CANCEL-RECORD after REST-END-LOCKED, out of the gate: LAND-CANCELLED's  *)
-(* of a rest, or the resuming row's when RESEND's RESUME-LOCKED refused    *)
+(* of a rest, or the resuming row's when RESEND's RESUME-LOCKED rejected    *)
 (* the begin. The hold that ended the rest stored the outcome.             *)
 Cut(c) ==
     \E f \in Froms :
@@ -578,7 +578,7 @@ Cut(c) ==
 (* (HaltAbandon), and the call lands; its poll of a read with nothing      *)
 (* leaves the call started and the owner unwinding.                        *)
 (* REQUIRE-STARTER passes: the one owner starts every call.                *)
-(* OWNED-INDEX's refusal of a left owner's record never fires: no TCB is   *)
+(* OWNED-INDEX's rejection of a left owner's record never fires: no TCB is   *)
 (* reused.                                                                 *)
 Serve(c) ==
     /\ opc = <<"free">>
@@ -642,7 +642,7 @@ Resume ==
 
 (* AWAIT: a landed call goes idle; a started one enters RECEIVE-STARTED.   *)
 (* REQUIRE-STARTER passes: the one owner starts every call.                *)
-(* OWNED-INDEX's refusal of a left owner's record never fires: no TCB is   *)
+(* OWNED-INDEX's rejection of a left owner's record never fires: no TCB is   *)
 (* reused.                                                                 *)
 Await(c) ==
     /\ Free
@@ -747,7 +747,7 @@ CleanupStep(c) ==
 (* resets, its cancelled flag cleared), and on begun SEND-STANDARD         *)
 (* dispatches it                                                           *)
 (* (Dispatch) and the machine is standard; MaxStarts does not count it. A  *)
-(* stop or CANCEL since the send landed is refused, RESEND-LOCKED storing  *)
+(* stop or CANCEL since the send landed is rejected, RESEND-LOCKED storing  *)
 (* E-CANCELLED as the outcome, and CANCEL-RECORD lands the call; a fault   *)
 (* beginning it is its outcome, and RESEND-STEP's SENT-SENSE settles it.   *)
 (* Any other send, one halted included, steps the tier machine to done,    *)
@@ -829,7 +829,7 @@ PutCut(c) ==
 (* taken here, or the next RestAwait. A due one's SERVE-HALT serves a      *)
 (* pending halt first, leaving the call resting; else the machine resumes  *)
 (* and RESEND begins the resend under the gate: RESUME-LOCKED ends the     *)
-(* rest, and a stop or CANCEL since REST-SENSE is refused, E-CANCELLED     *)
+(* rest, and a stop or CANCEL since REST-SENSE is rejected, E-CANCELLED     *)
 (* stored as the outcome there (Cut, the machine resuming), one no other   *)
 (* task tells from a stop or CANCEL REST-SENSE read; a fault beginning it  *)
 (* lands the call, the fault its outcome, outside REST-OUT?'s class        *)
@@ -885,7 +885,7 @@ RestServe(c) == opc = <<"free">> /\ RestStep(c, "serve")
 RestAwait(c) == opc = <<"await", c>> /\ RestStep(c, "await")
 
 (* CLOSE (model.f) frees an idle or landed call's arena; a started one is  *)
-(* refused.                                                                *)
+(* rejected.                                                                *)
 CloseBody(c) ==
     /\ lc[c] \in {"idle", "landed"}
     /\ lc' = [lc EXCEPT ![c] = "closed"]
@@ -900,7 +900,7 @@ Close(c) ==
                    seen>>
 
 (* An owner that does not follow the rule ends its body with calls still   *)
-(* started (a fault no cleanup awaits): CLOSE refuses those, so their      *)
+(* started (a fault no cleanup awaits): CLOSE rejects those, so their      *)
 (* spans stay; OWNER-END abandons their records. This is the case          *)
 (* OWNER-END exists for.                                                   *)
 Quit ==

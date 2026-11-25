@@ -2,7 +2,7 @@ split-str
 \ check-walk.f - the checker's walk over a definition, which calls the type registry
 \ and the diagnostics that load before it.
 
-\ The longest effect a row states. The source pre-verifier refuses a longer one
+\ The longest effect a row states. The source pre-verifier rejects a longer one
 \ at the same bound.
 $100 constant GENR-SIG-CAP
 
@@ -303,7 +303,7 @@ EXPORT TFAM:TFL-VPADS
    CURSYM @ TFAM-MEMBER-STEP? IF EXIT THEN
    FEP-HIT? IF
       CURSYM @ CALL-AUTHORITY
-      dup CALL-REFUSED = IF drop -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
+      dup CALL-REJECTED = IF drop -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
       dup CALL-RECOVERS = IF RES-TRUE RECOVERY-USED! THEN
       CALL-PRIMS <> IF FEP @ EFF-APPLY EXIT THEN
    THEN
@@ -312,7 +312,7 @@ EXPORT TFAM:TFL-VPADS
    \ The load compiles a word its lookup found, though no checker symbol or row
    \ types it, so only the check fails the call.
    TOK-LIVE-REC @ IF a u CALL-UNDEFINED drop EXIT THEN
-   a u REFUSE-UNDEFINED ;
+   a u REJECT-UNDEFINED ;
 
 \ After a step of the engine's `throw` from stack row pre: when the code it
 \ popped is one a catch answered, the token's event takes that catch's ordinal
@@ -353,7 +353,7 @@ EXPORT TFAM:TFL-VPADS
    lost CF-TOP CF.FT !
    2 CHECKER-MATCH-MODE ! ;
 
-\ A scrutinee that does not fit refuses the match at its family token, but the
+\ A scrutinee that does not fit rejects the match at its family token, but the
 \ family still gives the match's tokens their roles: the walk reads its
 \ variants and compiles its branch words as the load does, each branch from the
 \ row the scrutinee left and binding no payload.
@@ -482,12 +482,12 @@ EXPORT CHECKER-TAPE:K-MATCH-OF
 \ the made word is checked.
 : POSTPONE-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
-   -1 CRTGT !                              \ a refusal names the operand, as a tick's does
+   -1 CRTGT !                              \ a rejection names the operand, as a tick's does
    POSTPONE-TARGET {: rec:^ sym:n :}
    rec NULL-PTR = IF POSTPONE-UNDEFINED EXIT THEN
    rec POSTPONE-IMM?  sym SOURCE-IMM? or IF rec POSTPONE-IMM EXIT THEN
    sym DECLARATION-SYM? IF TICK-PIN REJECT-UNSAFE EXIT THEN
-   sym TICK-REFUSED? IF EXIT THEN
+   sym TICK-REJECTED? IF EXIT THEN
    K-TICK POST-KIND !
    rec REC>INDEX POST-A0 !
    FREE-QUOT BTICK-PUSH
@@ -645,7 +645,7 @@ private
    TSTART @ 1 - {: from:n :}
    TI @ 1 + TBLEN @ min from - {: eu:n :}
    from TADDR {: ea:^ :}
-   ea eu RF-REJECTED PIN-REFUSED!
+   ea eu RF-REJECTED PIN-REJECTED!
    s" E-MISMATCH" REJECTION:OPEN
    s" the entry `" REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
    s" ` must be ( -- ); it declares " REJECTION:EMIT-STR  ea eu REJECTION:EMIT-STR
@@ -765,7 +765,7 @@ EXPORT CHECKER-ITEMS:ITEM-CELL@
 
 \ A spelling no step of its item's kind takes names nothing.
 : ITEM-UNDEFINED ( -- )
-   TKF TKFU @ REFUSE-UNDEFINED  IS-FAIL ;
+   TKF TKFU @ REJECT-UNDEFINED  IS-FAIL ;
 
 \ A TYPE or OPERAND item outside the form that takes it.
 : ITEM-STRAY? ( n -- bool ) {: kind:n :}
@@ -801,7 +801,7 @@ EXPORT CHECKER-ITEMS:ITEM-CELL@
 \ A read of built local IX whose block ended; the load cannot compile it
 \ either, so the reason is a compile-time one.
 : LOCAL-ENDED ( n -- ) {: ix:n :}
-   RCOMPILE @  CREFUSE @ 0 <>  or 0= IF ix MDIAG-LOCAL ! THEN
+   RCOMPILE @  CREJECT @ 0 <>  or 0= IF ix MDIAG-LOCAL ! THEN
    MD-LOCAL-ENDED MDIAG-COMPILE!  IS-FAIL ;
 
 \ A read of the local LOCAL answered index IX for: its bind sequence, which
@@ -811,7 +811,7 @@ EXPORT CHECKER-ITEMS:ITEM-CELL@
    ix SEQ-SLOT {: li:n :}
    li 0 >= IF li LOC-REF-AT EXIT THEN
    ix 0 >=  ix LOCSEQ @ <  and IF ix LOCAL-ENDED EXIT THEN
-   RCOMPILE @  CREFUSE @ 0 <>  or 0= IF ix MDIAG-LOCAL ! THEN
+   RCOMPILE @  CREJECT @ 0 <>  or 0= IF ix MDIAG-LOCAL ! THEN
    MD-LOCAL-UNBOUND MDIAG-COMPILE!  IS-FAIL ;
 
 \ A built local appended outside a `{:` group; the load cannot compile it
@@ -957,7 +957,7 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
    {: ca:^ cu:n :}
    SCAN-HELD
    TORDER-SCAN-UNKNOWN @ IF EXIT THEN
-   ca cu CLOSER-REFUSE
+   ca cu CLOSER-REJECT
    USING-RAISE ;
 
 : CHECK-FOLD-EXITS ( -- )
@@ -1013,9 +1013,9 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
 \ UNSEEN is raised only while no failure is pinned, so only a bad declaration, which is
 \ what gets recorded, outranks it; a left call decides a body nothing else does.
 : CHECK-VERDICT ( -- n )
-   SGBAD @ 0 <> IF REFUSAL-UNCHECKABLE? IF VERDICT-UNCHECKABLE ELSE VERDICT-REFUSED THEN EXIT THEN
+   SGBAD @ 0 <> IF REJECTION-UNCHECKABLE? IF VERDICT-UNCHECKABLE ELSE VERDICT-REJECTED THEN EXIT THEN
    UNSEEN @ 0 <> IF VERDICT-DEFERRED EXIT THEN
-   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REFUSAL@ RF-UNDEF =  or IF VERDICT-REFUSED EXIT THEN
+   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REJECTION@ RF-UNDEF =  or IF VERDICT-REJECTED EXIT THEN
    UNCK @ 0 <> IF VERDICT-UNCHECKABLE EXIT THEN
    OK @ 0 <>  LEFT-CALL @ 0 <>  and IF VERDICT-DEFERRED ELSE OK @ THEN ;
 
@@ -1035,7 +1035,7 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
 
 \ `cast: NAME ( in -- out )` is a declaration: the engine's reader keyword
 \ publishes an identity word and asks CHECKER-DEFCAST to prove the declared
-\ retype legal. The refusals are properties of the two declared terms only.
+\ retype legal. The rejections are properties of the two declared terms only.
 
 : CAST-ROW-1? ( n -- bool )
    VALUE-REST 0= IF drop RES-FALSE EXIT THEN
@@ -1331,7 +1331,7 @@ variable TAGGED-FAM
       E-CAST-SCOPE CAST-ERROR:RAISE
    THEN ;
 
-\ The clauses LINEAR-PAYLOAD? answers, one per reason it refuses a payload.
+\ The clauses LINEAR-PAYLOAD? answers, one per reason it rejects a payload.
 1 constant PAYLOAD-LINEAR
 2 constant PAYLOAD-SHAPE
 3 constant PAYLOAD-OPEN
@@ -1340,7 +1340,7 @@ variable TAGGED-FAM
 6 constant PAYLOAD-CLASS
 \ A `linear:` row meets no CAST-WALKS class rule, so a record payload holds
 \ nothing a closed cast's pointee may not: a linear value, an atom or a width.
-\ Answers 0 when the row may carry pay, else the clause that refuses it.
+\ Answers 0 when the row may carry pay, else the clause that rejects it.
 : LINEAR-PAYLOAD? ( n -- n ) {: pay:n :}
    pay T-RES BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT {: x:n :}
    x TAG T-CON = IF x PAY CT-LINEAR? IF PAYLOAD-LINEAR ELSE 0 THEN EXIT THEN
@@ -1413,7 +1413,7 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    idx FB-NAME @ {: name:n :}
    name 0= IF EXIT THEN
    idx FB-OWNED? IF EXIT THEN
-   idx FB-VAR @ T-RES  name FB-MINT  RIGID-HELD-REFUSE ;
+   idx FB-VAR @ T-RES  name FB-MINT  RIGID-HELD-REJECT ;
 
 : FRESH-CLAIM ( -- )
    OK @ 0= IF EXIT THEN
@@ -1421,11 +1421,11 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    0 BEGIN dup FB-N @ < WHILE  dup FB-CLAIM  1 + REPEAT drop ;
 
 \ An inferred input holding a rigid identity no call gave it holds one its body
-\ minted, which no caller has (C-INFOWN): refused as a declared input's is (C-FOWN).
+\ minted, which no caller has (C-INFOWN): rejected as a declared input's is (C-FOWN).
 : INFER-RIGID-TYPE ( n -- ) {: t:n :}
    t T-RES {: r:n :}
    r TAG T-ATOM = IF
-      r ATOM>K 0 > IF r CALL-MINT? 0= IF r  r FB-MINT  RIGID-HELD-REFUSE THEN THEN
+      r ATOM>K 0 > IF r CALL-MINT? 0= IF r  r FB-MINT  RIGID-HELD-REJECT THEN THEN
       EXIT
    THEN
    r TAG T-PTR = IF r PTR>INNER RECURSE EXIT THEN
@@ -1448,7 +1448,7 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    SGOUT @ SUNI-COERCE
    FRESH-CLAIM ;
 
-\ A recorded name's refusals (closed constructor package, duplicate tail) come
+\ A recorded name's rejections (closed constructor package, duplicate tail) come
 \ before the record step's later-wins first write. a u is the copy NMA NMU of
 \ the name at NMOFF, where a rejection is placed.
 : CHECK-REC-ADMIT ( str -- )
@@ -1456,9 +1456,9 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    a u CTOR-EXTEND?-XT IF NMOFF @ TADDR NMU @ CTOR-EXTEND-REJECT THEN
    a u CHECKER-CERT-DUP? IF NMOFF @ TADDR NMU @ CHECKER-DUP-DEFINITION THEN ;
 
-\ Every refusal a certified definition can meet at publication, asked before its
+\ Every rejection a certified definition can meet at publication, asked before its
 \ first write to the store: a write left behind is read by a later verdict.
-: PUBLISH-REFUSALS ( str -- )
+: PUBLISH-REJECTIONS ( str -- )
    {: a:^ u:n :}
    a u CHECK-REC-ADMIT
    CHECK-SIG? IF SGWIN @ SGWOUT @ a u NMOFF @ TADDR NMU @ SHADOW-ARITY-CK THEN ;
@@ -1500,9 +1500,9 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    THEN
    \ A parent-order pass checks a definer's head before its does> clause; the
    \ parent's closing pass checks it again once the clause is checked and
-   \ neither refused nor left to the run.
+   \ neither rejected nor left to the run.
    TORDER-ACTIVE @ TORDER-PARENT-GATE >=
-   RCOMPILE @ 0= REFUSAL @ USING-KIND? 0= and and IF
+   RCOMPILE @ 0= REJECTION @ USING-KIND? 0= and and IF
       0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
       2 EXIT
    THEN
@@ -1548,7 +1548,7 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    CHECK-VERDICT
    dup DVERD !
    dup 0= IF RIGID-DIAG-CLASSIFY THEN
-   dup VERDICT-REFUSED =  over VERDICT-UNCHECKABLE =  or
+   dup VERDICT-REJECTED =  over VERDICT-UNCHECKABLE =  or
    REJECTION:QUIET @ 0= and BWIN-UNJUDGED @ 0= and IF DIAG-PRINT THEN
    \ The declared effect's record outlives the body until the diagnostic above,
    \ which renders it.
@@ -1560,7 +1560,7 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    dup VERDICT-CHECKED =  LEFT-AT-CALL? or  NMU @ 0 >  and {: walked:bool :}
    walked  BWIN-UNJUDGED @ 0 <> or IF CALL-FINALIZE WF-NOTE-SCAN THEN
    walked IF
-      NMA @ NMU @ PUBLISH-REFUSALS
+      NMA @ NMU @ PUBLISH-REJECTIONS
       \ Every fact below is about the symbol the definition is recorded under,
       \ never about what its name binds: the lookup cannot see a definition the
       \ engine has not published, and answers the word it shadows.
@@ -2261,7 +2261,7 @@ package CHECKER-IDENTITY
 \ record takes DNAME-REP, and the compiler lowers it as identity.
 : MARK-REP ( n -- ) rep-mark ;
 public
-\ Refuse first, register second: a refusal throws before the engine counts the
+\ Reject first, register second: a rejection throws before the engine counts the
 \ record, so it leaves no name.
 : CAST ( str str -- ) {: na:^ nu:n sa:^ su:n :}
    na nu sa su PARSE
@@ -2351,7 +2351,7 @@ package CHECK
    SGIN @ DOES-DIN dup BROW !
    SGOUT @ CHECK-DOES-EFFECT!
    \ The record is the signature's as its body reads it, whatever the runtime
-   \ row below measures; a refused or uncheckable clause keeps it for its packet.
+   \ row below measures; a rejected or uncheckable clause keeps it for its packet.
    SIG-EFF-CACHE!
    \ The runtime row holds the signature's and the data-field address, so its
    \ counts replace any the signature set and name the unfit clause.
@@ -2390,7 +2390,7 @@ package CHECK
    dup -1 = IF CALL-FINALIZE WF-NOTE-SCAN THEN
    \ A clause body is walked like any other but is nobody's definition body, and
    \ the next record after it is the CREATED word's, so what this walk armed
-   \ dies here, before the tape's observer, which may refuse the clause.
+   \ dies here, before the tape's observer, which may reject the clause.
    WRAP-CLEAR
    ARMED @ IF ba bu DVERD @ DONE THEN ;
 
@@ -2404,7 +2404,7 @@ package CHECK
    sa su DOES-EFF-LATCH! ;            \ last: that parse reopens the term arena
 
 \ A CLAUSE IS CHECKED IN ITS PARENT'S REGIME: unjudged bindings and no call
-\ authority, as tier 0 checks it. With authority, a clause would be refused a
+\ authority, as tier 0 checks it. With authority, a clause would be rejected a
 \ call its parent's body may make (E-CAP-TRUSTED on a colon word defined with
 \ checking off).
 : CHECK-DOES-UNJUDGED! ( str str -- n ) {: ba:^ bu:n sa:^ su:n :}
@@ -2416,7 +2416,7 @@ package CHECK
    sa su DOES-EFF-LATCH!
    v ;
 
-\ The pre-verifier's entry also reports what it refuses, since CHECK-DOES-RUN
+\ The pre-verifier's entry also reports what it rejects, since CHECK-DOES-RUN
 \ renders nothing. An uncheckable clause is rendered here too: the pre-pass
 \ renders nothing of its own for a clause.
 : DOES-NAME! ( str -- ) {: na:^ nu:n :}
@@ -2510,8 +2510,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
 \ may read the source after it; 3 when it resolves nowhere but a rendering
 \ statement in scope may define it, the run's to judge; and 0 when the load
-\ refuses it. A tick needs no row, but one of a primitive whose rows are other
-\ packages' private ones is refused as its call is.
+\ rejects it. A tick needs no row, but one of a primitive whose rows are other
+\ packages' private ones is rejected as its call is.
 : TOP-ANSWER ( str bool -- n )
    {: a:^ u:n runs:bool :}
    runs  a u LITERAL-RANGE?  and IF a u REJECTION:LITERAL-RANGE  TOP-END EXIT THEN
@@ -2659,7 +2659,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sa su na nu SGBAD-HELP ;
 
 \ D's name NA NU and the effect SA SU the row states.
-: GENERATES-REFUSE ( str str n -- )
+: GENERATES-REJECT ( str str n -- )
    {: na:^ nu:n sa:^ su:n kind:n :}
    kind GENR-BADSIG =  SGBAD-AMBIG?  and
    IF s" E-USING-AMBIGUOUS" ELSE s" E-GENERATES-ROW" THEN
@@ -2673,21 +2673,21 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    ROW-END ;
 
 \ `already`: what the caller knows of D beyond the checker. D's symbol and the created
-\ record's offset+1, 0 for a refused row; an opaque D's row stands unjudged.
+\ record's offset+1, 0 for a rejected row; an opaque D's row stands unjudged.
 : CHECKER-GENERATES ( str str bool -- n n )
    {: na:^ nu:n sa:^ su:n already:bool :}
    na nu CHECKER-FIND-ACTIVE-SYM
    {: sym:n :}
-   sym 0= IF na nu sa su GENR-UNRESOLVED GENERATES-REFUSE sym 0 EXIT THEN
+   sym 0= IF na nu sa su GENR-UNRESOLVED GENERATES-REJECT sym 0 EXIT THEN
    sym na nu NAV-USE-NOW
-   already sym NORET-CREATES@ 0 <> or IF na nu sa su GENR-CREATES GENERATES-REFUSE sym 0 EXIT THEN
+   already sym NORET-CREATES@ 0 <> or IF na nu sa su GENR-CREATES GENERATES-REJECT sym 0 EXIT THEN
    sym TOP-CONTROL {: flags:n deferred:bool :}
    flags CTL-OPAQUE and 0= IF
-      flags CTL-PARSES and 0= deferred or IF na nu sa su GENR-READS-NONE GENERATES-REFUSE sym 0 EXIT THEN
+      flags CTL-PARSES and 0= deferred or IF na nu sa su GENR-READS-NONE GENERATES-REJECT sym 0 EXIT THEN
    THEN
    sa su CREATED-RECORD-BUILD
    {: rec:n :}
-   rec 0= IF na nu sa su GENR-BADSIG GENERATES-REFUSE THEN
+   rec 0= IF na nu sa su GENR-BADSIG GENERATES-REJECT THEN
    sym rec ;
 
 \ A signature is read as a definition head reads one. PARSE-SIG-RAW splits the
@@ -2866,7 +2866,7 @@ private
    ta tu kind ROW-HELP ;
 
 \ The row's keyword KA KU and target TA TU.
-: PARSES-REFUSE ( str str n -- )
+: PARSES-REJECT ( str str n -- )
    {: ka:^ ku:n ta:^ tu:n kind:n :}
    s" E-PARSES-ROW" REJECTION:OPEN  ka ku ta tu kind ROW-PARTS
    ta tu kind PARSES-HELP
@@ -2885,7 +2885,7 @@ private
 : PARSES-UNBOUND ( str str -- )
    {: ka:^ ku:n a:^ u:n :}
    a u ROW-UNBOUND {: kind:n :}
-   kind 0 >= IF ka ku a u kind PARSES-REFUSE THEN ;
+   kind 0 >= IF ka ku a u kind PARSES-REJECT THEN ;
 
 \ A row on a deferred or opaque word stands unjudged: what the word runs is unseen. With no
 \ checker symbol to key it, a row that stands bounds nothing (NULL-PTR).
@@ -2896,25 +2896,25 @@ private
       ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 NULL-PTR EXIT THEN
       ctl CTL-OPAQUE and 0 <> IF 0 0 NULL-PTR EXIT THEN
       ctl CTL-PARSES and 0 <> IF 0 0 NULL-PTR EXIT THEN
-      ctl 0 <> IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 NULL-PTR EXIT THEN
+      ctl 0 <> IF ka ku a u PARSES-READS-NONE PARSES-REJECT 0 0 NULL-PTR EXIT THEN
       ka ku a u PARSES-UNBOUND 0 0 NULL-PTR EXIT
    THEN
    sym a u NAV-USE-NOW
    ctl CHECKER-OWNER-ABI:BINDING-DEFER CTL-OPAQUE or and 0=
-   ctl CTL-PARSES and 0= and IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 NULL-PTR EXIT THEN
+   ctl CTL-PARSES and 0= and IF ka ku a u PARSES-READS-NONE PARSES-REJECT 0 0 NULL-PTR EXIT THEN
    eff1 0= IF 0 0 NULL-PTR EXIT THEN
    sym eff1 rec ;
 
 \ The checks every row passes, for the engine words and the source pre-verifier,
-\ each of which has read the whole row first, so a row refused under
+\ each of which has read the whole row first, so a row rejected under
 \ --all-errors leaves none of its tokens to what follows. The symbol, the
 \ visible record's offset + 1, the count and the selected record.
 : PARSES-ROW-CHECK ( str str str bool -- n n n ^n )
    {: ka:^ ku:n ta:^ tu:n ca:^ cu:n bad:bool :}
-   tu 0= IF ka ku ta tu PARSES-NO-TARGET PARSES-REFUSE 0 0 0 NULL-PTR EXIT THEN
+   tu 0= IF ka ku ta tu PARSES-NO-TARGET PARSES-REJECT 0 0 0 NULL-PTR EXIT THEN
    ca cu num-parse {: v:n flt:bool ok:bool :}
-   ok 0=  flt or  v 0 <  or IF ka ku ta tu PARSES-COUNT PARSES-REFUSE 0 0 0 NULL-PTR EXIT THEN
-   bad IF ka ku ta tu PARSES-LIST PARSES-REFUSE 0 0 0 NULL-PTR EXIT THEN
+   ok 0=  flt or  v 0 <  or IF ka ku ta tu PARSES-COUNT PARSES-REJECT 0 0 0 NULL-PTR EXIT THEN
+   bad IF ka ku ta tu PARSES-LIST PARSES-REJECT 0 0 0 NULL-PTR EXIT THEN
    ka ku ta tu PARSES-TARGET {: sym:n eff1:n rec:^ :}
    sym eff1 v rec ;
 
@@ -2967,7 +2967,7 @@ private
    ta tu kind ROW-HELP ;
 
 \ The row's keyword KA KU and target TA TU.
-: NAMES-REFUSE ( str str n -- )
+: NAMES-REJECT ( str str n -- )
    {: ka:^ ku:n ta:^ tu:n kind:n :}
    s" E-NAMES-ROW" REJECTION:OPEN  ka ku ta tu kind ROW-PARTS
    ta tu kind NAMES-HELP
@@ -2991,21 +2991,21 @@ private
 
 \ A target the top-level find binds is a use. Its symbol takes the mark when its
 \ declared input row ends in a string (str); any other word, one
-\ with no inputs among them, refuses the row, so a row on the wrong word cannot
+\ with no inputs among them, rejects the row, so a row on the wrong word cannot
 \ make every string before it a use. A cold selected record with no checker
 \ symbol to key the mark leaves the row standing and binding nothing.
 : CHECKER-NAMES-ROW ( str str -- )
    {: ka:^ ku:n ta:^ tu:n :}
-   tu 0= IF ka ku ta tu PARSES-NO-TARGET NAMES-REFUSE EXIT THEN
+   tu 0= IF ka ku ta tu PARSES-NO-TARGET NAMES-REJECT EXIT THEN
    ta tu TOP-BINDING-REC {: sym:n eff1:n ctl:n selected:^ :}
    sym 0= IF
       ctl 0 <> IF EXIT THEN
       ta tu ROW-UNBOUND {: kind:n :}
-      kind 0 >= IF ka ku ta tu kind NAMES-REFUSE THEN
+      kind 0 >= IF ka ku ta tu kind NAMES-REJECT THEN
       EXIT
    THEN
    sym ta tu NAV-USE-NOW
-   sym eff1 NAMES-TAKES-STRING? 0= IF ka ku ta tu NAMES-NO-STRING NAMES-REFUSE EXIT THEN
+   sym eff1 NAMES-TAKES-STRING? 0= IF ka ku ta tu NAMES-NO-STRING NAMES-REJECT EXIT THEN
    sym  sym CTL-FLAGS-SYM CTL-NAMES or  sym CTL-MASKS-SYM  NORET-ADD-SYM
    selected sym RECORD-CONTROL-AT! ;
 
@@ -3114,7 +3114,7 @@ EXPORT CHECKER-REG:TS-PTR
    live 0= IF a TOP-LEFT-A !  u TOP-LEFT-U ! THEN ;
 
 \ cnt unknown cells over row: each the row's one unknown term (TOP-UNKNOWN),
-\ lost, so a typed consumer refuses them.
+\ lost, so a typed consumer rejects them.
 : TOP-ROW-PAD ( n n -- n ) {: row:n cnt:n :}
    row cnt 0 ?DO TOP-UNKNOWN @ swap MK-PUSH dup -1 swap P-LOST! LOOP ;
 
@@ -3128,12 +3128,12 @@ EXPORT CHECKER-REG:TS-PTR
 
 : TOP-PUSH ( n -- ) DCUR @ MK-PUSH DCUR ! ;
 
-\ A top step reads its token as the whole scanned text: a refusal pins it at
+\ A top step reads its token as the whole scanned text: a rejection pins it at
 \ offset 0, and a parsing word finds nothing after it, since the load parses
 \ that text itself. The per-token setup is DO-TOK1's, on the token the event
 \ stored in TOK-SPELL-A and TOK-SPELL-U; it resolves the token, so it runs inside
 \ the step (TOP-RUN). The row's bottom is the live stack's floor: it is the
-\ step's declared base, so a step that reaches under the live cells is refused
+\ step's declared base, so a step that reaches under the live cells is rejected
 \ as a body that reaches under its declared inputs is. A step clears the check
 \ state (CHECK-CLEAR) as a body check does: every result a check leaves is
 \ consumed inside the token that ran it, and no later token reads one.
@@ -3269,7 +3269,7 @@ FILE-POS-CLEAR
    REPEAT
    FPOS-LN @ FPOS-CL @ at ;
 
-\ The wall's rejection of a duplicate, for one refused off the wall.
+\ The wall's rejection of a duplicate, for one rejected off the wall.
 EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
 INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
 PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
@@ -3300,7 +3300,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    DUPLICATE-RECORD  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The token's verdict as DO-TOK1 and CHECK take it: a checked step runs, as
-\ does one deferred to the run; a refused or uncheckable one renders the
+\ does one deferred to the run; a rejected or uncheckable one renders the
 \ diagnostic the same token gets in a body and throws the checker's rc, so the
 \ word never runs.
 : TOP-JUDGE ( -- )
@@ -3311,7 +3311,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    CHECK-NO-BORROW
    OK @ 0= FAILSET @ 0= and IF -1 FAILSET ! THEN
    0 USING-HOLD !
-   TOK-SPELL-A @ TOK-SPELL-U @ REFUSAL-STEP
+   TOK-SPELL-A @ TOK-SPELL-U @ REJECTION-STEP
    CHECK-VERDICT dup DVERD ! {: v:n :}
    v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or  RCOMPILE @ 0=  and IF EXIT THEN
    REJECTION:QUIET @ 0= IF DIAG-PRINT THEN
@@ -3342,7 +3342,7 @@ variable TG-GEN    variable TG-TERM-NAME
 
 \ The flag is on while the step resolves and steps its token and its verdict is
 \ taken, so the judge resolves the token as the step did; a throw from either (a
-\ scope refusal raises) turns it off too, and releases the step's terms.
+\ scope rejection raises) turns it off too, and releases the step's terms.
 : TOP-RUN ( [ -- ] -- )
    -1 TOP-STEP !  catch {: rc:n :}
    rc 0 <> IF 0 TOP-STEP !  TOP-RELEASE  rc throw THEN
@@ -3366,7 +3366,7 @@ variable TG-GEN    variable TG-TERM-NAME
 \ it knows at the top. A longer row loses entries from its top until it fits; a
 \ shorter one is padded beneath with unknown cells. RCUR is the saved return row
 \ over RBROW, the step's return base, so a step that reads below the cells
-\ earlier steps pushed is refused as a body that reads below its own is.
+\ earlier steps pushed is rejected as a body that reads below its own is.
 : CHECKER-TOP-LOAD ( n -- ) {: live:n :}
    TOP-GUEST  PE-N MK-STALE TOP-UNKNOWN !
    TOP-ROW-OFF @ 0=  TOP-RROW-OFF @ 0=  and IF BROW @ live TOP-ROW-PAD DCUR ! EXIT THEN
@@ -3657,7 +3657,7 @@ variable TOP-MOVE-N
    0 RQM !  SEEN-RESET  0 NLET !  0 RROW-N !
    DCUR @ ROW-NOTE  TOP-RELEASE ;
 
-\ PUBLISH-REFUSALS' shadow rule, asked of the colon definition na nu whose
+\ PUBLISH-REJECTIONS' shadow rule, asked of the colon definition na nu whose
 \ signature text is sa su before it is built; na nu as written places its record.
 : CHECKER-DECLARED-SHADOW ( str str -- )
    {: na:^ nu:n sa:^ su:n :}
@@ -3864,7 +3864,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    RES-FALSE GUEST-KEEP  0 GUEST-OPEN !
    RECEFF-ON? IF UEND @ RECEFF-UEND ! THEN ;
 
-\ Facts text a u parsed; false when the parse refuses it, names a type no
+\ Facts text a u parsed; false when the parse rejects it, names a type no
 \ package declares here, or no record holds it. Tags alone answer no rows
 \ (SIG-TAGS-ONLY).
 : READ-ROWS ( str -- n n n n bool )
@@ -3878,7 +3878,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    a u din dout rin rout SGBAD-UNFIT!
    din dout rin rout SGBAD @ 0= ;
 
-: READ-REFUSE ( str str -- )
+: READ-REJECT ( str str -- )
    {: a:^ u:n na:^ nu:n :}
    SGBAD @ 0= IF a u SGBAD-SYNTAX! THEN
    a u na nu USIG-ADD-BAD ;
@@ -3916,7 +3916,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
 
 \ One more primitive row of sym from the text after `overload`: its effect and
 \ PE tags. Answers the text of the row after it; false when the text is
-\ refused or carries a tag only a first row may.
+\ rejected or carries a tag only a first row may.
 : READ-OVERLOAD ( str n -- str bool )
    {: a:^ u:n sym:n :}
    a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
@@ -3968,11 +3968,11 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    ix REC-AT {: rec:^ :}
    rec CK-REC-NAME$ {: name:^ nameu:n :}
    rec REC-SYM {: sym:n :}
-   sym 0= IF a u name nameu READ-REFUSE EXIT THEN
+   sym 0= IF a u name nameu READ-REJECT EXIT THEN
    sym SYM-PKG$ SIGSCOPE!
    RES-TRUE SIG-FACTS!
    a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
-   ok 0= IF a u name nameu READ-REFUSE EXIT THEN
+   ok 0= IF a u name nameu READ-REJECT EXIT THEN
    SIG-CTL @  SIG-PE @  SIG-CREATES-A @  SIG-CREATES-U @  SGHASR @
       {: ctl:n pe:n ca:^ cu:n hasr:bool :}
    SIG-OVERLOAD-A @  SIG-OVERLOAD-U @  SIG-NONZERO @ {: oa:^ ou:n nz:n :}
@@ -3980,14 +3980,14 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    SIG-TAGS-ONLY @ IF
       pe 0 <>  pn 0 >= or  cu 0 <> or  ou 0 <> or
       ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> or IF
-         a u name nameu READ-REFUSE EXIT
+         a u name nameu READ-REJECT EXIT
       THEN
       ix sym ctl nz mark READ-TAGS EXIT
    THEN
    din dout rin rout hasr sym pe ou 0 <> READ-FIRST
-   oa ou sym READ-OVERLOADS 0= IF a u name nameu READ-REFUSE EXIT THEN
+   oa ou sym READ-OVERLOADS 0= IF a u name nameu READ-REJECT EXIT THEN
    ca cu READ-MADE {: made:n good:bool :}
-   good 0= IF a u name nameu READ-REFUSE EXIT THEN
+   good 0= IF a u name nameu READ-REJECT EXIT THEN
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made nz
    NORET-ADD-CREATES
    ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF sym RES-TRUE DFER-ADD-SYM THEN

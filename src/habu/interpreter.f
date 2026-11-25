@@ -17,7 +17,7 @@ split-str
 \
 \ A backslash or `(` opens a comment only as a whole one-byte token. The comment
 \ runs past the next newline or `)`. A backslash comment may also run to the end
-\ of the input; a `(` comment the input ends inside is refused at the `(`.
+\ of the input; a `(` comment the input ends inside is rejected at the `(`.
 \
 \ A float's exact value, the integer plus the fraction's remainder, is
 \ normalized to 53 retained bits and rounded once to nearest, ties to even; the
@@ -102,7 +102,7 @@ $8000000000000000 constant MIN-N
 
 
 \ The fraction stays below the scale, so bounding the scale by MAX-N / 10 (18
-\ digits) keeps both in a signed cell; past it the latch refuses the token.
+\ digits) keeps both in a signed cell; past it the latch rejects the token.
 : FRAC-STEP ( n n bool n -- n n bool ) {: frac:n scale:n wrapped:bool d:n :}
    frac 10 * d +
    scale 10 *
@@ -206,7 +206,7 @@ public
 ;package
 
 \ FIND answers the row the engine's lookup binds a token to whatever its flags:
-\ the interpreter must see an internal row in order to refuse it.
+\ the interpreter must see an internal row in order to reject it.
 
 package INTERPRETER
 
@@ -508,7 +508,7 @@ TYPED-VARIABLE REC ^n
 
 \ A sealed source may name a record it defined after the seal or a callable
 \ public record in an admitted wordlist.
-: POLICY-REFUSE ( str str -- ) {: a:^ u:n t:^ tu:n :}
+: POLICY-REJECT ( str str -- ) {: a:^ u:n t:^ tu:n :}
    s" E-POLICY" REJECTION:OPEN
    a u TICKS  s"  is not in the vocabulary this source may use" SAY
    t tu REJECTION:AT  s" not admitted" SAY
@@ -519,14 +519,14 @@ TYPED-VARIABLE REC ^n
 : POLICY-CHECK-REC ( str ^n -- ) {: a:^ u:n rec:^ :}
    POLICY-NDICT-CELL CELL@ {: seal:n :}
    seal 0= if exit then
-   rec XREF-FOUND? 0= if a u a u POLICY-REFUSE then
+   rec XREF-FOUND? 0= if a u a u POLICY-REJECT then
    rec XREF-NULL - seal XREF-REC-ADDR < if
       rec XREF-WORDLIST {: wid:n :}
-      wid 0 < wid POLICY-WID-MAX >= or if a u a u POLICY-REFUSE then
+      wid 0 < wid POLICY-WID-MAX >= or if a u a u POLICY-REJECT then
       wid 6 rshift 8 * data-base POLICY-BITS-OFF + + @
-      wid 63 and rshift 1 and 0= if a u a u POLICY-REFUSE then
+      wid 63 and rshift 1 and 0= if a u a u POLICY-REJECT then
    then
-   rec XREF-START 0= if a u a u POLICY-REFUSE then ;
+   rec XREF-START 0= if a u a u POLICY-REJECT then ;
 
 \ The require check of the record the token a u binds; none binds no record.
 \ The checker judges every other token the load binds, but not a top-level tick.
@@ -799,7 +799,7 @@ private
    d ;
 
 \ An escaped literal's start, its closing quote and the count of bytes it
-\ decodes to. A bad escape refuses as a missing quote does, INP unmoved.
+\ decodes to. A bad escape rejects as a missing quote does, INP unmoved.
 : ESC-SCAN ( -- ^u8 ^u8 n )
    INP-CELL ADDR@ 1 + {: s:^ :}
    s INE-CELL ADDR@ ESCAPE:SPAN {: q:^ u:n ok:bool :}
@@ -942,7 +942,7 @@ public
 
 : RUN-COUNT ( -- n ) RUNS-N @ ;
 
-\ RUNS refuses a negative entry; the capacity past the count is not the log.
+\ RUNS rejects a negative entry; the capacity past the count is not the log.
 : RUN-RECORD@ ( n -- n )
    dup RUN-COUNT >= if E-LAYOUT-BOUNDS throw then
    RUNS @ ;
@@ -956,8 +956,8 @@ public
 
 ;package
 
-\ Rows, scope and aliases go through their primitive writers. A writer refuses
-\ silently, so the words here refuse first where they can.
+\ Rows, scope and aliases go through their primitive writers. A writer rejects
+\ silently, so the words here reject first where they can.
 
 package INTERPRETER
 
@@ -1009,7 +1009,7 @@ EXPORT CHECK:REJECT-DUPLICATE
 : PKG-CODE-ROOM ( str str -- ) 0 CODE-SPACE:ROOM ;
 
 \ The operation at off in the owner record, 0 when there is no record or the
-\ field is empty: the call is then skipped, not refused.
+\ field is empty: the call is then skipped, not rejected.
 : PKG-OPERATION ( ^u8 n -- n )
    {: rec:^ off:n :}
    rec 0= if 0 exit then
@@ -1116,7 +1116,7 @@ private
    TOKEN$ TOKEN$ PKG-CODE-ROOM
    TOKEN$ true namespace-record ;
 
-\ namespace-record's name refusals, as E-COMP-STATE: a colon at either edge
+\ namespace-record's name rejections, as E-COMP-STATE: a colon at either edge
 \ and a second colon.
 : PKG-PATH-CK ( str -- )
    {: a:^ u:n :}
@@ -1360,7 +1360,7 @@ EXPORT CHECK:EXPORT-UNSAFE
    clause 0 >= if clause PKG-CLAUSE-ALIAS then ;
 
 \ `host` or `target` at top level is the section word; with a word of that name in scope the
-\ token could mean either, so it is refused: the word is renamed, or called qualified if public.
+\ token could mean either, so it is rejected: the word is renamed, or called qualified if public.
 public
 \ Writes the record of section word t tu, which a word in scope also names,
 \ through its help; the caller ends it.
@@ -1403,8 +1403,8 @@ public
 
 ;package
 
-\ A definition head refuses in the engine's order and with its text: a
-\ definition writer's own refusal exits without a word.
+\ A definition head rejects in the engine's order and with its text: a
+\ definition writer's own rejection exits without a word.
 
 require src/lib/string.f
 require src/lib/source-syntax.f
@@ -1475,7 +1475,7 @@ CAST: AS-BODY-HOOK ( n -- [ -- ^u8 bool ] )
 CAST: AS-DECLARE ( n -- [ str str -- ] )
 
 \ A head with no compiler (COMP-CELL 0), or a body token or fixed body whose
-\ latch is 0, refuses. `immediate` passes.
+\ latch is 0, rejects. `immediate` passes.
 : DEF-NO-COMPILER ( -- )
    s" E-NO-COMPILER" REJECTION:OPEN
    s" no compiler is latched for the definition at `" REJECTION:EMIT-STR
@@ -1675,7 +1675,7 @@ private
 : DEF-WALL ( str str -- ) {: a:^ u:n t:^ tu:n :}
    a u t tu DEF-NAME-REJECT? if EXIT-STATUS:REJECTED REJECTION:STOP then
    POLICY-NDICT-CELL CELL@ 0<> if
-      a u DEF-NAME-KEYWORD? if a u t tu POLICY-REFUSE then
+      a u DEF-NAME-KEYWORD? if a u t tu POLICY-REJECT then
    then ;
 
 \ A signature starts at the first byte past the blanks when that byte is `(`,
@@ -1828,7 +1828,7 @@ private
 
 \ After a string keyword the body takes the literal's text as written, from one
 \ byte past the keyword through its closing quote, in one capture. The scan
-\ comes first, so a literal with no closing quote or with a bad escape refuses
+\ comes first, so a literal with no closing quote or with a bad escape rejects
 \ as the top-level keyword does, before any of it is captured. A counted
 \ string's length waits for `;`, which compiles the body.
 : DEF-TEXT ( -- )
@@ -1929,7 +1929,7 @@ TYPED-VARIABLE GROUP-OPEN ^u8
    s" [package]" TOKEN-IS? if exit then
    s" [type]" TOKEN-IS? if exit then
    s" {:" TOKEN-IS? if exit then
-   TOKEN$ TOKEN$ POLICY-REFUSE ;
+   TOKEN$ TOKEN$ POLICY-REJECT ;
 
 : DEF-PREFLIGHT ( -- )
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
@@ -2064,7 +2064,7 @@ EXPORT SOURCE-ROOT:TEXT-END
 
 \ An evaluate begun inside this native definition owns only its new tokens.
 \ The checker reads the body prefix for binding, leaving the definition's
-\ effect, open scopes and publication to its eventual `;`. A refusal lands in
+\ effect, open scopes and publication to its eventual `;`. A rejection lands in
 \ evaluate's existing frame, whose token mark removes only the failed token.
 TRUSTED: DEF-PREFIX-BIND ( -- )
    ENTRY-PEND @ 0= if exit then
@@ -2080,7 +2080,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ The latch is checked again here since a body immediate can have cleared it.
 \ The end recovers: it declares so in RECOVER-CELL for the compile, and
-\ abandons the definition the compiler refused with E-COMP-RECOVERY, which
+\ abandons the definition the compiler rejected with E-COMP-RECOVERY, which
 \ only a multi-error run throws, and reads on.
 : DEF-COMPILE ( str -- )
    DEF-DISPATCH DEF-COMPILER AS-COMPILE execute ;
@@ -2102,16 +2102,16 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-END true ;
 
 \ ---- definitions built by a running word -------------------------------------
-\ The source cursor stays at the running definer's call, where a refusal of
+\ The source cursor stays at the running definer's call, where a rejection of
 \ define-word, literal, compile, or ; locates.
 
 \ w names the rejected operation: `define-word`, a declaration's child or an
 \ item.
-: DEF-NAME-REFUSE ( str str -- ) {: w:^ wu:n a:^ u:n :}
+: DEF-NAME-REJECT ( str str -- ) {: w:^ wu:n a:^ u:n :}
    w wu a u s" not one token" REJECTION:MISSING-NAME
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: DEF-OPEN-REFUSE ( str str -- ) {: w:^ wu:n a:^ u:n :}
+: DEF-OPEN-REJECT ( str str -- ) {: w:^ wu:n a:^ u:n :}
    s" E-DEFINITION-OPEN" REJECTION:OPEN
    s" cannot define `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` while another definition is open" REJECTION:EMIT-STR
@@ -2159,8 +2159,8 @@ EXPORT TFAM:TFAM-DECL-PARAM-COUNT
 \ The checker reads the signature from the effect cell; the SIG item spells
 \ the effect for the listing alone, and TSIG is read for a trusted head alone.
 : DEFINE-RUN ( str n -- ) {: a:^ u:n eff:n :}
-   PEND-CELL CELL@ 0<> if s" define-word" a u DEF-OPEN-REFUSE then
-   a u DEF-ONE-TOKEN? 0= if s" define-word" a u DEF-NAME-REFUSE then
+   PEND-CELL CELL@ 0<> if s" define-word" a u DEF-OPEN-REJECT then
+   a u DEF-ONE-TOKEN? 0= if s" define-word" a u DEF-NAME-REJECT then
    eff EFFECT? 0= if
       [: s" is not an effect a definition can take" REJECTION:EMIT-STR ;]
       a u DEF-NOT-EFFECT
@@ -2186,7 +2186,7 @@ EXPORT TFAM:TFAM-DECL-PARAM-COUNT
    a u DEF-TARGET {: ta:^ tu:n wid:n :}
    ITEMS-RESET
    0 BODYLEN-CELL CELL!  BODY-ITEM-KIND:NAME 0 0 a u ITEM+
-   \ A refused record opens no definition, whose end would drop the item.
+   \ A rejected record opens no definition, whose end would drop the item.
    [: ta tu TOKEN$ wid 0 DEF-OPEN-RECORD ;] catch {: rc:n :}
    rc 0<> if ITEMS-RESET rc throw then
    0 LOCN-CELL CELL!
@@ -2251,7 +2251,7 @@ EXPORT TFAM:TFAM-DECL-PARAM-COUNT
 \ A quotation is its code's entry, which a word's tick shares with its record.
 CAST: QUOT-ENTRY ( [ R -- S ] -- n )
 
-: NAMELESS-REFUSE ( -- )
+: NAMELESS-REJECT ( -- )
    s" E-NAMELESS-WORD" REJECTION:OPEN
    s" `compile,` got a quotation no named word enters" REJECTION:EMIT-STR
    TOKEN$ REJECTION:AT  s" quotation with no named word" REJECTION:EMIT-STR
@@ -2260,7 +2260,7 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ Refuses a call of a retired word, and of a package word whose package is
+\ Rejects a call of a retired word, and of a package word whose package is
 \ not in the current namespace.
 : CALLEE-CHECK ( ^n -- ) {: r:^ :}
    r XREF-WORDLIST {: wid:n :}
@@ -2278,7 +2278,7 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
 \ Appends a call of the word at entry E.
 : COMPILE-CALL ( n -- ) {: e:n :}
    e XREF:ENTRY-REC {: r:n :}
-   r -1 = if NAMELESS-REFUSE then
+   r -1 = if NAMELESS-REJECT then
    r XREF-REC XREF-NAME$ r CALL-ITEM ;
 
 \ What `compile,` runs: it appends a call of the word whose entry the quotation is.
@@ -2320,7 +2320,7 @@ variable LIT-AT
    rec XREF-FOUND? 0= if a u UNDEFINED-NAME then
    a u  rec XREF-NULL - XREF-ADDR>INDEX CALL-ITEM ;
 
-: ITEM-OP-REFUSE ( n -- ) {: op:n :}
+: ITEM-OP-REJECT ( n -- ) {: op:n :}
    s" E-ITEM-OP" REJECTION:OPEN
    s" an item's op is not one " SAY  s" ITEM-ABI" TICKS  s"  names" SAY
    TOKEN$ REJECTION:AT  s" unknown item op" SAY
@@ -2375,7 +2375,7 @@ variable LIT-AT
 \ TYPE's or LOCAL's schema node or a LOCAL-REF's index.
 : ITEM-RUN ( str n n -- ) {: a:^ u:n v:n op:n :}
    a u BUILT-PENDING
-   a u DEF-ONE-TOKEN? 0= if s" item" a u DEF-NAME-REFUSE then
+   a u DEF-ONE-TOKEN? 0= if s" item" a u DEF-NAME-REJECT then
    op ITEM-ABI:KEYWORD = if BODY-ITEM-KIND:KEYWORD 0 0 a u ITEM+ exit then
    op ITEM-ABI:OPERAND = if BODY-ITEM-KIND:OPERAND 0 0 a u ITEM+ exit then
    op ITEM-ABI:TYPE = if
@@ -2391,7 +2391,7 @@ variable LIT-AT
       a u rec POLICY-CHECK-REC
       a u rec FOUND-CALL exit
    then
-   op ITEM-OP-REFUSE ;
+   op ITEM-OP-REJECT ;
 
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
@@ -2524,14 +2524,14 @@ variable DEF-VALUE
 \ `cast:` and `linear:` have no body or `;`: each completes where its keyword
 \ is read, with a compiler latched, and calls no def hook.
 
-\ With the input at its end the refusal names the keyword as spelled, at the
+\ With the input at its end the rejection names the keyword as spelled, at the
 \ end's line.
 : DEF-CAST-NAME ( -- )
    TOKEN if exit then
    TOKEN$ NAME-MISSING ;
 
 \ The signature must be there, opened and closed, before the qualifier's
-\ refusals, and INP passes it first, so those name the line it ends on.
+\ rejections, and INP passes it first, so those name the line it ends on.
 \ def-open clears TSIG, so trust-sig! takes the signature once the record is
 \ open.
 : DEF-CAST-HEAD ( -- )
@@ -2542,7 +2542,7 @@ variable DEF-VALUE
    a u TOKEN$ wid DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER ;
 
-\ A row the checker refuses throws before DEF-FIXED counts the record, so no
+\ A row the checker rejects throws before DEF-FIXED counts the record, so no
 \ callable name is left.
 : DEF-REGISTER-IDENTITY ( str str n -- ) {: a:^ u:n sig:^ su:n off:n :}
    SOURCE-OWNER-A @ off PKG-OPERATION {: own:n :}
@@ -2659,15 +2659,15 @@ EXPORT CHECK:REC-WIDE-PUBLISH
 \ Answers the child's effect handle. TYPE is empty for the shapes before STORED.
 : CHILD-RUN ( str n n str -- n )
    {: a:^ u:n shape:n param:n ta:^ tu:n :}
-   PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REFUSE then
-   a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
+   PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REJECT then
+   a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REJECT then
    shape param CHILD-BODY 2drop
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if DEF-NO-COMPILER then
    OVERLAY-GUARD
    a u shape param ta tu CHILD-DEFINE ;
 
-\ A qualified linear name is refused by the certifier before DEF-QUALIFY can
-\ create its namespace. A second colon is left to DEF-QUALIFY's syntax refusal.
+\ A qualified linear name is rejected by the certifier before DEF-QUALIFY can
+\ create its namespace. A second colon is left to DEF-QUALIFY's syntax rejection.
 : LINEAR-QUALIFIED? ( -- bool )
    TOKEN$ {: a:^ u:n :}
    a u 0 COLON-AT {: q:n :}
@@ -3294,7 +3294,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    [: DEF-SOURCE-END DECL-SOURCE-END ;] catch {: code:n :}
    code 0<> if NULL$ code die then ;
 
-\ A definition may span lines; EOF refuses one still open.
+\ A definition may span lines; EOF rejects one still open.
 : REPL ( -- )
    0 ENTRY-PEND !
    TEXT-MARK DECL-MARK !

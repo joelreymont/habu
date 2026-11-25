@@ -432,7 +432,7 @@ public
    WORKER TASK:JOIN HALTED? TTRUE
    14 CALLS @ 1 T= 15 CALLS @ 1 T=
    13 ORDER @ 15 T= 14 ORDER @ 14 T=
-   s" oversized append is refused before mapping and closes prior disposal" T-LABEL
+   s" oversized append is rejected before mapping and closes prior disposal" T-LABEL
    ['] LIMIT-CALL catch E-MEM-SIZE T=
    EMPTY-CALLS @ 2 T=
    s" failed huge mapping closes a prior owner allocation" T-LABEL

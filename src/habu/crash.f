@@ -83,7 +83,7 @@ private
 : SIGSTK-SIZE ( -- n )  HB-TARGET-LINUX? IF 16 ELSE 8 THEN ;
 : SIGSTK-DISABLE ( -- n )  HB-TARGET-LINUX? IF 2 ELSE 4 THEN ;      \ SS_DISABLE
 \ `sub/add xd, xn, #n` for n in whole 4 KiB units: the shifted-immediate form,
-\ which also takes sp. A remainder is refused (asm.f SCALE/).
+\ which also takes sp. A remainder is rejected (asm.f SCALE/).
 : SUBI-4K, ( n n n -- )  $1000 SCALE/ ENC-SUBI-LSL12 EMITW ;
 public
 : ADDI-4K, ( n n n -- )  $1000 SCALE/ ENC-ADDI-LSL12 EMITW ;
@@ -822,7 +822,7 @@ private
 \ nothing else on the paths that return, and holds no BL and no ADR into x9.
 
 public
-\ sp drops SIGNAL-BYTES and the band above it is registered. A refused
+\ sp drops SIGNAL-BYTES and the band above it is registered. A rejected
 \ registration is named and fatal: the handler would run on the interrupted
 \ stack, and a machine-stack overflow would die unnamed again.
 : C-SIGNAL-STACK ( -- )
@@ -835,13 +835,13 @@ public
    0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
    SP SP SIGSTK-FRAME ADDI,                           \ ADD, not ADDS: the flags are the call's
    C-CC ok BCOND,
-      s" hb: the system refused to register the signal stack (sigaltstack)"
+      s" hb: registering the signal stack failed (sigaltstack)"
       EXIT-STATUS:SYSTEM DIE-LINE,
    ok LBL, ;
 
 \ The way out of the code that registered: SS_DISABLE, then the caller gives
 \ the band back. Its result goes unchecked because it cannot fail off the
-\ alternate stack: the one refusal of a well-formed disable is a thread running
+\ alternate stack: the one failure of a well-formed disable is a thread running
 \ on its alternate stack, and sp is below the band.
 : C-SIGNAL-STACK-OFF ( -- )
    SP SP SIGSTK-FRAME SUBI,
@@ -851,7 +851,7 @@ public
 
 \ x12 = nonzero when this thread has no alternate stack registered: the query
 \ sigaltstack(NULL, old) answers SS_DISABLE in old's flags. A query cannot be
-\ refused: its one error is an unwritable buffer, and the buffer is this frame.
+\ rejected: its one error is an unwritable buffer, and the buffer is this frame.
 : C-SIGNAL-STACK-ABSENT>R12 ( -- )
    SP SP SIGSTK-FRAME SUBI,
    0 0 MOVZ,  1 SP 0 ADDI,  NR-SIGALTSTACK SYS,

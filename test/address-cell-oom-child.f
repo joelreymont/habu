@@ -12,7 +12,7 @@ FUNCTION: SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
 create SLOTS BOOT-CAP 1+ cells allot
 create LIMIT 16 allot                \ struct rlimit: rlim_cur, rlim_max
 
-\ RLIMIT_AS {0, 0}: the kernel refuses every mapping. The call's first
+\ RLIMIT_AS {0, 0}: every mapping fails. The call's first
 \ resolution runs the loader before the syscall, so nothing maps between the cap
 \ and the allocation under test.
 : LIMIT-AS! ( -- )

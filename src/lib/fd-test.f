@@ -1,7 +1,7 @@
 \ fd-test.f - close-on-exec pipes, exact reads and full writes over real pipes,
 \ a write with SIGPIPE held off, how far a tried write got, one write that never
 \ waits; a temp file cut back and appended to, a directory synced, and a temp
-\ file's mode changed and read from an offset; a duplicated write end; a refused
+\ file's mode changed and read from an offset; a duplicated write end; a rejected
 \ call's errno; a bounded wait for a readable pipe.
 \ Run: bin/hb --load src/lib/fd-test.f
 \ A pipe holds far less than PAYLOAD, so one read answers short and READ-EXACT
@@ -410,7 +410,7 @@ variable FILLED                   \ FILLER's descriptors still open
    pid PROCESS:WAIT PROCESS:STATUS>ENDING PROCESS:SIGKILL T-ENDING-SIGNALED= ;
 
 \ A closed descriptor, a pipe with no reader (SIGPIPE held off, as a server's
-\ must be), a resized pipe and a negative length are each refused by name.
+\ must be), a resized pipe and a negative length are each rejected by name.
 : ERRORS ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N close
@@ -445,8 +445,8 @@ variable FILLED                   \ FILLER's descriptors still open
 : EBADF-LEFT ( [ -- ] n -- )
    FS:EBADF CAUSE-LEFT ;
 
-\ The E-PROC-OUTPUT words refused a closed descriptor leave EBADF too;
-\ Linux's SIGPIPE hold is process-wide and refuses no descriptor.
+\ The E-PROC-OUTPUT words rejected a closed descriptor leave EBADF too;
+\ Linux's SIGPIPE hold is process-wide and rejects no descriptor.
 : PROC-ERRNO ( -- )
    [: CLOEXEC-ERR ;] E-PROC-OUTPUT EBADF-LEFT
    HB-TARGET-MACOS? 0= if exit then
@@ -456,7 +456,7 @@ variable FILLED                   \ FILLER's descriptors still open
 : MODE-CLOSED ( -- )
    ERR-FD @ >FD 416 MODE! ;
 
-\ A refused seek on a pipe, and a refused mode change or flags read on a
+\ A rejected seek on a pipe, and a rejected mode change or flags read on a
 \ closed descriptor, leave the call's errno in FS:ERRNO.
 : ERRNO-LEFT ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
@@ -552,7 +552,7 @@ variable FILLED                   \ FILLER's descriptors still open
 
 
 \ TRY-WRITE-FULL answers `all` on an ordinary write, `part` once a full
-\ non-blocking pipe refuses after taking bytes, and `none` once the reader is gone.
+\ non-blocking pipe rejects after taking bytes, and `none` once the reader is gone.
 : FULL-WRITE-OUTCOMES ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
    w s" abc" TRY-WRITE-FULL WROTE>N ALL-MARK T=
@@ -569,9 +569,9 @@ variable FILLED                   \ FILLER's descriptors still open
    w FD>N close ;
 
 
-\ XNU stores the flags before a kqueue refuses FIONBIO, so the refused mark
-\ must put them back, and it leaves the refusal's errno in FS:ERRNO.
-: REFUSED-MARK ( -- )
+\ XNU stores the flags before a kqueue rejects FIONBIO, so the rejected mark
+\ must put them back, and it leaves the rejection's errno in FS:ERRNO.
+: REJECTED-MARK ( -- )
    HB-TARGET-MACOS? 0= if exit then
    KQUEUE-CALL {: kq:n :}
    kq >FD FD-FLAGS {: before:n :}
@@ -587,7 +587,7 @@ variable FILLED                   \ FILLER's descriptors still open
    soft LIMITS !
    RLIMIT-NOFILE LIMITS SET-LIMIT 0 T= ;
 
-\ Duplicates stdin until the limit refuses one: true when it did.
+\ Duplicates stdin until the limit rejects one: true when it did.
 : FILL ( -- bool )
    0 FILLED !
    begin
@@ -611,7 +611,7 @@ variable FILLED                   \ FILLER's descriptors still open
 : PIPE-STARVED ( -- )
    FD:PIPE FD>N close FD>N close ;
 
-\ With the descriptor table full, PIPE-PAIR and PIPE are refused with EMFILE
+\ With the descriptor table full, PIPE-PAIR and PIPE are rejected with EMFILE
 \ in FS:ERRNO.
 : PIPES-STARVED ( -- )
    RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
@@ -650,7 +650,7 @@ variable FILLED                   \ FILLER's descriptors still open
    DUPLICATE-CLOSED
    HELD-WRITE
    FULL-WRITE-OUTCOMES
-   REFUSED-MARK
+   REJECTED-MARK
    SRC @ FREE-SPAN
    DST @ FREE-SPAN
    T-REPORT

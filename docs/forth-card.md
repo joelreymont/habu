@@ -1,6 +1,6 @@
 # Habu in one card
 
-Read this instead of [forth.md](forth.md). Every refusal below was measured
+Read this instead of [forth.md](forth.md). Every rejection below was measured
 on `bin/hb`; every other claim condenses the forth.md
 heading named at the end of its section; section 10 says which heading to open
 when this runs out.
@@ -17,7 +17,7 @@ it is commonly called or by a short form of its words (`NUMFMT`, OOXML's
 `numFmt`), never by initials coined for the package or an operation on it:
 `JSON:READ-NEXT`, not `JR:NEXT`; `JSON:WRITE-OBJECT-START`, not
 `JSON-WRITE:OBJECT-START`. A subject's reading and writing words share it.
-Names use standard programming terms (error, not refusal), and helpers with
+Names use standard programming terms (error, rejection), and helpers with
 one meaning are one word. A library for a protocol names things in that
 protocol's words (MCP's tool result and content blocks, not answers), stored
 records included.
@@ -39,22 +39,22 @@ public
   resolves it while `P:Y` stays `E-UNDEFINED`. Define into a package
   by being in it, never by qualifying.
 - `using NAME … ;using` imports NAME's publics for bare calls. A bare tail a
-  global also owns is refused (§ 3) — rename the public. A file loaded under a
+  global also owns is rejected (§ 3) — rename the public. A file loaded under a
   `using` resolves through it. Close a using opened before `package` after
   `;package`: a `;using` inside the package that would close it is rejected
   as `E-USING-OUTER`, status 70. A load file is a using scope too: a `;using` in
   an included file or `evaluate` buffer that would close its includer's using
-  is refused the same way.
+  is rejected the same way.
 - `package B` in package A's private section, in the file or string A is
   open in and under no `using` A opened, opens the **part** `A:B`; a part
   holds no parts. Inside A and its parts `B:X` in a word or a family type,
   `using B` and `: B:Q` name the part first, then a top-level B; outside A
   nothing reaches it, `A:B:X` included, and a top-level `package B` is another
   package. A `DEFLINEAR` or `VALUE-RECORD` name `B:X` is an exact global
-  spelling no part shadows: it is refused while top-level B or a part named B
+  spelling no part shadows: it is rejected while top-level B or a part named B
   declares the family X (`checker: bad or duplicate signature type`, or
   `checker: bad or duplicate value-record type` for `VALUE-RECORD`, rc 70), and
-  that family is refused while the name exists (for `NEWTYPE x`, `bad newtype
+  that family is rejected while the name exists (for `NEWTYPE x`, `bad newtype
   declaration 'x': reserved name`, rc 70). `;package` of a part returns to A's
   private section. `package` anywhere else inside a package is rejected
   `E-PKG-CONTEXT`, rc 70, and so is a `;package` in an included file or
@@ -80,7 +80,7 @@ public
   A build seals every package its engine files made before program source.
 - At top level `host` and `target` are the section words
   ([xcomp.md](xcomp.md#host-and-target-words)). Where a word named `HOST` or
-  `TARGET` is in scope the bare token is refused, `E-SECTION-WORD`, rc 70:
+  `TARGET` is in scope the bare token is rejected, `E-SECTION-WORD`, rc 70:
   rename the word or call it qualified; a body or `'` names the word.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
   `E-DUPLICATE-DEFINITION`; `undefine R` first to replace one. A package's
@@ -100,12 +100,12 @@ public
   `wordlist` made while a checker replay is open throws `E-OVERLAY-OPEN` where
   it is made, and so does an `undefine` run there, before it retires anything.
 - Keywords (`I`, `DO`, `IF`, `;match`, `package`, `create`, `char`, `'`,
-  `;`, `:}`, …) cannot be definition names: every definer refuses them,
+  `;`, `:}`, …) cannot be definition names: every definer rejects them,
   `E-RESERVED-DEFINITION`, rc 70. A number-shaped name (`: 42`, an
-  overflowed `: 99999999999999999999` too) is refused by every definer: rc 70.
+  overflowed `: 99999999999999999999` too) is rejected by every definer: rc 70.
 
 forth.md: **Naming**, **Packages**, **Importing … with `using`**, **Rules
-learned by refusal**.
+learned by rejection**.
 
 ## 2 Effects, locals, quotations
 
@@ -117,7 +117,7 @@ cannot execute: `E-EXEC-OPAQUE-XT`.
 `width<t>` is one cell holding the bytes `t` takes in storage; `width>n` reads
 them, `width<u8>` is not `width<u32>` or `width<n>`, and no storage, field or
 cast holds or yields one.
-`[type] t` in a body makes one for a closed type `ARENA` stores; it refuses an
+`[type] t` in a body makes one for a closed type `ARENA` stores; it rejects an
 open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 
 - A row's `str` is one string value, which `s"` gives; a file whose first
@@ -210,12 +210,12 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 forth.md: **Stack comments**, **Stack effects**, **Words & factoring**,
 **Structures And Enums**.
 
-## 3 What the checker refuses, and what it admits
+## 3 What the checker rejects, and what it admits
 
-Refused; code from `tools/check.f --json-errors`.
+Rejected; code from `tools/check.f --json-errors`.
 Top-level code is checked too: each token is judged against the live stack's
 cells as the same token in a colon body. A checked step runs, as does one
-deferred to the run; a refused or uncheckable one prints the body's diagnostic
+deferred to the run; a rejected or uncheckable one prints the body's diagnostic
 before the word runs, and `--load` exits 70.
 
 | you write | diagnostic |
@@ -247,7 +247,7 @@ before the word runs, and `--load` exits 70.
 | any token after a call to a word whose body ends in `die` or `throw`, or after `execute` of such a `[: … ;]` literal or a word like `MEM:WITH-BYTES` given one for its `[ … -- S ] -- S`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE` |
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause, rc 70 |
-| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line, or a sum whose variants put an address and a number or quotation in one saved cell | `E-BAD-STORAGE` |
+| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` rejects, or a name or type not on the definer's line, or a sum whose variants put an address and a number or quotation in one saved cell | `E-BAD-STORAGE` |
 | `( -- ^a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `^a` (a pointer to cells): `: RUN ( ^a [ ^a -- ] -- ) execute ;`, `: GO ( ^box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
 | a generic word whose code reads one cell through its pointer, called on a wider or structure instance: `: G ( ^held<b> -- ^bool ) HELD-SET ;` on a `^held<thing2>`, `: P ( ^t -- n ) @ drop 0 ;` on a `^thing2` | `E-MISMATCH` at the call, "`t` in `P`'s effect is one cell; `thing2` is 2 cells"; call it with a one-cell type, or do the work in a word whose effect names the type |
@@ -282,7 +282,7 @@ parent's that cannot escape its callback. `C2-MEM:BIND` takes only a view of
 region `C2-MEM:root<a>`, which `C2-MEM:WITH-MUT` lends and `WITH-MUT-LOAN` and `PREFIX`
 keep: a `WITH-INIT` handing a view of another region to a callback that takes
 `C2-MEM:root<a>` is `E-MISMATCH`. The comments above each word in
-`src/lib/c2-memory.f` state what it admits and refuses.
+`src/lib/c2-memory.f` state what it admits and rejects.
 
 A caught result becomes readable on the success arm of core `code 0=` (or the
 false arm of core `code 0<>`) only when `code` is that catch's own status, so
@@ -319,7 +319,7 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `set-current` | the section keywords: `public`, `private` or `global` inside `package … ;package` |
 
 A top-level word that parses or is a `defer` is `W-CHECK-STOPPED` at the word,
-verdict `deferred`; `--verify-only` exits 1 unless something is refused, and
+verdict `deferred`; `--verify-only` exits 1 unless something is rejected, and
 the check discovers nothing after it: no definition, package, load or use in
 this file or any file that loads it. A top-level call or tick
 of a word that may move the source root (`SOURCE-ROOT:ROOT!`, `SOURCE-ROOT:CD`,
@@ -374,7 +374,7 @@ After a reached call that may define words or register nominal types, verificati
 defers a later use of a missing type to the run; a check no run follows reports
 it as `W-CHECK-DEFERRED` at that type. It consumes the declaration without
 publishing a type, layout, signature or generated words. Known syntax,
-visibility, arity and count errors still refuse. Defining a provider, taking its
+visibility, arity and count errors still reject. Defining a provider, taking its
 tick or reading an uncalled body does not create this uncertainty; ordinary
 loading keeps its existing rules.
 
@@ -403,7 +403,7 @@ below it throws a stack underflow and a text that leaves cells throws
 `E-EVAL-RESIDUE`, the caller's cells intact either way. An xt the text runs
 cannot reach them: `' F execute` with F's input under the floor is
 `E-INPUT-UNDERFLOW` at `execute`. A text that ends inside a definition it
-opened is refused as every source is, `E-VS-UNTERMINATED-DEFINITION` (`source
+opened is rejected as every source is, `E-VS-UNTERMINATED-DEFINITION` (`source
 ended inside definition: NAME`), and the definition is aborted (forth.md **Checked code and primitive boundaries** states what `evaluate-closed` checks).
 A caught failed text begun outside a definition keeps its storage and its
 words lose their names: a row it linked into older data stays valid, and a
@@ -493,7 +493,7 @@ an `xt`, which `compile,` rejects), and `; ( -- )` ends the word.
 `PTR-U8-TABLE-VARIABLE` cells as null; their `PERSISTED-` siblings keep their
 addresses, and so do the pointer fields of typed storage not declared
 `SCRATCH-ONLY`. A pointer into memory
-the build mapped is refused at save, naming the cell. Scratch storage belongs to
+the build mapped is rejected at save, naming the cell. Scratch storage belongs to
 the process that fills it: a build leaves it out and the program reads it as
 zero, and it is declared where it is made, as `create R n SCRATCH-ALLOT` for a
 definer's own scratch body (it aligns `here` first). Runtime-sized buffers come
@@ -503,13 +503,13 @@ reach a cell at any byte address, and an atomic word's cell must be cell-aligned
 (`atomic-u32@` and `atomic-u32!` need a 4-byte-aligned address).
 
 forth.md: **Structures And Enums**, **Habu Native Tooling Gotchas**, **Rules
-learned by refusal**.
+learned by rejection**.
 
 ## 5 A cell that holds an address is declared
 
 `variable`, `create`, `constant`, `here` and every `create … does>` definer
 publish raw storage: scalars, roles and atoms only. A pointer in either
-direction, an execution token, and `ptr-field` over such a base, is refused.
+direction, an execution token, and `ptr-field` over such a base, is rejected.
 
 ```forth
 variable V                    \ E-RAW-CELL-PTR at the fetch,
@@ -520,7 +520,7 @@ PTR-VARIABLE V                \ the declared twin certifies
 ```
 
 The declared forms are the `PTR-*` and `TYPED-*` rows of § 4. Such a cell takes
-the address it was declared for and refuses the address *of* one.
+the address it was declared for and rejects the address *of* one.
 
 Top level obeys the same rule, before the word runs and with the cell left
 unwritten: `variable V  here V !` is `E-RAW-CELL-PTR` at `!` and
@@ -551,7 +551,7 @@ package that declared the type: `LINEAR: MINT ( ^n -- PKG:tok )` and `LINEAR: ER
 in any other package or for a top-level `DEFLINEAR`
 `E-LINEAR-OWNER`, and a row that is not one token and one non-linear con (or
 pointer to one, or to a record holding no linear value, quotation, type
-variable, atom or width) `E-LINEAR-PAYLOAD`. `CAST:` refuses a side that may
+variable, atom or width) `E-LINEAR-PAYLOAD`. `CAST:` rejects a side that may
 hold a linear value (`E-CAST-LINEAR`); a quotation whose rows end in different
 tails (`[ R -- S ]`) counts as one, except in a cast's input outside a view's element,
 where it is any quotation; where the output mints, an input row ending in a row
@@ -559,7 +559,7 @@ variable keeps that variable and its cell count in place (`E-CAST-CLASS`). A
 type variable only where a type is stored is admitted (`CAST: >ELEM ( ^u8 --
 ^t )` mints a pointer, so only in a private section); a type bound to it
 later that may hold a linear value is `E-CAST-LINEAR`, an atom or a width
-`E-CAST-CLASS`, and `is` refuses a callable over it into a cell over any type
+`E-CAST-CLASS`, and `is` rejects a callable over it into a cell over any type
 (`E-CAST-LINEAR`). Both identity declarers preserve the stack below their
 operand: `LINEAR: MINT ( R n -- R PKG:tok )` is valid, but different tails are
 `E-CAST-ARITY`.
@@ -589,11 +589,11 @@ holds an address**.
   E-LOCAL`). A library owns one inclusive block of about a hundred bounded by
   its own `E-X-FIRST` / `E-X-LAST` (arrays, filesystem, strings, …) and reserves
   that whole range whether or not every code is minted.
-- A code is declared with its text: `-9701 s" the provider refused the key"
+- A code is declared with its text: `-9701 s" the provider rejected the key"
   ERROR:CODE E-KEY` defines the constant `E-KEY` and keeps its name, qualified
   by the open package (`MODEL:E-KEY`), and the text in the program's data.
   `ERROR:NAME$` and `ERROR:TEXT$` ( n -- ^u8 n ) answer them, empty for an
-  undeclared code. `src/lib/error.f` states the refusals (CODE, CHECK).
+  undeclared code. `src/lib/error.f` states the rejections (CODE, CHECK).
 - A block with codes in a package (`JSON:E-READ-SOURCE`) is minted, bounds and
   all, in the file that throws its codes and that every other file throwing
   them requires (`src/lib/json/read.f`, which `src/lib/json/value.f` requires;
@@ -649,7 +649,7 @@ holds an address**.
   `$8000000000000000 -1 /` wraps to `$8000000000000000`.
 - `catch` only at explicit recovery boundaries — REPL and CLI wrappers, test
   assertions, adapters returning the code as data and the result only where
-  the code is 0. No `catch drop`. A test asserts a refusal by its exact code:
+  the code is 0. No `catch drop`. A test asserts a rejection by its exact code:
   `[: WORD ;] E-FS-PATH TTHROWSQ` in a checked body, `' WORD TTHROWS` at top
   level.
 
@@ -673,7 +673,7 @@ forth.md: **Errors**, **Integer arithmetic**.
   Habu's file. Every file requires its **own** dependencies.
 - A file picks its target's file at its top level, `HB-TARGET-MACOS? [if]
   require src/lib/secret/macos.f [then]`, never from inside a word: a build
-  refuses a load a word runs (`include: a word loaded or provided a file
+  rejects a load a word runs (`include: a word loaded or provided a file
   during a build`). The verifier follows a `[if]` only after a target predicate, or one
   and `0=`. A file that builds for some
   targets only states them on its first code line, before its requires:
@@ -683,7 +683,7 @@ forth.md: **Errors**, **Integer arithmetic**.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws a stack underflow, a file that ends
   with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a
-  definition it opened is refused there, as every source is. A load word
+  definition it opened is rejected there, as every source is. A load word
   called while a declaration is open (`FUNCTION:`, `CALLBACK:`,
   `BEGIN-STRUCTURE`) is `E-UNCLOSED` at the declaration's opener, so no
   declaration spans a load either. A value crosses a load only as a word the
@@ -764,6 +764,6 @@ forth.md: **Testing**.
 | Constants | hex versus decimal, where codes live |
 | Testing | assertions, a suite example, runner and property rules |
 | Diagnosing a checker miss | find the layer that is wrong |
-| Comments & hygiene | debug prints, a refused definition's report |
+| Comments & hygiene | debug prints, a rejected definition's report |
 | Habu Native Tooling Gotchas | debugger, xref, `DYNAMIC-BUFFER`, `ARENA`, `HEAP`, alignment, absent words, escapes |
 | Native Forth Gotchas … | compile-only words, `case`, `parse-name` |

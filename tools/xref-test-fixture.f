@@ -31,7 +31,7 @@ public
    XRT-SAMPLE + ;
 
 \ A record is `^n`; declaring the pointee parametric here specializes the
-\ quantifier in the body and is refused.
+\ quantifier in the body and is rejected.
 : XRT-EXPECT-FOUND ( str -- ^n )
    XREF-FIND dup XREF-FOUND? TTRUE ;
 

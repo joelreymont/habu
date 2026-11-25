@@ -56,7 +56,7 @@ variable LEN1
 variable HERE-D
 variable AT-D
 TYPED-VARIABLE BYTES-OK bool
-variable REFUSED
+variable REJECTED
 variable REWOUND
 
 \ The address a string word of the space answers, read with its length cell
@@ -144,18 +144,18 @@ variable REWOUND
    HOST-CHECK
    s" e: a throw in the body is rethrown after the close" SAY ;
 
-: REFUSE ( -- ) s\" 16 allot : LK-F1 ( -- n ) s\" gone\" ;" evaluate-closed ;
+: REJECT ( -- ) s\" 16 allot : LK-F1 ( -- n ) s\" gone\" ;" evaluate-closed ;
 : REWIND ( -- ) s\" : LK-F2 ( -- str ) s\" new\" ;" evaluate-closed ;
 
 : BODY-F ( -- )
-   [: REFUSE ;] catch REFUSED !
+   [: REJECT ;] catch REJECTED !
    16 allot  -16 allot
    [: REWIND ;] catch REWOUND ! ;
 
 : CASE-F ( -- )
-   0 REFUSED !  0 REWOUND !
+   0 REJECTED !  0 REWOUND !
    [: BODY-F ;] BUILD
-   REFUSED @ 70 T=
+   REJECTED @ 70 T=
    REWOUND @ E-INTERN-REWIND T=
    HOST-CHECK
    s" f: after DP moves back in the space a new string is rejected" SAY ;
@@ -175,7 +175,7 @@ variable REWOUND
    FOUND @ ND0 @ >= TTRUE
    G1$ XREF-FIND XREF-FOUND? TFALSE
    HOST-CHECK
-   s" g: a build inside a build is refused and the outer one goes on" SAY ;
+   s" g: a build inside a build is rejected and the outer one goes on" SAY ;
 
 : CASE-H ( -- )
    NABI:BINDING NSHADOW:OPEN-NATIVE
@@ -183,7 +183,7 @@ variable REWOUND
    NSHADOW:OPEN? TTRUE
    NSHADOW:CLOSE
    HOST-CHECK
-   s" h: a refused open step leaves the caller's shadow open" SAY ;
+   s" h: a rejected open step leaves the caller's shadow open" SAY ;
 
 variable HOST-AT
 \ hb's last created word when the builds run.
@@ -192,13 +192,13 @@ create LK-HOST 7 ,
 : HOST-ADDR ( -- n ) ['] LK-HOST execute NULL-PTR - ;
 
 : BODY-I ( -- )
-   [: s" : LK-I1 ( -- ) does> ( -- n ) @ ;" evaluate-closed ;] catch REFUSED ! ;
+   [: s" : LK-I1 ( -- ) does> ( -- n ) @ ;" evaluate-closed ;] catch REJECTED ! ;
 
 : CASE-I ( -- )
-   0 REFUSED !
+   0 REJECTED !
    HOST-ADDR HOST-AT !
    [: BODY-I ;] BUILD
-   REFUSED @ 70 T=
+   REJECTED @ 70 T=
    HOST-ADDR HOST-AT @ T=
    HOST-CHECK
    s" i: a does> word in a build that creates no word is rejected, and hb's created word stays" SAY ;
@@ -284,7 +284,7 @@ variable RC-2
 
 : BODY-Q ( -- )
    [: Q1 ;] catch RC-1 !
-   [: REFUSE ;] catch RC-2 ! ;
+   [: REJECT ;] catch RC-2 ! ;
 
 : CASE-Q ( -- )
    TAKE-HOST

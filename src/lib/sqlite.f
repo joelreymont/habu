@@ -28,7 +28,7 @@ public
 -9620 s" the database file is malformed or is not a database"
    ERROR:CODE E-CORRUPT
 -9621 s" the database or its disk is full" ERROR:CODE E-FULL
--9622 s" SQLite refused the call" ERROR:CODE E-SQL
+-9622 s" an SQLite call failed" ERROR:CODE E-SQL
 -9623 s" a statement scope's body handed back another statement"
    ERROR:CODE E-HANDLE
 
@@ -266,7 +266,7 @@ public
 : OPEN-READ ( str -- connection )
    READONLY NOFOLLOW or OPEN-WITH ;
 
-\ SQLite refuses to close a connection with a live statement.
+\ SQLite does not close a connection with a live statement.
 : CLOSE ( connection -- )
    DB {: db:^ :}
    db LIB-CLOSE db CHECK ;

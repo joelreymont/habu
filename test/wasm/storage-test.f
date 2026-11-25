@@ -61,7 +61,7 @@ variable FILE-U
    WASM-HARNESS:OUT$ SB$ FILE!
    WASM-HARNESS:OUT$ want T$= ;
 
-\ GROW's lines, REFUSE's and REUSE's.
+\ GROW's lines, REJECT's and REUSE's.
 : BUFFER$ ( -- str )
    S\" 77\n88\n312\n1\n-3201\n-3201\n77\n88\n1\n0\n0\n" ;
 
@@ -78,9 +78,9 @@ variable FILE-U
 : INSIDE$ ( -- str )
    S\" 0\n0\n65536\n0\n0\n" ;
 
-\ The map's ior, the five refused frees', the free's, the map back's, that it
+\ The map's ior, the five rejected frees', the free's, the map back's, that it
 \ handed out the same page, and the last free's.
-: REFUSED$ ( -- str )
+: REJECTED$ ( -- str )
    S\" 0\n-1\n-1\n-1\n-1\n-1\n0\n0\n1\n0\n" ;
 
 public
@@ -90,7 +90,7 @@ public
    SETUP
    s" generated structure accessors read and write distinct fields and rows" T-LABEL
    s" WSTORE:RECORD" s" record" S\" 23\n1.250000\n47\n-2.500000\n" 0 ENTRY-CASE
-   s" one buffer reserves, grows across a page, refuses, releases and is reused cleared" T-LABEL
+   s" one buffer reserves, grows across a page, rejects, releases and is reused cleared" T-LABEL
    s" WSTORE:BUFFER" s" buffer" BUFFER$ 0 ENTRY-CASE
    s" fractional capacity retains its tail" T-LABEL
    s" WSTORE:FRACTIONAL" s" fractional" FRACTIONAL$ 0 ENTRY-CASE
@@ -100,19 +100,19 @@ public
    s" WSTORE:TWICE" s" twice" TWICE$ TRAPPED ENTRY-CASE
    s" a page freed again inside the run it joined traps" T-LABEL
    s" WSTORE:INSIDE" s" inside" INSIDE$ TRAPPED ENTRY-CASE
-   s" a zero length, an unaligned address, a negative length, a length past 2^32 and an address past 2^32 are refused" T-LABEL
-   s" WSTORE:REFUSED" s" refused" REFUSED$ 0 ENTRY-CASE
+   s" a zero length, an unaligned address, a negative length, a length past 2^32 and an address past 2^32 are rejected" T-LABEL
+   s" WSTORE:REJECTED" s" rejected" REJECTED$ 0 ENTRY-CASE
    T-REPORT ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
-\ BOUNDS's lines: one per refused index or reserve.
+\ BOUNDS's lines: one per rejected index or reserve.
 : BOUNDS$ ( -- str )
    S\" 7122\n7121\n7122\n7121\n7122\n7122\n7122\n7122\n7122\n" ;
 
 : RUN-BOUNDS ( -- )
    T-RESET
    SETUP
-   s" generated accessors refuse out-of-range indices and reserves refuse bad counts" T-LABEL
+   s" generated accessors reject out-of-range indices and reserves reject bad counts" T-LABEL
    s" WSTORE:BOUNDS" s" bounds" BOUNDS$ 0 ENTRY-CASE
    T-REPORT ;
 [then]

@@ -7,13 +7,13 @@ SUITE compiler-shadow
 
 \ arm64-place.f writes stripped programs from one build and runs them, checks
 \ that each map names only the words its entry reaches and that a second link
-\ gives the same bytes, and refuses a reached word a stripped program cannot run.
+\ gives the same bytes, and rejects a reached word a stripped program cannot run.
 SUITE arm64-place
    test/compiler/arm64-place.f
 ;SUITE
 
 \ arm64-link-data.f writes two stripped programs from one build and runs them,
-\ checking their DATA cells and DP ceiling, and runs the link's refusals.
+\ checking their DATA cells and DP ceiling, and runs the link's rejections.
 SUITE arm64-link-data
    test/compiler/arm64-link-data.f
 ;SUITE

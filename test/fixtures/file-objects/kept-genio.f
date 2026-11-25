@@ -1,6 +1,6 @@
 \ kept-genio.f - a program built by tools/hb-build.f both as a stripped program
 \ and with --repl: its top level builds a device and keeps its handle in OLD;
-\ MAIN builds another device and closes OLD, which E-GENIO-STATE refuses.
+\ MAIN builds another device and closes OLD, which E-GENIO-STATE rejects.
 
 require src/lib/error.f
 require src/lib/genio-core.f
@@ -27,7 +27,7 @@ public
 : CHECK ( -- )
    BUILD {: own:GENIO:device :}
    [: OLD @ GENIO:CLOSE ;] catch {: code:n :}
-   code E-GENIO-STATE = if ." genio refused" cr else ." genio " code . cr then
+   code E-GENIO-STATE = if ." genio rejected" cr else ." genio " code . cr then
    code 0<> if own GENIO:CLOSE then ;
 ;package
 

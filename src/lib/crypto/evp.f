@@ -474,7 +474,7 @@ CAST: RS>BYTES ( n -- ^u8 )
 
 \ For default-provider PKCS#1 v1.5 RSA, rsa_verify appends ERR_R_RSA_LIB in
 \ PROV when RSA_verify returns zero. A valid padding block with empty payload
-\ returns zero without an RSA error; other signature refusals carry RSA
+\ returns zero without an RSA error; other signature rejections carry RSA
 \ reasons first. Empty or unrelated queues remain operational failures.
 \ https://github.com/openssl/openssl/blob/openssl-3.0.18/crypto/evp/m_sigver.c
 \ https://github.com/openssl/openssl/blob/openssl-3.0.18/providers/implementations/signature/rsa_sig.c

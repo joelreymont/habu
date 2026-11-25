@@ -97,8 +97,8 @@ private
 
 : CLEARLN ( -- )  0 LLEN !  0 LPOS !  0 LOVER ! ;
 
-\ A key past the ceiling is counted, not dropped or inserted, so READ-LINE refuses
-\ with the length the line asked for. A refusal mid-line would leave the pasted
+\ A key past the ceiling is counted, not dropped or inserted, so READ-LINE rejects
+\ with the length the line asked for. A rejection mid-line would leave the pasted
 \ tail to run as the next line.
 : INSCH ( n -- ) {: c :}
    LLEN @ LLINE-MAX < 0= IF LOVER @ 1 + LOVER ! exit THEN
@@ -176,7 +176,7 @@ private
 
 \ One line on descriptor 2: what filled up, the ceiling and the length the line
 \ asked for. Diagnostics do not leave through the editor's echo (src/lib/genio-core.f),
-\ and no REPL-baked word may `die` or `bye`, so the session states the refusal
+\ and no REPL-baked word may `die` or `bye`, so the session states the rejection
 \ and reads the next line.
 : LINE-FULL ( -- )
    2 s" hb: repl line over " write drop
@@ -188,7 +188,7 @@ private
 
 public
 
-\ A refused line stays out of the history ring; the outer session sees only
+\ A rejected line stays out of the history ring; the outer session sees only
 \ whole lines.
 : READ-LINE ( -- str )
    TTY? 0= IF NULL$ exit THEN

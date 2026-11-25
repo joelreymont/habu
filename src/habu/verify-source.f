@@ -83,11 +83,11 @@ split-str
 \ A storage definer's declaration is read as its definer reads it, on one line:
 \ the name on the definer's line and the type's first token on the name's, raw
 \ as parse-name reads them, so a `(` or `\` there is a name or type the definer
-\ refuses, not a comment, and a token on a later line starts the next
+\ rejects, not a comment, and a token on a later line starts the next
 \ statement. The type is a span of tokens (`ptr* base`, a family application,
 \ a spaced quotation or scheme) that ends where the checker ends one or with
-\ its line. With no name the definer is refused at its own token; with no first
-\ token the span is empty and the checker refuses it by name.
+\ its line. With no name the definer is rejected at its own token; with no first
+\ token the span is empty and the checker rejects it by name.
 \
 \ `parses: W n` bounds W to n raw tokens; `parses-through: W n ( E1 E2 )` to n
 \ and then every token through the first one equal byte for byte to a listed
@@ -132,9 +132,9 @@ split-str
 \ resolves. A renderer opens no stretch: it reads only its own text and is
 \ reported at its token when no row or group declares that text. The
 \ verifier's child reports each stop and stretch once, at its token, and
-\ answers `deferred` when nothing is refused. A refusal opens a stretch too,
+\ answers `deferred` when nothing is rejected. A rejection opens a stretch too,
 \ unreported: the load stops at it, so the operands of a misspelt parsing word
-\ or the rest of a misread declaration are not refused after it.
+\ or the rest of a misread declaration are not rejected after it.
 
 require src/core/exit-status.f
 require src/lib/error.f
@@ -244,7 +244,7 @@ variable STR-LAST-AT
 variable STR-LAST-END
 PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
-PTR-VARIABLE TOP-REFUSED
+PTR-VARIABLE TOP-REJECTED
 PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
 variable TOP-DEFER                               \ a stretch is open
@@ -606,7 +606,7 @@ EXPORT CHECK:CHECKER-QUALIFIED?
 EXPORT CHECK:CHECKER-RECORD-REJECT
 EXPORT CHECK:CHECKER-SIG-UNRES-TAKE
 EXPORT CHECK:CHECKER-SPLIT-STR
-EXPORT CHECK:CHECKER-STORAGE-NAME-REFUSE
+EXPORT CHECK:CHECKER-STORAGE-NAME-REJECT
 EXPORT CHECK:CHECKER-DERIVED-TYPE-REJECT
 EXPORT CHECK:CHECKER-TRY-RECORD
 EXPORT CHECK:CHECKER-TYPE-SPAN-BREAK?
@@ -737,7 +737,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 
 \ The buffers grow to hold every run, so a body is never truncated: a dropped
 \ token would make a well-formed, wrong declaration. Both are reserved before
-\ the run changes any state, so a refused reservation leaves the body as it was.
+\ the run changes any state, so a rejected reservation leaves the body as it was.
 : BODY-APPEND ( str -- )
    {: a:^ u:n :}
    a SOURCE@ - {: src:n :}
@@ -758,7 +758,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    0 BODY-BUF BODY-U @ 0 BODY-ROW BODY-ROWS @ REJECTION:MAP!
    0 BODY-BUF BODY-U @ ;
 
-\ The body holds no closer, so the checker is told where it stands and refuses
+\ The body holds no closer, so the checker is told where it stands and rejects
 \ a structure still open there.
 : DEF-BODY$ ( -- str )
    BODY$ {: a:^ u:n :}
@@ -923,7 +923,7 @@ variable RETIRED
    E-DISC-DYNAMIC DISCOVERY-STOP ;
 
 \ The symbol of the newest definition, which an `immediate` marks: 0 from its
-\ name until it is recorded, so one after a refused definition marks nothing.
+\ name until it is recorded, so one after a rejected definition marks nothing.
 \ A definer that can end without DEFINED clears it as it starts.
 variable NEWEST-SYM
 
@@ -942,7 +942,7 @@ variable NEWEST-SYM
    THEN ;
 
 \ A string loader u bytes long, after a literal of the given kind. True when it
-\ may load the literal's path, which the resolver alone may still refuse.
+\ may load the literal's path, which the resolver alone may still reject.
 : LITERAL-LOAD? ( n n -- bool ) {: kind:n u:n :}
    kind 0= IF u DYNAMIC-STOP THEN
    kind LIT-OTHER = IF
@@ -1432,7 +1432,7 @@ private
 \ of the facts MASK names? When it does, the checker marks the wordlist the
 \ statement runs in, and a definition or a top-level token read after it that
 \ names a word nothing in scope defines is left to the run (CHECK's verdict 2,
-\ or a stretch deferred at the token) instead of refused E-UNDEFINED.
+\ or a stretch deferred at the token) instead of rejected E-UNDEFINED.
 : RENDERS-MARK? ( str n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-RENDERS-OFF OWNER-XT RENDERS-ACTION execute ;
 
@@ -1568,7 +1568,7 @@ CAST: STRETCH-ACTION ( n -- [ str -- ] )
    why DW-TYPE =  why DW-RENDERED = or  why DW-COUNT = or ;
 
 \ The CALLBACK: group the scan read, with its opener and where its name lies;
-\ skipped when a word it claims was refused, so `;CALLBACK` defines nothing;
+\ skipped when a word it claims was rejected, so `;CALLBACK` defines nothing;
 \ left when code the check does not follow may close it: the run decides.
 ENUM callback-group closed open skipped left ;ENUM
 TYPED-VARIABLE CB-GROUP callback-group
@@ -1579,7 +1579,7 @@ variable CB-NAME-U
 : CB-CLOSED! ( -- ) construct callback-group closed CB-GROUP ! ;
 CB-CLOSED!
 
-\ A skipped group's words are refused whether or not the run closes it.
+\ A skipped group's words are rejected whether or not the run closes it.
 : LEAVE-CALLBACK ( -- )
    CB-GROUP @ MATCH callback-group
       closed OF ENDOF
@@ -1632,8 +1632,8 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- str n ] )
 \ The colon definitions this run judged, each counted once its verdict is
 \ final (CENSUS): a `:` or `kernel:` statement (COLON?) is certified when its
 \ body, and its does> clause if it has one, certified; it is deferred to the
-\ run when neither was refused and one was deferred, or when the scan stopped
-\ inside it (TICK-REMAINDER). A refused one counts in neither, and the scan
+\ run when neither was rejected and one was deferred, or when the scan stopped
+\ inside it (TICK-REMAINDER). A rejected one counts in neither, and the scan
 \ reads nothing after a stop.
 variable CERTIFIED-N
 variable DEFERRED-N
@@ -1663,7 +1663,7 @@ variable TICK-BODY-VERDICT
 \ checked and recorded, so the checker must not latch the created effect here -
 \ the next record belongs to the next definition. What this scan learns about a
 \ definer it READ goes into the table above instead. It takes the definer's
-\ name, which names the clause in the diagnostic of a refused one.
+\ name, which names the clause in the diagnostic of a rejected one.
 : CHECK-DOES-BODY ( str str str -- n )
    NCOMP-DISPATCH:DECL-VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
 
@@ -1673,7 +1673,7 @@ PTR-VARIABLE TICK-DOES-NA
 variable TICK-DOES-NU
 variable TICK-DOES-VERDICT
 
-\ The native compiler can refuse an earlier parent token before it reaches a
+\ The native compiler can reject an earlier parent token before it reaches a
 \ does> clause, then checks the clause before the parent's closing check.
 \ Keep the parent's collected text and source map while judging the clause.
 DYNAMIC-BUFFER DOES-PARENT-BUF u8
@@ -1684,7 +1684,7 @@ PTR-VARIABLE DOES-CLOSER-A
 variable DOES-CLOSER-U
 variable DOES-DEF-VERDICT
 variable DOES-ACCEPTED                  \ both parent and clause certified
-TYPED-VARIABLE DOES-PARENT-REFUSED bool
+TYPED-VARIABLE DOES-PARENT-REJECTED bool
 PTR-VARIABLE DOES-CLAUSE-A
 variable DOES-CLAUSE-U
 variable DOES-CLAUSE-WHY
@@ -1852,19 +1852,19 @@ DYNAMIC-BUFFER TICK-QUAL u8
    MULTI-ERR? IF REJECTION:KEEP ELSE EXIT-STATUS:REJECTED REJECTION:STOP THEN ;
 
 \ The clause's declaration is recorded unless body or clause stops or is
-\ refused. A body deferral hides the clause's, never the clause's stop.
+\ rejected. A body deferral hides the clause's, never the clause's stop.
 : VERIFY-DOES ( -- bool )
    TOKEN-A @ TOKEN-U @ {: opener:^ openeru:n :}
    false DOES-ACCEPTED !
    DEF-TICK-ORDER @ {: order:n :}
    order TICK-GATE = {: gate:bool :}
    order TICK-UNKNOWN = {: unknown:bool :}
-   false DOES-PARENT-REFUSED !
+   false DOES-PARENT-REJECTED !
    0 DOES-DEF-VERDICT !
    0 DOES-CLAUSE-U !
    gate unknown or IF
       gate IF TICK-PARENT-GATE ELSE TICK-PARENT-UNKNOWN THEN DEF-TICK-ORDER !
-      VERIFY-NAMED-BODY 2 <> DOES-PARENT-REFUSED !
+      VERIFY-NAMED-BODY 2 <> DOES-PARENT-REJECTED !
       order DEF-TICK-ORDER !
       TICK-REMAINDER @ IF 2 REPORT-DEFERRED false EXIT THEN
    THEN
@@ -1877,9 +1877,9 @@ DYNAMIC-BUFFER TICK-QUAL u8
    \ The rule is checked once the head's own rejections are: the load's checker
    \ checks it at the end of the head's walk.
    WRAP-MAKES @ 0=  TICK-REMAINDER @ 0=  and IF
-      gate unknown or IF DOES-PARENT-REFUSED @ 0= ELSE DOES-DEF-VERDICT @ 0<> THEN IF
+      gate unknown or IF DOES-PARENT-REJECTED @ 0= ELSE DOES-DEF-VERDICT @ 0<> THEN IF
          opener openeru DOES-UNMADE-STOP
-         true DOES-PARENT-REFUSED !
+         true DOES-PARENT-REJECTED !
       THEN
    THEN
    opener openeru SIGNATURE-AT {: sig:^ sigu:n :}
@@ -1889,7 +1889,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
       BODY!
       TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" STR:= IF
-         TICK-REMAINDER @ DOES-PARENT-REFUSED @ or IF false EXIT THEN
+         TICK-REMAINDER @ DOES-PARENT-REJECTED @ or IF false EXIT THEN
          sig sigu DEF-NAME-A @ DEF-NAME-U @ VERIFY-DOES-BODY
          {: clause:n :}
          TICK-REMAINDER @ IF clause REPORT-DEFERRED  false EXIT THEN
@@ -1924,7 +1924,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
 \ compiled, so a definer it replays names a word that does not exist in this
 \ process and cannot be asked to prove otherwise.
 \ The registrar's CHECKER-ROW outcome, which alone tells a kept redeclaration
-\ from a refused one. A quiet row's word is left to the run: it marks its name.
+\ from a rejected one. A quiet row's word is left to the run: it marks its name.
 : DECL-SIGNATURE ( str str -- n ) {: name:^ nameu:n sig:^ sigu:n :}
    name nameu sig sigu
    NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute
@@ -1935,14 +1935,14 @@ DYNAMIC-BUFFER TICK-QUAL u8
 : DECL-SHADOW ( str str -- )
    NCOMP-DISPATCH:DECL-VERIFY-SHADOW-OFF OWNER-XT SHADOW-ACTION execute ;
 
-\ The checker's own guard refuses a colon definition, a cast, a typed storage
+\ The checker's own guard rejects a colon definition, a cast, a typed storage
 \ definition and a re-export whose name its scope already holds, but a colon
 \ definition only once its body is checked, a storage definition once its type
 \ is read, and it keeps no place. Those rows ask the guard's question as soon as
-\ they have scanned the name, as the engine's wall and the check hook refuse it
+\ they have scanned the name, as the engine's wall and the check hook reject it
 \ under --load, a name only the checker holds included.
 \ A definer the checker only trusts (variable, defer, TRUSTED:, ...) is left to
-\ the run, which names its duplicate as --load does, or first refuses an
+\ the run, which names its duplicate as --load does, or first rejects an
 \ earlier definition whose text the engine cannot hold.
 
 \ Whether the path is the subject's, whose bytes are the supplied ones.
@@ -2178,14 +2178,14 @@ ENGINE-TARGET-INIT
    a u at u SEALED-NAME
    a u CHECKER-CERT-DUP? dup IF u DUPLICATE! THEN ;
 
-\ Whether the scan refused the definition NAME, written from byte AT, now that
+\ Whether the scan rejected the definition NAME, written from byte AT, now that
 \ it knows whether the definition makes a does> clause (CLAUSE): a colon
 \ definition at the `;` or `does>` that ends its body, before the body is
 \ checked, and a TRUSTED: one once its body is read, before its clause is
 \ published. A record of the name from before the replay that has the other
-\ shape is no loaded twin of it, and the live engine refuses the definition
+\ shape is no loaded twin of it, and the live engine rejects the definition
 \ there.
-: REFUSE-SHAPE ( str n bool -- bool )
+: REJECT-SHAPE ( str n bool -- bool )
    {: a:^ u:n at:n clause:bool :}
    a u clause CHECKER-CERT-SHAPE-DUP? 0= IF false EXIT THEN
    at TOKEN-BYTE !
@@ -2428,7 +2428,7 @@ variable TRUSTED-SIG-U
 
 \ The engine's `does>` makes the clause record `<definer>;does` for a TRUSTED:
 \ definer as for a checked one, so a definer whose `does>` the scan read gets it
-\ at its `;`: a later definition of that name is refused, as in the live load.
+\ at its `;`: a later definition of that name is rejected, as in the live load.
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
@@ -2448,12 +2448,12 @@ variable TRUSTED-SIG-U
    row CHECKER-ROW:QUIET = IF QUIET-TYPE-REPORT THEN
    name nameu kept SCAN-TRUSTED-BODY
    TICK-REMAINDER @ IF EXIT THEN
-   name nameu at TRUSTED-DOES @ 0<> REFUSE-SHAPE IF EXIT THEN
+   name nameu at TRUSTED-DOES @ 0<> REJECT-SHAPE IF EXIT THEN
    TRUSTED-DOES @ kept and IF name nameu TRUSTED-CLAUSE THEN
    kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
 
 \ Registration goes through the certifying registrar, not DECL-SIGNATURE, so
-\ an illegal retype is refused here too and not merely recorded.
+\ an illegal retype is rejected here too and not merely recorded.
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
@@ -2542,7 +2542,7 @@ EXPORT CHECKER-RESOLVE:PART-PATH
 
 \ `using NAME` and `;using` are source events like `package` and `;package`:
 \ without these rows a replayed file's own
-\ imports do nothing and a name it imports is refused E-UNDEFINED. The checker
+\ imports do nothing and a name it imports is rejected E-UNDEFINED. The checker
 \ owns the replay's using depth, so these two rows are the only thing that
 \ moves it.
 : RECORD-USING ( -- )
@@ -2673,7 +2673,7 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
    s" ;ENUM" STR:=CI ;
 
 \ The body keeps its ;ENUM, which the front end parses itself; one the input
-\ ends inside replays without it, and the front end refuses "missing ;ENUM".
+\ ends inside replays without it, and the front end rejects "missing ;ENUM".
 : RECORD-ENUM ( -- )
    0 NEWEST-SYM !
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
@@ -2823,7 +2823,7 @@ variable STG-TYPE-U
    name nameu MANGLE {: tail:^ tailu:n :}
    DEFTYPE-BASE {: ba:^ bu:n based:bool :}
    based IF name nameu ba bu SD-ONE-NAME 0= IF EXIT THEN THEN
-   REJECTION:TALLY {: refused:n :}
+   REJECTION:TALLY {: rejected:n :}
    based IF name nameu at nameu SEALED-NAME ELSE name nameu at SEALED-FAMILY THEN
    based IF
       tail tailu name nameu ba bu s" deftype" SD-WRAP-OUTCOME
@@ -2832,7 +2832,7 @@ variable STG-TYPE-U
    ELSE
       tail tailu name nameu s" deftype" CHECKER-DEFFAMILY
    THEN
-   REJECTION:TALLY refused <> IF EXIT THEN
+   REJECTION:TALLY rejected <> IF EXIT THEN
    name nameu tail tailu ba bu DTC-BUILD-IN
    DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
    DTC-NAME$ CHILD-ABI:NOMINAL-IN CHECKER-NOMINAL-REPLAY
@@ -2844,25 +2844,25 @@ variable STG-TYPE-U
    DISARM
    at nameu CAST-DEFINED ;
 
-\ A name refused as malformed or a duplicate is empty and still owns its type
+\ A name rejected as malformed or a duplicate is empty and still owns its type
 \ span; consume it before resuming the statement scan so a type token cannot
 \ be interpreted as a new statement.
 : SCAN-STORAGE-NAME ( -- str )
    0 NEWEST-SYM !
    SCAN-LINE-TOKEN
-   dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
+   dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REJECT EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ 2over REJECTION:NOT-A-NAME
    2dup CHECKER-LBUF-NAME-OK? IF
       2dup TOKEN-BYTE @ REJECT-DUPLICATE 0= IF EXIT THEN
    THEN
    2drop SCAN-STORAGE-TYPE 2drop SOURCE@ 0 ;
 
-\ The load stops at a count token it refuses to resolve, refused there as a
+\ The load stops at a count token it does not resolve, rejected there as a
 \ top-level token, so the declaration after it is read but not judged: its
-\ count is refused once.
-: COUNT-REFUSED? ( str -- bool )
+\ count is rejected once.
+: COUNT-REJECTED? ( str -- bool )
    {: a:^ u:n :}
-   u 0<>  a TOP-REFUSED @ =  and ;
+   u 0<>  a TOP-REJECTED @ =  and ;
 
 \ Whether NAME+SFX, a word the definer derives from NAME, read from byte AT,
 \ is free: a taken one is the duplicate, rejected at NAME.
@@ -2878,7 +2878,7 @@ variable STG-TYPE-U
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
-   count countu COUNT-REFUSED? IF EXIT THEN
+   count countu COUNT-REJECTED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
    name nameu type typeu LBUF:MIXED-SAVED? drop
@@ -2907,7 +2907,7 @@ variable STG-TYPE-U
    nameu 0= IF SCAN-SCRATCH-CLAUSE? drop EXIT THEN
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    SCAN-SCRATCH-CLAUSE? {: scratch:bool :}
-   count countu COUNT-REFUSED? IF EXIT THEN
+   count countu COUNT-REJECTED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
    scratch 0= IF
@@ -2934,7 +2934,7 @@ variable STG-TYPE-U
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
-   count countu COUNT-REFUSED? IF EXIT THEN
+   count countu COUNT-REJECTED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFBYTE-BUFFER
    DISARM
@@ -2946,7 +2946,7 @@ variable STG-TYPE-U
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
-   count countu COUNT-REFUSED? IF EXIT THEN
+   count countu COUNT-REJECTED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFCWORK-SPAN
    DISARM
@@ -3010,7 +3010,7 @@ variable STG-TYPE-U
 : RECORD-ARENA ( -- )
    0 NEWEST-SYM !
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
-   nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
+   nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REJECT EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
@@ -3045,7 +3045,7 @@ variable STG-TYPE-U
 : RECORD-HEAP ( -- )
    0 NEWEST-SYM !
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
-   nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
+   nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REJECT EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
@@ -3494,8 +3494,8 @@ variable LOAD-U
    p pu LOAD-PLACE!
    inc FILE-LOAD at u RUN-LOADER ;
 
-\ A string loader word at top level, u bytes long at TOKEN-BYTE: refused by
-\ the literal before it as discovery refuses it, else Q loads
+\ A string loader word at top level, u bytes long at TOKEN-BYTE: rejected by
+\ the literal before it as discovery rejects it, else Q loads
 \ that literal's path, and the literal is the operand its load reports.
 : QUIET-STRING-LOAD ( n [ str -- str ] -- )
    {: u:n q :}
@@ -3756,7 +3756,7 @@ private
 
 \ `generates: D ( effect )`, read as the engine word reads it: the name by
 \ parse-name, the effect as a definition head's signature. The registrar
-\ resolves D and raises the refusals FIND-SYM defers; a row this scan's table
+\ resolves D and raises the rejections FIND-SYM defers; a row this scan's table
 \ already holds for D, its clause or an earlier row, counts as D already stating
 \ what it makes.
 : RECORD-GENERATES ( -- )
@@ -3902,7 +3902,7 @@ variable FFI-LIT-B                          \ and the newer
    CB-CLOSED! ;
 
 \ The load judges the word `;FUNCTION` builds as it publishes it, after the
-\ closer's own refusals.
+\ closer's own rejections.
 : FFI-CLOSE ( -- )
    PLAN-FUNCTION
    FFI-NAME-U @ 0= IF EXIT THEN
@@ -3977,7 +3977,7 @@ variable USER-XT s" TASK:+USER" USER-XT LIBRARY-XT!
 \ that word's newest record still runs its code.
 \ Known gap: an alias exported before its source is undefined, redefined or
 \ not, is followed to the current global word, so the check can certify a use
-\ the load refuses.
+\ the load rejects.
 : LIBRARY-DEFINER? ( str n str -- bool )
    {: a:^ u:n code:n name:^ nameu:n :}
    a u TOKEN-TAIL name nameu STR:=CI 0= IF false EXIT THEN
@@ -4263,7 +4263,7 @@ ENUM definer-arm DERIVE eq
       BODY!
       TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" STR:= IF
-         DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ false REFUSE-SHAPE IF EXIT THEN
+         DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ false REJECT-SHAPE IF EXIT THEN
          VERIFY-NAMED-BODY dup REPORT-DEFERRED
          dup -1 =  LEFT-AT-CALL? or IF VERIFY-WRAPPER THEN
          dup TALLY
@@ -4273,7 +4273,7 @@ ENUM definer-arm DERIVE eq
       THEN
       LOCAL-TOKEN? 0= IF
          TOKEN-A @ TOKEN-U @ s" does>" STR:=CI IF
-            DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ true REFUSE-SHAPE IF
+            DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ true REJECT-SHAPE IF
                SKIP-DEFINITION EXIT
             THEN
             DOES-AGAIN? IF DOES-TWICE-STOP  SKIP-DEFINITION EXIT THEN
@@ -4329,7 +4329,7 @@ ENUM definer-arm DERIVE eq
    THEN
    \ A stretch holds names rendered text may define; an undefined name defines
    \ nothing, so the names after it are still resolved and rejected one by one.
-   v 0= IF a TOP-REFUSED !  runs IF a u SKIP-OPERAND THEN  EXIT THEN
+   v 0= IF a TOP-REJECTED !  runs IF a u SKIP-OPERAND THEN  EXIT THEN
    -1 TOP-DEFER !
    a TOP-DEFER-A !  u TOP-DEFER-U ! ;
 
@@ -4392,8 +4392,8 @@ ENUM definer-arm DERIVE eq
    TOKEN-BYTE @ {: at:n :}
    a u TOP-BINDING nip {: sym:n ctl:n :}
    a u s" host" STR:=CI  a u s" target" STR:=CI or {: section:bool :}
-   \ A refused name goes on as an ordinary word, refused as one.
-   ctl CHECKER-OWNER-ABI:BINDING-REFUSED and 0<>
+   \ A rejected name goes on as an ordinary word, rejected as one.
+   ctl CHECKER-OWNER-ABI:BINDING-REJECTED and 0<>
    section and IF false EXIT THEN
    section sym 0<> and IF a u INTERPRETER:SECTION-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP THEN
    a u SELECT-ARM {: arm:definer-arm :}
@@ -4512,7 +4512,7 @@ variable ARM-RESUME
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
    SOURCE@ SOURCE-U @ SPLIT-STR-FILE? CHECKER-SPLIT-STR !
-   NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
+   NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REJECTED !
    0 SHADOWED !  0 RETIRED !  0 NEWEST-SYM !
    TOP-CLOSE
    BEGIN
@@ -4542,13 +4542,13 @@ variable ARM-RESUME
    path pathu COMPOSE-DIAG$ {: diag:^ diagu:n :}
    SOURCE-A @ SOURCE-U @ SCAN-I @
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
-   TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REFUSED @
+   TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REJECTED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    VISIT-CUR @ CSR-SUBJ @
    SHADOWED @ RETIRED @ CHECKER-SPLIT-STR @
    {: olda:^ oldu:n oldi:n
       oldprev:^ oldprevu:n oldcur:^ oldcuru:n
-      olddefer:n olddefa:^ olddefu:n oldrefused:^
+      olddefer:n olddefa:^ olddefu:n oldrejected:^
       oldpath:^ oldpathu:n
       oldvisit:n oldsubj:n
       oldshadowed:n oldretired:n oldsplit:n :}
@@ -4571,7 +4571,7 @@ variable ARM-RESUME
    oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
    oldcur TOP-CUR-A !  oldcuru TOP-CUR-U !
    olddefer TOP-DEFER !  olddefa TOP-DEFER-A !
-   olddefu TOP-DEFER-U !  oldrefused TOP-REFUSED !
+   olddefu TOP-DEFER-U !  oldrejected TOP-REJECTED !
    oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
    oldshadowed SHADOWED !  oldretired RETIRED !  oldsplit CHECKER-SPLIT-STR !
    oldpathu 0 > IF
@@ -4676,7 +4676,7 @@ variable READ-META-VALID
 
 \ Rejects PATH, a stream no stamp names, with the loader's record, placed at the
 \ loader that loads it.
-: REFUSE-SOURCE-READ ( str -- ) {: path:^ pathu:n :}
+: REJECT-SOURCE-READ ( str -- ) {: path:^ pathu:n :}
    path pathu FAULT-TARGET!
    LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu SOURCE-ROOT:UNSTAMPED-SOURCE ;
 
@@ -4689,7 +4689,7 @@ variable READ-META-VALID
    pathu READ-PATH-U !
    path pathu FS:TRY-FILE-META
    {: size:n msec:n mns:n csec:n cns:n valid:bool :}
-   READ-PATHZ COMPILE-READS:STAMP COMPILE-READS:STABLE? 0= IF path pathu REFUSE-SOURCE-READ THEN
+   READ-PATHZ COMPILE-READS:STAMP COMPILE-READS:STABLE? 0= IF path pathu REJECT-SOURCE-READ THEN
    READ-PATHZ open-rd {: fd:n :}
    fd 0 < IF path pathu FS:ERRNO COMPOSE-UNREADABLE THEN
    fd READ-FD !
@@ -4901,7 +4901,7 @@ public
    [: VERIFY-THEN ;] RUN-IN-SCOPE ;
 
 \ What the certify path says about one candidate definition, `NAME ( effect )
-\ body`: -1 certified, 0 refused, 1 uncheckable. A name this scanner
+\ body`: -1 certified, 0 rejected, 1 uncheckable. A name this scanner
 \ registered has no engine record, so a live candidate cannot bind it; here it
 \ binds where the scan recorded it.
 : CANDIDATE-IN-SCOPE ( str -- n )

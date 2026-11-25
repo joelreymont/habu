@@ -66,7 +66,7 @@ variable ARGV-QUIET
       1 +
    repeat drop ARGV-TRUE ;
 
-: ARGV-ERR ( str -- ) {: s:str :}   \ one piece of a refusal line
+: ARGV-ERR ( str -- ) {: s:str :}   \ one piece of a rejection line
    ARGV-QUIET @ 0 = if 2 s write drop then ;
 
 public

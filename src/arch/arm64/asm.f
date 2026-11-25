@@ -529,7 +529,7 @@ private
 public
 
 
-\ ENC-ADR and ENC-ADRP throw E-A64EMIT-REACH for a distance ADR-OK? refuses.
+\ ENC-ADR and ENC-ADRP throw E-A64EMIT-REACH for a distance ADR-OK? rejects.
 : ENC-ADR ( n n -- n )
    XR2ND {: rd:n imm:n :}
    imm ADR-OK? ?REACH

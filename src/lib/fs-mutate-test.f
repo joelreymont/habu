@@ -468,7 +468,7 @@ public
    {: link-dev:n link-ino:n dev:n ino:n :}
    link-dev dev T=
    link-ino ino T=
-   s" an existing hard-link name is refused" T-LABEL
+   s" an existing hard-link name is rejected" T-LABEL
    [: MAKE-LINK-EXISTS ;] E-FS-IO TTHROWSQ
    FMT-LINK FS:REMOVE-FILE
    FMT-LINK-TARGET FMT-READ-BUF 64 FS:READ-ALL 11 T=
@@ -523,14 +523,14 @@ variable CREATED-FD
    s" lock.missing" LOCK-PATH$ FS:OPEN-RDWR-NOFOLLOW FD>N close ;
 
 \ Run the quotation, which must throw E-FS-OPEN with cause in FS:ERRNO.
-: OPEN-REFUSED ( [ -- ] n -- ) {: cause:n :}
+: OPEN-REJECTED ( [ -- ] n -- ) {: cause:n :}
    catch FS:ERRNO {: code:n got:n :}
    code E-FS-OPEN T=
    got cause T= ;
 
 public
 \ FS:CREATE-NEW makes a write-only, close-on-exec file at the mode asked, and
-\ refuses a present file and a dangling link alike with EEXIST.
+\ rejects a present file and a dangling link alike with EEXIST.
 : CREATE-NEW ( -- )
    s" a new file takes its mode and is write-only, close-on-exec" T-LABEL
    CREATED-MODE {: file:fd mode:n :}
@@ -539,17 +539,17 @@ public
    file CLOEXEC? TTRUE
    file FD>N close
    s" an exclusive create of a present file is EEXIST" T-LABEL
-   [: CREATE-PRESENT ;] FS:EEXIST OPEN-REFUSED
+   [: CREATE-PRESENT ;] FS:EEXIST OPEN-REJECTED
    s" lock.absent" LOCK-PATH$ s" lock.dangling" LOCK-LINK$ FS:MAKE-SYMLINK
    s" an exclusive create of a dangling link is EEXIST" T-LABEL
-   [: CREATE-DANGLING ;] FS:EEXIST OPEN-REFUSED
+   [: CREATE-DANGLING ;] FS:EEXIST OPEN-REJECTED
    s" lock.absent" LOCK-PATH$ FS:EXISTS? TFALSE
    T-LABEL-CLEAR
    s" lock.dangling" LOCK-LINK$ FS:REMOVE-FILE
    s" lock.new" LOCK-PATH$ FS:REMOVE-FILE ;
 
 \ FS:OPEN-RDWR-NOFOLLOW opens a present file read-write and close-on-exec,
-\ refuses a link to it with ELOOP and a missing path with ENOENT.
+\ rejects a link to it with ELOOP and a missing path with ENOENT.
 : OPEN-RDWR-NOFOLLOW ( -- )
    s" lock.file" LOCK-PATH$ s" x" FS:WRITE-ALL
    s" a no-follow open of a file is read-write, close-on-exec" T-LABEL
@@ -559,9 +559,9 @@ public
    file FD>N close
    s" lock.file" LOCK-PATH$ s" lock.link" LOCK-LINK$ FS:MAKE-SYMLINK
    s" a no-follow open of a link is ELOOP" T-LABEL
-   [: OPEN-LINK ;] FS:ELOOP OPEN-REFUSED
+   [: OPEN-LINK ;] FS:ELOOP OPEN-REJECTED
    s" a no-follow open of a missing path is ENOENT" T-LABEL
-   [: OPEN-MISSING ;] FS:ENOENT OPEN-REFUSED
+   [: OPEN-MISSING ;] FS:ENOENT OPEN-REJECTED
    T-LABEL-CLEAR
    s" lock.link" LOCK-LINK$ FS:REMOVE-FILE
    s" lock.file" LOCK-PATH$ FS:REMOVE-FILE ;
@@ -596,7 +596,7 @@ public
 : FMT-LONG-STREAM-COPY ( -- )
    FMT-LONG! FMT-COPY-SRC FMT-LONG$ FS:COPY-FILE-STREAM ;
 
-: FMT-TEST-STREAM-REFUSED-DST ( -- )
+: FMT-TEST-STREAM-REJECTED-DST ( -- )
    FMT-NEXT-FD {: before:n :}
    s" FS:COPY-FILE-STREAM to a NUL destination throws and leaves no fd open" T-LABEL
    [: FMT-NUL-SECOND-COPY ;] E-FFI-NUL TTHROWSQ
@@ -659,7 +659,7 @@ public
 
 : FMT-TEST-ATOMIC-DANGLING-LINK ( -- )
    s" no-such-link-target.txt" FMT-BROKEN-LINK FS:MAKE-SYMLINK
-   [: FMT-BROKEN-LINK s" refused" FS:ATOMIC-WRITE-FILE ;] E-FS-STAT TTHROWSQ
+   [: FMT-BROKEN-LINK s" rejected" FS:ATOMIC-WRITE-FILE ;] E-FS-STAT TTHROWSQ
    FMT-BROKEN-LINK FS:SYMLINK? TTRUE
    FMT-BROKEN-TARGET FS:EXISTS? TFALSE
    FMT-BROKEN-LINK FS:REMOVE-FILE ;
@@ -679,8 +679,8 @@ public
 : FMT-STAGED-TMP ( -- str )
    FMT-STAGED-TMP-BUF FMT-STAGED-TMP-U @ >str ;
 
-\ The fill's own refusal remains the error when removing its sibling also
-\ fails. Replacing the reserved file with a directory makes unlink refuse.
+\ The fill's own rejection remains the error when removing its sibling also
+\ fails. Replacing the reserved file with a directory makes unlink reject.
 : FMT-STAGED-CLEAN-FAIL ( str -- )
    dup FMT-STAGED-TMP-BUF FMT-STAGED-TMP-U FMT-COPY!
    dup FS:REMOVE-FILE
@@ -725,11 +725,11 @@ public
 
 : FMT-TEST-STAGED-PRIMARY ( -- )
    FMT-ATOMIC-PATH s" previous" FS:WRITE-ALL
-   s" staged fill error survives cleanup refusal" T-LABEL
+   s" staged fill error survives cleanup rejection" T-LABEL
    [: FMT-STAGED-CAPTURED ;] E-FS-CAPACITY TTHROWSQ
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL {: u:n :}
    FMT-READ-BUF u >str s" previous" T$=
-   s" the cleanup refusal's line names its operation and errno" T-LABEL
+   s" the cleanup rejection's line names its operation and errno" T-LABEL
    FMT-STAGED-LINE
    FMT-STAGED-TMP FS:DIR? TTRUE
    FMT-STAGED-TMP FS:REMOVE-DIR
@@ -833,7 +833,7 @@ public
    FMT-PARENT-A FS:REMOVE-DIR
    FMT-PARENT-B FS:REMOVE-DIR ;
 
-\ A directory at the destination refuses the rename: E-FS-IO, and the emptied
+\ A directory at the destination rejects the rename: E-FS-IO, and the emptied
 \ parent's removal shows no sibling stayed.
 : FMT-TEST-ATOMIC-FAILURE ( -- )
    FMT-MKDIR-PATH s" dest" FMT-COLLIDE-BUF FS:JOIN-PATH FMT-COLLIDE-U !
@@ -937,7 +937,7 @@ public
    s" boxed" FMT-MODE-0600 PRIVATE-IS
    PRIVATE-DIR$ MODE-0500 FS:CHMOD-MODE
    false
-   [: drop PRIVATE-OUT$ s" refused" FS:ATOMIC-CREATE-PRIVATE ;]
+   [: drop PRIVATE-OUT$ s" rejected" FS:ATOMIC-CREATE-PRIVATE ;]
    catch {: denied:n :}
    PRIVATE-DIR$ FMT-MODE-0755 FS:CHMOD-MODE
    denied 0 T=
@@ -1072,7 +1072,7 @@ create NAMED-DIR-BUF PATH-CAP allot
    NAMED-BUF dir STR:LEN 1+ n + >str ;
 
 public
-\ Past NAME_MAX, the host refuses the component: E-FS-IO with its cause.
+\ Past NAME_MAX, the host rejects the component: E-FS-IO with its cause.
 : DIRS-NAME-TOO-LONG ( -- )
    [: 300 NAMED$ FS:MAKE-DIRS ;] catch FS:ERRNO {: code:n cause:n :}
    code E-FS-IO T=
@@ -1090,7 +1090,7 @@ public
    n NAMED$ FS:REMOVE-FILE
    NAMED-DIR$ FS:REMOVE-DIR ;
 
-\ A last name past NAME_MAX is the host's refusal, named by its cause; the
+\ A last name past NAME_MAX is the host's rejection, named by its cause; the
 \ sibling it staged goes.
 : ATOMIC-NAME-TOO-LONG ( -- )
    NAMED-DIR$ FS:MAKE-DIR
@@ -1483,7 +1483,7 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
    FMT-TREE FS:REMOVE-TREE ;
 
 \ A tree deeper than the walk's starting frames whose last directory is
-\ locked: the removal grows its frames on the way down, then unlinkat refuses
+\ locked: the removal grows its frames on the way down, then unlinkat rejects
 \ the deepest level with EACCES while every level above it is open. A leaked
 \ descriptor would hold the lowest free number.
 40 constant FMT-DEEP-LEVELS
@@ -1494,10 +1494,10 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
    FMT-NEXT-FD {: before:n :}
    [: FMT-TREE FS:REMOVE-TREE ;] catch FS:ERRNO {: code:n cause:n :}
    FMT-DEEP-LEVELS 1 - FMT-DEEP$ FMT-MODE-0755 FS:CHMOD-MODE
-   s" a deep FS:REMOVE-TREE refused below a locked level is E-FS-IO, EACCES" T-LABEL
+   s" a deep FS:REMOVE-TREE rejected below a locked level is E-FS-IO, EACCES" T-LABEL
    code E-FS-IO T=
    cause FS:EACCES T=
-   s" a refused FS:REMOVE-TREE closes every descriptor it opened" T-LABEL
+   s" a rejected FS:REMOVE-TREE closes every descriptor it opened" T-LABEL
    FMT-NEXT-FD before T=
    FMT-TREE FS:REMOVE-TREE ;
 
@@ -2139,7 +2139,7 @@ public
    FS-TEST:OPEN-RDWR-NOFOLLOW
    FMT-TEST-COPY
    FMT-TEST-NUL-SECOND-PATH
-   FMT-TEST-STREAM-REFUSED-DST
+   FMT-TEST-STREAM-REJECTED-DST
    FMT-TEST-STREAM-COPY
    FMT-TEST-ATOMIC-WRITE
    FMT-TEST-ATOMIC-ALIASES

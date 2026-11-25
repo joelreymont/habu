@@ -101,7 +101,7 @@ STRUCTURE xbox<a> FIELD item a ;STRUCTURE
 
 \ ---- define-time admissibility: malformed quotation types still reject -------
 \ The definer reads a quotation type to its closer or to the end of its line,
-\ and what it read is the checker's to refuse.
+\ and what it read is the checker's to reject.
 : XC-SECTION-ADMISSIBILITY ( -- )
    \ missing -- : not a well-formed effect
    s" TYPED-VARIABLE BADQ1 [ n n ]" XC-EVAL 70 T=
@@ -116,7 +116,7 @@ STRUCTURE xbox<a> FIELD item a ;STRUCTURE
 
 \ ---- a plain raw variable's @ execute REJECTS (E-EXEC-OPAQUE-XT) --------------
 \ Executing an xt fetched from untyped memory (a raw variable or create cell) is
-\ refused at RSEXEC's T-VAR branch: its stack effect is not statically known.
+\ rejected at RSEXEC's T-VAR branch: its stack effect is not statically known.
 \ The typed xt cell above is the sound alternative.
 : XC-CODE< ( str -- )   \ run a candidate with JSON diags captured; assert reject (verdict 0)
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
@@ -141,7 +141,7 @@ variable XCRAW
 
 \ ---- catch of a raw-variable xt REJECTS too ----------------------------------
 \ RSCATCH's T-VAR branch: catching an xt fetched from untyped memory is the same
-\ launder, refused with E-EXEC-OPAQUE-XT and a reason naming 'catch'. The typed
+\ launder, rejected with E-EXEC-OPAQUE-XT and a reason naming 'catch'. The typed
 \ catch routes (direct tick, quotation parameter, typed xt cell, defer)
 \ fit-check the caught row.
 defer XC-DF ( n -- n )
@@ -163,7 +163,7 @@ defer XC-DF ( n -- n )
 : XC-EVAL< ( str -- )   \ evaluate with JSON diags captured; assert reject
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    XC-EVAL 70 T= ;
-: XC-STORE-XT? ( -- )   \ the captured refusal is the stored-xt one
+: XC-STORE-XT? ( -- )   \ the captured rejection is the stored-xt one
    s\" \"code\":\"E-BAD-STORAGE\"" XC-CODE?
    s" xt in a stored type" XC-CODE? ;
 
@@ -187,10 +187,10 @@ defer XC-DF ( n -- n )
    s" TYPED-VARIABLE XW xbox<xt>" XC-EVAL< XC-STORE-XT? XC-CODE-END
    s" TYPED-VARIABLE XQ [ xt -- ]" XC-EVAL 0 T=
    \ No user type takes the name: an effect would read it as this token. The
-   \ value-record refusal exits the process, so it runs as a subject, before the
-   \ family whose admission would refuse it as a duplicate.
+   \ value-record rejection exits the process, so it runs as a subject, before the
+   \ family whose admission would reject it as a duplicate.
    s" VALUE-RECORD xt value n END-VALUE-RECORD"
-   70 s" error[E-BAD-DECLARATION]: value record `xt`" SUBJECT:REFUSED? TTRUE
+   70 s" error[E-BAD-DECLARATION]: value record `xt`" SUBJECT:REJECTED? TTRUE
    s" STRUCTURE xt FIELD item n ;STRUCTURE" XC-EVAL<
    s\" \"code\":\"E-BAD-DECLARATION\"" XC-CODE?
    s\" \"token\":\"xt\"" XC-CODE?

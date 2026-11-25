@@ -111,7 +111,7 @@ private
 : NO    ( str -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
 
 \ Every role is one cell wide, so only the nominal family separates an item count
-\ from a byte length: `some` refuses a wrong payload role and a wrong instantiation.
+\ from a byte length: `some` rejects a wrong payload role and a wrong instantiation.
 s" NF-OK ( NUM:byte-len -- option<NUM:byte-len> ) OPTION:SOME" YES
 s" NF-RAW ( n -- option<NUM:byte-len> ) OPTION:SOME" NO
 s" NF-BARE ( NUM:byte-len -- n ) OPTION:SOME" NO

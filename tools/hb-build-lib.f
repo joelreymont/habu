@@ -72,7 +72,7 @@ variable HBB-ELAPSED-NS
 : HBB-OUT! ( str -- )
    HBB-OUT-PATH HBB-OUT-U HBB-COPY-PATH! ;
 
-\ The source path is held in PATH-CAP bytes, so the CLI refuses a longer
+\ The source path is held in PATH-CAP bytes, so the CLI rejects a longer
 \ one by name, before it builds anything.
 : HBB-SRC-ARG! ( str -- )
    {: a:^ u:n :}
@@ -81,7 +81,7 @@ variable HBB-ELAPSED-NS
 
 \ -o is replaced by renaming over it a sibling made in its directory
 \ (src/lib/fs-mutate.f FS:REPLACE-STAGED). Before it builds anything the CLI
-\ refuses by name an -o longer than PATH-CAP bytes, one with no last name,
+\ rejects by name an -o longer than PATH-CAP bytes, one with no last name,
 \ one in a directory that is not there, and one that is a directory, which a
 \ rename cannot replace. The host alone judges the last name's length. An -o
 \ with no directory part goes in the working directory.
@@ -204,7 +204,7 @@ variable HBB-ELAPSED-NS
 \ Every build gets a private directory under the caller's TMPDIR: a build
 \ writes a fixed name there (HBB-GOT-NAME$), so builds sharing one TMPDIR, as
 \ gate pool builds do, would read each other's artifacts. HBB-CLEANUP removes
-\ the directory whole. FS:MKTEMP-DIR refuses a base that is missing or not a
+\ the directory whole. FS:MKTEMP-DIR rejects a base that is missing or not a
 \ directory. The directory is made when the link writes, so a build that ends
 \ before then leaves nothing in TMPDIR.
 : HBB-PREPARE-TMP ( -- )
@@ -371,7 +371,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 
 \ hb, a stripped program, or under --repl hb with the source's files, is linked
 \ in this process (tools/hb-build-core.f) into HBB-GOT$; under --json-errors
-\ the checker prints its refusals as JSON.
+\ the checker prints its rejections as JSON.
 : HBB-LINK ( -- )
    HBB-JSON @ 0<> REJECTION:JSON !
    HBB-ENGINE @ if

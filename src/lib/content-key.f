@@ -77,7 +77,7 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ^u8 )
 \ FINAL consumes whichever fold it is handed, and a nested body holds its outer
 \ scope's fold as well as its own, so conservation alone admits a body that
 \ finalizes the outer fold and hands its own back out. The mark tells the two
-\ apart: a body that returns with its own scope unfinalized is refused before
+\ apart: a body that returns with its own scope unfinalized is rejected before
 \ the scope releases the storage the escaped token names.
 : FINAL! ( ^u8 -- )
    DONE-OFF + 1 swap c! ;
@@ -92,7 +92,7 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ^u8 )
 public
 
 \ The body finalizes the fold; the storage is released when the body returns or
-\ throws. The checker refuses a body that drops its fold unfinalized or copies
+\ throws. The checker rejects a body that drops its fold unfinalized or copies
 \ it; a body that hands its own fold back out unfinalized is E-CK-HANDLE here.
 : WITH-FOLD ( R [ R CONTENT-KEY:fold -- S ] -- S )
    SCOPE-LEN MEM:BYTES-ALLOC-LEN [: FOLD-RUN ;] MEM:WITH-BYTES ;

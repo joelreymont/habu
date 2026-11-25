@@ -13,7 +13,7 @@ private
 variable ACC
 
 \ The checker models `catch` restoring both stacks (src/core/checker.f RSCATCH),
-\ so a throw's >r cell or open ?do frame would clobber the caller unrefused.
+\ so a throw's >r cell or open ?do frame would clobber the caller with no rejection.
 : THROW-R99-7 ( -- ) 99 >r 7 throw ;
 : THROW-R88-7 ( -- ) 88 >r 7 throw ;
 : THROW-R55-3 ( -- ) 55 >r 3 throw ;

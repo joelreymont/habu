@@ -1,7 +1,7 @@
 \ shadowed-arity-test.f - a package public whose own bare tail a private word of
 \ the same package claims. A bare tail binds the open package's private wordlist
 \ first and the native compiler reads the contract from that binding, so effects
-\ moving different cell counts are refused at the second definition.
+\ moving different cell counts are rejected at the second definition.
 
 require src/lib/prelude.f
 require src/lib/test/assert.f
@@ -21,7 +21,7 @@ TYPED-VARIABLE SAE-A ^u8   variable SAE-U
 public
 
 \ One source string per case, answering its throw code (0 = accepted): the code
-\ comes back from the string that carried the second definition, so the refusal
+\ comes back from the string that carried the second definition, so the rejection
 \ is seen at the definition, not at the build.
 : SAE-CATCH ( str -- n )  dup STR:LEN SAE-U ! STR:DATA SAE-A !  [: SAE-GO ;] catch ;
 
@@ -30,7 +30,7 @@ public
 
 ;package
 
-\ === refused: the private twin's effect moves a different number of cells =====
+\ === rejected: the private twin's effect moves a different number of cells =====
 \ Fewer inputs than the private word.
 REJECTION:CAPTURE
 s\" package SAT-A\n: F ( n n -- n ) + ;\npublic\n: F ( n -- n ) 1 + ;\n;package"
@@ -110,7 +110,7 @@ s\" package SAT-G\n: R ( n -- n ) 1 + ;\npublic\n: S ( n n -- n ) + ;\n;package"
 
 \ A package word shadowing a global of another arity is legal (docs/forth.md
 \ Packages); a rule asked of the bare-name resolver instead of the record's own
-\ key would refuse it.
+\ key would reject it.
 s" : SAT-SHADOWED ( n n -- n ) + ;" SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" package SAT-H\n: SAT-SHADOWED ( n -- n ) 1 + ;\npublic\n: U ( n -- n ) SAT-SHADOWED ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
@@ -138,9 +138,9 @@ s\" package SAT-J\n: X ( n -- n ) 1 + ;\n: X ( n n -- n ) + ;\n;package"
 s" error[E-DUPLICATE-DEFINITION]" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 
 \ === nothing without a live record binds a name ===============================
-\ A refused public leaves nothing behind: a later `using` of the package binds
+\ A rejected public leaves nothing behind: a later `using` of the package binds
 \ the global, as the engine does, so SAT-N-USE answers 7 and no
-\ E-USING-SHADOW-GLOBAL is raised. A nested TEST-EVAL:RC catches the refusal
+\ E-USING-SHADOW-GLOBAL is raised. A nested TEST-EVAL:RC catches the rejection
 \ inside the package so `;package` still closes SAT-N with its private word.
 s" : SAT-T ( -- n ) 7 ;" SHADOWED-ARITY:SAE-CATCH 0 T=
 REJECTION:CAPTURE
@@ -150,7 +150,7 @@ s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : SAT-T ( n -- 
 s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 s\" using SAT-N\n: SAT-N-USE ( -- n ) SAT-T ;\n;using"
    SHADOWED-ARITY:SAE-CATCH 0 T=
-s\" : SAT-N-CK ( -- ) SAT-N-USE 7 <> if s\q the refused public bound its tail\q 1 die then ;\nSAT-N-CK"
+s\" : SAT-N-CK ( -- ) SAT-N-USE 7 <> if s\q the rejected public bound its tail\q 1 die then ;\nSAT-N-CK"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 
 \ An `undefine`d private word's tombstone binds nothing either: the engine binds

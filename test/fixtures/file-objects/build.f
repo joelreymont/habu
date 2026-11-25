@@ -63,42 +63,42 @@ PATH-CAP BUFFER: PROG-BUF
 
 : STOP-FILE ( -- )
    s" test/fixtures/file-objects/count.f" included
-   ['] RESIDUE catch 70 s" build: STOP-FILE: residue.f not refused" EXPECT
-   ['] RESIDUE catch LINKER:E-FAILED s" build: STOP-FILE: a load after a refused file ran" EXPECT
+   ['] RESIDUE catch 70 s" build: STOP-FILE: residue.f not rejected" EXPECT
+   ['] RESIDUE catch LINKER:E-FAILED s" build: STOP-FILE: a load after a rejected file ran" EXPECT
    [: PROG$ LINKER:WRITE ;] catch LINKER:E-FAILED
-   s" build: STOP-FILE: a write after a refused file ran" EXPECT ;
+   s" build: STOP-FILE: a write after a rejected file ran" EXPECT ;
 
 : STOP-BODY ( -- )
    [: s" 16 allot : FOB-BAD ( -- n ) dup ;" evaluate-closed ;] catch
-   70 s" build: STOP-BODY: the definition was not refused" EXPECT
+   70 s" build: STOP-BODY: the definition was not rejected" EXPECT
    [: PROG$ LINKER:WRITE ;] catch LINKER:E-FAILED s" build: STOP-BODY: a write after a caught failed text ran" EXPECT
    ['] RESIDUE catch LINKER:E-FAILED s" build: STOP-BODY: a load after a caught failed text ran" EXPECT ;
 
 : STOP-INSIDE ( -- )
    ['] ROLLBACK catch LINKER:E-FAILED
-   s" build: STOP-INSIDE: a file's caught failed text was not refused" EXPECT
+   s" build: STOP-INSIDE: a file's caught failed text was not rejected" EXPECT
    [: PROG$ LINKER:WRITE ;] catch LINKER:E-FAILED s" build: STOP-INSIDE: a write after a file's caught failed text ran" EXPECT ;
 
 : STOP-ALIGN ( -- )
    ['] UNALIGNED catch E-COMP-STATE
-   s" build: STOP-ALIGN: an unaligned address cell was not refused" EXPECT ;
+   s" build: STOP-ALIGN: an unaligned address cell was not rejected" EXPECT ;
 
 : STOP-PAST ( -- )
    ['] PAST catch E-COMP-STATE
-   s" build: STOP-PAST: an address cell past its file's end was not refused" EXPECT ;
+   s" build: STOP-PAST: an address cell past its file's end was not rejected" EXPECT ;
 
 : STOP-STORE ( -- )
    ['] FLAG catch LINKER:E-STORE
-   s" build: STOP-STORE: a flag set on hb's newest record was not refused" EXPECT ;
+   s" build: STOP-STORE: a flag set on hb's newest record was not rejected" EXPECT ;
 
 : STOP-GAP ( -- )
    8 allot
    ['] GAP catch LINKER:E-STORE
-   s" build: STOP-GAP: a store into a cell no file holds was not refused" EXPECT ;
+   s" build: STOP-GAP: a store into a cell no file holds was not rejected" EXPECT ;
 
 : STOP-WORDLIST ( -- )
    ['] NEW-WORDLIST catch LINKER:E-WORDLIST
-   s" build: STOP-WORDLIST: a file that made a wordlist was not refused" EXPECT ;
+   s" build: STOP-WORDLIST: a file that made a wordlist was not rejected" EXPECT ;
 
 \ ---- the build's state, printed so a cold and a warm build compare as text ----
 variable STRINGS                      \ the bodies INTERN:EACH-STRING visited
@@ -725,7 +725,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    catch s" dead: " CODE. ;
 
 \ FOB-AFTER, once it compiles, is the program's entry.
-\ The refusals come after the write: a refused definition fails the build (STOP-BODY).
+\ The rejections come after the write: a rejected definition fails the build (STOP-BODY).
 : FACTS-BODY ( -- )
    s" test/fixtures/file-objects/count.f" included
    s" test/fixtures/file-objects/facts.f" included

@@ -67,7 +67,7 @@ public
    2dup BOUND
    nip MAKE ;
 
-\ at past the reach and a length past what is left are the two refusals SKIP and
+\ at past the reach and a length past what is left are the two rejections SKIP and
 \ TAKE already make, in that order, so SUB is their composition and not a third
 \ bounds rule to keep in step with them.
 : SUB ( span<t> n n -- span<t> )

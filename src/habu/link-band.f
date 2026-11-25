@@ -343,7 +343,7 @@ variable UNSAFE-COUNT
 
 
 \ A target with no record and no UNSAFE-NAME? word is a kernel primitive or a
-\ foreign word the write step refuses.
+\ foreign word the write step rejects.
 : LIVE-TARGET ( n -- )
    {: a:n :}
    a TARGET-REC {: r:n :}
@@ -393,7 +393,7 @@ variable UNSAFE-COUNT
 
 
 \ A quotation's entry a makes the record holding it live, and NSHADOW:PUBLISH
-\ files each emission under a record at offset 0; XT-VALUE refuses any other a.
+\ files each emission under a record at offset 0; XT-VALUE rejects any other a.
 : QUOTE-ROOT ( n -- )
    {: a:n :}
    a NSHADOW:SOURCE-FUNCTION {: e:n f:n :}

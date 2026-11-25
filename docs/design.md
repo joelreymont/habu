@@ -80,7 +80,7 @@ the trusted boundaries that are meant to be the only places such values are
 made would stop being visible.
 
 **`bool` is not `n`; roles are not `n`.** A comparison produces `bool`; a raw
-`0` where `bool` is declared is refused. `idx`, `len`, `fd`, `rc`, `pid` and the
+`0` where `bool` is declared is rejected. `idx`, `len`, `fd`, `rc`, `pid` and the
 other built-in roles never silently become each other or `n`. A file
 descriptor handed where a length belongs is then a load-time error, which is
 the cheapest defence the checker offers.
@@ -97,7 +97,7 @@ other way for its inputs, because whoever executes the quotation supplies them:
 it points at, one token per stack item (`^u8`, `^a`, `^^u8`); a bare `^` is
 malformed. The element
 type is checked at call boundaries, so `^n` handed to a `^u8` parameter is
-refused. The element type decides which fetch and store words apply, so it has
+rejected. The element type decides which fetch and store words apply, so it has
 to be part of the type.
 
 **Nominals: one that proves validation and one that only separates.** A
@@ -121,7 +121,7 @@ buffers and transactions become load-time errors. Linearity propagates: a
 family whose payload is linear is one linear unit, and a `MATCH` arm must
 consume or re-wrap the payload it re-introduces. A linear value may not be
 bound to a local (`E-LINEAR-LOCAL`), because a local can be referenced twice;
-the checker refuses even a local referenced once rather than counting
+the checker rejects even a local referenced once rather than counting
 references.
 
 **Disposal cannot half-fail.** A disposal word returns nothing, and a failing
@@ -134,7 +134,7 @@ the call that can fail.
 **A quotation reads locals only while they live.** `[: … ;]` is an execution
 token of one cell. One that reads locals carries a record in the stack frame
 of the body it is written in, the word's or an enclosing quotation's, and the
-checker refuses any use that would let it outlive those locals or that body.
+checker rejects any use that would let it outlive those locals or that body.
 There is then no heap environment to own, and only plain
 execution tokens reach storage or an image.
 
@@ -147,7 +147,7 @@ overwritten, and every output of a body that changes the stack, is typed
 **Function-valued state is a typed `defer`.** `defer ACTION ( in -- out )`
 declares the vector's effect and `is` checks the installed quotation against
 it exactly. A raw execution token fetched from untyped memory has lost its
-effect, and executing one is refused (see "Typed top level").
+effect, and executing one is rejected (see "Typed top level").
 
 **Escape hatches are loud and few.** `TRUSTED:` asserts an effect without
 checking the body; an `EPRIM:` or `EPPRIM:` row gives an engine primitive its
@@ -160,7 +160,7 @@ turns a trusted call site, or a whole unchecked span, into checked code.
 **Packages can be sealed.** Not resolving a private name from outside proves
 only that the name is not visible; a later `package NAME` could reopen the
 package and republish a private word, for example one that turns an `mmap`
-result into a typed pointer. A sealed package refuses the reopen, and a
+result into a typed pointer. A sealed package rejects the reopen, and a
 build seals every package its engine files made before it reads program source,
 so neither a program compiled in a build nor source loaded on the engine
 reopens one.
@@ -223,13 +223,13 @@ policy would give one logical type several stack shapes.
 - `niche-null` and `boxed` change the stack shape to one cell. A policy that
   changes the stack shape must not be selectable before its constructor,
   `MATCH` and stack-operation lowering exists; `boxed` has none
-  and is refused with `layout policy not yet supported`.
+  and is rejected with `layout policy not yet supported`.
 - `niche-null` is one shape: an empty variant, then one holding a single `^`
   field. The cell is the pointer, zero for the empty variant, so every cell
   value is a variant and no tag can be invalid. With a plain `^` a null
   `some` reads as `none`: the family means "an address or none", and
   `nullable<a>` is it.
-- Any other name is `unknown layout policy`. Every refusal rolls back the
+- Any other name is `unknown layout policy`. Every rejection rolls back the
   family row and its layout state.
 
 **A cast never makes an enum or sum value whose tag can be invalid.** An enum
@@ -249,7 +249,7 @@ qualified definition name is routed to the named namespace's public wordlist,
 and the checker records a colon name as a public symbol.
 
 **Generated words are protected by name.** A declaration protects no wordlist.
-The checker refuses with `E-CTOR-PROTECTED` an `undefine` of a generated word
+The checker rejects with `E-CTOR-PROTECTED` an `undefine` of a generated word
 and, for a family's constructor namespace, reopening it or defining a new word
 into it. A part of the family's package that bears that namespace's name is
 rejected in either order, since inside the package it would shadow it. A bare variant name is not a generated member, so a package may
@@ -265,7 +265,7 @@ type families. Two decisions placed user-declared nominals on families.
 **Phantom extents are families.** An extent is a type argument with no runtime
 value, as in an index typed by the dimension it ranges over. A product of
 extents needs a structured, ordered, nesting argument list: swapping the
-factors must be refused and splitting a product must be a real re-typing.
+factors must be rejected and splitting a product must be a real re-typing.
 Families already carry ordered, nested, identity-unified arguments, package
 scoping, persistence and rollback, so an arity-2 family represents the product
 with no new unification kernel. Roles have no argument slots, so a product
@@ -295,7 +295,7 @@ through the package's certified words.
 **The checker closes the laundered route.** `variable V  ' W V !  : F V @
 execute ;` would certify as a pure `( -- )` while the real xt ran, letting
 checked source write a private cell or run a definer. Executing or catching an
-xt fetched from untyped memory is refused. The fix is provenance-blind: it
+xt fetched from untyped memory is rejected. The fix is provenance-blind: it
 closes the whole class of laundered calls at check time.
 
 Neither route is a boundary against a program that computes addresses; both
@@ -306,7 +306,7 @@ band would require a guard-bypass writer for legitimate declaration-time
 updates. Because the registry is Forth-level, that writer must be a
 Forth-callable word with no effect, which is exactly what the laundered route
 reached; the band would only trade one route for another. Protection of a
-Forth-level registry is therefore privacy plus the checker's refusal of opaque
+Forth-level registry is therefore privacy plus the checker's rejection of opaque
 execution.
 
 ## Typed top level
@@ -323,16 +323,16 @@ one event per top-level token from an engine hook (`src/core/top-row.f`). Per
 token, not per line: top-level tokens resolve as they execute (a line defines a
 word a later line calls, and definers consume tokens), so checking a whole line
 first would need a second parser that diverged from execution order. Each
-token is judged as the same token in a colon body, storage included: a refusal
+token is judged as the same token in a colon body, storage included: a rejection
 prints the body's diagnostic and throws the checker's rc before the word runs,
 so the stack and every cell are untouched and the failure stays catchable by
 the REPL and `evaluate`.
 
 **Live depth is the anchor.** Each event loads the saved row at the live depth.
-Cells the row does not know are unknown, and a typed consumer refuses them; the
-row's bottom is the live floor, so a step that reaches below it is refused as a
+Cells the row does not know are unknown, and a typed consumer rejects them; the
+row's bottom is the live floor, so a step that reaches below it is rejected as a
 body reaching under its declared inputs is. A word with no stored effect is
-refused at top level as in a body.
+rejected at top level as in a body.
 
 **No escape hatch.** Nothing suspends the row: the words that install the
 checker are private to `CHECK`, so every top-level token is checked.
@@ -343,7 +343,7 @@ the same unification as a quotation literal; named-word xts and quotations are
 one kind of value. The effect comes from the store the checker already
 persists, so the dictionary needs no new metadata. A code cell that must hold
 an xt is declared with its effect (`TYPED-VARIABLE NAME [ in -- out ]`), and
-an xt from untyped memory is refused at `execute`.
+an xt from untyped memory is rejected at `execute`.
 
 **Immediates in checked bodies.** An immediate runs at compile time on the
 interpret stack, so applying its declared effect to the body would certify a
@@ -351,11 +351,11 @@ step the body does not contain. An immediate in a checked body runs while the
 body compiles, reads the tokens its `parses:` row states and writes nothing:
 its effect is `( -- )`, and it defines no word and adds nothing to the
 definition, so the body the check sees is the body compiled. Any other is
-refused; modelled parsing immediates such as `[char]` pass.
+rejected; modelled parsing immediates such as `[char]` pass.
 
 ## Ownership
 
-**Outcome.** The checker refuses a view used after its owner ends, overlapping
+**Outcome.** The checker rejects a view used after its owner ends, overlapping
 mutable access, and cleanup through stale exceptional state, while immutable
 package bytes stay shareable, several parser cursors may run over one buffer,
 and results can be returned independently owned. Checked borrowing must not
@@ -431,7 +431,7 @@ so one program text runs hosted and on a target; Habu takes the same rule. A
 target kernel is polyFORTH's round robin, where the `STATUS` cell is both
 scheduler link and wake flag and every blocking I/O word yields; it exposes the
 hosted words that make sense on a target, and the hosted-only words (`KILL`,
-`JOIN`, `AT-EXIT`) are refused by the target's checker rows rather than
+`JOIN`, `AT-EXIT`) are rejected by the target's checker rows rather than
 emulated. No target tasker exists in the tree yet.
 
 **Devices.** `EMIT`, `KEY`, `TYPE` and `READ-LINE` reach the current task's

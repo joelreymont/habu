@@ -39,11 +39,11 @@ SLEEP-MS NS-PER-MS * constant SLEEP-LEAST-NS
 $7FFFFFFFFFFFFFFF constant CELL-NS-MAX
 \ The clock's advance between reading DEADLINE-LAST-MS and the call it bounds:
 \ the call takes its own mono-ns, so the last value it accepts is only known to
-\ within this. The refused row one past the bound needs no slack.
+\ within this. The rejected row one past the bound needs no slack.
 1000 constant DEADLINE-SLACK-MS
 
 \ The last duration whose deadline past mono-ns fits a cell. It only falls as
-\ mono-ns grows, so one past it is refused by any later call.
+\ mono-ns grows, so one past it is rejected by any later call.
 : DEADLINE-LAST-MS ( -- n )
    CELL-NS-MAX mono-ns - NS-PER-MS / ;
 \ The concurrent case sleeps longer than the timed ones: a gate host running
@@ -514,7 +514,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    SB$ ;
 
 \ The largest row the ceiling admits alone, $20000 under MEM-MAX-N: past the
-\ slots before it, its end is refused.
+\ slots before it, its end is rejected.
 : TASK-USER-WRAP$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
@@ -522,8 +522,8 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    SB$ ;
 
 \ A row under the ceiling that the data space cannot hold, a count below one, a
-\ count whose bytes wrap, a refused type, then SCRATCH-ALLOT's own huge and
-\ negative sizes: each prints its refusal, and the slots declared around them
+\ count whose bytes wrap, a rejected type, then SCRATCH-ALLOT's own huge and
+\ negative sizes: each prints its rejection, and the slots declared around them
 \ lie next to each other in a task's region.
 : TASK-USER-HUGE$ ( -- str )
    SB-RESET
@@ -542,7 +542,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" W AFTER TASK:HIS W BEFORE TASK:HIS - CELL - ." SB-APPEND TASK-LF
    SB$ ;
 
-\ A live task's area cannot grow, so a claim while one runs is refused and
+\ A live task's area cannot grow, so a claim while one runs is rejected and
 \ leaves no word.
 : TASK-USER-LIVE$ ( -- str )
    SB-RESET
@@ -916,7 +916,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s TASK:FREE-SEMAPHORE ;
 
 \ The handle is nominal, so the raw record address a TASK:FACILITY also has is
-\ refused before it can reach sem_wait.
+\ rejected before it can reach sem_wait.
 : TASK-TEST-SEM-TYPES ( -- )
    s" TASK-SEM-OK ( TASK:sem -- ) TASK:WAIT-SEM"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -952,7 +952,7 @@ variable JOIN-TWICE-RC
 : JOIN-SILENT-WORK ( -- )
    1 JOIN-SILENT-RAN atomic-add drop ;
 
-\ The answer is single-assignment, so the worker's second one is refused where it
+\ The answer is single-assignment, so the worker's second one is rejected where it
 \ is made rather than replacing the first.
 : JOIN-TWICE-WORK ( -- )
    JOIN-VALUE-N TASK:RETURN
@@ -1400,7 +1400,7 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
 
 \ A join needs a task that has been started: one that was never activated and one
 \ that was only prepared have nothing to wait for.
-: TASK-TEST-JOIN-REFUSED ( -- )
+: TASK-TEST-JOIN-REJECTED ( -- )
    [: JOIN-IDLE TASK:JOIN JOIN-DROP ;] E-TASK-JOIN TTHROWSQ
    JOIN-IDLE TASK:PREPARE
    [: JOIN-IDLE TASK:JOIN JOIN-DROP ;] E-TASK-JOIN TTHROWSQ
@@ -1651,7 +1651,7 @@ PTR-VARIABLE STOP-MAIN-TCB
 
 \ A task with no run has nothing to hint at: the count would sit in a record its
 \ next activation is not entitled to.
-: TASK-TEST-STOP-REFUSED ( -- )
+: TASK-TEST-STOP-REJECTED ( -- )
    [: STOP-IDLE TASK:WAKE ;] E-TASK-STATE TTHROWSQ
    STOP-IDLE TASK:PREPARE
    [: STOP-IDLE TASK:WAKE ;] E-TASK-STATE TTHROWSQ
@@ -1816,7 +1816,7 @@ variable ENTRY-RACE-PENDING
 
 \ A task that was never activated and one that is only prepared have no run to
 \ halt either, and their state is left alone. The ACTIVATE that follows is what
-\ proves it: a HALT-REQ written into either state would refuse it.
+\ proves it: a HALT-REQ written into either state would reject it.
 : TASK-TEST-HALT-IDLE ( -- )
    0 ENDED-RAN !
    [: HALT-IDLE TASK:HALT ;] catch 0 T=
@@ -2060,9 +2060,9 @@ CB-POOL 2 - constant BIND-SLOT-B
 
 \ TASK:WAKE reads the state and then posts the park, and TASK:HALT posts it
 \ after its CAS, so the owner's KILL can end and release the task between the
-\ two steps. A WAKE posts or is refused E-TASK-STATE, and a HALT always
+\ two steps. A WAKE posts or is rejected E-TASK-STATE, and a HALT always
 \ succeeds, being a no-op on a task that has ended or been released, so only
-\ the wakers' answers count as posts and refusals.
+\ the wakers' answers count as posts and rejections.
 TASK:MIN-STACK TASK:TASK WAKE-RACE-TASK
 TASK:MIN-STACK TASK:TASK WAKE-RACE-W1
 TASK:MIN-STACK TASK:TASK WAKE-RACE-W2
@@ -2070,7 +2070,7 @@ TASK:MIN-STACK TASK:TASK WAKE-RACE-H
 
 TASK-TEST-ALIGN8
 variable WAKE-RACE-OK
-variable WAKE-RACE-REFUSED
+variable WAKE-RACE-REJECTED
 variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
 
 20000 constant WAKE-RACE-ROUNDS
@@ -2078,7 +2078,7 @@ variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
 
 : WAKE-RACE-COUNT ( n -- ) {: rc:n :}
    rc 0= if 1 WAKE-RACE-OK atomic-add drop exit then
-   rc E-TASK-STATE = if 1 WAKE-RACE-REFUSED atomic-add drop exit then
+   rc E-TASK-STATE = if 1 WAKE-RACE-REJECTED atomic-add drop exit then
    1 WAKE-RACE-ODD atomic-add drop ;
 
 : WAKE-RACE-WAKER ( -- )
@@ -2103,7 +2103,7 @@ variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
 
 : TASK-TEST-WAKE-RACE ( -- )
    0 WAKE-RACE-OK atomic!
-   0 WAKE-RACE-REFUSED atomic!
+   0 WAKE-RACE-REJECTED atomic!
    0 WAKE-RACE-ODD atomic!
    ['] WAKE-RACE-WAKER WAKE-RACE-W1 TASK:ACTIVATE
    ['] WAKE-RACE-WAKER WAKE-RACE-W2 TASK:ACTIVATE
@@ -2115,10 +2115,10 @@ variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
    WAKE-RACE-W1 TASK:KILL
    WAKE-RACE-W2 TASK:KILL
    WAKE-RACE-H TASK:KILL
-   s" a WAKE racing a KILL posts or is refused E-TASK-STATE, a HALT succeeds" T-LABEL
+   s" a WAKE racing a KILL posts or is rejected E-TASK-STATE, a HALT succeeds" T-LABEL
    WAKE-RACE-ODD atomic@ 0 T=
    s" the wakers landed on both sides of the KILL" T-LABEL
-   WAKE-RACE-OK atomic@ 0 <> WAKE-RACE-REFUSED atomic@ 0 <> and TTRUE
+   WAKE-RACE-OK atomic@ 0 <> WAKE-RACE-REJECTED atomic@ 0 <> and TTRUE
    s" the race leaves no task live" T-LABEL
    NO-TASK-LIVE? TTRUE ;
 
@@ -2275,7 +2275,7 @@ variable BIND-PAIR-Q-WON
    BIND-SLOT TASK:CONTEXT-UNBIND
    s" two binds racing for one free slot never both succeed" T-LABEL
    BIND-PAIR-BOTH @ 0 T=
-   s" every other round one bind wins and one is refused E-TASK-STATE" T-LABEL
+   s" every other round one bind wins and one is rejected E-TASK-STATE" T-LABEL
    BIND-PAIR-ROUNDS BIND-PAIR-BOTH @ -
    BIND-PAIR-P-WON @ - BIND-PAIR-Q-WON @ - 0 T=
    s" each binder won rounds alone" T-LABEL
@@ -2391,7 +2391,7 @@ variable NEW-STRAY
 
 \ Racers take and give back records at once, so two TCB-TAKEs claiming one
 \ record, a TASK:FREE handing out a record still in use or a TCB-GROW losing a
-\ push shows as a task answering another's TCB, a refused FREE or a hang.
+\ push shows as a task answering another's TCB, a rejected FREE or a hang.
 : TASK-TEST-NEW-RACE ( -- )
    [: 0 NEW-RACE-RUN ;] NEW-RACER-0 TASK:ACTIVATE
    [: 1 NEW-RACE-RUN ;] NEW-RACER-1 TASK:ACTIVATE
@@ -2471,17 +2471,17 @@ variable NEW-STRAY
 : NEW-FREE-HELD ( -- )
    NEW-HELD TASK:FREE ;
 
-: TASK-TEST-FREE-REFUSED ( -- )
+: TASK-TEST-FREE-REJECTED ( -- )
    s" TASK:NEW below TASK:MIN-STACK" T-LABEL
    [: TASK:MIN-STACK 1 - TASK:NEW drop ;] E-TASK-SIZE TTHROWSQ
    TASK:MIN-STACK TASK:NEW 0 NEW-TASKS !
    NEW-HELD TASK:PREPARE
    s" TASK:FREE of a prepared task never activated" T-LABEL
    [: NEW-FREE-HELD ;] E-TASK-STATE TTHROWSQ
-   s" a prepared task TASK:FREE refused still runs" T-LABEL
+   s" a prepared task TASK:FREE rejected still runs" T-LABEL
    ['] NEW-SELF-BODY NEW-HELD TASK:ACTIVATE
    NEW-HELD TASK:JOIN NEW-HELD FFI:>CELL JOIN-OK=
-   s" a prepared task TASK:FREE refused is given back after its run" T-LABEL
+   s" a prepared task TASK:FREE rejected is given back after its run" T-LABEL
    [: NEW-FREE-HELD ;] catch 0 T=
    0 NEW-GATE TASK:SEMAPHORE-INIT
    TASK:MIN-STACK TASK:NEW 0 NEW-TASKS !
@@ -2587,7 +2587,7 @@ variable NEW-STRAY
    TASK-TEST-HALT-IN-CLEANUP
    TASK-TEST-HALT-SWALLOWED
    TASK-TEST-EXIT-HALT
-   TASK-TEST-JOIN-REFUSED
+   TASK-TEST-JOIN-REJECTED
    TASK-TEST-SPIN-CPU
    TASK-TEST-SLEEP-MAIN
    TASK-TEST-SLEEP-WORKER
@@ -2599,7 +2599,7 @@ variable NEW-STRAY
    TASK-TEST-STOP-EARLY
    TASK-TEST-STOP-HALT
    TASK-TEST-STOP-MAIN
-   TASK-TEST-STOP-REFUSED
+   TASK-TEST-STOP-REJECTED
    TASK-TEST-STOP-FOR-MAIN
    TASK-TEST-STOP-FOR-EDGE
    TASK-TEST-STOP-FOR-HALT
@@ -2618,14 +2618,14 @@ variable NEW-STRAY
    TASK-TEST-NEW-RACE
    TASK-TEST-NEW-LOOP
    TASK-TEST-EXIT-GROW
-   TASK-TEST-FREE-REFUSED
+   TASK-TEST-FREE-REJECTED
    TASK-TEST-WORKER-ACTIVATES
    T-REPORT ;
 
 TASK-TEST-RUN
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
-\ A wait or signal on a semaphore never initialized, or destroyed, is refused.
+\ A wait or signal on a semaphore never initialized, or destroyed, is rejected.
 : TASK-TEST-SEM-DEAD ( -- )
    [: SEM-COLD TASK:WAIT-SEM ;] E-TASK-SEM-STATE TTHROWSQ
    [: SEM-COLD TASK:SIGNAL-SEM ;] E-TASK-SEM-STATE TTHROWSQ

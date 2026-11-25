@@ -3,14 +3,14 @@ split-str
 \ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
 \ as a failed call), one write that never waits on a non-blocking descriptor,
 \ a bounded wait for a descriptor to turn readable, syncing, resizing, changing
-\ the mode of and seeking in a file, and a close-on-exec duplicate. A refused
+\ the mode of and seeking in a file, and a close-on-exec duplicate. A rejected
 \ PIPE, mark, read, write, wait, sync, resize, mode change, seek or duplicate,
 \ a write that takes no byte and a count past the asked one are E-FS-IO, which
 \ TRY-WRITE-FULL answers as how far its write got; TRY-WRITE answers 0 for a
 \ full descriptor or a signal. A negative length or offset is E-SPAN-LENGTH.
-\ A refused PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE is
+\ A rejected PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE is
 \ E-PROC-OUTPUT.
-\ Every refused call leaves its errno in FS:ERRNO; a write that takes no byte,
+\ Every rejected call leaves its errno in FS:ERRNO; a write that takes no byte,
 \ a count past the asked one and a mark the host drops make no failed call,
 \ so FS:ERRNO holds no errno of theirs.
 \ Signals and descriptors stay the caller's.
@@ -40,8 +40,8 @@ ENUM fill
    VARIANT eof FIELD bytes n ;VARIANT
 ;ENUM
 
-\ How TRY-WRITE-FULL ended: every byte moved, the first write was refused with
-\ nothing moved, or some bytes moved and then a write was refused.
+\ How TRY-WRITE-FULL ended: every byte moved, the first write was rejected with
+\ nothing moved, or some bytes moved and then a write was rejected.
 ENUM wrote all none part ;ENUM
 
 1 constant POLLIN
@@ -277,7 +277,7 @@ public
 \ moved. Every handler that returns (the profiler's, src/lib/signal.f's) sets
 \ SA_RESTART, so a blocked write that moved nothing resumes. A write to a pipe
 \ with no reader raises SIGPIPE, which ends the process unless the caller armed
-\ FD-NOSIGPIPE! or writes inside WITH-NOSIGPIPE; then the write is refused. A
+\ FD-NOSIGPIPE! or writes inside WITH-NOSIGPIPE; then the write is rejected. A
 \ count past the asked one is `part`: bytes moved, but not the ones asked.
 : TRY-WRITE-FULL ( fd str -- wrote )
    {: f:fd src:^ u:n :}
@@ -347,21 +347,21 @@ public
    new 0 < if E-FS-IO ERRNO-FAIL then
    new >FD ;
 
-\ Marks the descriptor non-blocking, or leaves it so; a mark refused or not kept
+\ Marks the descriptor non-blocking, or leaves it so; a mark rejected or not kept
 \ restores its flags.
 : NONBLOCK! ( fd -- )
    {: f:fd :}
    f f FLAGS ARM drop ;
 
 \ A pipe, read end then write end, both close-on-exec, made and marked under
-\ FD-LOCK:WITH (see fd-lock.f); a refused mark closes both before E-FS-IO.
+\ FD-LOCK:WITH (see fd-lock.f); a rejected mark closes both before E-FS-IO.
 : PIPE ( -- fd fd )
    [: PIPE-HELD ;] FD-LOCK:WITH ;
 
 \ One attempt to open the write end of the existing FIFO at the path, followed
 \ through symlinks; O_NONBLOCK answers ENXIO at once while no reader has it
 \ open. none: no reader, and nothing stays open. some: the write end, blocking,
-\ which the caller closes. A path that is not a FIFO and any other refusal of
+\ which the caller closes. A path that is not a FIFO and any other rejection of
 \ the open throw E-FS-OPEN; a descriptor whose O_NONBLOCK cannot be cleared is
 \ closed and throws E-FS-IO. It neither sleeps nor polls: the caller owns the
 \ deadline and the retries.

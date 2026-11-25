@@ -1326,7 +1326,7 @@ public
 ;package
 
 \ An open checker overlay restores NDICT, CP and WIDN at its close or rollback,
-\ so every writer but its own runs GUARD, first and is refused. Clobbers x9.
+\ so every writer but its own runs GUARD, first and is rejected. Clobbers x9.
 package OVERLAY-EMIT
 public
 variable LDIE
@@ -1344,7 +1344,7 @@ package ENGINE-EMIT
    A G-POP
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 \ ndict! calls this after lowering NDICT: a LASTC-CELL record (does>'s target) at or
-\ above the count is cleared, so does> refuses by name. Clobbers both scratch registers.
+\ above the count is cleared, so does> rejects by name. Clobbers both scratch registers.
 private
 : LASTC-TRIM, ( n n -- ) {: t:n u:n :}
    LBL {: live:label :}
@@ -2389,7 +2389,7 @@ package LIBC-OS
 public
 
 \ Linux: x0 = a new memfd "hb-region" of REGION bytes, close-on-exec and
-\ executable. A kernel before 6.3 refuses MFD_EXEC with EINVAL, and that answer
+\ executable. A kernel before 6.3 rejects MFD_EXEC with EINVAL, and that answer
 \ alone retries without it; any other failure jumps to fail with no descriptor
 \ left open. Clobbers x0, x1, x5, x8, x16.
 : REGION-MEMFD ( label -- ) {: fail:label :}
@@ -2490,7 +2490,7 @@ public
 \ the child maps that memfd over both views, so the child's region is the
 \ parent's as it stood when the parent made the copy, and no byte the parent
 \ writes afterwards reaches it. A failure before the clone answers -1, as a
-\ refused clone does; a child that cannot map its views dies named with exit 71.
+\ failed clone does; a child that cannot map its views dies named with exit 71.
 \ The child starts with no exit owner, so its own exit runs the actions.
 : FORK ( -- )                         \ ( -- pid|-1 )
    HB-TARGET-LINUX? IF
@@ -3400,7 +3400,7 @@ private
 
 package ENGINE-EMIT
 \ wide-mark ( -- ): set DNAME-WIDE on the newest record: its effect carries a
-\ wider-than-cell layout value, so interpret-mode execute and tick refuse it.
+\ wider-than-cell layout value, so interpret-mode execute and tick reject it.
 \ It stores through the region's RW alias: the record's own address is
 \ read-only. The checker calls it at signature-record time.
 : BWIDEMARK ( -- )
@@ -3743,7 +3743,7 @@ package ENGINE-EMIT
 \ `bare-search-wl ( ^u8 n n -- n )`: the routine above, minus one wordlist.
 \ Engine-helper WID records and DNAME-INT records are never raw-searchable: the
 \ first are private implementation entries, and the second would otherwise let
-\ `search-wl execute` bypass the interpreter/tick internal-word gate. The refusal
+\ `search-wl execute` bypass the interpreter/tick internal-word gate. The rejection
 \ belongs to the primitive, not WLFIND; the AOT relocator uses WLFIND directly.
 : BSWL ( -- )
    LBL {: done:label :}
@@ -3780,7 +3780,7 @@ package ENGINE-EMIT
 
 \ num-parse ( ^u8 n -- n bool bool ): the engine's own number reader, the
 \ LNUM routine. x11 is the value (a double's bits for a float), x2 whether it
-\ read a float, x12 whether it read a number. A refused spelling answers zero
+\ read a float, x12 whether it read a number. A rejected spelling answers zero
 \ (the two ANDs): a syntax miss stops at the first unreadable byte (`12a`
 \ leaves 12) and an over-bound literal ends with x12 false.
 package ENGINE-EMIT
@@ -4071,10 +4071,10 @@ package ENGINE-EMIT
    s" f." ['] BFDOT FPRIM-L ;
 
 \ EMIT-BCAP's grow routine at gsub ( x16 = the text length needed -- x16 = 0, or
-\ the capacity a refused map tried ). A capacity at 2^59, whose block's size
-\ would pass 2^63, is refused as a map is. It keeps every register but x16, the
+\ the capacity a failed map tried ). A capacity at 2^59, whose block's size
+\ would pass 2^63, is rejected as a map is. It keeps every register but x16, the
 \ syscall's included: LBCS's callers hold x6-x10 live, and the capture then
-\ reads x11, x12, x14 and x17. A refused map leaves the handle as it was.
+\ reads x11, x12, x14 and x17. A failed map leaves the handle as it was.
 : BCAP-GROW ( label -- ) {: gsub:label :}
    LBL LBL LBL LBL LBL {: dbl:label fits:label fail:label done:label fresh:label :}
    LBL LBL LBL LBL LBL {: tloop:label tdone:label rloop:label rdone:label kept:label :}
@@ -4137,7 +4137,7 @@ package ENGINE-EMIT
    SP SP 144 ADDI,  RET, ;
 
 \ LBCS ( x11=a x12=u ) appends a run and a space to the body text, with a
-\ BODY-SOURCE row at base + cap. A map the system refuses throws E-BODY-TEXT at
+\ BODY-SOURCE row at base + cap. A map that fails throws E-BODY-TEXT at
 \ LBGROWFAIL before anything is stored.
 : EMIT-BCAP ( -- )
    LBL LBL LBL LBL LBL LBL {: pop put seed none src rowed :}
@@ -4488,7 +4488,7 @@ private
       SP SP 32 ADDI,  RET,
    init-bad LBL,
       3 DEF-OCC:STATE-BYTES LIT64,
-      s" hb: the system refused the definition occurrence table; raise the address-space limit (ulimit -v) above its size in bytes:"
+      s" hb: mapping the definition occurrence table failed; raise the address-space limit (ulimit -v) above its size in bytes:"
       EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE, ;
 
 \ x9 names the four-byte patch (zero for an effect-only change); x10 names the
@@ -4763,7 +4763,7 @@ private
 
 : C-NUM-INIT-REGS ( -- )
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ,
-   16 0 MOVZ,  17 0 MOVZ, ;                                  \ overflow latch, final literal refusal
+   16 0 MOVZ,  17 0 MOVZ, ;                                  \ overflow latch, final literal rejection
 
 : C-NUM-SIGN ( -- )
    10 NUM-DONE LABEL@ CBZ,
@@ -4818,7 +4818,7 @@ private
    \ x15 is the last consumed character; overflow can leave the scale at one.
    15 46 CMPI,  C-EQ NUM-DONE LABEL@ BCOND,                     \ "1." (no frac digits) -> ordinary word
    5 $7FFFFFFFFFFFFFFF LIT64,  11 5 CMP,  5 C-HI CSET,
-   17 16 5 ORR,  17 NUM-DONE LABEL@ CBNZ,                      \ a complete decimal owns its range refusal
+   17 16 5 ORR,  17 NUM-DONE LABEL@ CBNZ,                      \ a complete decimal owns its range rejection
    LBL LBL LBL LBL LBL LBL LBL
    {: left:label right:label shift:label ready:label round:label pack:label sign:label :}
    \ x11 significand, x4 exact remainder, x3 scale; x6 exponent,

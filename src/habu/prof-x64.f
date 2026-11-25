@@ -175,7 +175,7 @@ variable SESSION-CELL
    RAX CODE-SPAN:INSN-BYTES ADDI,
    RBX RBX CODE-SPAN:INSN-BYTES SCALE,  RAX RBX ASM-SINK ENC-SUB-RR ;
 
-: REFUSED, ( str -- ) {: a:^ u:n :}
+: REJECTED, ( str -- ) {: a:^ u:n :}
    LBL {: msg:label :}
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX u IMM32,  NR-WRITE SYS,
    RDI EXIT-STATUS:SYSTEM IMM32,  NR-EXIT-GROUP SYS,
@@ -271,7 +271,7 @@ variable SESSION-CELL
       RAX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
       RCX R12 ARN-IDS MEM-OFF LOAD,
       RCX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-B idok JCC,
-      PROFIDMSG$ REFUSED,
+      PROFIDMSG$ REJECTED,
       idok LBL,
       R13 R12 ARN-RECS MEM-OFF LEA,
       RAX RCX PROF-ID-ENT SCALE,  R13 RAX ASM-SINK ENC-ADD-RR
@@ -315,7 +315,7 @@ variable SESSION-CELL
          RDI ZERO-REG,  RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,
          R8 ALL-ONES,  R9 ZERO-REG,  NR-MMAP SYS,
          C-AE mapped JCC,
-         PROFNAMEMSG$ REFUSED,
+         PROFNAMEMSG$ REJECTED,
       mapped LBL,
          RCX R12 ARN-CHUNKS MEM-OFF LOAD,
          RCX RAX CHUNK-NEXT MEM-OFF STORE,
@@ -366,7 +366,7 @@ variable SESSION-CELL
       RDI RBX COPY,  RSI RBX CHUNK-LEN MEM-OFF LOAD,
       NR-MUNMAP SYS,
       C-AE released JCC,
-      PROFNAMEFREEMSG$ REFUSED,
+      PROFNAMEFREEMSG$ REJECTED,
       released LBL,
       RBX R13 COPY,  chunks JMP,
    clear LBL,
@@ -1164,7 +1164,7 @@ public
 
 private
 
-\ rax = n fresh read/write bytes. A refused mapping writes the text on fd 2
+\ rax = n fresh read/write bytes. A failed mapping writes the text on fd 2
 \ and exits EXIT-STATUS:SYSTEM: a profiler that ran without its arena would report
 \ numbers nobody could trust (prof.f C-PROF-ARENA-MAP).
 : MAP, ( n str -- ) {: len:n a:^ u:n :}
@@ -1173,7 +1173,7 @@ private
    R8 ALL-ONES,  R9 ZERO-REG,
    NR-MMAP SYS,
    C-AE ok JCC,
-   a u REFUSED,
+   a u REJECTED,
    ok LBL, ;
 
 \ The arena, mapped on the first prof-on or prof-rate of the process and kept
@@ -1186,7 +1186,7 @@ private
    have LBL, ;
 
 \ setitimer(ITIMER_REAL) with the interval and the first expiry both rax
-\ seconds and rdx microseconds; CF is set when the kernel refused it. Clobbers
+\ seconds and rdx microseconds; CF is set when the call failed. Clobbers
 \ rax rcx rdx rsi rdi r11.
 : TIMER, ( -- )
    RSP ITIMER-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
@@ -1201,7 +1201,7 @@ private
 \ rsi = arena: arm the clock at the interval prof-rate left there, or
 \ DEFAULT-USEC, which is written back so a report states the rate it sampled
 \ at, split into seconds and the microseconds below USEC-PER-SEC; the signed
-\ divide keeps an interval below 0 negative, which setitimer refuses. A refused
+\ divide keeps an interval below 0 negative, which setitimer rejects. A rejected
 \ arm is named and fatal. The twin of prof.f C-PROF-TIMER-FRAME and
 \ C-PROF-TIMER.
 : TIMER-START, ( -- )
@@ -1212,7 +1212,7 @@ private
    ASM-SINK ENC-CQO  RCX USEC-PER-SEC IMM32,  RCX ASM-SINK ENC-IDIV   \ rax = seconds, rdx = microseconds
    TIMER,
    C-AE ok JCC,
-   PROFARMMSG$ REFUSED,
+   PROFARMMSG$ REJECTED,
    ok LBL, ;
 
 \ Zero [rcx, rdx) a cell at a time with rax = 0.

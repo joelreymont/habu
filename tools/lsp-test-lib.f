@@ -49,7 +49,7 @@
 \   -32600 with id null, or stopping the server ............... malformed-params
 \
 \ Framing
-\ - a header form the transport takes refused: a lower-case name, Content-Type
+\ - a header form the transport takes rejected: a lower-case name, Content-Type
 \   before and after, blanks and tabs around the value, leading zeros
 \   ............................................................ frame-forms
 \ - a framing fault survived or reported without its code: no Content-Length,
@@ -57,7 +57,7 @@
 \   conversation ................................................... fault-*
 \ - a request read before a framing fault not answered before the fault
 \   stops the server ..................................... fault-after-request
-\ - a 700 KB body, written in many pieces, refused, cut or its document lost:
+\ - a 700 KB body, written in many pieces, rejected, cut or its document lost:
 \   its last line's diagnostic proves the whole text checked ...... big-frame
 \ - a closed stdout ending the server by SIGPIPE instead of exit 85 and the
 \   throw that stopped it .................................... stdout-closed
@@ -68,7 +68,7 @@
 \   whose range is not its packet's byte offsets in lines and UTF-16 units, or
 \   whose severity, code, source, message or data is not the packet's
 \   ...................................................... diagnostics-open
-\ - a refusal after an undefined word not listed, or a definition that uses
+\ - a rejection after an undefined word not listed, or a definition that uses
 \   the undefined one as declared listed ................... diagnostics-open
 \ - a require of a file of the tree not resolved, or a changed document not
 \   checked again .................................... diagnostics-require
@@ -76,7 +76,7 @@
 \   other than the newest published ................. diagnostics-supersede
 \ - a definition whose effect names an unknown type and whose body an
 \   undefined word given a packet at the type, or no E-UNDEFINED at the word
-\   .................................................... diagnostics-one-refusal
+\   .................................................... diagnostics-one-rejection
 \ - a close publishing anything but an empty list without a version, or a
 \   document opened and closed in one turn checked ...................... close
 \ - a file the engine provides checked, or its list kept from the client
@@ -109,18 +109,18 @@
 \   not saying how it ended ................................ incomplete, held
 \ - the packets a check wrote before a later statement ended it without a
 \   verdict not published ................................ incomplete-packets
-\ - a definition never ended, at which the verifier stops, not said refused
+\ - a definition never ended, at which the verifier stops, not said rejected
 \   with the verifier's prose, or its stop not published at it ...... unended
 \ - a definer with nothing after it, at which the verifier stops, not said
-\   refused, or the missing name not published at it ........... missing-name
-\ - a packet placed at the name of the definition it refuses, a public word
+\   rejected, or the missing name not published at it ........... missing-name
+\ - a packet placed at the name of the definition it rejects, a public word
 \   whose private twin moves other cells, not published at that name
 \   ......................................................... shadowed-arity
 \ - a warning published with a severity other than 2 or not at the name of
 \   the definition whose effect it did not record ............ not-recorded
 \ - a bare use that names words of two used packages, or a global and a used
 \   package's public word, in a body or a does> clause, not published at its
-\   token as E-USING-AMBIGUOUS or E-USING-SHADOW-GLOBAL, or refusing more
+\   token as E-USING-AMBIGUOUS or E-USING-SHADOW-GLOBAL, or rejecting more
 \   than its definition, so a later definition's packet goes unpublished
 \   ................................ using-ambiguous, using-shadow, using-clause
 \ - a duplicate definition, of the document's own word or of one a file it
@@ -128,19 +128,19 @@
 \   ......................................... duplicate, duplicate-of-required
 \ - a top-level word no scope defines not published at it as
 \   E-UNDEFINED; the line after a word that parses its own input
-\   refused, or not deferred to the run at that word ................. top-level
+\   rejected, or not deferred to the run at that word ................. top-level
 \ - a stored signature that does not parse, of a TRUSTED: that replaces a
 \   colon definition `undefine` removed, not published as
 \   E-BAD-STORED-SIGNATURE at its bad type ................. replaced-signature
-\ - a name with two qualifiers, in a defer or in a definition refused for an
+\ - a name with two qualifiers, in a defer or in a definition rejected for an
 \   undefined word, given no E-BAD-QUALIFIED-RECORD at it after the body's
 \   packet, or the statement's stop not published
 \   ....................................... malformed-record, malformed-rejected
 \ - `evaluate` of a text, and a body naming a word only that text may define,
-\   not each deferred to the run at its token, or that body refused
+\   not each deferred to the run at its token, or that body rejected
 \   ........................................................ deferred-definition
 \ - a definition deferred to the run, then one never ended: the deferral or
-\   the stop's record not published, or the document not said refused
+\   the stop's record not published, or the document not said rejected
 \   ....................................................... deferred-unended
 \
 \ Workspace symbols
@@ -164,7 +164,7 @@
 \ - a duplicate declaration with another effect, or with the
 \   effect of the one before it, published other than as a duplicate or
 \   listed; the declaration retained before it, a definition after it, or a
-\   refused body whose signature the checker kept not listed; a malformed
+\   rejected body whose signature the checker kept not listed; a malformed
 \   declaration with none before it listed ....... workspace-symbol-redeclared
 \ - a definition in a file a check reads twice listed twice
 \   ........................................... workspace-symbol-reinclude
@@ -178,7 +178,7 @@
 \   their definition lines names at every even offset of the bytes the server
 \   keeps them in, one of them where those bytes fill their room .. path-length-N
 \ - a query after params nested past the 64 levels a cursor keeps inline not
-\   read, so the request is refused or stops the server ............ deep-params
+\   read, so the request is rejected or stops the server ............ deep-params
 \
 \ Document symbols
 \ - a definition the document's last completed check retained in it missing,
@@ -314,7 +314,7 @@
 \   from the uses of the text before it; a request with a change of its
 \   document read behind it answered other than -32801
 \   ..................................................... highlight-after-change
-\ - a use in a document whose last check was refused, or deferred at a
+\ - a use in a document whose last check was rejected, or deferred at a
 \   top-level word that parses, answered other than null: neither verdict
 \   says the check reported every use; go to definition at that byte not
 \   answered from the same check ......................... highlight-unproved
@@ -349,7 +349,7 @@
 \   ............................................... semantic-tokens-deftype
 \ - a use of a dependency on disk, its global or, qualified, its public word,
 \   not typed by its declaration there ........... semantic-tokens-dependency
-\ - a document whose last check was refused, or deferred at a top-level word
+\ - a document whose last check was rejected, or deferred at a top-level word
 \   that parses, not given the tokens of the words that check bound
 \   .............................................. semantic-tokens-unproved
 \ - tokens asked after a change whose check did not complete answered from
@@ -417,11 +417,11 @@
 \   that reaches it only through a file outside the workspace left out, or
 \   that file given; a file under .jj-ws.noindex/ given; the file itself not
 \   given first, or given when neither the workspace nor an open document holds
-\   it; a load of a file not there refused; a file reached under two roots,
+\   it; a load of a file not there rejected; a file reached under two roots,
 \   whose loads resolve against the root, walked under one; a file whose loader
 \   names no literal path, or one there that cannot be read, not named with
 \   its reason, or stopping the walk before a file it does not lie between;
-\   a root that is not there not refused, naming it; the requesting document
+\   a root that is not there not rejected, naming it; the requesting document
 \   not given in its place by path when its loads do not reach the file, or
 \   given twice when they do; asked again of another file over the same
 \   graph, a file that reaches only the first given, or one that reaches the
@@ -452,20 +452,20 @@
 \   ........................................................ references-deftype
 \ - a file whose check declares the word in two visits (include, undefine,
 \   include) not named, or its uses listed ............... references-lifetimes
-\ - a file of the folder whose check was refused or deferred not named with
+\ - a file of the folder whose check was rejected or deferred not named with
 \   its verdict, its known uses omitted or the answer withheld; a request in
 \   that document at a known use not answered with it and the warning, or at
 \   an unresolved token given a guessed declaration ........ references-unverified
 \ - a known use in a dependency outside the folder read by a partial check
 \   omitted from the answer ........................ references-partial-dependency
-\ - a queued edit of a file a refused probe consumed answered from old bindings
+\ - a queued edit of a file a rejected probe consumed answered from old bindings
 \   ................................................. references-partial-edit
 \ - an incomplete check after an edit answered -32801 from the old check's
 \   source stamp ........................................ references-incomplete
 \ - two open aliases with different text treated as one source revision, or
 \   ROOK's declaration and use placed at DUCK's URI .. references-open-alias
-\ - a resolved use in an open refused document refused without its known
-\   locations and warning ....................... references-refused-selection
+\ - a resolved use in an open rejected document rejected without its known
+\   locations and warning ....................... references-rejected-selection
 \ - a file whose loads discovery cannot find not named with its reason
 \   ................................................ references-undiscoverable
 \ - a file on disk whose loads reach the declaring document, open a line
@@ -480,7 +480,7 @@
 \   .................................................. references-folders-empty
 \ - a use in a file that is no subject, read by a subject's check: in the
 \   folder, reached under another root than its own, or above it and open,
-\   its own check refused; not listed, or the file named
+\   its own check rejected; not listed, or the file named
 \   ....................................................... references-reaching
 \ - a use in a file that loads nothing, read by the declaring document's
 \   check, in the folder or above it, not listed, or the file named
@@ -513,9 +513,9 @@
 \   checker's lower-case binding, so a use another file's check gathers is
 \   left out .................................... references-primitive-uppercase
 \ - past the first wave of checks, a file that redefines the primitive, a
-\   refused one with no use of it or one loading an unsaved open dependency
+\   rejected one with no use of it or one loading an unsaved open dependency
 \   answered otherwise than in one wave: a location lost, added or out of
-\   order, or the refused file not the one the warning names
+\   order, or the rejected file not the one the warning names
 \   .................................................. references-primitive-wave
 \ - a file whose check overflows losing the uses of the other files in its
 \   batch, or of a later file, or putting them out of order; it not named
@@ -529,8 +529,8 @@
 \   source named engine-provided, or the byte before it answered with any
 \   location; a later row of an overloaded primitive not answered as its
 \   first row is .............................. references-primitive-declaration
-\ - a refused file's known use of a primitive left out, the file not named
-\   refused, or the primitive's row left out because a file is not covered
+\ - a rejected file's known use of a primitive left out, the file not named
+\   rejected, or the primitive's row left out because a file is not covered
 \   .............................................. references-primitive-coverage
 \ - a primitive's use in a file that another file's check, including it
 \   into a package, binds to that package's word, left out, or the file not
@@ -546,11 +546,11 @@
 \   use, the declaration given, or no warning naming the source as unable to
 \   place it, or that use, asked at, answered with any location; go to
 \   definition answered with a Location once the word is retired or replaced,
-\   its declaration refused or parsed by another word, or the file deferred
+\   its declaration rejected or parsed by another word, or the file deferred
 \   or holding an opaque call, a replaced definer, an unended definition or
 \   string, an unbalanced `;using` or more usings than the checker holds, or
 \   a replaced declaration asked at answered with any location; a declaration
-\   before a refused cast or TRUSTED:, after a refused one, or by TRUSTED:,
+\   before a rejected cast or TRUSTED:, after a rejected one, or by TRUSTED:,
 \   not answered by go to definition .......... references-source-backed-builtin
 \ - an image word from an engine file whose index a top-level require
 \   defers: its known uses left out, its declaration given, or the file not
@@ -568,13 +568,13 @@
 \   which a rename edits; whitespace answered other than null
 \   ............................................................ rename-prepare
 \ - a use of a DEFTYPE converter, whose declaring token spells the type and
-\   not the converter, or a use in a document whose check was refused,
+\   not the converter, or a use in a document whose check was rejected,
 \   answered other than -32803 naming the file; a document not open answered
 \   other than -32602 .......................................... rename-prepare
 \ - a SUMTYPE variant's name, or a use of its generated constructor,
 \   answered by prepareRename or rename other than -32803 ....... rename-sumtype
 \ - a word an ordinary definer spelled VARIANT creates, asked at its
-\   declaring operand, refused, or not renamed there and at its use
+\   declaring operand, rejected, or not renamed there and at its use
 \   ..................................................... rename-variant-definer
 \ - a use in a document whose check was deferred, which did not cover the
 \   whole file, answered by prepareRename or rename other than -32803 naming
@@ -605,7 +605,7 @@
 \ - a use references-conflict names edited, or no -32803 naming its file; a
 \   file that loads it, not verified and read by no verified check, not named
 \   with its verdict in a -32803, or a file that loads nothing and that a
-\   verified check read named for its own refused check ...... rename-conflict
+\   verified check read named for its own rejected check ...... rename-conflict
 \ - a shared use bound to an engine word or primitive in another check
 \   edited, or no -32803 naming its file .... rename-engine, rename-engine-image
 \ - a declaring token that a check of a file including it into a package
@@ -1218,7 +1218,7 @@ variable OPEN-N
 
 \ The next frame is an error reply to the request with this id's JSON text,
 \ with this code. Its message is prose: only that it is a string is read.
-: REFUSED ( str n -- )
+: REJECTED ( str n -- )
    {: id:str code:n :}
    NEXT-BODY {: b:str :}
    MSG-CLEAR
@@ -1416,7 +1416,7 @@ variable OPEN-N
    s" textDocument/didClose" LSP:E-LSP-NOT-OPEN IGNORED
    SIGN-OFF
    0 CONVERSE
-   s" 7" LSP:NOT-INITIALIZED REFUSED
+   s" 7" LSP:NOT-INITIALIZED REJECTED
    CAPABILITIES
    s" 2" NULL-RESULT
    ENDS ;
@@ -1428,7 +1428,7 @@ variable OPEN-N
    SIGN-OFF
    0 CONVERSE
    CAPABILITIES
-   s" 3" JSON-RPC:INVALID-REQUEST REFUSED
+   s" 3" JSON-RPC:INVALID-REQUEST REJECTED
    s" 2" NULL-RESULT
    ENDS ;
 
@@ -1444,8 +1444,8 @@ variable OPEN-N
    0 CONVERSE
    CAPABILITIES
    s" 2" NULL-RESULT
-   s" 3" JSON-RPC:INVALID-REQUEST REFUSED
-   s" 4" JSON-RPC:INVALID-REQUEST REFUSED
+   s" 3" JSON-RPC:INVALID-REQUEST REJECTED
+   s" 4" JSON-RPC:INVALID-REQUEST REJECTED
    ENDS ;
 
 : TEST-FRAME-FORMS ( -- )
@@ -1510,7 +1510,7 @@ variable OPEN-N
    begin SENT @ IN$ STR:LEN < while PIECE repeat ;
 
 \ A long turn, including one with long document paths, is streamed under the
-\ same deadline rather than refused by the test.
+\ same deadline rather than rejected by the test.
 : SAY ( -- )
    IN$ {: a:str :}
    a STR:LEN SENT @ - {: left:n :}
@@ -1631,7 +1631,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    0 PACKET-NEXT !
    DEADLINE @ PROCESS:LEFT-MS true LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
       verified OF ENDOF
-      refused OF ENDOF
+      rejected OF ENDOF
       engine-provided OF ENDOF
       held OF ENDOF
       incomplete OF PROCESS:ENDING>RC drop ENDOF
@@ -1854,7 +1854,7 @@ variable PUB-COUNT
    s" 3" s" habu/unknown" ASK
    s" habu/unknown" s" {}" TELL
    SAY
-   HEAR s" 3" JSON-RPC:METHOD-NOT-FOUND REFUSED ;
+   HEAR s" 3" JSON-RPC:METHOD-NOT-FOUND REJECTED ;
 
 \ A string id with a quote, a backslash, \u and \/ escaped.
 : ESCAPED-ID ( -- str )  s\" \"a\\\"b\\\\\\u00e9\\/c\"" ;
@@ -1868,19 +1868,19 @@ variable PUB-COUNT
    ESCAPED-ID s" habu/unknown" ASK
    s" null" s" habu/unknown" ASK
    SAY
-   HEAR s" 0" JSON-RPC:METHOD-NOT-FOUND REFUSED
-   HEAR s" -7" JSON-RPC:METHOD-NOT-FOUND REFUSED
-   HEAR s" 1.5e3" JSON-RPC:METHOD-NOT-FOUND REFUSED
-   HEAR LONG-ID JSON-RPC:METHOD-NOT-FOUND REFUSED
-   HEAR ESCAPED-ID JSON-RPC:METHOD-NOT-FOUND REFUSED
-   HEAR s" null" JSON-RPC:METHOD-NOT-FOUND REFUSED ;
+   HEAR s" 0" JSON-RPC:METHOD-NOT-FOUND REJECTED
+   HEAR s" -7" JSON-RPC:METHOD-NOT-FOUND REJECTED
+   HEAR s" 1.5e3" JSON-RPC:METHOD-NOT-FOUND REJECTED
+   HEAR LONG-ID JSON-RPC:METHOD-NOT-FOUND REJECTED
+   HEAR ESCAPED-ID JSON-RPC:METHOD-NOT-FOUND REJECTED
+   HEAR s" null" JSON-RPC:METHOD-NOT-FOUND REJECTED ;
 
 : BODY-NOT-JSON-TURNS ( -- )
    s\" {\"jsonrpc\":" FRAMED
    s" " FRAMED
    SAY
-   HEAR s" null" JSON-RPC:PARSE-ERROR REFUSED
-   HEAR s" null" JSON-RPC:PARSE-ERROR REFUSED ;
+   HEAR s" null" JSON-RPC:PARSE-ERROR REJECTED
+   HEAR s" null" JSON-RPC:PARSE-ERROR REJECTED ;
 
 : INVALID-REQUEST-TURNS ( -- )
    s" [1]" FRAMED
@@ -1890,10 +1890,10 @@ variable PUB-COUNT
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"result\":null}" FRAMED
    s\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":1,\"message\":\"m\"}}" FRAMED
    SAY
-   HEAR s" null" JSON-RPC:INVALID-REQUEST REFUSED
-   HEAR s" null" JSON-RPC:INVALID-REQUEST REFUSED
-   HEAR s" 3" JSON-RPC:INVALID-REQUEST REFUSED
-   HEAR s" 4" JSON-RPC:INVALID-REQUEST REFUSED ;
+   HEAR s" null" JSON-RPC:INVALID-REQUEST REJECTED
+   HEAR s" null" JSON-RPC:INVALID-REQUEST REJECTED
+   HEAR s" 3" JSON-RPC:INVALID-REQUEST REJECTED
+   HEAR s" 4" JSON-RPC:INVALID-REQUEST REJECTED ;
 
 : SYNC-TURNS ( -- )
    s\" \"file:\\/\\/\\/habu-lsp-test\\/a.f\"" OPEN-DOC
@@ -1949,7 +1949,7 @@ variable PUB-COUNT
 
 \ The reply to CLOSE-TWICE of URI-A: -32600, the null id and the reader's
 \ text placing the second textDocument.
-: TWICE-REFUSED ( -- )
+: TWICE-REJECTED ( -- )
    MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600," MSG+
    s\" \"message\":\"1:112: expected a member name not used before in " MSG+
@@ -1975,7 +1975,7 @@ variable PUB-COUNT
    BAD-CHANGES
    URI-A CLOSE-DOC
    SAY
-   TWICE-REFUSED
+   TWICE-REJECTED
    URI-A PUBLISHED ;
 
 \ ---- diagnostics ------------------------------------------------------------------
@@ -1986,7 +1986,7 @@ variable PUB-COUNT
 : F-LISTED ( str n -- )
    {: p:str v:n :}
    TEXT-F p CHECKS
-   p s" refused" COMPLETED
+   p s" rejected" COMPLETED
    p v EXPECT 0 15 0 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 : F-OPENED ( -- )
@@ -1996,9 +1996,9 @@ variable PUB-COUNT
    SESSION-CAPABILITIES
    A-PATH 1 F-LISTED ;
 
-\ An undefined word refuses LSPT-U1. LSPT-U2 uses its declared effect and
+\ An undefined word rejects LSPT-U1. LSPT-U2 uses its declared effect and
 \ certifies; LSPT-U3 calls it with nothing on the stack and LSPT-U4 leaves a
-\ cell short, and each is refused.
+\ cell short, and each is rejected.
 : TEXT-U ( -- str )
    s\" : LSPT-U1 ( n -- n ) NOPE ;\n: LSPT-U2 ( n -- n ) LSPT-U1 1 + ;\n: LSPT-U3 ( -- n ) LSPT-U1 ;\n: LSPT-U4 ( n -- n ) drop ;\n" ;
 
@@ -2007,7 +2007,7 @@ variable PUB-COUNT
    A-PATH TEXT-U 2 CHANGES
    SAY
    TEXT-U A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 2 EXPECT
    0 21 0 25 1 s" E-UNDEFINED" DIAG+
    2 19 2 26 1 s" E-INPUT-UNDERFLOW" DIAG+
@@ -2021,17 +2021,17 @@ variable PUB-COUNT
    A-PATH s\" ( v4 )\n: S ( n -- n ) drop ;" 4 CHANGES
    SAY
    s\" ( v4 )\n: S ( n -- n ) drop ;" A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 4 EXPECT 1 15 1 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 : TEXT-X ( -- str )  s" : X ( n -- zz ) NOPE ;" ;
 
-: ONE-REFUSAL-TURNS ( -- )
+: ONE-REJECTION-TURNS ( -- )
    F-OPENED
    A-PATH TEXT-X 2 CHANGES
    SAY
    TEXT-X A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 2 EXPECT 0 16 0 20 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
 : REQUIRES-FMT ( -- str )  s\" require src/lib/fmt.f\n: G ( n -- ) FMT:SB-U ;\n" ;
@@ -2048,7 +2048,7 @@ variable PUB-COUNT
    A-PATH UNDERFLOWS-FMT 2 CHANGES
    SAY
    UNDERFLOWS-FMT A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 2 EXPECT 1 11 1 19 1 s" E-INPUT-UNDERFLOW" DIAG+ PUBLISHES ;
 
 : CLOSE-TURNS ( -- )
@@ -2078,7 +2078,7 @@ variable PUB-COUNT
    SAY
    SESSION-CAPABILITIES
    TEXT-H A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 0 22 0 26 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 : BIG-PATH ( -- str )  s" big.f" FIXTURE ;
@@ -2096,7 +2096,7 @@ variable PUB-COUNT
    BIG-PATH TXT$ 1 OPENS
    SAY
    TXT$ BIG-PATH CHECKS
-   BIG-PATH s" refused" COMPLETED
+   BIG-PATH s" rejected" COMPLETED
    BIG-PATH 1 EXPECT BIG-LINES 15 BIG-LINES 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 : S-PATH ( -- str )  s" s.f" FIXTURE ;
@@ -2143,7 +2143,7 @@ variable PUB-COUNT
    S-PATH TEXT-S 1 OPENS
    SAY
    SESSION-CAPABILITIES
-   TEXT-S S-PATH 1 s" refused" LISTED
+   TEXT-S S-PATH 1 s" rejected" LISTED
    DEP-CANON -1 D-LISTED
    DEP-FIXED DEP-WRITTEN
    S-PATH TEXT-S 2 CHANGES
@@ -2167,7 +2167,7 @@ variable PUB-COUNT
    S-PATH TEXT-S 1 OPENS
    SAY
    SESSION-CAPABILITIES
-   TEXT-S S-PATH 1 s" refused" LISTED
+   TEXT-S S-PATH 1 s" rejected" LISTED
    DEP-CANON -1 D-LISTED
    DEP-FIXED DEP-WRITTEN
    DEP-PATH WATCHES
@@ -2190,7 +2190,7 @@ variable PUB-COUNT
    DEP-TWO DEP-PATH 1 s" verified" LISTED
    DEP-PATH DEP-TWO BESIDE!
    TEXT-SD S-PATH CHECKS-BESIDE
-   S-PATH s" refused" COMPLETED
+   S-PATH s" rejected" COMPLETED
    S-PATH 1 EXPECT 1 15 1 16 1 s" E-INPUT-UNDERFLOW" DIAG+ PUBLISHES ;
 
 \ dep.f, broken on disk, opened and then closed. Open, it has its own list, and
@@ -2203,16 +2203,16 @@ variable PUB-COUNT
    S-PATH TEXT-S 1 OPENS
    SAY
    SESSION-CAPABILITIES
-   TEXT-S S-PATH 1 s" refused" LISTED
+   TEXT-S S-PATH 1 s" rejected" LISTED
    DEP-CANON -1 D-LISTED
    DEP-PATH DEP-BROKEN 1 OPENS
    SAY
    DEP-BROKEN DEP-PATH CHECKS
-   DEP-PATH s" refused" COMPLETED
+   DEP-PATH s" rejected" COMPLETED
    DEP-PATH 1 D-LISTED
    DEP-PATH DEP-BROKEN BESIDE!
    TEXT-S S-PATH CHECKS-BESIDE
-   S-PATH s" refused" COMPLETED
+   S-PATH s" rejected" COMPLETED
    S-PATH 1 EXPECT PUBLISHES
    \ A document opened by an alias publishes at that URI. Withdraw the prior
    \ disk list at the canonical URI as well, so it cannot leave stale errors.
@@ -2220,7 +2220,7 @@ variable PUB-COUNT
    DEP-PATH CLOSES
    SAY
    DEP-PATH -1 EXPECT PUBLISHES
-   TEXT-S S-PATH 1 s" refused" LISTED
+   TEXT-S S-PATH 1 s" rejected" LISTED
    DEP-CANON -1 D-LISTED ;
 
 : SV-PATH ( -- str )  s" sv.f" FIXTURE ;
@@ -2251,7 +2251,7 @@ variable PUB-COUNT
    SAY
    SESSION-CAPABILITIES
    TEXT-SV SV-PATH CHECKS
-   SV-PATH s" refused" COMPLETED
+   SV-PATH s" rejected" COMPLETED
    SV-PATH 1 EXPECT 0 8 0 16 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
    SV-NEW-PATH TEXT-SV-NEW 1 OPENS
    SAY
@@ -2271,7 +2271,7 @@ variable PUB-COUNT
    SAY
    SESSION-CAPABILITIES
    TEXT-MW MW-PATH CHECKS
-   MW-PATH s" refused" COMPLETED
+   MW-PATH s" rejected" COMPLETED
    MW-PATH 1 EXPECT 0 8 0 16 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
    MW-NEW-PATH TEXT-SV-NEW FS:WRITE-ALL
    MW-NEW-PATH WATCHES
@@ -2300,14 +2300,14 @@ variable PUB-COUNT
    LINK-S TEXT-SD 1 OPENS
    SAY
    SESSION-CAPABILITIES
-   TEXT-SD LINK-S 1 s" refused" LISTED
+   TEXT-SD LINK-S 1 s" rejected" LISTED
    REAL-CANON -1 D-LISTED
    LINK-DEP DEP-TWO 1 OPENS
    SAY
    DEP-TWO LINK-DEP 1 s" verified" LISTED
    LINK-DEP DEP-TWO BESIDE!
    TEXT-SD LINK-S CHECKS-BESIDE
-   LINK-S s" refused" COMPLETED
+   LINK-S s" rejected" COMPLETED
    LINK-S 1 EXPECT 1 15 1 16 1 s" E-INPUT-UNDERFLOW" DIAG+ PUBLISHES
    REAL-CANON -1 EXPECT PUBLISHES ;
 
@@ -2322,16 +2322,16 @@ variable PUB-COUNT
    S-PATH TEXT-S 1 OPENS
    SAY
    SESSION-CAPABILITIES
-   TEXT-S S-PATH 1 s" refused" LISTED
+   TEXT-S S-PATH 1 s" rejected" LISTED
    DEP-CANON -1 D-LISTED
    T-PATH TEXT-T 1 OPENS
    SAY
-   TEXT-T T-PATH 1 s" refused" LISTED
+   TEXT-T T-PATH 1 s" rejected" LISTED
    DEP-CANON -1 D-LISTED
    S-PATH ALONE-S 2 CHANGES
    SAY
    ALONE-S S-PATH 2 s" verified" LISTED
-   TEXT-T T-PATH 1 s" refused" LISTED
+   TEXT-T T-PATH 1 s" rejected" LISTED
    DEP-CANON -1 D-LISTED
    T-PATH ALONE-T 2 CHANGES
    SAY
@@ -2351,7 +2351,7 @@ variable PUB-COUNT
    A-PATH s" verified" COMPLETED
    A-PATH 1 EXPECT PUBLISHES
    CALLS-A B-PATH CHECKS
-   B-PATH s" refused" COMPLETED
+   B-PATH s" rejected" COMPLETED
    B-PATH 1 EXPECT 0 16 0 27 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
 : UNENDED ( -- str )  s" : H6 ( n -- n ) 1" ;
@@ -2362,7 +2362,7 @@ variable PUB-COUNT
    SAY
    SESSION-CAPABILITIES
    UNENDED A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 0 2 0 4 1 s" E-VS-UNTERMINATED-DEFINITION" DIAG+ PUBLISHES ;
 
 : MISSING-NAME ( -- str )  s" :" ;
@@ -2373,11 +2373,11 @@ variable PUB-COUNT
    SAY
    SESSION-CAPABILITIES
    MISSING-NAME A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 0 0 0 1 1 s" E-MISSING-NAME" DIAG+ PUBLISHES ;
 
 \ One `using` more than the checker holds open at once: the verifier dies and
-\ exits without a verdict, where `--load` refuses that using.
+\ exits without a verdict, where `--load` rejects that using.
 USE-MAX 1 + constant OVER-USINGS
 
 : OVER-USINGS+ ( -- )
@@ -2396,16 +2396,16 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH s" not checked: exit 89" SAID
    LOGGED ;
 
-\ H1 is refused, then one `using` more than the checker holds open: the
+\ H1 is rejected, then one `using` more than the checker holds open: the
 \ verifier dies after writing H1's packet, which is published.
-: REFUSED-OVER-TEXT ( -- )
+: REJECTED-OVER-TEXT ( -- )
    TXT-B CLEAR
    s\" : H1 ( n -- n ) NOSUCHWORD ;\n" TXT-B BYTES+
    OVER-USINGS+ ;
 
 : INCOMPLETE-PACKET-TURNS ( -- )
    SESSION-INITIALIZE
-   REFUSED-OVER-TEXT
+   REJECTED-OVER-TEXT
    A-PATH TXT$ 1 OPENS
    SAY
    SESSION-CAPABILITIES
@@ -2426,7 +2426,7 @@ USE-MAX 1 + constant OVER-USINGS
    LOGGED ;
 
 \ The public W moves other cells than the private W, whose tail it shares: the
-\ packet is at the public definition's name. The refusal refuses W alone: the
+\ packet is at the public definition's name. The rejection rejects W alone: the
 \ check goes on, and M's extra cell on line 7 is published beside it.
 : SHADOWS ( -- str )
    s\" package LSPT-Q\nprivate\n: W ( n -- ) drop ;\npublic\n: W ( -- ) ;\n;package\n: LSPT-M ( -- ) 1 ;\n" ;
@@ -2437,7 +2437,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    SHADOWS A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 4 2 4 3 1 s" E-SHADOWED-ARITY" DIAG+
    6 16 6 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
@@ -2464,7 +2464,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    TWO-USED A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+
    11 16 11 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
@@ -2477,7 +2477,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    GLOBAL-USED A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 6 19 6 26 1 s" E-USING-SHADOW-GLOBAL" DIAG+
    7 16 7 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
@@ -2490,7 +2490,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    CLAUSE-USED A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 12 43 12 50 1 s" E-USING-SHADOW-GLOBAL" DIAG+
    13 43 13 50 1 s" E-USING-AMBIGUOUS" DIAG+
    14 16 14 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
@@ -2504,7 +2504,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    TEXT-DUP A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 1 2 1 4 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
 
 : DD-DEP ( -- str )  s" dd-dep.f" FIXTURE ;
@@ -2517,7 +2517,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    TEXT-DD A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 1 2 1 9 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
 
 : UNDEFINED-AT-TOP ( -- str )  s\" 1 NOSUCHWORD drop\n" ;
@@ -2529,7 +2529,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    UNDEFINED-AT-TOP A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 0 2 0 12 1 s" E-UNDEFINED" DIAG+ PUBLISHES
    A-PATH DEFERRED-AT-TOP 2 CHANGES
    SAY
@@ -2562,7 +2562,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    TXT$ A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT
    0 21 0 29 2 s" W-CHECK-DEFERRED" DIAG+
    1 13 1 19 2 s" W-CHECK-DEFERRED" DIAG+
@@ -2736,8 +2736,8 @@ USE-MAX 1 + constant OVER-USINGS
    s" 6" s\" {\"query\":7}" SYMBOLS-ASK
    s" 7" s" workspace/symbol" ASK
    SAY
-   HEAR s" 6" -32602 REFUSED
-   HEAR s" 7" -32602 REFUSED
+   HEAR s" 6" -32602 REJECTED
+   HEAR s" 7" -32602 REJECTED
    SYM-DEP-PATH TEXT-SYM-DEP2 FS:WRITE-ALL
    SYM-B-PATH TEXT-SYM-B 2 CHANGES
    SAY
@@ -2791,13 +2791,13 @@ USE-MAX 1 + constant OVER-USINGS
    SYMBOLS-END ;
 
 \ NAV-RETAIN declared, then declared again with a bare ptr, an effect the
-\ registrar would refuse.
+\ registrar would reject.
 : TEXT-RETAINED ( -- str )
    s\" TRUSTED: NAV-RETAIN ( -- n ) 1 ;\nTRUSTED: NAV-RETAIN ( -- ^ ) ;\n" ;
 
 \ NAV-WIDE declared, then declared again taking 256 cells; NAV-SAME declared
 \ twice with one effect; NAV-ODD malformed with nothing declared before it;
-\ NAV-KEPT's body refused with its signature kept; NAV-LATER after them.
+\ NAV-KEPT's body rejected with its signature kept; NAV-LATER after them.
 : REDECLARED-TEXT ( -- )
    TXT-B CLEAR
    s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" TXT-B BYTES+
@@ -2809,7 +2809,7 @@ USE-MAX 1 + constant OVER-USINGS
 
 : REDECLARED-PATH ( -- str )  s" redeclared.f" FIXTURE ;
 
-\ The load refuses the redeclaration at its name as a duplicate, before its
+\ The load rejects the redeclaration at its name as a duplicate, before its
 \ effect (exit 70), and so does the check.
 : RETAINED-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2817,7 +2817,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    TEXT-RETAINED RETAINED-PATH CHECKS
-   RETAINED-PATH s" refused" COMPLETED
+   RETAINED-PATH s" rejected" COMPLETED
    RETAINED-PATH 1 EXPECT 1 9 1 19 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES
    s" 3" s\" {\"query\":\"nav-retain\"}" SYMBOLS-ASK
    SAY
@@ -2825,8 +2825,8 @@ USE-MAX 1 + constant OVER-USINGS
    s" NAV-RETAIN" 12 RETAINED-PATH URI-OF 0 9 19 s" " SYMBOL+
    SYMBOLS-END ;
 
-\ Each refusal is published, each redeclaration as a duplicate at its name, as
-\ the load refuses it before its effect.
+\ Each rejection is published, each redeclaration as a duplicate at its name, as
+\ the load rejects it before its effect.
 : REDECLARED-TURNS ( -- )
    REDECLARED-TEXT
    SESSION-INITIALIZE
@@ -2834,7 +2834,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    TXT$ REDECLARED-PATH CHECKS
-   REDECLARED-PATH s" refused" COMPLETED
+   REDECLARED-PATH s" rejected" COMPLETED
    REDECLARED-PATH 1 EXPECT
    1 9 1 17 1 s" E-DUPLICATE-DEFINITION" DIAG+
    3 9 3 17 1 s" E-DUPLICATE-DEFINITION" DIAG+
@@ -3005,7 +3005,7 @@ variable LENGTH-N
    SAY
    SESSION-CAPABILITIES
    TEXT-SR SR-PATH CHECKS
-   SR-PATH s" refused" COMPLETED
+   SR-PATH s" rejected" COMPLETED
    SR-PATH 1 EXPECT 0 8 0 16 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
    SR-NEW-PATH TEXT-SV-NEW FS:WRITE-ALL
    s" 3" SR-PATH 1 2 DEFINITION-ASK
@@ -3021,7 +3021,7 @@ variable LENGTH-N
    SAY
    SESSION-CAPABILITIES
    TEXT-UR UR-PATH CHECKS
-   UR-PATH s" refused" COMPLETED
+   UR-PATH s" rejected" COMPLETED
    UR-PATH 1 EXPECT 0 8 0 16 1 s" E-UNREADABLE-SOURCE" DIAG+ PUBLISHES
    UR-DEP-PATH FS:MODE-0644 FS:CHMOD-MODE
    s" 3" UR-PATH 1 2 DEFINITION-ASK
@@ -3049,7 +3049,7 @@ variable LENGTH-N
    s" 6" DEF-A-PATH URI-OF 0 2 9 LOCATED
    s" 7" NOWHERE
    s" 8" NOWHERE
-   HEAR s" 9" -32602 REFUSED ;
+   HEAR s" 9" -32602 REJECTED ;
 
 \ A case that navigates into the tree finds its target's line or byte in the
 \ file as it stands, not by a number every edit above the target moves.
@@ -3356,7 +3356,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
    SAY
    SESSION-CAPABILITIES
-   HEAR s" 3" -32602 REFUSED ;
+   HEAR s" 3" -32602 REJECTED ;
 
 : DEF-BEFORE-CHECK-TURNS ( -- )
    SESSION-INITIALIZE
@@ -3449,8 +3449,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" QUX-K" 14 SYM-B-PATH URI-OF 2 11 16 s" " SYMBOL+
    SYMBOLS-END
    s" 5" SYMBOLS-START SYMBOLS-END
-   HEAR s" 6" -32602 REFUSED
-   HEAR s" 7" -32602 REFUSED ;
+   HEAR s" 6" -32602 REJECTED
+   HEAR s" 7" -32602 REJECTED ;
 
 : HIERARCHICAL-CLIENT ( -- )
    MSG-CLEAR
@@ -3475,7 +3475,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 4" SYM-A-PATH OUTLINE-ASK
    SYM-A-PATH TEXT-SYM-A 3 CHANGES
    SAY
-   HEAR s" 4" -32801 REFUSED
+   HEAR s" 4" -32801 REJECTED
    TEXT-SYM-A SYM-A-PATH 3 s" verified" LISTED
    s" 5" SYM-A-PATH OUTLINE-ASK
    SAY
@@ -3711,7 +3711,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" HOVER-A-PATH 2 18 HOVER-ASK
    SAY
    SESSION-CAPABILITIES
-   HEAR s" 3" -32602 REFUSED ;
+   HEAR s" 3" -32602 REJECTED ;
 
 : HOVER-AFTER-CHANGE-TURNS ( -- )
    MARKDOWN-CLIENT
@@ -3771,7 +3771,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 6" SYMBOLS-START 1 2 9 HIGHLIGHT+ SYMBOLS-END
    s" 7" 0 DEF-ONE-LIT
    s" 8" SYMBOLS-START SYMBOLS-END
-   HEAR s" 9" -32602 REFUSED ;
+   HEAR s" 9" -32602 REJECTED ;
 
 : HIGHLIGHT-DEFTYPE-TURNS ( -- )
    SESSION-INITIALIZE
@@ -3809,7 +3809,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" DEF-A-PATH 1 19 HIGHLIGHT-ASK
    SAY
    SESSION-CAPABILITIES
-   HEAR s" 3" -32602 REFUSED ;
+   HEAR s" 3" -32602 REJECTED ;
 
 : HIGHLIGHT-AFTER-CHANGE-TURNS ( -- )
    SESSION-INITIALIZE
@@ -3825,7 +3825,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 4" DEF-A-PATH 3 19 HIGHLIGHT-ASK
    DEF-A-PATH TEXT-DEF-A 3 CHANGES
    SAY
-   HEAR s" 4" -32801 REFUSED
+   HEAR s" 4" -32801 REJECTED
    DEF-A-PATH 3 CLEAN
    s" 5" DEF-A-PATH 1 19 HIGHLIGHT-ASK
    SAY
@@ -3843,7 +3843,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    SESSION-CAPABILITIES
    TEXT-HU HU-PATH CHECKS
-   HU-PATH s" refused" COMPLETED
+   HU-PATH s" rejected" COMPLETED
    HU-PATH 1 EXPECT 1 16 1 22 1 s" E-MISMATCH" DIAG+ PUBLISHES
    HD-PATH TEXT-HD 1 OPENS
    SAY
@@ -4067,7 +4067,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    SESSION-CAPABILITIES
    TEXT-HU HU-PATH CHECKS
-   HU-PATH s" refused" COMPLETED
+   HU-PATH s" rejected" COMPLETED
    HU-PATH 1 EXPECT 1 16 1 22 1 s" E-MISMATCH" DIAG+ PUBLISHES
    HD-PATH TEXT-HD 1 OPENS
    SAY
@@ -4126,7 +4126,7 @@ create WAS-B HDR-BYTES allot
 : ID-CHECK ( str str -- bool )
    [: drop ;] CHECKED-MS >MS true LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
       verified OF true ENDOF
-      refused OF false ENDOF
+      rejected OF false ENDOF
       engine-provided OF false ENDOF
       held OF false ENDOF
       incomplete OF drop false ENDOF
@@ -4372,7 +4372,7 @@ create WAS-B HDR-BYTES allot
 : CMP-NOT-OPEN-TURNS ( -- )
    s" 3" CMP-A-PATH 2 24 COMPLETION-ASK
    SAY
-   HEAR s" 3" -32602 REFUSED ;
+   HEAR s" 3" -32602 REJECTED ;
 
 \ CMPL asked about in the turn of the change that renamed CMPL-ONE: the
 \ request checks the changed text, so its list comes before the answer.
@@ -4516,7 +4516,7 @@ create WAS-B HDR-BYTES allot
    SAY
    SESSION-CAPABILITIES
    TEXT-LK LK-PATH CHECKS
-   LK-PATH s" refused" COMPLETED
+   LK-PATH s" rejected" COMPLETED
    LK-PATH 1 EXPECT 4 8 4 17 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
    s" 3" LK-PATH LINKS-ASK
    SAY
@@ -4552,8 +4552,8 @@ create WAS-B HDR-BYTES allot
    s" 4" s" textDocument/documentLink" ASK
    SAY
    SESSION-CAPABILITIES
-   HEAR s" 3" -32602 REFUSED
-   HEAR s" 4" -32602 REFUSED ;
+   HEAR s" 3" -32602 REJECTED
+   HEAR s" 4" -32602 REJECTED ;
 
 : LINK-BEFORE-CHECK-TURNS ( -- )
    LK-DEP-PATH TEXT-LK-LOADED FS:WRITE-ALL
@@ -4580,7 +4580,7 @@ create WAS-B HDR-BYTES allot
    s" 4" LK-PATH LINKS-ASK
    LK-PATH TEXT-LK-ONE 3 CHANGES
    SAY
-   HEAR s" 4" -32801 REFUSED
+   HEAR s" 4" -32801 REJECTED
    TEXT-LK-ONE LK-PATH 3 s" verified" LISTED ;
 
 : LINK-INCOMPLETE-TURNS ( -- )
@@ -4677,8 +4677,8 @@ variable WS-ROOT-U
 
 : WS-ANSWER$ ( -- str )
    WS-B CLEAR
-   LSP-WORKSPACE:REFUSED? if
-      s" refused " WS+ LSP-WORKSPACE:BLOCKED$ WS-NAME WS+ WS$ exit
+   LSP-WORKSPACE:REJECTED? if
+      s" rejected " WS+ LSP-WORKSPACE:BLOCKED$ WS-NAME WS+ WS$ exit
    then
    LSP-WORKSPACE:SUBJECTS 0 ?do
       i 0 > if s"  " WS+ then
@@ -4740,7 +4740,7 @@ variable WS-ROOT-U
    s" r9/f9.f r9/a9.f r9/u9.f; dyn/d8.f: E-DISC-DYNAMIC; dyn/z8.f: cannot be read"
    REACHES
    s" gone" IN-GRAPH LSP-WORKSPACE:ROOT+
-   s" w/f1.f" s" w/f1.f" s" refused gone" REACHES ;
+   s" w/f1.f" s" w/f1.f" s" rejected gone" REACHES ;
 
 \ ---- references --------------------------------------------------------------
 
@@ -4840,7 +4840,7 @@ variable WS-ROOT-U
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"window/showMessage\",\"params\":{\"type\":2," EXP+
    s\" \"message\":\"References may be incomplete: " EXP+ n NOT-COVERED ;
 
-\ The refusal the next frame must be, of the rename with this id's JSON text
+\ The rejection the next frame must be, of the rename with this id's JSON text
 \ whose gather left N files out, begun in EXP: NAMED+ adds each file,
 \ NAMED-END hears it.
 : NOT-APPLIED ( str n -- )
@@ -4862,7 +4862,7 @@ variable WS-ROOT-U
    HEAR
    EXP$ HEARD ;
 
-\ A conflict's first frame is its warning or refusal. Consume an unexpected
+\ A conflict's first frame is its warning or rejection. Consume an unexpected
 \ edit or location answer too, so a regression fails on that answer directly.
 : CONFLICT-FIRST? ( -- bool )
    s\" \"}}" EXP+
@@ -4880,7 +4880,7 @@ variable WS-ROOT-U
    {: id:str p:str :}
    HEAR
    OUT-AT @ {: from:n :}
-   id -32803 REFUSED
+   id -32803 REJECTED
    OUT-SPAN SPAN:$ STR:DATA from + OUT-AT @ from - >str
    p SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE STR:CONTAINS?
    s" -32803 names the file" HOLDS ;
@@ -4922,7 +4922,7 @@ variable WS-ROOT-U
    s" 3" REF-A-PATH 1 15 DECL-TOO REFS-ASK
    SAY
    SESSION-CAPABILITIES
-   HEAR s" 3" -32602 REFUSED ;
+   HEAR s" 3" -32602 REJECTED ;
 
 : REFS-PARAMS-TURNS ( -- )
    SESSION-INITIALIZE
@@ -4935,10 +4935,10 @@ variable WS-ROOT-U
    s" 5" REF-A-PATH 1 15 s\" ,\"context\":{\"includeDeclaration\":\"yes\"}" REFS-ASK
    s" 6" REF-A-PATH 1 -1 DECL-TOO REFS-ASK
    SAY
-   HEAR s" 3" -32602 REFUSED
-   HEAR s" 4" -32602 REFUSED
-   HEAR s" 5" -32602 REFUSED
-   HEAR s" 6" -32602 REFUSED ;
+   HEAR s" 3" -32602 REJECTED
+   HEAR s" 4" -32602 REJECTED
+   HEAR s" 5" -32602 REJECTED
+   HEAR s" 6" -32602 REJECTED ;
 
 : REFS-WS-TREE ( -- )
    s" refs-ws" REFS-DIR s" refs-ws/w" REFS-DIR s" refs-ws/out" REFS-DIR
@@ -5067,7 +5067,7 @@ variable WS-ROOT-U
    TEXT-RD s" refs-unv/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-unv/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
-   1 NAMED s" refs-unv/w/s.f" CANON s" refused" NAMED+ NAMED-END
+   1 NAMED s" refs-unv/w/s.f" CANON s" rejected" NAMED+ NAMED-END
    s" 3" false 12 UNV-ANSWER
    s" refs-unv/w/s.f" TEXT-RS-PN REFS-FILE
    s" 4" s" refs-unv/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
@@ -5085,23 +5085,23 @@ variable WS-ROOT-U
    s" 5" true 14 UNV-ANSWER
    s" 6" SYMBOLS-START SYMBOLS-END ;
 
-: REFS-REFUSED-TURNS ( -- )
-   s" refs-refused" REFS-DIR s" refs-refused/w" REFS-DIR
-   s" refs-refused/w/f.f" TEXT-RF REFS-FILE
-   s" refs-refused/w/s.f" TEXT-RS-BAD REFS-FILE
-   s" refs-refused/w" ROOT-URI+ PAR$ INITIALIZE-WITH
-   s" refs-refused/w/s.f" FIXTURE TEXT-RS-BAD 1 OPENS
+: REFS-REJECTED-TURNS ( -- )
+   s" refs-rejected" REFS-DIR s" refs-rejected/w" REFS-DIR
+   s" refs-rejected/w/f.f" TEXT-RF REFS-FILE
+   s" refs-rejected/w/s.f" TEXT-RS-BAD REFS-FILE
+   s" refs-rejected/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-rejected/w/s.f" FIXTURE TEXT-RS-BAD 1 OPENS
    SAY
    SESSION-CAPABILITIES
-   TEXT-RS-BAD s" refs-refused/w/s.f" FIXTURE CHECKS
-   s" refs-refused/w/s.f" FIXTURE s" refused" COMPLETED
-   s" refs-refused/w/s.f" FIXTURE 1 EXPECT 1 12 1 16 1 s" E-MISMATCH" DIAG+ PUBLISHES
-   s" 3" s" refs-refused/w/s.f" FIXTURE 1 12 DECL-TOO REFS-ASK
+   TEXT-RS-BAD s" refs-rejected/w/s.f" FIXTURE CHECKS
+   s" refs-rejected/w/s.f" FIXTURE s" rejected" COMPLETED
+   s" refs-rejected/w/s.f" FIXTURE 1 EXPECT 1 12 1 16 1 s" E-MISMATCH" DIAG+ PUBLISHES
+   s" 3" s" refs-rejected/w/s.f" FIXTURE 1 12 DECL-TOO REFS-ASK
    SAY
-   1 NAMED s" refs-refused/w/s.f" CANON s" refused" NAMED+ NAMED-END
+   1 NAMED s" refs-rejected/w/s.f" CANON s" rejected" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
-   s" refs-refused/w/f.f" DISK-URI 0 2 6 REF+
-   s" refs-refused/w/s.f" OPEN-URI 1 12 16 REF+
+   s" refs-rejected/w/f.f" DISK-URI 0 2 6 REF+
+   s" refs-rejected/w/s.f" OPEN-URI 1 12 16 REF+
    SYMBOLS-END ;
 
 : REFS-DEP-TURNS ( -- )
@@ -5143,7 +5143,7 @@ variable WS-ROOT-U
    s" refs-read/w/d.f" FIXTURE 1 CLEAN
    s" refs-read/w/x.f" FIXTURE TEXT-REFS-READ-EDIT 2 CHANGES
    s" 4" s" refs-read/w/x.f" FIXTURE OUTLINE-ASK
-   SAY HEAR s" 3" -32801 REFUSED
+   SAY HEAR s" 3" -32801 REJECTED
    s" refs-read/w/x.f" FIXTURE 2 CLEAN
    s" 4" SYMBOLS-START SYMBOLS-END ;
 
@@ -5260,7 +5260,7 @@ variable WS-ROOT-U
    s" 3" s" refs-req/w/d.f" FIXTURE 1 14 DECL-NOT REFS-ASK
    SAY
    TEXT-RDB s" refs-req/w/d.f" FIXTURE CHECKS
-   s" refs-req/w/d.f" FIXTURE s" refused" COMPLETED
+   s" refs-req/w/d.f" FIXTURE s" rejected" COMPLETED
    s" refs-req/w/d.f" FIXTURE 1 EXPECT
    1 14 1 18 1 s" E-UNDEFINED" DIAG+ PUBLISHES
    s" 3" SYMBOLS-START SYMBOLS-END ;
@@ -5311,7 +5311,7 @@ variable WS-ROOT-U
    TEXT-RXB s" refs-rch/w/q/b.f" FIXTURE 1 s" verified" BATCH-LISTED
    TEXT-RVE s" refs-rch/w/e.f" FIXTURE 1 s" verified" BATCH-LISTED
    TEXT-RVH s" refs-rch/h.f" FIXTURE CHECKS
-   s" refs-rch/h.f" FIXTURE s" refused" COMPLETED
+   s" refs-rch/h.f" FIXTURE s" rejected" COMPLETED
    s" refs-rch/h.f" FIXTURE 1 EXPECT 0 8 0 15 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES-ANY
    s" 3" s" refs-rch/w/q/b.f" FIXTURE 2 14 DECL-TOO REFS-ASK
    s" 4" s" refs-rch/w/e.f" FIXTURE 2 14 DECL-TOO REFS-ASK
@@ -5542,8 +5542,8 @@ variable WS-ROOT-U
    PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 REF+
    PRIM-REF-USES SYMBOLS-END
    s" 4" SYMBOLS-START PRIM-REF-USES SYMBOLS-END
-   HEAR s" 5" -32803 REFUSED
-   HEAR s" 6" -32803 REFUSED
+   HEAR s" 5" -32803 REJECTED
+   HEAR s" 6" -32803 REJECTED
    s" 7" SYMBOLS-START
    PRIM-SOURCE-PATH s" ELAB: execute" URI-LINE 6 13 REF+
    s" refs-prim/w/e.f" OPEN-URI 0 26 33 REF+
@@ -5604,7 +5604,7 @@ variable WS-ROOT-U
    TEXT-PR-DEP-OPEN s" refs-prim-wave/w/dep.f" FIXTURE 2 s" verified" BATCH-LISTED
    s" 3" 0 PRIM-WAVE-PATH FIXTURE 0 17 DECL-NOT REFS-ASK
    SAY
-   1 NAMED 33 PRIM-WAVE-PATH CANON s" refused" NAMED+ NAMED-END
+   1 NAMED 33 PRIM-WAVE-PATH CANON s" rejected" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
    66 0 ?do
       i 17 <> i 33 <> and if
@@ -5729,7 +5729,7 @@ variable WS-ROOT-U
    TEXT-PR-A s" refs-prim-cover/w/a.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-prim-cover/w/a.f" FIXTURE 0 17 DECL-TOO REFS-ASK
    SAY
-   1 NAMED s" refs-prim-cover/w/bad.f" CANON s" refused" NAMED+ NAMED-END
+   1 NAMED s" refs-prim-cover/w/bad.f" CANON s" rejected" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
    PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 REF+
    s" refs-prim-cover/w/a.f" OPEN-URI 0 17 18 REF+
@@ -5815,10 +5815,10 @@ variable PROBE-DECLS
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\n" HV+
    17 0 ?do s\" using SOURCE-ROOT\n" HV+ loop
    TXT$ ;
-: BI-SOURCE-CAST-REFUSED$ ( -- str )
+: BI-SOURCE-CAST-REJECTED$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nCAST: LV-BAD-TAIL ( R n -- S n )\n" ;
 
-: BI-SOURCE-REFUSED$ ( -- str )
+: BI-SOURCE-REJECTED$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) drop ;\n: SCRIPT-ARG-START ( -- n ) 1 ;\n" ;
 : BI-SOURCE-PARSED$ ( -- str )
    s\" : SKIP-DECL ( -- ) 8 0 do parse-name drop loop ;\nparses: SKIP-DECL 8\nSKIP-DECL : SCRIPT-ARGC ( -- n ) 1 ;\n" ;
@@ -5830,11 +5830,11 @@ variable PROBE-DECLS
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\ns\" undefine SCRIPT-ARGC\" evaluate\n" ;
 : BI-SOURCE-REPLACED-DEFINER$ ( -- str )
    s\" package LSPRET\n: BEGIN-STRUCTURE ( -- ) 2 0 do parse-name drop loop ;\nBEGIN-STRUCTURE X END-STRUCTURE\n;package\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
-: BI-SOURCE-REFUSED-TRUST$ ( -- str )
+: BI-SOURCE-REJECTED-TRUST$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nTRUSTED: REVIEW-BAD ( -- zzz-unknown ) 1 ;\n" ;
-: BI-SOURCE-REFUSED-OPAQUE$ ( -- str )
+: BI-SOURCE-REJECTED-OPAQUE$ ( -- str )
    TXT-B CLEAR
-   BI-SOURCE-REFUSED-TRUST$ HV+
+   BI-SOURCE-REJECTED-TRUST$ HV+
    s\" undefine SCRIPT-ARGC\n" HV+
    TXT$ ;
 : BI-SOURCE-TRUST$ ( -- str )
@@ -5874,8 +5874,8 @@ variable PROBE-DECLS
    SCRIPT-ARGV-PATH s" : SCRIPT-ARG-START " URI-LINE 2 18 REF+
    s" refs-builtin/w/a.f" OPEN-URI 1 13 29 REF+
    SYMBOLS-END
-   HEAR s" 10" -32803 REFUSED
-   HEAR s" 11" -32803 REFUSED
+   HEAR s" 10" -32803 REJECTED
+   HEAR s" 11" -32803 REJECTED
    SCRIPT-ARGV-PATH dup TREE$ 1 OPENS
    STREAM
    SCRIPT-ARGV-PATH 1 EXPECT PUBLISHES
@@ -5963,9 +5963,9 @@ variable PROBE-DECLS
    s" 23" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 23" NOWHERE
-   \ A refused cast is skipped as a refused declaration is: the accepted one
+   \ A rejected cast is skipped as a rejected declaration is: the accepted one
    \ before it is located.
-   BI-SOURCE-CAST-REFUSED$ SCRIPT-ARGV-PATH swap 10 CHANGES
+   BI-SOURCE-CAST-REJECTED$ SCRIPT-ARGV-PATH swap 10 CHANGES
    SAY
    SCRIPT-ARGV-PATH 10 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -5979,7 +5979,7 @@ variable PROBE-DECLS
    s" 25" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 25" NOWHERE
-   BI-SOURCE-REFUSED$ SCRIPT-ARGV-PATH swap 12 CHANGES
+   BI-SOURCE-REJECTED$ SCRIPT-ARGV-PATH swap 12 CHANGES
    SAY
    SCRIPT-ARGV-PATH 12 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -6023,8 +6023,8 @@ variable PROBE-DECLS
    s" 32" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 32" NOWHERE
-   \ A refused structural declaration must not hide a later opaque call.
-   BI-SOURCE-REFUSED-OPAQUE$ SCRIPT-ARGV-PATH swap 18 CHANGES
+   \ A rejected structural declaration must not hide a later opaque call.
+   BI-SOURCE-REJECTED-OPAQUE$ SCRIPT-ARGV-PATH swap 18 CHANGES
    SAY
    SCRIPT-ARGV-PATH 18 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -6033,8 +6033,8 @@ variable PROBE-DECLS
    SAY
    s" 33" NOWHERE
    s" 34" SYMBOLS-START SYMBOLS-END
-   \ Without the call, the accepted declaration survives that same refusal.
-   BI-SOURCE-REFUSED-TRUST$ SCRIPT-ARGV-PATH swap 19 CHANGES
+   \ Without the call, the accepted declaration survives that same rejection.
+   BI-SOURCE-REJECTED-TRUST$ SCRIPT-ARGV-PATH swap 19 CHANGES
    SAY
    SCRIPT-ARGV-PATH 19 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -6181,7 +6181,7 @@ variable PROBE-DECLS
    HU-PATH TEXT-HU 1 OPENS
    SAY
    TEXT-HU HU-PATH CHECKS
-   HU-PATH s" refused" COMPLETED
+   HU-PATH s" rejected" COMPLETED
    HU-PATH 1 EXPECT 1 16 1 22 1 s" E-MISMATCH" DIAG+ PUBLISHES
    s" 3" RN-PREP-PATH 3 15 PREPARE-ASK
    s" 4" RN-PREP-PATH 3 18 PREPARE-ASK
@@ -6204,7 +6204,7 @@ variable PROBE-DECLS
    HEAR s" 7" NULL-RESULT
    s" 8" HOVER-CVT-PATH FAILED
    s" 9" s" hu.f" CANON FAILED
-   HEAR s" 10" -32602 REFUSED
+   HEAR s" 10" -32602 REJECTED
    s" 11" 3 15 19 RANGED
    s" 12" 3 20 24 RANGED
    HEAR s" 13" NULL-RESULT
@@ -6227,9 +6227,9 @@ variable PROBE-DECLS
    s" 4" CHOICE-PATH 4 29 PREPARE-ASK
    s" 5" CHOICE-PATH 4 29 CROW RENAME-ASK
    SAY
-   HEAR s" 3" -32803 REFUSED
-   HEAR s" 4" -32803 REFUSED
-   HEAR s" 5" -32803 REFUSED ;
+   HEAR s" 3" -32803 REJECTED
+   HEAR s" 4" -32803 REJECTED
+   HEAR s" 5" -32803 REJECTED ;
 
 : EDITS-START ( str -- )
    {: id:str :}
@@ -6313,14 +6313,14 @@ variable PROBE-DECLS
    s" 10" RN-PREP-PATH 3 15 s\" ,\"newName\":\"RO\\\\OK\"" RENAME-ASK
    SAY
    SESSION-CAPABILITIES
-   HEAR s" 3" -32602 REFUSED
-   HEAR s" 4" -32602 REFUSED
-   HEAR s" 5" -32803 REFUSED
-   HEAR s" 6" -32803 REFUSED
-   HEAR s" 7" -32803 REFUSED
-   HEAR s" 8" -32803 REFUSED
-   HEAR s" 9" -32803 REFUSED
-   HEAR s" 10" -32803 REFUSED
+   HEAR s" 3" -32602 REJECTED
+   HEAR s" 4" -32602 REJECTED
+   HEAR s" 5" -32803 REJECTED
+   HEAR s" 6" -32803 REJECTED
+   HEAR s" 7" -32803 REJECTED
+   HEAR s" 8" -32803 REJECTED
+   HEAR s" 9" -32803 REJECTED
+   HEAR s" 10" -32803 REJECTED
    RN-PREP-PATH 1 CLEAN ;
 
 : RENAME-WS-TURNS ( -- )
@@ -6424,7 +6424,7 @@ variable PROBE-DECLS
    TEXT-RXB s" rn-rch/w/q/b.f" FIXTURE 1 s" verified" BATCH-LISTED
    TEXT-RVE s" rn-rch/w/e.f" FIXTURE 1 s" verified" BATCH-LISTED
    TEXT-RVH s" rn-rch/h.f" FIXTURE CHECKS
-   s" rn-rch/h.f" FIXTURE s" refused" COMPLETED
+   s" rn-rch/h.f" FIXTURE s" rejected" COMPLETED
    s" rn-rch/h.f" FIXTURE 1 EXPECT 0 8 0 15 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES-ANY
    s" 3" s" rn-rch/w/q/b.f" FIXTURE 2 14 CROW RENAME-ASK
    s" 4" s" rn-rch/w/e.f" FIXTURE 2 14 CROW RENAME-ASK
@@ -6476,7 +6476,7 @@ variable PROBE-DECLS
    SAY
    s" 4" 2 NOT-APPLIED
    s" rn-cnf/w/z.f" 1 s" rn-cnf/w/e.f" ELSEWHERE+
-   s" rn-cnf/w/e.f" CANON s" refused" NAMED+ NAMED-END ;
+   s" rn-cnf/w/e.f" CANON s" rejected" NAMED+ NAMED-END ;
 
 : RENAME-ENG-TURNS ( -- )
    s" rn-eng" REFS-DIR s" rn-eng/w" REFS-DIR
@@ -6491,7 +6491,7 @@ variable PROBE-DECLS
    s" 3" s" rn-eng/w/d.f" FIXTURE 1 2 CROW RENAME-ASK
    SAY
    s" 3" 1 NOT-APPLIED s" rn-eng/w/z.f" 1 s" rn-eng/w/z.f" ELSEWHERE+
-   CONFLICT-FIRST? s" primitive rename refuses edits" HOLDS ;
+   CONFLICT-FIRST? s" primitive rename rejects edits" HOLDS ;
 
 : RENAME-IMG-TURNS ( -- )
    s" rn-img" REFS-DIR s" rn-img/w" REFS-DIR
@@ -6506,7 +6506,7 @@ variable PROBE-DECLS
    s" 3" s" rn-img/w/d.f" FIXTURE 2 2 CROW RENAME-ASK
    SAY
    s" 3" 1 NOT-APPLIED s" rn-img/w/z.f" 2 s" rn-img/w/z.f" ELSEWHERE+
-   CONFLICT-FIRST? s" image rename refuses edits" HOLDS ;
+   CONFLICT-FIRST? s" image rename rejects edits" HOLDS ;
 
 : RENAME-PKG-TURNS ( -- )
    s" rn-pkg" REFS-DIR s" rn-pkg/w" REFS-DIR
@@ -6613,7 +6613,7 @@ variable PROBE-DECLS
    EDITS-END
    s" 6" s" CROW:" RNN-EDITS
    s" 7" s" :CROW" RNN-EDITS
-   HEAR s" 8" -32803 REFUSED ;
+   HEAR s" 8" -32803 REJECTED ;
 
 : TEXT-RF-DOWN ( -- str )  s\" \\ one\n\\ two\n: ROOK ( -- n ) 1 ;\n" ;
 : RENAME-OPEN-TURNS ( -- )
@@ -6662,7 +6662,7 @@ variable PROBE-DECLS
    s" 4" CMP-A-PATH 3 45 COMPLETION-ASK
    s" 3" CANCELS
    SAY
-   HEAR s" 3" -32800 REFUSED
+   HEAR s" 3" -32800 REJECTED
    CMP-A-PATH s" verified" COMPLETED
    CMP-A-PATH 1 CLEAN
    s" 4" ITEMS-START
@@ -6678,7 +6678,7 @@ variable PROBE-DECLS
    s\" \"h\\/3\"" HOVER-A-PATH 4 18 HOVER-ASK
    s\" \"h/3\"" CANCELS
    SAY
-   HEAR s\" \"h\\/3\"" -32800 REFUSED ;
+   HEAR s\" \"h\\/3\"" -32800 REJECTED ;
 
 : MODIFIED-TURNS ( -- )
    CMP-DEP-PATH TEXT-CMP-DEP FS:WRITE-ALL
@@ -6690,7 +6690,7 @@ variable PROBE-DECLS
    s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
    CMP-A-PATH TEXT-CMP-A-NEW 2 CHANGES
    SAY
-   HEAR s" 3" -32801 REFUSED
+   HEAR s" 3" -32801 REJECTED
    TEXT-CMP-A-NEW CMP-A-PATH 2 s" verified" LISTED ;
 
 : STRAY-TURNS ( -- )
@@ -6698,7 +6698,7 @@ variable PROBE-DECLS
    s" 3" s" habu/unknown" ASK
    SAY
    SESSION-CAPABILITIES
-   HEAR s" 3" -32601 REFUSED
+   HEAR s" 3" -32601 REJECTED
    s" 4" s" habu/unknown" ASK
    s" 3" CANCELS
    s" 9" CANCELS
@@ -6708,9 +6708,9 @@ variable PROBE-DECLS
    s" 5" s" habu/unknown" ASK
    s" 5" CANCELS
    SAY
-   HEAR s" 4" -32601 REFUSED
-   HEAR s" 6" -32600 REFUSED
-   HEAR s" 5" -32800 REFUSED ;
+   HEAR s" 4" -32601 REJECTED
+   HEAR s" 6" -32600 REJECTED
+   HEAR s" 5" -32800 REJECTED ;
 
 \ A request, shutdown, a cancel of the request, a request after shutdown and
 \ a cancel of it, and exit, read together: the held request is answered
@@ -6728,9 +6728,9 @@ variable PROBE-DECLS
    EXIT-NOTE
    0 CONVERSE
    CAPABILITIES
-   s" 3" -32800 REFUSED
+   s" 3" -32800 REJECTED
    s" 2" NULL-RESULT
-   s" 4" -32600 REFUSED
+   s" 4" -32600 REJECTED
    ENDS ;
 
 \ No folder is given, so a request about ROOK gathers from the open documents,
@@ -6791,7 +6791,7 @@ variable PROBE-DECLS
    [: HALT-REFS ;] HALT-START
    s" 3" CANCELS
    SAY
-   HEAR s" 3" -32800 REFUSED
+   HEAR s" 3" -32800 REJECTED
    s" refs-halt/e.f" FIXTURE 1 CLEAN
    s" refs-halt/g.f" FIXTURE 1 CLEAN
    s" refs-halt/h.f" FIXTURE 1 CLEAN ;
@@ -6800,7 +6800,7 @@ variable PROBE-DECLS
    HALT-START
    s" refs-halt/h.f" FIXTURE TEXT-HH-NEW 2 CHANGES
    SAY
-   HEAR s" 3" -32801 REFUSED
+   HEAR s" 3" -32801 REJECTED
    s" refs-halt/e.f" FIXTURE 1 CLEAN
    s" refs-halt/g.f" FIXTURE 1 CLEAN
    s" refs-halt/h.f" FIXTURE 2 CLEAN ;
@@ -6841,7 +6841,7 @@ variable PROBE-DECLS
 
 : REFS-CUT-AFTER ( -- )
    s" 3" PAIR-ANSWER
-   HEAR s" 4" -32601 REFUSED ;
+   HEAR s" 4" -32601 REJECTED ;
 
 \ big-frame's comment lines alone: about 700 KB.
 : BIG-QUIET ( -- )
@@ -7026,7 +7026,7 @@ false constant ENGINE-ORIGINS?
    SAY
    SESSION-CAPABILITIES
    REPLACED-TRUSTED A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 2 16 2 18 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
 
 : MALFORMED-DEFER ( -- str )  s\" defer DIAG:MAL:NAME ( -- )\n" ;
@@ -7037,7 +7037,7 @@ false constant ENGINE-ORIGINS?
    SAY
    SESSION-CAPABILITIES
    MALFORMED-DEFER A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT
    0 6 0 19 1 s" E-BAD-QUALIFIED-RECORD" DIAG+ PUBLISHES ;
 
@@ -7049,7 +7049,7 @@ false constant ENGINE-ORIGINS?
    SAY
    SESSION-CAPABILITIES
    MALFORMED-REJECTED A-PATH CHECKS
-   A-PATH s" refused" COMPLETED
+   A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT
    0 15 0 19 1 s" E-UNDEFINED" DIAG+
    0 2 0 7 1 s" E-BAD-QUALIFIED-RECORD" DIAG+ PUBLISHES ;
@@ -7080,7 +7080,7 @@ false constant ENGINE-ORIGINS?
    SAY
    SESSION-CAPABILITIES
    TEXT-UQ UQ-PATH CHECKS
-   UQ-PATH s" refused" COMPLETED
+   UQ-PATH s" rejected" COMPLETED
    UQ-PATH 1 EXPECT 1 13 1 19 1 s" E-UNREQUIRED" DIAG+
    EXP$ UQ-HELP$ STR:CONTAINS? s" the help's require" HOLDS
    PUBLISHES ;
@@ -7090,7 +7090,7 @@ false constant ENGINE-ORIGINS?
    s" diagnostics-open" [: OPEN-TURNS ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
    s" diagnostics-supersede" [: SUPERSEDE-TURNS ;] TALK
-   s" diagnostics-one-refusal" [: ONE-REFUSAL-TURNS ;] TALK
+   s" diagnostics-one-rejection" [: ONE-REJECTION-TURNS ;] TALK
    s" close" [: CLOSE-TURNS ;] TALK
    s" engine-provided" [: ENGINE-TURNS ;] TALK
    s" utf16-column" [: UTF16-TURNS ;] TALK
@@ -7152,7 +7152,7 @@ public
    s" references-unverified" [: REFS-UNV-TURNS ;] TALK
    s" references-partial-dependency" [: REFS-DEP-TURNS ;] TALK
    s" references-partial-edit" [: REFS-PARTIAL-EDIT-TURNS ;] TALK
-   s" references-refused-selection" [: REFS-REFUSED-TURNS ;] TALK
+   s" references-rejected-selection" [: REFS-REJECTED-TURNS ;] TALK
    s" references-undiscoverable" [: REFS-LD-TURNS ;] TALK
    s" references-unsaved" [: REFS-UNSAVED-TURNS ;] TALK
    s" references-digest" [: REFS-DIGEST-TURNS ;] TALK

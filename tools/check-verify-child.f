@@ -53,7 +53,7 @@
 \ engine primitive; a load line for each top-level loader of the subject whose
 \ load reached a file. It answers
 
-\    check-verify: verified | refused | deferred | stopped | held | full
+\    check-verify: verified | rejected | deferred | stopped | held | full
 \                | missing TARGET | unread TARGET
 \    check-verify: file {"file":F,"source":"subject|document|disk",
 \       "size":S,"mtime_sec":MS,"mtime_ns":MN,
@@ -69,7 +69,7 @@
 \       "target_end":TN}
 \
 \ A throw that ends the composition after its rejection wrote its record
-\ answers refused, missing, unread or full. missing is a file a loader names
+\ answers rejected, missing, unread or full. missing is a file a loader names
 \ that is not there, unread one found that cannot be read, and full a
 \ dictionary with no record left; TARGET, the rest of the line after a space
 \ and absent when empty, is that file as it was resolved
@@ -144,7 +144,7 @@
 \ the subject names it LABEL. SUBJECT is check.f's own copy of the text, which
 \ nothing holds. With `--entry` BYTES are entry text. It answers
 \
-\    check-verify: verified | refused | full | missing TARGET | unread TARGET
+\    check-verify: verified | rejected | full | missing TARGET | unread TARGET
 \
 \ With `--prose`, for a check.f run without --json-errors, the first and second
 \ forms write each record as prose where the other forms write it as JSON.

@@ -102,7 +102,7 @@ create TRAILER TRAILER-BYTES allot
    0 CHECKER-OWNER:WRITE-WINDOW
    COMMIT-HELD ;
 
-\ The held routine is cleared on every exit, so a refused commit leaves nothing
+\ The held routine is cleared on every exit, so a rejected commit leaves nothing
 \ the next one could read.
 : COMMIT-OWNED ( n n n n -- ) {: idx:n fn:n size:n cell:n :}
    idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !  cell HELD-DEFER !

@@ -163,7 +163,7 @@ require src/os/env-base.f
 \ file's end.
 \
 \ A position of a calling convention is a PLACE: a register or a data-stack
-\ slot. Refusals another authority owns keep its name: a non-canonical place
+\ slot. Rejections another authority owns keep its name: a non-canonical place
 \ list is NEFF's E-NEFF-SEQ, a register no routine may hold state in E-NEFF-GPR,
 \ an operand outside its field the assembler's.
 
@@ -183,7 +183,7 @@ require src/os/env-base.f
 
 \ The shadow target's routines: -8680..-8689, declared at this file's end.
 \
-\ Refusals of the shadow chain's stages and of publication keep their own
+\ Rejections of the shadow chain's stages and of publication keep their own
 \ names.
 
 \ Native x86-64 instruction emission: -8780..-8799, declared at this file's end.
@@ -548,7 +548,7 @@ public
 : CODE ( n str -- )  false DECLARE ;
 generates: CODE ( -- n )
 
-\ Declares a code as CODE does, refusals included, and marks it a fault: a
+\ Declares a code as CODE does, rejections included, and marks it a fault: a
 \ defect in the program or its environment rather than in what its caller gave.
 : FAULT ( n str -- )  true DECLARE ;
 generates: FAULT ( -- n )
@@ -585,9 +585,9 @@ generates: FAULT ( -- n )
 -9850 s" data space is full: hold bulk data in MEM:ALLOC-BYTES or a DYNAMIC-BUFFER, not in the dictionary" ERROR:CODE E-DATA-SPACE
 -9851 s" a word took more values than the data stack held: give it the inputs its effect states" ERROR:CODE E-UNDERFLOW
 -9852 s" a definition ran while a checker replay is open: define after the `CHECK:SCOPED` quotation returns" ERROR:CODE E-OVERLAY-OPEN
--9853 s" the system refused memory for a definition's captured text" ERROR:CODE E-BODY-TEXT
+-9853 s" no memory for a definition's captured text" ERROR:CODE E-BODY-TEXT
 -9854 s" a computed 0 was thrown, but 0 means no error: throw a nonzero code, as an error constant the package declares" ERROR:CODE E-THROW-ZERO
--9855 s" the system refused memory to grow the table of address cells: make fewer address cells, or raise the process's address-space limit" ERROR:CODE E-XTCELL-GROW
+-9855 s" no memory to grow the table of address cells: make fewer address cells, or raise the process's address-space limit" ERROR:CODE E-XTCELL-GROW
 -2100 s" a path is empty, too long or of a form the call rejects" ERROR:CODE E-FS-PATH
 -2101 s" a path's status could not be read or it names no regular file" ERROR:CODE E-FS-STAT
 -2102 s" a file, directory or pipe could not be opened" ERROR:CODE E-FS-OPEN
@@ -618,7 +618,7 @@ generates: FAULT ( -- n )
 -2511 s" a child wrote more to its stderr than the capture holds" ERROR:CODE E-PROC-STDERR-CAPACITY
 -2600 s" a date's year is outside 0..9999, or a time is before the epoch" ERROR:CODE E-TIME-RANGE
 -2601 s" the buffer is shorter than the date or time text" ERROR:CODE E-TIME-CAPACITY
--2602 s" the host refused to read the clock" ERROR:FAULT E-TIME-CLOCK
+-2602 s" reading the clock failed" ERROR:FAULT E-TIME-CLOCK
 -2700 s" a property test's seed or run count is out of range" ERROR:CODE E-PROP-SEED
 -2701 s" a property generator was given a bound below 1, or a byte or digit out of range" ERROR:CODE E-PROP-GENERATOR
 -2703 s" a generated value does not fit the property test's buffer" ERROR:CODE E-PROP-CAPACITY
@@ -631,7 +631,7 @@ generates: FAULT ( -- n )
 -3001 s" a table field's value is negative, too long, or of a kind the table has no row for" ERROR:CODE E-TBL-FIELD
 -3100 s" the value does not fit the caller's output buffer" ERROR:CODE E-JSON-WRITE-CAPACITY
 -3101 s" a negative U or indent, or string, key or part text that is not UTF-8" ERROR:CODE E-JSON-WRITE-BYTE
--3102 s" the writer is not open, or a call its layout refuses" ERROR:CODE E-JSON-WRITE-STATE
+-3102 s" the writer is not open, or a call its layout rejects" ERROR:CODE E-JSON-WRITE-STATE
 -3103 s" the output buffer is null, or its capacity is negative" ERROR:CODE E-JSON-WRITE-OUTPUT
 -3104 s" an appended span is negative, null with a positive length, or inside a growable output past its written bytes" ERROR:CODE E-JSON-WRITE-SOURCE
 -3300 s" an index outside the vector's elements, or a vector not made" ERROR:CODE E-VEC-BOUNDS
@@ -643,7 +643,7 @@ generates: FAULT ( -- n )
 -3505 s" a library a FUNCTION: names could not be opened" ERROR:FAULT E-FFI-DLOPEN
 -3507 s" a callback frame accessor used outside a live callback, a descriptor no declaration made, or a dispatch whose body was never stored" ERROR:CODE E-FFI-CALLBACK-STATE
 -3600 s" a task's data stack is smaller than TASK:MIN-STACK" ERROR:CODE E-TASK-SIZE
--3603 s" the host refused a thread, semaphore or sleep call" ERROR:FAULT E-TASK-THREAD
+-3603 s" a thread, semaphore or sleep call failed" ERROR:FAULT E-TASK-THREAD
 -3604 s" a task word called in a state it rejects: a wake of a task that is not running, a second result, the task table changed while tasks run, or a task started while the checker's replay parks a definition" ERROR:CODE E-TASK-STATE
 -3605 s" a task user-area claim does not fit, is made while a task is live, or names no slot of the area" ERROR:CODE E-TASK-USER
 -3606 s" a semaphore initialized twice" ERROR:CODE E-TASK-SEM-STATE
@@ -723,7 +723,7 @@ generates: FAULT ( -- n )
 -8602 s" the record a spelling denoted carries no definer kind: it was not made by `constant`, `create` or `variable`, or a `does>` clause took that kind away from it, so entering it would run a body rather than collect a decided value" ERROR:CODE E-NDICT-KIND
 -8621 s" a prepared body whose size, recorded span or clause offset is no whole run of its code" ERROR:FAULT E-NPUB-RELOC
 -8622 s" the pending record is not the unpublished slot the dictionary count points at" ERROR:FAULT E-NPUB-PENDING
--8623 s" a sealed emission for another machine than the engine publishing it runs on: the code region holds only that machine's instructions, so another's bytes are refused before anything about the record is asked" ERROR:CODE E-NPUB-TARGET
+-8623 s" a sealed emission for another machine than the engine publishing it runs on: the code region holds only that machine's instructions, so another's bytes are rejected before anything about the record is asked" ERROR:CODE E-NPUB-TARGET
 -8638 s" a string interned in a build's data space after DP moved back inside it: intern every string before moving DP back, or end the build there" ERROR:CODE E-INTERN-REWIND
 -8670 s" a register-file description that cannot describe a machine: a file of no registers or more than one set's bit mask holds, a reserved register outside the file it is reserved from, a file whose every register is reserved so nothing is allocatable at all, a call-destroyed register that is not allocatable in the first place, or a spill slot width that is not a positive power of two" ERROR:CODE E-NREGFILE
 -8671 s" a machine description that cannot describe a machine: a link register set holding more than one register, a link register or a stack pointer that is not a register of the general file or that the file says is allocatable, a stack alignment that is not a positive power of two, a frame bound that is negative or not a multiple of that alignment, or a negative offset-field reach" ERROR:CODE E-NMACH
@@ -765,7 +765,7 @@ generates: FAULT ( -- n )
 -9172 s" a directory entry is malformed, or its name holds a newline" ERROR:CODE E-FS-LIST-ENTRY
 -9173 s" the listed names do not fit the buffer given" ERROR:CODE E-FS-LIST-CAPACITY
 -9180 s" a TCP argument out of range: a length, port, timeout, address or backlog" ERROR:CODE E-TCP4-OPERAND
--9183 s" the OS answered a socket call with a result it cannot give: a send of no bytes, a cancelled wait, a failed fcntl or a refused poll" ERROR:FAULT E-TCP4-RESULT
+-9183 s" the OS answered a socket call with a result it cannot give: a send of no bytes, a cancelled wait, a failed fcntl or a failed poll" ERROR:FAULT E-TCP4-RESULT
 -9190 s" a queue index or capacity out of range" ERROR:CODE E-QUEUE-OPERAND
 -9191 s" a queue used before it is initialized, or initialized while live" ERROR:CODE E-QUEUE-STATE
 -9192 s" more queue definitions than the package table holds" ERROR:CODE E-QUEUE-TABLE
@@ -773,21 +773,21 @@ generates: FAULT ( -- n )
 -9221 s" a device handle that is stale or closing, or a host with no FIONREAD" ERROR:CODE E-GENIO-STATE
 -9222 s" a device read or write failed, or the device faulted earlier" ERROR:CODE E-GENIO-IO
 -9223 s" no device row free" ERROR:CODE E-GENIO-FULL
--9230 s" CURL's transfer loop did not start: curl_global_init or curl_multi_init failed, the host refused the wake pipe, or the loop's thread did not start" ERROR:FAULT E-CURL-LOOP
+-9230 s" CURL's transfer loop did not start: curl_global_init or curl_multi_init failed, the wake pipe was not made, or the loop's thread did not start" ERROR:FAULT E-CURL-LOOP
 -9232 s" a curl handle that is empty, not live or another task's, or a transfer already in flight" ERROR:CODE E-CURL-STATE
 -9233 s" libcurl answered a call with a result it cannot give, or a capture that is not whole" ERROR:FAULT E-CURL-RESULT
 -9234 s" a curl argument out of range, a header holding CR or LF, or a record index outside the table" ERROR:CODE E-CURL-OPERAND
 -9270 s" a span the operation cannot accept, or an RS256 word run while one runs on the same task" ERROR:CODE E-CRYPTO-OPERAND
--9275 s" libcrypto refused the keyed hash, or answered a digest of the wrong width" ERROR:FAULT E-CRYPTO-MAC
--9277 s" an RS256 key whose encoding, import or validation was refused" ERROR:CODE E-CRYPTO-KEY
+-9275 s" libcrypto rejected the keyed hash, or answered a digest of the wrong width" ERROR:FAULT E-CRYPTO-MAC
+-9277 s" an RS256 key whose encoding, import or validation was rejected" ERROR:CODE E-CRYPTO-KEY
 -9278 s" RS256 verification setup or operation failed" ERROR:FAULT E-CRYPTO-VERIFY
 -9279 s" RS256 signing setup or generation failed" ERROR:FAULT E-CRYPTO-SIGN
 -9280 s" a word that needs the facility before INIT, or a second INIT without RELEASE" ERROR:CODE E-SIGNAL-STATE
 -9281 s" the published stub cells read zero: no baked stub, or not the main task" ERROR:FAULT E-SIGNAL-ABI
 -9282 s" a signal number outside the range sigaction installs" ERROR:CODE E-SIGNAL-NUMBER
--9283 s" sigaction refused the install or the restore" ERROR:FAULT E-SIGNAL-INSTALL
+-9283 s" sigaction failed at the install or the restore" ERROR:FAULT E-SIGNAL-INSTALL
 -9284 s" the self-pipe answered short of the four-byte signal number" ERROR:FAULT E-SIGNAL-READ
--9285 s" poll refused the self-pipe's read end with an errno" ERROR:FAULT E-SIGNAL-POLL
+-9285 s" poll of the self-pipe's read end failed with an errno" ERROR:FAULT E-SIGNAL-POLL
 -9286 s" closing an end of the self-pipe failed" ERROR:FAULT E-SIGNAL-CLOSE
 -9290 s" the host's queues could not be set up: io_uring_setup, a ring mapping, the eventfd or its registration on Linux; the self-pipe or its non-blocking mark on Darwin" ERROR:FAULT E-AIO-SETUP
 -9291 s" the host failed a submission or the loop's wait: io_uring_enter failed or took fewer entries than offered, or the eventfd failed, on Linux; poll failed on Darwin" ERROR:FAULT E-AIO-ENTER
@@ -859,8 +859,8 @@ private
 -7232 s" the address given to select names no published dictionary record: pass the record of a word the dictionary holds" false MINTED DEF-OCC:E-SELECT
 -7234 s" the dictionary ran out of occurrence numbers to issue" true MINTED DEF-OCC:E-EXHAUSTED
 -3200 s" a memory request's size is zero, negative or past the largest an allocator takes: ask for a size from 1 to that largest" false MINTED E-MEM-SIZE
--3201 s" the system refused memory: raise the process's address-space limit (ulimit -v), or reserve less storage" true MINTED E-MEM-MAP
--3203 s" the system refused to unmap memory Habu mapped" true MINTED E-MEM-UNMAP
+-3201 s" the system gave no memory: raise the process's address-space limit (ulimit -v), or reserve less storage" true MINTED E-MEM-MAP
+-3203 s" unmapping memory Habu mapped failed" true MINTED E-MEM-UNMAP
 -3204 s" an allocator record was filled a second time: call `ALLOC:INIT` once, on a zeroed record" true MINTED E-ALLOC-STATE
 7101 s" a type, variant or field name is not a lowercase tail: write it in lower case with no package qualifier, as in `point`" false MINTED TFAM:E-TFAM-CASE
 7102 s" a family, variant or field name is declared twice where it must be unique: give each a name no other declaration in its package, family or variant uses" false MINTED TFAM:E-TFAM-DUP
@@ -903,7 +903,7 @@ public
    REJECTION:SEND-SAVED ;
 
 \ The status a process exits with when nothing caught code n: SYSTEM for a
-\ refused map, UNCAUGHT for any other.
+\ failed map, UNCAUGHT for any other.
 : STATUS ( n -- n )
    E-MEM-MAP = if EXIT-STATUS:SYSTEM exit then
    EXIT-STATUS:UNCAUGHT ;

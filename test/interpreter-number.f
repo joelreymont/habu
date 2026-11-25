@@ -1,5 +1,5 @@
 \ INTERPRETER:NUMBER against num-parse's value, float flag and ok; the name
-\ wall, which refuses a name the reader reads or refuses for range, checks its
+\ wall, which rejects a name the reader reads or rejects for range, checks its
 \ range flag.
 require src/lib/test/assert.f
 require src/lib/test/runner.f
@@ -12,7 +12,7 @@ require src/lib/ieee754.f
 package INTERPRETER-NUMBER-TEST
 
 variable COMPARED
-variable REFUSALS
+variable REJECTIONS
 create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 
 \ Fixed IEEE-754 vectors, independently rounded by C strtod in FE_TONEAREST.
@@ -80,7 +80,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 
 : SAME-WALL ( str -- ) {: s:str :}
    s num-parse nip nip  s RANGE?  or {: number:bool :}
-   number if 1 REFUSALS +! 70 else 0 then {: want:n :}
+   number if 1 REJECTIONS +! 70 else 0 then {: want:n :}
    s HOSTILE-EVAL {: rc:n :}
    s T-LABEL rc want T=
    s T-LABEL GT-ERR$ s" error[E-NUMERIC-DEFINITION]" STR:CONTAINS? number FLAG= ;
@@ -153,8 +153,8 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 
 : SUMMARY ( -- )
    s" interpreter-number: " type COMPARED @ FMT:.INT
-   s"  spellings compared with num-parse, " type REFUSALS @ FMT:.INT
-   s"  refused as definition names" type cr ;
+   s"  spellings compared with num-parse, " type REJECTIONS @ FMT:.INT
+   s"  rejected as definition names" type cr ;
 
 
 T-RESET

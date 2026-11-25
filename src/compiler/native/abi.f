@@ -20,7 +20,7 @@ public
    RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING ;
 
 \ `n` general registers from `base`, machine-free: a run crossing a reserved
-\ register is refused by the contract that holds state in it (NEFF:ROUTINE).
+\ register is rejected by the contract that holds state in it (NEFF:ROUTINE).
 \ Only pressure fixtures state a run; production asks SCRATCH.
 : POOL ( n n -- NEFF:gprs )
    {: base:n n:n :}

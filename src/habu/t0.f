@@ -1286,7 +1286,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 : DO-TICK ( n -- ) {: r:n :}
    ORD @ ROW$ {: a:^ u:n :}
    r XREF-REC {: rec:^ :}
-   rec NDICT:TICK-REFUSED? if a u NO-TICK then
+   rec NDICT:TICK-REJECTED? if a u NO-TICK then
    rec REC-START {: xt:n :}
    xt 0= if a u NO-CODE then
    ROOM ALLOC {: r:vreg :}

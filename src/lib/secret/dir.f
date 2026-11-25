@@ -58,7 +58,7 @@ TASK:FACILITY DIR-LOCK
    DIR-ITEM$ FS:OPEN-SIZED bool>n DIR-FOUND ! DIR-SIZE ! FD>N DIR-FD ! ;
 
 
-\ The cause's errno text; with none, what FS refused: a file not regular
+\ The cause's errno text; with none, what FS rejected: a file not regular
 \ (E-FS-STAT) or a size that changed while read (E-FS-IO).
 : DIR-CAUSE$ ( n n -- str )
    {: code:n cause:n :}
@@ -132,8 +132,8 @@ TASK:FACILITY DIR-LOCK
    true ;
 
 
-\ Opens a refused bind's ERROR line up to its reason, which DIR-REFUSED ends.
-: DIR-REFUSING ( str -- )
+\ Opens a rejected bind's ERROR line up to its reason, which DIR-REJECTED ends.
+: DIR-REJECTING ( str -- )
    {: dir:str :}
    LOG:ERROR s" secret" LOG:LINE
    s" cannot bind the directory store" LOG:TEXT+
@@ -141,7 +141,7 @@ TASK:FACILITY DIR-LOCK
    s" : " LOG:TEXT+ ;
 
 
-: DIR-REFUSED ( str -- ) LOG:TEXT+ LOG:;LINE E-CONFIG throw ;
+: DIR-REJECTED ( str -- ) LOG:TEXT+ LOG:;LINE E-CONFIG throw ;
 
 
 \ A directory past PATH-CAP or holding a NUL, or one this process cannot list
@@ -149,29 +149,29 @@ TASK:FACILITY DIR-LOCK
 : DIR-CHECK ( str -- )
    {: dir:str :}
    dir STR:LEN 0 < dir STR:LEN PATH-CAP > or if
-      dir DIR-REFUSING s" a path of " LOG:TEXT+
-      dir STR:LEN LOG:INT+ s"  bytes" DIR-REFUSED
+      dir DIR-REJECTING s" a path of " LOG:TEXT+
+      dir STR:LEN LOG:INT+ s"  bytes" DIR-REJECTED
    then
    dir DIR-TEXT? 0= if
-      dir DIR-REFUSING s" its path holds a NUL byte" DIR-REFUSED
+      dir DIR-REJECTING s" its path holds a NUL byte" DIR-REJECTED
    then
    dir FS:DIR? 0= if
-      dir DIR-REFUSING s" no directory is there" DIR-REFUSED
+      dir DIR-REJECTING s" no directory is there" DIR-REJECTED
    then
    dir FS:>PATHZ DIR-ACCESS access 0<> if
-      FS:ERRNO dir DIR-REFUSING FS:ERRNO$ DIR-REFUSED
+      FS:ERRNO dir DIR-REJECTING FS:ERRNO$ DIR-REJECTED
    then ;
 
 public
 
 \ Binds with STORE! the store over the directory for the service, once, before
-\ any read; a refusal binds nothing: E-CONFIG, one ERROR line tagged secret.
+\ any read; a rejection binds nothing: E-CONFIG, one ERROR line tagged secret.
 : DIR-BIND ( str str -- )
    {: dir:str svc:str :}
    [: svc INPUT ;] catch {: code:n :}
    code E-CONFIG = if
-      dir DIR-REFUSING
-      s" the service is empty or not text" DIR-REFUSED
+      dir DIR-REJECTING
+      s" the service is empty or not text" DIR-REJECTED
    then
    code 0<> if code throw then
    dir DIR-CHECK

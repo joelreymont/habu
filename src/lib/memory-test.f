@@ -417,7 +417,7 @@ TYPED-VARIABLE WRT-SAVED ^wrt-pair
    MEMT-MARK-A buf c!
    WBT-PROBE-RELEASED ;
 
-\ A size the scope header still fits beside, so the refusal is the OS mapping's.
+\ A size the scope header still fits beside, so what fails is the OS mapping.
 : WBT-ALLOC-FAIL ( -- )
    MEM-MAX-N 2 / BYTES-ALLOC-LEN [: 2drop ;] WITH-BYTES ;
 
@@ -704,9 +704,9 @@ defer WBP-NEST ( n -- )
 
 : WBP-MAX-CHILD ( -- )
    T-RESET
-   s" a near-maximum scope is refused as a mapping" T-LABEL
+   s" a near-maximum scope is rejected as a mapping" T-LABEL
    [: WBP-MAX-16 ;] E-MEM-MAP TTHROWSQ
-   s" a near-maximum scope is refused as a mapping" T-LABEL
+   s" a near-maximum scope is rejected as a mapping" T-LABEL
    [: WBP-MAX-30 ;] E-MEM-MAP TTHROWSQ
    WBP-REENTER
    WBP-EXIT ;
@@ -755,7 +755,7 @@ defer WBP-NEST ( n -- )
    [: WBP-JOIN-CHILD ;] MEMT-FORK-CLEAN
    s" pooled 7: two tasks keep separate bodies" T-LABEL
    [: WBP-TWO-TASK-CHILD ;] MEMT-FORK-CLEAN
-   s" pooled 8: a near-maximum size is refused" T-LABEL
+   s" pooled 8: a near-maximum size is rejected" T-LABEL
    [: WBP-MAX-CHILD ;] MEMT-FORK-CLEAN
    s" pooled 9: a mapped scope between pooled ones keeps both" T-LABEL
    [: WBP-MIXED-CHILD ;] MEMT-FORK-CLEAN
@@ -790,13 +790,13 @@ private
    T-REPORT ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
-: GUARDED-SIZE-REFUSAL ( -- )
+: GUARDED-SIZE-REJECTION ( -- )
    100 MEM:ALLOC-GUARDED MEM:RELEASE-GUARDED ;
 
 : GUARDED-SIZE ( -- )
    T-RESET
    s" a guarded stack needs a whole-page capacity" T-LABEL
-   ['] GUARDED-SIZE-REFUSAL catch E-MEM-SIZE T=
+   ['] GUARDED-SIZE-REJECTION catch E-MEM-SIZE T=
    T-REPORT ;
 
 GUARDED-SIZE

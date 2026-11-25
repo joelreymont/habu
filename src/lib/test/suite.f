@@ -153,7 +153,7 @@ defer STDIN-RUNNER ( str str -- )
 \ A token that must be there. Never name it `parse-name`: the wordlist is
 \ case-insensitive, so a private PARSE-NAME shadows the engine's word for every
 \ later definition in this package, and PARSE-ARGS' end-of-input branch then
-\ answers E-STR-BOUNDS instead of the row refusal.
+\ answers E-STR-BOUNDS instead of the row rejection.
 : REQUIRED-NAME ( -- str )
    parse-name dup STR:LEN 0= if drop E-STR-BOUNDS throw then ;
 

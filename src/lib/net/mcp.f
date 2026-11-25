@@ -115,7 +115,7 @@ public
    ERROR:CODE E-RESPONSE
 -9485 s" a descriptor, inputSchema, outputSchema, meta, result, content blocks, a page or an origin outside what MCP takes: correct it where its reason text says"
    ERROR:CODE E-SCHEMA
--9486 s" the server refused a client's call with 401 or 403" ERROR:CODE E-DENIED
+-9486 s" the server rejected a client's call with 401 or 403" ERROR:CODE E-DENIED
 -9487 s" the server answered a status CURL:UNAVAILABLE? accepts" ERROR:CODE E-UNAVAILABLE
 
 \ A client of one server's endpoint, from OPEN until CLOSE.
@@ -129,7 +129,7 @@ NEWTYPE held
 private
 
 \ Thrown only through REASON, its text the why FAULTED answers.
--9480 s" input a client sent that MCP's params rules refuse (JSON-RPC -32602 with its reason)" ERROR:CODE E-INPUT
+-9480 s" input a client sent that MCP's params rules reject (JSON-RPC -32602 with its reason)" ERROR:CODE E-INPUT
 
 0 constant MODERN            \ 2026-07-28
 1 constant LEGACY            \ 2025-11-25
@@ -1363,7 +1363,7 @@ CAST: HELD>N ( held -- n )
 : TARGET+ ( -- )
    TARGET-KEY$ {: key:str :}
    key STR:LEN 0= PARAMS$ STR:LEN 0= or if exit then
-   \ JSON-RPC's params may be an array, which FIELD? refuses.
+   \ JSON-RPC's params may be an array, which FIELD? rejects.
    PARAMS$ KIND JSON:T-OBJ <> if exit then
    PARAMS$ s" params" key FIELD? 0= if drop exit then
    dup KIND JSON:T-STR <> if drop exit then
@@ -1735,7 +1735,7 @@ public
 : RESULT ( str -- ) s" " s" []" false RESULT! ;
 
 \ RESULT, plus the result's _meta object, which reaches the host's widget and not the
-\ model (OpenAI Apps SDK); empty meta adds none, and E-SCHEMA names the meta it refuses.
+\ model (OpenAI Apps SDK); empty meta adds none, and E-SCHEMA names the meta it rejects.
 : RESULT-META ( str str -- )
    s" []" false RESULT! ;
 
@@ -1899,7 +1899,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    LOCK TASK:GET ROW-RUN @ STOPPED? LOCK TASK:RELEASE ;
 
 \ Throws E-TRANSFER, sending nothing, once REQUEST-STOP has stopped the row.
-: REFUSE-STOPPED ( n -- )
+: REJECT-STOPPED ( n -- )
    {: idx:n :}
    LOCK TASK:GET
    idx ROW-RUN @ STOPPED? if LOCK TASK:RELEASE E-TRANSFER throw then
@@ -2259,7 +2259,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    [: v VEC:DELETE ;] finally ;
 
 \ The state is read and the transfer started in one LOCK hold: a REQUEST-STOP
-\ before it is refused here, one after it finds the transfer for CANCEL-ROW.
+\ before it is rejected here, one after it finds the transfer for CANCEL-ROW.
 : QUEUE ( n CURL:handle -- CURL:status )
    {: idx:n h:CURL:handle :}
    LOCK TASK:GET
@@ -2426,7 +2426,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx ROW PEER-STATUS @ {: status:CURL:http-status :}
    status CURL:HTTP-STATUS>N {: code:n :}
    code 401 = code 403 = or if
-      s" refused the client" idx E-DENIED BAD-REPLY
+      s" rejected the client" idx E-DENIED BAD-REPLY
    then
    status CURL:UNAVAILABLE? if
       s" reports the server unavailable" idx E-UNAVAILABLE BAD-REPLY
@@ -2466,7 +2466,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 \ What is left of a TOOLS limit taken at the MONO-NS reading, rounded down to
 \ whole ms; E-TRANSFER when none is. No limit (0), and a negative one that
-\ TIMEOUT! refuses, pass through.
+\ TIMEOUT! rejects, pass through.
 : LEFT ( ms n -- ms )
    {: limit:ms start:n :}
    limit MS>N {: total:n :}
@@ -2563,7 +2563,7 @@ public
    {: who:client limit:ms :}
    TIME:MONO-NS {: start:n :}
    who LIVE {: idx:n :}
-   idx REFUSE-STOPPED
+   idx REJECT-STOPPED
    idx LIST-BUF {: buf:^ :}
    buf BUF:CLEAR
    91 buf BUF:APPEND-BYTE
@@ -2577,7 +2577,7 @@ public
 : CALL ( client str str ms -- str bool )
    {: who:client name:str args:str limit:ms :}
    who LIVE {: idx:n :}
-   idx REFUSE-STOPPED
+   idx REJECT-STOPPED
    idx name args CALL-REQUEST
    idx name limit [: CALL-EXCHANGE ;] catch {: code:n :}
    drop drop drop

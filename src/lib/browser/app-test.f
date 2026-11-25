@@ -6,7 +6,7 @@
 \ module as base64 that decodes to their bytes, the files read here from
 \ src/lib/browser at the tree's root. MCP-APP:FILE+ of a.js with the bytes hi
 \ appends "a.js":"aGk=" after a prefix. A title that is not XML text is
-\ refused and the vector kept; the case of a negative module length needs
+\ rejected and the vector kept; the case of a negative module length needs
 \ the build's --checks option and is off. test/browser/app-test.f's --chrome
 \ check runs a composed page and its code in Chrome.
 \ Run: bin/hb --load src/lib/browser/app-test.f
@@ -155,9 +155,9 @@ TYPED-VARIABLE FILE ^VEC:vector<u8>
    PAGE-CASES
    CODE-CASES
    PAGE$ STR:LEN {: u:n :}
-   s" a title that is not XML text is refused" T-LABEL
+   s" a title that is not XML text is rejected" T-LABEL
    [: s\" bad\z" PAGE @ MCP-APP:PAGE+ ;] XML:E-SCALAR TTHROWSQ
-   s" a refused title leaves the vector as it was" T-LABEL
+   s" a rejected title leaves the vector as it was" T-LABEL
    PAGE$ STR:LEN u T=
    CODE @ VEC:DELETE
    PAGE @ VEC:DELETE ;
@@ -172,9 +172,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    BYTES PAGE !
    PREFIX$ PAGE @ VEC:APPEND
    PAGE$ STR:LEN {: u:n :}
-   s" a negative module length is refused" T-LABEL
+   s" a negative module length is rejected" T-LABEL
    [: MODULE$ STR:DATA -1 >str PAGE @ MCP-APP:CODE+ ;] E-STR-BOUNDS TTHROWSQ
-   s" a refused length leaves the vector as it was" T-LABEL
+   s" a rejected length leaves the vector as it was" T-LABEL
    PAGE$ STR:LEN u T=
    PAGE @ VEC:DELETE ;
 

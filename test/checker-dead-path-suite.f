@@ -111,10 +111,10 @@ s" DP-D ( n n -- n ) 0 = if drop 5 DEADPATH-FIX:THROWN then" CHECK-QUIET-CANDIDA
 \ which return, so both arms must reach the join one value short.
 package DEADPATH-SHADOW
 
-s" an arm ending in a package word named throw is refused" T-LABEL
+s" an arm ending in a package word named throw is rejected" T-LABEL
 s" DP-E ( n n -- n ) 0 = if drop 5 throw then" CHECK-QUIET-CANDIDATE! 0 T=
 
-s" an arm ending in a package word named die is refused" T-LABEL
+s" an arm ending in a package word named die is rejected" T-LABEL
 s" DP-F ( n n -- n ) 0 = if drop 5 die then" CHECK-QUIET-CANDIDATE! 0 T=
 
 s" the qualified axiom still ends the path from inside that package" T-LABEL
@@ -146,7 +146,7 @@ s" the spelling inside a bracket comment ends nothing" T-LABEL
 s" DP-J ( n n -- n ) 0 = if drop ( throw ) then" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ A candidate is one line and the candidate reader has no `\` comment (a bare
-\ backslash is refused as an undefined word): the bracket form is the comment
+\ backslash is rejected as an undefined word): the bracket form is the comment
 \ case.
 
 s" the axiom really fired: nothing may follow it on that path" T-LABEL

@@ -92,7 +92,7 @@ CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
    na nu CHILD-ABI:WORK ['] WORK AS-WORK-ENTRY ta tu CHILD drop ;
 
 \ A variable's element is whole cells, a buffer's or span's may be a byte.
-\ The line reader reports a refused type and answers 0 bytes.
+\ The line reader reports a rejected type and answers 0 bytes.
 : DECLARE ( n n -- ) {: operand:n kind:n :}
    kind VARIABLE-KIND = if PROVIDED-XT:CELL-LINE-CELL
    else PROVIDED-XT:STORAGE-LINE-CELL then {: reader:n :}

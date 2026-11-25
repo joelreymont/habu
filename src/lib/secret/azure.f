@@ -302,34 +302,34 @@ AZURE-LOCK TASK:FACILITY-INIT
    url ;
 
 
-\ Opens a refused bind's ERROR line up to its reason, which AZURE-REFUSED ends.
-: AZURE-REFUSING ( str -- )
+\ Opens a rejected bind's ERROR line up to its reason, which AZURE-REJECTED ends.
+: AZURE-REJECTING ( str -- )
    {: url:str :}
    LOG:ERROR s" secret" LOG:LINE
    s" cannot bind the Azure Key Vault store at " LOG:TEXT+ url LOG:TEXT+
    s" : " LOG:TEXT+ ;
 
 
-: AZURE-REFUSED ( str -- ) LOG:TEXT+ LOG:;LINE E-CONFIG throw ;
+: AZURE-REJECTED ( str -- ) LOG:TEXT+ LOG:;LINE E-CONFIG throw ;
 
 
 : AZURE-CHECK ( str str str -- )
    {: url:str svc:str origin:str :}
    url AZURE-TRIMMED URI:ORIGIN? 0= if
-      url AZURE-REFUSING s" the vault URL is not an origin alone" AZURE-REFUSED
+      url AZURE-REJECTING s" the vault URL is not an origin alone" AZURE-REJECTED
    then
    url AZURE-TRIMMED SECURE? 0= if
-      url AZURE-REFUSING
+      url AZURE-REJECTING
       s" the vault URL is not https, nor http to a loopback IP literal"
-      AZURE-REFUSED
+      AZURE-REJECTED
    then
    origin URI:ORIGIN? 0= if
-      url AZURE-REFUSING s" the metadata origin is not an origin alone"
-      AZURE-REFUSED
+      url AZURE-REJECTING s" the metadata origin is not an origin alone"
+      AZURE-REJECTED
    then
    [: svc INPUT ;] catch {: code:n :}
    code E-CONFIG = if
-      url AZURE-REFUSING s" the service is empty or not text" AZURE-REFUSED
+      url AZURE-REJECTING s" the service is empty or not text" AZURE-REJECTED
    then
    code 0<> if code throw then ;
 
@@ -337,7 +337,7 @@ AZURE-LOCK TASK:FACILITY-INIT
 public
 
 \ Binds with STORE! the store over the vault for the service, once, before
-\ any read; a refusal binds nothing: E-CONFIG, one ERROR line tagged secret.
+\ any read; a rejection binds nothing: E-CONFIG, one ERROR line tagged secret.
 : AZURE-BIND ( str str str -- )
    {: url:str svc:str origin:str :}
    url svc origin AZURE-CHECK

@@ -193,7 +193,7 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    code 0= if -1 work A-CUR! then
    opened work code cause A-SETTLE ;
 
-\ TRY-OPEN-DIR-AT's cause for the walk's code: EINVAL for a refused path.
+\ TRY-OPEN-DIR-AT's cause for the walk's code: EINVAL for a rejected path.
 : A-DIR-CAUSE ( n n -- n ) {: code:n cause:n :}
    code E-FS-PATH = code E-FFI-NUL = or if EINVAL exit then
    code E-FS-OPEN <> code E-FS-IO <> and if cause CAUSE! code throw then
@@ -251,10 +251,10 @@ public
    dir >FD ;
 
 \ / for an absolute path, . for a relative one; the returned descriptor is the
-\ caller's. The AT words borrow their anchor and refuse absolute paths. An
+\ caller's. The AT words borrow their anchor and reject absolute paths. An
 \ empty, negative or over-PATH-CAP path and an empty, repeated, trailing, . or
 \ .. component throw E-FS-PATH, a NUL E-FFI-NUL (.cache and a..b are
-\ ordinary names). A failed syscall leaves its errno in FS:ERRNO, a refusal 0.
+\ ordinary names). A failed syscall leaves its errno in FS:ERRNO, a rejection 0.
 : OPEN-DIR ( str -- fd ) {: src:^ u:n :}
    COMPILE-READS:MISS
    0 CAUSE!
@@ -271,7 +271,7 @@ public
    cause CAUSE!
    code 0<> if code throw then
    opened >FD ;
-\ OPEN-DIR-AT's walk; none where it throws E-FS-OPEN or E-FS-IO, or a refusal
+\ OPEN-DIR-AT's walk; none where it throws E-FS-OPEN or E-FS-IO, or a rejection
 \ with EINVAL. On Linux a symlink component is ENOTDIR (O_DIRECTORY first).
 : TRY-OPEN-DIR-AT ( fd str -- option<fd> )
    A-DIR-AT {: opened:n code:n cause:n :}
@@ -326,7 +326,7 @@ $1000 constant A-EMPTY-PATH                  \ AT_EMPTY_PATH
    name u NUL-AT u <> if false exit then
    name 0 u A-COMPONENT? ;
 
-: A-REFUSE ( -- ) EINVAL CAUSE! ;
+: A-REJECT ( -- ) EINVAL CAUSE! ;
 : A-DONE ( n -- bool )
    0= if 0 CAUSE! true exit then
    FFI:ERRNO CAUSE! false ;
@@ -337,7 +337,7 @@ $1000 constant A-EMPTY-PATH                  \ AT_EMPTY_PATH
 : A-OPEN-NAME ( fd str n -- option<fd> )
    {: dir:fd name:^ u:n flags:n :}
    COMPILE-READS:MISS
-   name u A-NAME? 0= if A-REFUSE OPTION:NONE exit then
+   name u A-NAME? 0= if A-REJECT OPTION:NONE exit then
    dir FD>N name u >PATHZ flags OPEN-AT-CALL A-OPENED ;
 
 : A-DIGIT-COUNT ( n -- n )
@@ -353,12 +353,12 @@ $1000 constant A-EMPTY-PATH                  \ AT_EMPTY_PATH
    v 0 >= if v dst A-DIGITS exit then
    $2D dst c!  v negate dst 1+ A-DIGITS 1+ ;
 : A-UNLINK ( fd str n -- bool ) {: dir:fd name:^ u:n flags:n :}
-   name u A-NAME? 0= if A-REFUSE false exit then
+   name u A-NAME? 0= if A-REJECT false exit then
    dir FD>N name u >PATHZ flags UNLINK-AT-CALL A-DONE ;
 
 : A-RENAME ( fd str fd str n -- bool )
    {: from:fd src:^ su:n to:fd dst:^ du:n flags:n :}
-   src su A-NAME? dst du A-NAME? and 0= if A-REFUSE false exit then
+   src su A-NAME? dst du A-NAME? and 0= if A-REJECT false exit then
    from FD>N src su >PATHZ to FD>N dst du >PATHZ2 flags
    RENAMEAT2-CALL A-DONE ;
 
@@ -400,7 +400,7 @@ public
    0 CAUSE! >FD ;
 \ Names the open file in the directory; an existing name is EEXIST.
 : TRY-LINK-AT ( fd fd str -- bool ) {: file:fd dir:fd name:^ u:n :}
-   name u A-NAME? 0= if A-REFUSE false exit then
+   name u A-NAME? 0= if A-REJECT false exit then
    file FD>N S\" \z" drop dir FD>N name u >PATHZ
    A-EMPTY-PATH A-LINK-CALL A-DONE ;
 \ Source then target; an existing target is replaced.
@@ -416,13 +416,13 @@ public
    AT-REMOVEDIR A-UNLINK ;
 \ The last n is the new directory's mode, before the umask.
 : TRY-MAKE-DIR-AT ( fd str n -- bool ) {: dir:fd name:^ u:n mode:n :}
-   name u A-NAME? 0= if A-REFUSE false exit then
+   name u A-NAME? 0= if A-REJECT false exit then
    dir FD>N name u >PATHZ mode A-MKDIR-CALL A-DONE ;
 \ The entry itself, never a symlink's target, into the buffer STAT-MODE@
 \ and the rest read.
 : TRY-STAT-AT ( fd str -- bool ) {: dir:fd name:^ u:n :}
    COMPILE-READS:MISS
-   name u A-NAME? 0= if A-REFUSE false exit then
+   name u A-NAME? 0= if A-REJECT false exit then
    dir FD>N name u >PATHZ STAT-BUF AT-NOFOLLOW STAT-AT-CALL
    A-DONE dup if LIBC>STAT then ;
 [then]

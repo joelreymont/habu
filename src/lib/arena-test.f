@@ -6,7 +6,7 @@
 \ leaks a child, releases one twice, loses a middle sibling or runs its own
 \ actions before its children's; leaks under WITH when the body throws; lets a
 \ throwing action stop the rest or loses its code; changes when a mapping is
-\ refused; fails on NULL-PTR;
+\ rejected; fails on NULL-PTR;
 \ cannot be held in a run-time record's field; leaves a later chunk mapped
 \ after RESET, keeps every first chunk RELEASE gives back or a spare after
 \ TRIM; runs an action twice when a release halted in it resumes; moves a
@@ -197,7 +197,7 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    ORDER @ 31 T= ;
 
 
-\ 8. A refused mapping and RELEASE of NULL-PTR.
+\ 8. A failed mapping and RELEASE of NULL-PTR.
 : EDGES ( -- )
    s" edges" T-LABEL
    NULL-PTR ARENA:RELEASE

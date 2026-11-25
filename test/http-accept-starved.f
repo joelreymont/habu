@@ -75,7 +75,7 @@ variable READ-ERRNO
    RLIMIT-NOFILE LIMITS SET-LIMIT 0 T= ;
 
 
-\ Duplicates stdin until the soft limit refuses one: true when it did, false
+\ Duplicates stdin until the soft limit rejects one: true when it did, false
 \ when the limit never bit.
 : FILL ( -- bool )
    0 FILLED !
@@ -157,7 +157,7 @@ variable READ-ERRNO
    ;MATCH ;
 
 
-\ The answer's first bytes, once some have arrived. A refused read answers none
+\ The answer's first bytes, once some have arrived. A rejected read answers none
 \ and leaves its errno in READ-ERRNO.
 : ANSWER$ ( TCP4:connection -- str ) {: conn:TCP4:connection :}
    0 READ-ERRNO !
@@ -205,7 +205,7 @@ variable READ-ERRNO
    RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
    LIMITS @ SAVED-SOFT !
    SOFT-LIMIT LIMIT!
-   s" the soft limit refuses a descriptor" T-LABEL FILL TTRUE
+   s" the soft limit leaves no descriptor" T-LABEL FILL TTRUE
    PIPE-W @ FD:STDERR FD>N DUP2 FD:STDERR FD>N T=
    CLOSE-LAST-FILLER
    GET {: starved:TCP4:connection :}

@@ -41,26 +41,26 @@ private
 
 public
 
-\ A tick refuses a scope entry in every body, as interpreter.f
+\ A tick rejects a scope entry in every body, as interpreter.f
 \ SCOPE-ENTRY-GUARD does.
-: TICK-REFUSED? ( ^n -- bool )
+: TICK-REJECTED? ( ^n -- bool )
    {: rec:^ :}
    rec XREF-START CHECK:SCOPE-CODE-KIND 0<> ;
 
 \ The bound record whatever its flags, or none. Two used publics that both
 \ export the tail, with nothing earlier binding it, are the ambiguity the engine
-\ refuses.
+\ rejects.
 : SCOPE-REC ( str -- ^n )
    scope-find {: rec:^ used:^ used2:^ flags:n :}
    rec XREF-FOUND? 0= flags SCOPE-FIND-AMBIGUOUS and 0<> and if E-USING-AMBIGUOUS throw then
    rec ;
 
-\ Whether a bare reference to the spelling is a using refusal, so that it binds
+\ Whether a bare reference to the spelling is a using rejection, so that it binds
 \ no word: two used publics export the tail and nothing earlier binds it, or a
 \ used public also exports the tail a global binds (E-USING-SHADOW-GLOBAL, or
 \ E-USING-AMBIGUOUS when a second used public exports it too). The engine's
-\ lookup and the checker's binder refuse the same two shapes.
-: USING-REFUSED? ( str -- bool )
+\ lookup and the checker's binder reject the same two shapes.
+: USING-REJECTED? ( str -- bool )
    scope-find {: rec:^ used:^ used2:^ flags:n :}
    rec XREF-FOUND? 0= if flags SCOPE-FIND-AMBIGUOUS and 0<> exit then
    rec XREF-WORDLIST WL:GLOBAL?  used XREF-FOUND?  and ;
@@ -78,7 +78,7 @@ public
 private
 
 \ The record a compilation may name other than by a call: tick, enter or read.
-\ One it may not is refused where it binds, so the spelling is never handed on
+\ One it may not is rejected where it binds, so the spelling is never handed on
 \ to a later scope.
 : SPELL-REC ( str -- ^n )
    SCOPE-REC {: rec:^ :}
@@ -241,10 +241,10 @@ public
 : TOP-TARGET ( str -- n ) TOP-REC REC-CALL drop ;
 
 \ Where a compiled `[']` may take its xt from, or zero. An xt runs wherever it
-\ is handed, so a tick binds no record TICK-REFUSED? refuses, owned or not.
+\ is handed, so a tick binds no record TICK-REJECTED? rejects, owned or not.
 : TICK-TARGET ( str -- n )
    SPELL-REC {: rec:^ :}
-   rec XREF-FOUND? if rec TICK-REFUSED? if 0 exit then then
+   rec XREF-FOUND? if rec TICK-REJECTED? if 0 exit then then
    rec false REC-CODE drop ;
 
 -1 constant ARITY-NONE
@@ -266,7 +266,7 @@ public
    w ;
 
 \ ---- and how many cells a construction's instantiation ADDS -------------------
-\ Absent is ZERO here rather than a refusal: this reader is asked about every
+\ Absent is ZERO here rather than a rejection: this reader is asked about every
 \ call, so absence is the ordinary case and means "adds nothing".
 : CON-PADS ( n -- n )
    EFFECT-MATCH-CELLS {: w:n :}

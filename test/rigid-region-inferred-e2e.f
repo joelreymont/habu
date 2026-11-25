@@ -1,7 +1,7 @@
 \ A definition whose effect is inferred from a fresh-region producer mints a new
 \ region per call, exactly as a declared producer does: two calls never share an
-\ allocation, one call's shared outputs still do. Each refused program runs in
-\ its own subject process (the first refusal ends it); the accepted program
+\ allocation, one call's shared outputs still do. Each rejected program runs in
+\ its own subject process (the first rejection ends it); the accepted program
 \ runs in one more.
 
 require src/lib/test/assert.f
@@ -25,27 +25,27 @@ variable PROG-U
    s"  ;package" PROG PROG-CAP PROG-U BUF-APPEND
    PROG PROG-U @ >str ;
 
-: REFUSED ( str -- )
-   PROGRAM 70 s\" \"code\":\"E-RIGID-REGION-MISMATCH\"" SUBJECT:REFUSED? TTRUE ;
+: REJECTED ( str -- )
+   PROGRAM 70 s\" \"code\":\"E-RIGID-REGION-MISMATCH\"" SUBJECT:REJECTED? TTRUE ;
 
 public
 
 : RUN ( -- )
    T-RESET
    s" two calls of an inferred producer are two regions" T-LABEL
-   s" : T3 USE-INF USE-INF SAME-ID ;" REFUSED
+   s" : T3 USE-INF USE-INF SAME-ID ;" REJECTED
    s" a declared producer's region differs from an inferred one's" T-LABEL
-   s" : T4 RG-ONE USE-INF SAME-ID ;" REFUSED
+   s" : T4 RG-ONE USE-INF SAME-ID ;" REJECTED
    s" an inferred producer of an inferred producer mints per call" T-LABEL
-   s" : T5 NEST NEST SAME-ID ;" REFUSED
+   s" : T5 NEST NEST SAME-ID ;" REJECTED
    s" a nested and a direct inferred producer are two regions" T-LABEL
-   s" : T6 NEST USE-INF SAME-ID ;" REFUSED
+   s" : T6 NEST USE-INF SAME-ID ;" REJECTED
    s" an inferred producer keeps two distinct identities distinct" T-LABEL
-   s" : TD USE-DIFF SAME-ID ;" REFUSED
-   s" an inferred consumer of a region its body minted is refused" T-LABEL
-   s" : F RG-ONE SAME-ID ;" REFUSED
+   s" : TD USE-DIFF SAME-ID ;" REJECTED
+   s" an inferred consumer of a region its body minted is rejected" T-LABEL
+   s" : F RG-ONE SAME-ID ;" REJECTED
    s" a declared producer wrapper mints per call" T-LABEL
-   s" : USE-DECL ( -- fresh-region-a ) RG-ONE ; : T7 USE-DECL USE-DECL SAME-ID ;" REFUSED
+   s" : USE-DECL ( -- fresh-region-a ) RG-ONE ; : T7 USE-DECL USE-DECL SAME-ID ;" REJECTED
    s" one call's shared identities stay shared" T-LABEL
    s" : TP USE-PAIR SAME-ID ;"
       PROGRAM 0 SUBJECT:EXITED? TTRUE

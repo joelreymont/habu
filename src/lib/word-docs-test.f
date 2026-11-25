@@ -1,5 +1,5 @@
 \ word-docs-test.f - package WORD-DOCS through its public API: an inline fixture
-\ for each recording rule, the refusals, storage beyond one chunk, and a real
+\ for each recording rule, the rejections, storage beyond one chunk, and a real
 \ source file.
 \ Run: bin/hb --load src/lib/word-docs-test.f
 
@@ -151,13 +151,13 @@ variable FIX-U
    3 WORD-DOCS:PUBLIC? TFALSE
    WORD-DOCS:RESET ;
 
-: REFUSALS ( -- )
-   s" refusals" T-LABEL
+: REJECTIONS ( -- )
+   s" rejections" T-LABEL
    [: s" : " DOCS ;] WORD-DOCS:E-SOURCE TTHROWSQ
    [: s" package" DOCS ;] WORD-DOCS:E-SOURCE TTHROWSQ
    [: s" package P public EXPORT" DOCS ;] WORD-DOCS:E-SOURCE TTHROWSQ
    [: s\" s\" open" DOCS ;] WORD-DOCS:E-SOURCE TTHROWSQ
-   \ The records read before the refusal stay until RESET.
+   \ The records read before the rejection stay until RESET.
    [: s" : KEPT ( -- ) ; :" DOCS ;] WORD-DOCS:E-SOURCE TTHROWSQ
    WORD-DOCS:COUNT 1 T=
    0 s" KEPT" s" " s" --" REC=
@@ -220,7 +220,7 @@ public
 
 : RUN ( -- )
    FIX-OPEN
-   RULES BARE-NOTES APPEND PARTS GLOBALS REFUSALS MANY-RECORDS REAL-FILE
+   RULES BARE-NOTES APPEND PARTS GLOBALS REJECTIONS MANY-RECORDS REAL-FILE
    FIX-CLOSE ;
 
 ;package

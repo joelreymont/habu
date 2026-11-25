@@ -1,5 +1,5 @@
 \ allow-task-package.f - a task admits a package after the main thread admitted
-\ another, then a second task refuses one publishing a keyword, as main does.
+\ another, then a second task rejects one publishing a keyword, as main does.
 require src/lib/vocabulary.f
 require src/lib/task.f
 
@@ -19,11 +19,11 @@ public
 ;package
 
 TASK:MIN-STACK TASK:TASK ADMITTER
-TASK:MIN-STACK TASK:TASK REFUSER
+TASK:MIN-STACK TASK:TASK REJECTER
 
 : ADMIT ( -- )
    s" PTASK" VOCABULARY:ALLOW-PACKAGE s" admitted" type cr 0 TASK:RETURN ;
-: REFUSE ( -- ) s" PTKW" VOCABULARY:ALLOW-PACKAGE 0 TASK:RETURN ;
+: REJECT ( -- ) s" PTKW" VOCABULARY:ALLOW-PACKAGE 0 TASK:RETURN ;
 
 : JOIN-CODE ( result<n,n> -- n )
    MATCH result ok OF drop 0 ENDOF err OF ENDOF ;MATCH ;
@@ -32,6 +32,6 @@ TASK:MIN-STACK TASK:TASK REFUSER
    s" PTMAIN" VOCABULARY:ALLOW-PACKAGE
    ['] ADMIT ADMITTER TASK:ACTIVATE
    ADMITTER TASK:JOIN JOIN-CODE .
-   ['] REFUSE REFUSER TASK:ACTIVATE
-   REFUSER TASK:JOIN JOIN-CODE . ;
+   ['] REJECT REJECTER TASK:ACTIVATE
+   REJECTER TASK:JOIN JOIN-CODE . ;
 RUN

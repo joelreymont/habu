@@ -32,7 +32,7 @@ E-HTTP-SOCKET constant E-SOCKET
 
 \ A worker slot under two names: the request it is parsing and the response it
 \ is building. Both carry the slot's generation, so a handle kept past the
-\ request it belonged to is refused instead of addressing the next one.
+\ request it belonged to is rejected instead of addressing the next one.
 DEFTYPE REQUEST
 DEFTYPE RESPONSE
 
@@ -209,7 +209,7 @@ private
 
 
 \ The slot's JSON vector deleted and made again with room for JSON-START bytes.
-\ It is held before its room is reserved, so a refused reserve leaks nothing.
+\ It is held before its room is reserved, so a rejected reserve leaks nothing.
 : REMAKE-JSON ( n -- ) {: idx:n :}
    idx DROP-JSON
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
@@ -467,7 +467,7 @@ private
    idx OUT-BUF BUF:DISPOSE ;
 
 
-\ A refused allocation leaves GIVEN-BACK set, so the next request tries again.
+\ A failed allocation leaves GIVEN-BACK set, so the next request tries again.
 : MAKE-ANSWER ( n -- ) {: idx:n :}
    idx GIVEN-BACK @ 0= if exit then
    idx HDR-BUF HDR-START REMAKE
@@ -481,7 +481,7 @@ private
 
 
 \ Everything one request owns, cleared before it is parsed, so a request that
-\ the grammar refuses cannot read the spans of the one before it. The input
+\ the grammar rejects cannot read the spans of the one before it. The input
 \ buffer's own cursor survives: bytes of the next request may already be in it.
 : SLOT-RESET ( n -- ) {: idx:n :}
    0 idx BOUNDED HEAD-U !

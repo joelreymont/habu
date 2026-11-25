@@ -34,7 +34,7 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
 : CHECK ( n str -- )
    {: status:n verb:str :}
    status 0= if exit then
-   LOG:ERROR s" power" LOG:LINE verb LOG:TEXT+ s"  refused, IOReturn " LOG:TEXT+
+   LOG:ERROR s" power" LOG:LINE verb LOG:TEXT+ s"  rejected, IOReturn " LOG:TEXT+
       status LOG:INT+ LOG:;LINE
    E-ASSERTION throw ;
 
@@ -46,7 +46,7 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
    name CF-TEXT {: label:n :}
    kind 0= label 0= or if
       kind CF-FREE label CF-FREE
-      LOG:ERROR s" power" LOG:LINE s" CFStringCreate refused" LOG:TEXT+ LOG:;LINE
+      LOG:ERROR s" power" LOG:LINE s" CFStringCreate rejected" LOG:TEXT+ LOG:;LINE
       E-ASSERTION throw
    then
    kind LEVEL-ON label id PM-CREATE

@@ -138,7 +138,7 @@ create CALL-BUF 2 cells SCRATCH-ALLOT    \ CALL+'s first, then second bytes
    {: off:n :}
    off 1+  off HASH-AT VACANT SLOT ! ;
 
-\ A refused map marks the recording missed and throws E-MEM-MAP carrying its
+\ A failed map marks the recording missed and throws E-MEM-MAP carrying its
 \ record.
 : FRESH ( n str -- ^u8 )
    {: bytes:n m:^ mu:n :}

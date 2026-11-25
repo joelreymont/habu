@@ -33,9 +33,9 @@ split-str
 \ E-JSON-READ-STATE before the rest is read.
 \ Writing goes through the nominal `^JSON:writer`, minted only by the typed
 \ storage definers; one never opened (the definer's zero image) or already
-\ closed refuses every operation with E-JSON-WRITE-STATE.
+\ closed rejects every operation with E-JSON-WRITE-STATE.
 \ Every emitter answers its writer and appends all of its bytes or none; a
-\ document that hit a refusal is incomplete until RESET or CLOSE.
+\ document that hit a rejection is incomplete until RESET or CLOSE.
 \ WRITE-STRING, WRITE-KEY and WRITE-STRING-PART take UTF-8 text, else
 \ E-JSON-WRITE-BYTE, as is a negative indent; WRITE-RAW and
 \ WRITE-FIELD-RAW copy JSON text as given.
@@ -48,7 +48,7 @@ split-str
 \ `{}` and `[]`; string parts never break.
 \ A COMMA right after a START writes nothing; after a value it writes the
 \ comma. Between WRITE-STRING-START and WRITE-STRING-END only string parts
-\ and the end are taken. These are E-JSON-WRITE-STATE, refused before any byte
+\ and the end are taken. These are E-JSON-WRITE-STATE, rejected before any byte
 \ is written: a COMMA before any token, after a comma or a key, or inside an
 \ open string; an END with no open container, after a comma or a key, or
 \ inside an open string; any other token inside an open string; a string part

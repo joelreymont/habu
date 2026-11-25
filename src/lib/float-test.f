@@ -196,7 +196,7 @@ FL-RUN
 DECIMAL-FLOAT-TEST:RUN
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
-\ A negative length is refused before a byte is read; each span ends at an
+\ A negative length is rejected before a byte is read; each span ends at an
 \ inaccessible page, so a read faults.
 : FL-DROP ( option<r> -- )
    MATCH option

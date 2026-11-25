@@ -1,5 +1,5 @@
 \ word-load-main.f - its top level runs a word that loads a file, so the build
-\ refuses the load.
+\ rejects the load.
 
 package FILE-OBJECTS-WORD-LOAD
 public

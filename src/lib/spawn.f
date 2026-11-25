@@ -99,7 +99,7 @@ HERM-AT 1+ constant RECORD-CELLS
 
 
 \ A C-string copy of the bytes in the request's own chunks. This and ADD-ENV's
-\ FFI:CSTR! refuse a path, argument, row or directory holding a 0 byte:
+\ FFI:CSTR! reject a path, argument, row or directory holding a 0 byte:
 \ E-FFI-NUL.
 : CHUNK-ZCOPY ( str ^n -- ^u8 )
    {: src:^ len h:^ :}
@@ -267,7 +267,7 @@ HERM-AT 1+ constant RECORD-CELLS
 
 public
 
-\ Positive errno of this task's last refused spawn; 0 after one that succeeded.
+\ Positive errno of this task's last failed spawn; 0 after one that succeeded.
 : ERRNO ( -- n ) ERRNO-CELL @ ;
 
 
@@ -356,7 +356,7 @@ public
    h MINT ;
 
 
-\ Refuses a closed parent fd as SPAWN refuses an FD naming one: E-PROC-SPAWN,
+\ Rejects a closed parent fd as SPAWN rejects an FD naming one: E-PROC-SPAWN,
 \ EBADF in ERRNO, for a caller that checks before it opens descriptors that
 \ could take the closed number. An open fd passes and leaves ERRNO as it was.
 : CHECK-FD ( fd -- )
@@ -365,7 +365,7 @@ public
    E-PROC-SPAWN throw ;
 
 
-\ Spawns the request and frees it whatever the outcome. A refusal throws
+\ Spawns the request and frees it whatever the outcome. A rejection throws
 \ E-PROC-SPAWN with the positive errno in ERRNO; a spawn that succeeds sets it 0.
 : SPAWN ( PROCESS:request -- pid )
    COMPILE-READS:MISS

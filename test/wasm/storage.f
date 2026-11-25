@@ -42,7 +42,7 @@ STRUCTURE sample OPAQUE DERIVE addr
    0 BYTES 1 PTRS !
    1 PTRS @ 0 BYTES SAME . ;
 
-: REFUSE ( -- )
+: REJECT ( -- )
    ['] PAST-MEMORY catch .
    ['] PAST-MEMORY32 catch .
    103 BYTES c@ .
@@ -76,12 +76,12 @@ public
 
 \ One buffer's life as on the native target. 100 bytes hold index 103: the
 \ capacity is the request rounded up to a cell. Growing to 70000 bytes maps two
-\ pages at P+1, copies the old page's bytes and frees it. A refused reserve
+\ pages at P+1, copies the old page's bytes and frees it. A rejected reserve
 \ throws its code and keeps the mapping and its capacity: 4 GiB, which
-\ memory.grow refuses, and 2^48 bytes, more pages than memory32 has. Reserving
+\ memory.grow rejects, and 2^48 bytes, more pages than memory32 has. Reserving
 \ a released buffer again takes its two pages back, cleared.
 : BUFFER ( -- )
-   GROW REFUSE REUSE
+   GROW REJECT REUSE
    BYTES-RELEASE CELLS-RELEASE PTRS-RELEASE ;
 
 \ One-page neighbours A, B, C, freed as A, C, B, join into one run. BYTES is held first:
@@ -122,7 +122,7 @@ public
 \ negative length, and at the address 2^32 past it, which no memory offset is
 \ and which wraps to it in 32 bits: each answers -1 and leaves the free list as
 \ it was, so the page then frees, maps back whole and frees again.
-: REFUSED ( -- )
+: REJECTED ( -- )
    65536 map-anon . {: p:^ :}
    p 0 munmap .
    p byte-view 100 + 65536 munmap .
@@ -144,8 +144,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : WIDE-PAST ( -- ) 2 WIDE drop ;
 : WIDE-PAST-GROWN ( -- ) 5 WIDE drop ;
 
-\ A buffer refuses an index past its capacity, a negative one and any after
-\ release; a reserve refuses a negative count and one whose bytes overflow.
+\ A buffer rejects an index past its capacity, a negative one and any after
+\ release; a reserve rejects a negative count and one whose bytes overflow.
 \ The accessor bounds by its declared width.
 : BOUNDS ( -- )
    100 BYTES-RESERVE

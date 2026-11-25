@@ -21,9 +21,9 @@ variable RQM
 \ RORDINAL: the text names a type variable by its ordinal, which no source
 \ signature spells.
 variable RORDINAL
-\ RROW-UNSAID: the unsaid part is a row, for REC-REFUSE-WHY.
+\ RROW-UNSAID: the unsaid part is a row, for REC-REJECT-WHY.
 variable RROW-UNSAID
-\ RBIND-FULL: a forall past BINDER-DEPTH-MAX nested binders, for REC-REFUSE-WHY.
+\ RBIND-FULL: a forall past BINDER-DEPTH-MAX nested binders, for REC-REJECT-WHY.
 variable RBIND-FULL
 
 \ RTAILS is -1 while TAIL-CAPTURE, CYCLE-NOTES or NARROWED-NOTES renders: every
@@ -849,7 +849,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 
 
 \ The record is built under symbol 0, as CREATED-RECORD-BUILD builds one, so no
-\ lookup sees it; a row too deep to record is refused before E-BUILD-EFFECT dies.
+\ lookup sees it; a row too deep to record is rejected before E-BUILD-EFFECT dies.
 : FACTS-BUILD ( -- )
    NEW
    FACTS-PARSE {: din:n dout:n rin:n rout:n :}
@@ -860,7 +860,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
    din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + FACTS-NEW ! ;
 
 
-\ The parse refuses a text by SGBAD or SIG-UNRES, never by a throw.
+\ The parse rejects a text by SGBAD or SIG-UNRES, never by a throw.
 : FACTS-ANSWER ( -- bool )
    FACTS-BUILD
    FACTS-NEW @ 0= IF RES-FALSE EXIT THEN
@@ -1611,10 +1611,10 @@ variable MDV-I   variable MDV-F
    SGBAD-ARITY? IF s" E-WRONG-ARITY" EXIT THEN
    s" E-BAD-SIGNATURE" ;
 
-\ The code, message, label, notes and help all name the one rejection REFUSAL@
+\ The code, message, label, notes and help all name the one rejection REJECTION@
 \ chose.
 : DCODE ( -- str )
-   REFUSAL@ {: k:n :}
+   REJECTION@ {: k:n :}
    k RF-IMM = IF IMM-CODE$ EXIT THEN
    k RF-UNDEF = IF s" E-UNDEFINED" EXIT THEN
    k RF-KEYWORD = IF s" E-UNDEFINED" EXIT THEN
@@ -1634,7 +1634,7 @@ variable MDV-I   variable MDV-F
 : NM-SPAN ( -- str )
    NMOFF @ TADDR NMU @ ;
 \ The return rows `return_stack` names, expected then actual: a rejected read's
-\ and the row it met (RSR-EXP), a quotation literal's own when its seal refused
+\ and the row it met (RSR-EXP), a quotation literal's own when its seal rejected
 \ it (RSBAD 3, 4), else the definition's.
 : RS-ROWS ( -- n n )
    RSR-EXP @ 0 <> IF RSR-EXP @ RSR-ACT @ EXIT THEN
@@ -1653,18 +1653,18 @@ variable MDV-I   variable MDV-F
    RSBAD @ 4 = IF s" reads below the quotation's return cells" EXIT THEN
    s" return row unbalanced" ;
 
-: ROWS-REFUSAL? ( n -- bool )
+: ROWS-REJECTION? ( n -- bool )
    {: k:n :}
    k RF-MISMATCH =  k RF-REASON = or ;
 
-\ DIAG-PRINT prints the rejection REFUSAL@ names through REJECTION's parts, the
+\ DIAG-PRINT prints the rejection REJECTION@ names through REJECTION's parts, the
 \ same calls giving prose and JSON. Rows in its text are rendered as they stood
 \ at the pin (AT-PIN), without DROW's trailing space.
 
 \ The kind the message, label, notes and help follow: a mismatch with no
 \ captured pair has no rows to name.
 : DKIND ( -- n )
-   REFUSAL@ {: k:n :}
+   REJECTION@ {: k:n :}
    k RF-MISMATCH =  DEXP @ 0=  and IF RF-REJECTED EXIT THEN
    k ;
 
@@ -2175,7 +2175,7 @@ EXPORT TFAM:SUMV-PAY-N
    SGIN @ INFERRED-FROM TRIM-SPACE ;
 : EFFECT-NOTES? ( n -- bool ) {: k:n :}
    RECEFF-ON? TOP-STEP @ 0= and 0= IF RES-FALSE EXIT THEN
-   k RF-MISMATCH =  k RF-RETURN = or  k RF-NP = or  REFUSAL-UNCHECKABLE? or
+   k RF-MISMATCH =  k RF-RETURN = or  k RF-NP = or  REJECTION-UNCHECKABLE? or
    k RF-REASON =  DEXP @ 0 <>  MDIAG @ MD-UNDERFLOW = or  and  or ;
 : EFFECT-NOTES ( -- )
    s" declared" REJECTION:NOTE  SGA @ SGU @ SIG-BARE EMIT-STR
@@ -2209,7 +2209,7 @@ EXPORT TFAM:SUMV-PAY-N
 : DIAG-NOTES ( -- )
    DKIND {: k:n :}
    k RF-IMM = IF PIN-TOK$ IMM-NOTES THEN
-   k ROWS-REFUSAL? IF ROWS-NOTES THEN
+   k ROWS-REJECTION? IF ROWS-NOTES THEN
    k RF-RETURN = IF RS-NOTES THEN
    k RF-REASON =  MDIAG @ MD-NONEXH = and IF
       s" missing" REJECTION:NOTE  0 0= MDIAG-MISSING-WALK
@@ -2583,7 +2583,7 @@ PTR-VARIABLE HOLDER-FIRST
 
 \ Why REC-SIG left a certified sig-less word unrecorded; the last arm answers
 \ every other RQM cause, a stale or scoped type among them, as an unmodeled tag.
-: REC-REFUSE-WHY ( -- )
+: REC-REJECT-WHY ( -- )
    RBIND-FULL @ IF BINDERS-REASON s"  in inferred effect" EMIT-STR EXIT THEN
    RROW-UNSAID @ IF
       s" quotation return-stack clause or more than " EMIT-STR  RROW-CAP EMIT-U
@@ -2591,7 +2591,7 @@ PTR-VARIABLE HOLDER-FIRST
    THEN
    s" unmodeled type tag in inferred effect" EMIT-STR ;
 
-\ The fix for REC-REFUSE-WHY's reason, for the word na nu.
+\ The fix for REC-REJECT-WHY's reason, for the word na nu.
 : REC-REJECT-HELP ( str -- ) {: na:^ nu:n :}
    RBIND-FULL @ IF
       s" name an inner callback's effect in a word of its own, so at most "
@@ -2608,14 +2608,14 @@ PTR-VARIABLE HOLDER-FIRST
 \ W-EFFECT-NOT-RECORDED warns that the word certified and loaded, but a later
 \ call rejects it as undefined; the run's status stands. It names the word as
 \ its source token is spelled.
-: REC-REFUSE-DIAG ( -- )
+: REC-REJECT-DIAG ( -- )
    NM-SPAN {: na:^ nu:n :}
    s" W-EFFECT-NOT-RECORDED" REJECTION:WARN
    s" the effect of `" EMIT-STR  na nu EMIT-STR
    s" ` cannot be recorded, so a later call of it is rejected as undefined"
    EMIT-STR
    NM-SPAN REJECTION:AT  s" effect not recorded" EMIT-STR
-   s" reason" REJECTION:NOTE  REC-REFUSE-WHY
+   s" reason" REJECTION:NOTE  REC-REJECT-WHY
    REJECTION:HELP  na nu REC-REJECT-HELP
    REJECTION:KEEP ;
 
@@ -2630,7 +2630,7 @@ PTR-VARIABLE HOLDER-FIRST
       EXIT
    THEN
    BROW @ DCUR @ CHECK-UNRECORDED!
-   REC-REFUSE-DIAG ;
+   REC-REJECT-DIAG ;
 
 \ The text of a rejected `cast:` or `linear:` declaration.
 package CAST-ERROR
@@ -2676,7 +2676,7 @@ package CAST-ERROR
 ;package
 
 global
-\ `+` and `cell+` refuse a layout pointee; bounds stay the caller's.
+\ `+` and `cell+` reject a layout pointee; bounds stay the caller's.
 : record-at ( ^a n -- ^a ) cells + ;  INTRINSIC-RECORD-AT INTRINSIC
 
 ;package

@@ -1,4 +1,4 @@
-\ Loop exits: unloop and exit forms run to their values, and the checker refuses
+\ Loop exits: unloop and exit forms run to their values, and the checker rejects
 \ each unbalanced form. test/loop-obligations.f loads it and reads its output.
 
 require src/core/exit-status.f
@@ -174,7 +174,7 @@ variable ROUND
    loop
    ROUND @ 128 EQ! ;
 
-: REFUSALS ( -- )
+: REJECTIONS ( -- )
    s" : LOB-BARE ( -- ) 3 0 do exit loop ;" REJECT
    s" : LOB-NONE ( -- ) unloop ;" REJECT
    s" : LOB-TWICE ( -- ) 3 0 do unloop unloop exit loop ;" REJECT
@@ -197,8 +197,8 @@ variable ROUND
 
 RUNTIME
 s" loop-runtime: ok" type cr
-REFUSALS
-: AFTER-REFUSALS ( -- ) 3 0 do i drop loop ;
-AFTER-REFUSALS
+REJECTIONS
+: AFTER-REJECTIONS ( -- ) 3 0 do i drop loop ;
+AFTER-REJECTIONS
 RUNTIME
 ;package

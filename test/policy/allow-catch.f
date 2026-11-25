@@ -1,4 +1,4 @@
-\ allow-catch.f - a refusal inside the harness's `included` frame is a throw
+\ allow-catch.f - a rejection inside the harness's `included` frame is a throw
 \ the harness can catch; it prints the code it caught.
 require src/lib/vocabulary.f
 require test/policy/dep.f

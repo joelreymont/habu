@@ -34,7 +34,7 @@ variable TAKEN
 variable STAMPS                     \ marks written so far
 variable UNZEROED
 variable CHANGED
-variable REFUSAL
+variable REJECTION
 variable LIVE                       \ bytes the slots hold
 variable HIGHEST
 
@@ -96,12 +96,12 @@ variable HIGHEST
    s STR:DATA i PTRS !  s STR:LEN i SIZES !  w i MARKS ! ;
 
 
-: REFUSE ( -- ) [: AL @ HUGE ALLOC:BYTES drop drop ;] catch REFUSAL ! ;
+: REJECT ( -- ) [: AL @ HUGE ALLOC:BYTES drop drop ;] catch REJECTION ! ;
 
 
 : TAKE ( n -- )
    {: i:n :}
-   TAKEN @ BLOCKS 2 / = if REFUSE then
+   TAKEN @ BLOCKS 2 / = if REJECT then
    SIZE {: len:n :}
    AL @ len ALLOC:BYTES drop {: p:^ :}
    p len >str ZEROED? 0= if 1 UNZEROED +! then
@@ -144,7 +144,7 @@ variable HIGHEST
 
 : RESET ( -- )
    0 TAKEN !  0 STAMPS !  0 UNZEROED !  0 CHANGED !
-   0 REFUSAL !  0 LIVE !  0 HIGHEST !
+   0 REJECTION !  0 LIVE !  0 HIGHEST !
    SLOTS 0 ?do NULL-PTR i PTRS ! loop ;
 
 public
@@ -155,6 +155,6 @@ public
    SEED PROP:SEED!
    begin TAKEN @ BLOCKS < while STEP repeat
    SLOTS 0 ?do i PTRS @ NULL-PTR <> if i GIVE then loop
-   UNZEROED @ CHANGED @ REFUSAL @ HIGHEST @ ;
+   UNZEROED @ CHANGED @ REJECTION @ HIGHEST @ ;
 
 ;package

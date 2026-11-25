@@ -74,7 +74,7 @@ LC-CAP BUFFER: LC-ERR
    erru LEN>N 0 T=
    LC-OUT outu LEN>N >str want T$= ;
 
-\ The program runs to the end and prints this; the definition it refuses reports
+\ The program runs to the end and prints this; the definition it rejects reports
 \ on stderr.
 : LC-OUT-PRINTS ( str str -- ) {: want:str :}
    0 LC-EXITS drop {: outu:len :}

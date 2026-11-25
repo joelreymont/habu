@@ -371,7 +371,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-RESET
    s" resize sets the capacity exactly either way and keeps the bytes" T-LABEL
    BUFT-RESIZE
-   s" resize to zero capacity is refused" T-LABEL
+   s" resize to zero capacity is rejected" T-LABEL
    [: BUFT-BUF 0 BUF:N>BLEN BUF:RESIZE ;] E-BUF-CAPACITY TTHROWSQ
    s" ensure past the capacity doubles it and keeps the bytes" T-LABEL
    BUFT-ENSURE
@@ -405,13 +405,13 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-APPEND-NEW
    s" a failed growth leaves the buffer as it was" T-LABEL
    BUFT-GROW-FAIL-ATOMIC
-   s" init with zero capacity is refused" T-LABEL
+   s" init with zero capacity is rejected" T-LABEL
    [: BUFT-CAP-ZERO ;] E-BUF-CAPACITY TTHROWSQ
-   s" an append whose length would wrap is refused" T-LABEL
+   s" an append whose length would wrap is rejected" T-LABEL
    [: BUFT-APPEND-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
-   s" a grow whose length would wrap is refused" T-LABEL
+   s" a grow whose length would wrap is rejected" T-LABEL
    [: BUFT-GROW-TAIL-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
-   s" a refused grow leaves the length where it was" T-LABEL
+   s" a rejected grow leaves the length where it was" T-LABEL
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" A" T$=
    BUFT-REL-BUF BUF:DISPOSE
    s" two megabytes appended in chunks grow from a heap block to a mapping and keep every byte" T-LABEL
@@ -520,13 +520,13 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    [: BUFT-USE-CLEAR ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-REPLACED ;] E-BUF-STATE TTHROWSQ
    [: BUFT-INIT-LIVE-REJECTS ;] E-BUF-STATE TTHROWSQ
-   BUFT-REL-BUF BUF:DISPOSE                                          \ the refused re-init left the buffer owned
+   BUFT-REL-BUF BUF:DISPOSE                                          \ the rejected re-init left the buffer owned
    [: BUFT-REPLACED-SELF ;] E-BUF-BOUNDS TTHROWSQ
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" a-b" T$=                        \ refused before a byte moved
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" a-b" T$=                        \ rejected before a byte moved
    [: BUFT-REPLACED-STRADDLE ;] E-BUF-BOUNDS TTHROWSQ
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" a-b" T$=
    [: BUFT-LEN-ABOVE-CAP ;] E-BUF-BOUNDS TTHROWSQ
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" data" T$=                       \ refused before the length moved
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" data" T$=                       \ rejected before the length moved
    T-REPORT ;
 
 BUFT-CHECKS-RUN

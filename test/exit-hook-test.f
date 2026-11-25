@@ -177,7 +177,7 @@ variable TREE-U
 
 \ A removal that fails is reported on fd 2 and changes nothing else. FS:CLEANUP-RUN
 \ no-ops on a path that is already gone, so the failure has to come from a
-\ removal the kernel refuses: a non-empty directory registered with FS:CLEANUP-DIR+
+\ removal the kernel rejects: a non-empty directory registered with FS:CLEANUP-DIR+
 \ is rmdir ENOTEMPTY, which fs.f names E-FS-IO (-2105).
 : CASE-REPORT ( -- )
    s" report.f" s" report-tree" CASE-PATHS

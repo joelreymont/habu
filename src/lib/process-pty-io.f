@@ -276,7 +276,7 @@ create IO-OUTER SLOT-CAP cells SCRATCH-ALLOT
    IO-OUTER raw UNPACK-IDX CELL-AT @ IO-SCOPE !
    raw TAKE-RAW IO-RETIRE ;
 
-\ The body hands back the handle it was given; any other is refused.
+\ The body hands back the handle it was given; any other is rejected.
 : IO-RUN-BODY ( R process-pty-handle [ R process-pty-handle -- S process-pty-handle ] -- S )
    execute HANDLE>N IO-SCOPE @ <> if E-PROC-PTY-HANDLE throw then ;
 
@@ -298,10 +298,10 @@ public
 
 \ The same scope with the target's standard descriptors on the slave side of a
 \ fresh pseudo-terminal (PTY:OPEN), so a child engine sees a terminal on fd 0,
-\ installs its line editor and recovers from a refused definition instead of
+\ installs its line editor and recovers from a rejected definition instead of
 \ stopping at it. The handle's `master` is the PTY master and `done` a duplicate
 \ of it. Nobody acquires the terminal as controlling (TIOCSCTTY is an unencoded
-\ request the engine's ioctl guard refuses), so there is no job control.
+\ request the engine's ioctl guard rejects), so there is no job control.
 : WITH-TTY-TARGET ( R str [ R process-pty-handle -- S process-pty-handle ] -- S )
    true IO-WITH ;
 

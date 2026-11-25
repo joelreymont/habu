@@ -185,7 +185,7 @@ DYNAMIC-BUFFER CACHE-SLOT n           \ reserved to EMIT-VREGS by EMIT-OPEN
 \ ---- the body ----------------------------------------------------------------
 \ THE SINK. EMIT-OPEN empties the emitter's sink and the seam's rows; EMIT-CLOSE
 \ ends a unit; EMIT-SEAL hands the emission to NEMIT. The caller runs
-\ NEMIT:CLEAR before the next EMIT-OPEN, on the accepting and the refusing path
+\ NEMIT:CLEAR before the next EMIT-OPEN, on the accepting and the rejecting path
 \ alike. NEMIT reads the bytes in place, so they stay the emitter's until the
 \ next EMIT-OPEN.
 \
@@ -440,7 +440,7 @@ ARCHES TYPED-BUFFER EMIT-CALL-SELF-XT [ -- ]
 : EMIT-CALL-SELF ( -- ) CACHE-CLEAR  CUR @ EMIT-CALL-SELF-XT @ execute ;
 
 \ ---- control -----------------------------------------------------------------
-\ CONTROL. The front end refuses a structure out of order before calling one,
+\ CONTROL. The front end rejects a structure out of order before calling one,
 \ so these words trust the nesting. Branches, targets and open loop levels stay
 \ behind the seam: an emitter that branches by label installs
 \ src/habu/t0-label.f. The words a source keyword names end in a comma, since

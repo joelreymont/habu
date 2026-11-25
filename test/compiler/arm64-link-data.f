@@ -13,7 +13,7 @@
 \ A second link of main writes the same bytes. On Linux, held sums a table it
 \ only reads, prints the sum, then blocks on stdin; while it blocks, its
 \ smaps shows the table's pages in DATA as file pages, not Anonymous ones.
-\ Each refusal (arm64-link-data-bad.f) dies, so each runs in its own child.
+\ Each rejection (arm64-link-data-bad.f) dies, so each runs in its own child.
 \ The data child also runs on copies of the kernel object, one with a code byte
 \ flipped, which fails its checksum, and one with a cell appended and its sum
 \ written again, whose layout hb does not read: its read stops the child before
@@ -183,7 +183,7 @@ HB-TARGET-LINUX? 0= [if]
 
 : CHILD-LABEL ( str str -- )
    {: name:str what:str :}
-   SB-RESET  s" refusal, " SB-APPEND  name SB-APPEND
+   SB-RESET  s" rejection, " SB-APPEND  name SB-APPEND
    s" : " SB-APPEND  what SB-APPEND  SB$ T-LABEL ;
 
 : CHILD-RC ( CMD:command str str -- CMD:command n )
@@ -193,7 +193,7 @@ HB-TARGET-LINUX? 0= [if]
    s" bad" PROG$ CMD:ARG+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
-\ name's child on the object at obj arms, its link is refused for the reason
+\ name's child on the object at obj arms, its link is rejected for the reason
 \ err, and it exits with status want; label names the case.
 : BAD-LINK ( CMD:command str str str str n -- CMD:command )
    {: name:str obj:str label:str err:str want:n :}
@@ -208,7 +208,7 @@ HB-TARGET-LINUX? 0= [if]
    {: name:str err:str want:n :}
    name HB-BUILD-CORE:KERNEL$ name err want BAD-LINK ;
 
-: NAMES-LABEL ( str -- ) s" the link names what it refuses" CHILD-LABEL ;
+: NAMES-LABEL ( str -- ) s" the link names what it rejects" CHILD-LABEL ;
 
 : BAD-DATA ( CMD:command -- CMD:command )
    s" data"  s" error[E-LINK-DATA-POINTER]" 70 BAD-CHILD
@@ -241,7 +241,7 @@ create SHA-CTX SHA256-CTX-BYTES allot
    g RESEAL
    s" grown" PROG$ g FS:WRITE-ALL  FIRST-LINK-RELEASE ;
 
-\ The data child on the object at name, refused by its read for the reason err
+\ The data child on the object at name, rejected by its read for the reason err
 \ before it arms, exits 65.
 : BAD-OBJECT ( CMD:command str str -- CMD:command )
    {: name:str err:str :}

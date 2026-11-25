@@ -243,10 +243,10 @@ public
 : F-SCALAR-FP ( -- CTARGET:features ) BIT-SCALAR-FP MK ;
 
 \ ---- construction and validation --------------------------------------------
-\ A contract is refused when its facts cannot all be true of one machine (a PTX
+\ A contract is rejected when its facts cannot all be true of one machine (a PTX
 \ kernel ABI on an AArch64 core, a big-endian Darwin ABI), never because no
 \ backend emits for it yet: capability is the emitting stage's question
-\ (IR-VERIFY refuses an operation the contract cannot run), and refusing here
+\ (IR-VERIFY rejects an operation the contract cannot run), and rejecting here
 \ would leave a machine being added undeclarable. An incoherent combination
 \ throws a named error and no contract value is produced.
 : CONTRACT ( CTARGET:arch CTARGET:abi CTARGET:endian CTARGET:ptr-width CTARGET:features -- CTARGET:contract )

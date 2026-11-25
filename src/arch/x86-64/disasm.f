@@ -60,16 +60,16 @@ variable DQUIET
 
 : HEX. ( n -- ) s" 0x" OUT HEX-N ;
 
-: REFUSE ( n str -- ) {: code:n msg:^ u:n :}
+: REJECT ( n str -- ) {: code:n msg:^ u:n :}
    DQUIET @ 0= if
       s" x64dis: " OUT msg u OUT s"  at " OUT
       DPC @ DI @ + HEX. cr
    then
    code throw ;
 
-: TRUNC ( -- ) E-TRUNCATED s" truncated instruction" REFUSE ;
-: UNKNOWN ( -- ) E-UNKNOWN s" unknown instruction" REFUSE ;
-: LONG ( -- ) E-LENGTH s" instruction exceeds 15 bytes" REFUSE ;
+: TRUNC ( -- ) E-TRUNCATED s" truncated instruction" REJECT ;
+: UNKNOWN ( -- ) E-UNKNOWN s" unknown instruction" REJECT ;
+: LONG ( -- ) E-LENGTH s" instruction exceeds 15 bytes" REJECT ;
 
 : NEXT ( -- n )
    DI @ DU @ >= if TRUNC then

@@ -1,11 +1,11 @@
-\ Refusal cases run in fresh evaluators of the admitted native C2 image.
+\ Rejection cases run in fresh evaluators of the admitted native C2 image.
 require src/lib/test/assert.f
 require src/lib/test/subject.f
 require src/lib/adt/option.f
 require src/lib/task.f
 require src/lib/c2-memory.f
 
-package C2-MEMORY-REFUSALS
+package C2-MEMORY-REJECTIONS
 private
 
 STRUCTURE holder<a> FIELD value a ;STRUCTURE
@@ -20,7 +20,7 @@ public
    s" : C2-MEM-MUT-OK ( mut-view<p,q,a,u8> -- u8 mut-view<p,q,a,u8> ) 0 C2-MEM:MUT-BYTE@ ;" 0 SUBJECT:EXITED? TTRUE
    s" native scoped invocation is private to its package" T-LABEL
    s" : C2-OUTSIDE-INVOKE ( -- ) [: ;] [: ;] [: drop ;] c2-invoke ;"
-   70 s" cannot find word `c2-invoke`" SUBJECT:REFUSED? TTRUE
+   70 s" cannot find word `c2-invoke`" SUBJECT:REJECTED? TTRUE
    s" an exclusive view cannot be copied" T-LABEL
    s" : C2-MEM-COPY ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) dup drop ;" 70 SUBJECT:EXITED? TTRUE
    s" an exclusive view cannot be dropped" T-LABEL
@@ -35,7 +35,7 @@ public
    s" TYPED-VARIABLE C2-MEM-GLOBAL mut-view<p,q,a,u8>" 70 SUBJECT:EXITED? TTRUE
    s" a task exit quotation cannot capture a borrowed local" T-LABEL
    s" : C2-MEM-TASK ( read-view<p,q,u8> -- ) {: view :} [: view drop ;] TASK:SELF TASK:AT-EXIT ;"
-   70 s" a quotation that reads a local would outlive it" SUBJECT:REFUSED? TTRUE
+   70 s" a quotation that reads a local would outlive it" SUBJECT:REJECTED? TTRUE
    s" a mutable view cannot be relabeled as a raw pointer" T-LABEL
    s" : C2-MEM-RAW ( mut-view<p,q,a,u8> -- ^u8 n ) ;" 70 SUBJECT:EXITED? TTRUE
    s" a mutable view cannot be relabeled as shared" T-LABEL
@@ -53,25 +53,25 @@ public
    s" a read child cannot escape in a sum" T-LABEL
    s" : C2-MEM-CHILD-SUM ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: dup OPTION:SOME swap ;] C2-MEM:WITH-READ swap drop ;" 70 SUBJECT:EXITED? TTRUE
    s" a read child cannot escape in a record" T-LABEL
-   s" : C2-MEM-CHILD-RECORD ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: dup C2-MEMORY-REFUSALS-HOLDER:MAKE swap ;] C2-MEM:WITH-READ swap drop ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-MEM-CHILD-RECORD ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: dup C2-MEMORY-REJECTIONS-HOLDER:MAKE swap ;] C2-MEM:WITH-READ swap drop ;" 70 SUBJECT:EXITED? TTRUE
    s" a read child cannot escape through a quotation result" T-LABEL
    s" : C2-MEM-CHILD-QUOTE ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: 0 ['] C2-MEM:BYTE@ dup >r execute r> swap ;] C2-MEM:WITH-READ swap drop ;" 70 SUBJECT:EXITED? TTRUE
    s" a read child cannot escape through raw global storage" T-LABEL
    s" variable C2-MEM-SLOT : C2-MEM-CHILD-STORE ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: dup C2-MEM-SLOT ! ;] C2-MEM:WITH-READ ;" 70 SUBJECT:EXITED? TTRUE
    s" a caught exclusive callback cannot restore its consumed parent" T-LABEL
    s" : C2-MEM-MUT-THROW ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> ) 1 throw ; : C2-MEM-MUT-LOAN-THROW ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-MUT-THROW ;] C2-MEM:WITH-MUT-LOAN ; : C2-MEM-MUT-CATCH ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-MUT-LOAN-THROW ;] catch drop 0 C2-MEM:MUT-BYTE@ swap drop ;"
-   70 s" stale cell" SUBJECT:REFUSED? TTRUE
+   70 s" stale cell" SUBJECT:REJECTED? TTRUE
    s" a caught shared callback cannot restore its mutable parent" T-LABEL
    s" : C2-MEM-READ-THROW ( read-view<p,l,u8> -- read-view<p,l,u8> ) 1 throw ; : C2-MEM-READ-LOAN-THROW ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-READ-THROW ;] C2-MEM:WITH-READ ; : C2-MEM-READ-CATCH ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-READ-LOAN-THROW ;] catch drop 0 C2-MEM:MUT-BYTE@ swap drop ;"
-   70 s" stale cell" SUBJECT:REFUSED? TTRUE
+   70 s" stale cell" SUBJECT:REJECTED? TTRUE
    s" an ordinary declaration cannot invent unique scope and region binders" T-LABEL
    \ The bad stored signature is rendered before its code is thrown, so it exits 70.
    s" TRUSTED: C2-MEM-FORGE ( -- mut-view<p,q,a,u8> ) 0 0 ;" 70 SUBJECT:EXITED? TTRUE
-   s" the product refuses a reopen of C2-MEM by name" T-LABEL
-   s" package C2-MEM ;package" 70 s" C2-MEM" SUBJECT:REFUSED? TTRUE
+   s" the product rejects a reopen of C2-MEM by name" T-LABEL
+   s" package C2-MEM ;package" 70 s" C2-MEM" SUBJECT:REJECTED? TTRUE
    T-REPORT
-   s" c2-memory-refusals: ok" type cr ;
+   s" c2-memory-rejections: ok" type cr ;
 
 ;package
 
-C2-MEMORY-REFUSALS:RUN
+C2-MEMORY-REJECTIONS:RUN

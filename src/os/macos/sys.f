@@ -77,7 +77,7 @@ $3B  constant NR-EXECVE    \ execve(path, argv, envp) — BSD syscall 59
 $C   constant NR-CHDIR     \ chdir(path) — BSD syscall 12; only Linux emitters use it today
 $1   constant NR-EXIT-GROUP
 
-\ A Linux-only call has no Darwin number: its constant is -1 and SYS, refuses
+\ A Linux-only call has no Darwin number: its constant is -1 and SYS, rejects
 \ every negative number, so a macOS arm that reaches one dies at engine build
 \ instead of reaching the kernel. 0 cannot mark an absent call: Darwin syscall
 \ 0 is the indirect `syscall` entry, which dispatches on x0.
@@ -115,7 +115,7 @@ public
 \ x(n) = OS-TIMER-NOW's ticks per second. Clobbers only x(n).
 : OS-TIMER-HZ ( n -- ) CNTFRQ>R ;
 
-\ The longest interval in us setitimer arms: it refuses a tv_sec past
+\ The longest interval in us setitimer arms: it rejects a tv_sec past
 \ 100000000 with EINVAL.
 100000000999999 constant OS-TIMER-MAX-USEC
 

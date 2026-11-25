@@ -214,7 +214,7 @@ DEFINE JOB ( ^n ) job work
 : FAILS ( -- )
    [: JOB-RUN ;] FAIL-CODE TTHROWSQ ;
 
-\ A total table: kick is refused by an ACTION that always throws, and every
+\ A total table: kick is rejected by an ACTION that always throws, and every
 \ line of stuck by a NEXT that does.
 using FSM
 ENUM gate closed stuck opened ;ENUM
@@ -426,7 +426,7 @@ variable SRC-LEN
 \ A table word's undefined ACTION is placed at the ACTION's own line.
 : PLACED-ACTION ( -- )
    s" include test/fixtures/fsm/undefined-action.f" 70
-   s" undefined-action.f:14" SUBJECT:REFUSED? TTRUE ;
+   s" undefined-action.f:14" SUBJECT:REJECTED? TTRUE ;
 
 \ A wrong action is named as the table spells it, not as it was defined, at
 \ the action's own line.
@@ -440,7 +440,7 @@ variable SRC-LEN
 \ An unknown states type is placed at the header's states token.
 : PLACED-STATES ( -- )
    s" include test/fixtures/fsm/unknown-states.f" 70
-   s" unknown-states.f:11" SUBJECT:REFUSED? TTRUE ;
+   s" unknown-states.f:11" SUBJECT:REJECTED? TTRUE ;
 
 \ The corrected twin loads; the checker rejects each faulty table at load, 70.
 : REJECTED ( -- )

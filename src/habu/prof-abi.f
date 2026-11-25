@@ -160,7 +160,7 @@ $10000 constant PROF-NAME-CHUNK
 8  constant CHUNK-USED
 16 constant CHUNK-LEN
 24 constant CHUNK-DATA
-1000000 constant USEC-PER-SEC   \ setitimer refuses a tv_usec at or above it: prof-on splits the interval
+1000000 constant USEC-PER-SEC   \ setitimer rejects a tv_usec at or above it: prof-on splits the interval
 14  constant SIGALRM
 \ SA_ONSTACK: the handler runs on the thread's alternate signal stack, the one
 \ the crash handler runs on (src/habu/crash.f C-SIGNAL-STACK, its x86-64 twin
@@ -169,7 +169,7 @@ $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 40 constant DICT-WL-OFF                   \ the record's wordlist cell (habu1.f BSWL reads the same 40)
 
 \ A resource prof-on cannot get is fatal: its message goes to fd 2 and it exits
-\ EXIT-STATUS:SYSTEM. A refused setitimer is such a resource: it would leave a phase
+\ EXIT-STATUS:SYSTEM. A failed setitimer is such a resource: it would leave a phase
 \ that samples nothing and reports zeros. The sample that reaches a non-zero
 \ PROF-LIM prints the report and exits EXIT-STATUS:PROF-LIMIT.
 : PROFARNMSG$ ( -- str ) S\" hb: prof-on: cannot map the profiler arena\n" ;
@@ -178,7 +178,7 @@ $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 : PROFNAMEMSG$ ( -- str ) S\" hb: profiler cannot map name snapshot\n" ;
 : PROFNAMEFREEMSG$ ( -- str ) S\" hb: profiler cannot release name snapshot\n" ;
 
-\ prof-rate's refusal, re-registered from src/lib/error.f, which loads after
+\ prof-rate's rejection, re-registered from src/lib/error.f, which loads after
 \ prof.f. Qualify it: a bare E-PROF-RATE under `using PROF-ABI` meets error.f's.
 -3803 constant E-PROF-RATE
 

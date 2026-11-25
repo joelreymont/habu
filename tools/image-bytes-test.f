@@ -98,7 +98,7 @@ using IMAGE-BYTES
 
 \ One pad to the last byte serves the three room boundaries in turn. A write is
 \ measured against the room left: `>LEN` is a cast, not a validator, and a length
-\ near the maximum cell would wrap the sum back under MSIZE. A refused write
+\ near the maximum cell would wrap the sum back under MSIZE. A rejected write
 \ leaves the cursor in place, so the exact write after it fills the buffer; a
 \ cursor at MSIZE throws 88.
 : IBT-TEST-ROOM ( -- )

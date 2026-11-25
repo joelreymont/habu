@@ -1,8 +1,8 @@
 \ ptr-elem-test.f - a pointer's element type is part of the checker type.
-\ `^u8` and `^n` are refused for each other in both directions at every
+\ `^u8` and `^n` are rejected for each other in both directions at every
 \ place types meet; value widening (u8 -> n) is unchanged. Each case is a whole
 \ definition certified by CHECK-QUIET-CANDIDATE!, and each reject has a control
-\ differing only in the element type, so refusing all pointer traffic fails.
+\ differing only in the element type, so rejecting all pointer traffic fails.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -23,10 +23,10 @@ private
 
 \ Verdicts CHECK-QUIET-CANDIDATE! answers.
 -1 constant CERTIFIED
-0 constant REFUSED
+0 constant REJECTED
 
 : REJECTS ( str -- )
-   CHECK-QUIET-CANDIDATE! REFUSED T= ;
+   CHECK-QUIET-CANDIDATE! REJECTED T= ;
 
 : CERTIFIES ( str -- )
    CHECK-QUIET-CANDIDATE! CERTIFIED T= ;
@@ -72,7 +72,7 @@ private
    s" PE-JOIN-SAME-OUT ( ^u8 ^u8 bool -- ^u8 ) IF drop ELSE nip THEN" CERTIFIES ;
 
 \ ---- memory access through the wrong element -------------------------------
-\ Cell `@` over a byte span is the width rule's refusal; byte `c@` over a cell
+\ Cell `@` over a byte span is the width rule's rejection; byte `c@` over a cell
 \ span is the pointee rule's.
 : MEMORY-ACCESS ( -- )
    s" PE-CELL-FETCH-BYTES ( ^u8 -- n ) @" REJECTS

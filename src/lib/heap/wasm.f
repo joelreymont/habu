@@ -42,7 +42,7 @@ HEAD GRAIN + constant MIN-BLOCK     \ the least block a split leaves
 \ 1 MiB: test/wasm/heap-test.f's churn grew Wasm memory least with it,
 \ 99.6 MB against 107.0 MB at 64 KiB and 109.1 MB at 8 MiB; its REGION copies it
 $100000 constant REGION-BYTES
-$100000000 constant MOST            \ a larger request is refused: Wasm memory32
+$100000000 constant MOST            \ a larger request is rejected: Wasm memory32
 
 4 constant SL-BITS                  \ 16 classes per power of two
 1 SL-BITS lshift constant SL-COUNT
@@ -204,7 +204,7 @@ variable FL-MAP                     \ the first levels not empty
 
 
 \ Grows in place into the block's slack or a free next block, else moves; a
-\ refused move leaves the block as it was.
+\ rejected move leaves the block as it was.
 : RESIZE-BYTES ( ^u8 str n -- ^u8 )
    {: st:^ p:^ old:n new:n :}
    new CHECK

@@ -353,8 +353,8 @@ variable PAT-SAVED-STDIN
    0 T= 0 T= {: outu:n :}
    PAT-CAP-OUT outu >str s\" fresh\n" T$= ;
 
-: PAT-REFUSED-RESETS ( -- )
-   s" a refused spawn leaves no staged argument" T-LABEL
+: PAT-REJECTED-RESETS ( -- )
+   s" a failed spawn leaves no staged argument" T-LABEL
    PROC-ARGV-RESET PAT-STAGE-STALE
    [: s" " -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO drop ;]
    E-PROC-OUTPUT TTHROWSQ
@@ -376,7 +376,7 @@ variable PAT-SAVED-STDIN
    PAT-MANY-ARGS
    [: PAT-NEG-ARG ;] E-PROC-OUTPUT TTHROWSQ
    [: PAT-HUGE-ARG ;] E-PROC-OUTPUT TTHROWSQ
-   PAT-REFUSED-RESETS
+   PAT-REJECTED-RESETS
    [: PAT-NUL-ARG ;] E-FFI-NUL TTHROWSQ
    PAT-PATH-BOUNDS
    PAT-RUN-ARGV-CAPTURE

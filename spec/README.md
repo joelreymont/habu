@@ -131,8 +131,8 @@ is fixed for a run: one that does unwinds through a finally that CANCELs, then
 AWAITs, each call still started, catching each AWAIT's fault; one that does
 not may end with calls still started, whose records are abandoned and freed by
 the loop. It leaves out another task's SERVE or AWAIT, which REQUIRE-STARTER
-refuses with the call unchanged, a later task on an ended owner's TCB, whose
-OWNED-INDEX refuses that owner's record, and a dispatch fault after the
+rejects with the call unchanged, a later task on an ended owner's TCB, whose
+OWNED-INDEX rejects that owner's record, and a dispatch fault after the
 transfer has started (ARM's): a send lands at once only before START-LOCKED.
 The bounds are two calls, each started once and resting at most once a start,
 and a reply of at most two chunks. The actions stand for these words: Start,

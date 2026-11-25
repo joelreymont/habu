@@ -143,11 +143,11 @@ CKT-NEST-INSTALL
 
 : CKT-THROW-RELEASES ( -- )
    [: CKT-MISSING-FOLD ;] catch {: rc:n :}
-   s" FILE+ on a missing file throws the open refusal" T-LABEL
+   s" FILE+ on a missing file throws the open rejection" T-LABEL
    rc SHA-E-OPEN T= ;
 
 \ A nested body that finalizes the outer fold and hands its own out conserves both
-\ tokens, so the checker admits it; the inner scope refuses it, as it frees that fold.
+\ tokens, so the checker admits it; the inner scope rejects it, as it frees that fold.
 : CKT-SWAP-INNER ( CONTENT-KEY:fold CONTENT-KEY:fold -- CONTENT-KEY:fold )
    swap CKT-KEY1 FINAL-HEX ;
 
@@ -161,28 +161,28 @@ CKT-NEST-INSTALL
 : CKT-NEST-KEY2-BODY ( CONTENT-KEY:fold -- )
    CKT-NEST-TEXT CKT-KEY2 FINAL-HEX ;
 
-: CKT-HANDLE-REFUSED ( -- )
-   s" a body that finalizes the outer fold and hands its own out is refused" T-LABEL
+: CKT-HANDLE-REJECTED ( -- )
+   s" a body that finalizes the outer fold and hands its own out is rejected" T-LABEL
    [: CKT-SWAP-FOLD ;] catch E-CK-HANDLE T=
-   s" a fold after the refusal folds and finishes" T-LABEL
+   s" a fold after the rejection folds and finishes" T-LABEL
    [: CKT-NEST-REF-BODY ;] WITH-FOLD
    [: CKT-NEST-KEY2-BODY ;] WITH-FOLD
    CKT-KEY1 CKT-KEY-LEN >str CKT-KEY2 CKT-KEY-LEN >str T$= ;
 
 \ The fold is linear: a body that copies it to finalize twice or to fold after
-\ FINAL is refused, and so is one that drops it unfinalized. The first body is
+\ FINAL is rejected, and so is one that drops it unfinalized. The first body is
 \ the control that the check resolves this package's words.
 : CKT-FINAL-CONSUMES ( -- )
    s" a body that finalizes its fold once certifies" T-LABEL
    s" CKT-C-ONCE ( CONTENT-KEY:fold -- ) CKT-KEY1 FINAL-HEX"
    CHECK-QUIET-CANDIDATE! -1 T=
-   s" copying a fold to finalize it twice is refused" T-LABEL
+   s" copying a fold to finalize it twice is rejected" T-LABEL
    s" CKT-C-TWICE ( CONTENT-KEY:fold -- ) dup CKT-KEY1 FINAL-HEX CKT-KEY2 FINAL-HEX"
    CHECK-QUIET-CANDIDATE! 0 T=
-   s" keeping a fold to fold after FINAL is refused" T-LABEL
+   s" keeping a fold to fold after FINAL is rejected" T-LABEL
    s" CKT-C-AFTER ( CONTENT-KEY:fold -- ) >r r@ CKT-KEY1 FINAL-HEX r> CKT-SEQ-A 1 >str TEXT+ CKT-KEY2 FINAL-HEX"
    CHECK-QUIET-CANDIDATE! 0 T=
-   s" dropping a fold unfinalized is refused" T-LABEL
+   s" dropping a fold unfinalized is rejected" T-LABEL
    s" CKT-C-DROP ( CONTENT-KEY:fold -- ) CKT-SEQ-A 1 >str TEXT+ drop"
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
@@ -259,15 +259,15 @@ create CKT-NAME CK-FRAG-MAX 1+ allot
    CKT-NAME-FILL
    CKT-KEY1 CKT-KEY-LEN >str CKT-KEY2 CKT-KEY-LEN >str T$<> ;
 
-\ One byte past what two bytes count is refused before a byte is folded, and
-\ the refusal leaves the fold's scope, which releases it.
+\ One byte past what two bytes count is rejected before a byte is folded, and
+\ the rejection leaves the fold's scope, which releases it.
 : CKT-OVER-BODY ( CONTENT-KEY:fold -- )
    CKT-NAME CK-FRAG-MAX 1+ >str TEXT+ CKT-KEY1 FINAL-HEX ;
 
 : CKT-OVER-FOLD ( -- )
    [: CKT-OVER-BODY ;] WITH-FOLD ;
 
-: CKT-FRAG-OVER-REFUSED ( -- )
+: CKT-FRAG-OVER-REJECTED ( -- )
    [: CKT-OVER-FOLD ;] catch E-STR-BOUNDS T= ;
 
 : CKT-LONG-FRAGMENTS ( -- )
@@ -278,8 +278,8 @@ create CKT-NAME CK-FRAG-MAX 1+ allot
    PATH-CAP CKT-LONG-NAME
    s" a 256-byte text and an empty text then its tail fold apart" T-LABEL
    CKT-LENGTH-UNAMBIGUOUS
-   s" a fragment one byte past CK-FRAG-MAX is refused" T-LABEL
-   CKT-FRAG-OVER-REFUSED ;
+   s" a fragment one byte past CK-FRAG-MAX is rejected" T-LABEL
+   CKT-FRAG-OVER-REJECTED ;
 
 : CKT-MAIN ( -- )
    T-RESET
@@ -287,7 +287,7 @@ create CKT-NAME CK-FRAG-MAX 1+ allot
    CKT-FOLDS-NEST
    CKT-SETUP
    CKT-THROW-RELEASES
-   CKT-HANDLE-REFUSED
+   CKT-HANDLE-REJECTED
    CKT-FINAL-CONSUMES
    CKT-LOGICAL-NAME
    CKT-LONG-FRAGMENTS

@@ -533,7 +533,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    OUT-FD NEWLINE ;
 
 \ The answer to a throw RC that ended the composition after its rejection wrote
-\ its record: `refused` for a rejection, `missing` when the file a loader names
+\ its record: `rejected` for a rejection, `missing` when the file a loader names
 \ is not there, `unread` for a file found but not readable, and `full` for a
 \ full dictionary. Any other code goes on with no answer.
 : STOP-RESULT ( n -- ) {: rc:n :}
@@ -541,7 +541,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    rc EXIT-STATUS:FULL = if s" full" RESULT exit then
    rc EXIT-STATUS:REJECTED = 0= if rc throw then
    VERIFY:FAULT-TARGET$ STR:LEN 0 > if s" missing" TARGET-RESULT exit then
-   s" refused" RESULT ;
+   s" rejected" RESULT ;
 
 : INDEX-SUBJECT ( -- )
    0 IDX-N !
@@ -553,7 +553,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    CHECK:MULTI-ERR-END {: rejects:n :}
    rc 0<> if rc STOP-RESULT exit then
    VERIFY:DEFERRED? if s" deferred" RESULT exit then
-   rejects 0<> if s" refused" else s" verified" then RESULT ;
+   rejects 0<> if s" rejected" else s" verified" then RESULT ;
 
 
 \ Run the verification in one neutral checker scope, every diagnostic the
@@ -570,7 +570,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    true VERIFY:REPORT-DEFERRALS
    [: VERIFY-ALL ;] SCOPED {: rc:n :}
    rc 0<> if rc STOP-RESULT exit then
-   FAILED @ 0<> if s" refused" RESULT exit then
+   FAILED @ 0<> if s" rejected" RESULT exit then
    VERIFY:STOPPED? if s" stopped" RESULT exit then
    VERIFY:DEFERRED? if s" deferred" RESULT exit then
    s" verified" RESULT ;

@@ -1,4 +1,4 @@
-\ include-refusal-e2e.f - a loader rejection that ends the process names itself:
+\ include-rejection-e2e.f - a loader rejection that ends the process names itself:
 \ each case pins the record's exit status, an empty stdout and a stderr record
 \ carrying the rejection's code, the word or path it names and why. Children run the engine under test
 \ (src/lib/engine-candidate.f) from this working directory; each case's program
@@ -17,7 +17,7 @@ require src/lib/engine-candidate.f
 require test/pcap-result.f
 
 using SOURCE-ROOT
-package INCLUDE-REFUSAL-E2E
+package INCLUDE-REJECTION-E2E
 private
 
 $4000 constant IO-CAP
@@ -39,7 +39,7 @@ variable RC
    PATH u >str ;
 
 : SETUP ( -- )
-   s" habu-include-refusal" FS:MKTEMP-DIR CANONICAL TTRUE {: d:str :}
+   s" habu-include-rejection" FS:MKTEMP-DIR CANONICAL TTRUE {: d:str :}
    d FS:CLEANUP-TREE+
    d STR:DATA ROOT d STR:LEN BYTE-COPY d STR:LEN ROOT-U !
    s" cases" AT FS:MAKE-DIR
@@ -96,20 +96,20 @@ variable RC
 : WITH-AT ( str str -- )
    {: name:str rel:str :}
    0 PROG-U !
-   s" package INCLUDE-REFUSAL-WITH" PLINE
+   s" package INCLUDE-REJECTION-WITH" PLINE
    s" public" PLINE
    S\" : RUN ( -- ) s\q " PROG+ rel AT PROG+
    S\" \q [: ;] SOURCE-ROOT:WITH ;" PLINE
    s" ;package" PLINE
-   s" INCLUDE-REFUSAL-WITH:RUN" PLINE
+   s" INCLUDE-REJECTION-WITH:RUN" PLINE
    name LOAD-CASE
    70 EXITS
    s" error[E-SOURCE-ROOT]" ERR-HAS
    s" `SOURCE-ROOT:WITH` got `" rel SB-NAMES SB$ ERR-HAS
    s" does not resolve to a searchable directory" ERR-HAS ;
 
-\ A file's path resolves, so only the directory check refuses it as a root.
-: WITH-REFUSED ( -- )
+\ A file's path resolves, so only the directory check rejects it as a root.
+: WITH-REJECTED ( -- )
    s" SOURCE-ROOT:WITH on a missing directory is rejected by name" T-LABEL
    s" with-absent" s" absent" WITH-AT
    s" so does SOURCE-ROOT:WITH on a file" T-LABEL
@@ -134,13 +134,13 @@ variable RC
    s" a file's ;package of its includer's package is rejected in that file" T-LABEL
    s" cases/close-outer-inc.f" AT s" ;package" FS:WRITE-ALL
    0 PROG-U !
-   s" package INCLUDE-REFUSAL-OUTER private package B" PLINE
+   s" package INCLUDE-REJECTION-OUTER private package B" PLINE
    s" include " PROG+ s" cases/close-outer-inc.f" AT PLINE
    s" ;package ;package" PLINE
    s" close-outer" LOAD-CASE
    70 EXITS
    s" error[E-PKG-CONTEXT]" ERR-HAS
-   s" closes `INCLUDE-REFUSAL-OUTER:B`," ERR-HAS
+   s" closes `INCLUDE-REJECTION-OUTER:B`," ERR-HAS
    SB-RESET s" cases/close-outer-inc.f" AT SB-APPEND s" :1:1" SB-APPEND SB$ ERR-HAS ;
 
 \ A loader a scope's callback runs on bytes no source holds: its record stands
@@ -192,7 +192,7 @@ variable RC
 \ A canon that finds nothing, not even the file system root.
 : CANON-NONE ( -- )
    0 PROG-U !
-   s" package INCLUDE-REFUSAL-CANON" PLINE
+   s" package INCLUDE-REJECTION-CANON" PLINE
    s" private" PLINE
    s" : NONE ( str -- str bool ) 0 0= 0= ;" PLINE
    s" public" PLINE
@@ -200,7 +200,7 @@ variable RC
    s"    [: NONE ;] [: SOURCE-ROOT:READ-OS ;] SOURCE-INPUT:USE" PLINE
    S\"    s\q /absent/x\q SOURCE-ROOT:CANONICAL drop drop ;" PLINE
    s" ;package" PLINE
-   s" INCLUDE-REFUSAL-CANON:CANON" PLINE
+   s" INCLUDE-REJECTION-CANON:CANON" PLINE
    s" canon-none" LOAD-CASE
    s" a path with no directory above it resolving is rejected by name" T-LABEL
    70 EXITS
@@ -209,16 +209,16 @@ variable RC
    s" has no directory above it" ERR-HAS ;
 
 \ A word that reads another file through the loader's reader while its own file
-\ is loading: that file's frame holds its bytes already, so the read is refused
+\ is loading: that file's frame holds its bytes already, so the read is rejected
 \ before it touches the frame.
 : READ-OS-WORD ( -- )
    0 PROG-U !
-   s" package INCLUDE-REFUSAL-READ" PLINE
+   s" package INCLUDE-REJECTION-READ" PLINE
    s" public" PLINE
    S\" : RUN ( -- ) s\q " PROG+ s" plain.f" AT PROG+
    S\" \q SOURCE-ROOT:READ-OS drop ;" PLINE
    s" ;package" PLINE
-   s" INCLUDE-REFUSAL-READ:RUN" PLINE
+   s" INCLUDE-REJECTION-READ:RUN" PLINE
    s" read-os-word" LOAD-CASE
    s" a word's SOURCE-ROOT:READ-OS of another file is rejected by name" T-LABEL
    70 EXITS
@@ -298,22 +298,22 @@ $1A4 constant MODE-FILE
    s" error[E-PATH-RANGE]: `INCLUDE` got" ERR-HAS
    s" an exported required names the export as written" T-LABEL
    0 PROG-U !
-   s" package INCLUDE-REFUSAL-RVX public EXPORT required ;package" PLINE
-   S\" s\q " PROG+ LONG+ S\" \q INCLUDE-REFUSAL-RVX:required" PLINE
+   s" package INCLUDE-REJECTION-RVX public EXPORT required ;package" PLINE
+   S\" s\q " PROG+ LONG+ S\" \q INCLUDE-REJECTION-RVX:required" PLINE
    s" required-export" LOAD-CASE
    70 EXITS
    ERR$ s" error[" STR:COUNT-SUB 1 T=
-   s" error[E-PATH-RANGE]: `INCLUDE-REFUSAL-RVX:required` got" ERR-HAS ;
+   s" error[E-PATH-RANGE]: `INCLUDE-REJECTION-RVX:required` got" ERR-HAS ;
 
 public
 
 : RUN ( -- )
    T-RESET SETUP
-   WITH-REFUSED WITH-NESTED CLOSE-OUTER WITH-REQUIRED POLICY-NESTED REQUIRE-ABSENT CANON-NONE
+   WITH-REJECTED WITH-NESTED CLOSE-OUTER WITH-REQUIRED POLICY-NESTED REQUIRE-ABSENT CANON-NONE
    READ-OS-WORD REQUIRE-UNREADABLE LOAD-UNREADABLE-QUOTED REQUIRED-EMPTY SPELLED-LOADERS
    T-REPORT ;
 
 ;package
 ;using
 
-INCLUDE-REFUSAL-E2E:RUN
+INCLUDE-REJECTION-E2E:RUN

@@ -23,7 +23,7 @@ create REPORT 1 cells allot
 : REPORT-PID ( fd -- ) {: w:fd :}
    getpid REPORT !
    w FD>N REPORT 1 cells >str write 1 cells <> if
-      s" check-signal-subject: report refused" EXIT-STATUS:IOERR die
+      s" check-signal-subject: report rejected" EXIT-STATUS:IOERR die
    then ;
 
 : CLOSED? ( -- bool )

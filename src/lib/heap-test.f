@@ -1,7 +1,7 @@
 \ ALLOC through the heap's allocator: the cases every allocator meets; bytes
 \ come back zeroed where a freed block's were dirty; small records share
 \ pages; RESIZE keeps a block's bytes as it grows and shrinks and zeroes the
-\ added ones, bytes a shrink cut included; a refused request is E-MEM-MAP and
+\ added ones, bytes a shrink cut included; a rejected request is E-MEM-MAP and
 \ leaves the block.
 require src/lib/test/assert.f
 require src/lib/allocator.f
@@ -77,8 +77,8 @@ $7FFFFFFFFFFFFFF0 constant HUGE
 : RESIZES ( -- ) GROWN SHRUNK {: block:^ :} AL block ALLOC:FREE  REGROWN ;
 
 
-: REFUSED ( -- )
-   s" a refused request throws E-MEM-MAP and leaves the block" T-LABEL
+: REJECTED ( -- )
+   s" a rejected request throws E-MEM-MAP and leaves the block" T-LABEL
    [: AL HUGE ALLOC:BYTES drop drop ;] E-MEM-MAP TTHROWSQ
    AL 16 ALLOC:BYTES drop {: block:^ :}
    5 block c!  6 block 15 + c!
@@ -89,7 +89,7 @@ $7FFFFFFFFFFFFFF0 constant HUGE
 
 : RUN ( -- )
    T-RESET
-   AL ALLOC-TEST:TURNS DIRTY PAGES RESIZES REFUSED ;
+   AL ALLOC-TEST:TURNS DIRTY PAGES RESIZES REJECTED ;
 
 RUN
 T-REPORT

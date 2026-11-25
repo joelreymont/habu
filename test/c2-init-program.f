@@ -132,7 +132,7 @@ public
    RESULT TTRUE
    s" a nested three-cell fixed record uses its complete width" T-LABEL
    NESTED-RESULT 1 T=
-   s" initialization refuses a byte bound shorter than its record" T-LABEL
+   s" initialization rejects a byte bound shorter than its record" T-LABEL
    SHORT-RESULT TTRUE
    s" callback failure closes initialized storage" T-LABEL
    THROW-RESULT TTRUE

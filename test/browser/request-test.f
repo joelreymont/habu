@@ -234,7 +234,7 @@ PATH-CAP BUFFER: FILE
    s" trapped: after a trap the module prints nothing more" T-LABEL
    OUT$ s" trapped.out" SAME
    SB-RESET  TRAP$ LINE  TRAP$ ENDED-LINE
-   s" trapped: the waiting request's reply is refused" T-LABEL
+   s" trapped: the waiting request's reply is rejected" T-LABEL
    ERR$ s" trapped.err" SAME ;
 
 \ A turn that throws after its request still has the request made and answered:
@@ -273,7 +273,7 @@ PATH-CAP BUFFER: FILE
    OUT$ s" early-trap.out" SAME
    SB-RESET  TRAP$ LINE
    s" Error: " SB-APPEND  TRAP$ SB-APPEND  s" ; Error: " SB-APPEND  TRAP$ ENDED-LINE
-   s" early trap: reported at once, then with the refusal of its sibling" T-LABEL
+   s" early trap: reported at once, then with the rejection of its sibling" T-LABEL
    ERR$ s" early-trap.err" SAME ;
 
 : REPLY-FAILURE-CASE ( -- )
@@ -287,7 +287,7 @@ PATH-CAP BUFFER: FILE
    SB-RESET  KIND99$ LINE
    s" Error: " SB-APPEND  KIND99$ SB-APPEND  s" ; Error: " SB-APPEND  TRAP$ LINE
    TRAP$ ENDED-LINE
-   s" reply failure: an invalid record, both reasons, then the later turn refused" T-LABEL
+   s" reply failure: an invalid record, both reasons, then the later turn rejected" T-LABEL
    ERR$ s" reply-failure.err" SAME ;
 
 : INTERLEAVED-CASE ( -- )
@@ -350,7 +350,7 @@ PATH-CAP BUFFER: FILE
 
 \ Typed text whose run leaves a malformed request record: the turn fails before
 \ any request reaches the host.
-: REFUSED ( str -- )
+: REJECTED ( str -- )
    {: cmd:str :}
    HOST-OPEN  cmd TYPED+
    cmd s" the turn fails" MALFORMED
@@ -360,7 +360,7 @@ PATH-CAP BUFFER: FILE
 
 : REJECT ( str str -- )
    {: cmd:str why:str :}
-   cmd REFUSED
+   cmd REJECTED
    cmd s" the failure names the reason" MALFORMED
    ERR$ why STR:CONTAINS? TTRUE ;
 
@@ -379,7 +379,7 @@ PATH-CAP BUFFER: FILE
    s" bom method" s" HTTP method token" REJECT
    s" bom only method" s" HTTP method token" REJECT
    \ TextDecoder's wording is the engine's.
-   s" bad utf8" REFUSED
+   s" bad utf8" REJECTED
    s" bad utf8" s" the failure names the reason" MALFORMED
    ERR$ s" Invalid byte sequence" STR:CONTAINS?
    ERR$ s" encoded data was not valid" STR:CONTAINS?  or TTRUE ;

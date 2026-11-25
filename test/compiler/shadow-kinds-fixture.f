@@ -1,7 +1,7 @@
 \ shadow-kinds-fixture.f - one definition of each kind, read by
 \ test/compiler/shadow-kinds.f through the typed interpret loop at tier 0 while
 \ an arm64 shadow is open. Each `\ ==` line starts a section the driver reads
-\ alone, so a kind that refuses leaves the others to be read: a section names
+\ alone, so a kind that rejects leaves the others to be read: a section names
 \ only words the driver or its own section made.
 
 \ == variable

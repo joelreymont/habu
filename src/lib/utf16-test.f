@@ -22,7 +22,7 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    {: c:^ :}
    c @ VEC:DELETE  NULL-PTR c ! ;
 
-\ NULL-PTR goes in before NEW: a refused NEW leaves no vector to delete twice.
+\ NULL-PTR goes in before NEW: a rejected NEW leaves no vector to delete twice.
 : FRESH ( ^^VEC:vector<u8> -- )
    {: c:^ :}
    c RELEASE  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! ;
@@ -138,7 +138,7 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
 : OFFSET-EMPTY-NEGATIVE ( -- )
    s" " -1 UTF16:OFFSET drop ;
 
-: REFUSALS ( -- )
+: REJECTIONS ( -- )
    [: NEGATIVE-LENGTH ;] E-STR-BOUNDS TTHROWSQ
    [: OFFSET-NEGATIVE-LENGTH ;] E-STR-BOUNDS TTHROWSQ
    [: OFFSET-NEGATIVE-INDEX ;] E-STR-BOUNDS TTHROWSQ
@@ -194,7 +194,7 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    LE-BUF @ GOT$ s\" a\x00\xE9\x00" T$= ;
 
 
-: LE-REFUSALS ( -- )
+: LE-REJECTIONS ( -- )
    [: s\" \x44" LE-BUF @ UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ
    [: s\" \x44\x00\x65" LE-BUF @ UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ
    [: s\" \x3D\xD8a\x00" LE-BUF @ UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ      \ high, then a
@@ -211,7 +211,7 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    [: s" a" STR:DATA -2 >str LE-BUF @ UTF16:APPEND-LE>UTF8 ;] E-STR-BOUNDS TTHROWSQ ;
 
 
-: UTF8-REFUSALS ( -- )
+: UTF8-REJECTIONS ( -- )
    [: s\" \x80" LE-BUF @ UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ               \ a lone continuation
    [: s\" \xC0\x80" LE-BUF @ UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ           \ U+0000, overlong
    [: s\" \xED\xA0\x80" LE-BUF @ UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ       \ U+D800, a surrogate
@@ -225,8 +225,8 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    VECTORS
    ROUND-TRIP
    APPENDS
-   LE-REFUSALS
-   UTF8-REFUSALS
+   LE-REJECTIONS
+   UTF8-REJECTIONS
    LE-BUF RELEASE  LE-OUT RELEASE ;
 
 : MAIN ( -- )
@@ -240,7 +240,7 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    OFFSET-PAIR
    OFFSET-INVALID
    ROUND-TRIPS
-   REFUSALS
+   REJECTIONS
    CONVERSIONS
    T-REPORT
    s" utf16-test: ok" type cr ;

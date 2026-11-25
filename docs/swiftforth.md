@@ -1194,7 +1194,7 @@ SwiftForth answers in one table group per word set.
   not supported. The character set is 7-bit ASCII. While a file is interpreted,
   every control character below `BL` counts as a space except CR, which ends the
   line. The control-flow stack is the data stack, and its entries are addresses.
-  Digits past `Z` are refused, and whether a lowercase digit is accepted follows
+  Digits past `Z` are rejected, and whether a lowercase digit is accepted follows
   the case-sensitivity setting. `ABORT"` performs `-2 THROW` and shows the last
   word typed with the string. Terminal input ends with Enter. A counted string
   and a parsed string hold at most 255 characters, a definition name at most
@@ -1228,7 +1228,7 @@ SwiftForth answers in one table group per word set.
   word that is not a `VALUE` is `-32 THROW`. A name that `'`, `POSTPONE` or
   `[']` cannot find is `-13 THROW`. `DO`, `?DO` and `WITHIN` accept mixed signed
   and unsigned arguments. `[COMPILE]` is not supported and `POSTPONE TO` is
-  refused. A shift count is taken modulo the cell width in bits. `>BODY` and
+  rejected. A shift count is taken modulo the cell width in bits. `>BODY` and
   `DOES>` are permitted on words not made by `CREATE`, and `#`, `#S`, `HOLD` and
   `SIGN` work outside `<# #>`.
 - *Other facts.* `WH PAD` lists the system words that use `PAD`. Terminal

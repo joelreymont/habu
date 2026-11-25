@@ -1,12 +1,12 @@
 # Debugging the self-hosted standalone
 
 Tools and procedures for diagnosing native engine failures, from a load
-refusal to a profile.
+rejection to a profile.
 
 When checked code misbehaves, reduce the failure, find which layer is wrong
 (declaration, checker, compiler or runtime) and fix that layer.
 
-## Where a load refusal happened — read the message
+## Where a load rejection happened — read the message
 
 A rejection the engine raises while reading source names the file, the line
 and the column of its token. The file is the resolved, canonical path of the
@@ -52,14 +52,14 @@ rejection prints its record and exits 70; a build whose code goes on after a
 rejection it sent, caught or kept without a throw, exits 85 and adds nothing to
 the records sent. A one-byte diagnostic and a clean exit means a raw engine capacity path, not a throw.
 
-## Refusing the system's memory
+## Failing the system's memory maps
 
 `strace -f -qq -o /dev/null -e trace=mmap -e inject=mmap:error=ENOMEM:when=K bin/hb ...`
-refuses the K-th mmap of each process the run starts: strace counts per
-process, so a spawned verifier or build child has its K-th refused too. hb is
-dynamically linked, and up to K = 7 the refusal lands in glibc's loader before
+fails the K-th mmap of each process the run starts: strace counts per
+process, so a spawned verifier or build child has its K-th fail too. hb is
+dynamically linked, and up to K = 7 the failure lands in glibc's loader before
 hb's code runs: it crashes with SIGSEGV or fails to map libc and exits 127.
-Past those the refusal is hb's, which exits 71 and names the bytes and what
+Past those the failure is hb's, which exits 71 and names the bytes and what
 they were for. The same run with no inject and `-o FILE` counts the maps, the
 range of K to sweep.
 
@@ -215,7 +215,7 @@ specific exit code may simply be asserting a code the tree stopped producing.
 
 A kernel exit line that ends in `lr <lr>` reads
 `<class> habu: <text>[ <value>] lr <lr>`, the value and `<lr>` each `0x` and
-16 hex digits. `<lr>` is the return address the refusing primitive or guard was
+16 hex digits. `<lr>` is the return address the rejecting primitive or guard was
 called with, or the interrupted code's link register when a signal handler
 exits.
 

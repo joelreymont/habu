@@ -191,7 +191,7 @@ variable DEPTH-LR                    \ the scan's open loads
    LOG-LR-U @ at1 - at0 + new STR:LEN + EDIT-LR-U ! ;
 
 \ The padded part's top spelling as x's that, joined to its root, are one byte
-\ past PATH-CAP: each alone PATH-OK? takes, the resolver refuses (E-PATH-RANGE).
+\ past PATH-CAP: each alone PATH-OK? takes, the resolver rejects (E-PATH-RANGE).
 : PAD-SPELLING-LR ( -- )
    PADDED-LR @ TOP-LR 8 + {: root:n :}
    root FIELD-LR {: at:n :}

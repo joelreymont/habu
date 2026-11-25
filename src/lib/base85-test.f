@@ -1,5 +1,5 @@
 \ base85-test.f - Adobe Ascii85: whole groups, every tail length, `z`, each
-\ white-space byte, the largest group and every refusal.
+\ white-space byte, the largest group and every rejection.
 \ Run: bin/hb --load src/lib/base85-test.f
 
 require src/lib/string.f
@@ -36,7 +36,7 @@ variable STAGED-LEN
    WANT SPAN:$ STR:DATA k t STR:LEN + >str ;
 
 
-\ A refusal runs in a quotation, which sees no locals, so its input is staged.
+\ A rejection runs in a quotation, which sees no locals, so its input is staged.
 : STAGE ( str -- )
    {: s:str :}
    s STAGED SPAN:COPY
@@ -47,7 +47,7 @@ variable STAGED-LEN
    STAGED SPAN:$ STR:DATA STAGED-LEN @ >str ;
 
 
-: REFUSES ( str n -- )
+: REJECTS ( str n -- )
    {: s:str code:n :}
    s STAGE
    s T-LABEL
@@ -83,15 +83,15 @@ variable STAGED-LEN
    STAGED$ s" Man " DECODES ;
 
 
-: REFUSALS ( -- )
+: REJECTIONS ( -- )
    s" s8W-!" STAGE $22 STAGED 4 SPAN:U8!
-   STAGED$ BASE85:E-VALUE REFUSES
-   s" s8W-" BASE85:E-VALUE REFUSES
-   s" 9jzqo" BASE85:E-Z REFUSES
-   s" 9jqov" BASE85:E-CHAR REFUSES
+   STAGED$ BASE85:E-VALUE REJECTS
+   s" s8W-" BASE85:E-VALUE REJECTS
+   s" 9jzqo" BASE85:E-Z REJECTS
+   s" 9jqov" BASE85:E-CHAR REJECTS
    CANARY OUT SPAN:FILL
-   s" 9jqo^B" BASE85:E-LENGTH REFUSES
-   s" a refusal after a good group leaves the output as it was" T-LABEL
+   s" 9jqo^B" BASE85:E-LENGTH REJECTS
+   s" a rejection after a good group leaves the output as it was" T-LABEL
    OUT 0 SPAN:U8@ CANARY T=
    CANARY OUT-3 SPAN:FILL
    s" a span one byte short" T-LABEL
@@ -107,7 +107,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   VECTORS ZEROS SPACES REFUSALS ;
+   VECTORS ZEROS SPACES REJECTIONS ;
 
 ;package
 

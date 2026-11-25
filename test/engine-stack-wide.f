@@ -27,14 +27,14 @@ package STACK-LIFECYCLE-TEST
 
 : PLAIN-OVERFLOW ( str str -- ) {: defs:str name:str :}
    SB-RESET defs SB-APPEND name RATCHET-TAIL
-   SB$ REFUSED-DATA ;
+   SB$ REJECTED-DATA ;
 
 : PAIR-OVERFLOW ( str str -- ) {: defs:str name:str :}
    PAIR-TYPE-SOURCE defs SB-APPEND name RATCHET-TAIL
-   s"  ;package" SB-APPEND SB$ REFUSED-DATA ;
+   s"  ;package" SB-APPEND SB$ REJECTED-DATA ;
 
-: PAIR-REFUSED-RETURN ( str -- )
-   PAIR-TYPE-SOURCE SB-APPEND s"  ;package" SB-APPEND SB$ REFUSED-RETURN ;
+: PAIR-REJECTED-RETURN ( str -- )
+   PAIR-TYPE-SOURCE SB-APPEND s"  ;package" SB-APPEND SB$ REJECTED-RETURN ;
 
 : PRIMITIVE-GROUPS ( -- )
    s" count past the capacity faults the data guard page" T-LABEL
@@ -59,7 +59,7 @@ package STACK-LIFECYCLE-TEST
    OUT OUTLEN @ >str S\" 22\n11\n22\n11\n-1\n" T$=
    s" observable native wide return transfer needs two free slots" T-LABEL
    s" : EDGE ( n -- ) dup 0= if drop 11 22 SW-PAIR:MAKE >r r@ SW-PAIR:UNMAKE . . r> SW-PAIR:UNMAKE . . exit then 1 >r 1 - recurse r> drop ; STACK-ABI:RETURN-CELLS 1 - EDGE"
-   PAIR-REFUSED-RETURN ;
+   PAIR-REJECTED-RETURN ;
 
 \ The 513-cell value's byte offsets pass arm64 ADD/SUB's 12-bit immediate.
 : LARGE-TYPE-SOURCE ( -- )
@@ -72,7 +72,7 @@ package STACK-LIFECYCLE-TEST
 
 : LARGE-OVERFLOW ( str str -- ) {: defs:str name:str :}
    LARGE-TYPE-SOURCE defs SB-APPEND name RATCHET-TAIL
-   SB$ REFUSED-DATA ;
+   SB$ REJECTED-DATA ;
 
 : LARGE-TRANSFERS ( -- )
    s" a 513-cell typed memory round trip uses full-width offsets" T-LABEL
@@ -91,7 +91,7 @@ package STACK-LIFECYCLE-TEST
 
 : MEDIUM-OVERFLOW ( str str -- ) {: defs:str name:str :}
    MEDIUM-TYPE-SOURCE defs SB-APPEND name RATCHET-TAIL
-   SB$ REFUSED-DATA ;
+   SB$ REJECTED-DATA ;
 
 : MEDIUM-TRANSFERS ( -- )
    s" cumulative local frame release exceeds imm12 without truncating" T-LABEL

@@ -13,7 +13,7 @@ definition. The [kernel](architecture.md#kernel) loads first, untyped; the
 checker is part of it, and from the end of the kernel every definition is
 checked. A build checks the engine's prefix (`src/habu/boot-files.f`) from
 its first file: the builder's own checker checks every row, so a definition
-with a wrong effect in a prefix file is refused (`src/core/check-hook.f`
+with a wrong effect in a prefix file is rejected (`src/core/check-hook.f`
 INSTALL).
 
 ## Defining a word
@@ -61,7 +61,7 @@ A definition becomes visible only after its code is in place. The publisher
 places the emission in the code space, resolving each of its rows against the
 running engine ([unplaced code](architecture.md#cross-compilation)), and only
 then publishes the header (`src/compiler/native/publish.f` `PUBLISH-PENDING`).
-A refused definition leaves no word behind.
+A rejected definition leaves no word behind.
 
 ## Building an image
 
@@ -103,8 +103,8 @@ the image with DATA at DATA-VA. A macOS image's code runs at a base the OS may
 move: calls inside the code are relative, the linker lists every stored address
 that points into the image, and the boot adds the load offset to each, as dyld
 does for a position-independent C program. A Linux image is `ET_EXEC`, runs at
-its link address and lists none. The boot maps DATA at its address and refuses
-to run when it cannot get it.
+its link address and lists none. The boot maps DATA at its address and does not
+run when it cannot get it.
 **Now:** every image hb-build makes follows this rule: it builds hb or
 the program in its own process (`tools/hb-build-core.f`) and `LINKER:WRITE`
 writes it (`src/habu/link-data.f` `LINK-ENGINE`, `LINK-STRIPPED`).

@@ -119,7 +119,7 @@ variable SCOPE-KIND-CELL
 \ where habu1.f needs FPRIM and FPRIM-L.
 \
 \ The row being registered. Every body registers under a name src/habu/prims.f
-\ specifies: SPEC-CHECK checks each body, and ENGINE-PRIMS:COMPLETE refuses a
+\ specifies: SPEC-CHECK checks each body, and ENGINE-PRIMS:COMPLETE rejects a
 \ specified row that no body answered.
 defer BODY ( -- )
 PTR-VARIABLE ROW-A
@@ -190,7 +190,7 @@ private
 CELL 4 * constant DIAG-BYTES
 
 \ rax as unsigned decimal on fd 2, no newline: the twin of habu2.f LDIAGU,
-\ which a refusal with a count to state calls instead of `u.`, since a
+\ which a rejection with a count to state calls instead of `u.`, since a
 \ diagnostic never leaves through the output device. It clobbers rax rcx rdx
 \ rsi rdi r11 and keeps r8.
 : DIAG-U, ( -- )
@@ -720,7 +720,7 @@ variable HEAD-ROW-CELL
 public
 
 \ The index's call sites, the twins of habu1.f's LHIDXBUILD, LHIDXADD and
-\ HIDX-EMIT:LREBUILD calls, for the rows that move r14: build the table (a refused
+\ HIDX-EMIT:LREBUILD calls, for the rows that move r14: build the table (a rejected
 \ mapping exits 74 with `E-DICT-INDEX habu: dictionary index alloc failed`),
 \ index the record just published, and rebuild the table over [0, r14). Each
 \ call keeps every VM register and clobbers rax rcx rdx rsi rdi and r8-r11; one
@@ -734,7 +734,7 @@ public
 \ arguments into the syscall registers, rdi rsi rdx r10 r8 r9 (the order
 \ src/os/linux-x86-64/sys.f maps x0..x5 onto), stages the *at* family's
 \ AT_FDCWD and flags, traps through SYS, and pushes through X64RT:SYS-PUSH: the
-\ result, or -1 when the kernel refused.
+\ result, or -1 when the call failed.
 
 private
 
@@ -759,7 +759,7 @@ private
    NR-OPEN FS-SYS-PUSH, ;
 
 \ Fresh anonymous storage: ( bytes -- ptr ior ), a null pointer and -1 for a
-\ length that is not positive or a mapping the kernel refuses.
+\ length that is not positive or a mapping that fails.
 : MAP-ANON-ROW ( -- )
    X64CODE:LBL X64CODE:LBL {: failed:label done:label :}
    RSI POP,
@@ -2988,7 +2988,7 @@ private
 
 \ `bare-search-wl ( ^u8 n n -- n )`, the twin of habu1.f BSWL: the code cell
 \ of the name's record in one wordlist, or 0. An engine helper's wid
-\ (OWNER-API-PRI-WID) is refused before the search and a DNAME-INT record
+\ (OWNER-API-PRI-WID) is rejected before the search and a DNAME-INT record
 \ answers 0, so `search-wl execute` never reaches an internal word.
 : SEARCH-WL-BODY ( -- )
    X64CODE:LBL X64CODE:LBL {: none:label push:label :}
@@ -3006,7 +3006,7 @@ private
    RAX R64>N X64RT:G-PUSH ;
 
 \ `xref-search-wl ( ^u8 n n -- ^n )`, the twin of habu1.f BCOMPILERSWL:
-\ the record itself, or 0, with neither refusal; its checker row admits it
+\ the record itself, or 0, with neither rejection; its checker row admits it
 \ only at a trusted boundary.
 : XREF-SEARCH-WL-BODY ( -- )
    FIND-ARGS,
@@ -3169,7 +3169,7 @@ private
    done X64CODE:LBL, ;
 
 \ set-preflight ( xt -- ): installs once. With the cell set, the same xt is
-\ inert and any other refused; with it empty, as `0 set-check` leaves it, the
+\ inert and any other rejected; with it empty, as `0 set-check` leaves it, the
 \ xt must lie in the window.
 : SET-PREFLIGHT-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: invalid:label empty:label done:label :}
@@ -4213,7 +4213,7 @@ CBT-BYTES 6 cells + constant CBT-LR  \ above the six saved VM registers
 
 \ The twin of crash.f C-SIGNAL-STACK-ABSENT>R12: rax is nonzero when this
 \ thread has no alternate stack registered, as sigaltstack(NULL, old) answers
-\ SS_DISABLE in old's int flags. A query cannot be refused: its one error is
+\ SS_DISABLE in old's int flags. A query cannot be rejected: its one error is
 \ an unwritable buffer, and the buffer is this frame. It clobbers rax rcx rdi
 \ rsi r11.
 : SIGNAL-STACK-ABSENT, ( -- )
@@ -4410,10 +4410,10 @@ public
 \ rows, aliases and package scope through and marks a word immediate with, and
 \ the checker overlay's replay rows, whose contracts src/habu/prims.f states:
 \ the twins of habu2.f DEFWRITE's bodies and of its `immediate`, C-IMMEDIATE,
-\ in each twin's check order. Every refusal of a row with a body comes before
+\ in each twin's check order. Every rejection of a row with a body comes before
 \ the first store and writes nothing on fd 2: a live task exits
 \ EXIT-STATUS:TASK-COMPILE in the four dictionary rows and the replay rows, a
-\ protected wid after the seal EXIT-STATUS:SEAL-WORDLIST, and every other refusal
+\ protected wid after the seal EXIT-STATUS:SEAL-WORDLIST, and every other rejection
 \ EXIT-STATUS:SEAL-VIOLATION. The exception is an open overlay in def-open,
 \ namespace-private and alias-record: OVERLAY-GUARD, throws E-OVERLAY-OPEN.
 \ Past the checks the index helper exits EXIT-STATUS:SYSTEM when its mapping fails,
@@ -4445,10 +4445,10 @@ $3A constant NAME-COLON                \ a qualified name's separator
 : DICT-ROOM, ( -- )
    NDICT-REG DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE SEAL-TRAP-LBL JCC, ;
 
-\ The frame's name: refuse an empty one, and a long one whose slots at CP
+\ The frame's name: reject an empty one, and a long one whose slots at CP
 \ would reach the code ceiling. The compares are unsigned and never wrap: a CP
 \ already at the ceiling, and a length no region holds, a negative one among
-\ them, are refused rather than added. Clobbers rax rcx rsi.
+\ them, are rejected rather than added. Clobbers rax rcx rsi.
 : NAME-SIZE, ( -- )
    X64CODE:LBL {: fits:label :}
    RSI RSP DW-LEN MOV-LOAD,
@@ -4462,7 +4462,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX RAX ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,   \ so do their slots
    fits X64CODE:LBL, ;
 
-\ Refuse a live record of the frame's folded name in the frame's wid: the
+\ Reject a live record of the frame's folded name in the frame's wid: the
 \ one-wordlist search's probe, FIND-LBL, answers it in rax.
 : FRESH, ( -- )
    RDI RSP DW-NAME MOV-LOAD,  RSI RSP DW-LEN MOV-LOAD,  RDX RSP DW-WID MOV-LOAD,
@@ -4598,7 +4598,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX WIDN-CELL CELL!, ;
 
 \ alias-record: record NDICT with the source's [0], [8] and IMM, WIDE, TARGET and immutable VAL
-\ bits; a namespace, retired or DNAME-INT source is refused, whose alias would run an internal body.
+\ bits; a namespace, retired or DNAME-INT source is rejected, whose alias would run an internal body.
 : ALIAS-RECORD-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prot:label done:label notval:label :}
    s" alias-record" TASK-GUARD,
@@ -4943,7 +4943,7 @@ variable REPLAY-TRAP-CELL
    RDI R10 CELL MEM-OFF ASM-SINK ENC-MOV-MR
    rowed X64CODE:LBL, ;
 
-\ A capacity doubled to 2^59 is refused before its map: 17 * 2^58 stays below
+\ A capacity doubled to 2^59 is rejected before its map: 17 * 2^58 stays below
 \ 2^63, so a block's size never wraps.
 59 constant GROW-LIMIT-SHIFT
 variable GROW-CELL
@@ -5050,7 +5050,7 @@ variable GROW-CELL
 \ def-close ( -- ): the pending definition ends: COMP-LATCH-CELL, TSIG, TCSIG,
 \ DOESB, CLAUSE, TRUSTED and PEND-CELL clear; before they clear, LASTC-CELL
 \ takes the record for a nonzero kind other than DKIND:CAST. Nothing pending,
-\ and COMP-LATCH-CELL 0 (no compiler), are refused.
+\ and COMP-LATCH-CELL 0 (no compiler), are rejected.
 : DEF-CLOSE-BODY ( -- )
    X64CODE:LBL {: nolast:label :}
    RDX PEND-CELL CELL@,

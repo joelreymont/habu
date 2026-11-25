@@ -1,5 +1,5 @@
 \ compile-floor.f - the tier-0 per-definition compile floor: its mean and least.
-\   bin/hb --load tools/compile-floor.f [-- FLOOR-MS]   with FLOOR-MS: refuse
+\   bin/hb --load tools/compile-floor.f [-- FLOOR-MS]   with FLOOR-MS: reject
 \   a larger trivial-t0 mean, E-FLOOR-EXCEEDED. One line, us per definition:
 \   floor: trivial-t0 <us> least-trivial-t0 <us>
 
@@ -41,14 +41,14 @@ variable SET-NS                    \ the set's CPU ns, summed over every round
 variable SET-LEAST                 \ the set's cheapest definition in any round
 variable BOUND-US                  \ ratchet floor in us; read only when a floor was given
 
-\ ---- refusal ----------------------------------------------------------------
+\ ---- rejection ----------------------------------------------------------------
 
 : EMIT-ERR ( str -- ) {: msg:str :}
    FD:STDERR FD>N msg write msg STR:LEN <> if
       s" compile-floor: stderr write failed" EXIT-STATUS:IOERR die
    then ;
 
-: REFUSE ( str n -- ) {: msg:str thrown :}
+: REJECT ( str n -- ) {: msg:str thrown :}
    msg EMIT-ERR
    thrown throw ;
 
@@ -101,7 +101,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    0 SET-NS !
    NO-LEAST SET-LEAST ! ;
 
-\ Every round rebuilds the same names and the engine refuses a redefinition,
+\ Every round rebuilds the same names and the engine rejects a redefinition,
 \ so TEARDOWN removes a measured set before the next is built.
 : UNDEF-ONE ( n -- ) {: ix :}
    SB-RESET
@@ -151,7 +151,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    s" compile-floor: trivial-t0 " SB-APPEND  MEAN-US FMT:SB-U
    s"  us is above the floor of " SB-APPEND  BOUND-US @ FMT:SB-U
    s"  us" SB-APPEND  LF SB-APPEND-C
-   SB$ E-FLOOR-EXCEEDED REFUSE ;
+   SB$ E-FLOOR-EXCEEDED REJECT ;
 
 \ The floor is read and converted BEFORE anything is measured, so a malformed
 \ argument costs a usage line rather than a measurement.
@@ -162,7 +162,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    ARGV:POS# 0= if exit then
    0 ARGV:POS$ FLOOR-US BOUND-US ! ;
 
-\ On the refusing paths a measured set is still standing: MAIN removes it
+\ On the rejecting paths a measured set is still standing: MAIN removes it
 \ through `finally`, so the caller gets its dictionary back.
 : PUT-BACK ( -- )
    TEARDOWN ;

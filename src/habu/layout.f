@@ -112,7 +112,7 @@ $0000400000000000 constant DNAME-REP
 \ DNAME-SEALED (bit 45): set on a package's namespace record by seal-package,
 \ and on every engine package by its build before program source.
 $0000200000000000 constant DNAME-SEALED
-\ DNAME-TARGET (bit 44): a target word, which a cross-build refuses to run.
+\ DNAME-TARGET (bit 44): a target word, which a cross-build does not run.
 $0000100000000000 constant DNAME-TARGET
 \ [16] bits 44-63: flags above the name length, which every length read clears by this count.
 20 constant DNAME-FLAG-BITS
@@ -122,7 +122,7 @@ $2000000000000000 constant DNAME-EXT
 \ DNAME-WIDE (bit 62): the word's recorded effect carries a wider-than-cell
 \ value in some row. Such a word runs at top level: the interpret row is typed
 \ per cell and carries each multi-cell value as one item of its type, and the
-\ checker refuses only an engine stack primitive that would move part of one
+\ checker rejects only an engine stack primitive that would move part of one
 \ (src/core/check-walk.f TOP-XPORT-GUARD). Compiled calls inside checked
 \ definitions are unaffected.
 $4000000000000000 constant DNAME-WIDE
@@ -228,7 +228,7 @@ $E0 constant EVAL-TKL
 package EVAL-FRAME
 public
 \ PEND: PEND-CELL as the buffer began. A definition the buffer opened must
-\ close in it, so its end refuses one still open; one already open here belongs
+\ close in it, so its end rejects one still open; one already open here belongs
 \ to an outer buffer, whose immediate word's evaluate compiles into it, and a
 \ throw that unwinds this buffer leaves it compiling.
 $A0 constant PEND
@@ -595,10 +595,10 @@ $6C0 constant FIXED-COMP-CELL
 \ immediate may only select the NEXT definition.
 $388 constant COMP-LATCH-CELL
 \ RECOVER-CELL ( 0 | -1 ) -- whether the reader whose `;` called the compiler
-\ recovers from a refused definition: DEF-SEMI? sets it around its compile,
+\ recovers from a rejected definition: DEF-SEMI? sets it around its compile,
 \ catches E-COMP-RECOVERY and reads on. In a multi-error run the compiler then
-\ abandons a refused definition unpublished without a second report; under any
-\ other reader it refuses with E-COMP-VERDICT. Zero outside that compile, so no
+\ abandons a rejected definition unpublished without a second report; under any
+\ other reader it rejects with E-COMP-VERDICT. Zero outside that compile, so no
 \ image carries it set.
 $690 constant RECOVER-CELL
 \ The owner record each cell points at is DATA; its fields are execution tokens
@@ -776,16 +776,16 @@ public
 \ base, like every code position a DATA cell keeps, so no image carries a live
 \ address) and the virtual stack's VSP-CELL here. Two other writers: arm64's
 \ end or abort of a definition zeroes TOKLOCN-CELL, TOKDEPTH-CELL and
-\ TOKRAW-CELL with the locals, and a refused prefix operand, such as an `is`
+\ TOKRAW-CELL with the locals, and a rejected prefix operand, such as an `is`
 \ target, lowers TOKBODY-CELL to its opener, zeroing TOKRAW-CELL when the
 \ opener goes too. A throw that unwinds an evaluate frame begun inside an open
 \ definition leaves that definition compiling and puts all six back: the text
 \ the checker certifies holds no token whose compile the throw abandoned, a
-\ `{:` group refused part way declares none of its names, and the code and the
-\ spill a refused token emitted before its check are gone. A spill
+\ `{:` group rejected part way declares none of its names, and the code and the
+\ spill a rejected token emitted before its check are gone. A spill
 \ only moves virtual stack entries to the data stack and leaves the entries
 \ themselves in place, so the depth restores the virtual stack. Every other
-\ compile cell is the refusing word's to leave alone: it checks first.
+\ compile cell is the rejecting word's to leave alone: it checks first.
 \ One mark serves every frame. Popping a frame leaves it at the innermost
 \ buffer's current token, or at that buffer's end once it exits cleanly, a
 \ point after a complete token, so each frame a throw pops keeps its buffer's
@@ -889,7 +889,7 @@ $2DA8 constant TASK-CHAIN-CELL
 \ seal stored; a record at or above that index is the design's own.
 \ POLICY-BITS-OFF is a WID-indexed bitmap: bit w admits wordlist w, and every
 \ reader tests w against POLICY-WID-MAX before it addresses the band. Every
-\ writer of the vocabulary and of the require xt refuses once the seal is set.
+\ writer of the vocabulary and of the require xt rejects once the seal is set.
 \ Only the engine's token reader tests the vocabulary; the native compiler never
 \ reads it. An engine's kernel object presets POLICY-NDICT-CELL to 0, so a fresh
 \ engine starts unsealed.
@@ -1123,7 +1123,7 @@ public
 \ A scratch pointer cell is a DATA-pointer row that also carries bit 62: the
 \ link writes it as null and never reads it, so a reader that knows only bit 63
 \ treats it as a DATA pointer, never as an xt.
-\ The engine appends an identical declaration only once and refuses one cell
+\ The engine appends an identical declaration only once and rejects one cell
 \ declared with two kinds. ADDRESS-CELLS' header and inline boot rows use this
 \ band, then grow into mmap.
 65536 constant XTCELL-CAP

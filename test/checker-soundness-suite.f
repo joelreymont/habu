@@ -92,7 +92,7 @@ NEWTYPE wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww )
 
 
-\ CS-K90's literal leaves 40 values of that type, so its escape refusal renders
+\ CS-K90's literal leaves 40 values of that type, so its escape rejection renders
 \ about 10 KB as the inferred effect and as much again as the actual callable.
 : CAPTURE-PAST$ ( -- str )
    s" CS-K90 ( -- ) [: 0 CHECKER-SOUNDNESS:>WIDE dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup ;] CHECKER-SOUNDNESS:TAIL-ONCE" ;
@@ -154,13 +154,13 @@ create ERR CAP allot   variable ERR-U
    s" CS-K8 ( R [ -- S ] -- S ) CHECKER-SOUNDNESS:TAIL-ONCE" CHECK-QUIET-CANDIDATE! -1 T=
    s" CS-K9 ( -- n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-NAMED" CHECK-QUIET-CANDIDATE! -1 T=
    [: 1 ;] TAIL-NAMED 1 T=
-   s" the refusal shows the callable's output keeping its input row" T-LABEL
+   s" the rejection shows the callable's output keeping its input row" T-LABEL
    s" : CS-K10 ( -- n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s" error[E-MISMATCH]: callable row escape" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: callable row escape" SUBJECT:REJECTED? TTRUE
    s" : CS-K10 ( -- n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" = found: [ C -- C n ]\n" SUBJECT:REFUSED? TTRUE
+   s\" = found: [ C -- C n ]\n" SUBJECT:REJECTED? TTRUE
    s" : CS-K11 ( -- n ) [: ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" = found: [ C -- C ]\n" SUBJECT:REFUSED? TTRUE
+   s\" = found: [ C -- C ]\n" SUBJECT:REJECTED? TTRUE
    s" a callable left under its own copy names the row that would contain itself" T-LABEL
    s" : CS-K98 ( R [ R -- R ] -- R ) dup execute ;" 70 SUBJECT:REJECTED {: e:str ok:bool :}
    ok TTRUE
@@ -171,46 +171,46 @@ create ERR CAP allot   variable ERR-U
    s" a named word's input names the row that would contain itself" T-LABEL
    s" : CS-TAKE ( R [ R -- R ] -- R ) execute ; : CS-K105 ( R [ R -- R ] -- R ) dup CS-TAKE ;" 70
    s" error[E-MISMATCH]: `CS-TAKE` would make a stack row contain itself"
-      SUBJECT:REFUSED? TTRUE
+      SUBJECT:REJECTED? TTRUE
    s" a recursive call's input names the row that would contain itself" T-LABEL
    s" : CS-K106 ( R [ R -- R ] bool -- R ) IF dup true RECURSE EXIT THEN execute ;" 70
    s" error[E-MISMATCH]: `RECURSE` would make a stack row contain itself"
-      SUBJECT:REFUSED? TTRUE
+      SUBJECT:REJECTED? TTRUE
    s" a callable copy left at the body's end is a value left over" T-LABEL
    s" : CS-K99 ( R [ R -- R ] -- R ) dup >r execute r> ;" 70
    s" error[E-MISMATCH]: CS-K99 ends with [ -- ] on the stack; its signature promises nothing"
-      SUBJECT:REFUSED? TTRUE
+      SUBJECT:REJECTED? TTRUE
    s" a callable copy met at an exit's join, not a call's input, keeps the mismatch text" T-LABEL
    s" : W ( S -- S [ S -- S ] ) [: ;] ; : XE ( R bool -- R [ R -- R ] ) IF W EXIT THEN W W nip ;" 70
    s" error[E-MISMATCH]: `nip` takes [ [ -- ] -- [ -- ] ]; the stack holds [ -- ]"
-      SUBJECT:REFUSED? TTRUE
+      SUBJECT:REJECTED? TTRUE
    s" a callable argument that leaves a callable on its own row keeps the mismatch text" T-LABEL
    s" : W ( S -- S [ S -- S ] ) [: ;] ; : CS-T ( [ A -- A ] -- ) drop ;  : CS-K103 ( -- ) [: W ;] CS-T ;" 70
    s" error[E-MISMATCH]: `CS-T` takes [ -- ]; the stack holds [ -- [ -- ] ]"
-      SUBJECT:REFUSED? TTRUE
+      SUBJECT:REJECTED? TTRUE
    s" a call missing the argument its callable takes keeps the mismatch text" T-LABEL
    s" : W ( S -- S [ S -- S ] ) [: ;] ; : CS-K104 ( R [ R [ R -- R ] -- R ] -- R ) execute ;" 70
    s" error[E-MISMATCH]: `execute` takes [ -- ]; the stack holds nothing"
-      SUBJECT:REFUSED? TTRUE
+      SUBJECT:REJECTED? TTRUE
    s" a callable copy on the return row it runs on is a return-stack rejection" T-LABEL
    s" : CS-K100 ( R [ R -- R | U -- U ] -- R ) dup >r execute r> drop ;" 70
-   s" error[E-RETURN-STACK]" SUBJECT:REFUSED? TTRUE
-   s" the refusal reads the same whatever the definition holds beneath it" T-LABEL
+   s" error[E-RETURN-STACK]" SUBJECT:REJECTED? TTRUE
+   s" the rejection reads the same whatever the definition holds beneath it" T-LABEL
    s" : CS-K19 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s" error[E-MISMATCH]: callable row escape" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: callable row escape" SUBJECT:REJECTED? TTRUE
    s" : CS-K19 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" = found: [ C -- C n ]\n" SUBJECT:REFUSED? TTRUE
-   s" its inferred effect is the body's up to the refusal, not the declared one" T-LABEL
+   s\" = found: [ C -- C n ]\n" SUBJECT:REJECTED? TTRUE
+   s" its inferred effect is the body's up to the rejection, not the declared one" T-LABEL
    s" -1 REJECTION:JSON ! : CS-K22 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" \"code\":\"E-MISMATCH\"" SUBJECT:REFUSED? TTRUE
+   s\" \"code\":\"E-MISMATCH\"" SUBJECT:REJECTED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K22 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" \"inferred\":\"x -- x [ -- n ]\"" SUBJECT:REFUSED? TTRUE
+   s\" \"inferred\":\"x -- x [ -- n ]\"" SUBJECT:REJECTED? TTRUE
    s" a capture past the render buffers' first sizes grows them and leaves later renders without row tails" T-LABEL
    CAPTURE-PAST$ CHECK-QUIET-CANDIDATE! 0 T=
    \ The subject is a fork of this process, so it renders with the grown buffers.
    s" : CS-K91 ( -- ) [: CHECKER-SOUNDNESS:TAKE-U8 ;] CHECKER-SOUNDNESS:CALL-I64 ;" 70
    s\" error[E-MISMATCH]: `CHECKER-SOUNDNESS:CALL-I64` takes [ i64 -- ]; the stack holds [ u8 -- ]\n"
-      SUBJECT:REFUSED? TTRUE
+      SUBJECT:REJECTED? TTRUE
    s" a forwarder may not pass the word's own input row as the callable's" T-LABEL
    s" CS-K12 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-TWICE" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K13 ( [ A -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE" CHECK-QUIET-CANDIDATE! 0 T=
@@ -221,21 +221,21 @@ create ERR CAP allot   variable ERR-U
    \ A row-preserving callable is no `[ -- S ]` either: a callee
    \ `( R [ -- S ] -- S ) >r 1 r> execute` runs it on `R n`, so S = R is unsound.
    s" CS-K15 ( R [ -- ] -- R ) CHECKER-SOUNDNESS:TAIL-ONCE" CHECK-QUIET-CANDIDATE! 0 T=
-   s" the refusal shows the word's own row standing in for the callable's" T-LABEL
+   s" the rejection shows the word's own row standing in for the callable's" T-LABEL
    s" : CS-K26 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s" error[E-MISMATCH]: callable row escape" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: callable row escape" SUBJECT:REJECTED? TTRUE
    s" : CS-K26 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" = held: A would escape into R\n" SUBJECT:REFUSED? TTRUE
+   s\" = held: A would escape into R\n" SUBJECT:REJECTED? TTRUE
    s" : CS-K26 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" = found: [ R -- B ]\n" SUBJECT:REFUSED? TTRUE
+   s\" = found: [ R -- B ]\n" SUBJECT:REJECTED? TTRUE
    s" : CS-K27 ( R [ A -- A ] -- R ) CHECKER-SOUNDNESS:TAIL-KEEP ;" 70
-   s\" = held: B would escape into A\n" SUBJECT:REFUSED? TTRUE
+   s\" = held: B would escape into A\n" SUBJECT:REJECTED? TTRUE
    s" : CS-K27 ( R [ A -- A ] -- R ) CHECKER-SOUNDNESS:TAIL-KEEP ;" 70
-   s\" = found: [ A -- A ]\n" SUBJECT:REFUSED? TTRUE
+   s\" = found: [ A -- A ]\n" SUBJECT:REJECTED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K28 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" \"help\":\"declare the callable `[ R -- S ]` from the word's input row" SUBJECT:REFUSED? TTRUE
+   s\" \"help\":\"declare the callable `[ R -- S ]` from the word's input row" SUBJECT:REJECTED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K72 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" ; held row A would escape into R\"" SUBJECT:REFUSED? TTRUE
+   s\" ; held row A would escape into R\"" SUBJECT:REJECTED? TTRUE
    s" and the declarations it names certify" T-LABEL
    s" CS-K29 ( R [ -- ] -- R ) CHECKER-SOUNDNESS:TAIL-KEEP" CHECK-QUIET-CANDIDATE! -1 T=
    s" a callable's output callable is held the same way" T-LABEL
@@ -250,34 +250,34 @@ create ERR CAP allot   variable ERR-U
    s" CS-K18 ( R [ -- S ] -- S ) CHECKER-SOUNDNESS:TAIL-NAMED" CHECK-QUIET-CANDIDATE! -1 T=
    s" a literal running a captured callable keeps the callable's row" T-LABEL
    s" : CS-K120 ( R [ R -- R ] -- R ) {: f :} 1 [: f execute ;] execute drop ;" 70
-   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REJECTED? TTRUE
    s" : CS-K121 ( R [ R -- R ] -- R ) {: f :} 1 [: f execute ;] drop f execute drop ;" 70
-   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REJECTED? TTRUE
    s" : CS-K123 ( R [ R -- R ] -- R ) {: f :} 1 [: f CHECKER-SOUNDNESS:TAIL-NAMED ;] execute drop ;" 70
-   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REJECTED? TTRUE
    s" : CS-K124 ( R [ R -- R ] bool -- R ) {: f b :} 1 [: b IF f execute ELSE f execute THEN ;] execute drop ;" 70
-   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REJECTED? TTRUE
    s" a literal's run renames its tail inside its cells too" T-LABEL
    s" : CS-EXEC ( R [ R -- R ] -- R [ R -- R ] ) dup >r execute r> ; : CS-K125 ( R [ R -- R ] -- R ) 5 swap [: CS-EXEC ;] execute drop drop ;" 70
-   s" error[E-MISMATCH]: `execute` takes [ -- ]; the stack holds n [ -- ]" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: `execute` takes [ -- ]; the stack holds n [ -- ]" SUBJECT:REJECTED? TTRUE
    s" and the copy of a literal's tail stays extensible to the caller's window" T-LABEL
    s" CS-K126 ( R [ R -- S ] -- S ) [: CHECKER-SOUNDNESS:TAIL-NAMED ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
    s" and a stale tail a binding made a push is renamed with the push's tail" T-LABEL
    s" : CS-EXEC ( R [ R -- R ] -- R [ R -- R ] ) dup >r execute r> ; : CS-K132 ( R [ R n -- R n ] -- R ) [: 5 swap [: [: CS-EXEC ;] catch drop drop ;] execute ;] execute ;" 70
-   s" error[E-MISMATCH]: CS-K132 ends with stale<R> on the stack" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: CS-K132 ends with stale<R> on the stack" SUBJECT:REJECTED? TTRUE
    s" a literal's call keeps the linear value its open row was bound to" T-LABEL
    s" CS-K127 ( CHECKER-SOUNDNESS:ltok -- CHECKER-SOUNDNESS:ltok ) [: ['] CHECKER-SOUNDNESS:LTOK-KEEP CHECKER-SOUNDNESS:TAIL-NAMED ;] CHECKER-SOUNDNESS:TAIL-NAMED"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" CS-K128 ( CHECKER-SOUNDNESS:ltok -- CHECKER-SOUNDNESS:ltok ) [: ['] CHECKER-SOUNDNESS:LTOK-KEEP ['] CHECKER-SOUNDNESS:TAIL-NAMED execute ;] CHECKER-SOUNDNESS:TAIL-NAMED"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" and one that copies it is refused" T-LABEL
+   s" and one that copies it is rejected" T-LABEL
    s" : CS-K129 ( CHECKER-SOUNDNESS:ltok -- CHECKER-SOUNDNESS:ltok CHECKER-SOUNDNESS:ltok ) [: ['] CHECKER-SOUNDNESS:LTOK-KEEP CHECKER-SOUNDNESS:TAIL-DUPAPPLY ;] CHECKER-SOUNDNESS:TAIL-NAMED ;" 70
-   s" error[E-LINEAR-COPY]: a linear value is copied here" SUBJECT:REFUSED? TTRUE
+   s" error[E-LINEAR-COPY]: a linear value is copied here" SUBJECT:REJECTED? TTRUE
    s" : CS-K130 ( CHECKER-SOUNDNESS:ltok -- CHECKER-SOUNDNESS:ltok CHECKER-SOUNDNESS:ltok ) [: ['] CHECKER-SOUNDNESS:LTOK-KEEP CHECKER-SOUNDNESS:TAIL-APPLY2 ;] CHECKER-SOUNDNESS:TAIL-NAMED ;" 70
-   s" error[E-LINEAR-COPY]: a linear value is copied here" SUBJECT:REFUSED? TTRUE
-   s" and one that drops it is refused" T-LABEL
+   s" error[E-LINEAR-COPY]: a linear value is copied here" SUBJECT:REJECTED? TTRUE
+   s" and one that drops it is rejected" T-LABEL
    s" : CS-K131 ( CHECKER-SOUNDNESS:ltok -- ) [: ['] CHECKER-SOUNDNESS:LTOK-END CHECKER-SOUNDNESS:TAIL-NAMED ;] execute ;" 70
-   s" error[E-LINEAR-DROP]: a linear value is discarded here" SUBJECT:REFUSED? TTRUE
+   s" error[E-LINEAR-DROP]: a linear value is discarded here" SUBJECT:REJECTED? TTRUE
    s" a literal's callable demanded by a caller's input is held rigid" T-LABEL
    s" CS-K94 ( -- ) 5 [: drop 7 ;] false CHECKER-SOUNDNESS:TAIL-T6 ." CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K95 ( -- ) 5 [: drop 7 ;] false [: IF drop [: ;] THEN [: ;] swap execute execute ;] execute ." CHECK-QUIET-CANDIDATE! 0 T=
@@ -287,10 +287,10 @@ create ERR CAP allot   variable ERR-U
    s" CS-K96 ( -- ) 5 [: drop 7 ;] CHECKER-SOUNDNESS:TAIL-T13 ." CHECK-QUIET-CANDIDATE! 0 T=
    s" a back edge tying one tail of a run quotation to another rejects" T-LABEL
    s" : CS-K115 ( n -- ) [: CHECKER-SOUNDNESS:TAIL-NAMED ;] swap 0 ?do [: 1 ;] over execute drop drop [: CHECKER-SOUNDNESS:TAIL-RERUN ;] loop drop ;" 70
-   s" = found: [ C [ C -- C ] -- C ]" SUBJECT:REFUSED? TTRUE
+   s" = found: [ C [ C -- C ] -- C ]" SUBJECT:REJECTED? TTRUE
    s" a callable run through a quotation leaves nothing, so `.` after it underflows" T-LABEL
    s" : CS-RUN ( R [ R -- S ] -- S ) execute ; : CS-K107 ( -- ) [: ;] [: CS-RUN ;] execute . ; CS-K107" 70
-   s" error[E-INPUT-UNDERFLOW]" SUBJECT:REFUSED? TTRUE
+   s" error[E-INPUT-UNDERFLOW]" SUBJECT:REJECTED? TTRUE
    s" a quotation kept in a local runs callables of two effects, each on its own" T-LABEL
    s" : CS-RUN ( R [ R -- S ] -- S ) execute ; : CS-K109 ( -- ) [: CS-RUN ;] {: k :} 1 2 [: + ;] k execute . 5 [: 1 + ;] k execute . ; CS-K109"
       0 RUNS
@@ -300,7 +300,7 @@ create ERR CAP allot   variable ERR-U
       SUBJECT:EXITED? TTRUE
    s" a word's fixed [ -- ] does not meet a declared [ n -- n ] slot" T-LABEL
    s" : CS-KQ ( -- [ -- ] ) [: ;] ; : CS-QW1 ( [ n -- n ] -- ) drop ; : CS-K111 ( -- ) CS-KQ CS-QW1 ; CS-K111" 70
-   s" error[E-MISMATCH]: `CS-QW1` takes [ n -- n ]; the stack holds [ -- ]" SUBJECT:REFUSED? TTRUE ;
+   s" error[E-MISMATCH]: `CS-QW1` takes [ n -- n ]; the stack holds [ -- ]" SUBJECT:REJECTED? TTRUE ;
 
 
 : CALLABLE-HOLDS ( -- )
@@ -322,11 +322,11 @@ create ERR CAP allot   variable ERR-U
       CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K93 ( R [ R [ R -- R ] -- R ] -- R ) [: CHECKER-SOUNDNESS:TAIL-UNDER ;] swap [: CHECKER-SOUNDNESS:TAIL-EQ2 ;] CHECKER-SOUNDNESS:TAIL-K"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" the refusal names the side whose row escaped, whichever branch holds it" T-LABEL
+   s" the rejection names the side whose row escaped, whichever branch holds it" T-LABEL
    s" : CS-K71 ( R [ R [ R -- R ] -- R ] [ R -- R ] f -- R ) swap >r IF drop [: CHECKER-SOUNDNESS:TAIL-UNDER ;] ELSE THEN r> CHECKER-SOUNDNESS:TAIL-APPLY ;" 70
-   s\" = held: A would escape into R\n" SUBJECT:REFUSED? TTRUE
+   s\" = held: A would escape into R\n" SUBJECT:REJECTED? TTRUE
    s" : CS-K71 ( R [ R [ R -- R ] -- R ] [ R -- R ] f -- R ) swap >r IF drop [: CHECKER-SOUNDNESS:TAIL-UNDER ;] ELSE THEN r> CHECKER-SOUNDNESS:TAIL-APPLY ;" 70
-   s\" = found: [ R -- R ]\n" SUBJECT:REFUSED? TTRUE
+   s\" = found: [ R -- R ]\n" SUBJECT:REJECTED? TTRUE
    \ Joins of two values: neither may narrow the other's declared row.
    s" CS-K44 ( R [ -- S ] -- S ) [: 1 ;] swap CHECKER-SOUNDNESS:TAIL-PICK2 execute" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K45 ( R [ -- S ] -- S ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-PICK2 execute" CHECK-QUIET-CANDIDATE! 0 T=
@@ -361,47 +361,47 @@ create ERR CAP allot   variable ERR-U
       CHECK-QUIET-CANDIDATE! -1 T=
    s" a family built around a literal takes the declared callable's row" T-LABEL
    s" CS-K74 ( -- ) [: 1 + ;] CHECKER--SOUNDNESS-TAILHOOK:MAKE CHECKER-SOUNDNESS:TAIL-QH !" CHECK-QUIET-CANDIDATE! -1 T=
-   s" a does> clause forwarding its row is refused" T-LABEL
+   s" a does> clause forwarding its row is rejected" T-LABEL
    s" : CS-K37 ( -- ) create does> ( R [ R -- S ] -- S ) drop CHECKER-SOUNDNESS:TAIL-G ;" 70
-   s" callable row escape" SUBJECT:REFUSED? TTRUE
+   s" callable row escape" SUBJECT:REJECTED? TTRUE
    s" : CS-K38 ( -- ) create does> ( R [ A -- B ] -- B ) drop CHECKER-SOUNDNESS:TAIL-G ;" 70
-   s" callable row escape" SUBJECT:REFUSED? TTRUE
+   s" callable row escape" SUBJECT:REJECTED? TTRUE
    s" a store or an install demands the declared callable" T-LABEL
    s" CS-K39 ( ^[ R [ R -- S ] -- S ] -- ) ['] CHECKER-SOUNDNESS:TAIL-G swap !" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K48 ( -- ) ['] CHECKER-SOUNDNESS:TAIL-UNDER CHECKER-SOUNDNESS:TAIL-QR !" CHECK-QUIET-CANDIDATE! 0 T=
    s" ' CHECKER-SOUNDNESS:TAIL-UNDER CHECKER-SOUNDNESS:TAIL-QR !" 70
-   s" callable row escape" SUBJECT:REFUSED? TTRUE
+   s" callable row escape" SUBJECT:REJECTED? TTRUE
    s" CS-K41 ( -- ) ['] CHECKER-SOUNDNESS:TAIL-G is CHECKER-SOUNDNESS:TAIL-DF" CHECK-QUIET-CANDIDATE! 0 T=
    s" an install with is names the escape" T-LABEL
    s" : CS-K40 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
-   s" error[E-MISMATCH]: callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on; held row A would escape into C" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on; held row A would escape into C" SUBJECT:REJECTED? TTRUE
    s" : CS-K40 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
-   s\" = found: [ C -- D ]\n" SUBJECT:REFUSED? TTRUE
+   s\" = found: [ C -- D ]\n" SUBJECT:REJECTED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
-   s\" \"code\":\"E-MISMATCH\",\"message\":\"callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on; held row A would escape into C\"" SUBJECT:REFUSED? TTRUE
+   s\" \"code\":\"E-MISMATCH\",\"message\":\"callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on; held row A would escape into C\"" SUBJECT:REJECTED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
-   s\" \"token\":\"is\"" SUBJECT:REFUSED? TTRUE
+   s\" \"token\":\"is\"" SUBJECT:REJECTED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
-   s\" \"inferred\":\"-- [ E [ A -- F ] -- F ]\"" SUBJECT:REFUSED? TTRUE
+   s\" \"inferred\":\"-- [ E [ A -- F ] -- F ]\"" SUBJECT:REJECTED? TTRUE
    s" CS-K42 ( ^[ -- S ] -- ) [: ;] swap !" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K43 ( R [ R -- S ] ^[ -- S ] -- R ) !" CHECK-QUIET-CANDIDATE! 0 T=
-   s" a cell over a callable whose tails differ is refused at its declaration" T-LABEL
+   s" a cell over a callable whose tails differ is rejected at its declaration" T-LABEL
    s" TYPED-VARIABLE CS-QB [ -- S ]" 70
-   s" error[E-BAD-STORAGE]: the type of `CS-QB` may hold a linear value" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `CS-QB` may hold a linear value" SUBJECT:REJECTED? TTRUE
    s" TYPED-VARIABLE CS-QB [ -- S ]" 70
-   s" = evaluated: TYPED-VARIABLE CS-QB [ -- S ]" SUBJECT:REFUSED? TTRUE
+   s" = evaluated: TYPED-VARIABLE CS-QB [ -- S ]" SUBJECT:REJECTED? TTRUE
    s" TYPED-VARIABLE CS-QD [ [ -- S ] -- S ]" 70
-   s" error[E-BAD-STORAGE]: the type of `CS-QD` may hold a linear value" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `CS-QD` may hold a linear value" SUBJECT:REJECTED? TTRUE
    s" TYPED-VARIABLE CS-QD [ [ -- S ] -- S ]" 70
-   s" = evaluated: TYPED-VARIABLE CS-QD [ [ -- S ] -- S ]" SUBJECT:REFUSED? TTRUE
+   s" = evaluated: TYPED-VARIABLE CS-QD [ [ -- S ] -- S ]" SUBJECT:REJECTED? TTRUE
    s" TYPED-VARIABLE CS-QN [ R [ R -- S ] -- S ]" 70
-   s" error[E-BAD-STORAGE]: the type of `CS-QN` may hold a linear value" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `CS-QN` may hold a linear value" SUBJECT:REJECTED? TTRUE
    s" TYPED-VARIABLE CS-QN [ R [ R -- S ] -- S ]" 70
-   s" = evaluated: TYPED-VARIABLE CS-QN [ R [ R -- S ] -- S ]" SUBJECT:REFUSED? TTRUE
+   s" = evaluated: TYPED-VARIABLE CS-QN [ R [ R -- S ] -- S ]" SUBJECT:REJECTED? TTRUE
    s" TYPED-VARIABLE CS-QV CHECKER-SOUNDNESS:tailvals<[ -- S ]>" 70
-   s" error[E-BAD-STORAGE]: the type of `CS-QV` may hold a linear value" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `CS-QV` may hold a linear value" SUBJECT:REJECTED? TTRUE
    s" TYPED-VARIABLE CS-QVV CHECKER-SOUNDNESS:tailvals<CHECKER-SOUNDNESS:tailvals<[ -- S ]>>" 70
-   s" error[E-BAD-STORAGE]: the type of `CS-QVV` may hold a linear value" SUBJECT:REFUSED? TTRUE ;
+   s" error[E-BAD-STORAGE]: the type of `CS-QVV` may hold a linear value" SUBJECT:REJECTED? TTRUE ;
 
 
 : CALLABLE-SOUND ( -- )
@@ -429,7 +429,7 @@ create ERR CAP allot   variable ERR-U
 
 
 : RETURN-ROW ( -- )
-   s" a read below the definition's own return frame is refused" T-LABEL
+   s" a read below the definition's own return frame is rejected" T-LABEL
    s" CS-R1 ( -- n ) r@" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-R2 ( -- n n ) 2r@" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-R3 ( n -- n n n ) >r 2r@ r>" CHECK-QUIET-CANDIDATE! 0 T=
@@ -455,7 +455,7 @@ create ERR CAP allot   variable ERR-U
 \ An R-to-S quotation is the only way to S: a body that never runs it on some
 \ path unifies the declared rows, and the caller could pick any S.
 : ROW-QUANTIFIERS ( -- )
-   s" a body that drops its R-to-S quotation is refused" T-LABEL
+   s" a body that drops its R-to-S quotation is rejected" T-LABEL
    s" CS-W1 ( R [ R -- S ] -- S ) drop" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-W2 ( R CHECKER-SOUNDNESS:point [ R CHECKER-SOUNDNESS:point -- S CHECKER-SOUNDNESS:point ] -- S CHECKER-SOUNDNESS:point ) drop"
       CHECK-QUIET-CANDIDATE! 0 T=
@@ -482,19 +482,19 @@ create ERR CAP allot   variable ERR-U
 \ A local, typed or not, never captures a cell whose width is open where it binds,
 \ the word's own declared variable included: it would store one cell of a wider value.
 : OPEN-WIDTH-LOCALS ( -- )
-   s" a local over an open-width cell is refused at its bind" T-LABEL
+   s" a local over an open-width cell is rejected at its bind" T-LABEL
    s" : CS-L1 ( -- ) OPTION:NONE {: x:option<t> :} ;" 70
-   s\" error[E-MISMATCH]: `:}` takes option<t>; the stack holds option<a>\n" SUBJECT:REFUSED? TTRUE
+   s\" error[E-MISMATCH]: `:}` takes option<t>; the stack holds option<a>\n" SUBJECT:REJECTED? TTRUE
    s" : CS-L2 ( a -- n option<a> ) OPTION:SOME {: x:option<a> :} 7 x ;" 70
-   s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<a>\n" SUBJECT:REFUSED? TTRUE
+   s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<a>\n" SUBJECT:REJECTED? TTRUE
    s" : CS-L3 ( option<a> -- n option<a> ) {: o:option<a> :} 7 o ;" 70
-   s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<a>\n" SUBJECT:REFUSED? TTRUE
+   s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<a>\n" SUBJECT:REJECTED? TTRUE
    s" : CS-L3U {: o:option<a> :} 7 o ;" 70
-   s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<a>\n" SUBJECT:REFUSED? TTRUE
+   s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<a>\n" SUBJECT:REJECTED? TTRUE
    s" : CS-L4 ( -- ) OPTION:NONE 5 {: x:option<t> y:t :} ;" 70
-   s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<b>\n" SUBJECT:REFUSED? TTRUE
+   s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<b>\n" SUBJECT:REJECTED? TTRUE
    s" : CS-L6 ( -- ) OPTION:NONE 5 OPTION:SOME {: x y :} ;" 70
-   s\" error[E-MISMATCH]: `:}` takes a; the stack holds option<b>\n" SUBJECT:REFUSED? TTRUE
+   s\" error[E-MISMATCH]: `:}` takes a; the stack holds option<b>\n" SUBJECT:REJECTED? TTRUE
    s" CS-L5 ( ptr<s,option<a>> -- ptr<s,option<a>> ) {: p:ptr<s,option<a>> :} p"
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
@@ -502,7 +502,7 @@ create ERR CAP allot   variable ERR-U
    s" a locals group that reads below the declared inputs is an underflow" T-LABEL
    s" : CS-L7 ( -- ) 5 OPTION:SOME {: a u :} ;" 70
    s\" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)\n"
-      SUBJECT:REFUSED? TTRUE ;
+      SUBJECT:REJECTED? TTRUE ;
 
 : SIGNATURE-END ( -- )
    s" tokens after the output side are a syntax error" T-LABEL
@@ -513,17 +513,17 @@ create ERR CAP allot   variable ERR-U
 
 
 : WIDE-COUNT ( -- )
-   s" depth and .s over a wide value or one of open width are refused, naming the word and the value; a one-cell value is counted" T-LABEL
+   s" depth and .s over a wide value or one of open width are rejected, naming the word and the value; a one-cell value is counted" T-LABEL
    s" ENUM csdone solo pair ;ENUM : CS-D2 ( -- option<a> option<a> ) OPTION:NONE OPTION:NONE ; : CS-D3 ( option<n> -- ) drop ; : CS-D5 ( -- option<n> csdone n ) CS-D2 CS-D3 CHECKER--SOUNDNESS-CSDONE:SOLO depth ;" 70
-   s" error[E-DEPTH-WIDE]: cannot count `option<n>`: it is one value held in 2 cells" SUBJECT:REFUSED? TTRUE
+   s" error[E-DEPTH-WIDE]: cannot count `option<n>`: it is one value held in 2 cells" SUBJECT:REJECTED? TTRUE
    s\" ENUM csdone solo pair ;ENUM : CS-D6 ( -- csdone n ) CHECKER--SOUNDNESS-CSDONE:SOLO depth ; : CS-D7 ( -- ) CS-D6 nip 1 <> IF s\" depth counted a one-cell enum as other than 1\" 1 die THEN ; CS-D7" 0
       SUBJECT:EXITED? TTRUE
    s" -1 REJECTION:JSON ! : CS-D4 ( -- option<n> ) 3 OPTION:SOME .s ;" 70
-   s\" \"code\":\"E-DEPTH-WIDE\",\"message\":\"cannot count `option<n>`: it is one value held in 2 cells\"" SUBJECT:REFUSED? TTRUE
+   s\" \"code\":\"E-DEPTH-WIDE\",\"message\":\"cannot count `option<n>`: it is one value held in 2 cells\"" SUBJECT:REJECTED? TTRUE
    s" -1 REJECTION:JSON ! : CS-D4 ( -- option<n> ) 3 OPTION:SOME .s ;" 70
-   s\" \"token\":\".s\"" SUBJECT:REFUSED? TTRUE
+   s\" \"token\":\".s\"" SUBJECT:REJECTED? TTRUE
    s" : CS-D8 ( option<a> -- option<a> n ) depth ;" 70
-   s" error[E-DEPTH-WIDE]: cannot count `option<a>`: it is one value, and how many cells it holds is not known here" SUBJECT:REFUSED? TTRUE ;
+   s" error[E-DEPTH-WIDE]: cannot count `option<a>`: it is one value, and how many cells it holds is not known here" SUBJECT:REJECTED? TTRUE ;
 
 
 : RUN ( -- )

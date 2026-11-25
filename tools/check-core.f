@@ -66,7 +66,7 @@ TYPED-VARIABLE CHK-ERR-BUF-A ^u8
 
 \ A buffer that holds a source, or text built from one, grows to what it
 \ holds: the engine loads a source file of any size (src/core/include.f), so
-\ the check refuses none for its size. The run file is the subject behind a
+\ the check rejects none for its size. The run file is the subject behind a
 \ prefix.
 DYNAMIC-BUFFER CHK-SRC-MEM u8
 DYNAMIC-BUFFER CHK-RUN-MEM u8
@@ -1022,7 +1022,7 @@ private
 : CHK-VERIFY-READ ( -- )
    0 CHK-POS$ CHK-SRC-READ CHK-SRC-U ! ;
 
-\ A named file the file system refuses to read is the loader's rejection at its
+\ A named file the file system cannot read is the loader's rejection at its
 \ canonical path; a missing one is the load's, named as written.
 : CHK-VERIFY-FILE ( -- str )
    0 CHK-RESOLVE-POS 0= if 0 CHK-POS$ NULL$ true SOURCE-ROOT:MISSING-SOURCE then
@@ -1067,7 +1067,7 @@ private
    CHK-VERIFIER-RELAY
    MATCH verdict
       verified OF ENDOF
-      refused OF VERIFY-STATUS CHK-THROW ENDOF
+      rejected OF VERIFY-STATUS CHK-THROW ENDOF
       engine-provided OF
          path CHK-ENGINE-PROVIDED  EXIT-STATUS:REJECTED CHK-THROW
       ENDOF

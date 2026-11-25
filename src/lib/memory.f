@@ -3,7 +3,7 @@ split-str
 \ allot` is for dictionary-sized static storage. A mapping is whole pages, so
 \ storage much smaller than STACK-ABI:PAGE-BYTES belongs on HEAP:ALLOCATOR or in
 \ an arena; MEM is for page-sized storage, allocator internals and storage below
-\ the FFI. A refused mmap throws E-MEM-MAP; a kernel munmap refusal writes
+\ the FFI. A failed mmap throws E-MEM-MAP; a munmap that fails writes
 \ "memory: unmap failed" and exits 71, bypassing catch. STORAGE CLASS.
 \ CALLER-OWNED: the caller releases every mapping. WITH-BYTES's and
 \ WITH-RECORD's scopes are TASK-LOCAL: their chunks hang off one head cell in
@@ -211,7 +211,7 @@ CAST: >CHUNK ( ^u8 -- ^chunk )
 : SCOPE-EXTENT ( NUM:alloc-byte-len -- n )
    ALLOC-BYTES>N FRAME-BYTES + ;
 
-\ A scope links only once its storage is taken, so a refused mapping links
+\ A scope links only once its storage is taken, so a failed mapping links
 \ nothing.
 : PUSH-FRAME ( ^frame n ^chunk -- )
    {: extent:n first :}
@@ -311,7 +311,7 @@ public
    hi span span-bytes + hi - UNMAP-SLIVER
    base cap MEM-PROT-RW MEM-MAP-PRIVATE-ANON-FIXED MEM-ANON-FD MEM-OFF-ZERO mmap base <> if
       \ The reserve still owns [lo, hi) when the fixed writable remap fails.
-      \ Report a refusing cleanup rather than losing that mapping too.
+      \ Report a rejecting cleanup rather than losing that mapping too.
       lo cap STACK-ABI:PAGE-BYTES 2 * + UNMAP-SLIVER
       cap s" a guarded stack" REJECTION:MAP-PASS
    then

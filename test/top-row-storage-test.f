@@ -1,5 +1,5 @@
 \ top-row-storage-test.f - the interpret row types top-level storage as a colon
-\ body does: a refused top-level store gets its colon-body twin's code, token
+\ body does: a rejected top-level store gets its colon-body twin's code, token
 \ and reason with rc 70, and the cell keeps its old contents. Programs run
 \ through `evaluate-closed`, the row --load keeps in this process; a child runs
 \ only the boundaries named at their cases (a crash, a rewired search order, the
@@ -69,7 +69,7 @@ variable ERR-U
 : HAS? ( str -- ) {: s :}
    REJECTION:BUFFER$ s STR:CONTAINS? TTRUE ;
 
-: CLEAR ( -- )   \ every cell a refused store would have written
+: CLEAR ( -- )   \ every cell a rejected store would have written
    0 TS-V !  0 TS-BN !  NULL-PTR TS-PV ! ;
 
 : UNTOUCHED ( -- )
@@ -103,10 +103,10 @@ variable ERR-U
 : GOT-PTR ( -- )    S\" \"found\":\"^" HAS? ;
 : GOT-XT ( -- )     S\" \"found\":\"xt" HAS? ;
 
-\ ---- the refused programs, each beside its colon-body twin --------------------
+\ ---- the rejected programs, each beside its colon-body twin --------------------
 
 : CASE-CREATE-XT ( -- )
-   s" create T ' DUP , : the xt is refused as in a body, the `,` lays nothing" T-LABEL
+   s" create T ' DUP , : the xt is rejected as in a body, the `,` lays nothing" T-LABEL
    ARM
    [: s" : TS-B1 ( -- ) ['] DUP , ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-COMMA GOT-XT
@@ -118,7 +118,7 @@ variable ERR-U
    DISARM ;
 
 : CASE-CREATE-HERE ( -- )
-   s" create T here , : the pointer is refused as in a body, the `,` lays nothing" T-LABEL
+   s" create T here , : the pointer is rejected as in a body, the `,` lays nothing" T-LABEL
    ARM
    [: s" : TS-B2 ( -- ) here , ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-COMMA GOT-PTR
@@ -130,51 +130,51 @@ variable ERR-U
    DISARM ;
 
 : CASE-VARIABLE-HERE ( -- )
-   s" variable V here V ! : refused by the raw-cell rule, V stays 0" T-LABEL
+   s" variable V here V ! : rejected by the raw-cell rule, V stays 0" T-LABEL
    ARM
    [: s" : TS-B3 ( -- ) here TS-V ! ;" evaluate-closed ;] 70 TTHROWSQ
    RAW-PTR AT-STORE
    ARM
    [: s" variable TS-NV here TS-NV !" evaluate-closed ;] 70 TTHROWSQ
    RAW-PTR AT-STORE
-   DISARM ;                 \ the refused program's TS-NV loses its name
+   DISARM ;                 \ the rejected program's TS-NV loses its name
 
 : CASE-VARIABLE-XT ( -- )
-   s" variable W ' DUP W ! : refused by the raw-cell xt rule, W stays 0" T-LABEL
+   s" variable W ' DUP W ! : rejected by the raw-cell xt rule, W stays 0" T-LABEL
    ARM
    [: s" : TS-B4 ( -- ) ['] DUP TS-V ! ;" evaluate-closed ;] 70 TTHROWSQ
    RAW-XT AT-STORE
    ARM
    [: s" variable TS-NW ' DUP TS-NW !" evaluate-closed ;] 70 TTHROWSQ
    RAW-XT AT-STORE
-   DISARM ;                 \ the refused program's TS-NW loses its name
+   DISARM ;                 \ the rejected program's TS-NW loses its name
 
 : CASE-CONSTANT-PTR ( -- )
-   s" here constant C : refused by the raw-cell rule, as here V ! is" T-LABEL
+   s" here constant C : rejected by the raw-cell rule, as here V ! is" T-LABEL
    ARM
    [: s" here constant TS-HC" evaluate-closed ;] 70 TTHROWSQ
    RAW-PTR AT-CONSTANT
    DISARM ;
 
 : CASE-CONSTANT-XT ( -- )
-   s" ' DUP constant C : refused by the raw-cell xt rule, as ' DUP V ! is" T-LABEL
+   s" ' DUP constant C : rejected by the raw-cell xt rule, as ' DUP V ! is" T-LABEL
    ARM
    [: s" ' DUP constant TS-XC" evaluate-closed ;] 70 TTHROWSQ
    RAW-XT AT-CONSTANT
    DISARM ;
 
 : CASE-CONSTANT-FAMILY ( -- )
-   s" a NEWTYPE value to constant is refused, as one stored into V is" T-LABEL
+   s" a NEWTYPE value to constant is rejected, as one stored into V is" T-LABEL
    ARM
    [: s" TS-NT:MK constant TS-NC" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-CONSTANT  S\" \"found\":\"ts-nt:tk\"" HAS?  RAW-FAMILY
    ARM
    [: s" variable TS-NV TS-NT:MK TS-NV !" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-STORE  RAW-FAMILY
-   DISARM ;                 \ the refused program's TS-NV loses its name
+   DISARM ;                 \ the rejected program's TS-NV loses its name
 
 : CASE-TYPED-N-PTR ( -- )
-   s" here BN ! through a ( -- ^n ) accessor is refused as in a body" T-LABEL
+   s" here BN ! through a ( -- ^n ) accessor is rejected as in a body" T-LABEL
    CLEAR ARM
    [: s" : TS-B5 ( -- ) here TS-BN ! ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-STORE GOT-PTR
@@ -184,7 +184,7 @@ variable ERR-U
    DISARM UNTOUCHED ;
 
 : CASE-TYPED-N-XT ( -- )
-   s" an xt through the same accessor is refused as in a body" T-LABEL
+   s" an xt through the same accessor is rejected as in a body" T-LABEL
    CLEAR ARM
    [: s" : TS-B6 ( -- ) ['] DUP TS-BN ! ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-STORE GOT-XT
@@ -194,7 +194,7 @@ variable ERR-U
    DISARM UNTOUCHED ;
 
 : CASE-ADD-STORE ( -- )
-   s" pointer and xt operands to BN +! are refused as in a body" T-LABEL
+   s" pointer and xt operands to BN +! are rejected as in a body" T-LABEL
    CLEAR ARM
    [: s" : TS-B7 ( -- ) here TS-BN +! ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-ADD GOT-PTR
@@ -210,7 +210,7 @@ variable ERR-U
    DISARM UNTOUCHED ;
 
 : CASE-BYTE-STORE ( -- )
-   s" pointer and xt operands to c! through ( -- ^u8 ) are refused as in a body" T-LABEL
+   s" pointer and xt operands to c! through ( -- ^u8 ) are rejected as in a body" T-LABEL
    CLEAR ARM
    [: s" : TS-B9 ( -- ) here TS-BC c! ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-CSTORE GOT-PTR
@@ -226,7 +226,7 @@ variable ERR-U
    DISARM UNTOUCHED ;
 
 : CASE-POINTER-SUM ( -- )
-   S\" s\" abc\" str> + . : a byte pointer into a scalar consumer is refused as in a body" T-LABEL
+   S\" s\" abc\" str> + . : a byte pointer into a scalar consumer is rejected as in a body" T-LABEL
    ARM
    [: S\" : TS-B11 ( -- ) s\" abc\" str> + . ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH S\" \"token\":\".\"" HAS?  S\" \"found\":\"^u8\"" HAS?
@@ -236,7 +236,7 @@ variable ERR-U
    DISARM ;
 
 : CASE-REAL-TO-N ( -- )
-   s" 0.5 N with N ( n -- ) : a real into a scalar consumer is refused as in a body" T-LABEL
+   s" 0.5 N with N ( n -- ) : a real into a scalar consumer is rejected as in a body" T-LABEL
    ARM
    [: s" : TS-B14 ( -- ) 0.5 TS-NN ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH S\" \"token\":\"TS-NN\"" HAS?  S\" \"found\":\"r\"" HAS?
@@ -246,9 +246,9 @@ variable ERR-U
    DISARM ;
 
 \ The row knows a TRUSTED: body's declared effect, not the cells it leaves: it
-\ rebuilds them as unknown, and a typed consumer refuses an unknown cell.
+\ rebuilds them as unknown, and a typed consumer rejects an unknown cell.
 : CASE-LEFTOVER ( -- )
-   s" a cell a TRUSTED: body leaves past its effect is refused at its next typed consumer" T-LABEL
+   s" a cell a TRUSTED: body leaves past its effect is rejected at its next typed consumer" T-LABEL
    CLEAR ARM
    [: s" TRUSTED: TS-L1 ( -- ) here ;  TS-L1 TS-PV !" evaluate-closed ;] 70 TTHROWSQ
    S\" \"code\":\"E-STALE-READ\"" HAS?  AT-STORE
@@ -266,7 +266,7 @@ variable ERR-U
    [: s" include test/fixtures/top-row-eval.f" evaluate-closed ;] 70 TTHROWSQ ;
 
 : CASE-SITE ( -- )
-   s" a top-level refusal names its file and line" T-LABEL
+   s" a top-level rejection names its file and line" T-LABEL
    CLEAR  REJECTION:CAPTURE
    INCLUDE-SITE
    s" /test/fixtures/top-row-site.f:4:11" HAS?  s" error[E-RAW-CELL-PTR]" HAS?
@@ -309,7 +309,7 @@ variable ERR-U
 \ A child: unchecked, this program reads below the closed floor or branches to
 \ xt 0, which crashes the process.
 : CASE-EXECUTE-UNDERFLOW ( -- )
-   s" ' F execute with F's input missing is refused as in a body" T-LABEL
+   s" ' F execute with F's input missing is rejected as in a body" T-LABEL
    ARM
    [: s" : TS-B12 ( -- ) ['] TS-F2 execute ;" evaluate-closed ;] 70 TTHROWSQ
    S\" \"code\":\"E-INPUT-UNDERFLOW\"" HAS?  S\" \"token\":\"execute\"" HAS?
@@ -318,7 +318,7 @@ variable ERR-U
    S\" \"code\":\"E-INPUT-UNDERFLOW\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
 : CASE-CATCH-NON-XT ( -- )
-   s" 0 0 catch hands catch a number and is refused as in a body" T-LABEL
+   s" 0 0 catch hands catch a number and is rejected as in a body" T-LABEL
    ARM
    [: s" : TS-B13 ( -- ) 0 0 catch ;" evaluate-closed ;] 70 TTHROWSQ
    S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"token\":\"catch\"" HAS?
@@ -343,7 +343,7 @@ variable ERR-U
 
 \ A child: unchecked, the second `2r>` pops into the return frame of the code
 \ running the program, which crashes the process. The row carries only the two
-\ cells `2>r` pushed, so reading below them is refused with a body's
+\ cells `2>r` pushed, so reading below them is rejected with a body's
 \ return-stack reason.
 : CASE-RETURN-BELOW ( -- )
    s" r> below a body's return frame names the return-stack reason" T-LABEL
@@ -352,34 +352,34 @@ variable ERR-U
    s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here" HAS?
    s" = evaluated: : TS-B15 ( -- ) r> drop ;" HAS?
    REJECTION:BUFFER-OFF
-   s" 2r> below the saved return cells is refused with the same reason" T-LABEL
+   s" 2r> below the saved return cells is rejected with the same reason" T-LABEL
    s" 1 2 2>r 2r> 2r> 2drop" 70 EXITS
    s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here" ERR-HAS?
    s" = expected: a b" ERR-HAS? ;
 
 \ A signature naming one row as data and after `|` binds its caller's return
-\ base at the call, with no read token: the seal refuses the bound base
+\ base at the call, with no read token: the seal rejects the bound base
 \ (CHECK-NO-BORROW, QUOT-RSEAL), pinned at the last token walked. A child for
 \ the run: unchecked, TS-B17's r@ reads below its return frame, which crashes
 \ the process.
 : CASE-RETURN-BOUND ( -- )
-   s" a call binding the return base with no read is refused by the seal" T-LABEL
+   s" a call binding the return base with no read is rejected by the seal" T-LABEL
    ARM
    [: s" : TS-U1 ( U | U -- U | U ) ; : TS-B16 ( n -- n ) TS-U1 ;" evaluate-closed ;]
    70 TTHROWSQ
    S\" \"code\":\"E-RETURN-STACK\"" HAS?  S\" \"token\":\"TS-U1\"" HAS?
    DISARM
-   s" r@ over a return base a call bound is refused by the seal, never run" T-LABEL
+   s" r@ over a return base a call bound is rejected by the seal, never run" T-LABEL
    s" true REJECTION:JSON ! : TS-U2 ( U | U -- U | U ) ; : TS-B17 ( n -- n n ) TS-U2 r@ ; : TS-T7 ( -- n ) 5 TS-B17 drop ; TS-T7 . cr"
    70 EXITS
    S\" \"code\":\"E-RETURN-STACK\"" ERR-HAS?  S\" \"token\":\"r@\"" ERR-HAS?
-   s" a literal binding its return base with no read is refused at ;]" T-LABEL
+   s" a literal binding its return base with no read is rejected at ;]" T-LABEL
    ARM
    [: s" : TS-U3 ( U | U -- U | U ) ; : TS-B18 ( -- ) [: 5 TS-U3 r@ drop drop ;] drop ;" evaluate-closed ;]
    70 TTHROWSQ
    S\" \"code\":\"E-RETURN-STACK\"" HAS?  S\" \"token\":\";]\"" HAS?
    DISARM
-   s" a literal reading its caller's pushed cell through the bound base is refused at ;]" T-LABEL
+   s" a literal reading its caller's pushed cell through the bound base is rejected at ;]" T-LABEL
    ARM
    [: s" : TS-U4 ( U | U -- U | U ) ; : TS-B19 ( -- n ) 5 >r [: 7 TS-U4 r@ swap drop ;] execute r> drop ;" evaluate-closed ;]
    70 TTHROWSQ
@@ -429,7 +429,7 @@ variable ERR-U
 : RUNS-AFTER ( str -- ) {: code :}
    SB$ 0 EXITS  s" AFTER" OUT-HAS?  code ERR-LACKS? ;
 
-: REFUSES-P3 ( str -- ) {: code :}
+: REJECTS-P3 ( str -- ) {: code :}
    SB$ 70 EXITS
    S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\".\"" ERR-HAS?
    code ERR-LACKS? ;
@@ -437,12 +437,12 @@ variable ERR-U
 : CASE-SCOPES ( -- )
    s" a retired used public shadowing a global: 1 drop runs, rc 0" T-LABEL
    SB-RESET SHADOW AFTER  s" E-USING-SHADOW-GLOBAL" RUNS-AFTER
-   s" a retired used public shadowing a global: p3 is refused by its own diagnostic" T-LABEL
-   SB-RESET SHADOW P3  s" E-USING-SHADOW-GLOBAL" REFUSES-P3
+   s" a retired used public shadowing a global: p3 is rejected by its own diagnostic" T-LABEL
+   SB-RESET SHADOW P3  s" E-USING-SHADOW-GLOBAL" REJECTS-P3
    s" two used publics of one tail, one retired: 1 TS-AMB runs, rc 0" T-LABEL
    SB-RESET AMBIG AFTER  s" ambiguous" RUNS-AFTER
-   s" two used publics of one tail, one retired: p3 is refused by its own diagnostic" T-LABEL
-   SB-RESET AMBIG P3  s" ambiguous" REFUSES-P3 ;
+   s" two used publics of one tail, one retired: p3 is rejected by its own diagnostic" T-LABEL
+   SB-RESET AMBIG P3  s" ambiguous" REJECTS-P3 ;
 
 \ ---- the admitted programs ----------------------------------------------------
 
@@ -550,7 +550,7 @@ variable ERR-U
    BUF-CLEAR SEND-LINE WAIT-ANSWER ;
 
 : CASE-REPL ( -- )
-   s" a refused REPL line names no file or definition" T-LABEL
+   s" a rejected REPL line names no file or definition" T-LABEL
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY
    s" habu> " WAIT-FOR TTRUE
    s" variable TS-RV  here TS-RV !" STEP TFALSE

@@ -17,7 +17,7 @@ package SPANT
 public
 
 \ Declared over a CELL span on purpose: the widening test calls it with a BYTE
-\ span, which the checker accepts, and the byte reach is what refuses the read
+\ span, which the checker accepts, and the byte reach is what rejects the read
 \ that would have run past the end.
 : CELL-READ ( SPAN:span<cell> n -- n )
    SPAN:CELL@ ;
@@ -83,7 +83,7 @@ private
    [: ST-BUF 0 65 SPAN:SUB SPAN:LEN drop ;] E-SPAN-RANGE TTHROWS
    [: ST-BUF 8 -1 SPAN:SUB SPAN:LEN drop ;] E-SPAN-RANGE TTHROWS ;
 
-\ A narrowed span addresses the narrowed storage and refuses the rest of it: the
+\ A narrowed span addresses the narrowed storage and rejects the rest of it: the
 \ reach shrank, so the bytes past it are unreachable through the narrow span
 \ even though the buffer behind it still owns them.
 : T-NARROW-ADDRESSES ( -- )
@@ -179,12 +179,12 @@ private
    \ fits in an 8-byte span, the second one does not
    ST-TINY 0 CELL-READ drop
    [: ST-TINY 1 CELL-READ drop ;] E-SPAN-RANGE TTHROWS
-   \ the other direction stays a checker refusal at the element read
+   \ the other direction stays a checker rejection at the element read
    s" STW-CU ( SPAN:span<cell> n -- u8 ) SPAN:U8@" CHECK-QUIET-CANDIDATE! 0 T=
    \ SPAN:MAKE binds its element from the pointer it is given, so a byte pointer
    \ mints a `span<u8>` that widens into a declared `span<cell>` exactly as
-   \ STW-OPEN's argument does; the reverse narrowing is refused in both places.
-   \ Two concrete pointees never unify (`( ^cell -- u8 ) c@` is refused), and
+   \ STW-OPEN's argument does; the reverse narrowing is rejected in both places.
+   \ Two concrete pointees never unify (`( ^cell -- u8 ) c@` is rejected), and
    \ SPAN:MAKE stays audited to src/lib/ and src/: the reach it takes is
    \ unchecked.
    s" STW-MINT ( ^u8 n -- SPAN:span<cell> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! -1 T=

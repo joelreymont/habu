@@ -16,7 +16,7 @@ out root, which the build then links. An engine build takes at most 5 minutes; o
 that runs past it has a defect to root-cause, never a longer limit.
 
 Build from the tree's root: a build opens its boot files under the working
-directory and refuses one outside the engine root. Builds write their objects
+directory and rejects one outside the engine root. Builds write their objects
 under the out root (src/lib/build-out.f), in a directory
 named by the building hb's change time and size, so two hb never share an
 object.
@@ -53,7 +53,7 @@ lines, leaving alternate instruction-cache lines unflushed.
 The full native suite has additional host requirements. On Linux its PTY
 tests need working /dev/ptmx and /dev/pts. The database test needs initdb
 and postgres on PATH and libpq 17 or newer for native query cancellation,
-run as an ordinary user because initdb refuses root. With libpq 16 the test
+run as an ordinary user because initdb rejects root. With libpq 16 the test
 dies `error[E-FFI-DLSYM]: no C symbol 'PQcancelCreate' in 'libpq.so.5'`. Debian and Ubuntu keep
 initdb and postgres in `/usr/lib/postgresql/<version>/bin`, which must be put
 on PATH. The FONT test needs HarfBuzz 14.2 or newer, libharfbuzz and
@@ -134,10 +134,10 @@ The first stores the new form in a new cell and keeps the old cell, holding an
 adapter, for the callers; the second moves the callers and drops the old cell.
 Each builds with the engine of the commit before it.
 
-The link refuses a kernel object the running hb cannot read
+The link rejects a kernel object the running hb cannot read
 (src/habu/link-kernel.f READ). A change to the object's format needs a
 stage that changes the reader before the tree changes the writer. READ also
-refuses an object whose DATA-START is above hb's: the hb building
+rejects an object whose DATA-START is above hb's: the hb building
 it sends a build's xt! and ptr-cell! stores into its header to the image only
 below its own DATA start (src/habu/habu2.f ROUTE-HEADER).
 
@@ -161,7 +161,7 @@ the build stops `E-UNDEFINED` at its first use; a moved `nominal-provider` or
 
 A change in one commit that no revision can stage leaves a host whose hb
 predates it unable to build the tree: a package renamed together with the owner
-rows that name it makes an hb built before the rename refuse
+rows that name it makes an hb built before the rename reject
 src/habu/interpreter.f with `E-UNDEFINED`. Seed that host with an engine a
 current host cross-builds for it, such as `hb --load tools/hb-build.f --
 --engine --target linux-aarch64 -o "$OUT"` for Linux arm64, copied there with

@@ -109,7 +109,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
    wid XREF:PACKAGE-WL?  wid XREF:RETIRED-WL? or ;
 
 \ The last shadow row filed since the open that names record idx, or -1: a
-\ section that refused leaves the rows of what it made before the refusal, and
+\ section that rejected leaves the rows of what it made before the rejection, and
 \ the record index they name is made again.
 : SHADOW-ROW ( n -- n ) {: idx:n :}
    -1

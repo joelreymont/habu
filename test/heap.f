@@ -2,7 +2,7 @@
 \ typed through its STRUCTURE's accessors, distinct from the next, and keeps
 \ its contents across another record's NEW and RELEASE; a record holding a
 \ JSON:cursor runs a reader with no cast; a record holds an arena by pointer;
-\ a refused declaration (a sub-cell element, an unknown type) defines
+\ a rejected declaration (a sub-cell element, an unknown type) defines
 \ nothing; checked code can neither call nor tick MAP-RECORD or UNMAP-RECORD
 \ outside DYNAMIC-STORAGE; a record pointer enters no generic-pointer word that
 \ reads a cell; and tools/check.f --verify-only certifies a word using a HEAP's
@@ -118,8 +118,8 @@ variable EVAL-U
    h HOLDERS-RELEASE ;
 
 
-: REFUSALS ( -- )
-   s" a refused declaration defines nothing" T-LABEL
+: REJECTIONS ( -- )
+   s" a rejected declaration defines nothing" T-LABEL
    s" HEAP BAD u16" EVAL 70 T=
    s" BAD-NEW" UNDEFINED? TTRUE
    s" HEAP WORSE no-such-type" EVAL 70 T=
@@ -160,7 +160,7 @@ variable EVAL-U
 
 : RUN ( -- )
    T-RESET
-   RECORDS READER HOLDER REFUSALS CALLS VERIFY
+   RECORDS READER HOLDER REJECTIONS CALLS VERIFY
    HEAP-CAPTURE:CAPTURE
    T-REPORT ;
 

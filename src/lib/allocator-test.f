@@ -4,7 +4,7 @@
 \ arena has its own; DELETE and FREE leave earlier records readable; BYTES and
 \ FREE call a recording allocator's functions only for bytes, and INIT fills a
 \ record once; RESIZE keeps a block's bytes, allocates for NULL-PTR, frees at
-\ zero, refuses a negative count and skips an equal one.
+\ zero, rejects a negative count and skips an equal one.
 require src/lib/test/assert.f
 require src/lib/allocator.f
 require src/lib/arena.f
@@ -177,7 +177,7 @@ TYPED-VARIABLE AL ALLOC:allocator
 
 : NEGATIVE ( ^u8 -- )
    {: block:^ :}
-   s" and refuses a negative count" T-LABEL
+   s" and rejects a negative count" T-LABEL
    [: AL block -1 8 ALLOC:RESIZE drop drop ;] E-MEM-SIZE TTHROWSQ
    [: AL block 24 -1 ALLOC:RESIZE drop drop ;] E-MEM-SIZE TTHROWSQ
    RESIZES-MADE @ 1 T= ;

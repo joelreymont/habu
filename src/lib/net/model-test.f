@@ -647,7 +647,7 @@ $300000 constant BIG-U
    response swap STREAM! ;
 
 
-\ OpenAI's refusal of a chat or count request over the model's context.
+\ OpenAI's rejection of a chat or count request over the model's context.
 : TOO-LARGE ( HTTP:response -- )
    {: response:HTTP:response :}
    response 400 HTTP:STATUS!
@@ -1062,7 +1062,7 @@ variable KEPT-U
       response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2,0.3],\qindex\q:1}]}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
-   \ OpenAI's embeddings refusal names its cause only by the message.
+   \ OpenAI's embeddings rejection names its cause only by the message.
    i s" too-large" STR:= if
       response 400 HTTP:STATUS!
       response [: S\" {\qerror\q:{\qmessage\q:\qThis model's maximum context length is 8192 tokens, however you requested 9000 tokens (9000 in your prompt; 0 for the completion). Please reduce your prompt; or completion length.\q,\qtype\q:\qinvalid_request_error\q,\qparam\q:null,\qcode\q:null}}" JSON:WRITE-RAW ;] HTTP:JSON!
@@ -1071,7 +1071,7 @@ variable KEPT-U
    response 400 HTTP:STATUS! ;
 
 
-\ Ollama's /api/embed: no Authorization header, truncation refused and no
+\ Ollama's /api/embed: no Authorization header, truncation rejected and no
 \ encoding asked for.
 : OLLAMA ( HTTP:request HTTP:response -- )
    {: r:HTTP:request response:HTTP:response :}
@@ -1149,7 +1149,7 @@ EXPORT NO-ID$
 EXPORT WIDE-DIMS
 : BASE-URL$ ( -- str ) BASE-URL BASE-URL-U @ >str ;
 : OLLAMA-URL$ ( -- str ) OLLAMA-URL OLLAMA-URL-U @ >str ;
-\ Requests the peer received, refused or served.
+\ Requests the peer received, rejected or served.
 : CALLS@ ( -- n ) CALLS atomic@ ;
 \ The last chat, count, compaction or embedding request the peer received;
 \ one past SENT-CAP fails the test.
@@ -1259,11 +1259,11 @@ $A constant LF
 create LOG-PATH PATH-CAP allot      \ the run's stderr capture file
 variable LOG-PATH-U
 create LOG-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
-create REFUSED-BASE 64 allot        \ a base URL whose port nothing listens on
-variable REFUSED-BASE-U
+create REJECTED-BASE 64 allot        \ a base URL whose port nothing listens on
+variable REJECTED-BASE-U
 
 : LOG-PATH$ ( -- str ) LOG-PATH LOG-PATH-U @ >str ;
-: REFUSED-BASE$ ( -- str ) REFUSED-BASE REFUSED-BASE-U @ >str ;
+: REJECTED-BASE$ ( -- str ) REJECTED-BASE REJECTED-BASE-U @ >str ;
 
 
 : LOG-INIT ( -- )
@@ -1436,9 +1436,9 @@ variable REFUSED-BASE-U
    s" : " SB-APPEND why SB-APPEND SB-LOGGED ;
 
 
-\ The store refuses the key read with the code, which the call throws and its
+\ The store rejects the key read with the code, which the call throws and its
 \ line names.
-: REFUSED-READ ( n str str -- )
+: REJECTED-READ ( n str str -- )
    {: code:n name:str why:str :}
    code READ-FAULT!
    s" valid" code FAILS
@@ -1446,23 +1446,23 @@ variable REFUSED-BASE-U
    name why KEY-LOGGED ;
 
 
-: STORE-REFUSALS ( -- )
-   SECRET:E-ACCESS s" SECRET:E-ACCESS" s" access denied" REFUSED-READ
+: STORE-REJECTIONS ( -- )
+   SECRET:E-ACCESS s" SECRET:E-ACCESS" s" access denied" REJECTED-READ
    SECRET:E-UNAVAILABLE s" SECRET:E-UNAVAILABLE" s" store unavailable"
-   REFUSED-READ
+   REJECTED-READ
    SECRET:E-CONFIG s" SECRET:E-CONFIG"
-   s" store not set up, or service or account invalid" REFUSED-READ ;
+   s" store not set up, or service or account invalid" REJECTED-READ ;
 
 
-\ A missing item and the store's refusals, then the peer's key, then an empty
+\ A missing item and the store's rejections, then the peer's key, then an empty
 \ and a non-printable value, each logged unsent with the key and why; then a
-\ 4096-byte value that is accepted and sent: the peer's 401 refuses it, also
+\ 4096-byte value that is accepted and sent: the peer's 401 rejects it, also
 \ E-KEY.
 : KEY-CASES ( -- )
    SERVICE$ ACCOUNT$ M MODEL:API-KEY!
    s" valid" MODEL:E-KEY FAILS
    s" MODEL:E-KEY" s" not found" KEY-LOGGED
-   STORE-REFUSALS
+   STORE-REJECTIONS
    s" local-test-key" STORE
    CHAT
    s" " STORED-FAILS
@@ -1648,7 +1648,7 @@ variable REFUSED-BASE-U
    M MODEL:HTTP-STATUS 403 = ASSERT
    s" error" CHAT-LINE s" MODEL:E-KEY key service " SB-APPEND
    KEY-SERVICE$ SB-APPEND s" , account " SB-APPEND KEY-ACCOUNT$ SB-APPEND
-   s" : refused by the provider status 403" SB-APPEND SB-LOGGED
+   s" : rejected by the provider status 403" SB-APPEND SB-LOGGED
    \ A fault before sending reports no earlier call's status: a builder's,
    \ and one in a chat call made again over the same parts.
    INVALID-IMAGE
@@ -1734,17 +1734,17 @@ variable REFUSED-BASE-U
    port ;
 
 
-\ A refused connection is the transport's failure, logged with libcurl's code
+\ A rejected connection is the transport's failure, logged with libcurl's code
 \ 7 and its text.
-: REFUSED ( -- )
+: REJECTED ( -- )
    SB-RESET s" http://127.0.0.1:" SB-APPEND CLOSED-PORT FMT:SB-INT
    SB$ {: a:str :}
    a STR:LEN 64 <= ASSERT
-   a REFUSED-BASE 64 SPAN:MAKE SPAN:COPY a STR:LEN REFUSED-BASE-U !
-   REFUSED-BASE$ M MODEL:BASE-URL!
+   a REJECTED-BASE 64 SPAN:MAKE SPAN:COPY a STR:LEN REJECTED-BASE-U !
+   REJECTED-BASE$ M MODEL:BASE-URL!
    s" valid" MODEL:E-TRANSPORT FAILS
    MODEL-PEER:BASE-URL$ M MODEL:BASE-URL!
-   s" error" s" chat test-generation" REFUSED-BASE$ s" /responses" SB-LINE
+   s" error" s" chat test-generation" REJECTED-BASE$ s" /responses" SB-LINE
    s" MODEL:E-TRANSPORT curl 7: " SB-APPEND 7 CURL:>CODE CURL:ERROR$ SB-APPEND SB-LOGGED ;
 
 
@@ -1798,7 +1798,7 @@ variable REFUSED-BASE-U
    0 TASK:RETURN ;
 
 
-\ A stop between calls refuses both following calls without a provider call.
+\ A stop between calls rejects both following calls without a provider call.
 : STOP-BETWEEN ( -- )
    s" valid" PREP
    0 STOP-READY TASK:SEMAPHORE-INIT
@@ -1911,7 +1911,7 @@ variable REFUSED-BASE-U
    CONTENT-CODE MODEL:E-STATE = ASSERT ;
 
 
-\ A started call refuses the words that send, prepare, set or close it, and
+\ A started call rejects the words that send, prepare, set or close it, and
 \ CONTENT$; CANCEL cuts it, so AWAIT throws E-CANCELLED at once.
 : HELD-START ( -- )
    s" hold" PREP M MODEL:START MODEL-PEER:AWAIT-HOLD
@@ -1944,7 +1944,7 @@ variable REFUSED-BASE-U
    FIXTURE-KEY ;
 
 
-\ A provider's refusal of a started chat or embed is AWAIT's fault, the code
+\ A provider's rejection of a started chat or embed is AWAIT's fault, the code
 \ CHAT or EMBED throws for it, and leaves no content of the chat before it.
 : FAILED-START ( -- )
    s" too-large" PREP CHAT-CODE {: c:n :}
@@ -2028,7 +2028,7 @@ variable KEPT-U
    CONFIG-SAYS ;
 
 
-\ SERVE refuses a call not started; a started call answers true once it lands
+\ SERVE rejects a call not started; a started call answers true once it lands
 \ and again until AWAIT ends it, and a fault before the transfer lands it.
 : SERVED-CALL ( -- )
    CHAT
@@ -2193,7 +2193,7 @@ variable LANDED
    EMBED-CODE MODEL:E-RESPONSE = ASSERT ;
 
 
-\ The provider's refusal for size fails the call with its status.
+\ The provider's rejection for size fails the call with its status.
 : EMBED-TOO-LARGE ( -- )
    s" too-large" INPUTS
    EMBED-CODE MODEL:E-CAPACITY = ASSERT
@@ -2265,7 +2265,7 @@ variable LANDED
    loop ;
 
 
-\ Every positive dimension count is accepted and 0 is refused; a
+\ Every positive dimension count is accepted and 0 is rejected; a
 \ MODEL-PEER:WIDE-DIMS vector embeds whole. The embeds that follow run at
 \ three.
 : DIMS-PROPERTY ( -- )
@@ -2396,7 +2396,7 @@ variable LANDED
 
 \ A recorder that numbers the rows it records from 1, keeps the last record
 \ and the last rejected id; with ROW-FAIL set, recording throws E-RECORDER.
--9960 constant E-RECORDER        \ this file's own fixture refusal, outside every lib block
+-9960 constant E-RECORDER        \ this file's own fixture rejection, outside every lib block
 create ROW-TEXT 65536 allot
 variable ROW-U
 variable ROWS-MADE
@@ -2506,7 +2506,7 @@ variable PAUSED-ROWS
 
 
 \ Every request dispatched to the backend is recorded once, served or failed,
-\ under the purpose set for it; a call refused before dispatch is not. Its
+\ under the purpose set for it; a call rejected before dispatch is not. Its
 \ journal record names the call's kind, configured model and the reply's usage
 \ counts, null for each the reply omits, and no usage when the reply has none.
 \ Generation rows share a prefix hash across user text; another system text
@@ -2572,7 +2572,7 @@ variable PAUSED-ROWS
    s" prefix_hash" ROW HASH 64 >str STR-IS
    M MODEL:RECORD-FAULT 0= ASSERT
    \ A call that got no reply records no HTTP status, not zero.
-   PURPOSE REFUSED
+   PURPOSE REJECTED
    ROWS-MADE @ 3 = ASSERT
    s" fault" ROW MODEL:E-TRANSPORT INT-IS
    s" http_status" ROW NULL-IS
@@ -2652,7 +2652,7 @@ create ROW-NAME 1 allot
 
 \ An effort reaches the request, the journal input and the record only when
 \ set. A purpose's row sets the model and effort of that purpose's calls
-\ alone, however many rows there are; a repeated purpose is refused.
+\ alone, however many rows there are; a repeated purpose is rejected.
 : EFFORTS ( -- )
    CAPTURE
    TEST-RECORDER
@@ -2734,7 +2734,7 @@ variable KEYLESS-U
 
 
 \ An output limit reaches every chat request and its journal input while set
-\ and no embedding request. 0 sends none and a negative limit is refused.
+\ and no embedding request. 0 sends none and a negative limit is rejected.
 : MAX-OUTPUTS ( -- )
    CAPTURE
    PURPOSE CHAT
@@ -2897,10 +2897,10 @@ variable LOOKUPS    \ COUNT-GET's lookups
 \ names the tier the reply names, NULL when it names none or is null, and the
 \ tier a generation request sent, NULL when it sent none; an embedding sends
 \ none whatever tier generation requests, and names none after a tiered reply. An
-\ empty or non-string reply tier is refused. A tier with no room fails E-TIER
+\ empty or non-string reply tier is rejected. A tier with no room fails E-TIER
 \ and records tier_unavailable. A purpose's row sets the tier of that
 \ purpose's calls in place of the call's, an empty one sending none; a
-\ negative tier length is refused.
+\ negative tier length is rejected.
 : TIERS ( -- )
    CAPTURE
    TEST-RECORDER
@@ -2969,19 +2969,19 @@ variable LOOKUPS    \ COUNT-GET's lookups
    M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT ;
 
 
-\ Keeps only the journaled record's configuration and an incomplete refusal,
+\ Keeps only the journaled record's configuration and an incomplete rejection,
 \ a record with no reply and no call id.
-: BARE-REFUSAL ( -- )
+: BARE-REJECTION ( -- )
    RECORD$ s" configuration" MEMBER OBJECT JSON:TEXT$ {: a:str :}
    SB-RESET S\" {\qconfiguration\q:" SB-APPEND a SB-APPEND
-   S\" ,\qrefusal\q:\qincomplete\q}" SB-APPEND
+   S\" ,\qrejection\q:\qincomplete\q}" SB-APPEND
    SB$ JOURNAL-RECORD 65536 SPAN:MAKE SPAN:COPY
    SB$ STR:LEN JOURNAL-RECORD-U ! ;
 
 
 \ A journal hit, here of a journal input past 16 KiB, returns the stored
 \ content; it sends nothing and records nothing, and restores the call id its
-\ live call recorded, so a refusal of the replayed reply marks that row. A
+\ live call recorded, so a rejection of the replayed reply marks that row. A
 \ service tier set after the live call is not journal input, so the call
 \ still replays.
 : REPLAYED-CALLS ( -- )
@@ -3010,12 +3010,12 @@ variable LOOKUPS    \ COUNT-GET's lookups
    ROWS-MADE @ rows = ASSERT
    M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    M MODEL:CALL-ID id = ASSERT
-   \ A refusal its live call journaled replays with no request and no line.
+   \ A rejection its live call journaled replays with no request and no line.
    false JOURNAL-READY !
    PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
-   MODEL-PEER:CALLS@ {: refused:n :}
+   MODEL-PEER:CALLS@ {: rejected:n :}
    [: PURPOSE s" too-large" MODEL:E-CAPACITY FAILS ;] QUIET
-   MODEL-PEER:CALLS@ refused = ASSERT
+   MODEL-PEER:CALLS@ rejected = ASSERT
    \ A cut reply's record holds the provider's reply as received, the text
    \ streamed before the cut included, and the call's id. It replays as the
    \ cut, and so does a record holding neither.
@@ -3023,12 +3023,12 @@ variable LOOKUPS    \ COUNT-GET's lookups
    PURPOSE s" length" MODEL:E-INCOMPLETE FAILS
    M MODEL:CALL-ID {: cut:n :}
    cut 0<> ASSERT
-   RECORD$ s" refusal" MEMBER s" incomplete" STR-IS
+   RECORD$ s" rejection" MEMBER s" incomplete" STR-IS
    RECORD$ s" response" MEMBER MODEL-PEER:CUT$ STR-IS
    RECORD$ s" call_id" MEMBER cut INT-IS
    MODEL-PEER:CALLS@ {: sent:n :}
    [: PURPOSE s" length" MODEL:E-INCOMPLETE FAILS ;] QUIET
-   BARE-REFUSAL
+   BARE-REJECTION
    [: PURPOSE s" length" MODEL:E-INCOMPLETE FAILS ;] QUIET
    MODEL-PEER:CALLS@ sent = ASSERT
    s" " M MODEL:SERVICE-TIER! ;
@@ -3037,8 +3037,8 @@ variable LOOKUPS    \ COUNT-GET's lookups
 : FAILING-PUT ( n str str -- ) drop drop drop E-RECORDER throw ;
 
 
-\ A journal put that throws while journaling a refusal is the call's fault.
-: REFUSAL-PUT-FAULT ( -- )
+\ A journal put that throws while journaling a rejection is the call's fault.
+: REJECTION-PUT-FAULT ( -- )
    false JOURNAL-READY !
    0 [: JOURNAL-GET ;] [: FAILING-PUT ;] M MODEL:JOURNAL!
    PURPOSE s" too-large" E-RECORDER FAILS ;
@@ -3103,13 +3103,13 @@ variable ASKED-U
    PURPOSE s" valid" ASK
    M [: OPEN-REPLAY ;] catch {: bad:n :} drop
    bad MODEL:E-RESPONSE = ASSERT
-   \ A saved refusal replays as the refusal, with no request and no line, and
+   \ A saved rejection replays as the rejection, with no request and no line, and
    \ keeps the request, which JOURNAL-INPUT$ answers again.
    PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
-   MODEL-PEER:CALLS@ {: refused:n :}
+   MODEL-PEER:CALLS@ {: rejected:n :}
    PURPOSE s" too-large" ASK
    [: REPLAY-CODE MODEL:E-CAPACITY = ASSERT ;] QUIET
-   MODEL-PEER:CALLS@ refused = ASSERT
+   MODEL-PEER:CALLS@ rejected = ASSERT
    PURPOSE M MODEL:JOURNAL-INPUT$ ASKED$ STR:= ASSERT ;
 
 
@@ -3458,9 +3458,9 @@ variable LANDED-CANCELLED   \ CANCEL-ROW's CANCEL answer
    s" " M MODEL:LOG-NOTE! ;
 
 
-\ With RESEND-WAIT! a send whose key read the store refuses sends nothing and
+\ With RESEND-WAIT! a send whose key read the store rejects sends nothing and
 \ rests: its one line names the note, the key's service, account and reason
-\ and the rest. Sent again when due and refused the same way, it writes one
+\ and the rest. Sent again when due and rejected the same way, it writes one
 \ more such line, of the next resend, and no failure line; once the store
 \ answers, the resend is served.
 : KEY-RESTS ( -- )
@@ -3751,16 +3751,16 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    0 [: CAPTURE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL! ;
 
 
-\ A key the store reads and the provider refuses (401) is E-KEY, and its one
-\ line names the key's service and account and that the provider refused it.
+\ A key the store reads and the provider rejects (401) is E-KEY, and its one
+\ line names the key's service and account and that the provider rejected it.
 : PROVIDER-KEY ( -- )
    SERVICE$ ACCOUNT$ M MODEL:API-KEY!
-   s" refused-key" STORE
+   s" rejected-key" STORE
    NOTE$ M MODEL:LOG-NOTE!
    s" error" CHAT-LINE NOTE$ SB-APPEND
    s" : MODEL:E-KEY key service " SB-APPEND SERVICE$ SB-APPEND
    s" , account " SB-APPEND ACCOUNT$ SB-APPEND
-   s" : refused by the provider status 401" SB-APPEND
+   s" : rejected by the provider status 401" SB-APPEND
    SB-COUNT LINES {: same:n before:n :}
    PURPOSE s" valid" MODEL:E-KEY FAILS
    M MODEL:HTTP-STATUS 401 = ASSERT
@@ -3811,8 +3811,8 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 
 \ With RESEND-WAIT! on, a send that fails for want of the transport, the key
-\ (missing, or refused by the provider), the model (404) or the key's store
-\ rests, its one line a rest line; one that fails in its work (a refusal, a
+\ (missing, or rejected by the provider), the model (404) or the key's store
+\ rests, its one line a rest line; one that fails in its work (a rejection, a
 \ bad request, an incomplete answer) lands with its one failure line.
 : WHAT-RESTS ( -- )
    60000 M MODEL:RESEND-WAIT!
@@ -3827,7 +3827,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    1 RESTS-ON
    s" forbidden" MODEL-PEER:FAIL-NEXT
    s" error" s" MODEL:E-KEY key service " KEY-NOTED
-   KEY-ACCOUNT$ SB-APPEND s" : refused by the provider status 403" SB-APPEND
+   KEY-ACCOUNT$ SB-APPEND s" : rejected by the provider status 403" SB-APPEND
    1 RESTS-ON
    KEY-SERVICE$ s" missing" M MODEL:API-KEY!
    s" error" s" MODEL:E-KEY key service " KEY-NOTED
@@ -4311,7 +4311,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 : ARRAY-ITEM ( n -- n ) s" []" ITEM ;
 : NEGATIVE-ITEM ( n -- n ) s" {}" STR:DATA -1 >str ITEM ;
 \ An item that is not exactly one JSON object is E-CONFIG and adds nothing.
-: ITEM-REFUSALS ( -- )
+: ITEM-REJECTIONS ( -- )
    s" valid" PREP CALLED$ ITEM
    s" " ITEM-CODE MODEL:E-CONFIG = ASSERT
    0 [: ARRAY-ITEM ;]
@@ -4371,7 +4371,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 \ Tools other than one non-empty JSON array of objects, and neither schema nor
 \ tools, are E-CONFIG at CHAT with no request sent; that call has no output.
-: TOOLS-REFUSALS ( -- )
+: TOOLS-REJECTIONS ( -- )
    MODEL-PEER:CALLS@ {: before:n :}
    s" {}" TOOLS-CODE MODEL:E-CONFIG = ASSERT
    s" []" TOOLS-CODE MODEL:E-CONFIG = ASSERT
@@ -4395,7 +4395,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    MODEL-PEER:CALLS@ before = ASSERT ;
 
 
-\ A tools reply of anything but one function call is E-RESPONSE, a refusal
+\ A tools reply of anything but one function call is E-RESPONSE, a rejection
 \ E-REFUSED; a schema call's reply of one call has no answer: E-RESPONSE.
 : TOOL-REPLIES ( -- )
    TOOLS
@@ -4550,7 +4550,7 @@ variable COUNTED-U
    MODEL-PEER:CALLS@ before 1+ = ASSERT ;
 
 
-\ OpenAI's refusal of a count over the model's context is E-CAPACITY.
+\ OpenAI's rejection of a count over the model's context is E-CAPACITY.
 : COUNT-TOO-LARGE ( -- )
    s" too-large" PREP
    M COUNT-CODE MODEL:E-CAPACITY = ASSERT ;
@@ -4698,7 +4698,7 @@ variable COUNTED-U
    MODEL-PEER:CALLS@ before 1+ = ASSERT ;
 
 
-\ OpenAI's refusal of a compaction over the model's context is E-CAPACITY.
+\ OpenAI's rejection of a compaction over the model's context is E-CAPACITY.
 : COMPACT-TOO-LARGE ( -- )
    s" too-large" PREP
    M COMPACT-CODE MODEL:E-CAPACITY = ASSERT ;
@@ -4970,7 +4970,7 @@ variable COUNTED-U
    M MODEL:CANCEL 0= ASSERT
    BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY KEYLESS-CHAT KEYLESS-AWAIT INVALID-IMAGE INVALID-TEXT CACHE-TEXT
    INVALID-SCHEMA
-   REPLIES EARLY-ENDS UNREADABLE REFUSED [: CANCELLATION ;] QUIET
+   REPLIES EARLY-ENDS UNREADABLE REJECTED [: CANCELLATION ;] QUIET
    EMBEDDINGS BAD-VECTORS BASE64-CASES EMBED-TOO-LARGE NO-INPUT-EMBED EMBED-RESENT INPUT-BOUNDS
    INPUT-MAX-EMBED
    DIMS-PROPERTY GENERATION-REJECTED EMBEDDING-NAMED
@@ -4985,16 +4985,16 @@ variable COUNTED-U
    STOP-ACTIVE
    M MODEL:CLOSE
    SETUP PUT-HALT SETUP RECORD-HALT SETUP PENDING-HALT
-   SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT CALLER-JOURNAL
+   SETUP RECORDED-CALLS REPLAYED-CALLS REJECTION-PUT-FAULT CALLER-JOURNAL
    RECORDED-RESEND RESTS LANDED-CANCEL KEY-RESTS
    CUT-REST HALT-AT-DUE CANCELLED-TWICE
    LOOKUP-FAULT PUT-FAULT CUT-KEY PROVIDER-KEY
    WHAT-RESTS UNRECORDED-REST RESTS-AGAIN RETRY-AFTER-REST EVENT-REST SLOW-BODY
    FIRST-REST SLOW-DOWN STOP-REST
    M MODEL:CLOSE
-   SETUP ITEM-TURNS ITEM-ORDER ITEMS-ONLY ITEM-REFUSALS PINNED
+   SETUP ITEM-TURNS ITEM-ORDER ITEMS-ONLY ITEM-REJECTIONS PINNED
    M MODEL:CLOSE
-   SETUP TOOLS-BODY FORM-LAST TOOLS-REFUSALS TOOL-REPLIES TOOLS-JOURNAL TOOLS-REPLAY
+   SETUP TOOLS-BODY FORM-LAST TOOLS-REJECTIONS TOOL-REPLIES TOOLS-JOURNAL TOOLS-REPLAY
    M MODEL:CLOSE
    SETUP COUNT-BODY COUNT-THEN-CHAT COUNT-JOURNAL COUNT-PREPARED COUNT-TOO-LARGE COUNT-RESENT COUNT-RESULT
    M MODEL:CLOSE

@@ -1,9 +1,9 @@
 \ bootstrap-created-raw-src.f - a variable's cell cannot mint a nominal family.
 \
 \ The publication routes through `trust-raw`, so every type variable in the
-\ published effect is minted TVK-RAW: it admits plain scalars and refuses to
+\ published effect is minted TVK-RAW: it admits plain scalars and does not
 \ bind a nominal family. Reading a plain cell back as a sealed nominal with no
-\ converter in between must therefore be refused.
+\ converter in between must therefore be rejected.
 
 package BCR
 NEWTYPE nom-id

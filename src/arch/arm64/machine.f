@@ -23,7 +23,7 @@ private
 \ AAPCS64 leaves x18 to the platform: Linux gives it to code, Darwin keeps it. An
 \ x86-64 target still loads this file (abi.f and frame.f require it, and an
 \ x86-64 build window loads it on an ARM64 host), so it answers the reserving
-\ default instead of refusing the whole closure.
+\ default instead of rejecting the whole closure.
 : PLATFORM-RESERVED-MASK ( -- n )
    HB-TARGET-LINUX? if 0 exit then
    HB-TARGET-MACOS? if 1 PLATFORM-N lshift exit then
@@ -47,7 +47,7 @@ TARGET-RESERVED-MASK ENGINE-GPR:A64-MASK or constant RESERVED-MASK
 1 FILE-N lshift 1 - constant FPR-MASK
 
 \ A frame slot is reached by an unsigned-offset access: twelve bits scaled by the
-\ access width, and SCALE/ refuses an offset it would round, which is natural
+\ access width, and SCALE/ rejects an offset it would round, which is natural
 \ alignment. The unscaled field is nine signed bits counted in bytes, the only
 \ way to name a byte below a base.
 16 constant SP-ALIGN-N                \ the stack pointer is 16-byte aligned

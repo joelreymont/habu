@@ -126,7 +126,7 @@ variable RESULT-SYM
    INDEX-MS >MS
    LSP-CHECK:INDEX-BYTES MATCH LSP-CHECK:verdict
       verified OF ROWS ENDOF
-      refused OF ROWS ENDOF
+      rejected OF ROWS ENDOF
       engine-provided OF ENDOF
       held OF ENDOF
       incomplete OF drop ENDOF
@@ -152,7 +152,7 @@ public
 
 \ A declaration matches when its canonical package, tail and visibility equal the
 \ image symbol's; a cursor selects a symbol only when exactly one live origin in
-\ the file has that identity. A refused scan keeps the declarations it accepted; a
+\ the file has that identity. A rejected scan keeps the declarations it accepted; a
 \ deferred, held, engine-provided or incomplete scan gives no Location, even for
 \ declarations reported before the stop. The scan defers a whole file at a
 \ dictionary call (a loader, `undefine`, a replaceable library definer), whose

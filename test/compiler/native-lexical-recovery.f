@@ -51,9 +51,9 @@ package NATIVE-LEXICAL-RECOVERY
    s" MAKE-LEXWORD" GE-SRC-LINE
    s" LEXWORD ." GE-SRC-LINE
    GE-HB$ GE-SRC-BUF GE-SRC-U @ >str PROCESS:WAIT-FOREVER GE-RUN-STDIN
-   s" caught parser operand refusal" GE-EXPECT-OK
-   S\" 70\n7\n" s" caught parser operand refusal" GE-EXPECT-OUT
-   s" NEVER-BOUND" s" caught parser operand refusal" GE-EXPECT-ERR-HAS ;
+   s" caught parser operand rejection" GE-EXPECT-OK
+   S\" 70\n7\n" s" caught parser operand rejection" GE-EXPECT-OUT
+   s" NEVER-BOUND" s" caught parser operand rejection" GE-EXPECT-ERR-HAS ;
 
 : SCOPE-CASE ( -- )
    s" a control spelling is local only inside its block" T-LABEL

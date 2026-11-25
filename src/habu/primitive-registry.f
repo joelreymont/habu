@@ -1,7 +1,7 @@
 split-str
 \ primitive-registry.f - build-side primitive metadata shared by every backend's
 \ engine builder: checks each registered body's name against the specification
-\ table, answers the seed dictionary's name and wid cells, and refuses a kept row
+\ table, answers the seed dictionary's name and wid cells, and rejects a kept row
 \ no body answered. Code positions arrive only as `label` values and no code is
 \ emitted, so it loads without an instruction set. Names are offsets, so growing
 \ either buffer cannot invalidate an earlier row.
@@ -74,12 +74,12 @@ public
 
 \ The table is which primitives exist: every body registers under a name
 \ src/habu/prims.f specifies; the row states the effect, the body the machine
-\ code. SPEC-CHECK refuses a body with no row, COMPLETE a row no body answered.
+\ code. SPEC-CHECK rejects a body with no row, COMPLETE a row no body answered.
 : SPEC-CHECK ( str -- ) {: name:^ size:n :}
    name size PRIM-SPEC:FIND 0 < if name size SPEC-MISSING then ;
 
 \ An engine helper is an engine-resident routine primitives reach by a direct
-\ branch (a shared refusal, a bounds loop). HELPER-REGISTER records it as a
+\ branch (a shared rejection, a bounds loop). HELPER-REGISTER records it as a
 \ sealed system-private record over [start-addr, end-addr) stamped
 \ OWNER-API-PRI-WID, hidden from raw searches (BSWL). DNAME folds the marker into
 \ the baked name/flags cell.
@@ -116,7 +116,7 @@ public
    idx NAME-LEN  idx NAME$ IMM-BIT or
    idx HELPER-WID OWNER-API-PRI-WID = if DNAME-INT or then ;
 
-\ COMPLETE, run after the last body, refuses a row this backend never answered:
+\ COMPLETE, run after the last body, rejects a row this backend never answered:
 \ an effect checked callers believe, with no code for the name.
 private
 

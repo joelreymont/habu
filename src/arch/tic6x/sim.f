@@ -1,5 +1,5 @@
 \ sim.f - host interpreter for the C66x subset src/arch/tic6x/asm.f constructs,
-\ run on emitted helper programs against an oracle before the board. It refuses
+\ run on emitted helper programs against an oracle before the board. It rejects
 \ what SPRUGH7 3.8 forbids: two instructions on one unit, two registers through
 \ one cross path, two memory accesses on one register file, two multicycle NOPs
 \ in a packet, two taken branches in a cycle, two writes landing on one register

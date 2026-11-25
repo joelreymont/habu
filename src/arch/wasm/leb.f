@@ -3,7 +3,7 @@ split-str
 \ write the shortest LEB at the start of the caller's span and answer its length;
 \ padded writers always write the widest (5 bytes for a u32, 10 for an s64) so a
 \ call field (after `call` or `call_indirect`) or an address field (after
-\ `i64.const`) can be rewritten in place. Every refusal comes before a byte is
+\ `i64.const`) can be rewritten in place. Every rejection comes before a byte is
 \ written. Readers take any LEB Wasm admits and answer the value and its length.
 
 require src/lib/error.f
@@ -133,7 +133,7 @@ public
    64 true DECODE ;
 
 \ ---- padded fields ------------------------------------------------------
-\ A padded reader answers the field at an offset; it and a patch refuse a field
+\ A padded reader answers the field at an offset; it and a patch reject a field
 \ that is not a padded LEB of its width.
 : U32-PAD! ( n SPAN:span<u8> -- n )
    {: v:n s :}

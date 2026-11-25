@@ -9,7 +9,7 @@ require src/lib/memory.f
 require src/lib/c2-memory.f
 require src/lib/process.f
 
-package C2-MEMORY-SCOPE-REFUSALS
+package C2-MEMORY-SCOPE-REJECTIONS
 private
 
 $4000 constant CAP
@@ -71,7 +71,7 @@ create ERR CAP allot
    s\" true REJECTION:JSON !\nSTRUCTURE c2hook<a> DERIVE addr FIELD fn a ;STRUCTURE\n4 LAYOUT-BUFFER C2-XT-HOOKS c2hook<xt>"
    70 s\" \"code\":\"E-BAD-STORAGE\",\"message\":\"the type of `C2-XT-HOOKS` holds an `xt`, which no storage holds"
    s\" \"help\":\"declare `C2-XT-HOOKS` with a quotation type such as `[ n -- n ]` in place of `xt`" JSON-REPORTED? TTRUE
-   s" a layout pointer type is refused whole" T-LABEL
+   s" a layout pointer type is rejected whole" T-LABEL
    s" 4 LAYOUT-BUFFER C2-PTR-ROWS ^n"
    70 s" error[E-BAD-STORAGE]: the type of `C2-PTR-ROWS` is no type a layout buffer can lay out" s" " REPORTED? TTRUE
    s" DEFER-LAYOUT-BUFFER C2-PTR-COLUMN ^n"
@@ -80,7 +80,7 @@ create ERR CAP allot
    s\" true REJECTION:JSON !\n4 LAYOUT-BUFFER C2-XT-ROWS xt"
    70 s\" \"code\":\"E-BAD-STORAGE\",\"message\":\"the type of `C2-XT-ROWS` is no type a layout buffer can lay out"
    s\" \"help\":\"give `C2-XT-ROWS` a declared family: a NEWTYPE or DEFTYPE with no arguments" JSON-REPORTED? TTRUE
-   s" a missing stored type is a named refusal" T-LABEL
+   s" a missing stored type is a named rejection" T-LABEL
    s" 4 LAYOUT-BUFFER C2-NO-ROWS-TYPE"
    70 s" error[E-BAD-STORAGE]: `C2-NO-ROWS-TYPE` has no type on its line" s" " REPORTED? TTRUE
    s" DEFER-LAYOUT-BUFFER C2-NO-COLUMN-TYPE"
@@ -142,7 +142,7 @@ public
    s" : C2-QUOTE-CATCH ( read-view<q,q,u8> [ read-view<q,q,u8> -- read-view<q,q,u8> | U -- U ] | U -- | U ) catch {: code:n :} drop code 0<> if code throw then ;" 0 SUBJECT:EXITED? TTRUE
    s" a scheme cannot pass through catch" T-LABEL
    s" : C2-SCOPE-CATCH ( read-view<q,q,u8> forall<p,[ read-view<p,p,u8> -- read-view<p,p,u8> | U -- U ]> | U -- | U ) catch {: code:n :} drop code 0<> if code throw then ;"
-      70 s" error[E-MISMATCH]: `catch` takes [ -- ]; the stack holds forall<a,[ read-view<a,a,u8> -- read-view<a,a,u8> ]>" SUBJECT:REFUSED? TTRUE
+      70 s" error[E-MISMATCH]: `catch` takes [ -- ]; the stack holds forall<a,[ read-view<a,a,u8> -- read-view<a,a,u8> ]>" SUBJECT:REJECTED? TTRUE
    s" ordinary quotations remain finally bodies with the same view operand" T-LABEL
    s" : C2-QUOTE-FINALLY ( read-view<q,q,u8> [ read-view<q,q,u8> -- read-view<q,q,u8> | U -- U ] | U -- | U ) [: ;] finally drop ;" 0 SUBJECT:EXITED? TTRUE
    s" a scheme cannot pass through finally" T-LABEL
@@ -151,10 +151,10 @@ public
    s" package C2-SCOPE-SHADOW TRUSTED: WITH-MUT ( R NUM:alloc-byte-len [ R ^u8 n -- S ^u8 n | U -- U ] | U -- S | U ) C2-MEM:WITH-MUT ; : CALL ( -- n ) 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] WITH-MUT ; ;package" 70 SUBJECT:EXITED? TTRUE
    s" a trusted declaration cannot publish a scheme" T-LABEL
    s" TRUSTED: C2-SCOPE-FORGE ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- ) drop ;"
-      70 s" error[E-BAD-SIGNATURE]: the declared signature of `C2-SCOPE-FORGE` binds a callback scope" SUBJECT:REFUSED? TTRUE
+      70 s" error[E-BAD-SIGNATURE]: the declared signature of `C2-SCOPE-FORGE` binds a callback scope" SUBJECT:REJECTED? TTRUE
    s" a cast declaration cannot publish a scheme" T-LABEL
    s" CAST: C2-SCOPE-CAST ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- n )"
-      70 s" error[E-CAST-SCOPE]: in `cast: C2-SCOPE-CAST`, a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
+      70 s" error[E-CAST-SCOPE]: in `cast: C2-SCOPE-CAST`, a scoped cast is not two cells on each side" SUBJECT:REJECTED? TTRUE
    s" an ordinary quotation may pass through a data output" T-LABEL
    s" : C2-QUOTE-OUTPUT ( [ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ] -- [ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ] ) ;" 0 SUBJECT:EXITED? TTRUE
    s" a scheme cannot be declared as an effect output" T-LABEL
@@ -193,8 +193,8 @@ public
    s" a same-spelled ordinary word receives no child authority" T-LABEL
    s" package C2-S TRUSTED: WITH-READ ( R ^u8 n [ R ^u8 n -- S ^u8 n | U -- U ] | U -- S ^u8 n | U ) C2-MEM:WITH-READ ; : X ( read-view<p,q,u8> -- n read-view<p,q,u8> ) [: 0 C2-MEM:BYTE@ ;] WITH-READ ; ;package" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
-   s" c2-memory-scope-refusals: ok" type cr ;
+   s" c2-memory-scope-rejections: ok" type cr ;
 
 ;package
 
-C2-MEMORY-SCOPE-REFUSALS:RUN
+C2-MEMORY-SCOPE-REJECTIONS:RUN

@@ -46,9 +46,9 @@ TYPED-VARIABLE JRT-WRITER JSON:writer
    {: source:str :}
    JRT-B source JSON:READ-INIT ;
 
-\ The null address the reader must refuse, taken from the core's declared null
+\ The null address the reader must reject, taken from the core's declared null
 \ slot: a `create`d cell read back through `ptr-field` is an undeclared raw
-\ storage cell and the checker refuses the pointer it publishes.
+\ storage cell and the checker rejects the pointer it publishes.
 : JRT-ZERO-U8 ( -- ^u8 )
    NULL-PTR ;
 
@@ -350,7 +350,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 : JRT-U64-OF ( str -- )
    JRT-OPEN-A JSON:READ-NEXT drop JSON:READ-U64 drop JSON:READ-CLOSE ;
 
-: JRT-TEST-U64-REFUSALS ( -- )
+: JRT-TEST-U64-REJECTIONS ( -- )
    s" READ-U64 rejects a negative, a value past 64 bits, a fraction and an exponent" T-LABEL
    [: s" -1" JRT-U64-OF ;] E-JSON-READ-NUMBER TTHROWSQ
    [: s" 18446744073709551616" JRT-U64-OF ;] E-JSON-READ-NUMBER TTHROWSQ
@@ -838,7 +838,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s\" {\"a\":{\"a\":1},\"b\":{\"a\":2}}" s" a" JRT-MEMBER$
    s\" {\"a\":1}" T$= ;
 
-: JRT-TEST-MEMBER-REFUSED ( -- )
+: JRT-TEST-MEMBER-REJECTED ( -- )
    s" READ-MEMBER$ throws JSON:E-MEMBER for a missing or repeated key and a text that is not an object" T-LABEL
    s\" {\"b\":1}" JRT-NO-MEMBER
    s\" {\"a\":1,\"b\":2,\"a\":1}" JRT-NO-MEMBER
@@ -849,7 +849,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: s\" {\"a\":1," s" a" JRT-MEMBER$ drop ;]
    E-JSON-READ-EOF TTHROWSQ ;
 
-\ A refused text leaves JRT-A for the next call.
+\ A rejected text leaves JRT-A for the next call.
 : JRT-TEST-MEMBER-REUSE ( -- )
    s" READ-MEMBER$ reads again after a rejected text" T-LABEL
    s\" {\"a\":1,\"a\":2}" JRT-NO-MEMBER
@@ -1509,9 +1509,9 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    until
    JSON:READ-CLOSE 0 ;
 
-\ The code a refusal letter names: E EOF, S STRING, C COLON, N NUMBER,
+\ The code a rejection letter names: E EOF, S STRING, C COLON, N NUMBER,
 \ M MALFORMED, X ESCAPE, U SURROGATE, and . for T-END.
-: JRT-REFUSAL ( n -- n ) {: c:n :}
+: JRT-REJECTION ( n -- n ) {: c:n :}
    c [char] . = if 0 exit then
    c [char] E = if E-JSON-READ-EOF exit then
    c [char] S = if E-JSON-READ-STRING exit then
@@ -1520,13 +1520,13 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    c [char] M = if E-JSON-READ-MALFORMED exit then
    c [char] X = if E-JSON-READ-ESCAPE exit then
    c [char] U = if E-JSON-READ-SURROGATE exit then
-   s" json-read-test: unknown refusal letter" EXIT-STATUS:FAILURE die ;
+   s" json-read-test: unknown rejection letter" EXIT-STATUS:FAILURE die ;
 
-\ Every prefix of a document, lengths 0 through u, against one refusal letter
+\ Every prefix of a document, lengths 0 through u, against one rejection letter
 \ per length.
 : JRT-PREFIXES ( str str -- ) {: s:str c:str :}
    c STR:LEN s STR:LEN 1+ T=
-   c STR:LEN s STR:LEN 1+ min 0 ?do s STR:DATA i >str JRT-GUARDED-CODE c STR:DATA i + c@ JRT-REFUSAL T= loop ;
+   c STR:LEN s STR:LEN 1+ min 0 ?do s STR:DATA i >str JRT-GUARDED-CODE c STR:DATA i + c@ JRT-REJECTION T= loop ;
 
 : JRT-TEST-PREFIXES ( -- )
    s" each prefix of a document throws the code its length calls for, never reading past its end" T-LABEL
@@ -1540,7 +1540,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s" EESSSSSSSSSSSE." JRT-PREFIXES ;
 
 \ A number ends at the first byte no number holds; a lexeme its grammar stops
-\ short of is E-JSON-READ-NUMBER, never the next token's refusal.
+\ short of is E-JSON-READ-NUMBER, never the next token's rejection.
 : JRT-TEST-LEXEMES ( -- )
    s" a number ends at the first byte no number holds, and a lexeme cut short throws E-JSON-READ-NUMBER" T-LABEL
    s" 01" JRT-GUARDED-CODE E-JSON-READ-NUMBER T=
@@ -2002,7 +2002,7 @@ create JRT-NAMES 400 allot
 : JRT-CORE ( -- )
    JRT-TEST-INTS
    JRT-TEST-U64
-   JRT-TEST-U64-REFUSALS
+   JRT-TEST-U64-REJECTIONS
    JRT-TEST-FLOATS
    JRT-TEST-LITERALS
    JRT-TEST-STRING
@@ -2036,7 +2036,7 @@ create JRT-NAMES 400 allot
    JRT-TEST-FIND-MISUSE
    JRT-TEST-REPEATS
    JRT-TEST-MEMBER-FOUND
-   JRT-TEST-MEMBER-REFUSED
+   JRT-TEST-MEMBER-REJECTED
    JRT-TEST-MEMBER-REUSE
    JRT-TEST-CODES
    JRT-TEST-VALUE-EQ-SCALARS

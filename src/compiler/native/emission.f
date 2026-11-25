@@ -138,7 +138,7 @@ ADDR-CODE constant ADDR-KIND-MAX
    SEAL-CK N-ADDRS @ ROW-CK ADDR-ORIGIN-BUF @ ;
 
 \ ---- filling the rows, which only a backend's emission row does --------------
-\ Nonthrowing: the backend's RETIRE runs it on both paths, the refusing one
+\ Nonthrowing: the backend's RETIRE runs it on both paths, the rejecting one
 \ included.
 : CLEAR ( -- )
    construct state empty ST !
@@ -149,8 +149,8 @@ ADDR-CODE constant ADDR-KIND-MAX
    0 N-FUNS !  0 N-CALLS !  0 N-ADDRS ! ;
 
 \ The bytes stay the backend's: they are read in place until CLEAR. OPEN over
-\ uncleared rows is refused, and the architecture it names makes a reader for
-\ another machine refuse before copying a byte.
+\ uncleared rows is rejected, and the architecture it names makes a reader for
+\ another machine reject before copying a byte.
 : OPEN ( str n CTARGET:arch -- ) {: p:^ size:n ret:n a:CTARGET:arch :}
    ST @
    MATCH state

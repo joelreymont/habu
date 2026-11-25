@@ -47,7 +47,7 @@ variable RC
 : ENTRY+ ( str -- ) {: s:str :}
    PATH PATH-U @ >str s FS:APPEND-FILE ;
 
-\ With the argument `refused` the child first asserts that the kernel refused
+\ With the argument `rejected` the child first asserts that the kernel rejected
 \ it its path, so the sandboxed case cannot pass on a host that answers.
 : WRITE-ENTRY ( -- )
    s" entry.f" PATH!
@@ -113,23 +113,23 @@ variable RC
    ;MATCH
    SANDBOX swap >str ;
 
-: REFUSED ( -- )
+: REJECTED ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" -p" PROC-ARGV+
    s" (version 1)(allow default)(deny process-info-pidinfo)" PROC-ARGV+
    ENGINE$ PROC-ARGV+
    ENGINE-ARGV+
    s" --" PROC-ARGV+
-   s" refused" PROC-ARGV+
+   s" rejected" PROC-ARGV+
    SANDBOX$ RUN-CHILD
-   s" refused.out" s" refused.err"
-   s" the copied engine finds its tree where the kernel refuses it its path" VERDICT ;
+   s" rejected.out" s" rejected.err"
+   s" the copied engine finds its tree where the kernel rejects it its path" VERDICT ;
 
 public
 
 : RUN ( -- )
    T-RESET SETUP PLAIN
-   HB-TARGET-MACOS? if REFUSED then
+   HB-TARGET-MACOS? if REJECTED then
    T-REPORT ;
 
 ;package

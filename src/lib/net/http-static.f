@@ -1,7 +1,7 @@
 \ http-static.f - one directory tree served from memory. STATIC-ROOT reads the
 \ whole tree before the server starts, so the tables are written while no task
 \ is live and a request costs no file system call; only a path wider than
-\ PATH-CAP is refused. A file's Cache-Control and a missing path's fallback come
+\ PATH-CAP is rejected. A file's Cache-Control and a missing path's fallback come
 \ from the caller's rules, installed before START (src/lib/net/http.f
 \ CACHE-RULE! and FALLBACK-RULE!); the defaults revalidate and never fall back.
 require src/lib/net/http-router.f
@@ -216,7 +216,7 @@ DEFAULT-RULES
 
 \ A directory under row up. Symlinks are followed, so a linked directory is
 \ served under its link's path. One whose device and inode match an ancestor's
-\ is a cycle and refuses the root before it is walked; two links to one
+\ is a cycle and rejects the root before it is walked; two links to one
 \ directory that is not an ancestor are both served.
 : DIR+ ( str n -- ) {: url:str up:n :}
    url UNDER-ROOT {: pathlen:n :}
@@ -331,7 +331,7 @@ DEFAULT-RULES
    idx RESPONSE-OF s" Cache-Control" at FILE-PATH$ CACHE$ HEADER! ;
 
 
-\ True when the static root answered the request, including the refusal of a
+\ True when the static root answered the request, including the rejection of a
 \ path that climbs: the table is keyed on whole paths, so a dot-dot segment
 \ names no file, and answering it plainly beats letting it look like a typo.
 : SERVE-STATIC ( n -- bool ) {: idx:n :}

@@ -4,7 +4,7 @@ split-str
 \ states the table, as the kernel object carries it, onto checker.f's `PE-*`
 \ constructors (src/habu/link-kernel.f STATE-PRIMS), each backend
 \ registers a body under the row's name (src/habu/primitive-registry.f
-\ SPEC-CHECK refuses a body with no row, COMPLETE a row with no body), and a
+\ SPEC-CHECK rejects a body with no row, COMPLETE a row with no body), and a
 \ REF names its checked reference. Loads ahead of src/core/checker.f, over
 \ engine primitives only.
 
@@ -391,7 +391,7 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM;
 \ there is no quotation-kinded type variable (no TVK kind admits only
 \ quotations), so `xt!` into a plain integer cell type-checks today and would
 \ have the loader shift an ordinary integer.
-\ A plain `!` of a quotation into such a cell is already refused.
+\ A plain `!` of a quotation into such a cell is already rejected.
 EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EFIXED-ABI EPRIM;
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM;
 EPRIM: scratch-cell-mark PE-PTR-A PE-IN EPRIM;
@@ -550,41 +550,41 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ and `defer` change is sealed state after the seal: CUR, WIDN, DEF-WL, TSIG,
 \ TCSIG, PKG-*, the body text, COMP-LATCH-CELL and the records behind the
 \ PROT window.
-\ These rows are how an interpreter written in Habu writes it. A refusal exits
+\ These rows are how an interpreter written in Habu writes it. A rejection exits
 \ and never throws: 79 on a task's thread (the four dictionary rows), 84 for a
 \ protected wid after the seal (`alias-record`, `def-open`) and 83 for every
-\ other refusal. A caller checks first and prints the engine's own text. While a
+\ other rejection. A caller checks first and prints the engine's own text. While a
 \ checker overlay is open, `namespace-private`, `alias-record` and `def-open`
 \ throw E-OVERLAY-OPEN instead.
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
-\ and 16 on x86-64, as `:` stores one. Each refuses an empty name, a live (folded name, wid) pair,
+\ and 16 on x86-64, as `:` stores one. Each rejects an empty name, a live (folded name, wid) pair,
 \ NDICT at DICT-CAP, a name copy that would reach the code ceiling (REGION -
 \ $4000 above DBASE, compared unsigned) and a pending definition, whose record
 \ occupies slot NDICT.
 \
 \ namespace-record ( ^u8 n bool -- n ): publish a namespace row at NDICT and
 \ answer its index: [0] a fresh wid, [8] a second fresh wid when the flag is
-\ set and else 0, [40] WL:NAMESPACE. It refuses a colon at an edge of the
+\ set and else 0, [40] WL:NAMESPACE. It rejects a colon at an edge of the
 \ name and a second colon: a name with one is a part's path, `A:B`.
 EPPRIM: CHECKER-OVERLAY namespace-record PE-STR PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: INTERPRETER namespace-record PE-STR PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 \ namespace-private ( n -- ): give namespace row n, whose [8] is 0, a fresh
-\ private wid. It refuses an index at or above NDICT, unsigned, a row that is
+\ private wid. It rejects an index at or above NDICT, unsigned, a row that is
 \ not a namespace row and one that already has a private wid.
 EPPRIM: INTERPRETER namespace-private PE-N PE-IN ECLOSE-PRIVATE
 \ alias-record ( ^u8 n n n -- ) name, source index, wid: a record for the source's code, as
-\ `export` makes. It refuses a negative wid and a source at or above NDICT, unsigned.
+\ `export` makes. It rejects a negative wid and a source at or above NDICT, unsigned.
 EPPRIM: INTERPRETER alias-record PE-STR PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
 \ from the row's [0] and [8], PKG-REC the row's address and PKG-PARENT the
 \ wid. A row whose name holds a colon is a part, which first moves the four
 \ open cells into ENCLOSING; any other row clears ENCLOSING, and
-\ `-1 0` clears all eight. It refuses any other index at or above NDICT,
+\ `-1 0` clears all eight. It rejects any other index at or above NDICT,
 \ unsigned, a row that is not a namespace row, one without a private wid, and
 \ a part when no package or a part is open.
-\ It has no task guard of its own: the package keywords refuse one, and a throw
+\ It has no task guard of its own: the package keywords reject one, and a throw
 \ puts the scope back through this row.
 EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
@@ -593,39 +593,39 @@ EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ DNAME-ALLOC, and DNAME-CELL as well for a variable, or DKIND:CAST) in [16] and
 \ the wid in [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and
 \ TRUSTED clear; COMP-LATCH-CELL takes the compiler latch; LASTC-CELL
-\ waits for the body (def-close). It refuses a kind with a bit
+\ waits for the body (def-close). It rejects a kind with a bit
 \ outside DKIND:MASK, DNAME-CELL and DNAME-ALLOC, a negative wid, and CP at or
 \ past the code ceiling.
 EPPRIM: INTERPRETER def-open PE-STR PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ body-capture ( ^u8 n -- ): append the bytes and one space to the body text
 \ through the capture routine `:` uses, which grows the text block when they do
-\ not fit and throws E-BODY-TEXT when it cannot. It refuses BODYLEN past the
+\ not fit and throws E-BODY-TEXT when it cannot. It rejects BODYLEN past the
 \ text capacity and a BODYLEN + u + 1 that wraps, with BODYLEN and u both
 \ unsigned.
 EPPRIM: INTERPRETER body-capture PE-STR PE-IN ECLOSE-PRIVATE
 \ literal ( n -- ): append n to the definition `define-word` opened, which the
-\ checker reads as that number; it refuses when no definition is open.
+\ checker reads as that number; it rejects when no definition is open.
 EPRIM: literal PE-N PE-IN EPRIM;
 \ compile, ( [ R -- S ] -- ): append a call of the word whose entry the
-\ quotation is to the definition define-word opened; it refuses when none is
+\ quotation is to the definition define-word opened; it rejects when none is
 \ open.
 EPRIM: compile, PE-QANY EPRIM;
 \ ; ( -- ): end the definition define-word opened, as `;` ends a colon
-\ definition; it refuses when none is open.
+\ definition; it rejects when none is open.
 EPRIM: ; EIMMEDIATE EPRIM;
 \ trust-sig! ( ^u8 n -- ): the pending definition's signature span into
-\ TSIG-A and TSIG-U. It refuses when no definition is pending.
+\ TSIG-A and TSIG-U. It rejects when no definition is pending.
 EPPRIM: INTERPRETER trust-sig! PE-STR PE-IN ECLOSE-PRIVATE
 \ created-sig! ( ^u8 n -- ): the inside of the pending definition's `does>`
 \ signature, the effect of the words it creates, into TCSIG-A and TCSIG-U: its
-\ copy in the body text. It refuses when no definition is
+\ copy in the body text. It rejects when no definition is
 \ pending.
 EPPRIM: INTERPRETER created-sig! PE-STR PE-IN ECLOSE-PRIVATE
 \ def-close ( -- ): end the pending definition the native compiler compiled:
 \ the state def-open set clears:
 \ COMP-LATCH-CELL, TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and PEND-CELL. Before
 \ PEND-CELL clears, LASTC-CELL takes the record for a nonzero kind other than
-\ DKIND:CAST, the record `does-patch` reads. It refuses when
+\ DKIND:CAST, the record `does-patch` reads. It rejects when
 \ no definition is pending and when the pending one is not a native compiler's
 \ (COMP-LATCH-CELL zero), as ndict-append does.
 EPPRIM: INTERPRETER def-close ECLOSE-PRIVATE
@@ -634,41 +634,41 @@ EPPRIM: INTERPRETER def-close ECLOSE-PRIVATE
 \ catch's handler, return and loop stacks remain live for the caller.
 EPPRIM: INTERPRETER def-abort ECLOSE-PRIVATE
 \ stack-clear ( -- ): the REPL's caught-line boundary discards the user's
-\ arbitrary stack residue after a refusal. It leaves handler, return and loop
+\ arbitrary stack residue after a rejection. It leaves handler, return and loop
 \ state intact so the catching interpreter can continue.
 EPPRIM: INTERPRETER stack-clear ECLOSE-PRIVATE
 \ imm-mark ( -- ): set DNAME-IMM on the newest record, as the engine's
 \ `immediate` sets it. Like that keyword it checks
-\ nothing and refuses nothing.
+\ nothing and rejects nothing.
 EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
 \ Only CHECKER-OVERLAY types these six: elsewhere a checked call is E-UNDEFINED
-\ and a TRUSTED: one binds at tier 0 only. Refusals exit 79 on a task, else 83.
+\ and a TRUSTED: one binds at tier 0 only. Rejections exit 79 on a task, else 83.
 \
 \ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells,
 \ the using band and a pending definition in the engine's REPLAY-SCOPE band;
-\ inside the overlay no definition pends. It refuses an open overlay and a
+\ inside the overlay no definition pends. It rejects an open overlay and a
 \ pending definition while a task is live.
 \ replay-record ( ^u8 n n -- ) name, wid: publish a codeless record whose
-\ entry traps, exit 89. It refuses no overlay, a negative wid and what the
-\ three record writers above refuse.
+\ entry traps, exit 89. It rejects no overlay, a negative wid and what the
+\ three record writers above reject.
 \ record-wid! ( n n -- ) wid, index: retire a record (-2) or give it back its
-\ wid. It refuses no overlay, an index at or above NDICT, unsigned, a live
+\ wid. It rejects no overlay, an index at or above NDICT, unsigned, a live
 \ package row and any negative wid but -2 and -3. A seeded primitive's record
 \ retires as the live `undefine` retires it.
 \ replay-private ( n bool -- ) namespace index, flag: give a row with no
 \ private wid a fresh one (true), as `package` does for a row a qualified
-\ definition made, or take back the one given (false). It refuses no overlay,
+\ definition made, or take back the one given (false). It rejects no overlay,
 \ an index at or above NDICT, unsigned, and a row not a live package row; true
 \ a row with a private wid, false one whose private wid is 0 or older than the
 \ overlay.
 \ replay-close ( -- ): zero the records from NDICT up to the highest count
 \ reached, put the saved state back, a saved pending definition included, and
 \ zero the band. The owner has already retired or dropped the ones below.
-\ It refuses no overlay, a definition pending, a parked definition while a
+\ It rejects no overlay, a definition pending, a parked definition while a
 \ task is live, NDICT below the saved count or above the highest count
 \ replay-record and namespace-record reached, and CP or WIDN below the saved.
 \ replay-widn! ( n -- ): put WIDN back to a mark the owner read inside the
-\ overlay, once its rollback dropped what it made since. It refuses no overlay
+\ overlay, once its rollback dropped what it made since. It rejects no overlay
 \ and a mark below the saved WIDN or above WIDN, unsigned.
 EPPRIM: CHECKER-OVERLAY replay-open ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY replay-close ECLOSE-PRIVATE
@@ -681,7 +681,7 @@ EPRIM: DRAIN-PRETRUST EPRIM;
 \ the address of any declared element. Its pointee is TVK-DBASE, so `data-base
 \ OFF + @` still answers a number, an xt or a role - what those cells hold - and
 \ still subtracts, compares and byte-views like any pointer, while a nominal
-\ identity or an address read through it is refused at EVERY pointee depth: a
+\ identity or an address read through it is rejected at EVERY pointee depth: a
 \ DATA cell is not the address of an address either.
 \ A cell of the region that really holds an address
 \ is reached with `ptr-field`, the declared door.
@@ -691,12 +691,12 @@ EPPRIM: BOOT data-base PE-PTR-A-DBASE PE-OUT ECLOSE-PRIVATE
 \ TVK-NULL keeps every honest use: storing a null into a declared pointer cell,
 \ comparing one, subtracting one, testing it with 0= - each binds the pointee
 \ INSIDE a `^`, where the kind is permissive, and each means this one literal
-\ address. What it refuses is a value read THROUGH it: `NULL-PTR + @` taken as
+\ address. What it rejects is a value read THROUGH it: `NULL-PTR + @` taken as
 \ a nominal identity or as an address certified and forged one.
 EPRIM: NULL-PTR       PE-PTR-A-NULL PE-OUT EPRIM;
 \ The design seal's two writers: admit a
 \ package's public wordlist by name, then seal the dictionary as it stands. Both
-\ refuse once sealed, so a sealed design cannot widen its own vocabulary.
+\ reject once sealed, so a sealed design cannot widen its own vocabulary.
 EPRIM: policy-admit   PE-STR PE-IN EPRIM;
 EPRIM: policy-seal    EPRIM;
 EPRIM: wordlist       PE-N PE-OUT EPRIM;
@@ -788,7 +788,7 @@ EPRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( addr len -- 
 \ `depth` and `catch` both push, so this is the one word an interpreter loop
 \ written in Habu can use to observe a token that underflowed. The row states
 \ no effect for the xt, so the xt travels as a number: outside package
-\ INTERPRETER, that loop, a checked caller is refused.
+\ INTERPRETER, that loop, a checked caller is rejected.
 EPPRIM: INTERPRETER execute-floor PE-N PE-IN  PE-F PE-OUT ECLOSE-PRIVATE
 
 \ Primitives whose effect the checker elaborates.

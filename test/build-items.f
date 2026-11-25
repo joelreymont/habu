@@ -131,7 +131,7 @@ BI-CALL 7 T=
 : BI-PART ( -- n ) BITEM-PKG:ANSWER ;
 BI-PART 2 T=
 
-\ Each refused name is free after its refusal: a text definition takes it.
+\ Each rejected name is free after its rejection: a text definition takes it.
 : BAD-OPERAND ( -- n ) [: s" BI-BAD-OPERAND" s" bz" MAKE-MATCH ;] catch ;
 BAD-OPERAND 70 T=
 s" : BI-BAD-OPERAND ( -- n ) 3 ;" evaluate-closed
@@ -629,22 +629,22 @@ JSON-FORM
 \ A rejection's text goes to fd 2, which a child's capture reads.
 s" BITEM:WIDE-GO" 70
 s" the effect `define-word` got for `BI-WIDE` has too many type parameters"
-SUBJECT:REFUSED? TTRUE
+SUBJECT:REJECTED? TTRUE
 s" BITEM:VWIDE-GO" 70
 s" the type `EFFECT:VARIABLE-OF` got for `BI-VWIDE` has too many type parameters"
-SUBJECT:REFUSED? TTRUE
+SUBJECT:REJECTED? TTRUE
 s" BITEM:TEXT-GO" 70
-s" EFFECT:LOCAL needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
+s" EFFECT:LOCAL needs a definition define-word opened" SUBJECT:REJECTED? TTRUE
 s" BITEM:TEXT-REF-GO" 70
-s" EFFECT:LOCAL@ needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
+s" EFFECT:LOCAL@ needs a definition define-word opened" SUBJECT:REJECTED? TTRUE
 s" BITEM:ENDED-GO" 70
-s" reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
+s" reads built local 0, whose `{:` block has ended" SUBJECT:REJECTED? TTRUE
 \ A local outside a group is rejected as a stray local.
 s" BITEM:STRAY-GO" 70
-s" is a built local outside a `{:` group" SUBJECT:REFUSED? TTRUE
+s" is a built local outside a `{:` group" SUBJECT:REJECTED? TTRUE
 \ A read of a local whose block ended, in a body text finishes, is rejected.
 s" BITEM:ENDED-TEXT-GO 1 + ;" 70
-s" `n` reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
+s" `n` reads built local 0, whose `{:` block has ended" SUBJECT:REJECTED? TTRUE
 BITEM:PLACED-CHILD
 BITEM:UNBOUND-CHILD
 BITEM:EVALUATED-CHILD

@@ -63,7 +63,7 @@ package STDLIB-GATE
    SUITE-ENV
    PRODUCT-SPAWN$ label in GT-POOL-START-STDIN ;
 
-\ The entry guard walks the load graph LOAD-GRAPH:READ read and refuses the
+\ The entry guard walks the load graph LOAD-GRAPH:READ read and rejects the
 \ registry before anything starts: this hook runs outside the catch around the
 \ rows.
 : SUITE-SETUP ( -- )

@@ -21,7 +21,7 @@ split-str
 \ data in code).
 \
 \ OPEN reads the container extents of the signed executable; an unsigned one is
-\ refused. Offsets come from load commands and section records, never from the
+\ rejected. Offsets come from load commands and section records, never from the
 \ inspecting host.
 require src/core/exit-status.f
 require src/arch/arm64/icode.f

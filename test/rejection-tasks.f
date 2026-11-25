@@ -1,4 +1,4 @@
-\ Four tasks take refused reserves at once: each refusal builds an E-MEM-MAP
+\ Four tasks take rejected reserves at once: each rejection builds an E-MEM-MAP
 \ record (REJECTION MAP-PASS), and each task captures every record it catches
 \ and checks it is the whole record its own request names, as the main thread
 \ built it alone. Task k asks for 8 * (2^58 + k) bytes, so a record names the
@@ -38,7 +38,7 @@ $400000000000000 constant BIG-N
 : TRY-C ( -- ) BIG-N 3 + C-RESERVE ;
 : TRY-D ( -- ) BIG-N 4 + D-RESERVE ;
 
-\ Keeps in exp the record try's refusal sends from the calling thread's capture.
+\ Keeps in exp the record try's rejection sends from the calling thread's capture.
 : EXPECT ( [ -- ] ^u8 ^n -- ) {: try exp:^ expu:^ :}
    REJECTION:CAPTURE
    try catch drop  REJECTION:SEND-SAVED

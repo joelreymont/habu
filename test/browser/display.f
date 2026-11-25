@@ -412,7 +412,7 @@ TYPED-VARIABLE SHOWN held
    {: s:str :}
    s STR:DATA ECHO-BUF s STR:LEN BYTE-COPY s STR:LEN ECHO-U ! ;
 
-\ The name and the event's bytes in ECHO-BUF; refuses an echo past the
+\ The name and the event's bytes in ECHO-BUF; rejects an echo past the
 \ buffer.
 : ECHOED ( str -- )
    {: s:str :}
@@ -551,7 +551,7 @@ TYPED-VARIABLE SHOWN held
    s" ground-c" IS? if UP 40 1 GROUND exit then
    s" ground-b" IS? if UP 12 0 GROUND exit then
    s" ground-outside" IS? if 17 -1 40 0 RECORD exit then
-   \ Refused planes: nz NaN, n zero, and nz the least subnormal with d 1,
+   \ Rejected planes: nz NaN, n zero, and nz the least subnormal with d 1,
    \ so d / |n| is past f32's range.
    s" ground-nan" IS? if 0 0 $7FC00000 0 PLANE! 40 0 GROUND exit then
    s" ground-flat" IS? if 0 0 0 $3F800000 PLANE! 40 0 GROUND exit then

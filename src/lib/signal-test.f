@@ -27,7 +27,7 @@ private
 \ src/lib/signal.f selects its record layout, SA_RESTART and the SIGUSR, SIGSTOP
 \ and SIGCONT numbers per target. These arms spell the same platform facts
 \ independently, so a wrong library arm fails here; asserting one host's values
-\ would make this suite red on the other target. A third target is refused by
+\ would make this suite red on the other target. A third target is rejected by
 \ name.
 : EXPECT-SIGUSR1 ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 10 else 30 then ;
@@ -288,22 +288,22 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    [: STOP-BODY ;] [: STOP-REAP ;] finally ;
 
 : COLD-CASE ( -- )
-   s" FD before INIT is refused by name" T-LABEL
+   s" FD before INIT is rejected by name" T-LABEL
    [: SIGNAL:FD drop ;] E-SIGNAL-STATE TTHROWSQ
 
-   s" PENDING? before INIT is refused by name" T-LABEL
+   s" PENDING? before INIT is rejected by name" T-LABEL
    [: SIGNAL:PENDING? drop ;] E-SIGNAL-STATE TTHROWSQ
 
-   s" WAIT before INIT is refused by name" T-LABEL
+   s" WAIT before INIT is rejected by name" T-LABEL
    [: 0 >MS SIGNAL:WAIT drop ;] E-SIGNAL-STATE TTHROWSQ
 
-   s" CATCH before INIT is refused by name" T-LABEL
+   s" CATCH before INIT is rejected by name" T-LABEL
    [: SIGNAL:SIGUSR1 SIGNAL:CATCH ;] E-SIGNAL-STATE TTHROWSQ
 
-   s" IGNORE before INIT is refused by name" T-LABEL
+   s" IGNORE before INIT is rejected by name" T-LABEL
    [: SIGNAL:SIGUSR1 SIGNAL:IGNORE ;] E-SIGNAL-STATE TTHROWSQ
 
-   s" RELEASE before INIT is refused by name" T-LABEL
+   s" RELEASE before INIT is rejected by name" T-LABEL
    [: SIGNAL:RELEASE ;] E-SIGNAL-STATE TTHROWSQ ;
 
 : ARMED-CASE ( -- )
@@ -316,10 +316,10 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    s" the write end the stub writes really is non-blocking" T-LABEL
    FD-WORD @ NONBLOCK? TTRUE
 
-   s" ... and so is the read end WAIT reads, so a lost race is refused" T-LABEL
+   s" ... and so is the read end WAIT reads, so a lost race is rejected" T-LABEL
    SIGNAL:FD FD>N NONBLOCK? TTRUE
 
-   s" a second INIT without RELEASE is refused by name" T-LABEL
+   s" a second INIT without RELEASE is rejected by name" T-LABEL
    [: SIGNAL:INIT ;] E-SIGNAL-STATE TTHROWSQ ;
 
 \ The facility is armed and the loop is not: WAIT and PENDING? say so by name
@@ -329,7 +329,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 : NO-LOOP-CASE ( -- )
    AIO:STOP
 
-   s" WAIT with the loop stopped is refused by name" T-LABEL
+   s" WAIT with the loop stopped is rejected by name" T-LABEL
    [: QUIET-MS >MS SIGNAL:WAIT drop ;] E-AIO-STATE TTHROWSQ
 
    s" ... and so is PENDING?, which asks the same question with a zero window" T-LABEL
@@ -346,7 +346,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    s" ... with SA_RESTART, so a blocked read or write resumes" T-LABEL
    OLD-FLAGS SA-RESTART EXPECT-FLAGS T=
 
-   s" a signal number below the range sigaction installs is refused" T-LABEL
+   s" a signal number below the range sigaction installs is rejected" T-LABEL
    [: SIG-BELOW SIGNAL:CATCH ;] E-SIGNAL-NUMBER TTHROWSQ
 
    s" ... and one above it" T-LABEL
@@ -435,7 +435,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 \ Both tasks are inside one WAIT window when the signal lands, so both waits are
 \ answered with POLLIN and only one of them finds four bytes left to read. Both
 \ wait on the one loop, which costs neither task a thread parked in poll(2).
-\ The loser's read is refused, it waits again against the deadline it had, and its own
+\ The loser's read is rejected, it waits again against the deadline it had, and its own
 \ window closes on a timeout. With a BLOCKING read end the loser parks in read
 \ until the NEXT signal instead, which turns a race into a task that never
 \ finishes the window it was given.
@@ -499,7 +499,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    ['] OUTSIDER-WORK OUTSIDER TASK:ACTIVATE
    OUTSIDER JOIN-TASK
 
-   s" CATCH from a task that did not run INIT is refused by name" T-LABEL
+   s" CATCH from a task that did not run INIT is rejected by name" T-LABEL
    OUTSIDER-CATCH @ E-SIGNAL-STATE T=
 
    s" ... and so is RELEASE, which writes the same two records" T-LABEL
@@ -535,13 +535,13 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    s" ... for every signal in the caught set, not just the first" T-LABEL
    OLD-HANDLER SIG-DFL T=
 
-   s" the facility refuses its words again once released" T-LABEL
+   s" the facility rejects its words again once released" T-LABEL
    [: SIGNAL:FD drop ;] E-SIGNAL-STATE TTHROWSQ ;
 
 \ Not a state a caller reaches politely - it is the one thing a wait on that
 \ read end must never do, which is re-ask a descriptor the kernel will not poll
-\ until the deadline runs out. The loop answers it on the REFUSED arm: the
-\ descriptor number no longer names anything, so io_uring refuses the POLL
+\ until the deadline runs out. The loop answers it on the REJECTED arm: the
+\ descriptor number no longer names anything, so io_uring rejects the POLL
 \ with EBADF rather than completing it with POLLNVAL, and READABLE-WITHIN? names
 \ the poll for both. A wait that only counted an outcome would spin here and a
 \ PENDING? that only counted one would answer true.
@@ -550,10 +550,10 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    SIGNAL:INIT
    SIGNAL:FD FD>N close-rc drop
 
-   s" PENDING? on a read end poll refuses is not true, it is refused" T-LABEL
+   s" PENDING? on a read end poll rejects is not true, it is rejected" T-LABEL
    [: SIGNAL:PENDING? drop ;] E-SIGNAL-POLL TTHROWSQ
 
-   s" WAIT on a read end poll refuses names the poll, not a timeout" T-LABEL
+   s" WAIT on a read end poll rejects names the poll, not a timeout" T-LABEL
    [: QUIET-MS >MS SIGNAL:WAIT drop ;] E-SIGNAL-POLL TTHROWSQ
 
    s" ... and RELEASE names the close it could not make" T-LABEL
@@ -581,7 +581,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    SIGNAL:SIGUSR2 RAISE
    -1 >MS SIGNAL:WAIT SIGNAL:SIGUSR2 WANT-SIGNAL
 
-   s" IGNORE refuses a signal number outside the range by name" T-LABEL
+   s" IGNORE rejects a signal number outside the range by name" T-LABEL
    [: SIG-ABOVE SIGNAL:IGNORE ;] E-SIGNAL-NUMBER TTHROWSQ
 
    SIGNAL:RELEASE

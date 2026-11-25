@@ -2,8 +2,8 @@
 \ the blocks it gives and frees, so a test sees storage a reader or source
 \ leaks: TAKEN counts its BYTES calls that answered and FREED its FREE calls;
 \ a resize moves a block without counting.
-\ From the BYTES call numbered REFUSED since TAKEN was last cleared, every call is
-\ E-MEM-SIZE; 0 refuses none.
+\ From the BYTES call numbered REJECTED since TAKEN was last cleared, every call is
+\ E-MEM-SIZE; 0 rejects none.
 \ MOVING's resize always takes a new block and fills the old one with $A5
 \ before freeing it, so a read through a stale pointer shows.
 \ STORAGE CLASS. PROCESS-WIDE: the counters and the allocator records.
@@ -17,14 +17,14 @@ package ALLOC-TEST
 public
 variable TAKEN
 variable FREED
-variable REFUSED
+variable REJECTED
 
 private
 TYPED-VARIABLE COUNTER ALLOC:allocator
 
 : C-ALLOC ( ^u8 n -- ^u8 )
    {: st:^ len:n :}
-   TAKEN @ 1+ REFUSED @ = if E-MEM-SIZE throw then
+   TAKEN @ 1+ REJECTED @ = if E-MEM-SIZE throw then
    HEAP:ALLOCATOR len ALLOC:BYTES drop  1 TAKEN +! ;
 
 : C-RESIZE ( ^u8 ^u8 n n -- ^u8 )

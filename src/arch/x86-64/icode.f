@@ -65,7 +65,7 @@ public
 
 private
 
-: REFUSE ( str -- ) EXIT-STATUS:ENCODE die ;
+: REJECT ( str -- ) EXIT-STATUS:ENCODE die ;
 
 : SITE-WIDTH ( n -- n ) {: kind:n :}
    kind SITE-REL8 = if 1 exit then
@@ -75,7 +75,7 @@ private
 \ This stream's labels are the numbers from LBL-BASE below NLBL; the result is
 \ the label's index in LBL-AT.
 : ?KNOWN ( label -- n ) LABEL>N {: k:n :}
-   k LBL-BASE @ < k NLBL @ >= or if s" x64code: unknown label" REFUSE then
+   k LBL-BASE @ < k NLBL @ >= or if s" x64code: unknown label" REJECT then
    k LBL-BASE @ - ;
 
 : SITE+ ( n n n -- ) {: at:n k:n kind:n :}
@@ -94,18 +94,18 @@ private
 
 \ ---- linking -----------------------------------------------------------------
 \ A MOVABS site takes base plus its label's offset (elf.f ASM-CODE links at
-\ VMBASE CODE-OFF +, so no image is written with a site still zero). Refused: an
+\ VMBASE CODE-OFF +, so no image is written with a site still zero). Rejected: an
 \ unresolved label, a delta its field cannot hold, a label bound twice, a label
-\ this stream did not make (refused at use, before its instruction is emitted),
+\ this stream did not make (rejected at use, before its instruction is emitted),
 \ and a site or label past the end of the stream: the backstop for a driver that
 \ empties the sink with VEC:RESIZE instead of ASM-RESET, catching only the sites
 \ past the new end.
 : ?IN-CODE ( n -- )
-   ASM-LEN > if s" x64code: label or site past the end of the code" REFUSE then ;
+   ASM-LEN > if s" x64code: label or site past the end of the code" REJECT then ;
 
 : SITE-TARGET ( n -- n ) {: x:n :}
    x SITE-LBL @ LBL-AT @ {: at:n :}
-   at UNBOUND = if s" x64code: unresolved label" REFUSE then
+   at UNBOUND = if s" x64code: unresolved label" REJECT then
    at ;
 
 : SITE-END ( n -- n ) {: x:n :}
@@ -117,10 +117,10 @@ private
 
 : ?REACH ( n n -- ) {: v:n kind:n :}
    kind SITE-REL8 = if
-      v -128 < v 127 > or if s" x64code: rel8 out of reach" REFUSE then
+      v -128 < v 127 > or if s" x64code: rel8 out of reach" REJECT then
    then
    kind SITE-REL32 = if
-      v -2147483648 < v 2147483647 > or if s" x64code: rel32 out of reach" REFUSE then
+      v -2147483648 < v 2147483647 > or if s" x64code: rel32 out of reach" REJECT then
    then ;
 
 : SITE-CHECK ( n n -- ) {: base:n x:n :}
@@ -189,7 +189,7 @@ public
 
 : LBL, ( label -- )
    ?KNOWN {: k:n :}
-   k LBL-AT @ UNBOUND <> if s" x64code: label redefined" REFUSE then
+   k LBL-AT @ UNBOUND <> if s" x64code: label redefined" REJECT then
    ASM-LEN k LBL-AT !
    ASM-LEN LAST-LBL ! ;
 
@@ -233,10 +233,10 @@ public
    at k SITE-ABS64 SITE+ ;
 
 \ Read before ASM-LINK forgets it: the number the link adds the load address
-\ to. An unbound label is refused as the link refuses it.
+\ to. An unbound label is rejected as the link rejects it.
 : LABEL-AT ( label -- n )
    ?KNOWN LBL-AT @ {: at:n :}
-   at UNBOUND = if s" x64code: unresolved label" REFUSE then
+   at UNBOUND = if s" x64code: unresolved label" REJECT then
    at ;
 
 : U64, ( n -- ) {: v:n :}
@@ -302,7 +302,7 @@ DYNAMIC-BUFFER BELOW n
    ranges k 2 * cells + {: r:^ :}
    r @  r cell+ @ ;
 
-: MALFORMED ( -- ) s" x64code: cut ranges malformed" REFUSE ;
+: MALFORMED ( -- ) s" x64code: cut ranges malformed" REJECT ;
 
 \ A range may start where the previous one ends.
 : ?RANGES ( ^n n n -- ) {: ranges:^ k:n from:n :}
@@ -347,16 +347,16 @@ DYNAMIC-BUFFER BELOW n
 
 : ?SITE ( n -- ) {: x:n :}
    x SITE-AT @  x SITE-END  SPLIT? if
-      s" x64code: a cut splits a site" REFUSE
+      s" x64code: a cut splits a site" REJECT
    then
    x SITE-AT @ GONE? if exit then
    x SITE-LBL @ LBL-AT @ GONE? if
-      s" x64code: a kept site names cut code" REFUSE
+      s" x64code: a kept site names cut code" REJECT
    then ;
 
 : ?END ( n -- ) {: x:n :}
    x END-FROM  x END-AT  SPLIT? if
-      s" x64code: a cut splits data" REFUSE
+      s" x64code: a cut splits data" REJECT
    then ;
 
 \ Ascending: each byte moves to its own offset or below it.

@@ -1980,7 +1980,7 @@ s" TDMESCONT-OK ( tdmescont<n> -- tdmescont<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDMESW-OK ( n -- n ) TDMESW" CHECK-QUIET-CANDIDATE! -1 T=
 \ A reject raised AFTER the terminator was consumed must not skip anything: the
 \ next tokens are the following declaration, not this one's tail. `tdmea` is an
-\ enum with no variants, which ED-CLOSE refuses once `;ENUM` is already read.
+\ enum with no variants, which ED-CLOSE rejects once `;ENUM` is already read.
 TWX-MULTI-ERR-BEGIN
 s" ENUM tdmea ;ENUM NEWTYPE tdmeacont<a>" evaluate
 TWX-MULTI-ERR-END 1 T=
@@ -2050,7 +2050,7 @@ s" TDRV-RAWZ ( tdrv -- bool ) 0=" CHECK-QUIET-CANDIDATE! 0 T=
 \ the derived word is family-exact: the wrong family rejects.
 ENUM tdrw one two ;ENUM
 s" TDRW-XEQ ( tdrw tdrw -- bool ) TDRV:EQ" CHECK-QUIET-CANDIDATE! 0 T=
-\ a non-derived enum grows no eq surface (undefined word: refused).
+\ a non-derived enum grows no eq surface (undefined word: rejected).
 s" TDRW-NOEQ ( tdrw tdrw -- bool ) TDRW:EQ" CHECK-QUIET-CANDIDATE! 0 T=
 \ the derived words are undefine-protected like constructors; these pins mirror
 \ the type-ctor-suite seal pins (undefine + reopen).
@@ -2135,7 +2135,7 @@ STRUCTURE tdpv DERIVE eq
 TDPV-EQ TTRUE
 TDPV-NEQ-C TFALSE
 TDPV-NEQ-N TFALSE
-\ products derive EQ only: no TAG surface (undefined -> refused), and the
+\ products derive EQ only: no TAG surface (undefined -> rejected), and the
 \ derived EQ is undefine-protected like a constructor.
 s" TDPV-TAG ( tdpv -- n ) TDPV:TAG" CHECK-QUIET-CANDIDATE! 0 T=
 s" undefine TDPV:EQ"
@@ -2269,7 +2269,7 @@ public
 
 WIDE-DERIVE-TEST:RUN
 
-\ hash-alone: HASH + TAG generated, EQ absent (undefined -> refused);
+\ hash-alone: HASH + TAG generated, EQ absent (undefined -> rejected);
 \ the derived HASH is undefine-protected like a constructor.
 ENUM tdho DERIVE hash oa ob ;ENUM
 : TDHO-H ( -- bool ) TDHO:OA TDHO:HASH TDHO:OA TDHO:HASH = ;
@@ -2437,7 +2437,7 @@ STRUCTURE tdfo DERIVE eq FIELD w tdfi ;STRUCTURE
 : TDFO-NEQ ( -- bool ) 4 TDFI:MAKE TDFO:MAKE 5 TDFI:MAKE TDFO:MAKE TDFO:EQ ;
 TDFO-EQ TTRUE
 TDFO-NEQ TFALSE
-\ the field's family derives what the outer does, or the declaration is refused.
+\ the field's family derives what the outer does, or the declaration is rejected.
 REJECTION:CAPTURE
 s" STRUCTURE tdfb DERIVE hash FIELD c tdrv ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdfb`\n"
@@ -2517,14 +2517,14 @@ s" TDLB3 ( tdrv -- tdrv ) {: x:n :} x" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB4 ( tdres<n,n> -- n ) {: x:tdres<n,n> :} 5" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDLB4B ( tdres<n,n> -- tdres<n,n> ) {: x:tdres<n,n> :} x" CHECK-QUIET-CANDIDATE! -1 T=
 \ the same grammar means the same arity check: a bare arity>0 tail and a wrong
-\ argument count are both refused, in an annotation as in a signature.
+\ argument count are both rejected, in an annotation as in a signature.
 s" TDLB6 ( n -- n ) {: x:tdfoo :} x" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB6B ( tdres<n,n> -- n ) {: x:tdres :} 5" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB6C ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB6D ( tdres<n,n> -- n ) {: x:tdres<n,n,n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
 \ the definition's own type variables are in scope in an annotation, and the
 \ declared quantifier survives the local (the parametricity seal, NP-CHECK).
-\ tdfoo is one cell; a local over tdres<a,b>, whose width is open, is refused
+\ tdfoo is one cell; a local over tdres<a,b>, whose width is open, is rejected
 \ (test/checker-soundness-suite.f OPEN-WIDTH-LOCALS).
 s" TDLB6E ( tdfoo<a,b> -- tdfoo<a,b> ) {: x:tdfoo<a,b> :} x" CHECK-QUIET-CANDIDATE! -1 T=
 \ a nested family argument parses exactly as it does in a signature.
@@ -2685,7 +2685,7 @@ s" TDPA3 ( -- tdpbopt<tdpbw2> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPA4 ( tdown -- tdpbopt<tdown> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPA4B ( tdown -- tdpbopt<tdown> tdpbopt<tdown> ) TDPBOPT:SOME dup" CHECK-QUIET-CANDIDATE! 0 T=
 \ real compiles of wide constructs are pinned in test/type-ctor-suite.f (CN-OPEN
-\ for the rc 70 refusal); this suite stays stderr-clean.
+\ for the rc 70 rejection); this suite stays stderr-clean.
 
 \ A named multi-cell family instance as another's payload: every width site
 \ recurses through the arguments (TFAM-INST-WIDTH@, TFC-VAR-PAYCELLS, T-WIDTH).
@@ -2696,7 +2696,7 @@ s" TDNEST1 ( tdnopt<tdnres<n,n>> -- tdnopt<tdnres<n,n>> )" CHECK-QUIET-CANDIDATE
 s" TDNEST2 ( tdnres<n,n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDNEST3 ( -- tdnopt<tdnres<n,n>> ) TDNOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
-\ An open inner var leaves the layout's width unknown, so the candidate refuses;
+\ An open inner var leaves the layout's width unknown, so the candidate rejects;
 \ test/type-ctor-suite.f CN-OPEN pins the real load.
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=

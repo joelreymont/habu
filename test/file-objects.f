@@ -106,7 +106,7 @@ STATE-CAP BUFFER: ERR-E    variable ERR-E-U    \ E's stderr
 96 BUFFER: TEXT-BUF
 T-LABEL-CAP BUFFER: HELD-LABEL           \ a label FIXTURE-OBJECT keeps across FOUND?
 128 BUFFER: LABEL-BUF
-PATH-CAP 128 + BUFFER: REFUSAL  variable REFUSAL-U  \ the loader refusal REFUSED-BUILD expects
+PATH-CAP 128 + BUFFER: REJECTION  variable REJECTION-U  \ the loader rejection REJECTED-BUILD expects
 variable OBJ-N                          \ the walk's objects
 variable TAIL-I                          \ the tail the walk looks for (TAIL$)
 variable TAIL-N                          \ and the paths that end with it
@@ -345,7 +345,7 @@ FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
    cs EXPECT LE:U64!  cns FS:S-IFREG 32 lshift or EXPECT 8 + LE:U64!  size EXPECT 16 + LE:U64! ;
 
 \ Build C's objects: each sequence's, the twins', and count.f's and shape.f's, which A also
-\ writes; a refused file writes none, and count.f's holds its INPUT.
+\ writes; a rejected file writes none, and count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
    s" the build wrote fifty-two objects" LABEL  C$ OBJECTS FILES-C T=
@@ -424,15 +424,15 @@ FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
    s" the build prints " s STR:DATA s STR:LEN 1 - >str s" " LABEL-NAMING
    STATE-E STATE-E-U @ >str s STR:CONTAINS? TTRUE ;
 
-\ The callers compile and run; the misuse and the dead code are refused, by TAKE and FAIL.
+\ The callers compile and run; the misuse and the dead code are rejected, by TAKE and FAIL.
 : CHECK-E ( -- )
    s" E" WHICH!
    s\" after: 0\n" E-LINE  s\" wrap: 0\n" E-LINE  s\" Hi\n" E-LINE  s\" after ran\n" E-LINE
    s\" misuse: 70\n" E-LINE  s\" dead: 70\n" E-LINE
-   s" the misuse refusal names TAKE" LABEL
+   s" the misuse rejection names TAKE" LABEL
    ERR-E ERR-E-U @ >str s" error[E-MISMATCH]" STR:CONTAINS? TTRUE
    ERR-E ERR-E-U @ >str s" `FILE-OBJECTS-FACTS:TAKE`" STR:CONTAINS? TTRUE
-   s" the dead-code refusal names FAIL" LABEL
+   s" the dead-code rejection names FAIL" LABEL
    ERR-E ERR-E-U @ >str s" error[E-DEAD-CODE]: `2` never runs: `FILE-OBJECTS-FACTS:FAIL`" STR:CONTAINS? TTRUE ;
 
 : COLD ( CMD:command -- CMD:command )
@@ -537,7 +537,7 @@ FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
 : WARM-CUT ( CMD:command -- CMD:command )
    s" A4" WHICH!  s"  is not the file hb wrote" CUT DAMAGED ;
 
-\ macOS only: Linux ext4 refuses a file past 16 TiB, so FD:RESIZE throws E-FS-IO there.
+\ macOS only: Linux ext4 rejects a file past 16 TiB, so FD:RESIZE throws E-FS-IO there.
 : WARM-GROW ( CMD:command -- CMD:command )
    HB-TARGET-MACOS? 0= if exit then
    s" A5" WHICH!  s"  cannot be read" GROW DAMAGED ;
@@ -607,25 +607,25 @@ FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
    s" --size-report" CMD:ARG+
    src TOOL-RUN BUILT? ;
 
-\ Builds a fixture the build refuses and answers its exit code.
+\ Builds a fixture the build rejects and answers its exit code.
 : FAILING-BUILD ( CMD:command str -- CMD:command n ) false BUILD-RC ;
 
 \ The loader's rejection TEXT, then word-load-inc.f's canonical path, as the
 \ next build of a fixture whose word reaches that file should say it.
-: REFUSAL! ( str -- ) {: s:str :}
-   s STR:DATA REFUSAL s STR:LEN BYTE-COPY
+: REJECTION! ( str -- ) {: s:str :}
+   s STR:DATA REJECTION s STR:LEN BYTE-COPY
    s" test/fixtures/file-objects/word-load-inc.f" SOURCE-ROOT:CANONICAL drop {: p:str :}
-   p STR:DATA REFUSAL s STR:LEN + p STR:LEN BYTE-COPY
-   s STR:LEN p STR:LEN + REFUSAL-U ! ;
+   p STR:DATA REJECTION s STR:LEN + p STR:LEN BYTE-COPY
+   s STR:LEN p STR:LEN + REJECTION-U ! ;
 
-\ The loader refuses word-load-inc.f, which the fixture's word reaches at its
+\ The loader rejects word-load-inc.f, which the fixture's word reaches at its
 \ top level.
-: REFUSED-BUILD ( CMD:command str -- CMD:command ) {: src:str :}
+: REJECTED-BUILD ( CMD:command str -- CMD:command ) {: src:str :}
    src FAILING-BUILD {: rc:n :}
-   CMD:ERR$ REFUSAL REFUSAL-U @ >str STR:CONTAINS? {: said:bool :}
+   CMD:ERR$ REJECTION REJECTION-U @ >str STR:CONTAINS? {: said:bool :}
    rc 0 =  said 0=  or if rc SHOW then
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
-   s" the build refuses the word's file by its path" LABEL  said TTRUE ;
+   s" the build rejects the word's file by its path" LABEL  said TTRUE ;
 
 \ Checks a failing build's stderr opens with rec and holds no second record and no line of its own, and
 \ that the build exited want.
@@ -666,10 +666,10 @@ FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
 \ word-required-main.f's word catches the loader's rejection of its `required`:
 \ the build exits 85 and prints that record alone.
 : CAUGHT-REQUIRE-BUILD ( CMD:command -- CMD:command )
-   s" error[E-SOURCE-ROOT]: `required` got `" REFUSAL!
+   s" error[E-SOURCE-ROOT]: `required` got `" REJECTION!
    s" X3" WHICH!
    s" test/fixtures/file-objects/word-required-main.f" FAILING-BUILD
-   EXIT-STATUS:UNCAUGHT REFUSAL REFUSAL-U @ >str ONE-RECORD ;
+   EXIT-STATUS:UNCAUGHT REJECTION REJECTION-U @ >str ONE-RECORD ;
 
 \ A rejection ends its build, so each way a rejection reaches stderr is a build of its own.
 : SENT-BUILDS ( CMD:command -- CMD:command )
@@ -683,9 +683,9 @@ FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
    s" X7" WHICH!  s" test/fixtures/file-objects/sent-release-main.f" FAILING-BUILD
    EXIT-STATUS:UNCAUGHT s\" error[E-SENT-RELEASE]: released\n" ONE-RECORD
    \ A throw that carries its record prints it after a caught rejection was sent.
-   s" error[E-SOURCE-ROOT]: `required` got `" REFUSAL!
+   s" error[E-SOURCE-ROOT]: `required` got `" REJECTION!
    s" X8" WHICH!  s" test/fixtures/file-objects/sent-throw-main.f" FAILING-BUILD {: rc:n :}
-   CMD:ERR$ REFUSAL REFUSAL-U @ >str STR:STARTS-WITH? {: said:bool :}
+   CMD:ERR$ REJECTION REJECTION-U @ >str STR:STARTS-WITH? {: said:bool :}
    CMD:ERR$ s\" \nerror[E-THROW]: nothing caught a throw of code 12345\n" STR:CONTAINS? {: threw:bool :}
    said threw and 0= if rc SHOW then
    s" the build prints the caught rejection first" LABEL  said TTRUE
@@ -697,13 +697,13 @@ FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
 \ A rejection ends its build, so each way a word reaches word-load-inc.f is a build of its own: included,
 \ provided, a caught required and SOURCE-ROOT:READ-OS, which SOURCE-INPUT:READ's default reader also reaches.
 : WORD-LOAD-BUILD ( CMD:command -- CMD:command )
-   s" error[E-SOURCE-ROOT]: `included` got `" REFUSAL!
-   s" X" WHICH!  s" test/fixtures/file-objects/word-load-main.f" REFUSED-BUILD
-   s" error[E-SOURCE-ROOT]: `provided` got `" REFUSAL!
-   s" X4" WHICH!  s" test/fixtures/file-objects/word-provided-main.f" REFUSED-BUILD
+   s" error[E-SOURCE-ROOT]: `included` got `" REJECTION!
+   s" X" WHICH!  s" test/fixtures/file-objects/word-load-main.f" REJECTED-BUILD
+   s" error[E-SOURCE-ROOT]: `provided` got `" REJECTION!
+   s" X4" WHICH!  s" test/fixtures/file-objects/word-provided-main.f" REJECTED-BUILD
    CAUGHT-REQUIRE-BUILD
-   s" error[E-SOURCE-ROOT]: `SOURCE-ROOT:READ-OS` got `" REFUSAL!
-   s" X2" WHICH!  s" test/fixtures/file-objects/word-read-main.f" REFUSED-BUILD ;
+   s" error[E-SOURCE-ROOT]: `SOURCE-ROOT:READ-OS` got `" REJECTION!
+   s" X2" WHICH!  s" test/fixtures/file-objects/word-read-main.f" REJECTED-BUILD ;
 
 \ Darwin's first lock of a mutex sets its signature, $4D55545A (the bytes ZTUM), and unlocking leaves it.
 : LOG-UNLOCKED ( -- )
@@ -809,8 +809,8 @@ FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
-   s" a kept handle is refused and word docs read at build and run time count 2 and 1" LABEL
-   CMD:OUT$ s\" zip refused\ndocs 2 1\n" T$= ;
+   s" a kept handle is rejected and word docs read at build and run time count 2 and 1" LABEL
+   CMD:OUT$ s\" zip rejected\ndocs 2 1\n" T$= ;
 
 \ Stores the member's integer in the cell; false when the object has no such member.
 : MEMBER! ( JSON:reader str ^n -- JSON:reader bool )
@@ -879,7 +879,7 @@ FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
-   s" a device a file kept is refused in the program" LABEL  CMD:OUT$ s\" genio refused\n" T$= ;
+   s" a device a file kept is rejected in the program" LABEL  CMD:OUT$ s\" genio rejected\n" T$= ;
 
 \ L's program, run in its own process: the boundary under test is the written file. The label
 \ holds when its stdout is the wanted text.
@@ -1157,9 +1157,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" DB" WHICH!  DP-BACK-BUILD
    WORD-LOAD-BUILD  SENT-BUILDS ;
 
-\ seal-main.f's build, in a fresh hb since SEALED-FAIL ends the process it refuses in: it exits 70
+\ seal-main.f's build, in a fresh hb since SEALED-FAIL ends the process it rejects in: it exits 70
 \ with E-SEALED-PACKAGE naming the definition and seal-main.f's line.
-: SEAL-REFUSED ( CMD:command -- CMD:command )
+: SEAL-REJECTED ( CMD:command -- CMD:command )
    s" test/fixtures/file-objects/seal-main.f" false BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" STR:CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `FILE-OBJECTS-SEAL:D` would change a sealed package" STR:CONTAINS? classed and {: named:bool :}
@@ -1167,32 +1167,32 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" E-FAILED" STR:CONTAINS? {: failed:bool :}
    named placed and  rc 70 =  and  failed 0= and 0= if rc SHOW then
    s" the build exits 70" LABEL  rc 70 T=
-   s" the build refuses FILE-OBJECTS-SEAL:D" LABEL  named TTRUE
-   s" the refusal names seal-main.f's line 6" LABEL  placed TTRUE
+   s" the build rejects FILE-OBJECTS-SEAL:D" LABEL  named TTRUE
+   s" the rejection names seal-main.f's line 6" LABEL  placed TTRUE
    s" the uncaught failure's rollbacks print no E-FAILED" LABEL  failed TFALSE ;
 
-\ Guards a seal a link carries: F2 links seal-second.f's object and is refused as F is.
+\ Guards a seal a link carries: F2 links seal-second.f's object and is rejected as F is.
 : SEAL-CASE ( CMD:command -- CMD:command )
-   s" F" WHICH!  SEAL-REFUSED  SEAL-SECOND KEEP
-   s" F2" WHICH!  SEAL-REFUSED
+   s" F" WHICH!  SEAL-REJECTED  SEAL-SECOND KEEP
+   s" F2" WHICH!  SEAL-REJECTED
    s" the build links seal-second.f" SEAL-SECOND LINKED ;
 
-\ squat-main.f's build, in a fresh hb as SEAL-REFUSED's, as a --repl image when the flag is true:
+\ squat-main.f's build, in a fresh hb as SEAL-REJECTED's, as a --repl image when the flag is true:
 \ it exits 70 with E-SEALED-PACKAGE naming CHECKER-RESOLVE and squat-main.f's line 4.
-: SQUAT-REFUSED ( CMD:command bool -- CMD:command ) {: repl:bool :}
+: SQUAT-REJECTED ( CMD:command bool -- CMD:command ) {: repl:bool :}
    s" test/fixtures/file-objects/squat-main.f" repl BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" STR:CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `CHECKER-RESOLVE` would change a sealed package" STR:CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:4" STR:CONTAINS? {: placed:bool :}
    named placed and  rc 70 =  and 0= if rc SHOW then
    s" the build exits 70" LABEL  rc 70 T=
-   s" the build refuses CHECKER-RESOLVE" LABEL  named TTRUE
-   s" the refusal names squat-main.f's line 4" LABEL  placed TTRUE ;
+   s" the build rejects CHECKER-RESOLVE" LABEL  named TTRUE
+   s" the rejection names squat-main.f's line 4" LABEL  placed TTRUE ;
 
 \ Guards the engine's seal in a program build (SQ, stripped) and a --repl build (SQ2).
 : SQUAT-CASE ( CMD:command -- CMD:command )
-   s" SQ" WHICH!  false SQUAT-REFUSED
-   s" SQ2" WHICH!  true SQUAT-REFUSED ;
+   s" SQ" WHICH!  false SQUAT-REJECTED
+   s" SQ2" WHICH!  true SQUAT-REJECTED ;
 
 \ Guards a --repl build (SR) of spawn-main.f: its spawn.f opens PROCESS,
 \ a package that build's engine files do not make.
@@ -1302,22 +1302,22 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\"  from defining, allotting or undefining\n" SB-APPEND
    EXIT-STATUS:UNCAUGHT SB$ ONE-RECORD ;
 
-\ ctor-main.f's build, in a fresh hb since the refusal ends the build: it fails with
+\ ctor-main.f's build, in a fresh hb since the rejection ends the build: it fails with
 \ E-CTOR-PROTECTED at ctor-main.f's line 6. Answers its exit code.
-: CTOR-REFUSED ( CMD:command -- CMD:command n )
+: CTOR-REJECTED ( CMD:command -- CMD:command n )
    s" test/fixtures/file-objects/ctor-main.f" false BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-CTOR-PROTECTED]" STR:CONTAINS? {: coded:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/ctor-main.f:6:" STR:CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
-   s" the build refuses with E-CTOR-PROTECTED" LABEL  named TTRUE
+   s" the build rejects with E-CTOR-PROTECTED" LABEL  named TTRUE
    rc ;
 
-\ Guards a constructor package a link carries: CT2 links ctor-sum.f's object and is refused as
+\ Guards a constructor package a link carries: CT2 links ctor-sum.f's object and is rejected as
 \ CT, which compiles it, is.
 : CTOR-CASE ( CMD:command -- CMD:command )
-   s" CT" WHICH!  CTOR-REFUSED {: cold:n :}  CTOR-SUM KEEP
-   s" CT2" WHICH!  CTOR-REFUSED {: warm:n :}
+   s" CT" WHICH!  CTOR-REJECTED {: cold:n :}  CTOR-SUM KEEP
+   s" CT2" WHICH!  CTOR-REJECTED {: warm:n :}
    s" the build exits as CT does" LABEL  warm cold T=
    s" the build links ctor-sum.f" CTOR-SUM LINKED ;
 
@@ -1338,14 +1338,14 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    rc 70 <> if rc SHOW then
    s" the image's definition and top level call the exports" LABEL
    CMD:OUT$ s\" 42\n5\n3\n9\n42\n5\n3\n9\n11\n" T$=
-   s" the image refuses the undefined export" LABEL
+   s" the image rejects the undefined export" LABEL
    CMD:ERR$ s\" error[E-UNDEFINED]: cannot find word `FILE-OBJECTS-EXP:GONE`\n --> <input>:5:1\n"
    STR:CONTAINS? TTRUE
    s" the image exits 70" LABEL  rc 70 T= ;
 
 \ Guards an image's exports: EX compiles export-main.f into a --repl image, EX2 links its object
 \ into another, and each resolves an exported private word, another package's public word, a
-\ constant, a does> definer and an export whose source the file undefines, and refuses an
+\ constant, a does> definer and an export whose source the file undefines, and rejects an
 \ export the file undefines.
 : EXPORT-CASE ( CMD:command -- CMD:command )
    s" EX" WHICH!  s" test/fixtures/file-objects/export-main.f" REPL-BUILD 0= if exit then
@@ -2020,7 +2020,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ The main's build, rejected at link by one record placed at the fixture's file:line:col over its source line,
 \ with the cell that holds the address, what it found and the fix. Answers its exit code.
-: ARENA-REFUSED ( CMD:command str str str str -- CMD:command n )
+: ARENA-REJECTED ( CMD:command str str str str -- CMD:command n )
    {: main:str f:str line:str cell:str :}
    main s" prog-ar" NEST-RC {: rc:n :}
    CMD:ERR$ f NEST-PATH$ STR:CONTAINS? {: named:bool :}
@@ -2043,10 +2043,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : ARENA-KT ( CMD:command -- CMD:command )
    s" AR" WHICH!  s" kt-main.f" s" kt.f:4:16" s" | TYPED-VARIABLE A ^ARENA:arena"
-   S\" in A +0\n" ARENA-REFUSED {: cold:n :}
+   S\" in A +0\n" ARENA-REJECTED {: cold:n :}
    s" AR2" WHICH!  ARENA-OTHER
    s" AR3" WHICH!  s" kt-main.f" s" kt.f:4:16" s" | TYPED-VARIABLE A ^ARENA:arena"
-   S\" in A +0\n" ARENA-REFUSED {: warm:n :}
+   S\" in A +0\n" ARENA-REJECTED {: warm:n :}
    s" the build exits as AR does" LABEL  warm cold T= ;
 
 : ARENA-KB ( CMD:command -- CMD:command )
@@ -2065,10 +2065,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : ARENA-HT ( CMD:command -- CMD:command )
    s" AR10" WHICH!  s" ht-main.f" s" ht.f:4:16" s" | TYPED-VARIABLE Q ^n"
-   S\" in Q +0\n" ARENA-REFUSED {: cold:n :}
+   S\" in Q +0\n" ARENA-REJECTED {: cold:n :}
    s" AR11" WHICH!  ARENA-OTHER
    s" AR12" WHICH!  s" ht-main.f" s" ht.f:4:16" s" | TYPED-VARIABLE Q ^n"
-   S\" in Q +0\n" ARENA-REFUSED {: warm:n :}
+   S\" in Q +0\n" ARENA-REJECTED {: warm:n :}
    s" the build exits as AR10 does" LABEL  warm cold T= ;
 
 \ Guards that a build gives a program no address of memory a top level mapped.
@@ -2223,18 +2223,18 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" : TO-D ( -- ) FILE-OBJECTS-ROUTE:D @ GENIO:OUTPUT!  s\" abc\" type ;\n" SRC+
    s\" : MAIN ( -- )\n   .\" seen\" cr  FILE-OBJECTS-ROUTE:U @ .  FILE-OBJECTS-ROUTE:N @ .\n" SRC+
    s\"    [: TO-D ;] catch {: code:n :}  GENIO:TERMINAL GENIO:OUTPUT!\n" SRC+
-   s\"    code E-GENIO-STATE = if .\" refused\" cr else code . then\n" SRC+
+   s\"    code E-GENIO-STATE = if .\" rejected\" cr else code . then\n" SRC+
    s\"    FILE-OBJECTS-ROUTE:N @ . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
 \ Guards a program's start: it starts on the terminal with fresh user rows whatever a file's top level left.
 : ROUTE-CASE ( CMD:command -- CMD:command )
    WRITE-ROUTE
    s" RT" WHICH!  s" main.f" NEST-PATH$ REPL-BUILD 0= if exit then
-   s" prog" s\" seen\n0\n3\nrefused\n3\n" s" D got the build's bytes; the program starts on the terminal, U 0"
+   s" prog" s\" seen\n0\n3\nrejected\n3\n" s" D got the build's bytes; the program starts on the terminal, U 0"
       NEST-RUN
    s" RM" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
    s" RT2" WHICH!  s" main.f" NEST-PATH$ REPL-BUILD 0= if exit then
-   s" prog" s\" seen\n0\n3\nrefused\n3\n" s" D got the build's bytes; the program starts on the terminal, U 0"
+   s" prog" s\" seen\n0\n3\nrejected\n3\n" s" D got the build's bytes; the program starts on the terminal, U 0"
       NEST-RUN ;
 
 \ The device sequence's f.f: K is the byte count a read of /dev/null answers, a file whose change time
@@ -2601,30 +2601,30 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    then
    s" b.f" NEST-WRITE ;
 
-\ A build of b.f the cast's restriction refuses; answers its exit code. The
+\ A build of b.f the cast's restriction rejects; answers its exit code. The
 \ build rejects with E-CAST-LINEAR at the call of AT, b.f's line 4.
-: CAST-REFUSED ( CMD:command -- CMD:command n )
+: CAST-REJECTED ( CMD:command -- CMD:command n )
    s" b.f" NEST-PATH$ FAILING-BUILD {: rc:n :}
    CMD:ERR$ s" error[E-CAST-LINEAR]: a cast's stored type would hold a linear value"
    STR:CONTAINS? {: coded:bool :}
    CMD:ERR$ s" /b.f:4:30" STR:CONTAINS? coded and {: said:bool :}
    rc 0 =  said 0=  or if rc SHOW then
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
-   s" the build refuses AT at a linear type" LABEL  said TTRUE
+   s" the build rejects AT at a linear type" LABEL  said TTRUE
    rc ;
 
 \ Guards the restriction a linked object's AT carries: CA2 links a.f and
-\ refuses b.f's SLOT as CA3, a cold build of the same files, does.
+\ rejects b.f's SLOT as CA3, a cold build of the same files, does.
 : CAST-CASE ( CMD:command -- CMD:command )
    s" cast" WRITE-CAST  false WRITE-CAST-B
    s" CA" WHICH!  s" b.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
    s\" 5\n" s" the program prints the field it stored" PRINTS-RUN
    CAST-A KEEP
    true WRITE-CAST-B
-   s" CA2" WHICH!  CAST-REFUSED {: warm:n :}
+   s" CA2" WHICH!  CAST-REJECTED {: warm:n :}
    s" the build links a.f" CAST-A LINKED
    s" cast-cold" WRITE-CAST  true WRITE-CAST-B
-   s" CA3" WHICH!  CAST-REFUSED {: cold:n :}
+   s" CA3" WHICH!  CAST-REJECTED {: cold:n :}
    s" CA2 exits as the build does" LABEL  warm cold T= ;
 
 \ A Wasm build of bare-main.f in a fresh hb, since the process fixes the build's target; its module never runs.
@@ -2650,8 +2650,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" WASM" WHICH!  WASM-BUILD
    [: CROSS-AGAIN ;] ARENA:WITH ;
 
-\ A Wasm build exits 0 where a target word is only named and is refused where top level runs it, a linked file's
-\ by its name; two builds, since a refused build ends its hb.
+\ A Wasm build exits 0 where a target word is only named and is rejected where top level runs it, a linked file's
+\ by its name; two builds, since a rejected build ends its hb.
 : TARGET-CASE ( CMD:command -- CMD:command )
    s" TN" WHICH!
    TOOL-ARGS  s" --target" CMD:ARG+  s" wasm" CMD:ARG+
@@ -2666,8 +2666,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" test/fixtures/file-objects/target-run.f:8:" STR:CONTAINS? tail and {: placed:bool :}
    classed placed and  rc 0<> and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
-   s" the refusal is E-TARGET-WORD" LABEL  classed TTRUE
-   s" the refusal names linked FO-TAIL on target-run.f's line 8" LABEL  placed TTRUE ;
+   s" the rejection is E-TARGET-WORD" LABEL  classed TTRUE
+   s" the rejection names linked FO-TAIL on target-run.f's line 8" LABEL  placed TTRUE ;
 
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND

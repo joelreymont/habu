@@ -130,7 +130,7 @@ PeerWrites ==
 
 (* ---- The lines: starting, INTAKE                                        *)
 
-Refused ==
+Rejected ==
     /\ Go("starting", "down")
     /\ marked
     /\ HangUp
@@ -313,7 +313,7 @@ Shut ==
                    framed, persist, left, interims, addrs>>
 
 Run ==
-    \/ Refused \/ Unheld \/ Kept \/ Busy
+    \/ Rejected \/ Unheld \/ Kept \/ Busy
     \/ Quiet \/ Stale
     \/ Found \/ Unresolved
     \/ Dialed \/ Redial \/ Undialed

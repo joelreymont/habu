@@ -38,7 +38,7 @@ require src/lib/json/write.f
 require src/lib/json/value.f
 
 \ Test-image hooks: TEST-PREOPEN initializes START-READY first, so the real
-\ startup initializer refuses after the job queue has opened.
+\ startup initializer rejects after the job queue has opened.
 package HTTP
 public
 : TEST-PREOPEN ( -- )
@@ -426,7 +426,7 @@ TYPED-VARIABLE ID-TEXT-LEN len
    answer [: BOOM-BODY ;] HTTP:JSON! ;
 
 
-\ Refuses from a header alone, never asking for the body.
+\ Rejects from a header alone, never asking for the body.
 : ADMIT ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    asked s" authorization" HTTP:HEADER-COUNT-OF 0 > if asked answer ECHO exit then
    answer 401 HTTP:STATUS! ;
@@ -922,7 +922,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    ;MATCH ;
 
 
-\ A refused request may be answered and the connection closed before the whole
+\ A rejected request may be answered and the connection closed before the whole
 \ request has been sent, so a short write is part of the case, not a failure.
 : RAW-SEND ( TCP4:connection str -- )
    {: conn:TCP4:connection bytes:str :}
@@ -1346,7 +1346,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 \ The default error answer is one line of text naming the code, the message and
 \ the request id the fault is reported under.
-: REFUSAL-CASES ( -- )
+: REJECTION-CASES ( -- )
    s" GET" s" /api/nothing" FETCH 404 T=
    s" not_found: no route answers this path (request r0-" BEGINS? TTRUE
    s" DELETE" s" /api/items/7" FETCH 405 T=
@@ -1518,7 +1518,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    line T-LABEL ;
 
 
-: HOST-REFUSED ( -- )
+: HOST-REJECTED ( -- )
    s" HTTP/1.1 400 Bad Request" BEGINS? TTRUE
    s" bad_request: " HAS? TTRUE ;
 
@@ -1527,24 +1527,24 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" HTTP/1.1 200 OK" BEGINS? TTRUE ;
 
 
-\ RFC 9112 3.2: an HTTP/1.1 request without exactly one valid Host is refused
+\ RFC 9112 3.2: an HTTP/1.1 request without exactly one valid Host is rejected
 \ before any handler runs, while an HTTP/1.0 one may carry none. A valid Host
 \ is uri-host [":" port] (RFC 3986 3.2.2, 3.2.3).
 : HOST-CASE ( -- )
    s\" GET /api/ping HTTP/1.1\r\nConnection: close\r\n\r\n" RAW-ONE
-   s" no Host" T-LABEL HOST-REFUSED
+   s" no Host" T-LABEL HOST-REJECTED
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
-   s" two Hosts" T-LABEL HOST-REFUSED
-   s" Host:" PING-LINE HOST-REFUSED
-   s" Host: a b" PING-LINE HOST-REFUSED
-   s" Host: x:80a" PING-LINE HOST-REFUSED
-   s" Host: x%2" PING-LINE HOST-REFUSED
-   s" Host: [::1" PING-LINE HOST-REFUSED
-   s" Host: [1::2::3]" PING-LINE HOST-REFUSED
-   s" Host: [1:2:3:4:5:6:7:8:9]" PING-LINE HOST-REFUSED
-   s" Host: [::1.2.3.256]" PING-LINE HOST-REFUSED
-   s" Host: [::1.2.3.04]" PING-LINE HOST-REFUSED
-   s" Host: [v.a]" PING-LINE HOST-REFUSED
+   s" two Hosts" T-LABEL HOST-REJECTED
+   s" Host:" PING-LINE HOST-REJECTED
+   s" Host: a b" PING-LINE HOST-REJECTED
+   s" Host: x:80a" PING-LINE HOST-REJECTED
+   s" Host: x%2" PING-LINE HOST-REJECTED
+   s" Host: [::1" PING-LINE HOST-REJECTED
+   s" Host: [1::2::3]" PING-LINE HOST-REJECTED
+   s" Host: [1:2:3:4:5:6:7:8:9]" PING-LINE HOST-REJECTED
+   s" Host: [::1.2.3.256]" PING-LINE HOST-REJECTED
+   s" Host: [::1.2.3.04]" PING-LINE HOST-REJECTED
+   s" Host: [v.a]" PING-LINE HOST-REJECTED
    s\" GET /api/ping HTTP/1.0\r\n\r\n" RAW-ONE
    s" HTTP/1.0 without Host" T-LABEL HOST-SERVED
    s" Host: 127.0.0.1:8080" PING-LINE HOST-SERVED
@@ -1574,7 +1574,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" body-too-large" TRANSCRIBE ;
 
 
-\ One byte over the body limit is still the request reader's own refusal and
+\ One byte over the body limit is still the request reader's own rejection and
 \ not a span throw escaping the worker: 413, and the worker takes the next
 \ request on a new connection.
 : OVER-BODY-CASE ( -- )
@@ -1753,7 +1753,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    ;MATCH ;
 
 
-\ A handler that refuses from a header is answered at once, with Connection:
+\ A handler that rejects from a header is answered at once, with Connection:
 \ close, however large a body the head declares: nothing waits for the bytes
 \ the peer never sends. A body its handler reads in full keeps the connection.
 : UNREAD-BODY-CASE ( -- )
@@ -1813,7 +1813,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
 \ A handler that catches its body read's throw still answers that read's
-\ refusal, not the 200 it set after the catch.
+\ rejection, not the 200 it set after the catch.
 : SWALLOW-CASE ( -- )
    0 SWALLOWED !
    REQ-RESET
@@ -1827,7 +1827,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
 \ BODY$ is the handler's own: a spawned task gets E-HANDLE, the handler E-STATE
-\ once it took the connection; the whole body is sent, so a missing refusal reads it.
+\ once it took the connection; the whole body is sent, so a missing rejection reads it.
 : BODY-PROBE-CASE ( -- )
    0 FOREIGN-CODE !
    0 TAKEN-CODE !
@@ -1958,7 +1958,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
 \ The default is set after registration. One worker and one server answer all
-\ cases; a refusal without body bytes must arrive before its body timeout.
+\ cases; a rejection without body bytes must arrive before its body timeout.
 : ROUTE-CAP-CASES ( -- )
    [: REJECTED-ROUTE-CAP ;] HTTP:E-CAPACITY TTHROWSQ
    4 HTTP:BODY-CAP!
@@ -2171,7 +2171,7 @@ $C8 constant STALL-MARGIN-MS
    3 s" split-head-3" SPLIT-PING ;
 
 
-\ Installing a hook or a rule on a running server is refused, because every
+\ Installing a hook or a rule on a running server is rejected, because every
 \ worker already started would miss it.
 : HOOK-LIVE-CASES ( -- )
    s" GET" s" /api/trace" FETCH 200 T=
@@ -2532,7 +2532,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 
 \ Setup can fail after the queue opens. The failed start must release it and
 \ its static tree, leaving the same port usable without a half-open pool.
-: SETUP-REFUSAL-CASE ( -- )
+: SETUP-REJECTION-CASE ( -- )
    1000 HTTP:BODY-TIMEOUT!
    ROOT$ HTTP:STATIC-ROOT
    HTTP:TEST-PREOPEN
@@ -2653,7 +2653,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    HTTP:STOP ;
 
 
-\ A handler that lets its failed body read's throw out is that read's refusal
+\ A handler that lets its failed body read's throw out is that read's rejection
 \ alone: the hook runs once for it and no fault is logged.
 : ERROR-HOOK-CASE ( -- )
    s" the error hook runs once per failure and each fault is logged" T-LABEL
@@ -2767,9 +2767,9 @@ $C0000201 constant TEST-NET-1     \ 192.0.2.1, reserved for documentation: no ho
 
 variable HELD
 variable HELD-PORT
-variable REFUSED-ADDRESS
-variable REFUSED-PORT
-variable REFUSED-CODE
+variable REJECTED-ADDRESS
+variable REJECTED-PORT
+variable REJECTED-CODE
 
 
 : HOLD ( -- )
@@ -2786,20 +2786,20 @@ variable REFUSED-CODE
    ;MATCH ;
 
 
-: START-REFUSED ( -- )
-   [: REFUSED-ADDRESS @ REFUSED-PORT @ ONE-WORKER IDLE-MS SERVE-ON ;]
-   catch REFUSED-CODE ! ;
+: START-REJECTED ( -- )
+   [: REJECTED-ADDRESS @ REJECTED-PORT @ ONE-WORKER IDLE-MS SERVE-ON ;]
+   catch REJECTED-CODE ! ;
 
 
 \ A start at that address and port with fd 2 captured, then the want text: the
 \ line's part after the stamp, up to the errno, built in the string builder
 \ once the capture and the start no longer use it.
-: REFUSED-START ( n n str -- ) {: address:n port:n dotted:str :}
-   address REFUSED-ADDRESS !
-   port REFUSED-PORT !
+: REJECTED-START ( n n str -- ) {: address:n port:n dotted:str :}
+   address REJECTED-ADDRESS !
+   port REJECTED-PORT !
    ERR-PATH-MAKE
    ERR-PATH$ STDERR:CAPTURE
-   [: START-REFUSED ;] [: STDERR:;CAPTURE ;] finally
+   [: START-REJECTED ;] [: STDERR:;CAPTURE ;] finally
    READ-STDERR
    SB-RESET
    s"  error http: bind to " SB-APPEND
@@ -2808,7 +2808,7 @@ variable REFUSED-CODE
    s"  failed, errno " SB-APPEND ;
 
 
-: REFUSED-LINE? ( -- bool )
+: REJECTED-LINE? ( -- bool )
    ERR$ {: err:str :}
    SB$ {: want:str :}
    DATE:TIME-LEN want STR:LEN + {: head:n :}
@@ -2819,17 +2819,17 @@ variable REFUSED-CODE
    err STR:DATA head + err STR:LEN head - 1- >str STR:DIGITS? ;
 
 
-: REFUSED-LISTEN-CASE ( -- )
+: REJECTED-LISTEN-CASE ( -- )
    HOLD
-   LOOPBACK HELD-PORT @ s" 127.0.0.1" REFUSED-START
+   LOOPBACK HELD-PORT @ s" 127.0.0.1" REJECTED-START
    ERR$ s" error http:" STR:COUNT-SUB 1 T=
-   REFUSED-LINE? TTRUE
-   REFUSED-CODE @ E-HTTP-SOCKET T=
+   REJECTED-LINE? TTRUE
+   REJECTED-CODE @ E-HTTP-SOCKET T=
    HTTP:RUNNING? TFALSE
-   TEST-NET-1 HELD-PORT @ s" 192.0.2.1" REFUSED-START
+   TEST-NET-1 HELD-PORT @ s" 192.0.2.1" REJECTED-START
    ERR$ s" error http:" STR:COUNT-SUB 1 T=
-   REFUSED-LINE? TTRUE
-   REFUSED-CODE @ E-HTTP-SOCKET T=
+   REJECTED-LINE? TTRUE
+   REJECTED-CODE @ E-HTTP-SOCKET T=
    HTTP:RUNNING? TFALSE
    HELD @ TCP4:>LISTENER TCP4:CLOSE-LISTENER DROP-TCP-STATUS ;
 
@@ -2923,7 +2923,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    TREE$ FS:REMOVE-TREE ;
 
 
-\ A directory whose identity matches an ancestor's is a cycle and refuses the
+\ A directory whose identity matches an ancestor's is a cycle and rejects the
 \ root; links that reach a directory by another path are served under it.
 
 : TREE-FILE ( str str -- ) {: name:str text:str :}
@@ -2941,7 +2941,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    target PATH-BUF len >str FS:MAKE-SYMLINK ;
 
 
-: CYCLE-REFUSED ( -- )
+: CYCLE-REJECTED ( -- )
    [: TREE$ HTTP:STATIC-ROOT ;] HTTP:E-STATIC TTHROWSQ
    HTTP:STATIC-COUNT 0 T=
    TREE$ FS:REMOVE-TREE
@@ -2960,16 +2960,16 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    \ One level down, so the root's file loads before the cycle in any listing order.
    s" d" TREE-DIR
    s" .." s" d/a" TREE-LINK
-   CYCLE-REFUSED ;
+   CYCLE-REJECTED ;
 
 
 : TWO-SELF-LINKS-CASE ( -- )
-   s" two links to the root are refused, not walked" T-LABEL
+   s" two links to the root are rejected, not walked" T-LABEL
    NEW-TREE
    s" index.html" INDEX-TEXT$ TREE-FILE
    s" ." s" a" TREE-LINK
    s" ." s" b" TREE-LINK
-   CYCLE-REFUSED ;
+   CYCLE-REJECTED ;
 
 
 : LINKED-TREE-CASE ( -- )
@@ -3441,7 +3441,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    HTTP:PORT 0 > TTRUE
    JSON-CASES
-   REFUSAL-CASES
+   REJECTION-CASES
    REASON-CASES
    ERROR-HEADER-CASE
    FAULT-CASE
@@ -3501,8 +3501,8 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    FLOOD-CASE
    ACCESS-LOG-CASE
    ERROR-HOOK-CASE
-   REFUSED-LISTEN-CASE
-   SETUP-REFUSAL-CASE
+   REJECTED-LISTEN-CASE
+   SETUP-REJECTION-CASE
    THROWING-HOOK-CASE
    GATED-HOOK-CASE
    RES @ VEC:DELETE

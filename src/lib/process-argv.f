@@ -18,7 +18,7 @@ SCRATCH-VARIABLE PROC-ARGV-N
 
 \ The argv table holds the address of every zero-terminated argument, so it is
 \ declared pointer storage: a pointer stored in or fetched from an undeclared
-\ `create`d cell is refused (E-RAW-CELL-PTR).
+\ `create`d cell is rejected (E-RAW-CELL-PTR).
 package PROC-ARGV-ROWS
 private
 
@@ -68,7 +68,7 @@ public
 : PROC-ARGV-SLOT ( idx -- ^^u8 )
    PROC-ARGV-ROWS:SLOT ;
 
-\ A length below zero or one whose NUL would not fit a cell is refused.
+\ A length below zero or one whose NUL would not fit a cell is rejected.
 : PROC-ARGV+ ( str -- )
    {: a:^ u :}
    u 0 < if E-PROC-OUTPUT throw then

@@ -1,9 +1,9 @@
-\ process-tree-test.f - a walk the kernel refuses says so; a big tree dies whole.
-\ KILL-TREE decides who is in a tree from what the kernel answers, so a refusal
-\ must never read as "nobody there". On macOS libproc answers a refused listing
-\ as empty and a refused record as none; only errno tells them apart (measured:
-\ a zombie or missing pid leaves ESRCH, a sandbox denial EPERM). The refusal
-\ cases are macOS only: sandbox-exec makes the kernel refuse.
+\ process-tree-test.f - a walk the kernel rejects says so; a big tree dies whole.
+\ KILL-TREE decides who is in a tree from what the kernel answers, so a rejection
+\ must never read as "nobody there". On macOS libproc answers a rejected listing
+\ as empty and a rejected record as none; only errno tells them apart (measured:
+\ a zombie or missing pid leaves ESRCH, a sandbox denial EPERM). The rejection
+\ cases are macOS only: sandbox-exec makes the kernel reject.
 
 require src/core/exit-status.f
 require src/lib/error.f
@@ -45,8 +45,8 @@ variable TARGET
 
 \ The walker is this file again with `walker` as its one argument, run under
 \ sandbox-exec once denying process-info-listpids and once process-info-pidinfo.
-\ It spawns a victim and asks KILL-TREE to end it, against a refused listing
-\ read as no children, a refused record read as an ended process, and a throw
+\ It spawns a victim and asks KILL-TREE to end it, against a rejected listing
+\ read as no children, a rejected record read as an ended process, and a throw
 \ that leaves the named process stopped: KILL-TREE throws E-PROC-OUTPUT and the
 \ victim dies of SIGKILL.
 \ The victim is the walker's own child, so its pid is not handed on before the
@@ -65,11 +65,11 @@ variable TARGET
 : WALK ( -- )
    T-RESET
    VICTIM-START
-   s" refused: KILL-TREE throws E-PROC-OUTPUT" T-LABEL
+   s" rejected: KILL-TREE throws E-PROC-OUTPUT" T-LABEL
    ['] VICTIM-KILL-TREE E-PROC-OUTPUT TTHROWS
    VICTIM @ >PID SIGTERM PROCESS:KILL-RAW drop
    VICTIM @ >PID SIGCONT-MACOS PROCESS:KILL-RAW drop
-   s" refused: the named process died of SIGKILL" T-LABEL
+   s" rejected: the named process died of SIGKILL" T-LABEL
    VICTIM @ >PID PROCESS:WAIT PROCESS:SIGKILL KILLED-BY? TTRUE
    T-REPORT ;
 
@@ -79,7 +79,7 @@ variable TARGET
 \ must not replace the capture's code: a capture past its deadline throws
 \ E-PROC-TIMEOUT, one read as data answers the timeout outcome, each sleeper
 \ dies of SIGKILL and is reaped, and stderr is one line per capture naming the
-\ refused walk's E-PROC-OUTPUT. A captured sleeper is the capture's to reap.
+\ rejected walk's E-PROC-OUTPUT. A captured sleeper is the capture's to reap.
 \ The walker's own capture buffers are free here: it captures nothing else.
 
 : SLEEPER-ARGS ( -- )
@@ -109,18 +109,18 @@ variable TARGET
 
 : CAPTURE-WALK ( -- )
    T-RESET
-   s" refused: a capture past its deadline throws E-PROC-TIMEOUT" T-LABEL
+   s" rejected: a capture past its deadline throws E-PROC-TIMEOUT" T-LABEL
    [: SLEEPER-CAPTURE ;] E-PROC-TIMEOUT TTHROWSQ
-   s" refused: that sleeper died of SIGKILL and was reaped" SLEEPER-REAPED
-   s" refused: a deadline read as data answers the timeout outcome" T-LABEL
+   s" rejected: that sleeper died of SIGKILL and was reaped" SLEEPER-REAPED
+   s" rejected: a deadline read as data answers the timeout outcome" T-LABEL
    [: SLEEPER-OUTCOME ;] 0 TTHROWSQ
-   s" refused: that sleeper died of SIGKILL and was reaped" SLEEPER-REAPED
+   s" rejected: that sleeper died of SIGKILL and was reaped" SLEEPER-REAPED
    T-REPORT ;
 
 \ The end of a PROCESS-PTY:WITH-TARGET scope kills the session target with its
 \ tree (src/lib/process-pty-io.f IO-KILL-REAP); a throw out of it would strand
 \ the linear teardown token and leak the slot. Under the listing denial the
-\ scope returns, the target is reaped and stderr names the one refused walk.
+\ scope returns, the target is reaped and stderr names the one rejected walk.
 
 : PTY-WALK ( -- )
    T-RESET
@@ -128,7 +128,7 @@ variable TARGET
       PROCESS-PTY:LAUNCH
       PROCESS-PTY:TARGET PID>N TARGET !
    ;] PROCESS-PTY:WITH-TARGET
-   s" refused: a torn-down session's target was reaped" T-LABEL
+   s" rejected: a torn-down session's target was reaped" T-LABEL
    TARGET @ 0 kill-errno PROCESS:ESRCH# negate T=
    T-REPORT ;
 
@@ -328,7 +328,7 @@ PROCESS:NO-FD PING-WR !
    [: RESUME-BODY ;] [: RESUME-END ;] finally ;
 
 \ ENDED: a reaped process's /proc files are gone, which CATCHES? and CPU-NS
-\ read as a process that ended, never as a refusal that throws.
+\ read as a process that ended, never as a rejection that throws.
 : ENDED ( -- )
    VICTIM-START
    VICTIM @ PROCESS:SIGKILL kill drop
@@ -400,11 +400,11 @@ variable IDLE-COPY-U
       OUT outn >str type ERR errn >str type cr
    then ;
 
-: REFUSED ( str str -- )
+: REJECTED ( str str -- )
    {: profile:str label:str :}
    profile s" walker" SANDBOXED label VERDICT ;
 
-\ What stderr gets from src/lib/process.f for n walks the kernel refused.
+\ What stderr gets from src/lib/process.f for n walks the kernel rejected.
 : WALK-LINES$ ( n -- str ) {: walks:n :}
    SB-RESET
    walks 0 ?do
@@ -414,20 +414,20 @@ variable IDLE-COPY-U
    loop
    SB$ ;
 
-: REFUSED-CAPTURE ( -- )
+: REJECTED-CAPTURE ( -- )
    s" (version 1)(allow default)(deny process-info-listpids)"
    s" capture" SANDBOXED {: outn:n errn:n rc:n :}
    outn errn rc
-   s" a capture whose tree walk is refused keeps its own answer" VERDICT
-   s" the walker's stderr names each refused walk" T-LABEL
+   s" a capture whose tree walk is rejected keeps its own answer" VERDICT
+   s" the walker's stderr names each rejected walk" T-LABEL
    ERR errn >str CAPTURES WALK-LINES$ T$= ;
 
-: REFUSED-PTY ( -- )
+: REJECTED-PTY ( -- )
    s" (version 1)(allow default)(deny process-info-listpids)"
    s" pty" SANDBOXED {: outn:n errn:n rc:n :}
    outn errn rc
-   s" a session whose tree walk is refused is torn down" VERDICT
-   s" the walker's stderr names each refused walk" T-LABEL
+   s" a session whose tree walk is rejected is torn down" VERDICT
+   s" the walker's stderr names each rejected walk" T-LABEL
    ERR errn >str SUPERVISED WALK-LINES$ T$= ;
 
 : CASES ( -- )
@@ -437,15 +437,15 @@ variable IDLE-COPY-U
    ENDED
    RUNS
    HB-TARGET-MACOS? 0= if
-      s" process-tree-test: the refusal cases need macOS sandbox-exec" type cr
+      s" process-tree-test: the rejection cases need macOS sandbox-exec" type cr
       exit
    then
    s" (version 1)(allow default)(deny process-info-listpids)"
-   s" a refused listing throws, and the named process still dies" REFUSED
+   s" a rejected listing throws, and the named process still dies" REJECTED
    s" (version 1)(allow default)(deny process-info-pidinfo)"
-   s" a refused record throws, and the named process still dies" REFUSED
-   REFUSED-CAPTURE
-   REFUSED-PTY ;
+   s" a rejected record throws, and the named process still dies" REJECTED
+   REJECTED-CAPTURE
+   REJECTED-PTY ;
 
 public
 

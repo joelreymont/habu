@@ -227,8 +227,8 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    s" = help: pass the large records by address through a C function"
    FFI-T-SA-ARITY ;
 
-: FFI-T-SA-REFUSALS ( -- )
-   s" malformed struct-argument declarations are refused" T-LABEL
+: FFI-T-SA-REJECTIONS ( -- )
+   s" malformed struct-argument declarations are rejected" T-LABEL
    [: s" 0 8 STRUCT-ARG" evaluate-closed ;]
       s" error[E-FFI-SYNTAX]: a clause outside a FUNCTION: declaration" FFI-T-RECORD
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ^u8 -- n ) 1 8 STRUCT-ARG ;FUNCTION"
@@ -265,7 +265,7 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
       evaluate-closed ;]
       s" error[E-FFI-SYNTAX]: STRUCT-ARG with a float result" FFI-T-RECORD
 
-   s" struct staging past sixteen cells is refused before publication" T-LABEL
+   s" struct staging past sixteen cells is rejected before publication" T-LABEL
    [: s" FUNCTION: FFI-T-SA-CAP hb_sum128 ( ^u8 -- n ) 0 129 STRUCT-ARG ;FUNCTION"
       evaluate-closed ;] FFI-T-SA-STAGING
    s" FUNCTION: FFI-T-SA-CAP hb_sum128 ( ^u8 -- n ) 0 128 STRUCT-ARG ;FUNCTION"
@@ -295,6 +295,6 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    FFI-T-REGISTER-ARGS
    FFI-T-COPY-ARGS
    FFI-T-RESULT-SHAPES
-   FFI-T-SA-REFUSALS ;
+   FFI-T-SA-REJECTIONS ;
 
 FFI-T-STRUCT-ARGS
