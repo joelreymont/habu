@@ -63,6 +63,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 PROCESS-SYMBOLS
 FUNCTION: PEEK-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
+FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 $1000 constant REQ-CAP
 $10000 constant ROOM-CAP
@@ -85,6 +86,8 @@ $42 constant PEEK-FLAGS                 \ MSG_DONTWAIT | MSG_PEEK
 22 constant HANDSHAKE-TYPE              \ the content type of a ClientHello
 $7280 negate constant CONN-EOF          \ MBEDTLS_ERR_SSL_CONN_EOF
 $7200 negate constant INVALID-RECORD    \ MBEDTLS_ERR_SSL_INVALID_RECORD
+6 constant IPPROTO-TCP
+1 constant TCP-NODELAY
 
 create REQ-BUF REQ-CAP allot
 create SEEN-BUF REQ-CAP allot
@@ -94,6 +97,8 @@ create GOT-BUF GOT-CAP allot
 create ORIGIN-BUF ORIGIN-CAP allot
 create INPUT-PFD 8 allot
 create PEEK-BUF REQ-CAP allot
+create OPT-BUF 4 allot                  \ getsockopt's value and its length
+create OPT-LEN 4 allot
 
 variable LISTENER-CELL
 variable PORT-CELL
@@ -600,6 +605,22 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       none OF false ENDOF
       some OF drop true ENDOF
    ;MATCH TTRUE
+   END-CASE ;
+
+\ The conn's socket's TCP_NODELAY.
+: NODELAY ( -- n )
+   4 OPT-LEN LE:U32!
+   LINK HTTPC-TEST:FD IPPROTO-TCP TCP-NODELAY OPT-BUF OPT-LEN OPTION-CALL
+   0 T=  OPT-BUF LE:U32@ ;
+
+: TEST-NODELAY ( -- )
+   construct script sized BEGIN-CASE
+   s" POST" s" /case" PREPARE  LINK ALPHABET$ HTTPC:SEND
+   SIZED-SPAN READ-ALL
+   s" a POST with a body is answered" T-LABEL
+   200 ALPHABET$ ANSWER-IS
+   s" the conn's socket has Nagle's algorithm off" T-LABEL
+   NODELAY 1 T=
    END-CASE ;
 
 \ An answer that forbids keeping its connection; the next request dials anew.
@@ -1289,6 +1310,7 @@ public
    TEST-WIRE-BODY
    TEST-STALE-BYTE
    TEST-LENGTH-SENT
+   TEST-NODELAY
    TEST-CONNECT
    TEST-CUT
    TEST-TIMEOUT

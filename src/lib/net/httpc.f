@@ -122,8 +122,8 @@ SUMTYPE take
 
 public
 
-\ found, opt and opt-len are raw bytes the OS writes: getaddrinfo's result
-\ pointer, and getsockopt's value and length.
+\ found, opt and opt-len are raw bytes the OS reads or writes: getaddrinfo's
+\ result pointer, a socket option's value and getsockopt's length.
 STRUCTURE conn OPAQUE DERIVE addr
    FIELD fd n
    FIELD held held
@@ -190,6 +190,8 @@ $01 constant POLLIN
 $04 constant POLLOUT
 1 constant SOL-SOCKET
 4 constant SO-ERROR
+6 constant IPPROTO-TCP
+1 constant TCP-NODELAY
 4 constant EINTR
 115 constant EINPROGRESS
 \ glibc's struct addrinfo on a 64-bit Linux target.
@@ -217,6 +219,7 @@ FUNCTION: FREE-CALL freeaddrinfo ( n -- ) ;FUNCTION
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
 FUNCTION: CONNECT-CALL connect ( n n n -- i32 ) ;FUNCTION
 FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
+FUNCTION: SET-OPTION-CALL setsockopt ( n n n str -- i32 ) ;FUNCTION
 FUNCTION: SEND-CALL send ( n str n -- n ) ;FUNCTION
 FUNCTION: RECEIVE-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
@@ -591,14 +594,23 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    err 0= if true exit then
    c construct fault connect err FAIL false ;
 
-\ One non-blocking, close-on-exec socket for the address, connected; false
-\ with the fault kept and nothing held.
+\ Turns Nagle's algorithm off on the record's socket: a request is written as
+\ a head and a body, and Nagle would hold the body for the head's ACK.
+\ False with the fault kept.
+: NODELAY? ( ^conn -- bool ) {: c :}
+   1 c CONN-OPT SPAN:$ STR:DATA LE:U32!
+   c CONN-FD @ IPPROTO-TCP TCP-NODELAY c CONN-OPT SPAN:$ SET-OPTION-CALL
+   0= if true exit then
+   c construct fault connect FFI:ERRNO FAIL false ;
+
+\ One non-blocking, close-on-exec, no-delay socket for the address,
+\ connected; false with the fault kept and nothing held.
 : ATTEMPT? ( ^conn ^u8 n -- bool ) {: c ai:^ deadline:n :}
    ai AI-FAMILY + LE:U32@ SOCKET-FLAGS ai AI-PROTOCOL + LE:U32@ SOCKET-CALL
    {: fd:n :}
    fd 0 < if c construct fault connect FFI:ERRNO FAIL false exit then
    fd c CONN-FD !
-   c ai deadline CONNECTED? if true exit then
+   c NODELAY? if c ai deadline CONNECTED? if true exit then then
    fd CLOSE-CALL drop  -1 c CONN-FD !  false ;
 
 \ The next address in its share of the time left; the list is freed once an
