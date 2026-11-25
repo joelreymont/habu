@@ -5706,7 +5706,7 @@ variable THDMASK  variable THRMASK  variable THSET
 }SCRATCH
 variable XROW  variable XRROW
 SCRATCH{
-variable XSET  variable DEADP
+variable XSET  variable PATH
 \ the scope of the definition's own locals block, 0 for none
 variable DEF-LSC
 variable DEADERR
@@ -5715,6 +5715,11 @@ variable RCUR   variable RBROW
 variable XFACT
 PTR-VARIABLE DEADTA  variable DEADTU
 }SCRATCH
+0 constant PATH-LIVE
+1 constant PATH-DEAD
+: PATH! ( n -- ) PATH ! ;
+: PATH-LIVE? ( -- bool ) PATH @ PATH-LIVE = ;
+: PATH-DEAD? ( -- bool ) PATH @ PATH-DEAD = ;
 
 \ A fresh check's walk state over the term pools as they stand.
 : NEW-WALK ( -- )
@@ -5841,7 +5846,7 @@ PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
 
 \ The path ends at the token TSTART..TI, which E-DEAD-CODE names.
 : TOKEN-DEAD! ( -- )
-   TSTART @ TADDR  TI @ TSTART @ -  DEAD-OWNER!  -1 DEADP ! ;
+   TSTART @ TADDR  TI @ TSTART @ -  DEAD-OWNER!  PATH-DEAD PATH! ;
 
 : TBYTE@ ( n -- n )
    TADDR c@ ;
@@ -21605,7 +21610,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-CLOSE
 : LOC-BEGIN ( -- )
    NZ-MOVED
    EV-OPERAND
-   QDEPTH @ 0 >  DEADP @ or IF LOC-REJECT ELSE
+   QDEPTH @ 0 >  PATH-DEAD? or IF LOC-REJECT ELSE
    1 LMODE !  #LOC @ LGRP ! THEN ;
 
 : LOC-REF-ROW ( n n -- n ) {: head:n rest:n :}
@@ -21695,10 +21700,24 @@ PTR-VARIABLE CFS-P   variable CFS-CAP
 variable CF-LOOPS
 }SCRATCH
 \ XROW accumulates the data row at each exit (all returns, incl. the
-\ fall-through at ';', must unify). DEADP marks the current linear path
-\ terminated by exit, so the enclosing THEN excludes it from the branch join.
-\ CF.DED saves the if-branch's deadness across CF-ELSE. CF.LA/LB save the
-\ live loop obligations beside the corresponding data and return rows.
+\ fall-through at ';', must unify). CF.LA/LB save the live loop obligations
+\ beside the corresponding data and return rows.
+\
+\ The path machine. PATH is PATH-DEAD where no normal continuation reaches
+\ the current token, else PATH-LIVE; a join takes no rows from a dead input.
+\   a call or token that never returns, exit, leave, again   -> PATH-DEAD
+\   the start of a body, a quotation, an else arm, the arm
+\   after endof, a match branch                              -> PATH-LIVE
+\   ;]                         -> the enclosing body's PATH, saved in CF.XDP
+\   begin, while, until        -> unchanged
+\ CF.DED holds the state a frame's end has so far: the if arm's at else; a
+\ do's is PATH-LIVE once ?do or leave reaches its exit row; a case's is
+\ PATH-LIVE once an arm reaches endcase. A join is PATH-LIVE when any input is:
+\   then         the two arms; without an else, the false arm makes it live
+\   loop, +loop  the body's end and CF.DED
+\   endcase      CF.DED, which the default arm joins
+\   repeat       the while's exit: always live
+\   match ;      the branches that reach it (MF.HAS)
 
 : CF-ROW ( n -- ^n )
    CFS-REC * CFS-P @ + ;
@@ -21813,19 +21832,16 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    CF-TOP CF.DED @ ;
 
 : CF@DED? ( -- bool )
-   CF@DED 0 <> ;
-
-: DEADP? ( -- bool )
-   DEADP @ 0 <> ;
+   CF@DED PATH-DEAD = ;
 
 : CF-CASE-IDX ( -- n )
    #CFC @ 2 - ;
 
 : CF-CASE-HAS? ( n -- bool ) {: idx:n :}
-   idx CF-ROW CF.DED @ 0 <> ;
+   idx CF-ROW CF.DED @ PATH-LIVE = ;
 
 : CF-CASE-HAS! ( n -- ) {: idx:n :}
-   -1 idx CF-ROW CF.DED ! ;
+   PATH-LIVE idx CF-ROW CF.DED ! ;
 
 : CF-CASE-DATA@ ( n -- n ) {: idx:n :}
    idx CF-ROW CF.SB @ ;
@@ -21970,7 +21986,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    THEN ;
 
 : CHECK-RETURNS? ( -- bool )
-   DEADP @ 0= XSET @ 0 <> or ;
+   PATH-LIVE? XSET @ 0 <> or ;
 
 \ A quotation literal declares no return clause, so `;]` seals its return row:
 \ it leaves the row as it found it. Unsealed, `[: >r ;] execute r>` and
@@ -22347,10 +22363,10 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 
 : CF-CASE ( -- )
    7 DCUR @ 0 RCUR @ 0 CF-PUSH
-   0 CF-TOP CF.DED ! ;
+   PATH-DEAD CF-TOP CF.DED ! ;
 
 : CF-CASE-ACCUM ( n -- ) {: idx:n :}
-   DEADP @ IF EXIT THEN
+   PATH-DEAD? IF EXIT THEN
    idx CF-CASE-HAS? IF
       idx CF-CASE-DATA@ DCUR @ idx CF-CASE-RET@ RCUR @
       idx CF-ROW CF.FB @ FACTS @ CFM-EXIT CF-MEET-FACTS
@@ -22386,7 +22402,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
       CF@A CF@RA {: data:n ret:n :}
       CF@LA CF-LOOPS !
       CF-LOC-REST
-      0 DEADP !
+      PATH-LIVE PATH!
       CF-DROP
       data DCUR !  ret RCUR !
       CF-ENTRY-FACTS
@@ -22394,14 +22410,14 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 
 : CF-ENDCASE ( -- )
    7 7 MD-CLOSES-NOTHING CF-AT? IF
-      DEADP @ 0= IF STEP-N-IN THEN
+      PATH-LIVE? IF STEP-N-IN THEN
       #CFC @ 1 - CF-CASE-ACCUM
-      CF@DED 0 <> IF
-         CF@B DCUR !  CF@RB RCUR !  0 DEADP !
+      CF@DED PATH-LIVE = IF
+         CF@B DCUR !  CF@RB RCUR !  PATH-LIVE PATH!
          CF-TOP CF.FB @ FACTS !
          CF@LB CF-LOOPS !
       ELSE
-         -1 DEADP !
+         PATH-DEAD PATH!
       THEN
       CF-LOC-REST
       CF-DROP
@@ -22412,7 +22428,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 \ check, which models one, fails there.
 : CF-ELSE
    1 2 MD-CLOSES-NOTHING CF-AT? IF CF@K 1 <> IF MD-ELSE-TWICE CF-FAIL ELSE
-     DEADP @ CF-TOP CF.DED !  0 DEADP !
+     PATH @ CF-TOP CF.DED !  PATH-LIVE PATH!
      DCUR @ RCUR @ {: data:n ret:n :}
      CF@A DCUR !  CF@RA RCUR !
      CF-LOOPS @ CF-TOP CF.LB !  CF@LA CF-LOOPS !
@@ -22426,24 +22442,24 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    THEN THEN ;
 
 : CF-THEN-ELSE-MERGE ( -- )
-   DEADP? {: else-dead:bool :}
+   PATH-DEAD? {: else-dead:bool :}
    CF@DED? {: if-dead:bool :}
    else-dead IF
       if-dead IF
-         -1 DEADP !
+         PATH-DEAD PATH!
       ELSE
-         CF@B DCUR !  CF@RB RCUR !  CF-TOP CF.FB @ FACTS !  0 DEADP !
+         CF@B DCUR !  CF@RB RCUR !  CF-TOP CF.FB @ FACTS !  PATH-LIVE PATH!
          CF@LB CF-LOOPS !
       THEN
    ELSE
       if-dead IF
-         0 DEADP !
+         PATH-LIVE PATH!
       ELSE
          CF@B DCUR @ CF@RB RCUR @
          CF-TOP CF.FB @ FACTS @ CFM-ARMS CF-MEET-FACTS
          CF@B DCUR @ MD-ARMS-DEPTH CF-ARMS-DEPTH
          CF@B DCUR @ CF@RB RCUR @ CF-TOP CF.FB @ FACTS @ CF-JOIN-LIVE
-         0 DEADP !
+         PATH-LIVE PATH!
          CF@LB CF-LOOPS=
       THEN
    THEN ;
@@ -22451,10 +22467,10 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 : CF-THEN
    1 2 MD-CLOSES-NOTHING CF-AT? IF
      CF@K 1 = IF                                          \ IF ... THEN (no else)
-        DEADP? IF
+        PATH-DEAD? IF
            CF@A DCUR !  CF@RA RCUR !  CF-ENTRY-FACTS
            CF-TOP CF.FT @ RES-FALSE CF-ARM-FACT
-           CF@LA CF-LOOPS !  0 DEADP !
+           CF@LA CF-LOOPS !  PATH-LIVE PATH!
         ELSE
            DCUR @ {: true-d:n :}  RCUR @ {: true-r:n :}
            FACTS @ {: true-f:n :}
@@ -22486,7 +22502,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    ELSE
       DCUR @ XROW !  RCUR @ XRROW !  FACTS @ XFACT !  -1 XSET !
    THEN
-   -1 DEADP ! ;
+   PATH-DEAD PATH! ;
 
 : CF-UNLOOP ( -- )
    0 CF-LOOP-FIND
@@ -22506,7 +22522,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 : CF-UNTIL
    STEP-BOOL-IN
    3 3 MD-CLOSES-NOTHING CF-AT? IF
-     DEADP? 0= IF
+     PATH-LIVE? IF
         CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
@@ -22519,7 +22535,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 
 : CF-AGAIN ( -- )
    3 3 MD-CLOSES-NOTHING CF-AT? IF
-     DEADP? 0= IF
+     PATH-LIVE? IF
         CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
@@ -22527,7 +22543,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
         CF@LA CF-LOOPS=
      THEN
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
-     CF-LOC-REST  CF-DROP  -1 DEADP ! THEN ;
+     CF-LOC-REST  CF-DROP  PATH-DEAD PATH! THEN ;
 
 
 : CF-WHILE
@@ -22542,7 +22558,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 
 : CF-REPEAT
    4 4 MD-CLOSES-NOTHING CF-AT? IF
-     DEADP? 0= IF
+     PATH-LIVE? IF
         CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
@@ -22550,7 +22566,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
         CF@LA CF-LOOPS=
      THEN
      CF@B DCUR !  CF@RB RCUR !  CF-LOOP-FACTS
-     CF@LB CF-LOOPS !  0 DEADP !
+     CF@LB CF-LOOPS !  PATH-LIVE PATH!
      CF-LOC-REST  CF-DROP THEN ;
 
 
@@ -22558,12 +22574,12 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    STEP-NN-IN
    CF-LOOP-ENTRY
    5 DCUR @ 0 RCUR @ 0 CF-PUSH
-   0 CF-TOP CF.DED !
+   PATH-DEAD CF-TOP CF.DED !
    #CFC @ CF-LOOPS ! ;
 
 : CF-?DO ( -- )
    CF-DO
-   -1 CF-TOP CF.DED ! ;
+   PATH-LIVE CF-TOP CF.DED ! ;
 
 
 \ Stops at the first DO (kind 5) or quotation boundary (kind 6): a `leave`
@@ -22584,7 +22600,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 \ A DO whose whole body returns or throws has no normal continuation.
 : CF-LOOP
    5 5 CF-LOOP-WHY CF-AT? IF
-     DEADP @ IF CF@DED 0= DEADP !
+     PATH-DEAD? IF CF@DED PATH!
      ELSE
         CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
@@ -22598,7 +22614,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 
 
 : CF-+LOOP
-   DEADP? 0= IF STEP-N-IN THEN
+   PATH-LIVE? IF STEP-N-IN THEN
    CF-LOOP ;
 
 : CF-I ( -- )
@@ -22633,8 +22649,8 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
      doidx CF-ROW CF.RA @ RCUR @ CF-CARRIED=
      doidx CF-ROW CF.SA @ SUNI-JOIN
      doidx CF-ROW CF.RA @ RSUNI-JOIN
-     -1 doidx CF-ROW CF.DED !
-     -1 DEADP ! THEN ;
+     PATH-LIVE doidx CF-ROW CF.DED !
+     PATH-DEAD PATH! THEN ;
 
 
 : CF-QUOT
@@ -22642,10 +22658,10 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    0 CF-LOOPS !
    XROW @ CF-TOP CF.XRO !  XRROW @ CF-TOP CF.XRR !
    XFACT @ CF-TOP CF.XFA !
-   XSET @ CF-TOP CF.XST !  DEADP @ CF-TOP CF.XDP !
+   XSET @ CF-TOP CF.XST !  PATH @ CF-TOP CF.XDP !
    THDMASK @ CF-TOP CF.TXD !  THRMASK @ CF-TOP CF.TXR !
    THSET @ CF-TOP CF.TXS !  INHSET @ CF-TOP CF.TXI !
-   0 XSET !  0 XFACT !  0 DEADP !  0 THSET !  0 INHSET !  0 FACTS !
+   0 XSET !  0 XFACT !  PATH-LIVE PATH!  0 THSET !  0 INHSET !  0 FACTS !
    QDEPTH @ 1 + QDEPTH !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
@@ -22680,7 +22696,7 @@ variable QTMP
 : CF-SEMIQ
    6 6 MD-CLOSES-NOTHING CF-AT? IF
      XSET @ IF
-       DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
+       PATH-DEAD? IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
        ELSE
           XROW @ DCUR @ XRROW @ RCUR @
           XFACT @ FACTS @ CFM-EXIT CF-MEET-FACTS
@@ -22697,12 +22713,12 @@ variable QTMP
      QTMP @ MARK
      BROW @ RBROW @ CF-TOP CF.TM @ MD-INPUT-NARROWED RUNS-CHECK
      BROW @ RBROW @ CF-TOP CF.TM @ RUNS-PROMOTE
-     DEADP @ XSET @ 0= and {: noret:bool :}
+     PATH-DEAD? XSET @ 0= and {: noret:bool :}
      QTMP @ THDMASK @ XMASK THRMASK @ XMASK QX!
      INHSET @ CTL-INHERITED and  THSET @ IF CTL-THROW or THEN  QTMP @ Q-FACTS!
      CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
      CF-TOP CF.XFA @ XFACT !
-     CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !
+     CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ PATH!
      CF-TOP CF.TXD @ THDMASK !  CF-TOP CF.TXR @ THRMASK !
      CF-TOP CF.TXS @ THSET !  CF-TOP CF.TXI @ INHSET !
      CF@LA CF-LOOPS !
@@ -22884,7 +22900,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
 
 
 : MATCH-ACCUM ( -- )
-   DEADP @ IF EXIT THEN
+   PATH-DEAD? IF EXIT THEN
    MF-CUR MF.HAS @ 0 <> IF
       FAILSET @ {: fs0:n :}                   \ SUNI-JOIN pins the token itself
       MF-CUR MF.OUT @ DCUR @ MF-CUR MF.ROUT @ RCUR @
@@ -22910,7 +22926,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    CF-LOC-REST
    CF-DROP
    CF@LA CF-LOOPS !
-   0 DEADP !
+   PATH-LIVE PATH!
    MF-CUR MF.BASE @ DCUR !
    MF-CUR MF.RBASE @ RCUR !
    CF-ENTRY-FACTS
@@ -22933,12 +22949,12 @@ variable MTCH-W                      \ the bundle width the walk below really co
       MF-CUR MF.ROUT @ RCUR !
       CF-TOP CF.FB @ FACTS !
       CF@LB CF-LOOPS !
-      0 DEADP !
+      PATH-LIVE PATH!
    ELSE
       MF-CUR MF.BASE @ DCUR !
       MF-CUR MF.RBASE @ RCUR !
       CF-TOP CF.FA @ FACTS !
-      -1 DEADP !                             \ every branch exited: no normal continuation
+      PATH-DEAD PATH!                             \ every branch exited: no normal continuation
    THEN
    CF-LOC-REST
    CF-DROP
@@ -23161,7 +23177,7 @@ variable CPAY-ON
    RES-FALSE ;
 
 : LIVE-TOKEN? {: a u :}
-   DEADP @ 0= IF RES-TRUE EXIT THEN
+   PATH-LIVE? IF RES-TRUE EXIT THEN
    a u DEAD-CLOSE? ;
 
 EXPORT CHECKER-TAPE:K-UNREACHED
@@ -25227,7 +25243,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    RBROW @ SGRBASE !   \ a definition with no signature reads only what it pushed too
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  VERDICT-NONE DVERD !  0 BIND-HORIZON !
-   0 FAILB !  0 FAILE !  0 XSET !  0 DEF-LSC !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
+   0 FAILB !  0 FAILE !  0 XSET !  0 DEF-LSC !  0 XFACT !  PATH-LIVE PATH!  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
    0 REJECTION !  0 CREJECT !  0 CRTGT !  0 RCOMPILE !  0 CUSING !  0 PIN-BODY-CALL !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
