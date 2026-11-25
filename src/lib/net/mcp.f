@@ -135,24 +135,24 @@ private
 -32020 constant HEADER-MISMATCH
 -32022 constant UNSUPPORTED-VERSION
 
-TYPED-VARIABLE SERVER-NAME SPAN:span<u8>
-TYPED-VARIABLE SERVER-VERSION SPAN:span<u8>
-TYPED-VARIABLE INSTRUCTIONS SPAN:span<u8>
+TYPED-VARIABLE SERVER-NAME str
+TYPED-VARIABLE SERVER-VERSION str
+TYPED-VARIABLE INSTRUCTIONS str
 
 \ The registry: a row to each tool, in ADD-TOOL order.
 variable TOOL-COUNT
-DYNAMIC-BUFFER TOOL-NAME SPAN:span<u8>       \ decoded
-DYNAMIC-BUFFER TOOL-TEXT SPAN:span<u8>       \ the descriptor
-DYNAMIC-BUFFER TOOL-OUTPUT SPAN:span<u8>     \ the descriptor's outputSchema
+DYNAMIC-BUFFER TOOL-NAME str                \ decoded
+DYNAMIC-BUFFER TOOL-TEXT str                \ the descriptor
+DYNAMIC-BUFFER TOOL-OUTPUT str              \ the descriptor's outputSchema
 DYNAMIC-BUFFER TOOL-WHOLE bool              \ TOOL-OUTPUT's "type" is "object"
 DYNAMIC-BUFFER TOOL-INPUT JSON-SCHEMA:schema \ the descriptor's inputSchema
 DYNAMIC-BUFFER TOOL-BODY [ str -- ]
 
 \ A row to each resource, in ADD-RESOURCE order.
 variable RESOURCE-COUNT
-DYNAMIC-BUFFER RESOURCE-URI SPAN:span<u8>     \ decoded
-DYNAMIC-BUFFER RESOURCE-TEXT SPAN:span<u8>    \ the descriptor
-DYNAMIC-BUFFER RESOURCE-PAGE SPAN:span<u8>
+DYNAMIC-BUFFER RESOURCE-URI str             \ decoded
+DYNAMIC-BUFFER RESOURCE-TEXT str            \ the descriptor
+DYNAMIC-BUFFER RESOURCE-PAGE str
 
 : EVERY ( str -- bool ) drop true ;
 TYPED-VARIABLE VISIBILITY [ str -- bool ]   \ VISIBLE!'s hook
@@ -163,7 +163,7 @@ variable LOGGING                              \ LOG's: nonzero once it ran
 \ ADD-TOOL's and ADD-RESOURCE's: both run before HTTP serves.
 TYPED-VARIABLE SCHEMA-READER JSON:cursor
 
-\ A row to each HTTP worker; spans borrow the request's body and headers.
+\ A row to each HTTP worker; strs borrow the request's body and headers.
 HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
 HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response
@@ -172,23 +172,23 @@ HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response
 ENUM sink response vector ;ENUM
 HTTP:MAX-WORKERS TYPED-BUFFER REPLY-TO sink
 HTTP:MAX-WORKERS TYPED-BUFFER ANSWER-W JSON:writer
-HTTP:MAX-WORKERS TYPED-BUFFER ID SPAN:span<u8>        \ empty when the id is not known
-HTTP:MAX-WORKERS TYPED-BUFFER METHOD SPAN:span<u8>    \ JSON text, quotes kept
-HTTP:MAX-WORKERS TYPED-BUFFER PARAMS SPAN:span<u8>    \ an object's JSON text, or empty
+HTTP:MAX-WORKERS TYPED-BUFFER ID str                  \ empty when the id is not known
+HTTP:MAX-WORKERS TYPED-BUFFER METHOD str              \ JSON text, quotes kept
+HTTP:MAX-WORKERS TYPED-BUFFER PARAMS str              \ an object's JSON text, or empty
 HTTP:MAX-WORKERS TYPED-BUFFER ERA n
 HTTP:MAX-WORKERS TYPED-BUFFER STAGE n
 HTTP:MAX-WORKERS TYPED-BUFFER REPLY n
 HTTP:MAX-WORKERS TYPED-BUFFER STATUS n
 HTTP:MAX-WORKERS TYPED-BUFFER CODE n
-HTTP:MAX-WORKERS TYPED-BUFFER TEXT SPAN:span<u8>      \ an error's message, or a tool's result
+HTTP:MAX-WORKERS TYPED-BUFFER TEXT str                \ an error's message, or a tool's result
 HTTP:MAX-WORKERS TYPED-BUFFER FAULT bool              \ the tool result is isError
-HTTP:MAX-WORKERS TYPED-BUFFER META-SPAN SPAN:span<u8>     \ the tool result's _meta, or empty
+HTTP:MAX-WORKERS TYPED-BUFFER META-TEXT str           \ the tool result's _meta, or empty
 \ The content of a result that is not a tool error: content blocks and the commas
 \ between them, or empty.
-HTTP:MAX-WORKERS TYPED-BUFFER CONTENT-SPAN SPAN:span<u8>
+HTTP:MAX-WORKERS TYPED-BUFFER CONTENT-TEXT str
 HTTP:MAX-WORKERS TYPED-BUFFER CALLED n                \ the tool a tools/call runs
 HTTP:MAX-WORKERS TYPED-BUFFER OPENED n                \ the resource a resources/read reads
-HTTP:MAX-WORKERS TYPED-BUFFER ASKED SPAN:span<u8>     \ an unsupported MCP-Protocol-Version
+HTTP:MAX-WORKERS TYPED-BUFFER ASKED str               \ an unsupported MCP-Protocol-Version
 \ A decoded Mcp-Name is no longer than the header block that carried it.
 HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 HTTP:MAX-WORKERS TYPED-BUFFER HOLDING n               \ the held row of a body at HELD
@@ -224,12 +224,11 @@ CAST: >HELD ( n -- held )
 CAST: HELD>N ( held -- n )
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
-: >SPAN ( str -- SPAN:span<u8> ) {: s:str :} s STR:DATA s STR:LEN SPAN:MAKE ;
 : CURSOR ( -- ^JSON:cursor ) SLOT READER ;
-: ID$ ( -- str ) SLOT ID @ SPAN:$ ;
-: METHOD$ ( -- str ) SLOT METHOD @ SPAN:$ ;
-: PARAMS$ ( -- str ) SLOT PARAMS @ SPAN:$ ;
-: TEXT$ ( -- str ) SLOT TEXT @ SPAN:$ ;
+: ID$ ( -- str ) SLOT ID @ ;
+: METHOD$ ( -- str ) SLOT METHOD @ ;
+: PARAMS$ ( -- str ) SLOT PARAMS @ ;
+: TEXT$ ( -- str ) SLOT TEXT @ ;
 : LEGACY? ( -- bool ) SLOT ERA @ LEGACY = ;
 
 
@@ -295,7 +294,7 @@ CAST: HELD>N ( held -- n )
    {: status:n code:n why:str :}
    status SLOT STATUS !
    code SLOT CODE !
-   why >SPAN SLOT TEXT !
+   why SLOT TEXT !
    ERROR-REPLY SLOT REPLY ! ;
 
 : GOOD ( n -- ) SLOT REPLY !  200 SLOT STATUS ! ;
@@ -305,14 +304,14 @@ CAST: HELD>N ( held -- n )
 
 : SERVER-INFO ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
-   s" name" SERVER-NAME @ SPAN:$ JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA s" version" SERVER-VERSION @ SPAN:$ JSON:WRITE-FIELD-S
+   s" name" SERVER-NAME @ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" version" SERVER-VERSION @ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
 
 
 : INSTRUCTIONS-FIELD ( ^JSON:writer -- ^JSON:writer )
-   INSTRUCTIONS @ SPAN:LEN 0= if exit then
-   JSON:WRITE-COMMA s" instructions" INSTRUCTIONS @ SPAN:$ JSON:WRITE-FIELD-S ;
+   INSTRUCTIONS @ STR:LEN 0= if exit then
+   JSON:WRITE-COMMA s" instructions" INSTRUCTIONS @ JSON:WRITE-FIELD-S ;
 
 
 \ An object's JSON text without its braces and the space around them.
@@ -374,7 +373,7 @@ CAST: HELD>N ( held -- n )
 
 
 : OUTPUT-SCHEMA ( ^JSON:writer n -- ^JSON:writer )
-   TOOL-OUTPUT @ SPAN:$ {: text:str :}
+   TOOL-OUTPUT @ {: text:str :}
    s" outputSchema" JSON:WRITE-KEY
    JSON:WRITE-OBJECT-START s" type" s" object" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" properties" JSON:WRITE-KEY
@@ -395,7 +394,7 @@ CAST: HELD>N ( held -- n )
 
 : TOOL-ENTRY ( ^JSON:writer n -- ^JSON:writer )
    {: w idx:n :}
-   idx TOOL-TEXT @ SPAN:$ {: text:str :}
+   idx TOOL-TEXT @ {: text:str :}
    idx TOOL-WHOLE @ if w text JSON:WRITE-RAW exit then
    w JSON:WRITE-OBJECT-START drop
    CURSOR text JSON:READ-INIT JSON:READ-NEXT drop JSON:READ-NEXT drop
@@ -408,7 +407,7 @@ CAST: HELD>N ( held -- n )
 
 \ Whether the request's caller may see and call the registered tool.
 : SHOWN? ( n -- bool )
-   TOOL-NAME @ SPAN:$ VISIBILITY @ execute ;
+   TOOL-NAME @ VISIBILITY @ execute ;
 
 
 : RESULT-START ( ^JSON:writer -- ^JSON:writer )
@@ -441,7 +440,7 @@ CAST: HELD>N ( held -- n )
    s" resources" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
    RESOURCE-COUNT @ 0 ?do
       i 0<> if JSON:WRITE-COMMA then
-      i RESOURCE-TEXT @ SPAN:$ JSON:WRITE-RAW
+      i RESOURCE-TEXT @ JSON:WRITE-RAW
    loop
    JSON:WRITE-ARRAY-END CACHED-END ;
 
@@ -450,7 +449,7 @@ CAST: HELD>N ( held -- n )
 \ checked, and any _meta.
 : READ-BODY ( ^JSON:writer -- ^JSON:writer )
    SLOT OPENED @ {: idx:n :}
-   idx RESOURCE-TEXT @ SPAN:$ {: desc:str :}
+   idx RESOURCE-TEXT @ {: desc:str :}
    RESULT-START
    s" contents" JSON:WRITE-KEY JSON:WRITE-ARRAY-START JSON:WRITE-OBJECT-START
    s" uri" desc s" descriptor" s" uri" FIELD? drop JSON:WRITE-FIELD-RAW
@@ -460,7 +459,7 @@ CAST: HELD>N ( held -- n )
       {: meta:str :}
       JSON:WRITE-COMMA s" _meta" meta JSON:WRITE-FIELD-RAW
    else drop then
-   JSON:WRITE-COMMA s" text" idx RESOURCE-PAGE @ SPAN:$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" text" idx RESOURCE-PAGE @ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END JSON:WRITE-ARRAY-END CACHED-END ;
 
 
@@ -476,7 +475,7 @@ CAST: HELD>N ( held -- n )
 
 
 : RESULT-BLOCKS ( ^JSON:writer -- ^JSON:writer )
-   SLOT CONTENT-SPAN @ SPAN:$ {: blocks:str :}
+   SLOT CONTENT-TEXT @ {: blocks:str :}
    blocks STR:LEN 0<> if blocks JSON:WRITE-RAW then ;
 
 
@@ -498,7 +497,7 @@ CAST: HELD>N ( held -- n )
       then
    then
    JSON:WRITE-COMMA s" isError" SLOT FAULT @ JSON:WRITE-FIELD-BOOL
-   SLOT META-SPAN @ SPAN:$ {: meta:str :}
+   SLOT META-TEXT @ {: meta:str :}
    LEGACY? if
       meta STR:LEN 0<> if JSON:WRITE-COMMA s" _meta" meta JSON:WRITE-FIELD-RAW then
    else meta MODERN-META then
@@ -526,7 +525,7 @@ CAST: HELD>N ( held -- n )
 \ -32022's data: the supported versions and the one requested.
 : VERSION-DATA ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START s" supported" JSON:WRITE-KEY VERSIONS
-   JSON:WRITE-COMMA s" requested" SLOT ASKED @ SPAN:$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" requested" SLOT ASKED @ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
 
 
@@ -549,7 +548,7 @@ CAST: HELD>N ( held -- n )
    s" Unknown tool: " q execute
    TEXT$ q execute
    s" ; if the client's list of " q execute
-   SERVER-NAME @ SPAN:$ q execute
+   SERVER-NAME @ q execute
    s" 's tools names it, that list is out of date" q execute ;
 
 : MESSAGE ( ^JSON:writer -- ^JSON:writer )
@@ -663,9 +662,9 @@ CAST: HELD>N ( held -- n )
          false exit
       then
    then
-   id >SPAN SLOT ID !
-   m >SPAN SLOT METHOD !
-   p >SPAN SLOT PARAMS !
+   id SLOT ID !
+   m SLOT METHOD !
+   p SLOT PARAMS !
    p STR:LEN 0<> if p OBJECT? 0= if s" params" OBJECT-ERROR then then
    true ;
 
@@ -682,7 +681,7 @@ CAST: HELD>N ( held -- n )
 : INVALID? ( n str JSON:value -- bool )
    {: code:n why:str reply :}
    reply JSON:TEXT$ {: id:str :}
-   id MCP-ID? if id >SPAN SLOT ID ! then
+   id MCP-ID? if id SLOT ID ! then
    400 code why BAD false ;
 
 
@@ -737,7 +736,7 @@ CAST: HELD>N ( held -- n )
       MODERN SLOT ERA ! value MODERN? exit
    then
    value s" 2025-11-25" STR:= if LEGACY SLOT ERA ! true exit then
-   value >SPAN SLOT ASKED !
+   value SLOT ASKED !
    400 UNSUPPORTED-VERSION s" Unsupported protocol version" BAD false ;
 
 
@@ -811,7 +810,7 @@ CAST: HELD>N ( held -- n )
 : TOOL-OF ( str -- n )
    {: raw:str :}
    TOOL-COUNT @ 0 ?do
-      raw i TOOL-NAME @ SPAN:$ STRING= if i unloop exit then
+      raw i TOOL-NAME @ STRING= if i unloop exit then
    loop -1 ;
 
 
@@ -908,7 +907,7 @@ CAST: HELD>N ( held -- n )
 : REGISTERED? ( str -- bool )
    {: name:str :}
    TOOL-COUNT @ 0 ?do
-      name i TOOL-NAME @ SPAN:$ STR:= if true unloop exit then
+      name i TOOL-NAME @ STR:= if true unloop exit then
    loop false ;
 
 
@@ -1123,7 +1122,7 @@ CAST: HELD>N ( held -- n )
 : REGISTERED-URI? ( str -- bool )
    {: uri:str :}
    RESOURCE-COUNT @ 0 ?do
-      uri i RESOURCE-URI @ SPAN:$ STR:= if true unloop exit then
+      uri i RESOURCE-URI @ STR:= if true unloop exit then
    loop false ;
 
 
@@ -1220,9 +1219,9 @@ CAST: HELD>N ( held -- n )
       meta NO-SERVER-INFO
    then
    extra BLOCKS {: blocks:str :}
-   text >SPAN SLOT TEXT !
-   meta >SPAN SLOT META-SPAN !
-   blocks >SPAN SLOT CONTENT-SPAN !
+   text SLOT TEXT !
+   meta SLOT META-TEXT !
+   blocks SLOT CONTENT-TEXT !
    fault SLOT FAULT !
    CALL-REPLY GOOD SEND ;
 
@@ -1285,7 +1284,7 @@ CAST: HELD>N ( held -- n )
 : RESOURCE-OF ( str -- n )
    {: raw:str :}
    RESOURCE-COUNT @ 0 ?do
-      raw i RESOURCE-URI @ SPAN:$ STRING= if i unloop exit then
+      raw i RESOURCE-URI @ STRING= if i unloop exit then
    loop -1 ;
 
 
@@ -1424,7 +1423,7 @@ CAST: HELD>N ( held -- n )
    LOG:INFO s" mcp" LOG:LINE
    idx KEEP-REQ BUF:SPAN$ BUF:BLEN>N >str REQ+
    s" tools/call " LOG:TEXT+
-   idx KEEPS KEEP-TOOL @ TOOL-NAME @ SPAN:$ LOG:TEXT+
+   idx KEEPS KEEP-TOOL @ TOOL-NAME @ LOG:TEXT+
    s"  -> " LOG:TEXT+  code OUTCOME+
    LOG:;LINE ;
 
@@ -1456,9 +1455,9 @@ CAST: HELD>N ( held -- n )
 : OPENED-TO ( sink -- )
    SLOT REPLY-TO !
    IDLE SLOT STAGE !
-   s" " >SPAN SLOT ID !
-   s" " >SPAN SLOT METHOD !
-   s" " >SPAN SLOT PARAMS ! ;
+   s" " SLOT ID !
+   s" " SLOT METHOD !
+   s" " SLOT PARAMS ! ;
 
 
 \ The code a message's caught code passes to the host: none for E-INPUT
@@ -1506,7 +1505,7 @@ CAST: HELD>N ( held -- n )
 : RESUME ( n -- )
    {: idx:n :}
    construct sink vector OPENED-TO
-   idx KEEP-ID BUF:SPAN$ BUF:BLEN>N SPAN:MAKE SLOT ID !
+   idx KEEP-ID BUF:SPAN$ BUF:BLEN>N >str SLOT ID !
    idx KEEPS KEEP-ERA @ SLOT ERA !
    idx KEEPS KEEP-TOOL @ SLOT CALLED !
    CALLING SLOT STAGE ! ;
@@ -1548,8 +1547,8 @@ public
 : SERVER-INFO! ( str str -- )
    {: name:str version:str :}
    HTTP:RUNNING? if E-STATE throw then
-   name >SPAN SERVER-NAME !
-   version >SPAN SERVER-VERSION ! ;
+   name SERVER-NAME !
+   version SERVER-VERSION ! ;
 
 
 \ Guidance for the model on using this server: "instructions" in initialize and
@@ -1557,7 +1556,7 @@ public
 \ borrowed and outlives the server, as literals do. E-STATE while HTTP serves.
 : INSTRUCTIONS! ( str -- )
    HTTP:RUNNING? if E-STATE throw then
-   >SPAN INSTRUCTIONS ! ;
+   INSTRUCTIONS ! ;
 
 
 \ From the next HTTP:START on, each message HANDLE or ANSWER takes writes one
@@ -1603,9 +1602,9 @@ public
    desc s" name" [: REGISTERED? ;] DECODED-MEMBER {: name :}
    [: input idx INPUT-SCHEMA ;] catch {: code:n :}
    code 0<> if name MEM:FREE-SPAN code throw then
-   name idx TOOL-NAME !
-   desc >SPAN idx TOOL-TEXT !
-   output >SPAN idx TOOL-OUTPUT !
+   name SPAN:$ idx TOOL-NAME !
+   desc idx TOOL-TEXT !
+   output idx TOOL-OUTPUT !
    whole idx TOOL-WHOLE !
    body idx TOOL-BODY !
    idx 1+ TOOL-COUNT ! ;
@@ -1623,9 +1622,9 @@ public
    RESOURCE-COUNT @ {: idx:n :}
    idx 1+ RESOURCES-RESERVE
    desc s" uri" [: REGISTERED-URI? ;] DECODED-MEMBER {: uri :}
-   uri idx RESOURCE-URI !
-   desc >SPAN idx RESOURCE-TEXT !
-   page >SPAN idx RESOURCE-PAGE !
+   uri SPAN:$ idx RESOURCE-URI !
+   desc idx RESOURCE-TEXT !
+   page idx RESOURCE-PAGE !
    idx 1+ RESOURCE-COUNT ! ;
 
 
@@ -1699,7 +1698,7 @@ public
 \ host. E-STATE before SERVER-INFO!.
 : HANDLE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
-   SERVER-NAME @ SPAN:LEN 0= if E-STATE throw then
+   SERVER-NAME @ STR:LEN 0= if E-STATE throw then
    asked SLOT FROM !
    answer SLOT TO !
    construct sink response OPENED-TO
@@ -1719,7 +1718,7 @@ public
 \ host set for the message's caller: BEARER:CLAIM$ speaks only for a request
 \ the worker serves. E-STATE before SERVER-INFO! and off a request worker.
 : ANSWER ( str ^VEC:vector<u8> -- )
-   SERVER-NAME @ SPAN:LEN 0= if E-STATE throw then
+   SERVER-NAME @ STR:LEN 0= if E-STATE throw then
    ON-WORKER
    construct sink vector OPENED-TO
    MODERN SLOT ERA !
@@ -1839,7 +1838,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    count 1+ ROW-GEN-RESERVE
    RECORDS @ NULL-PTR = if ARENA:NEW RECORDS ! then
    RECORDS @ PEERS-NEW {: rec:^ :}
-   s" " >SPAN rec PEER-REGION !
+   NULL-PTR 0 SPAN:MAKE rec PEER-REGION !
    rec count ROW-PEER !
    0 count ROW-GEN !
    count 1+ ROW-COUNT ! ;
@@ -1898,7 +1897,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx TOKEN-BUF BUF:DISPOSE
    idx REGION {: region :}
    LOCK TASK:GET
-   s" " >SPAN idx ROW-PEER @ PEER-REGION !
+   NULL-PTR 0 SPAN:MAKE idx ROW-PEER @ PEER-REGION !
    0 idx ROW-GEN !
    LOCK TASK:RELEASE
    region MEM:FREE-SPAN ;
