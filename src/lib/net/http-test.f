@@ -2656,16 +2656,17 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    s STR:DATA s STR:LEN + 0 >str ;
 
 
-\ True when `<want><digits> ms` and its LF start at a.
+\ True when `<want>in <digits> ms` and its LF start at a.
 : ACCESS-AT? ( str str -- bool ) {: s:str want:str :}
    s want STR:STARTS-WITH? 0= if false exit then
-   s STR:DATA want STR:LEN + s STR:LEN want STR:LEN - >str
-   DIGITS-SKIP {: rest:str :}
-   rest STR:LEN s STR:LEN want STR:LEN - = if false exit then
+   s STR:DATA want STR:LEN + s STR:LEN want STR:LEN - >str {: at:str :}
+   at s" in " STR:STARTS-WITH? 0= if false exit then
+   at STR:DATA 3 + at STR:LEN 3 - >str DIGITS-SKIP {: rest:str :}
+   rest STR:LEN at STR:LEN 3 - = if false exit then
    rest S\"  ms\n" STR:STARTS-WITH? ;
 
 
-\ True when fd 2 holds `<want><ms> ms` and its LF.
+\ True when fd 2 holds `<want>in <ms> ms` and its LF.
 : ACCESS? ( str -- bool ) {: want:str :}
    ERR$ {: err:str :}
    err STR:LEN 0 ?do

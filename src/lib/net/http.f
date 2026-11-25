@@ -357,7 +357,7 @@ private
 
 
 : ;ACCESS-LINE ( n -- ) {: idx:n :}
-   s"  " LOG:TEXT+
+   s"  in " LOG:TEXT+
    mono-ns idx START-NS@ - NS-PER-MS / LOG:INT+
    s"  ms" LOG:TEXT+
    LOG:;LINE ;
@@ -1316,7 +1316,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 public
 
 \ From the next START on, every request the server reads writes one LOG INFO
-\ line, tag http: `req <id> <method> <path> <status> <n> B <ms> ms`, id the
+\ line, tag http: `req <id> <method> <path> <status> <n> B in <ms> ms`, id the
 \ REQUEST-ID$, path without its query, n the body bytes sent and ms the whole
 \ milliseconds from the end of the head's read to the line. A method or path
 \ the request did not give is `-`. In place of `<status> <n> B`, a send that
