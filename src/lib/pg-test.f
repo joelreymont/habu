@@ -544,7 +544,7 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ Checked against the report the server builds: six KiB of two-byte characters,
+\ Checked against the message the server builds: six KiB of two-byte characters,
 \ then a longer message the connection's copy must grow past the first to hold.
 : RAISED-SAME ( PG:connection str str -- PG:connection )
    {: c same:str ms:str :}
@@ -570,11 +570,11 @@ TYPED-VARIABLE HELD-ID n
 : LONG-MESSAGE-CASES ( PG:connection -- PG:connection )
    s" a server message past one KiB arrives whole and goes back as text" T-LABEL
    s" do $$ begin raise exception '%', 'x' || repeat(chr(233), 3000); end $$"
-   s" select $1::text = ('ERROR:  x' || repeat(chr(233), 3000) || E'\nCONTEXT:  PL/pgSQL function inline_code_block line 1 at RAISE')"
+   s" select $1::text = ('x' || repeat(chr(233), 3000))"
    RAISED-WHOLE
    s" a longer message after it grows the copy and arrives whole" T-LABEL
    s" do $$ begin raise exception '%', repeat('yz', 50000); end $$"
-   s" select $1::text = ('ERROR:  ' || repeat('yz', 50000) || E'\nCONTEXT:  PL/pgSQL function inline_code_block line 1 at RAISE')"
+   s" select $1::text = repeat('yz', 50000)"
    RAISED-WHOLE ;
 
 
@@ -583,13 +583,13 @@ TYPED-VARIABLE HELD-ID n
 \ length, so a copy the connection shared would show the inner bytes.
 : INNER-FAILS ( PG:connection -- PG:connection )
    dup s" do $$ begin raise exception 'inner message'; end $$"
-   [: FAILED-MESSAGE$ S\" ERROR:  inner message\nCONTEXT:  PL/pgSQL function inline_code_block line 1 at RAISE" T$= ;] WITH-RESULT ;
+   [: FAILED-MESSAGE$ s" inner message" T$= ;] WITH-RESULT ;
 
 
 : NESTED-SPAN-BODY ( PG:connection PG:result -- PG:connection PG:result )
    FAILED-MESSAGE$ swap >r
    swap INNER-FAILS swap
-   S\" ERROR:  outer message\nCONTEXT:  PL/pgSQL function inline_code_block line 1 at RAISE" T$=
+   s" outer message" T$=
    r> ;
 
 
@@ -620,17 +620,17 @@ TYPED-VARIABLE HELD-ID n
 : HELD-SPAN-BODY ( PG:connection PG:result -- PG:connection PG:result )
    FAILED-MESSAGE$ swap >r
    swap DEFERRED-FAILS swap
-   S\" ERROR:  short\nCONTEXT:  PL/pgSQL function inline_code_block line 1 at RAISE" T$=
+   s" short" T$=
    r> ;
 
 
 : REPORT-CASES ( PG:connection -- PG:connection ) {: c :}
-   s" a failed span is the server's whole report" T-LABEL
+   s" a failed span is the server's primary message" T-LABEL
    c s" create function report_f() returns int language plpgsql as $$ begin raise exception 'm' using detail = 'd', hint = 'h'; end $$" EXEC-OK
    c s" select report_f()"
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" P0001" T$=
-      FAILED-MESSAGE$ S\" ERROR:  m\nDETAIL:  d\nHINT:  h\nCONTEXT:  PL/pgSQL function report_f() line 1 at RAISE" T$= ;] WITH-RESULT
+      FAILED-MESSAGE$ s" m" T$= ;] WITH-RESULT
    s" a comment-only statement fails with an empty report" T-LABEL
    c s" -- only a comment"
    [: OUTCOME-TAG TAG-FAILED T=

@@ -271,6 +271,11 @@ TYPED-VARIABLE CONN PG:connection
    CONN @ s PG:EXEC ;
 
 
+\ Ada's id is taken: the server's DETAIL names the key's value.
+: DUPLICATE-ADA ( -- )
+   s" insert into person (id, name, active) values (1, 'Ada', true)" EXEC-ON ;
+
+
 : QUERY-ON ( str -- ) {: s:str :}
    CONN @ PG:PARAMS
    CONN @ s [: ;] PG:QUERY ;
@@ -297,6 +302,11 @@ TYPED-VARIABLE CONN PG:connection
    [: s" insert into exec_missing_q values (1)" EXEC-ON ;] PG:E-QUERY TTHROWSQ
    s" EXEC's refusal text" T-LABEL
    s" exec_missing_q" REFUSAL-NAMES
+   s" a refusal's text is the primary message, without the DETAIL" T-LABEL
+   [: DUPLICATE-ADA ;] PG:E-QUERY TTHROWSQ
+   PG:REFUSED$
+   S\" 23505: duplicate key value violates unique constraint \qperson_pkey\q"
+   T$=
    s" EXEC of DDL" T-LABEL
    [: s" create table gadget (id bigint)" EXEC-ON ;] 0 TTHROWSQ
    s" a successful EXEC empties the refusal text" T-LABEL

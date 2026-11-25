@@ -94,8 +94,9 @@ SUMTYPE connect-result
    VARIANT refused str ;VARIANT
 ;SUMTYPE
 
-\ The failure strings are the SQLSTATE and libpq's whole report in the result's
-\ own bytes, or FAILED-SPANS' static text: each lives at least as long as TEXT$.
+\ The failure strings are the SQLSTATE and the server's primary message, or
+\ libpq's report for a failure libpq made, in the result's own bytes, or
+\ FAILED-SPANS' static text: each lives at least as long as TEXT$.
 SUMTYPE outcome
    VARIANT ok ;VARIANT
    VARIANT rows ;VARIANT
@@ -136,6 +137,7 @@ LINEAR: RESULT>N ( PG:result -- n )
 7 constant PGRES-FATAL-ERROR
 8 constant PGRES-COPY-BOTH
 $43 constant PG-DIAG-SQLSTATE             \ 'C'
+$4D constant PG-DIAG-MESSAGE-PRIMARY      \ 'M'
 0 constant NOTIFY-RELNAME                 \ PGnotify.relname's cell, libpq-fe.h
 2 constant NOTIFY-EXTRA                   \ PGnotify.extra's cell, libpq-fe.h: past the C int be_pid, padded to a cell
 0 constant TEXT-RESULT                    \ PQexecParams resultFormat
@@ -986,8 +988,16 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ PQresultErrorMessage ends with a newline, is empty for an empty query, and
 \ holds the connection's message for a result libpq made without the server.
-: REPORT$ ( ^u8 -- str )
+: ERROR-MESSAGE$ ( ^u8 -- str )
    LIB-RESULT-ERROR-MESSAGE FIELD$ -TRAILING-LF ;
+
+
+\ The primary message leaves out DETAIL, HINT and CONTEXT, which may hold a
+\ key's values. A result libpq made without the server has no fields.
+: REPORT$ ( ^u8 -- str ) {: res :}
+   res PG-DIAG-MESSAGE-PRIMARY LIB-RESULT-ERROR-FIELD {: p :}
+   p NULL-ADDR? if res ERROR-MESSAGE$ exit then
+   p CSTR$ ;
 
 
 : COPY-REFUSAL-Z ( -- str )   S\" COPY is not supported\z" ;
