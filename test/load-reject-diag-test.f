@@ -362,6 +362,13 @@ undefine include
    path PROC-ARGV+
    path LAUNCH ;
 
+: CHECK-ALL-VERIFY-RUN ( str -- ) {: path:str :}
+   PROC-ARGV-RESET
+   s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
+   s" --" PROC-ARGV+  s" --all-errors" PROC-ARGV+
+   s" --verify-only" PROC-ARGV+  path PROC-ARGV+
+   path LAUNCH ;
+
 : ERR$ ( -- str )
    ERR ERR-U @ >str ;
 
@@ -1270,6 +1277,18 @@ undefine include
    BODY$ CHECK-ALL-RUN
    s" is" s" is ( c ) zzq" BODY-ONLY-EXPECT  70 ASSERT-REJECTED ;
 
+\ A structure sized by a constant only the run defines is left to the run;
+\ only --verify-only reports a deferral, since no run follows to check it.
+: TEST-TYPE-DEFERRED ( -- )
+   s" [type] of a structure the run sizes is left to the run" T-LABEL
+   BODY$ S\" : ROOM-BYTES ( -- n ) 24 ;\nROOM-BYTES constant ROOM\n" FS:WRITE-ALL
+   BODY$ S\" STRUCTURE holder\n   FIELD token n\n   BUFFER bytes ROOM\n" FS:APPEND-FILE
+   BODY$ S\" ;STRUCTURE\n: MAKE ( -- n ) [type] holder width>n ;\n" FS:APPEND-FILE
+   BODY$ CHECK-ALL-VERIFY-RUN
+   ERR$ s" E-BAD-STORAGE" STR:CONTAINS? TFALSE
+   ERR$ s" W-CHECK-DEFERRED" STR:CONTAINS? TTRUE
+   ERR$ s" from `holder` on" STR:CONTAINS? TTRUE ;
+
 \ The record of keyword KW named at column COL of the one line SRC.
 : KEYWORD-EXPECT ( str str n -- )
    {: kw:str src:str col:n :}
@@ -1569,6 +1588,7 @@ variable LONG-U
    TEST-TOP-LOCALS-END
    TEST-TRUSTED-TICK
    TEST-BODY-OPERAND
+   TEST-TYPE-DEFERRED
    TEST-KEYWORD-OPERAND
    TEST-DEFERRED
    TEST-SHADOW

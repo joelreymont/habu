@@ -24265,9 +24265,10 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    start TI @ code 1 = ;
 
 \ The span's bytes in storage, through the gate CHECKER-ARENA-INFO asks, for a
-\ closed type. The definition's own SGBAD and SIG-UNRES verdicts outlive the
-\ read; LBI-T holds the term.
-: TYPE-LIT-INFO ( str -- n bool ) {: a:^ u:n :}
+\ closed type, and whether it fails only on a name the run may still define.
+\ The definition's own SGBAD verdict outlives the read, and so does its
+\ SIG-UNRES unless the read leaves the span to the run; LBI-T holds the term.
+: TYPE-LIT-INFO ( str -- n bool bool ) {: a:^ u:n :}
    SGBAD @ SGBAD-A @ SGBAD-U @ SGBAD-KIND @ {: sg:n sga:^ sgu:n sgk:n :}
    SGBAD-AR-DECL @ SGBAD-AR-GOT @ {: ard:n arg:n :}
    SGBAD-EXP-A @ SGBAD-EXP-U @ SGBAD-USED @ SGBAD-LOCAL @
@@ -24277,13 +24278,16 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-EFFECT !
    0 LBI-LINEAR !
    a u TYPE-SPAN-READ swap T-RES {: one:bool t:n :}
-   t LBI-T !
+   t LBI-T !  one 0= LBI-BAD !
    SGBAD @ 0= one and IF ARENA-TERM-INFO ELSE 0 RES-FALSE THEN
+   STORAGE-UNRESOLVED? {: unres:bool :}
    sg SGBAD !  sga SGBAD-A !  sgu SGBAD-U !  sgk SGBAD-KIND !
    ard SGBAD-AR-DECL !  arg SGBAD-AR-GOT !
    sgea SGBAD-EXP-A !  sgeu SGBAD-EXP-U !  sgused SGBAD-USED !  sgloc SGBAD-LOCAL !
-   un SIG-UNRES !  una SIG-UNRES-A !  unu SIG-UNRES-U !
-   dup IF drop t TYPE-CLOSED? THEN ;
+   un 0 <> unres 0= or IF
+      un SIG-UNRES !  una SIG-UNRES-A !  unu SIG-UNRES-U !
+   THEN
+   dup IF drop t TYPE-CLOSED? THEN  unres ;
 
 : TYPE-LIT-WIDTH ( n -- n ) {: t:n :}
    PARAM-SCR-N @ {: base:n :}
@@ -24307,12 +24311,22 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    THEN
    0 OK !  -1 FAILSET ! ;
 
+\ A span left to the run leaves the definition to it, pinned on the name no
+\ later token moves, and pushes a width of a fresh type no later token
+\ rejects.
+: TYPE-LIT-DEFER ( -- )
+   SIG-UNRES-A @ SIG-UNRES-U @ FAIL-PIN!
+   SIG-UNRES-A @ TBASE@ - FAILB !  FAILB @ SIG-UNRES-U @ + FAILE !
+   -1 FAILSET !
+   FRESH MK-VAR TYPE-LIT-WIDTH STEP-TYPE-OUT ;
+
 \ A body's `[type] T` compiles the bytes T takes in storage as a number typed
 \ width<T>.
 : TYPE-LIT-TOK ( -- )
    TYPE-LIT-SPAN {: s:n e:n whole:bool :}
-   whole IF s TADDR e s - TYPE-LIT-INFO ELSE 0 RES-FALSE THEN
-   {: bytes:n ok:bool :}
+   whole IF s TADDR e s - TYPE-LIT-INFO ELSE 0 RES-FALSE RES-FALSE THEN
+   {: bytes:n ok:bool unres:bool :}
+   unres IF TYPE-LIT-DEFER EXIT THEN
    ok 0= IF s e TYPE-LIT-FAIL EXIT THEN
    bytes K-INT swap 0 EVENT!
    LBI-T @ TYPE-LIT-WIDTH STEP-TYPE-OUT
