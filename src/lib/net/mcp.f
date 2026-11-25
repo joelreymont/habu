@@ -10,9 +10,11 @@
 \ dispatches, a notification included, as one LOG:INFO line `mcp: <method>`, then a
 \ tools/call's params.name or a resources/read's params.uri when it is a string,
 \ written between its quotes as sent, never the arguments, without LOG; with it,
-\ LOG's lines after the answer, the arguments at debug. ANSWER answers one JSON-RPC
-\ message that came by another transport into a vector, as HANDLE answers a 2026-07-28
-\ request with no transport headers, its log line included. VISIBLE! hides a tool
+\ LOG's lines after the answer, each ending ` in <n> ms` from the request's start,
+\ ANSWER's entry or, for FINISH's, the holding request's start, and the arguments
+\ at debug. ANSWER answers one JSON-RPC message that came by another transport into
+\ a vector, as HANDLE answers a 2026-07-28 request with no transport headers, its
+\ log line included. VISIBLE! hides a tool
 \ from a caller its hook refuses; it does not apply to resources, which every caller may list
 \ and read. A tools/call of a tool the caller cannot call, unknown or hidden, is -32602,
 \ as UNKNOWN-TOOL states.
@@ -192,6 +194,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER ASKED str               \ an unsupported MCP-Proto
 \ A decoded Mcp-Name is no longer than the header block that carried it.
 HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 HTTP:MAX-WORKERS TYPED-BUFFER HOLDING n               \ the held row of a body at HELD
+\ The TIME:MONO-NS reading the message's milliseconds count from.
+HTTP:MAX-WORKERS TYPED-BUFFER START n
 \ Each worker's vector, where FINISH writes a held call's response; NULL-PTR
 \ until its first FINISH.
 HTTP:MAX-WORKERS TYPED-BUFFER FINISHED ^VEC:vector<u8>
@@ -211,6 +215,7 @@ STRUCTURE keep DERIVE addr
    FIELD conn TCP4:connection
    FIELD era n
    FIELD tool n
+   FIELD start n
 ;STRUCTURE
 
 MAX-HELD TYPED-BUFFER KEEPS keep
@@ -877,6 +882,7 @@ CAST: HELD>N ( held -- n )
    SLOT TO @ HTTP:REQUEST-ID$ idx KEEP-REQ TEXT-SET
    SLOT ERA @ idx KEEPS KEEP-ERA !
    SLOT CALLED @ idx KEEPS KEEP-TOOL !
+   SLOT START @ idx KEEPS KEEP-START !
    SLOT FROM @ HTTP:TAKE-OVER drop idx KEEPS KEEP-CONN !
    construct keeping kept idx KEEPS KEEP-PHASE !
    idx ;
@@ -1405,6 +1411,10 @@ CAST: HELD>N ( held -- n )
    s" arguments " LOG:TEXT+  args TEXT-CUT+
    LOG:;LINE ;
 
+\ ` in <n> ms`, n the whole milliseconds since the TIME:MONO-NS reading.
+: ELAPSED+ ( n -- )
+   s"  in " LOG:TEXT+  TIME:ELAPSED-MS LOG:INT+  s"  ms" LOG:TEXT+ ;
+
 \ With LOG, the message's line under the id text, given the code passed to
 \ the host.
 : MESSAGE-LOGGED ( str n -- )
@@ -1412,6 +1422,7 @@ CAST: HELD>N ( held -- n )
    LOGGING @ 0= if exit then
    LOG:INFO s" mcp" LOG:LINE  id REQ+
    CALL+  s"  -> " LOG:TEXT+  code OUTCOME+
+   SLOT START @ ELAPSED+
    LOG:;LINE
    id ARGUMENTS-LOGGED ;
 
@@ -1425,6 +1436,7 @@ CAST: HELD>N ( held -- n )
    s" tools/call " LOG:TEXT+
    idx KEEPS KEEP-TOOL @ TOOL-NAME @ LOG:TEXT+
    s"  -> " LOG:TEXT+  code OUTCOME+
+   idx KEEPS KEEP-START @ ELAPSED+
    LOG:;LINE ;
 
 
@@ -1561,9 +1573,10 @@ public
 
 \ From the next HTTP:START on, each message HANDLE or ANSWER takes writes one
 \ LOG INFO line, tag mcp, once it is answered, in place of the line before
-\ dispatch: `req <id> <method> <target> -> <outcome>`. id is the
+\ dispatch: `req <id> <method> <target> -> <outcome> in <n> ms`. id is the
 \ HTTP:REQUEST-ID$ of HANDLE's request, `-` under ANSWER; method and target
-\ are as without LOG, `-` when no method was read. outcome is `ok`, `tool
+\ are as without LOG, `-` when no method was read; n is whole milliseconds
+\ from the request's start, or ANSWER's entry. outcome is `ok`, `tool
 \ error: <text>` (a schema refusal's included), `error <code>: <message>` for
 \ a JSON-RPC error (UNKNOWN-TOOL's included), `held` for a call HOLD kept,
 \ `notified` for a notification, or `fault <code> <name>: <text>`, name and
@@ -1571,9 +1584,9 @@ public
 \ tools/call with params.arguments then writes a LOG DEBUG line, `req <id>
 \ arguments <arguments>`, the arguments as sent, which may hold what an info
 \ line must not. FINISH writes a held call's own line, `req <id> tools/call
-\ <name> -> <outcome>`, with the id of the request that held it. A text past
-\ 4096 bytes is cut at a character boundary and followed by ` [<n> B]`, n its
-\ length.
+\ <name> -> <outcome> in <n> ms`, with the id of the request that held it and
+\ n from that request's start. A text past 4096 bytes is cut at a character
+\ boundary and followed by ` [<n> B]`, n its length.
 \ It lasts across STOP; E-STATE while HTTP serves.
 : LOG ( -- )
    HTTP:RUNNING? if E-STATE throw then
@@ -1702,6 +1715,7 @@ public
    SERVER-NAME @ STR:LEN 0= if E-STATE throw then
    asked SLOT FROM !
    answer SLOT TO !
+   answer HTTP:REQUEST-START-NS SLOT START !
    construct sink response OPENED-TO
    [: PROCESS ;] catch {: code:n :}
    code PASSED {: passed:n :}
@@ -1721,6 +1735,7 @@ public
 : ANSWER ( str ^VEC:vector<u8> -- )
    SERVER-NAME @ STR:LEN 0= if E-STATE throw then
    ON-WORKER
+   TIME:MONO-NS SLOT START !
    construct sink vector OPENED-TO
    MODERN SLOT ERA !
    SLOT ANSWER-W swap JSON:OPEN drop

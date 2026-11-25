@@ -389,6 +389,12 @@ public
    SLOT-OF-RESPONSE SLOT-ID$ ;
 
 
+\ The TIME:MONO-NS reading the request began at, which HTTP's access line
+\ counts its milliseconds from.
+: REQUEST-START-NS ( response -- n )
+   SLOT-OF-RESPONSE START-NS@ ;
+
+
 \ On a worker serving a request, handed off or not, that request's REQUEST-ID$
 \ and true; anywhere else, a SUBMIT call included, an empty string and false.
 : CURRENT-ID$ ( -- str bool )

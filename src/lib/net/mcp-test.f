@@ -1974,27 +1974,72 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
       0= if false unloop exit then
    loop true ;
 
+\ Where the text holds the rest, or -1 after a failed check.
+: REST-AT ( str str -- n )
+   STR:FIND-SUB MATCH option
+      some OF {: at:idx :} at IDX>N ENDOF
+      none OF s" no line holds the rest" T-FAIL-AS -1 ENDOF
+   ;MATCH ;
+
+\ The id of the `<stamp><head><id>` line of the text that holds the offset,
+\ the id running up to the offset.
+: ID-AT$ ( ^u8 str n -- str )
+   {: a:^ head:^ hu:n at:n :}
+   a at LINE-START DATE:TIME-LEN 1- + {: start:n :}
+   a start + at start - head hu STR:STARTS-WITH? TTRUE
+   start hu + {: from:n :}
+   a from + at from - 0 max ;
+
 \ The id of the text's `<stamp><head><id><rest>` line, rest from the space
 \ after the id through LF; empty when there is none.
 : LINE-ID$ ( str str str -- str )
    {: a:^ u:n head:^ hu:n rest:^ ru:n :}
-   a u rest ru STR:FIND-SUB MATCH option
-      some OF {: at:idx :} at IDX>N ENDOF
-      none OF -1 ENDOF
-   ;MATCH {: at:n :}
-   at 0< if s" no line holds the rest" T-FAIL-AS s" " exit then
-   a at LINE-START DATE:TIME-LEN 1- + {: start:n :}
-   a start + at start - head hu STR:STARTS-WITH? TTRUE
-   start hu + {: from:n :}
-   a from + at from - 0 max
+   a u rest ru REST-AT {: at:n :}
+   at 0< if s" " exit then
+   a head hu at ID-AT$
    2dup REQ-ID? TTRUE ;
 
-\ The id of the capture's `<stamp> info mcp: req <id><rest>` line.
-: REQ-ID$ ( str -- str )
-   {: rest:^ ru:n :}
-   LOG$ REQ-HEAD rest ru LINE-ID$ ;
+\ How many digits start the text.
+: DIGITS-LEN ( str -- n )
+   {: a:^ u:n :}
+   u 0 ?do a i + c@ STR:DIGIT? 0= if i unloop exit then loop
+   u ;
 
-: REQ-LOGGED ( str -- ) REQ-ID$ 2drop ;
+\ Whether the text starts ` in <digits> ms` and LF.
+: TIMED? ( str -- bool )
+   {: a:^ u:n :}
+   s"  in " {: in:^ inu:n :}
+   a u in inu STR:STARTS-WITH? 0= if false exit then
+   a inu + u inu - {: b:^ bu:n :}
+   b bu DIGITS-LEN {: len:n :}
+   len 0= if false exit then
+   b len + bu len - S\"  ms\n" STR:STARTS-WITH? ;
+
+\ Where the text holds the rest followed by ` in <digits> ms` and LF, or -1
+\ after a failed check.
+: TIMED-AT ( str str -- n )
+   {: a:^ u:n rest:^ ru:n :}
+   a u rest ru REST-AT {: at:n :}
+   at 0< if -1 exit then
+   at ru + {: end:n :}
+   a end + u end - TIMED? TTRUE
+   at ;
+
+\ The id of the text's `<stamp> info mcp: req <id><rest> in <n> ms` line,
+\ rest from the space after the id; empty when there is none.
+: INFO-ID$ ( str str -- str )
+   {: a:^ u:n rest:^ ru:n :}
+   a u rest ru TIMED-AT {: at:n :}
+   at 0< if s" " exit then
+   a REQ-HEAD at ID-AT$ ;
+
+\ The id, `r` and its digits, of the text's INFO-ID$ line.
+: REQ-ID$ ( str str -- str )
+   INFO-ID$ 2dup REQ-ID? TTRUE ;
+
+: REQ-LOGGED ( str -- )
+   {: rest:^ ru:n :}
+   LOG$ rest ru REQ-ID$ 2drop ;
 
 : ECHO-LEGACY ( -- str )
    S\" {\"jsonrpc\":\"2.0\",\"id\":80,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"a\":1}}}" ;
@@ -2002,14 +2047,14 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : LOGGED-ECHO ( -- )
    s" MCP:LOG logs a tools/call with ok" T-LABEL
    [: LEGACY ECHO-LEGACY POST 200 T= ;] CAPTURED
-   S\"  tools/call echo -> ok\n" REQ-LOGGED
+   s"  tools/call echo -> ok" REQ-LOGGED
    LOG$ S\" Z info mcp: tools/call echo\n" STR:CONTAINS? TFALSE ;
 
 : LOGGED-STRICT ( -- )
    s" MCP:LOG logs a schema refusal as a tool error" T-LABEL
    [: LEGACY 81 FILTERS STRICT-CALL POST 200 T= ;] CAPTURED
    W-RESET S\"  tools/call strict -> tool error: " W+
-   FILTERS-TEXT W+ S\" \n" W+
+   FILTERS-TEXT W+
    W$ REQ-LOGGED ;
 
 : LOGGED-UNKNOWN ( -- )
@@ -2017,14 +2062,14 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"none\"}}" POST 400 T= ;]
    CAPTURED
    W-RESET s"  tools/call none -> error -32602: Unknown tool: none; " W+
-   S\" if the client's list of test-server's tools names it, that list is out of date\n" W+
+   s" if the client's list of test-server's tools names it, that list is out of date" W+
    W$ REQ-LOGGED ;
 
 : LOGGED-TWICE ( -- )
    s" MCP:LOG logs params naming name twice as -32600 with no method and passes no code" T-LABEL
    [: LEGACY 84 NAME-TWICE POST 400 T= ;] CAPTURED
    W-RESET s"  - -> error -32600: " W+
-   TWICE-HEAD W+ S\" \"name\"" W+ TWICE-TAIL W+ S\" \n" W+
+   TWICE-HEAD W+ S\" \"name\"" W+ TWICE-TAIL W+
    W$ REQ-LOGGED
    LOG$ s" failed, throw" STR:CONTAINS? TFALSE ;
 
@@ -2032,20 +2077,20 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    s" MCP:LOG logs a legacy notification as notified" T-LABEL
    [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" POST 202 T= ;]
    CAPTURED
-   S\"  notifications/initialized -> notified\n" REQ-LOGGED ;
+   s"  notifications/initialized -> notified" REQ-LOGGED ;
 
 : LOGGED-HELD ( -- )
    [: HELD-LEGACY ;] CAPTURED
    s" MCP:LOG logs a held call as held and FINISH's line under its id" T-LABEL
-   S\"  tools/call wait -> held\n" REQ-ID$ {: id:^ iu:n :}
-   W-RESET REQ-HEAD W+ id iu W+ S\"  tools/call wait -> ok\n" W+
-   LOG$ W$ STR:CONTAINS? TTRUE ;
+   LOG$ s"  tools/call wait -> held" REQ-ID$ {: id:^ iu:n :}
+   W-RESET REQ-HEAD W+ id iu W+ s"  tools/call wait -> ok" W+
+   LOG$ W$ TIMED-AT drop ;
 
-\ A fault outcome's declared code and the line's end: `<code> <name>: <text>`.
+\ A fault outcome's declared code: `<code> <name>: <text>`.
 : FAULT-W+ ( n -- )
    {: code:n :}
    code FMT:INT$ W+  s"  " W+  code ERROR:NAME$ W+
-   s" : " W+  code ERROR:TEXT$ W+  S\" \n" W+ ;
+   s" : " W+  code ERROR:TEXT$ W+ ;
 
 \ The sole worker logs the fault after the client sees the closed connection,
 \ and before it serves the next request.
@@ -2063,7 +2108,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : LOGGED-FREED ( -- )
    s" MCP:LOG logs a tool error whose text the body freed" T-LABEL
    [: LEGACY S\" {\"freed\":1}" WAIT-LEGACY POST 200 T= ;] CAPTURED
-   S\"  tools/call wait -> tool error: freed text\n" REQ-LOGGED ;
+   s"  tools/call wait -> tool error: freed text" REQ-LOGGED ;
 
 : LOGGED-LATE ( -- )
    s" MCP:LOG logs a throw after the result as a fault" T-LABEL
@@ -2075,7 +2120,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : LOGGED-ANSWER ( -- )
    s" MCP:LOG logs ANSWER's message under the id -" T-LABEL
    [: ANSWER-OPEN ECHO-A1 POST 200 T= ;] CAPTURED
-   LOG$ S\" Z info mcp: req - tools/call echo -> ok\n" STR:CONTAINS? TTRUE ;
+   LOG$ s"  tools/call echo -> ok" INFO-ID$ s" -" T$= ;
 
 \ An echo call whose arguments, {"b":<BIG>}, pass the 4096 bytes LOG writes of a text.
 : LONG-CALL ( -- str )
@@ -2124,7 +2169,7 @@ create CHILD-ERR CHILD-CAP allot
 : LOGGED-DEBUG ( -- )
    s" at debug, MCP:LOG logs a tools/call's arguments under its id" T-LABEL
    DEBUG-ERR$ {: e:^ eu:n :}
-   e eu REQ-HEAD S\"  tools/call echo -> ok\n" LINE-ID$ {: id:^ iu:n :}
+   e eu s"  tools/call echo -> ok" REQ-ID$ {: id:^ iu:n :}
    e eu DEBUG-HEAD S\"  arguments {\"a\":1}\n" LINE-ID$ id iu T$=
    s" at debug, MCP:LOG cuts arguments past 4096 bytes and gives their length" T-LABEL
    \ The first 4096 bytes: `{"b":` and 4091 of BIG.
