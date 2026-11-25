@@ -4,11 +4,12 @@
 \ 11: PL-RUN's call, tail call and code address reach PL-LEAF, and its data
 \ address reaches PL-V, which the entry set to 1. tick prints 8: PL-TICK reaches
 \ PL-TOCK only through a code address. five prints 6: PL-FIVE's does> slot
-\ reaches PL-MAKE's clause, and the link is not rejected though PL-MAKE's own
-\ body calls `create`. Each prints through the kernel primitive `.`, and run's
-\ map holds the kernel's `.` and `execute`. Each program's map names the fixture
-\ words its entry reaches and no other, and a second link of run writes the
-\ same bytes. A link rooted at PL-MAKE itself
+\ reaches PL-MAKE's clause, and the program keeps nothing only PL-MAKE's own
+\ body calls, PL-INIT, `create` and `does-patch` among it. Each prints through
+\ the kernel primitive `.`, and run's map holds the kernel's `.` and `execute`.
+\ Each program's map names the fixture words its entry reaches and no other but
+\ five's PL-MAKE, whose emission holds the clause, and a second link of run
+\ writes the same bytes. A link rooted at PL-MAKE itself
 \ exits 70: test/compiler/arm64-place-unsafe-bad.f runs it in a child process.
 \ Fixture words are PL- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
@@ -122,12 +123,15 @@ create PROG-BUF PATH-CAP allot
    s" tick.map" s"  PL-INIT " ROW? TFALSE ;
 
 
-\ PL-MAKE's emission holds its clause, and its body calls PL-INIT.
+\ PL-MAKE's emission holds its clause.
 : FIVE-MAP ( -- )
-   s" five: the map holds PL-FIVE, PL-MAKE and PL-INIT" T-LABEL
+   s" five: the map holds PL-FIVE and PL-MAKE" T-LABEL
    s" five.map" s"  PL-FIVE " ROW? TTRUE
    s" five.map" s"  PL-MAKE " ROW? TTRUE
-   s" five.map" s"  PL-INIT " ROW? TTRUE
+   s" five: no PL-INIT, create or does-patch, which PL-MAKE's body calls" T-LABEL
+   s" five.map" s"  PL-INIT " ROW? TFALSE
+   s" five.map" s"  create word baked " ROW? TFALSE
+   s" five.map" s"  does-patch word baked " ROW? TFALSE
    s" five: no PL-RUN, PL-LEAF, PL-V, PL-TICK or PL-TOCK" T-LABEL
    s" five.map" s"  PL-RUN " ROW? TFALSE
    s" five.map" s"  PL-LEAF " ROW? TFALSE

@@ -4498,8 +4498,9 @@ EXPORT TFAM:TFAM-N@
    \ As the does> primitive's patch: PATCH then writes the slot as a branch to the clause.
    patch 0<> if want patch NSHADOW:PATCH-DOES then
    CODE-COPY @ BYTES$ drop {: copy:^ :}
-   \ The call targets and chains already hold host values, so both resolvers answer what they get.
-   NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;]  NATIVE:PATCH
+   \ The call targets and chains already hold host values, so both resolvers answer what they get;
+   \ the host runs every unit, so each site is written.
+   NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;] [: 2drop true ;]  NATIVE:PATCH
    h EM-OFFS @ {: at:n :}
    at OBJ@  at 8 + OBJ@ {: s:n r:n :}
    s r CODE-SPAN:RECORDED {: recorded:n :}

@@ -16,19 +16,16 @@ split-str
 \ is live, and an address a piece stored there is that piece's, as its object
 \ carries it. The entry cell is read whatever stored it: it is the program's
 \ root. A read xt cell roots the code it names and a read pointer cell makes
-\ its target's unit live. A placed emission's data address in a live record's
-\ range makes its unit live; one only the emission's dead code names lays its
-\ unit: a laid unit is laid as a live one is, but its cells are not read and
-\ it reaches no piece until a live address makes it live. An address where
-\ data ends lies in its extent, since no extent or piece starts where the data
+\ its target's unit live. A data address in a live record's range makes its
+\ unit live; a placed emission's other code keeps none. An address where data
+\ ends lies in its extent, since no extent or piece starts where the data
 \ before it ends. An address in an interned body or its length cell keeps that
-\ body alone, whether live or dead code names it: a header body lies in the
-\ header, any other in the piece that first interned it, and every later
-\ piece spelling it shares it.
+\ body alone: a header body lies in the header, any other in the piece that
+\ first interned it, and every later piece spelling it shares it.
 \
 \ THE IMAGE'S DATA. A stripped program's is the header as the build left it,
-\ its bodies the program does not keep zeroed; then the live and laid units in
-\ build order, each laid at the first offset past the one before that keeps its
+\ its bodies the program does not keep zeroed; then the live units in build
+\ order, each laid at the first offset past the one before that keeps its
 \ offset modulo a cell, a monotone map, so an interior or end address keeps its
 \ meaning; then the kept bodies whose unit is dead, sorted by length then
 \ bytes, each from a cell boundary with its length cell and the byte past it.
@@ -54,14 +51,10 @@ package LINKER
 private
 
 DYNAMIC-BUFFER ROW-REACHED n         \ 1 once BUILT row r's piece is reached
-0 constant DEAD-UNIT
-1 constant LAID-UNIT
-2 constant LIVE-UNIT
-DYNAMIC-BUFFER UNIT-STATE n          \ DEAD-UNIT, LAID-UNIT or LIVE-UNIT
+DYNAMIC-BUFFER UNIT-LIVE n           \ 1 once unit u is live
 DYNAMIC-BUFFER CELL-UNIT n           \ address row i's cell's unit
 DYNAMIC-BUFFER CELL-READ n           \ 1 once address row i is read
 DYNAMIC-BUFFER BY-OFF n              \ the address rows in offset order
-DYNAMIC-BUFFER EM-LAID n             \ 1 once emission e's data addresses are laid
 DYNAMIC-BUFFER REC-READ n            \ 1 once live record r's data addresses are read
 DYNAMIC-BUFFER BY-START n            \ the BUILT rows in data order
 DYNAMIC-BUFFER BY-EXT n              \ the BUILT-EXTS rows in data order
@@ -84,9 +77,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 
 : HEADER-UNIT ( -- n ) BUILT-EXTS-N @ ;
 : REST-UNIT ( -- n ) BUILT-EXTS-N @ 1 + ;
-: UNIT-LIVE? ( n -- bool ) UNIT-STATE @ LIVE-UNIT = ;
-\ Whether the image lays unit u: it is live or laid.
-: UNIT-KEPT? ( n -- bool ) UNIT-STATE @ DEAD-UNIT <> ;
+: UNIT-LIVE? ( n -- bool ) UNIT-LIVE @ 0<> ;
 
 
 \ BUILT row r's data span, the data pointer as its piece starts and ends.
@@ -126,14 +117,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
    {: u:n :}
    u 0< if exit then
    u UNIT-LIVE? if exit then
-   LIVE-UNIT u UNIT-STATE !  1 WENT-LIVE !
+   1 u UNIT-LIVE !  1 WENT-LIVE !
    u BUILT-EXTS-N @ < if u 0 BUILT-EXT @ ROW-REACH then ;
-
-: LAY-UNIT ( n -- )
-   {: u:n :}
-   u 0< if exit then
-   u UNIT-KEPT? if exit then
-   LAID-UNIT u UNIT-STATE ! ;
 
 
 : STR+ ( n -- )
@@ -188,11 +173,6 @@ variable EXT-I                       \ BY-EXT's next row to lay
    v STR-KEEP if exit then
    v UNIT-OF REACH-UNIT ;
 
-: LAY-ADDRESS ( n -- )
-   {: v:n :}
-   v STR-KEEP if exit then
-   v UNIT-OF LAY-UNIT ;
-
 
 \ Address row n's cell's offset.
 : NTH-OFF ( n -- n )
@@ -204,8 +184,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
    BUILT-N ROW-REACHED-RESERVE
    BUILT-N 0 ?do 0 i ROW-REACHED ! loop
    BUILT-EXTS-N @ 2 + {: units:n :}
-   units UNIT-STATE-RESERVE
-   units 0 ?do DEAD-UNIT i UNIT-STATE ! loop
+   units UNIT-LIVE-RESERVE
+   units 0 ?do 0 i UNIT-LIVE ! loop
    ROWS {: rows:^ count:n :}
    count CELLS-N !
    count CELL-UNIT-RESERVE  count CELL-READ-RESERVE
@@ -216,8 +196,6 @@ variable EXT-I                       \ BY-EXT's next row to lay
    count BY-OFF-RESERVE
    count 0 ?do i i BY-OFF ! loop
    count 0 > if 0 BY-OFF count [: swap NTH-OFF swap NTH-OFF < ;] SORT:SORT! then
-   NSHADOW:EMISSIONS EM-LAID-RESERVE
-   NSHADOW:EMISSIONS 0 ?do 0 i EM-LAID ! loop
    NSHADOW:RECORDS REC-READ-RESERVE
    NSHADOW:RECORDS 0 ?do 0 i REC-READ ! loop ;
 
@@ -282,12 +260,6 @@ variable EXT-I                       \ BY-EXT's next row to lay
       then
    loop ;
 
-\ Every site of a placed emission resolves, so each one lays its unit.
-: LAY-EM ( n -- )
-   {: e:n :}
-   1 e EM-LAID !
-   e 0 e NSHADOW:SIZE ['] LAY-ADDRESS EACH-DATA ;
-
 \ Live record r's data addresses, in its range, and its piece reached.
 : READ-REC ( n -- )
    {: r:n :}
@@ -296,10 +268,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
    ['] REACH-ADDRESS EACH-DATA
    r NSHADOW:RECORD@ REC-ROW@ if ROW-REACH else drop then ;
 
-: READ-EMS ( -- )
-   NSHADOW:EMISSIONS 0 ?do
-      i PLACED @ 0<>  i EM-LAID @ 0= and if i LAY-EM then
-   loop
+: READ-RECS ( -- )
    NSHADOW:RECORDS 0 ?do
       i LIVE @ 0<>  i REC-READ @ 0= and if i READ-REC then
    loop ;
@@ -323,10 +292,10 @@ variable EXT-I                       \ BY-EXT's next row to lay
    1 SEG-N +!
    img len + LAID-END ! ;
 
-\ BUILT-EXTS row b, laid when kept.
+\ BUILT-EXTS row b, laid when live.
 : LAY-EXT ( n -- )
    {: b:n :}
-   b UNIT-KEPT? if b EXT-SPAN SEG+ then ;
+   b UNIT-LIVE? if b EXT-SPAN SEG+ then ;
 
 \ Each extent not yet laid that starts below v, in data order.
 : EXTS-BELOW ( n -- )
@@ -349,12 +318,12 @@ variable EXT-I                       \ BY-EXT's next row to lay
    n 0 ?do i i BY-START ! loop
    n 0 > if 0 BY-START n [: swap PIECE-SPAN drop swap PIECE-SPAN drop < ;] SORT:SORT! then ;
 
-\ The kept units from OPEN-DP in data order: the extents, and when the rest
-\ unit is kept each span no piece holds, before, between and after the pieces.
+\ The live units from OPEN-DP in data order: the extents, and when the rest
+\ unit is live each span no piece holds, before, between and after the pieces.
 : LAY-UNITS ( -- )
    SORT-EXTS  SORT-PIECES
    0 SEG-N !  0 EXT-I !
-   REST-UNIT UNIT-KEPT? {: rest:bool :}
+   REST-UNIT UNIT-LIVE? {: rest:bool :}
    OPEN-DP @
    BUILT-N 0 ?do
       {: at:n :}
@@ -377,7 +346,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
    at OPEN-DP @ < if false exit then
    at UNIT-OF {: u:n :}
    u 0< if true exit then
-   u UNIT-KEPT? 0= ;
+   u UNIT-LIVE? 0= ;
 
 \ Body k's length cell at the next cell boundary, its bytes and the byte past.
 : LAY-BODY ( n -- )
@@ -398,7 +367,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
    n 0 > if 0 BY-BODY n [: BODY< ;] SORT:SORT! then
    n 0 ?do i BY-BODY @ LAY-BODY loop ;
 
-\ A stripped program's image data: the header, the kept units, the laid bodies.
+\ A stripped program's image data: the header, the live units, the laid bodies.
 : LAY-DATA ( -- )
    OPEN-DP @ BASE @ - LAID-END !
    LAY-UNITS  LAY-BODIES ;
@@ -411,7 +380,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
    HEADER-UNIT REACH-UNIT
    begin
       0 WENT-LIVE !
-      READ-CELLS  READ-EMS
+      READ-CELLS  READ-RECS
       WENT-LIVE @ 0=
    until
    ENGINE? @ 0= if LAY-DATA then ;
@@ -564,11 +533,11 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ The rows list's cell index in the copy.
 : LIST-AT ( -- n ) LIST-OFF @ CELL / ;
 
-\ Whether address row i's cell lies in a kept unit, whose bytes the image lays.
+\ Whether address row i's cell lies in a live unit, whose bytes the image lays.
 : CELL-LAID? ( n -- bool )
    CELL-UNIT @ {: u:n :}
    u 0< if false exit then
-   u UNIT-KEPT? ;
+   u UNIT-LIVE? ;
 
 \ The copy's header field at byte offset off from the count holds v.
 : HEADER-FIELD! ( n n -- )

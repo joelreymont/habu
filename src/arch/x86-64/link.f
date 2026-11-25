@@ -31,17 +31,23 @@ public
    {: v:n b:^ size:n at:n kind:n :}
    v b at + 2 + LE:U64! ;
 
-: PATCH ( n ^u8 n [ n -- n ] [ n -- n ] -- )
-   {: e:n dst:^ at:n data resolve :}
+: PATCH ( n ^u8 n [ n -- n ] [ n -- n ] [ n n -- bool ] -- )
+   {: e:n dst:^ at:n data resolve live :}
    e NSHADOW:CALL-SITES 0 ?do
       e i NSHADOW:CALL-SITE@ {: s:n :}
-      e i NSHADOW:CALL-TARGET@ resolve execute
-      e i NSHADOW:CALL-KIND@ at s + dst s + CALL!
+      e s live execute if
+         e i NSHADOW:CALL-TARGET@ resolve execute
+         e i NSHADOW:CALL-KIND@ at s + dst s + CALL!
+      then
    loop
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE@ {: s:n :}
-      e i NSHADOW:ADDR-SITE-VALUE@
-      e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if data else resolve then execute
+      e s live execute if
+         e i NSHADOW:ADDR-SITE-VALUE@
+         e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if data else resolve then execute
+      else
+         0
+      then
       dst s + 2 + LE:U64!
    loop ;
 

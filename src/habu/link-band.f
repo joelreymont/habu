@@ -1,8 +1,8 @@
 split-str
 \ link-band.f - the shadow emissions a program's roots reach, or every one for
-\ an engine, on arm64 or Wasm. An arm64 link lays them after the kernel in
-\ A64ICODE's code buffer (LAYOUT) and places them at TEXT-VA plus their offset
-\ there. Words visible only inside LINKER.
+\ an engine. A native link lays them after the kernel in NATIVE's code buffer
+\ (LAYOUT) and places them at TEXT-VA plus their offset there. Words visible
+\ only inside LINKER.
 
 require src/core/exit-status.f
 require src/lib/hashmap.f
@@ -24,7 +24,7 @@ require src/habu/link-code.f
 package LINKER
 private
 
-\ Emission e's byte offset in A64ICODE's code buffer, -1 when it is not placed.
+\ Emission e's byte offset in NATIVE's code buffer, -1 when it is not placed.
 DYNAMIC-BUFFER OFFSETS n
 : OFFSET@ ( n -- n ) OFFSETS @ ;
 
@@ -48,12 +48,10 @@ variable PLACING                     \ the emission being placed
 DYNAMIC-BUFFER EM-FIRST n
 DYNAMIC-BUFFER REC-NEXT n
 
-\ PLACED per emission and LIVE per record, 1 once marked; MAKE-LIVE and
-\ PLACE-EM push each index they mark once.
+\ PLACED per emission and LIVE per record, 1 once marked; MAKE-LIVE pushes
+\ each record it marks once.
 DYNAMIC-BUFFER PLACED n
 DYNAMIC-BUFFER LIVE n
-DYNAMIC-BUFFER PLACE-WORK n
-variable PLACE-COUNT
 DYNAMIC-BUFFER LIVE-WORK n
 variable LIVE-COUNT
 variable WALKING                     \ the live record whose range is read
@@ -217,17 +215,17 @@ variable UNSAFE-COUNT
    -1 ;
 
 
-\ The tables a link reads, its marks and worklists cleared: once per link,
+\ The tables a link reads, its marks and worklist cleared: once per link,
 \ before ROOT or REACH-ALL.
 : ROUTINES ( -- )
    ENTRY-TABLE  CHAINS  UNSAFE-TABLE
    NSHADOW:EMISSIONS {: ems:n :}
    NSHADOW:RECORDS {: recs:n :}
-   ems PLACED-RESERVE  ems PLACE-WORK-RESERVE
+   ems PLACED-RESERVE
    recs LIVE-RESERVE  recs LIVE-WORK-RESERVE
    ems 0 ?do 0 i PLACED ! loop
    recs 0 ?do 0 i LIVE ! loop
-   0 PLACE-COUNT !  0 LIVE-COUNT ! ;
+   0 LIVE-COUNT ! ;
 
 
 \ The open shadow's machine is Wasm.
@@ -285,21 +283,13 @@ variable UNSAFE-COUNT
    loop ;
 
 
-: PLACE-EM ( n -- )
-   {: e:n :}
-   e PLACED @ 0<> if exit then
-   1 e PLACED !
-   e PLACE-COUNT @ PLACE-WORK !
-   1 PLACE-COUNT +! ;
-
-
 : MAKE-LIVE ( n -- )
    {: r:n :}
    r LIVE @ 0<> if exit then
    1 r LIVE !
    r LIVE-COUNT @ LIVE-WORK !
    1 LIVE-COUNT +!
-   r NSHADOW:EMISSION@ PLACE-EM ;
+   1 r NSHADOW:EMISSION@ PLACED ! ;
 
 
 \ Live record r, or -1 for the program's start, reaches the UNSAFE-NAME? word
@@ -342,24 +332,15 @@ variable UNSAFE-COUNT
    NATIVE:ROOT-ENTRY ;
 
 
-\ A target with no record and no UNSAFE-NAME? word is a kernel primitive or a
-\ foreign word the write step rejects.
+\ A target with no record that is no UNSAFE-NAME? word keeps its kernel code;
+\ the write step rejects one the kernel does not hold.
 : LIVE-TARGET ( n -- )
    {: a:n :}
    a TARGET-REC {: r:n :}
    r 0 >= if r MAKE-LIVE exit then
    a UNSAFE@ {: d:n :}
-   d 0< if exit then
+   d 0< if a KEEP-KERNEL drop exit then
    WALKING @ d CANNOT-RUN ;
-
-
-\ A placed emission's target places the emission holding its record, else
-\ KEEP-KERNEL keeps its kernel code.
-: PLACE-TARGET ( n -- )
-   {: a:n :}
-   a TARGET-REC {: r:n :}
-   r 0 >= if r NSHADOW:EMISSION@ PLACE-EM exit then
-   a KEEP-KERNEL drop ;
 
 
 : LIVE-STEP ( -- )
@@ -369,17 +350,8 @@ variable UNSAFE-COUNT
    r NSHADOW:EMISSION@  r NSHADOW:ENTRY@  r RANGE-END  ['] LIVE-TARGET EACH-TARGET ;
 
 
-\ Every site of a placed emission resolves at placement, its dead parts too.
-: PLACE-STEP ( -- )
-   -1 PLACE-COUNT +!
-   PLACE-COUNT @ PLACE-WORK @ {: e:n :}
-   e 0 e NSHADOW:SIZE ['] PLACE-TARGET EACH-TARGET ;
-
-
 : DRAIN ( -- )
-   begin LIVE-COUNT @ PLACE-COUNT @ + 0 > while
-      LIVE-COUNT @ 0 > if LIVE-STEP else PLACE-STEP then
-   repeat ;
+   begin LIVE-COUNT @ 0 > while LIVE-STEP repeat ;
 
 
 \ Emission e's record whose range [ENTRY@, RANGE-END) holds byte off, or -1.
@@ -390,6 +362,11 @@ variable UNSAFE-COUNT
       dup NSHADOW:ENTRY@ off <=  over RANGE-END off > and if exit then
       REC-NEXT @
    repeat ;
+
+
+\ Whether byte off of placed emission e is a live record's: its records' ranges
+\ tile it, and a live one's targets and data are kept.
+: LIVE-AT? ( n n -- bool ) RANGE-REC LIVE @ 0<> ;
 
 
 \ A quotation's entry a makes the record holding it live, and NSHADOW:PUBLISH
@@ -417,7 +394,9 @@ variable UNSAFE-COUNT
 
 \ An engine ships every routine.
 : REACH-ALL ( -- )
-   NSHADOW:RECORDS 0 ?do 1 i NSHADOW:EMISSION@ PLACED ! loop ;
+   NSHADOW:RECORDS 0 ?do
+      1 i LIVE !  1 i NSHADOW:EMISSION@ PLACED !
+   loop ;
 
 
 \ The dispatch cell of the defer whose record emission e holds, or 0. A
@@ -503,7 +482,7 @@ variable UNSAFE-COUNT
    e NSHADOW:SIZE NATIVE:SPACE {: dst:^ :}
    e PLACING !
    e dst NATIVE:TEXT-VA e OFFSET@ + data ['] TARGET-ADDRESS
-   NATIVE:PLACE
+   ['] LIVE-AT? NATIVE:PLACE
    e TRAILERS @ {: cell:n :}
    cell 0<> if DEFER-MAGIC NATIVE:U64,  cell data execute NATIVE:U64, then ;
 

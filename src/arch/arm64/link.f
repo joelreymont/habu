@@ -41,24 +41,29 @@ public
    A64ASM:ENC-NOP  p 12 + LE:U32! ;
 
 
-\ Emission e's calls and address chains rewritten in dst, which holds its bytes and runs from
-\ link-time address at: calls and code chains to resolve of their target, data chains through data.
-: PATCH ( n ^u8 n [ n -- n ] [ n -- n ] -- )
-   {: e:n dst:^ at:n data resolve :}
+\ dst holds emission e's bytes and runs from link-time address at.
+: PATCH ( n ^u8 n [ n -- n ] [ n -- n ] [ n n -- bool ] -- )
+   {: e:n dst:^ at:n data resolve live :}
    dst e NSHADOW:SIZE + {: end:^ :}
    e NSHADOW:CALL-SITES 0 ?do
       e i NSHADOW:CALL-SITE@ {: s:n :}
-      e i NSHADOW:CALL-TARGET@ resolve execute  e i NSHADOW:CALL-KIND@
-      at s +  dst s +  CALL!
+      e s live execute if
+         e i NSHADOW:CALL-TARGET@ resolve execute  e i NSHADOW:CALL-KIND@
+         at s +  dst s +  CALL!
+      then
    loop
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE@ {: s:n :}
       dst s + {: p:^ :}
       e i NSHADOW:ADDR-SITE-VALUE@ {: v:n :}
-      e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
-         v data execute  p end CHAIN!
+      e s live execute 0= if
+         0 p end CHAIN!
       else
-         v resolve execute  at s +  p CODE-ADDRESS!
+         e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
+            v data execute  p end CHAIN!
+         else
+            v resolve execute  at s +  p CODE-ADDRESS!
+         then
       then
    loop ;
 

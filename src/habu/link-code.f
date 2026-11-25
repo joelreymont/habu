@@ -47,17 +47,18 @@ public
 : CODE-ADDRESS! ( n n ^u8 -- )
    X64? if X64:CODE-ADDRESS! else ARM64:CODE-ADDRESS! then ;
 
-\ A cached host body can have a different machine from the product.
-: PATCH ( n ^u8 n [ n -- n ] [ n -- n ] -- )
-   {: e:n dst:^ at:n data resolve :}
+\ A cached host body can have a different machine from the target. An address site
+\ live answers false for holds a host address, which differs between processes, and is written 0.
+: PATCH ( n ^u8 n [ n -- n ] [ n -- n ] [ n n -- bool ] -- )
+   {: e:n dst:^ at:n data resolve live :}
    e NSHADOW:ARCH@ CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if
-      e dst at data resolve X64:PATCH
-   else e dst at data resolve ARM64:PATCH then ;
+      e dst at data resolve live X64:PATCH
+   else e dst at data resolve live ARM64:PATCH then ;
 
-: PLACE ( n ^u8 n [ n -- n ] [ n -- n ] -- )
-   {: e:n dst:^ at:n data resolve :}
+: PLACE ( n ^u8 n [ n -- n ] [ n -- n ] [ n n -- bool ] -- )
+   {: e:n dst:^ at:n data resolve live :}
    e NSHADOW:BYTES dst e NSHADOW:SIZE BYTE-COPY
-   e dst at data resolve PATCH ;
+   e dst at data resolve live PATCH ;
 
 ;package
 ;package

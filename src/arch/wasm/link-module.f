@@ -49,18 +49,6 @@ variable KERNEL-N                    \ the kernel routines this link added
    e NSHADOW:SIZE ;
 
 
-\ Whether bytes [at, end) of emission e meet a live record's range.
-: LIVE-SPAN? ( n n n -- bool )
-   {: e:n at:n end:n :}
-   e EM-FIRST @
-   begin dup 0 >= while
-      dup LIVE @ 0<> if
-         dup NSHADOW:ENTRY@ end <  over RANGE-END at > and if drop true exit then
-      then
-      REC-NEXT @
-   repeat
-   drop false ;
-
 \ No locals, then `unreachable`.
 : DEAD-BODY$ ( -- str )
    3 DEAD-BODY-RESERVE
@@ -68,7 +56,7 @@ variable KERNEL-N                    \ the kernel routines this link added
    0 DEAD-BODY 3 ;
 
 \ Placed emission e's functions, added in order as WLINK's captured functions.
-\ One no live record's range meets keeps its index with the body `unreachable`
+\ One in a dead record's range keeps its index with the body `unreachable`
 \ and no sites: a placed definer's own unit calls create, `,` and does-patch,
 \ which a module has no function for.
 : FUNCTIONS+ ( n -- )
@@ -77,7 +65,7 @@ variable KERNEL-N                    \ the kernel routines this link added
    e NSHADOW:FUNCTIONS 0 ?do
       e i NSHADOW:FUNCTION-OFFSET@ {: at:n :}
       e i FUNCTION-END {: end:n :}
-      e at end LIVE-SPAN? {: live:bool :}
+      e at LIVE-AT? {: live:bool :}
       live if e NSHADOW:BYTES at +  end at - else DEAD-BODY$ then
       0 0 1 WLINK-ORIGIN:CAPTURED WLINK:FUNCTION+ {: h:n :}
       h NFUN @ <> if E-COMP-STATE throw then
