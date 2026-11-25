@@ -21237,6 +21237,22 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    rest below = IF row EXIT THEN
    rest row w PRE-PUSH ;
 
+\ The `:}` mismatch of the local over group gi of cap, its declared type
+\ against the cell there.
+: LOC-OPEN-FAIL ( n n -- ) {: cap:n gi:n :}
+   FAILSET @ 0=  OK @ and  cap gi XG-READ and IF   \ XG-ROW starts at the group's cell
+      #LOC @ 1 - gi - cells LOCTV + @ {: ann:n :}
+      XG-ROW @ R-RES P>TYPE {: cell:n :}
+      0 UF-SET !  -1 CUR-UPOS !  cell T-RES ann T-RES STALE-NOTE U-FAIL
+      ann FRESH MK-ROW MK-PUSH  cell FRESH MK-ROW MK-PUSH  UF-CAPTURE
+   THEN
+   0 OK ! ;
+
+: LOC-OPEN-DECL ( -- n )   \ the group of a local declared open-width, -1 for none
+   #LOC @ LGRP @ - 0 ?do
+      #LOC @ 1 - i - cells LOCTV + @ SPLICE-OPEN? IF i unloop EXIT THEN
+   loop -1 ;
+
 : LOC-BIND
    \ A prior refusal may leave a partially bound row; the names are already parsed.
    OK @ 0= IF FRESH MK-ROW DCUR ! EXIT THEN
@@ -21254,13 +21270,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    cap  #LOC @ LGRP @ -  XP-OPEN-GROUP {: open:n :}
    open 0 >= IF
       drop
-      FAILSET @ 0=  OK @ and  cap open XG-READ and IF   \ XG-ROW starts at the open cell
-         #LOC @ 1 - open - cells LOCTV + @ {: ann:n :}
-         XG-ROW @ R-RES P>TYPE {: cell:n :}
-         0 UF-SET !  -1 CUR-UPOS !  cell T-RES ann T-RES STALE-NOTE U-FAIL
-         ann FRESH MK-ROW MK-PUSH  cell FRESH MK-ROW MK-PUSH  UF-CAPTURE
-      THEN
-      0 OK !
+      cap open LOC-OPEN-FAIL
    ELSE cap  #LOC @ LGRP @ -  XP-BUNDLE-IN-K? IF
       drop
       LOC-BIND-GROUPS
@@ -21270,6 +21280,9 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
       0 LAYOUT-XPORT !
       OK @ IF cap LOC-CAPTURE-BOUND THEN
    THEN THEN
+   \ An unsigned definition's own inputs show no open cell; the declared
+   \ type still has to be of known width.
+   OK @ IF LOC-OPEN-DECL dup 0 >= IF cap swap LOC-OPEN-FAIL ELSE drop THEN THEN
    unj IF   \ a bind that held leaves whole rows: a later refusal of this token splices nothing
       OK @ IF -1 UNJ-SPLICED ! ELSE decl pre rpre wf0 LOC-UNJ-BIND THEN
    THEN

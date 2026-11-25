@@ -488,6 +488,8 @@ create ERR CAP allot   variable ERR-U
    s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<a>\n" SUBJECT:REFUSED? TTRUE
    s" : CS-L3 ( option<a> -- n option<a> ) {: o:option<a> :} 7 o ;" 70
    s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<a>\n" SUBJECT:REFUSED? TTRUE
+   s" : CS-L3U {: o:option<a> :} 7 o ;" 70
+   s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<a>\n" SUBJECT:REFUSED? TTRUE
    s" : CS-L4 ( -- ) OPTION:NONE 5 {: x:option<t> y:t :} ;" 70
    s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<b>\n" SUBJECT:REFUSED? TTRUE
    s" : CS-L6 ( -- ) OPTION:NONE 5 OPTION:SOME {: x y :} ;" 70
