@@ -4,17 +4,9 @@ split-str
 \
 \ An emitter appends the open unit's body to RAW and files each site it must
 \ find again at its raw offset, HERE-OFF. CLOSE appends the placed unit to OUT:
-\ the prologue, then the body with its insertions, each an offset and a length
-\ in raw order. EPI+ inserts an epilogue, all of one length, before the way
-\ out emitted next. BR+ inserts, after a branch's placeholder, the bytes the
-\ branch's final form has beyond it.
-\
-\ A placed offset is the raw one plus the prologue and the insertions before
-\ it, found by binary search over their prefix sums. At one offset a branch's
-\ insertion comes before an epilogue. An instruction follows both (PLACED); a
-\ label follows the branch's and lands on the epilogue (LANDED). A longer
-\ branch can move another out of its form's reach, so CLOSE asks for every
-\ length until none grows, and a length never shrinks.
+\ the prologue, then the body with RELAX's insertions. EPI+ inserts an
+\ epilogue, the fixed insertion, before the way out emitted next; BR+ files a
+\ branch, whose placeholder is its hole.
 \
 \ Frame, lowest first: env cell, record cells, slots (REC-OFF, SLOT-OFF).
 \
@@ -27,6 +19,7 @@ split-str
 
 require src/lib/heap.f
 require src/lib/vector.f
+require src/compiler/native/relax.f
 require src/habu/t0-emit.f
 require src/habu/t0-label.f
 
@@ -55,8 +48,7 @@ TYPED-VARIABLE RAW ^VEC:vector<u8> SCRATCH-ONLY \ the open unit's body
 TYPED-VARIABLE OUT ^VEC:vector<u8> SCRATCH-ONLY \ the closed units, BYTES
 variable ENV                          \ 1 when this unit keeps a record's address
 DYNAMIC-BUFFER BR-FORM n              \ the open unit's branches: the target's form,
-DYNAMIC-BUFFER BR-ARG n               \ and the form's condition or register,
-DYNAMIC-BUFFER BR-LEN n               \ and the bytes beyond the placeholder
+DYNAMIC-BUFFER BR-ARG n               \ and the form's condition or register
 
 private
 
@@ -65,10 +57,6 @@ variable FRAME-CELLS                  \ machine-stack cells this unit uses
 variable REC-CELLS                    \ this unit's record cells
 variable BODY-AT                      \ OUT offset of the closing unit's raw offset 0
 variable NUNIT                        \ units begun in this emission
-variable NINS                         \ the open unit's insertions, in raw order:
-DYNAMIC-BUFFER INS-AT n               \ raw offset, branch or -1 for an epilogue,
-DYNAMIC-BUFFER INS-BR n               \ and the lengths of those before each, with
-DYNAMIC-BUFFER INS-SUM n              \ all of them last
 variable NPEND
 DYNAMIC-BUFFER PEND-AT n              \ the open unit's address rows: raw first
 DYNAMIC-BUFFER PEND-KIND n            \ byte, kind, target, origin
@@ -82,9 +70,6 @@ DYNAMIC-BUFFER PCALL-LOC n
 variable NSELF
 DYNAMIC-BUFFER SELF-AT n              \ the open unit's `recurse` sites, raw
 DYNAMIC-BUFFER QUOT-SITE n            \ the address in OUT that names each unit
-variable NBR
-DYNAMIC-BUFFER BR-AT n                \ the open unit's branches: raw site, and
-DYNAMIC-BUFFER BR-TO n                \ raw target or -1 while open
 
 : SLOT ( -- n ) EMIT-SELECTED ;
 
@@ -95,12 +80,6 @@ DYNAMIC-BUFFER BR-TO n                \ raw target or -1 while open
 : ADR-PUT ( n n -- ) SLOT ADR-PUT-XT @ execute ;
 : BRANCH-LEN ( n n -- n ) SLOT BRANCH-LEN-XT @ execute ;
 : BRANCH-PUT ( n n n -- ) SLOT BRANCH-PUT-XT @ execute ;
-
-: INS+ ( n n -- ) {: at:n br:n :}
-   NINS @ {: k:n :}
-   k 1 + INS-AT-RESERVE  k 1 + INS-BR-RESERVE
-   at k INS-AT !  br k INS-BR !
-   k 1 + NINS ! ;
 
 public
 
@@ -130,22 +109,18 @@ public
    k 1 + NSELF ! ;
 
 \ The epilogue goes in before the instruction emitted next.
-: EPI+ ( -- ) HERE-OFF -1 INS+ ;
+: EPI+ ( -- ) HERE-OFF RELAX:FIXED+ ;
 
 \ A branch of the form and its argument to raw offset to, -1 until RESOLVE,
 \ with a placeholder of hole bytes, above 0, appended for BRANCH-PUT to write.
 : BR+ ( n n n n -- LABEL:branch ) {: form:n arg:n to:n hole:n :}
-   NBR @ {: k:n :}
-   k 1 + BR-AT-RESERVE  k 1 + BR-TO-RESERVE
-   k 1 + BR-FORM-RESERVE  k 1 + BR-ARG-RESERVE  k 1 + BR-LEN-RESERVE
-   HERE-OFF k BR-AT !  to k BR-TO !
-   form k BR-FORM !  arg k BR-ARG !  0 k BR-LEN !
-   k 1 + NBR !
+   HERE-OFF to hole RELAX:BRANCH+ {: k:n :}
+   k 1 + BR-FORM-RESERVE  k 1 + BR-ARG-RESERVE
+   form k BR-FORM !  arg k BR-ARG !
    RAW @ HERE-OFF hole + VEC:ENSURE
-   HERE-OFF k INS+
    k LABEL:>BRANCH ;
 
-: RESOLVE ( LABEL:branch -- ) HERE-OFF swap LABEL:BRANCH>N BR-TO ! ;
+: RESOLVE ( LABEL:branch -- ) HERE-OFF swap LABEL:BRANCH>N RELAX:TO! ;
 
 : MARK ( -- LABEL:head ) HERE-OFF LABEL:>HEAD ;
 
@@ -169,60 +144,11 @@ private
 : FRAME-BYTES ( -- n )
    ENV @ REC-CELLS @ + FRAME-CELLS @ + CELL * 15 + 15 invert and ;
 
-\ ---- the insertions ----------------------------------------------------------
-: INS-LEN ( n -- n ) INS-BR @ {: br:n :}
-   br 0 < if EPI @ VEC:COUNT else br BR-LEN @ then ;
-
-\ Orders the insertions: by offset, a branch's before an epilogue.
-: INS-KEY ( n -- n ) {: k:n :}
-   k INS-AT @ 2 *  k INS-BR @ 0 < if 1 + then ;
-
-\ How many insertions have a key below n.
-: INS-BELOW ( n -- n ) {: key:n :}
-   0 NINS @
-   begin 2dup < while
-      2dup + 1 rshift {: mid:n :}
-      mid INS-KEY key < if nip mid 1 + swap else drop mid then
-   repeat drop ;
-
-: SUMS ( -- )
-   NINS @ {: n:n :}
-   n 1 + INS-SUM-RESERVE
-   0 n 0 ?do dup i INS-SUM !  i INS-LEN + loop
-   n INS-SUM ! ;
-
 \ Where the instruction at raw offset x lands in OUT, and where a branch to x
 \ lands.
-: PLACED ( n -- n ) {: x:n :}
-   BODY-AT @ x +  x 1 + 2 * INS-BELOW INS-SUM @ + ;
+: PLACED ( n -- n ) RELAX:PLACED BODY-AT @ + ;
 
-: LANDED ( n -- n ) {: x:n :}
-   BODY-AT @ x +  x 2 * 1 + INS-BELOW INS-SUM @ + ;
-
-: BR-DIST ( n -- n ) {: k:n :}
-   k BR-TO @ LANDED  k BR-AT @ PLACED - ;
-
-: GROW ( n -- bool ) {: k:n :}
-   k  k BR-DIST  BRANCH-LEN {: len:n :}
-   len k BR-LEN @ > dup if len k BR-LEN ! then ;
-
-: GROWN? ( -- bool ) false NBR @ 0 ?do i GROW or loop ;
-
-: SIZE ( -- ) begin SUMS GROWN? 0= until ;
-
-: COPY ( n n -- ) {: from:n to:n :}
-   RAW @ VEC:BYTES drop from +  to from -  OUT @ VEC:APPEND ;
-
-\ BRANCH-PUT writes over a branch's placeholder and its insertion.
-: INSERT ( n -- ) {: k:n :}
-   k INS-BR @ 0 < if EPI @ VEC:BYTES OUT @ VEC:APPEND exit then
-   OUT @ OUT-OFF k INS-LEN + VEC:ENSURE ;
-
-: COPY-BODY ( -- )
-   0 NINS @ 0 ?do
-      i INS-LEN 0 <> if i INS-AT @ COPY  i INSERT  i INS-AT @ then
-   loop
-   HERE-OFF COPY ;
+: LANDED ( n -- n ) RELAX:LANDED BODY-AT @ + ;
 
 \ ---- the closed unit's sites -------------------------------------------------
 : FILE-ADDR ( n n n n -- ) {: at:n kind:n to:n origin:n :}
@@ -249,14 +175,16 @@ private
 : PUT-SELVES ( -- ) NSELF @ 0 ?do i SELF-AT @ PLACED SELF-PUT loop ;
 
 : PUT-BRANCHES ( -- )
-   NBR @ 0 ?do i  i BR-AT @ PLACED  i BR-TO @ LANDED  BRANCH-PUT loop ;
+   RELAX:BRANCHES 0 ?do
+      i  i RELAX:BR-AT @ PLACED  i RELAX:BR-TO @ LANDED  BRANCH-PUT
+   loop ;
 
 : UNIT-BEGIN ( -- )
    RAW @ 0 VEC:RESIZE
    OUT-OFF EMIT-UNIT+
    NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !  0 NINS !
-   0 NPEND !  0 NPCALL !  0 NSELF !  0 NBR !
+   0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !
+   0 NPEND !  0 NPCALL !  0 NSELF !  RELAX:RESET
    UNIT-RESET ;
 
 : EMPTY ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
@@ -289,7 +217,8 @@ public
    OUT-OFF BODY-AT !
    EPI @ 0 VEC:RESIZE
    bytes EPI @ EPILOGUE
-   SIZE COPY-BODY
+   EPI @ VEC:COUNT ['] BRANCH-LEN RELAX:SIZE
+   RAW @ OUT @ EPI @ VEC:BYTES RELAX:COPY
    FILE-ADDRS FILE-CALLS PUT-SELVES PUT-BRANCHES ;
 
 : BYTES ( -- str ) OUT @ VEC:BYTES ;

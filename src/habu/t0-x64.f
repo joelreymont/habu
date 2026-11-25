@@ -55,6 +55,7 @@ require src/compiler/native/callback-stub.f
 require src/habu/t0-emit.f
 require src/habu/t0-label.f
 require src/habu/t0-place.f
+require src/compiler/native/relax.f
 
 package COMP
 package X86-64
@@ -89,11 +90,6 @@ variable STEPPED                      \ nonzero when the last access moved rbx
 
 0 constant FORM-JMP
 1 constant FORM-JCC
-
-\ A branch's placeholder is its rel8 form; its rel32 form is so much longer.
-2 constant HOLE
-3 constant JMP-GROWTH
-4 constant JCC-GROWTH
 
 : SINK ( -- ^VEC:vector<u8> ) RAW @ ;
 
@@ -206,22 +202,17 @@ variable STEPPED                      \ nonzero when the last access moved rbx
 
 : ADR-PUT ( n n -- ) {: at:n to:n :}  to at 7 + -  at 3 + REL32! ;
 
-: BRANCH-LEN ( n n -- n ) {: k:n d:n :}
-   d HOLE - SHORT? if 0 exit then
-   k BR-FORM @ FORM-JMP = if JMP-GROWTH exit then
-   JCC-GROWTH ;
+\ Branch k's rel8 opcode.
+: OPCODE ( n -- n ) {: k:n :}
+   k BR-FORM @ FORM-JMP = if $EB exit then
+   $70 k BR-ARG @ + ;
 
-\ EB or 70+cc, rel8; else E9 or 0F 80+cc, rel32.
+: BRANCH-LEN ( n n -- n ) {: k:n d:n :}  k OPCODE d BRANCH-GROWTH ;
+
 : BRANCH-PUT ( n n n -- ) {: k:n at:n to:n :}
-   at HOLE + k BR-LEN @ + {: end:n :}
-   to end - {: d:n :}
-   k BR-FORM @ FORM-JMP = {: jmp:bool :}
-   k BR-LEN @ 0= if
-      jmp if $EB else $70 k BR-ARG @ + then at 1 PUT
-      d at 1 + 1 PUT exit
-   then
-   jmp if $E9 at 1 PUT else $800F k BR-ARG @ 8 lshift + at 2 PUT then
-   d end 4 - REL32! ;
+   k RELAX:BR-LEN @ {: growth:n :}
+   OUT @ at VEC:AT  k OPCODE  growth  to at - BRANCH-HOLE - growth -
+   X64ASM:BRANCH-PUT ;
 
 \ ---- the body ----------------------------------------------------------------
 \ A reading quotation receives its record in rdi.
@@ -652,7 +643,7 @@ variable STEPPED                      \ nonzero when the last access moved rbx
 \ in the open unit's list, and a head a raw offset.
 
 \ A branch of the form, with its condition or 0, to a raw offset or -1.
-: BRANCH ( n n n -- LABEL:branch ) SETTLE HOLE BR+ ;
+: BRANCH ( n n n -- LABEL:branch ) SETTLE BRANCH-HOLE BR+ ;
 
 : RESOLVE ( LABEL:branch -- ) SETTLE PLACE:RESOLVE  0 HELD ! ;
 
