@@ -2194,6 +2194,24 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" message" s" this quotation does more than the type that keeps it states" FIELD-HAS
    0 s" RUN" 3 36 91 94 AT ;
 
+: PAYLOAD-LINES ( -- )
+   SB-RESET
+   s" TYPED-VARIABLE KV [ -- ]" SB-APPEND LF+
+   s" ENUM act VARIANT idle ;VARIANT VARIANT fire FIELD q [ [ -- ] -- [ -- ] ] ;VARIANT ;ENUM" SB-APPEND LF+ ;
+
+\ A quotation type inside a matched payload's quotation type counts as kept.
+: TEST-PAYLOAD-QUOT ( -- )
+   s" a quotation that parses, taken by a matched payload's quotation" T-LABEL
+   PAYLOAD-LINES
+   s" : RUN ( act -- ) MATCH act idle OF ENDOF fire OF [: parse-name type ;] swap execute KV ! ENDOF ;MATCH ;" SB-APPEND LF+
+   s" payload-parses.f" FIXTURE!
+   0 s" E-MISMATCH" s" execute" s" :3:77" 3 77 189 196 REJECTED-BOTH
+   s" a quotation that reads a local, taken by a matched payload's quotation" T-LABEL
+   PAYLOAD-LINES
+   s" : RUN ( act n -- ) {: x:n :} MATCH act idle OF ENDOF fire OF [: x . ;] swap execute KV ! ENDOF ;MATCH ;" SB-APPEND LF+
+   s" payload-local.f" FIXTURE!
+   0 s" E-LOCAL-ESCAPE" s" execute" s" :3:77" 3 77 189 196 REJECTED-BOTH ;
+
 \ The check, which compiles nothing, names a mixed-case private twin as the
 \ load does: as its declaration spells it, never folded.
 : CASE-MSG$ ( -- str )
@@ -4651,6 +4669,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-QUOT-LEFT-JUDGED
    TEST-QUOT-LEFT-RECORD
    TEST-QUOT-LEFT-FACT
+   TEST-PAYLOAD-QUOT
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON
    TEST-SECOND-ELSE

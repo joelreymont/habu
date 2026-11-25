@@ -3756,8 +3756,8 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
       TFC-I @ 1 + TFC-I !
    REPEAT ;
 
-\ TFC-SCH-TERM's mode: a term for a value in use, for a value a constructor
-\ stores, or for a question about an instance, whose term is thrown away.
+\ TFC-SCH-TERM's mode: a term for a value in use, for a value that is kept,
+\ or for a question about an instance, whose term is thrown away.
 0 constant TFC-USE
 1 constant TFC-STORE
 2 constant TFC-ASK
@@ -3796,7 +3796,7 @@ defer TFC-QUOT-ROW ( n n n -- n )   \ ( rownode base mode -- row )
          din dout rbase rbase MK-QUOT         \ no return clause: neutral rin = rout
       THEN
       dup Q>FACTS node SCHEMA-QUOT-FACTS@ or over Q-FACTS!
-      \ A schema's quotation in a constructor's input is stored, so it reads no local.
+      \ A kept quotation reads no local.
       mode TFC-STORE = IF dup Q>BLOCK PAY NSCOPE-RAISE THEN EXIT
    THEN
    s" tfam: unsupported construct payload schema" EXIT-STATUS:INTERNAL die ;
@@ -3805,7 +3805,9 @@ defer TFC-QUOT-ROW ( n n n -- n )   \ ( rownode base mode -- row )
 : TFC-QUOT-ROW-IMPL ( n n n -- n ) {: rownode:n base:n mode:n :}
    base 0
    BEGIN dup rownode SCHEMA-ROW-COUNT@ < WHILE
-      dup rownode swap SCHEMA-ROW-ELEM@ mode TFC-SCH-TERM
+      \ A quotation type inside a quotation type is kept whatever the use.
+      dup rownode swap SCHEMA-ROW-ELEM@
+      mode TFC-ASK = IF TFC-ASK ELSE TFC-STORE THEN TFC-SCH-TERM
       swap >r
       \ A question's term is thrown away, so its row leaves the instance's
       \ arguments their kinds.
