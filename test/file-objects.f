@@ -2255,13 +2255,35 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" build two rewrites an object" LABEL  n 0 > TTRUE
    s" prog-v" s\" 0\n" s" the program prints /dev/null's byte count" NEST-RUN ;
 
+\ main.f's WEB: an HTTP server on port 0, started and stopped around n requests of its route, whose answers'
+\ bodies it prints. Their connections are open at once, each with a worker, which registers cleanups on itself.
+: WRITE-WEB ( -- )
+   s\" TYPED-VARIABLE CFG HTTP:config\n" SRC+
+   s\" : UP ( -- ) AIO:START  s\" GET\" s\" /hi\" [: nip s\" hello\" HTTP:BODY! ;] HTTP:ROUTE\n" SRC+
+   s\"    $7F000001 CFG HTTP-CONFIG:ADDRESS !  0 CFG HTTP-CONFIG:PORT !\n" SRC+
+   s\"    8 CFG HTTP-CONFIG:WORKERS !  500 >MS CFG HTTP-CONFIG:IDLE !  CFG HTTP:START ;\n" SRC+
+   s\" : DOWN ( -- ) HTTP:STOP  AIO:STOP ;\n" SRC+
+   s\" : DIAL ( -- TCP4:connection ) $7F000001 TCP4:ADDRESS HTTP:PORT TCP4:PORT TCP4:CONNECT\n" SRC+
+   s\"    MATCH TCP4:connect-result connected OF ENDOF failed OF drop 1 throw ENDOF ;MATCH ;\n" SRC+
+   s\" : DONE ( TCP4:status -- ) MATCH TCP4:status ok OF ENDOF failed OF drop 1 throw ENDOF ;MATCH ;\n" SRC+
+   s\" : GET ( TCP4:connection -- )\n" SRC+
+   s\"    s\\\" GET /hi HTTP/1.1\\r\\nHost: h\\r\\nConnection: close\\r\\n\\r\\n\" TCP4:WRITE DONE ;\n" SRC+
+   s\" 256 SCRATCH-BUFFER: ANSWER  CAST: BLEN>N ( NUM:byte-len -- n )\n" SRC+
+   s\" : HEAR ( TCP4:connection -- ) ANSWER 256 TCP4:TRANSFER-BYTES TCP4:READ-EXACT\n" SRC+
+   s\"    MATCH TCP4:read-result data OF drop 2 throw ENDOF failed OF drop 1 throw ENDOF\n" SRC+
+   s\"       closed OF BLEN>N ANSWER + 5 - 5 >str type cr ENDOF ;MATCH ;\n" SRC+
+   s\" : GETS ( n -- ) {: n:n :} n 0= if exit then  DIAL {: c:TCP4:connection :}\n" SRC+
+   s\"    n 1 - RECURSE  c GET  c HEAR  c TCP4:CLOSE DONE ;\n" SRC+
+   s\" : WEB ( n -- ) UP GETS DOWN ;\n" SRC+ ;
+
 \ The calls sequence's main.f: its load calls each library word once and leaves a pseudo-terminal and as many
 \ files as its TMPDIR's last digit says open; its program, which keeps what it reaches, calls them again.
 : WRITE-CALLS ( -- )
    L$ s" calls" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
    s" abc" WRITE-DATA
    s\" require src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/process-tree.f\n" SRC+
-   s\" require src/lib/net/http-static.f\nrequire src/lib/pty.f\n" SRC+
+   s\" require src/lib/net/http.f\nrequire src/lib/net/http-response.f\nrequire src/lib/net/http-router.f\n" SRC+
+   s\" require src/lib/net/http-static.f\nrequire src/lib/net/tcp4.f\nrequire src/lib/pty.f\n" SRC+
    s\" require src/lib/heap.f\nrequire src/lib/vector.f\n" SRC+
    s\" require src/lib/secret.f\nrequire src/lib/secret/dir.f\n" SRC+
    s\" require src/arch/wasm/link.f\nrequire src/lib/pty-harness.f\n" SRC+
@@ -2286,11 +2308,13 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" TASK:MIN-STACK TASK:TASK WAITER\n: REST ( -- ) 1 >MS AIO:TIMEOUT AIO:AWAIT drop  0 TASK:RETURN ;\n" SRC+
    s\" : WAIT ( -- ) AIO:START  ['] REST WAITER TASK:ACTIVATE  WAITER TASK:JOIN\n" SRC+
    s\"    MATCH result ok OF drop ENDOF err OF throw ENDOF ;MATCH  AIO:STOP ;\n" SRC+
-   s\" ASK SERVE TYPE-LINE BIND  FN WLINK:LINK drop  CHILD HOLD WAIT\n" SRC+
+   WRITE-WEB
+   s\" ASK  8 WEB  SERVE TYPE-LINE BIND  FN WLINK:LINK drop  CHILD HOLD WAIT\n" SRC+
    s\" : MAIN ( -- ) ASK  HTTP:STATIC-COUNT . HTTP:STATIC-CLOSE\n   s\" " SRC+
    NEST-DIR NEST-DIR-U @ >str SRC+
    s\" \" HTTP:STATIC-ROOT HTTP:STATIC-COUNT .  LINE-EDITOR:READ-LINE drop\n" SRC+
-   s\"    [: KEY ;] catch SECRET:E-CONFIG = bool>n .  FN dup . WLINK:LINK drop  CHILD WAIT ;\n" SRC+  s" main.f" NEST-WRITE ;
+   s\"    [: KEY ;] catch SECRET:E-CONFIG = bool>n .  FN dup . WLINK:LINK drop  CHILD WAIT\n" SRC+
+   s\"    1 WEB ;\n" SRC+  s" main.f" NEST-WRITE ;
 
 \ d.txt was last read n seconds and last written 1 second past the epoch.
 : ACCESSED ( n -- )
@@ -2307,8 +2331,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build rewrites an object" LABEL  F$ REWRITTEN 0 > TTRUE
    m L$ s" prog" IN$ WHOLE-FILE {: p2:str :}
    s" the program is the first build's" LABEL  p1 p2 STR:= TTRUE
-   s" prog" s\" 0\n2\n-1\n0\n"
-   s" the program serves nothing, then d.txt and main.f, reads no secret, links function 0, runs a child and waits"
+   s" prog" s\" 0\n2\n-1\n0\nhello\n"
+   s" the program serves nothing, then d.txt and main.f, reads no secret, links 0, runs a child, waits and serves /hi"
    NEST-RUN ;
 
 \ Guards a program against what the library words a load ran left in their cells.

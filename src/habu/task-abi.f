@@ -49,9 +49,11 @@ public
    CELL +FIELD TCB.RESULT
    CELL +FIELD TCB.RESULT-SET
    CELL +FIELD TCB.JOINER
-   \ The head of the task's cleanup chain: 0 for none, else the row plus one.
+   \ The head of the task's declared cleanups: 0 for none, else the row plus one.
    CELL +FIELD TCB.EXIT-SLOT
    SEMAPHORE-BYTES +FIELD TCB.DONE
+   \ The head of its run cleanups, the same way.
+   CELL +FIELD TCB.EXIT-RUN
 END-STRUCTURE
 
 NULL-PTR TCB.XT-CELL NULL-PTR - constant XT-OFF

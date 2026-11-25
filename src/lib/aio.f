@@ -1058,9 +1058,7 @@ INSTALL-HOST
 
 \ ---- the cleanup a submitting task registers ---------------------------------
 \ Without it a task that ends while one of its operations is in flight would be
-\ woken by the loop through a TCB whose memory the join has released. It is one
-\ entry in that task's exit chain, so a task that submits keeps its own
-\ cleanups: they run beside this one, newest registration first.
+\ woken by the loop through a TCB whose memory the join has released.
 
 \ A cancel is rejected only after an enter that failed or was taken short.
 : TRY-CANCEL ( n -- ) {: target:n :}

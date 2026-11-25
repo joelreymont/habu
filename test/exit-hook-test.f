@@ -611,22 +611,68 @@ variable AWAY-KERNELS
    OUT poutu >str S\" 21\n" T$=
    poutu perru prc 0 EXPECT-RC ;
 
-\ 128 TASK:NEW tasks push the cleanups' rows into a mapped chunk, which no
-\ target can carry: the linker rejects the cell EXIT-CHUNKS, exit 70.
+\ Cleanup k declared on CHILD-TASK.
+: HOLD-TEXT ( n -- ) {: k:n :}
+   s" : H" TEXT+ k FMT:INT$ TEXT+ S\"  ( -- ) ; ' H" TEXT+
+   k FMT:INT$ TEXT+ S\"  HOLD\n" TEXT+ ;
+
+\ HOLD, which declares a cleanup on CHILD-TASK, and n cleanups declared with it.
+: HOLDS-TEXT ( n -- ) {: n:n :}
+   S\" : HOLD ( [ -- ] -- ) CHILD-TASK TASK:AT-EXIT ;\n" TEXT+
+   n 0 ?do i HOLD-TEXT loop ;
+
+\ Builds the source, whose last declared cleanup the table has no room for: its
+\ run row is in a mapped chunk, which no target can carry, and the linker
+\ rejects the cell EXIT-SPILL, exit 70.
+: EXPECT-SPILL ( str -- ) {: label:str :}
+   S\" : MAIN ( -- ) ;\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   label T-LABEL
+   outu erru rc 70 EXPECT-RC
+   erru SCRIPT$ ERR-HAS? TTRUE
+   erru S\" in EXIT-SPILL +0\n" ERR-HAS? TTRUE
+   erru s" outside hb's data and the build's space" ERR-HAS? TTRUE
+   erru s" or clear the cell before the file ends" ERR-HAS? TTRUE ;
+
+\ 129 declared cleanups are one more than the table holds.
 : CASE-BUILD-CHUNK ( -- )
    s" cleanups-chunk.f" s" cleanups-chunk-out" CASE-PATHS
    CLEANUPS-TEXT
-   S\" : CHILD-HOLD ( n -- ) {: k:n :} k 0= if ['] CHILD-FIRST CHILD-TASK TASK:AT-EXIT\n" TEXT+
-   S\"    ['] CHILD-SECOND CHILD-TASK TASK:AT-EXIT exit then\n" TEXT+
-   S\"    TASK:MIN-STACK TASK:NEW {: t:^ :} [: ;] t TASK:AT-EXIT k 1 - RECURSE t TASK:FREE ;\n" TEXT+
-   S\" 128 CHILD-HOLD\n: MAIN ( -- ) ;\n" TEXT+
+   129 HOLDS-TEXT
+   s" a source that declares more cleanups than the table holds is rejected" EXPECT-SPILL ;
+
+\ A load whose task registers CLEAN on itself and is joined.
+: SELF-CLEAN-TEXT ( -- )
+   0 TEXT-U !
+   S\" require src/lib/task.f\nTASK:MIN-STACK TASK:TASK CHILD-TASK\n" TEXT+
+   S\" : CLEAN ( -- ) s\q cleaned\q type cr ;\n" TEXT+
+   S\" : SEED ( -- ) ['] CLEAN TASK:SELF TASK:AT-EXIT 0 TASK:RETURN ;\n" TEXT+
+   S\" : GO ( [ -- ] -- ) CHILD-TASK TASK:ACTIVATE CHILD-TASK TASK:JOIN\n" TEXT+
+   S\"    MATCH result ok OF drop ENDOF err OF . ENDOF ;MATCH ;\n" TEXT+
+   S\" ' SEED GO\n" TEXT+ ;
+
+\ The row the task's own registration took is the load's; the target carries
+\ the declared one.
+: CASE-BUILD-SELF-CLEANUP ( -- )
+   s" cleanups-self.f" s" cleanups-self-out" CASE-PATHS
+   SELF-CLEAN-TEXT
+   S\" ' CLEAN CHILD-TASK TASK:AT-EXIT\n: MAIN ( -- ) [: 0 TASK:RETURN ;] GO ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
-   s" a source that leaves a cleanup chunk mapped is rejected" T-LABEL
-   outu erru rc 70 EXPECT-RC
-   erru SCRIPT$ ERR-HAS? TTRUE
-   erru S\" in EXIT-CHUNKS +0\n" ERR-HAS? TTRUE
-   erru s" outside hb's data and the build's space" ERR-HAS? TTRUE
-   erru s" or clear the cell before the file ends" ERR-HAS? TTRUE ;
+   s" a build whose task registered the cleanup it declares" T-LABEL
+   outu erru rc 0 EXPECT-RC
+   rc 0<> if exit then
+   RUN-TARGET {: poutu:n perru:n prc:n :}
+   s" the target's task runs a cleanup the load's task had registered" T-LABEL
+   OUT poutu >str S\" cleaned\n" T$=
+   poutu perru prc 0 EXPECT-RC ;
+
+\ The run row that holds CLEAN serves its declaration, the table being full.
+: CASE-BUILD-SELF-CHUNK ( -- )
+   s" cleanups-self-chunk.f" s" cleanups-self-chunk-out" CASE-PATHS
+   SELF-CLEAN-TEXT
+   128 HOLDS-TEXT
+   S\" ' CLEAN HOLD\n" TEXT+
+   s" a source that declares a run row's cleanup past the table is rejected" EXPECT-SPILL ;
 
 : BODY ( -- )
    PREPARE
@@ -651,7 +697,9 @@ variable AWAY-KERNELS
    CASE-REPL-RECORD
    CASE-BUILD-ACTION
    CASE-BUILD-CLEANUPS
-   CASE-BUILD-CHUNK ;
+   CASE-BUILD-CHUNK
+   CASE-BUILD-SELF-CLEANUP
+   CASE-BUILD-SELF-CHUNK ;
 
 : RUN ( -- )
    T-RESET

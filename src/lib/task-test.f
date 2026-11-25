@@ -100,6 +100,8 @@ TASK:MIN-STACK TASK:TASK JOIN-CHAIN-BAD
 TASK:MIN-STACK TASK:TASK JOIN-NEST
 TASK:MIN-STACK TASK:TASK JOIN-REDO
 TASK:MIN-STACK TASK:TASK JOIN-TWICE
+TASK:MIN-STACK TASK:TASK JOIN-MIXED
+TASK:MIN-STACK TASK:TASK JOIN-BOTH
 TASK:MIN-STACK TASK:TASK BUILD-A
 TASK:MIN-STACK TASK:TASK BUILD-B
 TASK:MIN-STACK TASK:TASK SLEEP-WORKER
@@ -1106,6 +1108,38 @@ variable EXIT-SEEDING
    JOIN-TWICE APP-WAIT-DONE
    JOIN-TWICE TASK-EXIT-MARK TASK:HIS @ 23 T=
    JOIN-TWICE TASK:JOIN JOIN-AGAIN-N JOIN-OK= ;
+
+\ The cleanups a task registered on itself run before those declared on it while
+\ it was EMPTY, even one declared since: 321 is EXIT-SEED, which the first
+\ ending's body registered, then JOIN-ORDER2 and JOIN-ORDER1, newest first.
+: TASK-TEST-EXIT-MIXED ( -- )
+   0 EXIT-SEEDING !
+   ['] JOIN-ORDER1 JOIN-MIXED TASK:AT-EXIT
+   ['] EXIT-SEED-WORK JOIN-MIXED TASK:ACTIVATE
+   JOIN-MIXED TASK:JOIN JOIN-AGAIN-N JOIN-OK=
+   ['] JOIN-ORDER2 JOIN-MIXED TASK:AT-EXIT
+   ['] JOIN-AGAIN-WORK JOIN-MIXED TASK:ACTIVATE
+   JOIN-MIXED APP-WAIT-DONE
+   JOIN-MIXED TASK-EXIT-MARK TASK:HIS @ 321 T=
+   JOIN-MIXED TASK:JOIN JOIN-AGAIN-N JOIN-OK= ;
+
+: EXIT-BOTH-WORK ( -- )
+   ['] JOIN-MARK TASK:SELF TASK:AT-EXIT
+   ['] EXIT-SEED TASK:SELF TASK:AT-EXIT
+   JOIN-AGAIN-N TASK:RETURN ;
+
+\ A quotation declared on the task and registered by it is one registration,
+\ whichever came first: 4 is EXIT-SEED once, then JOIN-MARK once.
+: TASK-TEST-EXIT-BOTH ( -- )
+   0 EXIT-SEEDING !
+   ['] JOIN-MARK JOIN-BOTH TASK:AT-EXIT
+   ['] EXIT-BOTH-WORK JOIN-BOTH TASK:ACTIVATE
+   JOIN-BOTH TASK:JOIN JOIN-AGAIN-N JOIN-OK=
+   ['] EXIT-SEED JOIN-BOTH TASK:AT-EXIT
+   ['] EXIT-BOTH-WORK JOIN-BOTH TASK:ACTIVATE
+   JOIN-BOTH APP-WAIT-DONE
+   JOIN-BOTH TASK-EXIT-MARK TASK:HIS @ 4 T=
+   JOIN-BOTH TASK:JOIN JOIN-AGAIN-N JOIN-OK= ;
 
 variable HALTED-SEEN
 variable HALTED-PARKED
@@ -2280,8 +2314,8 @@ variable BIND-PAIR-Q-WON
 
 $30 constant NEW-N                   \ past one pool chunk of 42 records
 300 constant NEW-ROUNDS
-300 constant NEW-HOLD-N              \ tasks held at once, two AT-EXIT rows each
-NEW-HOLD-N 2 * constant NEW-HELD-ROWS  \ past the $80 rows of the image's table
+400 constant NEW-HOLD-N              \ tasks held at once, two AT-EXIT rows each
+NEW-HOLD-N 2 * constant NEW-HELD-ROWS  \ past one chunk of 682 run rows
 TASK:SEMAPHORE NEW-GATE
 TASK:MIN-STACK TASK:TASK NEW-MAKER
 NEW-HOLD-N TYPED-BUFFER NEW-TASKS ^n
@@ -2405,8 +2439,8 @@ variable NEW-STRAY
 : NEW-EXIT-A ( -- ) 0 NEW-SLOT-RAN ;
 : NEW-EXIT-B ( -- ) 1 NEW-SLOT-RAN ;
 
-\ The first cleanup is registered again after the second, which the chain
-\ already holding it refuses, in a chunk row for most tasks.
+\ The first cleanup is registered again after the second; the chain holds it, so
+\ it takes no second row.
 : EXIT-HOLD-ROUND ( -- n )
    NEW-HELD-ROWS 0 ?do 0 i NEW-RAN ! loop
    0 NEW-STRAY !
@@ -2426,7 +2460,7 @@ variable NEW-STRAY
    NEW-HOLD-N 0 ?do i NEW-TASKS @ TASK:FREE loop ;
 
 : TASK-TEST-EXIT-GROW ( -- )
-   s" tasks holding more AT-EXIT rows than the table run each cleanup once" T-LABEL
+   s" tasks holding more AT-EXIT rows than a chunk run each cleanup once" T-LABEL
    EXIT-HOLD-ROUND 0 T=
    s" rows given back serve the next round" T-LABEL
    EXIT-HOLD-ROUND 0 T= ;
@@ -2543,6 +2577,8 @@ variable NEW-STRAY
    TASK-TEST-EXIT-NESTED
    TASK-TEST-EXIT-REDO
    TASK-TEST-EXIT-TWICE
+   TASK-TEST-EXIT-MIXED
+   TASK-TEST-EXIT-BOTH
    TASK-TEST-HALTED
    TASK-TEST-HALT-DUE
    TASK-TEST-JOIN-HALTED
