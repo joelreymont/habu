@@ -319,7 +319,7 @@ public
    rec XREF-FOUND? 0= if 0 exit then
    rec XREF-START 0= if 0 exit then
    rec XREF-CODE-BYTES 0= if 0 exit then
-   rec XREF-FLAGS DKIND:MASK and 0<> if 0 exit then
+   rec XREF-FLAGS DKIND:MASK DNAME-COPY or and 0<> if 0 exit then
    rec XREF-START  rec XREF-LEN +  {: meta:n :}
    meta TRAILER@ DEFER-MAGIC <> if 0 exit then
    meta 8 + TRAILER@ ;
@@ -330,6 +330,15 @@ public
    rec XREF-FOUND? 0= if 0 exit then
    rec XREF-RETIRED? if 0 exit then
    rec TRAILER-CELL ;
+
+\ ---- and the steps a copy word's mention lowers -------------------------------
+\ An immediate word runs where it is mentioned, so it is none.
+: COPY? ( ^n -- bool ) XREF-FLAGS DNAME-COPY DNAME-IMM or and DNAME-COPY = ;
+
+\ A copy word's steps: its trailer holds their byte count, then the steps.
+: COPY-STEPS ( ^n -- str ) {: rec:^ :}
+   rec XREF-START  rec XREF-LEN +  >TRAILER-CELL BYTE-VIEW {: at:^ :}
+   at 1+  at c@ ;
 
 \ ---- and the engine word a does> body leaves through --------------------------
 private

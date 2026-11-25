@@ -31,6 +31,8 @@ require src/compiler/native/callback-stub.f
 require src/compiler/native/shadow.f
 require src/habu/t0-emit.f
 require src/compiler/native/emission.f
+require src/lib/span.f
+require src/arch/wasm/leb.f
 
 package COMP
 
@@ -636,6 +638,12 @@ variable FREE                       \ bit k set: no entry holds vreg k
    VS-N @ 0= if -1 EMIT-DSP+ exit then
    TOP REMOVE ;
 
+\ While a copy word's steps are lowered, how many follow the one being lowered,
+\ else -1 (COPY WORDS).
+variable STEPS-LEFT
+
+: REPLAYING? ( -- bool ) STEPS-LEFT @ 0 >= ;
+
 \ ---- the scans' measures -----------------------------------------------------
 \ A stack word moves whole values, by the cells the checker measured for each
 \ operand at the token (position 0 the top; r> r@ 2r> 2r@ from the return row).
@@ -672,10 +680,14 @@ variable HEAD-BINDS                  \ the binds of the scan at the text's start
 DYNAMIC-BUFFER WS n                  \ the operands' cells, position 0 the top
 variable WS-K                        \ operands the word moves
 
+\ A replayed step's operands are one cell each, whatever the caller's token
+\ measured.
 : WIDTHS ( ^u8 n -- ) {: a:^ k:n :}
    a TXT$ - {: at:n :}
    k WS-RESERVE
-   k 0 ?do at i OPERAND-CELLS i WS ! loop
+   k 0 ?do
+      REPLAYING? if 1 else at i OPERAND-CELLS then  i WS !
+   loop
    k WS-K ! ;
 
 : WIDE? ( -- bool )
@@ -810,10 +822,12 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
 \ One more than the condition (CC>N) of a compare whose flag is still
 \ in the condition codes, 0 none. A compare leaves it only when the next token
 \ is `if`, `while` or `until`, whose DO-IF, DO-WHILE or DO-UNTIL takes it, so
-\ no other word ever finds it set.
+\ no other word ever finds it set. Of a replay's steps only the last may leave
+\ it: the row after the mention is the branch.
 variable PENDING
 
 : BRANCH-NEXT? ( -- bool )
+   STEPS-LEFT @ 0 > if false exit then
    ORD @ {: k:n :}
    k ROWS @ >= if false exit then
    k ROW-KIND @ K-CONTROL <> if false exit then
@@ -2015,6 +2029,144 @@ DYNAMIC-BUFFER COUNT-SLOT n
       NO-INLINE
    endcase ;
 
+\ ---- copy words --------------------------------------------------------------
+\ COPY WORDS. A copy word's body is at most COPY-MAX steps: an integer, real or
+\ character literal, a `constant`'s value, an operation INLINE lowers with no
+\ call over one-cell operands, and the steps of a copy word it mentions. A
+\ mention lowers the steps in the caller's registers instead of a call
+\ (REPLAY); one whose last step is a comparison stays a call unless the
+\ caller's next row branches on it, since a flag costs more than a call. The
+\ publisher places after the word's code the steps' byte count, the steps, each
+\ its operation's code or STEP-LIT and the literal's signed LEB128, and zero
+\ bytes to a whole instruction (CODED$); the count is one byte, so COPY-MAX is
+\ at most 23.
+\
+\ The recorder reads the definition's rows as the walk lowers them and is
+\ RECORDING or LOST. Its inputs: a literal (LIT+) or an operation (OP+) adds a
+\ step, a replayed mention (REPLAY) adds its steps, and any other row, a wide
+\ operand, an operation of UNSTEPPED? or a step past COPY-MAX (LOSE) goes to
+\ LOST, which no input leaves. A walk starts RECORDING, a `does>` definer's
+\ and a `define-word` product's LOST. PUBLISH-IT reads the state once, at `;`.
+4 constant COPY-MAX
+0 constant LOST
+1 constant RECORDING
+variable RECORDER
+variable STEPS-N                     \ the steps recorded
+DYNAMIC-BUFFER STEP-OP n
+DYNAMIC-BUFFER STEP-VAL n            \ a literal step's value
+0 constant STEP-LIT                  \ a literal's STEP-OP, no operation's code
+10 constant LEB-MOST                 \ the bytes of the longest signed LEB128
+DYNAMIC-BUFFER CODED u8              \ the steps as the publisher takes them
+variable GIVEN-N                     \ the steps of the word mentioned
+DYNAMIC-BUFFER GIVEN-OP n
+DYNAMIC-BUFFER GIVEN-VAL n
+
+: RECORD-START ( -- )
+   0 STEPS-N !
+   COPY-MAX STEP-OP-RESERVE  COPY-MAX STEP-VAL-RESERVE
+   NDEFINITION:M-DOES @ 0<>  data-base BODY-ITEMS:EFFECT-CELL + @ 0<>  or
+   if LOST else RECORDING then RECORDER ! ;
+
+: LOSE ( -- ) LOST RECORDER ! ;
+
+: STEP+ ( n n -- ) {: op:n v:n :}
+   RECORDER @ LOST = if exit then
+   STEPS-N @ {: k:n :}
+   k COPY-MAX = if LOSE exit then
+   op k STEP-OP !  v k STEP-VAL !
+   k 1+ STEPS-N ! ;
+
+: LIT+ ( n -- ) STEP-LIT swap STEP+ ;
+
+\ How many operands operation code compares: `0=` `0<` one, `=` `<` `>` `<>`
+\ `<=` `>=` two, any other operation none.
+: COMPARED ( n -- n ) {: code:n :}
+   code 14 = code 15 = or if 1 exit then
+   code 7 >= code 9 <= and  code 16 >= code 18 <= and  or if 2 else 0 then ;
+
+\ Whether the last k steps are literals.
+: LITS? ( n -- bool ) {: k:n :}
+   STEPS-N @ k < if false exit then
+   true  STEPS-N @ dup k - ?do i STEP-OP @ STEP-LIT = and loop ;
+
+\ `/` and `mod`, which may lower to a call, and `2>r` `2r>` `2r@`, which use the
+\ return stack.
+: UNSTEPPED? ( n -- bool ) {: code:n :}
+   code 4 =  code 26 = or  code 22 >= code 24 <= and or ;
+
+\ Whether the checker measured another operand than one cell at the token.
+: WIDE-TOKEN? ( n -- bool ) {: at:n :}
+   MEASURES @ 0 ?do
+      i MEASURE-AT @ at =  i MEASURE-CELLS @ 1 <>  and if true unloop exit then
+   loop
+   false ;
+
+\ Operation code at text offset at, just lowered. A comparison of literal steps
+\ lowered to a constant, which takes their place.
+: OP+ ( n n -- ) {: code:n at:n :}
+   RECORDER @ LOST = if exit then
+   code UNSTEPPED?  at WIDE-TOKEN?  or if LOSE exit then
+   code COMPARED {: k:n :}
+   k 0<> if k LITS? else false then if
+      STEPS-N @ k - STEPS-N !  TOP VS-VAL @ LIT+ exit
+   then
+   code 0 STEP+ ;
+
+: CODE-STEP ( n n -- n ) {: at:n k:n :}
+   k STEP-OP @  at CODED c!
+   k STEP-OP @ STEP-LIT <> if at 1+ exit then
+   k STEP-VAL @  at 1+ CODED LEB-MOST SPAN:MAKE  WLEB:S64!  at 1+ + ;
+
+\ The recorded steps' trailer.
+: CODED$ ( -- str )
+   COPY-MAX LEB-MOST 1+ * 4 + CODED-RESERVE
+   1  STEPS-N @ 0 ?do i CODE-STEP loop {: end:n :}
+   end 1- 0 CODED c!
+   end 3 + -4 and {: size:n :}
+   size end ?do 0 i CODED c! loop
+   0 CODED size ;
+
+\ The steps of copy word rec, into GIVEN-OP and GIVEN-VAL.
+: READ-STEPS ( ^n -- )
+   COPY-MAX GIVEN-OP-RESERVE  COPY-MAX GIVEN-VAL-RESERVE
+   NDICT:COPY-STEPS {: a:^ u:n :}
+   0 GIVEN-N !
+   0 begin dup u < while
+      {: at:n :}
+      GIVEN-N @ {: k:n :}
+      a at + c@ {: op:n :}
+      op k GIVEN-OP !  0 k GIVEN-VAL !
+      op STEP-LIT = if
+         a at 1+ +  u at 1+ -  WLEB:S64@ {: v:n len:n :}
+         v k GIVEN-VAL !  at 1+ len +
+      else at 1+ then
+      k 1+ GIVEN-N !
+   repeat drop ;
+
+: GIVEN-COMPARES? ( -- bool )
+   GIVEN-N @ 0= if false exit then
+   GIVEN-N @ 1- GIVEN-OP @ COMPARED 0<> ;
+
+\ Whether a mention of record r lowers its steps, then in GIVEN-OP and
+\ GIVEN-VAL.
+: REPLAYED? ( n -- bool )
+   XREF-REC {: rec:^ :}
+   rec NDICT:COPY? 0= if false exit then
+   rec READ-STEPS
+   GIVEN-COMPARES? 0= if true exit then
+   BRANCH-NEXT? ;
+
+: LOWER-STEP ( n -- ) {: k:n :}
+   GIVEN-N @ 1- k - STEPS-LEFT !
+   k GIVEN-OP @ {: op:n :}
+   op STEP-LIT = if k GIVEN-VAL @ PUSH-CONST exit then
+   TXT$ op INLINE drop ;
+
+: REPLAY ( -- )
+   GIVEN-N @ 0 ?do i LOWER-STEP loop
+   -1 STEPS-LEFT !
+   GIVEN-N @ 0 ?do i GIVEN-OP @ i GIVEN-VAL @ STEP+ loop ;
+
 \ A K-CONTROL row at a: code is the marker's place in the checker's list
 \ (src/core/checker.f CF-CODE, then RS-KEYWORD's `>r` `r>` `r@`). The `;]`
 \ ends its unit before it is compiled (BODY), and a stray `;MATCH` (9) never
@@ -2083,39 +2235,45 @@ EXPORT CHECK:WF-N@
    false ;
 
 \ A fixed word is its stamped value and a cast compiles nothing; r files a DATA
-\ address so publication relocates it.
+\ address so publication relocates it. The literals a call takes on top of its
+\ inputs go under a copy word's steps as they go under a call.
 : WORD-CALL ( n n n n -- )
    {: to:n kind:n r:n loc:n :}
    kind DKIND:CAST = if exit then
-   kind DKIND:VAL = if to COMP-BODY:VALUE NDICT:BOUND-VALUE PUSH-CONST exit then
+   kind DKIND:VAL = if
+      to COMP-BODY:VALUE NDICT:BOUND-VALUE dup LIT+ PUSH-CONST exit
+   then
    kind DKIND:ADDR = if
-      to COMP-BODY:ADDRESS NDICT:BOUND-VALUE  r PUSH-ADDR exit
+      LOSE  to COMP-BODY:ADDRESS NDICT:BOUND-VALUE  r PUSH-ADDR exit
    then
    ORD @ 1- {: at:n :}
-   at MEMBER-INLINE? if exit then
-   at NDICT:CALL-EXTRAS 0 ?do  at i NDICT:CALL-EXTRA PUSH-CONST  loop
-   to loc DO-CALL ;
+   at MEMBER-INLINE? if LOSE exit then
+   at NDICT:CALL-EXTRAS {: extras:n :}
+   extras 0 ?do  at i NDICT:CALL-EXTRA PUSH-CONST  loop
+   extras 0<> if LOSE then
+   r REPLAYED? if REPLAY exit then
+   LOSE  to loc DO-CALL ;
 
 : CALL-TOKEN ( str n n -- )
    {: a:^ u:n r:n loc:n :}
    r XREF-REC {: rec:^ :}
    rec REC-START {: to:n :}
    r OP-CODE {: code:n :}
-   code 0<> if a code INLINE if exit then then
+   code 0<> if a code INLINE if code loc OP+ exit then then
    rec XREF-FLAGS {: flags:n :}
    to 0= if a u NO-CODE then
    ORD @ 1- {: k:n :}
    k COUNT-SLOT @ {: s:n :}
    k ROW-A1 @ 0<>  s 0< 0= and if s loc THROW-ON then
    r k CATCH-SHIFT {: d:n :}
-   d 0<> if to loc d EVEN-CALL
+   d 0<> if LOSE to loc d EVEN-CALL
    else to flags DKIND:MASK and r loc WORD-CALL then
    k ROW-A1 @ 0=  s 0< 0= and if s loc KEEP-COUNT then ;
 
 : NAME-TOKEN ( str n n -- )
    {: a:^ u:n r:n loc:n :}
    r 0 >= if
-      r XREF-REC XREF-FLAGS DNAME-IMM and 0<> if a u IMM-TOKEN exit then
+      r XREF-REC XREF-FLAGS DNAME-IMM and 0<> if LOSE a u IMM-TOKEN exit then
    then
    a u r loc CALL-TOKEN ;
 
@@ -2156,6 +2314,10 @@ EXPORT TFAM:TFAM-NAME$
 : LOST-CK ( n -- ) {: k:n :}
    k ROW-LOST @ NO-LOSS <> if k LOST-WIDTH then ;
 
+\ A K-CALL row is a postponed call, which no copy word holds.
+: STEP-ROW? ( n -- bool ) {: event:n :}
+   event K-NAME =  event K-INT = or  event K-REAL = or  event K-CHAR = or ;
+
 \ The row at the cursor, which the walk then passes, by the event the checker
 \ filed for it (THE EVENTS). A string or character literal's span is its
 \ payload; a name lowers from its record.
@@ -2167,13 +2329,14 @@ EXPORT TFAM:TFAM-NAME$
    a TXT$ - {: loc:n :}
    k BOUND-CK
    k LOST-CK   \ after BOUND-CK: a width an unbound name lost rejects the name
+   event STEP-ROW? 0= if LOSE then
    event STRING-KIND? if k DO-STRING exit then
    event case
       K-NAME of a u a0 loc NAME-TOKEN endof
       K-CALL of a u a0 loc CALL-TOKEN endof
-      K-INT of a0 PUSH-CONST endof
-      K-REAL of a0 PUSH-CONST endof
-      K-CHAR of k DO-CHAR endof
+      K-INT of a0 LIT+ a0 PUSH-CONST endof
+      K-REAL of a0 LIT+ a0 PUSH-CONST endof
+      K-CHAR of a0 LIT+ k DO-CHAR endof
       K-CONTROL of a a0 DO-CONTROL endof
       K-LOCAL-DECL of a0 loc DECLARE endof
       K-LOCAL-CLOSE of CLOSE-GROUP endof
@@ -2204,7 +2367,7 @@ EXPORT TFAM:TFAM-NAME$
 : RESET-STATE ( -- )
    EMIT-VREGS 1+ VS-KIND-RESERVE  EMIT-VREGS 1+ VS-VAL-RESERVE  EMIT-VREGS RS-V-RESERVE
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
-   0 DEAD !  0 PENDING !  0 G-CELLS !  0 REC-NEXT ! ;
+   0 DEAD !  0 PENDING !  0 G-CELLS !  0 REC-NEXT !  -1 STEPS-LEFT ! ;
 
 \ The token that ended a body short of a `;]`: the split's `does>`, or `;` past
 \ the last row.
@@ -2254,6 +2417,7 @@ EXPORT TFAM:TFAM-NAME$
    cut CUT !  -1 CLAUSE !  0 NESTED !  0 READS-N !  -1 READER !
    cut 0<> if CLAUSE-EMPTY? else false then EMPTY-CLAUSE !
    1 ORD !
+   RECORD-START
    RESET-STATE
    EMIT-OPEN
    1 OPEN-RECORD
@@ -2464,6 +2628,11 @@ EXPORT CHECKER-TAPE:DISARM
    SHADOW-TAKE
    NEMIT:CLEAR ;
 
+\ A target word has no steps: its host walk is an error emission.
+: COPY-WORD? ( -- bool )
+   RECORDER @ RECORDING =
+   ndict@ XREF-REC XREF-FLAGS DNAME-TARGET and 0=  and ;
+
 \ A `does>` publication ends the split's checker frame, which RETRACT and
 \ SETTLE-UNIT read.
 : PUBLISH-IT ( -- )
@@ -2472,7 +2641,8 @@ EXPORT CHECKER-TAPE:DISARM
          M-DOES @ 0<> if
             CLAUSE @ NPUB:PUBLISH-PENDING-DOES  0 M-DOES-FRAME !
          else
-            NPUB:PUBLISH-PENDING
+            COPY-WORD? if CODED$ NPUB:PUBLISH-PENDING-COPY
+            else NPUB:PUBLISH-PENDING then
          then
       ENDOF
       value OF NPUB:PUBLISH-RAW ENDOF

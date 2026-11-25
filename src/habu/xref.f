@@ -326,7 +326,7 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    a q 1 + ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC  XREF-FIND-WL-INDEX ;
 ;package
 
-\ SEAL rewrites a write-protected record cell through patch32, which this
+\ FLAG-SET rewrites a write-protected record cell through patch32, which this
 \ package's row in src/habu/prims.f (EPPRIM: XREF patch32) types for it.
 package XREF
 private
@@ -370,11 +370,17 @@ public
    rec REC>INDEX  rec XREF-WORDLIST  KEEP-RETIRED
    rec RETIRE-RAW ;
 
-\ DNAME-SEALED is bit 13 of the flags cell's upper half, rewritten whole with
-\ its other bits kept.
-: SEAL ( ^n -- ) {: rec:^ :}
-   rec XREF-FLAGS DNAME-SEALED or 32 rshift
+private
+\ Sets flag f of the flags cell's upper half, rewritten whole with its other
+\ bits kept.
+: FLAG-SET ( ^n n -- ) {: rec:^ f:n :}
+   rec XREF-FLAGS f or 32 rshift
    rec XREF-FLAGS-SLOT cells + 4 + patch32 ;
+public
+
+: SEAL ( ^n -- ) DNAME-SEALED FLAG-SET ;
+
+: MARK-COPY ( ^n -- ) DNAME-COPY FLAG-SET ;
 
 : SEALED? ( ^n -- bool ) XREF-FLAGS DNAME-SEALED and 0= 0= ;
 

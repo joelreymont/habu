@@ -953,7 +953,7 @@ variable LREPLAYTRAP
    14 5 0 LDR,  14 11 0 STR,                           \ [0] = the source's entry
    14 5 8 LDR,  14 11 8 STR,                           \ [8] = its recorded length
    16 5 16 LDR,
-   15 DNAME-IMM DNAME-WIDE or DNAME-TARGET or LIT64,  14 16 15 AND,
+   15 DNAME-IMM DNAME-WIDE or DNAME-TARGET or DNAME-COPY or LIT64,  14 16 15 AND,
    15 DKIND:MASK LIT64,  16 16 15 AND,
    15 DKIND:VAL LIT64,  16 15 CMP,  C-NE notval BCOND,
       14 14 15 ORR,                                    \ only an immutable value keeps its fixed kind

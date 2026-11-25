@@ -71,6 +71,8 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 0 CWORK-VARIABLE HELD-FN n
 0 CWORK-VARIABLE HELD-SIZE n
 0 CWORK-VARIABLE HELD-DEFER n           \ a defer body's dispatch cell, or 0
+0 CWORK-VARIABLE HELD-STEPS ^u8         \ a copy word's steps trailer
+0 CWORK-VARIABLE HELD-STEPS-U n         \ its bytes, or 0
 
 2 cells constant TRAILER-BYTES
 create TRAILER TRAILER-BYTES allot
@@ -80,19 +82,36 @@ create TRAILER TRAILER-BYTES allot
    cell TRAILER CELL + !
    TRAILER slot TRAILER-BYTES CODE-WINDOW ;
 
-\ A defer body's record ends at its trailer, which names the dispatch cell the
-\ body jumps through (layout.f DEFER-MAGIC), so the span is the slot and not the
+\ A record a trailer follows ends at it, so the span is the slot and not the
 \ emission's return-trimmed length.
-: DEFER-TRAILER ( n n n -- ) {: idx:n fn:n cell:n :}
+: TRAILED ( n n -- n ) {: idx:n fn:n :}
    cp@ {: slot:n :}
    fn slot fn - CODE-SPAN:EXACT idx PUBLISH-REC
-   cell slot TRAILER-PLACE ;
+   slot ;
+
+\ A defer's trailer names the dispatch cell its body jumps through (layout.f
+\ DEFER-MAGIC).
+: DEFER-TRAILER ( n n n -- ) {: idx:n fn:n cell:n :}
+   cell  idx fn TRAILED  TRAILER-PLACE ;
+
+\ A copy word's trailer holds its steps (NDICT:COPY-STEPS).
+: STEPS-TRAILER ( n n str -- ) {: idx:n fn:n a:^ u:n :}
+   a  idx fn TRAILED  u CODE-WINDOW
+   idx XREF-REC XREF:MARK-COPY ;
 
 : COMMIT-DEFER ( n n n n -- ) {: idx:n fn:n size:n cell:n :}
    fn size PLACE
    idx fn cell DEFER-TRAILER ;
 
+: COMMIT-COPY ( n n n str -- ) {: idx:n fn:n size:n a:^ u:n :}
+   fn size PLACE
+   idx fn a u STEPS-TRAILER ;
+
 : COMMIT-HELD ( -- )
+   HELD-STEPS-U @ 0<> if
+      HELD-IDX @ HELD-FN @ HELD-SIZE @  HELD-STEPS @ HELD-STEPS-U @
+      COMMIT-COPY exit
+   then
    HELD-DEFER @ 0<> if
       HELD-IDX @ HELD-FN @ HELD-SIZE @ HELD-DEFER @ COMMIT-DEFER exit
    then
@@ -104,10 +123,12 @@ create TRAILER TRAILER-BYTES allot
 
 \ The held routine is cleared on every exit, so a rejected commit leaves nothing
 \ the next one could read.
-: COMMIT-OWNED ( n n n n -- ) {: idx:n fn:n size:n cell:n :}
-   idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !  cell HELD-DEFER !
+: COMMIT-OWNED ( n n n n str -- ) {: idx:n fn:n size:n cell:n a:^ u:n :}
+   idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !
+   cell HELD-DEFER !  a HELD-STEPS !  u HELD-STEPS-U !
    [: COMMIT-OWNED-BODY ;]
-   [: 0 HELD-IDX !  0 HELD-FN !  0 HELD-SIZE !  0 HELD-DEFER ! ;] finally ;
+   [: 0 HELD-IDX !  0 HELD-FN !  0 HELD-SIZE !  0 HELD-DEFER !
+      0 HELD-STEPS-U ! ;] finally ;
 
 : PENDING-IDX ( -- n )
    ndict@ ;
@@ -151,7 +172,7 @@ create TRAILER TRAILER-BYTES allot
 : PUBLISH-CODE ( -- n )
    PENDING-PROVE {: idx:n fn:n size:n :}
    fn NSHADOW:SOURCE-FUNS
-   idx fn size 0 COMMIT-OWNED
+   idx fn size 0 NULL-PTR 0 COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    idx ;
@@ -172,7 +193,17 @@ public
    PENDING-PROVE {: idx:n fn:n size:n :}
    size TRAILER-BYTES + CODE-ROOM
    fn NSHADOW:SOURCE-FUNS
-   idx fn size cell COMMIT-OWNED
+   idx fn size cell NULL-PTR 0 COMMIT-OWNED
+   idx NSHADOW:PUBLISH
+   idx APPEND-PENDING
+   REC-WIDE-PUBLISH ;
+
+\ A copy word with its steps' trailer, whole instructions.
+: PUBLISH-PENDING-COPY ( str -- ) {: a:^ u:n :}
+   PENDING-PROVE {: idx:n fn:n size:n :}
+   size u + CODE-ROOM
+   fn NSHADOW:SOURCE-FUNS
+   idx fn size 0 a u COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    REC-WIDE-PUBLISH ;
@@ -180,7 +211,7 @@ public
 : PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}
    fn NSHADOW:SOURCE-FUNS
-   idx fn size 0 COMMIT-OWNED
+   idx fn size 0 NULL-PTR 0 COMMIT-OWNED
    idx NSHADOW:PUBLISH
    fn off + size off - NEMIT:RET-BYTES CODE-SPAN:RECORDED does-record
    idx APPEND-PENDING

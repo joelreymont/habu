@@ -104,6 +104,8 @@ CREATED-BODY-ABI:DNAME-ALLOC constant DNAME-ALLOC
 \ DNAME-CELL names the exact one-cell DATA extent made by variable. CREATE
 \ leaves it clear: a created body may allot bytewide storage.
 $0001000000000000 constant DNAME-CELL
+\ DNAME-COPY (bit 49): a copy word, whose encoded steps follow its code.
+$0002000000000000 constant DNAME-COPY
 \ DNAME-REP (bit 46) marks a CAST: record (kind 3 above) whose certified
 \ output mints no pointer and no quotation: a representation cast, a scalar
 \ retype the native compiler lowers as the identity it is. Scoped view casts and

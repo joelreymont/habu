@@ -1759,8 +1759,9 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    then
    src ;
 
-\ The kind, name, flags without the name length and EXT, wordlist, then the kind's fields; KIND-PRIVATE and
+\ The kind, name, flags without the name length, EXT and COPY, wordlist, then the kind's fields; KIND-PRIVATE and
 \ KIND-SEALED entries are LATE+'s and SEAL+'s. Answers the build's record an alias or type entry binds, else -1.
+\ No entry holds a copy word's steps, so a word made from one is a call.
 : RECORD+ ( n -- n )
    {: idx:n :}
    idx XREF-REC {: rec:^ :}
@@ -1768,7 +1769,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    row idx MADE-WID KIND {: kind:n :}
    kind PIECES @ U64+
    rec XREF-NAME$ PIECES @ FIELD+
-   rec XREF-FLAGS  DNAME-LEN-MASK DNAME-EXT or invert and  PIECES @ U64+
+   rec XREF-FLAGS  DNAME-LEN-MASK DNAME-EXT or DNAME-COPY or invert and  PIECES @ U64+
    idx WORDLIST+
    kind KIND-DEF = if rec DISPATCH+  -1 exit then
    kind KIND-DOES = if row NSHADOW:ENTRY@ PIECES @ U64+  -1 exit then

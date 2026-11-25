@@ -325,7 +325,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    src ;
 
 \ Build record r at target index k: [32], the facts text's offset from the image's DATA,
-\ holds in the target's, as does an export's source index.
+\ holds in the target's, as does an export's source index. An image places no copy word's
+\ steps, so DNAME-COPY is clear.
 : BUILD-REC, ( n n -- )
    {: r:n k:n :}
    r XREF-REC {: rec:^ :}
@@ -340,7 +341,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       entry 0<> if entry at CODE-CELL, else 0 NATIVE:U64, then
       r BUILD-LEN NATIVE:U64,
    then
-   rec XREF-FLAGS NATIVE:U64,
+   rec XREF-FLAGS DNAME-COPY invert and NATIVE:U64,
    rec XREF-EXT? if
       NATIVE:TEXT-VA  r FIRST-REC @ - NAME-AT @ +  at 24 + CODE-CELL,
    else
