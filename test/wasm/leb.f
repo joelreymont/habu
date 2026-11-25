@@ -3,7 +3,7 @@
 \ fields read at their offsets and rewritten in place, round trips across every
 \ bit width, and each refusal by its code.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/span.f
 require src/arch/wasm/leb.f
 

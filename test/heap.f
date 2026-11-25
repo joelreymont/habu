@@ -7,7 +7,7 @@
 \ outside DYNAMIC-STORAGE; a record pointer enters no generic-pointer word that
 \ reads a cell; and tools/check.f --verify-only certifies a word using a HEAP's
 \ words instead of deferring the rest of the source to the run.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/json.f
 require src/lib/arena.f
 require src/lib/string.f
@@ -15,6 +15,8 @@ require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require src/lib/fs-mutate.f
 require test/e2e-tree.f
+require src/lib/json/read.f
+require src/lib/fs.f
 
 package HEAP-CAPTURE
 

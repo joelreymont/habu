@@ -11,7 +11,8 @@
 \ check runs a composed page and its code in Chrome.
 \ Run: bin/hb --load src/lib/browser/app-test.f
 
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/xml/scalar.f
 require src/lib/string.f
 require src/lib/string-option.f
 require src/lib/span.f

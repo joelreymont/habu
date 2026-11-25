@@ -4,7 +4,7 @@
 \ no one-cell value of it. The refusals land at the call, never at the word.
 \ A cast's stored variable takes any such type but one that may hold a linear
 \ value, an atom or a width, at every binding, through a generic caller too.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/core/bytes.f
 

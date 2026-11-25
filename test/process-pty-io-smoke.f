@@ -5,10 +5,14 @@ require src/core/exit-status.f
 require src/lib/process-pty-io.f
 require src/lib/prelude.f
 require src/lib/aio.f
-require src/lib/test.f
+require src/lib/process-fork.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/task.f
+require src/lib/fd.f
 require src/lib/heap.f
+require src/lib/process.f
+require src/lib/process-argv.f
 require src/lib/vector.f
 
 package PTY-IO-SMOKE

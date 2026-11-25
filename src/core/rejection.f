@@ -504,11 +504,14 @@ private
 \ The source of the run text offset x lies in (layout.f BODY-SOURCE).
 : MAP-RUN ( n -- n )
    MAP-ROW 1 + ROW@ ;
-\ Whether text offset x lies in a run its source does not copy: one with no
-\ source, or one a definer built.
-: MAP-NONE? ( n -- bool )
-   MAP-RUN {: src:n :}
+\ Whether a run of that source copies no text: it has none, or a definer built
+\ it.
+: UNSPELLED? ( n -- bool )
+   {: src:n :}
    src BODY-SOURCE:NONE =  src BODY-SOURCE:BUILT? or ;
+\ Whether text offset x lies in such a run.
+: MAP-NONE? ( n -- bool )
+   MAP-RUN UNSPELLED? ;
 \ The token in the armed source that built the run text offset x lies in;
 \ empty when no definer built the run.
 : MAP-BUILDER ( n -- str )
@@ -771,10 +774,16 @@ private
 \ copied the token t tu from; else t.
 : BODY>INPUT ( str -- ^u8 ) {: t:^ tu:n :}
    t INPUT-RUN 0= IF 2drop t EXIT THEN {: run:^ src:n :}
-   src BODY-SOURCE:NONE =  src BODY-SOURCE:BUILT? or IF t EXIT THEN
+   src UNSPELLED? IF t EXIT THEN
    INPUT-START @ src +  t run - + {: p:^ :}
    INPUT$ p tu HOLDS? IF p EXIT THEN
    t ;
+public
+\ Whether t lies in a run of the pending definition's body text that the buffer
+\ read does not spell: its definer's, or text a word evaluated into it.
+: RENDERED? ( ^u8 -- bool )
+   INPUT-RUN 0= IF 2drop 0 0= 0= EXIT THEN nip UNSPELLED? ;
+private
 \ The token that built the run t lies in, in the armed source or the buffer
 \ read; empty when no definer built the run.
 : BUILDER ( ^u8 -- str ) {: t:^ :}

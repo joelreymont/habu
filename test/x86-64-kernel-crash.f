@@ -10,6 +10,13 @@ require src/habu/fault-record.f
 require test/x86-64-boot-harness.f
 require src/os/linux/layout.f
 require src/lib/fd.f
+require src/arch/x86-64/rt.f
+require src/lib/test/assert.f
+require src/os/linux-x86-64/sys.f
+require test/x86-64-peer-harness.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
+require src/habu/kernel-x64.f
 
 package X64K-CRASH
 using X64ASM

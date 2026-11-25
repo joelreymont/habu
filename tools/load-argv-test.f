@@ -2,12 +2,13 @@
 \ `s" <path>" required`, so src/core/include.f decides and a path the engine
 \ already carries loads once. Every case forks the real bin/hb: the contract
 \ exists only at the process entry point.
-\ Run: bin/hb --load src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f \
+\ Run: bin/hb --load src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f \
 \   src/lib/process-argv.f tools/load-argv-test.f
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -74,7 +75,7 @@ variable LA-DANGLING-LINK-U
    LA-ROOT$ s" thrower.f" LA-THROW FS:JOIN-PATH LA-THROW-U !
    LA-ROOT$ s" decoy.f"   LA-DECOY FS:JOIN-PATH LA-DECOY-U !
    LA-ROOT$ s" missing.f" LA-MISS  FS:JOIN-PATH LA-MISS-U !
-   LA-ROOT$ s" src/lib/test.f" LA-DANGLING FS:JOIN-PATH LA-DANGLING-U !
+   LA-ROOT$ s" src/lib/string.f" LA-DANGLING FS:JOIN-PATH LA-DANGLING-U !
    LA-ROOT$ s" src" LA-DANGLING-LINK FS:JOIN-PATH LA-DANGLING-LINK-U !
    LA-DANGLING-LINK$ FS:MAKE-DIR
    LA-ROOT$ s" src/lib" LA-DANGLING-LINK FS:JOIN-PATH LA-DANGLING-LINK-U !

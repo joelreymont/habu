@@ -2,7 +2,7 @@
 \ allocator test's package; another allocator's test calls TURNS and ZEROED.
 \ STORAGE CLASS. None.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/allocator.f
 
 package ALLOC-TEST

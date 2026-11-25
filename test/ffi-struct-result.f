@@ -14,6 +14,12 @@
 \ SysV returns the same widths in rax and rdx and the larger record through
 \ rdi.
 
+require src/lib/ffi-abi.f
+require src/lib/le.f
+require src/lib/ffi-test.f
+require src/lib/test/assert.f
+require test/ffi-struct-fixture.f
+
 : FFI-T-SR-LIBC ( -- )
    HB-TARGET-MACOS? if
       s" /usr/lib/libSystem.B.dylib"

@@ -1,6 +1,6 @@
 \ A borrowed view moves by value through nested typed records.
 require src/core/exit-status.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/adt/option.f
 require src/lib/memory.f
 require src/lib/c2-memory.f

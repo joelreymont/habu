@@ -6,7 +6,7 @@
 \ throw on arm64, the dump and the signal on x86-64), where a bounded scan
 \ answers as the text does anywhere.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/guard-page.f
 
 package ENGINE-SPAN-END-TEST

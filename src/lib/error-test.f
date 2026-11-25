@@ -2,7 +2,8 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 
 -9671 s" the global test code" ERROR:CODE E-ERROR-TEST-GLOBAL
 

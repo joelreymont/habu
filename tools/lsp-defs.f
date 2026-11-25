@@ -25,6 +25,8 @@ require src/lib/json.f
 require src/lib/fs.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
+require src/lib/json/read.f
+require src/lib/json/write.f
 
 package LSP-DEFS
 using LSP-DOCS

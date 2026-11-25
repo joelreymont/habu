@@ -44,6 +44,8 @@ require src/os/linux-x86-64/proc-control.f
 require src/os/linux/layout.f
 require src/os/linux/elf.f
 require src/compiler/fixed-body.f
+require src/habu/fault-record.f
+require src/habu/prof-abi.f
 
 package X64KERNEL
 using X64ASM

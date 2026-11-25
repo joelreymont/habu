@@ -15,10 +15,11 @@
 \ back NULL, or a bound buffer is read when the statement steps.
 
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs-mutate.f
 require src/lib/test/stderr.f
 require src/lib/sqlite.f
+require src/lib/fs.f
 
 package SQLITE-TEST
 

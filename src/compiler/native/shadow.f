@@ -17,6 +17,7 @@ require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/target/native-binding.f
 require src/compiler/native/emission.f
+require src/compiler/target/model.f
 
 package NSHADOW
 private

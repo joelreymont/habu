@@ -4,7 +4,7 @@
 \ Run by the engine over stdin, standalone or through the native registry:
 \     bin/hb < test/type-layout-lower-pending.f
 
-require src/lib/test.f
+require src/lib/test/assert.f
 
 T-RESET
 

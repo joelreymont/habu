@@ -9,7 +9,7 @@
 \ Cases run through `evaluate-closed`, the path `bin/hb --load` takes; a
 \ rejection is a throw.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/fmath.f
 

@@ -6,6 +6,7 @@ require src/lib/float.f
 require src/lib/json.f
 require src/lib/adt/option.f
 require src/lib/ieee754.f
+require src/lib/json/read.f
 
 package WNUM
 private

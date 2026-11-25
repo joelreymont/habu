@@ -4,7 +4,7 @@
 \ A unix datagram is queued before sendto returns, so every receive is one
 \ try with timeout zero and the AIO loop never starts.
 \ Run: bin/hb --load src/lib/net/udp-test.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/num-types.f
 require src/lib/span.f

@@ -4,7 +4,7 @@
 \ its own subject process (the first refusal ends it); the accepted program
 \ runs in one more.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/test/subject.f
 

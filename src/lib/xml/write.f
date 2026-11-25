@@ -2,6 +2,7 @@
 
 require src/lib/xml/scalar.f
 require src/lib/vector.f
+require src/lib/xml/reject.f
 
 package XML
 private

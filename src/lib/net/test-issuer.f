@@ -28,6 +28,13 @@ require src/lib/crypto/evp.f
 require src/lib/crypto/jws-fixture.f
 require src/lib/net/http.f
 require src/lib/uri.f
+require src/lib/net/http-arena.f
+require src/lib/net/http-request.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
+require src/lib/json/read.f
+require src/lib/json/value.f
+require src/lib/json/write.f
 
 package TEST-ISSUER
 private

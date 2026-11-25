@@ -1,7 +1,7 @@
 \ udp4-test.f - loopback sockets: bind, the bound endpoint and a send the
 \ OS rejects.
 \ Run: bin/hb --load src/lib/net/udp4-test.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/net/udp4.f
 
 package UDP4-TEST

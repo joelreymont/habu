@@ -5,6 +5,8 @@
 \ only words the driver or its own section made.
 
 \ == variable
+require src/lib/ffi-callback.f
+
 package KINDS-FIXTURE
 variable KD-CELL
 ;package

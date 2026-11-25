@@ -8,6 +8,11 @@ require src/arch/x86-64/rt.f
 require test/x86-64-peer-harness.f
 require src/lib/vector.f
 require test/gate-common.f
+require src/lib/test/assert.f
+require src/os/linux-x86-64/sys.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
+require src/lib/process.f
 
 package X64-MAIN-ENTRY-TEST
 using X64ASM

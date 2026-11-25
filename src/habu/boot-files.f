@@ -80,6 +80,7 @@ private
    CHECKER COMMON s" src/core/conditional.f" ROW
    CHECKER COMMON s" src/habu/escape.f" ROW
    CHECKER COMMON s" src/core/compile-reads.f" ROW
+   CHECKER COMMON s" src/core/requires.f" ROW
    CHECKER COMMON s" src/core/checker.f" ROW
    CHECKER COMMON s" src/core/type-schema.f" ROW
    CHECKER COMMON s" src/core/roles.f" ROW

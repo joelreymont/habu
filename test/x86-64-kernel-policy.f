@@ -17,6 +17,11 @@
 \ interpreter; these ELFs isolate the primitive's machine boundary.
 require src/core/exit-status.f
 require test/x86-64-boot-harness.f
+require src/arch/x86-64/rt.f
+require src/habu/kernel-x64.f
+require test/x86-64-peer-harness.f
+require src/arch/x86-64/asm.f
+require src/lib/test/assert.f
 
 package X64K-POLICY
 using X64ASM

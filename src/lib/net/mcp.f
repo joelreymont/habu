@@ -96,6 +96,12 @@ require src/lib/net/curl.f
 require src/lib/net/event-stream.f
 require src/lib/net/tcp4.f
 require src/lib/net/http.f
+require src/lib/net/http-arena.f
+require src/lib/net/http-request.f
+require src/lib/net/http-response.f
+require src/lib/json/read.f
+require src/lib/json/write.f
+require src/lib/json/value.f
 
 package MCP
 public

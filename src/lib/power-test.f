@@ -7,7 +7,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fmt.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/process-command.f
 require src/lib/power.f
 

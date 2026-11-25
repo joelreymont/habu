@@ -1,7 +1,7 @@
 \ Initialized storage keeps its scope and nominal element type through the real
 \ checker load path.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 
 package C2-INIT-SCHEMA

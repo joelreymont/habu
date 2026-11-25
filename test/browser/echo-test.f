@@ -14,7 +14,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require test/wasm/harness.f
 require test/browser/turn-revision.f
 

@@ -1,6 +1,6 @@
 \ combinators.f — checked iterators preserve the callback's entire stack row.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package COMBINATORS-TEST
 

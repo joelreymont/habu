@@ -14,7 +14,8 @@
 HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or ?TARGET
 require src/core/exit-status.f
 require src/lib/secret.f
-require src/lib/test.f
+require src/lib/secret/linux.f
+require src/lib/test/assert.f
 require src/lib/codegen.f
 require src/lib/string.f
 require src/lib/fd.f
@@ -27,6 +28,7 @@ require src/lib/process-command.f
 require src/lib/test/stderr.f
 require src/lib/vector.f
 require src/lib/heap.f
+require src/lib/ffi-abi.f
 
 package SECRET-LINUX-TEST
 private

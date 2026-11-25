@@ -3,7 +3,7 @@
 \ NAME-BIND sizes from the counted need reusing the largest region, and
 \ NAME-GROW carries live cells over.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 
 T-RESET
 

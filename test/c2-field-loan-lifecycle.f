@@ -1,5 +1,5 @@
 \ A throwing or halted field callback closes the borrowed span and its owners.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
 require src/lib/task.f

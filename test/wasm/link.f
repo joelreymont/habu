@@ -5,7 +5,7 @@
 \ fields are the padded LEB WLINK writes, where a text assembler writes the
 \ shortest.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f

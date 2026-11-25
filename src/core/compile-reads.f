@@ -8,9 +8,10 @@ split-str
 \ directory, ENV-READ a name and its value, ENV-ABSENT a name and no bytes,
 \ TEXT-READ a text the compile spells and no bytes, FILE-READ a path and the
 \ three cells of its file's STAMP, FILE-LREAD a path and the three cells of its
-\ LSTAMP, NAME-READ a name and the wordlist cell it was looked up in. A
-\ recording is indexed by a hash of each read, so a repeated read is found
-\ without a scan.
+\ LSTAMP, NAME-READ a name and the wordlist cell it was looked up in, CALL-READ
+\ the index of a record the require check judged and the count of requires made
+\ by then, each a cell. A hash of each read indexes a recording, so a repeated
+\ read is found without a scan.
 package COMPILE-READS
 public
 
@@ -21,6 +22,7 @@ public
 5 constant FILE-READ
 6 constant FILE-LREAD
 7 constant NAME-READ
+8 constant CALL-READ
 
 private
 
@@ -88,6 +90,7 @@ create STAT-BUF FS-ABI:STAT-BYTES SCRATCH-ALLOT
 
 create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
 create WID-BUF CELL SCRATCH-ALLOT        \ NAME+'s second bytes
+create CALL-BUF 2 cells SCRATCH-ALLOT    \ CALL+'s first, then second bytes
 
 \ The bytes from the start of the read at off to the start of the next.
 : SPAN ( n -- n ) {: off:n :}
@@ -259,6 +262,15 @@ public
    STATUS @ ST-OFF = if exit then
    wid WID-BUF CELL-VIEW !
    s" COMPILE-READS:NAME+" NAME-READ a u WID-BUF CELL APPEND ;
+
+\ The record at dictionary index idx, which the require check judged after
+\ asks requires were made; both cells little-endian.
+: CALL+ ( n n -- ) {: idx:n asks:n :}
+   OFF-MAIN? if MISS exit then
+   STATUS @ ST-OFF = if exit then
+   idx CALL-BUF CELL-VIEW !  asks CALL-BUF CELL + CELL-VIEW !
+   s" COMPILE-READS:CALL+" CALL-READ
+   CALL-BUF CELL  CALL-BUF CELL + CELL APPEND ;
 
 private
 

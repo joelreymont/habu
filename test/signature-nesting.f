@@ -22,7 +22,8 @@
 \ signature or a local's annotation is an unknown type, and a `^` a blank parts
 \ from its element type is a bare `^`. A local's annotation verdict names and
 \ places the token it rejects.
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/string.f
 require src/lib/adt/result.f
 require src/lib/test/subject.f
@@ -30,6 +31,8 @@ require src/lib/test/ending.f
 require src/lib/test/rejection-text.f
 require tools/gate-json-assert-core.f
 require src/lib/time-cpu.f
+require src/lib/process.f
+require src/habu/verify-source.f
 
 package SIGNATURE-NESTING
 

@@ -4,7 +4,9 @@
 \ state. The client takes the last free descriptor, so accept is EMFILE; the
 \ listener's stderr line is the failure event, and once the fillers close the
 \ same listener answers a fresh connection.
-require src/lib/test.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/prelude.f
 require src/lib/string.f

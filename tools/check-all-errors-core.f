@@ -26,6 +26,8 @@ require src/lib/source-lex.f
 \ replays source through VERIFY.
 \ A replayed `constant` gets VERIFY's `-- a` effect.
 require src/habu/verify-source.f
+require src/lib/fd.f
+require src/habu/interpreter.f
 
 package CHECK-ALL-ERRORS
 

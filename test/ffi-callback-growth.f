@@ -1,5 +1,5 @@
 \ More than 129 C entry points, including an entry saved before table growth.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/ffi-abi.f
 require src/lib/ffi-callback.f
 require src/lib/task.f

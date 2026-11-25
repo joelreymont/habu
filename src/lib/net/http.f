@@ -21,7 +21,12 @@ require src/lib/aio.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/log.f
+require src/lib/net/http-arena.f
+require src/lib/net/http-request.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
 require src/lib/time.f
+require src/lib/byte-buffer.f
 
 package HTTP
 

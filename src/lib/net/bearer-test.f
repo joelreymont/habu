@@ -14,7 +14,9 @@
 \ fetched key set repeating a member refused while the cached one stays.
 \ Run: bin/hb --load src/lib/net/bearer-test.f
 
-require src/lib/test.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/span.f
@@ -30,6 +32,7 @@ require src/lib/crypto/jws-fixture.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/bearer.f
+require src/lib/json/write.f
 
 \ White-box reads no public word answers, defined into BEARER-TEST so BEARER's
 \ public surface gains nothing.

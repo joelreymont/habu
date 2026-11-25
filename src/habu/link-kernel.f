@@ -18,6 +18,8 @@ require src/arch/arm64/mnem.f
 require src/habu/link-code.f
 require src/habu/layout.f
 require src/habu/code-bytes.f
+require src/arch/x86-64/icode.f
+require src/lib/vector.f
 
 package LINKER
 private

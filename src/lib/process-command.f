@@ -18,6 +18,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/spawn.f
+require src/lib/map-core.f
 
 \ Scoped commands: -9580..-9589, minted here beside the package its codes belong
 \ to (docs/forth-card.md § 6).

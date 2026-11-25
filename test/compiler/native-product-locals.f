@@ -1,5 +1,5 @@
 \ Inferred STRUCTURE locals retain all cells through reads, calls and scopes.
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package NPL
 public

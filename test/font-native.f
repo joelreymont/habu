@@ -3,7 +3,7 @@
 \ by its file name under fontconfig's default directories: /usr/share/fonts,
 \ /usr/local/share/fonts, then $XDG_DATA_HOME/fonts or ~/.local/share/fonts.
 require src/lib/font.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/string.f

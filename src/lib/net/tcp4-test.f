@@ -3,7 +3,7 @@
 \ task connects, writes and reads back. Every timed wait runs on the AIO loop,
 \ which this suite starts before its first case and stops after its last.
 \ Run: bin/hb --load src/lib/net/tcp4-test.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/prelude.f
 require src/lib/string.f

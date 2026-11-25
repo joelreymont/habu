@@ -3,7 +3,7 @@
 \ Run: bin/hb --load src/lib/base85-test.f
 
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/span.f
 require src/lib/base85.f
 

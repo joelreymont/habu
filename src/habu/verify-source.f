@@ -143,6 +143,7 @@ require src/core/checker-owner-guard.f
 require src/core/checker.f
 require src/core/check-walk.f
 require src/core/rejection.f
+require src/core/requires.f
 require src/core/render.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -155,6 +156,7 @@ require src/habu/engine-origin.f
 require src/habu/escape.f
 require src/lib/ffi-abi.f
 require src/lib/ffi-callback.f
+require src/habu/interpreter.f
 
 package VERIFY
 EXPORT CHECK:CHECKER-SIG-SPAN
@@ -165,6 +167,10 @@ EXPORT CHECK:CHECKER-GENERATES
 EXPORT CHECK:CHECKER-PARSES-ROW
 EXPORT CHECK:CHECKER-NAMES-ROW
 EXPORT CHECK:CHECKER-NAMED-USE
+EXPORT CHECK:CHECKER-VERIFY-REQUIRED
+EXPORT CHECK:CHECKER-REQUIRED-BODY
+EXPORT CHECK:CHECKER-REQUIRED-CLAUSE
+EXPORT CHECK:TOP-KEYWORD?
 EXPORT CHECK:CHECKER-LINEAR
 EXPORT CHECK:VERIFY-PARSES-N
 EXPORT CHECK:CHECKER-CANDIDATE-SCOPE-START
@@ -196,7 +202,6 @@ EXPORT FFI:LEAVE-FUNCTION
 EXPORT FFI:LEAVE-OPEN-FUNCTION
 EXPORT FFI:ABANDON-FUNCTION
 EXPORT FFI:DECLARED-TEXTS
-EXPORT REQUIRE-REG:REQUIRE-KNOWN?
 
 public
 
@@ -2277,23 +2282,18 @@ EXPORT CHECKER-OVERLAY:UNSTATED!
    stated IF rec v VALUE! EXIT THEN
    rec UNSTATED! ;
 
-\ DSYM is the definer's symbol, which its caller tested before the name is
-\ taken: NAME-TOKEN consumes a token, and a token that is not a definer must
-\ leave the scan exactly where it was.
-: CREATED-TRUST-NEXT? ( n -- bool )
+: CREATED-TRUST-NEXT ( n -- )
    {: dsym:n :}
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    STORAGE-KEYWORD name nameu REJECTION:NOT-A-NAME
    NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   name nameu at REJECT-DUPLICATE IF 0 0= EXIT THEN
+   name nameu at REJECT-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu dsym RECORD-CREATED
    DISARM
-   0= IF 0 0= 0= EXIT THEN
-   name nameu at DEF-STORAGE DEFINED-MADE
-   0 0= ;
+   IF name nameu at DEF-STORAGE DEFINED-MADE THEN ;
 
 : TRUST-DEFER-SIGNATURE ( str n -- )
    {: name:^ nameu:n at:n :}
@@ -2331,11 +2331,53 @@ variable TRUSTED-DOES
    a u s" [package]" STR:=CI IF EXIT THEN
    a u na nu TRUSTED-REACH ;
 
-\ A trusted body is ASSERTED, never verified, but its `does>` clause is a
-\ DECLARATION. So this scan learns the definer from the clause signature, and
-\ checks no token of the body. A `does>` inside a string is no clause. What
-\ running the word may do is still what its calls may do, and the tokens before
-\ its `does>` run when it does.
+variable TRUSTED-CUT              \ where BODY-BUF's clause body starts, 0 for none
+PTR-VARIABLE TRUSTED-SIG-A
+variable TRUSTED-SIG-U
+
+: DOES-TOKEN? ( -- bool )
+   LOCAL-TOKEN? IF false EXIT THEN
+   TOKEN-A @ TOKEN-U @ s" does>" STR:=CI ;
+
+\ The clause's signature is read and its body joins with locals of its own.
+: APPEND-CLAUSE ( -- )
+   TOKEN-A @ TOKEN-U @ SIGNATURE-AT TRUSTED-SIG-U !  TRUSTED-SIG-A !
+   LOCALS-RESET  BODY-PREV-CLEAR
+   BODY-U @ TRUSTED-CUT ! ;
+
+\ Appends a TRUSTED: definition's body, its clause's after it, up to the `;`.
+: APPEND-TRUSTED ( -- )
+   BODY-PREV-CLEAR  LOCALS-RESET
+   0 TRUSTED-CUT !
+   BEGIN
+      BODY!
+      TOKEN-U @ 0= IF UNCLOSED-STOP THEN
+      TOKEN-A @ TOKEN-U @ s" ;" STR:= IF EXIT THEN
+      TRUSTED-CUT @ 0=  DOES-TOKEN? and IF APPEND-CLAUSE ELSE APPEND-BODY-TOKEN THEN
+   AGAIN ;
+
+\ The appended text's checks: what comes before the clause, then the clause.
+: TRUSTED-TEXT-CHECK ( -- )
+   BODY$ {: a:^ u:n :}
+   TRUSTED-CUT @ {: cut:n :}
+   cut 0= IF a u CHECKER-REQUIRED-BODY EXIT THEN
+   a cut CHECKER-REQUIRED-BODY
+   a cut +  u cut -  TRUSTED-SIG-A @ TRUSTED-SIG-U @ CHECKER-REQUIRED-CLAUSE ;
+
+\ The require checks the load makes of NAME's body before it declares NAME's
+\ row; the scan ends where it stood, since the body is read again.
+: TRUSTED-REQUIRES ( str str -- )
+   {: na:^ nu:n sig:^ sigu:n :}
+   REQUIRES:CURRENT@ 0 <= IF EXIT THEN
+   SCAN-I @ {: mark:n :}
+   BODY-RESET
+   na nu BODY-APPEND  sig 1 - sigu 2 + BODY-APPEND
+   APPEND-TRUSTED  TRUSTED-TEXT-CHECK
+   BODY-RESET
+   mark SCAN-I ! ;
+
+\ A `does>` outside a string declares the clause. No other judgement is made of
+\ the tokens here, but what those before it may do when run, the word may do.
 : SCAN-TRUSTED-BODY ( str bool -- ) {: na:^ nu:n kept:bool :}
    BODY-PREV-CLEAR
    LOCALS-RESET
@@ -2344,7 +2386,7 @@ variable TRUSTED-DOES
       BODY!
       TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" STR:= IF EXIT THEN
-      LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR:=CI  and IF
+      DOES-TOKEN? IF
          \ This scan skips the clause body, so its acceptance is unknown.
          INDEX-ON @ IF
             true TICK-REMAINDER !
@@ -2372,6 +2414,7 @@ variable TRUSTED-DOES
       name nameu SIGNATURE-AT 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
    THEN
    name nameu SIGNATURE-AT {: sig:^ sigu:n :}
+   name nameu sig sigu TRUSTED-REQUIRES
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: row:n :}
@@ -3355,17 +3398,17 @@ variable LOAD-END
    path pathu FAULT-TARGET!
    a u LOAD-PLACE-A @ LOAD-PLACE-U @ false SOURCE-ROOT:MISSING-SOURCE ;
 
-\ Load PATH, the file the request a u resolved to under ROOT.
-: COMPOSE-OPEN ( str str str -- )
-   {: a:^ u:n path:^ pathu:n root:^ rootu:n :}
+\ Load PATH, the file the request a u resolved to under ROOT, read as file id.
+: COMPOSE-OPEN ( str str str n -- )
+   {: a:^ u:n path:^ pathu:n root:^ rootu:n id:n :}
    path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ STR:= IF
-      root rootu path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
+      root rootu path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @ id
       [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT
    THEN
    path pathu FS:EXISTS? 0= IF a u path pathu COMPOSE-MISSING THEN
    path pathu SUPPLIED {: t:^ tu:n open:bool :}
-   open IF root rootu path pathu t tu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT THEN
-   root rootu path pathu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
+   open IF root rootu path pathu t tu id [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT THEN
+   root rootu path pathu id [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
 
 \ The loads loader word w, the token the source wrote, makes of the path a u:
 \ the resolver's answer comes through the loader's, which writes its records.
@@ -3373,21 +3416,27 @@ variable LOAD-END
    {: w:^ wu:n a:^ u:n :}
    w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER:RESOLVE drop {: path:^ pathu:n :}
    SOURCE-ROOT:RESOLVED-ROOT$ {: root:^ rootu:n :}
-   a u path pathu root rootu COMPOSE-OPEN ;
+   a u path pathu root rootu REQUIRES:CURRENT@ COMPOSE-OPEN ;
+
+\ A require of a u that resolved to path under root: a held path is not
+\ loaded; either way the current file requires its file.
+: COMPOSE-REQUIRE ( str str bool str -- )
+   {: a:^ u:n path:^ pathu:n held:bool root:^ rootu:n :}
+   held IF a u path pathu SOURCE-ROOT:REQUIRE-HELD  path pathu LOAD-HELD LOADED EXIT THEN
+   REQUIRE-REG:MARK {: row:n :}
+   path pathu REQUIRE-REG:STORE {: rp:^ rpu:n :}
+   row root rootu SOURCE-ROOT:REQUIRE-STORED {: id:n :}
+   a u rp rpu root rootu id COMPOSE-OPEN ;
 
 : COMPOSE-REQUIRED ( str str -- )
    {: w:^ wu:n a:^ u:n :}
-   w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER:RESOLVE IF LOAD-HELD LOADED EXIT THEN
-   SOURCE-ROOT:RESOLVED-ROOT$ {: root:^ rootu:n :}
-   REQUIRE-REG:STORE {: path:^ pathu:n :}
-   a u path pathu root rootu COMPOSE-OPEN ;
+   a u  w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER:RESOLVE
+   SOURCE-ROOT:RESOLVED-ROOT$ COMPOSE-REQUIRE ;
 
 : COMPOSE-SCRIPT-REQUIRED ( str -- )
    {: a:^ u:n :}
-   NULL-PTR 0 a u [: 2drop SOURCE-ROOT:ENTRY-RESOLVE ;] LOADER:RESOLVE IF LOAD-HELD LOADED EXIT THEN
-   SOURCE-ROOT:RESOLVED-ROOT$ {: root:^ rootu:n :}
-   REQUIRE-REG:STORE {: path:^ pathu:n :}
-   a u path pathu root rootu COMPOSE-OPEN ;
+   a u  NULL-PTR 0 a u [: 2drop SOURCE-ROOT:ENTRY-RESOLVE ;] LOADER:RESOLVE
+   SOURCE-ROOT:RESOLVED-ROOT$ COMPOSE-REQUIRE ;
 
 : COMPOSE-PROVIDED ( str str -- )
    [: SOURCE-ROOT:RESOLVE-AT ;] LOADER:RESOLVE IF 2drop EXIT THEN
@@ -3934,110 +3983,227 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u STRUCT-RESULT-XT @ s" STRUCT-RESULT" LIBRARY-DEFINER? IF true EXIT THEN
    a u VARIADIC-XT @ s" VARIADIC" LIBRARY-DEFINER? ;
 
-: RECORD-DEFINER? ( str -- bool ) {: a:^ u:n :}
-   \ A program's own word spelled like a declaration is not one.
+\ The arm that reads a top-level token; no arm reads an `other` one.
+ENUM definer-arm DERIVE eq
+   other
+   package-open public-section private-section global-section target-section
+   package-close package-seal using-open using-close split-mark
+   type-decl linear-type value-record raw-structure structure-decl mutual-decl
+   newtype-decl sumtype-decl enum-decl
+   layout-buffer defer-layout-buffer typed-buffer typed-variable
+   byte-buffer user-slot dynamic-buffer arena-def heap-def
+   cwork-span cwork-variable
+   constant-def address-def defer-def prim-row pprim-row trusted-def
+   cast-decl linear-decl undefine-name generates-row immediate-mark export-def
+   function-open callback-open function-clause function-close callback-close
+   unread learned created
+;ENUM
+
+: KEYWORD-ARM ( str -- definer-arm )
+   {: a:^ u:n :}
+   a u s" package" STR:=CI IF construct definer-arm package-open EXIT THEN
+   a u s" public" STR:=CI IF construct definer-arm public-section EXIT THEN
+   a u s" private" STR:=CI IF construct definer-arm private-section EXIT THEN
+   a u s" global" STR:=CI IF construct definer-arm global-section EXIT THEN
+   a u s" host" STR:=CI IF construct definer-arm target-section EXIT THEN
+   a u s" target" STR:=CI IF construct definer-arm target-section EXIT THEN
+   a u s" ;package" STR:=CI IF construct definer-arm package-close EXIT THEN
+   a u s" seal-package" STR:=CI IF construct definer-arm package-seal EXIT THEN
+   a u s" using" STR:=CI IF construct definer-arm using-open EXIT THEN
+   a u s" ;using" STR:=CI IF construct definer-arm using-close EXIT THEN
+   a u s" split-str" STR:=CI IF construct definer-arm split-mark EXIT THEN
+   construct definer-arm other ;
+
+\ Read only where the token binds the engine's word: a program's own word of
+\ the spelling is a call.
+: DECLARATION-ARM ( str -- definer-arm )
+   {: a:^ u:n :}
+   a u s" deftype" STR:=CI IF construct definer-arm type-decl EXIT THEN
+   a u s" deflinear" STR:=CI IF construct definer-arm linear-type EXIT THEN
+   a u s" value-record" STR:=CI IF construct definer-arm value-record EXIT THEN
+   a u s" structure" STR:=CI IF construct definer-arm structure-decl EXIT THEN
+   a u s" mutual" STR:=CI IF construct definer-arm mutual-decl EXIT THEN
+   a u s" newtype" STR:=CI IF construct definer-arm newtype-decl EXIT THEN
+   a u s" sumtype" STR:=CI IF construct definer-arm sumtype-decl EXIT THEN
+   a u s" enum" STR:=CI IF construct definer-arm enum-decl EXIT THEN
+   a u s" generates:" STR:=CI IF construct definer-arm generates-row EXIT THEN
+   a u s" FUNCTION:" STR:=CI IF construct definer-arm function-open EXIT THEN
+   a u s" CALLBACK:" STR:=CI IF construct definer-arm callback-open EXIT THEN
+   \ `;FUNCTION` defines only the word the `FUNCTION:` arm recorded, so it marks
+   \ nothing.
+   a u FFI-CLOSER? IF construct definer-arm function-close EXIT THEN
+   a u s" ;CALLBACK" STR:=CI IF construct definer-arm callback-close EXIT THEN
+   construct definer-arm other ;
+
+: STORAGE-ARM ( str -- definer-arm )
+   {: a:^ u:n :}
+   a u LAYOUT-BUFFER-XT @ s" LAYOUT-BUFFER" LIBRARY-DEFINER?
+   IF construct definer-arm layout-buffer EXIT THEN
+   a u DEFER-LAYOUT-BUFFER-XT @ s" DEFER-LAYOUT-BUFFER" LIBRARY-DEFINER?
+   IF construct definer-arm defer-layout-buffer EXIT THEN
+   a u TYPED-BUFFER-XT @ s" TYPED-BUFFER" LIBRARY-DEFINER?
+   IF construct definer-arm typed-buffer EXIT THEN
+   a u TYPED-VARIABLE-XT @ s" TYPED-VARIABLE" LIBRARY-DEFINER?
+   IF construct definer-arm typed-variable EXIT THEN
+   a u USERS-XT @ s" +USERS" LIBRARY-DEFINER?
+   IF construct definer-arm byte-buffer EXIT THEN
+   a u USER-XT @ s" +USER" LIBRARY-DEFINER?
+   IF construct definer-arm user-slot EXIT THEN
+   a u DYNAMIC-BUFFER-XT @ s" DYNAMIC-BUFFER" LIBRARY-DEFINER?
+   IF construct definer-arm dynamic-buffer EXIT THEN
+   a u ARENA-XT @ s" ARENA" LIBRARY-DEFINER?
+   IF construct definer-arm arena-def EXIT THEN
+   a u HEAP-XT @ s" HEAP" LIBRARY-DEFINER?
+   IF construct definer-arm heap-def EXIT THEN
+   a u CWORK-BUFFER-XT @ s" CWORK-BUFFER" LIBRARY-DEFINER?
+   IF construct definer-arm byte-buffer EXIT THEN
+   a u CWORK-SPAN-XT @ s" CWORK-SPAN" LIBRARY-DEFINER?
+   IF construct definer-arm cwork-span EXIT THEN
+   a u CWORK-VARIABLE-XT @ s" CWORK-VARIABLE" LIBRARY-DEFINER?
+   IF construct definer-arm cwork-variable EXIT THEN
+   construct definer-arm other ;
+
+: WORD-ARM ( str -- definer-arm )
+   {: a:^ u:n :}
+   a u s" constant" STR:=CI IF construct definer-arm constant-def EXIT THEN
+   a u s" create" STR:=CI IF construct definer-arm address-def EXIT THEN
+   a u s" variable" STR:=CI IF construct definer-arm address-def EXIT THEN
+   a u s" defer" STR:=CI IF construct definer-arm defer-def EXIT THEN
+   a u s" begin-structure" STR:=CI
+   IF construct definer-arm raw-structure EXIT THEN
+   a u s" EPRIM:" STR:=CI
+   IF ENGINE-FILE? IF construct definer-arm prim-row EXIT THEN THEN
+   a u s" EPPRIM:" STR:=CI
+   IF ENGINE-FILE? IF construct definer-arm pprim-row EXIT THEN THEN
+   a u s" trusted:" STR:=CI IF construct definer-arm trusted-def EXIT THEN
+   a u s" cast:" STR:=CI IF construct definer-arm cast-decl EXIT THEN
+   a u s" linear:" STR:=CI IF construct definer-arm linear-decl EXIT THEN
+   a u s" undefine" STR:=CI IF construct definer-arm undefine-name EXIT THEN
+   a u s" immediate" STR:=CI IF construct definer-arm immediate-mark EXIT THEN
+   a u s" export" STR:=CI IF construct definer-arm export-def EXIT THEN
+   construct definer-arm other ;
+
+: CALL-RENDERS? ( str -- bool ) CTL-RENDERS RENDERS-MARK? ;
+
+\ A declaration no other arm reads and that renders no source (`evaluate`
+\ renders) leaves the rest of the source to the run.
+: CALL-ARM ( str bool -- definer-arm )
+   {: a:^ u:n decl:bool :}
+   a u NOMINAL-MARK
+   a u CALL-RENDERS? {: renders:bool :}
+   decl renders 0= and IF construct definer-arm unread EXIT THEN
+   a u DEFINER-EFFECT nip 0<> IF construct definer-arm learned EXIT THEN
+   a u FIND-SYM CREATES-SYM? 0<> IF construct definer-arm created EXIT THEN
+   construct definer-arm other ;
+
+: DEFINER? ( definer-arm -- bool )
+   construct definer-arm other DEFINER-ARM-EQ 0= ;
+
+: ELSE-ARM ( definer-arm [ -- definer-arm ] -- definer-arm )
+   {: arm:definer-arm next :}
+   arm DEFINER? IF arm EXIT THEN
+   next execute ;
+
+: FFI-CLAUSE-ARM ( str -- definer-arm )
+   FFI-CLAUSE? IF construct definer-arm function-clause EXIT THEN
+   construct definer-arm other ;
+
+: SELECT-ARM ( str -- definer-arm )
+   {: a:^ u:n :}
    a u TOP-BINDING nip nip BINDING-ID {: id:n :}
    id CHECKER-OWNER-ABI:BINDING-DECLARATION-ID =
    id CHECKER-OWNER-ABI:BINDING-TOP-ONLY-ID = or {: decl:bool :}
-   a u s" package" STR:=CI IF RECORD-PACKAGE 0 0= EXIT THEN
-   a u s" public" STR:=CI IF RECORD-PUBLIC 0 0= EXIT THEN
-   a u s" private" STR:=CI IF RECORD-PRIVATE 0 0= EXIT THEN
-   a u s" global" STR:=CI IF RECORD-GLOBAL 0 0= EXIT THEN
-   a u s" host" STR:=CI IF 0 0= EXIT THEN
-   a u s" target" STR:=CI IF 0 0= EXIT THEN
-   a u s" ;package" STR:=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN
-   a u s" seal-package" STR:=CI IF SEAL-ROW 0 0= EXIT THEN
-   a u s" using" STR:=CI IF RECORD-USING 0 0= EXIT THEN
-   a u s" ;using" STR:=CI IF a u RECORD-END-USING 0 0= EXIT THEN
-   a u s" split-str" STR:=CI IF
-      CHECKER-SPLIT-STR @ 0= IF
-         a u INTERPRETER:SPLIT-STR-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP
-      THEN
-      0 0= EXIT
-   THEN
-   a u s" deftype" STR:=CI decl and IF RECORD-DEFTYPE 0 0= EXIT THEN
-   a u s" deflinear" STR:=CI decl and IF RECORD-DEFLINEAR 0 0= EXIT THEN
-   a u s" value-record" STR:=CI decl and IF
-      [: RECORD-VALUE-RECORD ;] VALUE-RECORD-OUTCOME 0 0= EXIT THEN
-   a u s" begin-structure" STR:=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
-   a u s" structure" STR:=CI decl and IF RECORD-STRUCTURE-DECL 0 0= EXIT THEN
-   a u s" mutual" STR:=CI decl and IF RECORD-MUTUAL 0 0= EXIT THEN
-   a u s" newtype" STR:=CI decl and IF RECORD-NEWTYPE 0 0= EXIT THEN
-   a u s" sumtype" STR:=CI decl and IF
-      [: RECORD-SUMTYPE ;] LEGACY-TYPE-OUTCOME 0 0= EXIT THEN
-   a u s" enum" STR:=CI decl and IF RECORD-ENUM 0 0= EXIT THEN
-   a u LAYOUT-BUFFER-XT @ s" LAYOUT-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-LAYOUT-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u DEFER-LAYOUT-BUFFER-XT @ s" DEFER-LAYOUT-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-DEFER-LAYOUT-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u TYPED-BUFFER-XT @ s" TYPED-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-TYPED-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u TYPED-VARIABLE-XT @ s" TYPED-VARIABLE" LIBRARY-DEFINER? IF
-      [: RECORD-TYPED-VARIABLE ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u USERS-XT @ s" +USERS" LIBRARY-DEFINER? IF
-      [: RECORD-BYTE-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u USER-XT @ s" +USER" LIBRARY-DEFINER? IF
-      [: RECORD-SLOT ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u DYNAMIC-BUFFER-XT @ s" DYNAMIC-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-DYNAMIC-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u ARENA-XT @ s" ARENA" LIBRARY-DEFINER? IF
-      [: RECORD-ARENA ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u HEAP-XT @ s" HEAP" LIBRARY-DEFINER? IF
-      [: RECORD-HEAP ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u CWORK-BUFFER-XT @ s" CWORK-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-BYTE-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u CWORK-SPAN-XT @ s" CWORK-SPAN" LIBRARY-DEFINER? IF
-      [: RECORD-CWORK-SPAN ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u CWORK-VARIABLE-XT @ s" CWORK-VARIABLE" LIBRARY-DEFINER? IF
-      [: RECORD-CWORK-VARIABLE ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u s" constant" STR:=CI IF RECORD-CONSTANT 0 0= EXIT THEN
-   a u s" create" STR:=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" variable" STR:=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" defer" STR:=CI IF TRUST-DEFER 0 0= EXIT THEN
-   a u s" EPRIM:" STR:=CI IF ENGINE-FILE? IF RECORD-PRIM-ROW 0 0= EXIT THEN THEN
-   a u s" EPPRIM:" STR:=CI IF ENGINE-FILE? IF RECORD-PPRIM 0 0= EXIT THEN THEN
-   a u s" trusted:" STR:=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
-   a u s" cast:" STR:=CI IF
-      [: CAST-DECLARATION ;] IDENTITY-OUTCOME 0 0= EXIT THEN
-   a u s" linear:" STR:=CI IF
-      [: LINEAR-DECLARATION ;] IDENTITY-OUTCOME 0 0= EXIT THEN
-   a u s" undefine" STR:=CI IF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD 0 0= EXIT THEN
-   a u s" generates:" STR:=CI decl and IF RECORD-GENERATES 0 0= EXIT THEN
-   a u s" FUNCTION:" STR:=CI decl and IF a u RECORD-FFI-FUNCTION 0 0= EXIT THEN
-   a u s" CALLBACK:" STR:=CI decl and IF a u RECORD-FFI-CALLBACK 0 0= EXIT THEN
-   a u FFI-CLAUSE? IF a u FFI-CLAUSE 0 0= EXIT THEN
-   a u s" immediate" STR:=CI IF
-      TICK-CONTEXT-UNKNOWN  NEWEST-SYM @ CHECKER-IMMEDIATE 0 0= EXIT
-   THEN
-   a u s" export" STR:=CI IF RECORD-EXPORT 0 0= EXIT THEN
-   \ `;FUNCTION` defines only the word the `FUNCTION:` arm recorded, so it marks
-   \ nothing.
-   a u FFI-CLOSER? decl and IF
-      [: FFI-CLOSE ;] a u FFI-AT 0 0= EXIT
-   THEN
-   a u s" ;CALLBACK" STR:=CI decl and IF CLOSE-FFI-CALLBACK 0 0= EXIT THEN
-   a u NOMINAL-MARK
-   a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
-   \ A declaration no arm above reads and that renders no source (`evaluate`
-   \ renders) leaves the rest of its statement to the run.
-   decl renders 0= and IF a u DW-PARSER TOP-OPAQUE 0 0= EXIT THEN
-   \ A definer learned from a `does>` definition or a `generates:` row earlier
-   \ in the closure. The created word is the next token, as for `constant` (the
-   \ definer's own arguments precede it); the effect is the clause's or the
-   \ row's, under the storage definers' raw seal.
-   a u DEFINER-EFFECT dup 0<> IF
-      a u renders BOUND-CALL
-      TICK-CONTEXT-UNKNOWN DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT
-   THEN 2drop
-   \ A definer this pre-pass never read: one compiled in the checking process,
-   \ whose clause the checker certified and kept, or a wrapper of one the
-   \ checker's body walk recorded. FIND-SYM resolves it, so the qualified and
-   \ the bare-under-`using` spelling reach the one row.
+   a u KEYWORD-ARM
+   [: decl IF a u DECLARATION-ARM ELSE construct definer-arm other THEN ;]
+   ELSE-ARM
+   [: a u STORAGE-ARM ;] ELSE-ARM
+   [: a u WORD-ARM ;] ELSE-ARM
+   [: a u FFI-CLAUSE-ARM ;] ELSE-ARM
+   [: a u decl CALL-ARM ;] ELSE-ARM ;
+
+\ The load's require check of a definer's token: the load reads a top-level
+\ keyword before it looks a word up.
+: DEFINER-USE ( str -- )
+   {: a:^ u:n :}
+   a u TOP-KEYWORD? IF EXIT THEN
+   a u CHECKER-VERIFY-REQUIRED ;
+
+: SPLIT-MARK ( str -- )
+   CHECKER-SPLIT-STR @ 0<> IF 2drop EXIT THEN
+   INTERPRETER:SPLIT-STR-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP ;
+
+\ The effect is the `does>` clause's or the `generates:` row's.
+: RUN-LEARNED ( str -- )
+   {: a:^ u:n :}
+   a u  a u CALL-RENDERS?  BOUND-CALL
+   TICK-CONTEXT-UNKNOWN
+   a u DEFINER-EFFECT DEF-STORAGE RAW-TRUST-NEXT ;
+
+: RUN-CREATED ( str -- )
+   {: a:^ u:n :}
    a u FIND-SYM {: dsym:n :}
-   dsym CREATES-SYM? 0= IF 0 0= 0= EXIT THEN
-   a u renders BOUND-CALL
-   dsym CREATED-TRUST-NEXT? IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
-   0 0= 0= ;
+   a u  a u CALL-RENDERS?  BOUND-CALL
+   dsym CREATED-TRUST-NEXT  TICK-CONTEXT-UNKNOWN ;
+
+: RUN-ARM ( str definer-arm -- )
+   {: a:^ u:n arm:definer-arm :}
+   arm MATCH definer-arm
+      other OF ENDOF
+      package-open OF RECORD-PACKAGE ENDOF
+      public-section OF RECORD-PUBLIC ENDOF
+      private-section OF RECORD-PRIVATE ENDOF
+      global-section OF RECORD-GLOBAL ENDOF
+      target-section OF ENDOF
+      package-close OF RECORD-END-PACKAGE ENDOF
+      package-seal OF SEAL-ROW ENDOF
+      using-open OF RECORD-USING ENDOF
+      using-close OF a u RECORD-END-USING ENDOF
+      split-mark OF a u SPLIT-MARK ENDOF
+      type-decl OF RECORD-DEFTYPE ENDOF
+      linear-type OF RECORD-DEFLINEAR ENDOF
+      value-record OF [: RECORD-VALUE-RECORD ;] VALUE-RECORD-OUTCOME ENDOF
+      raw-structure OF RECORD-STRUCTURE ENDOF
+      structure-decl OF RECORD-STRUCTURE-DECL ENDOF
+      mutual-decl OF RECORD-MUTUAL ENDOF
+      newtype-decl OF RECORD-NEWTYPE ENDOF
+      sumtype-decl OF [: RECORD-SUMTYPE ;] LEGACY-TYPE-OUTCOME ENDOF
+      enum-decl OF RECORD-ENUM ENDOF
+      layout-buffer OF [: RECORD-LAYOUT-BUFFER ;] STORAGE-OUTCOME ENDOF
+      defer-layout-buffer OF
+         [: RECORD-DEFER-LAYOUT-BUFFER ;] STORAGE-OUTCOME
+      ENDOF
+      typed-buffer OF [: RECORD-TYPED-BUFFER ;] STORAGE-OUTCOME ENDOF
+      typed-variable OF [: RECORD-TYPED-VARIABLE ;] STORAGE-OUTCOME ENDOF
+      byte-buffer OF [: RECORD-BYTE-BUFFER ;] STORAGE-OUTCOME ENDOF
+      user-slot OF [: RECORD-SLOT ;] STORAGE-OUTCOME ENDOF
+      dynamic-buffer OF [: RECORD-DYNAMIC-BUFFER ;] STORAGE-OUTCOME ENDOF
+      arena-def OF [: RECORD-ARENA ;] STORAGE-OUTCOME ENDOF
+      heap-def OF [: RECORD-HEAP ;] STORAGE-OUTCOME ENDOF
+      cwork-span OF [: RECORD-CWORK-SPAN ;] STORAGE-OUTCOME ENDOF
+      cwork-variable OF [: RECORD-CWORK-VARIABLE ;] STORAGE-OUTCOME ENDOF
+      constant-def OF RECORD-CONSTANT ENDOF
+      address-def OF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT ENDOF
+      defer-def OF TRUST-DEFER ENDOF
+      prim-row OF RECORD-PRIM-ROW ENDOF
+      pprim-row OF RECORD-PPRIM ENDOF
+      trusted-def OF TRUSTED-DEFINITION ENDOF
+      cast-decl OF [: CAST-DECLARATION ;] IDENTITY-OUTCOME ENDOF
+      linear-decl OF [: LINEAR-DECLARATION ;] IDENTITY-OUTCOME ENDOF
+      undefine-name OF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD ENDOF
+      generates-row OF RECORD-GENERATES ENDOF
+      immediate-mark OF
+         TICK-CONTEXT-UNKNOWN  NEWEST-SYM @ CHECKER-IMMEDIATE
+      ENDOF
+      export-def OF RECORD-EXPORT ENDOF
+      function-open OF a u RECORD-FFI-FUNCTION ENDOF
+      callback-open OF a u RECORD-FFI-CALLBACK ENDOF
+      function-clause OF a u FFI-CLAUSE ENDOF
+      function-close OF [: FFI-CLOSE ;] a u FFI-AT ENDOF
+      callback-close OF CLOSE-FFI-CALLBACK ENDOF
+      unread OF a u DW-PARSER TOP-OPAQUE ENDOF
+      learned OF a u RUN-LEARNED ENDOF
+      created OF a u RUN-CREATED ENDOF
+   ;MATCH ;
 
 : COLON-DEFINED ( -- )
    TOP-CUR-A @ TOP-CUR-U @  DEF-NAME-A @ DEF-NAME-U @  DEF-SIG-A @ DEF-SIG-U @
@@ -4193,7 +4359,6 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 \ the tokens of a broken declaration are not reported as names.
 : TOP-DEFINER? ( str -- bool )
    {: a:^ u:n :}
-   REJECTION:TALLY {: before:n :}
    a u TICK-NATIVE-DEFINER? {: native:bool :}
    \ A library definer is a replaceable dictionary call, not structural syntax.
    INDEX-ON @ native 0= and IF false EXIT THEN
@@ -4204,7 +4369,12 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    ctl CHECKER-OWNER-ABI:BINDING-REFUSED and 0<>
    section and IF false EXIT THEN
    section sym 0<> and IF a u INTERPRETER:SECTION-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP THEN
-   a u RECORD-DEFINER? 0= IF 0 0= 0= EXIT THEN
+   a u SELECT-ARM {: arm:definer-arm :}
+   arm DEFINER? 0= IF false EXIT THEN
+   \ TOP-TOKEN judges no token an arm reads, so it is judged here.
+   a u DEFINER-USE
+   REJECTION:TALLY {: before:n :}
+   a u arm RUN-ARM
    native 0= IF TICK-CONTEXT-UNKNOWN THEN
    native 0= IF a u at sym ENGINE-ORIGIN-USE THEN
    TOP-CLOSE
@@ -4409,7 +4579,7 @@ COMPOSE-INIT
 
 : VERIFY-ARMED ( -- )
    SOURCE-ARM
-   [: VERIFY-SOURCE ;] catch {: rc:n :}
+   [: 0 [: VERIFY-SOURCE ;] REQUIRES:WITH-FILE ;] catch {: rc:n :}
    REJECTION:SOURCE-OFF
    rc 0<> IF rc throw THEN ;
 
@@ -4616,26 +4786,42 @@ private
    s"  bytes" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
+\ Copies the subject's path and answers its registry row, or -1: the path is
+\ the row's name for an engine file the registry holds, else canonical.
+: COMPOSE-SUBJ! ( str -- n )
+   SOURCE-ROOT:CANONICAL drop {: p:^ pu:n :}
+   p pu SOURCE-ROOT:ENGINE$ SOURCE-ROOT:RELATIVE {: q:^ qu:n :}
+   q qu REQUIRE-REG:ROW-OF 0 < IF p pu ELSE q qu THEN {: path:^ u:n :}
+   path COMPOSE-SUBJ-PATH u BYTE-COPY  u COMPOSE-SUBJ-PATH-U !
+   COMPOSE-SUBJ-PATH u REQUIRE-REG:ROW-OF ;
+
 \ The registry suffix and the caller's checker scope survive the composition's
 \ success and throw.
 : SOURCE-COMPOSE-LABELED-IN-SCOPE ( str str str -- )
    {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
    pathu 0= pathu PATH-CAP > or IF path pathu COMPOSE-PATH-STOP THEN
    labelu PATH-CAP > IF label labelu COMPOSE-PATH-STOP THEN
-   path COMPOSE-SUBJ-PATH pathu BYTE-COPY
-   pathu COMPOSE-SUBJ-PATH-U !
+   path pathu COMPOSE-SUBJ! {: row:n :}
    label COMPOSE-SUBJ-LABEL labelu BYTE-COPY
    labelu COMPOSE-SUBJ-LABEL-U !
    src COMPOSE-SUBJ-A !  srcu COMPOSE-SUBJ-U !
    NULL-PTR COMPOSE-CUR-PATH-A !  0 COMPOSE-CUR-PATH-U !
    0 PRIM-OPEN-READY !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
-   COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF
-      COMPOSE-SUBJ-PATH pathu REQUIRE-REG:STORE 2drop
-   THEN
+   row 0 < IF
+      COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ REQUIRE-REG:STORE 2drop
+      COMPOSE-REQ0 @ SOURCE-ROOT:CURRENT$ REQUIRE-REG:MINT
+   ELSE
+      row REQUIRE-REG:ID
+   THEN {: subj:n :}
+   \ Entry text is no file's, as on the load.
+   ENTRY-TEXT @ IF 0 ELSE subj THEN {: id:n :}
+   REQUIRES:CURRENT@ {: was:n :}
    CSR-TAKE
    -1 COMPOSE-ON !
+   id REQUIRES:CURRENT!
    [: COMPOSE-WITH-USES ;] catch {: rc:n :}
+   was REQUIRES:CURRENT!
    VISITS-DROP
    CSR-RESET
    0 COMPOSE-ON !

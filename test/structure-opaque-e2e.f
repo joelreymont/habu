@@ -3,7 +3,7 @@
 \ reaches the pair through OP's public wordlist. The same check replays
 \ test/fixtures/big-decl.f. A temporary tree holds every source the children
 \ ran and every child log until the process exits.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

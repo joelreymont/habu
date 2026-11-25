@@ -1,10 +1,11 @@
 \ Generated initialized-field words keep their receiver and value boundaries
 \ through ordinary source evaluation.
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 require src/lib/test/ending.f
 require test/c2-init-accessors.f
+require src/lib/process.f
 
 package C2-INIT-ACCESSOR-REFUSALS
 private

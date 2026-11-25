@@ -3,7 +3,7 @@
 \ so the x86-64 arms of host selectors (src/compiler/native/abi.f,
 \ src/habu/prof.f) are not reached here.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/error.f
 require src/compiler/target.f
 

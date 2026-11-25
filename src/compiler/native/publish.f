@@ -19,6 +19,7 @@ require src/compiler/native/dict.f
 require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
 require src/habu/code-span.f
+require src/compiler/workspace.f
 
 package NPUB
 

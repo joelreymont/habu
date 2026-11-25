@@ -10,7 +10,7 @@
 \ Each loop case proves its premise with one raw call first.
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/process.f
@@ -19,6 +19,9 @@ require src/lib/process-argv.f
 require src/lib/test/ending.f
 require src/lib/fd.f
 require src/lib/fs-mutate.f
+require src/lib/task.f
+require src/lib/fs.f
+require src/lib/ffi-abi.f
 
 package FD-TEST
 using FD

@@ -4,10 +4,11 @@
 \ built it alone. Task k asks for 8 * (2^58 + k) bytes, so a record names the
 \ task that built it. The race runs in a child, so its stdout is checked: a
 \ record whose bytes went to stdout was built in another thread's state.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/task.f
+require src/lib/process.f
 
 package REJECTION-TASKS-TEST
 private

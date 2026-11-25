@@ -22,6 +22,7 @@ require tools/hb-build-report.f
 require tools/image-size-lib.f
 require tools/image-names.f
 require src/core/exit-status.f
+require src/compiler/target.f
 
 package HB-BUILD-CLI
 

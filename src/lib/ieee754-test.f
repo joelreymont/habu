@@ -1,6 +1,6 @@
 \ ieee754-test.f - focused IEEE-754 bit and rounding tests.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/ieee754.f
 
 package IEEE754-TEST

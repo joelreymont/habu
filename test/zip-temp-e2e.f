@@ -5,13 +5,14 @@
 \ The child reads its archive path from argv, so it runs spawned and stays
 \ unregistered. The process removes the temporary tree at exit.
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
+require src/lib/process.f
 
 package ZIP-TEMP-E2E
 

@@ -4,6 +4,7 @@
 
 require src/core/exit-status.f
 require src/arch/arm64/mnem.f
+require src/arch/arm64/icode.f
 using A64ICODE
 package SYSCALL
 public

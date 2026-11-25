@@ -1,9 +1,10 @@
 \ A real OS refusal to grow the address-cell table runs in a child: its zero
 \ address-space limit is process-wide and its uncaught throw ends it.
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
+require src/lib/process.f
 package ADDRESS-CELL-STORAGE-OOM
 create OUT 1024 allot
 create ERR 4096 allot

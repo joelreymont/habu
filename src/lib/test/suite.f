@@ -1,5 +1,5 @@
-\ suite.f - package TEST: suite, group and row registration and the run loop,
-\ loaded by src/lib/test.f. A project adapter installs the hooks (SETUP! through
+\ suite.f - package TEST: suite, group and row registration and the run loop.
+\ A project adapter installs the hooks (SETUP! through
 \ STDIN-RUNNER!); fixture helper words belong in a private package, not
 \ global stemmed names.
 \ STORAGE CLASS. PROCESS-WIDE: the row and group tables, argument buffer and

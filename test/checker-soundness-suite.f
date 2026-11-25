@@ -1,9 +1,10 @@
 \ checker-soundness-suite.f - a certified body must not exceed its declared effect.
 
 require src/lib/adt/option.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 require src/lib/test/ending.f
+require src/lib/process.f
 
 package CHECKER-SOUNDNESS
 public

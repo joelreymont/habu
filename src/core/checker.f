@@ -11108,7 +11108,10 @@ $20 constant ER-CONTENT-OFF
 $28 constant ER-STORAGE-OFF-OFF
 $30 constant ER-STORAGE-N-OFF
 $38 constant ER-STORAGE-KIND-OFF
-$40 constant EFF-REC
+\ The file the record is of, REQUIRES:FILE@: a record with no dictionary slot
+\ is judged by it (USE-CHECK).
+$40 constant ER-FILE-OFF
+$48 constant EFF-REC
 
 0 constant STORAGE-NONE
 1 constant STORAGE-ACCESSOR
@@ -11122,6 +11125,7 @@ $40 constant EFF-REC
 : ER.STORAGE-OFF ( ^u8 -- ^n ) ER-STORAGE-OFF-OFF + CELL-VIEW ;
 : ER.STORAGE-N ( ^u8 -- ^n ) ER-STORAGE-N-OFF + CELL-VIEW ;
 : ER.STORAGE-KIND ( ^u8 -- ^n ) ER-STORAGE-KIND-OFF + CELL-VIEW ;
+: ER.FILE ( ^u8 -- ^n ) ER-FILE-OFF + CELL-VIEW ;
 
 7 constant EFF-CONTENT-CELLS
 $38 constant EFF-CONTENT
@@ -12489,6 +12493,7 @@ CUR-DEFAULT
    0 p ER.SYMPREV !
    0 p ER.STORAGE-OFF !  0 p ER.STORAGE-N !
    STORAGE-NONE p ER.STORAGE-KIND !
+   REQUIRES:FILE@ p ER.FILE !
    CHECKER-REC-SYM @ p ER.SYM ! ;
 
 : E-REC-START ( -- ^u8 )
@@ -12685,10 +12690,11 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
    symn SYM-N !
    symu SYM-STR-U ! ;
 
-\ The token SGBAD names in text SA SU, at its copy in the checked text
-\ when the scan holds SA SU's bytes there at SGA SGU, else where the parse read it.
+\ The token SGBAD names in text SA SU: where the parse read it, or, when that is
+\ a copy the source does not hold, at SGA SGU where the checked text has SA SU's bytes.
 : SGBAD-AT ( str -- ^u8 )
    {: sa:^ su:n :}
+   SGBAD-A @ REJECTION:>SOURCE nip IF SGBAD-A @ EXIT THEN
    SGBAD-A @ sa - {: off:n :}
    off 0 <  off SGBAD-U @ + su >  or IF SGBAD-A @ EXIT THEN
    SGA @ SGU @ CHECKED-OFF 0 < IF SGBAD-A @ EXIT THEN
@@ -18742,24 +18748,33 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    wid 0= IF NULL-PTR EXIT THEN
    CHECKER-QTAIL$ wid CHECKER-RESOLVE:WL-PROBE ;
 
-: TOP-PUBLIC-BIND? ( -- bool ) TOP-PUBLIC-REC NULL-PTR <> ;
+\ ENGINE-WORD-SYM's answer with the global wordlist's record of a u, or of its
+\ tail: CK-WL-CLAIMS? made that name the part's dependency.
+: ENGINE-WORD-REC ( n bool str -- n ^n bool )
+   {: sym:n ok:bool a:^ u:n :}
+   ok 0= IF sym NULL-PTR RES-FALSE EXIT THEN
+   a u CHECKER-QUALIFIED? IF CHECKER-QTAIL$ ELSE a u THEN
+   BOOT:GLOBAL-WL xref-search-wl {: rec:^ :}
+   sym rec RES-TRUE ;
 
 \ A cold published package primitive may have no user record. A successful walk
 \ can also select a dictionary record before the lazy checker symbol exists.
-: TOP-BOUND-SYM ( str n -- n bool )
+: TOP-BOUND-SYM ( str n -- n ^n bool )
    {: a:^ u:n sym:n :}
+   BIND-REC @ {: rec:^ :}
    sym 0 <> IF
-      sym USIG-NEWEST-VISIBLE 0 <> IF sym RES-TRUE EXIT THEN
+      sym USIG-NEWEST-VISIBLE 0 <> IF sym rec RES-TRUE EXIT THEN
       a u CHECKER-QUALIFIED? 0= IF
-         a u BOOT:GLOBAL-WL CK-WL-CLAIMS? IF sym RES-TRUE EXIT THEN
+         a u BOOT:GLOBAL-WL CK-WL-CLAIMS? IF sym rec RES-TRUE EXIT THEN
       THEN
    THEN
-   WALK-REC @ IF sym RES-TRUE EXIT THEN
+   WALK-REC @ IF sym rec RES-TRUE EXIT THEN
    a u CHECKER-QUALIFIED? IF
-      TOP-PUBLIC-BIND? IF sym RES-TRUE EXIT THEN
-      a u OPEN-TAIL-GLOBAL? EXIT
+      TOP-PUBLIC-REC {: pub:^ :}
+      pub NULL-PTR <> IF sym pub RES-TRUE EXIT THEN
+      a u OPEN-TAIL-GLOBAL? a u ENGINE-WORD-REC EXIT
    THEN
-   a u ENGINE-WORD-SYM ;
+   a u ENGINE-WORD-SYM a u ENGINE-WORD-REC ;
 
 \ 0 and false when `using` refuses it: the load runs no word for a shadowed or
 \ ambiguous name, so no engine word of that name stands in.
@@ -18770,7 +18785,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       why FQSYM-DEFERRED? 0= IF a u why RAISE THEN
       0 RES-FALSE EXIT
    THEN
-   a u sym TOP-BOUND-SYM ;
+   a u sym TOP-BOUND-SYM nip ;
 
 : TOP-CONTROL ( n -- n bool ) {: sym:n :}
    sym 0 <> IF sym CTL-FLAGS-SYM sym DFER-FIND-SYM EXIT THEN
@@ -18916,7 +18931,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    REJECTION:KEEP
    0 DEFER-WHY !  0 DEFER-STOP ! ;
 
-\ The body is asserted, never walked, but what running it may do is what its
+\ The body is asserted, never judged, but what running it may do is what its
 \ calls may do, and one bound nowhere may name any word, so it brings them all.
 : CHECKER-VERIFY-REACH ( str str -- )
    {: a:^ u:n na:^ nu:n :}
@@ -19282,14 +19297,33 @@ EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
    a u EXPORT-SEALED? IF a u EXPORT-SEALED THEN
    a u EXPORT-UNDEFINED ;
 
-: EXPORT-RESOLVE ( str n -- ) {: a:^ u:n sym:n :}
+\ A prefix probe observes only misses in the token it just captured; earlier
+\ body text is the caller's and may still await its own `;`.
+variable CHECKER-PREFIX-ACTIVE
+
+\ The require check of a call outside a prefix probe that the source read spells,
+\ by REC's slot; with no record, by the file of SYM's effect record.
+: USE-CHECK ( n str ^n -- ) {: sym:n a:^ u:n rec:^ :}
+   CHECKER-PREFIX-ACTIVE @ 0 <> IF EXIT THEN
+   a REJECTION:RENDERED? IF EXIT THEN
+   rec NULL-PTR <> IF a u rec REC>INDEX REQUIRES:CHECK EXIT THEN
+   sym 0= IF EXIT THEN
+   sym USIG-NEWEST-VISIBLE {: rec1:n :}
+   rec1 0= IF EXIT THEN                    \ a kernel primitive
+   a u rec1 1 - E-PTR ER.FILE @ REQUIRES:CHECK-FILE ;
+
+\ The operand a u names SYM, whose record is PRIV, EXPORT-SYM's, else the one
+\ its scope finds.
+: EXPORT-RESOLVE ( str n ^n -- ) {: a:^ u:n sym:n priv:^ :}
    sym HOST-DECLARATION-SYM? IF a u EXPORT-DECLARATION THEN
    sym PRIM-TRUSTED-SYM? IF a u EXPORT-UNSAFE THEN
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
-   FEP-HIT? WALK-USED @ 0= and IF sym a u NAV-USE-NOW EXIT THEN
+   FEP-HIT? WALK-USED @ 0= and
    \ A primitive a package owns is one of its private words; a global one is not.
-   sym PRIM-FIRST-IDX 0 <>  sym SYM-PKG$ nip 0 <>  and IF sym a u NAV-USE-NOW EXIT THEN
-   a u sym EXPORT-MISS ;
+   sym PRIM-FIRST-IDX 0 <>  sym SYM-PKG$ nip 0 <>  and  or
+   0= IF a u sym EXPORT-MISS THEN
+   priv NULL-PTR = IF a u HORIZON-FIND 2drop drop ELSE priv THEN {: rec:^ :}
+   sym a u NAV-USE-NOW  sym a u rec USE-CHECK ;
 
 \ The symbol an EXPORT operand names and, when its scope finds no word, the
 \ private record CHECKER-RESOLVE:EXPORT-PRIVATE finds instead, else NULL-PTR.
@@ -19352,7 +19386,7 @@ EXPORT CHECKER-OVERLAY:EXPORT-ROOM
 \ inside a replay the operand's spelling can bind the published tail after.
 : CHECKER-EXPORT-SOURCE ( str -- n ^n ) {: a:^ u:n :}
    a u EXPORT-SYM {: src:n priv:^ :}
-   a u src EXPORT-RESOLVE
+   a u src priv EXPORT-RESOLVE
    src priv ;
 
 : CHECKER-EXPORT-ROW ( str n ^n bool -- )
@@ -20456,6 +20490,7 @@ PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
    WALK-REC @ TOK-LIVE-REC !
    why 0= IF
       TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ NAV-USE
+      TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ TOK-REC @ USE-CHECK
       TOK-SYM @ CTL-FLAGS-SYM CTL-NAMES and 0 <> IF NAMED-OPERAND-XT THEN
    THEN
    TOK-SYM @ a u TOK-IDENTITY TOK-CTL ! ;
@@ -20534,9 +20569,6 @@ EXPORT CHECKER-TAPE:K-NAME
    FEP @ ER.ACTIVE @ EFF-RECOVERY = IF CALL-REFUSED EXIT THEN
    CALL-APPLIES ;
 
-\ A prefix probe observes only misses in the token it just captured; earlier
-\ body text is the caller's and may still await its own `;`.
-variable CHECKER-PREFIX-ACTIVE
 variable CHECKER-PREFIX-CUT
 variable CHECKER-PREFIX-MISS
 variable CHECKER-PREFIX-ROLLBACK
@@ -23569,7 +23601,7 @@ defer VIS-VISIT ( str n n n -- )
    a u WALK {: sym:n why:n :}
    why 0 <> IF 0 0 NULL-PTR RES-FALSE RES-TRUE EXIT THEN
    CHECKER-QBAD-TOK @ 0 <> IF 0 0 NULL-PTR RES-FALSE RES-FALSE EXIT THEN
-   a u sym TOP-BOUND-SYM {: s2:n ok:bool :}
+   a u sym TOP-BOUND-SYM nip {: s2:n ok:bool :}
    ok 0= IF 0 0 NULL-PTR RES-FALSE RES-FALSE EXIT THEN
    s2 0 <> IF
       s2  s2 USIG-NEWEST-VISIBLE  s2 VIS-WALK-REC  RES-TRUE RES-FALSE EXIT
@@ -23988,7 +24020,9 @@ variable IS-PEND-U                   \ and its length
       prec REC-HOME-SYM EXIT
    THEN
    TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND-WHY {: sym:n why:n :}
-   why 0= IF sym IS-TA@ IS-TU @ NAV-USE THEN
+   why 0= IF
+      sym IS-TA@ IS-TU @ NAV-USE  sym IS-TA@ IS-TU @ BIND-REC @ USE-CHECK
+   THEN
    sym 0= CHECKER-PREFIX-ACTIVE @ and IF
       IS-TOFF @ TSTART @ PREFIX-MISS-AT
    THEN

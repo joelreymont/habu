@@ -32,6 +32,7 @@ require src/lib/vector.f
 require src/lib/arena.f
 require src/lib/base64.f
 require src/lib/xml.f
+require src/lib/xml/write.f
 
 package MCP-APP
 private

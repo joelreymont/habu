@@ -2,8 +2,9 @@
 \ x86-64 peer runs: an image stages after ASM-RESET and ends with WRITE. An
 \ x86-64 Linux host is its own peer: WRITE runs the image there and checks that
 \ it ends as the test states.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f
+require src/lib/process.f
 require src/lib/process-command.f
 require src/habu/fdio.f
 require src/lib/heap.f
@@ -16,6 +17,8 @@ require src/lib/vector.f
 require src/os/linux/layout.f
 require src/os/linux/elf.f
 require src/os/linux/sign.f
+require src/arch/x86-64/asm.f
+require src/os/image-bytes.f
 
 package X64HARNESS
 using X64ASM

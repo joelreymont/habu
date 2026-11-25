@@ -8,7 +8,7 @@
 \ handshake between the session and the server itself, then sends the
 \ session its FIN. Every wait is a poll on a descriptor.
 \ Run: bin/hb --load src/lib/net/tls-test.f </dev/null
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fd.f

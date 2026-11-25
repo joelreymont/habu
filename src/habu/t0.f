@@ -30,6 +30,7 @@ require src/compiler/native/definition.f
 require src/compiler/native/callback-stub.f
 require src/compiler/native/shadow.f
 require src/habu/t0-emit.f
+require src/compiler/native/emission.f
 
 package COMP
 

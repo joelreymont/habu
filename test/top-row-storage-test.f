@@ -5,13 +5,14 @@
 \ only the boundaries named at their cases (a crash, a rewired search order, the
 \ file label, the REPL).
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/test/eval.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f
+require src/lib/process.f
 
 \ File-global: the programs compile at run time in the scope a real program
 \ writes them in.

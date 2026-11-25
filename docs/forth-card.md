@@ -689,22 +689,33 @@ forth.md: **Errors**, **Integer arithmetic**.
   declaration spans a load either. A value crosses a load only as a word the
   file defines. `here` is cell-aligned when a loaded file starts and when a
   `require` or `include` that ran a file returns: data never spans a load.
-- The engine provides `src/lib/prelude.f`, `error.f`, `string.f`, `span.f`,
-  `memory.f`, `num-types.f`, `num-arithmetic.f` and the
-  `src/` files its boot prefix loads: their words resolve with no require and
-  a `require` is a no-op, and `tools/check.f` answers `E-ENGINE-PROVIDED` for
-  one (rebuild `bin/hb` to check a change to it). Write it
-  anyway: a file states its dependencies.
+- The boot prefix provides `src/lib/prelude.f`, `error.f`, `string.f`,
+  `span.f`, `memory.f`, `num-types.f`, `num-arithmetic.f` and the `src/`
+  files it loads: any file calls their words with no require, and a `require`
+  of one is a no-op. Any other word, one in a file `hb` carries included, is
+  called only from a file that requires the word's file itself: else the token
+  is `E-UNREQUIRED`, on the load and in `tools/check.f`, even when another
+  file's require loaded it. Text a file includes is that file's; a file that
+  only requires others gives its requirers none of their words. Text a word
+  evaluates, or a definer renders, is no file's: its calls are not judged and
+  a require it makes grants nothing, but a word it defines is the file's being
+  read. A word below a policy's seal, which its host admitted, is called with
+  no require; so, in a file under an open source root, is a word of a file
+  outside it. `tools/check.f` answers
+  `E-ENGINE-PROVIDED` for a file `hb` carries (rebuild `bin/hb` to check a
+  change to it).
 - Multi-file packages reopen `package NAME` per file; reopening shares scope and
   loads nothing. Run tools as `bin/hb --load src/lib/a.f tool.f -- args`;
-  `SCRIPT-ARGV$` starts after `--`.
+  `SCRIPT-ARGV$` starts after `--`; a listed file still requires what it calls.
 
 forth.md: **Files**, **Packages**.
 
 ## 8 Tests
 
 What to test: [test/AGENTS.md](../test/AGENTS.md) "Writing tests". Use
-`require src/lib/test.f` for assertions and keep fixtures package-scoped.
+`require src/lib/test/assert.f` for assertions, `src/lib/test/suite.f` for a
+suite and `src/lib/test/eval.f` for evaluated text, and keep fixtures
+package-scoped.
 
 `T=` / `T<>` scalars, `T$=` strings, `TTRUE` / `TFALSE` flags, `TTHROWSQ` /
 `TTHROWS` throw codes. `TEST-EVAL:N` / `FLAG` / `RC` take one cell, a flag or

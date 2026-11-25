@@ -4,10 +4,10 @@
 \ engine copy at <tmp>/tree/bin/hb:
 \    <tmp>/tree/bin/hb --load <tmp>/app/app.f -- <working directory> <tmp>/tree
 
-\ Neither the owner nor the working directory holds src/lib/test.f or the
-\ fixture's inner.f, so these relative requires resolve at the engine root; the
-\ app's error.f resolves at the owner.
-require src/lib/test.f
+\ Neither the owner nor the working directory holds the test framework's files
+\ or the fixture's inner.f, so these relative requires resolve at the engine
+\ root; the app's error.f resolves at the owner.
+require src/lib/test/assert.f
 require test/fixtures/source-root-exe/inner.f
 require src/lib/error.f
 

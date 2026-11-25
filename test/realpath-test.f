@@ -1,5 +1,5 @@
 \ The OS bridge copies only a complete canonical C string into caller storage.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 

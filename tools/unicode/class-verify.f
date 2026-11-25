@@ -7,6 +7,9 @@ require src/lib/fs.f
 require src/lib/unicode/class.f
 require src/lib/unicode/visible.f
 require tools/unicode/class-generate.f
+require src/lib/unicode/class-data.f
+require tools/unicode/class-parse.f
+require src/lib/unicode/visible-data.f
 
 package UNICODE-CLASS-VERIFY
 

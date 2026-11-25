@@ -5,6 +5,7 @@ require src/lib/zip.f
 require src/lib/zip-test-fixture.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/zip-types.f
 
 package ZIP-TEST
 public

@@ -5,6 +5,13 @@
 \ DATA register instead of its absolute address writes nothing.
 require test/x86-64-boot-harness.f
 require src/os/linux/layout.f
+require src/arch/x86-64/rt.f
+require src/habu/boot-x64.f
+require src/lib/test/assert.f
+require src/os/linux-x86-64/sys.f
+require test/x86-64-peer-harness.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
 
 package X64K-SIGNAL
 using X64ASM

@@ -15,7 +15,7 @@ require src/lib/string.f
 require src/lib/string-option.f
 require src/lib/fs.f
 require src/lib/fsm.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/core/bytes.f
 
 package TEST-FSM

@@ -5,8 +5,8 @@ dependencies. Its header states purpose, contract and storage class
 (process-wide, task-local or caller-owned). A module's focused test sits beside
 it as `<name>-test.f`.
 
-- `test.f` is the test framework's interface; `test/` holds its runner, suites,
-  assertions and fork helpers.
+- `test/` holds the test framework: its assertions, suites, evaluated text,
+  runner and fork helpers.
 - `net/` (TCP, UDP, TLS, HTTP, WebSocket, curl, event streams, model chat
   and embeddings), `crypto/`, `json/` (the reader, writer, pointers, copy,
   equality and values of `json.f`), `xml/`, `unicode/`, `adt/` (option, result,

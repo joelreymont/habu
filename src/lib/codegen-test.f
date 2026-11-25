@@ -1,8 +1,8 @@
 \ codegen-test.f - the shared codegen byte buffer (src/lib/codegen.f): a text
 \ past the first mapping is kept whole, and a negative decimal keeps its sign.
-\ Run: bin/hb --load src/lib/test.f src/lib/codegen.f src/lib/codegen-test.f
+\ Run: bin/hb --load src/lib/codegen.f src/lib/codegen-test.f
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/codegen.f
 
 CODEGEN:BUFFER CGT-D

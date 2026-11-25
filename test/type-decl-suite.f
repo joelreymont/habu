@@ -3,10 +3,14 @@
 
 require src/core/exit-status.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require test/decl-diag-capture.f
 require src/lib/engine-candidate.f
 require test/e2e-tree.f
+require src/lib/fs.f
+require src/lib/process-argv.f
+require src/lib/fs-mutate.f
 
 using TYPE-DECL
 
@@ -1935,6 +1939,7 @@ s\" = word: TDHUE-RED\n" TDT-HAS
 \ No byte count caps a declaration's body: the fixture's SUMTYPE loads, and its
 \ constructor and derived EQ and HASH run.
 require test/fixtures/big-decl.f
+require src/habu/verify-source.f
 : BIGSUM-HASH ( -- bool )
    5 BIG-BIGSUM:V7 BIG-BIGSUM:HASH 5 BIG-BIGSUM:V7 BIG-BIGSUM:HASH = ;
 : BIGSUM-EQ ( -- bool ) 5 BIG-BIGSUM:V7 5 BIG-BIGSUM:V7 BIG-BIGSUM:EQ ;

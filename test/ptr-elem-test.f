@@ -6,7 +6,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package PTR-ELEM-TEST
 

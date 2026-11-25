@@ -4,12 +4,13 @@
 \ again refuses with E-PKG-CONTEXT unless the mirror equals the live record, so
 \ a second replay from the same open package is the exact test of the restore.
 
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f
 \   src/habu/verify-source.f test/checker-verify-pkg-scope.f
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/habu/verify-source.f
 
 package CVPS

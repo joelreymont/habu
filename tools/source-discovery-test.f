@@ -1,11 +1,11 @@
 \ source-discovery-test.f - fixtures for the whole-file discovery pass
 \ (tools/source-discovery.f): its ordered load-event artifact and its refusals.
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/memory.f src/lib/fs.f
 \ src/lib/fs-mutate.f src/lib/source.f tools/source-discovery.f tools/source-discovery-test.f
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -14,6 +14,8 @@ require src/lib/test/ending.f
 require src/lib/test/subject.f
 require tools/source-discovery.f
 require tools/gate-json-assert-core.f
+require src/habu/verify-source.f
+require src/lib/process.f
 
 package SD-TEST
 using SOURCE-ROOT
@@ -143,6 +145,17 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" sd-x.f" SDT-PATH SDT-WANT+
    S\" \"\nprovided 0 s\" " SDT-WANT+
    s" sd-y.f" SDT-PATH SDT-WANT+
+   S\" \"\n" SDT-WANT+
+   SDT-OUT elen >str SDT-WANT SDT-WANT-U @ >str T$= ;
+
+\ A discovery a text runs reports the file's require as a file's.
+: SDT-TEST-TEXT ( -- )
+   s" text.f" S\" require sd-x.f\n" SDT-WRITE-ENTRY
+   SDT-READ  s" DISCOVER:RUN-READ" evaluate-closed
+   SDT-OUT $2000 DISCOVER:EMIT {: elen:n :}
+   SDT-WANT-U BUF-RESET
+   S\" required 0 s\" " SDT-WANT+
+   s" sd-x.f" SDT-PATH SDT-WANT+
    S\" \"\n" SDT-WANT+
    SDT-OUT elen >str SDT-WANT SDT-WANT-U @ >str T$= ;
 
@@ -848,6 +861,7 @@ public
    SDT-TEST-FRESH
    SDT-TEST-WIDE
    SDT-TEST-EMIT
+   SDT-TEST-TEXT
    SDT-TEST-DYNAMIC
    SDT-TEST-OPENER
    SDT-TEST-COLON-BODY

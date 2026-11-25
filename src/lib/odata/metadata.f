@@ -34,6 +34,9 @@ require src/lib/adt/option.f
 require src/lib/adt/nullable.f
 require src/lib/sort.f
 require src/lib/vector.f
+require src/lib/map-core.f
+require src/lib/xml/read.f
+require src/lib/xml/state.f
 
 package ODATA
 public

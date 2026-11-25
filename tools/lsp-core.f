@@ -65,6 +65,9 @@ require tools/lsp-workspace.f
 require tools/lsp-references.f
 require tools/lsp-rename.f
 require src/core/exit-status.f
+require src/lib/json/write.f
+require src/lib/json/read.f
+require src/lib/json/value.f
 
 package LSP
 using SPAN

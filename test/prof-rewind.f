@@ -2,7 +2,7 @@
 \ profiler counters, and the failed text's words keep their samples; the child
 \ emits JSON as the artifact.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/process.f
 require src/lib/process-argv.f

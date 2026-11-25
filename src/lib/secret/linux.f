@@ -11,6 +11,7 @@ require src/lib/memory.f                      \ the identifiers' C copies
 require src/lib/span.f
 require src/lib/string.f
 require src/lib/log.f
+require src/lib/ffi-abi.f
 
 package SECRET
 private

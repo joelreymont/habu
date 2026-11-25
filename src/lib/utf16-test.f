@@ -8,7 +8,7 @@
 require src/lib/error.f
 require src/lib/heap.f
 require src/lib/span.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/utf16.f
 require src/lib/vector.f
 

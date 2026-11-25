@@ -75,13 +75,12 @@ CAST: CODE>BYTES ( n -- ^u8 )
    s" FAIL " type type s" : " type
    1 FAILS +! ;
 
-\ One section, read by the typed loop's framed entry: the one
-\ SOURCE-ROOT:USE-INTERPRETER binds for a loaded file's bytes, here given one
-\ section's range of them so that a kind's refusal ends only its section.
+\ One section, read by the typed loop as a text of its own, so a kind's
+\ rejection ends only its section.
 : READ-SECTION ( n n -- ) {: first:n end:n :}
    first SEC-FIRST !  end SEC-END !
    NSHADOW:RECORDS {: rows:n :}
-   [: SRC SRC-U @ >str SEC-FIRST @ SEC-END @ INTERPRETER:EVAL-FRAMED-RANGE ;] catch {: rc:n :}
+   [: SRC SEC-FIRST @ +  SEC-END @ SEC-FIRST @ -  >str INTERPRETER:EVAL-FRAMED ;] catch {: rc:n :}
    rc 0<> if
       s" FAIL " type first .SECTION s" : threw " type rc .N
       s"  after filing " type NSHADOW:RECORDS rows - .N s"  shadow rows" type cr

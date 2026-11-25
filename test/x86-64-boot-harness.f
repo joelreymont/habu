@@ -11,6 +11,10 @@ require src/lib/vector.f
 \ before the peer harness, which would otherwise load it into its own private
 \ wordlist.
 require test/x86-64-peer-harness.f
+require src/habu/primitive-registry.f
+require src/os/linux-x86-64/sys.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
 
 package X64HARNESS
 using X64ASM

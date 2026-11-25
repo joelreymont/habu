@@ -3,7 +3,7 @@
 \ type, and a contraction may sum an inner extent. The surface half is
 \ maki/extent-test.f's.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 
 REJECTION:CAPTURE
 

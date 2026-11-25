@@ -6,7 +6,8 @@ require src/lib/json.f
 require src/lib/memory.f
 require src/lib/heap.f
 require src/lib/vector.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/json/read.f
 
 package DECIMAL-TEST
 private

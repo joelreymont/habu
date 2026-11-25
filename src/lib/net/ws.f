@@ -24,6 +24,9 @@ require src/lib/crypto/sha1.f
 require src/lib/net/tcp4.f
 require src/lib/net/http.f
 require src/lib/net/ws-frame.f
+require src/lib/net/http-arena.f
+require src/lib/net/http-request.f
+require src/lib/net/http-response.f
 
 package WS
 public

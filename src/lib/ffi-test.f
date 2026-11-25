@@ -2,7 +2,8 @@
 \ Run: bin/hb --load src/lib/ffi-test.f
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f         \ DEFTYPE - the ffi-dev / ffi-ctx test nominals
 require src/lib/string.f               \ SB / STR:CONTAINS? - the child's stderr is matched here
@@ -21,6 +22,7 @@ require test/fixtures/ffi-str-unmarked.f \ a str input outside split-str
 require test/e2e-tree.f                \ the struct clauses' load children
 require tools/check-verify-core.f       \ LSP-CHECK:VERIFY-BYTES - the struct clauses' check
 require test/decl-diag-capture.f
+require src/lib/codegen.f
 
 package FFI-TEST
 

@@ -1,6 +1,6 @@
 \ layout-buffer.f - generative typed ADT storage and provenance regressions.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 
 T-RESET
 

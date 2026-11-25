@@ -7,13 +7,17 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs-mutate.f
 require src/lib/test/subject.f
 require src/habu/verify-source.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
 require tools/check-core.f
+require src/lib/process.f
+require src/lib/process-env.f
+require src/lib/fs.f
+require src/lib/process-argv.f
 
 \ Expected refusals are asserted, not printed.
 REJECTION:CAPTURE
@@ -429,6 +433,7 @@ variable PROG-U
 : MAIN-SOURCE ( bool -- ) {: more:bool :}
    0 PROG-U !
    s" require" s" lb-use.f" LOAD-LINE+
+   s" require" s" lb-own.f" LOAD-LINE+
    more if S\" : MORE ( LB:tok -- LB:tok ) LB-USE:USE ;\n" PROG+ then
    S\" : MAIN ( -- ) 42 LB:RT . ;\n" PROG+
    s" lb-main.f" WRITE-PROG ;

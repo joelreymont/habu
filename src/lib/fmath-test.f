@@ -1,7 +1,7 @@
 \ fmath-test.f - exact integer roots and quotients at their boundaries, and
 \ measured float-math behavior.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fmath.f
 require src/lib/ieee754.f
 

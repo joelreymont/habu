@@ -1,5 +1,5 @@
 \ A checked owner appends and publishes bytes through the real MEM load path.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/c2-memory.f
 require src/lib/memory.f
 

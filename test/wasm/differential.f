@@ -15,7 +15,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require test/wasm/harness.f
 
 package WASM-DIFFERENTIAL
@@ -91,7 +92,9 @@ variable THROWN-U
    0 PROG-U !
    src PROG+  S\" \n: MAIN ( -- ) " PROG+  body PROG+  S\"  ;\n" PROG+
    SRC SRC-U @ >str PROG PROG-U @ >str FS:WRITE-ALL
-   CALLER CALLER-U @ >str S\" MAIN\n" FS:WRITE-ALL ;
+   CALLER CALLER-U @ >str s" require " FS:WRITE-ALL
+   CALLER CALLER-U @ >str SRC SRC-U @ >str FS:APPEND-FILE
+   CALLER CALLER-U @ >str S\" \nMAIN\n" FS:APPEND-FILE ;
 
 \ bin/hb run on the arguments staged after PROC-ARGV-RESET: the lengths of its
 \ stdout and stderr, and its exit status.
@@ -323,7 +326,7 @@ s\" 4\n4605754516372524270\n4603041830072026764\n-4620296710764933294\n-46176391
 \ JSON fields, UTF-8 bytes and the signed minimum's text through the library's
 \ writer.
 s" WJSON:STEP"
-S\" require src/lib/heap.f\nrequire src/lib/vector.f\nrequire src/lib/json.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\npublic\n: STEP ( -- )\n   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}\n   W v JSON:OPEN JSON:WRITE-OBJECT-START\n   s\" name\" s\" é\" JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" STR:MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ type cr\n   W JSON:CLOSE  v VEC:DELETE ;\n;package\n"
+S\" require src/lib/heap.f\nrequire src/lib/vector.f\nrequire src/lib/json.f\nrequire src/lib/json/write.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\npublic\n: STEP ( -- )\n   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}\n   W v JSON:OPEN JSON:WRITE-OBJECT-START\n   s\" name\" s\" é\" JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" STR:MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ type cr\n   W JSON:CLOSE  v VEC:DELETE ;\n;package\n"
 S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
 
 \ MAP's keyed words, held to one order on native and wasm: INIT-KEYED under a

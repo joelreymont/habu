@@ -6,7 +6,7 @@
 \ path.
 
 require src/core/exit-status.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f       \ T-TIMED-OUT - the report of a child past its deadline
 require src/lib/process.f            \ PROCESS:ending, the child completion
 require src/lib/test/subject.f       \ SUBJECT:RUN - isolated evaluation of the subject

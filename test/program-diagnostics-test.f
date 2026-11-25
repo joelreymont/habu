@@ -5,21 +5,15 @@ require src/lib/string.f
 require src/lib/string-option.f
 require src/lib/fmt.f
 require src/lib/process.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/test/runner.f
 
 package PROGRAM-DIAGNOSTICS
 
 : RUN-LOAD ( str -- ) {: path:str :}
    GE-HB-RESET
    s" --load" GE-ARG+
-   path GE-ARG+
-   s" bin/hb" PROCESS:WAIT-FOREVER GE-RUN-ENV ;
-
-\ The Habu loop reads the file and recovers at `;` (src/habu/interpreter.f
-\ DEF-SEMI?), as it does for RUN-LOAD.
-: RUN-LOAD-HABU ( str -- ) {: path:str :}
-   GE-HB-RESET
-   s" --load" GE-ARG+
-   s" test/interpreter-loop-on.f" GE-ARG+
    path GE-ARG+
    s" bin/hb" PROCESS:WAIT-FOREVER GE-RUN-ENV ;
 
@@ -50,11 +44,6 @@ package PROGRAM-DIAGNOSTICS
 : DIAGNOSTIC ( str str -- )
    {: path:str needle:str :}
    path RUN-LOAD
-   path needle EXPECT-DIAGNOSTIC ;
-
-: HABU-DIAGNOSTIC ( str str -- )
-   {: path:str needle:str :}
-   path RUN-LOAD-HABU
    path needle EXPECT-DIAGNOSTIC ;
 
 \ stderr is one engine exit line: the text, " lr 0x", the lr's 16 hex digits
@@ -348,7 +337,72 @@ variable BIG-U
    limit MAP-FRAME
    limit MAP-STREAM ;
 
+create NEED-PATH PATH-CAP allot
+
+\ The fixture path of that name, valid until the next.
+: NEED$ ( str -- str ) NEED-PATH GT-PATH NEED-PATH swap >str ;
+
+: NEED-DIR ( str -- ) NEED$ FS:MAKE-DIRS ;
+
+: NEED-FILE ( str str -- ) {: name:str text:str :}
+   name NEED$ text FS:WRITE-ALL ;
+
+\ hb with arguments args in the fixture's directory dir.
+: NEED-RUN ( str str -- ) {: dir:str args:str :}
+   SB-RESET  s" cd '" SB-APPEND  dir NEED$ SB-APPEND
+   s" '; exec '" SB-APPEND  SOURCE-ROOT:CWD$ SB-APPEND
+   s" /bin/hb' " SB-APPEND  args SB-APPEND
+   GE-HB-RESET  s" -c" GE-ARG+  SB$ GE-ARG+
+   s" /bin/sh" PROCESS:WAIT-FOREVER GE-RUN-ENV ;
+
+\ The run's help says to add the require line req to the file it calls file, and
+\ with that line before the text of the file, name's in the fixture, it succeeds.
+: NEED-FOLLOWED ( str str str str str str -- )
+   {: dir:str args:str req:str file:str name:str text:str :}
+   dir args NEED-RUN
+   EXIT-STATUS:REJECTED file GE-EXPECT-RC
+   SB-RESET  s" = help: add `" SB-APPEND  req SB-APPEND
+   s" ` to `" SB-APPEND  file SB-APPEND  s" `" SB-APPEND
+   SB$ file GE-EXPECT-ERR-HAS
+   SB-RESET  req SB-APPEND  GE-SB-LF  text SB-APPEND
+   name SB$ NEED-FILE
+   dir args NEED-RUN
+   file GE-EXPECT-OK ;
+
+: NEED-M$ ( -- str ) s" : PD-M ( -- n ) PD-Q ;" ;
+
+\ The working directory's file, required from the entry's directory.
+: NEED-CWD ( -- )
+   s" q/w/lib" NEED-DIR
+   s" q/q3.f" s" : PD-Q ( -- n ) 3 ;" NEED-FILE
+   s" q/w/e3.f" S\" require q3.f\nrequire lib/m3.f\n" NEED-FILE
+   s" q/w/lib/m3.f" NEED-M$ NEED-FILE
+   s" q" s" --load w/e3.f" s" require ../q3.f" s" w/lib/m3.f"
+      s" q/w/lib/m3.f" NEED-M$ NEED-FOLLOWED ;
+
+\ A file beside the entry's directory.
+: NEED-BESIDE ( -- )
+   s" x/r" NEED-DIR  s" x/lib" NEED-DIR
+   s" x/lib/e.f" s" : PD-Q ( -- n ) 3 ;" NEED-FILE
+   s" x/r/s2.f" s" require ../lib/e.f" NEED-FILE
+   s" x/r/r2.f" S\" require s2.f\n: PD-M ( -- n ) PD-Q ;" NEED-FILE
+   s" x" s" --load r/r2.f" s" require ../lib/e.f" s" r/r2.f"
+      s" x/r/r2.f" S\" require s2.f\n: PD-M ( -- n ) PD-Q ;" NEED-FOLLOWED ;
+
+: NEED-L$ ( -- str ) s" : PD-L ( -- n ) PD-W ;" ;
+
+\ The program file itself, required by a file it requires.
+: NEED-PROGRAM ( -- )
+   s" p" NEED-DIR
+   s" p/prog.f" S\" : PD-W ( -- n ) 5 ;\nrequire lib.f\nPD-L .\n" NEED-FILE
+   s" p/lib.f" NEED-L$ NEED-FILE
+   s" p" s" prog.f" s" require prog.f" s" lib.f"
+      s" p/lib.f" NEED-L$ NEED-FOLLOWED ;
+
 : DIAGNOSTICS ( -- )
+   NEED-CWD
+   NEED-BESIDE
+   NEED-PROGRAM
    BADSIG-ONCE
    THROW-ZERO-STOPS
    CAUGHT-ZERO-STOPS
@@ -365,8 +419,6 @@ variable BIG-U
    s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:9:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" = evaluated: : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
-   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:24:18" HABU-DIAGNOSTIC
-   s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:24:18" DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-one-cell.f" s" program-diagnostic-one-cell.f:19:25" DIAGNOSTIC

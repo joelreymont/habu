@@ -1,6 +1,6 @@
 \ The supplied binders may only resolve to the authenticated input identities
 \ with the parent and second bounds carried by those identities.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 require test/c2-forall-input.f
 

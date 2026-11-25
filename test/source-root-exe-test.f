@@ -5,7 +5,7 @@
 \ first boot row), else the tree two levels above the executable when that is
 \ one, else the working directory.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
@@ -15,6 +15,7 @@ require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
+require src/lib/process.f
 
 using SOURCE-ROOT
 package SOURCE-ROOT-EXE-TEST
@@ -152,7 +153,7 @@ variable RC
    s" require test/fixtures/source-root-exe/outer.f" LINE
    s" package SOURCE-ROOT-EXE-WD" LINE
    S\" : YN ( bool -- ) if s\q yes\q else s\q no\q then type cr ;" LINE
-   s" SOURCE-ROOT-EXE-INNER:MARK 5 = SOURCE-ROOT-EXE-OUTER:MARK 6 = and YN" LINE
+   s" SOURCE-ROOT-EXE-OUTER:INNER-MARK 5 = SOURCE-ROOT-EXE-OUTER:MARK 6 = and YN" LINE
    s" ;package" LINE ;
 
 \ A package that names itself as it loads, standing in for a library file.

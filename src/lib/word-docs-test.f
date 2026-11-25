@@ -7,7 +7,7 @@ require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fmt.f
 require src/lib/fs.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/word-docs.f
 
 package WORD-DOCS-TEST

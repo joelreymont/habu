@@ -9,6 +9,8 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/net/http.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
 
 package BROWSER-HOST
 private

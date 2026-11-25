@@ -11,6 +11,7 @@ require src/lib/fs.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/fd.f
 
 package SPAWN-REPORT
 private

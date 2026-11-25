@@ -1,10 +1,11 @@
 \ certify-does-definer.f - certification knows what a `does>` definer publishes.
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f \
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f \
 \   src/habu/verify-source.f test/certify-does-definer.f
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/codegen.f
 require src/lib/ffi-abi.f
 require src/habu/verify-source.f

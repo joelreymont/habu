@@ -3,7 +3,13 @@
 \ client cannot and reads heads CURL does not hand back. A pinned raw head is
 \ compared whole through build/http-transcript.txt; that server runs one worker,
 \ so every request id and error body length repeats.
-require src/lib/test.f
+require src/lib/date.f
+require src/lib/net/http-arena.f
+require src/lib/net/http-request.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
+require src/lib/net/http-static.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/test/aio-fill.f
 require src/lib/prelude.f
@@ -28,6 +34,8 @@ require src/lib/fd.f
 require src/lib/test/stderr.f
 require src/lib/process.f
 require src/lib/process-command.f
+require src/lib/json/write.f
+require src/lib/json/value.f
 
 \ Test-image hooks: TEST-PREOPEN initializes START-READY first, so the real
 \ startup initializer refuses after the job queue has opened.

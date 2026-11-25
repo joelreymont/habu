@@ -5,7 +5,7 @@
 \ effect is the signature's rows, whatever the body bound. Cases run through
 \ `evaluate-closed`, the path `bin/hb --load` takes; a refusal is a throw.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 
 \ The consumers the evaluated programs call and the type they move. They are

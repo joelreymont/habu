@@ -18,6 +18,9 @@ require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/json.f
 require src/lib/net/http.f
+require src/lib/net/http-arena.f
+require src/lib/net/http-response.f
+require src/lib/json/write.f
 
 package TEST-MODEL
 private

@@ -13,6 +13,7 @@ require src/lib/sort.f
 require tools/source-discovery.f
 require tools/lsp-text.f
 require src/habu/fnv.f
+require src/habu/verify-source.f
 
 package LSP-WORKSPACE
 

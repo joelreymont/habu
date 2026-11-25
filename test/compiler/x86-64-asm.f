@@ -4,7 +4,7 @@
 \ the `llvm-mc:` comment above it; relative branches were read with
 \ `llvm-objdump -d` from an `llvm-mc -filetype=obj` object.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/arch/x86-64/asm.f
 require src/lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
 require src/lib/heap.f

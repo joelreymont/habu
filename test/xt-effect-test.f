@@ -2,12 +2,12 @@
 \ level"). `['] W` is xt<effect(W)>, a T-QUOT of W's certified effect;
 \ execute, catch and is fit-check it by quotation unification
 \ (src/core/checker.f BTICK-TOK).
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/xt-effect-test.f
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

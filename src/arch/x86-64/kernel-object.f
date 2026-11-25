@@ -7,6 +7,8 @@ require src/habu/kernel-x64.f
 require src/arch/x86-64/boot.f
 require src/os/linux/elf.f
 require src/lib/vector.f
+require src/arch/x86-64/icode.f
+require src/habu/boot-x64.f
 
 package KERNEL-OBJECT
 private

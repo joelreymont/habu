@@ -5,7 +5,7 @@
 \ binding that reads the wrong bytes or type, so LOAD1 is garbage, nonfinite or
 \ negative, or disagrees with the host's one-minute average (sysctl, /proc/loadavg).
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/process.f
 require src/lib/process-argv.f

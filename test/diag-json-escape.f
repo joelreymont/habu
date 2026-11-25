@@ -12,6 +12,8 @@ require test/gate-common.f
 require src/lib/json.f
 require src/lib/jsonl.f
 require tools/check-core.f
+require src/lib/test/runner.f
+require src/lib/json/read.f
 
 package DIAG-JSON-ESCAPE
 

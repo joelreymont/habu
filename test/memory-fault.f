@@ -6,6 +6,7 @@
 \ Each case is its own child: its process's end is what it checks.
 require test/gate-common.f
 require src/lib/process.f
+require src/lib/test/runner.f
 
 package MEMORY-FAULT-TEST
 private

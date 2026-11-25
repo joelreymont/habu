@@ -5,7 +5,7 @@
 \ FREE call a recording allocator's functions only for bytes, and INIT fills a
 \ record once; RESIZE keeps a block's bytes, allocates for NULL-PTR, frees at
 \ zero, refuses a negative count and skips an equal one.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/allocator.f
 require src/lib/arena.f
 require src/lib/test/allocator-cases.f

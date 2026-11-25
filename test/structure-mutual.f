@@ -4,7 +4,8 @@
 \ one whose list is ordered against its bodies closes in body order. The
 \ verifier's scan (src/habu/verify-source.f RECORD-MUTUAL) registers what a
 \ MUTUAL declares, as the load does.
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/habu/verify-source.f
 require test/decl-diag-capture.f
 

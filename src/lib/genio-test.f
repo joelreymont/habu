@@ -9,7 +9,7 @@
 \ The REPL reads the current input device's lines, an empty one and one a word
 \ reads included, and ends at its end of input.
 \ Run: bin/hb --load src/lib/genio-test.f </dev/null
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/genio-core.f

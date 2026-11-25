@@ -4,6 +4,8 @@ split-str
 \ unmarked, and one at the limit splits. A rejection ends the load, so each
 \ text runs in a child that inherits the marker.
 
+require src/lib/test/assert.f
+
 package SPLIT-STR-DEEP
 
 $10000 constant CAP            \ bytes: the deepest text

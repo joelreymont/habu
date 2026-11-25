@@ -11,6 +11,9 @@ require src/lib/fs-list.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/string.f
+require src/lib/net/http-arena.f
+require src/lib/net/http-request.f
+require src/lib/net/http-response.f
 
 package HTTP
 using MEM

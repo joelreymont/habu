@@ -2,7 +2,7 @@
 \ runs the quotation and reads through the address its build stored in typed
 \ cells; hb-build.f reads its argv, so it is spawned from the tree's root.
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f

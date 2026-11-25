@@ -3,13 +3,13 @@
 \ tail; outside a package it is rejected. A package's `global` section defines
 \ bare global words whose bodies call the package's private words.
 
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/export-package.f
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -922,7 +922,10 @@ create XPK-EMPTY 1 allot
    s" error[E-BAD-STORAGE]: the name `a::` ends in `:`"
    s" rename `a::` with at most one inner `:` and none at its end" XPK-SEALED
    s" a sealed package takes no CWORK-VARIABLE, rejected before its type" T-LABEL
-   s" " s" 0 CWORK-VARIABLE CV nosuch" XPK-SEALED-LINE$
+   SB-RESET s" require src/compiler/workspace.f" XPK-LINE
+   s" package P" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" 0 CWORK-VARIABLE CV nosuch" XPK-LINE SB$
    s" error[E-SEALED-PACKAGE]: `CV` would change a sealed package"
    s" |                  ^^ sealed" XPK-SEALED
    s" a DEFER-LAYOUT-BUFFER's taken NAME-BIND rejects before its type" T-LABEL

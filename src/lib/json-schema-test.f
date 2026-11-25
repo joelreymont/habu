@@ -4,7 +4,7 @@
 \ Run: bin/hb --load src/lib/json-schema-test.f
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/arena.f
 require src/lib/heap.f
 require src/lib/span.f
@@ -12,6 +12,7 @@ require src/lib/vector.f
 require src/lib/reason.f
 require src/lib/json.f
 require src/lib/json-schema.f
+require src/lib/json/value.f
 
 package JSON-SCHEMA-TEST
 

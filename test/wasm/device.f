@@ -4,7 +4,7 @@
 \ the modules stay in the printed directories.
 
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/arch/wasm/leb.f

@@ -20,6 +20,7 @@ require src/arch/wasm/link-routines.f
 require src/habu/linker.f
 require src/habu/link-band.f
 require src/habu/link-copy.f
+require src/arch/wasm/code.f
 
 package LINKER
 private

@@ -5,6 +5,8 @@ require src/arch/arm64/link.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/link.f
 require src/lib/vector.f
+require src/compiler/native/shadow.f
+require src/compiler/target.f
 
 package LINKER
 private

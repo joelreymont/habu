@@ -6,7 +6,7 @@
 
 require src/lib/prelude.f
 require src/habu/verify-source.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/span.f
 
 T-RESET

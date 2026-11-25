@@ -20,7 +20,10 @@
 \ value, or never two vault requests in flight at once.
 require src/lib/secret/azure.f
 require src/lib/secret.f
-require src/lib/test.f
+require src/lib/net/http-request.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
+require src/lib/test/assert.f
 require src/lib/aio.f
 require src/lib/fmt.f
 require src/lib/heap.f
@@ -30,6 +33,7 @@ require src/lib/vector.f
 require src/lib/net/http.f
 require src/lib/json.f
 require src/lib/reason.f
+require src/lib/json/read.f
 
 package SECRET-AZURE-TEST
 private

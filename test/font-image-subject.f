@@ -2,7 +2,7 @@
 \ Build: bin/hb --load tools/hb-build.f -- --repl test/font-image-subject.f -o build/font-image
 \ Run: build/font-image
 require src/lib/font.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/memory.f
 

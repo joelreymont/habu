@@ -5,6 +5,7 @@
 
 require src/arch/arm64/icode.f
 require src/os/linux-flags.f
+require src/arch/arm64/mnem.f
 using A64ICODE
 package SYSCALL
 public

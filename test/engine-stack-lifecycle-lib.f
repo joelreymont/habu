@@ -2,10 +2,11 @@
 \ switches and nonlocal frame restoration.
 require src/habu/stack-abi.f
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
+require src/lib/process.f
 
 package STACK-LIFECYCLE-TEST
 

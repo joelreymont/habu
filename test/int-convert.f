@@ -2,7 +2,8 @@
 \ the engine's own `:`.
 
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 
 package INT-CONVERT-TEST
 

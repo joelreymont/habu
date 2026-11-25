@@ -8,7 +8,8 @@
 \ control pins that the refusal is about writability, not an unmapped address.
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/process-fork.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/process.f

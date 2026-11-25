@@ -35,6 +35,9 @@ require src/lib/string-option.f
 require src/lib/task.f
 require src/lib/time.f
 require src/lib/vector.f
+require src/lib/json/write.f
+require src/lib/json/read.f
+require src/lib/json/value.f
 
 \ One exclusive call context per worker. Results borrow its arena until the
 \ next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED, REPLAY or CLOSE.

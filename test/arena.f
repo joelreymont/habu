@@ -3,13 +3,14 @@
 \ newest first, at the arena's reset or release, a public declaration publishes
 \ NAME-NEW, a HEAP or DYNAMIC-BUFFER element holds an arena handle, and a
 \ refused declaration defines neither of its two words.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/arena.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require src/lib/fs-mutate.f
 require test/e2e-tree.f
+require src/lib/fs.f
 
 \ The fixture package whose words ARENA-TEST calls from outside it.
 package ARENA-FIX

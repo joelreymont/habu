@@ -9,7 +9,8 @@
 \ none reaches the desktop store.
 \ Run: bin/hb --load src/lib/net/test-model-test.f
 
-require src/lib/test.f
+require src/lib/net/http-router.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/fmt.f

@@ -1,6 +1,6 @@
 \ Independent buffers grow and release on four native tasks at once, and the
 \ allocation registry returns to its base count once they end.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/task.f
 
 package DYNAMIC-BUFFER-TASK-TEST

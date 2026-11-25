@@ -6,7 +6,7 @@
 \ an oracle this file does not share.
 
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/base64.f

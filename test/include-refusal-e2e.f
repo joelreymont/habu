@@ -4,7 +4,7 @@
 \ (src/lib/engine-candidate.f) from this working directory; each case's program
 \ and streams go in a temporary cases/ tree, which no missing path lies below
 \ and the process removes at exit.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f

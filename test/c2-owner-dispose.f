@@ -1,6 +1,6 @@
 \ A checked owner releases a foreign acquisition through its supplied disposer.
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/c2-memory.f
 require src/lib/memory.f
 require src/lib/task.f

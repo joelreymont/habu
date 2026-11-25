@@ -5,7 +5,7 @@
 \ dies naming the harness; there is no skip.
 
 require src/core/exit-status.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/memory.f
 require src/lib/fmt.f

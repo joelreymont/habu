@@ -1,7 +1,7 @@
 \ utf8-lossy-test.f - UTF8-LOSSY:REPAIR against Rust's String::from_utf8_lossy:
 \ each expected span is that function's output over the same input.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/arena.f
 require src/lib/utf8-lossy.f
 

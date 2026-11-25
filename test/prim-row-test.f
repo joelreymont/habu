@@ -2,7 +2,7 @@
 \ A row opens only in a file the engine provides, so each case scans its bytes
 \ as the bytes of src/habu/prims.f; its records name <input>.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/habu/verify-source.f
 

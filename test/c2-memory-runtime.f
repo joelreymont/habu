@@ -1,5 +1,5 @@
 \ Real allocation and scoped-invocation runtime through the native source load path.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
 

@@ -1,6 +1,6 @@
 \ A declared mutable view can move through a by-value record. No typed
 \ address, constructor for the view, or mutable field access is introduced.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 
 STRUCTURE c2vmut<a,b,c,d> FIELD view mut-view<a,b,c,d> ;STRUCTURE

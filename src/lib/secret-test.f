@@ -4,7 +4,8 @@
 \ masked; a read that loses the bytes the vector held or keeps the bytes of a
 \ read that failed or found nothing.
 require src/lib/secret.f
-require src/lib/test.f
+require src/lib/secret/linux.f
+require src/lib/test/assert.f
 require src/lib/codegen.f
 require src/lib/string.f
 require src/lib/vector.f

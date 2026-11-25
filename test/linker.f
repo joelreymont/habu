@@ -5,7 +5,8 @@
 \ Each build's checker starts from the primitive rows in the stores CHECK
 \ registers, and the close puts them back as hb had them.
 
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/string.f
 require src/habu/layout.f
 require src/habu/boot-cells.f

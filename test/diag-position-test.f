@@ -6,7 +6,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f
 require src/lib/test/runner.f
 require src/lib/memory.f
@@ -20,6 +20,8 @@ require src/lib/engine-candidate.f
 require src/lib/json.f
 require tools/gate-json-assert-core.f
 require tools/check-core.f
+require src/lib/json/read.f
+require src/lib/ffi-abi.f
 
 package DIAG-POSITION-TEST
 
@@ -1333,6 +1335,15 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a defer" T-LABEL
    s" defer W ( n -- zz )" s" stored-defer.f" LINE-FIXTURE
    s" `W`" s" zz" 1 16 15 17 STORED-AT
+   s" a defer after a definition with the same signature text" T-LABEL
+   SB-RESET
+   s" package A" SB-APPEND LF+
+   s" DEFTYPE zz" SB-APPEND LF+
+   s" : X ( zz -- zz ) ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" defer W ( zz -- zz )" SB-APPEND LF+
+   s" stored-same-text.f" FIXTURE!
+   s" `W`" s" zz" 5 11 59 61 STORED-AT
    s" a cast" T-LABEL
    s" cast: >X ( ^ -- n )" s" stored-cast.f" LINE-FIXTURE
    s" `>X`" s" ^" 1 12 11 12 STORED-AT ;
@@ -3653,19 +3664,20 @@ HB-TARGET-LINUX? 0= [if]
 
 \ The load's only record, and the check's first, is GP's duplicate at its name.
 : TAKEN-AT ( -- )
-   s" E-DUPLICATE-DEFINITION" s" :3:11" 70 LOADED-AT
+   s" E-DUPLICATE-DEFINITION" s" :4:11" 70 LOADED-AT
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
    GT-ERR$ TAKEN$ STR:CONTAINS? TTRUE
    s" " CHECK
    0 s" code" s" E-DUPLICATE-DEFINITION" FIELD=
    0 s" message" TAKEN$ FIELD=
-   0 s" GP" 3 11 44 46 AT ;
+   0 s" GP" 4 11 70 72 AT ;
 
 \ A FUNCTION: whose name is taken is rejected at the name before the group
 \ opens, so an unclosed one is not rejected for being open.
 : TEST-TAKEN-FUNCTION ( -- )
    s" a FUNCTION: name already taken" T-LABEL
    SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" PROCESS-SYMBOLS" SB-APPEND LF+
    s" : GP ( -- n ) 1 ;" SB-APPEND LF+
    s" FUNCTION: GP getpid ( -- n )" SB-APPEND LF+
@@ -3675,6 +3687,7 @@ HB-TARGET-LINUX? 0= [if]
    GJA-LINE# @ 1 T=
    s" a FUNCTION: name already taken, left open" T-LABEL
    SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" PROCESS-SYMBOLS" SB-APPEND LF+
    s" : GP ( -- n ) 1 ;" SB-APPEND LF+
    s" FUNCTION: GP getpid ( -- n )" SB-APPEND LF+
@@ -3695,6 +3708,7 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-TAKEN-FUNCTION-NESTED ( -- )
    s" a taken FUNCTION: name inside an open structure" T-LABEL
    SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" PROCESS-SYMBOLS" SB-APPEND LF+
    s" : GP ( -- n ) 1 ;" SB-APPEND LF+
    s" BEGIN-STRUCTURE P" SB-APPEND LF+
@@ -3702,7 +3716,7 @@ HB-TARGET-LINUX? 0= [if]
    s" ;FUNCTION" SB-APPEND LF+
    s" END-STRUCTURE" SB-APPEND LF+
    s" taken-ffi-nested.f" FIXTURE!
-   s" E-UNCLOSED" s" :3:1" s" BEGIN-STRUCTURE" 3 1 34 49 FIRST-AT ;
+   s" E-UNCLOSED" s" :4:1" s" BEGIN-STRUCTURE" 4 1 60 75 FIRST-AT ;
 
 \ A CALLBACK: inside an open declaration rejects the open one at its opener
 \ before its own name is claimed, though that name is taken.
@@ -3723,29 +3737,33 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-WALLED-FUNCTION ( -- )
    s" a FUNCTION: name that is a keyword" T-LABEL
    SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" PROCESS-SYMBOLS" SB-APPEND LF+
    s" FUNCTION: create getpid ( -- n )" SB-APPEND LF+
    s" ;FUNCTION" SB-APPEND LF+
    s" taken-ffi-keyword.f" FIXTURE!
-   s" E-RESERVED-DEFINITION" s" :2:11" s" create" 2 11 26 32 FIRST-AT
+   s" E-RESERVED-DEFINITION" s" :3:11" s" create" 3 11 52 58 FIRST-AT
    s" a FUNCTION: name that is a number, left open" T-LABEL
    SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" PROCESS-SYMBOLS" SB-APPEND LF+
    s" FUNCTION: 42 getpid ( -- n )" SB-APPEND LF+
    s" taken-ffi-number.f" FIXTURE!
-   s" E-NUMERIC-DEFINITION" s" :2:11" s" 42" 2 11 26 28 FIRST-AT ;
+   s" E-NUMERIC-DEFINITION" s" :3:11" s" 42" 3 11 52 54 FIRST-AT ;
 
 \ A FUNCTION: name the engine holds is rejected at the name as ;FUNCTION would
 \ reject it: a primitive's as taken, a sealed package's as sealed.
 : TEST-TAKEN-ENGINE-FUNCTION ( -- )
    s" a FUNCTION: name a primitive holds, left open" T-LABEL
    SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" PROCESS-SYMBOLS" SB-APPEND LF+
    s" FUNCTION: VARIADIC getpid ( -- n )" SB-APPEND LF+
    s" taken-ffi-prim.f" FIXTURE!
-   s" E-DUPLICATE-DEFINITION" s" :2:11" s" VARIADIC" 2 11 26 34 FIRST-AT
+   s" E-DUPLICATE-DEFINITION" s" :3:11" s" VARIADIC" 3 11 52 60 FIRST-AT
    s" a FUNCTION: name in a sealed package" T-LABEL
    SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" s" SB-APPEND 34 SB-APPEND-C s"  a" SB-APPEND 34 SB-APPEND-C
    s"  s" SB-APPEND 34 SB-APPEND-C s"  b" SB-APPEND 34 SB-APPEND-C
    s"  STR:= drop" SB-APPEND LF+
@@ -3753,22 +3771,23 @@ HB-TARGET-LINUX? 0= [if]
    s" FUNCTION: STR:= getpid ( -- n )" SB-APPEND LF+
    s" ;FUNCTION" SB-APPEND LF+
    s" taken-ffi-sealed.f" FIXTURE!
-   s" E-SEALED-PACKAGE" s" :3:11" 70 LOADED-AT
+   s" E-SEALED-PACKAGE" s" :4:11" 70 LOADED-AT
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
    s" " CHECK
    s" E-SEALED-PACKAGE" REJECTED-AS
-   0 s" STR:=" 3 11 49 54 AT ;
+   0 s" STR:=" 4 11 75 80 AT ;
 
 \ A FUNCTION: name with a second colon is rejected at the name, though the
 \ effect after it is read first.
 : TEST-QUALIFIED-FUNCTION ( -- )
    s" a FUNCTION: name with two colons" T-LABEL
    SB-RESET
+   s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" PROCESS-SYMBOLS" SB-APPEND LF+
    s" FUNCTION: A:B:C getpid ( -- n )" SB-APPEND LF+
    s" ;FUNCTION" SB-APPEND LF+
    s" qualified-ffi.f" FIXTURE!
-   s" E-BAD-QUALIFIED-RECORD" s" :2:11" s" A:B:C" 2 11 26 31 FIRST-AT ;
+   s" E-BAD-QUALIFIED-RECORD" s" :3:11" s" A:B:C" 3 11 52 57 FIRST-AT ;
 
 \ A throw nothing catches, of a code no table names and outside the exit
 \ statuses 1..255, ends the load with one E-THROW record at the word that threw
@@ -4067,6 +4086,7 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-STALE-PARSES ( -- )
    s" a parses: row made in a scope that rolls back" T-LABEL
    SB-RESET
+   s" require src/habu/verify-source.f" SB-APPEND LF+
    s" : Q-SCAN ( -- )" SB-APPEND LF+
    s\"    s\\\" : Q-ONE ( -- ) parse-name drop ; immediate parses: Q-ONE 1\""
    SB-APPEND LF+
@@ -4075,7 +4095,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : Q-TWO ( -- ) parse-name drop ; immediate" SB-APPEND LF+
    s" : USE-TWO ( -- n ) Q-TWO 73 ;" SB-APPEND LF+
    s" stale-parses.f" FIXTURE!
-   s" E-UNMODELED-IMMEDIATE" s" :6:20" 70 LOADED-AT ;
+   s" E-UNMODELED-IMMEDIATE" s" :7:20" 70 LOADED-AT ;
 
 \ The parses: table grows: a check and a load accept 40 declared parsing
 \ immediates, and the load runs each one at compile time.

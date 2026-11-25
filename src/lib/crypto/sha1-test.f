@@ -4,7 +4,7 @@
 \
 \ The block-boundary digests are runs of 'a', as `shasum -a 1` answers them.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/span.f
 require src/lib/crypto/sha1.f
 

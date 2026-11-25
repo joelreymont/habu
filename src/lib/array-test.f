@@ -2,7 +2,7 @@
 \ Run: bin/hb --load src/lib/array-test.f
 
 require src/lib/array.f
-require src/lib/test.f
+require src/lib/test/assert.f
 
 using ARRAY
 

@@ -4,8 +4,10 @@
 \ DEF-ADDR-PUBLISH). Restoring `PE-PTR-A PE-OUT` reds INFER-CASE's inferred effect
 \ and both callers.
 
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/habu/verify-source.f
+require src/compiler/native/dict.f
 
 package CREATE-AXIOM-TEST
 private

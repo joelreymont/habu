@@ -1,5 +1,5 @@
 \ A typed callback can receive and execute another typed quotation.
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package NATIVE-QUOTE-FORWARD-E2E
 

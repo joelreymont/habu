@@ -1,8 +1,8 @@
 \ process-argv-test.f - focused tests for src/lib/process-argv.f.
-\ Run: bin/hb --load src/lib/error.f src/lib/test.f src/lib/process.f src/lib/process-argv.f src/lib/process-argv-test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/process.f src/lib/process-argv.f src/lib/process-argv-test.f
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -10,6 +10,7 @@ require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require src/lib/test/ending.f
+require src/lib/fd.f
 
 variable PAT-IN-R
 variable PAT-IN-W

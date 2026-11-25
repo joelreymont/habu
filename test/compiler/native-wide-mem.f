@@ -3,7 +3,7 @@
 require test/compiler/native-eval-fixture.f
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/ieee754.f
 require src/lib/adt/option.f
 

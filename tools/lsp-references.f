@@ -34,6 +34,7 @@ require tools/lsp-text.f
 require tools/lsp-defs.f
 require tools/lsp-check.f
 require tools/lsp-workspace.f
+require src/lib/json/write.f
 
 package LSP-REFERENCES
 using JSON

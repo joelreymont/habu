@@ -5,7 +5,8 @@
 require src/core/exit-status.f
 require src/habu/verify-source.f
 require test/decl-diag-capture.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/test/rejection-text.f
 require src/lib/adt/option.f
 require src/lib/string.f

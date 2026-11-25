@@ -4,7 +4,8 @@
 \ moving different cell counts are refused at the second definition.
 
 require src/lib/prelude.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 
 \ The suite's own helpers live in a package. The CASES stay at top level:
 \ each opens a package inside the evaluated source, which has to happen in

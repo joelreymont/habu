@@ -24,7 +24,7 @@
 
 require src/lib/adt/result.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 
 using TYPE-DECL
 

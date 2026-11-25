@@ -12,7 +12,7 @@
 \ running server's pid, pipes, output and port; a test UNSERVEs before it
 \ serves again. CALLER-OWNED: the cells LISTEN writes.
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/string-option.f
 require src/lib/span.f

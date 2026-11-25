@@ -1,4 +1,4 @@
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package BYTE-COPY-TEST
 

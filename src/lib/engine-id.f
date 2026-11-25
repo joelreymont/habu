@@ -13,6 +13,7 @@ require src/lib/ffi-abi.f
 require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fmt.f
+require src/lib/le.f
 
 package ENGINE-ID
 

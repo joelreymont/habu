@@ -2,7 +2,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/hashmap.f
 require src/lib/fmt.f
 require src/lib/task.f

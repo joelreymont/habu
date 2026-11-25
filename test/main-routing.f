@@ -1,11 +1,13 @@
 \ main-routing.f - exercise the emitted engine's stdin and argv routing.
 \ Needs HABU_UNDER_TEST set to the emitted candidate.
 
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/runner.f
 require src/lib/string.f
 require test/gate-common.f
 require src/lib/process.f
 require src/core/bytes.f
+require src/lib/fs.f
 
 package MAIN-ROUTING-TEST
 

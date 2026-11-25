@@ -1,10 +1,11 @@
 \ code-dump-x64.f - the live Intel code dump and its bounded byte decoder.
 \ Needs a native x86-64 engine.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require test/gate-common.f
 require src/arch/x86-64/disasm.f
 require tools/code-dump-core.f
+require src/lib/test/runner.f
 
 package CODE-DUMP-X64-TEST
 private

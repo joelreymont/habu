@@ -10,10 +10,11 @@ require src/lib/pty-harness.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/aio.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/task.f                 \ TASK:SLEEP between probes of a sleeper's pid
 require src/lib/engine-candidate.f
 require src/lib/heap.f
+require src/lib/process.f
 require src/lib/vector.f
 
 package PTY-TTY-SMOKE

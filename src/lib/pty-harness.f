@@ -13,6 +13,7 @@ require src/lib/process.f
 require src/lib/fd-lock.f
 require src/lib/pty.f
 require src/lib/time.f
+require src/lib/fd.f
 
 package PTY-HARNESS
 public

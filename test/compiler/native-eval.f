@@ -3,8 +3,10 @@
 \ checked word evaluate source.
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/test/subject.f
+require src/lib/process.f
 
 package NATIVE-EVAL-TEST
 

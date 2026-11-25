@@ -1,7 +1,7 @@
 \ SVG bytes -> native librsvg/Cairo -> staged PDF -> independent PDF readers.
 require src/core/exit-status.f
 require src/lib/svg-pdf.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/ffi-abi.f
@@ -13,6 +13,7 @@ require src/lib/f64-text.f
 require src/lib/le.f
 require src/lib/fmt.f
 require src/lib/span.f
+require src/lib/process.f
 
 package SVG-PDF-TEST
 private

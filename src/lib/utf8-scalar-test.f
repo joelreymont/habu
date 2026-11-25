@@ -2,7 +2,7 @@
 \ whole-span check UTF8:VALID? built on it, the boundary cut UTF8:FIT and the
 \ cut-character check UTF8:CUT?.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/property.f
 require src/lib/utf8-scalar.f
 

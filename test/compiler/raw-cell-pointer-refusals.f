@@ -3,7 +3,7 @@
 \ constant, here) re-freshens its published `-- ^a`, so an `n` stored through
 \ one mention would come back from the next as an address `@`, `c@`, `!` or
 \ `0 ptr-field` accepts.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/task.f
 

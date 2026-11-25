@@ -12,6 +12,8 @@ require tools/lsp-docs.f
 require tools/lsp-defs.f
 require tools/lsp-text.f
 require tools/lsp-line.f
+require src/lib/json/read.f
+require src/lib/json/write.f
 
 package LSP-LINKS
 using JSON

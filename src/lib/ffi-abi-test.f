@@ -1,7 +1,8 @@
 \ ffi-abi-test.f - target-independent FFI ABI and marshalling tests.
 \ Run: bin/hb --load src/lib/ffi-abi-test.f
 
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/ffi-abi.f
 require test/decl-diag-capture.f
 

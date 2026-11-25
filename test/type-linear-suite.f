@@ -6,7 +6,7 @@
 \ checker rows and runtime cells agree.
 
 require src/habu/verify-source.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 
 T-RESET

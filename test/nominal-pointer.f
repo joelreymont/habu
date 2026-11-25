@@ -1,5 +1,5 @@
 \ Existing nominal pointers instantiate checked generic inputs without minting identities.
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package NOMINAL-POINTER-TEST
 

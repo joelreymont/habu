@@ -5,7 +5,7 @@
 \ makes that safe, so a change to either fails here and not in a consumer.
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/span.f
 
 64 SPAN-BUFFER: ST-BUF

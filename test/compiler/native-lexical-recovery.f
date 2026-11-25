@@ -4,7 +4,8 @@
 \ only inside its block and its definition's head; a parser operand that spells
 \ a closer or a comment opener is data.
 require test/gate-common.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/process.f
 
 package NATIVE-LEXICAL-FIXTURE
 public

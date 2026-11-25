@@ -198,6 +198,13 @@ files. Build the first engine with it from a copy of the tree that also holds
 the old file as the previous revision has it, then take steps 2 and 3 in the
 tree.
 
+A change that adds a start-up file stops the previous engine's build at
+`E-UNDEFINED` for the file's first word used: that engine's own list does not
+name the file. Build the first engine from a copy of the tree in which a
+start-up file the list does name, loaded where the new one is, holds the new
+file's text (moving that file's own text to the end of the one before it) and
+no file requires the new one, then take steps 2 and 3 in the tree.
+
 ## Refresh `bin/hb`
 
 After `bin/hb` exists, use it as the host for normal native builds. Build a

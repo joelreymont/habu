@@ -5,6 +5,9 @@
 \ syscall ABI does not use the carry flag: the raw syscall already leaves 0 or
 \ -errno in x0, so publishing x0 unchanged is exactly the -errno contract.
 
+require src/habu/rt.f
+require src/os/linux/sys.f
+
 using RT
 using SYSCALL
 package ENGINE-EMIT

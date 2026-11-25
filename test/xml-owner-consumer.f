@@ -1,6 +1,10 @@
 \ A document opens a runtime-sized set of wire parts, retains only owners and
 \ lexical ranges, closes its parsing cursors, then edits those parts later.
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/xml/read.f
+require src/lib/xml/scalar.f
+require src/lib/xml/source.f
+require src/lib/xml/state.f
 require src/lib/memory.f
 require src/lib/heap.f
 require src/lib/span.f

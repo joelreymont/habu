@@ -1,4 +1,3 @@
-require test/fixtures/file-objects/mid-w1.f
 require test/fixtures/file-objects/mid-four.f
 require test/fixtures/file-objects/flip.f
 require test/fixtures/file-objects/unclean.f
@@ -9,6 +8,8 @@ require test/fixtures/file-objects/cut-stack.f
 require test/fixtures/file-objects/scope.f
 require test/fixtures/file-objects/scope-use.f
 require test/fixtures/file-objects/inside-p.f
+require test/fixtures/file-objects/cut-stack-b.f
+require test/fixtures/file-objects/flip-a.f
 
 : MAIN ( -- )
    FILE-OBJECTS-MID-FOUR:A .  FILE-OBJECTS-MID-FOUR:B .  FILE-OBJECTS-MID-FOUR:C .

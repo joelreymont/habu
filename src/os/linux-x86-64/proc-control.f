@@ -12,6 +12,10 @@
 \ data-stack moves G-POP and G-PUSH that take them are package X64RT's
 \ (src/arch/x86-64/rt.f), imported rather than qualified for the reason
 \ proc-watch.f gives.
+
+require src/arch/x86-64/rt.f
+require src/os/linux-x86-64/sys.f
+
 using X64RT
 
 : BKILLERRNO ( -- )                \ ( pid sig -- rc ) rc=0 or -errno

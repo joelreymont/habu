@@ -7,7 +7,7 @@
 \ missing name throws; a 255-byte name is refused; a name the kernel refuses
 \ reads as oversize; a refused call is not E-XATTR with its errno.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

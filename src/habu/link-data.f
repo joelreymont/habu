@@ -35,6 +35,10 @@ require src/habu/link-band.f
 require src/habu/link-copy.f
 require src/arch/wasm/link-module.f
 require src/habu/link-map.f
+require src/arch/x86-64/icode.f
+require src/compiler/native/shadow.f
+require src/compiler/target/model.f
+require src/habu/link-code.f
 using DRIVER
 
 package LINKER
@@ -606,6 +610,13 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    REGIONS  path pathu CODE-END @ WRITE-MAP ;
 
 public
+
+\ The open build's first record.
+: FIRST-RECORD ( -- n ) FIRST-REC @ ;
+
+\ The index the target gives build record r: its kernel's primitives come
+\ first, as many as the kernel object's rows (RECORD-IMAGE).
+: TARGET-INDEX ( n -- n ) NATIVE:ROW-N +  FIRST-REC @ - ;
 
 \ Link the open space's program and write it to the path: a Wasm target's as a
 \ module, a Mach-O or ELF target's as WRITE-PROGRAM does. GOING comes first:

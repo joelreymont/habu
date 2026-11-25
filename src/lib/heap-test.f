@@ -3,7 +3,7 @@
 \ pages; RESIZE keeps a block's bytes as it grows and shrinks and zeroes the
 \ added ones, bytes a shrink cut included; a refused request is E-MEM-MAP and
 \ leaves the block.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/allocator.f
 require src/lib/span.f
 require src/lib/heap.f

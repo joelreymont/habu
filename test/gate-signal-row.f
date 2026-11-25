@@ -11,6 +11,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/test/fifo.f
+require src/lib/fd.f
 
 package GATE-SIGNAL-ROW
 

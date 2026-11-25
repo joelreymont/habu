@@ -6,7 +6,8 @@
 \ `<harness> <case> rc=<n> <first stderr line>`.
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/test/ending.f
 require src/lib/string.f
 require src/lib/string-option.f
@@ -251,22 +252,46 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" " 107 s" E-POLICY habu: policy: package wid above the bound lr " s" " RUNS
    s" far" s" error[E-POLICY]: `PBIG:FAR` is not in the vocabulary this source may use" s" test/policy/far.f:2:" REFUSES ;
 
-\ A harness that bound the loaded-bytes seam to the interpret loop written in
-\ Habu, which reads no seal: a sealed load is read by the engine's loop all the
-\ same (src/core/include.f INTERPRET-SAVED-RANGE), so it runs and refuses as it does there.
+\ A harness that bound the loaded-bytes seam to a reader that runs nothing:
+\ a sealed load still runs its file and still rejects what the seal does.
 : SEAM ( -- )
-   s" allow-interpreter" HARNESS!
+   s" allow-seam" HARNESS!
    s" ok" 0 s" " OK-OUT$ RUNS
    s" bypass" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/bypass.f:2:" REFUSES ;
 
 \ A record that names a path outside the root, whose head is the same for each.
 : ROOT$ ( -- str ) s" error[E-POLICY]: `" ;
 
+: HOLDS ( CMD:command str -- CMD:command ) {: span:str :}
+   CMD:ERR$ span STR:CONTAINS? TTRUE ;
+
+: ROOT-HOST ( CMD:command -- CMD:command )
+   >r s" " 70 s" error[E-UNREQUIRED]: `PDEP:ANSWER` is defined in `test/policy/dep.f`, which `test/policy/outside.f` does not require" s" test/policy/outside.f:1:1" S\" 0\n0\n0\n70\n\n0\n70\n0\n0\n0\n0\n" r> SAYS-IN
+   s" error[E-UNREQUIRED]: `VALUE:ANSWER` is defined in `test/policy/confined/value.f`, which `test/policy/confined/unrequired.f` does not require" HOLDS
+   s" error[E-UNREQUIRED]: `FS:EXISTS?` is defined in `src/lib/fs.f`, which `test/policy/allow-root-host.f` does not require" HOLDS ;
+
+PATH-CAP 1 + BUFFER: AT-BUF
+
+\ The path of name in directory dir, until the next.
+: AT$ ( str str -- str ) AT-BUF FS:JOIN-PATH AT-BUF swap >str ;
+
+: APART-IN ( CMD:command -- CMD:command )
+   s" vocabulary" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" conf" AT$ FS:MAKE-DIR
+   dir CMD:CWD!  s" --load" CMD:ARG+
+   SOURCE-ROOT:CWD$ STEM$ FILE$ AT$ CMD:ARG+
+   SOURCE-ROOT:CWD$ s" bin/hb" AT$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   STEM$ FILE$ CODE!
+   STEM$ s" stdout" LABEL  CMD:OUT$ s\" 0\n" T$=
+   STEM$ s" exit code" LABEL  CODE @ 0 T= ;
+
 \ Confined static require uses the original source paths through nested loads.
 \ A registry hit or a symlink still has to pass the resolved path boundary.
 : CONFINED ( -- )
    s" allow-root" HARNESS!
    s" confined/scene" 0 s" " S\" 42\n" RUNS
+   s" confined/unrequired" s" error[E-UNREQUIRED]: `VALUE:ANSWER` is defined in `test/policy/confined/value.f`, which `test/policy/confined/unrequired.f` does not require" s" test/policy/confined/unrequired.f:4:" REFUSES
    s" confined/parent" ROOT$ s" `../outside.f` lies outside the source root" REFUSES
    s" confined/known" ROOT$ s" `../dep.f` lies outside the source root" REFUSES
    s" confined/library" ROOT$ s" `src/lib/string.f` lies outside the source root" REFUSES
@@ -280,6 +305,10 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" " 70 ROOT$ s" /test/policy/confined/link.f` lies outside the source root" s" " SAYS
    s" allow-root-preflight" HARNESS!
    s" " 0 ROOT$ s" `../outside.f` lies outside the source root" S\" 0\n70\n0\n\n" SAYS
+   s" allow-root-host" HARNESS!
+   [: ROOT-HOST ;] CMD:WITH-COMMAND
+   s" allow-root-apart" HARNESS!
+   [: APART-IN ;] CMD:WITH-COMMAND
    s" allow-root-scope-throw" HARNESS!
    s" " 0 s" " S\" -30001\n0\n\n" RUNS
    s" allow-root-scope-nested" HARNESS!

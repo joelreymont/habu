@@ -3,7 +3,7 @@ require src/lib/zip.f
 require src/lib/zip-test-fixture.f
 require src/lib/fs.f
 require src/lib/process-argv.f
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package ZIP-TEST
 

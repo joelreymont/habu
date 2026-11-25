@@ -3,12 +3,13 @@
 \ dangling link is E-FS-STAT, and of two racing claims exactly one wins.
 \ Run: hb --load src/lib/fs-rename-noreplace-test.f
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/fs-mutate.f
 require src/lib/fs-list.f
 require src/lib/task.f
 require src/lib/test/wait.f
+require src/lib/fs.f
 
 package FS-NOREPLACE-TEST
 

@@ -1,4 +1,5 @@
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/test/subject.f
 require src/lib/fsm.f
 require src/lib/fmt.f

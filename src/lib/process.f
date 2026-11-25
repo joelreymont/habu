@@ -39,6 +39,7 @@ split-str
 
 require src/lib/engine-id.f
 require src/core/exit-status.f
+require src/lib/vector.f
 s" src/lib/error.f" required
 s" src/lib/memory.f" required                \ MEM-MAX-N bounds DEADLINE-AT
 s" src/lib/adt/result.f" required            \ result<n,n> for RUN-IO-RC

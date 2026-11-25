@@ -2,31 +2,17 @@
 \ selects them.
 \   bin/hb --load test/checker-completion.f
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/string.f
 require src/habu/verify-source.f
+require test/checker-completion-part.f
 
 \ A public does> definer this file loads: the dictionary holds its clause's
 \ record, QALDEF;does, in QALD's public wordlist.
 package QALD
 public
 : QALDEF ( n -- ) create , does> ( -- n ) @ ;
-;package
-
-\ CMQA's part CmqB, whose name the top-level package CMQB shares, as the engine
-\ makes them: the dictionary holds the part's row, CMQA:CmqB (cases 10 to 12).
-package CMQB
-public
-: QPT ( -- n ) 40 ;
-;package
-
-package CMQA
-package CmqB
-: QPV ( -- n ) 41 ;
-public
-: QPW ( -- n ) 42 ;
-;package
 ;package
 
 package NAVL
@@ -131,7 +117,9 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
 
 \ A composed case's subject: the declarations every case sees, then its body,
 \ at one path, so a declaration's location is its token's bytes here.
-: SUBJECT-PATH$ ( -- str ) s" cmp-subject.f" ;
+create SUBJECT-PATH PATH-CAP allot
+SOURCE-ROOT:CWD$ s" cmp-subject.f" SUBJECT-PATH FS:JOIN-PATH constant SUBJECT-PATH-U
+: SUBJECT-PATH$ ( -- str ) SUBJECT-PATH SUBJECT-PATH-U >str ;
 1024 constant SUBJECT-CAP
 SUBJECT-CAP BUFFER: SUBJECT-BUF
 variable SUBJECT-N
@@ -795,7 +783,7 @@ DEP-CAP BUFFER: DEP-BUF
 : PART-IN ( n -- )
    {: k:n :}
    s" cmqb:" KEPT-RESET
-   s" package CMQA : CMQU ( -- n ) CmqB:QPW ; ;package" SUBJECT-OF
+   s" require test/checker-completion-part.f package CMQA : CMQU ( -- n ) CmqB:QPW ; ;package" SUBJECT-OF
    dup s" CmqB:QPW" k CURSOR-AT COMPOSE-AT
    s" the package's body's check runs through" T-LABEL 0 T=
    KEPT-ALL
@@ -817,7 +805,7 @@ DEP-CAP BUFFER: DEP-BUF
 : PART-OTHER ( n -- )
    {: k:n :}
    s" cmqb:" KEPT-RESET
-   s" package CMQC : CMQX ( -- n ) CMQB:QPT ; ;package" SUBJECT-OF
+   s" require test/checker-completion-part.f package CMQC : CMQX ( -- n ) CMQB:QPT ; ;package" SUBJECT-OF
    dup s" CMQB:QPT" k CURSOR-AT COMPOSE-AT
    s" the other package's body's check runs through" T-LABEL 0 T=
    PART-OUT ;
@@ -864,6 +852,7 @@ DEP-CAP BUFFER: DEP-BUF
 : IN-PART ( str -- str )
    {: s:str :}
    0 SUBJECT-N !
+   s" require test/checker-completion-part.f" LINE+
    s" package CMQA package CmqB" LINE+  s LINE+  s" ;package ;package" LINE+
    SUBJECT-BUF SUBJECT-N @ >str ;
 

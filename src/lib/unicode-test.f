@@ -1,4 +1,4 @@
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/property.f
 require src/lib/unicode.f
 

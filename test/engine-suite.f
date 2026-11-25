@@ -12,7 +12,9 @@ require src/core/exit-status.f
 require src/lib/type/deftype.f
 require src/lib/fs-mutate.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
+require src/habu/verify-source.f
 
 T-RESET
 
@@ -1590,6 +1592,7 @@ s" CBAD-LOCAL-DEAD ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 \ spawn-fds: the child's descriptor table is exactly the request's map, through
 \ the primitive itself.
 require src/habu/spawn-abi.f
+require src/lib/fs.f
 1 constant ES-F-GETFD
 16 constant ES-SF-SCRIPT
 create ES-SFZ 64 allot

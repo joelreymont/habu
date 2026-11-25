@@ -8,7 +8,7 @@
 \ (test/AGENTS.md). The children's logs are kept in the tree, which the process
 \ removes at exit.
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f

@@ -1,5 +1,5 @@
 \ A nested initialized record lends its embedded Pair for an in-place edit.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
 

@@ -1,7 +1,7 @@
 \ event-stream-test.f - checked native SSE framing cases.
 \ Run: bin/hb --load src/lib/net/event-stream-test.f
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/net/event-stream.f

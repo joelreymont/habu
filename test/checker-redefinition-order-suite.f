@@ -1,7 +1,7 @@
 \ checker-redefinition-order-suite.f - which record of a redefined word its
 \ callers are checked against: the newest wins, and a deletion is an absence.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package REDEFINITION-ORDER-TEST
 

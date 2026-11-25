@@ -6,9 +6,10 @@
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
+require src/lib/process.f
 
 \ ---- section 1: the three incidents, compiled by tier 0 -----------------------
 \ Each body once lost a word to a local of the same letters, which read as a

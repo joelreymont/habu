@@ -9,6 +9,7 @@ require src/lib/json.f
 require src/lib/adt/option.f
 require tools/lsp-defs.f
 require tools/lsp-symbols.f
+require src/lib/json/write.f
 
 package LSP-OUTLINE
 using JSON

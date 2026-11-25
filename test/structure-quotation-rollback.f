@@ -1,6 +1,7 @@
 \ A caught declaration with an unfinished quotation must leave the parser
 \ usable for the next declaration.
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require test/decl-diag-capture.f
 
 package QUOT-ROLLBACK-TEST

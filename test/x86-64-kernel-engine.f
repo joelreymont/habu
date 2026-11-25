@@ -5,6 +5,11 @@ require src/core/exit-status.f
 require src/habu/address-cells.f
 require test/x86-64-boot-harness.f
 require src/os/linux/layout.f
+require src/habu/kernel-x64.f
+require src/lib/test/assert.f
+require test/x86-64-peer-harness.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
 
 package X64K-ENGINE
 using LINUX-LAYOUT   \ the guard

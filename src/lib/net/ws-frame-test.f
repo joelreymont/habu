@@ -4,7 +4,7 @@
 \ Frames are hex, as section 5.7 prints them. A decoded header is checked by
 \ encoding it again: the RFC's examples pin the encoder byte for byte.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/span.f
 require src/lib/net/ws-frame.f
 

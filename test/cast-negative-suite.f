@@ -7,8 +7,9 @@
 require src/habu/verify-source.f
 require src/lib/string.f
 require src/lib/test/subject.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/rejection-text.f
+require src/lib/process.f
 
 T-RESET
 

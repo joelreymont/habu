@@ -3,6 +3,8 @@
 \ src/lib/secret.f.
 HB-TARGET-MACOS? ?TARGET
 require src/lib/secret.f
+require src/lib/ffi-abi.f
+require src/lib/secret/linux.f
 
 package SECRET
 private

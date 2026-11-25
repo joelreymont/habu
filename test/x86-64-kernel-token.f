@@ -6,6 +6,11 @@
 \ -tok-imm and -create.
 require test/x86-64-boot-harness.f
 require src/os/linux/layout.f
+require src/arch/x86-64/rt.f
+require src/lib/test/assert.f
+require test/x86-64-peer-harness.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
 
 package X64K-TOKEN-TEST
 using X64ASM

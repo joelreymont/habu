@@ -1,6 +1,6 @@
 \ tail-parity.f - direct/subject result parity shared by the tail gates.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/string-option.f
 require src/lib/adt/option.f

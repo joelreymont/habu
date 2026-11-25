@@ -5,7 +5,7 @@
 \ printer must keep both. src/lib/fmt.f's checked renderer is covered by
 \ src/lib/fmt-test.f.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/genio-core.f
 

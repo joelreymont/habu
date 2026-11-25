@@ -3,7 +3,7 @@
 \ and a comment its name prefixes, and a file without the named table or a
 \ PICK line fails the running test, seen in a subject child.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/arena.f

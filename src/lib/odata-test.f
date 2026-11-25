@@ -16,13 +16,19 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/arena.f
 require src/lib/reason.f
-require src/lib/test.f
+require src/lib/odata/key.f
+require src/lib/odata/metadata.f
+require src/lib/odata/response.f
+require src/lib/test/assert.f
+require src/lib/xml/scalar.f
 require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/json.f
 require src/lib/xml.f
 require src/lib/vector.f
 require src/lib/odata.f
+require src/lib/json/write.f
+require src/lib/json/value.f
 
 package ODATA-TEST
 

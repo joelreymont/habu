@@ -14,7 +14,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
@@ -26,6 +26,7 @@ require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-data.f
 require tools/hb-build-core.f
+require src/lib/process.f
 
 package ARM64-LINK-RUN
 

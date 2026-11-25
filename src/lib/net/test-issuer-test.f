@@ -32,7 +32,10 @@
 \ E-REJECTED.
 \ Run: bin/hb --load src/lib/net/test-issuer-test.f
 
-require src/lib/test.f
+require src/lib/net/http-request.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/span.f
@@ -56,6 +59,9 @@ require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/test-issuer.f
 require src/lib/net/bearer.f
+require src/lib/json/read.f
+require src/lib/task.f
+require src/lib/fd.f
 
 package TEST-ISSUER-TEST
 private

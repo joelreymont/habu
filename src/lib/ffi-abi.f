@@ -31,6 +31,8 @@ split-str
 \ is its number, a stack slot is -1 less its byte offset, and a private
 \ copy's place is a cell index, 0 for none.
 
+require src/lib/ieee754.f
+
 HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
 s" src/core/exit-status.f" required
 s" src/lib/error.f" required

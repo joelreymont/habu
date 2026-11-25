@@ -6,7 +6,7 @@
 
 require src/lib/string.f
 require src/lib/span.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fd.f
@@ -96,16 +96,16 @@ PATH-CAP BUFFER: PROG     variable PROG-U
    s" the program starts with the target's magic" T-LABEL
    HEAD SPAN:$ STR:DATA 4 >str MAGIC$ T$= ;
 
-\ The same program, binding its callback on line 3.
+\ The same program, binding its callback on line 4.
 : BIND-SOURCE$ ( -- str )
-   S\" require src/lib/ffi-callback.f\nCALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\nCMP TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n: MAIN ( -- ) ;\n" ;
+   S\" require src/lib/ffi-callback.f\nrequire src/lib/task.f\nCALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\nCMP TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n: MAIN ( -- ) ;\n" ;
 
 : BIND-CASE ( CMD:command -- CMD:command )
    SRC$ BIND-SOURCE$ FS:WRITE-ALL
    SRC$ PROG$ BUILD {: rc:n :}
    CMD:ERR$ s" error[E-TARGET-WORD]: a build cannot run target word `MAIN-BASE`"
       STR:CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" callback.f:3:23" STR:CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" callback.f:4:23" STR:CONTAINS? {: placed:bool :}
    classed placed and  rc 0<> and 0= if rc SHOW then
    s" the binding program's cross-build fails" T-LABEL  rc 0<> TTRUE
    s" the rejection is E-TARGET-WORD" T-LABEL  classed TTRUE

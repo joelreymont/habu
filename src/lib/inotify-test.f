@@ -10,7 +10,7 @@
 \ is not E-INOTIFY with its errno; a full queue's lost events are not
 \ IN-Q-OVERFLOW on descriptor -1.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/adt/option.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

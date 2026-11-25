@@ -2,6 +2,9 @@ split-str
 \ split-str-marked.f - included by test/split-str-test.f: from the marker on,
 \ the str rows of SPL and SPQ read as ^u8 n.
 
+require src/lib/test/assert.f
+require src/lib/test/eval.f
+
 \ A call at top level.
 s" abc" SPL 3 T=
 

@@ -1,11 +1,11 @@
-\ stdlib-date-test.f - focused tests for src/lib/date.f on src/lib/test.f's assert
-\ words: the test shares one dictionary with the loaded framework, so a private
-\ T= here is a duplicate definition.
+\ stdlib-date-test.f - focused tests for src/lib/date.f on the words of
+\ src/lib/test/assert.f: the test shares one dictionary with the loaded
+\ framework, so a private T= here is a duplicate definition.
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/date.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/task.f
 
 32 constant DATE-TEST-BUF-LEN

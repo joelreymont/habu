@@ -10,7 +10,7 @@ require src/lib/fs.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package BROWSER-MEMORY-TEST
 private

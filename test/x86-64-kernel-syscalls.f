@@ -3,6 +3,12 @@
 \ the working directory, a writable one, and remove what they create.
 require test/x86-64-boot-harness.f
 require src/lib/vector.f
+require src/arch/x86-64/rt.f
+require src/lib/test/assert.f
+require test/x86-64-peer-harness.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
+require src/habu/spawn-abi.f
 
 package X64K-SYSCALLS
 using X64ASM

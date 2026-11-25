@@ -6,7 +6,8 @@
 \ test/structure-decl-suite.f owns the declaration and rollback front end.
 
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 
 T-RESET
 

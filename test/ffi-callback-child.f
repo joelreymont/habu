@@ -6,6 +6,7 @@ require src/core/exit-status.f
 require test/ffi-callback-fixture.f
 require src/lib/string.f
 require src/lib/task.f
+require src/lib/ffi-callback.f
 
 package FFI-CB-TEST
 using FFI-CB

@@ -12,6 +12,7 @@ s" src/lib/memory.f" required
 s" src/lib/process.f" required
 require src/lib/process-chunks.f
 require src/lib/string.f
+require src/lib/spawn.f
 
 SCRATCH-VARIABLE PROC-ARGV-N
 

@@ -4,7 +4,7 @@
 \ worker answers a signal stack other than its creator's. The worker's failure
 \ exits the process by name before its creator can join.
 require src/core/exit-status.f
-require src/lib/test.f
+require src/lib/test/suite.f
 require src/lib/task.f
 require src/lib/ffi-abi.f
 require src/habu/stack-abi.f

@@ -1,5 +1,5 @@
 require src/lib/elf32.f
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package ELF32-TEST
 private

@@ -7,6 +7,8 @@
 require src/lib/net/http-response.f
 require src/lib/string.f
 require src/lib/span.f
+require src/lib/net/http-arena.f
+require src/lib/net/http-request.f
 
 package HTTP
 

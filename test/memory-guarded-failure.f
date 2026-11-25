@@ -1,7 +1,7 @@
 \ Deny only a writable mmap after MEM:ALLOC-GUARDED reserves its inaccessible
 \ span. A failed fixed remap must return all virtual pages in that span.
 require src/core/exit-status.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/ffi-abi.f

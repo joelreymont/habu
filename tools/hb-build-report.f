@@ -9,6 +9,7 @@ require src/lib/string.f
 require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/json.f
+require src/lib/json/write.f
 
 package HB-BUILD
 

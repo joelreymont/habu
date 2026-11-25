@@ -62,6 +62,10 @@ require src/lib/vector.f
 require src/lib/utf8-scalar.f
 require src/core/rejection.f
 require src/lib/unicode/visible.f
+require src/lib/map-core.f
+require src/lib/json/value.f
+require src/lib/json/read.f
+require src/lib/json/equal.f
 
 package JSON-SCHEMA
 private

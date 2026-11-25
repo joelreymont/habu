@@ -1,6 +1,13 @@
 \ Offset promotion is tested without allocating a multi-gigabyte payload.
 require src/lib/zip.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/zip-ffi.f
+require src/lib/zip-raw.f
+require src/lib/zip-state.f
+require src/lib/zip-types.f
+require src/lib/fd.f
+require src/lib/fs-mutate.f
+require src/lib/fs.f
 
 package ZIP
 

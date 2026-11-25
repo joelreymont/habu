@@ -1,6 +1,6 @@
 \ xref-test-fixture.f - focused tests for live dictionary xref words.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 
 : XRT-SAMPLE ( -- n )
    42 ;

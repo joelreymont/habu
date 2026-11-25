@@ -10,7 +10,7 @@
 
 require src/lib/prelude.f
 require src/lib/memory.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/adt/option.f
 
 \ ---- fixtures ----------------------------------------------------------------

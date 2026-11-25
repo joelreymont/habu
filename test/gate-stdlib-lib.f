@@ -2,7 +2,7 @@
 
 require src/core/exit-status.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/suite.f
 require src/lib/test/runner.f
 require src/lib/process-argv.f
 require src/lib/process-env.f

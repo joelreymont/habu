@@ -5,7 +5,7 @@
 \ Run: bin/hb --load src/lib/regex-test.f
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/arena.f
 require src/lib/reason.f
 require src/lib/regex.f

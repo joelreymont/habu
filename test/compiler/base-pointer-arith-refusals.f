@@ -4,7 +4,7 @@
 \ inside a pointee; an offset null meets as TVK-DBASE, fenced at every pointee
 \ depth with no input-only excuse. Candidates go to the live engine's checker
 \ through CHECK-CANDIDATE!.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/adt/nullable.f
 require src/lib/adt/option.f

@@ -12,6 +12,7 @@ require src/lib/json.f
 require src/habu/engine-origin.f
 require src/habu/verify-source.f
 require tools/check-verify-core.f
+require src/lib/json/read.f
 
 package SOURCE-INDEX
 private

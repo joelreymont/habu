@@ -5,7 +5,7 @@
 \ and a wait with no loop is rejected by name.
 \ Run: bin/hb --load src/lib/serial-test.f
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/task.f

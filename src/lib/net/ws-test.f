@@ -12,7 +12,11 @@
 \ transcript is written to a file under TMPDIR, read back and compared whole
 \ with WANT$.
 
-require src/lib/test.f
+require src/lib/net/http-arena.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
+require src/lib/net/ws-frame.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/fd.f
 require src/lib/fs.f
@@ -28,6 +32,8 @@ require src/lib/net/ws.f
 require src/lib/test/stderr.f
 require src/lib/test/aio-fill.f
 require src/lib/date.f
+require src/lib/ffi-abi.f
+require src/lib/fmt.f
 
 \ ACCEPT-STALLED is ACCEPT with a stall run once the handshake holds its slot,
 \ as a worker the OS keeps off the processor would.

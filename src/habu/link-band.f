@@ -17,6 +17,9 @@ require src/arch/arm64/link.f
 require src/habu/link-kernel.f
 require src/arch/wasm/link-kernel.f
 require src/arch/wasm/link-site.f
+require src/arch/x86-64/link.f
+require src/compiler/native/emission.f
+require src/habu/link-code.f
 
 package LINKER
 private

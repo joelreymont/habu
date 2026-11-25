@@ -10,7 +10,8 @@
 require src/lib/string.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/process.f
 
 package POSTPONE-REFUSE
 private

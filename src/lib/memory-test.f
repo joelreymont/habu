@@ -2,7 +2,7 @@
 
 require src/core/exit-status.f
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/test/ending.f
 require src/lib/process.f

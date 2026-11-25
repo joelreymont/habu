@@ -942,16 +942,20 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
    REPEAT
    CUR-END ;
 
-\ Walks a body, holding its using refusals for the end, where a structure open
-\ at closer CA CU is refused first; a prefix passes none.
-: CHECK-SCAN ( str -- )
-   {: ca:^ cu:n :}
+\ Walks a body, holding its using rejections.
+: SCAN-HELD ( -- )
    BODY-WALK @ {: walk0:n :}
    -1 BODY-WALK !
    [: CHECK-SCAN-WALK ;] catch
    0 USING-HOLD !  walk0 BODY-WALK !
    {: rc:n :}
-   rc 0 <> IF rc throw THEN
+   rc 0 <> IF rc throw THEN ;
+
+\ SCAN-HELD, then what it held: a structure open at closer CA CU is rejected
+\ first; a prefix passes none.
+: CHECK-SCAN ( str -- )
+   {: ca:^ cu:n :}
+   SCAN-HELD
    TORDER-SCAN-UNKNOWN @ IF EXIT THEN
    ca cu CLOSER-REFUSE
    USING-RAISE ;
@@ -2334,10 +2338,11 @@ package CHECK
    rec 0= IF EXIT THEN                       \ unresolvable family: no row, no latch
    rec DOES-EFF-ARM ;
 
-\ A created word declared `( in -- out )` needs a DOES> body typing as
-\ `( in ^a -- out )`, since the CREATE stub pushes the data-field address
-\ before the body.
-: CHECK-DOES-RUN {: ba bu sa su :}
+\ Starts the walk of a DOES> body BA BU; false leaves it to the run. A created
+\ word declared `( in -- out )` needs a body typing as `( in ^a -- out )`, since
+\ the CREATE stub pushes the data-field address before it.
+: CLAUSE-START ( str str -- bool )
+   {: ba:^ bu:n sa:^ su:n :}
    ba bu CHECK-RESET
    -1 CLAUSE-WALK !
    0 TOK0 !
@@ -2350,7 +2355,7 @@ package CHECK
       SIG-UNRES-A @ TBASE@ - FAILB !
       FAILB @ SIG-UNRES-U @ + FAILE !
       \ The definer is bound; each word it makes marks its own name.
-      2 EXIT
+      RES-FALSE EXIT
    THEN
    RAW-SIG!  SG-SPLIT
    SG-ROWS-COLLECT
@@ -2366,6 +2371,10 @@ package CHECK
    BROW @ DCUR !
    SGHASR @ IF SGRIN @ dup RBROW ! RCUR ! THEN
    SIG-BODY-FRESH
+   RES-TRUE ;
+
+: CHECK-DOES-RUN {: ba bu sa su :}
+   ba bu sa su CLAUSE-START 0= IF 2 EXIT THEN
    s" ;" CHECK-SCAN
    TORDER-SCAN-UNKNOWN @ IF WRAP-CLEAR SIG-EFF-DROP 2 EXIT THEN
    \ The end-of-body checks below pin no token of their own: their packet names
@@ -2504,6 +2513,11 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    THEN
    TOP-END ;
 
+\ Rejects the top-level token a u for WHY, WALK's code, as the load does: it
+\ judges the require of a shadowed global before the shadow.
+: WALK-REJECT ( str n -- ) {: a:^ u:n why:n :}
+   0 a u BIND-REC @ USE-CHECK  a u why RAISE ;
+
 \ What the load does with a top-level token it runs, or ticks when RUNS is
 \ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
 \ may read the source after it; 3 when it resolves nowhere but a rendering
@@ -2514,16 +2528,17 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    {: a:^ u:n runs:bool :}
    runs  a u LITERAL-RANGE?  and IF a u REJECTION:LITERAL-RANGE  TOP-END EXIT THEN
    a u WALK {: sym:n why:n :}
+   why 0 <> IF a u why WALK-REJECT THEN
    sym HIDDEN-REC? {: hidden:bool :}
-   why 0 <> IF a u why RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF
-      a u sym TOP-BOUND-SYM IF
-         dup TOP-CONTROL {: flags:n deferred:bool :}
-         runs 0=  hidden 0=  and  over a u TOP-ROW?  or IF
-            dup a u NAV-USE-NOW drop
+      a u sym TOP-BOUND-SYM {: s2:n rec:^ ok:bool :}
+      ok IF
+         s2 TOP-CONTROL {: flags:n deferred:bool :}
+         runs 0=  hidden 0=  and  s2 a u TOP-ROW?  or IF
+            s2 a u NAV-USE-NOW  s2 a u rec USE-CHECK
             flags deferred runs TOP-RUNS EXIT
          THEN
-      THEN drop
+      THEN
       \ A statement that runs code the check did not see may define anything.
       a u UNSEEN-COVERS? IF CHECKER-UNSEEN-MARK 3 EXIT THEN
    THEN
@@ -2535,6 +2550,51 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    [: a u runs TOP-ANSWER ;] catch {: v rc:n :}
    rc 0= IF v EXIT THEN
    rc DEF-RESUMES? 0= IF rc throw THEN  DEF-RESUMED  0 ;
+
+\ The require check of a top-level definer token whose arm the source
+\ pre-pass reads itself, so TOP-ANSWER never judges it.
+: REQUIRED-TOP ( str -- )
+   {: a:^ u:n :}
+   a u WALK {: sym:n why:n :}
+   CHECKER-QBAD-TOK @ 0 <> IF EXIT THEN
+   why 0 <> IF a u why WALK-REJECT THEN
+   a u sym TOP-BOUND-SYM {: s2:n rec:^ ok:bool :}
+   ok IF s2 a u rec USE-CHECK THEN ;
+
+: CHECKER-VERIFY-REQUIRED ( str -- )
+   {: a:^ u:n :}
+   WRITE-WINDOW-CK
+   [: a u REQUIRED-TOP ;] catch {: rc:n :}
+   rc 0= IF EXIT THEN
+   rc DEF-RESUMES? 0= IF rc throw THEN  DEF-RESUMED ;
+
+\ The walk Q makes of a TRUSTED: body for its tokens' require checks, as
+\ CHECK-UNJUDGED! walks it: no verdict, no record, no use published.
+: REQUIRED-WALK ( [ -- ] -- )
+   {: q :}
+   WRITE-WINDOW-CK
+   DOESEFF @ DOESPEND @ VSIG @ PU-N @ {: eff:n pend:n vsig:n pu:n :}
+   RECOVERY-USED? {: recovery:bool :}
+   -1 BWIN-UNJUDGED !
+   0 [: drop q execute 0 ;] SCAN nip {: rc:n :}
+   0 BWIN-UNJUDGED !
+   DEF-RESUMED  SIG-EFF-DROP  SIG-UNRES-CLEAR  WRAP-CLEAR
+   eff DOESEFF !  pend DOESPEND !  vsig VSIG !  pu PU-N !
+   recovery RECOVERY-USED!
+   rc 0=  rc DEF-RESUMES? or IF EXIT THEN
+   rc throw ;
+
+\ The require checks of a TRUSTED: definition's text `NAME ( in -- out ) body`,
+\ without its does> clause.
+: CHECKER-REQUIRED-BODY ( str -- )
+   {: a:^ u:n :}
+   [: -1 VSIG !  a u CHECK-RESET  SCAN-HELD ;] REQUIRED-WALK ;
+
+\ The require checks of a TRUSTED: definer's clause body BA BU under its
+\ signature SA SU.
+: CHECKER-REQUIRED-CLAUSE ( str str -- )
+   {: ba:^ bu:n sa:^ su:n :}
+   [: 0 VSIG !  ba bu sa su CLAUSE-START IF SCAN-HELD THEN ;] REQUIRED-WALK ;
 
 \ One rollback frame spans the head's scan, the clause's and publication; while
 \ open, RBF-DEPTH stays nonzero so compaction relocates none of its cursors.
@@ -3954,10 +4014,20 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    ix RECORD-LINK-CAP @ < 0= IF RES-FALSE EXIT THEN
    ix RECORD-LINK-CELL RLINK.OCC cells + @ 0 <> ;
 
+\ Runs q, a read of record ix's facts, with ix's file current: the effect
+\ records the read makes are that file's (ER.FILE).
+: READ-AS ( n [ -- ] -- ) {: ix:n q :}
+   ix REQUIRES:RECORD-FILE q REQUIRES:WITH-FILE ;
+
+\ Reads text a u as record ix's facts.
+: READ-TEXT ( str n -- ) {: a:^ u:n ix:n :}
+   ix [: a u ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally ;]
+   READ-AS ;
+
 \ What a compile of the file that made record ix taught the checker, read back
 \ from the record's facts text, so a later file's compile can call it.
 : READ-IX ( n -- ) {: ix:n :}
-   ix FACTS@ ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally ;
+   ix FACTS@ ix READ-TEXT ;
 
 \ EXPORT-META-COPY for symbols, which a link has where a compile has a spelling.
 : EXPORT-META-SYM ( n n -- ) {: sym:n src:n :}
@@ -3994,10 +4064,9 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
 \ Export record ix of record src, once src's own facts are read. An export
 \ keeps the facts of a source retired after it, so it reads src's text as its own.
 : ALIAS-READ ( n n -- ) {: ix:n src:n :}
-   src HAS-SYM? 0= IF
-      src FACTS@ ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally  EXIT
-   THEN
-   ix src  READ-ENTER  [: ALIAS-BODY ;] [: READ-LEAVE ;] finally ;
+   src HAS-SYM? 0= IF src FACTS@ ix READ-TEXT EXIT THEN
+   ix [: ix src  READ-ENTER  [: ALIAS-BODY ;] [: READ-LEAVE ;] finally ;]
+   READ-AS ;
 
 \ Reads rec's facts text, or an image's export's source's, when there is one and no link,
 \ except hb's own record of a primitive or of a prefix symbol in a build: the
@@ -4037,7 +4106,7 @@ FACTS-READ-INSTALL
 : READ-FACTS ( str n -- )
    {: a:^ u:n ix:n :}
    u 0= IF EXIT THEN
-   a u ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally ;
+   a u ix READ-TEXT ;
 
 \ The kernel object's rows, stated before a build's first file as READ-ROW
 \ states one: never a user record, which answers alone.

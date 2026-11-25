@@ -10,6 +10,8 @@ require src/lib/fs.f
 require src/lib/codegen.f
 require src/lib/unicode/script.f
 require tools/unicode/script-generate.f
+require src/lib/unicode/script-data.f
+require tools/unicode/class-generate.f
 
 package UNICODE-SCRIPT-VERIFY
 

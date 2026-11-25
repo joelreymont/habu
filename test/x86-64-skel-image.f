@@ -8,6 +8,11 @@ require src/habu/task-abi.f
 require src/core/exit-status.f
 require src/arch/x86-64/rt.f
 require test/x86-64-peer-harness.f
+require src/lib/test/assert.f
+require src/os/linux-x86-64/sys.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
+require src/lib/process-command.f
 
 package X64SKEL
 using X64ASM

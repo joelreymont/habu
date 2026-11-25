@@ -33,7 +33,8 @@
 \ rejected. A program keeping more address rows than the band holds builds
 \ cold and warm to the same image and runs a quotation the build stored.
 
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/c2-memory.f
 require src/lib/adt/nullable.f
 require src/lib/test/subject.f

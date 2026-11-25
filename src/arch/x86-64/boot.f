@@ -4,6 +4,8 @@ require src/habu/layout.f
 require src/os/linux/layout.f
 require src/habu/boot-x64.f
 require src/os/linux-x86-64/sys.f
+require src/arch/x86-64/icode.f
+require src/arch/x86-64/asm.f
 
 package X64BOOT
 private

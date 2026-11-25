@@ -26,6 +26,14 @@ require src/core/exit-status.f
 require src/habu/stack-abi.f
 require src/arch/arm64/icode.f
 require src/habu/fault-record.f
+require src/arch/arm64/asm.f
+require src/arch/arm64/mnem.f
+HB-TARGET-LINUX? [if]
+   require src/os/linux/sys.f
+[then]
+HB-TARGET-MACOS? [if]
+   require src/os/macos/sys.f
+[then]
 using SYSCALL
 package CRASH
 public

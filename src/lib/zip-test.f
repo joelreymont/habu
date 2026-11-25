@@ -5,7 +5,8 @@ require src/lib/zip-test-fixture.f
 require src/lib/zip-framing-fixture.f
 require src/lib/zip-count-fixture.f
 require src/lib/zip-boundary-fixture.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/zip-types.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/task.f

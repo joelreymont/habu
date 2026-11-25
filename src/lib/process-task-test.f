@@ -2,7 +2,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -13,6 +13,7 @@ require src/lib/process-command.f
 require src/lib/task.f
 require src/lib/test/ending.f
 require src/lib/test/wait.f
+require src/lib/fd.f
 
 package PROCESS-TASK-TEST
 

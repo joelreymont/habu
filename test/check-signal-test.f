@@ -9,7 +9,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-list.f
 require src/lib/fs-mutate.f
@@ -21,6 +21,7 @@ require src/lib/engine-candidate.f
 require src/lib/test/runner.f
 require src/lib/test/fifo.f
 require src/core/include.f               \ SOURCE-ROOT:CANON-OS, the name --json-errors gives a file
+require src/lib/fd.f
 
 package CHECK-SIGNAL-TEST
 

@@ -11,6 +11,7 @@
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/rejection.f
+require src/lib/process.f
 
 package DICTIONARY-FULL-TEST
 private

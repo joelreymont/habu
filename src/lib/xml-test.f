@@ -1,4 +1,9 @@
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/xml/names.f
+require src/lib/xml/read.f
+require src/lib/xml/scalar.f
+require src/lib/xml/state.f
+require src/lib/xml/write.f
 require src/lib/xml.f
 require src/lib/vector.f
 require src/lib/heap.f

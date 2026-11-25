@@ -4,7 +4,8 @@
 \ load again.
 
 require src/habu/stack-abi.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 
 package CATCH-FRAME-TEST
 private

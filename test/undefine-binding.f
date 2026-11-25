@@ -2,7 +2,7 @@
 \ operand, and the checker certifies that word, the one the compiler calls.
 \ `undefine` is process-global, so these rows have a file of their own.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 
 T-RESET
 

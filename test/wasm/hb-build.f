@@ -15,7 +15,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/leb.f
 require test/wasm/harness.f

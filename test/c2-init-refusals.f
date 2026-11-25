@@ -1,5 +1,5 @@
 \ Initialization admits only a complete, non-owning record and a live byte view.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 require src/lib/c2-memory.f
 

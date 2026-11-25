@@ -32,6 +32,14 @@ require src/compiler/native/shadow.f
 require src/compiler/native/publish.f
 require src/habu/link-band.f
 require src/habu/address-carrier.f
+require src/compiler/binding.f
+require src/compiler/native/dict.f
+require src/compiler/native/emission.f
+require src/compiler/target.f
+require src/habu/link-code.f
+require src/habu/link-kernel.f
+require src/lib/at-exit.f
+require src/lib/ffi-abi.f
 
 package LINKER
 private
@@ -219,6 +227,10 @@ TYPED-VARIABLE ENTRY-ROOT ^VEC:vector<u8> \ the root current as the part started
 TYPED-VARIABLE EXIT-ROOT ^VEC:vector<u8> \ the root current as the part ended
 TYPED-VARIABLE PART-READS ^VEC:vector<u8> \ the reads the part's compile made (READS-KEEP)
 TYPED-VARIABLE PART-TEXTS ^VEC:vector<u8> \ the texts the part's compile spelled and the names it looked up (READS-KEEP)
+\ Per record of another file the part's compile called (READS-KEEP), its index and the part's held requires before its
+\ first call, 8 bytes each.
+TYPED-VARIABLE CALL-RECS ^VEC:vector<u8>
+TYPED-VARIABLE CALLS ^VEC:vector<u8> \ the object's CALLS (CALLS-LAY)
 TYPED-VARIABLE OBJECT ^VEC:vector<u8> \ the object WRITE-OBJECT lays or READ-OBJECT reads
 TYPED-VARIABLE PRIOR ^VEC:vector<u8> \ the compiling file's object as the last build left it
 TYPED-VARIABLE CODE-COPY ^VEC:vector<u8> \ an emission's bytes as the link fills and places them
@@ -323,6 +335,10 @@ variable OWN-SERIAL                  \ the last check's number (OWN-IDS!)
 \ Record r's mark: the serial of the object that last gave it a WORDS row (WORD-ROW+), 0 for none.
 \ Each OBJECT-OPEN takes the next of SERIALS, which only grows, so no object takes another's mark.
 DYNAMIC-BUFFER LISTED-BY n
+\ Record r's mark: the CALL-STAMP of the READS-KEEP that last gave it a CALL-RECS row, 0 for none.
+DYNAMIC-BUFFER CALLED-BY n
+variable CALL-STAMP
+variable PART-ASKS                   \ REQUIRES:ASKS as the compiling part started (OBJECT-OPEN)
 \ Build-table row b's mark: the serial of the object that last gave it an EXTENTS row (USED-EXT+).
 DYNAMIC-BUFFER USED-BY n
 \ BUILT row r's mark at 2r, the serial of the object that last asked for its FILES row (REF-FILE), and that row from 1
@@ -417,7 +433,11 @@ variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of 
 variable ACTS-AT                     \ the offset in OBJECT of ACTS' count, of the piece placed or object read
 variable REQS-AT                     \ the offset in OBJECT of REQUESTS, of the object written or read
 variable REQS-N                      \ its REQUESTS rows: 1 when a request ends the part, else 0 (REQUESTS-CK)
-\ The compiling part never links (WRITE-OBJECT): no stamp, a start or end off TOP-SCOPE?, an unclean cut
+variable CALLS-AT                    \ the offset in OBJECT of CALLS, of the object read
+variable CALLS-U                     \ its length
+DYNAMIC-BUFFER ACT-IDS n             \ the checked part's held requires its file's own text made: their file ids, in order (CALLS-HOLD?)
+variable ACT-IDS-N
+\ The compiling part never links (WRITE-OBJECT): no stamp, text an evaluated text includes, a start or end off TOP-SCOPE?, an unclean cut
 \ ending it or the part before (NEST), a load it asked for the runner never ran (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 \ What LOAD's loop over the file's parts does next: link part FILE-PART at FILE-OFF, compile it,
@@ -426,10 +446,14 @@ ENUM turn link compile cut ;ENUM
 TYPED-VARIABLE TURN turn
 
 \ The magic, the sum (SEAL), key, part number and time, FILE-OFF, then per section INPUT FILES REQUESTS NAMES REACHED PATHS
-\ WORDS EXTENTS TIMES PIECES an offset and length (0 0 for an empty FILES to REACHED, WORDS or EXTENTS), then the sections.
+\ CALLS WORDS EXTENTS TIMES PIECES an offset and length (0 0 for an empty FILES to REACHED, CALLS, WORDS or EXTENTS), then
+\ the sections.
 40 constant KEY-AT                          \ the header's key, after the magic and the sum
 KEY-AT KEY-BYTES + 24 + constant PAIRS-AT   \ the header's first pair, INPUT's
-PAIRS-AT 10 2 * 8 * + constant HEADER-BYTES
+PAIRS-AT 11 2 * 8 * + constant HEADER-BYTES
+\ CALLS: per record of another file's piece or of hb the part's compile called, its reference (ID-REF), then the
+\ part's held requires made before its first call; 32 bytes each.
+32 constant CALL-ROW-BYTES
 \ WORDS, EXTENTS and TIMES, which hold times, precede PIECES, which test/file-objects.f compares
 \ across out roots.
 HEADER-BYTES 32 - constant TIMES-FIELD      \ the header's TIMES pair
@@ -508,6 +532,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    BUILT-PATHS-RELEASE  LOAD-PATHS BYTES-DELETE  KEY-PATHS BYTES-DELETE  OBJ-PATHS BYTES-DELETE  OBJ-NAME BYTES-DELETE  CODE-COPY BYTES-DELETE  OLD-RECS BYTES-DELETE  OLD-SPACE BYTES-DELETE
    LATE BYTES-DELETE  PRIOR BYTES-DELETE  OBJECT BYTES-DELETE  REQ-PATH BYTES-DELETE  INPUTS BYTES-DELETE
    ENTRY-ROOT BYTES-DELETE  EXIT-ROOT BYTES-DELETE  PART-READS BYTES-DELETE  PART-TEXTS BYTES-DELETE
+   CALL-RECS BYTES-DELETE  CALLS BYTES-DELETE  CALLED-BY-RELEASE  ACT-IDS-RELEASE
    PENDING-PATHS BYTES-DELETE  REACHED BYTES-DELETE  RAN-RECS BYTES-DELETE
    SPELLS BYTES-DELETE  NAMED-RECS BYTES-DELETE  NAMED-ROWS BYTES-DELETE  PIECES BYTES-DELETE  REQUESTS BYTES-DELETE  WORD-RECS BYTES-DELETE  WORD-ROWS BYTES-DELETE  USED-EXTS BYTES-DELETE  REFS BYTES-DELETE
    BUILT BYTES-DELETE  LOADS BYTES-DELETE  LOADERS BYTES-DELETE  RUN-SUMS-RELEASE  HIT-STAMPS-RELEASE  HITS-RELEASE  OPENED-RELEASE
@@ -536,6 +561,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    EXIT-ROOT BYTES-NEW
    PART-READS BYTES-NEW
    PART-TEXTS BYTES-NEW
+   CALL-RECS BYTES-NEW
+   CALLS BYTES-NEW
    OBJECT BYTES-NEW
    PRIOR BYTES-NEW
    CODE-COPY BYTES-NEW
@@ -783,16 +810,18 @@ PTR-VARIABLE OBJ-BASE
 
 \ A record reference, three cells: this file's record as 0, sum and count (REC-ID), which no earlier part changes; an
 \ earlier piece's as its FILES row, sum and count, plus a WORDS row; hb's as HB-FILE, index and 0, which only facts read.
-: ID-REF+ ( n -- )
+: ID-REF ( n -- n n n )
    {: idx:n :}
-   idx FIRST-REC @ < if  HB-FILE PIECES @ U64+  idx PIECES @ U64+  0 PIECES @ U64+  exit  then
+   idx FIRST-REC @ < if  HB-FILE idx 0 exit  then
    idx REC-ID {: sum:n count:n :}
-   idx FILE-REC @ >= if
-      0 PIECES @ U64+  sum PIECES @ U64+  count PIECES @ U64+  exit
-   then
+   idx FILE-REC @ >= if  0 sum count exit  then
    idx WORD-REF {: k:n :}
-   k PIECES @ U64+  sum PIECES @ U64+  count PIECES @ U64+
-   k idx WORD-ROW+ ;
+   k idx WORD-ROW+
+   k sum count ;
+
+: ID-REF+ ( n -- )
+   ID-REF {: k:n sum:n count:n :}
+   k PIECES @ U64+  sum PIECES @ U64+  count PIECES @ U64+ ;
 
 \ ---- dependencies by name -------------------------------------------------------
 \ A spelled record with a time gets a WORDS row; one without names its piece whole, as do the pieces that changed it.
@@ -2570,8 +2599,8 @@ EXPORT CHECK:HELD-AMENDED
 \ provide.
 : ACT? ( n -- bool )
    {: ev:n :}
-   ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-PROVIDED =
-   ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED =  ev SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-KNOWN =  and  or ;
+   ev SOURCE-EVENT:REQUIRE?  ev SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-KNOWN =  and
+   ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-PROVIDED =  or ;
 
 \ ACTS from the loader's log (include.f EVENT-RECORD); req >= 0 leaves out the newest event, the ending request's own.
 \ Any other event is a load the source caught before the build's runner ran it, which a link cannot repeat: UNLINKABLE.
@@ -2627,8 +2656,9 @@ EXPORT CHECK:HELD-AMENDED
 \ and a new serial.
 : OBJECT-OPEN ( -- )
    REFS @ 0 VEC:RESIZE  WORD-ROWS @ 0 VEC:RESIZE  WORD-RECS @ 0 VEC:RESIZE  USED-EXTS @ 0 VEC:RESIZE  REQUESTS @ 0 VEC:RESIZE  PIECES @ 0 VEC:RESIZE
-   RAN-RECS @ 0 VEC:RESIZE  TIMES @ 0 VEC:RESIZE
-   1 SERIALS +!  SERIALS @ OBJECT-SERIAL ! ;
+   RAN-RECS @ 0 VEC:RESIZE  TIMES @ 0 VEC:RESIZE  CALL-RECS @ 0 VEC:RESIZE
+   1 SERIALS +!  SERIALS @ OBJECT-SERIAL !
+   REQUIRES:ASKS PART-ASKS ! ;
 
 \ OBJ-PATHS: FILE-KEY's path, then each REFS row's, once each.
 : PATHS-LAY ( -- )
@@ -2646,6 +2676,17 @@ EXPORT CHECK:HELD-AMENDED
       OBJECT @ BYTES$ drop files-at + i FILES-ROW-BYTES * +  LE:U64!
    loop ;
 
+\ CALLS from CALL-RECS, after the FILES rows the piece and NAMED+ take, so a call leaves their numbers alone.
+: CALLS-LAY ( -- )
+   CALLS @ 0 VEC:RESIZE
+   CALL-RECS @ BYTES$ {: p:^ pu:n :}
+   pu 16 / 0 ?do
+      p i 16 * + {: at:^ :}
+      at LE:U64@ ID-REF {: k:n sum:n count:n :}
+      k CALLS @ U64+  sum CALLS @ U64+  count CALLS @ U64+
+      at 8 + LE:U64@ CALLS @ U64+
+   loop ;
+
 \ Part FILE-PART's object with time t, built for PIECE-PLACE's facts and written only with a stamp and for hb's target;
 \ INPUT laid out as STAMP-BYTES says; an UNLINKABLE part's stamp is 0 0 -1, so it never links and keeps its times.
 : WRITE-OBJECT ( n -- )
@@ -2653,12 +2694,13 @@ EXPORT CHECK:HELD-AMENDED
    \ FILES ends with the pieces the part's source names (NAMED+), then those a run word reaches
    \ (RAN-FILES+); WORDS lists the words the part refers to (ID-REF+), its source spells (NAMED+)
    \ and a run reaches; EXTENTS the earlier extents its data references name (ROW-DATA-REF+).
-   NAMED+  RAN-FILES+  PATHS-LAY
+   NAMED+  RAN-FILES+  CALLS-LAY  PATHS-LAY
    REFS @ BYTES$ {: refs:^ refsu:n :}
    REQUESTS @ BYTES$ {: reqs:^ requ:n :}
    SPELLS @ BYTES$ {: nm:^ nmu:n :}
    REACHED @ BYTES$ {: rch:^ rchu:n :}
    OBJ-PATHS @ BYTES$ {: pth:^ pthu:n :}
+   CALLS @ BYTES$ {: cls:^ clsu:n :}
    WORD-ROWS @ BYTES$ {: wds:^ wdsu:n :}
    USED-EXTS @ BYTES$ {: exts:^ extsu:n :}
    TIMES @ BYTES$ {: tms:^ tmsu:n :}
@@ -2670,7 +2712,8 @@ EXPORT CHECK:HELD-AMENDED
    reqs-at requ + {: names-at:n :}
    names-at nmu + {: reached-at:n :}
    reached-at rchu + {: paths-at:n :}
-   paths-at pthu + {: words-at:n :}
+   paths-at pthu + {: calls-at:n :}
+   calls-at clsu + {: words-at:n :}
    words-at wdsu + {: exts-at:n :}
    exts-at extsu + {: times-at:n :}
    times-at tmsu + {: pieces-at:n :}
@@ -2684,6 +2727,7 @@ EXPORT CHECK:HELD-AMENDED
    nmu 0<> if names-at else 0 then OBJECT @ U64+  nmu OBJECT @ U64+
    rchu 0<> if reached-at else 0 then OBJECT @ U64+  rchu OBJECT @ U64+
    paths-at OBJECT @ U64+  pthu OBJECT @ U64+
+   clsu 0<> if calls-at else 0 then OBJECT @ U64+  clsu OBJECT @ U64+
    wdsu 0<> if words-at else 0 then OBJECT @ U64+  wdsu OBJECT @ U64+
    extsu 0<> if exts-at else 0 then OBJECT @ U64+  extsu OBJECT @ U64+
    times-at OBJECT @ U64+  tmsu OBJECT @ U64+
@@ -2700,6 +2744,7 @@ EXPORT CHECK:HELD-AMENDED
    nm nmu OBJECT @ VEC:APPEND
    rch rchu OBJECT @ VEC:APPEND
    pth pthu OBJECT @ VEC:APPEND
+   cls clsu OBJECT @ VEC:APPEND
    wds wdsu OBJECT @ VEC:APPEND
    exts extsu OBJECT @ VEC:APPEND
    tms tmsu OBJECT @ VEC:APPEND
@@ -3117,7 +3162,7 @@ variable RD-AT
 
 
 \ The header (FILE-OFF), INPUT (INPUT-STAMP, two roots, the reads skipped) and each section before PIECES as
-\ WRITE-OBJECT lays it, by its -CK word; PATHS is skipped as KEYS-IN read it. Leaves PIECE-AT at PIECES' offset.
+\ WRITE-OBJECT lays it, by its -CK word; PATHS is skipped as KEYS-IN read it, CALLS for CALLS-HOLD?. Leaves PIECE-AT at PIECES' offset.
 : HEADER-CK ( -- )
    0 FILES-N !  0 REQS-N !
    KEY-AT RD-OPEN
@@ -3135,7 +3180,9 @@ variable RD-AT
    8 RD-SKIP RD-U64 {: rchu:n :}
    reached-at rchu + {: paths-at:n :}
    8 RD-SKIP RD-U64 {: pthu:n :}
-   paths-at pthu + {: words-at:n :}
+   paths-at pthu + {: calls-at:n :}
+   8 RD-SKIP RD-U64 {: callsu:n :}
+   calls-at callsu + {: words-at:n :}
    8 RD-SKIP RD-U64 {: wordsu:n :}
    words-at wordsu + {: exts-at:n :}
    8 RD-SKIP RD-U64 {: extsu:n :}
@@ -3151,6 +3198,7 @@ variable RD-AT
    nmu NAMES-CK  NAMED-CK
    rchu REACHED-CK
    pthu RD-SKIP
+   calls-at CALLS-AT !  callsu CALLS-U !  callsu RD-SKIP
    wordsu WORDS-CK  extsu EXTENTS-CK
    pieces-at PIECE-AT ! ;
 
@@ -3244,6 +3292,11 @@ variable RD-AT
       dup UNDER-PATH-N !  UNDER-PATH swap BYTE-COPY
    ;] SOURCE-ROOT:WITH
    UNDER-PATH UNDER-PATH-N @ UNDER-KNOWN @ ;
+
+\ The file id of the require spelled a u under root, as the load finds it (SOURCE-ROOT:REQUIRED-ID).
+: ACT-ID ( str str -- n ) {: a:^ u:n root:^ rootu:n :}
+   a u root rootu RESOLVE-UNDER drop {: path:^ pathu:n :}
+   a u path pathu SOURCE-ROOT:REQUIRED-ID ;
 
 \ The act's spelled path resolved under the root it was spelled in, RESOLVE-UNDER's known flag, and whether that root
 \ stands (ROOT-STANDS?); an empty path when it does not.
@@ -3810,6 +3863,41 @@ variable PRIOR-STORES-SIZE
    loop ;
 
 
+\ ACT-IDS: the file id of each require a file's text made among the piece's ACTS rows, in order.
+: ACT-IDS! ( -- )
+   0 ACT-IDS-N !
+   ACTS-AT @  RD-OPEN
+   RD-U64 0 ?do
+      RD-U64 {: kind:n :}
+      RD-NAME RD-NAME {: a:^ u:n root:^ rootu:n :}
+      kind SOURCE-EVENT:KIND-REQUIRED = if
+         ACT-IDS-N @ {: j:n :}
+         j 1 + ACT-IDS-RESERVE
+         a u root rootu ACT-ID  j ACT-IDS !  j 1 + ACT-IDS-N !
+      then
+   loop ;
+
+\ Whether file id is one of the piece's first n own-text held requires' (ACT-IDS!).
+: ACT-ID? ( n n -- bool )
+   {: id:n n:n :}
+   n ACT-IDS-N @ min 0 ?do  i ACT-IDS @ id = if true unloop exit then  loop
+   false ;
+
+\ Each CALLS row names a record (PLACE) the part's file may call now, or one of a file among its first n own-text held
+\ requires', whose edges LINK-ACTS has yet to record: so a compile judged each call.
+: CALLS-HOLD? ( -- bool )
+   ACT-IDS!
+   CALLS-U @ CALL-ROW-BYTES / 0 ?do
+      CALLS-AT @ i CALL-ROW-BYTES * + {: at:n :}
+      at OBJ@  at 8 + OBJ@  at 16 + OBJ@  at 24 + OBJ@ {: k:n sum:n count:n n:n :}
+      k HB-FILE = if sum else k FILES-ROW sum count PLACE then {: r:n :}
+      r 0< if false unloop exit then
+      r REQUIRES:ALLOWED? 0= if
+         r REQUIRES:RECORD-FILE n ACT-ID? 0= if false unloop exit then
+      then
+   loop
+   true ;
+
 \ After INPUT!: true when part FILE-PART's object can stand for its compile: stamped (an UNLINKABLE part's INPUT-STAMP
 \ is 0 0 -1), whole and checked, its records fitting the dictionary, in the current root, its reads, roots and request
 \ answering as they did. A part whose records do not fit compiles, so a full dictionary is rejected at its source token.
@@ -3826,6 +3914,7 @@ variable PRIOR-STORES-SIZE
    2 INPUT-AT FIELD$ READS-HOLD? 0= if false exit then
    ACTS-WALK
    GOOD? 0= if false exit then
+   CALLS-HOLD? 0= if false exit then
    1 INPUT-AT FIELD$ ROOT-STANDS? 0= if false exit then
    REQS-N @ 0= if true exit then
    REQ-FIELDS {: kind:n spelled:n loaded:n :}
@@ -3887,9 +3976,8 @@ variable PRIOR-STORES-SIZE
 \ other, a load no LOAD started, which never holds.
 : EV-INPUT ( n -- n )
    {: ev:n :}
-   ev SOURCE-EVENT:KIND@ {: kind:n :}
-   kind SOURCE-EVENT:KIND-PROVIDED = if INPUT-PROVIDE exit then
-   kind SOURCE-EVENT:KIND-REQUIRED =  ev SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-KNOWN =  and if INPUT-SKIP exit then
+   ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-PROVIDED = if INPUT-PROVIDE exit then
+   ev SOURCE-EVENT:REQUIRE?  ev SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-KNOWN =  and if INPUT-SKIP exit then
    -1 ;
 
 \ The loader's events from LOGGED-EV to the one before end in INPUTS, each one made while no load was open.
@@ -4055,7 +4143,7 @@ TYPED-VARIABLE LOG-ROOTS ^VEC:vector<u8>
    p pu at2 LOG-PATH {: r:^ ru:n at3:n :}
    p pu at3 LOG-PATH {: c:^ cu:n at4:n :}
    at4 0<  su 0=  or if -1 exit then
-   kind SOURCE-EVENT:KIND-REQUIRED <>  kind SOURCE-EVENT:KIND-PROVIDED <>  and if -1 exit then
+   kind SOURCE-EVENT:KIND-REQUIRED <  kind SOURCE-EVENT:KIND-TEXT-REQUIRED >  or if -1 exit then
    s su r ru ACT-RESOLVE {: a:^ au:n known:bool stands:bool :}
    stands  a au c cu STR:=  and 0= if -1 exit then
    kind SOURCE-EVENT:KIND-PROVIDED = if c cu REG+ at4 exit then
@@ -4837,9 +4925,8 @@ EXPORT CHECK:TYPE-END
    {: path:^ pathu:n :}
    SOURCE-EVENT:COUNT 1 - {: ev:n :}
    ev 0< if -2 exit then
-   ev SOURCE-EVENT:KIND@ {: kind:n :}
-   kind SOURCE-EVENT:KIND-INCLUDED =
-   kind SOURCE-EVENT:KIND-REQUIRED =  ev SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH =  and  or
+   ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED =
+   ev SOURCE-EVENT:REQUIRE?  ev SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH =  and  or
    ev SOURCE-EVENT:PATH@ path pathu STR:=  and  if ev else -2 then ;
 
 
@@ -4854,8 +4941,12 @@ EXPORT CHECK:TYPE-END
 : SCOPE-CK ( -- ) TOP-SCOPE? 0= if true UNLINKABLE ! then ;
 
 
-\ The piece's provides (SKIP-ACTS) applied through `provided`, each under the root it was spelled in; a require
-\ needs nothing, as PART-FRESH? found the registry holding its path.
+\ The current file requires the file of the path spelled a u under root, which the registry holds.
+: LINK-REQUIRE ( str str -- ) ACT-ID REQUIRES:EDGE ;
+
+\ The piece's acts (SKIP-ACTS), each under the root it was spelled in: a provide applied through `provided`; a
+\ require, whose path PART-FRESH? found the registry holding, records the edge its compile recorded, none for text a
+\ word evaluated.
 : LINK-ACTS ( -- )
    ACTS-AT @  RD-OPEN
    RD-U64 0 ?do
@@ -4867,7 +4958,9 @@ EXPORT CHECK:TYPE-END
          else
             root rootu [: a u provided ;] SOURCE-ROOT:WITH
          then
-      then
+      else kind SOURCE-EVENT:KIND-REQUIRED = if
+         a u root rootu LINK-REQUIRE
+      then then
    loop ;
 
 
@@ -5051,11 +5144,31 @@ EXPORT CHECK:DROP-FACTS
    resume ;
 
 
-\ The running recording's reads (COMPILE-READS:READS$), each whole: its texts and looked-up names into PART-TEXTS, the others
-\ into PART-READS; none when no recording is active.
+\ Record idx's CALL-RECS row after asks requires: its index, then the part's own held requires before it.
+: CALL-REC+ ( n n -- )
+   {: idx:n asks:n :}
+   idx CALL-RECS @ U64+  asks PART-ASKS @ - CALL-RECS @ U64+ ;
+
+\ A call read of record idx after asks requires: the record's first, unless the record is this file's, into CALL-RECS.
+\ A record below FILE-REC no BUILT row holds makes the part UNLINKABLE.
+: CALL-KEEP ( n n -- )
+   {: idx:n asks:n :}
+   idx 0<  idx FILE-REC @ >=  or if exit then
+   idx 1 + CALLED-BY-RESERVE
+   idx CALLED-BY @ CALL-STAMP @ = if exit then
+   CALL-STAMP @ idx CALLED-BY !
+   idx FIRST-REC @ < if  idx asks CALL-REC+  exit  then
+   idx REC-ROW@ {: row:n held:bool :}
+   held 0= if  true UNLINKABLE !  exit  then
+   row BUILT-AT KEY-BYTES  FILE-KEY KEY-BYTES  STR:= if exit then
+   idx asks CALL-REC+ ;
+
+\ The running recording's reads (COMPILE-READS:READS$), each whole: its texts and looked-up names into PART-TEXTS, its
+\ calls into CALL-RECS (CALL-KEEP), the others into PART-READS; none when no recording is active.
 : READS-KEEP ( -- )
    COMPILE-READS:MISSED? if true UNLINKABLE ! then
-   PART-READS @ 0 VEC:RESIZE  PART-TEXTS @ 0 VEC:RESIZE
+   PART-READS @ 0 VEC:RESIZE  PART-TEXTS @ 0 VEC:RESIZE  CALL-RECS @ 0 VEC:RESIZE
+   1 CALL-STAMP +!
    COMPILE-READS:READS$ {: p:^ pu:n :}
    0 begin dup pu < while
       {: at:n :}
@@ -5064,9 +5177,11 @@ EXPORT CHECK:DROP-FACTS
       p at + LE:U64@ {: kind:n :}
       kind COMPILE-READS:TEXT-READ =  kind COMPILE-READS:NAME-READ =  or if
          p at + next at - PART-TEXTS @ VEC:APPEND
+      else kind COMPILE-READS:CALL-READ = if
+         p at + 24 + LE:U64@  p at + 32 + LE:U64@ CALL-KEEP
       else
          p at + next at - PART-READS @ VEC:APPEND
-      then
+      then then
       next
    repeat drop ;
 
@@ -5107,7 +5222,8 @@ EXPORT CHECK:DROP-FACTS
          ENDOF
          compile OF
             OBJECT-OPEN  COPY-BELOW
-            STAMPED? 0= UNLINKABLE !  SCOPE-CK
+            STAMPED? 0=  REQUIRES:CURRENT@ 0 <  or UNLINKABLE !     \ evaluated text's include judges no call
+            SCOPE-CK
             false PUSH-KEY
             [:
                FILE-OFF @ sourceu q ['] RUN-UNIT ['] POP-KEY finally
@@ -5164,7 +5280,8 @@ EXPORT CHECK:DROP-FACTS
    a u + src - ;
 
 
-\ The newest request ends the part (names, REQUESTS row, object, BUILT row), then loads its file unrecorded.
+\ The newest request ends the part (names, REQUESTS row, object, BUILT row) under the part's own file, though the
+\ requested file's frame is open, then loads its file unrecorded.
 \ At a clean cut (RESUME) the next part is LOAD's turn; else it compiles on in this reader, both parts UNLINKABLE.
 : NEST ( str str str [ n n -- ] -- )
    {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
@@ -5172,17 +5289,19 @@ EXPORT CHECK:DROP-FACTS
    ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
    ev RESUME {: resume:n :}
    resume 0< if true UNLINKABLE ! then
-   END-CK READS-KEEP              \ NEST runs inside the requesting part's RUN-UNIT, so the recording is its
-   resume 0< if FILE-SRC-U @ else resume then PART-NAMES
-   mode REQUESTS @ U64+  resume REQUESTS @ U64+
-   ev EVENT-SPELLED@ REQUESTS @ FIELD+  path pathu REQUESTS @ FIELD+
-   0 PIECE-END
-   0 COMPILED-TIME {: t:n :}
-   EXIT-ROOT @ 0 VEC:RESIZE  ev SOURCE-EVENT:CURRENT@ EXIT-ROOT @ VEC:APPEND   \ CURRENT$ is already the requested file's root
-   t WRITE-OBJECT
-   INPUTS+
-   t PIECE-PLACE
-   align   \ the next part starts at a cell boundary, as include.f LOAD-UNIT leaves here
+   SOURCE-ROOT:OUTER-FILE [:
+      END-CK READS-KEEP              \ NEST runs inside the requesting part's RUN-UNIT, so the recording is its
+      resume 0< if FILE-SRC-U @ else resume then PART-NAMES
+      mode REQUESTS @ U64+  resume REQUESTS @ U64+
+      ev EVENT-SPELLED@ REQUESTS @ FIELD+  path pathu REQUESTS @ FIELD+
+      0 PIECE-END
+      0 COMPILED-TIME
+      EXIT-ROOT @ 0 VEC:RESIZE  ev SOURCE-EVENT:CURRENT@ EXIT-ROOT @ VEC:APPEND   \ CURRENT$ is already the requested file's root
+      dup WRITE-OBJECT
+      INPUTS+
+      PIECE-PLACE
+      align   \ the next part starts at a cell boundary, as include.f LOAD-UNIT leaves here
+   ;] REQUIRES:WITH-FILE
    STAMP@ {: s:n ns:n size:n :}
    FILE-PART @  FILE-OFF @  FILE-SRC @  FILE-SRC-U @ {: part:n off:n src:n srcu:n :}
    UNLINKABLE @ {: unlinkable:bool :}
@@ -5380,8 +5499,11 @@ EXPORT CHECK:DROP-FACTS
 : OPEN ( -- )
    0 COMPILED-N !  0 LINKED-N !
    INSTALL-LOOP
+   \ The records the open lays are the kernel's, of no file.
+   REQUIRES:CURRENT@ {: id:n :}  0 REQUIRES:CURRENT!
    MAP SHADOW MOVE-IN CHECK-IN PRIMS-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN
    OWNED-RECORDS
+   id REQUIRES:CURRENT!
    here NULL-PTR - OPEN-DP !
    TASKS-LIVE-CELL HOST@ OPEN-TASKS !
    REJECTION:SENT OPEN-SENT ! ;

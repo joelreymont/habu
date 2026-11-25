@@ -1,5 +1,9 @@
 \ proc-watch.f -- Linux/x86-64 exact process-lifetime watch primitive emitter.
 
+require src/arch/x86-64/rt.f
+require src/os/linux-x86-64/sys.f
+require src/arch/x86-64/asm.f
+
 \ The register names are package X64ASM's public surface
 \ (src/arch/x86-64/asm.f), and the data-stack pop G-POP and the syscall-result
 \ push G-PUSH are package X64RT's (src/arch/x86-64/rt.f), imported here rather

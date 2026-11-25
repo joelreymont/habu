@@ -1,7 +1,7 @@
 \ jsonl-test.f - the JSONL memory splitter through the public API.
 \ Run: bin/hb --load src/lib/jsonl-test.f
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/jsonl.f
 
 package JSONL-TEST

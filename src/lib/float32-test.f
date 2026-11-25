@@ -1,7 +1,8 @@
 \ float32-test.f - exact scalar F32 conversion tests.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/float32.f
+require src/lib/ieee754.f
 
 package F32-TEST
 private

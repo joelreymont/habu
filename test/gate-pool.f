@@ -47,6 +47,11 @@ require src/lib/process-tree.f
 require src/lib/signal.f
 require src/lib/test/runner.f
 require src/lib/test/suite.f
+require src/lib/process.f
+require src/lib/fs.f
+require src/lib/fd.f
+require src/lib/spawn.f
+require src/lib/process-argv.f
 
 5000 constant GT-HEARTBEAT-MS
 16 constant GT-POOL-MAX

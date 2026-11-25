@@ -9,7 +9,7 @@
 \ the bound store.
 require src/lib/secret/dir.f
 require src/lib/secret.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/span.f

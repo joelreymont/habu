@@ -6,7 +6,8 @@
 
 require src/core/exit-status.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/ffi-abi.f
 require src/core/include.f
 

@@ -9,7 +9,7 @@
 
 require src/lib/error.f
 require src/lib/fmt.f
-require src/lib/test.f
+require src/lib/test/suite.f
 require test/load-graph.f
 
 package ENTRY-GUARD

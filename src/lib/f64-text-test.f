@@ -1,6 +1,7 @@
 require src/lib/string.f
 require src/lib/f64-text.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/ieee754.f
 
 package F64-TEXT-TEST
 using F64-TEXT

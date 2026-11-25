@@ -23,6 +23,8 @@ require src/lib/json-rpc.f
 require tools/lsp-docs.f
 require tools/lsp-line.f
 require tools/lsp-text.f
+require src/lib/json/read.f
+require src/lib/json/write.f
 
 package LSP-DIAG
 using JSON

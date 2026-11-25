@@ -7,8 +7,8 @@
 \ a span under a cell. RUN answers the blocks taken or grown with a nonzero
 \ byte, the blocks freed or resized with a kept mark changed, the over-4 GiB
 \ request's throw code and the highest live bytes. test/wasm/heap-test.f runs
-\ it in a Wasm module, where test.f does not build, so it counts and its
-\ caller judges.
+\ it in a Wasm module, where the test framework does not build, so it counts
+\ and its caller judges.
 \ STORAGE CLASS. PROCESS-WIDE: the slots are static; one task runs it.
 
 require src/lib/allocator.f

@@ -5,7 +5,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/string-option.f
 require src/lib/fmt.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fs-identity.f
@@ -19,6 +19,9 @@ require src/lib/pty.f
 require src/lib/engine-candidate.f
 require src/compiler/target/model.f
 require tools/hb-build-core.f
+require src/lib/process.f
+require src/lib/le.f
+require src/lib/json/read.f
 
 package FILE-OBJECTS-TEST
 
@@ -61,10 +64,12 @@ package FILE-OBJECTS-TEST
 42 constant SCOPE-USE                    \ scope-use.f's, which names its SEVEN,
 43 constant INSIDE-I                     \ and inside-i.f's, which loads inside a package or alone
 44 constant AIO-OBJ                      \ src/lib/aio.f's, which kept-aio.f requires
-45 constant TAILS                        \ TAIL$'s tails
+45 constant MOVED-CALL                   \ the moved sequence's four.f's +3 part's, which calls W,
+46 constant MOVED-LAST                   \ and its last part's
+47 constant TAILS                        \ TAIL$'s tails
 52 constant FILES-C                     \ build C's objects
-240 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
-224 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
+256 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
+240 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 104 constant FILES-LEN-FIELD             \ the header's FILES length offset (linker.f WRITE-OBJECT)
 32 constant FILES-ROW                    \ a FILES row's bytes (linker.f FILES-ROW-BYTES)
 24 constant STAMP-BYTES                  \ the stamp an object's INPUT starts with
@@ -257,6 +262,8 @@ FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
    i SCOPE-USE = if s" /test/fixtures/file-objects/scope-use.f.hfo" exit then
    i INSIDE-I = if s" /test/fixtures/file-objects/inside-i.f.hfo" exit then
    i AIO-OBJ = if s" /src/lib/aio.f.hfo" exit then
+   i MOVED-CALL = if s" /moved/four.f+3.hfo" exit then
+   i MOVED-LAST = if s" /moved/four.f+5.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( str -- ) {: out:str :}
@@ -1111,13 +1118,13 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" scope-open.f, which leaves its package open, never links" SCOPE-OPEN COMPILED
    s" the build links scope-use.f, which names scope-open.f's SEVEN" SCOPE-USE LINKED
    s" inside-i.f's object from a load inside a package never links" INSIDE-I COMPILED
-   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n13\n"
-   s" the program prints MAIN's numbers: mid-four.f's with mid-w2.f's W, redo.f's X with its second Y" PRINTS-RUN
+   s\" 10\n20\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n13\n"
+   s" the program prints MAIN's numbers: mid-four.f's, redo.f's X with its second Y" PRINTS-RUN
    FLIP-SECOND KEEP  INSIDE-I KEEP
    s" Y3" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
    s" the build links the part that starts at [then]" FLIP-SECOND LINKED
    s" the build links inside-i.f's object from a load alone" INSIDE-I LINKED
-   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n13\n"
+   s\" 10\n20\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n13\n"
    s" the program prints MAIN's numbers with flip.f's part at [then] linked" PRINTS-RUN
    INSIDE-I KEEP
    s" Y4" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
@@ -1418,6 +1425,44 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" U3" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
    s" prog-n" s\" 2\n" s" the program prints K" NEST-RUN ;
 
+\ The moved sequence's a.f and b.f: one defines FILE-OBJECTS-MOVED-W:W, answering the text, and
+\ the other FILE-OBJECTS-MOVED-V:V; W's is b.f when the flag is true, else a.f.
+: WRITE-MOVED-W ( str bool -- ) {: w:str moved:bool :}
+   s" package FILE-OBJECTS-MOVED-W public : W ( -- n ) " SRC+  w SRC+  s\"  ; ;package\n" SRC+
+   moved if s" b.f" else s" a.f" then NEST-WRITE
+   s\" package FILE-OBJECTS-MOVED-V public : V ( -- n ) 0 ; ;package\n" SRC+
+   moved if s" a.f" else s" b.f" then NEST-WRITE ;
+
+\ four.f: requests of a.f, b.f, then A to D, each part but the last cut by a clean request, as
+\ mid-four.f; six parts, only B's, +3, calls W. main.f's MAIN prints A to D.
+: WRITE-MOVED ( -- )
+   L$ s" moved" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
+   s\" package FILE-OBJECTS-MOVED-E1 public : E1 ( -- ) ; ;package\n" SRC+  s" e1.f" NEST-WRITE
+   s\" package FILE-OBJECTS-MOVED-E2 public : E2 ( -- ) ; ;package\n" SRC+  s" e2.f" NEST-WRITE
+   s\" package FILE-OBJECTS-MOVED-E3 public : E3 ( -- ) ; ;package\n" SRC+  s" e3.f" NEST-WRITE
+   s" 1" false WRITE-MOVED-W
+   s" a.f" REQUIRE+  s" b.f" REQUIRE+
+   s\" package FILE-OBJECTS-MOVED-FOUR public : A ( -- n ) 10 ; ;package\n" SRC+  s" e1.f" REQUIRE+
+   s\" package FILE-OBJECTS-MOVED-FOUR public : B ( -- n ) FILE-OBJECTS-MOVED-W:W ; ;package\n" SRC+
+   s" e2.f" REQUIRE+
+   s\" package FILE-OBJECTS-MOVED-FOUR public : C ( -- n ) 30 ; ;package\n" SRC+  s" e3.f" REQUIRE+
+   s\" package FILE-OBJECTS-MOVED-FOUR public : D ( -- n ) 40 ; ;package\n" SRC+  s" four.f" NEST-WRITE
+   s" four.f" REQUIRE+
+   s\" : MAIN ( -- ) FILE-OBJECTS-MOVED-FOUR:A . FILE-OBJECTS-MOVED-FOUR:B .\n" SRC+
+   s\"    FILE-OBJECTS-MOVED-FOUR:C . FILE-OBJECTS-MOVED-FOUR:D . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a part calling a word that moves between the files its file requires: after W moves from
+\ a.f to b.f, MV2 compiles four.f's part that calls W and links its last.
+: MOVED-CASE ( CMD:command -- CMD:command )
+   WRITE-MOVED
+   s" MV" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   MOVED-CALL KEEP  MOVED-LAST KEEP
+   s" 2" true WRITE-MOVED-W
+   s" MV2" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s" the build compiles four.f's part that calls W" MOVED-CALL COMPILED
+   s" the build links four.f's last part" MOVED-LAST LINKED
+   s\" 10\n2\n30\n40\n" s" the program prints four.f's numbers with b.f's W" PRINTS-RUN ;
+
 \ prog-n's inode and change time, seconds and nanoseconds.
 : PROG-N-STAMP ( -- n n n )
    L$ s" prog-n" IN$ FS:PATH-IDENTITY nip
@@ -1505,6 +1550,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" : FOUND ( -- n ) s\" FILE-OBJECTS-RETIRE-W\" get-current search-wl 0= if 0 else 1 then ;\n" SRC+
    s\" ;package\n" SRC+  s" h.f" NEST-WRITE
    true WRITE-RETIRE-S
+   s" h.f" REQUIRE+
    s\" FILE-OBJECTS-RETIRE:FOUND constant FILE-OBJECTS-RETIRE-K\n" SRC+  s" r.f" NEST-WRITE
    s" h.f" REQUIRE+  s" s.f" REQUIRE+  s" r.f" REQUIRE+
    s\" : MAIN ( -- ) FILE-OBJECTS-RETIRE-K . ;\n" SRC+  s" main.f" NEST-WRITE ;
@@ -1608,6 +1654,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    q SRC+  s\"  ;\n;package\n" SRC+
    s" h.f" NEST-WRITE
    t WRITE-PROBE-S
+   s" h.f" REQUIRE+
    s\" FILE-OBJECTS-PROBE:FOUND constant FILE-OBJECTS-PROBE-K\n" SRC+  s" r.f" NEST-WRITE
    s" h.f" REQUIRE+  s" s.f" REQUIRE+  s" r.f" REQUIRE+
    s\" : MAIN ( -- ) FILE-OBJECTS-PROBE-K . cr ;\n" SRC+  s" main.f" NEST-WRITE ;
@@ -1887,7 +1934,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : WRITE-SPAWN ( -- )
    L$ s" spawn" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
    s" 1" WRITE-DATA
-   s\" require src/lib/process-command.f\npackage FILE-OBJECTS-SPAWN\nvariable N\n" SRC+
+   s\" require src/lib/process-command.f\nrequire src/lib/process.f\npackage FILE-OBJECTS-SPAWN\nvariable N\n" SRC+
    s\" : CAT ( CMD:command -- CMD:command ) s\" " SRC+  s" d.txt" NEST-PATH$ SRC+
    s\" \" CMD:ARG+ s\" /bin/cat\" PROCESS:WAIT-FOREVER 1 CMD:RUN CMD:OUT$ str> drop c@ N ! ;\n" SRC+
    s\" : RUN-CAT ( -- ) [: CAT ;] CMD:WITH-COMMAND ;\nRUN-CAT public N @ constant K ;package\n" SRC+
@@ -2172,7 +2219,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\"    [: ADD-CHAR ;] [: NO-KEY ;] [: NOT-READY ;] [: NO-READ ;]\n" SRC+
    s\"    [: ADD-BYTES ;] [: NO-ACCEPT ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;\n" SRC+
    s\" BUILD D !  D @ GENIO:OUTPUT!  s\" xyz\" type  7 U !\n;package\n" SRC+  s" f.f" NEST-WRITE
-   s" f.f" REQUIRE+
+   s" f.f" REQUIRE+  s\" require src/lib/genio-core.f\n" SRC+
    s\" : TO-D ( -- ) FILE-OBJECTS-ROUTE:D @ GENIO:OUTPUT!  s\" abc\" type ;\n" SRC+
    s\" : MAIN ( -- )\n   .\" seen\" cr  FILE-OBJECTS-ROUTE:U @ .  FILE-OBJECTS-ROUTE:N @ .\n" SRC+
    s\"    [: TO-D ;] catch {: code:n :}  GENIO:TERMINAL GENIO:OUTPUT!\n" SRC+
@@ -2213,10 +2260,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : WRITE-CALLS ( -- )
    L$ s" calls" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
    s" abc" WRITE-DATA
-   s\" require src/lib/fs.f\nrequire src/lib/process-tree.f\n" SRC+
+   s\" require src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/process-tree.f\n" SRC+
    s\" require src/lib/net/http-static.f\nrequire src/lib/pty.f\n" SRC+
-   s\" require src/lib/heap.f\nrequire src/lib/secret/dir.f\n" SRC+
+   s\" require src/lib/heap.f\nrequire src/lib/vector.f\n" SRC+
+   s\" require src/lib/secret.f\nrequire src/lib/secret/dir.f\n" SRC+
    s\" require src/arch/wasm/link.f\nrequire src/lib/pty-harness.f\n" SRC+
+   s\" require src/lib/line-editor.f\nrequire src/lib/task.f\nrequire src/lib/aio.f\n" SRC+
    s\" : ASK ( -- ) s\" " SRC+  s" d.txt" NEST-PATH$ SRC+
    s\" \" FS:FILE-SIZE drop  s\" x\" TMP-PATH drop  getpid >PID PROC-TREE:CPU-NS drop ;\n" SRC+
    s\" : SERVE ( -- ) s\" x\" TMP-PATH s\" abc\" FS:WRITE-ALL\n" SRC+
@@ -2290,10 +2339,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" STRUCTURE blob DERIVE addr\n   FIELD k n\n   BUFFER b 13\n;STRUCTURE\n" SRC+
    s\" 1 TYPED-BUFFER BB blob\n" SRC+  s" blob.f" NEST-WRITE
    false WRITE-TURN
+   s" turn.f" REQUIRE+
    s\" 4 TYPED-BUFFER BT box<turn>\n" SRC+
    s\" : B-STEP ( -- n ) 1 BT NULL-PTR -  0 BT NULL-PTR -  - ;\n" SRC+
    s\" : R-AT ( -- n ) 0 BT BOX:REST NULL-PTR -  0 BT NULL-PTR -  - ;\n" SRC+
    s" stride.f" NEST-WRITE
+   s" blob.f" REQUIRE+
    s\" : W ( box<turn> -- n ) drop 7 ;\n" SRC+
    s\" : B-LEN ( -- n ) 0 BB BLOB:B SPAN:LEN ;\n" SRC+
    s\" : B-AT ( -- n ) 0 BB BLOB:B SPAN:$ str> drop NULL-PTR -  0 BB NULL-PTR -  - ;\n" SRC+
@@ -2332,6 +2383,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    L$ s" folded" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
    NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
    false WRITE-THING
+   s" thing.f" REQUIRE+
    s\" : GETH ( -- ^held<thing> ) HV ;\n" SRC+  s" lib.f" NEST-WRITE
    s" thing.f" REQUIRE+  s" lib.f" REQUIRE+
    s\" : MAIN ( -- ) GETH HELD:SET NULL-PTR -  GETH NULL-PTR -  - . ;\n" SRC+
@@ -2354,7 +2406,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    L$ s" folded-top" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
    false WRITE-THING
    s" thing.f" REQUIRE+  s\" TYPED-VARIABLE PV ^held<thing>\n" SRC+  s" p.f" NEST-WRITE
-   s" p.f" REQUIRE+
+   s" thing.f" REQUIRE+  s" p.f" REQUIRE+
    s\" PV @ HELD:SET NULL-PTR -  PV @ NULL-PTR -  - constant OFF\n" SRC+
    s\" : MAIN ( -- ) OFF . ;\n" SRC+  s" top.f" NEST-WRITE
    s" HT" WHICH!  s" top.f" s" prog-top" NEST-BUILD 0= if exit then
@@ -2600,7 +2652,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
       CAUGHT-PASSED-CASE CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CAUGHT-AGAIN-CASE CTOR-CASE EXPORT-CASE
-      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE SEARCH-WL-CASE SCOPE-FIND-CASE
+      MOVED-CASE NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE SEARCH-WL-CASE SCOPE-FIND-CASE
       PUBLIC-LOOKUP-CASE CLAUSE-CASE DERIVED-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE

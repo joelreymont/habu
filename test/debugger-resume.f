@@ -1,5 +1,7 @@
 \ debugger-resume.f - one-shot restoration across code protection pages.
 require test/gate-common.f
+require src/lib/test/runner.f
+require src/lib/process.f
 
 package DEBUGGER-RESUME
 

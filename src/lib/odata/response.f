@@ -22,6 +22,10 @@ require src/lib/adt/option.f
 require src/lib/reason.f
 require src/lib/json.f
 require src/lib/odata/metadata.f
+require src/lib/json/value.f
+require src/lib/json/read.f
+require src/lib/json/write.f
+require src/lib/json/copy.f
 
 package ODATA
 private

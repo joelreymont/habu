@@ -7,9 +7,10 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fd.f
 require src/lib/task.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/process.f
 require src/lib/process-reaper.f
+require src/lib/spawn.f
 
 package PROCESS-REAPER-TEST
 private

@@ -9,6 +9,9 @@ require src/lib/string.f
 require src/lib/error.f
 require src/lib/span.f
 require src/lib/aio.f
+require src/lib/net/http-arena.f
+require src/lib/byte-buffer.f
+require src/lib/json/write.f
 
 package HTTP
 

@@ -8,6 +8,8 @@ require src/lib/string.f
 require src/lib/aio.f
 require src/lib/le.f
 require src/lib/fd.f                     \ FD:PIPE, the close-on-exec wake pipe
+require src/lib/ffi-abi.f
+require src/lib/task.f
 
 package AIO
 private

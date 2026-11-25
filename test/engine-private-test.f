@@ -2,7 +2,7 @@
 \ Each case's source is rejected with the same error line by `--load`'s
 \ evaluate-closed and by tools/check.f over that source written to a file.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f

@@ -1,6 +1,10 @@
 \ proc-watch.f -- macOS exact process-lifetime watch primitive emitter.
 
 require src/arch/arm64/icode.f
+require src/arch/arm64/mnem.f
+require src/arch/arm64/asm.f
+require src/habu/rt.f
+require src/os/macos/sys.f
 using A64ASM
 using A64ICODE
 using RT

@@ -4,7 +4,7 @@
 \ signature and MAC appends to a vector the case makes on the heap allocator
 \ and deletes.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/prelude.f
 require src/lib/heap.f
 require src/lib/vector.f
@@ -16,6 +16,8 @@ require src/lib/fs.f
 require src/lib/adt/result.f
 require src/lib/base64.f
 require src/lib/span.f
+require src/lib/task.f
+require src/lib/ffi-abi.f
 
 package CRYPTO-TEST
 

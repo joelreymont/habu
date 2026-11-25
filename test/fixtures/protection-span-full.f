@@ -6,7 +6,8 @@
 \ leaves nothing. `2 0 ?do loop` is much code per token read, so the fill takes
 \ seconds.
 
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 
 $800 constant PST-CAP
 create PST-SRC PST-CAP allot

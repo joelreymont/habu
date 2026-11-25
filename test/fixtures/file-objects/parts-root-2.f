@@ -1,7 +1,6 @@
 \ parts-root-2.f - parts-root-1.f's MAIN over other files: flip.f's require of flip-a.f cuts no part,
 \ cut-stack.f's of cut-stack-a.f does, and inside-i.f loads at top level.
 
-require test/fixtures/file-objects/mid-w2.f
 require test/fixtures/file-objects/mid-four.f
 require test/fixtures/file-objects/flip-a.f
 require test/fixtures/file-objects/flip.f
@@ -12,6 +11,7 @@ require test/fixtures/file-objects/cut-stack.f
 require test/fixtures/file-objects/scope.f
 require test/fixtures/file-objects/scope-use.f
 require test/fixtures/file-objects/inside-i.f
+require test/fixtures/file-objects/cut-stack-b.f
 
 : MAIN ( -- )
    FILE-OBJECTS-MID-FOUR:A .  FILE-OBJECTS-MID-FOUR:B .  FILE-OBJECTS-MID-FOUR:C .

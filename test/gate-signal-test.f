@@ -11,7 +11,7 @@ require src/lib/string.f
 require src/lib/le.f
 require src/lib/ffi-abi.f
 require src/lib/fmt.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-list.f
 require src/lib/fs-mutate.f
@@ -23,6 +23,7 @@ require src/lib/signal.f
 require src/lib/engine-candidate.f
 require src/lib/test/runner.f
 require src/lib/test/fifo.f
+require src/lib/fd.f
 
 package GATE-SIGNAL-TEST
 

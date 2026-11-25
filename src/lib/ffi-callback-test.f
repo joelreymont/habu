@@ -4,7 +4,8 @@
 \ build/ffi-callback-transcript.txt, read back and compared whole. A callback
 \ body that defines ends the process; that is a case of its own.
 \ Run: bin/hb --load src/lib/ffi-callback-test.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
@@ -18,6 +19,8 @@ require src/lib/task.f
 require test/ffi-callback-fixture.f
 require test/decl-diag-capture.f
 require tools/check-verify-core.f       \ LSP-CHECK:VERIFY-BYTES - the declaration's check
+require src/lib/ffi-callback.f
+require src/lib/ffi-abi.f
 
 package FFI-CB-TEST
 using FFI-CB
@@ -519,7 +522,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : IMAGE$ ( -- str ) IMAGE-BUF IMAGE-U @ >str ;
 
 : WRITE-SUBJECT ( -- )
-   SUBJECT$ S\" require src/lib/ffi-callback.f\nCALLBACK: FILE-BOUND ( -- ) ;CALLBACK\n" FS:WRITE-ALL
+   SUBJECT$ S\" require src/lib/ffi-callback.f\nrequire src/lib/ffi-abi.f\nrequire src/lib/task.f\nCALLBACK: FILE-BOUND ( -- ) ;CALLBACK\n" FS:WRITE-ALL
    \ Numeric fallbacks grow and retire descriptors before capture. MAIN's seed
    \ entry needs a code span disjoint from the shared thunk's.
    SUBJECT$ S\" CALLBACK: FIRST ( -- n ) 456 FALLBACK ;CALLBACK\nCALLBACK: SECOND ( -- n ) 456 FALLBACK ;CALLBACK\n" FS:APPEND-FILE

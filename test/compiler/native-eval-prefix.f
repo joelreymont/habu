@@ -1,6 +1,6 @@
 \ A definition its definer opened stays open while text is evaluated into it:
 \ the text's own refusal reaches its catch before the definer's `;`.
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package NATIVE-EVAL-PREFIX-TEST
 public

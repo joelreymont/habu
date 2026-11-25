@@ -6,6 +6,7 @@ require src/lib/jsonl.f
 require src/lib/string.f
 require src/lib/fd.f
 require src/core/exit-status.f
+require src/lib/json/read.f
 
 10 constant JSON-ONLY-LF-C
 

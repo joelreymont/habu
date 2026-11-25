@@ -12,7 +12,7 @@
 \ with its own `*` and `record-at`. The file is also a build source: MAIN
 \ prints the four answers.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/adt/nullable.f
 
 package POSTPONE-DEFINER

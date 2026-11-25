@@ -26,6 +26,8 @@
 \ sequence. G-POP and G-PUSH therefore name x86_64 register numbers here.
 
 require src/os/linux-flags.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
 
 using X64ASM
 using X64CODE

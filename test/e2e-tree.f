@@ -4,7 +4,7 @@
 \ row's asserts and logs. Rows share it; a row passes the engine each child runs,
 \ the engine under test (ENGINE-CANDIDATE:PATH$) or an image it saved in the tree.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

@@ -6,6 +6,10 @@ split-str
 \ page hashed at its length). It works in place on MBUF, MLEN and LE-OFF once
 \ SHA256 and macho.f, which sizes the signature, are loaded. Signature
 \ integers are big-endian; the header patches little-endian.
+
+require src/os/image-bytes.f
+require src/os/macos/macho.f
+
 using IMAGE-BYTES
 package MACHO
 variable  SIG-DOFF

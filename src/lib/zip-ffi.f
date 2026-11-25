@@ -3,6 +3,7 @@
 require src/lib/ffi-abi.f
 require src/lib/zip-state.f
 require src/lib/fs-mutate.f
+require src/lib/zip-types.f
 
 package ZIP
 

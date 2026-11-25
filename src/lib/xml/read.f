@@ -3,6 +3,10 @@
 require src/lib/xml/names.f
 require src/lib/reason.f
 require src/lib/vector.f
+require src/lib/xml/reject.f
+require src/lib/xml/scalar.f
+require src/lib/xml/source.f
+require src/lib/xml/state.f
 
 package XML
 private

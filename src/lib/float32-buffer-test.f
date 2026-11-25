@@ -1,8 +1,9 @@
 \ float32-buffer-test.f - F32 byte-buffer conversion tests.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/float32.f
 require src/lib/float32-buffer.f
+require src/lib/ieee754.f
 
 package F32-BUF-TEST
 

@@ -11,6 +11,8 @@ require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fd.f
 require src/lib/process.f
+require src/lib/spawn.f
+require src/lib/process-reaper.f
 
 package PROCESS-REAPER-FIXTURE
 private

@@ -6,7 +6,7 @@
 \ whose low byte, the only one the final block carries, wraps.
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/siphash.f
 require src/lib/entropy.f
 

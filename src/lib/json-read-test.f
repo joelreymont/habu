@@ -6,7 +6,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/float.f
 require src/lib/memory.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/time-cpu.f
 require src/lib/json.f
 require src/lib/reason.f
@@ -17,6 +17,11 @@ require src/lib/test/ending.f
 require src/lib/test/guard-page.f
 require src/lib/test/mapped.f
 require src/lib/test/subject.f
+require src/lib/json/read.f
+require src/lib/json/write.f
+require src/lib/json/value.f
+require src/lib/json/copy.f
+require src/lib/json/equal.f
 
 package JSON-TEST
 private

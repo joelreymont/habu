@@ -23,7 +23,11 @@ require src/lib/span.f
 require src/lib/string.f
 require src/lib/string-option.f
 require src/lib/task.f
-require src/lib/test.f
+require src/lib/net/http-arena.f
+require src/lib/net/http-request.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
+require src/lib/test/assert.f
 require src/lib/test/stderr.f
 require src/lib/test/wait.f
 require src/lib/time.f
@@ -32,6 +36,9 @@ require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/model.f
 require src/lib/net/tcp4.f
+require src/lib/json/value.f
+require src/lib/json/write.f
+require src/lib/fd.f
 
 package MODEL-FIXTURE
 private

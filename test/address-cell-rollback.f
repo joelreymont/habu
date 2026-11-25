@@ -1,5 +1,5 @@
 \ A caught failed text keeps the address cells it declared.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/habu/address-cells.f
 
 package ADDRESS-CELL-ROLLBACK

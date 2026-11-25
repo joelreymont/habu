@@ -41,7 +41,11 @@ split-str
 \ TOKEN! of a closed client.
 \ Run: bin/hb --load src/lib/net/mcp-test.f
 
-require src/lib/test.f
+require src/lib/date.f
+require src/lib/net/http-request.f
+require src/lib/net/http-response.f
+require src/lib/net/http-router.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/byte-buffer.f
 require src/lib/heap.f
@@ -74,6 +78,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/num-types.f
+require src/lib/json/read.f
 
 package MCP-TEST
 private

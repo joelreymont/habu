@@ -1,14 +1,14 @@
 \ install-e2e.f - installs into a scratch HOME while an hb started through the
 \ installed engine is loading. Trees A and B copy this checkout and differ only
-\ in src/install-race-x.f, which defines RACE-A or RACE-B, and
-\ src/install-race-y.f, which calls it. With A installed, a reader loads x.f,
-\ blocks on a pipe the test holds while B is installed, then loads y.f: it ends
-\ cleanly only if it reads one release's pair whole. A's tree outlives two
-\ installs of B while the reader runs and goes at the next. FRESH reads a release
-\ installed before it starts, DEAD installs over every leftover a killed install
-\ can leave, and BOTH runs two installs at once.
+\ in src/install-race-x.f and src/install-race-y.f, whose RACE-X and RACE-Y
+\ answer 1 in A and 2 in B. With A installed, a reader loads x.f, blocks on a
+\ pipe the test holds while B is installed, then loads y.f: it says done only if
+\ the two answers match, so it read one release's pair whole. A's tree outlives
+\ two installs of B while the reader runs and goes at the next. FRESH reads a
+\ release installed before it starts, DEAD installs over every leftover a killed
+\ install can leave, and BOTH runs two installs at once.
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fd.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -94,13 +94,13 @@ variable TREES-N
 
 : WRITE-A ( -- )
    TREE-A$ COPY-TREE
-   s" src/install-race-x.f" S\" : RACE-A ( -- ) ;\n" RACE!
-   s" src/install-race-y.f" S\" : RACE-USE ( -- ) RACE-A ;\n" RACE! ;
+   s" src/install-race-x.f" S\" : RACE-X ( -- n ) 1 ;\n" RACE!
+   s" src/install-race-y.f" S\" : RACE-Y ( -- n ) 1 ;\n" RACE! ;
 
 : WRITE-B ( -- )
    TREE-B$ COPY-TREE
-   s" src/install-race-x.f" S\" : RACE-B ( -- ) ;\n" RACE!
-   s" src/install-race-y.f" S\" : RACE-USE ( -- ) RACE-B ;\n" RACE! ;
+   s" src/install-race-x.f" S\" : RACE-X ( -- n ) 2 ;\n" RACE!
+   s" src/install-race-y.f" S\" : RACE-Y ( -- n ) 2 ;\n" RACE! ;
 
 : READER+ ( str -- ) {: s:str :}
    READER$ s FS:APPEND-FILE ;
@@ -114,9 +114,10 @@ variable TREES-N
    S\"    1 s write drop  10 CH c!  1 CH 1 >str write drop ;\n" READER+
    S\" : AWAIT ( -- )\n" READER+
    S\"    begin 0 CH 1 read 1 = while CH c@ 10 = if exit then repeat ;\n" READER+
+   S\" : VERDICT ( bool -- ) if s\q done\q else s\q mixed\q then SAY ;\n" READER+
    S\" ;package\ns\q loaded\q INSTALL-E2E-READER:SAY\n" READER+
    S\" INSTALL-E2E-READER:AWAIT\nrequire src/install-race-y.f\n" READER+
-   S\" s\q done\q INSTALL-E2E-READER:SAY\n" READER+ ;
+   S\" RACE-X RACE-Y = INSTALL-E2E-READER:VERDICT\n" READER+ ;
 
 : HOME-PATHS! ( -- )
    ROOT$ s" home" HOME FS:JOIN-PATH HOME-U !

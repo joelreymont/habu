@@ -6,7 +6,7 @@
 \ AAh, so a wrong width or alignment shows in the neighbouring bytes.
 
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/be.f
 
 package BE-TEST

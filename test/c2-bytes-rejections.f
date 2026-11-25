@@ -1,6 +1,6 @@
 \ The checker pins a byte view's lifetime, region and access, and keeps
 \ C2-MEM's pack private.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 require src/lib/c2-bytes.f
 

@@ -11,6 +11,7 @@ require src/compiler/native-effect.f
 require src/compiler/native/machine.f
 require src/arch/arm64/machine.f
 require src/compiler/native/frame.f
+require src/compiler/target/model.f
 
 package NABI
 public

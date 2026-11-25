@@ -1,11 +1,13 @@
 \ INTERPRETER:NUMBER against num-parse's value, float flag and ok; the name
 \ wall, which refuses a name the reader reads or refuses for range, checks its
 \ range flag.
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/runner.f
 require src/lib/fmt.f
 require src/lib/f64-text.f
 require test/gate-common.f
 require src/habu/interpreter.f
+require src/lib/ieee754.f
 
 package INTERPRETER-NUMBER-TEST
 

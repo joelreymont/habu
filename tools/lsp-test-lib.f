@@ -713,7 +713,9 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/string-option.f
 require src/lib/fmt.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
+require tools/lsp-check.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/span.f
@@ -740,6 +742,8 @@ require tools/lsp-defs.f
 require tools/lsp-highlight.f
 require tools/lsp-workspace.f
 require tools/lsp-core.f
+require src/lib/json/read.f
+require src/lib/json/write.f
 
 package LSP-TEST
 using BUF
@@ -4767,9 +4771,10 @@ variable WS-ROOT-U
    s\" require ../out/u.f\n: PN ( -- ) parse-name drop ;\nPN anything\n" ;
 : TEXT-RU-DEP ( -- str )
    s\" require ../w/f.f\n: OU ( -- n ) ROOK ;\n" ;
+: TEXT-RSI ( -- str )  s\" include f.f\n: SU ( -- n ) ROOK ;\n" ;
 : TEXT-RT ( -- str )  s\" require s.f\n: TU ( -- n ) ROOK SU + ;\n" ;
 : TEXT-RO ( -- str )  s\" require ../out/m.f\n: OU ( -- n ) ROOK ;\n" ;
-: TEXT-RM ( -- str )  s\" require f.f\n" ;
+: TEXT-RM ( -- str )  s\" include f.f\n" ;
 : TEXT-RY ( -- str )
    s\" require f.f\npackage YP\n: ROOK ( -- n ) 3 ;\n: YU ( -- n ) ROOK ;\n;package\n" ;
 : TEXT-RG ( -- str )  s\" : KAY ( -- n ) 1 ;\n" ;
@@ -4777,7 +4782,7 @@ variable WS-ROOT-U
    s\" include g.f\nundefine KAY\ninclude g.f\n: LU ( -- n ) KAY ;\n" ;
 : TEXT-RVG ( -- str )  s\" : GROOK ( -- n ) 1 ;\n" ;
 : TEXT-RVH ( -- str )  s\" require lib/g.f\n: HU ( -- n ) GROOK ;\n" ;
-: TEXT-RVE ( -- str )  s\" require ../h.f\n: EU ( -- n ) GROOK ;\n" ;
+: TEXT-RVE ( -- str )  s\" require ../h.f\nrequire lib/g.f\n: EU ( -- n ) GROOK ;\n" ;
 
 : TEXT-RID ( -- str )
    TXT-B CLEAR
@@ -4940,7 +4945,7 @@ variable WS-ROOT-U
    s" refs-ws/w/f.f" TEXT-RF REFS-FILE
    s" refs-ws/w/d.f" TEXT-RD REFS-FILE
    s" refs-ws/w/e.f" TEXT-RE REFS-FILE
-   s" refs-ws/w/s.f" TEXT-RS REFS-FILE
+   s" refs-ws/w/s.f" TEXT-RSI REFS-FILE
    s" refs-ws/w/t.f" TEXT-RT REFS-FILE
    s" refs-ws/w/o.f" TEXT-RO REFS-FILE
    s" refs-ws/out/m.f" TEXT-RM REFS-FILE
@@ -5276,15 +5281,15 @@ variable WS-ROOT-U
    s" 3" SYMBOLS-START s" refs-fe/w/d.f" OPEN-URI 1 14 18 REF+ SYMBOLS-END ;
 
 \ A tree of the folder w whose files' own loads reach no declaration that a
-\ check reads them under: f.f declares ROOK; q/b.f, open, requires ../s/x.f,
-\ which requires y.f, found only under q/, the root that reached x.f, where
-\ q/y.f requires ../f.f; b.f and x.f use ROOK. lib/g.f declares GROOK; e.f,
-\ open, requires ../h.f, above the folder and open, whose load of lib/g.f
-\ resolves against e.f's root, the folder, and whose own check is refused; e.f
-\ and h.f use GROOK.
-: TEXT-RXB ( -- str )  s\" require ../s/x.f\n: BU ( -- n ) ROOK ;\n" ;
+\ check reads them under: f.f declares ROOK; q/b.f, open, requires ../s/x.f
+\ and y.f, which x.f requires too, found only under q/, the root that reached
+\ x.f, where q/y.f includes ../f.f; b.f and x.f use ROOK. lib/g.f declares
+\ GROOK; e.f, open, requires it and ../h.f, above the folder and open, whose
+\ load of lib/g.f resolves against e.f's root, the folder, and whose own check
+\ is rejected; e.f and h.f use GROOK.
+: TEXT-RXB ( -- str )  s\" require ../s/x.f\nrequire y.f\n: BU ( -- n ) ROOK ;\n" ;
 : TEXT-RXX ( -- str )  s\" require y.f\n: XU ( -- n ) ROOK ;\n" ;
-: TEXT-RXY ( -- str )  s\" require ../f.f\n" ;
+: TEXT-RXY ( -- str )  s\" include ../f.f\n" ;
 
 : REFS-RCH-TURNS ( -- )
    s" refs-rch" REFS-DIR s" refs-rch/w" REFS-DIR s" refs-rch/w/q" REFS-DIR
@@ -5308,22 +5313,22 @@ variable WS-ROOT-U
    TEXT-RVH s" refs-rch/h.f" FIXTURE CHECKS
    s" refs-rch/h.f" FIXTURE s" refused" COMPLETED
    s" refs-rch/h.f" FIXTURE 1 EXPECT 0 8 0 15 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES-ANY
-   s" 3" s" refs-rch/w/q/b.f" FIXTURE 1 14 DECL-TOO REFS-ASK
-   s" 4" s" refs-rch/w/e.f" FIXTURE 1 14 DECL-TOO REFS-ASK
+   s" 3" s" refs-rch/w/q/b.f" FIXTURE 2 14 DECL-TOO REFS-ASK
+   s" 4" s" refs-rch/w/e.f" FIXTURE 2 14 DECL-TOO REFS-ASK
    SAY
    s" 3" SYMBOLS-START
    s" refs-rch/w/f.f" DISK-URI 0 2 6 REF+
-   s" refs-rch/w/q/b.f" OPEN-URI 1 14 18 REF+
+   s" refs-rch/w/q/b.f" OPEN-URI 2 14 18 REF+
    s" refs-rch/w/s/x.f" DISK-URI 1 14 18 REF+
    SYMBOLS-END
    s" 4" SYMBOLS-START
    s" refs-rch/w/lib/g.f" DISK-URI 0 2 7 REF+
    s" refs-rch/h.f" OPEN-URI 1 14 19 REF+
-   s" refs-rch/w/e.f" OPEN-URI 1 14 19 REF+
+   s" refs-rch/w/e.f" OPEN-URI 2 14 19 REF+
    SYMBOLS-END ;
 
 : TEXT-RFD ( -- str )
-   s\" : ROOK ( -- n ) 1 ;\nrequire ../z.f\nrequire y.f\n: DU ( -- n ) ROOK ;\n" ;
+   s\" : ROOK ( -- n ) 1 ;\ninclude ../z.f\ninclude y.f\n: DU ( -- n ) ROOK ;\n" ;
 : TEXT-RFZ ( -- str )  s\" : ZU ( -- n ) ROOK ;\n" ;
 : TEXT-RFY ( -- str )  s\" : YU ( -- n ) ROOK ;\n" ;
 
@@ -5346,10 +5351,10 @@ variable WS-ROOT-U
    s" refs-frg/z.f" DISK-URI 0 14 18 REF+
    SYMBOLS-END ;
 
-: TEXT-RCD ( -- str )  s\" : ROOK ( -- n ) 1 ;\nrequire z.f\n" ;
-: TEXT-RCE ( -- str )  s\" : ROOK ( -- n ) 2 ;\nrequire z.f\n" ;
+: TEXT-RCD ( -- str )  s\" : ROOK ( -- n ) 1 ;\ninclude z.f\n" ;
+: TEXT-RCE ( -- str )  s\" : ROOK ( -- n ) 2 ;\ninclude z.f\n" ;
 : TEXT-RCE-BAD ( -- str )
-   s\" : ROOK ( -- n ) 2 ;\nrequire z.f\n: EU ( -- n ) NOPE ;\n" ;
+   s\" : ROOK ( -- n ) 2 ;\ninclude z.f\n: EU ( -- n ) NOPE ;\n" ;
 
 : REFS-CNF-TURNS ( -- )
    s" refs-cnf" REFS-DIR s" refs-cnf/w" REFS-DIR
@@ -5374,7 +5379,7 @@ variable WS-ROOT-U
 \ binding the engine's primitive and image word. These checks verify, so each
 \ shared token conflicts.
 : TEXT-ENG-D ( -- str )
-   s\" package REVIEW\n: DUP ( n -- n n ) 0 over + ;\n: >U8 ( n -- u8 ) drop 0 ;\nrequire z.f\n;package\n" ;
+   s\" package REVIEW\n: DUP ( n -- n n ) 0 over + ;\n: >U8 ( n -- u8 ) drop 0 ;\ninclude z.f\n;package\n" ;
 : TEXT-ENG-Z ( -- str )
    s\" : ZU ( n -- n n ) DUP ;\n: AU ( n -- u8 ) >U8 ;\n" ;
 : TEXT-ENG-E ( -- str )  s\" require z.f\n" ;
@@ -6387,7 +6392,7 @@ variable PROBE-DECLS
    TEXT-RVD s" rn-out/w/d.f" FIXTURE 1 s" verified" BATCH-LISTED
    TEXT-RVE s" rn-out/w/e.f" FIXTURE 1 s" verified" BATCH-LISTED
    s" 3" s" rn-out/w/d.f" FIXTURE 1 14 CROW RENAME-ASK
-   s" 4" s" rn-out/w/e.f" FIXTURE 1 14 CROW RENAME-ASK
+   s" 4" s" rn-out/w/e.f" FIXTURE 2 14 CROW RENAME-ASK
    SAY
    s" 3" EDITS-START
    s" rn-out/f.f" DISK-URI EDITS-IN 0 2 6 EDIT+ 1 14 18 EDIT+
@@ -6396,7 +6401,7 @@ variable PROBE-DECLS
    s" 4" EDITS-START
    s" rn-out/w/lib/g.f" DISK-URI EDITS-IN 0 2 7 EDIT+
    s" rn-out/h.f" DISK-URI EDITS-IN 1 14 19 EDIT+
-   s" rn-out/w/e.f" OPEN-URI EDITS-IN 1 14 19 EDIT+
+   s" rn-out/w/e.f" OPEN-URI EDITS-IN 2 14 19 EDIT+
    EDITS-END ;
 
 : RENAME-RCH-TURNS ( -- )
@@ -6421,18 +6426,18 @@ variable PROBE-DECLS
    TEXT-RVH s" rn-rch/h.f" FIXTURE CHECKS
    s" rn-rch/h.f" FIXTURE s" refused" COMPLETED
    s" rn-rch/h.f" FIXTURE 1 EXPECT 0 8 0 15 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES-ANY
-   s" 3" s" rn-rch/w/q/b.f" FIXTURE 1 14 CROW RENAME-ASK
-   s" 4" s" rn-rch/w/e.f" FIXTURE 1 14 CROW RENAME-ASK
+   s" 3" s" rn-rch/w/q/b.f" FIXTURE 2 14 CROW RENAME-ASK
+   s" 4" s" rn-rch/w/e.f" FIXTURE 2 14 CROW RENAME-ASK
    SAY
    s" 3" EDITS-START
    s" rn-rch/w/f.f" DISK-URI EDITS-IN 0 2 6 EDIT+
-   s" rn-rch/w/q/b.f" OPEN-URI EDITS-IN 1 14 18 EDIT+
+   s" rn-rch/w/q/b.f" OPEN-URI EDITS-IN 2 14 18 EDIT+
    s" rn-rch/w/s/x.f" DISK-URI EDITS-IN 1 14 18 EDIT+
    EDITS-END
    s" 4" EDITS-START
    s" rn-rch/w/lib/g.f" DISK-URI EDITS-IN 0 2 7 EDIT+
    s" rn-rch/h.f" OPEN-URI EDITS-IN 1 14 19 EDIT+
-   s" rn-rch/w/e.f" OPEN-URI EDITS-IN 1 14 19 EDIT+
+   s" rn-rch/w/e.f" OPEN-URI EDITS-IN 2 14 19 EDIT+
    EDITS-END ;
 
 : RENAME-FRG-TURNS ( -- )
@@ -7049,7 +7054,39 @@ false constant ENGINE-ORIGINS?
    0 15 0 19 1 s" E-UNDEFINED" DIAG+
    0 2 0 7 1 s" E-BAD-QUALIFIED-RECORD" DIAG+ PUBLISHES ;
 
+: UQ-PATH ( -- str )  s" uq/r/a.f" FIXTURE ;
+: TEXT-UQ ( -- str )  s\" require sib.f\n: A ( -- n ) UQ-ONE ;\n" ;
+
+: UQ-WRITTEN ( -- )
+   s" uq/r" FIXTURE FS:MAKE-DIRS
+   s" uq/lib" FIXTURE FS:MAKE-DIRS
+   s" uq/lib/word.f" FIXTURE s\" : UQ-ONE ( -- n ) 1 ;\n" FS:WRITE-ALL
+   s" uq/r/sib.f" FIXTURE s\" require ../lib/word.f\n" FS:WRITE-ALL
+   UQ-PATH TEXT-UQ FS:WRITE-ALL ;
+
+: UQ-HELP$ ( -- str )
+   MSG-CLEAR
+   s" \nhelp: add `require ../lib/word.f` to `" MSG+
+   UQ-PATH SOURCE-ROOT:CANONICAL drop MSG+  s" `" MSG+
+   MSG$ ;
+
+\ The subject calls a word of the file only its sibling required, in a
+\ workspace the server's working directory is not above: the help spells the
+\ require as the subject can write it.
+: UNREQUIRED-TURNS ( -- )
+   UQ-WRITTEN
+   SESSION-INITIALIZE
+   UQ-PATH TEXT-UQ 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TEXT-UQ UQ-PATH CHECKS
+   UQ-PATH s" refused" COMPLETED
+   UQ-PATH 1 EXPECT 1 13 1 19 1 s" E-UNREQUIRED" DIAG+
+   EXP$ UQ-HELP$ STR:CONTAINS? s" the help's require" HOLDS
+   PUBLISHES ;
+
 : TEST-DIAGNOSTICS ( -- )
+   s" unrequired" [: UNREQUIRED-TURNS ;] TALK
    s" diagnostics-open" [: OPEN-TURNS ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
    s" diagnostics-supersede" [: SUPERSEDE-TURNS ;] TALK

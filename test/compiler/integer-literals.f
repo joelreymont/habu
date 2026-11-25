@@ -1,6 +1,6 @@
 \ Integer admission is shared by interpret, evaluate, and native compilation.
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package INTEGER-LITERALS-TEST
 

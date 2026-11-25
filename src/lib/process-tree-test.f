@@ -8,7 +8,7 @@
 require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -18,6 +18,9 @@ require src/lib/engine-candidate.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-tree.f
+require src/lib/fmt.f
+require src/lib/fd.f
+require src/lib/task.f
 
 package PROC-TREE-TEST
 

@@ -1,3 +1,5 @@
+require src/lib/test/suite.f
+
 STDLIB-GATE:MAIN
 
 using TEST
@@ -55,6 +57,10 @@ SUITE diag-position
 
 SUITE source-root-exe
    test/source-root-exe-test.f
+;SUITE
+
+SUITE require-check
+   test/require-check.f
 ;SUITE
 
 SUITE codesign

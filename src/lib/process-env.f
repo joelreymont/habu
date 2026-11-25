@@ -20,6 +20,8 @@ require src/lib/fs.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/adt/option.f
+require src/lib/process-chunks.f
+require src/lib/spawn.f
 
 61 constant PROC-ENV-EQUAL
 58 constant PROC-PATH-SEP

@@ -1,12 +1,13 @@
 \ Checker boundaries for the public C2 owner and shared loan entries.
 
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 require src/lib/test/ending.f
 require src/lib/adt/option.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
+require src/lib/process.f
 
 package C2-MEMORY-SCOPE-REFUSALS
 private

@@ -8,7 +8,8 @@
 \ Run standalone:  bin/hb < test/rigid-region-suite.f   (exit 0 + "test: ok"; dies on miss)
 
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 
 \ The whole suite is one package, and that is what lets the fixture words below
 \ be DEFINITIONS at all. A test file may not publish new global names (the

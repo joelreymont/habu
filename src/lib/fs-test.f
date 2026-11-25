@@ -1,5 +1,5 @@
 \ fs-test.f - focused tests for checked stdlib filesystem helpers.
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f
 \   src/lib/fs.f src/lib/fs-mutate.f src/lib/fs-test.f
 \ bin/hb is this tree's engine (docs/bootstrap.md): an engine carries fs.f and
 \ fs-mutate.f, so --load under another engine keeps that engine's FS.
@@ -7,7 +7,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/memory.f                \ MEM-MAX-N for the join overflow rows

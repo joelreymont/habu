@@ -31,17 +31,18 @@ public
 
 \ Seals, with no unseal. The seal is src/habu/layout.f POLICY-NDICT-CELL,
 \ POLICY-BITS-OFF and POLICY-REQUIRE-CELL; capture and warm restore clear all
-\ three, both native kernels enforce it. From then on the engine refuses every
+\ three, both native kernels enforce it. From then on the engine rejects every
 \ token outside the vocabulary, at the token, before anything it names runs. In
 \ it: a `:` definition with `\` and `( ... )` comments; a number literal; a
 \ `{: :}` group or a name it bound; fourteen keywords (if else then {: :} s" S\"
 \ [package] package public private ;package using ;using) and, in a body,
 \ [type]; a word the sealed source defined; a public word of an admitted package
 \ that checked source may call; after SOURCE-ROOT!, a top-level global `require`
-\ with a literal path. `using` does not admit a package, and `package` refuses
+\ with a literal path. `using` does not admit a package, and `package` rejects
 \ one that existed at the seal (inside it its private words would come first); a
 \ package the sealed source made opens and reopens as usual. The checker still
-\ certifies every body, and an admitted program runs as it does unsealed.
+\ certifies every body, and an admitted program runs as it does unsealed, but
+\ calls words older than the seal, or of files outside the root, with no require.
 \ No back edge is in the vocabulary (forward branches only; no loop, recursion or
 \ xt; no self-name before `;`; no source read under the default seal), so a sealed
 \ load's calls are ordered by dictionary index and every run is bounded down to

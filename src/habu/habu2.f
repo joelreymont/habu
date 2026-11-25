@@ -38,6 +38,20 @@ require src/habu/address-cells.f
 require src/habu/code-span.f
 require src/compiler/fixed-body.f
 require src/arch/arm64/icode.f
+require src/arch/arm64/asm.f
+require src/arch/arm64/mnem.f
+require src/habu/crash.f
+require src/habu/habu1.f
+require src/habu/primitive-registry.f
+require src/habu/prof-abi.f
+require src/habu/prof.f
+require src/habu/rt.f
+HB-TARGET-LINUX? [if]
+   require src/os/linux/sys.f
+[then]
+HB-TARGET-MACOS? [if]
+   require src/os/macos/sys.f
+[then]
 using A64ASM
 using A64ICODE
 using CRASH

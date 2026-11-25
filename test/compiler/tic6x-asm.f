@@ -1,4 +1,4 @@
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/arch/tic6x/asm.f
 
 package C6XASM-TEST

@@ -9,7 +9,8 @@
 \ file that stores one is rejected at its storage, before a requirer reads it.
 \ The file calls the running checker's words, so it is loaded, never built.
 
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/adt/nullable.f
 require src/lib/adt/option.f
 require test/decl-diag-capture.f

@@ -2,7 +2,7 @@
 \ run a linked program whose code cell `is` stored twice: it holds one row.
 require src/core/exit-status.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f

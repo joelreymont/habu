@@ -13,6 +13,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/codegen.f
 require src/lib/test/c-library.f
+require src/lib/test/assert.f
+require src/lib/ffi-abi.f
 
 CODEGEN:BUFFER FFI-T-CC-SRC
 create FFI-T-CC-SRC-PATH PATH-CAP allot

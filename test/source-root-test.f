@@ -1,6 +1,6 @@
 \ Named entries own root-relative dependencies; canonical identity deduplicates.
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fmt.f
@@ -8,6 +8,10 @@ require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require tools/source-discovery.f
 require test/pcap-result.f
+require test/fixtures/source-root-count.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/process.f
 
 using SOURCE-ROOT
 package SOURCE-ROOT-TEST
@@ -20,6 +24,7 @@ create FALLBACK CAP allot
 create SAVED-ROOT CAP allot
 create SAVED-TOP CAP allot
 create TARGET CAP allot
+create COUNT-PATH CAP allot
 create LINK CAP allot
 create LONG-PATH CAP allot
 create LONG-ROOT CAP 2 * allot
@@ -29,19 +34,26 @@ variable APP-B-U
 variable FALLBACK-U
 variable SAVED-ROOT-U
 variable TARGET-U
+variable COUNT-PATH-U
 variable LINK-U
-variable LOADED
 variable SAVED-TOP-U
 $4000 constant CHILD-CAP
 create CHILD-OUT CHILD-CAP allot
 create CHILD-ERR CHILD-CAP allot
 
-public
-: BUMP ( n -- ) LOADED +! ;
 private
 
 : COPY! ( str ^u8 ^n -- ) {: s:str dst:^ lenp:^ :}
    s STR:DATA dst s STR:LEN BYTE-COPY s STR:LEN lenp ! ;
+
+\ A fixture requires source-root-count.f by its absolute path and bumps a count.
+: REQUIRE-COUNT+ ( -- )
+   s" require " SB-APPEND
+   COUNT-PATH COUNT-PATH-U @ >str SB-APPEND S\" \n" SB-APPEND ;
+
+: BUMP+ ( n -- ) FMT:SB-U S\"  SOURCE-ROOT-COUNT:BUMP\n" SB-APPEND ;
+
+: BUMP-TEXT ( n -- str ) SB-RESET REQUIRE-COUNT+ BUMP+ SB$ ;
 
 : ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
 : A$ ( -- str ) APP-A APP-A-U @ >str ;
@@ -56,8 +68,9 @@ private
    SOURCE-ROOT:ACTIVE-SOURCE drop drop SAVED-TOP SAVED-TOP-U @ >str T$= ;
 
 : PREP ( -- )
-   FS:CLEANUP-RESET 0 LOADED !
+   FS:CLEANUP-RESET 0 SOURCE-ROOT-COUNT:LOADED !
    CURRENT$ SAVED-ROOT SAVED-ROOT-U COPY!
+   s" test/fixtures/source-root-count.f" RESOLVE TTRUE COUNT-PATH COUNT-PATH-U COPY!
    SOURCE-ROOT:ACTIVE-SOURCE drop drop SAVED-TOP SAVED-TOP-U COPY!
    s" habu-source-root" FS:MKTEMP-DIR CANONICAL TTRUE ROOT ROOT-U COPY!
    ROOT$ FS:CLEANUP-TREE+
@@ -65,28 +78,28 @@ private
    ROOT$ s" b" JOIN APP-B APP-B-U COPY!
    s" src/nested" A-PATH FS:MAKE-DIRS
    s" src" B-PATH FS:MAKE-DIRS
-   s" src/leaf.f" A-PATH s" 1 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
+   s" src/leaf.f" A-PATH 1 BUMP-TEXT FS:WRITE-ALL
    s" src/nested/dep.f" A-PATH s" require src/leaf.f" FS:WRITE-ALL
-   s" src/leaf.f" B-PATH s" 10 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
+   s" src/leaf.f" B-PATH 10 BUMP-TEXT FS:WRITE-ALL
    s" main.f" B-PATH s" require src/leaf.f" FS:WRITE-ALL
    s" boom.f" A-PATH s" 9132 throw" FS:WRITE-ALL
    s" ." s" habu-root-fallback" FS:MKTEMP-DIR-IN FALLBACK FALLBACK-U COPY!
    FALLBACK$ FS:CLEANUP-TREE+
-   s" leaf.f" FALLBACK-PATH s" 100 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
+   s" leaf.f" FALLBACK-PATH 100 BUMP-TEXT FS:WRITE-ALL
    SB-RESET s" require " SB-APPEND
    s" leaf.f" FALLBACK-PATH SB-APPEND
    s" shared.f" FALLBACK-PATH SB$ FS:WRITE-ALL
    FALLBACK$ A-PATH FS:MAKE-DIRS
-   s" leaf.f" FALLBACK-PATH A-PATH s" 1000 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
+   s" leaf.f" FALLBACK-PATH A-PATH 1000 BUMP-TEXT FS:WRITE-ALL
    SB-RESET S\" require src/nested/dep.f\nrequire src/leaf.f\nrequire " SB-APPEND
    s" shared.f" FALLBACK-PATH SB-APPEND
    s" main.f" A-PATH SB$ FS:WRITE-ALL ;
 
 : LOAD-ENTRIES ( -- )
    s" main.f" A-PATH script-required
-   LOADED @ 101 T= RESTORED
+   SOURCE-ROOT-COUNT:LOADED @ 101 T= RESTORED
    s" main.f" B-PATH script-required
-   LOADED @ 111 T= RESTORED ;
+   SOURCE-ROOT-COUNT:LOADED @ 111 T= RESTORED ;
 
 : ALIASES ( -- )
    s" src/leaf.f" A-PATH TARGET TARGET-U COPY!
@@ -95,10 +108,10 @@ private
    s" src/./nested/../leaf.f" A-PATH required
    LINK LINK-U @ >str required
    TARGET TARGET-U @ >str required
-   LOADED @ 111 T=
+   SOURCE-ROOT-COUNT:LOADED @ 111 T=
    LINK LINK-U @ >str included
    TARGET TARGET-U @ >str included
-   LOADED @ 113 T= RESTORED ;
+   SOURCE-ROOT-COUNT:LOADED @ 113 T= RESTORED ;
 
 : PROVIDED-MISSING ( -- )
    s" absent.f" A-PATH provided
@@ -130,8 +143,11 @@ private
 : NUL-CANON ( str -- str bool ) drop s\" a\zb.f" true ;
 : RELATIVE-CANON ( str -- str bool ) drop s" src/core/include.f" true ;
 : LONG-READ ( str -- str ) drop LONG-PATH CAP >str SOURCE-ROOT:READ-OS ;
-: LEAF-BYTES ( str str -- ) drop s" 1 SOURCE-ROOT-TEST:BUMP" T$= CURRENT$ A$ T$= 1 BUMP ;
-: SUPPLIED-BYTES ( str str -- ) drop s" 2 SOURCE-ROOT-TEST:BUMP" T$= CURRENT$ A$ T$= 1 BUMP ;
+: LEAF-BYTES ( str str -- )
+   drop 1 BUMP-TEXT T$= CURRENT$ A$ T$= 1 SOURCE-ROOT-COUNT:BUMP ;
+: SUPPLIED-BYTES ( str str -- )
+   drop s" 2 SOURCE-ROOT-COUNT:BUMP" T$=
+   CURRENT$ A$ T$= 1 SOURCE-ROOT-COUNT:BUMP ;
 
 : READ-NUL ( -- )
    s" a path holding a 0 byte is rejected by SOURCE-ROOT:READ-OS" T-LABEL
@@ -200,13 +216,13 @@ private
 
 : WITH-OPENS ( -- )
    s" SOURCE-ROOT:WITH-BYTES and WITH-SUPPLIED open a file under the root their caller passes" T-LABEL
-   0 LOADED !
+   0 SOURCE-ROOT-COUNT:LOADED !
    s" main.f" B-PATH RESOLVE drop drop
-   A$ s" src/leaf.f" A-PATH
+   A$ s" src/leaf.f" A-PATH 0
    [: LEAF-BYTES ;] WITH-BYTES
-   A$ s" src/leaf.f" A-PATH s" 2 SOURCE-ROOT-TEST:BUMP"
+   A$ s" src/leaf.f" A-PATH s" 2 SOURCE-ROOT-COUNT:BUMP" 0
    [: SUPPLIED-BYTES ;] WITH-SUPPLIED
-   LOADED @ 2 T= RESTORED ;
+   SOURCE-ROOT-COUNT:LOADED @ 2 T= RESTORED ;
 
 : WITH-LONG ( -- )
    s" a root path of WORK-BYTES is rejected by SOURCE-ROOT:WITH, which the record names" T-LABEL
@@ -247,12 +263,12 @@ private
    s" src" ENGINE-LINK s" test" ENGINE-LINK
    ROOT$ s" other/nested" JOIN FS:MAKE-DIRS
    ROOT$ s" other/src/lib" JOIN FS:MAKE-DIRS
-   ROOT$ s" other/src/lib/error.f" JOIN s" 100 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL
+   ROOT$ s" other/src/lib/error.f" JOIN 100 BUMP-TEXT FS:WRITE-ALL
    ROOT$ s" other/nested" JOIN TARGET TARGET-U COPY!
    TARGET TARGET-U @ >str INVOCATION$ s" branch" JOIN FS:MAKE-SYMLINK
    s" src/lib" A-PATH FS:MAKE-DIRS s" src/lib" B-PATH FS:MAKE-DIRS
-   s" src/lib/error.f" A-PATH s" 1 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL
-   s" src/lib/error.f" B-PATH s" 10 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL ;
+   s" src/lib/error.f" A-PATH 1 BUMP-TEXT FS:WRITE-ALL
+   s" src/lib/error.f" B-PATH 10 BUMP-TEXT FS:WRITE-ALL ;
 
 \ A fresh process must carry its frozen engine facts into a symlinked checkout.
 \ The child also keeps owner-local modules and symlink/.. targets distinct.
@@ -275,19 +291,9 @@ private
 \ Each file resumes after its child. Distinct entry/exit ordinals expose
 \ overwritten parent source bytes as well as missing or out-of-order loads.
 40 constant DEEP-COUNT
-variable ACTIVE
-variable VISITS
 variable EVAL-N
 
 public
-
-: ENTER ( n -- )
-   ACTIVE @ T= 1 ACTIVE +! 1 VISITS +!
-   CURRENT$ A$ T$= ;
-
-: LEAVE-FRAME ( n -- )
-   -1 ACTIVE +! ACTIVE @ T=
-   CURRENT$ A$ T$= ;
 
 \ Unlike nested loads, these evaluations have no intervening catch: one throw
 \ must unwind every escaped evaluator frame, including changed package/usings.
@@ -318,7 +324,7 @@ private
    prefix A-PATH FS:MAKE-DIRS
    DEEP-COUNT 0 ?do
       prefix i DEEP-PATH TARGET TARGET-U COPY!
-      SB-RESET i FMT:SB-U S\"  SOURCE-ROOT-TEST:ENTER\n" SB-APPEND
+      SB-RESET REQUIRE-COUNT+ i FMT:SB-U S\"  SOURCE-ROOT-COUNT:ENTER\n" SB-APPEND
       i DEEP-COUNT 1- < if
          S\" s\" " SB-APPEND prefix i 1+ DEEP-NAME+
          fail i 2 mod 0= or if
@@ -331,7 +337,7 @@ private
             S\" require shared.f\nrequire ./shared.f\n" SB-APPEND
          then
       then
-      i FMT:SB-U S\"  SOURCE-ROOT-TEST:LEAVE-FRAME\n" SB-APPEND
+      i FMT:SB-U S\"  SOURCE-ROOT-COUNT:LEAVE-FRAME\n" SB-APPEND
       TARGET TARGET-U @ >str SB$ FS:WRITE-ALL
    loop ;
 
@@ -350,17 +356,22 @@ private
 
 : DEEP-LOADS ( -- )
    s" deeply nested throws restore the caller before another dependency chain" T-LABEL
-   s" shared.f" A-PATH s" 7 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
+   s" shared.f" A-PATH 7 BUMP-TEXT FS:WRITE-ALL
    s" bad" true DEEP-MAKE
    s" good" false DEEP-MAKE
-   0 ACTIVE ! 0 VISITS ! 0 LOADED !
+   A$ SOURCE-ROOT-COUNT:ROOT!
+   0 SOURCE-ROOT-COUNT:ACTIVE ! 0 SOURCE-ROOT-COUNT:VISITS !
+   0 SOURCE-ROOT-COUNT:LOADED ! 0 SOURCE-ROOT-COUNT:WRONG !
    [: DEEP-THROW ;] 9132 TTHROWSQ
-   VISITS @ DEEP-COUNT T= RESTORED
-   0 ACTIVE ! 0 VISITS !
+   SOURCE-ROOT-COUNT:VISITS @ DEEP-COUNT T=
+   SOURCE-ROOT-COUNT:WRONG @ 0 T= RESTORED
+   0 SOURCE-ROOT-COUNT:ACTIVE ! 0 SOURCE-ROOT-COUNT:VISITS !
    DEEP-GOOD
-   ACTIVE @ 0 T= VISITS @ DEEP-COUNT T= LOADED @ 7 T= RESTORED
+   SOURCE-ROOT-COUNT:ACTIVE @ 0 T= SOURCE-ROOT-COUNT:VISITS @ DEEP-COUNT T=
+   SOURCE-ROOT-COUNT:LOADED @ 7 T= SOURCE-ROOT-COUNT:WRONG @ 0 T= RESTORED
    DEEP-GOOD
-   VISITS @ DEEP-COUNT T= LOADED @ 7 T= RESTORED ;
+   SOURCE-ROOT-COUNT:VISITS @ DEEP-COUNT T=
+   SOURCE-ROOT-COUNT:LOADED @ 7 T= RESTORED ;
 
 \ A file larger than a header and 1 MiB loads through require and include and
 \ resumes after the small file it includes midway: each load frame is sized to
@@ -384,25 +395,25 @@ create CHUNK LARGE-CHUNK allot
 : LARGE-MAKE ( -- )
    s" large" A-PATH FS:MAKE-DIRS
    LARGE-CHUNK 0 ?do i LARGE-BYTE CHUNK i + c! loop
-   s" large/small.f" A-PATH s" 1 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
+   s" large/small.f" A-PATH 1 BUMP-TEXT FS:WRITE-ALL
    s" large/big.f" A-PATH TARGET TARGET-U COPY!
    TARGET TARGET-U @ >str CHUNK LARGE-CHUNK >str FS:WRITE-ALL
    LARGE-HALF 1- LARGE-CHUNKS+
    TARGET TARGET-U @ >str S\" include large/small.f\n" FS:APPEND-FILE
    LARGE-HALF LARGE-CHUNKS+
-   TARGET TARGET-U @ >str S\" 10 SOURCE-ROOT-TEST:BUMP\n" FS:APPEND-FILE
-   s" large/outer.f" A-PATH
-      S\" require large/big.f\nrequire large/big.f\ninclude large/big.f\n100 SOURCE-ROOT-TEST:BUMP\n"
-      FS:WRITE-ALL ;
+   TARGET TARGET-U @ >str 10 BUMP-TEXT FS:APPEND-FILE
+   SB-RESET REQUIRE-COUNT+
+   S\" require large/big.f\nrequire large/big.f\ninclude large/big.f\n" SB-APPEND 100 BUMP+
+   s" large/outer.f" A-PATH SB$ FS:WRITE-ALL ;
 
 \ require loads big.f once (its small.f and its tail: 11), the second require
 \ skips it, include loads it again (11), and outer.f's own tail adds 100.
 : LARGE-LOADS ( -- )
    s" a file past 1 MiB loads through require and include around a small one" T-LABEL
    LARGE-MAKE
-   0 LOADED !
+   0 SOURCE-ROOT-COUNT:LOADED !
    A$ [: s" large/outer.f" included ;] WITH
-   LOADED @ 122 T= RESTORED ;
+   SOURCE-ROOT-COUNT:LOADED @ 122 T= RESTORED ;
 
 \ JOIN joins a root longer than PATH-CAP whole, and rejects a root length below 0
 \ or one whose sum with the name's length wraps.

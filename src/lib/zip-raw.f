@@ -7,6 +7,8 @@ require src/lib/fs-mutate.f
 require src/lib/fd.f
 require src/lib/span.f
 require src/lib/utf8-scalar.f
+require src/lib/zip-state.f
+require src/lib/zip-types.f
 
 package ZIP
 using FFI

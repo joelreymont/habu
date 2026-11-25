@@ -38,7 +38,7 @@ require src/lib/fmt.f
 require src/lib/le.f
 require src/lib/num-types.f
 require src/lib/task.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/fd.f
 require src/lib/fs.f
@@ -48,6 +48,7 @@ require src/lib/net/httpc.f
 require src/lib/arena.f
 require src/lib/test-fsm.f
 require src/lib/net/test-tls-peer.f
+require src/lib/ffi-abi.f
 
 \ White-box: the conn's socket, so a case waits for the server's FIN to reach
 \ it before it sends again.

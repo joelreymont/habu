@@ -1,9 +1,9 @@
 \ hb-cli-contracts-test.f - checked coverage for hb startup/data-stdin contracts and tools/check.f's usage record.
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/hb-cli-contracts-test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/hb-cli-contracts-test.f
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -46,8 +46,14 @@ create HCT-BIG HCT-BIG-CAP allot
 : HCT-LF ( -- )
    10 SB-APPEND-C ;
 
+: HCT-REQUIRES ( -- )
+   s" require src/lib/heap.f" SB-APPEND HCT-LF
+   s" require src/lib/vector.f" SB-APPEND HCT-LF
+   s" require src/lib/source.f" SB-APPEND HCT-LF ;
+
 : HCT-CHILD$ ( -- str )
    SB-RESET
+   HCT-REQUIRES
    s" : MAIN ( -- )" SB-APPEND HCT-LF
    s"    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}" SB-APPEND HCT-LF
    s"    v SOURCE:READ-STDIN-ALL" SB-APPEND HCT-LF
@@ -67,6 +73,7 @@ create HCT-BIG HCT-BIG-CAP allot
 \ prints the count, the first three bytes and whether the pattern follows them.
 : HCT-BIG-CHILD$ ( -- str )
    SB-RESET
+   HCT-REQUIRES
    s" : HCT-BYTE ( n -- n ) 26 mod 97 + ;" SB-APPEND HCT-LF
    s" : HCT-AFTER? ( str -- bool )" SB-APPEND HCT-LF
    s"    {: s:str :}" SB-APPEND HCT-LF

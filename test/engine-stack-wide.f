@@ -2,6 +2,7 @@
 \ active stack allocation.
 require test/engine-stack-lifecycle-lib.f
 require src/lib/string.f
+require src/lib/test/assert.f
 
 package STACK-LIFECYCLE-TEST
 

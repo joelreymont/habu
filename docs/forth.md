@@ -212,10 +212,10 @@ private
   package qualifies (`OTHER:WORD`) or reopens it. A subsystem is a few internal
   module packages plus one public-interface package; only truly external code
   writes the qualifier.
-- A multi-file package reopens per file. When the loader lists every file in
-  order (`bin/hb --load app/core.f app/api.f`; `tools/check.f --source-list
-  app/core.f app/api.f` for the checker), add no include; include only when a
-  file should own loading its dependencies:
+- A multi-file package reopens per file. Each file requires the files whose
+  words it calls, even when the loader lists every file in order
+  (`bin/hb --load app/core.f app/api.f`): a listed file that calls another's
+  words without requiring it is rejected with `E-UNREQUIRED`:
 
 ```forth
 \ app/core.f
@@ -234,7 +234,7 @@ public
 
 ```forth
 \ app/api.f
-include app/core.f
+require app/core.f
 
 package APP
 
@@ -1094,7 +1094,8 @@ named words, with one word that runs them in order.
   separate files, split at responsibility boundaries.
 - Run a multi-file tool as `hb --load src/lib/a.f src/lib/b.f tool.f -- args…`:
   sources before `--`, `SCRIPT-ARGV$` after it, fd 0 tool data, as it is
-  whenever hb has an argument.
+  whenever hb has an argument. Listing a file loads it but does not let
+  another listed file call it: each still requires the files it calls.
 - **Data never spans a load.** The loader aligns `here` to a cell when a loaded
   file starts and when it ends, so a file's data bytes depend only on its own
   source and its stored object installs whatever earlier files allotted. A live
@@ -1790,7 +1791,7 @@ Assertions run inside a checked test word; consume and compare the top result
 first, and the word's effect ensures every result is used:
 
 ```forth
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package PAIR-TEST
 : PAIR ( -- n n ) 3 4 ;
@@ -2235,9 +2236,9 @@ definition, and a map the system refuses throws `E-BODY-TEXT`.
   `T=`/`T<>` for scalars, `T$=` for strings, `TTRUE`/`TFALSE` for flags (not
   `T=`), `TTHROWS` for codes; several results compared top down, one assertion
   each.
-- `src/lib/test.f` is the test framework; a test file requires its own
-  dependencies. A suite file installs its hooks, declares groups and rows and
-  runs them once; the `src/lib/test/suite.f` header states the hook set, the
+- `src/lib/test/assert.f`, `suite.f` and `eval.f` are the test framework; a
+  test file requires the ones it calls and its own dependencies. A suite file
+  installs its hooks, declares groups and rows and runs them once; the `src/lib/test/suite.f` header states the hook set, the
   group modes and the row grammar.
 - Runners keep no suite iteration state on the return stack while a test runs:
   tests may `catch`/`throw`, so loops use explicit index/count cells that a
@@ -2246,7 +2247,8 @@ definition, and a map the system refuses throws `E-BODY-TEXT`.
   hooks rather than global stems such as `FOO-TEST-SETUP-N`.
 
 ```forth
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/suite.f
 
 package FEATURE-TEST
 
@@ -2451,6 +2453,22 @@ runtime or analysis layer.
 
 These edge cases name the refusal at the boundary. The general rules are in the
 sections above.
+
+- **A file calls only what it requires itself.** `a.f` requires
+  `src/lib/fs.f`; `b.f` requires `a.f` and calls `FS:EXISTS?`: that token is
+  `E-UNREQUIRED`, help `add require src/lib/fs.f to b.f`, though a.f's
+  require loaded fs.f. The rule is direct, not transitive, so a verdict rests
+  on the file's own text and a facade that only requires others grants
+  nothing. Text an `include` reads is the includer's. Text a word evaluates,
+  or a definer renders, is no file's, since the file's own text does not show
+  it: `: MAC ( -- ) s" PM:SEVEN drop" evaluate-closed ;` in a file that
+  requires PM's file runs at the top level of one that does not, and
+  `s" require pm.f" evaluate` leaves that file's own `PM:SEVEN` `E-UNREQUIRED`.
+  A word such a text defines is the file's being read, and a file it loads is
+  judged as itself. The boot prefix's words, a kernel primitive, a REPL or
+  stdin definition and a word below a policy's seal, which its host admitted,
+  are callable from any file. A word of a file outside an open source root is
+  callable from any file under it.
 
 - **An immediate in a checked body runs while the body compiles.** Its effect
   is no step of the body, so it must be `( -- )`; it reads the tokens its
@@ -2880,7 +2898,7 @@ sections above.
   exits, and on a task's thread evaluation exits before reading text. The open
   cases are under **Checked code and primitive boundaries**.
 - **`TEST-EVAL` returns a measured value from text.** From
-  `src/lib/test.f`, `TEST-EVAL:N ( ^u8 n -- n )` takes exactly one cell,
+  `src/lib/test/eval.f`, `TEST-EVAL:N ( ^u8 n -- n )` takes exactly one cell,
   `TEST-EVAL:FLAG ( ^u8 n -- bool )` exactly one flag, and
   `TEST-EVAL:RC ( ^u8 n -- n )` returns the `evaluate-closed` throw code
   or zero. An empty N text underflows, `1 2` is `E-EVAL-RESIDUE`, `drop 1`

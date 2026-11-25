@@ -3,7 +3,7 @@
 \ (test/reopen-binding-lib.f) publishes @, dup and + with effects the engine's
 \ words of those spellings lack; this file reopens it and names the tails bare.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require test/reopen-binding-lib.f
 require test/reopen-binding-early.f
 require test/reopen-binding-late.f

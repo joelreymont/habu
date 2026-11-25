@@ -1,5 +1,5 @@
 \ Exercise the tty line boundary, not evaluate-closed's separate recovery.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f
 require src/lib/test/ending.f

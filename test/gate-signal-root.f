@@ -13,6 +13,7 @@ require src/lib/test/runner.f
 require test/gate-pool.f
 require src/lib/content-key.f
 require test/gate-stdlib-lib.f
+require src/lib/test/suite.f
 
 STDLIB-GATE:MAIN
 

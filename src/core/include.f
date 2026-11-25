@@ -26,12 +26,13 @@ create INCLUDE-PATH PATH-CAP 1 + allot
 package REQUIRE-REG
 private
 
-\ A DATA block of (offset,length) pairs followed by path bytes.
+\ A DATA block of (offset, length, file id) triples followed by path bytes.
 PERSISTED-PTR-VARIABLE FROZEN
-\ One movable mapping: row i's path pointer, then ROW-CAP cells on, at ROW-LENS,
-\ its length. The paths live in chunks that never move.
+\ One movable mapping: row i's path pointer, ROW-CAP cells on (ROW-LENS) its
+\ length, ROW-CAP further (ROW-IDS) its file id; path chunks never move.
 PERSISTED-PTR-U8-TABLE-VARIABLE ROWS
 PERSISTED-PTR-VARIABLE ROW-LENS
+PERSISTED-PTR-VARIABLE ROW-IDS
 variable ROW-CAP
 PERSISTED-PTR-U8-TABLE-VARIABLE CHUNK
 variable PREFIX-N
@@ -258,6 +259,7 @@ create OWNER-BUF PATH-BYTES allot
 create OWNER-SAVE PATH-BYTES allot
 create POLICY-ROOT-BUF PATH-BYTES allot
 variable POLICY-ROOT-U
+POLICY-ROOT-BUF POLICY-ROOT-U REQUIRES:POLICY-ROOT!
 create POLICY-LF 10 c,
 \ A path as written has no length limit, so these buffers are mappings each FIT
 \ grows before a write; no address into one is kept across its FIT.
@@ -452,16 +454,14 @@ private
    repeat ;
 
 
-\ The program file `hb prog.f` runs: argv[1], which the launcher leaves in
-\ PROGRAM-FILE-CELL only on that route. PROGRAM? counts it as loaded:
-\ RUN-PROGRAM gives it a frame but no registry row names it, since a row
-\ appended on first use would vanish under the rollback of a failed require or
-\ a discovery pass. Deriving writes only PROGRAM-BUF, so the caller's scratch
-\ survives.
+\ The program file `hb prog.f` runs. No registry row names it: one appended on
+\ first use would vanish as a failed require or a discovery pass rolls back.
 PROGRAM-FILE-CELL RESERVED-PTR-U8-CELL PROGRAM-ARG
 create PROGRAM-BUF PATH-BYTES allot
 variable PROGRAM-U
+SCRATCH-VARIABLE PROGRAM-ID
 
+\ Of the path buffers it writes only PROGRAM-BUF, so the caller's survive.
 : PROGRAM-INIT ( -- )
    PROGRAM-U @ 0= 0= if exit then
    PROGRAM-ARG @ {: a:^ :}
@@ -489,6 +489,7 @@ variable PROGRAM-U
    u 0 ?do a i + scratch-cell-mark 1 cells +loop ;
 
 CWD-BUF PATH-BYTES SCRATCH-BYTES        CWD-U scratch-cell-mark
+CWD-BUF CWD-U REQUIRES:CWD!
 CANON-BUF PATH-BYTES SCRATCH-BYTES      CANON-U scratch-cell-mark
 NORMAL-U scratch-cell-mark
 CANDIDATE-BUF PATH-BYTES SCRATCH-BYTES  CANDIDATE-U scratch-cell-mark
@@ -498,6 +499,7 @@ OWNER-SAVE PATH-BYTES SCRATCH-BYTES
 REQUEST-U scratch-cell-mark
 ENGINE-BUF PATH-BYTES SCRATCH-BYTES     ENGINE-U scratch-cell-mark
 ENGINE-READ scratch-cell-mark
+ENGINE-BUF ENGINE-U REQUIRES:ENGINE!
 PROGRAM-BUF PATH-BYTES SCRATCH-BYTES    PROGRAM-U scratch-cell-mark
 
 public
@@ -1041,7 +1043,7 @@ EXPORT BOOT:data-base
 EXPORT LOADER:INCLUDE-DIE
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
-$7FFFFFFFFFFFFFFF 2 cells / constant ROW-LIMIT
+$7FFFFFFFFFFFFFFF 3 cells / constant ROW-LIMIT
 3 cells constant CHUNK-HEAD
 MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
 
@@ -1050,7 +1052,7 @@ MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
 CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
 
 : FROZEN-REC ( n -- ^n )
-   2 * cells FROZEN @ swap + ;
+   3 * cells FROZEN @ swap + ;
 
 : FROZEN-LEN ( n -- n )
    FROZEN-REC CELL + @ ;
@@ -1070,35 +1072,42 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
 : ROW-LEN@ ( n -- n )
    ROW-LEN-ADDR @ ;
 
+: ROW-ID-ADDR ( n -- ^n )
+   ROW-IDS @ swap cells + ;
+
 : FROZEN-BYTES ( n -- n )
-   2 * cells ;
+   3 * cells ;
 
 : ROW-NEW-CAP ( n -- n ) {: need:n :}
    need $40 max
    ROW-CAP @ ROW-LIMIT 2 / <= if ROW-CAP @ 2 * max then ;
 
 : COLS-MAP ( n -- ^^u8 )
-   2 * cells {: bytes:n :}
+   3 * cells {: bytes:n :}
    bytes map-anon 0 <> if
       drop bytes s" the loader's row table" s" " REJECTION:MAP-PASS-FILE
    then ;
 
 : COLS-UNMAP ( ^^u8 n -- ) {: rows:^ cap:n :}
-   rows cap 2 * cells munmap 0 < if
+   rows cap 3 * cells munmap 0 < if
       s" require: cannot release the row table" INCLUDE-DIE
    then ;
 
 : ROW-GROW ( n -- ) {: need:n :}
    need ROW-NEW-CAP {: cap:n :}
-   ROWS @ ROW-LENS @ ROW-CAP @ {: old:^ oldlens:^ oldcap:n :}
+   ROWS @ ROW-LENS @ ROW-IDS @ ROW-CAP @
+   {: old:^ oldlens:^ oldids:^ oldcap:n :}
    cap COLS-MAP {: base:^ :}
    base BYTE-VIEW cap cells + CELL-VIEW {: lens:^ :}
+   base BYTE-VIEW cap 2 * cells + CELL-VIEW {: ids:^ :}
    oldcap 0 ?do
       old i ptr-field @ base i ptr-field !
       oldlens i cells + @ lens i cells + !
+      oldids i cells + @ ids i cells + !
    loop
    base ROWS !
    lens ROW-LENS !
+   ids ROW-IDS !
    cap ROW-CAP !
    oldcap 0 > if old oldcap COLS-UNMAP then ;
 
@@ -1110,6 +1119,7 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
    ROWS @ ROW-CAP @ COLS-UNMAP
    NULL-PTR ROWS !
    NULL-PTR ROW-LENS !
+   NULL-PTR ROW-IDS !
    0 ROW-CAP ! ;
 
 : CHUNK-PREV@ ( ^^u8 -- ^^u8 )
@@ -1210,6 +1220,11 @@ public
 : LEN ( n -- n ) {: idx:n :}
    idx PREFIX-N @ < if idx FROZEN-LEN else idx ROW-LEN@ then ;
 
+\ Row idx's file id: 0 for a row no require or end file minted one for.
+: ID ( n -- n ) {: idx:n :}
+   idx PREFIX-N @ < if idx FROZEN-REC 2 cells + @ exit then
+   idx ROW-ID-ADDR @ ;
+
 : APPEND ( str -- ) {: a:^ u:n :}
    REQUIRE-N @ {: idx:n :}
    idx 1+ ROW-ENSURE
@@ -1217,7 +1232,14 @@ public
    a path u BYTE-COPY
    path idx ROW-PTR !
    u idx ROW-LEN-ADDR !
+   0 idx ROW-ID-ADDR !
    idx 1+ REQUIRE-N ! ;
+
+\ APPEND of a file the image carries, which a build's end file mints its id
+\ for: the rows' order is their ids'.
+: APPEND-FILE ( str -- ) {: a:^ u:n :}
+   a u APPEND
+   a u NULL$ REQUIRES:MINT  REQUIRE-N @ 1- ROW-ID-ADDR ! ;
 
 : REWIND ( n -- ) {: keep:n :}
    keep PREFIX-N @ <= if
@@ -1254,6 +1276,7 @@ public
       REQUIRE-N @ idx 1+ ?do
          i ROW-PTR@ i 1- ROW-PTR !
          i ROW-LEN@ i 1- ROW-LEN-ADDR !
+         i ROW-ID-ADDR @ i 1- ROW-ID-ADDR !
       loop
       -1 REQUIRE-N +!
    then
@@ -1283,8 +1306,9 @@ public
       {: cursor:n :}
       i LEN {: u:n :}
       i SLOT fresh cursor + u BYTE-COPY
-      cursor fresh i 2 * cells + CELL-VIEW !
-      u fresh i 2 * 1+ cells + CELL-VIEW !
+      cursor fresh i 3 * cells + CELL-VIEW !
+      u fresh i 3 * 1+ cells + CELL-VIEW !
+      i ID fresh i 3 * 2 + cells + CELL-VIEW !
       cursor u +
    loop drop
    CHUNKS-RELEASE
@@ -1304,11 +1328,18 @@ private
       1+
    repeat drop INCLUDE-TRUE ;
 
-: REQUIRE-KNOWN? ( str -- bool ) {: a:^ u:n :}
+public
+
+\ The known row holding path a u, or -1.
+: ROW-OF ( str -- n ) {: a:^ u:n :}
    REQUIRE-BASE @ begin dup REQUIRE-N @ < while
-      dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
+      dup a u rot REQUIRE-PATH= if exit then
       1+
-   repeat drop INCLUDE-FALSE ;
+   repeat drop -1 ;
+
+private
+
+: REQUIRE-KNOWN? ( str -- bool ) ROW-OF 0 >= ;
 
 ;package
 
@@ -1394,20 +1425,25 @@ ROOT-MOVER
 
 private
 
+\ A new id for the file at path a u, whose requires resolve under root.
+: FILE-ID ( str str -- n ) {: a:^ u:n root:^ rootu:n :}
+   root rootu ENGINE$ STR:= if a u ENGINE$ RELATIVE else a u then {: p:^ pu:n :}
+   p c@ 47 = if root rootu else NULL$ then {: r:^ ru:n :}
+   p pu r ru REQUIRES:MINT ;
+
 : REQUEST! ( str -- ) {: a:^ u:n :}
    a u CHECK
    u REQUEST-FIT  a REQUEST-BUF u BYTE-COPY u REQUEST-U ! ;
 
 : REQUEST$ ( -- str ) REQUEST-BUF REQUEST-U @ ;
 
-\ Portable names describe only frozen engine facts, and a boot row IS its
-\ portable name, so this reads the registry itself. Ordinary application facts
-\ retain their canonical identity so identical names in distinct roots coexist.
-: BOOT-KNOWN? ( str n -- bool ) {: a:^ u:n first:n :}
+\ The boot row from `first` on holding a u, or -1; a boot row is its portable
+\ name, so this reads the registry itself.
+: BOOT-ROW-OF ( str n -- n ) {: a:^ u:n first:n :}
    first begin dup REQUIRE-BOOT-LIMIT < while
-      dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
+      dup a u rot REQUIRE-PATH= if exit then
       1+
-   repeat drop INCLUDE-FALSE ;
+   repeat drop -1 ;
 
 : CANDIDATE$ ( -- str ) CANDIDATE-BUF CANDIDATE-U @ ;
 
@@ -1418,25 +1454,27 @@ private
    a u u 1+ NORMALIZE-LIMIT
    NORMAL-BUF NORMAL-U @ ;
 
-\ Whether a selected candidate is the engine root's own copy of a frozen row,
-\ from row `first` on. Below the root its physical path spells the row. A
-\ directory symlink inside the root can carry the root's spelling of a row
-\ outside it, so the request spelled under the root is asked too, and counts
-\ only when it resolves to the same physical candidate: symlink/.. can name
-\ another file. Spelling the request reuses NORMAL-BUF, which holds the
-\ candidate, so the candidate is copied first.
-: BOOT-CANDIDATE ( str str str n -- str bool )
+\ The frozen row from `first` on whose engine-root copy the candidate is, or -1;
+\ the request spelled under the root counts only if it resolves to the candidate.
+: BOOT-MATCH ( str str str n -- str n )
    {: a:^ u:n root:^ rootu:n req:^ requ:n first:n :}
-   first REQUIRE-BOOT-LIMIT >= if a u INCLUDE-FALSE exit then
-   a u root rootu RELATIVE first BOOT-KNOWN? if a u INCLUDE-TRUE exit then
+   first REQUIRE-BOOT-LIMIT >= if a u -1 exit then
+   a u root rootu RELATIVE first BOOT-ROW-OF {: row:n :}
+   row 0 >= if a u row exit then
    u CANDIDATE-U ! a CANDIDATE-BUF u BYTE-COPY
    root rootu req requ UNDER root rootu BELOW? if
-      NORMAL-BUF NORMAL-U @ root rootu RELATIVE first BOOT-KNOWN? if
+      NORMAL-BUF NORMAL-U @ root rootu RELATIVE first BOOT-ROW-OF {: under:n :}
+      under 0 >= if
          NORMAL-BUF NORMAL-U @ CANONICAL drop
-         CANDIDATE$ STR:= CANDIDATE$ rot exit
+         CANDIDATE$ STR:= if CANDIDATE$ under exit then
+         CANDIDATE$ -1 exit
       then
    then
-   CANDIDATE$ INCLUDE-FALSE ;
+   CANDIDATE$ -1 ;
+
+\ Whether a selected candidate is the engine root's own copy of a frozen row.
+: BOOT-CANDIDATE ( str str str n -- str bool )
+   BOOT-MATCH 0 >= ;
 
 \ One root's candidate for REQUEST$: its canonical path, whether it is known,
 \ and whether a search stops there (known, or on disk). Under any root the
@@ -1795,9 +1833,17 @@ public
 ;package
 
 package REQUIRE-REG
+EXPORT SOURCE-ROOT:FILE-ID
 public
 
-\ A boot row is recorded portably, in the one spelling BOOT-KNOWN? asks for,
+\ Mints row idx's file id, its requires resolved under root; the id leaves with
+\ its row.
+: MINT ( n str -- n ) {: idx:n root:^ rootu:n :}
+   idx SLOT idx LEN root rootu FILE-ID {: id:n :}
+   id idx ROW-ID-ADDR !
+   id ;
+
+\ A boot row is recorded portably, in the one spelling BOOT-ROW-OF asks for,
 \ relative to the engine root; a build's fresh registry makes that root the
 \ working directory. Against the load's own owner root a require issued by a
 \ boot file would shorten to a bare basename no query spells, naming a
@@ -1871,6 +1917,7 @@ public
 0 constant KIND-INCLUDED
 1 constant KIND-REQUIRED
 2 constant KIND-PROVIDED
+3 constant KIND-TEXT-REQUIRED        \ by text a word evaluated: it grants no file
 0 constant STATE-FRESH
 1 constant STATE-KNOWN
 
@@ -2021,6 +2068,12 @@ public
 
 : COUNT ( -- n )             EVENT-N @ ;
 : KIND@ ( n -- n )           0 EVENT-FIELD@ ;
+
+\ Whether event n is a require, of a file's text or of one a word evaluated.
+: REQUIRE? ( n -- bool )
+   KIND@ {: kind:n :}
+   kind KIND-REQUIRED =  kind KIND-TEXT-REQUIRED =  or ;
+
 : STATE@ ( n -- n )          5 EVENT-FIELD@ ;
 : PATH@ ( n -- str ) {: ix:n :}
    ix 1 EVENT-FIELD@ EVENT-POOL-AT
@@ -2083,6 +2136,10 @@ SRCLOC:FR-EXEC-COPY constant FR-EXEC-COPY
 15 cells constant FR-T-NODES
 16 cells constant FR-T-ROOTS
 17 cells constant FR-T-PARAMS
+\ The reader its text is read by (REQUIRES:CURRENT@).
+18 cells constant FR-FILE
+\ The file id current when it opened, current again once it closes.
+19 cells constant FR-WAS
 SRCLOC:FR-PATH constant FR-PATH
 SRCLOC:FR-ROOT constant FR-ROOT
 SRCLOC:HEADER-BYTES constant HEADER-BYTES
@@ -2153,7 +2210,21 @@ variable LAST-LOAD-EVAL-OK
    TOP@ {: frame:^ :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ ;
 
-: PUSH ( -- )
+: FRAME-FILE ( ^u8 -- n ) {: frame:^ :}
+   frame 0= if 0 exit then
+   frame FR-FILE + CELL-VIEW @ ;
+
+public
+
+\ The reader of the frame the newest one opened in (REQUIRES); 0 for an entry.
+: OUTER-FILE ( -- n ) TOP@ FRAME-PREV @ FRAME-FILE ;
+
+private
+
+\ Opens a frame whose text is read by reader id (REQUIRES); POP makes current
+\ again the reader current here.
+: PUSH ( n -- )
+   {: id:n :}
    HEADER-BYTES ROOM-MIN + {: bytes:n :}
    bytes map-anon 0= 0= if
       drop bytes s" a source frame" INCLUDE-PATH INCLUDE-PATH-U @ REJECTION:MAP-PASS-FILE
@@ -2169,6 +2240,7 @@ variable LAST-LOAD-EVAL-OK
    0 frame FR-CTIME-SEC + CELL-VIEW !
    0 frame FR-CTIME-NS + CELL-VIEW !
    -1 frame FR-STAMP-SIZE + CELL-VIEW !
+   id frame FR-FILE + CELL-VIEW !
    TRANSIENT-MARK {: nodes:n roots:n params:n :}
    nodes frame FR-T-NODES + CELL-VIEW !
    roots frame FR-T-ROOTS + CELL-VIEW !
@@ -2177,7 +2249,9 @@ variable LAST-LOAD-EVAL-OK
    CURRENT$ {: root:^ rootu:n :}
    rootu frame FR-ROOTLEN + CELL-VIEW !
    root frame FR-ROOT + rootu BYTE-COPY
+   REQUIRES:CURRENT@ frame FR-WAS + CELL-VIEW !
    frame TOP!
+   id REQUIRES:CURRENT!
    PUBLISH-LOCATION ;
 
 : POP ( -- )
@@ -2186,6 +2260,7 @@ variable LAST-LOAD-EVAL-OK
    frame FRAME-EXEC-COPY @ {: copy:^ :}
    frame FR-SIZE + CELL-VIEW @ 1 max {: copyu:n :}
    frame FRAME-PREV @ TOP!
+   frame FR-WAS + CELL-VIEW @ REQUIRES:CURRENT!
    PUBLISH-LOCATION
    copy 0= if 0 else copy copyu munmap then {: copyrc:n :}
    frame dup MAPPED munmap 0 < copyrc 0 < or if
@@ -2319,10 +2394,8 @@ private
 \ The loop LOAD-UNIT runs a loaded file's bytes through; USE-INTERPRETER swaps it.
 defer INCLUDE-INTERPRET ( str n n -- nominal )
 
-\ The design seal is read where the engine's loop reads a token, and the loop
-\ written in Habu reads it nowhere, so a file loaded once the seal is set is read
-\ by the engine's loop whatever INCLUDE-INTERPRET holds. `0 <>`, not `0<>`: the
-\ prefix loads src/lib/prelude.f, which defines `0<>`, after this file.
+\ Once the seal is set a file is read by `evaluate-range`, which reads the seal,
+\ whatever INCLUDE-INTERPRET holds. `0 <>`: prelude.f's `0<>` loads after this.
 : POLICY-SEALED? ( -- bool )
    data-base POLICY-NDICT-CELL + @ 0 <> ;
 
@@ -2604,9 +2677,10 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    [: CALL-UNIT ;] source-file-run
    align ;
 
-: LOAD-CURRENT ( -- )
+: LOAD-CURRENT ( n -- )
+   {: id:n :}
    data-base SECTION-CELL + @ {: sec:n :}
-   PUSH
+   id PUSH
    [: LOAD-UNIT ;] catch {: rc:n :}
    sec data-base SECTION-CELL + !
    rc 0 <> if TOP@ FR-EVAL-OK + CELL-VIEW @ LAST-LOAD-EVAL-OK ! then
@@ -2628,31 +2702,32 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    a u HOLD TOP-PATH$ q execute
    a u q ;
 
-: WITH-BYTES-CURRENT ( [ str str -- ] -- [ str str -- ] ) {: q :}
-   PUSH
+\ The frame is read by reader id (REQUIRES).
+: WITH-BYTES-CURRENT ( n [ str str -- ] -- n [ str str -- ] ) {: id:n q :}
+   id PUSH
    q
    [: READ-FOR ;] catch {: rc:n :}
    drop
    INCLUDE-CLOSE
    POP
    rc 0= 0= if rc throw then
-   q ;
+   id q ;
 
-: WITH-SUPPLIED-CURRENT ( str [ str str -- ] -- str [ str str -- ] )
-   {: a:^ u:n q :}
-   PUSH a u q
+: WITH-SUPPLIED-CURRENT ( str n [ str str -- ] -- str n [ str str -- ] )
+   {: a:^ u:n id:n q :}
+   id PUSH a u q
    [: COPY-FOR ;] catch {: rc:n :}
    2drop drop
    INCLUDE-CLOSE
    POP
    rc 0= 0= if rc throw then
-   a u q ;
+   a u id q ;
 
-: LOAD-RAW ( str str -- ) {: w:^ wu:n a:^ u:n :}
+: LOAD-RAW ( str str n -- ) {: w:^ wu:n a:^ u:n id:n :}
    a u CONFINE
    INCLUDE-PATH0 drop
    w wu RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n base:n :}
-   [: LOAD-CURRENT ;] catch {: rc:n :}
+   [: id LOAD-CURRENT ;] catch {: rc:n :}
    old oldu base ROOT-LEAVE
    rc 0= 0= if rc throw then ;
 
@@ -2662,26 +2737,30 @@ public
 \ program's directory.
 : RUN-PROGRAM ( str -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REFUSE
+   PROGRAM-ID @ {: was:n :}
    NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER:RESOLVE {: path:^ pathu:n exists:bool :}
    path pathu a u NULL-PTR 0 CONFINE-AS INCLUDE-PATH0 drop
    exists 0= if a u NULL-PTR 0 INCLUDE-TRUE MISSING-SOURCE then
-   PUSH
+   path pathu CURRENT$ FILE-ID {: id:n :}
+   path pathu PROGRAM? if id PROGRAM-ID ! then
+   id PUSH
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
    [: LOAD-UNIT ;] catch {: rc:n :}
    ra ru REQUEST-AT!
    INCLUDE-CLOSE
    POP
+   was 0 <> if was PROGRAM-ID ! then  \ an outermost run's id stays, for an exit hook
    rc 0= 0= if rc throw then ;
 
 private
 
-\ Loads a u for loader word w, the word the program called; t tu is the
-\ request token an open of a u that fails stands at, or empty.
-: LOAD-RUN ( str str str -- )
-   {: t:^ tu:n w:^ wu:n a:^ u:n :}
+\ Loads a u, read by reader id, for w, the word the program called; an open of a
+\ u that fails stands at the request token t tu, or nowhere when it is empty.
+: LOAD-RUN ( str str str n -- )
+   {: t:^ tu:n w:^ wu:n a:^ u:n id:n :}
    0 LAST-LOAD-EVAL-OK !
    REQUEST-AT$ {: ra:^ ru:n :}  t tu REQUEST-AT!
-   [: w wu a u LOAD-RAW ;] catch {: rc:n :}
+   [: w wu a u id LOAD-RAW ;] catch {: rc:n :}
    ra ru REQUEST-AT!
    rc 0 <> if rc throw then
    0 LAST-LOAD-EVAL-OK ! ;
@@ -2695,34 +2774,35 @@ public
    LAST-LOAD-EVAL-OK @ 0 <> ;
 
 \ PATH has already been resolved by the loader's resolver, under ROOT. This
-\ opens a source frame and makes ROOT current until the callback returns.
-: WITH-BYTES ( str str [ str str -- ] -- )
-   {: root:^ rootu:n path:^ pathu:n q :}
+\ opens a source frame read by reader id and makes ROOT current until the
+\ callback returns.
+: WITH-BYTES ( str str n [ str str -- ] -- )
+   {: root:^ rootu:n path:^ pathu:n id:n q :}
    s" SOURCE-ROOT:WITH-BYTES" path pathu GIVEN-CHECK
    s" SOURCE-ROOT:WITH-BYTES" path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
    s" SOURCE-ROOT:WITH-BYTES" root rootu ROOT-ENTER {: old:^ oldu:n base:n :}
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
    TOKEN-CLEAR {: t:^ tu:n :}
-   q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
-   drop
+   id q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
+   2drop
    t tu SRCLOC:TOKEN!
    ra ru REQUEST-AT!
    old oldu base ROOT-LEAVE
    rc 0= 0= if rc throw then ;
 
-\ A caller that owns PATH's source bytes opens the same loader frame under ROOT,
-\ the root PATH resolved under, from those bytes rather than a disk copy.
-: WITH-SUPPLIED ( str str str [ str str -- ] -- )
-   {: root:^ rootu:n path:^ pathu:n src:^ srcu:n q :}
+\ WITH-BYTES from bytes the caller owns, read by reader id, in place of a disk
+\ copy.
+: WITH-SUPPLIED ( str str str n [ str str -- ] -- )
+   {: root:^ rootu:n path:^ pathu:n src:^ srcu:n id:n q :}
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu GIVEN-CHECK
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
    s" SOURCE-ROOT:WITH-SUPPLIED" root rootu ROOT-ENTER {: old:^ oldu:n base:n :}
    REQUEST-AT$ {: ra:^ ru:n :}  NULL-PTR 0 REQUEST-AT!
    TOKEN-CLEAR {: t:^ tu:n :}
-   src srcu q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}
-   2drop drop
+   src srcu id q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}
+   2drop 2drop
    t tu SRCLOC:TOKEN!
    ra ru REQUEST-AT!
    old oldu base ROOT-LEAVE
@@ -2751,17 +2831,52 @@ private
    DISCOVERY? if RESOLVE-AT exit then
    LOAD-RESOLVE ;
 
-\ A path the registry already holds is skipped. w is the word the program called.
+public
+
+\ The file id of the program file, or of the registry row or the frozen row, a
+\ require of a u selected as path; 0 for none of them.
+: REQUIRED-ID ( str str -- n ) {: a:^ u:n path:^ pathu:n :}
+   path pathu PROGRAM? if PROGRAM-ID @ exit then
+   path pathu REQUIRE-REG:ROW-OF {: row:n :}
+   row 0 >= if row REQUIRE-REG:ID exit then
+   a u REQUEST!
+   path pathu ENGINE$ REQUEST$ REQUIRE-BASE @ BOOT-MATCH nip nip {: boot:n :}
+   boot 0 < if 0 exit then
+   boot REQUIRE-REG:ID ;
+
+\ The current text requires path, which a require of a u selected and the
+\ registry holds.
+: REQUIRE-HELD ( str str -- )
+   REQUIRED-ID REQUIRES:EDGE ;
+
+\ Row, which a require just stored, gets a new file id, its requires resolved
+\ under root, and the current text requires it; answers the id.
+: REQUIRE-STORED ( n str -- n )
+   REQUIRE-REG:MINT {: id:n :}
+   id REQUIRES:EDGE
+   id ;
+
+private
+
+\ The kind of a require the current text makes. A discovery reports what a file
+\ asks for, not who runs it.
+: REQUIRED-KIND ( -- n )
+   DISCOVERY? 0=  REQUIRES:CURRENT@ 0 <  and if SOURCE-EVENT:KIND-TEXT-REQUIRED exit then
+   SOURCE-EVENT:KIND-REQUIRED ;
+
+\ A known path is skipped; either way the current text requires its file. w is
+\ the word the program called; the resolver left RESOLVED-ROOT$.
 : REQUIRE-BODY ( str str str bool -- )
    {: w:^ wu:n a:^ u:n path:^ pathu:n known:bool :}
-   a u path pathu SOURCE-EVENT:KIND-REQUIRED known REQUIRE-STATE EVENT-RECORD
-   known if exit then
+   a u path pathu REQUIRED-KIND known REQUIRE-STATE EVENT-RECORD
+   known if a u path pathu REQUIRE-HELD exit then
    w wu path pathu BUILD-REFUSE
    REQUIRE-REG:MARK {: row:n :}
    path pathu REQUIRE-REG:STORE {: row-path:^ row-pathu:n :}
    DISCOVERY? if exit then
+   row RESOLVED-ROOT$ REQUIRE-STORED {: id:n :}
    a u SRCLOC:ORIGIN$ {: t:^ tu:n :}
-   [: t tu w wu row-path row-pathu LOAD-RUN ;] catch {: rc:n :}
+   [: t tu w wu row-path row-pathu id LOAD-RUN ;] catch {: rc:n :}
    rc 0 <> if
       COMMITTED? 0= if row REQUIRE-REG:REMOVE then
       rc throw
@@ -2769,7 +2884,8 @@ private
 
 public
 
-\ `included` of a u for loader word w, the word the program called.
+\ `included` of a u for loader word w, the word the program called. Its text is
+\ its includer's, even when a program provided the file.
 : INCLUDED-AS ( str str -- )
    {: w:^ wu:n a:^ u:n :}
    w wu a u [: LOADER-FIND ;] LOADER:RESOLVE drop {: path:^ pathu:n :}
@@ -2777,12 +2893,13 @@ public
    a u path pathu SOURCE-EVENT:KIND-INCLUDED SOURCE-EVENT:STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
    a u SRCLOC:ORIGIN$
-   w wu path pathu LOAD-RUN ;
+   w wu path pathu REQUIRES:CURRENT@ LOAD-RUN ;
 
 \ `required` of a u for loader word w, the word the program called.
 : REQUIRED-AS ( str str -- )
    {: w:^ wu:n a:^ u:n :}
-   w wu a u  w wu a u [: LOADER-FIND ;] LOADER:RESOLVE  REQUIRE-BODY ;
+   w wu a u  w wu a u [: LOADER-FIND ;] LOADER:RESOLVE
+   REQUIRE-BODY ;
 
 : ENTRY-REQUIRED ( str -- )
    {: a:^ u:n :}

@@ -2,11 +2,13 @@
 \ of its accessors, and no checked source reaches the mapping's cells.
 
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/fmt.f
 require src/compiler/workspace.f
+require src/lib/process.f
 
 T-RESET
 

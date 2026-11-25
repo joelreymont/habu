@@ -6,6 +6,14 @@ require src/core/exit-status.f
 require src/habu/stack-abi.f
 require src/habu/crash.f
 require src/arch/arm64/icode.f
+require src/arch/arm64/asm.f
+require src/arch/arm64/mnem.f
+HB-TARGET-LINUX? [if]
+   require src/os/linux/sys.f
+[then]
+HB-TARGET-MACOS? [if]
+   require src/os/macos/sys.f
+[then]
 using A64ASM
 using A64ICODE
 using SYSCALL

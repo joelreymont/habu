@@ -3,7 +3,7 @@
 \ the SIGALRM handler and prof-pc>rec run the same search, so this tests the
 \ handler's attribution itself.
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 
 
 \ Records defined here sit at the dictionary's top, so the sweep covers every

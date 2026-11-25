@@ -5,7 +5,7 @@
 \ 0 0 0 1, and a singular one, are E-MATRIX.
 \ Run: bin/hb --load src/lib/browser/studio-test.f
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fmath.f
 require src/lib/float32.f
 require src/lib/float32-buffer.f

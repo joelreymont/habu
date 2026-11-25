@@ -11,6 +11,7 @@ require src/lib/adt/option.f
 require tools/lsp-docs.f
 require tools/lsp-defs.f
 require tools/lsp-text.f
+require src/lib/json/write.f
 
 package LSP-HOVER
 using JSON

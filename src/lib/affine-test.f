@@ -1,7 +1,7 @@
 \ affine-test.f - rotations about a line and their composition with a
 \ transform, against closed-form matrices.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/affine.f
 require src/lib/fmath.f
 

@@ -1,10 +1,11 @@
 \ fs-mutate-test.f - focused tests for src/lib/fs-mutate.f.
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/fs-mutate-test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/fs.f src/lib/fs-mutate.f src/lib/fs-mutate-test.f
 \ Real special-inode fixtures require mkfifo and socat on PATH.
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/fs.f
 require src/lib/span.f
 require src/lib/fs-mutate.f
@@ -15,6 +16,11 @@ require src/lib/test/ending.f                      \ the TMPDIR child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
 require src/lib/test/wait.f                         \ the workers' waits on each other
 require src/lib/test/stderr.f                       \ the staged cleanup line
+require src/lib/fs-identity.f
+require src/lib/fd.f
+require src/lib/process-argv.f
+require src/lib/process.f
+require src/lib/ffi-abi.f
 
 variable FMT-ROOT-U
 variable FMT-REMOVE-U

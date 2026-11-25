@@ -1,5 +1,5 @@
 \ Checker and package boundaries of the append-only producer.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 require src/lib/c2-memory.f
 

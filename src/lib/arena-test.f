@@ -14,7 +14,7 @@
 \ it shrinks, or loses a block's bytes or leaves stale ones in it when its
 \ allocator resizes it.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/span.f
 require src/lib/allocator.f
 require src/lib/arena.f

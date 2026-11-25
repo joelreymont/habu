@@ -19,6 +19,9 @@ require src/arch/arm64/icode.f
 require src/arch/arm64/boot.f
 require src/os/macos/macho.f
 require src/os/linux/elf.f
+require src/habu/crash.f
+require src/habu/habu1.f
+require src/habu/habu2.f
 using CRASH
 using ENGINE-EMIT
 

@@ -1,5 +1,5 @@
 \ Starting and restarting workers must not append process code to the image.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/task.f
 
 package TASK-ENTRY-TEST

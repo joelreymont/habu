@@ -1,10 +1,10 @@
 \ sha256-file-test.f - checked fixture coverage for streaming SHA-256 helpers.
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/fs.f
 \ src/lib/fs-mutate.f tools/sha256-file-test.f
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/task.f                \ the two-task row: a context per thread

@@ -1,11 +1,11 @@
 \ seal.f - seal regressions: a sealed package, and every engine package hb's
 \ build seals, rejects a definition into it, under --load and in a SUBJECT fork.
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal.f
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f
 require src/lib/memory.f
 require src/lib/fs.f

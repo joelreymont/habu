@@ -10,6 +10,8 @@ require src/lib/process.f
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/rejection.f
+require src/lib/test/runner.f
+require src/lib/fs.f
 
 package MACHINE-STACK-TEST
 private

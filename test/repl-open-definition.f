@@ -2,7 +2,7 @@
 \ that runs between the lines, and the open definition holds the compile
 \ loop's bands RW; its end of input is a rejection, rc 70, since no input
 \ remains for the REPL to recover into.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f

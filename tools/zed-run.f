@@ -4,6 +4,7 @@
 \ HABU_ZED unset or 0 it prints an explicit SKIP line and exits 0.
 
 require tools/zed-run-lib.f
+require src/lib/process-command.f
 
 package ZED
 

@@ -3,10 +3,12 @@
 \ their public words: a missing or role-swapped field is a checker refusal and
 \ an incoherent combination a named throw with its code.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/compiler/digest.f
 require src/compiler/binding.f
+require src/compiler/target.f
+require src/compiler/numeric-policy.f
 
 package CTPOL-TEST
 private

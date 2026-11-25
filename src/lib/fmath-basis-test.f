@@ -1,5 +1,6 @@
 \ Observable exact basis maps, final rounding, and rejected domains.
-require src/lib/test.f
+require src/lib/fmath.f
+require src/lib/test/assert.f
 require src/lib/fmath-basis.f
 require src/lib/ieee754.f
 

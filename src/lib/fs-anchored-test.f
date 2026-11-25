@@ -1,11 +1,13 @@
 \ Anchored filesystem reads through the public source and native load paths.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs-mutate.f
 require src/lib/fs-anchored.f
 require src/lib/fs-list.f
 require src/lib/fd.f
 require src/lib/fmt.f
 require src/lib/task.f
+require src/lib/fs.f
+require src/lib/ffi-abi.f
 
 package FS-ANCHORED-TEST
 

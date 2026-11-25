@@ -8,6 +8,7 @@ require tools/code-dump-core.f
 require src/lib/process.f
 require test/gate-common.f
 require src/lib/test/eval.f
+require src/lib/test/runner.f
 
 using CODE-DUMP    \ DECODE / FIND-XT / LOAD-PROGRAM, called bare in GDB-CODE-DUMP
 

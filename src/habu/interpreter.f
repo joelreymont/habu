@@ -528,6 +528,12 @@ TYPED-VARIABLE REC ^n
    then
    rec XREF-START 0= if a u a u POLICY-REFUSE then ;
 
+\ The require check of the record the token a u binds; none binds no record.
+\ The checker judges every other token the load binds, but not a top-level tick.
+: REQUIRE-CHECK ( str ^n -- ) {: a:^ u:n rec:^ :}
+   rec XREF-FOUND? 0= if exit then
+   a u rec XREF-NULL - XREF-ADDR>INDEX REQUIRES:CHECK ;
+
 \ At top level the ordinary `require`'s global record, spelled so, is in the
 \ vocabulary as well. A body never admits it.
 : POLICY-REQUIRE? ( str ^n -- bool ) {: a:^ u:n rec:^ :}
@@ -561,6 +567,7 @@ TYPED-VARIABLE REC ^n
 : SEARCH ( -- )
    TOKEN$ bare-scope-find {: rec:^ used:^ used2:^ flags:n :}
    TOKEN$ rec POLICY-REQUIRE? 0= if TOKEN$ rec POLICY-CHECK-REC then
+   TOKEN$ rec REQUIRE-CHECK
    TOKEN$ rec used flags USING-CHECK REC ! ;
 
 : LOOKUP ( -- )
@@ -2385,7 +2392,8 @@ variable LIT-AT
    op ITEM-ABI:CALL = if a u  a u LOOKUP-NAME  FOUND-CALL exit then
    op ITEM-ABI:CALL-EXACT = if
       a u XREF-FIND {: rec:^ :}
-      a u rec POLICY-CHECK-REC  a u rec FOUND-CALL exit
+      a u rec POLICY-CHECK-REC
+      a u rec FOUND-CALL exit
    then
    op ITEM-OP-REFUSE ;
 
@@ -3302,8 +3310,6 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
       a u REJECTION:KEEP-LINE REPL-LINE REPL-OK !
    again ;
 
-public
-
 \ The input base stays the buffer's first byte, so lines count from it. A range
 \ starting past it continues a run of the buffer and keeps its PKG-OUTSIDE-CELL.
 : EVAL-FRAMED-RANGE ( str n n -- ) {: a:^ u:n first:n end:n :}
@@ -3338,10 +3344,12 @@ public
    f FRAME-FREE
    out FRAME-DONE <> if code throw then ;
 
+public
+
 : EVAL-FRAMED ( str -- ) {: a:^ u:n :}
    a u COMPILE-READS:TEXT+
    TOKENS-CELL CELL@ 1 + TOKENS-CELL CELL!
-   a u 0 u EVAL-FRAMED-RANGE ;
+   [: a u 0 u EVAL-FRAMED-RANGE ;] REQUIRES:AS-TEXT ;
 
 private
 \ `evaluate-closed`'s text runs on a stack of its own (habu1.f B-EVAL-CLOSED),

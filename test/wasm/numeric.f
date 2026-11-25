@@ -5,10 +5,11 @@
 \ SOURCE as a closed program and then NAME, as the Wasm driver builds the module
 \ and calls its entry.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
+require src/lib/process.f
 
 package WASM-NUMERIC-TEST
 private

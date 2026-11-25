@@ -1,7 +1,7 @@
 \ src/arch/wasm/kernel-words.f on the host: a SAME case runs an engine name and the word WKMAP
 \ (kernel-map.f) answers for it, each in a child of its own; both print and exit alike.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 require src/lib/string.f
 require src/lib/string-option.f

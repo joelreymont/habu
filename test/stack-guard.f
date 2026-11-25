@@ -1,6 +1,7 @@
 \ The guard-page contract itself: filling a guarded stack to its real
 \ capacity, the three named overflow faults, and a task's own guarded stack.
 require test/engine-stack-lifecycle-lib.f
+require src/lib/test/assert.f
 
 package STACK-LIFECYCLE-TEST
 

@@ -1,13 +1,14 @@
 \ Build and run one x86-64 program twice in the same output directory.
 \ The ELF must stay byte-identical across the cold and warm builds, and its map
 \ has the kernel words the program reaches and no other.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
 require src/core/sha256.f
+require src/lib/process.f
 
 package X64-LINK-RUN
 private

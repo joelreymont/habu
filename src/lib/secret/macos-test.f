@@ -7,7 +7,7 @@
 \ leaks; source/AOT mismatch. macOS only, as Linux has no erase.
 HB-TARGET-MACOS? ?TARGET
 require src/lib/secret.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/codegen.f
 require src/lib/time.f
 require src/lib/string.f

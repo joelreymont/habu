@@ -7,6 +7,8 @@
 \ left live. Elements are cells: a pointer pushed through a queue stays the
 \ sender's to keep alive.
 
+require src/lib/ffi-abi.f
+
 s" src/lib/adt/option.f" required
 s" src/lib/error.f" required
 s" src/lib/task.f" required

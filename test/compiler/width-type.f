@@ -1,6 +1,7 @@
 \ width-type.f - the built-in type `width<t>`: one cell holding the bytes t
 \ takes in storage, read with `width>n`.
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/string.f
 
 \ File-global: the programs below compile at run time, in the scope a real

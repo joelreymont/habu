@@ -4,7 +4,7 @@
 \ the bundle's full width (checker.f LOCW-HW@), and every reference reloads all
 \ physical cells.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/adt/option.f
 require src/lib/adt/result.f
 

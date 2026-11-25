@@ -7,7 +7,7 @@
 require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require tools/perf-map-core.f
 
 package PERF-MAP-TEST

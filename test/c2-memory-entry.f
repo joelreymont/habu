@@ -1,5 +1,6 @@
 \ Scoped C2 entries reject a prompt callback before it runs; an ordinary one runs.
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/test/subject.f
 
 package C2-MEMORY-ENTRY
@@ -26,8 +27,8 @@ public
    s" a mutable loan entry rejects a prompt callback" T-LABEL
    S\" package C2-ENTRY-TEST public TRUSTED: LEAKER ( ^u8 n -- ^u8 n ) ; ;package\ns\q abc\q ' C2-ENTRY-TEST:LEAKER C2-MEM:WITH-MUT-LOAN\n"
    70 s" error[E-UNSAFE]: `C2-MEM:WITH-MUT-LOAN` is a scoped entry" SUBJECT:REFUSED? TTRUE
-   s" the interpreter written in Habu rejects a mutable entry" T-LABEL
-   S\" require test/interpreter-loop-on.f\nrequire test/fixtures/c2-mut-entry.f\n"
+   s" a loaded file's mutable entry rejects the callback" T-LABEL
+   S\" require test/fixtures/c2-mut-entry.f\n"
    70 s" error[E-UNSAFE]: `C2-MEM:WITH-MUT` is a scoped entry" SUBJECT:REFUSED? TTRUE
    s" a layout wrapper rejects a raw prompt callback" T-LABEL
    S\" require test/c2-memory-wrapper.f\n: C2-ENTRY-RAW ( n ^u8 n -- n ^u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-MEMORY-WRAPPER:TWICE .\n"

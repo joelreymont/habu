@@ -25,6 +25,7 @@ require src/lib/string.f
 require src/lib/vector.f
 require src/lib/map.f
 require src/lib/adt/option.f
+require src/lib/map-core.f
 
 package DIFF
 private

@@ -3,7 +3,7 @@
 \ LIMIT-PAGES above the warm process admits two stacks and refuses the third's
 \ reserve, whatever the region's size.
 require src/core/exit-status.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/task.f
 require src/lib/fs.f
 require src/lib/ffi-abi.f

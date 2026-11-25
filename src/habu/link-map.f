@@ -28,6 +28,8 @@ require src/arch/arm64/icode.f
 require src/habu/link-kernel.f
 require src/habu/linker.f
 require src/habu/link-band.f
+require src/compiler/native/shadow.f
+require src/habu/link-code.f
 
 package LINKER
 private

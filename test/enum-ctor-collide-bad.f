@@ -1,6 +1,6 @@
 \ A generated constructor collision prints its rejection record and throws the
 \ checker's status, which the caller catches.
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package ENUM-CTOR-COLLIDE-BAD
 

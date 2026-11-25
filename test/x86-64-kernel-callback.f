@@ -6,6 +6,12 @@
 require src/core/exit-status.f
 require test/x86-64-boot-harness.f
 require src/lib/vector.f
+require src/arch/x86-64/rt.f
+require src/habu/kernel-x64.f
+require src/lib/test/assert.f
+require test/x86-64-peer-harness.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
 
 package X64K-CB
 using X64ASM

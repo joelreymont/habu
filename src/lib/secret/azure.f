@@ -34,6 +34,7 @@ require src/lib/heap.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/vector.f
+require src/lib/json/read.f
 
 package SECRET
 private

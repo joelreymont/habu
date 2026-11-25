@@ -4,7 +4,7 @@
 \ xor next) and (old xor step)) < 0. A bare sign change also fires when the
 \ index wraps at the boundary opposite the limit, which must keep looping.
 \ Expected counts are the standard's tables (gd2, gd7, gd8) plus that boundary.
-require src/lib/test.f
+require src/lib/test/assert.f
 
 package NPL-FIXTURE
 public

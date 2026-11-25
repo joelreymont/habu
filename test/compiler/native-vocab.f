@@ -1,5 +1,5 @@
 \ Production vocabulary behavior.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/ieee754.f
 
 package NVOCAB-FIXTURE

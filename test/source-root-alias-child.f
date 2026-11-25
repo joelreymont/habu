@@ -1,16 +1,12 @@
 \ Fresh engine in a checkout whose lib, src and test directories are symlinks.
-require src/lib/test.f
+require src/lib/test/assert.f
+require test/fixtures/source-root-count.f
 
 using SOURCE-ROOT
 package SOURCE-ROOT-ALIAS-CHILD
 
-variable LOADED
 create PATH-BUF PATH-CAP allot
 variable PATH-U
-
-public
-: BUMP ( n -- ) LOADED +! ;
-private
 
 : ROOT$ ( -- str ) 0 SCRIPT-ARGV$ ;
 
@@ -57,13 +53,13 @@ private
    ROOT$ s" a" JOIN OWNED
    ROOT$ s" b/src/lib/error.f" JOIN UNKNOWN
    ROOT$ s" b" JOIN OWNED
-   LOADED @ 11 T=
+   SOURCE-ROOT-COUNT:LOADED @ 11 T=
    \ Lexical branch/.. is CWD, but physical branch/.. is ROOT/other.
    s" branch/../src/lib/error.f" UNKNOWN
    CWD$ s" branch/../src/lib/error.f" JOIN UNKNOWN
    s" branch/../src/lib/error.f" required
    CWD$ s" branch/../src/lib/error.f" JOIN required
-   LOADED @ 111 T= ;
+   SOURCE-ROOT-COUNT:LOADED @ 111 T= ;
 
 : RUN ( -- )
    T-RESET CWD$ [: PORTABLE DISTINCT ;] WITH T-REPORT

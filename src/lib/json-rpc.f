@@ -22,6 +22,9 @@
 require src/lib/adt/option.f
 require src/lib/json.f
 require src/lib/reason.f
+require src/lib/json/value.f
+require src/lib/json/read.f
+require src/lib/json/write.f
 
 package JSON-RPC
 using JSON

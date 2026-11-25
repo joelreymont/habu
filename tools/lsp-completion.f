@@ -13,6 +13,8 @@ require src/lib/json.f
 require tools/check-verify-core.f
 require tools/lsp-defs.f
 require tools/lsp-line.f
+require src/lib/json/read.f
+require src/lib/json/write.f
 
 package LSP-COMPLETION
 using JSON

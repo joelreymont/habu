@@ -8,13 +8,16 @@
 \ A buffer a case still holds after a rejection was never submitted.
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/fd.f
 require src/lib/task.f
 require src/lib/memory.f
 require src/lib/num-types.f
+require src/lib/ffi-abi.f
+require src/lib/le.f
 require test/host-threads.f
+require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/net/tcp4.f
 require src/lib/aio.f

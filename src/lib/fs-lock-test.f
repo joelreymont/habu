@@ -6,13 +6,15 @@
 \ WAIT returns while another process still holds the lock, or without taking it;
 \ RELEASE leaves the lock held while its descriptor stays open.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-fork.f
 require src/lib/task.f
 require src/lib/fs-lock.f
+require src/lib/fs.f
+require src/lib/fd.f
 
 package FS-LOCK-TEST
 

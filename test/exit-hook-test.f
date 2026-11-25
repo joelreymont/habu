@@ -7,7 +7,7 @@
 \ above the engine.
 \ A child is judged by what it left on disk or its exit code, a built program
 \ by what it printed or removed.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -181,6 +181,7 @@ variable TREE-U
 \ is rmdir ENOTEMPTY, which fs.f names E-FS-IO (-2105).
 : CASE-REPORT ( -- )
    s" report.f" s" report-tree" CASE-PATHS
+   S\" require src/lib/fs.f\n" TEXT+
    S\" create CHILD-BUF PATH-CAP allot\n" TEXT+
    S\" : CHILD-INNER ( -- ) CHILD-TREE s\q inner\q CHILD-BUF FS:JOIN-PATH\n" TEXT+
    S\"    {: u :} CHILD-BUF u >str FS:MAKE-DIR ;\n" TEXT+
@@ -263,7 +264,7 @@ variable TREE-U
 : CASE-RESETS-MANY ( -- )
    s" resets-many.f" s" resets-many-out" CASE-PATHS
    0 TEXT-U !
-   S\" require src/lib/process.f\nrequire src/lib/process-fork.f\nvariable RAN\n" TEXT+
+   S\" require src/lib/process.f\nrequire src/lib/process-fork.f\nrequire src/lib/fork-child.f\nvariable RAN\n" TEXT+
    21 1 ?do i RESET-DEF loop
    S\" : MAIN ( -- ) PROC-FORK:CHECKED {: pid:pid :}\n" TEXT+
    S\"    pid PID>N 0= if s\q \q RAN @ die then\n" TEXT+
@@ -299,6 +300,7 @@ variable STAGED-FILES
 
 : CASE-STAGED ( -- )
    s" staged.f" s" staged-tree" CASE-PATHS
+   S\" require src/lib/fs.f\n" TEXT+
    S\" create CHILD-BUF PATH-CAP allot\nvariable CHILD-U\n" TEXT+
    S\" : CHILD-OUT ( -- str ) CHILD-BUF CHILD-U @ >str ;\n" TEXT+
    S\" : CHILD-OUT! ( -- ) CHILD-TREE s\q out\q CHILD-BUF FS:JOIN-PATH\n" TEXT+
@@ -459,7 +461,7 @@ variable RUN-FILE-U
    s" built.f" s" built-out" CASE-PATHS
    ROOT$ s" built-run" RUN-FILE-BUF FS:JOIN-PATH RUN-FILE-U !
    0 TEXT-U !
-   S\" require src/lib/fs-mutate.f\nrequire src/lib/queue.f\n" TEXT+
+   S\" require src/lib/fs-mutate.f\nrequire src/lib/queue.f\nrequire src/lib/at-exit.f\nrequire src/lib/fs.f\n" TEXT+
    S\" $10 QUEUE:QUEUE JOBS\n" TEXT+
    S\" : BUILD-ACTION ( -- ) s\q build-time exit action ran\q type cr ;\n" TEXT+
    S\" : RUN-ACTION ( -- ) s\q run-time exit action ran\q type cr ;\n" TEXT+

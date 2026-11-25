@@ -7,6 +7,7 @@ require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/json.f
 require src/core/exit-status.f
+require src/lib/json/read.f
 
 $100 constant GJA-LINE-MAX
 

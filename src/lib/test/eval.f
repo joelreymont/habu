@@ -1,5 +1,5 @@
 \ eval.f - typed values and throw codes out of evaluated test text, package
-\ TEST-EVAL, loaded by src/lib/test.f. N, FLAG and RC take one cell, a flag or the
+\ TEST-EVAL. N, FLAG and RC take one cell, a flag or the
 \ throw code out of a source text under `evaluate-closed`, so a test needs no
 \ `evaluate` wrapper of its own; THROWN-HEAD$ is the record line a throw nothing
 \ caught ends with. The measured rules are in docs/forth.md "Rules learned by

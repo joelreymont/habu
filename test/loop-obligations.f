@@ -1,6 +1,6 @@
 \ Loads test/loop-obligations-subject.f on the engine under test at its default
 \ tier, through the normal load path.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/process.f
 require src/lib/process-argv.f

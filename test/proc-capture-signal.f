@@ -8,12 +8,13 @@
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/test/ending.f
 require test/pcap-result.f
+require src/lib/fd.f
 
 package PROC-CAPTURE-SIGNAL
 

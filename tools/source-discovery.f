@@ -24,6 +24,8 @@ require src/lib/source.f
 require src/lib/hashmap.f
 require src/habu/escape.f
 require src/habu/verify-source.f
+require src/habu/interpreter.f
+require src/lib/source-syntax.f
 
 package DISCOVER
 using SOURCE
@@ -1210,13 +1212,13 @@ DYNAMIC-BUFFER SD-DEC u8
    ps  ps FS:FILE-SIZE  [: SD-ROOM ;] READ-WHOLE-SAMPLED SD-U !
    SD-STORAGE @ SPAN:$ STR:DATA SD-A ! ;
 
-: SD-KIND-NAME ( n -- str ) {: kind:n :}
-   kind SOURCE-EVENT:KIND-INCLUDED = if s" included" exit then
-   kind SOURCE-EVENT:KIND-REQUIRED = if s" required" exit then
+: SD-KIND-NAME ( n -- str ) {: ix:n :}
+   ix SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED = if s" included" exit then
+   ix SOURCE-EVENT:REQUIRE? if s" required" exit then
    s" provided" ;
 
 : SD-EMIT-EVENT ( n ^u8 len ^len -- ) {: ix:n dst:^ cap:len lenp:^ :}
-   ix SOURCE-EVENT:KIND@ SD-KIND-NAME dst cap lenp SOURCE-APPEND-BYTES
+   ix SD-KIND-NAME dst cap lenp SOURCE-APPEND-BYTES
    SD-SP dst cap lenp SOURCE-APPEND-C
    ix SOURCE-EVENT:STATE@ $30 + dst cap lenp SOURCE-APPEND-C
    SD-SP dst cap lenp SOURCE-APPEND-C

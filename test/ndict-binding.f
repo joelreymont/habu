@@ -1,8 +1,9 @@
 \ Indexed compiler lookup follows live scope and definition changes.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/habu/fnv.f
 require src/habu/verify-source.f
 require src/lib/fmt.f
+require src/compiler/native/dict.f
 
 17 constant NDB-GLOBAL
 

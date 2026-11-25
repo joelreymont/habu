@@ -1,0 +1,1 @@
+: SAID-M ( -- ) SAID PDEP:SHOW ;

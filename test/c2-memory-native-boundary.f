@@ -1,6 +1,6 @@
 \ The C2 writer admits only the public runtime entries.
 require src/core/exit-status.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/subject.f
 require src/lib/c2-memory.f
 require src/habu/xref.f

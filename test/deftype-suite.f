@@ -5,8 +5,10 @@
 
 require src/lib/codegen.f
 require src/lib/type/deftype.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require test/decl-diag-capture.f
+require src/habu/verify-source.f
 
 T-RESET
 

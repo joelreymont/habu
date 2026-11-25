@@ -1,9 +1,9 @@
 \ fs-list-test.f - focused tests for src/lib/fs-list.f.
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/task.f src/lib/fs-list.f src/lib/fs-list-test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/fs.f src/lib/fs-mutate.f src/lib/task.f src/lib/fs-list.f src/lib/fs-list-test.f
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

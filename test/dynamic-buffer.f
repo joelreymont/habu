@@ -1,5 +1,5 @@
 \ Dynamic typed storage uses the real compiler, allocator and accessor.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/adt/option.f
 
 package DYNAMIC-BUFFER-TEST

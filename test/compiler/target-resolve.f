@@ -1,8 +1,10 @@
 \ Registered target-action acceptance. Each printed label and refusal is
 \ repeatable with `bin/hb --load test/compiler/target-resolve.f`.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/compiler/target/model.f
 require tools/build-target.f
+require src/compiler/target.f
+require src/compiler/digest.f
 
 package TARGET-RESOLVE-TEST
 private

@@ -4,7 +4,8 @@
 require src/lib/error.f
 require src/lib/memory.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/test/rejection-text.f
@@ -13,6 +14,7 @@ require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require src/lib/fs-mutate.f
 require test/e2e-tree.f
+require src/lib/fs.f
 
 package NAME-LENGTH-TEST
 

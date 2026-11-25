@@ -6,7 +6,7 @@
 \ E-ENGINE-PATH.
 require src/core/exit-status.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f
@@ -14,6 +14,7 @@ require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
+require src/lib/process.f
 
 package BOOT-RELOCATION-E2E
 private

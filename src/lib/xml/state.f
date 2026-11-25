@@ -9,6 +9,8 @@ require src/lib/vector.f
 require src/lib/allocator.f
 require src/lib/siphash.f
 require src/lib/entropy.f
+require src/lib/xml/reject.f
+require src/lib/xml/scalar.f
 
 package XML
 public

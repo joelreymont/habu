@@ -5,7 +5,7 @@
 \ instruction runs: SYS,'s carry polarity and linked addresses are observed by
 \ the images of test/x86-64-peer-image.f.
 
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/process.f

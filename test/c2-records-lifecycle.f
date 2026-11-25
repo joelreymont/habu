@@ -1,5 +1,5 @@
 \ Throw and task halt close one frame for an entire initialized table.
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
 require src/lib/task.f

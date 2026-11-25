@@ -2,7 +2,7 @@
 \ Run: bin/hb --load src/lib/fs-cause-test.f
 
 require src/lib/error.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fs-list.f

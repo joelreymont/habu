@@ -9,4 +9,5 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test/runner.f
 require src/lib/content-key.f
+require src/lib/spawn.f
 include test/gate-common-lib.f

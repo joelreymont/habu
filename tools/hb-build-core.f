@@ -33,6 +33,7 @@ require src/habu/boot-files.f
 require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-data.f
+require src/compiler/target.f
 
 package HB-BUILD-CORE
 private
@@ -149,10 +150,12 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    endcase ;
 
 
+\ A file the build includes is a provided row or the build's own glue: read as
+\ no file's, its calls are not checked.
 : INCLUDE-FILE ( str -- )
    {: a:^ u:n :}
    a u LOADING
-   a u included
+   0 [: a u included ;] REQUIRES:WITH-FILE
    BETWEEN ;
 
 
@@ -172,6 +175,14 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    a u required
    BETWEEN ;
 
+\ A program's source is an entry, as `hb --load` reads it: its own file, named
+\ from the directory hb runs in.
+: ENTRY-FILE ( str -- )
+   {: a:^ u:n :}
+   a u LOADING
+   a u script-required
+   BETWEEN ;
+
 
 \ The provide rows go to the build's registry, which `provided` writes inside a
 \ build. They come before the loads, so the first boot file is the registry's
@@ -184,8 +195,8 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    BOOT-FILES:CHECKER ['] ROW BOOT-FILES:EACH
    BOOT-FILES:DECL ['] ROW BOOT-FILES:EACH
    BOOT-FILES:CORE BOOT-FILES:DYNAMIC or ['] ROW BOOT-FILES:EACH
-   BOOT-FILES:OWNER ['] ROW BOOT-FILES:EACH
    BOOT-FILES:OWNER ['] PROVIDE BOOT-FILES:EACH
+   BOOT-FILES:OWNER ['] ROW BOOT-FILES:EACH
    BOOT-FILES:BASELIB BOOT-FILES:RESTLIB or ['] PROVIDE BOOT-FILES:EACH
    BOOT-FILES:BASELIB BOOT-FILES:RESTLIB or ['] ROW BOOT-FILES:EACH
    BOOT-FILES:ARGV ['] ROW BOOT-FILES:EACH
@@ -221,16 +232,53 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 \ A registry row below the engine's source root, which the build reads hb's
 \ files from, by its name under it: the built program matches a require
 \ against its rows under its own engine root, a Habu tree. A program's row
-\ outside the root keeps its canonical path; hb's is refused.
-: REG-ROW ( str bool -- )
-   {: a:^ u:n engine:bool :}
+\ outside the root keeps its canonical path; an hb's is rejected. A file's row
+\ mints its id.
+: REG-ROW ( str bool bool -- )
+   {: a:^ u:n engine:bool file:bool :}
    SOURCE-ROOT:ENGINE$ {: c:^ cu:n :}
    u cu 1 + > if a cu c cu STR:= a cu + c@ FS:SLASH = and else false then
    {: below:bool :}
    below 0= engine and if a u LOADING  E-BUILD-PATH throw then
    s\" s\\\" " TEXT+
    below if a cu + 1 + u cu - 1 - ROW+ else a u ROW+ then
-   s\" \" REQUIRE-REG:APPEND\n" TEXT+ ;
+   file if s\" \" REQUIRE-REG:APPEND-FILE\n" else s\" \" REQUIRE-REG:APPEND\n" then
+   TEXT+ ;
+
+: ROW-FILE? ( n -- bool ) REQUIRE-REG:ID 0<> ;
+
+\ The id the end file gives the file of id h: the rank of its row among the
+\ rows that mint one; 0 for a file of no row.
+: TARGET-ID ( n -- n ) {: h:n :}
+   h 0= if 0 exit then
+   0 REQUIRE-REG:COUNT REQUIRE-REG:BASE ?do
+      i REQUIRE-REG:ID  dup 0<> if swap 1 + swap then
+      h = if unloop exit then
+   loop drop 0 ;
+
+: NUM+ ( n -- ) ERROR-TEXT:DIGITS$ TEXT+  s"  " TEXT+ ;
+
+\ The build's records [first, end), all of file h, as the target numbers both.
+: SPAN+ ( n n n -- ) {: first:n end:n h:n :}
+   h TARGET-ID {: id:n :}
+   id 0= if exit then
+   first LINKER:TARGET-INDEX NUM+  end LINKER:TARGET-INDEX NUM+  id NUM+
+   s\" REQUIRES:SPAN\n" TEXT+ ;
+
+\ The run from, of file h, takes record r, else ends before it.
+: RUN-STEP ( n n n -- n n ) {: from:n h:n r:n :}
+   r REQUIRES:RECORD-FILE {: now:n :}
+   now h = if from h exit then
+   from r h SPAN+
+   r now ;
+
+\ Each run of one file's records in the build.
+: SPANS+ ( -- )
+   LINKER:FIRST-RECORD ndict@ {: first:n end:n :}
+   first  first REQUIRES:RECORD-FILE
+   end first 1 + ?do i RUN-STEP loop
+   {: from:n h:n :}
+   from end h SPAN+ ;
 
 
 \ hb's end file is <out>/hb-build/<target>/end.f: its text follows from the tree
@@ -248,16 +296,18 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    END-DIR diru s" end.f" END-PATH FS:JOIN-PATH END-U ! ;
 
 
-\ The product's registry is the build's: the end file records each row with the
-\ product's own include.f and packs them into its DATA; then the installs, and
-\ under --repl the program's MAIN as hb's entry, which hb runs before its REPL
-\ or standard input.
+\ The end file states the build's registry rows and each file's run of records,
+\ then the installs and, under --repl, MAIN as hb's entry.
 : END-WRITE ( n bool -- )
    {: app:n entry:bool :}
    0 TEXT-U !
    s\" REQUIRE-REG:BOOT-OPEN\n" TEXT+
-   REQUIRE-REG:COUNT REQUIRE-REG:BASE ?do i REQUIRE-REG:SLOT i REQUIRE-REG:LEN i app < REG-ROW loop
-   s\" REQUIRE-REG:BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\n" TEXT+
+   REQUIRE-REG:COUNT REQUIRE-REG:BASE ?do
+      i REQUIRE-REG:SLOT i REQUIRE-REG:LEN i app < i ROW-FILE? REG-ROW
+   loop
+   s\" REQUIRE-REG:BOOT-FREEZE\nREQUIRE-REG:PERSIST\n" TEXT+
+   SPANS+
+   s\" REQUIRES:PERSIST\nRUNTIME:INSTALL\n" TEXT+
    entry if s\" ' MAIN APP-ENTRY:XT!\n" TEXT+ then
    END$ 0 TEXT TEXT-U @ WRITE-CHANGED
    TEXT-RELEASE ;
@@ -344,7 +394,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    ENGINE-LIB-FILES
    SEAL-ENGINE
    ENTRY-OPEN
-   SRC$ INCLUDE-FILE
+   SRC$ ENTRY-FILE
    ENTRY-CLOSE
    s" src/habu/app-end.f" INCLUDE-FILE
    OUT$ LINKER:WRITE ;

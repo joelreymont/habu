@@ -1,4 +1,4 @@
-\ assert.f - checked test assertions, loaded by src/lib/test.f. An assertion counts
+\ assert.f - checked test assertions. An assertion counts
 \ one case and never throws on a mismatch: it prints `F<case>`, the label, a TFAIL
 \ record (src/lib/test/record.f) and an `assert:` line, and the run continues; a
 \ string mismatch prints both strings whole. T-REPORT prints `test: ok` or exits

@@ -3,8 +3,10 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/json.f
+require src/lib/json/pointer.f
+require src/lib/json/read.f
 
 package JSON-POINTER-TEST
 private

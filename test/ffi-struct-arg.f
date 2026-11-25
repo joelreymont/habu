@@ -8,6 +8,18 @@
 \ weighs each member by position, so a member read from the wrong offset,
 \ register or stack slot fails its case.
 
+require src/lib/ffi-abi.f
+require src/lib/le.f
+require src/lib/ffi-callback.f
+require src/lib/task.f
+require src/lib/codegen.f
+require src/lib/ffi-test.f
+require src/lib/test/assert.f
+require src/lib/test/guard-page.f
+require test/decl-diag-capture.f
+require test/ffi-struct-fixture.f
+require test/ffi-struct-result.f
+
 STRUCT-FIXTURE:SELECT
 
 FUNCTION: FFI-T-SUM8 hb_sum8 ( ^u8 -- n ) 0 8 STRUCT-ARG ;FUNCTION

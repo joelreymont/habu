@@ -2,7 +2,7 @@
 \ linear authority while its element parameter only describes the pointee.
 
 require src/core/exit-status.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/adt/option.f
 require src/lib/test/subject.f
 

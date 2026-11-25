@@ -36,6 +36,11 @@
 \ the bytes of the one built from the library without them.
 require test/gate-common.f
 require src/lib/engine-candidate.f
+require src/lib/test/runner.f
+require src/lib/process.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-env.f
 
 package AOT-SHIFTED-BYTES-TEST
 private
@@ -570,7 +575,7 @@ variable G-IMAGE-U
 : QUEUE-LIB$ ( -- str )
    S\" require src/lib/queue.f\n4 QUEUE:QUEUE JOBS\nJOBS QUEUE:INIT\nJOBS QUEUE:DESTROY\n" ;
 : QUEUE-MAIN$ ( -- str )
-   S\" require lib.f\n: MAIN ( -- ) JOBS QUEUE:INIT 7 JOBS QUEUE:PUSH JOBS QUEUE:POP . JOBS QUEUE:DESTROY ;\n" ;
+   S\" require lib.f\nrequire src/lib/queue.f\n: MAIN ( -- ) JOBS QUEUE:INIT 7 JOBS QUEUE:PUSH JOBS QUEUE:POP . JOBS QUEUE:DESTROY ;\n" ;
 
 : QUEUE-CASE ( -- )
    s" queue" CASE-OPEN
@@ -587,7 +592,7 @@ variable G-IMAGE-U
 : LIVE-QUEUE-CASE ( -- )
    s" live-queue" CASE-OPEN
    S\" require src/lib/queue.f\n4 QUEUE:QUEUE JOBS\nJOBS QUEUE:INIT\n"
-   S\" require lib.f\n: MAIN ( -- ) 7 JOBS QUEUE:PUSH JOBS QUEUE:POP . ;\n"
+   S\" require lib.f\nrequire src/lib/queue.f\n: MAIN ( -- ) 7 JOBS QUEUE:PUSH JOBS QUEUE:POP . ;\n"
    ADDRESS-REFUSED ;
 
 : BODY ( -- )

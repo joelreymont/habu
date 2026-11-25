@@ -10,7 +10,8 @@ require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/test/eval.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
@@ -21,6 +22,7 @@ require src/habu/code-bytes.f
 require src/lib/adt/result.f
 require src/lib/test/ending.f
 require src/lib/test/wait.f
+require src/lib/ffi-abi.f
 
 package TASK-TEST
 
@@ -524,7 +526,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 : TASK-USER-HUGE$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" require src/lib/test.f" SB-APPEND TASK-LF
+   s" require src/lib/test/eval.f" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
    s" TASK:+USER BEFORE n" SB-APPEND TASK-LF
    s\" s\" $7FFFFFFFFFF00000 TASK:+USERS PH u8\" TEST-EVAL:RC ." SB-APPEND TASK-LF
@@ -543,7 +545,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 : TASK-USER-LIVE$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" require src/lib/test.f" SB-APPEND TASK-LF
+   s" require src/lib/test/eval.f" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK SPINNER" SB-APPEND TASK-LF
    s" : SPIN ( -- ) begin TASK:PAUSE false until ;" SB-APPEND TASK-LF
    s" ' SPIN SPINNER TASK:ACTIVATE" SB-APPEND TASK-LF
@@ -556,7 +558,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 : TASK-ROLLBACK-SLOT$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" require src/lib/test.f" SB-APPEND TASK-LF
+   s" require src/lib/test/eval.f" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
    s" TASK:+USER PA n" SB-APPEND TASK-LF
    s\" s\" TASK:+USER PB n  1 throw\" TEST-EVAL:RC ." SB-APPEND TASK-LF

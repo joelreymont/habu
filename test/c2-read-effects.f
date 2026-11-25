@@ -4,7 +4,7 @@
 \ a by-value sum, but may not invent scopes or erase their dependencies.
 
 require src/core/exit-status.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/adt/option.f
 require src/lib/test/subject.f
 

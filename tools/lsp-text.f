@@ -14,6 +14,7 @@ require src/lib/source.f
 require src/lib/utf16.f
 require src/lib/json.f
 require tools/lsp-line.f
+require src/lib/json/write.f
 
 package LSP-TEXT
 using JSON

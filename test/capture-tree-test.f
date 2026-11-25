@@ -5,13 +5,14 @@
 
 require src/lib/error.f
 require src/lib/fs.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/test/runner.f
 require src/lib/test/fifo.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/fd.f
 
 package CAPTURE-TREE-TEST
 

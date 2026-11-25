@@ -4,7 +4,7 @@
 \ original.bin, compressed.bin (raw DEFLATE) and decoded.bin go in a temporary
 \ directory the process removes at exit.
 require src/lib/zlib.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/heap.f

@@ -4,10 +4,15 @@
 require src/lib/string.f
 require src/lib/zip.f
 require src/lib/zip-test-fixture.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/zip-ffi.f
+require src/lib/zip-state.f
+require src/lib/zip-types.f
 require src/lib/task.f
 require src/lib/adt/result.f          \ the join's answer is MATCHed here
 require src/lib/test/wait.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 
 package ZIP-TEST
 public

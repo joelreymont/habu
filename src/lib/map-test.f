@@ -8,6 +8,7 @@ require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
 require src/lib/siphash.f
 require src/lib/property.f              \ PROP - the seeded mix of SET and REMOVE
 require src/core/exit-status.f
+require src/lib/map-core.f
 
 \ White-box test: reopen the module's package so the fixtures reach its private
 \ layout, probe and locate words by their bare package-local names.

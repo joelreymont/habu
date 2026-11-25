@@ -11,6 +11,7 @@ require src/lib/span.f
 require src/lib/float.f
 require src/lib/task.f
 require src/lib/pg.f
+require src/lib/vector.f
 
 \ PG's row readers: -9320..-9329. Minted
 \ here, beside the words that throw them (docs/forth-card.md § 6). A reader

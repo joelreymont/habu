@@ -6,6 +6,17 @@
 \ its file to the run and would hide the clauses) and name no defined symbol,
 \ so a clean certify shows the check resolves none.
 
+require src/lib/engine-candidate.f
+require src/lib/fs-mutate.f
+require src/lib/fs.f
+require src/lib/process.f
+require src/lib/codegen.f
+require src/lib/ffi-test.f
+require src/lib/test/assert.f
+require test/e2e-tree.f
+require tools/check-verify-core.f
+
+: FFI-SV-REQUIRE$ ( -- str ) S\" require src/lib/ffi-abi.f\n" ;
 : FFI-SV-HEAD$ ( -- str )
    S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n24 constant FFI-SV-W\n" ;
 
@@ -381,7 +392,7 @@ variable FFI-SV-SRC-U
 \ a part of FFI-TEST, not a package of its own.
 : FFI-SV-ORDINARY ( str -- )
    {: src:str :}
-   SB-RESET src SB-APPEND
+   SB-RESET FFI-SV-REQUIRE$ SB-APPEND src SB-APPEND
    FFI-SV-CHECK
    FFI-SV-CLEAN
    FFI-SV-WRITE
@@ -401,7 +412,7 @@ variable FFI-SV-SRC-U
 \ load's code. The load runs in a child for FFI-SV-SHADOWED's reason.
 : FFI-SV-ALIASED ( str -- )
    {: src:str :}
-   SB-RESET src SB-APPEND
+   SB-RESET FFI-SV-REQUIRE$ SB-APPEND src SB-APPEND
    FFI-SV-CHECK S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSES
    FFI-SV-WRITE
    s" test/ffi-sv.f" E2E-TREE:ARGS

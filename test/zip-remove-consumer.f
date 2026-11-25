@@ -1,7 +1,8 @@
 \ A two-member public ZIP consumer for source and native builds.
 require src/lib/string.f
 require src/lib/zip.f
-require src/lib/test.f
+require src/lib/test/assert.f
+require src/lib/zip-types.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 

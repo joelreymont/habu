@@ -15,6 +15,7 @@ require src/lib/process-tree.f
 require src/lib/signal.f
 require src/lib/engine-candidate.f
 require src/lib/test/fifo.f
+require src/lib/fd.f
 
 package PG-CLUSTER
 

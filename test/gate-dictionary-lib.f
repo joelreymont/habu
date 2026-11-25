@@ -6,6 +6,7 @@ require src/lib/fs.f
 require tools/check-all-errors-core.f
 require src/lib/process.f
 require test/gate-common.f
+require src/lib/test/runner.f
 
 package GATE-DICTIONARY
 
@@ -111,6 +112,7 @@ variable LABEL-U
 
 : WRITE-API-NOINC ( -- )
    SB-RESET
+   s" require " SB-APPEND INC-CORE$ SB-LINE
    WRITE-API-BODY
    INC-API$ SB$ FS:WRITE-ALL ;
 
@@ -122,6 +124,7 @@ variable LABEL-U
 
 : WRITE-MAIN-RUN ( -- )
    SB-RESET
+   s" require " SB-APPEND INC-API$ SB-LINE
    s" APP:GET ." SB-LINE
    INC-MAIN$ SB$ FS:WRITE-ALL ;
 
@@ -1390,7 +1393,6 @@ variable LABEL-U
 : XREF ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" src/lib/test.f" GE-SRC-FILE+
    s" tools/xref-test-fixture.f" GE-SRC-FILE+
    s" XRT-MAIN" GE-SRC-LINE
    s" hb native xref words" GE-EVAL-RUN-STDIN

@@ -4,6 +4,12 @@
 require src/core/exit-status.f
 require src/habu/code-span.f
 require test/x86-64-boot-harness.f
+require src/arch/x86-64/rt.f
+require src/habu/kernel-x64.f
+require src/lib/test/assert.f
+require test/x86-64-peer-harness.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
 
 package X64K-ATOMICS
 using X64ASM

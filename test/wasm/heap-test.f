@@ -12,7 +12,7 @@ require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/test.f
+require src/lib/test/assert.f
 require test/wasm/harness.f
 
 package WASM-HEAP-TEST

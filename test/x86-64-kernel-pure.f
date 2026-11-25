@@ -7,6 +7,12 @@ require test/x86-64-boot-harness.f
 require src/lib/error.f
 require src/lib/fmt.f
 require src/lib/string.f
+require src/arch/x86-64/rt.f
+require src/lib/test/assert.f
+require src/os/linux-x86-64/sys.f
+require test/x86-64-peer-harness.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
 
 package X64K-PURE
 using X64ASM

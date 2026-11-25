@@ -4,7 +4,8 @@
 \ of its file in src/lib/browser, read here from the tree's root.
 \ Run: bin/hb --load src/lib/browser/host-test.f
 
-require src/lib/test.f
+require src/lib/net/http-router.f
+require src/lib/test/assert.f
 require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/fmt.f
