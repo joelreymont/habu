@@ -1,13 +1,14 @@
-\ entropy.f - bytes from the kernel's secure generator through libc getentropy
-\ (macOS; glibc 2.25 and later). FILL blocks only until the generator is first
-\ seeded. A refused call is logged with its errno, then E-FILL, and the span may then hold some fresh bytes,
-\ the caller's to discard; a negative length is E-SPAN-LENGTH before any byte
-\ is written.
-\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
+\ entropy.f - one cell from the kernel's secure generator through libc
+\ getentropy (macOS; glibc 2.25 and later). RANDOM blocks only until the
+\ generator is first seeded. A refused call is logged with its errno, then
+\ E-FILL.
+\ STORAGE CLASS. TASK-LOCAL: getentropy writes through a pointer, so its cell
+\ is a TASK:+USER slot.
 
 require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/log.f
+require src/lib/task.f
 
 package ENTROPY
 public
@@ -15,11 +16,11 @@ public
 \ Codes -9540..-9549, the block after UTF16's.
 -9540 constant E-FIRST
 -9549 constant E-LAST
--9540 s" getentropy refused to fill a chunk" ERROR:FAULT E-FILL
+-9540 s" getentropy refused to fill a cell" ERROR:FAULT E-FILL
 
 private
 
-256 constant CHUNK-MAX      \ getentropy's per-call ceiling, GETENTROPY_MAX
+TASK:+USER DRAWN n
 
 PROCESS-SYMBOLS
 FUNCTION: GETENTROPY-CALL getentropy ( ^u8 n -- i32 )
@@ -34,11 +35,8 @@ FUNCTION: GETENTROPY-CALL getentropy ( ^u8 n -- i32 )
 
 public
 
-: FILL ( ^u8 n -- )
-   {: buf len:n :}
-   len 0 < if E-SPAN-LENGTH throw then
-   len 0 ?do
-      buf i +  len i - CHUNK-MAX min  GETENTROPY-CALL 0<> if REFUSED then
-   CHUNK-MAX +loop ;
+: RANDOM ( -- n )
+   DRAWN BYTE-VIEW CELL GETENTROPY-CALL 0<> if REFUSED then
+   DRAWN @ ;
 
 ;package

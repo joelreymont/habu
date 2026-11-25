@@ -1,5 +1,5 @@
 \ siphash-test.f - SIPHASH against the SipHash-2-4 reference vectors, and
-\ ENTROPY:FILL against the OS generator. SIPT-VEC is vectors_sip64 of
+\ ENTROPY:RANDOM against the OS generator. SIPT-VEC is vectors_sip64 of
 \ github.com/veorq/SipHash vectors.h: entry i hashes bytes 00..i-1 under key
 \ 00..0f, read little-endian. SIPT-LONG-VEC is the reference siphash.c's output
 \ for lengths 255-257 of bytes (i*37+$80) & $FF: high-bit bytes, and lengths
@@ -78,30 +78,6 @@ TYPED-VARIABLE SIPT-STATE SIPHASH:state
    len 1+ 8 min 0 ?do len i SIPT-MIXED  want T= loop ;
 
 
-\ ENTROPY fixtures. SIPT-BIG spans more than one getentropy chunk; the bytes
-\ past the first 256 come only from the second.
-32 constant SIPT-SMALL
-300 constant SIPT-BIG-N
-256 constant SIPT-CHUNK
-create SIPT-A SIPT-SMALL allot
-create SIPT-B SIPT-SMALL allot
-create SIPT-BIG SIPT-BIG-N allot
-
-: SIPT-ZERO ( str -- )
-   {: s:str :}
-   s STR:LEN 0 ?do 0 s STR:DATA i + c! loop ;
-
-
-: SIPT-DIFFS ( ^u8 str -- n )
-   {: p s:str :}
-   0 s STR:LEN 0 ?do p i + c@ s STR:DATA i + c@ <> if 1+ then loop ;
-
-
-: SIPT-NONZERO ( str -- n )
-   {: s:str :}
-   0 s STR:LEN 0 ?do s STR:DATA i + c@ 0<> if 1+ then loop ;
-
-
 : SIPT-RUN ( -- )
    T-RESET
    SIPT-FILL-MSG
@@ -113,16 +89,8 @@ create SIPT-BIG SIPT-BIG-N allot
       SIPT-LONG i +  i cells SIPT-LONG-VEC + @  SIPT-CHECK
    loop
    [: SIPT-K0 SIPT-K1 SIPT-MSG -1 >str SIPHASH:BYTES drop ;] E-SPAN-LENGTH TTHROWSQ
-   SIPT-A SIPT-SMALL >str SIPT-ZERO  SIPT-B SIPT-SMALL >str SIPT-ZERO
-   SIPT-A SIPT-SMALL ENTROPY:FILL  SIPT-B SIPT-SMALL ENTROPY:FILL
-   SIPT-A SIPT-B SIPT-SMALL >str SIPT-DIFFS 0 T<>
-   \ 300 bytes cross the 256-byte chunk: the second chunk's 44 bytes and the
-   \ last 64 are not left zero
-   SIPT-BIG SIPT-BIG-N >str SIPT-ZERO
-   SIPT-BIG SIPT-BIG-N ENTROPY:FILL
-   SIPT-BIG SIPT-CHUNK +  SIPT-BIG-N SIPT-CHUNK -  >str SIPT-NONZERO 0 T<>
-   SIPT-BIG SIPT-BIG-N 64 - +  64 >str SIPT-NONZERO 0 T<>
-   [: SIPT-A -1 ENTROPY:FILL ;] E-SPAN-LENGTH TTHROWSQ ;
+   \ a false failure has chance 2^-64
+   ENTROPY:RANDOM ENTROPY:RANDOM T<> ;
 
 SIPT-RUN
 T-REPORT

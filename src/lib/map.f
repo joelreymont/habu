@@ -17,11 +17,7 @@ public
 \ map for untrusted keys is INITed at run time.
 : INIT ( ^a count -- )
    {: m:^ cap :}
-   m HASH-K0-OFF cells + BYTE-VIEW 2 cells ENTROPY:FILL
-   m cap
-   m HASH-K0-OFF HEADER-FIELD @
-   m HASH-K1-OFF HEADER-FIELD @
-   INIT-KEYED ;
+   m cap ENTROPY:RANDOM ENTROPY:RANDOM INIT-KEYED ;
 
 : IN ( ^ARENA:arena count -- ^n )
    {: a:^ cap:count :}

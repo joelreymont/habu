@@ -516,8 +516,8 @@ LINEAR: ERASE ( XML:reader -- ^cursor )
 
 : READER-TABLES ( ^cursor -- )
    {: state :}
-   state CURSOR-HASH-K0 BYTE-VIEW CELL ENTROPY:FILL
-   state CURSOR-HASH-K1 BYTE-VIEW CELL ENTROPY:FILL
+   ENTROPY:RANDOM state CURSOR-HASH-K0 !
+   ENTROPY:RANDOM state CURSOR-HASH-K1 !
    state CURSOR-ALLOCATOR @ {: al:^ :}
    al TABLE-START [type] frame VEC:NEW state CURSOR-FRAMES !
    al TABLE-START [type] attribute VEC:NEW state CURSOR-ATTRS !
