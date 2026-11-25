@@ -677,6 +677,10 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    S\" ,\"azp\":\"app-2\",\"oid\":\"\",\"tid\":\"t-1\",\"scp\":\"any\"}" CALL FORBIDDEN
    S\" ,\"oid\":\"o-1\",\"tid\":\"\",\"scp\":\"any\"}" CALL FORBIDDEN
    S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\"}" CALL FORBIDDEN
+   s" a tid or oid that is no id is forbidden" T-LABEL
+   S\" ,\"oid\":\" \",\"tid\":\"t-1\",\"scp\":\"any\"}" CALL FORBIDDEN
+   S\" ,\"oid\":\"o-1\",\"tid\":\"t\\u0000\",\"scp\":\"any\"}" CALL FORBIDDEN
+   S\" ,\"azp\":\"app-1\",\"tid\":\"t\xC3\xA9\"}" CALL FORBIDDEN
    s" an scp that is no string is neither kind's" T-LABEL
    S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\",\"scp\":[\"any\"]}" CALL
    FORBIDDEN

@@ -151,7 +151,7 @@ KEYS-LOCK TASK:FACILITY-INIT
 
 \ A worker's scratch: the decoded segments, no longer than the token and so
 \ than the head; a note holding the kid, then the claim CLAIM$ lends or
-\ CALLER-KEY appends; the string claim CLAIM-HOLDS? or PERSON? splits, apart
+\ CALLER-KEY appends; the string claim CLAIM-HOLDS? or PERSON? reads, apart
 \ from the note; the key.
 0 constant SEGMENTS-OFF
 HTTP:HEAD-CAP constant NOTE-OFF
@@ -515,12 +515,14 @@ ENUM lookup-step
    list VEC:COUNT 0 > if s"  " list VEC:APPEND then
    w list VEC:APPEND ;
 
+: WORDS$ ( str -- str bool )
+   CLAIMS@ swap WORDS-OFF HTTP:HEAD-CAP ROOM DECODED$ ;
+
 \ A string claim splits into words here, where AUDIENCE? compares aud whole
 \ (RFC 7519 4.1.3).
 : HELD? ( str str -- bool )
    {: name:str w:str :}
-   WORDS-OFF HTTP:HEAD-CAP ROOM {: room :}
-   CLAIMS@ name room DECODED$ if w 0 WORD-FROM? exit then
+   name WORDS$ if w 0 WORD-FROM? exit then
    drop CLAIMS@ name w HOLDS? ;
 
 : VALID? ( n -- bool )
@@ -863,6 +865,17 @@ private
       some OF dup JSON:STRING? swap s" " JSON:STRING= 0= and ENDOF
    ;MATCH ;
 
+\ An id a caller's key can hold: not empty, no space, no control byte.
+: ID? ( str -- bool )
+   {: id:str :}
+   id STR:LEN 0= if false exit then
+   id STR:LEN 0 ?do
+      id STR:DATA i + c@ {: c :}
+      c $21 < c $7E > or if unloop false exit then
+   loop true ;
+
+: ID-CLAIM? ( str -- bool ) WORDS$ if ID? else drop false then ;
+
 \ A stated scope as Entra writes it in scp: `access_as_user` for
 \ `api://<id>/access_as_user`.
 : SCP-NAME ( str -- str )
@@ -895,17 +908,9 @@ private
 \ token names the app too, but has an scp.
 : APP? ( -- bool )
    ANSWERING? 0= if false exit then
-   s" tid" NONEMPTY? 0= if false exit then
+   s" tid" ID-CLAIM? 0= if false exit then
    CLAIMS@ s" scp" HAS? if false exit then
    APPS$ APP-ID 0 WORD-FROM? ;
-
-: APP-BYTES ( str -- )
-   {: id:str :}
-   id STR:LEN 0= if E-OPERAND throw then
-   id STR:LEN 0 ?do
-      id STR:DATA i + c@ {: c :}
-      c $21 < c $7E > or if E-OPERAND throw then
-   loop ;
 
 : APPS-READY ( -- )
    APPS @ NULL-PTR <> if exit then
@@ -930,28 +935,29 @@ public
 : APP! ( str -- )
    {: id:str :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
-   id APP-BYTES
+   id ID? 0= if E-OPERAND throw then
    APPS-READY
    id APPS @ WORD+ ;
 
 
 \ Whether the admitted request this worker answers carries a person's token: a
-\ nonempty string tid and oid, and a nonempty string scp holding every scope
-\ METADATA! states, each by the part after its last `/`, offline_access aside.
-\ With no scope stated any nonempty scp will do: an app's own token has an oid
-\ and no scp. False outside an admitted request.
+\ tid and an oid that are nonempty strings with no byte outside $21..$7E, and a
+\ nonempty string scp holding every scope METADATA! states, each by the part
+\ after its last `/`, offline_access aside. With no scope stated any nonempty
+\ scp will do: an app's own token has an oid and no scp. False outside an
+\ admitted request.
 : PERSON? ( -- bool )
    ANSWERING? 0= if false exit then
-   s" tid" NONEMPTY? s" oid" NONEMPTY? and
+   s" tid" ID-CLAIM? s" oid" ID-CLAIM? and
    s" scp" NONEMPTY? and 0= if false exit then
    SCOPES-HELD? ;
 
 
 \ Whether ADMIT? admits the request and its token is a person's (PERSON?) or a
-\ listed app's: a nonempty string tid, no scp claim, and an azp, or where the
-\ token has no azp an appid, that APP! lists. A rejection answers the response
-\ itself: ADMIT?'s, or 403 caller_rejected, after which CLAIM$ and CLAIM-HOLDS?
-\ answer false.
+\ listed app's: such a tid, no scp claim, and an azp, or where the token has no
+\ azp an appid, that APP! lists. A rejection answers the response itself:
+\ ADMIT?'s, or 403 caller_rejected, after which CLAIM$ and CLAIM-HOLDS? answer
+\ false.
 : CALLER? ( HTTP:request HTTP:response -- bool )
    {: asked:HTTP:request answer:HTTP:response :}
    asked answer ADMIT? 0= if false exit then
