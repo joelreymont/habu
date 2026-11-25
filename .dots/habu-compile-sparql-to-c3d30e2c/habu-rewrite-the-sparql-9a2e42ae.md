@@ -8,4 +8,4 @@ blocks:
   - habu-test-sparql-against-9048958e
 ---
 
-Problem: docs/sparql.md, src/lib/sparql/README.md and test/sparql/{run_habu.py,README.md} describe the deleted tool; the Python audit is replaced by the W3C test. Acceptance: /tmp/carl-sparql/lane-docs.md Evidence. Depends: the W3C dot. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-sq-docs.
+Problem: docs/sparql.md, src/lib/sparql/README.md and test/sparql/{run_habu.py,README.md} describe the deleted tool; the Python audit is replaced by the W3C test. Acceptance: /tmp/carl-sparql/lane-docs.md Evidence. Depends: the W3C dot. Claim: agent=carl workspace=.jj-ws.noindex/carl-sparql (merged into the line).

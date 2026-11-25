@@ -9,4 +9,4 @@ blocks:
   - habu-compile-sparql-bind-8fde2c73
 ---
 
-Problem: emit.f and emit-expression.f start with split-str. Acceptance: no split-str or ^u8 n in them; sparql-test.f passes. Depends: the paths and BIND/VALUES dots. Claim: unassigned.
+Problem: emit.f and emit-expression.f start with split-str. Acceptance: no split-str or ^u8 n in them; sparql-test.f passes. Depends: the paths, BIND/VALUES and drive-unions dots. Claim: unassigned.
