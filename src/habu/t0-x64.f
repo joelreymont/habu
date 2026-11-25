@@ -15,6 +15,14 @@ split-str
 \ clear it, and so does a unit's start. A word that compares and branches
 \ itself leaves it alone. While it is clear a zero is loaded by an xor, which
 \ writes the codes; while it is set, by a mov, which does not.
+\
+\ The frame cell stays the loop index's home (`j` and the runtime read it); r12
+\ is a copy written beside every store of it. HELD says whether the code
+\ emitted next may read r12: a loop head sets it, and so do `i` and a step once
+\ they load it. Every call clears it, since the callee may run a loop, and so
+\ does every label a branch lands on (MARK and RESOLVE), since a branch may
+\ come from code that wrote r12; LOOP-POP and a unit's start clear it too.
+\ While it is clear, `i`, `loop` and `+loop` load r12 from the frame first.
 
 require src/lib/error.f
 require src/lib/vector.f
@@ -55,6 +63,7 @@ using PLACE
    E-OPERAND throw ;
 
 variable FLAGS                        \ nonzero while the condition codes are held
+variable HELD                         \ nonzero while r12 holds the index
 
 0 constant FORM-JMP
 1 constant FORM-JCC
@@ -66,15 +75,16 @@ variable FLAGS                        \ nonzero while the condition codes are he
 
 : SINK ( -- ^VEC:vector<u8> ) RAW @ ;
 
-\ A body's contract (src/habu/kernel-x64.f "A BODY'S CONTRACT"): rbp is DATA,
-\ rbx the data stack pointer, r12 the loop index, which any callee may write,
-\ and r13-r15 the other engine registers; compiled code writes none of them
-\ except rbx as the stack (src/arch/x86-64/rt.f G-PUSH, G-POP). The vregs are rcx rdx rsi rdi r8-r11;
-\ rax is this file's temporary and holds no value between two of its words. A
-\ body is entered by `call`, leaves by `ret` and saves nothing; its frame on
-\ the machine stack is its own cells rounded to 16.
+\ A body's contract: rbp is DATA, rbx the data stack pointer, r12 the loop
+\ index, which any callee may write, and r13-r15 the other engine registers;
+\ compiled code writes rbx as the stack and r12, and none of the others. The
+\ vregs are rcx rdx rsi rdi r8-r11; rax is this file's temporary and holds no
+\ value between two of its words. A body is entered by `call`, leaves by `ret`
+\ and saves nothing; its frame on the machine stack is its own cells rounded to
+\ 16.
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
+: IDX ( -- r64 ) ENGINE-GPR:X64-INDEX >R64 ;
 
 : REG ( vreg -- r64 )
    {: v:vreg :}
@@ -124,7 +134,7 @@ variable FLAGS                        \ nonzero while the condition codes are he
    r DATA-REG RSP-CELL MEM-OFF SINK ENC-MOV-MR ;
 
 \ ---- PLACE's hooks -----------------------------------------------------------
-: UNIT-RESET ( -- ) 0 FLAGS ! ;
+: UNIT-RESET ( -- ) 0 FLAGS !  0 HELD ! ;
 
 : PROLOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
    bytes 0= if exit then
@@ -422,6 +432,7 @@ variable FLAGS                        \ nonzero while the condition codes are he
 
 \ ---- calls -------------------------------------------------------------------
 : CALL ( n n -- ) {: to:n loc:n :}
+   0 HELD !
    HERE-OFF NEMIT:CALL to loc PCALL+
    0 >REL SINK ENC-CALL-REL32 ;
 
@@ -431,6 +442,7 @@ variable FLAGS                        \ nonzero while the condition codes are he
    0 >REL SINK ENC-JMP-REL32 ;
 
 : CALL-SELF ( -- )
+   0 HELD !
    HERE-OFF SELF+
    0 >REL SINK ENC-CALL-REL32 ;
 
@@ -440,6 +452,10 @@ variable FLAGS                        \ nonzero while the condition codes are he
 
 \ A branch of the form, with its condition or 0, to a raw offset or -1.
 : BRANCH ( n n n -- LABEL:branch ) HOLE BR+ ;
+
+: RESOLVE ( LABEL:branch -- ) PLACE:RESOLVE  0 HELD ! ;
+
+: MARK ( -- LABEL:head ) 0 HELD !  PLACE:MARK ;
 
 : FWD-JUMP ( -- LABEL:branch ) FORM-JMP 0 -1 BRANCH ;
 
@@ -535,14 +551,20 @@ variable FLAGS                        \ nonzero while the condition codes are he
 -16 constant LIDX-OFF
 -8 constant LLIM-OFF
 
-\ The index of the frame k levels out of the innermost into d.
-: LINDEX ( vreg n -- )
-   {: d:vreg k:n :}
-   d REG {: r:r64 :}
-   r LDEPTH
-   r LTOP
-   r r LIDX-OFF k 16 * - MEM-OFF SINK ENC-MOV-RM ;
+: LOOP-J ( vreg -- )
+   {: d:vreg :}
+   RAX LDEPTH
+   RAX LTOP
+   d REG RAX LIDX-OFF 16 - MEM-OFF SINK ENC-MOV-RM ;
 
+\ rax the address past the innermost frame, and r12 its index unless HELD
+\ says it holds it already.
+: FRAME-IDX ( -- )
+   RAX LDEPTH
+   RAX LTOP
+   HELD @ if exit then
+   IDX RAX LIDX-OFF MEM-OFF SINK ENC-MOV-RM
+   1 HELD ! ;
 
 : LOOP-PUSH ( vreg vreg -- )
    {: s:vreg l:vreg :}
@@ -551,25 +573,31 @@ variable FLAGS                        \ nonzero while the condition codes are he
    RAX LDEPTH!
    RAX LTOP
    s REG RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
-   l REG RAX LLIM-OFF MEM-OFF SINK ENC-MOV-MR ;
+   l REG RAX LLIM-OFF MEM-OFF SINK ENC-MOV-MR
+   IDX s REG SINK ENC-MOV-RR ;
+
+\ The head binds with r12 holding the index: the entry arrives from LOOP-PUSH
+\ and every back edge from LOOP-NEXT or LOOP-STEP.
+: LOOP-OPEN ( vreg vreg bool -- )
+   LABEL:LOOP-OPEN  1 HELD ! ;
 
 : LOOP-POP ( -- )
    RAX LDEPTH
    RAX SINK ENC-DEC
-   RAX LDEPTH! ;
+   RAX LDEPTH!
+   0 HELD ! ;
 
-: LOOP-I ( vreg -- ) 0 LINDEX ;
-: LOOP-J ( vreg -- ) 1 LINDEX ;
+: LOOP-I ( vreg -- )
+   HELD @ 0= if FRAME-IDX then
+   REG IDX SINK ENC-MOV-RR ;
 
+\ The step is r12's, so this target leaves the free vreg alone.
 : LOOP-NEXT ( vreg LABEL:head -- )
-   {: t:vreg m:LABEL:head :}
-   t REG {: r:r64 :}
-   RAX LDEPTH
-   RAX LTOP
-   r RAX LIDX-OFF MEM-OFF SINK ENC-MOV-RM
-   r SINK ENC-INC
-   r RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
-   r RAX LLIM-OFF MEM-OFF SINK ENC-CMP-RM
+   nip {: m:LABEL:head :}
+   FRAME-IDX
+   IDX SINK ENC-INC
+   IDX RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
+   IDX RAX LLIM-OFF MEM-OFF SINK ENC-CMP-RM
    C-L m BACK-JCC ;
 
 \ With old = index - limit before the step, the index crossed the boundary
@@ -577,11 +605,11 @@ variable FLAGS                        \ nonzero while the condition codes are he
 : LOOP-STEP ( vreg vreg LABEL:head -- )
    {: s:vreg t:vreg m:LABEL:head :}
    s REG {: sr:r64 :}  t REG {: r:r64 :}
-   RAX LDEPTH
-   RAX LTOP
-   r RAX LIDX-OFF MEM-OFF SINK ENC-MOV-RM
+   FRAME-IDX
+   r IDX SINK ENC-MOV-RR
    r RAX LLIM-OFF MEM-OFF SINK ENC-SUB-RM
-   sr RAX LIDX-OFF MEM-OFF SINK ENC-ADD-MR
+   IDX sr SINK ENC-ADD-RR
+   IDX RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
    RAX r SINK ENC-MOV-RR
    RAX sr SINK ENC-ADD-RR
    RAX r SINK ENC-XOR-RR
@@ -666,13 +694,13 @@ variable FLAGS                        \ nonzero while the condition codes are he
    ['] LOOP-POP k EMIT-LOOP-POP-XT !
    ['] LOOP-I k EMIT-LOOP-I-XT !
    ['] LOOP-J k EMIT-LOOP-J-XT !
-   ['] LABEL:LOOP-OPEN k EMIT-LOOP-OPEN-XT !
+   ['] LOOP-OPEN k EMIT-LOOP-OPEN-XT !
    ['] LABEL:LEAVE, k EMIT-LEAVE,-XT !
    ['] LABEL:LOOP-NEXT k EMIT-LOOP-NEXT-XT !
    ['] LABEL:LOOP-STEP k EMIT-LOOP-STEP-XT !
    ['] LABEL:LOOP-CLOSE k EMIT-LOOP-CLOSE-XT !
    ['] IMM? k EMIT-IMM?-XT !
-   ['] PLACE:MARK k LABEL:MARK-XT !
+   ['] MARK k LABEL:MARK-XT !
    ['] FWD-JUMP k LABEL:FWD-JUMP-XT !
    ['] FWD-ZERO k LABEL:FWD-ZERO-XT !
    ['] FWD-NE k LABEL:FWD-NE-XT !
@@ -682,7 +710,7 @@ variable FLAGS                        \ nonzero while the condition codes are he
    ['] BACK-JUMP k LABEL:BACK-JUMP-XT !
    ['] BACK-ZERO k LABEL:BACK-ZERO-XT !
    ['] BACK-CC k LABEL:BACK-CC-XT !
-   ['] PLACE:RESOLVE k LABEL:RESOLVE-XT !
+   ['] RESOLVE k LABEL:RESOLVE-XT !
    ['] ENTRY-EQ k LABEL:ENTRY-EQ-XT !
    ['] LOOP-NEXT k LABEL:LOOP-NEXT-XT !
    ['] LOOP-STEP k LABEL:LOOP-STEP-XT !

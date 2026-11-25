@@ -71,6 +71,11 @@ variable INCREMENT
 : NEST ( n n -- n ) {: a:n b:n :}
    0 a 0 do b 0 do j 10 * i + + 2 +loop 3 +loop ;
 
+\ An inner loop a throw unwinds between two reads of the outer index.
+: INNER ( -- ) 20 10 do i 12 = if 5 throw then loop ;
+: UNWOUND ( -- n )
+   0 3 0 do i + ['] INNER catch drop i 10 * + loop ;
+
 \ A counting-down `?do ... +loop` inside a `?do ... loop` and the other way
 \ round: each opener's entry test is its own closer's.
 : QNEST-DOWN ( -- n )
@@ -200,6 +205,8 @@ private
 : NEST-CASE ( -- )
    s" two step loops nest and i and j read the right frames" T-LABEL
    6 4 NPL-FIXTURE:NEST 64 T=
+   s" the outer index survives a throw out of an inner loop" T-LABEL
+   NPL-FIXTURE:UNWOUND 33 T=
    s" a counting-down ?do nests in a ?do loop both ways round" T-LABEL
    NPL-FIXTURE:QNEST-DOWN 8 T=
    0 3 VISITED-IS  3 0 VISITED-IS  4 13 VISITED-IS  7 10 VISITED-IS
