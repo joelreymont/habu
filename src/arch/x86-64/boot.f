@@ -38,7 +38,7 @@ using X64CODE
    {: first:label last:label :}
    LBL LBL {: more:label done:label :}
    R8 first MOVABS, R9 last MOVABS,
-   R10 DBASE-REG ASM-SINK ENC-MOV-RR
+   R10 DBASE-REG ASM-SINK ENC-MOV-RR  R10 DELTA-REG ASM-SINK ENC-ADD-RR
    more LBL,
    R8 R9 ASM-SINK ENC-CMP-RR C-AE done JCC,
    DREC 0 ?do
@@ -62,11 +62,10 @@ public
    image end MOVE-RUNS,
    engine if records records-end COPY-RECORDS, then
    RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
-   false DATA-INIT,
+   false DATA-INIT,  ALIAS-DELTA,
    crash rest stub SETTLE,
    engine if TRAMPOLINES, trap rest TRAP, then
    go JMP,
-   REGION-BAD @ >LABEL s\" hb: cannot map or protect code region\n" EXIT-STATUS:SYSTEM FAIL,
    crash rest stub STUBS,
    engine if trap crash BP-HANDLER, then
    go stub ;

@@ -1,9 +1,9 @@
 split-str
 \ boot-x64.f - the x86-64 process entry, package X64BOOT. START, emits
 \ `_start` up to its first run-time state, and falls through into whatever the
-\ stream emits next. It is straight-line code that never calls or pushes: rsp
-\ stays at argc until the DATA cells take the argument vector, and each install
-\ gives back the rsp it used.
+\ stream emits next. It is straight-line code that never calls or pushes, and
+\ whatever moves rsp before DATA-INIT, gives it back: rsp is at argc when the
+\ DATA cells take the argument vector.
 \ The signal and crash words are the x86-64 side of src/habu/crash.f. A file that loads the x86-64
 \ seam into a private wordlist first (test/x86-64-peer-harness.f) must load after this one.
 require src/core/exit-status.f
@@ -41,6 +41,10 @@ variable OCC-BAD
 : RBASE-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DSTACK-REG ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
+
+\ Boot keeps the region's alias - base in the loop index until ALIAS-DELTA,
+\ stores it; no code between writes that register.
+: DELTA-REG ( -- r64 ) ENGINE-GPR:X64-INDEX >R64 ;
 
 : IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
@@ -93,38 +97,6 @@ public
 
 private
 
-\ Keep the region's RX addresses and copy its used payload into a shared
-\ memfd. Its second mapping is RW only. Every entry reaches here after
-\ DATA-INIT, before any Habu code runs.
-: REGION-VIEWS, ( -- )
-   X64CODE:LBL X64CODE:LBL {: unfd:label done:label :}
-   REGION-BAD @ >LABEL REGION-MEMFD,
-   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8
-   RAX RSP MEM-AT ASM-SINK ENC-MOV-MR
-   R8 RAX ASM-SINK ENC-MOV-RR  RDI ZERO-REG,
-   RSI REGION IMM,  RDX PROT-RW IMM,  R10 MAP-SHARED IMM,  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B unfd JCC,
-   RAX RSP 8 MEM-OFF ASM-SINK ENC-MOV-MR
-   RDI RAX ASM-SINK ENC-MOV-RR  RSI DBASE-REG ASM-SINK ENC-MOV-RR
-   RCX ENGINE-GPR:X64-CP >R64 ASM-SINK ENC-MOV-RR
-   RCX DBASE-REG ASM-SINK ENC-SUB-RR
-   $F3 ASM-SINK VEC:PUSH c!  $A4 ASM-SINK VEC:PUSH c!  \ rep movsb
-   RDI DBASE-REG ASM-SINK ENC-MOV-RR
-   RSI REGION IMM,  RDX PROT-RX IMM,  R10 MAP-SHARED-FIXED IMM,
-   R8 RSP MEM-AT ASM-SINK ENC-MOV-RM  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B unfd JCC,
-   RAX RSP 8 MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX DBASE-REG ASM-SINK ENC-SUB-RR
-   RAX REGION-ALIAS:DELTA-CELL CELL!
-   RDI RSP MEM-AT ASM-SINK ENC-MOV-RM  NR-CLOSE SYS,
-   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
-   done JMP,
-   unfd X64CODE:LBL,
-   RDI RSP MEM-AT ASM-SINK ENC-MOV-RM  NR-CLOSE SYS,
-   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
-   REGION-BAD @ >LABEL JMP,
-   done X64CODE:LBL, ;
-
 \ The twin of STACK-GUARD:EMIT-MAP (src/habu/rt.f): map one guarded VM stack of
 \ `cap` bytes and leave its base in `dst`. The first mapping reserves cap plus
 \ three guard pages PROT_NONE; the second reopens cap bytes read/write at the
@@ -148,13 +120,21 @@ private
    r 0 MEM-RIP ASM-SINK ENC-LEA
    r X64CODE:ASM-LEN >IMM32 ASM-SINK ENC-SUB-RI32 ;
 
-\ r13 = the code region, REGION bytes at the image base plus REGION-OFF, where
-\ the writer's PT_LOAD places it; r15 = its code area past the records;
-\ r14 = no records. The twin of EM-MMAP-CODE-REGION.
+\ Map the descriptor in r8, REGION bytes shared, at rdi.
+: VIEW, ( n n -- ) {: prot:n flags:n :}
+   RSI REGION IMM,  RDX prot IMM,  R10 flags IMM,  R9 ZERO-REG,
+   NR-MMAP SYS,  C-B REGION-BAD @ >LABEL JCC, ;
+
+\ r13 = the code region, REGION-OFF past the image base, and r15 past its
+\ records, of which r14 counts none; r12 = its RW alias - r13.
 : CODE-REGION, ( -- )
-   RDI RBASE-REG REGION-OFF LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
-   REGION MAP-ANON-PRIVATE-FIXED REGION-BAD @ >LABEL MAP-FIXED,
-   DBASE-REG RDI ASM-SINK ENC-MOV-RR
+   DBASE-REG RBASE-REG REGION-OFF LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
+   REGION-BAD @ >LABEL REGION-MEMFD,  R8 RAX ASM-SINK ENC-MOV-RR
+   \ The RX view over the image's own load, the RW alias where the kernel puts it.
+   RDI DBASE-REG ASM-SINK ENC-MOV-RR  PROT-RX MAP-SHARED-FIXED VIEW,
+   RDI ZERO-REG,  PROT-RW MAP-SHARED VIEW,
+   DELTA-REG RAX ASM-SINK ENC-MOV-RR  DELTA-REG DBASE-REG ASM-SINK ENC-SUB-RR
+   RDI R8 ASM-SINK ENC-MOV-RR  NR-CLOSE SYS,  C-B REGION-BAD @ >LABEL JCC,
    ENGINE-GPR:X64-CP >R64 DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
    ENGINE-GPR:X64-NDICT >R64 ZERO-REG, ;
 
@@ -198,6 +178,8 @@ private
    \ Every process starts with no definition open, whatever DATA carried.
    RAX ZERO-REG,
    RAX NCOMP-DISPATCH:COMP-LATCH-CELL CELL! ;
+
+: ALIAS-DELTA, ( -- ) DELTA-REG REGION-ALIAS:DELTA-CELL CELL! ;
 
 \ This process's definition occurrence allocation (layout.f DEF-OCC): a fresh
 \ mapping whatever DATA the image carried, whose pointer DATA-INIT's caller
@@ -879,9 +861,8 @@ BPTRAMP-BYTES BP-SLOTS / constant BP-TRAMP
 : TRAP, ( label label -- ) {: trap:label rest:label :}
    SIGTRAP SA-SIGINFO SA-ONSTACK or trap rest SIGACTION, ;
 
-\ The persistent breakpoints' trampolines at the live code's start, int3 stored
-\ through the region's RW alias once REGION-VIEWS, has made it, their address
-\ in BPTRAMP-CELL; CP starts after them.
+\ The persistent breakpoints' trampolines, int3 at the live code's start, their
+\ address in BPTRAMP-CELL; CP starts after them.
 : TRAMPOLINES, ( -- )
    ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
    cp BPTRAMP-CELL CELL!
@@ -898,7 +879,6 @@ BPTRAMP-BYTES BP-SLOTS / constant BP-TRAMP
    STACK-ABI:BOOT-BYTES DSTACK-REG STACK-BAD @ >LABEL MAP-STACK, ;
 
 : SETTLE, ( label label label -- ) {: crash:label rest:label stub:label :}
-   REGION-VIEWS,
    SIGNAL-STACK,                 \ once DATA-INIT, has read argc and argv off rsp
    OCC-INIT,
    stub PUBLISH-STUB,
@@ -914,6 +894,9 @@ BPTRAMP-BYTES BP-SLOTS / constant BP-TRAMP
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" EXIT-STATUS:SYSTEM FAIL,
    OCC-BAD @ >LABEL S\" hb: cannot map definition occurrences\n" EXIT-STATUS:SYSTEM FAIL,
    DATA-BAD @ >LABEL S\" hb: cannot map fixed data region\n" EXIT-STATUS:SYSTEM FAIL,
+   REGION-BAD @ >LABEL
+   S\" hb: cannot map the code region; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)\n"
+   EXIT-STATUS:SYSTEM FAIL,
    crash rest end CRASH-HANDLER,
    rest RESTORER,
    stub SIGNAL-STUB,
@@ -936,12 +919,11 @@ variable LEXITHOOK
    OPEN,
    CODE-REGION,
    DATA-REGION,
-   true DATA-INIT,
+   true DATA-INIT,  ALIAS-DELTA,
    floor PUBLISH-FLOOR,
    RAX code-end MOVABS,  RAX CODE-END-CELL CELL!
    crash rest stub SETTLE,
    booted JMP,
-   REGION-BAD @ >LABEL S\" hb: cannot map fixed code region\n" EXIT-STATUS:SYSTEM FAIL,
    kernel 0= if
       \ No kernel follows to throw from: FAULT-THROW, has written the record, so
       \ exit as an uncaught memory fault.
