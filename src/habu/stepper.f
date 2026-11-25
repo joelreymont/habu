@@ -1,4 +1,3 @@
-split-str
 \ stepper.f - the REPL token stepper: `step <code>` runs the rest of the line one
 \ token at a time, echoing each token and the data stack after it. While
 \ stepping the REPL's reader returns one token per call, so the engine's
@@ -62,7 +61,7 @@ variable SLEN  variable SPOS  variable STEPPING
 \ A word on the token may STEP and move SBUF: the REPL keeps a copy first.
 : S-OUT ( n n -- str )
    {: at u :}
-   at SBUF u ;
+   at SBUF u >str ;
 
 
 \ Stepping is over, so SBUF can go.
@@ -84,7 +83,7 @@ variable SLEN  variable SPOS  variable STEPPING
    2dup COLON? IF
       0 STEPPING !  REST-OF S-OUT                 \ definition -> run whole, stop stepping
    ELSE
-      S-OUT  s" step> " type  over over type  s"  " type
+      S-OUT  s" step> " type  dup type  s"  " type
    THEN ;
 
 public
@@ -95,10 +94,10 @@ public
 
 : STEP ( -- )
    SINP@ {: p :}
-   REJECTION:INPUT$ + p - SLEN !
+   REJECTION:INPUT$ dup STR:DATA swap STR:LEN + p - SLEN !
    SLEN @ SBUF-RESERVE
    SLEN @ 0 ?do p i + c@ i SBUF c! loop
    0 SPOS !  -1 STEPPING !
-   REJECTION:INPUT$ + SINP! ;
+   REJECTION:INPUT$ dup STR:DATA swap STR:LEN + SINP! ;
 
 ;package

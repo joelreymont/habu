@@ -1,4 +1,3 @@
-split-str
 \ t0-wasm.f - the Wasm generator of the tier 0 compiler, part WASM of package
 \ COMP.
 \
@@ -89,7 +88,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : SCRATCH ( -- SPAN:span<u8> ) LEB-ROOM LEB-MOST SPAN:MAKE ;
 
 : LEB, ( n -- ) {: u:n :}
-   LEB-ROOM u SINK @ VEC:APPEND ;
+   LEB-ROOM u >str SINK @ VEC:APPEND ;
 
 : U32, ( n -- ) SCRATCH WLEB:U32! LEB, ;
 : S32, ( n -- ) SCRATCH WLEB:S32! LEB, ;

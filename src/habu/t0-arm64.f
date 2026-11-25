@@ -1,4 +1,3 @@
-split-str
 \ t0-arm64.f - the arm64 emitter of the tier 0 compiler, part ARM64 of package
 \ COMP.
 \

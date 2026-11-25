@@ -1,4 +1,3 @@
-split-str
 \ t0-emit.f - the emitter seam of the tier 0 compiler, package COMP.
 \
 \ src/habu/t0.f drives the EMIT- operations below; an emitter part per target

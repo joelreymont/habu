@@ -1,4 +1,3 @@
-split-str
 \ sign-id.f - the code-signature identifier of each kind of image. Writers name
 \ it only through these words: on macOS it is signed bytes counted in the
 \ CodeDirectory, SuperBlob, LC_CODE_SIGNATURE and __LINKEDIT sizes, so a

@@ -1,4 +1,3 @@
-split-str
 \ primitive-source.f - locate engine primitive names in the raw source of the
 \ specification the running checker retained. The lexer keeps registry rows
 \ whole, so the name is read from each row's header after matching the ordered
@@ -24,16 +23,16 @@ variable ROW
 variable READY
 variable VALID
 
-: PATH$ ( -- str ) PATH PATH-U @ ;
+: PATH$ ( -- str ) PATH PATH-U @ >str ;
 
 : ENGINE-PATH ( -- bool )
    0 PATH-U !
-   SOURCE-ROOT:ENGINE$ {: root:^ rootu:n :}
-   s" /src/habu/prims.f" {: tail:^ tailu:n :}
-   rootu tailu + PATH-CAP > if false exit then
-   root PATH rootu BYTE-COPY
-   tail PATH rootu + tailu BYTE-COPY
-   rootu tailu + PATH-U !
+   SOURCE-ROOT:ENGINE$ {: root:str :}
+   s" /src/habu/prims.f" {: tail:str :}
+   root STR:LEN tail STR:LEN + PATH-CAP > if false exit then
+   root STR:DATA PATH root STR:LEN BYTE-COPY
+   tail STR:DATA PATH root STR:LEN + tail STR:LEN BYTE-COPY
+   root STR:LEN tail STR:LEN + PATH-U !
    true ;
 
 : READ-BODY ( n -- bool )
@@ -48,9 +47,9 @@ variable VALID
    again ;
 
 : READ-FILE ( str -- bool )
-   {: path:^ pathu:n :}
-   pathu 0 <= pathu PATH-CAP > or if false exit then
-   path pathu ZPATH PATH-CAP 1+ PATHZ
+   {: path:str :}
+   path STR:LEN 0 <= path STR:LEN PATH-CAP > or if false exit then
+   path ZPATH PATH-CAP 1+ PATHZ
    ZPATH open-rd {: fd:n :}
    fd 0 < if false exit then
    fd READ-BODY {: read-ok:bool :}
@@ -58,11 +57,11 @@ variable VALID
    read-ok ;
 
 : FIELD ( str n -- n n )
-   {: a:^ u:n from:n :}
+   {: s:str from:n :}
    from
-   begin dup u < if a over + c@ LINT-LEX:ENGINE-DELIM? else false then while 1+ repeat
+   begin dup s STR:LEN < if s STR:DATA over + c@ LINT-LEX:ENGINE-DELIM? else false then while 1+ repeat
    dup {: start:n :}
-   begin dup u < if a over + c@ LINT-LEX:ENGINE-DELIM? 0= else false then while 1+ repeat
+   begin dup s STR:LEN < if s STR:DATA over + c@ LINT-LEX:ENGINE-DELIM? 0= else false then while 1+ repeat
    start swap ;
 
 : SPEC-NEXT ( n -- n )
@@ -75,29 +74,29 @@ variable VALID
 
 : MATCH-NAME ( n n n -- bool )
    {: token:n row:n after:n :}
-   token LINT-LEX:TOKEN {: a:^ u:n :}
-   a u after FIELD {: name:n name-end:n :}
+   token LINT-LEX:TOKEN {: s:str :}
+   s after FIELD {: name:n name-end:n :}
    name-end name <= if false exit then
-   a name + name-end name - row PRIM-SPEC:NAME$ STR:= 0= if false exit then
+   s STR:DATA name + name-end name - >str row PRIM-SPEC:NAME$ STR:= 0= if false exit then
    token LINT-LEX:BYTE@ name + row STARTS !
    token LINT-LEX:BYTE@ name-end + row ENDS !
    true ;
 
 : MATCH-ROW ( n n -- bool )
    {: token:n row:n :}
-   token LINT-LEX:TOKEN {: a:^ u:n :}
-   a u 0 FIELD {: opener:n after:n :}
+   token LINT-LEX:TOKEN {: s:str :}
+   s 0 FIELD {: opener:n after:n :}
    after opener <= if false exit then
-   a opener + after opener - {: op:^ opu:n :}
+   s STR:DATA opener + after opener - >str {: op:str :}
    row PRIM-SPEC:KIND@ {: kind:n :}
    kind PRIM-SPEC:K-PRIM = if
-      op opu s" EPRIM:" STR:=CI 0= if false exit then
+      op s" EPRIM:" STR:=CI 0= if false exit then
       token row after MATCH-NAME exit
    then
    kind PRIM-SPEC:K-PKG-PRIVATE <> if false exit then
-   op opu s" EPPRIM:" STR:=CI 0= if false exit then
-   a u after FIELD {: pkg:n pkg-end:n :}
-   a pkg + pkg-end pkg - row PRIM-SPEC:PKG$ STR:= 0= if false exit then
+   op s" EPPRIM:" STR:=CI 0= if false exit then
+   s after FIELD {: pkg:n pkg-end:n :}
+   s STR:DATA pkg + pkg-end pkg - >str row PRIM-SPEC:PKG$ STR:= 0= if false exit then
    token row pkg-end MATCH-NAME ;
 
 : MATCH-ELAB ( n n -- bool )
@@ -107,7 +106,7 @@ variable VALID
    token 1+ LINT-LEX:KIND@ LINT-LEX:WORD <> if false exit then
    token 1+ LINT-LEX:TOKEN row PRIM-SPEC:NAME$ STR:= 0= if false exit then
    token 1+ LINT-LEX:BYTE@ {: start:n :}
-   token 1+ LINT-LEX:TOKEN nip start + {: end:n :}
+   token 1+ LINT-LEX:TOKEN STR:LEN start + {: end:n :}
    start row STARTS !
    end row ENDS !
    true ;
@@ -146,14 +145,14 @@ variable VALID
 
 : CANON-ROW ( n -- n )
    {: row:n :}
-   row PRIM-SPEC:PKG$ {: pkg:^ pkgu:n :}
-   row PRIM-SPEC:NAME$ {: name:^ nameu:n :}
+   row PRIM-SPEC:PKG$ {: pkg:str :}
+   row PRIM-SPEC:NAME$ {: name:str :}
    row 0 ?do
       i PRIM-SPEC:KIND@ {: kind:n :}
       kind PRIM-SPEC:K-PRIM = kind PRIM-SPEC:K-PKG-PRIVATE = or
       kind PRIM-SPEC:K-ELAB = or if
-         i PRIM-SPEC:PKG$ pkg pkgu STR:=CI
-         i PRIM-SPEC:NAME$ name nameu STR:=CI and if i unloop exit then
+         i PRIM-SPEC:PKG$ pkg STR:=CI
+         i PRIM-SPEC:NAME$ name STR:=CI and if i unloop exit then
       then
    loop
    row ;
@@ -162,18 +161,18 @@ public
 
 \ The bytes are borrowed until another read through this package.
 : FILE-BYTES ( str -- str bool )
-   READ-FILE if 0 SOURCE-B SOURCE-U @ true exit then
+   READ-FILE if 0 SOURCE-B SOURCE-U @ >str true exit then
    NULL$ false ;
 
 : ENGINE-PATH$ ( -- str bool )
    ENGINE-PATH
-   PATH$ rot ;
+   PATH$ swap ;
 
 \ Match the entire raw specification before trusting a target in it.
 : TARGET-IN ( str n -- n n bool )
-   {: a:^ u:n row:n :}
+   {: s:str row:n :}
    0 READY ! 0 VALID !
-   a u SCAN-IN VALID !
+   s SCAN-IN VALID !
    VALID @ 0= if 0 0 false exit then
    row AT ;
 
@@ -184,9 +183,9 @@ public
 \ Reverse lookup in raw or supplied source, after validating the whole table.
 \ Overload names map to the first row, the same marker a checker use carries.
 : MARKER-IN ( str n -- n n n bool )
-   {: a:^ u:n byte:n :}
+   {: s:str byte:n :}
    0 READY ! 0 VALID !
-   a u SCAN-IN 0= if 0 0 0 false exit then
+   s SCAN-IN 0= if 0 0 0 false exit then
    PRIM-SPEC:COUNT 0 ?do
       i AT {: start:n end:n found:bool :}
       found byte start >= and byte end <= and if
@@ -205,7 +204,7 @@ public
       1 READY !
       ENGINE-PATH if
          PATH$ READ-FILE if
-            0 SOURCE-B SOURCE-U @ SCAN-IN VALID !
+            0 SOURCE-B SOURCE-U @ >str SCAN-IN VALID !
          then
       then
    then

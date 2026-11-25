@@ -1,4 +1,3 @@
-split-str
 \ prims.f - the engine primitive specification, one machine-independent table.
 \ Each row names one primitive and states its checker effect once: a build
 \ states the table, as the kernel object carries it, onto checker.f's `PE-*`
@@ -113,13 +112,13 @@ PERSISTED-PTR-VARIABLE INDEX
 
 : ROW-FIELD ( n n -- ^n ) SLOT ;
 
-: NAME-SPAN, ( str -- ) {: a:^ u:n :}
-   u 0 ?do a i + c@ c, loop ;
+: NAME-SPAN, ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ c, loop ;
 
 : CODE, ( n -- ) {: code:n :}
    F-REF-LEN OPEN-FIELD @ 0 <> IF
       s" prims: an atom follows REF in row " ERROR-TEXT:TYPE
-      LAST-ROW @ BYTE-VIEW F-NAME-OFF OPEN-FIELD @ + F-NAME-LEN OPEN-FIELD @
+      LAST-ROW @ BYTE-VIEW F-NAME-OFF OPEN-FIELD @ + F-NAME-LEN OPEN-FIELD @ >str
       EXIT-STATUS:INTERNAL die
    THEN
    code c,
@@ -177,7 +176,7 @@ PERSISTED-PTR-VARIABLE INDEX
 \ The name is the last token an opener parses; the row's atoms follow it.
 : ROW-NAME ( -- )
    ROW-HERE F-NAME-OFF OPEN-FIELD !
-   parse-name dup F-NAME-LEN OPEN-FIELD ! NAME-SPAN,
+   parse-name dup STR:LEN F-NAME-LEN OPEN-FIELD ! NAME-SPAN,
    ROW-HERE F-CODE-OFF OPEN-FIELD !
    0 F-CODE-LEN OPEN-FIELD ! ;
 
@@ -197,7 +196,7 @@ PERSISTED-PTR-VARIABLE INDEX
 : EPPRIM: ( -- )
    K-PKG-PRIVATE ROW-OPEN
    ROW-HERE F-PKG-OFF OPEN-FIELD !
-   parse-name dup F-PKG-LEN OPEN-FIELD ! NAME-SPAN,
+   parse-name dup STR:LEN F-PKG-LEN OPEN-FIELD ! NAME-SPAN,
    ROW-NAME ;
 
 : ECLOSE-PRIVATE ( -- )
@@ -211,7 +210,7 @@ PERSISTED-PTR-VARIABLE INDEX
 \ it on the row whose instantiation the gate runs.
 : REF ( -- )
    ROW-HERE F-REF-OFF OPEN-FIELD !
-   parse-name dup F-REF-LEN OPEN-FIELD ! NAME-SPAN, ;
+   parse-name dup STR:LEN F-REF-LEN OPEN-FIELD ! NAME-SPAN, ;
 
 \ Marks the open row's checker row a trust boundary: a CHECKED caller is
 \ rejected, while a TRUSTED: body may use it.
@@ -252,13 +251,13 @@ public
    F-KIND ROW-FIELD @ ;
 
 : NAME$ ( n -- str ) {: row:n :}
-   row ROW-AT BYTE-VIEW row F-NAME-OFF ROW-FIELD @ +  row F-NAME-LEN ROW-FIELD @ ;
+   row ROW-AT BYTE-VIEW row F-NAME-OFF ROW-FIELD @ +  row F-NAME-LEN ROW-FIELD @ >str ;
 
 : PKG$ ( n -- str ) {: row:n :}
-   row ROW-AT BYTE-VIEW row F-PKG-OFF ROW-FIELD @ +  row F-PKG-LEN ROW-FIELD @ ;
+   row ROW-AT BYTE-VIEW row F-PKG-OFF ROW-FIELD @ +  row F-PKG-LEN ROW-FIELD @ >str ;
 
 : REF$ ( n -- str ) {: row:n :}
-   row ROW-AT BYTE-VIEW row F-REF-OFF ROW-FIELD @ +  row F-REF-LEN ROW-FIELD @ ;
+   row ROW-AT BYTE-VIEW row F-REF-OFF ROW-FIELD @ +  row F-REF-LEN ROW-FIELD @ >str ;
 
 : TRUSTED-ONLY? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-TRUSTED-ONLY and 0 <> ;
@@ -278,10 +277,10 @@ public
 \ Exact spelling: a body registered under a different case is a different row
 \ and must say so. The index lives on the stack: a lookup leaves no state in
 \ the image.
-: FIND ( str -- n ) {: a:^ u:n :}
+: FIND ( str -- n ) {: s:str :}
    0
    BEGIN dup ROW-N @ < WHILE
-      dup NAME$ a u STR:= IF EXIT THEN
+      dup NAME$ s STR:= IF EXIT THEN
       1 +
    REPEAT
    drop -1 ;

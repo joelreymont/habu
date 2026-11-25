@@ -1,4 +1,3 @@
-split-str
 \ spawn-abi.f - the request record spawn-fds reads, shared by its engine bodies
 \ (habu1.f BSPAWNFDS, kernel-x64.f SPAWN-FDS-ROW) and the code that builds one.
 package SPAWN-ABI

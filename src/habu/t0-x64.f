@@ -1,4 +1,3 @@
-split-str
 \ t0-x64.f - the x86-64 emitter of the tier 0 compiler, part X86-64 of package
 \ COMP.
 \
