@@ -8,10 +8,11 @@
 \ throwing action stop the rest or loses its code; changes when a mapping is
 \ refused; fails on NULL-PTR;
 \ cannot be held in a run-time record's field; leaves a later chunk mapped
-\ after RESET or keeps every first chunk RELEASE gives back; runs an action
-\ twice when a release halted in it resumes; moves a newest block it could
-\ grow in place, gives back an older block's bytes when it shrinks, or loses
-\ a block's bytes or leaves stale ones in it when its allocator resizes it.
+\ after RESET, keeps every first chunk RELEASE gives back or a spare after
+\ TRIM; runs an action twice when a release halted in it resumes; moves a
+\ newest block it could grow in place, gives back an older block's bytes when
+\ it shrinks, or loses a block's bytes or leaves stale ones in it when its
+\ allocator resizes it.
 
 require src/lib/test.f
 require src/lib/span.f
@@ -241,8 +242,9 @@ public
    r ROOTS-RELEASE ;
 
 
-\ 10. RESET unmaps a later chunk, and RELEASE a parent's first chunk once its
-\ 64 children fill the spares: a subject child touching either exits 110.
+\ 10. RESET unmaps a later chunk, RELEASE a parent's first chunk once its 64
+\ children fill the spares, and TRIM a spare once 64 held arenas have taken the
+\ rest: a subject child touching any of them exits 110.
 : RESET-TOUCH ( -- )
    ARENA:NEW {: a:^ :}
    a 40000 ARENA:ALLOC drop {: p:^ :}
@@ -255,6 +257,15 @@ public
    a 8 ARENA:ALLOC drop {: p:^ :}
    64 0 do a ARENA:NEW-IN drop loop
    a ARENA:RELEASE
+   p c@ drop ;
+
+
+: TRIM-TOUCH ( -- )
+   64 0 do ARENA:NEW drop loop
+   ARENA:NEW {: a:^ :}
+   a 8 ARENA:ALLOC drop {: p:^ :}
+   a ARENA:RELEASE
+   ARENA:TRIM
    p c@ drop ;
 
 private
@@ -275,7 +286,8 @@ CAP BUFFER: CAP-ERR
 : UNMAPPED ( -- )
    s" unmapped" T-LABEL
    s" ARENA-TEST:RESET-TOUCH" EXPECT-FAULT
-   s" ARENA-TEST:RELEASE-TOUCH" EXPECT-FAULT ;
+   s" ARENA-TEST:RELEASE-TOUCH" EXPECT-FAULT
+   s" ARENA-TEST:TRIM-TOUCH" EXPECT-FAULT ;
 
 
 \ 11. A RESET halted inside an action leaves that action out of the RELEASE

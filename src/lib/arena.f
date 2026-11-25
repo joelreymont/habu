@@ -8,6 +8,7 @@ split-str
 \ and whose resize leaves a moved block's old bytes in place. RELEASE keeps up
 \ to SPARE-N first chunks, zeroed, for the next NEW, at most 64 KiB in all, and
 \ unmaps the rest, so a NEW paired with RELEASE maps nothing in steady state.
+\ TRIM unmaps the spares, for a program about to wait.
 \ STORAGE CLASS. CALLER-OWNED: the caller releases each arena NEW makes.
 \ PROCESS-WIDE: the spare first chunks, a CAS per move; a build leaves them out.
 
@@ -172,13 +173,18 @@ CAST: >ACTION ( ^u8 -- ^action )
    loop false ;
 
 
+\ Answers E-MEM-UNMAP when the unmap of a's first chunk was refused, else 0.
+: UNMAP-FIRST ( ^arena -- n )
+   BYTE-VIEW FIRST-BYTES munmap 0< if E-MEM-UNMAP else 0 then ;
+
+
 \ The released arena's first chunk is zeroed and kept, or unmapped when every
 \ spare cell is full. Answers E-MEM-UNMAP when the unmap was refused, else 0.
 : GIVE-BACK ( ^arena -- n )
    {: a:^ :}
    0 a BYTE-VIEW a ARENA-TOP @ SPAN:MAKE SPAN:FILL
    a NULL-PTR - KEEP-SPARE if 0 exit then
-   a BYTE-VIEW FIRST-BYTES munmap 0< if E-MEM-UNMAP else 0 then ;
+   a UNMAP-FIRST ;
 
 
 \ Children end before this arena's actions run, so a child's action may use
@@ -284,6 +290,14 @@ public
 \ Each action caught; the first code one threw is rethrown after the rest.
 : RESET ( ^arena -- ) true SETTLE RETHROW ;
 : RELEASE ( ^arena -- ) dup NULL-PTR = if drop exit then false SETTLE RETHROW ;
+
+
+\ Each spare a task has not taken is unmapped; the first refusal is rethrown
+\ as E-MEM-UNMAP after the rest.
+: TRIM ( -- )
+   0 SPARE-N 0 do
+      TAKE-SPARE dup 0<> if SPARE>ARENA UNMAP-FIRST FIRST-ERROR else drop then
+   loop RETHROW ;
 
 
 : WITH ( R [ R ^arena -- S ] -- S )
