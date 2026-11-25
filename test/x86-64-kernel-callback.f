@@ -1,9 +1,9 @@
 \ x86-64-kernel-callback.f - emitted SysV callback-entry E2E.
 \ Run the produced ELFs on x86-64: the qsort image exits 0 after libc calls a
-\ Habu comparator through ffi-call and -1 answers the address slot 0's stub
-\ jumps to. The four refusal images exit 106 with their exact "hb: callback:
-\ ..." lines on stderr: range and below "slot out of range", unbound "slot is
-\ not bound", no-frame "context is not inside a foreign call".
+\ Habu comparator through ffi-call. The two rejection images exit 106 with an
+\ E-CALLBACK record on stderr that names slot 0: unbound "C called a callback
+\ whose slot is not bound", no-frame "C called the callback outside the foreign
+\ call that passed it".
 require test/x86-64-boot-harness.f
 require src/lib/vector.f
 
@@ -20,6 +20,7 @@ ROWS CB-ROW-BYTES + constant INNER-ARGS
 INNER-ARGS 8 CELL * + constant INNER-VALUES
 INNER-VALUES 2 CELL * + constant NEST-DEPTH
 NEST-DEPTH CELL + constant QSORT-FN
+QSORT-FN CELL + constant THUNK
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
@@ -59,6 +60,17 @@ NEST-DEPTH CELL + constant QSORT-FN
    past LBL,
    RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
 
+\ Leave in rax slot 0's C entry: mov r10, 0 and a jump to the thunk. C keeps its
+\ own rbp, so the stub names the thunk's cell by its absolute address.
+: STUB, ( -- )
+   s" callback-entry" ROW  0 G-POP
+   RAX DATA-REG THUNK MEM-OFF ASM-SINK ENC-MOV-MR
+   [: R10 0 >IMM32 ASM-SINK ENC-MOV-RI32
+      RAX LINUX-LAYOUT:DATA-VA THUNK + >IMM64 ASM-SINK ENC-MOV-RI64
+      RAX RAX MEM-AT ASM-SINK ENC-MOV-RM
+      RAX ASM-SINK ENC-JMP-REG ;] X64HARNESS:ROUTINE,
+   RAX swap MOVABS, ;
+
 : SORT-CASE ( -- )
    [: COMPARE, ;] X64HARNESS:ROUTINE, XTS X64HARNESS:LABEL-CELL!,
    XTS CB-XTS X64HARNESS:DATA-ADDR!,
@@ -75,8 +87,8 @@ NEST-DEPTH CELL + constant QSORT-FN
    VALUES 0 ARG X64HARNESS:DATA-ADDR!,
    3 1 ARG X64HARNESS:CELL!,
    CELL 2 ARG X64HARNESS:CELL!,
-   0 N, s" callback-entry" ROW
-   0 G-POP  RAX DATA-REG 3 ARG MEM-OFF ASM-SINK ENC-MOV-MR
+   STUB,
+   RAX DATA-REG 3 ARG MEM-OFF ASM-SINK ENC-MOV-MR
    RAX DATA-REG INNER-ARGS 3 CELL * + MEM-OFF ASM-SINK ENC-MOV-MR
    s" qsort" SYM,  0 G-POP
    RAX DATA-REG QSORT-FN MEM-OFF ASM-SINK ENC-MOV-MR
@@ -92,29 +104,7 @@ NEST-DEPTH CELL + constant QSORT-FN
    0 CB-OWNER X64HARNESS:EXPECT-CELL,
    ;
 
-: RANGE-CASE ( -- ) CB-POOL N, s" callback-entry" ROW ;
-: BELOW-CASE ( -- ) -2 N, s" callback-entry" ROW ;
-
-\ A stub is mov r10d, imm32 (REX.B, B8+r, imm32) and then jmp rel32.
-6 constant STUB-MOV
-STUB-MOV 1 + constant STUB-REL           \ the jmp's displacement
-STUB-MOV 5 + constant STUB-NEXT          \ where the displacement counts from
-
-\ -1 answers the shared thunk: the target of slot 0's jmp.
-: THUNK-CASE ( -- )
-   -1 N, s" callback-entry" ROW
-   0 N, s" callback-entry" ROW
-   0 G-POP
-   RCX RAX STUB-REL MEM-OFF ASM-SINK ENC-MOVSXD-RM
-   RAX RCX ASM-SINK ENC-ADD-RR
-   RAX STUB-NEXT >IMM8 ASM-SINK ENC-ADD-RI8
-   1 G-POP
-   RAX RCX ASM-SINK ENC-SUB-RR
-   0 G-PUSH  0 X64HARNESS:EXPECT-POP, ;
-
-: CALL-ENTRY, ( -- )
-   0 N, s" callback-entry" ROW
-   0 G-POP  RAX ASM-SINK ENC-CALL-REG ;
+: CALL-ENTRY, ( -- )  STUB,  RAX ASM-SINK ENC-CALL-REG ;
 
 : UNBOUND-CASE ( -- )
    ROWS CB-ROWS X64HARNESS:DATA-ADDR!,
@@ -136,9 +126,7 @@ public
 
 : RUN ( -- )
    T-RESET X64HARNESS:INIT
-   [: SORT-CASE THUNK-CASE ;] s" hb-x64-kernel-callback" TMP-PATH BUILD
-   [: RANGE-CASE ;] s" hb-x64-kernel-callback-range" TMP-PATH BUILD
-   [: BELOW-CASE ;] s" hb-x64-kernel-callback-below" TMP-PATH BUILD
+   [: SORT-CASE ;] s" hb-x64-kernel-callback" TMP-PATH BUILD
    [: UNBOUND-CASE ;] s" hb-x64-kernel-callback-unbound" TMP-PATH BUILD
    [: NO-FRAME-CASE ;] s" hb-x64-kernel-callback-no-frame" TMP-PATH BUILD
    X64HARNESS:DISPOSE T-REPORT ;

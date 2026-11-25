@@ -113,11 +113,21 @@ $1122334455667788 constant CELL-VALUE
 
 : ALLOT, ( n -- ) X64HARNESS:PUSH,  s" allot" ROW ;
 
+\ Store the DATA address of an offset into a DATA cell.
+: DATA-CELL!, ( n n -- ) {: at:n off:n :}
+   at X64HARNESS:PUSH-DATA,  off X64HARNESS:PUSH-DATA,  s" !" ROW ;
+
+\ The heap bounds, which the linker writes in a linked image.
+: HEAP-BOUNDS, ( -- )
+   DATA-START BOOT:DP-FLOOR-CELL DATA-CELL!,
+   X64KERNEL:DP-CEILING BOOT:DP-CEILING-CELL DATA-CELL!, ;
+
 \ DP starts at the heap floor, DATA-START. Three bytes and an align reach the
 \ next cell; `,` fills it and c, stores the low byte of its cell alone. The walk
 \ returns to the floor.
 : BUILD-HEAP ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   HEAP-BOUNDS,
    3 ALLOT,  s" align" ROW
    CELL-VALUE X64HARNESS:PUSH,  s" ," ROW
    $1AB X64HARNESS:PUSH,  s" c," ROW
@@ -131,17 +141,20 @@ $1122334455667788 constant CELL-VALUE
    0 X64HARNESS:EXPECT-DEPTH,
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ DP may reach the ceiling; one byte past it exits 89 with the DP line on fd 2.
+\ DP may reach the ceiling; one byte past it throws E-DATA-SPACE, which nothing
+\ catches or reports: exit 85, fd 2 empty.
 : BUILD-HEAP-HIGH ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   HEAP-BOUNDS,
    X64KERNEL:DP-CEILING DATA-START - ALLOT,
    s" here" ROW  X64KERNEL:DP-CEILING X64HARNESS:EXPECT-POP-DATA,
    1 ALLOT,
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ One byte below the floor exits 89.
+\ One byte below the floor throws E-DATA-SPACE: exit 85, fd 2 empty.
 : BUILD-HEAP-LOW ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
+   HEAP-BOUNDS,
    -1 ALLOT,
    path X64HARNESS:BOOT-CLOSE, ;
 
@@ -225,7 +238,7 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    0 X64HARNESS:EXPECT-DEPTH,
    path X64HARNESS:BOOT-CLOSE, ;
 
-\ Each of these ends in one hook row's fd-2 refusal and exits 70.
+\ Each of these ends in one hook row's fd-2 rejection and exits 70.
 : BUILD-HOOKS-CHECK ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    DICT-SIZE CHECK-HOOK!

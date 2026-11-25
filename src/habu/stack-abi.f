@@ -39,10 +39,6 @@ RETURN-BYTES 8 / constant RETURN-CELLS
 PAGE-BYTES constant LOOP-BYTES
 LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 
-\ This boot file loads before src/lib/error.f, which owns E-EVAL-RESIDUE, so the
-\ same (code, name) pair is re-registered here.
--3804 constant E-EVAL-RESIDUE
-
 \ The cells a catch frame saves past its first seven, as the catch began:
 \ PEND-CELL, the allocation descriptor and GENIO-ABI:BUSY-CELL and ACTIVE-CELL.
 $38 constant CATCH-PEND

@@ -557,10 +557,10 @@ variable GOT-N
    past LBL,
    start end ;
 
-\ An ordinary count str:trim is HIDE's boundary. Reuse its ordinal before any
-\ report can observe the lowered count: the target gets its own copied name
-\ and no inherited samples. A second str:trim hides that target from the index
-\ and prof-row without publishing a replacement.
+\ An ordinary count trim is HIDE's boundary. Reuse its ordinal before any report
+\ can observe the lowered count: the donor keeps its samples under its own name
+\ but no index entry, and the target gets its own copied name and none of them. A
+\ second trim hides the target from the index and prof-row, with no replacement.
 : TRIM-CASE ( -- )
    COLD-SPAN, {: keep:label keep-end:label :}
    DONOR-SPAN, {: donor:label donor-end:label :}
@@ -575,7 +575,7 @@ variable GOT-N
    1 N,  s" ndict!" ROW
    s" prof-reused-target" target target-end X64HARNESS:CODE-RECORD,
    [: s" prof-json" ROW ;] REPORT-TEXT,
-   s\" {\"word\":\"prof-hidden-donor\",\"excl\":" false HAS,
+   s\" {\"word\":\"prof-hidden-donor\",\"excl\":" true HAS,
    s\" {\"word\":\"prof-reused-target\",\"excl\":" false HAS,
    donor 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  -1 WANT
    target 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  1 WANT
@@ -591,7 +591,8 @@ variable GOT-N
    s" profiler: no row for that record" true HAS, ;
 
 \ The kernel has no undefine evaluator: stamp RETIRED in place, as XREF:RETIRE
-\ does, after prof-on indexed the donor; the next report must not index it.
+\ does, after prof-on indexed the donor; the next report still indexes and lists
+\ it, as its code stays.
 : RETIRED-CASE ( -- )
    COLD-SPAN, {: keep:label keep-end:label :}
    DONOR-SPAN, {: donor:label donor-end:label :}
@@ -604,9 +605,9 @@ variable GOT-N
    s" prof-off" ROW
    WL:RETIRED 1 DICT-WL-OFF RECORD-CELL!,
    [: s" prof-json" ROW ;] REPORT-TEXT,
-   s\" ,\"indexed\":1," true HAS,
-   s\" {\"word\":\"prof-retired-donor\",\"excl\":" false HAS,
-   donor 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  -1 WANT
+   s\" ,\"indexed\":2," true HAS,
+   s\" {\"word\":\"prof-retired-donor\",\"excl\":" true HAS,
+   donor 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  1 WANT
    IDENTITY, ;
 
 \ The foreign spin at the limit: PROF-LIM 1 while rbp is not DATA, until
@@ -787,21 +788,21 @@ variable GOT-N
    SKEWED RECALL,  0 WANT ;
 
 \ prof-rate -1 with no handler: the throw exits EXIT-STATUS:UNCAUGHT.
-: RATE-REFUSED-CASE ( -- )
+: RATE-REJECTED-CASE ( -- )
    -1 N,  s" prof-rate" ROW ;
 
 \ prof-rate RATE, then -1 under catch: the code is E-PROF-RATE, and the rate
 \ the next prof-on arms is still RATE.
 : RATE-CAUGHT-CASE ( -- )
-   [: -1 N,  s" prof-rate" ROW ;] X64HARNESS:ROUTINE, {: refused:label :}
+   [: -1 N,  s" prof-rate" ROW ;] X64HARNESS:ROUTINE, {: rejected:label :}
    RATE N,  s" prof-rate" ROW
-   RAX refused MOVABS,  0 G-PUSH  s" catch" ROW
+   RAX rejected MOVABS,  0 G-PUSH  s" catch" ROW
    PROF-ABI:E-PROF-RATE WANT
    ARMED-CHECK, ;
 
 \ -1 in ARN-USEC, which only a write past prof-rate can leave: prof-on's arm
-\ is refused, named on fd 2, exit EXIT-STATUS:SYSTEM.
-: ARM-REFUSED-CASE ( -- )
+\ is rejected, named on fd 2, exit EXIT-STATUS:SYSTEM.
+: ARM-REJECTED-CASE ( -- )
    RATE N,  s" prof-rate" ROW
    R8 ARENA,  RAX -1 IMM,  RAX R8 ARN-USEC MEM-OFF STORE,
    0 N,  s" prof-on" ROW ;
@@ -824,9 +825,9 @@ variable GOT-N
 \    hb-x64-kernel-prof-limit          0  its forked child exits 99
 \    hb-x64-kernel-prof-slow           0
 \    hb-x64-kernel-prof-resets         0
-\    hb-x64-kernel-prof-rate-refused  85  E-PROF-RATE uncaught
+\    hb-x64-kernel-prof-rate-rejected  85  E-PROF-RATE uncaught
 \    hb-x64-kernel-prof-rate-caught    0
-\    hb-x64-kernel-prof-arm-refused   71  `hb: prof-on: cannot arm the interval
+\    hb-x64-kernel-prof-arm-rejected   71  `hb: prof-on: cannot arm the interval
 \                                         timer`
 
 public
@@ -844,9 +845,9 @@ public
    [: LIMIT-CASE ;] false s" hb-x64-kernel-prof-limit" TMP-PATH BUILD
    [: SLOW-CASE ;] false s" hb-x64-kernel-prof-slow" TMP-PATH BUILD
    [: RESETS-CASE ;] false s" hb-x64-kernel-prof-resets" TMP-PATH BUILD
-   [: RATE-REFUSED-CASE ;] false s" hb-x64-kernel-prof-rate-refused" TMP-PATH BUILD
+   [: RATE-REJECTED-CASE ;] false s" hb-x64-kernel-prof-rate-rejected" TMP-PATH BUILD
    [: RATE-CAUGHT-CASE ;] false s" hb-x64-kernel-prof-rate-caught" TMP-PATH BUILD
-   [: ARM-REFUSED-CASE ;] false s" hb-x64-kernel-prof-arm-refused" TMP-PATH BUILD
+   [: ARM-REJECTED-CASE ;] false s" hb-x64-kernel-prof-arm-rejected" TMP-PATH BUILD
    X64HARNESS:DISPOSE
    T-REPORT ;
 

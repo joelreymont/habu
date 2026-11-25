@@ -8,7 +8,7 @@ require src/habu/layout.f
 
 package PROF-ABI
 public
-\ The str:trim and reclaim callers are emitted before prof.f loads, so their labels
+\ The trim and reclaim callers are emitted before prof.f loads, so their labels
 \ are declared in this early ABI package and assigned by habu2.f.
 variable LPROFTRIM
 variable LPROFRECLAIM
@@ -141,7 +141,7 @@ ARN-CALL ARN-CALL-BYTES + constant ARN-INCL    \ inclusive samples, one per RECO
 ARN-INCL ARN-INCL-BYTES + constant ARN-STAMP   \ the sample serial each record was last counted in
 ARN-STAMP ARN-INCL-BYTES + constant ARN-DEF    \ the deferred samples
 \ An ID keeps its copied name after its ordinal is reused; RID-OWNER -1 marks
-\ a trimmed or reclaimed record, which, like a retired one, has no index entry.
+\ a trimmed or reclaimed record, which has no index entry.
 40 constant PROF-ID-ENT
 0  constant RID-OWNER
 8  constant RID-NAME

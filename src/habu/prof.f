@@ -43,7 +43,7 @@ split-str
 \ A delivery on another thread sends SIGALRM to the owner, ARN-OWNER-TID, and
 \ returns, writing no profiler state, so only the owner's handler writes
 \ profiler state from a handler, and every word that leaves ARMED-RUNS waits
-\ until that handler is out; the public control words and the engine's str:trim
+\ until that handler is out; the public control words and the engine's trim
 \ and reclaim run one at a time, in the order they asked (PROF-CTL-NEXT). A
 \ forked child starts with a free profiler: prof-child-reset, which the fork
 \ runs in the child, lets go of every handler, ticket and owner the fork
@@ -1454,7 +1454,7 @@ private
 
 \ Retirement is reached from engine helpers whose scratch registers still
 \ belong to their caller. It holds the ticket lock from before its first read
-\ to its one exit, as a control word does, so a str:trim on one thread never
+\ to its one exit, as a control word does, so a trim on one thread never
 \ rebuilds the index under another thread's report. x9 is the bodies' input.
 : C-PROF-RETIRE-OPEN ( label -- )
    {: absent:label :}

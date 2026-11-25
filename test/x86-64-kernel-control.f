@@ -62,6 +62,10 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 
 : PUSHES ( n -- label ) {: v:n :} ROUTINE v PUSH, ;ROUTINE ;
 
+\ Drop n cells.
+: TAKES ( n -- label ) {: cells:n :}
+   ROUTINE  cells 0 ?do 0 G-POP loop  ;ROUTINE ;
+
 \ ( n -- n ) add 4.
 : ADD4 ( -- label )
    ROUTINE  0 G-POP  RAX 4 >IMM8 ASM-SINK ENC-ADD-RI8  0 G-PUSH  ;ROUTINE ;
@@ -127,7 +131,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    ROUTINE  99 PUSH,  X64KERNEL:FLOORREC-LBL JMP,  ;ROUTINE ;
 
 \ Set the cursor to the physical top and write its final slot before return.
-\ The enclosing source-file-run must detect this without attempting a push.
+\ The enclosing source-file-run must return without pushing onto that stack.
 : FILLS-EXTENT ( -- label )
    ROUTINE
    RCX DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
@@ -163,11 +167,11 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \ ---- images ------------------------------------------------------------------
 \ Each image and the status its peer must see:
 \
-\    hb-x64-kernel-control           89  evaluate refuses: its fd-2 line, then
-\                                        89
+\    hb-x64-kernel-control            0  evaluate hands the two cells of its text
+\                                        to the word its provided cell holds
 \    hb-x64-kernel-control-negative  21  the same, expecting the wrong depth
-\    hb-x64-kernel-eval-range        89  source-range evaluation needs the
-\                                        interpreter
+\    hb-x64-kernel-eval-range         0  evaluate-range hands its four cells to
+\                                        the word its provided cell holds
 \    hb-x64-kernel-execute            0  execute; 2>r, 2r@ and 2r>; both arms of
 \                                        execute-floor
 \    hb-x64-kernel-catch              0  catch with no throw, then a throw from
@@ -186,7 +190,8 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \    hb-x64-kernel-throw-close        0  a throw out of an open code window
 \                                        closes the band before catch resumes
 \    hb-x64-kernel-floorrec           0  the data-floor recovery entry empties
-\                                        the faulting stack and throws 70
+\                                        the faulting stack and throws
+\                                        E-UNDERFLOW
 \    hb-x64-kernel-stack-clear        0  the trusted recovery row empties only
 \                                        the current data stack
 \    hb-x64-kernel-throw             42  42 throw with no handler: the reporter
@@ -207,21 +212,25 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    negative X64HARNESS:BOOT-OPEN,
    s" 1 2 +" X64HARNESS:PUSH-TEXT,
    2 X64HARNESS:EXPECT-DEPTH,
+   2 TAKES PROVIDED-XT:EVALUATE-CELL XT!,
    s" evaluate" ROW,
+   0 X64HARNESS:EXPECT-DEPTH,
    path X64HARNESS:BOOT-CLOSE, ;
 
 : BUILD-EVAL-RANGE ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    s" 1" X64HARNESS:PUSH-TEXT,  0 PUSH,  1 PUSH,
+   4 TAKES PROVIDED-XT:EVALUATE-RANGE-CELL XT!,
    s" evaluate-range" ROW,
+   0 X64HARNESS:EXPECT-DEPTH,
    path X64HARNESS:BOOT-CLOSE, ;
 
 : BUILD-EVAL-CLOSED ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
-   0 EVAL-CLEAN PROVIDED-XT:EVALUATE-CELL XT!,
+   0 EVAL-CLEAN PROVIDED-XT:EVALUATE-CLOSED-CELL XT!,
    11 PUSH,  s" ok" X64HARNESS:PUSH-TEXT,  s" evaluate-closed" ROW,
    11 EXPECT-POP,  0 X64HARNESS:EXPECT-DEPTH,
-   8 EVAL-CLEAN PROVIDED-XT:EVALUATE-CELL XT!,
+   8 EVAL-CLEAN PROVIDED-XT:EVALUATE-CLOSED-CELL XT!,
    s" ok" X64HARNESS:PUSH-TEXT,  s" evaluate-closed" ROW,
    RAX DATA-REG CLOSED-SCRATCH MEM-OFF ASM-SINK ENC-MOV-RM
    RCX DATA-REG CLOSED-SCRATCH CELL + MEM-OFF ASM-SINK ENC-MOV-RM
@@ -229,16 +238,16 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    LBL {: reused:label :}  C-E reused JCC,
    RDI EXIT-STATUS:FAILURE IMM,  NR-EXIT-GROUP SYS,
    reused LBL,
-   EVAL-RESIDUE PROVIDED-XT:EVALUATE-CELL XT!,
+   EVAL-RESIDUE PROVIDED-XT:EVALUATE-CLOSED-CELL XT!,
    CLOSED-TEXT PUSH-XT,  s" catch" ROW,
-   STACK-ABI:E-EVAL-RESIDUE EXPECT-POP,
-   EVAL-THROW PROVIDED-XT:EVALUATE-CELL XT!,
+   0 EXPECT-POP,
+   EVAL-THROW PROVIDED-XT:EVALUATE-CLOSED-CELL XT!,
    CLOSED-TEXT PUSH-XT,  s" catch" ROW,
    29 EXPECT-POP,
-   EVAL-FLOOR PROVIDED-XT:EVALUATE-CELL XT!,
+   EVAL-FLOOR PROVIDED-XT:EVALUATE-CLOSED-CELL XT!,
    CLOSED-TEXT PUSH-XT,  s" catch" ROW,
-   70 EXPECT-POP,
-   8 EVAL-CLEAN PROVIDED-XT:EVALUATE-CELL XT!,
+   E-UNDERFLOW EXPECT-POP,
+   8 EVAL-CLEAN PROVIDED-XT:EVALUATE-CLOSED-CELL XT!,
    s" ok" X64HARNESS:PUSH-TEXT,  s" evaluate-closed" ROW,
    RAX DATA-REG CLOSED-SCRATCH MEM-OFF ASM-SINK ENC-MOV-RM
    RCX DATA-REG CLOSED-SCRATCH CELL + MEM-OFF ASM-SINK ENC-MOV-RM
@@ -264,7 +273,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 : BUILD-FLOORREC ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    5 PUSH,  FLOOR-THROW PUSH-XT,  s" catch" ROW,
-   70 EXPECT-POP,  5 EXPECT-POP,
+   E-UNDERFLOW EXPECT-POP,  5 EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    path X64HARNESS:BOOT-CLOSE, ;
@@ -321,11 +330,11 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    false X64HARNESS:BOOT-OPEN,
    7 PUSH,  NOTHING CLOSED-OF CALL,  7 EXPECT-POP,
    7 PUSH,  5 PUSHES CLOSED-OF PUSH-XT,  s" catch" ROW,
-   STACK-ABI:E-EVAL-RESIDUE EXPECT-POP,  7 EXPECT-POP,
+   0 EXPECT-POP,  7 EXPECT-POP,
    7 PUSH,  13 THROWS CLOSED-OF PUSH-XT,  s" catch" ROW,
    13 EXPECT-POP,  7 EXPECT-POP,
    7 PUSH,  FILLS-EXTENT CLOSED-OF PUSH-XT,  s" catch" ROW,
-   STACK-ABI:E-EVAL-RESIDUE EXPECT-POP,  7 EXPECT-POP,
+   0 EXPECT-POP,  7 EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    STACK-ABI:BOOT-BYTES STACK-ABI:CAP-CELL EXPECT-CELL,
    X64HARNESS:EXPECT-BALANCED,
