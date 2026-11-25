@@ -2048,10 +2048,11 @@ EXPORT CHECK:WF-N@
    stride 0 >= if stride PUSH-CONST  MUL2  [: + ;] OP-ADD true ALU2  true exit then
    false ;
 
-\ A fixed word is its stamped value; r files a DATA address so publication
-\ relocates it.
+\ A fixed word is its stamped value and a cast compiles nothing; r files a DATA
+\ address so publication relocates it.
 : WORD-CALL ( n n n n -- )
    {: to:n kind:n r:n loc:n :}
+   kind DKIND:CAST = if exit then
    kind DKIND:VAL = if to COMP-BODY:VALUE NDICT:BOUND-VALUE PUSH-CONST exit then
    kind DKIND:ADDR = if
       to COMP-BODY:ADDRESS NDICT:BOUND-VALUE  r PUSH-ADDR exit
