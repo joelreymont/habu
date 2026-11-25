@@ -12,9 +12,9 @@
 \ is the caller's package name in lower case; LOG does not check it.
 \ TEXT+ writes a byte below $20, $7F and `\` as `\xHH`, so a line stays one
 \ line and reads one way. A line fd 2 takes only in part is cut: a lone LF ends
-\ it, at once or before the next line, which is lost while fd 2 refuses that LF.
-\ A log call never throws for LOG's own failure: a line fd 2 refuses is lost,
-\ and a refused allocation loses the line, which ;LINE replaces with NOTICE. A
+\ it, at once or before the next line, which is lost while fd 2 rejects that LF.
+\ A log call never throws for LOG's own failure: a line fd 2 rejects is lost,
+\ and a rejected allocation loses the line, which ;LINE replaces with NOTICE. A
 \ LINE while a line is open abandons that line, as a throw does: once the new
 \ line is closed, the abandoned line's remaining TEXT+ and ;LINE write nothing.
 \ STORAGE CLASS. TASK-LOCAL: the line, a per-task vector kept across lines and
@@ -70,7 +70,7 @@ TASK:FACILITY LOCK
 LOCK TASK:FACILITY-INIT
 
 \ TAIL, fd 2's last line, and its machine; each input comes under LOCK.
-\ | state | a line's write: all | none             | part                   | the mending LF: moved | refused               |
+\ | state | a line's write: all | none             | part                   | the mending LF: moved | rejected              |
 \ | WHOLE | WHOLE               | WHOLE, line lost | CUT, then mend at once | -                     | -                     |
 \ | CUT   | (a line is written only once whole)                              | WHOLE                 | CUT, the line is lost |
 0 constant WHOLE
@@ -88,11 +88,11 @@ TYPED-VARIABLE THRESHOLD n SCRATCH-ONLY
 
 \ PHASE's states; a fresh task's is CLOSED. Each input in each state, and the
 \ state it leaves:
-\   state    LINE              LINE above the threshold  TEXT+ INT+ CODE+  ;LINE             refused block
+\   state    LINE              LINE above the threshold  TEXT+ INT+ CODE+  ;LINE             rejected block
 \   CLOSED   opens: OPENED     CLOSED                    nothing           nothing: CLOSED   -
 \   OPENED   abandons: OPENED  abandons: CLOSED          appends           the row: CLOSED   LOST
 \   LOST     abandons: OPENED  abandons: CLOSED          nothing           NOTICE: CLOSED    LOST
-\ LINE leaves LOST when the row's block is refused; ;LINE leaves CLOSED also
+\ LINE leaves LOST when the row's block is rejected; ;LINE leaves CLOSED also
 \ when its write throws. An abandoned line is never written. The row's release
 \ leaves CLOSED.
 0 constant CLOSED
@@ -124,14 +124,14 @@ NOTICE-TEXT$ STR:LEN BYTE-COPY
    [: ROW-RELEASE ;] TASK:SELF TASK:AT-EXIT ;
 
 
-\ ARMED is set only after REGISTER completes, so a refused one is retried.
+\ ARMED is set only after REGISTER completes, so a rejected one is retried.
 : ARM ( -- )
    ARMED @ 0<> if exit then
    REGISTER
    1 ARMED ! ;
 
 
-: MAP-REFUSED ( n -- )
+: MAP-REJECTED ( n -- )
    {: code:n :}
    code 0= if exit then
    code E-MEM-MAP = if LOST PHASE ! exit then
@@ -243,7 +243,7 @@ NOTICE-TEXT$ STR:LEN BYTE-COPY
    FD:WITH-NOSIGPIPE ;
 
 
-\ A line is lost when fd 2's SIGPIPE hold is refused; a write fd 2 refuses is
+\ A line is lost when fd 2's SIGPIPE hold is rejected; a write fd 2 rejects is
 \ answered by TAIL's machine (WROTE, MEND). The flag is held only for the
 \ write: other processes share fd 2's file description and its flag, and a hold
 \ of theirs that overlaps this one can undo it.
@@ -263,7 +263,7 @@ NOTICE-TEXT$ STR:LEN BYTE-COPY
 
 \ The line, or NOTICE for a lost one; the caller holds LOCK.
 : SENT ( -- )
-   PHASE @ OPENED = if [: LF ROW @ VEC:PUSH c! ;] catch MAP-REFUSED then
+   PHASE @ OPENED = if [: LF ROW @ VEC:PUSH c! ;] catch MAP-REJECTED then
    PHASE @ LOST = if [: NOTICE-OUT ;] OUT exit then
    [: ROW-OUT ;] OUT ;
 
@@ -289,14 +289,14 @@ public
 : TEXT+ ( str -- )
    {: s:str :}
    PHASE @ OPENED <> if exit then
-   [: s ESCAPED+ ;] catch MAP-REFUSED ;
+   [: s ESCAPED+ ;] catch MAP-REJECTED ;
 
 
 : INT+ ( n -- )  FMT:INT$ TEXT+ ;
 
 
 \ A code and the name and text declared for it:
-\ `-9701 MODEL:E-KEY: the provider refused the key`, the number alone when none.
+\ `-9701 MODEL:E-KEY: the provider rejected the key`, the number alone when none.
 : CODE+ ( n -- ) {: code:n :}
    code INT+
    code ERROR:NAME$ {: name:str :}
@@ -309,7 +309,7 @@ private
 \ Opens the row: the stamp, the level and the tag.
 : HEAD ( level str -- )
    {: level:level tag:str :}
-   [: OPEN  OPENED PHASE ! ;] catch MAP-REFUSED
+   [: OPEN  OPENED PHASE ! ;] catch MAP-REJECTED
    s"  " TEXT+  level LEVEL$ TEXT+  s"  " TEXT+
    tag TEXT+  s" : " TEXT+ ;
 

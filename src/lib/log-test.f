@@ -138,7 +138,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    0 at STR:LEN 0 ?do 10 * at STR:DATA i + c@ STR:ZERO - + loop ;
 
 
-\ The stamp's epoch seconds, -1 for a date PARSE-YMD refuses.
+\ The stamp's epoch seconds, -1 for a date PARSE-YMD rejects.
 : STAMP-SECONDS ( ^u8 -- n )
    {: at:^ :}
    at DATE:LEN >str DATE:PARSE-YMD MATCH option
@@ -167,12 +167,12 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 : LEVEL-LINES ( -- )
-   LOG:ERROR s" model" LOG:LINE s" refused " LOG:TEXT+ -42 LOG:INT+ LOG:;LINE
+   LOG:ERROR s" model" LOG:LINE s" rejected " LOG:TEXT+ -42 LOG:INT+ LOG:;LINE
    LOG:WARN s" crew" LOG:LINE s" min " LOG:TEXT+ STR:MIN-I64 LOG:INT+ LOG:;LINE
    LOG:INFO s" mcp" LOG:LINE s" ping" LOG:TEXT+ LOG:;LINE ;
 
 
-: MODEL-REST$ ( -- str )  S\"  error model: refused -42\n" ;
+: MODEL-REST$ ( -- str )  S\"  error model: rejected -42\n" ;
 : MIN-REST$ ( -- str )  S\"  warn crew: min -9223372036854775808\n" ;
 : PING-REST$ ( -- str )  S\"  info mcp: ping\n" ;
 
@@ -384,7 +384,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    true ;
 
 
-\ Takes a heap block of n bytes for EMPTY; false when the heap refuses it.
+\ Takes a heap block of n bytes for EMPTY; false when the heap rejects it.
 : TAKE-BLOCK ( n -- bool )
    {: u:n :}
    [: HEAP:ALLOCATOR u ALLOC:BYTES drop BLOCKS-N @ BLOCKS ! ;] catch {: code:n :}
@@ -394,8 +394,8 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ Reserves spans, largest first, until the kernel has no page left, so every
-\ mapping the process asks for is refused until EMPTY; then takes the heap's
-\ free blocks the same way, so a heap request of BLOCK-MIN or more is refused.
+\ mapping the process asks for is rejected until EMPTY; then takes the heap's
+\ free blocks the same way, so a heap request of BLOCK-MIN or more is rejected.
 : FILL ( -- )
    0 HOLDS !
    SPACE-U
@@ -576,10 +576,10 @@ TASK:MIN-STACK TASK:TASK RELEASER
    PIPE-B @ VEC:DELETE ;
 
 
-\ A pipe's read end refuses writes. A refused line leaves fd 2's last line
+\ A pipe's read end rejects writes. A rejected line leaves fd 2's last line
 \ whole, so no mending LF comes before the next one.
-: REFUSED-CASE ( -- )
-   s" a line fd 2 refuses is lost without a throw" T-LABEL
+: REJECTED-CASE ( -- )
+   s" a line fd 2 rejects is lost without a throw" T-LABEL
    pipe {: r:n w:n rc:n :}
    rc 0 T=
    r ERR-TO
@@ -627,7 +627,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ A non-blocking pipe nobody drains takes part of a line longer than it holds,
-\ then refuses the rest and the LF that ends the cut line at once.
+\ then rejects the rest and the LF that ends the cut line at once.
 : CUT-CASE ( -- )
    s" a line fd 2 takes in part is ended before the next line" T-LABEL
    NEW-BYTES PIPE-B !
@@ -784,7 +784,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    FINISH-CASE
    RELEASE-CASE
    PIPE-CASE
-   REFUSED-CASE
+   REJECTED-CASE
    BROKEN-CASE
    CUT-CASE
    CODE-CASE

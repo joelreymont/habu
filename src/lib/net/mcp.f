@@ -1639,7 +1639,7 @@ public
 \ for a fault and LOG INFO otherwise. id is the HTTP:REQUEST-ID$ of HANDLE's
 \ request, `-` under ANSWER; method and target are as without LOG, `-` when no
 \ method was read; n is whole milliseconds from the request's start, or
-\ ANSWER's entry. outcome is `ok`, `tool error: <text>` (a schema refusal's
+\ ANSWER's entry. outcome is `ok`, `tool error: <text>` (a schema rejection's
 \ included), `error <code>: <message>` for a JSON-RPC error (UNKNOWN-TOOL's
 \ included), `held` for a call HOLD kept, `notified` for a notification, or
 \ `fault <code> <name>: <text>`, name and text when the code is declared, for

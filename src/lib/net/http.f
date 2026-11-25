@@ -398,7 +398,7 @@ private
    sent ;
 
 
-: RENDER-REFUSAL ( n n -- ) {: idx:n status:n :}
+: RENDER-REJECTION ( n n -- ) {: idx:n status:n :}
    status 400 = if idx RESPONSE-OF 400 s" bad_request"
       s" the request line or a header is not valid HTTP" ERROR! exit then
    status 413 = if idx RESPONSE-OF 413 s" body_too_large"
@@ -417,7 +417,7 @@ private
    idx DROP-ANSWER
    0 idx KEEP-ALIVE!
    status idx SLOT-STATUS!
-   [: idx status RENDER-REFUSAL ;] catch {: failed:n :}
+   [: idx status RENDER-REJECTION ;] catch {: failed:n :}
    idx failed HOOK-FAULT
    conn idx SENT 0= if construct served silent exit then
    construct served answered ;
@@ -866,14 +866,14 @@ variable EXIT-HOOK-N
    1 WAKE-ARMED ! ;
 
 
-\ One arm of the listener's own polls. A poll refused at AIO's ceiling waits
+\ One arm of the listener's own polls. A poll rejected at AIO's ceiling waits
 \ for records to be freed, so it is a warning and a pause.
 : ARM-OR-PAUSE ( [ -- ] -- ) {: arm :}
    arm catch {: code:n :}
    code 0= if exit then
    code E-AIO-FULL <> code E-AIO-POLL-BOUND <> and if code throw then
    LOG:WARN s" http" LOG:LINE
-   s" poll refused, throw " LOG:TEXT+  code LOG:CODE+
+   s" poll rejected, throw " LOG:TEXT+  code LOG:CODE+
    LOG:;LINE
    ACCEPT-PAUSE ;
 
@@ -897,7 +897,7 @@ variable EXIT-HOOK-N
 \ Under PARK-LOCK: the row polled until it is readable or its deadline passes.
 \ A poll AIO rejects (E-AIO-FULL at Linux's record ceiling, E-AIO-POLL-BOUND on
 \ Darwin) closes the row's connection and vacates the row, as ROW-HEARD does for
-\ a refused poll, and the listener goes on.
+\ a rejected poll, and the listener goes on.
 : ARM-ROW ( n -- ) {: at:n :}
    at [: ROW-POLL ;] catch {: code:n :} drop
    code 0 <> if at PARK-CONN @ CLOSE-CONNECTION at VACATE exit then
@@ -939,7 +939,7 @@ variable EXIT-HOOK-N
 
 
 \ Readable, the connection goes to a worker; past its deadline, or with its
-\ poll refused, it is closed plainly.
+\ poll rejected, it is closed plainly.
 : ROW-HEARD ( n AIO:outcome -- ) {: at:n out :}
    at UNPARK {: conn:TCP4:connection :}
    out READY? if conn ENQUEUE exit then

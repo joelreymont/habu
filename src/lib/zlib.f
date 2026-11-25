@@ -242,7 +242,7 @@ public
 
 \ Exactly one complete zlib stream that uses the whole source; libz checks
 \ its method, window, header check and Adler-32, at most n bytes expanded. A
-\ preset dictionary is refused.
+\ preset dictionary is rejected.
 : INFLATE-FRAMED ( str ^VEC:vector<u8> n -- ) FRAMED-WINDOW INFLATE-FOR ;
 
 ;package

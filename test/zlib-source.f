@@ -1,4 +1,4 @@
-\ ZLIB cases. Refusals are made before C is called; each failure after libz has
+\ ZLIB cases. Rejections are made before C is called; each failure after libz has
 \ a live stream is followed by a successful operation. Each codec case appends
 \ to a vector it makes on the heap allocator and deletes. The 10 MiB
 \ original.bin, compressed.bin (raw DEFLATE) and decoded.bin go in a temporary
@@ -104,14 +104,14 @@ create PATH PATH-CAP allot
    [: FIXED-SHORT ;] ZLIB:E-CAPACITY TTHROWSQ STILL-WORKS
    s" zero compressed bytes are truncated input" T-LABEL
    [: EMPTY-ZERO ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
-   s" a truncated final block is refused" T-LABEL
+   s" a truncated final block is rejected" T-LABEL
    [: FIXED-CUT ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
    [: STORED-CUT ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
-   s" an invalid stored-block complement is refused" T-LABEL
+   s" an invalid stored-block complement is rejected" T-LABEL
    [: BAD-COMPLEMENT ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
-   s" the reserved block type is refused" T-LABEL
+   s" the reserved block type is rejected" T-LABEL
    [: RESERVED-TYPE ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
-   s" a byte after the final block is refused" T-LABEL
+   s" a byte after the final block is rejected" T-LABEL
    [: EMPTY-TRAILING ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
    [: STORED-TRAILING ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
    [: EXACT-TRAILING ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS ;
@@ -142,7 +142,7 @@ create PATH PATH-CAP allot
    v VEC:DELETE ;
 
 \ Each span is a real 64-byte buffer with a length that, if dereferenced,
-\ would read or write far past it: only a refusal made before C passes.
+\ would read or write far past it: only a rejection made before C passes.
 $100000000 constant U32-OVER
 : CRC-NEGATIVE ( -- ) SMALL-IN -1 >str ZLIB:CRC32 drop ;
 : CRC-WIDE ( -- ) SMALL-IN U32-OVER >str ZLIB:CRC32 drop ;
@@ -153,15 +153,15 @@ $100000000 constant U32-OVER
 : MOST-WIDE ( -- ) SMALL-IN 2 >str U32-OVER DECODE ;
 : DEFLATE-WIDE ( -- ) SMALL-IN U32-OVER >str DEFLATE-CASE ;
 
-: SPAN-REFUSALS ( -- )
-   s" negative, wide and null spans are refused before C" T-LABEL
+: SPAN-REJECTIONS ( -- )
+   s" negative, wide and null spans are rejected before C" T-LABEL
    [: CRC-NEGATIVE ;] ZLIB:E-SIZE TTHROWSQ
    [: CRC-WIDE ;] ZLIB:E-SIZE TTHROWSQ
    [: CRC-NULL ;] ZLIB:E-SIZE TTHROWSQ
    [: IN-NEGATIVE ;] ZLIB:E-SIZE TTHROWSQ
    [: IN-WIDE ;] ZLIB:E-SIZE TTHROWSQ
    [: DEFLATE-WIDE ;] ZLIB:E-SIZE TTHROWSQ
-   s" a negative or past-32-bit most is refused before C" T-LABEL
+   s" a negative or past-32-bit most is rejected before C" T-LABEL
    [: MOST-NEGATIVE ;] ZLIB:E-SIZE TTHROWSQ
    [: MOST-WIDE ;] ZLIB:E-SIZE TTHROWSQ
    STILL-WORKS ;
@@ -221,18 +221,18 @@ $100000000 constant U32-OVER
    FRAMED-HELLO$ SMALL-CAP HELLO$ FRAMED-DECODES
    s" an empty zlib-framed stream decodes into zero capacity" T-LABEL
    EMPTY-FRAMED$ 0 NOTHING$ FRAMED-DECODES
-   s" a corrupt Adler-32 trailer is refused" T-LABEL
+   s" a corrupt Adler-32 trailer is rejected" T-LABEL
    [: BAD-ADLER ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
-   s" a header that fails its check is refused" T-LABEL
+   s" a header that fails its check is rejected" T-LABEL
    [: BAD-FCHECK ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
-   s" a stream that asks for a preset dictionary is refused" T-LABEL
+   s" a stream that asks for a preset dictionary is rejected" T-LABEL
    [: PRESET-DICT ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
    s" raw and framed streams are not interchangeable" T-LABEL
    [: RAW-AS-FRAMED ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
    [: FRAMED-AS-RAW ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
-   s" a byte after the trailer is refused" T-LABEL
+   s" a byte after the trailer is rejected" T-LABEL
    [: FRAMED-TRAILING ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
-   s" a stream cut inside its trailer is refused" T-LABEL
+   s" a stream cut inside its trailer is rejected" T-LABEL
    [: FRAMED-CUT ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
    s" an understated framed expanded size is a capacity error" T-LABEL
    [: FRAMED-SHORT ;] ZLIB:E-CAPACITY TTHROWSQ STILL-WORKS
@@ -302,7 +302,7 @@ public
    root FS:CLEANUP-TREE+
    root STR:DATA ROOT root STR:LEN BYTE-COPY root STR:LEN ROOT-U !
 
-   CRC-CASES LITERAL-CASES STREAM-FAILURES KEEPS SPAN-REFUSALS
+   CRC-CASES LITERAL-CASES STREAM-FAILURES KEEPS SPAN-REJECTIONS
    SMALL-DEFLATE FRAMED-CASES LARGE
    T-REPORT
    s" zlib-source: ok" type cr ;

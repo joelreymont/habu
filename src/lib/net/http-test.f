@@ -89,7 +89,7 @@ $2000 constant SCRIPT-CAP
 10 constant LF
 $2F constant SLASH
 $2E constant DOT-BYTE
-\ This file's own fixture refusals, outside every lib block; E-BOOM is declared
+\ This file's own fixture throws, outside every lib block; E-BOOM is declared
 \ so that a request-failure line names it.
 -9990 s" the http test threw it" ERROR:CODE E-BOOM
 -9991 constant E-HOOK
@@ -3384,18 +3384,18 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
 
 
 \ True once fd 2 holds the listener's warning, or a task of the server has
-\ left, which ends the wait where a refused poll ends the listener or worker.
-: REFUSED-OR-LEFT? ( -- bool )
+\ left, which ends the wait where a rejected poll ends the listener or worker.
+: REJECTED-OR-LEFT? ( -- bool )
    READ-STDERR
-   ERR$ s" poll refused" STR:CONTAINS? HTTP-TEST:LEFT 0<> or ;
+   ERR$ s" poll rejected" STR:CONTAINS? HTTP-TEST:LEFT 0<> or ;
 
 
-\ Each queued peer is read to its end while AIO is full: its worker's refused
+\ Each queued peer is read to its end while AIO is full: its worker's rejected
 \ first wait closes it, where with AIO back that wait would last IDLE-MS.
 : REARMING ( -- )
    GATE TASK:SIGNAL-SEM
-   ['] REFUSED-OR-LEFT? TEST-WAIT:POLL
-   ERR$ s" poll refused" STR:CONTAINS? 0= if exit then
+   ['] REJECTED-OR-LEFT? TEST-WAIT:POLL
+   ERR$ s" poll rejected" STR:CONTAINS? 0= if exit then
    OPENED @ 0 ?do i QUEUED-CONN @ RAW-DRAIN loop ;
 
 
@@ -3417,10 +3417,10 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    ERR-PATH-MAKE
    ERR-PATH$ STDERR:CAPTURE
    [: REARMING ;] [: AIO-FILL:UNFILL STDERR:;CAPTURE ;] finally
-   s" the listener's re-arm refused at the ceiling is a warning" T-LABEL
+   s" the listener's re-arm rejected at the ceiling is a warning" T-LABEL
    READ-STDERR
-   ERR$ s" warn http: poll refused, throw " STR:CONTAINS? TTRUE
-   s" the listener outlives its re-arm refused at the ceiling" T-LABEL
+   ERR$ s" warn http: poll rejected, throw " STR:CONTAINS? TTRUE
+   s" the listener outlives its re-arm rejected at the ceiling" T-LABEL
    SERVED? TTRUE
    gated TCP4:CLOSE DROP-TCP-STATUS
    DROP-PEERS
