@@ -35,8 +35,9 @@ package STACK-LIFECYCLE-TEST
    DEBUGGER-VALUES 2 T=
    DEBUGGER-LINES 7 T= ;
 
-\ T0 enters KEEP with `ret`, TWICE with `ldr x9,[x19,#-8]!` and CALLS with
-\ `str x30,[sp,#-16]!`; the planted BRK displaces each on every call.
+\ T0 enters KEEP with `ret`, TWICE with a load, CALLS with `str x30,[sp,#-16]!`
+\ on arm64 and `call rel32` on x86-64, and QUOTES with that store and
+\ `lea rcx,[rip+d]`; the planted trap displaces each on every call.
 : PERSISTENT-BOUNDARIES ( -- )
    s" persistent breakpoint on a leaf word resumes it" T-LABEL
    s" require src/habu/debug.f package PBP : KEEP ( n -- n ) ; ' KEEP DEBUG:BP* : GO ( -- ) 17 KEEP . 25 KEEP . ; GO ;package"
@@ -55,10 +56,27 @@ package STACK-LIFECYCLE-TEST
    CHILD-RC 0 T=
    OUT OUTLEN @ >str s" 42" STR:CONTAINS? TTRUE
    OUT OUTLEN @ >str s" 10" STR:CONTAINS? TTRUE
+   DEBUGGER-HITS 2 T=
+   s" persistent breakpoint on a word that begins with a quotation" T-LABEL
+   S\" require src/habu/debug.f package PBP : QUOTES ( -- ) [: s\" q\" type ;] execute ; ' QUOTES DEBUG:BP* : GO ( -- ) QUOTES QUOTES ; GO ;package"
+   CHILD-RC 0 T=
+   OUT OUTLEN @ >str s" qq" T$=
+   DEBUGGER-HITS 2 T= ;
+
+\ T0 enters HOP with a tail branch, `jmp rel32`; the arm64 handler makes a
+\ breakpoint on its `b` one-shot.
+: TAIL-BOUNDARIES ( -- )
+   s" persistent breakpoint on a tail word" T-LABEL
+   s" require src/habu/debug.f package PBP : INC ( n -- n ) 1+ ; : HOP ( n -- n ) INC ; ' HOP DEBUG:BP* : GO ( -- ) 20 HOP . 4 HOP . ; GO ;package"
+   CHILD-RC 0 T=
+   OUT OUTLEN @ >str S\" 21\n5\n" T$=
    DEBUGGER-HITS 2 T= ;
 
 public
-: DEBUGGER-RUN ( -- ) T-RESET DEBUGGER-BOUNDARIES PERSISTENT-BOUNDARIES T-REPORT ;
+: DEBUGGER-RUN ( -- )
+   T-RESET DEBUGGER-BOUNDARIES PERSISTENT-BOUNDARIES
+   HB-TARGET-LINUX-X86-64? if TAIL-BOUNDARIES then
+   T-REPORT ;
 
 ;package
 

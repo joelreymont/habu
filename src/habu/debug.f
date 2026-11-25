@@ -64,15 +64,14 @@ CAST: XT>N ( [ R -- S ] -- n )
    w  at 4 CODE-BYTES:AT drop  BP-PATCH32 ;
 
 \ A persistent breakpoint runs its entry instruction out of line: slot idx owns
-\ the TRAMP-BYTES at [BPTRAMP-CELL] + idx * TRAMP-BYTES, the instruction and a
-\ branch back to the one after it. The block is reserved in the code band once,
-\ before any breakpoint, so the branch reaches anywhere in the region (REGION is
-\ far inside b's 128 MB and jmp rel32's 2 GB) and nothing is ever freed while a
-\ slot points at it: reserving at CP during BPADD would hand the block to a
-\ failed REPL line's CP rollback. It starts as traps, so a stray jump traps and
-\ a capture's walk over the gap finds no fall-through into the next definition.
-\ An instruction that reads or sets PC cannot run out of line: its breakpoint
-\ degrades to one-shot.
+\ the TRAMP-BYTES at [BPTRAMP-CELL] + idx * TRAMP-BYTES, which do what the
+\ instruction does at the entry and go on where it does. The block is reserved
+\ in the code band once, before any breakpoint, so a branch there reaches
+\ anywhere in the region (REGION is far inside b's 128 MB and jmp rel32's 2 GB)
+\ and nothing is ever freed while a slot points at it: reserving at CP during
+\ BPADD would hand the block to a failed REPL line's CP rollback. It starts as
+\ traps, so a stray jump traps and a capture's walk over the gap finds no
+\ fall-through into the next definition.
 : TRAMP@ ( -- n ) data-base BPTRAMP-CELL + @ ;
 
 HB-TARGET-LINUX-X86-64? 0= [if]
@@ -112,33 +111,83 @@ $FFFFFF00 constant ABOVE-BYTE0
 \ Whether X64DIS decodes the instruction at code; a throw from outside the
 \ decoder's block throws on.
 : DECODES? ( str -- bool ) {: code:^ u:n :}
-   [: code u X64DIS:SPAN 2drop ;] catch {: rc:n :}
+   [: code u X64DIS:SPAN drop drop ;] catch {: rc:n :}
    rc 0= if true exit then
    rc X64DIS:E-LAST < rc X64DIS:E-FIRST > or if rc throw then
    false ;
 
-\ Byte k of the trampoline for the len-byte instruction at code: the
-\ instruction, `jmp rel32` back to the byte after it, then int3.
-: TRAMP-BYTE ( str n n -- n ) {: code:^ len:n rel:n k:n :}
-   k len < if code k + c@ exit then
-   k len = if $E9 exit then
-   k len 5 + < if rel k len - 1- 8 * rshift $FF and exit then
-   INT3 ;
+\ The trampoline being written: its address, its bytes and how many there are.
+variable TRAMP-AT
+create TRAMP-BUF TRAMP-BYTES allot
+variable TRAMP-U
 
-: TRAMP-WORD ( str n n -- n ) {: code:^ len:n rel:n k:n :}
-   0  4 0 ?do  code len rel k i + TRAMP-BYTE  i 8 * lshift or  loop ;
+: TRAMP-OPEN ( n -- )
+   TRAMP-AT !  0 TRAMP-U !
+   TRAMP-BYTES 0 ?do INT3 TRAMP-BUF i + c! loop ;
 
-\ Slot idx's trampoline for the instruction at `at`; the jmp at t + len reaches
-\ at + len, rel32 = at - t - 5. An instruction whose behaviour depends on its
-\ address, or one X64DIS rejects, gets none: false.
+: BYTE+ ( n -- )
+   $FF and TRAMP-BUF TRAMP-U @ + c!  1 TRAMP-U +! ;
+
+: DWORD+ ( n -- ) {: w:n :}
+   4 0 ?do w i 8 * rshift BYTE+ loop ;
+
+: BYTES+ ( str -- ) {: a:^ u:n :}
+   u 0 ?do a i + c@ BYTE+ loop ;
+
+\ A rel32 counts from the byte after it.
+: REL32+ ( n -- )
+   TRAMP-AT @ TRAMP-U @ + 4 + - DWORD+ ;
+
+: JMP+ ( n -- ) $E9 BYTE+ REL32+ ;
+
+: PUSH+ ( n -- ) $68 BYTE+ DWORD+ ;
+
+: JCC+ ( n n -- ) {: cond:n to:n :}
+   $0F BYTE+ $80 cond + BYTE+ to REL32+ ;
+
+\ The instruction with the disp32 at offset disp, which counts from the
+\ instruction's end, moved from `at` to the trampoline.
+: MOVED+ ( n str n -- ) {: at:n code:^ len:n disp:n :}
+   code disp BYTES+
+   code disp + W32@ at TRAMP-AT @ - + DWORD+
+   disp 4 + {: done:n :}
+   code done + len done - BYTES+ ;
+
+\ The bytes that do at the trampoline what the len-byte instruction at code
+\ does at `at`, or false: no trampoline. A callee returns to the byte after
+\ the call itself; `push imm32` holds that address, the code region lying
+\ below 2 GB. `call r/m` gets none, as loop and jrcxz, which X64DIS rejects:
+\ tier 0 begins no unit with them.
+: RELOCATED? ( n str X64DIS:pc-use -- bool )
+   {: at:n code:^ len:n use:X64DIS:pc-use :}
+   at len + {: next:n :}
+   use MATCH X64DIS:pc-use
+      none OF code len BYTES+ next JMP+ true ENDOF
+      operand OF {: disp:n :}
+         at code len disp MOVED+ next JMP+ true ENDOF
+      call OF {: delta:n :}
+         next PUSH+ next delta + JMP+ true ENDOF
+      jump OF next + JMP+ true ENDOF
+      branch OF {: cond:n delta:n :}
+         cond next delta + JCC+ next JMP+ true ENDOF
+      pushed OF false ENDOF
+   ;MATCH ;
+
+: TRAMP-STORE ( -- )
+   TRAMP-BYTES 0 ?do
+      TRAMP-BUF i + W32@ TRAMP-AT @ i + CODE!
+   4 +loop ;
+
+\ Slot idx's trampoline for the instruction at `at`; false when X64DIS rejects
+\ the instruction or it has no out-of-line form. The longest is 20 bytes, a
+\ 15-byte instruction and `jmp rel32`.
 : TRAMP! ( n n -- bool )
-   {: at idx :}
+   {: at:n idx:n :}
    at  cp@ at - 15 min  CODE-BYTES:AT {: code:^ u:n :}
    code u DECODES? 0= if false exit then
-   code u X64DIS:SPAN if drop false exit then {: len:n :}
-   idx TRAMP-BYTES * TRAMP@ + {: t :}
-   TRAMP-BYTES 0 ?do  code len at t - 5 - i TRAMP-WORD  t i + CODE!  4 +loop
-   true ;
+   idx TRAMP-BYTES * TRAMP@ + TRAMP-OPEN
+   code u X64DIS:SPAN {: len:n use:X64DIS:pc-use :}
+   at code len use RELOCATED? dup if TRAMP-STORE then ;
 
 [then]
 
@@ -158,8 +207,8 @@ $FFFFFF00 constant ABOVE-BYTE0
 : FREE ( -- n )
    0 BEGIN dup MAXBP < WHILE  dup FILLED? 0= IF exit THEN  1 + REPEAT  drop -1 ;
 
-\ BPADD ( xt ctrl -- ) : record + plant. ctrl = (skip << 1) | persistent; a
-\ persistent breakpoint whose instruction gets no trampoline is one-shot.
+\ BPADD ( xt ctrl -- ) : record + plant. ctrl = (skip << 1) | persistent, and
+\ persistent is cleared when TRAMP! answers false.
 : BP-SET-SLOT ( str n -- ) {: xt:^ ctrl idx :}
    xt idx BP-SLOT-ADDR !
    xt W32@ idx BP-SLOT-INSTR !

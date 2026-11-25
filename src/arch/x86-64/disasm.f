@@ -2,6 +2,8 @@ split-str
 \ disasm.f - bounded decoder for the Intel instructions Habu emits.
 \ DIS1 receives the remaining bytes of one recorded code span and its live PC
 \ and prints the instruction; SPAN decodes the same way and prints nothing.
+\ DRIP is the offset of a rip-relative operand's disp32 (0: none), DREL a
+\ relative branch's distance from the byte after it.
 
 require src/lib/fmt.f
 
@@ -13,13 +15,26 @@ public
 -9511 constant E-UNKNOWN
 -9512 constant E-LENGTH
 
+\ What an instruction does with its own address: nothing; names an operand by
+\ the disp32 at offset disp; calls, jumps or branches to the byte delta past
+\ the one after it; or pushes it (call r/m).
+ENUM pc-use
+   VARIANT none ;VARIANT
+   VARIANT operand FIELD disp n ;VARIANT
+   VARIANT call FIELD delta n ;VARIANT
+   VARIANT jump FIELD delta n ;VARIANT
+   VARIANT branch FIELD cond n FIELD delta n ;VARIANT
+   VARIANT pushed ;VARIANT
+;ENUM
+
 private
 
 TYPED-VARIABLE DA ^u8
 variable DU  variable DI  variable DPC
 variable DREX  variable D-HASREX  variable DPFX  variable DLOCK  variable DOP
 variable DMOD  variable DREG  variable DRM  variable DBASE  variable DINDEX
-variable DSCALE  variable DDISP  variable DRIP  variable DQUIET
+variable DSCALE  variable DDISP  variable DRIP  variable DREL
+variable DQUIET
 
 : OUT ( str -- ) {: a:^ u:n :}
    DQUIET @ if exit then  a u type ;
@@ -114,7 +129,7 @@ variable DSCALE  variable DDISP  variable DRIP  variable DQUIET
       DMOD @ 0= base 5 = and if 4 IMM 32 SIGNED DDISP !
       else base REX-B + DBASE ! then
    else
-      DMOD @ 0= rm 5 = and if 1 DRIP ! 4 IMM 32 SIGNED DDISP !
+      DMOD @ 0= rm 5 = and if DI @ DRIP ! 4 IMM 32 SIGNED DDISP !
       else rm REX-B + DBASE ! then
    then
    DMOD @ 1 = if S8 DDISP ! then
@@ -334,11 +349,13 @@ variable DSCALE  variable DDISP  variable DRIP  variable DQUIET
    DOP @ $E8 = if S32 s" call" else
    DOP @ $E9 = if S32 s" jmp" else S8 s" jmp" then then
    {: delta:n name:^ u:n :}
+   delta DREL !
    name u OUT GAP delta PRINT-REL ;
 
 : COND-BRANCH ( -- )
    PLAIN-PREFIX
    DOP @ $100 and 0<> if S32 else S8 then {: delta:n :}
+   delta DREL !
    DOP @ $F and JCC$ OUT GAP delta PRINT-REL ;
 
 : ALU? ( -- bool )
@@ -521,17 +538,17 @@ private
    DECODE-TWO if exit then
    UNKNOWN ;
 
-\ Whether the decoded instruction's behaviour depends on its own address: a
-\ rip-relative operand, a relative call, jmp, jcc, loop or jrcxz, or call r/m,
-\ whose pushed return address names where it ran.
-: AT-PC? ( -- bool )
-   DRIP @ 0<> if true exit then
+\ The decoder rejects the other users of rip, loop and jrcxz.
+: PC-USE ( -- pc-use )
    DOP @ {: op:n :}
-   op $E8 = op $E9 = or op $EB = or if true exit then
-   op $70 >= op $7F <= and if true exit then
-   op $E0 >= op $E3 <= and if true exit then
-   op $180 >= op $18F <= and if true exit then
-   op $FF = DREG @ 2 = and ;
+   op $FF = DREG @ 2 = and if construct pc-use pushed exit then
+   DRIP @ 0<> if DRIP @ construct pc-use operand exit then
+   op $E8 = if DREL @ construct pc-use call exit then
+   op $E9 = op $EB = or if DREL @ construct pc-use jump exit then
+   op $70 >= op $7F <= and  op $180 >= op $18F <= and  or if
+      op $F and DREL @ construct pc-use branch exit
+   then
+   construct pc-use none ;
 
 public
 
@@ -539,9 +556,8 @@ public
 : DIS1 ( str n -- n )
    false DQUIET !  DECODE DI @ ;
 
-\ The instruction's byte count (1..15) and whether its behaviour depends on its
-\ own address. It throws as DIS1 does.
-: SPAN ( str -- n bool )
-   true DQUIET !  0 DECODE  DI @ AT-PC? ;
+\ The instruction's byte count (1..15) and its pc-use. It throws as DIS1 does.
+: SPAN ( str -- n pc-use )
+   true DQUIET !  0 DECODE  DI @ PC-USE ;
 
 ;package

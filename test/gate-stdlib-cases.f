@@ -1019,6 +1019,14 @@ SUITE engine-stack-lifecycle
    test/engine-stack-lifecycle.f
 ;SUITE
 
+SUITE engine-stack-debugger
+   test/engine-stack-debugger.f
+;SUITE
+
+SUITE debugger-resume
+   test/debugger-resume.f
+;SUITE
+
 SUITE stack-guard
    test/stack-guard.f
 ;SUITE

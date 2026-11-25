@@ -31,14 +31,6 @@ SUITE file-objects
    test/warm-engine.f
 ;SUITE
 
-SUITE engine-stack-debugger
-   test/engine-stack-debugger.f
-;SUITE
-
-SUITE debugger-resume
-   test/debugger-resume.f
-;SUITE
-
 SUITE prop
    test/prop-test.f
 ;SUITE
