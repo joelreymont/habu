@@ -2208,8 +2208,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" build two rewrites an object" LABEL  n 0 > TTRUE
    s" prog-v" s\" 0\n" s" the program prints /dev/null's byte count" NEST-RUN ;
 
-\ The calls sequence's main.f: its load calls each library word once and leaves a pseudo-terminal open; its
-\ program, which keeps what it reaches, calls them again.
+\ The calls sequence's main.f: its load calls each library word once and leaves a pseudo-terminal and as many
+\ files as its TMPDIR's last digit says open; its program, which keeps what it reaches, calls them again.
 : WRITE-CALLS ( -- )
    L$ s" calls" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
    s" abc" WRITE-DATA
@@ -2232,11 +2232,16 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" : BIND ( -- ) s\" TMPDIR\" GETENV s\" calls\" SECRET:DIR-BIND KEY ;\n" SRC+
    s\" : FN ( -- n ) s\" TMPDIR\" GETENV 0 0 1 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ ;\n" SRC+
    s\" : CHILD ( -- ) s\" /usr/bin/true\" PTY-HARNESS:SPAWN-ON-PTY PTY-HARNESS:REAP drop ;\n" SRC+
-   s\" ASK SERVE TYPE-LINE BIND  FN WLINK:LINK drop  CHILD\n" SRC+
+   s\" : HOLD ( -- ) s\" TMPDIR\" GETENV {: t:str :} t STR:DATA t STR:LEN 1- + c@ [char] 0 -\n" SRC+
+   s\"    0 ?do s\" /dev/null\" FS:>PATHZ 0 0 open drop loop ;\n" SRC+
+   s\" TASK:MIN-STACK TASK:TASK WAITER\n: REST ( -- ) 1 >MS AIO:TIMEOUT AIO:AWAIT drop  0 TASK:RETURN ;\n" SRC+
+   s\" : WAIT ( -- ) AIO:START  ['] REST WAITER TASK:ACTIVATE  WAITER TASK:JOIN\n" SRC+
+   s\"    MATCH result ok OF drop ENDOF err OF throw ENDOF ;MATCH  AIO:STOP ;\n" SRC+
+   s\" ASK SERVE TYPE-LINE BIND  FN WLINK:LINK drop  CHILD HOLD WAIT\n" SRC+
    s\" : MAIN ( -- ) ASK  HTTP:STATIC-COUNT . HTTP:STATIC-CLOSE\n   s\" " SRC+
    NEST-DIR NEST-DIR-U @ >str SRC+
    s\" \" HTTP:STATIC-ROOT HTTP:STATIC-COUNT .  LINE-EDITOR:READ-LINE drop\n" SRC+
-   s\"    [: KEY ;] catch SECRET:E-CONFIG = bool>n .  FN dup . WLINK:LINK drop  CHILD ;\n" SRC+  s" main.f" NEST-WRITE ;
+   s\"    [: KEY ;] catch SECRET:E-CONFIG = bool>n .  FN dup . WLINK:LINK drop  CHILD WAIT ;\n" SRC+  s" main.f" NEST-WRITE ;
 
 \ d.txt was last read n seconds and last written 1 second past the epoch.
 : ACCESSED ( n -- )
@@ -2254,10 +2259,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    m L$ s" prog" IN$ WHOLE-FILE {: p2:str :}
    s" the program is the first build's" LABEL  p1 p2 STR:= TTRUE
    s" prog" s\" 0\n2\n-1\n0\n"
-   s" the program serves nothing, then d.txt and main.f, reads no secret, links function 0 and runs a child"
+   s" the program serves nothing, then d.txt and main.f, reads no secret, links function 0, runs a child and waits"
    NEST-RUN ;
 
-\ Guards a program against what a library word a load ran left in its buffers.
+\ Guards a program against what the library words a load ran left in their cells.
 : CALLS-CASE ( CMD:command -- CMD:command )
    WRITE-CALLS
    1 ACCESSED

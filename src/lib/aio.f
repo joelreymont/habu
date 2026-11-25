@@ -256,10 +256,10 @@ END-STRUCTURE
 \ link cell and G.OWNER. AIO-RECS is the chain's link cell, 0 with no chunk.
 CHUNK-HEAD SCRATCH-BUFFER: AIO-RECS
 CHUNK-HEAD GROUPS-FIRST G-BYTES * + SCRATCH-BUFFER: AIO-GROUPS
-PARAMS-BYTES BUFFER: PARAMS
-4 BUFFER: EVENTFD-ARG               \ io_uring_register's __s32 eventfd
-8 BUFFER: WAKE-IN                   \ the loop's read of WAKE-FD
-8 BUFFER: WAKE-OUT                  \ HOST-WAKE's write, under AIO-LOCK
+PARAMS-BYTES SCRATCH-BUFFER: PARAMS
+4 SCRATCH-BUFFER: EVENTFD-ARG       \ io_uring_register's __s32 eventfd
+8 SCRATCH-BUFFER: WAKE-IN           \ the loop's read of WAKE-FD
+8 SCRATCH-BUFFER: WAKE-OUT          \ HOST-WAKE's write, under AIO-LOCK
 
 \ The records the chunks hold: grown under the facility, after the chunk's link.
 SCRATCH-VARIABLE REC-GROWN
@@ -267,14 +267,13 @@ SCRATCH-VARIABLE REC-LIVE           \ records claimed and not yet freed, at most
 
 : REC-CAP ( -- n ) REC-GROWN atomic@ ;
 
-variable GROUP-N
-variable RING-LIVE                  \ the loop is running
-variable RING-STOP
-variable RING-READY                 \ the facility has been initialized once
+variable GROUP-N                    \ the groups GROUP defined, which a build keeps
+SCRATCH-VARIABLE RING-LIVE          \ the loop is running
+SCRATCH-VARIABLE RING-STOP
+SCRATCH-VARIABLE RING-READY         \ the facility has been initialized once
 \ The eventfd every ring signals as it posts a completion, and HOST-WAKE
-\ writes; -1 while closed.
-variable WAKE-FD
--1 WAKE-FD !
+\ writes, open from START to STOP, which leaves -1.
+SCRATCH-VARIABLE WAKE-FD
 
 \ An io_uring, as io_uring_params reported it and as mapped; state is RING-FREE,
 \ RING-ACTIVE or RING-RETIRED, recs-live the records claimed on it and not freed.
@@ -305,7 +304,7 @@ STRUCTURE ring DERIVE addr
 2 constant RING-RETIRED             \ takes no new records
 
 RINGS-MAX TYPED-BUFFER RINGS ring SCRATCH-ONLY
-variable ACTIVE                     \ the RINGS entry that takes new records
+SCRATCH-VARIABLE ACTIVE             \ the RINGS entry that takes new records
 
 CAST: RING-SLOT ( ^n -- ^^ring )
 
@@ -1400,7 +1399,7 @@ private
 
 create WAKE-BYTE $01 c,
 \ What WOKE reads lands here unread, so every parked task shares it.
-1 BUFFER: SINK
+1 SCRATCH-BUFFER: SINK
 
 public
 

@@ -115,7 +115,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    idx IN-BUF at len SPAN:SUB SPAN:$ ;
 
 
-variable STOPPING                   \ raised by STOP (src/lib/net/http.f)
+SCRATCH-VARIABLE STOPPING           \ raised by STOP (src/lib/net/http.f)
 
 public
 
@@ -866,7 +866,7 @@ private
 1 constant OFFERED                \ a handler is running and may take it
 2 constant TAKEN                  \ the handler took it for good
 
-MAX-WORKERS TYPED-BUFFER HOLDER n
+MAX-WORKERS TYPED-BUFFER HOLDER n SCRATCH-ONLY
 
 
 \ The connection each worker is serving, live from SERVE-CONNECTION's entry
@@ -874,13 +874,13 @@ MAX-WORKERS TYPED-BUFFER HOLDER n
 \ hands that handler, what a handler's body read reads from, and what the
 \ worker's exit closes when a stop killed it before that close
 \ (RUN-EXIT-HOOKS).
-MAX-WORKERS TYPED-BUFFER SERVING TCP4:connection
-MAX-WORKERS TYPED-BUFFER SERVING-LIVE n
+MAX-WORKERS TYPED-BUFFER SERVING TCP4:connection SCRATCH-ONLY
+MAX-WORKERS TYPED-BUFFER SERVING-LIVE n SCRATCH-ONLY
 
 
 \ How the request's read ended: its head's when READ-REQUEST returns, then its
 \ body's once its handler has asked for that.
-MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result
+MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result SCRATCH-ONLY
 
 \ How far the request's body has been read: none of it, a read begun that did
 \ not complete, or all of it. A request that declares no body starts whole.
@@ -888,9 +888,9 @@ MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result
 1 constant READING
 2 constant WHOLE
 
-MAX-WORKERS TYPED-BUFFER BODY-STATE n
-MAX-WORKERS TYPED-BUFFER BODY-BOUND n         \ the selected route's body cap
-MAX-WORKERS TYPED-BUFFER REQUEST-DEADLINE n
+MAX-WORKERS TYPED-BUFFER BODY-STATE n SCRATCH-ONLY
+MAX-WORKERS TYPED-BUFFER BODY-BOUND n SCRATCH-ONLY \ the selected route's body cap
+MAX-WORKERS TYPED-BUFFER REQUEST-DEADLINE n SCRATCH-ONLY
 
 \ The throw that ends a handler whose body read did not complete. The server
 \ answers it from READ-RESULT, never as a fault.

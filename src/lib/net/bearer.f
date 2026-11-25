@@ -113,17 +113,17 @@ SCRATCH-VARIABLE RESOURCE-U
 
 \ The key set's text, under KEYS-LOCK with KEYS-AT, FETCHING, WAITERS, ROUND,
 \ KEY-ARRAY and ARRAY-ROUND; FETCHED and ACCEPTED are the fetcher's alone.
-KEYS-CAP BUFFER: KEYS
-variable KEYS-U
-variable KEYS-AT                    \ when the last fetch returned, a mono-ns; 0 before any
-TYPED-VARIABLE FETCHING bool
-variable WAITERS                    \ WAKE posts RETURNED owes, one per wait
-variable ROUND                      \ fetches returned
-TYPED-VARIABLE KEY-ARRAY JSON:value \ KEYS's keys array, as of round ARRAY-ROUND
-variable ARRAY-ROUND
+KEYS-CAP SCRATCH-BUFFER: KEYS
+SCRATCH-VARIABLE KEYS-U
+SCRATCH-VARIABLE KEYS-AT            \ when the last fetch returned, a mono-ns; 0 before any
+TYPED-VARIABLE FETCHING bool SCRATCH-ONLY
+SCRATCH-VARIABLE WAITERS            \ WAKE posts RETURNED owes, one per wait
+SCRATCH-VARIABLE ROUND              \ fetches returned
+TYPED-VARIABLE KEY-ARRAY JSON:value SCRATCH-ONLY \ KEYS's keys array, as of round ARRAY-ROUND
+SCRATCH-VARIABLE ARRAY-ROUND
 TASK:SEMAPHORE WAKE
-TYPED-VARIABLE FETCHED ^VEC:vector<u8>
-TYPED-VARIABLE ACCEPTED bool        \ FETCHED holds a key set
+TYPED-VARIABLE FETCHED ^VEC:vector<u8> SCRATCH-ONLY
+TYPED-VARIABLE ACCEPTED bool SCRATCH-ONLY \ FETCHED holds a key set
 TASK:FACILITY KEYS-LOCK
 KEYS-LOCK TASK:FACILITY-INIT
 
@@ -142,14 +142,14 @@ create SCRATCH-ROWS SCRATCHES-BYTES SCRATCH-ALLOT
 
 \ PRESENTED and SIGNED borrow the request's header; the rest borrow the worker's
 \ scratch.
-HTTP:MAX-WORKERS TYPED-BUFFER PRESENTED SPAN:span<u8>
-HTTP:MAX-WORKERS TYPED-BUFFER SIGNED SPAN:span<u8>
-HTTP:MAX-WORKERS TYPED-BUFFER HEADER JSON:value
-HTTP:MAX-WORKERS TYPED-BUFFER CLAIMS JSON:value
-HTTP:MAX-WORKERS TYPED-BUFFER SIGNATURE SPAN:span<u8>
-HTTP:MAX-WORKERS TYPED-BUFFER KID SPAN:span<u8>
-HTTP:MAX-WORKERS TYPED-BUFFER MODULUS SPAN:span<u8>
-HTTP:MAX-WORKERS TYPED-BUFFER EXPONENT SPAN:span<u8>
+HTTP:MAX-WORKERS TYPED-BUFFER PRESENTED SPAN:span<u8> SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER SIGNED SPAN:span<u8> SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER HEADER JSON:value SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER CLAIMS JSON:value SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER SIGNATURE SPAN:span<u8> SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER KID SPAN:span<u8> SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER MODULUS SPAN:span<u8> SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER EXPONENT SPAN:span<u8> SCRATCH-ONLY
 
 \ The running task's: PASSED is nonzero once ADMIT? admitted FROM, a request's
 \ number.
@@ -795,9 +795,9 @@ private
 10000 constant TOKEN-TIMEOUT-MS     \ protective: the bound on the token endpoint's whole answer
 $10000 constant TOKEN-CAP           \ protective: the largest token answer read
 
-TYPED-VARIABLE ENDPOINT SPAN:span<u8>
-TYPED-VARIABLE CLIENT-ID SPAN:span<u8>
-TYPED-VARIABLE SECRET SPAN:span<u8>
+TYPED-VARIABLE ENDPOINT SPAN:span<u8> SCRATCH-ONLY
+TYPED-VARIABLE CLIENT-ID SPAN:span<u8> SCRATCH-ONLY
+TYPED-VARIABLE SECRET SPAN:span<u8> SCRATCH-ONLY
 
 private
 
@@ -823,7 +823,7 @@ STRUCTURE row DERIVE addr
    FIELD answer ^VEC:vector<u8>
 ;STRUCTURE
 
-TYPED-VARIABLE NEWEST ^row
+TYPED-VARIABLE NEWEST ^row SCRATCH-ONLY
 
 \ Held to find, link or walk the rows, never across an ask.
 TASK:FACILITY ROWS-LOCK
@@ -859,9 +859,10 @@ ENUM grant
 \ there, written before any TOKEN, REFRESH or CURRENT, not while one runs; each
 \ kept token is dropped. An empty secret states a public client, which
 \ presents none (RFC 6749 2.3.1). The texts are borrowed and outlive every
-\ TOKEN and REFRESH, as literals do. E-OPERAND for a URL neither https nor
-\ http to a loopback IP literal, URI:ORIGIN's rejection for one it cannot
-\ read, either leaving the previous client in force.
+\ TOKEN and REFRESH, as literals do. A built program keeps none: it states them
+\ at run time. E-OPERAND for a URL neither https nor http to a loopback IP
+\ literal, URI:ORIGIN's rejection for one it cannot read, either leaving the
+\ previous client in force.
 : CLIENT! ( str str str -- )
    {: url:str id:str secret:str :}
    url SECURE

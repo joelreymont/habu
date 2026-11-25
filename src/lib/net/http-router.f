@@ -23,8 +23,8 @@ DYNAMIC-BUFFER ROUTE-PATTERN-N n
 DYNAMIC-BUFFER ROUTE-HANDLER [ request response -- ]
 DYNAMIC-BUFFER ROUTE-CAP n       \ -1 inherits BODY-CAP
 
-variable RUNNING
-variable ROUTE-COUNT
+SCRATCH-VARIABLE RUNNING
+SCRATCH-VARIABLE ROUTE-COUNT
 
 
 : ROUTE-METHOD$ ( n -- str ) {: route:n :}
@@ -227,13 +227,15 @@ variable ROUTE-COUNT
 public
 
 \ One route. The method, the pattern and the handler are the caller's and must
-\ outlive the server, which a literal and a definition both do.
+\ outlive the server, which a literal and a definition both do. A built program
+\ keeps no route: it adds them at run time.
 : ROUTE ( str str [ request response -- ] -- )
    {: method:str pattern:str handler :}
    method pattern -1 handler ADD-ROUTE ;
 
 
-\ An explicit byte limit for this route, including zero for an empty body.
+\ An explicit byte limit for this route, including zero for an empty body. A
+\ built program keeps no route: it adds them at run time.
 : ROUTE-CAPPED ( str str n [ request response -- ] -- )
    {: method:str pattern:str cap:n handler :}
    cap 0 < if E-CAPACITY throw then

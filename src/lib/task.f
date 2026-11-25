@@ -568,7 +568,7 @@ EXIT-CHUNK-BYTES EXIT-CHUNK-HEAD - EXIT-ROW-BYTES / constant EXIT-CHUNK-ROWS
 \ quotations (E-MISMATCH, "expected n n actual [ -- ] [ -- ]"), but a quotation
 \ in declared storage reads as a cell through the views, and the same `['] W`
 \ stored twice reads the same cell.
-TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
+TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ] SCRATCH-ONLY
 
 : TASK-DONE-SEM ( ^n -- sem )
    TCB.DONE >SEM ;

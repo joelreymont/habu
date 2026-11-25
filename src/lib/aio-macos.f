@@ -34,18 +34,18 @@ BEGIN-STRUCTURE FD-ROW-BYTES
    CELL +FIELD FD.SLOT
    CELL +FIELD FD.TURN
 END-STRUCTURE
-variable FD-ROWS                    \ the mapping's address as n, 0 when none
-variable FD-CAP                     \ the descriptors it covers
-variable FD-DISTINCT                \ the descriptors with a record on them
-variable FD-WANT                    \ the descriptor FD-GROW covers
-variable MAC-TURN
+SCRATCH-VARIABLE FD-ROWS                    \ the mapping's address as n, 0 when none
+SCRATCH-VARIABLE FD-CAP                     \ the descriptors it covers
+SCRATCH-VARIABLE FD-DISTINCT                \ the descriptors with a record on them
+SCRATCH-VARIABLE FD-WANT                    \ the descriptor FD-GROW covers
+SCRATCH-VARIABLE MAC-TURN
 
 PTR-VARIABLE MAC-POLLS
-variable MAC-POLL-COUNT
+SCRATCH-VARIABLE MAC-POLL-COUNT
 create MAC-BYTE 1 c,
-64 BUFFER: MAC-DRAIN
-variable MAC-READ-FD
-variable MAC-WRITE-FD
+64 SCRATCH-BUFFER: MAC-DRAIN
+SCRATCH-VARIABLE MAC-READ-FD
+SCRATCH-VARIABLE MAC-WRITE-FD
 
 PROCESS-SYMBOLS
 FUNCTION: MAC-FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION

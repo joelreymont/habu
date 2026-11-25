@@ -155,7 +155,7 @@ TYPED-VARIABLE SERVER-VERSION str
 TYPED-VARIABLE INSTRUCTIONS str
 
 \ The registry: a row to each tool, in ADD-TOOL order.
-variable TOOL-COUNT
+SCRATCH-VARIABLE TOOL-COUNT
 DYNAMIC-BUFFER TOOL-NAME str                \ decoded
 DYNAMIC-BUFFER TOOL-TEXT str                \ the descriptor
 DYNAMIC-BUFFER TOOL-OUTPUT str              \ the descriptor's outputSchema
@@ -164,7 +164,7 @@ DYNAMIC-BUFFER TOOL-INPUT JSON-SCHEMA:schema \ the descriptor's inputSchema
 DYNAMIC-BUFFER TOOL-BODY [ str -- ]
 
 \ A row to each resource, in ADD-RESOURCE order.
-variable RESOURCE-COUNT
+SCRATCH-VARIABLE RESOURCE-COUNT
 DYNAMIC-BUFFER RESOURCE-URI str             \ decoded
 DYNAMIC-BUFFER RESOURCE-TEXT str            \ the descriptor
 DYNAMIC-BUFFER RESOURCE-PAGE str
@@ -176,57 +176,57 @@ TYPED-VARIABLE VISIBILITY [ str -- bool ]   \ VISIBLE!'s hook
 variable LOGGING                              \ LOG's: nonzero once it ran
 
 \ ADD-TOOL's and ADD-RESOURCE's: both run before HTTP serves.
-TYPED-VARIABLE SCHEMA-READER JSON:cursor
+TYPED-VARIABLE SCHEMA-READER JSON:cursor SCRATCH-ONLY
 
 \ A row to each HTTP worker; strs borrow the request's body and headers.
-HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
-HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
-HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response
+HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response SCRATCH-ONLY
 \ The message's carrier: response under HANDLE, whose connection HOLD may take
 \ and whose 2025-11-25 notification is answered 202; vector under ANSWER and FINISH.
 ENUM sink response vector ;ENUM
-HTTP:MAX-WORKERS TYPED-BUFFER REPLY-TO sink
+HTTP:MAX-WORKERS TYPED-BUFFER REPLY-TO sink SCRATCH-ONLY
 \ The writer every reply is written through: open on REPLIES under HANDLE,
 \ on the caller's vector under ANSWER and on FINISHED under FINISH.
-HTTP:MAX-WORKERS TYPED-BUFFER ANSWER-W JSON:writer
-HTTP:MAX-WORKERS TYPED-BUFFER ID str                  \ empty when the id is not known
-HTTP:MAX-WORKERS TYPED-BUFFER METHOD str              \ JSON text, quotes kept
-HTTP:MAX-WORKERS TYPED-BUFFER PARAMS str              \ an object's JSON text, or empty
-HTTP:MAX-WORKERS TYPED-BUFFER ERA n
-HTTP:MAX-WORKERS TYPED-BUFFER STAGE n
-HTTP:MAX-WORKERS TYPED-BUFFER REPLY n
-HTTP:MAX-WORKERS TYPED-BUFFER STATUS n
-HTTP:MAX-WORKERS TYPED-BUFFER CODE n
-HTTP:MAX-WORKERS TYPED-BUFFER TEXT str                \ an error's message, or a tool's result
-HTTP:MAX-WORKERS TYPED-BUFFER FAULT bool              \ the tool result is isError
-HTTP:MAX-WORKERS TYPED-BUFFER META-TEXT str           \ the tool result's _meta, or empty
+HTTP:MAX-WORKERS TYPED-BUFFER ANSWER-W JSON:writer SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER ID str SCRATCH-ONLY     \ empty when the id is not known
+HTTP:MAX-WORKERS TYPED-BUFFER METHOD str SCRATCH-ONLY \ JSON text, quotes kept
+HTTP:MAX-WORKERS TYPED-BUFFER PARAMS str SCRATCH-ONLY \ an object's JSON text, or empty
+HTTP:MAX-WORKERS TYPED-BUFFER ERA n SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER STAGE n SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER REPLY n SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER STATUS n SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER CODE n SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER TEXT str SCRATCH-ONLY   \ an error's message, or a tool's result
+HTTP:MAX-WORKERS TYPED-BUFFER FAULT bool SCRATCH-ONLY \ the tool result is isError
+HTTP:MAX-WORKERS TYPED-BUFFER META-TEXT str SCRATCH-ONLY \ the tool result's _meta, or empty
 \ The content of a result that is not a tool error: content blocks and the commas
 \ between them, or empty.
-HTTP:MAX-WORKERS TYPED-BUFFER CONTENT-TEXT str
-HTTP:MAX-WORKERS TYPED-BUFFER CALLED n                \ the tool a tools/call runs
-HTTP:MAX-WORKERS TYPED-BUFFER OPENED n                \ the resource a resources/read reads
-HTTP:MAX-WORKERS TYPED-BUFFER ASKED str               \ an unsupported MCP-Protocol-Version
+HTTP:MAX-WORKERS TYPED-BUFFER CONTENT-TEXT str SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER CALLED n SCRATCH-ONLY   \ the tool a tools/call runs
+HTTP:MAX-WORKERS TYPED-BUFFER OPENED n SCRATCH-ONLY   \ the resource a resources/read reads
+HTTP:MAX-WORKERS TYPED-BUFFER ASKED str SCRATCH-ONLY  \ an unsupported MCP-Protocol-Version
 \ A decoded Mcp-Name is no longer than the header block that carried it.
 HTTP:MAX-WORKERS HTTP:HEAD-CAP * constant NAMES-BYTES
 create NAME-ROWS NAMES-BYTES SCRATCH-ALLOT
 : NAMES ( -- SPAN:span<u8> ) NAME-ROWS NAMES-BYTES SPAN:MAKE ;
-HTTP:MAX-WORKERS TYPED-BUFFER HOLDING n               \ the held row of a body at HELD
+HTTP:MAX-WORKERS TYPED-BUFFER HOLDING n SCRATCH-ONLY  \ the held row of a body at HELD
 \ The TIME:MONO-NS reading the message's milliseconds count from.
-HTTP:MAX-WORKERS TYPED-BUFFER START n
+HTTP:MAX-WORKERS TYPED-BUFFER START n SCRATCH-ONLY
 \ Each worker's vector, where FINISH writes a held call's response; NULL-PTR
 \ until its first FINISH.
-HTTP:MAX-WORKERS TYPED-BUFFER FINISHED ^VEC:vector<u8>
+HTTP:MAX-WORKERS TYPED-BUFFER FINISHED ^VEC:vector<u8> SCRATCH-ONLY
 \ Each worker's vector, where HANDLE writes its response, which the HTTP
 \ response borrows until it is sent; NULL-PTR until its first HANDLE.
-HTTP:MAX-WORKERS TYPED-BUFFER REPLIES ^VEC:vector<u8>
+HTTP:MAX-WORKERS TYPED-BUFFER REPLIES ^VEC:vector<u8> SCRATCH-ONLY
 \ Each worker's vector, where a -32603 reply's message is written; NULL-PTR
 \ until its first.
-HTTP:MAX-WORKERS TYPED-BUFFER FAULT-TEXTS ^VEC:vector<u8>
+HTTP:MAX-WORKERS TYPED-BUFFER FAULT-TEXTS ^VEC:vector<u8> SCRATCH-ONLY
 \ Each worker's vector, where a tools/call's arguments' violation is written;
 \ NULL-PTR until its first call.
-HTTP:MAX-WORKERS TYPED-BUFFER VIOLATIONS ^VEC:vector<u8>
+HTTP:MAX-WORKERS TYPED-BUFFER VIOLATIONS ^VEC:vector<u8> SCRATCH-ONLY
 \ Each worker's BUF, where a tool error's text is kept for LOG's debug line.
-HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: TOOL-ERRORS
+HTTP:MAX-WORKERS BUF:HDR-BYTES * SCRATCH-BUFFER: TOOL-ERRORS
 
 \ The held table: a row is free, kept by HOLD, or finishing while FINISH runs.
 \ A kept row holds the call's connection, era and tool, and its id's JSON text
@@ -241,10 +241,10 @@ STRUCTURE keep DERIVE addr
    FIELD start n
 ;STRUCTURE
 
-MAX-HELD TYPED-BUFFER KEEPS keep
-MAX-HELD BUF:HDR-BYTES * BUFFER: KEEP-IDS
+MAX-HELD TYPED-BUFFER KEEPS keep SCRATCH-ONLY
+MAX-HELD BUF:HDR-BYTES * SCRATCH-BUFFER: KEEP-IDS
 \ A held row's holding request's HTTP:REQUEST-ID$, in the row's own BUF.
-MAX-HELD BUF:HDR-BYTES * BUFFER: KEEP-REQS
+MAX-HELD BUF:HDR-BYTES * SCRATCH-BUFFER: KEEP-REQS
 TASK:FACILITY KEEP-LOCK
 KEEP-LOCK TASK:FACILITY-INIT
 
@@ -1684,6 +1684,7 @@ public
 
 \ A borrowed MCP Tool descriptor, which must outlive the server, and its body. It needs a
 \ non-empty string name and object schemas; an outputSchema typed "object" needs object results.
+\ A built program keeps none: it adds them at run time.
 : ADD-TOOL ( str [ str -- ] -- )
    {: desc:str body :}
    HTTP:RUNNING? if E-STATE throw then
@@ -1706,7 +1707,8 @@ public
 
 
 \ A borrowed MCP Resource descriptor, with a non-empty string uri and string name and mimeType,
-\ and the UTF-8 page resources/read answers; both must outlive the server.
+\ and the UTF-8 page resources/read answers; both must outlive the server. A built program
+\ keeps none: it adds them at run time.
 : ADD-RESOURCE ( str str -- )
    {: desc:str page:str :}
    HTTP:RUNNING? if E-STATE throw then
@@ -1850,9 +1852,9 @@ STRUCTURE peer DERIVE addr
 ;STRUCTURE
 
 ARENA PEERS peer
-\ The rows' arena, made by the first GROW so a saved image maps none; null until
-\ then, and never released: the rows live as long as the process.
-TYPED-VARIABLE RECORDS ^ARENA:arena
+\ The rows' arena, null until the first GROW makes it and never released: the
+\ rows live as long as the process.
+TYPED-VARIABLE RECORDS ^ARENA:arena SCRATCH-ONLY
 
 $1000 constant FIRST-CAP
 0 constant URL-OFF
@@ -1865,8 +1867,10 @@ TOKEN-OFF BUF:HDR-BYTES + constant REGION-BYTES
 \ No task is live while this file loads, so the lock is made ready here.
 TASK:FACILITY LOCK
 LOCK TASK:FACILITY-INIT
-variable ROW-COUNT
-variable GENERATION                 \ the last generation OPEN gave a row
+SCRATCH-VARIABLE ROW-COUNT
+\ The last generation drawn. A build keeps it, so a client its load opened
+\ names no row of the program.
+variable GENERATION
 DYNAMIC-BUFFER ROW-PEER ^peer
 DYNAMIC-BUFFER ROW-HANDLE option<CURL:handle>
 \ A row's run state, changed only under LOCK: CLAIM makes it running and

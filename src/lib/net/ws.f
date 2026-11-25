@@ -89,7 +89,7 @@ CAST: >SOCKET ( n -- socket )
 CAST: SOCKET>N ( socket -- n )
 CAST: BLEN>N ( NUM:byte-len -- n )
 
-variable CAP                                \ START's limit: the slots the tables hold
+SCRATCH-VARIABLE CAP                        \ START's limit: the slots the tables hold
 
 \ The numbers the wake's wait and the timer's carry in WAITERS; a slot's wait
 \ carries its index.
@@ -138,9 +138,9 @@ $C8 constant STOP-MARGIN-MS       \ scheduling slack over GOODBYE-MS
 
 \ The run's config's ping, pong and stall in ns, set by SET-UP before its
 \ task starts.
-variable PING-NS
-variable PONG-NS
-variable STALL-NS
+SCRATCH-VARIABLE PING-NS
+SCRATCH-VARIABLE PONG-NS
+SCRATCH-VARIABLE STALL-NS
 $100000 constant TASK-STACK
 $18 constant NONCE-CHARS          \ sixteen bytes in base64
 $10 constant NONCE-BYTES
@@ -247,8 +247,8 @@ DYNAMIC-BUFFER PENDING message        \ what the handler call queued or running 
    n PENDING-RESERVE ;
 
 \ The handshake's scratch, a row to each HTTP worker that may run ACCEPT.
-HTTP:MAX-WORKERS TYPED-BUFFER KEY-AT ^u8 \ Sec-WebSocket-Key as it was sent
-HTTP:MAX-WORKERS TYPED-BUFFER KEY-U n
+HTTP:MAX-WORKERS TYPED-BUFFER KEY-AT ^u8 SCRATCH-ONLY \ Sec-WebSocket-Key as it was sent
+HTTP:MAX-WORKERS TYPED-BUFFER KEY-U n SCRATCH-ONLY
 HTTP:MAX-WORKERS NONCE-CAP * constant NONCES-BYTES
 create NONCE-ROWS NONCES-BYTES SCRATCH-ALLOT
 : NONCES ( -- SPAN:span<u8> ) NONCE-ROWS NONCES-BYTES SPAN:MAKE ;
@@ -256,8 +256,8 @@ create NONCE-ROWS NONCES-BYTES SCRATCH-ALLOT
 \ The handler call each request worker runs, for HAND-ENDED, which takes
 \ nothing: its slot, and whether it failed, as it has until the handler
 \ returns with no throw, so a call a halt cuts short is a failed one.
-HTTP:MAX-WORKERS TYPED-BUFFER CALL-SLOT n
-HTTP:MAX-WORKERS TYPED-BUFFER CALL-FAILED bool
+HTTP:MAX-WORKERS TYPED-BUFFER CALL-SLOT n SCRATCH-ONLY
+HTTP:MAX-WORKERS TYPED-BUFFER CALL-FAILED bool SCRATCH-ONLY
 
 TASK:FACILITY LOCK
 TASK-STACK TASK:TASK WS-TASK
@@ -265,18 +265,18 @@ AIO:GROUP WAITERS
 \ The task's own: its one timer, in WAITERS under TIMER-WAIT, and when that
 \ fires, 0 while none is outstanding.
 TYPED-VARIABLE TIMER AIO:ticket SCRATCH-ONLY
-variable TIMER-DUE
-1 TYPED-BUFFER STOPPER ^n                \ the task STOP waits in
-TYPED-VARIABLE WAKER AIO:waker              \ the wake pipe the task is poked through
-variable PIPED                              \ set while the wake pipe is open; under LOCK
-variable STOPPING                           \ set by STOP; under LOCK
-variable STOP-AT                            \ when the task gives up on the 1001 frames; 0 until it saw the stop
-variable LEFT                               \ set under LOCK once the task has given everything back
+SCRATCH-VARIABLE TIMER-DUE
+1 TYPED-BUFFER STOPPER ^n SCRATCH-ONLY   \ the task STOP waits in
+TYPED-VARIABLE WAKER AIO:waker SCRATCH-ONLY \ the wake pipe the task is poked through
+SCRATCH-VARIABLE PIPED                      \ set while the wake pipe is open; under LOCK
+SCRATCH-VARIABLE STOPPING                   \ set by STOP; under LOCK
+SCRATCH-VARIABLE STOP-AT                    \ when the task gives up on the 1001 frames; 0 until it saw the stop
+SCRATCH-VARIABLE LEFT                       \ set under LOCK once the task has given everything back
 
-\ WS's run, under LOCK: idle; starting, claimed by a START that has not yet
+\ WS's run, under LOCK: idle, its zero; starting, claimed by a START that has not yet
 \ activated the task; or running, from then until the end of STOP.
 ENUM run idle starting running ;ENUM
-TYPED-VARIABLE RUN run
+TYPED-VARIABLE RUN run SCRATCH-ONLY
 
 \ How a read toward a frame went: the bytes are all held, the input ran out
 \ first, or the frame breaks the protocol.
@@ -285,7 +285,6 @@ ENUM progress through late fault ;ENUM
 \ No task is live while this file loads, so the lock is made ready here; it is
 \ never destroyed.
 LOCK TASK:FACILITY-INIT
-RUN-IDLE RUN !
 
 
 : >SLOT ( n -- n )

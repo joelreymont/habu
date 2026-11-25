@@ -53,9 +53,9 @@ ENUM job connection call stop none ;ENUM
 DYNAMIC-BUFFER JOB job
 DYNAMIC-BUFFER JOB-ARG n
 DYNAMIC-BUFFER JOB-RUN [ n -- ]
-variable JOB-AT
-variable JOB-N
-variable JOB-CAP                  \ the jobs the columns hold room for
+SCRATCH-VARIABLE JOB-AT
+SCRATCH-VARIABLE JOB-N
+SCRATCH-VARIABLE JOB-CAP          \ the jobs the columns hold room for
 TASK:FACILITY JOB-LOCK
 TASK:SEMAPHORE ITEMS
 TASK:SEMAPHORE ROOM
@@ -78,17 +78,17 @@ TASK:SEMAPHORE START-READY
 \ that is not vacant, and only it reads a polled row's ticket.
 ENUM parking vacant handed polled ;ENUM
 
-PARK-SLOTS TYPED-BUFFER PARK-PHASE parking
-PARK-SLOTS TYPED-BUFFER PARK-CONN TCP4:connection
-PARK-SLOTS TYPED-BUFFER PARK-DUE n          \ mono-ns past which the row is closed
+PARK-SLOTS TYPED-BUFFER PARK-PHASE parking SCRATCH-ONLY
+PARK-SLOTS TYPED-BUFFER PARK-CONN TCP4:connection SCRATCH-ONLY
+PARK-SLOTS TYPED-BUFFER PARK-DUE n SCRATCH-ONLY \ mono-ns past which the row is closed
 PARK-SLOTS TYPED-BUFFER PARK-TICKET AIO:ticket SCRATCH-ONLY
 TASK:FACILITY PARK-LOCK
-variable PARK-OPEN                \ set while the listener takes rows; under PARK-LOCK
+SCRATCH-VARIABLE PARK-OPEN        \ set while the listener takes rows; under PARK-LOCK
 
 \ What a worker wakes once it has handed a row, and STOP once it has raised the
 \ flag; the listener polls it.
-TYPED-VARIABLE WAKER AIO:waker
-variable PIPED                    \ set while the waker is open
+TYPED-VARIABLE WAKER AIO:waker SCRATCH-ONLY
+SCRATCH-VARIABLE PIPED            \ set while the waker is open
 
 \ What the listener waits on at once: its accept poll, the waker's poll and
 \ each polled row's, tagged with the row. A flag is set while its ticket is in
@@ -98,8 +98,8 @@ AIO:GROUP LISTENING
 -2 constant WAKE-TAG
 TYPED-VARIABLE ACCEPT-TICKET AIO:ticket SCRATCH-ONLY
 TYPED-VARIABLE WAKE-TICKET AIO:ticket SCRATCH-ONLY
-variable ACCEPT-ARMED
-variable WAKE-ARMED
+SCRATCH-VARIABLE ACCEPT-ARMED
+SCRATCH-VARIABLE WAKE-ARMED
 
 WORKER-STACK TASK:TASK LISTENER-TASK
 WORKER-STACK TASK:TASK WORKER-0
@@ -114,13 +114,13 @@ WORKER-STACK TASK:TASK WORKER-7
 MAX-WORKERS TYPED-BUFFER WORKER-TCB ^n
 
 \ The job each worker took last: its argument and, for a call, its quotation.
-MAX-WORKERS TYPED-BUFFER TAKEN-ARG n
-MAX-WORKERS TYPED-BUFFER TAKEN-RUN [ n -- ]
+MAX-WORKERS TYPED-BUFFER TAKEN-ARG n SCRATCH-ONLY
+MAX-WORKERS TYPED-BUFFER TAKEN-RUN [ n -- ] SCRATCH-ONLY
 
 \ The task that raised STOPPING, in the same row type the pool's tasks live in.
 \ Zero is the main thread's own record, which is the thread every caller of STOP
 \ is on, so a hint before the first stop still reaches a thread that re-checks.
-1 TYPED-BUFFER STOPPER-TCB ^n
+1 TYPED-BUFFER STOPPER-TCB ^n SCRATCH-ONLY
 
 WORKER-0 0 WORKER-TCB !
 WORKER-1 1 WORKER-TCB !
@@ -131,18 +131,18 @@ WORKER-5 5 WORKER-TCB !
 WORKER-6 6 WORKER-TCB !
 WORKER-7 7 WORKER-TCB !
 
-variable LISTENER-CELL
-variable BOUND-PORT
-variable BOUND-ADDRESS
-variable WORKER-COUNT
-variable IDLE-MS
-variable CLAIMED                  \ slots the started workers have taken
-variable ENDED-COUNT              \ tasks that reached the end of their body
-variable LEFT-COUNT               \ tasks that left their body, however they left it
-variable KILLED-COUNT             \ tasks a stop had to kill past its bound
-variable START-ERROR              \ first failed start hook's actual throw code
-variable STARTED                  \ workers successfully activated this start
-variable ACCEPTED-COUNT           \ connections the listener has taken since START
+SCRATCH-VARIABLE LISTENER-CELL
+SCRATCH-VARIABLE BOUND-PORT
+SCRATCH-VARIABLE BOUND-ADDRESS
+SCRATCH-VARIABLE WORKER-COUNT
+SCRATCH-VARIABLE IDLE-MS
+SCRATCH-VARIABLE CLAIMED          \ slots the started workers have taken
+SCRATCH-VARIABLE ENDED-COUNT      \ tasks that reached the end of their body
+SCRATCH-VARIABLE LEFT-COUNT       \ tasks that left their body, however they left it
+SCRATCH-VARIABLE KILLED-COUNT     \ tasks a stop had to kill past its bound
+SCRATCH-VARIABLE START-ERROR      \ first failed start hook's actual throw code
+SCRATCH-VARIABLE STARTED          \ workers successfully activated this start
+SCRATCH-VARIABLE ACCEPTED-COUNT   \ connections the listener has taken since START
 variable LOGGING                  \ set by LOG: each request read writes its line
 
 \ REPLY's drain room: its task has no worker slot, whose input buffer a worker
