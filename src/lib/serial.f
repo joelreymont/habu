@@ -3,7 +3,8 @@
 \ out of range or a negative length throws. Calls must not nest within one task;
 \ close live descriptors before an image is prepared.
 \ STORAGE CLASS. TASK-LOCAL: the termios and saved termios are rows per task,
-\ so separate tasks drive separate ports; byte spans are caller-owned.
+\ so separate tasks drive separate ports; the str WRITE reads and the vector
+\ READ appends to are caller-owned.
 require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/le.f
@@ -13,6 +14,8 @@ require src/lib/num-types.f
 require src/lib/task.f
 require src/lib/memory.f
 require src/lib/aio.f
+require src/lib/span.f
+require src/lib/vector.f
 
 package SERIAL
 public
@@ -104,9 +107,19 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    handle HANDLE>N SET-TERM source SET-CALL ;
 
 
-: READ-RAW ( handle ^u8 NUM:byte-len -- n )
-   {: handle:handle bytes capacity:NUM:byte-len :}
-   handle HANDLE>N bytes capacity BLEN>N READ-CALL ;
+: READ-RAW ( handle SPAN:span<u8> -- n ) {: handle:handle s :}
+   s SPAN:$ {: room:str :}
+   handle HANDLE>N room STR:DATA room STR:LEN READ-CALL ;
+
+
+\ COUNT grows by what read answers, and not at all for none or a failure.
+\ Shrinking COUNT calls no libc, so errno survives it.
+: APPEND-RAW ( handle ^VEC:vector<u8> NUM:byte-len -- n )
+   {: handle:handle v:^ capacity:NUM:byte-len :}
+   v VEC:COUNT {: old:n :}
+   handle v capacity BLEN>N VEC:EXTEND READ-RAW {: got:n :}
+   v old got 0 max + VEC:RESIZE
+   got ;
 
 
 : WRITE-RAW ( handle str -- n )
@@ -236,19 +249,19 @@ public
    ;MATCH ;
 
 
-\ One available chunk, up to capacity, possibly short; a zero-byte request
-\ transfers nothing at once.
-\ Timeout is milliseconds, negative for no deadline; zero never waits for
-\ future readiness.
-: READ ( handle ^u8 NUM:byte-len ms -- io-result )
-   {: handle:handle bytes capacity:NUM:byte-len timeout:ms :}
+\ Appends one available chunk of at most n bytes, possibly short; a zero-byte
+\ request transfers nothing at once. Any answer but `transferred` leaves COUNT
+\ as it was. Timeout is milliseconds, negative for no deadline; zero never
+\ waits for future readiness.
+: READ ( handle ^VEC:vector<u8> NUM:byte-len ms -- io-result )
+   {: handle:handle v:^ capacity:NUM:byte-len timeout:ms :}
    capacity BLEN>N 0= if capacity SERIAL-IO--RESULT:TRANSFERRED exit then
    timeout DEADLINE {: deadline:ns :}
    begin
       handle AIO:READABLE deadline AWAIT {: events:n :}
       events 0 < if events negate >ERRNO SERIAL-IO--RESULT:FAILED exit then
       events 0= if SERIAL-IO--RESULT:TIMEOUT exit then
-      handle bytes capacity READ-RAW dup 0 > if TRANSFERRED exit then
+      handle v capacity APPEND-RAW dup 0 > if TRANSFERRED exit then
       0= if SERIAL-IO--RESULT:CLOSED exit then
       LAST-ERROR dup RETRY? 0= if SERIAL-IO--RESULT:FAILED exit then drop
       events $18 and 0 <> if SERIAL-IO--RESULT:CLOSED exit then

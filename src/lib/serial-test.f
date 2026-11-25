@@ -10,6 +10,8 @@ require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/aio.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/pty.f
 require src/lib/serial.f
 
@@ -19,7 +21,6 @@ private
 CAST: BLEN>N ( NUM:byte-len -- n )
 
 115200 constant SPEED
-$20 constant BUF-CAP
 1000000 constant NS-PER-MS
 30 constant IDLE-MS                \ the window an idle port waits out
 50 constant PARK-MS                \ how long the parked task waits before bytes arrive
@@ -34,7 +35,7 @@ $20 constant BUF-CAP
 
 create SLAVE PTY:SLAVE-PATH-CAP allot
 create SPARE PTY:SLAVE-PATH-CAP allot
-create BUF BUF-CAP allot
+TYPED-VARIABLE BUF ^VEC:vector<u8>   \ RUN's, which every read appends to
 
 variable MASTER
 variable HANDLE                    \ the open slave, as a number
@@ -48,6 +49,10 @@ TASK:MIN-STACK TASK:TASK READER
 
 : PEER ( -- PTY:master )
    MASTER @ PTY:>MASTER ;
+
+\ BUF emptied for a read that starts over.
+: EMPTY ( -- ^VEC:vector<u8> )
+   BUF @ dup 0 VEC:RESIZE ;
 
 \ The io-result as a kind and its payload: the bytes moved, the errno, or zero.
 : CLASSIFY ( SERIAL:io-result -- n n )
@@ -82,15 +87,13 @@ TASK:MIN-STACK TASK:TASK READER
 : ELAPSED-NS ( n -- n ) {: started:n :}
    mono-ns started - ;
 
-\ One chunk at a time until the master has handed over every byte, so a split
-\ answer from the terminal is not read as a short transfer.
-: PEER-EXACT ( str -- ) {: bytes:str :}
-   0 begin dup bytes STR:LEN < while
-      dup {: offset:n :}
-      PEER bytes STR:DATA offset + bytes STR:LEN offset - -1 >MS PTY:READ {: got:n :}
-      got 0 <= if E-PROC-OUTPUT throw then
-      got +
-   repeat drop ;
+\ One chunk at a time until the master has handed over n bytes in all, so a
+\ split answer from the terminal is not read as a short transfer.
+: PEER-EXACT ( ^VEC:vector<u8> n -- ) {: v:^ size:n :}
+   begin v VEC:COUNT size < while
+      PEER v size v VEC:COUNT - -1 >MS PTY:READ
+      0 <= if E-PROC-OUTPUT throw then
+   repeat ;
 
 : JOIN-READER ( -- )
    [: READER TASK:DONE? ;] TEST-WAIT:POLL ;
@@ -114,14 +117,27 @@ TASK:MIN-STACK TASK:TASK READER
    PEER s" habu!" PTY:WRITE
 
    s" five bytes written at the master are read at the port" T-LABEL
-   PORT BUF 5 SERIAL:BYTES -1 >MS SERIAL:READ K-MOVED 5 WANT
+   PORT EMPTY 5 SERIAL:BYTES -1 >MS SERIAL:READ K-MOVED 5 WANT
 
    s" ... and they are the bytes the master wrote" T-LABEL
-   BUF 5 >str s" habu!" STR:= TTRUE ;
+   BUF @ VEC:BYTES s" habu!" STR:= TTRUE ;
+
+\ A read appends: what the vector held stays, through a timeout and a read.
+: APPEND-CASE ( -- )
+   s" ab" EMPTY VEC:APPEND
+
+   s" a read that times out leaves the bytes a vector holds" T-LABEL
+   PORT BUF @ 1 SERIAL:BYTES 0 >MS SERIAL:READ K-TIMEOUT 0 WANT
+   BUF @ VEC:BYTES s" ab" STR:= TTRUE
+
+   PEER s" cd" PTY:WRITE
+   s" ... and a read appends after them" T-LABEL
+   PORT BUF @ 2 SERIAL:BYTES -1 >MS SERIAL:READ K-MOVED 2 WANT
+   BUF @ VEC:BYTES s" abcd" STR:= TTRUE ;
 
 : IDLE-CASE ( -- )
    mono-ns {: started:n :}
-   PORT BUF 1 SERIAL:BYTES IDLE-MS >MS SERIAL:READ {: answer :}
+   PORT EMPTY 1 SERIAL:BYTES IDLE-MS >MS SERIAL:READ {: answer :}
    started ELAPSED-NS {: elapsed:n :}
 
    s" a read of an idle port answers a timeout" T-LABEL
@@ -146,26 +162,26 @@ TASK:MIN-STACK TASK:TASK READER
 
 : ZERO-CASE ( -- )
    s" a zero-millisecond read of an idle port answers a timeout" T-LABEL
-   PORT BUF 1 SERIAL:BYTES 0 >MS SERIAL:READ K-TIMEOUT 0 WANT
+   PORT EMPTY 1 SERIAL:BYTES 0 >MS SERIAL:READ K-TIMEOUT 0 WANT
 
    PEER s" abc" PTY:WRITE
    AWAIT-INPUT
 
    s" ... and one whose bytes are already there answers with them" T-LABEL
-   PORT BUF 3 SERIAL:BYTES 0 >MS SERIAL:READ K-MOVED 3 WANT ;
+   PORT EMPTY 3 SERIAL:BYTES 0 >MS SERIAL:READ K-MOVED 3 WANT ;
 
 : WRITE-CASE ( -- )
    s" six bytes written at the port are accepted whole" T-LABEL
    PORT s" forth!" -1 >MS SERIAL:WRITE K-MOVED 6 WANT
 
    s" ... and the master reads exactly those six" T-LABEL
-   BUF 6 >str PEER-EXACT
-   BUF 6 >str s" forth!" STR:= TTRUE ;
+   EMPTY 6 PEER-EXACT
+   BUF @ VEC:BYTES s" forth!" STR:= TTRUE ;
 
 \ A task asserts nothing: the reader records what its READ answered.
 
 : PARK-WORK ( -- )
-   PORT BUF 4 SERIAL:BYTES -1 >MS SERIAL:READ
+   PORT EMPTY 4 SERIAL:BYTES -1 >MS SERIAL:READ
    CLASSIFY PARK-COUNT ! PARK-KIND ! ;
 
 : PARKED-CASE ( -- )
@@ -183,7 +199,7 @@ TASK:MIN-STACK TASK:TASK READER
 \ without one says so instead of falling back to a thread parked in poll(2).
 
 : STOPPED-READ ( -- )
-   PORT BUF 1 SERIAL:BYTES IDLE-MS >MS SERIAL:READ IO-DROP ;
+   PORT EMPTY 1 SERIAL:BYTES IDLE-MS >MS SERIAL:READ IO-DROP ;
 
 : NO-LOOP-CASE ( -- )
    s" a read with the loop stopped is refused by name" T-LABEL
@@ -200,7 +216,7 @@ TASK:MIN-STACK TASK:TASK READER
    PORT SERIAL:CLOSE CLOSED-OK
 
    s" ... and a read on the closed handle fails with EBADF" T-LABEL
-   PORT BUF 1 SERIAL:BYTES 0 >MS SERIAL:READ K-FAILED EBADF# WANT
+   PORT EMPTY 1 SERIAL:BYTES 0 >MS SERIAL:READ K-FAILED EBADF# WANT
 
    PEER PTY:CLOSE ;
 
@@ -217,7 +233,7 @@ TASK:MIN-STACK TASK:TASK READER
    m PTY:CLOSE
 
    s" a read of a port whose master closed answers closed" T-LABEL
-   PORT BUF 1 SERIAL:BYTES -1 >MS SERIAL:READ K-CLOSED 0 WANT
+   PORT EMPTY 1 SERIAL:BYTES -1 >MS SERIAL:READ K-CLOSED 0 WANT
 
    s" ... and the write after it fails with EIO" T-LABEL
    PORT s" x" 0 >MS SERIAL:WRITE K-FAILED EIO# WANT
@@ -228,9 +244,11 @@ public
 
 : RUN ( -- )
    T-RESET
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BUF !
    AIO:START
    OPEN-CASE
    READ-CASE
+   APPEND-CASE
    IDLE-CASE
    ZERO-CASE
    WRITE-CASE
@@ -239,6 +257,7 @@ public
    AFTER-CLOSE-CASE
    HANGUP-CASE
    AIO:STOP
+   BUF @ VEC:DELETE
    T-REPORT
    s" serial-test: ok" type cr ;
 

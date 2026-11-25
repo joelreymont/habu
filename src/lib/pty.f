@@ -9,6 +9,8 @@ require src/lib/error.f
 require src/lib/type/deftype.f
 require src/lib/fs.f
 require src/lib/aio.f
+require src/lib/span.f
+require src/lib/vector.f
 
 package PTY
 public
@@ -90,9 +92,18 @@ variable WRITTEN
    HB-TARGET-LINUX-KERNEL? if m path NAME-LINUX else m path NAME-MACOS then ;
 
 
-: READ-READY ( master ^u8 n -- n ) {: m:master bytes cap:n :}
-   m MASTER>N bytes cap read {: got:n :}
-   got 0 < if E-IO throw then got ;
+: READ-READY ( master SPAN:span<u8> -- n ) {: m:master s :}
+   s SPAN:$ {: room:str :}
+   m MASTER>N room STR:DATA room STR:LEN read ;
+
+
+: APPEND-READY ( master ^VEC:vector<u8> n -- n )
+   {: m:master v:^ cap:n :}
+   v VEC:COUNT {: old:n :}
+   m v cap VEC:EXTEND READ-READY {: got:n :}
+   got 0 < if v old VEC:RESIZE E-IO throw then
+   v old got + VEC:RESIZE
+   got ;
 
 public
 
@@ -110,14 +121,17 @@ public
    m >MASTER len ;
 
 
-\ One chunk after at most ms; zero means nothing arrived in time. Waits on the
-\ AIO loop (src/lib/aio.f), one POLL with its own linked timeout and one AWAIT,
-\ so no thread parks in poll(2) and a signal does not cut the window short.
-\ Call AIO:START before the first READ; with no loop it is E-AIO-STATE.
-: READ ( master ^u8 n ms -- n ) {: m:master bytes cap:n timeout:ms :}
+\ Appends one chunk of at most n bytes that arrived within ms and answers its
+\ length; zero means nothing arrived in time. A timeout or a failure leaves
+\ COUNT as it was. Waits on the AIO loop (src/lib/aio.f), one POLL with its
+\ own linked timeout and one AWAIT, so no thread parks in poll(2) and a signal
+\ does not cut the window short. Call AIO:START before the first READ; with no
+\ loop it is E-AIO-STATE.
+: READ ( master ^VEC:vector<u8> n ms -- n )
+   {: m:master v:^ cap:n timeout:ms :}
    m MASTER>N >FD AIO:READABLE timeout AIO:WAIT-READY
    MATCH AIO:readiness
-      ready OF drop m bytes cap READ-READY ENDOF
+      ready OF drop m v cap APPEND-READY ENDOF
       timed-out OF 0 ENDOF
       refused OF drop E-IO throw ENDOF
    ;MATCH ;

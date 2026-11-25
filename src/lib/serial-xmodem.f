@@ -92,13 +92,16 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    SESSION-IO-ERROR ! E-SXMODEM-IO throw ;
 
 
+\ The byte is read past the packet's bytes and cut off, so a packet waiting
+\ for its ACK stays whole.
 : READ-BYTE ( ns ^session -- n ) {: deadline:ns session:^ :}
    deadline REMAINING {: timeout:ms :}
    timeout MS>N 0= if -1 exit then
-   session SESSION-CONTROL SPAN:$ STR:DATA {: control :}
-   session SESSION-HANDLE @ control 1 SERIAL:BYTES timeout SERIAL:READ
+   session PACKET {: v:^ :}
+   v VEC:COUNT {: old:n :}
+   session SESSION-HANDLE @ v 1 SERIAL:BYTES timeout SERIAL:READ
    MATCH SERIAL:io-result
-      transferred OF drop control c@ ENDOF
+      transferred OF drop v old VEC:AT c@ v old VEC:RESIZE ENDOF
       timeout OF -1 ENDOF
       closed OF E-SXMODEM-CLOSED throw ENDOF
       failed OF session FAIL-IO ENDOF
@@ -147,12 +150,15 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    again ;
 
 
-: READ-CHUNK ( n str ^session -- n ) {: offset:n data:str session:^ :}
-   session SESSION-HANDLE @ data STR:DATA offset + data STR:LEN offset - SERIAL:BYTES
+\ Appends to the packet what arrives of its first n bytes; false when the
+\ wait runs out.
+: READ-CHUNK ( n ^session -- bool ) {: size:n session:^ :}
+   session PACKET {: v:^ :}
+   session SESSION-HANDLE @ v size v VEC:COUNT - SERIAL:BYTES
    session RECEIVE-WINDOW REMAINING SERIAL:READ
    MATCH SERIAL:io-result
-      transferred OF BLEN>N offset + ENDOF
-      timeout OF -1 ENDOF
+      transferred OF drop TRUE ENDOF
+      timeout OF FALSE ENDOF
       closed OF E-SXMODEM-CLOSED throw ENDOF
       failed OF session FAIL-IO ENDOF
    ;MATCH ;
@@ -160,10 +166,10 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 \ A partial frame may continue while each chunk arrives within the configured
 \ wait. The overall transfer deadline still bounds every chunk and drain.
-: READ-REST ( str ^session -- bool ) {: data:str session:^ :}
-   0 begin dup data STR:LEN < while
-      data session READ-CHUNK dup 0 < if drop FALSE exit then
-   repeat drop TRUE ;
+: READ-REST ( n ^session -- bool ) {: size:n session:^ :}
+   begin session PACKET VEC:COUNT size < while
+      size session READ-CHUNK 0= if FALSE exit then
+   repeat TRUE ;
 
 
 : DRAIN ( ^session -- ) {: session:^ :}
@@ -262,13 +268,12 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    session SESSION-KIND @ PACKET-BYTES ;
 
 
-: READ-FRAME ( ^session -- str ) {: session:^ :}
-   session SESSION-CONTROL SPAN:$ STR:DATA c@ {: header:n :}
+: READ-FRAME ( n ^session -- str ) {: header:n session:^ :}
    header session FRAME-SIZE BLEN>N {: size:n :}
-   session PACKET dup size VEC:RESIZE
-   VEC:BYTES STR:DATA {: data :}
-   header data c!
-   data 1 + size 1 - >str session READ-REST 0= if E-FRAME throw then data size >str ;
+   session PACKET {: v:^ :}
+   v 0 VEC:RESIZE  header v VEC:PUSH c!
+   size session READ-REST 0= if E-FRAME throw then
+   v VEC:BYTES ;
 
 
 : PREVIOUS? ( sequence ^session -- bool ) {: sequence:sequence session:^ :}
@@ -288,14 +293,14 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    E-FRAME throw ;
 
 
-: RECEIVE-PACKET ( ^session -- ) {: session:^ :}
+: RECEIVE-PACKET ( n ^session -- ) {: header:n session:^ :}
    TRUE session SESSION-NEGOTIATED !
-   session READ-FRAME session SESSION-KIND @ DECODE
+   header session READ-FRAME session SESSION-KIND @ DECODE
    session ACCEPT-PAYLOAD ;
 
 
-: RECEIVE-ONE ( ^session -- bool )
-   [: dup RECEIVE-PACKET ;] catch swap drop
+: RECEIVE-ONE ( n ^session -- bool ) {: header:n session:^ :}
+   [: header session RECEIVE-PACKET ;] catch
    dup 0= if drop TRUE exit then
    dup E-FRAME = if drop FALSE exit then throw ;
 
@@ -314,7 +319,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
       session CONTROL-WINDOW session WAIT-HEADER {: header:n :}
       header EOT = if ACK session SEND-BYTE exit then
       header -1 = if session RECEIVE-RETRY else
-         session RECEIVE-ONE 0= if session DRAIN session RECEIVE-RETRY then
+         header session RECEIVE-ONE 0= if
+            session DRAIN session RECEIVE-RETRY
+         then
       then
    again ;
 

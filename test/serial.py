@@ -16,6 +16,8 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = '''
 require src/lib/aio.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/serial.f
 package SERIAL-TEST
 CAST: BLEN>N ( NUM:byte-len -- n )
@@ -44,11 +46,16 @@ create BODY 1048578 allot
    ;MATCH ;
 
 
-: EXACT-READ ( SERIAL:handle ^u8 n -- ) {: handle:SERIAL:handle bytes size:n :}
-   0 begin dup size < while
-      dup {: offset:n :}
-      handle bytes offset + size offset - SERIAL:BYTES 2000 >MS SERIAL:READ MOVED +
-   repeat drop ;
+: FRESH ( -- ^VEC:vector<u8> )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+
+
+\ Appends until the vector holds n bytes in all.
+: EXACT-READ ( SERIAL:handle ^VEC:vector<u8> n -- )
+   {: handle:SERIAL:handle v:^ size:n :}
+   begin v VEC:COUNT size < while
+      handle v size v VEC:COUNT - SERIAL:BYTES 2000 >MS SERIAL:READ MOVED drop
+   repeat ;
 
 
 : READY ( SERIAL:handle -- )
@@ -153,25 +160,28 @@ def binary_io(habu, output):
       unsupported OF -1 throw ENDOF
    ;MATCH
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
+   FRESH {: v:^ :}
    handle READY
-   $A5 BODY 256 + c! $5A BODY 257 + c!
-   handle BODY 256 EXACT-READ
-   256 0 do BODY i + c@ i <> if -1 throw then loop
-   BODY 256 + c@ . BODY 257 + c@ .
-   handle BODY 256 >str 1000 >MS SERIAL:WRITE MOVED .
-   handle BODY 7 SERIAL:BYTES 2000 >MS SERIAL:READ MOVED .
-   handle BODY 57 EXACT-READ
-   57 0 do BODY i + c@ i 7 + <> if -1 throw then loop
+   $A5 v VEC:PUSH c! $5A v VEC:PUSH c!
+   handle v 258 EXACT-READ
+   256 0 do v i 2 + VEC:AT c@ i <> if -1 throw then loop
+   v 0 VEC:AT c@ . v 1 VEC:AT c@ .
+   handle v 2 VEC:AT 256 >str 1000 >MS SERIAL:WRITE MOVED .
+   v 0 VEC:RESIZE
+   handle v 7 SERIAL:BYTES 2000 >MS SERIAL:READ MOVED .
+   handle v 64 EXACT-READ
+   64 0 do v i VEC:AT c@ i <> if -1 throw then loop
    mono-ns {: started:n :}
-   handle BODY 1 SERIAL:BYTES 40 >MS SERIAL:READ REPORT
+   handle v 1 SERIAL:BYTES 40 >MS SERIAL:READ REPORT
    mono-ns started - 1000000 / .
-   handle BODY 1 SERIAL:BYTES 0 >MS SERIAL:READ REPORT
+   handle v 1 SERIAL:BYTES 0 >MS SERIAL:READ REPORT
    handle SERIAL:CLOSE OK
-   handle BODY 1 SERIAL:BYTES 0 >MS SERIAL:READ REPORT
+   handle v 1 SERIAL:BYTES 0 >MS SERIAL:READ REPORT
    handle BODY 1 >str 0 >MS SERIAL:WRITE REPORT
    handle SERIAL:CLOSE MATCH SERIAL:status
       ok OF -1 throw ENDOF failed OF SERIAL:ERRNO>N . ENDOF
    ;MATCH
+   v VEC:DELETE
    AIO:STOP ;
 RUN
 '''
@@ -211,7 +221,9 @@ def partial_write(habu, output):
    1048576 0 do i $FF and BODY i + c! loop
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
    handle READY
-   handle BODY 1 EXACT-READ
+   FRESH {: v:^ :}
+   handle v 1 EXACT-READ
+   v VEC:DELETE
    handle BODY 1048576 >str 0 >MS SERIAL:WRITE MOVED .
    0 begin
       handle BODY 1048576 >str 20 >MS SERIAL:WRITE MATCH SERIAL:io-result
@@ -240,7 +252,9 @@ def disconnect(habu, output):
    AIO:START
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
    handle READY
-   handle BODY 1 SERIAL:BYTES 2000 >MS SERIAL:READ REPORT
+   FRESH {: v:^ :}
+   handle v 1 SERIAL:BYTES 2000 >MS SERIAL:READ REPORT
+   v VEC:DELETE
    handle BODY 1 >str 0 >MS SERIAL:WRITE REPORT
    handle SERIAL:CLOSE OK
    AIO:STOP ;
@@ -287,12 +301,14 @@ TASK:MIN-STACK TASK:TASK WORKER1
       failed OF SERIAL:ERRNO>N throw ENDOF
       unsupported OF -1 throw ENDOF
    ;MATCH {{: handle:SERIAL:handle :}}
+   FRESH {{: v:^ :}}
    identity bytes c!
    16 0 do
       handle bytes 1 >str 1000 >MS SERIAL:WRITE MOVED 1 <> if -1 throw then
-      handle bytes expected EXACT-READ
-      expected 0 do bytes i + c@ identity <> if -1 throw then loop
+      v 0 VEC:RESIZE handle v expected EXACT-READ
+      expected 0 do v i VEC:AT c@ identity <> if -1 throw then loop
    loop
+   v VEC:DELETE
    handle SERIAL:CLOSE OK
    1 DONE atomic-add drop ;
 
@@ -357,12 +373,14 @@ def main():
     # no AIO:START, is E-AIO-STATE (-9292).
     for length, timeout, handle, code in ((0, -1, 0, 'moved 0 0'), (1, -1, 0, '-9292'),
                                            (1, 0x80000000, 0, '-9292')):
-        for operation, data in (('READ', f'''BODY {length} NUM:BYTE-LEN MATCH option
+        for operation, data in (('READ', f'''v {length} NUM:BYTE-LEN MATCH option
       none OF -1 throw ENDOF some OF ENDOF
    ;MATCH'''), ('WRITE', f'BODY {length} >str')):
             body = f'''
 : RUN ( -- )
-   [: {handle} SERIAL:>HANDLE {data} {timeout} >MS SERIAL:{operation} REPORT ;] catch . ; RUN
+   FRESH {{: v:^ :}}
+   [: {handle} SERIAL:>HANDLE {data} {timeout} >MS SERIAL:{operation} REPORT ;] catch .
+   v VEC:DELETE ; RUN
 '''
             assert native(habu, output, body) == code.split()
             checks += 1
