@@ -12,8 +12,7 @@ split-str
 \ so EMIT-PATCH leaves it alone; one its field cannot reach throws
 \ E-A64EMIT-REACH.
 \
-\ A data address inside the fixed DATA mapping is three words, `movz lsl32`,
-\ `movk lsl16`, `movk`; any other data address is all four lanes. Every lane is
+\ A data address is three words, `movz lsl32`, `movk lsl16`, `movk`, every one
 \ emitted so the publisher can rewrite it in place. A code address is `adrp`
 \ and `add` relative to where the code runs, `adrp d, 0; add d, d, 0` until
 \ PATCH writes it for a placed emission or the link for any other. A data
@@ -204,18 +203,10 @@ variable HELD                         \ nonzero while x29 holds the index
    r v 0 HALF 0 MOVZHW buf W32+
    4 1 ?do r v i HALF i MOVKHW buf W32+ loop ;
 
-: CHAIN4 ( n n -- ) RAW @ CHAIN4-IN ;
-
-\ Whether v is inside the fixed DATA mapping and the mapping fits 48 bits, so
-\ three halves, high first, carry it.
-: DATA3? ( n -- bool ) {: v:n :}
-   DATA-VA VA>N {: base:n :}
-   base DATA-SIZE + $FFFFFFFFFFFF > if false exit then
-   v base - {: off:n :}
-   off 0 >= off DATA-SIZE <= and ;
-
+\ Three halves, high first. Every data address a target holds is below 2^48:
+\ the DATA window, 2^38 bytes at $340000000 on Linux and 2^40 at $44000000000
+\ on macOS, and a build's space, which lies above hb's window.
 : DATA-CHAIN ( n n -- ) {: v:n r:n :}
-   v DATA3? 0= if v r CHAIN4 exit then
    r v 2 HALF 2 MOVZHW W
    r v 1 HALF 1 MOVKHW W
    r v 0 HALF 0 MOVKHW W ;
