@@ -113,10 +113,6 @@ public
    repeat  drop  OPTION:NONE ;
 
 \ ---- more string ops for the linters ----
-: LINT-BMOVE ( ^u8 str -- )
-   \ A negative length copies nothing.
-   dup STR:DATA swap STR:LEN 0 max BYTE-COPY ;
-
 : LINT-FOLD ( n -- n )
    dup 64 > over 91 < and IF 32 + THEN ;
 

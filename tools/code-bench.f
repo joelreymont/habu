@@ -186,7 +186,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 
 : B-MOVE ( -- )
    MOVE-REPS 0 ?do
-      LINT-SOURCE:TEXT STR:DATA DEST TEXT-N @ >str LINT-BMOVE
+      LINT-SOURCE:TEXT STR:DATA DEST TEXT-N @ BYTE-COPY
       DEST c@ SINK !
    loop ;
 
