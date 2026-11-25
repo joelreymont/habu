@@ -1,4 +1,3 @@
-split-str
 \ These tests need the ARM host or its source recovery.
 
 \ shadow-kinds.f reads a native arm64 shadow beside the host's tier-0 routines.

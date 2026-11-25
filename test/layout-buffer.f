@@ -1,4 +1,3 @@
-split-str
 \ layout-buffer.f - generative typed ADT storage and provenance regressions.
 
 require src/lib/test.f
@@ -69,10 +68,10 @@ TYPED-VARIABLE LB-EVAL-A ^u8
 variable LB-EVAL-U
 
 : LB-EVAL-RUN ( -- )
-   LB-EVAL-A @ LB-EVAL-U @ evaluate-closed ;
+   LB-EVAL-A @ LB-EVAL-U @ >str evaluate-closed ;
 
-: LB-EVAL ( str -- n )
-   LB-EVAL-U ! LB-EVAL-A !
+: LB-EVAL ( str -- n ) {: s:str :}
+   s STR:LEN LB-EVAL-U ! s STR:DATA LB-EVAL-A !
    [: LB-EVAL-RUN ;] catch ;
 
 s" 0 LAYOUT-BUFFER LB-ZERO lb-res<n,n>" LB-EVAL 70 T=
@@ -87,8 +86,8 @@ variable LB-PEEK-U1
 variable LB-PEEK-U2
 variable LB-PEEK-RAN
 : LB-PEEK2 ( -- )
-   LBUF:STORAGE-LINE-TOKEN nip LB-PEEK-U1 !
-   LBUF:STORAGE-LINE-TOKEN nip LB-PEEK-U2 ! ;
+   LBUF:STORAGE-LINE-TOKEN STR:LEN LB-PEEK-U1 !
+   LBUF:STORAGE-LINE-TOKEN STR:LEN LB-PEEK-U2 ! ;
 : LB-PEEK-NEXT ( -- ) 1 LB-PEEK-RAN ! ;
 s\" LB-PEEK2\nLB-PEEK-NEXT" LB-EVAL 0 T=
 LB-PEEK-U1 @ 0 T=

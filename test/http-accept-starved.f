@@ -1,4 +1,3 @@
-split-str
 \ The HTTP listener keeps listening through an accept that fails for want of
 \ descriptors (src/lib/net/http.f ACCEPT-FAILED). Its own process: it lowers
 \ RLIMIT_NOFILE, fills the descriptor table and pipes stderr, process-wide
@@ -115,13 +114,13 @@ variable READ-ERRNO
 
 
 : LINE$ ( -- str )
-   LINE-BUF LINE-U @ ;
+   LINE-BUF LINE-U @ >str ;
 
 
 \ The line after its LOG stamp, or all of it when it is shorter than one.
 : UNSTAMPED$ ( -- str )
    LINE-U @ DATE:TIME-LEN < if LINE$ exit then
-   LINE-BUF DATE:TIME-LEN + LINE-U @ DATE:TIME-LEN - ;
+   LINE-BUF DATE:TIME-LEN + LINE-U @ DATE:TIME-LEN - >str ;
 
 
 \ What the pipe holds so far, read without waiting.
@@ -172,7 +171,7 @@ variable READ-ERRNO
       closed OF BLEN>N ENDOF
       failed OF TCP4:ERRNO>N READ-ERRNO ! 0 ENDOF
    ;MATCH {: got:n :}
-   RES-BUF got STATUS-BYTES min ;
+   RES-BUF got STATUS-BYTES min >str ;
 
 
 : GET ( -- TCP4:connection )
@@ -191,7 +190,7 @@ variable READ-ERRNO
 : STARVED-ANSWER ( TCP4:connection -- ) {: conn:TCP4:connection :}
    HB-TARGET-MACOS? if
       s" macOS drops the starved connection" T-LABEL
-      conn ANSWER$ nip 0 T=
+      conn ANSWER$ STR:LEN 0 T=
       ENDED? TTRUE
       exit
    then

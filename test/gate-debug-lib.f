@@ -1,4 +1,3 @@
-split-str
 \ gate-debug-lib.f - profiler and debugger gate cases, included by
 \ test/gate-debug.f.
 
@@ -46,41 +45,41 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    c STR:SPACE = c [char] " = or c [char] : = or ;
 
 : GDB-NUM-AT ( n str -- n )   \ the digit run at or after offset i, -1 when none
-   {: i:n a:^ u:n :}
+   {: i:n s:str :}
    i GDB-I !
-   begin GDB-I @ u < if a GDB-I @ + c@ GDB-GAP? else STR:FALSE then while
+   begin GDB-I @ s STR:LEN < if s STR:DATA GDB-I @ + c@ GDB-GAP? else STR:FALSE then while
       GDB-I @ 1+ GDB-I !
    repeat
    GDB-I @ GDB-D !
-   begin GDB-I @ u < if a GDB-I @ + c@ STR:DIGIT? else STR:FALSE then while
+   begin GDB-I @ s STR:LEN < if s STR:DATA GDB-I @ + c@ STR:DIGIT? else STR:FALSE then while
       GDB-I @ 1+ GDB-I !
    repeat
    GDB-I @ GDB-D @ = if -1 exit then
-   a GDB-D @ + GDB-I @ GDB-D @ - STR:>NUMBER? MATCH option
+   s STR:DATA GDB-D @ + GDB-I @ GDB-D @ - >str STR:>NUMBER? MATCH option
      none OF -1 ENDOF
      some OF ENDOF
    ;MATCH ;
 
 : GDB-FIELD ( str str -- n )   \ the integer printed after <name>, -1 when absent
-   {: a:^ u:n b:^ v:n :}
-   a u b v STR:FIND-SUB MATCH option
+   {: s:str t:str :}
+   s t STR:FIND-SUB MATCH option
      none OF -1 ENDOF
-     some OF IDX>N v + a u GDB-NUM-AT ENDOF
+     some OF IDX>N t STR:LEN + s GDB-NUM-AT ENDOF
    ;MATCH ;
 
 : GDB-AFTER ( str str -- str )   \ the tail past the first <b>, empty when absent
-   {: a:^ u:n b:^ v:n :}
-   a u b v STR:FIND-SUB MATCH option
-     none OF a 0 ENDOF
-     some OF IDX>N v + GDB-CUT !  a GDB-CUT @ +  u GDB-CUT @ -  ENDOF
+   {: s:str t:str :}
+   s t STR:FIND-SUB MATCH option
+     none OF s STR:DATA 0 >str ENDOF
+     some OF IDX>N t STR:LEN + GDB-CUT !  s STR:DATA GDB-CUT @ +  s STR:LEN GDB-CUT @ - >str  ENDOF
    ;MATCH ;
 
 \ The bytes before the first line feed, all of them when none.
 : GDB-LINE$ ( str -- str )
-   {: a:^ u:n :}
-   a u S\" \n" STR:FIND-SUB MATCH option
-     none OF a u ENDOF
-     some OF IDX>N a swap ENDOF
+   {: s:str :}
+   s S\" \n" STR:FIND-SUB MATCH option
+     none OF s ENDOF
+     some OF IDX>N s STR:DATA swap >str ENDOF
    ;MATCH ;
 
 \ The sample total, from either report: "profiler samples N" or {"samples":N}.
@@ -90,21 +89,21 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ The header's own identity, plus the limit the sample total must reach (-1:
 \ none). A sample counts the intervals since the last one, so the one that
 \ reaches the limit may carry the total past it.
-: GDB-BUCKETS ( str -- n ) {: a:^ u:n :}
-   a u s" words" GDB-FIELD
-   a u s" other" GDB-FIELD +
-   a u s" new" GDB-FIELD +
-   a u s" defer" GDB-FIELD +
-   a u s" spill" GDB-FIELD +
-   a u s" foreign" GDB-FIELD + ;
+: GDB-BUCKETS ( str -- n ) {: s:str :}
+   s s" words" GDB-FIELD
+   s s" other" GDB-FIELD +
+   s s" new" GDB-FIELD +
+   s s" defer" GDB-FIELD +
+   s s" spill" GDB-FIELD +
+   s s" foreign" GDB-FIELD + ;
 
-: GDB-ACCOUNT ( str n -- ) {: a:^ u:n want:n :}
-   a u GDB-SAMPLES {: tot:n :}
+: GDB-ACCOUNT ( str n -- ) {: s:str want:n :}
+   s GDB-SAMPLES {: tot:n :}
    tot 0 < if s" profiler report has no header line" GE-FAIL then
    want 0 >= tot want < and if
       s" profiler sample total is below the limit" GE-FAIL
    then
-   a u GDB-BUCKETS tot <> if
+   s GDB-BUCKETS tot <> if
       s" profiler header: the named buckets do not add up to samples" GE-FAIL
    then ;
 
@@ -115,7 +114,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s"  prof-on GDB-BUSY" GE-SRC-LINE ;
 
 : GDB-PROF-RUN ( -- )   \ run the accumulated GE-SRC through the candidate over stdin
-   GE-HB$ GE-SRC-BUF GE-SRC-U @
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ >str
    PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
 
 \ A package whose inner word is only ever reached through the outer one, so the
@@ -262,11 +261,11 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    then ;
 
 : GDB-PROF-RATE-RUN ( str -- )   \ run GDB-BUSY under one prof-on line
-   {: arm:^ armu:n :}
+   {: arm:str :}
    GE-HB-RESET
    GE-SRC-RESET
    s" : GDB-BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
-   arm armu GE-SRC-LINE
+   arm GE-SRC-LINE
    GDB-PROF-RUN ;
 
 : GDB-PROFILER-RATE ( -- )
@@ -315,12 +314,12 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ buckets do not add up to its samples.
 variable GDB-SEEN
 variable GDB-SKEWED
-: GDB-HEADER ( str -- ) {: a:^ u:n :}
+: GDB-HEADER ( str -- ) {: s:str :}
    1 GDB-SEEN +!
-   a u GDB-BUCKETS a u GDB-SAMPLES <> if 1 GDB-SKEWED +! then ;
+   s GDB-BUCKETS s GDB-SAMPLES <> if 1 GDB-SKEWED +! then ;
 : GDB-HEADERS ( str -- n n )
    0 GDB-SEEN !  0 GDB-SKEWED !
-   begin s" profiler " GDB-AFTER dup 0 > while 2dup GDB-HEADER repeat 2drop
+   begin s" profiler " GDB-AFTER dup STR:LEN 0 > while dup GDB-HEADER repeat drop
    GDB-SEEN @ GDB-SKEWED @ ;
 
 \ prof-reset 1000 times at 50 us, each time followed by prof-off and a report
@@ -349,9 +348,9 @@ variable GDB-SKEWED
 \ The head and place lines of the record of an uncaught throw of code c
 \ thrown at `at`, a PATH:L:C.
 : GDB-THROWN$ ( n str -- str )
-   {: c:n at:^ atu:n :}
+   {: c:n at:str :}
    SB-RESET c TEST-EVAL:THROWN-HEAD$ SB-APPEND
-   GE-SB-LF s"  --> " SB-APPEND at atu SB-APPEND GE-SB-LF
+   GE-SB-LF s"  --> " SB-APPEND at SB-APPEND GE-SB-LF
    SB$ ;
 
 \ prof-rate refuses a negative interval and one past the OS timer's longest,
@@ -365,7 +364,7 @@ variable GDB-SKEWED
    67 s" an uncaught prof-rate -1 exits 67" GE-EXPECT-RC
    E-PROF-RATE s" <input>:1:4" GDB-THROWN$
    s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR-HAS
-   GT-OUT$ nip 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then
+   GT-OUT$ STR:LEN 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then
    S\" : GDB-REFUSE ( -- n ) [: -1 prof-rate ;] catch ; : GDB-PAST ( -- n ) [: 9223372036000000 prof-rate ;] catch ; : GDB-MAX ( -- n ) [: 100000000999999 prof-rate ;] catch ; GDB-MAX s\" within \" type . cr 250 prof-rate GDB-REFUSE negate s\" refused \" type . cr GDB-PAST negate s\" past \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
    GDB-PROF-RATE-RUN
    s" a caught prof-rate -1" GE-EXPECT-OK
@@ -498,9 +497,9 @@ variable GDB-SKEWED
    GDB-PROF-RUN
    s" profiler stop and reset" GE-EXPECT-OK
    GT-OUT$ GDB-SAMPLES {: first:n :}
-   GT-OUT$ s" profiler samples" GDB-AFTER {: a:^ u:n :}
-   a u GDB-SAMPLES {: second:n :}
-   a u s" profiler samples" GDB-AFTER GDB-SAMPLES {: third:n :}
+   GT-OUT$ s" profiler samples" GDB-AFTER {: rest:str :}
+   rest GDB-SAMPLES {: second:n :}
+   rest s" profiler samples" GDB-AFTER GDB-SAMPLES {: third:n :}
    first 0 <= if s" profiler stop case collected no sample" GE-FAIL then
    first second <> if
       s" prof-off did not stop sampling: the second report moved" GE-FAIL
@@ -552,11 +551,11 @@ variable GDB-SKEWED
    s" SUBJECT 16 >str SAVED-CODE 16 >str STR:= if 1 else 0 then . NONE-XT @ DEBUG:BP- DEBUG:BP." GE-SRC-LINE
    s" VALID-XT @ DEBUG:BP- DEBUG:BP. ; CHECK ;package" GE-SRC-LINE
    s" unsupported breakpoint target" GE-HB-RUN-STDIN
-   GT-OUT$ GDB-LINE$ {: at:^ atu:n :}
+   GT-OUT$ GDB-LINE$ {: at:str :}
    SB-RESET
-   at atu SB-APPEND S\" \n\n-9300\n" SB-APPEND
-   at atu SB-APPEND S\" \n\n1\n" SB-APPEND
-   at atu SB-APPEND S\" \n\n" SB-APPEND
+   at SB-APPEND S\" \n\n-9300\n" SB-APPEND
+   at SB-APPEND S\" \n\n1\n" SB-APPEND
+   at SB-APPEND S\" \n\n" SB-APPEND
    SB$ s" named breakpoint refusal preserves the listing and code" GE-EXPECT-OUT
    s" PASS: unsupported breakpoint refuses before changing slots or code" type cr ;
 

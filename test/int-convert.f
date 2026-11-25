@@ -1,4 +1,3 @@
-split-str
 \ int-convert.f — the integer conversion words >U8, >U16, >U32 and >I64, through
 \ the engine's own `:`.
 
@@ -16,9 +15,9 @@ package INT-CONVERT-TEST
    false REJECTION:JSON !  TEST-EVAL:RC
    was REJECTION:JSON ! ;
 
-: SAYS ( ^u8 n ^u8 n -- ) {: code:^ codeu:n note:^ noteu:n :}
-   REJECTION:BUFFER$ code codeu STR:CONTAINS? TTRUE
-   REJECTION:BUFFER$ note noteu STR:CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
+: SAYS ( str str -- ) {: code:str note:str :}
+   REJECTION:BUFFER$ code STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ note STR:CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
 
 : LOW8 ( -- u8 ) 300 >U8 ;
 : LOW16 ( -- u16 ) 70000 >U16 ;

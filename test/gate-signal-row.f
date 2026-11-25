@@ -1,4 +1,3 @@
-split-str
 \ The row test/gate-signal-test.f puts under a gate. With no script argument it
 \ is the ROW: it reports its pid and runs the LEAF, this file with argument
 \ `leaf`. Every spawn makes a process group of its own, the shape of a row
@@ -35,7 +34,7 @@ variable HOLD                        \ the FIFO's write end
 
 : REPORT-PID ( -- )
    getpid REPORT !
-   HOLD @ REPORT 1 cells write 1 cells <> if
+   HOLD @ REPORT 1 cells >str write 1 cells <> if
       s" gate-signal-row: report refused" EXIT-STATUS:IOERR die
    then ;
 
@@ -110,7 +109,7 @@ variable HOLD                        \ the FIFO's write end
    ENGINE-CANDIDATE:PATH$ -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-ENV-IO-RC
    MATCH result
       ok OF drop ENDOF
-      err OF s" gate-signal-row: the leaf failed" rot die ENDOF
+      err OF s" gate-signal-row: the leaf failed" swap die ENDOF
    ;MATCH ;
 
 public

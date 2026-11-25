@@ -1,4 +1,3 @@
-split-str
 \ gate-stdlib-lib.f - adapter from the native suite registry to bin/hb.
 
 require src/core/exit-status.f
@@ -20,10 +19,10 @@ package STDLIB-GATE
 : SUITE-CHECK-ARGS ( -- )
    ARGC 3 > if 3 SCRIPT-SEP? 0= if SUITE-USAGE then then
    SCRIPT-ARGC 0 ?do
-      i SCRIPT-ARGV$ {: a:^ u:n :}
-      a u TEST:ONLY 0= if
+      i SCRIPT-ARGV$ {: a:str :}
+      a TEST:ONLY 0= if
          2 s" test/run.f: no test named " write drop
-         2 a u write drop
+         2 a write drop
          2 S\" \n" write drop
          SUITE-USAGE
       then
@@ -54,13 +53,13 @@ package STDLIB-GATE
 : ROW-ARG+ ( str -- )
    PROC-ARGV+ ;
 
-: SUITE-HB-RUN ( str -- ) {: label:^ labelu:n :}
+: SUITE-HB-RUN ( str -- ) {: label:str :}
    SUITE-ENV
-   PRODUCT-SPAWN$ label labelu GT-POOL-START ;
+   PRODUCT-SPAWN$ label GT-POOL-START ;
 
-: SUITE-HB-RUN-STDIN ( str str -- ) {: in:^ inu:n label:^ labelu:n :}
+: SUITE-HB-RUN-STDIN ( str str -- ) {: in:str label:str :}
    SUITE-ENV
-   PRODUCT-SPAWN$ label labelu in inu GT-POOL-START-STDIN ;
+   PRODUCT-SPAWN$ label in GT-POOL-START-STDIN ;
 
 \ The entry guard walks the load graph LOAD-GRAPH:READ read and refuses the
 \ registry before anything starts: this hook runs outside the catch around the

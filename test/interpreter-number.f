@@ -1,4 +1,3 @@
-split-str
 \ INTERPRETER:NUMBER against num-parse's value, float flag and ok; the name
 \ wall, which refuses a name the reader reads or refuses for range, checks its
 \ range flag.
@@ -17,11 +16,11 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 \ Fixed IEEE-754 vectors, independently rounded by C strtod in FE_TONEAREST.
 \ Reader parity alone cannot detect a double rounding both readers share.
 : FLOAT-BITS ( str n -- )
-   {: a:^ u:n bits:n :}
-   a u num-parse {: got:n flt:bool ok:bool :}
-   a u T-LABEL got bits T= flt TTRUE ok TTRUE
-   a u INTERPRETER:NUMBER {: outer:n outer-flt:bool outer-ok:bool range:bool :}
-   a u T-LABEL outer bits T= outer-flt TTRUE outer-ok TTRUE range TFALSE ;
+   {: s:str bits:n :}
+   s num-parse {: got:n flt:bool ok:bool :}
+   s T-LABEL got bits T= flt TTRUE ok TTRUE
+   s INTERPRETER:NUMBER {: outer:n outer-flt:bool outer-ok:bool range:bool :}
+   s T-LABEL outer bits T= outer-flt TTRUE outer-ok TTRUE range TFALSE ;
 
 : ROUNDING ( -- )
    s" 9.9996" $4023FFCB923A29C7 FLOAT-BITS
@@ -47,7 +46,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    len 0= if exit then
    GE-SRC-RESET
    s" require src/lib/ieee754.f" GE-SRC-LINE
-   s" : REPLAY ( -- r ) " GE-SRC+ DECIMAL-TEXT len GE-SRC+
+   s" : REPLAY ( -- r ) " GE-SRC+ DECIMAL-TEXT len >str GE-SRC+
    s"  ;" GE-SRC-LINE
    s" : CHECK-REPLAY ( -- ) REPLAY IEEE754:F64>BITS $4023FFCB923A29C7 <> if 1 throw then ; CHECK-REPLAY" GE-SRC-LINE
    s" formatted decimal source replay" GE-HB-RUN-STDIN ;
@@ -61,39 +60,39 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    want if got TTRUE else got TFALSE then ;
 
 
-: SAME-PARSE ( str -- ) {: a:^ u:n :}
-   a u num-parse {: want:n want-flt:bool want-ok:bool :}
-   a u INTERPRETER:NUMBER drop {: got:n flt:bool ok:bool :}
-   a u T-LABEL got want T=
-   a u T-LABEL flt want-flt FLAG=
-   a u T-LABEL ok want-ok FLAG= ;
+: SAME-PARSE ( str -- ) {: s:str :}
+   s num-parse {: want:n want-flt:bool want-ok:bool :}
+   s INTERPRETER:NUMBER drop {: got:n flt:bool ok:bool :}
+   s T-LABEL got want T=
+   s T-LABEL flt want-flt FLAG=
+   s T-LABEL ok want-ok FLAG= ;
 
 
-: HOSTILE-EVAL ( str -- n ) {: a:^ u:n :}
+: HOSTILE-EVAL ( str -- n ) {: s:str :}
    GE-SRC-RESET
-   s" : " GE-SRC+ a u GE-SRC+ s"  ( -- n ) 42 ;" GE-SRC-LINE
-   a u GE-SRC+ s"  drop" GE-SRC-LINE
+   s" : " GE-SRC+ s GE-SRC+ s"  ( -- n ) 42 ;" GE-SRC-LINE
+   s GE-SRC+ s"  drop" GE-SRC-LINE
    GE-EVAL-FORK-CAPTURE
-   a u GE-RC@ ;
+   s GE-RC@ ;
 
 
-: SAME-WALL ( str -- ) {: a:^ u:n :}
-   a u num-parse nip nip  a u RANGE?  or {: number:bool :}
+: SAME-WALL ( str -- ) {: s:str :}
+   s num-parse nip nip  s RANGE?  or {: number:bool :}
    number if 1 REFUSALS +! 70 else 0 then {: want:n :}
-   a u HOSTILE-EVAL {: rc:n :}
-   a u T-LABEL rc want T=
-   a u T-LABEL GT-ERR$ s" error[E-NUMERIC-DEFINITION]" STR:CONTAINS? number FLAG= ;
+   s HOSTILE-EVAL {: rc:n :}
+   s T-LABEL rc want T=
+   s T-LABEL GT-ERR$ s" error[E-NUMERIC-DEFINITION]" STR:CONTAINS? number FLAG= ;
 
 
 \ A spelling a definition may try to take: both oracles.
-: SPELLING ( ^u8 n -- ) {: a:^ u:n :}
-   a u SAME-PARSE
-   a u SAME-WALL
+: SPELLING ( str -- ) {: s:str :}
+   s SAME-PARSE
+   s SAME-WALL
    1 COMPARED +! ;
 
 
 \ Text that cannot name a word (empty, or two tokens): num-parse only.
-: TEXT ( ^u8 n -- )
+: TEXT ( str -- )
    SAME-PARSE
    1 COMPARED +! ;
 

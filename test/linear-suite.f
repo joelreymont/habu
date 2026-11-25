@@ -1,4 +1,3 @@
-split-str
 \ linear-suite.f - `LINEAR:` mints and erases a DEFLINEAR token in its owner alone.
 \ In its owner's private section `LINEAR: NAME ( payload -- PKG:tok )` mints and
 \ `( PKG:tok -- payload )` erases once CHECKER-LINEAR certifies the row; nothing
@@ -40,23 +39,23 @@ package LIN-RUN
 public
 TYPED-VARIABLE SRC-A ^u8
 variable SRC-U
-: EVAL ( -- ) SRC-A @ SRC-U @ evaluate-closed ;
-: DECL ( ^u8 n -- n )
-   SRC-U !  SRC-A !
+: EVAL ( -- ) SRC-A @ SRC-U @ >str evaluate-closed ;
+: DECL ( str -- n ) {: s:str :}
+   s STR:LEN SRC-U !  s STR:DATA SRC-A !
    REJECTION:CAPTURE
    [: EVAL ;] catch ;
 \ The status was the checker's and the captured record carries the code and
 \ the word.
-: REJECTS ( n ^u8 n ^u8 n -- ) {: rc:n c:^ cu:n w:^ wu:n :}
+: REJECTS ( n str str -- ) {: rc:n c:str w:str :}
    rc 70 T=
-   REJECTION:BUFFER$ c cu STR:CONTAINS? TTRUE
-   REJECTION:BUFFER$ w wu STR:CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ c STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ w STR:CONTAINS? TTRUE ;
 \ REJECTS, and the record quotes the evaluated text and labels its cause.
 : REJECTS-AT ( n str str str -- )
-   {: rc:n c:^ cu:n w:^ wu:n l:^ lu:n :}
-   rc c cu w wu REJECTS
+   {: rc:n c:str w:str l:str :}
+   rc c w REJECTS
    REJECTION:BUFFER$ s" = evaluated: " STR:CONTAINS? TTRUE
-   REJECTION:BUFFER$ l lu STR:CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ l STR:CONTAINS? TTRUE ;
 ;package
 
 T-RESET
@@ -261,20 +260,20 @@ $400 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
-: RUN ( ^u8 n -- n ) {: src:^ u:n :}   \ source -> child exit status (-1 = signal)
-   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
+: RUN ( str -- n ) {: src:str :}   \ source -> child exit status (-1 = signal)
+   src OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
      exited OF ENDOF
      signaled OF drop -1 ENDOF
-     timeout OF src u OUT outu LEN>N ERR erru LEN>N SUBJECT:TIMED-OUT ENDOF
+     timeout OF src OUT outu LEN>N >str ERR erru LEN>N >str SUBJECT:TIMED-OUT ENDOF
    ;MATCH ;
-: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
+: ERR$ ( -- str ) ERR ERR-U @ >str ;
 \ The child's record carries the code and the word.
-: SAYS ( ^u8 n ^u8 n -- ) {: c:^ cu:n w:^ wu:n :}
-   ERR$ c cu STR:CONTAINS? TTRUE
-   ERR$ w wu STR:CONTAINS? TTRUE ;
-: HAS ( ^u8 n -- ) {: a:^ u:n :}   ERR$ a u STR:CONTAINS? TTRUE ;
+: SAYS ( str str -- ) {: c:str w:str :}
+   ERR$ c STR:CONTAINS? TTRUE
+   ERR$ w STR:CONTAINS? TTRUE ;
+: HAS ( str -- ) {: a:str :}   ERR$ a STR:CONTAINS? TTRUE ;
 ;package
 s" the keyword with nothing after it names itself" T-LABEL
 s" linear:" LIN-CHILD:RUN 70 T=
@@ -301,31 +300,31 @@ create OBJ-BUF PATH-CAP allot  variable OBJ-U
 PROG-CAP BUFFER: PROG
 variable PROG-U
 
-: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
-: PATH$ ( -- ^u8 n ) PATH-BUF PATH-U @ ;
-: IMAGE$ ( -- str ) IMAGE-BUF IMAGE-U @ ;
-: OBJ$ ( -- str ) OBJ-BUF OBJ-U @ ;
-: PROG$ ( -- str ) PROG PROG-U @ ;
+: OUT$ ( -- str ) OUT OUT-U @ >str ;
+: ERR$ ( -- str ) ERR ERR-U @ >str ;
+: PATH$ ( -- str ) PATH-BUF PATH-U @ >str ;
+: IMAGE$ ( -- str ) IMAGE-BUF IMAGE-U @ >str ;
+: OBJ$ ( -- str ) OBJ-BUF OBJ-U @ >str ;
+: PROG$ ( -- str ) PROG PROG-U @ >str ;
 
-: PROG+ ( str -- ) {: a:^ u:n :}
-   a PROG PROG-U @ + u BYTE-COPY
-   PROG-U @ u + PROG-U ! ;
+: PROG+ ( str -- ) {: s:str :}
+   s STR:DATA PROG PROG-U @ + s STR:LEN BYTE-COPY
+   PROG-U @ s STR:LEN + PROG-U ! ;
 : PROG-C+ ( n -- )
    PROG PROG-U @ + c!
    PROG-U @ 1 + PROG-U ! ;
 
 \ The caller stages the argv.
-: RUN ( ^u8 n -- ) {: path:^ pathu:n :}
+: RUN ( str -- ) {: path:str :}
    PROC-ENV-INHERIT-MISSING
-   path pathu  PROG$  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
+   path  PROG$  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N
    RC ! ERR-U ! OUT-U ! ;
 
 : ROOT ( -- )
-   s" linear-suite" FS:MKTEMP-DIR {: path:^ size:n :}
-   path ROOT-BUF size BYTE-COPY size ROOT-U !
-   ROOT-BUF ROOT-U @ FS:CLEANUP-TREE+ ;
+   s" linear-suite" FS:MKTEMP-DIR {: path:str :}
+   path STR:DATA ROOT-BUF path STR:LEN BYTE-COPY path STR:LEN ROOT-U !
+   ROOT-BUF ROOT-U @ >str FS:CLEANUP-TREE+ ;
 
 \ Ends as tools/check.f does: a refusal's status is the child's exit code.
 : CHECK-RUN ( -- )
@@ -349,16 +348,16 @@ variable PROG-U
    LSP-CHECK:RUN ;
 
 \ Checks PROG$ written as NAME, in the forked CHILD word.
-: CHECK-IN ( ^u8 n ^u8 n -- )
-   {: name:^ nameu:n child:^ childu:n :}
-   ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U !
+: CHECK-IN ( str str -- )
+   {: name:str child:str :}
+   ROOT-BUF ROOT-U @ >str name PATH-BUF FS:JOIN-PATH PATH-U !
    PATH$ PROG$ FS:WRITE-ALL
    0 PROG-U !
-   child childu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+   child OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    rc RC !  erru LEN>N ERR-U !  outu LEN>N OUT-U ! ;
 
-: CHECK ( ^u8 n -- )  s" CHECK-CHILD" CHECK-IN ;
+: CHECK ( str -- )  s" CHECK-CHILD" CHECK-IN ;
 : CHECK-PROSE ( str -- )  s" PROSE-CHILD" CHECK-IN ;
 
 : OK-FIXTURE ( -- )
@@ -393,8 +392,8 @@ variable PROG-U
    loop ;
 
 : SAVE ( -- )
-   ROOT-BUF ROOT-U @ s" lim.f" PATH-BUF FS:JOIN-PATH PATH-U !
-   ROOT-BUF ROOT-U @ s" app" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
+   ROOT-BUF ROOT-U @ >str s" lim.f" PATH-BUF FS:JOIN-PATH PATH-U !
+   ROOT-BUF ROOT-U @ >str s" app" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
    0 PROG-U !
    FILLER
    S\" package LIM\npublic\nDEFLINEAR LIM:tok\n;package\n: MAIN ( -- ) ;\n" PROG+
@@ -415,15 +414,15 @@ variable PROG-U
    PROC-ARGV-ENV-RESET
    IMAGE$ RUN ;
 
-: AT-ROOT ( str -- ) {: name:^ nameu:n :}
-   ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U ! ;
+: AT-ROOT ( str -- ) {: name:str :}
+   ROOT-BUF ROOT-U @ >str name PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
 : WRITE-PROG ( str -- )
    AT-ROOT  PATH$ PROG$ FS:WRITE-ALL  0 PROG-U ! ;
 
-: LOAD-LINE+ ( str str -- ) {: word:^ wordu:n name:^ nameu:n :}
-   name nameu AT-ROOT
-   word wordu PROG+  s"  " PROG+  PATH$ PROG+  10 PROG-C+ ;
+: LOAD-LINE+ ( str str -- ) {: word:str name:str :}
+   name AT-ROOT
+   word PROG+  s"  " PROG+  PATH$ PROG+  10 PROG-C+ ;
 
 \ lb-main.f; with `more` it gains a word naming `tok`, so a build after the edit links
 \ lb-own.f and lb-use.f and compiles a file whose type comes from an object.
@@ -457,10 +456,10 @@ variable PROG-U
 
 \ Builds a source under ROOT to ROOT/lb over the objects directory ROOT/<objs>. Each build is a
 \ fresh hb because the build of a program is what is under test.
-: LINK-BUILD ( str str -- ) {: src:^ srcu:n objs:^ objsu:n :}
-   ROOT-BUF ROOT-U @ objs objsu OBJ-BUF FS:JOIN-PATH OBJ-U !
-   ROOT-BUF ROOT-U @ s" lb" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
-   src srcu AT-ROOT
+: LINK-BUILD ( str str -- ) {: src:str objs:str :}
+   ROOT-BUF ROOT-U @ >str objs OBJ-BUF FS:JOIN-PATH OBJ-U !
+   ROOT-BUF ROOT-U @ >str s" lb" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
+   src AT-ROOT
    0 PROG-U !
    PROC-ARGV-ENV-RESET
    s" --load" PROC-ARGV+  s" tools/hb-build.f" PROC-ARGV+  s" --" PROC-ARGV+
@@ -484,19 +483,19 @@ SLOTS TYPED-BUFFER KEPT-SIZE n
 SLOTS TYPED-BUFFER KEPT-S n
 SLOTS TYPED-BUFFER KEPT-NS n
 
-: TAIL$ ( -- str ) TAIL-BUF TAIL-U @ ;
+: TAIL$ ( -- str ) TAIL-BUF TAIL-U @ >str ;
 : KEPT-PATH ( n -- ^u8 ) PATH-CAP * KEPT-BUF swap + ;
-: KEPT$ ( n -- str ) {: i:n :} i KEPT-PATH i KEPT-U @ ;
+: KEPT$ ( n -- str ) {: i:n :} i KEPT-PATH i KEPT-U @ >str ;
 
-: TAIL-SEEN ( str -- ) {: p:^ pu:n :}
-   p pu TAIL$ STR:ENDS-WITH? 0= if exit then
-   1 FOUND-N +!  p FOUND-BUF pu BYTE-COPY  pu FOUND-U ! ;
+: TAIL-SEEN ( str -- ) {: p:str :}
+   p TAIL$ STR:ENDS-WITH? 0= if exit then
+   1 FOUND-N +!  p STR:DATA FOUND-BUF p STR:LEN BYTE-COPY  p STR:LEN FOUND-U ! ;
 
 \ Holds in slot i the size and change time of the one object under OBJ$ whose path ends with
 \ the tail; the slot stays empty when none or several do.
-: KEEP ( ^u8 n n -- ) {: t:^ tu:n i:n :}
+: KEEP ( str n -- ) {: t:str i:n :}
    0 i KEPT-U !
-   t TAIL-BUF tu BYTE-COPY  tu TAIL-U !
+   t STR:DATA TAIL-BUF t STR:LEN BYTE-COPY  t STR:LEN TAIL-U !
    0 FOUND-N !  0 FOUND-U !
    OBJ$ FS:DIR? if OBJ$ [: TAIL-SEEN ;] FS:WALK-FILES then
    FOUND-N @ 1 <> if exit then
@@ -506,8 +505,8 @@ SLOTS TYPED-BUFFER KEPT-NS n
 
 \ The label holds when the object in slot i keeps the size and change time KEEP read: the
 \ build linked it, since a compile replaces the object.
-: LINKED ( ^u8 n n -- ) {: a:^ u:n i:n :}
-   a u T-LABEL
+: LINKED ( str n -- ) {: a:str i:n :}
+   a T-LABEL
    i KEPT-U @ 0= if false TTRUE exit then
    i KEPT$ FS:FILE? 0= if false TTRUE exit then
    i KEPT$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}

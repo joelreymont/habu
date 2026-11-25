@@ -1,4 +1,3 @@
-split-str
 \ Checked helpers for native tests, loaded through test/gate-common.f.
 
 require src/lib/error.f
@@ -30,13 +29,13 @@ variable GE-ARGV-U
 TYPED-VARIABLE GE-EVAL-SRC-A ^u8
 variable GE-EVAL-SRC-U
 
-: GE-EVAL-SRC! ( str -- ) {: a:^ u:n :}
-   u 0 < if E-STR-BOUNDS throw then
-   a GE-EVAL-SRC-A !
-   u GE-EVAL-SRC-U ! ;
+: GE-EVAL-SRC! ( str -- ) {: s:str :}
+   s STR:LEN 0 < if E-STR-BOUNDS throw then
+   s STR:DATA GE-EVAL-SRC-A !
+   s STR:LEN GE-EVAL-SRC-U ! ;
 
 : GE-EVAL-SRC$ ( -- str )
-   GE-EVAL-SRC-A @ GE-EVAL-SRC-U @ ;
+   GE-EVAL-SRC-A @ GE-EVAL-SRC-U @ >str ;
 
 : GE-STORE-OUTCOME ( len len PROCESS:ending -- )
    GT-STORE-RUN ;
@@ -49,17 +48,17 @@ variable GE-EVAL-SRC-U
    c GE-ARGV-BUF GE-ARGV-U @ + c!
    GE-ARGV-U @ 1+ GE-ARGV-U ! ;
 
-: GE-ARGV+ ( str -- ) {: a:^ u:n :}
-   u 0 < if E-STR-BOUNDS throw then
-   GE-ARGV-U @ u + 3 + GE-SRC-CAP > if E-STR-CAPACITY throw then
+: GE-ARGV+ ( str -- ) {: s:str :}
+   s STR:LEN 0 < if E-STR-BOUNDS throw then
+   GE-ARGV-U @ s STR:LEN + 3 + GE-SRC-CAP > if E-STR-CAPACITY throw then
    GE-SP GE-ARGV-C
    GE-SP GE-ARGV-C
-   a GE-ARGV-BUF GE-ARGV-U @ + u BYTE-COPY
-   GE-ARGV-U @ u + GE-ARGV-U !
+   s STR:DATA GE-ARGV-BUF GE-ARGV-U @ + s STR:LEN BYTE-COPY
+   GE-ARGV-U @ s STR:LEN + GE-ARGV-U !
    GE-LF GE-ARGV-C ;
 
 : GE-ARGV$ ( -- str )
-   GE-ARGV-BUF GE-ARGV-U @ ;
+   GE-ARGV-BUF GE-ARGV-U @ >str ;
 
 : GE-SPAWN-FAIL. ( -- )
    s" spawn errno: " type PROCESS:ERRNO FMT:.INT cr ;
@@ -70,7 +69,7 @@ variable GE-EVAL-SRC-U
 \ refusal's code.
 : GE-LAUNCH ( ^u8 ^^u8 ^^u8 fd -- ^u8 ^^u8 ^^u8 fd )
    {: pathz:^ argv:^ envp:^ in:fd :}
-   pathz dup ZLEN PROCESS:NEW
+   pathz dup ZLEN >str PROCESS:NEW
    argv PROCESS:ARGV-ROWS
    envp PROCESS:ENV-ROWS
    0 >FD in PROCESS:FD
@@ -98,8 +97,8 @@ variable GE-EVAL-SRC-U
    PROCESS:OUT-W PROCESS:CLOSE-CELL
    PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
-: GE-RUN-ENV ( str ms -- ) {: path:^ pathu:n timeout:ms :}
-   path pathu PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
+: GE-RUN-ENV ( str ms -- ) {: path:str timeout:ms :}
+   path PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROC-ENV-PREPARE {: envp:^ :}
    timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
@@ -107,12 +106,12 @@ variable GE-EVAL-SRC-U
    PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
-: GE-RUN-STDIN ( str str ms -- ) {: path:^ pathu:n in:^ inu:n timeout:ms :}
-   path pathu PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
+: GE-RUN-STDIN ( str str ms -- ) {: path:str in:str timeout:ms :}
+   path PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROC-ENV-PREPARE {: envp:^ :}
    timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
-   in inu [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
+   in [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
    PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
@@ -167,14 +166,14 @@ variable GE-EVAL-SRC-U
    s"  rc: " type GT-RC@ FMT:.INT s"  (" type GT-RC@ GE-RC-NAME. s" )" type cr ;
 
 : GE-PRINT-CAPTURE-STATS ( -- )
-   s" stdout bytes: " type GT-OUT$ nip FMT:.INT cr
-   s" stderr bytes: " type GT-ERR$ nip FMT:.INT cr ;
+   s" stdout bytes: " type GT-OUT$ STR:LEN FMT:.INT cr
+   s" stderr bytes: " type GT-ERR$ STR:LEN FMT:.INT cr ;
 
-: GE-FAIL ( str -- ) {: label:^ labelu:n :}
-   s" FAIL: " type label labelu type cr
+: GE-FAIL ( str -- ) {: label:str :}
+   s" FAIL: " type label type cr
    GE-PRINT-OUTCOME
    GE-PRINT-CAPTURE-STATS
-   GE-ARGV$ nip 0 > if
+   GE-ARGV$ STR:LEN 0 > if
       s" argv:" type cr
       GE-ARGV$ type
    then
@@ -192,38 +191,38 @@ variable GE-EVAL-SRC-U
 \ The entry's exit status for an rc check. A timed-out entry has none, and
 \ GT-RC@ would throw before any report, so it fails here: GE-FAIL prints its
 \ capture and then throws E-PROC-TIMEOUT.
-: GE-RC@ ( str -- n ) {: label:^ labelu:n :}
-   GT-TIMED-OUT @ if label labelu GE-FAIL then
+: GE-RC@ ( str -- n ) {: label:str :}
+   GT-TIMED-OUT @ if label GE-FAIL then
    GT-RC@ ;
 
-: GE-EXPECT-OK ( str -- ) {: label:^ labelu:n :}
-   label labelu GE-RC@ 0 <> if label labelu GE-FAIL then ;
+: GE-EXPECT-OK ( str -- ) {: label:str :}
+   label GE-RC@ 0 <> if label GE-FAIL then ;
 
-: GE-EXPECT-RC ( n str -- ) {: want:n label:^ labelu:n :}
-   label labelu GE-RC@ want <> if label labelu GE-FAIL then ;
+: GE-EXPECT-RC ( n str -- ) {: want:n label:str :}
+   label GE-RC@ want <> if label GE-FAIL then ;
 
-: GE-EXPECT-NONZERO ( str -- ) {: label:^ labelu:n :}
-   label labelu GE-RC@ 0= if label labelu GE-FAIL then ;
+: GE-EXPECT-NONZERO ( str -- ) {: label:str :}
+   label GE-RC@ 0= if label GE-FAIL then ;
 
-: GE-EXPECT-SILENT ( str -- ) {: label:^ labelu:n :}
-   GT-OUT$ nip 0 <> if label labelu GE-FAIL then
-   GT-ERR$ nip 0 <> if label labelu GE-FAIL then ;
+: GE-EXPECT-SILENT ( str -- ) {: label:str :}
+   GT-OUT$ STR:LEN 0 <> if label GE-FAIL then
+   GT-ERR$ STR:LEN 0 <> if label GE-FAIL then ;
 
-: GE-EXPECT-OUT ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-OUT$ want wantu STR:= 0= if label labelu GE-FAIL then ;
+: GE-EXPECT-OUT ( str str -- ) {: want:str label:str :}
+   GT-OUT$ want STR:= 0= if label GE-FAIL then ;
 
-: GE-EXPECT-OUT-HAS ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-OUT$ want wantu STR:CONTAINS? 0= if label labelu GE-FAIL then ;
+: GE-EXPECT-OUT-HAS ( str str -- ) {: want:str label:str :}
+   GT-OUT$ want STR:CONTAINS? 0= if label GE-FAIL then ;
 
 \ The whole of stderr, byte for byte - the check a one-line diagnostic asks for.
-: GE-EXPECT-ERR ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-ERR$ want wantu STR:= 0= if label labelu GE-FAIL then ;
+: GE-EXPECT-ERR ( str str -- ) {: want:str label:str :}
+   GT-ERR$ want STR:= 0= if label GE-FAIL then ;
 
-: GE-EXPECT-ERR-HAS ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-ERR$ want wantu STR:CONTAINS? 0= if label labelu GE-FAIL then ;
+: GE-EXPECT-ERR-HAS ( str str -- ) {: want:str label:str :}
+   GT-ERR$ want STR:CONTAINS? 0= if label GE-FAIL then ;
 
-: GE-EXPECT-ERR-LACKS ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-ERR$ want wantu STR:CONTAINS? if label labelu GE-FAIL then ;
+: GE-EXPECT-ERR-LACKS ( str str -- ) {: want:str label:str :}
+   GT-ERR$ want STR:CONTAINS? if label GE-FAIL then ;
 
 : GE-SB-LF ( -- )
    GE-LF SB-APPEND-C ;
@@ -251,11 +250,11 @@ variable GE-EVAL-SRC-U
    u 0 < if E-STR-BOUNDS throw then
    u 0 ?do c GE-SRC-C loop ;
 
-: GE-SRC+ ( str -- ) {: a:^ u:n :}
-   u 0 < if E-STR-BOUNDS throw then
-   GE-SRC-U @ u + GE-SRC-CAP > if E-STR-CAPACITY throw then
-   a GE-SRC-BUF GE-SRC-U @ + u BYTE-COPY
-   GE-SRC-U @ u + GE-SRC-U ! ;
+: GE-SRC+ ( str -- ) {: s:str :}
+   s STR:LEN 0 < if E-STR-BOUNDS throw then
+   GE-SRC-U @ s STR:LEN + GE-SRC-CAP > if E-STR-CAPACITY throw then
+   s STR:DATA GE-SRC-BUF GE-SRC-U @ + s STR:LEN BYTE-COPY
+   GE-SRC-U @ s STR:LEN + GE-SRC-U ! ;
 
 : GE-SRC-SP ( -- )
    GE-SP GE-SRC-C ;
@@ -267,31 +266,31 @@ variable GE-EVAL-SRC-U
    GE-SRC+
    GE-SRC-LF ;
 
-: GE-SRC-S" ( str -- ) {: a:^ u:n :}
+: GE-SRC-S" ( str -- ) {: s:str :}
    s" s" GE-SRC+
    GE-DQ GE-SRC-C
    GE-SRC-SP
-   a u GE-SRC+
+   s GE-SRC+
    GE-DQ GE-SRC-C ;
 
 : GE-SRC-CHECK-LINE ( str -- )
    GE-SRC-S"
    s"  CHECK! ." GE-SRC-LINE ;
 
-: GE-SRC-FILE+ ( ^u8 n -- ) {: path:^ pathu:n :}
-   path pathu GE-SRC-BUF GE-SRC-U @ + GE-SRC-CAP GE-SRC-U @ -
+: GE-SRC-FILE+ ( str -- ) {: path:str :}
+   path GE-SRC-BUF GE-SRC-U @ + GE-SRC-CAP GE-SRC-U @ -
    FS:READ-ALL GE-RD !
    GE-SRC-U @ GE-RD @ + GE-SRC-U ! ;
 
 : GE-ARG+ ( str -- )
-   2dup GE-ARGV+
+   dup GE-ARGV+
    PROC-ARGV+ ;
 
-: GE-COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ up:^ :}
-   u 0 < if E-FS-PATH throw then
-   u PATH-CAP > if E-FS-PATH throw then
-   a dst u BYTE-COPY
-   u up ! ;
+: GE-COPY! ( str ^u8 ^n -- ) {: s:str dst:^ up:^ :}
+   s STR:LEN 0 < if E-FS-PATH throw then
+   s STR:LEN PATH-CAP > if E-FS-PATH throw then
+   s STR:DATA dst s STR:LEN BYTE-COPY
+   s STR:LEN up ! ;
 
 : GE-HB-RESET ( -- )
    PROC-ARGV-ENV-RESET
@@ -299,19 +298,19 @@ variable GE-EVAL-SRC-U
 
 : GE-HB$ ( -- str ) ENGINE-CANDIDATE:PATH$ ;
 
-: GE-HB-RUN-STDIN ( str -- ) {: label:^ labelu:n :}
-   label labelu GT-PROGRESS-RUN
-   GE-HB$ GE-SRC-BUF GE-SRC-U @
+: GE-HB-RUN-STDIN ( str -- ) {: label:str :}
+   label GT-PROGRESS-RUN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ >str
    PROCESS:WAIT-FOREVER GE-RUN-STDIN
-   label labelu GE-EXPECT-OK
-   label labelu GT-PROGRESS-PASS ;
+   label GE-EXPECT-OK
+   label GT-PROGRESS-PASS ;
 
-: GE-HB-RUN-STDIN-NZ ( str -- ) {: label:^ labelu:n :}
-   label labelu GT-PROGRESS-RUN
-   GE-HB$ GE-SRC-BUF GE-SRC-U @
+: GE-HB-RUN-STDIN-NZ ( str -- ) {: label:str :}
+   label GT-PROGRESS-RUN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ >str
    PROCESS:WAIT-FOREVER GE-RUN-STDIN
-   label labelu GE-EXPECT-NONZERO
-   label labelu GT-PROGRESS-PASS ;
+   label GE-EXPECT-NONZERO
+   label GT-PROGRESS-PASS ;
 
 : GE-EVAL-DUP2! ( n n -- ) {: src:n dst:n :}
    src dst dup2 dup 0 < if drop E-PROC-OUTPUT throw then drop ;
@@ -332,7 +331,7 @@ variable GE-EVAL-SRC-U
    outu erru rc PROCESS-ENDING:EXITED GE-STORE-OUTCOME ;
 
 : GE-EVAL-FORK-EXIT ( n -- )
-   s" " rot die ;
+   s" " swap die ;
 
 : GE-EVAL-FORK-CHILD ( -- )
    GE-EVAL-REDIRECT!
@@ -349,7 +348,7 @@ variable GE-EVAL-SRC-U
    PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 : GE-EVAL-FORK-CAPTURE ( -- )
-   GE-SRC-BUF GE-SRC-U @ GE-EVAL-SRC!
+   GE-SRC-BUF GE-SRC-U @ >str GE-EVAL-SRC!
    PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
    GE-EVAL-FORK-SPAWN
    s" " [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
@@ -357,25 +356,25 @@ variable GE-EVAL-SRC-U
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
 : GE-EVAL-FORK-BAD ( n str str -- )
-   {: rc:n needle:^ needleu:n label:^ labelu:n :}
-   label labelu GT-PROGRESS-RUN
+   {: rc:n needle:str label:str :}
+   label GT-PROGRESS-RUN
    GE-EVAL-FORK-CAPTURE
-   rc label labelu GE-EXPECT-RC
-   needle needleu label labelu GE-EXPECT-ERR-HAS
-   label labelu GT-PROGRESS-PASS ;
+   rc label GE-EXPECT-RC
+   needle label GE-EXPECT-ERR-HAS
+   label GT-PROGRESS-PASS ;
 
-: GE-EVAL-RUN-STDIN ( str -- ) {: label:^ labelu:n :}
-   label labelu GT-PROGRESS-RUN
+: GE-EVAL-RUN-STDIN ( str -- ) {: label:str :}
+   label GT-PROGRESS-RUN
    GE-EVAL-FORK-CAPTURE
-   label labelu GE-EXPECT-OK
-   label labelu GT-PROGRESS-PASS ;
+   label GE-EXPECT-OK
+   label GT-PROGRESS-PASS ;
 
 : GE-BIN-HB? ( str -- bool )
    s" bin/hb" STR:= ;
 
-: GE-REMOVE-BIN-OTHER ( str -- ) {: path:^ pathu:n :}
-   path pathu FS:FILE? if
-      path pathu GE-BIN-HB? 0= if path pathu FS:REMOVE-FILE then
+: GE-REMOVE-BIN-OTHER ( str -- ) {: path:str :}
+   path FS:FILE? if
+      path GE-BIN-HB? 0= if path FS:REMOVE-FILE then
    then ;
 
 : GE-CLEAN-BIN ( -- )

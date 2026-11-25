@@ -1,4 +1,3 @@
-split-str
 \ Gate entry files are execution roots. A row may share an inert helper, but
 \ importing or launching another row's entry silently runs that suite twice.
 \
@@ -31,8 +30,8 @@ variable ERRORS
    n 0 ?do -1 i ROW-OF ! 0 i MARK ! loop
    0 WALK ! -1 OWNER ! 0 ERRORS ! ;
 
-: ENTRY-ADD ( n bool str -- ) {: row:n entry:bool a:^ u:n :}
-   a u LOAD-GRAPH:FILE-ID {: f:n :}
+: ENTRY-ADD ( n bool str -- ) {: row:n entry:bool s:str :}
+   s LOAD-GRAPH:FILE-ID {: f:n :}
    entry 0= if exit then
    f ROW-OF @ {: had:n :}
    had 0 >= had row <> and if
@@ -83,9 +82,9 @@ variable ERRORS
 
 \ One walk per row: a file the row reached from an earlier file is not walked
 \ again.
-: CHECK-FILE ( n bool str -- ) {: row:n entry:bool a:^ u:n :}
+: CHECK-FILE ( n bool str -- ) {: row:n entry:bool s:str :}
    row OWNER @ <> if row OWNER ! WALK @ 1+ WALK ! then
-   a u LOAD-GRAPH:FILE-ID {: f:n :}
+   s LOAD-GRAPH:FILE-ID {: f:n :}
    entry 0= if f CHECK-PRELOAD then
    0 QHEAD ! 0 QTAIL !
    f REACH

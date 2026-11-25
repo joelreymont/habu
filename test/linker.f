@@ -1,4 +1,3 @@
-split-str
 \ linker.f - LINKER:WITH opens a build's data space, runs the body in it and
 \ closes it on every exit: the space's words and strings live there, and after
 \ the close hb's dictionary, code and data are as before. One process:
@@ -20,7 +19,7 @@ require src/habu/link-band.f
 package LINKER-TEST
 private
 
-CAST: STRING-XT ( n -- [ -- ^u8 n ] )
+CAST: STRING-XT ( n -- [ -- str ] )
 
 77 constant BODY-CODE
 
@@ -43,7 +42,7 @@ variable HERE0
    {: body :}
    s" test" RTARGET:HOST-TARGET body LINKER:WITH ;
 
-: SAY ( ^u8 n -- ) s" linker: " type type cr ;
+: SAY ( str -- ) s" linker: " type type cr ;
 
 variable FOUND
 variable FOUND-WL
@@ -95,10 +94,10 @@ variable REWOUND
 : C2$ ( -- str ) s" LK-C2" ;
 
 : BODY-C ( -- )
-   s\" : LK-C1 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
-   s\" : LK-C2 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
-   C1$ CALL$ drop NULL-PTR - AT1 !
-   C2$ CALL$ drop NULL-PTR - AT2 !
+   s\" : LK-C1 ( -- str ) s\" hello\" ;" evaluate-closed
+   s\" : LK-C2 ( -- str ) s\" hello\" ;" evaluate-closed
+   C1$ CALL$ STR:DATA NULL-PTR - AT1 !
+   C2$ CALL$ STR:DATA NULL-PTR - AT2 !
    AT1 @ LEN-AT @ LEN1 ! ;
 
 : CASE-C ( -- )
@@ -115,14 +114,14 @@ variable REWOUND
 : DECOY ( -- )
    AT1 @ 5 + HERE-N - allot
    5 AT1 @ LEN-AT !
-   s" hello" drop  NULL-PTR BYTE-VIEW AT1 @ +  5 BYTE-COPY ;
+   s" hello" STR:DATA  NULL-PTR BYTE-VIEW AT1 @ +  5 BYTE-COPY ;
 
 : BODY-D ( -- )
    AT1 @ CELL - HERE-N >= if DECOY then
    HERE-N HERE-D !
-   s\" : LK-D1 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
+   s\" : LK-D1 ( -- str ) s\" hello\" ;" evaluate-closed
    D1$ CALL$ s" hello" STR:= BYTES-OK !
-   D1$ CALL$ drop NULL-PTR - {: at:n :}
+   D1$ CALL$ STR:DATA NULL-PTR - {: at:n :}
    at AT-D !
    at LEN-AT @ LEN1 ! ;
 
@@ -145,7 +144,7 @@ variable REWOUND
    s" e: a throw in the body is rethrown after the close" SAY ;
 
 : REFUSE ( -- ) s\" 16 allot : LK-F1 ( -- n ) s\" gone\" ;" evaluate-closed ;
-: REWIND ( -- ) s\" : LK-F2 ( -- ^u8 n ) s\" new\" ;" evaluate-closed ;
+: REWIND ( -- ) s\" : LK-F2 ( -- str ) s\" new\" ;" evaluate-closed ;
 
 : BODY-F ( -- )
    [: REFUSE ;] catch REFUSED !

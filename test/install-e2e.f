@@ -1,4 +1,3 @@
-split-str
 \ install-e2e.f - installs into a scratch HOME while an hb started through the
 \ installed engine is loading. Trees A and B copy this checkout and differ only
 \ in src/install-race-x.f, which defines RACE-A or RACE-B, and
@@ -39,39 +38,39 @@ create PATH PATH-CAP allot
 IO-CAP BUFFER: OUT variable OUT-U
 variable TREES-N
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: HOME$ ( -- str ) HOME HOME-U @ ;
-: TREE-A$ ( -- str ) TREE-A TREE-A-U @ ;
-: TREE-B$ ( -- str ) TREE-B TREE-B-U @ ;
-: READER$ ( -- str ) READER READER-U @ ;
-: ENGINE$ ( -- ^u8 n ) ENGINE ENGINE-U @ ;
-: TREES$ ( -- str ) TREES TREES-U @ ;
-: LINK$ ( -- str ) LINK LINK-U @ ;
-: NEXT$ ( -- str ) NEXT NEXT-U @ ;
-: KEPT$ ( -- str ) KEPT KEPT-U @ ;
-: INTO$ ( -- str ) INTO INTO-U @ ;
-: TO$ ( -- str ) TO TO-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: HOME$ ( -- str ) HOME HOME-U @ >str ;
+: TREE-A$ ( -- str ) TREE-A TREE-A-U @ >str ;
+: TREE-B$ ( -- str ) TREE-B TREE-B-U @ >str ;
+: READER$ ( -- str ) READER READER-U @ >str ;
+: ENGINE$ ( -- str ) ENGINE ENGINE-U @ >str ;
+: TREES$ ( -- str ) TREES TREES-U @ >str ;
+: LINK$ ( -- str ) LINK LINK-U @ >str ;
+: NEXT$ ( -- str ) NEXT NEXT-U @ >str ;
+: KEPT$ ( -- str ) KEPT KEPT-U @ >str ;
+: INTO$ ( -- str ) INTO INTO-U @ >str ;
+: TO$ ( -- str ) TO TO-U @ >str ;
 
-: INTO! ( str -- ) {: a:^ u:n :}
-   a INTO u BYTE-COPY u INTO-U ! ;
+: INTO! ( str -- ) {: s:str :}
+   s STR:DATA INTO s STR:LEN BYTE-COPY s STR:LEN INTO-U ! ;
 
 \ Checkout path p as the same path in the tree being made.
-: TO! ( str -- ) {: p:^ u:n :}
-   SOURCE-ROOT:CWD$ nip 1 + {: ru:n :}
-   INTO$ p ru + u ru - TO FS:JOIN-PATH TO-U ! ;
+: TO! ( str -- ) {: s:str :}
+   SOURCE-ROOT:CWD$ STR:LEN 1 + {: ru:n :}
+   INTO$ s STR:DATA ru + s STR:LEN ru - >str TO FS:JOIN-PATH TO-U ! ;
 
 \ Symlinks are not carried, as the installer carries none.
-: CARRY? ( str -- bool ) {: p:^ u:n :}
-   p u FS:SYMLINK? if false exit then
-   p u FS:DIR? if p u TO! TO$ FS:MAKE-DIRS then
+: CARRY? ( str -- bool ) {: s:str :}
+   s FS:SYMLINK? if false exit then
+   s FS:DIR? if s TO! TO$ FS:MAKE-DIRS then
    true ;
 
-: CARRY ( ^u8 n -- ) {: p:^ u:n :}
-   p u TO!  p u TO$ FS:COPY-FILE-STREAM ;
+: CARRY ( str -- ) {: p:str :}
+   p TO!  p TO$ FS:COPY-FILE-STREAM ;
 
 : CARRY-DIR ( str -- )
-   SOURCE-ROOT:CWD$ 2swap PATH FS:JOIN-PATH {: u:n :}
-   PATH u [: CARRY? ;] [: CARRY ;] FS:WALK-FILES-IF ;
+   SOURCE-ROOT:CWD$ swap PATH FS:JOIN-PATH {: u:n :}
+   PATH u >str [: CARRY? ;] [: CARRY ;] FS:WALK-FILES-IF ;
 
 : CARRY-BIN ( -- )
    INTO$ s" bin" TO FS:JOIN-PATH TO-U ! TO$ FS:MAKE-DIRS
@@ -80,11 +79,11 @@ variable TREES-N
    TO$ FS:CHMOD-X
    SOURCE-ROOT:CWD$ s" bin/hb.map" PATH FS:JOIN-PATH {: u:n :}
    INTO$ s" bin/hb.map" TO FS:JOIN-PATH TO-U !
-   PATH u TO$ FS:COPY-FILE-STREAM ;
+   PATH u >str TO$ FS:COPY-FILE-STREAM ;
 
-: RACE! ( str str -- ) {: rel:^ relu:n data:^ size:n :}
-   INTO$ rel relu TO FS:JOIN-PATH TO-U !
-   TO$ data size FS:WRITE-ALL ;
+: RACE! ( str str -- ) {: rel:str data:str :}
+   INTO$ rel TO FS:JOIN-PATH TO-U !
+   TO$ data FS:WRITE-ALL ;
 
 : COPY-TREE ( str -- )
    INTO!
@@ -103,8 +102,8 @@ variable TREES-N
    s" src/install-race-x.f" S\" : RACE-B ( -- ) ;\n" RACE!
    s" src/install-race-y.f" S\" : RACE-USE ( -- ) RACE-B ;\n" RACE! ;
 
-: READER+ ( str -- ) {: a:^ u:n :}
-   READER$ a u FS:APPEND-FILE ;
+: READER+ ( str -- ) {: s:str :}
+   READER$ s FS:APPEND-FILE ;
 
 \ The reader writes with `write`, so each line reaches the pipe at once.
 : WRITE-READER ( -- )
@@ -127,35 +126,38 @@ variable TREES-N
    HOME$ s" .local/lib/habu.next" NEXT FS:JOIN-PATH NEXT-U ! ;
 
 : SETUP ( -- )
-   s" habu-install-e2e" FS:MKTEMP-DIR {: a:^ u:n :}
-   a u FS:CLEANUP-TREE+
-   a ROOT u BYTE-COPY u ROOT-U !
+   s" habu-install-e2e" FS:MKTEMP-DIR {: d:str :}
+   d FS:CLEANUP-TREE+
+   d STR:DATA ROOT d STR:LEN BYTE-COPY d STR:LEN ROOT-U !
    HOME-PATHS!
    ROOT$ s" a" TREE-A FS:JOIN-PATH TREE-A-U !
    ROOT$ s" b" TREE-B FS:JOIN-PATH TREE-B-U !
    WRITE-A WRITE-B WRITE-READER ;
 
-: SPAWN-INSTALL ( str -- pid ) {: tree:^ treeu:n :}
-   tree treeu s" bin/hb" PATH FS:JOIN-PATH {: hbu:n :}
-   PATH hbu PROCESS:NEW
+: SPAWN-INSTALL ( str -- pid ) {: tree:str :}
+   tree s" bin/hb" PATH FS:JOIN-PATH {: hbu:n :}
+   PATH hbu >str PROCESS:NEW
    s" --load" PROCESS:ARG
    s" tools/install.f" PROCESS:ARG
    s" HOME" HOME$ PROCESS:ENV
-   tree treeu PROCESS:CWD
+   tree PROCESS:CWD
    PROCESS:SPAWN ;
 
 : INSTALLED ( pid -- )
    PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T= ;
 
-: INSTALL ( ^u8 n -- ) SPAWN-INSTALL INSTALLED ;
+: INSTALL ( str -- ) SPAWN-INSTALL INSTALLED ;
+
+: TREE+ ( str -- )
+   drop 1 TREES-N +! ;
 
 : COUNT-TREES ( -- n )
    0 TREES-N !
-   TREES$ [: 2drop 1 TREES-N +! ;] FS-LIST:EACH
+   TREES$ [: TREE+ ;] FS-LIST:EACH
    TREES-N @ ;
 
-: KEEP-NAME ( str -- ) {: a:^ u:n :}
-   TREES$ a u KEPT FS:JOIN-PATH KEPT-U ! ;
+: KEEP-NAME ( str -- ) {: s:str :}
+   TREES$ s KEPT FS:JOIN-PATH KEPT-U ! ;
 
 \ Run with one tree in habu-trees, so KEPT names it.
 : RECORD-TREE ( -- ) TREES$ [: KEEP-NAME ;] FS-LIST:EACH ;
@@ -204,7 +206,7 @@ variable TREES-N
    READ-SOME dup 0 > if OUT-U +! true exit then
    drop false ;
 
-: LINE? ( -- bool ) OUT OUT-U @ S\" \n" STR:CONTAINS? ;
+: LINE? ( -- bool ) OUT OUT-U @ >str S\" \n" STR:CONTAINS? ;
 
 : AWAIT-LINE ( fd -- )
    begin LINE? 0= if dup MORE else false then while repeat drop ;
@@ -224,13 +226,13 @@ variable TREES-N
    in-r FD>N close  out-w FD>N close
    0 OUT-U !
    out-r AWAIT-LINE
-   OUT OUT-U @ S\" loaded\n" STR:= if
+   OUT OUT-U @ >str S\" loaded\n" STR:= if
       TREE-B$ INSTALL 2 HELD  TREE-B$ INSTALL 3 HELD  in-w GO
    then
    in-w FD>N close
    child REAP
    out-r DRAIN
-   OUT OUT-U @ S\" loaded\ndone\n" T$=
+   OUT OUT-U @ >str S\" loaded\ndone\n" T$=
    SWEPT ;
 
 : READ-WHOLE ( -- )
@@ -242,14 +244,14 @@ variable TREES-N
    0 OUT-U !
    child REAP
    out-r DRAIN
-   OUT OUT-U @ S\" loaded\ndone\n" T$= ;
+   OUT OUT-U @ >str S\" loaded\ndone\n" T$= ;
 
 : FRESH ( -- )
    s" a load started after an install reads that release whole" T-LABEL
    READ-WHOLE ;
 
-: TREE-PATH ( str -- str ) {: a:^ u:n :}
-   TREES$ a u PATH FS:JOIN-PATH PATH swap ;
+: TREE-PATH ( str -- str ) {: s:str :}
+   TREES$ s PATH FS:JOIN-PATH PATH swap >str ;
 
 \ A partial tree, a complete one nobody runs and the staged link naming it.
 : DEAD! ( -- )
@@ -259,7 +261,7 @@ variable TREES-N
    FS:COPY-FILE-STREAM
    s" habu-trees/tree-dead-1" NEXT$ FS:MAKE-SYMLINK ;
 
-: GONE ( ^u8 n -- ) TREE-PATH FS:TRY-LSTAT TFALSE ;
+: GONE ( str -- ) TREE-PATH FS:TRY-LSTAT TFALSE ;
 
 : DEAD ( -- )
    s" an install removes what a dead install left" T-LABEL

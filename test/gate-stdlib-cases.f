@@ -1,4 +1,3 @@
-split-str
 STDLIB-GATE:MAIN
 
 using TEST

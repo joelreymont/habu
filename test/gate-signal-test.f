@@ -1,4 +1,3 @@
-split-str
 \ gate-signal-test.f - a stopped gate leaves no process and no scratch behind.
 \ The subject is test/gate-signal-root.f, test/run.f's adapter on a one-row
 \ registry, started as a child with a private TMPDIR; its row
@@ -65,8 +64,8 @@ false CASE-NOHUP !
 PROCESS:NO-FD FIFO-RD !
 PROCESS:NO-FD ROOT-WATCH !
 
-: TMP$ ( -- str )    TMP TMP-U @ ;
-: LOG$ ( -- str )    LOG LOG-U @ ;
+: TMP$ ( -- str )    TMP TMP-U @ >str ;
+: LOG$ ( -- str )    LOG LOG-U @ >str ;
 
 : PAUSE ( n -- ) {: ms:n :}
    PAUSE-PFD 0 ms poll drop ;
@@ -90,7 +89,7 @@ PROCESS:NO-FD ROOT-WATCH !
    TMP$ FS:MAKE-DIRS ;
 
 : ENTRY+ ( str -- )
-   2drop ENTRY-N @ 1+ ENTRY-N ! ;
+   drop ENTRY-N @ 1+ ENTRY-N ! ;
 
 : TMP-ENTRIES ( -- n )
    0 ENTRY-N !
@@ -104,7 +103,7 @@ PROCESS:NO-FD ROOT-WATCH !
 \ ---- the report FIFO --------------------------------------------------------
 
 : FIFO$ ( -- str )
-   FIFO FIFO-U @ ;
+   FIFO FIFO-U @ >str ;
 
 \ A new FIFO for the case, its read end open before the row starts, so the
 \ row's open of the write end does not wait.
@@ -171,7 +170,7 @@ variable STAT-PATH-U
    s" /proc/" STAT-PATH+
    pid FD-TEXT$ STAT-PATH+
    s" /stat" STAT-PATH+
-   STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ open-rd {: fd:n :}
+   STAT-PATH STAT-PATH-U BUF-LEN@ >str FS:>PATHZ open-rd {: fd:n :}
    fd 0 < if 0 exit then
    fd STAT STAT-CAP read {: got:n :}
    fd close
@@ -182,7 +181,7 @@ variable STAT-PATH-U
    STAT-START-FIELD 1- 0 ?do got PAST-SPACES got PAST-WORD loop
    got PAST-SPACES {: start:n :}
    start got PAST-WORD {: stop:n :}
-   STAT start + stop start - STR:>NUMBER? MATCH option
+   STAT start + stop start - >str STR:>NUMBER? MATCH option
       none OF 0 ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -287,7 +286,7 @@ variable STAT-PATH-U
 \ ---- the gate root ----------------------------------------------------------
 
 : OPEN-NULL ( -- n )
-   s\" /dev/null\z" drop open-rd {: fd:n :}
+   s\" /dev/null\z" STR:DATA open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
@@ -302,7 +301,7 @@ variable STAT-PATH-U
          EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF ENDOF
    ;MATCH
-   NOHUP swap ;
+   NOHUP swap >str ;
 
 \ Stages the root's argv and answers the executable: the engine, or nohup with
 \ the engine as its first argument. nohup sets SIGHUP to ignored and becomes
@@ -319,12 +318,12 @@ variable STAT-PATH-U
 \ that has already exited.
 : ROOT-START ( -- )
    OPEN-FIFO
-   ROOT-ARGV {: exe:^ exeu:n :}
+   ROOT-ARGV {: exe:str :}
    s" TMPDIR" TMP$ PROC-ENV+
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING
    OPEN-NULL OPEN-LOG {: in:n log:n :}
-   exe exeu in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO
+   exe in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO
    PID>N ROOT-PID !
    true ROOT-LIVE !
    in close
@@ -361,7 +360,7 @@ variable STAT-PATH-U
    ROOT-PID @ >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop
    ROOT-REAP drop
    s" the late root's output:" type cr
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL type cr ;
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL >str type cr ;
 
 \ Failure mode 8: SIGHUP is no signal to a root under nohup, so the root and
 \ every process under it are still there IGNORED-MS later.

@@ -1,4 +1,3 @@
-split-str
 \ gate-pool-orphan-test.f - pool children die on parent death: the production
 \ death-pipe reaper kills a spawned child's group when its pool parent is
 \ SIGKILLed, the case the pool's own GT-POOL-KILL-ALL cleanup never reaches.
@@ -35,7 +34,7 @@ create GPO-SLEEP-PFD 8 allot
    repeat drop ;
 
 : GPO-EXIT ( n -- )
-   s" " rot die ;
+   s" " swap die ;
 
 \ A child here runs until it is killed. One that cannot fork what its part
 \ needs - its reaper, or the child it watches - must not throw: that would

@@ -1,4 +1,3 @@
-split-str
 \ linux-engine-build.f - `hb-build --target linux-aarch64` of the engine and of
 \ a program with a callback, spawned from the tree's root because hb-build.f
 \ reads its argv. Neither file it writes is run. A program whose top level binds
@@ -27,11 +26,11 @@ PATH-CAP BUFFER: SRC      variable SRC-U
 PATH-CAP BUFFER: PROG     variable PROG-U
 20 SPAN-BUFFER: HEAD
 
-: DIR$ ( -- str ) DIR DIR-U @ ;
-: OUT-DIR$ ( -- str ) OUT-DIR OUT-DIR-U @ ;
-: EXE$ ( -- str ) EXE EXE-U @ ;
-: SRC$ ( -- ^u8 n ) SRC SRC-U @ ;
-: PROG$ ( -- str ) PROG PROG-U @ ;
+: DIR$ ( -- str ) DIR DIR-U @ >str ;
+: OUT-DIR$ ( -- str ) OUT-DIR OUT-DIR-U @ >str ;
+: EXE$ ( -- str ) EXE EXE-U @ >str ;
+: SRC$ ( -- str ) SRC SRC-U @ >str ;
+: PROG$ ( -- str ) PROG PROG-U @ >str ;
 
 : ELF-MAG ( -- str ) s\" \x7FELF" ;
 
@@ -41,12 +40,12 @@ PATH-CAP BUFFER: PROG     variable PROG-U
    s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr ;
 
 \ What to build, `--engine` or a source path, and the path it writes.
-: BUILD ( CMD:command ^u8 n ^u8 n -- CMD:command n )
-   {: w:^ wu:n o:^ ou:n :}
+: BUILD ( CMD:command str str -- CMD:command n )
+   {: w:str o:str :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+
-   s" --target" CMD:ARG+  s" linux-aarch64" CMD:ARG+  w wu CMD:ARG+
-   s" -o" CMD:ARG+  o ou CMD:ARG+
+   s" --target" CMD:ARG+  s" linux-aarch64" CMD:ARG+  w CMD:ARG+
+   s" -o" CMD:ARG+  o CMD:ARG+
    s" HABU_OUT" OUT-DIR$ CMD:ENV+  s" TMPDIR" DIR$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N ;
@@ -69,8 +68,8 @@ PATH-CAP BUFFER: PROG     variable PROG-U
    rc 0<> if exit then
    s" the engine holds an ELF header's first 20 bytes" T-LABEL
    EXE$ READ-HEAD dup TTRUE 0= if exit then
-   HEAD SPAN:$ drop {: h:^ :}
-   s" the engine starts with the ELF magic" T-LABEL  h 4 ELF-MAG T$=
+   HEAD SPAN:$ STR:DATA {: h:^ :}
+   s" the engine starts with the ELF magic" T-LABEL  h 4 >str ELF-MAG T$=
    s" the engine is for AArch64" T-LABEL  h 18 + LE:U16@ EM-AARCH64 T= ;
 
 \ A callback's accessor compiles under the target's shadow only in a program:
@@ -87,7 +86,7 @@ PATH-CAP BUFFER: PROG     variable PROG-U
    s" the program holds an ELF header's first 20 bytes" T-LABEL
    PROG$ READ-HEAD dup TTRUE 0= if exit then
    s" the program starts with the ELF magic" T-LABEL
-   HEAD SPAN:$ drop 4 ELF-MAG T$= ;
+   HEAD SPAN:$ STR:DATA 4 >str ELF-MAG T$= ;
 
 \ The same program, binding its callback on line 3.
 : BIND-SOURCE$ ( -- str )
@@ -112,8 +111,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   s" habu-linux-engine-build" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
+   s" habu-linux-engine-build" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY  d STR:LEN DIR-U !
    DIR$ s" out" OUT-DIR FS:JOIN-PATH OUT-DIR-U !
    DIR$ s" hb" EXE FS:JOIN-PATH EXE-U !
    DIR$ s" callback.f" SRC FS:JOIN-PATH SRC-U !

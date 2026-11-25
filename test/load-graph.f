@@ -1,4 +1,3 @@
-split-str
 \ load-graph.f - the load graph of the registry's rows: every file a row loads
 \ and every file those load, each read once and named by its canonical path,
 \ with the imports and launches it makes.
@@ -34,21 +33,21 @@ variable PROBE
 
 : FILE$ ( n -- str ) {: id:n :}
    0 PATH-BYTES id PATH-OFF @ +
-   id PATH-LEN @ ;
+   id PATH-LEN @ >str ;
 
-: FILE-ADD ( str -- n ) {: a:^ u:n :}
+: FILE-ADD ( str -- n ) {: s:str :}
    FILE-N @ {: id:n :}
-   PATH-U @ u + PATH-BYTES-RESERVE
+   PATH-U @ s STR:LEN + PATH-BYTES-RESERVE
    id 1+ PATH-OFF-RESERVE
    id 1+ PATH-LEN-RESERVE
    id 1+ EDGE-OFF-RESERVE
    id 1+ EDGE-CNT-RESERVE
-   a 0 PATH-BYTES PATH-U @ + u BYTE-COPY
+   s STR:DATA 0 PATH-BYTES PATH-U @ + s STR:LEN BYTE-COPY
    PATH-U @ id PATH-OFF !
-   u id PATH-LEN !
+   s STR:LEN id PATH-LEN !
    0 id EDGE-OFF !
    0 id EDGE-CNT !
-   PATH-U @ u + PATH-U !
+   PATH-U @ s STR:LEN + PATH-U !
    id 1+ FILE-N !
    id ;
 
@@ -60,21 +59,21 @@ variable PROBE
 
 \ Probe from a canonical path's hash to the slot holding it, or to the empty
 \ slot it would take.
-: PROBE! ( str -- ) {: a:^ u:n :}
-   FNV:BASIS a u FNV:BYTES HASH-CAP 1- and PROBE !
+: PROBE! ( str -- ) {: s:str :}
+   FNV:BASIS s FNV:BYTES HASH-CAP 1- and PROBE !
    begin SLOT-ID 0<> while
-      SLOT-ID 1- FILE$ a u STR:= if exit then
+      SLOT-ID 1- FILE$ s STR:= if exit then
       PROBE @ 1+ HASH-CAP 1- and PROBE !
    repeat ;
 
-: INTERN ( ^u8 n -- n ) {: a:^ u:n :}
-   a u PROBE!
+: INTERN ( str -- n ) {: s:str :}
+   s PROBE!
    SLOT-ID 0<> if SLOT-ID 1- exit then
    FILE-N @ HASH-CAP 2 / >= if
       s" load graph: more files than HASH-CAP holds" type cr
       E-TBL-BOUNDS throw
    then
-   a u FILE-ADD {: id:n :}
+   s FILE-ADD {: id:n :}
    id 1+ PROBE @ HASH-SLOT !
    id ;
 
@@ -97,14 +96,14 @@ variable PROBE
 : REF ( ^u8 n n n -- )
    {: a:^ u:n line:n kind:n :}
    kind LOAD-REFS:LAUNCHES <> {: import:bool :}
-   a u 0 STR:INDEX-OF MATCH option
+   a u >str 0 STR:INDEX-OF MATCH option
       some OF drop exit ENDOF
       none OF ENDOF
    ;MATCH
-   a u FS:FILE? 0= if exit then
-   a u SOURCE-ROOT:CANONICAL drop {: path:^ pathu:n :}
-   import 0= path pathu s" .f" STR:ENDS-WITH? 0= and if exit then
-   path pathu INTERN line import EDGE+ ;
+   a u >str FS:FILE? 0= if exit then
+   a u >str SOURCE-ROOT:CANONICAL drop {: path:str :}
+   import 0= path s" .f" STR:ENDS-WITH? 0= and if exit then
+   path INTERN line import EDGE+ ;
 
 : SCAN ( n -- ) {: id:n :}
    EDGE-N @ id EDGE-OFF !
@@ -119,8 +118,8 @@ variable PROBE
 
 \ A file a row loads; a path that names no file is not read.
 : ROW-FILE ( n bool str -- )
-   {: row:n entry:bool a:^ u:n :}
-   a u FS:FILE? if a u SOURCE-ROOT:CANONICAL drop INTERN drop then ;
+   {: row:n entry:bool s:str :}
+   s FS:FILE? if s SOURCE-ROOT:CANONICAL drop INTERN drop then ;
 
 public
 
@@ -141,10 +140,10 @@ public
 
 \ The id of a file READ read, by any path naming it. Any other path is refused:
 \ a file the walk never read has no loads to trust.
-: FILE-ID ( str -- n ) {: a:^ u:n :}
-   a u SOURCE-ROOT:CANONICAL drop PROBE!
+: FILE-ID ( str -- n ) {: s:str :}
+   s SOURCE-ROOT:CANONICAL drop PROBE!
    SLOT-ID 0<> if SLOT-ID 1- exit then
-   s" load graph: not a file of the load graph: " type a u type cr
+   s" load graph: not a file of the load graph: " type s type cr
    E-SUITE-ROW throw ;
 
 EXPORT FILE$

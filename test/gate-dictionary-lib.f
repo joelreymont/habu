@@ -1,4 +1,3 @@
-split-str
 \ gate-dictionary-lib.f - dictionary and checker contracts, run by
 \ test/gate-dictionary.f.
 
@@ -28,11 +27,11 @@ TYPED-VARIABLE LABEL-A ^u8
 variable LABEL-U
 
 : LABEL$ ( -- str )
-   LABEL-A @ LABEL-U @ ;
+   LABEL-A @ LABEL-U @ >str ;
 
-: LABEL! ( ^u8 n -- ) {: a:^ u:n :}
-   u LABEL-U !
-   a LABEL-A ! ;
+: LABEL! ( str -- ) {: s:str :}
+   s STR:LEN LABEL-U !
+   s STR:DATA LABEL-A ! ;
 
 : EMIT-LONG-NAME ( -- )
    LONG-NAME-LEN NAME-CHAR GE-SRC-REPEAT-C ;
@@ -44,34 +43,34 @@ variable LABEL-U
    EMIT-LONG-NAME
    GE-DQ GE-SRC-C ;
 
-: SRC-DOTQ ( str -- ) {: a:^ u:n :}
+: SRC-DOTQ ( str -- ) {: s:str :}
    DOT-CHAR GE-SRC-C
    GE-DQ GE-SRC-C
    GE-SRC-SP
-   a u GE-SRC+
+   s GE-SRC+
    GE-DQ GE-SRC-C ;
 
-: SRC-CQ ( str -- ) {: a:^ u:n :}
+: SRC-CQ ( str -- ) {: s:str :}
    C-LOWER-CHAR GE-SRC-C
    GE-DQ GE-SRC-C
    GE-SRC-SP
-   a u GE-SRC+
+   s GE-SRC+
    GE-DQ GE-SRC-C ;
 
 : INC-CORE$ ( -- str )
-   INC-CORE INC-CORE-U @ ;
+   INC-CORE INC-CORE-U @ >str ;
 
 : INC-API$ ( -- str )
-   INC-API INC-API-U @ ;
+   INC-API INC-API-U @ >str ;
 
 : INC-MAIN$ ( -- str )
-   INC-MAIN INC-MAIN-U @ ;
+   INC-MAIN INC-MAIN-U @ >str ;
 
 : INC-DUP$ ( -- str )
-   INC-DUP INC-DUP-U @ ;
+   INC-DUP INC-DUP-U @ >str ;
 
-: INC-PATH! ( str ^u8 ^n -- ) {: name:^ nameu:n dst:^ up:^ :}
-   GT-ROOT name nameu dst FS:JOIN-PATH up ! ;
+: INC-PATH! ( str ^u8 ^n -- ) {: name:str dst:^ up:^ :}
+   GT-ROOT name dst FS:JOIN-PATH up ! ;
 
 : INC-PATHS ( -- )
    s" app-core.f" INC-CORE INC-CORE-U INC-PATH!
@@ -510,31 +509,31 @@ variable LABEL-U
    s" : USE-CK ( -- n ) CK:EXPORTED ;" GE-SRC-LINE ;
 
 : CHECK-BUF-ACT ( -- )
-   LABEL$ GE-SRC-BUF GE-SRC-U @ CHECK-ALL-ERRORS:BUF ;
+   LABEL$ GE-SRC-BUF GE-SRC-U @ >str CHECK-ALL-ERRORS:BUF ;
 
-: CHECK-BUF-RUN ( str -- ) {: label:^ labelu:n :}
-   label labelu GT-PROGRESS-RUN
-   label labelu LABEL!
+: CHECK-BUF-RUN ( str -- ) {: label:str :}
+   label GT-PROGRESS-RUN
+   label LABEL!
    false REJECTION:JSON !
    [: CHECK-BUF-ACT ;] GE-CAPTURE-ACTION ;
 
 : CHECK-BUF-BAD ( n str str -- )
-   {: rc:n needle:^ needleu:n label:^ labelu:n :}
-   label labelu CHECK-BUF-RUN
-   rc label labelu GE-EXPECT-RC
-   needle needleu label labelu GE-EXPECT-ERR-HAS
-   label labelu GT-PROGRESS-PASS ;
+   {: rc:n needle:str label:str :}
+   label CHECK-BUF-RUN
+   rc label GE-EXPECT-RC
+   needle label GE-EXPECT-ERR-HAS
+   label GT-PROGRESS-PASS ;
 
-: CHECK-BAD-ALL ( str -- ) {: label:^ labelu:n :}
-   label labelu CHECK-BUF-RUN
-   70 label labelu GE-EXPECT-RC
-   label labelu GT-PROGRESS-PASS ;
+: CHECK-BAD-ALL ( str -- ) {: label:str :}
+   label CHECK-BUF-RUN
+   70 label GE-EXPECT-RC
+   label GT-PROGRESS-PASS ;
 
-: CHECK-BUF-GOOD ( str -- ) {: label:^ labelu:n :}
-   label labelu CHECK-BUF-RUN
-   label labelu GE-EXPECT-OK
-   label labelu GE-EXPECT-SILENT
-   label labelu GT-PROGRESS-PASS ;
+: CHECK-BUF-GOOD ( str -- ) {: label:str :}
+   label CHECK-BUF-RUN
+   label GE-EXPECT-OK
+   label GE-EXPECT-SILENT
+   label GT-PROGRESS-PASS ;
 
 : NORET-GOOD-BODY ( -- )
    s" package GD-NR" GE-SRC-LINE
@@ -589,11 +588,11 @@ variable LABEL-U
    GE-EVAL-FORK-BAD ;
 
 : RUN-BAD-CHILD ( n str str -- )
-   {: rc:n needle:^ needleu:n label:^ labelu:n :}
-   GE-HB$ GE-SRC-BUF GE-SRC-U @
+   {: rc:n needle:str label:str :}
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ >str
    PROCESS:WAIT-FOREVER GE-RUN-STDIN
-   rc label labelu GE-EXPECT-RC
-   needle needleu label labelu GE-EXPECT-ERR-HAS ;
+   rc label GE-EXPECT-RC
+   needle label GE-EXPECT-ERR-HAS ;
 
 \ One literal grammar for engine and checker: int -?d+ | -?$h+, float -?d*.d+;
 \ dot-leading spellings (.5 -.5 .0) are float literals, 5. and ..5 are words.
@@ -680,29 +679,29 @@ variable LABEL-U
    SB$ s" hb last safe decimal value" GE-EXPECT-OUT ;
 
 : LITERAL-FLOAT-BAD-INTERPRETED ( str str -- )
-   {: lit:^ litu:n label:^ labelu:n :}
+   {: lit:str label:str :}
    GE-HB-RESET
    GE-SRC-RESET
-   lit litu GE-SRC+
+   lit GE-SRC+
    s"  ." GE-SRC-LINE
-   70 lit litu label labelu GE-EVAL-FORK-BAD ;
+   70 lit label GE-EVAL-FORK-BAD ;
 
 : LITERAL-FLOAT-BAD-CHECKED ( str str -- )
-   {: lit:^ litu:n label:^ labelu:n :}
+   {: lit:str label:str :}
    GE-HB-RESET
    GE-SRC-RESET
    s" : GD-FLOAT-OVERFLOW ( -- r ) " GE-SRC+
-   lit litu GE-SRC+
+   lit GE-SRC+
    s"  ;" GE-SRC-LINE
-   70 lit litu label labelu GE-EVAL-FORK-BAD ;
+   70 lit label GE-EVAL-FORK-BAD ;
 
-: LITERAL-FLOAT-HOSTILE ( str -- ) {: lit:^ litu:n :}
+: LITERAL-FLOAT-HOSTILE ( str -- ) {: lit:str :}
    GE-HB-RESET
    GE-SRC-RESET
-   s" : " GE-SRC+ lit litu GE-SRC+
+   s" : " GE-SRC+ lit GE-SRC+
    s"  ( -- n ) 42 ;" GE-SRC-LINE
-   lit litu GE-SRC+ s"  ." GE-SRC-LINE
-   70 lit litu
+   lit GE-SRC+ s"  ." GE-SRC-LINE
+   70 lit
    s" hb rejects an overflowing decimal before hostile dictionary lookup" GE-EVAL-FORK-BAD ;
 
 : LITERAL-FLOAT-HOSTILE-NAME ( -- )
@@ -961,42 +960,42 @@ variable LABEL-U
    s" package B : Xx ( -- ) nosuchword ; public : XX ( -- n ) 1 ; ;package" GE-SRC-LINE
    $46 s" = private: Xx (0 -- 0)" s" checker spells a rejected private twin as written" CHECK-BUF-BAD ;
 
-: RUN-LOAD-ONE ( str str -- ) {: path:^ pathu:n label:^ labelu:n :}
+: RUN-LOAD-ONE ( str str -- ) {: path:str label:str :}
    GE-HB-RESET
    s" --load" GE-ARG+
-   path pathu GE-ARG+
+   path GE-ARG+
    s" --" GE-ARG+
-   label labelu GT-PROGRESS-RUN
+   label GT-PROGRESS-RUN
    s" bin/hb" PROCESS:WAIT-FOREVER GE-RUN-ENV
-   label labelu GE-EXPECT-OK
-   label labelu GT-PROGRESS-PASS ;
+   label GE-EXPECT-OK
+   label GT-PROGRESS-PASS ;
 
-: RUN-LOAD-THREE ( str -- ) {: label:^ labelu:n :}
+: RUN-LOAD-THREE ( str -- ) {: label:str :}
    GE-HB-RESET
    s" --load" GE-ARG+
    INC-CORE$ GE-ARG+
    INC-API$ GE-ARG+
    INC-MAIN$ GE-ARG+
    s" --" GE-ARG+
-   label labelu GT-PROGRESS-RUN
+   label GT-PROGRESS-RUN
    s" bin/hb" PROCESS:WAIT-FOREVER GE-RUN-ENV
-   label labelu GE-EXPECT-OK
-   label labelu GT-PROGRESS-PASS ;
+   label GE-EXPECT-OK
+   label GT-PROGRESS-PASS ;
 
 : RUN-LOAD-BAD ( n str str -- )
-   {: rc:n needle:^ needleu:n label:^ labelu:n :}
+   {: rc:n needle:str label:str :}
    GE-HB-RESET
    s" --load" GE-ARG+
    INC-MAIN$ GE-ARG+
    s" --" GE-ARG+
    s" bin/hb" PROCESS:WAIT-FOREVER GE-RUN-ENV
-   rc label labelu GE-EXPECT-RC
-   needle needleu label labelu GE-EXPECT-ERR-HAS ;
+   rc label GE-EXPECT-RC
+   needle label GE-EXPECT-ERR-HAS ;
 
-: EXPECT-GET9 ( str -- ) {: label:^ labelu:n :}
+: EXPECT-GET9 ( str -- ) {: label:str :}
    SB-RESET
    s" 9" GE-OUT-LINE
-   SB$ label labelu GE-EXPECT-OUT ;
+   SB$ label GE-EXPECT-OUT ;
 
 : PACKAGE-MULTIFILE-LOAD ( -- )
    INC-PATHS

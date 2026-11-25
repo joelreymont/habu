@@ -1,4 +1,3 @@
-split-str
 \ HEAP records come from the real definer and runtime: each is zero-filled,
 \ typed through its STRUCTURE's accessors, distinct from the next, and keeps
 \ its contents across another record's NEW and RELEASE; a record holding a
@@ -60,8 +59,9 @@ HEAP HOLDERS holder
 
 TYPED-VARIABLE EVAL-A ^u8
 variable EVAL-U
-: EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ evaluate-closed ;
-: EVAL ( ^u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
+: EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ >str evaluate-closed ;
+: EVAL ( str -- n ) {: s:str :}
+   s STR:LEN EVAL-U ! s STR:DATA EVAL-A ! [: EVAL-RUN ;] catch ;
 
 : UNDEFINED? ( str -- bool ) get-current search-wl 0= ;
 
@@ -71,7 +71,7 @@ variable EVAL-U
    NOTES-NEW {: a:^ :}
    a NOTE-ID @ 0 T=
    a NOTE-TEXT @ NULL-PTR = TTRUE
-   7 a NOTE-ID !  s" hi" drop a NOTE-TEXT !
+   7 a NOTE-ID !  s" hi" STR:DATA a NOTE-TEXT !
    a NOTE-ID @ 7 T=
    s" a second record is distinct" T-LABEL
    NOTES-NEW {: b:^ :}
@@ -152,7 +152,7 @@ variable EVAL-U
    s" test/heap-use.f" PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:OUT$ s" deferred to the run" STR:CONTAINS? 0= TTRUE
-   E2E-TREE:ERR$ nip 0 T=
+   E2E-TREE:ERR$ STR:LEN 0 T=
    E2E-TREE:RC@ 0 T= ;
 
 

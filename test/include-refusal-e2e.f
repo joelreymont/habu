@@ -1,4 +1,3 @@
-split-str
 \ include-refusal-e2e.f - a loader rejection that ends the process names itself:
 \ each case pins the record's exit status, an empty stdout and a stderr record
 \ carrying the rejection's code, the word or path it names and why. Children run the engine under test
@@ -29,84 +28,84 @@ create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
 variable RC
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: PROG$ ( -- str ) PROG PROG-U @ ;
-: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: PROG$ ( -- str ) PROG PROG-U @ >str ;
+: ERR$ ( -- str ) ERR ERR-U @ >str ;
 
 \ <root>/<rel>, until the next call.
-: AT ( ^u8 n -- ^u8 n )
-   {: rel:^ relu:n :}
-   ROOT$ rel relu PATH FS:JOIN-PATH {: u:n :}
-   PATH u ;
+: AT ( str -- str )
+   {: rel:str :}
+   ROOT$ rel PATH FS:JOIN-PATH {: u:n :}
+   PATH u >str ;
 
 : SETUP ( -- )
-   s" habu-include-refusal" FS:MKTEMP-DIR CANONICAL TTRUE {: a:^ u:n :}
-   a u FS:CLEANUP-TREE+
-   a ROOT u BYTE-COPY u ROOT-U !
+   s" habu-include-refusal" FS:MKTEMP-DIR CANONICAL TTRUE {: d:str :}
+   d FS:CLEANUP-TREE+
+   d STR:DATA ROOT d STR:LEN BYTE-COPY d STR:LEN ROOT-U !
    s" cases" AT FS:MAKE-DIR
    s" plain.f" AT s" \ a file, not a directory" FS:WRITE-ALL ;
 
 : PROG+ ( str -- )
-   {: a:^ u:n :}
-   u IO-CAP PROG-U @ - > if E-STR-CAPACITY throw then
-   a PROG PROG-U @ + u BYTE-COPY
-   u PROG-U +! ;
+   {: s:str :}
+   s STR:LEN IO-CAP PROG-U @ - > if E-STR-CAPACITY throw then
+   s STR:DATA PROG PROG-U @ + s STR:LEN BYTE-COPY
+   s STR:LEN PROG-U +! ;
 
 : PLINE ( str -- ) PROG+ S\" \n" PROG+ ;
 
 \ <root>/cases/<name><suffix>.
-: NAMED ( ^u8 n ^u8 n -- ^u8 n )
-   {: name:^ nameu:n suffix:^ suffixu:n :}
-   SB-RESET s" cases/" SB-APPEND name nameu SB-APPEND suffix suffixu SB-APPEND SB$ AT ;
+: NAMED ( str str -- str )
+   {: name:str suffix:str :}
+   SB-RESET s" cases/" SB-APPEND name SB-APPEND suffix SB-APPEND SB$ AT ;
 
 : RESULT! ( result<pcap:captured,pcap:failed> -- )
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 \ The child's streams, beside its program.
-: KEEP ( ^u8 n -- )
-   {: name:^ nameu:n :}
-   name nameu s" .out" NAMED OUT OUT-U @ FS:WRITE-ALL
-   name nameu s" .err" NAMED ERR$ FS:WRITE-ALL ;
+: KEEP ( str -- )
+   {: name:str :}
+   name s" .out" NAMED OUT OUT-U @ >str FS:WRITE-ALL
+   name s" .err" NAMED ERR$ FS:WRITE-ALL ;
 
 \ The engine under test runs the program as <root>/cases/<name>.f with --load.
 : LOAD-CASE ( str -- )
-   {: name:^ nameu:n :}
-   name nameu s" .f" NAMED PROG$ FS:WRITE-ALL
+   {: name:str :}
+   name s" .f" NAMED PROG$ FS:WRITE-ALL
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" PROC-ARGV+
-   name nameu s" .f" NAMED PROC-ARGV+
+   name s" .f" NAMED PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ CWD$
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT!
-   name nameu KEEP ;
+   name KEEP ;
 
 : EXITS ( n -- ) {: rc:n :}
    RC @ rc T=
    OUT-U @ 0 T= ;
 
-: ERR-HAS ( str -- ) {: a:^ u:n :}
-   ERR$ a u STR:CONTAINS? TTRUE ;
+: ERR-HAS ( str -- ) {: s:str :}
+   ERR$ s STR:CONTAINS? TTRUE ;
 
 \ The string builder holds <pre><root>/<rel>`.
 : SB-NAMES ( str str -- )
-   {: pre:^ preu:n rel:^ relu:n :}
-   SB-RESET pre preu SB-APPEND rel relu AT SB-APPEND 96 SB-APPEND-C ;
+   {: pre:str rel:str :}
+   SB-RESET pre SB-APPEND rel AT SB-APPEND 96 SB-APPEND-C ;
 
 \ A program that scopes the root <root>/<rel>, and the rejection naming that path.
 : WITH-AT ( str str -- )
-   {: name:^ nameu:n rel:^ relu:n :}
+   {: name:str rel:str :}
    0 PROG-U !
    s" package INCLUDE-REFUSAL-WITH" PLINE
    s" public" PLINE
-   S\" : RUN ( -- ) s\q " PROG+ rel relu AT PROG+
+   S\" : RUN ( -- ) s\q " PROG+ rel AT PROG+
    S\" \q [: ;] SOURCE-ROOT:WITH ;" PLINE
    s" ;package" PLINE
    s" INCLUDE-REFUSAL-WITH:RUN" PLINE
-   name nameu LOAD-CASE
+   name LOAD-CASE
    70 EXITS
    s" error[E-SOURCE-ROOT]" ERR-HAS
-   s" `SOURCE-ROOT:WITH` got `" rel relu SB-NAMES SB$ ERR-HAS
+   s" `SOURCE-ROOT:WITH` got `" rel SB-NAMES SB$ ERR-HAS
    s" does not resolve to a searchable directory" ERR-HAS ;
 
 \ A file's path resolves, so only the directory check refuses it as a root.
@@ -177,13 +176,13 @@ variable RC
 \ A program whose one line requires the absolute path <root>/<rel>, and the
 \ loader's missing-source rejection naming that path.
 : REQUIRE-AT ( str str -- )
-   {: name:^ nameu:n rel:^ relu:n :}
+   {: name:str rel:str :}
    0 PROG-U !
-   s" require " PROG+ rel relu AT PLINE
-   name nameu LOAD-CASE
+   s" require " PROG+ rel AT PLINE
+   name LOAD-CASE
    70 EXITS
    s" error[E-MISSING-SOURCE]" ERR-HAS
-   s" cannot open `" rel relu SB-NAMES SB$ ERR-HAS ;
+   s" cannot open `" rel SB-NAMES SB$ ERR-HAS ;
 
 \ A missing directory cannot be a root, so the load keeps the current one.
 : REQUIRE-ABSENT ( -- )
