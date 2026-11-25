@@ -83,7 +83,7 @@ public
 
 \ Why an exchange failed; LOST? says which faults may succeed if tried again.
 \ `woken`: NEXT-UNLESS's descriptor became readable or invalid before the answer.
-ENUM fault resolve connect handshake trust send receive cut timeout
+ENUM fault DERIVE eq resolve connect handshake trust send receive cut timeout
    malformed oversize woken ;ENUM
 
 \ One NEXT's answer: `chunk` has the status and the body bytes now in the
