@@ -600,7 +600,7 @@ SUITE mcp-app
    src/lib/browser/app-test.f
 ;SUITE
 
-\ STUDIO:KEY-VOLUME's planes and pixel for three stated scenes, and the
+\ STUDIO:KEY-VOLUME's planes and pixel for four stated scenes, and the
 \ matrices it rejects.
 SUITE studio
    src/lib/browser/studio-test.f

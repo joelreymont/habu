@@ -460,7 +460,7 @@ TYPED-VARIABLE SHOWN held
    \ The plane 0.1x - 0.2y + z + 0.3 = 0 and the casters' box x -1..20,
    \ y -0.8..1.2 and z -0.5..2. The box's rectangle sets M's lowest key x,
    \ -1.886, and lowest key y, -1.114: the ground in view grown by the
-   \ shadow's read reach runs to -8.936 and -4.656.
+   \ reach of its rays to the softbox runs to -10.804 and -5.777.
    0.1 VOLUME-GROUND 0 F32!  -0.2 VOLUME-GROUND 1 F32!
    1.0 VOLUME-GROUND 2 F32!  0.3 VOLUME-GROUND 3 F32!
    -1.0 VOLUME-GROUND 4 F32!  -0.8 VOLUME-GROUND 5 F32!
@@ -476,7 +476,7 @@ TYPED-VARIABLE SHOWN held
 \ The text volume, KEY-VOLUME's count in decimal, then its 20 planes'
 \ numbers and its pixel as binary64 bits, for the event's buffer.
 : VOLUME-TEXT ( -- )
-   VOLUME-MATRIX VOLUME-GROUND 3 EVENT@ 4 EVENT@ 0 VOLUME-PLANES
+   VOLUME-MATRIX VOLUME-GROUND 0 VOLUME-PLANES
    STUDIO:KEY-VOLUME {: count:n pixel:r :}
    s" volume " NAMED  count DIGITS
    20 0 do i VOLUME-PLANES @ BITS, loop

@@ -1,8 +1,8 @@
 \ studio-test.f - STUDIO:KEY-VOLUME for four scenes stated here, each number
 \ within 1e-9 of the larger of its own size and 1; the expected numbers come
 \ from viewport.js's own viewer, studio, keyAxes, keyVolume and SHADOW_SIDE,
-\ run in binary64 on the scene's f32 numbers. A matrix whose fourth row is not
-\ 0 0 0 1, and a singular one, are E-MATRIX.
+\ run in binary64 on the scene's f32 numbers. A matrix whose fourth row is not 0 0 0 1, and a
+\ singular one, are E-MATRIX.
 \ Run: bin/hb --load src/lib/browser/studio-test.f
 
 require src/lib/test/assert.f
@@ -52,50 +52,48 @@ private
    k PLANES @ a NEAR  k 1+ PLANES @ b NEAR
    k 2 + PLANES @ c NEAR  k 3 + PLANES @ d NEAR ;
 
-: VOLUME ( n n -- n r )
-   {: w:n h:n :}
-   MATRIX GROUND w h 0 PLANES STUDIO:KEY-VOLUME ;
+: VOLUME ( -- n r ) MATRIX GROUND 0 PLANES STUDIO:KEY-VOLUME ;
 
 \ The box -3 -2 0 to 4 5 2 on the plane z = 0.
 : SHELF! ( -- )
    0.0 0.0 1.0 0.0 PLANE!
    -3.0 -2.0 0.0 4.0 5.0 2.0 BOX! ;
 
-\ Looking down on z = 0 at x, y in 0..4, the eye on +z; 800 x 600.
+\ Looking down on z = 0 at x, y in 0..4, the eye on +z.
 : TOP ( -- )
    s" top" T-LABEL
    0.5 0.0 0.0 -1.0 0 ROW!  0.0 0.5 0.0 -1.0 1 ROW!
    0.0 0.0 -0.0625 0.5 2 ROW!  AFFINE!  SHELF!
-   800 600 VOLUME {: count:n px:r :}
-   count 5 T=  px 0.009946609427258717 NEAR
+   VOLUME {: count:n px:r :}
+   count 5 T=  px 0.008608986390464085 NEAR
    0.0 0.0 1.0 0.0 0 PLANE=
-   0.8682431421244592 -0.4961389383568339 0.0 3.4920370965954692 1 PLANE=
+   0.8682431421244592 -0.4961389383568339 0.0 4.350351618623719 1 PLANE=
    -0.8682431421244592 0.4961389383568339 0.0 4.465250445211504 2 PLANE=
    0.29620601710581057 0.5183605299351683 0.8022246296615702
-   0.9044888059008803 3 PLANE=
+   1.4194775191178302 3 PLANE=
    -0.29620601710581057 -0.5183605299351683 -0.8022246296615702
-   4.162754994064795 4 PLANE= ;
+   3.921964269220849 4 PLANE= ;
 
 \ A skewed affine map onto the tilted plane 0.1 x + 0.2 y + z = 0.5, the
-\ box -20 -3 0.25 to 5 20 3.5; 1280 x 720.
+\ box -20 -3 0.25 to 5 20 3.5.
 : OBLIQUE ( -- )
    s" oblique" T-LABEL
    0.3 0.1 -0.05 0.2 0 ROW!  -0.08 0.15 0.25 -0.1 1 ROW!
    -0.1 0.2 0.12 0.4 2 ROW!  AFFINE!
    0.1 0.2 1.0 -0.5 PLANE!
    -20.0 -3.0 0.25 5.0 20.0 3.5 BOX!
-   1280 720 VOLUME {: count:n px:r :}
-   count 5 T=  px 0.01285273842045995 NEAR
+   VOLUME {: count:n px:r :}
+   count 5 T=  px 0.01913341281398355 NEAR
    0.09759000867980991 0.19518001735961982 0.9759000722560548
    -0.4879500361280274 0 PLANE=
    0.992295296543169 -0.09428908832844912 -0.08037171318625887
-   11.227254358784108 1 PLANE=
+   14.36836390211453 1 PLANE=
    -0.992295296543169 0.09428908832844912 0.08037171318625887
    5.224250819404626 2 PLANE=
    0.12385968791951427 0.7394060438273888 0.6617684489759311
    4.5299697776284695 3 PLANE=
    -0.12385968791951427 -0.7394060438273888 -0.6617684489759311
-   9.15061629379561 4 PLANE= ;
+   8.2694124642653 4 PLANE= ;
 
 \ Looking down at x in 100..102 and y in 0..2: that ground, grown by the
 \ softbox, lies wholly outside the box's rectangle in key x.
@@ -103,21 +101,20 @@ private
    s" outside" T-LABEL
    1.0 0.0 0.0 -101.0 0 ROW!  0.0 1.0 0.0 -1.0 1 ROW!
    0.0 0.0 -0.0625 0.5 2 ROW!  AFFINE!  SHELF!
-   800 600 VOLUME {: count:n px:r :}
+   VOLUME {: count:n px:r :}
    count 0 T=  px 0.0 NEAR ;
 
 \ Looking down at x, y in -20..20 on the box -0.5 -10 0 to 0.5 10 3, narrow
-\ in x and long in y; 5120 x 2880. It holds the shadow map's side capped at
-\ SHADOW-SIDE, 4104, and the pixel taken from M's key y side, 13.07 against
-\ its key x side's 10.79.
+\ in x and long in y. It holds the pixel taken from M's key y side, 13.07
+\ against its key x side's 10.79.
 : TALL ( -- )
    s" tall" T-LABEL
    0.05 0.0 0.0 0.0 0 ROW!  0.0 0.05 0.0 0.0 1 ROW!
    0.0 0.0 -0.0625 0.5 2 ROW!  AFFINE!
    0.0 0.0 1.0 0.0 PLANE!
    -0.5 -10.0 0.0 0.5 10.0 3.0 BOX!
-   5120 2880 VOLUME {: count:n px:r :}
-   count 5 T=  px 0.003184719908575508 NEAR
+   VOLUME {: count:n px:r :}
+   count 5 T=  px 0.012763760258587779 NEAR
    0.0 0.0 1.0 0.0 0 PLANE=
    0.8682431421244592 -0.4961389383568339 0.0 5.395510954630569 1 PLANE=
    -0.8682431421244592 0.4961389383568339 0.0 5.395510954630569 2 PLANE=
@@ -126,7 +123,7 @@ private
    -0.29620601710581057 -0.5183605299351683 -0.8022246296615702
    7.738382196889298 4 PLANE= ;
 
-: KEPT ( -- ) 800 600 VOLUME {: count:n px:r :} ;
+: KEPT ( -- ) VOLUME {: count:n px:r :} ;
 
 \ TOP's matrix with a fourth row 0 0.25 0 1, then with rows 0 and 1
 \ parallel.

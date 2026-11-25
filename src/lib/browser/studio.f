@@ -4,9 +4,8 @@
 \   plane's unit normal n), then keyAxes' key x, y and z;
 \ - V, the plane's points at clip x, y = +-1 met along the view's back, and
 \   R, their rectangle in key x, y; T, the highest rise n.p + d of the box's
-\   corners; M, R grown in each key axis by the shadow's read reach, the
-\   softbox's half extent there (KEY-BOX-X, KEY-BOX-Y) times D = T / nz, nz
-\   n's key z, and cut to the rectangle of the box's corners in key x, y;
+\   corners; M, R grown by how far its rays to the softbox go in key x and y
+\   before they rise T, and cut to the rectangle of the box's corners there;
 \ - the volume, every point on or above the plane whose key x, y lie in M, and
 \   the key's pixel, M's larger side over the shadow map's side.
 \ src/lib/browser/viewport.js states KEY, KEY_BOX, SHADOW_SIDE and studio's
@@ -33,12 +32,11 @@ private
 STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
 
 \ The key light's direction and its softbox's half extents per unit along it,
-\ in studio coordinates; the shadow map's largest side, the most at which
-\ 255 side^2 still fits a u32 table's sums.
+\ in studio coordinates; the shadow map's side.
 : KEY ( -- vec ) -0.4 0.6 0.7 VEC-MAKE ;
 : KEY-BOX-X ( -- r ) 0.45 ;
 : KEY-BOX-Y ( -- r ) 0.27 ;
-4294967296 255 / FMATH:ISQRT-FLOOR constant SHADOW-SIDE
+1024 constant SHADOW-SIDE
 
 \ studio's least length of the view's right laid on the plane.
 : LAID-LEAST ( -- r ) 0.000001 ;
@@ -236,28 +234,37 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
       lo v FMATH:FMIN  hi v FMATH:FMAX
    loop ;
 
-\ The shadow's read reach in a key axis for the softbox's half extent h
-\ there: h D, D = T / nz and nz = n.kz, how far from a ground point the
-\ shadow's summed-table reads reach in that axis.
-: GROWTH ( ^u8 vec r r -- r )
-   {: g kz:vec t:r h:r :}
-   g NORMAL kz DOT {: nz:r :}
-   h t nz f/ f* ;
+\ How far along the key the rays at the softbox's height v rise t above
+\ the plane: they rise nz + v ny a unit, ny and nz n.ky and n.kz, n having
+\ no part along key x.
+: RISEN ( ^u8 vec vec r r -- r )
+   {: g ky:vec kz:vec t:r v:r :}
+   g NORMAL {: n:vec :}
+   t  n kz DOT  n ky DOT v f*  f+ f/ ;
 
-\ M in key axis k: R grown by grow, cut to the box's span.
-: M-SPAN ( ^u8 ^u8 vec r -- r r )
-   {: m g k:vec grow:r :}
+\ How far a ground point's rays to the softbox go before they rise t, in key
+\ x either way, in key y down and up: those at its low edge go furthest.
+: GROWTH ( ^u8 vec vec r -- r r r )
+   {: g ky:vec kz:vec t:r :}
+   g ky kz t KEY-BOX-Y fnegate RISEN {: far:r :}
+   KEY-BOX-X far f*  KEY-BOX-Y far f*
+   KEY-BOX-Y  g ky kz t KEY-BOX-Y RISEN f* ;
+
+\ M in key axis k: R grown by down and up, cut to the box's span.
+: M-SPAN ( ^u8 ^u8 vec r r -- r r )
+   {: m g k:vec down:r up:r :}
    m g GROUND {: p0:vec ex:vec ey:vec :}
    k p0 ex ey VIEW-SPAN {: lo:r hi:r :}
    g k BOX-SPAN {: blo:r bhi:r :}
-   lo grow f- blo FMATH:FMAX  hi grow f+ bhi FMATH:FMIN ;
+   lo down f- blo FMATH:FMAX  hi up f+ bhi FMATH:FMIN ;
 
 \ M's lowest and highest key x, then key y, for m's view of g and T t.
 : M ( ^u8 ^u8 r -- r r r r )
    {: m g t:r :}
    m g KEY-FRAME {: kx:vec ky:vec kz:vec :}
-   m g kx  g kz t KEY-BOX-X GROWTH  M-SPAN
-   m g ky  g kz t KEY-BOX-Y GROWTH  M-SPAN ;
+   g ky kz t GROWTH {: across:r down:r up:r :}
+   m g kx across across M-SPAN
+   m g ky down up M-SPAN ;
 
 \ Whether M holds no point; a NaN side holds none.
 : EMPTY? ( r r r r -- bool )
@@ -285,19 +292,16 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
    kx xlo xhi out 1 SIDES!
    ky ylo yhi out 3 SIDES! ;
 
-\ The key's pixel: M's larger side over the shadow map's side, the drawing
-\ buffer's larger side w or h, at most SHADOW-SIDE.
-: PIXEL ( r r r r n n -- r )
-   {: xlo:r xhi:r ylo:r yhi:r w:n h:n :}
-   xhi xlo f-  yhi ylo f-  FMATH:FMAX
-   w h max SHADOW-SIDE min s>f f/ ;
+\ The key's pixel: M's larger side over the shadow map's side.
+: PIXEL ( r r r r -- r )
+   {: xlo:r xhi:r ylo:r yhi:r :}
+   xhi xlo f-  yhi ylo f-  FMATH:FMAX  SHADOW-SIDE s>f f/ ;
 
 public
 
 \ The key light's volume for the draw's matrix m, 16 f32 column-major as
 \ the draw record carries it, and the ground g, ten f32: the plane nx ny nz
-\ d, then the box no caster leaves, lowest x y z then highest; for the
-\ drawing buffer's width and height. Writes into out, room for 20 binary64,
+\ d, then the box no caster leaves, lowest x y z then highest. Writes into out, room for 20 binary64,
 \ five planes a b c d, a point inside when a x + b y + c z + d >= 0: the
 \ ground, then key x at least M's lowest, at most its highest, then key y
 \ the same; answers 5 and the key's pixel in world units. Answers 0 and 0.0,
@@ -306,14 +310,14 @@ public
 \ where viewport.js draws no shadow; no model gives one. Reads only the
 \ direction of m's depth row. E-MATRIX for an m whose fourth row is not
 \ 0 0 0 1 or that is not invertible.
-: KEY-VOLUME ( ^u8 ^u8 n n ^r -- n r )
-   {: m g w:n h:n out:^ :}
+: KEY-VOLUME ( ^u8 ^u8 ^r -- n r )
+   {: m g out:^ :}
    m g ABOVE? 0= if 0 0.0 exit then
    g TALLEST {: t:r :}
    t 0.0 f> 0= if 0 0.0 exit then
    m g t M {: xlo:r xhi:r ylo:r yhi:r :}
    xlo xhi ylo yhi EMPTY? if 0 0.0 exit then
    m g xlo xhi ylo yhi out PLANES!
-   5  xlo xhi ylo yhi w h PIXEL ;
+   5  xlo xhi ylo yhi PIXEL ;
 
 ;package
