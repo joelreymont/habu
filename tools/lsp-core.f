@@ -232,7 +232,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ A string's JSON text is never shorter than what it decodes to.
 : DECODE ( JSON:reader ^SPAN:span<u8> -- JSON:reader n )
    {: v :}
-   READ-SPAN$ nip {: raw:n :}
+   READ-SPAN$ STR:LEN {: raw:n :}
    v raw ROOM
    v @ SPAN:$ str> READ-STR ;
 
@@ -470,7 +470,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       READ-TOKEN T-STR = if
          str if k READ-STR-EQ? else false then
       else
-         str 0= if READ-SPAN$ >str k STR:= else false then
+         str 0= if READ-SPAN$ k STR:= else false then
       then
    else false then
    {: same:bool :}

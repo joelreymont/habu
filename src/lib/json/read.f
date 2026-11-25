@@ -1,4 +1,3 @@
-split-str
 \ read.f - the JSON pull/cursor reader. A file of package JSON
 \ (src/lib/json.f).
 \
@@ -147,7 +146,7 @@ public
 10 constant T-NULL
 11 constant T-END
 
-: KIND$ ( n -- ^u8 n )
+: KIND$ ( n -- str )
    case
       T-OBJ of s" an object" endof
       T-OBJ-END of s" an object's end" endof
@@ -161,7 +160,7 @@ public
       T-FALSE of s" false" endof
       T-NULL of s" null" endof
       T-END of s" the text's end" endof
-      s" no token kind" rot
+      s" no token kind" swap
    endcase ;
 
 private
@@ -199,9 +198,9 @@ LINEAR: ERASE-READER ( JSON:reader -- ^cursor )
 : READER>STATE ( JSON:reader -- JSON:reader ^cursor )
    ERASE-READER dup MINT-READER swap ;
 
-: INIT-STATE ( ^cursor str -- ) {: state:^ source:^ len:n :}
-   source state CURSOR-SRC !
-   len state CURSOR-SRC-LEN !
+: INIT-STATE ( ^cursor str -- ) {: state:^ source:str :}
+   source STR:DATA state CURSOR-SRC !
+   source STR:LEN state CURSOR-SRC-LEN !
    0 state CURSOR-POS !
    0 state CURSOR-DEPTH !
    ST-VALUE state CURSOR-STATE !
@@ -244,7 +243,7 @@ LINEAR: ERASE-READER ( JSON:reader -- ^cursor )
    want cells MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: grown :}
    state MORE-SPAN {: old :}
    old SPAN:$ grown SPAN:COPY
-   grown SPAN:$ drop state CURSOR-MORE !
+   grown SPAN:$ STR:DATA state CURSOR-MORE !
    want state CURSOR-MORE-CELLS !
    old MEM:FREE-SPAN ;
 
@@ -295,7 +294,7 @@ $7F constant DEL
 : CHAR-END ( ^cursor n -- n ) {: state:^ i:n :}
    state i BYTE-AT {: b:n :}
    b UTF1-MAX < if b SHOWN? if i 1+ else i then exit then
-   state CURSOR-SRC @ state CURSOR-SRC-LEN @ i UTF8:NEXT
+   state CURSOR-SRC @ state CURSOR-SRC-LEN @ >str i UTF8:NEXT
    MATCH UTF8:scalar-step
       scalar OF nip ENDOF
       raw-byte OF 2drop i ENDOF
@@ -317,7 +316,7 @@ $7F constant DEL
 : FOUND-RUN ( ^cursor n -- n n ) {: state:^ off:n :}
    state state off FOUND-LIM off BARE-END off - {: len:n :}
    len REASON:QUOTE-MOST <= if len FOUND-TOKEN exit then
-   state CURSOR-SRC @ off + len REASON:QUOTE-MOST UTF8:FIT FOUND-CUT ;
+   state CURSOR-SRC @ off + len >str REASON:QUOTE-MOST UTF8:FIT FOUND-CUT ;
 
 \ The next index after the shown character at i, and whether it closed the
 \ string.
@@ -347,7 +346,7 @@ $7F constant DEL
    end off - {: len:n :}
    closed end state CURSOR-SRC-LEN @ = or
    len REASON:QUOTE-MOST <= and if len FOUND-TOKEN exit then
-   state CURSOR-SRC @ off + len REASON:QUOTE-MOST UTF8:FIT FOUND-CUT ;
+   state CURSOR-SRC @ off + len >str REASON:QUOTE-MOST UTF8:FIT FOUND-CUT ;
 
 \ The length and form of the token at off. Inside a string a quote closes it;
 \ elsewhere it opens a string token.
@@ -365,7 +364,7 @@ $7F constant DEL
 : PUT-FOUND ( ^cursor n n n -- ) {: state:^ off:n len:n form:n :}
    form FOUND-END = if END$ REASON:APPEND exit then
    form FOUND-BYTE = if state off BYTE-AT REASON:BYTE exit then
-   state CURSOR-SRC @ off + len  form FOUND-CUT =  REASON:QUOTE ;
+   state CURSOR-SRC @ off + len >str  form FOUND-CUT =  REASON:QUOTE ;
 
 \ The line and column of off.
 : PLACE ( ^cursor n -- n n ) {: state:^ off:n :}
@@ -383,18 +382,18 @@ $7F constant DEL
    state off PLACE REASON:AT REASON:EXPECTED ;
 
 \ Writes the found part and the fix, and throws code with the text.
-: REJECT-TAIL ( ^cursor n str n -- ) {: state:^ off:n fa:^ fu:n code:n :}
+: REJECT-TAIL ( ^cursor n str n -- ) {: state:^ off:n fix:str code:n :}
    REASON:FOUND
    state off state off code IN-STRING? FOUND-FORM PUT-FOUND
-   REASON:FIX fa fu REASON:APPEND
+   REASON:FIX fix REASON:APPEND
    code REASON:STOP ;
 
 \ Throws code with the text of the place at off, SB untouched.
-: REJECT-AT ( ^cursor n ^u8 n ^u8 n n -- )
-   {: state:^ off:n ea:^ eu:n fa:^ fu:n code:n :}
+: REJECT-AT ( ^cursor n str str n -- )
+   {: state:^ off:n expect:str fix:str code:n :}
    state off REJECT-HEAD
-   ea eu REASON:APPEND
-   state off fa fu code REJECT-TAIL ;
+   expect REASON:APPEND
+   state off fix code REJECT-TAIL ;
 
 \ The current token's first byte: a string's or a key's opening quote.
 : TOKEN-START ( ^cursor -- n ) {: state:^ :}
@@ -402,12 +401,12 @@ $7F constant DEL
    state CURSOR-KIND @ dup T-STR = swap T-KEY = or if 1- then ;
 
 : REJECT-TOKEN ( ^cursor str str n -- )
-   {: state:^ ea:^ eu:n fa:^ fu:n code:n :}
-   state state TOKEN-START ea eu fa fu code REJECT-AT ;
+   {: state:^ expect:str fix:str code:n :}
+   state state TOKEN-START expect fix code REJECT-AT ;
 
 \ Rejects the current token for its kind, given the kind expected.
-: KIND-REJECT ( ^cursor str -- ) {: state:^ ea:^ eu:n :}
-   state ea eu
+: KIND-REJECT ( ^cursor str -- ) {: state:^ expect:str :}
+   state expect
    s" write that kind of value here, or read this token with the word for its kind"
    E-JSON-READ-STATE REJECT-TOKEN ;
 
@@ -565,9 +564,9 @@ private
 : REQUIRE-SOUND ( ^cursor -- ) {: state:^ :}
    state CURSOR-FAIL @ 0<> if state THROW-FAILURE then ;
 
-: REQUIRE-SOURCE ( str -- ) {: source:^ len:n :}
-   len 0 < if E-READ-SOURCE throw then
-   len 0 > source 0= and if E-READ-SOURCE throw then ;
+: REQUIRE-SOURCE ( str -- ) {: source:str :}
+   source STR:LEN 0 < if E-READ-SOURCE throw then
+   source STR:LEN 0 > source STR:DATA 0= and if E-READ-SOURCE throw then ;
 
 : CLEAR-CURSOR ( ^cursor -- ) {: state:^ :}
    NULL-PTR 0 0 0 0 0 0 0  NULL-PTR 0 0 0 0 0 0 0  NULL-PTR 0  CURSOR-MAKE state ! ;
@@ -575,9 +574,9 @@ private
 public
 
 : READ-INIT ( ^cursor str -- JSON:reader )
-   {: state:^ source:^ len:n :}
-   source len REQUIRE-SOURCE
-   state source len INIT-STATE
+   {: state:^ source:str :}
+   source REQUIRE-SOURCE
+   state source INIT-STATE
    state MINT-READER ;
 
 : READ-CLOSE ( JSON:reader -- )
@@ -594,10 +593,10 @@ public
    READER>STATE CURSOR-KIND @ ;
 
 \ The raw lexeme, borrowed from the source, escapes still encoded.
-: READ-SPAN$ ( JSON:reader -- JSON:reader ^u8 n )
+: READ-SPAN$ ( JSON:reader -- JSON:reader str )
    READER>STATE {: state:^ :}
    state CURSOR-SRC @ state CURSOR-TOK-AT @ +
-   state CURSOR-TOK-LEN @ ;
+   state CURSOR-TOK-LEN @ >str ;
 
 private
 
@@ -743,22 +742,22 @@ create UNESC-MAP
 \ check - a quote, a control byte, a UTF-8 lead, or the backslash of a \u,
 \ invalid or unfinished escape - or the source length. Printable ASCII and
 \ one-letter escapes need no other check.
-: PLAIN-END ( str n -- n ) {: a:^ len:n pos:n :}
-   len pos ?do
-      a i + c@ {: c:n :}
+: PLAIN-END ( str n -- n ) {: s:str pos:n :}
+   s STR:LEN pos ?do
+      s STR:DATA i + c@ {: c:n :}
       c BACKSLASH = if
-         i 1+ len >= if i unloop exit then
-         a i 1+ + c@ SIMPLE-ESC? 0= if i unloop exit then
+         i 1+ s STR:LEN >= if i unloop exit then
+         s STR:DATA i 1+ + c@ SIMPLE-ESC? 0= if i unloop exit then
          2
       else
          c SP < c UTF1-MAX >= or c DQ = or if i unloop exit then
          1
       then
    +loop
-   len ;
+   s STR:LEN ;
 
 : SKIP-PLAIN ( ^cursor -- ) {: state:^ :}
-   state CURSOR-SRC @ state CURSOR-SRC-LEN @ state CURSOR-POS @ PLAIN-END
+   state CURSOR-SRC @ state CURSOR-SRC-LEN @ >str state CURSOR-POS @ PLAIN-END
    state CURSOR-POS ! ;
 
 : SCAN-STRING ( ^cursor -- n n ) {: state:^ :}
@@ -791,9 +790,9 @@ create UNESC-MAP
 
 
 : DIGITS-END ( str n -- n )
-   {: src:^ len:n i:n :}
+   {: s:str i:n :}
    i begin
-      dup len < if dup src + c@ STR:DIGIT? else false then
+      dup s STR:LEN < if dup s STR:DATA + c@ STR:DIGIT? else false then
    while 1+ repeat ;
 
 
@@ -804,14 +803,14 @@ create UNESC-MAP
    state CURSOR-SRC @ state CURSOR-SRC-LEN @ state CURSOR-POS @
    {: src:^ len:n at:n :}
    src at + c@ MINUS = if at 1+ else at then {: int-at:n :}
-   src len int-at DIGITS-END {: int-end:n :}
+   src len >str int-at DIGITS-END {: int-end:n :}
    int-end int-at = if E-JSON-READ-NUMBER throw then
    src int-at + c@ ZERO = int-end int-at 1+ > and if
       E-JSON-READ-NUMBER throw
    then
    int-end len < if src int-end + c@ DOT = else false then
    if
-      src len int-end 1+ DIGITS-END
+      src len >str int-end 1+ DIGITS-END
       dup int-end 1+ = if E-JSON-READ-NUMBER throw then
    else int-end then {: frac-end:n :}
    frac-end len < if
@@ -821,7 +820,7 @@ create UNESC-MAP
       frac-end 1+
       dup len < if dup src + c@ dup PLUS = swap MINUS = or if 1+ then then
       {: exp-at:n :}
-      src len exp-at DIGITS-END
+      src len >str exp-at DIGITS-END
       dup exp-at = if E-JSON-READ-NUMBER throw then
    else frac-end then {: end:n :}
    end len < if src end + c@ NUM-CHAR? if E-JSON-READ-NUMBER throw then then
@@ -831,12 +830,12 @@ create UNESC-MAP
 
 : RAW-SPAN$ ( ^cursor -- str ) {: state:^ :}
    state CURSOR-SRC @ state CURSOR-TOK-AT @ +
-   state CURSOR-TOK-LEN @ ;
+   state CURSOR-TOK-LEN @ >str ;
 
-: MATCH-LIT? ( ^cursor str -- bool ) {: state:^ la:^ lu:n :}
-   state CURSOR-POS @ lu + state CURSOR-SRC-LEN @ > if false exit then
-   0 begin dup lu < while
-      dup la + c@
+: MATCH-LIT? ( ^cursor str -- bool ) {: state:^ lit:str :}
+   state CURSOR-POS @ lit STR:LEN + state CURSOR-SRC-LEN @ > if false exit then
+   0 begin dup lit STR:LEN < while
+      dup lit STR:DATA + c@
       over state CURSOR-SRC @ state CURSOR-POS @ + + c@ <> if
          drop false exit
       then
@@ -851,10 +850,10 @@ create UNESC-MAP
    len state CURSOR-TOK-LEN !
    kind state CURSOR-KIND ! ;
 
-: READ-LIT ( ^cursor str n -- n ) {: state:^ la:^ lu:n kind:n :}
-   state la lu MATCH-LIT? 0= if E-JSON-READ-MALFORMED throw then
-   state state CURSOR-POS @ lu kind PUBLISH
-   state CURSOR-POS dup @ lu + swap !
+: READ-LIT ( ^cursor str n -- n ) {: state:^ lit:str kind:n :}
+   state lit MATCH-LIT? 0= if E-JSON-READ-MALFORMED throw then
+   state state CURSOR-POS @ lit STR:LEN kind PUBLISH
+   state CURSOR-POS dup @ lit STR:LEN + swap !
    state AFTER-VALUE
    kind ;
 
@@ -1047,9 +1046,9 @@ private
    state CURSOR-KIND @ {: kind:n :}
    kind T-FLOAT = if state U64-REJECT then
    kind T-INT <> if state s" an integer" KIND-REJECT then
-   state RAW-SPAN$ {: a:^ u:n :}
-   a c@ MINUS = if state U64-REJECT then
-   0 u 0 ?do state swap a i + c@ STR:DIGIT-VALUE U64-DIGIT loop ;
+   state RAW-SPAN$ {: digits:str :}
+   digits STR:DATA c@ MINUS = if state U64-REJECT then
+   0 digits STR:LEN 0 ?do state swap digits STR:DATA i + c@ STR:DIGIT-VALUE U64-DIGIT loop ;
 
 : FLOAT-INNER ( ^cursor -- r ) {: state:^ :}
    state CURSOR-KIND @ dup T-INT = swap T-FLOAT = or 0= if
@@ -1099,7 +1098,7 @@ private
    then
    state CURSOR-OUT dup @ 1+ swap ! ;
 
-: HEX-NEXT ( ^cursor str -- n ) {: state:^ a:^ value:n :}
+: HEX-NEXT ( ^cursor ^u8 n -- n ) {: state:^ a:^ value:n :}
    value HEX-BASE *
    a state CURSOR-IN @ + c@ STR:HEX-DIGIT-VALUE
    +
@@ -1139,15 +1138,15 @@ private
 \ one-letter escape writes or matches one byte as EMIT-BYTE would, with out on
 \ the stack. A \u escape returns with in at its backslash; the registers hold
 \ in and out on return.
-: UNESC-RUN ( ^cursor str -- ) {: state:^ a:^ len:n :}
+: UNESC-RUN ( ^cursor str -- ) {: state:^ s:str :}
    state CURSOR-DST @ {: d:^ :}
    state CURSOR-DST-CAP @ {: cap:n :}
    state CURSOR-MODE @ UMODE-MATCH = {: match:bool :}
    UNESC-MAP BYTE-VIEW {: m:^ :}
-   state CURSOR-OUT @ len state CURSOR-IN @ ?do
-      a i + c@ {: c:n :}
+   state CURSOR-OUT @ s STR:LEN state CURSOR-IN @ ?do
+      s STR:DATA i + c@ {: c:n :}
       c BACKSLASH = if
-         a i 1+ + c@ {: e:n :}
+         s STR:DATA i 1+ + c@ {: e:n :}
          e CH-U = if i state CURSOR-IN ! state CURSOR-OUT ! unloop exit then
          m e + c@
          2
@@ -1167,7 +1166,7 @@ private
       then
       1+ step
    +loop
-   state CURSOR-OUT ! len state CURSOR-IN ! ;
+   state CURSOR-OUT ! s STR:LEN state CURSOR-IN ! ;
 
 : UNESC-RESET ( ^cursor ^u8 n n -- ) {: state:^ dst:^ cap:n mode:n :}
    dst state CURSOR-DST !
@@ -1184,7 +1183,7 @@ private
    state CURSOR-TOK-LEN @ {: len:n :}
    state CURSOR-SRC @ state CURSOR-TOK-AT @ + {: a:^ :}
    begin state CURSOR-IN @ len < while
-      state a len UNESC-RUN
+      state a len >str UNESC-RUN
       state CURSOR-IN @ len < if
          state CURSOR-IN dup @ 2 + swap !
          state a UNI
@@ -1207,12 +1206,12 @@ private
    state CURSOR-OUT @ ;
 
 : MATCH-INNER ( ^cursor str -- bool )
-   {: state:^ key:^ len:n :}
+   {: state:^ key:str :}
    state REQUIRE-STRING
-   state key len UMODE-MATCH UNESC-RESET
+   state key str> UMODE-MATCH UNESC-RESET
    state UNESC-ALL
    state CURSOR-MATCHED @ 0= 0=
-   state CURSOR-OUT @ len = and ;
+   state CURSOR-OUT @ key STR:LEN = and ;
 
 \ Decodes the current string or key into the vector from byte at on, answering
 \ its length, which its raw length bounds; the vector may hold the text itself.
@@ -1274,8 +1273,8 @@ private
 : FIND-PHASE? ( n -- bool )
    dup ST-KEY = swap ST-SEP = or ;
 
-: REQUIRE-KEY-SPAN ( ^cursor str -- ) {: state:^ key:^ len:n :}
-   len 0 <  len 0 > key 0= and  or if
+: REQUIRE-KEY-SPAN ( ^cursor str -- ) {: state:^ key:str :}
+   key STR:LEN 0 <  key STR:LEN 0 > key STR:DATA 0= and  or if
       state s" a key of 0 or more bytes at a non-null address"
       s" pass the key's address and its length"
       E-JSON-READ-STATE REJECT-TOKEN
@@ -1302,8 +1301,8 @@ private
    s" write the next member's name in double quotes, or close the object with `}`"
    E-JSON-READ-STATE REJECT-TOKEN ;
 
-: FIND-INNER ( ^cursor str -- bool ) {: state:^ key:^ len:n :}
-   state key len REQUIRE-KEY-SPAN
+: FIND-INNER ( ^cursor str -- bool ) {: state:^ key:str :}
+   state key REQUIRE-KEY-SPAN
    state REQUIRE-SOUND
    state FIND-ANCHOR {: depth:n :}
    begin
@@ -1314,7 +1313,7 @@ private
       then
       token T-KEY <> if state MEMBER-NAME-REJECT then
       state depth REQUIRE-KEY-DEPTH
-      state key len MATCH-INNER {: found:bool :}
+      state key MATCH-INNER {: found:bool :}
       state NEXT-INNER {: value:n :}
       value VALUE-TOKEN? 0= if
          state s" the member's value" s" write a value after the member's `:`"
@@ -1342,34 +1341,34 @@ private
    state CURSOR-TOK-AT @ {: start:n :}
    state SKIP-INNER
    state CURSOR-SRC @ start +
-   state CURSOR-POS @ start - ;
+   state CURSOR-POS @ start - >str ;
 
 : ANY-SPAN-INNER ( ^cursor -- str )
    {: state:^ :}
    state CURSOR-KIND @ OPENER? if state VALUE-SPAN-INNER exit then
    state CURSOR-KIND @ SCALAR? 0= if state s" a value" KIND-REJECT then
    state CURSOR-KIND @ T-STR <> if state RAW-SPAN$ exit then
-   state RAW-SPAN$ {: a:^ u:n :}
-   a 1- u 2 + ;
+   state RAW-SPAN$ {: raw:str :}
+   raw STR:DATA 1- raw STR:LEN 2 + >str ;
 
 public
 
 \ On an opener, the source bytes through the matching close; the cursor moves
 \ past the value.
-: READ-VALUE-SPAN$ ( JSON:reader -- JSON:reader ^u8 n )
+: READ-VALUE-SPAN$ ( JSON:reader -- JSON:reader str )
    READER>STATE VALUE-SPAN-INNER ;
 
 \ On an opener, as READ-VALUE-SPAN$; on a scalar, its bytes as written, a string's
 \ quotes and escapes included, the cursor staying; else E-JSON-READ-STATE.
-: READ-ANY-SPAN$ ( JSON:reader -- JSON:reader ^u8 n )
+: READ-ANY-SPAN$ ( JSON:reader -- JSON:reader str )
    READER>STATE ANY-SPAN-INNER ;
 
 \ Searches only the current object, skipping each unmatched value, and stops at
 \ its close. It and READ-STR-EQ? compare decoded bytes without a buffer, so key
 \ length is not bounded by reader storage.
 : READ-FIND-KEY ( JSON:reader str -- JSON:reader bool )
-   {: key:^ len:n :}
-   READER>STATE key len FIND-INNER ;
+   {: key:str :}
+   READER>STATE key FIND-INNER ;
 
 \ The value text of the one top-level member the key names, as
 \ serde reads a struct's field: other keys, repeated or not, are
@@ -1377,69 +1376,69 @@ public
 \ formed, placed at the first token of a text that is no object, at the
 \ object's `}` for a missing member, or at a repeated member's second value.
 \ A throw leaves the cursor for the next READ-INIT.
-: READ-MEMBER$ ( ^u8 n ^u8 n ^cursor -- ^u8 n )
-   {: t:^ u:n k:^ ku:n c:^ :}
-   c t u READ-INIT READ-NEXT
+: READ-MEMBER$ ( str str ^cursor -- str )
+   {: text:str key:str c:^ :}
+   c text READ-INIT READ-NEXT
    T-OBJ <> if
       c TOKEN-START swap READ-FINISH
       c swap s" an object"
       s" write the text as one JSON object holding the member"
       E-MEMBER REJECT-AT
    then
-   k ku READ-FIND-KEY 0= if
+   key READ-FIND-KEY 0= if
       c TOKEN-START swap READ-FINISH
       c swap s" the member the key names" s" add the member to the object"
       E-MEMBER REJECT-AT
    then
-   READ-ANY-SPAN$ {: v:^ vu:n :}
-   k ku READ-FIND-KEY {: again:bool :}
+   READ-ANY-SPAN$ {: v:str :}
+   key READ-FIND-KEY {: again:bool :}
    c TOKEN-START {: at:n :}
    READ-FINISH again if
       c at s" the member once" s" remove the repeated member, keeping one"
       E-MEMBER REJECT-AT
    then
-   v vu ;
+   v ;
 
 private
 
 \ The names READ-LISTED takes are separated by single blanks; an empty
 \ list holds none.
-: READ-NAME-COUNT ( ^u8 n -- n ) {: a:^ u:n :}
-   u 0= if 0 exit then
-   1 u 0 ?do a i + c@ SP = if 1+ then loop ;
+: READ-NAME-COUNT ( str -- n ) {: names:str :}
+   names STR:LEN 0= if 0 exit then
+   1 names STR:LEN 0 ?do names STR:DATA i + c@ SP = if 1+ then loop ;
 
 \ The names a list holds before a last name `*`, and whether it has one.
-: LISTED ( str -- str bool ) {: a:^ u:n :}
-   u 0= if a u false exit then
-   a u + 1- c@ [char] * <> if a u false exit then
-   u 1 = if a 0 true exit then
-   a u + 2 - c@ SP <> if a u false exit then
-   a u 2 - true ;
+: LISTED ( str -- str bool ) {: list:str :}
+   list STR:LEN 0= if list false exit then
+   list STR:DATA list STR:LEN + 1- c@ [char] * <> if list false exit then
+   list STR:LEN 1 = if list STR:DATA 0 >str true exit then
+   list STR:DATA list STR:LEN + 2 - c@ SP <> if list false exit then
+   list STR:DATA list STR:LEN 2 - >str true ;
 
 \ The name that starts at start, as listed, and the next name's start.
-: NAME-AT ( str n -- str n ) {: a:^ u:n start:n :}
-   a u SP start STR:SPLIT-NEXT drop ;
+: NAME-AT ( str n -- str n ) {: list:str start:n :}
+   list SP start STR:SPLIT-NEXT drop ;
 
 \ A listed name that ends in `?` names an optional member.
-: OPTIONAL? ( ^u8 n -- bool ) {: a:^ u:n :}
-   u 0= if false exit then
-   a u + 1- c@ [char] ? = ;
+: OPTIONAL? ( str -- bool ) {: name:str :}
+   name STR:LEN 0= if false exit then
+   name STR:DATA name STR:LEN + 1- c@ [char] ? = ;
 
 \ The member's name a listed name gives.
-: BARE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   a u OPTIONAL? if a u 1- exit then
-   a u ;
+: BARE ( str -- str ) {: name:str :}
+   name OPTIONAL? if name STR:DATA name STR:LEN 1- >str exit then
+   name ;
 
 \ Whether the current key matches the name at start, and the next start.
 : NAME-MATCH? ( n ^cursor str -- n bool )
-   {: start:n state:^ a:^ u:n :}
-   a u start NAME-AT {: na:^ nu:n next:n :}
-   next state na nu BARE MATCH-INNER ;
+   {: start:n state:^ list:str :}
+   list start NAME-AT {: name:str next:n :}
+   next state name BARE MATCH-INNER ;
 
 \ The index of the name the current key decodes to, or -1.
-: KEY-INDEX ( ^cursor str n -- n ) {: state:^ a:^ u:n count:n :}
+: KEY-INDEX ( ^cursor str n -- n ) {: state:^ list:str count:n :}
    0 0 begin dup count < while
-      swap state a u NAME-MATCH? if drop exit then
+      swap state list NAME-MATCH? if drop exit then
       swap 1+
    repeat 2drop -1 ;
 
@@ -1449,42 +1448,42 @@ private
 
 \ Writes the name at start in backticks, after LIST-SEP$ unless it is the
 \ first; answers the next name's start.
-: PUT-NAME ( str n n -- n ) {: a:^ u:n start:n idx:n :}
-   a u start NAME-AT {: na:^ nu:n next:n :}
+: PUT-NAME ( str n n -- n ) {: list:str start:n idx:n :}
+   list start NAME-AT {: name:str next:n :}
    idx 0<> if LIST-SEP$ REASON:APPEND then
-   s" `" REASON:APPEND  na nu BARE REASON:APPEND  s" `" REASON:APPEND
+   s" `" REASON:APPEND  name BARE REASON:APPEND  s" `" REASON:APPEND
    next ;
 
 : UNKNOWN-FIX$ ( -- str )
    s" rename the member to one of those, or remove it" ;
 
 \ Rejects the current key, which no listed name matches.
-: UNKNOWN-REJECT ( ^cursor str n -- ) {: state:^ a:^ u:n count:n :}
+: UNKNOWN-REJECT ( ^cursor str n -- ) {: state:^ list:str count:n :}
    count 0= if
       state s" the object's `}`" s" remove the member"
       E-MEMBER REJECT-TOKEN
    then
    state state TOKEN-START REJECT-HEAD
    ONE-OF$ REASON:APPEND
-   0 count 0 ?do a u rot i PUT-NAME loop drop
+   0 count 0 ?do list swap i PUT-NAME loop drop
    state state TOKEN-START UNKNOWN-FIX$ E-MEMBER REJECT-TAIL ;
 
 \ Rejects the name at start unless its member was seen or the name is
 \ optional, and answers the next name's start.
-: REQUIRE-NAME ( n ^cursor ^u8 n bool -- n )
-   {: start:n state:^ a:^ u:n seen:bool :}
-   a u start NAME-AT {: na:^ nu:n next:n :}
-   seen  na nu OPTIONAL?  or if next exit then
+: REQUIRE-NAME ( n ^cursor str bool -- n )
+   {: start:n state:^ list:str seen:bool :}
+   list start NAME-AT {: name:str next:n :}
+   seen  name OPTIONAL?  or if next exit then
    state state TOKEN-START REJECT-HEAD
-   MEMBER-OF$ REASON:APPEND  na nu REASON:APPEND  s" `" REASON:APPEND
+   MEMBER-OF$ REASON:APPEND  name REASON:APPEND  s" `" REASON:APPEND
    state state TOKEN-START s" add the member to the object"
    E-MEMBER REJECT-TAIL ;
 
 \ At the object's `}`: rejects the first required name not seen.
 : REQUIRE-ALL ( ^cursor str n ^u8 -- )
-   {: state:^ a:^ u:n count:n seen:^ :}
+   {: state:^ list:str count:n seen:^ :}
    0 count 0 ?do
-      state a u  seen i + c@ 0<>  REQUIRE-NAME
+      state list  seen i + c@ 0<>  REQUIRE-NAME
    loop drop ;
 
 \ Reads from the current key to its member's value's last token.
@@ -1494,10 +1493,10 @@ private
 \ The current key's name's index, marked seen, the reader on its value; -1
 \ for a key skipped under `*`. After a key the reader yields a value or throws.
 : MEMBER-INDEX ( ^cursor str n bool ^u8 -- n )
-   {: state:^ a:^ u:n count:n wild:bool seen:^ :}
-   state a u count KEY-INDEX {: idx:n :}
+   {: state:^ list:str count:n wild:bool seen:^ :}
+   state list count KEY-INDEX {: idx:n :}
    idx 0< wild and if state SKIP-MEMBER -1 exit then
-   idx 0< if state a u count UNKNOWN-REJECT then
+   idx 0< if state list count UNKNOWN-REJECT then
    seen idx + c@ 0<> if
       state s" each member once" s" remove the repeated member, keeping one"
       E-MEMBER REJECT-TOKEN
@@ -1511,12 +1510,12 @@ private
 
 \ A value's span holds at least one byte and ends at the reader's position, and
 \ the reader is on its last token: at depth 0 that is ST-DONE before T-END.
-: REQUIRE-VALUE-SPAN ( ^cursor str -- ) {: state:^ a:^ u:n :}
+: REQUIRE-VALUE-SPAN ( ^cursor str -- ) {: state:^ span:str :}
    state CURSOR-POS @ {: pos:n :}
-   a state CURSOR-SRC @ - {: off:n :}
+   span STR:DATA state CURSOR-SRC @ - {: off:n :}
    state CURSOR-STATE @ {: st:n :}
    st ST-SEP =  st ST-DONE =  state CURSOR-KIND @ T-END <> and  or 0=
-   off 0 < or  u 1 < or  pos off - u <> or if
+   off 0 < or  span STR:LEN 1 < or  pos off - span STR:LEN <> or if
       state s" the span of the value the reader just read"
       s" pass READ-ANY-SPAN$'s answer for that value before the reader moves past it"
       E-JSON-READ-STATE REJECT-TOKEN
@@ -1526,20 +1525,20 @@ public
 
 \ Rejects the current token with E-MEMBER at its place, given the expected
 \ text and the fix. The reader stays as it is; its owner closes or disposes it.
-: READ-REJECT ( JSON:reader ^u8 n ^u8 n -- )
-   {: ea:^ eu:n fa:^ fu:n :}
-   READER>STATE ea eu fa fu E-MEMBER REJECT-TOKEN ;
+: READ-REJECT ( JSON:reader str str -- )
+   {: expect:str fix:str :}
+   READER>STATE expect fix E-MEMBER REJECT-TOKEN ;
 
 \ A seen buffer holds the listed object's depth, then a byte per listed name.
-: SEEN-BYTES ( ^u8 n -- n ) LISTED drop READ-NAME-COUNT 1 cells + ;
+: SEEN-BYTES ( str -- n ) LISTED drop READ-NAME-COUNT 1 cells + ;
 
 \ seen takes SEEN-BYTES for the names, all zero before the object's first call.
-: READ-LISTED ( JSON:reader ^u8 n ^u8 -- JSON:reader n )
-   {: list:^ lu:n seen:^ :}
+: READ-LISTED ( JSON:reader str ^u8 -- JSON:reader n )
+   {: list:str seen:^ :}
    READER>STATE {: state:^ :}
    state REQUIRE-SOUND
-   list lu LISTED {: a:^ u:n wild:bool :}
-   a u READ-NAME-COUNT {: count:n :}
+   list LISTED {: names:str wild:bool :}
+   names READ-NAME-COUNT {: count:n :}
    seen CELL-VIEW {: held:^ :}
    seen 1 cells + {: marks:^ :}
    held @ 0= if
@@ -1554,18 +1553,18 @@ public
    then
    begin
       state NEXT-INNER dup T-OBJ-END = if
-         drop state a u count marks REQUIRE-ALL -1 exit
+         drop state names count marks REQUIRE-ALL -1 exit
       then
       T-KEY <> if state MEMBER-NAME-REJECT then
-      state a u count wild marks MEMBER-INDEX
+      state names count wild marks MEMBER-INDEX
    dup 0< while drop repeat ;
 
 \ A container's opener is read again, so the depth counts it as before.
-: READ-REWIND ( JSON:reader ^u8 n -- JSON:reader ) {: a:^ u:n :}
+: READ-REWIND ( JSON:reader str -- JSON:reader ) {: span:str :}
    READER>STATE {: state:^ :}
    state REQUIRE-SOUND
-   state a u REQUIRE-VALUE-SPAN
-   a state CURSOR-SRC @ - state CURSOR-POS !
+   state span REQUIRE-VALUE-SPAN
+   span STR:DATA state CURSOR-SRC @ - state CURSOR-POS !
    ST-VALUE state CURSOR-STATE !
    state NEXT-INNER drop ;
 
@@ -1573,10 +1572,10 @@ public
 \ stream through READ-STR's decoder, so no buffer bounds the string, and the
 \ cursor stays where it was.
 : READ-STR-EQ? ( JSON:reader str -- JSON:reader bool )
-   {: want:^ len:n :}
+   {: want:str :}
    READER>STATE {: state:^ :}
-   state want len REQUIRE-KEY-SPAN
-   state want len MATCH-INNER ;
+   state want REQUIRE-KEY-SPAN
+   state want MATCH-INNER ;
 
 private
 
@@ -1664,7 +1663,7 @@ STRUCTURE keys DERIVE addr
 : KEY$ ( ^n ^u8 n -- str )
    {: table:^ room:^ idx:n :}
    table idx OFFSET {: from:n :}
-   room from +  table idx 1+ OFFSET from - ;
+   room from +  table idx 1+ OFFSET from - >str ;
 
 
 \ Grows the table to its count and offsets 0..k+1 and the places to hold
@@ -1704,14 +1703,14 @@ STRUCTURE keys DERIVE addr
 \ Key idx's class at byte d: 0 where it ends, else 1 + its byte.
 : CLASS ( ^n ^u8 n n -- n )
    {: table:^ room:^ idx:n d:n :}
-   table room idx KEY$ {: a:^ u:n :}
-   d u = if 0 exit then
-   a d + c@ 1+ ;
+   table room idx KEY$ {: key:str :}
+   d key STR:LEN = if 0 exit then
+   key STR:DATA d + c@ 1+ ;
 
 : KEY-FROM$ ( ^n ^u8 n n -- str )
    {: table:^ room:^ idx:n d:n :}
-   table room idx KEY$ {: a:^ u:n :}
-   a d +  u d - ;
+   table room idx KEY$ {: key:str :}
+   key STR:DATA d +  key STR:LEN d - >str ;
 
 \ Whether every key of order[a..b) has the first's byte at p.
 : AGREE? ( n ^keys n n -- bool )
@@ -1874,8 +1873,8 @@ STRUCTURE keys DERIVE addr
 
 \ The answer stands only once the whole text has read as well formed.
 : REPEAT-IN ( ^cursor ^keys str -- option<n> )
-   {: a:^ keys:^ text:^ u:n :}
-   a text u INIT-STATE
+   {: a:^ keys:^ text:str :}
+   a text INIT-STATE
    a NEXT-INNER T-OBJ <> if
       a s" an object" s" write the text as one JSON object"
       E-JSON-READ-STATE REJECT-TOKEN
@@ -1885,15 +1884,15 @@ STRUCTURE keys DERIVE addr
    keys 0 FIRST-REPEAT ;
 
 : REPEAT-WITH ( str ^cursor -- option<n> )
-   {: text:^ u:n a:^ :}
-   [: a [: text u REPEAT-IN ;] WITH-KEYS ;]
+   {: text:str a:^ :}
+   [: a [: text REPEAT-IN ;] WITH-KEYS ;]
    [: a MORE-RELEASE ;] finally ;
 
 public
 
-: READ-REPEAT ( ^u8 n -- option<n> )
-   {: text:^ u:n :}
-   text u REQUIRE-SOURCE
-   text u [type] cursor [: REPEAT-WITH ;] MEM:WITH-RECORD ;
+: READ-REPEAT ( str -- option<n> )
+   {: text:str :}
+   text REQUIRE-SOURCE
+   text [type] cursor [: REPEAT-WITH ;] MEM:WITH-RECORD ;
 
 ;package

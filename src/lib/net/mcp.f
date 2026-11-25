@@ -236,12 +236,12 @@ CAST: HELD>N ( held -- n )
 \ A value's JSON text at the reader: a container whole, a string with quotes.
 : RAW$ ( JSON:reader -- JSON:reader str )
    JSON:READ-TOKEN dup JSON:T-OBJ = over JSON:T-ARR = or if
-      drop JSON:READ-VALUE-SPAN$ >str exit
+      drop JSON:READ-VALUE-SPAN$ exit
    then
    JSON:T-STR = if
-      JSON:READ-SPAN$ {: a:^ u:n :} a 1- u 2 + >str exit
+      JSON:READ-SPAN$ {: s:str :} s STR:DATA 1- s STR:LEN 2 + >str exit
    then
-   JSON:READ-SPAN$ >str ;
+   JSON:READ-SPAN$ ;
 
 
 \ The token kind of a non-empty JSON text's first value.
@@ -387,10 +387,10 @@ CAST: HELD>N ( held -- n )
 : WRITE-MEMBER ( JSON:reader ^JSON:writer n -- JSON:reader )
    {: w idx:n :}
    s" outputSchema" JSON:READ-STR-EQ? {: output:bool :}
-   JSON:READ-SPAN$ {: key:^ ku:n :}
+   JSON:READ-SPAN$ {: key:str :}
    JSON:READ-NEXT drop RAW$ {: value:str :}
    output if w idx OUTPUT-SCHEMA drop exit then
-   w key 1- ku 2 + >str JSON:WRITE-RAW s" :" JSON:WRITE-RAW value JSON:WRITE-RAW drop ;
+   w key STR:DATA 1- key STR:LEN 2 + >str JSON:WRITE-RAW s" :" JSON:WRITE-RAW value JSON:WRITE-RAW drop ;
 
 
 : TOOL-ENTRY ( ^JSON:writer n -- ^JSON:writer )
@@ -943,7 +943,7 @@ CAST: HELD>N ( held -- n )
 \ and the fix: READ-REJECT's E-MEMBER text leaves as E-SCHEMA.
 : REJECT ( JSON:reader str str str -- )
    {: what:str want:str fix:str :}
-   [: want STR:DATA want STR:LEN fix STR:DATA fix STR:LEN JSON:READ-REJECT ;]
+   [: want fix JSON:READ-REJECT ;]
    catch {: code:n :}
    code JSON:E-MEMBER = if what code REASON:TEXT$ SAY then
    code throw ;
@@ -1008,7 +1008,7 @@ CAST: HELD>N ( held -- n )
       text reader FIRST-TOKEN what
       s" a JSON object" s" write it as one object" REJECT
    then
-   text STR:DATA text STR:LEN JSON:READ-REPEAT MATCH option
+   text JSON:READ-REPEAT MATCH option
       none OF ENDOF
       some OF text reader what REPEAT-REJECT ENDOF
    ;MATCH ;
@@ -1136,7 +1136,7 @@ CAST: HELD>N ( held -- n )
 \ The storage is kept for the process, as the registry is; the descriptor passed SHAPE.
 : DECODED-MEMBER ( str str [ str -- bool ] -- SPAN:span<u8> )
    {: text:str key:str registered? :}
-   text key STRING-AT JSON:READ-SPAN$ nip {: ru:n :}
+   text key STRING-AT JSON:READ-SPAN$ STR:LEN {: ru:n :}
    ru 0= if
       key s" `` as a non-empty string" s" give `` a value" KEY-REJECT
    then
@@ -1173,9 +1173,9 @@ CAST: HELD>N ( held -- n )
       s" write the blocks in an array" REJECT
    then
    JSON:READ-NEXT JSON:T-ARR-END = if JSON:READ-FINISH s" " exit then
-   JSON:READ-SPAN$ drop {: first:^ :}
+   JSON:READ-SPAN$ STR:DATA {: first:^ :}
    begin BLOCK JSON:READ-NEXT JSON:T-ARR-END = until
-   JSON:READ-SPAN$ drop {: close:^ :}
+   JSON:READ-SPAN$ STR:DATA {: close:^ :}
    JSON:READ-FINISH first close first - >str ;
 
 

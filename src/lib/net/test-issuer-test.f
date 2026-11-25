@@ -175,7 +175,7 @@ PAST-CAP BUFFER: OVERSIZE
    READER t JSON:READ-INIT JSON:READ-NEXT drop
    k JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " exit then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" " exit then
-   JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u >str ;
+   JSON:READ-SPAN$ {: s:str :} JSON:READ-CLOSE s ;
 
 \ An integer member of an object text, -1 when absent.
 : MEMBER-INT ( str str -- n )
@@ -190,7 +190,7 @@ PAST-CAP BUFFER: OVERSIZE
    {: k:str :}
    READER BODY$ JSON:READ-INIT JSON:READ-NEXT drop
    s" keys" JSON:READ-FIND-KEY drop JSON:READ-NEXT drop
-   k JSON:READ-FIND-KEY drop JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u >str ;
+   k JSON:READ-FIND-KEY drop JSON:READ-SPAN$ {: s:str :} JSON:READ-CLOSE s ;
 
 
 : OK ( CURL:status -- )
