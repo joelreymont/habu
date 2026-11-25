@@ -19,10 +19,8 @@ private
 60000 constant INDEX-MS
 
 TYPED-VARIABLE JSON-ST JSON:cursor
-DYNAMIC-BUFFER ID-PKG u8
-DYNAMIC-BUFFER ID-TAIL u8
-variable ID-PKG-U
-variable ID-TAIL-U
+TYPED-VARIABLE ID-PKG ^VEC:vector<u8> SCRATCH-ONLY
+TYPED-VARIABLE ID-TAIL ^VEC:vector<u8> SCRATCH-ONLY
 variable ID-VIS
 TYPED-VARIABLE ROW-PKG ^VEC:vector<u8> SCRATCH-ONLY
 TYPED-VARIABLE ROW-TAIL ^VEC:vector<u8> SCRATCH-ONLY
@@ -37,19 +35,24 @@ variable START
 variable END
 variable RESULT-SYM
 
+: MADE ( ^^VEC:vector<u8> -- ^VEC:vector<u8> )
+   {: c:^ :}
+   c @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! then
+   c @ ;
+
 : ID! ( str str n -- )
    {: pkg:str tail:str vis:n :}
-   pkg STR:LEN 1 max ID-PKG-RESERVE
-   tail STR:LEN 1 max ID-TAIL-RESERVE
-   pkg STR:DATA 0 ID-PKG pkg STR:LEN BYTE-COPY  pkg STR:LEN ID-PKG-U !
-   tail STR:DATA 0 ID-TAIL tail STR:LEN BYTE-COPY  tail STR:LEN ID-TAIL-U !
+   ID-PKG MADE {: p:^ :}
+   ID-TAIL MADE {: t:^ :}
+   p 0 VEC:RESIZE  pkg p VEC:APPEND
+   t 0 VEC:RESIZE  tail t VEC:APPEND
    vis ID-VIS ! ;
 
 : ID=? ( str str n -- bool )
    {: pkg:str tail:str vis:n :}
-   vis ID-VIS @ = pkg STR:LEN ID-PKG-U @ = and tail STR:LEN ID-TAIL-U @ = and
-   pkg 0 ID-PKG ID-PKG-U @ >str STR:= and
-   tail 0 ID-TAIL ID-TAIL-U @ >str STR:= and ;
+   vis ID-VIS @ =
+   pkg ID-PKG MADE VEC:BYTES STR:= and
+   tail ID-TAIL MADE VEC:BYTES STR:= and ;
 
 : VISIBILITY ( JSON:reader -- JSON:reader )
    s" global" JSON:READ-STR-EQ? if SYM-GLOBAL ROW-VIS ! exit then
@@ -73,11 +76,6 @@ variable RESULT-SYM
       JSON:READ-NEXT drop JSON:READ-INT ROW-END ! 16 ROW-FIELDS +! exit
    then
    JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
-
-: MADE ( ^^VEC:vector<u8> -- ^VEC:vector<u8> )
-   {: c:^ :}
-   c @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! then
-   c @ ;
 
 : DECODE ( str -- bool )
    {: s:str :}

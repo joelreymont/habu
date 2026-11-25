@@ -169,14 +169,8 @@ DYNAMIC-BUFFER USES n                    \ their uses,
 variable USE-N
 DYNAMIC-BUFFER DECLS n                   \ their decls,
 variable DECL-N
-DYNAMIC-BUFFER BYTES u8                  \ and the bytes these name
-variable BYTES-U
-\ BYTES holds a byte past those it names, which each append reserves with
-\ its own: its accessor refuses an index at its capacity, and a string at the
-\ end of what it names, as an empty one is, still needs the address of that
-\ index.
+TYPED-VARIABLE BYTES ^VEC:vector<u8> SCRATCH-ONLY \ and the bytes these name
 
-TYPED-VARIABLE STR-B ^VEC:vector<u8> SCRATCH-ONLY \ a string decoded for BYTES
 TYPED-VARIABLE JSON-ST JSON:cursor
 TYPED-VARIABLE FILE-B ^VEC:vector<u8> SCRATCH-ONLY \ the line's file, decoded,
 TYPED-VARIABLE IN-B ^VEC:vector<u8> SCRATCH-ONLY \ the file a use line's use is in,
@@ -233,27 +227,27 @@ TYPED-VARIABLE ESC-W JSON:writer
 : DECL@ ( n n -- n )  swap DECL-CELLS * + DECLS @ ;
 : DECL! ( n n n -- )  swap DECL-CELLS * + DECLS ! ;
 
+: BYTES-N ( -- n )  BYTES @ VEC:COUNT ;
+: BYTE-AT ( n -- ^u8 )  BYTES @ VEC:BYTES STR:DATA + ;
+
 : AT$ ( n n -- str )
    {: at:n u:n :}
-   at BYTES u >str ;
+   at BYTE-AT u >str ;
 
 : PATH$ ( n -- str )  dup G-PATH GROUP@ swap G-PATH-U GROUP@ AT$ ;
 : FILE$ ( -- str )  FILE-B @ VEC:BYTES ;
 : IN$ ( -- str )  IN-B @ VEC:BYTES ;
 
 : BYTES+ ( str -- n )
-   {: s:str :}
-   BYTES-U @ {: at:n :}
-   at s STR:LEN + 1+ BYTES-RESERVE
-   s STR:DATA at BYTES s STR:LEN BYTE-COPY
-   s STR:LEN BYTES-U +!
-   at ;
+   BYTES-N {: at:n :}
+   BYTES @ VEC:APPEND  at ;
 
 \ The string the reader is at, decoded onto the end of BYTES: its offset and
 \ length there.
 : STRING>BYTES ( JSON:reader -- JSON:reader n n )
-   STR-B @ JSON:READ-STR {: s:str :}
-   s BYTES+ s STR:LEN ;
+   BYTES-N {: at:n :}
+   BYTES @ JSON:READ-STR-APPEND
+   at  BYTES-N at - ;
 
 : CLASS-OF ( JSON:reader -- JSON:reader n )
    s" constant" JSON:READ-STR-EQ? if CLASS-CONSTANT exit then
@@ -325,18 +319,19 @@ TYPED-VARIABLE ESC-W JSON:writer
 
 : DECODE ( str -- )
    {: s:str :}
-   BYTES-U @ LINE-AT !
+   BYTES-N {: at:n :}
+   at LINE-AT !
    CLASS-WORD CLASS-V !
-   BYTES-U @ WORD-AT !
+   at WORD-AT !
    0 WORD-U !
-   BYTES-U @ PKG-AT !
+   at PKG-AT !
    0 PKG-U !
    0 PKG-OK !
-   BYTES-U @ KIND-AT !
+   at KIND-AT !
    0 KIND-U !
-   BYTES-U @ EFF-AT !
+   at EFF-AT !
    0 EFF-U !
-   BYTES-U @ NAME-AT !
+   at NAME-AT !
    0 NAME-U !
    ST-UNUSABLE STAMP-V !
    -1 SOURCE-V !
@@ -435,24 +430,24 @@ private
 : GROUP ( -- n )
    FILE-GROUP dup CUR-G @ <> if dup COUNT-IN then ;
 
-\ The U bytes at offset AT of BYTES, which is no less than BYTES-U, moved
-\ down to the end of what BYTES names: their offset there.
-: BYTES-DOWN ( n n -- n )
-   {: at:n u:n :}
-   BYTES-U @ {: to:n :}
-   u 0 > if at BYTES to BYTES u BYTE-COPY then
-   u BYTES-U +!
-   to ;
+\ The string whose offset and length the cells hold, moved down in BYTES to
+\ offset TO, no more than its own, and its offset set to TO: the offset past it.
+: BYTES-DOWN ( ^n ^n n -- n )
+   {: at:^ u:^ to:n :}
+   u @ 0 > if at @ BYTE-AT to BYTE-AT u @ BYTE-COPY then
+   to at !
+   to u @ + ;
 
+\ The line's strings dropped but its identity's name and package, moved down
+\ in order of offset so neither overwrites the other before it moves.
 : IDS-DOWN ( -- )
-   LINE-AT @ BYTES-U !
+   LINE-AT @
    NAME-AT @ PKG-AT @ < if
-      NAME-AT @ NAME-U @ BYTES-DOWN NAME-AT !
-      PKG-AT @ PKG-U @ BYTES-DOWN PKG-AT !
+      NAME-AT NAME-U rot BYTES-DOWN PKG-AT PKG-U rot BYTES-DOWN
    else
-      PKG-AT @ PKG-U @ BYTES-DOWN PKG-AT !
-      NAME-AT @ NAME-U @ BYTES-DOWN NAME-AT !
-   then ;
+      PKG-AT PKG-U rot BYTES-DOWN NAME-AT NAME-U rot BYTES-DOWN
+   then
+   BYTES @ swap VEC:RESIZE ;
 
 \ The visit of the declaration the line states, -1 unless it states a whole
 \ identity: a visit, a name, a package, empty for a global, and a
@@ -615,7 +610,7 @@ private
 
 : FILE-LINE ( -- )
    LINE-SOURCE
-   LINE-AT @ BYTES-U !
+   BYTES @ LINE-AT @ VEC:RESIZE
    FILE$ GROUP-AT STAMP-KEEP ;
 
 \ The line's use, last of this check's, with the identity of the
@@ -740,7 +735,7 @@ private
    k B-DECL BLOCK@ {: d0:n :}
    k B-GROUP GROUP-N @ BLOCK-END g0 - {: dg:n :}
    k B-REC REC-N @ BLOCK-END r0 - {: dr:n :}
-   k B-BYTE BYTES-U @ BLOCK-END t0 - {: dt:n :}
+   k B-BYTE BYTES-N BLOCK-END t0 - {: dt:n :}
    k B-DECL DECL-N @ BLOCK-END d0 - {: dd:n :}
    g0 dg + GROUP-CELLS * g0 GROUP-CELLS * GROUP-N @ g0 - dg - GROUP-CELLS *
    [: GROUPS ;] CELLS-DOWN
@@ -748,12 +743,12 @@ private
    [: RECS ;] CELLS-DOWN
    d0 dd + DECL-CELLS * d0 DECL-CELLS * DECL-N @ d0 - dd - DECL-CELLS *
    [: DECLS ;] CELLS-DOWN
-   BYTES-U @ t0 - dt - {: tail:n :}
-   tail 0 > if t0 dt + BYTES t0 BYTES tail BYTE-COPY then
+   BYTES-N t0 - dt - {: tail:n :}
+   tail 0 > if t0 dt + BYTE-AT t0 BYTE-AT tail BYTE-COPY then
    dg negate GROUP-N +!
    dr negate REC-N +!
    dd negate DECL-N +!
-   dt negate BYTES-U +!
+   BYTES @ BYTES-N dt - VEC:RESIZE
    GROUP-N @ g0 ?do i dr dt GROUP-DOWN loop
    REC-N @ r0 ?do i dr dt REC-DOWN loop
    DECL-N @ d0 ?do i dg dt DECL-DOWN loop
@@ -803,7 +798,7 @@ private
    slot k B-SLOT BLOCK!
    GROUP-N @ k B-GROUP BLOCK!
    REC-N @ k B-REC BLOCK!
-   BYTES-U @ k B-BYTE BLOCK!
+   BYTES-N k B-BYTE BLOCK!
    USE-N @ k B-USE BLOCK!
    DECL-N @ k B-DECL BLOCK!
    1 k B-CURRENT BLOCK!
@@ -849,7 +844,7 @@ private
 public
 
 : DEFS-PREPARE ( -- )
-   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW STR-B !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BYTES !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW FILE-B !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW IN-B !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ESC-OUT !
