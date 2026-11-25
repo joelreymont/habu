@@ -1,4 +1,3 @@
-split-str
 \ layout.f - shared native image and dictionary layout constants.
 \ A start-up row loaded before require exists, so it requires nothing.
 

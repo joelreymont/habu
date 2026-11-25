@@ -1,4 +1,3 @@
-split-str
 \ link-band.f - the shadow emissions a program's roots reach, or every one for
 \ an engine. A native link lays them after the kernel in NATIVE's code buffer
 \ (LAYOUT) and places them at TEXT-VA plus their offset there. Words visible
@@ -89,8 +88,8 @@ variable UNSAFE-COUNT
 
 : ROUTINE. ( n -- )
    {: e:n :}
-   e ROUTINE-NAME$ {: name:^ nameu:n :}
-   nameu 0<> if name nameu REJECTION:EMIT-STR exit then
+   e ROUTINE-NAME$ {: name:str :}
+   name STR:LEN 0<> if name REJECTION:EMIT-STR exit then
    s" emission " REJECTION:EMIT-STR  e REJECTION:EMIT-N ;
 
 
@@ -173,28 +172,28 @@ variable UNSAFE-COUNT
 \ or write, no writable code and no interpreter for the evaluate words,
 \ literal, compile, and ;.
 : UNSAFE-NAME? ( str -- bool )
-   {: a:^ u:n :}
-   a u s" create" STR:=CI
-   a u s" patch32" STR:=CI or
-   a u s" code-publish" STR:=CI or
-   a u s" xref-retarget" STR:=CI or
-   a u s" bare-search-wl" STR:=CI or
-   a u s" xref-search-wl" STR:=CI or
-   a u s" bare-scope-find" STR:=CI or
-   a u s" bare-tok-imm?" STR:=CI or
-   a u s" policy-admit" STR:=CI or
-   a u s" policy-seal" STR:=CI or
-   a u s" def-occ-resolve" STR:=CI or
-   a u s" prof-on" STR:=CI or
-   a u s" ndict!" STR:=CI or
-   a u s" wide-mark" STR:=CI or
-   a u s" record-facts!" STR:=CI or
-   a u s" evaluate" STR:=CI or
-   a u s" evaluate-range" STR:=CI or
-   a u s" evaluate-closed" STR:=CI or
-   a u s" literal" STR:=CI or
-   a u s" compile," STR:=CI or
-   a u s" ;" STR:=CI or ;
+   {: s:str :}
+   s s" create" STR:=CI
+   s s" patch32" STR:=CI or
+   s s" code-publish" STR:=CI or
+   s s" xref-retarget" STR:=CI or
+   s s" bare-search-wl" STR:=CI or
+   s s" xref-search-wl" STR:=CI or
+   s s" bare-scope-find" STR:=CI or
+   s s" bare-tok-imm?" STR:=CI or
+   s s" policy-admit" STR:=CI or
+   s s" policy-seal" STR:=CI or
+   s s" def-occ-resolve" STR:=CI or
+   s s" prof-on" STR:=CI or
+   s s" ndict!" STR:=CI or
+   s s" wide-mark" STR:=CI or
+   s s" record-facts!" STR:=CI or
+   s s" evaluate" STR:=CI or
+   s s" evaluate-range" STR:=CI or
+   s s" evaluate-closed" STR:=CI or
+   s s" literal" STR:=CI or
+   s s" compile," STR:=CI or
+   s s" ;" STR:=CI or ;
 
 
 : UNSAFE-TABLE ( -- )
@@ -299,7 +298,7 @@ variable UNSAFE-COUNT
 \ at dictionary index d. No record keeps its source, so the record is unplaced.
 : CANNOT-RUN ( n n -- )
    {: r:n d:n :}
-   d XREF-REC XREF-NAME$ {: name:^ nameu:n :}
+   d XREF-REC XREF-NAME$ {: name:str :}
    s" E-CANNOT-RUN-STRIPPED" REJECTION:OPEN
    r 0< if
       s" the program starts at `" REJECTION:EMIT-STR
@@ -307,11 +306,11 @@ variable UNSAFE-COUNT
       s" `" REJECTION:EMIT-STR  r NSHADOW:RECORD@ XREF-REC XREF-NAME$ REJECTION:EMIT-STR
       s" ` calls `" REJECTION:EMIT-STR
    then
-   name nameu REJECTION:EMIT-STR
+   name REJECTION:EMIT-STR
    s" `, which a stripped program cannot run" REJECTION:EMIT-STR
    REJECTION:HELP
    s" a stripped program has no dictionary, writable code or interpreter: run `"
-   REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
+   REJECTION:EMIT-STR  name REJECTION:EMIT-STR
    s" ` while the program builds, never from code its entry reaches" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
@@ -445,7 +444,7 @@ variable UNSAFE-COUNT
          cell 0<> if TRAILER-BYTES + then
          dict if i EM-STEPS else -1 then {: r:n :}
          r i STEPPED !
-         r 0 >= if r XREF-REC NDICT:COPY-TRAILER nip + then
+         r 0 >= if r XREF-REC NDICT:COPY-TRAILER STR:LEN + then
       then
    loop
    BAND-END ! ;
@@ -478,10 +477,10 @@ variable UNSAFE-COUNT
    {: a:n :}
    a LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
-   PLACING @ ROUTINE-NAME$ {: name:^ nameu:n :}
+   PLACING @ ROUTINE-NAME$ {: name:str :}
    s" E-LINK-FOREIGN-WORD" REJECTION:OPEN
-   nameu 0<> if
-      s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   name STR:LEN 0<> if
+      s" `" REJECTION:EMIT-STR  name REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
    else
       s" emission " REJECTION:EMIT-STR  PLACING @ REJECTION:EMIT-N
    then

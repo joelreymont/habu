@@ -1,4 +1,3 @@
-split-str
 \ The two native code buffers. All positions exposed here are byte offsets.
 require src/arch/arm64/icode.f
 require src/arch/arm64/link.f
