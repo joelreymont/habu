@@ -17,7 +17,7 @@ split-str
 \ refusals. The info line a tools/call and a resources/read log, without arguments, and,
 \ after MCP:LOG, each message's line after its answer with its outcome and no arguments;
 \ this file run as `-- debug` at HABU_LOG_LEVEL=debug, in a child engine, logs a
-\ tools/call's arguments under its id, cut past 4096 bytes.
+\ tools/call's arguments under its id, cut past 4096 bytes, and a tool error's text.
 \ A chunked body past the route's cap is HTTP's 413, its line logged at info.
 \ MCP:ANSWER on a request worker into a vector holding old text: a tools/call written as
 \ HANDLE sends it, a notification leaving it empty, a message that is not JSON-RPC or not
@@ -2101,12 +2101,24 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    s"  tools/call echo -> ok" REQ-LOGGED
    LOG$ S\" Z info mcp: tools/call echo\n" STR:CONTAINS? TFALSE ;
 
-: LOGGED-STRICT ( -- )
-   s" MCP:LOG logs a schema refusal as a tool error" T-LABEL
-   [: LEGACY 81 FILTERS STRICT-CALL POST 200 T= ;] CAPTURED
-   W-RESET S\"  tools/call strict -> tool error: " W+
-   FILTERS-TEXT W+
-   W$ REQ-LOGGED ;
+\ The debug child's fd 2 holds the rest on an info line and, under its id, a
+\ debug line with the tool error's text.
+: ERROR-TEXTED ( str str str -- )
+   {: e:^ eu:n rest:^ ru:n text:^ tu:n :}
+   e eu rest ru REQ-ID$ {: id:^ iu:n :}
+   W-RESET s"  tool error: " W+ text tu W+ S\" \n" W+
+   e eu DEBUG-HEAD W$ LINE-ID$ id iu T$= ;
+
+: STRICT-ERROR ( -- ) LEGACY 81 FILTERS STRICT-CALL POST 200 T= ;
+
+\ Given the debug child's fd 2.
+: LOGGED-STRICT ( str -- )
+   {: e:^ eu:n :}
+   s" MCP:LOG logs a schema refusal as a tool error, its text at debug" T-LABEL
+   [: STRICT-ERROR ;] CAPTURED
+   s"  tools/call strict -> tool error" REQ-LOGGED
+   LOG$ FILTERS-TEXT STR:CONTAINS? TFALSE
+   e eu s"  tools/call strict -> tool error" FILTERS-TEXT ERROR-TEXTED ;
 
 : LOGGED-UNKNOWN ( -- )
    s" MCP:LOG logs an unknown tool's JSON-RPC error" T-LABEL
@@ -2117,11 +2129,10 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    W$ REQ-LOGGED ;
 
 : LOGGED-TWICE ( -- )
-   s" MCP:LOG logs params naming name twice as -32600 with no method and passes no code" T-LABEL
+   s" MCP:LOG logs params naming name twice as -32600 with no method, no text and no code" T-LABEL
    [: LEGACY 84 NAME-TWICE POST 400 T= ;] CAPTURED
-   W-RESET s"  - -> error -32600: " W+
-   TWICE-HEAD W+ S\" \"name\"" W+ TWICE-TAIL W+
-   W$ REQ-LOGGED
+   s"  - -> error -32600" REQ-LOGGED
+   LOG$ TWICE-HEAD STR:CONTAINS? TFALSE
    LOG$ s" failed, throw" STR:CONTAINS? TFALSE ;
 
 : LOGGED-NOTIFIED ( -- )
@@ -2150,10 +2161,16 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    MCP:E-STATE FAULT-W+
    W$ ERROR-LOGGED ;
 
-: LOGGED-FREED ( -- )
-   s" MCP:LOG logs a tool error whose text the body freed" T-LABEL
-   [: LEGACY S\" {\"freed\":1}" WAIT-LEGACY POST 200 T= ;] CAPTURED
-   s"  tools/call wait -> tool error: freed text" REQ-LOGGED ;
+: FREED-CALL ( -- ) LEGACY S\" {\"freed\":1}" WAIT-LEGACY POST 200 T= ;
+
+\ Given the debug child's fd 2.
+: LOGGED-FREED ( str -- )
+   {: e:^ eu:n :}
+   s" MCP:LOG logs a tool error whose text the body freed, the text at debug" T-LABEL
+   [: FREED-CALL ;] CAPTURED
+   s"  tools/call wait -> tool error" REQ-LOGGED
+   LOG$ s" freed text" STR:CONTAINS? TFALSE
+   e eu s"  tools/call wait -> tool error" s" freed text" ERROR-TEXTED ;
 
 : LOGGED-LATE ( -- )
    s" MCP:LOG logs a throw after the result as a fault at error" T-LABEL
@@ -2195,18 +2212,19 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    S\" {\"name\":\"echo\",\"arguments\":{\"b\":" W+ BIG BIG-U W+ s" }}}" W+ W$ ;
 
 \ The child's server: echo under MCP:LOG, called with {"a":1}, then with
-\ LONG-CALL's arguments.
+\ LONG-CALL's arguments; then strict's and wait's tool errors.
 : DEBUG-SERVE ( -- )
    AIO:START
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
    HTTP:ROUTES-RESET
    s" POST" s" /mcp" [: MCP:HANDLE ;] HTTP:ROUTE
    s" test-server" s" 1.0" MCP:SERVER-INFO!
-   BIG-FILL ADD-ECHO
+   BIG-FILL ADD-ECHO ADD-WAIT ADD-STRICT
    MCP:LOG
    0 ONE-WORKER SERVE-ON
    LEGACY ECHO-LEGACY POST 200 T=
    LEGACY LONG-CALL POST 200 T=
+   STRICT-ERROR FREED-CALL
    HTTP:STOP
    BODY @ VEC:DELETE
    AIO:STOP ;
@@ -2233,9 +2251,10 @@ create CHILD-ERR CHILD-CAP allot
    rc 0 T=
    CHILD-ERR erru LEN>N ;
 
-: LOGGED-DEBUG ( -- )
+\ Given the debug child's fd 2.
+: LOGGED-DEBUG ( str -- )
+   {: e:^ eu:n :}
    s" at debug, MCP:LOG logs a tools/call's arguments under its id" T-LABEL
-   DEBUG-ERR$ {: e:^ eu:n :}
    e eu s"  tools/call echo -> ok" REQ-ID$ {: id:^ iu:n :}
    e eu DEBUG-HEAD S\"  arguments {\"a\":1}\n" LINE-ID$ id iu T$=
    s" at debug, MCP:LOG cuts arguments past 4096 bytes and gives their length" T-LABEL
@@ -2255,9 +2274,11 @@ create CHILD-ERR CHILD-CAP allot
    [: 2drop true ;] MCP:VISIBLE!
    MCP:LOG
    0 ONE-WORKER SERVE-ON
-   LOGGED-ECHO LOGGED-STRICT LOGGED-UNKNOWN LOGGED-TWICE LOGGED-NOTIFIED LOGGED-HELD
-   LOGGED-FAULT LOGGED-FREED LOGGED-LATE LOGGED-MUTE LOGGED-CAPPED LOGGED-ANSWER
-   LOGGED-DEBUG ;
+   s" this file run as `-- debug` exits 0" T-LABEL
+   DEBUG-ERR$ {: e:^ eu:n :}
+   LOGGED-ECHO  e eu LOGGED-STRICT  LOGGED-UNKNOWN LOGGED-TWICE LOGGED-NOTIFIED LOGGED-HELD
+   LOGGED-FAULT  e eu LOGGED-FREED  LOGGED-LATE LOGGED-MUTE LOGGED-CAPPED LOGGED-ANSWER
+   e eu LOGGED-DEBUG ;
 
 
 : SERVE-CASES ( -- )

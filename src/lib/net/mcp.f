@@ -12,9 +12,9 @@
 \ written between its quotes as sent, never the arguments, without LOG; with it,
 \ LOG's lines after the answer, each ending ` in <n> ms` from the request's start,
 \ ANSWER's entry or, for FINISH's, the holding request's start, and the arguments
-\ at debug. ANSWER answers one JSON-RPC message that came by another transport into
-\ a vector, as HANDLE answers a 2026-07-28 request with no transport headers, its
-\ log line included. VISIBLE! hides a tool
+\ and each reply text that may quote them at debug. ANSWER answers one JSON-RPC
+\ message that came by another transport into a vector, as HANDLE answers a
+\ 2026-07-28 request with no transport headers, its log lines included. VISIBLE! hides a tool
 \ from a caller its hook refuses; it does not apply to resources, which every caller may list
 \ and read. A tools/call of a tool the caller cannot call, unknown or hidden, is -32602,
 \ as UNKNOWN-TOOL states.
@@ -133,6 +133,7 @@ private
 7 constant READ-REPLY
 8 constant TEMPLATES-REPLY
 9 constant STALE-REPLY       \ an error whose TEXT is the unknown tool's name
+10 constant UNREAD-REPLY     \ an error whose TEXT is JSON-RPC's and may quote the message
 
 -32002 constant RESOURCE-MISSING
 -32020 constant HEADER-MISMATCH
@@ -211,7 +212,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER FAULT-TEXTS ^VEC:vector<u8>
 \ Each worker's vector, where a tools/call's arguments' violation is written;
 \ NULL-PTR until its first call.
 HTTP:MAX-WORKERS TYPED-BUFFER VIOLATIONS ^VEC:vector<u8>
-\ Each worker's BUF, where a tool error's text is kept for LOG's line.
+\ Each worker's BUF, where a tool error's text is kept for LOG's debug line.
 HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: TOOL-ERRORS
 
 \ The held table: a row is free, kept by HOLD, or finishing while FINISH runs.
@@ -312,6 +313,12 @@ CAST: HELD>N ( held -- n )
    ERROR-REPLY SLOT REPLY ! ;
 
 : GOOD ( n -- ) SLOT REPLY !  200 SLOT STATUS ! ;
+
+\ Whether the slot's reply is a JSON-RPC error.
+: ERROR? ( -- bool )
+   SLOT REPLY @ {: kind:n :}
+   kind ERROR-REPLY = kind STALE-REPLY = or kind UNREAD-REPLY = or ;
+
 : MISMATCH ( -- ) 400 HEADER-MISMATCH s" Header mismatch" BAD ;
 : NO-METHOD ( -- ) 404 -32601 s" Method not found" BAD ;
 : UNKNOWN-RESOURCE ( -- ) 404 RESOURCE-MISSING s" Resource not found" BAD ;
@@ -590,9 +597,7 @@ CAST: HELD>N ( held -- n )
 
 
 : RESPONSE-BODY ( ^JSON:writer -- ^JSON:writer )
-   SLOT REPLY @ {: kind:n :}
-   kind ERROR-REPLY = kind STALE-REPLY = or
-   if ERROR-BODY else RESULT-BODY then ;
+   ERROR? if ERROR-BODY else RESULT-BODY then ;
 
 
 : VEC-REPLY ( -- ) SLOT ANSWER-W RESPONSE-BODY drop ;
@@ -686,7 +691,7 @@ CAST: HELD>N ( held -- n )
    {: code:n why:str reply :}
    reply JSON:TEXT$ {: id:str :}
    id MCP-ID? if id SLOT ID ! then
-   400 code why BAD false ;
+   400 code why BAD  UNREAD-REPLY SLOT REPLY !  false ;
 
 
 \ The text of params a message carries, empty for none.
@@ -1228,7 +1233,7 @@ CAST: HELD>N ( held -- n )
    buf BUF:LIVE? 0= if buf 1024 BUF:N>BLEN BUF:INIT then
    buf ;
 
-\ Under LOG the text is copied: the line is written after the body returns.
+\ Under LOG the text is copied: its debug line is written after the body returns.
 : TOOL-ERROR ( str -- )
    {: text:str :}
    LOGGING @ 0= if text s" " s" []" true RESULT! exit then
@@ -1318,6 +1323,18 @@ CAST: HELD>N ( held -- n )
    ;MATCH ;
 
 
+4096 constant TEXT-MAX    \ the most bytes of one text on a LOG line
+
+\ The text, or its first bytes up to TEXT-MAX cut at a character's start and
+\ then ` [<n> B]`, n its length.
+: TEXT-CUT+ ( str -- )
+   {: s:str :}
+   s STR:LEN TEXT-MAX <= if s LOG:TEXT+ exit then
+   s TEXT-MAX UTF8:FIT {: cut:n :}
+   s STR:DATA cut >str LOG:TEXT+
+   s"  [" LOG:TEXT+  s STR:LEN LOG:INT+  s"  B]" LOG:TEXT+ ;
+
+
 \ The params member that names what the method acts on; empty for none.
 : TARGET-KEY$ ( -- str )
    s" tools/call" METHOD= if s" name" exit then
@@ -1332,53 +1349,47 @@ CAST: HELD>N ( held -- n )
    PARAMS$ KIND JSON:T-OBJ <> if exit then
    PARAMS$ s" params" key FIELD? 0= if drop exit then
    dup KIND JSON:T-STR <> if drop exit then
-   s"  " LOG:TEXT+  UNQUOTED$ LOG:TEXT+ ;
+   s"  " LOG:TEXT+  UNQUOTED$ TEXT-CUT+ ;
 
 
 : LOGGED ( -- )
    LOGGING @ 0<> if exit then
    LOG:INFO s" mcp" LOG:LINE
-   METHOD$ UNQUOTED$ LOG:TEXT+  TARGET+
+   METHOD$ UNQUOTED$ TEXT-CUT+  TARGET+
    LOG:;LINE ;
-
-
-4096 constant TEXT-MAX    \ the most bytes of one text on a LOG line
-
-\ The text, or its first bytes up to TEXT-MAX cut at a character's start and
-\ then ` [<n> B]`, n its length.
-: TEXT-CUT+ ( str -- )
-   {: s:str :}
-   s STR:LEN TEXT-MAX <= if s LOG:TEXT+ exit then
-   s TEXT-MAX UTF8:FIT {: cut:n :}
-   s STR:DATA cut >str LOG:TEXT+
-   s"  [" LOG:TEXT+  s STR:LEN LOG:INT+  s"  B]" LOG:TEXT+ ;
 
 
 \ The method and target; `-` when no method was read.
 : CALL+ ( -- )
    METHOD$ STR:LEN 0= if s" -" LOG:TEXT+ exit then
-   METHOD$ UNQUOTED$ LOG:TEXT+  TARGET+ ;
+   METHOD$ UNQUOTED$ TEXT-CUT+  TARGET+ ;
 
 
-: ERROR+ ( -- )
-   s" error " LOG:TEXT+  SLOT CODE @ LOG:INT+  s" : " LOG:TEXT+
+\ Whether the reply SEND began is a tool error.
+: TOOL-ERROR? ( -- bool ) SLOT REPLY @ CALL-REPLY = SLOT FAULT @ and ;
+
+\ Whether the reply's text may quote the message's arguments.
+: QUOTES? ( -- bool ) TOOL-ERROR? SLOT REPLY @ UNREAD-REPLY = or ;
+
+\ The reply SEND began, without its text.
+: REPLY+ ( -- )
+   TOOL-ERROR? if s" tool error" LOG:TEXT+ exit then
+   ERROR? if s" error " LOG:TEXT+  SLOT CODE @ LOG:INT+ exit then
+   s" ok" LOG:TEXT+ ;
+
+\ A failed reply's text.
+: WHY+ ( -- )
+   s" : " LOG:TEXT+
    SLOT REPLY @ STALE-REPLY = if [: LOG:TEXT+ ;] STALE-PARTS exit then
    TEXT$ TEXT-CUT+ ;
-
-\ The reply SEND began.
-: REPLY+ ( -- )
-   SLOT REPLY @ {: kind:n :}
-   kind ERROR-REPLY = kind STALE-REPLY = or if ERROR+ exit then
-   kind CALL-REPLY = SLOT FAULT @ and if
-      s" tool error: " LOG:TEXT+  TEXT$ TEXT-CUT+ exit
-   then
-   s" ok" LOG:TEXT+ ;
 
 \ The slot's outcome, given the message's fault or 0.
 : OUTCOME+ ( n -- )
    {: code:n :}
    code 0<> if s" fault " LOG:TEXT+  code LOG:CODE+ exit then
-   SLOT STAGE @ SENT = if REPLY+ exit then
+   SLOT STAGE @ SENT = if
+      REPLY+  ERROR? QUOTES? 0= and if WHY+ then exit
+   then
    SLOT STAGE @ HELD = if s" held" LOG:TEXT+ exit then
    s" notified" LOG:TEXT+ ;
 
@@ -1400,6 +1411,14 @@ CAST: HELD>N ( held -- n )
    LOG:DEBUG s" mcp" LOG:LINE  id REQ+
    s" arguments " LOG:TEXT+  args TEXT-CUT+
    LOG:;LINE ;
+
+\ A text that may quote the message, under the id text, given the message's
+\ fault or 0.
+: WHY-LOGGED ( str n -- )
+   {: id:str code:n :}
+   code 0<> SLOT STAGE @ SENT <> or if exit then
+   QUOTES? 0= if exit then
+   LOG:DEBUG s" mcp" LOG:LINE  id REQ+  REPLY+ WHY+  LOG:;LINE ;
 
 \ ` in <n> ms`, n the whole milliseconds since the TIME:MONO-NS reading.
 : ELAPSED+ ( n -- )
@@ -1424,20 +1443,22 @@ CAST: HELD>N ( held -- n )
    CALL+  s"  -> " LOG:TEXT+  code OUTCOME+
    SLOT START @ ELAPSED+
    LOG:;LINE
-   id ARGUMENTS-LOGGED ;
+   id ARGUMENTS-LOGGED
+   id code WHY-LOGGED ;
 
 \ With LOG, FINISH's line for the held row, under the id of the request
 \ that held it, given the quotation's throw or 0.
 : HELD-LOGGED ( n n -- )
    {: idx:n code:n :}
    LOGGING @ 0= if exit then
-   code LEVEL s" mcp" LOG:LINE
-   idx KEEP-REQ BUF:SPAN$ BUF:BLEN>N >str REQ+
+   idx KEEP-REQ BUF:SPAN$ BUF:BLEN>N >str {: id:str :}
+   code LEVEL s" mcp" LOG:LINE  id REQ+
    s" tools/call " LOG:TEXT+
    idx KEEPS KEEP-TOOL @ TOOL-NAME @ LOG:TEXT+
    s"  -> " LOG:TEXT+  code OUTCOME+
    idx KEEPS KEEP-START @ ELAPSED+
-   LOG:;LINE ;
+   LOG:;LINE
+   id code WHY-LOGGED ;
 
 
 : DISPATCH ( -- )
@@ -1639,16 +1660,20 @@ public
 \ for a fault and LOG INFO otherwise. id is the HTTP:REQUEST-ID$ of HANDLE's
 \ request, `-` under ANSWER; method and target are as without LOG, `-` when no
 \ method was read; n is whole milliseconds from the request's start, or
-\ ANSWER's entry. outcome is `ok`, `tool error: <text>` (a schema rejection's
+\ ANSWER's entry. outcome is `ok`, `tool error` (a schema rejection's
 \ included), `error <code>: <message>` for a JSON-RPC error (UNKNOWN-TOOL's
-\ included), `held` for a call HOLD kept, `notified` for a notification, or
+\ included), `error <code>` alone for a body JSON-RPC does not read as a
+\ message, `held` for a call HOLD kept, `notified` for a notification, or
 \ `fault <code> <name>: <text>`, name and text when the code is declared, for
-\ a throw answered -32603. A tools/call with params.arguments then writes a LOG DEBUG line, `req <id>
-\ arguments <arguments>`, the arguments as sent, which may hold what an info
-\ line must not. FINISH writes a held call's own line, `req <id> tools/call
-\ <name> -> <outcome> in <n> ms`, with the id of the request that held it and
-\ n from that request's start. A text past 4096 bytes is cut at a character
-\ boundary and followed by ` [<n> B]`, n its length.
+\ a throw answered -32603. A tools/call with params.arguments then writes a
+\ LOG DEBUG line, `req <id> arguments <arguments>`, the arguments as sent; a
+\ tool error and an unread body write one with their text,
+\ `req <id> tool error: <text>` and `req <id> error <code>: <text>`: all may
+\ hold what an info line must not. FINISH writes a held call's own lines,
+\ `req <id> tools/call <name> -> <outcome> in <n> ms` and a tool error's text,
+\ with the id of the request that held it and n from that request's start. A
+\ text past 4096 bytes is cut at a character boundary and followed by
+\ ` [<n> B]`, n its length.
 \ It lasts across STOP; E-STATE while HTTP serves.
 : LOG ( -- )
    HTTP:RUNNING? if E-STATE throw then
