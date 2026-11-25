@@ -2,20 +2,22 @@
 \ loopback HTTP server answering as Azure's metadata service and a Key Vault
 \ do, stopped whatever the cases do. Its metadata route answers 400 unless
 \ the request has Metadata: true, the api-version and the vault's resource,
-\ and a token lasting under BEARER's leeway, so each read asks again; its
+\ and a token lasting under BEARER's leeway, so each fetch asks again; its
 \ vault route answers 401 unless that token comes as Bearer with api-version
-\ 7.4, then by account. While the tasks read, the vault route holds each
+\ 7.4, then by account. Each case that expects a request reads an account
+\ no earlier read found. While the tasks read, the vault route holds each
 \ answer until two vault requests have been in flight at once, for 5 s at
 \ most. Fails on: a metadata origin with a trailing `/` bound; a vault URL
 \ with a trailing `/` refused; a value with JSON escapes read wrong or not
-\ after the vector's bytes; a 404 not a miss or changing the vector; a 403,
-\ or a metadata 400 during a read, not E-ACCESS; a 503, or a metadata 410
-\ during a read, not E-UNAVAILABLE; another service, an account with `/` or
-\ of 128 bytes not E-CONFIG, or sending a request; a malformed 200 vault or
-\ metadata answer's bytes in the JSON code's text; a write or erase
-\ admitted; an http URL to another host bound, or a refused bind changing
-\ the bound store; tasks reading at once given another's value, or never
-\ two vault requests in flight at once.
+\ after the vector's bytes; a found item read again sending a request or
+\ answering other bytes; a 404 not a miss, changing the vector or not asked
+\ again; a 403, or a metadata 400 during a read, not E-ACCESS; a 503, or a
+\ metadata 410 during a read, not E-UNAVAILABLE; another service, an
+\ account with `/` or of 128 bytes not E-CONFIG, or sending a request; a
+\ malformed 200 vault or metadata answer's bytes in the JSON code's text; a
+\ write or erase admitted; an http URL to another host bound, or a refused
+\ bind changing the bound store; tasks reading at once given another's
+\ value, or never two vault requests in flight at once.
 require src/lib/secret/azure.f
 require src/lib/secret.f
 require src/lib/test.f
@@ -167,7 +169,9 @@ TASK:MIN-STACK TASK:TASK READER-7
 
 : ITEM ( str HTTP:response -- )
    {: name:str answer:HTTP:response :}
-   name s" escaped" STR:= if answer ESCAPED-ANSWER$ HTTP:BODY! exit then
+   name s" escaped" STR:=  name s" rebound" STR:=  or if
+      answer ESCAPED-ANSWER$ HTTP:BODY! exit
+   then
    name s" forbidden" STR:= if
       answer 403 HTTP:STATUS!
       answer s" Forbidden: the caller may not get secrets" HTTP:BODY! exit
@@ -251,11 +255,22 @@ TASK:MIN-STACK TASK:TASK READER-7
    s" busy" SECRET:E-UNAVAILABLE READS-ITEM
    s" a metadata 410 during a read is E-UNAVAILABLE" T-LABEL
    410 IMDS-STATUS !
-   s" escaped" SECRET:E-UNAVAILABLE READS-ITEM
+   s" token-gone" SECRET:E-UNAVAILABLE READS-ITEM
    s" a metadata 400 during a read is E-ACCESS" T-LABEL
    400 IMDS-STATUS !
-   s" escaped" SECRET:E-ACCESS READS-ITEM
+   s" token-refused" SECRET:E-ACCESS READS-ITEM
    200 IMDS-STATUS ! ;
+
+
+: TEST-HELD ( -- )
+   ASKS @ {: seen:n :}
+   s" a found item read again asks nothing and answers its bytes" T-LABEL
+   HOLD s" escaped" s\" helda\"b\\c\xC3\xA9/d" FOUND
+   ASKS @ seen T=
+   s" a miss read again asks the metadata route and the vault" T-LABEL
+   ASKS @ {: asked:n :}
+   SERVICE$ s" missing" OUT SECRET:READ TFALSE
+   ASKS @ asked 2 + T= ;
 
 
 \ Reading the account is E-ACCESS; code's text after it.
@@ -291,7 +306,7 @@ TASK:MIN-STACK TASK:TASK READER-7
    LITERAL-HIDDEN
    s" a malformed 200 metadata answer's bytes are hidden" T-LABEL
    1 IMDS-MALFORMED !
-   s" escaped" E-JSON-READ-COMMA TOKEN-MARK$ SHOWS-HIDDEN
+   s" token-malformed" E-JSON-READ-COMMA TOKEN-MARK$ SHOWS-HIDDEN
    0 IMDS-MALFORMED !
    REASON:HIDDEN? TFALSE ;
 
@@ -311,7 +326,7 @@ TASK:MIN-STACK TASK:TASK READER-7
    s" http to 10.0.0.1 is E-CONFIG and binds nothing" T-LABEL
    [: s" http://10.0.0.1" SERVICE$ ORIGIN$ SECRET:AZURE-BIND ;]
    SECRET:E-CONFIG TTHROWSQ
-   s" escaped" s\" a\"b\\c\xC3\xA9/d" FOUND ;
+   s" rebound" s\" a\"b\\c\xC3\xA9/d" FOUND ;
 
 
 \ Whether slot k reads as its own value into the vector, then emptied.
@@ -360,7 +375,7 @@ TASK:MIN-STACK TASK:TASK READER-7
 
 
 : CASES ( -- )
-   SERVE TEST-READS TEST-HIDDEN TEST-REFUSALS TEST-TASKS ;
+   SERVE TEST-READS TEST-HELD TEST-HIDDEN TEST-REFUSALS TEST-TASKS ;
 
 
 : TEST-MAIN ( -- )

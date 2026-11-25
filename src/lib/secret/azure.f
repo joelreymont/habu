@@ -4,21 +4,25 @@
 \ was bound for, an item being the vault secret the account names, and
 \ throws E-ACCESS for WRITE and ERASE. An account that is not 1 to 127
 \ letters, digits or hyphens, Key Vault's secret names, is E-CONFIG before
-\ any request. A read takes BEARER:IDENTITY-TOKEN's token for the vault
-\ from the metadata service at the bound origin, then GETs
-\ <vault>/secrets/<account>?api-version=7.4 with it as Bearer on a handle
-\ of its own: a 200's "value" string is appended, a 404 is a miss, a lost
-\ transfer or a status a retry may change is E-UNAVAILABLE, and anything
-\ else E-ACCESS, each logged once tagged secret. The token's E-TRANSFER and
-\ E-UNAVAILABLE are E-UNAVAILABLE, its E-REFUSED and E-RESPONSE E-ACCESS,
-\ which BEARER logged. Contract: src/lib/secret.f. The vault URL is an
-\ origin alone, https or http to a loopback IP literal, one trailing `/`
-\ allowed; the metadata origin is an origin alone.
+\ any request. The first value read for an item is held and served from
+\ memory after, so a rotated secret takes effect at the next restart; a miss
+\ or a failure holds nothing, so the next read asks again. A fetch takes
+\ BEARER:IDENTITY-TOKEN's token for the vault from the metadata service at
+\ the bound origin, then GETs <vault>/secrets/<account>?api-version=7.4
+\ with it as Bearer on a handle of its own: a 200's "value" string is
+\ appended, a 404 is a miss, a lost transfer or a status a retry may change
+\ is E-UNAVAILABLE, and anything else E-ACCESS, each logged once tagged
+\ secret. The token's E-TRANSFER and E-UNAVAILABLE are E-UNAVAILABLE, its
+\ E-REFUSED and E-RESPONSE E-ACCESS, which BEARER logged. Contract:
+\ src/lib/secret.f. The vault URL is an origin alone, https or http to a
+\ loopback IP literal, one trailing `/` allowed; the metadata origin is an
+\ origin alone.
 \ STORAGE CLASS. PROCESS-WIDE: the vault URL, service and metadata origin,
-\ written by AZURE-BIND before use. CALLER-OWNED: each read's staging
-\ vector, holding the token's line, the URL and the answer and wiped
-\ whatever the read does, its CURL handle and its reader's cursor; reads
-\ take no lock.
+\ written by AZURE-BIND before use; the held items, each a found item's
+\ account and value, under AZURE-LOCK, held for the process's life.
+\ CALLER-OWNED: each fetch's staging vector, holding the token's line, the
+\ URL and the answer, and its fetched copy, each wiped whatever the fetch
+\ does, its CURL handle and its reader's cursor.
 require src/lib/secret.f
 require src/lib/net/bearer.f
 require src/lib/net/curl.f
@@ -28,6 +32,7 @@ require src/lib/json.f
 require src/lib/log.f
 require src/lib/heap.f
 require src/lib/string.f
+require src/lib/task.f
 require src/lib/vector.f
 
 package SECRET
@@ -41,6 +46,17 @@ TYPED-VARIABLE AZURE-VAULT ^VEC:vector<u8>
 TYPED-VARIABLE AZURE-SERVICE ^VEC:vector<u8>
 TYPED-VARIABLE AZURE-IMDS ^VEC:vector<u8>
 HEAP AZURE-CURSOR JSON:cursor
+
+\ An item a read found, each vector its own.
+STRUCTURE azure-item DERIVE addr
+   FIELD account ^VEC:vector<u8>
+   FIELD value ^VEC:vector<u8>
+;STRUCTURE
+
+\ Null until the first bind; searched in order, as a store serves a handful.
+TYPED-VARIABLE AZURE-ITEMS ^VEC:vector<azure-item>
+TASK:FACILITY AZURE-LOCK
+AZURE-LOCK TASK:FACILITY-INIT
 
 : AZURE-VAULT$ ( -- str ) AZURE-VAULT @ VEC:BYTES ;
 : AZURE-SERVICE$ ( -- str ) AZURE-SERVICE @ VEC:BYTES ;
@@ -188,13 +204,83 @@ HEAP AZURE-CURSOR JSON:cursor
    ;MATCH ;
 
 
+: AZURE-WIPE ( ^VEC:vector<u8> -- ) dup 0 VEC:RESIZE VEC:DELETE ;
+
+
+: AZURE-STAGED ( str ^VEC:vector<u8> -- bool )
+   {: name:str got:^ :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: buf:^ :}
+   [: name got buf AZURE-FETCH ;] [: buf AZURE-WIPE ;] finally ;
+
+
+: AZURE-COPY ( str -- ^VEC:vector<u8> )
+   {: text:str :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   text v VEC:APPEND v ;
+
+
+\ The index of the held item whose account is the name, or -1.
+: AZURE-FIND ( str -- n )
+   {: name:str :}
+   AZURE-ITEMS @ {: items:^ :}
+   items VEC:COUNT 0 ?do
+      items i VEC:AT AZURE-ITEM-ACCOUNT @ VEC:BYTES name STR:=
+      if i unloop exit then
+   loop
+   -1 ;
+
+
+\ Appends the held item's value to dest; false when none is held.
+: AZURE-SERVED? ( str ^VEC:vector<u8> -- bool )
+   {: name:str dest:^ :}
+   name AZURE-FIND {: k:n :}
+   k 0 < if false exit then
+   AZURE-ITEMS @ k VEC:AT AZURE-ITEM-VALUE @ VEC:BYTES dest VEC:APPEND
+   true ;
+
+
+\ The table's room comes first, so the push cannot fail once the copies exist.
+: AZURE-HOLD ( str str -- )
+   {: name:str value:str :}
+   AZURE-ITEMS @ {: items:^ :}
+   items  items VEC:COUNT 1+  VEC:RESERVE
+   name AZURE-COPY {: account:^ :}
+   [: value AZURE-COPY ;] catch {: code:n :}
+   code 0<> if account VEC:DELETE code throw then
+   {: copy:^ :}
+   items VEC:PUSH {: item:^ :}
+   account item AZURE-ITEM-ACCOUNT !
+   copy item AZURE-ITEM-VALUE ! ;
+
+
+\ Holds the fetched value unless another task held the item meanwhile;
+\ dest gets the held value either way.
+: AZURE-KEEP ( str ^VEC:vector<u8> ^VEC:vector<u8> -- )
+   {: name:str got:^ dest:^ :}
+   name dest AZURE-SERVED? if exit then
+   name got VEC:BYTES AZURE-HOLD
+   got VEC:BYTES dest VEC:APPEND ;
+
+
+\ The vault is asked with the lock not held, so reads of other items run
+\ at once.
+: AZURE-ASKED ( str ^VEC:vector<u8> ^VEC:vector<u8> -- bool )
+   {: name:str got:^ dest:^ :}
+   name got AZURE-STAGED 0= if false exit then
+   AZURE-LOCK TASK:GET
+   [: name got dest AZURE-KEEP ;] [: AZURE-LOCK TASK:RELEASE ;] finally
+   true ;
+
+
 : AZURE-READ ( str str ^VEC:vector<u8> -- bool )
    {: svc:str name:str dest:^ :}
    svc AZURE-SERVICE$ STR:= 0= if E-CONFIG throw then
    name AZURE-NAME? 0= if E-CONFIG throw then
-   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: buf:^ :}
-   [: name dest buf AZURE-FETCH ;]
-   [: buf 0 VEC:RESIZE buf VEC:DELETE ;] finally ;
+   AZURE-LOCK TASK:GET
+   [: name dest AZURE-SERVED? ;] [: AZURE-LOCK TASK:RELEASE ;] finally
+   if true exit then
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: got:^ :}
+   [: name got dest AZURE-ASKED ;] [: got AZURE-WIPE ;] finally ;
 
 
 : AZURE-WRITE ( str str str -- )
@@ -247,11 +333,6 @@ HEAP AZURE-CURSOR JSON:cursor
    code 0<> if code throw then ;
 
 
-: AZURE-COPY ( str -- ^VEC:vector<u8> )
-   {: text:str :}
-   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
-   text v VEC:APPEND v ;
-
 public
 
 \ Binds with STORE! the store over the vault for the service, once, before
@@ -265,6 +346,7 @@ public
    vault AZURE-VAULT !
    service AZURE-SERVICE !
    imds AZURE-IMDS !
+   HEAP:ALLOCATOR 0 [type] azure-item VEC:NEW AZURE-ITEMS !
    [: AZURE-READ ;] [: AZURE-WRITE ;] [: AZURE-ERASE ;] STORE! ;
 
 ;package
