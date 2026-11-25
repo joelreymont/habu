@@ -556,6 +556,49 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    \ llvm-mc: cvttsd2siq %xmm1, %rcx
    RCX XMM1 SINK ENC-CVTTSD2SI-RR   s" f2480f2cc9" X= ;
 
+\ The packed moves and shuffles, and the three-byte opcodes 0F38xx and 0F3Axx.
+: SSE-PACKED ( -- )
+   \ llvm-mc: movdqu 16(%rsi), %xmm3
+   XMM3 RSI 16 MEM-OFF SINK ENC-MOVDQU-RM   s" f30f6f5e10" X=
+   \ llvm-mc: movdqu -129(%r12), %xmm15
+   XMM15 R12 -129 MEM-OFF SINK ENC-MOVDQU-RM   s" f3450f6fbc247fffffff" X=
+   \ llvm-mc: movdqu %xmm0, 32(%rdi)
+   XMM0 RDI 32 MEM-OFF SINK ENC-MOVDQU-MR   s" f30f7f4720" X=
+   \ llvm-mc: movdqu %xmm9, 8(%r13,%r12,4)
+   XMM9 R13 R12 4 8 MEM-IDX SINK ENC-MOVDQU-MR   s" f3470f7f4ca508" X=
+   \ llvm-mc: movdqa %xmm1, %xmm9
+   XMM9 XMM1 SINK ENC-MOVDQA-RR   s" 66440f6fc9" X=
+   \ llvm-mc: paddd %xmm9, %xmm1
+   XMM1 XMM9 SINK ENC-PADDD-RR   s" 66410ffec9" X=
+   \ llvm-mc: punpcklqdq %xmm3, %xmm1
+   XMM1 XMM3 SINK ENC-PUNPCKLQDQ-RR   s" 660f6ccb" X=
+   \ llvm-mc: pshufd $14, %xmm0, %xmm0
+   XMM0 XMM0 14 >IMM8 SINK ENC-PSHUFD-RRI8   s" 660f70c00e" X=
+   \ llvm-mc: pshufd $255, %xmm15, %xmm8
+   XMM8 XMM15 255 >IMM8 SINK ENC-PSHUFD-RRI8   s" 66450f70c7ff" X=
+   \ llvm-mc: pshufb %xmm8, %xmm3
+   XMM3 XMM8 SINK ENC-PSHUFB-RR   s" 66410f3800d8" X=
+   \ llvm-mc: palignr $4, %xmm5, %xmm7
+   XMM7 XMM5 4 >IMM8 SINK ENC-PALIGNR-RRI8   s" 660f3a0ffd04" X=
+   \ llvm-mc: palignr $4, %xmm15, %xmm8
+   XMM8 XMM15 4 >IMM8 SINK ENC-PALIGNR-RRI8   s" 66450f3a0fc704" X=
+   \ llvm-mc: pmovzxdq %xmm8, %xmm15
+   XMM15 XMM8 SINK ENC-PMOVZXDQ-RR   s" 66450f3835f8" X= ;
+
+: SHA-ROUNDS ( -- )
+   \ llvm-mc: sha256rnds2 %xmm0, %xmm1, %xmm2
+   XMM2 XMM1 SINK ENC-SHA256RNDS2-RR   s" 0f38cbd1" X=
+   \ llvm-mc: sha256rnds2 %xmm0, %xmm8, %xmm15
+   XMM15 XMM8 SINK ENC-SHA256RNDS2-RR   s" 450f38cbf8" X=
+   \ llvm-mc: sha256msg1 %xmm4, %xmm3
+   XMM3 XMM4 SINK ENC-SHA256MSG1-RR   s" 0f38ccdc" X=
+   \ llvm-mc: sha256msg1 %xmm9, %xmm8
+   XMM8 XMM9 SINK ENC-SHA256MSG1-RR   s" 450f38ccc1" X=
+   \ llvm-mc: sha256msg2 %xmm6, %xmm3
+   XMM3 XMM6 SINK ENC-SHA256MSG2-RR   s" 0f38cdde" X=
+   \ llvm-mc: sha256msg2 %xmm15, %xmm8
+   XMM8 XMM15 SINK ENC-SHA256MSG2-RR   s" 450f38cdc7" X= ;
+
 \ movq moves eight bytes between the two files unchanged. The XMM register is the
 \ ModRM reg field in both directions, so each pair crosses REX.R with REX.B.
 : SSE-CROSS ( -- )
@@ -612,6 +655,10 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    [: XMM0 16 >R64 SINK ENC-MOVQ-XR ;] E-OPERAND TTHROWSQ
    [: -1 >R64 XMM0 SINK ENC-MOVQ-RX ;] E-OPERAND TTHROWSQ
    [: RAX 16 >XMM SINK ENC-MOVQ-RX ;] E-OPERAND TTHROWSQ
+   [: 16 >XMM RAX MEM-AT SINK ENC-MOVDQU-RM ;] E-OPERAND TTHROWSQ
+   [: XMM0 XMM0 256 >IMM8 SINK ENC-PSHUFD-RRI8 ;] E-OPERAND TTHROWSQ
+   [: XMM0 XMM0 -1 >IMM8 SINK ENC-PALIGNR-RRI8 ;] E-OPERAND TTHROWSQ
+   [: XMM0 16 >XMM SINK ENC-SHA256RNDS2-RR ;] E-OPERAND TTHROWSQ
    s" 50" X= ;
 
 \ The five relative branches. A displacement is measured from the END of the
@@ -742,7 +789,8 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    IMMEDIATE-STORES CELL-STORES STORE-REJECTIONS
    PADDING-AND-TRAP
    SHIFTS CONTROL ATOMICS MEMORY-TRAPS CONDITION-NAMES REGISTER-NAMES BRANCHES
-   SSE-REGISTERS SSE-MOVES SSE-ARITHMETIC SSE-CROSS SSE-REJECTIONS SSE-NOMINAL-CASES
+   SSE-REGISTERS SSE-MOVES SSE-ARITHMETIC SSE-PACKED SHA-ROUNDS
+   SSE-CROSS SSE-REJECTIONS SSE-NOMINAL-CASES
    REGISTER-REJECTIONS IMMEDIATE-REJECTIONS MEMORY-REJECTIONS BRANCH-REJECTIONS
    LOCK-REJECTIONS NOMINAL-CASES RELOCATION-CONTRACT
    SINK VEC:DELETE

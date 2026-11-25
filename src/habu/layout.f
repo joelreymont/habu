@@ -844,6 +844,9 @@ $2CD8 constant CLOSED-FREE-CELL
 \ linked program's words follow it. The linker maps the running hb's kernel
 \ primitives by it.
 $2CE0 constant CODE-END-CELL
+\ SHA256-CELL: whether this x86-64 CPU has the SHA-256 instructions, 0 until asked.
+\ Every thread uses the main DATA's cell.
+$2CF8 constant SHA256-CELL
 \ DATA-FLOOR-CELL: the lowest DATA offset a rewind of DATA may return DP to, 0
 \ for none. Storage published inside whatever is running (a literal segment, a
 \ grown callback or task-row table) raises the floor to its end, so it and every

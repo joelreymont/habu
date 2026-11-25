@@ -108,6 +108,7 @@ create TAB
    MAIN-THREAD-CELL                   1 cells                 CLAIM MAIN-THREAD-CELL
    CLOSED-FREE-CELL                   1 cells                 CLAIM CLOSED-FREE-CELL
    CODE-END-CELL                      1 cells                 CLAIM CODE-END-CELL
+   SHA256-CELL                        1 cells                 CLAIM SHA256-CELL
    PRIM-TABLE-CELL                    1 cells                 CLAIM PRIM-TABLE-CELL
    TEXT-SIZE-CELL                     1 cells                 CLAIM TEXT-SIZE-CELL
    DPHW-CELL                          1 cells                 CLAIM DPHW-CELL

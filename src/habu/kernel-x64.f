@@ -22,6 +22,7 @@ require src/lib/string.f
 require src/habu/prof-x64.f
 require src/core/does-clause.f
 require src/core/util.f
+require src/core/sha256.f
 require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/wl.f
@@ -3850,6 +3851,127 @@ variable MARK-CELL
    R8 WRITE-ALIAS,
    R9 R8 32 MOV-STORE, ;
 
+\ The probe's answers in SHA256-CELL.
+1 constant SHA256-YES
+2 constant SHA256-NO
+
+\ r9 = the answer. CPUID writes rbx, the data stack pointer, which waits in r8.
+\ Leaf 7's EBX bit 29 is SHA; leaf 1's ECX bits 9 and 19 are SSSE3 and SSE4.1.
+: SHA256-ASK, ( -- )
+   X64CODE:LBL {: told:label :}
+   R8 DSP ASM-SINK ENC-MOV-RR
+   R9 SHA256-NO IMM32,
+   RAX ZERO-REG,  ASM-SINK ENC-CPUID
+   RAX 7 >IMM8 ASM-SINK ENC-CMP-RI8  C-B told JCC,
+   RAX 1 IMM32,  ASM-SINK ENC-CPUID
+   RCX $80200 >IMM32 ASM-SINK ENC-AND-RI32
+   RCX $80200 >IMM32 ASM-SINK ENC-CMP-RI32  C-NE told JCC,
+   RAX 7 IMM32,  RCX ZERO-REG,  ASM-SINK ENC-CPUID
+   RBX $20000000 >IMM32 ASM-SINK ENC-AND-RI32  C-E told JCC,
+   R9 SHA256-YES IMM32,
+   told X64CODE:LBL,
+   DSP R8 ASM-SINK ENC-MOV-RR ;
+
+\ Passes on where the CPU has the instructions, else goes to the label. CPUID
+\ costs more than a block's rounds, so the process asks once.
+: SHA256-PROBE, ( label -- )
+   {: none:label :}
+   X64CODE:LBL {: known:label :}
+   R11 SHARED-DATA,
+   R9 R11 SHA256-CELL MOV-LOAD,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-NE known JCC,
+   SHA256-ASK,
+   R9 R11 SHA256-CELL MOV-STORE,
+   known X64CODE:LBL,
+   R9 SHA256-YES >IMM8 ASM-SINK ENC-CMP-RI8  C-NE none JCC, ;
+
+\ The constants, two words to a cell, then PSHUFB's byte swap of four words.
+: SHA256-TABLE, ( -- )
+   32 0 ?do
+      KK i 2 * cells + @  KK i 2 * 1+ cells + @ 32 lshift or  X64CODE:U64,
+   loop
+   $0405060700010203 X64CODE:U64,  $0C0D0E0F08090A0B X64CODE:U64, ;
+
+16 constant XMM-BYTES
+64 4 * constant SHA256-SWAP
+
+\ The register of schedule quad k, xmm3-xmm6.
+: SHA256-W ( n -- xmm ) 4 mod 3 + >XMM ;
+
+: PSHUFD, ( xmm xmm n -- ) >IMM8 ASM-SINK ENC-PSHUFD-RRI8 ;
+
+\ xmm1 = ABEF and xmm2 = CDGH, the first letter the high word, from the low
+\ halves of rdi's cells.
+: SHA256-LOAD, ( -- )
+   XMM3 RDI MEM-AT ASM-SINK ENC-MOVDQU-RM
+   XMM4 RDI 16 MEM-OFF ASM-SINK ENC-MOVDQU-RM
+   XMM1 RDI 32 MEM-OFF ASM-SINK ENC-MOVDQU-RM
+   XMM2 RDI 48 MEM-OFF ASM-SINK ENC-MOVDQU-RM
+   5 1 do  i >XMM i >XMM $02 PSHUFD,  loop
+   XMM1 XMM3 ASM-SINK ENC-PUNPCKLQDQ-RR
+   XMM2 XMM4 ASM-SINK ENC-PUNPCKLQDQ-RR ;
+
+\ Two of the register's words, chosen by the PSHUFD order, as cells k and k + 1.
+: SHA256-PAIR, ( xmm n n -- )
+   {: src:xmm order:n k:n :}
+   XMM0 src order PSHUFD,
+   XMM0 XMM0 ASM-SINK ENC-PMOVZXDQ-RR
+   XMM0 RDI k CELL * MEM-OFF ASM-SINK ENC-MOVDQU-MR ;
+
+: SHA256-STORE, ( -- )
+   XMM1 $0B 0 SHA256-PAIR,  XMM2 $0B 2 SHA256-PAIR,
+   XMM1 $01 4 SHA256-PAIR,  XMM2 $01 6 SHA256-PAIR, ;
+
+\ Quad k's register becomes quad k + 4.
+: SHA256-SCHEDULE, ( n -- )
+   {: k:n :}
+   k SHA256-W k 1+ SHA256-W ASM-SINK ENC-SHA256MSG1-RR
+   XMM7 k 3 + SHA256-W ASM-SINK ENC-MOVDQA-RR
+   XMM7 k 2 + SHA256-W 4 >IMM8 ASM-SINK ENC-PALIGNR-RRI8
+   k SHA256-W XMM7 ASM-SINK ENC-PADDD-RR
+   k SHA256-W k 3 + SHA256-W ASM-SINK ENC-SHA256MSG2-RR ;
+
+\ Four rounds; r8 = the constants.
+: SHA256-QUAD, ( n -- )
+   {: k:n :}
+   XMM0 R8 k XMM-BYTES * MEM-OFF ASM-SINK ENC-MOVDQU-RM
+   XMM0 k SHA256-W ASM-SINK ENC-PADDD-RR
+   k 12 < if k SHA256-SCHEDULE, then
+   XMM2 XMM1 ASM-SINK ENC-SHA256RNDS2-RR
+   XMM0 XMM0 $0E PSHUFD,
+   XMM1 XMM2 ASM-SINK ENC-SHA256RNDS2-RR ;
+
+\ The block at rsi; xmm8 = the byte swap.
+: SHA256-BLOCK, ( -- )
+   4 0 ?do
+      i SHA256-W RSI i XMM-BYTES * MEM-OFF ASM-SINK ENC-MOVDQU-RM
+      i SHA256-W XMM8 ASM-SINK ENC-PSHUFB-RR
+   loop
+   XMM9 XMM1 ASM-SINK ENC-MOVDQA-RR  XMM10 XMM2 ASM-SINK ENC-MOVDQA-RR
+   16 0 ?do  i SHA256-QUAD,  loop
+   XMM1 XMM9 ASM-SINK ENC-PADDD-RR  XMM2 XMM10 ASM-SINK ENC-PADDD-RR ;
+
+\ sha256-blocks ( ^n ^u8 n -- n )
+: SHA256-BLOCKS-BODY ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: none:label next:label done:label table:label :}
+   R10 POP,  RSI POP,  RDI POP,
+   R10 R10 ASM-SINK ENC-TEST-RR  C-LE none JCC,
+   none SHA256-PROBE,
+   RDX R10 ASM-SINK ENC-MOV-RR
+   R8 table MOVABS,
+   XMM8 R8 SHA256-SWAP MEM-OFF ASM-SINK ENC-MOVDQU-RM
+   SHA256-LOAD,
+   next X64CODE:LBL,
+   SHA256-BLOCK,
+   RSI 64 >IMM8 ASM-SINK ENC-ADD-RI8
+   R10 ASM-SINK ENC-DEC  C-NE next JCC,
+   SHA256-STORE,
+   done JMP,
+   table X64CODE:LBL,  SHA256-TABLE,
+   none X64CODE:LBL,  RDX ZERO-REG,
+   done X64CODE:LBL,  RDX PUSH, ;
+
 : SCOPE-ROWS, ( -- )
    MARK-BODY,
    s" xt!" [:
@@ -3872,8 +3994,7 @@ variable MARK-CELL
       RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
       RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;] PRIM
    s" record-facts!" [: RECORD-FACTS-BODY ;] PRIM
-   \ No SHA-256 instructions here yet: sha256.f compresses every block itself.
-   s" sha256-blocks" [: RAX POP,  RAX POP,  RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM
+   s" sha256-blocks" [: SHA256-BLOCKS-BODY ;] PRIM
    s" tick-order@" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH, ;] PRIM ;
 
 public

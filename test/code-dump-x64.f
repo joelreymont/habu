@@ -39,6 +39,7 @@ create BAD-MODRM $48 c, $8B c,
 create BAD-SIB $48 c, $8B c, $04 c,
 create BAD-IMM $48 c, $B8 c, $01 c,
 create BAD-OP $0F c, $FF c,
+create PALIGNR-CODE $66 c, $45 c, $0F c, $3A c, $0F c, $C7 c, $04 c,
 
 public
 : DUMP-IMM ( -- n ) $C3 ;
@@ -74,7 +75,9 @@ private
    [: FP-ADD 4 >str $2000 X64DIS:DIS1 4 T= ;] GE-CAPTURE-ACTION
    s" addsd xmm0, xmm1" s" scalar floating arithmetic" GE-EXPECT-OUT-HAS
    [: FP-CVT 5 >str $2000 X64DIS:DIS1 5 T= ;] GE-CAPTURE-ACTION
-   s" cvtsi2sd xmm0, rcx" s" scalar integer conversion" GE-EXPECT-OUT-HAS ;
+   s" cvtsi2sd xmm0, rcx" s" scalar integer conversion" GE-EXPECT-OUT-HAS
+   [: PALIGNR-CODE 7 >str $2000 X64DIS:DIS1 7 T= ;] GE-CAPTURE-ACTION
+   s" palignr xmm8, xmm15, 0x4" s" three-byte opcode and its immediate" GE-EXPECT-OUT-HAS ;
 
 : CHECK-PREFIX ( -- )
    [: WORD-CODE 4 >str $2500 X64DIS:DIS1 4 T= ;] GE-CAPTURE-ACTION

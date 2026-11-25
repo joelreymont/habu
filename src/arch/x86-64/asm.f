@@ -53,6 +53,9 @@ private
 \ A shift count. The hardware masks to six bits; a wider count is a caller bug.
 : ?SHIFT-COUNT ( n -- n )  0 63 RANGE ;
 
+\ A shuffle order or byte count, which nothing sign-extends.
+: ?UIMM8 ( n -- n )  0 255 RANGE ;
+
 \ An imm32 the machine sign-extends to 64 bits (C7 /0, 81 /n, 69 /r, rel32).
 : ?SIMM32 ( n -- n )  -2147483648 2147483647 RANGE ;
 
@@ -102,10 +105,10 @@ private
 : SIB ( n n n -- n ) {: ss:n index:n base:n :}
    ss 6 lshift  index 7 and 3 lshift or  base 7 and or ;
 
-\ A two-byte opcode is carried as 0Fxx, so its escape byte is its high byte.
+\ An opcode carries its escape bytes above it: xx, 0Fxx, 0F38xx or 0F3Axx.
 : EMIT-OP ( n ^VEC:vector<u8> -- ) {: op:n s:^ :}
-   op 8 rshift $FF and {: esc:n :}
-   esc 0<> if esc s EMIT-B then
+   op $10000 >= if op 16 rshift s EMIT-B then
+   op $100 >= if op 8 rshift s EMIT-B then
    op s EMIT-B ;
 
 \ ---- the packed memory operand -----------------------------------------------
@@ -293,12 +296,23 @@ private
    prefix s EMIT-B
    wd op rn mn 0 s RR-ENC ;
 
-: MOVSD-MEM ( n xmm mem ^VEC:vector<u8> -- ) {: op:n r:xmm m:mem s:^ :}
+: SSE-RRI8 ( n n xmm xmm imm8 ^VEC:vector<u8> -- )
+   {: prefix:n op:n d:xmm sr:xmm v:imm8 s:^ :}
+   v IMM8>N ?UIMM8 {: imm:n :}
+   prefix W32 op d XMM>N sr XMM>N s SSE-RR
+   imm s EMIT-B ;
+
+: SSE-MEM ( n n xmm mem ^VEC:vector<u8> -- )
+   {: prefix:n op:n r:xmm m:mem s:^ :}
    r XMM>N REG-NUM {: rn:n :}  m MEM-CHECK
-   $F2 s EMIT-B
+   prefix s EMIT-B
    0 rn 3 rshift m MEM-X-BIT m MEM-B-BIT 0 s EMIT-REX
    op s EMIT-OP
    rn m s EMIT-MEM ;
+
+\ The SHA instructions take no mandatory prefix.
+: SHA-RR ( n xmm xmm ^VEC:vector<u8> -- ) {: op:n d:xmm sr:xmm s:^ :}
+   W32 op d XMM>N REG-NUM sr XMM>N REG-NUM 0 s RR-ENC ;
 
 \ A locked 64-bit read-modify-write of memory. The lock prefix precedes REX, as
 \ a mandatory SSE prefix does, so both operands are screened before it.
@@ -538,9 +552,9 @@ public
 : ENC-MOVSD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $F2 W32 $0F10 d XMM>N sr XMM>N s SSE-RR ;
 : ENC-MOVSD-RM ( xmm mem ^VEC:vector<u8> -- ) {: d:xmm m:mem s:^ :}
-   $0F10 d m s MOVSD-MEM ;
+   $F2 $0F10 d m s SSE-MEM ;
 : ENC-MOVSD-MR ( xmm mem ^VEC:vector<u8> -- ) {: sr:xmm m:mem s:^ :}
-   $0F11 sr m s MOVSD-MEM ;
+   $F2 $0F11 sr m s SSE-MEM ;
 : ENC-ADDSD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $F2 W32 $0F58 d XMM>N sr XMM>N s SSE-RR ;
 : ENC-SUBSD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
@@ -576,6 +590,34 @@ public
    $66 W64 $0F6E d XMM>N sr R64>N s SSE-RR ;
 : ENC-MOVQ-RX ( r64 xmm ^VEC:vector<u8> -- ) {: d:r64 sr:xmm s:^ :}
    $66 W64 $0F7E sr XMM>N d R64>N s SSE-RR ;
+
+\ ---- packed integers and SHA-256 ----------------------------------------------
+\ PSHUFB and PALIGNR are SSSE3's, PMOVZXDQ SSE4.1's. SHA256RNDS2 also reads
+\ xmm0, which its encoding does not name.
+: ENC-MOVDQU-RM ( xmm mem ^VEC:vector<u8> -- ) {: d:xmm m:mem s:^ :}
+   $F3 $0F6F d m s SSE-MEM ;
+: ENC-MOVDQU-MR ( xmm mem ^VEC:vector<u8> -- ) {: sr:xmm m:mem s:^ :}
+   $F3 $0F7F sr m s SSE-MEM ;
+: ENC-MOVDQA-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
+   $66 W32 $0F6F d XMM>N sr XMM>N s SSE-RR ;
+: ENC-PADDD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
+   $66 W32 $0FFE d XMM>N sr XMM>N s SSE-RR ;
+: ENC-PUNPCKLQDQ-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
+   $66 W32 $0F6C d XMM>N sr XMM>N s SSE-RR ;
+: ENC-PSHUFD-RRI8 ( xmm xmm imm8 ^VEC:vector<u8> -- ) {: d:xmm sr:xmm v:imm8 s:^ :}
+   $66 $0F70 d sr v s SSE-RRI8 ;
+: ENC-PSHUFB-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
+   $66 W32 $0F3800 d XMM>N sr XMM>N s SSE-RR ;
+: ENC-PALIGNR-RRI8 ( xmm xmm imm8 ^VEC:vector<u8> -- ) {: d:xmm sr:xmm v:imm8 s:^ :}
+   $66 $0F3A0F d sr v s SSE-RRI8 ;
+: ENC-PMOVZXDQ-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
+   $66 W32 $0F3835 d XMM>N sr XMM>N s SSE-RR ;
+: ENC-SHA256RNDS2-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
+   $0F38CB d sr s SHA-RR ;
+: ENC-SHA256MSG1-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
+   $0F38CC d sr s SHA-RR ;
+: ENC-SHA256MSG2-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
+   $0F38CD d sr s SHA-RR ;
 
 \ ---- widening moves ----------------------------------------------------------
 \ movsxd is the 32-to-64 sign extension and has no zero-extending counterpart:

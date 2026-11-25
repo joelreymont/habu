@@ -104,8 +104,15 @@ variable DQUIET
          c $F and DREX ! 1 D-HASREX ! then then
    repeat ;
 
+\ 0Fxx reads $1xx, 0F38xx $2xx and 0F3Axx $3xx.
+: ESCAPED-OPCODE ( -- n )
+   NEXT {: op:n :}
+   op $38 = if NEXT $200 or exit then
+   op $3A = if NEXT $300 or exit then
+   op $100 or ;
+
 : OPCODE ( -- )
-   NEXT dup $0F = if drop NEXT $100 or then DOP ! ;
+   NEXT dup $0F = if drop ESCAPED-OPCODE then DOP ! ;
 
 : WIDTH ( -- n )
    REX-W? if 64 exit then
@@ -439,6 +446,9 @@ variable DQUIET
 : SSE-RM-REG ( str -- ) {: name:^ u:n :}
    MODRM name u OUT GAP XRM. SEP DREG @ XMM. ;
 
+: SSE-REG-RM-IMM ( str -- )
+   SSE-REG-RM SEP NEXT IMM. ;
+
 : SSE-SCALAR ( -- bool )
    DOP @ $110 = if $F2 SSE-PREFIX s" movsd" SSE-REG-RM true exit then
    DOP @ $111 = if $F2 SSE-PREFIX s" movsd" SSE-RM-REG true exit then
@@ -469,6 +479,25 @@ variable DQUIET
    DOP @ $17E = if
       $66 SSE-PREFIX REX-W? 0= if UNKNOWN then MODRM
       s" movq" OUT GAP 64 RM. SEP DREG @ XMM. true exit then
+   false ;
+
+: SSE-PACKED ( -- bool )
+   DOP @ $17F = if $F3 SSE-PREFIX s" movdqu" SSE-RM-REG true exit then
+   DOP @ $16F = DPFX @ $F3 = and if $F3 SSE-PREFIX s" movdqu" SSE-REG-RM true exit then
+   DOP @ $16F = if $66 SSE-PREFIX s" movdqa" SSE-REG-RM true exit then
+   DOP @ $1FE = if $66 SSE-PREFIX s" paddd" SSE-REG-RM true exit then
+   DOP @ $16C = if $66 SSE-PREFIX s" punpcklqdq" SSE-REG-RM true exit then
+   DOP @ $170 = if $66 SSE-PREFIX s" pshufd" SSE-REG-RM-IMM true exit then
+   DOP @ $200 = if $66 SSE-PREFIX s" pshufb" SSE-REG-RM true exit then
+   DOP @ $235 = if $66 SSE-PREFIX s" pmovzxdq" SSE-REG-RM true exit then
+   DOP @ $30F = if $66 SSE-PREFIX s" palignr" SSE-REG-RM-IMM true exit then
+   false ;
+
+: SHA-ROUNDS ( -- bool )
+   DOP @ $2CB = if
+      0 SSE-PREFIX s" sha256rnds2" SSE-REG-RM SEP 0 XMM. true exit then
+   DOP @ $2CC = if 0 SSE-PREFIX s" sha256msg1" SSE-REG-RM true exit then
+   DOP @ $2CD = if 0 SSE-PREFIX s" sha256msg2" SSE-REG-RM true exit then
    false ;
 
 : SSE-OTHER ( -- bool )
@@ -520,6 +549,8 @@ variable DQUIET
    TWO-CONTROL if true exit then
    SSE-OTHER if true exit then
    SSE-SCALAR if true exit then
+   SSE-PACKED if true exit then
+   SHA-ROUNDS if true exit then
    SSE-CONVERT if true exit then
    TWO-INT if true exit then
    false ;
