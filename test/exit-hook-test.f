@@ -20,6 +20,7 @@ require test/pcap-result.f
 require src/lib/engine-candidate.f
 require src/lib/fmt.f
 require tools/chain-run.f
+require src/lib/build-out.f
 
 package EXIT-HOOK-TEST
 
@@ -120,10 +121,11 @@ variable TREE-U
    s" tools/hb-build.f" flag BUILD-ARGV RUN-ARGS ;
 
 \ RUN-BUILD-AS run in the directory, which names the checkout's hb-build.f
-\ whole.
+\ whole, under the out root a build run here takes, so both share hb's objects.
 : RUN-BUILD-IN ( str str -- n n n ) {: flag:str dir:str :}
    SOURCE-ROOT:CWD$ s" tools/hb-build.f" DRIVER-BUF FS:JOIN-PATH {: u:n :}
    DRIVER-BUF u >str flag BUILD-ARGV
+   s" HABU_OUT" BUILD-OUT:BASE$ PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ dir
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
@@ -527,9 +529,17 @@ variable RUN-FILE-U
    s" a built program prints the record of a code its throw carries none for" T-LABEL
    EXPECT-CASE-RECORD ;
 
+variable AWAY-KERNELS
+
+\ A kernel file's name starts with its kind, and its directory is named after
+\ a tree, so one whose path names the fixture's root was filed by that root.
+: AWAY-KERNEL ( str -- ) {: path:str :}
+   path FS:BASENAME s" kernel-" STR:STARTS-WITH?
+   path ROOT$ FS:BASENAME STR:CONTAINS? and if 1 AWAY-KERNELS +! then ;
+
 \ A third build, run in the fixture's root outside the tree, since the build's
 \ directory is the boundary: it names hb's files under the tree as a build run
-\ in the tree does, so it writes the same program.
+\ in the tree does, so it writes the same program and adopts its kernel object.
 : CASE-REPL-AWAY ( -- )
    RECORD-TEXT
    s" repl-record-away" TREE-PATH
@@ -540,7 +550,12 @@ variable RUN-FILE-U
    EXPECT-CASE-RECORD
    s" it writes the program a --repl build run in the tree writes" T-LABEL
    ROOT$ s" repl-record-out" HOME-BUF FS:JOIN-PATH {: u:n :}
-   TREE$ HOME-BUF u >str CHAIN-RUN:SAME-FILES? TTRUE ;
+   TREE$ HOME-BUF u >str CHAIN-RUN:SAME-FILES? TTRUE
+   s" it files no kernel object under its own directory" T-LABEL
+   0 AWAY-KERNELS !
+   BUILD-OUT:BASE$ s" obj" HOME-BUF FS:JOIN-PATH {: ou:n :}
+   HOME-BUF ou >str [: AWAY-KERNEL ;] FS:WALK-FILES
+   AWAY-KERNELS @ 0 T= ;
 
 \ A second build: a --repl program runs MAIN from hb's own command line, not from
 \ the entry a plain build gives it.

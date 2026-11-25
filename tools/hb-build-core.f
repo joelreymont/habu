@@ -388,7 +388,7 @@ SUM-U 32 + constant HEAD-U
 : KERNEL-PATHS ( -- )
    0 KNAME-U !  0 KERNEL-U !
    TARGET @ RTARGET:PROFILE$ KNAME+  s" /kernel" KNAME+
-   SOURCE-ROOT:CWD$ {: c:^ cu:n :}
+   SOURCE-ROOT:ENGINE$ {: c:^ cu:n :}
    cu 0 > if c c@ FS:SLASH = else false then 0= if s" /" KNAME+ then
    c cu KNAME+
    KNAME KNAME-U @ BUILD-OUT:OBJ$ {: d:^ du:n :}
@@ -524,7 +524,7 @@ public
    {: engine:bool target:RTARGET:resolved-target :}
    engine KERNEL-ENGINE? !  target TARGET !
    PATHS  KERNEL-PATHS
-   SOURCE-ROOT:CWD$ [:
+   SOURCE-ROOT:ENGINE$ [:
       ADOPT? 0= if
          s" kernel" target ['] KERNEL-BODY LINK
       then
