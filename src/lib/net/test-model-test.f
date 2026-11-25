@@ -93,7 +93,7 @@ TASK:SEMAPHORE GO
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path SB-APPEND
    SB$ M MODEL:BASE-URL!
    M MODEL:PARTS-RESET
-   s" Reply." str> M MODEL:TEXT+ ;
+   s" Reply." M MODEL:TEXT+ ;
 
 
 : SETUP ( -- )
@@ -107,7 +107,7 @@ TASK:SEMAPHORE GO
 : COMPLETED ( -- )
    s" a completed reply gives its text" T-LABEL
    s" /completed" AT
-   M MODEL:CHAT >str TEXT$ T$=
+   M MODEL:CHAT TEXT$ T$=
    s" a completed reply's usage reaches the call" T-LABEL
    M MODEL:INPUT-TOKENS 11 T=
    M MODEL:CACHED-TOKENS 4 T= ;
@@ -116,27 +116,27 @@ TASK:SEMAPHORE GO
 : INCOMPLETE ( -- )
    s" an incomplete reply is E-INCOMPLETE with its reason" T-LABEL
    s" /incomplete" AT
-   [: M MODEL:CHAT 2drop ;] MODEL:E-INCOMPLETE TTHROWSQ
-   M MODEL:INCOMPLETE-REASON$ >str REASON$ T$= ;
+   [: M MODEL:CHAT drop ;] MODEL:E-INCOMPLETE TTHROWSQ
+   M MODEL:INCOMPLETE-REASON$ REASON$ T$= ;
 
 
 : CUT ( -- )
    s" a stream cut before its reply is E-TRANSPORT" T-LABEL
    s" /cut" AT
-   [: M MODEL:CHAT 2drop ;] MODEL:E-TRANSPORT TTHROWSQ ;
+   [: M MODEL:CHAT drop ;] MODEL:E-TRANSPORT TTHROWSQ ;
 
 
 : REFUSAL ( -- )
    s" a refusal is E-REFUSED" T-LABEL
    s" /refusal" AT
-   [: M MODEL:CHAT 2drop ;] MODEL:E-REFUSED TTHROWSQ ;
+   [: M MODEL:CHAT drop ;] MODEL:E-REFUSED TTHROWSQ ;
 
 
 : TOOLS ( -- )
    s" a tool reply answers its output array whole" T-LABEL
    TOOLS$ M MODEL:TOOLS!
    s" /tools" AT
-   M MODEL:CHAT nip 0 T=
+   M MODEL:CHAT STR:LEN 0 T=
    M MODEL:OUTPUT$ TOOL-OUTPUT$ T$=
    SCHEMA$ M MODEL:SCHEMA! ;
 
@@ -165,7 +165,7 @@ TASK:SEMAPHORE GO
 
 
 : WORK ( -- )
-   [: M MODEL:CHAT 2drop ;] catch
+   [: M MODEL:CHAT drop ;] catch
    {: code:n :}
    IN-REC TASK:SIGNAL-SEM
    code 0<> if code throw then

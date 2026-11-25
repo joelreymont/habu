@@ -1673,9 +1673,9 @@ public
    c PART-OPEN
    construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
 
-: TEXT+ ( ^u8 n ^call -- )
-   {: a:^ u:n c :}
-   a u >str false s" TEXT+'s text" c ADD-TEXT ;
+: TEXT+ ( str ^call -- )
+   {: s:str c :}
+   s false s" TEXT+'s text" c ADD-TEXT ;
 
 \ TEXT+, the part asking the provider to cache the prompt up to its end. It
 \ leaves the reply, so the journal input and replay, unchanged.
@@ -2071,15 +2071,15 @@ public
    0 c MODEL-CALL:INPUT-COUNT !
    c DROP-VECTORS ;
 
-: INPUT+ ( ^u8 n ^call -- )
-   {: a:^ u:n c :}
+: INPUT+ ( str ^call -- )
+   {: s:str c :}
    c REQUIRE-REST
-   a u >str s" INPUT+'s input" REQUIRE-SOME
+   s s" INPUT+'s input" REQUIRE-SOME
    c MODEL-CALL:INPUT-COUNT @ INPUT-MAX >= if E-CAPACITY throw then
    c MODEL-CALL:INPUT-U @ c c MODEL-CALL:INPUT-COUNT @ INPUT-OFF !
-   u c c MODEL-CALL:INPUT-COUNT @ INPUT-LEN !
-   a u BUF:N>BLEN c INPUT-BUF BUF:APPEND-SPAN
-   c MODEL-CALL:INPUT-U @ u + c MODEL-CALL:INPUT-U !
+   s STR:LEN c c MODEL-CALL:INPUT-COUNT @ INPUT-LEN !
+   s c INPUT-BUF APPEND$
+   c MODEL-CALL:INPUT-U @ s STR:LEN + c MODEL-CALL:INPUT-U !
    c MODEL-CALL:INPUT-COUNT @ 1+ c MODEL-CALL:INPUT-COUNT !
    c DROP-VECTORS ;
 
@@ -3823,10 +3823,9 @@ ENUM poll none fed spoiled done ;ENUM
 
 public
 
-: INCOMPLETE-REASON$ ( ^call -- ^u8 n )
+: INCOMPLETE-REASON$ ( ^call -- str )
    {: c :}
-   c CONTENT-BUF HELD c MODEL-CALL:INCOMPLETE-U @ SPAN:TAKE SPAN:$
-   dup STR:DATA swap STR:LEN ;
+   c CONTENT-BUF HELD c MODEL-CALL:INCOMPLETE-U @ SPAN:TAKE SPAN:$ ;
 \ The last call's provider message from its refused HTTP reply or failed
 \ response; empty when none.
 : ERROR$ ( ^call -- str ) ERROR-BUF BUFFER$ ;
@@ -3856,8 +3855,8 @@ private
 
 : CAUSE+ ( n ^call -- )
    {: code:n c :}
-   code E-INCOMPLETE = c INCOMPLETE-REASON$ nip 0<> and if
-      s"  incomplete " LOG:TEXT+ c INCOMPLETE-REASON$ >str LOG:TEXT+
+   code E-INCOMPLETE = c INCOMPLETE-REASON$ STR:LEN 0<> and if
+      s"  incomplete " LOG:TEXT+ c INCOMPLETE-REASON$ LOG:TEXT+
    then
    c LEDGER LEDGER-TRANSPORT @ {: rc:n :}
    rc 0<> if rc CURL+ then ;
@@ -5031,7 +5030,7 @@ public
 \ The content of the chat AWAIT last ended, read on an idle call and borrowed
 \ until the next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED, REPLAY or
 \ CLOSE.
-: CONTENT$ ( ^call -- ^u8 n )
+: CONTENT$ ( ^call -- str )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -5045,14 +5044,13 @@ public
       content OF ENDOF
       vectors OF E-STATE throw ENDOF
    ;MATCH
-   c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
-   dup STR:DATA swap STR:LEN ;
+   c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
 
 \ The output array of the chat reply last awaited or replayed, its own bytes,
 \ read and borrowed as CONTENT$ is; ITEM+ takes each item for the next turn.
 : OUTPUT$ ( ^call -- str )
    {: c :}
-   c CONTENT$ 2drop
+   c CONTENT$ drop
    c RESPONSE$ JSON:PARSE {: v :}
    v JSON:OBJECT? 0= if E-RESPONSE throw then
    v s" output" MEMBER JSON:TEXT$ ;
@@ -5089,7 +5087,7 @@ public
 \ A journal hit replays the recorded reply; otherwise the streaming request,
 \ and its tier resend when one is due, is read event by event until the
 \ response ends. START, AWAIT and CONTENT$.
-: CHAT ( ^call -- ^u8 n )
+: CHAT ( ^call -- str )
    {: c :}
    c START
    c AWAIT
@@ -5159,15 +5157,15 @@ public
 \ or E-INCOMPLETE. It sends nothing and records nothing. Without a request
 \ JOURNAL-INPUT$ finished since the last CHAT, START or REPLAY it is E-STATE;
 \ one that throws keeps the request as JOURNAL-INPUT$ says.
-: REPLAY ( ^u8 n ^call -- ^u8 n )
-   {: a:^ u:n c :}
-   a u >str s" REPLAY's record" REQUIRE-LENGTH
+: REPLAY ( str ^call -- str )
+   {: s:str c :}
+   s s" REPLAY's record" REQUIRE-LENGTH
    c TAKE-PREPARED 0= if E-STATE throw then
    construct call-result none c MODEL-CALL:RESULT !
    c START-LEDGER
    c REQUIRE-GOING
    c JOURNAL-OUT-BUF c RESET-SCRATCH
-   a u BUF:N>BLEN c JOURNAL-OUT-BUF BUF:REPLACE
+   s c JOURNAL-OUT-BUF REPLACE$
    0 c MODEL-CALL:INPUT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
    construct call-kind chat c MODEL-CALL:KIND !
@@ -5200,7 +5198,7 @@ public
 \ Input idx's vector: DIMS little-endian IEEE-754 binary32 values, borrowed
 \ until the next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED, REPLAY or
 \ CLOSE.
-: VECTOR@ ( n ^call -- ^u8 n )
+: VECTOR@ ( n ^call -- str )
    {: idx:n c :}
    c MODEL-CALL:RESULT @ MATCH call-result
       none OF E-STATE throw ENDOF
@@ -5209,8 +5207,7 @@ public
    ;MATCH
    c MODEL-CALL:INPUT-COUNT @ {: count:n :}
    idx 0 < idx count >= or if idx count INDEX-REJECT then
-   c VECTORS-BUF BUF:SPAN c idx VECTOR-OFF @ c idx VECTOR-LEN @ SPAN:SUB SPAN:$
-   dup STR:DATA swap STR:LEN ;
+   c VECTORS-BUF BUF:SPAN c idx VECTOR-OFF @ c idx VECTOR-LEN @ SPAN:SUB SPAN:$ ;
 
 : GENERATION-MODEL$ ( ^call -- str ) GEN$ ;
 : EMBEDDING-MODEL$ ( ^call -- str ) EMBED-MODEL$ ;
