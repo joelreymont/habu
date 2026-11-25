@@ -988,21 +988,24 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    out close
    PT-RUN-OUT$ STR:LEN 0 T= ;
 
-\ Run in a subject child: with fd 0 closed, cat's inherited stdin is closed too,
-\ so cat fails at once rather than read its own stdout pipe.
+\ Run in a subject child: with fd 0 closed, the shell's inherited stdin is closed
+\ too, so duplicating it fails. A Rust program such as uutils cat would reopen a
+\ closed fd 0 on /dev/null and hide the fault.
 : PT-RUN-CLOSED-STDIN ( -- )
    0 close
-   s" /bin/cat" PROCESS:NEW
+   s" /bin/sh" PROCESS:NEW
+   s" -c" PROCESS:ARG
+   s" exec 3<&0" PROCESS:ARG
    PROCESS-STDIO:INHERIT PT-OUT 32 PT-PIPE PROCESS-STDIO:INHERIT PROCESS:RUN
    PT-EXITED nip nip
-   0<> if s" cat-failed" type then ;
+   0<> if s" stdin-closed" type then ;
 
 : TEST-RUN-CLOSED-STDIN ( -- )
    s" PT-RUN-CLOSED-STDIN" {: src:str :}
    src PT-SUB-OUT 64 >LEN PT-SUB-ERR 256 >LEN 10000 >MS SUBJECT:RUN
    {: o:len e:len ending :}
    s" run: a closed parent stdin stays closed in the child" T-LABEL
-   PT-SUB-OUT o LEN>N >str s" cat-failed" T$=
+   PT-SUB-OUT o LEN>N >str s" stdin-closed" T$=
    ending MATCH PROCESS:ending
      exited OF 0 T= ENDOF
      signaled OF drop 1 0 T= ENDOF
