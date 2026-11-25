@@ -10,7 +10,7 @@
 \ dispatches, a notification included, as one LOG:INFO line `mcp: <method>`, then a
 \ tools/call's params.name or a resources/read's params.uri when it is a string,
 \ written between its quotes as sent, never the arguments, without LOG; with it,
-\ LOG's line after the answer. ANSWER answers one JSON-RPC
+\ LOG's lines after the answer, the arguments at debug. ANSWER answers one JSON-RPC
 \ message that came by another transport into a vector, as HANDLE answers a 2026-07-28
 \ request with no transport headers, its log line included. VISIBLE! hides a tool
 \ from a caller its hook refuses; it does not apply to resources, which every caller may list
@@ -1359,19 +1359,10 @@ CAST: HELD>N ( held -- n )
    s"  [" LOG:TEXT+  s STR:LEN LOG:INT+  s"  B]" LOG:TEXT+ ;
 
 
-\ A tools/call's params.arguments as sent, when params is an object that has
-\ them.
-: ARGUMENTS+ ( -- )
-   s" tools/call" METHOD= 0= if exit then
-   PARAMS$ STR:LEN 0= if exit then
-   PARAMS$ OBJECT? 0= if exit then
-   PARAMS$ s" params" s" arguments" FIELD? 0= if drop exit then
-   s"  " LOG:TEXT+  TEXT-CUT+ ;
-
-\ The method, target and arguments; `-` when no method was read.
+\ The method and target; `-` when no method was read.
 : CALL+ ( -- )
    METHOD$ STR:LEN 0= if s" -" LOG:TEXT+ exit then
-   METHOD$ UNQUOTED$ LOG:TEXT+  TARGET+  ARGUMENTS+ ;
+   METHOD$ UNQUOTED$ LOG:TEXT+  TARGET+ ;
 
 
 : ERROR+ ( -- )
@@ -1396,27 +1387,42 @@ CAST: HELD>N ( held -- n )
    SLOT STAGE @ HELD = if s" held" LOG:TEXT+ exit then
    s" notified" LOG:TEXT+ ;
 
-\ A LOG line opened with `req <id> `.
-: REQ-LINE ( str -- )
+\ `req <id> `, which opens each line under LOG.
+: REQ+ ( str -- )
    {: id:str :}
-   LOG:INFO s" mcp" LOG:LINE
    s" req " LOG:TEXT+  id LOG:TEXT+  s"  " LOG:TEXT+ ;
+
+\ A tools/call's params.arguments as sent, when params is an object that has
+\ them, under the id text.
+: ARGUMENTS-LOGGED ( str -- )
+   {: id:str :}
+   METHOD$ STR:LEN 0= if exit then
+   s" tools/call" METHOD= 0= if exit then
+   PARAMS$ STR:LEN 0= if exit then
+   PARAMS$ OBJECT? 0= if exit then
+   PARAMS$ s" params" s" arguments" FIELD? 0= if drop exit then
+   {: args:str :}
+   LOG:DEBUG s" mcp" LOG:LINE  id REQ+
+   s" arguments " LOG:TEXT+  args TEXT-CUT+
+   LOG:;LINE ;
 
 \ With LOG, the message's line under the id text, given the code passed to
 \ the host.
 : MESSAGE-LOGGED ( str n -- )
    {: id:str code:n :}
    LOGGING @ 0= if exit then
-   id REQ-LINE
+   LOG:INFO s" mcp" LOG:LINE  id REQ+
    CALL+  s"  -> " LOG:TEXT+  code OUTCOME+
-   LOG:;LINE ;
+   LOG:;LINE
+   id ARGUMENTS-LOGGED ;
 
 \ With LOG, FINISH's line for the held row, under the id of the request
 \ that held it, given the code passed to the host.
 : HELD-LOGGED ( n n -- )
    {: idx:n code:n :}
    LOGGING @ 0= if exit then
-   idx KEEP-REQ BUF:SPAN$ BUF:BLEN>N >str REQ-LINE
+   LOG:INFO s" mcp" LOG:LINE
+   idx KEEP-REQ BUF:SPAN$ BUF:BLEN>N >str REQ+
    s" tools/call " LOG:TEXT+
    idx KEEPS KEEP-TOOL @ TOOL-NAME @ SPAN:$ LOG:TEXT+
    s"  -> " LOG:TEXT+  code OUTCOME+
@@ -1556,16 +1562,18 @@ public
 
 \ From the next HTTP:START on, each message HANDLE or ANSWER takes writes one
 \ LOG INFO line, tag mcp, once it is answered, in place of the line before
-\ dispatch: `req <id> <method> <target> <arguments> -> <outcome>`. id is the
+\ dispatch: `req <id> <method> <target> -> <outcome>`. id is the
 \ HTTP:REQUEST-ID$ of HANDLE's request, `-` under ANSWER; method and target
-\ are as without LOG, `-` when no method was read; arguments are a tools/call's
-\ params.arguments as sent, left out when absent. outcome is `ok`, `tool
+\ are as without LOG, `-` when no method was read. outcome is `ok`, `tool
 \ error: <text>` (a schema refusal's included), `error <code>: <message>` for
 \ a JSON-RPC error (UNKNOWN-TOOL's included), `held` for a call HOLD kept,
 \ `notified` for a notification, or `fault <code>` for a throw passed to the
-\ host. FINISH writes a held call's own line, `req <id> tools/call <name> ->
-\ <outcome>`, with the id of the request that held it. A text past 4096 bytes
-\ is cut at a character boundary and followed by ` [<n> B]`, n its length.
+\ host. A tools/call with params.arguments then writes a LOG DEBUG line,
+\ `req <id> arguments <arguments>`, the arguments as sent, which may hold
+\ what an info line must not. FINISH writes a held call's own line, `req <id>
+\ tools/call <name> -> <outcome>`, with the id of the request that held it. A
+\ text past 4096 bytes is cut at a character boundary and followed by
+\ ` [<n> B]`, n its length.
 \ It lasts across STOP; E-STATE while HTTP serves.
 : LOG ( -- )
    HTTP:RUNNING? if E-STATE throw then

@@ -15,7 +15,9 @@ split-str
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
 \ refusals. The info line a tools/call and a resources/read log, without arguments, and,
-\ after MCP:LOG, each message's line after its answer with arguments and outcome.
+\ after MCP:LOG, each message's line after its answer with its outcome and no arguments;
+\ this file run as `-- debug` at HABU_LOG_LEVEL=debug, in a child engine, logs a
+\ tools/call's arguments under its id, cut past 4096 bytes.
 \ MCP:ANSWER on a request worker into a vector holding old text: a tools/call written as
 \ HANDLE sends it, a notification leaving it empty, a message that is not JSON-RPC or not
 \ JSON, an unknown tool, and ANSWER off a worker.
@@ -64,6 +66,12 @@ require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/mcp.f
 require src/lib/net/bearer.f
+require src/core/exit-status.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
+require src/lib/num-types.f
 
 package MCP-TEST
 private
@@ -1946,6 +1954,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 
 
 : REQ-HEAD ( -- str ) s" Z info mcp: req " ;
+: DEBUG-HEAD ( -- str ) s" Z debug mcp: req " ;
 
 \ Where the line holding the offset starts.
 : LINE-START ( ^u8 n -- n )
@@ -1965,35 +1974,41 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
       0= if false unloop exit then
    loop true ;
 
-\ The id of the capture's `<stamp> info mcp: req <id><rest>` line, rest from
-\ the space after the id through LF; empty when there is none.
-: REQ-ID$ ( str -- str )
-   {: rest:^ ru:n :}
-   LOG$ {: a:^ u:n :}
+\ The id of the text's `<stamp><head><id><rest>` line, rest from the space
+\ after the id through LF; empty when there is none.
+: LINE-ID$ ( str str str -- str )
+   {: a:^ u:n head:^ hu:n rest:^ ru:n :}
    a u rest ru STR:FIND-SUB MATCH option
       some OF {: at:idx :} at IDX>N ENDOF
       none OF -1 ENDOF
    ;MATCH {: at:n :}
    at 0< if s" no line holds the rest" T-FAIL-AS s" " exit then
-   a at LINE-START DATE:TIME-LEN 1- + {: head:n :}
-   a head + at head - REQ-HEAD STR:STARTS-WITH? TTRUE
-   head REQ-HEAD nip + {: from:n :}
+   a at LINE-START DATE:TIME-LEN 1- + {: start:n :}
+   a start + at start - head hu STR:STARTS-WITH? TTRUE
+   start hu + {: from:n :}
    a from + at from - 0 max
    2dup REQ-ID? TTRUE ;
 
+\ The id of the capture's `<stamp> info mcp: req <id><rest>` line.
+: REQ-ID$ ( str -- str )
+   {: rest:^ ru:n :}
+   LOG$ REQ-HEAD rest ru LINE-ID$ ;
+
 : REQ-LOGGED ( str -- ) REQ-ID$ 2drop ;
 
+: ECHO-LEGACY ( -- str )
+   S\" {\"jsonrpc\":\"2.0\",\"id\":80,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"a\":1}}}" ;
+
 : LOGGED-ECHO ( -- )
-   s" MCP:LOG logs a tools/call with its arguments and ok" T-LABEL
-   [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":80,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"a\":1}}}" POST 200 T= ;]
-   CAPTURED
-   S\"  tools/call echo {\"a\":1} -> ok\n" REQ-LOGGED
+   s" MCP:LOG logs a tools/call with ok" T-LABEL
+   [: LEGACY ECHO-LEGACY POST 200 T= ;] CAPTURED
+   S\"  tools/call echo -> ok\n" REQ-LOGGED
    LOG$ S\" Z info mcp: tools/call echo\n" STR:CONTAINS? TFALSE ;
 
 : LOGGED-STRICT ( -- )
    s" MCP:LOG logs a schema refusal as a tool error" T-LABEL
    [: LEGACY 81 FILTERS STRICT-CALL POST 200 T= ;] CAPTURED
-   W-RESET S\"  tools/call strict {\"filters\":\"x\"} -> tool error: " W+
+   W-RESET S\"  tools/call strict -> tool error: " W+
    FILTERS-TEXT W+ S\" \n" W+
    W$ REQ-LOGGED ;
 
@@ -2022,9 +2037,9 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : LOGGED-HELD ( -- )
    [: HELD-LEGACY ;] CAPTURED
    s" MCP:LOG logs a held call as held and FINISH's line under its id" T-LABEL
-   S\"  tools/call wait {\"later\":1} -> held\n" REQ-ID$
-   W-RESET W+
-   S\"  tools/call wait -> ok\n" REQ-ID$ W$ T$= ;
+   S\"  tools/call wait -> held\n" REQ-ID$ {: id:^ iu:n :}
+   W-RESET REQ-HEAD W+ id iu W+ S\"  tools/call wait -> ok\n" W+
+   LOG$ W$ STR:CONTAINS? TTRUE ;
 
 \ The sole worker logs the fault after the client sees the closed connection,
 \ and before it serves the next request.
@@ -2035,39 +2050,81 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : LOGGED-FAULT ( -- )
    [: FAULT-SEEN ;] CAPTURED
    s" MCP:LOG logs a throw passed to the host as a fault" T-LABEL
-   W-RESET S\"  tools/call wait {\"fail\":1} -> fault " W+
+   W-RESET S\"  tools/call wait -> fault " W+
    MCP:E-STATE FMT:INT$ W+ S\" \n" W+
    W$ REQ-LOGGED ;
 
 : LOGGED-FREED ( -- )
    s" MCP:LOG logs a tool error whose text the body freed" T-LABEL
    [: LEGACY S\" {\"freed\":1}" WAIT-LEGACY POST 200 T= ;] CAPTURED
-   S\"  tools/call wait {\"freed\":1} -> tool error: freed text\n" REQ-LOGGED ;
+   S\"  tools/call wait -> tool error: freed text\n" REQ-LOGGED ;
 
 : LOGGED-LATE ( -- )
    s" MCP:LOG logs a throw after the result as a fault" T-LABEL
    [: LEGACY S\" {\"late\":1}" WAIT-LEGACY POST 500 T= ;] CAPTURED
-   W-RESET S\"  tools/call wait {\"late\":1} -> fault " W+
+   W-RESET S\"  tools/call wait -> fault " W+
    MCP:E-STATE FMT:INT$ W+ S\" \n" W+
    W$ REQ-LOGGED ;
 
 : LOGGED-ANSWER ( -- )
    s" MCP:LOG logs ANSWER's message under the id -" T-LABEL
    [: ANSWER-OPEN ECHO-A1 POST 200 T= ;] CAPTURED
-   LOG$ S\" Z info mcp: req - tools/call echo {\"a\":1} -> ok\n" STR:CONTAINS? TTRUE ;
+   LOG$ S\" Z info mcp: req - tools/call echo -> ok\n" STR:CONTAINS? TTRUE ;
 
 \ An echo call whose arguments, {"b":<BIG>}, pass the 4096 bytes LOG writes of a text.
 : LONG-CALL ( -- str )
    W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":82,\"method\":\"tools/call\",\"params\":" W+
    S\" {\"name\":\"echo\",\"arguments\":{\"b\":" W+ BIG BIG-U W+ s" }}}" W+ W$ ;
 
-: LOGGED-LONG ( -- )
-   s" MCP:LOG cuts arguments past 4096 bytes and gives their length" T-LABEL
-   [: LEGACY LONG-CALL POST 200 T= ;] CAPTURED
+\ The child's server: echo under MCP:LOG, called with {"a":1}, then with
+\ LONG-CALL's arguments.
+: DEBUG-SERVE ( -- )
+   AIO:START
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
+   HTTP:ROUTES-RESET
+   s" POST" s" /mcp" [: MCP:HANDLE ;] HTTP:ROUTE
+   s" test-server" s" 1.0" MCP:SERVER-INFO!
+   BIG-FILL ADD-ECHO
+   MCP:LOG
+   0 ONE-WORKER SERVE-ON
+   LEGACY ECHO-LEGACY POST 200 T=
+   LEGACY LONG-CALL POST 200 T=
+   HTTP:STOP
+   BODY @ VEC:DELETE
+   AIO:STOP ;
+
+$4000 constant CHILD-CAP
+create CHILD-OUT CHILD-CAP allot
+create CHILD-ERR CHILD-CAP allot
+
+\ The fd 2 of this file run as `-- debug` at HABU_LOG_LEVEL=debug, in a child:
+\ LOG reads the level once per process.
+: DEBUG-ERR$ ( -- str )
+   PROC-ARGV-ENV-RESET
+   s" --load" PROC-ARGV+  s" src/lib/net/mcp-test.f" PROC-ARGV+
+   s" --" PROC-ARGV+  s" debug" PROC-ARGV+
+   s" HABU_LOG_LEVEL" s" debug" PROC-ENV-SET
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$
+   CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN PROCESS:WAIT-FOREVER
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
+   {: outu:len erru:len rc:n :}
+   rc 0 <> if
+      CHILD-OUT outu LEN>N type cr  CHILD-ERR erru LEN>N type cr
+   then
+   rc 0 T=
+   CHILD-ERR erru LEN>N ;
+
+: LOGGED-DEBUG ( -- )
+   s" at debug, MCP:LOG logs a tools/call's arguments under its id" T-LABEL
+   DEBUG-ERR$ {: e:^ eu:n :}
+   e eu REQ-HEAD S\"  tools/call echo -> ok\n" LINE-ID$ {: id:^ iu:n :}
+   e eu DEBUG-HEAD S\"  arguments {\"a\":1}\n" LINE-ID$ id iu T$=
+   s" at debug, MCP:LOG cuts arguments past 4096 bytes and gives their length" T-LABEL
    \ The first 4096 bytes: `{"b":` and 4091 of BIG.
-   W-RESET S\"  tools/call echo {\"b\":" W+ BIG 4091 W+
-   s"  [" W+ BIG-U 6 + FMT:INT$ W+ S\"  B] -> ok\n" W+
-   W$ REQ-LOGGED ;
+   W-RESET S\"  arguments {\"b\":" W+ BIG 4091 W+
+   s"  [" W+ BIG-U 6 + FMT:INT$ W+ S\"  B]\n" W+
+   e eu DEBUG-HEAD W$ LINE-ID$ 2drop ;
 
 \ The server again, with LOG and every tool visible: LOG and VISIBLE! are
 \ refused while HTTP serves.
@@ -2080,7 +2137,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    MCP:LOG
    0 ONE-WORKER SERVE-ON
    LOGGED-ECHO LOGGED-STRICT LOGGED-UNKNOWN LOGGED-TWICE LOGGED-NOTIFIED LOGGED-HELD
-   LOGGED-FAULT LOGGED-FREED LOGGED-LATE LOGGED-ANSWER LOGGED-LONG ;
+   LOGGED-FAULT LOGGED-FREED LOGGED-LATE LOGGED-ANSWER LOGGED-DEBUG ;
 
 
 : SERVE-CASES ( -- )
@@ -2184,8 +2241,19 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    REPLIES @ VEC:DELETE
    AIO:STOP ;
 
-T-RESET
-SERVE-CASES
-T-REPORT
+public
+
+\ `-- debug` runs the child LOGGED-DEBUG reads.
+: MAIN ( -- )
+   T-RESET
+   SCRIPT-ARGC 0 > if
+      0 SCRIPT-ARGV$ s" debug" STR:= 0= if
+         s" mcp-test: unknown mode" EXIT-STATUS:USAGE die
+      then
+      DEBUG-SERVE T-REPORT exit
+   then
+   SERVE-CASES T-REPORT ;
 
 ;package
+
+MCP-TEST:MAIN

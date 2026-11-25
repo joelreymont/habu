@@ -37,10 +37,12 @@ package STDLIB-GATE
    PROCESS:OWN-PATH ;
 
 \ HABU_UNDER_TEST (read first by src/lib/engine-candidate.f) names the product engine to an
-\ item's children; set before the inherit, which skips a name already present.
+\ item's children, and HABU_LOG_LEVEL info keeps the runner's level from their
+\ logs; both set before the inherit, which skips a name already present.
 : SUITE-ENV ( -- )
    PROC-ENV-RESET
    s" HABU_UNDER_TEST" PRODUCT-ENGINE$ PROC-ENV+
+   s" HABU_LOG_LEVEL" s" info" PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ The registry feeds a row's argv right before it offers the row (src/lib/test/suite.f

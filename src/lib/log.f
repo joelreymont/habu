@@ -1,7 +1,12 @@
 \ log.f - lines on fd 2 that say why a program failed, and, at info, what a
-\ service did, package LOG. A failure caused outside the program (a provider,
-\ the network, the OS) is logged once, with its text, by the library that saw
-\ it, just before it throws.
+\ service did, and, at debug, what it was given, package LOG. A failure caused
+\ outside the program (a provider, the network, the OS) is logged once, with
+\ its text, by the library that saw it, just before it throws.
+\ The threshold is the last level written, in the order error, warn, info,
+\ debug: the environment variable HABU_LOG_LEVEL, one of those names, at the
+\ process's start, info when it is unset or empty. The first LINE reads it, and
+\ the process keeps that answer. Any other value is written as one warn line,
+\ tag log, and reads as info. A LINE above the threshold writes nothing.
 \ LINE opens a line, TEXT+, INT+ and CODE+ append to it, ;LINE writes it as
 \ `<YYYY-MM-DDTHH:MM:SSZ> <level> <tag>: <text>` and LF, the stamp UTC. The tag
 \ is the caller's package name in lower case; LOG does not check it.
@@ -19,8 +24,10 @@
 \ registers then runs in the same ending.
 \ PROCESS-WIDE: LOCK, held for each line's write, which keeps this process's
 \ lines whole (another process writing the same fd can still split a line
-\ longer than PIPE_BUF); NOTICE, written under it; and TAIL, whether fd 2's
-\ last line is whole or cut, read and written under it.
+\ longer than PIPE_BUF); NOTICE, written under it; TAIL, whether fd 2's last
+\ line is whole or cut, read and written under it; and THRESHOLD, written once
+\ under it. TAIL and THRESHOLD are scratch: a saved program starts WHOLE and
+\ UNREAD.
 
 require src/lib/error.f
 require src/lib/prelude.f
@@ -32,6 +39,7 @@ require src/lib/span.f
 require src/lib/date.f
 require src/lib/fmt.f
 require src/lib/fd.f
+require src/os/env-base.f
 
 package LOG
 
@@ -42,6 +50,7 @@ DEFTYPE LEVEL
 0 constant ERROR-N
 1 constant WARN-N
 2 constant INFO-N
+3 constant DEBUG-N
 $A constant LF
 \ The bytes each logging task keeps between lines: the row's starting capacity
 \ and the most SHED leaves it.
@@ -63,15 +72,23 @@ LOCK TASK:FACILITY-INIT
 \ | CUT   | (a line is written only once whole)                              | WHOLE                 | CUT, the line is lost |
 0 constant WHOLE
 1 constant CUT
-variable TAIL
+TYPED-VARIABLE TAIL n SCRATCH-ONLY
 
+\ THRESHOLD, how many levels from ERROR-N are written, and its machine; a
+\ LINE that finds UNREAD reads it under LOCK.
+\ | state  | a LINE                                                  |
+\ | UNREAD | reads HABU_LOG_LEVEL, writes the warn line if bad: READ |
+\ | READ   | -                                                       |
+\ READ is any count from 1 to DEBUG-N + 1, so one cell holds the machine.
+0 constant UNREAD
+TYPED-VARIABLE THRESHOLD n SCRATCH-ONLY
 
 \ PHASE's states; a fresh task's is CLOSED. Each input in each state, and the
 \ state it leaves:
-\   state    LINE              TEXT+ INT+ CODE+  ;LINE             refused block
-\   CLOSED   opens: OPENED     nothing           nothing: CLOSED   -
-\   OPENED   abandons: OPENED  appends           the row: CLOSED   LOST
-\   LOST     abandons: OPENED  nothing           NOTICE: CLOSED    LOST
+\   state    LINE              LINE above the threshold  TEXT+ INT+ CODE+  ;LINE             refused block
+\   CLOSED   opens: OPENED     CLOSED                    nothing           nothing: CLOSED   -
+\   OPENED   abandons: OPENED  abandons: CLOSED          appends           the row: CLOSED   LOST
+\   LOST     abandons: OPENED  abandons: CLOSED          nothing           NOTICE: CLOSED    LOST
 \ LINE leaves LOST when the row's block is refused; ;LINE leaves CLOSED also
 \ when its write throws. An abandoned line is never written. The row's release
 \ leaves CLOSED.
@@ -142,7 +159,8 @@ NOTICE-TEXT$ STR:LEN BYTE-COPY
    LEVEL>N {: n:n :}
    n ERROR-N = if s" error" exit then
    n WARN-N = if s" warn" exit then
-   s" info" ;
+   n INFO-N = if s" info" exit then
+   s" debug" ;
 
 
 : ESCAPE? ( n -- bool )
@@ -232,16 +250,24 @@ NOTICE-TEXT$ STR:LEN BYTE-COPY
    code throw ;
 
 
-: WRITE ( [ -- ] -- )
+: RUN ( [ -- ] -- )  execute ;
+
+
+: LOCKED ( [ -- ] -- )
    LOCK TASK:GET
-   [: OUT ;] [: LOCK TASK:RELEASE ;] finally ;
+   [: RUN ;] [: LOCK TASK:RELEASE ;] finally ;
+
+
+\ The line, or NOTICE for a lost one; the caller holds LOCK.
+: SENT ( -- )
+   PHASE @ OPENED = if [: LF ROW @ VEC:PUSH c! ;] catch MAP-REFUSED then
+   PHASE @ LOST = if [: NOTICE-OUT ;] OUT exit then
+   [: ROW-OUT ;] OUT ;
 
 
 : FINISH ( -- )
    PHASE @ CLOSED = if exit then
-   PHASE @ OPENED = if [: LF ROW @ VEC:PUSH c! ;] catch MAP-REFUSED then
-   PHASE @ LOST = if [: NOTICE-OUT ;] WRITE exit then
-   [: ROW-OUT ;] WRITE ;
+   [: SENT ;] LOCKED ;
 
 
 : SHED ( -- )
@@ -254,6 +280,7 @@ public
 : ERROR ( -- level )  ERROR-N >LEVEL ;
 : WARN ( -- level )  WARN-N >LEVEL ;
 : INFO ( -- level )  INFO-N >LEVEL ;
+: DEBUG ( -- level )  DEBUG-N >LEVEL ;
 
 
 : TEXT+ ( str -- )
@@ -274,12 +301,57 @@ public
    s"  " TEXT+ name TEXT+ s" : " TEXT+ code ERROR:TEXT$ TEXT+ ;
 
 
-: LINE ( level str -- )
+private
+
+\ Opens the row: the stamp, the level and the tag.
+: HEAD ( level str -- )
    {: level:level tag:str :}
-   CLOSED PHASE !
    [: OPEN  OPENED PHASE ! ;] catch MAP-REFUSED
    s"  " TEXT+  level LEVEL$ TEXT+  s"  " TEXT+
    tag TEXT+  s" : " TEXT+ ;
+
+
+\ The setting's count of levels written; UNREAD for a bad one.
+: SETTING>COUNT ( str -- n )
+   {: v:str :}
+   v STR:LEN 0= if INFO-N 1+ exit then
+   DEBUG-N 1+ 0 ?do
+      v i >LEVEL LEVEL$ STR:= if i 1+ unloop exit then
+   loop UNREAD ;
+
+
+\ Under LOCK, so it must not take LOCK again.
+: BAD-SETTING ( str -- )
+   {: v:str :}
+   WARN-N >LEVEL s" log" HEAD
+   s" HABU_LOG_LEVEL is " TEXT+  v TEXT+
+   s" , not error, warn, info or debug: using info" TEXT+
+   SENT
+   CLOSED PHASE ! ;
+
+
+\ THRESHOLD's UNREAD input, under LOCK: another task may have read it first.
+: READ-SETTING ( -- )
+   THRESHOLD atomic@ UNREAD <> if exit then
+   s" HABU_LOG_LEVEL" ENV-INPUT:CURRENT$ {: v:str :}
+   v SETTING>COUNT {: count:n :}
+   count UNREAD <> if count THRESHOLD atomic! exit then
+   INFO-N 1+ THRESHOLD atomic!
+   v BAD-SETTING ;
+
+
+: WRITTEN? ( level -- bool )
+   {: level:level :}
+   THRESHOLD atomic@ UNREAD = if [: READ-SETTING ;] LOCKED then
+   level LEVEL>N THRESHOLD atomic@ < ;
+
+public
+
+: LINE ( level str -- )
+   {: level:level tag:str :}
+   CLOSED PHASE !
+   level WRITTEN? 0= if exit then
+   level tag HEAD ;
 
 
 : ;LINE ( -- )
