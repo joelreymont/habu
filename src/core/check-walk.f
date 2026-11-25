@@ -1996,49 +1996,41 @@ package CHECK
    bad IF REJECTION:KEEP THEN
    bad ;
 
+\ Runs Q, a walk nothing is published from, and puts back, however Q ends,
+\ the checker cells such a walk moves.
+: CELLS-KEPT ( R [ R -- S ] -- S )
+   RECOVERY-USED?  BIND-HORIZON @  CHK-PROBE @  PU-N @  CUR-DONE @  CUR-GAP @
+   VSIG @  DOESEFF @  DOESPEND @
+   {: recovery:bool horizon:n probe:n pu:n done:n gap:n vsig:n eff:n pend:n :}
+   [: recovery RECOVERY-USED!  horizon BIND-HORIZON !  probe CHK-PROBE !
+      pu PU-N !  done CUR-DONE !  gap CUR-GAP !
+      vsig VSIG !  eff DOESEFF !  pend DOESPEND ! ;] finally ;
+
+\ Runs Q in a candidate scope of its own, off the completion cursor.
+: CANDIDATE-WALK ( R [ R -- S ] -- S )
+   {: q :}
+   [: CHECK-CANDIDATE-START
+      -1 CHK-PROBE !  -1 CUR-DONE !
+      q [: 0 CHECK-CANDIDATE-DONE drop ;] finally ;] CELLS-KEPT ;
+
 global
 : CHECK-CANDIDATE! ( str -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    a u ARM-TEXT {: arm:bool :}
    a u CANDIDATE-NAME-REJECT? IF arm DISARM-TEXT 0 EXIT THEN
-   RECOVERY-USED? {: recovery0:bool :}
-   BIND-HORIZON @ {: horizon0:n :}
-   CHK-PROBE @ {: probe0:n :}
-   PU-N @ {: pu0:n :}
-   CUR-DONE @ {: done0:n :}
-   CUR-GAP @ {: gap0:n :}
-   CHECK-CANDIDATE-START
-   -1 CHK-PROBE !
-   -1 CUR-DONE !                       \ a candidate's text is not the cursor's
-   [: a u CHECK-WINDOWED ;] catch {: v rc:n :}
-   arm DISARM-TEXT
-   done0 CUR-DONE !
-   gap0 CUR-GAP !
-   probe0 CHK-PROBE !
-   0 CHECK-CANDIDATE-DONE drop
-   pu0 PU-N !                          \ a candidate's uses are never published
-   recovery0 RECOVERY-USED!
-   horizon0 BIND-HORIZON !
-   rc 0= IF v EXIT THEN
-   rc throw ;
+   [: [: a u CHECK-WINDOWED ;] [: arm DISARM-TEXT ;] finally ;]
+   CANDIDATE-WALK ;
 
 ;package
 package CHECKER-PREFIX
 EXPORT CHECK:CHECK-SCAN
-EXPORT CHECK:CHECK-CANDIDATE-START
-EXPORT CHECK:CHECK-CANDIDATE-DONE
-
-EXPORT CHECK:BIND-HORIZON
+EXPORT CHECK:CANDIDATE-WALK
 EXPORT CHECK:CHECK-RESET
 EXPORT CHECK:CHECKER-PREFIX-ACTIVE
 EXPORT CHECK:CHECKER-PREFIX-CUT
 EXPORT CHECK:CHECKER-PREFIX-MISS
 EXPORT CHECK:CHECKER-PREFIX-ROLLBACK
-EXPORT CHECK:CHK-PROBE
-EXPORT CHECK:CUR-DONE
-EXPORT CHECK:CUR-GAP
 EXPORT CHECK:OPERANDS-SPENT
-EXPORT CHECK:PU-N
 EXPORT CHECK:WRITE-WINDOW-CK
 : SCAN ( str -- bool )
    0 CHECKER-PREFIX-MISS !
@@ -2047,37 +2039,17 @@ EXPORT CHECK:WRITE-WINDOW-CK
    s" " CHECK-SCAN                     \ a prefix: no closer
    CHECKER-PREFIX-MISS @ 0= ;
 
-EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?
-EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
-
 \ Ask only whether the newly captured part binds. Open control, quotation and
 \ local scopes remain prefixes; the declared result and publication belong to
 \ the caller's eventual `;`. No immediate word runs during this read.
 : BIND? ( str n -- n bool ) {: a:^ u:n cut:n :}
    WRITE-WINDOW-CK
    cut CHECKER-PREFIX-CUT !
-   RECOVERY-USED? {: recovery0:bool :}
-   BIND-HORIZON @ {: horizon0:n :}
-   CHK-PROBE @ {: probe0:n :}
-   PU-N @ {: pu0:n :}
-   CUR-DONE @ {: done0:n :}
-   CUR-GAP @ {: gap0:n :}
-   CHECK-CANDIDATE-START
-   -1 CHK-PROBE !
-   -1 CUR-DONE !                    \ a prefix's text is not the cursor's
-   -1 OPERANDS-SPENT !              \ the engine's body capture has spent parser operands
-   -1 CHECKER-PREFIX-ACTIVE !
-   [: a u SCAN ;] catch {: answer rc:n :}
-   0 CHECKER-PREFIX-ACTIVE !
-   done0 CUR-DONE !
-   gap0 CUR-GAP !
-   probe0 CHK-PROBE !
-   0 CHECK-CANDIDATE-DONE drop
-   pu0 PU-N !                       \ a prefix's uses are never published
-   recovery0 RECOVERY-USED!
-   horizon0 BIND-HORIZON !
-   rc 0= IF CHECKER-PREFIX-ROLLBACK @ answer EXIT THEN
-   rc throw ;
+   [: -1 OPERANDS-SPENT !           \ the engine's body capture has spent parser operands
+      -1 CHECKER-PREFIX-ACTIVE !
+      [: a u SCAN ;] [: 0 CHECKER-PREFIX-ACTIVE ! ;] finally ;]
+   CANDIDATE-WALK {: answer:bool :}
+   CHECKER-PREFIX-ROLLBACK @ answer ;
 
 ;package
 package CHECK
@@ -2589,14 +2561,11 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 : REQUIRED-WALK ( [ -- ] -- )
    {: q :}
    WRITE-WINDOW-CK
-   DOESEFF @ DOESPEND @ VSIG @ PU-N @ {: eff:n pend:n vsig:n pu:n :}
-   RECOVERY-USED? {: recovery:bool :}
-   -1 BWIN-UNJUDGED !
-   0 [: drop q execute 0 ;] SCAN nip {: rc:n :}
-   0 BWIN-UNJUDGED !
-   DEF-RESUMED  SIG-EFF-DROP  SIG-UNRES-CLEAR  WRAP-CLEAR
-   eff DOESEFF !  pend DOESPEND !  vsig VSIG !  pu PU-N !
-   recovery RECOVERY-USED!
+   [: -1 BWIN-UNJUDGED !
+      0 [: drop q execute 0 ;] SCAN nip
+      0 BWIN-UNJUDGED !
+      DEF-RESUMED  SIG-EFF-DROP  SIG-UNRES-CLEAR  WRAP-CLEAR ;]
+   CELLS-KEPT {: rc:n :}
    rc 0=  rc DEF-RESUMES? or IF EXIT THEN
    rc throw ;
 
