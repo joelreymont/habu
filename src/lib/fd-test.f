@@ -2,7 +2,7 @@
 \ a write with SIGPIPE held off, how far a tried write got, one write that never
 \ waits; a temp file cut back and appended to, a directory synced, and a temp
 \ file's mode changed and read from an offset; a duplicated write end; a refused
-\ call's errno.
+\ call's errno; a bounded wait for a readable pipe.
 \ Run: bin/hb --load src/lib/fd-test.f
 \ A pipe holds far less than PAYLOAD, so one read answers short and READ-EXACT
 \ loops; a blocking write answers short only when a caught signal lands after
@@ -251,6 +251,18 @@ variable FILLED                   \ FILLER's descriptors still open
    r SMALL 8 TAKE READ-EXACT OUTCOME 3 T=
    SMALL $ STR:DATA 3 >str s" abc" T$=
    r SMALL READ-EXACT OUTCOME 0 T=
+   r FD>N close ;
+
+\ An empty pipe is not readable within 20 ms; a byte makes it readable at
+\ once, and so does end of file once the writer has closed and the byte is read.
+: READABLE-WAIT ( -- )
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   r 20 FD:READABLE-WITHIN TFALSE
+   w FD>N s" x" write 1 T=
+   r 0 FD:READABLE-WITHIN TTRUE
+   w FD>N close
+   r SMALL 1 TAKE READ-EXACT OUTCOME FULL-MARK T=
+   r 0 FD:READABLE-WITHIN TTRUE
    r FD>N close ;
 
 \ A child writes PAYLOAD bytes and exits. One raw read comes back short - the
@@ -615,6 +627,7 @@ variable FILLED                   \ FILLER's descriptors still open
    SRC @ PATTERN!
    EMPTY-REQUEST
    EOF-INSIDE
+   READABLE-WAIT
    PIPE-CLOSES-ON-EXEC
    EXACT-OVER-SHORT-READS
    SHORT-WRITE-PREMISE

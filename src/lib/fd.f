@@ -2,13 +2,14 @@ split-str
 \ fd.f - the standard descriptors, close-on-exec pipes, the non-blocking mark,
 \ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
 \ as a failed call), one write that never waits on a non-blocking descriptor,
-\ syncing, resizing, changing the mode of and seeking in a file, and a
-\ close-on-exec duplicate. A refused PIPE, mark, read, write, sync, resize, mode
-\ change, seek or duplicate, a write that takes
-\ no byte and a count past the asked one are E-FS-IO, which TRY-WRITE-FULL
-\ answers as how far its write got; TRY-WRITE answers 0 for a full descriptor
-\ or a signal. A negative length or offset is E-SPAN-LENGTH. A refused
-\ PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE is E-PROC-OUTPUT.
+\ a bounded wait for a descriptor to turn readable, syncing, resizing, changing
+\ the mode of and seeking in a file, and a close-on-exec duplicate. A refused
+\ PIPE, mark, read, write, wait, sync, resize, mode change, seek or duplicate,
+\ a write that takes no byte and a count past the asked one are E-FS-IO, which
+\ TRY-WRITE-FULL answers as how far its write got; TRY-WRITE answers 0 for a
+\ full descriptor or a signal. A negative length or offset is E-SPAN-LENGTH.
+\ A refused PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE is
+\ E-PROC-OUTPUT.
 \ Every refused call leaves its errno in FS:ERRNO; a write that takes no byte,
 \ a count past the asked one and a mark the host drops make no failed call,
 \ so FS:ERRNO holds no errno of theirs.
@@ -182,7 +183,23 @@ TASK:+USER POLL-ROW pollfd
       rc 0 < rc EINTR# negate <> and if rc E-FS-IO RC-FAIL then
    again ;
 
+\ The whole ms since mono-ns time n.
+: MS-SINCE ( n -- n ) mono-ns swap - NS-PER-MS / ;
+
 public
+
+\ Whether fd turns readable within n ms; any revents counts, and the next read
+\ reports POLLERR/HUP/NVAL as a fault. A signal does not shorten the wait.
+: READABLE-WITHIN ( fd n -- bool )
+   {: f:fd ms:n :}
+   mono-ns {: start:n :}
+   begin
+      f POLLIN >POLLFD POLL-ROW !
+      POLL-ROW 1 ms start MS-SINCE - 0 max MAX-POLL-MS min poll {: rc:n :}
+      rc 0 > if true exit then
+      rc 0 < rc EINTR# negate <> and if rc E-FS-IO RC-FAIL then
+      start MS-SINCE ms >= if false exit then
+   again ;
 
 \ One write to a descriptor the caller made non-blocking: the bytes it moved.
 : TRY-WRITE ( fd str -- n )
