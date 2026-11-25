@@ -23,9 +23,8 @@ private
 $7F000001 constant LOOPBACK
 1 constant ONE-WORKER
 500 constant IDLE-MS
-$10000 constant CAP                    \ room for any of the page's files
 TYPED-VARIABLE BODY ^VEC:vector<u8>
-CAP BUFFER: WANT
+TYPED-VARIABLE WANT ^VEC:vector<u8>
 TYPED-VARIABLE HEAD ^VEC:vector<u8>
 
 TYPED-VARIABLE CFG HTTP:config
@@ -50,13 +49,13 @@ TYPED-VARIABLE CFG HTTP:config
 
 28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
 
-\ The response's status, its body in BODY; -1 for a body past CAP, -2 for a
+\ The response's status, its body in BODY; -1 for a body past most bytes, -2 for a
 \ failed transfer, whose libcurl code goes to stderr. These handles set no
 \ wall-clock limit, so CURLE 28 is libcurl's default 300 s connect timeout, met by
 \ a starved or stopped process: it throws E-PROC-TIMEOUT, a timeout and not a FAIL.
-: PERFORM ( CURL:handle -- n )
+: PERFORM ( CURL:handle n -- n ) {: h:CURL:handle most:n :}
    BODY @ 0 VEC:RESIZE
-   CAP >LEN BODY @ CURL:PERFORM
+   h most >LEN BODY @ CURL:PERFORM
    MATCH CURL:fetch-result
       response OF drop CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop -1 ENDOF
@@ -72,16 +71,17 @@ TYPED-VARIABLE CFG HTTP:config
          -2 ENDOF
    ;MATCH ;
 
-\ GET of the path: answers its status, its body in BODY and its head in HEAD.
-: GET ( str -- n )
-   {: path:str :}
+\ GET of the path, taking up to most bytes of body: answers its status, its body
+\ in BODY and its head in HEAD.
+: GET ( str n -- n )
+   {: path:str most:n :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
       failed OF drop CURL:EMPTY-HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
    h path URL CURL:URL! OK
-   h PERFORM {: status:n :}
+   h most PERFORM {: status:n :}
    HEAD @ 0 VEC:RESIZE
    status 0 > if  h HEAD @ CURL:HEADERS  then
    h CURL:CLEANUP
@@ -90,16 +90,19 @@ TYPED-VARIABLE CFG HTTP:config
 \ The path answered 200 with the content type, its body the file's bytes.
 : SERVED ( str str str -- )
    {: path:str file:str type:str :}
-   file WANT CAP FS:READ-ALL {: u:n :}
-   path GET 200 T=
+   file FS:FILE-SIZE {: size:n :}
+   WANT @ size VEC:RESIZE
+   file  WANT @ 0 VEC:AT  size FS:READ-ALL size T=
+   path size 1 + GET 200 T=
    SB-RESET  s" Content-Type: " SB-APPEND  type SB-APPEND  S\" \r\n" SB-APPEND
    HEAD @ VEC:BYTES SB$ STR:CONTAINS? TTRUE
-   BODY @ VEC:BYTES WANT u >str T$= ;
+   BODY @ VEC:BYTES WANT @ VEC:BYTES T$= ;
 
 : SERVE-CASES ( -- )
    AIO:START
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HEAD !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW WANT !
    HTTP:ROUTES-RESET
    BROWSER-HOST:ROUTES
    SERVER-CONFIG HTTP:START
