@@ -126,19 +126,22 @@ variable HELD                         \ nonzero while x29 holds the index
 : HALVES ( n n -- n ) {: v:n h:n :}
    0 4 0 ?do v i HALF h = if 1 + then loop ;
 
-: LANE ( bool n n n bool -- bool ) {: first:bool h:n hw:n r:n inv:bool :}
-   first 0= if r h hw MOVKHW W false exit then
-   inv if r h $FFFF xor hw MOVNHW W false exit then
-   r h hw MOVZHW W false ;
+: LANE ( bool n n n bool ^VEC:vector<u8> -- bool )
+   {: first:bool h:n hw:n r:n inv:bool buf:^ :}
+   first 0= if r h hw MOVKHW buf W32+ false exit then
+   inv if r h $FFFF xor hw MOVNHW buf W32+ false exit then
+   r h hw MOVZHW buf W32+ false ;
 
 \ Load the constant v into r with the shortest move-wide chain.
-: LIT-R ( n n -- ) {: v:n r:n :}
+: LIT-IN ( n n ^VEC:vector<u8> -- ) {: v:n r:n buf:^ :}
    v $FFFF HALVES v 0 HALVES > {: inv:bool :}
    inv if $FFFF else 0 then {: fill:n :}
-   true 4 0 ?do v i HALF fill <> if v i HALF i r inv LANE then loop
+   true 4 0 ?do v i HALF fill <> if v i HALF i r inv buf LANE then loop
    0= if exit then
-   inv if r 0 0 MOVNHW W exit then
-   r 0 0 MOVZHW W ;
+   inv if r 0 0 MOVNHW buf W32+ exit then
+   r 0 0 MOVZHW buf W32+ ;
+
+: LIT-R ( n n -- ) RAW @ LIT-IN ;
 
 : PAGES? ( n -- bool ) {: v:n :}
    v 0 > v $FFF and 0= and v 12 rshift IMM12-LIM < and ;
@@ -197,11 +200,6 @@ variable HELD                         \ nonzero while x29 holds the index
    lo 0= if exit then
    add if SP SP lo ENC-ADDI buf W32+ exit then
    SP SP lo ENC-SUBI buf W32+ ;
-
-\ The four-lane carrier into buf: every half, low first.
-: CHAIN4-IN ( n n ^VEC:vector<u8> -- ) {: v:n r:n buf:^ :}
-   r v 0 HALF 0 MOVZHW buf W32+
-   4 1 ?do r v i HALF i MOVKHW buf W32+ loop ;
 
 \ Three halves, high first. Every data address a target holds is below 2^48:
 \ the DATA window, 2^38 bytes at $340000000 on Linux and 2^40 at $44000000000
@@ -262,7 +260,7 @@ variable HELD                         \ nonzero while x29 holds the index
 \ code is the same armed or not. Answers where it starts.
 : CB-STUB ( -- n )
    OUT-OFF {: at:n :}
-   NCBSTUB:SLOT@ CB-ID OUT @ CHAIN4-IN
+   NCBSTUB:SLOT@ CB-ID OUT @ LIT-IN
    NCBSTUB:THUNK@ {: thunk:n :}
    OUT-OFF NEMIT:ADDR-CODE thunk -1 EMIT-ADDR-ROW+
    TMP 0 ENC-ADRP OUT @ W32+  TMP TMP 0 ENC-ADDI OUT @ W32+

@@ -12,11 +12,8 @@ public
 \ ADDR-RD-MASK is its destination field, ADDR-RD-BITS wide.
 $FFE0001F constant ADDR-OPC-MASK
 $FFFF constant ADDR-IMM-MASK
-12 constant DATA-CHAIN-BYTES
 $1F constant ADDR-RD-MASK
 5 constant ADDR-RD-BITS
-$D2C00000 constant DATA-MOVZ2
-$F2800000 constant DATA-MOVK0
 
 private
 
@@ -30,20 +27,9 @@ private
 
 public
 
-\ A data address is MOVZ lsl32; MOVK lsl16; MOVK lsl0: every data address a
-\ target holds fits 48 bits. It must not use x20: that base is private to each
-\ task. Only declared address sites use this grammar: a numeric lookalike never
-\ acquires pointer provenance. Return zero on a truncated or malformed carrier,
-\ without reading past end.
-: CHAIN-SIZE ( ^u8 ^u8 -- n ) {: p:^ end:^ :}
-   end p - DATA-CHAIN-BYTES < if 0 exit then
-   p W32@ ADDR-RD-MASK and {: rd:n :}
-   p W32@ ADDR-OPC-MASK and DATA-MOVZ2 rd or <>
-   p 4 + W32@ ADDR-OPC-MASK and $F2A00000 rd or <> or
-   p 8 + W32@ ADDR-OPC-MASK and DATA-MOVK0 rd or <> or if 0 exit then
-   DATA-CHAIN-BYTES ;
-
-: SET-CHAIN-VALUE ( str n -- ) {: p:^ val:n size:n :}
+\ Write val, below 2^48, into the chain at p: MOVZ lsl32; MOVK lsl16; MOVK lsl0
+\ in one register, never x20, the base private to each task.
+: SET-CHAIN-VALUE ( n ^u8 -- ) {: val:n p:^ :}
    3 0 ?do
       p i 4 * + W32@ ADDR-OPC-MASK and
       val 2 i - 16 * rshift ADDR-IMM-MASK and ADDR-RD-BITS lshift or

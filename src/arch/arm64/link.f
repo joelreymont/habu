@@ -15,11 +15,6 @@ package LINKER
 private
 package ARM64
 
-\ The address chain at p, inside bytes ending at end, made to hold v.
-: CHAIN! ( n ^u8 ^u8 -- )
-   {: v:n p:^ end:^ :}
-   p v  p end ADDRESS-CARRIER:CHAIN-SIZE  ADDRESS-CARRIER:SET-CHAIN-VALUE ;
-
 public
 
 \ The word at p, a call site at link-time address at, becomes bl (NEMIT:CALL)
@@ -41,7 +36,6 @@ public
 \ dst holds emission e's bytes and runs from link-time address at.
 : PATCH ( n ^u8 n [ n -- n ] [ n -- n ] [ n n -- bool ] -- )
    {: e:n dst:^ at:n data resolve live :}
-   dst e NSHADOW:SIZE + {: end:^ :}
    e NSHADOW:CALL-SITES 0 ?do
       e i NSHADOW:CALL-SITE@ {: s:n :}
       e s live execute if
@@ -55,10 +49,11 @@ public
       e i NSHADOW:ADDR-SITE-VALUE@ {: v:n :}
       e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = {: data?:bool :}
       e s live execute 0= if
-         data? if 0 p end CHAIN! else 0 0 p CODE-ADDRESS! then
+         data? if 0 p ADDRESS-CARRIER:SET-CHAIN-VALUE
+         else 0 0 p CODE-ADDRESS! then
       else
          data? if
-            v data execute  p end CHAIN!
+            v data execute  p ADDRESS-CARRIER:SET-CHAIN-VALUE
          else
             v resolve execute  at s +  p CODE-ADDRESS!
          then
@@ -71,7 +66,7 @@ public
 : ADDRESS! ( n ^u8 n n n -- )
    {: v:n b:^ s:n site:n kind:n :}
    kind NEMIT:ADDR-CODE = if 0 0 b site + CODE-ADDRESS! exit then
-   v  b site +  b s +  CHAIN! ;
+   v  b site +  ADDRESS-CARRIER:SET-CHAIN-VALUE ;
 
 ;package
 ;package
