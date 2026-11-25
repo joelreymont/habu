@@ -149,18 +149,22 @@
 //     id. It tests each box against the last draw before it in record order:
 //     the view test against its matrix and the depth its rows left, and, when
 //     it drew a shadow (record 17) and a ground is held, the key test against
-//     the key light's view and the shadow map its rows, cast-only ones
-//     included, left; else no box passes the key test. One before the first
-//     draw is rejected, as no matrix says what is in view. A box passes a test
-//     when any of it in that view is not behind that depth (WebGPU occlusion
-//     queries: the box's faces drawn writing neither colour nor depth, with
-//     depthCompare less-equal where the draw keeps less, so a part flush with a
-//     drawn surface passes). A box with corners on both sides of the view's
-//     near plane passes: only its faces are drawn, and the plane can cut every
-//     face away while its inside is in view. After a draw of 0 rows, and until
-//     the next draw after a ground of b 0 for the key test, nothing is drawn,
-//     so every box in view passes; both tests after a resize answer the last
-//     draw. The ground leaves no depth, so it hides no box
+//     the rays that draw traced from the ground in view to the key light;
+//     else no box passes the key test. One before the first draw is rejected,
+//     as no matrix says what is in view. A box passes the view test when any
+//     of it in view is not behind that depth (WebGPU occlusion queries: the
+//     box's faces drawn writing neither colour nor depth, with depthCompare
+//     less-equal where the draw keeps less, so a part flush with a drawn
+//     surface passes). A box with corners on both sides of the view's near
+//     plane passes the view test: only its faces are drawn, and the plane can
+//     cut every face away while its inside is in view. A box passes the key
+//     test when a ray the draw traced from the ground in view to the key's
+//     softbox, past every caster, crosses it: a box that fails, added to the
+//     next draw's casters, leaves that draw's ground as it is. After a draw of
+//     0 rows nothing is drawn, so every box in view passes the view test, and
+//     until the next draw after a ground of b 0 every traced ray is clear for
+//     the key test; both tests after a resize answer the last draw. The ground
+//     leaves no depth, so it hides no box
 //   17 ground: a, b a span of 40 bytes, ten f32: nx, ny, nz, d, the world
 //     plane n·p + d = 0, n of any nonzero length toward the side that is up,
 //     then the casters' box, its lowest x, y, z then its highest, in world,

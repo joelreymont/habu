@@ -620,7 +620,7 @@ async function browser() {
       await command("ground");
       await command("key");
       const remade = (await state()).text;
-      // Marks made since the draw are clear, so every ray is.
+      // clears made since the draw hold every ray clear, so the key test hides no box.
       assert.equal(remade, "occluded 03030303 10", `marks made since the draw hide no box, got ${remade}`);
       await command("ground-none");
       await evaluate(`box(${JSON.stringify(down)})`);
