@@ -7,6 +7,9 @@ split-str
 \ stores its words into the EMIT- and src/habu/t0-label.f (LABEL) cells for
 \ CTARGET-ARCH:X86-64.
 \
+\ PLACE (src/habu/t0-place.f) places the units, and a `ret` and a tail `jmp`
+\ take an epilogue.
+\
 \ FLAGS says whether the condition codes hold a compare no word has read yet.
 \ CMP and CMP-LIT set it; SET-FLAG, FWD-CC and BACK-CC, which read the codes,
 \ clear it, and so does a unit's start. A word that compares and branches
@@ -14,7 +17,6 @@ split-str
 \ writes the codes; while it is set, by a mov, which does not.
 
 require src/lib/error.f
-require src/lib/heap.f
 require src/lib/vector.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
@@ -24,10 +26,12 @@ require src/compiler/native/emission.f
 require src/compiler/native/callback-stub.f
 require src/habu/t0-emit.f
 require src/habu/t0-label.f
+require src/habu/t0-place.f
 
 package COMP
 package X86-64
 using X64ASM
+using PLACE
 
 8 constant NVREG
 
@@ -50,20 +54,17 @@ using X64ASM
    k 5 = if C-G exit then
    E-OPERAND throw ;
 
-TYPED-VARIABLE SINK-CELL ^VEC:vector<u8> SCRATCH-ONLY  \ NULL-PTR until OPEN makes it
-variable FRAME-CELLS                  \ machine-stack cells this body uses
-variable REC-CELLS                    \ this unit's quotation record cells
-variable ENV                          \ 1 when this unit keeps a record's address
-variable BODY-AT                      \ first byte after the frame adjustment
 variable FLAGS                        \ nonzero while the condition codes are held
-variable NFRAME
-variable NUNIT                        \ units begun in this emission
-DYNAMIC-BUFFER FRAME-AT n             \ offset of each frame imm32 field
-DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
-: SINK ( -- ^VEC:vector<u8> ) SINK-CELL @ ;
+0 constant FORM-JMP
+1 constant FORM-JCC
 
-: HERE-OFF ( -- n ) SINK VEC:COUNT ;
+\ A branch's placeholder is its rel8 form; its rel32 form is so much longer.
+2 constant HOLE
+3 constant JMP-GROWTH
+4 constant JCC-GROWTH
+
+: SINK ( -- ^VEC:vector<u8> ) RAW @ ;
 
 \ A body's contract (src/habu/kernel-x64.f "A BODY'S CONTRACT"): rbp is DATA,
 \ r12 the data stack pointer, rbx and r13-r15 the other engine registers;
@@ -85,8 +86,9 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    k 3 = if RDI exit then
    k 4 + >R64 ;
 
+\ The low k bytes of v into OUT at off.
 : PUT ( n n n -- ) {: v:n off:n k:n :}
-   SINK VEC:BYTES drop off + {: p:^ :}
+   OUT @ off VEC:AT {: p:^ :}
    k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
 
 : REL32! ( n n -- )
@@ -94,36 +96,21 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    d -2147483648 < d 2147483647 > or if E-X64EMIT-REACH throw then
    d off 4 PUT ;
 
-\ A forward rel32 at the end of what was just emitted: its field's offset.
-: FWD-SITE ( -- LABEL:branch ) HERE-OFF 4 - LABEL:>BRANCH ;
-
 \ Load the constant n into r with the shortest form that holds it and keeps
 \ held condition codes.
-: LIT-R ( n r64 -- ) {: v:n r:r64 :}
+: LIT-IN ( n r64 ^VEC:vector<u8> -- ) {: v:n r:r64 buf:^ :}
    r R64>N >R32 {: r4:r32 :}
-   v 0 =  FLAGS @ 0=  and if r4 r4 SINK ENC-XOR32-RR exit then
-   v 0 >= v $FFFFFFFF <= and if r4 v >IMM32 SINK ENC-MOV32-RI32 exit then
-   v IMM? if r v >IMM32 SINK ENC-MOV-RI32 exit then
-   r v >IMM64 SINK ENC-MOV-RI64 ;
+   v 0 =  FLAGS @ 0=  and if r4 r4 buf ENC-XOR32-RR exit then
+   v 0 >= v $FFFFFFFF <= and if r4 v >IMM32 buf ENC-MOV32-RI32 exit then
+   v IMM? if r v >IMM32 buf ENC-MOV-RI32 exit then
+   r v >IMM64 buf ENC-MOV-RI64 ;
 
-: FRAME-SITE ( -- )
-   HERE-OFF 4 - {: at:n :}
-   NFRAME @ {: k:n :}
-   k 1 + FRAME-AT-RESERVE
-   at k FRAME-AT !
-   k 1 + NFRAME ! ;
-
-: UNFRAME ( -- )
-   RSP 0 >IMM32 SINK ENC-ADD-RI32  FRAME-SITE ;
-
-: ADDR-R ( n n r64 n -- )
-   {: v:n o:n r:r64 kind:n :}
-   HERE-OFF kind v o EMIT-ADDR-ROW+
-   r v >IMM64 SINK ENC-MOV-RI64 ;
+: LIT-R ( n r64 -- ) SINK LIT-IN ;
 
 : ADDR ( n n vreg n -- )
    {: v:n o:n d:vreg kind:n :}
-   v o d REG kind ADDR-R ;
+   HERE-OFF kind v o PEND+
+   d REG v >IMM64 SINK ENC-MOV-RI64 ;
 
 \ r, holding the return stack depth, becomes the address one cell past its top.
 : RTOP ( r64 -- ) {: r:r64 :}
@@ -136,70 +123,69 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 : RDEPTH! ( r64 -- ) {: r:r64 :}
    r DATA-REG RSP-CELL MEM-OFF SINK ENC-MOV-MR ;
 
-: REL-TO ( n -- rel ) HERE-OFF - >REL ;
+\ ---- PLACE's hooks -----------------------------------------------------------
+: UNIT-RESET ( -- ) 0 FLAGS ! ;
 
-: UNIT-BEGIN ( -- )
-   HERE-OFF EMIT-UNIT+
-   NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !  0 FLAGS !  0 NFRAME !
-   RSP 0 >IMM32 SINK ENC-SUB-RI32  FRAME-SITE
-   HERE-OFF BODY-AT ! ;
+: PROLOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
+   bytes 0= if exit then
+   bytes SHORT? if RSP bytes >IMM8 buf ENC-SUB-RI8 exit then
+   RSP bytes >IMM32 buf ENC-SUB-RI32 ;
 
+: EPILOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
+   bytes 0= if exit then
+   bytes SHORT? if RSP bytes >IMM8 buf ENC-ADD-RI8 exit then
+   RSP bytes >IMM32 buf ENC-ADD-RI32 ;
+
+\ The call is E8 rel32, and the address lea its REX, opcode, ModRM and disp32.
+: SELF-PUT ( n -- ) {: at:n :}  at 5 + negate  at 1 + REL32! ;
+
+: ADR-PUT ( n n -- ) {: at:n to:n :}  to at 7 + -  at 3 + REL32! ;
+
+: BRANCH-LEN ( n n -- n ) {: k:n d:n :}
+   d SHORT? if 0 exit then
+   k BR-FORM @ FORM-JMP = if JMP-GROWTH exit then
+   JCC-GROWTH ;
+
+\ EB or 70+cc, rel8; else E9 or 0F 80+cc, rel32.
+: BRANCH-PUT ( n n n -- ) {: k:n at:n to:n :}
+   at HOLE + k BR-LEN @ + {: end:n :}
+   to end - {: d:n :}
+   k BR-FORM @ FORM-JMP = {: jmp:bool :}
+   k BR-LEN @ 0= if
+      jmp if $EB else $70 k BR-ARG @ + then at 1 PUT
+      d at 1 + 1 PUT exit
+   then
+   jmp if $E9 at 1 PUT else $800F k BR-ARG @ 8 lshift + at 2 PUT then
+   d end 4 - REL32! ;
 
 \ ---- the body ----------------------------------------------------------------
-\ The frame: each unit's start emits `sub rsp, imm32` and each way out emits
-\ `add rsp, imm32`, each field recorded in FRAME-AT; CLOSE writes the unit's
-\ frame size into every one. The frame holds the environment cell, quotation
-\ records, then local slots. A reading quotation receives its record in rdi.
+\ A reading quotation receives its record in rdi.
 \
 \ The rows (t0-emit.f "THE ROWS"): a call or tail site is E8 or E9 rel32, zero
 \ until PATCH measures it from its placed end; an address site is movabs r64,
 \ imm64, whose imm64 starts two bytes past the row's offset. A quotation's
 \ RIP-relative lea names its unit inside the emission and needs no row.
-\ Every branch is rel32.
-: OPEN ( -- )
-   SINK-CELL @ NULL-PTR = if
-      HEAP:ALLOCATOR 0 [type] u8 VEC:NEW SINK-CELL !
-   then
-   SINK 0 VEC:RESIZE
-   0 NUNIT !
-   LABEL:RESET
-   UNIT-BEGIN ;
+: RETURN ( -- ) HERE-OFF EPI+  SINK ENC-RET ;
 
-: QUOT-OPEN ( n -- ) {: n:n :}
-   n NUNIT @ <> if E-T0-UNIT throw then
-   n UNIT-REF @ {: at:n :}
-   HERE-OFF at - 4 - at REL32!
-   UNIT-BEGIN ;
-
-: UNIT-OPEN ( -- ) UNIT-BEGIN ;
-
-: RETURN ( -- )
-   UNFRAME  SINK ENC-RET ;
-
-: CLOSE ( -- )
-   ENV @ REC-CELLS @ + FRAME-CELLS @ +
-   CELL * 15 + 15 invert and {: bytes:n :}
-   NFRAME @ 0 ?do bytes i FRAME-AT @ 4 PUT loop ;
-
-\ The return is the kernel's does> patch slot, filed at the jump's offset.
+\ The return is the kernel's does> patch slot, `jmp rel32` and the `ret` it
+\ falls through to, filed at the jump's offset.
 : SLOT-CLOSE ( -- )
-   UNFRAME
-   HERE-OFF EMIT-PATCH-SLOT!
+   HERE-OFF EPI+
    0 >REL SINK ENC-JMP-REL32
    SINK ENC-RET
-   CLOSE ;
+   PLACE:CLOSE
+   OUT-OFF 6 - EMIT-PATCH-SLOT! ;
 
 \ The stub after the last unit, answering its offset: r10 its slot, rax the
 \ thunk, which writes rax first (src/habu/kernel-x64.f CALLBACK-ENTRY-BODY).
 : CB-STUB ( -- n )
-   HERE-OFF {: at:n :}
-   NCBSTUB:SLOT@ R10 LIT-R
-   NCBSTUB:THUNK@ -1 RAX NEMIT:ADDR-CODE ADDR-R
-   RAX SINK ENC-JMP-REG
+   OUT-OFF {: at:n :}
+   NCBSTUB:SLOT@ R10 OUT @ LIT-IN
+   NCBSTUB:THUNK@ {: thunk:n :}
+   OUT-OFF NEMIT:ADDR-CODE thunk -1 EMIT-ADDR-ROW+
+   RAX thunk >IMM64 OUT @ ENC-MOV-RI64
+   RAX OUT @ ENC-JMP-REG
    at ;
-
-: BYTES ( -- str ) SINK VEC:BYTES ;
 
 \ A call's rel32 is measured from the end of its five bytes, placed at.
 : PATCH-CALL ( n n n -- ) {: at:n off:n to:n :}
@@ -222,14 +208,11 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    {: v:n d:vreg :}
    v -1 d NEMIT:ADDR-CODE ADDR ;
 
-\ Unit 0 already begins at offset 0; QUOT-OPEN binds each later unit.
+\ `lea r, [rip]` until ADR-PUT writes the distance to unit n.
 : ADDR-QUOT ( n vreg -- )
    {: n:n d:vreg :}
-   n 1 + UNIT-REF-RESERVE
-   d REG 0 MEM-RIP SINK ENC-LEA
-   HERE-OFF 4 - {: at:n :}
-   n 0= if HERE-OFF negate at REL32! exit then
-   at n UNIT-REF ! ;
+   HERE-OFF ADDR-QUOT-KIND n -1 PEND+
+   d REG 0 MEM-RIP SINK ENC-LEA ;
 
 \ The stack pointer moved by k cells: an lea, which leaves the condition codes
 \ alone, as EMIT-CMP requires.
@@ -276,12 +259,6 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    {: a:vreg b:vreg :}
    a REG b REG SINK ENC-XCHG-RR ;
 
-: SLOTS ( n -- ) {: k:n :}
-   k FRAME-CELLS @ > if k FRAME-CELLS ! then ;
-
-: REC-OFF ( n -- n ) ENV @ + CELL * ;
-: SLOT-OFF ( n -- n ) REC-CELLS @ + REC-OFF ;
-
 : SLOT-STORE ( vreg n -- )
    {: s:vreg k:n :}
    s REG RSP k SLOT-OFF MEM-OFF SINK ENC-MOV-MR ;
@@ -289,12 +266,6 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 : SLOT-LOAD ( vreg n -- )
    {: d:vreg k:n :}
    d REG RSP k SLOT-OFF MEM-OFF SINK ENC-MOV-RM ;
-
-\ Reserving cells after body emission would move its existing slot offsets.
-: BODY-EMPTY ( -- )
-   HERE-OFF BODY-AT @ <> if E-T0-UNIT throw then ;
-
-: REC-CELLS! ( n -- ) BODY-EMPTY REC-CELLS ! ;
 
 : ENV-OPEN ( -- )
    BODY-EMPTY 1 ENV !
@@ -384,6 +355,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
 : MUL-LIT ( vreg n -- )
    {: d:vreg v:n :}
+   v SHORT? if d REG d REG v >IMM8 SINK ENC-IMUL-RRI8 exit then
    d REG d REG v >IMM32 SINK ENC-IMUL-RRI32 ;
 
 \ idiv divides rdx:rax and writes rax and rdx, and rdx is a vreg, so it is
@@ -450,31 +422,29 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
 \ ---- calls -------------------------------------------------------------------
 : CALL ( n n -- ) {: to:n loc:n :}
-   HERE-OFF NEMIT:CALL to loc EMIT-CALL-ROW+
+   HERE-OFF NEMIT:CALL to loc PCALL+
    0 >REL SINK ENC-CALL-REL32 ;
 
 : TAIL ( n n -- ) {: to:n loc:n :}
-   UNFRAME
-   HERE-OFF NEMIT:TAIL to loc EMIT-CALL-ROW+
+   HERE-OFF EPI+
+   HERE-OFF NEMIT:TAIL to loc PCALL+
    0 >REL SINK ENC-JMP-REL32 ;
 
 : CALL-SELF ( -- )
-   0 HERE-OFF 5 + - >REL SINK ENC-CALL-REL32 ;
+   HERE-OFF SELF+
+   0 >REL SINK ENC-CALL-REL32 ;
 
 \ ---- control -----------------------------------------------------------------
-\ The branch primitives LABEL emits through. A forward branch is the offset
-\ of its rel32 field, waiting for its target, and a head is an offset.
+\ The branch primitives LABEL emits through. A forward branch is its number
+\ in the open unit's list, and a head a raw offset.
 
-: RESOLVE ( LABEL:branch -- ) LABEL:BRANCH>N {: at:n :}
-   HERE-OFF at 4 + - at 4 PUT ;
+\ A branch of the form, with its condition or 0, to a raw offset or -1.
+: BRANCH ( n n n -- LABEL:branch ) HOLE BR+ ;
 
-: MARK ( -- LABEL:head ) HERE-OFF LABEL:>HEAD ;
-
-: FWD-JUMP ( -- LABEL:branch )
-   0 >REL SINK ENC-JMP-REL32  FWD-SITE ;
+: FWD-JUMP ( -- LABEL:branch ) FORM-JMP 0 -1 BRANCH ;
 
 : FWD-JCC ( condition -- LABEL:branch ) {: c:condition :}
-   c 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
+   FORM-JCC c CONDITION>N -1 BRANCH ;
 
 : TEST ( vreg -- )
    {: c:vreg :}
@@ -501,18 +471,15 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    0 FLAGS !
    COND FWD-JCC ;
 
-\ The branch's jcc becomes je: its opcode byte is just before the field.
-: ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: at:n :}
-   C-E CONDITION>N $80 +  SINK VEC:BYTES drop at 1 - + c! ;
+\ The branch becomes je.
+: ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: k:n :}
+   C-E CONDITION>N k BR-ARG ! ;
 
-\ A backward rel is measured from the end of the instruction, five bytes for
-\ jmp rel32 and six for jcc rel32.
-: BACK-JUMP ( LABEL:head -- ) LABEL:HEAD>N {: m:n :}
-   m 5 - REL-TO SINK ENC-JMP-REL32 ;
+: BACK-JUMP ( LABEL:head -- ) LABEL:HEAD>N FORM-JMP 0 rot BRANCH drop ;
 
 : BACK-JCC ( condition LABEL:head -- )
    LABEL:HEAD>N {: c:condition m:n :}
-   c m 6 - REL-TO SINK ENC-JCC-REL32 ;
+   FORM-JCC c CONDITION>N m BRANCH drop ;
 
 : BACK-ZERO ( vreg LABEL:head -- )
    {: c:vreg m:LABEL:head :}
@@ -628,14 +595,14 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 : FILL-SLOT ( n -- )
    {: k:n :}
    NVREG k EMIT-VREGS-N !
-   ['] OPEN k EMIT-OPEN-XT !
-   ['] QUOT-OPEN k EMIT-QUOT-OPEN-XT !
-   ['] UNIT-OPEN k EMIT-UNIT-OPEN-XT !
+   ['] PLACE:OPEN k EMIT-OPEN-XT !
+   ['] PLACE:QUOT-OPEN k EMIT-QUOT-OPEN-XT !
+   ['] PLACE:UNIT-OPEN k EMIT-UNIT-OPEN-XT !
    ['] RETURN k EMIT-RETURN-XT !
-   ['] CLOSE k EMIT-CLOSE-XT !
+   ['] PLACE:CLOSE k EMIT-CLOSE-XT !
    ['] SLOT-CLOSE k EMIT-SLOT-CLOSE-XT !
    ['] CB-STUB k EMIT-CB-STUB-XT !
-   ['] BYTES k EMIT-BYTES-XT !
+   ['] PLACE:BYTES k EMIT-BYTES-XT !
    ['] PATCH k EMIT-PATCH-XT !
    ['] LIT k EMIT-LIT-XT !
    ['] ADDR-DATA k EMIT-ADDR-DATA-XT !
@@ -650,10 +617,10 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    ['] DSP+ k EMIT-DSP+-XT !
    ['] MOV k EMIT-MOV-XT !
    ['] EXCHANGE k EMIT-EXCHANGE-XT !
-   ['] SLOTS k EMIT-SLOTS-XT !
+   ['] PLACE:SLOTS k EMIT-SLOTS-XT !
    ['] SLOT-STORE k EMIT-SLOT-STORE-XT !
    ['] SLOT-LOAD k EMIT-SLOT-LOAD-XT !
-   ['] REC-CELLS! k EMIT-REC-CELLS-XT !
+   ['] PLACE:REC-CELLS! k EMIT-REC-CELLS-XT !
    ['] ENV-OPEN k EMIT-ENV-OPEN-XT !
    ['] REC-STORE k EMIT-REC-STORE-XT !
    ['] REC-QUOT k EMIT-REC-QUOT-XT !
@@ -705,7 +672,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    ['] LABEL:LOOP-STEP k EMIT-LOOP-STEP-XT !
    ['] LABEL:LOOP-CLOSE k EMIT-LOOP-CLOSE-XT !
    ['] IMM? k EMIT-IMM?-XT !
-   ['] MARK k LABEL:MARK-XT !
+   ['] PLACE:MARK k LABEL:MARK-XT !
    ['] FWD-JUMP k LABEL:FWD-JUMP-XT !
    ['] FWD-ZERO k LABEL:FWD-ZERO-XT !
    ['] FWD-NE k LABEL:FWD-NE-XT !
@@ -715,13 +682,21 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    ['] BACK-JUMP k LABEL:BACK-JUMP-XT !
    ['] BACK-ZERO k LABEL:BACK-ZERO-XT !
    ['] BACK-CC k LABEL:BACK-CC-XT !
-   ['] RESOLVE k LABEL:RESOLVE-XT !
+   ['] PLACE:RESOLVE k LABEL:RESOLVE-XT !
    ['] ENTRY-EQ k LABEL:ENTRY-EQ-XT !
    ['] LOOP-NEXT k LABEL:LOOP-NEXT-XT !
-   ['] LOOP-STEP k LABEL:LOOP-STEP-XT ! ;
+   ['] LOOP-STEP k LABEL:LOOP-STEP-XT !
+   ['] UNIT-RESET k PLACE:UNIT-RESET-XT !
+   ['] PROLOGUE k PLACE:PROLOGUE-XT !
+   ['] EPILOGUE k PLACE:EPILOGUE-XT !
+   ['] SELF-PUT k PLACE:SELF-PUT-XT !
+   ['] ADR-PUT k PLACE:ADR-PUT-XT !
+   ['] BRANCH-LEN k PLACE:BRANCH-LEN-XT !
+   ['] BRANCH-PUT k PLACE:BRANCH-PUT-XT ! ;
 
 CTARGET-ARCH:X86-64 ' FILL-SLOT EMIT-PROVIDE
 
+;using
 ;using
 ;package
 ;package
