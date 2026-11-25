@@ -1428,6 +1428,14 @@ public
    s" `, or the word already named `" EMIT-STR
    stem stemu EMIT-STR  sfx sfxu EMIT-STR  96 EMIT1 ;
 
+\ A definition's second `does>`, the token given. It is written through its help, and
+\ the caller stops it.
+: DOES-TWICE ( str -- )
+   s" E-DOES-TWICE" OPEN
+   s" `does>` appears twice in one definition" EMIT-STR
+   AT  s" second `does>`" EMIT-STR
+   HELP  s" keep one `does>` per definition" EMIT-STR ;
+
 \ Rejects a definition of NAME when the dictionary has no record left, placed
 \ at PLACE.
 : DICTIONARY-FULL ( str str -- ) {: a:^ u:n t:^ tu:n :}

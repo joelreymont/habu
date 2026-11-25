@@ -2007,11 +2007,7 @@ TYPED-VARIABLE GROUP-OPEN ^u8
 
 : DEF-DOES ( -- )
    DOESB-CELL CELL@ 0<> if
-      s" E-DOES-TWICE" REJECTION:OPEN
-      s" `does>` appears twice in one definition" REJECTION:EMIT-STR
-      TOKEN$ REJECTION:AT  s" second `does>`" REJECTION:EMIT-STR
-      REJECTION:HELP
-      s" keep one `does>` per definition" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:DOES-TWICE
       EXIT-STATUS:REJECTED REJECTION:STOP
    then
    ndict@ 1+ DICT-CAP < 0= if

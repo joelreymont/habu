@@ -642,6 +642,14 @@ PATH-CAP BUFFER: FOUND   variable FOUND-U
    s" test/fixtures/require-check/print-paren.f"
    s" error[E-UNDEFINED]: cannot find word `.(`"
    s" require-check/print-paren.f:2:20" VERIFY-REJECTS
+   s" and a second `does>`, before any call its definition makes" T-LABEL
+   s" test/fixtures/require-check/does-twice.f"
+   s" error[E-DOES-TWICE]: `does>` appears twice in one definition"
+   s" require-check/does-twice.f:5:41" VERIFY-REJECTS
+   s" and in a trusted body" T-LABEL
+   s" test/fixtures/require-check/trusted-twice.f"
+   s" error[E-DOES-TWICE]: `does>` appears twice in one definition"
+   s" require-check/trusted-twice.f:5:41" VERIFY-REJECTS
    s" test/fixtures/require-check/text-good.f"
    s" and passes a call only evaluated text makes" VERIFIES
    s" test/fixtures/require-check/built-good.f"

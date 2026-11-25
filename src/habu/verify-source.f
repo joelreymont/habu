@@ -1825,6 +1825,31 @@ DYNAMIC-BUFFER TICK-QUAL u8
       TICK-CONTEXT-UNKNOWN
    THEN ;
 
+: DOES-TOKEN? ( -- bool )
+   LOCAL-TOKEN? IF false EXIT THEN
+   TOKEN-A @ TOKEN-U @ s" does>" STR:=CI ;
+
+\ The load rejects a second `does>` as it reads it, before it checks any of the
+\ definition: from the first, the read token, the rest is read for one, which is
+\ then the read token. Else the scan ends where it stood.
+: DOES-AGAIN? ( -- bool )
+   SCAN-I @ TOKEN-A @ TOKEN-U @ TOKEN-BYTE @ CSR-SUBJ @
+   {: at:n a:^ u:n byte:n subj:n :}
+   0 CSR-SUBJ !
+   LOCALS-RESET  BODY-PREV-CLEAR
+   BEGIN
+      BODY!
+      DOES-TOKEN? IF subj CSR-SUBJ !  true EXIT THEN
+      TOKEN-U @ 0=  TOKEN-A @ TOKEN-U @ s" ;" STR:=  or 0=
+   WHILE SKIP-DEF-TOKEN REPEAT
+   at SCAN-I !  a TOKEN-A !  u TOKEN-U !  byte TOKEN-BYTE !  subj CSR-SUBJ !
+   LOCALS-RESET  BODY-PREV-CLEAR
+   false ;
+
+: DOES-TWICE-STOP ( -- )
+   TOKEN-A @ TOKEN-U @ REJECTION:DOES-TWICE
+   MULTI-ERR? IF REJECTION:KEEP ELSE EXIT-STATUS:REJECTED REJECTION:STOP THEN ;
+
 \ The clause's declaration is recorded unless body or clause stops or is
 \ refused. A body deferral hides the clause's, never the clause's stop.
 : VERIFY-DOES ( -- bool )
@@ -2331,25 +2356,27 @@ variable TRUSTED-CUT              \ where BODY-BUF's clause body starts, 0 for n
 PTR-VARIABLE TRUSTED-SIG-A
 variable TRUSTED-SIG-U
 
-: DOES-TOKEN? ( -- bool )
-   LOCAL-TOKEN? IF false EXIT THEN
-   TOKEN-A @ TOKEN-U @ s" does>" STR:=CI ;
-
 \ The clause's signature is read and its body joins with locals of its own.
 : APPEND-CLAUSE ( -- )
    TOKEN-A @ TOKEN-U @ SIGNATURE-AT TRUSTED-SIG-U !  TRUSTED-SIG-A !
    LOCALS-RESET  BODY-PREV-CLEAR
    BODY-U @ TRUSTED-CUT ! ;
 
-\ Appends a TRUSTED: definition's body, its clause's after it, up to the `;`.
-: APPEND-TRUSTED ( -- )
+\ Appends a TRUSTED: definition's body, its clause's after it, up to the `;`:
+\ false at a second `does>`, which SCAN-TRUSTED-BODY rejects.
+: APPEND-TRUSTED ( -- bool )
    BODY-PREV-CLEAR  LOCALS-RESET
    0 TRUSTED-CUT !
    BEGIN
       BODY!
       TOKEN-U @ 0= IF UNCLOSED-STOP THEN
-      TOKEN-A @ TOKEN-U @ s" ;" STR:= IF EXIT THEN
-      TRUSTED-CUT @ 0=  DOES-TOKEN? and IF APPEND-CLAUSE ELSE APPEND-BODY-TOKEN THEN
+      TOKEN-A @ TOKEN-U @ s" ;" STR:= IF true EXIT THEN
+      DOES-TOKEN? IF
+         TRUSTED-CUT @ 0<> IF false EXIT THEN
+         APPEND-CLAUSE
+      ELSE
+         APPEND-BODY-TOKEN
+      THEN
    AGAIN ;
 
 \ The appended text's checks: what comes before the clause, then the clause.
@@ -2368,7 +2395,7 @@ variable TRUSTED-SIG-U
    SCAN-I @ {: mark:n :}
    BODY-RESET
    na nu BODY-APPEND  sig 1 - sigu 2 + BODY-APPEND
-   APPEND-TRUSTED  TRUSTED-TEXT-CHECK
+   APPEND-TRUSTED IF TRUSTED-TEXT-CHECK THEN
    BODY-RESET
    mark SCAN-I ! ;
 
@@ -2383,6 +2410,7 @@ variable TRUSTED-SIG-U
       TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" STR:= IF EXIT THEN
       DOES-TOKEN? IF
+         TRUSTED-DOES @ 0<> IF DOES-TWICE-STOP THEN
          \ This scan skips the clause body, so its acceptance is unknown.
          INDEX-ON @ IF
             true TICK-REMAINDER !
@@ -4246,6 +4274,7 @@ ENUM definer-arm DERIVE eq
             DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ true REFUSE-SHAPE IF
                SKIP-DEFINITION EXIT
             THEN
+            DOES-AGAIN? IF DOES-TWICE-STOP  SKIP-DEFINITION EXIT THEN
             VERIFY-DOES IF
                DOES-ACCEPTED @ INDEX-ON @ 0= or IF COLON-DEFINED THEN
             THEN
