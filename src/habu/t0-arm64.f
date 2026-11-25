@@ -7,24 +7,17 @@ split-str
 \ its words into the EMIT- and src/habu/t0-label.f (LABEL) cells for
 \ CTARGET-ARCH:AARCH64.
 \
-\ CLOSE copies a unit's body from RAW to OUT, prologue first, an epilogue
-\ before each `ret`. Frame, lowest first: env cell, record cells, slots
-\ (REC-OFF); LINKED adds x30.
+\ PLACE (src/habu/t0-place.f) places the units. LINKED adds x30 to the frame,
+\ and a `ret` and a tail `b` take an epilogue. A branch never leaves its unit,
+\ so EMIT-PATCH leaves it alone; one its field cannot reach throws
+\ E-A64EMIT-REACH.
 \
-\ A control branch is a placeholder word in RAW and an entry in the open
-\ unit's branch list. CLOSE writes each, since the epilogues it inserts move
-\ code; a branch to a `ret` or tail `b` lands on the epilogue in front of it.
-\ A branch never leaves its unit, so placement leaves it alone; one its field
-\ cannot reach throws E-A64EMIT-REACH.
-\
-\ Address sites wait in PEND-AT and call and tail sites in PCALL-AT until
-\ CLOSE files them into the seam at their final offsets. A data address
-\ inside the fixed DATA mapping is three words, `movz lsl32`, `movk lsl16`,
-\ `movk`; any other address is all four lanes. Every lane is emitted so the
-\ publisher can rewrite it in place. A data address's row carries the origin
-\ ADDR-DATA takes, a code address's -1. A quotation's address is an `adr`
-\ relative to its own site and `recurse` a `bl` to byte 0: neither files a
-\ row.
+\ A data address inside the fixed DATA mapping is three words, `movz lsl32`,
+\ `movk lsl16`, `movk`; any other address is all four lanes. Every lane is
+\ emitted so the publisher can rewrite it in place. A data address's row
+\ carries the origin ADDR-DATA takes, a code address's -1. A quotation's
+\ address is an `adr` relative to its own site and `recurse` a `bl` to byte
+\ 0: neither files a row.
 \
 \ The frame cell stays the index's home (`j` and the runtime read it); x29 is
 \ a copy written beside every store of it. HELD says whether the code emitted
@@ -36,7 +29,6 @@ split-str
 \ token discards the whole emission, and OPEN begins the next one clear.
 
 require src/lib/error.f
-require src/lib/heap.f
 require src/lib/le.f
 require src/lib/vector.f
 require src/habu/layout.f
@@ -47,10 +39,12 @@ require src/compiler/native/emission.f
 require src/compiler/native/callback-stub.f
 require src/habu/t0-emit.f
 require src/habu/t0-label.f
+require src/habu/t0-place.f
 
 package COMP
 package ARM64
 using A64ASM
+using PLACE
 
 15 constant NVREG
 16 constant TMP
@@ -107,46 +101,14 @@ C-GT CC-GT CC>N CONDS !
 ' ENC-LSLI SH-LEFT SHIFTER>N SH-RI !
 ' ENC-LSRI SH-RIGHT SHIFTER>N SH-RI !
 
-\ Null until OPEN makes them.
-TYPED-VARIABLE RAW ^VEC:vector<u8> SCRATCH-ONLY \ the open unit's body
-TYPED-VARIABLE OUT ^VEC:vector<u8> SCRATCH-ONLY \ the closed units, BYTES
-TYPED-VARIABLE EPI ^VEC:vector<u8> SCRATCH-ONLY \ the open unit's epilogue, built at CLOSE
-variable FRAME-CELLS                  \ machine-stack cells this unit uses
-variable REC-CELLS                    \ this unit's record cells
-variable ENV                          \ 1 when this unit keeps a record's address
 variable LINKED                       \ nonzero once this unit calls
 variable HELD                         \ nonzero while x29 holds the index
-variable NEPI
-variable NPEND
-variable NUNIT                        \ units begun in this emission
-\ The open unit's `ret` and tail `b` offsets, ascending.
-DYNAMIC-BUFFER EPI-AT n
-DYNAMIC-BUFFER PEND-AT n              \ the open unit's address rows: raw first
-DYNAMIC-BUFFER PEND-KIND n            \ word, kind, target, origin
-DYNAMIC-BUFFER PEND-TO n
-DYNAMIC-BUFFER PEND-ORIGIN n
-variable NPCALL
-DYNAMIC-BUFFER PCALL-AT n             \ the open unit's call and tail rows: raw
-DYNAMIC-BUFFER PCALL-KIND n           \ first word, kind, target, loc
-DYNAMIC-BUFFER PCALL-TO n
-DYNAMIC-BUFFER PCALL-LOC n
-variable NSELF
-DYNAMIC-BUFFER SELF-AT n              \ the open unit's `recurse` sites, raw
-DYNAMIC-BUFFER QUOT-SITE n            \ the `adr` in OUT that names each unit
-variable NBR
-DYNAMIC-BUFFER BR-AT n                \ the open unit's branches: raw site,
-DYNAMIC-BUFFER BR-TO n                \ raw target or -1 while open, form,
-DYNAMIC-BUFFER BR-FORM n              \ and the form's condition or register
-DYNAMIC-BUFFER BR-ARG n
 
 0 constant FORM-B
 1 constant FORM-BCOND
 2 constant FORM-CBZ
 
 4095 constant ADJ-MAX                 \ the widest add/sub immediate
-
-: HERE-OFF ( -- n ) RAW @ VEC:COUNT ;
-: OUT-OFF ( -- n ) OUT @ VEC:COUNT ;
 
 : W32+ ( n ^VEC:vector<u8> -- ) {: w:n v:^ :}
    v VEC:COUNT {: at:n :}
@@ -235,33 +197,6 @@ DYNAMIC-BUFFER BR-ARG n
    add if SP SP lo ENC-ADDI buf W32+ exit then
    SP SP lo ENC-SUBI buf W32+ ;
 
-: PEND+ ( n n n n -- ) {: at:n kind:n to:n origin:n :}
-   NPEND @ {: k:n :}
-   k 1 + PEND-AT-RESERVE  k 1 + PEND-KIND-RESERVE  k 1 + PEND-TO-RESERVE
-   k 1 + PEND-ORIGIN-RESERVE
-   at k PEND-AT !  kind k PEND-KIND !  to k PEND-TO !  origin k PEND-ORIGIN !
-   k 1 + NPEND ! ;
-
-: PCALL+ ( n n n n -- ) {: at:n kind:n to:n loc:n :}
-   NPCALL @ {: k:n :}
-   k 1 + PCALL-AT-RESERVE  k 1 + PCALL-KIND-RESERVE
-   k 1 + PCALL-TO-RESERVE  k 1 + PCALL-LOC-RESERVE
-   at k PCALL-AT !  kind k PCALL-KIND !  to k PCALL-TO !  loc k PCALL-LOC !
-   k 1 + NPCALL ! ;
-
-: SELF+ ( n -- ) {: at:n :}
-   NSELF @ {: k:n :}
-   k 1 + SELF-AT-RESERVE
-   at k SELF-AT !
-   k 1 + NSELF ! ;
-
-\ The epilogue goes in before raw offset at.
-: EPI+ ( n -- ) {: at:n :}
-   NEPI @ {: k:n :}
-   k 1 + EPI-AT-RESERVE
-   at k EPI-AT !
-   k 1 + NEPI ! ;
-
 \ The four-lane carrier into buf: every half, low first.
 : CHAIN4-IN ( n n ^VEC:vector<u8> -- ) {: v:n r:n buf:^ :}
    r v 0 HALF 0 MOVZHW buf W32+
@@ -291,29 +226,22 @@ DYNAMIC-BUFFER BR-ARG n
    ADR XREG-RBASE STACK-ABI:RETURN-BASE-CELL ENC-LDR W
    ADR ADR TMP 3 ENC-ADD-LSL W ;
 
-: UNIT-BEGIN ( -- )
-   RAW @ 0 VEC:RESIZE
-   OUT-OFF EMIT-UNIT+
-   NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !  0 LINKED !  0 HELD !  0 NEPI !
-   0 NPEND !  0 NPCALL !  0 NSELF !  0 NBR ! ;
+\ ---- PLACE's hooks -----------------------------------------------------------
+: UNIT-RESET ( -- ) 0 LINKED !  0 HELD ! ;
 
-\ How many epilogues CLOSE inserts at or before raw offset x.
-: SITES<= ( n -- n ) {: x:n :}
-   0 NEPI @ 0 ?do i EPI-AT @ x <= if 1 + then loop ;
+: PROLOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
+   LINKED @ if LR SP -16 ENC-STRPRE buf W32+ then
+   bytes false buf SP-ADJ ;
 
-\ How many it inserts strictly before x.
-: SITES< ( n -- n ) {: x:n :}
-   0 NEPI @ 0 ?do i EPI-AT @ x < if 1 + then loop ;
+: EPILOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
+   bytes true buf SP-ADJ
+   LINKED @ if LR SP 16 ENC-LDRPOST buf W32+ then ;
 
-\ Where raw offset x of the open unit lands in OUT, and where a branch to x
-\ lands: on the epilogue inserted at x, if any.
-: PLACED ( n n n n -- n ) {: x:n base:n p:n e:n :}
-   base x + p +  x SITES<= e * + ;
+: SELF-PUT ( n -- ) {: at:n :}  at negate ENC-BL  at W32! ;
 
-: LANDED ( n n n n -- n ) {: x:n base:n p:n e:n :}
-   base x + p +  x SITES< e * + ;
-
+\ The `adr` in OUT holds its register in its first byte.
+: ADR-PUT ( n n -- ) {: at:n to:n :}
+   OUT @ at VEC:AT c@ 31 and  to at - ENC-ADR  at W32! ;
 
 \ Branch k's word, for its site at and target to in OUT.
 : BR-WORD ( n n n -- n )
@@ -324,87 +252,17 @@ DYNAMIC-BUFFER BR-ARG n
    form FORM-BCOND = if d k BR-ARG @ ENC-BCOND exit then
    k BR-ARG @ d ENC-CBZ ;
 
+\ Every form is the placeholder's one word.
+: BRANCH-LEN ( n n -- n ) 2drop 0 ;
 
-: COPY ( n n -- ) {: from:n to:n :}
-   RAW @ VEC:BYTES drop from +  to from -  OUT @ VEC:APPEND ;
-
+: BRANCH-PUT ( n n n -- ) {: k:n at:n to:n :}
+   k at to BR-WORD  at W32! ;
 
 \ ---- the body ----------------------------------------------------------------
-: EMPTY ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
-
-: OPEN ( -- )
-   RAW @ NULL-PTR = if
-      EMPTY RAW !  EMPTY OUT !  EMPTY EPI !
-   then
-   OUT @ 0 VEC:RESIZE
-   0 NUNIT !
-   LABEL:RESET
-   UNIT-BEGIN ;
-
-
-\ Point the `adr` at OUT offset at to OUT offset to; its first byte holds its
-\ register.
-: ADR-TO ( n n -- ) {: at:n to:n :}
-   OUT @ at VEC:AT c@ 31 and  to at - ENC-ADR  at W32! ;
-
-\ Point unit n's `adr`, in a closed unit of OUT, at the offset the unit begins
-\ at.
-: QUOT-OPEN ( n -- )
-   {: n:n :}
-   n NUNIT @ <> if E-T0-UNIT throw then
-   n QUOT-SITE @ OUT-OFF ADR-TO
-   UNIT-BEGIN ;
-
-: UNIT-OPEN ( -- ) UNIT-BEGIN ;
-
 : RETURN ( -- ) HERE-OFF EPI+  ENC-RET W ;
 
-: FILE-ADDR ( n n n n -- ) {: at:n kind:n to:n origin:n :}
-   kind ADDR-QUOT-KIND = if
-      \ Unit 0 is the emission's entry, at OUT's start, and no QUOT-OPEN
-      \ opens it.
-      to 0= if at 0 ADR-TO exit then
-      to 1 + QUOT-SITE-RESERVE  at to QUOT-SITE ! exit
-   then
-   at kind to origin EMIT-ADDR-ROW+ ;
-
-
-: CLOSE ( -- )
-   ENV @ REC-CELLS @ + FRAME-CELLS @ + CELL * 15 + 15 invert and {: bytes:n :}
-   OUT-OFF {: base:n :}
-   LINKED @ if LR SP -16 ENC-STRPRE OUT @ W32+ then
-   bytes false OUT @ SP-ADJ
-   OUT-OFF base - {: p:n :}
-   EPI @ 0 VEC:RESIZE
-   bytes true EPI @ SP-ADJ
-   LINKED @ if LR SP 16 ENC-LDRPOST EPI @ W32+ then
-   EPI @ VEC:COUNT {: e:n :}
-   0 NEPI @ 0 ?do
-      i EPI-AT @ COPY
-      EPI @ VEC:BYTES OUT @ VEC:APPEND
-      i EPI-AT @
-   loop
-   HERE-OFF COPY
-   NPEND @ 0 ?do
-      i PEND-AT @ base p e PLACED  i PEND-KIND @  i PEND-TO @  i PEND-ORIGIN @
-      FILE-ADDR
-   loop
-   NPCALL @ 0 ?do
-      i PCALL-AT @ base p e PLACED  i PCALL-KIND @  i PCALL-TO @  i PCALL-LOC @
-      EMIT-CALL-ROW+
-   loop
-   NSELF @ 0 ?do
-      i SELF-AT @ base p e PLACED {: at:n :}
-      at negate ENC-BL  at W32!
-   loop
-   NBR @ 0 ?do
-      i BR-AT @ base p e PLACED {: at:n :}
-      i  at  i BR-TO @ base p e LANDED  BR-WORD  at W32!
-   loop ;
-
-
 : SLOT-CLOSE ( -- )
-   RETURN CLOSE
+   RETURN PLACE:CLOSE
    OUT-OFF INSN - EMIT-PATCH-SLOT! ;
 
 \ The callback stub is appended after the last unit so each unit's
@@ -417,8 +275,6 @@ DYNAMIC-BUFFER BR-ARG n
    thunk TMP OUT @ CHAIN4-IN
    TMP ENC-BR OUT @ W32+
    at ;
-
-: BYTES ( -- str ) OUT @ VEC:BYTES ;
 
 \ Every call row's `bl` or `b`, from its site placed at place to its target.
 : PATCH ( n -- )
@@ -441,8 +297,7 @@ DYNAMIC-BUFFER BR-ARG n
    HERE-OFF NEMIT:ADDR-CODE v -1 PEND+
    v d REG CHAIN4 ;
 
-\ `adr rd, 0` until the distance to unit n is written: by FILE-ADDR for unit 0,
-\ else by QUOT-OPEN n.
+\ `adr rd, 0` until ADR-PUT writes the distance to unit n.
 : ADDR-QUOT ( n vreg -- )
    {: n:n d:vreg :}
    HERE-OFF ADDR-QUOT-KIND n -1 PEND+
@@ -492,13 +347,6 @@ DYNAMIC-BUFFER BR-ARG n
    a REG b REG ENC-MOV W
    b REG TMP ENC-MOV W ;
 
-: SLOTS ( n -- ) {: k:n :}
-   k FRAME-CELLS @ > if k FRAME-CELLS ! then ;
-
-\ The offset from sp of record cell n, and of slot k, in the frame CLOSE sizes.
-: REC-OFF ( n -- n ) ENV @ + CELL * ;
-: SLOT-OFF ( n -- n ) REC-CELLS @ + REC-OFF ;
-
 : SLOT-STORE ( vreg n -- )
    {: s:vreg k:n :}
    s REG SP k SLOT-OFF true XFER ;
@@ -506,12 +354,6 @@ DYNAMIC-BUFFER BR-ARG n
 : SLOT-LOAD ( vreg n -- )
    {: d:vreg k:n :}
    d REG SP k SLOT-OFF false XFER ;
-
-\ A record or env cell placed after the body began would move the offsets
-\ already emitted.
-: BODY-EMPTY ( -- ) HERE-OFF 0 <> if E-T0-UNIT throw then ;
-
-: REC-CELLS! ( n -- ) BODY-EMPTY  REC-CELLS ! ;
 
 : ENV-OPEN ( -- )
    BODY-EMPTY
@@ -669,26 +511,16 @@ DYNAMIC-BUFFER BR-ARG n
 \ The branch primitives LABEL emits through. A forward branch is its number
 \ in the open unit's list, and a head a raw offset.
 
-\ A branch of the form, with its condition or register, to raw offset to (-1
-\ until RESOLVE): it emits a zero placeholder word and answers the branch's
-\ number.
-: BR+ ( n n n -- LABEL:branch ) {: form:n arg:n to:n :}
-   NBR @ {: k:n :}
-   k 1 + BR-AT-RESERVE  k 1 + BR-TO-RESERVE
-   k 1 + BR-FORM-RESERVE  k 1 + BR-ARG-RESERVE
-   HERE-OFF k BR-AT !  to k BR-TO !  form k BR-FORM !  arg k BR-ARG !
-   k 1 + NBR !
-   0 W
-   k LABEL:>BRANCH ;
+\ A branch of the form, with its condition or register, to a raw offset or -1.
+: BRANCH ( n n n -- LABEL:branch ) INSN BR+ ;
 
-: RESOLVE ( LABEL:branch -- )
-   HERE-OFF swap LABEL:BRANCH>N BR-TO !  0 HELD ! ;
+: RESOLVE ( LABEL:branch -- ) PLACE:RESOLVE  0 HELD ! ;
 
-: MARK ( -- LABEL:head ) 0 HELD !  HERE-OFF LABEL:>HEAD ;
+: MARK ( -- LABEL:head ) 0 HELD !  PLACE:MARK ;
 
-: FWD-JUMP ( -- LABEL:branch ) FORM-B 0 -1 BR+ ;
-: FWD-BCOND ( n -- LABEL:branch ) FORM-BCOND swap -1 BR+ ;
-: FWD-ZERO ( vreg -- LABEL:branch ) REG FORM-CBZ swap -1 BR+ ;
+: FWD-JUMP ( -- LABEL:branch ) FORM-B 0 -1 BRANCH ;
+: FWD-BCOND ( n -- LABEL:branch ) FORM-BCOND swap -1 BRANCH ;
+: FWD-ZERO ( vreg -- LABEL:branch ) REG FORM-CBZ swap -1 BRANCH ;
 
 : FWD-NE ( vreg vreg -- LABEL:branch )
    {: sel:vreg v:vreg :}
@@ -710,15 +542,15 @@ DYNAMIC-BUFFER BR-ARG n
 \ The b.cond branch becomes b.eq.
 : ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: k:n :}  C-EQ k BR-ARG ! ;
 
-: BACK-JUMP ( LABEL:head -- ) LABEL:HEAD>N FORM-B 0 rot BR+ drop ;
+: BACK-JUMP ( LABEL:head -- ) LABEL:HEAD>N FORM-B 0 rot BRANCH drop ;
 
 : BACK-BCOND ( n LABEL:head -- )
    LABEL:HEAD>N {: c:n m:n :}
-   FORM-BCOND c m BR+ drop ;
+   FORM-BCOND c m BRANCH drop ;
 
 : BACK-ZERO ( vreg LABEL:head -- )
    LABEL:HEAD>N {: c:vreg m:n :}
-   FORM-CBZ c REG m BR+ drop ;
+   FORM-CBZ c REG m BRANCH drop ;
 
 : BACK-CC ( cc LABEL:head -- )
    {: c:cc m:LABEL:head :}
@@ -806,14 +638,14 @@ DYNAMIC-BUFFER BR-ARG n
 : FILL-SLOT ( n -- )
    {: k:n :}
    NVREG k EMIT-VREGS-N !
-   ['] OPEN k EMIT-OPEN-XT !
-   ['] QUOT-OPEN k EMIT-QUOT-OPEN-XT !
-   ['] UNIT-OPEN k EMIT-UNIT-OPEN-XT !
+   ['] PLACE:OPEN k EMIT-OPEN-XT !
+   ['] PLACE:QUOT-OPEN k EMIT-QUOT-OPEN-XT !
+   ['] PLACE:UNIT-OPEN k EMIT-UNIT-OPEN-XT !
    ['] RETURN k EMIT-RETURN-XT !
-   ['] CLOSE k EMIT-CLOSE-XT !
+   ['] PLACE:CLOSE k EMIT-CLOSE-XT !
    ['] SLOT-CLOSE k EMIT-SLOT-CLOSE-XT !
    ['] CB-STUB k EMIT-CB-STUB-XT !
-   ['] BYTES k EMIT-BYTES-XT !
+   ['] PLACE:BYTES k EMIT-BYTES-XT !
    ['] PATCH k EMIT-PATCH-XT !
    ['] LIT k EMIT-LIT-XT !
    ['] ADDR-DATA k EMIT-ADDR-DATA-XT !
@@ -828,10 +660,10 @@ DYNAMIC-BUFFER BR-ARG n
    ['] DSP+ k EMIT-DSP+-XT !
    ['] MOV k EMIT-MOV-XT !
    ['] EXCHANGE k EMIT-EXCHANGE-XT !
-   ['] SLOTS k EMIT-SLOTS-XT !
+   ['] PLACE:SLOTS k EMIT-SLOTS-XT !
    ['] SLOT-STORE k EMIT-SLOT-STORE-XT !
    ['] SLOT-LOAD k EMIT-SLOT-LOAD-XT !
-   ['] REC-CELLS! k EMIT-REC-CELLS-XT !
+   ['] PLACE:REC-CELLS! k EMIT-REC-CELLS-XT !
    ['] ENV-OPEN k EMIT-ENV-OPEN-XT !
    ['] REC-STORE k EMIT-REC-STORE-XT !
    ['] REC-QUOT k EMIT-REC-QUOT-XT !
@@ -896,10 +728,18 @@ DYNAMIC-BUFFER BR-ARG n
    ['] RESOLVE k LABEL:RESOLVE-XT !
    ['] ENTRY-EQ k LABEL:ENTRY-EQ-XT !
    ['] LOOP-NEXT k LABEL:LOOP-NEXT-XT !
-   ['] LOOP-STEP k LABEL:LOOP-STEP-XT ! ;
+   ['] LOOP-STEP k LABEL:LOOP-STEP-XT !
+   ['] UNIT-RESET k PLACE:UNIT-RESET-XT !
+   ['] PROLOGUE k PLACE:PROLOGUE-XT !
+   ['] EPILOGUE k PLACE:EPILOGUE-XT !
+   ['] SELF-PUT k PLACE:SELF-PUT-XT !
+   ['] ADR-PUT k PLACE:ADR-PUT-XT !
+   ['] BRANCH-LEN k PLACE:BRANCH-LEN-XT !
+   ['] BRANCH-PUT k PLACE:BRANCH-PUT-XT ! ;
 
 CTARGET-ARCH:AARCH64 ' FILL-SLOT EMIT-PROVIDE
 
+;using
 ;using
 ;package
 ;package
