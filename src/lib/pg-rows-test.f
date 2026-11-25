@@ -20,6 +20,7 @@
 
 require src/core/exit-status.f
 require src/lib/test.f
+require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/float.f
 require src/lib/task.f
@@ -548,13 +549,13 @@ TYPED-VARIABLE LOST-B PG:connection
 
 \ Returns once A's whole answer is sent, before anything else A's backend sends.
 : A-ANSWERED ( n -- ) {: pid:n :}
-   begin
+   [:
       LOST-B @ PG:PARAMS
       LOST-B @ pid PG:INT+
       LOST-B @
       s" select count(*) from pg_stat_activity where pid = $1 and state = 'idle' and query = 'select 41'"
-      PG:ONE-INT 0=
-   while repeat ;
+      PG:ONE-INT 0<>
+   ;] TEST-WAIT:POLL ;
 
 : ANSWERED-THEN-END ( -- )
    OPEN-AB

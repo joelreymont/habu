@@ -1110,6 +1110,8 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 \ True when a read with nothing in flight ends the connection, which it closes.
+\ The record is empty on entry: its caller ran OP-START, and text in it after
+\ PQisBusy is the FATAL NOTICE-LOG kept.
 \ libpq appends to its message until the next send; PQisBusy parses a FATAL.
 : IDLE-LOST? ( n -- bool ) {: slot:n :}
    slot MESSAGE$ STR:LEN {: u:n :}
