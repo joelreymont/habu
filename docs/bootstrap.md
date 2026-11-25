@@ -93,7 +93,9 @@ seed and target.
 ## Staged hosts
 
 A change to the kernel, the start-up or the layout lands in one build unless it
-raises where DATA starts. One to what the running hb's compiler does with the
+raises where DATA starts, or changes the offset or the meaning of a cell tier 0's
+code reads (`LOOPSP-CELL`): a build for hb's own target runs the tree's code in
+hb's process, over hb's cells. One to what the running hb's compiler does with the
 tree's code (code layout, records, wordlist numbering, the address list), a
 body that calls a primitive its own change adds, a new primitive-spec atom code
 (the running checker replays the tree's rows and dies `checker: unknown
@@ -163,7 +165,10 @@ rows that name it makes an hb built before the rename refuse
 src/habu/interpreter.f with `E-UNDEFINED`. Seed that host with an engine a
 current host cross-builds for it, such as `hb --load tools/hb-build.f --
 --engine --target linux-aarch64 -o "$OUT"` for Linux arm64, copied there with
-its `.map`; it then builds the tree as any trusted hb does.
+its `.map`; it then builds the tree as any trusted hb does. So does a change to a
+cell tier 0's code reads. A host with no current peer cross-builds an engine for
+another target first, which cross-builds this host's: a cross-build compiles what
+it runs apart from what it makes.
 
 ## What the engine carries
 

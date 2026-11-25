@@ -531,17 +531,18 @@ ARCHES TYPED-BUFFER EMIT-LOOP-NEXT-XT [ vreg -- ]
 ARCHES TYPED-BUFFER EMIT-LOOP-STEP-XT [ vreg vreg -- ]
 ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 
-\ The DO/LOOP frames live on the DATA loop stack, where `j`, catch and the
-\ arm64 tier 0 find them: LOOPSP-CELL counts the frames and frame k, 16 bytes
-\ at STACK-ABI:LOOP-BASE-CELL's base + 16k, holds the index, whose home it is,
-\ then the limit. `loop` steps while index < limit, signed; `+loop` steps until
-\ the index crosses the boundary between limit - 1 and limit in the step's
-\ direction; `?do` enters while start < limit, and EMIT-LOOP-STEP makes the
-\ entry of its level skip equal bounds only. EMIT-LOOP-OPEN opens a level;
-\ EMIT-LOOP-NEXT, EMIT-LOOP-STEP and EMIT-LEAVE, branch to the innermost level's
-\ head or past its end; EMIT-LOOP-CLOSE lands its exits on the pop of its frame.
-\ The loop words write no vreg but those passed in, so values in the others live
-\ across every head, back edge and exit.
+\ The DO/LOOP frames live on the DATA loop stack, where `j`, catch and
+\ tier 0 find them: LOOPSP-CELL holds the address where the innermost 16-byte
+\ frame ends, the stack's base while none is open. A frame holds the index, whose
+\ home it is, then the limit, and the frame outside it ends where it starts.
+\ `loop` steps while index < limit, signed; `+loop` steps until the index crosses
+\ the boundary between limit - 1 and limit in the step's direction; `?do` enters
+\ while start < limit, and EMIT-LOOP-STEP makes the entry of its level skip equal
+\ bounds only. EMIT-LOOP-OPEN opens a
+\ level; EMIT-LOOP-NEXT, EMIT-LOOP-STEP and EMIT-LEAVE, branch to the innermost
+\ level's head or past its end; EMIT-LOOP-CLOSE lands its exits on the pop of
+\ its frame. The loop words write no vreg but those passed in, so values in the
+\ others live across every head, back edge and exit.
 
 \ Push a frame of index s and limit l; pop the innermost frame.
 : EMIT-LOOP-PUSH ( vreg vreg -- ) CUR @ EMIT-LOOP-PUSH-XT @ execute ;

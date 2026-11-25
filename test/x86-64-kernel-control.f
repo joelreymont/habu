@@ -48,6 +48,11 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 : EXPECT-CELL, ( n n -- ) {: want:n off:n :}
    off PUSH-CELL,  want EXPECT-POP, ;
 
+: EXPECT-NO-FRAME, ( -- )
+   RAX DATA-REG LOOPSP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX DATA-REG STACK-ABI:LOOP-BASE-CELL MEM-OFF ASM-SINK ENC-SUB-RM
+   0 G-PUSH  0 EXPECT-POP, ;
+
 \ Give every scratch register CLOBBER-VALUE, as the compiled code a row calls
 \ may leave any of them.
 : CLOBBER, ( -- )
@@ -76,7 +81,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 : THROWS ( n -- label ) {: code:n :} ROUTINE code PUSH, s" throw" ROW, ;ROUTINE ;
 
 \ Throw 9 from a nested call once the data stack holds two more cells, the
-\ return stack two, the loop stack a frame and the machine stack a cell.
+\ return stack two and the machine stack one, and the loop stack's top moved.
 : THROWER ( -- label )
    9 THROWS {: inner:label :}
    ROUTINE
@@ -271,7 +276,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    X64HARNESS:EXPECT-BALANCED,
    0 HND-CELL EXPECT-CELL,
    0 RSP-CELL EXPECT-CELL,
-   0 LOOPSP-CELL EXPECT-CELL,
+   EXPECT-NO-FRAME,
    path X64HARNESS:BOOT-CLOSE, ;
 
 \ The body's code is rethrown even when the cleanup throws too.

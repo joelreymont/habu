@@ -159,7 +159,7 @@ $A8 constant SEAL-NDICT-CELL
 $28 constant CUR-CELL
 $30 constant WIDN-CELL             \ the next wordlist id the engine hands out
 $38 constant HOOK-CELL
-$48 constant TSIG-A-CELL
+$48 constant LOOPSP-CELL
 $50 constant TSIG-U-CELL
 $58 constant TCSIG-A-CELL
 $60 constant TCSIG-U-CELL
@@ -176,7 +176,7 @@ $90 constant PKG-REC-CELL
 $4842444546455201 constant DEFER-MAGIC
 $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
-$1C8 constant LOOPSP-CELL
+$1C8 constant TSIG-A-CELL
 STACK-ABI:BASE-CELL constant S0-CELL
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL

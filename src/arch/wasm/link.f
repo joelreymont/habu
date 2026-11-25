@@ -9,17 +9,18 @@ split-str
 \ buffers until RESET, and the module LINK answers until the next LINK.
 \
 \ THE WRAPPERS. The exports are memory and the wrappers. run initializes the
-\ task DATA stack header and zeroes its return and loop depths, so a throw
-\ uncaught inside a loop leaves no depth for the next host turn; it stores
-\ WPROF's stack base in ctx's stack base and top and 0 in its out-len and
-\ err-len, on the instance's first run WPROF's OUT and ERR in ctx's base and cap
-\ fields, which a grown stream keeps across runs, calls the entry with WPROF's
-\ ctx base and answers its status; throw-code answers ctx's throw code, out-base
-\ ctx's out-base, the current OUT's address, out-len ctx's out-len; fault-kind
-\ and fault-addr answer ctx's fault kind and address; err-base and err-len
-\ answer ERR's as out-base and out-len answer OUT's. reserve, (i64 bytes) ->
-\ (i64 address), calls map-anon and answers its address, 0 when refused: a host
-\ copies each delivery into pages the module reserved (src/lib/browser/turn.js).
+\ task DATA stack header, zeroes its return depth and puts the loop stack's
+\ top at its base, so a throw uncaught inside a loop leaves no frame for the
+\ next host turn; it stores WPROF's stack base in ctx's stack base and top and
+\ 0 in its out-len and err-len, on the instance's first run WPROF's OUT and
+\ ERR in ctx's base and cap fields, which a grown stream keeps across runs,
+\ calls the entry with WPROF's ctx base and answers its status; throw-code
+\ answers ctx's throw code, out-base ctx's out-base, the current OUT's
+\ address, out-len ctx's out-len; fault-kind and fault-addr answer ctx's fault
+\ kind and address; err-base and err-len answer ERR's as out-base and out-len
+\ answer OUT's. reserve, (i64 bytes) -> (i64 address), calls map-anon and
+\ answers its address, 0 when map-anon fails: a host copies each delivery into pages
+\ the module reserved (src/lib/browser/turn.js).
 \
 \ THE SECTIONS. In the specification's order: type, function, table when a slot
 \ was added, memory, export, element from slot 1, code, and data, one active
@@ -332,7 +333,7 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
    WPROF:STACK-BASE STACK-ABI:BASE-CELL DATA-CELL!
    WPROF:STACK-BYTES STACK-ABI:CAP-CELL DATA-CELL!
    0 RSP-CELL DATA-CELL!
-   0 LOOPSP-CELL DATA-CELL!
+   WPROF:LOOP-BASE LOOPSP-CELL DATA-CELL!
    WPROF:STACK-BASE WPROF:CTX-STACK-BASE CTX!
    WPROF:STACK-BASE WPROF:CTX-STACK-TOP CTX!
    0 WPROF:CTX-OUT-LEN CTX!

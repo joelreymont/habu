@@ -191,8 +191,8 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \   other bits, and leaves the record before it alone.
 \ - hb-x64-kernel-def-abort closes a failed definition's code window and
 \   clears its pending signature and body state.
-\ - hb-x64-kernel-def-abort-scope preserves a catch frame's HND, return and
-\   loop depths while clearing compile mode.
+\ - hb-x64-kernel-def-abort-scope preserves a catch frame's HND, return
+\   depth and loop top while clearing compile mode.
 \ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
 \ pending record.
 : NAMESPACE-RECORD-CASE, ( -- )
@@ -360,7 +360,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    1 CLOSED, ;
 
 \ A failed definition clears its compile state while leaving
-\ the enclosing catch's handler, return depth and loop depth intact.
+\ the enclosing catch's handler, return depth and loop top intact.
 : DEF-ABORT-CASE, ( -- )
    TIER-0-OPEN,
    14 LOCN-CELL X64HARNESS:CELL!,

@@ -571,14 +571,9 @@ variable HELD                         \ nonzero while x29 holds the index
    c CC>N CONDS @ m BACK-BCOND ;
 
 \ ---- loops -------------------------------------------------------------------
-\ x16 holds the loop stack's depth and x17 the address one frame past the
-\ innermost, base + 16 * depth.
-: LDEPTH ( -- ) TMP XREG-RBASE LOOPSP-CELL ENC-LDR W ;
-: LDEPTH! ( -- ) TMP XREG-RBASE LOOPSP-CELL ENC-STR W ;
-
-: LTOP ( -- )
-   ADR XREG-RBASE STACK-ABI:LOOP-BASE-CELL ENC-LDR W
-   ADR ADR TMP 4 ENC-ADD-LSL W ;
+\ x17 holds the address one frame past the innermost.
+: LTOP ( -- ) ADR XREG-RBASE LOOPSP-CELL ENC-LDR W ;
+: LTOP! ( -- ) ADR XREG-RBASE LOOPSP-CELL ENC-STR W ;
 
 \ The index and limit of the innermost frame, below LTOP's address.
 -16 constant LIDX-OFF
@@ -586,22 +581,22 @@ variable HELD                         \ nonzero while x29 holds the index
 
 : LOOP-J ( vreg -- )
    {: d:vreg :}
-   LDEPTH LTOP
-   d REG ADR LIDX-OFF 16 - false XFER ;
+   LTOP
+   d REG ADR LIDX-OFF STACK-ABI:LOOP-FRAME-BYTES - false XFER ;
 
 \ x17 the address past the innermost frame, and x29 its index unless HELD
 \ says it holds it already.
 : FRAME-IDX ( -- )
-   LDEPTH LTOP
+   LTOP
    HELD @ if exit then
    IDX ADR LIDX-OFF false XFER
    1 HELD ! ;
 
 : LOOP-PUSH ( vreg vreg -- )
    {: s:vreg l:vreg :}
-   LDEPTH
-   TMP TMP 1 ENC-ADDI W
-   LDEPTH! LTOP
+   LTOP
+   ADR ADR STACK-ABI:LOOP-FRAME-BYTES ENC-ADDI W
+   LTOP!
    s REG ADR LIDX-OFF true XFER
    l REG ADR LLIM-OFF true XFER
    IDX s REG ENC-MOV W ;
@@ -612,9 +607,9 @@ variable HELD                         \ nonzero while x29 holds the index
    LABEL:LOOP-OPEN  1 HELD ! ;
 
 : LOOP-POP ( -- )
-   LDEPTH
-   TMP TMP 1 ENC-SUBI W
-   LDEPTH!
+   LTOP
+   ADR ADR STACK-ABI:LOOP-FRAME-BYTES ENC-SUBI W
+   LTOP!
    0 HELD ! ;
 
 : LOOP-I ( vreg -- )

@@ -50,6 +50,7 @@ create TAB
    BODYLEN-CELL                       1 cells                 CLAIM BODYLEN-CELL
    RBASE-CELL                         1 cells                 CLAIM RBASE-CELL
    LOOPSP-CELL                        1 cells                 CLAIM LOOPSP-CELL
+   TSIG-A-CELL                        1 cells                 CLAIM TSIG-A-CELL
    STACK-ABI:BASE-CELL                1 cells                 CLAIM STACK-ABI-BASE-CELL
    SSCR-CELL                          1 cells                 CLAIM SSCR-CELL
    GTOD-SCRATCH                       2 cells                 CLAIM GTOD-SCRATCH

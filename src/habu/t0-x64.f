@@ -605,16 +605,11 @@ variable AHEAD
 
 
 \ ---- loops ---------------------------------------------------------------------
-: LDEPTH ( r64 -- ) {: r:r64 :}
+: LTOP ( r64 -- ) {: r:r64 :}
    r DATA-REG LOOPSP-CELL MEM-OFF SINK ENC-MOV-RM ;
 
-: LDEPTH! ( r64 -- ) {: r:r64 :}
+: LTOP! ( r64 -- ) {: r:r64 :}
    r DATA-REG LOOPSP-CELL MEM-OFF SINK ENC-MOV-MR ;
-
-\ r, holding the depth, becomes the address one frame past the innermost.
-: LTOP ( r64 -- ) {: r:r64 :}
-   r 4 >IMM8 SINK ENC-SHL-RI8
-   r DATA-REG STACK-ABI:LOOP-BASE-CELL MEM-OFF SINK ENC-ADD-RM ;
 
 \ The index and limit of the innermost frame, below LTOP's address.
 -16 constant LIDX-OFF
@@ -622,14 +617,12 @@ variable AHEAD
 
 : LOOP-J ( vreg -- )
    {: d:vreg :}
-   RAX LDEPTH
    RAX LTOP
-   d REG RAX LIDX-OFF 16 - MEM-OFF SINK ENC-MOV-RM ;
+   d REG RAX LIDX-OFF STACK-ABI:LOOP-FRAME-BYTES - MEM-OFF SINK ENC-MOV-RM ;
 
 \ rax the address past the innermost frame, and r12 its index unless HELD
 \ says it holds it already.
 : FRAME-IDX ( -- )
-   RAX LDEPTH
    RAX LTOP
    HELD @ if exit then
    IDX RAX LIDX-OFF MEM-OFF SINK ENC-MOV-RM
@@ -637,10 +630,9 @@ variable AHEAD
 
 : LOOP-PUSH ( vreg vreg -- )
    {: s:vreg l:vreg :}
-   RAX LDEPTH
-   RAX SINK ENC-INC
-   RAX LDEPTH!
    RAX LTOP
+   RAX STACK-ABI:LOOP-FRAME-BYTES >IMM8 SINK ENC-ADD-RI8
+   RAX LTOP!
    s REG RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
    l REG RAX LLIM-OFF MEM-OFF SINK ENC-MOV-MR
    IDX s REG SINK ENC-MOV-RR ;
@@ -651,9 +643,9 @@ variable AHEAD
    LABEL:LOOP-OPEN  1 HELD ! ;
 
 : LOOP-POP ( -- )
-   RAX LDEPTH
-   RAX SINK ENC-DEC
-   RAX LDEPTH!
+   RAX LTOP
+   RAX STACK-ABI:LOOP-FRAME-BYTES >IMM8 SINK ENC-SUB-RI8
+   RAX LTOP!
    0 HELD ! ;
 
 : LOOP-I ( vreg -- )

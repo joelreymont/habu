@@ -86,8 +86,8 @@ WPROF:DATA-VA STAMP-CELL + constant STAMP-AT
 
 \ ---- catch and finally
 2 constant L-STATUS                  \ the first callee's status
-3 constant L-RDEPTH                  \ the two depths as the routine began
-4 constant L-LDEPTH
+3 constant L-RDEPTH                  \ the return depth and the loop top as the routine began
+4 constant L-LTOP
 5 constant L-CLEANUP                 \ finally's cleanup xt
 6 constant L-BODY-CODE               \ finally's body's throw code
 7 constant L-COUNT                   \ the throw count when that code landed
@@ -658,24 +658,24 @@ variable SITES-N
 
 \ ---- catch and finally
 \ A throw leaves the return and loop stacks as deep as inside the thrown body;
-\ a caught one restores the depths saved before it, as the native handler frame.
-: DEPTHS-SAVE, ( -- )
+\ a caught one restores the tops saved before it, as the native handler frame does.
+: TOPS-SAVE, ( -- )
    0 I32,  OP-I64-LOAD ALIGN-64 RDEPTH-AT MEM,  L-RDEPTH SET,
-   0 I32,  OP-I64-LOAD ALIGN-64 LDEPTH-AT MEM,  L-LDEPTH SET, ;
+   0 I32,  OP-I64-LOAD ALIGN-64 LTOP-AT MEM,  L-LTOP SET, ;
 
-: DEPTHS-RESTORE, ( -- )
+: TOPS-RESTORE, ( -- )
    0 I32,  L-RDEPTH GET,  OP-I64-STORE ALIGN-64 RDEPTH-AT MEM,
-   0 I32,  L-LDEPTH GET,  OP-I64-STORE ALIGN-64 LDEPTH-AT MEM, ;
+   0 I32,  L-LTOP GET,  OP-I64-STORE ALIGN-64 LTOP-AT MEM, ;
 
 
 \ catch ( xt -- code ): after a status 1 the code is ctx.throw-code, stored
 \ where the xt lay; after a 0 it is zero, pushed over the callee's results.
 : CATCH-BODY ( -- )
    2 U32,  2 U32,  I32 B,  2 U32,  I64 B,
-   DEPTHS-SAVE,
+   TOPS-SAVE,
    DISPATCH,  L-STATUS SET,
    L-STATUS GET,  IF,
-      DEPTHS-RESTORE,
+      TOPS-RESTORE,
       L-SP GET,  L-CTX GET,  OP-I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE MEM,
       OP-I64-STORE ALIGN-64 0 MEM,
       ONE-RESULT,  0 I32,  OP-RETURN B,
@@ -699,11 +699,11 @@ variable SITES-N
    OP-I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-LOCAL-TEE B,  L-CLEANUP U32,
    OP-I64-EQZ B,  IF,  OP-UNREACHABLE B,  OP-END B,
-   DEPTHS-SAVE,
+   TOPS-SAVE,
    DISPATCH,  L-STATUS SET,
    L-CTX GET,  OP-I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE MEM,  L-BODY-CODE SET,
    0 I32,  OP-I64-LOAD ALIGN-64 THROWS-AT MEM,  L-COUNT SET,
-   L-STATUS GET,  IF,  SP!,  DEPTHS-RESTORE,  OP-END B,
+   L-STATUS GET,  IF,  SP!,  TOPS-RESTORE,  OP-END B,
    WPROF:CTX-STACK-TOP CTX@,  L-SP SET,
    CELL-BYTES STACK-ROOM,
    L-SP GET,  L-CLEANUP GET,  OP-I64-STORE ALIGN-64 0 MEM,

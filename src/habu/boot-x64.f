@@ -208,7 +208,8 @@ private
    STACK-ABI:RETURN-BYTES RAX STACK-BAD @ >LABEL MAP-STACK,
    RAX STACK-ABI:RETURN-BASE-CELL CELL!
    STACK-ABI:LOOP-BYTES RAX STACK-BAD @ >LABEL MAP-STACK,
-   RAX STACK-ABI:LOOP-BASE-CELL CELL! ;
+   RAX STACK-ABI:LOOP-BASE-CELL CELL!
+   RAX LOOPSP-CELL CELL! ;
 
 \ Bind a failure at the label: its line, newline included, to fd 2 in one
 \ write, then exit with the status. The line follows the exit syscall inside

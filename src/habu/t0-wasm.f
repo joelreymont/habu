@@ -141,12 +141,12 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : LD64, ( -- ) OP-I64-LOAD ALIGN-64 0 MEM, ;
 : ST64, ( -- ) OP-I64-STORE ALIGN-64 0 MEM, ;
 
-\ A stack's depth is an i64 in the DATA cell c native code keeps it in, the
-\ return stack's in cells, the loop's in frames.
-: DEPTH, ( n -- ) I32,  LD64, ;
+\ A stack's top is an i64 in the DATA cell c native code keeps it in, the return
+\ stack's a depth in cells, the loop's the address past its innermost frame.
+: TOP@, ( n -- ) I32,  LD64, ;
 
-: DEPTH+ ( n n -- ) {: c:n k:n :}
-   c I32,  c DEPTH,  k I64,  OP-I64-ADD B,  ST64, ;
+: TOP+!, ( n n -- ) {: c:n k:n :}
+   c I32,  c TOP@,  k I64,  OP-I64-ADD B,  ST64, ;
 
 \ A fault records its kind and the i64 address the caller writes between
 \ FAULT-KIND, and FAULT-ADDR,; FAULT-END, then traps, as a stack-bounds fault.
@@ -196,7 +196,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 : REC-RELEASE ( -- )
    REC-CELLS @ 0= if exit then
-   RDEPTH-AT REC-CELLS @ negate DEPTH+ ;
+   RDEPTH-AT REC-CELLS @ negate TOP+!, ;
 
 \ Status 0 is a return.
 : RETURN ( -- )
@@ -452,12 +452,10 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ ---- the return stack ----------------------------------------------------------
 \ One task: the stacks are WPROF's fixed regions.
 
-\ AT becomes base plus the depth at c, the depth shifted left by sh.
-: TOP, ( n n n -- ) {: c:n base:n sh:n :}
-   c DEPTH,  OP-I32-WRAP-I64 B,  sh I32,  OP-I32-SHL B,
-   base I32,  OP-I32-ADD B,  L-AT SET, ;
-
-: RTOP ( -- ) RDEPTH-AT WPROF:RETURN-BASE 3 TOP, ;
+\ AT becomes the address one cell past the return stack's top.
+: RTOP ( -- )
+   RDEPTH-AT TOP@,  OP-I32-WRAP-I64 B,  3 I32,  OP-I32-SHL B,
+   WPROF:RETURN-BASE I32,  OP-I32-ADD B,  L-AT SET, ;
 
 \ AT moves down k bytes; a memory offset is unsigned.
 : AT-, ( n -- ) {: k:n :}
@@ -479,10 +477,10 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    RTOP
    WPROF:RETURN-BASE STACK-ABI:RETURN-BYTES +  n CELL-BYTES * -  BOUND
    n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-STORE  loop
-   RDEPTH-AT n DEPTH+ ;
+   RDEPTH-AT n TOP+!, ;
 
 : RFROM ( ^vreg n -- ) {: p:^ n:n :}
-   RDEPTH-AT n negate DEPTH+
+   RDEPTH-AT n negate TOP+!,
    RTOP
    n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-LOAD  loop ;
 
@@ -501,7 +499,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
       RTOP
       WPROF:RETURN-BASE STACK-ABI:RETURN-BYTES +  n CELL-BYTES * -  BOUND
       L-AT GET,  L-REC SET,
-      RDEPTH-AT n DEPTH+
+      RDEPTH-AT n TOP+!,
    then
    HERE-OFF BODY-AT ! ;
 
@@ -528,7 +526,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 0 constant INDEX-OFF
 8 constant LIMIT-OFF
 
-: LTOP ( -- ) LDEPTH-AT WPROF:LOOP-BASE 4 TOP, ;
+: LTOP ( -- ) LTOP-AT TOP@,  OP-I32-WRAP-I64 B,  L-AT SET, ;
 
 \ AT becomes the frame k levels out of the innermost.
 : FRAME ( n -- ) LTOP  1 + STACK-ABI:LOOP-FRAME-BYTES * AT-, ;
@@ -539,9 +537,9 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    LTOP
    WPROF:LOOP-BASE STACK-ABI:LOOP-BYTES +  STACK-ABI:LOOP-FRAME-BYTES -  BOUND
    s INDEX-OFF AT-STORE  l LIMIT-OFF AT-STORE
-   LDEPTH-AT 1 DEPTH+ ;
+   LTOP-AT STACK-ABI:LOOP-FRAME-BYTES TOP+!, ;
 
-: LOOP-POP ( -- ) LDEPTH-AT -1 DEPTH+ ;
+: LOOP-POP ( -- ) LTOP-AT STACK-ABI:LOOP-FRAME-BYTES negate TOP+!, ;
 : LOOP-I ( vreg -- ) 0 FRAME  INDEX-OFF AT-LOAD ;
 : LOOP-J ( vreg -- ) 1 FRAME  INDEX-OFF AT-LOAD ;
 
