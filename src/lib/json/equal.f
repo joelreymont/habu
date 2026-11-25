@@ -13,9 +13,8 @@ split-str
 \ into rows; the walk then reads a once against them, and reads again only each
 \ string of b it compares. Each number is read once, by the pass that meets it,
 \ into what NUMBER= compares. The walk is a record MEM:WITH-RECORD lends
-\ zeroed; it holds b's rows, the member list, its spare and the frames as
-\ vectors on HEAP:ALLOCATOR, and one block from MEM:WITH-BYTES, sized from the
-\ texts' lengths, for b's keys and a's strings.
+\ zeroed; it holds b's rows, b's keys, a's strings, the member list, its spare
+\ and the frames as vectors on HEAP:ALLOCATOR.
 
 require src/lib/memory.f
 require src/lib/sort.f
@@ -257,10 +256,10 @@ STRUCTURE frame DERIVE addr
 ;STRUCTURE
 
 \ VALUE='s walk, a record WITH-RECORD lends zeroed: every count starts at 0,
-\ no cursor owns a stack and no vector is made. keys and buf: the WITH-BYTES
-\ block, b's keys then a's strings. level and peak: b's containers open as
-\ the index pass reads, now and at most; num-exp, num-first and num-count:
-\ a's number under record a, as a row holds b's.
+\ no cursor owns a stack and no vector is made. keys: b's keys, decoded end
+\ to end; buf: a's string or key decoded last. level and peak: b's
+\ containers open as the index pass reads, now and at most; num-exp,
+\ num-first and num-count: a's number under record a, as a row holds b's.
 STRUCTURE walk DERIVE addr
    FIELD a cursor
    FIELD b cursor
@@ -274,14 +273,11 @@ STRUCTURE walk DERIVE addr
    FIELD members ^VEC:vector<n>
    FIELD spare ^VEC:vector<n>
    FIELD member-n n
-   FIELD keys ^u8
-   FIELD key-cap n
-   FIELD key-used n
+   FIELD keys ^VEC:vector<u8>
    FIELD key-at n
    FIELD key-len n
    FIELD due n
-   FIELD buf ^u8
-   FIELD cap n
+   FIELD buf ^VEC:vector<u8>
    FIELD num-exp n
    FIELD num-first n
    FIELD num-count n
@@ -320,20 +316,15 @@ STRUCTURE walk DERIVE addr
    {: v:n :}
    v 1+ 2 /  v 10 / 1+ ROW-FLOOR max  min ;
 
-\ The block for a's u bytes and b's v: v key bytes, then u bytes for a's
-\ strings.
-: WALK-LEN ( n n -- n )
-   {: u:n v:n :}
-   v u + ;
-
-: WALK-INIT ( ^walk str n -- )
-   {: w:^ keys:^ u:n v:n :}
-   HEAP:ALLOCATOR 0 [type] row VEC:NEW w WALK-ROWS !
+\ The rows for b's v bytes, and the vectors b's keys and a's strings decode
+\ into.
+: WALK-INIT ( ^walk n -- )
+   {: w:^ v:n :}
+   HEAP:ALLOCATOR {: al:^ :}
+   al 0 [type] row VEC:NEW w WALK-ROWS !
    w WALK-ROWS @  v ROWS-0  VEC:RESERVE
-   keys w WALK-KEYS !
-   v w WALK-KEY-CAP !
-   keys v + w WALK-BUF !
-   u w WALK-CAP !
+   al 0 [type] u8 VEC:NEW w WALK-KEYS !
+   al 0 [type] u8 VEC:NEW w WALK-BUF !
    -1 w WALK-OPEN ! ;
 
 
@@ -353,6 +344,8 @@ STRUCTURE walk DERIVE addr
    w WALK-B MORE-RELEASE
    w WALK-S MORE-RELEASE
    w WALK-ROWS @ VEC:DELETE
+   w WALK-KEYS @ VEC:DELETE
+   w WALK-BUF @ VEC:DELETE
    w WALK-MEMBERS @ VEC:DELETE
    w WALK-SPARE @ VEC:DELETE
    w WALK-FRAMES @ VEC:DELETE ;
@@ -367,7 +360,7 @@ STRUCTURE walk DERIVE addr
 : MEMBER-KEY$ ( ^walk n -- str )
    {: w:^ r:n :}
    w r ROW {: row:^ :}
-   w WALK-KEYS @ row ROW-KEY-AT @ +  row ROW-KEY-LEN @ ;
+   w WALK-KEYS @ row ROW-KEY-AT @ VEC:AT  row ROW-KEY-LEN @ ;
 
 
 : MEMBER< ( ^walk n n -- bool )
@@ -447,14 +440,14 @@ STRUCTURE walk DERIVE addr
 
 \ ---- the index pass ----------------------------------------------------------
 
-\ Decodes the key under record b into the key area as the key read last.
+\ Appends the key under record b to b's keys as the key read last.
 : KEEP-KEY ( ^walk -- )
    {: w:^ :}
-   w WALK-KEY-USED @ {: at:n :}
-   w WALK-B  w WALK-KEYS @ at +  w WALK-KEY-CAP @ at -  STR-INNER {: len:n :}
+   w WALK-KEYS @ {: keys:^ :}
+   keys VEC:COUNT {: at:n :}
+   w WALK-B keys DECODE-APPEND
    at w WALK-KEY-AT !
-   len w WALK-KEY-LEN !
-   at len + w WALK-KEY-USED ! ;
+   keys VEC:COUNT at -  w WALK-KEY-LEN ! ;
 
 
 \ Appends a row for the value of kind under record b, a member's when the
@@ -594,10 +587,10 @@ STRUCTURE walk DERIVE addr
    w WALK-B CURSOR-SRC @ r ROW-START @ +  r ROW-LEN @ {: raw:^ len:n :}
    ca CURSOR-KIND @ NUMERIC? if w raw r SAME-NUMBER? exit then
    ca CURSOR-KIND @ T-STR <> if true exit then
-   ca w WALK-BUF @ w WALK-CAP @ STR-INNER {: n:n :}
+   ca w WALK-BUF @ DECODED$ {: s:^ n:n :}
    w WALK-S raw len INIT-STATE
    w WALK-S NEXT-INNER drop
-   w WALK-S w WALK-BUF @ n MATCH-INNER ;
+   w WALK-S s n MATCH-INNER ;
 
 
 : ENTER ( ^walk -- n )
@@ -637,8 +630,8 @@ STRUCTURE walk DERIVE addr
    {: w:^ :}
    w TOP {: f:^ :}
    w A-NEXT T-KEY <> if w f CLOSE-ON exit then
-   w WALK-A w WALK-BUF @ w WALK-CAP @ STR-INNER {: len:n :}
-   w  f FRAME-ROW @  w WALK-BUF @ len FIND-MEMBER {: q:n :}
+   w WALK-A w WALK-BUF @ DECODED$ {: key:^ len:n :}
+   w  f FRAME-ROW @  key len FIND-MEMBER {: q:n :}
    q 0< if W-DIFFERENT exit then
    w q ROW {: row:^ :}
    row ROW-MATCHED @ if W-DIFFERENT exit then
@@ -668,10 +661,10 @@ STRUCTURE walk DERIVE addr
 
 
 \ The answer stands only once record a has read a to its end.
-: EQUAL-SLOT ( bool ^walk ^u8 str str -- bool ^walk ^u8 str str )
-   {: w:^ base:^ a:^ u:n b:^ v:n :}
+: EQUAL-SLOT ( bool ^walk str str -- bool ^walk str str )
+   {: w:^ a:^ u:n b:^ v:n :}
    drop
-   w base u v WALK-INIT
+   w v WALK-INIT
    w b v INDEX
    w LAY-LISTS
    w LIST-MEMBERS
@@ -679,15 +672,14 @@ STRUCTURE walk DERIVE addr
    w WALK-A a u INIT-STATE
    w VALUE-EQ?
    begin w A-NEXT T-END = until
-   w base a u b v ;
+   w a u b v ;
 
 
-\ VALUE= over the block at base; a throw leaves no reader stack or vector
-\ behind.
-: EQUAL-IN ( str str ^walk ^u8 NUM:alloc-byte-len -- bool )
-   drop {: a:^ u:n b:^ v:n w:^ base:^ :}
-   false w base a u b v [: EQUAL-SLOT ;] catch
-   {: same pw pbase pa ua pb ub code:n :}
+\ VALUE= in walk w; a throw leaves no reader stack or vector behind.
+: EQUAL-IN ( str str ^walk -- bool )
+   {: a:^ u:n b:^ v:n w:^ :}
+   false w a u b v [: EQUAL-SLOT ;] catch
+   {: same pw pa ua pb ub code:n :}
    w WALK-FREE
    code 0= if same exit then
    code throw ;
@@ -695,9 +687,7 @@ STRUCTURE walk DERIVE addr
 
 : EQUAL-RUN ( str str -- bool )
    {: a:^ u:n b:^ v:n :}
-   a u b v [type] walk
-   [: u v WALK-LEN MEM:BYTES-ALLOC-LEN [: EQUAL-IN ;] MEM:WITH-BYTES ;]
-   MEM:WITH-RECORD ;
+   a u b v [type] walk [: EQUAL-IN ;] MEM:WITH-RECORD ;
 
 public
 

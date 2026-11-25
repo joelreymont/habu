@@ -7,6 +7,8 @@ split-str
 \ due before a key, a value or a start exactly when the token written last was
 \ a value or an end.
 
+require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/json/read.f
 require src/lib/json/write.f
 require src/lib/json/value.f
@@ -18,17 +20,13 @@ private
 : COPY-COMMA ( ^writer bool -- ^writer )
    if WRITE-COMMA then ;
 
-: COPY-KEY ( ^writer ^cursor ^u8 n -- ^writer )
-   {: state:^ dst:^ cap:n :}
-   state dst cap STR-INNER {: len:n :}
-   dst len WRITE-KEY ;
+: COPY-KEY ( ^writer ^cursor ^VEC:vector<u8> -- ^writer )
+   {: state:^ text:^ :}
+   state text DECODED$ WRITE-KEY ;
 
-: COPY-SCALAR ( ^writer ^cursor ^u8 n n -- ^writer )
-   {: state:^ dst:^ cap:n kind:n :}
-   kind T-STR = if
-      state dst cap STR-INNER {: len:n :}
-      dst len WRITE-STRING exit
-   then
+: COPY-SCALAR ( ^writer ^cursor ^VEC:vector<u8> n -- ^writer )
+   {: state:^ text:^ kind:n :}
+   kind T-STR = if state text DECODED$ WRITE-STRING exit then
    kind T-INT = kind T-FLOAT = or if
       state RAW-SPAN$ WRITE-RAW exit
    then
@@ -51,8 +49,8 @@ private
 
 \ Write the cursor's current token, of kind kind, and answer the new depth
 \ and whether a comma is due before the next token.
-: COPY-STEP ( n n bool ^writer ^cursor ^u8 n -- n bool )
-   {: kind:n depth:n sep:bool w state:^ dst:^ cap:n :}
+: COPY-STEP ( n n bool ^writer ^cursor ^VEC:vector<u8> -- n bool )
+   {: kind:n depth:n sep:bool w state:^ text:^ :}
    kind T-OBJ = kind T-ARR = or if
       w kind depth sep COPY-OPEN exit
    then
@@ -60,23 +58,24 @@ private
       w kind depth COPY-CLOSE exit
    then
    kind T-KEY = if
-      w sep COPY-COMMA state dst cap COPY-KEY drop depth false exit
+      w sep COPY-COMMA state text COPY-KEY drop depth false exit
    then
-   w sep COPY-COMMA state dst cap kind COPY-SCALAR drop depth true ;
+   w sep COPY-COMMA state text kind COPY-SCALAR drop depth true ;
 
-\ The scratch holds the value, so a decoded key or string fits.
-: COPY-WALK ( ^writer ^cursor ^u8 n -- ^writer )
-   {: w state:^ dst:^ cap:n :}
-   state NEXT-INNER 0 false w state dst cap COPY-STEP
+\ Each key or string decodes into the vector, in place of the one before.
+: COPY-WALK ( ^writer ^cursor ^VEC:vector<u8> -- ^writer )
+   {: w state:^ text:^ :}
+   state NEXT-INNER 0 false w state text COPY-STEP
    begin over 0<> while
-      state NEXT-INNER -rot w state dst cap COPY-STEP
+      state NEXT-INNER -rot w state text COPY-STEP
    repeat drop drop w ;
 
 public
 
 : COPY-VALUE ( JSON:value ^JSON:writer -- ^JSON:writer )
    {: v w :}
-   v TEXT$ nip {: len:n :}
-   w v len [: len COPY-WALK ;] WITH-CURSOR ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: text:^ :}
+   [: w v 0 [: drop text COPY-WALK ;] WITH-CURSOR ;]
+   [: text VEC:DELETE ;] finally ;
 
 ;package

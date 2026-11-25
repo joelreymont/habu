@@ -1189,12 +1189,6 @@ private
    state CURSOR-KIND @ dup T-STR = swap T-KEY = or if exit then
    state s" a string or a member name" KIND-REJECT ;
 
-: STR-INNER ( ^cursor ^u8 n -- n ) {: state:^ dst:^ cap:n :}
-   state REQUIRE-STRING
-   state dst cap UMODE-WRITE UNESC-RESET
-   state UNESC-ALL
-   state CURSOR-OUT @ ;
-
 : MATCH-INNER ( ^cursor str -- bool )
    {: state:^ key:str :}
    state REQUIRE-STRING
@@ -1205,13 +1199,17 @@ private
 
 \ Decodes the current string or key into the vector from byte at on, answering
 \ its length, which its raw length bounds; the vector may hold the text itself.
+\ Another token is E-JSON-READ-STATE before the vector changes.
 : DECODE-INTO ( ^cursor ^VEC:vector<u8> n -- n )
    {: state:^ v:^ at:n :}
+   state REQUIRE-STRING
    state CURSOR-TOK-LEN @ {: raw:n :}
    raw 0= if 0 exit then
    v at raw +  state CURSOR-SRC @  VEC:MAKE-ROOM  state CURSOR-SRC !
    v at raw + VEC:ENSURE
-   state  v at VEC:AT raw  STR-INNER ;
+   state  v at VEC:AT  raw  UMODE-WRITE UNESC-RESET
+   state UNESC-ALL
+   state CURSOR-OUT @ ;
 
 : DECODE-APPEND ( ^cursor ^VEC:vector<u8> -- )
    {: state:^ v:^ :}
@@ -1219,21 +1217,25 @@ private
    state v at DECODE-INTO {: u:n :}
    v at u + VEC:RESIZE ;
 
+\ Replaces the vector's bytes with the current string or key, decoded, and
+\ answers them until the vector next changes.
+: DECODED$ ( ^cursor ^VEC:vector<u8> -- str )
+   {: state:^ v:^ :}
+   v 0 VEC:RESIZE  state v DECODE-APPEND  v VEC:BYTES ;
+
 public
 
 \ Appends the current string or key, decoded, to a vector, whose earlier
 \ bytes stay. Another token is E-JSON-READ-STATE before the vector changes.
 : READ-STR-APPEND ( JSON:reader ^VEC:vector<u8> -- JSON:reader ) {: v:^ :}
-   READER>STATE {: state:^ :}
-   state REQUIRE-STRING
-   state v DECODE-APPEND ;
+   READER>STATE v DECODE-APPEND ;
 
 \ Replaces V's bytes with the current string or key, decoded, and answers them
 \ until V next changes; V must not hold the text read; another token keeps V.
 : READ-STR ( JSON:reader ^VEC:vector<u8> -- JSON:reader str ) {: v:^ :}
    READER>STATE {: state:^ :}
    state REQUIRE-STRING
-   v 0 VEC:RESIZE  state v DECODE-APPEND  v VEC:BYTES ;
+   state v DECODED$ ;
 
 private
 

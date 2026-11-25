@@ -19,10 +19,10 @@ split-str
 \ container's start on a stack that grows with its depth, so a walk of any
 \ depth takes constant machine stack.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the text a value borrows and
-\ the vector APPEND-STRING grows. The cursor record, AT's decoded token and
-\ WITH-STRING's decoded text live in MEM scopes, the cursor's depth mapping in
-\ a mapping of its own, and the key storage and WALK's stack of starts on the
-\ heap, all released on return or throw. No module state.
+\ the vector APPEND-STRING grows. The cursor record and AT's decoded token
+\ live in MEM scopes, the cursor's depth mapping in a mapping of its own, and
+\ the key storage, WALK's stack of starts and WITH-STRING's decoded text on
+\ the heap, all released on return or throw. No module state.
 
 require src/lib/memory.f
 require src/lib/vector.f
@@ -432,12 +432,11 @@ private
       state s" a string" s" write a string" WRONG-KIND
    then ;
 
-\ The scratch holds the value, so its decoded text fits.
-: DECODE-RUN ( R ^cursor ^u8 [ R str -- S ] -- S )
-   {: state:^ buf:^ body :}
+\ Lends body the next string, decoded into the vector.
+: DECODE-RUN ( R ^cursor ^VEC:vector<u8> [ R str -- S ] -- S )
+   {: state:^ text:^ body :}
    state NEXT-STRING
-   state buf state CURSOR-TOK-LEN @ STR-INNER {: u:n :}
-   buf u body execute ;
+   state text DECODED$ body execute ;
 
 \ Throws E-MEMBER at the current token, the found part the token.
 : WHOLE-REJECT ( ^cursor -- )
@@ -468,13 +467,15 @@ public
    v 0 [: drop want len MATCH-AT ;] WITH-CURSOR ;
 
 \ The text is lent for the call only: the bytes inside the quotes when the
-\ string holds no escape, else its decoding in the cursor's scratch.
+\ string holds no escape, else its decoding in a vector of its own.
 : WITH-STRING ( R value [ R str -- S ] -- S ) {: v body :}
    v STRING? if
       v INSIDE$ 2dup ESCAPED? 0= if body execute exit then
       2drop
    then
-   v v TEXT$ nip [: body DECODE-RUN ;] WITH-CURSOR ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: text:^ :}
+   [: v 0 [: drop text body DECODE-RUN ;] WITH-CURSOR ;]
+   [: text VEC:DELETE ;] finally ;
 
 \ Appends the string's decoded bytes after the vector's own.
 : APPEND-STRING ( value ^VEC:vector<u8> -- ) {: v out:^ :}
