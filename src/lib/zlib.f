@@ -1,7 +1,8 @@
 \ zlib.f - raw DEFLATE (RFC 1951), zlib-framed DEFLATE (RFC 1950) and CRC-32
-\ by libz. A codec word borrows both buffers, keeps nothing and answers the
-\ bytes it wrote; libz allocates from init to the matching *End, which every
-\ path reaches. A failure rethrows its code and may leave a destination prefix.
+\ by libz. A codec word reads its source and appends to the caller's vector:
+\ deflate the whole stream, inflate at most the count it is given. A failure
+\ rethrows its code and leaves COUNT as it was, earlier bytes intact. libz
+\ allocates from init to the matching *End, which every path reaches.
 \ STORAGE CLASS. TASK-LOCAL: the z_stream and the overflow byte are TASK:+USER
 \ rows, cleared after every call, so no address survives into a saved image.
 
@@ -9,6 +10,7 @@ require src/lib/error.f
 require src/lib/le.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
+require src/lib/vector.f
 
 package ZLIB
 public
@@ -17,7 +19,8 @@ public
 -9529 constant E-LAST
 -9520 s" an invalid span, an overlap, a negative length, or a length or bound past 32 bits"
    ERROR:CODE E-SIZE
--9521 s" the destination cannot hold the result: pass a larger destination" ERROR:CODE E-CAPACITY
+-9521 s" the expanded stream is longer than the most the caller allows"
+   ERROR:CODE E-CAPACITY
 -9522 s" invalid, truncated or trailing compressed data" ERROR:CODE E-DATA
 -9523 s" libz reports Z_MEM_ERROR" ERROR:FAULT E-MEMORY
 -9524 s" a libz version, layout or state error, or an unexpected libz status" ERROR:FAULT E-ABI
@@ -99,10 +102,12 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    a STR:LEN 0= b STR:LEN 0= or if exit then
    a STR:DATA ADDRESS b STR:DATA ADDRESS b STR:LEN + < b STR:DATA ADDRESS a STR:DATA ADDRESS a STR:LEN + < and if E-SIZE throw then ;
 
-: PAIR-CHECK ( str str -- )
-   {: src:str dst:str :}
-   src SPAN-CHECK dst SPAN-CHECK
-   src dst DISJOINT-CHECK ;
+\ Judged on the whole block before it grows: growth may move a source there,
+\ and the stream is written into its free room.
+: SOURCE-CHECK ( str ^VEC:vector<u8> -- )
+   {: src:str v:^ :}
+   src SPAN-CHECK
+   src  v 0 VEC:AT v VEC:CAP >str  DISJOINT-CHECK ;
 
 \ A framed stream that asks for a preset dictionary is data no caller can
 \ supply one for.
@@ -144,9 +149,9 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    AVAIL-IN@ 0<> if E-DATA throw then
    TOTAL-OUT@ ;
 
-\ The destination is full, or had no capacity, and the stream has not ended.
-\ One more byte of room tells completion from an understated size without
-\ exposing anything past the caller's capacity.
+\ The room is full, or there was none, and the stream has not ended. One
+\ more byte of room tells completion from an overrun without exposing
+\ anything past the most the caller allows.
 : PROBE-STEP ( -- n )
    PROBE NEXT-OUT ! 1 AVAIL-OUT!
    STREAM BYTE-VIEW Z-FINISH C-INFLATE {: status:n :}
@@ -168,25 +173,13 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    AVAIL-OUT@ 0<> if E-DATA throw then
    PROBE-STEP ;
 
-\ Deflate may withhold the end when the last byte exactly fills the
-\ destination. One more byte of room tells an exactly sized destination from a
-\ short one without exposing anything past the caller's capacity.
-: DEFLATE-PROBE ( -- n )
-   PROBE NEXT-OUT ! 1 AVAIL-OUT!
-   STREAM BYTE-VIEW Z-FINISH C-DEFLATE {: status:n :}
-   status Z-STREAM-END = status STALLED? or 0= if status FAIL then
-   AVAIL-OUT@ 0= if E-CAPACITY throw then
-   status Z-STREAM-END <> if E-ABI throw then
-   TOTAL-OUT@ ;
-
-\ With Z_FINISH and all input supplied, a stop short of the end with room left
-\ is a libz contract breach.
+\ With Z_FINISH, all input supplied and libz's bound for room, deflate ends
+\ in this call; a stall short of the end is a libz contract breach.
 : DEFLATE-RUN ( -- n )
    STREAM BYTE-VIEW Z-FINISH C-DEFLATE {: status:n :}
    status Z-STREAM-END = if TOTAL-OUT@ exit then
    status STALLED? 0= if status FAIL then
-   AVAIL-OUT@ 0<> if E-ABI throw then
-   DEFLATE-PROBE ;
+   E-ABI throw ;
 
 : BOUND-SESSION ( n n -- n )
    CLEAR DEFLATE-OPEN
@@ -209,23 +202,36 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    rc 0<> if rc throw then
    status END-CHECK ;
 
+\ libz counts the room in 32 bits too.
 : BOUND-FOR ( n n -- n ) {: n:n window:n :}
-   n 0 < if E-SIZE throw then
-   n U32-MAX > if E-SIZE throw then
    n window [: BOUND-SESSION ;] [: CLEAR ;] finally
    dup U32-MAX > if E-SIZE throw then ;
 
-\ Every stream is at least one byte, so zero capacity cannot hold one.
-: DEFLATE-FOR ( str str n -- n )
+: DEFLATE-INTO ( str str n -- n )
    {: src:str dst:str window:n :}
-   src dst PAIR-CHECK
-   dst STR:LEN 0= if E-CAPACITY throw then
    window src dst [: STAGE DEFLATE-SESSION ;] [: CLEAR ;] finally ;
 
-: INFLATE-FOR ( str str n -- n )
+: INFLATE-INTO ( str str n -- n )
    {: src:str dst:str window:n :}
-   src dst PAIR-CHECK
    window src dst [: STAGE INFLATE-SESSION ;] [: CLEAR ;] finally ;
+
+: DEFLATE-FOR ( str ^VEC:vector<u8> n -- )
+   {: src:str v:^ window:n :}
+   src v SOURCE-CHECK
+   src STR:LEN window BOUND-FOR {: room:n :}
+   v VEC:COUNT {: old:n :}
+   [: src v room VEC:EXTEND SPAN:$ window DEFLATE-INTO ;] catch
+   dup 0<> if nip v old VEC:RESIZE throw then
+   drop old + v swap VEC:RESIZE ;
+
+: INFLATE-FOR ( str ^VEC:vector<u8> n n -- )
+   {: src:str v:^ most:n window:n :}
+   src v SOURCE-CHECK
+   most 0 < most U32-MAX > or if E-SIZE throw then
+   v VEC:COUNT {: old:n :}
+   [: src v most VEC:EXTEND SPAN:$ window INFLATE-INTO ;] catch
+   dup 0<> if nip v old VEC:RESIZE throw then
+   drop old + v swap VEC:RESIZE ;
 
 public
 
@@ -234,26 +240,21 @@ public
    s SPAN-CHECK
    0 s C-CRC32 U32-MAX and ;
 
-\ A capacity DEFLATE-RAW always completes in, for n source bytes.
-: RAW-BOUND ( n -- n ) RAW-WINDOW BOUND-FOR ;
-
 \ Default compression, method 8, window bits -15, memory level 8, default
 \ strategy.
-: DEFLATE-RAW ( str str -- n ) RAW-WINDOW DEFLATE-FOR ;
+: DEFLATE-RAW ( str ^VEC:vector<u8> -- ) RAW-WINDOW DEFLATE-FOR ;
 
-\ Exactly one complete raw stream that uses the whole source.
-: INFLATE-RAW ( str str -- n ) RAW-WINDOW INFLATE-FOR ;
-
-\ A capacity DEFLATE-FRAMED always completes in, for n source bytes.
-: FRAMED-BOUND ( n -- n ) FRAMED-WINDOW BOUND-FOR ;
+\ Exactly one complete raw stream that uses the whole source, at most n
+\ bytes expanded.
+: INFLATE-RAW ( str ^VEC:vector<u8> n -- ) RAW-WINDOW INFLATE-FOR ;
 
 \ DEFLATE-RAW's settings in the zlib wrapper, window bits +15: a 78 header,
 \ no dictionary and a big-endian Adler-32 trailer.
-: DEFLATE-FRAMED ( str str -- n ) FRAMED-WINDOW DEFLATE-FOR ;
+: DEFLATE-FRAMED ( str ^VEC:vector<u8> -- ) FRAMED-WINDOW DEFLATE-FOR ;
 
 \ Exactly one complete zlib stream that uses the whole source; libz checks
-\ its method, window, header check and Adler-32. A preset dictionary is
-\ refused.
-: INFLATE-FRAMED ( str str -- n ) FRAMED-WINDOW INFLATE-FOR ;
+\ its method, window, header check and Adler-32, at most n bytes expanded. A
+\ preset dictionary is refused.
+: INFLATE-FRAMED ( str ^VEC:vector<u8> n -- ) FRAMED-WINDOW INFLATE-FOR ;
 
 ;package
