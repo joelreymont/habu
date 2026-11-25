@@ -23,6 +23,9 @@
 \ HTTPC's socket in place of the server's close_notify, so an answer read to
 \ the close fails `cut`. An https origin trusting a path TLS cannot read
 \ fails `trust` at each SEND's first NEXT and leaves no descriptor open.
+\ NEXT-UNLESS's cases poll a pipe's read end, readable once the case writes
+\ a byte to it. On TLS 1.3 s_server sends its session tickets after the
+\ handshake, so they reach the socket before any answer.
 \ TEST-TABLE compares TEST-FSM:TABLE-MODULE's text for the LIFECYCLE table
 \ with spec/HttpcTable.tla whole, so the table spec/HttpcFollows.tla ties to
 \ the model spec/Httpc.tla is the code's.
@@ -58,6 +61,9 @@ private
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
+PROCESS-SYMBOLS
+FUNCTION: PEEK-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
+
 $1000 constant REQ-CAP
 $10000 constant ROOM-CAP
 64 constant SMALL-ROOM                  \ holds a request head, not BIG-HEAD$
@@ -72,6 +78,8 @@ $40 constant ORIGIN-CAP
 4 constant CHUNKED-SPAN                 \ crosses every chunk boundary
 $40 constant WIDE-SPAN
 $01 constant POLLIN
+$42 constant PEEK-FLAGS                 \ MSG_DONTWAIT | MSG_PEEK
+1000000 constant NS-PER-MS
 100 constant PAST-MS                    \ the total deadline a case outlives
 5 constant RECORD-HEAD                  \ a TLS record's header
 22 constant HANDSHAKE-TYPE              \ the content type of a ClientHello
@@ -85,6 +93,7 @@ create SPAN-BUF WIDE-SPAN allot
 create GOT-BUF GOT-CAP allot
 create ORIGIN-BUF ORIGIN-CAP allot
 create INPUT-PFD 8 allot
+create PEEK-BUF REQ-CAP allot
 
 variable LISTENER-CELL
 variable PORT-CELL
@@ -111,7 +120,7 @@ ENUM script sized chunked closing interim no-content reuse idle-close
    unread cut-head cut-body silent bad-status bad-length bad-chunk big-head
    trailing trailer big-trailer long-size interims close-asked minor-zero
    wire-sized wire-chunked stale-byte not-http garbage bad-code low-code
-   high-code ;ENUM
+   high-code held ;ENUM
 TYPED-VARIABLE SCRIPT script
 TYPED-VARIABLE LINK HTTPC:conn
 TYPED-VARIABLE SPARE HTTPC:conn          \ a record OPEN finds full of bytes
@@ -218,6 +227,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       bad-code OF s" HTTP/1.1 2x" true ENDOF
       low-code OF LOW-CODE$ false ENDOF
       high-code OF HIGH-CODE$ false ENDOF
+      held OF k 0= if s" " else SECOND$ then false ENDOF
    ;MATCH ;
 
 
@@ -410,6 +420,16 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : READ-ALL ( n -- ) {: span:n :}
    ANSWER-RESET
    begin LINK SPAN-BUF span >LEN HTTPC:NEXT ANSWERED? until ;
+
+\ Reads the answer to its end in NEXT-UNLESS spans of SPAN bytes, each
+\ polling the descriptor too.
+: READ-UNLESS ( n fd -- ) {: span:n f:fd :}
+   ANSWER-RESET
+   begin LINK SPAN-BUF span >LEN f HTTPC:NEXT-UNLESS ANSWERED? until ;
+
+: STIR ( fd -- ) s" x" FD:WRITE-FULL ;
+
+: SHUT-PIPE ( fd fd -- ) FD>N close FD>N close ;
 
 \ One NEXT of SPAN bytes, which answers a piece of the body.
 : ONE-PIECE ( n -- ) {: span:n :}
@@ -626,6 +646,32 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" the probe finds a byte on the kept connection and dials anew" T-LABEL
    200 s" second" ANSWER-IS
    ACCEPTS @ 2 T=
+   END-CASE ;
+
+\ The server has read the request and holds its answer when the pipe
+\ becomes readable; the second connection's request is answered.
+: TEST-WOKEN ( -- )
+   construct script held BEGIN-CASE
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   ASK  WRITTEN 1 SERVER-TASK TEST-WAIT:FOR-CELL
+   w STIR  WIDE-SPAN r READ-UNLESS
+   s" a readable descriptor ends a held answer `woken`, hanging up" T-LABEL
+   HTTPC-FAULT:WOKEN true FAULT-IS
+   LINK HTTPC-TEST:FD -1 T=
+   ASK WIDE-SPAN READ-ALL
+   s" the request after `woken` dials again and gets its answer" T-LABEL
+   200 s" second" ANSWER-IS
+   ACCEPTS @ 2 T=
+   w r SHUT-PIPE
+   END-CASE ;
+
+: TEST-UNWOKEN ( -- )
+   construct script sized BEGIN-CASE
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   ASK SIZED-SPAN r READ-UNLESS
+   s" NEXT-UNLESS on an unreadable descriptor answers as NEXT" T-LABEL
+   200 ALPHABET$ ANSWER-IS
+   w r SHUT-PIPE
    END-CASE ;
 
 \ A loopback port bound but not listening refuses every connection.
@@ -929,6 +975,72 @@ variable TRUST-U
    TEST-TLS-PEER:HANDSHAKES before - 1 T=
    END-CASE ;
 
+\ Unanswered, tickets alone wait to the stall and the pipe made readable
+\ ends the wait `woken`; the next SEND, with the pipe still readable, is answered.
+: TEST-HTTPS-WOKEN ( -- )
+   s" localhost" s" ca.pem" BEGIN-HTTPS
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   LINK s" GET" s" /" HTTPC:REQUEST
+   LINK TOTAL-MS SHORT-STALL-MS HTTPC:DEADLINES!
+   LINK s" " HTTPC:SEND
+   s" TLS 1.3 session tickets reach the socket before any answer" T-LABEL
+   AWAIT-INPUT TTRUE
+   WIDE-SPAN r READ-UNLESS
+   s" tickets with the descriptor unreadable wait to the stall" T-LABEL
+   HTTPC-FAULT:TIMEOUT true FAULT-IS
+   ASK-ROOT
+   s" the next session's tickets reach the socket" T-LABEL
+   AWAIT-INPUT TTRUE
+   w STIR  WIDE-SPAN r READ-UNLESS
+   s" tickets with the descriptor readable answer `woken`" T-LABEL
+   HTTPC-FAULT:WOKEN true FAULT-IS
+   ASK-ROOT  FIRST$ TEST-TLS-PEER:SCRIPTED  WIDE-SPAN READ-ALL
+   s" the SEND after `woken` shakes hands without the descriptor" T-LABEL
+   200 s" first" ANSWER-IS
+   w r SHUT-PIPE
+   END-CASE ;
+
+3 constant TICKETED-RECORDS             \ s_server's two tickets, the answer
+
+\ How many whole TLS records the first U bytes of PEEK-BUF hold.
+: RECORDS-IN ( n -- n ) {: u:n :}
+   0 0 begin {: k:n at:n :}
+      at RECORD-HEAD + u > if k exit then
+      PEEK-BUF at + RECORD-SIZE at + {: next:n :}
+      next u > if k exit then
+      k 1+ next
+   again ;
+
+\ Whether the conn's socket holds the tickets' and the answer's records
+\ whole, read without taking them.
+: TICKETED? ( -- bool )
+   LINK HTTPC-TEST:FD PEEK-BUF REQ-CAP PEEK-FLAGS PEEK-CALL {: u:n :}
+   u 0 > if u RECORDS-IN TICKETED-RECORDS >= else false then ;
+
+\ True once TICKETED? is, false at INPUT-MS from now.
+: AWAIT-TICKETED ( -- bool )
+   INPUT-MS NS-PER-MS * mono-ns + {: end:n :}
+   begin
+      TICKETED? if true exit then
+      mono-ns end < while
+      TASK:PAUSE
+   repeat false ;
+
+\ Over TLS 1.3 the first read takes a ticket and answers want-read with
+\ the rest on the socket: a wait that finds the socket and the pipe both
+\ readable serves the socket.
+: TEST-HTTPS-SERVED ( -- )
+   s" localhost" s" ca.pem" BEGIN-HTTPS
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   ASK-ROOT  FIRST$ TEST-TLS-PEER:SCRIPTED
+   s" the tickets' and the answer's records reach the socket" T-LABEL
+   AWAIT-TICKETED TTRUE
+   w STIR  WIDE-SPAN r READ-UNLESS
+   s" a socket holding the answer is served before `woken`" T-LABEL
+   200 s" first" ANSWER-IS
+   w r SHUT-PIPE
+   END-CASE ;
+
 \ ---- A trust path TLS cannot read
 
 3 constant UNREAD-SENDS
@@ -1113,6 +1225,8 @@ TASK:MIN-STACK TASK:TASK RELAY-TASK
    TEST-HTTPS-HELD
    TEST-HTTPS-REUSE
    TEST-HTTPS-CLOSE
+   TEST-HTTPS-WOKEN
+   TEST-HTTPS-SERVED
    TEST-TLS-PEER:UNSERVE true TEST-TLS-PEER:WWW-SERVE
    TEST-HTTPS-TRUSTED TEST-HTTPS-UNRELATED TEST-HTTPS-OTHER-HOST
    TEST-HTTPS-CUT ;
@@ -1183,6 +1297,8 @@ public
    TEST-OVERSIZE
    TEST-REFUSED
    TEST-CLOSE
+   TEST-WOKEN
+   TEST-UNWOKEN
    TEST-HTTPS
    END-SERVER ;
 

@@ -12,7 +12,9 @@
 \ conn keeps its origin, trust and room and dials again at its next SEND. Each
 \ exchange is REQUEST, HEADER+ and DEADLINES! as needed, one SEND, then NEXT
 \ until it answers `response` or `failed`; a NEXT before the first SEND or
-\ after CLOSE answers `failed` with fault `send`. One task at a time uses HTTPC
+\ after CLOSE answers `failed` with fault `send`. NEXT-UNLESS is NEXT that a
+\ descriptor the caller gives for that one call can end with fault `woken`;
+\ SEND's waits never poll it. One task at a time uses HTTPC
 \ over https, as TLS's contract requires: the TLS library keeps process-wide
 \ state and no lock.
 \ STORAGE CLASS. CALLER-OWNED: the conn record, the origin, trust and room
@@ -80,8 +82,9 @@ package HTTPC
 public
 
 \ Why an exchange failed; LOST? says which faults may succeed if tried again.
+\ `woken`: NEXT-UNLESS's descriptor became readable or invalid before the answer.
 ENUM fault resolve connect handshake trust send receive cut timeout
-   malformed oversize ;ENUM
+   malformed oversize woken ;ENUM
 
 \ One NEXT's answer: `chunk` has the status and the body bytes now in the
 \ span, `response` the status once the body has ended.
@@ -161,10 +164,12 @@ STRUCTURE conn OPAQUE DERIVE addr
    FIELD span ^u8
    FIELD span-len n
    FIELD got n
+   FIELD wake option<fd>          \ polled with the socket in one NEXT-UNLESS
    BUFFER node 256
    BUFFER service 8
    BUFFER hints 48
-   FIELD pollfd FD:pollfd
+   FIELD sock-poll FD:pollfd      \ poll(2) reads these two as one array
+   FIELD wake-poll FD:pollfd
    FIELD byte u8
    BUFFER found 8
    BUFFER opt 4
@@ -262,19 +267,30 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    left 0 <= if 0 exit then
    left NS-PER-MS 1- + NS-PER-MS / MAX-TIMEOUT min ;
 
-\ One poll(2) of the socket: how many are ready, 0 after the timeout, or the
-\ errno negated.
+\ One poll(2) of the socket, and of the wake descriptor while one is set:
+\ how many are ready, 0 after the timeout, or the errno negated.
 : POLL-ONCE ( ^conn n n -- n ) {: c events:n ms:n :}
-   c CONN-FD @ >FD events FD:>POLLFD c CONN-POLLFD !
-   c CONN-POLLFD 1 ms poll ;
+   c CONN-FD @ >FD events FD:>POLLFD c CONN-SOCK-POLL !
+   c CONN-WAKE @ MATCH option
+      none OF c CONN-SOCK-POLL 1 ms poll ENDOF
+      some OF
+         POLLIN FD:>POLLFD c CONN-WAKE-POLL !
+         c CONN-SOCK-POLL 2 ms poll
+      ENDOF
+   ;MATCH ;
 
-\ True once the socket is ready for the events; a signal restarts the wait
-\ with what is left of it. False with the fault kept: timeout once the
-\ deadline passes, or WHY with poll's errno.
+\ After a poll that found a descriptor ready: true when the socket is, else
+\ false with the fault `woken`.
+: SOCKET-READY? ( ^conn -- bool ) {: c :}
+   c CONN-SOCK-POLL @ FD:REVENTS 0<> if true exit then
+   c construct fault woken 0 FAIL false ;
+
+\ True once the socket is ready, a signal restarting the wait with the time
+\ left; else false with the fault kept: woken, timeout or WHY with the errno.
 : AWAIT-BY ( ^conn n n fault -- bool ) {: c events:n deadline:n why:fault :}
    begin
       c events deadline TIMEOUT-MS POLL-ONCE {: rc:n :}
-      rc 0 > if true exit then
+      rc 0 > if c SOCKET-READY? exit then
       rc 0= if c TIMED-OUT false exit then
       rc negate EINTR <> if c why rc negate FAIL false exit then
    again ;
@@ -1049,6 +1065,15 @@ FSM:DEFINE LIFECYCLE ( ^conn ) phase intake
    [: c p LIFECYCLE ;] catch {: rc:n :}
    rc 0<> if c UNSENT rc throw then ;
 
+\ Runs LIFECYCLE from where it rested, its waits polling the wake
+\ descriptor too while one is given, and answers where it rests.
+: PROCEED ( ^conn ^u8 len option<fd> -- chunk-result )
+   {: c a:^ u:len w:option<fd> :}
+   w c CONN-WAKE !
+   a c CONN-SPAN !  u LEN>N c CONN-SPAN-LEN !
+   c c CONN-RESUME @ DRIVE
+   c CONN-ANSWER @ ;
+
 public
 
 \ Origin `http://host[:port]` (port 80 by default) or `https://host[:port]`
@@ -1098,15 +1123,16 @@ public
       c s" Content-Length: " APPEND  c s STR:LEN DIGITS+  c CRLF+
    then
    c CRLF+
-   c ENDS!
+   c ENDS!  OPTION:NONE c CONN-WAKE !
    c construct phase starting DRIVE ;
 
 \ The span holds at least one byte. The first call reads the head. Each call
 \ answers one piece of the body in the span, or the end, or the fault.
-: NEXT ( ^conn ^u8 len -- chunk-result ) {: c a:^ u:len :}
-   a c CONN-SPAN !  u LEN>N c CONN-SPAN-LEN !
-   c c CONN-RESUME @ DRIVE
-   c CONN-ANSWER @ ;
+: NEXT ( ^conn ^u8 len -- chunk-result ) OPTION:NONE PROCEED ;
+
+\ NEXT, except that each wait also polls the descriptor: once it is readable,
+\ the answer is the fault `woken`.
+: NEXT-UNLESS ( ^conn ^u8 len fd -- chunk-result ) OPTION:SOME PROCEED ;
 
 \ The answer's head, status line through the blank line, in the room; valid
 \ until the next REQUEST.
@@ -1130,6 +1156,7 @@ public
       timeout OF true ENDOF
       malformed OF false ENDOF
       oversize OF false ENDOF
+      woken OF true ENDOF
    ;MATCH ;
 
 : FAULT$ ( fault -- str )
@@ -1147,6 +1174,9 @@ public
       malformed OF s" the request or the answer is not well-formed HTTP" ENDOF
       oversize OF
          s" a head, interim heads, a chunk-size line or trailers exceed the room"
+      ENDOF
+      woken OF
+         s" the caller's descriptor became readable or invalid before the answer"
       ENDOF
    ;MATCH ;
 
