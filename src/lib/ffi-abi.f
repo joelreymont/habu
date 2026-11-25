@@ -677,7 +677,7 @@ private
 
 \ A record of len bytes returned in two registers lands at exactly its width;
 \ one larger than 16 bytes is already in place through the hidden pointer.
-: STORE-RESULT ( n n str -- ) {: lo:n hi:n dst:^ len:n :}
+: STORE-RESULT ( n n n ^u8 -- ) {: lo:n hi:n len:n dst:^ :}
    len 16 > if exit then
    lo dst len 8 min REG-STORE
    len 8 > if hi dst 8 + len 8 - REG-STORE then ;
@@ -1419,12 +1419,12 @@ private
    i ARG-KIND@ K-POINTER = if s" u8" EFFECT:NAMED EFFECT:PTR exit then
    s" r" EFFECT:NAMED ;
 
-\ One local per argument: the definition declares no other, so argument I's
-\ local has index I.
-: LOCALS ( -- )
-   ARG-N @ 0= if exit then
+\ One local per argument, in order; answers the
+\ first one's index, argument I's being it + I.
+: LOCALS ( -- n )
    s" {:" EFFECT:KEYWORD
-   ARG-N @ 0 ?do i LOCAL-TYPE EFFECT:LOCAL drop loop
+   0 LOCAL-TYPE EFFECT:LOCAL
+   ARG-N @ 1 ?do i LOCAL-TYPE EFFECT:LOCAL drop loop
    s" :}" EFFECT:KEYWORD ;
 
 : STAGE-VALUE ( n -- ) {: i:n :}
@@ -1495,10 +1495,11 @@ private
    FIRST-POINTER {: first:n :}
    first ARG-N @ = if exit then
    s" {:" EFFECT:KEYWORD
-   ARG-N @ first ?do i LOCAL-TYPE EFFECT:LOCAL drop loop
+   first LOCAL-TYPE EFFECT:LOCAL {: base:n :}
+   ARG-N @ first 1+ ?do i LOCAL-TYPE EFFECT:LOCAL drop loop
    s" :}" EFFECT:KEYWORD
    ARG-N @ first ?do
-      i first - EFFECT:LOCAL@
+      i first - base + EFFECT:LOCAL@
       i ARG-KIND@ K-POINTER = if postpone PTR>CELL then
    loop ;
 
@@ -1615,7 +1616,7 @@ private
    RES-KIND @ R-U8 = if $FF literal postpone and then ;
 
 : STAGE-RECORD ( n -- ) {: i:n :}
-   i ARG-SBYTES@ literal
+   i ARG-SBYTES@ literal postpone >str
    i ARG-SBYTES@ 16 <= HB-TARGET-LINUX-X86-64? or if
       i ARG-REG@ 0 < if i STACK-POS postpone STRUCT-STACK! exit then
       i ARG-REG@ literal postpone STRUCT-REGS! exit
@@ -1624,29 +1625,30 @@ private
    i ARG-REG@ 0 < if i STACK-POS postpone STRUCT-COPY-STACK! exit then
    i ARG-REG@ literal postpone STRUCT-COPY-REG! ;
 
-: STAGE-C-ARG ( n -- ) {: i:n :}
-   i EFFECT:LOCAL@
+: STAGE-C-ARG ( n n -- ) {: base:n i:n :}
+   i base + EFFECT:LOCAL@
    i ARG-SBYTES@ 0 > if i STAGE-RECORD exit then
    i ARG-REG@ 0 < if i STAGE-SPILL exit then
    i STAGE-REG ;
 
-\ The STRUCT-RESULT destination, the last argument, and its width.
-: DEST ( -- )
-   ARG-N @ 1- EFFECT:LOCAL@ STRUCT-BYTES @ literal ;
+\ The STRUCT-RESULT width, then its destination, the last argument.
+: DEST ( n -- ) {: base:n :}
+   STRUCT-BYTES @ literal
+   ARG-N @ 1- base + EFFECT:LOCAL@ ;
 
-: STAGE-DEST ( -- )
+: STAGE-DEST ( n -- ) {: base:n :}
    STRUCT-BYTES @ 16 <= if exit then
-   ARG-N @ 1- EFFECT:LOCAL@
+   ARG-N @ 1- base + EFFECT:LOCAL@
    HB-TARGET-LINUX-X86-64? if 0 else 8 then literal postpone POINTER! ;
 
 : STRUCT-BODY ( n -- ) {: slot:n :}
-   LOCALS
+   LOCALS {: base:n :}
    slot literal postpone RESOLVE-ROW
-   C-ARGS 0 ?do i STAGE-C-ARG loop
-   STAGE-DEST
+   C-ARGS 0 ?do base i STAGE-C-ARG loop
+   base STAGE-DEST
    slot literal
    STRUCT-BYTES @ 0 > if
-      postpone CALL-STRUCT DEST postpone STORE-RESULT exit
+      postpone CALL-STRUCT base DEST postpone STORE-RESULT exit
    then
    RES-KIND @ R-POINTER = if
       postpone CALL-STRUCT-PTR RESULT-TAIL exit
@@ -1664,10 +1666,29 @@ private
    RES-KIND @ R-NONE = if exit then
    RES-TEXT RES-TEXT-U @ EFFECT:READ-TYPE EFFECT:OUT ;
 
+\ Splits a str based at argument B into ^u8 n; a generated body takes no
+\ >r, so the one-cell arguments above it wait in a `{:` group.
+: SPLIT-ARG ( n -- ) {: b:n :}
+   b ARG-TEXT$ s" str" STR:= 0= if exit then
+   b 2 + {: top:n :}
+   top ARG-N @ = if postpone str> exit then
+   s" {:" EFFECT:KEYWORD
+   top LOCAL-TYPE EFFECT:LOCAL {: base:n :}
+   ARG-N @ top 1+ ?do i LOCAL-TYPE EFFECT:LOCAL drop loop
+   s" :}" EFFECT:KEYWORD
+   postpone str>
+   ARG-N @ top - 0 ?do base i + EFFECT:LOCAL@ loop ;
+
+\ The effect takes a str as one value and the stages after it take each
+\ argument as one cell, so each str is split, the topmost first.
+: SPLIT-STRS ( -- )
+   ARG-N @ 0 ?do ARG-N @ i 1+ - SPLIT-ARG loop ;
+
 \ A struct call reads its spill count and relocation mask from its row; a
 \ staged call has stk, its spilled stack cells, compiled in.
 : BODY ( n n n -- )
    {: stk:n kind:n slot:n :}
+   SPLIT-STRS
    kind C-STRUCT = if slot STRUCT-BODY postpone ; exit then
    kind C-REG = if
       slot REG-BODY  RESULT-TAIL  postpone ; exit
@@ -1679,22 +1700,11 @@ private
    RESULT-TAIL
    postpone ; ;
 
-EXPORT CHECK:CHECKER-SPLIT-STR
-
-\ The body takes each str apart into its base and length, so it is checked as
-\ split-str code; callers read the effect's str in their own mode.
-: SPLIT-BODY ( n n n -- )
-   {: stk:n kind:n slot:n :}
-   CHECKER-SPLIT-STR @ {: split:n :}
-   true CHECKER-SPLIT-STR !
-   [: stk kind slot BODY ;]
-   [: split CHECKER-SPLIT-STR ! ;] finally ;
-
 : EMIT ( n n -- )
    {: stk:n kind:n :}
    stk SLOT {: slot:n :}
    0 NAME-BUF NAME-U @ DECLARED-EFFECT define-word
-   stk kind slot SPLIT-BODY ;
+   stk kind slot BODY ;
 
 \ The selection scope is the current wordlist, not the loading file:
 \ INCLUDE-PATH names the last file opened, so every consumer would share one
