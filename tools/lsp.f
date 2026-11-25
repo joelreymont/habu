@@ -1,4 +1,3 @@
-split-str
 \ lsp.f - the Habu language server, speaking LSP on stdin and stdout.
 
 \ An absolute --load entry may run from a different Habu tree. For this
@@ -8,21 +7,21 @@ create ROOT PATH-CAP allot   variable ROOT-U
 create OLD PATH-CAP allot    variable OLD-U
 
 : SAVE ( -- )
-   SOURCE-ROOT:ENGINE$ {: a:^ u:n :}
-   a OLD u BYTE-COPY  u OLD-U !
-   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop
-   SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME {: root:^ rootu:n :}
-   root ROOT rootu BYTE-COPY  rootu ROOT-U ! ;
+   SOURCE-ROOT:ENGINE$ {: old:str :}
+   old STR:DATA OLD old STR:LEN BYTE-COPY  old STR:LEN OLD-U !
+   SOURCE-ROOT:ACTIVE-SOURCE drop drop
+   SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME {: root:str :}
+   root STR:DATA ROOT root STR:LEN BYTE-COPY  root STR:LEN ROOT-U ! ;
 
 : LOAD ( -- ) s" tools/lsp-core.f" required ;
-: LOAD-ROOT ( -- ) ROOT ROOT-U @ [: LOAD ;] SOURCE-ROOT:WITH ;
+: LOAD-ROOT ( -- ) ROOT ROOT-U @ >str [: LOAD ;] SOURCE-ROOT:WITH ;
 
 public
 : START ( -- )
    SAVE
-   ROOT ROOT-U @ SOURCE-ROOT:ENGINE!
+   ROOT ROOT-U @ >str SOURCE-ROOT:ENGINE!
    [: LOAD-ROOT ;] catch {: rc:n :}
-   OLD OLD-U @ SOURCE-ROOT:ENGINE!
+   OLD OLD-U @ >str SOURCE-ROOT:ENGINE!
    rc 0<> if rc throw then ;
 ;package
 

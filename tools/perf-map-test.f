@@ -1,4 +1,3 @@
-split-str
 \ perf-map-test.f - PERF-MAP:LINE$ against `perf script` output captured verbatim
 \ (perf 7.2.5-1, aarch64) from
 \   perf record -g -o perf.data -- bin/hb --load <program>; perf script -i perf.data
@@ -44,12 +43,12 @@ variable ACC
    repeat ;
 
 : FIND-REC ( str -- n )   \ the last live record with this name, -1 when none
-   {: a:^ u:n :}
+   {: s:str :}
    -1 ACC !
    ndict@ 0 ?do
       i XREF-REC {: rec:^ :}
       rec XREF-RETIRED? 0= if
-         rec XREF-NAME$ a u STR:= if i ACC ! then
+         rec XREF-NAME$ s STR:= if i ACC ! then
       then
    loop
    ACC @ ;
@@ -72,19 +71,19 @@ variable ACC
 
 \ Every byte of a call-chain line survives, not only its mapped address.
 : T-FRAME-KEPT ( -- )
-   FOREIGN-FRAME$ PERF-MAP:LINE$ {: a:^ u:n :}
-   a u s" __ctype_init+0x0" STR:CONTAINS? TTRUE
-   a u s" (/usr/lib/libc.so.6)" STR:CONTAINS? TTRUE ;
+   FOREIGN-FRAME$ PERF-MAP:LINE$ {: s:str :}
+   s s" __ctype_init+0x0" STR:CONTAINS? TTRUE
+   s s" (/usr/lib/libc.so.6)" STR:CONTAINS? TTRUE ;
 
 \ An address this dictionary does not own stays hex, and its line keeps its tail.
 : T-FOREIGN-STAYS-HEX ( -- )
-   FOREIGN-FRAME$ PERF-MAP:LINE$ {: a:^ u:n :}
-   a u s" fffeffa417e0" STR:CONTAINS? TTRUE ;
+   FOREIGN-FRAME$ PERF-MAP:LINE$ {: s:str :}
+   s s" fffeffa417e0" STR:CONTAINS? TTRUE ;
 
 : T-ENGINE-FRAME-KEPT ( -- )
-   ENGINE-FRAME$ PERF-MAP:LINE$ {: a:^ u:n :}
-   a u s" [unknown]" STR:CONTAINS? TTRUE
-   a u s" (/tmp/hz-prof/H)" STR:CONTAINS? TTRUE ;
+   ENGINE-FRAME$ PERF-MAP:LINE$ {: s:str :}
+   s s" [unknown]" STR:CONTAINS? TTRUE
+   s s" (/tmp/hz-prof/H)" STR:CONTAINS? TTRUE ;
 
 \ A live address resolves to its package-qualified word, and the rest of the
 \ line - symbol column and dso - is left alone.
@@ -98,14 +97,14 @@ variable ACC
    SB$ ;
 
 : T-LIVE-RESOLVES ( -- )
-   LIVE-FRAME$ PERF-MAP:LINE$ {: a:^ u:n :}
-   a u s" PERF-MAP-TEST:MARKER" STR:CONTAINS? TTRUE
-   a u s" (bin/hb)" STR:CONTAINS? TTRUE ;
+   LIVE-FRAME$ PERF-MAP:LINE$ {: s:str :}
+   s s" PERF-MAP-TEST:MARKER" STR:CONTAINS? TTRUE
+   s s" (bin/hb)" STR:CONTAINS? TTRUE ;
 
 \ The header pid is a seven-digit run that is also valid hex.
 : T-PID-NOT-AN-ADDRESS ( -- )
-   HEADER$ PERF-MAP:LINE$ {: a:^ u:n :}
-   a u s" 1880406" STR:CONTAINS? TTRUE ;
+   HEADER$ PERF-MAP:LINE$ {: s:str :}
+   s s" 1880406" STR:CONTAINS? TTRUE ;
 
 : RUN ( -- )
    PERF-MAP:ARM

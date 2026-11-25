@@ -1,4 +1,3 @@
-split-str
 \ tier0-profile.f - where tier-0 compile time goes, as a sampling profile
 \ (docs/debugging.md "Sampling profiler"). Prints `P <mode> defs <n> ns <n>
 \ ns-per-def <n>`, then the profiler's own report. Measure on a quiet, pinned
@@ -32,10 +31,10 @@ variable SRC-N
 
 : EMIT-C ( n -- ) {: c :}
    c CHB c!
-   CHB 1 type ;
+   CHB 1 >str type ;
 
-: EMIT$ ( str -- ) {: a:^ u :}
-   u 0 ?do a i + c@ EMIT-C loop ;
+: EMIT$ ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ EMIT-C loop ;
 
 : EMIT-DEC ( n -- )
    DEC-V !
@@ -60,8 +59,8 @@ variable SRC-N
    c SRC SRC-N @ + c!
    SRC-N @ 1 + SRC-N ! ;
 
-: SRC$+ ( str -- ) {: a:^ u :}
-   u 0 ?do a i + c@ SRC-C+ loop ;
+: SRC$+ ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ SRC-C+ loop ;
 
 : SRC-DEC+ ( n -- )
    DEC-V !
@@ -89,11 +88,11 @@ variable SRC-N
    s" usage: bin/hb --load tools/tier0-profile.f -- corpus|trivial <usec> <arg>..."
    EXIT-STATUS:USAGE die ;
 
-: ARG>N ( str -- n ) {: a:^ u :}
-   u 0= if USAGE then
+: ARG>N ( str -- n ) {: s:str :}
+   s STR:LEN 0= if USAGE then
    0 {: acc :}
-   acc u 0 ?do
-      a i + c@ {: c :}
+   acc s STR:LEN 0 ?do
+      s STR:DATA i + c@ {: c :}
       c ZERO-C < c ZERO-C 9 + > or if USAGE then
       10 * c ZERO-C - +
    loop ;
@@ -106,10 +105,10 @@ variable SRC-N
    script-argc 2 ?do i script-argv$ required loop ;
 
 : COMPILE-TRIVIAL ( n -- ) {: n :}
-   n 0 ?do i 1 + TRIVIAL-SRC  SRC SRC-N @ evaluate-closed loop ;
+   n 0 ?do i 1 + TRIVIAL-SRC  SRC SRC-N @ >str evaluate-closed loop ;
 
-: REPORT-HEAD ( str n n -- ) {: name:^ nu defs ns :}
-   s" P " EMIT$  name nu EMIT$
+: REPORT-HEAD ( str n n -- ) {: name:str defs ns :}
+   s" P " EMIT$  name EMIT$
    s"  defs" EMIT$  defs EMIT-FIELD
    s"  ns" EMIT$  ns EMIT-FIELD
    s"  ns-per-def" EMIT$  defs 0 > if ns defs / else 0 then EMIT-FIELD
@@ -121,9 +120,9 @@ public
    script-argc 3 < if USAGE then
    1 script-argv$ ARG>N {: usec :}
    usec 0 > 0= if USAGE then
-   0 script-argv$ {: mode:^ mu :}
+   0 script-argv$ {: mode:str :}
    usec prof-rate
-   mode mu s" corpus" STR:= if
+   mode s" corpus" STR:= if
       ndict@ {: first :}
       \ prof-on indexes the dictionary as it stands: every word the workload
       \ defines, and its top-level code, lands in `new`, so the rows are the
@@ -133,18 +132,18 @@ public
       LOAD-CORPUS
       mono-ns swap - {: ns :}
       prof-off
-      mode mu ndict@ first - ns REPORT-HEAD
+      mode ndict@ first - ns REPORT-HEAD
       prof-report
       exit
    then
-   mode mu s" trivial" STR:= 0= if USAGE then
+   mode s" trivial" STR:= 0= if USAGE then
    2 script-argv$ ARG>N {: n :}
    0 prof-on
    mono-ns
    n COMPILE-TRIVIAL
    mono-ns swap - {: ns :}
    prof-off
-   mode mu n ns REPORT-HEAD
+   mode n ns REPORT-HEAD
    prof-report ;
 
 ;package

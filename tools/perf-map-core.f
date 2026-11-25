@@ -1,4 +1,3 @@
-split-str
 \ perf-map-core.f - rewrite the addresses in `perf script` output as Habu words,
 \ which perf prints as [unknown]: they live in one anonymous mapping.
 \   perf record -g <engine> --load prog.f
@@ -93,22 +92,22 @@ variable MAPPED    \ has this line's address column been rewritten already
    c [char] A >= c [char] F <= and if c [char] A - 10 + exit then
    -1 ;
 
-: HEX@ ( str -- n ) {: a:^ u:n :}
+: HEX@ ( str -- n ) {: s:str :}
    0 ACC !
-   u 0 ?do ACC @ 16 * a i + c@ HEX-DIGIT + ACC ! loop
+   s STR:LEN 0 ?do ACC @ 16 * s STR:DATA i + c@ HEX-DIGIT + ACC ! loop
    ACC @ ;
 
-: HEX? ( str -- bool ) {: a:^ u:n :}
-   u ADDR-MIN < if STR:FALSE exit then
-   u ADDR-MAX > if STR:FALSE exit then
+: HEX? ( str -- bool ) {: s:str :}
+   s STR:LEN ADDR-MIN < if STR:FALSE exit then
+   s STR:LEN ADDR-MAX > if STR:FALSE exit then
    1 OK !
-   u 0 ?do a i + c@ HEX-DIGIT 0 < if 0 OK ! then loop
+   s STR:LEN 0 ?do s STR:DATA i + c@ HEX-DIGIT 0 < if 0 OK ! then loop
    OK @ 0<> ;
 
-: ADDR+ ( str -- ) {: a:^ u:n :}
-   a u HEX@ {: addr:n :}
+: ADDR+ ( str -- ) {: s:str :}
+   s HEX@ {: addr:n :}
    addr prof-pc>rec {: idx:n :}
-   idx 0 < if a u OUT+ exit then
+   idx 0 < if s OUT+ exit then
    idx QNAME+
    addr idx XREF-REC XREF-START - {: off:n :}
    off 0 > if s" +" OUT+ off DEC+ then ;
@@ -117,16 +116,16 @@ variable MAPPED    \ has this line's address column been rewritten already
 : SEP? ( n -- bool ) {: c:n :}
    c STR:SPACE = c TAB = or ;
 
-: INDENTED? ( str -- bool ) {: a:^ u:n :}
-   u 0= if STR:FALSE exit then
-   a 0 + c@ SEP? ;
+: INDENTED? ( str -- bool ) {: s:str :}
+   s STR:LEN 0= if STR:FALSE exit then
+   s STR:DATA 0 + c@ SEP? ;
 
 \ The address column is the first token of an indented line, and only that
 \ one: a sample's unindented header holds a decimal pid and period that are
 \ also valid hex.
-: ADDR-HERE? ( str -- bool ) {: a:^ u:n :}
+: ADDR-HERE? ( str -- bool ) {: s:str :}
    MAPPED @ 0<> if STR:FALSE exit then
-   a u HEX? ;
+   s HEX? ;
 
 public
 \ The engine is position-dependent: an address from another run of the same
@@ -134,26 +133,31 @@ public
 \ internal profiler's deferred bucket. The dso column is not read: an address
 \ outside this dictionary's code range (every shared library sits above it) is
 \ left alone.
-: LINE$ ( str -- str ) {: a:^ u:n :}
+: LINE$ ( str -- str ) {: s:str :}
    OUT-U BUF-RESET
    0 CUR !
-   a u INDENTED? 0= if 1 else 0 then MAPPED !
-   begin CUR @ u < while
-      a CUR @ + c@ SEP? if
-         a CUR @ + 1 OUT+  CUR @ 1+ CUR !
+   s INDENTED? 0= if 1 else 0 then MAPPED !
+   begin CUR @ s STR:LEN < while
+      s STR:DATA CUR @ + c@ SEP? if
+         s STR:DATA CUR @ + 1 >str OUT+  CUR @ 1+ CUR !
       else
          CUR @ TOK !
-         begin CUR @ u < if a CUR @ + c@ SEP? 0= else STR:FALSE then while
+         begin
+            CUR @ s STR:LEN < if
+               s STR:DATA CUR @ + c@ SEP? 0=
+            else STR:FALSE then
+         while
             CUR @ 1+ CUR !
          repeat
-         a TOK @ +  CUR @ TOK @ -  2dup ADDR-HERE? if
+         s STR:DATA TOK @ +  CUR @ TOK @ - >str
+         dup ADDR-HERE? if
             ADDR+  1 MAPPED !
          else
             OUT+  1 MAPPED !
          then
       then
    repeat
-   OUT-BUF OUT-U BUF-LEN@ ;
+   OUT-BUF OUT-U BUF-LEN@ >str ;
 private
 
 : LINE. ( str -- )
@@ -188,13 +192,13 @@ public
    begin NEXT-BYTE dup 0 >= while
       dup STR:LF = if
          drop
-         LINE-BUF LINE-U @ LINE.  0 LINE-U !
+         LINE-BUF LINE-U @ >str LINE.  0 LINE-U !
       else
          LINE+
       then
    repeat
    drop
-   LINE-U @ 0 > if LINE-BUF LINE-U @ LINE. then ;
+   LINE-U @ 0 > if LINE-BUF LINE-U @ >str LINE. then ;
 
 : MAIN ( -- ) RUN ;
 ;package

@@ -1,4 +1,3 @@
-split-str
 \ source-discovery.f - whole-file ordered source-composition discovery pass.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/memory.f
 \ src/lib/fs.f src/lib/source.f tools/source-discovery.f
@@ -156,17 +155,17 @@ variable SD-SCOPES
    SD-STORAGE @ {: old :}
    need old SPAN:LEN > if
       need MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
-      old SPAN:$ {: a:^ u:n :}
-      a fresh SPAN:$ drop u BYTE-COPY
+      old SPAN:$ {: s:str :}
+      s STR:DATA fresh SPAN:$ STR:DATA s STR:LEN BYTE-COPY
       fresh SD-STORAGE !
       old MEM:FREE-SPAN
    then
-   SD-STORAGE @ SPAN:$ drop ;
+   SD-STORAGE @ SPAN:$ STR:DATA ;
 
 : SD-BYTE ( n -- u8 )   SD-BUF + c@ ;
 : SD-AT? ( n -- bool )  SD-U @ < ;
-: SD-PATH$ ( -- str )  0 SD-PATH SD-PATH-U @ ;
-: SD-TOK$ ( n n -- str ) {: off:n len:n :}  off SD-BUF + len ;
+: SD-PATH$ ( -- str )  0 SD-PATH SD-PATH-U @ >str ;
+: SD-TOK$ ( n n -- str ) {: off:n len:n :}  off SD-BUF + len >str ;
 
 \ A stop's record stands at the token read last if the caller armed BYTES$. A
 \ harvest throws the kind bare: the expansion after it meets the form again.
@@ -195,37 +194,38 @@ variable SD-SCOPES
    E-DISC-CAPACITY SD-HARVEST-THROW
    VERIFY:CAPACITY-REJECT  E-DISC-CAPACITY VERIFY:DISCOVERY-STOP ;
 
-: SD-R-COPY ( str -- n ) {: a:^ u:n :}
+: SD-R-COPY ( str -- n ) {: s:str :}
    SD-R-BYTES-U @ {: at:n :}
-   at u + 1+ SD-R-BYTES-RESERVE
-   a at SD-R-BYTES u BYTE-COPY
-   at u + SD-R-BYTES-U !
+   at s STR:LEN + 1+ SD-R-BYTES-RESERVE
+   s STR:DATA at SD-R-BYTES s STR:LEN BYTE-COPY
+   at s STR:LEN + SD-R-BYTES-U !
    at ;
 
-: SD-FILE-FIND ( str -- n ) {: a:^ u:n :}
+: SD-FILE-FIND ( str -- n ) {: s:str :}
    SD-F-N @ 0 ?do
-      a u i SD-F-AT @ SD-R-BYTES i SD-F-U @ STR:= if i unloop exit then
+      s i SD-F-AT @ SD-R-BYTES i SD-F-U @ >str
+      STR:= if i unloop exit then
    loop
    -1 ;
 
 : SD-FILE-OF ( -- n )
-   SD-ENTRY SD-ENTRY-U @ SD-FILE-FIND dup 0 >= if exit then drop
+   SD-ENTRY SD-ENTRY-U @ >str SD-FILE-FIND dup 0 >= if exit then drop
    SD-F-N @ {: id:n :}
    id 1+ dup SD-F-AT-RESERVE dup SD-F-U-RESERVE SD-F-HEAD-RESERVE
-   SD-ENTRY SD-ENTRY-U @ SD-R-COPY id SD-F-AT !
+   SD-ENTRY SD-ENTRY-U @ >str SD-R-COPY id SD-F-AT !
    SD-ENTRY-U @ id SD-F-U !
    -1 id SD-F-HEAD !
    id 1+ SD-F-N !
    id ;
 
 : SD-R-NAME$ ( n -- str ) {: r:n :}
-   r SD-R-NAME @ SD-R-BYTES r SD-R-NAME-U @ ;
+   r SD-R-NAME @ SD-R-BYTES r SD-R-NAME-U @ >str ;
 
 : SD-R-PKG$ ( n -- str ) {: r:n :}
-   r SD-R-PKG @ SD-R-BYTES r SD-R-PKG-U @ ;
+   r SD-R-PKG @ SD-R-BYTES r SD-R-PKG-U @ >str ;
 
 : SD-R-OUTER$ ( n -- str ) {: r:n :}
-   r SD-R-OUTER @ SD-R-BYTES r SD-R-OUTER-U @ ;
+   r SD-R-OUTER @ SD-R-BYTES r SD-R-OUTER-U @ >str ;
 
 : SD-C-NAME ( n -- n n ) {: row:n :}
    row 0 < if 0 0 exit then
@@ -319,39 +319,42 @@ variable SD-X-N
 
 \ Exactly one non-edge colon qualifies a name. The tail is the word defined
 \ or called, irrespective of the spelling's package prefix.
-: SD-QCOLON ( str -- n ) {: a:^ u:n :}
-   u 2 < if -1 exit then
+: SD-QCOLON ( str -- n ) {: s:str :}
+   s STR:LEN 2 < if -1 exit then
    -1
-   u 1- 1 ?do
-      a i + c@ $3A = if
+   s STR:LEN 1- 1 ?do
+      s STR:DATA i + c@ $3A = if
          dup 0 >= if drop -1 unloop exit then
          drop i
       then
    loop ;
 
-: SD-TAIL$ ( str -- str ) {: a:^ u:n :}
-   a u SD-QCOLON {: col:n :}
-   col 0 < if a u exit then
-   a col 1+ + u col 1+ - ;
+: SD-TAIL$ ( str -- str ) {: s:str :}
+   s SD-QCOLON {: col:n :}
+   col 0 < if s exit then
+   s STR:DATA col 1+ + s STR:LEN col 1+ - >str ;
 
 : SD-R-KEY$ ( n -- str str ) {: r:n :}
-   r SD-R-NAME$ {: a:^ u:n :}
-   a u SD-QCOLON {: col:n :}
-   col 0 >= if a col a col 1+ + u col 1+ - exit then
-   r SD-R-PKG$ a u ;
+   r SD-R-NAME$ {: s:str :}
+   s SD-QCOLON {: col:n :}
+   col 0 >= if
+      s STR:DATA col >str
+      s STR:DATA col 1+ + s STR:LEN col 1+ - >str exit
+   then
+   r SD-R-PKG$ s ;
 
 \ No package row, outside every package, spells as empty: a declaration made
 \ there is reached from every package.
 : SD-C-PKG$ ( n -- str ) {: row:n :}
-   row 0 < if 0 SD-R-BYTES 0 exit then
+   row 0 < if 0 SD-R-BYTES 0 >str exit then
    row SD-R-NAME$ ;
 
 \ A bare name reaches package (outer, name) open here and, inside part A:B,
 \ (none, A) as well.
-: SD-C-OPEN? ( str str -- bool ) {: out:^ outu:n pkg:^ pkgu:n :}
-   pkg pkgu SD-C-PKG @ SD-C-PKG$ STR:=CI
-   out outu SD-C-OUTER @ SD-C-PKG$ STR:=CI and if true exit then
-   outu 0= pkg pkgu SD-C-OUTER @ SD-C-PKG$ STR:=CI and ;
+: SD-C-OPEN? ( str str -- bool ) {: out:str pkg:str :}
+   pkg SD-C-PKG @ SD-C-PKG$ STR:=CI
+   out SD-C-OUTER @ SD-C-PKG$ STR:=CI and if true exit then
+   out STR:LEN 0= pkg SD-C-OUTER @ SD-C-PKG$ STR:=CI and ;
 
 : SD-R-TOP$ ( n -- str ) {: r:n :}
    r SD-R-OUTER-U @ 0<> if r SD-R-OUTER$ exit then
@@ -361,16 +364,16 @@ variable SD-X-N
 \ names part T:B or top-level B: two packages.
 : SD-R-IDS ( n -- n ) {: r:n :}
    r SD-R-NAME$ SD-QCOLON 0 < if 1 exit then
-   r SD-R-TOP$ nip 0= if 1 exit then
+   r SD-R-TOP$ STR:LEN 0= if 1 exit then
    2 ;
 
 \ The record's Kth package as its outer and name, each empty for none.
 : SD-R-ID ( n n -- str str ) {: r:n k:n :}
-   r SD-R-NAME$ {: a:^ u:n :}
-   a u SD-QCOLON {: col:n :}
+   r SD-R-NAME$ {: s:str :}
+   s SD-QCOLON {: col:n :}
    col 0 < if r SD-R-OUTER$ r SD-R-PKG$ exit then
-   k 0= if r SD-R-TOP$ else 0 SD-R-BYTES 0 then
-   a col ;
+   k 0= if r SD-R-TOP$ else 0 SD-R-BYTES 0 >str then
+   s STR:DATA col >str ;
 
 \ A bare use reaches the record's package; where the record may name either of
 \ two packages and the use reaches one, discovery cannot know which: refused.
@@ -380,17 +383,17 @@ variable SD-X-N
    ids 0 ?do r i SD-R-ID SD-C-OPEN? or loop
    dup ids 1 > and if SD-SHADOW-STOP then ;
 
-: SD-R-KEY-MATCH? ( str n -- bool ) {: a:^ u:n r:n :}
-   r SD-R-KEY$ {: pkg:^ pkgu:n tail:^ tailu:n :}
-   pkgu 0= if a u tail tailu STR:=CI exit then
-   a u SD-QCOLON 0 < if
-      a u tail tailu STR:=CI 0= if false exit then
+: SD-R-KEY-MATCH? ( str n -- bool ) {: s:str r:n :}
+   r SD-R-KEY$ {: pkg:str tail:str :}
+   pkg STR:LEN 0= if s tail STR:=CI exit then
+   s SD-QCOLON 0 < if
+      s tail STR:=CI 0= if false exit then
       r SD-R-OPEN? exit
    then
-   u pkgu tailu + 1+ <> if false exit then
-   a pkgu pkg pkgu STR:=CI 0= if false exit then
-   a pkgu + c@ $3A <> if false exit then
-   a pkgu 1+ + tailu tail tailu STR:=CI ;
+   s STR:LEN pkg STR:LEN tail STR:LEN + 1+ <> if false exit then
+   s STR:DATA pkg STR:LEN >str pkg STR:=CI 0= if false exit then
+   s STR:DATA pkg STR:LEN + c@ $3A <> if false exit then
+   s STR:DATA pkg STR:LEN 1+ + tail STR:LEN >str tail STR:=CI ;
 
 \ A package opened inside another is a part (the engine refuses every other
 \ nested `package`), whose close returns to it.
@@ -431,8 +434,8 @@ variable SD-X-N
    old SD-R-NAME$ new SD-R-NAME$ STR:= 0= if false exit then
    old SD-R-PKG$ new SD-R-PKG$ STR:= 0= if false exit then
    old SD-R-OUTER$ new SD-R-OUTER$ STR:= 0= if false exit then
-   old SD-R-TERMS @ SD-R-BYTES old SD-R-TERMS-U @
-   new SD-R-TERMS @ SD-R-BYTES new SD-R-TERMS-U @ STR:= ;
+   old SD-R-TERMS @ SD-R-BYTES old SD-R-TERMS-U @ >str
+   new SD-R-TERMS @ SD-R-BYTES new SD-R-TERMS-U @ >str STR:= ;
 
 : SD-R-FROZEN-OF ( n -- n ) {: row:n :}
    SD-R-F-N @ 0 ?do
@@ -493,25 +496,25 @@ variable SD-X-N
 \ R, of ROW's tail, counts for a qualified spelling under ROW's key spelled:
 \ part A:B and top-level B count under one key B.
 : SD-R-AFFECTS? ( n n -- bool ) {: row:n r:n :}
-   row SD-R-KEY$ {: pkg:^ pkgu:n tail:^ tailu:n :}
-   pkgu 0= if true exit then
-   r SD-R-NAME$ {: name:^ nameu:n :}
-   name nameu SD-QCOLON {: col:n :}
-   col 0 >= if name col pkg pkgu STR:=CI exit then
-   r SD-R-PKG$ pkg pkgu STR:=CI ;
+   row SD-R-KEY$ {: pkg:str tail:str :}
+   pkg STR:LEN 0= if true exit then
+   r SD-R-NAME$ {: name:str :}
+   name SD-QCOLON {: col:n :}
+   col 0 >= if name STR:DATA col >str pkg STR:=CI exit then
+   r SD-R-PKG$ pkg STR:=CI ;
 
 \ Two packages share a bare scope when either is global, they are one package,
 \ or one is the other's outer; two parts of one package share none.
 : SD-SHARE? ( str str str str -- bool )
-   {: ao:^ aou:n an:^ anu:n bo:^ bou:n bn:^ bnu:n :}
-   anu 0= bnu 0= or if true exit then
-   an anu bn bnu STR:=CI ao aou bo bou STR:=CI and if true exit then
-   aou 0= bo bou an anu STR:=CI and if true exit then
-   bou 0= ao aou bn bnu STR:=CI and ;
+   {: ao:str an:str bo:str bn:str :}
+   an STR:LEN 0= bn STR:LEN 0= or if true exit then
+   an bn STR:=CI ao bo STR:=CI and if true exit then
+   ao STR:LEN 0= bo an STR:=CI and if true exit then
+   bo STR:LEN 0= ao bn STR:=CI and ;
 
-: SD-R-SHARES-ID? ( str str n -- bool ) {: o:^ ou:n p:^ pu:n r:n :}
+: SD-R-SHARES-ID? ( str str n -- bool ) {: o:str p:str r:n :}
    r SD-R-IDS 0 ?do
-      o ou p pu r i SD-R-ID SD-SHARE? if true unloop exit then
+      o p r i SD-R-ID SD-SHARE? if true unloop exit then
    loop
    false ;
 
@@ -525,14 +528,14 @@ variable SD-X-N
 \ Whether ROW's tail admits a qualified and a bare spelling (SD-R-USE-OK?): one
 \ declaration and no retirement of it count for each. A retirement weighs two.
 : SD-R-USABLE? ( n -- bool bool ) {: row:n :}
-   row SD-R-NAME$ SD-TAIL$ {: tail:^ tailu:n :}
+   row SD-R-NAME$ SD-TAIL$ {: tail:str :}
    0 0
    SD-R-N @ 0 ?do
       i SD-R-KIND @ {: kind:n :}
       kind SD-R-DECL = if 1 else kind SD-R-RETIRE = if 2 else 0 then then
       {: w:n :}
       w 0<> i SD-R-ACTIVE @ 0<> and if
-         i SD-R-NAME$ SD-TAIL$ tail tailu STR:=CI if
+         i SD-R-NAME$ SD-TAIL$ tail STR:=CI if
             row i SD-R-AFFECTS? if swap w + swap then
             row i SD-R-SHARES? if w + then
          then
@@ -545,11 +548,11 @@ variable SD-X-N
 \ package: a row before that binds another word.
 : SD-R-SEEN? ( n n -- bool ) {: row:n off:n :}
    row SD-R-FILE @ SD-FILE-ID @ <> row SD-R-OFF @ off >= or if false exit then
-   row SD-R-NAME$ SD-TAIL$ {: tail:^ tailu:n :}
+   row SD-R-NAME$ SD-TAIL$ {: tail:str :}
    row SD-R-NEXT @
    begin dup 0 >= while
       {: r:n :}
-      r SD-R-KIND @ SD-R-DECL = r SD-R-NAME$ SD-TAIL$ tail tailu STR:=CI and
+      r SD-R-KIND @ SD-R-DECL = r SD-R-NAME$ SD-TAIL$ tail STR:=CI and
       row r SD-R-AFFECTS? and if true exit then
       r SD-R-NEXT @
    repeat drop false ;
@@ -559,7 +562,7 @@ variable SD-X-N
 : SD-R-USE-OK? ( n n n -- bool ) {: off:n len:n row:n :}
    row SD-R-DISABLED @ 0= {: on:bool :}
    off len SD-TOK$ SD-QCOLON 0 >= if on exit then
-   row SD-R-KEY$ 2drop nip 0= if
+   row SD-R-KEY$ drop STR:LEN 0= if
       on 0= if false exit then
       row SD-R-BARE-OFF @ 0= if true exit then
    else
@@ -569,11 +572,11 @@ variable SD-X-N
    SD-SHADOW-STOP ;
 
 : SD-R-FROZEN-FIND ( n n -- n ) {: off:n len:n :}
-   off len SD-TOK$ {: a:^ u:n :}
+   off len SD-TOK$ {: s:str :}
    -1
    SD-R-F-LOOKUP-N @ 0 ?do
       i SD-R-FROZEN @ {: row:n :}
-      a u row SD-R-KEY-MATCH? if
+      s row SD-R-KEY-MATCH? if
          dup 0 < if drop row else
             row over SD-R-BEFORE? if drop row then
          then
@@ -586,11 +589,11 @@ variable SD-X-N
 
 : SD-R-FIND ( n n -- n ) {: off:n len:n :}
    SD-HARVESTING @ SD-R-PASS @ and 0<> if off len SD-R-FROZEN-FIND exit then
-   off len SD-TOK$ {: a:^ u:n :}
+   off len SD-TOK$ {: s:str :}
    -1
    SD-R-ROWS-N @ 0 ?do
       i SD-R-ROWS @ {: row:n :}
-      row SD-R-ACTIVE @ 0<> a u row SD-R-KEY-MATCH? and if
+      row SD-R-ACTIVE @ 0<> s row SD-R-KEY-MATCH? and if
          dup 0 < if drop row else
             row over SD-R-BEFORE? if drop row then
          then
@@ -667,7 +670,7 @@ variable SD-X-N
    repeat ;
 
 : SD-R-TERM-MATCH? ( n n n n -- bool ) {: off:n len:n start:n stop:n :}
-   off len SD-TOK$ start SD-R-BYTES stop start - STR:= ;
+   off len SD-TOK$ start SD-R-BYTES stop start - >str STR:= ;
 
 : SD-R-TERM? ( n n n -- bool ) {: off:n len:n row:n :}
    row SD-R-TERMS @
@@ -799,17 +802,19 @@ variable SD-TERM-END
    0 ;
 
 \ One byte more than the path, so an empty one still has a byte 0.
-: SD-PATH-FILL ( str -- ) {: a:^ u:n :}
-   a SD-PATH-SRC !
-   u 1+ SD-PATH-RESERVE
-   a 0 SD-PATH u BYTE-COPY
-   u SD-PATH-U ! ;
+: SD-PATH-FILL ( str -- ) {: s:str :}
+   s STR:DATA SD-PATH-SRC !
+   s STR:LEN 1+ SD-PATH-RESERVE
+   s STR:DATA 0 SD-PATH s STR:LEN BYTE-COPY
+   s STR:LEN SD-PATH-U ! ;
 
-\ Fills the path from a u, the payload of the literal SD-PATH-AT and
-\ SD-PATH-SPAN place or its decode, and records a u, which the loader is given, as that literal's copy.
+\ Fills the path from the string, the payload of the literal SD-PATH-AT and
+\ SD-PATH-SPAN place or its decode, and records the string, which the loader
+\ is given, as that literal's copy.
 : SD-LITERAL-FILL ( str -- )
    SD-PATH-FILL
-   SD-PATH-SRC @ SD-PATH-U @  SD-PATH-AT @ SD-BUF +  SD-PATH-SPAN @  SRCLOC:LITERAL! ;
+   SD-PATH-SRC @ SD-PATH-U @ >str
+   SD-PATH-AT @ SD-BUF +  SD-PATH-SPAN @ >str  SRCLOC:LITERAL! ;
 
 \ Room for an escaped literal's decode: as many bytes as its payload, since a
 \ decode is never longer than its spelling.
@@ -823,12 +828,12 @@ DYNAMIC-BUFFER SD-DEC u8
 
 \ An escaped literal's path is what the engine's literal makes of its payload,
 \ the payload decoded by the engine's escape table, unless an escape is bad.
-: SD-DECODE-PATH ( str -- ) {: a:^ u:n :}
-   u 1+ SD-DEC-RESERVE
+: SD-DECODE-PATH ( str -- ) {: s:str :}
+   s STR:LEN 1+ SD-DEC-RESERVE
    0 SD-DEC {: dst:^ :}
-   a u dst ESCAPE:DECODE {: k:n ok:bool :}
+   s dst ESCAPE:DECODE {: k:n ok:bool :}
    ok 0= if SD-REFUSED-LITERAL exit then
-   dst k SD-LITERAL-FILL ;
+   dst k >str SD-LITERAL-FILL ;
 
 \ The literal whose opener SD-I stands after: SD-I steps past its closing quote.
 : SD-SCAN-STRING ( bool -- ) {: escaped:bool :}
@@ -838,7 +843,7 @@ DYNAMIC-BUFFER SD-DEC u8
    begin SD-I @ SD-AT? while
       SD-I @ SD-BYTE SD-DQUOTE = if
          SD-I @ start - SD-PATH-SPAN !
-         start SD-BUF +  SD-PATH-SPAN @
+         start SD-BUF +  SD-PATH-SPAN @ >str
          SD-I @ 1+ SD-I !
          escaped if SD-DECODE-PATH else SD-LITERAL-FILL then
          exit
@@ -849,33 +854,33 @@ DYNAMIC-BUFFER SD-DEC u8
    SD-UNTERM-STOP ;
 
 : SD-LOADER-KIND ( n n -- n )
-   SD-TOK$ {: a:^ u:n :}
-   a u s" included" STR:=CI if SD-K-INCLUDED exit then
-   a u s" required" STR:=CI if SD-K-REQUIRED exit then
-   a u s" provided" STR:=CI if SD-K-PROVIDED exit then
+   SD-TOK$ {: s:str :}
+   s s" included" STR:=CI if SD-K-INCLUDED exit then
+   s s" required" STR:=CI if SD-K-REQUIRED exit then
+   s s" provided" STR:=CI if SD-K-PROVIDED exit then
    0 ;
 
-: SD-NAME-BIT ( str -- n ) {: a:^ u:n :}
-   a u s" include" STR:=CI if $01 exit then
-   a u s" included" STR:=CI if $02 exit then
-   a u s" require" STR:=CI if $04 exit then
-   a u s" required" STR:=CI if $08 exit then
-   a u s" provided" STR:=CI if $10 exit then
-   a u s" structure" STR:=CI if $20 exit then
-   a u s" enum" STR:=CI if $40 exit then
-   a u s" sumtype" STR:=CI if $80 exit then
-   a u s" mutual" STR:=CI if $100 exit then
+: SD-NAME-BIT ( str -- n ) {: s:str :}
+   s s" include" STR:=CI if $01 exit then
+   s s" included" STR:=CI if $02 exit then
+   s s" require" STR:=CI if $04 exit then
+   s s" required" STR:=CI if $08 exit then
+   s s" provided" STR:=CI if $10 exit then
+   s s" structure" STR:=CI if $20 exit then
+   s s" enum" STR:=CI if $40 exit then
+   s s" sumtype" STR:=CI if $80 exit then
+   s s" mutual" STR:=CI if $100 exit then
    0 ;
 
 \ A definition or retirement of a loader or family name refuses nothing, but
 \ a later use with that spelling is ambiguous (SD-CHECK-USE).
 : SD-SHADOW ( str -- )
-   SD-TAIL$ {: a:^ u:n :}
-   a u SD-NAME-BIT SD-SHADOWED @ or SD-SHADOWED ! ;
+   SD-TAIL$ {: s:str :}
+   s SD-NAME-BIT SD-SHADOWED @ or SD-SHADOWED ! ;
 
 : SD-RETIRE ( str -- )
-   SD-TAIL$ {: a:^ u:n :}
-   a u SD-NAME-BIT SD-RETIRED @ or SD-RETIRED ! ;
+   SD-TAIL$ {: s:str :}
+   s SD-NAME-BIT SD-RETIRED @ or SD-RETIRED ! ;
 
 : SD-CHECK-USE ( n n -- ) {: off:n len:n :}
    off len SD-TOK$ SD-NAME-BIT {: bit:n :}
@@ -886,20 +891,20 @@ DYNAMIC-BUFFER SD-DEC u8
 \ bytes; the record names the loader word at off len as written.
 : SD-CALL-ACT ( n n n -- )
    {: off:n len:n kind:n :}
-   off len SD-TOK$ {: w:^ wu:n :}
-   SD-PATH-SRC @ SD-PATH-U @ {: a:^ u:n :}
-   kind SD-K-INCLUDED = if w wu a u INCLUDED-AS exit then
-   kind SD-K-REQUIRED = if w wu a u REQUIRED-AS exit then
-   a u provided ;
+   off len SD-TOK$ {: w:str :}
+   SD-PATH-SRC @ SD-PATH-U @ >str {: p:str :}
+   kind SD-K-INCLUDED = if w p INCLUDED-AS exit then
+   kind SD-K-REQUIRED = if w p REQUIRED-AS exit then
+   p provided ;
 
 \ The loader word at off len, read last as on the native path, takes the path
 \ in SD-PATH-SRC. A path the loader rejects is out with its record.
 : SD-CALL-LOADER ( n n n -- )
    {: off:n len:n kind:n :}
    SRCLOC:TOKEN$ {: oa:^ ou:n :}
-   off len SD-TOK$ SRCLOC:TOKEN!
+   off len SD-TOK$ str> SRCLOC:TOKEN!
    [: off len kind SD-CALL-ACT ;] [: oa ou SRCLOC:TOKEN! ;] finally
-   NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL! ;   \ a literal's record lasts one loader call
+   NULL-PTR 0 >str NULL-PTR 0 >str SRCLOC:LITERAL! ;   \ a literal's record lasts one loader call
 
 \ Whether the loader can take the path SD-PATH$ when a body calls it: false,
 \ with nothing written, for one that is empty, holds a NUL byte or resolves
@@ -907,7 +912,7 @@ DYNAMIC-BUFFER SD-DEC u8
 : SD-BODY-PATH? ( -- bool )
    SD-PATH$ LOADER:PATH-FAULT drop 0<> if false exit then
    SD-PATH$ [: SOURCE-ROOT:RESOLVE ;] catch {: rc:n :}
-   drop 2drop
+   drop drop
    rc 0= if true exit then
    rc E-PATH-RANGE <> if rc throw then
    false ;
@@ -1023,11 +1028,11 @@ DYNAMIC-BUFFER SD-DEC u8
 \ These type definers consume a declaration through its matching closer. Its names
 \ are operands, not calls or definitions, and may spell a closer or a loader word.
 : SD-FAMILY-KIND ( n n -- n )
-   SD-TOK$ {: a:^ u:n :}
-   a u s" structure" STR:=CI if 1 exit then
-   a u s" enum" STR:=CI if 2 exit then
-   a u s" sumtype" STR:=CI if 3 exit then
-   a u s" mutual" STR:=CI if 4 exit then
+   SD-TOK$ {: s:str :}
+   s s" structure" STR:=CI if 1 exit then
+   s s" enum" STR:=CI if 2 exit then
+   s s" sumtype" STR:=CI if 3 exit then
+   s s" mutual" STR:=CI if 4 exit then
    0 ;
 
 : SD-SECTION? ( n n -- bool ) {: off:n len:n :}
@@ -1201,9 +1206,9 @@ DYNAMIC-BUFFER SD-DEC u8
       off len SD-STEP
    again ;
 
-: SD-READ-ENTRY ( str -- ) {: pa:^ pu:n :}
-   pa pu  pa pu FS:FILE-SIZE  [: SD-ROOM ;] READ-WHOLE-SAMPLED SD-U !
-   SD-STORAGE @ SPAN:$ drop SD-A ! ;
+: SD-READ-ENTRY ( str -- ) {: ps:str :}
+   ps  ps FS:FILE-SIZE  [: SD-ROOM ;] READ-WHOLE-SAMPLED SD-U !
+   SD-STORAGE @ SPAN:$ STR:DATA SD-A ! ;
 
 : SD-KIND-NAME ( n -- str ) {: kind:n :}
    kind SOURCE-EVENT:KIND-INCLUDED = if s" included" exit then
@@ -1219,14 +1224,14 @@ DYNAMIC-BUFFER SD-DEC u8
    SD-LF dst cap lenp SOURCE-APPEND-C ;
 
 : SD-WALK-IN ( -- )
-   SD-ROOT SD-ROOT-U @ [: SD-WALK ;] WITH ;
+   SD-ROOT SD-ROOT-U @ >str [: SD-WALK ;] WITH ;
 
-: SELECT-ENTRY ( str str -- ) {: pa:^ pu:n root:^ rootu:n :}
+: SELECT-ENTRY ( str str -- ) {: ps:str root:str :}
    0 VERIFY:DISCOVERY-STOPPED !
-   pu SD-PATH-CAP > if pa pu SD-PATH-STOP then
-   rootu SD-PATH-CAP > if root rootu SD-PATH-STOP then
-   pa SD-ENTRY pu BYTE-COPY pu SD-ENTRY-U !
-   root SD-ROOT rootu BYTE-COPY rootu SD-ROOT-U ! ;
+   ps STR:LEN SD-PATH-CAP > if ps SD-PATH-STOP then
+   root STR:LEN SD-PATH-CAP > if root SD-PATH-STOP then
+   ps STR:DATA SD-ENTRY ps STR:LEN BYTE-COPY ps STR:LEN SD-ENTRY-U !
+   root STR:DATA SD-ROOT root STR:LEN BYTE-COPY root STR:LEN SD-ROOT-U ! ;
 
 : RUN-SELECTED ( -- )
    SD-C-PKG @ SD-C-OUTER @ SD-C-GLOBAL @ {: pkg:n outer:n top:n :}
@@ -1234,10 +1239,12 @@ DYNAMIC-BUFFER SD-DEC u8
       SD-FILE-OF SD-FILE-ID ! SD-R-BEGIN
       -1 SD-C-PKG ! -1 SD-C-OUTER ! 0 SD-C-GLOBAL !
    else
-      SD-ENTRY SD-ENTRY-U @ SD-FILE-FIND SD-FILE-ID !
+      SD-ENTRY SD-ENTRY-U @ >str SD-FILE-FIND SD-FILE-ID !
    then
    REQUIRE-REG:SNAPSHOT
-   SD-LOADING-U @ 0<> if SD-LOADING SD-LOADING-U @ REQUIRE-REG:STORE 2drop then
+   SD-LOADING-U @ 0<> if
+      SD-LOADING SD-LOADING-U @ >str REQUIRE-REG:STORE drop
+   then
    SOURCE-EVENT:RESET SOURCE-EVENT:ON SOURCE-EVENT:DISCOVERY-ON
    [: SD-WALK-IN ;] catch {: rc:n :}
    pkg SD-C-PKG ! outer SD-C-OUTER ! top SD-C-GLOBAL !
@@ -1302,29 +1309,29 @@ public
 \ a fallback root finds. It lasts until the next LOADING!; an empty PATH sets
 \ none.
 : LOADING! ( str -- )
-   {: a:^ u:n :}
-   u SD-PATH-CAP > if a u SD-PATH-STOP then
-   a SD-LOADING u BYTE-COPY
-   u SD-LOADING-U ! ;
+   {: s:str :}
+   s STR:LEN SD-PATH-CAP > if s SD-PATH-STOP then
+   s STR:DATA SD-LOADING s STR:LEN BYTE-COPY
+   s STR:LEN SD-LOADING-U ! ;
 
 \ READ-IN reads PATH under ROOT and throws the read's code with no prose, for
 \ a caller that reports a member it cannot read itself; RUN-READ walks what it read.
 : READ-IN ( str str -- )
    SELECT-ENTRY
-   SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY ;
+   SD-ENTRY SD-ENTRY-U @ >str SD-READ-ENTRY ;
 
 : RUN-READ ( -- )
    RUN-SELECTED ;
 
 : RUN-BYTES ( str str str -- )
-   {: pa:^ pu:n root:^ rootu:n bytes:^ size:n :}
-   pa pu root rootu SELECT-ENTRY
-   bytes SD-A ! size SD-U !
+   {: ps:str root:str bytes:str :}
+   ps root SELECT-ENTRY
+   bytes STR:DATA SD-A ! bytes STR:LEN SD-U !
    RUN-SELECTED ;
 
 \ The bytes the last run read.
 : BYTES$ ( -- str )
-   SD-BUF SD-U @ ;
+   SD-BUF SD-U @ >str ;
 
 : EMIT ( ^u8 n -- n ) {: dst:^ cap:n :}
    0 >LEN SD-EMIT-LEN !

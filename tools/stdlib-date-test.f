@@ -1,4 +1,3 @@
-split-str
 \ stdlib-date-test.f - focused tests for src/lib/date.f on src/lib/test.f's assert
 \ words: the test shares one dictionary with the loaded framework, so a private
 \ T= here is a duplicate definition.
@@ -22,16 +21,16 @@ TASK:SEMAPHORE DATE-START
 20000 constant DATE-ROUNDS
 
 : DATE-ROUND ( n n n n str n str ^u8 -- bool )
-   {: y:n m:n d:n days:n datea:^ dateu:n seconds:n timea:^ timeu:n buf:^ :}
+   {: y:n m:n d:n days:n dates:str seconds:n times:str buf:^ :}
    y m d DATE:YMD>DAYS days <> if 0 0= 0= exit then
    days DATE:DAYS>YMD {: goty:n gotm:n gotd:n :}
    goty y <> gotm m <> or gotd d <> or if 0 0= 0= exit then
-   datea dateu DATE:PARSE-YMD MATCH option
+   dates DATE:PARSE-YMD MATCH option
      none OF 0 0= 0= exit ENDOF
      some OF days <> if 0 0= 0= exit then ENDOF
    ;MATCH
-   days buf DATE-TEST-BUF-LEN DATE:FORMAT-YMD datea dateu STR:= 0= if 0 0= 0= exit then
-   seconds buf DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC timea timeu STR:= ;
+   days buf DATE-TEST-BUF-LEN DATE:FORMAT-YMD dates STR:= 0= if 0 0= 0= exit then
+   seconds buf DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC times STR:= ;
 
 : DATE-WORK-A ( -- )
    DATE-READY TASK:SIGNAL-SEM
@@ -73,8 +72,9 @@ TASK:SEMAPHORE DATE-START
    DATE-START TASK:SEMAPHORE-DESTROY
    DATE-READY TASK:SEMAPHORE-DESTROY ;
 
-: DATE-PARSE= {: a:^ u:n days:n :} ( ^u8 n n -- )
-   a u DATE:PARSE-YMD MATCH option
+: DATE-PARSE= ( str n -- )
+   {: s:str days:n :}
+   s DATE:PARSE-YMD MATCH option
      none OF 0 0= 0= TTRUE ENDOF                      \ an unexpected NONE fails
      some OF days T= ENDOF
    ;MATCH ;
@@ -85,16 +85,18 @@ TASK:SEMAPHORE DATE-START
      some OF drop 0 0= 0= TTRUE ENDOF                 \ an unexpected SOME fails
    ;MATCH ;
 
-: DATE-FORMAT= {: days:n a:^ u:n :} ( n ^u8 n -- )
+: DATE-FORMAT= ( n str -- )
+   {: days:n s:str :}
    days DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-YMD
-   a u T$= ;
+   s T$= ;
 
-: DATE-TIMESTAMP= {: seconds:n a:^ u:n :} ( n ^u8 n -- )
+: DATE-TIMESTAMP= ( n str -- )
+   {: seconds:n s:str :}
    seconds DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC
-   a u T$= ;
+   s T$= ;
 
 : DATE-N-BAD ( -- )
-   s" 98x6" drop 0 4 DATE:N MATCH option
+   s" 98x6" STR:DATA 0 4 DATE:N MATCH option
      none OF -1 ENDOF
      some OF drop 0 ENDOF
    ;MATCH  -1 T= ;
@@ -103,8 +105,8 @@ TASK:SEMAPHORE DATE-START
    6 1 DATE:YMD>DAYS DATE:SECONDS-DAY * ;
 
 : DATE-HTTP-AT= ( str n n -- )
-   {: a:^ u:n now:n want:n :}
-   a u now DATE:PARSE-HTTP MATCH option
+   {: s:str now:n want:n :}
+   s now DATE:PARSE-HTTP MATCH option
      none OF false TTRUE ENDOF                        \ an unexpected NONE fails
      some OF want T= ENDOF
    ;MATCH ;
@@ -148,7 +150,7 @@ s" 2026/06/16" DATE-PARSE-BAD
 2932896 s" 9999-12-31" DATE-FORMAT=
 -719468 s" 0000-03-01" DATE-FORMAT=
 253402300799 s" 9999-12-31T23:59:59Z" DATE-TIMESTAMP=
-: DATE-YMD-AT ( n -- ) DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-YMD 2drop ;
+: DATE-YMD-AT ( n -- ) DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-YMD drop ;
 : DATE-YMD-PAST-9999 ( -- ) 2932897 DATE-YMD-AT ;
 : DATE-YMD-FAR ( -- ) 3000000 DATE-YMD-AT ;
 : DATE-YMD-FAR-BACK ( -- ) -1000000 DATE-YMD-AT ;
@@ -162,13 +164,13 @@ s" 0000-02-29" -719469 DATE-PARSE=
 -719528 s" 0000-01-01" DATE-FORMAT=
 -719469 s" 0000-02-29" DATE-FORMAT=
 : DATE-YMD-BEFORE-0 ( -- ) -719529 DATE-YMD-AT ;
-: DATE-EPOCH-PAST-9999 ( -- ) 253402300800 DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC 2drop ;
+: DATE-EPOCH-PAST-9999 ( -- ) 253402300800 DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC drop ;
 ' DATE-YMD-BEFORE-0 catch E-TIME-RANGE T=
 ' DATE-EPOCH-PAST-9999 catch E-TIME-RANGE T=
 
-: DATE-YMD-SHORT ( -- ) 0 DATE-TEST-BUF DATE:LEN 1- DATE:FORMAT-YMD 2drop ;
-: DATE-EPOCH-NEG ( -- ) -1 DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC 2drop ;
-: DATE-EPOCH-SHORT ( -- ) 0 DATE-TEST-BUF DATE:TIME-LEN 1- DATE:FORMAT-EPOCH-UTC 2drop ;
+: DATE-YMD-SHORT ( -- ) 0 DATE-TEST-BUF DATE:LEN 1- DATE:FORMAT-YMD drop ;
+: DATE-EPOCH-NEG ( -- ) -1 DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC drop ;
+: DATE-EPOCH-SHORT ( -- ) 0 DATE-TEST-BUF DATE:TIME-LEN 1- DATE:FORMAT-EPOCH-UTC drop ;
 ' DATE-YMD-SHORT catch E-TIME-CAPACITY T=
 ' DATE-EPOCH-NEG catch E-TIME-RANGE T=
 ' DATE-EPOCH-SHORT catch E-TIME-CAPACITY T=

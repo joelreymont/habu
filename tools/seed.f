@@ -1,4 +1,3 @@
-split-str
 \ seed.f - checked native seed installation helpers: validate against
 \ HABU_SEED_SHA256 when set, install it as bin/hb, smoke it, then rebuild
 \ bin/hb from current source with `tools/hb-build.f -- --engine -o bin/hb`.
@@ -45,9 +44,9 @@ variable SEED-LAST
 : SEED-RC0 ( n -- )
    0 <> if E-BUILD-STATUS throw then ;
 
-: SEED-EXPECT-FILE ( str -- ) {: a:^ u :}
-   u 0 <= if E-BUILD-PATH throw then
-   a u FS:FILE? 0= if E-BUILD-PATH throw then ;
+: SEED-EXPECT-FILE ( str -- ) {: s:str :}
+   s STR:LEN 0 <= if E-BUILD-PATH throw then
+   s FS:FILE? 0= if E-BUILD-PATH throw then ;
 
 : SEED-HEX-DIGIT? ( n -- bool ) {: c :}
    c 48 >= c 57 <= and if SEED-TRUE exit then
@@ -55,10 +54,10 @@ variable SEED-LAST
    c 65 >= c 70 <= and if SEED-TRUE exit then
    SEED-FALSE ;
 
-: SEED-HEX64? ( str -- bool ) {: a:^ u :}
-   u SEED-SHA256-HEX-U <> if SEED-FALSE exit then
-   0 begin dup u < while
-      dup a + c@ SEED-HEX-DIGIT? 0= if drop SEED-FALSE exit then
+: SEED-HEX64? ( str -- bool ) {: s:str :}
+   s STR:LEN SEED-SHA256-HEX-U <> if SEED-FALSE exit then
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ SEED-HEX-DIGIT? 0= if drop SEED-FALSE exit then
       1+
    repeat drop
    SEED-TRUE ;
@@ -67,11 +66,11 @@ variable SEED-LAST
    c 65 >= c 70 <= and if c 32 + exit then
    c ;
 
-: SEED-HEX= ( str str -- bool ) {: a:^ u b:^ v :}
-   u v <> if SEED-FALSE exit then
-   0 begin dup u < while
-      dup a + c@ SEED-LOWER-HEX
-      over b + c@ SEED-LOWER-HEX <> if drop SEED-FALSE exit then
+: SEED-HEX= ( str str -- bool ) {: a:str b:str :}
+   a STR:LEN b STR:LEN <> if SEED-FALSE exit then
+   0 begin dup a STR:LEN < while
+      dup a STR:DATA + c@ SEED-LOWER-HEX
+      over b STR:DATA + c@ SEED-LOWER-HEX <> if drop SEED-FALSE exit then
       1+
    repeat drop
    SEED-TRUE ;
@@ -81,74 +80,75 @@ variable SEED-LAST
    SHA-E-OPEN = if E-BUILD-PATH throw then
    E-FS-IO throw ;
 
-: SEED-VERIFY-SHA256 ( str str -- ) {: path:^ pathu expect:^ expectu :}
-   expect expectu SEED-HEX64? 0= if E-BUILD-SOURCE throw then
-   SEED-FSHA-CTX path pathu SEED-SHA-HEX SHA256-FILE-HEX-IN SEED-SHA-RC0
-   SEED-SHA-HEX SEED-SHA256-HEX-U expect expectu SEED-HEX= 0= if
+: SEED-VERIFY-SHA256 ( str str -- ) {: path:str expect:str :}
+   expect SEED-HEX64? 0= if E-BUILD-SOURCE throw then
+   SEED-FSHA-CTX path SEED-SHA-HEX SHA256-FILE-HEX-IN SEED-SHA-RC0
+   SEED-SHA-HEX SEED-SHA256-HEX-U >str expect SEED-HEX= 0= if
       E-BUILD-SOURCE throw
    then ;
 
-: SEED-VERIFY-OPTIONAL-SHA256 ( str -- ) {: path:^ pathu :}
-   s" HABU_SEED_SHA256" GETENV {: expect:^ expectu :}
-   expectu 0= if exit then
-   path pathu expect expectu SEED-VERIFY-SHA256 ;
+: SEED-VERIFY-OPTIONAL-SHA256 ( str -- ) {: path:str :}
+   s" HABU_SEED_SHA256" GETENV {: expect:str :}
+   expect STR:LEN 0= if exit then
+   path expect SEED-VERIFY-SHA256 ;
 
-: SEED-LAST-SLASH ( str -- n ) {: a:^ u :}
+: SEED-LAST-SLASH ( str -- n ) {: s:str :}
    -1 SEED-LAST !
-   0 begin dup u < while
-      dup a + c@ SEED-SLASH = if dup SEED-LAST ! then
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ SEED-SLASH = if dup SEED-LAST ! then
       1+
    repeat drop
    SEED-LAST @ ;
 
-: SEED-MAKE-PARENT-DIRS ( str -- ) {: a:^ u :}
-   a u SEED-LAST-SLASH {: idx :}
-   idx 0 > if a idx FS:MAKE-DIRS then ;
+: SEED-MAKE-PARENT-DIRS ( str -- ) {: s:str :}
+   s SEED-LAST-SLASH {: idx :}
+   idx 0 > if s STR:DATA idx >str FS:MAKE-DIRS then ;
 
 : SEED-FILL ( str str -- str )
-   {: src:^ srcu tmp:^ tmpu :}
-   src srcu tmp tmpu FS:COPY-FILE-STREAM
-   tmp tmpu FS:CHMOD-X
-   src srcu ;
+   {: src:str tmp:str :}
+   src tmp FS:COPY-FILE-STREAM
+   tmp FS:CHMOD-X
+   src ;
 
-: SEED-INSTALL ( str str -- ) {: src:^ srcu dst:^ dstu :}
-   src srcu SEED-EXPECT-FILE
-   dstu 0 <= if E-BUILD-PATH throw then
-   dst dstu SEED-MAKE-PARENT-DIRS
-   src srcu dst dstu [: SEED-FILL ;] FS:REPLACE-STAGED 2drop
-   dst dstu CODESIGN:VERIFY ;
+: SEED-INSTALL ( str str -- ) {: src:str dst:str :}
+   src SEED-EXPECT-FILE
+   dst STR:LEN 0 <= if E-BUILD-PATH throw then
+   dst SEED-MAKE-PARENT-DIRS
+   src dst [: SEED-FILL ;] FS:REPLACE-STAGED drop
+   dst CODESIGN:VERIFY ;
 
-: SEED-SMOKE-OUT-OK? ( str -- bool ) {: a:^ u :}
-   u 4 <> if SEED-FALSE exit then
-   a c@ 52 <> if SEED-FALSE exit then
-   a 1 + c@ 50 <> if SEED-FALSE exit then
-   a 2 + c@ 10 <> if SEED-FALSE exit then
-   a 3 + c@ 10 <> if SEED-FALSE exit then
+: SEED-SMOKE-OUT-OK? ( str -- bool ) {: s:str :}
+   s STR:LEN 4 <> if SEED-FALSE exit then
+   s STR:DATA c@ 52 <> if SEED-FALSE exit then
+   s STR:DATA 1 + c@ 50 <> if SEED-FALSE exit then
+   s STR:DATA 2 + c@ 10 <> if SEED-FALSE exit then
+   s STR:DATA 3 + c@ 10 <> if SEED-FALSE exit then
    SEED-TRUE ;
 
 : SEED-EXPECT-NO-STDERR ( n -- )
    0 <> if E-BUILD-STATUS throw then ;
 
 : SEED-OUT ( str -- )
-   dup 0 <= if 2drop exit then
-   1 -rot write drop ;
+   dup STR:LEN 0 <= if drop exit then
+   1 swap write drop ;
 
 : SEED-ERR ( str -- )
-   dup 0 <= if 2drop exit then
-   2 -rot write drop ;
+   dup STR:LEN 0 <= if drop exit then
+   2 swap write drop ;
 
 : SEED-REPLAY-BUILD-OUTPUT ( n n -- ) {: outu erru :}
-   SEED-BUILD-OUT outu SEED-OUT
-   SEED-BUILD-ERR erru SEED-ERR ;
+   SEED-BUILD-OUT outu >str SEED-OUT
+   SEED-BUILD-ERR erru >str SEED-ERR ;
 
 : SEED-SMOKE-CHECK ( len len rc -- ) {: outu:len erru:len rc:rc :}
    rc RC>N SEED-RC0
    erru LEN>N SEED-EXPECT-NO-STDERR
-   SEED-SMOKE-OUT outu LEN>N SEED-SMOKE-OUT-OK? 0= if E-BUILD-STATUS throw then ;
+   SEED-SMOKE-OUT outu LEN>N >str
+   SEED-SMOKE-OUT-OK? 0= if E-BUILD-STATUS throw then ;
 
-: SEED-SMOKE ( str -- ) {: hb:^ hbu :}
+: SEED-SMOKE ( str -- ) {: hb:str :}
    PROC-ARGV-RESET
-   hb hbu SEED-SMOKE-IN SEED-SMOKE-IN-U
+   hb SEED-SMOKE-IN SEED-SMOKE-IN-U >str
    SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP >LEN
    SEED-SMOKE-ERR SEED-SMOKE-ERR-CAP >LEN
    SEED-SMOKE-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE MATCH result
@@ -168,9 +168,9 @@ variable SEED-LAST
    s" -o"  PROC-ARGV+
    s" bin/hb"  PROC-ARGV+ ;
 
-: SEED-RUN-BUILD ( str -- ) {: hb:^ hbu :}
+: SEED-RUN-BUILD ( str -- ) {: hb:str :}
    SEED-PREPARE-BUILD-ARGV
-   hb hbu
+   hb
    SEED-BUILD-OUT SEED-BUILD-OUT-CAP >LEN
    SEED-BUILD-ERR SEED-BUILD-ERR-CAP >LEN
    SEED-BUILD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE MATCH result
@@ -178,21 +178,21 @@ variable SEED-LAST
      err OF PCAP-FAILED:UNMAKE  drop {: outu:len erru:len :}
              outu LEN>N erru LEN>N SEED-REPLAY-BUILD-OUTPUT
              s" seed: hb-build failed" SEED-ERR
-             SEED-LF 1 SEED-ERR
+             SEED-LF 1 >str SEED-ERR
              E-BUILD-STATUS throw ENDOF
    ;MATCH ;
 
-: SEED-INSTALL-SMOKE-BUILD ( str str -- ) {: src:^ srcu dst:^ dstu :}
-   src srcu SEED-VERIFY-OPTIONAL-SHA256
-   src srcu dst dstu SEED-INSTALL
-   dst dstu SEED-SMOKE
-   dst dstu SEED-RUN-BUILD ;
+: SEED-INSTALL-SMOKE-BUILD ( str str -- ) {: src:str dst:str :}
+   src SEED-VERIFY-OPTIONAL-SHA256
+   src dst SEED-INSTALL
+   dst SEED-SMOKE
+   dst SEED-RUN-BUILD ;
 
 : SEED-USAGE ( -- )
    s" usage: hb --load tools/seed-main.f -- /path/to/hb-seed" EXIT-STATUS:USAGE die ;
 
 : SEED-MAIN ( -- )
    SCRIPT-ARGC 1 <> if SEED-USAGE then
-   0 SCRIPT-ARGV$ 2dup FS:FILE? 0= if s" seed: not a file" EXIT-STATUS:NOINPUT die then
+   0 SCRIPT-ARGV$ dup FS:FILE? 0= if s" seed: not a file" EXIT-STATUS:NOINPUT die then
    s" bin/hb" SEED-INSTALL-SMOKE-BUILD
    s" seed OK: trusted seed rebuilt current bin/hb" type cr ;

@@ -1,4 +1,3 @@
-split-str
 \ lsp-tokens.f - textDocument/semanticTokens/full: a token over each word an
 \ open document's last completed check bound in it, typed by what the check
 \ states the word is. A word bound to no located declaration (an engine word)
@@ -68,9 +67,9 @@ variable PREV-CHAR                       \ one written last
 \ and highlight select it. A string literal before a call of a word `names:`
 \ states is a use too.
 : USED ( str n -- )
-   {: t:^ tu:n u:n :}
+   {: t:str u:n :}
    u USE-GROUP 0 < if exit then
-   u USE-GROUP u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED MATCH option
+   u USE-GROUP u USE-TARGET t u USE-WORD$ GROUP-REC-NAMED MATCH option
       some OF {: r:n :} u USE-BYTES r REC-CLASS GATHER ENDOF
       none OF ENDOF
    ;MATCH ;
@@ -133,14 +132,14 @@ public
 \ document runs, the list is empty. Positions count in the text from now on.
 : ANSWER ( ^JSON:writer n -- ^JSON:writer )
    {: w slot:n :}
-   slot LSP-DOCS:DOC-TEXT$ {: t:^ tu:n :}
-   t tu LSP-TEXT:TEXT!
+   slot LSP-DOCS:DOC-TEXT$ {: t:str :}
+   t LSP-TEXT:TEXT!
    0 TOKEN-N !
    slot DEFS-OWN-GROUP MATCH option
       some OF DECLARED ENDOF
       none OF ENDOF
    ;MATCH
-   slot DEFS-USE-RANGE ?do t tu i USED loop
+   slot DEFS-USE-RANGE ?do t i USED loop
    SORTED
    0 PREV-LINE !
    0 PREV-CHAR !

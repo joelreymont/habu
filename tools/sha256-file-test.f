@@ -1,4 +1,3 @@
-split-str
 \ sha256-file-test.f - checked fixture coverage for streaming SHA-256 helpers.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \ src/lib/fs-mutate.f tools/sha256-file-test.f
@@ -52,21 +51,21 @@ variable SFT-DEEP-DIR-U
 variable SFT-DEEP-U
 variable SFT-EDGE-U
 
-: SFT-COPY! ( str ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
-   a dst u BYTE-COPY
-   u lenp ! ;
+: SFT-COPY! ( str ^u8 ^n -- ) {: s:str dst:^ lenp:^ :}
+   s STR:DATA dst s STR:LEN BYTE-COPY
+   s STR:LEN lenp ! ;
 
 : SFT-ROOT$ ( -- str )
-   SFT-ROOT SFT-ROOT-U @ ;
+   SFT-ROOT SFT-ROOT-U @ >str ;
 
 : SFT-FILE$ ( -- str )
-   SFT-FILE SFT-FILE-U @ ;
+   SFT-FILE SFT-FILE-U @ >str ;
 
 : SFT-FILE1$ ( -- str )
-   SFT-FILE1 SFT-FILE1-U @ ;
+   SFT-FILE1 SFT-FILE1-U @ >str ;
 
 : SFT-MISSING$ ( -- str )
-   SFT-MISSING SFT-MISSING-U @ ;
+   SFT-MISSING SFT-MISSING-U @ >str ;
 
 : SFT-PREPARE ( -- )
    FS:CLEANUP-RESET
@@ -91,20 +90,20 @@ variable SFT-EDGE-U
       97 SFT-A100 i + c!
    loop ;
 
-: SFT-SHA-HEX= ( str str -- ) {: a:^ u expect:^ eu :}
-   SFT-CTX-ONE a u SFT-DG-A SHA256-IN
+: SFT-SHA-HEX= ( str str -- ) {: s:str expect:str :}
+   SFT-CTX-ONE s SFT-DG-A SHA256-IN
    SFT-DG-A SFT-HEX-A SHA256>HEX
-   SFT-HEX-A 64 expect eu T$= ;
+   SFT-HEX-A 64 >str expect T$= ;
 
 : SFT-TEST-FIPS-HEX ( -- )
-   SFT-BIG 0
+   SFT-BIG 0 >str
    s" e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" SFT-SHA-HEX=
    s" abc"
    s" ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" SFT-SHA-HEX=
    s" abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
    s" 248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1" SFT-SHA-HEX=
    SFT-FILL-A100
-   SFT-A100 100
+   SFT-A100 100 >str
    s" 2816597888e4a0d3a36b82b83316ab32680eb8f00f8cd3b904d681246d285a0e" SFT-SHA-HEX= ;
 
 : SFT-TEST-INCREMENTAL ( -- )
@@ -113,7 +112,7 @@ variable SFT-EDGE-U
    SFT-CTX-A s" bc" SHA256-FEED
    SFT-CTX-A SFT-DG-A SHA256-END
    SFT-CTX-ONE s" abc" SFT-DG-B SHA256-IN
-   SFT-DG-A 32 SFT-DG-B 32 T$= ;
+   SFT-DG-A 32 >str SFT-DG-B 32 >str T$= ;
 
 \ ---- contexts -----------------------------------------------------------------
 \ A digest in progress lives in the caller's span. Every digest is compared
@@ -122,24 +121,26 @@ variable SFT-EDGE-U
 : SFT-DIGEST= ( ^u8 ^u8 -- ) {: got want :}   \ two $20-byte digests, as hex
    got SFT-HEX-A SHA256>HEX
    want SFT-HEX-B SHA256>HEX
-   SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
+   SFT-HEX-A 64 >str SFT-HEX-B 64 >str T$= ;
 
-: SFT-ONE-SHOT= ( ^u8 str -- ) {: got a u:n :}
-   SFT-CTX-ONE a u SFT-DG-E SHA256-IN
+: SFT-ONE-SHOT= ( ^u8 str -- ) {: got s:str :}
+   SFT-CTX-ONE s SFT-DG-E SHA256-IN
    got SFT-DG-E SFT-DIGEST= ;
 
-: SFT-FEED-PIECES ( ^u8 str n -- ) {: ctx a u:n piece:n :}
-   u 0 ?do
-      ctx  a i ZPTR+  u i - piece min  SHA256-FEED
+: SFT-FEED-PIECES ( ^u8 str n -- ) {: ctx s:str piece:n :}
+   s STR:LEN 0 ?do
+      ctx  s STR:DATA i ZPTR+  s STR:LEN i - piece min >str
+      SHA256-FEED
    piece +loop ;
 
 \ One byte to the first context for every $40 to the second, so the two digests
 \ interleave inside each block.
-: SFT-FEED-BOTH ( ^u8 ^u8 str -- ) {: ca cb a u:n :}
-   u 0 ?do
-      ca  a i ZPTR+  1  SHA256-FEED
+: SFT-FEED-BOTH ( ^u8 ^u8 str -- ) {: ca cb s:str :}
+   s STR:LEN 0 ?do
+      ca  s STR:DATA i ZPTR+  1 >str  SHA256-FEED
       i $40 mod 0= if
-         cb  a i ZPTR+  u i - $40 min  SHA256-FEED
+         cb  s STR:DATA i ZPTR+  s STR:LEN i - $40 min >str
+         SHA256-FEED
       then
    loop ;
 
@@ -157,38 +158,38 @@ variable SFT-EDGE-U
    SFT-FILL-BIG
    SFT-CTX-A SHA256-BEGIN
    SFT-CTX-B SHA256-BEGIN
-   SFT-CTX-A SFT-CTX-B SFT-BIG SFT-BIG-LEN SFT-FEED-BOTH
+   SFT-CTX-A SFT-CTX-B SFT-BIG SFT-BIG-LEN >str SFT-FEED-BOTH
    SFT-CTX-B SFT-DG-B SHA256-END
    SFT-CTX-A SFT-DG-A SHA256-END
-   SFT-DG-A SFT-BIG SFT-BIG-LEN SFT-ONE-SHOT=
-   SFT-DG-B SFT-BIG SFT-BIG-LEN SFT-ONE-SHOT= ;
+   SFT-DG-A SFT-BIG SFT-BIG-LEN >str SFT-ONE-SHOT=
+   SFT-DG-B SFT-BIG SFT-BIG-LEN >str SFT-ONE-SHOT= ;
 
 \ R2. A context is a plain span: a copy of its bytes finishes the digest in
 \ progress on its own bytes.
 : SFT-TEST-CONTEXT-COPY ( -- )
    SFT-FILL-BIG
    SFT-CTX-A SHA256-BEGIN
-   SFT-CTX-A SFT-BIG 100 SHA256-FEED
+   SFT-CTX-A SFT-BIG 100 >str SHA256-FEED
    SFT-CTX-A SFT-CTX-C SHA256-CTX-BYTES BYTE-COPY
-   SFT-CTX-A  SFT-BIG 100 ZPTR+  SFT-BIG-LEN 100 -  7 SFT-FEED-PIECES
-   SFT-CTX-C  SFT-BIG 100 ZPTR+  SFT-BIG-LEN 100 -  $40 SFT-FEED-PIECES
+   SFT-CTX-A  SFT-BIG 100 ZPTR+  SFT-BIG-LEN 100 - >str  7 SFT-FEED-PIECES
+   SFT-CTX-C  SFT-BIG 100 ZPTR+  SFT-BIG-LEN 100 - >str  $40 SFT-FEED-PIECES
    SFT-CTX-C SFT-DG-C SHA256-END
    SFT-CTX-A SFT-DG-A SHA256-END
-   SFT-DG-C SFT-BIG SFT-BIG-LEN SFT-ONE-SHOT=
-   SFT-DG-A SFT-BIG SFT-BIG-LEN SFT-ONE-SHOT= ;
+   SFT-DG-C SFT-BIG SFT-BIG-LEN >str SFT-ONE-SHOT=
+   SFT-DG-A SFT-BIG SFT-BIG-LEN >str SFT-ONE-SHOT= ;
 
 TASK:MIN-STACK TASK:TASK SFT-TASK-A
 TASK:MIN-STACK TASK:TASK SFT-TASK-B
 
 : SFT-WORK-A ( -- )
    SFT-CTX-A SHA256-BEGIN
-   SFT-CTX-A SFT-BIG SFT-BIG-LEN 1 SFT-FEED-PIECES
+   SFT-CTX-A SFT-BIG SFT-BIG-LEN >str 1 SFT-FEED-PIECES
    SFT-CTX-A SFT-DG-A SHA256-END
    0 TASK:RETURN ;
 
 : SFT-WORK-B ( -- )
    SFT-CTX-B SHA256-BEGIN
-   SFT-CTX-B SFT-BIG1 SFT-BIG-LEN 1 SFT-FEED-PIECES
+   SFT-CTX-B SFT-BIG1 SFT-BIG-LEN >str 1 SFT-FEED-PIECES
    SFT-CTX-B SFT-DG-B SHA256-END
    0 TASK:RETURN ;
 
@@ -203,8 +204,8 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 : SFT-TEST-TASKS ( -- )
    SFT-FILL-BIG
    SFT-FILL-BIG1
-   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN SFT-DG-C SHA256-IN
-   SFT-CTX-ONE SFT-BIG1 SFT-BIG-LEN SFT-DG-D SHA256-IN
+   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN >str SFT-DG-C SHA256-IN
+   SFT-CTX-ONE SFT-BIG1 SFT-BIG-LEN >str SFT-DG-D SHA256-IN
    SFT-TASK-ROUNDS 0 ?do
       ['] SFT-WORK-A SFT-TASK-A TASK:ACTIVATE
       ['] SFT-WORK-B SFT-TASK-B TASK:ACTIVATE
@@ -215,11 +216,11 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    loop ;
 
 : SFT-S1-WORK-A ( -- )
-   SFT-CTX-S1 SFT-BIG SFT-BIG-LEN SFT-DG-S1 SHA256-IN
+   SFT-CTX-S1 SFT-BIG SFT-BIG-LEN >str SFT-DG-S1 SHA256-IN
    0 TASK:RETURN ;
 
 : SFT-S1-WORK-B ( -- )
-   SFT-CTX-S2 SFT-BIG1 SFT-BIG-LEN SFT-DG-S2 SHA256-IN
+   SFT-CTX-S2 SFT-BIG1 SFT-BIG-LEN >str SFT-DG-S2 SHA256-IN
    0 TASK:RETURN ;
 
 \ S1. Two tasks run whole one-shot digests of different bytes at once, each on
@@ -228,8 +229,8 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 : SFT-TEST-TASKS-ONE-SHOT ( -- )
    SFT-FILL-BIG
    SFT-FILL-BIG1
-   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN SFT-DG-C SHA256-IN
-   SFT-CTX-ONE SFT-BIG1 SFT-BIG-LEN SFT-DG-D SHA256-IN
+   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN >str SFT-DG-C SHA256-IN
+   SFT-CTX-ONE SFT-BIG1 SFT-BIG-LEN >str SFT-DG-D SHA256-IN
    SFT-TASK-ROUNDS 0 ?do
       ['] SFT-S1-WORK-A SFT-TASK-A TASK:ACTIVATE
       ['] SFT-S1-WORK-B SFT-TASK-B TASK:ACTIVATE
@@ -250,18 +251,18 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 : SFT-TEST-HEX ( -- )
    SFT-FILL-NIB
    SFT-NIB SFT-HEX-A SHA256>HEX
-   SFT-HEX-A 64
+   SFT-HEX-A 64 >str
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" T$= ;
 
 : SFT-TEST-FILE ( -- )
    SFT-FILL-BIG
-   SFT-FILE$ SFT-BIG SFT-BIG-LEN FS:WRITE-ALL
-   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN SFT-DG-A SHA256-IN
+   SFT-FILE$ SFT-BIG SFT-BIG-LEN >str FS:WRITE-ALL
+   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN >str SFT-DG-A SHA256-IN
    SFT-FCTX-A SFT-FILE$ SFT-DG-B SHA256-FILE-IN 0 T=
-   SFT-DG-A 32 SFT-DG-B 32 T$=
+   SFT-DG-A 32 >str SFT-DG-B 32 >str T$=
    SFT-DG-A SFT-HEX-A SHA256>HEX
    SFT-FCTX-A SFT-FILE$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
-   SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
+   SFT-HEX-A 64 >str SFT-HEX-B 64 >str T$= ;
 
 : SFT-TEST-MISSING ( -- )
    SFT-FCTX-A SFT-MISSING$ SFT-DG-A SHA256-FILE-IN SHA-E-OPEN T= ;
@@ -271,14 +272,14 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 \ SHA-E-OPEN through the context word as well.
 : SFT-TEST-FILE-CTX ( -- )
    SFT-FILL-BIG
-   SFT-FILE$ SFT-BIG SFT-BIG-LEN FS:WRITE-ALL
+   SFT-FILE$ SFT-BIG SFT-BIG-LEN >str FS:WRITE-ALL
    SFT-FCTX-A SFT-FILE$ SFT-DG-A SHA256-FILE-IN 0 T=
    SFT-FCTX-B SFT-FILE$ SFT-DG-B SHA256-FILE-IN 0 T=
    SFT-DG-A SFT-DG-B SFT-DIGEST=
-   SFT-DG-A SFT-BIG SFT-BIG-LEN SFT-ONE-SHOT=
+   SFT-DG-A SFT-BIG SFT-BIG-LEN >str SFT-ONE-SHOT=
    SFT-FCTX-A SFT-FILE$ SFT-HEX-A SHA256-FILE-HEX-IN 0 T=
    SFT-FCTX-B SFT-FILE$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
-   SFT-HEX-A 64 SFT-HEX-B 64 T$=
+   SFT-HEX-A 64 >str SFT-HEX-B 64 >str T$=
    SFT-FCTX-A SFT-MISSING$ SFT-DG-A SHA256-FILE-IN SHA-E-OPEN T= ;
 
 : SFT-FILE-WORK-A ( -- )
@@ -293,10 +294,10 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 : SFT-TEST-FILE-TASKS ( -- )
    SFT-FILL-BIG
    SFT-FILL-BIG1
-   SFT-FILE$ SFT-BIG SFT-BIG-LEN FS:WRITE-ALL
-   SFT-FILE1$ SFT-BIG1 SFT-BIG-LEN FS:WRITE-ALL
-   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN SFT-DG-C SHA256-IN
-   SFT-CTX-ONE SFT-BIG1 SFT-BIG-LEN SFT-DG-D SHA256-IN
+   SFT-FILE$ SFT-BIG SFT-BIG-LEN >str FS:WRITE-ALL
+   SFT-FILE1$ SFT-BIG1 SFT-BIG-LEN >str FS:WRITE-ALL
+   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN >str SFT-DG-C SHA256-IN
+   SFT-CTX-ONE SFT-BIG1 SFT-BIG-LEN >str SFT-DG-D SHA256-IN
    SFT-TASK-ROUNDS 0 ?do
       ['] SFT-FILE-WORK-A SFT-TASK-A TASK:ACTIVATE
       ['] SFT-FILE-WORK-B SFT-TASK-B TASK:ACTIVATE
@@ -309,48 +310,48 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 \ A path longer than 256 bytes: the digest words take every path src/lib/fs.f
 \ takes. One 230-byte component keeps the name under NAME_MAX.
 : SFT-DEEP$ ( -- str )
-   SFT-DEEP SFT-DEEP-U @ ;
+   SFT-DEEP SFT-DEEP-U @ >str ;
 
 : SFT-TEST-DEEP-PATH ( -- )
    230 0 ?do 100 SFT-DEEP-NAME i + c! loop
-   SFT-ROOT$ SFT-DEEP-NAME 230 SFT-DEEP-DIR FS:JOIN-PATH SFT-DEEP-DIR-U !
-   SFT-DEEP-DIR SFT-DEEP-DIR-U @ FS:MAKE-DIRS
-   SFT-DEEP-DIR SFT-DEEP-DIR-U @ s" deep.bin" SFT-DEEP FS:JOIN-PATH SFT-DEEP-U !
+   SFT-ROOT$ SFT-DEEP-NAME 230 >str SFT-DEEP-DIR FS:JOIN-PATH SFT-DEEP-DIR-U !
+   SFT-DEEP-DIR SFT-DEEP-DIR-U @ >str FS:MAKE-DIRS
+   SFT-DEEP-DIR SFT-DEEP-DIR-U @ >str s" deep.bin" SFT-DEEP FS:JOIN-PATH SFT-DEEP-U !
    SFT-DEEP-U @ 256 > TTRUE
    SFT-FILL-A100
-   SFT-DEEP$ SFT-A100 100 FS:WRITE-ALL
-   SFT-CTX-ONE SFT-A100 100 SFT-DG-A SHA256-IN
+   SFT-DEEP$ SFT-A100 100 >str FS:WRITE-ALL
+   SFT-CTX-ONE SFT-A100 100 >str SFT-DG-A SHA256-IN
    SFT-DG-A SFT-HEX-A SHA256>HEX
    SFT-FCTX-A SFT-DEEP$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
-   SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
+   SFT-HEX-A 64 >str SFT-HEX-B 64 >str T$= ;
 
 \ A path string of exactly PATH-CAP bytes from the physical root, since a
 \ symlink's target also counts against the kernel limit.
 : SFT-EDGE$ ( -- str )
-   SFT-EDGE SFT-EDGE-U @ ;
+   SFT-EDGE SFT-EDGE-U @ >str ;
 
-: SFT-EDGE+ ( str -- ) {: a:^ u :}
-   a SFT-EDGE SFT-EDGE-U @ + u BYTE-COPY
-   SFT-EDGE-U @ u + SFT-EDGE-U ! ;
+: SFT-EDGE+ ( str -- ) {: s:str :}
+   s STR:DATA SFT-EDGE SFT-EDGE-U @ + s STR:LEN BYTE-COPY
+   SFT-EDGE-U @ s STR:LEN + SFT-EDGE-U ! ;
 
 \ `/.` pairs carry the length, so the file is in the root itself; its name of
 \ `e` takes 1 or 2 bytes, so the pairs get an even number of bytes.
 : SFT-EDGE-BUILD ( -- )
-   SFT-ROOT$ SFT-EDGE swap BYTE-COPY SFT-ROOT-U @ SFT-EDGE-U !
+   0 SFT-EDGE-U !  SFT-ROOT$ SFT-EDGE+
    PATH-CAP SFT-EDGE-U @ - 1- {: m:n :}
    2 m 1 and - {: r:n :}
    m r - 2 / 0 ?do s" /." SFT-EDGE+ loop
-   s" /ee" drop r 1+ SFT-EDGE+ ;
+   s" /ee" STR:DATA r 1+ >str SFT-EDGE+ ;
 
 : SFT-TEST-EDGE-PATH ( -- )
    SFT-EDGE-BUILD
    SFT-EDGE-U @ PATH-CAP T=
    SFT-FILL-A100
-   SFT-EDGE$ SFT-A100 100 FS:WRITE-ALL
-   SFT-CTX-ONE SFT-A100 100 SFT-DG-A SHA256-IN
+   SFT-EDGE$ SFT-A100 100 >str FS:WRITE-ALL
+   SFT-CTX-ONE SFT-A100 100 >str SFT-DG-A SHA256-IN
    SFT-DG-A SFT-HEX-A SHA256>HEX
    SFT-FCTX-A SFT-EDGE$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
-   SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
+   SFT-HEX-A 64 >str SFT-HEX-B 64 >str T$= ;
 
 : SFT-MAIN ( -- )
    T-RESET

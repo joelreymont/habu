@@ -1,4 +1,3 @@
-split-str
 \ lsp-workspace.f - the workspace files whose loads reach a file, for the LSP
 \ server. Subjects are the .f files under the ROOT+ folders, outside repository
 \ and tool state, and the open documents. A node is a path and a root: a load
@@ -90,7 +89,7 @@ variable CUR-ROOT                        \ and the root being walked
 
 : POOL$ ( n n -- str )
    {: at:n u:n :}
-   at POOL u ;
+   at POOL u >str ;
 
 : PATH$ ( n -- str )  dup N-PATH NODE@ swap N-PATH-U NODE@ POOL$ ;
 : DIR$ ( n -- str )  dup N-ROOT NODE@ swap N-ROOT-U NODE@ POOL$ ;
@@ -98,16 +97,16 @@ variable CUR-ROOT                        \ and the root being walked
 
 : ROOT-PATH$ ( n -- str )
    {: r:n :}
-   r R-PATH ROOT@ ROOT-BYTES r R-PATH-U ROOT@ ;
+   r R-PATH ROOT@ ROOT-BYTES r R-PATH-U ROOT@ >str ;
 
 \ The bytes appended to POOL: their offset there. They never lie in POOL,
 \ which the append may move.
 : POOL+ ( str -- n )
-   {: a:^ u:n :}
+   {: s:str :}
    POOL-U @ {: at:n :}
-   at u + 1+ POOL-RESERVE
-   a at POOL u BYTE-COPY
-   u POOL-U +!
+   at s STR:LEN + 1+ POOL-RESERVE
+   s STR:DATA at POOL s STR:LEN BYTE-COPY
+   s STR:LEN POOL-U +!
    at ;
 
 \ The name of a code that keeps a file's loads from being found, as
@@ -124,34 +123,34 @@ variable CUR-ROOT                        \ and the root being walked
    s" " false ;
 
 : REFUSE ( str -- )
-   {: a:^ u:n :}
-   u 1+ BLOCK-B-RESERVE
-   a 0 BLOCK-B u BYTE-COPY
-   u BLOCK-U !
+   {: s:str :}
+   s STR:LEN 1+ BLOCK-B-RESERVE
+   s STR:DATA 0 BLOCK-B s STR:LEN BYTE-COPY
+   s STR:LEN BLOCK-U !
    true BLOCKED ! ;
 
 \ ---- the nodes, indexed by path and root ----------------------------------------
 
 : MIX ( n str -- n )
-   {: h:n a:^ u:n :}
-   h a u FNV:BYTES u FNV:STEP ;
+   {: h:n s:str :}
+   h s FNV:BYTES s STR:LEN FNV:STEP ;
 
 : KEY ( str str -- n )
-   {: a:^ u:n r:^ ru:n :}
-   FNV:BASIS a u MIX r ru MIX ;
+   {: s:str r:str :}
+   FNV:BASIS s MIX r MIX ;
 
 : SAME? ( n str str n -- bool )
-   {: id:n a:^ u:n r:^ ru:n h:n :}
+   {: id:n s:str r:str h:n :}
    id N-HASH NODE@ h <> if false exit then
-   id PATH$ a u STR:= id DIR$ r ru STR:= and ;
+   id PATH$ s STR:= id DIR$ r STR:= and ;
 
 \ The slot holding the node of this path, root and hash, else the empty slot
 \ it would take.
 : SLOT ( str str n -- n )
-   {: a:^ u:n r:^ ru:n h:n :}
+   {: s:str r:str h:n :}
    SLOT-CAP @ 1- {: mask:n :}
    h mask and
-   begin dup SLOTS @ dup 0<> if 1- a u r ru h SAME? 0= else drop false then while
+   begin dup SLOTS @ dup 0<> if 1- s r h SAME? 0= else drop false then while
       1+ mask and
    repeat ;
 
@@ -171,17 +170,17 @@ variable CUR-ROOT                        \ and the root being walked
 \ The node of this path under this root, made when there is none. Neither
 \ string lies in POOL.
 : NODE-OF ( str str -- n )
-   {: a:^ u:n r:^ ru:n :}
+   {: p:str r:str :}
    NODE-N @ 1+ 2 * SLOT-CAP @ > if GROW then
-   a u r ru KEY {: h:n :}
-   a u r ru h SLOT {: s:n :}
+   p r KEY {: h:n :}
+   p r h SLOT {: s:n :}
    s SLOTS @ 0<> if s SLOTS @ 1- exit then
    NODE-N @ {: id:n :}
    id 1+ NODE-CELLS * NODES-RESERVE
-   a u POOL+ id N-PATH NODE!
-   u id N-PATH-U NODE!
-   r ru POOL+ id N-ROOT NODE!
-   ru id N-ROOT-U NODE!
+   p POOL+ id N-PATH NODE!
+   p STR:LEN id N-PATH-U NODE!
+   r POOL+ id N-ROOT NODE!
+   r STR:LEN id N-ROOT-U NODE!
    h id N-HASH NODE!
    0 id N-SUBJECT NODE!
    0 id N-REACH NODE!
@@ -203,31 +202,31 @@ variable CUR-ROOT                        \ and the root being walked
 \ The subject at this canonical path, rooted at its directory as the checker
 \ roots a document it checks.
 : SUBJECT ( str -- n )
-   {: a:^ u:n :}
-   a u a u SOURCE-ROOT:DIRNAME NODE-OF {: id:n :}
+   {: s:str :}
+   s s SOURCE-ROOT:DIRNAME NODE-OF {: id:n :}
    1 id N-SUBJECT NODE!
    id ;
 
 : OPEN+ ( str str -- )
-   {: p:^ pu:n t:^ tu:n :}
-   p pu SUBJECT {: id:n :}
+   {: p:str t:str :}
+   p SUBJECT {: id:n :}
    OPEN-N @ {: o:n :}
    o 1+ OPEN-CELLS * OPENS-RESERVE
    id o O-NODE OPEN!
-   t tu POOL+ o O-TEXT OPEN!
-   tu o O-TEXT-U OPEN!
+   t POOL+ o O-TEXT OPEN!
+   t STR:LEN o O-TEXT-U OPEN!
    o 1+ OPEN-N ! ;
 
 : FOUND ( str -- )
-   {: a:^ u:n :}
-   a u s" .f" STR:ENDS-WITH? 0= if exit then
-   a u SOURCE-ROOT:CANONICAL drop SUBJECT drop ;
+   {: s:str :}
+   s s" .f" STR:ENDS-WITH? 0= if exit then
+   s SOURCE-ROOT:CANONICAL drop SUBJECT drop ;
 
 \ Repository and tool state is not workspace source.
 : WALKED? ( str -- bool )
-   FS:BASENAME {: a:^ u:n :}
-   a u s" .jj" STR:= a u s" .jj-ws.noindex" STR:= or a u s" .git" STR:= or
-   a u s" .out" STR:= or a u s" .dots" STR:= or 0= ;
+   FS:BASENAME {: s:str :}
+   s s" .jj" STR:= s s" .jj-ws.noindex" STR:= or s s" .git" STR:= or
+   s s" .out" STR:= or s s" .dots" STR:= or 0= ;
 
 : WALK ( -- )
    CUR-ROOT @ ROOT-PATH$ [: WALKED? ;] [: FOUND ;] FS:WALK-FILES-IF ;
@@ -266,9 +265,9 @@ variable CUR-ROOT                        \ and the root being walked
    loop ;
 
 : NAMED? ( str -- bool )
-   {: a:^ u:n :}
+   {: s:str :}
    BAD-N @ 0 ?do
-      i BAD @ PATH$ a u STR:= if true unloop exit then
+      i BAD @ PATH$ s STR:= if true unloop exit then
    loop
    false ;
 
@@ -293,7 +292,7 @@ variable CUR-ROOT                        \ and the root being walked
    rc EXIT-STATUS:REJECTED =  VERIFY:DISCOVERY-STOPPED @ 0<>  and if
       CUR @ VERIFY:DISCOVERY-STOPPED @ FAULT exit
    then
-   rc FAULT$ nip nip if CUR @ rc FAULT exit then
+   rc FAULT$ nip if CUR @ rc FAULT exit then
    rc throw ;
 
 \ The first open document at the path of node K, -1 for none.
@@ -400,11 +399,13 @@ variable CUR-ROOT                        \ and the root being walked
 public
 
 : PATH< ( str str -- bool )
-   {: a:^ u:n b:^ v:n :}
-   u v min 0 ?do
-      a i + c@ b i + c@ <> if a i + c@ b i + c@ < unloop exit then
+   {: a:str b:str :}
+   a STR:LEN b STR:LEN min 0 ?do
+      a STR:DATA i + c@ b STR:DATA i + c@ <> if
+         a STR:DATA i + c@ b STR:DATA i + c@ < unloop exit
+      then
    loop
-   u v < ;
+   a STR:LEN b STR:LEN < ;
 
 private
 
@@ -442,15 +443,15 @@ private
 public
 
 : ROOT+ ( str -- )
-   SOURCE-ROOT:CANONICAL drop {: a:^ u:n :}
+   SOURCE-ROOT:CANONICAL drop {: s:str :}
    ROOT-BYTES-U @ {: at:n :}
-   at u + 1+ ROOT-BYTES-RESERVE
-   a at ROOT-BYTES u BYTE-COPY
-   u ROOT-BYTES-U +!
+   at s STR:LEN + 1+ ROOT-BYTES-RESERVE
+   s STR:DATA at ROOT-BYTES s STR:LEN BYTE-COPY
+   s STR:LEN ROOT-BYTES-U +!
    ROOT-N @ {: r:n :}
    r 1+ ROOT-CELLS * ROOTS-RESERVE
    at r R-PATH ROOT!
-   u r R-PATH-U ROOT!
+   s STR:LEN r R-PATH-U ROOT!
    r 1+ ROOT-N ! ;
 
 \ The subjects whose closures (every file a check of the subject could read)
@@ -459,11 +460,11 @@ public
 \ paths are copied before EACH runs; EACH calls the word it is given once per
 \ open document, with its canonical path and text.
 : REACHING ( str str [ [ str str -- ] -- ] -- )
-   {: f:^ fu:n d:^ du:n each :}
+   {: f:str d:str each :}
    RESET
-   f fu POOL+ F-AT !
-   fu F-U !
-   d du SUBJECT D-NODE !
+   f POOL+ F-AT !
+   f STR:LEN F-U !
+   d SUBJECT D-NODE !
    [: OPEN+ ;] each execute
    WALK-ROOTS
    BLOCKED @ if exit then
@@ -489,9 +490,9 @@ public
 \ REACHING for another F over the last REACHING's graph and document: nothing
 \ is walked or discovered, so UNREADABLE stays as that REACHING left it.
 : REACHING-AGAIN ( str -- )
-   {: f:^ fu:n :}
-   f fu POOL+ F-AT !
-   fu F-U !
+   {: f:str :}
+   f POOL+ F-AT !
+   f STR:LEN F-U !
    NODE-N @ 0 ?do 0 i N-REACH NODE! loop
    0 HIT-N !
    MARK
@@ -501,7 +502,7 @@ public
 
 \ Whether the last REACHING refused, giving no subject, and the root it named.
 : REFUSED? ( -- bool )  BLOCKED @ ;
-: BLOCKED$ ( -- str )  0 BLOCK-B BLOCK-U @ ;
+: BLOCKED$ ( -- str )  0 BLOCK-B BLOCK-U @ >str ;
 
 : SUBJECTS ( -- n )  HIT-N @ ;
 : SUBJECT$ ( n -- str )  HITS @ PATH$ ;

@@ -1,4 +1,3 @@
-split-str
 \ class-generate.f - deterministic Unicode character-class source generator.
 
 require src/lib/prelude.f
@@ -43,10 +42,10 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 : EXPECTED-BRACKETS-DIGEST$ ( -- str )
    s" b8f32554c6f658821fb0ee742d21c5b1f2086b9bf13071fed04894b022f93d67" ;
 
-: VERIFY-FILE-DIGEST ( str str -- ) {: path:^ pathu:n want:^ wantu:n :}
-   wantu SHA256-HEX-LENGTH <> if E-DIGEST throw then
-   UC-FSHA-CTX path pathu INPUT-DIGEST SHA256-FILE-HEX-IN 0 <> if E-DIGEST throw then
-   INPUT-DIGEST SHA256-HEX-LENGTH want wantu STR:= 0= if E-DIGEST throw then ;
+: VERIFY-FILE-DIGEST ( str str -- ) {: path:str want:str :}
+   want STR:LEN SHA256-HEX-LENGTH <> if E-DIGEST throw then
+   UC-FSHA-CTX path INPUT-DIGEST SHA256-FILE-HEX-IN 0 <> if E-DIGEST throw then
+   INPUT-DIGEST SHA256-HEX-LENGTH >str want STR:= 0= if E-DIGEST throw then ;
 
 : CHECK-INPUT-DIGESTS ( -- )
    UNICODE-PATH$ EXPECTED-UNICODE-DIGEST$ VERIFY-FILE-DIGEST
@@ -54,19 +53,22 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    BRACKETS-PATH$ EXPECTED-BRACKETS-DIGEST$ VERIFY-FILE-DIGEST ;
 
 : LOAD-UNICODE-FILE ( -- )
-   UNICODE-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
-   path pathu buf cap FS:READ-ALL {: got:n :}
-   buf got PARSE-UNICODE ;
+   UNICODE-PATH$ dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN
+   {: path:str buf:str :}
+   path buf str> FS:READ-ALL {: got:n :}
+   buf STR:DATA got >str PARSE-UNICODE ;
 
 : LOAD-PROPERTIES-FILE ( -- )
-   PROPERTIES-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
-   path pathu buf cap FS:READ-ALL {: got:n :}
-   buf got PARSE-PROPERTIES ;
+   PROPERTIES-PATH$ dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN
+   {: path:str buf:str :}
+   path buf str> FS:READ-ALL {: got:n :}
+   buf STR:DATA got >str PARSE-PROPERTIES ;
 
 : LOAD-BRACKETS-FILE ( -- )
-   BRACKETS-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
-   path pathu buf cap FS:READ-ALL {: got:n :}
-   buf got PARSE-BRACKETS ;
+   BRACKETS-PATH$ dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN
+   {: path:str buf:str :}
+   path buf str> FS:READ-ALL {: got:n :}
+   buf STR:DATA got >str PARSE-BRACKETS ;
 
 : OUT$ ( str -- )
    OUTPUT CODEGEN:APPEND-STRING ;
@@ -88,20 +90,20 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    repeat drop ;
 
 : OUT-TABLE ( str n [ n -- n n ] -- )
-   {: name:^ nameu:n count:n getter :}
-   count OUT-N s"  constant " OUT$ name nameu OUT$ s" -TABLE-COUNT" OUT-LINE
+   {: name:str count:n getter :}
+   count OUT-N s"  constant " OUT$ name OUT$ s" -TABLE-COUNT" OUT-LINE
    \ Empty logical tables still need a valid private typed buffer.
-   count 2 * 1 max OUT-N s"  TYPED-BUFFER " OUT$ name nameu OUT$ s" -TABLE n" OUT-LINE
-   s" 0 " OUT$ name nameu OUT$ s" -TABLE" OUT-LINE
+   count 2 * 1 max OUT-N s"  TYPED-BUFFER " OUT$ name OUT$ s" -TABLE n" OUT-LINE
+   s" 0 " OUT$ name OUT$ s" -TABLE" OUT-LINE
    count getter OUT-RANGES
    s" drop" OUT-LINE
    s" " OUT-LINE ;
 
-: OUT-PACKAGE ( str -- ) {: name:^ nameu:n :}
+: OUT-PACKAGE ( str -- ) {: name:str :}
    s" " OUT-LINE
    s" require src/lib/prelude.f" OUT-LINE
    s" " OUT-LINE
-   s" package " OUT$ name nameu OUT-LINE
+   s" package " OUT$ name OUT-LINE
    s" " OUT-LINE
    s" private" OUT-LINE
    s" " OUT-LINE
@@ -130,10 +132,10 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 \ An accessor answers its table's first cell and pair count together.
 : OUT-ACCESSOR-AS ( str str -- )
-   {: name:^ nameu:n suffix:^ suffixu:n :}
-   s" : " OUT$ name nameu OUT$ suffix suffixu OUT$ s"  ( -- ^n n )" OUT-LINE
-   s"    0 " OUT$ name nameu OUT$ s" -TABLE " OUT$
-   name nameu OUT$ s" -TABLE-COUNT ;" OUT-LINE
+   {: name:str suffix:str :}
+   s" : " OUT$ name OUT$ suffix OUT$ s"  ( -- ^n n )" OUT-LINE
+   s"    0 " OUT$ name OUT$ s" -TABLE " OUT$
+   name OUT$ s" -TABLE-COUNT ;" OUT-LINE
    s" " OUT-LINE ;
 
 : OUT-ACCESSOR ( str -- )

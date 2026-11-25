@@ -1,4 +1,3 @@
-split-str
 \ lsp-text.f - offsets in a text as the language server counts positions: the line
 \ by LF and the character in UTF-16 units. LINE-CHARACTER moves a cursor: forward
 \ reads only the bytes between, back within the line keeps the line, further back
@@ -58,32 +57,32 @@ variable DISK-VALID
 
 \ The file at this path read into DISK, its length in DISK-U.
 : SLURP ( str -- str )
-   {: f:^ fu:n :}
-   f fu FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}
-   f fu  f fu FS:FILE-SIZE  [: DISK-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DISK-U !
-   f fu FS:FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
+   {: f:str :}
+   f FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}
+   f  f FS:FILE-SIZE  [: DISK-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DISK-U !
+   f FS:FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
    size after = msec amsec = and mns amns = and
    csec acsec = and cns acns = and if
       size DISK-SIZE ! msec DISK-MSEC ! mns DISK-MNS !
       csec DISK-CSEC ! cns DISK-CNS !
       true DISK-VALID !
    then
-   f fu ;
+   f ;
 
 : ERR ( str -- )
-   {: a:^ u:n :}
-   FD:STDERR a u FD:WRITE-FULL ;
+   {: s:str :}
+   FD:STDERR s FD:WRITE-FULL ;
 
 public
 
 : TEXT! ( str -- )
-   {: a:^ u:n :}
-   a TEXT-A !
-   u TEXT-U !
+   {: s:str :}
+   s STR:DATA TEXT-A !
+   s STR:LEN TEXT-U !
    false DISK-VALID !
    CUR-RESET ;
 
-: TEXT$ ( -- str )  TEXT-A @ TEXT-U @ ;
+: TEXT$ ( -- str )  TEXT-A @ TEXT-U @ >str ;
 
 \ Whether a throw of this code is a file system call's (src/lib/error.f E-FS-*).
 : FS-RC? ( n -- bool )
@@ -96,19 +95,19 @@ private
 \ The validity flag separately tells navigation whether the read stayed stable.
 \ A file that cannot be read says so on stderr and counts as empty.
 : READ-TEXT? ( str -- bool )
-   {: f:^ fu:n :}
+   {: f:str :}
    false DISK-VALID !
-   f fu [: SLURP ;] catch {: code:n :} 2drop
+   f [: SLURP ;] catch {: code:n :} drop
    code 0<> if
       code FS-RC? 0= if code throw then
-      s" lsp: " ERR f fu ERR
+      s" lsp: " ERR f ERR
       SB-RESET s" : not read: throw " SB-APPEND code FMT:SB-INT LF SB-APPEND-C
       SB$ ERR
       NULL$ TEXT!
       false exit
    then
    DISK-VALID @ 0<> {: valid:bool :}
-   0 DISK DISK-U @ TEXT!
+   0 DISK DISK-U @ >str TEXT!
    valid DISK-VALID !
    true ;
 
@@ -122,10 +121,10 @@ public
 \ Navigation requires a stable read. Take the buffer after reading, since
 \ growth may move it; a missing or changed file counts as empty text.
 : FILE-TEXT! ( str -- )
-   {: f:^ fu:n :}
-   f fu READ-TEXT? 0= if exit then
+   {: f:str :}
+   f READ-TEXT? 0= if exit then
    DISK-VALID @ 0= if
-      s" lsp: " ERR f fu ERR s" : changed while read\n" ERR
+      s" lsp: " ERR f ERR s" : changed while read\n" ERR
       NULL$ TEXT!
    then ;
 
@@ -135,7 +134,7 @@ public
    DISK-SIZE @ DISK-MSEC @ DISK-MNS @ DISK-CSEC @ DISK-CNS @ DISK-VALID @ 0<> ;
 
 : DISK-CURRENT? ( str -- bool )
-   DISK-VALID @ 0= if 2drop false exit then
+   DISK-VALID @ 0= if drop false exit then
    FS:TRY-STAT 0= if false exit then
    FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG <> if false exit then
    FS:STAT-SIZE@ DISK-SIZE @ =
@@ -150,7 +149,7 @@ public
    0 max TEXT-U @ min {: o:n :}
    o CUR-TO
    CUR-LINE @
-   TEXT-A @ CUR-START @ + o CUR-START @ - UTF16:UNITS ;
+   TEXT-A @ CUR-START @ + o CUR-START @ - >str UTF16:UNITS ;
 
 private
 
@@ -179,9 +178,9 @@ public
 \ the start; both are held to the text and the end to no less than the start,
 \ so the range is valid whatever the line says.
 : RANGE ( ^JSON:writer str -- ^JSON:writer )
-   {: a:^ u:n :}
-   a u s" byte_start" INT-MEMBER 0= if drop 0 then {: from:n :}
-   a u s" byte_end" INT-MEMBER 0= if drop from then from max {: to:n :}
+   {: s:str :}
+   s s" byte_start" INT-MEMBER 0= if drop 0 then {: from:n :}
+   s s" byte_end" INT-MEMBER 0= if drop from then from max {: to:n :}
    from LINE-CHARACTER to LINE-CHARACTER RANGE-AT ;
 
 private
@@ -205,7 +204,8 @@ public
       1+
    loop
    {: start:n :}
-   TEXT-A @ start + start LINE-END start - ch UTF16:OFFSET start + ;
+   TEXT-A @ start + start LINE-END start - >str
+   ch UTF16:OFFSET start + ;
 
 ;using
 ;using

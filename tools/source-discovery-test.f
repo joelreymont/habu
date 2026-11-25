@@ -1,4 +1,3 @@
-split-str
 \ source-discovery-test.f - fixtures for the whole-file discovery pass
 \ (tools/source-discovery.f): its ordered load-event artifact and its refusals.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
@@ -33,14 +32,14 @@ variable SDT-WANT-U
 variable SDT-ROOT-U
 variable SDT-ENTRY-U
 
-: SDT-ROOT$ ( -- str )   SDT-ROOT SDT-ROOT-U @ ;
+: SDT-ROOT$ ( -- str )   SDT-ROOT SDT-ROOT-U @ >str ;
 public
-: SDT-ENTRY$ ( -- str )  SDT-ENTRY SDT-ENTRY-U @ ;
+: SDT-ENTRY$ ( -- str )  SDT-ENTRY SDT-ENTRY-U @ >str ;
 private
 
-: SDT-COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
-   a dst u BYTE-COPY
-   u lenp ! ;
+: SDT-COPY! ( str ^u8 ^n -- ) {: s:str dst:^ lenp:^ :}
+   s STR:DATA dst s STR:LEN BYTE-COPY
+   s STR:LEN lenp ! ;
 
 : SDT-PREP ( -- )
    FS:CLEANUP-RESET
@@ -48,12 +47,12 @@ private
    SDT-ROOT$ FS:CLEANUP-TREE+ ;
 
 : SDT-WRITE-ENTRY ( str str -- )
-   {: name:^ nameu:n content:^ contentu:n :}
-   SDT-ROOT$ name nameu SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U !
-   SDT-ENTRY$ content contentu FS:WRITE-ALL ;
+   {: name:str content:str :}
+   SDT-ROOT$ name SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U !
+   SDT-ENTRY$ content FS:WRITE-ALL ;
 
 : SDT-PATH ( str -- str )
-   SDT-ROOT$ 2swap JOIN CANONICAL drop ;
+   SDT-ROOT$ swap JOIN CANONICAL drop ;
 
 : SDT-READ ( -- )  SDT-ENTRY$ ENTRY-RESOLVE drop RESOLVED-ROOT$ DISCOVER:READ-IN ;
 
@@ -117,15 +116,16 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 : SDT-WIDE-LINE! ( n -- )
    {: k:n :}
    k SDT-WIDE-LINE * SDT-WIDE + {: at:^ :}
-   SDT-WIDE-LINE$ {: l:^ lu:n :}
-   l at lu BYTE-COPY
+   SDT-WIDE-LINE$ {: l:str :}
+   l STR:DATA at l STR:LEN BYTE-COPY
    k 26 / $61 + at 12 + c!
    k 26 mod $61 + at 13 + c! ;
 
 : SDT-TEST-WIDE ( -- )
    REQUIRE-REG:COUNT {: save-n:n :}
    SDT-WIDE-N 0 ?do i SDT-WIDE-LINE! loop
-   s" wide.f" SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * SDT-WRITE-ENTRY
+   s" wide.f" SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * >str
+   SDT-WRITE-ENTRY
    SDT-DISCOVER
    SOURCE-EVENT:COUNT SDT-WIDE-N T=
    256 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED T=
@@ -144,7 +144,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" \"\nprovided 0 s\" " SDT-WANT+
    s" sd-y.f" SDT-PATH SDT-WANT+
    S\" \"\n" SDT-WANT+
-   SDT-OUT elen SDT-WANT SDT-WANT-U @ T$= ;
+   SDT-OUT elen >str SDT-WANT SDT-WANT-U @ >str T$= ;
 
 : SDT-RUN-ENTRY ( -- )   SDT-DISCOVER ;
 
@@ -220,8 +220,8 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ At top level `char` and `'` take the next token raw, in a body `[char]` and
 \ `[']`, as the loader does; each source's one event is the require it runs.
-: SDT-RAW-ONE ( str -- ) {: a:^ u:n :}
-   s" raw.f" a u SDT-WRITE-ENTRY
+: SDT-RAW-ONE ( str -- ) {: s:str :}
+   s" raw.f" s SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    SOURCE-EVENT:COUNT 1 T=
    0 SOURCE-EVENT:PATH@ s" sd-raw.f" SDT-PATH T$= ;
@@ -243,8 +243,8 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ between makes the path dynamic (E-DISC-DYNAMIC). A refused walk leaves no
 \ event: reading one past the log faults, so read one only when the walk left it.
 : SDT-COMMENTED-ONE ( str -- )
-   {: a:^ u:n :}
-   s" commented.f" a u SDT-WRITE-ENTRY
+   {: s:str :}
+   s" commented.f" s SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    SOURCE-EVENT:COUNT 1 T=
    SOURCE-EVENT:COUNT 1 <> if exit then
@@ -261,16 +261,16 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ --- a loader form in a body is the run of a word no check runs ---------------
 
 \ The walk refuses nothing and records one event, the load of PATH.
-: SDT-ONE-LOAD ( str -- ) {: pa:^ pu:n :}
+: SDT-ONE-LOAD ( str -- ) {: ps:str :}
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    SOURCE-EVENT:COUNT 1 T=
    SOURCE-EVENT:COUNT 1 <> if exit then
-   0 SOURCE-EVENT:PATH@ pa pu SDT-PATH T$= ;
+   0 SOURCE-EVENT:PATH@ ps SDT-PATH T$= ;
 
 \ SDT-ONE-LOAD of an entry holding SOURCE.
-: SDT-ONE-EVENT ( str str -- ) {: a:^ u:n pa:^ pu:n :}
-   s" one-event.f" a u SDT-WRITE-ENTRY
-   pa pu SDT-ONE-LOAD ;
+: SDT-ONE-EVENT ( str str -- ) {: s:str ps:str :}
+   s" one-event.f" s SDT-WRITE-ENTRY
+   ps SDT-ONE-LOAD ;
 
 \ A loader word in a body after anything but a path literal is read past: a
 \ later literal load in the body is recorded, and a top-level loader taking no
@@ -305,8 +305,8 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ SOURCE, as an entry, is refused with CODE at its loader word at OFF, LEN bytes
 \ long.
-: SDT-REPLACED-AT ( str n n n -- ) {: a:^ u:n code:n off:n len:n :}
-   s" replaced.f" a u SDT-WRITE-ENTRY
+: SDT-REPLACED-AT ( str n n n -- ) {: s:str code:n off:n len:n :}
+   s" replaced.f" s SDT-WRITE-ENTRY
    code off len SDT-STOPS-AT ;
 
 \ After the file defines or retires a loader word's name, a later loader form
@@ -376,8 +376,9 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    s" SD-TEST:SDT-ENTRY$ included"
-   SDT-LOAD-OUT outu LEN>N SDT-LOAD-ERR erru LEN>N oc 0 T-ENDING-EXITED=
-   SDT-LOAD-OUT outu LEN>N s" LOADED" T$=
+   SDT-LOAD-OUT outu LEN>N >str SDT-LOAD-ERR erru LEN>N >str
+   oc 0 T-ENDING-EXITED=
+   SDT-LOAD-OUT outu LEN>N >str s" LOADED" T$=
    E-DISC-SHADOW 34 9 SDT-STOPS-AT
    s" family-qualified-shadow.f"
    S\" package DEMO : DEMO:structure ( -- ) ; structure require dep.f ;package\n"
@@ -386,8 +387,9 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: qoutu:len qerru:len qoc :}
    s" SD-TEST:SDT-ENTRY$ included"
-   SDT-LOAD-OUT qoutu LEN>N SDT-LOAD-ERR qerru LEN>N qoc 0 T-ENDING-EXITED=
-   SDT-LOAD-OUT qoutu LEN>N s" LOADED" T$=
+   SDT-LOAD-OUT qoutu LEN>N >str SDT-LOAD-ERR qerru LEN>N >str
+   qoc 0 T-ENDING-EXITED=
+   SDT-LOAD-OUT qoutu LEN>N >str s" LOADED" T$=
    [: SDT-DISCOVER ;] E-DISC-SHADOW SDT-STOPS
    s" mutual-shadow.f"
    S\" package DEMO : mutual ( -- ) ; mutual require dep.f ;package\n"
@@ -431,11 +433,11 @@ PATH-CAP 16 / 16 * constant SDT-FIT
 
 \ writes name = head + u bytes of the 16-byte piece, u a multiple of 16, + tail
 : SDT-WRITE-BIG ( str str n str str -- )
-   {: name:^ nameu:n head:^ headu:n u:n piece:^ pieceu:n tail:^ tailu:n :}
-   SDT-ROOT$ name nameu SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U !
-   SDT-ENTRY$ head headu FS:WRITE-ALL
-   u 16 / 0 ?do SDT-ENTRY$ piece pieceu FS:APPEND-FILE loop
-   SDT-ENTRY$ tail tailu FS:APPEND-FILE ;
+   {: name:str head:str u:n piece:str tail:str :}
+   SDT-ROOT$ name SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U !
+   SDT-ENTRY$ head FS:WRITE-ALL
+   u 16 / 0 ?do SDT-ENTRY$ piece FS:APPEND-FILE loop
+   SDT-ENTRY$ tail FS:APPEND-FILE ;
 
 : SDT-TEST-BIG-STRING-DATA ( -- )
    s" big-ok.f" S\" s\" " SDT-BIG SDT-X16$ S\" \" 2drop\n" SDT-WRITE-BIG
@@ -481,7 +483,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    s" large.f" s" " SDT-WRITE-ENTRY
    SDT-DISCOVER SOURCE-EVENT:COUNT 0 T=
    SDT-SRC-CAP 0 ?do 32 SDT-SRC i + c! loop
-   $100 0 ?do SDT-ENTRY$ SDT-SRC SDT-SRC-CAP FS:APPEND-FILE loop
+   $100 0 ?do SDT-ENTRY$ SDT-SRC SDT-SRC-CAP >str FS:APPEND-FILE loop
    SDT-ENTRY$ S\" require sd-large-a.f\n" FS:APPEND-FILE
    SDT-DISCOVER
    SOURCE-EVENT:COUNT 1 T=
@@ -573,8 +575,8 @@ PATH-CAP 16 / 16 * constant SDT-FIT
 \ harvested decides only that.
 : SDT-SETTLE ( -- )  DISCOVER:ROWS-PASS-BEGIN DISCOVER:ROWS-PASS-END ;
 
-: SDT-SELECT-NAMED ( str -- ) {: name:^ u:n :}
-   SDT-ROOT$ name u SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U ! ;
+: SDT-SELECT-NAMED ( str -- ) {: name:str :}
+   SDT-ROOT$ name SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U ! ;
 
 : SDT-HARVEST-NAMED ( str -- )
    SDT-SELECT-NAMED SDT-HARVEST-ENTRY ;
@@ -672,7 +674,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
 \ neither an event nor a rejection.
 : SDT-TEST-ROOT-MOVE ( -- )
    SDT-ROOT$ s" sub" SDT-ENTRY FS:JOIN-PATH {: subu:n :}
-   SDT-ENTRY subu FS:MAKE-DIR
+   SDT-ENTRY subu >str FS:MAKE-DIR
    s" sub/lib.f" s" : SDT-LIB ( -- ) ;" SDT-WRITE-ENTRY
    s" root-move.f" S\" s\" sub\" SOURCE-ROOT:ROOT!\nrequire lib.f\n" SDT-WRITE-ENTRY
    SDT-DISCOVER
