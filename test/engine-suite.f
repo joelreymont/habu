@@ -1558,14 +1558,12 @@ TJSI 33 T=
    f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+  33.0 f= ;
 TJSF TTRUE
 
-\ locals register cache: repeat refs reuse the cached reg (one ldr total)...
+\ A local's repeated reads, a read after a call, and reads in a loop's body:
 : KL ( n -- n ) {: a:n :} a a + a + ;
 5 KL 15 T=
-\ ...a call spills and invalidates (the ref after must reload from the frame)
 : KC-SPILL ( -- n ) 5 ;
 : KC ( n -- n ) {: a:n :} KC-SPILL drop a ;
 3 KC 3 T=
-\ ...and the cache claim survives a BEGIN back edge (loop-resident local)
 : KR ( n -- n ) {: a:n :} 0 begin a + dup 15 < 0= until ;
 5 KR 15 T=
 : KW ( n -- n ) {: a:n :} 0 begin dup 12 < while a + repeat ;

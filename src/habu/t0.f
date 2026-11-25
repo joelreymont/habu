@@ -328,6 +328,9 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
 \ through WRITE-TARGET, which relabels it to a fresh vreg. A comparison followed
 \ by `if`, `while` or `until` leaves its condition in the flags; otherwise it
 \ pushes its flag into a fresh vreg.
+\
+\ A local's read takes the vreg that holds its slot, sharing one an entry
+\ holds, and loads only when none does.
 0 constant K-REG
 1 constant K-CONST
 
@@ -394,9 +397,11 @@ variable FREE                       \ bit k set: no entry holds vreg k
 \ A vreg no entry or TAKE holds. A caller holding a taken vreg ALLOCs only for
 \ an entry with none, at most EMIT-VREGS - 1 entries being left, so a vreg is
 \ free; with none taken, entries holding every vreg hold one each, so EVICT
-\ frees the bottom one's.
+\ frees the bottom one's. A vreg that holds no slot is taken first.
 : ALLOC ( -- vreg )
-   FREE @ 0= if EVICT then FREE @ LOWEST ;
+   FREE @ 0= if EVICT then
+   FREE @ CACHED @ invert and
+   dup 0= if drop FREE @ then LOWEST ;
 
 : PUSH-REG ( vreg -- ) {: r:vreg :}
    K-REG r VREG>N VS-N @ ENTRY!
@@ -1474,13 +1479,21 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    loop
    drop -1 ;
 
+\ A vreg holding frame slot k.
+: SLOT-CELL ( n -- vreg ) {: k:n :}
+   k SLOT-VREG {: v:n :}
+   v 0< if ALLOC {: r:vreg :}  r k EMIT-SLOT-LOAD  r exit then
+   1 v lshift FREE @ and 0<> if v CLAIM exit then
+   v >VREG ;
+
 \ A vreg holding cell i of local seq: from its frame slot, or in a reading quotation from its
 \ record. A local the record lacks is rejected at the token before the cursor.
 : LOCAL-CELL ( n n n -- vreg ) {: seq:n i:n at:n :}
-   READER @ 0< if seq L-SLOT @ else seq at ENV-CELL then {: c:n :}
+   READER @ 0< if seq L-SLOT @ i + SLOT-CELL exit then
+   seq at ENV-CELL {: c:n :}
    c 0< if ORD @ 1- ROW$ NO-LOCAL then
    ALLOC {: r:vreg :}
-   READER @ 0< if r c i + EMIT-SLOT-LOAD else r c i + EMIT-ENV-LOAD then
+   r c i + EMIT-ENV-LOAD
    r ;
 
 EXPORT CHECKER-TAPE:K-UNREACHED
