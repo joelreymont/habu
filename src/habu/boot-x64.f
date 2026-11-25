@@ -48,8 +48,6 @@ variable OCC-BAD
 
 : IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
-: TEXT-BYTES, ( str -- ) ASM-SINK VEC:APPEND ;
-
 : CELL! ( r64 n -- ) {: r:r64 off:n :}
    r RBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
@@ -220,7 +218,7 @@ private
    RDI STDERR IMM,  RSI msg MOVABS,  RDX u IMM,  NR-WRITE SYS,
    RDI rc IMM,  NR-EXIT-GROUP SYS,
    msg X64CODE:LBL,
-   a u TEXT-BYTES, ;
+   a u BYTES, ;
 
 \ The width of the stub's one write: under PIPE_BUF, so a pipe takes it whole.
 4 constant SIGNO-BYTES
@@ -237,11 +235,11 @@ private
 \ reads the fd word by its absolute address, never through rbp, which is the
 \ interrupted thread's own DATA; a word of zero absorbs the signal. It costs
 \ rax rcx rdx rsi r11, the flags and a cell below its own rsp, all of which
-\ rt_sigreturn restores, and touches no Forth state. Its `ret` enters the
-\ restorer the installer named: src/lib/signal.f installs through libc sigaction,
-\ which supplies one.
-: SIGNAL-STUB, ( label -- )
-   X64CODE:LBL,
+\ rt_sigreturn restores, and touches no Forth state. Its `ret`,
+\ at the second label, enters the restorer the installer named: src/lib/signal.f
+\ installs through libc sigaction, which supplies one.
+: SIGNAL-STUB, ( label label -- ) {: at:label last:label :}
+   at X64CODE:LBL,
    X64CODE:LBL {: done:label :}
    RDI ASM-SINK ENC-PUSH
    RAX FD-WORD-VA IMM,
@@ -254,7 +252,7 @@ private
    ASM-SINK ENC-SYSCALL
    done X64CODE:LBL,
    RDI ASM-SINK ENC-POP
-   ASM-SINK ENC-RET ;
+   last X64CODE:LBL,  RET, ;
 
 \ Publish the stub bound at the label and the address of the word it reads,
 \ so a program installs and arms the stub without spelling either (layout.f
@@ -478,9 +476,9 @@ $F constant NIBBLE
    RDI STDERR IMM,  RSI RSP ASM-SINK ENC-MOV-RR  RDX LINE-BYTES IMM,
    NR-WRITE SYS,
    RSP LINE-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
-   ASM-SINK ENC-RET
+   RET,
    digits X64CODE:LBL,
-   HEX$ TEXT-BYTES, ;
+   HEX$ BYTES, ;
 
 : PRINT, ( label n -- ) {: hex:label order:n :}
    RDX order IMM,  hex CALL, ;
@@ -520,7 +518,7 @@ $F constant NIBBLE
    resume X64CODE:LBL,
    RAX RDI FLOORREC-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-MR
-   ASM-SINK ENC-RET
+   RET,
    done X64CODE:LBL, ;
 
 \ Row 5: the three guarded VM stacks of the DATA at rdi, in crash.f's order.
@@ -569,7 +567,7 @@ $F constant NIBBLE
    RAX UC-REG RAX UC-GREG MEM-OFF ASM-SINK ENC-MOV-MR
    RAX LFAULTREC @ >LABEL MOVABS,
    RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-MR
-   ASM-SINK ENC-RET ;
+   RET, ;
 
 \ Branch to the label when the saved rsp lies in the signal stack this thread
 \ registered, as sigaltstack(NULL, old) answers it; a disabled one holds none.
@@ -592,10 +590,10 @@ $F constant NIBBLE
    off X64CODE:LBL, ;
 
 \ Rows 0 to 6 of the handler's list. The crash handler's own code is [at, rest)
-\ and the signal handlers STUBS, lays out are [at, end); only a fault that
-\ passes row 2 has the saved rbp read, as its DATA.
+\ and the signal handlers STUBS, lays out run from at to the instruction at last;
+\ only a fault that passes row 2 has the saved rbp read, as its DATA.
 : GUARDS, ( label label label label label -- )
-   {: dump:label raise:label at:label rest:label end:label :}
+   {: dump:label raise:label at:label rest:label last:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
       {: other:label fault:label text:label region:label owned:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
@@ -619,7 +617,7 @@ $F constant NIBBLE
    RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
    RAX INFO-REG SI-ADDR MEM-OFF ASM-SINK ENC-CMP-RM  C-E dump JCC,
    RCX at MOVABS,  RAX RCX ASM-SINK ENC-CMP-RR  C-B text JCC,
-   RCX end MOVABS,  RAX RCX ASM-SINK ENC-CMP-RR  C-B dump JCC,
+   RCX last MOVABS,  RAX RCX ASM-SINK ENC-CMP-RR  C-BE dump JCC,
    text X64CODE:LBL,
    RAX TEXT-REG ASM-SINK ENC-CMP-RR  C-B region JCC,
    RDI LINUX-LAYOUT:DATA-VA VA>N IMM,
@@ -687,8 +685,8 @@ variable HEX-AT
 \ Bind the handler at the first label, then the printer and the header it
 \ writes, where no control falls in. The second is the restorer RESTORER,
 \ binds right after, which the default action the handler installs names; the
-\ third ends the signal handlers STUBS, lays out.
-: CRASH-HANDLER, ( label label label -- ) {: at:label rest:label end:label :}
+\ third is the last instruction of the signal handlers STUBS, lays out.
+: CRASH-HANDLER, ( label label label -- ) {: at:label rest:label last:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
       {: dump:label raise:label hex:label head:label :}
    hex HEX-AT !
@@ -698,12 +696,12 @@ variable HEX-AT
    UC-REG RDX ASM-SINK ENC-MOV-RR
    TEXT-REG TEXT-BASE,
    REGION-REG TEXT-REG REGION-FROM-TEXT MEM-OFF ASM-SINK ENC-LEA
-   dump raise at rest end GUARDS,
+   dump raise at rest last GUARDS,
    dump X64CODE:LBL,
    head hex rest raise DUMP,
    hex HEX-LINE,
    head X64CODE:LBL,
-   HEAD$ TEXT-BYTES, ;
+   HEAD$ BYTES, ;
 
 \ The breakpoint handler, the twin of src/habu/habu2.f EMIT-TRAPH, entered on
 \ SIGTRAP with rdi = the signal, rsi = the siginfo and rdx = the ucontext; int3
@@ -836,11 +834,11 @@ variable HEX-AT
    watch BP-PRINT-WATCH,
    resume X64CODE:LBL,
    BP-RESUME,
-   ASM-SINK ENC-RET
-   head X64CODE:LBL,  BP-HEAD$ TEXT-BYTES,
-   lr X64CODE:LBL,  BP-LR$ TEXT-BYTES,
-   stack X64CODE:LBL,  BP-STACK$ TEXT-BYTES,
-   watch X64CODE:LBL,  BP-WATCH$ TEXT-BYTES, ;
+   RET,
+   head X64CODE:LBL,  BP-HEAD$ BYTES,
+   lr X64CODE:LBL,  BP-LR$ BYTES,
+   stack X64CODE:LBL,  BP-STACK$ BYTES,
+   watch X64CODE:LBL,  BP-WATCH$ BYTES, ;
 
 \ Install the handler at a label for crash.f's signals, each returning through
 \ the restorer at the other, on the alternate stack SIGNAL-STACK, registered.
@@ -887,7 +885,7 @@ variable HEX-AT
 \ together after the routines Habu code calls, so GUARDS, tells them by one
 \ band.
 : STUBS, ( label label label -- ) {: crash:label rest:label stub:label :}
-   X64CODE:LBL {: end:label :}
+   X64CODE:LBL {: last:label :}
    X64CRASH:EMIT-FAULT-RECORD
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" EXIT-STATUS:SYSTEM FAIL,
    OCC-BAD @ >LABEL S\" hb: cannot map definition occurrences\n" EXIT-STATUS:SYSTEM FAIL,
@@ -895,10 +893,9 @@ variable HEX-AT
    REGION-BAD @ >LABEL
    S\" hb: cannot map the code region; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)\n"
    EXIT-STATUS:SYSTEM FAIL,
-   crash rest end CRASH-HANDLER,
+   crash rest last CRASH-HANDLER,
    rest RESTORER,
-   stub SIGNAL-STUB,
-   end X64CODE:LBL, ;
+   stub last SIGNAL-STUB, ;
 
 : CLOSE, ( label label label label -- ) {: booted:label crash:label rest:label stub:label :}
    crash rest stub STUBS,

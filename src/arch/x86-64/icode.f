@@ -47,6 +47,13 @@ DYNAMIC-BUFFER LBL-AT n              \ label less LBL-BASE -> its offset, or UNB
 DYNAMIC-BUFFER SITE-AT n             \ site -> the byte offset of its field
 DYNAMIC-BUFFER SITE-LBL n            \ site -> its label's index in LBL-AT
 DYNAMIC-BUFFER SITE-KIND n           \ site -> SITE-REL8, SITE-REL32 or SITE-ABS64
+\ Control never passes on from the byte before an end: a row is the bytes
+\ [END-FROM, END-AT), a run of data or an instruction's last byte. Rows ascend.
+variable NEND
+DYNAMIC-BUFFER END-FROMS n
+DYNAMIC-BUFFER END-ATS n
+variable DATA-END                    \ where the last row ends when it is data, or UNBOUND
+variable LAST-LBL                    \ the last LBL, offset; a data row runs through no label
 
 public
 
@@ -132,10 +139,43 @@ private
 : FORGET ( -- )
    NLBL @ LBL-BASE !
    0 NSITE !
+   0 NEND !
+   UNBOUND DATA-END !
+   UNBOUND LAST-LBL !
    LBL-AT-RELEASE
    SITE-AT-RELEASE
    SITE-LBL-RELEASE
-   SITE-KIND-RELEASE ;
+   SITE-KIND-RELEASE
+   END-FROMS-RELEASE
+   END-ATS-RELEASE ;
+
+public
+
+\ Callers add rows in ascending order.
+: END+ ( n n -- ) {: from:n at:n :}
+   NEND @ {: x:n :}
+   x 1 + END-FROMS-RESERVE
+   x 1 + END-ATS-RESERVE
+   from x END-FROMS !
+   at x END-ATS !
+   x 1 + NEND ! ;
+
+: ENDS ( -- n ) NEND @ ;
+: END-FROM ( n -- n ) END-FROMS @ ;
+: END-AT ( n -- n ) END-ATS @ ;
+
+private
+
+\ The instruction just emitted passes control nowhere below it.
+: ENDED ( -- ) ASM-LEN dup 1 - swap END+ ;
+
+\ The bytes from the offset on are data.
+: DATA+ ( n -- ) {: from:n :}
+   ASM-LEN from = if exit then
+   DATA-END @ from =  LAST-LBL @ from <>  and if
+      ASM-LEN NEND @ 1 - END-ATS !
+   else from ASM-LEN END+ then
+   ASM-LEN DATA-END ! ;
 
 public
 
@@ -150,18 +190,25 @@ public
 : LBL, ( label -- )
    ?KNOWN {: k:n :}
    k LBL-AT @ UNBOUND <> if s" x64code: label redefined" REFUSE then
-   ASM-LEN k LBL-AT ! ;
+   ASM-LEN k LBL-AT !
+   ASM-LEN LAST-LBL ! ;
 
 \ Each site's label is checked before its instruction is emitted.
 : JMP, ( label -- )
    ?KNOWN {: k:n :}
    0 >REL ASM-SINK ENC-JMP-REL32
-   k SITE-REL32 END-SITE ;
+   k SITE-REL32 END-SITE
+   ENDED ;
 
 : JMP8, ( label -- )
    ?KNOWN {: k:n :}
    0 >REL ASM-SINK ENC-JMP-REL8
-   k SITE-REL8 END-SITE ;
+   k SITE-REL8 END-SITE
+   ENDED ;
+
+: RET, ( -- ) ASM-SINK ENC-RET ENDED ;
+: UD2, ( -- ) ASM-SINK ENC-UD2 ENDED ;
+: JMP-REG, ( r64 -- ) ASM-SINK ENC-JMP-REG ENDED ;
 
 : JCC, ( condition label -- )
    ?KNOWN {: c:condition k:n :}
@@ -193,7 +240,9 @@ public
    at ;
 
 : U64, ( n -- ) {: v:n :}
-   8 0 ?do v i 8 * rshift $FF and ASM-SINK VEC:PUSH c! loop ;
+   ASM-LEN {: from:n :}
+   8 0 ?do v i 8 * rshift $FF and ASM-SINK VEC:PUSH c! loop
+   from DATA+ ;
 
 \ The linker keeps labels through map writing. Other callers finish the stream
 \ with ASM-LINK, which also releases its labels and sites.
@@ -231,12 +280,138 @@ public
 : SINK-CLOSE ( -- )
    FORGET  SINK-ARENA @ ARENA:RELEASE  NULL-PTR SINK-ARENA !  NULL-PTR SINK ! ;
 
-: BYTES, ( str -- ) ASM-SINK VEC:APPEND ;
+: BYTES, ( str -- )
+   ASM-LEN {: from:n :}
+   ASM-SINK VEC:APPEND
+   from DATA+ ;
 
 : SPACE ( n -- ^u8 )
    ASM-LEN {: k:n at:n :}
    ASM-SINK at k + VEC:ENSURE
    ASM-SINK VEC:SPAN at SPAN:SKIP SPAN:$ drop ;
+
+private
+
+\ CUT's map: for each offset from CUT-FROM to ASM-LEN, the kept bytes below it.
+variable CUT-FROM
+DYNAMIC-BUFFER BELOW n
+
+: BELOW-CELL ( n -- ^n ) CUT-FROM @ - BELOW ;
+
+: RANGE@ ( ^n n -- n n ) {: ranges:^ k:n :}
+   ranges k 2 * cells + {: r:^ :}
+   r @  r cell+ @ ;
+
+: MALFORMED ( -- ) s" x64code: cut ranges malformed" REFUSE ;
+
+\ A range may start where the previous one ends.
+: ?RANGES ( ^n n n -- ) {: ranges:^ k:n from:n :}
+   k 0 <  from 0 <  or if MALFORMED then
+   from
+   k 0 ?do
+      ranges i RANGE@ {: a:n b:n :}
+      dup a >  a b >= or if MALFORMED then
+      drop b
+   loop
+   ASM-LEN > if MALFORMED then ;
+
+\ Each kept byte's cell 1, the others' 0.
+: MARK ( ^n n -- ) {: ranges:^ k:n :}
+   ASM-LEN CUT-FROM @ - 1 + BELOW-RESERVE
+   ASM-LEN 1 +  CUT-FROM @ ?do 0 i BELOW-CELL ! loop
+   k 0 ?do
+      ranges i RANGE@ swap ?do 1 i BELOW-CELL ! loop
+   loop ;
+
+: TALLY ( -- )
+   0
+   ASM-LEN 1 +  CUT-FROM @ ?do
+      i BELOW-CELL @  over i BELOW-CELL !  +
+   loop
+   drop ;
+
+\ An offset after the cut; an unbound label's stays UNBOUND.
+: MOVED ( n -- n ) {: p:n :}
+   p CUT-FROM @ <  p ASM-LEN >  or if p exit then
+   CUT-FROM @  p BELOW-CELL @  + ;
+
+\ The byte at the offset is cut; the end of the code has none.
+: GONE? ( n -- bool ) {: p:n :}
+   p CUT-FROM @ <  p ASM-LEN >=  or if false exit then
+   p BELOW-CELL @  p 1 + BELOW-CELL @  = ;
+
+\ Some of the bytes [a, b) are kept and some are cut.
+: SPLIT? ( n n -- bool ) {: a:n b:n :}
+   b MOVED a MOVED - {: kept:n :}
+   kept 0<>  kept b a - <>  and ;
+
+: ?SITE ( n -- ) {: x:n :}
+   x SITE-AT @  x SITE-END  SPLIT? if
+      s" x64code: a cut splits a site" REFUSE
+   then
+   x SITE-AT @ GONE? if exit then
+   x SITE-LBL @ LBL-AT @ GONE? if
+      s" x64code: a kept site names cut code" REFUSE
+   then ;
+
+: ?END ( n -- ) {: x:n :}
+   x END-FROM  x END-AT  SPLIT? if
+      s" x64code: a cut splits data" REFUSE
+   then ;
+
+\ Ascending: each byte moves to its own offset or below it.
+: MOVE-CODE ( ^n n -- ) {: ranges:^ k:n :}
+   k 0 ?do
+      ranges i RANGE@ swap ?do
+         CODE i + c@  CODE i MOVED + c!
+      loop
+   loop ;
+
+: MOVE-SITE ( n n -- ) {: x:n to:n :}
+   x SITE-AT @ MOVED to SITE-AT !
+   x SITE-LBL @ to SITE-LBL !
+   x SITE-KIND @ to SITE-KIND ! ;
+
+: MOVE-SITES ( -- )
+   0
+   NSITE @ 0 ?do
+      i SITE-AT @ GONE? 0= if i over MOVE-SITE 1 + then
+   loop
+   NSITE ! ;
+
+: MOVE-END ( n n -- ) {: x:n to:n :}
+   x END-FROM MOVED to END-FROMS !
+   x END-AT MOVED to END-ATS ! ;
+
+: MOVE-ENDS ( -- )
+   0
+   NEND @ 0 ?do
+      i END-FROM GONE? 0= if i over MOVE-END 1 + then
+   loop
+   NEND !
+   UNBOUND DATA-END ! ;
+
+: MOVE-LABELS ( -- )
+   LABEL-COUNT 0 ?do
+      i LBL-AT @ {: at:n :}
+      at GONE? if UNBOUND else at MOVED then i LBL-AT !
+   loop ;
+
+public
+
+\ CUT ( ranges count from -- ) keeps only the ranges' bytes of [from, ASM-LEN),
+\ moved down with their sites, ends and labels; ranges: count ascending
+\ [start, end) pairs.
+: CUT ( ^n n n -- ) {: ranges:^ k:n from:n :}
+   ranges k from ?RANGES
+   from CUT-FROM !
+   ranges k MARK  TALLY
+   NSITE @ 0 ?do i ?SITE loop
+   NEND @ 0 ?do i ?END loop
+   ranges k MOVE-CODE
+   MOVE-SITES MOVE-ENDS MOVE-LABELS
+   ASM-SINK ASM-LEN MOVED VEC:RESIZE
+   BELOW-RELEASE ;
 
 ;using
 ;package

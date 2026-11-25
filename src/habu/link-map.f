@@ -66,7 +66,7 @@ private
 
 TYPED-VARIABLE MAP-TEXT ^VEC:vector<u8>
 TYPED-VARIABLE MAP-PATH ^VEC:vector<u8>
-DYNAMIC-BUFFER MAP-START n           \ row k's code offset in A64ICODE's code buffer, -1 for none
+DYNAMIC-BUFFER MAP-START n           \ row k's code offset, -1 for none
 DYNAMIC-BUFFER MAP-BYTES n           \ its length, -1 until MAP-ENDS for an end CUT unbound
 DYNAMIC-BUFFER MAP-FILE n            \ build row k's BUILT row, -1 for one the build's body made
 DYNAMIC-BUFFER MAP-ORDER n           \ the rows with code, by start, then by row

@@ -91,8 +91,6 @@ private
 : IMM32, ( r64 n -- ) {: r:r64 v:n :}
    r R64>N >R32 v >IMM32 ASM-SINK ENC-MOV32-RI32 ;
 
-: TEXT, ( str -- ) ASM-SINK VEC:APPEND ;
-
 : EXIT-GROUP, ( n -- ) {: rc:n :} RDI rc IMM32,  NR-EXIT-GROUP SYS, ;
 
 : SAME? ( r64 r64 -- bool ) R64>N swap R64>N = ;
@@ -134,7 +132,7 @@ variable ROW-U
 : EMIT-ROW ( -- )
    X64CODE:LBL X64CODE:LBL {: first:label last:label :}
    ROW$ first last ENGINE-PRIMS:ADD drop
-   first X64CODE:LBL,  BODY  ASM-SINK ENC-RET  last X64CODE:LBL, ;
+   first X64CODE:LBL,  BODY  RET,  last X64CODE:LBL, ;
 
 : STDERR-WRITE, ( label n -- ) {: msg:label len:n :}
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX len IMM32,  NR-WRITE SYS, ;
@@ -144,7 +142,7 @@ variable ROW-U
    X64CODE:LBL {: msg:label :}
    msg u STDERR-WRITE,
    rc EXIT-GROUP,
-   msg X64CODE:LBL,  a u TEXT, ;
+   msg X64CODE:LBL,  a u BYTES, ;
 
 public
 
@@ -255,7 +253,7 @@ CELL 4 * constant DIAG-BYTES
    noline colon SOURCE-LINE,
    noline X64CODE:LBL,  colon 2 STDERR-WRITE,
    done JMP,
-   colon X64CODE:LBL,  s" : " TEXT,
+   colon X64CODE:LBL,  s" : " BYTES,
    done X64CODE:LBL, ;
 
 \ (GENIO-OUT) ( rdi = device index, rsi = span, rdx = length ): the output
@@ -283,10 +281,10 @@ CELL 4 * constant DIAG-BYTES
    RCX ZERO-REG,  RCX DATA-REG GENIO-ABI:BUSY-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    RCX ASM-SINK ENC-POP
    RCX DATA-REG GENIO-ABI:ACTIVE-CELL MEM-OFF ASM-SINK ENC-MOV-MR
-   ASM-SINK ENC-RET
+   RET,
    term X64CODE:LBL,
    RDI 1 IMM32,  NR-WRITE SYS,
-   ASM-SINK ENC-RET
+   RET,
    end X64CODE:LBL, ;
 
 \ The index at HIDXP-CELL: HIDX-SLOTS u32 slots, each 0 or a record index + 1,
@@ -460,7 +458,7 @@ variable HEAD-ROW-CELL
    entry CALL,
    RDX BOOT:GLOBAL-WL-CELL CELL@,
    done X64CODE:LBL,
-   ASM-SINK ENC-RET ;
+   RET, ;
 
 \ Jumps to `miss` unless record rcx's name is r9 + 1 + rsi bytes long, rsi
 \ when r9 is 0. Clobbers rax and r10.
@@ -518,7 +516,7 @@ variable HEAD-ROW-CELL
    miss SAME-ROW,
    RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
    RAX RCX ASM-SINK ENC-MOV-RR
-   ASM-SINK ENC-RET
+   RET,
    miss X64CODE:LBL,
    R11 ASM-SINK ENC-POP  R10 ASM-SINK ENC-POP
    next X64CODE:LBL,
@@ -583,7 +581,7 @@ variable HEAD-ROW-CELL
    bare X64CODE:LBL,
    FIND-LBL JMP,                                       \ its ret is this one's
    done X64CODE:LBL,
-   ASM-SINK ENC-RET ;
+   RET, ;
 
 \ r8 = the first slot of record rdi's chain, r9 = the most slots a walk of it
 \ visits. It keeps rdi and clobbers rax rcx rdx rsi r10 r11.
@@ -657,7 +655,7 @@ variable HEAD-ROW-CELL
    RDI ASM-SINK ENC-INC
    fill JMP,
    done X64CODE:LBL,
-   ASM-SINK ENC-RET ;
+   RET, ;
 
 \ ADD-LBL indexes the record just published, r14 - 1; REKEY-LBL indexes record
 \ rdi after a store to its wid cell.
@@ -673,7 +671,7 @@ variable HEAD-ROW-CELL
    RAX HIDX:LOAD-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-L done JCC,
    REBUILD-LBL CALL,
    done X64CODE:LBL,
-   ASM-SINK ENC-RET
+   RET,
    REKEY-LBL X64CODE:LBL,
    RAX DATA-REG HIDXP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
@@ -814,7 +812,7 @@ private
 : TIME-CHECK, ( -- )
    X64CODE:LBL {: ok:label :}
    RAX RAX ASM-SINK ENC-TEST-RR  C-E ok JCC,
-   ASM-SINK ENC-UD2
+   UD2,
    ok X64CODE:LBL, ;
 
 : EPOCH-ROW ( -- )                  \ ( -- seconds ) gettimeofday's seconds
@@ -1660,7 +1658,7 @@ private
    RSI RDX CATCH-RESUME MOV-LOAD,
    RSP RDX CATCH-MSP MOV-LOAD,
    RCX RSP 0 MOV-STORE,
-   RSI ASM-SINK ENC-JMP-REG ;
+   RSI JMP-REG, ;
 
 \ No handler: run the exit actions, call the reporter xt in UNCGH-CELL, when
 \ one is installed, with the code on the data stack, and then exit with the
@@ -1693,10 +1691,10 @@ private
    number X64CODE:LBL,
    RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
    nl 1 STDERR-WRITE,
-   done X64CODE:LBL,  ASM-SINK ENC-RET
-   head X64CODE:LBL,  s" hb: uncaught throw code " TEXT,
-   minus X64CODE:LBL,  $2D ASM-SINK VEC:PUSH c!
-   nl X64CODE:LBL,  STR:LF ASM-SINK VEC:PUSH c! ;
+   done X64CODE:LBL,  RET,
+   head X64CODE:LBL,  s" hb: uncaught throw code " BYTES,
+   minus X64CODE:LBL,  s" -" BYTES,
+   nl X64CODE:LBL,  s\" \n" BYTES, ;
 
 \ Forward the code in rax without beginning another throw. Habu's `evaluate`
 \ recovers through `catch`; the handler's frame is restored and resumed.
@@ -1786,7 +1784,7 @@ private
    RCX DATA-REG HND-CELL MOV-STORE,
    RDI ASM-SINK ENC-PUSH  RAX ASM-SINK ENC-CALL-REG  RDI ASM-SINK ENC-POP
    none X64CODE:LBL,
-   ASM-SINK ENC-RET
+   RET,
    end X64CODE:LBL, ;
 
 \ Make helper labels before the sections that branch to them.
@@ -2022,7 +2020,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
       RAX DATA-REG PROVIDED-XT:EVALUATE-CLOSED-CELL MOV-LOAD,
    then
    INVOKE,
-   ASM-SINK ENC-RET ;
+   RET, ;
 
 \ The idle stack's first cell links the pool. Mapping follows boot-x64's
 \ guarded allocation: an inaccessible page lies on each side of the aligned
@@ -2601,7 +2599,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
 : PROVIDED, ( n -- )
    ROW$ TASK-GUARD,
    RAX DATA-REG rot MOV-LOAD,
-   RAX ASM-SINK ENC-JMP-REG ;
+   RAX JMP-REG, ;
 
 public
 
@@ -2741,7 +2739,7 @@ variable SITE-TRAP-CELL
    same X64CODE:LBL,
    RAX RSI row negate RELOC:SITE-KIND-OFF + MEM-OFF ASM-SINK ENC-MOVZX-8-RM
    RAX RDX ASM-SINK ENC-CMP-RR  C-NE SITE-TRAP-LBL JCC,
-   ASM-SINK ENC-RET
+   RET,
    place X64CODE:LBL,
    RCX RELOC:SITE-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE SITE-TRAP-LBL JCC,
    move X64CODE:LBL,
@@ -2755,7 +2753,7 @@ variable SITE-TRAP-CELL
    RDX R64>N >R8 RSI RELOC:SITE-KIND-OFF MEM-OFF ASM-SINK ENC-MOV8-MR
    RCX ASM-SINK ENC-INC
    RCX DATA-REG RELOC:SITE-N-CELL MOV-STORE,
-   ASM-SINK ENC-RET ;
+   RET, ;
 
 \ Remove every row whose site lies in [rdi, rdi+rsi), both kinds: the twin of
 \ habu1.f RELOC-EMIT:CLEAR-SPAN over both maps. The span's offsets compare
@@ -2807,7 +2805,7 @@ variable SITE-TRAP-CELL
    R11 ASM-SINK ENC-INC
    clear JMP,
    done X64CODE:LBL,
-   ASM-SINK ENC-RET ;
+   RET, ;
 
 \ The refusals the rows share: a span or index a guard refuses, and a site the
 \ band cannot take.
@@ -3927,7 +3925,7 @@ variable MARK-CELL
    release X64CODE:LBL,
    MARK-UNLOCK,
    RSP MARK-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
-   ASM-SINK ENC-RET
+   RET,
    discard X64CODE:LBL,
    RDI RSP MARK-NEW MOV-LOAD,  RSI RSP MARK-LEN MOV-LOAD,  NR-MUNMAP SYS,
    full X64CODE:LBL,
@@ -4291,7 +4289,7 @@ private
    RAX RCX TASK-ABI:STATUS-OFF MEM-OFF ASM-SINK ENC-XCHG-MR
    RAX ZERO-REG,
    RESTORE-VM,
-   ASM-SINK ENC-RET ;
+   RET, ;
 
 \ task-entry ( -- n ): push the entry's address and jump over it, so the entry
 \ lies inside the row's record, as BTASK-ENTRY's does.
@@ -4473,7 +4471,7 @@ CBT-BYTES 6 cells + constant CBT-LR  \ above the six saved VM registers
    XMM0 RSP CBT-FLOATS MEM-OFF ASM-SINK ENC-MOVSD-RM
    RSP CBT-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
    RESTORE-VM,
-   ASM-SINK ENC-RET
+   RET,
    \ rax is the owner read, r8 its cell; rsp is 16-byte aligned for the C call.
    caller-row X64CODE:LBL,
       RCX RAX 4 MEM-OFF ASM-SINK ENC-LEA
@@ -5124,7 +5122,7 @@ variable GROW-CELL
    RSP 2 cells >IMM8 ASM-SINK ENC-ADD-RI8
    RSI ASM-SINK ENC-POP  RDX ASM-SINK ENC-POP
    RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
-   ASM-SINK ENC-RET
+   RET,
    fail X64CODE:LBL,
    RAX -9853 IMM64,  THROW, ;                    \ E-BODY-TEXT
 
@@ -5372,8 +5370,8 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    SOURCE-PLACE,
    msg DOES-NONE$ nip STDERR-WRITE,
    RAX 70 IMM32,  THROW,
-   class X64CODE:LBL,  DOES-NONE-CLASS$ TEXT,
-   msg X64CODE:LBL,  DOES-NONE$ TEXT,
+   class X64CODE:LBL,  DOES-NONE-CLASS$ BYTES,
+   msg X64CODE:LBL,  DOES-NONE$ BYTES,
    have X64CODE:LBL,
    RDX R8 REC-CODE CELL + MOV-LOAD,
    RDX CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
@@ -5809,10 +5807,10 @@ public
       RDX 0 IMM64,
       RDX RDX ASM-SINK ENC-TEST-RR  C-E next JCC,
       RAX RDX ASM-SINK ENC-CMP-RR  C-NE next JCC,
-      RAX i IMM32,  ASM-SINK ENC-RET
+      RAX i IMM32,  RET,
       next X64CODE:LBL,
    loop
-   RAX ZERO-REG,  ASM-SINK ENC-RET ;
+   RAX ZERO-REG,  RET, ;
 
 \ The kernel writer checks every emitted primitive against prims.f;
 \ provided rows dispatch through cells the linked Habu runtime fills.
@@ -5837,7 +5835,7 @@ public
    PROFILER,
    SCOPE-SEED-LBL X64CODE:LBL,
    R8 ENGINE-PRIMS:COUNT DREC * IMM32,
-   ASM-SINK ENC-RET
+   RET,
    SCOPE-SEED-END-LBL X64CODE:LBL, ;
 
 ;using   \ LINUX-LAYOUT

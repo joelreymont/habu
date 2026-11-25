@@ -312,8 +312,41 @@ $401000 constant LINK-VA
    s" e9f3ffffff" E+          \ llvm-mc: {disp32} jmp T, 8 bytes after T
    E= ;
 
-\ ---- the code layer's refusals ------------------------------------------------
-\ A refusal dies before a byte is patched; a child runs each fixture so the
+\ ---- cutting the code ---------------------------------------------------------
+4 TYPED-BUFFER RANGES n
+: RANGE! ( n n n -- ) {: a:n b:n k:n :}
+   a k 2 * RANGES !  b k 2 * 1 + RANGES ! ;
+
+\ The offsets are: 0 nop, 1 A, 3 the cut routine with its text, 10 B, 26 the end.
+: CUT-FIXTURE ( -- label label )
+   LBL LBL LBL {: a:label gone:label b:label :}
+   1 NOPS
+   a LBL,  b JMP8,
+   gone LBL,  gone JMP,  s" hi" BYTES,
+   b LBL,  a CALL,  RAX b MOVABS,  RET,
+   1 3 0 RANGE!  10 26 1 RANGE!
+   gone b ;
+
+: CUT-CASES ( -- )
+   s" a cut moves the kept code and its labels, sites and ends" T-LABEL
+   CUT-FIXTURE {: gone:label b:label :}
+   0 RANGES 2 1 X64CODE:CUT
+   gone LABEL-BOUND? TFALSE
+   b LABEL-AT 3 T=
+   SITES 3 T=
+   ENDS 2 T=
+   0 END-AT 3 T=
+   1 END-AT 19 T=
+   LINK-VA ASM-LINK
+   s" 90" E+                  \ llvm-mc: nop
+   s" eb00" E+                \ llvm-mc: {disp8} jmp B, B next
+   s" e8f9ffffff" E+          \ llvm-mc: call A, 2 bytes before B
+   s" 48b80310400000000000" E+  \ llvm-mc: movabsq $B, %rax (ld -Ttext=0x401000)
+   s" c3" E+                  \ llvm-mc: ret
+   E= ;
+
+\ ---- the code layer's rejections ----------------------------------------------
+\ A rejection dies before a byte is patched; a child runs each fixture so the
 \ suite survives it. A rel32 site out of reach needs a 2 GB stream: not built.
 $1000 constant CAPTURE-CAP
 create OUT CAPTURE-CAP allot
@@ -334,11 +367,23 @@ create ERR CAPTURE-CAP allot
    old LBL,  ASM-RESET
    LBL LBL,  old JMP, ;
 
-: CUT ( -- )
+: TRUNCATED ( -- )
    LBL {: l:label :}
    l JMP,  l LBL,
    ASM-SINK 0 VEC:RESIZE
    LINK-VA ASM-LINK ;
+
+\ A jump to the ret after it, then two bytes of data, keeping [0, n).
+: KEEP-FIRST ( n -- ) {: n:n :}
+   LBL {: l:label :}
+   l JMP,  l LBL,  RET,  s" hi" BYTES,
+   0 n 0 RANGE!
+   0 RANGES 1 0 X64CODE:CUT ;
+
+: CUT-LABEL ( -- ) 5 KEEP-FIRST ;
+: CUT-SITE ( -- ) 3 KEEP-FIRST ;
+: CUT-DATA ( -- ) 7 KEEP-FIRST ;
+: CUT-BEYOND ( -- ) 9 KEEP-FIRST ;
 
 : REFUSES ( str str -- )
    {: source:str want:str :}
@@ -362,7 +407,14 @@ create ERR CAPTURE-CAP allot
    s" STALE-LINKED" S\" x64code: unknown label\n" REFUSES
    s" STALE-RESET" S\" x64code: unknown label\n" REFUSES
    s" a site the sink was cleared under without ASM-RESET refuses the link" T-LABEL
-   s" CUT" S\" x64code: label or site past the end of the code\n" REFUSES ;
+   s" TRUNCATED" S\" x64code: label or site past the end of the code\n" REFUSES
+   s" a kept site names no cut code" T-LABEL
+   s" CUT-LABEL" S\" x64code: a kept site names cut code\n" REFUSES
+   s" a cut splits no site and no data" T-LABEL
+   s" CUT-SITE" S\" x64code: a cut splits a site\n" REFUSES
+   s" CUT-DATA" S\" x64code: a cut splits data\n" REFUSES
+   s" a cut keeps no bytes past the code" T-LABEL
+   s" CUT-BEYOND" S\" x64code: cut ranges malformed\n" REFUSES ;
 
 : RUN ( -- )
    T-RESET
@@ -373,6 +425,7 @@ create ERR CAPTURE-CAP allot
    MMAP-CASES
    PROC-CASES
    LINK-CASES
+   CUT-CASES
    REFUSAL-CASES
    SINK-CLOSE
    T-REPORT ;

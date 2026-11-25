@@ -9,7 +9,8 @@ split-str
 \   code        its length in bytes, then the bytes padded as a name's
 \   labels      n, then each label's position, -1 while unbound
 \   references  n, then each one's site, label and kind
-\   data spans  n, then each span's first and end position
+\   data spans  n, then each span's first and end position; x86-64 adds the
+\               last byte of each instruction control never passes on from
 \   fixups      n, then each pending one's site, label and kind
 \   primitives  n, then each one's first label, last label, wordlist and name
 \   scope sites n, then the label of scope-kind?'s chain for each kind from 2

@@ -95,7 +95,6 @@ variable SESSION-CELL
 : ADDI, ( r64 n -- ) >IMM32 ASM-SINK ENC-ADD-RI32 ;
 : IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 : SCALE, ( r64 r64 n -- ) >IMM8 ASM-SINK ENC-IMUL-RRI8 ;
-: RET, ( -- ) ASM-SINK ENC-RET ;
 
 \ mov r32, imm32, which zero-extends: a small non-negative count or number.
 : IMM32, ( r64 n -- ) {: r:r64 v:n :}
@@ -180,7 +179,7 @@ variable SESSION-CELL
    LBL {: msg:label :}
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX u IMM32,  NR-WRITE SYS,
    RDI EXIT-STATUS:SYSTEM IMM32,  NR-EXIT-GROUP SYS,
-   msg LBL,  a u ASM-SINK VEC:APPEND ;
+   msg LBL,  a u BYTES, ;
 
 \ rdi = a live dictionary record; rsi/rdx = its raw name bytes and exact
 \ length. The caller copies those bytes before a rewind can reuse the record.
@@ -791,7 +790,7 @@ variable SESSION-CELL
 : SAY, ( str -- ) {: a:^ u:n :}
    LBL LBL {: text:label past:label :}
    past JMP,
-   text LBL,  a u ASM-SINK VEC:APPEND
+   text LBL,  a u BYTES,
    past LBL,
    RDI STDOUT IMM32,  RSI text MOVABS,  RDX u IMM32,  NR-WRITE SYS, ;
 

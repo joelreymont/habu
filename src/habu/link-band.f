@@ -414,7 +414,7 @@ variable UNSAFE-COUNT
 
 
 \ Host address a the program starts from: a record's or quotation's entry makes
-\ its code live; an arm64 kernel primitive keeps its code.
+\ its code live; a kernel primitive keeps its code, except on Wasm.
 : ROOT ( n -- )
    {: a:n :}
    a TARGET-REC {: r:n :}

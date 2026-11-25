@@ -436,8 +436,9 @@ private
    -1 ;
 
 
-\ The kernel's first word position. Nothing emits code between ADOPT and CUT,
-\ so the region CUT edits is [K0, ASM-CP).
+\ A position is an instruction word of the ARM64 code buffer, a byte of the
+\ x86-64 one. K0 is the kernel's first. Nothing emits code between ADOPT and
+\ CUT, so the region CUT edits is [K0, REGION-END).
 variable K0
 
 \ Labels whose kernel code the program reaches besides the start-up's
@@ -445,8 +446,9 @@ variable K0
 DYNAMIC-BUFFER ROOTS n
 variable N-ROOTS
 
-\ A node runs from K0 or a label bound in the region to the next one or ASM-CP;
-\ NODE-OF holds each word's node, STARTS each node's first, KEPT [start, end).
+\ A node runs from K0 or a label bound in the region to the next one or
+\ REGION-END; NODE-OF holds each position's node, STARTS each node's first, KEPT
+\ [start, end).
 DYNAMIC-BUFFER NODE-OF n
 DYNAMIC-BUFFER STARTS n
 DYNAMIC-BUFFER REACHED n
@@ -457,13 +459,39 @@ variable N-WORK
 variable N-KEPT
 
 
-: REGION-END ( -- n ) A64ICODE:ASM-CP @ ;
+: REGION-END ( -- n )
+   X64? if X64CODE:ASM-LEN exit then
+   A64ICODE:ASM-CP @ ;
 
 : IN-REGION? ( n -- bool )
    {: w:n :}
    w K0 @ >=  w REGION-END < and ;
 
-: LABEL-POS ( label -- n ) LABEL>N A64ICODE:LBLP @ ;
+: LABEL-COUNT ( -- n )
+   X64? if X64CODE:LABEL-COUNT exit then
+   A64ICODE:NLBL @ ;
+
+\ Label number k's position, negative while it is unbound.
+: LABEL-K ( n -- n )
+   X64? if X64CODE:LABEL-POS exit then
+   A64ICODE:LBLP @ ;
+
+: LABEL-POS ( label -- n )
+   X64? if X64CODE:LABEL-INDEX else LABEL>N then LABEL-K ;
+
+\ Reference records ascend by site.
+: REF-COUNT ( -- n )
+   X64? if X64CODE:SITES exit then
+   A64ICODE:REFS ;
+
+: REF-SITE ( n -- n )
+   X64? if X64CODE:REF-SITE exit then
+   A64ICODE:REF-SITE ;
+
+\ The position of record k's label.
+: REF-POS ( n -- n )
+   X64? if X64CODE:REF-LABEL LABEL-K exit then
+   A64ICODE:REF-LABEL LABEL-POS ;
 
 
 \ NODE-OF holds 1 at each node's start and 0 elsewhere until NUMBER.
@@ -472,8 +500,8 @@ variable N-KEPT
    n NODE-OF-RESERVE
    n 0 ?do 0 i NODE-OF ! loop
    1 0 NODE-OF !
-   A64ICODE:NLBL @ 0 ?do
-      i A64ICODE:LBLP @ dup IN-REGION? if K0 @ - 1 swap NODE-OF ! else drop then
+   LABEL-COUNT 0 ?do
+      i LABEL-K dup IN-REGION? if K0 @ - 1 swap NODE-OF ! else drop then
    loop ;
 
 
@@ -493,7 +521,7 @@ variable N-KEPT
    drop REGION-END ;
 
 
-\ Word position p reaches the node holding it, once; a position outside the
+\ Position p reaches the node holding it, once; a position outside the
 \ region, an unbound label's -1 among them, reaches nothing.
 : REACH ( n -- )
    {: p:n :}
@@ -519,12 +547,11 @@ variable N-KEPT
    w  31 A64ASM:ENC-BR 0 A64ASM:ENC-BR xor invert and  0 A64ASM:ENC-BR = or ;
 
 
-\ The first reference record whose site is at or after word position a; records
-\ ascend by site.
+\ The first reference record whose site is at or after position a.
 : FIRST-REF ( n -- n )
    {: a:n :}
-   0 A64ICODE:REFS
-   [: A64ICODE:REF-SITE a < ;] SORT:PARTITION-POINT ;
+   0 REF-COUNT
+   [: REF-SITE a < ;] SORT:PARTITION-POINT ;
 
 
 \ The first data span ending after word position a.
@@ -539,31 +566,42 @@ variable N-KEPT
    a FIRST-SPAN {: k:n :}
    k A64ICODE:DATA-SPANS < if k A64ICODE:DATA-SPAN-FIRST a <= else false then ;
 
-\ Control passes on from word position a: it is code that is not terminal.
-: FALLS? ( n -- bool )
+\ Control passes on from ARM64 word position a: it is code that is not terminal.
+: ARM-FALLS? ( n -- bool )
    {: a:n :}
    a DATA? if false exit then
    a WORD@ TERMINAL? 0= ;
 
+\ Control passes on past x86-64 position b: the kernel's writer put no end there.
+: X64-FALLS? ( n -- bool )
+   {: b:n :}
+   0 X64CODE:ENDS [: X64CODE:END-AT b < ;] SORT:PARTITION-POINT {: k:n :}
+   k X64CODE:ENDS < if k X64CODE:END-AT b <> else true then ;
+
+\ Control passes on from the end of a node ending at position b.
+: FALLS? ( n -- bool )
+   X64? if X64-FALLS? exit then
+   1 - ARM-FALLS? ;
+
 
 \ A node reaches the labels its sites name and, when control passes on from its
-\ last word, the node after it: a bl to a word that never returns counts as
+\ end, the node after it: a call of a word that never returns counts as
 \ falling through, so reach is an upper bound.
 : VISIT ( n -- )
    {: node:n :}
    node STARTS @ {: a:n :}
    node NODE-END {: b:n :}
    a FIRST-REF
-   begin dup A64ICODE:REFS < if dup A64ICODE:REF-SITE b < else false then while
-      dup A64ICODE:REF-LABEL LABEL-POS REACH  1 +
+   begin dup REF-COUNT < if dup REF-SITE b < else false then while
+      dup REF-POS REACH  1 +
    repeat drop
-   b REGION-END < if b 1 - FALLS? if b REACH then then ;
+   b REGION-END < if b FALLS? if b REACH then then ;
 
 
-\ The start-up's references, the records sited below K0, root the walk; START,
-\ ends in an exit syscall, so nothing falls into node 0.
+\ The start-up's references, the records sited below K0, root the walk; its last
+\ code passes control nowhere, so nothing falls into node 0.
 : ROOT-STARTUP ( -- )
-   K0 @ FIRST-REF 0 ?do i A64ICODE:REF-LABEL LABEL-POS REACH loop ;
+   K0 @ FIRST-REF 0 ?do i REF-POS REACH loop ;
 
 
 : ROOT-LABELS ( -- )
@@ -596,15 +634,13 @@ variable N-KEPT
 
 public
 
-\ A bound label's byte offset in the code buffer.
+\ A label's byte offset in the code buffer, negative while it is unbound.
 : OFFSET ( label -- n )
-   {: l:label :}
-   X64? if l X64CODE:LABEL-AT exit then
-   l LABEL-POS 4 * ;
+   LABEL-POS  X64? if exit then  4 * ;
 
 
 \ The entry of a product kernel row the link kept, in bytes from the start of the
-\ code buffer; a row CUT removed has none.
+\ code buffer; negative for a row CUT removed.
 : PRIM-OFFSET ( n -- n ) ROW-FIRST OFFSET ;
 
 
@@ -637,13 +673,17 @@ private
 
 : X64-ADOPT ( -- )
    X64CODE:SINK-OPEN
-   0 KOBJ CODE-AT @ + CODE-U @ X64CODE:BYTES,
+   0 KOBJ CODE-AT @ + CODE-U @ X64CODE:ASM-SINK VEC:APPEND
    LABELS-N @ 0 ?do
       X64CODE:LBL drop i LABEL-AT i X64CODE:LABEL-POS!
    loop
    REFS-N @ 0 ?do
       i 24 * REFS-AT @ + {: at:n :}
       at KOBJ@ at 8 + KOBJ@ at 16 + KOBJ@ X64CODE:REF+
+   loop
+   SPANS-N @ 0 ?do
+      i 16 * SPANS-AT @ + {: at:n :}
+      at KOBJ@ at 8 + KOBJ@ X64CODE:END+
    loop
    s" K0" SYM K0 ! 0 N-ROOTS !
    HOST-ENTRIES ;
@@ -687,11 +727,10 @@ public
 
 \ Removes the kernel nodes WALK does not reach and moves the rest down.
 : CUT ( -- )
-   X64? if exit then
    WALK
    0 N-KEPT !  2 KEPT-RESERVE
    N-NODES @ 0 ?do i REACHED @ 0<> if i KEEP-NODE then loop
-   0 KEPT N-KEPT @ K0 @ A64ICODE:CUT
+   0 KEPT N-KEPT @ K0 @  X64? if X64CODE:CUT else A64ICODE:CUT then
    NODE-OF-RELEASE STARTS-RELEASE REACHED-RELEASE WORK-RELEASE KEPT-RELEASE ;
 
 ;package

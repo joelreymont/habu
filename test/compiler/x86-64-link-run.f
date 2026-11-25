@@ -1,5 +1,6 @@
 \ Build and run one x86-64 program twice in the same output directory.
-\ The ELF must stay byte-identical across the cold and warm builds.
+\ The ELF must stay byte-identical across the cold and warm builds, and its map
+\ has the kernel words the program reaches and no other.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -14,6 +15,8 @@ private
 PATH-CAP BUFFER: ROOT  variable ROOT-U
 PATH-CAP BUFFER: SOURCE  variable SOURCE-U
 PATH-CAP BUFFER: EXE  variable EXE-U
+PATH-CAP BUFFER: MAP  variable MAP-U
+$10000 BUFFER: MAP-TEXT  variable MAP-TEXT-U
 SHA256-FILE-CTX-BYTES BUFFER: HASH
 32 BUFFER: COLD
 32 BUFFER: WARM
@@ -52,8 +55,22 @@ SHA256-FILE-CTX-BYTES BUFFER: HASH
    HASH EXE$ dst SHA256-FILE-IN
    s" built image is readable" T-LABEL 0 T= ;
 
+: READ-MAP ( -- )
+   MAP MAP-U @ >str MAP-TEXT $10000 FS:READ-ALL MAP-TEXT-U ! ;
+
+: MAPPED? ( str -- bool )
+   {: row:str :}
+   MAP-TEXT MAP-TEXT-U @ >str row STR:CONTAINS? ;
+
+: KERNEL-CUT ( -- )
+   READ-MAP
+   s" the program keeps catch, which it calls" T-LABEL
+   s"  catch word baked " MAPPED? TTRUE
+   s" the program keeps no evaluate, which it does not reach" T-LABEL
+   s"  evaluate word baked " MAPPED? TFALSE ;
+
 : CHECK ( -- )
-   [: BUILD RUN-IMAGE COLD DIGEST
+   [: BUILD RUN-IMAGE COLD DIGEST KERNEL-CUT
       BUILD RUN-IMAGE WARM DIGEST
       s" cold and warm images are byte-identical" T-LABEL
       COLD 32 >str WARM 32 >str T$= ;] CMD:WITH-COMMAND ;
@@ -66,6 +83,7 @@ public
    dir STR:LEN ROOT-U !
    ROOT$ s" program.f" SOURCE FS:JOIN-PATH SOURCE-U !
    ROOT$ s" program" EXE FS:JOIN-PATH EXE-U !
+   ROOT$ s" program.map" MAP FS:JOIN-PATH MAP-U !
    s" test/fixtures/x64-link-main.f" SOURCE$ FS:COPY-FILE-STREAM
    ['] CHECK [: ROOT$ FS:REMOVE-TREE ;] finally
    T-REPORT ;

@@ -24,11 +24,11 @@ DYNAMIC-BUFFER NAME-OFF n
 : TAIL@ ( n -- label ) TAIL L@ ;
 : TEXT-VA ( -- n ) LINUX-LAYOUT:IMAGE-VA LINUX-LAYOUT:CODE-OFF + ;
 : PAD8 ( -- )
-   begin X64CODE:ASM-LEN 7 and 0<> while
-      0 X64CODE:ASM-SINK VEC:PUSH c!
-   repeat ;
+   begin X64CODE:ASM-LEN 7 and 0<> while s\" \z" X64CODE:BYTES, repeat ;
 
+\ Labelled, so that no kernel code's node runs on into the names.
 : NAMES, ( -- )
+   X64CODE:LBL X64CODE:LBL,
    ENGINE-PRIMS:DISTINCT
    ENGINE-PRIMS:COUNT NAME-OFF-RESERVE
    ENGINE-PRIMS:COUNT 0 ?do
@@ -85,6 +85,10 @@ DYNAMIC-BUFFER NAME-OFF n
       i X64CODE:REF-LABEL U64+
       i X64CODE:REF-KIND U64+
    loop ;
+
+: ENDS+ ( -- )
+   X64CODE:ENDS dup U64+
+   0 ?do i X64CODE:END-FROM U64+  i X64CODE:END-AT U64+ loop ;
 
 : PRIMS+ ( -- )
    ENGINE-PRIMS:COUNT dup U64+
@@ -169,7 +173,8 @@ DYNAMIC-BUFFER NAME-OFF n
    engine EMIT
    0 OUT-U ! s" HBKERNX6" SPAN+ 4 0 ?do 0 U64+ loop
    CODE+ LABELS+ REFS+
-   0 U64+ 0 U64+                 \ no data spans or pending ARM fixups
+   ENDS+
+   0 U64+                        \ no pending ARM fixups
    PRIMS+ SCOPES+ engine SYMBOLS+ engine PRESETS+
    0 U64+                      \ no Mach-O imports
    ELF:IMPORTS ['] ELF:IMPORT$ IMPORTS+

@@ -134,7 +134,7 @@ variable DEC-CELL
       low LBL,  RCX PUT-BYTE,  next JMP,
    pair LBL,  $5C PUT-CHAR,  RCX PUT-BYTE,  next JMP,
    plain LBL,  RAX PUT-BYTE,  next JMP,
-   done LBL,  ASM-SINK ENC-RET ;
+   done LBL,  RET, ;
 
 \ OWNER ( rdi = an address, rsi = the dictionary's base or 0, rdx = its record
 \ count -- rsi = the name of the word whose code holds the address, 0 for none,
@@ -170,8 +170,8 @@ variable DEC-CELL
       RSI RCX 24 MEM-OFF LOAD,
       inline LBL,
       R11 DNAME-LEN-MASK IMM,  RAX R11 ASM-SINK ENC-AND-RR  RDX RAX MOV,
-      ASM-SINK ENC-RET
-   none LBL,  RSI ZERO-REG,  ASM-SINK ENC-RET ;
+      RET,
+   none LBL,  RSI ZERO-REG,  RET, ;
 
 \ DEC ( rax = a signed number ): its decimal digits at the cursor, a minus
 \ first when it is negative. Clobbers rax, rcx, rdx, rsi, rdi and r11.
@@ -191,7 +191,7 @@ variable DEC-CELL
       RDX ZERO-REG,  RCX ASM-SINK ENC-DIV  RDX $30 ADD8,
       RDI ASM-SINK ENC-DEC  RDX R64>N >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
       RAX TEST,  C-NE digit JCC,
-   ASM-SINK ENC-RET ;
+   RET, ;
 
 \ The die line's text room in the frame: the rest holds " 0x", 16 hex digits,
 \ " lr 0x", 16 hex digits and the newline.
