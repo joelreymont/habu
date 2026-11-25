@@ -1383,20 +1383,22 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" x.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" m.f" NEST-WRITE ;
 
 \ tools/hb-build.f's build of a NEST-DIR source to L's program of that name, in a fresh hb with the out root
-\ given: the boundary under test is the object another build wrote. Answers its exit code.
-: OUT-RC ( CMD:command str str str -- CMD:command n )
-   {: src:str prog:str out:str :}
+\ given, an image that keeps hb's REPL when the flag is true: the boundary under test is the object another
+\ build wrote. Answers its exit code.
+: OUT-RC ( CMD:command str str str bool -- CMD:command n )
+   {: src:str prog:str out:str repl:bool :}
    CMD:RESET
    \ CMD:ENV+ copies the root before NEST-PATH$ and IN$ reuse the buffers it may lie in.
    s" HABU_OUT" out CMD:ENV+
-   s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
-   s" --" CMD:ARG+  src NEST-PATH$ CMD:ARG+
+   s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+
+   repl if s" --repl" CMD:ARG+ then
+   src NEST-PATH$ CMD:ARG+
    s" -o" CMD:ARG+  L$ prog IN$ CMD:ARG+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N ;
 
 \ OUT-RC's build with L's directory as its out root.
-: NEST-RC ( CMD:command str str -- CMD:command n ) L$ OUT-RC ;
+: NEST-RC ( CMD:command str str -- CMD:command n ) L$ false OUT-RC ;
 
 \ NEST-RC's build, true when it exits 0.
 : NEST-BUILD ( CMD:command str str -- CMD:command bool )
@@ -1462,6 +1464,32 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build compiles four.f's part that calls W" MOVED-CALL COMPILED
    s" the build links four.f's last part" MOVED-LAST LINKED
    s\" 10\n2\n30\n40\n" s" the program prints four.f's numbers with b.f's W" PRINTS-RUN ;
+
+\ The copy sequence's l.f, whose copy word W answers the text.
+: WRITE-COPY-W ( str -- ) {: w:str :}
+   s" package FILE-OBJECTS-COPY public : W ( -- n ) " SRC+  w SRC+  s\"  ; ;package\n" SRC+
+   s" l.f" NEST-WRITE ;
+
+\ x.f's X mentions W, so X's steps hold W's; main.f's MAIN prints X.
+: WRITE-COPY ( -- )
+   L$ s" copy" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
+   s" 3 5 +" WRITE-COPY-W
+   s" l.f" REQUIRE+
+   s\" package FILE-OBJECTS-COPY-X public : X ( -- n ) FILE-OBJECTS-COPY:W 1+ ; ;package\n" SRC+
+   s" x.f" NEST-WRITE
+   s" x.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-COPY-X:X . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards the copy words' steps an image keeps after their code: after W's steps change and its code
+\ does not, CP2's image, which links hb's files, has the bytes of CP3's, a cold build's, and prints 9.
+: COPY-CASE ( CMD:command -- CMD:command )
+   WRITE-COPY
+   s" CP" WHICH!  s" main.f" s" prog-cp" F$ true OUT-RC BUILT? 0= if exit then
+   s" 8" WRITE-COPY-W
+   s" CP2" WHICH!  s" main.f" s" prog-cp" F$ true OUT-RC BUILT? 0= if exit then
+   s" prog-cp" s\" 9\n" s" the image prints X" NEST-RUN
+   s" cold" NEST-PATH$ FS:MAKE-DIR
+   s" CP3" WHICH!  s" main.f" s" prog-cp-cold" s" cold" NEST-PATH$ true OUT-RC BUILT? 0= if exit then
+   s" the image has a cold build's bytes" LABEL  L$ s" prog-cp" L$ s" prog-cp-cold" SAME-FILE? TTRUE ;
 
 \ prog-n's inode and change time, seconds and nanoseconds.
 : PROG-N-STAMP ( -- n n n )
@@ -1610,7 +1638,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ main.f's build with the out root given, rejected at its dup, which s.f retired. Answers its exit code.
 : HB-UNDEFINED ( CMD:command str -- CMD:command n )
    {: out:str :}
-   s" main.f" s" prog-h" out OUT-RC {: rc:n :}
+   s" main.f" s" prog-h" out false OUT-RC {: rc:n :}
    CMD:ERR$ s" error[E-UNDEFINED]: cannot find word `dup`" STR:CONTAINS? {: coded:bool :}
    CMD:ERR$ s\" /main.f:2:17\n" STR:CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
@@ -2676,7 +2704,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
       CAUGHT-PASSED-CASE CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CAUGHT-AGAIN-CASE CTOR-CASE EXPORT-CASE
-      MOVED-CASE NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE SEARCH-WL-CASE SCOPE-FIND-CASE
+      MOVED-CASE COPY-CASE NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE SEARCH-WL-CASE SCOPE-FIND-CASE
       PUBLIC-LOOKUP-CASE CLAUSE-CASE DERIVED-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE

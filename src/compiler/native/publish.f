@@ -94,7 +94,7 @@ create TRAILER TRAILER-BYTES allot
 : DEFER-TRAILER ( n n n -- ) {: idx:n fn:n cell:n :}
    cell  idx fn TRAILED  TRAILER-PLACE ;
 
-\ A copy word's trailer holds its steps (NDICT:COPY-STEPS).
+\ A copy word's trailer holds its steps.
 : STEPS-TRAILER ( n n str -- ) {: idx:n fn:n a:^ u:n :}
    a  idx fn TRAILED  u CODE-WINDOW
    idx XREF-REC XREF:MARK-COPY ;
@@ -288,6 +288,15 @@ public
    code size  size CODE-SPAN:EXACT  TRAILER-BYTES IMPORT-CODE
       {: idx:n fn:n :}
    idx fn cell DEFER-TRAILER
+   idx APPEND-PENDING
+   wide IMPORT-MARKS
+   idx ;
+
+\ The steps' trailer follows the host's code slot, as for a fresh copy word.
+: IMPORT-PENDING-COPY ( str bool str -- n )
+   {: code:^ size:n wide:bool a:^ u:n :}
+   code size  size CODE-SPAN:EXACT  u IMPORT-CODE {: idx:n fn:n :}
+   idx fn a u STEPS-TRAILER
    idx APPEND-PENDING
    wide IMPORT-MARKS
    idx ;

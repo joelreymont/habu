@@ -271,12 +271,12 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ The packed emission's span, without the running image's slot padding.
-\ A defer ends exactly at its trailer; a definer includes its does> clause.
+\ A defer or copy word ends exactly at its trailer; a definer includes its does> clause.
 : TARGET-LEN ( n -- n )
    {: s:n :}
    s NSHADOW:EMISSION@ {: e:n :}
    e NSHADOW:SIZE s NSHADOW:ENTRY@ - {: size:n :}
-   e TRAILERS @ 0<> if size CODE-SPAN:EXACT exit then
+   e TRAILERS @ 0<>  e STEPPED @ 0 >=  or if size CODE-SPAN:EXACT exit then
    size e NSHADOW:RET-BYTES CODE-SPAN:RECORDED ;
 
 \ A linked record names the target kernel or its packed emission.
@@ -325,8 +325,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    src ;
 
 \ Build record r at target index k: [32], the facts text's offset from the image's DATA,
-\ holds in the target's, as does an export's source index. An image places no copy word's
-\ steps, so DNAME-COPY is clear.
+\ holds in the target's, as does an export's source index. Only an engine keeps records, and it
+\ places every routine, so each copy word's steps follow its code and DNAME-COPY holds.
 : BUILD-REC, ( n n -- )
    {: r:n k:n :}
    r XREF-REC {: rec:^ :}
@@ -341,7 +341,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       entry 0<> if entry at CODE-CELL, else 0 NATIVE:U64, then
       r BUILD-LEN NATIVE:U64,
    then
-   rec XREF-FLAGS DNAME-COPY invert and NATIVE:U64,
+   rec XREF-FLAGS NATIVE:U64,
    rec XREF-EXT? if
       NATIVE:TEXT-VA  r FIRST-REC @ - NAME-AT @ +  at 24 + CODE-CELL,
    else

@@ -98,6 +98,8 @@ and watch table after it executes.
 **Breakpoints on compiled words.** `' WORD BP+` is one-shot, `' WORD BP*`
 fires on every call, and `N ' WORD BPN` fires on every call after the first N
 (the supported conditional breakpoint). `BP-` removes, `BP.` lists.
+A copy word's mention compiles its steps into the caller, so a breakpoint on one
+fires only for a call through its xt or from top level; `BP+` says so.
 A persistent breakpoint runs the entry instruction out of line; on an entry
 that cannot run there it is removed by its first call. A hit prints `habu-bp:`
 with the pc and stack top, `habu-bp-lr:` with the address the word will return

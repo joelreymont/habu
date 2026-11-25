@@ -2126,10 +2126,12 @@ DYNAMIC-BUFFER GIVEN-VAL n
    size end ?do 0 i CODED c! loop
    0 CODED size ;
 
-\ The steps of copy word rec, into GIVEN-OP and GIVEN-VAL.
+\ The steps of copy word rec, into GIVEN-OP and GIVEN-VAL. Each step takes at
+\ least a byte, so the trailer's byte count u bounds them, whatever COPY-MAX
+\ wrote the record.
 : READ-STEPS ( ^n -- )
-   COPY-MAX GIVEN-OP-RESERVE  COPY-MAX GIVEN-VAL-RESERVE
    NDICT:COPY-STEPS {: a:^ u:n :}
+   u GIVEN-OP-RESERVE  u GIVEN-VAL-RESERVE
    0 GIVEN-N !
    0 begin dup u < while
       {: at:n :}

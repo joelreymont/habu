@@ -1738,12 +1738,17 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    row NSHADOW:ENTRY@ 0<> if -1 exit then
    row NSHADOW:EMISSION@ ;
 
-\ The record's dispatch cell, a defer's trailer cell, as a data reference; 5 for none.
+\ The record's dispatch cell, a defer's trailer cell, as a data reference, 5 for none; then a
+\ copy word's steps trailer as a field, empty for any other word.
 : DISPATCH+ ( ^n -- )
    {: rec:^ :}
    rec NDICT:TRAILER-CELL {: cell:n :}
-   cell 0= if 5 PIECES @ U64+ exit then
-   cell DATA-REF+ 0= if E-COMP-STATE throw then ;
+   cell 0= if 5 PIECES @ U64+ else
+      cell DATA-REF+ 0= if E-COMP-STATE throw then
+   then
+   rec XREF-FLAGS DNAME-COPY and 0<> if
+      rec NDICT:COPY-TRAILER
+   else NULL-PTR 0 then PIECES @ FIELD+ ;
 
 EXPORT CHECKER-RESOLVE:REC>INDEX
 
@@ -1759,9 +1764,8 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    then
    src ;
 
-\ The kind, name, flags without the name length, EXT and COPY, wordlist, then the kind's fields; KIND-PRIVATE and
+\ The kind, name, flags without the name length and EXT, wordlist, then the kind's fields; KIND-PRIVATE and
 \ KIND-SEALED entries are LATE+'s and SEAL+'s. Answers the build's record an alias or type entry binds, else -1.
-\ No entry holds a copy word's steps, so a word made from one is a call.
 : RECORD+ ( n -- n )
    {: idx:n :}
    idx XREF-REC {: rec:^ :}
@@ -1769,7 +1773,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    row idx MADE-WID KIND {: kind:n :}
    kind PIECES @ U64+
    rec XREF-NAME$ PIECES @ FIELD+
-   rec XREF-FLAGS  DNAME-LEN-MASK DNAME-EXT or DNAME-COPY or invert and  PIECES @ U64+
+   rec XREF-FLAGS  DNAME-LEN-MASK DNAME-EXT or invert and  PIECES @ U64+
    idx WORDLIST+
    kind KIND-DEF = if rec DISPATCH+  -1 exit then
    kind KIND-DOES = if row NSHADOW:ENTRY@ PIECES @ U64+  -1 exit then
@@ -3366,7 +3370,7 @@ variable RD-AT
    then
    kind KIND-SEALED = if SEALED-CK exit then
    SKIP-NAME  8 RD-SKIP  ROLE-CK
-   kind KIND-DEF = if SKIP-REF then
+   kind KIND-DEF = if SKIP-REF SKIP-NAME then
    kind KIND-PACKAGE = if 8 RD-SKIP then
    kind KIND-ALIAS = if 24 RD-SKIP then
    kind KIND-DOES = if 8 RD-SKIP then
@@ -4466,6 +4470,7 @@ EXPORT TFAM:TFAM-N@
    RD-U64 {: flags:n :}
    ROLE-WID {: wid:n :}
    RD-REF {: tag:n x:n y:n z:n w:n :}
+   RD-NAME {: steps:^ stepsu:n :}
    i 1 + ENTRIES-N @ < if i 1 + ENTRY-OFFS @ OBJ@ KIND-DOES = else false then {: does:bool :}
    does if
       i 1 + ENTRY-OFFS @  RD-OPEN
@@ -4510,9 +4515,11 @@ EXPORT TFAM:TFAM-N@
    else
       tag 5 <> if
          copy s false  tag x y z w RESOLVE  NPUB:IMPORT-PENDING-DEFER
+      else stepsu 0<> if
+         copy s false  steps stepsu  NPUB:IMPORT-PENDING-COPY
       else
          copy s recorded false NPUB:IMPORT-PENDING
-      then
+      then then
    then drop
    INTERPRETER:DEF-CLOSE
    \ After publication, as PENDING-CK rejects IMM and INT on a pending row; it also restores the

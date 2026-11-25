@@ -12,6 +12,7 @@ require src/lib/le.f
 HB-TARGET-LINUX-X86-64? 0= [if] require src/arch/arm64/asm.f [then]
 HB-TARGET-LINUX-X86-64? [if] require src/arch/x86-64/disasm.f [then]
 require src/habu/code-bytes.f
+require src/compiler/native/dict.f
 require src/habu/debug-watch.f
 require src/habu/stepper.f
 
@@ -244,12 +245,25 @@ $FFFFFF00 constant ABOVE-BYTE0
    xt kept idx BP-SET-SLOT
    xt TRAP-WORD xt BP-PATCH32 ;
 
+\ A copy word's mention compiles its steps into the caller, so a trap at its
+\ entry fires only for a call through its xt; says so after a breakpoint at
+\ code address at is set.
+: COPY-NOTE ( n -- ) {: at:n :}
+   ndict@ 0 ?do
+      i XREF-REC {: rec:^ :}
+      rec NDICT:COPY?  rec XREF-START at =  and if
+         s" bp: a mention of " type  rec XREF-NAME$ type
+         s"  compiles its steps into the caller; this fires only for a call through its xt" type cr
+         unloop exit
+      then
+   loop ;
+
 public
 
-: BP+ ( [ R -- S ] -- )    XT>N 0 BPADD ;     \ one-shot
-: BP* ( [ R -- S ] -- )    XT>N 1 BPADD ;     \ persistent (re-fires every call)
+: BP+ ( [ R -- S ] -- )    XT>N dup 0 BPADD COPY-NOTE ;     \ one-shot
+: BP* ( [ R -- S ] -- )    XT>N dup 1 BPADD COPY-NOTE ;     \ persistent (re-fires every call)
 : BPN ( n [ R -- S ] -- )                     \ persistent, silent for the first n hits
-   XT>N swap 1 lshift 1 or BPADD ;
+   XT>N dup rot 1 lshift 1 or BPADD COPY-NOTE ;
 
 \ Only a slot BPADD filled is patched back, through the pointer it stored, so
 \ an xt with no breakpoint returns before any byte is touched.

@@ -335,10 +335,13 @@ public
 \ An immediate word runs where it is mentioned, so it is none.
 : COPY? ( ^n -- bool ) XREF-FLAGS DNAME-COPY DNAME-IMM or and DNAME-COPY = ;
 
-\ A copy word's steps: its trailer holds their byte count, then the steps.
-: COPY-STEPS ( ^n -- str ) {: rec:^ :}
+\ A copy word's trailer: its steps' byte count, the steps, then zero bytes to a
+\ whole instruction.
+: COPY-TRAILER ( ^n -- str ) {: rec:^ :}
    rec XREF-START  rec XREF-LEN +  >TRAILER-CELL BYTE-VIEW {: at:^ :}
-   at 1+  at c@ ;
+   at  at c@ 4 + -4 and ;
+
+: COPY-STEPS ( ^n -- str ) COPY-TRAILER drop {: at:^ :}  at 1+  at c@ ;
 
 \ ---- and the engine word a does> body leaves through --------------------------
 private

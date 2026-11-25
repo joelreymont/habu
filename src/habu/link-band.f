@@ -32,6 +32,9 @@ DYNAMIC-BUFFER OFFSETS n
 DYNAMIC-BUFFER TRAILERS n
 2 cells constant TRAILER-BYTES
 
+\ Emission e's copy word, whose steps trailer follows its code, -1 for none (LAYOUT).
+DYNAMIC-BUFFER STEPPED n
+
 \ The band's first byte, where the kernel ends, and the byte after its last (LAYOUT).
 variable BAND-AT
 variable BAND-END
@@ -412,14 +415,27 @@ variable UNSAFE-COUNT
    repeat
    drop 0 ;
 
-\ Each placed emission from NATIVE:SIZE on, in emission order, a defer's
-\ with room for its trailer when the output keeps a dictionary.
+\ The copy word whose record emission e holds, or -1. A copy word's emission
+\ holds its record alone, so its steps follow the emission.
+: EM-STEPS ( n -- n )
+   {: e:n :}
+   e EM-FIRST @
+   begin dup 0 >= while
+      dup NSHADOW:RECORD@ {: r:n :}
+      r XREF-REC XREF-FLAGS DNAME-COPY and 0<> if drop r exit then
+      REC-NEXT @
+   repeat ;
+
+\ Each placed emission from NATIVE:SIZE on, in emission order, a defer's or a
+\ copy word's with room for its trailer when the output keeps a dictionary,
+\ the only reader of either.
 : LAYOUT ( bool -- )
    {: dict:bool :}
    NSHADOW:EMISSIONS OFFSETS-RESERVE  NSHADOW:EMISSIONS TRAILERS-RESERVE
+   NSHADOW:EMISSIONS STEPPED-RESERVE
    NATIVE:SIZE  dup BAND-AT !
    NSHADOW:EMISSIONS 0 ?do
-      0 i TRAILERS !
+      0 i TRAILERS !  -1 i STEPPED !
       i PLACED @ 0= if
          -1 i OFFSETS !
       else
@@ -427,6 +443,9 @@ variable UNSAFE-COUNT
          dict if i EM-TRAILER else 0 then {: cell:n :}
          cell i TRAILERS !
          cell 0<> if TRAILER-BYTES + then
+         dict if i EM-STEPS else -1 then {: r:n :}
+         r i STEPPED !
+         r 0 >= if r XREF-REC NDICT:COPY-TRAILER nip + then
       then
    loop
    BAND-END ! ;
@@ -475,8 +494,8 @@ variable UNSAFE-COUNT
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
-\ Emission e's code, then a defer's trailer: DEFER-MAGIC and its dispatch cell
-\ through data.
+\ Emission e's code, then a defer's trailer, DEFER-MAGIC and its dispatch cell
+\ through data, or a copy word's, its host record's bytes.
 : PLACE-ONE ( n [ n -- n ] -- )
    {: e:n data :}
    e NSHADOW:SIZE NATIVE:SPACE {: dst:^ :}
@@ -484,7 +503,9 @@ variable UNSAFE-COUNT
    e dst NATIVE:TEXT-VA e OFFSET@ + data ['] TARGET-ADDRESS
    ['] LIVE-AT? NATIVE:PLACE
    e TRAILERS @ {: cell:n :}
-   cell 0<> if DEFER-MAGIC NATIVE:U64,  cell data execute NATIVE:U64, then ;
+   cell 0<> if DEFER-MAGIC NATIVE:U64,  cell data execute NATIVE:U64, then
+   e STEPPED @ {: r:n :}
+   r 0 >= if r XREF-REC NDICT:COPY-TRAILER NATIVE:BYTES, then ;
 
 
 \ Each placed emission, after the kernel NATIVE:ADOPT laid, its data addresses
