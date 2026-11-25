@@ -1590,10 +1590,10 @@ CAST: HELD>N ( held -- n )
 
 
 \ The message answered into ANSWER-W, open on the caller's vector.
-: VEC-ANSWER ( str -- )
-   [: CARRIED ;] catch {: code:n :} drop
+: VEC-ANSWER ( str str -- ) {: msg:str id:str :}
+   [: msg CARRIED ;] catch {: code:n :} drop
    code FAULT-OF {: fault:n :}
-   [: code FAULTED ;] [: s" -" fault MESSAGE-LOGGED ;] finally ;
+   [: code FAULTED ;] [: id fault MESSAGE-LOGGED ;] finally ;
 
 : REPLY-VEC ( -- ^VEC:vector<u8> ) SLOT REPLIES WORKER-VEC ;
 
@@ -1792,18 +1792,19 @@ public
 \ which came by a transport other than HTTP, on a request worker: as HANDLE
 \ answers a 2026-07-28 request, with no transport, version or header checks.
 \ ANSWER empties the vector and writes the response's JSON text there, nothing for
-\ a notification; a throw is answered -32603 as HANDLE answers it.
+\ a notification; a throw is answered -32603 as HANDLE answers it. Under MCP:LOG
+\ the message's line names its request by the id the host gives.
 \ The VISIBLE! hook is called with no HTTP request, so it judges by what the
 \ host set for the message's caller: BEARER:CLAIM$ speaks only for a request
 \ the worker serves. E-STATE before SERVER-INFO! and off a request worker.
-: ANSWER ( str ^VEC:vector<u8> -- )
+: ANSWER ( str str ^VEC:vector<u8> -- ) {: msg:str id:str v:^ :}
    SERVER-NAME @ STR:LEN 0= if E-STATE throw then
    ON-WORKER
    TIME:MONO-NS SLOT START !
    construct sink vector OPENED-TO
    MODERN SLOT ERA !
-   SLOT ANSWER-W swap JSON:OPEN drop
-   [: VEC-ANSWER ;] [: SLOT ANSWER-W JSON:CLOSE ;] finally ;
+   SLOT ANSWER-W v JSON:OPEN drop
+   [: msg id VEC-ANSWER ;] [: SLOT ANSWER-W JSON:CLOSE ;] finally ;
 
 
 private

@@ -1814,7 +1814,7 @@ TYPED-VARIABLE REPLIES ^VEC:vector<u8>   \ SERVE-CASES makes and deletes it
    REPLIES @ {: v:^ :}
    v 0 VEC:RESIZE
    62 v VEC:PUSH c!
-   asked HTTP:BODY$ v MCP:ANSWER
+   asked HTTP:BODY$ s" view-7" v MCP:ANSWER
    answer JSON-HEADER
    answer v VEC:BYTES HTTP:BODY! ;
 
@@ -1872,7 +1872,7 @@ TYPED-VARIABLE REPLIES ^VEC:vector<u8>   \ SERVE-CASES makes and deletes it
 
 : ANSWER-OFF-WORKER ( -- )
    s" ANSWER off a request worker throws E-STATE" T-LABEL
-   [: s" {}" REPLIES @ MCP:ANSWER ;] MCP:E-STATE TTHROWSQ ;
+   [: s" {}" s" view-7" REPLIES @ MCP:ANSWER ;] MCP:E-STATE TTHROWSQ ;
 
 
 \ The wait tool's held calls, by their rows.
@@ -2185,9 +2185,9 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    W$ REQ-LOGGED ;
 
 : LOGGED-ANSWER ( -- )
-   s" MCP:LOG logs ANSWER's message under the id -" T-LABEL
+   s" MCP:LOG logs ANSWER's message under the id its host gives" T-LABEL
    [: ANSWER-OPEN ECHO-A1 POST 200 T= ;] CAPTURED
-   LOG$ s"  tools/call echo -> ok" INFO-ID$ s" -" T$= ;
+   LOG$ s"  tools/call echo -> ok" INFO-ID$ s" view-7" T$= ;
 
 \ An echo call whose arguments, {"b":<BIG>}, pass the 4096 bytes LOG writes of a text.
 : LONG-CALL ( -- str )
