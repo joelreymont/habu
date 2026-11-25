@@ -2709,123 +2709,13 @@ private
 
 $CC constant INT3                      \ the byte code-publish fills a slot's gap with
 
-\ The helpers' labels, made by PUBLICATION, in the stream it emits them into.
-variable ADD-SITE-CELL
-variable DROP-SITES-CELL
+\ The trap's label, made by PUBLICATION, in the stream it emits it into.
 variable SEAL-TRAP-CELL
-variable SITE-TRAP-CELL
-: ADD-SITE-LBL ( -- label ) ADD-SITE-CELL @ >LABEL ;
-: DROP-SITES-LBL ( -- label ) DROP-SITES-CELL @ >LABEL ;
 : SEAL-TRAP-LBL ( -- label ) SEAL-TRAP-CELL @ >LABEL ;
-: SITE-TRAP-LBL ( -- label ) SITE-TRAP-CELL @ >LABEL ;
 
-\ RELOC's x86-64 band (src/habu/layout.f): a u64 count at SITE-N-CELL, then
-\ rows of a u32 region offset and a u8 kind, strictly ascending by offset.
-
-\ r8 = the first row, rcx = the count and r9 = past the last row. A count above
-\ SITE-CAP is a corrupt band, EXIT-STATUS:SITE's.
-: ROWS, ( -- )
-   R8 DATA-REG RELOC:SITE-ROWS-OFF MEM-OFF ASM-SINK ENC-LEA
-   RCX DATA-REG RELOC:SITE-N-CELL MOV-LOAD,
-   RCX RELOC:SITE-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-A SITE-TRAP-LBL JCC,
-   R9 RCX RELOC:SITE-ROW-BYTES >IMM8 ASM-SINK ENC-IMUL-RRI8
-   R9 R8 ASM-SINK ENC-ADD-RR ;
-
-\ Record the site at region offset rdi of kind rdx in its place. The scan runs
-\ down from the last row, so a site above every row is an append; the rows
-\ above a lower site move up one row, the top byte first. The same row again
-\ changes nothing; another kind at a recorded offset, or a row past SITE-CAP,
-\ exits EXIT-STATUS:SITE. Clobbers rax rcx rsi r8 r9.
-: ADD-SITE-HELPER, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label same:label place:label move:label :}
-   X64CODE:LBL {: moved:label :}
-   RELOC:SITE-ROW-BYTES {: row:n :}
-   ADD-SITE-LBL X64CODE:LBL,
-   ROWS,
-   RSI R9 ASM-SINK ENC-MOV-RR                          \ rsi = the new row's place
-   scan X64CODE:LBL,
-   RSI R8 ASM-SINK ENC-CMP-RR  C-BE place JCC,         \ below every row
-   0 >R32 RSI row negate MEM-OFF ASM-SINK ENC-MOV32-RM \ the offset of the row below
-   RAX RDI ASM-SINK ENC-CMP-RR  C-B place JCC,
-   C-E same JCC,
-   RSI row >IMM8 ASM-SINK ENC-SUB-RI8
-   scan JMP,
-   same X64CODE:LBL,
-   RAX RSI row negate RELOC:SITE-KIND-OFF + MEM-OFF ASM-SINK ENC-MOVZX-8-RM
-   RAX RDX ASM-SINK ENC-CMP-RR  C-NE SITE-TRAP-LBL JCC,
-   RET,
-   place X64CODE:LBL,
-   RCX RELOC:SITE-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE SITE-TRAP-LBL JCC,
-   move X64CODE:LBL,
-   R9 RSI ASM-SINK ENC-CMP-RR  C-BE moved JCC,
-   R9 ASM-SINK ENC-DEC
-   RAX R9 MEM-AT ASM-SINK ENC-MOVZX-8-RM
-   0 >R8 R9 row MEM-OFF ASM-SINK ENC-MOV8-MR
-   move JMP,
-   moved X64CODE:LBL,
-   RDI R64>N >R32 RSI MEM-AT ASM-SINK ENC-MOV32-MR
-   RDX R64>N >R8 RSI RELOC:SITE-KIND-OFF MEM-OFF ASM-SINK ENC-MOV8-MR
-   RCX ASM-SINK ENC-INC
-   RCX DATA-REG RELOC:SITE-N-CELL MOV-STORE,
-   RET, ;
-
-\ Remove every row whose site lies in [rdi, rdi+rsi), both kinds: the twin of
-\ habu1.f RELOC-EMIT:CLEAR-SPAN over both maps. The span's offsets compare
-\ signed, so a span below the region removes nothing. Two scans down from the
-\ last row find the first row at or above the span's end, in r10, and the first
-\ at or above its start, in r11, counting the rows between in rdx; the rows
-\ from r10 up move down over them, then the freed tail is zeroed.
-\ Clobbers rax rcx rdx rsi rdi r8-r11.
-: DROP-SITES-HELPER, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: high:label highs:label low:label lows:label :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: move:label moved:label clear:label done:label :}
-   RELOC:SITE-ROW-BYTES {: row:n :}
-   DROP-SITES-LBL X64CODE:LBL,
-   RDI DBASE-REG ASM-SINK ENC-SUB-RR                   \ rdi = the span's first offset
-   RSI RDI ASM-SINK ENC-ADD-RR                         \ rsi = past its last
-   ROWS,
-   R10 R9 ASM-SINK ENC-MOV-RR
-   high X64CODE:LBL,
-   R10 R8 ASM-SINK ENC-CMP-RR  C-BE highs JCC,
-   0 >R32 R10 row negate MEM-OFF ASM-SINK ENC-MOV32-RM
-   RAX RSI ASM-SINK ENC-CMP-RR  C-L highs JCC,
-   R10 row >IMM8 ASM-SINK ENC-SUB-RI8
-   high JMP,
-   highs X64CODE:LBL,
-   R11 R10 ASM-SINK ENC-MOV-RR
-   RDX ZERO-REG,
-   low X64CODE:LBL,
-   R11 R8 ASM-SINK ENC-CMP-RR  C-BE lows JCC,
-   0 >R32 R11 row negate MEM-OFF ASM-SINK ENC-MOV32-RM
-   RAX RDI ASM-SINK ENC-CMP-RR  C-L lows JCC,
-   R11 row >IMM8 ASM-SINK ENC-SUB-RI8
-   RDX ASM-SINK ENC-INC
-   low JMP,
-   lows X64CODE:LBL,
-   RDX RDX ASM-SINK ENC-TEST-RR  C-E done JCC,         \ no row in the span
-   RCX RDX ASM-SINK ENC-SUB-RR
-   RCX DATA-REG RELOC:SITE-N-CELL MOV-STORE,
-   move X64CODE:LBL,
-   R10 R9 ASM-SINK ENC-CMP-RR  C-AE moved JCC,
-   RAX R10 MEM-AT ASM-SINK ENC-MOVZX-8-RM
-   0 >R8 R11 MEM-AT ASM-SINK ENC-MOV8-MR
-   R10 ASM-SINK ENC-INC  R11 ASM-SINK ENC-INC
-   move JMP,
-   moved X64CODE:LBL,
-   RAX ZERO-REG,
-   clear X64CODE:LBL,
-   R11 R9 ASM-SINK ENC-CMP-RR  C-AE done JCC,
-   0 >R8 R11 MEM-AT ASM-SINK ENC-MOV8-MR
-   R11 ASM-SINK ENC-INC
-   clear JMP,
-   done X64CODE:LBL,
-   RET, ;
-
-\ The refusals the rows share: a span or index a guard refuses, and a site the
-\ band cannot take.
-: TRAPS, ( -- )
-   SEAL-TRAP-LBL X64CODE:LBL,  EXIT-STATUS:SEAL-VIOLATION EXIT-GROUP,
-   SITE-TRAP-LBL X64CODE:LBL,  EXIT-STATUS:SITE EXIT-GROUP, ;
+\ Where a span or index a guard rejects goes.
+: SEAL-TRAP, ( -- )
+   SEAL-TRAP-LBL X64CODE:LBL,  EXIT-STATUS:SEAL-VIOLATION EXIT-GROUP, ;
 
 \ Over the bounded wid in rdi: rsi = the policy bitmap's containing cell,
 \ rdx = its bit. It clobbers rcx; shl takes the wid's low six bits.
@@ -2867,9 +2757,7 @@ variable SITE-TRAP-CELL
 
 \ code-publish ( ^u8 n n -- ): the twin of BCODEPUBLISH. The span is nonzero,
 \ does not wrap and lies in [DBASE+DICT-SIZE, DBASE+REGION), and dst is CP: a
-\ publication is an append. int3 fills [dst+len, slot), and the site rows of
-\ both kinds in [dst, slot) go, since the span's sites are recorded after and
-\ the fill holds no code.
+\ publication is an append. int3 fills [dst+len, slot).
 : PUBLISH, ( -- )
    ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: copy:label copied:label fill:label filled:label :}
@@ -2904,8 +2792,6 @@ variable SITE-TRAP-CELL
    RAX ASM-SINK ENC-INC
    fill JMP,
    filled X64CODE:LBL,
-   RDI RSP PUB-DST MOV-LOAD,  RSI RSP PUB-SLOT MOV-LOAD,  RSI RDI ASM-SINK ENC-SUB-RR
-   DROP-SITES-LBL CALL,
    CODE-SYNC,
    cp RSP PUB-SLOT MOV-LOAD,                           \ the slot is claimed
    RSP PUB-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
@@ -2949,15 +2835,6 @@ variable SITE-TRAP-CELL
    R11 ASM-SINK ENC-POP  R10 ASM-SINK ENC-POP
    R9 ASM-SINK ENC-POP  R8 ASM-SINK ENC-POP
    RDX ASM-SINK ENC-POP  RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP ;
-
-\ callmap-set and addrmap-set ( n -- ): the site's region offset into rdi, where
-\ an address outside the region exits SEAL-VIOLATION, and the kind into rdx.
-: SITE-SET, ( n -- ) {: kind:n :}
-   RDI POP,
-   RDI DBASE-REG ASM-SINK ENC-SUB-RR                   \ below DBASE is huge, unsigned
-   RDI REGION >IMM32 ASM-SINK ENC-CMP-RI32  C-AE SEAL-TRAP-LBL JCC,
-   RDX kind IMM32,
-   ADD-SITE-LBL CALL, ;
 
 : RECORD-AT, ( r64 -- ) {: idx:r64 :}
    R8 idx DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
@@ -3092,26 +2969,14 @@ variable SITE-TRAP-CELL
 public
 
 : PUBLICATION, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: add-end:label drop-end:label site-end:label :}
-   X64CODE:LBL ADD-SITE-CELL !  X64CODE:LBL DROP-SITES-CELL !
-   X64CODE:LBL SEAL-TRAP-CELL !  X64CODE:LBL SITE-TRAP-CELL !
-   ADD-SITE-HELPER,
-   add-end X64CODE:LBL,
-   s" (X64-ADD-SITE)" ADD-SITE-LBL LABEL>N add-end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   DROP-SITES-HELPER,
-   drop-end X64CODE:LBL,
-   s" (X64-DROP-SITES)" DROP-SITES-LBL LABEL>N drop-end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   TRAPS,
-   s" (X64-SEAL-TRAP)" SEAL-TRAP-LBL LABEL>N SITE-TRAP-LBL LABEL>N
-      ENGINE-PRIMS:HELPER-REGISTER
-   site-end X64CODE:LBL,
-   s" (X64-SITE-TRAP)" SITE-TRAP-LBL LABEL>N site-end LABEL>N
+   X64CODE:LBL {: trap-end:label :}
+   X64CODE:LBL SEAL-TRAP-CELL !
+   SEAL-TRAP,
+   trap-end X64CODE:LBL,
+   s" (X64-SEAL-TRAP)" SEAL-TRAP-LBL LABEL>N trap-end LABEL>N
       ENGINE-PRIMS:HELPER-REGISTER
    s" patch32" [: PATCH32, ;] PRIM
    s" code-publish" [: PUBLISH, ;] PRIM
-   s" callmap-set" [: RELOC:SITE-CALL SITE-SET, ;] PRIM
-   s" addrmap-set" [: RELOC:SITE-ADDR SITE-SET, ;] PRIM
-   s" reloc-maps-clear" [: RSI POP,  RDI POP,  DROP-SITES-LBL CALL, ;] PRIM
    s" xref-retarget" [: RETARGET, ;] PRIM
    s" rep-mark" [: REP-MARK, ;] PRIM
    s" does-record" [: DOES-RECORD, ;] PRIM ;
@@ -5416,14 +5281,6 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    RCX WRITE-ALIAS,
    2 >R32 RCX CALL-REL32-OFF MEM-OFF ASM-SINK ENC-MOV32-MR
    CODE-SYNC,
-   \ The created body's E9 is written after its original publication. Carry
-   \ that exact opcode site so a stripped image can retarget the does> clause.
-   RAX RSP DP-ENTRY MOV-LOAD,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E declared JCC,
-   RDI RSP DP-SLOT MOV-LOAD,
-   RDI DBASE-REG ASM-SINK ENC-SUB-RR
-   RDX RELOC:SITE-CALL IMM32,
-   ADD-SITE-LBL CALL,
    declared X64CODE:LBL,
    R11 NCOMP-DISPATCH:DOES-SHADOW-CELL CELL@,
    R11 R11 ASM-SINK ENC-TEST-RR  C-E noshadow JCC,

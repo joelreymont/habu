@@ -32,7 +32,7 @@ undefine ONE
 : ONE ( -- n ) 2 ;
 
 : TRUSTED-POSTPONE ( -- n )
-   [: s\" : MAKE-TRUSTED ( str -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word postpone reloc-maps-clear postpone ; ;"
+   [: s\" : MAKE-TRUSTED ( str -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word postpone xref-retarget postpone ; ;"
       evaluate-closed ;] catch ;
 TRUSTED-POSTPONE 70 T=
 

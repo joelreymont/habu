@@ -721,7 +721,7 @@ generates: FAULT ( -- n )
 -8579 s" the checker holds no declared effect for the pending definition" ERROR:CODE E-COMP-ARITY
 -8600 s" a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist, the used publics and the namespace record for a qualified token all answer absent" ERROR:CODE E-NDICT-NAME
 -8602 s" the record a spelling denoted carries no definer kind: it was not made by `constant`, `create` or `variable`, or a `does>` clause took that kind away from it, so entering it would run a body rather than collect a decided value" ERROR:CODE E-NDICT-KIND
--8621 s" an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement" ERROR:FAULT E-NPUB-RELOC
+-8621 s" a prepared body whose size, recorded span or clause offset is no whole run of its code" ERROR:FAULT E-NPUB-RELOC
 -8622 s" the pending record is not the unpublished slot the dictionary count points at" ERROR:FAULT E-NPUB-PENDING
 -8623 s" a sealed emission for another machine than the engine publishing it runs on: the code region holds only that machine's instructions, so another's bytes are refused before anything about the record is asked" ERROR:CODE E-NPUB-TARGET
 -8638 s" a string interned in a build's data space after DP moved back inside it: intern every string before moving DP back, or end the build there" ERROR:CODE E-INTERN-REWIND

@@ -88,7 +88,6 @@ $1000 constant PAGE
 42 constant ANSWER                     \ what the published routine answers
 99 constant PATCHED                    \ what it answers once patch32 rewrites it
 1 constant IMM-AT                      \ mov eax, imm32: the immediate follows the opcode
-32 constant KIND-SHIFT                 \ a checked site row: the kind above the offset
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
@@ -127,22 +126,6 @@ DICT-SIZE 32 + constant THIRD-SLOT
 $CCCCCCCCCCCCCCC3 constant RET-INT3S
 $CCCCCCCCCCCCCCCC constant INT3S
 
-: AT-ROW, ( n str -- ) {: off:n row:str :}
-   off X64HARNESS:PUSH-REGION,  row X64HARNESS:CALL-ROW, ;
-
-: CLEAR, ( n n -- ) {: off:n len:n :}
-   off X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
-   s" reloc-maps-clear" X64HARNESS:CALL-ROW, ;
-
-: EXPECT-SITE, ( n n n -- ) {: k:n off:n kind:n :}
-   RELOC:SITE-ROWS-OFF k RELOC:SITE-ROW-BYTES * + {: at:n :}
-   0 >R32 DATA-REG at MEM-OFF ASM-SINK ENC-MOV32-RM
-   RCX DATA-REG at RELOC:SITE-KIND-OFF + MEM-OFF ASM-SINK ENC-MOVZX-8-RM
-   RCX KIND-SHIFT >IMM8 ASM-SINK ENC-SHL-RI8
-   RAX RCX ASM-SINK ENC-OR-RR
-   0 G-PUSH
-   kind KIND-SHIFT lshift off or X64HARNESS:EXPECT-POP, ;
-
 : REC ( n n -- n ) {: k:n off:n :} k DREC * off + ;
 
 \ A record's CODE-SPAN length: the cell after its code cell.
@@ -180,24 +163,13 @@ DICT-SIZE PAGE 2 * + CELL + constant WIDEN
    WIDEN X64HARNESS:PROBE,  X64HARNESS:FAULTED X64HARNESS:EXPECT-POP,
    DICT-SIZE PAGE 3 * + X64HARNESS:PROBE,  X64HARNESS:FAULTED X64HARNESS:EXPECT-POP, ;
 
-\ The routine's sites: below its span and on the slot past its fill stay, and
-\ the two inside it and the one at the fill's last byte go with the
-\ publication.
 : PUBLISH-CASE, ( -- )
    [: ANSWER-CODE, ;] PUSH-CODE, {: len:n :}
-   SECOND-SLOT s" callmap-set" AT-ROW,               \ into the empty band
-   SECOND-SLOT 1- s" callmap-set" AT-ROW,            \ the fill's last byte, below it
-   DICT-SIZE 1- s" callmap-set" AT-ROW,              \ below every row
-   DICT-SIZE 2 + s" addrmap-set" AT-ROW,             \ between the two
-   DICT-SIZE len + 1- s" callmap-set" AT-ROW,        \ the span's last byte
    DICT-SIZE X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
    s" code-publish" X64HARNESS:CALL-ROW,
    X64HARNESS:PUSH-CP,  SECOND-SLOT X64HARNESS:EXPECT-POP-REGION,
    DICT-SIZE CALL-REGION,  ANSWER X64HARNESS:EXPECT-POP,
    DICT-SIZE CELL + X64HARNESS:PROBE,  X64HARNESS:FAULTED X64HARNESS:EXPECT-POP,
-   2 RELOC:SITE-N-CELL X64HARNESS:EXPECT-CELL,
-   0 DICT-SIZE 1- RELOC:SITE-CALL EXPECT-SITE,
-   1 SECOND-SLOT RELOC:SITE-CALL EXPECT-SITE,
    PATCHED X64HARNESS:PUSH,  DICT-SIZE IMM-AT + X64HARNESS:PUSH-REGION,
    s" patch32" X64HARNESS:CALL-ROW,
    DICT-SIZE CALL-REGION,  PATCHED X64HARNESS:EXPECT-POP,
@@ -215,23 +187,6 @@ DICT-SIZE PAGE 2 * + CELL + constant WIDEN
    SECOND-SLOT X64HARNESS:PUSH-REGION-CELL,  RET-INT3S X64HARNESS:EXPECT-POP,
    SECOND-SLOT CELL + X64HARNESS:PUSH-REGION-CELL,  INT3S X64HARNESS:EXPECT-POP,
    THIRD-SLOT X64HARNESS:PUSH-REGION-CELL,  -1 X64HARNESS:EXPECT-POP,
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED, ;
-
-: SITES-CASE, ( -- )
-   100 s" callmap-set" AT-ROW,                       \ into the empty band
-   300 s" addrmap-set" AT-ROW,                       \ an append
-   200 s" callmap-set" AT-ROW,                       \ below the last row, which moves up
-   50 s" addrmap-set" AT-ROW,                        \ below every row
-   100 s" callmap-set" AT-ROW,                       \ the same row again: no change
-   REGION 1- s" addrmap-set" AT-ROW,                 \ the region's last byte
-   150 100 CLEAR,                                    \ drops 200
-   PAGE negate PAGE 2 / CLEAR,                       \ below the region: drops none
-   CELL negate 76 CLEAR,                             \ reaches into it: drops 50
-   3 RELOC:SITE-N-CELL X64HARNESS:EXPECT-CELL,
-   0 100 RELOC:SITE-CALL EXPECT-SITE,
-   1 300 RELOC:SITE-ADDR EXPECT-SITE,
-   2 REGION 1- RELOC:SITE-ADDR EXPECT-SITE,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
 
@@ -358,7 +313,6 @@ LONG-TAIL CELL + constant LONG-PAD
    [: WINDOW-CLOSED-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-prot-window-closed" TMP-PATH IMAGE
    [: PUBLISH-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-publish" TMP-PATH IMAGE
    [: PUBLISH-FILL-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-publish-fill" TMP-PATH IMAGE
-   [: SITES-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-sites" TMP-PATH IMAGE
    [: RETARGET-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-retarget" TMP-PATH IMAGE
    [: RECLAIM-GLOBAL-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-reclaim-global" TMP-PATH IMAGE
    [: DOES-CASE, ;] EXIT-STATUS:SUCCESS s" hb-x64-kernel-does" TMP-PATH IMAGE
@@ -366,13 +320,6 @@ LONG-TAIL CELL + constant LONG-PAD
    [: DICT-SIZE 1+ 1 PUBLISH-ARMED, ;] EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-publish-armed" TMP-PATH IMAGE
    [: DICT-SIZE REGION DICT-SIZE - 1+ PUBLISH-ARMED, ;]
    EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-publish-past-armed" TMP-PATH IMAGE
-   [: 100 s" callmap-set" AT-ROW,  100 s" addrmap-set" AT-ROW, ;]
-   EXIT-STATUS:SITE s" hb-x64-kernel-sites-kind-armed" TMP-PATH IMAGE
-   [: RELOC:SITE-CAP RELOC:SITE-N-CELL X64HARNESS:CELL!,
-      100 s" callmap-set" AT-ROW, ;]
-   EXIT-STATUS:SITE s" hb-x64-kernel-sites-full-armed" TMP-PATH IMAGE
-   [: REGION s" callmap-set" AT-ROW, ;]
-   EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-sites-outside-armed" TMP-PATH IMAGE
    [: 0 1 1 RETARGET, ;] EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-retarget-armed" TMP-PATH IMAGE
    [: 0 CODE-SPAN:FULL 0 RETARGET, ;]
    EXIT-STATUS:SEAL-VIOLATION s" hb-x64-kernel-retarget-empty-armed" TMP-PATH IMAGE

@@ -276,12 +276,8 @@ DYNAMIC-BUFFER GRANTS n              \ the built packages a checked piece gives 
 variable GRANTS-N
 DYNAMIC-BUFFER EM-OFFS n             \ a read object's emissions' offsets in OBJECT, each at its S
 DYNAMIC-BUFFER FILE-ROWS n           \ its FILES row k, from 1, as that file's BUILT row index
-DYNAMIC-BUFFER HOST-CALLS n          \ the host copy's call sites out of hb's region
-variable HOST-CALLS-N
 DYNAMIC-BUFFER ALIASES n             \ the linked file's aliases, each its record index, then its source's
 variable ALIASES-N
-DYNAMIC-BUFFER HOST-ADDRS n          \ its data address sites
-variable HOST-ADDRS-N
 
 \ The owned primitives' records the open lays (OWNED-RECORDS), OWNED-CELLS cells each: hb's
 \ kernel record's index, then the offset in OWNED-TEXT and length of its package, name and facts text.
@@ -528,7 +524,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    ANCHORS-RELEASE  ORDER-RELEASE  EXTS-RELEASE  PICKED-RELEASE  EXT-ROWS-RELEASE  BUILT-EXTS-RELEASE  ROW-EXTS-RELEASE
    ENTRY-OFFS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE
-   HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
+   ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BYTES-DELETE  KEY-PATHS BYTES-DELETE  OBJ-PATHS BYTES-DELETE  OBJ-NAME BYTES-DELETE  CODE-COPY BYTES-DELETE  OLD-RECS BYTES-DELETE  OLD-SPACE BYTES-DELETE
    LATE BYTES-DELETE  PRIOR BYTES-DELETE  OBJECT BYTES-DELETE  REQ-PATH BYTES-DELETE  INPUTS BYTES-DELETE
    ENTRY-ROOT BYTES-DELETE  EXIT-ROOT BYTES-DELETE  PART-READS BYTES-DELETE  PART-TEXTS BYTES-DELETE
@@ -573,7 +569,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    OBJ-NAME BYTES-NEW
    OLD-SPACE BYTES-NEW
    OLD-RECS BYTES-NEW
-   0 HSTORES-N !  0 STORERS-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
+   0 HSTORES-N !  0 STORERS-N !  0 STORED-N !  0 ALIASES-N !  0 GRANTS-N !
    0 EDGES-N !  0 BUILT-EXTS-N !
    1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED !  0 IDENTIFIED !  0 OWN-SERIAL !  FIRST-REC @ REC-ROW-N !
    1024 6 * PLACES-RESERVE  1024 6 * 0 ?do 0 i PLACES ! loop  1024 PLACES-CAP !  0 PLACES-N ! ;
@@ -4413,18 +4409,6 @@ EXPORT TFAM:TFAM-N@
 \ A definition's code entries: its record, its shadow emission as the compile filed it, and its
 \ host copy placed and imported as a prepared body (NPUB:IMPORT-PENDING and its twins).
 
-: HOST-CALL+ ( n -- )
-   {: site:n :}
-   HOST-CALLS-N @ 1 + HOST-CALLS-RESERVE
-   site HOST-CALLS-N @ HOST-CALLS !  1 HOST-CALLS-N +! ;
-
-
-: HOST-ADDR+ ( n -- )
-   {: site:n :}
-   HOST-ADDRS-N @ 1 + HOST-ADDRS-RESERVE
-   site HOST-ADDRS-N @ HOST-ADDRS !  1 HOST-ADDRS-N +! ;
-
-
 \ This object's emission e (CODE+) sealed in NEMIT over CODE-COPY: the object's bytes, as the
 \ compile sealed them, with each address value written in. The answer is the entry of
 \ the clause that patched the slot, 0 for none.
@@ -4438,22 +4422,18 @@ EXPORT TFAM:TFAM-N@
    CODE-COPY @ BYTES$ drop {: copy:^ :}
    copy s r  e EM-ARCH  NEMIT:OPEN
    RD-U64 0 ?do RD-U64 NEMIT:FUNCTION+ loop
-   0 HOST-CALLS-N !  0 HOST-ADDRS-N !
    RD-U64 0 ?do
       RD-U64 RD-U64 {: site:n k:n :}
       RD-REF RESOLVE {: target:n :}
       k 0= if NEMIT:CALL else NEMIT:TAIL then {: nk:n :}
       site nk target 0 0 NEMIT:CALL-SITE+
-      nk NEMIT:CALL =  target NPUB:IN-REGION? 0=  and if site HOST-CALL+ then
    loop
-   \ PATCH turns a code chain into adrp+add, with no address-map row; a data chain needs one.
    RD-U64 0 ?do
       RD-U64 RD-U64 {: site:n k:n :}
       RD-REF RESOLVE {: v:n :}
       k 0= if NEMIT:ADDR-CODE else NEMIT:ADDR-DATA then {: nk:n :}
       v  e EM-ARCH  copy  s  site  nk  ADDRESS!
       site nk v -1 NEMIT:ADDR-SITE+
-      k 0<> if site HOST-ADDR+ then
    loop
    RD-U64 {: p:n :}
    p 0 >= if
@@ -4523,15 +4503,13 @@ EXPORT TFAM:TFAM-N@
    h EM-OFFS @ {: at:n :}
    at OBJ@  at 8 + OBJ@ {: s:n r:n :}
    s r CODE-SPAN:RECORDED {: recorded:n :}
-   HOST-CALLS-N @ 0= if NULL-PTR else 0 HOST-CALLS then  HOST-CALLS-N @ {: calls:^ calln:n :}
-   HOST-ADDRS-N @ 0= if NULL-PTR else 0 HOST-ADDRS then  HOST-ADDRS-N @ {: addrs:^ addrn:n :}
    does if
-      copy s recorded calls calln addrs addrn false hoff NPUB:IMPORT-PENDING-DOES
+      copy s recorded false hoff NPUB:IMPORT-PENDING-DOES
    else
       tag 5 <> if
-         copy s calls calln addrs addrn false  tag x y z w RESOLVE  NPUB:IMPORT-PENDING-DEFER
+         copy s false  tag x y z w RESOLVE  NPUB:IMPORT-PENDING-DEFER
       else
-         copy s recorded calls calln addrs addrn false NPUB:IMPORT-PENDING
+         copy s recorded false NPUB:IMPORT-PENDING
       then
    then drop
    INTERPRETER:DEF-CLOSE

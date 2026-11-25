@@ -28,7 +28,6 @@ public
 96 constant ADDRESS-CELL        \ an address-cell table is malformed: header, offset or kind
 99 constant PROF-LIMIT          \ the profiler reached its sample limit and printed its report
 102 constant STACK-BOUNDS       \ a physical VM stack access exceeds its active allocation
-103 constant SITE               \ an x86-64 code site cannot be recorded: the other kind holds its offset, or the site band is full or corrupt
 \ A callback thunk has no catch frame above it: a rejected callback, or an FFI call
 \ on a context another thread owns, writes its record to fd 2 and exits 106.
 106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable

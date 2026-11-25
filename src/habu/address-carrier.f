@@ -1,6 +1,6 @@
 split-str
 \ address-carrier.f - the arm64 address chain shapes and their writer. A matching
-\ shape grants no provenance: callers still need the declared site map or a
+\ shape grants no provenance: callers still need an address site row or a
 \ created-owner record. Its own package, not RELOC: the engine bakes
 \ layout.f, which owns RELOC, and the image tools that load this file on a
 \ product engine may not reopen it (docs/forth-card.md § 6).

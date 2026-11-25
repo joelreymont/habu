@@ -491,30 +491,7 @@ EPPRIM: XREF patch32 PE-N PE-IN PE-PTR-N PE-IN ECLOSE-PRIVATE
 EPPRIM: XREF record-rekey PE-N PE-IN ECLOSE-PRIVATE
 \ Planting and clearing a breakpoint instruction is package DEBUG's.
 EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
-\ The four relocation-record primitives below, per target.
-\ `code-publish ( src dst len -- )` copies an emission into the code arena,
-\ `callmap-set ( addr -- )` and `addrmap-set ( addr -- )` record a call or an
-\ address literal at a region address, and `reloc-maps-clear ( start len -- )`
-\ forgets the sites of a reclaimed span. The record is RELOC's band.
-\ - ARM64, two bitmaps of one bit per four-byte region word: `callmap-set` sets
-\   the call map's bit of the BL at `addr` and `addrmap-set` the address map's
-\   bit of a carrier's first MOVZ, and a set bit stays set; `code-publish`
-\   clears the call map over [dst, dst+len) and `reloc-maps-clear` both maps
-\   over its span.
-\ - x86-64, rows over the same bytes: `callmap-set` and `addrmap-set` add a
-\   SITE-CALL or SITE-ADDR row for the instruction whose first byte (the `call`
-\   opcode, the REX byte of `mov r64, imm64`) is at `addr`, at any byte of the
-\   region. The writer finds the row's place by offset and moves the rows above
-\   it up by one, so the rows stay strictly ascending: a site above the last
-\   row is an append, the common case of code published at the code pointer,
-\   and a site below it costs a move of the rows above it. No site is refused
-\   for being below the last row, so a caller records its sites in any order
-\   and merges nothing. The same row again changes nothing; the other kind at a
-\   recorded offset, or a row past SITE-CAP, exits EXIT-STATUS:SITE. `code-publish`
-\   removes the rows of both kinds in [dst, slot), the span and its int3 fill,
-\   and `reloc-maps-clear` those of its span; sites are recorded after
-\   `code-publish`, so an x86-64 publication drops the stale rows in the bytes
-\   it writes where ARM64 keeps the address bits.
+\ `code-publish ( src dst len -- )` copies an emission into the code arena.
 \ CP is always a code slot, the only address the native driver places code at:
 \ a four-byte instruction word on ARM64 and a 16-byte slot on x86-64. Every CP
 \ writer keeps it one:
@@ -524,17 +501,12 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ `does-record` pads the name it writes at CP to a slot with zeros,
 \ and `namespace-record`, `alias-record` and `def-open` move it past a long
 \ name to the next slot, x86-64 padding with zeros.
-\ An `addr` outside the region, or on ARM64 not a whole instruction, exits
-\ EXIT-STATUS:SEAL-VIOLATION.
 EPPRIM: NPUB code-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-EPPRIM: NPUB callmap-set PE-N PE-IN ECLOSE-PRIVATE
-EPPRIM: NPUB addrmap-set PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ Setting DNAME-REP on one live CAST: record is the checker's.
 EPPRIM: CHECK rep-mark PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB wide-mark ECLOSE-PRIVATE
 EPPRIM: CHECK wide-mark ECLOSE-PRIVATE
-EPPRIM: CODE-RECLAIM reloc-maps-clear PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ The native defining-word runtime patch is package NDICT's.
 EPPRIM: NDICT does-patch PE-N PE-IN PE-STR PE-IN ECLOSE-PRIVATE
 \ `does-record ( entry len -- )` records the pending definition's `;does`

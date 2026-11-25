@@ -176,8 +176,6 @@ variable UNSAFE-COUNT
    a u s" create" STR:=CI
    a u s" patch32" STR:=CI or
    a u s" code-publish" STR:=CI or
-   a u s" callmap-set" STR:=CI or
-   a u s" addrmap-set" STR:=CI or
    a u s" xref-retarget" STR:=CI or
    a u s" bare-search-wl" STR:=CI or
    a u s" xref-search-wl" STR:=CI or

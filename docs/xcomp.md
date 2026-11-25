@@ -230,16 +230,6 @@ code runs is the linker's rule
 - The target's layout is not the host's: a macOS host places its own DATA
   elsewhere, so x86 code reads the target's layout qualified.
 
-### Live-region sites
-
-The live code region records its sites (calls and address literals a later
-pass rewrites) where code is built, and never finds them by decoding bytes. On
-ARM64 the record is two bitmaps, one bit per four-byte word; an x86-64 site
-starts at any byte, so the same bytes hold a band of ascending rows. A site's
-offset is its instruction's first byte on both targets. Both views are declared
-on every target, because `src/` has no load-time target selection; the running
-engine picks one.
-
 ### Build and bootstrap
 
 Cross-build first, self-host second.

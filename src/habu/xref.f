@@ -693,9 +693,7 @@ private
 \ The caller's floor lies at or below cp@ and above every routine a surviving
 \ record points at: FLOOR-FROM's, or a mark taken before the code above it.
 : TRUNCATE ( n -- )
-   {: floor:n :}
-   floor cp@ over - reloc-maps-clear
-   floor cp! ;
+   cp! ;
 
 public
 

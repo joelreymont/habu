@@ -1067,7 +1067,7 @@ ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
 \ the table is empty after it. Overflow or an over-long name or sig dies
 \ at declaration. The table sits after
 \ the private engine bands, below DATA-START, so its growth never moves the
-\ using ABI or relocation maps. PD-TABLE-OFF is past the scaled-immediate range,
+\ using ABI or the address-cell table. PD-TABLE-OFF is past the scaled-immediate range,
 \ so slots use a computed base. Slot: [0]=name-len [8]=sig-len
 \ [PD-NAME-OFF..)=name bytes [PD-SIG-OFF..)=sig bytes.
 \ The table is empty whenever user source runs.
@@ -1112,58 +1112,8 @@ USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` op
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
-\ Two tables of the code region's recorded sites: calls into __text and the
-\ first instruction of each address literal. Both live below DATA-START and are
-\ keyed by region offset.
 package RELOC
 public
-
-\ Call-site map: one bit per four-byte word of the code region, marking every call
-\ whose callee is in the engine's loaded __text. A site is recorded when the call
-\ is published, because region bytes cannot be decoded soundly: a compiled word
-\ may carry inline non-instruction data.
-REGION 32 / constant CALLMAP-BYTES
-USE-BAND-END constant CALLMAP-OFF
-CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
-
-\ Address-literal map: the call map's shape, marking the first word of every
-\ address carrier. A CODE carrier has four move-wide halves, shared DATA normally
-\ three; CODE includes the entry a `[: ... ;]` pushes and the target a `[']`
-\ pushes. Recorded where the compiler decides a literal is an address.
-\ Nothing recognises a chain from region bytes or from its value: a word may
-\ hold inline data and an integer any value.
-REGION 32 / constant ADDRMAP-BYTES
-CALLMAP-END constant ADDRMAP-OFF
-ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
-
-\ Site-row band: the x86-64 view of the same bytes as the two maps above,
-\ [CALLMAP-OFF, ADDRMAP-END), 2 MiB. An x86-64 instruction is not a four-byte
-\ word, so a bit per region word cannot name its sites: the `call rel32` opcode
-\ and the REX byte of a `mov r64, imm64` sit at any byte offset. On that target
-\ the bytes hold a u64 count at SITE-N-CELL and then that many rows from
-\ SITE-ROWS-OFF, SITE-ROW-BYTES each: the region byte offset of the site's first
-\ instruction byte as a little-endian u32, then its kind as a u8 at
-\ SITE-KIND-OFF. The row names the instruction, as a bit names the BL word or a
-\ chain's first MOVZ; the patched field is at +1 of a call and at
-\ +2 of a literal.
-\
-\ Both views are declared on every target.
-\
-\ The rows are strictly ascending by offset, one per offset. On x86-64
-\ `callmap-set` and `addrmap-set` insert a row at its offset's place, so a
-\ caller records sites in any order. `code-publish` and `reloc-maps-clear` remove
-\ the rows of a span. Kinds start at 1, so a zeroed row is no
-\ kind.
-\
-\ Unlike a bitmap, the band can fill. SITE-CAP rows fit; a writer refuses one
-\ more with EXIT-STATUS:SITE.
-CALLMAP-OFF constant SITE-N-CELL                \ live row count (u64)
-SITE-N-CELL 8 + constant SITE-ROWS-OFF
-4 constant SITE-KIND-OFF
-SITE-KIND-OFF 1 + constant SITE-ROW-BYTES
-ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
-1 constant SITE-CALL
-2 constant SITE-ADDR
 
 \ Address-cell table: the DATA offset and kind of every cell declared
 \ to hold an address. XT cells hold code-region addresses, DATA-pointer cells
@@ -1180,7 +1130,10 @@ ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 $8000000000000000 constant XTCELL-DATA-TAG
 $4000000000000000 constant XTCELL-SCRATCH-TAG
 $3FFFFFFFFFFFFFFF constant XTCELL-OFF-MASK
-ADDRMAP-END constant XTCELL-N-CELL        \ live count of used rows
+\ The bytes below the table hold nothing. A link lays its target's table at the
+\ running engine's offset, below the target's DATA-START, so a target that
+\ moves the table down is rejected with LINKER:E-HEAP-STORE.
+USE-BAND-END REGION 16 / + constant XTCELL-N-CELL        \ live count of used rows
 XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
 XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
 

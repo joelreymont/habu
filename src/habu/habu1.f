@@ -2676,46 +2676,7 @@ package ENGINE-EMIT
    C-FLUSH-X9-LINE ;
 ;package
 
-\ Both relocation maps are keyed on region offset, and their readers refuse the
-\ image when the bytes lack the recorded shape, so a bit left over replaced
-\ code is a defect. Both maps: one bit per region word, byte index = offset >>
-\ 5, bit = (offset >> 2) & 7. x10 = the span's first region address, x9 = its
-\ byte length; both survive. Clobbers x6, x7 and x12..x15.
-package RELOC-EMIT
-public
-: CLEAR-SPAN, ( n -- ) {: mapoff:n :}
-   LBL LBL {: loop:label done:label :}
-   12 10 DBASE SUB,                             \ x12 = region byte offset of the first word
-   13 12 9 ADD,                                 \ x13 = one past the last word's offset
-   7 0 MOVZ,  7 7 1 SUBI,                       \ x7 = all ones, for inverting one bit mask
-   loop LBL,
-   12 13 CMP,  C-CS done BCOND,
-   14 12 2 LSRI,  14 14 7 ANDI,
-   15 12 5 LSRI,
-   6 mapoff LIT64,  15 15 6 ADD,  15 XREG-RBASE 15 ADD,
-   6 1 MOVZ,  6 6 14 LSLV,  6 6 7 EOR,
-   14 15 0 LDRB,  14 14 6 AND,  14 15 0 STRB,
-   12 12 4 ADDI,
-   loop B,
-   done LBL, ;
-
-: BCLEAR-MAPS ( -- )
-   A G-POP  B G-POP
-   RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN,
-   RELOC:ADDRMAP-OFF RELOC-EMIT:CLEAR-SPAN, ;
-;package
-
 package NPUBWIN
-
-private
-
-\ Clear the call-map bit of every word in [x10, x10+x9): a bit left from a
-\ reclaimed routine would make a snapshot restore relocate a displacement that
-\ is no longer a call. Call map only: this publisher's address records go in
-\ through `addrmap-set` after the copy; a CP rewind clears both maps over its
-\ released span. Clobbers x6, x7 and x12..x15.
-: CLEAR-CALLMAP-SPAN ( -- )
-   RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN, ;
 
 public
 
@@ -2744,58 +2705,9 @@ public
    loop B,
    done LBL,
    9 SP 8 LDR,  10 SP 16 LDR,
-   CLEAR-CALLMAP-SPAN
-   9 SP 8 LDR,  10 SP 16 LDR,
    CP 10 9 ADD,
    9 10 0 ADDI,  LFLUSH LABEL@ BL,
    SP SP 48 ADDI, ;
-
-\ callmap-set ( addr -- ): record the instruction at addr as a call into the
-\ engine's loaded __text, the only call a snapshot must rewrite (a region-to-
-\ region call keeps its distance). Only the builder knows a branch's kind:
-\ region bytes may hold data that decodes as a branch.
-: BCALLMAPSET ( -- )
-   LBL LBL {: inreg:label bad:label :}
-   A G-POP                                       \ x9 = call-site address
-   \ The map is indexed by region offset: an address outside the region would
-   \ index into the DATA band after the map.
-   10 9 3 ANDI,  10 bad CBNZ,                    \ a call site is a whole instruction
-   10 9 DBASE SUB,                               \ x10 = candidate region byte offset
-   9 DBASE CMP,  C-CC bad BCOND,
-   11 REGION LIT64,  10 11 CMP,  C-CS bad BCOND,
-   inreg B,
-   bad LBL,
-   s" E-SEAL-VIOLATION habu: callmap-set address outside [DBASE, DBASE+REGION) or not instruction-aligned:"
-   EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
-   inreg LBL,
-   9 9 DBASE SUB,
-   10 9 2 LSRI,  10 10 7 ANDI,
-   11 9 5 LSRI,
-   12 RELOC:CALLMAP-OFF LIT64,  11 11 12 ADD,  11 XREG-RBASE 11 ADD,
-   12 1 MOVZ,  12 12 10 LSLV,
-   13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
-
-\ addrmap-set ( addr -- ): record the MOVZ/MOVK address carrier at addr. One
-\ map serves code and DATA addresses: the AOT capture needs only where a chain
-\ starts; the kind is per relocation window, written beside it.
-: BADDRMAPSET ( -- )
-   LBL LBL {: inreg:label bad:label :}
-   A G-POP                                       \ x9 = chain's first word address
-   10 9 3 ANDI,  10 bad CBNZ,                    \ a chain starts on a whole instruction
-   10 9 DBASE SUB,                               \ x10 = candidate region byte offset
-   9 DBASE CMP,  C-CC bad BCOND,
-   11 REGION LIT64,  10 11 CMP,  C-CS bad BCOND,
-   inreg B,
-   bad LBL,
-   s" E-SEAL-VIOLATION habu: addrmap-set address outside [DBASE, DBASE+REGION) or not instruction-aligned:"
-   EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
-   inreg LBL,
-   9 9 DBASE SUB,
-   10 9 2 LSRI,  10 10 7 ANDI,
-   11 9 5 LSRI,
-   12 RELOC:ADDRMAP-OFF LIT64,  11 11 12 ADD,  11 XREG-RBASE 11 ADD,
-   12 1 MOVZ,  12 12 10 LSLV,
-   13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
 
 \ xref-retarget ( start len recidx -- ): point one record at one routine. A
 \ record's first two cells (entry address, CODE-SPAN length) mean something
@@ -4026,10 +3938,7 @@ package ENGINE-EMIT
    s" stat64" ['] BSTAT64 FPRIM   s" lstat64" ['] BLSTAT64 FPRIM
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM
    s" patch32" ['] BPATCH32 FPRIM
-   s" reloc-maps-clear" ['] RELOC-EMIT:BCLEAR-MAPS FPRIM-L
    s" code-publish" ['] NPUBWIN:BCODEPUBLISH FPRIM
-   s" callmap-set" ['] NPUBWIN:BCALLMAPSET FPRIM
-   s" addrmap-set" ['] NPUBWIN:BADDRMAPSET FPRIM
    s" xref-retarget" ['] NPUBWIN:BXREFRETARGET FPRIM
    s" close" ['] BCLOSE FPRIM-L
    s" close-rc" ['] BCLOSE-RC FPRIM-L
