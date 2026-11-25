@@ -1,4 +1,3 @@
-split-str
 \ value.f - JSON:value, one JSON value inside a text: PARSE makes one, and
 \ the other words look values up, walk them and read them. A file of package
 \ JSON (src/lib/json.f).
@@ -50,7 +49,7 @@ private
 \ The record reads to the value's end, so after the value it answers T-END.
 : OPEN-AT ( ^cursor value -- ) {: state:^ v :}
    v VALUE-UNMAKE {: doc:^ at:n len:n :}
-   state doc at len + INIT-STATE
+   state doc at len + >str INIT-STATE
    at state CURSOR-POS ! ;
 
 : RUN-BODY ( R ^cursor [ R ^cursor -- S ] -- S )
@@ -108,29 +107,29 @@ private
    s" remove the repeated member" E-MEMBER REJECT-AT ;
 
 \ The value of a text read as one: only white space is around it.
-: TRIMMED ( str -- value ) {: text:^ u:n :}
-   0 begin text over + c@ WS? while 1+ repeat {: at:n :}
-   u begin text over + 1- c@ WS? while 1- repeat {: end:n :}
-   text at end at - VALUE-MAKE ;
+: TRIMMED ( str -- value ) {: text:str :}
+   0 begin text STR:DATA over + c@ WS? while 1+ repeat {: at:n :}
+   text STR:LEN begin text STR:DATA over + 1- c@ WS? while 1- repeat {: end:n :}
+   text STR:DATA at end at - VALUE-MAKE ;
 
 public
 
 \ A text that is not one JSON value throws the reader's code; a repeated
 \ member name, decoded, throws E-MEMBER at the repeat earliest in the text.
-: PARSE ( str -- value ) {: text:^ u:n :}
-   text u REQUIRE-SOURCE
-   text 0 u VALUE-MAKE
+: PARSE ( str -- value ) {: text:str :}
+   text REQUIRE-SOURCE
+   text STR:DATA 0 text STR:LEN VALUE-MAKE
    [: [: CHECK-KEYS ;] WITH-KEYS ;] WITH-CURSOR
-   text u TRIMMED ;
+   text TRIMMED ;
 
 : TEXT$ ( value -- str )
    VALUE-UNMAKE {: doc:^ at:n len:n :}
-   doc at + len ;
+   doc at + len >str ;
 
 private
 
 : FIRST-BYTE ( value -- n )
-   TEXT$ drop c@ ;
+   TEXT$ STR:DATA c@ ;
 
 public
 
@@ -182,24 +181,24 @@ private
 \ A number lexeme's value, E-JSON-READ-NUMBER when no signed cell holds
 \ it: a fraction, or past a cell.
 : WHOLE-OF ( str -- n )
-   {: p:^ u:n :}
-   p u ZERO-TEXT? if 0 exit then
-   p u DIGITS {: x:n f:n count:n :}
+   {: s:str :}
+   s ZERO-TEXT? if 0 exit then
+   s STR:DATA s STR:LEN DIGITS {: x:n f:n count:n :}
    x count WHOLE-DIGITS? 0= if E-JSON-READ-NUMBER throw then
-   p  p x f count NEGATED-WHOLE  SIGNED ;
+   s STR:DATA  s STR:DATA x f count NEGATED-WHOLE  SIGNED ;
 
 \ WHOLE-OF's answer replaces the slot under the lexeme, so the quotation
 \ under catch leaves the types it was given.
 : WHOLE-SLOT ( n str -- n str )
-   {: p:^ u:n :}
-   drop  p u WHOLE-OF  p u ;
+   {: s:str :}
+   drop  s WHOLE-OF  s ;
 
 \ Some for a number whose value is whole and fits a signed cell, whatever
 \ its spelling (1.0, 1e2, -0).
 : WHOLE-VALUE ( value -- option<n> )
    {: v :}
    v NUMBER? 0= if OPTION:NONE exit then
-   0 v TEXT$ [: WHOLE-SLOT ;] catch {: n p u code:n :}
+   0 v TEXT$ [: WHOLE-SLOT ;] catch {: code:n :} drop {: n :}
    code 0= if n OPTION:SOME exit then
    code E-JSON-READ-NUMBER = if OPTION:NONE exit then
    code throw ;
@@ -207,25 +206,25 @@ private
 \ DIGITS's three results replace the slots under the lexeme, so the
 \ quotation under catch leaves the types it was given.
 : TEXT-DIGITS ( n n n str -- n n n str )
-   {: p:^ u:n :}
-   drop drop drop  p u DIGITS  p u ;
+   {: s:str :}
+   drop drop drop  s STR:DATA s STR:LEN DIGITS  s ;
 
 \ Whether the exponent a lexeme states after its mantissa's end m is
 \ negative; the lexeme has one.
 : NEGATIVE-EXP? ( str n -- bool )
-   {: p:^ u:n m:n :}
-   p m + 1+ c@ MINUS = ;
+   {: s:str m:n :}
+   s STR:DATA m + 1+ c@ MINUS = ;
 
 \ Whether a number lexeme's value has no fractional part. A point exponent no
 \ cell holds outweighs every digit, so the stated exponent's sign alone decides.
 : WHOLE-TEXT? ( str -- bool )
-   {: p:^ u:n :}
-   p u ZERO-TEXT? if true exit then
-   0 0 0 p u [: TEXT-DIGITS ;] catch
-   {: x f count q w code:n :}
+   {: s:str :}
+   s ZERO-TEXT? if true exit then
+   0 0 0 s [: TEXT-DIGITS ;] catch {: code:n :}
+   drop {: x f count :}
    code 0= if x count WHOLE-DIGITS? exit then
    code E-JSON-READ-NUMBER <> if code throw then
-   p u  p u MANTISSA nip nip nip  NEGATIVE-EXP? 0= ;
+   s  s MANTISSA nip nip nip  NEGATIVE-EXP? 0= ;
 
 public
 
@@ -246,17 +245,17 @@ private
 
 \ Throws E-MEMBER at the current token, the found part its kind.
 : WRONG-KIND ( ^cursor str str -- )
-   {: state:^ ea:^ eu:n fa:^ fu:n :}
+   {: state:^ es:str fs:str :}
    state state TOKEN-START REJECT-HEAD
-   ea eu REASON:APPEND
+   es REASON:APPEND
    REASON:FOUND state CURSOR-KIND @ KIND$ REASON:APPEND
-   REASON:FIX fa fu REASON:APPEND
+   REASON:FIX fs REASON:APPEND
    E-MEMBER REASON:STOP ;
 
 \ The value at the current token; the cursor moves past it.
 : TOKEN-VALUE ( ^cursor -- value ) {: state:^ :}
    state TOKEN-START {: at:n :}
-   state ANY-SPAN-INNER nip {: u:n :}
+   state ANY-SPAN-INNER STR:LEN {: u:n :}
    state CURSOR-SRC @ at u VALUE-MAKE ;
 
 \ The current key as a string value, its quotes included.
@@ -266,16 +265,16 @@ private
 
 \ The str is the fix a wrong kind's rejection gives; it names the caller's walk.
 : ELEMENTS ( R ^cursor str [ R value -- R bool ] -- R )
-   {: state:^ fa:^ fu:n body :}
-   state NEXT-INNER T-ARR <> if state s" an array" fa fu WRONG-KIND then
+   {: state:^ fs:str body :}
+   state NEXT-INNER T-ARR <> if state s" an array" fs WRONG-KIND then
    begin state NEXT-INNER T-ARR-END <> while
       state TOKEN-VALUE body execute 0= if exit then
    repeat ;
 
 \ The str is the fix, as in ELEMENTS.
 : MEMBERS ( R ^cursor str [ R value value -- R bool ] -- R )
-   {: state:^ fa:^ fu:n body :}
-   state NEXT-INNER T-OBJ <> if state s" an object" fa fu WRONG-KIND then
+   {: state:^ fs:str body :}
+   state NEXT-INNER T-OBJ <> if state s" an object" fs WRONG-KIND then
    begin state NEXT-INNER T-OBJ-END <> while
       state NAME-VALUE
       state NEXT-INNER drop state TOKEN-VALUE body execute 0= if exit then
@@ -362,31 +361,31 @@ private
    state s" an object" s" read a member only from an object" WRONG-KIND ;
 
 \ Quotes the span, cut at REASON:QUOTE-MOST on a character's first byte.
-: QUOTE-CUT ( str -- ) {: a:^ u:n :}
-   a u REASON:QUOTE-MOST UTF8:FIT {: k:n :}
-   a k  k u <  REASON:QUOTE ;
+: QUOTE-CUT ( str -- ) {: s:str :}
+   s REASON:QUOTE-MOST UTF8:FIT {: k:n :}
+   s STR:DATA k >str  k s STR:LEN <  REASON:QUOTE ;
 
-: MISSING ( ^cursor n str -- ) {: state:^ at:n name:^ u:n :}
+: MISSING ( ^cursor n str -- ) {: state:^ at:n name:str :}
    state at REJECT-HEAD
-   s" a member " REASON:APPEND  name u QUOTE-CUT
+   s" a member " REASON:APPEND  name QUOTE-CUT
    REASON:FOUND s" none" REASON:APPEND
    REASON:FIX s" add the member or read it with JSON:FIND" REASON:APPEND
    E-MEMBER REASON:STOP ;
 
-: MEMBER-VALUE ( ^cursor str -- value ) {: state:^ name:^ u:n :}
+: MEMBER-VALUE ( ^cursor str -- value ) {: state:^ name:str :}
    state ENTER-OBJECT {: at:n :}
-   state name u FIND-INNER if state TOKEN-VALUE exit then
-   state at name u MISSING ;
+   state name FIND-INNER if state TOKEN-VALUE exit then
+   state at name MISSING ;
 
 : MEMBER-OPTION ( ^cursor str -- option<value> )
-   {: state:^ name:^ u:n :}
+   {: state:^ name:str :}
    state ENTER-OBJECT drop
-   state name u FIND-INNER 0= if OPTION:NONE exit then
+   state name FIND-INNER 0= if OPTION:NONE exit then
    state TOKEN-VALUE OPTION:SOME ;
 
 : POINTED ( ^cursor str ^VEC:vector<u8> -- option<value> )
-   {: state:^ p:^ u:n out:^ :}
-   state p u out SEEK {: at:n len:n found:bool :}
+   {: state:^ s:str out:^ :}
+   state s out SEEK {: at:n len:n found:bool :}
    found 0= if OPTION:NONE exit then
    state CURSOR-SRC @ at len VALUE-MAKE OPTION:SOME ;
 
@@ -394,32 +393,32 @@ public
 
 \ The member of that decoded name. A value that is not an object, or an
 \ object without the member, throws E-MEMBER.
-: GET ( value str -- value ) {: v name:^ u:n :}
-   v [: name u MEMBER-VALUE ;] WITH-CURSOR ;
+: GET ( value str -- value ) {: v name:str :}
+   v [: name MEMBER-VALUE ;] WITH-CURSOR ;
 
 \ None for an object without the member; a value that is not an object
 \ throws E-MEMBER.
-: FIND ( value str -- option<value> ) {: v name:^ u:n :}
-   v [: name u MEMBER-OPTION ;] WITH-CURSOR ;
+: FIND ( value str -- option<value> ) {: v name:str :}
+   v [: name MEMBER-OPTION ;] WITH-CURSOR ;
 
 \ The value the RFC 6901 pointer names from this one, none for no such place.
 \ A pointer POINTER? rejects throws E-JSON-POINTER before anything is read.
-: AT ( value str -- option<value> ) {: v p:^ u:n :}
-   p u POINTER? 0= if E-JSON-POINTER throw then
-   HEAP:ALLOCATOR u [type] u8 VEC:NEW {: out:^ :}
-   [: v [: p u out POINTED ;] WITH-CURSOR ;]
+: AT ( value str -- option<value> ) {: v s:str :}
+   s POINTER? 0= if E-JSON-POINTER throw then
+   HEAP:ALLOCATOR s STR:LEN [type] u8 VEC:NEW {: out:^ :}
+   [: v [: s out POINTED ;] WITH-CURSOR ;]
    [: out VEC:DELETE ;] finally ;
 
 private
 
-: MATCH-AT ( ^cursor str -- bool ) {: state:^ want:^ len:n :}
+: MATCH-AT ( ^cursor str -- bool ) {: state:^ want:str :}
    state NEXT-INNER drop
-   state want len MATCH-INNER ;
+   state want MATCH-INNER ;
 
 \ A string's text inside its quotes.
 : INSIDE$ ( value -- str )
    VALUE-UNMAKE {: doc:^ at:n len:n :}
-   doc at + 1+ len 2 - ;
+   doc at + 1+ len 2 - >str ;
 
 : ESCAPED? ( str -- bool )
    BACKSLASH STR:INDEX-OF MATCH option
@@ -460,18 +459,18 @@ private
 public
 
 \ A string with an escape streams its decoding, so no buffer bounds it.
-: STRING= ( value str -- bool ) {: v want:^ len:n :}
+: STRING= ( value str -- bool ) {: v want:str :}
    v STRING? 0= if false exit then
-   v INSIDE$ 2dup ESCAPED? 0= if want len STR:= exit then
-   2drop
-   v [: want len MATCH-AT ;] WITH-CURSOR ;
+   v INSIDE$ dup ESCAPED? 0= if want STR:= exit then
+   drop
+   v [: want MATCH-AT ;] WITH-CURSOR ;
 
 \ The text is lent for the call only: the bytes inside the quotes when the
 \ string holds no escape, else its decoding in a vector of its own.
 : WITH-STRING ( R value [ R str -- S ] -- S ) {: v body :}
    v STRING? if
-      v INSIDE$ 2dup ESCAPED? 0= if body execute exit then
-      2drop
+      v INSIDE$ dup ESCAPED? 0= if body execute exit then
+      drop
    then
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: text:^ :}
    [: v [: text body DECODE-RUN ;] WITH-CURSOR ;]
@@ -480,8 +479,8 @@ public
 \ Appends the string's decoded bytes after the vector's own.
 : APPEND-STRING ( value ^VEC:vector<u8> -- ) {: v out:^ :}
    v STRING? if
-      v INSIDE$ 2dup ESCAPED? 0= if out VEC:APPEND exit then
-      2drop
+      v INSIDE$ dup ESCAPED? 0= if out VEC:APPEND exit then
+      drop
    then
    v [: dup NEXT-STRING out DECODE-APPEND ;] WITH-CURSOR ;
 
@@ -503,13 +502,13 @@ public
 
 private
 
-: VALUE-REJECT ( ^cursor str str -- ) {: state:^ ea:^ eu:n fa:^ fu:n :}
-   state state CURSOR-POS @ ea eu fa fu E-MEMBER REJECT-AT ;
+: VALUE-REJECT ( ^cursor str str -- ) {: state:^ es:str fs:str :}
+   state state CURSOR-POS @ es fs E-MEMBER REJECT-AT ;
 
 public
 
 \ Throws E-MEMBER at the value's first byte with this expected text and fix.
-: REJECT ( value str str -- ) {: v ea:^ eu:n fa:^ fu:n :}
-   v [: ea eu fa fu VALUE-REJECT ;] WITH-CURSOR ;
+: REJECT ( value str str -- ) {: v es:str fs:str :}
+   v [: es fs VALUE-REJECT ;] WITH-CURSOR ;
 
 ;package

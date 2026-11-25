@@ -1,4 +1,3 @@
-split-str
 \ write.f - the emit-only JSON writer, OPEN through WRITE-FIELD-NULL.
 \ A file of package JSON (src/lib/json.f).
 \
@@ -110,29 +109,29 @@ create JW-ESC-W
    w @ JSON-WRITER:UNMAKE 2drop {: v:^ indent:n ascii:bool :}
    v indent ascii depth layout JSON-WRITER:MAKE w ! ;
 
-: JW-SPAN ( str -- ) {: a:^ u:n :}
-   u 0 < if E-JSON-WRITE-SOURCE throw then
-   u 0 > a 0= and if E-JSON-WRITE-SOURCE throw then ;
+: JW-SPAN ( str -- ) {: s:str :}
+   s STR:LEN 0 < if E-JSON-WRITE-SOURCE throw then
+   s STR:LEN 0 > s STR:DATA 0= and if E-JSON-WRITE-SOURCE throw then ;
 
 \ A span's offset in the writer's output; -1 for a span outside the room the
 \ output holds, and for a closed writer, whose write then throws
 \ E-JSON-WRITE-STATE; a span inside that room but past the written bytes is
 \ E-JSON-WRITE-SOURCE.
-: JW-ALIAS ( ^writer str -- n ) {: w a:^ u:n :}
+: JW-ALIAS ( ^writer str -- n ) {: w s:str :}
    w JW-OUT@ {: v:^ :}
    v NULL-PTR = if -1 exit then
-   v VEC:BYTES {: base:^ used:n :}
-   a base < if -1 exit then
-   a base - {: off:n :}
+   v VEC:BYTES dup STR:DATA swap STR:LEN {: base:^ used:n :}
+   s STR:DATA base < if -1 exit then
+   s STR:DATA base - {: off:n :}
    off v VEC:CAP >= if -1 exit then
    off used > if E-JSON-WRITE-SOURCE throw then
-   u used off - > if E-JSON-WRITE-SOURCE throw then
+   s STR:LEN used off - > if E-JSON-WRITE-SOURCE throw then
    off ;
 
 \ The source span where it lies now, given JW-ALIAS's answer for it.
-: JW-REBASE ( ^writer str n -- str ) {: w a:^ u:n off:n :}
-   off 0 < if a u exit then
-   w JW-OUT VEC:BYTES drop off +  u ;
+: JW-REBASE ( ^writer str n -- str ) {: w s:str off:n :}
+   off 0 < if s exit then
+   w JW-OUT VEC:BYTES STR:DATA off +  s STR:LEN >str ;
 
 : JW-SIZE+ ( n n -- n ) {: left:n right:n :}
    right MEM-MAX-N left - > if E-JSON-WRITE-CAPACITY throw then
@@ -260,11 +259,11 @@ public
 : WRITTEN$ ( ^writer -- str )
    JW-OUT VEC:BYTES ;
 
-: WRITE-RAW ( ^writer str -- ^writer ) {: w a:^ u:n :}
-   a u JW-SPAN
-   w a u JW-ALIAS {: off:n :}
-   w u JW-TOKEN JW-OUT u VEC:EXTEND {: s :}
-   w a u off JW-REBASE s SPAN:COPY
+: WRITE-RAW ( ^writer str -- ^writer ) {: w t:str :}
+   t JW-SPAN
+   w t JW-ALIAS {: off:n :}
+   w t STR:LEN JW-TOKEN JW-OUT t STR:LEN VEC:EXTEND {: s :}
+   w t off JW-REBASE s SPAN:COPY
    w ;
 
 : WRITE-INDENT! ( ^writer n -- ^writer )
@@ -291,9 +290,9 @@ private
 \ A width is at most six, so the sum fits a cell for any span in memory; the
 \ checked adds of the delimiters and separator reject it exactly when a running
 \ checked sum would.
-: JW-ESC-N ( str -- n ) {: a:^ u:n :}
+: JW-ESC-N ( str -- n ) {: s:str :}
    JW-ESC-W BYTE-VIEW {: w:^ :}
-   0 u 0 ?do a i + c@ w + c@ + loop ;
+   0 s STR:LEN 0 ?do s STR:DATA i + c@ w + c@ + loop ;
 
 \ The escaped width of byte c.
 : JW-ESC-W@ ( n -- n )
@@ -327,24 +326,24 @@ private
    at 2 + ;
 
 \ The offset of the first byte at or after start that escapes, or u.
-: JW-RUN-END ( str n -- n ) {: a:^ u:n start:n :}
+: JW-RUN-END ( str n -- n ) {: s:str start:n :}
    JW-ESC-W BYTE-VIEW {: w:^ :}
-   u start ?do a i + c@ w + c@ JW-PLAIN-N <> if i unloop exit then loop
-   u ;
+   s STR:LEN start ?do s STR:DATA i + c@ w + c@ JW-PLAIN-N <> if i unloop exit then loop
+   s STR:LEN ;
 
 : JW-ESC-STEP ( n n str SPAN:span<u8> -- n n )
-   {: at:n i:n a:^ u:n s :}
-   a u i JW-RUN-END {: e:n :}
+   {: at:n i:n t:str s :}
+   t i JW-RUN-END {: e:n :}
    e i - {: run:n :}
-   run 0 > if a i + run s at SPAN:SKIP SPAN:COPY then
-   e u = if at run + e exit then
-   s at run + a e + c@ JW-ESC  e 1+ ;
+   run 0 > if t STR:DATA i + run >str s at SPAN:SKIP SPAN:COPY then
+   e t STR:LEN = if at run + e exit then
+   s at run + t STR:DATA e + c@ JW-ESC  e 1+ ;
 
 \ Write the escaped source into s, which is exactly its escaped width.
 : JW-ESC-INTO ( str SPAN:span<u8> -- )
-   {: a:^ u:n s :}
-   s SPAN:LEN u = if a u s SPAN:COPY exit then
-   0 0 begin dup u < while a u s JW-ESC-STEP repeat 2drop ;
+   {: t:str s :}
+   s SPAN:LEN t STR:LEN = if t s SPAN:COPY exit then
+   0 0 begin dup t STR:LEN < while t s JW-ESC-STEP repeat 2drop ;
 
 : JW-DIGIT-COUNT ( n -- n ) {: u:n :}
    u JW-RADIX < if 1 exit then
@@ -368,13 +367,13 @@ private
    c JW-ESC-W@ ;
 
 : JW-ASCII-N-STEP ( n n str -- n n )
-   {: sum:n i:n a:^ u:n :}
-   a u i JW-SCALAR@ {: c:n next:n :}
+   {: sum:n i:n s:str :}
+   s i JW-SCALAR@ {: c:n next:n :}
    sum c JW-ASCII-W + next ;
 
 \ At most six per source byte, as the byte table's widths.
-: JW-ASCII-N ( str -- n ) {: a:^ u:n :}
-   0 0 begin dup u < while a u JW-ASCII-N-STEP repeat drop ;
+: JW-ASCII-N ( str -- n ) {: s:str :}
+   0 0 begin dup s STR:LEN < while s JW-ASCII-N-STEP repeat drop ;
 
 : JW-PAIR ( SPAN:span<u8> n n -- n ) {: s at:n c:n :}
    c UTF16:SCALAR>PAIR {: high:n low:n :}
@@ -389,35 +388,35 @@ private
    c s at SPAN:U8! at 1+ ;
 
 : JW-ASCII-STEP ( n n str SPAN:span<u8> -- n n )
-   {: at:n i:n a:^ u:n s :}
-   a u i JW-SCALAR@ {: c:n next:n :}
+   {: at:n i:n t:str s :}
+   t i JW-SCALAR@ {: c:n next:n :}
    s at c JW-ASCII-ESC next ;
 
 : JW-ASCII-INTO ( str SPAN:span<u8> -- )
-   {: a:^ u:n s :}
-   0 0 begin dup u < while a u s JW-ASCII-STEP repeat 2drop ;
+   {: t:str s :}
+   0 0 begin dup t STR:LEN < while t s JW-ASCII-STEP repeat 2drop ;
 
-: JW-BODY-N ( ^writer str -- n ) {: w a:^ u:n :}
-   w JW-ASCII@ if a u JW-ASCII-N else a u JW-ESC-N then ;
+: JW-BODY-N ( ^writer str -- n ) {: w s:str :}
+   w JW-ASCII@ if s JW-ASCII-N else s JW-ESC-N then ;
 
 : JW-BODY-INTO ( ^writer str SPAN:span<u8> -- )
-   {: w a:^ u:n s :}
-   w JW-ASCII@ if a u s JW-ASCII-INTO exit then
-   a u s JW-ESC-INTO ;
+   {: w t:str s :}
+   w JW-ASCII@ if t s JW-ASCII-INTO exit then
+   t s JW-ESC-INTO ;
 
 \ Each source byte needs at least one output byte, so reject a span longer than
 \ the output can grow to before reading it, then text that is not UTF-8. A quoted
 \ string or key is a token, so its width reserves any due break with it; a
 \ string part never breaks.
 : JW-QUOTED ( ^writer str bool n -- ^writer )
-   {: w a:^ u:n quoted:bool sep:n :}
-   a u JW-SPAN
-   w a u JW-ALIAS {: off:n :}
-   w u JW-ROOM drop
-   w a u off JW-REBASE drop {: src:^ :}
-   src u UTF8:VALID? 0= if E-JSON-WRITE-BYTE throw then
+   {: w t:str quoted:bool sep:n :}
+   t JW-SPAN
+   w t JW-ALIAS {: off:n :}
+   w t STR:LEN JW-ROOM drop
+   w t off JW-REBASE {: src:str :}
+   src UTF8:VALID? 0= if E-JSON-WRITE-BYTE throw then
    quoted if 1 JW-QUOTE-N else 0 0 then {: lead:n delims:n :}
-   w src u JW-BODY-N {: body:n :}
+   w src JW-BODY-N {: body:n :}
    body delims JW-SIZE+ {: width:n :}
    w width sep JW-SIZE+ quoted if JW-TOKEN else JW-ROOM then drop
    w JW-OUT width sep + VEC:EXTEND {: s :}
@@ -425,9 +424,9 @@ private
       JW-DQ s 0 SPAN:U8!
       JW-DQ s width 1- SPAN:U8!
    then
-   w a u off JW-REBASE drop {: from:^ :}
-   w from u s lead body SPAN:SUB JW-BODY-INTO
-   JW-KEY-SEP sep s width SPAN:SKIP SPAN:COPY
+   w t off JW-REBASE {: from:str :}
+   w from s lead body SPAN:SUB JW-BODY-INTO
+   JW-KEY-SEP sep >str s width SPAN:SKIP SPAN:COPY
    w ;
 
 public
@@ -435,16 +434,16 @@ public
 : WRITE-STRING ( ^writer str -- ^writer )
    true 0 JW-QUOTED ;
 
-: WRITE-KEY ( ^writer str -- ^writer ) {: w a:^ u:n :}
+: WRITE-KEY ( ^writer str -- ^writer ) {: w s:str :}
    w JW-LAYOUT@ 2drop 0 > if JW-COLON-SP-N else JW-COLON-N then {: sep:n :}
-   w a u true sep JW-QUOTED construct writer-layout keyed JW-MARK ;
+   w s true sep JW-QUOTED construct writer-layout keyed JW-MARK ;
 
 : WRITE-STRING-START ( ^writer -- ^writer )
    1 JW-TOKEN JW-DQ JW-C construct writer-layout quoting JW-MARK ;
 
 : WRITE-STRING-PART ( ^writer str -- ^writer )
-   {: w a:^ u:n :}
-   w JW-QUOTING a u false 0 JW-QUOTED ;
+   {: w s:str :}
+   w JW-QUOTING s false 0 JW-QUOTED ;
 
 : WRITE-STRING-END ( ^writer -- ^writer )
    JW-QUOTING JW-DQ JW-C construct writer-layout valued JW-MARK ;
@@ -519,29 +518,29 @@ public
 
 \ Only for a known-valid JSON fragment.
 : WRITE-FIELD-RAW ( ^writer str str -- ^writer )
-   {: kp:^ keyu:n vp:^ valu:n :}
-   dup vp valu JW-ALIAS {: off:n :}
-   kp keyu WRITE-KEY
-   dup vp valu off JW-REBASE WRITE-RAW ;
+   {: ks:str vs:str :}
+   dup vs JW-ALIAS {: off:n :}
+   ks WRITE-KEY
+   dup vs off JW-REBASE WRITE-RAW ;
 
 : WRITE-FIELD-S ( ^writer str str -- ^writer )
-   {: kp:^ keyu:n vp:^ valu:n :}
-   dup vp valu JW-ALIAS {: off:n :}
-   kp keyu WRITE-KEY
-   dup vp valu off JW-REBASE WRITE-STRING ;
+   {: ks:str vs:str :}
+   dup vs JW-ALIAS {: off:n :}
+   ks WRITE-KEY
+   dup vs off JW-REBASE WRITE-STRING ;
 
-: WRITE-FIELD-U ( ^writer str n -- ^writer ) {: kp:^ keyu:n val:n :}
-   kp keyu WRITE-KEY
+: WRITE-FIELD-U ( ^writer str n -- ^writer ) {: ks:str val:n :}
+   ks WRITE-KEY
    val WRITE-U ;
 
 : WRITE-FIELD-INT ( ^writer str n -- ^writer )
-   {: kp:^ keyu:n val:n :}
-   kp keyu WRITE-KEY
+   {: ks:str val:n :}
+   ks WRITE-KEY
    val WRITE-INT ;
 
 : WRITE-FIELD-BOOL ( ^writer str bool -- ^writer )
-   {: kp:^ keyu:n val:bool :}
-   kp keyu WRITE-KEY
+   {: ks:str val:bool :}
+   ks WRITE-KEY
    val WRITE-BOOL ;
 
 : WRITE-FIELD-NULL ( ^writer str -- ^writer )

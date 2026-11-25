@@ -1,4 +1,3 @@
-split-str
 \ visible.f - text with each Cc, Cf, Zl and Zp character written `U+` and at
 \ least four uppercase hex digits, and each byte no UTF-8 character starts
 \ written `\x` and two hex digits.
@@ -39,32 +38,32 @@ private
 \ Writes the low count hex digits of n, highest first.
 : HEX-PUT ( ^u8 n n -- ^u8 ) {: dst:^ v:n count:n :}
    count 0 ?do
-      s" 0123456789ABCDEF" drop v count 1- i - 4 * rshift $F and + c@
+      s" 0123456789ABCDEF" STR:DATA v count 1- i - 4 * rshift $F and + c@
       dst i + c!
    loop
    dst count + ;
 
 \ The bytes written for the character at the cursor, and the cursor after it.
-: STEP-LEN ( str n -- n n ) {: a:^ u:n at:n :}
-   a u at UTF8:NEXT MATCH UTF8:scalar-step
+: STEP-LEN ( str n -- n n ) {: s:str at:n :}
+   s at UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF {: cp:n next:n :}
          cp HIDDEN? if cp DIGITS 2 + else next at - then next
       ENDOF
       raw-byte OF nip 4 swap ENDOF
    ;MATCH ;
 
-: PUT-BYTES ( ^u8 str -- ^u8 ) {: dst:^ src:^ n:n :}
-   src dst n BYTE-COPY dst n + ;
+: PUT-BYTES ( ^u8 str -- ^u8 ) {: dst:^ src:str :}
+   src STR:DATA dst src STR:LEN BYTE-COPY dst src STR:LEN + ;
 
 \ Writes the character at the cursor; answers the address after it and the
 \ cursor after the character.
-: STEP-PUT ( ^u8 str n -- ^u8 n ) {: dst:^ a:^ u:n at:n :}
-   a u at UTF8:NEXT MATCH UTF8:scalar-step
+: STEP-PUT ( ^u8 str n -- ^u8 n ) {: dst:^ s:str at:n :}
+   s at UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF {: cp:n next:n :}
          cp HIDDEN? if
             dst s" U+" PUT-BYTES cp cp DIGITS HEX-PUT
          else
-            dst a at + next at - PUT-BYTES
+            dst s STR:DATA at + next at - >str PUT-BYTES
          then next
       ENDOF
       raw-byte OF {: b:n next:n :}
@@ -75,18 +74,18 @@ private
 public
 
 \ The bytes PUT writes for the text.
-: LEN ( str -- n ) {: a:^ u:n :}
-   0 0 begin dup u < while a u rot STEP-LEN -rot + swap repeat drop ;
+: LEN ( str -- n ) {: s:str :}
+   0 0 begin dup s STR:LEN < while s swap STEP-LEN -rot + swap repeat drop ;
 
 \ Writes the text at the address; answers the address after it.
-: PUT ( ^u8 str -- ^u8 ) {: dst:^ a:^ u:n :}
-   dst 0 begin dup u < while a u rot STEP-PUT repeat drop ;
+: PUT ( ^u8 str -- ^u8 ) {: dst:^ s:str :}
+   dst 0 begin dup s STR:LEN < while s swap STEP-PUT repeat drop ;
 
 \ Writes the text's visible form at the vector's end; the text may not lie in
 \ the vector, whose growth releases it.
-: APPEND ( str ^VEC:vector<u8> -- ) {: a:^ u:n v:^ :}
+: APPEND ( str ^VEC:vector<u8> -- ) {: s:str v:^ :}
    v VEC:COUNT {: at:n :}
-   v at a u LEN + VEC:ENSURE
-   v VEC:SPAN at SPAN:SKIP SPAN:$ drop a u PUT drop ;
+   v at s LEN + VEC:ENSURE
+   v VEC:SPAN at SPAN:SKIP SPAN:$ STR:DATA s PUT drop ;
 
 ;package

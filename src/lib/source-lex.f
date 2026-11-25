@@ -1,4 +1,3 @@
-split-str
 \ source-lex.f - package LINT-LEX: the one shared lexer for Habu source, for the
 \ lint, checker and codegen tooling and applications that read source by its
 \ tokens. Tokens point into the span SOURCE was given, so that span stays in
@@ -157,15 +156,15 @@ TABLES-RELEASED TABLES !
 : SYNC-COUNT ( -- )
    KIND-V @ VEC:COUNT TOK-N ! ;
 
-: ADD ( n str n n n str -- ) {: kind:n a:^ u:n byte:n line:n col:n ca:^ cu:n :}
+: ADD ( n str n n n str -- ) {: kind:n s:str byte:n line:n col:n cs:str :}
    kind KIND-V @ VEC:PUSH !
-   a ADDR-V @ VEC:PUSH !
-   u LEN-V @ VEC:PUSH !
+   s STR:DATA ADDR-V @ VEC:PUSH !
+   s STR:LEN LEN-V @ VEC:PUSH !
    byte BYTE-V @ VEC:PUSH !
    line LINE-V @ VEC:PUSH !
    col COL-V @ VEC:PUSH !
-   ca CADDR-V @ VEC:PUSH !
-   cu CLEN-V @ VEC:PUSH !
+   cs STR:DATA CADDR-V @ VEC:PUSH !
+   cs STR:LEN CLEN-V @ VEC:PUSH !
    false bool>n OPND-V @ VEC:PUSH !
    SYNC-COUNT ;
 
@@ -188,11 +187,11 @@ public
 
 : TOKEN ( n -- str ) {: k:n :}
    ADDR-V @ k VEC:AT @
-   LEN-V @ k VEC:AT @ ;
+   LEN-V @ k VEC:AT @ >str ;
 
 : CONTENT ( n -- str ) {: k:n :}
    CADDR-V @ k VEC:AT @
-   CLEN-V @ k VEC:AT @ ;
+   CLEN-V @ k VEC:AT @ >str ;
 
 : KIND@ ( n -- n ) {: k:n :}
    KIND-V @ k VEC:AT @ ;
@@ -298,7 +297,7 @@ private
 
 \ The span from the token start the main loop recorded to the current position.
 : CUR$ ( -- str )
-   SRC@ START @ + POS @ START @ - ;
+   SRC@ START @ + POS @ START @ - >str ;
 
 : GAP? ( -- bool )
    END? if false exit then
@@ -323,7 +322,7 @@ private
    POS @ CSTART @ - CLEN !
    END? 0= if ADV drop then
    COMMENT CUR$ START @ START-LINE @ START-COL @
-   BODY-A BODY-U ADD ;
+   BODY-A BODY-U >str ADD ;
 
 \ Primitive-axiom rows. The engine reads a row's name (and a package row's
 \ package) with `parse-name`, so a row may name a primitive `s"`, `c"`, `."`,
@@ -342,7 +341,7 @@ private
    begin GAP? while ADV drop repeat ;
 
 : F$ ( -- str )
-   SRC@ FOFF @ + FLEN @ ;
+   SRC@ FOFF @ + FLEN @ >str ;
 
 \ FLEN 0 means end of input: no field was left to read.
 : NEXT-FIELD ( -- )
@@ -397,8 +396,8 @@ private
    again ;
 
 : EMIT-ROW ( -- )
-   REGISTRY SRC@ R-BYTE @ + POS @ R-BYTE @ -
-   R-BYTE @ R-LINE @ R-COL @ SRC@ 0 ADD ;
+   REGISTRY SRC@ R-BYTE @ + POS @ R-BYTE @ - >str
+   R-BYTE @ R-LINE @ R-COL @ SRC@ 0 >str ADD ;
 
 \ The opener field is already consumed; POS sits just past it.
 : SCAN-ROW ( n -- ) {: kind:n :}
@@ -413,9 +412,9 @@ private
 \ After a body opener or `undefine` the engine consumes the next word as a parsed
 \ name and never executes it, so `: EPRIM: ( -- )` declares the opener rather
 \ than opening a row.
-: NAMER? ( str -- bool ) {: a:^ u:n :}
-   a u SOURCE-SYNTAX:BODY-OPENER? if true exit then
-   a u s" undefine" STR:=CI ;
+: NAMER? ( str -- bool ) {: s:str :}
+   s SOURCE-SYNTAX:BODY-OPENER? if true exit then
+   s s" undefine" STR:=CI ;
 
 \ Token k is a name: the word before it is a namer. A `:` that is itself an
 \ operand (`' :`) is data and names nothing.
@@ -433,18 +432,18 @@ private
 \ from tokens.
 
 : LOCAL$ ( n -- str ) {: k:n :}
-   k TOKEN {: a:^ u:n :}
-   0 begin dup u < if a over + c@ $3A <> else false then while 1+ repeat
-   a swap ;
+   k TOKEN {: t:str :}
+   0 begin dup t STR:LEN < if t STR:DATA over + c@ $3A <> else false then while 1+ repeat
+   t STR:DATA swap >str ;
 
 : LIVE ( -- n )
    LOCAL-V @ {: v:^ :}
    v NULL-PTR = if 0 exit then
    v VEC:COUNT ;
 
-: LOCAL? ( str -- bool ) {: a:^ u:n :}
+: LOCAL? ( str -- bool ) {: s:str :}
    LIVE 0 ?do
-      a u LOCAL-V @ i VEC:AT @ LOCAL$ STR:= if true unloop exit then
+      s LOCAL-V @ i VEC:AT @ LOCAL$ STR:= if true unloop exit then
    loop
    false ;
 
@@ -466,39 +465,39 @@ private
    repeat ;
 
 \ Block word k acts unless it is a name or names a live local.
-: BLOCK-WORD? ( n str -- bool ) {: k:n a:^ u:n :}
+: BLOCK-WORD? ( n str -- bool ) {: k:n s:str :}
    k NAMED-AT? if false exit then
-   a u LOCAL? 0= ;
+   s LOCAL? 0= ;
 
-: BLOCK-STEP ( n str -- ) {: k:n a:^ u:n :}
-   a u SOURCE:BLOCK-OPENER? if
-      k a u BLOCK-WORD? if DEPTH @ 1+ DEPTH ! then exit
+: BLOCK-STEP ( n str -- ) {: k:n s:str :}
+   s SOURCE:BLOCK-OPENER? if
+      k s BLOCK-WORD? if DEPTH @ 1+ DEPTH ! then exit
    then
-   a u s" else" STR:=CI if
-      k a u BLOCK-WORD? if BLOCK-DROP then exit
+   s s" else" STR:=CI if
+      k s BLOCK-WORD? if BLOCK-DROP then exit
    then
-   a u SOURCE:BLOCK-CLOSER? if
-      k a u BLOCK-WORD? if BLOCK-DROP DEPTH @ 1- DEPTH ! then
+   s SOURCE:BLOCK-CLOSER? if
+      k s BLOCK-WORD? if BLOCK-DROP DEPTH @ 1- DEPTH ! then
    then ;
 
 \ Read token k into the state that holds after the tokens before it.
 : STEP ( n -- ) {: k:n :}
    k KIND@ WORD <> if exit then
-   k TOKEN {: a:^ u:n :}
+   k TOKEN {: t:str :}
    IN-GROUP @ if
-      a u s" :}" STR:= if false IN-GROUP ! exit then
+      t s" :}" STR:= if false IN-GROUP ! exit then
       k LOCAL-PUSH exit
    then
    k OPERAND? if exit then
-   a u s" ;" STR:= if LOCALS-DROP false IN-BODY ! exit then
-   a u SOURCE-SYNTAX:BODY-OPENER? if
+   t s" ;" STR:= if LOCALS-DROP false IN-BODY ! exit then
+   t SOURCE-SYNTAX:BODY-OPENER? if
       LOCALS-DROP k NAMED-AT? 0= if true IN-BODY ! then exit
    then
-   a u s" {:" STR:= if
+   t s" {:" STR:= if
       k NAMED-AT? 0= if true IN-GROUP ! then exit
    then
    LIVE 0= if exit then
-   k a u BLOCK-STEP ;
+   k t BLOCK-STEP ;
 
 \ Read the state that holds after the tokens below k, from the first token again
 \ when the state has read past k.
@@ -522,9 +521,9 @@ public
 \ Name a u is a live local at token k: declared in the tokens before k, so a
 \ group's own name is live from the token after it.
 : LIVE-LOCAL? ( n str -- bool )
-   {: k:n a:^ u:n :}
+   {: k:n s:str :}
    k LOCALS-TO
-   a u LOCAL? ;
+   s LOCAL? ;
 
 private
 
@@ -555,7 +554,7 @@ private
    CUR$ SOURCE-SYNTAX:BODY-PARSING-KEYWORD? ;
 
 : ADD-WORD ( -- )
-   WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD ;
+   WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 >str ADD ;
 
 \ Read the next whitespace-delimited token, across line ends, as one WORD token;
 \ false at end of input, where there is none.
@@ -585,12 +584,12 @@ private
 : STRING-PAYLOAD ( bool -- str bool ) {: esc:bool :}
    POS @ 1+ {: pstart:n :}
    esc if SKIP-ESC-QUOTE else SKIP-QUOTE then {: closed:bool :}
-   closed 0= if SRC@ 0 closed exit then
-   SRC@ pstart + POS @ 1- pstart - closed ;
+   closed 0= if SRC@ 0 >str closed exit then
+   SRC@ pstart + POS @ 1- pstart - >str closed ;
 
-: STRING-OPENER? ( str -- bool ) {: a:^ u:n :}
-   a u SOURCE:ESC-STRING-OPENER? if true exit then
-   a u SOURCE:NORMAL-STRING-OPENER? ;
+: STRING-OPENER? ( str -- bool ) {: s:str :}
+   s SOURCE:ESC-STRING-OPENER? if true exit then
+   s SOURCE:NORMAL-STRING-OPENER? ;
 
 \ A string opener opens a literal unless a live local has its spelling.
 : LITERAL-START? ( str -- bool )
@@ -610,13 +609,13 @@ private
       exit
    then
    PARSER-START? if ADD-WORD RAW-OPERAND exit then
-   CUR$ {: a:^ u:n :}
+   CUR$ {: t:str :}
    START @ START-LINE @ START-COL @ {: byte:n line:n col:n :}
-   a u LITERAL-START? 0= if
-      WORD a u byte line col SRC@ 0 ADD exit
+   t LITERAL-START? 0= if
+      WORD t byte line col SRC@ 0 >str ADD exit
    then
-   a u SOURCE:ESC-STRING-OPENER? STRING-PAYLOAD {: pa:^ pu:n closed:bool :}
-   WORD a u byte line col pa pu ADD
+   t SOURCE:ESC-STRING-OPENER? STRING-PAYLOAD {: ps:str closed:bool :}
+   WORD t byte line col ps ADD
    closed 0= if COUNT 1- MARK-UNTERM then ;
 
 \ The engine's token loop over the rest of the source, from POS.
@@ -660,9 +659,9 @@ private
    k COUNT >= if false exit then
    k KIND@ WORD <> if false exit then
    k BYTE@ a <> if false exit then
-   k TOKEN {: ta:^ tu:n :}
-   tu u <> if false exit then
-   ta tu STRING-OPENER? 0= ;
+   k TOKEN {: ts:str :}
+   ts STR:LEN u <> if false exit then
+   ts STRING-OPENER? 0= ;
 
 \ Keep the first n tokens and drop the rest, and the locals state when it read
 \ a dropped one.
@@ -682,12 +681,12 @@ private
 
 \ Token k, read as a plain word, steers how the scan reads the token after it.
 : STEERS? ( n -- bool ) {: k:n :}
-   k TOKEN {: a:^ u:n :}
-   a u s" {:" STR:= if true exit then
-   a u NAMER? if true exit then
-   a u SOURCE:PARSING-KEYWORD? 0= if false exit then
+   k TOKEN {: t:str :}
+   t s" {:" STR:= if true exit then
+   t NAMER? if true exit then
+   t SOURCE:PARSING-KEYWORD? 0= if false exit then
    k BODY-AT? 0= if true exit then
-   a u SOURCE-SYNTAX:BODY-PARSING-KEYWORD? ;
+   t SOURCE-SYNTAX:BODY-PARSING-KEYWORD? ;
 
 public
 
@@ -697,12 +696,12 @@ public
 : LITERAL? ( n -- bool )
    {: k:n :}
    k KIND@ WORD <> if false exit then
-   k TOKEN {: a:^ u:n :}
-   a u STRING-OPENER? 0= if false exit then
-   k CONTENT drop a u + 1+ = ;
+   k TOKEN {: t:str :}
+   t STRING-OPENER? 0= if false exit then
+   k CONTENT STR:DATA t STR:DATA t STR:LEN + 1+ = ;
 
-: SOURCE ( str -- ) {: a:^ u:n :}
-   a SRC! u SRC-U ! 0 POS ! 1 LINE-N ! 1 COL-N !
+: SOURCE ( str -- ) {: s:str :}
+   s STR:DATA SRC! s STR:LEN SRC-U ! 0 POS ! 1 LINE-N ! 1 COL-N !
    CLEAR-ERROR
    RESET-TABLES
    SCAN ;
@@ -724,7 +723,7 @@ public
 \ end of token k. Otherwise only the mark changes, so asking costs a span
 \ compare and a spelling test.
 : OPERAND ( n -- ) {: k:n :}
-   k BYTE@ k TOKEN nip + {: end:n :}
+   k BYTE@ k TOKEN STR:LEN + {: end:n :}
    end INK-FROM {: a:n :}
    a GAP-FROM a - {: u:n :}
    u 0= if exit then

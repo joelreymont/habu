@@ -1,4 +1,3 @@
-split-str
 \ deftype.f - `DEFTYPE NAME` mints a value-nominal integer type in the active
 \ package with converters `>NAME ( n -- NAME )` and `NAME>N ( NAME -- n )`, the
 \ only way across; `DEFTYPE NAME base` mints one over the base, with `>NAME` and
@@ -21,10 +20,10 @@ EXPORT CHECK:INTRINSIC-DECLARATION
 
 DYNAMIC-BUFFER TAIL u8
 
-: MANGLE ( str -- str ) {: a:^ u:n :}
-   u TAIL-RESERVE
-   u 0 ?do  a i + c@ STR:ASCII-LOWER i TAIL c!  loop
-   0 TAIL u ;
+: MANGLE ( str -- str ) {: s:str :}
+   s STR:LEN TAIL-RESERVE
+   s STR:LEN 0 ?do  s STR:DATA i + c@ STR:ASCII-LOWER i TAIL c!  loop
+   0 TAIL s STR:LEN >str ;
 
 public
 
@@ -36,17 +35,18 @@ public
 \ a reserved tail (a CT-role, or `ptr`, which an effect never reads as a
 \ family) and one the scope already declares (E-TFAM-DUP); a package may still
 \ shadow a global or another package's family.
-: MINT ( str -- ) {: sa:^ su:n :}
-   sa su MANGLE {: ta:^ tu:n :}
-   sa su ta tu CHECKER-DEFTYPE ;
+: MINT ( str -- ) {: ss:str :}
+   ss MANGLE {: ts:str :}
+   ss ts CHECKER-DEFTYPE ;
 
 \ Mints NAME over BASE, one name: a family as wide as the base, with
 \ >NAME ( base -- name ) and NAME>BASE ( name -- base ).
-: MINT-OVER ( str str -- ) {: sa:^ su:n ba:^ bu:n :}
-   sa su ba bu SD-ONE-NAME 0= IF EXIT THEN
-   sa su MANGLE {: ta:^ tu:n :}
-   ta tu sa su ba bu s" deftype" SD-WRAP {: fam:n :}
-   sa su ba bu fam TDECL-CONVERTERS ;
+: MINT-OVER ( str str -- ) {: ss:str bs:str :}
+   ss bs SD-ONE-NAME 0= IF EXIT THEN
+   ss MANGLE {: ts:str :}
+   ts STR:DATA ts STR:LEN  ss STR:DATA ss STR:LEN  bs STR:DATA bs STR:LEN
+   s" deftype" dup STR:DATA swap STR:LEN SD-WRAP {: fam:n :}
+   ss bs fam TDECL-CONVERTERS ;
 
 global
 
@@ -56,16 +56,16 @@ global
 \ mutates the type registry through VNOM:MINT or VNOM:MINT-OVER, effects its
 \ ( -- ) row does not model. A `\` on the name's line is no base.
 : DEFTYPE ( -- )
-   SRCLOC:TOKEN$ {: kw:^ ku:n :}
-   parse-name {: na:^ nu:n :}
-   nu 0= if
-      kw ku kw ku s" no name follows" REJECTION:MISSING-NAME
+   SRCLOC:TOKEN$ >str {: kw:str :}
+   parse-name {: na:str :}
+   na STR:LEN 0= if
+      kw kw s" no name follows" REJECTION:MISSING-NAME
       EXIT-STATUS:REJECTED REJECTION:STOP
    then
-   kw ku na nu REJECTION:NOT-A-NAME
-   LBUF:STORAGE-LINE-TOKEN {: ba:^ bu:n :}
-   bu 0= IF na nu VNOM:MINT EXIT THEN
-   bu 1 = IF ba c@ 92 = IF ba LBUF:STORAGE-UNREAD  na nu VNOM:MINT EXIT THEN THEN
-   na nu ba bu VNOM:MINT-OVER ;
+   kw na REJECTION:NOT-A-NAME
+   LBUF:STORAGE-LINE-TOKEN {: bs:str :}
+   bs STR:LEN 0= IF na VNOM:MINT EXIT THEN
+   bs STR:LEN 1 = IF bs STR:DATA c@ 92 = IF bs STR:DATA LBUF:STORAGE-UNREAD  na VNOM:MINT EXIT THEN THEN
+   na bs VNOM:MINT-OVER ;
 INTRINSIC-DECLARATION INTRINSIC
 ;package

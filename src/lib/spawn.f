@@ -1,4 +1,3 @@
-split-str
 \ spawn.f - a child-process request, built word by word and spawned once:
 \ PROCESS:NEW starts one for a program path, the builders add to it, PROCESS:SPAWN
 \ spawns it through the engine's spawn-fds (src/habu/spawn-abi.f lays out what it
@@ -102,64 +101,64 @@ HERM-AT 1+ constant RECORD-CELLS
 \ FFI:CSTR! reject a path, argument, row or directory holding a 0 byte:
 \ E-FFI-NUL.
 : CHUNK-ZCOPY ( str ^n -- ^u8 )
-   {: src:^ len h:^ :}
-   len FFI:CSTR-ROOM {: need :}
-   src len need h CHUNKS PROC-CHUNKS:OWNED-ROOM need SPAN:MAKE FFI:CSTR ;
+   {: src:str h:^ :}
+   src STR:LEN FFI:CSTR-ROOM {: need :}
+   src need h CHUNKS PROC-CHUNKS:OWNED-ROOM need SPAN:MAKE FFI:CSTR ;
 
 
 \ Pushes a copy of every string before the array's NULL.
 : ROWS+ ( ^^u8 ^n ^VEC:vector<^u8> -- )
    {: rows:^ h:^ vec:^ :}
    0 begin rows over cells + @ dup NULL-PTR <> while
-      dup ZLEN h CHUNK-ZCOPY vec VEC:PUSH !
+      dup ZLEN >str h CHUNK-ZCOPY vec VEC:PUSH !
       1+
    repeat 2drop ;
 
 
 : START ( ^n str -- ^n str )
-   {: h:^ path:^ len :}
+   {: h:^ path:str :}
    HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW h ARGS !
    HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW h ENVS !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW h MAP !
    0 h MAP @ VEC:PUSH !
    1 h MAP @ VEC:PUSH !
    2 h MAP @ VEC:PUSH !
-   path len h CHUNK-ZCOPY h PATH-CELL !
-   h path len ;
+   path h CHUNK-ZCOPY h PATH-CELL !
+   h path ;
 
 
 \ argv[0] is the path unless the first rows came from ARGV-ROWS.
 : ADD-ARG ( ^n str -- ^n str )
-   {: h:^ a:^ len :}
-   len 0 < if E-PROC-OUTPUT throw then
+   {: h:^ s:str :}
+   s STR:LEN 0 < if E-PROC-OUTPUT throw then
    h ARGS @ VEC:COUNT 0= if h PATH-CELL @ h ARGS @ VEC:PUSH ! then
-   a len h CHUNK-ZCOPY h ARGS @ VEC:PUSH !
-   h a len ;
+   s h CHUNK-ZCOPY h ARGS @ VEC:PUSH !
+   h s ;
 
 
 \ process-env.f mirrors this check and SAME-NAME?.
 : CHECK-NAME ( str -- )
-   {: a:^ len :}
-   len 0= if E-PROC-ENV throw then
-   0 begin dup len < while
-      dup a + c@ EQUAL-BYTE = if E-PROC-ENV throw then
+   {: s:str :}
+   s STR:LEN 0= if E-PROC-ENV throw then
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ EQUAL-BYTE = if E-PROC-ENV throw then
       1+
    repeat drop ;
 
 
 \ A C-string name=value copy in the request's own chunks.
 : ADD-ENV ( ^n str str -- ^n str str )
-   {: h:^ name:^ namelen val:^ vallen :}
-   namelen 0 < vallen 0 < or if E-PROC-ENV throw then
-   name namelen CHECK-NAME
-   namelen 1+ vallen + {: rowlen :}
+   {: h:^ name:str val:str :}
+   name STR:LEN 0 < val STR:LEN 0 < or if E-PROC-ENV throw then
+   name CHECK-NAME
+   name STR:LEN 1+ val STR:LEN + {: rowlen :}
    rowlen FFI:CSTR-ROOM {: need :}
    need h CHUNKS PROC-CHUNKS:OWNED-ROOM need SPAN:MAKE {: room :}
-   name namelen room SPAN:COPY
-   EQUAL-BYTE room namelen SPAN:U8!
-   val vallen room namelen 1+ SPAN:SKIP SPAN:COPY
+   name room SPAN:COPY
+   EQUAL-BYTE room name STR:LEN SPAN:U8!
+   val room name STR:LEN 1+ SPAN:SKIP SPAN:COPY
    rowlen room FFI:CSTR! h ENVS @ VEC:PUSH !
-   h name namelen val vallen ;
+   h name val ;
 
 
 : ADD-ARGV-ROWS ( ^n ^^u8 -- ^n ^^u8 )
@@ -170,10 +169,10 @@ HERM-AT 1+ constant RECORD-CELLS
 
 
 : SET-CWD ( ^n str -- ^n str )
-   {: h:^ dir:^ len :}
-   len 0 <= if E-PROC-PATH throw then
-   dir len h CHUNK-ZCOPY h CWD-CELL !
-   h dir len ;
+   {: h:^ dir:str :}
+   dir STR:LEN 0 <= if E-PROC-PATH throw then
+   dir h CHUNK-ZCOPY h CWD-CELL !
+   h dir ;
 
 
 : SET-FD ( ^n fd fd -- ^n fd fd )
@@ -225,7 +224,7 @@ HERM-AT 1+ constant RECORD-CELLS
    a NAME-LEN {: alen :}
    b NAME-LEN {: blen :}
    alen blen <> if false exit then
-   a alen b blen STR:= ;
+   a alen >str b blen >str STR:= ;
 
 \ A request row names the variable of z. The vector is re-read each turn, as
 \ PUSH may move it. It holds the rows already inherited too, so an inherited
@@ -274,10 +273,10 @@ public
 \ A request for the program at path, map [0 1 2], no argument, this process's
 \ environment and directory. A negative length: E-PROC-PATH.
 : NEW ( str -- PROCESS:request )
-   {: path:^ len :}
-   len 0 < if E-PROC-PATH throw then
+   {: path:str :}
+   path STR:LEN 0 < if E-PROC-PATH throw then
    RECORD-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: h:^ :}
-   h path len [: START ;] catch {: rc :} drop drop drop
+   h path [: START ;] catch {: rc :} drop drop
    rc h SETTLE
    h MINT ;
 
@@ -292,8 +291,8 @@ public
 \ Appends a copy of one argument; the first is argv[1], and a request with none
 \ spawns argv {path}. A negative length: E-PROC-OUTPUT.
 : ARG ( PROCESS:request str -- PROCESS:request )
-   rot ERASE {: a:^ len h:^ :}
-   h a len [: ADD-ARG ;] catch {: rc :} drop drop drop
+   swap ERASE {: s:str h:^ :}
+   h s [: ADD-ARG ;] catch {: rc :} drop drop
    rc h SETTLE
    h MINT ;
 
@@ -303,17 +302,17 @@ public
 \ a request row gives. A negative length, an empty name or one holding `=`:
 \ E-PROC-ENV.
 : ENV ( PROCESS:request str str -- PROCESS:request )
-   {: name:^ namelen val:^ vallen :}
+   {: name:str val:str :}
    ERASE {: h:^ :}
-   h name namelen val vallen [: ADD-ENV ;] catch {: rc :} drop drop drop drop drop
+   h name val [: ADD-ENV ;] catch {: rc :} drop drop drop
    rc h SETTLE
    h MINT ;
 
 
 \ The child's directory; a later call replaces it. An empty one: E-PROC-PATH.
 : CWD ( PROCESS:request str -- PROCESS:request )
-   rot ERASE {: dir:^ len h:^ :}
-   h dir len [: SET-CWD ;] catch {: rc :} drop drop drop
+   swap ERASE {: dir:str h:^ :}
+   h dir [: SET-CWD ;] catch {: rc :} drop drop
    rc h SETTLE
    h MINT ;
 

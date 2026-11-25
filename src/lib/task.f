@@ -1,4 +1,3 @@
-split-str
 \ task.f - checked CPU tasking over pthread, package TASK: an xt runs on its own
 \ thread, TCB, data stack and TASK:+USER region. THE MAIN THREAD COMPILES; TASKS
 \ RUN COMPILED CODE. A definition, `allot`, `,`, `c,`, `align`, an
@@ -171,7 +170,7 @@ USER-BAND:AREA-OFF constant TASK-AREA-OFF
    -1 TASK-DEFER-DEPTH +! ;
 
 : TASK-NULL ( -- ^n )
-   NULL$ drop CELL-VIEW ;
+   NULL$ STR:DATA CELL-VIEW ;
 
 \ An address this module keeps as a number: a TCB, DATA or a semaphore record.
 CAST: TASK-N>PTR ( n -- ^n )
@@ -942,7 +941,7 @@ variable ROW-N
    -1 MAIN-BASE TASKS-LIVE-CELL + atomic-add drop ;
 
 : TASK-MUNMAP-SPAN ( str -- )
-   MUNMAP-CALL TASK-RC-ERRNO ;
+   dup STR:DATA swap STR:LEN MUNMAP-CALL TASK-RC-ERRNO ;
 
 \ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which outlives every
 \ release (PARK-CREATE). The five cells cleared last are what the run
@@ -967,7 +966,7 @@ variable ROW-N
    then
    tcb TCB.REGION-U @ 0 <> if
       tcb TCB.REGION @ BYTE-VIEW MEM:RELEASE-SCOPES
-      tcb TCB.REGION @ BYTE-VIEW tcb TCB.REGION-U @ TASK-MUNMAP-SPAN
+      tcb TCB.REGION @ BYTE-VIEW tcb TCB.REGION-U @ >str TASK-MUNMAP-SPAN
       TASK-NULL tcb TCB.REGION !
       0 tcb TCB.REGION-U !
    then
@@ -1198,7 +1197,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    total tcb TCB.REGION-U !
    tcb TASK-REGION-INIT
    old BYTE-VIEW MEM:RELEASE-SCOPES
-   old BYTE-VIEW oldu TASK-MUNMAP-SPAN ;
+   old BYTE-VIEW oldu >str TASK-MUNMAP-SPAN ;
 
 : TASK-PTHREAD-CREATE-RC ( ^n -- n ) {: tcb:^ :}
    tcb TCB.THREAD BYTE-VIEW 0 PTHREAD-ENTRY tcb BYTE-VIEW PTHREAD-CREATE-CALL ;
@@ -1366,7 +1365,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    k ROW ROW-OWNER atomic@ 3 and CB-ROW-CALLER = if exit then
    ROW-TABLE @ FFI:>CELL MAIN-BASE CB-ROWS + atomic!
    key MAIN-BASE CB-TLS-KEY + atomic!
-   FFI:PROCESS-HANDLE s\" pthread_getspecific\z" drop FFI:DLSYM {: get:n :}
+   FFI:PROCESS-HANDLE s\" pthread_getspecific\z" STR:DATA FFI:DLSYM {: get:n :}
    get 0= if E-TASK-STATE throw then
    get MAIN-BASE CB-TLS-GET + atomic!
    begin
@@ -1601,16 +1600,16 @@ CAST: AS-SLOTS-ENTRY ( [ n ^n -- ^n ] -- n )
 \ Every rejection comes before the child word exists. The child's body calls the
 \ routine at entry.
 : USER-ROW ( n n n str -- )
-   {: count:n shape:n entry:n da:^ du:n :}
-   da du data-base PROVIDED-XT:STORAGE-LINE-CELL + @
-   AS-STORAGE-LINE execute {: na:^ nu:n ta:^ tu:n bytes:n :}
+   {: count:n shape:n entry:n ds:str :}
+   ds data-base PROVIDED-XT:STORAGE-LINE-CELL + @
+   AS-STORAGE-LINE execute {: ns:str ts:str bytes:n :}
    bytes 0= if exit then
    count 1 <  count USER-END-MAX bytes / >  or if
       E-TASK-USER throw
    then
    count bytes * {: size:n :}
    size USER-NEXT {: next:n :}
-   na nu shape entry ta tu data-base PROVIDED-XT:CHILD-CELL + @
+   ns shape entry ts data-base PROVIDED-XT:CHILD-CELL + @
    AS-CHILD-RUN execute drop
    next size - size bytes SLOT-LAY
    next TASK-USER-NEXT ! ;

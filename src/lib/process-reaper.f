@@ -1,4 +1,3 @@
-split-str
 \ process-reaper.f - a pool's reaper: an hb running src/lib/process-reaper-main.f,
 \ which leads a process group of its own and holds the read end of a pipe whose
 \ write end only the pool keeps. A child spawned REAPED is in that group from
@@ -33,7 +32,7 @@ private
 : MAIN-PATH ( -- str )
    OWN-PATH SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME
    MAIN$ PATHZ-BUF PATH-CAP SPAN:MAKE FS:JOIN-PATH-INTO
-   PATHZ-BUF swap ;
+   PATHZ-BUF swap >str ;
 
 \ The pool's death orphans the reaper's group, which the kernel then sends
 \ SIGHUP if a member is stopped; the child starts with SIGHUP blocked.
@@ -44,31 +43,31 @@ private
 
 \ The engine on the program, the pipe's read end its fd 3, fds 0 and 1 closed.
 : REAPER-REQUEST ( str fd -- PROCESS:request )
-   {: main:^ mainu r:fd :}
+   {: main:str r:fd :}
    OWN-PATH NEW BLOCK-HUP
-   main mainu ARG
+   main ARG
    3 >FD r FD
    0 >FD CLOSED
    1 >FD CLOSED ;
 
 \ The top cell, a placeholder, carries the pid out, so catch keeps the depth.
 : REAPER-SPAWN ( str fd n -- str fd n )
-   drop {: main:^ mainu r:fd :}
-   main mainu r
-   main mainu r REAPER-REQUEST SPAWN PID>N ;
+   drop {: main:str r:fd :}
+   main r
+   main r REAPER-REQUEST SPAWN PID>N ;
 
 public
 
 \ Spawns a reaper on a fresh pipe and keeps its write end. A program missing
 \ from the engine's tree throws E-PROC-PATH before any spawn.
 : REAPER-START ( -- PROCESS:reaper )
-   MAIN-PATH {: main:^ mainu :}
-   main mainu FS:FILE? 0= if E-PROC-PATH throw then
+   MAIN-PATH {: main:str :}
+   main FS:FILE? 0= if E-PROC-PATH throw then
    FD:PIPE {: r:fd w:fd :}
-   main mainu r 0 [: REAPER-SPAWN ;] catch {: rc :}
+   main r 0 [: REAPER-SPAWN ;] catch {: rc :}
    r FD>N close
-   rc 0<> if 2drop 2drop w FD>N close rc throw then
-   >PID {: pid:pid :} 2drop drop
+   rc 0<> if drop drop drop w FD>N close rc throw then
+   >PID {: pid:pid :} drop drop
    w pid REAPER-MAKE ;
 
 \ The child joins the reaper's group before it execs, so the reaper's kill at

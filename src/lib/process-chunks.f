@@ -1,4 +1,3 @@
-split-str
 \ process-chunks.f - row bytes that stay put while a list of rows grows. Chunks
 \ never move until freed; chunks past the one being filled hold no live row, so
 \ a rewind reuses them. ROOM and FREE reach the chunk table through a quotation:

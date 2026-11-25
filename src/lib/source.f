@@ -1,4 +1,3 @@
-split-str
 \ source.f - checked source materialization helpers. Callers supply output
 \ buffers: appending past one throws E-FS-CAPACITY, and file or stdin failures
 \ throw named filesystem errors. READ-STDIN-ALL appends all of standard input to
@@ -71,7 +70,7 @@ private
    {: v:^ :}
    v STDIN-ROOM
    v VEC:COUNT {: old:n :}
-   v VEC:BYTES drop old + {: at:^ :}
+   v VEC:BYTES STR:DATA old + {: at:^ :}
    0 at v VEC:CAP old - read {: got:n :}
    got 0 < if E-FS-IO throw then
    v old got + VEC:ENSURE
@@ -87,17 +86,17 @@ private
 
 \ The file at a path opened for a whole read, recorded as one the compile read.
 : SOURCE-OPEN ( str -- n )
-   {: path:^ pathu:n :}
-   path pathu FS:>PATHZ {: z:^ :}
-   path pathu z COMPILE-READS:FILE+
+   {: path:str :}
+   path FS:>PATHZ {: z:^ :}
+   path z COMPILE-READS:FILE+
    z open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
 \ The file at a path, read as SOURCE-READ-LOOP reads.
 : SOURCE-READ-PATH ( str n n [ n -- ^u8 ] -- n )
-   {: path:^ pathu:n first:n cap:n room :}
-   path pathu SOURCE-OPEN {: fd:n :}
+   {: path:str first:n cap:n room :}
+   path SOURCE-OPEN {: fd:n :}
    [: fd first cap room SOURCE-READ-LOOP ;] catch {: rc:n :}
    fd close
    rc 0<> if rc throw then ;
@@ -107,26 +106,26 @@ public
 \ The file at a path, whole, from a size the caller sampled (FS:FILE-SIZE makes a
 \ missing file E-FS-STAT); a file holding more bytes than the sample is E-FS-CHANGED.
 : READ-WHOLE-SAMPLED ( str n [ n -- ^u8 ] -- n )
-   {: path:^ pathu:n first:n room :}
-   path pathu first first room SOURCE-READ-PATH ;
+   {: path:str first:n room :}
+   path first first room SOURCE-READ-PATH ;
 
 \ The file at a path, whole: a regular file's size bounds the read, and a path
 \ that names no regular file gives no sample and is read to its end.
 : READ-WHOLE-FILE ( str [ n -- ^u8 ] -- n )
-   {: path:^ pathu:n room :}
-   path pathu FS:FILE? if
-      path pathu  path pathu FS:FILE-SIZE  room READ-WHOLE-SAMPLED exit
+   {: path:str room :}
+   path FS:FILE? if
+      path  path FS:FILE-SIZE  room READ-WHOLE-SAMPLED exit
    then
-   path pathu 0 SOURCE-NO-CAP room SOURCE-READ-PATH ;
+   path 0 SOURCE-NO-CAP room SOURCE-READ-PATH ;
 
 : SOURCE-APPEND-BYTES ( str ^u8 len ^len -- )
-   {: src:^ u dst:^ cap lenp:^ :}
-   u 0 < if E-FS-CAPACITY throw then
+   {: src:str dst:^ cap lenp:^ :}
+   src STR:LEN 0 < if E-FS-CAPACITY throw then
    lenp @ LEN>N 0 < if E-FS-CAPACITY throw then
    lenp @ LEN>N cap LEN>N > if E-FS-CAPACITY throw then
-   u cap LEN>N lenp @ LEN>N - > if E-FS-CAPACITY throw then
-   src dst lenp @ LEN>N + u BYTE-COPY
-   lenp @ LEN>N u + >LEN lenp ! ;
+   src STR:LEN cap LEN>N lenp @ LEN>N - > if E-FS-CAPACITY throw then
+   src STR:DATA dst lenp @ LEN>N + src STR:LEN BYTE-COPY
+   lenp @ LEN>N src STR:LEN + >LEN lenp ! ;
 
 : SOURCE-APPEND-C ( n ^u8 len ^len -- )
    {: c:n dst:^ cap:len lenp:^ :}
@@ -149,9 +148,9 @@ private
    c SOURCE-CR = if STR:FALSE exit then
    STR:TRUE ;
 
-: SOURCE-PATH-SAFE? ( str -- bool ) {: a:^ u:n :}
-   0 begin dup u < while
-      a over + c@ SOURCE-PATH-BYTE-SAFE? 0= if drop STR:FALSE exit then
+: SOURCE-PATH-SAFE? ( str -- bool ) {: s:str :}
+   0 begin dup s STR:LEN < while
+      s STR:DATA over + c@ SOURCE-PATH-BYTE-SAFE? 0= if drop STR:FALSE exit then
       1+
    repeat drop STR:TRUE ;
 
@@ -163,12 +162,12 @@ public
    SOURCE-PATH-SAFE? 0= if E-FS-PATH-UNSAFE throw then ;
 
 : SOURCE-APPEND-QPATH ( str ^u8 len ^len -- )
-   {: path:^ pathu:n dst:^ cap:len lenp:^ :}
-   path pathu SOURCE-QPATH-CHECK
+   {: path:str dst:^ cap:len lenp:^ :}
+   path SOURCE-QPATH-CHECK
    s" s" dst cap lenp SOURCE-APPEND-BYTES
    SOURCE-DQ dst cap lenp SOURCE-APPEND-C
    SOURCE-SPACE dst cap lenp SOURCE-APPEND-C
-   path pathu dst cap lenp SOURCE-APPEND-BYTES
+   path dst cap lenp SOURCE-APPEND-BYTES
    SOURCE-DQ dst cap lenp SOURCE-APPEND-C ;
 
 \ The bytes SOURCE-APPEND-QPATH writes for a path of n bytes: `s" PATH"`.
@@ -177,21 +176,21 @@ public
 
 \ At top level `char` and `'` parse, and `[char]` and `[']`, E-UNDEFINED there,
 \ take their token too; a body asks SOURCE-SYNTAX:BODY-PARSING-KEYWORD?.
-: PARSING-KEYWORD? ( str -- bool ) {: a:^ u:n :}
-   a u SOURCE-SYNTAX:PARSING-KEYWORD? ;
+: PARSING-KEYWORD? ( str -- bool ) {: s:str :}
+   s SOURCE-SYNTAX:PARSING-KEYWORD? ;
 
-: PACKAGE-KEYWORD? ( str -- bool ) {: a:^ u:n :}
-   a u s" package" STR:=CI if STR:TRUE exit then
-   a u s" using" STR:=CI if STR:TRUE exit then
-   a u s" export" STR:=CI ;
+: PACKAGE-KEYWORD? ( str -- bool ) {: s:str :}
+   s s" package" STR:=CI if STR:TRUE exit then
+   s s" using" STR:=CI if STR:TRUE exit then
+   s s" export" STR:=CI ;
 
 \ A local a block declares ends with the block, and `else` ends the true arm's.
 \ A local of a control word's name is that local: ask after the local lookup.
-: BLOCK-OPENER? ( str -- bool ) {: a:^ u:n :}
-   a u SOURCE-SYNTAX:BLOCK-OPENER? ;
+: BLOCK-OPENER? ( str -- bool ) {: s:str :}
+   s SOURCE-SYNTAX:BLOCK-OPENER? ;
 
-: BLOCK-CLOSER? ( str -- bool ) {: a:^ u:n :}
-   a u SOURCE-SYNTAX:BLOCK-CLOSER? ;
+: BLOCK-CLOSER? ( str -- bool ) {: s:str :}
+   s SOURCE-SYNTAX:BLOCK-CLOSER? ;
 
 private
 
@@ -205,16 +204,16 @@ public
 \ is: `s"`, `c"` and `."` take the bytes up to the next `"`, and `s\"`, `c\"`
 \ and `.\"` the same with a backslash escaping the byte after it.
 : NORMAL-STRING-OPENER? ( str -- bool )
-   {: a:^ u:n :}
-   u 2 <> if STR:FALSE exit then
-   a 1 BYTE@ $22 <> if STR:FALSE exit then
-   a 0 BYTE@ STRING-LEAD? ;
+   {: s:str :}
+   s STR:LEN 2 <> if STR:FALSE exit then
+   s STR:DATA 1 BYTE@ $22 <> if STR:FALSE exit then
+   s STR:DATA 0 BYTE@ STRING-LEAD? ;
 
 : ESC-STRING-OPENER? ( str -- bool )
-   {: a:^ u:n :}
-   u 3 <> if STR:FALSE exit then
-   a 1 BYTE@ $5C <> if STR:FALSE exit then
-   a 2 BYTE@ $22 <> if STR:FALSE exit then
-   a 0 BYTE@ STRING-LEAD? ;
+   {: s:str :}
+   s STR:LEN 3 <> if STR:FALSE exit then
+   s STR:DATA 1 BYTE@ $5C <> if STR:FALSE exit then
+   s STR:DATA 2 BYTE@ $22 <> if STR:FALSE exit then
+   s STR:DATA 0 BYTE@ STRING-LEAD? ;
 
 ;package

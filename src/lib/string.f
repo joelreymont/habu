@@ -1,4 +1,3 @@
-split-str
 \ string.f - checked byte-string helpers over pointer and length (package STR);
 \ no word assumes NUL termination. It loads in the kernel after cell.f and
 \ pointer-storage.f and requires nothing.
@@ -43,49 +42,49 @@ create MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 56 c
 : ASCII-UPPER ( n -- n )
    dup BEFORE-LOWER-A > over AFTER-LOWER-Z < and if SPACE - then ;
 
-: =CI ( str str -- bool ) {: a:^ u:n b:^ v:n :}
-   u v <> if 0 0= 0= exit then
-   0 begin dup u < while
-      dup a + c@ ASCII-LOWER over b + c@ ASCII-LOWER <> if
+: =CI ( str str -- bool ) {: s:str t:str :}
+   s STR:LEN t STR:LEN <> if 0 0= 0= exit then
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ ASCII-LOWER over t STR:DATA + c@ ASCII-LOWER <> if
          drop 0 0= 0= exit
       then
       1+
    repeat drop 0 0= ;
 
-: COUNT-CHAR ( str n -- n ) {: a:^ u c :}
-   0 0 begin dup u < while
-      dup a + c@ c = if swap 1+ swap then
+: COUNT-CHAR ( str n -- n ) {: s:str c :}
+   0 0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ c = if swap 1+ swap then
       1+
    repeat drop ;
 
-: LTRIM ( str -- str ) {: a:^ u :}
-   0 begin dup u < while
-      dup a + c@
+: LTRIM ( str -- str ) {: s:str :}
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@
       dup SPACE = over TAB = or over LF = or swap CR = or
-      0= if dup a + u rot - exit then
+      0= if dup s STR:DATA + s STR:LEN rot - >str exit then
       1+
-   repeat drop a 0 ;
+   repeat drop s STR:DATA 0 >str ;
 
-: RTRIM ( str -- str ) {: a:^ u :}
-   u begin dup 0 > while
-      a over 1- + c@
+: RTRIM ( str -- str ) {: s:str :}
+   s STR:LEN begin dup 0 > while
+      s STR:DATA over 1- + c@
       dup SPACE = over TAB = or over LF = or swap CR = or
-      if 1- else a swap exit then
-   repeat drop a 0 ;
+      if 1- else s STR:DATA swap >str exit then
+   repeat drop s STR:DATA 0 >str ;
 
 : TRIM ( str -- str )
    LTRIM RTRIM ;
 
-: SPLIT-NEXT ( str n n -- str n bool ) {: a:^ u sep start :}
-   start 0 < if a 0 start FALSE exit then
-   start u > if a 0 start FALSE exit then
-   start begin dup u < while
-      dup a + c@ sep = if
-         a start + over start - rot 1+ TRUE exit
+: SPLIT-NEXT ( str n n -- str n bool ) {: s:str sep start :}
+   start 0 < if s STR:DATA 0 >str start FALSE exit then
+   start s STR:LEN > if s STR:DATA 0 >str start FALSE exit then
+   start begin dup s STR:LEN < while
+      dup s STR:DATA + c@ sep = if
+         s STR:DATA start + over start - >str swap 1+ TRUE exit
       then
       1+
    repeat drop
-   a start + u start - u 1+ TRUE ;
+   s STR:DATA start + s STR:LEN start - >str s STR:LEN 1+ TRUE ;
 
 : DIGIT? ( n -- bool )
    dup ZERO 1- > swap ZERO BASE + < and ;
@@ -106,63 +105,63 @@ create MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 56 c
    dup DIGIT? if DIGIT-VALUE exit then
    ASCII-LOWER LOWER-A - BASE + ;
 
-: DIGITS? ( str -- bool ) {: a:^ u :}
-   u 0= if FALSE exit then
-   0 begin dup u < while
-      dup a + c@ DIGIT? 0= if drop FALSE exit then
+: DIGITS? ( str -- bool ) {: s:str :}
+   s STR:LEN 0= if FALSE exit then
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ DIGIT? 0= if drop FALSE exit then
       1+
    repeat drop TRUE ;
 
-: DIGITS<= ( str str -- bool ) {: a:^ u b:^ v :}
-   u v < if TRUE exit then
-   u v > if FALSE exit then
-   0 begin dup u < while
-      dup a + c@ over b + c@ <> if
-         dup a + c@ swap b + c@ < exit
+: DIGITS<= ( str str -- bool ) {: s:str t:str :}
+   s STR:LEN t STR:LEN < if TRUE exit then
+   s STR:LEN t STR:LEN > if FALSE exit then
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ over t STR:DATA + c@ <> if
+         dup s STR:DATA + c@ swap t STR:DATA + c@ < exit
       then
       1+
    repeat drop TRUE ;
 
 : = ( str str -- bool )
-   {: a:^ u:n b:^ v:n :}
-   u v <> if 0 0= 0= exit then
-   u CELL - {: last:n :}
+   {: s:str t:str :}
+   s STR:LEN t STR:LEN <> if 0 0= 0= exit then
+   s STR:LEN CELL - {: last:n :}
    0
    \ Read only the complete-cell prefix.
    begin dup last <= while
-      dup a + CELL-VIEW @ over b + CELL-VIEW @ <> if
+      dup s STR:DATA + CELL-VIEW @ over t STR:DATA + CELL-VIEW @ <> if
          drop 0 0= 0= exit
       then
       CELL +
    repeat
-   begin dup u < while
-      dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
+   begin dup s STR:LEN < while
+      dup s STR:DATA + c@ over t STR:DATA + c@ <> if drop 0 0= 0= exit then
       1+
    repeat drop 0 0= ;
 
-: STARTS-WITH? ( str str -- bool ) {: a:^ u b:^ v :}
-   u v < if 0 0= 0= exit then
-   a v b v = ;
+: STARTS-WITH? ( str str -- bool ) {: s:str t:str :}
+   s STR:LEN t STR:LEN < if 0 0= 0= exit then
+   s STR:DATA t STR:LEN >str t = ;
 
-: ENDS-WITH? ( str str -- bool ) {: a:^ u b:^ v :}
-   u v < if 0 0= 0= exit then
-   a u v - + v b v = ;
+: ENDS-WITH? ( str str -- bool ) {: s:str t:str :}
+   s STR:LEN t STR:LEN < if 0 0= 0= exit then
+   s STR:DATA s STR:LEN t STR:LEN - + t STR:LEN >str t = ;
 
 : COUNT-SUB ( str str -- n )     \ non-overlapping occurrences of b in a; empty needle -> 0
-   {: a:^ u:n b:^ v:n :}
-   v 0= if 0 exit then
-   0 0 begin dup u v - <= while
-      dup a + v b v = if swap 1+ swap v + else 1+ then
+   {: s:str t:str :}
+   t STR:LEN 0= if 0 exit then
+   0 0 begin dup s STR:LEN t STR:LEN - <= while
+      dup s STR:DATA + t STR:LEN >str t = if swap 1+ swap t STR:LEN + else 1+ then
    repeat drop ;
 
 \ Unsigned byte order, a shorter equal prefix first; no case, locale or UTF-8.
 : < ( str str -- bool )
-   {: a:^ u:n b:^ v:n :}
-   0 begin dup u v min < while
-      dup a + c@ over b + c@
+   {: s:str t:str :}
+   0 begin dup s STR:LEN t STR:LEN min < while
+      dup s STR:DATA + c@ over t STR:DATA + c@
       2dup <> if < swap drop exit then
       2drop 1+
-   repeat drop u v < ;
+   repeat drop s STR:LEN t STR:LEN < ;
 
 ;package
 

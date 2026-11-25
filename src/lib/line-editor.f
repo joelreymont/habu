@@ -1,4 +1,3 @@
-split-str
 \ line-editor.f - the terminal line editor: READ-LINE answers one edited line,
 \ with the tty raw per line and canonical while the line executes, and a
 \ history ring. The session owns prompts, pending definitions and recovery;
@@ -92,7 +91,7 @@ private
 : REDRAW ( -- )
    13 emit  27 emit  91 emit  75 emit
    s" habu> " type
-   LBUF LLEN @ type
+   LBUF LLEN @ >str type
    LLEN @ LPOS @ - 0 ?do 8 emit loop ;
 
 : CLEARLN ( -- )  0 LLEN !  0 LPOS !  0 LOVER ! ;
@@ -172,7 +171,7 @@ private
    repeat drop ;
 
 : LDEC$ ( -- str )
-   LDEC LDEC-I @ +  24 LDEC-I @ - ;
+   LDEC LDEC-I @ +  24 LDEC-I @ - >str ;
 
 \ One line on descriptor 2: what filled up, the ceiling and the length the line
 \ asked for. Diagnostics do not leave through the editor's echo (src/lib/genio-core.f),
@@ -184,7 +183,7 @@ private
    2 s"  bytes: " write drop
    LLEN @ LOVER @ + LDEC!  2 LDEC$ write drop
    2 s"  typed" write drop
-   2 LDEC-LF 1 write drop ;
+   2 LDEC-LF 1 >str write drop ;
 
 public
 
@@ -199,6 +198,6 @@ public
       RAW-OFF
       DONE @ 1 =  LOVER @ 0 > and
    while LINE-FULL repeat
-   DONE @ 2 = IF NULL$ ELSE HSAVE  LBUF LLEN @ THEN ;
+   DONE @ 2 = IF NULL$ ELSE HSAVE  LBUF LLEN @ >str THEN ;
 
 ;package

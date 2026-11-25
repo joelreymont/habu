@@ -1,4 +1,3 @@
-split-str
 \ process.f - spawn, capture, poll and reap child processes.
 \ The path buffer, pollfd table, probe byte and capture record are TASK:+USER
 \ rows per task, so any number of tasks run children at once; the STOP vector is
@@ -206,7 +205,7 @@ public
 
 : SPAWN ( ^u8 fd fd fd -- ^u8 fd fd fd )
    {: pathz:^ infd outfd errfd :}
-   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   pathz dup ZLEN >str PROCESS:NEW PROCESS:HERMETIC
    infd outfd errfd LAUNCH
    pathz infd outfd errfd ;
 
@@ -228,10 +227,10 @@ public
 : KILL-RAW ( pid n -- rc ) {: pid sig :}
    pid PID>N sig kill >RC ;
 
-: ZCOPY ( str ^u8 len -- ^u8 ) {: a:^ u dst:^ cap :}
-   u 0 < if E-PROC-OUTPUT throw then
-   u cap LEN>N >= if E-PROC-OUTPUT throw then
-   a u dst cap LEN>N SPAN:MAKE FFI:CSTR ;
+: ZCOPY ( str ^u8 len -- ^u8 ) {: s:str dst:^ cap :}
+   s STR:LEN 0 < if E-PROC-OUTPUT throw then
+   s STR:LEN cap LEN>N >= if E-PROC-OUTPUT throw then
+   s dst cap LEN>N SPAN:MAKE FFI:CSTR ;
 
 : PATHZ ( str -- ^u8 )
    PATHZ-BUF PATHZ-CAP >LEN ZCOPY ;
@@ -299,8 +298,8 @@ public
    RC>N {: rc:n :}
    rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
-: SPAWN-IO ( str fd fd fd -- pid ) {: a:^ u infd outfd errfd :}
-   a u PATHZ infd outfd errfd SPAWN-RAW {: pid :}
+: SPAWN-IO ( str fd fd fd -- pid ) {: s:str infd outfd errfd :}
+   s PATHZ infd outfd errfd SPAWN-RAW {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
@@ -472,19 +471,19 @@ public
 
 private
 : DIAG ( str -- )
-   {: a:^ u:n :}
-   2 a u write drop ;
+   {: s:str :}
+   2 s write drop ;
 
 \ v is at most 0, so MIN-N has a magnitude too: / and mod truncate toward zero.
 : DIAG-DIGITS ( n -- )
    {: v:n :}
    v -10 <= if v 10 / RECURSE then
-   s" 0123456789" drop v 10 mod negate + 1 DIAG ;
+   s" 0123456789" STR:DATA v 10 mod negate + 1 >str DIAG ;
 
 : CODE-REPORT ( str n -- )
-   {: what:^ whatu:n code:n :}
+   {: what:str code:n :}
    code 0= if exit then
-   what whatu DIAG
+   what DIAG
    code 0 < if s" -" DIAG code else code negate then DIAG-DIGITS
    s\" \n" DIAG ;
 
@@ -578,7 +577,7 @@ private
 \ flags are open(2)'s access mode.
 : OPEN-NULL ( ^n n -- )
    {: cell:^ flags :}
-   s\" /dev/null\z" drop flags 0 open
+   s\" /dev/null\z" STR:DATA flags 0 open
    dup 0 < if drop E-PROC-SPAWN THROW-CAPTURE then
    cell !
    cell CLOEXEC-CELL ;
@@ -780,7 +779,7 @@ $10000 constant GROW-CHUNK
 
 : READ-GROWING ( ^n ^n [ n -- ^u8 ] -- )
    {: fdp:^ lenp:^ sink :}
-   NULL$ drop sink lenp [: SINK-ROOM ;] catch {: buf s lp code:n :}
+   NULL$ STR:DATA sink lenp [: SINK-ROOM ;] catch {: buf s lp code:n :}
    code 0= if fdp buf lp READ-INTO-ROOM exit then
    code THROW-CAPTURE ;
 
@@ -829,19 +828,19 @@ private
 \ already asked poll whether the reader is gone, so the offset stays and the
 \ next POLLOUT under the deadline resumes; a short write advances by what
 \ landed. Closing here would truncate the child's stdin.
-: WRITE-STDIN-ACTIVE ( str -- ) {: src:^ inu :}
-   inu IN-OFF @ - >LEN STDIN-CHUNK {: chunk :}
-   IN-W @ src IN-OFF @ + chunk LEN>N write {: wrote :}
+: WRITE-STDIN-ACTIVE ( str -- ) {: src:str :}
+   src STR:LEN IN-OFF @ - >LEN STDIN-CHUNK {: chunk :}
+   IN-W @ src STR:DATA IN-OFF @ + chunk LEN>N >str write {: wrote :}
    wrote 0 < if exit then
    wrote chunk LEN>N > if E-PROC-OUTPUT THROW-CAPTURE then
    IN-OFF @ wrote + IN-OFF !
-   inu CLOSE-STDIN-DONE ;
+   src STR:LEN CLOSE-STDIN-DONE ;
 
 public
-: WRITE-STDIN ( str -- ) {: src:^ inu :}
+: WRITE-STDIN ( str -- ) {: src:str :}
    IN-W @ 0 < if exit then
-   IN-OFF @ inu >= if IN-W CLOSE-CELL exit then
-   src inu WRITE-STDIN-ACTIVE ;
+   IN-OFF @ src STR:LEN >= if IN-W CLOSE-CELL exit then
+   src WRITE-STDIN-ACTIVE ;
 
 private
 : ARM-IO-PFD ( -- )
@@ -866,11 +865,11 @@ public
    rc 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    rc >COUNT ;
 
-: DRIVE-STDIN ( str -- ) {: in:^ inu :}
+: DRIVE-STDIN ( str -- ) {: in:str :}
    2 >IDX PFD-REVENTS {: events :}
    events BROKEN-STDIN? if IN-W CLOSE-CELL exit then
    events FD:POLLOUT and 0= 0= if
-      in inu WRITE-STDIN
+      in WRITE-STDIN
    then ;
 
 : STDIN-CAPTURE-DONE? ( -- bool )
@@ -942,11 +941,11 @@ public
    REAP-CAPTURE-BOUNDED ;
 
 : RUN-STDIN-CAPTURE-LOOP ( str ^u8 len ^u8 len -- )
-   {: in:^ inu out:^ outcap err:^ errcap :}
-   inu 0 <= if IN-W CLOSE-CELL then
+   {: in:str out:^ outcap err:^ errcap :}
+   in STR:LEN 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO drop
-      in inu DRIVE-STDIN
+      in DRIVE-STDIN
       out outcap err errcap DRAIN-READY
       REMAINING-MS MS>N 0= STDIN-CAPTURE-DONE? 0= and if
          E-PROC-TIMEOUT THROW-CAPTURE
@@ -954,8 +953,8 @@ public
    repeat ;
 
 : RUN-STDIN-CAPTURE-ENDING-LOOP ( str ^u8 len ^u8 len -- )
-   {: in:^ inu out:^ outcap err:^ errcap :}
-   inu 0 <= if IN-W CLOSE-CELL then
+   {: in:str out:^ outcap err:^ errcap :}
+   in STR:LEN 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO-ENDING dup COUNT>N 0= if
          drop
@@ -963,7 +962,7 @@ public
          exit
       then
       drop
-      in inu DRIVE-STDIN
+      in DRIVE-STDIN
       out outcap err errcap DRAIN-READY
       REMAINING-MS MS>N 0= STDIN-CAPTURE-DONE? 0= and if
          REAP-CAPTURE-TIMEOUT exit
@@ -972,8 +971,8 @@ public
    REAP-CAPTURE-BOUNDED ;
 
 : RUN-STDIN-GROWING-CAPTURE-ENDING-LOOP ( str [ n -- ^u8 ] ^u8 len -- )
-   {: in:^ inu sink err:^ errcap :}
-   inu 0 <= if IN-W CLOSE-CELL then
+   {: in:str sink err:^ errcap :}
+   in STR:LEN 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO-ENDING dup COUNT>N 0= if
          drop
@@ -981,7 +980,7 @@ public
          exit
       then
       drop
-      in inu DRIVE-STDIN
+      in DRIVE-STDIN
       sink err errcap DRAIN-READY-GROWING
       REMAINING-MS MS>N 0= STDIN-CAPTURE-DONE? 0= and if
          REAP-CAPTURE-TIMEOUT exit
@@ -990,8 +989,8 @@ public
    REAP-CAPTURE-BOUNDED ;
 
 : RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP ( str [ n -- ^u8 ] [ n -- ^u8 ] -- )
-   {: in:^ inu out err :}
-   inu 0 <= if IN-W CLOSE-CELL then
+   {: in:str out err :}
+   in STR:LEN 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO-ENDING dup COUNT>N 0= if
          drop
@@ -999,7 +998,7 @@ public
          exit
       then
       drop
-      in inu DRIVE-STDIN
+      in DRIVE-STDIN
       out err DRAIN-READY-GROWING-BOTH
       REMAINING-MS MS>N 0= STDIN-CAPTURE-DONE? 0= and if
          REAP-CAPTURE-TIMEOUT exit
@@ -1078,10 +1077,10 @@ private
 
 public
 : RUN-CAPTURE ( str ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
-   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   pathu 0 < if E-PROC-OUTPUT throw then
+   {: path:str out:^ outcap err:^ errcap timeout :}
+   path STR:LEN 0 < if E-PROC-OUTPUT throw then
    outcap errcap CAPTURE-CHECK-CAPS
-   path pathu PATHZ {: pathz:^ :}
+   path PATHZ {: pathz:^ :}
    timeout CAPTURE-BEGIN
    pathz SPAWN-CAPTURE
    out outcap err errcap RUN-CAPTURE-LOOP
@@ -1089,10 +1088,10 @@ public
 
 private
 : RUN-CAPTURE-ENDING ( str ^u8 len ^u8 len ms -- len len ending )
-   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   pathu 0 < if E-PROC-OUTPUT throw then
+   {: path:str out:^ outcap err:^ errcap timeout :}
+   path STR:LEN 0 < if E-PROC-OUTPUT throw then
    outcap errcap CAPTURE-CHECK-CAPS
-   path pathu PATHZ {: pathz:^ :}
+   path PATHZ {: pathz:^ :}
    timeout CAPTURE-BEGIN
    pathz SPAWN-CAPTURE
    out outcap err errcap RUN-CAPTURE-ENDING-LOOP
@@ -1175,7 +1174,9 @@ public
       err h 2 ERR-R ERR-W OPEN-OUTPUT ;] catch {: code:n :}
    code 0<> if h RELEASE code throw then
    [: h MINT SPAWN ;] CAPTURE-ADOPT-SPAWN
-   in BYTES$ out BYTES$ >LEN err BYTES$ >LEN
+   in BYTES$
+   out BYTES$ dup STR:DATA swap STR:LEN >LEN
+   err BYTES$ dup STR:DATA swap STR:LEN >LEN
    RUN-STDIN-CAPTURE-ENDING-LOOP
    CLOSE-ALL-CAPTURE-FDS
    OUT-LEN @ >LEN ERR-LEN @ >LEN STATUS @ >STATUS ;

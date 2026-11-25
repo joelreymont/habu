@@ -1,4 +1,3 @@
-split-str
 \ process-env.f - checked argv/env process helpers and PATH lookup. The prepared
 \ environment and the inherited defaults are tables of row addresses plus row
 \ bytes in chunks of max(row size, $1000), grown without a ceiling.
@@ -80,7 +79,7 @@ public
 
 : SPAWN-ARGV-ENV ( ^u8 ^a ^a fd fd fd -- ^u8 ^a ^a fd fd fd )
    {: pathz:^ argv:^ envp:^ infd outfd errfd :}
-   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   pathz dup ZLEN >str PROCESS:NEW PROCESS:HERMETIC
    argv ROWS PROCESS:ARGV-ROWS
    envp ROWS PROCESS:ENV-ROWS
    infd outfd errfd LAUNCH
@@ -88,10 +87,10 @@ public
 
 : SPAWN-ARGV-ENV-CWD ( ^u8 ^a ^a ^u8 fd fd fd -- ^u8 ^a ^a ^u8 fd fd fd )
    {: pathz:^ argv:^ envp:^ cwdz:^ infd outfd errfd :}
-   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   pathz dup ZLEN >str PROCESS:NEW PROCESS:HERMETIC
    argv ROWS PROCESS:ARGV-ROWS
    envp ROWS PROCESS:ENV-ROWS
-   cwdz dup ZLEN PROCESS:CWD
+   cwdz dup ZLEN >str PROCESS:CWD
    infd outfd errfd LAUNCH
    pathz argv envp cwdz infd outfd errfd ;
 
@@ -133,9 +132,9 @@ public
    need MEM-MAX-N >= if E-PROC-ENV throw then
    need ;
 
-: PROC-ENV-HAS-EQUAL? ( str -- bool ) {: a:^ u :}
-   0 begin dup u < while
-      dup a + c@ PROC-ENV-EQUAL = if drop PROC-ENV-TRUE exit then
+: PROC-ENV-HAS-EQUAL? ( str -- bool ) {: s:str :}
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ PROC-ENV-EQUAL = if drop PROC-ENV-TRUE exit then
       1+
    repeat drop PROC-ENV-FALSE ;
 
@@ -143,27 +142,27 @@ public
 \ A name is rejected empty or holding `=` or NUL: every reader of a row stops at
 \ its first NUL, so a NUL would make a shorter name of it.
 : PROC-ENV-CHECK-NAME ( str -- )
-   {: a:^ u :}
-   u 0 <= if E-PROC-ENV throw then
-   0 begin dup u < while
-      dup a + c@ dup PROC-ENV-EQUAL = swap 0= or if E-PROC-ENV throw then
+   {: s:str :}
+   s STR:LEN 0 <= if E-PROC-ENV throw then
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ dup PROC-ENV-EQUAL = swap 0= or if E-PROC-ENV throw then
       1+
    repeat drop ;
 
 
-: PROC-ENV-CHECK-ENTRY ( str -- ) {: a:^ u :}
-   u 0 <= if E-PROC-ENV throw then
-   a c@ PROC-ENV-EQUAL = if E-PROC-ENV throw then
-   a u PROC-ENV-HAS-EQUAL? 0= if E-PROC-ENV throw then ;
+: PROC-ENV-CHECK-ENTRY ( str -- ) {: s:str :}
+   s STR:LEN 0 <= if E-PROC-ENV throw then
+   s STR:DATA c@ PROC-ENV-EQUAL = if E-PROC-ENV throw then
+   s PROC-ENV-HAS-EQUAL? 0= if E-PROC-ENV throw then ;
 
 \ The size is checked before the entry is read: a length past it is rejected
 \ unread, never scanned for its `=`.
-: PROC-ENV-STORE-Z ( str -- ^u8 ) {: a:^ u :}
-   u 0 < if E-PROC-ENV throw then
-   0 u PROC-ENV-NEED {: need:n :}
+: PROC-ENV-STORE-Z ( str -- ^u8 ) {: s:str :}
+   s STR:LEN 0 < if E-PROC-ENV throw then
+   0 s STR:LEN PROC-ENV-NEED {: need:n :}
    need MEM-MAX-N >= if E-PROC-ENV throw then
-   a u PROC-ENV-CHECK-ENTRY
-   a u need PROC-ENV-ROWS:BYTES need >LEN PROCESS:ZCOPY ;
+   s PROC-ENV-CHECK-ENTRY
+   s need PROC-ENV-ROWS:BYTES need >LEN PROCESS:ZCOPY ;
 
 : PROC-ENV-INSTALL-Z ( ^u8 -- )
    PROC-ENV-N @ COUNT>N >IDX PROC-ENV-SLOT !
@@ -176,46 +175,46 @@ public
 : PROC-ENV-ENTRY+ ( str -- )
    PROC-ENV-STORE-Z PROC-ENV-INSTALL-Z ;
 
-: PROC-ENV-NAME-LEN ( str -- n ) {: a:^ u :}
-   0 begin dup u < while
-      dup a + c@ PROC-ENV-EQUAL = if exit then
+: PROC-ENV-NAME-LEN ( str -- n ) {: s:str :}
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ PROC-ENV-EQUAL = if exit then
       1+
    repeat ;
 
-: PROC-ENV-SAME-NAME? ( str str -- bool ) {: a:^ u b:^ v :}
-   a u PROC-ENV-NAME-LEN {: au :}
-   b v PROC-ENV-NAME-LEN {: bv :}
+: PROC-ENV-SAME-NAME? ( str str -- bool ) {: s:str t:str :}
+   s PROC-ENV-NAME-LEN {: au :}
+   t PROC-ENV-NAME-LEN {: bv :}
    au bv <> if PROC-ENV-FALSE exit then
-   a au b bv STR:= ;
+   s STR:DATA au >str t STR:DATA bv >str STR:= ;
 
-: PROC-ENV-VEC-NAME? ( n str ^^u8 -- bool ) {: i:n a:^ u:n tab:^ :}
+: PROC-ENV-VEC-NAME? ( n str ^^u8 -- bool ) {: i:n s:str tab:^ :}
    i cells tab + @ {: z:^ :}
-   a u z z ZLEN PROC-ENV-SAME-NAME? ;
+   s z z ZLEN >str PROC-ENV-SAME-NAME? ;
 
-: PROC-ENV-VEC-NAME-IDX ( str ^^u8 n -- n ) {: a:^ u:n tab:^ rows:n :}
+: PROC-ENV-VEC-NAME-IDX ( str ^^u8 n -- n ) {: s:str tab:^ rows:n :}
    0 begin dup rows < while
-      dup a u tab PROC-ENV-VEC-NAME? if exit then
+      dup s tab PROC-ENV-VEC-NAME? if exit then
       1+
    repeat drop -1 ;
 
 : PROC-ENV-VEC-HAS-NAME? ( str ^^u8 n -- bool )
    PROC-ENV-VEC-NAME-IDX 0 >= ;
 
-: PROC-ENV-NAME-IDX ( str -- n ) {: a:^ u:n :}
-   a u 0 >IDX PROC-ENV-SLOT PROC-ENV-N @ COUNT>N PROC-ENV-VEC-NAME-IDX ;
+: PROC-ENV-NAME-IDX ( str -- n ) {: s:str :}
+   s 0 >IDX PROC-ENV-SLOT PROC-ENV-N @ COUNT>N PROC-ENV-VEC-NAME-IDX ;
 
 : PROC-ENV-HAS-NAME? ( str -- bool )
    PROC-ENV-NAME-IDX 0 >= ;
 
-: PROC-ENV-DEFAULT$? ( str -- str bool ) {: a:^ u:n :}
+: PROC-ENV-DEFAULT$? ( str -- str bool ) {: s:str :}
    0 >IDX begin dup IDX>N PROC-ENV-DEF-N @ COUNT>N < while
       dup PROC-ENV-I !
       PROC-ENV-I @ PROC-ENV-DEF-SLOT @ {: z:^ :}
-      a u z z ZLEN PROC-ENV-SAME-NAME? if
+      s z z ZLEN >str PROC-ENV-SAME-NAME? if
          drop
          z ZLEN {: zu:n :}
-         z zu PROC-ENV-NAME-LEN {: nameu:n :}
-         z nameu + 1 + zu nameu - 1 -
+         z zu >str PROC-ENV-NAME-LEN {: nameu:n :}
+         z nameu + 1 + zu nameu - 1 - >str
          PROC-ENV-TRUE
          exit
       then
@@ -225,14 +224,14 @@ public
 
 \ One name=value row in the bytes BYTES answers for its size.
 : PROC-ENV-ROW ( str str [ n -- ^u8 ] -- ^u8 )
-   {: name:^ nameu:n val:^ valu:n bytes :}
-   nameu valu PROC-ENV-ROW-NEED {: need:n :}
-   name nameu PROC-ENV-CHECK-NAME
+   {: name:str val:str bytes :}
+   name STR:LEN val STR:LEN PROC-ENV-ROW-NEED {: need:n :}
+   name PROC-ENV-CHECK-NAME
    need bytes execute {: dst:^ :}
-   val valu dst nameu + 1 +
-   valu FFI:CSTR-ROOM SPAN:MAKE FFI:CSTR drop
-   name dst nameu BYTE-COPY
-   PROC-ENV-EQUAL dst nameu + c!
+   val dst name STR:LEN + 1 +
+   val STR:LEN FFI:CSTR-ROOM SPAN:MAKE FFI:CSTR drop
+   name STR:DATA dst name STR:LEN BYTE-COPY
+   PROC-ENV-EQUAL dst name STR:LEN + c!
    dst ;
 
 : PROC-ENV-ROW-Z ( str str -- ^u8 )
@@ -244,11 +243,11 @@ public
 \ Exactly one row for the name survives: an existing row (one copied by
 \ PROC-ENV-INHERIT-MISSING, say) is overwritten in place. PROC-ENV+ appends and
 \ leaves duplicate keys to the child's getenv.
-: PROC-ENV-SET ( str str -- ) {: name:^ nameu:n val:^ valu:n :}
-   nameu valu PROC-ENV-ROW-NEED drop
-   name nameu PROC-ENV-NAME-IDX {: i:n :}
-   i 0 < if name nameu val valu PROC-ENV+ exit then
-   name nameu val valu PROC-ENV-ROW-Z i >IDX PROC-ENV-SLOT ! ;
+: PROC-ENV-SET ( str str -- ) {: name:str val:str :}
+   name STR:LEN val STR:LEN PROC-ENV-ROW-NEED drop
+   name PROC-ENV-NAME-IDX {: i:n :}
+   i 0 < if name val PROC-ENV+ exit then
+   name val PROC-ENV-ROW-Z i >IDX PROC-ENV-SLOT ! ;
 
 : PROC-ENV-DEFAULT+ ( str str -- )
    [: PROC-ENV-ROWS:DEF-BYTES ;] PROC-ENV-ROW PROC-ENV-DEF-INSTALL-Z ;
@@ -261,15 +260,15 @@ public
    0 >IDX PROC-ENV-SLOT ;
 
 : PROC-ENV-INHERIT-ONE ( idx -- idx ) {: idx :}
-   idx IDX>N ENVP dup ZLEN {: z:^ u :}
-   z u PROC-ENV-CHECK-ENTRY
-   z u PROC-ENV-HAS-NAME? 0= if z u PROC-ENV-ENTRY+ then
+   idx IDX>N ENVP dup ZLEN >str {: z:str :}
+   z PROC-ENV-CHECK-ENTRY
+   z PROC-ENV-HAS-NAME? 0= if z PROC-ENV-ENTRY+ then
    idx IDX>N 1+ >IDX ;
 
 : PROC-ENV-INHERIT-DEFAULT-ONE ( idx -- idx ) {: idx:idx :}
-   idx PROC-ENV-DEF-SLOT @ {: z:^ :}
-   z z ZLEN PROC-ENV-CHECK-ENTRY
-   z z ZLEN PROC-ENV-HAS-NAME? 0= if z z ZLEN PROC-ENV-ENTRY+ then
+   idx PROC-ENV-DEF-SLOT @ dup ZLEN >str {: z:str :}
+   z PROC-ENV-CHECK-ENTRY
+   z PROC-ENV-HAS-NAME? 0= if z PROC-ENV-ENTRY+ then
    idx IDX>N 1+ >IDX ;
 
 : PROC-ENV-INHERIT-DEFAULTS ( -- )
@@ -287,8 +286,8 @@ public
    PROC-ARGV-RESET
    PROC-ENV-RESET ;
 
-: PROC-SPAWN-ARGV-ENV-IO ( str fd fd fd -- pid ) {: a:^ u infd outfd errfd :}
-   [: a u PROC-ARGV-PREPARE PROC-ENV-PREPARE infd outfd errfd
+: PROC-SPAWN-ARGV-ENV-IO ( str fd fd fd -- pid ) {: s:str infd outfd errfd :}
+   [: s PROC-ARGV-PREPARE PROC-ENV-PREPARE infd outfd errfd
       PROC-SPAWN-ARGV-ENV-RAW ;]
    [: PROC-ARGV-ENV-RESET ;] finally {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
@@ -311,10 +310,10 @@ public
    PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 : RUN-ARGV-ENV-CAPTURE ( str ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
-   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   [: path pathu PROC-ARGV-CHECK-PATH
+   {: path:str out:^ outcap err:^ errcap timeout :}
+   [: path PROC-ARGV-CHECK-PATH
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
-      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      path PROC-ARGV-PREPARE PROC-ENV-PREPARE
       timeout PROCESS:CAPTURE-BEGIN
       PROC-SPAWN-ARGV-ENV-CAPTURE ;]
    [: PROC-ARGV-ENV-RESET ;] finally
@@ -322,10 +321,10 @@ public
    PROCESS:CAPTURE-FINISH-RC ;
 
 : RUN-ARGV-ENV-CAPTURE-OUTCOME ( str ^u8 len ^u8 len ms -- len len PROCESS:ending )
-   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   [: path pathu PROC-ARGV-CHECK-PATH
+   {: path:str out:^ outcap err:^ errcap timeout :}
+   [: path PROC-ARGV-CHECK-PATH
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
-      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      path PROC-ARGV-PREPARE PROC-ENV-PREPARE
       timeout PROCESS:CAPTURE-BEGIN
       PROC-SPAWN-ARGV-ENV-CAPTURE ;]
    [: PROC-ARGV-ENV-RESET ;] finally
@@ -333,27 +332,27 @@ public
    PROCESS:CAPTURE-FINISH-ENDING ;
 
 : RUN-ARGV-ENV-STDIN-CAPTURE ( str str ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
-   {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
-   [: path pathu PROC-ARGV-CHECK-PATH
-      inu PROCESS:CAPTURE-CHECK-STDIN
+   {: path:str in:str out:^ outcap err:^ errcap timeout :}
+   [: path PROC-ARGV-CHECK-PATH
+      in STR:LEN PROCESS:CAPTURE-CHECK-STDIN
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
-      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      path PROC-ARGV-PREPARE PROC-ENV-PREPARE
       timeout PROCESS:STDIN-CAPTURE-BEGIN
       PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
    [: PROC-ARGV-ENV-RESET ;] finally
-   in inu out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-LOOP
+   in out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-LOOP
    PROCESS:CAPTURE-FINISH-RC ;
 
 : RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( str str ^u8 len ^u8 len ms -- len len PROCESS:ending )
-   {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
-   [: path pathu PROC-ARGV-CHECK-PATH
-      inu PROCESS:CAPTURE-CHECK-STDIN
+   {: path:str in:str out:^ outcap err:^ errcap timeout :}
+   [: path PROC-ARGV-CHECK-PATH
+      in STR:LEN PROCESS:CAPTURE-CHECK-STDIN
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
-      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      path PROC-ARGV-PREPARE PROC-ENV-PREPARE
       timeout PROCESS:STDIN-CAPTURE-BEGIN
       PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
    [: PROC-ARGV-ENV-RESET ;] finally
-   in inu out outcap err errcap
+   in out outcap err errcap
    PROCESS:RUN-STDIN-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
@@ -361,29 +360,29 @@ public
 \ room and answers the first byte (src/lib/process.f). The length answered is
 \ what the child wrote.
 : RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME ( str str [ n -- ^u8 ] ^u8 len ms -- len len PROCESS:ending )
-   {: path:^ pathu in:^ inu sink err:^ errcap timeout :}
-   [: path pathu PROC-ARGV-CHECK-PATH
-      inu PROCESS:CAPTURE-CHECK-STDIN
+   {: path:str in:str sink err:^ errcap timeout :}
+   [: path PROC-ARGV-CHECK-PATH
+      in STR:LEN PROCESS:CAPTURE-CHECK-STDIN
       errcap PROCESS:CAPTURE-CHECK-CAP
-      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      path PROC-ARGV-PREPARE PROC-ENV-PREPARE
       timeout PROCESS:STDIN-CAPTURE-BEGIN
       PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
    [: PROC-ARGV-ENV-RESET ;] finally
-   in inu sink err errcap PROCESS:RUN-STDIN-GROWING-CAPTURE-ENDING-LOOP
+   in sink err errcap PROCESS:RUN-STDIN-GROWING-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
 \ Both streams use independent caller-owned growing storage. Sinks have the
 \ same contract as the stdout sink above; their buffers stay with the caller
 \ on every outcome, including a timeout or a nonzero child completion.
 : RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ( str str [ n -- ^u8 ] [ n -- ^u8 ] ms -- len len PROCESS:ending )
-   {: path:^ pathu in:^ inu out err timeout :}
-   [: path pathu PROC-ARGV-CHECK-PATH
-      inu PROCESS:CAPTURE-CHECK-STDIN
-      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+   {: path:str in:str out err timeout :}
+   [: path PROC-ARGV-CHECK-PATH
+      in STR:LEN PROCESS:CAPTURE-CHECK-STDIN
+      path PROC-ARGV-PREPARE PROC-ENV-PREPARE
       timeout PROCESS:STDIN-CAPTURE-BEGIN
       PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
    [: PROC-ARGV-ENV-RESET ;] finally
-   in inu out err PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
+   in out err PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
 : PROC-HAS-SLASH? ( str -- bool )
@@ -395,49 +394,49 @@ public
 : PROC-EXECUTABLE? ( str -- bool )
    FS:EXECUTABLE? ;
 
-: PROC-COPY-PATH ( str ^u8 -- n ) {: a:^ u dst:^ :}
-   u 0 < if E-PROC-PATH throw then
-   u PATH-CAP > if E-PROC-PATH throw then
-   a dst u BYTE-COPY
-   u ;
+: PROC-COPY-PATH ( str ^u8 -- n ) {: s:str dst:^ :}
+   s STR:LEN 0 < if E-PROC-PATH throw then
+   s STR:LEN PATH-CAP > if E-PROC-PATH throw then
+   s STR:DATA dst s STR:LEN BYTE-COPY
+   s STR:LEN ;
 
 : PROC-JOIN-PATH-SEG ( str str ^u8 -- n )
-   {: seg:^ segu cmd:^ cmdu dst:^ :}
-   segu 0= if
-      s" ." cmd cmdu dst FS:JOIN-PATH
+   {: seg:str cmd:str dst:^ :}
+   seg STR:LEN 0= if
+      s" ." cmd dst FS:JOIN-PATH
    else
-      seg segu cmd cmdu dst FS:JOIN-PATH
+      seg cmd dst FS:JOIN-PATH
    then ;
 
 : PROC-TRY-PATH-SEG ( str str ^u8 -- option<n> )
-   {: seg:^ segu cmd:^ cmdu dst:^ :}
-   seg segu cmd cmdu dst PROC-JOIN-PATH-SEG {: gotu :}
-   dst gotu PROC-EXECUTABLE? if gotu OPTION:SOME exit then
+   {: seg:str cmd:str dst:^ :}
+   seg cmd dst PROC-JOIN-PATH-SEG {: gotu :}
+   dst gotu >str PROC-EXECUTABLE? if gotu OPTION:SOME exit then
    OPTION:NONE ;
 
 : FIND-EXECUTABLE-IN-PATH ( str str ^u8 -- option<n> )   \ SOME resolved length in dst, else NONE
-   {: cmd:^ cmdu path:^ pathu dst:^ :}
-   cmd cmdu PROC-HAS-SLASH? if
-      cmd cmdu PROC-EXECUTABLE? if
-         cmd cmdu dst PROC-COPY-PATH OPTION:SOME exit
+   {: cmd:str path:str dst:^ :}
+   cmd PROC-HAS-SLASH? if
+      cmd PROC-EXECUTABLE? if
+         cmd dst PROC-COPY-PATH OPTION:SOME exit
       then
       OPTION:NONE exit
    then
    0 >OFF PROC-PATH-I !
-   begin path pathu PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:SPLIT-NEXT
+   begin path PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:SPLIT-NEXT
    while
       >OFF PROC-PATH-I !
-      cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
+      cmd dst PROC-TRY-PATH-SEG MATCH option
         none OF ENDOF
         some OF OPTION:SOME exit ENDOF
       ;MATCH
    repeat
-   drop 2drop OPTION:NONE ;
+   drop drop OPTION:NONE ;
 
-: FIND-EXECUTABLE ( str ^u8 -- option<n> ) {: cmd:^ cmdu:n dst:^ :}
-   s" PATH" GETENV {: path:^ pathu :}
-   pathu 0= if OPTION:NONE exit then
-   cmd cmdu path pathu dst FIND-EXECUTABLE-IN-PATH ;
+: FIND-EXECUTABLE ( str ^u8 -- option<n> ) {: cmd:str dst:^ :}
+   s" PATH" GETENV {: path:str :}
+   path STR:LEN 0= if OPTION:NONE exit then
+   cmd path dst FIND-EXECUTABLE-IN-PATH ;
 
 : RESOLVE-EXECUTABLE ( str ^u8 -- n )
    FIND-EXECUTABLE MATCH option

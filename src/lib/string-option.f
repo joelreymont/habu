@@ -1,4 +1,3 @@
-split-str
 \ string-option.f - the STR words that answer option<a> and the string builders.
 \ They load after the kernel: option<a> is an ENUM, and kernel files build ENUM
 \ with STR's folded comparison; the builders throw error.f's E-STR-CAPACITY
@@ -19,59 +18,59 @@ EXPORT STRING-ABI:SB-LEN-OFF
 public
 \ Here a bare = or < is STR's string word, so integer tests avoid both.
 
-: INDEX-OF ( str n -- option<idx> ) {: a:^ u:n c:n :}   \ SOME first index of byte c, else NONE
-   0 begin u over > while
-      dup a + c@ c <> 0= if >IDX OPTION:SOME exit then
+: INDEX-OF ( str n -- option<idx> ) {: s:str c:n :}   \ SOME first index of byte c, else NONE
+   0 begin s STR:LEN over > while
+      dup s STR:DATA + c@ c <> 0= if >IDX OPTION:SOME exit then
       1+
    repeat drop OPTION:NONE ;
 
-: PARSE-POS ( str -- option<n> ) {: a:^ u:n :}   \ SOME parsed nonnegative bounded i64, else NONE
-   a u DIGITS? 0= if OPTION:NONE exit then
-   a u MAX-I64$ I64-DIGITS DIGITS<= 0= if OPTION:NONE exit then
-   0 0 begin u over > while
-      swap BASE * over a + c@ DIGIT-VALUE + swap
+: PARSE-POS ( str -- option<n> ) {: s:str :}   \ SOME parsed nonnegative bounded i64, else NONE
+   s DIGITS? 0= if OPTION:NONE exit then
+   s MAX-I64$ I64-DIGITS >str DIGITS<= 0= if OPTION:NONE exit then
+   0 0 begin s STR:LEN over > while
+      swap BASE * over s STR:DATA + c@ DIGIT-VALUE + swap
       1+
    repeat drop OPTION:SOME ;
 
-: PARSE-NEG ( str -- option<n> ) {: a:^ u:n :}   \ SOME parsed negative bounded i64, else NONE
-   a u DIGITS? 0= if OPTION:NONE exit then
-   a u MIN-I64$ I64-DIGITS DIGITS<= 0= if OPTION:NONE exit then
-   0 0 begin u over > while
-      swap BASE * over a + c@ DIGIT-VALUE - swap
+: PARSE-NEG ( str -- option<n> ) {: s:str :}   \ SOME parsed negative bounded i64, else NONE
+   s DIGITS? 0= if OPTION:NONE exit then
+   s MIN-I64$ I64-DIGITS >str DIGITS<= 0= if OPTION:NONE exit then
+   0 0 begin s STR:LEN over > while
+      swap BASE * over s STR:DATA + c@ DIGIT-VALUE - swap
       1+
    repeat drop OPTION:SOME ;
 
-: >NUMBER? ( str -- option<n> ) {: a:^ u:n :}   \ SOME optional-sign bounded i64, else NONE
-   u 0= if OPTION:NONE exit then
-   a c@ MINUS <> 0= if
-      u 1 <> 0= if OPTION:NONE exit then
-      a 1+ u 1- PARSE-NEG exit
+: >NUMBER? ( str -- option<n> ) {: s:str :}   \ SOME optional-sign bounded i64, else NONE
+   s STR:LEN 0= if OPTION:NONE exit then
+   s STR:DATA c@ MINUS <> 0= if
+      s STR:LEN 1 <> 0= if OPTION:NONE exit then
+      s STR:DATA 1+ s STR:LEN 1- >str PARSE-NEG exit
    then
-   a c@ PLUS <> 0= if
-      u 1 <> 0= if OPTION:NONE exit then
-      a 1+ u 1- PARSE-POS exit
+   s STR:DATA c@ PLUS <> 0= if
+      s STR:LEN 1 <> 0= if OPTION:NONE exit then
+      s STR:DATA 1+ s STR:LEN 1- >str PARSE-POS exit
    then
-   a u PARSE-POS ;
+   s PARSE-POS ;
 
 \ Sixteen digits fill the cell, so the top digit sets the sign bit and
 \ FFFFFFFFFFFFFFFF is -1: the bit pattern, not a bounded magnitude.
 : HEX>NUMBER? ( str -- option<n> )   \ SOME the cell the 1..16 hex digits spell, else NONE
-   {: a:^ u:n :}
-   u 0= if OPTION:NONE exit then
-   u HEX-MAX-DIGITS > if OPTION:NONE exit then
-   0 0 begin u over > while
-      dup a + c@ dup HEX-DIGIT? 0= if drop 2drop OPTION:NONE exit then
+   {: s:str :}
+   s STR:LEN 0= if OPTION:NONE exit then
+   s STR:LEN HEX-MAX-DIGITS > if OPTION:NONE exit then
+   0 0 begin s STR:LEN over > while
+      dup s STR:DATA + c@ dup HEX-DIGIT? 0= if drop 2drop OPTION:NONE exit then
       HEX-DIGIT-VALUE rot HEX-BASE * + swap
       1+
    repeat drop OPTION:SOME ;
 
 \ An offset into the whole text; NONE for a start outside [0, length].
 : FIND-SUB-FROM ( str str n -- option<idx> )   \ SOME first offset of b in a at or after start, else NONE
-   {: a:^ u:n b:^ v:n start:n :}
-   start 0< start u > or if OPTION:NONE exit then
-   v 0= if start >IDX OPTION:SOME exit then
-   start begin dup u v - <= while
-      dup a + v b v = if >IDX OPTION:SOME exit then
+   {: s:str t:str start:n :}
+   start 0< start s STR:LEN > or if OPTION:NONE exit then
+   t STR:LEN 0= if start >IDX OPTION:SOME exit then
+   start begin dup s STR:LEN t STR:LEN - <= while
+      dup s STR:DATA + t STR:LEN >str t = if >IDX OPTION:SOME exit then
       1+
    repeat drop OPTION:NONE ;
 
@@ -114,10 +113,10 @@ global
 : SB-RESET ( -- )
    0 SB-LEN ! ;
 
-: SB-APPEND ( str -- ) {: a:^ u :}
-   u SB-CHECK-ROOM
-   a SB-BUF SB-LEN @ + u BYTE-COPY
-   SB-LEN @ u + SB-LEN ! ;
+: SB-APPEND ( str -- ) {: s:str :}
+   s STR:LEN SB-CHECK-ROOM
+   s STR:DATA SB-BUF SB-LEN @ + s STR:LEN BYTE-COPY
+   SB-LEN @ s STR:LEN + SB-LEN ! ;
 
 : SB-APPEND-C ( n -- ) {: c :}
    1 SB-CHECK-ROOM
@@ -125,7 +124,7 @@ global
    SB-LEN @ 1+ SB-LEN ! ;
 
 : SB$ ( -- str )
-   SB-BUF SB-LEN @ ;
+   SB-BUF SB-LEN @ >str ;
 
 : BUF-CHECK-LEN ( len len ^len -- )
    {: add cap lenp:^ :}
@@ -139,14 +138,14 @@ global
    @ LEN>N ;
 
 : BUF-APPEND-LEN ( str ^u8 len ^len -- )
-   {: src:^ u dst:^ cap lenp:^ :}
-   u STR-LEN cap lenp BUF-CHECK-LEN
-   src dst lenp @ LEN>N + u BYTE-COPY
-   lenp @ LEN>N u + >LEN lenp ! ;
+   {: src:str dst:^ cap lenp:^ :}
+   src STR:LEN STR-LEN cap lenp BUF-CHECK-LEN
+   src STR:DATA dst lenp @ LEN>N + src STR:LEN BYTE-COPY
+   lenp @ LEN>N src STR:LEN + >LEN lenp ! ;
 
 : BUF-APPEND ( str ^u8 n ^len -- )
-   {: src:^ u dst:^ cap lenp:^ :}
-   src u dst cap STR-LEN lenp BUF-APPEND-LEN ;
+   {: src:str dst:^ cap lenp:^ :}
+   src dst cap STR-LEN lenp BUF-APPEND-LEN ;
 
 : BUF-APPEND-C ( n ^u8 n ^len -- )
    {: c dst:^ cap lenp:^ :}

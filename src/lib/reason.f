@@ -1,4 +1,3 @@
-split-str
 \ reason.f - a failure's stated text, package REASON. A throw code's ERROR:TEXT$
 \ is one static text; REASON:THROW throws a code together with a text the
 \ thrower composed, the numbers that made it fail, and REASON:TEXT$ answers it
@@ -87,14 +86,14 @@ public
 \ earlier one. The span is appended after the old text, then moved to the
 \ front, so it may be the caller's scratch or the old text, a rethrow's
 \ REASON:TEXT$; a copy that throws passes its own code on with no text kept.
-: THROW ( str n -- ) {: a:^ u:n code:n :}
+: THROW ( str n -- ) {: s:str code:n :}
    0 LAST-CODE !
    LAST-TEXT {: t:^ :}
    t VEC:COUNT {: k:n :}
-   a u t VEC:APPEND
-   t VEC:BYTES drop {: p:^ :}
-   p k + p u BYTE-COPY
-   t u VEC:RESIZE
+   s t VEC:APPEND
+   t VEC:BYTES STR:DATA {: p:^ :}
+   p k + p s STR:LEN BYTE-COPY
+   t s STR:LEN VEC:RESIZE
    code LAST-CODE !
    code throw ;
 
@@ -119,16 +118,16 @@ public
 : FIX ( -- )  s" ; " APPEND ;
 
 \ Appends the span's visible form, or `(hidden)` inside HIDDEN.
-: VISIBLE ( str -- ) {: a:^ u:n :}
+: VISIBLE ( str -- ) {: s:str :}
    HIDDEN? if s" (hidden)" APPEND exit then
-   a u NEXT-TEXT UNICODE-VISIBLE:APPEND ;
+   s NEXT-TEXT UNICODE-VISIBLE:APPEND ;
 
 \ Appends the span's visible form in backticks, with `...` before the closing
 \ one when the flag is true, or `(hidden)` alone inside HIDDEN.
-: QUOTE ( str bool -- ) {: a:^ u:n cut:bool :}
+: QUOTE ( str bool -- ) {: s:str cut:bool :}
    HIDDEN? if s" (hidden)" APPEND exit then
    s" `" APPEND
-   a u VISIBLE
+   s VISIBLE
    cut if s" ..." APPEND then
    s" `" APPEND ;
 

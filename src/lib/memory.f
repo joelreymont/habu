@@ -1,4 +1,3 @@
-split-str
 \ memory.f - checked OS-backed mappings for runtime-sized storage; `create ...
 \ allot` is for dictionary-sized static storage. A mapping is whole pages, so
 \ storage much smaller than STACK-ABI:PAGE-BYTES belongs on HEAP:ALLOCATOR or in
@@ -53,10 +52,10 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
    MEM-CELLS>BYTES MEM-ALLOC-PTR ;
 
 : MEM-ALLOC-64K-BUFFERS ( n -- str )
-   MEM-64K-BYTES MEM-ALLOC-BYTES ;
+   MEM-64K-BYTES MEM-ALLOC-BYTES >str ;
 
 : MEM-ALLOC-64K-SPAN ( n -- str )
-   MEM-64K-SPAN-BYTES MEM-ALLOC-BYTES ;
+   MEM-64K-SPAN-BYTES MEM-ALLOC-BYTES >str ;
 
 : MEM-ALLOC-64K ( -- str )
    1 MEM-ALLOC-64K-BUFFERS ;
@@ -117,7 +116,7 @@ public
 \ An empty span has no allocation behind it.
 : FREE-SPAN ( SPAN:span<u8> -- ) {: s :}
    s SPAN:LEN 0= if exit then
-   s SPAN:$ BYTES-ALLOC-LEN RELEASE-BYTES ;
+   s SPAN:$ STR:DATA s SPAN:LEN BYTES-ALLOC-LEN RELEASE-BYTES ;
 
 private
 
