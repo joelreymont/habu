@@ -7,6 +7,8 @@ split-str
 
 require src/lib/string.f
 require src/lib/string-option.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/json.f
 require src/habu/engine-origin.f
 require src/habu/verify-source.f
@@ -23,10 +25,8 @@ DYNAMIC-BUFFER ID-TAIL u8
 variable ID-PKG-U
 variable ID-TAIL-U
 variable ID-VIS
-DYNAMIC-BUFFER ROW-PKG u8
-DYNAMIC-BUFFER ROW-TAIL u8
-variable ROW-PKG-U
-variable ROW-TAIL-U
+TYPED-VARIABLE ROW-PKG ^VEC:vector<u8> SCRATCH-ONLY
+TYPED-VARIABLE ROW-TAIL ^VEC:vector<u8> SCRATCH-ONLY
 variable ROW-VIS
 variable ROW-START
 variable ROW-END
@@ -52,16 +52,6 @@ variable RESULT-SYM
    pkg pkgu 0 ID-PKG ID-PKG-U @ STR:= and
    tail tailu 0 ID-TAIL ID-TAIL-U @ STR:= and ;
 
-: STRING>PKG ( JSON:reader -- JSON:reader )
-   JSON:READ-SPAN$ nip {: raw:n :}
-   raw 1 max ROW-PKG-RESERVE
-   0 ROW-PKG raw JSON:READ-STR ROW-PKG-U ! ;
-
-: STRING>TAIL ( JSON:reader -- JSON:reader )
-   JSON:READ-SPAN$ nip {: raw:n :}
-   raw 1 max ROW-TAIL-RESERVE
-   0 ROW-TAIL raw JSON:READ-STR ROW-TAIL-U ! ;
-
 : VISIBILITY ( JSON:reader -- JSON:reader )
    s" global" JSON:READ-STR-EQ? if SYM-GLOBAL ROW-VIS ! exit then
    s" private" JSON:READ-STR-EQ? if SYM-PRIVATE ROW-VIS ! exit then
@@ -69,10 +59,10 @@ variable RESULT-SYM
 
 : MEMBER ( JSON:reader -- JSON:reader )
    s" package" JSON:READ-STR-EQ? if
-      JSON:READ-NEXT drop STRING>PKG 1 ROW-FIELDS +! exit
+      JSON:READ-NEXT drop ROW-PKG @ JSON:READ-STR 2drop 1 ROW-FIELDS +! exit
    then
    s" decl_name" JSON:READ-STR-EQ? if
-      JSON:READ-NEXT drop STRING>TAIL 2 ROW-FIELDS +! exit
+      JSON:READ-NEXT drop ROW-TAIL @ JSON:READ-STR 2drop 2 ROW-FIELDS +! exit
    then
    s" visibility" JSON:READ-STR-EQ? if
       JSON:READ-NEXT drop VISIBILITY 4 ROW-FIELDS +! exit
@@ -85,20 +75,25 @@ variable RESULT-SYM
    then
    JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
 
+: MADE ( ^^VEC:vector<u8> -- ^VEC:vector<u8> )
+   {: c:^ :}
+   c @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! then
+   c @ ;
+
 : DECODE ( str -- bool )
    {: a:^ u:n :}
-   0 ROW-PKG-U !  0 ROW-TAIL-U !
+   ROW-PKG MADE 0 VEC:RESIZE  ROW-TAIL MADE 0 VEC:RESIZE
    -1 ROW-VIS !  0 ROW-START !  0 ROW-END !  0 ROW-FIELDS !
    JSON-ST a u JSON:READ-INIT
    JSON:READ-NEXT drop
    begin JSON:READ-NEXT JSON:T-KEY = while MEMBER repeat
    JSON:READ-CLOSE
    ROW-FIELDS @ 31 = ROW-VIS @ 0 >= and
-   ROW-TAIL-U @ 0 > and ROW-START @ 0 >= and
+   ROW-TAIL @ VEC:COUNT 0 > and ROW-START @ 0 >= and
    ROW-END @ ROW-START @ > and ;
 
 : ROW-ID ( -- str str n )
-   0 ROW-PKG ROW-PKG-U @ 0 ROW-TAIL ROW-TAIL-U @ ROW-VIS @ ;
+   ROW-PKG @ VEC:BYTES ROW-TAIL @ VEC:BYTES ROW-VIS @ ;
 
 : ROW-SELECT ( -- )
    MODE @ 0= if

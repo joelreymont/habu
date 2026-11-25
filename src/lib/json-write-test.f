@@ -33,10 +33,9 @@ TYPED-VARIABLE JWT-MOVER ALLOC:allocator
 
 \ Round-trip fixture storage: the writer's output, the reader's decode buffer,
 \ and the reader's own caller-owned state block.
-$400 constant JWT-RT-CAP
 $40 constant JWT-RT-MAX-N
 TYPED-VARIABLE JWT-RT-OUT ^VEC:vector<u8>
-JWT-RT-CAP BUFFER: JWT-RT-DECODE
+TYPED-VARIABLE JWT-RT-DECODE ^VEC:vector<u8>
 TYPED-VARIABLE JWT-RT-W JSON:writer
 TYPED-VARIABLE JWT-RT-READER JSON:cursor
 
@@ -536,9 +535,9 @@ $80 constant JWT-EVERY-N
 : JWT-RT-DECODE$ ( str -- str ) {: s:str :}
    JWT-RT-READER s JSON:READ-INIT
    JSON:READ-NEXT JSON:T-STR T=
-   JWT-RT-DECODE JWT-RT-CAP JSON:READ-STR {: got:n :}
+   JWT-RT-DECODE @ JSON:READ-STR {: got:str :}
    JSON:READ-CLOSE
-   JWT-RT-DECODE got >str ;
+   got ;
 
 : JWT-RT-ONE ( -- )
    JWT-RT-CASE$ {: s:str :}
@@ -854,6 +853,7 @@ create JWT-PARTS-WANT
    T-RESET
    JWT-MOVER-FILL
    JWT-NEW JWT-OUT-A !  JWT-NEW JWT-OUT-B !  JWT-NEW JWT-RT-OUT !
+   JWT-NEW JWT-RT-DECODE !
    JWT-TEST-STRING-ESCAPE
    JWT-TEST-OBJECT
    JWT-TEST-ARRAY
@@ -896,6 +896,7 @@ create JWT-PARTS-WANT
    JWT-TEST-LAYOUT-STATES
    JWT-TEST-CHECKER
    JWT-OUT-A @ VEC:DELETE  JWT-OUT-B @ VEC:DELETE  JWT-RT-OUT @ VEC:DELETE
+   JWT-RT-DECODE @ VEC:DELETE
    T-REPORT
    s" json-write-test: ok" type cr ;
 

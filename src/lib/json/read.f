@@ -983,13 +983,8 @@ create UNESC-MAP
    begin state STEP dup RETRY = while drop repeat
    state ;
 
-\ Every advance comes through here. A failed STEP may leave the cursor past the
-\ text it rejected while STATE still describes the text before it, so the code
-\ is stored and every later advance throws it again: a reader never parses on
-\ from a failure as if the rejected text had been valid.
-\ Accessor refusals (READ-INT, READ-U64, READ-FLOAT, READ-STR,
-\ READ-STR-EQ?) and wrong-phase E-JSON-READ-STATE refusals leave the reader
-\ usable.
+\ A failed STEP's code is kept and every later advance throws it: the cursor
+\ may lie past the rejected text. Accessor and phase rejections leave it usable.
 : NEXT-INNER ( ^cursor -- n ) {: state:^ :}
    state REQUIRE-SOUND
    0 state [: STEP-SLOT ;] catch nip {: token code:n :}
@@ -1196,11 +1191,6 @@ private
 
 : STR-INNER ( ^cursor ^u8 n -- n ) {: state:^ dst:^ cap:n :}
    state REQUIRE-STRING
-   dst 0= cap 0 < or if
-      state s" a buffer address and a capacity of 0 or more"
-      s" pass READ-STR a non-null buffer and its capacity"
-      E-JSON-READ-STATE REJECT-TOKEN
-   then
    state dst cap UMODE-WRITE UNESC-RESET
    state UNESC-ALL
    state CURSOR-OUT @ ;
@@ -1231,18 +1221,19 @@ private
 
 public
 
-\ Decodes into non-null caller storage; a negative capacity is
-\ E-JSON-READ-STATE, a string longer than it E-SPAN-CAPACITY.
-: READ-STR ( JSON:reader ^u8 n -- JSON:reader n )
-   {: dst:^ cap:n :}
-   READER>STATE dst cap STR-INNER ;
-
 \ Appends the current string or key, decoded, to a vector, whose earlier
 \ bytes stay. Another token is E-JSON-READ-STATE before the vector changes.
 : READ-STR-APPEND ( JSON:reader ^VEC:vector<u8> -- JSON:reader ) {: v:^ :}
    READER>STATE {: state:^ :}
    state REQUIRE-STRING
    state v DECODE-APPEND ;
+
+\ Replaces V's bytes with the current string or key, decoded, and answers them
+\ until V next changes; V must not hold the text read; another token keeps V.
+: READ-STR ( JSON:reader ^VEC:vector<u8> -- JSON:reader str ) {: v:^ :}
+   READER>STATE {: state:^ :}
+   state REQUIRE-STRING
+   v 0 VEC:RESIZE  state v DECODE-APPEND  v VEC:BYTES ;
 
 private
 
@@ -1521,6 +1512,9 @@ private
       E-JSON-READ-STATE REJECT-TOKEN
    then ;
 
+\ A seen vector holds the listed object's depth, then a byte per listed name.
+: SEEN-BYTES ( str -- n ) LISTED drop READ-NAME-COUNT 1 cells + ;
+
 public
 
 \ Rejects the current token with E-MEMBER at its place, given the expected
@@ -1529,18 +1523,17 @@ public
    {: expect:str fix:str :}
    READER>STATE expect fix E-MEMBER REJECT-TOKEN ;
 
-\ A seen buffer holds the listed object's depth, then a byte per listed name.
-: SEEN-BYTES ( str -- n ) LISTED drop READ-NAME-COUNT 1 cells + ;
-
-\ seen takes SEEN-BYTES for the names, all zero before the object's first call.
-: READ-LISTED ( JSON:reader str ^u8 -- JSON:reader n )
+\ The caller empties seen before the object's first call; a call that finds
+\ it empty sizes it to SEEN-BYTES for the names, all zero.
+: READ-LISTED ( JSON:reader str ^VEC:vector<u8> -- JSON:reader n )
    {: list:str seen:^ :}
    READER>STATE {: state:^ :}
    state REQUIRE-SOUND
    list LISTED {: names:str wild:bool :}
    names READ-NAME-COUNT {: count:n :}
-   seen CELL-VIEW {: held:^ :}
-   seen 1 cells + {: marks:^ :}
+   seen VEC:COUNT 0= if seen list SEEN-BYTES VEC:RESIZE then
+   seen 0 VEC:AT CELL-VIEW {: held:^ :}
+   seen 0 VEC:AT 1 cells + {: marks:^ :}
    held @ 0= if
       state REQUIRE-OBJECT
       state CURSOR-DEPTH @ held !
@@ -1568,9 +1561,8 @@ public
    ST-VALUE state CURSOR-STATE !
    state NEXT-INNER drop ;
 
-\ Whether the current string or key decodes to exactly these bytes. The bytes
-\ stream through READ-STR's decoder, so no buffer bounds the string, and the
-\ cursor stays where it was.
+\ Whether the current string or key decodes to exactly these bytes, matched as
+\ they decode, so no buffer bounds the string; the cursor stays where it was.
 : READ-STR-EQ? ( JSON:reader str -- JSON:reader bool )
    {: want:str :}
    READER>STATE {: state:^ :}

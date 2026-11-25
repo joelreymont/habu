@@ -20,32 +20,26 @@ using JSON
 private
 
 TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for decoding a line
-DYNAMIC-BUFFER PATH-B u8                 \ the line's file, decoded,
-variable PATH-U
+TYPED-VARIABLE PATH-B ^VEC:vector<u8> SCRATCH-ONLY \ the line's file, decoded,
 TYPED-VARIABLE HELD bool                 \ and whether its loader held it
 TYPED-VARIABLE TIP-B ^VEC:vector<u8> SCRATCH-ONLY \ a held link's tooltip
 TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable SHOWN-N                         \ and the links written so far
 
-: PATH$ ( -- str )  0 PATH-B PATH-U @ ;
+: PATH$ ( -- str )  PATH-B @ VEC:BYTES ;
 : T+ ( str -- )  TIP-B @ VEC:APPEND ;
 : TIP$ ( -- str )  TIP-B @ VEC:BYTES ;
-
-: STRING>PATH ( JSON:reader -- JSON:reader )
-   READ-SPAN$ nip {: raw:n :}
-   raw 1 max PATH-B-RESERVE
-   0 PATH-B raw READ-STR PATH-U ! ;
 
 \ The member whose key the reader is at, decoded; one a link needs nothing
 \ of, passed over.
 : MEMBER ( JSON:reader -- JSON:reader )
-   s" path" READ-STR-EQ? if READ-NEXT drop STRING>PATH exit then
+   s" path" READ-STR-EQ? if READ-NEXT drop PATH-B @ READ-STR 2drop exit then
    s" outcome" READ-STR-EQ? if READ-NEXT drop s" held" READ-STR-EQ? HELD ! exit then
    READ-NEXT drop READ-SKIP-VALUE ;
 
 : DECODE ( str -- )
    {: a:^ u:n :}
-   0 PATH-U !
+   PATH-B @ 0 VEC:RESIZE
    false HELD !
    JSON-ST a u READ-INIT
    READ-NEXT drop
@@ -77,6 +71,7 @@ variable SHOWN-N                         \ and the links written so far
 public
 
 : PREPARE ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW PATH-B !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW TIP-B ! ;
 
 : ANSWER ( ^JSON:writer n -- ^JSON:writer )

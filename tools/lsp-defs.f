@@ -177,11 +177,10 @@ variable BYTES-U
 \ end of what it names, as an empty one is, still needs the address of that
 \ index.
 
+TYPED-VARIABLE STR-B ^VEC:vector<u8> SCRATCH-ONLY \ a string decoded for BYTES
 TYPED-VARIABLE JSON-ST JSON:cursor
-DYNAMIC-BUFFER FILE-B u8                 \ the line's file, decoded,
-variable FILE-U
-DYNAMIC-BUFFER IN-B u8                   \ the file a use line's use is in,
-variable IN-U
+TYPED-VARIABLE FILE-B ^VEC:vector<u8> SCRATCH-ONLY \ the line's file, decoded,
+TYPED-VARIABLE IN-B ^VEC:vector<u8> SCRATCH-ONLY \ the file a use line's use is in,
 variable CLASS-V                         \ its class,
 variable WORD-AT                         \ its word's offset in BYTES,
 variable WORD-U
@@ -240,8 +239,8 @@ TYPED-VARIABLE ESC-W JSON:writer
    at BYTES u ;
 
 : PATH$ ( n -- str )  dup G-PATH GROUP@ swap G-PATH-U GROUP@ AT$ ;
-: FILE$ ( -- str )  0 FILE-B FILE-U @ ;
-: IN$ ( -- str )  0 IN-B IN-U @ ;
+: FILE$ ( -- str )  FILE-B @ VEC:BYTES ;
+: IN$ ( -- str )  IN-B @ VEC:BYTES ;
 
 : BYTES+ ( str -- n )
    {: a:^ u:n :}
@@ -251,25 +250,11 @@ TYPED-VARIABLE ESC-W JSON:writer
    u BYTES-U +!
    at ;
 
-\ The string the reader is at, decoded onto the end of BYTES, which its raw
-\ text's length bounds: its offset and length there.
+\ The string the reader is at, decoded onto the end of BYTES: its offset and
+\ length there.
 : STRING>BYTES ( JSON:reader -- JSON:reader n n )
-   JSON:READ-SPAN$ nip {: raw:n :}
-   BYTES-U @ {: at:n :}
-   at raw + 1+ BYTES-RESERVE
-   at BYTES raw JSON:READ-STR {: u:n :}
-   u BYTES-U +!
-   at u ;
-
-: STRING>FILE ( JSON:reader -- JSON:reader )
-   JSON:READ-SPAN$ nip {: raw:n :}
-   raw 1 max FILE-B-RESERVE
-   0 FILE-B raw JSON:READ-STR FILE-U ! ;
-
-: STRING>IN ( JSON:reader -- JSON:reader )
-   JSON:READ-SPAN$ nip {: raw:n :}
-   raw 1 max IN-B-RESERVE
-   0 IN-B raw JSON:READ-STR IN-U ! ;
+   STR-B @ JSON:READ-STR {: a:^ u:n :}
+   a u BYTES+ u ;
 
 : CLASS-OF ( JSON:reader -- JSON:reader n )
    s" constant" JSON:READ-STR-EQ? if CLASS-CONSTANT exit then
@@ -331,8 +316,8 @@ TYPED-VARIABLE ESC-W JSON:writer
       JSON:READ-NEXT JSON:T-INT = if JSON:READ-INT VISIT-V ! else JSON:READ-SKIP-VALUE then exit
    then
    s" visibility" JSON:READ-STR-EQ? if JSON:READ-NEXT drop VIS-OF VIS-V ! exit then
-   s" file" JSON:READ-STR-EQ? if JSON:READ-NEXT drop STRING>FILE exit then
-   s" in" JSON:READ-STR-EQ? if JSON:READ-NEXT drop STRING>IN exit then
+   s" file" JSON:READ-STR-EQ? if JSON:READ-NEXT drop FILE-B @ JSON:READ-STR 2drop exit then
+   s" in" JSON:READ-STR-EQ? if JSON:READ-NEXT drop IN-B @ JSON:READ-STR 2drop exit then
    s" byte_start" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT START-V ! exit then
    s" byte_end" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT END-V ! exit then
    s" target_start" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT TARGET-V ! exit then
@@ -361,8 +346,8 @@ TYPED-VARIABLE ESC-W JSON:writer
    0 META-MASK !
    0 VISIT-V !
    -1 VIS-V !
-   0 FILE-U !
-   0 IN-U !
+   FILE-B @ 0 VEC:RESIZE
+   IN-B @ 0 VEC:RESIZE
    0 START-V !
    0 END-V !
    0 TARGET-V !
@@ -865,6 +850,9 @@ private
 public
 
 : DEFS-PREPARE ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW STR-B !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW FILE-B !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW IN-B !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ESC-OUT !
    false PROBE-DISK-VALID ! ;
 

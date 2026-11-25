@@ -4,13 +4,15 @@ require src/lib/string.f
 require src/lib/decimal.f
 require src/lib/json.f
 require src/lib/memory.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/test.f
 
 package DECIMAL-TEST
 private
 
 TYPED-VARIABLE READER-SPACE JSON:cursor
-create DECODE-BUF 64 allot
+TYPED-VARIABLE DECODED ^VEC:vector<u8>
 1048577 constant LONG-ZEROS
 create LONG-SRC 1048600 allot
 
@@ -52,8 +54,7 @@ create LONG-SRC 1048600 allot
    {: s:str want:i64 :}
    READER-SPACE s JSON:READ-INIT
    JSON:READ-NEXT JSON:T-STR T=
-   DECODE-BUF 64 JSON:READ-STR {: size:n :}
-   DECODE-BUF size >str PRIORITY want SOME=
+   DECODED @ JSON:READ-STR PRIORITY want SOME=
    JSON:READ-NEXT JSON:T-END T=
    JSON:READ-CLOSE ;
 
@@ -120,7 +121,10 @@ create LONG-SRC 1048600 allot
    [: BAD-DECIMAL-PTR ;] DECIMAL:E-SOURCE TTHROWSQ ;
 
 public
-: RUN ( -- ) CASES ;
+: RUN ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DECODED !
+   CASES
+   DECODED @ VEC:DELETE ;
 ;package
 
 T-RESET

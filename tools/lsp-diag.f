@@ -42,8 +42,7 @@ TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for reading a pac
 TYPED-VARIABLE PUB-OUT ^VEC:vector<u8>   \ a notification's bytes, grown as written
 TYPED-VARIABLE NEW-B ^VEC:vector<u8> SCRATCH-ONLY \ the files this check published lists for
 TYPED-VARIABLE W JSON:writer
-create FILE-BUF PATH-CAP allot        \ a packet's file, decoded
-variable FILE-U
+TYPED-VARIABLE FILE-B ^VEC:vector<u8> SCRATCH-ONLY \ a packet's file, decoded
 PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
 
 TYPED-VARIABLE LINE-A ^u8             \ the packet line being screened
@@ -56,7 +55,7 @@ variable LIST-U
 variable ITEMS                           \ and the diagnostics in it so far
 
 : NEW$ ( -- str )  NEW-B @ VEC:BYTES ;
-: FILE$ ( -- str )  FILE-BUF FILE-U @ ;
+: FILE$ ( -- str )  FILE-B @ VEC:BYTES ;
 
 : ERR ( str -- )
    {: a:^ u:n :}
@@ -64,19 +63,16 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 \ ---- packets -------------------------------------------------------------------
 
-\ The line read as a packet: FILE-U the length of its file, decoded into
-\ FILE-BUF, or -1 for a line that is not an object with a string file. The
-\ rest of the line is read to its end, so the JSON reader throws for any line that is not
-\ one JSON value.
+\ FILE-B the line's file, decoded, or empty for a line not an object with a
+\ string file; any line that is not one JSON value throws.
 : SCAN ( -- )
-   -1 FILE-U !
+   FILE-B @ 0 VEC:RESIZE
    JSON-ST LINE-A @ LINE-U @ READ-INIT
    READ-NEXT T-OBJ <> if READ-CLOSE exit then
    s" file" READ-FIND-KEY 0= if READ-CLOSE exit then
    READ-TOKEN T-STR <> if READ-CLOSE exit then
-   FILE-BUF PATH-CAP READ-STR >r
-   READ-FINISH
-   r> FILE-U ! ;
+   FILE-B @ READ-STR 2drop
+   READ-FINISH ;
 
 \ Whether the line is a diagnostic: an object whose file names an absolute
 \ path, which FILE$ then holds.
@@ -87,9 +83,10 @@ variable ITEMS                           \ and the diagnostics in it so far
    [: SCAN ;] catch {: code:n :}
    code 0<> if
       code JSON:INPUT-FAULT? 0= if code throw then
-      -1 FILE-U !
+      FILE-B @ 0 VEC:RESIZE
    then
-   FILE-U @ 0 > if FILE-BUF c@ SLASH = exit then
+   FILE$ {: f:^ fu:n :}
+   fu 0 > if f c@ SLASH = exit then
    false ;
 
 \ ---- diagnostics ---------------------------------------------------------------
@@ -251,7 +248,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    loop ;
 
 \ Appends the path, LF-ended, to the files published; answers that copy, which
-\ outlives FILE-BUF.
+\ outlives FILE-B's bytes.
 : KEEP-NEW ( str -- str )
    {: f:^ fu:n :}
    NEW$ nip {: at:n :}
@@ -282,6 +279,7 @@ public
 
 \ Readies the buffers; the server calls it once, before any other word here.
 : PREPARE ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW FILE-B !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW PUB-OUT !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW NEW-B ! ;
 

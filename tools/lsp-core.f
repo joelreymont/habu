@@ -103,13 +103,11 @@ LINE-CAP 2 + SPAN-BUFFER: HEAD-BUF        \ the reader's buffer: a header line a
 TYPED-VARIABLE REPLY-OUT ^VEC:vector<u8>  \ a reply's bytes, grown as it is written
 TYPED-VARIABLE INPUT CONTENT-LENGTH:reader
 TYPED-VARIABLE BODY-SPAN SPAN:span<u8>
-TYPED-VARIABLE URI-SPAN SPAN:span<u8>     \ textDocument.uri, decoded
+TYPED-VARIABLE URI-B ^VEC:vector<u8> SCRATCH-ONLY \ a URI the params name, decoded
 TYPED-VARIABLE PATH-SPAN SPAN:span<u8>
-TYPED-VARIABLE TEXT-SPAN SPAN:span<u8>    \ a document's text, decoded
-TYPED-VARIABLE QUERY-SPAN SPAN:span<u8>   \ workspace/symbol's query, decoded,
-variable QUERY-U                          \ and its length
-TYPED-VARIABLE NAME-SPAN SPAN:span<u8>    \ a rename's newName, decoded,
-variable NAME-U                           \ and its length
+TYPED-VARIABLE TEXT-B ^VEC:vector<u8> SCRATCH-ONLY \ a document's text, decoded
+TYPED-VARIABLE QUERY-B ^VEC:vector<u8> SCRATCH-ONLY \ workspace/symbol's query, decoded
+TYPED-VARIABLE NAME-B ^VEC:vector<u8> SCRATCH-ONLY \ a rename's newName, decoded
 variable AT-SLOT                         \ a request's document,
 variable AT-LINE                          \ its line
 variable AT-CHAR                          \ and character,
@@ -123,7 +121,7 @@ TYPED-VARIABLE HELD-B ^VEC:vector<u8> SCRATCH-ONLY \ the bodies of the messages 
 DYNAMIC-BUFFER HELD-ENDS n                \ where each one ends there,
 variable HELD-COUNT                       \ how many are held,
 variable HELD-NEXT                        \ and the first of them not yet served
-TYPED-VARIABLE ID-SPAN SPAN:span<u8>      \ a request's string id, decoded
+TYPED-VARIABLE ID-B ^VEC:vector<u8> SCRATCH-ONLY \ a request's string id, decoded
 TYPED-VARIABLE KEPT-ID SPAN:span<u8>      \ a request's id, copied out of the held bodies
 TYPED-VARIABLE AT-END bool                \ whether the input has ended,
 variable FAULT                            \ and the throw a read of it took, 0 while none has
@@ -149,14 +147,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       shut-down OF 0 ENDOF
    ;MATCH ;
 
-\ The span in V made at least N bytes long, and never empty, since JSON:READ-STR
-\ refuses a null destination.
 : ROOM ( ^SPAN:span<u8> n -- )
    {: v n:n :}
-   n 1 max {: need:n :}
-   v @ LEN need >= if exit then
+   v @ LEN n >= if exit then
    v @ FREE-SPAN
-   need BYTES-ALLOC-LEN ALLOC-SPAN v ! ;
+   n BYTES-ALLOC-LEN ALLOC-SPAN v ! ;
 
 \ ---- replies -----------------------------------------------------------------
 
@@ -229,25 +224,18 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    k READ-FIND-KEY 0= if E-LSP-PARAMS throw then
    READ-TOKEN ;
 
-\ A string's JSON text is never shorter than what it decodes to.
-: DECODE ( JSON:reader ^SPAN:span<u8> -- JSON:reader n )
-   {: v :}
-   READ-SPAN$ STR:LEN {: raw:n :}
-   v raw ROOM
-   v @ SPAN:$ str> READ-STR ;
-
-: STRING-AT ( JSON:reader n ^SPAN:span<u8> -- str )
-   {: v :}
+: STRING-AT ( JSON:reader n ^VEC:vector<u8> -- str )
+   {: v:^ :}
    T-STR <> if E-LSP-PARAMS throw then
-   v DECODE {: n:n :}
+   v READ-STR {: s:str :}
    READ-CLOSE
-   v @ SPAN:$ str> drop n >str ;
+   s ;
 
-: DOC-STRING ( str str ^SPAN:span<u8> -- str )
+: DOC-STRING ( str str ^VEC:vector<u8> -- str )
    {: p k v :}
    p k DOC-PARAM v STRING-AT ;
 
-: DOC-URI ( str -- str )  s" uri" URI-SPAN DOC-STRING ;
+: DOC-URI ( str -- str )  s" uri" URI-B @ DOC-STRING ;
 
 : DOC-VERSION ( str -- n )
    {: p :}
@@ -268,7 +256,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    s" range" READ-STR-EQ? if E-LSP-PARAMS throw then
    s" text" READ-STR-EQ? if
       READ-NEXT T-STR <> if E-LSP-PARAMS throw then
-      TEXT-SPAN DECODE TEXT-LEN !
+      TEXT-B @ READ-STR str> nip TEXT-LEN !
    else
       READ-NEXT drop READ-SKIP-VALUE
    then ;
@@ -279,13 +267,12 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    begin READ-NEXT T-KEY = while CHANGE-MEMBER repeat
    TEXT-LEN @ 0 < if E-LSP-PARAMS throw then ;
 
-: CHANGES ( str -- n )
+: CHANGES ( str -- )
    s" contentChanges" PARAM T-ARR <> if E-LSP-PARAMS throw then
    -1 TEXT-LEN !
    begin READ-NEXT T-ARR-END <> while CHANGE repeat
    READ-CLOSE
-   TEXT-LEN @ 0 < if E-LSP-PARAMS throw then
-   TEXT-LEN @ ;
+   TEXT-LEN @ 0 < if E-LSP-PARAMS throw then ;
 
 : OPEN-SLOT ( str -- n )
    DOC-FIND MATCH option
@@ -327,7 +314,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    p DOC-URI {: u :}
    u PATH {: a :}
    p DOC-VERSION {: v:n :}
-   p s" text" TEXT-SPAN DOC-STRING {: t :}
+   p s" text" TEXT-B @ DOC-STRING {: t :}
    u v a t DOC-OPEN
    u OPEN-SLOT READERS-DIRTY
    p ;
@@ -336,8 +323,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: p :}
    p DOC-URI OPEN-SLOT {: slot:n :}
    p DOC-VERSION {: v:n :}
-   p CHANGES {: n:n :}
-   slot v TEXT-SPAN @ SPAN:$ str> drop n >str DOC-CHANGE
+   p CHANGES
+   slot v TEXT-B @ VEC:BYTES DOC-CHANGE
    slot READERS-DIRTY
    p ;
 
@@ -355,8 +342,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    begin READ-NEXT T-KEY = while
       s" uri" READ-STR-EQ? if
          READ-NEXT T-STR <> if E-LSP-PARAMS throw then
-         URI-SPAN DECODE {: n:n :}
-         URI-SPAN @ SPAN:$ str> drop n >str PATH
+         URI-B @ READ-STR PATH
          SOURCE-ROOT:CANONICAL drop
          true DIRTY-DEPENDENTS
       else READ-NEXT drop READ-SKIP-VALUE then
@@ -450,13 +436,14 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    ;MATCH ;
 
 \ What a cancel's id is matched against for the request with this id: a
-\ string's decoded text, in ID-SPAN, and true; else its JSON text and false.
+\ string's decoded text, in ID-B, and true; else its JSON text and false.
 : ID-KEY ( JSON:value -- str bool )
    JSON:TEXT$ {: r :}
    JSON-ST r READ-INIT
-   READ-NEXT T-STR = if ID-SPAN DECODE true else 0 false then {: n:n str:bool :}
+   READ-NEXT T-STR = if ID-B @ READ-STR str> 2drop true else false then
+   {: str:bool :}
    READ-CLOSE
-   str if ID-SPAN @ SPAN:$ str> drop n >str true exit then
+   str if ID-B @ VEC:BYTES true exit then
    r false ;
 
 \ Whether params.id is the id this key gives: a string with this decoded text
@@ -495,10 +482,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    if s" uri" READ-FIND-KEY else false then
    if READ-TOKEN T-STR = else false then
    {: named:bool :}
-   named if URI-SPAN DECODE else 0 then {: n:n :}
+   named if URI-B @ READ-STR str> 2drop then
    READ-CLOSE
    named 0= if -1 exit then
-   URI-SPAN @ SPAN:$ str> drop n >str DOC-FIND MATCH option
+   URI-B @ VEC:BYTES DOC-FIND MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -599,11 +586,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : QUERY! ( str -- str )
    {: p :}
-   p s" query" PARAM QUERY-SPAN STRING-AT str> QUERY-U ! drop
+   p s" query" PARAM QUERY-B @ STRING-AT str> 2drop
    p ;
 
-: QUERY$ ( -- str )
-   QUERY-SPAN @ SPAN:$ str> drop QUERY-U @ >str ;
+: QUERY$ ( -- str )  QUERY-B @ VEC:BYTES ;
 
 : SYMBOLS ( JSON:value str -- )
    {: i p :}
@@ -730,11 +716,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : NEW-NAME! ( str -- str )
    {: p :}
-   p s" newName" PARAM NAME-SPAN STRING-AT str> NAME-U ! drop
+   p s" newName" PARAM NAME-B @ STRING-AT str> 2drop
    p ;
 
-: NEW-NAME$ ( -- str )
-   NAME-SPAN @ SPAN:$ str> drop NAME-U @ >str ;
+: NEW-NAME$ ( -- str )  NAME-B @ VEC:BYTES ;
 
 : RENAME! ( str -- str )  POSITION! NEW-NAME! ;
 
@@ -926,8 +911,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ A workspace folder by the URI string the reader is at; one that names no
 \ file here is passed over.
 : ROOT-AT ( JSON:reader -- JSON:reader )
-   URI-SPAN DECODE {: n:n :}
-   URI-SPAN @ SPAN:$ str> drop n >str {: u :}
+   URI-B @ READ-STR {: u :}
    [: u PATH LSP-WORKSPACE:ROOT+ ;] catch {: code:n :}
    code 0= if exit then
    code E-PATH-RANGE =  code E-PATH-NUL = or
@@ -1072,6 +1056,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    FD:STDERR FD:FD-NOSIGPIPE!
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW REPLY-OUT !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HELD-B !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW URI-B !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW TEXT-B !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW QUERY-B !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW NAME-B !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ID-B !
    0 HELD-COUNT !
    0 HELD-NEXT !
    false AT-END !

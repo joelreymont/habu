@@ -3,14 +3,15 @@
 require src/lib/error.f
 require src/lib/memory.f
 require src/lib/span.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/json.f
 require src/core/exit-status.f
 
-$8000 constant GJA-IN-CAP
 $100 constant GJA-LINE-MAX
 
 TYPED-VARIABLE GJA-CURSOR JSON:cursor
-create GJA-STR-BUF GJA-IN-CAP allot
+TYPED-VARIABLE GJA-STR-V ^VEC:vector<u8> SCRATCH-ONLY
 GJA-LINE-MAX TYPED-BUFFER GJA-LINE-A ^u8   \ one line start per captured line
 create GJA-LINE-U GJA-LINE-MAX cells allot
 
@@ -114,13 +115,14 @@ variable GJA-LX
 : GJA-ASSERT-STR ( SPAN:span<u8> str -- )
    GJA-STR= 0= IF s" unexpected JSON string" GJA-FAIL THEN ;
 
-: GJA-STRING-INTO ( SPAN:span<u8> ^u8 n -- str )
-   {: value:SPAN:span<u8> dst:^ cap:n :}
-   value GJA-OPEN JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" expected JSON string" GJA-FAIL then
-   dst cap JSON:READ-STR {: u:n :} JSON:READ-CLOSE dst u >str ;
+: GJA-STR-VEC ( -- ^VEC:vector<u8> )
+   GJA-STR-V @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW GJA-STR-V ! then
+   GJA-STR-V @ ;
 
 : GJA-STRING$ ( SPAN:span<u8> -- str )
-   GJA-STR-BUF GJA-IN-CAP GJA-STRING-INTO ;
+   {: value:SPAN:span<u8> :}
+   value GJA-OPEN JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" expected JSON string" GJA-FAIL then
+   GJA-STR-VEC JSON:READ-STR {: s:str :} JSON:READ-CLOSE  s ;
 
 : GJA-NONEMPTY-STR ( SPAN:span<u8> -- )
    GJA-STRING$ STR:LEN 0= IF s" expected nonempty JSON string" GJA-FAIL THEN ;
@@ -164,12 +166,10 @@ variable GJA-LX
 
 \ Fails naming the key the reader is on.
 : GJA-KEY-FAIL ( JSON:reader -- )
-   s" unexpected JSON field " {: p:str :}
-   p STR:DATA GJA-STR-BUF p STR:LEN BYTE-COPY
-   GJA-STR-BUF p STR:LEN + GJA-IN-CAP p STR:LEN - JSON:READ-STR
-   {: u:n :} JSON:READ-CLOSE
-   GJA-STR-BUF p STR:LEN u + >str GJA-FAIL ;
-
+   GJA-STR-VEC {: v:^ :}
+   v 0 VEC:RESIZE  s" unexpected JSON field " v VEC:APPEND
+   v JSON:READ-STR-APPEND JSON:READ-CLOSE
+   v VEC:BYTES GJA-FAIL ;
 
 \ Fails unless key? accepts each key of the object.
 : GJA-KEYS ( SPAN:span<u8> [ JSON:reader -- JSON:reader bool ] -- )

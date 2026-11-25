@@ -1127,11 +1127,11 @@ CAST: HELD>N ( held -- n )
    loop false ;
 
 
-: DECODE-SCOPE ( JSON:reader n ^u8 NUM:alloc-byte-len -- JSON:reader SPAN:span<u8> )
-   drop {: ru:n room:^ :}
-   room ru JSON:READ-STR {: u:n :}
-   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: name :}
-   room name SPAN:$ STR:DATA u BYTE-COPY  name ;
+: DECODE-COPY ( JSON:reader ^VEC:vector<u8> -- JSON:reader SPAN:span<u8> )
+   {: v:^ :}
+   v JSON:READ-STR {: s:str :}
+   s STR:LEN MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: name :}
+   s name SPAN:COPY  name ;
 
 \ The storage is kept for the process, as the registry is; the descriptor passed SHAPE.
 : DECODED-MEMBER ( str str [ str -- bool ] -- SPAN:span<u8> )
@@ -1140,7 +1140,8 @@ CAST: HELD>N ( held -- n )
    ru 0= if
       key s" `` as a non-empty string" s" give `` a value" KEY-REJECT
    then
-   ru ru MEM:BYTES-ALLOC-LEN [: DECODE-SCOPE ;] MEM:WITH-BYTES {: name :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   [: v DECODE-COPY ;] [: v VEC:DELETE ;] finally {: name :}
    JSON:READ-CLOSE
    name SPAN:$ registered? execute if name MEM:FREE-SPAN E-DUPLICATE throw then
    name ;

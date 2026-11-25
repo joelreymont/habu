@@ -21,10 +21,8 @@ using LSP-DEFS
 private
 
 TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for decoding a line
-DYNAMIC-BUFFER WORD-B u8                 \ the line's spelling, decoded,
-variable WORD-U
-DYNAMIC-BUFFER FILE-B u8                 \ its declaration's file, or none,
-variable FILE-U
+TYPED-VARIABLE WORD-B ^VEC:vector<u8> SCRATCH-ONLY \ the line's spelling, decoded,
+TYPED-VARIABLE FILE-B ^VEC:vector<u8> SCRATCH-ONLY \ its declaration's file, or none,
 variable TARGET-V                        \ and the bytes its declaring token
 variable TARGET-END-V                    \ starts and ends at there
 TYPED-VARIABLE DETAIL-B ^VEC:vector<u8> SCRATCH-ONLY \ an item's detail
@@ -32,26 +30,16 @@ TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable ASKED                           \ the slot of the document asked about,
 variable SHOWN-N                         \ and the items written so far
 
-: WORD$ ( -- str )  0 WORD-B WORD-U @ >str ;
-: FILE$ ( -- str )  0 FILE-B FILE-U @ >str ;
+: WORD$ ( -- str )  WORD-B @ VEC:BYTES ;
+: FILE$ ( -- str )  FILE-B @ VEC:BYTES ;
 : D+ ( str -- )  DETAIL-B @ VEC:APPEND ;
 : DETAIL$ ( -- str )  DETAIL-B @ VEC:BYTES ;
-
-: STRING>WORD ( JSON:reader -- JSON:reader )
-   READ-SPAN$ STR:LEN {: raw:n :}
-   raw 1 max WORD-B-RESERVE
-   0 WORD-B raw READ-STR WORD-U ! ;
-
-: STRING>FILE ( JSON:reader -- JSON:reader )
-   READ-SPAN$ STR:LEN {: raw:n :}
-   raw 1 max FILE-B-RESERVE
-   0 FILE-B raw READ-STR FILE-U ! ;
 
 \ The member whose key the reader is at, decoded; one an item needs nothing
 \ of, passed over.
 : MEMBER ( JSON:reader -- JSON:reader )
-   s" word" READ-STR-EQ? if READ-NEXT drop STRING>WORD exit then
-   s" file" READ-STR-EQ? if READ-NEXT drop STRING>FILE exit then
+   s" word" READ-STR-EQ? if READ-NEXT drop WORD-B @ READ-STR drop exit then
+   s" file" READ-STR-EQ? if READ-NEXT drop FILE-B @ READ-STR drop exit then
    s" target_start" READ-STR-EQ? if READ-NEXT drop READ-INT TARGET-V ! exit then
    s" target_end" READ-STR-EQ? if READ-NEXT drop READ-INT TARGET-END-V ! exit then
    READ-NEXT drop READ-SKIP-VALUE ;
@@ -60,8 +48,8 @@ variable SHOWN-N                         \ and the items written so far
 \ or 0.
 : DECODE ( str -- )
    {: s:str :}
-   0 WORD-U !
-   0 FILE-U !
+   WORD-B @ 0 VEC:RESIZE
+   FILE-B @ 0 VEC:RESIZE
    0 TARGET-V !
    0 TARGET-END-V !
    JSON-ST s READ-INIT
@@ -70,7 +58,7 @@ variable SHOWN-N                         \ and the items written so far
    READ-CLOSE ;
 
 : TARGET-REC ( -- option<n> )
-   FILE-U @ 0= if OPTION:NONE exit then
+   FILE-B @ VEC:COUNT 0= if OPTION:NONE exit then
    ASKED @ FILE$ DEFS-GROUP-OF MATCH option
       some OF TARGET-V @ TARGET-END-V @ WORD$ GROUP-REC-NAMED ENDOF
       none OF OPTION:NONE ENDOF
@@ -114,6 +102,8 @@ public
 
 \ Readies the answer's storage, before any completion.
 : PREPARE ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW WORD-B !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW FILE-B !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DETAIL-B ! ;
 
 : ANSWER ( ^JSON:writer n -- ^JSON:writer )

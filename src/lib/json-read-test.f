@@ -21,8 +21,7 @@ require src/lib/test/subject.f
 package JSON-TEST
 private
 
-256 constant JRT-CAP
-create JRT-BUF JRT-CAP allot
+TYPED-VARIABLE JRT-STR-VEC ^VEC:vector<u8>
 TYPED-VARIABLE JRT-APPEND-VEC ^VEC:vector<u8>
 TYPED-VARIABLE JRT-A JSON:cursor
 TYPED-VARIABLE JRT-B JSON:cursor
@@ -161,8 +160,7 @@ create JRT-FIND-ESC-WANT 97 c, 98 c, 10 c, 34 c,
 create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
 
 : JRT-STR= ( JSON:reader str -- JSON:reader ) {: e:str :}
-   JRT-BUF JRT-CAP JSON:READ-STR {: got:n :}
-   JRT-BUF got >str e T$= ;
+   JRT-STR-VEC @ JSON:READ-STR e T$= ;
 
 : JRT-QKEY ( str -- )                       \ "key":  onto the builder
    JRT-DQ SB-APPEND-C SB-APPEND JRT-DQ SB-APPEND-C JRT-COLON SB-APPEND-C ;
@@ -444,11 +442,18 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s" 12" JRT-OPEN-A
    JSON:READ-NEXT drop JRT-APPEND-VEC @ JSON:READ-STR-APPEND JSON:READ-CLOSE ;
 
+: JRT-BAD-STR-KIND ( -- )
+   s" 12" JRT-OPEN-A
+   JSON:READ-NEXT drop JRT-APPEND-VEC @ JSON:READ-STR str> 2drop JSON:READ-CLOSE ;
+
 : JRT-TEST-STR-APPEND-MISUSE ( -- )
-   s" READ-STR-APPEND on a number throws E-JSON-READ-STATE and leaves the vector as it was" T-LABEL
+   s" READ-STR-APPEND and READ-STR on a number throw E-JSON-READ-STATE and leave the vector as it was" T-LABEL
    16 JRT-APPEND-FRESH
    s" ab" JRT-APPEND-VEC @ VEC:APPEND
    [: JRT-BAD-APPEND-KIND ;] E-JSON-READ-STATE TTHROWSQ
+   JRT-A JSON:READ-DISPOSE
+   JRT-APPEND$ s" ab" T$=
+   [: JRT-BAD-STR-KIND ;] E-JSON-READ-STATE TTHROWSQ
    JRT-A JSON:READ-DISPOSE
    JRT-APPEND$ s" ab" T$=
    JRT-APPEND-VEC @ VEC:DELETE ;
@@ -1381,26 +1386,6 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-HI-SRC$ JRT-OPEN-A JSON:READ-NEXT drop JSON:READ-INT drop JSON:READ-CLOSE ;
 
 
-: JRT-BAD-STR-NULL ( -- )
-   JRT-HI-SRC$ JRT-OPEN-A JSON:READ-NEXT drop JRT-ZERO-U8 2 JSON:READ-STR drop JSON:READ-CLOSE ;
-
-: JRT-BAD-STR-NEGATIVE ( -- )
-   JRT-HI-SRC$ JRT-OPEN-A JSON:READ-NEXT drop JRT-BUF -1 JSON:READ-STR drop JSON:READ-CLOSE ;
-
-: JRT-BAD-STR-ZERO ( -- )
-   JRT-HI-SRC$ JRT-OPEN-A JSON:READ-NEXT drop JRT-BUF 0 JSON:READ-STR drop JSON:READ-CLOSE ;
-
-: JRT-BAD-STR-SHORT ( -- )
-   JRT-HI-SRC$ JRT-OPEN-A JSON:READ-NEXT drop JRT-BUF 1 JSON:READ-STR drop JSON:READ-CLOSE ;
-
-: JRT-TEST-STR-EXACT ( -- )
-   s" READ-STR fills a destination exactly the string's size" T-LABEL
-   JRT-HI-SRC$ JRT-OPEN-A
-   JSON:READ-NEXT JSON:T-STR T=
-   JRT-BUF 2 JSON:READ-STR 2 T=
-   JRT-BUF 2 >str s" hi" T$=
-   JSON:READ-CLOSE ;
-
 : JRT-TEST-NEGATIVE ( -- )
    s" a value after the document throws E-JSON-READ-TRAILING" T-LABEL
    [: JRT-BAD-TRAILING ;] E-JSON-READ-TRAILING TTHROWSQ
@@ -1427,13 +1412,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s" READ-INT past a signed cell throws E-JSON-READ-NUMBER" T-LABEL
    [: JRT-BAD-OVERFLOW ;] E-JSON-READ-NUMBER TTHROWSQ
    s" READ-INT on a string throws E-JSON-READ-STATE" T-LABEL
-   [: JRT-BAD-STATE ;] E-JSON-READ-STATE TTHROWSQ
-   s" READ-STR into a null or negative-length destination throws E-JSON-READ-STATE" T-LABEL
-   [: JRT-BAD-STR-NULL ;] E-JSON-READ-STATE TTHROWSQ
-   [: JRT-BAD-STR-NEGATIVE ;] E-JSON-READ-STATE TTHROWSQ
-   s" READ-STR into a destination shorter than the string throws E-SPAN-CAPACITY" T-LABEL
-   [: JRT-BAD-STR-ZERO ;] E-SPAN-CAPACITY TTHROWSQ
-   [: JRT-BAD-STR-SHORT ;] E-SPAN-CAPACITY TTHROWSQ ;
+   [: JRT-BAD-STATE ;] E-JSON-READ-STATE TTHROWSQ ;
 
 : JRT-TRAILING-TEXT$ ( -- str )
    s\" {\"a\":1} x" ;
@@ -1506,14 +1485,14 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    [: JRT-OBJ-COMMA$ JRT-FINISH-AFTER-INT ;] E-JSON-READ-MALFORMED TTHROWSQ
    [: JRT-FINISH-AFTER-FAILURE ;] E-JSON-READ-COLON TTHROWSQ ;
 
-\ A prefix copied so its last byte is the last readable one, read with
-\ READ-NEXT, and READ-STR on each string, to T-END or a refusal: its code, 0 at
-\ T-END. A scan that reads a byte before it bounds the source faults here
-\ instead of refusing.
 : JRT-STEP-STR ( JSON:reader -- JSON:reader )
    JSON:READ-NEXT {: k:n :}
-   k JSON:T-STR = k JSON:T-KEY = or if JRT-BUF JRT-CAP JSON:READ-STR drop then ;
+   k JSON:T-STR = k JSON:T-KEY = or if
+      JRT-STR-VEC @ JSON:READ-STR str> 2drop
+   then ;
 
+\ The code a read of S to T-END throws, decoding each string and key, else 0. S
+\ ends at a guard page, so a read past it faults instead of rejecting.
 : JRT-GUARDED-CODE ( str -- n ) {: s:str :}
    s STR:LEN 0 GUARD-PAGE:TAIL {: g:^ :}
    s STR:LEN 0 ?do s STR:DATA i + c@ g i + c! loop
@@ -1731,18 +1710,17 @@ variable JRT-COUNT
 : JRT-FIRST ( str -- JSON:reader )
    JRT-OPEN-A JSON:READ-NEXT drop ;
 
-create JRT-SEEN 1 cells 100 + allot
-create JRT-INNER-SEEN 1 cells 2 + allot   \ the nested object's, while JRT-SEEN is in use
+TYPED-VARIABLE JRT-SEEN ^VEC:vector<u8>
+TYPED-VARIABLE JRT-INNER-SEEN ^VEC:vector<u8>   \ the nested object's, while JRT-SEEN is in use
 
-: JRT-UNSEEN ( -- )
-   1 cells 100 + 0 ?do 0 JRT-SEEN i + c! loop ;
+: JRT-UNSEEN ( -- )  JRT-SEEN @ 0 VEC:RESIZE ;
 
-\ Reads every listed member with READ-LISTED, seen cleared first, calling the
+\ Reads every listed member with READ-LISTED, seen emptied first, calling the
 \ handler on each member's value with its index.
 : JRT-LISTED-EACH
-   ( JSON:reader str ^u8 [ JSON:reader n -- JSON:reader ] -- JSON:reader )
+   ( JSON:reader str ^VEC:vector<u8> [ JSON:reader n -- JSON:reader ] -- JSON:reader )
    {: names:str seen:^ h :}
-   names JSON:SEEN-BYTES 0 ?do 0 seen i + c! loop
+   seen 0 VEC:RESIZE
    begin names seen JSON:READ-LISTED dup -1 <> while h execute repeat drop ;
 
 : JRT-TLS-H ( JSON:reader n -- JSON:reader ) {: idx:n :}
@@ -1754,7 +1732,7 @@ create JRT-INNER-SEEN 1 cells 2 + allot   \ the nested object's, while JRT-SEEN 
    idx JRT-SAW
    idx 0 = if s" a" JSON:READ-STR-EQ? TTRUE exit then
    idx 1 = if JSON:READ-INT 8080 T= exit then
-   s" key on" JRT-INNER-SEEN [: JRT-TLS-H ;] JRT-LISTED-EACH ;
+   s" key on" JRT-INNER-SEEN @ [: JRT-TLS-H ;] JRT-LISTED-EACH ;
 
 : JRT-TOP-NAMES$ ( -- str ) s" host port tls" ;
 
@@ -1774,7 +1752,7 @@ create JRT-INNER-SEEN 1 cells 2 + allot   \ the nested object's, while JRT-SEEN 
 : JRT-LISTED-H-SAY
    ( str str [ JSON:reader n -- JSON:reader ] str -- )
    {: t:str ns:str h ws:str :}
-   [: t JRT-FIRST ns JRT-SEEN h JRT-LISTED-EACH JSON:READ-FINISH ;]
+   [: t JRT-FIRST ns JRT-SEEN @ h JRT-LISTED-EACH JSON:READ-FINISH ;]
    JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER ws JRT-SAID ;
 
@@ -1789,24 +1767,24 @@ create JRT-INNER-SEEN 1 cells 2 + allot   \ the nested object's, while JRT-SEEN 
    s" READ-LISTED answers each listed member's index, then -1 at the `}`" T-LABEL
    JRT-UNSEEN
    s\" {\"port\":1,\"host\":\"a\"}" JRT-FIRST
-   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 1 T=
+   JRT-PORT-HOST$ JRT-SEEN @ JSON:READ-LISTED 1 T=
    JSON:READ-INT 1 T=
-   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 0 T=
+   JRT-PORT-HOST$ JRT-SEEN @ JSON:READ-LISTED 0 T=
    s" a" JSON:READ-STR-EQ? TTRUE
-   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED -1 T=
+   JRT-PORT-HOST$ JRT-SEEN @ JSON:READ-LISTED -1 T=
    JSON:READ-TOKEN JSON:T-OBJ-END T=
    JSON:READ-FINISH
    s" READ-LISTED reads an object without an optional member" T-LABEL
    JRT-UNSEEN
    s\" {\"host\":\"a\"}" JRT-FIRST
-   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 0 T=
-   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED -1 T=
+   JRT-PORT-HOST$ JRT-SEEN @ JSON:READ-LISTED 0 T=
+   JRT-PORT-HOST$ JRT-SEEN @ JSON:READ-LISTED -1 T=
    JSON:READ-TOKEN JSON:T-OBJ-END T=
    JSON:READ-FINISH
    s" READ-LISTED reads each listed member once, in any order, and a nested object" T-LABEL
    0 JRT-ORDER !
    s\" {\"port\":8080,\"host\":\"a\",\"tls\":{\"on\":true,\"key\":\"k\"}}"
-   JRT-FIRST JRT-TOP-NAMES$ JRT-SEEN [: JRT-TOP-H ;] JRT-LISTED-EACH
+   JRT-FIRST JRT-TOP-NAMES$ JRT-SEEN @ [: JRT-TOP-H ;] JRT-LISTED-EACH
    JSON:READ-TOKEN JSON:T-OBJ-END T=
    JSON:READ-FINISH
    JRT-ORDER @ 21321 T= ;
@@ -1814,16 +1792,16 @@ create JRT-INNER-SEEN 1 cells 2 + allot   \ the nested object's, while JRT-SEEN 
 : JRT-BAD-LISTED-KEY ( -- )
    JRT-UNSEEN
    s\" {\"a\":1,\"b\":2}" JRT-FIRST
-   s" a b" JRT-SEEN JSON:READ-LISTED drop
+   s" a b" JRT-SEEN @ JSON:READ-LISTED drop
    JSON:READ-NEXT drop
-   s" a b" JRT-SEEN JSON:READ-LISTED drop JSON:READ-CLOSE ;
+   s" a b" JRT-SEEN @ JSON:READ-LISTED drop JSON:READ-CLOSE ;
 
 : JRT-BAD-LISTED-INNER ( -- )
    JRT-UNSEEN
    s\" {\"a\":{\"x\":1,\"b\":2}}" JRT-FIRST
-   s" a b" JRT-SEEN JSON:READ-LISTED drop
+   s" a b" JRT-SEEN @ JSON:READ-LISTED drop
    JSON:READ-NEXT drop JSON:READ-NEXT drop
-   s" a b" JRT-SEEN JSON:READ-LISTED drop JSON:READ-CLOSE ;
+   s" a b" JRT-SEEN @ JSON:READ-LISTED drop JSON:READ-CLOSE ;
 
 : JRT-TEST-LISTED-REJECTED ( -- )
    s" READ-LISTED rejects an unknown key, listing the names" T-LABEL
@@ -1872,7 +1850,7 @@ create JRT-INNER-SEEN 1 cells 2 + allot   \ the nested object's, while JRT-SEEN 
 : JRT-TEST-LISTED-WILD ( -- )
    s" READ-LISTED under `*` skips each unnamed member wherever it sits" T-LABEL
    0 JRT-ORDER !
-   JRT-WILD$ JRT-FIRST s" host port *" JRT-SEEN [: JRT-TOP-H ;] JRT-LISTED-EACH
+   JRT-WILD$ JRT-FIRST s" host port *" JRT-SEEN @ [: JRT-TOP-H ;] JRT-LISTED-EACH
    JSON:READ-TOKEN JSON:T-OBJ-END T=
    JSON:READ-FINISH
    JRT-ORDER @ 12 T=
@@ -1886,7 +1864,7 @@ create JRT-INNER-SEEN 1 cells 2 + allot   \ the nested object's, while JRT-SEEN 
    JRT-LISTED-SAY
    s" READ-LISTED over `*` alone skips every member, answering only -1" T-LABEL
    0 JRT-ORDER !
-   JRT-WILD$ JRT-FIRST s" *" JRT-SEEN [: JRT-TOP-H ;] JRT-LISTED-EACH
+   JRT-WILD$ JRT-FIRST s" *" JRT-SEEN @ [: JRT-TOP-H ;] JRT-LISTED-EACH
    JSON:READ-TOKEN JSON:T-OBJ-END T=
    JSON:READ-FINISH
    JRT-ORDER @ 0 T= ;
@@ -1925,7 +1903,7 @@ create JRT-NAMES 400 allot
    s" READ-LISTED reads every member of a list of 100 names" T-LABEL
    0 JRT-COUNT !
    JRT-HUNDRED$ JRT-FIRST
-   JRT-HUNDRED-NAMES$ JRT-SEEN [: JRT-HUNDRED-H ;] JRT-LISTED-EACH
+   JRT-HUNDRED-NAMES$ JRT-SEEN @ [: JRT-HUNDRED-H ;] JRT-LISTED-EACH
    JSON:READ-FINISH
    JRT-COUNT @ 100 T= ;
 
@@ -1989,11 +1967,6 @@ create JRT-NAMES 400 allot
    s" 1:4: expected the span of the value the reader just read, found the end of the input; pass READ-ANY-SPAN$'s answer for that value before the reader moves past it"
    JRT-SAID ;
 
-: JRT-TEST-SEEN-BYTES ( -- )
-   s" SEEN-BYTES counts a cell for the depth and a byte per listed name, an optional one included" T-LABEL
-   s" a b? c" JSON:SEEN-BYTES 1 cells 3 + T=
-   s" " JSON:SEEN-BYTES 1 cells T= ;
-
 : JRT-TEST-READ-LISTED ( -- )
    JRT-TEST-LISTED-READ
    JRT-TEST-LISTED-REJECTED
@@ -2001,8 +1974,7 @@ create JRT-NAMES 400 allot
    JRT-TEST-LISTED-HUNDRED
    JRT-TEST-LISTED-OPTIONAL
    JRT-TEST-LISTED-WILD
-   JRT-TEST-REWIND
-   JRT-TEST-SEEN-BYTES ;
+   JRT-TEST-REWIND ;
 
 : JRT-TEST-REASON-WHOLE ( -- )
    s" READ-REPEAT rejects a text that is no object at its first token" T-LABEL
@@ -2037,7 +2009,6 @@ create JRT-NAMES 400 allot
    JRT-TEST-UESCAPE
    JRT-TEST-SURROGATE
    JRT-TEST-UTF8
-   JRT-TEST-STR-EXACT
    JRT-TEST-EMPTY
    JRT-TEST-NESTED
    JRT-TEST-VALUE-SPAN
@@ -2096,8 +2067,12 @@ public
 
 : RUN ( -- )
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW JRT-WRITE-OUT !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW JRT-STR-VEC !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW JRT-SEEN !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW JRT-INNER-SEEN !
    JRT-CORE
-   JRT-WRITE-OUT @ VEC:DELETE ;
+   JRT-INNER-SEEN @ VEC:DELETE  JRT-SEEN @ VEC:DELETE
+   JRT-STR-VEC @ VEC:DELETE  JRT-WRITE-OUT @ VEC:DELETE ;
 
 ;package
 
