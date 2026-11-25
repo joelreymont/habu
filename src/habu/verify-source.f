@@ -1610,13 +1610,13 @@ CB-CLOSED!
 \ A body the checker deferred to the run (verdict 2) is reported where the
 \ checker's judgment of it stopped, when the child reports deferrals, as a
 \ deferred stretch is at the token that opened it.
-CAST: DEFERRED-BODY-ACTION ( n -- [ -- str ] )
-: DEFERRED-BODY$ ( -- str )
+CAST: DEFERRED-BODY-ACTION ( n -- [ -- str n ] )
+: DEFERRED-BODY ( -- str n )
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-BODY-OFF OWNER-XT DEFERRED-BODY-ACTION execute ;
 : REPORT-DEFERRED ( n -- )
    2 <> IF EXIT THEN
    -1 DEFER-SEEN !
-   DEFER-REPORT @ IF DEFERRED-BODY$ 0 REPORT-STRETCH THEN ;
+   DEFER-REPORT @ IF DEFERRED-BODY REPORT-STRETCH THEN ;
 
 \ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run,
 \ 0 rejected. The check wrote the record of a rejected (0) or uncheckable (1)
@@ -1685,6 +1685,7 @@ variable DOES-ACCEPTED                  \ both parent and clause certified
 TYPED-VARIABLE DOES-PARENT-REFUSED bool
 PTR-VARIABLE DOES-CLAUSE-A
 variable DOES-CLAUSE-U
+variable DOES-CLAUSE-WHY
 
 \ The rows move cell by cell as the cells they are.
 : DOES-PARENT-ROOM ( n n -- ) {: u:n c:n :}
@@ -1705,7 +1706,7 @@ variable DOES-CLAUSE-U
 
 : REPORT-DOES-CLAUSE ( -- )
    DOES-CLAUSE-U @ 0= IF EXIT THEN
-   DOES-CLAUSE-A @ DOES-CLAUSE-U @ 0 REPORT-DEFERRAL ;
+   DOES-CLAUSE-A @ DOES-CLAUSE-U @ DOES-CLAUSE-WHY @ REPORT-DEFERRAL ;
 
 : TICK-DOES-CHECK ( -- )
    TICK-BODY-A @ TICK-BODY-U @
@@ -1868,7 +1869,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
          clause 0= IF false EXIT THEN
          gate unknown or IF
             clause 2 = IF
-               DEFERRED-BODY$ DOES-CLAUSE-U ! DOES-CLAUSE-A !
+               DEFERRED-BODY DOES-CLAUSE-WHY ! DOES-CLAUSE-U ! DOES-CLAUSE-A !
             THEN
             TOKEN-A @ {: end:^ :}  TOKEN-U @ {: endu:n :}
             DOES-PARENT-BACK

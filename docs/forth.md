@@ -2625,6 +2625,10 @@ sections above.
   declaration to the run.
   `EXPORT` preserves an engine-provided definer's coverage declaration; an
   export of a source-scanned definer remains deferred.
+- **A word the check leaves to the run may keep its quotations.** Under
+  `--verify-only`, handing it, or a word that hands its own parameter to it, a
+  quotation that reads a local or does more than the parameter's type states is
+  `W-CHECK-DEFERRED`; the load rejects it where the word keeps it.
 - **A text-generating definer can declare its product with `generates:`.** At
   top level, after the definer, `generates: D ( effect )` assigns every word
   D makes that effect, as `does>` does. `FUNCTION:` and `CALLBACK:` instead

@@ -1759,6 +1759,134 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    FX-PATH$ PROC-ARGV+
    LAUNCHED ;
 
+: MADE-LINES ( -- )
+   SB-RESET
+   s" : MK ( -- ) create ; parses: MK 1" SB-APPEND LF+
+   s" MK MADE" SB-APPEND LF+ ;
+
+: LEFT-AT ( n str n n n n -- )
+   {: k:n tok:str line:n col:n bs:n be:n :}
+   k s" code" s" W-CHECK-DEFERRED" FIELD=
+   k s" message" s" whether a quotation is kept" FIELD-HAS
+   k tok line col bs be AT ;
+
+\ The check cannot follow MADE, so it does not know what RUN and PRUN do with a
+\ quotation: a caller's, or its caller's, that reads a local is left to the run.
+: TEST-QUOT-LEFT ( -- )
+   s" a quotation that reads a local, handed to a body left to the run" T-LABEL
+   MADE-LINES
+   s" : RUN ( [ -- n ] -- n ) MADE drop execute ;" SB-APPEND LF+
+   s" : USE ( n -- n ) {: a:n :} [: a ;] RUN ;" SB-APPEND LF+
+   s" : VIA ( [ -- n ] -- n ) RUN ;" SB-APPEND LF+
+   s" : USE-VIA ( n -- n ) {: a:n :} [: a ;] VIA ;" SB-APPEND LF+
+   s" : MKC ( -- ) create does> ( n -- n ) drop {: a:n :} [: a ;] RUN ;" SB-APPEND LF+
+   s" package P public : PRUN ( [ -- n ] -- n ) MADE drop execute ; ;package" SB-APPEND LF+
+   s" : USE-PKG ( n -- n ) {: a:n :} [: a ;] P:PRUN ;" SB-APPEND LF+
+   s" : USE-PLAIN ( -- n ) [: 5 ;] RUN ;" SB-APPEND LF+
+   s" : ONLY ( [ -- n ] -- n ) execute ;" SB-APPEND LF+
+   s" : USE-ONLY ( n -- n ) {: a:n :} [: a ;] ONLY ;" SB-APPEND LF+
+   s" quot-left.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 7 T=
+   2 s" RUN" 4 36 121 124 LEFT-AT
+   2 s" help" s" use a quotation that reads no local and does only what the type that takes it states, or state the rest in that type, and the check goes on past `RUN`" FIELD=
+   3 s" VIA" 6 40 196 199 LEFT-AT
+   4 s" RUN" 7 61 262 265 LEFT-AT
+   6 s" P:PRUN" 9 40 378 384 LEFT-AT
+   s" " 0 CHECK-EXIT
+   s" a quotation that reads a local, kept by a body left to the run" T-LABEL
+   MADE-LINES
+   s" TYPED-VARIABLE KEPT [ -- n ]" SB-APPEND LF+
+   s" : RUN ( [ -- n ] -- n ) MADE drop KEPT ! 0 ;" SB-APPEND LF+
+   s" : USE ( n -- n ) {: a:n :} [: a ;] RUN ;" SB-APPEND LF+
+   s" : GETQ ( -- [ -- n ] ) MADE drop KEPT @ ;" SB-APPEND LF+
+   s" : JOIN2 ( n bool -- n ) {: a:n f:bool :} f if GETQ else [: a ;] then execute ;" SB-APPEND LF+
+   s" quot-left-kept.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 5 T=
+   2 s" RUN" 5 36 151 154 LEFT-AT
+   4 s" then" 7 65 263 267 LEFT-AT
+   s" error[E-LOCAL-ESCAPE]" 70 LOADED
+   s" a quotation that reads a local and leaves the wrong row" T-LABEL
+   MADE-LINES
+   s" : RUN ( [ -- n ] -- n ) MADE drop execute ;" SB-APPEND LF+
+   s" : U7 ( n -- n ) {: a:n :} [: a a ;] RUN ;" SB-APPEND LF+
+   s" quot-left-row.f" FIXTURE!
+   s" --verify-only" CHECK
+   GJA-LINE# @ 3 T=
+   2 s" code" s" E-MISMATCH" FIELD=
+   2 s" RUN" 4 37 122 125 AT
+   s" error[E-MISMATCH]" 70 LOADED
+   s" a quotation that reads a local and binds the row it is handed" T-LABEL
+   MADE-LINES
+   s" : ONCE ( R [ -- S ] -- S ) MADE drop execute ;" SB-APPEND LF+
+   s" : U ( n -- n ) {: a:n :} [: a ;] ONCE ;" SB-APPEND LF+
+   s" quot-left-tail.f" FIXTURE!
+   s" --verify-only" CHECK
+   GJA-LINE# @ 3 T=
+   2 s" code" s" E-MISMATCH" FIELD=
+   2 s" ONCE" 4 34 122 126 AT
+   s" error[E-MISMATCH]" 70 LOADED
+   s" a quotation that reads a local, handed to a body left to the run over a record" T-LABEL
+   MADE-LINES
+   s" STRUCTURE pt FIELD x n FIELD y n ;STRUCTURE" SB-APPEND LF+
+   s" : EACH ( ^t [ ^t -- ] -- ) MADE drop execute ;" SB-APPEND LF+
+   s" TYPED-VARIABLE P pt" SB-APPEND LF+
+   s" : SHOW ( n ^pt -- ) drop . ;" SB-APPEND LF+
+   s" : USE ( n -- ) {: a:n :} P [: a swap SHOW ;] EACH ;" SB-APPEND LF+
+   s" 7 USE" SB-APPEND LF+
+   s" quot-left-stored.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" EACH" 7 46 227 231 LEFT-AT
+   s" " 0 LOADED
+   s" a quotation that reads a local, handed to a declared signature" T-LABEL
+   SB-RESET
+   s" defer RUN ( [ -- n ] -- n )" SB-APPEND LF+
+   s" : USE ( n -- n ) {: a:n :} [: a ;] RUN ;" SB-APPEND LF+
+   s" quot-declared.f" FIXTURE!
+   s" --verify-only" CHECK
+   GJA-LINE# @ 1 T=
+   0 s" code" s" E-LOCAL-ESCAPE" FIELD=
+   0 s" RUN" 2 36 63 66 AT ;
+
+\ A quotation with a fact its parameter's type lacks is left to the run where the
+\ callee's body was, and rejected where a checked body keeps it.
+: PARSE-USE ( -- )
+   s" : USE ( -- ) [: parse-name drop ;] RUN ;" SB-APPEND LF+ ;
+
+: TEST-QUOT-LEFT-FACT ( -- )
+   s" a quotation that parses, handed to a body left to the run" T-LABEL
+   MADE-LINES
+   s" : RUN ( [ -- ] -- ) MADE drop execute ;" SB-APPEND LF+
+   PARSE-USE
+   s" fact-left.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" RUN" 4 36 117 120 LEFT-AT
+   s" " 0 LOADED
+   s" a quotation that parses, kept by a body left to the run" T-LABEL
+   MADE-LINES
+   s" TYPED-VARIABLE KEPT [ -- ]" SB-APPEND LF+
+   s" : RUN ( [ -- ] -- ) MADE drop KEPT ! ;" SB-APPEND LF+
+   PARSE-USE
+   s" fact-left-kept.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" RUN" 5 36 143 146 LEFT-AT
+   s" error[E-MISMATCH]" 70 LOADED
+   s" a quotation that parses, kept by a checked body" T-LABEL
+   SB-RESET
+   s" TYPED-VARIABLE KEPT [ -- ]" SB-APPEND LF+
+   s" : RUN ( [ -- ] -- ) KEPT ! ;" SB-APPEND LF+
+   PARSE-USE
+   s" fact-judged.f" FIXTURE!
+   s" --verify-only" CHECK
+   GJA-LINE# @ 1 T=
+   0 s" code" s" E-MISMATCH" FIELD=
+   0 s" message" s" this quotation does more than the type that keeps it states" FIELD-HAS
+   0 s" RUN" 3 36 91 94 AT ;
+
 \ The check, which compiles nothing, names a mixed-case private twin as the
 \ load does: as its declaration spells it, never folded.
 : CASE-MSG$ ( -- str )
@@ -3142,10 +3270,8 @@ HB-TARGET-LINUX? 0= [if]
    s" W-CHECK-STOPPED" 1 k tok sug SUGGESTS
    k s" message" s" checks nothing after it" FIELD-HAS ;
 
-\ A deferral's help names what lifts its cause. A body the check defers, and a
-\ stretch opened at a name with no known cause, record none and keep the
-\ general text; a parsing word its row bounds leaves nothing to write and no
-\ help.
+\ A deferral's help names what lifts its cause; one with no known cause keeps the
+\ general text, and a parsing word its row bounds has no help.
 : TEST-DEFER-SUGGEST ( -- )
    s" a top-level parsing word with no parses: row" T-LABEL
    SB-RESET
@@ -4149,6 +4275,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-DERIVE-ENUM-FIELD
    TEST-DERIVE-BYTES-FIELD
    TEST-DEFER-SUGGEST
+   TEST-QUOT-LEFT
+   TEST-QUOT-LEFT-FACT
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON
    TEST-SECOND-ELSE

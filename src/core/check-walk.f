@@ -617,8 +617,10 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
    NEW
    SGBAD-CLEAR
    PENDING-SIG {: din:n dout:n rin:n rout:n :}
+   DVERD @ VERDICT-DEFERRED = {: left:bool :}
+   left IF din dout rin rout SGHASR @ RES-TRUE STORED-DERIVE-ROWS THEN
    SGA @ SGU @  at atu
-   din dout rin rout external USIG-ADD-ROWS drop
+   din dout rin rout external  left  USIG-ADD-ROWS drop
    DL-TAKE ;
 
 \ The name of the program's entry CHECK:ENTRY! states, none when empty.
@@ -982,12 +984,12 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
    FAILSET @ 0=  OK @ and IF 1 RSBAD !  -1 FAILSET ! THEN
    0 OK ! ;
 
-\ An effect too deep to record is uncheckable for it; a deferral would
-\ record it, so a covered name yields; a pinned refusal stands.
+\ An effect too deep to record is uncheckable for it; a deferral would record it, so it
+\ yields; a pinned rejection stands.
 : UNFIT-UNCHECKABLE ( -- )
    UNFIT @ 0= IF EXIT THEN
-   UNSEEN @ 0 <> IF
-      0 UNSEEN !  0 UNDEFERR !
+   LEFT-WHY @ 0 <> IF
+      0 LEFT-WHY !  0 UNDEFERR !
       RCOMPILE @ 0 <> IF EXIT THEN
       MD-EFFECT-DEPTH MDIAG !  UNCK-RAISE  EXIT
    THEN
@@ -1004,17 +1006,11 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
    THEN
    UNFIT-UNCHECKABLE ;
 
-\ VERDICT-DEFERRED defers the body to the run: it names a word only a rendering
-\ statement in scope can have defined. A malformed declaration is still refused,
-\ since the declaration is what gets recorded, and one nested too deep to record
-\ is uncheckable; past a token of unknown effect nothing downstream is a
-\ judgment, so the rest is the run's. A call to a malformed qualified name is no
-\ such token: no word can ever answer it, so its body is refused like any other,
-\ not left uncheckable. A recorded compile-time refusal, or an undefined word
-\ the check finds itself, is a refusal whatever follows it.
+\ LEFT-WHY is raised only while no failure is pinned, so it outranks every later one; a
+\ bad declaration outranks it, since the declaration is what gets recorded.
 : CHECK-VERDICT ( -- n )
    SGBAD @ 0 <> IF REFUSAL-UNCHECKABLE? IF VERDICT-UNCHECKABLE ELSE VERDICT-REFUSED THEN EXIT THEN
-   UNSEEN @ 0 <> IF VERDICT-DEFERRED EXIT THEN
+   LEFT-WHY @ 0 <> IF VERDICT-DEFERRED EXIT THEN
    UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REFUSAL@ RF-UNDEF =  or IF VERDICT-REFUSED ELSE
    UNCK @ 0 <> IF VERDICT-UNCHECKABLE ELSE OK @ THEN THEN ;
 
