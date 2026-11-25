@@ -25,7 +25,7 @@ split-str
 \ load it. Every call clears it, since the callee may run a loop, and so does
 \ every label a branch lands on (MARK and RESOLVE), since a branch may come
 \ from code that wrote x29; LOOP-POP and a unit's start clear it too. While it
-\ is clear, `i`, `loop` and `+loop` load x29 from the frame first. A refused
+\ is clear, `i`, `loop` and `+loop` load x29 from the frame first. A rejected
 \ token discards the whole emission, and OPEN begins the next one clear.
 
 require src/lib/error.f
@@ -259,7 +259,7 @@ variable HELD                         \ nonzero while x29 holds the index
    k at to BR-WORD  at W32! ;
 
 \ ---- the body ----------------------------------------------------------------
-: RETURN ( -- ) HERE-OFF EPI+  ENC-RET W ;
+: RETURN ( -- ) EPI+  ENC-RET W ;
 
 : SLOT-CLOSE ( -- )
    RETURN PLACE:CLOSE
@@ -497,7 +497,7 @@ variable HELD                         \ nonzero while x29 holds the index
 
 : TAIL ( n n -- )
    {: to:n loc:n :}
-   HERE-OFF EPI+
+   EPI+
    HERE-OFF NEMIT:TAIL to loc PCALL+
    0 ENC-B W ;
 

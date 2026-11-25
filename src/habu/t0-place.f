@@ -40,7 +40,7 @@ public
 \ the `recurse` call at n to byte 0, ADR-PUT the quotation address at the first
 \ n to the second, and BRANCH-PUT branch k ( k at to ). BRANCH-LEN ( k d )
 \ answers the bytes branch k takes beyond its placeholder, d the distance from
-\ the placeholder's end to the target.
+\ the placeholder's start to the target.
 ARCHES TYPED-BUFFER UNIT-RESET-XT [ -- ]
 ARCHES TYPED-BUFFER PROLOGUE-XT [ n ^VEC:vector<u8> -- ]
 ARCHES TYPED-BUFFER EPILOGUE-XT [ n ^VEC:vector<u8> -- ]
@@ -83,9 +83,8 @@ variable NSELF
 DYNAMIC-BUFFER SELF-AT n              \ the open unit's `recurse` sites, raw
 DYNAMIC-BUFFER QUOT-SITE n            \ the address in OUT that names each unit
 variable NBR
-DYNAMIC-BUFFER BR-AT n                \ the open unit's branches: raw site, bytes
-DYNAMIC-BUFFER BR-HOLE n              \ of placeholder, and raw target or -1 while
-DYNAMIC-BUFFER BR-TO n                \ open
+DYNAMIC-BUFFER BR-AT n                \ the open unit's branches: raw site, and
+DYNAMIC-BUFFER BR-TO n                \ raw target or -1 while open
 
 : SLOT ( -- n ) EMIT-SELECTED ;
 
@@ -130,16 +129,16 @@ public
    at k SELF-AT !
    k 1 + NSELF ! ;
 
-\ The epilogue goes in before raw offset n, which is HERE-OFF.
-: EPI+ ( n -- ) -1 INS+ ;
+\ The epilogue goes in before the instruction emitted next.
+: EPI+ ( -- ) HERE-OFF -1 INS+ ;
 
 \ A branch of the form and its argument to raw offset to, -1 until RESOLVE,
 \ with a placeholder of hole bytes, above 0, appended for BRANCH-PUT to write.
 : BR+ ( n n n n -- LABEL:branch ) {: form:n arg:n to:n hole:n :}
    NBR @ {: k:n :}
-   k 1 + BR-AT-RESERVE  k 1 + BR-HOLE-RESERVE  k 1 + BR-TO-RESERVE
+   k 1 + BR-AT-RESERVE  k 1 + BR-TO-RESERVE
    k 1 + BR-FORM-RESERVE  k 1 + BR-ARG-RESERVE  k 1 + BR-LEN-RESERVE
-   HERE-OFF k BR-AT !  hole k BR-HOLE !  to k BR-TO !
+   HERE-OFF k BR-AT !  to k BR-TO !
    form k BR-FORM !  arg k BR-ARG !  0 k BR-LEN !
    k 1 + NBR !
    RAW @ HERE-OFF hole + VEC:ENSURE
@@ -201,7 +200,7 @@ private
    BODY-AT @ x +  x 2 * 1 + INS-BELOW INS-SUM @ + ;
 
 : BR-DIST ( n -- n ) {: k:n :}
-   k BR-TO @ LANDED  k BR-AT @ PLACED k BR-HOLE @ +  - ;
+   k BR-TO @ LANDED  k BR-AT @ PLACED - ;
 
 : GROW ( n -- bool ) {: k:n :}
    k  k BR-DIST  BRANCH-LEN {: len:n :}

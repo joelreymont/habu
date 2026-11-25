@@ -10,7 +10,7 @@ split-str
 \ The general registers the running engine occupies.
 \ A compiled routine that writes one of these destroys the engine, except
 \ X64-INDEX, which any callee may write.
-\ A register claimed here is refused by every GPR allocation path.
+\ A register claimed here is rejected by every GPR allocation path.
 \ Both targets' registers are declared on every target: this file cannot branch
 \ at top level and an ARM64 engine emits x86-64 code.
 package ENGINE-GPR

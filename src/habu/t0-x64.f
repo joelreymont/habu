@@ -152,7 +152,7 @@ variable HELD                         \ nonzero while r12 holds the index
 : ADR-PUT ( n n -- ) {: at:n to:n :}  to at 7 + -  at 3 + REL32! ;
 
 : BRANCH-LEN ( n n -- n ) {: k:n d:n :}
-   d SHORT? if 0 exit then
+   d HOLE - SHORT? if 0 exit then
    k BR-FORM @ FORM-JMP = if JMP-GROWTH exit then
    JCC-GROWTH ;
 
@@ -175,12 +175,12 @@ variable HELD                         \ nonzero while r12 holds the index
 \ until PATCH measures it from its placed end; an address site is movabs r64,
 \ imm64, whose imm64 starts two bytes past the row's offset. A quotation's
 \ RIP-relative lea names its unit inside the emission and needs no row.
-: RETURN ( -- ) HERE-OFF EPI+  SINK ENC-RET ;
+: RETURN ( -- ) EPI+  SINK ENC-RET ;
 
 \ The return is the kernel's does> patch slot, `jmp rel32` and the `ret` it
 \ falls through to, filed at the jump's offset.
 : SLOT-CLOSE ( -- )
-   HERE-OFF EPI+
+   EPI+
    0 >REL SINK ENC-JMP-REL32
    SINK ENC-RET
    PLACE:CLOSE
@@ -437,7 +437,7 @@ variable HELD                         \ nonzero while r12 holds the index
    0 >REL SINK ENC-CALL-REL32 ;
 
 : TAIL ( n n -- ) {: to:n loc:n :}
-   HERE-OFF EPI+
+   EPI+
    HERE-OFF NEMIT:TAIL to loc PCALL+
    0 >REL SINK ENC-JMP-REL32 ;
 
