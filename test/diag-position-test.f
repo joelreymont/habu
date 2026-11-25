@@ -2361,13 +2361,26 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" payload-local.f" FIXTURE!
    0 s" E-LOCAL-ESCAPE" s" execute" s" :3:77" 3 77 189 196 REJECTED-BOTH ;
 
-\ The check cannot follow MADE, so it does not know whether LATE throws: the load
-\ decides a body that catches a quotation calling it.
+\ The check cannot follow MADE, so it does not know whether LATE throws or
+\ returns: the load decides a body that catches a quotation calling it, and DD
+\ from the token after LATE on.
 : CATCH-AT ( n n n n n -- )
    {: k:n line:n col:n bs:n be:n :}
    k s" code" s" W-CHECK-DEFERRED" FIELD=
    k s" message" s" only the run can tell whether what `catch` runs throws" FIELD-HAS
    k s" catch" line col bs be AT ;
+
+: MAYDIE-AT ( n str n n n n -- )
+   {: k:n tok:str line:n col:n bs:n be:n :}
+   k s" code" s" W-CHECK-DEFERRED" FIELD=
+   k s" message" s" only the run can tell whether the call before it returns" FIELD-HAS
+   k tok line col bs be AT ;
+
+: JOIN-AT ( n str n n n n -- )
+   {: k:n tok:str line:n col:n bs:n be:n :}
+   k s" code" s" W-CHECK-DEFERRED" FIELD=
+   k s" message" s" only the run can tell whether `LATE` returns" FIELD-HAS
+   k tok line col bs be AT ;
 
 : CATCH-LINES ( str -- ) {: body:str :}
    SB-RESET
@@ -2384,41 +2397,117 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : D ( n -- ) [: DD ;] catch 2drop ;" SB-APPEND LF+
    s" catch-left-throws.f" FIXTURE!
    s" --verify-only" 0 CHECK-EXIT
-   GJA-LINE# @ 4 T=
-   2 5 27 177 182 CATCH-AT
-   3 6 23 212 217 CATCH-AT
+   GJA-LINE# @ 5 T=
+   2 s" drop" 4 20 132 136 MAYDIE-AT
+   3 5 27 177 182 CATCH-AT
+   4 6 23 212 217 CATCH-AT
    s" E-STALE-READ" s" :5:33" 70 LOADED-AT
    s" and which throws nothing" T-LABEL
    s" drop 7" CATCH-LINES
    s" : D ( n -- ) [: DD ;] catch ;" SB-APPEND LF+
    s" catch-left-returns.f" FIXTURE!
    s" --verify-only" 0 CHECK-EXIT
-   GJA-LINE# @ 4 T=
-   2 5 27 171 176 CATCH-AT
-   3 6 23 206 211 CATCH-AT
+   GJA-LINE# @ 5 T=
+   3 5 27 171 176 CATCH-AT
+   4 6 23 206 211 CATCH-AT
    s" " 0 LOADED
    s" a catch after a token the check cannot follow keeps that token's cause" T-LABEL
    s" drop 7 throw" CATCH-LINES
    s" : R ( n -- n ) MADE [: LATE ;] catch drop ;" SB-APPEND LF+
    s" catch-after-unseen.f" FIXTURE!
    s" --verify-only" 0 CHECK-EXIT
-   GJA-LINE# @ 4 T=
-   3 s" message" s" cannot follow the source from `MADE` on" FIELD-HAS
-   3 s" MADE" 6 16 205 209 AT
+   GJA-LINE# @ 5 T=
+   4 s" message" s" cannot follow the source from `MADE` on" FIELD-HAS
+   4 s" MADE" 6 16 205 209 AT
    s" a caught quotation's facts stay in the record of a body left at the catch" T-LABEL
    s" drop 7 throw" CATCH-LINES
    s" : P ( -- n ) [: parse-name drop 5 DD ;] catch ;" SB-APPEND LF+
    s\" P \\ drop  : BAD ( -- n ) s\" x\" ;" SB-APPEND LF+
    s" catch-left-parses.f" FIXTURE!
    s" --verify-only" 1 CHECK-EXIT
-   GJA-LINE# @ 5 T=
-   4 s" code" s" W-CHECK-STOPPED" FIELD=
-   4 s" P" 7 1 238 239 AT
+   GJA-LINE# @ 6 T=
+   5 s" code" s" W-CHECK-STOPPED" FIELD=
+   5 s" P" 7 1 238 239 AT
    s" a catch the check rejects is rejected though its quotation is left" T-LABEL
    s" drop 7" CATCH-LINES
    s" : S ( str -- n ) [: DD ;] catch ;" SB-APPEND LF+
    s" catch-left-mismatch.f" FIXTURE!
-   3 s" E-MISMATCH" s" catch" s" :6:27" 6 27 210 215 REJECTED-BOTH ;
+   4 s" E-MISMATCH" s" catch" s" :6:27" 6 27 210 215 REJECTED-BOTH ;
+
+\ MADE is made while the file loads, so the check cannot tell whether LATE
+\ returns: the load judges the token after a call of LATE, or of a word that
+\ only calls it, a join where an arm ending in that call leaves other rows, an
+\ exit's included, and the rest of a body whose every joined arm ends in it; the
+\ load alone rejects what follows on a dead path.
+: MADE-THEN-DIES ( -- )
+   SB-RESET
+   s\" : GEN ( -- ) s\" : MADE ( n -- n ) dup drop ;\" evaluate-closed ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+ ;
+
+: TEST-MAYDIE-LEFT ( -- )
+   s" a body that ends after a call that may never return" T-LABEL
+   SB-RESET
+   s\" : GEN ( -- ) s\" : MADE ( n -- n ) ;\" evaluate-closed ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s\" : LATE ( -- ) 0 MADE drop s\" x\" 1 die ;" SB-APPEND LF+
+   s" : V ( -- n ) LATE ;" SB-APPEND LF+
+   s" : JN ( bool -- n ) if LATE else 5 then ;" SB-APPEND LF+
+   s" : JT ( n bool -- n ) if drop LATE then ;" SB-APPEND LF+
+   s" : A ( -- n ) 0 MADE ;" SB-APPEND LF+
+   s" : F ( bool -- n ) if A else LATE then ;" SB-APPEND LF+
+   s" : G ( bool -- n ) F 1 + ;" SB-APPEND LF+
+   s" : FX ( bool -- n ) if 5 exit then LATE ;" SB-APPEND LF+
+   s" : VP ( ^a -- ^n ) LATE ;" SB-APPEND LF+
+   s" : K1 ( n -- n ) case 1 of LATE endof 2 of 5 endof 7 swap endcase ;" SB-APPEND LF+
+   s" require src/lib/adt/nullable.f" SB-APPEND LF+
+   s" : M1 ( nullable<u8> -- n ) MATCH nullable none OF LATE ENDOF some OF c@ ENDOF ;MATCH ;"
+   SB-APPEND LF+
+   s" : L1 ( n -- n ) begin drop LATE again ;" SB-APPEND LF+
+   s" : L2 ( n -- ) 3 0 do drop LATE loop ;" SB-APPEND LF+
+   s" : L4 ( n -- n ) begin dup 0 > while drop LATE repeat ;" SB-APPEND LF+
+   s" maydie-end.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 15 T=
+   2 s" ;" 4 19 117 118 JOIN-AT
+   s" a join whose arm may never return and leaves other rows" T-LABEL
+   3 s" then" 5 35 153 157 JOIN-AT
+   4 s" then" 6 35 194 198 JOIN-AT
+   s" a join whose every arm may never return, and a call of it" T-LABEL
+   6 s" then" 8 34 256 260 JOIN-AT
+   7 s" 1" 9 21 283 284 MAYDIE-AT
+   s" an exit's rows joined with an end that may never return" T-LABEL
+   8 s" ;" 10 40 328 329 JOIN-AT
+   s" a body that may never return, which would make its type variable concrete" T-LABEL
+   9 s" ;" 11 24 353 354 JOIN-AT
+   s" the joins of a case, a match and each loop" T-LABEL
+   10 s" endof" 12 45 399 404 JOIN-AT
+   11 s" ENDOF" 14 73 525 530 JOIN-AT
+   12 s" again" 15 33 572 577 JOIN-AT
+   13 s" loop" 16 32 611 615 JOIN-AT
+   14 s" repeat" 17 47 664 670 JOIN-AT
+   s" " 0 LOADED
+   s" a token after a call that may never return" T-LABEL
+   MADE-THEN-DIES
+   s\" : LATE ( n -- n ) MADE drop s\" x\" 1 die ;" SB-APPEND LF+
+   s" : E ( n -- n ) LATE 1 + ;" SB-APPEND LF+
+   s" maydie-token.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 3 T=
+   2 s" 1" 4 21 130 131 MAYDIE-AT
+   s" E-DEAD-CODE" s" :4:21" 70 LOADED-AT
+   s" a token after a call of a catch that may never return" T-LABEL
+   MADE-THEN-DIES
+   s" : LATE ( n -- n ) MADE ;" SB-APPEND LF+
+   s\" : DD ( n -- ) LATE drop s\" x\" 1 die ;" SB-APPEND LF+
+   s" : C9 ( n -- n n ) [: DD ;] catch ;" SB-APPEND LF+
+   s" : E ( n -- n ) C9 drop ;" SB-APPEND LF+
+   s" maydie-catch.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 5 T=
+   2 s" drop" 4 20 112 116 MAYDIE-AT
+   3 5 28 158 163 CATCH-AT
+   4 s" drop" 6 19 184 188 MAYDIE-AT
+   s" E-DEAD-CODE" s" :6:19" 70 LOADED-AT ;
 
 \ The check cannot follow MADE, so it does not know whether DV divides by what it
 \ takes: the load decides a literal 0 handed to DV or to a word that hands it on.
@@ -4901,6 +4990,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-QUOT-LEFT-FACT
    TEST-PAYLOAD-QUOT
    TEST-CATCH-LEFT
+   TEST-MAYDIE-LEFT
    TEST-ZERO-LEFT
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON

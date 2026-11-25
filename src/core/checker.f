@@ -1322,7 +1322,9 @@ global
 10 constant DW-QUOT          \ a quotation only the run can judge: whether it is kept, or what it does
 11 constant DW-TAKES         \ a type only the run can tell a word takes
 12 constant DW-ZERO          \ a literal 0 only the run can tell a word divides by or throws
+13 constant DW-MAYDIE        \ a token after a call only the run can tell returns
 private
+14 constant DW-MAYJOIN       \ a join or end of a path on which only the run can tell a call returns
 
 \ Unification trail: one entry (id << 4 | tag) per binding, compression link, provenance,
 \ kind or scope raise, run record or left call.
@@ -1334,6 +1336,8 @@ variable TRAIL-PIN   \ trail height + 1 where the rejection's rows were pinned (
 variable LEFT-CALL   \ 1 + the start of the first token only the run can judge, 0 none
 variable LEFT-END    \ that token's end
 variable LEFT-WHY    \ its DW- code
+PTR-VARIABLE LEFT-NAME-A  variable LEFT-NAME-U   \ the call it names, empty for none
+PTR-VARIABLE MAY-CALL-A  variable MAY-CALL-U     \ the call that made the path PATH-MAY
 variable TAKES-LEFT  \ -1 once a token is left for DW-TAKES, though LEFT-CALL holds an earlier one
 }SCRATCH
 : TRAIL ( -- ^n ) TRAIL-P @ ;
@@ -1548,6 +1552,8 @@ variable FV   0 FV !   \ the next var id FRESH hands out
 4 constant CTL-BARRIER
 \ CTL-OPAQUE: a call may run a body the check deferred, which the load reads.
 1 61 lshift constant CTL-OPAQUE
+\ CTL-MAYDEAD: a call may have no normal continuation, which only the load can tell.
+1 62 lshift constant CTL-MAYDEAD
 global
 \ CTL-RENDERS means a call may define words, or open, add to or close a
 \ definition, at run time that no source text spells.
@@ -4227,11 +4233,18 @@ variable FAILSET   \ a failure is pinned
 variable FAILB  variable FAILE   \ the pin's span, the current token's while no failure is pinned
 
 \ The trail holds the record, so a trial taken back takes it back. A pinned
-\ failure decides the body, so a call after it records nothing.
-: LEFT-CALL! ( n -- ) {: why:n :}
+\ failure decides the body, so a call after it records nothing. The record
+\ names the call NA NU, empty for none.
+: LEFT-NAMED! ( str n -- ) {: na:^ nu:n why:n :}
    LEFT-CALL @ 0 <>  FAILSET @ 0 <>  or IF EXIT THEN
    0 6 TRAIL-PUSH
-   FAILB @ 1+ LEFT-CALL !  FAILE @ LEFT-END !  why LEFT-WHY ! ;
+   FAILB @ 1+ LEFT-CALL !  FAILE @ LEFT-END !  why LEFT-WHY !
+   na LEFT-NAME-A !  nu LEFT-NAME-U ! ;
+
+: LEFT-CALL! ( n -- ) {: why:n :} NULL-PTR 0 why LEFT-NAMED! ;
+
+: MAY-CALL! ( str -- ) MAY-CALL-U !  MAY-CALL-A ! ;
+: MAY-CALL$ ( -- str ) MAY-CALL-A @ MAY-CALL-U @ ;
 
 \ An NS-LEFT variable is a block part: it binds a variable, which takes its
 \ state, or a block's scope, which only the run can judge.
@@ -5716,10 +5729,14 @@ variable XFACT
 PTR-VARIABLE DEADTA  variable DEADTU
 }SCRATCH
 0 constant PATH-LIVE
-1 constant PATH-DEAD
+1 constant PATH-MAY
+2 constant PATH-DEAD
 : PATH! ( n -- ) PATH ! ;
 : PATH-LIVE? ( -- bool ) PATH @ PATH-LIVE = ;
+: PATH-MAY? ( -- bool ) PATH @ PATH-MAY = ;
 : PATH-DEAD? ( -- bool ) PATH @ PATH-DEAD = ;
+\ The state two paths join to: the least of the two in the order above.
+: PATH-JOIN ( n n -- n ) min ;
 
 \ A fresh check's walk state over the term pools as they stand.
 : NEW-WALK ( -- )
@@ -6034,12 +6051,14 @@ variable MDIAG-CELL   \ one-cell, step and moved-linear rules: the layout type a
 variable MDIAG-CELL-VAR   \ one-cell, step and moved-linear rules: that variable's id; fact rules: FACT-TERM; stale reads: STALE-SELF
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
 variable DEFER-STOP   \ -1 when the next deferral warning is where the check stops
+PTR-VARIABLE DEFER-NAME-A  variable DEFER-NAME-U   \ the call it names, empty for none
 }SCRATCH
 
-\ The source pre-pass records a deferral's cause, and whether the check stops
-\ there, before it reports the deferral; the warning reads and clears both.
-: CHECKER-DEFER-WHY! ( n bool -- ) {: why:n stop:bool :}
-   why DEFER-WHY !
+\ The source pre-pass records a deferral's cause, the call it names and whether
+\ the check stops there, before it reports the deferral; the warning reads and
+\ clears them.
+: CHECKER-DEFER-WHY! ( n str bool -- ) {: why:n na:^ nu:n stop:bool :}
+   why DEFER-WHY !  na DEFER-NAME-A !  nu DEFER-NAME-U !
    stop IF -1 ELSE 0 THEN DEFER-STOP ! ;
 
 : MDIAG! ( n -- ) {: code:n :}
@@ -6378,8 +6397,8 @@ $FFFFFFFFFFFF constant XMASK-ALL         \ every window cell intact
 $FFFFF constant XFER-MASK-ALL
 20 constant XFER-DMASK-SHIFT
 40 constant XFER-RMASK-SHIFT
-\ the control flags, the defer bit, CTL-NAMES, CTL-GENERATES, CTL-ROOTS and CTL-OPAQUE
-$7FFFF 1 60 lshift or 1 61 lshift or constant XFER-FLAG-MASK
+\ the control flags, the defer bit, CTL-NAMES, CTL-GENERATES, CTL-ROOTS, CTL-OPAQUE and CTL-MAYDEAD
+$7FFFF 1 60 lshift or 1 61 lshift or 1 62 lshift or constant XFER-FLAG-MASK
 
 : XFER-PACK ( n n n -- n ) {: flags:n dmask:n rmask:n :}
    flags XFER-FLAG-MASK and
@@ -6410,7 +6429,8 @@ $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
 
 \ Control word bits: 0-7 and 13-18 flags with 16 the defer bit, 8-12 the INTRINSIC id, 19 the verifier
-\ query's rejected-name mark, 20-39 and 40-59 the intact masks, 60 CTL-ROOTS, 61 CTL-OPAQUE.
+\ query's rejected-name mark, 20-39 and 40-59 the intact masks, 60 CTL-ROOTS, 61 CTL-OPAQUE,
+\ 62 CTL-MAYDEAD.
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
 CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -6492,6 +6512,7 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    f CTL-GENERATES = IF s" generates" EXIT THEN
    f CTL-ROOTS = IF s" roots" EXIT THEN
    f CTL-OPAQUE = IF s" opaque" EXIT THEN
+   f CTL-MAYDEAD = IF s" may-noret" EXIT THEN
    s" " ;
 
 : TAG>CTL-FLAG ( str -- n )
@@ -18875,8 +18896,9 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 \ A deferral's token in backticks.
 : DW-CODE ( str -- ) {: t:^ tu:n :}
    96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
-\ What the check left to the run at the token t tu, and why.
-: DW-MESSAGE ( str n -- ) {: t:^ tu:n why:n :}
+\ What the check left to the run at the token t tu, and why; NA NU is the call
+\ a DW-MAYJOIN names.
+: DW-MESSAGE ( str n str -- ) {: t:^ tu:n why:n na:^ nu:n :}
    why DW-PARSER = IF
       s" the check leaves the source after " REJECTION:EMIT-STR  t tu DW-CODE
       s"  to the run because no `parses:` row says what it reads" REJECTION:EMIT-STR EXIT
@@ -18930,6 +18952,16 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       s"  on to the run because only the run can tell whether " REJECTION:EMIT-STR
       t tu DW-CODE  s"  divides by or throws its 0" REJECTION:EMIT-STR EXIT
    THEN
+   why DW-MAYDIE = IF
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  on to the run because only the run can tell whether the call before it returns"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-MAYJOIN = IF
+      s" the check leaves this definition from " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  on to the run because only the run can tell whether " REJECTION:EMIT-STR
+      na nu DW-CODE  s"  returns" REJECTION:EMIT-STR EXIT
+   THEN
    s" the check cannot follow the source from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on and leaves it to the run" REJECTION:EMIT-STR ;
 : DW-LABEL ( n -- ) {: why:n :}
@@ -18945,10 +18977,12 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    why DW-TAKES = IF s" a type only the run can judge" REJECTION:EMIT-STR EXIT THEN
    why DW-CATCH = IF s" what it runs may throw" REJECTION:EMIT-STR EXIT THEN
    why DW-ZERO = IF s" a zero only the run can judge" REJECTION:EMIT-STR EXIT THEN
+   why DW-MAYDIE = IF s" follows a call that may never return" REJECTION:EMIT-STR EXIT THEN
+   why DW-MAYJOIN = IF s" a path here may never return" REJECTION:EMIT-STR EXIT THEN
    s" not checked from here" REJECTION:EMIT-STR ;
 \ What lifts the deferral, or what the run does where nothing can; a `parses:`
 \ row's or rendered source's has nothing to write, so no help.
-: DW-HELP ( str n -- ) {: t:^ tu:n why:n :}
+: DW-HELP ( str n str -- ) {: t:^ tu:n why:n na:^ nu:n :}
    why DW-PARSES =  why DW-RENDERED =  or IF EXIT THEN
    REJECTION:HELP
    why DW-PARSER = IF
@@ -18996,6 +19030,15 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       s" keep the words the check leaves to the run out of all that " REJECTION:EMIT-STR
       t tu DW-CODE  s"  calls, and the check judges the 0" REJECTION:EMIT-STR EXIT
    THEN
+   why DW-MAYDIE = IF
+      s" keep the words the check leaves to the run out of all that the call before "
+      REJECTION:EMIT-STR  t tu DW-CODE
+      s"  calls, and the check judges whether it returns" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-MAYJOIN = IF
+      s" keep the words the check leaves to the run out of all that " REJECTION:EMIT-STR
+      na nu DW-CODE  s"  calls, and the check judges whether it returns" REJECTION:EMIT-STR EXIT
+   THEN
    s" rewrite the code from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on with words whose effects the check knows" REJECTION:EMIT-STR ;
 
@@ -19004,18 +19047,19 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 : CHECKER-VERIFY-DEFERRED ( str -- )
    {: a:^ u:n :}
    DEFER-WHY @ {: why:n :}
+   DEFER-NAME-A @ DEFER-NAME-U @ {: na:^ nu:n :}
    DEFER-STOP @ 0 <> {: stop:bool :}
    stop IF s" W-CHECK-STOPPED" ELSE s" W-CHECK-DEFERRED" THEN REJECTION:WARN
-   a u why DW-MESSAGE
+   a u why na nu DW-MESSAGE
    stop IF
       s" ; the check stops at " REJECTION:EMIT-STR  a u DW-CODE
       s"  and checks nothing after it in this file or any file that loads it"
       REJECTION:EMIT-STR
    THEN
    a u REJECTION:AT  why DW-LABEL
-   a u why DW-HELP
+   a u why na nu DW-HELP
    REJECTION:KEEP
-   0 DEFER-WHY !  0 DEFER-STOP ! ;
+   0 DEFER-WHY !  0 DEFER-STOP !  NULL-PTR DEFER-NAME-A !  0 DEFER-NAME-U ! ;
 
 \ The body is asserted, never judged, but what running it may do is what its
 \ calls may do, and one bound nowhere may name any word, so it brings them all.
@@ -19101,6 +19145,9 @@ variable CURSYM
 
 : DEAD-CUR? ( -- bool )
    CTL-FLAGS-CUR CTL-DEAD and 0 <> ;
+
+: MAYDEAD-CUR? ( -- bool )
+   CTL-FLAGS-CUR CTL-MAYDEAD and 0 <> ;
 
 : THROW-CUR? ( -- bool )
    CTL-FLAGS-CUR CTL-THROW and 0 <> ;
@@ -19618,13 +19665,20 @@ variable TCLOSE  variable TBEST  variable TREACH
    IF DPOS @ 0 max ELSE -1 2 rshift THEN {: got:n :}
    MDIAG @ SV-MDIAG @ <>  got 0 >  and IF 1 ELSE 0 THEN  got 2 * + ;
 
-: TRY-EFF ( ^u8 -- bool ) {: h:^ :}
+\ Runs BODY, which answers whether it fit, as a trial taken back; a fit one
+\ keeps its state when KEEP asks.
+: TRIAL? ( [ -- bool ] bool -- bool ) {: body keep:bool :}
    TRIAL-DEPTH @ 1 + TRIAL-DEPTH !
    TRIAL-SAVE
-   h EFF-APPLY
-   OK @ SGBAD @ 0= and  SV-FV @ BASE-ONLY-OPEN? 0= and
-   IF TRIAL-REST-SG RES-TRUE ELSE TRIAL-REACH TREACH !  TRIAL-REST RES-FALSE THEN
-   TRIAL-DEPTH @ 1 - TRIAL-DEPTH ! ;
+   body execute {: fit:bool :}
+   fit keep and IF TRIAL-REST-SG ELSE TRIAL-REST THEN
+   TRIAL-DEPTH @ 1 - TRIAL-DEPTH !
+   fit ;
+
+: TRY-EFF ( ^u8 -- bool ) {: h:^ :}
+   [: h EFF-APPLY
+      OK @ 0 <>  SGBAD @ 0= and  SV-FV @ BASE-ONLY-OPEN? 0= and
+      dup 0= IF TRIAL-REACH TREACH ! THEN ;] RES-TRUE TRIAL? ;
 
 : TRY-PRIMS ( n -- bool ) {: sym:n :}
    0 TSEEN !  0 TSOK !  0 TCLOSE !  -1 TBEST !
@@ -21704,15 +21758,30 @@ variable CF-LOOPS
 \ beside the corresponding data and return rows.
 \
 \ The path machine. PATH is PATH-DEAD where no normal continuation reaches
-\ the current token, else PATH-LIVE; a join takes no rows from a dead input.
+\ the current token, PATH-MAY where the last call may have none, which only
+\ the load can tell, else PATH-LIVE; a join takes no rows from a dead input,
+\ and a PATH-MAY input gives its rows as a live one does while the inputs'
+\ rows fit. Where they do not, in a trial taken back, the join takes each
+\ PATH-MAY input as PATH-DEAD and is left to the run at its token, naming the
+\ call that entered PATH-MAY (DW-MAYJOIN, MAY-JOIN, MAY-CALL!): at most one
+\ input with rows is left, which always fits; with none
+\ left, the rest of the body is left to the run (UNSEEN). Every join of two
+\ paths takes it: then, endof, endcase, a match branch's end, the back edge at
+\ again, repeat, loop and +loop, and the exits' fold at ;, ;] and does>.
 \   a call or token that never returns, exit, leave, again   -> PATH-DEAD
+\   a call of a CTL-MAYDEAD word                             -> PATH-MAY
 \   the start of a body, a quotation, an else arm, the arm
 \   after endof, a match branch                              -> PATH-LIVE
+\   on PATH-MAY, a token DEAD-CLOSE? does not admit   -> PATH-LIVE, left to the
+\                                                        run (DW-MAYDIE)
+\   ; on PATH-MAY  -> PATH-LIVE if the rows fit, else PATH-DEAD, left to the run
+\                     (DW-MAYJOIN)
 \   ;]                         -> the enclosing body's PATH, saved in CF.XDP
 \   begin, while, until        -> unchanged
 \ CF.DED holds the state a frame's end has so far: the if arm's at else; a
-\ do's is PATH-LIVE once ?do or leave reaches its exit row; a case's is
-\ PATH-LIVE once an arm reaches endcase. A join is PATH-LIVE when any input is:
+\ do's is PATH-LIVE once ?do or leave reaches its exit row; a case's is the
+\ join of the arms that reach endcase. A join is PATH-LIVE when any input is,
+\ else PATH-MAY when any input is, else PATH-DEAD (PATH-JOIN):
 \   then         the two arms; without an else, the false arm makes it live
 \   loop, +loop  the body's end and CF.DED
 \   endcase      CF.DED, which the default arm joins
@@ -21838,10 +21907,10 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    #CFC @ 2 - ;
 
 : CF-CASE-HAS? ( n -- bool ) {: idx:n :}
-   idx CF-ROW CF.DED @ PATH-LIVE = ;
+   idx CF-ROW CF.DED @ PATH-DEAD <> ;
 
 : CF-CASE-HAS! ( n -- ) {: idx:n :}
-   PATH-LIVE idx CF-ROW CF.DED ! ;
+   idx CF-ROW CF.DED @ PATH @ PATH-JOIN idx CF-ROW CF.DED ! ;
 
 : CF-CASE-DATA@ ( n -- n ) {: idx:n :}
    idx CF-ROW CF.SB @ ;
@@ -21986,7 +22055,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    THEN ;
 
 : CHECK-RETURNS? ( -- bool )
-   PATH-LIVE? XSET @ 0 <> or ;
+   PATH-DEAD? 0=  XSET @ 0 <> or ;
 
 \ A quotation literal declares no return clause, so `;]` seals its return row:
 \ it leaves the row as it found it. Unsealed, `[: >r ;] execute r>` and
@@ -22351,6 +22420,39 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    CF-TOP CF.FA @ FACTS !
    DCUR @ ROW-VIEW DCUR !  RCUR @ ROW-VIEW RCUR ! ;
 
+\ Whether the join of PATH with another input in state OTHER, whose rows ROWS
+\ joins as two live ones, is left to the run: an input is PATH-MAY, and in a
+\ trial taken back the rows do not fit.
+: MAY-LEFT? ( [ -- ] n -- bool ) {: rows other:n :}
+   PATH-DEAD?  other PATH-DEAD = or IF RES-FALSE EXIT THEN
+   PATH-MAY?  other PATH-MAY = or 0= IF RES-FALSE EXIT THEN
+   OK @ 0= IF RES-FALSE EXIT THEN
+   [: rows execute  OK @ 0 <> ;] RES-FALSE TRIAL? 0= ;
+
+\ That join: answers OTHER as it takes it and sets PATH so.
+: MAY-JOIN ( [ -- ] n -- n ) {: rows other:n :}
+   rows other MAY-LEFT? 0= IF other EXIT THEN
+   MAY-CALL$ DW-MAYJOIN LEFT-NAMED!
+   PATH-MAY?  other PATH-MAY =  and IF TOKEN-DEAD!  UNSEEN-RAISE  PATH-DEAD EXIT THEN
+   PATH-MAY? IF MAY-CALL$ DEAD-OWNER!  PATH-DEAD PATH! THEN
+   other PATH-MAY = IF PATH-DEAD ELSE other THEN ;
+
+\ The exits' rows join the body's end.
+: EXITS-JOIN ( -- )
+   XROW @ DCUR @ XRROW @ RCUR @
+   XFACT @ FACTS @ CFM-EXIT CF-MEET-FACTS
+   XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE ;
+
+\ The exits' fold once their join set PATH: a dead end takes the exits' rows.
+: EXITS-TAKE ( -- )
+   PATH-DEAD? IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS ! ELSE EXITS-JOIN THEN ;
+
+\ The join of the exits, a live input, with the end at the current token.
+: FOLD-EXITS ( -- )
+   XSET @ 0= IF EXIT THEN
+   [: EXITS-JOIN ;] PATH-LIVE MAY-JOIN drop
+   EXITS-TAKE ;
+
 : CF-IF
    CF-TEST-ID {: test:n :}
    COND-UNIFORM? {: uni:bool :}
@@ -22365,24 +22467,28 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    7 DCUR @ 0 RCUR @ 0 CF-PUSH
    PATH-DEAD CF-TOP CF.DED ! ;
 
+: CF-CASE-JOIN ( n -- ) {: idx:n :}
+   idx CF-CASE-DATA@ DCUR @ idx CF-CASE-RET@ RCUR @
+   idx CF-ROW CF.FB @ FACTS @ CFM-EXIT CF-MEET-FACTS
+   idx CF-CASE-DATA@ DCUR @ idx CF-CASE-RET@ RCUR @
+   idx CF-ROW CF.FB @ FACTS @ CF-JOIN-LIVE
+   idx CF-ROW CF.LB @ CF-LOOPS= ;
+
 : CF-CASE-ACCUM ( n -- ) {: idx:n :}
+   [: idx CF-CASE-JOIN ;] idx CF-ROW CF.DED @ MAY-JOIN idx CF-ROW CF.DED !
    PATH-DEAD? IF EXIT THEN
    idx CF-CASE-HAS? IF
-      idx CF-CASE-DATA@ DCUR @ idx CF-CASE-RET@ RCUR @
-      idx CF-ROW CF.FB @ FACTS @ CFM-EXIT CF-MEET-FACTS
-      idx CF-CASE-DATA@ DCUR @ idx CF-CASE-RET@ RCUR @
-      idx CF-ROW CF.FB @ FACTS @ CF-JOIN-LIVE
+      idx CF-CASE-JOIN
       DCUR @ idx CF-CASE-DATA!
       RCUR @ idx CF-CASE-RET!
       FACTS @ idx CF-ROW CF.FB !
-      idx CF-ROW CF.LB @ CF-LOOPS=
    ELSE
       DCUR @ idx CF-CASE-DATA!
       RCUR @ idx CF-CASE-RET!
       FACTS @ idx CF-ROW CF.FB !
       CF-LOOPS @ idx CF-ROW CF.LB !
-      idx CF-CASE-HAS!
-   THEN ;
+   THEN
+   idx CF-CASE-HAS! ;
 
 
 : CF-OF ( -- )
@@ -22410,10 +22516,10 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 
 : CF-ENDCASE ( -- )
    7 7 MD-CLOSES-NOTHING CF-AT? IF
-      PATH-LIVE? IF STEP-N-IN THEN
+      PATH-DEAD? 0= IF STEP-N-IN THEN
       #CFC @ 1 - CF-CASE-ACCUM
-      CF@DED PATH-LIVE = IF
-         CF@B DCUR !  CF@RB RCUR !  PATH-LIVE PATH!
+      CF@DED? 0= IF
+         CF@B DCUR !  CF@RB RCUR !  CF@DED PATH!
          CF-TOP CF.FB @ FACTS !
          CF@LB CF-LOOPS !
       ELSE
@@ -22441,48 +22547,53 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
      CF-LOC-REST
    THEN THEN ;
 
+: CF-ARMS-JOIN ( -- )
+   CF@B DCUR @ CF@RB RCUR @
+   CF-TOP CF.FB @ FACTS @ CFM-ARMS CF-MEET-FACTS
+   CF@B DCUR @ MD-ARMS-DEPTH CF-ARMS-DEPTH
+   CF@B DCUR @ CF@RB RCUR @ CF-TOP CF.FB @ FACTS @ CF-JOIN-LIVE
+   CF@LB CF-LOOPS= ;
+
 : CF-THEN-ELSE-MERGE ( -- )
+   [: CF-ARMS-JOIN ;] CF@DED MAY-JOIN CF-TOP CF.DED !
    PATH-DEAD? {: else-dead:bool :}
    CF@DED? {: if-dead:bool :}
    else-dead IF
-      if-dead IF
-         PATH-DEAD PATH!
-      ELSE
-         CF@B DCUR !  CF@RB RCUR !  CF-TOP CF.FB @ FACTS !  PATH-LIVE PATH!
+      if-dead 0= IF
+         CF@B DCUR !  CF@RB RCUR !  CF-TOP CF.FB @ FACTS !  CF@DED PATH!
          CF@LB CF-LOOPS !
       THEN
    ELSE
-      if-dead IF
-         PATH-LIVE PATH!
-      ELSE
-         CF@B DCUR @ CF@RB RCUR @
-         CF-TOP CF.FB @ FACTS @ CFM-ARMS CF-MEET-FACTS
-         CF@B DCUR @ MD-ARMS-DEPTH CF-ARMS-DEPTH
-         CF@B DCUR @ CF@RB RCUR @ CF-TOP CF.FB @ FACTS @ CF-JOIN-LIVE
-         PATH-LIVE PATH!
-         CF@LB CF-LOOPS=
+      if-dead 0= IF
+         CF-ARMS-JOIN
+         CF@DED PATH @ PATH-JOIN PATH!
       THEN
    THEN ;
+
+\ The if arm that reaches then joins the false arm, which starts at the if.
+: CF-FALSE-JOIN ( -- )
+   DCUR @ {: true-d:n :}  RCUR @ {: true-r:n :}
+   FACTS @ {: true-f:n :}
+   CF@A {: entry-d:n :}  CF@RA {: entry-r:n :}
+   CF-TOP CF.FA @ FACTS !
+   entry-d DCUR !  entry-r RCUR !
+   CF-TOP CF.FT @ RES-FALSE CF-ARM-FACT
+   DCUR @ true-d RCUR @ true-r
+   FACTS @ true-f CFM-ARMS CF-MEET-FACTS
+   true-d DCUR @ MD-IF-DEPTH CF-ARMS-DEPTH
+   DCUR @ true-d RCUR @ true-r FACTS @ true-f CF-JOIN-LIVE
+   CF@LA CF-LOOPS= ;
 
 : CF-THEN
    1 2 MD-CLOSES-NOTHING CF-AT? IF
      CF@K 1 = IF                                          \ IF ... THEN (no else)
+        [: CF-FALSE-JOIN ;] PATH-LIVE MAY-JOIN drop
         PATH-DEAD? IF
            CF@A DCUR !  CF@RA RCUR !  CF-ENTRY-FACTS
            CF-TOP CF.FT @ RES-FALSE CF-ARM-FACT
            CF@LA CF-LOOPS !  PATH-LIVE PATH!
         ELSE
-           DCUR @ {: true-d:n :}  RCUR @ {: true-r:n :}
-           FACTS @ {: true-f:n :}
-           CF@A {: entry-d:n :}  CF@RA {: entry-r:n :}
-           CF-TOP CF.FA @ FACTS !
-           entry-d DCUR !  entry-r RCUR !
-           CF-TOP CF.FT @ RES-FALSE CF-ARM-FACT
-           DCUR @ true-d RCUR @ true-r
-           FACTS @ true-f CFM-ARMS CF-MEET-FACTS
-           true-d DCUR @ MD-IF-DEPTH CF-ARMS-DEPTH
-           DCUR @ true-d RCUR @ true-r FACTS @ true-f CF-JOIN-LIVE
-           CF@LA CF-LOOPS=
+           CF-FALSE-JOIN  PATH-LIVE PATH!
         THEN
         CF-LOC-REST  CF-DROP
      ELSE                                                 \ IF ... ELSE ... THEN
@@ -22533,15 +22644,18 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
      CF-LOC-REST  CF-DROP THEN ;
 
 
+\ The body's end joins the loop's entry row, with LOOPS the live loops there.
+: CF-BACK-JOIN ( n -- ) {: loops:n :}
+   CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
+   CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
+   CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
+   OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
+   loops CF-LOOPS= ;
+
 : CF-AGAIN ( -- )
    3 3 MD-CLOSES-NOTHING CF-AT? IF
-     PATH-LIVE? IF
-        CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
-        CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
-        OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
-        CF@LA CF-LOOPS=
-     THEN
+     [: CF@LA CF-BACK-JOIN ;] PATH-LIVE MAY-JOIN drop
+     PATH-DEAD? 0= IF CF@LA CF-BACK-JOIN THEN
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
      CF-LOC-REST  CF-DROP  PATH-DEAD PATH! THEN ;
 
@@ -22558,13 +22672,8 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 
 : CF-REPEAT
    4 4 MD-CLOSES-NOTHING CF-AT? IF
-     PATH-LIVE? IF
-        CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
-        CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
-        OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
-        CF@LA CF-LOOPS=
-     THEN
+     [: CF@LA CF-BACK-JOIN ;] PATH-LIVE MAY-JOIN drop
+     PATH-DEAD? 0= IF CF@LA CF-BACK-JOIN THEN
      CF@B DCUR !  CF@RB RCUR !  CF-LOOP-FACTS
      CF@LB CF-LOOPS !  PATH-LIVE PATH!
      CF-LOC-REST  CF-DROP THEN ;
@@ -22600,13 +22709,11 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 \ A DO whose whole body returns or throws has no normal continuation.
 : CF-LOOP
    5 5 CF-LOOP-WHY CF-AT? IF
+     [: #CFC @ CF-BACK-JOIN ;] PATH-LIVE MAY-JOIN drop
      PATH-DEAD? IF CF@DED PATH!
      ELSE
-        CF@A DCUR @ CF@RA RCUR @ CFM-LOOP CF-MEET
-        CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
-        OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
-        #CFC @ CF-LOOPS=
+        #CFC @ CF-BACK-JOIN
+        CF@DED PATH @ PATH-JOIN PATH!
      THEN
      CF@LA CF-LOOPS !
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
@@ -22614,7 +22721,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 
 
 : CF-+LOOP
-   PATH-LIVE? IF STEP-N-IN THEN
+   PATH-DEAD? 0= IF STEP-N-IN THEN
    CF-LOOP ;
 
 : CF-I ( -- )
@@ -22695,14 +22802,7 @@ variable QTMP
 
 : CF-SEMIQ
    6 6 MD-CLOSES-NOTHING CF-AT? IF
-     XSET @ IF
-       PATH-DEAD? IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
-       ELSE
-          XROW @ DCUR @ XRROW @ RCUR @
-          XFACT @ FACTS @ CFM-EXIT CF-MEET-FACTS
-          XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE
-       THEN
-     THEN
+     FOLD-EXITS
      QUOT-RSEAL
      DCUR @ ROW-NO-PROOF DCUR !  RCUR @ ROW-NO-PROOF RCUR !
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
@@ -22738,6 +22838,7 @@ $10 constant MF.BASE-OFF
 $18 constant MF.RBASE-OFF
 $20 constant MF.OUT-OFF
 $28 constant MF.ROUT-OFF
+\ MF.HAS: the join of the path states of the branches that reached their end so far.
 $30 constant MF.HAS-OFF
 $38 constant MF.SEEN-OFF
 $40 constant MF.VCNT-OFF
@@ -22899,26 +23000,30 @@ variable MTCH-W                      \ the bundle width the walk below really co
    MD-SCRUT MDIAG! ;
 
 
+: MATCH-JOIN ( -- )
+   MF-CUR MF.OUT @ DCUR @ MF-CUR MF.ROUT @ RCUR @
+   #CFC @ 2 - CF-ROW CF.FB @ FACTS @ CFM-EXIT CF-MEET-FACTS
+   MF-CUR MF.OUT @ DCUR @ MF-CUR MF.ROUT @ RCUR @
+   #CFC @ 2 - CF-ROW CF.FB @ FACTS @ CF-JOIN-LIVE
+   #CFC @ 2 - CF-ROW CF.LB @ CF-LOOPS= ;
+
 : MATCH-ACCUM ( -- )
+   [: MATCH-JOIN ;] MF-CUR MF.HAS @ MAY-JOIN MF-CUR MF.HAS !
    PATH-DEAD? IF EXIT THEN
-   MF-CUR MF.HAS @ 0 <> IF
+   MF-CUR MF.HAS @ PATH-DEAD <> IF
       FAILSET @ {: fs0:n :}                   \ SUNI-JOIN pins the token itself
-      MF-CUR MF.OUT @ DCUR @ MF-CUR MF.ROUT @ RCUR @
-      #CFC @ 2 - CF-ROW CF.FB @ FACTS @ CFM-EXIT CF-MEET-FACTS
-      MF-CUR MF.OUT @ DCUR @ MF-CUR MF.ROUT @ RCUR @
-      #CFC @ 2 - CF-ROW CF.FB @ FACTS @ CF-JOIN-LIVE
+      MATCH-JOIN
       DCUR @ MF-CUR MF.OUT !
       RCUR @ MF-CUR MF.ROUT !
       FACTS @ #CFC @ 2 - CF-ROW CF.FB !
-      #CFC @ 2 - CF-ROW CF.LB @ CF-LOOPS=
       OK @ 0=  fs0 0=  and  MDIAG @ 0=  and IF MD-JOIN MDIAG ! THEN
    ELSE
       DCUR @ MF-CUR MF.OUT !
       RCUR @ MF-CUR MF.ROUT !
       FACTS @ #CFC @ 2 - CF-ROW CF.FB !
       CF-LOOPS @ #CFC @ 2 - CF-ROW CF.LB !
-      -1 MF-CUR MF.HAS !
-   THEN ;
+   THEN
+   MF-CUR MF.HAS @ PATH @ PATH-JOIN MF-CUR MF.HAS ! ;
 
 
 : MATCH-ENDOF ( -- )   \ dispatcher-guarded: top CFS frame is the kind-10 branch
@@ -22944,12 +23049,12 @@ variable MTCH-W                      \ the bundle width the walk below really co
       THEN
       0 OK !  -1 MREJ !
    THEN
-   MF-CUR MF.HAS @ 0 <> IF
+   MF-CUR MF.HAS @ PATH-DEAD <> IF
       MF-CUR MF.OUT @ DCUR !
       MF-CUR MF.ROUT @ RCUR !
       CF-TOP CF.FB @ FACTS !
       CF@LB CF-LOOPS !
-      PATH-LIVE PATH!
+      MF-CUR MF.HAS @ PATH!
    ELSE
       MF-CUR MF.BASE @ DCUR !
       MF-CUR MF.RBASE @ RCUR !
@@ -24360,17 +24465,28 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 : CF-OPEN? ( -- bool )
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  CHECKER-MATCH-MODE @ 0 <>  or ;
 
-\ Pins the closer CA CU one past the body's end, or the given closer at its own byte.
-: CLOSER-PIN! ( str -- )
+\ The span of closer CA CU: one past the body's end, or the given closer's own bytes.
+: CLOSER-SPAN ( str -- n n )
    {: ca:^ cu:n :}
    TBASE @ REJECTION:CLOSES? IF
-      REJECTION:CLOSER$ FAIL-PIN!
-      REJECTION:CLOSER$ drop TBASE @ - FAILB !
-   ELSE
-      ca cu FAIL-PIN!
-      TBLEN @ FAILB !
+      REJECTION:CLOSER$ swap TBASE @ -  tuck +  EXIT
    THEN
-   FAILB @ FAILTU @ + FAILE ! ;
+   TBLEN @  dup cu + ;
+
+\ Pins the closer CA CU at its span.
+: CLOSER-PIN! ( str -- )
+   {: ca:^ cu:n :}
+   TBASE @ REJECTION:CLOSES? IF REJECTION:CLOSER$ ELSE ca cu THEN FAIL-PIN!
+   ca cu CLOSER-SPAN  FAILE !  FAILB ! ;
+
+\ Leaves the body to the run at closer CA CU for WHY, naming the call NA NU; the
+\ current token's span stays.
+: CLOSER-LEFT! ( str str n -- )
+   {: ca:^ cu:n na:^ nu:n why:n :}
+   FAILB @ FAILE @ {: b:n e:n :}
+   ca cu CLOSER-SPAN  FAILE !  FAILB !
+   na nu why LEFT-NAMED!
+   b FAILB !  e FAILE ! ;
 
 \ Rejects a structure open at closer CA CU, or at the given closer, as the load's
 \ compiler does, unless a compile rejection or a token left to the run holds the pin.

@@ -1,9 +1,9 @@
 ---
-title: Say that a left body may never return
+title: Say that a quotation may never return
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-25T20:46:50.566573+01:00"
 ---
 
-Problem: a body the check leaves to the run records nothing that says whether it returns, so its callers are judged as if it did, both ways. With ': GEN ( -- ) s" : MADE ( n -- n ) ;" evaluate-closed ;' and GEN before, ': LATE ( -- ) 0 MADE drop s" x" 1 die ; : V ( -- n ) LATE ;' loads, and the check says E-MISMATCH at V. With ': GEN ( -- ) s" : MADE ( n -- n ) dup drop ;" evaluate-closed ;' and GEN before, ': LATE ( n -- n ) MADE drop s" x" 1 die ; : E ( n -- n ) LATE 1 + ;' passes the check, and the load rejects E-DEAD-CODE at 4:21; so does a body left at a catch that never returns: ': LATE ( n -- n ) MADE ; : DD ( n -- ) LATE drop s" x" 1 die ; : C9 ( n -- n n ) [: DD ;] catch ; : E ( n -- n ) C9 drop ;' (load E-DEAD-CODE at C9 in E). Acceptance: the check and the load agree on all three programs: none rejected by the check alone, and a caller with code after a call of a left body that may never return is W-CHECK-DEFERRED at that call; diag-position cases. Depends: none. Claim: unassigned.
+Problem: a quotation literal whose body ends on a call that may never return is taken as returning (src/core/checker.f:22816, `PATH-DEAD? XSET @ 0= and {: noret:bool :}`), so the check and the load disagree. With LATE a left body that may never return: ': Q ( -- n ) [: LATE ;] execute 1 ;' loads with E-DEAD-CODE at 4:33 and passes the check; ': Q2 ( -- n ) [: LATE ;] execute ;' loads and the check says E-MISMATCH; the same through ': RUN2 ( R [ R -- S ] -- S )'. Acceptance: the quotation carries a may-never-return fact that `execute`, `catch` and a `[ R -- S ]` callee read; the check and the load agree on all three programs, and a caller with code after such a run is W-CHECK-DEFERRED there; diag-position cases. Depends: none. Claim: unassigned.

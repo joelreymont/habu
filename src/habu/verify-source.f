@@ -1554,12 +1554,13 @@ variable DEFER-REPORT                            \ the child reports deferrals
 \ set it, and each writes the packet that locates it when the child asks for one.
 variable DEFER-SEEN
 
-\ WHY, the deferral's cause or 0, picks its warning's message and help; a site
-\ that stops the scan sets TICK-REMAINDER before it reports.
+\ WHY, the deferral's cause or 0, picks its warning's message and help, which
+\ name the call NA NU, empty for none; a site that stops the scan sets
+\ TICK-REMAINDER before it reports.
 CAST: STRETCH-ACTION ( n -- [ str -- ] )
-: REPORT-STRETCH ( str n -- )
-   TICK-REMAINDER @ CHECKER-DEFER-WHY!
-   NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
+: REPORT-STRETCH ( str n str -- ) {: a:^ u:n why:n na:^ nu:n :}
+   why na nu TICK-REMAINDER @ CHECKER-DEFER-WHY!
+   a u NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
 
 \ A deferral of these causes runs no code the check does not follow, so it
 \ opens or closes no declaration.
@@ -1595,13 +1596,13 @@ CB-CLOSED!
    why DW-RENDERER = IF LEAVE-OPEN-FUNCTION EXIT THEN
    LEAVE-FUNCTION ;
 
-: REPORT-DEFERRAL ( str n -- )
-   {: a:^ u:n why:n :}
+: REPORT-DEFERRAL ( str n str -- )
+   {: a:^ u:n why:n na:^ nu:n :}
    -1 DEFER-SEEN !
-   DEFER-REPORT @ IF a u why REPORT-STRETCH THEN ;
+   DEFER-REPORT @ IF a u why na nu REPORT-STRETCH THEN ;
 
-: DEFER-AT ( str n -- )
-   dup DEFER-DECL REPORT-DEFERRAL ;
+: DEFER-AT ( str n -- ) {: a:^ u:n why:n :}
+   why DEFER-DECL  a u why NULL-PTR 0 REPORT-DEFERRAL ;
 
 : QUIET-TYPE-CLEAR ( -- )
    CHECKER-SIG-UNRES-TAKE drop 2drop ;
@@ -1612,8 +1613,8 @@ CB-CLOSED!
 \ A body the checker deferred to the run (verdict 2) is reported where the
 \ checker's judgment of it stopped, when the child reports deferrals, as a
 \ deferred stretch is at the token that opened it.
-CAST: DEFERRED-BODY-ACTION ( n -- [ -- str n ] )
-: DEFERRED-BODY ( -- str n )
+CAST: DEFERRED-BODY-ACTION ( n -- [ -- str n str ] )
+: DEFERRED-BODY ( -- str n str )
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-BODY-OFF OWNER-XT DEFERRED-BODY-ACTION execute ;
 : REPORT-DEFERRED ( n -- )
    2 <> IF EXIT THEN
@@ -1688,6 +1689,8 @@ TYPED-VARIABLE DOES-PARENT-REJECTED bool
 PTR-VARIABLE DOES-CLAUSE-A
 variable DOES-CLAUSE-U
 variable DOES-CLAUSE-WHY
+PTR-VARIABLE DOES-CLAUSE-NAME-A
+variable DOES-CLAUSE-NAME-U
 
 \ The rows move cell by cell as the cells they are.
 : DOES-PARENT-ROOM ( n n -- ) {: u:n c:n :}
@@ -1708,7 +1711,8 @@ variable DOES-CLAUSE-WHY
 
 : REPORT-DOES-CLAUSE ( -- )
    DOES-CLAUSE-U @ 0= IF EXIT THEN
-   DOES-CLAUSE-A @ DOES-CLAUSE-U @ DOES-CLAUSE-WHY @ REPORT-DEFERRAL ;
+   DOES-CLAUSE-A @ DOES-CLAUSE-U @ DOES-CLAUSE-WHY @
+   DOES-CLAUSE-NAME-A @ DOES-CLAUSE-NAME-U @ REPORT-DEFERRAL ;
 
 : TICK-DOES-CHECK ( -- )
    TICK-BODY-A @ TICK-BODY-U @
@@ -1896,7 +1900,8 @@ DYNAMIC-BUFFER TICK-QUAL u8
          clause 0= IF false EXIT THEN
          gate unknown or IF
             clause 2 = IF
-               DEFERRED-BODY DOES-CLAUSE-WHY ! DOES-CLAUSE-U ! DOES-CLAUSE-A !
+               DEFERRED-BODY DOES-CLAUSE-NAME-U ! DOES-CLAUSE-NAME-A !
+               DOES-CLAUSE-WHY ! DOES-CLAUSE-U ! DOES-CLAUSE-A !
             THEN
             TOKEN-A @ {: end:^ :}  TOKEN-U @ {: endu:n :}
             DOES-PARENT-BACK

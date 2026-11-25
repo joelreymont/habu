@@ -347,7 +347,7 @@ EXPORT TFAM:TFL-VPADS
    MTCH-TAGT @ r MF.TERM !
    MTCH-ROW @ r MF.BASE !
    RCUR @ r MF.RBASE !
-   0 r MF.OUT !  0 r MF.ROUT !  0 r MF.HAS !
+   0 r MF.OUT !  0 r MF.ROUT !  PATH-DEAD r MF.HAS !
    fam TFAM-VAR-COUNT@ dup r MF.VCNT !
    MSEEN-ALLOC r MF.SEEN !
    TOKIX @ r MF.TIX !
@@ -524,7 +524,10 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
    0 CALL-DEAD !
    TKF TKFU @ DO-TOK
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
-   OK @ IF DEAD-CUR?  CALL-DEAD @ 0 <> or IF a u DEAD-OWNER! PATH-DEAD PATH! THEN THEN
+   OK @ IF
+      DEAD-CUR?  CALL-DEAD @ 0 <> or IF a u DEAD-OWNER! PATH-DEAD PATH! ELSE
+      MAYDEAD-CUR? IF a u MAY-CALL! PATH-MAY PATH! THEN THEN
+   THEN
    OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF REJECT-DIVBAR THEN THEN THEN
    LITERAL-PAYLOAD-STEP ;
 
@@ -532,7 +535,8 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
 \ before any other; true when it took one. A is its unfolded spelling.
 : MODE-TOK? ( ^u8 -- bool ) {: a:^ :}
    TKF TKFU @ LIVE-TOKEN? 0= IF
-      -1 DEADERR !  0 OK !  TKF TKFU @ DEAD-TOK  RES-TRUE EXIT
+      PATH-MAY? 0= IF -1 DEADERR !  0 OK !  TKF TKFU @ DEAD-TOK  RES-TRUE EXIT THEN
+      DW-MAYDIE LEFT-CALL!  PATH-LIVE PATH!
    THEN
    LMODE @ IF a TKF TKFU @ LOC-TOK  RES-TRUE EXIT THEN
    FIELD-LOAN-PENDING @ IF TKF TKFU @ SCOPE-FIELD-TOK  RES-TRUE EXIT THEN
@@ -963,16 +967,6 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
    ca cu CLOSER-REJECT
    USING-RAISE ;
 
-: CHECK-FOLD-EXITS ( -- )
-   XSET @ IF
-     PATH-DEAD? IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
-     ELSE
-        XROW @ DCUR @ XRROW @ RCUR @
-        XFACT @ FACTS @ CFM-EXIT CF-MEET-FACTS
-        XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE
-     THEN
-   THEN ;
-
 : SGHASR? ( -- bool )
    SGHASR @ 0 <> ;
 
@@ -990,6 +984,35 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
    RCUR @ R-RES  RBROW @ R-RES  = IF EXIT THEN
    FAILSET @ 0=  OK @ and IF 1 RSBAD !  -1 FAILSET ! THEN
    0 OK ! ;
+
+\ Whether a body that ends on PATH-MAY fits its declared rows as one that
+\ returns, as the boundary judges it; the trial is taken back. TRIAL-REST keeps
+\ the NPBAD cells, which NP-CHECK sets first-wins and only it sets: they go here.
+: MAY-ROWS-FIT? ( -- bool )
+   [: CHECK-SIG? IF SGOUT @ SUNI-COERCE THEN
+      CHECK-RBALANCE
+      CHECK-RET-SIG? IF SGROUT @ RSUNI-COERCE THEN
+      CHECK-SIG? OK @ and IF NP-CHECK THEN
+      OK @ 0 <>  NPBAD @ 0=  and ;] RES-FALSE TRIAL?
+   0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM ! ;
+
+\ The step at closer CA CU of a body on PATH-MAY: one whose rows fit is checked
+\ as returning; one whose rows do not, as a dead body is, and is left to the run.
+: MAY-END ( str -- )
+   {: ca:^ cu:n :}
+   PATH-MAY? 0= IF EXIT THEN
+   OK @ 0= IF PATH-LIVE PATH! EXIT THEN
+   MAY-ROWS-FIT? IF PATH-LIVE PATH! EXIT THEN
+   PATH-DEAD PATH!
+   ca cu MAY-CALL$ DW-MAYJOIN CLOSER-LEFT! ;
+
+\ The join of the exits, a live input, with the body's end at closer CA CU,
+\ where a join left to the run is left.
+: CHECK-FOLD-EXITS ( str -- )
+   {: ca:^ cu:n :}
+   XSET @ 0= IF EXIT THEN
+   [: EXITS-JOIN ;] PATH-LIVE MAY-LEFT? IF ca cu MAY-CALL$ DW-MAYJOIN CLOSER-LEFT!  PATH-DEAD PATH! THEN
+   EXITS-TAKE ;
 
 \ An effect too deep to record is uncheckable for it; a deferral would record it, so it
 \ yields; a pinned rejection stands.
@@ -1026,14 +1049,19 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
 : LEFT-AT-CALL? ( -- bool ) DVERD @ VERDICT-DEFERRED =  UNSEEN @ 0=  and ;
 
 \ Where a deferred body is left to the run, in the source the pre-verifier read, not in
-\ its reused body buffer, and a left call's cause as a DW- code, 0 for any other's.
-: CHECKER-VERIFY-DEFERRED-BODY ( -- ^u8 n n )
+\ its reused body buffer, a left call's cause as a DW- code, 0 for any other's, and
+\ the call its record names there, empty for none.
+: CHECKER-VERIFY-DEFERRED-BODY ( -- ^u8 n n str )
    DVERD @ VERDICT-DEFERRED =  LEFT-CALL @ 0 <>  and {: call:bool :}
    call IF LEFT-CALL @ 1 -  LEFT-END @ ELSE FAILB @ FAILE @ THEN {: b:n e:n :}
    TBASE@ b + REJECTION:>SOURCE drop {: start:n :}
    TBASE@ e + REJECTION:>SOURCE drop {: end:n :}
+   call IF LEFT-NAME-U @ ELSE 0 THEN {: nu:n :}
    REJECTION:SOURCE$ drop start +  end start -
-   call IF LEFT-WHY @ ELSE 0 THEN ;
+   call IF LEFT-WHY @ ELSE 0 THEN
+   nu 0= IF NULL-PTR 0 EXIT THEN
+   LEFT-NAME-A @ REJECTION:>SOURCE drop {: at:n :}
+   REJECTION:SOURCE$ drop at +  nu ;
 
 \ `cast: NAME ( in -- out )` is a declaration: the engine's reader keyword
 \ publishes an identity word and asks CHECKER-DEFCAST to prove the declared
@@ -1519,11 +1547,13 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
       DOES-SPLIT @ 0 <> IF s" does>" ELSE s" ;" THEN CLOSER-PIN!
    THEN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
-   CHECK-FOLD-EXITS
+   DOES-SPLIT @ 0 <> IF s" does>" ELSE s" ;" THEN CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
    FIELD-LOAN-PENDING @ IF MD-FIELD-NAME MDIAG! SCOPE-FIELD-REJECT THEN
    CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
    CHECK-NO-BORROW
+   PATH-MAY? {: may:bool :}
+   DOES-SPLIT @ 0 <> IF s" does>" ELSE s" ;" THEN MAY-END
    CHECK-SIG? CHECK-RETURNS? and IF
       CHECK-FRESH-OUTPUT
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN
@@ -1574,7 +1604,8 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
       \ CTL-RENDERS stays for the same reason: the evaluate boundary's is an
       \ axiom, and no body derives it.
       sym CTL-FLAGS-SYM CTL-IDENTITY CTL-RENDERS or CTL-NOMINAL or and CTLNEW !
-      PATH-DEAD? XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
+      may 0=  PATH-DEAD? and  XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
+      may  XSET @ 0= and IF CTLNEW @ CTL-MAYDEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
       CTLNEW @ INHSET @ or CTLNEW !
       TAKES-LEFT @ IF CTLNEW @ CTL-OPAQUE or CTLNEW ! THEN
@@ -1610,11 +1641,12 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
       sym CK-CLOSE!
    THEN
    \ A body left at a token: recorded so a caller binds and a duplicate is rejected,
-   \ with the may-claims the walk saw and CTL-OPAQUE for those it did not.
+   \ with the may-claims the walk saw, CTL-OPAQUE for those it did not, and
+   \ CTL-MAYDEAD: the rest may never return.
    dup VERDICT-DEFERRED =  UNSEEN @ 0 <>  and  NMU @ 0 >  and  CHECK-SIG? and
    TORDER-ACTIVE @ TORDER-PARENT-GATE < and IF
       NMA @ NMU @ CHECK-REC-ADMIT
-      NMA @ NMU @ INHSET @ CTL-OPAQUE or NORET-ADD
+      NMA @ NMU @ INHSET @ CTL-OPAQUE or CTL-MAYDEAD or NORET-ADD
       NMA @ NMU @  NMOFF @ TADDR NMU @  RES-TRUE CHECKER-USIG-CERT-ADD-PENDING
    THEN
    dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and
@@ -2372,11 +2404,12 @@ package CHECK
    \ the token walked last. A clause that walked none names its `;` instead.
    FAILSET @ 0= FAILTU @ 0= and IF s" ;" CLOSER-PIN! THEN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
-   CHECK-FOLD-EXITS
+   s" ;" CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
    FIELD-LOAN-PENDING @ IF MD-FIELD-NAME MDIAG! SCOPE-FIELD-REJECT THEN
    CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN
    CHECK-NO-BORROW
+   s" ;" MAY-END
    CHECK-RETURNS? IF
       CHECK-FRESH-OUTPUT
       OK @ IF SGOUT @ DCUR ! THEN
