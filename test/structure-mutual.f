@@ -1,4 +1,3 @@
-split-str
 \ structure-mutual.f - MUTUAL (src/core/structure-decl.f): two structures that
 \ point at each other load and run, and each MUTUAL rule rejects one program
 \ with its code, reason and token. A rejected MUTUAL leaves its names free, and
@@ -43,23 +42,23 @@ TYPED-VARIABLE LINK-V smlink
    LINK-V SMLINK-OWNER @ SMNODE-FIRST @ SMLINK-NEXT @ SMLINK-OWNER @ SMNODE-ID @ ;
 
 \ REJECTS asserts the text stops the load with a declaration record whose
-\ token ta tu carries the label la lu, raised with code.
-: REJECTS ( ^u8 n ^u8 n ^u8 n n -- )
-   {: sa:^ su:n ta:^ tu:n la:^ lu:n code:n :}
+\ token ta carries the label la, raised with code.
+: REJECTS ( str str str n -- )
+   {: sa:str ta:str la:str code:n :}
    DECL-DIAG:PROSE
-   sa su TEST-EVAL:RC 70 T=
+   sa TEST-EVAL:RC 70 T=
    s\" error[E-BAD-DECLARATION]: bad mutual declaration" DECL-DIAG:HAS? TTRUE
-   ta tu la lu DECL-DIAG:CAUSE? TTRUE
-   code DECL-REJECT:REASON$ la lu DECL-DIAG:SAME? TTRUE
+   ta la DECL-DIAG:CAUSE? TTRUE
+   code DECL-REJECT:REASON$ la DECL-DIAG:SAME? TTRUE
    DECL-DIAG:OFF ;
 
 \ The rejections a multi-error load of the text tallies.
-: TALLY ( ^u8 n -- n ) {: a:^ u:n :}
-   CHECK:MULTI-ERR-BEGIN a u TEST-EVAL:RC drop CHECK:MULTI-ERR-END ;
+: TALLY ( str -- n ) {: s:str :}
+   CHECK:MULTI-ERR-BEGIN s TEST-EVAL:RC drop CHECK:MULTI-ERR-END ;
 
 \ The rejections a multi-error verifier scan of the text tallies.
-: SCAN-TALLY ( str -- n ) {: a:^ u:n :}
-   CHECK:MULTI-ERR-BEGIN [: a u VERIFY:SOURCE-BUF ;] catch drop CHECK:MULTI-ERR-END ;
+: SCAN-TALLY ( str -- n ) {: s:str :}
+   CHECK:MULTI-ERR-BEGIN [: s VERIFY:SOURCE-BUF ;] catch drop CHECK:MULTI-ERR-END ;
 
 \ Definitions after the pair call both members' MAKE and an accessor. Both
 \ members hold a `next`: a field name repeats across members.
@@ -109,7 +108,7 @@ TYPED-VARIABLE LINK-V smlink
    \ Every ;MUTUAL ends the declaration, a member's name position included: the
    \ load and the verifier's scan each reject the MUTUAL and the definition.
    s" MUTUAL smta smtb STRUCTURE ;MUTUAL : SMT-W1 ( -- n ) ;"
-      2dup TALLY 2 T=  SCAN-TALLY 2 T=
+      dup TALLY 2 T=  SCAN-TALLY 2 T=
    \ A pointer reaches no family with a scope parameter. smkb's slot becomes a
    \ scope only in its own field, so that field rejects smka's earlier pointer,
    \ placed at the pointee's name.

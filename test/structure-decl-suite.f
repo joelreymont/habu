@@ -1,4 +1,3 @@
-split-str
 \ structure-decl-suite.f - behavior and rollback suite for the STRUCTURE
 \ declaration front end (src/core/structure-decl.f, package STRUCTURE-DECL).
 \ It asserts reject codes, rendered diagnostics, field-row counts and the
@@ -908,7 +907,7 @@ TYPED-VARIABLE SC-SRC ^VEC:vector<u8>   \ SB holds too few bytes
 TYPED-VARIABLE SC-WANT ^VEC:vector<u8>  \ a record's head and path lines, as long as TMPDIR makes them
 
 : SC-NEW ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
-: SC-FILE ( -- str ) SC-PATH SC-PATH-U @ ;
+: SC-FILE ( -- str ) SC-PATH SC-PATH-U @ >str ;
 : SC-ERR$ ( -- str ) SC-ERR @ VEC:BYTES ;
 : SB-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
 : SC-LINE ( str -- )
@@ -1001,16 +1000,16 @@ TYPED-VARIABLE SC-WANT ^VEC:vector<u8>  \ a record's head and path lines, as lon
    s" --verify-only" CMD:ARG+  SC-FILE CMD:ARG+ ;
 
 : SC-KEEP ( CMD:command -- CMD:command )
-   CMD:ERR$ {: err:^ erru:n :}
-   SC-ERR @ 0 VEC:RESIZE  err erru SC-ERR @ VEC:APPEND ;
+   CMD:ERR$ {: err:str :}
+   SC-ERR @ 0 VEC:RESIZE  err SC-ERR @ VEC:APPEND ;
 
 \ The child's stdin is CMD's empty one.
 : SC-CHECK ( CMD:command -- CMD:command )
    SC-ARGS  ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER
    CMD:RUN-OUTCOME {: oc :}
-   CMD:OUT$ {: out:^ outu:n :}
-   CMD:ERR$ {: err:^ erru:n :}
-   SC-SRC$ out outu err erru oc 70 T-ENDING-EXITED=  SC-KEEP ;
+   CMD:OUT$ {: out:str :}
+   CMD:ERR$ {: err:str :}
+   SC-SRC$ out err oc 70 T-ENDING-EXITED=  SC-KEEP ;
 
 : SC-RUN ( -- )
    SC-FILE SC-SRC$ FS:WRITE-ALL
@@ -1019,21 +1018,24 @@ TYPED-VARIABLE SC-WANT ^VEC:vector<u8>  \ a record's head and path lines, as lon
 : SC-WANT+ ( str -- ) SC-WANT @ VEC:APPEND ;
 : SC-WANT-C ( n -- ) SC-WANT @ VEC:PUSH c! ;
 \ The gutter before `-->` is as wide as PLACE's line number.
-: SC-GUTTER ( str -- ) {: p:^ pu:n :}
-   1 BEGIN p over + c@ $3A <> WHILE 32 SC-WANT-C 1 + REPEAT drop ;
+: SC-GUTTER ( str -- ) {: p:str :}
+   1 BEGIN p STR:DATA over + c@ $3A <> WHILE 32 SC-WANT-C 1 + REPEAT drop ;
 
 \ The record headed HEAD is placed at the fixture's PLACE, `:line:column`, and
 \ its caret says LABEL.
-: SC-RECORD ( str str str -- ) {: h:^ hu:n p:^ pu:n l:^ lu:n :}
-   SC-WANT @ 0 VEC:RESIZE  h hu SC-WANT+  10 SC-WANT-C
-   p pu SC-GUTTER  s" --> " SC-WANT+  SC-FILE SC-WANT+
-   p pu SC-WANT+  10 SC-WANT-C
+: SC-RECORD ( str str str -- ) {: h:str p:str l:str :}
+   SC-WANT @ 0 VEC:RESIZE  h SC-WANT+  10 SC-WANT-C
+   p SC-GUTTER  s" --> " SC-WANT+  SC-FILE SC-WANT+
+   p SC-WANT+  10 SC-WANT-C
    SC-ERR$ SC-WANT @ VEC:BYTES STR:CONTAINS? TTRUE
-   SB-RESET  s" ^ " SB-APPEND  l lu SB-LINE
+   SB-RESET  s" ^ " SB-APPEND  l SB-LINE
    SC-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
-s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
-s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
+: SC-PATH! ( -- )
+   s" habu-structure-decl" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U ! ;
+SC-PATH!
 SC-NEW SC-SRC !  SC-NEW SC-ERR !  SC-NEW SC-WANT !
 SC-RUN
 SC-ERR$ s" error[" STR:COUNT-SUB 17 T=
@@ -1294,7 +1296,7 @@ STRUCTURE sdaddr
 SDADDR:BYTES 24 T=                                    \ the size words BEGIN-STRUCTURE published
 SDADDR:CELLS 3 T=
 
-: SDA-W ( n str n -- ) {: av:n pv:^ cv:n i:n :} av pv cv SDADDR:MAKE i SDA-BUF ! ;
+: SDA-W ( n ^u8 n n -- ) {: av:n pv:^ cv:n i:n :} av pv cv SDADDR:MAKE i SDA-BUF ! ;
 : SDA-A ( n -- n ) SDA-BUF SDADDR:A @ ;
 : SDA-C ( n -- n ) SDA-BUF SDADDR:C @ ;
 : SDA-P ( n -- ^u8 ) SDA-BUF SDADDR:P @ ;
@@ -1707,11 +1709,11 @@ SDB-GAP 3 CELL * T=                                   \ c lies 3 cells after a
 : SDB-BYTES ( -- str ) 0 SDB-BUF SDBUF:B SPAN:$ ;
 : SDB-N ( -- n ) 0 SDB-BUF SDBUF:B SPAN:LEN ;
 SDB-N 13 T=
-: SDB-AT ( -- n ) SDB-BYTES drop NULL-PTR -  0 SDB-BUF NULL-PTR - - ;
+: SDB-AT ( -- n ) SDB-BYTES STR:DATA NULL-PTR -  0 SDB-BUF NULL-PTR - - ;
 SDB-AT CELL T=                                        \ b starts one cell into the record
 : SDB-W ( -- ) 5 0 0 6 SDBUF:MAKE 0 SDB-BUF ! ;      \ b's cells are MAKE's middle two
-: SDB-FILL ( -- ) SDB-BYTES {: p:^ u:n :} u 0 ?do 255 p i + c! loop ;
-: SDB-LAST ( -- n ) SDB-BYTES drop 12 + c@ ;
+: SDB-FILL ( -- ) 255 0 SDB-BUF SDBUF:B SPAN:FILL ;
+: SDB-LAST ( -- n ) SDB-BYTES STR:DATA 12 + c@ ;
 SDB-W SDB-FILL
 SDB-LAST 255 T=
 0 SDB-BUF SDBUF:A @ 5 T=                              \ 13 bytes through b leave a and c
@@ -1812,13 +1814,13 @@ TYPED-VARIABLE SRC-U len
    s"  n" S+ ;
 public
 : START ( str -- ) SRC-U BUF-RESET  S+ ;
-: FIELDS ( ^u8 n n -- )
-   {: na:^ nu:n k:n :}
-   s" STRUCTURE " START  na nu S+
+: FIELDS ( str n -- )
+   {: na:str k:n :}
+   s" STRUCTURE " START  na S+
    k 0 ?do i S+FIELD loop ;
 : SRC+ ( str -- ) S+ ;
-: SRC-REP ( str n -- ) {: a:^ u:n k:n :} k 0 ?do a u S+ loop ;
-: SRC$ ( -- ^u8 n ) SRC SRC-U @ LEN>N ;
+: SRC-REP ( str n -- ) {: s:str k:n :} k 0 ?do s S+ loop ;
+: SRC$ ( -- str ) SRC SRC-U @ LEN>N >str ;
 ;package
 
 \ 2047 fields and one cell of bytes are exactly 2048 items.
@@ -1862,8 +1864,8 @@ s" sdgwideto<p> FIELD q ^sdgwide" 0 SDBIG:FIELDS  SDGW-Q  s" <p> ;STRUCTURE" SDB
 SDBIG:SRC$ TEST-EVAL:RC 70 T=
 s" a pointer cannot reach `sdgwideqqqq" DECL-DIAG:HAS? TTRUE
 s" qqqq`, which takes a scope or region" DECL-DIAG:HAS? TTRUE
-7109 DECL-REJECT:REASON$ nip
-s" a pointer cannot reach `" nip SDGW-U +  s" `, which takes a scope or region" nip + T=
+7109 DECL-REJECT:REASON$ STR:LEN
+s" a pointer cannot reach `" STR:LEN SDGW-U +  s" `, which takes a scope or region" STR:LEN + T=
 DECL-DIAG:OFF
 \ An application's arguments wait while a later one is read: the field type
 \ `sdnest<n,sdnest<n,…n>>` nested 300 deep holds 300 at once.
@@ -1893,10 +1895,10 @@ TYPED-VARIABLE SRC-U len
    s" STRUCTURE " S+  i S+NAME  s"  FIELD x " S+
    i 1 - S+NAME  s"  ;STRUCTURE " S+ ;
 public
-: SRC$ ( -- ^u8 n )
+: SRC$ ( -- str )
    SRC-U BUF-RESET  s" STRUCTURE sdc0 FIELD x n ;STRUCTURE " S+
    K 1 ?do i S+DECL loop
-   SRC SRC-U @ LEN>N ;
+   SRC SRC-U @ LEN>N >str ;
 ;package
 SDCHAIN:SRC$ TEST-EVAL:RC 0 T=
 
@@ -1907,8 +1909,8 @@ SDCHAIN:SRC$ TEST-EVAL:RC 0 T=
    s" n" s" type nested too deep: at most 2048 levels" DECL-DIAG:CAUSE? TTRUE
    s\"   = help: declare an inner part as a type of its own (`NEWTYPE` or `STRUCTURE`) and use its name here\n"
    DECL-DIAG:HAS? TTRUE ;
-: SDLV-CARETS ( str n str -- ) {: ha:^ hu:n k:n ta:^ tu:n :}
-   ha hu SDBIG:START  s" ^" k SDBIG:SRC-REP  s" n" SDBIG:SRC+  ta tu SDBIG:SRC+ ;
+: SDLV-CARETS ( str n str -- ) {: hs:str k:n ts:str :}
+   hs SDBIG:START  s" ^" k SDBIG:SRC-REP  s" n" SDBIG:SRC+  ts SDBIG:SRC+ ;
 DECL-DIAG:PROSE
 s" STRUCTURE sdlvc FIELD p " 2047 s"  ;STRUCTURE" SDLV-CARETS
 SDBIG:SRC$ TEST-EVAL:RC 0 T=
@@ -1928,16 +1930,16 @@ s" SUMTYPE sdlvsx VARIANT vee " 2048 s"  ;VARIANT ;SUMTYPE" SDLV-CARETS SDLV-DEE
 \ MAKE's recorded effect holds a level per cell of the record, so `sdnest`
 \ 1024 deep, 1025 cells wide, passes the limit there; this nests a one-cell family.
 s" STRUCTURE sdlvbox<a> FIELD x a ;STRUCTURE" TEST-EVAL:RC 0 T=
-: SDLV-BOXES ( str n -- ) {: ha:^ hu:n k:n :}
-   ha hu SDBIG:START  s" sdlvbox<" k SDBIG:SRC-REP  s" n" SDBIG:SRC+
+: SDLV-BOXES ( str n -- ) {: hs:str k:n :}
+   hs SDBIG:START  s" sdlvbox<" k SDBIG:SRC-REP  s" n" SDBIG:SRC+
    s" >" k SDBIG:SRC-REP  s"  ;STRUCTURE" SDBIG:SRC+ ;
 DECL-DIAG:PROSE
 s" STRUCTURE sdlva FIELD d " 2047 SDLV-BOXES
 SDBIG:SRC$ TEST-EVAL:RC 0 T=
 s" STRUCTURE sdlvax FIELD d " 2048 SDLV-BOXES SDLV-DEEP
 \ A quotation is two levels, its `[` and its rows: 1023 of them hold `^n`.
-: SDLV-QUOTS ( str n str -- ) {: ha:^ hu:n k:n ta:^ tu:n :}
-   ha hu SDBIG:START  s" [ " k SDBIG:SRC-REP  ta tu SDBIG:SRC+
+: SDLV-QUOTS ( str n str -- ) {: hs:str k:n ts:str :}
+   hs SDBIG:START  s" [ " k SDBIG:SRC-REP  ts SDBIG:SRC+
    s"  -- ]" k SDBIG:SRC-REP  s"  ;STRUCTURE" SDBIG:SRC+ ;
 DECL-DIAG:PROSE
 s" STRUCTURE sdlvq FIELD q " 1023 s" ^n" SDLV-QUOTS

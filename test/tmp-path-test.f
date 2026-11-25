@@ -1,4 +1,3 @@
-split-str
 \ tmp-path-test.f - TMP-PATH holds a PATH-CAP path and no length wraps past it.
 \ TMP-PATH (src/os/env-base.f) answers TMPDIR, a slash and the caller's name in
 \ one buffer of PATH-CAP bytes, and ends the process with exit 90 when they do
@@ -26,26 +25,26 @@ create ROOT PATH-CAP allot   variable ROOT-U
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
 
 : SETUP ( -- )
    FS:CLEANUP-RESET
-   s" habu-tmp-path" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT u BYTE-COPY  u ROOT-U !
+   s" habu-tmp-path" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA ROOT d STR:LEN BYTE-COPY  d STR:LEN ROOT-U !
    ROOT$ FS:CLEANUP-TREE+ ;
 
 \ The refusal is a die, so each case is a child engine (test/tmp-path-child.f)
 \ whose TMPDIR is this test's own directory.
-: RUN ( ^u8 n -- n n n ) {: case:^ caseu:n :}   \ outu erru rc
-   ENGINE-CANDIDATE:PATH$ {: engine:^ engineu:n :}
+: RUN ( str -- n n n ) {: case:str :}   \ outu erru rc
+   ENGINE-CANDIDATE:PATH$ {: engine:str :}
    PROC-ARGV-ENV-RESET
    s" TMPDIR" ROOT$ PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" PROC-ARGV+
    s" test/tmp-path-child.f" PROC-ARGV+
    s" --" PROC-ARGV+
-   case caseu PROC-ARGV+
-   engine engineu s" " OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
+   case PROC-ARGV+
+   engine s" " OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;
@@ -57,7 +56,7 @@ create ERR IO-CAP allot
    s" ... as a path of PATH-CAP bytes" T-LABEL
    outu PATH-CAP 1 + T=
    s" ... that starts with the root" T-LABEL
-   OUT ROOT-U @ ROOT$ STR:= TTRUE
+   OUT ROOT-U @ >str ROOT$ STR:= TTRUE
    s" ... then the slash" T-LABEL
    OUT ROOT-U @ + c@ SLASH T=
    s" ... and ends with the name's last byte" T-LABEL
@@ -65,12 +64,12 @@ create ERR IO-CAP allot
    s" ... and nothing after it but the line end" T-LABEL
    OUT PATH-CAP + c@ LF T= ;
 
-: REFUSED ( ^u8 n ^u8 n -- ) {: case:^ caseu:n label:^ labelu:n :}
-   case caseu RUN {: outu:n erru:n rc:n :}
-   label labelu T-LABEL
+: REFUSED ( str str -- ) {: case:str label:str :}
+   case RUN {: outu:n erru:n rc:n :}
+   label T-LABEL
    rc 90 T=
    s" ... by TMP-PATH's own message" T-LABEL
-   ERR erru s" env: TMP-PATH exceeds buffer" STR:CONTAINS? TTRUE
+   ERR erru >str s" env: TMP-PATH exceeds buffer" STR:CONTAINS? TTRUE
    s" ... before anything is typed" T-LABEL
    outu 0 T= ;
 

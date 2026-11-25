@@ -1,4 +1,3 @@
-split-str
 \ structure-certify-suite.f — the checker's construct/access contract for
 \ STRUCTURE through real STRUCTURE syntax. The definer parses the live input and
 \ resolves only at top-level interpret, so the engine runs it over stdin, like
@@ -18,7 +17,7 @@ T-RESET
    CHECK-CANDIDATE! 0 T= ;
 : SCG? ( str -- )   \ assert the captured diag contains the needle
    T-NEXT
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? 0= if
+   REJECTION:BUFFER$ swap STR:CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
    then ;
 : SCG-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;

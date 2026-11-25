@@ -1,4 +1,3 @@
-split-str
 \ A caught declaration with an unfinished quotation must leave the parser
 \ usable for the next declaration.
 require src/lib/test.f
@@ -8,11 +7,11 @@ package QUOT-ROLLBACK-TEST
 
 \ REJECTS asserts the text stops with the checker's status after a declaration
 \ record whose evaluated note marks `nope` under the label.
-: REJECTS ( ^u8 n ^u8 n -- )
-   {: sa:^ su:n la:^ lu:n :}
-   REJECTION:CAPTURE  sa su TEST-EVAL:RC 70 T=
+: REJECTS ( str str -- )
+   {: sa:str la:str :}
+   REJECTION:CAPTURE  sa TEST-EVAL:RC 70 T=
    REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]" STR:CONTAINS? TTRUE
-   s" nope" la lu DECL-DIAG:CAUSE? TTRUE
+   s" nope" la DECL-DIAG:CAUSE? TTRUE
    REJECTION:BUFFER-OFF ;
 
 : RUN ( -- )

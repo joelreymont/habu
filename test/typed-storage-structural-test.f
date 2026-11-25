@@ -1,4 +1,3 @@
-split-str
 \ typed-storage-structural-test.f - closed structural storage cells.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   src/habu/verify-source.f test/typed-storage-structural-test.f
@@ -75,8 +74,8 @@ TYPED-VARIABLE TSSP ^u8
 \    fail-closed edge. An open var cannot be pinned at all, so it still rejects.
 TYPED-VARIABLE TSS-EVAL-A ^u8
 variable TSS-EVAL-U
-: TSS-EVAL-RUN ( -- ) TSS-EVAL-A @ TSS-EVAL-U @ evaluate-closed ;
-: TSS-EVAL ( str -- n ) TSS-EVAL-U ! TSS-EVAL-A ! [: TSS-EVAL-RUN ;] catch ;
+: TSS-EVAL-RUN ( -- ) TSS-EVAL-A @ TSS-EVAL-U @ >str evaluate-closed ;
+: TSS-EVAL ( str -- n ) dup STR:LEN TSS-EVAL-U ! STR:DATA TSS-EVAL-A ! [: TSS-EVAL-RUN ;] catch ;
 
 : SECTION-ADMISSIBILITY ( -- )
    \ closed structural cons and closed pointer chains are admitted

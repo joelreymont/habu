@@ -1,4 +1,3 @@
-split-str
 \ calls-test.f - test/wasm/calls.f's CHECKS run in this process, then as the
 \ MAIN of a module `hb-build --target wasm` builds, validated by wasm-tools and
 \ run by bun. A trap or an uncaught throw ends a run, so each such entry is the
@@ -24,24 +23,24 @@ PATH-CAP BUFFER: SRC
 variable SRC-U
 
 : SETUP ( -- )
-   s" wasm-calls" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
-   s" wasm calls: sources and modules in " type  DIR u type cr ;
+   s" wasm-calls" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY  d STR:LEN DIR-U !
+   s" wasm calls: sources and modules in " type  DIR d STR:LEN >str type cr ;
 
-: RAN ( ^u8 n ^u8 n -- n )
-   {: entry:^ eu:n name:^ nu:n :}
-   SB-RESET name nu SB-APPEND s" .wasm" SB-APPEND
-   DIR DIR-U @ SB$ MOD FS:JOIN-PATH MOD-U !
-   SB-RESET name nu SB-APPEND s" .f" SB-APPEND
-   DIR DIR-U @ SB$ SRC FS:JOIN-PATH SRC-U !
+: RAN ( str str -- n )
+   {: entry:str name:str :}
+   SB-RESET name SB-APPEND s" .wasm" SB-APPEND
+   DIR DIR-U @ >str SB$ MOD FS:JOIN-PATH MOD-U !
+   SB-RESET name SB-APPEND s" .f" SB-APPEND
+   DIR DIR-U @ >str SB$ SRC FS:JOIN-PATH SRC-U !
    SB-RESET S\" require test/wasm/calls.f\n: MAIN ( -- ) WCALLS:" SB-APPEND
-   entry eu SB-APPEND  S\"  ;\n" SB-APPEND
-   SRC SRC-U @ SB$ FS:WRITE-ALL
+   entry SB-APPEND  S\"  ;\n" SB-APPEND
+   SRC SRC-U @ >str SB$ FS:WRITE-ALL
    SRC SRC-U @ MOD MOD-U @ WASM-HARNESS:BUILD 0 T=
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    MOD MOD-U @ WASM-HARNESS:RUN ;
 
-: TRAPS ( ^u8 n ^u8 n -- )  RAN TRAPPED T= ;
+: TRAPS ( str str -- )  RAN TRAPPED T= ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 : FAULTED-CASE ( -- )
@@ -66,17 +65,17 @@ public
    s" ZERO-CAUGHT" s" zero-caught" TRAPS
    s" finally of cleanup xt 0 traps before its body runs" T-LABEL
    s" ZERO-CLEANUP" s" zero-cleanup" TRAPS
-   WASM-HARNESS:OUT$ s" " T$=
+   WASM-HARNESS:OUT$ >str s" " T$=
    s" a record its throw carried survives finally's cleanup that throws and catches" T-LABEL
    s" FINALLY-CARRIED" s" finally-carried" RAN 1 T=
    WASM-HARNESS:THROW-CODE 85 T=
-   WASM-HARNESS:ERR$ s" error[E-PROBE]: probe text" STR:COUNT-SUB 1 T=
-   WASM-HARNESS:ERR$ s" error[" STR:COUNT-SUB 1 T=
+   WASM-HARNESS:ERR$ >str s" error[E-PROBE]: probe text" STR:COUNT-SUB 1 T=
+   WASM-HARNESS:ERR$ >str s" error[" STR:COUNT-SUB 1 T=
    s" a caught code thrown on after a cleanup that throws and catches keeps its record" T-LABEL
    s" RETHROW-CARRIED" s" rethrow-carried" RAN 1 T=
    WASM-HARNESS:THROW-CODE 85 T=
-   WASM-HARNESS:ERR$ s" error[E-PROBE]: probe text" STR:COUNT-SUB 1 T=
-   WASM-HARNESS:ERR$ s" error[" STR:COUNT-SUB 1 T=
+   WASM-HARNESS:ERR$ >str s" error[E-PROBE]: probe text" STR:COUNT-SUB 1 T=
+   WASM-HARNESS:ERR$ >str s" error[" STR:COUNT-SUB 1 T=
    s" execute of an xt whose upper 32 bits are set traps, though its low half is MARK's slot" T-LABEL
    s" HIGH" s" high" TRAPS
    s" execute of a cell whose upper half is not exactly a record's traps" T-LABEL

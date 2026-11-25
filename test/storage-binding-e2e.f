@@ -1,4 +1,3 @@
-split-str
 \ Fixed storage binds the accessor that owns its allocation. A linked program
 \ runs the quotation and reads through the address its build stored in typed
 \ cells; hb-build.f reads its argv, so it is spawned from the tree's root.
@@ -35,8 +34,8 @@ TYPED-VARIABLE ROW n
 : RUN ( -- )
    17 PUBLIC-STORE PUBLIC-READ 17 T=
    PRIVATE-STORE 5 PRIVATE-CALL 6 T=
-   3 s" abc" drop PLAIN-ROW-MAKE 4095 PLAIN !
-   4095 PLAIN @ PLAIN-ROW-UNMAKE 3
+   3 s" abc" STR:DATA PLAIN-ROW-MAKE 4095 PLAIN !
+   4095 PLAIN @ PLAIN-ROW-UNMAKE 3 >str
    s" abc" T$= 3 T=
    5 PRIVATE-CALL 6 T= ;
 
@@ -47,10 +46,10 @@ PATH-CAP BUFFER: DIR   variable DIR-U
 PATH-CAP BUFFER: SRC   variable SRC-U
 PATH-CAP BUFFER: PROG  variable PROG-U
 PATH-CAP BUFFER: OUT   variable OUT-U
-: DIR$ ( -- str ) DIR DIR-U @ ;
-: SRC$ ( -- str ) SRC SRC-U @ ;
-: PROG$ ( -- str ) PROG PROG-U @ ;
-: OUT$ ( -- str ) OUT OUT-U @ ;
+: DIR$ ( -- str ) DIR DIR-U @ >str ;
+: SRC$ ( -- str ) SRC SRC-U @ >str ;
+: PROG$ ( -- str ) PROG PROG-U @ >str ;
+: OUT$ ( -- str ) OUT OUT-U @ >str ;
 
 \ The build stores a quotation and the address of a cell it set to 7.
 : PROGRAM-SOURCE$ ( -- str )
@@ -85,8 +84,8 @@ PATH-CAP BUFFER: OUT   variable OUT-U
 : REMOVE ( -- ) DIR$ FS:REMOVE-TREE ;
 
 : LINKED ( -- )
-   s" habu-storage-binding" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
+   s" habu-storage-binding" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY  d STR:LEN DIR-U !
    DIR$ s" cells.f" SRC FS:JOIN-PATH SRC-U !
    DIR$ s" cells" PROG FS:JOIN-PATH PROG-U !
    DIR$ s" out" OUT FS:JOIN-PATH OUT-U !

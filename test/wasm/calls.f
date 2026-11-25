@@ -1,4 +1,3 @@
-split-str
 \ calls.f - WCALLS: execute, catch and finally through xts, quotations and rows,
 \ and quotations that read their word's locals.
 \ CHECKS throws the number of the first entry whose code is not the one it throws
@@ -75,7 +74,7 @@ variable RES
    depth DEPTH0 !
    1 2 3 [: + + ;] FIN-N  depth DEPTH0 @ - 100 * + throw ;
 PERSISTED-PTR-VARIABLE DATA-CELL
-s" data cell text" drop DATA-CELL !
+s" data cell text" STR:DATA DATA-CELL !
 : TEXT ( -- ) DATA-CELL @ c@ 100 *  DATA-CELL @ 13 + c@ + throw ;
 : READ-EXECUTE ( -- ) 40 {: a:n :} 2 [: a + ;] execute throw ;
 : READ-CATCH ( -- ) 50 {: a:n :} [: a 1 + throw ;] catch throw ;

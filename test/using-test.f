@@ -1,4 +1,3 @@
-split-str
 \ using-test.f - `using NAME ... ;using`: package NAME's public wordlist is
 \ visible to bare lookup until the matching `;using`, the enclosing `;package`
 \ or the end of the load file. Privates stay invisible, definitions never land
@@ -13,16 +12,16 @@ require src/lib/span.f
 T-RESET
 
 TYPED-VARIABLE UCE-A ^u8   variable UCE-U
-: UCE-GO ( -- )  UCE-A @ UCE-U @ evaluate-closed ;
-: UCE-CATCH ( str -- n )  UCE-U ! UCE-A !  [: UCE-GO ;] catch ;
+: UCE-GO ( -- )  UCE-A @ UCE-U @ >str evaluate-closed ;
+: UCE-CATCH ( str -- n )  dup STR:LEN UCE-U ! STR:DATA UCE-A !  [: UCE-GO ;] catch ;
 
 \ the same source through the production source verifier: the checker resolves the
 \ bare tail itself there, with no engine body lookup in front of it.
-: VS-GO ( -- )   UCE-A @ UCE-U @ VERIFY:SOURCE-BUF ;
-: VS-CATCH ( str -- n )  UCE-U ! UCE-A !  [: VS-GO ;] catch ;
+: VS-GO ( -- )   UCE-A @ UCE-U @ >str VERIFY:SOURCE-BUF ;
+: VS-CATCH ( str -- n )  dup STR:LEN UCE-U ! STR:DATA UCE-A !  [: VS-GO ;] catch ;
 
 \ The captured rejection record contains the text.
-: UCE-SAID ( str -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u STR:CONTAINS? TTRUE ;
+: UCE-SAID ( str -- )  {: s:str :}  REJECTION:BUFFER$ s STR:CONTAINS? TTRUE ;
 
 package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package
@@ -369,7 +368,7 @@ s" using UPB" UCE-CATCH 70 T=
 \ === an owned primitive is no global ===
 \ STR's `len` is an engine primitive only STR binds: under `using SPAN` a bare
 \ LEN is SPAN's.
-package USING-TEST public : SPAN4 ( -- SPAN:span<u8> ) s" abcd" SPAN:MAKE ; ;package
+package USING-TEST public : SPAN4 ( -- SPAN:span<u8> ) s" abcd" dup STR:DATA swap STR:LEN SPAN:MAKE ; ;package
 s" an owned primitive leaves a used public's bare tail to it" T-LABEL
 s" package USPN using SPAN public : USPN-R ( -- n ) USING-TEST:SPAN4 LEN ; ;using ;package" UCE-CATCH 0 T=
 USPN:USPN-R 4 T=  T-LABEL-CLEAR

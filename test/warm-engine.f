@@ -1,4 +1,3 @@
-split-str
 \ warm-engine.f - a warm engine build writes the engine a cold build does. A
 \ copy of the checkout's sources is built cold, its checker.f gains data at its
 \ end, which moves every later file's data, and the copy is built again, warm
@@ -24,12 +23,12 @@ PATH-CAP BUFFER: ROOT     variable ROOT-U
 PATH-CAP BUFFER: JOINED
 PATH-CAP BUFFER: JOINED-2
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
 
 \ The path of name under the test's directory, in JOINED.
-: AT$ ( str -- str ) {: a:^ u:n :}
-   ROOT$ a u JOINED FS:JOIN-PATH {: ju:n :}
-   JOINED ju ;
+: AT$ ( str -- str ) {: s:str :}
+   ROOT$ s JOINED FS:JOIN-PATH {: ju:n :}
+   JOINED ju >str ;
 
 \ A failed build shows its status and what it printed on both streams.
 : SHOW ( CMD:command n -- CMD:command ) {: rc:n :}
@@ -37,12 +36,12 @@ PATH-CAP BUFFER: JOINED-2
    s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr ;
 
 \ The candidate builds the copy's engine to dst, with out as its out root.
-: BUILD ( CMD:command ^u8 n ^u8 n -- CMD:command )
-   {: out:^ outu:n dst:^ dstu:n :}
+: BUILD ( CMD:command str str -- CMD:command )
+   {: out:str dst:str :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+
-   s" --engine" CMD:ARG+  s" -o" CMD:ARG+  dst dstu AT$ CMD:ARG+
-   s" HABU_OUT" out outu AT$ CMD:ENV+
+   s" --engine" CMD:ARG+  s" -o" CMD:ARG+  dst AT$ CMD:ARG+
+   s" HABU_OUT" out AT$ CMD:ENV+
    s" TMPDIR" s" tmp" AT$ CMD:ENV+
    s" tree" AT$ CMD:CWD!
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
@@ -59,10 +58,10 @@ PATH-CAP BUFFER: JOINED-2
    s\" \n\\ warm-engine\n" FS:APPEND-FILE ;
 
 : SAME? ( str str -- bool )
-   {: a:^ au:n b:^ bu:n :}
-   ROOT$ a au JOINED FS:JOIN-PATH {: ju:n :}
-   ROOT$ b bu JOINED-2 FS:JOIN-PATH {: ku:n :}
-   JOINED ju JOINED-2 ku CHAIN-RUN:SAME-FILES? ;
+   {: a:str b:str :}
+   ROOT$ a JOINED FS:JOIN-PATH {: ju:n :}
+   ROOT$ b JOINED-2 FS:JOIN-PATH {: ku:n :}
+   JOINED ju >str JOINED-2 ku >str CHAIN-RUN:SAME-FILES? ;
 
 : BUILDS ( CMD:command -- CMD:command )
    s" the copy builds cold" T-LABEL
@@ -95,8 +94,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   s" habu-warm-engine" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT u BYTE-COPY  u ROOT-U !
+   s" habu-warm-engine" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA ROOT d STR:LEN BYTE-COPY  d STR:LEN ROOT-U !
    ['] CHECKS ['] REMOVE-ROOT finally
    T-REPORT ;
 

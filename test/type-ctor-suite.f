@@ -1,4 +1,3 @@
-split-str
 \ type-ctor-suite.f — generated-constructor suite.
 \ A constructor word pushes its payload cells, M-p zero pads, then the tag.
 \
@@ -33,9 +32,9 @@ T-RESET
 
 TYPED-VARIABLE TCE-A ^u8   variable TCE-U
 : TCE-GO ( -- )
-   TCE-A @ TCE-U @ evaluate-closed ;
+   TCE-A @ TCE-U @ >str evaluate-closed ;
 : TCE-CATCH ( str -- n )
-   TCE-U ! TCE-A !
+   dup STR:LEN TCE-U ! STR:DATA TCE-A !
    [: TCE-GO ;] catch ;
 : TCE-PROTECTED ( str -- )   \ the text is rejected with E-CTOR-PROTECTED
    REJECTION:CAPTURE  TCE-CATCH 70 T=
@@ -74,7 +73,7 @@ SUMTYPE zmix
   VARIANT big ^u8 n n ;VARIANT
 ;SUMTYPE
 : ZMK-SMALL ( n -- zmix ) ZMIX:SMALL ;
-: ZMK-BIG ( str n -- zmix ) ZMIX:BIG ;
+: ZMK-BIG ( ^u8 n n -- zmix ) ZMIX:BIG ;
 s" GEN-MIX" type cr
 s" ZB5 ( n n -- zmix ) ZMIX:BIG" CHECK-QUIET-CANDIDATE! 0 T=
 

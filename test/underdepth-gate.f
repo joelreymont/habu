@@ -1,4 +1,3 @@
-split-str
 \ underdepth-gate.f - a bare top-level call on a shallower stack than its
 \ word's effect states (a certified `:`, TRUSTED:, defer, does> clause,
 \ engine word or primitive) is rejected by the checker before the word
@@ -42,49 +41,49 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 create UDG-AT PATH-CAP allot
 TYPED-VARIABLE UDG-AT-U len
 
-: UDG-COPY! ( str ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
-   u PATH-CAP > if E-FS-CAPACITY throw then
-   src dst u BYTE-COPY
-   u lenp ! ;
+: UDG-COPY! ( str ^u8 ^n -- ) {: src:str dst:^ lenp:^ :}
+   src STR:LEN PATH-CAP > if E-FS-CAPACITY throw then
+   src STR:DATA dst src STR:LEN BYTE-COPY
+   src STR:LEN lenp ! ;
 
 : UDG-ROOT ( -- str )
-   UDG-ROOT-BUF UDG-ROOT-U @ ;
+   UDG-ROOT-BUF UDG-ROOT-U @ >str ;
 
 : UDG-CHILD ( -- str )
-   UDG-CHILD-BUF UDG-CHILD-U @ ;
+   UDG-CHILD-BUF UDG-CHILD-U @ >str ;
 
 : UDG-IN$ ( -- str )
-   UDG-IN UDG-IN-U @ ;
+   UDG-IN UDG-IN-U @ >str ;
 
 : UDG-OUT$ ( -- str )
-   UDG-OUT UDG-OUT-U @ ;
+   UDG-OUT UDG-OUT-U @ >str ;
 
 : UDG-ERR$ ( -- str )
-   UDG-ERR UDG-ERR-U @ ;
+   UDG-ERR UDG-ERR-U @ >str ;
 
-: UDG-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:^ u:n :}
+: UDG-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:str :}
    erru LEN>N UDG-ERR-U !  outu LEN>N UDG-OUT-U !
    oc MATCH PROCESS:ending
      exited OF UDG-RC ! 0 0= UDG-EXITED ! ENDOF
      signaled OF UDG-RC ! 0 0= 0= UDG-EXITED ! ENDOF
-     timeout OF src u UDG-OUT UDG-OUT-U @ UDG-ERR UDG-ERR-U @ T-TIMED-OUT ENDOF
+     timeout OF src UDG-OUT$ UDG-ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: UDG-IN! ( str -- ) {: a:^ u:n :}
-   u UDG-CAP > if E-FS-CAPACITY throw then
-   a UDG-IN u BYTE-COPY
-   u UDG-IN-U ! ;
+: UDG-IN! ( str -- ) {: s:str :}
+   s STR:LEN UDG-CAP > if E-FS-CAPACITY throw then
+   s STR:DATA UDG-IN s STR:LEN BYTE-COPY
+   s STR:LEN UDG-IN-U ! ;
 
 \ Cases run in SUBJECT forks; output parity keeps direct --load and stdin
 \ representatives.
-: UDG-RUN-LOAD ( str -- ) {: src:^ u:n :}
-   UDG-CHILD src u FS:WRITE-ALL
+: UDG-RUN-LOAD ( str -- ) {: src:str :}
+   UDG-CHILD src FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
    UDG-CHILD PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$  UDG-EMPTY 0  UDG-OUT UDG-CAP >LEN
+   ENGINE-CANDIDATE:PATH$  UDG-EMPTY 0 >str  UDG-OUT UDG-CAP >LEN
    UDG-ERR UDG-CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   src u UDG-STORE! ;
+   src UDG-STORE! ;
 
 \ The other cold-prefix path: the program on stdin, no --load.
 : UDG-RUN-STDIN ( str -- )
@@ -98,9 +97,9 @@ package UDG-EXEC
 
 public
 
-: SUBJECT ( ^u8 n -- ) {: src:^ u:n :}
-   src u UDG-OUT UDG-CAP >LEN UDG-ERR UDG-CAP >LEN
-   PROCESS:WAIT-FOREVER SUBJECT:RUN src u UDG-STORE! ;
+: SUBJECT ( str -- ) {: src:str :}
+   src UDG-OUT UDG-CAP >LEN UDG-ERR UDG-CAP >LEN
+   PROCESS:WAIT-FOREVER SUBJECT:RUN src UDG-STORE! ;
 
 ;package
 
@@ -119,37 +118,37 @@ public
 : UDG-AT+ ( str -- )
    UDG-AT PATH-CAP UDG-AT-U BUF-APPEND ;
 
-\ The caret run under a word of u bytes, then its label l lu.
-: UDG-CARETS$ ( n str -- str ) {: u:n l:^ lu:n :}
+\ The caret run under a word of u bytes, then its label l.
+: UDG-CARETS$ ( n str -- str ) {: u:n l:str :}
    UDG-AT-U BUF-RESET
    s"  " UDG-AT+  u 0 ?do s" ^" UDG-AT+ loop
-   s"  " UDG-AT+  l lu UDG-AT+
-   UDG-AT UDG-AT-U @ LEN>N ;
+   s"  " UDG-AT+  l UDG-AT+
+   UDG-AT UDG-AT-U @ LEN>N >str ;
 
-\ The rejection opens with h hu, and carets labelled l lu stand under the word
-\ a u; in a subject run they stand in its `= evaluated:` note, whose primary
+\ The rejection opens with h, and carets labelled l stand under the word s;
+\ in a subject run they stand in its `= evaluated:` note, whose primary
 \ place is the test's own line.
-: UDG-ASSERT-AT ( str str str -- ) {: h:^ hu:n a:^ u:n l:^ lu:n :}
+: UDG-ASSERT-AT ( str str str -- ) {: h:str s:str l:str :}
    UDG-EXITED @ TTRUE
    UDG-RC @ 70 T=
-   UDG-ERR$ h hu STR:CONTAINS? TTRUE
-   UDG-ERR$ a u STR:CONTAINS? TTRUE
-   UDG-ERR$ u l lu UDG-CARETS$ STR:CONTAINS? TTRUE ;
+   UDG-ERR$ h STR:CONTAINS? TTRUE
+   UDG-ERR$ s STR:CONTAINS? TTRUE
+   UDG-ERR$ s STR:LEN l UDG-CARETS$ STR:CONTAINS? TTRUE ;
 
 : UDG-UNDERFLOW$ ( -- str )
    s" error[E-INPUT-UNDERFLOW]: input underflow" ;
 
-\ The checker's rejection of the word a u, in a direct or subject run: an input
+\ The checker's rejection of the word s, in a direct or subject run: an input
 \ underflow at it, below the stack or below the inputs.
-: UDG-ASSERT-UNDERDEPTH ( str -- ) {: a:^ u:n :}
-   UDG-UNDERFLOW$ a u s" reaches below the" UDG-ASSERT-AT ;
+: UDG-ASSERT-UNDERDEPTH ( str -- ) {: s:str :}
+   UDG-UNDERFLOW$ s s" reaches below the" UDG-ASSERT-AT ;
 
 : UDG-ASSERT-OK ( -- )
    UDG-EXITED @ TTRUE
    UDG-RC @ 0 T= ;
 
-: UDG-ASSERT-OUT ( str -- ) {: a:^ u:n :}
-   UDG-OUT$ a u STR:CONTAINS? TTRUE ;
+: UDG-ASSERT-OUT ( str -- ) {: s:str :}
+   UDG-OUT$ s STR:CONTAINS? TTRUE ;
 
 package UDG-MINIMUM
 
@@ -167,7 +166,7 @@ public
 
 : BOUNDARY ( -- )
    s" 255-cell defer still refuses an empty interpret stack" T-LABEL
-   255 MIN-SIG$ 2drop
+   255 MIN-SIG$ drop
    s" MINIMUM-PROBE" UDG-LINE
    SB$ UDG-EXEC:SUBJECT
    s" MINIMUM-PROBE" UDG-ASSERT-UNDERDEPTH ;
@@ -246,9 +245,9 @@ public
    UDG-LINE
    SB$ ;
 
-: UDG-PRIM-ROW ( str -- ) {: a:^ u:n :}
-   a u UDG-BARE$ UDG-EXEC:SUBJECT
-   a u UDG-ASSERT-UNDERDEPTH ;
+: UDG-PRIM-ROW ( str -- ) {: s:str :}
+   s UDG-BARE$ UDG-EXEC:SUBJECT
+   s UDG-ASSERT-UNDERDEPTH ;
 
 : UDG-NEG-PRIMS ( -- )
    s" bare catch fails closed (was SIGSEGV)" T-LABEL
@@ -263,9 +262,9 @@ public
 
 \ --- body negatives: a primitive's input is measured as any word's ----------
 
-: UDG-BODY-UNDER ( str str -- ) {: src:^ u:n at:^ atu:n :}
-   src u UDG-BARE$ UDG-EXEC:SUBJECT
-   at atu UDG-ASSERT-UNDERDEPTH ;
+: UDG-BODY-UNDER ( str str -- ) {: src:str at:str :}
+   src UDG-BARE$ UDG-EXEC:SUBJECT
+   at UDG-ASSERT-UNDERDEPTH ;
 
 : UDG-NEG-BODY ( -- )
    s" execute on no cells in a body is an input underflow" T-LABEL
@@ -283,16 +282,16 @@ public
 \ The cells a combinator's quotation takes beyond its fixed inputs arrive
 \ through R and count as needed: RUNQ's call needs 2 cells over the 1 there.
 
-: UDG-COMB$ ( str str -- str ) {: comb:^ cu:n v:^ vu:n :}
+: UDG-COMB$ ( str str -- str ) {: comb:str v:str :}
    SB-RESET
    s" : STEPN ( n -- n ) ;" UDG-LINE
-   comb cu UDG-LINE
-   v vu UDG-LINE
+   comb UDG-LINE
+   v UDG-LINE
    SB$ ;
 
-: UDG-COMB-UNDER ( str str str -- ) {: comb:^ cu:n v:^ vu:n at:^ atu:n :}
-   comb cu v vu UDG-COMB$ UDG-EXEC:SUBJECT
-   at atu UDG-ASSERT-UNDERDEPTH
+: UDG-COMB-UNDER ( str str str -- ) {: comb:str v:str at:str :}
+   comb v UDG-COMB$ UDG-EXEC:SUBJECT
+   at UDG-ASSERT-UNDERDEPTH
    UDG-ERR$ s" (needs 2, has 1)" STR:CONTAINS? TTRUE ;
 
 : UDG-RUNQ$ ( -- str )
@@ -350,7 +349,7 @@ public
 : UDG-CATCH$ ( -- str )             \ evaluate delivers the reject as a catchable rc-70 throw
    SB-RESET
    s" : FOO2 ( n -- n n ) dup ;" UDG-LINE
-   S\" TRUSTED: UDG-TRY ( -- ) s\" FOO2\" evaluate ;" UDG-LINE
+   S\" TRUSTED: UDG-TRY ( -- ) s\" FOO2\" dup STR:DATA swap STR:LEN evaluate ;" UDG-LINE
    s" ' UDG-TRY catch . cr" UDG-LINE
    S\" s\" after\" type cr" UDG-LINE
    SB$ ;
@@ -382,11 +381,11 @@ public
 
 package UDG-PARITY
 
-: RESULT ( -- ^u8 n ^u8 n n )
-   UDG-OUT UDG-OUT-U @ UDG-ERR UDG-ERR-U @ UDG-RC @ ;
+: RESULT ( -- str str n )
+   UDG-OUT$ UDG-ERR$ UDG-RC @ ;
 
 : NEG-LOAD ( str -- )
-   2dup UDG-RUN-LOAD
+   dup UDG-RUN-LOAD
    s" FOO2" UDG-ASSERT-UNDERDEPTH
    RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT
@@ -394,7 +393,7 @@ package UDG-PARITY
    RESULT TAIL-PARITY:SAME-UNLOCATED ;
 
 : NEG-STDIN ( str -- )
-   2dup UDG-RUN-STDIN
+   dup UDG-RUN-STDIN
    s" FOO2" UDG-ASSERT-UNDERDEPTH
    RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT
@@ -402,7 +401,7 @@ package UDG-PARITY
    RESULT TAIL-PARITY:SAME-UNLOCATED ;
 
 : POS-LOAD ( str -- )
-   2dup UDG-RUN-LOAD UDG-ASSERT-OK
+   dup UDG-RUN-LOAD UDG-ASSERT-OK
    RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT UDG-ASSERT-OK
    RESULT TAIL-PARITY:SAME ;
@@ -421,8 +420,8 @@ public
 
 : UDG-PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" habu-udg" FS:MKTEMP-DIR {: a:^ u:n :}
-   a u UDG-ROOT-BUF UDG-ROOT-U UDG-COPY!
+   s" habu-udg" FS:MKTEMP-DIR {: d:str :}
+   d UDG-ROOT-BUF UDG-ROOT-U UDG-COPY!
    UDG-ROOT FS:CLEANUP-TREE+
    UDG-ROOT s" forge.f" UDG-CHILD-BUF FS:JOIN-PATH UDG-CHILD-U ! ;
 

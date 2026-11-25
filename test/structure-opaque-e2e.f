@@ -1,4 +1,3 @@
-split-str
 \ End-to-end OPAQUE structure clause on the engine under test: tools/check.f
 \ replays the fixture and certifies OP's own calls, and refuses a consumer that
 \ reaches the pair through OP's public wordlist. The same check replays
@@ -32,17 +31,17 @@ private
    s" test/structure-opaque-verify.f" AT-A VERIFY$ FS:WRITE-ALL
    s" test/structure-opaque-forge.f" AT-A FORGE$ FS:WRITE-ALL ;
 
-: VERIFY-ARGS ( str -- ) {: source:^ size:n :}
+: VERIFY-ARGS ( str -- ) {: source:str :}
    s" tools/check.f" ARGS
    s" --" PROC-ARGV+
    s" --json-errors" PROC-ARGV+
    s" --verify-only" PROC-ARGV+
-   source size PROC-ARGV+ ;
+   source PROC-ARGV+ ;
 
 : RUN-HERE ( -- ) ENGINE-CANDIDATE:PATH$ ROOT$ RUN-ON ;
 
-: ERR-HAS ( str -- ) {: a:^ u:n :}
-   ERR$ a u STR:CONTAINS? TTRUE ;
+: ERR-HAS ( str -- ) {: s:str :}
+   ERR$ s STR:CONTAINS? TTRUE ;
 
 : VERIFY ( -- )
    s" test/structure-opaque-verify.f" VERIFY-ARGS RUN-HERE

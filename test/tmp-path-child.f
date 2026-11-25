@@ -1,4 +1,3 @@
-split-str
 \ tmp-path-child.f - one TMP-PATH call.
 \
 \ Run: TMPDIR=<root> bin/hb --load test/tmp-path-child.f -- <case>
@@ -20,20 +19,20 @@ create NAME PATH-CAP allot
    PATH-CAP 0 ?do LOWER-A NAME i + c! loop ;
 
 : ROOM ( -- n )
-   PATH-CAP s" TMPDIR" GETENV nip - 1 - ;
+   PATH-CAP s" TMPDIR" GETENV STR:LEN - 1 - ;
 
-: NAME-U ( ^u8 n -- n ) {: a:^ u:n :}
-   a u s" exact" STR:= if ROOM exit then
-   a u s" over" STR:= if ROOM 1 + exit then
-   a u s" negative" STR:= if -1 exit then
-   a u s" huge" STR:= if MEM-MAX-N exit then
+: NAME-U ( str -- n ) {: s:str :}
+   s s" exact" STR:= if ROOM exit then
+   s s" over" STR:= if ROOM 1 + exit then
+   s s" negative" STR:= if -1 exit then
+   s s" huge" STR:= if MEM-MAX-N exit then
    s" tmp-path-child: unknown case" EXIT-STATUS:USAGE die ;
 
 public
 
 : RUN ( -- )
    NAME-FILL
-   NAME 0 SCRIPT-ARGV$ NAME-U TMP-PATH type cr ;
+   NAME 0 SCRIPT-ARGV$ NAME-U >str TMP-PATH type cr ;
 
 ;package
 

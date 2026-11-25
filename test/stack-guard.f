@@ -1,4 +1,3 @@
-split-str
 \ The guard-page contract itself: filling a guarded stack to its real
 \ capacity, the three named overflow faults, and a task's own guarded stack.
 require test/engine-stack-lifecycle-lib.f
@@ -21,7 +20,7 @@ create LIT-SRC LIT-SRC-CAP allot
       $31 LIT-SRC i 2 * + c!
       $20 LIT-SRC i 2 * + 1 + c!
    loop
-   LIT-SRC count 2 * ;
+   LIT-SRC count 2 * >str ;
 
 : PAGE-CAPACITY ( -- )
    s" filling the boot stack short of the page by a margin succeeds" T-LABEL

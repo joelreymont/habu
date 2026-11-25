@@ -1,4 +1,3 @@
-split-str
 \ tail-parity.f - direct/subject result parity shared by the tail gates.
 
 require src/lib/test.f
@@ -18,10 +17,10 @@ variable SAVED-ERR-U
 variable SAVED-RC
 
 : SAVE-BYTES ( str ^u8 ^n -- )
-   {: src:^ u:n dst:^ used:^ :}
-   u CAP > if E-STR-CAPACITY throw then
-   src dst u BYTE-COPY
-   u used ! ;
+   {: src:str dst:^ used:^ :}
+   src STR:LEN CAP > if E-STR-CAPACITY throw then
+   src STR:DATA dst src STR:LEN BYTE-COPY
+   src STR:LEN used ! ;
 
 create GOT-KEPT CAP allot
 create SAVED-KEPT CAP allot
@@ -29,79 +28,79 @@ create SAVED-KEPT CAP allot
 variable GOT-KEPT-U
 variable SAVED-KEPT-U
 
-: PAST-CARETS ( str -- str ) {: a:^ u:n :}
+: PAST-CARETS ( str -- str ) {: s:str :}
    0 begin
-      dup u < if dup a + c@ 94 = else false then
+      dup s STR:LEN < if dup s STR:DATA + c@ 94 = else false then
    while 1+ repeat
-   {: i:n :} a i + u i - ;
+   {: i:n :} s STR:DATA i + s STR:LEN i - >str ;
 
 \ A line, its gutter indent dropped, that tells where a record is: the place
 \ line, a source line or an `= evaluated:` note.
-: PLACE? ( str -- bool ) {: a:^ u:n :}
-   a u s" -->" STR:STARTS-WITH?
-   a u s" = evaluated:" STR:STARTS-WITH? or
-   u 0 > if a c@ STR:DIGIT? else false then or ;
+: PLACE? ( str -- bool ) {: s:str :}
+   s s" -->" STR:STARTS-WITH?
+   s s" = evaluated:" STR:STARTS-WITH? or
+   s STR:LEN 0 > if s STR:DATA c@ STR:DIGIT? else false then or ;
 
-: KEEP+ ( str ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
-   a u dst CAP lenp BUF-APPEND
+: KEEP+ ( str ^u8 ^len -- ) {: s:str dst:^ lenp:^ :}
+   s dst CAP lenp BUF-APPEND
    10 dst CAP lenp BUF-APPEND-C ;
 
 \ A gutter line, or the caret line of an `= evaluated:` note, keeps only the
 \ label past its carets; the carets, and an evaluating call's label
 \ `evaluates the text below`, only tell where the record is.
-: LINE+ ( str ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
-   a u STR:LTRIM {: t:^ tu:n :}
-   t tu PLACE? if exit then
-   t tu s" |" STR:STARTS-WITH?  t tu s" ^" STR:STARTS-WITH? or if
-      t tu 94 STR:INDEX-OF MATCH option
+: LINE+ ( str ^u8 ^len -- ) {: s:str dst:^ lenp:^ :}
+   s STR:LTRIM {: t:str :}
+   t PLACE? if exit then
+   t s" |" STR:STARTS-WITH?  t s" ^" STR:STARTS-WITH? or if
+      t 94 STR:INDEX-OF MATCH option
         none OF ENDOF
         some OF IDX>N {: at:n :}
-           t at + tu at - PAST-CARETS {: l:^ lu:n :}
-           l lu s"  evaluates the text below" STR:= 0= if l lu dst lenp KEEP+ then ENDOF
+           t STR:DATA at + t STR:LEN at - >str PAST-CARETS {: l:str :}
+           l s"  evaluates the text below" STR:= 0= if l dst lenp KEEP+ then ENDOF
       ;MATCH exit
    then
-   t tu dst lenp KEEP+ ;
+   t dst lenp KEEP+ ;
 
 \ The record's lines short of where it is placed, into DST.
-: KEPT ( ^u8 n ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
+: KEPT ( str ^u8 ^len -- ) {: s:str dst:^ lenp:^ :}
    lenp BUF-RESET
    0 begin
-      >r a u 10 r> STR:SPLIT-NEXT
+      >r s 10 r> STR:SPLIT-NEXT
    while
       >r dst lenp LINE+ r>
-   repeat drop 2drop ;
+   repeat drop drop ;
 
 \ Short of a trailing ` lr 0x<16 hex>` and newline: a kernel exit line ends in
 \ its trapping code's return address, which ASLR moves between runs.
 23 constant LR-TAIL
-: PAST-LR ( str -- str ) {: a:^ u:n :}
-   u LR-TAIL < if a u exit then
-   a u + LR-TAIL - 6 s"  lr 0x" STR:= if a u LR-TAIL - else a u then ;
+: PAST-LR ( str -- str ) {: s:str :}
+   s STR:LEN LR-TAIL < if s exit then
+   s STR:DATA s STR:LEN + LR-TAIL - 6 >str s"  lr 0x" STR:= if s STR:DATA s STR:LEN LR-TAIL - >str else s then ;
 
 public
 
-: SNAPSHOT ( ^u8 n ^u8 n n -- )
-   {: out:^ outu:n err:^ erru:n rc:n :}
-   out outu SAVED-OUT SAVED-OUT-U SAVE-BYTES
-   err erru SAVED-ERR SAVED-ERR-U SAVE-BYTES
+: SNAPSHOT ( str str n -- )
+   {: out:str err:str rc:n :}
+   out SAVED-OUT SAVED-OUT-U SAVE-BYTES
+   err SAVED-ERR SAVED-ERR-U SAVE-BYTES
    rc SAVED-RC ! ;
 
-: SAME ( ^u8 n ^u8 n n -- )
-   {: out:^ outu:n err:^ erru:n rc:n :}
+: SAME ( str str n -- )
+   {: out:str err:str rc:n :}
    rc SAVED-RC @ T=
-   out outu SAVED-OUT SAVED-OUT-U @ T$=
-   err erru PAST-LR SAVED-ERR SAVED-ERR-U @ PAST-LR T$= ;
+   out SAVED-OUT SAVED-OUT-U @ >str T$=
+   err PAST-LR SAVED-ERR SAVED-ERR-U @ >str PAST-LR T$= ;
 
 \ As SAME, but stderr's record may be placed elsewhere: a direct run places
 \ it in the file it reads, a subject run at the test file's word that ran the
 \ text, with an `= evaluated:` note. Its code, message, label and other notes
 \ agree.
 : SAME-UNLOCATED ( str str n -- )
-   {: out:^ outu:n err:^ erru:n rc:n :}
+   {: out:str err:str rc:n :}
    rc SAVED-RC @ T=
-   out outu SAVED-OUT SAVED-OUT-U @ T$=
-   err erru GOT-KEPT GOT-KEPT-U KEPT
-   SAVED-ERR SAVED-ERR-U @ SAVED-KEPT SAVED-KEPT-U KEPT
-   GOT-KEPT GOT-KEPT-U @ SAVED-KEPT SAVED-KEPT-U @ T$= ;
+   out SAVED-OUT SAVED-OUT-U @ >str T$=
+   err GOT-KEPT GOT-KEPT-U KEPT
+   SAVED-ERR SAVED-ERR-U @ >str SAVED-KEPT SAVED-KEPT-U KEPT
+   GOT-KEPT GOT-KEPT-U @ >str SAVED-KEPT SAVED-KEPT-U @ >str T$= ;
 
 ;package

@@ -1,4 +1,3 @@
-split-str
 \ type-match-suite.f — checked MATCH suite (docs/forth.md "Structures And
 \ Enums"), loaded by name:
 \     bin/hb --load test/type-match-suite.f
@@ -218,11 +217,11 @@ create MD-BUF MD-CAP allot
 variable MD-U
 variable MD-I
 : MD-CLEAR ( -- ) 0 MD-U ! ;
-: MD-APP ( str -- ) {: a:^ u:n :}
-   MD-U @ u + MD-CAP > if s" match-suite: depth fixture too long" EXIT-STATUS:FAILURE die then
+: MD-APP ( str -- ) {: s:str :}
+   MD-U @ s STR:LEN + MD-CAP > if s" match-suite: depth fixture too long" EXIT-STATUS:FAILURE die then
    0 MD-I !
-   begin MD-I @ u < while
-      a MD-I @ + c@  MD-BUF MD-U @ + c!
+   begin MD-I @ s STR:LEN < while
+      s STR:DATA MD-I @ + c@  MD-BUF MD-U @ + c!
       MD-U @ 1 + MD-U !
       MD-I @ 1 + MD-I !
    repeat ;
@@ -233,7 +232,7 @@ variable MD-J   \ MD-BODY's own loop index: MD-APP clobbers MD-I per append
    0 MD-J !  begin MD-J @ k < while s" over if " MD-APP MD-J @ 1 + MD-J ! repeat
    s" MATCH mres ok OF construct mres ok ENDOF err OF construct mres err ENDOF ;MATCH " MD-APP
    0 MD-J !  begin MD-J @ k < while s" then " MD-APP MD-J @ 1 + MD-J ! repeat
-   MD-BUF MD-U @ ;
+   MD-BUF MD-U @ >str ;
 s" MD70=" type 70 MD-BODY CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-NESTED" type cr
 
@@ -271,12 +270,12 @@ s" MATCH-SCOPE" type cr
 \ naming its fault; nonexhaustive lists the missing variant names.
 \ Captured through the render diag buffer in JSON mode; one prose case pins the
 \ `bad match: missing variants` text.
-: MDG< ( ^u8 n -- )   \ run one candidate with JSON diags into the buffer
+: MDG< ( str -- )   \ run one candidate with JSON diags into the buffer
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : MDG? ( str -- )
    T-NEXT
-   REJECTION:BUFFER$ 2swap STR:CONTAINS? 0= if
+   REJECTION:BUFFER$ swap STR:CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
    then ;
 : MDG-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
@@ -424,21 +423,21 @@ TYPED-VARIABLE TMN-HELD nullable<u8>
    s" construct nullable none matches none" T-LABEL
    TMN-NONE TMN-BYTE 0 T=
    s" construct nullable some matches some at its byte" T-LABEL
-   s" Q" drop TMN-SOME TMN-BYTE [char] Q T= ;
+   s" Q" STR:DATA TMN-SOME TMN-BYTE [char] Q T= ;
 
 : TMN-STORAGE ( -- )
    s" a nullable<u8> typed variable reads none before a write" T-LABEL
    TMN-HELD @ TMN-BYTE 0 T=
    s" a nullable<u8> typed variable keeps a stored some" T-LABEL
-   s" R" drop TMN-SOME TMN-HELD !
+   s" R" STR:DATA TMN-SOME TMN-HELD !
    TMN-HELD @ TMN-BYTE [char] R T= ;
 
 : TMN-C-RESULT ( -- )
-   s" ABC" {: buf:^ u:n :}
+   s" ABC" {: buf:str :}
    s" memchr answers some at a byte the buffer holds" T-LABEL
-   buf [char] B u TMN-MEMCHR TMN-BYTE [char] B T=
+   buf STR:DATA [char] B buf STR:LEN TMN-MEMCHR TMN-BYTE [char] B T=
    s" memchr answers none for a byte the buffer lacks" T-LABEL
-   buf [char] Z u TMN-MEMCHR TMN-BYTE 0 T= ;
+   buf STR:DATA [char] Z buf STR:LEN TMN-MEMCHR TMN-BYTE 0 T= ;
 
 TMN-CONSTRUCT
 TMN-STORAGE

@@ -1,4 +1,3 @@
-split-str
 \ Every flat src/lib/<name>.f module bare-loads (`bin/hb --load` in a fresh
 \ child, empty stdin, exit 0): it requires its own dependency closure. A missing
 \ require is masked by the gate's resident load order and surfaces only here.
@@ -31,39 +30,39 @@ TYPED-VARIABLE JSON-SEEN bool
 : TRUE ( -- bool ) 0 0= ;
 : FALSE ( -- bool ) 0 0= 0= ;
 
-: SLASHES ( str -- n ) {: a:^ u:n :}
-   0 0 begin dup u < while
-      dup a + c@ SLASH = if swap 1+ swap then
+: SLASHES ( str -- n ) {: s:str :}
+   0 0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ SLASH = if swap 1+ swap then
       1+
    repeat drop ;
 
-: SUFFIX? ( str str -- bool ) {: a:^ u:n sa:^ su:n :}
-   u su < if FALSE exit then
-   a u su - +  su  sa su  STR:= ;
+: SUFFIX? ( str str -- bool ) {: s:str ss:str :}
+   s STR:LEN ss STR:LEN < if FALSE exit then
+   s STR:DATA s STR:LEN ss STR:LEN - +  ss STR:LEN >str  ss  STR:= ;
 
 \ A flat module is src/lib/<name>.f and not a -test.f: two '/' bytes; a nested
 \ src/lib/<sub>/<name>.f has three.
-: FLAT-MODULE? ( str -- bool ) {: a:^ u:n :}
-   a u s" .f" SUFFIX? 0= if FALSE exit then
-   a u s" -test.f" SUFFIX? if FALSE exit then
-   a u SLASHES 2 = ;
+: FLAT-MODULE? ( str -- bool ) {: s:str :}
+   s s" .f" SUFFIX? 0= if FALSE exit then
+   s s" -test.f" SUFFIX? if FALSE exit then
+   s SLASHES 2 = ;
 
-: LOADS ( ^u8 n -- )
-   {: p:^ u:n :}
+: LOADS ( str -- )
+   {: p:str :}
    PROC-ARGV-RESET
    s" --load" PROC-ARGV+
-   p u PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$  EMPTY 0  OUT CAP >LEN
+   p PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$  EMPTY 0 >str  OUT CAP >LEN
    ERR CAP >LEN  PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
-   p u T-LABEL
-   p u OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED= ;
+   p T-LABEL
+   p OUT outu LEN>N >str ERR erru LEN>N >str oc 0 T-ENDING-EXITED= ;
 
-: COLLECT ( ^u8 n -- ) {: a:^ u:n :}     \ FS:WALK-FILES callback
-   a u FLAT-MODULE? 0= if exit then
+: COLLECT ( str -- ) {: s:str :}     \ FS:WALK-FILES callback
+   s FLAT-MODULE? 0= if exit then
    MODULES-N @ 1+ MODULES-N !
-   a u s" src/lib/json.f" STR:= if TRUE JSON-SEEN ! then
-   a u LOADS ;
+   s s" src/lib/json.f" STR:= if TRUE JSON-SEEN ! then
+   s LOADS ;
 
 public
 
