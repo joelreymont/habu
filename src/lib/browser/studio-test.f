@@ -1,8 +1,8 @@
 \ studio-test.f - STUDIO:KEY-VOLUME for four scenes stated here, each number
 \ within 1e-9 of the larger of its own size and 1; the expected numbers come
 \ from viewport.js's own viewer, studio, keyAxes, keyVolume and SHADOW_SIDE,
-\ run in binary64 on the scene's f32 numbers. A matrix whose fourth row is not 0 0 0 1, and a
-\ singular one, are E-MATRIX.
+\ run in binary64 on the scene's f32 numbers. A matrix whose fourth row is not
+\ 0 0 0 1, and a singular one, are E-MATRIX.
 \ Run: bin/hb --load src/lib/browser/studio-test.f
 
 require src/lib/test/assert.f

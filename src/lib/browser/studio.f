@@ -301,15 +301,15 @@ public
 
 \ The key light's volume for the draw's matrix m, 16 f32 column-major as
 \ the draw record carries it, and the ground g, ten f32: the plane nx ny nz
-\ d, then the box no caster leaves, lowest x y z then highest. Writes into out, room for 20 binary64,
-\ five planes a b c d, a point inside when a x + b y + c z + d >= 0: the
-\ ground, then key x at least M's lowest, at most its highest, then key y
-\ the same; answers 5 and the key's pixel in world units. Answers 0 and 0.0,
-\ out's contents no planes, when the eye is not above the plane, T is not
-\ above 0 or M is empty. A casters' box that is a point answers 5 and 0.0,
-\ where viewport.js draws no shadow; no model gives one. Reads only the
-\ direction of m's depth row. E-MATRIX for an m whose fourth row is not
-\ 0 0 0 1 or that is not invertible.
+\ d, then the box no caster leaves, lowest x y z then highest. Writes into
+\ out, room for 20 binary64, five planes a b c d, a point inside when
+\ a x + b y + c z + d >= 0: the ground, then key x at least M's lowest, at
+\ most its highest, then key y the same; answers 5 and the key's pixel in
+\ world units. Answers 0 and 0.0, out's contents no planes, when the eye is
+\ not above the plane, T is not above 0 or M is empty. A casters' box that
+\ is a point answers 5 and 0.0, where viewport.js draws no shadow; no model
+\ gives one. Reads only the direction of m's depth row. E-MATRIX for an m
+\ whose fourth row is not 0 0 0 1 or that is not invertible.
 : KEY-VOLUME ( ^u8 ^u8 ^r -- n r )
    {: m g out:^ :}
    m g ABOVE? 0= if 0 0.0 exit then

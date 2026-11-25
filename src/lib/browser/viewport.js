@@ -86,8 +86,8 @@
 // light.clip, whose x and y run along the key softbox's tangents and cover
 // the key's volume (keyVolume) and whose depth runs away from the key over
 // the casters' box; stamp, its fragment, sets in marks, for every surface,
-// the height slices it covers in its texel; halve ORs
-// each level of marks' 2x2 texels into the next, up to one texel; seen finds,
+// the height slices it covers in its texel; halve ORs each level of marks'
+// 2x2 texels into the next, up to one texel; seen finds,
 // at half the canvas's size, the share V of the softbox the ground sees past
 // the casters, as the share of its rays through the slices that clear them
 // (visible, traced), into shade; and ground draws the catcher, the quad
@@ -344,15 +344,15 @@ struct Cast {
   return Cast(q, (plane(q.xy) - q.z) / light.reach.z);
 }
 
-// Marks' level l is (SIDE >> l)² texels from texel (4 SIDE² - 4 (SIDE >> l)²) / 3,
-// the sum of the levels below: its first texel, then its side.
+// Level l of marks, after every level below it: its first texel, then its
+// side.
 fn level(l: u32) -> vec2<u32> {
   let side = SIDE >> l;
   return vec2<u32>((4u * SIDE * SIDE - 4u * side * side) / 3u, side);
 }
 
 // The slice of height share h, 10 an octave: penumbra width grows with
-// height, and fewer an octave leave grazing rays more than 0.08 off.
+// height; at 8 an octave V is up to 0.089 off traced rays, at 10 0.076.
 fn slice(h: f32) -> u32 {
   return u32(clamp(floor(64.0 + 10.0 * log2(max(h, 1e-30))), 0.0, 63.0));
 }
@@ -421,7 +421,7 @@ fn plane(q: vec2<f32>) -> f32 {
 // 1 when the ray from map texel coordinate at, going dir texels as its height
 // share t goes 0 to 1, crosses a marked slice, else 0. The ray is a machine
 // over its level and t, starting at, and never rising past, the level whose
-// cell is about a quarter of its run. Clear: t is 1 or past the map's edge.
+// cell is a quarter to a half of its run. Clear: t is 1 or past the map's edge.
 // Advance: the cell's slices t to its exit are empty, so t moves to the exit,
 // a level up only when the ray leaves the parent cell too. Descend: the cell
 // is marked above level 0. Blocked: it is marked at level 0. t is f32, so a
@@ -911,10 +911,10 @@ function grouped(rows, count, origin) {
 // caster pass's attachment SHADOW_SIDE square, and with shade, half the
 // drawing buffer's size rounded up, which a resize alone makes again. A draw
 // whose eye is above the plane and whose key's volume is not null first
-// draws every row into marks along the key, ORs the marks
-// into their levels, draws V into shade, then draws the catcher first in its main pass, which draws only the
-// rows that are not cast-only; so does a pick's probe. With no ground or no
-// shadow a cast-only row draws nothing.
+// draws every row into marks along the key, ORs the marks into their
+// levels, draws V into shade, then draws the catcher first in its main
+// pass, which draws only the rows that are not cast-only; so does a pick's
+// probe. With no ground or no shadow a cast-only row draws nothing.
 // occlude draws its boxes against the depth, and their footprints into shade's
 // pixels against marks when the last draw drew a shadow and marks are held,
 // in passes of at most QUERIES occlusion queries, one per box, and reads
@@ -1003,8 +1003,7 @@ function setup(canvas, context, device, release, fail) {
     depthStencil: { format: "depth24plus", depthWriteEnabled: false, depthCompare: "always" },
     multisample: { count: 4 },
   });
-  const filtered = device.createSampler({ magFilter: "linear", minFilter: "linear",
-    mipmapFilter: "linear" });
+  const filtered = device.createSampler({ magFilter: "linear", minFilter: "linear" });
   const { UNIFORM, STORAGE, VERTEX, INDEX, COPY_DST, COPY_SRC, QUERY_RESOLVE, MAP_READ } =
     GPUBufferUsage;
   const matrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
@@ -1205,14 +1204,14 @@ function setup(canvas, context, device, release, fail) {
         casting.drawIndexed(indexCount, n, 0, 0, first);
       }
       casting.end();
-      const covering = encoder.beginComputePass();
+      const halving = encoder.beginComputePass();
       const run = (bound, side) => {
-        covering.setBindGroup(0, bound);
-        covering.dispatchWorkgroups(Math.ceil(side / 8), Math.ceil(side / 8));
+        halving.setBindGroup(0, bound);
+        halving.dispatchWorkgroups(Math.ceil(side / 8), Math.ceil(side / 8));
       };
-      covering.setPipeline(halver);
+      halving.setPipeline(halver);
       shadows.halves.forEach((bound, k) => run(bound, SHADOW_SIDE >> (k + 1)));
-      covering.end();
+      halving.end();
       const shading = encoder.beginRenderPass({ colorAttachments: [{
         view: shade.createView(), clearValue: [1, 1, 1, 1], loadOp: "clear", storeOp: "store" }] });
       shading.setPipeline(shader);

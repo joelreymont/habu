@@ -507,8 +507,8 @@ async function browser() {
       assert.deepEqual(picked, [-1, 0, 0x3F800000], `a pick on the shadow answers none, got ${picked}`);
       // The canvas's pixel row through the shadow's floor point: its greys are
       // the traced rays', and from its darkest pixel out to each end the
-      // penumbra brightens without a band or a step. A brightening V dips by
-      // at most a grey: shade holds it in 255ths and the canvas in greys.
+      // penumbra brightens without a band or a step, and the row ends on the
+      // white floor.
       const width = await evaluate(`document.querySelector("canvas").width`);
       const places = Array.from({ length: width }, (_, k) =>
         [(2 * k + 1) / width - 1, points[0][1]]);
@@ -518,15 +518,17 @@ async function browser() {
       assert.equal(wrong.length, 0, `the row's greys are the rays' ${wrong.map((k) =>
         greyed(rowRays[k]))}, got ${wrong.map((k) => row[k])} at pixels ${wrong}`);
       const darkest = row.reduce((d, c, k) => (c[0] < row[d][0] ? k : d), 0);
-      let rise = 0, dip = 0;
-      for (const step of [-1, 1])
-        for (let k = darkest; k !== (step < 0 ? 0 : width - 1); k += step) {
+      let rise = 0;
+      for (const step of [-1, 1]) {
+        const end = step < 0 ? 0 : width - 1;
+        for (let k = darkest; k !== end; k += step) {
           const [c, next] = [row[k], row[k + step]];
           rise = Math.max(rise, next[0] - c[0]);
-          dip = Math.max(dip, c[0] - next[0]);
-          assert.ok(next.every((v, j) => v >= c[j] - 1 && v - c[j] <= 6),
+          assert.ok(next.every((v, j) => v >= c[j] && v - c[j] <= 6),
             `along the row out from pixel ${darkest}, pixel ${k} ${c} then ${next}`);
         }
+        assert.deepEqual(row[end], background, `the row ends on white floor, got ${row[end]}`);
+      }
       // The turntable keeps the key's place on screen as the camera orbits.
       await evaluate(`box(${JSON.stringify(orbited)})`);
       const [turned, turnedMirror] = await pixels(points);
@@ -604,7 +606,7 @@ async function browser() {
       const [none] = await pixels(points);
       assert.deepEqual(none, background, `with no ground the floor is white, got ${none}`);
       console.log(`Headless Chrome ground: shadow ${shade}, mirror ${mirror}, far ${far}, ` +
-        `box ${top}, row darkest ${row[darkest]} rising at most ${rise} and dipping ${dip}, orbited ${turned}, ` +
+        `box ${top}, row darkest ${row[darkest]} rising at most ${rise}, orbited ${turned}, ` +
         `1e-12 scale ${tiny}, key ${sights}, tilted ${leaning}, ` +
         `from below ${under}, outside the view bare ${bare} and cast-only ${outside}, ` +
         `cast-only in view shade ${castShade} top ${castTop} pick ${castPick}, no ground ${none}`);
@@ -656,14 +658,14 @@ async function browser() {
 
     // Four scenes on the ground z = 0, drawn from the page and seen straight
     // down, the screen's right along x + y and 270 world units to clip's 1 up
-    // the screen, so the key's rays rise toward -0.2631 x + 0.9648 y: box A
+    // the screen, so the key's rays rise toward 0.2631 x - 0.9648 y: box A
     // 40 mm a side at the origin with box B 80 x 80 x 200 at x 38, y -232;
     // A alone; a wall 300 x 4 x 200 beside a box 60 x 60 x 40; and a plate
     // 120 x 120 x 10 floating at z 150 over a base 50 x 50 x 30. Over a grid
     // of ground points at least 6 from every box seen from above, which hides
     // the ground under the plate, the greys are the traced rays', and at
     // 27.98, 67.67, where rays see 0.371 of the softbox past A and B, the
-    // grey is 217 within its 6 band.
+    // grey is 211..224, about the rays' 217.
     async function traced() {
       const A = [0, 0, 0, 40, 40, 40], B = [38, -232, 0, 118, -152, 200];
       const wall = [-150, 0, 0, 150, 4, 200], low = [-30, 25, 0, 30, 85, 40];
