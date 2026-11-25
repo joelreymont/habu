@@ -391,6 +391,25 @@ s" TDMV-12 ( tdlight -- tdlight bool ) [: dup 0= ;] execute" CHECK-QUIET-CANDIDA
 s" TDMV-13 ( tdlight -- tdlight ) TDMV-UN" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDMV-14 ( tdlight -- tdlight ) TDMV-UR" CHECK-QUIET-CANDIDATE! 0 T=
 
+\ --- an unsigned definition's layout local binds its whole value --
+\ Each local takes its signed form's effect or rejection: a str, an option<n>
+\ and a two-field structure are each one local of all their cells.
+: TDQ4-USE ( str -- n ) STR:LEN ;
+: TDQ4-STR {: s:str :} s TDQ4-USE s ;
+: TDQ4-Q {: s:str :} [: s ;] execute ;
+: TDQ4-OPT {: o:option<n> :} o ;
+STRUCTURE tdq4pt FIELD x n FIELD y n ;STRUCTURE
+: TDQ4-PT {: p:tdq4pt :} p ;
+s" TDQ4-STRC ( str -- n str ) TDQ4-STR" CHECK-QUIET-CANDIDATE! -1 T=
+s" hello" TDQ4-STR s" hello" T$= 5 T=
+s" TDQ4-QC ( str -- str ) TDQ4-Q" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDQ4-OPTC ( option<n> -- option<n> ) TDQ4-OPT" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDQ4-PTC ( tdq4pt -- tdq4pt ) TDQ4-PT" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDQ4-LIN {: x:tdmvlin :} x x" CHECK-QUIET-CANDIDATE! 0 T=
+REJECTION:CAPTURE
+s" TDQ4-H {: s:str :} s 1 +" CHECK-CANDIDATE! 0 T=
+s\"   = found: str n\n" TDT-HAS
+
 \ --- interpret-mode + frame-metadata boundaries (docs/design.md
 \ "Families and layout policies"). A layout value is a whole logical bundle, so
 \ introspection and frame-crossing words either see it whole or fail closed.

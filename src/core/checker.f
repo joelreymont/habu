@@ -5587,7 +5587,6 @@ variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
 variable XFACT
 PTR-VARIABLE DEADTA  variable DEADTU
-variable WAS
 }SCRATCH
 
 \ A fresh check's walk state over the term pools as they stand.
@@ -6594,9 +6593,8 @@ $10 constant LOST-INIT
    DCUR @ {: pre:n :}  RCUR @ {: rpre:n :}
    unj IF din dout pre SPLICE-SHAPE ELSE -1 0 THEN {: cells:n terms:n :}
    din dout LIN-EXPLICIT? {: exp:bool :}
-   pre WAS !
    din STEP-CALL drop {: fit:bool :}
-   WAS @ dout STEP-LINEAGE DCUR !
+   pre dout STEP-LINEAGE DCUR !
    OK @ exp 0= and IF pre rpre LIN-CHECK THEN
    unj 0= IF EXIT THEN
    fit 0= IF pre rpre cells dout terms UNJ-SPLICE EXIT THEN
@@ -21208,16 +21206,11 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    decl wf0 LOC-DECL-GROUPS
    pre rpre  decl ROW-CELLS  0 0 UNJ-SPLICE ;
 
-: LOC-CAPTURE-SCALARS ( -- )
-   WAS @ R-RES
-   #LOC @ 1 -
-   BEGIN dup LGRP @ >= WHILE
-      over R-RES {: node:n :}
-      node TAG S-PUSH <> IF 2drop EXIT THEN
-      CP-LOCAL 0 node 0 CP-NEW over cells LOCVAL + !
-      swap drop node P>REST R-RES swap
-      1 -
-   REPEAT 2drop ;
+\ The step bound CAP, the row it read, to the declared cells: each local
+\ captures its group of CAP, and DCUR stays the step's output row.
+: LOC-CAPTURE-BOUND ( n -- ) {: cap:n :}
+   DCUR @ {: out:n :}
+   cap DCUR !  LOC-BIND-GROUPS  out DCUR ! ;
 
 \ A layout whose width read an open argument is one logical cell; a transport
 \ bind cannot meet the annotation's tag with it, so it binds whole here.
@@ -21249,7 +21242,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    OK @ 0= IF FRESH MK-ROW DCUR ! EXIT THEN
    FRESH {: tail:n :}
    tail MK-ROW LGRP @ BEGIN dup #LOC @ < WHILE
-     dup cells LOCTV + @ rot MK-PUSH swap 1+
+     dup cells LOCTV + @ T-RES LOC-DECL-TERM rot PUSH-TERM swap 1+
    REPEAT drop
    UNJ-ARMED? {: unj:bool :}
    DCUR @ {: pre:n :}  RCUR @ {: rpre:n :}  WF-N @ {: wf0:n :}
@@ -21275,7 +21268,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
       1 LAYOUT-XPORT !                 \ capturing a local moves the value as one bundle
       tail MK-ROW RES-FALSE CHECKER-STEP-UNJ   \ a failure settles below, by declared widths
       0 LAYOUT-XPORT !
-      OK @ IF LOC-CAPTURE-SCALARS THEN
+      OK @ IF cap LOC-CAPTURE-BOUND THEN
    THEN THEN
    unj IF   \ a bind that held leaves whole rows: a later refusal of this token splices nothing
       OK @ IF -1 UNJ-SPLICED ! ELSE decl pre rpre wf0 LOC-UNJ-BIND THEN
