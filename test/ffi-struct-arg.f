@@ -203,11 +203,11 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
 
 \ The record is captured, so stderr carries none.
 : FFI-T-SA-ARITY ( [ -- ] str str -- )
-   {: h:^ hu:n p:^ pu:n :}
+   {: h:str p:str :}
    DECL-DIAG:PROSE
    70 TTHROWSQ
-   h hu DECL-DIAG:HAS? TTRUE
-   p pu DECL-DIAG:HAS? TTRUE
+   h DECL-DIAG:HAS? TTRUE
+   p DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF ;
 
 : FFI-T-SA-STAGING ( [ -- ] -- )

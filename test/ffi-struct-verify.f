@@ -323,9 +323,9 @@ variable FFI-SV-SRC-U
 \ silently.
 : FFI-SV-DEFERRED ( -- )
    S\" : FFI-SV-DEF: ( -- ) FFI:OPEN-FUNCTION ;\nparses: FFI-SV-DEF: 9\nFFI-SV-DEF: FFI-SV-G printf ( ^u8 n -- n )\n1 VARIADIC\n;FUNCTION"
-   {: src:^ srcu:n :}
-   src srcu T-LABEL
-   src srcu FFI-SV-SOURCE s" W-CHECK-DEFERRED" FFI-SV-WARNS
+   {: src:str :}
+   src T-LABEL
+   src FFI-SV-SOURCE s" W-CHECK-DEFERRED" FFI-SV-WARNS
    LSP-CHECK:VERIFY-OUT$ s" E-FFI-SYNTAX" STR:CONTAINS?
    dup IF FFI-SV-SHOW THEN TFALSE ;
 
