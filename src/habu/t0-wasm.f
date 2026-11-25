@@ -342,11 +342,16 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : CMP-LIT ( vreg n -- ) {: a:vreg v:n :}
    a GET-REG  L-CA SET,  v I64,  L-CB SET, ;
 
-\ 0 minus the zero-extended i32 condition: -1 when it holds, else 0.
-: SET-FLAG ( vreg cc -- ) {: d:vreg c:cc :}
-   c COND {: o:n :}
-   0 I64,  L-CA GET,  L-CB GET,  o B,  OP-I64-EXTEND-I32-U B,  OP-I64-SUB B,
-   d SET-REG ;
+\ Over 0, a and b on the Wasm stack: 0 minus the zero-extended i32 condition,
+\ -1 when it holds, else 0.
+: FLAG-END ( vreg cc -- ) {: d:vreg c:cc :}
+   c COND B,  OP-I64-EXTEND-I32-U B,  OP-I64-SUB B,  d SET-REG ;
+
+: FLAG ( vreg vreg vreg cc -- ) {: d:vreg a:vreg b:vreg c:cc :}
+   0 I64,  a GET-REG  b GET-REG  d c FLAG-END ;
+
+: FLAG-LIT ( vreg vreg n cc -- ) {: d:vreg a:vreg v:n c:cc :}
+   0 I64,  a GET-REG  v I64,  d c FLAG-END ;
 
 \ ---- memory ------------------------------------------------------------------
 : LOAD ( vreg vreg width -- ) {: d:vreg a:vreg w:width :}
@@ -626,7 +631,8 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    ['] NOT k EMIT-NOT-XT !
    ['] CMP k EMIT-CMP-XT !
    ['] CMP-LIT k EMIT-CMP-LIT-XT !
-   ['] SET-FLAG k EMIT-SET-FLAG-XT !
+   ['] FLAG k EMIT-FLAG-XT !
+   ['] FLAG-LIT k EMIT-FLAG-LIT-XT !
    ['] IMM? k EMIT-IMM?-XT !
    ['] LOAD k EMIT-LOAD-XT !
    ['] STORE k EMIT-STORE-XT !

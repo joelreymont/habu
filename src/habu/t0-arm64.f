@@ -429,11 +429,6 @@ variable HELD                         \ nonzero while x29 holds the index
 : NEG ( vreg -- ) REG dup ENC-NEG W ;
 : NOT ( vreg -- ) REG dup ENC-MVN W ;
 
-\ csetm makes the full-cell flag of the condition.
-: SET-FLAG ( vreg cc -- )
-   {: d:vreg c:cc :}
-   d REG c CC>N CONDS @ ENC-CSETM W ;
-
 : CMP ( vreg vreg -- )
    {: a:vreg b:vreg :}
    a REG b REG ENC-CMP W ;
@@ -446,8 +441,27 @@ variable HELD                         \ nonzero while x29 holds the index
    v TMP LIT-R
    r TMP ENC-CMP W ;
 
-\ Every literal is admitted: OP-LIT, MUL-LIT, CMP-LIT and OF-LIT load one
-\ no immediate field holds into x16.
+\ csetm makes the full-cell flag of the condition.
+: FLAG-CC ( vreg cc -- )
+   {: d:vreg c:cc :}
+   d REG c CC>N CONDS @ ENC-CSETM W ;
+
+: FLAG ( vreg vreg vreg cc -- )
+   {: d:vreg a:vreg b:vreg c:cc :}
+   a b CMP  d c FLAG-CC ;
+
+\ A cell's sign fills the flag of < 0, and inverted that of >= 0.
+: FLAG-LIT ( vreg vreg n cc -- )
+   {: d:vreg a:vreg v:n c:cc :}
+   v 0= if
+      c CC>N {: k:n :}
+      k CC-LT CC>N = if d REG a REG 63 ENC-ASRI W exit then
+      k CC-GE CC>N = if d REG a REG 63 ENC-MVN-ASR W exit then
+   then
+   a v CMP-LIT  d c FLAG-CC ;
+
+\ Every literal is admitted: OP-LIT, MUL-LIT, CMP-LIT, FLAG-LIT and OF-LIT load
+\ one no immediate field holds into x16.
 : IMM? ( n -- bool ) drop true ;
 
 \ ---- memory ------------------------------------------------------------------
@@ -680,7 +694,8 @@ variable HELD                         \ nonzero while x29 holds the index
    ['] NOT k EMIT-NOT-XT !
    ['] CMP k EMIT-CMP-XT !
    ['] CMP-LIT k EMIT-CMP-LIT-XT !
-   ['] SET-FLAG k EMIT-SET-FLAG-XT !
+   ['] FLAG k EMIT-FLAG-XT !
+   ['] FLAG-LIT k EMIT-FLAG-LIT-XT !
    ['] LOAD k EMIT-LOAD-XT !
    ['] STORE k EMIT-STORE-XT !
    ['] TOR k EMIT-TOR-XT !

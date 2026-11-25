@@ -572,12 +572,15 @@ public
    $66 W64 $0F7E sr XMM>N d R64>N s SSE-RR ;
 
 \ ---- widening moves ----------------------------------------------------------
-\ Every one of these widens into a 64-bit register, so REX.W is always set. movsxd
-\ is the 32-to-64 sign extension and has no zero-extending counterpart: a plain
-\ 32-bit move already zero-extends.
+\ movsxd is the 32-to-64 sign extension and has no zero-extending counterpart:
+\ a plain 32-bit move already zero-extends.
 : ENC-MOVZX-8-RR ( r64 r8 ^VEC:vector<u8> -- ) {: d:r64 sr:r8 s:^ :}
    sr R8>N REG-NUM {: sn:n :}
    W64 $0FB6 d R64>N REG-NUM sn sn R8-FORCE s RR-ENC ;
+
+: ENC-MOVZX32-8-RR ( r32 r8 ^VEC:vector<u8> -- ) {: d:r32 sr:r8 s:^ :}
+   sr R8>N REG-NUM {: sn:n :}
+   W32 $0FB6 d R32>N REG-NUM sn sn R8-FORCE s RR-ENC ;
 
 : ENC-MOVZX-8-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}
    W64 $0FB6 d m s EXT-RM ;

@@ -350,11 +350,12 @@ ARCHES TYPED-BUFFER EMIT-NEG-XT [ vreg -- ]
 ARCHES TYPED-BUFFER EMIT-NOT-XT [ vreg -- ]
 ARCHES TYPED-BUFFER EMIT-CMP-XT [ vreg vreg -- ]
 ARCHES TYPED-BUFFER EMIT-CMP-LIT-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER EMIT-SET-FLAG-XT [ vreg cc -- ]
+ARCHES TYPED-BUFFER EMIT-FLAG-XT [ vreg vreg vreg cc -- ]
+ARCHES TYPED-BUFFER EMIT-FLAG-LIT-XT [ vreg vreg n cc -- ]
 ARCHES TYPED-BUFFER EMIT-IMM?-XT [ n -- bool ]
 
-\ Whether EMIT-OP-LIT, EMIT-MUL-LIT, EMIT-CMP-LIT and EMIT-OF-LIT take n as
-\ their immediate; each of them requires n to answer true.
+\ Whether EMIT-OP-LIT, EMIT-MUL-LIT, EMIT-CMP-LIT, EMIT-FLAG-LIT and EMIT-OF-LIT
+\ take n as their immediate; each of them requires n to answer true.
 : EMIT-IMM? ( n -- bool ) CUR @ EMIT-IMM?-XT @ execute ;
 
 : EMIT-OP ( vreg vreg alu -- ) {: d:vreg s:vreg o:alu :}
@@ -392,17 +393,22 @@ ARCHES TYPED-BUFFER EMIT-IMM?-XT [ n -- bool ]
 : EMIT-NOT ( vreg -- ) dup CACHE-DROP  CUR @ EMIT-NOT-XT @ execute ;
 
 \ EMIT-CMP and EMIT-CMP-LIT compare a with b (or with n) and set the condition
-\ codes, writing no vreg; EMIT-SET-FLAG makes d -1 when condition c of the last
-\ compare holds, else 0: a Habu flag. EMIT-IF-CC,, EMIT-WHILE-CC, and
-\ EMIT-UNTIL-CC, branch on the codes instead. Between a compare and the word
-\ that reads its codes the front end emits only moves: EMIT-PUSH, EMIT-PUSH-LIT,
-\ EMIT-SPILL, EMIT-SPILL-LIT, EMIT-FILL, EMIT-POP, EMIT-LIT, EMIT-ADDR-DATA,
-\ EMIT-ADDR-CODE, EMIT-ADDR-QUOT, EMIT-DSP+, EMIT-MOV and EMIT-EXCHANGE. Every
-\ emitter keeps those condition-preserving.
+\ codes, writing no vreg; EMIT-IF-CC,, EMIT-WHILE-CC, and EMIT-UNTIL-CC, branch
+\ on the codes. Between a compare and the word that reads its codes the front
+\ end emits only moves: EMIT-PUSH, EMIT-PUSH-LIT, EMIT-SPILL, EMIT-SPILL-LIT,
+\ EMIT-FILL, EMIT-POP, EMIT-LIT, EMIT-ADDR-DATA, EMIT-ADDR-CODE, EMIT-ADDR-QUOT,
+\ EMIT-DSP+, EMIT-MOV and EMIT-EXCHANGE. Every emitter keeps those
+\ condition-preserving.
+\
+\ EMIT-FLAG and EMIT-FLAG-LIT make d -1 when a c b (or a c n) holds, else 0: a
+\ Habu flag. d may be a or b; every other vreg keeps its value. Both may
+\ overwrite the condition codes, and neither reads them.
 : EMIT-CMP ( vreg vreg -- ) CUR @ EMIT-CMP-XT @ execute ;
 : EMIT-CMP-LIT ( vreg n -- ) CUR @ EMIT-CMP-LIT-XT @ execute ;
-: EMIT-SET-FLAG ( vreg cc -- )
-   over CACHE-DROP  CUR @ EMIT-SET-FLAG-XT @ execute ;
+: EMIT-FLAG ( vreg vreg vreg cc -- ) {: d:vreg a:vreg b:vreg c:cc :}
+   d CACHE-DROP  d a b c CUR @ EMIT-FLAG-XT @ execute ;
+: EMIT-FLAG-LIT ( vreg vreg n cc -- ) {: d:vreg a:vreg v:n c:cc :}
+   d CACHE-DROP  d a v c CUR @ EMIT-FLAG-LIT-XT @ execute ;
 
 \ ---- memory ------------------------------------------------------------------
 ARCHES TYPED-BUFFER EMIT-LOAD-XT [ vreg vreg width -- ]

@@ -327,7 +327,7 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
 \ through OWN, which copies a shared vreg first; a whole overwrite takes it
 \ through WRITE-TARGET, which relabels it to a fresh vreg. A comparison followed
 \ by `if`, `while` or `until` leaves its condition in the flags; otherwise it
-\ pushes its flag into a fresh vreg.
+\ pushes its flag into a free vreg.
 \
 \ A local's read takes the vreg that holds its slot, sharing one an entry
 \ holds, and loads only when none does.
@@ -783,11 +783,16 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
    at SPLIT-BINDS drop seq + BIND-WIDTHS @ ;
 
 \ ---- comparisons -------------------------------------------------------------
-\ The compare's operands are removed, so a vreg is free and ALLOC emits nothing
-\ between the compare and EMIT-SET-FLAG, as EMIT-CMP requires.
-: PUSH-FLAG ( cc -- ) {: c:cc :}
+\ The operands' entries are removed, so ALLOC emits nothing and may answer an
+\ operand's vreg.
+: PUSH-FLAG ( vreg vreg cc -- ) {: a:vreg b:vreg c:cc :}
    ALLOC {: d:vreg :}
-   d c EMIT-SET-FLAG
+   d a b c EMIT-FLAG
+   d PUSH-REG ;
+
+: PUSH-FLAG-LIT ( vreg n cc -- ) {: a:vreg v:n c:cc :}
+   ALLOC {: d:vreg :}
+   d a v c EMIT-FLAG-LIT
    d PUSH-REG ;
 
 \ One more than the condition (CC>N) of a compare whose flag is still
@@ -803,31 +808,33 @@ variable PENDING
    k ROW-A0 @ {: code:n :}
    code CF-IF =  code CF-WHILE = or  code CF-UNTIL = or ;
 
-: CMP-FLAG ( cc -- ) {: c:cc :}
-   BRANCH-NEXT? if c CC>N 1+ PENDING ! exit then
-   c PUSH-FLAG ;
+: PEND ( cc -- ) CC>N 1+ PENDING ! ;
+
+: COMPARE ( vreg vreg cc -- ) {: a:vreg b:vreg c:cc :}
+   BRANCH-NEXT? if a b EMIT-CMP c PEND exit then
+   a b c PUSH-FLAG ;
+
+: COMPARE-LIT ( vreg n cc -- ) {: a:vreg v:n c:cc :}
+   BRANCH-NEXT? if a v EMIT-CMP-LIT c PEND exit then
+   a v c PUSH-FLAG-LIT ;
 
 : CMP2 ( [ n n -- n ] cc -- ) {: c:cc :}
    2 ENSURE
    CONST2? if FOLD2 exit then
    drop
    TOP ENTRY-IMM? if
-      TOP 1- MAT TOP VS-VAL @ EMIT-CMP-LIT
-      REMOVE2 c CMP-FLAG exit
+      TOP 1- MAT TOP VS-VAL @  REMOVE2  c COMPARE-LIT exit
    then
    TOP 1- ENTRY-IMM? if
-      TOP MAT TOP 1- VS-VAL @ EMIT-CMP-LIT
-      REMOVE2 c CC-SWAP CMP-FLAG exit
+      TOP MAT TOP 1- VS-VAL @  REMOVE2  c CC-SWAP COMPARE-LIT exit
    then
-   TOP 1- MAT TOP MAT EMIT-CMP
-   REMOVE2 c CMP-FLAG ;
+   TOP 1- MAT TOP MAT  REMOVE2  c COMPARE ;
 
 : CMP0 ( [ n -- n ] cc -- ) {: c:cc :}
    1 ENSURE
    TOP CONST? if FOLD1 exit then
    drop
-   TOP MAT 0 EMIT-CMP-LIT
-   TOP REMOVE c CMP-FLAG ;
+   TOP MAT  TOP REMOVE  0 c COMPARE-LIT ;
 
 \ ---- opening and closing structures ------------------------------------------
 : CS-PUSH ( n n -- ) {: kind:n loc:n :}
@@ -1856,7 +1863,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
 \ slot s. CMP0 would hand the flag to an `if` after `catch`.
 : KEEP-COUNT ( n n -- ) {: s:n loc:n :}
    loc THROWS-AT  CELL-W FETCH
-   OVER1  TOP MAT 0 EMIT-CMP-LIT  TOP REMOVE  CC-EQ PUSH-FLAG
+   OVER1  TOP MAT  TOP REMOVE  0 CC-EQ PUSH-FLAG-LIT
    [: or ;] OP-OR true ALU2
    TOP MAT s EMIT-SLOT-STORE  TOP REMOVE ;
 
@@ -1869,7 +1876,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
    DUP1 CELL-W FETCH
    ROT1  OVER1 [: - ;] OP-SUB false ALU2
    OVER1  ROOM ALLOC {: v:vreg :}  v s EMIT-SLOT-LOAD  v PUSH-REG
-   TOP 1- MAT TOP MAT EMIT-CMP  REMOVE2  CC-EQ PUSH-FLAG
+   TOP 1- MAT TOP MAT  REMOVE2  CC-EQ PUSH-FLAG
    [: and ;] OP-AND true ALU2
    [: + ;] OP-ADD true ALU2
    SWAP1  CELL-W STORE ;

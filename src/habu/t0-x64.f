@@ -11,10 +11,10 @@ split-str
 \ take an epilogue.
 \
 \ FLAGS says whether the condition codes hold a compare no word has read yet.
-\ CMP and CMP-LIT set it; SET-FLAG, FWD-CC and BACK-CC, which read the codes,
-\ clear it, and so does a unit's start. A word that compares and branches
-\ itself leaves it alone. While it is clear a zero is loaded by an xor, which
-\ writes the codes; while it is set, by a mov, which does not.
+\ CMP and CMP-LIT set it; FWD-CC and BACK-CC, which read the codes, clear it,
+\ and so does a unit's start. A word that reads its own compare's codes leaves
+\ it alone. While it is clear a zero is loaded by an xor, which writes the
+\ codes; while it is set, by a mov, which does not.
 \
 \ The frame cell stays the loop index's home (`j` and the runtime read it); r12
 \ is a copy written beside every store of it. HELD says whether the code
@@ -406,13 +406,6 @@ variable AHEAD
 : NEG ( vreg -- ) REG SINK ENC-NEG ;
 : NOT ( vreg -- ) REG SINK ENC-NOT ;
 
-: SET-FLAG ( vreg cc -- )
-   {: d:vreg c:cc :}
-   0 FLAGS !
-   c COND 0 >R8 SINK ENC-SETCC
-   d REG 0 >R8 SINK ENC-MOVZX-8-RR
-   d REG SINK ENC-NEG ;
-
 : CMP ( vreg vreg -- )
    {: a:vreg b:vreg :}
    SETTLE
@@ -431,6 +424,63 @@ variable AHEAD
    SETTLE
    1 FLAGS !
    a REG v CMP-R ;
+
+: SAME? ( vreg vreg -- bool ) VREG>N swap VREG>N = ;
+
+: ZERO ( vreg -- ) REG R64>N >R32 dup SINK ENC-XOR32-RR ;
+
+\ -1 in d when the codes hold a borrow, else 0.
+: BORROW ( vreg -- ) REG dup SINK ENC-SBB-RR ;
+
+\ d's flag from the codes of a compare; d is zero unless via, when d is an
+\ operand and the byte goes through al.
+: FLAG-END ( vreg cc bool -- )
+   {: d:vreg c:cc via:bool :}
+   d REG {: r:r64 :}
+   via if
+      c COND 0 >R8 SINK ENC-SETCC
+      r R64>N >R32 0 >R8 SINK ENC-MOVZX32-8-RR
+   else
+      c COND r R64>N >R8 SINK ENC-SETCC
+   then
+   r SINK ENC-NEG ;
+
+: FLAG ( vreg vreg vreg cc -- )
+   {: d:vreg a:vreg b:vreg c:cc :}
+   d a SAME? d b SAME? or {: via:bool :}
+   via 0= if d ZERO then
+   a REG b REG SINK ENC-CMP-RR
+   d c via FLAG-END ;
+
+\ -1 in d when a is negative, else 0.
+: SIGN ( vreg vreg -- )
+   {: d:vreg a:vreg :}
+   d a SAME? 0= if d a MOV then
+   d REG 63 >IMM8 SINK ENC-SAR-RI8 ;
+
+\ An unsigned compare with 1, or of 0 with a, borrows only when the flag holds.
+: ZERO-EQ ( vreg vreg -- )
+   {: d:vreg a:vreg :}
+   a REG 1 >IMM8 SINK ENC-CMP-RI8  d BORROW ;
+
+: ZERO-NE ( vreg vreg -- )
+   {: d:vreg a:vreg :}
+   d a SAME? if d NEG else d ZERO  d REG a REG SINK ENC-CMP-RR then
+   d BORROW ;
+
+: FLAG-LIT ( vreg vreg n cc -- )
+   {: d:vreg a:vreg v:n c:cc :}
+   v 0= if
+      c CC>N {: k:n :}
+      k CC-LT CC>N = if d a SIGN exit then
+      k CC-GE CC>N = if d a SIGN  d NOT exit then
+      k CC-EQ CC>N = if d a ZERO-EQ exit then
+      k CC-NE CC>N = if d a ZERO-NE exit then
+   then
+   d a SAME? {: via:bool :}
+   via 0= if d ZERO then
+   a REG v CMP-R
+   d c via FLAG-END ;
 
 \ ---- memory ------------------------------------------------------------------
 : LOAD ( vreg vreg width -- )
@@ -686,7 +736,8 @@ variable AHEAD
    ['] NOT k EMIT-NOT-XT !
    ['] CMP k EMIT-CMP-XT !
    ['] CMP-LIT k EMIT-CMP-LIT-XT !
-   ['] SET-FLAG k EMIT-SET-FLAG-XT !
+   ['] FLAG k EMIT-FLAG-XT !
+   ['] FLAG-LIT k EMIT-FLAG-LIT-XT !
    ['] LOAD k EMIT-LOAD-XT !
    ['] STORE k EMIT-STORE-XT !
    ['] CALL k EMIT-CALL-XT !

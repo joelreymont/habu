@@ -253,6 +253,10 @@ public
 
 : ENC-MVN ( n n -- n ) ARM-ZERO-REG swap ENC-ORN ;
 
+\ mvn xd, xm, asr #sh: the shift type, bits 23:22, is 10 (ASR).
+: ENC-MVN-ASR ( n n n -- n )
+   ?SHIFT {: sh:n :} ARM-ZERO-REG swap XR3 sh 10 lshift $AAA00000 or RRR ;
+
 \ MUL is MADD with the addend field set to register 31 ($7C00).
 : ENC-MUL ( n n n -- n ) XR3 $9B007C00 RRR ;
 

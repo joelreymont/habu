@@ -98,6 +98,283 @@ $FF00 SH-RI $1FE T=
 CAST: FLAG-CELL ( bool -- n )
 5 3 > FLAG-CELL -1 T=
 
+\ A compare whose flag is a value. A mask holds in bit k the flag against the
+\ kth of MIN-N -1 0 1 5 MAX-N, so a word answers minus the mask of its flags.
+variable FLAGS
+
+: SIX ( n -- n n n n n n ) dup dup dup dup dup ;
+: EQ-R ( n n n n n n -- n )
+   $8000000000000000 = FLAG-CELL
+   swap -1 = FLAG-CELL 2 * +
+   swap 0 = FLAG-CELL 4 * +
+   swap 1 = FLAG-CELL 8 * +
+   swap 5 = FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF = FLAG-CELL 32 * + ;
+: EQ-L ( n n n n n n -- n )
+   $8000000000000000 swap = FLAG-CELL
+   swap -1 swap = FLAG-CELL 2 * +
+   swap 0 swap = FLAG-CELL 4 * +
+   swap 1 swap = FLAG-CELL 8 * +
+   swap 5 swap = FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF swap = FLAG-CELL 32 * + ;
+: EQ-K ( n -- n )
+   dup $8000000000000000 = FLAG-CELL FLAGS !
+   dup -1 = FLAG-CELL 2 * FLAGS +!
+   dup 0 = FLAG-CELL 4 * FLAGS +!
+   dup 1 = FLAG-CELL 8 * FLAGS +!
+   dup 5 = FLAG-CELL 16 * FLAGS +!
+   dup $7FFFFFFFFFFFFFFF = FLAG-CELL 32 * FLAGS +!
+   drop FLAGS @ ;
+: EQ-2 ( n n -- n ) {: a:n b:n :} a b = FLAG-CELL ;
+: EQ-SAME ( n -- n ) {: a:n :} a a = FLAG-CELL  a dup = FLAG-CELL + ;
+: EQ-DUP ( n -- n ) dup = FLAG-CELL ;
+: EQ-IF ( n n -- n )
+   {: a:n b:n :} a b = dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: EQ-IF5 ( n -- n ) 5 = dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: NE-R ( n n n n n n -- n )
+   $8000000000000000 <> FLAG-CELL
+   swap -1 <> FLAG-CELL 2 * +
+   swap 0 <> FLAG-CELL 4 * +
+   swap 1 <> FLAG-CELL 8 * +
+   swap 5 <> FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF <> FLAG-CELL 32 * + ;
+: NE-L ( n n n n n n -- n )
+   $8000000000000000 swap <> FLAG-CELL
+   swap -1 swap <> FLAG-CELL 2 * +
+   swap 0 swap <> FLAG-CELL 4 * +
+   swap 1 swap <> FLAG-CELL 8 * +
+   swap 5 swap <> FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF swap <> FLAG-CELL 32 * + ;
+: NE-K ( n -- n )
+   dup $8000000000000000 <> FLAG-CELL FLAGS !
+   dup -1 <> FLAG-CELL 2 * FLAGS +!
+   dup 0 <> FLAG-CELL 4 * FLAGS +!
+   dup 1 <> FLAG-CELL 8 * FLAGS +!
+   dup 5 <> FLAG-CELL 16 * FLAGS +!
+   dup $7FFFFFFFFFFFFFFF <> FLAG-CELL 32 * FLAGS +!
+   drop FLAGS @ ;
+: NE-2 ( n n -- n ) {: a:n b:n :} a b <> FLAG-CELL ;
+: NE-SAME ( n -- n ) {: a:n :} a a <> FLAG-CELL  a dup <> FLAG-CELL + ;
+: NE-DUP ( n -- n ) dup <> FLAG-CELL ;
+: NE-IF ( n n -- n )
+   {: a:n b:n :} a b <> dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: NE-IF5 ( n -- n ) 5 <> dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: LT-R ( n n n n n n -- n )
+   $8000000000000000 < FLAG-CELL
+   swap -1 < FLAG-CELL 2 * +
+   swap 0 < FLAG-CELL 4 * +
+   swap 1 < FLAG-CELL 8 * +
+   swap 5 < FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF < FLAG-CELL 32 * + ;
+: LT-L ( n n n n n n -- n )
+   $8000000000000000 swap < FLAG-CELL
+   swap -1 swap < FLAG-CELL 2 * +
+   swap 0 swap < FLAG-CELL 4 * +
+   swap 1 swap < FLAG-CELL 8 * +
+   swap 5 swap < FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF swap < FLAG-CELL 32 * + ;
+: LT-K ( n -- n )
+   dup $8000000000000000 < FLAG-CELL FLAGS !
+   dup -1 < FLAG-CELL 2 * FLAGS +!
+   dup 0 < FLAG-CELL 4 * FLAGS +!
+   dup 1 < FLAG-CELL 8 * FLAGS +!
+   dup 5 < FLAG-CELL 16 * FLAGS +!
+   dup $7FFFFFFFFFFFFFFF < FLAG-CELL 32 * FLAGS +!
+   drop FLAGS @ ;
+: LT-2 ( n n -- n ) {: a:n b:n :} a b < FLAG-CELL ;
+: LT-SAME ( n -- n ) {: a:n :} a a < FLAG-CELL  a dup < FLAG-CELL + ;
+: LT-DUP ( n -- n ) dup < FLAG-CELL ;
+: LT-IF ( n n -- n )
+   {: a:n b:n :} a b < dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: LT-IF5 ( n -- n ) 5 < dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: GE-R ( n n n n n n -- n )
+   $8000000000000000 >= FLAG-CELL
+   swap -1 >= FLAG-CELL 2 * +
+   swap 0 >= FLAG-CELL 4 * +
+   swap 1 >= FLAG-CELL 8 * +
+   swap 5 >= FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF >= FLAG-CELL 32 * + ;
+: GE-L ( n n n n n n -- n )
+   $8000000000000000 swap >= FLAG-CELL
+   swap -1 swap >= FLAG-CELL 2 * +
+   swap 0 swap >= FLAG-CELL 4 * +
+   swap 1 swap >= FLAG-CELL 8 * +
+   swap 5 swap >= FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF swap >= FLAG-CELL 32 * + ;
+: GE-K ( n -- n )
+   dup $8000000000000000 >= FLAG-CELL FLAGS !
+   dup -1 >= FLAG-CELL 2 * FLAGS +!
+   dup 0 >= FLAG-CELL 4 * FLAGS +!
+   dup 1 >= FLAG-CELL 8 * FLAGS +!
+   dup 5 >= FLAG-CELL 16 * FLAGS +!
+   dup $7FFFFFFFFFFFFFFF >= FLAG-CELL 32 * FLAGS +!
+   drop FLAGS @ ;
+: GE-2 ( n n -- n ) {: a:n b:n :} a b >= FLAG-CELL ;
+: GE-SAME ( n -- n ) {: a:n :} a a >= FLAG-CELL  a dup >= FLAG-CELL + ;
+: GE-DUP ( n -- n ) dup >= FLAG-CELL ;
+: GE-IF ( n n -- n )
+   {: a:n b:n :} a b >= dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: GE-IF5 ( n -- n ) 5 >= dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: LE-R ( n n n n n n -- n )
+   $8000000000000000 <= FLAG-CELL
+   swap -1 <= FLAG-CELL 2 * +
+   swap 0 <= FLAG-CELL 4 * +
+   swap 1 <= FLAG-CELL 8 * +
+   swap 5 <= FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF <= FLAG-CELL 32 * + ;
+: LE-L ( n n n n n n -- n )
+   $8000000000000000 swap <= FLAG-CELL
+   swap -1 swap <= FLAG-CELL 2 * +
+   swap 0 swap <= FLAG-CELL 4 * +
+   swap 1 swap <= FLAG-CELL 8 * +
+   swap 5 swap <= FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF swap <= FLAG-CELL 32 * + ;
+: LE-K ( n -- n )
+   dup $8000000000000000 <= FLAG-CELL FLAGS !
+   dup -1 <= FLAG-CELL 2 * FLAGS +!
+   dup 0 <= FLAG-CELL 4 * FLAGS +!
+   dup 1 <= FLAG-CELL 8 * FLAGS +!
+   dup 5 <= FLAG-CELL 16 * FLAGS +!
+   dup $7FFFFFFFFFFFFFFF <= FLAG-CELL 32 * FLAGS +!
+   drop FLAGS @ ;
+: LE-2 ( n n -- n ) {: a:n b:n :} a b <= FLAG-CELL ;
+: LE-SAME ( n -- n ) {: a:n :} a a <= FLAG-CELL  a dup <= FLAG-CELL + ;
+: LE-DUP ( n -- n ) dup <= FLAG-CELL ;
+: LE-IF ( n n -- n )
+   {: a:n b:n :} a b <= dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: LE-IF5 ( n -- n ) 5 <= dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: GT-R ( n n n n n n -- n )
+   $8000000000000000 > FLAG-CELL
+   swap -1 > FLAG-CELL 2 * +
+   swap 0 > FLAG-CELL 4 * +
+   swap 1 > FLAG-CELL 8 * +
+   swap 5 > FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF > FLAG-CELL 32 * + ;
+: GT-L ( n n n n n n -- n )
+   $8000000000000000 swap > FLAG-CELL
+   swap -1 swap > FLAG-CELL 2 * +
+   swap 0 swap > FLAG-CELL 4 * +
+   swap 1 swap > FLAG-CELL 8 * +
+   swap 5 swap > FLAG-CELL 16 * +
+   swap $7FFFFFFFFFFFFFFF swap > FLAG-CELL 32 * + ;
+: GT-K ( n -- n )
+   dup $8000000000000000 > FLAG-CELL FLAGS !
+   dup -1 > FLAG-CELL 2 * FLAGS +!
+   dup 0 > FLAG-CELL 4 * FLAGS +!
+   dup 1 > FLAG-CELL 8 * FLAGS +!
+   dup 5 > FLAG-CELL 16 * FLAGS +!
+   dup $7FFFFFFFFFFFFFFF > FLAG-CELL 32 * FLAGS +!
+   drop FLAGS @ ;
+: GT-2 ( n n -- n ) {: a:n b:n :} a b > FLAG-CELL ;
+: GT-SAME ( n -- n ) {: a:n :} a a > FLAG-CELL  a dup > FLAG-CELL + ;
+: GT-DUP ( n -- n ) dup > FLAG-CELL ;
+: GT-IF ( n n -- n )
+   {: a:n b:n :} a b > dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: GT-IF5 ( n -- n ) 5 > dup if FLAG-CELL else FLAG-CELL 100 + then ;
+: ZEQ ( n -- n ) 0= FLAG-CELL ;
+: ZEQ-K ( n -- n ) dup 0= FLAG-CELL swap drop ;
+: ZLT ( n -- n ) 0< FLAG-CELL ;
+: ZLT-K ( n -- n ) dup 0< FLAG-CELL swap drop ;
+
+\ x's masks against the literals on the right and on the left.
+: MASKS ( n n n [ n n n n n n -- n ] [ n n n n n n -- n ] [ n -- n ] [ n n -- n ] -- )
+   {: x:n r:n l:n right left kept two :}
+   x SIX right execute  r negate T=
+   x SIX left execute  l negate T=
+   x kept execute  r negate T=
+   x $8000000000000000 two execute
+   x -1 two execute 2 * +
+   x 0 two execute 4 * +
+   x 1 two execute 8 * +
+   x 5 two execute 16 * +
+   x $7FFFFFFFFFFFFFFF two execute 32 * +  r negate T= ;
+
+: EQ-CASE ( n n n -- ) ['] EQ-R ['] EQ-L ['] EQ-K ['] EQ-2 MASKS ;
+: NE-CASE ( n n n -- ) ['] NE-R ['] NE-L ['] NE-K ['] NE-2 MASKS ;
+: LT-CASE ( n n n -- ) ['] LT-R ['] LT-L ['] LT-K ['] LT-2 MASKS ;
+: GE-CASE ( n n n -- ) ['] GE-R ['] GE-L ['] GE-K ['] GE-2 MASKS ;
+: LE-CASE ( n n n -- ) ['] LE-R ['] LE-L ['] LE-K ['] LE-2 MASKS ;
+: GT-CASE ( n n n -- ) ['] GT-R ['] GT-L ['] GT-K ['] GT-2 MASKS ;
+
+s" the flag of `=`" T-LABEL
+$8000000000000000 1 1 EQ-CASE
+-1 2 2 EQ-CASE
+0 4 4 EQ-CASE
+1 8 8 EQ-CASE
+5 16 16 EQ-CASE
+$7FFFFFFFFFFFFFFF 32 32 EQ-CASE
+-1 EQ-SAME -2 T=  -1 EQ-DUP -1 T=
+7 EQ-SAME -2 T=  7 EQ-DUP -1 T=
+-6 5 EQ-IF 100 T=  -6 EQ-IF5 100 T=
+5 5 EQ-IF -1 T=  5 EQ-IF5 -1 T=
+9 5 EQ-IF 100 T=  9 EQ-IF5 100 T=
+s" the flag of `<>`" T-LABEL
+$8000000000000000 62 62 NE-CASE
+-1 61 61 NE-CASE
+0 59 59 NE-CASE
+1 55 55 NE-CASE
+5 47 47 NE-CASE
+$7FFFFFFFFFFFFFFF 31 31 NE-CASE
+-1 NE-SAME 0 T=  -1 NE-DUP 0 T=
+7 NE-SAME 0 T=  7 NE-DUP 0 T=
+-6 5 NE-IF -1 T=  -6 NE-IF5 -1 T=
+5 5 NE-IF 100 T=  5 NE-IF5 100 T=
+9 5 NE-IF -1 T=  9 NE-IF5 -1 T=
+s" the flag of `<`" T-LABEL
+$8000000000000000 62 0 LT-CASE
+-1 60 1 LT-CASE
+0 56 3 LT-CASE
+1 48 7 LT-CASE
+5 32 15 LT-CASE
+$7FFFFFFFFFFFFFFF 0 31 LT-CASE
+-1 LT-SAME 0 T=  -1 LT-DUP 0 T=
+7 LT-SAME 0 T=  7 LT-DUP 0 T=
+-6 5 LT-IF -1 T=  -6 LT-IF5 -1 T=
+5 5 LT-IF 100 T=  5 LT-IF5 100 T=
+9 5 LT-IF 100 T=  9 LT-IF5 100 T=
+s" the flag of `>=`" T-LABEL
+$8000000000000000 1 63 GE-CASE
+-1 3 62 GE-CASE
+0 7 60 GE-CASE
+1 15 56 GE-CASE
+5 31 48 GE-CASE
+$7FFFFFFFFFFFFFFF 63 32 GE-CASE
+-1 GE-SAME -2 T=  -1 GE-DUP -1 T=
+7 GE-SAME -2 T=  7 GE-DUP -1 T=
+-6 5 GE-IF 100 T=  -6 GE-IF5 100 T=
+5 5 GE-IF -1 T=  5 GE-IF5 -1 T=
+9 5 GE-IF -1 T=  9 GE-IF5 -1 T=
+s" the flag of `<=`" T-LABEL
+$8000000000000000 63 1 LE-CASE
+-1 62 3 LE-CASE
+0 60 7 LE-CASE
+1 56 15 LE-CASE
+5 48 31 LE-CASE
+$7FFFFFFFFFFFFFFF 32 63 LE-CASE
+-1 LE-SAME -2 T=  -1 LE-DUP -1 T=
+7 LE-SAME -2 T=  7 LE-DUP -1 T=
+-6 5 LE-IF -1 T=  -6 LE-IF5 -1 T=
+5 5 LE-IF -1 T=  5 LE-IF5 -1 T=
+9 5 LE-IF 100 T=  9 LE-IF5 100 T=
+s" the flag of `>`" T-LABEL
+$8000000000000000 0 62 GT-CASE
+-1 1 60 GT-CASE
+0 3 56 GT-CASE
+1 7 48 GT-CASE
+5 15 32 GT-CASE
+$7FFFFFFFFFFFFFFF 31 0 GT-CASE
+-1 GT-SAME 0 T=  -1 GT-DUP 0 T=
+7 GT-SAME 0 T=  7 GT-DUP 0 T=
+-6 5 GT-IF 100 T=  -6 GT-IF5 100 T=
+5 5 GT-IF 100 T=  5 GT-IF5 100 T=
+9 5 GT-IF -1 T=  9 GT-IF5 -1 T=
+s" the flags of `0=` and `0<`" T-LABEL
+0 ZEQ -1 T=  0 ZEQ-K -1 T=  0 ZLT 0 T=  0 ZLT-K 0 T=
+1 ZEQ 0 T=  1 ZEQ-K 0 T=  1 ZLT 0 T=  1 ZLT-K 0 T=
+-1 ZEQ 0 T=  -1 ZEQ-K 0 T=  -1 ZLT -1 T=  -1 ZLT-K -1 T=
+$8000000000000000 ZEQ 0 T=  $8000000000000000 ZEQ-K 0 T=  $8000000000000000 ZLT -1 T=  $8000000000000000 ZLT-K -1 T=
+$7FFFFFFFFFFFFFFF ZEQ 0 T=  $7FFFFFFFFFFFFFFF ZEQ-K 0 T=  $7FFFFFFFFFFFFFFF ZLT 0 T=  $7FFFFFFFFFFFFFFF ZLT-K 0 T=
+
 ;package
 
 5 3 <= TFALSE
