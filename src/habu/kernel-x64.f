@@ -680,6 +680,12 @@ variable HEAD-ROW-CELL
    done HELD,
    insert JMP, ;
 
+\ rax = rsi fresh bytes, or carry set.
+: MAP-ANON, ( -- )
+   RDI ZERO-REG,  RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,
+   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
+   NR-MMAP SYS, ;
+
 \ LHIDXBUILD's twin: map the table once, HIDX-BYTES of fresh zero pages with no
 \ claims, then rebuild it; a table already mapped is refilled in place.
 : BUILD-HELPER, ( -- )
@@ -687,9 +693,7 @@ variable HEAD-ROW-CELL
    BUILD-LBL X64CODE:LBL,
    RAX DATA-REG HIDXP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE have JCC,
-   RDI ZERO-REG,  RSI HIDX-BYTES IMM32,  RDX PROT-RW IMM32,
-   R10 MAP-ANON-PRIVATE IMM32,  R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B fail JCC,
+   RSI HIDX-BYTES IMM32,  MAP-ANON,  C-B fail JCC,
    RAX DATA-REG HIDXP-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    RCX ZERO-REG,
    RCX DATA-REG HIDX:CLAIMS MEM-OFF ASM-SINK ENC-MOV-MR
@@ -760,9 +764,7 @@ private
    X64CODE:LBL X64CODE:LBL {: failed:label done:label :}
    RSI POP,
    RSI RSI ASM-SINK ENC-TEST-RR  C-LE failed JCC,
-   RDI ZERO-REG,  RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,
-   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B failed JCC,
+   MAP-ANON,  C-B failed JCC,
    RCX ZERO-REG,  done JMP,
    failed X64CODE:LBL,
    RAX ZERO-REG,  RCX -1 >IMM32 ASM-SINK ENC-MOV-RI32
@@ -1226,10 +1228,9 @@ SPN-ARGV0 constant SPN-LIFTED
    nocwd X64CODE:LBL,
    RDI ZERO-REG,  RSI MINUS-1,  RDX CLOSE-RANGE-CLOEXEC IMM32,
    NR-CLOSE-RANGE SYS,  C-B fail JCC,
-   RDI ZERO-REG,  RSI NFDS@,  RSI 3 >IMM8 ASM-SINK ENC-SHL-RI8
+   RSI NFDS@,  RSI 3 >IMM8 ASM-SINK ENC-SHL-RI8
    RSI CELL >IMM8 ASM-SINK ENC-ADD-RI8
-   RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,  R8 MINUS-1,  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B fail JCC,
+   MAP-ANON,  C-B fail JCC,
    RAX SPN-LIFTED FRAME!,
    R9 RAX ASM-SINK ENC-MOV-RR  R8 SPAWN-ABI:FDS FRAME@,  R10 NFDS@,
    lift X64CODE:LBL,
@@ -3616,25 +3617,235 @@ private
 
 \ Capture needs address-cell declarations at fixed x86-64 addresses too.
 
-\ (MARK) takes rdi = the cell and rsi = its kind tag. Its declaration happens
-\ before xt! writes, so a refused cell cannot leave an untracked address.
-\ The row vector is authoritative; a linear search keeps the original ordinal
-\ and needs no process-local index. The fixed DATA lock protects lookup,
-\ growth, and publication across tasks.
+\ The rows are authoritative; the index, rebuilt from them, finds a cell's row
+\ by its DATA offset: a slot holds the row's ordinal + 1, 0 when empty.
 variable MARK-CELL
 : MARK-LBL ( -- label ) MARK-CELL @ >LABEL ;
+
+\ (MARK)'s frame: the key (the cell's offset), its kind, a new mapping, its cells
+\ and bytes, the index replaced, the rows indexed, the bucket, the table's base.
+0 constant MARK-KEY
+8 constant MARK-KIND
+16 constant MARK-NEW
+24 constant MARK-CAP
+32 constant MARK-LEN
+40 constant MARK-OLD
+48 constant MARK-ROW
+56 constant MARK-BUCKET
+64 constant MARK-BASE
+72 constant MARK-FRAME
+
+\ r11 = the table's header; a syscall clobbers r11.
+: MARK-HEADER, ( -- )
+   R11 RSP MARK-BASE MOV-LOAD,
+   R11 R11 RELOC:XTCELL-N-CELL MEM-OFF ASM-SINK ENC-LEA ;
+
+\ rdx = the rows of the table whose header is r11, r8 = their count.
+: MARK-ROWS, ( -- )
+   X64CODE:LBL {: mapped:label :}
+   R8 R11 0 MOV-LOAD,
+   RDX R11 ADDRESS-CELLS:BASE-FIELD MOV-LOAD,
+   RAX R11 ADDRESS-CELLS:MODE-FIELD MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE mapped JCC,
+   RDX RSP MARK-BASE MEM-OFF ASM-SINK ENC-ADD-RM
+   mapped X64CODE:LBL, ;
+
+\ Tasks share the table: its lock is held through lookup, growth and publication.
+: MARK-LOCK, ( -- )
+   X64CODE:LBL {: retry:label :}
+   retry X64CODE:LBL,
+   RAX 1 IMM32,
+   R11 RSP MARK-BASE MOV-LOAD,
+   RAX R11 ADDRESS-CELLS:LOCK-CELL MEM-OFF ASM-SINK ENC-XCHG-MR
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE retry JCC, ;
+
+: MARK-UNLOCK, ( -- )
+   RAX ZERO-REG,
+   R11 RSP MARK-BASE MOV-LOAD,
+   RAX R11 ADDRESS-CELLS:LOCK-CELL MOV-STORE, ;
+
+\ r cells become the bytes of them and of a header of `head` bytes.
+: CELL-BYTES, ( r64 n -- ) {: r:r64 head:n :}
+   r 3 >IMM8 ASM-SINK ENC-SHL-RI8
+   r head >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ MARK-NEW = a mapping of MARK-CAP cells and a header of `head` bytes.
+: MARK-MAP, ( n label -- ) {: head:n full:label :}
+   RSI RSP MARK-CAP MOV-LOAD,
+   RSI head CELL-BYTES,
+   RSI RSP MARK-LEN MOV-STORE,
+   MAP-ANON,  C-B full JCC,
+   RAX RSP MARK-NEW MOV-STORE, ;
+
+\ rsi = the index: its address and slot count are checked, not that it is mapped.
+: INDEX-SHAPE, ( label -- ) {: bad:label :}
+   RSI RSI ASM-SINK ENC-TEST-RR  C-LE bad JCC,
+   RAX RSI ASM-SINK ENC-MOV-RR
+   RAX 7 >IMM8 ASM-SINK ENC-AND-RI8  C-NE bad JCC,
+   RAX $7FFFFFFFFFFFFFFF ADDRESS-CELLS:INDEX-HEADER - IMM64,
+   RSI RAX ASM-SINK ENC-CMP-RR  C-A bad JCC,
+   RCX RSI ADDRESS-CELLS:INDEX-SLOTS MOV-LOAD,
+   RCX 2 >IMM8 ASM-SINK ENC-CMP-RI8  C-L bad JCC,
+   RAX ADDRESS-CELLS:INDEX-MAX-SLOTS IMM64,
+   RCX RAX ASM-SINK ENC-CMP-RR  C-A bad JCC,
+   RAX RCX -1 MEM-OFF ASM-SINK ENC-LEA
+   RAX RCX ASM-SINK ENC-TEST-RR  C-NE bad JCC,
+   RAX $7FFFFFFFFFFFFFFF IMM64,
+   RAX RSI ASM-SINK ENC-SUB-RR
+   RCX ADDRESS-CELLS:INDEX-HEADER CELL-BYTES,
+   RCX RAX ASM-SINK ENC-CMP-RR  C-A bad JCC, ;
+
+\ rsi = the index, rdx = the rows, r8 = their count, rdi = the key; all are kept.
+\ A hit has rax = the row's kind, a miss rcx = the empty bucket; else it is bad.
+: INDEX-PROBE, ( label label label -- ) {: hit:label miss:label bad:label :}
+   X64CODE:LBL {: probe:label :}
+   RAX $9E3779B97F4A7C15 IMM64,
+   RCX RDI ASM-SINK ENC-MOV-RR  RCX RAX ASM-SINK ENC-IMUL-RR
+   RAX RCX ASM-SINK ENC-MOV-RR  RAX 32 >IMM8 ASM-SINK ENC-SHR-RI8
+   RCX RAX ASM-SINK ENC-XOR-RR
+   R10 RSI ADDRESS-CELLS:INDEX-SLOTS MOV-LOAD,
+   R11 R10 -1 MEM-OFF ASM-SINK ENC-LEA
+   RCX R11 ASM-SINK ENC-AND-RR
+   R9 RELOC:XTCELL-OFF-MASK IMM64,
+   probe X64CODE:LBL,
+      R10 R10 ASM-SINK ENC-TEST-RR  C-E bad JCC,
+      RAX RSI RCX CELL ADDRESS-CELLS:INDEX-HEADER MEM-IDX ASM-SINK ENC-MOV-RM
+      RAX RAX ASM-SINK ENC-TEST-RR  C-E miss JCC,
+      RAX ASM-SINK ENC-DEC
+      RAX R8 ASM-SINK ENC-CMP-RR  C-AE bad JCC,
+      RAX RDX RAX CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM
+      \ The key has no kind bits: they are what the row xor the key leaves.
+      RAX RDI ASM-SINK ENC-XOR-RR
+      RAX R9 ASM-SINK ENC-TEST-RR  C-E hit JCC,
+      RCX ASM-SINK ENC-INC  RCX R11 ASM-SINK ENC-AND-RR
+      R10 ASM-SINK ENC-DEC  probe JMP, ;
+
+\ MARK-CAP = the least power of two over 1 that holds r8 rows and one more at
+\ half load.
+: INDEX-SIZE, ( label -- ) {: full:label :}
+   X64CODE:LBL X64CODE:LBL {: size:label sized:label :}
+   RAX ADDRESS-CELLS:INDEX-MAX-SLOTS 2 / 1- IMM64,
+   R8 RAX ASM-SINK ENC-CMP-RR  C-A full JCC,
+   RAX R8 1 MEM-OFF ASM-SINK ENC-LEA
+   RAX 1 >IMM8 ASM-SINK ENC-SHL-RI8
+   RCX ADDRESS-CELLS:INDEX-MAX-SLOTS 2 / IMM64,
+   R9 2 IMM32,
+   size X64CODE:LBL,
+      R9 RAX ASM-SINK ENC-CMP-RR  C-AE sized JCC,
+      R9 RCX ASM-SINK ENC-CMP-RR  C-A full JCC,
+      R9 1 >IMM8 ASM-SINK ENC-SHL-RI8  size JMP,
+   sized X64CODE:LBL,
+   R9 RSP MARK-CAP MOV-STORE, ;
+
+\ Fills the index rsi from r8 rows at rdx; of two rows with one key the first
+\ stays.
+: INDEX-FILL, ( label -- ) {: bad:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: rows:label hole:label built:label :}
+   RAX ZERO-REG,  RAX RSP MARK-ROW MOV-STORE,
+   rows X64CODE:LBL,
+      RCX RSP MARK-ROW MOV-LOAD,
+      RCX R8 ASM-SINK ENC-CMP-RR  C-AE built JCC,
+      RDI RDX RCX CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM
+      RCX ASM-SINK ENC-INC  RCX RSP MARK-ROW MOV-STORE,
+      RAX RELOC:XTCELL-OFF-MASK IMM64,  RDI RAX ASM-SINK ENC-AND-RR
+      rows hole bad INDEX-PROBE,
+   hole X64CODE:LBL,
+      RAX RSP MARK-ROW MOV-LOAD,
+      RAX RSI RCX CELL ADDRESS-CELLS:INDEX-HEADER MEM-IDX ASM-SINK ENC-MOV-MR
+      rows JMP,
+   built X64CODE:LBL, ;
+
+\ Replaces the index rsi, 0 for none. The new one is complete before the old is
+\ unmapped; a failure leaves the rows, the header and the old index whole.
+: INDEX-BUILD, ( label label label label -- )
+   {: lookup:label full:label bad:label discard:label :}
+   X64CODE:LBL {: publish:label :}
+   RSI RSP MARK-OLD MOV-STORE,
+   full INDEX-SIZE,
+   ADDRESS-CELLS:INDEX-HEADER full MARK-MAP,
+   MARK-HEADER,  MARK-ROWS,
+   RSI RSP MARK-NEW MOV-LOAD,
+   RAX RSP MARK-CAP MOV-LOAD,  RAX RSI ADDRESS-CELLS:INDEX-SLOTS MOV-STORE,
+   R8 RSI ADDRESS-CELLS:INDEX-COUNT MOV-STORE,
+   bad INDEX-FILL,
+   RDI RSP MARK-OLD MOV-LOAD,
+   RDI RDI ASM-SINK ENC-TEST-RR  C-E publish JCC,
+   RSI RDI ADDRESS-CELLS:INDEX-SLOTS MOV-LOAD,
+   RSI ADDRESS-CELLS:INDEX-HEADER CELL-BYTES,
+   NR-MUNMAP SYS,  C-B discard JCC,
+   publish X64CODE:LBL,
+   RSI RSP MARK-NEW MOV-LOAD,
+   R11 RSP MARK-BASE MOV-LOAD,
+   RSI R11 ADDRESS-CELLS:INDEX-CELL MOV-STORE,
+   lookup JMP, ;
+
+\ r11 = the header of the table whose row r8 is stored: publishes the row's slot,
+\ then the index's count, then the table's.
+: MARK-COMMIT, ( -- )
+   RSI RSP MARK-BASE MOV-LOAD,
+   RSI RSI ADDRESS-CELLS:INDEX-CELL MOV-LOAD,
+   RCX RSP MARK-BUCKET MOV-LOAD,
+   R8 ASM-SINK ENC-INC
+   R8 RSI RCX CELL ADDRESS-CELLS:INDEX-HEADER MEM-IDX ASM-SINK ENC-MOV-MR
+   R8 RSI ADDRESS-CELLS:INDEX-COUNT MOV-STORE,
+   R8 R11 0 MOV-STORE, ;
+
+\ Copies the r8 rows at rdx to MARK-NEW, then unmaps them if they are a mapping.
+: MARK-MOVE, ( label -- ) {: discard:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: copy:label copied:label moved:label :}
+   RDI RSP MARK-NEW MOV-LOAD,
+   RCX ZERO-REG,
+   copy X64CODE:LBL,
+      RCX R8 ASM-SINK ENC-CMP-RR  C-AE copied JCC,
+      RAX RDX RCX CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM
+      RAX RDI RCX CELL 0 MEM-IDX ASM-SINK ENC-MOV-MR
+      RCX ASM-SINK ENC-INC  copy JMP,
+   copied X64CODE:LBL,
+   RAX R11 ADDRESS-CELLS:MODE-FIELD MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E moved JCC,
+   RDI RDX ASM-SINK ENC-MOV-RR
+   RSI R11 ADDRESS-CELLS:CAP-FIELD MOV-LOAD,
+   RSI 3 >IMM8 ASM-SINK ENC-SHL-RI8
+   NR-MUNMAP SYS,  C-B discard JCC,
+   MARK-HEADER,
+   moved X64CODE:LBL, ;
+
+\ Doubles the rows' r9 cells and stores the new row in them.
+: MARK-GROW, ( label label label -- )
+   {: full:label discard:label release:label :}
+   RAX ADDRESS-CELLS:MAX-ROWS 2 / IMM64,
+   R9 RAX ASM-SINK ENC-CMP-RR  C-A full JCC,
+   R9 1 >IMM8 ASM-SINK ENC-SHL-RI8
+   R9 RSP MARK-CAP MOV-STORE,
+   0 full MARK-MAP,
+   MARK-HEADER,  MARK-ROWS,
+   discard MARK-MOVE,
+   RDI RSP MARK-NEW MOV-LOAD,
+   RAX RSP MARK-KEY MOV-LOAD,
+   RAX RSP MARK-KIND MEM-OFF ASM-SINK ENC-OR-RM
+   RAX RDI R8 CELL 0 MEM-IDX ASM-SINK ENC-MOV-MR
+   RDI R11 ADDRESS-CELLS:BASE-FIELD MOV-STORE,
+   RAX RSP MARK-CAP MOV-LOAD,
+   RAX R11 ADDRESS-CELLS:CAP-FIELD MOV-STORE,
+   RAX 1 IMM32,  RAX R11 ADDRESS-CELLS:MODE-FIELD MOV-STORE,
+   MARK-COMMIT,  release JMP, ;
+
+\ rdi = the cell, rsi = its kind. A rejected cell is never written: xt! and
+\ ptr-cell! store after it returns.
 : MARK-BODY, ( -- )
    X64CODE:LBL {: start:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: finish:label lock:label shape:label mapped:label scan:label found:label
-      append:label grow:label copied:label copy:label publish:label release:label
-      full:label band:label kind:label next:label discard:label :}
+   X64CODE:LBL X64CODE:LBL
+   {: finish:label shape:label mapped:label ready:label lookup:label
+      hit:label missing:label rebuild:label grow:label release:label
+      discard:label full:label band:label kind:label :}
    start LABEL>N MARK-CELL !
    s" (MARK)" start LABEL>N finish LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start X64CODE:LBL,
-   RSP 72 >IMM8 ASM-SINK ENC-SUB-RI8
+   RSP MARK-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
    X64CODE:LBL {: selected:label :}
    RAX SHARED-DATA,
    RCX BOOT:IMAGE-BASE-CELL CELL@,
@@ -3644,19 +3855,14 @@ variable MARK-CELL
    RDX R8 ASM-SINK ENC-CMP-RR  C-AE selected JCC,
    RAX RCX ASM-SINK ENC-MOV-RR
    selected X64CODE:LBL,
-   RAX RSP 56 MOV-STORE,
+   RAX RSP MARK-BASE MOV-STORE,
    RDI RAX ASM-SINK ENC-SUB-RR
    RAX LINUX-LAYOUT:DATA-SIZE CELL - IMM64,
    RDI RAX ASM-SINK ENC-CMP-RR  C-A band JCC,
-   RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-MR
-   RSI RSP 8 MEM-OFF ASM-SINK ENC-MOV-MR
-   lock X64CODE:LBL,
-      RAX 1 IMM32,
-      R11 RSP 56 MOV-LOAD,
-      RAX R11 ADDRESS-CELLS:LOCK-CELL MEM-OFF ASM-SINK ENC-XCHG-MR
-      RAX RAX ASM-SINK ENC-TEST-RR  C-NE lock JCC,
-   R11 RSP 56 MOV-LOAD,
-   R11 R11 RELOC:XTCELL-N-CELL MEM-OFF ASM-SINK ENC-LEA
+   RDI RSP MARK-KEY MOV-STORE,
+   RSI RSP MARK-KIND MOV-STORE,
+   MARK-LOCK,
+   MARK-HEADER,
    RAX R11 ADDRESS-CELLS:MAGIC-FIELD MEM-OFF ASM-SINK ENC-MOV-RM
    RCX ADDRESS-CELLS:MAGIC IMM64,
    RAX RCX ASM-SINK ENC-CMP-RR  C-NE shape JCC,
@@ -3675,8 +3881,8 @@ variable MARK-CELL
    RAX RDX ASM-SINK ENC-SUB-RR
    RAX 3 >IMM8 ASM-SINK ENC-SHR-RI8
    R9 RAX ASM-SINK ENC-CMP-RR  C-A shape JCC,
-   RAX RSP 56 MOV-LOAD,  RDX RAX ASM-SINK ENC-ADD-RR
-   scan JMP,
+   RAX RSP MARK-BASE MOV-LOAD,  RDX RAX ASM-SINK ENC-ADD-RR
+   ready JMP,
    mapped X64CODE:LBL,
    RDX RDX ASM-SINK ENC-TEST-RR  C-LE shape JCC,
    RAX RDX ASM-SINK ENC-MOV-RR
@@ -3685,104 +3891,58 @@ variable MARK-CELL
    RAX RDX ASM-SINK ENC-SUB-RR
    RAX 3 >IMM8 ASM-SINK ENC-SHR-RI8
    R9 RAX ASM-SINK ENC-CMP-RR  C-A shape JCC,
-   scan X64CODE:LBL,
-   R8 RSP 16 MEM-OFF ASM-SINK ENC-MOV-MR
-   R9 RSP 24 MEM-OFF ASM-SINK ENC-MOV-MR
-   RDX RSP 32 MEM-OFF ASM-SINK ENC-MOV-MR
-   RCX ZERO-REG,
-   found X64CODE:LBL,
-      RCX R8 ASM-SINK ENC-CMP-RR  C-AE append JCC,
-      RAX RDX RCX 8 0 MEM-IDX ASM-SINK ENC-MOV-RM
-      R10 RELOC:XTCELL-OFF-MASK IMM64,  R10 RAX ASM-SINK ENC-AND-RR   \ the offset
-      RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM
-      R10 RDI ASM-SINK ENC-CMP-RR  C-NE next JCC,
-      RSI RSP 8 MEM-OFF ASM-SINK ENC-MOV-RM
-      RDI RSI ASM-SINK ENC-OR-RR
-      RAX RDI ASM-SINK ENC-CMP-RR  C-NE kind JCC,
-      release JMP,
-   next X64CODE:LBL,
-      RCX ASM-SINK ENC-INC  found JMP,
-   append X64CODE:LBL,
-   R8 R9 ASM-SINK ENC-CMP-RR  C-E grow JCC,
-   RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI RSP 8 MEM-OFF ASM-SINK ENC-MOV-RM
-   RDI RSI ASM-SINK ENC-OR-RR
-   RDI RDX R8 8 0 MEM-IDX ASM-SINK ENC-MOV-MR
-   R8 ASM-SINK ENC-INC
-   R11 RSP 56 MOV-LOAD,
-   R8 R11 RELOC:XTCELL-N-CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   ready X64CODE:LBL,
+   RAX RSP MARK-BASE MOV-LOAD,
+   RSI RAX ADDRESS-CELLS:INDEX-CELL MOV-LOAD,
+   RSI RSI ASM-SINK ENC-TEST-RR  C-E rebuild JCC,
+   shape INDEX-SHAPE,
+   RAX RSI ADDRESS-CELLS:INDEX-COUNT MOV-LOAD,
+   RAX R8 ASM-SINK ENC-CMP-RR  C-NE rebuild JCC,
+   RAX RSI ADDRESS-CELLS:INDEX-SLOTS MOV-LOAD,
+   RAX 1 >IMM8 ASM-SINK ENC-SHR-RI8
+   R8 RAX ASM-SINK ENC-CMP-RR  C-A shape JCC,
+   lookup X64CODE:LBL,
+   RDI RSP MARK-KEY MOV-LOAD,
+   hit missing shape INDEX-PROBE,
+   \ A cell declared again keeps one row: a second would relocate it twice.
+   hit X64CODE:LBL,
+   RAX RSP MARK-KIND MEM-OFF ASM-SINK ENC-CMP-RM  C-NE kind JCC,
    release JMP,
+   missing X64CODE:LBL,
+   RAX R8 1 MEM-OFF ASM-SINK ENC-LEA
+   R9 RSI ADDRESS-CELLS:INDEX-SLOTS MOV-LOAD,
+   R9 1 >IMM8 ASM-SINK ENC-SHR-RI8
+   RAX R9 ASM-SINK ENC-CMP-RR  C-A rebuild JCC,
+   RCX RSP MARK-BUCKET MOV-STORE,
+   MARK-HEADER,
+   R9 R11 ADDRESS-CELLS:CAP-FIELD MOV-LOAD,
+   R8 R9 ASM-SINK ENC-CMP-RR  C-E grow JCC,
+   RDI RSP MARK-KIND MEM-OFF ASM-SINK ENC-OR-RM
+   RDI RDX R8 CELL 0 MEM-IDX ASM-SINK ENC-MOV-MR
+   MARK-COMMIT,  release JMP,
+   rebuild X64CODE:LBL,
+   lookup full shape discard INDEX-BUILD,
    grow X64CODE:LBL,
-   RAX ADDRESS-CELLS:MAX-ROWS 2 / IMM64,
-   R9 RAX ASM-SINK ENC-CMP-RR  C-A full JCC,
-   R9 1 >IMM8 ASM-SINK ENC-SHL-RI8
-   R9 RSP 40 MEM-OFF ASM-SINK ENC-MOV-MR
-   RDI ZERO-REG,  RSI R9 ASM-SINK ENC-MOV-RR
-   RSI 3 >IMM8 ASM-SINK ENC-SHL-RI8
-   RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,
-   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B full JCC,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E full JCC,
-   RAX RSP 48 MEM-OFF ASM-SINK ENC-MOV-MR
-   RCX ZERO-REG,
-   copy X64CODE:LBL,
-      R8 RSP 16 MEM-OFF ASM-SINK ENC-MOV-RM
-      RCX R8 ASM-SINK ENC-CMP-RR  C-AE copied JCC,
-      RDX RSP 32 MEM-OFF ASM-SINK ENC-MOV-RM
-      RAX RDX RCX 8 0 MEM-IDX ASM-SINK ENC-MOV-RM
-      RDI RSP 48 MEM-OFF ASM-SINK ENC-MOV-RM
-      RAX RDI RCX 8 0 MEM-IDX ASM-SINK ENC-MOV-MR
-      RCX ASM-SINK ENC-INC  copy JMP,
-   copied X64CODE:LBL,
-   R11 RSP 56 MOV-LOAD,
-   R11 R11 RELOC:XTCELL-N-CELL MEM-OFF ASM-SINK ENC-LEA
-   RAX R11 ADDRESS-CELLS:MODE-FIELD MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E publish JCC,
-   RDI R11 ADDRESS-CELLS:BASE-FIELD MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI R11 ADDRESS-CELLS:CAP-FIELD MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI 3 >IMM8 ASM-SINK ENC-SHL-RI8
-   NR-MUNMAP SYS,  C-B discard JCC,
-   publish X64CODE:LBL,
-   R11 RSP 56 MOV-LOAD,
-   R11 R11 RELOC:XTCELL-N-CELL MEM-OFF ASM-SINK ENC-LEA
-   RDI RSP 48 MEM-OFF ASM-SINK ENC-MOV-RM
-   R8 RSP 16 MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI RSP 8 MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RSI ASM-SINK ENC-OR-RR
-   RAX RDI R8 8 0 MEM-IDX ASM-SINK ENC-MOV-MR
-   RDI R11 ADDRESS-CELLS:BASE-FIELD MEM-OFF ASM-SINK ENC-MOV-MR
-   RAX RSP 40 MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX R11 ADDRESS-CELLS:CAP-FIELD MEM-OFF ASM-SINK ENC-MOV-MR
-   RAX 1 IMM32,
-   RAX R11 ADDRESS-CELLS:MODE-FIELD MEM-OFF ASM-SINK ENC-MOV-MR
-   R8 ASM-SINK ENC-INC
-   R8 R11 MEM-AT ASM-SINK ENC-MOV-MR
+   full discard release MARK-GROW,
    release X64CODE:LBL,
-   RAX ZERO-REG,
-   R11 RSP 56 MOV-LOAD,
-   RAX R11 ADDRESS-CELLS:LOCK-CELL MEM-OFF ASM-SINK ENC-MOV-MR
-   RSP 72 >IMM8 ASM-SINK ENC-ADD-RI8
+   MARK-UNLOCK,
+   RSP MARK-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
    ASM-SINK ENC-RET
    discard X64CODE:LBL,
-   RDI RSP 48 MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI RSP 40 MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI 3 >IMM8 ASM-SINK ENC-SHL-RI8
-   NR-MUNMAP SYS,  full JMP,
+   RDI RSP MARK-NEW MOV-LOAD,  RSI RSP MARK-LEN MOV-LOAD,  NR-MUNMAP SYS,
    full X64CODE:LBL,
-   \ Growth left the header and rows whole; unlock before the catchable fault.
-   RAX ZERO-REG,
-   R11 RSP 56 MOV-LOAD,
-   RAX R11 ADDRESS-CELLS:LOCK-CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   \ Every branch here leaves the header, rows and index whole, so the throw is
+   \ safe to catch.
+   MARK-UNLOCK,
    RAX -9855 IMM64,  THROW,                      \ E-XTCELL-GROW
    \ The die line's lr is the return into the row that called (MARK).
-   shape X64CODE:LBL,  RSP 72 >IMM8 ASM-SINK ENC-ADD-RI8
+   shape X64CODE:LBL,  RSP MARK-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
    s" E-XTCELL habu: invalid address-cell storage header" EXIT-STATUS:ADDRESS-CELL
    X64CRASH:DIE-LINE,
-   band X64CODE:LBL,  RSP 72 >IMM8 ASM-SINK ENC-ADD-RI8
+   band X64CODE:LBL,  RSP MARK-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
    s" E-XTBAND habu: address cell out of range" EXIT-STATUS:ADDRESS-CELL
    X64CRASH:DIE-LINE,
-   kind X64CODE:LBL,  RSP 72 >IMM8 ASM-SINK ENC-ADD-RI8
+   kind X64CODE:LBL,  RSP MARK-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
    s" E-XTKIND habu: address cell kind mismatch" EXIT-STATUS:ADDRESS-CELL
    X64CRASH:DIE-LINE,
    finish X64CODE:LBL, ;
@@ -4937,11 +5097,8 @@ variable GROW-CELL
    sized X64CODE:LBL,
    R10 R9 17 >IMM8 ASM-SINK ENC-IMUL-RRI8
    R9 ASM-SINK ENC-PUSH  R10 ASM-SINK ENC-PUSH      \ [rsp] the size, [rsp+8] the capacity
-   RDI ZERO-REG,  RSI R10 ASM-SINK ENC-MOV-RR
-   RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,
-   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B fail JCC,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E fail JCC,
+   RSI R10 ASM-SINK ENC-MOV-RR
+   MAP-ANON,  C-B fail JCC,
    R8 RAX ASM-SINK ENC-MOV-RR                       \ r8 = the new base
    RDI R8 ASM-SINK ENC-MOV-RR
    RSI BODY-TEXT:BASE-CELL CELL@,  RCX BODYLEN-CELL CELL@,
