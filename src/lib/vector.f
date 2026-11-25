@@ -1,4 +1,3 @@
-split-str
 \ vector.f - package VEC: a typed vector<t> that takes its elements from an
 \ allocator it keeps and grows through it. COUNT elements are live; growth
 \ doubles the room the block holds, so n pushes make about log2 n resize calls.
@@ -168,13 +167,13 @@ public
 \ The bytes of the str, appended; they may be the vector's own, though growth
 \ moves the block.
 : APPEND ( str ^vector<u8> -- )
-   {: src:^ k:n v:^ :}
-   k 0 < if E-VEC-CAPACITY throw then
+   {: src:str v:^ :}
+   src STR:LEN 0 < if E-VEC-CAPACITY throw then
    v VECTOR-COUNT @ {: old:n :}
    v VECTOR-WIDTH @ {: w:n :}
-   v old k + src BYTE-VIEW MAKE-ROOM {: s:^ :}
-   s  v VECTOR-DATA @ old w * +  k w * BYTE-COPY
-   old k + v VECTOR-COUNT ! ;
+   v old src STR:LEN + src STR:DATA BYTE-VIEW MAKE-ROOM {: s:^ :}
+   s  v VECTOR-DATA @ old w * +  src STR:LEN w * BYTE-COPY
+   old src STR:LEN + v VECTOR-COUNT ! ;
 
 seal-package
 ;package

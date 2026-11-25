@@ -1,4 +1,3 @@
-split-str
 \ sign2.f - the ad-hoc signing post-pass for src/os/macos/macho.f's images:
 \ CODESIG2 inserts LC_CODE_SIGNATURE into the header slack, grows __LINKEDIT
 \ and appends a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one CodeDirectory
@@ -65,9 +64,9 @@ variable CSI
    CSMAGIC-EMBEDDED M-BE32   SIG-DOFF @ SB-SIZE M-BE32   1 M-BE32
    0 M-BE32   20 M-BE32
    CD-HDR,
-   SIGA@ SIGU @ M-BE-BYTES  0 M-BE8
+   SIGA@ SIGU @ >str M-BE-BYTES  0 M-BE8
    0 CSI ! begin CSI @ SIG-DOFF @ NCSLOTS < while
-     CS-SHA-CTX  MBUF CSI @ CS-PAGE * +  CSI @ CS-SLOT-SIZE  M-BE-PTR  SHA256-IN  CS-HASH M-LEN M-BE-SKIP
+     CS-SHA-CTX  MBUF CSI @ CS-PAGE * +  CSI @ CS-SLOT-SIZE >str  M-BE-PTR  SHA256-IN  CS-HASH M-LEN M-BE-SKIP
      CSI @ 1 + CSI ! repeat
    M-BE-HERE MLEN! ;
 public

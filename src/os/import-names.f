@@ -1,4 +1,3 @@
-split-str
 \ import-names.f - an image's imports, which a target writer's BUILD-IMAGE is
 \ given: the C names its GOT binds, in row order, each ending in a NUL.
 
@@ -9,11 +8,11 @@ variable NAMES-N
 
 public
 : SPAN! ( str -- )
-   {: a:^ u:n :}
-   a NAMES !  u NAMES-U !
-   0  u 0 ?do a i + c@ 0= if 1 + then loop  NAMES-N ! ;
+   {: s:str :}
+   s STR:DATA NAMES !  s STR:LEN NAMES-U !
+   0  s STR:LEN 0 ?do s STR:DATA i + c@ 0= if 1 + then loop  NAMES-N ! ;
 
-: SPAN@ ( -- str ) NAMES @ NAMES-U @ ;
+: SPAN@ ( -- str ) NAMES @ NAMES-U @ >str ;
 
 : COUNT ( -- n ) NAMES-N @ ;
 
@@ -21,10 +20,10 @@ public
 : NAME-AT ( n -- str )
    {: at:n :}
    NAMES @ at +  0
-   begin 2dup + c@ 0<> while 1 + repeat ;
+   begin 2dup + c@ 0<> while 1 + repeat >str ;
 
 \ The byte offset of the name after the one at this offset.
-: NEXT-AT ( n -- n ) dup NAME-AT nip + 1 + ;
+: NEXT-AT ( n -- n ) dup NAME-AT STR:LEN + 1 + ;
 
 \ Whether a walk by NEXT-AT has passed the last name.
 : END? ( n -- bool ) NAMES-U @ >= ;

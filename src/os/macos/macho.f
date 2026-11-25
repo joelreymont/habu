@@ -1,4 +1,3 @@
-split-str
 \ macho.f - the Mach-O writer for macOS ARM64: the canonical unsigned image of
 \ the program in icode's CODE (BUILD-IMAGE), which src/os/macos/sign2.f then
 \ signs ad hoc.
@@ -70,9 +69,9 @@ public
 
 \ The row whose C name this is; the build dies on a name the table lacks.
 : IMPORT-ROW ( str -- n )
-   {: a:^ u:n :}
-   IMPORTS 0 ?do i IMPORT$ a u STR:= if i unloop exit then loop
-   SB-RESET  s" macho: no such import " SB-APPEND  a u SB-APPEND
+   {: s:str :}
+   IMPORTS 0 ?do i IMPORT$ s STR:= if i unloop exit then loop
+   SB-RESET  s" macho: no such import " SB-APPEND  s SB-APPEND
    SB$ EXIT-STATUS:IMAGE die ;
 
 \ Import row n's cell, as a byte offset from the GOT's start.
@@ -86,12 +85,12 @@ private
 
 \ A name's symbol is an underscore, the name, then the suffix.
 : SYMBOL-LEN ( str -- n )
-   {: a:^ u:n :}
-   a u SUFFIX$ nip u + 1 + ;
+   {: s:str :}
+   s SUFFIX$ STR:LEN s STR:LEN + 1 + ;
 
 : SYMBOL, ( str -- )
-   {: a:^ u:n :}
-   s" _" M-BYTES  a u M-BYTES  a u SUFFIX$ M-BYTES ;
+   {: s:str :}
+   s" _" M-BYTES  s M-BYTES  s SUFFIX$ M-BYTES ;
 
 \ From a symbol's offset in the symbol strings and its name's in the imports to
 \ the next one's.
@@ -148,9 +147,9 @@ PTR-VARIABLE SIGA  variable SIGU
    SIGA ! ;
 
 public
-: SET-SIGID ( str -- ) {: a:^ u:n :}
-   a SIGA!
-   u SIGU ! ;
+: SET-SIGID ( str -- ) {: s:str :}
+   s STR:DATA SIGA!
+   s STR:LEN SIGU ! ;
 
 private
 : SIG-IDLEN ( -- n )  SIGU @ 1 + ;
@@ -186,25 +185,27 @@ variable NCMDS
 : VA+ ( n -- n )
    VMBASE @ + ;
 
-: SEGX, ( str n n n n n n n n -- ) {: a:^ u:n vma:n vmsz:n foff:n fsz:n prot:n nsects:n extra:n flags:n :}
+: SEGX, ( str n n n n n n n n -- )
+   {: s:str vma:n vmsz:n foff:n fsz:n prot:n nsects:n extra:n flags:n :}
    LC-SEG64 IMG-M32   72 extra + IMG-M32
-   a u M-NAME16
+   s M-NAME16
    vma IMG-M64  vmsz IMG-M64  foff IMG-M64  fsz IMG-M64
    prot IMG-M32  prot IMG-M32  nsects IMG-M32  flags IMG-M32 ;
 
 : SEG, ( str n n n n n n n -- )
    0 SEGX, ;
 
-: SECT, ( str str n n n n n -- ) {: na:^ nu:n sa:^ su:n addr:n size:n off:n al:n fl:n :}
-   na nu M-NAME16   sa su M-NAME16
+: SECT, ( str str n n n n n -- )
+   {: ns:str ss:str addr:n size:n off:n al:n fl:n :}
+   ns M-NAME16   ss M-NAME16
    addr IMG-M64  size IMG-M64  off IMG-M32  al IMG-M32
    0 IMG-M32  0 IMG-M32  fl IMG-M32  0 IMG-M32 0 IMG-M32 0 IMG-M32 ;
 
 : DYLINKER, ( -- )
    LC-DYLINKER IMG-M32  32 IMG-M32  12 IMG-M32
-   s" /usr/lib/dyld" {: a:^ u :}
-   a u M-BYTES
-   32 12 - u - M-LEN M-ZEROS-LEN ;
+   s" /usr/lib/dyld" {: s:str :}
+   s M-BYTES
+   32 12 - s STR:LEN - M-LEN M-ZEROS-LEN ;
 
 : MAIN, ( n -- ) {: entryoff :}
    LC-MAIN IMG-M32  24 IMG-M32  entryoff IMG-M64  0 IMG-M64 ;
@@ -212,17 +213,17 @@ variable NCMDS
 : DYLIB, ( -- )
    LC-DYLIB IMG-M32  56 IMG-M32  24 IMG-M32
    2 IMG-M32  $054C0000 IMG-M32  $00010000 IMG-M32     \ ts=2, cur=1356.0.0, compat=1.0.0
-   s" /usr/lib/libSystem.B.dylib" {: a:^ u :}
-   a u M-BYTES
-   56 24 - u - M-LEN M-ZEROS-LEN ;
+   s" /usr/lib/libSystem.B.dylib" {: s:str :}
+   s M-BYTES
+   56 24 - s STR:LEN - M-LEN M-ZEROS-LEN ;
 
 \ dyld searches these runpaths for basename dlopen calls. System libraries keep
 \ their normal dyld-cache lookup; Homebrew's arm64 prefix is outside that path.
-: RPATH, ( str -- ) {: path:^ u:n :}
-   u 13 + 7 + -8 and {: size:n :}
+: RPATH, ( str -- ) {: path:str :}
+   path STR:LEN 13 + 7 + -8 and {: size:n :}
    LC-RPATH IMG-M32 size IMG-M32 12 IMG-M32
-   path u M-BYTES
-   size 12 - u - M-ZEROS ;
+   path M-BYTES
+   size 12 - path STR:LEN - M-ZEROS ;
 
 : CHAINED-FIXUPS, ( n -- ) {: linkoff:n :}
    LC-DYLD-CHAINED-FIXUPS IMG-M32
@@ -325,7 +326,7 @@ variable NCMDS
    TEXTSZ CODELEN @ MACHO-CMDS,
    PATCH-HDR
    CODE-OFF M-OFF M-PAD-OFF
-   CODE CODELEN @ M-BYTES
+   CODE CODELEN @ >str M-BYTES
    TEXTSZ M-OFF M-PAD-OFF
    MACHO-EXTRA,
    M-HERE MLEN! ;
@@ -363,9 +364,9 @@ variable CURSOR
 : U32@ ( n -- n ) 4 AT LE:U32@ ;
 : U64@ ( n -- n ) 8 AT LE:U64@ ;
 
-: NAME? ( n str -- bool ) {: off:n name:^ size:n :}
-   off 16 AT size name size STR:= 0= if false exit then
-   size 16 < if off size + 1 AT c@ 0= else true then ;
+: NAME? ( n str -- bool ) {: off:n name:str :}
+   off 16 AT name STR:LEN >str name STR:= 0= if false exit then
+   name STR:LEN 16 < if off name STR:LEN + 1 AT c@ 0= else true then ;
 
 : UNIQUE! ( n ^n -- ) {: off:n slot:^ :}
    slot @ 0= CHECK off slot ! ;
@@ -387,9 +388,9 @@ variable CURSOR
 
 public
 
-: MAGIC? ( str -- bool ) {: image:^ size:n :}
-   size MH-HDR-SZ < if false exit then
-   image LE:U32@ MH-MAGIC64 = ;
+: MAGIC? ( str -- bool ) {: image:str :}
+   image STR:LEN MH-HDR-SZ < if false exit then
+   image STR:DATA LE:U32@ MH-MAGIC64 = ;
 
 : COMMANDS-END ( -- n ) CMD-END @ ;
 : TEXT-OFF ( -- n ) TEXT-CMD @ 120 + U32@ ;
@@ -442,9 +443,9 @@ private
 
 public
 
-: OPEN ( str -- ) {: image:^ size:n :}
-   image size MAGIC? CHECK
-   image IMAGE ! size BYTES !
+: OPEN ( str -- ) {: image:str :}
+   image MAGIC? CHECK
+   image STR:DATA IMAGE ! image STR:LEN BYTES !
    4 U32@ CPU-ARM64 = 12 U32@ MH-EXECUTE = and CHECK
    0 TEXT-CMD ! 0 DATA-CMD ! 0 LINK-CMD ! 0 FIX-CMD ! 0 SIGN-CMD !
    20 U32@ MH-HDR-SZ + CMD-END !

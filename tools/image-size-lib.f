@@ -1,4 +1,3 @@
-split-str
 \ image-size-lib.f - where the bytes of a program the linker wrote went, read
 \ from its container and the <program>.map beside it, whose rows tile the code
 \ from its first byte. Each byte falls in one class, and
@@ -46,16 +45,16 @@ variable OTHER-SIZE
    0 IMG BYTE-VIEW ;
 
 : READ-IMAGE ( str -- )
-   {: path:^ pathu:n :}
-   path pathu FS:FILE-SIZE {: size:n :}
+   {: path:str :}
+   path FS:FILE-SIZE {: size:n :}
    size CELL < if s" image-size: image too small" EXIT-STATUS:DATAERR die then
    size CELL 1- + CELL / IMG-RESERVE
    size ILEN !
-   path pathu IMG@ size FS:READ-ALL size <> if
+   path IMG@ size FS:READ-ALL size <> if
       s" image-size: short read" EXIT-STATUS:IOERR die
    then ;
 
-: ELF? ( -- bool ) IMG@ ILEN @ ELF:MAGIC? ;
+: ELF? ( -- bool ) IMG@ ILEN @ >str ELF:MAGIC? ;
 
 : REJECTION$ ( -- str )
    IMG@ LE:U32@ $6D736100 = if
@@ -64,19 +63,20 @@ variable OTHER-SIZE
    s" image-size: not a Habu program" ;
 
 : REJECT ( -- )
-   ELF? IMG@ ILEN @ MACHO:MAGIC? or 0= if REJECTION$ EXIT-STATUS:DATAERR die then ;
+   ELF? IMG@ ILEN @ >str MACHO:MAGIC? or
+   0= if REJECTION$ EXIT-STATUS:DATAERR die then ;
 
 : OPEN ( -- )
-   ELF? if IMG@ ILEN @ ELF:OPEN exit then
-   IMG@ ILEN @ MACHO:OPEN ;
+   ELF? if IMG@ ILEN @ >str ELF:OPEN exit then
+   IMG@ ILEN @ >str MACHO:OPEN ;
 
 : MAP-CHECK ( str -- )
    IMAGE-NAMES:MAP$ 0= if
-      2drop s" image-size: the program path is too long for its map path" EXIT-STATUS:FULL die
-   then {: map:^ mapu:n :}
-   map mapu FS:FILE? if exit then
+      drop s" image-size: the program path is too long for its map path" EXIT-STATUS:FULL die
+   then {: map:str :}
+   map FS:FILE? if exit then
    2 s" image-size: no map " write drop
-   map mapu EXIT-STATUS:NOINPUT die ;
+   map EXIT-STATUS:NOINPUT die ;
 
 \ The bytes the map's rows tile from the code's first byte.
 : MAP-BYTES ( -- n )
@@ -199,18 +199,18 @@ variable OTHER-SIZE
    tenths 10 / FMT:.U 46 emit  tenths 10 mod FMT:.U ;
 
 : ROW ( str n -- )
-   {: name:^ nameu:n bytes:n :}
-   name nameu type TAB bytes FMT:.U TAB bytes SHARE cr ;
+   {: name:str bytes:n :}
+   name type TAB bytes FMT:.U TAB bytes SHARE cr ;
 
 public
 
 : MEASURE ( str -- )
-   {: path:^ pathu:n :}
-   path pathu READ-IMAGE
+   {: path:str :}
+   path READ-IMAGE
    REJECT
    OPEN
-   path pathu MAP-CHECK
-   path pathu IMAGE-NAMES:LOAD
+   path MAP-CHECK
+   path IMAGE-NAMES:LOAD
    CONTAINER
    MAP-CLASSES
    SUMS ;
@@ -235,8 +235,8 @@ public
    IMAGE-NAMES:REPORT-CODE ;
 
 : .SUMMARY ( str -- )
-   {: name:^ nameu:n :}
-   s" size: " type name nameu type
+   {: name:str :}
+   s" size: " type name type
    s"  " type TOTAL-BYTES FMT:.U s"  bytes = code " type CODE-BYTES FMT:.U
    s" , names " type NAME-BYTES FMT:.U
    s" , data " type DATA-WRITTEN FMT:.U s"  written + " type DATA-ZERO FMT:.U

@@ -1,4 +1,3 @@
-split-str
 \ hb-build-report.f - typed in-process and wire-format hb-build reports.
 \ The JSON writer keeps no state, so this module owns the report bytes: REPORT-W
 \ writes into REPORT-OUT, and a span one report word answers stays valid until the

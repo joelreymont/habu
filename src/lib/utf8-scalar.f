@@ -1,4 +1,3 @@
-split-str
 \ utf8-scalar.f - strict reentrant UTF-8 scalar decoding with byte fallback. NEXT
 \ answers SCALAR and the next cursor for a canonical sequence, else RAW-BYTE with
 \ the lead byte and cursor+1: malformed, truncated, non-shortest, surrogate and
@@ -79,9 +78,9 @@ $8F constant F4-SECOND-MOST
       E-STR-BOUNDS throw
    then ;
 
-: LEAD@ ( str n -- n ) {: source:^ length:n cursor:n :}
-   length cursor CURSOR-CHECK
-   source cursor + c@ ;
+: LEAD@ ( str n -- n ) {: source:str cursor:n :}
+   source STR:LEN cursor CURSOR-CHECK
+   source STR:DATA cursor + c@ ;
 
 : CONTINUATION? ( n -- bool )
    CONTINUATION-MASK and CONTINUATION-TAG = ;
@@ -120,18 +119,18 @@ $8F constant F4-SECOND-MOST
    E-STR-BOUNDS throw ;
 
 : FOLD-CONTINUATIONS ( str n n n -- n bool )
-   {: source:^ remaining:n width:n index:n scalar:n :}
+   {: source:str width:n index:n scalar:n :}
    index width = if
       scalar YES exit
    then
-   index remaining >= if
+   index source STR:LEN >= if
       scalar NO exit
    then
-   source index + c@ {: byte:n :}
+   source STR:DATA index + c@ {: byte:n :}
    byte CONTINUATION? 0= if
       scalar NO exit
    then
-   source remaining width index 1+
+   source width index 1+
    scalar CONTINUATION-SHIFT lshift byte CONTINUATION-PAYLOAD-MASK and or
    recurse ;
 
@@ -150,8 +149,8 @@ $8F constant F4-SECOND-MOST
    then ;
 
 : DECODE-MULTIBYTE ( str n n n -- scalar-step )
-   {: source:^ remaining:n cursor:n lead:n width:n :}
-   source remaining width RAW-WIDTH lead width LEAD-SEED
+   {: source:str cursor:n lead:n width:n :}
+   source width RAW-WIDTH lead width LEAD-SEED
    FOLD-CONTINUATIONS if
       cursor lead width DECODED-STEP
    else
@@ -159,7 +158,7 @@ $8F constant F4-SECOND-MOST
    then ;
 
 : DECODE-LEAD ( str n n -- scalar-step )
-   {: source:^ remaining:n cursor:n lead:n :}
+   {: source:str cursor:n lead:n :}
    lead ASCII-LIMIT < if
       lead cursor RAW-WIDTH >SCALAR exit
    then
@@ -167,13 +166,13 @@ $8F constant F4-SECOND-MOST
       lead cursor >RAW-BYTE exit
    then
    lead THREE-LEAD-FIRST < if
-      source remaining cursor lead TWO-WIDTH DECODE-MULTIBYTE exit
+      source cursor lead TWO-WIDTH DECODE-MULTIBYTE exit
    then
    lead FOUR-LEAD-FIRST < if
-      source remaining cursor lead THREE-WIDTH DECODE-MULTIBYTE exit
+      source cursor lead THREE-WIDTH DECODE-MULTIBYTE exit
    then
    lead INVALID-LEAD-FIRST < if
-      source remaining cursor lead FOUR-WIDTH DECODE-MULTIBYTE exit
+      source cursor lead FOUR-WIDTH DECODE-MULTIBYTE exit
    then
    lead cursor >RAW-BYTE ;
 
@@ -205,25 +204,26 @@ $8F constant F4-SECOND-MOST
    then
    byte CONTINUATION-LEAST CONTINUATION-MOST IN-RANGE? ;
 
-: SUBPART ( str n n -- n ) {: at:^ limit:n lead:n index:n :}
-   index limit >= if index exit then
-   lead index at index + c@ TRAIL-OK? 0= if index exit then
-   at limit lead index 1+ recurse ;
+: SUBPART ( str n n -- n ) {: at:str lead:n index:n :}
+   index at STR:LEN >= if index exit then
+   lead index at STR:DATA index + c@ TRAIL-OK? 0= if index exit then
+   at lead index 1+ recurse ;
 
 public
 
-: NEXT ( str n -- scalar-step ) {: source:^ length:n cursor:n :}
-   source length cursor LEAD@ {: lead:n :}
-   source cursor + length cursor - cursor lead DECODE-LEAD ;
+: NEXT ( str n -- scalar-step ) {: source:str cursor:n :}
+   source cursor LEAD@ {: lead:n :}
+   source STR:DATA cursor + source STR:LEN cursor - >str
+   cursor lead DECODE-LEAD ;
 
 : VALID? ( str -- bool )
-   {: source:^ length:n :}
-   length NONNEGATIVE
-   0 begin dup length < while
-      dup source + c@ ASCII-LIMIT < if
+   {: source:str :}
+   source STR:LEN NONNEGATIVE
+   0 begin dup source STR:LEN < while
+      dup source STR:DATA + c@ ASCII-LIMIT < if
          1+
       else
-         source length rot NEXT
+         source swap NEXT
          MATCH scalar-step
             scalar OF nip ENDOF
             raw-byte OF 2drop NO exit ENDOF
@@ -232,33 +232,33 @@ public
    repeat
    drop YES ;
 
-: SUBPART-END ( str n -- n ) {: source:^ length:n cursor:n :}
-   source length cursor LEAD@ {: lead:n :}
-   source cursor + {: at:^ :}
-   lead LEAD-WIDTH length cursor - min {: limit:n :}
-   cursor at limit lead 1 SUBPART + ;
+: SUBPART-END ( str n -- n ) {: source:str cursor:n :}
+   source cursor LEAD@ {: lead:n :}
+   source STR:DATA cursor + {: at:^ :}
+   lead LEAD-WIDTH source STR:LEN cursor - min {: limit:n :}
+   cursor at limit >str lead 1 SUBPART + ;
 
-: CUT? ( str n -- bool ) {: source:^ length:n cursor:n :}
-   length NONNEGATIVE
-   cursor length = if NO exit then
-   source length cursor LEAD@ LEAD-WIDTH length cursor - > if
-      source length cursor SUBPART-END length =
+: CUT? ( str n -- bool ) {: source:str cursor:n :}
+   source STR:LEN NONNEGATIVE
+   cursor source STR:LEN = if NO exit then
+   source cursor LEAD@ LEAD-WIDTH source STR:LEN cursor - > if
+      source cursor SUBPART-END source STR:LEN =
    else
       NO
    then ;
 
 \ The start of the character SUBPART-END bounds that crosses the cap, else the
 \ cap. Only a non-continuation byte starts one, at most three bytes before it.
-: FIT ( str n -- n ) {: source:^ length:n cap:n :}
-   length NONNEGATIVE  cap NONNEGATIVE
-   length cap <= if length exit then
+: FIT ( str n -- n ) {: source:str cap:n :}
+   source STR:LEN NONNEGATIVE  cap NONNEGATIVE
+   source STR:LEN cap <= if source STR:LEN exit then
    cap FOUR-WIDTH 1- - 0 max {: least:n :}
    cap 1- begin
       dup least >= if
-         dup source + c@ CONTINUATION?
+         dup source STR:DATA + c@ CONTINUATION?
       else NO then
    while 1- repeat {: start:n :}
    start least < if cap exit then
-   source length start SUBPART-END cap > if start else cap then ;
+   source start SUBPART-END cap > if start else cap then ;
 
 ;package

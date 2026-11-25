@@ -1,4 +1,3 @@
-split-str
 \ image-bytes.f - shared executable image byte cursor and patch helpers.
 \ It names no machine's code package, so it compiles the same under every
 \ target writer and links as any file does; the writer sizes the buffer.
@@ -91,10 +90,10 @@ create M-FAIL-NL 1 allot
 
 \ Reports before throwing: the drivers exit with the raw throw code, so an
 \ unreported overrun exits 88 silently. The write's rc has nowhere to go.
-: M-FAIL ( str -- ) {: a:^ u:n :}
-   2 a u write drop
+: M-FAIL ( str -- ) {: s:str :}
+   2 s write drop
    10 M-FAIL-NL c!
-   2 M-FAIL-NL 1 write drop
+   2 M-FAIL-NL 1 >str write drop
    EXIT-STATUS:IMAGE-BOUNDS throw ;
 
 : M-CHECK-N ( n -- )
@@ -152,15 +151,15 @@ public
    M-LEN M-ZEROS-LEN ;
 
 : M-BYTES ( str -- )
-   M-LEN {: src:^ u:len :}
+   {: s:str :}
+   s STR:LEN M-LEN {: u:len :}
    u M-CHECK-ROOM
-   src MP@ u BYTE-COPY-LEN
+   s STR:DATA MP@ u BYTE-COPY-LEN
    u M-ADVANCE ;
 
 : M-NAME16 ( str -- )
-   dup dup M-N ! $10 > if s" image-bytes: name exceeds 16 bytes" M-FAIL then
-   2dup M-BYTES
-   2drop $10 M-N @ - M-ZEROS ;
+   dup STR:LEN dup M-N ! $10 > if s" image-bytes: name exceeds 16 bytes" M-FAIL then
+   M-BYTES $10 M-N @ - M-ZEROS ;
 
 : M-PAD-OFF ( off -- )
    OFF>N M-HERE - M-ZEROS ;
@@ -223,7 +222,8 @@ public
    $FFFFFFFF and M-BE32 ;
 
 : M-BE-BYTES ( str -- )
-   M-LEN {: src:^ u:len :}
-   src M-BE-PTR u BYTE-COPY-LEN
+   {: s:str :}
+   s STR:LEN M-LEN {: u:len :}
+   s STR:DATA M-BE-PTR u BYTE-COPY-LEN
    u M-BE-SKIP ;
 ;package

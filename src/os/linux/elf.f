@@ -1,4 +1,3 @@
-split-str
 \ elf.f - the ELF writer for Linux arm64 and x86-64. The kernel object
 \ supplies the libc names its GOT binds.
 \ Every PT_LOAD sits on a PAGE-BYTES boundary so the text and the read-write
@@ -65,7 +64,7 @@ $190 constant ELF-INTERP-OFF
 TYPED-VARIABLE X64 bool
 : INTERPRETER$ ( -- str )
    X64 @ if s" /lib64/ld-linux-x86-64.so.2" else s" /lib/ld-linux-aarch64.so.1" then ;
-: ELF-INTERP-SZ ( -- n ) INTERPRETER$ nip 1+ ;
+: ELF-INTERP-SZ ( -- n ) INTERPRETER$ STR:LEN 1+ ;
 $1B0 constant ELF-HASH-OFF
 24 constant ELF-SYM-SZ
 24 constant ELF-RELA-ENT-SZ
@@ -106,9 +105,9 @@ public
 
 \ The row whose C name this is; the build dies on a name the table lacks.
 : IMPORT-ROW ( str -- n )
-   {: a:^ u:n :}
-   IMPORTS 0 ?do i IMPORT$ a u STR:= if i unloop exit then loop
-   SB-RESET  s" elf: no such import " SB-APPEND  a u SB-APPEND
+   {: s:str :}
+   IMPORTS 0 ?do i IMPORT$ s STR:= if i unloop exit then loop
+   SB-RESET  s" elf: no such import " SB-APPEND  s SB-APPEND
    SB$ EXIT-STATUS:IMAGE die ;
 
 \ Import row n's cell, as a byte offset from the read-write tail's start.
@@ -125,8 +124,8 @@ private
 : ELF-DYNSYM-OFF ( -- n ) ELF-HASH-OFF ELF-HASH-SZ + ELF-ALIGN8 ;
 : ELF-DYNSTR-OFF ( -- n ) ELF-DYNSYM-OFF IMPORT-NAMES:COUNT 1 + ELF-SYM-SZ * + ;
 \ The string table opens with a NUL, then holds the names, then libc's.
-: ELF-LIBC-OFF ( -- n ) IMPORT-NAMES:SPAN@ nip 1 + ;
-: ELF-DYNSTR-SZ ( -- n ) ELF-LIBC-OFF LIBC$ nip + 1 + ;
+: ELF-LIBC-OFF ( -- n ) IMPORT-NAMES:SPAN@ STR:LEN 1 + ;
+: ELF-DYNSTR-SZ ( -- n ) ELF-LIBC-OFF LIBC$ STR:LEN + 1 + ;
 : ELF-RELA-OFF ( -- n ) ELF-DYNSTR-OFF ELF-DYNSTR-SZ + ELF-ALIGN8 ;
 : ELF-RELA-SZ ( -- n ) IMPORT-NAMES:COUNT ELF-RELA-ENT-SZ * ;
 : ELF-TABLES-END ( -- n ) ELF-RELA-OFF ELF-RELA-SZ + ;
@@ -306,7 +305,7 @@ private
 
 : ELF-CARRIER, ( -- )
    ELF-CARRIER-AT M-OFF M-PAD-OFF
-   CARRIER-A @ CARRIER-N @ M-BYTES ;
+   CARRIER-A @ CARRIER-N @ >str M-BYTES ;
 
 : BUILD-ELF ( -- )
    TEXTSZ ELF-RW-SZ + REGION-OFF > if
@@ -323,13 +322,14 @@ private
    ELF-HDR,
    ELF-PHDRS,
    ELF-RX-META,
-   TEXT @ CODELEN @ M-BYTES
+   TEXT @ CODELEN @ >str M-BYTES
    TEXTSZ M-OFF M-PAD-OFF
    ELF-TEXT-SIZE @ ELF-RW-AT,
    ELF-CARRIER,
    M-HERE MLEN! ;
 
-: CARRIER! ( n str -- ) CARRIER-N ! CARRIER-A ! CARRIER-BASE ! ;
+: CARRIER! ( n str -- )
+   dup STR:LEN CARRIER-N ! STR:DATA CARRIER-A ! CARRIER-BASE ! ;
 
 public
 \ The program as an ELF file whose code maps at the first address, its GOT
@@ -348,7 +348,8 @@ public
 : BUILD-X64 ( str n str n str -- img )
    CARRIER!
    IMPORT-NAMES:SPAN!
-   LINUX-LAYOUT:CODE-OFF - VMBASE ! CODELEN ! TEXT ! true X64 !
+   LINUX-LAYOUT:CODE-OFF - VMBASE !
+   dup STR:LEN CODELEN ! STR:DATA TEXT ! true X64 !
    BUILD-ELF IMG-PHASE ;
 
 private
@@ -370,8 +371,8 @@ variable RELA-AT
 variable RELA-ENT
 variable RELA-BYTES
 
-: CHECK ( bool str -- ) {: ok:bool why:^ whyu:n :}
-   ok 0= if why whyu EXIT-STATUS:DATAERR die then ;
+: CHECK ( bool str -- ) {: ok:bool why:str :}
+   ok 0= if why EXIT-STATUS:DATAERR die then ;
 
 : AT ( n n -- ^u8 ) {: off:n size:n :}
    off 0 >= size 0 >= and off BYTES @ <= and
@@ -402,9 +403,9 @@ variable RELA-BYTES
 
 public
 
-: MAGIC? ( str -- bool ) {: image:^ size:n :}
-   size ELF-HDR-SZ < if false exit then
-   image LE:U32@ $464C457F = ;
+: MAGIC? ( str -- bool ) {: image:str :}
+   image STR:LEN ELF-HDR-SZ < if false exit then
+   image STR:DATA LE:U32@ $464C457F = ;
 
 \ The ELF header and the program headers after it.
 : HEADERS-BYTES ( -- n ) 32 U64@ 56 U16@ 54 U16@ * + ;
@@ -564,9 +565,9 @@ private
 
 public
 
-: OPEN ( str -- ) {: image:^ size:n :}
-   image size MAGIC? s" elf: not an ELF file" CHECK
-   image IMAGE ! size BYTES !
+: OPEN ( str -- ) {: image:str :}
+   image MAGIC? s" elf: not an ELF file" CHECK
+   image STR:DATA IMAGE ! image STR:LEN BYTES !
    CHECK-HEADER PHDRS CHECK-LOADS CHECK-DYNAMIC CHECK-TABLES ;
 
 \ The opened image's carrier: its file offset and length.

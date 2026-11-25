@@ -1,4 +1,3 @@
-split-str
 \ hb-build-core.f - builds this tree's native hb, hb with a program's files
 \ (--repl), or a stripped program, as a cross-build in the running hb and writes
 \ it with its map beside it. A native build first compiles the target's
@@ -68,66 +67,66 @@ DYNAMIC-BUFFER RECORD u8                \ an inputs file's bytes while KERNEL-WR
 variable RECORD-U                       \ the inputs file's size once INPUTS-READ read it
 variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS:READ-SIZED owns it, else -1
 
-: END$ ( -- str ) END-PATH END-U @ ;
-: SRC$ ( -- str ) SRC-PATH @ SRC-LEN @ ;
+: END$ ( -- str ) END-PATH END-U @ >str ;
+: SRC$ ( -- str ) SRC-PATH @ SRC-LEN @ >str ;
 : OUT$ ( -- str ) OUT-Q @ execute ;
 
 : STAGE! ( stage -- ) 0 STAGE-BUF ! ;
 : STAGE@ ( -- stage ) 0 STAGE-BUF @ ;
-: MODE$ ( -- str ) MODE-PATH @ MODE-LEN @ ;
-: FILE$ ( -- str ) FILE-PATH @ FILE-LEN @ ;
+: MODE$ ( -- str ) MODE-PATH @ MODE-LEN @ >str ;
+: FILE$ ( -- str ) FILE-PATH @ FILE-LEN @ >str ;
 
 : OPENING ( str -- )
-   {: a:^ u:n :}
-   a MODE-PATH !  u MODE-LEN !
+   {: s:str :}
+   s STR:DATA MODE-PATH !  s STR:LEN MODE-LEN !
    construct stage opening STAGE! ;
 
 : LOADING ( str -- )
-   {: a:^ u:n :}
-   a FILE-PATH !  u FILE-LEN !
+   {: s:str :}
+   s STR:DATA FILE-PATH !  s STR:LEN FILE-LEN !
    construct stage loading STAGE! ;
 
 : BETWEEN ( -- ) construct stage between STAGE! ;
 
 : WHERE+ ( str -- )
-   {: a:^ u:n :}
-   a  WHERE-BUF WHERE-U @ +  u BYTE-COPY
-   u WHERE-U +! ;
+   {: s:str :}
+   s STR:DATA  WHERE-BUF WHERE-U @ +  s STR:LEN BYTE-COPY
+   s STR:LEN WHERE-U +! ;
 
 \ "the <mode> build" and the tail.
 : BUILD$ ( str -- str )
-   {: a:^ u:n :}
+   {: s:str :}
    0 WHERE-U !
-   s" the " WHERE+  MODE$ WHERE+  s"  build" WHERE+  a u WHERE+
-   WHERE-BUF WHERE-U @ ;
+   s" the " WHERE+  MODE$ WHERE+  s"  build" WHERE+  s WHERE+
+   WHERE-BUF WHERE-U @ >str ;
 
 
 \ True when the file at the path holds exactly the bytes; false when it is missing.
 : SAME-FILE? ( str str -- bool )
-   {: pa:^ pu:n a:^ u:n :}
-   pa pu FS:OPEN-SIZED {: file:fd size:n found:bool :}
+   {: ps:str s:str :}
+   ps FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if false exit then
-   size u <> if file FD>N close false exit then
+   size s STR:LEN <> if file FD>N close false exit then
    size PRESENT-RESERVE
    file 0 PRESENT size FS:READ-SIZED
-   0 PRESENT size a u STR:=
+   0 PRESENT size >str s STR:=
    PRESENT-RELEASE ;
 
 
 \ A file the build loads keeps its inode and change time while its bytes stay
 \ the same, so a later build that stamps it sees it unchanged.
 : WRITE-CHANGED ( str str -- )
-   {: pa:^ pu:n a:^ u:n :}
-   pa pu a u SAME-FILE? if exit then
-   pa pu a u FS:ATOMIC-WRITE-FILE ;
+   {: ps:str s:str :}
+   ps s SAME-FILE? if exit then
+   ps s FS:ATOMIC-WRITE-FILE ;
 
 
 \ The tool's files sit under the target's name, since their text follows from the target.
 \ END-PATH holds <out>/hb-build until ENGINE-END! or REPL-END! fills it.
 : PATHS ( -- )
    BUILD-OUT:BASE$ s" hb-build" END-PATH FS:JOIN-PATH {: u:n :}
-   END-PATH u  TARGET @ RTARGET:PROFILE$  DIR FS:JOIN-PATH DIR-U !
-   DIR DIR-U @ FS:MAKE-DIRS ;
+   END-PATH u >str  TARGET @ RTARGET:PROFILE$  DIR FS:JOIN-PATH DIR-U !
+   DIR DIR-U @ >str FS:MAKE-DIRS ;
 
 
 : TARGET? ( RTARGET:profile-id -- bool )
@@ -153,34 +152,34 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 \ A file the build includes is a provided row or the build's own glue: read as
 \ no file's, its calls are not checked.
 : INCLUDE-FILE ( str -- )
-   {: a:^ u:n :}
-   a u LOADING
-   0 [: a u included ;] REQUIRES:WITH-FILE
+   {: s:str :}
+   s LOADING
+   0 [: s included ;] REQUIRES:WITH-FILE
    BETWEEN ;
 
 
 : ROW ( n n str -- )
-   {: idx:n kind:n a:^ u:n :}
+   {: idx:n kind:n s:str :}
    kind LOAD? 0= if exit then
-   a u INCLUDE-FILE
-   a u s" src/core/include.f" STR:= if s" src/core/source-reset.f" INCLUDE-FILE then ;
+   s INCLUDE-FILE
+   s s" src/core/include.f" STR:= if s" src/core/source-reset.f" INCLUDE-FILE then ;
 
 : PROVIDE ( n n str -- )
-   {: idx:n kind:n a:^ u:n :}
-   kind LOAD? if a u provided then ;
+   {: idx:n kind:n s:str :}
+   kind LOAD? if s provided then ;
 
 : REQUIRE-FILE ( str -- )
-   {: a:^ u:n :}
-   a u LOADING
-   a u required
+   {: s:str :}
+   s LOADING
+   s required
    BETWEEN ;
 
 \ A program's source is an entry, as `hb --load` reads it: its own file, named
 \ from the directory hb runs in.
 : ENTRY-FILE ( str -- )
-   {: a:^ u:n :}
-   a u LOADING
-   a u script-required
+   {: s:str :}
+   s LOADING
+   s script-required
    BETWEEN ;
 
 
@@ -216,17 +215,17 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 
 : TEXT+ ( str -- )
-   {: a:^ u:n :}
-   TEXT-U @ u + TEXT-RESERVE
-   a TEXT-U @ TEXT u BYTE-COPY
-   u TEXT-U +! ;
+   {: s:str :}
+   TEXT-U @ s STR:LEN + TEXT-RESERVE
+   s STR:DATA TEXT-U @ TEXT s STR:LEN BYTE-COPY
+   s STR:LEN TEXT-U +! ;
 
 \ A row's bytes inside the end file's s\" literal: `"` and `\` take a backslash.
 : ROW+ ( str -- )
-   {: a:^ u:n :}
-   u 0 ?do
-      a i + c@ dup 34 = swap 92 = or if s" \" TEXT+ then
-      a i + 1 TEXT+
+   {: s:str :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ dup 34 = swap 92 = or if s" \" TEXT+ then
+      s STR:DATA i + 1 >str TEXT+
    loop ;
 
 \ A registry row below the engine's source root, which the build reads hb's
@@ -235,13 +234,18 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 \ outside the root keeps its canonical path; an hb's is rejected. A file's row
 \ mints its id.
 : REG-ROW ( str bool bool -- )
-   {: a:^ u:n engine:bool file:bool :}
-   SOURCE-ROOT:ENGINE$ {: c:^ cu:n :}
-   u cu 1 + > if a cu c cu STR:= a cu + c@ FS:SLASH = and else false then
+   {: s:str engine:bool file:bool :}
+   SOURCE-ROOT:ENGINE$ {: c:str :}
+   c STR:LEN {: cu:n :}
+   s STR:LEN cu 1 + > if
+      s STR:DATA cu >str c STR:= s STR:DATA cu + c@ FS:SLASH = and
+   else false then
    {: below:bool :}
-   below 0= engine and if a u LOADING  E-BUILD-PATH throw then
+   below 0= engine and if s LOADING  E-BUILD-PATH throw then
    s\" s\\\" " TEXT+
-   below if a cu + 1 + u cu - 1 - ROW+ else a u ROW+ then
+   below if
+      s STR:DATA cu + 1 + s STR:LEN cu - 1 - >str ROW+
+   else s ROW+ then
    file if s\" \" REQUIRE-REG:APPEND-FILE\n" else s\" \" REQUIRE-REG:APPEND\n" then
    TEXT+ ;
 
@@ -283,17 +287,19 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 \ hb's end file is <out>/hb-build/<target>/end.f: its text follows from the tree
 \ and the target.
-: ENGINE-END! ( -- ) DIR DIR-U @ s" end.f" END-PATH FS:JOIN-PATH END-U ! ;
+: ENGINE-END! ( -- )
+   DIR DIR-U @ >str s" end.f" END-PATH FS:JOIN-PATH END-U ! ;
 
 \ A --repl program's end file is <out>/hb-build/<target>/end/<its source's canonical
 \ path>/end.f: its text follows from the tree, the target and that source, so two
 \ programs built under one out root never load each other's.
 : REPL-END! ( -- )
-   SRC$ SOURCE-ROOT:CANONICAL drop {: src:^ srcu:n :}
-   DIR DIR-U @ s" end" END-PATH FS:JOIN-PATH {: endu:n :}
-   END-PATH endu  src 1 +  srcu 1 -  END-DIR FS:JOIN-PATH {: diru:n :}
-   END-DIR diru FS:MAKE-DIRS
-   END-DIR diru s" end.f" END-PATH FS:JOIN-PATH END-U ! ;
+   SRC$ SOURCE-ROOT:CANONICAL drop {: src:str :}
+   DIR DIR-U @ >str s" end" END-PATH FS:JOIN-PATH {: endu:n :}
+   END-PATH endu >str  src STR:DATA 1 +  src STR:LEN 1 - >str
+   END-DIR FS:JOIN-PATH {: diru:n :}
+   END-DIR diru >str FS:MAKE-DIRS
+   END-DIR diru >str s" end.f" END-PATH FS:JOIN-PATH END-U ! ;
 
 
 \ The end file states the build's registry rows and each file's run of records,
@@ -303,13 +309,13 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    0 TEXT-U !
    s\" REQUIRE-REG:BOOT-OPEN\n" TEXT+
    REQUIRE-REG:COUNT REQUIRE-REG:BASE ?do
-      i REQUIRE-REG:SLOT i REQUIRE-REG:LEN i app < i ROW-FILE? REG-ROW
+      i REQUIRE-REG:SLOT i REQUIRE-REG:LEN >str i app < i ROW-FILE? REG-ROW
    loop
    s\" REQUIRE-REG:BOOT-FREEZE\nREQUIRE-REG:PERSIST\n" TEXT+
    SPANS+
    s\" REQUIRES:PERSIST\nRUNTIME:INSTALL\n" TEXT+
    entry if s\" ' MAIN APP-ENTRY:XT!\n" TEXT+ then
-   END$ 0 TEXT TEXT-U @ WRITE-CHANGED
+   END$ 0 TEXT TEXT-U @ >str WRITE-CHANGED
    TEXT-RELEASE ;
 
 
@@ -424,10 +430,10 @@ SUM-U 32 + constant HEAD-U
 16 1024 * 1024 * constant INPUTS-CAP
 
 : KNAME+ ( str -- )
-   {: a:^ u:n :}
-   KNAME-U @ u + PATH-CAP > if E-FS-CAPACITY throw then
-   a  KNAME KNAME-U @ +  u BYTE-COPY
-   u KNAME-U +! ;
+   {: s:str :}
+   KNAME-U @ s STR:LEN + PATH-CAP > if E-FS-CAPACITY throw then
+   s STR:DATA  KNAME KNAME-U @ +  s STR:LEN BYTE-COPY
+   s STR:LEN KNAME-U +! ;
 
 : KIND$ ( -- str )
    KERNEL-ENGINE? @ if s" kernel-engine" else s" kernel-app" then ;
@@ -438,19 +444,21 @@ SUM-U 32 + constant HEAD-U
 : KERNEL-PATHS ( -- )
    0 KNAME-U !  0 KERNEL-U !
    TARGET @ RTARGET:PROFILE$ KNAME+  s" /kernel" KNAME+
-   SOURCE-ROOT:ENGINE$ {: c:^ cu:n :}
-   cu 0 > if c c@ FS:SLASH = else false then 0= if s" /" KNAME+ then
-   c cu KNAME+
-   KNAME KNAME-U @ BUILD-OUT:OBJ$ {: d:^ du:n :}
-   d KERNEL-DIR du BYTE-COPY  du KERNEL-DIR-U !
+   SOURCE-ROOT:ENGINE$ {: c:str :}
+   c STR:LEN 0 > if c STR:DATA c@ FS:SLASH = else false then
+   0= if s" /" KNAME+ then
+   c KNAME+
+   KNAME KNAME-U @ >str BUILD-OUT:OBJ$ {: d:str :}
+   d STR:DATA KERNEL-DIR d STR:LEN BYTE-COPY  d STR:LEN KERNEL-DIR-U !
    0 KNAME-U !  KIND$ KNAME+  s" .inputs" KNAME+
-   KERNEL-DIR du KNAME KNAME-U @ INPUTS-PATH FS:JOIN-PATH INPUTS-U ! ;
+   KERNEL-DIR d STR:LEN >str KNAME KNAME-U @ >str
+   INPUTS-PATH FS:JOIN-PATH INPUTS-U ! ;
 
 : HEX+ ( n -- )
    {: b:n :}
-   s" 0123456789abcdef" drop {: d:^ :}
-   d b 4 rshift + 1 KNAME+
-   d b 15 and + 1 KNAME+ ;
+   s" 0123456789abcdef" STR:DATA {: d:^ :}
+   d b 4 rshift + 1 >str KNAME+
+   d b 15 and + 1 >str KNAME+ ;
 
 \ KERNEL-PATH becomes the object whose checksum is the SUM-U bytes:
 \ kernel-engine-<them as lower-case hex>.hko in the kernel directory, or
@@ -460,33 +468,37 @@ SUM-U 32 + constant HEAD-U
    0 KNAME-U !  KIND$ KNAME+  s" -" KNAME+
    SUM-U 0 ?do sum i + c@ HEX+ loop
    s" .hko" KNAME+
-   KERNEL-DIR KERNEL-DIR-U @ KNAME KNAME-U @ KERNEL-PATH FS:JOIN-PATH KERNEL-U ! ;
+   KERNEL-DIR KERNEL-DIR-U @ >str KNAME KNAME-U @ >str
+   KERNEL-PATH FS:JOIN-PATH KERNEL-U ! ;
 
 \ Writes the object whole at the path its checksum names, then the inputs file
 \ whole, unless the object's stamp cannot be read. The stamp fails an object
 \ changed in place since. Nothing older is deleted.
 : KERNEL-WRITE ( str -- )
-   {: a:^ u:n :}
-   KERNEL-DIR KERNEL-DIR-U @ FS:MAKE-DIRS
-   a 8 + OBJECT-PATH!
-   KERNEL-PATH KERNEL-U @ a u FS:ATOMIC-WRITE-FILE
-   KERNEL-PATH KERNEL-U @ FS:TRY-FILE-META 0= if 2drop 2drop drop exit then
+   {: s:str :}
+   KERNEL-DIR KERNEL-DIR-U @ >str FS:MAKE-DIRS
+   s STR:DATA 8 + OBJECT-PATH!
+   KERNEL-PATH KERNEL-U @ >str s FS:ATOMIC-WRITE-FILE
+   KERNEL-PATH KERNEL-U @ >str FS:TRY-FILE-META
+   0= if 2drop 2drop drop exit then
    {: size:n ms:n mns:n cs:n cns:n :}
-   LINKER:INPUTS$ {: l:^ lu:n :}
+   LINKER:INPUTS$ {: l:str :}
+   l STR:LEN {: lu:n :}
    HEAD-U lu + RECORD-RESERVE
-   a 8 +  0 RECORD  SUM-U BYTE-COPY
+   s STR:DATA 8 +  0 RECORD  SUM-U BYTE-COPY
    cs  SUM-U RECORD LE:U64!
    cns  SUM-U 8 + RECORD LE:U64!
    size  SUM-U 16 + RECORD LE:U64!
    lu  SUM-U 24 + RECORD LE:U64!
-   l  HEAD-U RECORD  lu BYTE-COPY
-   INPUTS-PATH INPUTS-U @  0 RECORD  HEAD-U lu +  FS:ATOMIC-WRITE-FILE
+   l STR:DATA  HEAD-U RECORD  lu BYTE-COPY
+   INPUTS-PATH INPUTS-U @ >str  0 RECORD  HEAD-U lu + >str
+   FS:ATOMIC-WRITE-FILE
    RECORD-RELEASE ;
 
 \ The inputs file whole into RECORD through one descriptor, its size into
 \ RECORD-U; false when it is missing, shorter than its head or over INPUTS-CAP.
 : INPUTS-READ ( -- bool )
-   INPUTS-PATH INPUTS-U @ FS:OPEN-SIZED {: file:fd n:n found:bool :}
+   INPUTS-PATH INPUTS-U @ >str FS:OPEN-SIZED {: file:fd n:n found:bool :}
    found 0= if false exit then
    file FD>N INPUTS-FD !
    n HEAD-U <  n INPUTS-CAP > or if false exit then
@@ -511,7 +523,8 @@ SUM-U 32 + constant HEAD-U
 : HEAD-HOLDS? ( -- bool )
    RECORD-U @ HEAD-U -  SUM-U 24 + RECORD LE:U64@  <> if false exit then
    0 RECORD OBJECT-PATH!
-   KERNEL-PATH KERNEL-U @ FS:TRY-FILE-META 0= if 2drop 2drop drop false exit then
+   KERNEL-PATH KERNEL-U @ >str FS:TRY-FILE-META
+   0= if 2drop 2drop drop false exit then
    {: size:n ms:n mns:n cs:n cns:n :}
    SUM-U RECORD LE:U64@ cs =  SUM-U 8 + RECORD LE:U64@ cns = and
    SUM-U 16 + RECORD LE:U64@ size = and ;
@@ -519,7 +532,7 @@ SUM-U 32 + constant HEAD-U
 : RECORD-HOLDS? ( -- bool )
    INPUTS-READ? 0= if false exit then
    HEAD-HOLDS? 0= if false exit then
-   HEAD-U RECORD  RECORD-U @ HEAD-U -  LINKER:INPUTS-HOLD? ;
+   HEAD-U RECORD  RECORD-U @ HEAD-U - >str  LINKER:INPUTS-HOLD? ;
 
 : INPUTS-DONE ( -- )
    INPUTS-FD @ 0 >= if INPUTS-FD @ close then
@@ -543,9 +556,9 @@ SUM-U 32 + constant HEAD-U
 
 \ LINKER:WITH's build of the mode, which is idle once it returns.
 : LINK ( str RTARGET:resolved-target [ -- renders nominal roots ] -- )
-   {: mode:^ modeu:n target:RTARGET:resolved-target body :}
-   mode modeu OPENING
-   mode modeu target body LINKER:WITH
+   {: mode:str target:RTARGET:resolved-target body :}
+   mode OPENING
+   mode target body LINKER:WITH
    construct stage idle STAGE! ;
 
 \ hb and a REPL program run where hb runs, so only a program builds for Wasm:
@@ -579,22 +592,22 @@ public
          s" kernel" target ['] KERNEL-BODY LINK
       then
    ;] SOURCE-ROOT:WITH
-   KERNEL-PATH KERNEL-U @ LINKER:KERNEL ;
+   KERNEL-PATH KERNEL-U @ >str LINKER:KERNEL ;
 
 \ The path of the kernel object the last KERNEL-BUILD wrote or adopted, which
 \ names its checksum, so a later read of it reads the bytes the build linked.
-: KERNEL$ ( -- str ) KERNEL-PATH KERNEL-U @ ;
+: KERNEL$ ( -- str ) KERNEL-PATH KERNEL-U @ >str ;
 
 \ The tree's inputs file for the last KERNEL-BUILD's profile and kind; any
 \ kernel build of this tree may replace it with a log that holds as well, read
 \ from the tree's root.
-: KERNEL-INPUTS$ ( -- str ) INPUTS-PATH INPUTS-U @ ;
+: KERNEL-INPUTS$ ( -- str ) INPUTS-PATH INPUTS-U @ >str ;
 
 \ Where a build that ended was: loading answers its file; opening "the <mode>
 \ build's open"; between "the <mode> build outside its files"; idle empty.
 : WHERE$ ( -- str )
    STAGE@ MATCH stage
-      idle OF WHERE-BUF 0 ENDOF
+      idle OF WHERE-BUF 0 >str ENDOF
       opening OF s" 's open" BUILD$ ENDOF
       between OF s"  outside its files" BUILD$ ENDOF
       loading OF FILE$ ENDOF
@@ -612,17 +625,17 @@ public
 \ Build hb with the source's files, the source's MAIN its entry, for the target
 \ and write it to the path the quotation answers when the build writes.
 : REPL ( str [ -- str ] RTARGET:resolved-target -- )
-   {: src:^ srcu:n out target:RTARGET:resolved-target :}
+   {: src:str out target:RTARGET:resolved-target :}
    target REJECT-WASM
-   src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
+   src STR:DATA SRC-PATH !  src STR:LEN SRC-LEN !  out OUT-Q !
    true target KERNEL-BUILD  REPL-END!
    s" engine" target ['] REPL-BODY LINK ;
 
 \ Build the source as a stripped program for the target and write it to
 \ the path the quotation answers when the build writes.
 : APP ( str [ -- str ] RTARGET:resolved-target -- )
-   {: src:^ srcu:n out target:RTARGET:resolved-target :}
-   src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
+   {: src:str out target:RTARGET:resolved-target :}
+   src STR:DATA SRC-PATH !  src STR:LEN SRC-LEN !  out OUT-Q !
    target TARGET !
    WASM? 0= if false target KERNEL-BUILD then
    s" app" target ['] APP-BODY LINK ;

@@ -1,4 +1,3 @@
-split-str
 \ layout.f -- the executable and data layout constants of both Linux targets
 \ (linux-aarch64, linux-x86-64), as package LINUX-LAYOUT any host can load: a
 \ Linux engine loads it at boot before `require` exists. A host's bare layout

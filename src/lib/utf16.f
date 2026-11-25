@@ -1,4 +1,3 @@
-split-str
 \ utf16.f - UTF-16 code units of UTF-8 text (UNITS and OFFSET, the measure LSP
 \ positions take by default) and strict UTF-16LE conversion. UTF-8 is read with
 \ UTF8:NEXT (src/lib/utf8-scalar.f): each byte it answers as `raw-byte` is one
@@ -44,8 +43,8 @@ $3F constant CONT-MASK
    PAIR-FIRST < if 1 else 2 then ;
 
 : STEP ( n n str -- n n )
-   {: units:n cursor:n a:^ u:n :}
-   a u cursor UTF8:NEXT MATCH UTF8:scalar-step
+   {: units:n cursor:n s:str :}
+   s cursor UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF swap SCALAR-UNITS swap ENDOF
       raw-byte OF nip 1 swap ENDOF
    ;MATCH
@@ -59,19 +58,19 @@ public
 \ starts well (E2 82 then `A`, or F0 9F 98 at the span's end), which it counts
 \ as one unit.
 : UNITS ( str -- n )
-   {: a:^ u:n :}
-   u 0 < if E-STR-BOUNDS throw then
-   0 0 begin dup u < while a u STEP repeat
+   {: s:str :}
+   s STR:LEN 0 < if E-STR-BOUNDS throw then
+   0 0 begin dup s STR:LEN < while s STEP repeat
    drop ;
 
 \ The byte where a unit index starts: index 0 is byte 0, an index at or past the
 \ span's units is its length, and an index inside a surrogate pair rounds to the
 \ byte after that scalar. It inverts UNITS only at scalar boundaries.
 : OFFSET ( str n -- n )
-   {: a:^ u:n unit:n :}
-   u 0 < if E-STR-BOUNDS throw then
+   {: s:str unit:n :}
+   s STR:LEN 0 < if E-STR-BOUNDS throw then
    unit 0 < if E-STR-BOUNDS throw then
-   0 0 begin over unit < over u < and while a u STEP repeat
+   0 0 begin over unit < over s STR:LEN < and while s STEP repeat
    nip ;
 
 \ The scalar a high and a low surrogate encode; the caller checks their ranges.
@@ -115,18 +114,18 @@ private
 
 
 : APPEND-PAIR ( n n str ^VEC:vector<u8> -- n )
-   {: high:n at:n a:^ u:n v:^ :}
-   at UNIT-BYTES + u >= if E-UTF16 throw then
-   a at UNIT-BYTES + + LE:U16@ {: low:n :}
+   {: high:n at:n s:str v:^ :}
+   at UNIT-BYTES + s STR:LEN >= if E-UTF16 throw then
+   s STR:DATA at UNIT-BYTES + + LE:U16@ {: low:n :}
    low LOW? 0= if E-UTF16 throw then
    high low PAIR>SCALAR v APPEND-SCALAR
    at UNIT-BYTES 2 * + ;
 
 
 : DECODE-STEP ( n str ^VEC:vector<u8> -- n )
-   {: at:n a:^ u:n v:^ :}
-   a at + LE:U16@ {: unit:n :}
-   unit HIGH? if unit at a u v APPEND-PAIR exit then
+   {: at:n s:str v:^ :}
+   s STR:DATA at + LE:U16@ {: unit:n :}
+   unit HIGH? if unit at s v APPEND-PAIR exit then
    unit LOW? if E-UTF16 throw then
    unit v APPEND-SCALAR
    at UNIT-BYTES + ;
@@ -145,8 +144,8 @@ private
 
 
 : ENCODE-STEP ( n str ^VEC:vector<u8> -- n )
-   {: at:n a:^ u:n v:^ :}
-   a u at UTF8:NEXT MATCH UTF8:scalar-step
+   {: at:n s:str v:^ :}
+   s at UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF swap v APPEND-SCALAR-LE ENDOF
       raw-byte OF 2drop E-UTF8 throw ENDOF
    ;MATCH ;
@@ -162,19 +161,19 @@ public
 \ length or an unpaired surrogate, high (at the span's end included) or low, is
 \ E-UTF16.
 : APPEND-LE>UTF8 ( str ^VEC:vector<u8> -- )
-   {: a:^ u:n v:^ :}
-   u 0 < if E-STR-BOUNDS throw then
-   u UNIT-BYTES mod 0<> if E-UTF16 throw then
-   0 begin dup u < while a u v DECODE-STEP repeat
+   {: s:str v:^ :}
+   s STR:LEN 0 < if E-STR-BOUNDS throw then
+   s STR:LEN UNIT-BYTES mod 0<> if E-UTF16 throw then
+   0 begin dup s STR:LEN < while s v DECODE-STEP repeat
    drop ;
 
 \ A scalar at or above U+10000 becomes a surrogate pair; every raw byte -
 \ malformed, overlong, an encoded surrogate, past U+10FFFF or truncated - is
 \ E-UTF8.
 : APPEND-UTF8>LE ( str ^VEC:vector<u8> -- )
-   {: a:^ u:n v:^ :}
-   u 0 < if E-STR-BOUNDS throw then
-   0 begin dup u < while a u v ENCODE-STEP repeat
+   {: s:str v:^ :}
+   s STR:LEN 0 < if E-STR-BOUNDS throw then
+   0 begin dup s STR:LEN < while s v ENCODE-STEP repeat
    drop ;
 
 ;package

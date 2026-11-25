@@ -1,4 +1,3 @@
-split-str
 \ host-layout.f -- a Linux engine's bare layout names: copies of package
 \ LINUX-LAYOUT's constants (src/os/linux/layout.f).
 
