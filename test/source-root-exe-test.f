@@ -362,7 +362,7 @@ variable DEEP-U
    s" ../tree/bin/hb" FROM-FOREIGN ;
 
 \ The executable's tree would make every file of this copy a second copy of an
-\ engine file: a duplicate definition, exit 78.
+\ engine file: a duplicate definition, exit 70.
 : CWD-TREE ( -- )
    s" a working directory that is a Habu tree is the root" T-LABEL
    PROG-RESET
@@ -500,7 +500,7 @@ variable DEEP-U
    S\" yes\nyes\nno\nyes\n" 0 EXPECT ;
 
 \ The root's own files reached through another root are still the engine's: a
-\ second load of one would exit 78 on its first definition.
+\ second load of one would exit 70 on its first definition.
 : FIX-1 ( -- )
    s" the root's file required through its parent directory is the engine's" T-LABEL
    PROC-ARGV-RESET

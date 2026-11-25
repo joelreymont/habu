@@ -2474,7 +2474,7 @@ public
 \ the child maps that memfd over both views, so the child's region is the
 \ parent's as it stood when the parent made the copy, and no byte the parent
 \ writes afterwards reaches it. A failure before the clone answers -1, as a
-\ refused clone does; a child that cannot map its views dies named with exit 78.
+\ refused clone does; a child that cannot map its views dies named with exit 71.
 \ The child starts with no exit owner, so its own exit runs the actions.
 : FORK ( -- )                         \ ( -- pid|-1 )
    HB-TARGET-LINUX? IF

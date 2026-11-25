@@ -2492,7 +2492,7 @@ sections above.
   throws `E-THROW-ZERO`: a `catch` it reaches answers that code, so `catch`
   answers 0 only for a body that returned, and a text it unwinds stops with
   its record placed at the word that threw it in that text; out of a
-  program's MAIN it prints that record with no place and exits 67.**
+  program's MAIN it prints that record with no place and exits 85.**
 - **A caught code thrown in its own body throws on.** A `throw`, in the
   definition that caught it, of the code `catch` answered, moved by
   stack words or a local, tested, and through arms that all hold it,

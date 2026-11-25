@@ -719,7 +719,7 @@ public
 \ mapping exits 74 with `E-DICT-INDEX habu: dictionary index alloc failed`),
 \ index the record just published, and rebuild the table over [0, r14). Each
 \ call keeps every VM register and clobbers rax rcx rdx rsi rdi and r8-r11; one
-\ that cannot keep the index exits 76 with `E-DICT-INDEX habu: dictionary index
+\ that cannot keep the index exits 89 with `E-DICT-INDEX habu: dictionary index
 \ exhausted`.
 : HIDX-BUILD, ( -- ) BUILD-LBL CALL, ;
 : HIDX-ADD, ( -- ) ADD-LBL CALL, ;

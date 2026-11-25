@@ -41,7 +41,7 @@ variable PATH-U
    s" src/lib/string.f" REQUIRE-REG:ENGINE-PROVIDES? TTRUE
    s" the engine's copy named by its absolute path is engine-provided" T-LABEL
    ENGINE-COPY$ REQUIRE-REG:ENGINE-PROVIDES? TTRUE
-   \ A second copy of src/lib/error.f would exit 78 on its first definition.
+   \ A second copy of src/lib/error.f would exit 70 on its first definition.
    ENGINE-COPY$ required
    s" a library the engine does not bake is not engine-provided" T-LABEL
    s" test/fixtures/source-root-exe/inner.f" REQUIRE-REG:ENGINE-PROVIDES? TFALSE

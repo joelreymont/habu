@@ -155,7 +155,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" (needs 1, has 0)" path pathu GE-EXPECT-ERR-HAS ;
 
 \ A computed 0 that a top-level call throws stops its text with one record at
-\ the call: the line after it never runs and hb exits 67. A literal 0 there is
+\ the call: the line after it never runs and hb exits 85. A literal 0 there is
 \ rejected before the line runs.
 : THROW-ZERO-STOPS ( -- )
    s" throw-zero" {: label:^ labelu:n :}
@@ -164,7 +164,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\" s\" \" str> nip Z" GE-SRC-LINE
    S\" s\" after\" type cr" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
-   67 label labelu GE-EXPECT-RC
+   EXIT-STATUS:UNCAUGHT label labelu GE-EXPECT-RC
    s" " label labelu GE-EXPECT-OUT
    GT-ERR$ s" error[E-THROW-ZERO]: a computed 0 was thrown"
    STR:STARTS-WITH? 0= if label labelu GE-FAIL then
@@ -174,7 +174,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ A catch that answered 0 lands no throw, so its code thrown again stops the text
 \ with E-THROW-ZERO's record at the call, not one an earlier caught throw kept,
-\ and hb exits 67.
+\ and hb exits 85.
 : CAUGHT-ZERO-STOPS ( -- )
    s" caught-zero" {: label:^ labelu:n :}
    GE-HB-RESET  GE-SRC-RESET
@@ -182,7 +182,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" : ON ( -- ) [: K ;] catch drop  [: ;] catch {: rc:n :} rc throw ;" GE-SRC-LINE
    s" ON" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
-   67 label labelu GE-EXPECT-RC
+   EXIT-STATUS:UNCAUGHT label labelu GE-EXPECT-RC
    GT-ERR$ s" error[E-THROW-ZERO]: a computed 0 was thrown"
    STR:STARTS-WITH? 0= if label labelu GE-FAIL then
    S\" \n --> <input>:3:1\n" label labelu GE-EXPECT-ERR-HAS ;
@@ -196,7 +196,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\" : G ( -- ) s\" 1 drop\" evaluate-closed  s\" \" str> nip Z ;" GE-SRC-LINE
    s" G" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
-   67 label labelu GE-EXPECT-RC
+   EXIT-STATUS:UNCAUGHT label labelu GE-EXPECT-RC
    s" " label labelu GE-EXPECT-OUT
    GT-ERR$ s" error[E-THROW-ZERO]: a computed 0 was thrown"
    STR:STARTS-WITH? 0= if label labelu GE-FAIL then

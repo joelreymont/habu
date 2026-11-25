@@ -361,7 +361,7 @@ variable GDB-SKEWED
    s" -1 prof-rate" GE-SRC-LINE
    S\" s\" prof-rate took -1\" type cr" GE-SRC-LINE
    GDB-PROF-RUN
-   67 s" an uncaught prof-rate -1 exits 67" GE-EXPECT-RC
+   EXIT-STATUS:UNCAUGHT s" an uncaught prof-rate -1 exits 85" GE-EXPECT-RC
    E-PROF-RATE s" <input>:1:4" GDB-THROWN$
    s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR-HAS
    GT-OUT$ STR:LEN 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then

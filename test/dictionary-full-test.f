@@ -4,7 +4,7 @@
 \ E-DICTIONARY-FULL, placed at the name they make, a does> clause at its
 \ `does>`, a namespace at its qualified head, an EXPORT at its operand, a
 \ declaration where it ran out of room and a replayed definition at its `:`,
-\ and the load exits 77. A full dictionary stops the load,
+\ and the load exits 90. A full dictionary stops the load,
 \ so each case is its own child hb. Each child fills the dictionary to a set
 \ number of free records counted from its own ndict@, so no case depends on how
 \ many records the engine uses at boot.
@@ -30,7 +30,7 @@ private
    {: src:str want:str label:str :}
    src RUN-CASE
    want label GE-EXPECT-ERR
-   77 label GE-EXPECT-RC
+   90 label GE-EXPECT-RC
    s" PASS: " type label type cr ;
 
 \ MK and its does> clause take the last two records, so OVER1 finds none.

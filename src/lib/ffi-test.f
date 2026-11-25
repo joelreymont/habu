@@ -657,7 +657,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 : FFI-T-NO-LIB ( -- )
    s" a missing library fails at the first call with its path and reason, once" T-LABEL
-   FFI-T-NO-LIB-SRC$ 67 FFI-T-RUN-EXITS
+   FFI-T-NO-LIB-SRC$ EXIT-STATUS:UNCAUGHT FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE
@@ -754,7 +754,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 : FFI-T-NO-VERSION ( -- )
    s" a version list with none present names each version in order, once" T-LABEL
-   FFI-T-NO-VERSION-SRC$ 67 FFI-T-RUN-EXITS
+   FFI-T-NO-VERSION-SRC$ EXIT-STATUS:UNCAUGHT FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE

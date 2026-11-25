@@ -164,10 +164,10 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \ ---- images ------------------------------------------------------------------
 \ Each image and the status its peer must see:
 \
-\    hb-x64-kernel-control           76  evaluate refuses: its fd-2 line, then
-\                                        76
+\    hb-x64-kernel-control           89  evaluate refuses: its fd-2 line, then
+\                                        89
 \    hb-x64-kernel-control-negative  21  the same, expecting the wrong depth
-\    hb-x64-kernel-eval-range        76  source-range evaluation needs the
+\    hb-x64-kernel-eval-range        89  source-range evaluation needs the
 \                                        interpreter
 \    hb-x64-kernel-execute            0  execute; 2>r, 2r@ and 2r>; both arms of
 \                                        execute-floor
@@ -202,7 +202,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \    hb-x64-kernel-die-throw         50  a catch around a die whose exit hook
 \                                        throws 42: the throw is uncaught, so
 \                                        the reporter exits with the code plus 8
-\    hb-x64-kernel-die-wide          67  an rc past 255
+\    hb-x64-kernel-die-wide          85  an rc past 255
 
 : BUILD-EVALUATE ( bool str -- ) {: negative:bool path:^ pathu:n :}
    negative X64HARNESS:BOOT-OPEN,

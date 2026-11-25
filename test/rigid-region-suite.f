@@ -26,8 +26,8 @@ package RIGID-REGION
 \ The constructors are `defer` declarations: each is an abstract boundary this
 \ suite invents, with no checked body: a `defer` states the word and its effect
 \ with no implementation. None is bound or run: every case
-\ certifies a candidate, and a call would die with `defer: unset execution
-\ vector` (rc 76).
+\ certifies a candidate, and a call would be rejected with E-DEFER-UNSET
+\ (rc 70).
 : RR-UEQ ( matrix<space-global,a,b,f32> matrix<space-global,a,b,f32> -- ) drop drop ;
 : RR-UONE ( matrix<space-global,a,f32,f32> matrix<space-global,a,f32,f32> -- ) drop drop ;
 : RR-UBOX ( span<space-global,f32,x> span<space-global,f32,x> -- ) drop drop ;

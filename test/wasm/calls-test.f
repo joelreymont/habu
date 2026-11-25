@@ -69,12 +69,12 @@ public
    WASM-HARNESS:OUT$ s" " T$=
    s" a record its throw carried survives finally's cleanup that throws and catches" T-LABEL
    s" FINALLY-CARRIED" s" finally-carried" RAN 1 T=
-   WASM-HARNESS:THROW-CODE 67 T=
+   WASM-HARNESS:THROW-CODE 85 T=
    WASM-HARNESS:ERR$ s" error[E-PROBE]: probe text" STR:COUNT-SUB 1 T=
    WASM-HARNESS:ERR$ s" error[" STR:COUNT-SUB 1 T=
    s" a caught code thrown on after a cleanup that throws and catches keeps its record" T-LABEL
    s" RETHROW-CARRIED" s" rethrow-carried" RAN 1 T=
-   WASM-HARNESS:THROW-CODE 67 T=
+   WASM-HARNESS:THROW-CODE 85 T=
    WASM-HARNESS:ERR$ s" error[E-PROBE]: probe text" STR:COUNT-SUB 1 T=
    WASM-HARNESS:ERR$ s" error[" STR:COUNT-SUB 1 T=
    s" execute of an xt whose upper 32 bits are set traps, though its low half is MARK's slot" T-LABEL

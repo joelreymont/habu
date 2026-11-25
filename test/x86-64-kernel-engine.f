@@ -132,7 +132,7 @@ $1122334455667788 constant CELL-VALUE
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ DP may reach the ceiling; one byte past it exits 76 with the DP line on fd 2.
+\ DP may reach the ceiling; one byte past it exits 89 with the DP line on fd 2.
 : BUILD-HEAP-HIGH ( str -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    X64KERNEL:DP-CEILING DATA-START - ALLOT,
@@ -140,7 +140,7 @@ $1122334455667788 constant CELL-VALUE
    1 ALLOT,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ One byte below the floor exits 76.
+\ One byte below the floor exits 89.
 : BUILD-HEAP-LOW ( str -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    -1 ALLOT,
@@ -366,7 +366,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ A pending table the drain meets without a checker to take it: DRAIN-PRETRUST
-\ writes `trust-decl` on fd 2 and exits 76.
+\ writes `trust-decl` on fd 2 and exits 89.
 : BUILD-PENDING ( str -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    PENDING-DEFERS,

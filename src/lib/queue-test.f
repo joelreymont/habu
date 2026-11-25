@@ -164,11 +164,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    Q-OUT Q-CAPTURE-CAP >LEN Q-ERR Q-CAPTURE-CAP >LEN
    Q-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
-\ hb exits 67 on an uncaught throw.
+\ hb exits 85 on an uncaught throw.
 : Q-EXPECT-THROW ( n -- ) {: code:n :}
    Q-SRC CODEGEN:CONTENTS {: src:str :}
    src Q-RUN-STDIN {: outu:len erru:len oc :}
-   src Q-OUT outu LEN>N >str Q-ERR erru LEN>N >str oc 67
+   src Q-OUT outu LEN>N >str Q-ERR erru LEN>N >str oc EXIT-STATUS:UNCAUGHT
    T-ENDING-EXITED=
    outu LEN>N 0 T=
    Q-ERR erru LEN>N >str code TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE ;

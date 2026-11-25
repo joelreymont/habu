@@ -70,7 +70,7 @@ create CWK-ERR CWK-CAP allot
    src CWK-OUT CWK-CAP >LEN CWK-ERR CWK-CAP >LEN PROCESS:WAIT-FOREVER
    SUBJECT:RUN {: outl:len errl:len oc :}
    CWK-ERR errl LEN>N >str {: err:str :}
-   src CWK-OUT outl LEN>N >str err oc 77 T-ENDING-EXITED=
+   src CWK-OUT outl LEN>N >str err oc 90 T-ENDING-EXITED=
    err
    s" compiler workspace: the default table is full at DEFAULT-CAP rows"
    STR:CONTAINS? TTRUE ;

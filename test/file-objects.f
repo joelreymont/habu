@@ -383,8 +383,8 @@ variable CLASS-N                        \ the class CLASS+ read
    STATE-W STATE-W-U @ >str s\" own: compiled 2 0 2 0 q 42 42 43 43 cold 2 q 43\n" STR:CONTAINS? TTRUE
    s" the through builds compile 4, 0, 3 and 0 files, the edited quotation's Q as a cold build's" LABEL
    STATE-W STATE-W-U @ >str s\" through: compiled 4 0 3 0 q 42 42 43 43 cold 4 q 43\n" STR:CONTAINS? TTRUE
-   s" the full builds compile 2 and 0 files, then are rejected twice with 77 and the record a cold build prints" LABEL
-   STATE-W STATE-W-U @ >str s\" full: compiled 2 0 77 77 cold 77 same record -1\n" STR:CONTAINS? TTRUE ;
+   s" the full builds compile 2 and 0 files, then are rejected twice with 90 and the record a cold build prints" LABEL
+   STATE-W STATE-W-U @ >str s\" full: compiled 2 0 90 90 cold 90 same record -1\n" STR:CONTAINS? TTRUE ;
 
 \ A's map lists RUN as a word main.f loaded; a map lists only the code its
 \ program holds.
@@ -650,7 +650,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" keep allot non-negative, and let no failure a text catches leave data behind" FILE-REJECTED ;
 
 \ word-required-main.f's word catches the loader's rejection of its `required`:
-\ the build exits 67 and prints that record alone.
+\ the build exits 85 and prints that record alone.
 : CAUGHT-REQUIRE-BUILD ( CMD:command -- CMD:command )
    s" error[E-SOURCE-ROOT]: `required` got `" REFUSAL!
    s" X3" WHICH!
@@ -935,16 +935,16 @@ variable CLASS-N                        \ the class CLASS+ read
    RECORD-RUN ;
 
 \ L's program, run in its own process: a computed 0 thrown out of MAIN prints
-\ E-THROW-ZERO's record and exits 67.
+\ E-THROW-ZERO's record and exits 85.
 : ZERO-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:ERR$ s" error[E-THROW-ZERO]" STR:STARTS-WITH? {: opened:bool :}
    CMD:ERR$ s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`" STR:CONTAINS?
    opened and {: said:bool :}
-   said  rc 67 =  and 0= if rc SHOW then
+   said  rc EXIT-STATUS:UNCAUGHT =  and 0= if rc SHOW then
    s" the program prints E-THROW-ZERO's record" LABEL  said TTRUE
-   s" the program exits 67" LABEL  rc 67 T= ;
+   s" the program exits 85" LABEL  rc EXIT-STATUS:UNCAUGHT T= ;
 
 \ Z is a stripped program; ZR, built with --repl, is hb running MAIN before its REPL.
 : ZERO-CASE ( CMD:command -- CMD:command )
@@ -1200,7 +1200,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" this threw" STR:CONTAINS? {: placed:bool :}
    CMD:ERR$ s" threw -" STR:CONTAINS?  placed or ;
 
-\ rollback.f's build, which catches texts that leave words and data: it exits 67,
+\ rollback.f's build, which catches texts that leave words and data: it exits 85,
 \ rejected E-FAILED at line 9, which ran the newest of them, and its code 70.
 : CAUGHT-CASE ( CMD:command -- CMD:command )
    s" CF" WHICH!
@@ -1208,8 +1208,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" rollback.f:9:1\n  |\n9 | FOB-TRY\n  | ^^^^^^^ this ran the text\n"
    s" = code: 70" FAILED-AT? {: placed:bool :}
    THREW? {: threw:bool :}
-   rc 67 =  placed and  threw 0= and 0= if rc SHOW then
-   s" the build exits 67" LABEL  rc 67 T=
+   rc EXIT-STATUS:UNCAUGHT =  placed and  threw 0= and 0= if rc SHOW then
+   s" the build exits 85" LABEL  rc EXIT-STATUS:UNCAUGHT T=
    s" the build is rejected E-FAILED at rollback.f's line 9 with code 70" LABEL  placed TTRUE
    s" the build prints no record of the throw beside it" LABEL  threw TFALSE ;
 
@@ -1220,12 +1220,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" rollback-passed.f:4:1\n  |\n4 | FOB-TRY\n  | ^^^^^^^ this ran the text\n"
    s" = code: 70" FAILED-AT? {: placed:bool :}
    CMD:ERR$ s" E-PATH-RANGE" STR:CONTAINS? {: passed:bool :}
-   rc 67 =  placed and  passed 0= and 0= if rc SHOW then
-   s" the build exits 67" LABEL  rc 67 T=
+   rc EXIT-STATUS:UNCAUGHT =  placed and  passed 0= and 0= if rc SHOW then
+   s" the build exits 85" LABEL  rc EXIT-STATUS:UNCAUGHT T=
    s" the build is rejected E-FAILED at rollback-passed.f's line 4 with code 70" LABEL  placed TTRUE
    s" the build prints no E-PATH-RANGE" LABEL  passed TFALSE ;
 
-\ rollback-load.f's build, whose text catches rollback-fail.f's failed load: it exits 67,
+\ rollback-load.f's build, whose text catches rollback-fail.f's failed load: it exits 85,
 \ rejected E-FAILED at the line that ran the text, which requested the load, with a note for
 \ rollback-dep.f, which rollback-fail.f required.
 : CAUGHT-LOAD-CASE ( CMD:command -- CMD:command )
@@ -1236,8 +1236,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    \ The note prints the path absolute.
    CMD:ERR$ s\" /test/fixtures/file-objects/rollback-dep.f\n" STR:CONTAINS? {: noted:bool :}
    THREW? {: threw:bool :}
-   rc 67 =  placed and  noted and  threw 0= and 0= if rc SHOW then
-   s" the build exits 67" LABEL  rc 67 T=
+   rc EXIT-STATUS:UNCAUGHT =  placed and  noted and  threw 0= and 0= if rc SHOW then
+   s" the build exits 85" LABEL  rc EXIT-STATUS:UNCAUGHT T=
    s" the build is rejected E-FAILED at rollback-load.f's line 6 with code 12345" LABEL  placed TTRUE
    s" the rejection names rollback-dep.f as required" LABEL  noted TTRUE
    s" the build prints no record of the throw beside it" LABEL  threw TFALSE ;
@@ -1256,7 +1256,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    e STR:DATA buf eu BYTE-COPY
    s" DF2" WHICH!
    s" test/fixtures/file-objects/rollback-define.f" FAILING-BUILD {: rc2:n :}
-   s" the warm rebuild exits 67" LABEL  rc2 67 T=
+   s" the warm rebuild exits 85" LABEL  rc2 EXIT-STATUS:UNCAUGHT T=
    s" the warm rebuild prints DF's text" LABEL  CMD:ERR$ buf eu >str STR:= TTRUE ;
 
 \ rollback-define.f's build (DF) and its warm rebuild (DF2), whose top level catches
@@ -1268,8 +1268,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" rollback-define.f:8:1\n  |\n8 | FOB-PROBE drop\n  | ^^^^^^^^^ this ran the text\n"
    s" = code: 12345" FAILED-AT? {: placed:bool :}
    THREW? {: threw:bool :}
-   rc 67 =  placed and  threw 0= and 0= if rc SHOW then
-   s" the build exits 67" LABEL  rc 67 T=
+   rc EXIT-STATUS:UNCAUGHT =  placed and  threw 0= and 0= if rc SHOW then
+   s" the build exits 85" LABEL  rc EXIT-STATUS:UNCAUGHT T=
    s" the build is rejected E-FAILED at rollback-define.f's line 8 with code 12345" LABEL  placed TTRUE
    s" the build prints no record of the throw beside it" LABEL  threw TFALSE
    [: DEFINE-AGAIN ;] ARENA:WITH ;

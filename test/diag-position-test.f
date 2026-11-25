@@ -581,9 +581,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    NOT-RECORDED-TEXT
    s" -1 throw" SB-APPEND LF+
    s" not-recorded-throw.f" FIXTURE!
-   s" " 67 CHECK-EXIT
+   s" " EXIT-STATUS:UNCAUGHT CHECK-EXIT
    FX-PATH$ NOT-RECORDED
-   s" --all-errors" 67 CHECK-EXIT
+   s" --all-errors" EXIT-STATUS:UNCAUGHT CHECK-EXIT
    FX-PATH$ NOT-RECORDED ;
 
 \ --verify-only reads a stored type on across lines while a `<` or `[` is
@@ -3636,12 +3636,12 @@ HB-TARGET-LINUX? 0= [if]
    s" : fail ( -- ) -100000 throw ;" SB-APPEND LF+
    s" fail" SB-APPEND LF+
    s" uncaught.f" FIXTURE!
-   s" E-THROW" s" :2:1" 67 LOADED-AT
+   s" E-THROW" s" :2:1" EXIT-STATUS:UNCAUGHT LOADED-AT
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
    FX-P DEP-P FX-PU @ BYTE-COPY  FX-PU @ DEP-PU !
    s" a throw nothing catches in a required file" T-LABEL
    s" require uncaught.f" s" uncaught-outer.f" LINE-FIXTURE
-   s" error[E-THROW]" 67 LOADED
+   s" error[E-THROW]" EXIT-STATUS:UNCAUGHT LOADED
    SB-RESET  s" --> " SB-APPEND  DEP-PATH$ SB-APPEND  s" :2:1" SB-APPEND
    GT-ERR$ SB$ STR:CONTAINS? TTRUE
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
@@ -3652,7 +3652,7 @@ HB-TARGET-LINUX? 0= [if]
    s"  evaluate-closed ;" SB-APPEND LF+
    s" EV" SB-APPEND LF+
    s" uncaught-eval.f" FIXTURE!
-   s" error[" 67 LOADED
+   s" error[" EXIT-STATUS:UNCAUGHT LOADED
    SB-RESET  s" --> " SB-APPEND  FX-PATH$ SB-APPEND  s" :2:1" SB-APPEND
    GT-ERR$ SB$ STR:CONTAINS? TTRUE
    GT-ERR$ s" = evaluated:" STR:CONTAINS? TTRUE
@@ -3671,7 +3671,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY ['] CLEAN finally ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" finally-carried.f" FIXTURE!
-   s" error[E-PROBE]: probe text" 67 LOADED
+   s" error[E-PROBE]: probe text" EXIT-STATUS:UNCAUGHT LOADED
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 \ A caught code thrown on in the body that caught it keeps its record, after a
@@ -3687,7 +3687,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch dup 0<> if CLEAN throw then drop ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-stack.f" FIXTURE!
-   s" error[E-PROBE]: probe text" 67 LOADED
+   s" error[E-PROBE]: probe text" EXIT-STATUS:UNCAUGHT LOADED
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 : TEST-RETHROW-LOCAL ( -- )
@@ -3701,7 +3701,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch {: rc:n :} CLEAN rc 0<> if rc throw then ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-local.f" FIXTURE!
-   s" error[E-PROBE]: probe text" 67 LOADED
+   s" error[E-PROBE]: probe text" EXIT-STATUS:UNCAUGHT LOADED
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 \ A caught code joined with another value at an arm is a new throw.
@@ -3714,7 +3714,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch dup 9999 = if drop 9998 then dup 0<> if throw then drop ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-joined.f" FIXTURE!
-   s" error[E-THROW]: nothing caught a throw of code 9998" 67 LOADED
+   s" error[E-THROW]: nothing caught a throw of code 9998" EXIT-STATUS:UNCAUGHT LOADED
    GT-ERR$ s" E-PROBE" STR:CONTAINS? TFALSE
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
@@ -3732,7 +3732,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch {: rc:n :} ['] BODY2 catch drop rc 0<> if rc throw then ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-kept-since.f" FIXTURE!
-   s" error[E-THROW]: nothing caught a throw of code 9999" 67 LOADED
+   s" error[E-THROW]: nothing caught a throw of code 9999" EXIT-STATUS:UNCAUGHT LOADED
    GT-ERR$ s" E-PROBE" STR:CONTAINS? TFALSE
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
@@ -3747,7 +3747,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch >r CLEAN r> dup 0<> if throw then drop ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-rstack.f" FIXTURE!
-   s" error[E-PROBE]: probe text" 67 LOADED
+   s" error[E-PROBE]: probe text" EXIT-STATUS:UNCAUGHT LOADED
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 \ `ri throw` never runs, but it counts INNER's catch, so each catch keeps a slot
@@ -3763,7 +3763,7 @@ HB-TARGET-LINUX? 0= [if]
    s"  rc 0<> if rc throw then ri throw ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-two.f" FIXTURE!
-   s" error[E-PROBE]: probe text" 67 LOADED
+   s" error[E-PROBE]: probe text" EXIT-STATUS:UNCAUGHT LOADED
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 : TEST-RETHROW-QUOT ( -- )
@@ -3775,7 +3775,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch {: rc:n :} rc 0<> if [: rc throw ;] execute then ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-quot.f" FIXTURE!
-   s" error[E-THROW]: nothing caught a throw of code 9999" 67 LOADED
+   s" error[E-THROW]: nothing caught a throw of code 9999" EXIT-STATUS:UNCAUGHT LOADED
    GT-ERR$ s" E-PROBE" STR:CONTAINS? TFALSE
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
@@ -3791,7 +3791,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : fail ( -- ) -1234 throw ;" SB-APPEND LF+
    s" fail" SB-APPEND LF+
    s" caught-outer.f" FIXTURE!
-   s" E-THROW" s" :3:1" 67 LOADED-AT
+   s" E-THROW" s" :3:1" EXIT-STATUS:UNCAUGHT LOADED-AT
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
    GT-ERR$ s" caught-dep.f" STR:CONTAINS? TFALSE ;
 

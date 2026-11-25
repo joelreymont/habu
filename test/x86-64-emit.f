@@ -345,7 +345,7 @@ create ERR CAPTURE-CAP allot
    {: source:^ sourceu:n want:^ wantu:n :}
    source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
-   source sourceu OUT outu LEN>N ERR erru LEN>N oc 72 T-ENDING-EXITED=
+   source sourceu OUT outu LEN>N ERR erru LEN>N oc EXIT-STATUS:ENCODE T-ENDING-EXITED=
    outu LEN>N 0 T=
    ERR erru LEN>N want wantu T$= ;
 

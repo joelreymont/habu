@@ -21,7 +21,7 @@ create ERR 4096 allot
          ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
             OUT outu LEN>N >str type ERR erru LEN>N >str type
             s" the uncaught throw ends the child" T-LABEL
-            0 67 T=
+            0 85 T=
          ENDOF
          err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
             s" a duplicate allocates nothing; a caught grow leaves the table usable" T-LABEL
@@ -30,7 +30,7 @@ create ERR 4096 allot
             s" the uncaught throw prints the E-XTCELL-GROW record" T-LABEL
             ERR erru LEN>N >str s" error[E-XTCELL-GROW]" STR:STARTS-WITH? TTRUE
             s" the uncaught throw ends the child" T-LABEL
-            rc RC>N 67 T=
+            rc RC>N 85 T=
          ENDOF
       ;MATCH
    then

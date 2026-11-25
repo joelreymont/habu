@@ -711,7 +711,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    TASK-OUT lateu LEN>N >str S\" 77\n0\n-1\n-1\n" T$=
    laterr LEN>N 0 T=
    E-TASK-USER TEST-EVAL:THROWN-HEAD$ {: needle:str :}
-   TASK-USER-WRAP$ 67 needle TASK-EXPECT-FAIL
+   TASK-USER-WRAP$ EXIT-STATUS:UNCAUGHT needle TASK-EXPECT-FAIL
    TASK-USER-LIVE$ 0 TASK-RUN-EXITS {: liveu:len liverr:len :}
    TASK-OUT liveu LEN>N >str S\" -1\n" T$=
    TASK-ERR liverr LEN>N >str s" error[E-UNDEFINED]: cannot find word `LIVE`" STR:CONTAINS? TTRUE

@@ -634,7 +634,7 @@ split-str
 \ variable-based effect, since a hidden field binds no plain variable, so the
 \ checker reads k logical groups off the row and pushes them back in the op's
 \ output order. A hidden tag opens a group of exactly W cells, checked from
-\ slot W-1 down to 0 as one family; a malformed group dies 76. Any other cell
+\ slot W-1 down to 0 as one family; a malformed group dies 89. Any other cell
 \ is a one-cell group, and a row variable yields a fresh one-cell variable
 \ group. A read below the declared inputs, or below the return cells the
 \ definition pushed, is an underflow measured as a plain step measures it. An
@@ -22894,7 +22894,7 @@ private
    {: na:^ nu:n sa:^ su:n sym:n :}
    na CHECKER-REC-A !  nu CHECKER-REC-U !
    \ A nonzero SYM keys the row and the name is only refused when malformed:
-   \ a does> after a refused definition passes it empty; interning that dies 76.
+   \ a does> after a refused definition passes it empty; interning that dies 89.
    sym 0= IF na nu na nu CHECKER-RECORD-NAME-AT 2drop ELSE
       na nu CHECKER-QUALIFIED? drop
       CHECKER-QBAD-TOK @ IF na nu na nu CHECKER-RECORD-NAME-AT 2drop THEN

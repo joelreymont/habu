@@ -675,7 +675,7 @@ EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
 \ inside the overlay no definition pends. It refuses an open overlay and a
 \ pending definition while a task is live.
 \ replay-record ( ^u8 n n -- ) name, wid: publish a codeless record whose
-\ entry traps, exit 76. It refuses no overlay, a negative wid and what the
+\ entry traps, exit 89. It refuses no overlay, a negative wid and what the
 \ three record writers above refuse.
 \ record-wid! ( n n -- ) wid, index: retire a record (-2) or give it back its
 \ wid. It refuses no overlay, an index at or above NDICT, unsigned, a live

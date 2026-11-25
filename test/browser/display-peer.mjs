@@ -74,7 +74,7 @@ assert.equal(memory(), before, "a refused reserve must not grow memory");
 await module.load(Uint8Array.of(0, 255, 16));
 assert.deepEqual(records.at(-1), ["text", "load 00ff10"], "a later delivery after a refused one");
 // Echoing 32 identities passes ECHO's buffer, so each of these turns throws -1
-// and rejects with that throw's record above throw 67, the module's code for
+// and rejects with that throw's record above throw 85, the module's code for
 // an uncaught throw; the run still frees its delivery.
 const thrown = "error[E-THROW]: nothing caught a throw of code -1\n  = code: -1\n" +
   "  = help: catch the code where the program can go on, or remove its cause\n\n";
@@ -82,7 +82,7 @@ await module.focus(new Uint8Array(16));
 before = memory();
 for (let i = 0; i < 5; i++)
   await assert.rejects(module.focus(new Uint8Array(512)),
-    (e) => e.constructor === Error && e.message === `${thrown}throw 67`, "an echo past its buffer");
+    (e) => e.constructor === Error && e.message === `${thrown}throw 85`, "an echo past its buffer");
 assert.equal(memory(), before, "turns that throw must free their deliveries");
 const logged = [];
 const consoleError = console.error;

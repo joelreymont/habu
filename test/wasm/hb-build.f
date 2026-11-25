@@ -793,7 +793,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ; MAIN"
    s" negative-native.f" SOURCE!
    s" native BYTE-COPY dies through catch on a negative length" T-LABEL
-   NATIVE 76 T=
+   NATIVE 89 T=
    ERR ERR-U @ STR:RTRIM s" byte: negative length" T$=
    S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ;"
    s" negative-wasm.f" SOURCE!

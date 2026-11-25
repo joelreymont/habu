@@ -37,7 +37,7 @@ public
 \ the slack only widens the guard. A stack mapped this way is never released.
 \
 \ It runs before any crash handler exists and, for the boot data stack, before
-\ any region does: its line's text is laid inline and the exit is 78, as for the
+\ any region does: its line's text is laid inline and the exit is 71, as for the
 \ two fixed-region mappings.
 : EMIT-MAP ( n n -- )
    MAP-DST !  MAP-CAP !

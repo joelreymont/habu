@@ -25,7 +25,7 @@ create ERR CAP allot
    0 EXPECT ;
 
 : TEST-TASK-USER ( -- )
-   s" require src/lib/task.f -1 TASK:+USERS PST-WRAP u8" 67 EXPECT ;
+   s" require src/lib/task.f -1 TASK:+USERS PST-WRAP u8" EXIT-STATUS:UNCAUGHT EXPECT ;
 
 \ An ordinary definition whose body text passes 20000 bytes: PST-LONG calls a
 \ word with a 59-byte name 350 times, 60 bytes of text each with its separator.

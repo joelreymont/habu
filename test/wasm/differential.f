@@ -119,13 +119,13 @@ variable THROWN-U
    LABEL  OUT o want wu T$=
    e ;
 
-\ NATIVE-RUN with nothing on stderr for 0, and for 67 the
+\ NATIVE-RUN with nothing on stderr for 0, and for 85 the
 \ record of the uncaught throw of code first.
 : NATIVE ( ^u8 n n n -- )
    {: want:^ wu:n rc:n code:n :}
    want wu rc NATIVE-RUN {: e:n :}
    rc 0= if  LABEL  ERR e s" " T$=  then
-   rc 67 = if  LABEL  ERR e code THROWN-LINE$ STR:STARTS-WITH? TTRUE  then ;
+   rc EXIT-STATUS:UNCAUGHT = if  LABEL  ERR e code THROWN-LINE$ STR:STARTS-WITH? TTRUE  then ;
 
 \ The program as a module, valid and run: it prints want and answers status, a
 \ throw's code whole; a run that returns writes nothing to ERR.
@@ -222,16 +222,16 @@ public
 
 \ THROW-ROW's program throws a code uncaught: natively the engine's record names
 \ it; the module writes the record, with no place, to ERR and throws
-\ 67.
+\ 85.
 : THROW-ROW ( str str str n -- )
    {: name:^ nu:n src:^ su:n want:^ wu:n code:n :}
    name nu src su name nu FILES
-   want wu 67 code NATIVE
+   want wu EXIT-STATUS:UNCAUGHT code NATIVE
    0 THROWN-U !
    code THROWN-LINE$ THROWN+
    s"   = code: " THROWN+  SB-RESET code FMT:SB-INT SB$ THROWN+
    S\" \n  = help: catch the code where the program can go on, or remove its cause\n\n" THROWN+
-   want wu 1 67 WASM
+   want wu 1 EXIT-STATUS:UNCAUGHT WASM
    LABEL  WASM-HARNESS:ERR$ THROWN THROWN-U @ T$= ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d

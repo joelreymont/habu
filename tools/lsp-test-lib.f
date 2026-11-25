@@ -60,7 +60,7 @@ split-str
 \   stops the server ..................................... fault-after-request
 \ - a 700 KB body, written in many pieces, refused, cut or its document lost:
 \   its last line's diagnostic proves the whole text checked ...... big-frame
-\ - a closed stdout ending the server by SIGPIPE instead of exit 67 and the
+\ - a closed stdout ending the server by SIGPIPE instead of exit 85 and the
 \   throw that stopped it .................................... stdout-closed
 \
 \ Diagnostics, each checked against the test's own LSP-CHECK:VERIFY-BYTES of the
@@ -1137,7 +1137,7 @@ variable OPEN-N
    src srcu OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN
    CONVERSATION-MS >MS SUBJECT:RUN {: outu:len erru:len r :}
    src srcu OUT-SPAN SPAN:$ drop outu LEN>N
-   ERR-SPAN SPAN:$ drop erru LEN>N r 67 T-ENDING-EXITED=
+   ERR-SPAN SPAN:$ drop erru LEN>N r EXIT-STATUS:UNCAUGHT T-ENDING-EXITED=
    OUT-SPAN SPAN:$ drop outu LEN>N s" timed-out conversation" STR:CONTAINS? TTRUE
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout input" STR:CONTAINS? TTRUE
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stdout" STR:CONTAINS? TTRUE
@@ -1356,7 +1356,7 @@ variable OPEN-N
    err-r [: HEAR-ERR ;] catch {: code:n :}
    drop
    err-r FD>N close
-   code pid SETTLED 67 EXITED
+   code pid SETTLED EXIT-STATUS:UNCAUGHT EXITED
    ENDS ;
 
 \ ---- conversations ------------------------------------------------------------
@@ -1457,7 +1457,7 @@ variable OPEN-N
 
 : FAULTED ( n -- )
    STOPPED
-   67 CONVERSE
+   EXIT-STATUS:UNCAUGHT CONVERSE
    ENDS ;
 
 : LONG-LINE ( -- )
@@ -1482,7 +1482,7 @@ variable OPEN-N
    INITIALIZE
    s\" Content-Length: abc\r\n\r\n" IN+
    E-CONTENT-LENGTH-MALFORMED STOPPED
-   67 CONVERSE
+   EXIT-STATUS:UNCAUGHT CONVERSE
    CAPABILITIES
    ENDS ;
 
@@ -2388,7 +2388,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    TXT$ A-PATH CHECKS
-   A-PATH s" not checked: exit 76" SAID
+   A-PATH s" not checked: exit 89" SAID
    LOGGED ;
 
 \ H1 is refused, then one `using` more than the checker holds open: the
@@ -2405,7 +2405,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    SESSION-CAPABILITIES
    TXT$ A-PATH CHECKS
-   A-PATH s" not checked: exit 76" SAID
+   A-PATH s" not checked: exit 89" SAID
    A-PATH 1 EXPECT 0 16 0 26 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
 \ The verifier's own image holds tools/check-verify-child-lib.f.
@@ -2805,7 +2805,7 @@ USE-MAX 1 + constant OVER-USINGS
 : REDECLARED-PATH ( -- str )  s" redeclared.f" FIXTURE ;
 
 \ The load refuses the redeclaration at its name as a duplicate, before its
-\ effect (exit 78), and so does the check.
+\ effect (exit 70), and so does the check.
 : RETAINED-TURNS ( -- )
    SESSION-INITIALIZE
    RETAINED-PATH TEXT-RETAINED 1 OPENS
@@ -3382,7 +3382,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-ONE DEF-TWO + ;\n" ;
 
 \ TEXT-DEF-C with its uses swapped, then one `using` more than the checker
-\ holds open, at which the verifier dies with status 76 and exits without a
+\ holds open, at which the verifier dies with status 89 and exits without a
 \ verdict as in incomplete.
 : TEXT-DEF-C-SWAPPED ( -- str )
    TXT-B CLEAR
@@ -3402,7 +3402,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 4" s\" {\"query\":\"def-\"}" SYMBOLS-ASK
    SAY
    TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
-   DEF-A-PATH s" not checked: exit 76" SAID
+   DEF-A-PATH s" not checked: exit 89" SAID
    s" 3" NOWHERE
    s" 4" SYMBOLS-START
    s" DEF-ONE" 12 DEF-A-PATH URI-OF 0 2 9 s" " SYMBOL+
@@ -3490,7 +3490,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 4" s\" {\"query\":\"def-\"}" SYMBOLS-ASK
    SAY
    TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
-   DEF-A-PATH s" not checked: exit 76" SAID
+   DEF-A-PATH s" not checked: exit 89" SAID
    s" 3" SYMBOLS-START SYMBOLS-END
    s" 4" SYMBOLS-START
    s" DEF-ONE" 12 DEF-A-PATH URI-OF 0 2 9 s" " SYMBOL+
@@ -3865,7 +3865,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" DEF-A-PATH 2 19 HIGHLIGHT-ASK
    SAY
    TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
-   DEF-A-PATH s" not checked: exit 76" SAID
+   DEF-A-PATH s" not checked: exit 89" SAID
    HEAR s" 3" NULL-RESULT
    LOGGED ;
 
@@ -4092,7 +4092,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" DEF-A-PATH TOKENS-ASK
    SAY
    TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
-   DEF-A-PATH s" not checked: exit 76" SAID
+   DEF-A-PATH s" not checked: exit 89" SAID
    s" 3" TOKENS-START TOKENS-END
    LOGGED ;
 
@@ -4589,7 +4589,7 @@ create WAS-B HDR-BYTES allot
    s" 3" LK-PATH LINKS-ASK
    SAY
    TEXT-LK-OVER LK-PATH CHECKS
-   LK-PATH s" not checked: exit 76" SAID
+   LK-PATH s" not checked: exit 89" SAID
    s" 3" LINKS-START LINKS-END
    LOGGED ;
 
@@ -6126,7 +6126,7 @@ variable PROBE-DECLS
    s" 3" DEF-A-PATH 2 19 DECL-NOT REFS-ASK
    SAY
    TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
-   DEF-A-PATH s" not checked: exit 76" SAID
+   DEF-A-PATH s" not checked: exit 89" SAID
    s" 3" NOWHERE
    LOGGED ;
 
@@ -6890,7 +6890,7 @@ variable PROBE-DECLS
    s" 3" DEF-A-PATH 20 0 COMPLETION-ASK
    SAY
    TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
-   DEF-A-PATH s" not checked: exit 76" SAID
+   DEF-A-PATH s" not checked: exit 89" SAID
    s" 3" ITEMS-START ITEMS-END
    LOGGED ;
 
@@ -7159,7 +7159,7 @@ public
    s" hover-plaintext" [: HOVER-PLAIN-TURNS ;] TALK
    s" document-symbol-after-change" [: OUTLINE-AFTER-CHANGE-TURNS ;] TALK
    s" references-eof" [: REFS-EOF-TURNS ;] [: REFS-CUT-AFTER ;] 1 TALK-CUT
-   s" references-fault" [: REFS-FAULT-TURNS ;] [: REFS-CUT-AFTER ;] 67 TALK-CUT ;
+   s" references-fault" [: REFS-FAULT-TURNS ;] [: REFS-CUT-AFTER ;] EXIT-STATUS:UNCAUGHT TALK-CUT ;
 
 : DEFAULT-CASES ( -- )
    s" unknown-method" [: UNKNOWN-METHOD-TURNS ;] TALK

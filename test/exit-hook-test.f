@@ -475,18 +475,18 @@ variable RUN-FILE-U
    S\"    E-BUILT-CASE throw ;\n" TEXT+ ;
 
 \ The built program under a TMPDIR that is a directory ends with the record of
-\ E-BUILT-CASE, once, and status 67.
+\ E-BUILT-CASE, once, and status 85.
 : EXPECT-CASE-RECORD ( -- )
    PROC-ARGV-ENV-RESET
    s" TMPDIR" ROOT$ PROC-ENV+
    TREE$ RUN-PATH {: qu:n qe:n qrc:n :}
-   qu qe qrc 67 EXPECT-RC
+   qu qe qrc EXIT-STATUS:UNCAUGHT EXPECT-RC
    0 TEXT-U !
    S\" error[E-BUILT-CASE]: the program's own failure\n  = code: -100001\n" TEXT+
    ERR qe >str TEXT$ STR:COUNT-SUB 1 T=
    qe s" uncaught throw" ERR-HAS? TFALSE ;
 
-\ A built program ends an uncaught throw with one record and status 67, no
+\ A built program ends an uncaught throw with one record and status 85, no
 \ kernel line: the record its throw carried, else its code's declaration.
 : CASE-BUILT-RECORD ( -- )
    s" built-record.f" s" built-record-out" CASE-PATHS
@@ -499,7 +499,7 @@ variable RUN-FILE-U
    PROC-ARGV-ENV-RESET
    s" TMPDIR" RUN-FILE$ PROC-ENV+
    TREE$ RUN-PATH {: pu:n pe:n prc:n :}
-   pu pe prc 67 EXPECT-RC
+   pu pe prc EXIT-STATUS:UNCAUGHT EXPECT-RC
    0 TEXT-U !
    S\" error[E-FS-DIR]: TMPDIR is not a directory\n  = TMPDIR: " TEXT+
    RUN-FILE$ TEXT+

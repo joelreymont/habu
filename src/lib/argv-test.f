@@ -233,7 +233,7 @@ variable TEST-FAIL
    EXPECT-TOKEN-BOUNDS
    QUIET-MOCK
    s" kept" MOCK+
-   [: s" bad" STR:DATA -1 >str MOCK+ ;] catch 76 ASSERT=
+   [: s" bad" STR:DATA -1 >str MOCK+ ;] catch EXIT-STATUS:INTERNAL ASSERT=
    COUNT 1 ASSERT=
    0 TOK$ s" kept" ASSERT$
    POS# MANY-ARGS ASSERT=
@@ -267,7 +267,7 @@ create MSG-TEXT MSG-LEN allot
    -1 QUIET!
    [: MSG-TEXT MSG-LEN >str FAIL ;] catch 64 ASSERT-RC
    -1 QUIET!
-   [: MSG-TEXT -1 >str FAIL ;] catch 76 ASSERT-RC
+   [: MSG-TEXT -1 >str FAIL ;] catch EXIT-STATUS:INTERNAL ASSERT-RC
    s" usage" USAGE! ;
 
 : TEST-MOCKS ( -- )

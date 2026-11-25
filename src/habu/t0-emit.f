@@ -512,7 +512,7 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 
 \ ---- the registry ------------------------------------------------------------
 \ THE SEAM. Every cell has one slot per architecture: EMIT-PROVIDE fills one, EMIT-SELECT picks it
-\ (E-T0-TARGET for none). An unset optional operation throws E-T0-UNFILLED (FILLED); any other exits 86.
+\ (E-T0-TARGET for none). An unset optional operation throws E-T0-UNFILLED (FILLED); every target fills the others.
 : EMIT-PROVIDE ( CTARGET:arch [ n -- ] -- )
    swap ARCH>INDEX {: k:n :}
    k swap execute

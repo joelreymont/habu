@@ -378,7 +378,7 @@ PROCESS:NO-FD FEED-WR !
    SB$ ;
 
 \ The capture that waits on check.f's child kills it at the deadline and throws
-\ E-PROC-TIMEOUT. Uncaught, that is exit 67 and a bare code, and its kill ends
+\ E-PROC-TIMEOUT. Uncaught, that is exit 85 and a bare code, and its kill ends
 \ the child alone, leaving the sleeper under init. check.f must exit 70, its
 \ refusal, with one record on stderr naming the subject and the deadline and
 \ nothing on stdout, and leak nothing:

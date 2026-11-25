@@ -4,7 +4,7 @@ split-str
 \ storage much smaller than STACK-ABI:PAGE-BYTES belongs on HEAP:ALLOCATOR or in
 \ an arena; MEM is for page-sized storage, allocator internals and storage below
 \ the FFI. A refused mmap throws E-MEM-MAP; a kernel munmap refusal writes
-\ "memory: unmap failed" and exits 78, bypassing catch. STORAGE CLASS.
+\ "memory: unmap failed" and exits 71, bypassing catch. STORAGE CLASS.
 \ CALLER-OWNED: the caller releases every mapping. WITH-BYTES's and
 \ WITH-RECORD's scopes are TASK-LOCAL: their chunks hang off one head cell in
 \ the MEM-ABI band (src/habu/layout.f), a halted task unwinds its scopes at

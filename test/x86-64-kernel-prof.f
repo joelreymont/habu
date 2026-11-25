@@ -825,9 +825,9 @@ variable GOT-N
 \    hb-x64-kernel-prof-limit          0  its forked child exits 99
 \    hb-x64-kernel-prof-slow           0
 \    hb-x64-kernel-prof-resets         0
-\    hb-x64-kernel-prof-rate-refused  67  E-PROF-RATE uncaught
+\    hb-x64-kernel-prof-rate-refused  85  E-PROF-RATE uncaught
 \    hb-x64-kernel-prof-rate-caught    0
-\    hb-x64-kernel-prof-arm-refused   78  `hb: prof-on: cannot arm the interval
+\    hb-x64-kernel-prof-arm-refused   71  `hb: prof-on: cannot arm the interval
 \                                         timer`
 
 public

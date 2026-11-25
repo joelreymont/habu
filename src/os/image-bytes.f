@@ -90,7 +90,7 @@ private
 create M-FAIL-NL 1 allot
 
 \ Reports before throwing: the drivers exit with the raw throw code, so an
-\ unreported overrun exits 75 silently. The write's rc has nowhere to go.
+\ unreported overrun exits 88 silently. The write's rc has nowhere to go.
 : M-FAIL ( str -- ) {: a:^ u:n :}
    2 a u write drop
    10 M-FAIL-NL c!

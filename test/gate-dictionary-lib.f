@@ -1376,7 +1376,7 @@ variable LABEL-U
    GE-HB-RESET
    GE-SRC-RESET
    s" $10000000001 allot" GE-SRC-LINE
-   67 s" " s" data-space overflow rc" GE-EVAL-FORK-BAD ;
+   85 s" " s" data-space overflow rc" GE-EVAL-FORK-BAD ;
 
 : NAMED-ROW-RUN ( -- )
    GE-HB-RESET

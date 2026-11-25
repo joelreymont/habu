@@ -159,8 +159,8 @@ variable LA-DANGLING-LINK-U
 : LA-THROW-SHAPE ( -- )
    LA-ARGV0  LA-THROW$ LA-ARG
    LA-RUN {: outu:n erru:n rc:n :}
-   s" an uncaught throw in a --load file exits 67" T-LABEL
-   rc 67 T=
+   s" an uncaught throw in a --load file exits 85" T-LABEL
+   rc EXIT-STATUS:UNCAUGHT T=
    s" an uncaught throw in a --load file names its code" T-LABEL
    erru LA-ERR$ 7141 TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE ;
 

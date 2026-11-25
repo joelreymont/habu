@@ -15,7 +15,7 @@ DYNAMIC-BUFFER OPTIONS option<n>
 DYNAMIC-BUFFER ADDRS ^u8
 \ The byte row: the accessor is `^u8` at byte i and a reserve counts bytes.
 \ A cell row cannot be named CELLS: it collides with the built-in `cells`
-\ (E-DUPLICATE-DEFINITION, rc 78, measured).
+\ (E-DUPLICATE-DEFINITION, rc 70).
 DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER CELLROW n
 STRUCTURE triple DERIVE addr FIELD a n FIELD b n FIELD c n ;STRUCTURE

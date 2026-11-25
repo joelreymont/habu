@@ -1,7 +1,7 @@
 split-str
 \ tmp-path-test.f - TMP-PATH holds a PATH-CAP path and no length wraps past it.
 \ TMP-PATH (src/os/env-base.f) answers TMPDIR, a slash and the caller's name in
-\ one buffer of PATH-CAP bytes, and ends the process with exit 77 when they do
+\ one buffer of PATH-CAP bytes, and ends the process with exit 90 when they do
 \ not fit. It can fail four ways: an exact fill refused, one byte too many
 \ admitted, a negative length taken as room, and a length whose sum with the
 \ root wraps back into range.
@@ -68,7 +68,7 @@ create ERR IO-CAP allot
 : REFUSED ( ^u8 n ^u8 n -- ) {: case:^ caseu:n label:^ labelu:n :}
    case caseu RUN {: outu:n erru:n rc:n :}
    label labelu T-LABEL
-   rc 77 T=
+   rc 90 T=
    s" ... by TMP-PATH's own message" T-LABEL
    ERR erru s" env: TMP-PATH exceeds buffer" STR:CONTAINS? TTRUE
    s" ... before anything is typed" T-LABEL
@@ -80,7 +80,7 @@ public
    T-RESET
    SETUP
    EXACT-CASE
-   s" over" s" one byte past PATH-CAP is refused with exit 77" REFUSED
+   s" over" s" one byte past PATH-CAP is refused with exit 90" REFUSED
    s" negative" s" a negative length is refused, not taken as room" REFUSED
    s" huge" s" the maximum cell is refused, not wrapped into range" REFUSED
    FS:CLEANUP-RUN

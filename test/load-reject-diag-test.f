@@ -1355,7 +1355,7 @@ undefine include
    PATH-CAP FMT:SB-INT  S\"  bytes\"}\n" SB-APPEND
    70 ASSERT-REJECTED ;
 
-\ SRC as the body exits 67, its stderr opening with the line
+\ SRC as the body exits 85, its stderr opening with the line
 \ SB holds and then its help: the record has no place.
 : PATH-PASS-NOWHERE ( str -- ) {: src:str :}
    S\" \n  = help: " SB-APPEND
@@ -1364,7 +1364,7 @@ undefine include
    ERR$ SB$ STR:STARTS-WITH? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
-   RC @ 67 T= ;
+   RC @ EXIT-STATUS:UNCAUGHT T= ;
 
 \ The record on stderr helps with a path of 1 to PATH-CAP bytes.
 : HELP-MOST ( -- )

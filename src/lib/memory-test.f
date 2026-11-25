@@ -266,7 +266,7 @@ create CAP-ERR CAP allot
    src CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src CAP-OUT outu LEN>N >str CAP-ERR erru LEN>N >str
-   oc 78 T-ENDING-EXITED=
+   oc EXIT-STATUS:SYSTEM T-ENDING-EXITED=
    outu LEN>N 0 T=
    CAP-ERR erru LEN>N >str S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
 

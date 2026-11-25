@@ -36,20 +36,20 @@ the source for the named definition, or bisect.
 An uncaught throw runs the process-exit hook and then exits by its code. A
 code from 1 to 255 is the exit status and prints nothing: `42 throw` exits 42.
 In a source the engine runs (a file, `--load`, stdin, a `require`d file, a REPL
-line) any other code prints one record and exits 67: `error[NAME]`, NAME being
+line) any other code prints one record and exits 85: `error[NAME]`, NAME being
 the code's name in `src/lib/error.f` (`E-THROW` for a code with none), with a
 `code` note, at the word that threw it in the innermost text it left. A program
 that catches the code and throws it again moves the record to its own throw,
 unless the code carried its record and the program throws it on in the body
 that caught it (docs/forth.md "A caught code thrown in its own body throws
 on").
-A stripped application prints the same record with no place and exits 67. A
+A stripped application prints the same record with no place and exits 85. A
 throw of a computed 0 (a literal `0 throw` is rejected) throws `E-THROW-ZERO`,
 which a `catch` answers; uncaught, it stops its text with that record, placed
 at the word that threw it; out of a program's MAIN that record has no place.
-Both exit 67. A
+Both exit 85. A
 rejection prints its record and exits 70; a build whose code goes on after a
-rejection it sent, caught or kept without a throw, exits 67 and adds nothing to
+rejection it sent, caught or kept without a throw, exits 85 and adds nothing to
 the records sent. A one-byte diagnostic and a clean exit means a raw engine capacity path, not a throw.
 
 ## Refusing the system's memory
@@ -59,7 +59,7 @@ refuses the K-th mmap of each process the run starts: strace counts per
 process, so a spawned verifier or build child has its K-th refused too. hb is
 dynamically linked, and up to K = 7 the refusal lands in glibc's loader before
 hb's code runs: it crashes with SIGSEGV or fails to map libc and exits 127.
-Past those the refusal is hb's, which exits 78 and names the bytes and what
+Past those the refusal is hb's, which exits 71 and names the bytes and what
 they were for. The same run with no inject and `-o FILE` counts the maps, the
 range of K to sweep.
 
@@ -226,7 +226,7 @@ so the message names the mechanism that caught the fault
 - `E-INPUT-UNDERFLOW` (exit 70) at the token: the checker rejected a
   top-level call whose word's effect takes more cells than the stack holds,
   before the word ran.
-- `E-UNDERFLOW` (exit 67) from the kernel: compiled code reached through
+- `E-UNDERFLOW` (exit 85) from the kernel: compiled code reached through
   `execute`, `catch`, `finally` or a quotation read below the data stack's
   base. The kernel throws it, so a `catch` receives it; uncaught, its record
   stands at the word that ran. The REPL recovers the line.

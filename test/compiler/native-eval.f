@@ -251,9 +251,9 @@ create ERR IO-CAP allot
    s" TRUSTED: NATIVE-EVAL-W ( n -- n ) + ; 1 ' NATIVE-EVAL-W execute" ;
 
 : TOP-LEVEL ( -- )
-   s" a word reaching below the base outside a closed text exits 67 uncaught" T-LABEL
+   s" a word reaching below the base outside a closed text exits 85 uncaught" T-LABEL
    TOP-LEVEL$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
-   PROCESS:ENDING>RC RC>N 67 T=
+   PROCESS:ENDING>RC RC>N EXIT-STATUS:UNCAUGHT T=
    nip LEN>N {: erru:n :}
    s" and the uncaught throw is E-UNDERFLOW's -9851" T-LABEL
    ERR erru >str E-UNDERFLOW TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE

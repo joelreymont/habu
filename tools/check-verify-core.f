@@ -1116,7 +1116,7 @@ public
    src srcu path pathu deadline json VFY-PREPASS-RUN ;
 
 \ What the last VERIFY-BYTES or PREVERIFY-BYTES failed with: 70 refused or a
-\ source missing, 74 one unreadable, 77 a full dictionary, 1 a stop, else 0.
+\ source missing, 74 one unreadable, 90 a full dictionary, 1 a stop, else 0.
 : VERIFY-STATUS ( -- n )
    VFY-ANSWER @ VFY-STOPPED = if EXIT-STATUS:FAILURE exit then
    VFY-ANSWER @ VFY-UNREAD = if EXIT-STATUS:IOERR exit then

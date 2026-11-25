@@ -178,7 +178,7 @@ HB-TARGET-LINUX? 0= [if]
    got OVER-ROOM OVER-STEP - > TTRUE
    s" and rethrows the E-DATA-SPACE it caught uncaught" T-LABEL
    CMD:ERR$ s" hb: uncaught throw code -9850" STR:CONTAINS? TTRUE
-   s" over exits 67" T-LABEL  rc 67 T= ;
+   s" over exits 85" T-LABEL  rc EXIT-STATUS:UNCAUGHT T= ;
 
 
 : CHILD-LABEL ( str str -- )

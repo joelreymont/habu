@@ -623,7 +623,7 @@ holds an address**.
   answers 0 only for a body that returned, and a text it unwinds (a file,
   `evaluate`, `include`, a REPL line) stops with its record placed at the
   word that threw it in that text; out of a program's MAIN it prints that
-  record with no place and exits 67.
+  record with no place and exits 85.
 - A caught code thrown in the body that caught it throws on: `throw` of
   the cell `catch` answered, moved by stack words, `>r` `r>` or a local,
   through arms that all hold it and after any tests and calls, keeps the

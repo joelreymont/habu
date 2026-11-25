@@ -185,7 +185,7 @@ variable ERR-U
    ERR erru LEN>N why whyu STR:CONTAINS? TTRUE ;
 
 \ The text in SRC-BUF, run as the subject, exits 0: a facts text that cannot
-\ say an effect ends the load with status 76.
+\ say an effect ends the load with status 89.
 : LOADS ( -- )
    SRC$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}

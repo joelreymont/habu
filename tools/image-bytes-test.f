@@ -101,22 +101,22 @@ using IMAGE-BYTES
 \ measured against the room left: `>LEN` is a cast, not a validator, and a length
 \ near the maximum cell would wrap the sum back under MSIZE. A refused write
 \ leaves the cursor in place, so the exact write after it fills the buffer; a
-\ cursor at MSIZE throws 75.
+\ cursor at MSIZE throws 88.
 : IBT-TEST-ROOM ( -- )
    M-RESET  MSIZE 1- M-OFF M-PAD-OFF
-   [: IBT-FILL-OVER ;] 75 TTHROWSQ
+   [: IBT-FILL-OVER ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
    IBT-FILL-EXACT M-HERE MSIZE T=
-   [: IBT-CURSOR-OVER ;] 75 TTHROWSQ
-   [: IBT-WRITE-NEG ;] 75 TTHROWSQ
+   [: IBT-CURSOR-OVER ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
+   [: IBT-WRITE-NEG ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
    M-HERE 1 T=
-   [: IBT-WRITE-MAX ;] 75 TTHROWSQ
+   [: IBT-WRITE-MAX ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
    M-HERE 1 T= ;
 
 : IBT-TEST-REFINE-ERRORS ( -- )
-   [: IBT-LEN-NEG ;] 75 TTHROWSQ
-   [: IBT-OFF-NEG ;] 75 TTHROWSQ
-   [: IBT-PAD-BACK ;] 75 TTHROWSQ
-   [: IBT-NAME-LONG ;] 75 TTHROWSQ
+   [: IBT-LEN-NEG ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
+   [: IBT-OFF-NEG ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
+   [: IBT-PAD-BACK ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
+   [: IBT-NAME-LONG ;] EXIT-STATUS:IMAGE-BOUNDS TTHROWSQ
    s" BAD-M-LE32 ( len -- n ) M-LE32@" IBT-CHECK-REJECTS
    s" BAD-M-PAD ( len -- ) M-PAD-OFF" IBT-CHECK-REJECTS ;
 
