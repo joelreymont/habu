@@ -8,4 +8,4 @@ blocks:
   - habu-compile-sparql-optional-032b8925
 ---
 
-Problem: emit.f rejects every path; the old compiler closed paths over all pairs. Acceptance: /tmp/carl-sparql/lane-path.md Evidence. Depends: the OPTIONAL/UNION dot. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-sq-path.
+Problem: emit.f rejects every path; the old compiler closed paths over all pairs. Acceptance: /tmp/carl-sparql/lane-path.md Evidence. Depends: the OPTIONAL/UNION dot. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-sq-path2.
