@@ -1,7 +1,7 @@
 \ pg-rows.f - package PG's statements and row readers.
 \ Before the first read or query: `n PG:CONFIGURE-READERS` once for the tasks
 \ that read rows or run queries. Span lifetimes: above NO-TASK.
-\ STORAGE CLASS. TASK-LOCAL arenas and refusal texts, one row per reading task;
+\ STORAGE CLASS. TASK-LOCAL arenas, one row per reading task;
 \ the declared reader count is PROCESS-WIDE.
 
 require src/lib/error.f
@@ -40,7 +40,7 @@ $74 constant TRUE-BYTE            \ PostgreSQL renders a boolean as 't' or 'f'
 \ that read them reads again (READ-RESET, which BY-ID runs), and no longer.
 \ COL- readers copy; AT readers answer libpq's bytes in place.
 \
-\ A row is taken on a task's first read, query or REFUSED$ and stays that
+\ A row is taken on a task's first read or query and stays that
 \ task's: a TCB is declared once (TASK:TASK) and reused for every body that runs
 \ on it, so the rows are bounded by the tasks the image declares and never by
 \ the jobs that pass through them. An untaken row costs a few cells; its bytes
@@ -68,8 +68,6 @@ CHUNK-CELLS cells constant HEADER-BYTES
 DYNAMIC-BUFFER READ-CHUNK SPAN:span<u8>   \ the newest chunk, empty until the first read
 DYNAMIC-BUFFER READ-TASK n
 DYNAMIC-BUFFER READ-USED n                \ the newest chunk's bytes taken, its header among them
-DYNAMIC-BUFFER REFUSAL SPAN:span<u8>      \ the task's refusal text mapping, empty until its first refusal
-DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, read only under KIND-REFUSAL
 
 
 \ The scan may pass rows another task takes while it runs: only this task ever
@@ -131,40 +129,13 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    chunk used s STR:LEN SPAN:SUB SPAN:$ ;
 
 
-\ A refusal overwrites the one before it, so a task's text needs one mapping,
-\ grown to the longest so far. The old bytes are never read again: growth maps
-\ the new size and drops the old mapping without moving them.
-: REFUSAL-ROOM ( n n -- ) {: at:n want:n :}
-   want at REFUSAL @ SPAN:LEN <= if exit then
-   want MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
-   at REFUSAL @ MEM:FREE-SPAN
-   fresh at REFUSAL ! ;
-
-
-: REFUSAL+ ( str n -- ) {: s:str at:n :}
-   s at REFUSAL @ at REFUSAL-U @ SPAN:SKIP SPAN:COPY
-   s STR:LEN at REFUSAL-U +! ;
-
-
-\ A `failed` outcome's SQLSTATE and message become the task's refusal text,
-\ `SQLSTATE: message`, or the message alone when libpq made the failure
-\ without a SQLSTATE; then the query is E-QUERY.
-: REFUSED ( str str -- ) {: ss:str ms:str :}
-   MY-ARENA {: at:n :}
-   0 at REFUSAL-U !
-   at ss STR:LEN ms STR:LEN + 2 + REFUSAL-ROOM
-   ss STR:LEN 0<> if
-      ss at REFUSAL+
-      s" : " at REFUSAL+
-   then
-   ms at REFUSAL+
-   RECORD-REFUSAL
+: REJECTED ( str str -- )
+   KEEP-FAILED
    E-QUERY throw ;
 
 
-\ MY-ARENA takes the task's reader row before the statement is sent.
-: NOT-REFUSED ( -- )
-   MY-ARENA drop RECORD-NONE ;
+: TAKE-READER ( -- )
+   MY-ARENA drop ;
 
 
 \ E-TYPE on a column BINARY-RESULT made binary, INT's check, for the readers
@@ -188,7 +159,7 @@ public
 \ Declares how many tasks read rows or run queries, the main task among them,
 \ and maps the table of their rows. Like CONFIGURE it is one decision for the
 \ process: repeating the same count is harmless, a different one is E-CAPACITY.
-\ A read, query or REFUSED$ before it is E-READERS, and so is one from one task
+\ A read or query before it is E-READERS, and so is one from one task
 \ more than the count.
 : CONFIGURE-READERS ( n -- ) {: readers:n :}
    readers 1 < if E-CAPACITY throw then
@@ -198,19 +169,15 @@ public
    readers READ-CHUNK-RESERVE
    readers READ-TASK-RESERVE
    readers READ-USED-RESERVE
-   readers REFUSAL-RESERVE
-   readers REFUSAL-U-RESERVE
    readers READER-N ! ;
 
 
 \ Starts a read on this task: the spans of its previous read are given up, and
-\ every chunk they took but the first, and REFUSED$ is emptied, so a query
-\ that is neither refused nor loses its connection leaves it empty.
+\ every chunk they took but the first.
 : READ-RESET ( -- )
    MY-ARENA {: at:n :}
    at READ-CHUNK @ SPAN:LEN 0<> if at TRIM then
-   HEADER-BYTES at READ-USED !
-   RECORD-NONE ;
+   HEADER-BYTES at READ-USED ! ;
 
 
 \ A result that answered rows, or E-QUERY. It runs inside the caller's result
@@ -218,10 +185,11 @@ public
 \ first (READ-RESET): an undeclared task would be E-READERS only once the
 \ server had acted.
 : ROWS-OR-THROW ( PG:result -- PG:result )
+   TAKE-READER
    OUTCOME MATCH outcome
-      ok OF NOT-REFUSED E-QUERY throw ENDOF
-      rows OF NOT-REFUSED ENDOF
-      failed OF REFUSED ENDOF
+      ok OF OP-START E-QUERY throw ENDOF
+      rows OF ENDOF
+      failed OF REJECTED ENDOF
    ;MATCH ;
 
 
@@ -230,17 +198,14 @@ public
 \ the statement ran, so the task's reader row is taken first.
 : FIRST-ROW ( PG:result -- PG:result )
    ROWS-OR-THROW
-   ROWS COUNT>N 0= if E-ROW throw then ;
+   ROWS COUNT>N 0= if OP-START E-ROW throw then ;
 
 
-\ The text of the task's last refused statement or lost connection, valid until
-\ its next PG operation. A statement's start empties it; see pg.f OP-START.
+\ The text of the task's last operation's failure, empty when it left none, valid
+\ until the task's next operation or failure; CLOSE and ABANDON leave it.
 : REFUSED$ ( -- str )
-   MY-ARENA {: at:n :}
-   REFUSED-KIND @ {: kind:n :}
-   kind KIND-REFUSAL = if at REFUSAL @ SPAN:$ STR:DATA at REFUSAL-U @ >str exit then
-   kind KIND-LOSS = if REFUSED-TEXT @ VEC:BYTES exit then
-   at REFUSAL @ SPAN:$ STR:DATA 0 >str ;
+   REJECTED-TEXT @ NULL-PTR = if s" " exit then
+   REJECTED-TEXT @ VEC:BYTES ;
 
 private
 
@@ -252,9 +217,9 @@ private
 
 : NO-ROWS ( PG:result -- PG:result )
    OUTCOME MATCH outcome
-      ok OF NOT-REFUSED ENDOF
-      rows OF NOT-REFUSED E-QUERY throw ENDOF
-      failed OF REFUSED ENDOF
+      ok OF ENDOF
+      rows OF E-QUERY throw ENDOF
+      failed OF REJECTED ENDOF
    ;MATCH ;
 
 public
@@ -265,7 +230,8 @@ public
 \ The task's reader row is taken before the statement is sent, so an undeclared
 \ task sends nothing.
 : EXEC ( PG:connection str -- )
-   NOT-REFUSED
+   OP-START
+   TAKE-READER
    [: NO-ROWS ;] WITH-RESULT ;
 
 
@@ -274,6 +240,7 @@ public
 \ which clears it when the body returns or throws.
 : QUERY ( R PG:connection str [ R PG:result -- S PG:result ] -- S )
    {: c s:str body :}
+   OP-START
    READ-RESET
    body c s [: RUN-ROWS ;] WITH-RESULT ;
 
@@ -283,6 +250,7 @@ public
 \ the body returns or throws.
 : BY-ID ( R PG:connection n str [ R PG:result -- S PG:result ] -- S )
    {: c id:n s:str body :}
+   OP-START
    READ-RESET
    c PARAMS
    c id INT+
@@ -373,7 +341,8 @@ public
 \ result BINARY-RESULT made binary is E-TYPE.
 \ Like EXEC, it takes the task's reader row before the statement is sent.
 : ONE-INT ( PG:connection str -- n )
-   NOT-REFUSED
+   OP-START
+   TAKE-READER
    [: FIRST-INT ;] WITH-RESULT ;
 
 ;package

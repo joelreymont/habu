@@ -257,12 +257,12 @@ TYPED-VARIABLE CONN PG:connection
    [: BINARY-BOOL ;] PG:E-TYPE EACH-REFUSES ;
 
 
-: REFUSAL-NAMES ( str -- ) {: s:str :}
+: REJECTION-NAMES ( str -- ) {: s:str :}
    PG:REFUSED$ s" 42P01: " STR:STARTS-WITH? TTRUE
    PG:REFUSED$ s STR:CONTAINS? TTRUE ;
 
 
-: NO-REFUSAL ( -- )
+: NO-REJECTION ( -- )
    PG:REFUSED$ STR:LEN 0 T= ;
 
 
@@ -301,7 +301,7 @@ TYPED-VARIABLE CONN PG:connection
    s" EXEC of a refused statement" T-LABEL
    [: s" insert into exec_missing_q values (1)" EXEC-ON ;] PG:E-QUERY TTHROWSQ
    s" EXEC's refusal text" T-LABEL
-   s" exec_missing_q" REFUSAL-NAMES
+   s" exec_missing_q" REJECTION-NAMES
    s" a refusal's text is the primary message, without the DETAIL" T-LABEL
    [: DUPLICATE-ADA ;] PG:E-QUERY TTHROWSQ
    PG:REFUSED$
@@ -310,33 +310,31 @@ TYPED-VARIABLE CONN PG:connection
    s" EXEC of DDL" T-LABEL
    [: s" create table gadget (id bigint)" EXEC-ON ;] 0 TTHROWSQ
    s" a successful EXEC empties the refusal text" T-LABEL
-   NO-REFUSAL
+   NO-REJECTION
    s" EXEC of a statement answering rows" T-LABEL
    [: s" select 1" EXEC-ON ;] PG:E-QUERY TTHROWSQ
-   NO-REFUSAL
+   NO-REJECTION
    s" QUERY of a refused statement" T-LABEL
    [: s" select * from query_missing_q" QUERY-ON ;] PG:E-QUERY TTHROWSQ
    s" QUERY's refusal text" T-LABEL
-   s" query_missing_q" REFUSAL-NAMES
+   s" query_missing_q" REJECTION-NAMES
    s" QUERY's body sees the rows" T-LABEL
    CONN @ PG:PARAMS
    CONN @ s" select i * 10 from generate_series(1, 3) i" [: GENERATED-ROWS ;] PG:QUERY
    30 T= 3 T=
    s" a successful QUERY empties the refusal text" T-LABEL
-   NO-REFUSAL
+   NO-REJECTION
    s" QUERY of a command answering no rows" T-LABEL
    [: s" update person set nick = nick where id = 99" QUERY-ON ;] PG:E-QUERY TTHROWSQ
    s" BY-ID's refusal text" T-LABEL
    [: BY-ID-MISSING ;] PG:E-QUERY TTHROWSQ
-   s" by_id_missing_q" REFUSAL-NAMES
+   s" by_id_missing_q" REJECTION-NAMES
    s" ONE-INT's refusal text" T-LABEL
    [: ONE-INT-MISSING ;] PG:E-QUERY TTHROWSQ
-   s" one_int_missing_q" REFUSAL-NAMES
+   s" one_int_missing_q" REJECTION-NAMES
    s" ROWS-OR-THROW's refusal text" T-LABEL
    [: REFUSED-QUERY ;] PG:E-QUERY TTHROWSQ
-   s" nowhere" REFUSAL-NAMES
-   s" READ-RESET empties the refusal text" T-LABEL
-   PG:READ-RESET NO-REFUSAL ;
+   s" nowhere" REJECTION-NAMES ;
 
 
 TYPED-VARIABLE LOST-A PG:connection
@@ -361,8 +359,7 @@ TYPED-VARIABLE LOST-B PG:connection
 : ENDED-ONE ( PG:result -- PG:result )
    0 0 PG:AT-INT 1 T= ;
 
-\ The two-argument form answers once the backend has exited. WITH-RESULT, not
-\ a pg-rows statement, so the task's refusal text stays.
+\ The two-argument form answers once the backend has exited.
 : END-A ( n -- ) {: pid:n :}
    LOST-B @ PG:PARAMS
    LOST-B @ pid PG:INT+
@@ -390,15 +387,15 @@ TYPED-VARIABLE LOST-B PG:connection
    LOST-B @ SELECT-ON ;
 
 
-: REFUSE-ON ( PG:connection -- )
+: REJECT-ON ( PG:connection -- )
    dup PG:PARAMS
    s" insert into lost_missing_q values (1)" PG:EXEC ;
 
-: REFUSE-A ( -- n )
-   [: LOST-A @ REFUSE-ON ;] catch ;
+: REJECT-A ( -- n )
+   [: LOST-A @ REJECT-ON ;] catch ;
 
-: REFUSE-B ( -- n )
-   [: LOST-B @ REFUSE-ON ;] catch ;
+: REJECT-B ( -- n )
+   [: LOST-B @ REJECT-ON ;] catch ;
 
 
 : A-ENDED ( -- )
@@ -419,33 +416,64 @@ TYPED-VARIABLE LOST-B PG:connection
 
 
 : LOSS-AFTER-REFUSAL ( -- )
-   s" a loss after a refusal answers the loss" T-LABEL
+   s" a loss after a rejection answers the loss" T-LABEL
    OPEN-AB
    A-PID END-A
-   REFUSE-B PG:E-QUERY T=
+   REJECT-B PG:E-QUERY T=
    LOSE-A PG:E-EXEC T=
    A-ENDED
    s" another operation's start empties a loss" T-LABEL
    [: SELECT-B ;] 0 TTHROWSQ
-   NO-REFUSAL
+   NO-REJECTION
    CLOSE-AB ;
 
 
-\ The ROLLBACK under the body's E-QUERY finds A's backend gone.
-: REFUSE-END ( PG:connection -- PG:connection )
-   A-PID {: pid:n :}
-   REFUSE-A {: code:n :}
-   pid END-A
+\ A's rejected statement frees its transaction's lock to B's waiting one, which
+\ ends A's backend: B's AWAIT starts no operation, so the text stays.
+: A-LOCKS ( -- )
+   LOST-A @ PG:PARAMS
+   LOST-A @ s" select pg_advisory_xact_lock(7)" [: ;] PG:WITH-RESULT ;
+
+: SEND-END ( n -- ) {: pid:n :}
+   LOST-B @ PG:PARAMS
+   LOST-B @ pid PG:INT+
+   LOST-B @ END-MS PG:INT+
+   LOST-B @
+   s" select pg_terminate_backend($1, $2)::int from pg_advisory_lock(7)"
+   PG:SEND ;
+
+: AWAITED ( PG:connection -- PG:result )
+   PG:AWAIT MATCH PG:progress
+      completed OF ENDOF
+      connected OF drop PG:E-EXEC throw ENDOF
+      waiting OF 2drop PG:E-EXEC throw ENDOF
+      refused OF drop PG:E-EXEC throw ENDOF
+   ;MATCH ;
+
+: AWAIT-END ( -- )
+   LOST-B @ AWAITED ENDED-ONE PG:CLEAR ;
+
+: AWAIT-A ( -- )
+   LOST-A @ AWAITED PG:CLEAR ;
+
+: SEND-A ( str -- ) {: s:str :}
+   LOST-A @ PG:PARAMS
+   LOST-A @ s PG:SEND ;
+
+: REJECT-END ( PG:connection -- PG:connection )
+   A-PID A-LOCKS SEND-END
+   REJECT-A {: code:n :}
+   AWAIT-END
    code 0<> if code throw then ;
 
-: REFUSE-IN-TX ( -- )
-   LOST-A @ dup [: REFUSE-END ;] PG:WITH-TRANSACTION drop ;
+: REJECT-IN-TX ( -- )
+   LOST-A @ dup [: REJECT-END ;] PG:WITH-TRANSACTION drop ;
 
 : ROLLBACK-LOST ( -- )
-   s" a lost ROLLBACK keeps the body's refusal" T-LABEL
+   s" a lost ROLLBACK keeps the body's rejection" T-LABEL
    OPEN-AB
-   [: REFUSE-IN-TX ;] PG:E-QUERY TTHROWSQ
-   s" lost_missing_q" REFUSAL-NAMES
+   [: REJECT-IN-TX ;] PG:E-QUERY TTHROWSQ
+   s" lost_missing_q" REJECTION-NAMES
    LOST-A @ PG:LIVE? TFALSE
    CLOSE-AB ;
 
@@ -465,6 +493,184 @@ TYPED-VARIABLE LOST-B PG:connection
    [: LOSE-IN-TX ;] PG:E-EXEC TTHROWSQ
    A-ENDED
    LOST-B @ PG:LIVE? TTRUE
+   CLOSE-AB ;
+
+
+: ON-A-EXEC ( str -- ) {: s:str :}
+   LOST-A @ PG:PARAMS
+   LOST-A @ s PG:EXEC ;
+
+: DUPLICATE-ON-A ( -- )
+   s" insert into detail_t values ('detail-key'), ('detail-key')" ON-A-EXEC ;
+
+\ A's last statement is rejected with a DETAIL naming the key, then A's backend
+\ ends while A is idle.
+: DETAIL-THEN-END ( -- )
+   OPEN-AB
+   A-PID {: pid:n :}
+   s" create temp table detail_t (k text primary key)" ON-A-EXEC
+   [: DUPLICATE-ON-A ;] PG:E-QUERY TTHROWSQ
+   pid END-A ;
+
+: IDLE-LOSS-TEXT ( -- )
+   LOST-A @ PG:LIVE? TFALSE
+   PG:REFUSED$
+   s" FATAL:  terminating connection due to administrator command"
+   T$= ;
+
+: ENDED-LOSS ( -- )
+   s" ENDED? answers its own loss, with no earlier rejection" T-LABEL
+   DETAIL-THEN-END
+   LOST-A @ PG:ENDED? TTRUE
+   IDLE-LOSS-TEXT
+   CLOSE-AB ;
+
+: A-NOTIFIED ( -- )
+   LOST-A @ END-MS >MS PG:NOTIFIED? drop ;
+
+: NOTIFIED-LOSS ( -- )
+   s" NOTIFIED? answers its own loss, with no earlier rejection" T-LABEL
+   DETAIL-THEN-END
+   [: A-NOTIFIED ;] PG:E-EXEC TTHROWSQ
+   IDLE-LOSS-TEXT
+   CLOSE-AB ;
+
+: A-NOTIFIED-NOW ( -- )
+   LOST-A @ 0 >MS PG:NOTIFIED? drop ;
+
+: NOTIFIED-NOW-LOSS ( -- )
+   s" NOTIFIED? of no wait answers a loss that has arrived" T-LABEL
+   DETAIL-THEN-END
+   [: A-NOTIFIED-NOW ;] PG:E-EXEC TTHROWSQ
+   IDLE-LOSS-TEXT
+   CLOSE-AB ;
+
+
+\ Returns once A's whole answer is sent, before anything else A's backend sends.
+: A-ANSWERED ( n -- ) {: pid:n :}
+   begin
+      LOST-B @ PG:PARAMS
+      LOST-B @ pid PG:INT+
+      LOST-B @
+      s" select count(*) from pg_stat_activity where pid = $1 and state = 'idle' and query = 'select 41'"
+      PG:ONE-INT 0=
+   while repeat ;
+
+: ANSWERED-THEN-END ( -- )
+   OPEN-AB
+   A-PID {: pid:n :}
+   s" select 41" SEND-A
+   pid A-ANSWERED
+   pid END-A ;
+
+: ANSWERED-LOSS ( -- )
+   s" a completed AWAIT keeps no FATAL that followed its answer" T-LABEL
+   ANSWERED-THEN-END
+   [: AWAIT-A ;] 0 TTHROWSQ
+   NO-REJECTION
+   CLOSE-AB
+   s" a completed AWAIT adds no FATAL to an earlier rejection" T-LABEL
+   ANSWERED-THEN-END
+   REJECT-B PG:E-QUERY T=
+   [: AWAIT-A ;] 0 TTHROWSQ
+   PG:REFUSED$ S\" 42P01: relation \qlost_missing_q\q does not exist" T$=
+   CLOSE-AB ;
+
+
+: AWAIT-STOPPED ( -- )
+   [: AWAIT-A ;] E-AIO-STATE TTHROWSQ ;
+
+: STOPPED-WAIT ( -- )
+   s" a wait the AIO loop rejects empties the rejection text" T-LABEL
+   OPEN-AB
+   s" select pg_sleep(10)" SEND-A
+   REJECT-B PG:E-QUERY T=
+   AIO:STOP
+   [: AWAIT-STOPPED ;] [: AIO:START ;] finally
+   NO-REJECTION
+   LOST-A @ PG:LIVE? TFALSE
+   CLOSE-AB ;
+
+
+: A-UNSTAGED ( -- )
+   LOST-A @ s" select 1" [: ;] PG:WITH-RESULT ;
+
+: STALE-HANDLE ( -- )
+   OPEN-AB
+   LOST-A @ PG:CLOSE
+   s" a statement on a closed connection empties the rejection text" T-LABEL
+   REJECT-B PG:E-QUERY T=
+   [: A-UNSTAGED ;] PG:E-HANDLE TTHROWSQ
+   NO-REJECTION
+   s" BY-ID on a closed connection empties the rejection text" T-LABEL
+   REJECT-B PG:E-QUERY T=
+   [: LOST-A @ 1 PERSON-SQL$ [: ;] PG:BY-ID ;] PG:E-HANDLE TTHROWSQ
+   NO-REJECTION
+   CLOSE-AB ;
+
+
+: ROWS-AFTER ( PG:result -- PG:result )
+   REJECT-B PG:E-QUERY T=
+   PG:ROWS-OR-THROW ;
+
+: FIRST-AFTER ( PG:result -- PG:result )
+   REJECT-B PG:E-QUERY T=
+   PG:FIRST-ROW ;
+
+: ROWS-OF-OK ( -- )
+   LOST-A @ PG:PARAMS
+   LOST-A @ s" create temp table rows_ok_t (x int)" [: ROWS-AFTER ;]
+   PG:WITH-RESULT ;
+
+: FIRST-OF-NONE ( -- )
+   LOST-A @ PG:PARAMS
+   LOST-A @ s" select 1 where false" [: FIRST-AFTER ;] PG:WITH-RESULT ;
+
+: TEXTLESS-FAILURES ( -- )
+   OPEN-AB
+   s" ROWS-OR-THROW of no rows empties a nested rejection's text" T-LABEL
+   [: ROWS-OF-OK ;] PG:E-QUERY TTHROWSQ
+   NO-REJECTION
+   s" FIRST-ROW of no row empties a nested rejection's text" T-LABEL
+   [: FIRST-OF-NONE ;] PG:E-ROW TTHROWSQ
+   NO-REJECTION
+   CLOSE-AB ;
+
+
+\ Two equal keys, checked when COMMIT runs.
+: DUPLICATE-KEYS ( -- )
+   s" insert into dup_t values (1), (1)" RUN ;
+
+: FAIL-QUIETLY ( -- )
+   [: s" insert into tx_missing_q values (1)" EXEC-ON ;] PG:E-QUERY TTHROWSQ ;
+
+: COMMIT-REJECTED ( -- )
+   s" a rejected COMMIT answers its own text" T-LABEL
+   s" create temp table dup_t (x int unique deferrable initially deferred)" RUN
+   [: CONN @ REJECT-ON ;] PG:E-QUERY TTHROWSQ
+   [: CONN @ [: DUPLICATE-KEYS ;] PG:WITH-TRANSACTION ;] PG:E-EXEC TTHROWSQ
+   PG:REFUSED$
+   S\" 23505: duplicate key value violates unique constraint \qdup_t_x_key\q"
+   T$=
+   s" a COMMIT of a failed transaction keeps the rejected statement's text" T-LABEL
+   [: CONN @ [: FAIL-QUIETLY ;] PG:WITH-TRANSACTION ;]
+   PG:E-EXEC TTHROWSQ
+   s" tx_missing_q" REJECTION-NAMES ;
+
+
+: REJECTED-THEN ( [ -- ] -- )
+   REJECT-B PG:E-QUERY T=
+   execute
+   NO-REJECTION ;
+
+: SUCCESS-EMPTIES ( -- )
+   OPEN-AB
+   s" a successful WITH-RESULT empties the rejection text" T-LABEL
+   [: SELECT-B ;] REJECTED-THEN
+   s" a false ENDED? empties the rejection text" T-LABEL
+   [: LOST-B @ PG:ENDED? TFALSE ;] REJECTED-THEN
+   s" a committed transaction empties the rejection text" T-LABEL
+   [: LOST-B @ [: ;] PG:WITH-TRANSACTION ;] REJECTED-THEN
    CLOSE-AB ;
 
 
@@ -588,7 +794,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    s" a worker's refusal text is its own" T-LABEL
    SIDE-REFUSED @ 1 T=
    s" a worker's refusal leaves the main task's text" T-LABEL
-   s" main_missing_q" REFUSAL-NAMES
+   s" main_missing_q" REJECTION-NAMES
    \ Both workers keep their rows; a third task is one reader too many.
    ['] THIRD-WORK THIRD-TASK TASK:ACTIVATE
    3 AWAIT-FINISHED
@@ -616,6 +822,15 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    LOSS-AFTER-REFUSAL
    ROLLBACK-LOST
    ROLLBACK-KEEPS
+   ENDED-LOSS
+   NOTIFIED-LOSS
+   NOTIFIED-NOW-LOSS
+   ANSWERED-LOSS
+   STOPPED-WAIT
+   STALE-HANDLE
+   TEXTLESS-FAILURES
+   COMMIT-REJECTED
+   SUCCESS-EMPTIES
    DECLARATION-CASES
    TASK-CASES
    CONN @ PG:CLOSE ;
