@@ -43,9 +43,12 @@ require src/os/env-base.f
 
 package LOG
 
-private
+public
 
+\ What ERROR, WARN, INFO and DEBUG answer and LINE takes.
 DEFTYPE LEVEL
+
+private
 
 0 constant ERROR-N
 1 constant WARN-N
