@@ -144,15 +144,15 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : CELL-VALUE ( n -- n ) ROW-OFF SPACE-AT @ ;
 
 \ Runs only while IMAGE-BASE-CELL is 0 (before IMAGE-IN or after IMAGE-OUT), so no marker reaches
-\ the space's table and its index and grown rows are released unlocked.
+\ the space's table and its index and grown rows are released unlocked. The span goes back to hb's
+\ window as its reservation had it, fresh and lazy: a munmap would leave a hole in it.
 : UNMAP ( -- )
    ADDRESS-CELLS:INDEX-CELL SPACE-AT ADDRESS-CELLS:INDEX-RELEASE
    RELOC:XTCELL-N-CELL SPACE-AT ADDRESS-CELLS:ROWS-RELEASE
-   NULL-PTR BYTE-VIEW BASE @ ROUTED-BYTES - +  SPACE-SIZE @ ROUTED-BYTES +  munmap
-   0<> if E-MEM-UNMAP throw then ;
-
-\ Above hb's DATA: below it CHECKER-OWNER-GUARD rejects with E-COMP-OWNER.
-: HINT ( -- n ) DATA-N DATA-SIZE + ;
+   BASE @ ROUTED-BYTES - {: lo:n :}
+   lo  SPACE-SIZE @ ROUTED-BYTES +  MEM-PROT-RW MEM-MAP-PRIVATE-ANON-FIXED NORESERVE or
+   MEM-ANON-FD MEM-OFF-ZERO mmap
+   lo <> if E-MEM-UNMAP throw then ;
 
 \ A build for another target than hb's own.
 : CROSS? ( -- bool ) TARGET @ RTARGET:HOST-TARGET RTARGET:SAME? 0= ;
@@ -160,7 +160,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ The emissions NSHADOW:PUBLISH files per definition: a cross build's target and host copies, or one.
 : COPIES ( -- n ) CROSS? if 2 else 1 then ;
 
-\ The space's DATA starts, ends and stops DP where the kernel the link adopts
+\ The space's DATA starts and stops DP where the kernel the link adopts
 \ reads them (NATIVE:READ); a kernel build's, or one no object was read for (a
 \ Wasm build's, whose WPROF mirrors hb's band through DATA-START), where hb's does.
 : OBJECT-LAYOUT? ( -- bool ) KERNEL? @ 0= NATIVE:READ? and ;
@@ -168,10 +168,6 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : LAYOUT-START ( -- n )
    OBJECT-LAYOUT? if s" DATA-START" NATIVE:SYM exit then
    DATA-START ;
-
-: LAYOUT-SIZE ( -- n )
-   OBJECT-LAYOUT? if s" DATA-SIZE" NATIVE:SYM exit then
-   DATA-SIZE ;
 
 : LAYOUT-CEILING ( -- n )
    OBJECT-LAYOUT? if s" DP-CEILING-OFF" NATIVE:SYM exit then
@@ -1529,16 +1525,16 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    s" code at " REJECTION:EMIT-STR  a REJECTION:EMIT-N  s"  in no record" REJECTION:EMIT-STR ;
 
 
-\ Where the data address v lies: hb's DATA, the build's space outside every extent, or
-\ neither.
+\ Where the data address v lies: the build's space outside every extent, hb's DATA, or
+\ neither. The space lies inside hb's DATA, so it is tested first.
 : DATA-VALUE. ( n -- )
    {: v:n :}
-   v DATA-N >=  v DATA-N DATA-SIZE + <  and if
-      s" hb's data +" REJECTION:EMIT-STR  v DATA-N - REJECTION:EMIT-N exit
-   then
    v BASE @ >=  v BASE @ SPACE-SIZE @ + <  and if
       s" the build's space +" REJECTION:EMIT-STR  v BASE @ - REJECTION:EMIT-N
       s" , in no record's extent" REJECTION:EMIT-STR exit
+   then
+   v DATA-N >=  v DATA-N DATA-SIZE + <  and if
+      s" hb's data +" REJECTION:EMIT-STR  v DATA-N - REJECTION:EMIT-N exit
    then
    v REJECTION:EMIT-N  s" , outside hb's data and the build's space" REJECTION:EMIT-STR ;
 
@@ -4746,25 +4742,27 @@ EXPORT CHECK:PLACE-FACTS
    0 h ADDRESS-CELLS:MODE-FIELD + SPACE-AT ! ;
 
 \ The space, with ROUTED-BYTES below BASE: the band where hb's routed header stores mark their
-\ cells (habu2.f ROUTE-HEADER), the linker's own; no object, image or program holds it.
+\ cells (habu2.f ROUTE-HEADER), the linker's own; no object, image or program holds it. The span
+\ replaces hb's own reservation from there up to hb's DP ceiling, cut to the mapping alignment so
+\ the page holding the profiler band's first cells stays hb's.
 : MAP ( -- )
-   LAYOUT-SIZE {: size:n :}
-   HINT size ROUTED-BYTES + MEM-PROT-RW MEM-MAP-PRIVATE-ANON NORESERVE or
-   MEM-ANON-FD MEM-OFF-ZERO mmap {: at:n :}
-   at 0 < if size ROUTED-BYTES + s" the linker's space" REJECTION:MAP-PASS then
-   at ROUTED-BYTES + BASE !  size SPACE-SIZE !
-   at HINT < if
-      UNMAP
-      s" E-MEM-MAP" REJECTION:OPEN
-      s" the system placed the linker's space of " REJECTION:EMIT-STR
-      size ROUTED-BYTES + REJECTION:EMIT-U
-      s"  bytes below hb's data, where the checker rejects its stores"
-      REJECTION:EMIT-STR
+   DATA-N BUILD-OFF + {: base:n :}
+   base ROUTED-BYTES - {: lo:n :}
+   BOOT:DP-CEILING-CELL HOST@ PROT-PAGE-MAX negate and {: hi:n :}
+   DP-CELL HOST@ lo > if
+      s" E-DATA-SPACE" REJECTION:OPEN
+      s" hb's own data ends at hb's data +" REJECTION:EMIT-STR
+      DP-CELL HOST@ DATA-N - REJECTION:EMIT-U
+      s" , past +" REJECTION:EMIT-STR  lo DATA-N - REJECTION:EMIT-U
+      s" , where the linker's space starts" REJECTION:EMIT-STR
       REJECTION:HELP
-      s" free that much address space above hb's data, which other mappings fill"
+      s" load less into hb before the build, or raise BUILD-OFF in src/habu/layout.f"
       REJECTION:EMIT-STR
-      REJECTION:SAVE  E-MEM-MAP REJECTION:PASS
+      REJECTION:SAVE  E-DATA-SPACE REJECTION:PASS
    then
+   lo  hi lo -  MEM-PROT-RW MEM-MAP-PRIVATE-ANON-FIXED NORESERVE or  MEM-ANON-FD MEM-OFF-ZERO mmap
+   lo <> if hi lo - s" the linker's space" REJECTION:MAP-PASS then
+   base BASE !  hi base - SPACE-SIZE !
    construct step mapped PROGRESS !
    LAY-ADDRESS-HEADER ;
 
@@ -4812,7 +4810,7 @@ TYPED-VARIABLE EXITER [ -- ]
    BASE @ LAYOUT-START + {: start:n :}
    start DP-CELL HOST!
    start BOOT:DP-FLOOR-CELL HOST!
-   BASE @ LAYOUT-CEILING + BOOT:DP-CEILING-CELL HOST!
+   BASE @ LAYOUT-CEILING +  BASE @ SPACE-SIZE @ +  min BOOT:DP-CEILING-CELL HOST!
    0 DPHW-CELL HOST!
    0 LASTC-CELL HOST!
    0 POINTER-STORAGE:DATUM-CELL HOST!

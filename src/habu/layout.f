@@ -1231,3 +1231,5 @@ PD-TABLE-END constant DATA-START
 \ The bytes below a build's image where a routed header store marks its cell:
 \ DATA-START and the cell every such store sets.
 DATA-START 8 + $FFFF + $10000 / $10000 * constant ROUTED-BYTES
+\ Where a build's space starts in hb's data: its offset from hb's data-base.
+$40000000 constant BUILD-OFF
