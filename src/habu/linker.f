@@ -5478,8 +5478,12 @@ EXPORT CHECK:DROP-FACTS
    src XREF-FLAGS  DNAME-IMM DNAME-WIDE or  and  want SET-FLAGS
    r 5 OWNED$  want FACTS! ;
 
+\ Piece 0's word time: hb's records and the rows PRIMS-IN states decide its records, and hb's stamp and the basis
+\ (BASIS!) name the objects' directory, so within one directory they never change and one nonzero time is exact.
+1 constant OWNED-TIME
+
 \ After IMAGE-IN, the records OWNED+ gathered as BUILT row 0, laid before any file as header data, keyed by the empty
-\ path, which no load has: piece 0 at time 0, its records fixed by hb's own and the rows PRIMS-IN states.
+\ path, which no load has: piece 0 at time 0, its records at OWNED-TIME before BUILT+ indexes them by name.
 : OWNED-RECORDS ( -- )
    FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !  false HOLDS-HEADER !
    OWNED-N @ 0 ?do i MAKE-OWNED loop
@@ -5487,6 +5491,8 @@ EXPORT CHECK:DROP-FACTS
    s" " KEY-PATHS @ PATH-IN FILE-KEY LE:U64!  0 FILE-KEY 8 + LE:U64!  0 FILE-PART !
    FILE-KEY KEY-BYTES LOAD-PATHS @ VEC:APPEND  s" " LOAD-PATHS @ FIELD+
    here NULL-PTR - dup FILE-DP !  FILE-END !
+   ndict@ WORD-TIMES-RESERVE
+   ndict@ FILE-REC @ ?do  OWNED-TIME i WORD-TIMES !  loop
    0 EXTS-N !  0 0 BUILT+ ;
 
 \ The primitives' rows, the object's or else hb's own, then the owned primitives' records'
