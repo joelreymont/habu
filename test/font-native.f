@@ -1,4 +1,3 @@
-split-str
 \ font-native.f - native HarfBuzz FONT test on each platform's installed fonts:
 \ on Linux, DejaVu Sans, URW's Nimbus Roman and Noto Color Emoji, each found
 \ by its file name under fontconfig's default directories: /usr/share/fonts,
@@ -19,12 +18,12 @@ TYPED-VARIABLE IMAGE FONT:image
 PATH-CAP BUFFER: USER-ROOT
 
 : USER-ROOT$ ( -- str )
-   s" XDG_DATA_HOME" GETENV dup 0 > if
+   s" XDG_DATA_HOME" GETENV dup STR:LEN 0 > if
       s" fonts"
    else
-      2drop s" HOME" GETENV s" .local/share/fonts"
+      drop s" HOME" GETENV s" .local/share/fonts"
    then
-   USER-ROOT FS:JOIN-PATH USER-ROOT swap ;
+   USER-ROOT FS:JOIN-PATH USER-ROOT swap >str ;
 
 \ The walk joins every path within PATH-CAP bytes, so FOUND holds any it gives.
 PATH-CAP BUFFER: FOUND
@@ -32,30 +31,30 @@ variable FOUND-U
 PTR-VARIABLE WANT-P
 variable WANT-U
 
-: FOUND$ ( -- str ) FOUND FOUND-U @ ;
-: WANT$ ( -- str ) WANT-P @ WANT-U @ ;
+: FOUND$ ( -- str ) FOUND FOUND-U @ >str ;
+: WANT$ ( -- str ) WANT-P @ WANT-U @ >str ;
 
 \ A walk callback has no context, so the file name is read from WANT$.
 : KEEP-MATCH ( str -- )
-   {: a:^ u:n :}
-   a u FS:BASENAME WANT$ STR:= 0= if exit then
-   a FOUND u BYTE-COPY u FOUND-U ! ;
+   {: s:str :}
+   s FS:BASENAME WANT$ STR:= 0= if exit then
+   s STR:DATA FOUND s STR:LEN BYTE-COPY s STR:LEN FOUND-U ! ;
 
-: WALK-ROOT ( str -- ) {: a:^ u:n :}
+: WALK-ROOT ( str -- ) {: s:str :}
    FOUND-U @ 0<> if exit then
-   a u FS:DIR? 0= if exit then
-   a u [: KEEP-MATCH ;] FS:WALK-FILES ;
+   s FS:DIR? 0= if exit then
+   s [: KEEP-MATCH ;] FS:WALK-FILES ;
 
 \ The path is valid until the next FIND-FONT. A file under no root is not
 \ found: a case labelled with the file's name fails, the path is empty.
 : FIND-FONT ( str -- str )
-   {: name:^ len:n :}
-   name WANT-P ! len WANT-U ! 0 FOUND-U !
+   {: name:str :}
+   name STR:DATA WANT-P ! name STR:LEN WANT-U ! 0 FOUND-U !
    s" /usr/share/fonts" WALK-ROOT
    s" /usr/local/share/fonts" WALK-ROOT
    USER-ROOT$ WALK-ROOT
    FOUND-U @ 0= if
-      name len T-LABEL false T-ASSERT T-LABEL-CLEAR
+      name T-LABEL false T-ASSERT T-LABEL-CLEAR
    then
    FOUND$ ;
 
@@ -99,20 +98,20 @@ variable WANT-U
    25 s\" viewBox=\"1 -15 13 16\"" ;
 
 : READ-FONT ( str -- ^u8 n )
-   {: path:^ len:n :}
+   {: path:str :}
    \ An empty path is a font FIND-FONT did not find: its case has failed.
-   len 0= if path 0 exit then
-   path len FS:FILE-SIZE {: size:n :}
+   path STR:LEN 0= if path STR:DATA 0 exit then
+   path FS:FILE-SIZE {: size:n :}
    size MEM-ALLOC-BYTES {: data:^ cap:n :}
-   path len data cap FS:READ-ALL cap T=
+   path data cap FS:READ-ALL cap T=
    data cap ;
 
 : INPUT-FONT ( -- ^u8 n ) FONT-PATH$ READ-FONT ;
 
-: PATH-COUNT ( str -- n ) {: svg:^ size:n :}
-   size 5 < if 0 exit then
-   0 size 4 - 0 ?do
-      svg i + 5 s" <path" STR:= if 1+ then
+: PATH-COUNT ( str -- n ) {: svg:str :}
+   svg STR:LEN 5 < if 0 exit then
+   0 svg STR:LEN 4 - 0 ?do
+      svg STR:DATA i + 5 >str s" <path" STR:= if 1+ then
    loop ;
 
 : DRAW-CHECK ( FONT:font -- )
@@ -120,18 +119,18 @@ variable WANT-U
    face s\" A\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81" 1000 FONT:RENDER
       {: accents:FONT:image :}
    accents FONT:BOUNDS {: x:r y:r w:r h:r :}
-   ACCENT-BOX {: left:r top:r right:r box:^ box-len:n :}
+   ACCENT-BOX {: left:r top:r right:r box:str :}
    x left f< T-ASSERT
    y top f< T-ASSERT
    x w f+ right f> T-ASSERT
    y h f+ 0.0 f= T-ASSERT
    accents FONT:SVG$ s" viewBox='" STR:CONTAINS? 0= T-ASSERT
-   accents FONT:SVG$ box box-len STR:CONTAINS? TTRUE
+   accents FONT:SVG$ box STR:CONTAINS? TTRUE
    accents FONT:FREE
 
-   ROUND-CASE {: em:n view:^ view-len:n :}
+   ROUND-CASE {: em:n view:str :}
    face s" o" em FONT:RENDER {: round:FONT:image :}
-   round FONT:SVG$ view view-len STR:CONTAINS? TTRUE
+   round FONT:SVG$ view STR:CONTAINS? TTRUE
    round FONT:FREE
 
    face s\" \xD0\x94" 400 FONT:RENDER {: greek:FONT:image :}
@@ -153,7 +152,7 @@ variable WANT-U
 : LIGATURE-CHECK ( -- )
    LIGATURE-PATH$ READ-FONT {: data:^ size:n :}
    size 0= if exit then
-   data size 0 FONT:OPEN {: face:FONT:font :}
+   data size >str 0 FONT:OPEN {: face:FONT:font :}
    data size MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    face s" fi" 1000 FONT:RENDER {: ligature:FONT:image :}
    ligature FONT:SVG$ PATH-COUNT 1 T=
@@ -162,7 +161,7 @@ variable WANT-U
 : CFF-BOUNDS-CHECK ( -- )
    CFF-PATH$ READ-FONT {: data:^ size:n :}
    size 0= if exit then
-   data size 0 FONT:OPEN {: face:FONT:font :}
+   data size >str 0 FONT:OPEN {: face:FONT:font :}
    data size MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    face s" j" 23 FONT:RENDER {: img:FONT:image :}
    \ Both platforms' faces give this box; Nimbus Roman's ink box of `j` ends at 5,
@@ -176,7 +175,7 @@ variable WANT-U
 : COLOR-CHECK ( -- )
    COLOR-PATH$ READ-FONT {: data:^ size:n :}
    size 0= if exit then
-   data size 0 FONT:OPEN {: face:FONT:font :}
+   data size >str 0 FONT:OPEN {: face:FONT:font :}
    data size MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    face COLOR-FACE !
    [: COLOR-ONLY ;] FONT:E-GLYPH TTHROWSQ
@@ -205,13 +204,13 @@ variable WANT-U
    s" not a font" 0 FONT:OPEN FONT:CLOSE ;
 
 : STALE-FONT ( -- ) FACE @ FONT:CLOSE ;
-: STALE-IMAGE ( -- ) IMAGE @ FONT:SVG$ 2drop ;
+: STALE-IMAGE ( -- ) IMAGE @ FONT:SVG$ drop ;
 
 : RUN ( -- )
    T-RESET
    INPUT-FONT {: data:^ size:n :}
    size 0= if T-REPORT exit then
-   data size 0 FONT:OPEN {: face:FONT:font :}
+   data size >str 0 FONT:OPEN {: face:FONT:font :}
    data size MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    face FACE !
    face DRAW-CHECK
@@ -220,7 +219,7 @@ variable WANT-U
    COLOR-CHECK
    [: MISSING ;] FONT:E-GLYPH TTHROWSQ
    FONT:E-GLYPH ERROR:NAME$ s" FONT:E-GLYPH" T$=
-   FONT:E-GLYPH ERROR:TEXT$ nip 0<> TTRUE
+   FONT:E-GLYPH ERROR:TEXT$ STR:LEN 0<> TTRUE
    [: TOO-LARGE ;] FONT:E-EXTENT TTHROWSQ
    [: BAD-UTF8 ;] FONT:E-TEXT TTHROWSQ
    [: MIXED-SCRIPT ;] FONT:E-TEXT TTHROWSQ

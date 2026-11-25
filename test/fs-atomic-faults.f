@@ -1,4 +1,3 @@
-split-str
 \ fs-atomic-faults.f - atomic writes under host failures a preloaded shim makes.
 \ A directory fsync the host accepted fails with EIO: the file's sync passes,
 \ the rename lands and the reopened directory's sync fails, so the write is
@@ -45,16 +44,16 @@ create ERR IO-CAP allot
 create GOT IO-CAP allot
 variable SIBLINGS
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: SHIM-C$ ( -- str ) SHIM-C SHIM-C-U @ ;
-: SHIM-SO$ ( -- str ) SHIM-SO SHIM-SO-U @ ;
-: TARGET$ ( -- str ) TARGET TARGET-U @ ;
-: FREE$ ( -- str ) FREE FREE-U @ ;
-: STAGED$ ( -- str ) STAGED STAGED-U @ ;
-: CACHED$ ( -- str ) CACHED CACHED-U @ ;
-: MANY$ ( -- str ) MANY MANY-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: SHIM-C$ ( -- str ) SHIM-C SHIM-C-U @ >str ;
+: SHIM-SO$ ( -- str ) SHIM-SO SHIM-SO-U @ >str ;
+: TARGET$ ( -- str ) TARGET TARGET-U @ >str ;
+: FREE$ ( -- str ) FREE FREE-U @ >str ;
+: STAGED$ ( -- str ) STAGED STAGED-U @ >str ;
+: CACHED$ ( -- str ) CACHED CACHED-U @ >str ;
+: MANY$ ( -- str ) MANY MANY-U @ >str ;
 
-: C+ ( ^u8 n -- )
+: C+ ( str -- )
    SHIM CODEGEN:APPEND-STRING
    10 SHIM CODEGEN:APPEND-BYTE ;
 
@@ -119,8 +118,8 @@ variable SIBLINGS
 
 : SETUP ( -- )
    FS:CLEANUP-RESET
-   s" habu-atomic-faults" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT u BYTE-COPY  u ROOT-U !
+   s" habu-atomic-faults" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA ROOT dir STR:LEN BYTE-COPY  dir STR:LEN ROOT-U !
    ROOT$ FS:CLEANUP-TREE+
    ROOT$ s" shim.c" SHIM-C FS:JOIN-PATH SHIM-C-U !
    ROOT$ s" shim.so" SHIM-SO FS:JOIN-PATH SHIM-SO-U !
@@ -139,8 +138,8 @@ variable SIBLINGS
 \ A fresh engine: LD_PRELOAD reaches only a process it starts.
 : RUN ( bool -- n n n )   \ outu erru rc
    {: fail-file?:bool :}
-   ENGINE-CANDIDATE:PATH$ {: engine:^ engineu:n :}
-   PROG CODEGEN:CONTENTS {: prog:^ progu:n :}
+   ENGINE-CANDIDATE:PATH$ {: engine:str :}
+   PROG CODEGEN:CONTENTS {: prog:str :}
    PROC-ARGV-ENV-RESET
    s" LD_PRELOAD" SHIM-SO$ PROC-ENV+
    s" ATOMIC_TARGET" TARGET$ PROC-ENV+
@@ -152,7 +151,7 @@ variable SIBLINGS
       s" ATOMIC_FAIL_FILE" s" 1" PROC-ENV+
    then
    PROC-ENV-INHERIT-MISSING
-   engine engineu prog progu
+   engine prog
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    PROCESS:ENDING>RC RC>N
@@ -196,7 +195,8 @@ variable SIBLINGS
 : MANY-NONE ( -- )
    s" ... and no name FS:ATOMIC-CREATE-FILES was given is published" T-LABEL
    3 0 ?do
-      MANY$ i FMT:INT$ GOT FS:JOIN-PATH GOT swap FS:TRY-LSTAT TFALSE
+      MANY$ i FMT:INT$ GOT FS:JOIN-PATH GOT swap >str
+      FS:TRY-LSTAT TFALSE
    loop
    s" ... and no sibling of theirs is left" T-LABEL
    0 SIBLINGS !  MANY$ [: COUNT-SIBLING ;] FS-LIST:EACH
@@ -204,35 +204,37 @@ variable SIBLINGS
 
 : FAULTS-CASE ( -- )
    false RUN {: outu:n erru:n rc:n :}
-   OUT outu WANT$ STR:= 0= rc 0 <> or if ERR erru type cr then
+   OUT outu >str {: out:str :}
+   out WANT$ STR:= 0= rc 0 <> or if ERR erru >str type cr then
    s" write E-FS-SYNC, EIO; claim E-FS-IO, EINVAL; staged E-FS-SYNC, EIO; cached 0, 0; create E-FS-IO, EINVAL"
    T-LABEL
-   OUT outu WANT$ T$=
+   out WANT$ T$=
    s" the child engine exits cleanly" T-LABEL
    rc 0 T=
    s" ... and the target holds the new bytes" T-LABEL
    TARGET$ GOT IO-CAP FS:READ-ALL {: gotu:n :}
-   GOT gotu s" new bytes" T$=
+   GOT gotu >str s" new bytes" T$=
    s" ... and staged holds the staged bytes" T-LABEL
    STAGED$ GOT IO-CAP FS:READ-ALL {: stagedu:n :}
-   GOT stagedu s" staged bytes" T$=
+   GOT stagedu >str s" staged bytes" T$=
    s" ... and cached holds the cached bytes" T-LABEL
    CACHED$ GOT IO-CAP FS:READ-ALL {: cachedu:n :}
-   GOT cachedu s" cached bytes" T$=
+   GOT cachedu >str s" cached bytes" T$=
    MANY-NONE
    NO-LEFTOVER ;
 
 : HOLDS-OLD ( str -- )
    GOT IO-CAP FS:READ-ALL {: gotu:n :}
-   GOT gotu s" old bytes" T$= ;
+   GOT gotu >str s" old bytes" T$= ;
 
 : FILE-FAULTS-CASE ( -- )
    OLD-BYTES
    true RUN {: outu:n erru:n rc:n :}
-   OUT outu FILE-WANT$ STR:= 0= rc 0 <> or if ERR erru type cr then
+   OUT outu >str {: out:str :}
+   out FILE-WANT$ STR:= 0= rc 0 <> or if ERR erru >str type cr then
    s" a file fsync's EIO: write, claim, staged, cached, create E-FS-IO, EIO"
    T-LABEL
-   OUT outu FILE-WANT$ T$=
+   out FILE-WANT$ T$=
    s" the child engine exits cleanly" T-LABEL
    rc 0 T=
    s" ... and the target holds the old bytes" T-LABEL

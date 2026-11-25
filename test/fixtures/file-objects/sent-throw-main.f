@@ -1,4 +1,3 @@
-split-str
 \ sent-throw-main.f - its top level catches the loader's rejection of a word's
 \ `required`, then throws: the build prints both records.
 

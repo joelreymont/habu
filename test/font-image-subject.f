@@ -1,4 +1,3 @@
-split-str
 \ font-image-subject.f - live FONT handles are retired before hb-build writes hb.
 \ Build: bin/hb --load tools/hb-build.f -- --repl test/font-image-subject.f -o build/font-image
 \ Run: build/font-image
@@ -20,7 +19,7 @@ TYPED-VARIABLE OLD-IMAGE FONT:image
    FONT-PATH$ FS:FILE-SIZE {: size:n :}
    size MEM-ALLOC-BYTES {: data:^ cap:n :}
    FONT-PATH$ data cap FS:READ-ALL cap T=
-   data cap 0 FONT:OPEN {: face:FONT:font :}
+   data cap >str 0 FONT:OPEN {: face:FONT:font :}
    data cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    face ;
 
@@ -31,7 +30,7 @@ TYPED-VARIABLE OLD-IMAGE FONT:image
    T-REPORT ;
 
 : STALE-FONT ( -- ) OLD-FONT @ FONT:CLOSE ;
-: STALE-IMAGE ( -- ) OLD-IMAGE @ FONT:SVG$ 2drop ;
+: STALE-IMAGE ( -- ) OLD-IMAGE @ FONT:SVG$ drop ;
 
 public
 
@@ -41,8 +40,8 @@ public
    [: STALE-IMAGE ;] FONT:E-HANDLE TTHROWSQ
    LOAD-FONT {: face:FONT:font :}
    face s" B" 1000 FONT:RENDER {: image:FONT:image :}
-   image FONT:SVG$ {: svg:^ bytes:n :}
-   s" build/font-image.svg" svg bytes FS:WRITE-ALL
+   image FONT:SVG$ {: svg:str :}
+   s" build/font-image.svg" svg FS:WRITE-ALL
    image FONT:FREE face FONT:CLOSE
    T-REPORT ;
 

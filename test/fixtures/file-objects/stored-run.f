@@ -1,3 +1,2 @@
-split-str
 FILE-OBJECTS-STORED:SGET drop
 : STORED-RUN-WORD ( -- ) ;

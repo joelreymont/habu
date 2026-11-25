@@ -1,4 +1,3 @@
-split-str
 \ The linked x86 program checks local reads through calls and unwinding.
 require src/lib/string.f
 
@@ -17,7 +16,7 @@ defer NEXT ( n -- n )
 BIND-NEXT
 
 : SAME ( n n -- ) <> if 1 throw then ;
-: SAY ( -- ) MESSAGE 3 type ;
+: SAY ( -- ) MESSAGE 3 >str type ;
 
 : CAPTURE ( n -- n )
    {: a:n :}

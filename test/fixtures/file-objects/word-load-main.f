@@ -1,4 +1,3 @@
-split-str
 \ word-load-main.f - its top level runs a word that loads a file, so the build
 \ refuses the load.
 

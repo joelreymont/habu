@@ -1,4 +1,3 @@
-split-str
 \ protection-span-full.f - fills the image's code space with ordinary
 \ definitions to one empty word below the ceiling, checks a body and a long name
 \ that would reach the ceiling are rejected where an empty word still fits, then
@@ -17,8 +16,11 @@ variable PST-UNITS
 variable PST-SLOT                         \ the bytes an empty word places
 variable PST-UNIT                         \ the bytes one `2 0 ?do loop` adds
 
-: PST+ ( str -- ) {: a:^ u:n :}
-   u 0 ?do a i + c@ PST-SRC PST-U @ + i + c! loop  PST-U @ u + PST-U ! ;
+: PST+ ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do
+      s STR:DATA i + c@ PST-SRC PST-U @ + i + c!
+   loop
+   PST-U @ s STR:LEN + PST-U ! ;
 
 : PST-TEXT ( n -- ) {: units:n :}
    units PST-UNITS !  0 PST-U !  s" : PST00000 ( -- )" PST+
@@ -31,7 +33,7 @@ variable PST-UNIT                         \ the bytes one `2 0 ?do loop` adds
    PST-N @ {: k:n :}
    k 10000 / 5 PST-DIGIT!  k 1000 / 6 PST-DIGIT!  k 100 / 7 PST-DIGIT!
    k 10 / 8 PST-DIGIT!  k 9 PST-DIGIT!  k 1 + PST-N !
-   PST-SRC PST-U @ TEST-EVAL:RC ;
+   PST-SRC PST-U @ >str TEST-EVAL:RC ;
 
 : PST-ROOM ( -- n ) CODE-SPACE:CEILING cp@ - ;
 

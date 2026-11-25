@@ -1,2 +1,1 @@
-split-str
 42 FILE-OBJECTS-STORED:SV !

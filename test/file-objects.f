@@ -1144,7 +1144,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/fixtures/file-objects/seal-main.f" false BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" STR:CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `FILE-OBJECTS-SEAL:D` would change a sealed package" STR:CONTAINS? classed and {: named:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:7" STR:CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:6" STR:CONTAINS? {: placed:bool :}
    CMD:ERR$ s" E-FAILED" STR:CONTAINS? {: failed:bool :}
    named placed and  rc 70 =  and  failed 0= and 0= if rc SHOW then
    s" the build exits 70" LABEL  rc 70 T=
@@ -1164,7 +1164,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/fixtures/file-objects/squat-main.f" repl BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" STR:CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `CHECKER-RESOLVE` would change a sealed package" STR:CONTAINS? classed and {: named:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:5" STR:CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:4" STR:CONTAINS? {: placed:bool :}
    named placed and  rc 70 =  and 0= if rc SHOW then
    s" the build exits 70" LABEL  rc 70 T=
    s" the build refuses CHECKER-RESOLVE" LABEL  named TTRUE
@@ -1208,16 +1208,16 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build is rejected E-FAILED at rollback.f's line 9 with code 70" LABEL  placed TTRUE
    s" the build prints no record of the throw beside it" LABEL  threw TFALSE ;
 
-\ rollback-passed.f's build: its caught E-PATH-RANGE never displaces FOB-TRY's E-FAILED at line 5.
+\ rollback-passed.f's build: its caught E-PATH-RANGE never displaces FOB-TRY's E-FAILED at line 4.
 : CAUGHT-PASSED-CASE ( CMD:command -- CMD:command )
    s" CP" WHICH!
    s" test/fixtures/file-objects/rollback-passed.f" FAILING-BUILD {: rc:n :}
-   s\" rollback-passed.f:5:1\n  |\n5 | FOB-TRY\n  | ^^^^^^^ this ran the text\n"
+   s\" rollback-passed.f:4:1\n  |\n4 | FOB-TRY\n  | ^^^^^^^ this ran the text\n"
    s" = code: 70" FAILED-AT? {: placed:bool :}
    CMD:ERR$ s" E-PATH-RANGE" STR:CONTAINS? {: passed:bool :}
    rc 67 =  placed and  passed 0= and 0= if rc SHOW then
    s" the build exits 67" LABEL  rc 67 T=
-   s" the build is rejected E-FAILED at rollback-passed.f's line 5 with code 70" LABEL  placed TTRUE
+   s" the build is rejected E-FAILED at rollback-passed.f's line 4 with code 70" LABEL  placed TTRUE
    s" the build prints no E-PATH-RANGE" LABEL  passed TFALSE ;
 
 \ rollback-load.f's build, whose text catches rollback-fail.f's failed load: it exits 67,

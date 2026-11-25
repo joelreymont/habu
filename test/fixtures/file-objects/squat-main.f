@@ -1,4 +1,3 @@
-split-str
 \ squat-main.f - built by tools/hb-build.f: it reopens CHECKER-RESOLVE, an
 \ engine package the build sealed, to publish its private xref-search-wl.
 

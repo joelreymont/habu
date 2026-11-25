@@ -1,4 +1,3 @@
-split-str
 \ word-required-main.f - its top level runs a word that requires a file and
 \ catches the rejection, which fails the build all the same.
 
