@@ -2188,9 +2188,8 @@ create SCOPE-SITES 9 cells allot
    LBL {: next:label :}
    LINKED-SCOPES @ 0<> if
       LBL dup  SCOPE-SITES k cells +  LABEL!  LBL,
-      \ LINKER's ARM64:CODE-ADDRESS! writes adrp + add over the first two words, 0 until
-      \ written; an hb whose writer fills four words links this kernel too
-      5 0 MOVZ,  NOP,  NOP,  NOP,
+      \ the adrp + add LINKER's ARM64:CODE-ADDRESS! writes, 0 until written
+      5 0 MOVZ,  NOP,
       5 next CBZ,
       A 5 CMP,  C-NE next BCOND,
       A k MOVZ,  done B,
