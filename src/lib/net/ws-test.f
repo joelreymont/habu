@@ -9,7 +9,7 @@
 \ Each frame the client sends or reads one at a time is one transcript line:
 \ direction, opcode (`+` when more fragments follow), length, and the payload in
 \ hex or, past HEX-MAX bytes, as the sum of its bytes. Pushes log no frame. The
-\ transcript is written to build/ws-transcript.txt, read back and compared whole
+\ transcript is written to a file under TMPDIR, read back and compared whole
 \ with WANT$.
 
 require src/lib/test.f
@@ -212,6 +212,12 @@ variable PROBING                  \ set while the handler of `brief` sends its p
 variable PROBE-END                \ what the probe that ended them threw
 variable ERR-U
 variable ERR-WANT-U
+create STRAY-BUF PATH-CAP allot
+variable STRAY-U
+create ERR-PATH-BUF PATH-CAP allot
+variable ERR-PATH-U
+create SCRIPT-PATH-BUF PATH-CAP allot
+variable SCRIPT-PATH-U
 STRAYS TYPED-BUFFER STRAY-FD n    \ descriptors on one file, taking the numbers a stop gave back
 CROWD 1+ TYPED-BUFFER CONNS TCP4:connection  \ the client connections a case holds open at once
 TASK:SEMAPHORE ACCEPTED           \ the route has kept its outcome
@@ -677,7 +683,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 \ The file the cases below open on descriptors the stop gave back.
 : STRAY$ ( -- str )
-   s" build/ws-stray.txt" ;
+   STRAY-BUF STRAY-U @ >str ;
 
 : THROW-IN-CLOSED ( -- )
    THROW-ARMED @ 0= if exit then
@@ -1198,7 +1204,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ WS reports each handler fault on fd 2. For THROW-CASE fd 2 is a file, read
 \ back after it.
 : ERR-PATH$ ( -- str )
-   s" build/ws-stderr.txt" ;
+   ERR-PATH-BUF ERR-PATH-U @ >str ;
 
 : ERR$ ( -- str )
    ERR-BUF ERR-U @ SPAN:TAKE SPAN:$ ;
@@ -2078,13 +2084,15 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" < close 2 03e9" W
    s" < end of stream" W ;
 
+: SCRIPT-PATH$ ( -- str )
+   SCRIPT-PATH-BUF SCRIPT-PATH-U @ >str ;
+
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole with the transcript this file expects.
 : TRANSCRIPT-CASE ( -- )
    s" the transcript" T-LABEL
-   s" build" FS:MAKE-DIRS
-   s" build/ws-transcript.txt" SCRIPT$ FS:WRITE-ALL
-   s" build/ws-transcript.txt" BACK-BUF SPAN:$ str> FS:READ-ALL {: got:n :}
+   SCRIPT-PATH$ SCRIPT$ FS:WRITE-ALL
+   SCRIPT-PATH$ BACK-BUF SPAN:$ str> FS:READ-ALL {: got:n :}
    WANT-TRANSCRIPT
    BACK-BUF got SPAN:TAKE SPAN:$ WANT$ T$= ;
 
@@ -2100,6 +2108,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       code E-AIO-BUSY <> if code throw then
       RETRY-MS >MS TASK:SLEEP
    again ;
+
+\ Each run's own files, so runs in one tree share none.
+: PATHS-MAKE ( -- )
+   s" ws-test" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" stray.txt" STRAY-BUF FS:JOIN-PATH STRAY-U !
+   dir s" stderr.txt" ERR-PATH-BUF FS:JOIN-PATH ERR-PATH-U !
+   dir s" transcript.txt" SCRIPT-PATH-BUF FS:JOIN-PATH SCRIPT-PATH-U ! ;
 
 : FILL-BUFFERS ( -- )
    BUF-CAP 0 ?do i 31 * 7 + $FF and PATTERN i SPAN:U8! loop
@@ -2131,6 +2147,7 @@ public
    0 CLOSED-N !
    CLOSED-LOCK TASK:FACILITY-INIT
    FILL-BUFFERS
+   PATHS-MAKE
    0 ACCEPTED TASK:SEMAPHORE-INIT
    0 FILLED TASK:SEMAPHORE-INIT
    0 UNHELD TASK:SEMAPHORE-INIT

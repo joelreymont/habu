@@ -22,7 +22,7 @@ SUITE cross-engine-build
 ;SUITE
 
 \ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
-\ TCP4; writes build/ws-transcript.txt and compares it whole.
+\ TCP4; writes its transcript to a file and compares it whole.
 SUITE websocket
    src/lib/net/ws-test.f
 ;SUITE
