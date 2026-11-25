@@ -742,17 +742,18 @@ public
    d REL>N ?SIMM32 {: delta:n :}
    $0F80 cc + s EMIT-OP  delta s EMIT-D ;
 
-\ A grown branch is placed in its rel8 form, BRANCH-HOLE bytes, and named by
-\ that form's opcode, EB for jmp and 70+cc for jcc; its rel32 form, E9 or
-\ 0F 80+cc, is BRANCH-GROWTH bytes longer.
+\ A growing branch is emitted in its rel8 form, BRANCH-HOLE bytes, and named by
+\ that form's opcode, EB for jmp or 70+cc for jcc; E9 and 0F 80+cc are its rel32 forms.
 2 constant BRANCH-HOLE
+
+\ The opcode: the growth of the rel32 form, which reaches any target.
+: BRANCH-LONG ( n -- n ) $EB = if 3 exit then 4 ;
 
 \ The opcode and the distance from the branch's first byte to its target.
 : BRANCH-GROWTH ( n n -- n ) {: op:n d:n :}
    d BRANCH-HOLE - {: e:n :}
    e -128 >= e 127 <= and if 0 exit then
-   op $EB = if 3 exit then
-   4 ;
+   op BRANCH-LONG ;
 
 \ The branch's first byte, its opcode, its growth, and the displacement from
 \ its end.

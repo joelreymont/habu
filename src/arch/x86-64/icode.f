@@ -28,23 +28,19 @@ private
 
 -1 constant UNBOUND
 
-\ JMP, JCC, CALL, LEA-REL, (rel32), JMP8, JCC8, (rel8) and MOVABS, (abs64) emit
-\ a zero field, the last bytes of the instruction, and record it as a site of
-\ the label; a rel is measured from the field's end. Label numbers count up
-\ across streams and are never reused, so a label held past its stream's link or
-\ reset names no label of the next one. A site's kind names its field's width.
-\ A SITE-BRANCH is a rel8 field whose branch may still grow; the instruction's
-\ first byte, just before the field, is its short opcode, EB or 70+cc.
+\ JMP, and JCC, (rel8, growing), CALL, and LEA-REL, (rel32) and MOVABS, (abs64)
+\ end in a zero field, a site of the label; a rel counts from the field's end.
 0 constant SITE-REL8
 1 constant SITE-REL32
 2 constant SITE-ABS64
-3 constant SITE-BRANCH
+3 constant SITE-BRANCH   \ a rel8 field that may grow, after its opcode, EB or 70+cc
 
 \ The sink's bytes live in an arena: a cross-build runs this file on its host,
 \ and the heap here is the target's.
 TYPED-VARIABLE SINK-ARENA ^ARENA:arena
 TYPED-VARIABLE SINK ^VEC:vector<u8>     \ NULL-PTR until SINK-OPEN makes it
-variable NLBL                        \ labels made since load
+TYPED-VARIABLE SPARE ^VEC:vector<u8>    \ placement's target, then the sink's place
+variable NLBL            \ labels made since load; never reused, so a stale one is unknown
 variable LBL-BASE                    \ the number of this stream's first label
 variable NSITE                       \ sites this stream has recorded
 DYNAMIC-BUFFER LBL-AT n              \ label less LBL-BASE -> its offset, or UNBOUND
@@ -119,10 +115,9 @@ private
    x SITE-KIND @ SITE-ABS64 = if base x SITE-TARGET + exit then
    x SITE-TARGET x SITE-END - ;
 
+\ A rel8 field is in reach: placement chose its form so, and CUT only shortens
+\ the distance from a kept site to its label.
 : ?REACH ( n n -- ) {: v:n kind:n :}
-   kind SITE-REL8 = if
-      v -128 < v 127 > or if s" x64code: rel8 out of reach" REJECT then
-   then
    kind SITE-REL32 = if
       v -2147483648 < v 2147483647 > or if s" x64code: rel32 out of reach" REJECT then
    then ;
@@ -200,14 +195,8 @@ public
 \ Each site's label is checked before its instruction is emitted.
 : JMP, ( label -- )
    ?KNOWN {: k:n :}
-   0 >REL ASM-SINK ENC-JMP-REL32
-   k SITE-REL32 END-SITE
-   ENDED ;
-
-: JMP8, ( label -- )
-   ?KNOWN {: k:n :}
    0 >REL ASM-SINK ENC-JMP-REL8
-   k SITE-REL8 END-SITE
+   k SITE-BRANCH END-SITE
    ENDED ;
 
 : RET, ( -- ) ASM-SINK ENC-RET ENDED ;
@@ -216,13 +205,8 @@ public
 
 : JCC, ( condition label -- )
    ?KNOWN {: c:condition k:n :}
-   c 0 >REL ASM-SINK ENC-JCC-REL32
-   k SITE-REL32 END-SITE ;
-
-: JCC8, ( condition label -- )
-   ?KNOWN {: c:condition k:n :}
    c 0 >REL ASM-SINK ENC-JCC-REL8
-   k SITE-REL8 END-SITE ;
+   k SITE-BRANCH END-SITE ;
 
 : CALL, ( label -- )
    ?KNOWN {: k:n :}
@@ -261,22 +245,26 @@ private
 : GROWING? ( -- bool )
    false NSITE @ 0 ?do i SITE-KIND @ SITE-BRANCH = or loop ;
 
-\ Branch k's growth, its opcode read at its raw first byte.
+\ Branch k's growth, its opcode read at its raw first byte; one whose label is
+\ not yet bound takes the form that reaches wherever the label lands.
 : GROWTH ( n n -- n ) {: k:n d:n :}
-   CODE k RELAX:BR-AT @ + c@  d BRANCH-GROWTH ;
+   CODE k RELAX:BR-AT @ + c@
+   k RELAX:BR-TO @ UNBOUND = if BRANCH-LONG exit then
+   d BRANCH-GROWTH ;
 
 : FILE-BRANCHES ( -- )
    RELAX:RESET
    NSITE @ 0 ?do
       i SITE-KIND @ SITE-BRANCH = if
          i SITE-END ?IN-CODE
-         i SITE-END BRANCH-HOLE -  i SITE-TARGET  BRANCH-HOLE RELAX:BRANCH+ drop
+         i SITE-END BRANCH-HOLE -  i SITE-LBL @ LBL-AT @  BRANCH-HOLE RELAX:BRANCH+ drop
       then
    loop ;
 
-\ The placed bytes, each branch in its final form with a zero displacement.
+\ The placed bytes in SPARE, each branch in its final form with a zero displacement.
 : PLACED-CODE ( -- ^VEC:vector<u8> )
-   SINK-ARENA @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW {: new:^ :}
+   SPARE @ {: new:^ :}
+   new 0 VEC:RESIZE
    ASM-SINK new s" " RELAX:COPY
    RELAX:BRANCHES 0 ?do
       i RELAX:BR-AT @ {: at:n :}
@@ -318,16 +306,14 @@ private
 
 public
 
-\ A driver calls it after the last instruction and before it reads any code
-\ offset, as gas and LLVM lay out a section once: each growing branch takes the
-\ shortest form that reaches, and every field, label and end moves with it.
-\ RELAX's state is shared with tier 0, so a stream with none leaves it alone.
+\ Before a driver reads a code offset: each growing branch takes the shortest
+\ form that reaches, rel32 while its label is unbound; no placed byte moves again.
 : PLACE-BRANCHES ( -- )
    GROWING? 0= if exit then
    FILE-BRANCHES
    0 ['] GROWTH RELAX:SIZE
    PLACE-SITES PLACE-LABELS PLACE-ENDS
-   PLACED-CODE SINK ! ;
+   PLACED-CODE  SINK @ SPARE !  SINK ! ;
 
 \ The linker keeps labels through map writing. Other callers finish the stream
 \ with ASM-LINK, which also releases its labels and sites.
@@ -355,16 +341,19 @@ public
 : REF-SITE ( n -- n ) SITE-AT @ ;
 : REF-LABEL ( n -- n ) SITE-LBL @ ;
 : REF-KIND ( n -- n ) SITE-KIND @ ;
+\ Callers add sites in ascending order, as a kernel object holds them: the
+\ order PLACE-BRANCHES needs.
 : REF+ ( n n n -- ) SITE+ ;
 
 : SINK-OPEN ( -- )
    SINK @ NULL-PTR <> if ASM-RESET else
       ARENA:NEW SINK-ARENA !
       SINK-ARENA @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW SINK !
+      SINK-ARENA @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW SPARE !
    then ;
 
 : SINK-CLOSE ( -- )
-   FORGET  SINK-ARENA @ ARENA:RELEASE  NULL-PTR SINK-ARENA !  NULL-PTR SINK ! ;
+   FORGET  SINK-ARENA @ ARENA:RELEASE  NULL-PTR SINK-ARENA !  NULL-PTR SINK !  NULL-PTR SPARE ! ;
 
 : BYTES, ( str -- )
    ASM-LEN {: from:n :}

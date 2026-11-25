@@ -37,6 +37,7 @@ variable STACK-BAD
 variable REGION-BAD
 variable DATA-BAD
 variable OCC-BAD
+variable TEXT0                       \ the stream's byte 0, which OPEN, binds
 
 : RBASE-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DSTACK-REG ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
@@ -112,11 +113,10 @@ private
    C-NE bad JCC,
    dst RDI ASM-SINK ENC-MOV-RR ;
 
-\ r = the runtime address of the stream's byte 0, the text content base: rip
-\ after the lea is that base plus the lea's end offset.
+\ r = the runtime address of the stream's byte 0, the text content base: a
+\ rip-relative lea of TEXT0 reads no code offset, so placement moves it freely.
 : TEXT-BASE, ( r64 -- ) {: r:r64 :}
-   r 0 MEM-RIP ASM-SINK ENC-LEA
-   r X64CODE:ASM-LEN >IMM32 ASM-SINK ENC-SUB-RI32 ;
+   r TEXT0 @ >LABEL X64CODE:LEA-REL, ;
 
 \ Map the descriptor in r8, REGION bytes shared, at rdi.
 : VIEW, ( n n -- ) {: prot:n flags:n :}
@@ -245,7 +245,7 @@ private
    RAX FD-WORD-VA IMM,
    RDI RAX MEM-AT ASM-SINK ENC-MOV-RM
    RDI RDI ASM-SINK ENC-TEST-RR
-   C-E done JCC8,
+   C-E done JCC,
    RSI RSP ASM-SINK ENC-MOV-RR
    RDX R64>N >R32 SIGNO-BYTES >IMM32 ASM-SINK ENC-MOV32-RI32
    RAX R64>N >R32 NR-WRITE >IMM32 ASM-SINK ENC-MOV32-RI32
@@ -869,6 +869,7 @@ variable HEX-AT
    cp cp BREAKPOINT:BYTES MEM-OFF ASM-SINK ENC-LEA ;
 
 : OPEN, ( -- )
+   X64CODE:LBL TEXT0 !  TEXT0 @ >LABEL X64CODE:LBL,
    X64CODE:LBL STACK-BAD !  X64CODE:LBL REGION-BAD !  X64CODE:LBL DATA-BAD !  X64CODE:LBL OCC-BAD !
    X64CODE:LBL LFAULTREC !
    RBASE-REG TEXT-BASE,

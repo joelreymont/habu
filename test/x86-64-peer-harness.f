@@ -125,7 +125,8 @@ public
 : EXPECT-SIGNAL ( n -- ) negate ENDING ! ;
 
 \ The address the next routine appended lands at, so the one it is emitted at.
-: POSITION ( -- n ) TEXT-VA ASM-LEN + ;
+\ The stream is placed first, so no byte before the read moves again.
+: POSITION ( -- n ) PLACE-BRANCHES TEXT-VA ASM-LEN + ;
 
 \ Write the staged stream as it stands: byte 0 is the ELF entry. The quotation
 \ adds the arguments the image runs with.

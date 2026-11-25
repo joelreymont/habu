@@ -20,18 +20,18 @@ require src/lib/vector.f
 package RELAX
 public
 
-DYNAMIC-BUFFER BR-AT n                \ the branches: raw first byte, raw target
-DYNAMIC-BUFFER BR-TO n                \ or -1 while open, and the bytes beyond
-DYNAMIC-BUFFER BR-LEN n               \ the hole
+DYNAMIC-BUFFER BR-AT n                \ branch -> raw first byte
+DYNAMIC-BUFFER BR-TO n                \ branch -> raw target, or -1 while open
+DYNAMIC-BUFFER BR-LEN n               \ branch -> bytes beyond its hole
 
 private
 
 variable NBR
 variable FIXED-LEN
-variable NINS                         \ the insertions, in raw order:
-DYNAMIC-BUFFER INS-AT n               \ raw offset, branch or -1 for a fixed one,
-DYNAMIC-BUFFER INS-BR n               \ and the lengths of those before each, with
-DYNAMIC-BUFFER INS-SUM n              \ all of them last
+variable NINS                         \ insertions, in raw order
+DYNAMIC-BUFFER INS-AT n               \ insertion -> raw offset
+DYNAMIC-BUFFER INS-BR n               \ insertion -> branch, or -1 for a fixed one
+DYNAMIC-BUFFER INS-SUM n              \ insertion -> lengths before it; at NINS, all
 
 : INS+ ( n n -- ) {: at:n br:n :}
    NINS @ {: k:n :}
@@ -102,9 +102,8 @@ private
 
 public
 
-\ The fixed insertions' length, and the rule ( k d -- n ) giving the bytes
-\ branch k takes beyond its hole, d the distance from its first byte to its
-\ target.
+\ The fixed insertions' length and the rule ( k d -- n ): the bytes branch k
+\ takes beyond its hole, d the distance from its first byte to its target.
 : SIZE ( n [ n n -- n ] -- )
    swap FIXED-LEN !
    begin SUMS dup GROWN? 0= until drop ;
