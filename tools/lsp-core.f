@@ -99,7 +99,10 @@ ENUM state starting running shut-down ;ENUM
 1 LAYOUT-BUFFER STATE-BUF state
 
 TYPED-VARIABLE JSON-ST JSON:cursor
-LINE-CAP 2 + SPAN-BUFFER: HEAD-BUF        \ the reader's buffer: a header line and its CR LF
+LINE-CAP 2 + constant HEAD-BYTES          \ a header line and its CR LF
+create HEAD-ROW HEAD-BYTES SCRATCH-ALLOT
+\ The reader's buffer.
+: HEAD-BUF ( -- SPAN:span<u8> ) HEAD-ROW HEAD-BYTES SPAN:MAKE ;
 TYPED-VARIABLE REPLY-OUT ^VEC:vector<u8>  \ a reply's bytes, grown as it is written
 TYPED-VARIABLE INPUT CONTENT-LENGTH:reader
 TYPED-VARIABLE BODY-SPAN SPAN:span<u8>

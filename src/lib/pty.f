@@ -35,9 +35,9 @@ $80045430 constant LINUX-TIOCGPTN
 $20007454 constant MACOS-TIOCPTYGRANT
 $20007452 constant MACOS-TIOCPTYUNLK
 $40807453 constant MACOS-TIOCPTYGNAME
-create LOCK 1 cells allot
-create NUMBER 1 cells allot
-variable WRITTEN
+create LOCK 1 cells SCRATCH-ALLOT
+create NUMBER 1 cells SCRATCH-ALLOT
+SCRATCH-VARIABLE WRITTEN
 
 : DIGIT-COUNT ( n -- n )
    1 swap begin 10 / dup 0 > while swap 1+ swap repeat drop ;

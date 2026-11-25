@@ -2,7 +2,7 @@
 \ child engine on the other side of a terminal (the pair from src/lib/pty.f),
 \ read into one buffer a suite makes claims about.
 \ STORAGE CLASS. PROCESS-WIDE: one child and one wait at a time; SPAWN-ON-PTY
-\ refuses a second pair while one is open. The reading words take a descriptor,
+\ rejects a second pair while one is open. The reading words take a descriptor,
 \ so the same buffer also serves a suite's pipe children.
 
 require src/lib/error.f
@@ -29,20 +29,21 @@ $10 constant WATCH-CAP             \ registered never-seen needles
 $40 constant NEEDLE-CAP            \ bytes per needle
 10 constant LF
 
-create RBUF BUF-CAP allot
-create PTYNAME PTY:SLAVE-PATH-CAP allot
-create OUTB 1 allot                \ the one byte SEND-BYTE and SEND-LINE write
-create PATH-BUF PATH-CAP allot     \ the path the spawn transaction execs
+create RBUF BUF-CAP SCRATCH-ALLOT
+create PTYNAME PTY:SLAVE-PATH-CAP SCRATCH-ALLOT
+create OUTB 1 SCRATCH-ALLOT        \ the one byte SEND-BYTE and SEND-LINE write
+create PATH-BUF PATH-CAP SCRATCH-ALLOT \ the path the spawn transaction execs
+\ A load's WATCH+ holds in the program, which has seen no byte yet.
 create NEEDLE WATCH-CAP NEEDLE-CAP * allot
 create NEEDLE-LEN WATCH-CAP cells allot
-create NEEDLE-SEEN WATCH-CAP cells allot
+create NEEDLE-SEEN WATCH-CAP cells SCRATCH-ALLOT
 
-variable RN                        \ bytes in RBUF
-variable WEND                      \ end of the window an absence claim reads; -1 with no barrier
-variable MFD                       \ the master; -1 with no child
-variable SFD                       \ the slave, only between opening it and the spawn
-variable KID                       \ the pty child; -1 with no child
-variable PATH-U
+SCRATCH-VARIABLE RN                \ bytes in RBUF
+SCRATCH-VARIABLE WEND              \ end of the window an absence claim reads; 0 with no barrier
+SCRATCH-VARIABLE MFD               \ the master plus one; 0 with no child
+SCRATCH-VARIABLE SFD               \ the slave plus one; 0 but between opening it and the spawn
+SCRATCH-VARIABLE KID               \ the pty child; 0 with no child
+SCRATCH-VARIABLE PATH-U
 variable WATCH-N
 
 
@@ -79,13 +80,13 @@ variable WATCH-N
 \ A full buffer keeps its tail rather than dropping everything: a marker split
 \ across the compaction survives whole in what is kept, and every older byte has
 \ already been searched and offered to every watch. The barrier window retires
-\ with the dropped bytes, so a claim behind it is refused rather than answered
+\ with the dropped bytes, so a claim behind it is rejected rather than answered
 \ from a buffer that lost the evidence.
 : KEEP-TAIL! ( -- )
    RN @ BUF-CAP TAIL-KEEP - < if exit then
    RBUF RN @ TAIL-KEEP - +  RBUF TAIL-KEEP BYTE-COPY
    TAIL-KEEP RN !
-   -1 WEND ! ;
+   0 WEND ! ;
 
 
 \ The slave is opened here, never by PTY:OPEN: it must never become this
@@ -93,12 +94,12 @@ variable WATCH-N
 : OPEN-SLAVE ( -- )
    PTYNAME PTY:PTY-OPEN-FLAGS 0 open {: s:n :}
    s 0 < if E-PTY-OPEN throw then
-   s SFD ! ;
+   s 1+ SFD ! ;
 
 
 : OPEN-MASTER-HELD ( -- )
    PTYNAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N {: m:n :}
-   m MFD !
+   m 1+ MFD !
    m >FD FD:FD-CLOEXEC! ;
 
 
@@ -108,9 +109,9 @@ variable WATCH-N
 
 
 : CLOSE-FD! ( ^n -- ) {: slot:^ :}
-   slot @ 0 < if exit then
-   slot @ close
-   -1 slot ! ;
+   slot @ 0= if exit then
+   slot @ 1- close
+   0 slot ! ;
 
 public
 
@@ -122,7 +123,7 @@ public
 \ gone. A watch fact is not cleared - it is what survives this.
 : BUF-CLEAR ( -- )
    0 RN !
-   -1 WEND ! ;
+   0 WEND ! ;
 
 
 private
@@ -195,7 +196,7 @@ public
 
 
 : MASTER-FD ( -- fd )
-   MFD @ >FD ;
+   MFD @ 1- >FD ;
 
 
 : CHILD-PID ( -- pid )
@@ -232,7 +233,7 @@ public
    CHILD-PID PID>N 0 <= if E-PTY-IO throw then
    DRAIN-TO-HANGUP
    CHILD-PID PROCESS:WAIT PROCESS:STATUS>ENDING
-   -1 KID ! ;
+   0 KID ! ;
 
 
 private
@@ -245,21 +246,25 @@ private
    s STR:LEN PATH-U ! ;
 
 
+: SLAVE-FD ( -- fd )
+   SFD @ 1- >FD ;
+
+
 \ Open the pair and start the child on its slave. Every throw here leaves both
 \ ends to the abort path: the child owns the slave only once the spawn returned.
 : SPAWN-BUILD ( -- )
    OPEN-PAIR
-   PATH-BUF PATH-U @ >str SFD @ >FD SFD @ >FD SFD @ >FD PROCESS:SPAWN-IO PID>N KID !
+   PATH-BUF PATH-U @ >str SLAVE-FD SLAVE-FD SLAVE-FD PROCESS:SPAWN-IO PID>N KID !
    KID @ 0 <= if E-PTY-IO throw then
    SFD CLOSE-FD! ;
 
 
 \ Close what the build opened and forget the child it never started, so the next
-\ spawn opens its own pair instead of refusing over a dead one.
+\ spawn opens its own pair instead of being rejected over a dead one.
 : SPAWN-CLEAN ( -- )
    SFD CLOSE-FD!
    MFD CLOSE-FD!
-   -1 KID ! ;
+   0 KID ! ;
 
 public
 
@@ -268,8 +273,7 @@ public
 \ closed here: the child holds the only copies, so its exit hangs the master up.
 \ A failed spawn throws what failed and leaves nothing open.
 : SPAWN-ON-PTY ( str -- )
-   MFD @ 0 >= if E-PTY-IO throw then
-   -1 SFD !
+   MFD @ 0<> if E-PTY-IO throw then
    STORE-PATH
    [: SPAWN-BUILD ;] catch dup 0 <> if
       SPAWN-CLEAN
@@ -344,9 +348,9 @@ public
 \ Wait for a marker and close an absence claim's window at its end. The marker
 \ has to be one the child prints PAST the point where the rejected text could
 \ have appeared. The window retires before the wait, so a wait the child hangs
-\ up on leaves none, and the claim behind it is refused as well.
+\ up on leaves none, and the claim behind it is rejected as well.
 : WAIT-BARRIER ( str -- bool ) {: s:str :}
-   -1 WEND !
+   0 WEND !
    s WAIT-FOR 0= if false exit then
    0 s FIND-FROM {: at:n :}
    at 0 < if false exit then
@@ -358,7 +362,7 @@ public
 \ it reads the child's answer instead of a buffer that is merely still empty.
 \ With no window there is no claim and the answer is false.
 : WINDOW-ABSENT? ( str -- bool ) {: s:str :}
-   WEND @ 0 < if false exit then
+   WEND @ 0= if false exit then
    RBUF WEND @ >str s STR:CONTAINS? 0= ;
 
 
@@ -385,17 +389,5 @@ public
 
 : WATCH-RESET ( -- )
    0 WATCH-N ! ;
-
-private
-
-\ Every descriptor cell reads -1 until something opens it, so the abort paths
-\ close only what opened and SPAWN-ON-PTY can tell "no child" from fd 0.
-: INIT ( -- )
-   -1 MFD !
-   -1 SFD !
-   -1 KID !
-   -1 WEND ! ;
-
-INIT
 
 ;package

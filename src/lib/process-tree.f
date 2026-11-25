@@ -61,13 +61,13 @@ private
 2 constant QUIET-PASSES
 
 DYNAMIC-BUFFER MEMBERS n
-variable MEMBER-N
-variable SELF
-variable ROOT
-variable GROUP                      \ a peer walk's group, 0 in a tree walk
-variable ADDED
-variable AWAKE
-variable WALKING                    \ 1 while a walk, a CATCHES?, a CPU-NS or a RUNS? holds the storage above and below
+SCRATCH-VARIABLE MEMBER-N
+SCRATCH-VARIABLE SELF
+SCRATCH-VARIABLE ROOT
+SCRATCH-VARIABLE GROUP              \ a peer walk's group, 0 in a tree walk
+SCRATCH-VARIABLE ADDED
+SCRATCH-VARIABLE AWAKE
+SCRATCH-VARIABLE WALKING            \ 1 while a walk, a CATCHES?, a CPU-NS or a RUNS? holds the storage above and below
 
 \ SIGKILL is 9 on every host; SIGSTOP is not one number.
 9 constant SIGKILL
@@ -140,9 +140,9 @@ variable WALKING                    \ 1 while a walk, a CATCHES?, a CPU-NS or a 
 4096 constant LIST-FIRST
 
 DYNAMIC-BUFFER LIST u8
-variable LIST-BYTES                 \ what LIST offers the kernel, 0 outside a walk
-create SHORT SHORT-BYTES allot
-create TASK TASK-BYTES allot
+SCRATCH-VARIABLE LIST-BYTES         \ what LIST offers the kernel, 0 outside a walk
+create SHORT SHORT-BYTES SCRATCH-ALLOT
+create TASK TASK-BYTES SCRATCH-ALLOT
 
 PROCESS-SYMBOLS
 
@@ -255,13 +255,13 @@ FUNCTION: PID-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 $29 constant CLOSE-PAREN
 10 constant RADIX
 
-create STAT STAT-CAP allot
-create STAT-PATH STAT-PATH-CAP allot
-create TASK-DIR TASK-DIR-CAP allot
-variable STAT-U
-variable STAT-PATH-U
-variable TASK-DIR-U
-variable CUR
+create STAT STAT-CAP SCRATCH-ALLOT
+create STAT-PATH STAT-PATH-CAP SCRATCH-ALLOT
+create TASK-DIR TASK-DIR-CAP SCRATCH-ALLOT
+SCRATCH-VARIABLE STAT-U
+SCRATCH-VARIABLE STAT-PATH-U
+SCRATCH-VARIABLE TASK-DIR-U
+SCRATCH-VARIABLE CUR
 
 ENUM load DERIVE eq loaded gone refused ;ENUM
 
@@ -498,11 +498,11 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
 236 constant KINFO-SIGCATCH
 4096 constant STATUS-CAP
 
-create MIB MIB-N 4 * allot
-create KINFO KINFO-BYTES allot
-create STATUS STATUS-CAP allot
-variable KINFO-U                    \ sysctl's size_t in and out
-variable STATUS-U
+create MIB MIB-N 4 * SCRATCH-ALLOT
+create KINFO KINFO-BYTES SCRATCH-ALLOT
+create STATUS STATUS-CAP SCRATCH-ALLOT
+SCRATCH-VARIABLE KINFO-U            \ sysctl's size_t in and out
+SCRATCH-VARIABLE STATUS-U
 
 FUNCTION: SYSCTL sysctl ( ^u8 n ^u8 ^u8 str -- i32 ) ;FUNCTION
 
@@ -587,9 +587,9 @@ FUNCTION: SYSCTL sysctl ( ^u8 n ^u8 ^u8 str -- i32 ) ;FUNCTION
 100 constant USER-HZ
 1000000000 constant NS-PER-S
 
-create RUSAGE RUSAGE-BYTES allot
-create TIMEBASE TIMEBASE-BYTES allot
-variable TICKS
+create RUSAGE RUSAGE-BYTES SCRATCH-ALLOT
+create TIMEBASE TIMEBASE-BYTES SCRATCH-ALLOT
+SCRATCH-VARIABLE TICKS
 
 FUNCTION: PID-RUSAGE proc_pid_rusage ( n n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: TIMEBASE-INFO mach_timebase_info ( ^u8 -- i32 ) ;FUNCTION
@@ -680,10 +680,10 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ^u8 -- i32 ) ;FUNCTION
 11 constant PATH-FLAVOR             \ proc_pidinfo's PROC_PIDPATHINFO
 1024 constant EXE-PATH-BYTES        \ PROC_PIDPATHINFO_SIZE
 
-create EXE-PATH EXE-PATH-BYTES allot
-variable RUN-DEVICE
-variable RUN-INODE
-variable RUN-N
+create EXE-PATH EXE-PATH-BYTES SCRATCH-ALLOT
+SCRATCH-VARIABLE RUN-DEVICE
+SCRATCH-VARIABLE RUN-INODE
+SCRATCH-VARIABLE RUN-N
 
 \ An executable the caller may not stat (on Linux, another user's) is skipped.
 : EXE-MATCH ( str -- )

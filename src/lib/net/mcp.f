@@ -207,7 +207,9 @@ HTTP:MAX-WORKERS TYPED-BUFFER CALLED n                \ the tool a tools/call ru
 HTTP:MAX-WORKERS TYPED-BUFFER OPENED n                \ the resource a resources/read reads
 HTTP:MAX-WORKERS TYPED-BUFFER ASKED str               \ an unsupported MCP-Protocol-Version
 \ A decoded Mcp-Name is no longer than the header block that carried it.
-HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
+HTTP:MAX-WORKERS HTTP:HEAD-CAP * constant NAMES-BYTES
+create NAME-ROWS NAMES-BYTES SCRATCH-ALLOT
+: NAMES ( -- SPAN:span<u8> ) NAME-ROWS NAMES-BYTES SPAN:MAKE ;
 HTTP:MAX-WORKERS TYPED-BUFFER HOLDING n               \ the held row of a body at HELD
 \ The TIME:MONO-NS reading the message's milliseconds count from.
 HTTP:MAX-WORKERS TYPED-BUFFER START n

@@ -91,8 +91,8 @@ DATA-START PAGE-BYTES 1- + PAGE-BYTES / PAGE-BYTES * constant DATA-BYTES
 \ ---- the signatures an emission row states -------------------------------------
 1 constant FRAME-ALIGNED             \ the lanes are in the aligned frame
 8 constant WRAPPERS                  \ the wrappers before reserve
-variable RESERVES                    \ 1 once RESERVE! named reserve's callee, else 0
-variable RES-FN                      \ that callee
+SCRATCH-VARIABLE RESERVES            \ 1 once RESERVE! named reserve's callee, else 0
+SCRATCH-VARIABLE RES-FN              \ that callee
 3 constant RANKS
 
 : RANK ( WLINK:origin -- n )
@@ -104,8 +104,8 @@ variable RES-FN                      \ that callee
 
 \ ---- the rows -------------------------------------------------------------------
 DYNAMIC-BUFFER BODIES u8             \ every body, in the order added
-variable BODIES-U
-variable NF                          \ functions
+SCRATCH-VARIABLE BODIES-U
+SCRATCH-VARIABLE NF                  \ functions
 DYNAMIC-BUFFER FN-AT n               \ each one's body in BODIES
 DYNAMIC-BUFFER FN-LEN n
 DYNAMIC-BUFFER FN-IN n               \ its lanes in and out, and its frame variant
@@ -115,28 +115,28 @@ DYNAMIC-BUFFER FN-RANK n             \ its origin's place in index order
 DYNAMIC-BUFFER FN-IDX n              \ its index, once LINK has numbered it
 DYNAMIC-BUFFER FN-TYPE n             \ its type's index, likewise
 DYNAMIC-BUFFER FN-POS n              \ where LINK wrote its body in the module
-variable NCALLS
+SCRATCH-VARIABLE NCALLS
 DYNAMIC-BUFFER CALL-FN n             \ each call site's caller
 DYNAMIC-BUFFER CALL-AT n             \ its field, from the start of the body
 DYNAMIC-BUFFER CALL-TGT n            \ its callee
 DYNAMIC-BUFFER CALL-SLOT n           \ 1 when LINK writes the call opcode before the field too
-variable NADDRS
+SCRATCH-VARIABLE NADDRS
 DYNAMIC-BUFFER ADDR-FN n             \ each address site's function
 DYNAMIC-BUFFER ADDR-AT n
 DYNAMIC-BUFFER ADDR-KIND n
 DYNAMIC-BUFFER ADDR-TGT n
 DYNAMIC-BUFFER IMAGE u8              \ the data image
-variable IMAGE-U
-variable NCELLS
+SCRATCH-VARIABLE IMAGE-U
+SCRATCH-VARIABLE NCELLS
 DYNAMIC-BUFFER CELL-AT n             \ each data cell's offset in the image
 DYNAMIC-BUFFER CELL-KIND n
 DYNAMIC-BUFFER CELL-TGT n
-variable NRUNS                       \ the image's runs of non-zero bytes, once LINK found them
+SCRATCH-VARIABLE NRUNS               \ the image's runs of non-zero bytes, once LINK found them
 DYNAMIC-BUFFER RUN-AT n              \ each run's first offset in the image
 DYNAMIC-BUFFER RUN-LEN n
-variable NSLOTS                      \ the slots holding a function
+SCRATCH-VARIABLE NSLOTS              \ the slots holding a function
 DYNAMIC-BUFFER SLOT-FN n             \ the function in slot FIRST-SLOT + k
-variable NINDS
+SCRATCH-VARIABLE NINDS
 DYNAMIC-BUFFER IND-FN n              \ each indirect site's function
 DYNAMIC-BUFFER IND-AT n              \ its field, from the start of the body
 
@@ -144,9 +144,11 @@ DYNAMIC-BUFFER IND-AT n              \ its field, from the start of the body
 \ The writer runs dry to measure what it would write, so a size precedes what it
 \ counts and OUT is reserved for the whole module.
 DYNAMIC-BUFFER OUT u8                \ the module
-variable AT                          \ where the next byte goes
-variable DRY                         \ nonzero while the writer only measures
-LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
+SCRATCH-VARIABLE AT                  \ where the next byte goes
+SCRATCH-VARIABLE DRY                 \ nonzero while the writer only measures
+create LEB-ROW LEB-MOST SCRATCH-ALLOT
+\ One LEB, before it is put.
+: LEB ( -- SPAN:span<u8> ) LEB-ROW LEB-MOST SPAN:MAKE ;
 
 \ Never empty: a name, a type, a body or the image.
 : PUT-BYTES ( str -- )
@@ -210,8 +212,8 @@ LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
    {: fn :}
    RANKS 0 do  i fn RANKED  loop ;
 
-variable NEXT                        \ the next index to number
-variable ENTRY-IDX
+SCRATCH-VARIABLE NEXT                \ the next index to number
+SCRATCH-VARIABLE ENTRY-IDX
 
 : NUMBER ( n -- )
    NEXT @ swap FN-IDX !
@@ -223,17 +225,17 @@ variable ENTRY-IDX
 \ a function of no lanes share a type, and only the latter can be the entry.
 \ The longest type: its form, then two vectors of a count's LEB and 256 types.
 1 LEB-MOST 256 + 2 * + constant TY-CAP
-TY-CAP BUFFER: TY                    \ the type being interned
-variable TY-U
+TY-CAP SCRATCH-BUFFER: TY            \ the type being interned
+SCRATCH-VARIABLE TY-U
 DYNAMIC-BUFFER TYPES u8              \ each type once, in the order first used
-variable TYPES-U
-variable NTYPES
+SCRATCH-VARIABLE TYPES-U
+SCRATCH-VARIABLE NTYPES
 DYNAMIC-BUFFER TYPE-AT n
 DYNAMIC-BUFFER TYPE-LEN n
-variable WR-I32                      \ () -> (i32): run, out-base, out-len, fault-kind, err-base, err-len
-variable WR-I64                      \ () -> (i64): throw-code, fault-addr
-variable WR-RES                      \ (i64) -> (i64): reserve
-variable WR-DYN                      \ (i32) -> (i32): an indirect call's
+SCRATCH-VARIABLE WR-I32              \ () -> (i32): run, out-base, out-len, fault-kind, err-base, err-len
+SCRATCH-VARIABLE WR-I64              \ () -> (i64): throw-code, fault-addr
+SCRATCH-VARIABLE WR-RES              \ (i64) -> (i64): reserve
+SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
 
 : TY-BYTE ( n -- )
    TY-U @ TY + c!
@@ -570,9 +572,9 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ at GAP zero bytes: GAP-MIN, over a segment header's 13, doubled to fit RUNS-MAX.
 16 constant GAP-MIN
 100000 constant RUNS-MAX             \ the most data segments a JS host must load (the JS API's limit)
-variable GAP                         \ the zero bytes that end a run
-variable RUN-FIRST                   \ the open run's first offset, -1 while none is open
-variable RUN-LAST                    \ its last non-zero byte's offset
+SCRATCH-VARIABLE GAP                 \ the zero bytes that end a run
+SCRATCH-VARIABLE RUN-FIRST           \ the open run's first offset, -1 while none is open
+SCRATCH-VARIABLE RUN-LAST            \ its last non-zero byte's offset
 
 : RUN-CLOSE ( -- )
    NRUNS @ {: k:n :}

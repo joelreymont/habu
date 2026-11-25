@@ -11,9 +11,11 @@ require src/lib/fs-mutate.f
 require src/lib/fs-identity.f
 require src/lib/fs-list.f
 require src/lib/fd.f
+require src/lib/ffi-abi.f
 require src/lib/codesign.f
 require src/lib/json.f
 require src/lib/process-command.f
+require src/lib/pty.f
 require src/lib/engine-candidate.f
 require src/compiler/target/model.f
 require tools/hb-build-core.f
@@ -88,6 +90,8 @@ CAP BUFFER: BYTES-A
 CAP BUFFER: BYTES-B
 DYNAMIC-BUFFER FIXTURE-BYTES u8
 STAMP-BYTES BUFFER: EXPECT
+PTY:SLAVE-PATH-CAP BUFFER: SLAVE
+32 BUFFER: TIMES                        \ utimes' access and write times, each seconds then microseconds
 STATE-CAP BUFFER: STATE-A  variable STATE-A-U
 STATE-CAP BUFFER: STATE-B  variable STATE-B-U
 STATE-CAP BUFFER: STATE-W  variable STATE-W-U  \ a warm build's, C's or D's
@@ -114,6 +118,9 @@ variable REPORT-CODE                    \ its size.code,
 variable REPORT-SUM                     \ the sum of its six size classes
 variable REPORT-FILES                   \ and files_reused plus files_compiled
 variable CLASS-N                        \ the class CLASS+ read
+
+PROCESS-SYMBOLS
+FUNCTION: UTIMES-CALL utimes ( ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : A$ ( -- str ) OUT-A OUT-A-U @ >str ;
@@ -2201,6 +2208,64 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" build two rewrites an object" LABEL  n 0 > TTRUE
    s" prog-v" s\" 0\n" s" the program prints /dev/null's byte count" NEST-RUN ;
 
+\ The calls sequence's main.f: its load calls each library word once and leaves a pseudo-terminal open; its
+\ program, which keeps what it reaches, calls them again.
+: WRITE-CALLS ( -- )
+   L$ s" calls" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
+   s" abc" WRITE-DATA
+   s\" require src/lib/fs.f\nrequire src/lib/process-tree.f\n" SRC+
+   s\" require src/lib/net/http-static.f\nrequire src/lib/pty.f\n" SRC+
+   s\" require src/lib/heap.f\nrequire src/lib/secret/dir.f\n" SRC+
+   s\" require src/arch/wasm/link.f\nrequire src/lib/pty-harness.f\n" SRC+
+   s\" : ASK ( -- ) s\" " SRC+  s" d.txt" NEST-PATH$ SRC+
+   s\" \" FS:FILE-SIZE drop  s\" x\" TMP-PATH drop  getpid >PID PROC-TREE:CPU-NS drop ;\n" SRC+
+   s\" : SERVE ( -- ) s\" x\" TMP-PATH s\" abc\" FS:WRITE-ALL\n" SRC+
+   s\"    s\" TMPDIR\" GETENV HTTP:STATIC-ROOT  s\" x\" TMP-PATH FS:REMOVE-FILE ;\n" SRC+
+   s\" PTY:SLAVE-PATH-CAP SCRATCH-BUFFER: SLAVE\n" SRC+
+   s\" : TYPED ( PTY:master n -- ) {: m f:n :}\n   f 0 dup2 drop  f close\n" SRC+
+   s\"    m s\" TMPDIR\" GETENV PTY:WRITE  m s\\\" \\n\" PTY:WRITE\n" SRC+
+   s\"    LINE-EDITOR:READ-LINE drop  m PTY:CLOSE ;\n" SRC+
+   s\" : TYPE-LINE ( -- ) SLAVE PTY:SLAVE-PATH-CAP PTY:OPEN drop\n" SRC+
+   s\"    SLAVE PTY:PTY-OPEN-FLAGS 0 open TYPED ;\n" SRC+
+   s\" : KEY ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}\n" SRC+
+   s\"    s\" calls\" s\" x\" v SECRET:READ drop  v VEC:DELETE ;\n" SRC+
+   s\" : BIND ( -- ) s\" TMPDIR\" GETENV s\" calls\" SECRET:DIR-BIND KEY ;\n" SRC+
+   s\" : FN ( -- n ) s\" TMPDIR\" GETENV 0 0 1 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ ;\n" SRC+
+   s\" : CHILD ( -- ) s\" /usr/bin/true\" PTY-HARNESS:SPAWN-ON-PTY PTY-HARNESS:REAP drop ;\n" SRC+
+   s\" ASK SERVE TYPE-LINE BIND  FN WLINK:LINK drop  CHILD\n" SRC+
+   s\" : MAIN ( -- ) ASK  HTTP:STATIC-COUNT . HTTP:STATIC-CLOSE\n   s\" " SRC+
+   NEST-DIR NEST-DIR-U @ >str SRC+
+   s\" \" HTTP:STATIC-ROOT HTTP:STATIC-COUNT .  LINE-EDITOR:READ-LINE drop\n" SRC+
+   s\"    [: KEY ;] catch SECRET:E-CONFIG = bool>n .  FN dup . WLINK:LINK drop  CHILD ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ d.txt was last read n seconds and last written 1 second past the epoch.
+: ACCESSED ( n -- )
+   TIMES LE:U64!  0 TIMES 8 + LE:U64!
+   1 TIMES 16 + LE:U64!  0 TIMES 24 + LE:U64!
+   s" d.txt" NEST-PATH$ FS:>PATHZ TIMES UTIMES-CALL 0 T= ;
+
+\ CB2, after d.txt's access time changes, under another TMPDIR and with another pty open, compiles main.f again.
+: CALLS-AGAIN ( CMD:command ^ARENA:arena -- CMD:command )
+   {: m:^ :}
+   m L$ s" prog" IN$ WHOLE-FILE {: p1:str :}
+   2 ACCESSED  F$ MARK
+   s" CB2" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s" the build rewrites an object" LABEL  F$ REWRITTEN 0 > TTRUE
+   m L$ s" prog" IN$ WHOLE-FILE {: p2:str :}
+   s" the program is the first build's" LABEL  p1 p2 STR:= TTRUE
+   s" prog" s\" 0\n2\n-1\n0\n"
+   s" the program serves nothing, then d.txt and main.f, reads no secret, links function 0 and runs a child"
+   NEST-RUN ;
+
+\ Guards a program against what a library word a load ran left in its buffers.
+: CALLS-CASE ( CMD:command -- CMD:command )
+   WRITE-CALLS
+   1 ACCESSED
+   s" CB" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   SLAVE PTY:SLAVE-PATH-CAP PTY:OPEN drop {: held:PTY:master :}
+   [: CALLS-AGAIN ;] ARENA:WITH
+   held PTY:CLOSE ;
+
 \ The spelled sequence's turn.f: the record turn, with a third field when the
 \ flag is true, and box<a>.
 : WRITE-TURN ( bool -- )
@@ -2534,8 +2599,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       PUBLIC-LOOKUP-CASE CLAUSE-CASE DERIVED-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE
-      DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE FOLDED-CASE FOLDED-TOP-CASE PACKAGED-CASE EVALUATED-CASE
-      OPENED-CASE BUILT-CASE CAST-CASE CROSS-CASE TARGET-CASE ;]
+      DIVISOR-CASE ROUTE-CASE DEVICE-CASE CALLS-CASE SPELLED-CASE FOLDED-CASE FOLDED-TOP-CASE PACKAGED-CASE
+      EVALUATED-CASE OPENED-CASE BUILT-CASE CAST-CASE CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
 
 

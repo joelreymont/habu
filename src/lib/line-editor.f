@@ -10,19 +10,19 @@ split-str
 package LINE-EDITOR
 private
 
-create TIOB0 80 allot           \ original (canonical) termios, saved at READ-LINE
-create TIOB 80 allot            \ working termios
-create KB 8 allot               \ 1-byte key buffer
-create LBUF 256 allot           \ line under edit
-create HIST 4096 allot          \ history ring: 16 slots x 256 ([len][bytes])
-variable LLEN  variable LPOS    \ line length, cursor
-variable LOVER                  \ bytes this line asked for past LLINE-MAX
-create LDEC 24 allot            \ the refusal's decimal scratch, filled from its end
-variable LDEC-I
-create LDEC-LF 10 c,            \ the refusal's newline
-variable HN  variable HV        \ history count, browse index
+create TIOB0 80 SCRATCH-ALLOT   \ original (canonical) termios, saved at READ-LINE
+create TIOB 80 SCRATCH-ALLOT    \ working termios
+create KB 8 SCRATCH-ALLOT       \ 1-byte key buffer
+create LBUF 256 SCRATCH-ALLOT   \ line under edit
+create HIST 4096 SCRATCH-ALLOT  \ history ring: 16 slots x 256 ([len][bytes])
+SCRATCH-VARIABLE LLEN  SCRATCH-VARIABLE LPOS \ line length, cursor
+SCRATCH-VARIABLE LOVER          \ bytes this line asked for past LLINE-MAX
+create LDEC 24 SCRATCH-ALLOT    \ the rejection's decimal scratch, filled from its end
+SCRATCH-VARIABLE LDEC-I
+create LDEC-LF 10 c,            \ the rejection's newline
+SCRATCH-VARIABLE HN  SCRATCH-VARIABLE HV \ history count, browse index
 PTR-VARIABLE HS                 \ history slot scratch: it holds a ring address
-variable DONE                   \ 0 editing, 1 accepted, 2 eof
+SCRATCH-VARIABLE DONE           \ 0 editing, 1 accepted, 2 eof
 
 -1 constant KEY-EOF             \ KEY's no-key answer; no byte collides with it
 

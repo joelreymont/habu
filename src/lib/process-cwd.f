@@ -13,7 +13,7 @@ package PROC-CWD
 
 private
 
-create PROC-CWDZ-BUF PROCESS:PATHZ-CAP allot
+create PROC-CWDZ-BUF PROCESS:PATHZ-CAP SCRATCH-ALLOT
 
 public
 

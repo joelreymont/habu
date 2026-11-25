@@ -77,11 +77,11 @@ public
 \ TMP-PATH's answer is a path of at most PATH-CAP bytes with no NUL: a
 \ caller that opens it hands it to PATH0 or PATHZ, which add one in a buffer
 \ of their own.
-create TPB PATH-CAP allot
+create TPB PATH-CAP SCRATCH-ALLOT
 PTR-VARIABLE TPP
-variable TPQ
+SCRATCH-VARIABLE TPQ
 PTR-VARIABLE TPS
-variable TPU
+SCRATCH-VARIABLE TPU
 
 : TPP@ ( -- ^u8 )
    TPP @ ;

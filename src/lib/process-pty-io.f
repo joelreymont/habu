@@ -29,24 +29,24 @@ PATH-CAP 1 + constant IO-PATH-CAP  \ a supervised executable path of PATH-CAP by
 
 \ Load-time scratch shared by the parent build path and by each forked child (a
 \ fork copies this memory, so a child reads the same values the parent stored).
-create IO-PATH-BUF IO-PATH-CAP allot   \ supervised executable path bytes (child reads)
+create IO-PATH-BUF IO-PATH-CAP SCRATCH-ALLOT \ supervised executable path bytes (child reads)
 1 TYPED-BUFFER IO-ENVP ^u8          \ single NULL slot: the empty child environment
-create IO-GOBYTE 1 allot               \ the one-byte release token written by LAUNCH
-create IO-PTY-NAME PTY:SLAVE-PATH-CAP allot \ slave path (NUL-terminated)
-create IO-LFBYTE 1 allot                \ the line terminator WRITE-LINE appends
+create IO-GOBYTE 1 SCRATCH-ALLOT       \ the one-byte release token written by LAUNCH
+create IO-PTY-NAME PTY:SLAVE-PATH-CAP SCRATCH-ALLOT \ slave path (NUL-terminated)
+create IO-LFBYTE 1 SCRATCH-ALLOT        \ the line terminator WRITE-LINE appends
 
-variable IO-PATH-LEN                    \ supervised path length (n)
-variable IO-RAW                         \ raw handle number carried across the spawn catch
-variable IO-TTY                         \ spawn mode: 0 pipes, -1 a pseudo-terminal
+SCRATCH-VARIABLE IO-PATH-LEN            \ supervised path length (n)
+SCRATCH-VARIABLE IO-RAW                 \ raw handle number carried across the spawn catch
+SCRATCH-VARIABLE IO-TTY                 \ spawn mode: 0 pipes, -1 a pseudo-terminal
 
 \ In-flight spawn state. One spawn runs to completion before the next, so a single
 \ set of cells is enough; every cell holds -1 until the build assigns it, which
 \ lets the abort path close/reap only what actually opened.
-variable IO-T-PID                                \ target pid
-variable IO-MASTER   variable IO-DONE             \ owner-kept stdout/stdin ends
-variable IO-TW       variable IO-GO-W             \ target watch and release gate
-variable IO-SOUT-W   variable IO-SIN-R            \ child-side stdout/stdin ends
-variable IO-GO-R                                 \ child-side release gate
+SCRATCH-VARIABLE IO-T-PID                        \ target pid
+SCRATCH-VARIABLE IO-MASTER   SCRATCH-VARIABLE IO-DONE \ owner-kept stdout/stdin ends
+SCRATCH-VARIABLE IO-TW       SCRATCH-VARIABLE IO-GO-W \ target watch and release gate
+SCRATCH-VARIABLE IO-SOUT-W   SCRATCH-VARIABLE IO-SIN-R \ child-side stdout/stdin ends
+SCRATCH-VARIABLE IO-GO-R                         \ child-side release gate
 
 : IO-CLOSE-FD ( fd -- ) {: f:fd :}
    f FD>N 0 < if exit then
@@ -252,7 +252,7 @@ variable IO-GO-R                                 \ child-side release gate
 \ puts it back, so each cleanup retires its own target. Zero is no scope: every
 \ reservation advances its slot's generation past zero, so no handle is zero.
 TASK:+USER IO-SCOPE n
-create IO-OUTER SLOT-CAP cells allot
+create IO-OUTER SLOT-CAP cells SCRATCH-ALLOT
 
 : IO-ENTER ( process-pty-handle -- process-pty-handle )
    HANDLE>N {: raw:n :}

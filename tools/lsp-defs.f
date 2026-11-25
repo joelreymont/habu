@@ -212,7 +212,9 @@ variable TARGET-V                        \ a use's declaring token's,
 variable TARGET-END-V
 variable LINE-AT                         \ and where its strings start in BYTES
 variable CUR-G                           \ the group positions count for, -1 for none
-PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
+PATH-CAP 3 * 7 + constant URI-BYTES    \ file:// and each byte of a path escaped
+create URI-ROW URI-BYTES SCRATCH-ALLOT
+: URI-SPAN ( -- SPAN:span<u8> ) URI-ROW URI-BYTES SPAN:MAKE ;
 TYPED-VARIABLE ESC-OUT ^VEC:vector<u8>
 TYPED-VARIABLE ESC-W JSON:writer
 

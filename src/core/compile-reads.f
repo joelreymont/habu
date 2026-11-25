@@ -78,7 +78,7 @@ CAST: REC-CELLS ( ^u8 -- ^^u8 )
 
 \ This file's own stat buffer, main thread only: FILE+ and LFILE+ MISS on any
 \ other, and STAMP and LSTAMP run under a load or a link.
-create STAT-BUF FS-ABI:STAT-BYTES allot
+create STAT-BUF FS-ABI:STAT-BYTES SCRATCH-ALLOT
 
 : STAT-CELL@ ( n -- n ) STAT-BUF + CELL-VIEW @ ;
 

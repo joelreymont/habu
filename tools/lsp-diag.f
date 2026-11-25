@@ -42,7 +42,9 @@ TYPED-VARIABLE PUB-OUT ^VEC:vector<u8>   \ a notification's bytes, grown as writ
 TYPED-VARIABLE NEW-B ^VEC:vector<u8> SCRATCH-ONLY \ the files this check published lists for
 TYPED-VARIABLE W JSON:writer
 TYPED-VARIABLE FILE-B ^VEC:vector<u8> SCRATCH-ONLY \ a packet's file, decoded
-PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
+PATH-CAP 3 * 7 + constant URI-BYTES    \ file:// and each byte of a path escaped
+create URI-ROW URI-BYTES SCRATCH-ALLOT
+: URI-SPAN ( -- SPAN:span<u8> ) URI-ROW URI-BYTES SPAN:MAKE ;
 
 TYPED-VARIABLE LINE-A ^u8             \ the packet line being screened
 variable LINE-U

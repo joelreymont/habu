@@ -249,7 +249,9 @@ DYNAMIC-BUFFER PENDING message        \ what the handler call queued or running 
 \ The handshake's scratch, a row to each HTTP worker that may run ACCEPT.
 HTTP:MAX-WORKERS TYPED-BUFFER KEY-AT ^u8 \ Sec-WebSocket-Key as it was sent
 HTTP:MAX-WORKERS TYPED-BUFFER KEY-U n
-HTTP:MAX-WORKERS NONCE-CAP * SPAN-BUFFER: NONCES
+HTTP:MAX-WORKERS NONCE-CAP * constant NONCES-BYTES
+create NONCE-ROWS NONCES-BYTES SCRATCH-ALLOT
+: NONCES ( -- SPAN:span<u8> ) NONCE-ROWS NONCES-BYTES SPAN:MAKE ;
 
 \ The handler call each request worker runs, for HAND-ENDED, which takes
 \ nothing: its slot, and whether it failed, as it has until the handler
