@@ -1,4 +1,3 @@
-split-str
 \ aio.f - asynchronous I/O, package AIO: a task submits one operation, gets a
 \ ticket and AWAITs it; one loop task waits on the eventfd every ring signals,
 \ drains the rings and TASK:WAKEs each owner.
@@ -353,10 +352,10 @@ FUNCTION: FD-WRITE-CALL write ( n str -- n ) ;FUNCTION
 
 \ Logs a refused system call's errno before it throws, so the errno the kernel
 \ gave is not lost behind a named code.
-: DIAG-ERRNO ( str -- ) {: label:^ labelu:n :}
+: DIAG-ERRNO ( str -- ) {: label:str :}
    FFI:ERRNO {: errno:n :}
    LOG:ERROR s" aio" LOG:LINE
-   label labelu LOG:TEXT+
+   label LOG:TEXT+
    errno LOG:INT+
    LOG:;LINE ;
 
@@ -501,10 +500,10 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    base len + REC-GROWN atomic! ;
 
 : AIO-NULL ( -- ^n )
-   NULL$ drop CELL-VIEW ;
+   NULL$ STR:DATA CELL-VIEW ;
 
 : AIO-NULL-BYTES ( -- ^u8 )
-   NULL$ drop ;
+   NULL$ STR:DATA ;
 
 \ Only REC.BUF is cleared: REC.HOLD says whether the pair is readable.
 : REC-RESET ( n -- ) {: idx:n :}
@@ -790,8 +789,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ Releases the first `mapped` regions and the ring's fd after logging, since
 \ munmap and close overwrite the errno the refused mmap left.
 : MAP-REFUSED ( ^ring str n -- )
-   {: rg:^ label:^ labelu:n mapped:n :}
-   label labelu DIAG-ERRNO
+   {: rg:^ label:str mapped:n :}
+   label DIAG-ERRNO
    mapped 1 > if
       rg RING-CQ-BASE @ rg RING-CQ-LEN @ munmap drop
    then
@@ -1031,7 +1030,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ Adds 1 to WAKE-FD's count; the caller holds AIO-LOCK, which WAKE-OUT needs.
 : URING-WAKE ( -- n )
    1 WAKE-OUT LE:U64!
-   WAKE-FD @ WAKE-OUT 8 FD-WRITE-CALL 0 >= if 0 exit then
+   WAKE-FD @ WAKE-OUT 8 >str FD-WRITE-CALL 0 >= if 0 exit then
    s" eventfd write errno " DIAG-ERRNO
    E-AIO-ENTER ;
 
@@ -1423,7 +1422,7 @@ public
 : WAKE ( ^waker -- ) {: w:^ :}
    fence
    0 1 w WAKER-OWED atomic-cas 0<> if exit then
-   w WAKER-WRITE-END @ FD>N WAKE-BYTE 1 write drop ;
+   w WAKER-WRITE-END @ FD>N WAKE-BYTE 1 >str write drop ;
 
 \ The read end polled for readable, with no deadline, for the parked task to
 \ add to its group: ready once a WAKE has written.

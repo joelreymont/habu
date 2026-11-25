@@ -1,4 +1,3 @@
-split-str
 \ aio-macos.f - Darwin backend for src/lib/aio.f's records (fields in REC.HOST).
 \ One poll thread services all records; a nonblocking pipe wakes it when a
 \ submission changes the descriptor set or the nearest deadline. The caller
@@ -126,7 +125,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 : MAC-FCNTL ( n n n -- n ) MAC-FCNTL-CALL MAC-RESULT ;
 
 : MAC-NOTIFY ( -- n )
-   MAC-WRITE-FD @ MAC-BYTE 1 MAC-WRITE MAC-RESULT
+   MAC-WRITE-FD @ MAC-BYTE 1 >str MAC-WRITE MAC-RESULT
    dup 1 = swap MAC-AGAIN negate = or if 0 else E-AIO-ENTER then ;
 
 : MAC-CLEAR-WAKE ( -- )
