@@ -201,13 +201,12 @@ variable KERNEL-N                    \ the kernel routines this link added
    e NSHADOW:ADDR-SITES 0 ?do e i ADDR-SITE+ loop ;
 
 
-\ A kept address row: a scratch cell holds 0 in the copy, a data cell its image
-\ offset and an xt cell its function's table slot, which WLINK:LINK stores.
+\ A kept address row: a data cell's image offset, or an xt cell's function's
+\ table slot.
 : ROW+ ( n -- )
    {: row:n :}
    row IMAGE-OFF {: off:n :}
    off CELL-FITS
-   row SCRATCH-ROW? if 0 off COPY-AT LE:U64! exit then
    row CELL-VALUE {: v:n :}
    v 0= if exit then
    row DATA-ROW? if off NEMIT:ADDR-DATA  v DATA-OFFSET  WLINK:DATA-CELL+ exit then

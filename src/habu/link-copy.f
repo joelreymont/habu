@@ -10,7 +10,7 @@ split-str
 \ [BASE, OPEN-DP); unit BUILT-EXTS-N + 1 the data no piece holds, the build
 \ body's. A piece's extents tile its data but for the cell LAY sets apart
 \ before its first laid text: no unit holds it, and a build whose cell holds an
-\ address there is refused with LINKER:E-ADDRESS. The header is live but for
+\ address there is rejected with LINKER:E-ADDRESS. The header is live but for
 \ its string bodies, and a header address cell is read once no piece stored it
 \ or a reached one did: a piece is reached once one of its extents or records
 \ is live, and an address a piece stored there is that piece's, as its object
@@ -32,11 +32,12 @@ split-str
 \ offset modulo a cell, a monotone map, so an interior or end address keeps its
 \ meaning; then the kept bodies whose unit is dead, sorted by length then
 \ bytes, each from a cell boundary with its length cell and the byte past it.
-\ The alignment bytes no unit holds are not laid. An address cell not read
-\ holds zeros where it is laid, and the list names none of them. The list lies
-\ in the band when it fits, else from the first cell past the data, where the
-\ image's data then ends. An engine's is the space as is, its list and header
-\ written as a stripped program's.
+\ The alignment bytes no unit holds are not laid. An address cell not read and
+\ a scratch cell hold zeros where they are laid, and the list names neither: a
+\ scratch row only tells a link to write its cell zero, which this copy has
+\ done. The list lies in the band when it fits, else from the first cell past
+\ the data, where the image's data then ends. An engine's is the space as is,
+\ its list and header written as a stripped program's.
 
 require src/core/exit-status.f
 require src/lib/le.f
@@ -482,7 +483,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
 : ROW-KEPT? ( n -- bool )
    {: i:n :}
    ENGINE? @ if true exit then
-   i CELL-READ @ 0<> ;
+   i CELL-READ @ 0= if false exit then
+   ROWS drop i cells + @ SCRATCH-ROW? 0= ;
 
 \ The rows the program keeps, and where their list lies.
 : PLACE-LIST ( -- )
@@ -583,6 +585,12 @@ variable EXT-I                       \ BY-EXT's next row to lay
    ADDRESS-CELLS:CAP-FIELD HEADER-FIELD!
    0 ADDRESS-CELLS:MODE-FIELD HEADER-FIELD! ;
 
+\ The cell of the row holds 0 in the copy.
+: ZERO-CELL ( n -- )
+   IMAGE-OFF {: off:n :}
+   off CELL-FITS
+   0 off COPY-AT LE:U64! ;
+
 \ The copy lists only the kept rows, at their image offsets; a dropped row's laid
 \ cell holds 0.
 : KEEP-LIST ( -- )
@@ -594,7 +602,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
       i ROW-KEPT? if
          row IMAGE-ROW over COPY-CELLS !  1 +
       else
-         i CELL-LAID? if 0 row IMAGE-OFF COPY-AT LE:U64! then
+         i CELL-LAID? if row ZERO-CELL then
       then
    loop
    drop  COPY-HEADER ;
