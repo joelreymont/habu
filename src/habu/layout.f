@@ -279,11 +279,14 @@ INP-CELL RESERVED-PTR-U8-CELL CURSOR
 \ cross-build's copy of include.f routes the store to the image it writes while
 \ its code reads the running hb's record.
 $2C48 constant SOURCE-CELL
-\ The record's first cell is its top frame, the innermost open file's. A
+\ The record's first cell is its top frame, the innermost open file's; the next
+\ two are the current root's address and length, 0 at the top level. A
 \ frame's shared cells: the frame of the file it interrupted, 0 for none, the
 \ file's path, its size, -1 until read, and its execution copy, 0 when it runs
 \ the bytes after HEADER-BYTES.
 0 constant REC-TOP
+1 cells constant REC-ROOT
+2 cells constant REC-ROOTLEN
 0 constant FR-PREV
 2 cells constant FR-PATHLEN
 4 cells constant FR-SIZE

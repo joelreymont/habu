@@ -23,9 +23,10 @@
 \ under an address-space limit runs, maps nothing.
 \
 \ A diagnostic spells the missing require for its reader: an engine root's file
-\ by its name there, unless the reader's root holds that name; that one and any
-\ other by its path from the reader's root, through `..` where it is not below
-\ it, or by its canonical path where the reader has no root. `require` reads one
+\ by its name there, unless that root holds that name; that one and any
+\ other by its path from the root the reader's next require resolves under,
+\ through `..` where it is not below it, or by its canonical path where the
+\ reader has no root. `require` reads one
 \ token, so a path with a blank is spelled for `required`.
 \
 \ The edges, (requirer, required) pairs, are an open-addressed set of cells
@@ -269,10 +270,21 @@ create REAL-BUF PATH-CAP 1 + SCRATCH-ALLOT
    id OUTSIDE? 0= if 0 0= 0= exit then
    cur OUTSIDE? 0= ;
 
+EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
+SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER
+
+\ The root a require in file id's text resolves under now.
+: BASE$ ( n -- str ) {: id:n :}
+   LOADER @ {: rec:^ :}
+   rec NULL-PTR = if id ROOT$ exit then
+   rec SRCLOC:REC-ROOTLEN + CELL-VIEW @ {: u:n :}
+   u 0= if id ROOT$ exit then
+   rec SRCLOC:REC-ROOT + 0 ptr-field @  u >str ;
+
 \ The path by which file from requires file to: `..` n times, then the rest.
 : SPELLED ( n n -- n str ) {: to:n from:n :}
    to PATH$ {: t:str :}
-   from ROOT$ {: r:str :}
+   from BASE$ {: r:str :}
    r STR:LEN 0= if 0 t exit then
    t r FROM-ROOT {: p:str :}
    p PORTABLE? if 0 p exit then

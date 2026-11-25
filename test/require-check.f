@@ -29,8 +29,8 @@
 \ no file's. A `names:` row's target and a name in a literal are no call. A
 \ part's top-level call stays fresh warm while its file is required, and
 \ rejects warm once it is not. A file loads with the require its rejection
-\ suggests, of an engine file whose name its own root holds and of a file whose
-\ path holds blanks.
+\ suggests, of an engine file whose name its own root holds, of a file whose
+\ path holds blanks and after the file moves its root.
 \ hb-build.f and check.f read their argv, so they are spawned, one process per
 \ file.
 
@@ -523,16 +523,22 @@ PATH-CAP BUFFER: FOUND   variable FOUND-U
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N ;
 
-\ DIR$'s file f of text t is rejected, and loads after the require suggested.
-: FOLLOWED ( CMD:command str str -- CMD:command )
-   {: f:str t:str :}
-   f IN-DIR t FS:WRITE-ALL
+\ DIR$'s file f of text h and then t is rejected, and loads once the require
+\ suggested stands between them.
+: FOLLOWED-AFTER ( CMD:command str str str -- CMD:command )
+   {: f:str h:str t:str :}
+   SB-RESET  h SB-APPEND  t SB-APPEND
+   f IN-DIR SB$ FS:WRITE-ALL
    f LOAD-IN EXIT-STATUS:REJECTED T=
-   SB-RESET  HELP-LINE$ SB-APPEND  s\" \n" SB-APPEND  t SB-APPEND
+   SB-RESET  h SB-APPEND  HELP-LINE$ SB-APPEND  s\" \n" SB-APPEND  t SB-APPEND
    f IN-DIR SB$ FS:WRITE-ALL
    f LOAD-IN {: rc:n :}
    rc 0<> if CMD:ERR$ type cr then
    rc 0 T= ;
+
+\ DIR$'s file f of text t is rejected, and loads after the require suggested.
+: FOLLOWED ( CMD:command str str -- CMD:command )
+   s" " swap FOLLOWED-AFTER ;
 
 : OWN-NAME-CASE ( CMD:command -- CMD:command )
    s" the require suggested of an engine file the root holds the name of loads"
@@ -549,8 +555,17 @@ PATH-CAP BUFFER: FOUND   variable FOUND-U
    s" blank/app/main.f"
    s\" require sib.f\n: RQC-BLANK-M ( -- n ) RQC-BLANK ;\n" FOLLOWED ;
 
+: MOVED-CASE ( CMD:command -- CMD:command )
+   s" and after the file moves its root" T-LABEL
+   s" moved/app" IN-DIR FS:MAKE-DIRS
+   s" moved/lib.f" IN-DIR s\" : RQC-MOVED ( -- n ) 7 ;\n" FS:WRITE-ALL
+   s" moved/sib.f" IN-DIR s\" require lib.f\n" FS:WRITE-ALL
+   s" moved/app/main.f"
+   s\" s\q ..\q SOURCE-ROOT:ROOT!\nrequire sib.f\n"
+   s\" : RQC-MOVED-M ( -- n ) RQC-MOVED ;\n" FOLLOWED-AFTER ;
+
 : PATH-CASES ( CMD:command -- CMD:command )
-   OWN-NAME-CASE  BLANK-CASE ;
+   OWN-NAME-CASE  BLANK-CASE  MOVED-CASE ;
 
 \ check.f --verify-only of the file f: its rc.
 : VERIFY ( CMD:command str -- CMD:command n )

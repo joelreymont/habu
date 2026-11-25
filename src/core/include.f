@@ -295,8 +295,8 @@ variable OWNER-U
 \ Readers reach the loader's record by SRCLOC:SOURCE-CELL, the running hb's
 \ in a build.
 SRCLOC:REC-TOP constant REC-TOP
-CELL constant REC-ROOT
-2 cells constant REC-ROOTLEN
+SRCLOC:REC-ROOT constant REC-ROOT
+SRCLOC:REC-ROOTLEN constant REC-ROOTLEN
 3 cells constant REC-BYTES
 create LOADER-REC REC-BYTES SCRATCH-ALLOT
 EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
