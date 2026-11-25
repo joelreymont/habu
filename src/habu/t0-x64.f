@@ -23,6 +23,13 @@ split-str
 \ does every label a branch lands on (MARK and RESOLVE), since a branch may
 \ come from code that wrote r12; LOOP-POP and a unit's start clear it too.
 \ While it is clear, `i`, `loop` and `+loop` load r12 from the frame first.
+\
+\ AHEAD says by how many cells the data stack's top lies above rbx, negative
+\ below: x86-64 has no writeback, so a push or pop moves AHEAD and SETTLE emits
+\ the sum as one lea, which keeps the codes, wherever control arrives or
+\ leaves. A word that compares and branches settles before its compare, since
+\ the CPU fuses the two only when they are adjacent. Cells above rbx may hold
+\ live values until SETTLE, so nothing asynchronous may write there.
 
 require src/lib/error.f
 require src/lib/vector.f
@@ -64,6 +71,7 @@ using PLACE
 
 variable FLAGS                        \ nonzero while the condition codes are held
 variable HELD                         \ nonzero while r12 holds the index
+variable AHEAD
 
 0 constant FORM-JMP
 1 constant FORM-JCC
@@ -133,8 +141,20 @@ variable HELD                         \ nonzero while r12 holds the index
 : RDEPTH! ( r64 -- ) {: r:r64 :}
    r DATA-REG RSP-CELL MEM-OFF SINK ENC-MOV-MR ;
 
+\ ---- the data stack pointer --------------------------------------------------
+: SETTLE ( -- )
+   AHEAD @ {: k:n :}
+   k 0 = if exit then
+   DSP DSP k CELL * MEM-OFF SINK ENC-LEA
+   0 AHEAD ! ;
+
+: DSP+ ( n -- ) AHEAD +! ;
+
+\ The cell k cells above the stack's top.
+: TOP-MEM ( n -- mem ) {: k:n :}  DSP AHEAD @ k + CELL * MEM-OFF ;
+
 \ ---- PLACE's hooks -----------------------------------------------------------
-: UNIT-RESET ( -- ) 0 FLAGS !  0 HELD ! ;
+: UNIT-RESET ( -- ) 0 FLAGS !  0 HELD !  0 AHEAD ! ;
 
 : PROLOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
    bytes 0= if exit then
@@ -175,12 +195,12 @@ variable HELD                         \ nonzero while r12 holds the index
 \ until PATCH measures it from its placed end; an address site is movabs r64,
 \ imm64, whose imm64 starts two bytes past the row's offset. A quotation's
 \ RIP-relative lea names its unit inside the emission and needs no row.
-: RETURN ( -- ) EPI+  SINK ENC-RET ;
+: RETURN ( -- ) SETTLE EPI+  SINK ENC-RET ;
 
 \ The return is the kernel's does> patch slot, `jmp rel32` and the `ret` it
 \ falls through to, filed at the jump's offset.
 : SLOT-CLOSE ( -- )
-   EPI+
+   SETTLE EPI+
    0 >REL SINK ENC-JMP-REL32
    SINK ENC-RET
    PLACE:CLOSE
@@ -224,16 +244,8 @@ variable HELD                         \ nonzero while r12 holds the index
    HERE-OFF ADDR-QUOT-KIND n -1 PEND+
    d REG 0 MEM-RIP SINK ENC-LEA ;
 
-\ The stack pointer moved by k cells: an lea, which leaves the condition codes
-\ alone, as EMIT-CMP requires.
-: DSP+ ( n -- ) {: k:n :}
-   k 0 = if exit then
-   DSP DSP k CELL * MEM-OFF SINK ENC-LEA ;
-
-\ x86-64 has no writeback: a push stores and then moves the pointer, and a pop
-\ moves it and then loads, as G-PUSH and G-POP do.
 : PUSH ( vreg n -- ) {: s:vreg k:n :}
-   s REG DSP MEM-AT SINK ENC-MOV-MR
+   s REG 0 TOP-MEM SINK ENC-MOV-MR
    k DSP+ ;
 
 \ Store the constant n at m, keeping held condition codes.
@@ -243,23 +255,23 @@ variable HELD                         \ nonzero while r12 holds the index
    RAX m SINK ENC-MOV-MR ;
 
 : PUSH-LIT ( n n -- ) {: v:n k:n :}
-   v DSP MEM-AT LIT-M
+   v 0 TOP-MEM LIT-M
    k DSP+ ;
 
 : POP ( vreg n -- ) {: d:vreg k:n :}
    k negate DSP+
-   d REG DSP MEM-AT SINK ENC-MOV-RM ;
+   d REG 0 TOP-MEM SINK ENC-MOV-RM ;
 
 : SPILL ( vreg n -- )
    {: s:vreg k:n :}
-   s REG DSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
+   s REG k TOP-MEM SINK ENC-MOV-MR ;
 
 : SPILL-LIT ( n n -- ) {: v:n k:n :}
-   v DSP k CELL * MEM-OFF LIT-M ;
+   v k TOP-MEM LIT-M ;
 
 : FILL ( vreg n -- )
    {: d:vreg k:n :}
-   d REG DSP k CELL * MEM-OFF SINK ENC-MOV-RM ;
+   d REG k TOP-MEM SINK ENC-MOV-RM ;
 
 : MOV ( vreg vreg -- )
    {: d:vreg s:vreg :}
@@ -403,6 +415,7 @@ variable HELD                         \ nonzero while r12 holds the index
 
 : CMP ( vreg vreg -- )
    {: a:vreg b:vreg :}
+   SETTLE
    1 FLAGS !
    a REG b REG SINK ENC-CMP-RR ;
 
@@ -415,6 +428,7 @@ variable HELD                         \ nonzero while r12 holds the index
 
 : CMP-LIT ( vreg n -- )
    {: a:vreg v:n :}
+   SETTLE
    1 FLAGS !
    a REG v CMP-R ;
 
@@ -432,16 +446,18 @@ variable HELD                         \ nonzero while r12 holds the index
 
 \ ---- calls -------------------------------------------------------------------
 : CALL ( n n -- ) {: to:n loc:n :}
+   SETTLE
    0 HELD !
    HERE-OFF NEMIT:CALL to loc PCALL+
    0 >REL SINK ENC-CALL-REL32 ;
 
 : TAIL ( n n -- ) {: to:n loc:n :}
-   EPI+
+   SETTLE EPI+
    HERE-OFF NEMIT:TAIL to loc PCALL+
    0 >REL SINK ENC-JMP-REL32 ;
 
 : CALL-SELF ( -- )
+   SETTLE
    0 HELD !
    HERE-OFF SELF+
    0 >REL SINK ENC-CALL-REL32 ;
@@ -451,11 +467,11 @@ variable HELD                         \ nonzero while r12 holds the index
 \ in the open unit's list, and a head a raw offset.
 
 \ A branch of the form, with its condition or 0, to a raw offset or -1.
-: BRANCH ( n n n -- LABEL:branch ) HOLE BR+ ;
+: BRANCH ( n n n -- LABEL:branch ) SETTLE HOLE BR+ ;
 
-: RESOLVE ( LABEL:branch -- ) PLACE:RESOLVE  0 HELD ! ;
+: RESOLVE ( LABEL:branch -- ) SETTLE PLACE:RESOLVE  0 HELD ! ;
 
-: MARK ( -- LABEL:head ) 0 HELD !  PLACE:MARK ;
+: MARK ( -- LABEL:head ) SETTLE 0 HELD !  PLACE:MARK ;
 
 : FWD-JUMP ( -- LABEL:branch ) FORM-JMP 0 -1 BRANCH ;
 
@@ -466,20 +482,23 @@ variable HELD                         \ nonzero while r12 holds the index
    {: c:vreg :}
    c REG c REG SINK ENC-TEST-RR ;
 
-: FWD-ZERO ( vreg -- LABEL:branch ) TEST C-E FWD-JCC ;
+: FWD-ZERO ( vreg -- LABEL:branch ) SETTLE TEST C-E FWD-JCC ;
 
 : FWD-NE ( vreg vreg -- LABEL:branch )
    {: sel:vreg v:vreg :}
+   SETTLE
    sel REG v REG SINK ENC-CMP-RR
    C-NE FWD-JCC ;
 
 : FWD-NE-LIT ( vreg n -- LABEL:branch )
    {: sel:vreg v:n :}
+   SETTLE
    sel REG v CMP-R
    C-NE FWD-JCC ;
 
 : FWD-GE ( vreg vreg -- LABEL:branch )
    {: s:vreg l:vreg :}
+   SETTLE
    s REG l REG SINK ENC-CMP-RR
    C-GE FWD-JCC ;
 
@@ -499,7 +518,7 @@ variable HELD                         \ nonzero while r12 holds the index
 
 : BACK-ZERO ( vreg LABEL:head -- )
    {: c:vreg m:LABEL:head :}
-   c TEST C-E m BACK-JCC ;
+   SETTLE c TEST C-E m BACK-JCC ;
 
 : BACK-CC ( cc LABEL:head -- )
    {: c:cc m:LABEL:head :}
@@ -594,6 +613,7 @@ variable HELD                         \ nonzero while r12 holds the index
 \ The step is r12's, so this target leaves the free vreg alone.
 : LOOP-NEXT ( vreg LABEL:head -- )
    nip {: m:LABEL:head :}
+   SETTLE
    FRAME-IDX
    IDX SINK ENC-INC
    IDX RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
@@ -605,6 +625,7 @@ variable HELD                         \ nonzero while r12 holds the index
 : LOOP-STEP ( vreg vreg LABEL:head -- )
    {: s:vreg t:vreg m:LABEL:head :}
    s REG {: sr:r64 :}  t REG {: r:r64 :}
+   SETTLE
    FRAME-IDX
    r IDX SINK ENC-MOV-RR
    r RAX LLIM-OFF MEM-OFF SINK ENC-SUB-RM
