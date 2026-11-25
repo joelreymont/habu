@@ -69,6 +69,7 @@ require src/lib/json.f
 require src/lib/json-rpc.f
 require src/lib/json-schema.f
 require src/lib/log.f
+require src/lib/fmt.f
 require src/lib/memory.f
 require src/lib/arena.f
 require src/lib/utf8-scalar.f
@@ -119,7 +120,7 @@ private
 
 0 constant IDLE
 1 constant CALLING           \ a tool's body runs and may give its result
-2 constant SENT              \ the response began; a later fault is the host's
+2 constant SENT              \ the response began; a later throw replaces it
 3 constant HELD              \ HOLD kept the call, which FINISH answers
 
 0 constant DISCOVER-REPLY
@@ -169,10 +170,12 @@ TYPED-VARIABLE SCHEMA-READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
 HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response
-\ Where the reply goes: HANDLE's HTTP response in TO, or ANSWER-W, the writer
-\ ANSWER holds open on its caller's vector.
+\ The message's carrier: response under HANDLE, whose connection HOLD may take
+\ and whose 2025-11-25 notification is answered 202; vector under ANSWER and FINISH.
 ENUM sink response vector ;ENUM
 HTTP:MAX-WORKERS TYPED-BUFFER REPLY-TO sink
+\ The writer every reply is written through: open on REPLIES under HANDLE,
+\ on the caller's vector under ANSWER and on FINISHED under FINISH.
 HTTP:MAX-WORKERS TYPED-BUFFER ANSWER-W JSON:writer
 HTTP:MAX-WORKERS TYPED-BUFFER ID str                  \ empty when the id is not known
 HTTP:MAX-WORKERS TYPED-BUFFER METHOD str              \ JSON text, quotes kept
@@ -199,6 +202,12 @@ HTTP:MAX-WORKERS TYPED-BUFFER START n
 \ Each worker's vector, where FINISH writes a held call's response; NULL-PTR
 \ until its first FINISH.
 HTTP:MAX-WORKERS TYPED-BUFFER FINISHED ^VEC:vector<u8>
+\ Each worker's vector, where HANDLE writes its response, which the HTTP
+\ response borrows until it is sent; NULL-PTR until its first HANDLE.
+HTTP:MAX-WORKERS TYPED-BUFFER REPLIES ^VEC:vector<u8>
+\ Each worker's vector, where a -32603 reply's message is written; NULL-PTR
+\ until its first.
+HTTP:MAX-WORKERS TYPED-BUFFER FAULT-TEXTS ^VEC:vector<u8>
 \ Each worker's vector, where a tools/call's arguments' violation is written;
 \ NULL-PTR until its first call.
 HTTP:MAX-WORKERS TYPED-BUFFER VIOLATIONS ^VEC:vector<u8>
@@ -586,19 +595,9 @@ CAST: HELD>N ( held -- n )
    if ERROR-BODY else RESULT-BODY then ;
 
 
-: HTTP-REPLY ( -- )
-   SLOT TO @ {: answer:HTTP:response :}
-   answer SLOT STATUS @ HTTP:STATUS!
-   answer [: RESPONSE-BODY ;] HTTP:JSON! ;
-
 : VEC-REPLY ( -- ) SLOT ANSWER-W RESPONSE-BODY drop ;
 
-: SEND ( -- )
-   SENT SLOT STAGE !
-   SLOT REPLY-TO @ MATCH sink
-      response OF HTTP-REPLY ENDOF
-      vector OF VEC-REPLY ENDOF
-   ;MATCH ;
+: SEND ( -- ) SENT SLOT STAGE !  VEC-REPLY ;
 
 
 \ A header's value when it arrived exactly once; otherwise empty and false.
@@ -899,15 +898,6 @@ CAST: HELD>N ( held -- n )
    KEEP-LOCK TASK:GET
    construct keeping free idx KEEPS KEEP-PHASE !
    KEEP-UNLOCK ;
-
-: DROP-KEPT ( n -- ) dup CLOSE-KEPT FREE-KEPT ;
-
-\ A body's throw after HOLD closes the connection it took and frees its row.
-: BODY-FAULT ( n -- )
-   {: code:n :}
-   code 0= if exit then
-   SLOT STAGE @ HELD = if SLOT HOLDING @ DROP-KEPT then
-   code throw ;
 
 
 : REGISTERED? ( str -- bool )
@@ -1282,7 +1272,7 @@ CAST: HELD>N ( held -- n )
    idx SLOT CALLED !
    CALLING SLOT STAGE !
    args idx ADMITTED? 0= if exit then
-   [: args idx TOOL-BODY @ execute ;] catch BODY-FAULT
+   args idx TOOL-BODY @ execute
    SLOT STAGE @ CALLING = if E-STATE throw then ;
 
 
@@ -1384,7 +1374,7 @@ CAST: HELD>N ( held -- n )
    then
    s" ok" LOG:TEXT+ ;
 
-\ The slot's outcome, given the code passed to the host.
+\ The slot's outcome, given the message's fault or 0.
 : OUTCOME+ ( n -- )
    {: code:n :}
    code 0<> if s" fault " LOG:TEXT+  code LOG:CODE+ exit then
@@ -1415,23 +1405,33 @@ CAST: HELD>N ( held -- n )
 : ELAPSED+ ( n -- )
    s"  in " LOG:TEXT+  TIME:ELAPSED-MS LOG:INT+  s"  ms" LOG:TEXT+ ;
 
-\ With LOG, the message's line under the id text, given the code passed to
-\ the host.
+\ Whether the code is a body read HTTP:BODY$ did not complete before the
+\ reply began, which HTTP answers with the read's rejection.
+: READ-REJECTED? ( n -- bool )
+   E-HTTP-BODY-READ = SLOT STAGE @ IDLE = and ;
+
+\ The level of the line for the message's fault or 0.
+: LEVEL ( n -- LOG:level )
+   {: code:n :}
+   code 0= code READ-REJECTED? or if LOG:INFO exit then
+   LOG:ERROR ;
+
+\ With LOG, the message's line under the id text, given its fault or 0.
 : MESSAGE-LOGGED ( str n -- )
    {: id:str code:n :}
    LOGGING @ 0= if exit then
-   LOG:INFO s" mcp" LOG:LINE  id REQ+
+   code LEVEL s" mcp" LOG:LINE  id REQ+
    CALL+  s"  -> " LOG:TEXT+  code OUTCOME+
    SLOT START @ ELAPSED+
    LOG:;LINE
    id ARGUMENTS-LOGGED ;
 
 \ With LOG, FINISH's line for the held row, under the id of the request
-\ that held it, given the code passed to the host.
+\ that held it, given the quotation's throw or 0.
 : HELD-LOGGED ( n n -- )
    {: idx:n code:n :}
    LOGGING @ 0= if exit then
-   LOG:INFO s" mcp" LOG:LINE
+   code LEVEL s" mcp" LOG:LINE
    idx KEEP-REQ BUF:SPAN$ BUF:BLEN>N >str REQ+
    s" tools/call " LOG:TEXT+
    idx KEEPS KEEP-TOOL @ TOOL-NAME @ LOG:TEXT+
@@ -1472,22 +1472,60 @@ CAST: HELD>N ( held -- n )
    s" " SLOT PARAMS ! ;
 
 
-\ The code a message's caught code passes to the host: none for E-INPUT
-\ before the reply began, which FAULTED answers -32602.
-: PASSED ( n -- n )
+\ The fault a message's caught code is, which its line names: none for
+\ E-INPUT before the reply began, which FAULTED answers -32602.
+: FAULT-OF ( n -- n )
    {: code:n :}
    SLOT STAGE @ IDLE = code E-INPUT = and if 0 exit then
    code ;
 
+\ The worker's -32603 message: `<code> <name>: <text>`, the number alone when
+\ no name is declared.
+: FAULT$ ( n -- str )
+   {: code:n :}
+   SLOT FAULT-TEXTS WORKER-VEC {: v:^ :}
+   v 0 VEC:RESIZE  code FMT:INT$ v VEC:APPEND
+   code ERROR:NAME$ {: name:str :}
+   name STR:LEN 0= if v VEC:BYTES exit then
+   s"  " v VEC:APPEND  name v VEC:APPEND
+   s" : " v VEC:APPEND  code ERROR:TEXT$ v VEC:APPEND
+   v VEC:BYTES ;
+
+\ The -32603 reply to the code, status 500, in place of what ANSWER-W holds.
+: INTERNAL ( n -- )
+   {: code:n :}
+   SLOT ANSWER-W JSON:RESET drop
+   500 -32603 code FAULT$ BAD ;
+
+\ The response ANSWER-W holds once the quotation has written it, sent on the
+\ row's connection with the slot's status; a throw closes the connection.
+: KEPT-SEND ( n [ -- ] -- )
+   {: idx:n q :}
+   q catch {: code:n :}
+   code 0<> if idx CLOSE-KEPT code throw then
+   idx KEEPS KEEP-CONN @ SLOT STATUS @ s" application/json"
+   SLOT ANSWER-W JSON:WRITTEN$ HTTP:REPLY drop ;
+
+: KEPT-FAULT ( n n -- )
+   {: idx:n code:n :}
+   idx [: code INTERNAL VEC-REPLY ;] KEPT-SEND ;
+
+\ A body's throw after HOLD: the -32603 response goes on the connection HOLD
+\ took, the stage stays HELD, and the row is freed.
+: HELD-FAULT ( n -- )
+   SLOT HOLDING @ {: code:n idx:n :}
+   [: idx code KEPT-FAULT ;] [: idx FREE-KEPT ;] finally ;
+
 \ A message's caught code: E-INPUT before the reply began is -32602 with its
-\ reason's text; any other fault is rethrown.
+\ reason's text, a rejected body read is thrown on; any other is -32603, in
+\ place of any reply begun.
 : FAULTED ( n -- )
    {: code:n :}
    code 0= if exit then
-   code REASON:TEXT$ {: why:str :}
-   code PASSED {: passed:n :}
-   passed 0<> if passed throw then
-   400 -32602 why BAD SEND ;
+   code READ-REJECTED? if code throw then
+   code FAULT-OF 0= if 400 -32602 code REASON:TEXT$ BAD SEND exit then
+   SLOT STAGE @ HELD = if code HELD-FAULT exit then
+   code INTERNAL SEND ;
 
 
 \ WORKER-SLOT's E-HTTP-HANDLE, on a task that is no request worker, as E-STATE.
@@ -1524,20 +1562,26 @@ CAST: HELD>N ( held -- n )
 
 \ The quotation run as the body; E-STATE when it gives no result.
 : COMPOSE ( [ -- ] -- )
-   {: q :}
-   SLOT ANSWER-W FINISH-VEC JSON:OPEN drop
-   q [: SLOT ANSWER-W JSON:CLOSE ;] finally
+   execute
    SLOT STAGE @ SENT <> if E-STATE throw then ;
 
-\ The response sent on the row's connection, which a throw closes first.
+\ The body's response written, or the -32603 reply to its throw.
+: ANSWER-HELD ( n [ -- ] -- )
+   {: idx:n q :}
+   [: q COMPOSE ;] catch {: code:n :}
+   idx code HELD-LOGGED
+   code FAULTED ;
+
+: SEND-HELD ( n [ -- ] -- )
+   {: idx:n q :}
+   idx [: idx q ANSWER-HELD ;] KEPT-SEND ;
+
+\ The response sent on the row's connection.
 : REPLY-HELD ( n [ -- ] -- )
    {: idx:n q :}
    idx RESUME
-   [: q COMPOSE ;] catch {: code:n :}
-   idx code HELD-LOGGED
-   code 0<> if idx CLOSE-KEPT code throw then
-   idx KEEPS KEEP-CONN @ 200 s" application/json"
-   FINISH-VEC VEC:BYTES HTTP:REPLY drop ;
+   SLOT ANSWER-W FINISH-VEC JSON:OPEN drop
+   [: idx q SEND-HELD ;] [: SLOT ANSWER-W JSON:CLOSE ;] finally ;
 
 
 \ The message's envelope checked, then dispatched; the text is kept for catch.
@@ -1545,12 +1589,30 @@ CAST: HELD>N ( held -- n )
    dup ENVELOPE? if DISPATCH else SEND then ;
 
 
-\ The message answered into ANSWER-W, the writer ANSWER holds open on the
-\ caller's vector.
+\ The message answered into ANSWER-W, open on the caller's vector.
 : VEC-ANSWER ( str -- )
    [: CARRIED ;] catch {: code:n :} drop
-   code PASSED {: passed:n :}
-   [: code FAULTED ;] [: s" -" passed MESSAGE-LOGGED ;] finally ;
+   code FAULT-OF {: fault:n :}
+   [: code FAULTED ;] [: s" -" fault MESSAGE-LOGGED ;] finally ;
+
+: REPLY-VEC ( -- ^VEC:vector<u8> ) SLOT REPLIES WORKER-VEC ;
+
+\ HANDLE's message answered into ANSWER-W and logged.
+: RESPOND ( HTTP:response -- )
+   {: answer:HTTP:response :}
+   [: PROCESS ;] catch {: code:n :}
+   code FAULT-OF {: fault:n :}
+   [: code FAULTED ;]
+   [: answer HTTP:REQUEST-ID$ fault MESSAGE-LOGGED ;] finally ;
+
+\ The response HANDLE wrote, handed to HTTP once; a 2025-11-25 notification,
+\ answered 202 at once, and a held call have none.
+: DELIVER ( HTTP:response -- )
+   {: answer:HTTP:response :}
+   SLOT STAGE @ SENT <> if exit then
+   answer SLOT STATUS @ HTTP:STATUS!
+   answer REPLY-VEC VEC:BYTES HTTP:BODY!
+   answer s" Content-Type" s" application/json" HTTP:HEADER! ;
 
 public
 
@@ -1572,16 +1634,16 @@ public
 
 
 \ From the next HTTP:START on, each message HANDLE or ANSWER takes writes one
-\ LOG INFO line, tag mcp, once it is answered, in place of the line before
-\ dispatch: `req <id> <method> <target> -> <outcome> in <n> ms`. id is the
-\ HTTP:REQUEST-ID$ of HANDLE's request, `-` under ANSWER; method and target
-\ are as without LOG, `-` when no method was read; n is whole milliseconds
-\ from the request's start, or ANSWER's entry. outcome is `ok`, `tool
-\ error: <text>` (a schema refusal's included), `error <code>: <message>` for
-\ a JSON-RPC error (UNKNOWN-TOOL's included), `held` for a call HOLD kept,
-\ `notified` for a notification, or `fault <code> <name>: <text>`, name and
-\ text when the code is declared, for a throw passed to the host. A
-\ tools/call with params.arguments then writes a LOG DEBUG line, `req <id>
+\ LOG line, tag mcp, once it is answered, in place of the line before
+\ dispatch: `req <id> <method> <target> -> <outcome> in <n> ms`, at LOG ERROR
+\ for a fault and LOG INFO otherwise. id is the HTTP:REQUEST-ID$ of HANDLE's
+\ request, `-` under ANSWER; method and target are as without LOG, `-` when no
+\ method was read; n is whole milliseconds from the request's start, or
+\ ANSWER's entry. outcome is `ok`, `tool error: <text>` (a schema refusal's
+\ included), `error <code>: <message>` for a JSON-RPC error (UNKNOWN-TOOL's
+\ included), `held` for a call HOLD kept, `notified` for a notification, or
+\ `fault <code> <name>: <text>`, name and text when the code is declared, for
+\ a throw answered -32603. A tools/call with params.arguments then writes a LOG DEBUG line, `req <id>
 \ arguments <arguments>`, the arguments as sent, which may hold what an info
 \ line must not. FINISH writes a held call's own line, `req <id> tools/call
 \ <name> -> <outcome> in <n> ms`, with the id of the request that held it and
@@ -1643,7 +1705,7 @@ public
 
 
 \ A body's result: one JSON value. E-STATE outside a body or after its result;
-\ else the reader's E-JSON-READ-* code or E-SCHEMA, which HANDLE passes to the host.
+\ else the reader's E-JSON-READ-* code or E-SCHEMA, which the call is answered -32603 for.
 : RESULT ( str -- ) s" " s" []" false RESULT! ;
 
 \ RESULT, plus the result's _meta object, which reaches the host's widget and not the
@@ -1666,9 +1728,9 @@ public
 
 \ In a body before its result. True: the call's connection is taken and the
 \ call kept, with its id, era and tool, until FINISH; the body returns with no
-\ result, and a throw from it closes the connection and frees the call. False,
-\ nothing kept, under ANSWER or when MAX-HELD calls are held: the body gives
-\ its result as usual. Once the body has handed the held value on, it must not
+\ result, and a throw from it is answered -32603 on the connection and frees
+\ the call. False, nothing kept, under ANSWER or when MAX-HELD calls are
+\ held: the body gives its result as usual. Once the body has handed the held value on, it must not
 \ throw: FINISH may have run by then and the row be another call's.
 : HOLD ( -- held bool )
    ON-WORKER
@@ -1692,10 +1754,10 @@ public
 \ On a request worker, not inside HANDLE or ANSWER: the quotation runs as
 \ the held call's body, in its era, and gives its result once through RESULT,
 \ RESULT-META, RESULT-CONTENT or RESULT-ERROR. The response HANDLE would have
-\ sent goes out with HTTP:REPLY, status 200, which closes the connection; a
-\ peer that left gets nothing. A quotation that gives no result is E-STATE,
-\ and that or its throw comes after the connection is closed. The row is free
-\ again on every way out.
+\ sent goes out with HTTP:REPLY, which closes the connection; a peer that
+\ left gets nothing. A quotation that gives no result is E-STATE, which, as
+\ its throw, is answered -32603 as HANDLE answers it. The row is free again
+\ on every way out.
 : FINISH ( held [ -- ] -- )
    {: h q :}
    ON-WORKER
@@ -1708,8 +1770,12 @@ public
 
 \ Answers one MCP request whose authentication and Origin the host has checked.
 \ A malformed envelope is -32600, missing or malformed params -32602, invalid
-\ JSON -32700. Any other fault, a tool body's included, is rethrown to the
-\ host. E-STATE before SERVER-INFO!.
+\ JSON -32700. A body read HTTP:BODY$ does not complete leaves HANDLE as
+\ E-HTTP-BODY-READ, its line at info, and HTTP answers the read's rejection.
+\ Any other throw, a tool body's included, is -32603 Internal error, status
+\ 500, its message the code with its declared name and text, in place of any
+\ result; one while that reply is written leaves HANDLE.
+\ E-STATE before SERVER-INFO!.
 : HANDLE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    SERVER-NAME @ STR:LEN 0= if E-STATE throw then
@@ -1717,18 +1783,16 @@ public
    answer SLOT TO !
    answer HTTP:REQUEST-START-NS SLOT START !
    construct sink response OPENED-TO
-   [: PROCESS ;] catch {: code:n :}
-   code PASSED {: passed:n :}
-   [: code FAULTED ;]
-   [: answer HTTP:REQUEST-ID$ passed MESSAGE-LOGGED ;] finally ;
+   SLOT ANSWER-W REPLY-VEC JSON:OPEN drop
+   [: answer RESPOND ;] [: SLOT ANSWER-W JSON:CLOSE ;] finally
+   answer DELIVER ;
 
 
 \ Answers one JSON-RPC message whose caller the host has authenticated and
 \ which came by a transport other than HTTP, on a request worker: as HANDLE
 \ answers a 2026-07-28 request, with no transport, version or header checks.
 \ ANSWER empties the vector and writes the response's JSON text there, nothing for
-\ a notification; after a throw its text is no reply to send. Any fault but
-\ HANDLE's JSON-RPC errors is rethrown, a tool body's included.
+\ a notification; a throw is answered -32603 as HANDLE answers it.
 \ The VISIBLE! hook is called with no HTTP request, so it judges by what the
 \ host set for the message's caller: BEARER:CLAIM$ speaks only for a request
 \ the worker serves. E-STATE before SERVER-INFO! and off a request worker.

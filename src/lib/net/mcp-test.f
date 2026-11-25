@@ -18,13 +18,15 @@ split-str
 \ after MCP:LOG, each message's line after its answer with its outcome and no arguments;
 \ this file run as `-- debug` at HABU_LOG_LEVEL=debug, in a child engine, logs a
 \ tools/call's arguments under its id, cut past 4096 bytes.
+\ A chunked body past the route's cap is HTTP's 413, its line logged at info.
 \ MCP:ANSWER on a request worker into a vector holding old text: a tools/call written as
 \ HANDLE sends it, a notification leaving it empty, a message that is not JSON-RPC or not
-\ JSON, an unknown tool, and ANSWER off a worker.
+\ JSON, an unknown tool, a body's throw after its result written as -32603 in its
+\ place, and ANSWER off a worker.
 \ A call its body HOLDs, FINISHed by a call SUBMIT queues for the sole worker the body
 \ gave back, answers the client in each era as the same tool answering at once; HOLD
-\ answers false under ANSWER; a body that throws after HOLD leaves the client a closed
-\ connection and no answer.
+\ answers false under ANSWER; a body that throws after HOLD, and a FINISH that gives no
+\ result, answer the client -32603 on the connection HOLD took.
 \ MCP's client against the same server and plain routes: TOOLS across pages, CALL's
 \ result, one holding content blocks, isError, refusals, a reply past the first buffer,
 \ timeouts of CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
@@ -231,11 +233,24 @@ TASK:MIN-STACK TASK:TASK STALLER
    SB-APPEND S\" \"io.modelcontextprotocol/clientCapabilities\":{}}" SB-APPEND ;
 
 
-\ A tool body's fault reaches the host, which answers 500.
-: FAULTED ( n -- )
-   {: status:n :}
-   BODY$ s" internal: the handler did not finish this request" STR:STARTS-WITH? TTRUE
-   status 500 T= ;
+\ A code with its declared name and text: `<code> <name>: <text>`.
+: FAULT-W+ ( n -- )
+   {: code:n :}
+   code FMT:INT$ W+  s"  " W+  code ERROR:NAME$ W+
+   s" : " W+  code ERROR:TEXT$ W+ ;
+
+\ The -32603 response to the request id's throw of the code, in W; the
+\ code's text needs no JSON escape.
+: FAULT-BODY ( n n -- str )
+   {: id:n code:n :}
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" W+  id FMT:INT$ W+
+   S\" ,\"error\":{\"code\":-32603,\"message\":\"" W+
+   code FAULT-W+  S\" \"}}" W+  W$ ;
+
+\ A message's throw answered by HANDLE as -32603, status 500.
+: FAULTED ( n n n -- )
+   {: status:n id:n code:n :}
+   status 500 id code FAULT-BODY ANSWERED ;
 
 : SERVER ( -- )
    S\" \"_meta\":{\"io.modelcontextprotocol/serverInfo\":" SB-APPEND
@@ -441,11 +456,11 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : SHAPE-NOT-OBJECT ( -- )
-   s" a body under an object schema giving a non-object result faults to the host" T-LABEL
+   s" a body under an object schema giving a non-object result is answered -32603" T-LABEL
    LEGACY
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\"," SB-APPEND
    S\" \"params\":{\"name\":\"shape\",\"arguments\":{\"flat\":true}}}" SB-APPEND SB$ POST
-   FAULTED
+   22 MCP:E-SCHEMA FAULTED
    SHAPE-CODE atomic@ MCP:E-SCHEMA T=
    SHAPE-TEXT SHAPE-LEN
    s" result 1:1: expected a JSON object, as the tool's outputSchema has type `object`, found `[`; answer one JSON object"
@@ -505,9 +520,9 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : META-NOT-OBJECT ( -- )
-   s" RESULT-META meta that is not an object faults to the host" T-LABEL
+   s" RESULT-META meta that is not an object is answered -32603" T-LABEL
    0 META-CODE atomic!
-   27 S\" {\"flat\":true}" LEGACY-FRAMED FAULTED
+   27 S\" {\"flat\":true}" LEGACY-FRAMED 27 MCP:E-SCHEMA FAULTED
    META-CODE atomic@ MCP:E-SCHEMA T=
    META-TEXT META-LEN
    s" meta 1:1: expected a JSON object, found `[`; write it as one object"
@@ -515,9 +530,9 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : META-REPEATED ( -- )
-   s" RESULT-META meta that repeats a top-level key faults to the host" T-LABEL
+   s" RESULT-META meta that repeats a top-level key is answered -32603" T-LABEL
    0 META-CODE atomic!
-   29 S\" {\"twice\":true}" LEGACY-FRAMED FAULTED
+   29 S\" {\"twice\":true}" LEGACY-FRAMED 29 MCP:E-SCHEMA FAULTED
    META-CODE atomic@ MCP:E-SCHEMA T=
    META-TEXT META-LEN
    S\" meta 1:8: expected each top-level member once, found `\"a\"`; remove the repeated member, keeping one"
@@ -525,9 +540,10 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : META-SERVER-INFO ( -- )
-   s" RESULT-META meta naming serverInfo, escaped, faults to the host" T-LABEL
+   s" RESULT-META meta naming serverInfo, escaped, is answered -32603" T-LABEL
    0 META-CODE atomic!
-   28 S\" {\"io.modelcontextprotocol\\/serverInfo\":{}}" LEGACY-FRAMED FAULTED
+   28 S\" {\"io.modelcontextprotocol\\/serverInfo\":{}}" LEGACY-FRAMED
+   28 MCP:E-SCHEMA FAULTED
    META-CODE atomic@ MCP:E-SCHEMA T=
    META-TEXT META-LEN
    S\" meta 1:2: expected no member `io.modelcontextprotocol/serverInfo`, found `\"io.modelcontextprotocol\\/server...`; remove it: the server writes its own"
@@ -602,33 +618,33 @@ TASK:MIN-STACK TASK:TASK STALLER
    {: label:^ lu:n args:^ au:n want:^ wu:n :}
    label lu T-LABEL
    0 BLOCKS-CODE atomic!
-   44 args au false PICTURED-CALL FAULTED
+   44 args au false PICTURED-CALL 44 MCP:E-SCHEMA FAULTED
    BLOCKS-CODE atomic@ MCP:E-SCHEMA T=
    BLOCKS-TEXT BLOCKS-LEN want wu KEPT= ;
 
 
 : BLOCKS-REFUSALS ( -- )
-   s" RESULT-CONTENT of an object, not an array, faults to the host"
+   s" RESULT-CONTENT of an object, not an array, is answered -32603"
    S\" {\"flat\":1}"
    s" content 1:1: expected a JSON array of content blocks, found `{`; write the blocks in an array"
    BLOCKS-REFUSED
-   s" RESULT-CONTENT of an array holding a number after a block faults to the host"
+   s" RESULT-CONTENT of an array holding a number after a block is answered -32603"
    S\" {\"scalar\":1}"
    s" content 1:29: expected a content block object, found `1`; write each block as an object"
    BLOCKS-REFUSED
-   s" RESULT-CONTENT of an object without a type faults to the host"
+   s" RESULT-CONTENT of an object without a type is answered -32603"
    S\" {\"untyped\":1}"
    s" content 1:13: expected a member `type`, found `}`; give the block its `type`"
    BLOCKS-REFUSED
-   s" RESULT-CONTENT of an object whose type is a number faults to the host"
+   s" RESULT-CONTENT of an object whose type is a number is answered -32603"
    S\" {\"numbered\":1}"
    s" content 1:10: expected `type` as a string, found `5`; write `type` as a JSON string"
    BLOCKS-REFUSED
-   s" RESULT-CONTENT of an object repeating its type faults to the host"
+   s" RESULT-CONTENT of an object repeating its type is answered -32603"
    S\" {\"twice\":1}"
    s" content 1:24: expected one member `type`, found `5`; remove the repeated `type`"
    BLOCKS-REFUSED
-   s" RESULT-CONTENT of a text that is not JSON faults to the host"
+   s" RESULT-CONTENT of a text that is not JSON is answered -32603"
    S\" {\"broken\":1}"
    s" content 1:10: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`"
    BLOCKS-REFUSED ;
@@ -854,17 +870,17 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : NOT-JSON-RESULT ( -- )
-   s" a body giving a result text that is not JSON faults to the host" T-LABEL
+   s" a body giving a result text that is not JSON is answered -32603" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":19,\"method\":\"tools/call\",\"params\":{\"name\":\"raw\"}}" POST
-   FAULTED ;
+   19 E-JSON-READ-MALFORMED FAULTED ;
 
 
 : SILENT ( -- )
-   s" a body that never gives its result faults to the host" T-LABEL
+   s" a body that never gives its result is answered -32603" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":20,\"method\":\"tools/call\",\"params\":{\"name\":\"silent\"}}" POST
-   FAULTED ;
+   20 MCP:E-STATE FAULTED ;
 
 
 : PING ( -- )
@@ -1853,9 +1869,6 @@ TYPED-VARIABLE REPLIES ^VEC:vector<u8>   \ SERVE-CASES makes and deletes it
    s" ANSWER off a request worker throws E-STATE" T-LABEL
    [: s" {}" REPLIES @ MCP:ANSWER ;] MCP:E-STATE TTHROWSQ ;
 
-: ANSWER-CASES ( -- )
-   ANSWER-CALL ANSWER-STRICT ANSWER-NOTIFIED ANSWER-ENVELOPE ANSWER-UNKNOWN ANSWER-OFF-WORKER ;
-
 
 \ The wait tool's held calls, by their rows.
 MCP:MAX-HELD TYPED-BUFFER HELD-CALLS MCP:held
@@ -1869,12 +1882,19 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    1 WOKEN atomic-add drop
    HELD-CALLS @ [: WAIT-RESULT ;] MCP:FINISH ;
 
-: HELD-WAIT ( MCP:held bool -- )
-   0= if drop 1 HOLD-FALSE atomic! WAIT-RESULT exit then
-   {: h :}
+\ A call SUBMIT runs that FINISHes with no result.
+: WAKE-MUTE ( n -- )
+   1 WOKEN atomic-add drop
+   HELD-CALLS @ [: ;] MCP:FINISH ;
+
+\ The held call kept by its row for the job SUBMIT runs; one HOLD answered
+\ false answers at once.
+: HELD-WAIT ( MCP:held bool [ n -- ] -- )
+   {: h ok:bool job :}
+   ok 0= if 1 HOLD-FALSE atomic! WAIT-RESULT exit then
    h MCP:HELD-SLOT {: idx:n :}
    h idx HELD-CALLS !
-   idx [: WAKE ;] HTTP:SUBMIT ;
+   idx job HTTP:SUBMIT ;
 
 \ A tool error whose text is in an arena released before the body returns.
 : FREED-ERROR ( -- )
@@ -1887,14 +1907,15 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 
 \ "freed" gives FREED-ERROR, a "late" key (quoted: "later" holds late)
 \ throws after its result, "now" answers at once, "fail" throws after HOLD,
-\ anything else HOLDs.
+\ "mute" HOLDs for WAKE-MUTE, anything else HOLDs for WAKE.
 : WAIT-BODY ( str -- )
    {: args:^ au:n :}
    args au s" freed" STR:CONTAINS? if FREED-ERROR exit then
    args au S\" \"late\"" STR:CONTAINS? if WAIT-RESULT MCP:E-STATE throw then
    args au s" now" STR:CONTAINS? if WAIT-RESULT exit then
    args au s" fail" STR:CONTAINS? if MCP:HOLD 2drop MCP:E-STATE throw then
-   MCP:HOLD HELD-WAIT ;
+   args au s" mute" STR:CONTAINS? if MCP:HOLD [: WAKE-MUTE ;] HELD-WAIT exit then
+   MCP:HOLD [: WAKE ;] HELD-WAIT ;
 
 : ADD-WAIT ( -- )
    S\" {\"name\":\"wait\",\"description\":\"Answer once woken.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
@@ -1947,13 +1968,28 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    WOKEN atomic@ 0 T= ;
 
 : HELD-FAULT ( -- )
-   s" a body that throws after HOLD closes the connection unanswered" T-LABEL
-   LEGACY S\" {\"fail\":1}" WAIT-LEGACY POST -2 T= ;
+   s" a body that throws after HOLD is answered -32603 on the connection it took" T-LABEL
+   LEGACY S\" {\"fail\":1}" WAIT-LEGACY POST 60 MCP:E-STATE FAULTED ;
 
-: HELD-CASES ( -- ) HELD-LEGACY HELD-MODERN HELD-ANSWER HELD-FAULT ;
+: HELD-MUTE ( -- )
+   s" a FINISH that gives no result is answered -32603 on the kept connection" T-LABEL
+   LEGACY S\" {\"mute\":1}" WAIT-LEGACY POST 60 MCP:E-STATE FAULTED
+   WOKEN atomic@ 1 T=
+   0 WOKEN atomic! ;
+
+: HELD-CASES ( -- ) HELD-LEGACY HELD-MODERN HELD-ANSWER HELD-FAULT HELD-MUTE ;
+
+: ANSWER-FAULT ( -- )
+   s" ANSWER of a body's throw after its result writes -32603 in its place and returns" T-LABEL
+   ANSWER-OPEN S\" {\"late\":1}" WAIT-LEGACY POST 200 60 MCP:E-STATE FAULT-BODY ANSWERED ;
+
+: ANSWER-CASES ( -- )
+   ANSWER-CALL ANSWER-STRICT ANSWER-NOTIFIED ANSWER-ENVELOPE ANSWER-UNKNOWN ANSWER-FAULT
+   ANSWER-OFF-WORKER ;
 
 
 : REQ-HEAD ( -- str ) s" Z info mcp: req " ;
+: ERROR-HEAD ( -- str ) s" Z error mcp: req " ;
 : DEBUG-HEAD ( -- str ) s" Z debug mcp: req " ;
 
 \ Where the line holding the offset starts.
@@ -2025,13 +2061,18 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    a end + u end - TIMED? TTRUE
    at ;
 
-\ The id of the text's `<stamp> info mcp: req <id><rest> in <n> ms` line,
-\ rest from the space after the id; empty when there is none.
-: INFO-ID$ ( str str -- str )
-   {: a:^ u:n rest:^ ru:n :}
+\ The id of the text's `<stamp><head><id><rest> in <n> ms` line, rest from
+\ the space after the id; empty when there is none.
+: HEAD-ID$ ( str str str -- str )
+   {: a:^ u:n head:^ hu:n rest:^ ru:n :}
    a u rest ru TIMED-AT {: at:n :}
    at 0< if s" " exit then
-   a REQ-HEAD at ID-AT$ ;
+   a head hu at ID-AT$ ;
+
+\ HEAD-ID$ of the `<stamp> info mcp: req ` line.
+: INFO-ID$ ( str str -- str )
+   {: a:^ u:n rest:^ ru:n :}
+   a u REQ-HEAD rest ru HEAD-ID$ ;
 
 \ The id, `r` and its digits, of the text's INFO-ID$ line.
 : REQ-ID$ ( str str -- str )
@@ -2040,6 +2081,11 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : REQ-LOGGED ( str -- )
    {: rest:^ ru:n :}
    LOG$ rest ru REQ-ID$ 2drop ;
+
+\ LOG$ holds the rest on a `<stamp> error mcp: req <id>` line.
+: ERROR-LOGGED ( str -- )
+   {: rest:^ ru:n :}
+   LOG$ ERROR-HEAD rest ru HEAD-ID$ REQ-ID? TTRUE ;
 
 : ECHO-LEGACY ( -- str )
    S\" {\"jsonrpc\":\"2.0\",\"id\":80,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"a\":1}}}" ;
@@ -2086,24 +2132,18 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    W-RESET REQ-HEAD W+ id iu W+ s"  tools/call wait -> ok" W+
    LOG$ W$ TIMED-AT drop ;
 
-\ A fault outcome's declared code: `<code> <name>: <text>`.
-: FAULT-W+ ( n -- )
-   {: code:n :}
-   code FMT:INT$ W+  s"  " W+  code ERROR:NAME$ W+
-   s" : " W+  code ERROR:TEXT$ W+ ;
-
-\ The sole worker logs the fault after the client sees the closed connection,
-\ and before it serves the next request.
+\ The sole worker logs the fault after the client has its answer, and before
+\ it serves the next request.
 : FAULT-SEEN ( -- )
    HELD-FAULT
    LEGACY S\" {\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" POST 202 T= ;
 
 : LOGGED-FAULT ( -- )
    [: FAULT-SEEN ;] CAPTURED
-   s" MCP:LOG logs a throw passed to the host as a fault" T-LABEL
+   s" MCP:LOG logs a body's throw after HOLD as a fault at error" T-LABEL
    W-RESET S\"  tools/call wait -> fault " W+
    MCP:E-STATE FAULT-W+
-   W$ REQ-LOGGED ;
+   W$ ERROR-LOGGED ;
 
 : LOGGED-FREED ( -- )
    s" MCP:LOG logs a tool error whose text the body freed" T-LABEL
@@ -2111,10 +2151,32 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    s"  tools/call wait -> tool error: freed text" REQ-LOGGED ;
 
 : LOGGED-LATE ( -- )
-   s" MCP:LOG logs a throw after the result as a fault" T-LABEL
-   [: LEGACY S\" {\"late\":1}" WAIT-LEGACY POST 500 T= ;] CAPTURED
+   s" MCP:LOG logs a throw after the result as a fault at error" T-LABEL
+   [: LEGACY S\" {\"late\":1}" WAIT-LEGACY POST 60 MCP:E-STATE FAULTED ;]
+   CAPTURED
    W-RESET S\"  tools/call wait -> fault " W+
    MCP:E-STATE FAULT-W+
+   W$ ERROR-LOGGED ;
+
+: LOGGED-MUTE ( -- )
+   [: HELD-MUTE ;] CAPTURED
+   s" MCP:LOG logs FINISH's E-STATE for no result as a fault at error" T-LABEL
+   W-RESET S\"  tools/call wait -> fault " W+
+   MCP:E-STATE FAULT-W+
+   W$ ERROR-LOGGED ;
+
+\ A legacy POST to /capped, chunked: only its read finds the body past the cap.
+: CAPPED ( -- CURL:handle )
+   s" /capped" s" Content-Type: application/json"
+   s" Accept: application/json, text/event-stream" OPEN-PATH
+   s" MCP-Protocol-Version: 2025-11-25" ADD
+   s" Transfer-Encoding: chunked" ADD ;
+
+: LOGGED-CAPPED ( -- )
+   s" a body past the route's cap is HTTP's 413, its line at info" T-LABEL
+   [: CAPPED ECHO-LEGACY POST 413 T= ;] CAPTURED
+   BODY$ s" body_too_large" STR:CONTAINS? TTRUE
+   W-RESET s"  - -> fault " W+  E-HTTP-BODY-READ FAULT-W+
    W$ REQ-LOGGED ;
 
 : LOGGED-ANSWER ( -- )
@@ -2184,11 +2246,13 @@ create CHILD-ERR CHILD-CAP allot
    HTTP:ROUTES-RESET
    s" POST" s" /mcp" [: MCP:HANDLE ;] HTTP:ROUTE
    s" POST" s" /answer" [: ANSWER-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /capped" 16 [: MCP:HANDLE ;] HTTP:ROUTE-CAPPED
    [: 2drop true ;] MCP:VISIBLE!
    MCP:LOG
    0 ONE-WORKER SERVE-ON
    LOGGED-ECHO LOGGED-STRICT LOGGED-UNKNOWN LOGGED-TWICE LOGGED-NOTIFIED LOGGED-HELD
-   LOGGED-FAULT LOGGED-FREED LOGGED-LATE LOGGED-ANSWER LOGGED-DEBUG ;
+   LOGGED-FAULT LOGGED-FREED LOGGED-LATE LOGGED-MUTE LOGGED-CAPPED LOGGED-ANSWER
+   LOGGED-DEBUG ;
 
 
 : SERVE-CASES ( -- )
