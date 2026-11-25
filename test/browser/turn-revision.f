@@ -6,6 +6,6 @@
 package TURN-REVISION
 public
 
-5 constant PROTOCOL
+6 constant PROTOCOL
 
 ;package

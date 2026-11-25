@@ -529,6 +529,15 @@ async function browser() {
       const [tiny] = await pixels(points);
       assert.ok(grey(tiny), `the box at 1e-12 scale casts the shadow, got ${tiny}`);
       await command("ground");
+      // display.f's key against the box at half scale inside the casters'
+      // box, the key's rays rising toward -x and -y: the camera sees the box
+      // behind the caster, the key does not, both see the box beside it, and
+      // the box across the light's near plane passes.
+      await evaluate(`box(${JSON.stringify(down)}, 0.5)`);
+      await command("key");
+      const sights = (await state()).text;
+      assert.equal(sights, "occluded 010303 10",
+        `the key test fails behind the caster and passes beside it and around it, got ${sights}`);
       // Tilted 45° about x, the camera's right is down's, so the turntable
       // keeps the key where it was; were the studio the view's own frame, the
       // key would stand nearly overhead and leave this floor point, x 0.6 and
@@ -542,6 +551,9 @@ async function browser() {
       await evaluate(`box(${JSON.stringify(below)})`);
       const [under] = await pixels([[0.2, -0.4]]);
       assert.deepEqual(under, background, `a camera below the ground shows no shadow, got ${under}`);
+      await command("key");
+      const beneath = (await state()).text;
+      assert.equal(beneath, "occluded 010101 10", `a draw of no shadow passes no key test, got ${beneath}`);
       // zoomed looks down at world x 0.15..0.65 and y 0.55..1.05, past the
       // box's y 0.5: its centre is the floor point shade read, which the box
       // outside the view shades as a cast-only row and which is white with
@@ -564,7 +576,11 @@ async function browser() {
       const castPick = await evaluate(`(() => { const c = document.querySelector("canvas");
         return subject.host.pick(BigInt(Math.floor(c.width / 2)), BigInt(Math.floor(c.height / 2))); })()`);
       assert.deepEqual(castPick, [-1, 0, 0x3F800000], `a pick on a cast-only box answers none, got ${castPick}`);
+      await command("ground-none");
       await command("ground");
+      await command("key");
+      const remade = (await state()).text;
+      assert.equal(remade, "occluded 030303 10", `a shadow map made since the draw hides no box, got ${remade}`);
       await command("ground-none");
       await evaluate(`box(${JSON.stringify(down)})`);
       const [none] = await pixels(points);
@@ -573,7 +589,7 @@ async function browser() {
         subject.host.unmesh(100)`);
       console.log(`Headless Chrome ground: shadow ${shade}, mirror ${mirror}, far ${far}, ` +
         `box ${top}, row darkest ${row[darkest]} rising at most ${rise}, orbited ${turned}, ` +
-        `1e-12 scale ${tiny}, tilted ${leaning}, ` +
+        `1e-12 scale ${tiny}, key ${sights}, tilted ${leaning}, ` +
         `from below ${under}, outside the view bare ${bare} and cast-only ${outside}, ` +
         `cast-only in view shade ${castShade} top ${castTop} pick ${castPick}, no ground ${none}`);
     }

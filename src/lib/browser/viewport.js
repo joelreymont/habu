@@ -88,11 +88,11 @@
 // rows and columns sum the map's blockers into summed-area tables, counts and
 // heights; and ground draws the catcher, the quad light.corners on the plane,
 // whose fragment, shadow, finds by PCSS over those tables the share V of the
-// softbox it sees past the casters. vs, a pick's probe and so the depth an
-// occlude reads take only the rows whose bit 1 is clear. The fit depends on
-// the draw's matrix, the plane and the casters' box alone, never on the rows,
-// so a row outside the view still shades the ground in view, and the map's
-// texel is the same whichever rows a module sends. The ground is not in the
+// softbox it sees past the casters. vs, a pick's probe and so the depth
+// occlude's view test reads take only the rows whose bit 1 is clear. The fit
+// depends on the draw's matrix, the plane and the casters' box alone, never on
+// the rows, so a row outside the view still shades the ground in view, and the
+// map's texel is the same whichever rows a module sends. The ground is not in the
 // map: the plane's depth at light x, y is light.ground.x x + light.ground.y y
 // + light.ground.z, light.reach.xy is the softbox's half extents in light x
 // and y per unit of depth, and light.reach.z the casters' box's greatest
@@ -101,7 +101,8 @@
 // (env(up, 1) + key V) / (env(up, 1) + key), key the key's irradiance on the
 // ground, in linear light and not tone-mapped, so an unshadowed ground reads
 // white as the clear does.
-// box draws one occlude box per instance as the 12 triangles of its faces:
+// box draws one occlude box per instance, under the camera's matrix or
+// light.clip, as the 12 triangles of its faces:
 // vertex k takes corner corners[k], whose bit j picks the highest coordinate j
 // in place of the lowest. A box whose corners' clip z lie on both sides of 0,
 // the near plane, draws the full-viewport quad at depth 0 from vertices 0 to
@@ -788,15 +789,17 @@ function grouped(rows, count, origin) {
 // view of the ground held then and of the last view viewer gave, the identity
 // matrix's before any. While a ground is held, a square depth32float shadow
 // map whose side is the drawing buffer's larger side, at most SHADOW_SIDE,
-// exists with its two r32uint tables, and a draw whose eye is above the plane
-// and whose key's volume is not null first draws every row into the map
-// along the key, sums the tables from it, then draws the catcher first in its
-// main pass, which draws only the rows that are not cast-only; so does a
-// pick's probe. With no ground or no shadow a cast-only row draws nothing.
-// occlude draws its boxes
-// against them in passes of at most QUERIES occlusion queries, one per box,
-// and reads the resolved sample counts back through buffers of its own,
-// released once read, so a box passes when any sample does. pick,
+// cleared to 1 when made, exists with its two r32uint tables, and a draw whose
+// eye is above the plane and whose key's volume is not null first draws every
+// row into the map along the key, sums the tables from it, then draws the
+// catcher first in its main pass, which draws only the rows that are not
+// cast-only; so does a pick's probe. With no ground or no shadow a cast-only
+// row draws nothing.
+// occlude draws its boxes against the depth, and under the light buffer's
+// matrix against the shadow map when the last draw drew a shadow and a map is
+// held, in passes of at most QUERIES occlusion queries, one per box, and reads
+// the resolved sample counts back through buffers of its own, released once
+// read, so a box passes a test when any sample does. pick,
 // single-sample, submits its probe draw of the last draw's runs before it
 // returns, so queue order puts it after that draw and before any later write,
 // and maps the pixel by the drawing buffer's size when it is called, the size
@@ -836,18 +839,25 @@ function setup(canvas, context, device, release, fail) {
     primitive: { topology: "triangle-list", cullMode: "none" },
     depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
   });
+  const boxVertex = {
+    module,
+    entryPoint: "box",
+    buffers: [{ arrayStride: 24, stepMode: "instance", attributes: [
+      { shaderLocation: 0, offset: 0, format: "float32x3" },
+      { shaderLocation: 1, offset: 12, format: "float32x3" }] }],
+  };
   const occluder = device.createRenderPipeline({
     layout: "auto",
-    vertex: {
-      module,
-      entryPoint: "box",
-      buffers: [{ arrayStride: 24, stepMode: "instance", attributes: [
-        { shaderLocation: 0, offset: 0, format: "float32x3" },
-        { shaderLocation: 1, offset: 12, format: "float32x3" }] }],
-    },
+    vertex: boxVertex,
     primitive: { topology: "triangle-list", cullMode: "none" },
     depthStencil: { format: "depth24plus", depthWriteEnabled: false, depthCompare: "less-equal" },
     multisample: { count: 4 },
+  });
+  const keyOccluder = device.createRenderPipeline({
+    layout: "auto",
+    vertex: boxVertex,
+    primitive: { topology: "triangle-list", cullMode: "none" },
+    depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "less-equal" },
   });
   const caster = device.createRenderPipeline({
     layout: "auto",
@@ -886,6 +896,19 @@ function setup(canvas, context, device, release, fail) {
     layout: caster.getBindGroupLayout(0),
     entries: [{ binding: 3, resource: { buffer: light } }],
   });
+  // The Light uniform starts with its clip matrix.
+  const keyBoxBind = device.createBindGroup({
+    layout: keyOccluder.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: light, size: 64 } }],
+  });
+  const cleared = (texture) => {
+    const encoder = device.createCommandEncoder();
+    encoder.beginRenderPass({ colorAttachments: [], depthStencilAttachment: {
+      view: texture.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store",
+    } }).end();
+    device.queue.submit([encoder.finish()]);
+    return texture;
+  };
   let plane = null; // the ground's plane held, or null
   let casters = null; // the casters' box held with it
   // The shadow map, its tables and the bind groups of rows, columns and the
@@ -894,8 +917,8 @@ function setup(canvas, context, device, release, fail) {
   const shadowMap = () => {
     const side = Math.min(Math.max(canvas.width, canvas.height), SHADOW_SIDE);
     const { RENDER_ATTACHMENT, TEXTURE_BINDING, STORAGE_BINDING } = GPUTextureUsage;
-    const map = device.createTexture({ size: [side, side], format: "depth32float",
-      usage: RENDER_ATTACHMENT | TEXTURE_BINDING });
+    const map = cleared(device.createTexture({ size: [side, side], format: "depth32float",
+      usage: RENDER_ATTACHMENT | TEXTURE_BINDING }));
     const table = () => device.createTexture({ size: [side, side], format: "r32uint",
       usage: STORAGE_BINDING | TEXTURE_BINDING });
     const [counts, heights] = [table(), table()];
@@ -923,18 +946,10 @@ function setup(canvas, context, device, release, fail) {
     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
   const texelDepth = device.createTexture({ size: [1, 1], format: "depth24plus",
     usage: GPUTextureUsage.RENDER_ATTACHMENT });
-  const depthTexture = () => {
-    const texture = device.createTexture({
-      size: [canvas.width, canvas.height], format: "depth24plus", sampleCount: 4,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    });
-    const encoder = device.createCommandEncoder();
-    encoder.beginRenderPass({ colorAttachments: [], depthStencilAttachment: {
-      view: texture.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store",
-    } }).end();
-    device.queue.submit([encoder.finish()]);
-    return texture;
-  };
+  const depthTexture = () => cleared(device.createTexture({
+    size: [canvas.width, canvas.height], format: "depth24plus", sampleCount: 4,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  }));
   const colorTexture = () => device.createTexture({
     size: [canvas.width, canvas.height], format, sampleCount: 4,
     usage: GPUTextureUsage.RENDER_ATTACHMENT,
@@ -1017,7 +1032,7 @@ function setup(canvas, context, device, release, fail) {
   };
 
   // The last draw's runs of drawn rows and its matrix, copied, as a pick
-  // reads them; null before the first.
+  // reads them, and whether it drew a shadow; null before the first.
   let last = null;
 
   // rows, count instance rows of held meshes (turn.js); 0 rows clears.
@@ -1037,6 +1052,7 @@ function setup(canvas, context, device, release, fail) {
     const key = plane && keyAxes(axes, plane);
     const above = key && dot3(key.n, seen) + key.d * seen[3] > 0;
     const cast = above ? keyVolume(last.clip, casters, key) : null;
+    last.cast = cast !== null;
     const encoder = device.createCommandEncoder();
     if (cast) {
       device.queue.writeBuffer(light, 0, lit(cast, key));
@@ -1091,44 +1107,55 @@ function setup(canvas, context, device, release, fail) {
     device.queue.submit([encoder.finish()]);
   };
 
-  // boxes, six f32 each, lowest corner then highest -> a byte per box, 1 when
-  // any of its samples passed the last draw's depth.
+  // boxes, six f32 each, lowest corner then highest -> a byte per box: 1 when
+  // any of its samples passed the last draw's depth, plus 2 when any passed
+  // the shadow map.
   const occlude = async (boxes) => {
     const count = boxes.length / 6;
     if (count === 0) return new Uint8Array(0);
     const held = device.createBuffer({ size: boxes.byteLength, usage: VERTEX, mappedAtCreation: true });
     new Float32Array(held.getMappedRange()).set(boxes);
     held.unmap();
-    const resolved = device.createBuffer({ size: 8 * count, usage: QUERY_RESOLVE | COPY_SRC });
-    const read = device.createBuffer({ size: 8 * count, usage: MAP_READ | COPY_DST });
+    // A test's bit is its place here.
+    const tests = [[occluder, boxBind, depth]];
+    if (last.cast && shadows) tests.push([keyOccluder, keyBoxBind, shadows.map]);
+    // A test's counts, the u64s rounded up to the 256 bytes a resolve aligns to.
+    const span = 256 * Math.ceil(count / 32);
+    const size = tests.length * span;
+    const resolved = device.createBuffer({ size, usage: QUERY_RESOLVE | COPY_SRC });
+    const read = device.createBuffer({ size, usage: MAP_READ | COPY_DST });
     const sets = [];
     try {
       const encoder = device.createCommandEncoder();
       for (let first = 0; first < count; first += QUERIES) {
         const n = Math.min(QUERIES, count - first);
-        const set = device.createQuerySet({ type: "occlusion", count: n });
-        sets.push(set);
-        const pass = encoder.beginRenderPass({
-          colorAttachments: [],
-          depthStencilAttachment: { view: depth.createView(), depthReadOnly: true },
-          occlusionQuerySet: set,
+        tests.forEach(([tester, bound, texture], t) => {
+          const set = device.createQuerySet({ type: "occlusion", count: n });
+          sets.push(set);
+          const pass = encoder.beginRenderPass({
+            colorAttachments: [],
+            depthStencilAttachment: { view: texture.createView(), depthReadOnly: true },
+            occlusionQuerySet: set,
+          });
+          pass.setPipeline(tester);
+          pass.setBindGroup(0, bound);
+          pass.setVertexBuffer(0, held);
+          for (let i = 0; i < n; i++) {
+            pass.beginOcclusionQuery(i);
+            pass.draw(36, 1, 0, first + i);
+            pass.endOcclusionQuery();
+          }
+          pass.end();
+          // first is a multiple of QUERIES, so the offset is 256-aligned.
+          encoder.resolveQuerySet(set, 0, n, resolved, t * span + 8 * first);
         });
-        pass.setPipeline(occluder);
-        pass.setBindGroup(0, boxBind);
-        pass.setVertexBuffer(0, held);
-        for (let i = 0; i < n; i++) {
-          pass.beginOcclusionQuery(i);
-          pass.draw(36, 1, 0, first + i);
-          pass.endOcclusionQuery();
-        }
-        pass.end();
-        // first is a multiple of QUERIES, so the offset is 256-aligned.
-        encoder.resolveQuerySet(set, 0, n, resolved, 8 * first);
       }
-      encoder.copyBufferToBuffer(resolved, 0, read, 0, 8 * count);
+      encoder.copyBufferToBuffer(resolved, 0, read, 0, size);
       device.queue.submit([encoder.finish()]);
       await read.mapAsync(GPUMapMode.READ);
-      return Uint8Array.from(new BigUint64Array(read.getMappedRange()), (s) => (s > 0n ? 1 : 0));
+      const passed = new BigUint64Array(read.getMappedRange());
+      return Uint8Array.from({ length: count }, (_, i) => tests.reduce((bits, _, t) =>
+        bits | (passed[t * span / 8 + i] > 0n ? 1 << t : 0), 0));
     } finally {
       for (const resource of [held, resolved, read, ...sets]) resource.destroy();
     }

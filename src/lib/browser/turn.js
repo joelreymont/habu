@@ -57,9 +57,10 @@
 //     nearest), 1.0's bits for none; d the pick's id; buttons and mods the
 //     drawing buffer's width and height when the answer arrived, as answered
 //     gives them
-//   occluded: a, b one byte per box of the occlude record, in its order, 1
-//     when the box passed, else 0; 0 boxes answers 0 bytes. c 0, d the
-//     record's id, buttons and mods the buffer size when the answer arrived
+//   occluded: a, b one byte per box of the occlude record, in its order: 1
+//     when the box passed the view test, plus 2 when it passed the key test;
+//     0 boxes answers 0 bytes. c 0, d the record's id, buttons and mods the
+//     buffer size when the answer arrived
 // buttons is the pointer's bitset; mods are Shift 1, Control 2, Alt 4, Meta 8.
 // The host writes all 56 bytes on every event; a field that does not apply is 0.
 //
@@ -75,18 +76,18 @@
 //     u32s: a held mesh handle, the instance's id, flags (bit 0 every face
 //     selected, bit 1 cast-only, the others 0), the highlight word where the
 //     instance's face bits start, or 0xFFFFFFFF for none, the colour, its
-//     bytes r, g, b (sRGB-encoded) and 0, and one whose low u16 is metallic
-//     and high u16 roughness, each 0 to 65535 for 0 to 1. A row's offset plus
-//     the words its mesh's faces need (record 13) is at most the highlight's
-//     word count, and that sum is the words the row needs. A cast-only row
-//     casts the ground's shadow (record 17) and is otherwise not drawn: it
-//     leaves no colour and no depth, and no pick or occlude sees it; its
+//     bytes r, g, b (sRGB-encoded) and 0, and one whose low u16 is metallic and
+//     high u16 roughness, each 0 to 65535 for 0 to 1. A row's offset plus the
+//     words its mesh's faces need (record 13) is at most the highlight's word
+//     count, and that sum is the words the row needs. A cast-only row casts the
+//     ground's shadow (record 17) and is otherwise not drawn: it leaves no
+//     colour and no depth, and no pick or occlude's view test sees it; its
 //     other fields are checked as any row's. A row with bit 1 clear is drawn
-//     and casts. c a column-major f32
-//     4x4 matrix to clip space (x, y in [-1, 1], z in [0, 1], 0 nearest). A
-//     draw of 0 rows clears, names no handle and needs no words; a draw
-//     removes a shown SVG. A host may draw the last draw's rows again on its
-//     own, so records 6 and 14 keep them valid until the next draw
+//     and casts. c a column-major f32 4x4 matrix to clip space (x, y in [-1,
+//     1], z in [0, 1], 0 nearest). A draw of 0 rows clears, names no handle and
+//     needs no words; a draw removes a shown SVG. A host may draw the last
+//     draw's rows again on its own, so records 6 and 14 keep them valid until
+//     the next draw
 //   3 text: a, b UTF-8 text
 //   4 post: span a, b whose first c bytes are the path and the rest the body
 //   5 tree: a, b strict UTF-8 JSON rows {key, parent, label} with an optional
@@ -145,23 +146,30 @@
 //     reaches error as a reply failure does, and sends no event
 //   16 occlude: a, b a span of boxes, six f32 each in world space (the lowest
 //     x, y, z, then the highest), so b is a multiple of 24; c a positive i64
-//     id. It tests against the last draw before it in record order: its matrix
-//     and the depth its rows left; one before the first draw is refused, as
-//     no matrix says what is in view. A box passes when any of it in view is
-//     not behind that depth (WebGPU occlusion queries: the box's faces drawn
-//     writing neither colour nor depth, with depthCompare less-equal where the
-//     draw keeps less, so a part flush with a drawn surface passes). A box
-//     with corners on both sides of the near plane passes: only its faces are
-//     drawn, and the plane can cut every face away while its inside is in
-//     view. After a draw of 0 rows, or after a resize and before the next
-//     draw, nothing is drawn, so every box in view passes. The ground
-//     leaves no depth, so it hides no box
+//     id. It tests each box against the last draw before it in record order:
+//     the view test against its matrix and the depth its rows left, and, when
+//     it drew a shadow (record 17) and a ground is held, the key test against
+//     the key light's view and the shadow map its rows, cast-only ones
+//     included, left; else no box passes the key test. One before the first
+//     draw is rejected, as no matrix says what is in view. A box passes a test
+//     when any of it in that view is not behind that depth (WebGPU occlusion
+//     queries: the box's faces drawn writing neither colour nor depth, with
+//     depthCompare less-equal where the draw keeps less, so a part flush with a
+//     drawn surface passes). A box with corners on both sides of the view's
+//     near plane passes: only its faces are drawn, and the plane can cut every
+//     face away while its inside is in view. After a draw of 0 rows, and until
+//     the next draw after a resize or, for the key test, after a ground of b 0,
+//     nothing is drawn, so every box in view passes. The ground leaves no
+//     depth, so it hides no box
 //   17 ground: a, b a span of 40 bytes, ten f32: nx, ny, nz, d, the world
 //     plane n·p + d = 0, n of any nonzero length toward the side that is up,
 //     then the casters' box, its lowest x, y, z then its highest, in world,
 //     which no caster leaves: a caster outside it may cast nothing. Or b 0
 //     for none, the state before the first. c 0. A value not finite, or a
-//     lowest above its highest, is rejected. It holds for every later draw
+//     lowest above its highest, is rejected. It holds for every later draw. A
+//     draw, of 0 rows too, draws a shadow when a ground is held, its eye is
+//     above the plane and the casters' box can shade some of the ground in
+//     view
 // A post or request is answered for every HTTP status. Request, rpc, read,
 // pick and occlude records are tagged. A host that takes tagged records, or
 // fetches and posts from a run that throws, provides error(error): the first
@@ -233,7 +241,7 @@ const PICKED = 18n;
 const OCCLUDED = 19n;
 const ID_BYTES = 16;
 
-const PROTOCOL = 5n;
+const PROTOCOL = 6n;
 
 // Records.
 const HELLO = 0n;
