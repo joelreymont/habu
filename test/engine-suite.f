@@ -1767,7 +1767,7 @@ TFNEG TTRUE
 
 s" " STR:LEN 0 T=
 
-$340000000 constant ES-LINUX-DATA-VA
+$80000000 constant ES-LINUX-DATA-VA
 $44000000000 constant ES-MACOS-DATA-VA
 : ES-TARGET-UNKNOWN ( -- )
    s" engine-suite: unknown target" EXIT-STATUS:FAILURE die ;

@@ -202,8 +202,8 @@ variable HELD                         \ nonzero while x29 holds the index
    SP SP lo ENC-SUBI buf W32+ ;
 
 \ Three halves, high first. Every data address a target holds is below 2^48:
-\ the DATA window, 2^38 bytes at $340000000 on Linux and 2^40 at $44000000000
-\ on macOS, and a build's space, which lies above hb's window.
+\ the DATA window, 2^38 bytes at $80000000 on Linux and 2^40 at $44000000000
+\ on macOS, and a build's space, which lies inside hb's window.
 : DATA-CHAIN ( n n -- ) {: v:n r:n :}
    r v 2 HALF 2 MOVZHW W
    r v 1 HALF 1 MOVKHW W

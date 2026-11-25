@@ -7,9 +7,10 @@ split-str
 \ rejects a bare name a host global also owns.
 \ The image offsets are ELF64 format facts: IMAGE-TEXT-SIZE-OFF is the first
 \ program header's p_filesz (64-byte header, then type, flags, offset, vaddr and
-\ paddr). DATA-VA is a Linux fixed mapping, not an architecture
-\ fact: 13 GiB is as free above a non-PIE image at $400000 on x86_64 as it is
-\ on aarch64.
+\ paddr). DATA-VA is a Linux fixed mapping, not an architecture fact: on
+\ x86_64 as on aarch64 nothing maps from the code region's end, $4700000 above
+\ a non-PIE image at $400000, up to the window, and at 2 GiB the window's first
+\ 2 GiB lie below 4 GiB.
 \
 \ DATA is one lazy anonymous reservation of DATA-SIZE bytes at DATA-VA, taken by
 \ the boot before Habu code runs, charged only for the pages it touches and
@@ -17,9 +18,10 @@ split-str
 \ file page until the program writes it. The size is a model fact, not a demand:
 \ the window must end inside the smallest user address space an arm64 Linux
 \ kernel configures outside CONFIG_EXPERT, CONFIG_ARM64_VA_BITS_39's 512 GiB,
-\ below its top-down mmap base, and DATA-VA + 2^38 = $4340000000 is the largest
-\ power-of-two window from DATA-VA that fits. A 38-bit width also meets the
-\ compiler's 48-bit address bound. The boot rejects with rc 71, which an engine
+\ below its top-down mmap base. The window ends at DATA-VA + 2^38 = $4080000000,
+\ and 2^38 is the largest power of two that fits: 2^39 bytes alone fill that
+\ space. A 38-bit width also meets the compiler's 48-bit address bound.
+\ The boot rejects with rc 71, which an engine
 \ names as "hb: mapping the fixed data region failed; raise the
 \ address-space limit (ulimit -v) above its size in bytes: 0x0000004000000000",
 \ where the kernel will not reserve the window lazily (vm.overcommit_memory=2,
@@ -37,7 +39,7 @@ public
 96 constant IMAGE-TEXT-SIZE-OFF
 $1000 constant IMAGE-TEXT-CONTENT-ADJ
 0 constant IMAGE-TEXT-TRAILER-ADJ
-$340000000 constant DATA-VA
+$80000000 constant DATA-VA
 $4000000000 constant DATA-SIZE
 DATA-VA DATA-SIZE + constant CARRIER-VA
 $1000 constant CODE-OFF
