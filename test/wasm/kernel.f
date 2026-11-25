@@ -1,4 +1,3 @@
-split-str
 \ src/arch/wasm/kernel-words.f on the host: a SAME case runs an engine name and the word WKMAP
 \ (kernel-map.f) answers for it, each in a child of its own; both print and exit alike.
 
@@ -22,37 +21,37 @@ CAP BUFFER: ERR-K
 
 \ The word the map names for an engine name; an empty spelling is a failed case.
 : WORD$ ( str -- str )
-   WKMAP:WORD-OF {: w:^ wu:n :}
-   wu 0= if  s" the map answers a word" T-LABEL  false TTRUE  then
-   w wu ;
+   WKMAP:WORD-OF {: w:str :}
+   w STR:LEN 0= if  s" the map answers a word" T-LABEL  false TTRUE  then
+   w ;
 
 \ The text args, w and tail, run in a child with its stdout into o and its
 \ stderr into e; answers their lengths and its exit status.
-: CHILD ( ^u8 n ^u8 n ^u8 n ^u8 ^u8 -- n n n )
-   {: a:^ au:n w:^ wu:n t:^ tu:n o:^ e:^ :}
-   SB-RESET  a au SB-APPEND  s"  " SB-APPEND  w wu SB-APPEND
-   s"  " SB-APPEND  t tu SB-APPEND
+: CHILD ( str str str ^u8 ^u8 -- n n n )
+   {: a:str w:str t:str o:^ e:^ :}
+   SB-RESET  a SB-APPEND  s"  " SB-APPEND  w SB-APPEND
+   s"  " SB-APPEND  t SB-APPEND
    SB$  o CAP >LEN  e CAP >LEN  PROCESS:WAIT-FOREVER  SUBJECT:RUN
    PROCESS:ENDING>RC RC>N {: ou:len eu:len rc:n :}
    ou LEN>N  eu LEN>N  rc ;
 
 \ A rejection's first line, its code and message: the place below it quotes the
 \ case's own spelling.
-: HEAD ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   a u 10 STR:INDEX-OF MATCH option
-      some OF IDX>N a swap ENDOF
-      none OF a u ENDOF
+: HEAD ( str -- str ) {: s:str :}
+   s 10 STR:INDEX-OF MATCH option
+      some OF IDX>N s STR:DATA swap >str ENDOF
+      none OF s ENDOF
    ;MATCH ;
 
 \ The engine name on args, its results consumed by tail, against the word the
 \ map names for it; both exit 0, so two alike rejections fail the case.
-: SAME ( ^u8 n ^u8 n ^u8 n -- )
-   {: a:^ au:n nm:^ nu:n t:^ tu:n :}
-   SB-RESET  a au SB-APPEND  s"  " SB-APPEND  nm nu SB-APPEND  SB$ T-LABEL
-   a au nm nu t tu OUT-E ERR-E CHILD {: oe:n ee:n re:n :}
-   a au  nm nu WORD$  t tu OUT-K ERR-K CHILD {: ok:n ek:n rk:n :}
-   OUT-K ok OUT-E oe T$=
-   ERR-K ek HEAD ERR-E ee HEAD T$=
+: SAME ( str str str -- )
+   {: a:str nm:str t:str :}
+   SB-RESET  a SB-APPEND  s"  " SB-APPEND  nm SB-APPEND  SB$ T-LABEL
+   a nm t OUT-E ERR-E CHILD {: oe:n ee:n re:n :}
+   a  nm WORD$  t OUT-K ERR-K CHILD {: ok:n ek:n rk:n :}
+   OUT-K ok >str OUT-E oe >str T$=
+   ERR-K ek >str HEAD ERR-E ee >str HEAD T$=
    re 0 T=  rk 0 T= ;
 
 : INTEGERS ( -- )

@@ -1,4 +1,3 @@
-split-str
 \ Native/Wasm numeric text fixture. Differential runner loads this source and
 \ reaches STEP through its checked entry, including JSON's float accessor.
 require src/lib/string.f

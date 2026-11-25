@@ -1,4 +1,3 @@
-split-str
 \ numeric-rows.f - the numeric golden rows a Wasm build must print as native
 \ does (N01-N06, W32's `?do` rows), as data: `s" NAME" s" SOURCE" s\" EXPECTED"
 \ ROW`. A runner `include`s it (never `require`) with ROW in scope, which

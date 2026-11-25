@@ -1,4 +1,3 @@
-split-str
 \ The language server whole-source-read-test.f runs in a fork child: with a
 \ subject open, it publishes one packet about another file, which it reads from
 \ disk to range the packet.
@@ -21,30 +20,30 @@ create PKT PKT-CAP allot
 variable PKT-U
 
 : SUBJECT$ ( -- str )
-   SUBJECT-PATH SUBJECT-PATH-U @ ;
+   SUBJECT-PATH SUBJECT-PATH-U @ >str ;
 
 : FILE$ ( -- str )
-   FILE-PATH FILE-PATH-U @ ;
+   FILE-PATH FILE-PATH-U @ >str ;
 
-\ dst receives a's bytes and u its length, refused past cap.
-: KEEP! ( str ^u8 ^n n -- ) {: a:^ u:n dst:^ up:^ cap:n :}
-   u cap > if E-STR-CAPACITY throw then
-   a dst u BYTE-COPY
-   u up ! ;
+\ dst receives s's bytes and up its length, refused past cap.
+: KEEP! ( str ^u8 ^n n -- ) {: s:str dst:^ up:^ cap:n :}
+   s STR:LEN cap > if E-STR-CAPACITY throw then
+   s STR:DATA dst s STR:LEN BYTE-COPY
+   s STR:LEN up ! ;
 
 : PKT+ ( str -- )
-   {: a:^ u:n :}
-   PKT-U @ u + PKT-CAP > if E-STR-CAPACITY throw then
-   a PKT PKT-U @ + u BYTE-COPY
-   u PKT-U +! ;
+   {: s:str :}
+   PKT-U @ s STR:LEN + PKT-CAP > if E-STR-CAPACITY throw then
+   s STR:DATA PKT PKT-U @ + s STR:LEN BYTE-COPY
+   s STR:LEN PKT-U +! ;
 
 public
 
 \ SUBJECT is the open document, FILE the file the packet names.
 : CASE! ( str str -- )
-   {: subj:^ subju:n file:^ fileu:n :}
-   subj subju SUBJECT-PATH SUBJECT-PATH-U PATH-CAP KEEP!
-   file fileu FILE-PATH FILE-PATH-U PATH-CAP KEEP! ;
+   {: subj:str file:str :}
+   subj SUBJECT-PATH SUBJECT-PATH-U PATH-CAP KEEP!
+   file FILE-PATH FILE-PATH-U PATH-CAP KEEP! ;
 
 \ The packet ranges bytes 10 to 11 of FILE's text.
 : MAIN ( -- )
@@ -55,6 +54,6 @@ public
    S\" {\"file\":\"" PKT+
    FILE$ PKT+
    S\" \",\"byte_start\":10,\"byte_end\":11,\"verdict\":\"rejected\",\"code\":\"E-MISMATCH\",\"message\":\"bad\"}\n" PKT+
-   0 PKT PKT-U @ LSP-DIAG:PUBLISH ;
+   0 PKT PKT-U @ >str LSP-DIAG:PUBLISH ;
 
 ;package

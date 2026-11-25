@@ -1,4 +1,3 @@
-split-str
 \ differential.f - W31: a program runs natively under bin/hb and as a module
 \ `hb-build --target wasm` builds, wasm-tools validates and bun runs
 \ (test/wasm/harness.f), both held to the same bytes. The rows that return are
@@ -51,13 +50,13 @@ variable PROG-U
 CAP BUFFER: THROWN                     \ the record THROW-ROW expects in ERR
 variable THROWN-U
 
-: ARG+ ( ^u8 n -- )  PROC-ARGV+ ;
+: ARG+ ( str -- )  PROC-ARGV+ ;
 
-: TEXT+ ( ^u8 n ^u8 ^n -- )
-   {: a:^ u:n buf:^ len:^ :}
-   len @ u + CAP > if E-STR-CAPACITY throw then
-   a  buf len @ +  u BYTE-COPY
-   u len +! ;
+: TEXT+ ( str ^u8 ^n -- )
+   {: s:str buf:^ len:^ :}
+   len @ s STR:LEN + CAP > if E-STR-CAPACITY throw then
+   s STR:DATA  buf len @ +  s STR:LEN BYTE-COPY
+   s STR:LEN len +! ;
 
 : ALL+ ( str -- )  ALL ALL-U TEXT+ ;
 : CALLS+ ( str -- )  CALLS CALLS-U TEXT+ ;
@@ -65,34 +64,34 @@ variable THROWN-U
 : PROG+ ( str -- )  PROG PROG-U TEXT+ ;
 : THROWN+ ( str -- )  THROWN THROWN-U TEXT+ ;
 
-: NAME$ ( -- str )  NAME-A @ NAME-U @ ;
+: NAME$ ( -- str )  NAME-A @ NAME-U @ >str ;
 
 : LABEL ( -- )  NAME$ T-LABEL ;
 
 \ DIR's file named NAME and then suffix, written into buf; answers its length.
-: PATH ( ^u8 n ^u8 -- n )
-   {: sfx:^ su:n buf:^ :}
-   SB-RESET  NAME$ SB-APPEND  sfx su SB-APPEND
-   DIR DIR-U @ SB$ buf FS:JOIN-PATH ;
+: PATH ( str ^u8 -- n )
+   {: sfx:str buf:^ :}
+   SB-RESET  NAME$ SB-APPEND  sfx SB-APPEND
+   DIR DIR-U @ >str SB$ buf FS:JOIN-PATH ;
 
 \ DIR's file named NAME and then suffix holds the bytes.
-: KEEP ( ^u8 n ^u8 n -- )
-   {: a:^ u:n sfx:^ su:n :}
-   sfx su FILE PATH {: fu:n :}
-   FILE fu a u FS:WRITE-ALL ;
+: KEEP ( str str -- )
+   {: s:str sfx:str :}
+   sfx FILE PATH {: fu:n :}
+   FILE fu >str s FS:WRITE-ALL ;
 
 \ The program's files: the source and a MAIN of the body as NAME.f, MAIN's call
 \ as NAME-call.f, and its module's path, NAME.wasm.
-: FILES ( ^u8 n ^u8 n ^u8 n -- )
-   {: name:^ nu:n src:^ su:n body:^ bu:n :}
-   name NAME-A !  nu NAME-U !
+: FILES ( str str str -- )
+   {: name:str src:str body:str :}
+   name STR:DATA NAME-A !  name STR:LEN NAME-U !
    s" .f" SRC PATH SRC-U !
    s" -call.f" CALLER PATH CALLER-U !
    s" .wasm" MODULE PATH MODULE-U !
    0 PROG-U !
-   src su PROG+  S\" \n: MAIN ( -- ) " PROG+  body bu PROG+  S\"  ;\n" PROG+
-   SRC SRC-U @ PROG PROG-U @ FS:WRITE-ALL
-   CALLER CALLER-U @ S\" MAIN\n" FS:WRITE-ALL ;
+   src PROG+  S\" \n: MAIN ( -- ) " PROG+  body PROG+  S\"  ;\n" PROG+
+   SRC SRC-U @ >str PROG PROG-U @ >str FS:WRITE-ALL
+   CALLER CALLER-U @ >str S\" MAIN\n" FS:WRITE-ALL ;
 
 \ bin/hb run on the arguments staged after PROC-ARGV-RESET: the lengths of its
 \ stdout and stderr, and its exit status.
@@ -109,36 +108,36 @@ variable THROWN-U
 \ The program natively: it prints want and exits rc; answers its stderr's
 \ length.
 : NATIVE-RUN ( str n -- n )
-   {: want:^ wu:n rc:n :}
-   want wu s" -expected.txt" KEEP
+   {: want:str rc:n :}
+   want s" -expected.txt" KEEP
    PROC-ARGV-RESET
-   s" --load" ARG+  SRC SRC-U @ ARG+  CALLER CALLER-U @ ARG+
+   s" --load" ARG+  SRC SRC-U @ >str ARG+  CALLER CALLER-U @ >str ARG+
    HB {: o:n e:n r:n :}
-   OUT o s" -native.txt" KEEP
+   OUT o >str s" -native.txt" KEEP
    LABEL  r rc T=
-   LABEL  OUT o want wu T$=
+   LABEL  OUT o >str want T$=
    e ;
 
 \ NATIVE-RUN with nothing on stderr for 0, and for 85 the
 \ record of the uncaught throw of code first.
-: NATIVE ( ^u8 n n n -- )
-   {: want:^ wu:n rc:n code:n :}
-   want wu rc NATIVE-RUN {: e:n :}
-   rc 0= if  LABEL  ERR e s" " T$=  then
-   rc EXIT-STATUS:UNCAUGHT = if  LABEL  ERR e code THROWN-LINE$ STR:STARTS-WITH? TTRUE  then ;
+: NATIVE ( str n n -- )
+   {: want:str rc:n code:n :}
+   want rc NATIVE-RUN {: e:n :}
+   rc 0= if  LABEL  ERR e >str s" " T$=  then
+   rc EXIT-STATUS:UNCAUGHT = if  LABEL  ERR e >str code THROWN-LINE$ STR:STARTS-WITH? TTRUE  then ;
 
 \ The program as a module, valid and run: it prints want and answers status, a
 \ throw's code whole; a run that returns writes nothing to ERR.
-: WASM ( ^u8 n n n -- )
-   {: want:^ wu:n status:n code:n :}
+: WASM ( str n n -- )
+   {: want:str status:n code:n :}
    SRC SRC-U @ MODULE MODULE-U @ WASM-HARNESS:BUILD {: r:n :}
    LABEL  r 0 T=
    r 0<> if  exit  then
    LABEL  MODULE MODULE-U @ WASM-HARNESS:VALID? TTRUE
    LABEL  MODULE MODULE-U @ WASM-HARNESS:RUN status T=
-   WASM-HARNESS:OUT$ s" -wasm.txt" KEEP
-   LABEL  WASM-HARNESS:OUT$ want wu T$=
-   status 0= if  LABEL  WASM-HARNESS:ERR$ s" " T$=  then
+   WASM-HARNESS:OUT$ >str s" -wasm.txt" KEEP
+   LABEL  WASM-HARNESS:OUT$ >str want T$=
+   status 0= if  LABEL  WASM-HARNESS:ERR$ >str s" " T$=  then
    status 1 = if  LABEL  WASM-HARNESS:THROW-CODE code T=  then ;
 
 \ ---- W03's program ---------------------------------------------------------------
@@ -150,10 +149,10 @@ variable THROWN-U
 12 constant SHAPES
 
 : G+ ( str -- )
-   {: a:^ u:n :}
-   GEN-U @ u + GEN-RESERVE
-   a  GEN-U @ GEN  u BYTE-COPY
-   u GEN-U +! ;
+   {: s:str :}
+   GEN-U @ s STR:LEN + GEN-RESERVE
+   s STR:DATA  GEN-U @ GEN  s STR:LEN BYTE-COPY
+   s STR:LEN GEN-U +! ;
 
 : G# ( n -- )  SB-RESET FMT:SB-U SB$ G+ ;
 
@@ -196,43 +195,43 @@ public
    s" : W03 ( -- ) 0" G+
    SHAPES 0 ?do  s"  W03-G" G+ i G#  loop
    s"  depth . .s drop ;" G+ NL
-   0 GEN GEN-U @ ;
+   0 GEN GEN-U @ >str ;
 
 \ ---- the rows --------------------------------------------------------------------
 : SETUP ( -- )
-   s" wasm-differential" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
-   s" wasm differential: sources and modules in " type  DIR u type cr ;
+   s" wasm-differential" FS:MKTEMP-DIR {: s:str :}
+   s STR:DATA DIR s STR:LEN BYTE-COPY  s STR:LEN DIR-U !
+   s" wasm differential: sources and modules in " type  DIR s STR:LEN >str type cr ;
 
 \ A row's NAME, the SOURCE defining it and the bytes it prints (numeric-rows.f) join
 \ RETURNING's program.
-: ROW ( ^u8 n ^u8 n ^u8 n -- )
-   {: name:^ nu:n src:^ su:n want:^ wu:n :}
-   src su ALL+  S\" \n" ALL+
-   S\"  s\" " CALLS+  name nu CALLS+  S\" \" type cr " CALLS+  name nu CALLS+  S\" \n" CALLS+
-   name nu WANT+  S\" \n" WANT+  want wu WANT+ ;
+: ROW ( str str str -- )
+   {: name:str src:str want:str :}
+   src ALL+  S\" \n" ALL+
+   S\"  s\" " CALLS+  name CALLS+  S\" \" type cr " CALLS+  name CALLS+  S\" \n" CALLS+
+   name WANT+  S\" \n" WANT+  want WANT+ ;
 
 \ The returning rows natively and as one module: exit 0, empty stderr, status 0;
 \ W05-FEATURE's f>s makes the module need saturating float-to-int to validate.
 : RETURNING ( -- )
-   s" rows" ALL ALL-U @ CALLS CALLS-U @ FILES
-   WANT WANT-U @ 0 0 NATIVE
-   WANT WANT-U @ 0 0 WASM
-   LABEL  MODULE MODULE-U @ WASM-HARNESS:VALID-WITHOUT-SAT? TFALSE ;
+   s" rows" ALL ALL-U @ >str CALLS CALLS-U @ >str FILES
+   WANT WANT-U @ >str 0 0 NATIVE
+   WANT WANT-U @ >str 0 0 WASM
+   LABEL  MODULE MODULE-U @ >str WASM-HARNESS:VALID-WITHOUT-SAT? TFALSE ;
 
 \ THROW-ROW's program throws a code uncaught: natively the engine's record names
 \ it; the module writes the record, with no place, to ERR and throws
 \ 85.
 : THROW-ROW ( str str str n -- )
-   {: name:^ nu:n src:^ su:n want:^ wu:n code:n :}
-   name nu src su name nu FILES
-   want wu EXIT-STATUS:UNCAUGHT code NATIVE
+   {: name:str src:str want:str code:n :}
+   name src name FILES
+   want EXIT-STATUS:UNCAUGHT code NATIVE
    0 THROWN-U !
    code THROWN-LINE$ THROWN+
    s"   = code: " THROWN+  SB-RESET code FMT:SB-INT SB$ THROWN+
    S\" \n  = help: catch the code where the program can go on, or remove its cause\n\n" THROWN+
-   want wu 1 EXIT-STATUS:UNCAUGHT WASM
-   LABEL  WASM-HARNESS:ERR$ THROWN THROWN-U @ T$= ;
+   want 1 EXIT-STATUS:UNCAUGHT WASM
+   LABEL  WASM-HARNESS:ERR$ >str THROWN THROWN-U @ >str T$= ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Stderr is the native engine's record of a caught memory fault.
@@ -242,11 +241,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ FAULT-ROW's program catches a memory fault and ends with status 0; natively
 \ the engine reports the fault on stderr, the module reports nothing.
 : FAULT-ROW ( str str str -- )
-   {: name:^ nu:n src:^ su:n want:^ wu:n :}
-   name nu src su name nu FILES
-   want wu 0 NATIVE-RUN {: e:n :}
-   LABEL  ERR e FAULT-RECORD? TTRUE
-   want wu 0 0 WASM ;
+   {: name:str src:str want:str :}
+   name src name FILES
+   want 0 NATIVE-RUN {: e:n :}
+   LABEL  ERR e >str FAULT-RECORD? TTRUE
+   want 0 0 WASM ;
 [then]
 
 ;package

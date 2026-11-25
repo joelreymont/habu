@@ -1,4 +1,3 @@
-split-str
 \ wide-typed-local-probe.f - a wide arity-0 layout value bound to a typed local
 \ survives whole at runtime.
 \ The annotation records the layout's TOP (tag) hidden term, the bind records
@@ -315,8 +314,8 @@ public
 
 private
 \ ---- checker verdicts: the annotation is asserted, not ignored --------------
-: YES ( ^u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
-: NO  ( ^u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+: YES ( str -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO  ( str -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
 
 s" WLC-WIDE ( pair -- pair ) {: p:pair :} p " YES
 s" WLC-TRIP ( trip -- trip ) {: t:trip :} t " YES

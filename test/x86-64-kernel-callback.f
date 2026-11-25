@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-callback.f - emitted SysV callback-entry E2E.
 \ Run the produced ELFs on x86-64: the qsort image exits 0 after libc calls a
 \ Habu comparator through ffi-call and -1 answers the address slot 0's stub
@@ -24,7 +23,7 @@ NEST-DEPTH CELL + constant QSORT-FN
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
-: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : ARG ( n -- n ) CELL * ARGS + ;
 
 \ The checked dispatch ABI reads C's two pointer arguments through CB-FRAME
@@ -52,10 +51,10 @@ NEST-DEPTH CELL + constant QSORT-FN
    RCX RDX ASM-SINK ENC-SUB-RR
    RCX RAX MEM-AT ASM-SINK ENC-MOV-MR ;
 
-: SYM, ( str -- ) {: a:^ u:n :}
+: SYM, ( str -- ) {: s:str :}
    LBL LBL {: name:label past:label :}
    past JMP,
-   name LBL,  a u ASM-SINK VEC:APPEND
+   name LBL,  s ASM-SINK VEC:APPEND
    0 ASM-SINK VEC:PUSH c!
    past LBL,
    RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
@@ -126,12 +125,12 @@ STUB-MOV 5 + constant STUB-NEXT          \ where the displacement counts from
    0 ROWS X64HARNESS:DATA-ADDR!,
    CALL-ENTRY, ;
 
-: BUILD ( [ -- ] ^u8 n -- ) {: path:^ u:n :}
+: BUILD ( [ -- ] str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path u X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 public
 

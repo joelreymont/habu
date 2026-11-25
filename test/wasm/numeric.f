@@ -1,4 +1,3 @@
-split-str
 \ numeric.f - runs the numeric golden rows of test/wasm/numeric-rows.f natively.
 \ Each row runs in a fork of this process (SUBJECT:RUN), which captures the
 \ child's stdout and stderr: each row will be its own module on Wasm, so no row
@@ -28,17 +27,18 @@ public
 
 \ The child's whole program: SUBJECT:RUN evaluates the text that names it.
 : ROW-EVAL ( -- )
-   SRC-A @ SRC-U @ evaluate-closed
-   NAME-A @ NAME-U @ evaluate-closed ;
+   SRC-A @ SRC-U @ >str evaluate-closed
+   NAME-A @ NAME-U @ >str evaluate-closed ;
 
-: ROW ( ^u8 n ^u8 n ^u8 n -- )
-   {: name:^ nu:n src:^ su:n want:^ wu:n :}
-   src SRC-A !  su SRC-U !  name NAME-A !  nu NAME-U !
+: ROW ( str str str -- )
+   {: name:str src:str want:str :}
+   src STR:DATA SRC-A !  src STR:LEN SRC-U !
+   name STR:DATA NAME-A !  name STR:LEN NAME-U !
    s" WASM-NUMERIC-TEST:ROW-EVAL"
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
-   name nu T-LABEL  src su OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
-   name nu T-LABEL  OUT outu LEN>N want wu T$=
-   name nu T-LABEL  erru LEN>N 0 T= ;
+   name T-LABEL  src OUT outu LEN>N >str ERR erru LEN>N >str oc 0 T-ENDING-EXITED=
+   name T-LABEL  OUT outu LEN>N >str want T$=
+   name T-LABEL  erru LEN>N 0 T= ;
 
 ;package
 

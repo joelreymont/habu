@@ -1,4 +1,3 @@
-split-str
 \ storage-test.f - test/wasm/storage.f's entries, each the MAIN of a module
 \ `hb-build --target wasm` builds, validated by wasm-tools and run by bun
 \ (test/wasm/harness.f); each module's output must be its entry's lines and its
@@ -26,44 +25,44 @@ PATH-CAP BUFFER: FILE
 variable FILE-U
 
 : SETUP ( -- )
-   s" wasm-storage" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
-   s" wasm storage: modules and output in " type  DIR u type cr ;
+   s" wasm-storage" FS:MKTEMP-DIR {: s:str :}
+   s STR:DATA DIR s STR:LEN BYTE-COPY  s STR:LEN DIR-U !
+   s" wasm storage: modules and output in " type  DIR s STR:LEN >str type cr ;
 
-: FILE! ( ^u8 n ^u8 n -- )
-   {: a:^ u:n name:^ nu:n :}
-   DIR DIR-U @ name nu FILE FS:JOIN-PATH FILE-U !
-   FILE FILE-U @ a u FS:WRITE-ALL ;
+: FILE! ( str str -- )
+   {: s:str name:str :}
+   DIR DIR-U @ >str name FILE FS:JOIN-PATH FILE-U !
+   FILE FILE-U @ >str s FS:WRITE-ALL ;
 
 \ The source name.f in DIR, whose MAIN is storage.f's entry, built into
 \ name.wasm there; answers the build's status.
-: BUILD ( ^u8 n ^u8 n -- n )
-   {: entry:^ eu:n name:^ nu:n :}
-   SB-RESET name nu SB-APPEND s" .wasm" SB-APPEND
-   DIR DIR-U @ SB$ MOD FS:JOIN-PATH MOD-U !
-   SB-RESET name nu SB-APPEND s" .f" SB-APPEND
-   DIR DIR-U @ SB$ SRC FS:JOIN-PATH SRC-U !
+: BUILD ( str str -- n )
+   {: entry:str name:str :}
+   SB-RESET name SB-APPEND s" .wasm" SB-APPEND
+   DIR DIR-U @ >str SB$ MOD FS:JOIN-PATH MOD-U !
+   SB-RESET name SB-APPEND s" .f" SB-APPEND
+   DIR DIR-U @ >str SB$ SRC FS:JOIN-PATH SRC-U !
    SB-RESET S\" require test/wasm/storage.f\n: MAIN ( -- ) " SB-APPEND
-   entry eu SB-APPEND  S\"  ;\n" SB-APPEND
-   SRC SRC-U @ SB$ FS:WRITE-ALL
+   entry SB-APPEND  S\"  ;\n" SB-APPEND
+   SRC SRC-U @ >str SB$ FS:WRITE-ALL
    SRC SRC-U @ MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 \ The entry's module, the file name with .wasm, builds, validates and runs to
 \ status, printing want; want and the output stay as name-expected.txt and
 \ name-actual.txt.
 : ENTRY-CASE ( str str str n -- )
-   {: entry:^ eu:n name:^ nu:n want:^ wu:n status:n :}
-   SB-RESET name nu SB-APPEND s" -expected.txt" SB-APPEND
-   want wu SB$ FILE!
-   entry eu name nu BUILD 0 T=
+   {: entry:str name:str want:str status:n :}
+   SB-RESET name SB-APPEND s" -expected.txt" SB-APPEND
+   want SB$ FILE!
+   entry name BUILD 0 T=
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    MOD MOD-U @ WASM-HARNESS:RUN status T=
-   SB-RESET name nu SB-APPEND s" -actual.txt" SB-APPEND
-   WASM-HARNESS:OUT$ SB$ FILE!
-   WASM-HARNESS:OUT$ want wu T$= ;
+   SB-RESET name SB-APPEND s" -actual.txt" SB-APPEND
+   WASM-HARNESS:OUT$ >str SB$ FILE!
+   WASM-HARNESS:OUT$ >str want T$= ;
 
 \ GROW's lines, REFUSE's and REUSE's.
-: BUFFER$ ( -- ^u8 n )
+: BUFFER$ ( -- str )
    S\" 77\n88\n312\n1\n-3201\n-3201\n77\n88\n1\n0\n0\n" ;
 
 : HOLES$ ( -- str )

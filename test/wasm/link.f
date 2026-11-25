@@ -1,4 +1,3 @@
-split-str
 \ link.f - WLINK (src/arch/wasm/link.f) on the host engine: function
 \ bodies, a data image and table slots become one Wasm module. Byte fixtures
 \ pin the module shape and ABI, the run wrapper's task DATA header stores
@@ -48,7 +47,7 @@ variable WALKED                       \ where the walk of the sections ended
    POS @ B@  1 POS +! ;
 
 : U32> ( -- n )
-   MBUF POS @ +  MOD-U @ POS @ -  WLEB:U32@  POS +! ;
+   MBUF POS @ +  MOD-U @ POS @ - >str WLEB:U32@  POS +! ;
 
 : SECTION> ( -- )
    BYTE> U32> {: id:n len:n :}
@@ -59,7 +58,7 @@ variable WALKED                       \ where the walk of the sections ended
 \ The module run calling function e, its sections walked from past the magic
 \ and version.
 : LINKED ( n -- )
-   WLINK:LINK MOD-U ! MOD-A !
+   WLINK:LINK dup STR:LEN MOD-U ! STR:DATA MOD-A !
    0 IDS !  8 POS !
    begin POS @ MOD-U @ < while SECTION> repeat
    POS @ WALKED ! ;
@@ -96,7 +95,7 @@ TYPED-VARIABLE WANT-U len
 : HEX$ ( n n -- str )
    {: at:n len:n :}
    len 0 ?do  at i + B@  GOT-BUF i 2 * +  BYTE>HEX  loop
-   GOT-BUF len 2 * ;
+   GOT-BUF len 2 * >str ;
 
 : SECTION$ ( n -- str )
    {: id:n :}
@@ -105,14 +104,14 @@ TYPED-VARIABLE WANT-U len
 : WANT-RESET ( -- )
    WANT-U BUF-RESET ;
 
-: W+ ( ^u8 n -- )
+: W+ ( str -- )
    WANT-BUF HEX-CAP WANT-U BUF-APPEND ;
 
 : WANT$ ( -- str )
-   WANT-BUF WANT-U @ LEN>N ;
+   WANT-BUF WANT-U @ LEN>N >str ;
 
 \ ---- refusals ----------------------------------------------------------------------
-: LINK0 ( -- )  0 WLINK:LINK 2drop ;
+: LINK0 ( -- )  0 WLINK:LINK drop ;
 
 0 constant ADDR-NONE                 \ the address kind of a field holding no address
 
@@ -153,7 +152,7 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 : MIN-ROW ( -- )
    WLINK:RESET
    0 KERNEL drop
-   BODY-BUF 0 WLINK:DATA!
+   BODY-BUF 0 >str WLINK:DATA!
    0 LINKED
    s" one function, no image: memory and eight wrappers with task header stores" T-LABEL
    WANT-RESET
@@ -212,11 +211,11 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    s" 042802500b0b0100" W+
    0 MOD-U @ HEX$ WANT$ T$=
    s" an entry in the aligned frame is refused though its type is the entry's" T-LABEL
-   [: 1 WLINK:LINK 2drop ;] E-WLINK-ARITY TTHROWSQ
+   [: 1 WLINK:LINK drop ;] E-WLINK-ARITY TTHROWSQ
    s" an entry taking a lane is refused" T-LABEL
-   [: 2 WLINK:LINK 2drop ;] E-WLINK-ARITY TTHROWSQ
+   [: 2 WLINK:LINK drop ;] E-WLINK-ARITY TTHROWSQ
    s" an entry answering a lane is refused" T-LABEL
-   [: 4 WLINK:LINK 2drop ;] E-WLINK-ARITY TTHROWSQ ;
+   [: 4 WLINK:LINK drop ;] E-WLINK-ARITY TTHROWSQ ;
 
 : ADD0 ( n n n -- )
    WLINK-ORIGIN:KERNEL ADD drop ;
@@ -251,7 +250,7 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
 : TABLE-ROW ( -- )
    WLINK:RESET
    IMAGE-FILL
-   IMAGE-BUF IMAGE-LEN WLINK:DATA!
+   IMAGE-BUF IMAGE-LEN >str WLINK:DATA!
    0 ADDR-BODY  0 0 0 ADD0
    0 ADDR-BODY  0 0 0 ADD0
    2 KERNEL drop  3 KERNEL drop
@@ -270,9 +269,9 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    S-TABLE SECTION$ s" 0170010303" T$=
    S-ELEMENT SECTION$ s" 010041010b020302" T$=
    s" a data address is the DATA base plus its target, the image's length included" T-LABEL
-   MBUF MOD-U @  0 BODY@ drop 2 +  WLEB:S64-PAD@  WPROF:DATA-VA IMAGE-LEN + T=
+   MBUF MOD-U @ >str  0 BODY@ drop 2 +  WLEB:S64-PAD@  WPROF:DATA-VA IMAGE-LEN + T=
    s" a code address is its slot" T-LABEL
-   MBUF MOD-U @  1 BODY@ drop 2 +  WLEB:S64-PAD@  2 T=
+   MBUF MOD-U @ >str  1 BODY@ drop 2 +  WLEB:S64-PAD@  2 T=
    s" data cells hold the same, low byte first; the image's trailing zeros are in no segment" T-LABEL
    S-DATA SECTION$ s" 01004180a0140b11081005000000000008090a0b0c0d0e0f01" T$= ;
 
@@ -289,18 +288,18 @@ $350000 constant PAGE-53-END
 : PAGES-ROW ( -- )
    WLINK:RESET
    0 KERNEL drop
-   64 ZEROS 64 WLINK:DATA!
+   64 ZEROS 64 >str WLINK:DATA!
    0 LINKED
    s" an image inside the DATA region: memory's minimum the region's 50 pages, its maximum 65536" T-LABEL
    S-MEMORY SECTION$ s" 010132808004" T$=
    s" an image of zeros writes no segment" T-LABEL
    S-DATA SECTION$ s" 00" T$=
    PAGE-53-END WPROF:DATA-VA - {: u:n :}
-   u 1+ ZEROS u WLINK:DATA!
+   u 1+ ZEROS u >str WLINK:DATA!
    0 LINKED
    s" an image ending at page 53's end: a minimum of 53 pages" T-LABEL
    S-MEMORY SECTION$ s" 010135808004" T$=
-   0 BIG u 1+ WLINK:DATA!
+   0 BIG u 1+ >str WLINK:DATA!
    0 LINKED
    s" one byte more: a minimum of 54 pages" T-LABEL
    S-MEMORY SECTION$ s" 010136808004" T$= ;
@@ -316,7 +315,7 @@ $350000 constant PAGE-53-END
    0 KERNEL drop
    32 0 do  0 GAP-BUF i + c!  loop
    1 GAP-BUF c!  2 GAP-BUF u 1- + c!
-   GAP-BUF u WLINK:DATA!
+   GAP-BUF u >str WLINK:DATA!
    0 LINKED ;
 
 : RUNS-ROW ( -- )
@@ -328,7 +327,7 @@ $350000 constant PAGE-53-END
    S-DATA SECTION$ s" 02004180a0140b0101004191a0140b0102" T$=
    WLINK:RESET
    0 KERNEL drop
-   16 ZEROS 16 WLINK:DATA!
+   16 ZEROS 16 >str WLINK:DATA!
    8 NEMIT:ADDR-DATA 0 WLINK:DATA-CELL+
    0 LINKED
    s" a cell in zero image bytes lands in a run once its address is stored" T-LABEL
@@ -342,7 +341,7 @@ $350000 constant PAGE-53-END
    {: k:n :}
    k k 1+ CHAIN-BODY
    k BODY@ {: at:n u:n :}
-   MBUF at + u  BODY$  STR:= ;
+   MBUF at + u >str  BODY$  STR:= ;
 
 \ Run's body, calling the entry at index 135.
 : RUN-135 ( -- )
@@ -387,7 +386,7 @@ $350000 constant PAGE-53-END
 : BASE ( -- )
    WLINK:RESET
    IMAGE-FILL
-   IMAGE-BUF 16 WLINK:DATA!
+   IMAGE-BUF 16 >str WLINK:DATA!
    0 KERNEL drop
    0 0 0 0 CALL-BODY  0 0 0 ADD0
    0 ADDR-BODY  0 0 0 ADD0
@@ -399,9 +398,9 @@ $350000 constant PAGE-53-END
 
 : ENTRY-ROWS ( -- )
    s" an entry past the functions is refused" T-LABEL
-   BASE  [: 3 WLINK:LINK 2drop ;] E-WLINK-UNRESOLVED TTHROWSQ
+   BASE  [: 3 WLINK:LINK drop ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" an entry below zero is refused" T-LABEL
-   BASE  [: -1 WLINK:LINK 2drop ;] E-WLINK-UNRESOLVED TTHROWSQ ;
+   BASE  [: -1 WLINK:LINK drop ;] E-WLINK-UNRESOLVED TTHROWSQ ;
 
 : RESERVE-ROWS ( -- )
    s" a reserve callee past the functions is refused" T-LABEL
@@ -453,7 +452,7 @@ $350000 constant PAGE-53-END
    s" a cell addressing past the image's end is refused" T-LABEL
    BASE  0 NEMIT:ADDR-DATA 17 WLINK:DATA-CELL+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" an image of a negative length is refused" T-LABEL
-   [: IMAGE-BUF -1 WLINK:DATA! ;] E-SPAN-LENGTH TTHROWSQ ;
+   [: IMAGE-BUF -1 >str WLINK:DATA! ;] E-SPAN-LENGTH TTHROWSQ ;
 
 \ ---- memory ---------------------------------------------------------------------
 $100000000 constant MEMORY32-BYTES     \ 65536 pages of 64 KiB
@@ -462,9 +461,9 @@ $100000000 constant MEMORY32-BYTES     \ 65536 pages of 64 KiB
 \ need not hold the bytes these lengths name.
 : MEMORY-ROW ( -- )
    s" an image ending one byte past memory32's 4 GiB is refused" T-LABEL
-   [: 1 ZEROS  MEMORY32-BYTES WPROF:DATA-VA - 1+  WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ
+   [: 1 ZEROS  MEMORY32-BYTES WPROF:DATA-VA - 1+ >str WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ
    s" an image of MAX-N bytes, whose end would wrap, is refused" T-LABEL
-   [: 1 ZEROS MAX-N WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ ;
+   [: 1 ZEROS MAX-N >str WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ ;
 
 public
 

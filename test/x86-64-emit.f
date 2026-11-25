@@ -1,4 +1,3 @@
-split-str
 \ x86-64-emit.f - pins, on aarch64, the bytes the linux-x86-64 seam
 \ (src/os/linux-x86-64/{sys,proc-watch,proc-control}.f), src/arch/x86-64/rt.f
 \ and X64CODE's label sites emit. Each `llvm-mc:` comment is the line that
@@ -38,45 +37,45 @@ using X64RT
    a i 2 * + c@ HEX-DIGIT 4 lshift
    a i 2 * 1 + + c@ HEX-DIGIT or ;
 
-: SPAN=HEX? ( ^u8 n str -- bool ) {: da:^ dlen:n ea:^ eu:n :}
-   eu 2 mod 0<> if FMATH:E-DOMAIN throw then
-   dlen eu 2 / <> if false exit then
-   dlen 0 ?do
-      ea i HEX-BYTE da i + c@ <> if false unloop exit then
+: SPAN=HEX? ( str str -- bool ) {: ds:str es:str :}
+   es STR:LEN 2 mod 0<> if FMATH:E-DOMAIN throw then
+   ds STR:LEN es STR:LEN 2 / <> if false exit then
+   ds STR:LEN 0 ?do
+      es STR:DATA i HEX-BYTE ds STR:DATA i + c@ <> if false unloop exit then
    loop
    true ;
 
-: SPAN=? ( ^u8 n ^u8 n -- bool ) {: aa:^ au:n ba:^ bu:n :}
-   au bu <> if false exit then
-   au 0 ?do
-      aa i + c@ ba i + c@ <> if false unloop exit then
+: SPAN=? ( str str -- bool ) {: as:str bs:str :}
+   as STR:LEN bs STR:LEN <> if false exit then
+   as STR:LEN 0 ?do
+      as STR:DATA i + c@ bs STR:DATA i + c@ <> if false unloop exit then
    loop
    true ;
 
-: SINK$ ( -- ^u8 n )
-   CODE ASM-LEN ;
+: SINK$ ( -- str )
+   CODE ASM-LEN >str ;
 
-: X= ( ^u8 n -- ) {: ea:^ eu:n :}
-   SINK$ ea eu SPAN=HEX? TTRUE
+: X= ( str -- ) {: es:str :}
+   SINK$ es SPAN=HEX? TTRUE
    ASM-RESET ;
 
-: S= ( ^u8 n str -- ) {: da:^ dlen:n ea:^ eu:n :}
-   da dlen ea eu SPAN=HEX? TTRUE ;
+: S= ( str str -- ) {: ds:str es:str :}
+   ds es SPAN=HEX? TTRUE ;
 
 256 constant WANT-CAP
 create WANT WANT-CAP allot
 variable WANT-N
 
-: E+ ( str -- ) {: ea:^ eu:n :}
-   eu 2 mod 0<> if FMATH:E-DOMAIN throw then
-   eu 2 / 0 ?do
+: E+ ( str -- ) {: es:str :}
+   es STR:LEN 2 mod 0<> if FMATH:E-DOMAIN throw then
+   es STR:LEN 2 / 0 ?do
       WANT-N @ WANT-CAP >= if E-BUF-BOUNDS throw then
-      ea i HEX-BYTE WANT WANT-N @ + c!
+      es STR:DATA i HEX-BYTE WANT WANT-N @ + c!
       WANT-N @ 1 + WANT-N !
    loop ;
 
 : E= ( -- )
-   SINK$ WANT WANT-N @ SPAN=? TTRUE
+   SINK$ WANT WANT-N @ >str SPAN=? TTRUE
    ASM-RESET
    0 WANT-N ! ;
 
@@ -290,10 +289,10 @@ $401000 constant LINK-VA
 
    s" a rel8 site reaches 127 bytes ahead and 128 behind" T-LABEL
    127 REL8-FWD  LINK-VA ASM-LINK
-   CODE 2 s" eb7f" SPAN=HEX? TTRUE        \ llvm-mc: {disp8} jmp E, 127 bytes to E
+   CODE 2 >str s" eb7f" SPAN=HEX? TTRUE        \ llvm-mc: {disp8} jmp E, 127 bytes to E
    ASM-RESET
    126 REL8-BACK  LINK-VA ASM-LINK
-   CODE 126 + 2 s" 7580" SPAN=HEX? TTRUE  \ llvm-mc: {disp8} jne F, 126 bytes after F
+   CODE 126 + 2 >str s" 7580" SPAN=HEX? TTRUE  \ llvm-mc: {disp8} jne F, 126 bytes after F
    ASM-RESET
 
    s" linking forgets the stream's sites, so the next stream is not patched" T-LABEL
@@ -341,13 +340,13 @@ create ERR CAPTURE-CAP allot
    ASM-SINK 0 VEC:RESIZE
    LINK-VA ASM-LINK ;
 
-: REFUSES ( ^u8 n ^u8 n -- )
-   {: source:^ sourceu:n want:^ wantu:n :}
-   source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN
+: REFUSES ( str str -- )
+   {: source:str want:str :}
+   source OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
-   source sourceu OUT outu LEN>N ERR erru LEN>N oc EXIT-STATUS:ENCODE T-ENDING-EXITED=
+   source OUT outu LEN>N >str ERR erru LEN>N >str oc EXIT-STATUS:ENCODE T-ENDING-EXITED=
    outu LEN>N 0 T=
-   ERR erru LEN>N want wantu T$= ;
+   ERR erru LEN>N >str want T$= ;
 
 : REFUSAL-CASES ( -- )
    s" a site whose label was never bound refuses the link" T-LABEL

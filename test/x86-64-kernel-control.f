@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-control.f - the control rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f CONTROL,) in the booted harness, cross-built for an
 \ x86-64 peer. Each image is one case; the host checks its ELF header, and the
@@ -22,7 +21,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DSTACK-REG ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 : IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
-: ROW, ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW, ( str -- ) X64HARNESS:CALL-ROW, ;
 : PUSH, ( n -- ) X64HARNESS:PUSH, ;
 : EXPECT-POP, ( n -- ) X64HARNESS:EXPECT-POP, ;
 
@@ -204,20 +203,20 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \                                        the reporter exits with the code plus 8
 \    hb-x64-kernel-die-wide          85  an rc past 255
 
-: BUILD-EVALUATE ( bool str -- ) {: negative:bool path:^ pathu:n :}
+: BUILD-EVALUATE ( bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    s" 1 2 +" X64HARNESS:PUSH-TEXT,
    2 X64HARNESS:EXPECT-DEPTH,
    s" evaluate" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-EVAL-RANGE ( str -- ) {: path:^ pathu:n :}
+: BUILD-EVAL-RANGE ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    s" 1" X64HARNESS:PUSH-TEXT,  0 PUSH,  1 PUSH,
    s" evaluate-range" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-EVAL-CLOSED ( str -- ) {: path:^ pathu:n :}
+: BUILD-EVAL-CLOSED ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    0 EVAL-CLEAN PROVIDED-XT:EVALUATE-CELL XT!,
    11 PUSH,  s" ok" X64HARNESS:PUSH-TEXT,  s" evaluate-closed" ROW,
@@ -251,35 +250,35 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    0 HND-CELL EXPECT-CELL,
    STACK-ABI:BOOT-BYTES STACK-ABI:CAP-CELL EXPECT-CELL,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-THROW-CLOSE ( str -- ) {: path:^ pathu:n :}
+: BUILD-THROW-CLOSE ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    5 PUSH,  THROW-WINDOW PUSH-XT,  s" catch" ROW,
    31 EXPECT-POP,  5 EXPECT-POP,
    DICT-SIZE X64HARNESS:PROBE,  X64HARNESS:FAULTED EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-FLOORREC ( str -- ) {: path:^ pathu:n :}
+: BUILD-FLOORREC ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    5 PUSH,  FLOOR-THROW PUSH-XT,  s" catch" ROW,
    70 EXPECT-POP,  5 EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-STACK-CLEAR ( str -- ) {: path:^ pathu:n :}
+: BUILD-STACK-CLEAR ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    5 PUSH,  6 PUSH,  s" stack-clear" ROW,
    0 X64HARNESS:EXPECT-DEPTH,
    9 PUSH,  9 EXPECT-POP,
    STACK-ABI:BOOT-BYTES STACK-ABI:CAP-CELL EXPECT-CELL,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-EXECUTE ( str -- ) {: path:^ pathu:n :}
+: BUILD-EXECUTE ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    3 PUSH,  ADD4 PUSH-XT,  s" execute" ROW,  7 EXPECT-POP,
    5 PUSH,  6 PUSH,  s" 2>r" ROW,
@@ -290,9 +289,9 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    UNDERFLOW PUSH-XT,  s" execute-floor" ROW,  -1 EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-CATCH ( str -- ) {: path:^ pathu:n :}
+: BUILD-CATCH ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    11 PUSH,
    5 PUSHES PUSH-XT,  s" catch" ROW,  0 EXPECT-POP,  5 EXPECT-POP,
@@ -303,9 +302,9 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    0 HND-CELL EXPECT-CELL,
    0 RSP-CELL EXPECT-CELL,
    0 LOOPSP-CELL EXPECT-CELL,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-FINALLY ( str -- ) {: path:^ pathu:n :}
+: BUILD-FINALLY ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    5 PUSHES PUSH-XT,  CLEANUP PUSH-XT,  s" finally" ROW,
    5 EXPECT-POP,  1 0 X64HARNESS:EXPECT-SCRATCH,
@@ -316,9 +315,9 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    0 HND-CELL EXPECT-CELL,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-SOURCE-UNIT ( str -- ) {: path:^ pathu:n :}
+: BUILD-SOURCE-UNIT ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    7 PUSH,  NOTHING CLOSED-OF CALL,  7 EXPECT-POP,
    7 PUSH,  5 PUSHES CLOSED-OF PUSH-XT,  s" catch" ROW,
@@ -330,36 +329,36 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    0 X64HARNESS:EXPECT-DEPTH,
    STACK-ABI:BOOT-BYTES STACK-ABI:CAP-CELL EXPECT-CELL,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ An uncaught THROWN-CODE throw with a reporter installed.
-: BUILD-THROW ( [ -- label ] str -- ) {: path:^ pathu:n :}
+: BUILD-THROW ( [ -- label ] str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    execute UNCGH-CELL XT!,
    THROWN-CODE PUSH,  s" throw" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ die with rc n, a message and an exit hook installed.
-: BUILD-DIE ( [ -- label ] n str -- ) {: rc:n path:^ pathu:n :}
+: BUILD-DIE ( [ -- label ] n str -- ) {: rc:n path:str :}
    false X64HARNESS:BOOT-OPEN,
    execute EXIT-HOOK-CELL XT!,
    s" hb: die" X64HARNESS:PUSH-TEXT,  rc PUSH,  s" die" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ die inside a catch, its exit hook throwing THROWN-CODE, with a reporter
 \ installed. Before the hook runs, die empties the handler chain, so the throw
 \ reaches the reporter instead of resuming the catch and returning from die.
-: BUILD-DIE-THROW ( str -- ) {: path:^ pathu:n :}
+: BUILD-DIE-THROW ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    REPORTS-EXIT UNCGH-CELL XT!,
    THROWN-CODE THROWS EXIT-HOOK-CELL XT!,
    5 DIES PUSH-XT,  s" catch" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-DIE-WIDE ( str -- ) {: path:^ pathu:n :}
+: BUILD-DIE-WIDE ( str -- ) {: path:str :}
    false X64HARNESS:BOOT-OPEN,
    s" hb: die" X64HARNESS:PUSH-TEXT,  256 PUSH,  s" die" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 public
 

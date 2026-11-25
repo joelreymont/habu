@@ -1,4 +1,3 @@
-split-str
 \ storage.f - WSTORE, DYNAMIC-BUFFER in a generated module: test/wasm/storage-test.f
 \ builds each public word as a module's entry, runs it and checks every line it
 \ prints. Each entry starts in a fresh module, its free list empty and its

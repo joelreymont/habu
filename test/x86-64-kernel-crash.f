@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-crash.f - the crash handler src/habu/boot-x64.f START,
 \ installs, in the booted harness, cross-built for an x86-64 peer. Each image
 \ forks a child that faults with a pipe on fd 2; the parent checks the wait
@@ -41,7 +40,7 @@ $0B0F008948 constant STORE-CODE                 \ 48 89 00 0f 0b: mov [rax], rax
 5 constant PROT-RX                              \ PROT_READ|PROT_EXEC
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
-: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
@@ -64,9 +63,9 @@ variable SKIP-AT
    b WANT-BUF WANT-N @ + c!
    WANT-N @ 1+ WANT-N ! ;
 
-: WANT-TEXT ( str -- ) {: a:^ u:n :}  u 0 ?do  a i + c@ WANT-BYTE  loop ;
+: WANT-TEXT ( str -- ) {: s:str :}  s STR:LEN 0 ?do  s STR:DATA i + c@ WANT-BYTE  loop ;
 
-: HEX-CHAR ( n -- n ) {: d:n :}  s" 0123456789abcdef" drop d + c@ ;
+: HEX-CHAR ( n -- n ) {: d:n :}  s" 0123456789abcdef" STR:DATA d + c@ ;
 
 \ A value: sixteen lowercase digits, the most significant first.
 : VALUE-LINE ( n -- ) {: v:n :}
@@ -269,7 +268,7 @@ $1716151413121110 constant CELL-C
    status WANT
    RFD RECALL,  GOT AT,  GOT-CAP N,  s" read" ROW  WANT-N @ WANT
    RFD RECALL,  GOT AT,  GOT-CAP N,  s" read" ROW  0 WANT
-   WANT-BUF WANT-N @ X64HARNESS:PUSH-TEXT,  0 G-POP  TEXT-AT KEEP,
+   WANT-BUF WANT-N @ >str X64HARNESS:PUSH-TEXT,  0 G-POP  TEXT-AT KEEP,
    0 SKIP-AT @ SAME,  0 WANT
    SKIP-AT @ WANT-N @ < if
       SKIP-AT @ DIGITS +  WANT-N @ over -  SAME,  0 WANT
@@ -277,14 +276,14 @@ $1716151413121110 constant CELL-C
 
 \ An image: the pipe, the fork, the child the quotation emits and the
 \ parent's checks, then the stack checks every image ends with.
-: IMAGE ( [ -- ] n bool ^u8 n -- ) {: status:n negative:bool path:^ pathu:n :}
+: IMAGE ( [ -- ] n bool str -- ) {: status:n negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    s" pipe" ROW  0 G-POP  WFD KEEP,  RFD KEEP,
    s" fork" ROW  CHILD,
    status PARENT,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 \ The images and the status the peer that runs each must see:
 \

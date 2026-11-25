@@ -1,4 +1,3 @@
-split-str
 \ leb.f - WLEB, the Wasm backend's LEB128: the shortest LEB of each integer type
 \ at the edges of its byte counts and its range, the padded call and address
 \ fields read at their offsets and rewritten in place, round trips across every
@@ -30,14 +29,14 @@ $0B constant END-OP
 32 SPAN-BUFFER: STAGED
 variable STAGED-LEN
 
-: OUT$ ( n -- ^u8 n )
-   OUT SPAN:$ drop swap ;
+: OUT$ ( n -- str )
+   OUT SPAN:$ STR:DATA swap >str ;
 
 : HEX$ ( str -- str )
-   {: a u:n :}
-   HEX u 2 * SPAN:TAKE SPAN:$ {: h hu:n :}
-   u 0 ?do a i + c@ h i 2 * + BYTE>HEX loop
-   h hu ;
+   {: s:str :}
+   HEX s STR:LEN 2 * SPAN:TAKE SPAN:$ {: h:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ h STR:DATA i 2 * + BYTE>HEX loop
+   h ;
 
 : NIBBLE ( n -- n )
    {: c:n :}
@@ -47,16 +46,16 @@ variable STAGED-LEN
 \ A refusal's quotation sees no locals, so the hex's bytes are staged, with
 \ canaries past them.
 : STAGE ( str -- )
-   {: a u:n :}
-   u 2 / {: k:n :}
+   {: s:str :}
+   s STR:LEN 2 / {: k:n :}
    CANARY STAGED SPAN:FILL
    k 0 ?do
-      a i 2 * + c@ NIBBLE 4 lshift a i 2 * + 1+ c@ NIBBLE or STAGED i SPAN:U8!
+      s STR:DATA i 2 * + c@ NIBBLE 4 lshift s STR:DATA i 2 * + 1+ c@ NIBBLE or STAGED i SPAN:U8!
    loop
    k STAGED-LEN ! ;
 
 : STAGED$ ( -- str )
-   STAGED SPAN:$ drop STAGED-LEN @ ;
+   STAGED SPAN:$ STR:DATA STAGED-LEN @ >str ;
 
 : STAGED-SPAN ( -- SPAN:span<u8> )
    STAGED STAGED-LEN @ SPAN:TAKE ;
@@ -67,26 +66,26 @@ variable STAGED-LEN
 
 \ ---- the shortest LEB, at the edges ---------------------------------------
 \ v's shortest LEB is want, and reads back as v from exactly those bytes.
-: SHORTEST ( n [ n SPAN:span<u8> -- n ] [ ^u8 n -- n n ] ^u8 n -- )
-   {: v:n put get want wu:n :}
+: SHORTEST ( n [ n SPAN:span<u8> -- n ] [ str -- n n ] str -- )
+   {: v:n put get want:str :}
    v OUT put execute {: k:n :}
-   want wu T-LABEL
-   k OUT$ HEX$ want wu T$=
+   want T-LABEL
+   k OUT$ HEX$ want T$=
    k OUT$ get execute
-   want wu T-LABEL k T=
-   want wu T-LABEL v T= ;
+   want T-LABEL k T=
+   want T-LABEL v T= ;
 
 : U32-IS ( n str -- )
-   {: v:n a u:n :}
-   v [: WLEB:U32! ;] [: WLEB:U32@ ;] a u SHORTEST ;
+   {: v:n s:str :}
+   v [: WLEB:U32! ;] [: WLEB:U32@ ;] s SHORTEST ;
 
 : S32-IS ( n str -- )
-   {: v:n a u:n :}
-   v [: WLEB:S32! ;] [: WLEB:S32@ ;] a u SHORTEST ;
+   {: v:n s:str :}
+   v [: WLEB:S32! ;] [: WLEB:S32@ ;] s SHORTEST ;
 
 : S64-IS ( n str -- )
-   {: v:n a u:n :}
-   v [: WLEB:S64! ;] [: WLEB:S64@ ;] a u SHORTEST ;
+   {: v:n s:str :}
+   v [: WLEB:S64! ;] [: WLEB:S64@ ;] s SHORTEST ;
 
 : U32-EDGES ( -- )
    0 s" 00" U32-IS
@@ -171,21 +170,21 @@ variable STAGED-LEN
 
 \ v's padded field is want, whatever v's shortest LEB takes, and reads back as
 \ v at offset 0.
-: PADDED ( n [ n SPAN:span<u8> -- n ] [ ^u8 n n -- n ] ^u8 n -- )
-   {: v:n put get want wu:n :}
+: PADDED ( n [ n SPAN:span<u8> -- n ] [ str n -- n ] str -- )
+   {: v:n put get want:str :}
    v OUT put execute {: k:n :}
-   want wu T-LABEL
-   k OUT$ HEX$ want wu T$=
-   want wu T-LABEL
+   want T-LABEL
+   k OUT$ HEX$ want T$=
+   want T-LABEL
    k OUT$ 0 get execute v T= ;
 
 : U32-PADS ( n str -- )
-   {: v:n a u:n :}
-   v [: WLEB:U32-PAD! ;] [: WLEB:U32-PAD@ ;] a u PADDED ;
+   {: v:n s:str :}
+   v [: WLEB:U32-PAD! ;] [: WLEB:U32-PAD@ ;] s PADDED ;
 
 : S64-PADS ( n str -- )
-   {: v:n a u:n :}
-   v [: WLEB:S64-PAD! ;] [: WLEB:S64-PAD@ ;] a u PADDED ;
+   {: v:n s:str :}
+   v [: WLEB:S64-PAD! ;] [: WLEB:S64-PAD@ ;] s PADDED ;
 
 : PADS ( -- )
    0 s" 8080808000" U32-PADS
@@ -205,18 +204,18 @@ variable STAGED-LEN
 
 \ ---- reading what Wasm admits, and refusing the rest ----------------------
 \ The staged bytes read as v and take len of them.
-: READS ( ^u8 n [ ^u8 n -- n n ] n n -- )
-   {: a u:n get v:n len:n :}
-   a u STAGE
+: READS ( str [ str -- n n ] n n -- )
+   {: s:str get v:n len:n :}
+   s STAGE
    STAGED$ get execute
-   a u T-LABEL len T=
-   a u T-LABEL v T= ;
+   s T-LABEL len T=
+   s T-LABEL v T= ;
 
 \ fail, run on the staged bytes, refuses with code.
-: REFUSES ( ^u8 n [ -- ] n -- )
-   {: a u:n fail code:n :}
-   a u STAGE
-   a u T-LABEL
+: REFUSES ( str [ -- ] n -- )
+   {: s:str fail code:n :}
+   s STAGE
+   s T-LABEL
    fail code TTHROWSQ ;
 
 \ Padding inside the type's bytes, and an LEB that ends before its bytes do.
@@ -239,7 +238,7 @@ variable STAGED-LEN
    s" ffffffff" [: STAGED$ WLEB:U32@ 2drop ;] WLEB:E-TRUNCATED REFUSES
    s" 808080808080808080" [: STAGED$ WLEB:S64@ 2drop ;] WLEB:E-TRUNCATED REFUSES
    s" a negative length" T-LABEL
-   [: STAGED SPAN:$ drop -1 WLEB:U32@ 2drop ;] E-SPAN-LENGTH TTHROWSQ ;
+   [: STAGED SPAN:$ STR:DATA -1 >str WLEB:U32@ 2drop ;] E-SPAN-LENGTH TTHROWSQ ;
 
 \ A last byte with bits past the type: they must be zero, or copies of the sign.
 : OUT-OF-RANGE ( -- )
@@ -255,11 +254,11 @@ variable STAGED-LEN
 \ fail, writing into OUT, refuses with code, and leaves the whole of OUT as the
 \ canaries it was filled with.
 : WRITE-REFUSES ( str [ -- ] n -- )
-   {: a u:n fail code:n :}
+   {: s:str fail code:n :}
    CANARY OUT SPAN:FILL
-   a u T-LABEL
+   s T-LABEL
    fail code TTHROWSQ
-   a u T-LABEL
+   s T-LABEL
    OUT CANARIES? TTRUE ;
 
 \ A value outside its type is refused before a byte is written.
@@ -299,11 +298,11 @@ variable STAGED-LEN
 \ patch, run on the staged code, refuses with code, and leaves the code as it
 \ was and the canaries past it.
 : PATCH-REFUSES ( str [ -- ] n -- )
-   {: a u:n patch code:n :}
-   a u patch code REFUSES
-   a u T-LABEL
-   STAGED$ HEX$ a u T$=
-   a u T-LABEL
+   {: s:str patch code:n :}
+   s patch code REFUSES
+   s T-LABEL
+   STAGED$ HEX$ s T$=
+   s T-LABEL
    STAGED STAGED-LEN @ SPAN:SKIP CANARIES? TTRUE ;
 
 \ A patch takes only a padded field of its width and a value of its type.
@@ -322,7 +321,7 @@ variable STAGED-LEN
 
 \ ---- round trips ------------------------------------------------------------
 \ v written by put reads back through get from exactly the bytes put wrote.
-: BACK ( n [ n SPAN:span<u8> -- n ] [ ^u8 n -- n n ] -- )
+: BACK ( n [ n SPAN:span<u8> -- n ] [ str -- n n ] -- )
    {: v:n put get :}
    v OUT put execute {: k:n :}
    k OUT$ get execute k T= v T= ;

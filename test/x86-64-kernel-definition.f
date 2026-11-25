@@ -1,4 +1,3 @@
-split-str
 \ x86-64-kernel-definition.f - the definition writers of the x86-64 kernel
 \ (src/habu/kernel-x64.f DEFINITION,) in the booted harness, cross-built for an
 \ x86-64 peer. Each image puts the code region at rest before calling the rows,
@@ -39,7 +38,7 @@ SECOND-SLOT X64KERNEL:CODE-SLOT + constant PAST-LONG
 : SOURCE$ ( -- str ) s" a-source-past-inline" ;
 
 : HELLO$ ( -- str ) s" hello" ;
-HELLO$ nip 1+ constant HELLO-LEN        \ "hello" and its space
+HELLO$ STR:LEN 1+ constant HELLO-LEN        \ "hello" and its space
 BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 \ The text cell a "hello" run starts, in a block whose next two bytes it never
@@ -83,16 +82,16 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    same X64CODE:LBL,  0 G-PUSH ;
 
 \ ---- the staging and the checks ----------------------------------------------
-: NAMESPACE, ( ^u8 n n -- ) {: a:^ u:n flag:n :}
-   a u X64HARNESS:PUSH-TEXT,  flag X64HARNESS:PUSH,
+: NAMESPACE, ( str n -- ) {: s:str flag:n :}
+   s X64HARNESS:PUSH-TEXT,  flag X64HARNESS:PUSH,
    s" namespace-record" X64HARNESS:CALL-ROW, ;
 
-: ALIAS, ( ^u8 n n n -- ) {: a:^ u:n src:n wid:n :}
-   a u X64HARNESS:PUSH-TEXT,  src X64HARNESS:PUSH,  wid X64HARNESS:PUSH,
+: ALIAS, ( str n n -- ) {: s:str src:n wid:n :}
+   s X64HARNESS:PUSH-TEXT,  src X64HARNESS:PUSH,  wid X64HARNESS:PUSH,
    s" alias-record" X64HARNESS:CALL-ROW, ;
 
-: DEF-OPEN, ( str n n -- ) {: a:^ u:n wid:n kind:n :}
-   a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,  kind X64HARNESS:PUSH,
+: DEF-OPEN, ( str n n -- ) {: s:str wid:n kind:n :}
+   s X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,  kind X64HARNESS:PUSH,
    s" def-open" X64HARNESS:CALL-ROW, ;
 
 : SCOPE, ( n n -- ) {: row:n parent:n :}
@@ -103,12 +102,12 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 \ The signature row named over SIG-LEN bytes at the text's start, a span whose
 \ address the block fixes at run time.
-: SIG, ( str -- ) {: row:^ rowu:n :}
+: SIG, ( str -- ) {: row:str :}
    0 PUSH-TEXT-ADDR,  SIG-LEN X64HARNESS:PUSH,
-   row rowu X64HARNESS:CALL-ROW, ;
+   row X64HARNESS:CALL-ROW, ;
 
-: XREF, ( str n -- ) {: a:^ u:n wid:n :}
-   a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,
+: XREF, ( str n -- ) {: s:str wid:n :}
+   s X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,
    s" xref-search-wl" X64HARNESS:CALL-ROW, ;
 
 : AFTER-SEAL, ( -- ) 1 SEAL-NDICT-CELL X64HARNESS:CELL!, ;
@@ -206,7 +205,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    FIRST-WID 2 + WIDN-CELL X64HARNESS:EXPECT-CELL,
    FIRST-WID 1 X64KERNEL:REC-CODE X64HARNESS:EXPECT-RECORD,
    FIRST-WID 1+ 1 REC-AUX X64HARNESS:EXPECT-RECORD,
-   s" Pkg" nip 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,  \ the length alone
+   s" Pkg" STR:LEN 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,  \ the length alone
    1 CLOSED,
    s" pKG" WL:NAMESPACE XREF,  1 X64HARNESS:EXPECT-ROW, ;
 
@@ -228,7 +227,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    s" Al" 0 ALIAS-WID ALIAS,
    1 1 X64KERNEL:REC-CODE X64HARNESS:EXPECT-RECORD,
    -1 1 REC-AUX X64HARNESS:EXPECT-RECORD,
-   s" Al" nip SOURCE-FLAGS or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   s" Al" STR:LEN SOURCE-FLAGS or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    ALIAS-WID 1 X64KERNEL:REC-WID X64HARNESS:EXPECT-RECORD,
    1 CLOSED,
    s" aL" ALIAS-WID XREF,  1 X64HARNESS:EXPECT-ROW, ;
@@ -252,7 +251,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    HELLO$ WID DKIND:VAL DEF-OPEN,
    PEND-CELL X64HARNESS:PUSH-DATA-CELL,  DREC X64HARNESS:EXPECT-POP-REGION,
    DREC X64HARNESS:PUSH-REGION-CELL,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
-   HELLO$ nip DKIND:VAL or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   HELLO$ STR:LEN DKIND:VAL or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    HELLO$ 0 X64HARNESS:NAME-CELL 1 X64KERNEL:REC-NAME X64HARNESS:EXPECT-RECORD,
    WID 1 X64KERNEL:REC-WID X64HARNESS:EXPECT-RECORD,
    PUSH-NDICT,  1 X64HARNESS:EXPECT-POP,
@@ -270,14 +269,14 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
    1 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:EXPECT-CELL,
    X64HARNESS:PUSH-CP,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
-   s" w" nip DKIND:CAST or 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   s" w" STR:LEN DKIND:CAST or 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    0 CLOSED, ;
 
 : DEF-OPEN-LONG-CASE, ( -- )
    LONG$ 0 0 DEF-OPEN,
    X64HARNESS:PUSH-CP,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
    X64KERNEL:REC-CODE X64HARNESS:PUSH-REGION-CELL,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
-   LONG$ nip DNAME-EXT or 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   LONG$ STR:LEN DNAME-EXT or 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    X64KERNEL:REC-NAME X64HARNESS:PUSH-REGION-CELL,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    0 CLOSED, ;
 
@@ -357,8 +356,8 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    HELLO$ WID 0 X64HARNESS:RECORD,                    \ record 0
    s" w" WID DKIND:CAST X64HARNESS:RECORD,           \ record 1
    s" imm-mark" X64HARNESS:CALL-ROW,
-   s" w" nip DKIND:CAST or DNAME-IMM or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
-   HELLO$ nip 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   s" w" STR:LEN DKIND:CAST or DNAME-IMM or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   HELLO$ STR:LEN 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    1 CLOSED, ;
 
 \ A failed definition clears its compile state while leaving
@@ -461,12 +460,12 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 \ One image: the boot, the case the quotation emits, the depth and balance
 \ checks and the exit.
-: IMAGE ( [ -- ] bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
+: IMAGE ( [ -- ] bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 : WRITERS ( -- )
    [: NAMESPACE-RECORD-CASE, ;] false s" hb-x64-kernel-namespace-record" TMP-PATH IMAGE

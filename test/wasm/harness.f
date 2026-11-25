@@ -1,4 +1,3 @@
-split-str
 \ harness.f - WASM-HARNESS: a module file checked by two engines independent of
 \ Habu, wasm-tools validating it and bun running it through test/wasm/run.mjs.
 \ Both are found on PATH and run from the tree's root; a missing tool throws.
@@ -40,7 +39,7 @@ variable ADDR
 variable MEM-START
 variable MEM-END
 
-: ARG+ ( ^u8 n -- )  PROC-ARGV+ ;
+: ARG+ ( str -- )  PROC-ARGV+ ;
 
 \ The program at the path, run with the arguments staged; answers its exit
 \ status, or 128 plus the signal that ended it.
@@ -52,13 +51,13 @@ variable MEM-END
 
 : SPAWN ( str -- n )
    EXE RESOLVE-EXECUTABLE {: u:n :}
-   EXE u RUN-AT ;
+   EXE u >str RUN-AT ;
 
 : FIRST-LINE ( -- str )
-   ERR ERR-U @ STR:RTRIM {: a:^ u:n :}
-   a u 10 STR:INDEX-OF MATCH option
-      some OF IDX>N a swap ENDOF
-      none OF a u ENDOF
+   ERR ERR-U @ >str STR:RTRIM {: s:str :}
+   s 10 STR:INDEX-OF MATCH option
+      some OF IDX>N s STR:DATA swap >str ENDOF
+      none OF s ENDOF
    ;MATCH ;
 
 \ run.mjs's first stderr line for status 1 is its throw line; bun's own failures
@@ -68,11 +67,11 @@ variable MEM-END
    s" wasm harness: bun exited 1 without a `throw <i64>` line" EXIT-STATUS:FAILURE die ;
 
 : THROWN ( -- n )
-   FIRST-LINE {: a:^ u:n :}
-   a u s" throw " STR:STARTS-WITH? 0= if  a u NO-THROW-LINE  then
-   a 6 + u 6 - STR:>NUMBER? MATCH option
+   FIRST-LINE {: s:str :}
+   s s" throw " STR:STARTS-WITH? 0= if  s NO-THROW-LINE  then
+   s STR:DATA 6 + s STR:LEN 6 - >str STR:>NUMBER? MATCH option
       some OF ENDOF
-      none OF a u NO-THROW-LINE ENDOF
+      none OF s NO-THROW-LINE ENDOF
    ;MATCH ;
 
 \ run.mjs's stderr line after its memory line for status 2 is its fault line;
@@ -83,21 +82,21 @@ variable MEM-END
    EXIT-STATUS:FAILURE die ;
 
 : FAULT-FIELD ( str str -- n )
-   {: line:^ lu:n a:^ u:n :}
-   a u STR:>NUMBER? MATCH option
+   {: line:str s:str :}
+   s STR:>NUMBER? MATCH option
       some OF ENDOF
-      none OF line lu NO-FAULT-LINE ENDOF
+      none OF line NO-FAULT-LINE ENDOF
    ;MATCH ;
 
 : FAULTED ( -- )
-   ERR ERR-U @ 10 TAIL @ STR:SPLIT-NEXT drop {: a:^ u:n next:n :}
-   a u s" fault " STR:STARTS-WITH? 0= if  ERR ERR-U @ NO-FAULT-LINE  then
-   a 6 + u 6 - 32 STR:INDEX-OF MATCH option
+   ERR ERR-U @ >str 10 TAIL @ STR:SPLIT-NEXT drop {: s:str next:n :}
+   s s" fault " STR:STARTS-WITH? 0= if  ERR ERR-U @ >str NO-FAULT-LINE  then
+   s STR:DATA 6 + s STR:LEN 6 - >str 32 STR:INDEX-OF MATCH option
       some OF IDX>N ENDOF
-      none OF a u NO-FAULT-LINE ENDOF
+      none OF s NO-FAULT-LINE ENDOF
    ;MATCH {: k:n :}
-   a u  a 6 + k FAULT-FIELD KIND !
-   a u  a 7 + k +  u 7 - k -  FAULT-FIELD ADDR !
+   s  s STR:DATA 6 + k >str FAULT-FIELD KIND !
+   s  s STR:DATA 7 + k +  s STR:LEN 7 - k - >str FAULT-FIELD ADDR !
    next ERR-U @ min TAIL ! ;
 
 \ run.mjs writes `memory <start> <end>` on a stderr line of its own; any other
@@ -107,42 +106,42 @@ variable MEM-END
    s" wasm harness: run.mjs wrote a `memory` line without two numbers" EXIT-STATUS:FAILURE die ;
 
 : MEMORY-FIELD ( str str -- n )
-   {: line:^ lu:n a:^ u:n :}
-   a u STR:>NUMBER? MATCH option
+   {: line:str s:str :}
+   s STR:>NUMBER? MATCH option
       some OF ENDOF
-      none OF line lu NO-MEMORY-LINE ENDOF
+      none OF line NO-MEMORY-LINE ENDOF
    ;MATCH ;
 
 \ True at run.mjs's memory line, whose next line starts at next: TAIL moves there.
 : MEMORY? ( str n -- bool )
-   {: a:^ u:n next:n :}
-   a u s" memory " STR:STARTS-WITH? 0= if false exit then
-   a 7 + u 7 - 32 STR:INDEX-OF MATCH option
+   {: s:str next:n :}
+   s s" memory " STR:STARTS-WITH? 0= if false exit then
+   s STR:DATA 7 + s STR:LEN 7 - >str 32 STR:INDEX-OF MATCH option
       some OF IDX>N ENDOF
-      none OF a u NO-MEMORY-LINE ENDOF
+      none OF s NO-MEMORY-LINE ENDOF
    ;MATCH {: k:n :}
-   a u  a 7 + k MEMORY-FIELD MEM-START !
-   a u  a 8 + k +  u 8 - k -  MEMORY-FIELD MEM-END !
+   s  s STR:DATA 7 + k >str MEMORY-FIELD MEM-START !
+   s  s STR:DATA 8 + k +  s STR:LEN 8 - k - >str MEMORY-FIELD MEM-END !
    next ERR-U @ min TAIL !  true ;
 
 \ The first memory line is run.mjs's: ERR bytes after it may hold another.
 : MEMORY ( -- )
    0 MEM-START !  0 MEM-END !  ERR-U @ TAIL !
-   0 begin  >r ERR ERR-U @ 10 r> STR:SPLIT-NEXT  while
+   0 begin  >r ERR ERR-U @ >str 10 r> STR:SPLIT-NEXT  while
       dup >r MEMORY? if  r> drop exit  then  r>
-   repeat drop drop drop ;
+   repeat drop drop ;
 
-: VALIDATE ( ^u8 n bool -- bool )
-   {: path:^ u:n no-sat:bool :}
+: VALIDATE ( str bool -- bool )
+   {: path:str no-sat:bool :}
    PROC-ARGV-RESET
    s" validate" ARG+
    s" --features" ARG+  s" mvp" ARG+          \ each list adds to the last
    s" --features" ARG+  WPROF:FEATURES ARG+
    no-sat if  s" --features=-saturating-float-to-int" ARG+  then
-   path u ARG+
+   path ARG+
    s" wasm-tools" SPAWN {: rc:n :}
    rc 1 > if
-      ERR ERR-U @ type cr
+      ERR ERR-U @ >str type cr
       s" wasm harness: wasm-tools validate failed" EXIT-STATUS:FAILURE die
    then
    rc 0= ;
@@ -153,12 +152,12 @@ public
    {: src:^ su:n mod:^ mu:n :}
    PROC-ARGV-RESET
    s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+  s" --target" ARG+  s" wasm" ARG+
-   src su ARG+  s" -o" ARG+  mod mu ARG+
+   src su >str ARG+  s" -o" ARG+  mod mu >str ARG+
    s" bin/hb" RUN-AT {: rc:n :}
-   rc 0<> if  ERR ERR-U @ type cr  then
+   rc 0<> if  ERR ERR-U @ >str type cr  then
    rc ;
 
-: VALID? ( ^u8 n -- bool )  false VALIDATE ;
+: VALID? ( ^u8 n -- bool )  >str false VALIDATE ;
 
 \ W05 probes one missing required feature on the same generated module.
 : VALID-WITHOUT-SAT? ( str -- bool )  true VALIDATE ;
@@ -166,7 +165,7 @@ public
 : RUN ( ^u8 n -- n )
    {: path:^ u:n :}
    PROC-ARGV-RESET
-   s" test/wasm/run.mjs" ARG+  path u ARG+
+   s" test/wasm/run.mjs" ARG+  path u >str ARG+
    s" bun" SPAWN {: rc:n :}
    0 CODE !  0 KIND !  0 ADDR !
    rc 1 = if  THROWN CODE !  then

@@ -1,4 +1,3 @@
-split-str
 \ x86-64-boot-signal.f - the SIGUSR1 stub src/habu/boot-x64.f START emits and
 \ publishes, cross-built for an x86-64 peer. Each image installs it from
 \ SIGNAL-ABI:STUB-CELL through SIGACTION-AT,, and raises the signal on its own
@@ -99,12 +98,12 @@ $1000 constant WINDOW
    INSTALL,  PIPE,  STDIN-PIPE,  RAISE,
    EAGAIN-RC DRAIN, ;
 
-: BUILD ( [ -- ] bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
+: BUILD ( [ -- ] bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
+   path X64HARNESS:BOOT-CLOSE, ;
 
 public
 

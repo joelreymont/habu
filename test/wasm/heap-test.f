@@ -1,4 +1,3 @@
-split-str
 \ heap-test.f - src/lib/test/heap-churn.f through HEAP:ALLOCATOR in a module
 \ `hb-build --target wasm` builds, validated by wasm-tools and run by bun
 \ (test/wasm/harness.f): it must print no block taken or grown with a nonzero
@@ -32,12 +31,12 @@ variable SRC-U
    S\" require src/lib/heap.f\nrequire src/lib/test/heap-churn.f\n: MAIN ( -- ) HEAP:ALLOCATOR HEAP-CHURN:RUN {: u:n c:n r:n h:n :} u . c . r . h . ;\n" ;
 
 : SETUP ( -- )
-   s" wasm-heap" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
-   s" wasm heap: source and module in " type  DIR u type cr
-   DIR DIR-U @ s" churn.f" SRC FS:JOIN-PATH SRC-U !
-   DIR DIR-U @ s" churn.wasm" MOD FS:JOIN-PATH MOD-U !
-   SRC SRC-U @ SOURCE$ FS:WRITE-ALL ;
+   s" wasm-heap" FS:MKTEMP-DIR {: s:str :}
+   s STR:DATA DIR s STR:LEN BYTE-COPY  s STR:LEN DIR-U !
+   s" wasm heap: source and module in " type  DIR s STR:LEN >str type cr
+   DIR DIR-U @ >str s" churn.f" SRC FS:JOIN-PATH SRC-U !
+   DIR DIR-U @ >str s" churn.wasm" MOD FS:JOIN-PATH MOD-U !
+   SRC SRC-U @ >str SOURCE$ FS:WRITE-ALL ;
 
 
 \ RUN's answers but the last, one a line, as `.` prints them in the module.
@@ -48,10 +47,10 @@ variable SRC-U
 
 \ OUT's lines after WANT$'s, the highest live bytes, or 0.
 : HIGHEST ( -- n )
-   WASM-HARNESS:OUT$ {: a:^ u:n :}
-   WANT$ {: w:^ wu:n :}
-   a  wu u min  w wu T$=
-   a wu u min +  u wu - 0 max  STR:RTRIM STR:>NUMBER? MATCH option
+   WASM-HARNESS:OUT$ >str {: s:str :}
+   WANT$ {: w:str :}
+   s STR:DATA  w STR:LEN s STR:LEN min >str  w T$=
+   s STR:DATA w STR:LEN s STR:LEN min +  s STR:LEN w STR:LEN - 0 max >str  STR:RTRIM STR:>NUMBER? MATCH option
       some OF ENDOF
       none OF 0 ENDOF
    ;MATCH ;
