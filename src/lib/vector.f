@@ -106,8 +106,10 @@ public
 : ENSURE ( ^vector<t> n -- )
    {: v:^ k:n :}
    k 0 >=  k v VECTOR-COUNT @ <=  and if exit then
-   k v VECTOR-WIDTH @ CHECK-COUNT
-   k v VECTOR-ROOM @ > if v k GROW then
+   k 0 <  k v VECTOR-ROOM @ >  or if
+      k v VECTOR-WIDTH @ CHECK-COUNT
+      v k GROW
+   then
    k v VECTOR-COUNT ! ;
 
 \ n below 0 is E-VEC-CAPACITY; below COUNT the block stays where it is.
