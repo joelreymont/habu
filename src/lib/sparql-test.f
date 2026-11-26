@@ -1096,6 +1096,12 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?x WHERE { t:50 ((((((((((((((((t:25+)+)+)+)+)+)+)+)+)+)+)+)+)+)+)+) ?x }"
    s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:51'}},{'x':{'type':'uri','value':'urn:test:52'}},{'x':{'type':'uri','value':'urn:test:50'}}]}}"
    EXPECT
+   s" SELECT ?x WHERE { t:50 ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((t:25)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)* ?x }"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:50'}},{'x':{'type':'uri','value':'urn:test:51'}},{'x':{'type':'uri','value':'urn:test:52'}}]}}"
+   EXPECT
+   s" SELECT ?x WHERE { t:60 ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((!t:25)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)*)* ?x }"
+   s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:60'}},{'x':{'type':'uri','value':'urn:test:61'}},{'x':{'type':'uri','value':'urn:test:62'}}]}}"
+   EXPECT
    s" SELECT ?x ?y WHERE { ?x (t:26/t:26?)+ ?y }"
    s" {'head':{'vars':['x','y']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:60'},'y':{'type':'uri','value':'urn:test:61'}},{'x':{'type':'uri','value':'urn:test:60'},'y':{'type':'uri','value':'urn:test:62'}},{'x':{'type':'uri','value':'urn:test:61'},'y':{'type':'uri','value':'urn:test:62'}}]}}"
    EXPECT

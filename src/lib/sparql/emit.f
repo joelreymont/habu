@@ -94,9 +94,12 @@
 \ substitution binds always, its value, else the distinct values of
 \ an end the solutions so far bind always, which are then written once as
 \ a CTE both read, else every subject of p's steps for `+` and every
-\ subject and object of the sources p reads for `*` and `?`; from the
+\ subject and object in the active graph for `*` and `?`; from the
 \ object end the walk steps backwards. `*` and `?` add each seed as its
-\ own end.
+\ own end. A walk's steps, when its operand has a walk in it, are a CTE
+\ at the statement's WITH, which reads no scope, so a nested path writes
+\ each walk once; the active graph's subjects and objects are one CTE
+\ there, which the seeds of every walk from every node read.
 \
 \ A query that GROUP BY or an aggregate groups reads its groups, a derived
 \ table grouped on its keys' anchors, native where native, whose columns
@@ -234,13 +237,22 @@ STRUCTURE known-term DERIVE addr FIELD uri bool FIELD datatype str ;STRUCTURE
 \ the plan's known terms plus 1, 0 before it is looked up.
 STRUCTURE node-term DERIVE addr FIELD text str FIELD place n ;STRUCTURE
 
+\ An active graph's every subject and object: the statement's CTE name
+\ of them, empty when no source is in the graph, and the form of its k.
+STRUCTURE node-set DERIVE addr
+   FIELD graph str
+   FIELD name str
+   FIELD kind n
+;STRUCTURE
+
 \ terms and strings map a text to its parameter's number. graph is the
 \ active graph's text, empty for the default graph; frame is the
 \ variables' frame. An expression is written to out and reads the
 \ bindings in scope and the aggregates. outer is the substitution, empty
-\ outside EXISTS. ctes is the statement's key CTEs, comma-separated. MOST
-\ bounds reads. places is a MAP map from a text to its place in known;
-\ nodes is by node index.
+\ outside EXISTS. ctes is the statement's CTEs, comma-separated, each
+\ reading only those before it. MOST bounds reads.
+\ places is a MAP map from a text to its place in known; nodes is by node
+\ index; sets holds the node CTEs written, one per active graph.
 STRUCTURE plan DERIVE addr
    FIELD syntax ^syntax
    FIELD store ^store
@@ -260,6 +272,7 @@ STRUCTURE plan DERIVE addr
    FIELD known ^VEC:vector<known-term>
    FIELD places ^n
    FIELD nodes ^VEC:vector<node-term>
+   FIELD sets ^VEC:vector<node-set>
 ;STRUCTURE
 
 defer SQL-EXPRESSION ( ^plan n -- )
@@ -2614,8 +2627,8 @@ STRUCTURE walk DERIVE addr
    plan TREE w WALK-OPERAND @ WALKED? w WALK-ONCE !
    w WALK-ONCE @ 0= if t w WALK-PAIRS ! exit then
    plan w s" p" CTE-NAME {: n:str :}
-   w WALK-CTES @ {: v:^ :}
-   v n +SQL v s"  AS MATERIALIZED " +SQL v t +SQL
+   plan PLAN-CTES @ {: v:^ :}
+   v s" ," +SEP v n +SQL v s"  AS MATERIALIZED " +SQL v t +SQL
    n w WALK-PAIRS ! ;
 
 \ The walk's steps: the operand from fresh a to fresh b, b to a walking
@@ -2676,9 +2689,9 @@ STRUCTURE walk DERIVE addr
    plan w WALK-NODE @ n q x TRIPLE-NODE
    plan w WALK-NODE @ x q n TRIPLE-NODE plan n VAR ;
 
-\ Every subject and object in the active graph: a UNION ALL table binding
-\ a fresh variable to each, and that variable.
-: NODES ( ^plan ^walk -- str ^VEC:vector<binding> n )
+\ Every subject and object in the active graph: a UNION ALL's branches
+\ binding a fresh variable to each, and that variable.
+: NODE-BRANCHES ( ^plan ^walk -- ^VEC:vector<relation> n )
    {: plan w:^ :}
    plan w NODE-TRIPLES {: down:n up:n var:n :}
    plan AL 0 [type] relation VEC:NEW {: branches:^ :}
@@ -2688,9 +2701,39 @@ STRUCTURE walk DERIVE addr
          plan down plan i RECORD branches VEC:PUSH SOURCE-BRANCH
          plan up plan i RECORD branches VEC:PUSH SOURCE-BRANCH
       then
+   loop branches var ;
+
+\ Appends to the statement's WITH the CTE of the active graph's nodes,
+\ k their column; answers its name and k's form, empty when no source
+\ is in the graph.
+: NODE-CTE ( ^plan ^walk -- str n )
+   {: plan w:^ :}
+   plan w NODE-BRANCHES {: branches:^ var:n :}
+   branches VEC:COUNT 0= if s" " GENERIC exit then
+   plan branches UNION-TABLE {: t:str cols:^ :}
+   plan NEXT-ALIAS {: name:str :}
+   plan PLAN-CTES @ {: v:^ :}
+   v s" ," +SEP v name +SQL v s"  AS (SELECT " +SQL
+   v plan s" n" var COLUMN-OF +SQL v s"  AS k FROM " +SQL
+   v t +SQL v s"  AS n)" +SQL
+   name cols var SHAPE-OF ;
+
+\ The active graph's node CTE and k's form, written by the first walk
+\ that seeds from every node there and read by the later ones.
+: NODES ( ^plan ^walk -- str n )
+   {: plan w:^ :}
+   plan PLAN-SETS @ {: sets:^ :}
+   sets VEC:COUNT 0 ?do
+      sets i VEC:AT {: set:^ :}
+      set NODE-SET-GRAPH @ plan PLAN-GRAPH @ STR:= if
+         set NODE-SET-NAME @ set NODE-SET-KIND @ unloop exit
+      then
    loop
-   branches VEC:COUNT 0= if s" " plan NEW-BINDINGS var exit then
-   plan branches UNION-TABLE var ;
+   plan w NODE-CTE {: name:str kind:n :}
+   sets VEC:PUSH {: set:^ :}
+   plan PLAN-GRAPH @ set NODE-SET-GRAPH !
+   name set NODE-SET-NAME ! kind set NODE-SET-KIND !
+   name kind ;
 
 \ Appends `EXISTS (SELECT 1 ...)`, after ` OR ` unless v is empty: the
 \ triple over record rec with its variable's slot meeting k inside the
@@ -2739,14 +2782,10 @@ STRUCTURE walk DERIVE addr
 
 : NODE-SEEDS ( ^plan ^walk ^VEC:vector<u8> -- )
    {: plan w:^ v:^ :}
-   plan w NODES {: t:str cols:^ var:n :}
-   t STR:LEN 0= if
-      GENERIC w WALK-KIND !
-      v s" NULL::jsonb AS k WHERE false" +SQL exit
-   then
-   cols var SHAPE-OF w WALK-KIND !
-   v plan s" n" var COLUMN-OF +SQL v s"  AS k" +SQL
-   v s"  FROM " +SQL v t +SQL v s"  AS n" +SQL ;
+   plan w NODES {: t:str kind:n :}
+   kind w WALK-KIND !
+   t STR:LEN 0= if v s" NULL::jsonb AS k WHERE false" +SQL exit then
+   v s" k FROM " +SQL v t +SQL ;
 
 \ Appends CTE nameS, the distinct seeds k the walk starts from.
 : SEEDS ( ^plan ^walk ^relation -- )
@@ -4009,6 +4048,7 @@ STRUCTURE walk DERIVE addr
    al 0 [type] aggregate VEC:NEW plan PLAN-AGGREGATES !
    al 0 [type] known-term VEC:NEW plan PLAN-KNOWN !
    al 0 [type] node-term VEC:NEW plan PLAN-NODES !
+   al 0 [type] node-set VEC:NEW plan PLAN-SETS !
    plan STATEMENT sql VEC:APPEND
    plan PLAN-ARGUMENTS @ {: args:^ :}
    args VEC:COUNT 0 ?do args i VEC:AT ARGUMENT-TEXT @ params execute loop ;
