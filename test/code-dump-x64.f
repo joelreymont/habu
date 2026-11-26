@@ -20,6 +20,7 @@ create FP-CVT $F2 c, $48 c, $0F c, $2A c, $C1 c,
 create IMM-CODE $48 c, $B8 c, $C3 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,
 create JMP-CODE $E9 c, $FB c, $FF c, $FF c, $FF c,
 create RET-CODE $C3 c,
+create TRAP-CODE $CC c,
 create WORD-CODE $66 c, $41 c, $89 c, $C0 c,
 create WORD-ALU $66 c, $81 c, $C0 c, $34 c, $12 c,
 create BYTE-REX $40 c, $88 c, $E0 c,
@@ -44,7 +45,9 @@ create PALIGNR-CODE $66 c, $45 c, $0F c, $3A c, $0F c, $C7 c, $04 c,
 public
 : DUMP-IMM ( -- n ) $C3 ;
 : DUMP-EARLY ( n -- n ) dup 0= if drop 7 exit then drop 9 ;
-: DUMP-TAIL ( n -- n ) 1+ ;
+\ A branch keeps DUMP-TAIL from being a copy word, so the wrapper's call to it
+\ is a tail jump rather than its steps copied in.
+: DUMP-TAIL ( n -- n ) dup 0< if negate then ;
 : DUMP-TAIL-WRAP ( n -- n ) DUMP-TAIL ;
 private
 
@@ -103,7 +106,9 @@ private
    [: JMP-CODE 5 >str $4000 X64DIS:DIS1 5 T= ;] GE-CAPTURE-ACTION
    s" jmp 0x4000" s" rel target uses PC after instruction" GE-EXPECT-OUT-HAS
    [: RET-CODE 1 >str $5000 X64DIS:DIS1 1 T= ;] GE-CAPTURE-ACTION
-   s" ret" s" one-byte return" GE-EXPECT-OUT-HAS ;
+   s" ret" s" one-byte return" GE-EXPECT-OUT-HAS
+   [: TRAP-CODE 1 >str $5000 X64DIS:DIS1 1 T= ;] GE-CAPTURE-ACTION
+   s" int3" s" slot padding after code" GE-EXPECT-OUT-HAS ;
 
 : CHECK-REJECTIONS ( -- )
    [: BAD-MODRM 2 >str $6000 X64DIS:DIS1 drop ;] X64DIS:E-TRUNCATED TTHROWSQ
@@ -115,6 +120,7 @@ private
 
 : CHECK-LIVE ( -- )
    [: s" DUMP-IMM" CODE-DUMP:FIND-XT CODE-DUMP:DECODE ;] GE-CAPTURE-ACTION
+   s" live copy word" GE-EXPECT-OK
    s" mov" s" live compiled immediate" GE-EXPECT-OUT-HAS
    s" ret" s" live compiled return" GE-EXPECT-OUT-HAS
    [: s" DUMP-EARLY" CODE-DUMP:FIND-XT CODE-DUMP:DECODE ;] GE-CAPTURE-ACTION

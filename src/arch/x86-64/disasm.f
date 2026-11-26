@@ -368,6 +368,7 @@ variable DQUIET
 
 : DECODE-ONE ( -- bool )
    DOP @ $C3 = if PLAIN-PREFIX s" ret" OUT true exit then
+   DOP @ $CC = if PLAIN-PREFIX s" int3" OUT true exit then
    DOP @ $90 = if
       DLOCK @ 0<> if UNKNOWN then
       DREX @ 7 and 0<> if UNKNOWN then
