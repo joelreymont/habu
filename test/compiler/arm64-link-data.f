@@ -140,7 +140,7 @@ $0A constant LF-BYTE
 : HELD-WRITE ( -- )
    HELD-SRC evaluate-closed
    s" : LD-TFILL ( -- ) LD-TN 0 ?do 1 LD-TAB i + c! loop ;  LD-TFILL" evaluate-closed
-   s" : LD-HELD ( -- ) 0 LD-TN 0 ?do LD-TAB i + c@ + loop LD-U cr  0 here 1 SPAN:MAKE read drop ;" evaluate-closed
+   s" : LD-HELD ( -- ) 0 LD-TN 0 ?do LD-TAB i + c@ + loop LD-U cr  0 here 1 >span read drop ;" evaluate-closed
    s" LD-HELD" STORE-ENTRY  s" held" PROG$ LINKER:WRITE ;
 
 [then]
