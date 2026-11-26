@@ -143,23 +143,23 @@ variable IMDT-FORMS-U
 : IMDT-TEST-FORMS ( -- )
    IMDT-FORMS$ s" 0" s" 16" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
-   outu 192 T=
-   IMDT-OUT outu >str s\" str-post 5 19 8\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" ldr-pre 11 19 -8\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" blr 9\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" and 0 1 255\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" and 0 1 -1152921436155805681\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" cmp 9 16\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" b.ne -16\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" adr 3 -3\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" cbz 2 24\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" b -4\n" STR:CONTAINS? TTRUE
+   outu 260 T=
+   IMDT-OUT outu >str s\" str x5, [x19], #8\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" ldr x11, [x19, #-8]!\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" blr x9\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" and x0, x1, #0xff\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" and x0, x1, #0xf000000ff000000f\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" cmp x9, #0x10\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" b.ne #-16\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" adr x3, #-3\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" cbz x2, #24\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" b #-4\n" STR:CONTAINS? TTRUE
    IMDT-OUT outu >str s\" ? 9240FC20\n" STR:CONTAINS? TTRUE
    IMDT-OUT outu >str s\" ? 0E201C00\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" movz 0 1 16\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" movk 1 2 48\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" add 0 1 4096\n" STR:CONTAINS? TTRUE
-   IMDT-OUT outu >str s\" cmp 9 12288\n" STR:CONTAINS? TTRUE ;
+   IMDT-OUT outu >str s\" mov x0, #0x10000\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" movk x1, #0x2, lsl #48\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" add x0, x1, #0x1, lsl #12\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu >str s\" cmp x9, #0x3, lsl #12\n" STR:CONTAINS? TTRUE ;
 
 : IMDT-TEST-RANGE ( -- )
    IMDT-RET$ s" 4" s" 1" IMDT-RUN 64 IMDT-EXPECT-EXIT {: outu erru :}
