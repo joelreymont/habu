@@ -5,6 +5,23 @@
 \ PROCESS-WIDE: one pipe, one caught set and one armed fd word, owned by the task
 \ that ran INIT (NEED-OWNER); the staging span WAIT and TAKE read into is per task.
 \ The facility's cells are scratch: a built program starts unarmed and runs INIT.
+\
+\ THE MACHINE. The facility is OFF (READY 0: no pipe, the fd word 0, both sets
+\ empty) or ON (READY 1). Within ON each signal is DEFAULT (no bit), STUBBED
+\ (its CAUGHT and STUBBED bits) or IGNORED (its CAUGHT bit only).
+\   OFF  INIT      -> ON         the pipe opened, then the fd word armed
+\   ON   CATCH n   -> n STUBBED  the STUBBED bit set, then the stub installed
+\   ON   IGNORE n  -> n IGNORED  SIG_IGN installed, then the STUBBED bit cleared
+\   ON   RELEASE   -> OFF        defaults back, fd word 0, stubs waited out, pipe
+\                                drained and closed
+\   ON   fork      -> child OFF  CHILD-RESET: in-flight count 0, stubs back to
+\                                default, fd word 0, pipe closed; ignores kept
+\   OFF  fork      -> child OFF  CHILD-RESET: in-flight count 0
+\ Any other input is E-SIGNAL-STATE: INIT when ON, every other word when OFF.
+\ The stub runs in either state, on any thread, between a +1 and a -1 of the
+\ in-flight count. Each transition keeps one invariant: while the stub is a
+\ signal's disposition, its STUBBED bit is set and the fd word is nonzero, since
+\ a stub that finds either clear sends the signal on, back to itself.
 
 s" src/lib/error.f" required
 s" src/lib/process.f" required                \ PROCESS:KILL-RAW, PROCESS:NO-FD, PROCESS:DEADLINE-AT and PROCESS:LEFT-MS
