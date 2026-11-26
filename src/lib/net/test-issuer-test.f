@@ -3,14 +3,22 @@
 \ a confidential client without its secret and for a public client asking for
 \ client credentials or On-Behalf-Of, unsupported_grant_type, invalid_request
 \ for a repeated field and a wrong media type, On-Behalf-Of with a minted
-\ assertion and its invalid_grant rejections, /mint against MINT, and
+\ assertion and its invalid_grant rejections, a sign-in redirected with a code
+\ that redeems for an ID token with the nonce, invalid_grant for a wrong
+\ verifier, another redirect URI and the code as a refresh token, a declined
+\ sign-in sent back as access_denied, /mint against MINT, and
 \ tools/test-issuer.f as a child process.
 \ BEARER's client against it: TOKEN before CLIENT!, for each grant admitted by
 \ ADMIT? with the caller's claims, a 400 and a 401 rejection, the 400 leaving no
 \ byte of the longer answer before it past the vector's count; REFRESH from a
 \ public client admitted with the refresh token's oid, again with the new
 \ refresh token it answered, an expired and a foreign refresh token rejected
-\ with invalid_grant; a closed port,
+\ with invalid_grant; REDEEM of a sign-in's code on a worker of the issuer's
+\ server answering the person's access token, a refresh token and expires_in,
+\ a wrong nonce E-RESPONSE logged naming the check and a wrong verifier
+\ E-REJECTED, an ID token FORGED! signs E-RESPONSE logged naming the check,
+\ an ID token longer than a request head redeemed, and CLAIM$ false after
+\ REDEEM on the worker ADMIT? admitted; a closed port,
 \ and on /token-fault the form's exact bytes, the answer's lifetime as a
 \ number and as a digit string, and the answers TOKEN rejects: a 503, a 429
 \ and a 302, a 2xx that is not JSON, one without access_token, one whose
@@ -32,6 +40,7 @@
 \ E-REJECTED.
 \ Run: bin/hb --load src/lib/net/test-issuer-test.f
 
+require src/lib/net/http-arena.f
 require src/lib/net/http-request.f
 require src/lib/net/http-response.f
 require src/lib/net/http-router.f
@@ -85,6 +94,9 @@ TYPED-VARIABLE CFG HTTP:config
 
 $2000 constant CAP
 TYPED-VARIABLE BODY ^VEC:vector<u8>
+TYPED-VARIABLE HEADS ^VEC:vector<u8>
+CAP BUFFER: CODE-ROW
+variable CODE-U
 CAP BUFFER: FORM
 variable FORM-U
 CAP BUFFER: TOKEN
@@ -278,10 +290,10 @@ PAST-CAP BUFFER: OVERSIZE
 
 : DECODED ( str ^u8 n -- n ) SPAN:MAKE BASE64:DECODE-URL ;
 
-\ The issued token copied from the answer; its header, claims and signature
+\ The answer's token under the name copied; its header, claims and signature
 \ decoded.
-: ISSUED ( -- )
-   BODY$ s" access_token" MEMBER$ TOKEN COPY TOKEN-U !
+: ISSUED-AS ( str -- )
+   BODY$ swap MEMBER$ TOKEN COPY TOKEN-U !
    TOKEN$ {: t:str :}
    t 0 DOT {: d1:n :}
    t d1 1+ DOT {: d2:n :}
@@ -289,6 +301,8 @@ PAST-CAP BUFFER: OVERSIZE
    t STR:DATA d1 + 1+ d2 d1 - 1- >str CLAIMS CAP DECODED CLAIMS-U !
    t STR:DATA d2 + 1+ t STR:LEN d2 - 1- >str
    SIGNATURE CRYPTO:RS256-MAX-BYTES DECODED SIGNATURE-U ! ;
+
+: ISSUED ( -- ) s" access_token" ISSUED-AS ;
 
 \ The issued token verifies against the key /keys served.
 : VERIFIES ( -- )
@@ -332,9 +346,10 @@ PAST-CAP BUFFER: OVERSIZE
 
 
 : DISCOVERY ( -- )
-   s" discovery names the issuer, its key set and its token endpoint" T-LABEL
+   s" discovery names the issuer, its key set and its endpoints" T-LABEL
    s" /.well-known/openid-configuration" GET 200 T=
    BODY$ s" issuer" MEMBER$ s" " URL T$=
+   BODY$ s" authorization_endpoint" MEMBER$ s" /authorize" URL T$=
    BODY$ s" jwks_uri" MEMBER$ s" /keys" URL T$=
    BODY$ s" token_endpoint" MEMBER$ s" /token" URL T$= ;
 
@@ -416,6 +431,99 @@ PAST-CAP BUFFER: OVERSIZE
    FORM-RESET s" client_id=cli&grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer" FORM+
    s" &requested_token_use=on_behalf_of&scope=api%3A%2F%2Fdown%2F.default&assertion=" FORM+ ASSERTION$ FORM+
    ASK 401 s" invalid_client" REJECTED ;
+
+\ The URL's status, its body in BODY and its head in HEADS; -1 for a body
+\ past CAP, -2 for a failed transfer. A redirect is not followed.
+: GET-HEADED ( str -- n )
+   OPEN-AT {: h:CURL:handle :}
+   BODY @ 0 VEC:RESIZE
+   HEADS @ 0 VEC:RESIZE
+   h CAP >LEN BODY @ CURL:PERFORM
+   MATCH CURL:fetch-result
+      response OF drop CURL:HTTP-STATUS>N h HEADS @ CURL:HEADERS ENDOF
+      truncated OF drop drop -1 ENDOF
+      failed OF drop -2 ENDOF
+   ;MATCH
+   h CURL:CLEANUP ;
+
+\ The offset just past the key's first copy in the text, else -1.
+: AFTER ( str str -- n )
+   {: t:str k:str :}
+   t STR:LEN k STR:LEN - 1+ 0 max 0 ?do
+      t STR:DATA i + k STR:LEN >str k STR:= if i k STR:LEN + unloop exit then
+   loop -1 ;
+
+\ The text up to the byte's first copy, else all of it.
+: UPTO ( str n -- str )
+   {: s:str c:n :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ c = if s STR:DATA i >str unloop exit then loop s ;
+
+\ The Location header's value in HEADS, empty without one.
+: LOCATION$ ( -- str )
+   HEADS @ VEC:BYTES {: hd:str :}
+   hd s" Location: " AFTER {: at:n :}
+   at 0< if s" " exit then
+   hd STR:DATA at + hd STR:LEN at - >str 13 UPTO ;
+
+\ The redirect's text after the key up to the next `&`, empty without it.
+: SENT$ ( str -- str )
+   {: k:str :}
+   LOCATION$ {: l:str :}
+   l k AFTER {: at:n :}
+   at 0< if s" " exit then
+   l STR:DATA at + l STR:LEN at - >str [char] & UPTO ;
+
+: CODE$ ( -- str ) CODE-ROW CODE-U @ >str ;
+: BACK ( -- str ) s" http%3A%2F%2F127.0.0.1%3A9%2Fback" ;
+: VERIFIER ( -- str ) s" dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk" ;
+
+\ A sign-in for app as the person, with RFC 7636 Appendix B's challenge; the
+\ URL is built in FORM, as a long hint runs past the SB.
+: SIGN-IN ( str -- n )
+   {: hint:str :}
+   FORM-RESET s" " URL FORM+
+   s" /authorize?response_type=code&client_id=app&redirect_uri=" FORM+ BACK FORM+
+   s" &scope=openid%20offline_access%20api%3A%2F%2Fup%2Fread&state=st-1&nonce=n-1" FORM+
+   s" &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" FORM+
+   s" &code_challenge_method=S256&login_hint=" FORM+ hint FORM+
+   FORM$ GET-HEADED ;
+
+: WRONG-VERIFIER ( -- str ) s" dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXX" ;
+
+\ CODE$ redeemed by app with the redirect URI and the verifier.
+: REDEEM ( str str -- n )
+   {: back:str verifier:str :}
+   APP s" &grant_type=authorization_code&code=" FORM+ CODE$ FORM+
+   s" &redirect_uri=" FORM+ back FORM+ s" &code_verifier=" FORM+ verifier FORM+ ASK ;
+
+: CODES ( -- )
+   s" a sign-in redirects with a code and the state" T-LABEL
+   s" user-7" SIGN-IN 302 T=
+   LOCATION$ s" http://127.0.0.1:9/back?code=" STR:STARTS-WITH? TTRUE
+   LOCATION$ s" &state=st-1" STR:ENDS-WITH? TTRUE
+   s" ?code=" SENT$ CODE-ROW COPY CODE-U !
+   s" the code and its verifier redeem for tokens and an ID token" T-LABEL
+   BACK VERIFIER REDEEM s" api://up" ANSWERED
+   CLAIMS$ s" oid" MEMBER$ s" user-7" T$=
+   CLAIMS$ s" tid" MEMBER$ s" test-tenant" T$=
+   BODY$ s" refresh_token" MEMBER$ STR:LEN 0 > TTRUE
+   s" id_token" ISSUED-AS VERIFIES
+   CLAIMS$ s" iss" MEMBER$ s" " URL T$=
+   CLAIMS$ s" aud" MEMBER$ s" app" T$=
+   CLAIMS$ s" nonce" MEMBER$ s" n-1" T$=
+   CLAIMS$ s" sub" MEMBER$ s" user-7" T$=
+   s" a wrong code_verifier is invalid_grant" T-LABEL
+   BACK WRONG-VERIFIER REDEEM
+   400 s" invalid_grant" REJECTED
+   s" another redirect_uri is invalid_grant" T-LABEL
+   s" http%3A%2F%2F127.0.0.1%3A9%2Fother" VERIFIER REDEEM
+   400 s" invalid_grant" REJECTED
+   s" a code presented as a refresh token is invalid_grant" T-LABEL
+   APP s" &grant_type=refresh_token&scope=api%3A%2F%2Fup%2F.default&refresh_token=" FORM+
+   CODE$ FORM+ ASK 400 s" invalid_grant" REJECTED
+   s" a declined sign-in is sent back as access_denied with the state" T-LABEL
+   s" denied" SIGN-IN 302 T=
+   LOCATION$ s" http://127.0.0.1:9/back?error=access_denied&state=st-1" T$= ;
 
 : MINTS ( -- )
    s" /mint answers MINT's token for the same claims" T-LABEL
@@ -618,6 +726,97 @@ $A constant LF
    LOG$ {: s:str :}
    s STR:LEN DATE:TIME-LEN < if s STR:DATA 0 >str exit then
    s STR:DATA DATE:TIME-LEN + s STR:LEN DATE:TIME-LEN - >str ;
+
+\ What /redeem's BEARER:REDEEM of CODE$ did: the code it threw, else the
+\ access token in TOKEN, the refresh token's length and expires_in. WRONG
+\ makes it send a wrong nonce (1) or a wrong verifier (2). CLAIMED holds
+\ /admit-redeem's CLAIM$ flag after its REDEEM, as bool>n.
+variable WRONG
+variable CLAIMED
+variable REDEEM-RC
+variable RENEWAL-U
+variable LIFETIME
+
+: NONCE$ ( -- str ) WRONG @ 1 = if s" n-2" else s" n-1" then ;
+: VERIFIER$ ( -- str ) WRONG @ 2 = if WRONG-VERIFIER else VERIFIER then ;
+
+: REDEEMED ( ^VEC:vector<u8> -- )
+   {: v:^ :}
+   CODE$ s" http://127.0.0.1:9/back" VERIFIER$ NONCE$ v BEARER:REDEEM
+   LIFETIME !  STR:LEN RENEWAL-U !  TOKEN COPY TOKEN-U ! ;
+
+: REDEEM-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   [: v REDEEMED ;] catch REDEEM-RC !
+   v VEC:DELETE
+   answer 200 HTTP:STATUS! ;
+
+: REDEEM-ASKED ( -- ) s" /redeem" GET 200 T= ;
+
+\ /redeem's REDEEM on the worker of a request ADMIT? admitted, then CLAIM$.
+: ADMIT-REDEEM-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked answer BEARER:ADMIT? 0= if exit then  asked answer REDEEM-ROUTE
+   s" oid" BEARER:CLAIM$ bool>n CLAIMED ! drop ;
+
+: REDEEMS ( -- )
+   ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!
+   s" REDEEM on a worker answers the person's access token, a refresh token and expires_in" T-LABEL
+   s" user-8" SIGN-IN 302 T=
+   s" ?code=" SENT$ CODE-ROW COPY CODE-U !
+   0 WRONG !  REDEEM-ASKED
+   REDEEM-RC @ 0 T=  LIFETIME @ 0 > TTRUE  RENEWAL-U @ 0 > TTRUE
+   TOKEN$ s" oid" CLAIM 200 T= BODY$ s" user-8" T$=
+   s" a wrong nonce is E-RESPONSE, its one line naming the check" T-LABEL
+   1 WRONG !  [: REDEEM-ASKED ;] CAPTURED
+   REDEEM-RC @ BEARER:E-RESPONSE T=
+   LINES 1 T=
+   FORM-RESET s"  error bearer: token answer 200 has an id_token " FORM+
+   S\" without the expected nonce\n" FORM+
+   LINE$ FORM$ T$=
+   s" a wrong verifier is E-REJECTED" T-LABEL
+   2 WRONG !  [: REDEEM-ASKED ;] CAPTURED
+   REDEEM-RC @ BEARER:E-REJECTED T= ;
+
+: FORGED-REDEEM ( -- )
+   s" an ID token its key did not sign is E-RESPONSE, its one line naming the check" T-LABEL
+   true TEST-ISSUER:FORGED!
+   0 WRONG !  [: REDEEM-ASKED ;] CAPTURED
+   false TEST-ISSUER:FORGED!
+   REDEEM-RC @ BEARER:E-RESPONSE T=
+   LINES 1 T=
+   FORM-RESET s"  error bearer: token answer 200 has an id_token " FORM+
+   S\" without a valid RS256 signature\n" FORM+
+   LINE$ FORM$ T$= ;
+
+\ A person's oid the ID token carries twice, as sub and oid, whose two copies
+\ in base64url alone run past a request head.
+2800 constant HINT-LEN
+HINT-LEN BUFFER: HINT
+: HINT$ ( -- str ) HINT HINT-LEN >str ;
+
+: LONG-REDEEM ( -- )
+   s" an ID token longer than a request head is redeemed" T-LABEL
+   HINT-LEN 2 * 4 * 3 / HTTP:HEAD-CAP > TTRUE
+   [char] h HINT HINT-LEN SPAN:MAKE SPAN:FILL
+   HINT$ SIGN-IN 302 T=
+   s" ?code=" SENT$ CODE-ROW COPY CODE-U !
+   0 WRONG !  REDEEM-ASKED
+   REDEEM-RC @ 0 T=
+   TOKEN$ s" oid" CLAIM 200 T= BODY$ HINT$ T$= ;
+
+: ADMITTED-REDEEM ( -- )
+   s" CLAIM$ after REDEEM on the worker ADMIT? admitted answers false" T-LABEL
+   s" user-8" SIGN-IN 302 T=
+   s" ?code=" SENT$ CODE-ROW COPY CODE-U !
+   0 WRONG !  1 CLAIMED !
+   0 AUTH-U ! s" Authorization: Bearer " AUTH+ TOKEN$ AUTH+
+   s" /admit-redeem" OPEN {: h:CURL:handle :}
+   h AUTH AUTH-U @ >str CURL:HEADER+ OK
+   h FINISH 200 T=
+   REDEEM-RC @ 0 T=
+   CLAIMED @ 0 T= ;
 
 : BEARER-GRANTS ( -- )
    s" TOKEN before CLIENT! is E-HTTP-STATE" T-LABEL
@@ -1013,6 +1212,7 @@ TASKS!
 : SERVE-CASES ( -- )
    AIO:START LOG-INIT
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HEADS !
    s" app" s" s3cr&t+1" TEST-ISSUER:CLIENT+
    s" cli" s" " TEST-ISSUER:CLIENT+
    HTTP:ROUTES-RESET
@@ -1021,13 +1221,15 @@ TASKS!
    s" POST" s" /token-fault" [: FAULT-ROUTE ;] HTTP:ROUTE
    s" POST" s" /token-count" [: COUNT-ROUTE ;] HTTP:ROUTE
    s" GET" s" /metadata/identity/oauth2/token" [: IMDS-ROUTE ;] HTTP:ROUTE
+   s" GET" s" /redeem" [: REDEEM-ROUTE ;] HTTP:ROUTE
+   s" GET" s" /admit-redeem" [: ADMIT-REDEEM-ROUTE ;] HTTP:ROUTE
    0 SERVE-ON
    ADDRESSES
    HTTP:STOP
    ISSUER$ s" api://up" KEYS-URL$ BEARER:ISSUER!
    PORT-KEPT @ SERVE-ON
-   DISCOVERY KEYS CLIENT-CREDENTIALS CLIENTS REQUESTS OBO MINTS
-   BEARER-GRANTS BEARER-CURRENT BEARER-IDENTITY BEARER-FAULTS
+   DISCOVERY KEYS CLIENT-CREDENTIALS CLIENTS REQUESTS OBO CODES MINTS
+   BEARER-GRANTS REDEEMS FORGED-REDEEM LONG-REDEEM ADMITTED-REDEEM BEARER-CURRENT BEARER-IDENTITY BEARER-FAULTS
    HTTP:STOP
    BEARER-UNREACHED BEARER-LONG
    TOOL

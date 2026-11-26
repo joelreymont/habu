@@ -434,6 +434,14 @@ TYPED-VARIABLE ID-TEXT-LEN len
    answer 401 HTTP:STATUS! ;
 
 
+\ Answers the cookie the query names, or 404 when the request carries none.
+: COOKIE ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   asked asked HTTP:QUERY$ HTTP:COOKIE-OF$ {: value:str found:bool :}
+   found 0= if answer 404 HTTP:STATUS! exit then
+   answer 200 HTTP:STATUS!
+   answer value HTTP:BODY! ;
+
+
 1 TYPED-BUFFER SWALLOW-REQUEST HTTP:request
 variable SWALLOWED
 
@@ -778,9 +786,9 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" POST" s" /api/mcp" [: ECHO ;] HTTP:ROUTE
    s" POST" s" /api/uploads" 8 [: ECHO ;] HTTP:ROUTE-CAPPED
    s" POST" s" /api/tiny" 3 [: ECHO ;] HTTP:ROUTE-CAPPED
-   s" POST" s" /api/tiny" 8 [: ECHO ;] HTTP:ROUTE-CAPPED
    s" POST" s" /api/empty" 0 [: ECHO ;] HTTP:ROUTE-CAPPED
    s" POST" s" /api/admit" [: ADMIT ;] HTTP:ROUTE
+   s" GET" s" /api/cookie" [: COOKIE ;] HTTP:ROUTE
    s" POST" s" /api/swallow" 3 [: SWALLOW ;] HTTP:ROUTE-CAPPED
    s" POST" s" /api/body-probe" [: BODY-PROBE ;] HTTP:ROUTE
    s" POST" s" /api/late-read" [: LATE-READ ;] HTTP:ROUTE
@@ -1345,6 +1353,30 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" GET" s" /api/params?a=1&session=4f2c%2Dx+y&b&session=2" FETCH 200 T=
    RES$ s" session=[4f2c-x y] true, b=[] true, missing=[] false" T$=
    PARAM-VEC @ VEC:DELETE  NULL-PTR PARAM-VEC ! ;
+
+
+\ The first cookie of the asked name answers, as sent; a pair with no "=" is
+\ skipped, and a request with two Cookie headers carries none.
+: COOKIE-CASE ( -- )
+   s" among others" T-LABEL
+   s\" GET /api/cookie?b HTTP/1.1\r\nHost: x\r\nCookie: a=1; bb=2; b=3\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 200 " BEGINS? TTRUE  RES$ s\" \r\n\r\n3" STR:ENDS-WITH? TTRUE
+   s" not sent" T-LABEL
+   s\" GET /api/cookie?x HTTP/1.1\r\nHost: x\r\nCookie: a=1; b=3\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 404 " BEGINS? TTRUE
+   s" no Cookie" T-LABEL
+   s\" GET /api/cookie?b HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 404 " BEGINS? TTRUE
+   s" two Cookies" T-LABEL
+   s\" GET /api/cookie?b HTTP/1.1\r\nHost: x\r\nCookie: b=1\r\nCookie: b=2\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 404 " BEGINS? TTRUE
+   s" empty value" T-LABEL
+   s\" GET /api/cookie?b HTTP/1.1\r\nHost: x\r\nCookie: a=1; b=\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 200 " BEGINS? TTRUE  s\" Content-Length: 0\r\n" HAS? TTRUE
+   s" no =" T-LABEL
+   s\" GET /api/cookie?b HTTP/1.1\r\nHost: x\r\nCookie: b; b=4\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 200 " BEGINS? TTRUE  RES$ s\" \r\n\r\n4" STR:ENDS-WITH? TTRUE
+   T-LABEL-CLEAR ;
 
 
 \ The default error answer is one line of text naming the code, the message and
@@ -2215,6 +2247,39 @@ $C8 constant STALL-MARGIN-MS
    s" the routes reset while serving" T-LABEL
    [: HTTP:ROUTES-RESET ;] HTTP:E-STATE TTHROWSQ
    PING-ANSWERS ;
+
+
+: GET-ROUTE ( str -- ) s" GET" swap [: PING ;] HTTP:ROUTE ;
+
+
+: COVERED-CASE ( str str -- )
+   {: label:str pattern:str :}
+   label T-LABEL
+   [: pattern GET-ROUTE ;] HTTP:E-ROUTE TTHROWSQ ;
+
+
+: UNCOVERED-CASE ( str [ -- ] -- )
+   {: label:str add :}
+   label T-LABEL
+   add catch 0 T= ;
+
+
+\ A request takes the first route that matches: one an earlier route of its
+\ method covers could never answer. Run before the file's routes are added.
+: ROUTE-COVER-CASES ( -- )
+   HTTP:ROUTES-RESET
+   s" /items/{id}" GET-ROUTE
+   s" a duplicate method and pattern is E-ROUTE" s" /items/{id}" COVERED-CASE
+   s" a pattern differing only in a segment's name is E-ROUTE"
+   s" /items/{key}" COVERED-CASE
+   s" /items/new after /items/{id} is E-ROUTE" s" /items/new" COVERED-CASE
+   HTTP:ROUTES-RESET
+   s" /items/new" GET-ROUTE
+   s" /items/{id} after /items/new is a route"
+   [: s" /items/{id}" GET-ROUTE ;] UNCOVERED-CASE
+   s" the same pattern under another method is a route"
+   [: s" POST" s" /items/new" [: PING ;] HTTP:ROUTE ;] UNCOVERED-CASE
+   HTTP:ROUTES-RESET ;
 
 
 \ The one worker retires the kept request before it reads the next, so both the
@@ -3483,6 +3548,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    AIO:START
    SETTINGS-CASE
    MAKE-STATIC
+   ROUTE-COVER-CASES
    INSTALL-ROUTES
    LATER-ROUTE
    WATCH-ROUTE
@@ -3531,6 +3597,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    SUBMIT-CASE
    CURRENT-ID-CASES
    PARAM-CASES
+   COOKIE-CASE
    HTTP:STOP
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=

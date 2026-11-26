@@ -89,11 +89,8 @@ SCRATCH-VARIABLE ROUTE-COUNT
 
 \ ---- matching ---------------------------------------------------------------
 
-\ Select a route from the validated path without copying named segments. The
-\ request's body limit is checked before a selected route binds them.
-: SEGMENTS-MATCH? ( n n -- bool ) {: route:n idx:n :}
-   route ROUTE-PATTERN$ {: pat:str :}
-   idx SLOT-PATH$ {: path:str :}
+\ Whether the pattern matches the path, read without copying named segments.
+: PATTERN-MATCH? ( str str -- bool ) {: pat:str path:str :}
    pat STR:LEN path STR:LEN {: patlen:n pathlen:n :}
    0 0
    begin
@@ -111,6 +108,12 @@ SCRATCH-VARIABLE ROUTE-COUNT
       then
       patend pathend
    again ;
+
+
+\ Select a route from the validated path. The request's body limit is checked
+\ before a selected route binds its named segments.
+: SEGMENTS-MATCH? ( n n -- bool ) {: route:n idx:n :}
+   route ROUTE-PATTERN$ idx SLOT-PATH$ PATTERN-MATCH? ;
 
 
 \ The selected pattern already matches this path. Copy only its named
@@ -200,6 +203,17 @@ SCRATCH-VARIABLE ROUTE-COUNT
    s" this path does not answer that method" ERROR! ;
 
 
+\ Whether an earlier route of the method matches every path the pattern
+\ does: read as a path, the pattern is one the earlier route matches.
+: COVERED? ( str str -- bool ) {: method:str pattern:str :}
+   ROUTE-COUNT @ 0 ?do
+      i ROUTE-METHOD$ method STR:=
+      i ROUTE-PATTERN$ pattern PATTERN-MATCH? and
+      if true unloop exit then
+   loop
+   false ;
+
+
 : ROUTE-RESERVE ( n -- ) {: routes:n :}
    routes ROUTE-METHOD-A-RESERVE
    routes ROUTE-METHOD-N-RESERVE
@@ -215,6 +229,7 @@ SCRATCH-VARIABLE ROUTE-COUNT
    method STR:LEN 0 <= if E-ROUTE throw then
    pattern STR:LEN 0 <= if E-ROUTE throw then
    pattern STR:DATA c@ SLASH <> if E-ROUTE throw then
+   method pattern COVERED? if E-ROUTE throw then
    ROUTE-COUNT @ 1+ ROUTE-RESERVE
    ROUTE-COUNT @ {: at:n :}
    method STR:DATA at ROUTE-METHOD-A !
@@ -230,7 +245,10 @@ public
 
 \ One route. The method, the pattern and the handler are the caller's and must
 \ outlive the server, which a literal and a definition both do. A built program
-\ keeps no route: it adds them at run time.
+\ keeps no route: it adds them at run time. A request takes the first route
+\ that matches, so E-ROUTE rejects one an earlier route of its method covers:
+\ as many segments, each earlier one a {name} matching a nonempty one or
+\ equal to the later's, as /items/new after /items/{id}.
 : ROUTE ( str str [ request response -- ] -- )
    {: method:str pattern:str handler :}
    method pattern -1 handler ADD-ROUTE ;

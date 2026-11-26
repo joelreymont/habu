@@ -13,8 +13,10 @@
 \ which METADATA-ROUTES routes to it; beside that scope both name
 \ offline_access, without which Entra gives a client no refresh token.
 \ As a client, TOKEN gets a token from the token endpoint CLIENT! names, for
-\ the client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of), and
-\ REFRESH renews one with a refresh grant (RFC 6749 6); CURRENT keeps the
+\ the client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of),
+\ REFRESH renews one with a refresh grant (RFC 6749 6), and REDEEM redeems a
+\ sign-in's code (RFC 6749 4.1.3), trusting the person's tokens only once the
+\ ID token passes OpenID Connect Core 3.1.3.7's checks; CURRENT keeps the
 \ client's own token per scope. IDENTITY-TOKEN appends a managed identity's
 \ token for a resource from Azure's metadata service at an origin (IMDS$),
 \ kept per origin and resource. Every other URL BEARER fetches or advertises
@@ -25,11 +27,12 @@
 \ fetched over CURL outside it by one worker at a time; the counts of workers
 \ waiting for that fetch and of fetches returned, under KEYS-LOCK, and the
 \ semaphore that wakes them, which ISSUER! sets up; tables indexed by
-\ HTTP:WORKER-SLOT holding each request's token and scratch; the client CLIENT!
-\ states, written before any TOKEN or REFRESH; and the rows CURRENT keeps, one
-\ per scope, and IDENTITY-TOKEN keeps, one per origin and resource, written
-\ under ROWS-LOCK when linked and each under its own lock after; CLIENT! empties
-\ CURRENT's.
+\ HTTP:WORKER-SLOT holding each request's token and scratch, and the vector a
+\ slot's first REDEEM makes for the ID token it decodes; the client CLIENT!
+\ states, written before any TOKEN, REFRESH or REDEEM; and the rows CURRENT
+\ keeps, one per scope, and IDENTITY-TOKEN keeps, one per origin and resource,
+\ written under ROWS-LOCK when linked and each under its own lock after;
+\ CLIENT! empties CURRENT's.
 \ TASK-LOCAL: the admitted request, TASK:+USER rows.
 \
 \ Key lookup: a worker looks for the token's kid in the cached key set under
@@ -73,10 +76,10 @@ public
 
 -9630 s" no answer from the token endpoint" ERROR:CODE E-TRANSFER
 -9631 s" the issuer rejected the request with a 4xx a retry will not change" ERROR:CODE E-REJECTED
--9632 s" a URL is not https (state https, or http only to 127.0.0.0/8 or [::1]), a METADATA! URL is not /.well-known/oauth-protected-resource right after its authority, then nothing or a path with no query or fragment (insert the segment before the resource's path; drop the query and fragment), a METADATA! URL holds a quote, backslash, brace, control or non-ASCII byte (percent-encode it), a scope is not tokens of printable ASCII but quote and backslash one space apart (remove the other bytes and spaces), a CLIENT! id or secret holds a control or non-ASCII byte (drop the line end a pasted or piped value keeps), or an APP! id is empty or holds a space, control or non-ASCII byte (state the app's client id alone)"
+-9632 s" a URL is not https (state https, or http only to 127.0.0.0/8 or [::1]), a METADATA! URL is not /.well-known/oauth-protected-resource right after its authority, then nothing or a path with no query or fragment (insert the segment before the resource's path; drop the query and fragment), a METADATA! URL holds a quote, backslash, brace, control or non-ASCII byte (percent-encode it), a scope is not tokens of printable ASCII but quote and backslash one space apart (remove the other bytes and spaces), a CLIENT! id or secret holds a control or non-ASCII byte (drop the line end a pasted or piped value keeps), a WEB-SESSION:START URL holds a byte outside $21..$7E, or its redirect URI a query, fragment or brace, or its authorize URL a fragment, or an APP! id is empty or holds a space, control or non-ASCII byte (state the app's client id alone)"
    ERROR:CODE E-OPERAND
--9633 s" the token endpoint answered a status a retry may change" ERROR:CODE E-UNAVAILABLE
--9634 s" the token endpoint answered a reply TOKEN or REFRESH cannot use" ERROR:CODE E-RESPONSE
+-9633 s" the token endpoint answered a status a retry may change, or no key set could be fetched to check its ID token" ERROR:CODE E-UNAVAILABLE
+-9634 s" the token endpoint answered a reply TOKEN, REFRESH or REDEEM cannot use" ERROR:CODE E-RESPONSE
 private
 EXPORT URI:DOT
 EXPORT URI:SECURE?
@@ -167,8 +170,8 @@ HTTP:MAX-WORKERS SCRATCH-BYTES * constant SCRATCHES-BYTES
 create SCRATCH-ROWS SCRATCHES-BYTES SCRATCH-ALLOT
 : SCRATCH ( -- SPAN:span<u8> ) SCRATCH-ROWS SCRATCHES-BYTES SPAN:MAKE ;
 
-\ PRESENTED and SIGNED borrow the request's header; the rest borrow the worker's
-\ scratch.
+\ PRESENTED and SIGNED borrow the token; HEADER, CLAIMS, SIGNATURE and KID the
+\ rooms OPEN decodes it into; MODULUS and EXPONENT the worker's scratch.
 HTTP:MAX-WORKERS TYPED-BUFFER PRESENTED SPAN:span<u8> SCRATCH-ONLY
 HTTP:MAX-WORKERS TYPED-BUFFER SIGNED SPAN:span<u8> SCRATCH-ONLY
 HTTP:MAX-WORKERS TYPED-BUFFER HEADER JSON:value SCRATCH-ONLY
@@ -179,7 +182,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER MODULUS SPAN:span<u8> SCRATCH-ONLY
 HTTP:MAX-WORKERS TYPED-BUFFER EXPONENT SPAN:span<u8> SCRATCH-ONLY
 
 \ The running task's: PASSED is nonzero while FROM, a request's number, stands
-\ admitted by ADMIT? and not rejected by CALLER?.
+\ admitted by ADMIT?, neither rejected by CALLER? nor ended by REDEEM.
 TASK:+USER PASSED n
 TASK:+USER FROM n
 
@@ -275,13 +278,13 @@ TASK:+USER FROM n
    v STR:DATA 6 + c@ 32 <> if false exit then
    v STR:DATA 7 + v STR:LEN 7 - SPAN:MAKE SLOT PRESENTED ! true ;
 
-: SEGMENT ( str n -- SPAN:span<u8> )
-   {: s:str off:n :}
-   s off HTTP:HEAD-CAP off - ROOM DECODED ;
+: SEGMENT ( str SPAN:span<u8> n -- SPAN:span<u8> )
+   SPAN:SKIP DECODED ;
 
-\ The segments decoded into the worker's scratch, true for an object header
+\ SLOT PRESENTED into the rooms, segments then kid: true for an object header
 \ naming a kid and object claims; a repeated member throws (RFC 7519 §4).
-: OPEN ( -- bool )
+: OPEN ( SPAN:span<u8> SPAN:span<u8> -- bool )
+   {: segs note :}
    SLOT PRESENTED @ SPAN:$ {: s:str :}
    s STR:DATA {: t:^ :}
    s STR:LEN {: u:n :}
@@ -290,9 +293,9 @@ TASK:+USER FROM n
    s d1 1+ DOT {: d2:n :}
    d2 u = if false exit then
    s d2 1+ DOT u <> if false exit then
-   t d1 >str 0 SEGMENT {: head :}
-   t d1 + 1+ d2 d1 - 1- >str head SPAN:LEN SEGMENT {: body :}
-   t d2 + 1+ u d2 - 1- >str head SPAN:LEN body SPAN:LEN + SEGMENT
+   t d1 >str segs 0 SEGMENT {: head :}
+   t d1 + 1+ d2 d1 - 1- >str segs head SPAN:LEN SEGMENT {: body :}
+   t d2 + 1+ u d2 - 1- >str segs head SPAN:LEN body SPAN:LEN + SEGMENT
       SLOT SIGNATURE !
    t d2 SPAN:MAKE SLOT SIGNED !
    head SPAN:$ JSON:PARSE {: h :}
@@ -301,7 +304,7 @@ TASK:+USER FROM n
    c JSON:OBJECT? 0= if false exit then
    h SLOT HEADER !
    c SLOT CLAIMS !
-   h s" kid" NOTE$ {: k:str named:bool :}
+   h s" kid" note DECODED$ {: k:str named:bool :}
    k STR:DATA k STR:LEN SPAN:MAKE SLOT KID ! named ;
 
 
@@ -492,7 +495,9 @@ ENUM lookup-step
       some OF w CONTAINS? ENDOF
    ;MATCH ;
 
-: AUDIENCE? ( -- bool ) CLAIMS@ s" aud" AUDIENCE$ HOLDS? ;
+: AUDIENCE? ( str -- bool )
+   {: aud:str :}
+   CLAIMS@ s" aud" aud HOLDS? ;
 
 \ The offset of the first space at or after from, or the end.
 : SPACE-AT ( str n -- n )
@@ -529,10 +534,10 @@ ENUM lookup-step
    name WORDS$ if w 0 WORD-FROM? exit then
    drop CLAIMS@ name w HOLDS? ;
 
-: VALID? ( n -- bool )
-   {: now:n :}
+: VALID? ( str n -- bool )
+   {: aud:str now:n :}
    CLAIMS@ s" iss" ISSUER$ false MEMBER-IS? 0= if false exit then
-   AUDIENCE? 0= if false exit then
+   aud AUDIENCE? 0= if false exit then
    CLAIMS@ s" exp" MEMBER-INT 0= if drop false exit then
    now LEEWAY-S - > 0= if false exit then
    CLAIMS@ s" nbf" HAS? 0= if true exit then
@@ -542,11 +547,13 @@ ENUM lookup-step
 
 : OUTCOME ( HTTP:request -- n )
    TOKEN? 0= if NO-TOKEN exit then
-   [: drop OPEN ;] STEP 0= if INVALID exit then
+   SEGMENTS-OFF HTTP:HEAD-CAP ROOM {: segs :}
+   NOTE-OFF HTTP:HEAD-CAP ROOM {: note :}
+   [: drop segs note OPEN ;] STEP 0= if INVALID exit then
    KEY {: found:n :}
    found ADMITTED <> if found exit then
    RS256? 0= if INVALID exit then
-   [: drop epoch-seconds VALID? ;] STEP 0= if INVALID exit then
+   [: drop AUDIENCE$ epoch-seconds VALID? ;] STEP 0= if INVALID exit then
    ADMITTED ;
 
 : CHALLENGE ( HTTP:response str -- )
@@ -702,30 +709,34 @@ ENUM lookup-step
       then
    loop ;
 
-\ E-OPERAND naming METADATA!'s scope and the byte at fault.
-: SCOPE-WRONG ( str n n -- )
-   {: text:str c:n at:n :}
-   text s" METADATA!'s scope" SETTING REASON:EXPECTED
+\ E-OPERAND naming the scope setting and the byte at fault.
+: SCOPE-WRONG ( str str n n -- )
+   {: text:str name:str c:n at:n :}
+   text name SETTING REASON:EXPECTED
    s" tokens of printable ASCII but quote and backslash, one space apart"
    REASON:APPEND
    c at FOUND-BYTE s" remove it" REASON:APPEND
    E-OPERAND REASON:STOP ;
 
 \ RFC 6749 3.3: tokens of NQCHAR (%x21, %x23-5B, %x5D-7E), each one space
-\ from the next. An empty scope names none.
-: SCOPE-TOKENS ( str -- )
-   {: text:str :}
+\ from the next. An empty scope names none. A rejection names the setting.
+: SCOPE-TOKENS ( str str -- )
+   {: text:str name:str :}
    text STR:LEN 0= if exit then
-   text STR:DATA c@ $20 = if text $20 0 SCOPE-WRONG then
+   text STR:DATA c@ $20 = if text name $20 0 SCOPE-WRONG then
    text STR:DATA text STR:LEN 1- + c@ $20 = if
-      text $20 text STR:LEN 1- SCOPE-WRONG
+      text name $20 text STR:LEN 1- SCOPE-WRONG
    then
    text STR:LEN 0 ?do
       text STR:DATA i + c@ {: c :}
       c $20 = if
-         text STR:DATA i 1+ + c@ $20 = if text $20 i 1+ SCOPE-WRONG then
+         text STR:DATA i 1+ + c@ $20 = if
+            text name $20 i 1+ SCOPE-WRONG
+         then
       else
-         c $21 < c $7E > or c $22 = or c $5C = or if text c i SCOPE-WRONG then
+         c $21 < c $7E > or c $22 = or c $5C = or if
+            text name c i SCOPE-WRONG
+         then
       then
    loop ;
 
@@ -858,7 +869,7 @@ public
    HTTP:RUNNING? if E-HTTP-STATE throw then
    url QUOTABLE
    url WELL-KNOWN-AT {: end:n :}
-   scope SCOPE-TOKENS
+   scope s" METADATA!'s scope" SCOPE-TOKENS
    url scope end COMPOSED {: row split:n cu:n :}
    NAMED-SPAN {: was :}
    row SPAN:$ dup STR:LEN NAMED-LEN ! STR:DATA NAMED !
@@ -1164,15 +1175,15 @@ ENUM grant
 ;ENUM
 
 \ The token endpoint's URL, and the client id and secret this process presents
-\ there, written before any TOKEN, REFRESH or CURRENT, not while one runs; each
-\ kept token is dropped. An empty secret states a public client, which
-\ presents none (RFC 6749 2.3.1). The texts are borrowed and outlive every
-\ TOKEN and REFRESH, as literals do. A built program keeps none: it states them
-\ at run time. E-OPERAND for a URL neither https nor http to a loopback IP
-\ literal or an id or secret holding a byte outside %x20-7E, URI:ORIGIN's
-\ rejection for a URL it cannot read, each leaving the previous client in
-\ force; each rejection's REASON:TEXT$ names the setting, the value and the
-\ fix, the secret's showing `(hidden)` for its value and byte.
+\ there, written before any TOKEN, REFRESH, REDEEM or CURRENT, not while one
+\ runs; each kept token is dropped. An empty secret states a public client,
+\ which presents none (RFC 6749 2.3.1). The texts are borrowed and outlive
+\ every TOKEN, REFRESH and REDEEM, as literals do. A built program keeps none:
+\ it states them at run time. E-OPERAND for a URL neither https nor http to a
+\ loopback IP literal or an id or secret holding a byte outside %x20-7E,
+\ URI:ORIGIN's rejection for a URL it cannot read, each leaving the previous
+\ client in force; each rejection's REASON:TEXT$ names the setting, the value
+\ and the fix, the secret's showing `(hidden)` for its value and byte.
 : CLIENT! ( str str str -- )
    {: url:str id:str secret:str :}
    url s" CLIENT!'s token endpoint URL" SECURE
@@ -1231,6 +1242,15 @@ private
    buf CREDENTIALS+
    s" refresh_token" r buf PAIR+
    s" scope" scope buf PAIR+ ;
+
+: CODE-FORM ( str str str ^VEC:vector<u8> -- )
+   {: code:str back:str verifier:str buf:^ :}
+   buf EMPTIED
+   s" grant_type" s" authorization_code" buf PAIR+
+   buf CREDENTIALS+
+   s" code" code buf PAIR+
+   s" redirect_uri" back buf PAIR+
+   s" code_verifier" verifier buf PAIR+ ;
 
 : OPEN-LINE ( -- )  LOG:ERROR s" bearer" LOG:LINE ;
 
@@ -1302,14 +1322,22 @@ private
       failed OF CURL-FAULT buf 0 VEC:RESIZE OPTION:NONE ENDOF
    ;MATCH ;
 
-\ The access_token string of a token answer decoded into room, its length;
-\ -1 when the answer has no access_token string.
-: ACCESS-TOKEN ( JSON:value SPAN:span<u8> -- n )
-   {: answer room :}
-   answer s" access_token" JSON:FIND MATCH option
+\ A string member of a token answer decoded into room, its length; -1 when
+\ the answer has no such string.
+: STRING-INTO ( JSON:value str SPAN:span<u8> -- n )
+   {: room :}
+   JSON:FIND MATCH option
       none OF -1 ENDOF
       some OF room INTO-ROOM ENDOF
    ;MATCH ;
+
+: ACCESS-TOKEN ( JSON:value SPAN:span<u8> -- n )
+   {: answer room :}
+   answer s" access_token" room STRING-INTO ;
+
+: ID-TOKEN ( JSON:value SPAN:span<u8> -- n )
+   {: answer room :}
+   answer s" id_token" room STRING-INTO ;
 
 : SECONDS ( JSON:value -- n )
    {: v :}
@@ -1339,54 +1367,72 @@ private
       some OF room INTO-ROOM ENDOF
    ;MATCH ;
 
-\ ACCESS-TOKEN's, LIFETIME's and RENEWAL's answers in place of the last three
-\ cells, the texts and flag kept for catch. RENEWAL decodes into the room past
-\ the access token, and only when renewing after an access token: else 0.
-: KEPT ( SPAN:span<u8> SPAN:span<u8> bool n n n -- SPAN:span<u8> SPAN:span<u8> bool n n n )
-   drop 2drop {: text room renew:bool :}
-   text room renew
+\ ID-TOKEN decodes into the room past the refresh token, and only when
+\ identifying after an access and a refresh token: else 0.
+: IDENTIFIED ( JSON:value SPAN:span<u8> bool n n -- n )
+   {: answer room identify:bool got:n kept:n :}
+   identify got 0 >= and kept 0 >= and 0= if 0 exit then
+   answer room got kept + SPAN:SKIP ID-TOKEN ;
+
+\ ACCESS-TOKEN's, LIFETIME's, RENEWAL's and IDENTIFIED's answers in place of
+\ the last four cells, the texts and flags kept for catch. RENEWAL decodes
+\ into the room past the access token, and only when renewing after an access
+\ token: else 0.
+: KEPT ( SPAN:span<u8> SPAN:span<u8> bool bool n n n n
+   -- SPAN:span<u8> SPAN:span<u8> bool bool n n n n )
+   2drop 2drop {: text room renew:bool identify:bool :}
+   text room renew identify
    text SPAN:$ JSON:PARSE {: answer :}
-   answer JSON:OBJECT? 0= if -1 -1 -1 exit then
+   answer JSON:OBJECT? 0= if -1 -1 -1 -1 exit then
    answer room ACCESS-TOKEN {: got:n :}
    got answer LIFETIME
-   renew got 0 >= and if answer room got SPAN:SKIP RENEWAL else 0 then ;
+   renew got 0 >= and if answer room got SPAN:SKIP RENEWAL else 0 then
+   {: kept:n :} kept
+   answer room identify got kept IDENTIFIED ;
 
-\ A 2xx answer that cannot be used, logged without the answer, which can
-\ hold a token.
+\ Opens the line on a 2xx answer that cannot be used, which is logged
+\ without the answer: it can hold a token.
+: ANSWER-LINE ( n -- )
+   OPEN-LINE s" token answer " LOG:TEXT+  LOG:INT+  s"  " LOG:TEXT+ ;
+
 : UNUSABLE ( n str -- )
    {: status:n what:str :}
-   OPEN-LINE s" token answer " LOG:TEXT+  status LOG:INT+
-   s"  " LOG:TEXT+  what LOG:TEXT+  LOG:;LINE
+   status ANSWER-LINE  what LOG:TEXT+  LOG:;LINE
    E-RESPONSE throw ;
 
-: PARSED ( n SPAN:span<u8> SPAN:span<u8> bool -- n n n )
-   {: status:n text room renew:bool :}
-   text room renew -1 -1 -1 [: [: KEPT ;] REASON:HIDDEN ;] catch {: code:n :}
-   code 0= if {: text room renew:bool got:n secs:n kept:n :} got secs kept exit then
-   2drop 2drop 2drop
+: PARSED ( n SPAN:span<u8> SPAN:span<u8> bool bool -- n n n n )
+   {: status:n text room renew:bool identify:bool :}
+   text room renew identify -1 -1 -1 -1
+   [: [: KEPT ;] REASON:HIDDEN ;] catch {: code:n :}
+   code 0= if
+      {: text room renew:bool identify:bool got:n secs:n kept:n id:n :}
+      got secs kept id exit
+   then
+   2drop 2drop 2drop 2drop
    code MALFORMED? if
       status s" is not JSON naming each member once" UNUSABLE
    then
    code throw ;
 
-\ The 2xx answer's access_token and, when renewing, its refresh_token, empty
-\ when absent, decoded into the vector past the answer's bytes, the refresh
-\ token right after the access token, and its expires_in. They are disjoint
-\ parts of the answer and a decoded string never outgrows its text, so both
-\ fit.
-: ISSUED ( n ^VEC:vector<u8> bool -- str str n )
-   {: status:n buf:^ renew:bool :}
+\ The 2xx answer's access_token, when renewing its refresh_token, empty when
+\ absent, and when identifying its id_token, each decoded into the vector past
+\ the answer's bytes right after the one before, then its expires_in; the
+\ texts not asked for are empty. They are disjoint parts of the answer and a
+\ decoded string never outgrows its text, so all fit.
+: ISSUED ( n ^VEC:vector<u8> bool bool -- str str str n )
+   {: status:n buf:^ renew:bool identify:bool :}
    buf VEC:COUNT {: u:n :}
    buf u VEC:EXTEND {: room :}
-   status buf VEC:SPAN u SPAN:TAKE room renew PARSED
-   {: got:n secs:n kept:n :}
+   status buf VEC:SPAN u SPAN:TAKE room renew identify PARSED
+   {: got:n secs:n kept:n id:n :}
    got 0< if status s" lacks an access_token string" UNUSABLE then
    kept 0< if status s" lacks a refresh_token string" UNUSABLE then
+   id 0< if status s" lacks an id_token string" UNUSABLE then
    secs 0< if
       status s" lacks a positive integer expires_in" UNUSABLE
    then
    room SPAN:$ STR:DATA {: at:^ :}
-   at got >str at got + kept >str secs ;
+   at got >str  at got + kept >str  at got + kept + id >str  secs ;
 
 : ANSWERED ( n ^VEC:vector<u8> -- )
    {: status:n buf:^ :}
@@ -1394,6 +1440,11 @@ private
    s" : " LOG:TEXT+  buf VEC:BYTES LOG:TEXT+  LOG:;LINE ;
 
 : STATED ( -- ) ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then ;
+
+\ E-HTTP-STATE before CLIENT! or ISSUER!, which REDEEM needs.
+: REDEEMABLE ( -- )
+   STATED
+   ISSUER$ STR:LEN 0= if E-HTTP-STATE throw then ;
 
 : ASKED ( ^VEC:vector<u8> [ CURL:handle -- bool ]
    [ CURL:http-status -- n ] -- n )
@@ -1433,8 +1484,8 @@ private
 : IMDS-TOKEN ( str str ^VEC:vector<u8> -- str n )
    {: o:str res:str buf:^ :}
    buf [: o res buf IMDS-SET? ;] [: IMDS-ERROR ;] ASKED
-   buf false ISSUED
-   {: a:str r:str secs:n :}
+   buf false false ISSUED
+   {: a:str r:str id:str secs:n :}
    a secs ;
 
 public
@@ -1455,7 +1506,7 @@ public
    STATED
    scope g buf FORM
    buf [: buf REQUESTED? ;] [: STATUS-ERROR ;] ASKED
-   buf false ISSUED {: a:str r:str secs:n :}
+   buf false false ISSUED {: a:str r:str id:str secs:n :}
    a secs ;
 
 
@@ -1471,7 +1522,101 @@ public
    STATED
    scope r buf REFRESH-FORM
    buf [: buf REQUESTED? ;] [: STATUS-ERROR ;] ASKED
-   buf true ISSUED ;
+   buf true false ISSUED {: a:str r:str id:str secs:n :}
+   a r secs ;
+
+private
+
+\ The failed check's words and E-RESPONSE, else 0: the opened ID token names a
+\ kid of the key set, which signed it RS256; E-UNAVAILABLE with no key set.
+: SIGNATURE-FAULT ( SPAN:span<u8> SPAN:span<u8> -- str n )
+   {: segs note :}
+   [: drop segs note OPEN ;] STEP 0= if
+      s" that is no JWS naming a kid" E-RESPONSE exit
+   then
+   KEY {: found:n :}
+   found UNAVAILABLE = if
+      s" no key set could be fetched to check" E-UNAVAILABLE exit
+   then
+   found ADMITTED <> if s" whose kid the key set lacks" E-RESPONSE exit then
+   RS256? 0= if s" without a valid RS256 signature" E-RESPONSE exit then
+   s" " 0 ;
+
+\ The failed check's words and E-RESPONSE, else 0: the opened ID token's iss
+\ is ISSUER!'s, its aud holds CLIENT!'s id, its exp and nbf hold, its azp,
+\ when present, is that id and its nonce is the expected one.
+: CLAIMS-FAULT ( str -- str n )
+   {: nonce:str :}
+   CLIENT-ID @ SPAN:$ {: id:str :}
+   [: drop id epoch-seconds VALID? ;] STEP 0= if
+      s" whose iss, aud, exp or nbf fails" E-RESPONSE exit
+   then
+   CLAIMS@ s" azp" id true MEMBER-IS? 0= if
+      s" for another azp" E-RESPONSE exit
+   then
+   CLAIMS@ s" nonce" nonce false MEMBER-IS? 0= if
+      s" without the expected nonce" E-RESPONSE exit
+   then
+   s" " 0 ;
+
+\ A worker's vector for the ID token REDEEM decodes, made on the slot's first
+\ REDEEM: a block made at load lives in the loading process.
+HTTP:MAX-WORKERS TYPED-BUFFER ID-ROOMS ^VEC:vector<u8> SCRATCH-ONLY
+
+: ID-ROOM ( -- ^VEC:vector<u8> )
+   SLOT ID-ROOMS {: cell:^ :}
+   cell @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW cell ! then
+   cell @ ;
+
+\ OPEN's rooms in ID-ROOM, each as long as the token: its decoded segments
+\ are shorter, and so is its kid.
+: ID-TOKEN-FAULT ( str str -- str n )
+   {: id:str nonce:str :}
+   id STR:LEN {: u:n :}
+   ID-ROOM {: v:^ :}
+   v u 2 * VEC:RESIZE
+   v VEC:SPAN {: room :}
+   id STR:DATA u SPAN:MAKE SLOT PRESENTED !
+   room 0 u SPAN:SUB room u u SPAN:SUB SIGNATURE-FAULT {: what:str code:n :}
+   code 0<> if what code exit then
+   nonce CLAIMS-FAULT ;
+
+\ The ID token trusted for the nonce, else a line naming the failed check,
+\ never the token, and its code thrown; ID-ROOM cut to 0 however it ends.
+: TRUSTED ( n str str -- )
+   {: status:n id:str nonce:str :}
+   [: id nonce ID-TOKEN-FAULT ;] [: ID-ROOM 0 VEC:RESIZE ;] finally
+   {: what:str code:n :}
+   code 0= if exit then
+   status ANSWER-LINE  s" has an id_token " LOG:TEXT+  what LOG:TEXT+
+   LOG:;LINE
+   code throw ;
+
+public
+
+\ Redeems a sign-in's code (RFC 6749 4.1.3) with the redirect URI it was
+\ asked for and the PKCE verifier (RFC 7636) at the endpoint CLIENT! names,
+\ the person's ID token trusted first for the expected nonce (OpenID Connect
+\ Core 3.1.3.7): a JWS the issuer signed RS256 with a key of its set, whose
+\ iss is ISSUER!'s, whose aud holds CLIENT!'s id, whose exp and nbf hold,
+\ whose azp, when present, is that id and whose nonce is the expected one.
+\ Answers the access token, the refresh token, empty when the answer has none,
+\ and expires_in, both texts borrowed from the vector until the caller writes to
+\ it again. It runs on an HTTP worker, whose scratch it uses as ADMIT? does, and
+\ ends the admission ADMIT? made there: CLAIM$, TOKEN$ and CLAIM-HOLDS? answer
+\ false after it. It fails as REFRESH does, and E-RESPONSE for a 2xx without an
+\ id_token string or with one that fails a check, after one line naming the
+\ check, never the token; E-UNAVAILABLE when no key set could be fetched;
+\ E-HTTP-STATE before CLIENT! or ISSUER!. The texts must not lie in the vector.
+: REDEEM ( str str str str ^VEC:vector<u8> -- str str n )
+   {: code:str back:str verifier:str nonce:str buf:^ :}
+   0 PASSED !
+   REDEEMABLE
+   code back verifier buf CODE-FORM
+   buf [: buf REQUESTED? ;] [: STATUS-ERROR ;] ASKED {: status:n :}
+   status buf true true ISSUED {: a:str r:str id:str secs:n :}
+   status id nonce TRUSTED
+   a r secs ;
 
 private
 

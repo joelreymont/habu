@@ -993,6 +993,22 @@ E-HTTP-BODY-READ constant E-BODY-READ
    ;MATCH ;
 
 
+\ The Cookie pair from START, blanks before it skipped: name, value, the next
+\ pair's start, whether one was there; a pair with no "=" is a nameless value.
+: COOKIE-NEXT ( str n -- str str n bool )
+   {: h:str start:n :}
+   h SEMICOLON start STR:SPLIT-NEXT {: part:str next:n found:bool :}
+   part STR:LTRIM {: s:str :}
+   s EQUALS STR:INDEX-OF MATCH option
+      none OF s STR:DATA 0 >str s ENDOF
+      some OF
+         IDX>N {: at:n :}
+         s STR:DATA at >str
+         s STR:DATA at + 1+ s STR:LEN at - 1- >str
+      ENDOF
+   ;MATCH next found ;
+
+
 public
 
 : METHOD$ ( request -- str )
@@ -1049,6 +1065,20 @@ public
 \ A header whose value is trusted is read only when exactly one arrived.
 : HEADER-COUNT-OF ( request str -- n ) {: subject:request name:str :}
    subject SLOT-OF-REQUEST name COUNT-HEADER ;
+
+
+\ The value, as sent, of the first cookie of that name in the one Cookie header:
+\ name=value pairs split at ";", leading spaces and tabs skipped, names compared
+\ exactly. False with no such cookie, no Cookie header, or more than one.
+: COOKIE-OF$ ( request str -- str bool ) {: subject:request key:str :}
+   subject s" cookie" HEADER-COUNT-OF 1 <> if key STR:DATA 0 >str false exit then
+   subject s" cookie" HEADER-OF$ drop {: h:str :}
+   0 begin {: start:n :}
+      h start COOKIE-NEXT {: name:str value:str next:n found:bool :}
+      found 0= if h STR:DATA 0 >str false exit then
+      name key STR:= if value true exit then
+      next
+   again ;
 
 
 : CLIENT-GONE? ( request -- bool )

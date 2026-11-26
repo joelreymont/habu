@@ -590,6 +590,11 @@ SUITE test-issuer
    src/lib/net/test-issuer-test.f
 ;SUITE
 
+\ WEB-SESSION's sign-in and guards against TEST-ISSUER on a loopback port.
+SUITE web-session
+   src/lib/net/web-session-test.f
+;SUITE
+
 \ MODEL:CHAT against TEST-MODEL's replies on a loopback port.
 SUITE test-model
    src/lib/net/test-model-test.f
