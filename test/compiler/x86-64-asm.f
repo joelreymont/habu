@@ -196,10 +196,6 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    X64ASM:RAX 6 X64ASM:>R8 SINK X64ASM:ENC-MOVZX-8-RR   s" 480fb6c6" X=
    \ llvm-mc: movzbq (%rdi), %rax
    X64ASM:RAX X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOVZX-8-RM   s" 480fb607" X=
-   \ llvm-mc: movzbl %sil, %eax
-   0 X64ASM:>R32 6 X64ASM:>R8 SINK X64ASM:ENC-MOVZX32-8-RR   s" 400fb6c6" X=
-   \ llvm-mc: movzbl %al, %r9d
-   9 X64ASM:>R32 0 X64ASM:>R8 SINK X64ASM:ENC-MOVZX32-8-RR   s" 440fb6c8" X=
    \ llvm-mc: movzwq %si, %rax
    X64ASM:RAX 6 X64ASM:>R16 SINK X64ASM:ENC-MOVZX-16-RR   s" 480fb7c6" X=
    \ llvm-mc: movzwq (%rdi), %rax

@@ -625,10 +625,6 @@ public
    sr R8>N REG-NUM {: sn:n :}
    W64 $0FB6 d R64>N REG-NUM sn sn R8-FORCE s RR-ENC ;
 
-: ENC-MOVZX32-8-RR ( r32 r8 ^VEC:vector<u8> -- ) {: d:r32 sr:r8 s:^ :}
-   sr R8>N REG-NUM {: sn:n :}
-   W32 $0FB6 d R32>N REG-NUM sn sn R8-FORCE s RR-ENC ;
-
 : ENC-MOVZX-8-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}
    W64 $0FB6 d m s EXT-RM ;
 

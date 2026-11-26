@@ -557,23 +557,29 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 \ -1 in d when the codes hold a borrow, else 0.
 : BORROW ( vreg -- ) REG dup SINK X64ASM:ENC-SBB-RR ;
 
-\ d's flag from the codes of a compare; d is zero unless via, when d is an
-\ operand and the byte goes through al.
+\ Zeroes, before the compare, the register FLAG-END sets a byte of: d, or rax
+\ when via, since d is then an operand of the compare.
+: FLAG-START ( vreg bool -- )
+   {: d:vreg via:bool :}
+   via if X64ASM:RAX else d REG then
+   X64ASM:R64>N X64ASM:>R32 dup SINK X64ASM:ENC-XOR32-RR ;
+
+\ d's flag from the codes of a compare after FLAG-START. Through rax the byte
+\ is 1 when c fails, so rax - 1 is the flag.
 : FLAG-END ( vreg cc bool -- )
    {: d:vreg c:cc via:bool :}
    d REG {: r:X64ASM:r64 :}
    via if
-      c COND 0 X64ASM:>R8 SINK X64ASM:ENC-SETCC
-      r X64ASM:R64>N X64ASM:>R32 0 X64ASM:>R8 SINK X64ASM:ENC-MOVZX32-8-RR
-   else
-      c COND r X64ASM:R64>N X64ASM:>R8 SINK X64ASM:ENC-SETCC
+      c CC-NOT COND 0 X64ASM:>R8 SINK X64ASM:ENC-SETCC
+      r X64ASM:RAX -1 X64ASM:MEM-OFF SINK X64ASM:ENC-LEA exit
    then
+   c COND r X64ASM:R64>N X64ASM:>R8 SINK X64ASM:ENC-SETCC
    r SINK X64ASM:ENC-NEG ;
 
 : FLAG ( vreg vreg vreg cc -- )
    {: d:vreg a:vreg b:vreg c:cc :}
    d a SAME? d b SAME? or {: via:bool :}
-   via 0= if d ZERO then
+   d via FLAG-START
    a REG b REG SINK X64ASM:ENC-CMP-RR
    d c via FLAG-END ;
 
@@ -603,7 +609,7 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
       k CC-NE CC>N = if d a ZERO-NE exit then
    then
    d a SAME? {: via:bool :}
-   via 0= if d ZERO then
+   d via FLAG-START
    a REG v CMP-R
    d c via FLAG-END ;
 
