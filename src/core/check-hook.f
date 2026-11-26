@@ -1,4 +1,3 @@
-split-str
 \ check-hook.f - the checks the compiler calls: CHECK:DEFINITION on each
 \ definition's source, IMMEDIATE-CHECK before an immediate word inside one, and
 \ the facts text each record takes.
@@ -60,22 +59,22 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 \ Arms the source map from the capture's rows when a u is the pending
 \ definition's text and its name lies in file text; answers whether it did.
 : ROWS-ARM ( str -- bool )
-   {: a:^ u:n :}
-   REJECTION:SOURCE$ nip 0 <> if RES-FALSE exit then
+   {: s:str :}
+   REJECTION:SOURCE$ STR:LEN 0 <> if RES-FALSE exit then
    REJECTION:FILE-BUFFER? 0= if RES-FALSE exit then
    data-base PEND-CELL + @ 0= if RES-FALSE exit then
    BODY-BASE @ {: base:^ :}
    base NULL-PTR = if RES-FALSE exit then
-   a base - 0 <> if RES-FALSE exit then
+   s STR:DATA base - 0 <> if RES-FALSE exit then
    data-base BODY-TEXT:ROWS-CELL + @ {: rows:n :}
    rows 0 <= if RES-FALSE exit then
    SRC-NAME @ {: nm:^ :}
-   REJECTION:INPUT$ {: b:^ bu:n :}
-   b bu + {: e:^ :}
-   nm b - 0 <  e nm - 0 <= or if RES-FALSE exit then
-   nm  e nm -  nm FILE-POS  REJECTION:SOURCE!
-   a u  base data-base BODY-TEXT:CAP-CELL + @ + CELL-VIEW  rows  REJECTION:MAP!
-   nm b - REJECTION:MAP-BIAS!
+   REJECTION:INPUT$ {: in:str :}
+   in STR:DATA in STR:LEN + {: e:^ :}
+   nm in STR:DATA - 0 <  e nm - 0 <= or if RES-FALSE exit then
+   nm  e nm - >str  nm FILE-POS  REJECTION:SOURCE!
+   s  base data-base BODY-TEXT:CAP-CELL + @ + CELL-VIEW  rows  REJECTION:MAP!
+   nm in STR:DATA - REJECTION:MAP-BIAS!
    RES-TRUE ;
 
 \ Gives the checker the token that closes the text a u, which the text does
@@ -85,24 +84,24 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 \ read last; text that ends sooner is a definer's head, closed by the `does>`
 \ just past it, placed in the armed source by the rows, else in the body text.
 : CLOSER-ARM ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    REJECTION:CLOSER-OFF
    data-base PEND-CELL + @ 0= if exit then
    BODY-BASE @ {: base:^ :}
    base NULL-PTR = if exit then
-   a base - {: x:n :}
+   s STR:DATA base - {: x:n :}
    data-base BODYLEN-CELL + @ {: len:n :}
-   x 0 <  x u + len > or if exit then
-   x u + len = if SRCLOC:TOKEN$ a REJECTION:CLOSER! exit then
-   REJECTION:SOURCE$ nip 0= if a u + 5 a REJECTION:CLOSER! exit then
-   a u + REJECTION:>SOURCE 0= if drop exit then {: off:n :}
-   off 0 <  off 5 + REJECTION:SOURCE$ nip > or if exit then
-   REJECTION:SOURCE$ drop off + 5 a REJECTION:CLOSER! ;
+   x 0 <  x s STR:LEN + len > or if exit then
+   x s STR:LEN + len = if SRCLOC:TOKEN$ >str s STR:DATA REJECTION:CLOSER! exit then
+   REJECTION:SOURCE$ STR:LEN 0= if s STR:DATA s STR:LEN + 5 >str s STR:DATA REJECTION:CLOSER! exit then
+   s STR:DATA s STR:LEN + REJECTION:>SOURCE 0= if drop exit then {: off:n :}
+   off 0 <  off 5 + REJECTION:SOURCE$ STR:LEN > or if exit then
+   REJECTION:SOURCE$ STR:DATA off + 5 >str s STR:DATA REJECTION:CLOSER! ;
 
 \ ROWS-ARM, then CLOSER-ARM whatever ROWS-ARM answered.
 : BODY-ARM ( str -- bool )
-   {: a:^ u:n :}
-   a u ROWS-ARM  a u CLOSER-ARM ;
+   {: s:str :}
+   s ROWS-ARM  s CLOSER-ARM ;
 
 \ The cleanup that takes back what BODY-ARM or ROWS-ARM armed, and the closer.
 : DISARMER ( bool -- [ -- ] )
@@ -112,9 +111,9 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 \ has no model for is rejected unless it parses nothing.
 : IMMEDIATE-CHECK ( str str bool -- )
    drop
-   {: ba:^ bu:n ta:^ tu:n :}
-   ta tu NAME-IMM-READS 0 >= if exit then
-   ba bu ta tu [: CHECK-TARGET! ;]  ba bu ROWS-ARM DISARMER
+   {: bs:str ts:str :}
+   ts NAME-IMM-READS 0 >= if exit then
+   bs ts [: CHECK-TARGET! ;]  bs ROWS-ARM DISARMER
    finally 0 <> if
       s" checker: preflight did not reject unmodeled immediate" EXIT-STATUS:INTERNAL die
    then
@@ -126,49 +125,49 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 \ flag's own tag is left out.
 : FACTS-TAGS ( n -- )
    {: sym:n :}
-   sym PROW-FIND {: cnt:n t:^ tu:n kept:bool :}
+   sym PROW-FIND {: cnt:n t:str kept:bool :}
    sym CTL-WORD-SYM  sym DFER-FIND-SYM if CHECKER-OWNER-ABI:BINDING-DEFER or then
    kept if CTL-PARSES invert and then
-   REND-CTL 2drop
-   sym NORET-NONZERO@ REND-NONZERO 2drop
+   REND-CTL drop
+   sym NORET-NONZERO@ REND-NONZERO drop
    sym PRIM-FIRST-IDX {: prim:n :}
-   prim 0 <> if prim 1 - PE-FLAGS@ else 0 then REND-PE 2drop
-   kept if cnt else -1 then t tu REND-PARSES 2drop
-   sym NORET-CREATES@ REND-CREATES 2drop ;
+   prim 0 <> if prim 1 - PE-FLAGS@ else 0 then REND-PE drop
+   kept if cnt else -1 then t REND-PARSES drop
+   sym NORET-CREATES@ REND-CREATES drop ;
 
 
 \ Ends the process with the sentence REJECTION:TEXT holds from byte t on: a
 \ facts text the checker cannot keep is an engine defect.
 : TEXT-DIE ( n -- ) {: t:n :}
-   REJECTION:TEXT t +  REJECTION:TEXT-LEN @ t -  EXIT-STATUS:INTERNAL die ;
+   REJECTION:TEXT t +  REJECTION:TEXT-LEN @ t - >str  EXIT-STATUS:INTERNAL die ;
 
 \ Dies naming na nu, a u saying what is wrong with the facts text written for
 \ it, which REJECTION:TEXT holds. The sentence goes after the text in TEXT,
 \ which may move as it grows, so the text is copied by offset.
 : FACTS-DIE ( str str -- )
-   {: na:^ nu:n a:^ u:n :}
+   {: ns:str s:str :}
    REJECTION:TEXT-LEN @ {: t:n :}
    1 REJECTION:DEST !
    s" the facts text written for `" REJECTION:EMIT-STR
-   na nu REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR  s" : " REJECTION:EMIT-STR
+   ns REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR
+   s REJECTION:EMIT-STR  s" : " REJECTION:EMIT-STR
    t 0 ?do REJECTION:TEXT i + c@ REJECTION:EMIT1 loop
    t TEXT-DIE ;
 
 \ Dies naming na nu: its amended effect has no record, or no facts text that
 \ says it.
 : AMENDED-DIE ( str -- )
-   {: na:^ nu:n :}
+   {: ns:str :}
    0 REJECTION:TEXT-LEN !  1 REJECTION:DEST !
    s" no facts text says the amended effect of `" REJECTION:EMIT-STR
-   na nu REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   ns REJECTION:EMIT-STR  96 REJECTION:EMIT1
    0 TEXT-DIE ;
 
 \ Only a record this check published, at or above MARK and still active, is
 \ asked: a duplicate or an unrecorded effect publishes none.
 : CHECK-FACTS ( str n -- )
-   {: na:^ nu:n mark:n :}
-   na nu CHECKER-RECORD-SYM? {: sym:n :}
+   {: ns:str mark:n :}
+   ns CHECKER-RECORD-SYM? {: sym:n :}
    sym 0= if exit then
    sym USIG-NEWEST {: rec1:n :}
    rec1 0= if exit then
@@ -178,9 +177,9 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
       CK-LIVE-PEND? 0= if exit then
       DOES-SPLIT @ 0 <> if exit then
       sym FACTS-TAGS
-      RQM @ 0= if REJECTION:TEXT REJECTION:TEXT-LEN @ ndict@ FACTS! exit then
+      RQM @ 0= if REJECTION:TEXT REJECTION:TEXT-LEN @ >str ndict@ FACTS! exit then
    then
-   NMB NMU @
+   NMB NMU @ >str
    RQM @ 0 <> if s" cannot say its effect" else s" reads back as another effect" then
    FACTS-DIE ;
 
@@ -201,18 +200,18 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 \ appended: it rejects nothing and writes facts only there, as `: PKG:X` hands
 \ it the tail X.
 : DOES-PUBLISHED ( str bool -- )
-   {: a:^ u:n committed:bool :}
-   a u committed CHECKER-NATIVE-DOES-FINISH
+   {: s:str committed:bool :}
+   s committed CHECKER-NATIVE-DOES-FINISH
    committed 0= if exit then
-   a u CHECKER-RECORD-SYM? {: sym:n :}
+   s CHECKER-RECORD-SYM? {: sym:n :}
    sym FACTS-TEXT? 0= if exit then
    sym VIS-SYM-REC REC>INDEX {: ix:n :}
    ix ndict@ 1 - <> if exit then
-   REJECTION:TEXT REJECTION:TEXT-LEN @ ix FACTS!
+   REJECTION:TEXT REJECTION:TEXT-LEN @ >str ix FACTS!
    sym NORET-CREATES@ {: made:n :}
    made 0= if exit then
    0 REJECTION:TEXT-LEN !  made 1 - REND-RECORD
-   RQM @ 0 <> if 2drop exit then
+   RQM @ 0 <> if drop exit then
    LAY-FACTS ;
 
 \ The checker's registrars the fields held; each entry calls its token.
@@ -227,38 +226,38 @@ CAST: ROW-XT ( n -- [ str str -- bool ] )
 \ The raw registrar's field entry: a created word or constant takes its text
 \ through FIND-FACTS!, or 0 when none says its effect.
 : RAW-DECLARED ( str str -- )
-   {: na:^ nu:n sa:^ su:n :}
-   na nu sa su RAW-REG @ REG-XT execute
+   {: ns:str ss:str :}
+   ns ss RAW-REG @ REG-XT execute
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> CHK-CAND @ 0 <> or if exit then
    data-base LASTC-CELL + 0 ptr-field @ {: rec:^ :}
    rec NULL-PTR = if exit then
    rec REC>INDEX {: ix:n :}
    ix 0 < if exit then
    LASTC-LINK-SYM FACTS-TEXT? if
-      REJECTION:TEXT REJECTION:TEXT-LEN @
-   else NULL-PTR 0 then
+      REJECTION:TEXT REJECTION:TEXT-LEN @ >str
+   else NULL-PTR 0 >str then
    ix FIND-FACTS! ;
 
 
 \ The pending record's facts once a registrar recorded the live window for this
 \ name; an unsaid text stores 0, so no earlier registrar's text stays.
 : PENDING-FACTS ( str -- )
-   {: a:^ u:n :}
+   {: s:str :}
    CK-LIVE-PEND? 0= if exit then
    CK-CLOSED-OPEN @ 0= if exit then
    DOES-SPLIT @ 0 <> if exit then
    CK-CLOSED-SYM @ CK-CLOSED-IX @ CK-CLOSED-OFF@ CK-PEND-SYM {: sym:n :}
    sym 0= if exit then
-   a u CHECKER-RECORD-SYM? sym <> if exit then
-   sym FACTS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ CK-CLOSED-IX @ FACTS!
-   else NULL-PTR 0 CK-CLOSED-IX @ FIND-FACTS! then ;
+   s CHECKER-RECORD-SYM? sym <> if exit then
+   sym FACTS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ >str CK-CLOSED-IX @ FACTS!
+   else NULL-PTR 0 >str CK-CLOSED-IX @ FIND-FACTS! then ;
 
 \ Declares a TRUSTED: definition's row NAME SIG as DECLARED does and answers
 \ whether the checker rejected it.
 : ROW-DECLARED ( str str -- bool )
-   {: na:^ nu:n sa:^ su:n :}
-   na nu sa su ROW-REG @ ROW-XT execute {: rejected:bool :}
-   na nu PENDING-FACTS
+   {: ns:str ss:str :}
+   ns ss ROW-REG @ ROW-XT execute {: rejected:bool :}
+   ns PENDING-FACTS
    rejected ;
 
 \ The shapes whose child answers or takes `^t` for its declared type t.
@@ -274,11 +273,11 @@ CAST: ROW-XT ( n -- [ str str -- bool ] )
 \ A rejected type is reported, naming the child, before the throw. A NODE other
 \ than 0 is the type, which TYPE does not spell.
 : STORED-ROWS ( str str n n -- n n )
-   {: na:^ nu:n ta:^ tu:n shape:n node:n :}
-   node 0 <> if node LBUF:NODE-STORAGE-TERM else ta tu CHECKER-STORAGE-TERM then
+   {: ns:str ts:str shape:n node:n :}
+   node 0 <> if node LBUF:NODE-STORAGE-TERM else ts CHECKER-STORAGE-TERM then
    0= if
       drop
-      node 0 <> if na nu LBUF:NODE-TYPE-REJECT else na nu ta tu CHECKER-STORAGE-TYPE-REJECT then
+      node 0 <> if ns LBUF:NODE-TYPE-REJECT else ns ts CHECKER-STORAGE-TYPE-REJECT then
       EXIT-STATUS:REJECTED throw
    then
    shape swap TFAM-STORED-ROWS ;
@@ -286,30 +285,30 @@ CAST: ROW-XT ( n -- [ str str -- bool ] )
 \ Type t's bytes in storage: whole cells only when WHOLE, else as DYNAMIC
 \ admits, which takes `u8` too.
 : TYPE-BYTES ( str bool -- n bool )
-   {: ta:^ tu:n whole:bool :}
-   whole 0= if ta tu CHECKER-DYNAMIC-INFO exit then
-   ta tu CHECKER-STORAGE-INFO {: w:n ok:bool :}
+   {: ts:str whole:bool :}
+   whole 0= if ts CHECKER-DYNAMIC-INFO exit then
+   ts CHECKER-STORAGE-INFO {: w:n ok:bool :}
    w CELL * ok ;
 
 \ A storage declaration's name, stored type and that type's bytes; 0 bytes
 \ when it keeps a rejection of a missing name, a name it cannot take or the type.
 : DECL-LINE ( str bool -- str str n )
-   {: da:^ du:n whole:bool :}
-   LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
-   nu 0= if da du CHECKER-STORAGE-NAME-REJECT na 0 na 0 0 exit then
-   da du na nu REJECTION:NOT-A-NAME
-   LBUF:STORAGE-PARSE-TYPE {: ta:^ tu:n :}
-   na nu na nu LBUF:LBUF-NAME-OK? 0= if na nu ta tu 0 exit then
-   ta tu whole TYPE-BYTES 0= if
-      drop na nu ta tu CHECKER-STORAGE-TYPE-REJECT na nu ta tu 0 exit
+   {: ds:str whole:bool :}
+   LBUF:STORAGE-LINE-TOKEN {: ns:str :}
+   ns STR:LEN 0= if ds CHECKER-STORAGE-NAME-REJECT ns ns 0 exit then
+   ds ns REJECTION:NOT-A-NAME
+   LBUF:STORAGE-PARSE-TYPE {: ts:str :}
+   ns ns LBUF:LBUF-NAME-OK? 0= if ns ts 0 exit then
+   ts whole TYPE-BYTES 0= if
+      drop ns ts CHECKER-STORAGE-TYPE-REJECT ns ts 0 exit
    then {: bytes:n :}
-   na nu ta tu bytes ;
+   ns ts bytes ;
 
 \ The declaration registrars' field entries: each runs its registrar, then lays
 \ the declared name's facts.
 : DECLARED ( str str -- )
-   {: na:^ nu:n sa:^ su:n :}
-   na nu sa su DECL-REG @ REG-XT execute  na nu PENDING-FACTS ;
+   {: ns:str ss:str :}
+   ns ss DECL-REG @ REG-XT execute  ns PENDING-FACTS ;
 
 \ Registers the effect of the pending child word NAME of SHAPE, PARAM and
 \ stored TYPE, records NAME as the generic member SHAPE PARAM names if any, lays
@@ -317,14 +316,14 @@ CAST: ROW-XT ( n -- [ str str -- bool ] )
 \ TYPE is read only for the shapes that answer `^t`, and not for a STORED
 \ child whose PARAM is its type's node.
 : CHILD ( str n n str -- n n )
-   {: na:^ nu:n shape:n param:n ta:^ tu:n :}
+   {: ns:str shape:n param:n ts:str :}
    shape STORED-SHAPE? if
-      na nu ta tu shape
+      ns ts shape
       shape CHILD-ABI:STORED = if param else 0 then STORED-ROWS 0
    else shape param TFAM-CHILD-ROWS then {: din:n dout:n val:n :}
-   na nu din dout RES-FALSE CHECKER-CHILD-ROWS {: h:n :}
+   ns din dout RES-FALSE CHECKER-CHILD-ROWS {: h:n :}
    shape param  CHECKER-REC-SYM @  MEMBER-SYM!
-   na nu PENDING-FACTS
+   ns PENDING-FACTS
    val h ;
 
 \ The line of a definer whose element may be a byte.
@@ -338,7 +337,7 @@ CAST: ROW-XT ( n -- [ str str -- bool ] )
 
 \ Places the rejection at the token read last, the definer's own or
 \ one it parsed.
-: DEFINER-PLACE ( -- ) SRCLOC:TOKEN$ DEFINER-AT ;
+: DEFINER-PLACE ( -- ) SRCLOC:TOKEN$ >str DEFINER-AT ;
 
 \ A type: a live node, never an effect side's row. A node ends with the file
 \ that made it.
@@ -384,16 +383,16 @@ CAST: >BYTES ( n -- ^u8 )
       c 102 = if CC-BOOL exit then
       c 114 = if CC-R exit then
    then
-   a >BYTES u CON-OF ;
+   a >BYTES u >str CON-OF ;
 
 \ EFFECT:NAMED's family tail a u is public in more than one used package.
-: NAMED-AMBIG ( str -- ) {: a:^ u:n :}
+: NAMED-AMBIG ( str -- ) {: s:str :}
    s" E-USING-AMBIGUOUS" REJECTION:OPEN
    s" EFFECT:NAMED found type family '" REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR
+   s REJECTION:EMIT-STR
    s" ' public in more than one used package" REJECTION:EMIT-STR
    DEFINER-PLACE
-   a u SGBAD-AMBIG-HELP
+   s SGBAD-AMBIG-HELP
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The type a spelling names: a built-in type's con code and 0, else 0 and the
@@ -402,15 +401,15 @@ CAST: >BYTES ( n -- ^u8 )
    {: a:n u:n :}
    a u BUILT-IN dup 0 <> if 0 exit then drop
    SGBAD-CLEAR
-   TFAM-ACTIVE-PKG$ a >BYTES u
-   a >BYTES u TFQ-SPLIT? if TFAM-EXACT-RESOLVE
+   TFAM-ACTIVE-PKG$ a >BYTES u >str
+   a >BYTES u >str TFQ-SPLIT? if TFAM-EXACT-RESOLVE
    else TFAM-PARSE-RESOLVE then
    if 0 swap exit then
    drop
-   SGBAD-AMBIG? if a >BYTES u NAMED-AMBIG then
+   SGBAD-AMBIG? if a >BYTES u >str NAMED-AMBIG then
    s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:OPEN
    s" EFFECT:NAMED found no type named '" REJECTION:EMIT-STR
-   a >BYTES u REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   a >BYTES u >str REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
    DEFINER-PLACE
    REJECTION:HELP  UNKNOWN-HELP$ REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
@@ -418,21 +417,21 @@ CAST: >BYTES ( n -- ^u8 )
 \ A rejected READ of the type xa xu, naming the token, or the type when the
 \ reason names none; why is the STG- reason no stored form holds it, else 0.
 : TEXT-TYPE-REJECT ( str str n n str -- )
-   {: ta:^ tu:n wa:^ wu:n code:n why:n xa:^ xu:n :}
-   tu 0= if xa xu else ta tu then {: na:^ nu:n :}
+   {: ts:str ws:str code:n why:n xs:str :}
+   ts STR:LEN 0= if xs else ts then {: ns:str :}
    code TYPE-DECL:E-TDECL-PAYLOAD = {: unknown:bool :}
    code E-USING-AMBIGUOUS = {: ambig:bool :}
    ambig if s" E-USING-AMBIGUOUS" else
    unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then then
    REJECTION:OPEN
-   wa wu REJECTION:EMIT-STR  s"  '" REJECTION:EMIT-STR
-   na nu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
-   nu xu <> if
-      s"  in the type '" REJECTION:EMIT-STR  xa xu REJECTION:EMIT-STR
+   ws REJECTION:EMIT-STR  s"  '" REJECTION:EMIT-STR
+   ns REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   ns STR:LEN xs STR:LEN <> if
+      s"  in the type '" REJECTION:EMIT-STR  xs REJECTION:EMIT-STR
       s" '" REJECTION:EMIT-STR
    then
    DEFINER-PLACE
-   ambig if na nu SGBAD-AMBIG-HELP else
+   ambig if ns SGBAD-AMBIG-HELP else
       REJECTION:HELP
       why STG-UNSTORABLE-TYPE = if
          s" write a closed, copyable type, such as n or ^u8"
@@ -444,21 +443,21 @@ CAST: >BYTES ( n -- ^u8 )
 
 \ Rejects a type variable's or region's letter in a type EFFECT:READ-TYPE was
 \ given, placed at the token the engine read last, which ran the definer.
-: TEXT-LETTER-REJECT ( str str -- ) {: la:^ lu:n xa:^ xu:n :}
+: TEXT-LETTER-REJECT ( str str -- ) {: ls:str xs:str :}
    s" E-BAD-SIGNATURE" REJECTION:OPEN
    s" the type '" REJECTION:EMIT-STR
-   xa xu REJECTION:EMIT-STR  s" ' has the letter '" REJECTION:EMIT-STR
-   la lu REJECTION:EMIT-STR  s" ', which names no type" REJECTION:EMIT-STR
+   xs REJECTION:EMIT-STR  s" ' has the letter '" REJECTION:EMIT-STR
+   ls REJECTION:EMIT-STR  s" ', which names no type" REJECTION:EMIT-STR
    DEFINER-PLACE
    REJECTION:HELP
    s" a built definition's types are concrete: " REJECTION:EMIT-STR
    s" write one such as n or ^u8 in place of '" REJECTION:EMIT-STR
-   la lu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   ls REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : TEXT-TYPE ( n n -- n ) {: a:n u:n :}
-   a >BYTES u [: a >BYTES u TEXT-TYPE-REJECT ;]
-   [: a >BYTES u TEXT-LETTER-REJECT ;] READ-TYPE ;
+   a >BYTES u >str [: a >BYTES u >str TEXT-TYPE-REJECT ;]
+   [: a >BYTES u >str TEXT-LETTER-REJECT ;] READ-TYPE ;
 
 : TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
    code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then
@@ -561,34 +560,34 @@ variable DENSE-N
 : EFFECT-DENSE ( n -- n bool ) 0 DENSE-N !  TYPE-DENSE ;
 
 \ The span through its first `)`.
-: THROUGH-CLOSE ( str -- str ) {: a:^ u:n :}
-   0 begin dup u < if a over + c@ 41 <> else RES-FALSE then while 1 + repeat
+: THROUGH-CLOSE ( str -- str ) {: s:str :}
+   0 begin dup s STR:LEN < if s STR:DATA over + c@ 41 <> else RES-FALSE then while 1 + repeat
    {: k:n :}
-   a  k 1 + u min ;
+   s STR:DATA  k 1 + s STR:LEN min >str ;
 
 \ An effect EFFECT? admits as a signature, `( n -- n )`, in the renderer's
 \ buffer past its recorded text, where the next rendering replaces it.
 : EFFECT-TEXT ( n -- str ) {: node:n :}
    node EFFECT-ROWS 2drop {: din:n dout:n :}
    REJECTION:TEXT-LEN @ {: at:n :}
-   din dout 0 0 RES-FALSE REND-FACTS {: buf:^ len:n :}
+   din dout 0 0 RES-FALSE REND-FACTS {: f:str :}
    at REJECTION:TEXT-LEN !
-   buf at +  len at -  THROUGH-CLOSE ;
+   f STR:DATA at +  f STR:LEN at - >str  THROUGH-CLOSE ;
 
 
 : DEFERRED ( str -- )
-   {: a:^ u:n :}
-   a u CHECKER-DEFER  a u PENDING-FACTS ;
+   {: s:str :}
+   s CHECKER-DEFER  s PENDING-FACTS ;
 
 
 : CAST-DECLARED ( str str -- )
-   {: na:^ nu:n sa:^ su:n :}
-   na nu sa su DEFCAST-REG @ REG-XT execute  na nu PENDING-FACTS ;
+   {: ns:str ss:str :}
+   ns ss DEFCAST-REG @ REG-XT execute  ns PENDING-FACTS ;
 
 
 : LINEAR-DECLARED ( str str -- )
-   {: na:^ nu:n sa:^ su:n :}
-   na nu sa su CHECKER-LINEAR  na nu PENDING-FACTS ;
+   {: ns:str ss:str :}
+   ns ss CHECKER-LINEAR  ns PENDING-FACTS ;
 
 
 \ CHECK prints no deferred verdict, which rejects a definition the engine
@@ -604,13 +603,13 @@ public
 \ unpublishes) so its name resolves for later definitions; the driver exits
 \ nonzero via MULTI-ERR-END.
 : DEFINITION ( str -- n )
-   {: a:^ u:n :}
-   a u FIRST-TOKEN {: na:^ nu:n :}
-   na nu CHECKER-CERT-DUP? if na nu  na nu SOURCE-NAME$  REJECT-DUPLICATE then
+   {: s:str :}
+   s FIRST-TOKEN {: ns:str :}
+   ns CHECKER-CERT-DUP? if ns  ns SOURCE-NAME$  REJECT-DUPLICATE then
    UEND @ {: mark:n :}
-   a u [: CHECK! REPORT-DEFERRED ;]
-   a u BODY-ARM DISARMER  finally
-   dup -1 = if na nu mark CHECK-FACTS then
+   s [: CHECK! REPORT-DEFERRED ;]
+   s BODY-ARM DISARMER  finally
+   dup -1 = if ns mark CHECK-FACTS then
    MULTI-ERR? if drop -1 exit then
    dup -1 <> if EXIT-STATUS:REJECTED throw then ;
 
@@ -624,12 +623,12 @@ private
 : AMENDED ( n -- )
    {: from:n :}
    HELD-FACTS from ?do
-      i HELD-FACT@ 2drop HELD-AMENDED = if
+      i HELD-FACT@ drop HELD-AMENDED = if
          i HELD-AMENDED@ {: ix:n sym:n :}
          sym VIS-SYM-REC REC>INDEX {: now:n :}
-         now ix <> if NULL-PTR 0 ix FACTS! then
+         now ix <> if NULL-PTR 0 >str ix FACTS! then
          now 0 >=  sym FACTS-TEXT?  and 0= if sym SYM-NAME$ AMENDED-DIE then
-         REJECTION:TEXT REJECTION:TEXT-LEN @ now FACTS!
+         REJECTION:TEXT REJECTION:TEXT-LEN @ >str now FACTS!
       then
    loop ;
 
@@ -664,13 +663,13 @@ private
 \ Stops the build at primitive sym, whose rows REJECTION:TEXT cannot say in part
 \ pa pu: an engine without that text would reject every call of it as undefined.
 : ROWS-UNSAID ( str n -- )
-   {: pa:^ pu:n sym:n :}
-   s" checker: facts text does not say " ERROR-TEXT:TYPE  pa pu ERROR-TEXT:TYPE
+   {: ps:str sym:n :}
+   s" checker: facts text does not say " ERROR-TEXT:TYPE  ps ERROR-TEXT:TYPE
    s"  of primitive " ERROR-TEXT:TYPE
-   sym SYM-PKG$ {: ka:^ ku:n :} ku 0 <> if ka ku ERROR-TEXT:TYPE s" :" ERROR-TEXT:TYPE then
+   sym SYM-PKG$ {: ks:str :} ks STR:LEN 0 <> if ks ERROR-TEXT:TYPE s" :" ERROR-TEXT:TYPE then
    sym SYM-NAME$ ERROR-TEXT:TYPE
    s" : " ERROR-TEXT:TYPE
-   REJECTION:TEXT REJECTION:TEXT-LEN @ EXIT-STATUS:INTERNAL die ;
+   REJECTION:TEXT REJECTION:TEXT-LEN @ >str EXIT-STATUS:INTERNAL die ;
 
 \ Sym's first row and tags in REJECTION:TEXT, each further row after `overload`;
 \ no row: its tags, false if none it says. False for rows a created effect ends.
@@ -686,7 +685,7 @@ private
    sym FACTS-TAGS
    RQM @ 0 <> if s" the tags" sym ROWS-UNSAID then
    more 0= if RES-TRUE exit then
-   #PE @ k 1 + ?do sym i ROW-OF? if i REND-OVERLOAD 2drop then loop
+   #PE @ k 1 + ?do sym i ROW-OF? if i REND-OVERLOAD drop then loop
    RQM @ 0 <> if s" the overloads" sym ROWS-UNSAID then
    RES-TRUE ;
 
@@ -695,8 +694,8 @@ private
 \ can say them. The text lies in REJECTION:TEXT, which the next render reuses.
 : ROWS-FACTS ( n -- str )
    {: sym:n :}
-   sym 0= if NULL-PTR 0 exit then
-   sym ROWS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ else NULL-PTR 0 then ;
+   sym 0= if NULL-PTR 0 >str exit then
+   sym ROWS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ >str else NULL-PTR 0 >str then ;
 
 \ A linked engine's facts text for primitive na nu: what the open build's rows
 \ say of its global symbol, empty when no text can.
@@ -707,8 +706,8 @@ private
 \ package pa pu owns (src/habu/prims.f EPPRIM:), for the record a build lays
 \ for it in that package's private wordlist; empty when no text can.
 : OWNED-FACTS ( str str -- str )
-   {: pa:^ pu:n na:^ nu:n :}
-   pa pu SYM-PRIVATE na nu CHECKER-PKG-SYM? ROWS-FACTS ;
+   {: ps:str ns:str :}
+   ps SYM-PRIVATE ns CHECKER-PKG-SYM? ROWS-FACTS ;
 
 \ Only the engine reads the two cells; inside a build the builder's own checker
 \ checks, so a target's never replaces it.

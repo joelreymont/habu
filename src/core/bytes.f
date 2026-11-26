@@ -1,4 +1,3 @@
-split-str
 \ bytes.f - core byte-buffer helpers every engine loads at startup, so
 \ low-level code needs no library require. BYTE-VIEW ( ^a -- ^u8 ) is an engine word: checked code rejects
 \ a cell @ or ! on its view (src/lib/string-test.f BAD-BYTE-VIEW-LOAD).

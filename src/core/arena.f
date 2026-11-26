@@ -1,4 +1,3 @@
-split-str
 \ arena.f — the ARENA definer.
 \
 \ `ARENA NAME t` declares two words that make zeroed records of `t` in an arena
@@ -27,16 +26,16 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 
 \ Makes NAME+SFX of SHAPE over the routine's ENTRY, and lays its width cell.
 : MAKE ( str str n n str n -- )
-   {: name:^ nameu:n sfx:^ sfxu:n shape:n entry:n type:^ typeu:n width:n :}
-   name nameu sfx sfxu LBUF:LBUF-SUFFIXED shape entry type typeu CHILD drop
+   {: name:str sfx:str shape:n entry:n type:str width:n :}
+   name sfx LBUF:LBUF-SUFFIXED shape entry type CHILD drop
    width , ;
 
 \ Whether neither of NAME's words is taken in the current section; a taken one
 \ is rejected at NAME.
 : FREE? ( str -- bool )
-   {: name:^ nameu:n :}
-   name nameu s" -NEW" LBUF:LBUF-SUFFIX-OK? dup 0= if exit then drop
-   name nameu s" -NEW-DISPOSE" LBUF:LBUF-SUFFIX-OK? ;
+   {: name:str :}
+   name s" -NEW" LBUF:LBUF-SUFFIX-OK? dup 0= if exit then drop
+   name s" -NEW-DISPOSE" LBUF:LBUF-SUFFIX-OK? ;
 
 \ The open package's wordlist for the section other than MODE's.
 : OTHER-WID ( n -- n ) {: mode:n :}
@@ -45,9 +44,9 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 
 \ NAME+SFX taken in the wordlist WID is rejected at NAME.
 : OTHER-FREE ( str str n -- )
-   {: name:^ nameu:n sfx:^ sfxu:n wid:n :}
-   name nameu sfx sfxu LBUF:LBUF-SUFFIXED {: a:^ u:n :}
-   a u wid search-wl 0 <> if a u name nameu REJECT-DUPLICATE then ;
+   {: name:str sfx:str wid:n :}
+   name sfx LBUF:LBUF-SUFFIXED {: full:str :}
+   full wid search-wl 0 <> if full name REJECT-DUPLICATE then ;
 
 EXPORT CHECK:CHECKER-ARENA-INFO
 EXPORT CHECK:CHECKER-AUTH-PACKAGE-MODE@
@@ -63,49 +62,49 @@ EXPORT CHECK:STG-NO-NAME
 \ TAIL+SFX taken in Q's private section, for NAME Q:TAIL, is rejected at
 \ NAME.
 : PRIVATE-FREE ( str str -- )
-   {: name:^ nameu:n sfx:^ sfxu:n :}
-   name nameu CHECKER-QUALIFIED? drop
+   {: name:str sfx:str :}
+   name CHECKER-QUALIFIED? drop
    CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
    wid 0= if exit then
-   CHECKER-QTAIL$ sfx sfxu LBUF:LBUF-SUFFIXED wid search-wl 0= if exit then
-   name nameu sfx sfxu LBUF:LBUF-SUFFIXED name nameu REJECT-DUPLICATE ;
+   CHECKER-QTAIL$ sfx LBUF:LBUF-SUFFIXED wid search-wl 0= if exit then
+   name sfx LBUF:LBUF-SUFFIXED name REJECT-DUPLICATE ;
 
 \ NAME's words taken in the section the declaration does not write are
 \ rejected at NAME: a qualified Q:TAIL writes Q's public one.
-: OTHERS-FREE ( str -- ) {: name:^ nameu:n :}
-   name nameu CHECKER-QUALIFIED? if
-      name nameu s" -NEW" PRIVATE-FREE
-      name nameu s" -NEW-DISPOSE" PRIVATE-FREE exit
+: OTHERS-FREE ( str -- ) {: name:str :}
+   name CHECKER-QUALIFIED? if
+      name s" -NEW" PRIVATE-FREE
+      name s" -NEW-DISPOSE" PRIVATE-FREE exit
    then
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    mode CHECKER-PACKAGE-NONE =  mode CHECKER-PACKAGE-GLOBAL =  or if exit then
    mode OTHER-WID {: wid:n :}
-   name nameu s" -NEW" wid OTHER-FREE
-   name nameu s" -NEW-DISPOSE" wid OTHER-FREE ;
+   name s" -NEW" wid OTHER-FREE
+   name s" -NEW-DISPOSE" wid OTHER-FREE ;
 
 \ Both words must be free in both sections of the package they land in: its
 \ bare calls resolve private-first.
 : RUN ( -- )
-   SRCLOC:TOKEN$ {: run:^ runu:n :}
-   LBUF:STORAGE-LINE-TOKEN {: name:^ nameu:n :}
-   nameu 0= if
-      s" ARENA" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
+   SRCLOC:TOKEN$ >str {: run:str :}
+   LBUF:STORAGE-LINE-TOKEN {: name:str :}
+   name STR:LEN 0= if
+      s" ARENA" run STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   run runu name nameu REJECTION:NOT-A-NAME
-   LBUF:STORAGE-PARSE-TYPE {: type:^ typeu:n :}
-   name nameu CHECKER-LBUF-NAME-OK? 0= if exit then
-   name nameu LBUF:SEAL-NAME
-   name nameu FREE? 0= if exit then
-   name nameu OTHERS-FREE
-   type typeu CHECKER-ARENA-INFO 0= if
+   run name REJECTION:NOT-A-NAME
+   LBUF:STORAGE-PARSE-TYPE {: type:str :}
+   name CHECKER-LBUF-NAME-OK? 0= if exit then
+   name LBUF:SEAL-NAME
+   name FREE? 0= if exit then
+   name OTHERS-FREE
+   type CHECKER-ARENA-INFO 0= if
       drop
-      name nameu s" -NEW" s" -NEW-DISPOSE" type typeu
+      name s" -NEW" s" -NEW-DISPOSE" type
       CHECKER-DERIVED-TYPE-REJECT exit
    then {: width:n :}
-   name nameu s" -NEW" CHILD-ABI:ARENA-NEW ['] NEW AS-ENTRY
-   type typeu width MAKE
-   name nameu s" -NEW-DISPOSE" CHILD-ABI:ARENA-DISPOSE ['] NEW-DISPOSE AS-ENTRY
-   type typeu width MAKE ;
+   name s" -NEW" CHILD-ABI:ARENA-NEW ['] NEW AS-ENTRY
+   type width MAKE
+   name s" -NEW-DISPOSE" CHILD-ABI:ARENA-DISPOSE ['] NEW-DISPOSE AS-ENTRY
+   type width MAKE ;
 
 global
 

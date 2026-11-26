@@ -1,4 +1,3 @@
-split-str
 \ arena-alloc.f - checker arenas on fresh anonymous pages: allocation and
 \ growth.
 
