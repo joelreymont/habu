@@ -68,7 +68,13 @@ create PATH PATH-CAP allot
    s" CRC-32 of 123456789 is CBF43926" T-LABEL
    CHECK$ ZLIB:CRC32 $CBF43926 T=
    s" CRC-32 of nothing is zero" T-LABEL
-   SMALL-IN 0 >str ZLIB:CRC32 0 T= ;
+   SMALL-IN 0 >str ZLIB:CRC32 0 T=
+   s" CRC-32 fed in two pieces equals the whole's" T-LABEL
+   0 CHECK$ STR:DATA 4 >str ZLIB:CRC32-FEED
+   CHECK$ STR:DATA 4 + 5 >str ZLIB:CRC32-FEED
+   $CBF43926 T=
+   s" CRC-32 fed nothing answers the value given" T-LABEL
+   $CBF43926 SMALL-IN 0 >str ZLIB:CRC32-FEED $CBF43926 T= ;
 
 : LITERAL-CASES ( -- )
    s" a fixed-Huffman empty stream decodes to nothing" T-LABEL

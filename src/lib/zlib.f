@@ -243,10 +243,15 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
 
 public
 
-\ The finalized IEEE CRC-32; zero for no bytes.
-: CRC32 ( str -- u32 ) {: s:str :}
+\ The finalized IEEE CRC-32 of bytes whose earlier part's CRC-32 is crc,
+\ followed by these bytes, so a stream's CRC-32 is fed piece by piece from 0;
+\ crc itself for no bytes.
+: CRC32-FEED ( u32 str -- u32 ) {: crc:u32 s:str :}
    s SPAN-CHECK
-   0 s C-CRC32 U32-MAX and ;
+   crc s C-CRC32 U32-MAX and ;
+
+\ The finalized IEEE CRC-32; zero for no bytes.
+: CRC32 ( str -- u32 ) 0 swap CRC32-FEED ;
 
 \ Default compression, method 8, window bits -15, memory level 8, default
 \ strategy.
