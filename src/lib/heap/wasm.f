@@ -205,7 +205,7 @@ variable FL-MAP                     \ the first levels not empty
 
 \ Grows in place into the block's slack or a free next block, else moves; a
 \ rejected move leaves the block as it was.
-: RESIZE-BYTES ( ^u8 str n -- ^u8 )
+: RESIZE-BYTES ( ^u8 ^u8 n n -- ^u8 )
    {: st:^ p:^ old:n new:n :}
    new CHECK
    p OWNER {: b:^ :}
