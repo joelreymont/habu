@@ -580,6 +580,26 @@ $300000 constant BIG-U
 : FAILED$ ( -- str ) s" response.failed" ;
 
 
+\ An output_item.added event numbered n for the item, a JSON object text.
+: ITEM-ADDED ( ^JSON:writer str n -- ^JSON:writer )
+   {: item:str seq:n :}
+   s" response.output_item.added" seq EVENT-OPEN
+   S\" ,\qitem\q:" JSON:WRITE-RAW item JSON:WRITE-RAW EVENT-CLOSE ;
+
+
+\ STREAMED for CUT$, adding a reasoning item and a commentary message before
+\ the terminal event.
+: CUT-STREAMED ( HTTP:response -- )
+   {: response:HTTP:response :}
+   STREAM-OPEN s" resp_1" PRELUDE
+   S\" {\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]}"
+   LAST-SEQ 1+ ITEM-ADDED
+   S\" {\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qstatus\q:\qin_progress\q,\qrole\q:\qassistant\q,\qphase\q:\qcommentary\q,\qcontent\q:[]}"
+   LAST-SEQ 2 + ITEM-ADDED
+   INCOMPLETE$ LAST-SEQ 3 + RESPONSE-OPEN CUT$ JSON:WRITE-RAW EVENT-CLOSE
+   response swap STREAM! ;
+
+
 \ Answers a tool scenario by its name, or answers false.
 : TOOL-REPLY? ( HTTP:response str -- bool )
    {: response:HTTP:response s:str :}
@@ -668,9 +688,7 @@ $300000 constant BIG-U
    t s" tier-null" STR:= if response [: s" null" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
    t s" tier-number" STR:= if response [: s" 7" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
    t s" tier-empty" STR:= if response [: S\" \q\q" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
-   t s" length" STR:= if
-      response [: CUT$ JSON:WRITE-RAW ;] INCOMPLETE$ STREAMED exit
-   then
+   t s" length" STR:= if response CUT-STREAMED exit then
    t s" filtered" STR:= if
       response [: s" content_filter" INCOMPLETE ;] INCOMPLETE$ STREAMED
       exit
@@ -1384,6 +1402,14 @@ variable REJECTED-BASE-U
    s" =1; first output after " SB-APPEND ;
 
 
+\ STREAM-TAIL for the stream MODEL-PEER:CUT-STREAMED wrote.
+: CUT-TAIL ( -- )
+   PRELUDE-EVENTS$ SB-APPEND
+   s"  response.output_item.added/reasoning=1" SB-APPEND
+   s"  response.output_item.added/message/commentary=1" SB-APPEND
+   s"  response.incomplete=1; first output after " SB-APPEND ;
+
+
 \ SB-MS-LOGGED for a stream STREAMED wrote, which ends with an event of the type.
 : STREAMED-LOGGED ( str -- ) STREAM-TAIL SB-MS-LOGGED ;
 
@@ -1597,7 +1623,7 @@ variable REJECTED-BASE-U
    s" length" MODEL:E-INCOMPLETE FAILS
    M MODEL:INCOMPLETE-REASON$ s" max_output_tokens" STR:= ASSERT
    s" warn" CHAT-ID-LINE s" MODEL:E-INCOMPLETE incomplete max_output_tokens" SB-APPEND
-   s" response.incomplete" STREAMED-LOGGED
+   CUT-TAIL SB-MS-LOGGED
    s" filtered" MODEL:E-INCOMPLETE FAILS
    M MODEL:INCOMPLETE-REASON$ s" content_filter" STR:= ASSERT
    s" long-finish" MODEL:E-INCOMPLETE FAILS
@@ -3859,7 +3885,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" error" s" MODEL:E-HTTP status 400: bad request" NOTED
    s" http-bad" MODEL:E-HTTP [: SB-COUNT ;] SETTLES-ON
    s" warn" s" MODEL:E-INCOMPLETE incomplete max_output_tokens" ID-NOTED
-   s" response.incomplete" STREAM-TAIL
+   CUT-TAIL
    s" length" MODEL:E-INCOMPLETE [: MS-COUNT ;] SETTLES-ON
    0 M MODEL:RESEND-WAIT!
    s" " M MODEL:LOG-NOTE! ;

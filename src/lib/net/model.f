@@ -3175,6 +3175,37 @@ private
    c RESPONSE-ID$ STR:LEN 0= if r c KEEP-ID then
    r RUNNING? 0= if true c STREAM STREAM-DONE ! then ;
 
+\ Appends "/" and the object's member to the key when the member is a
+\ string; answers whether it was.
+: KEY-PART+ ( JSON:value str ^VEC:vector<u8> -- bool )
+   {: o name:str key:^ :}
+   o name JSON:FIND MATCH option
+      none OF false exit ENDOF
+      some OF ENDOF
+   ;MATCH {: m :}
+   m JSON:STRING? 0= if false exit then
+   s" /" key VEC:APPEND  m key JSON:APPEND-STRING  true ;
+
+\ Appends an added event's item type to the key, and a message's phase.
+: ITEM-KEY+ ( JSON:value ^VEC:vector<u8> -- )
+   {: v key:^ :}
+   v s" item" JSON:FIND MATCH option
+      none OF exit ENDOF
+      some OF ENDOF
+   ;MATCH {: item :}
+   item JSON:OBJECT? 0= if exit then
+   item s" type" key KEY-PART+ 0= if exit then
+   item s" type" JSON:GET s" message" JSON:STRING= 0= if exit then
+   item s" phase" key KEY-PART+ drop ;
+
+\ Counts the event of the type, an added output item under ITEM-KEY+'s key.
+: COUNT-KEYED ( str JSON:value ^call -- )
+   {: t:str v c :}
+   t s" response.output_item.added" STR:= 0= if t c COUNT-EVENT exit then
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: key:^ :}
+   [: t key VEC:APPEND  v key ITEM-KEY+  key VEC:BYTES c COUNT-EVENT ;]
+   [: key VEC:DELETE ;] finally ;
+
 \ One event, its data a JSON object with a string type, counted by type; the
 \ call's first event starts its reply afresh, a keepalive is skipped and an
 \ error event is the reply.
@@ -3188,7 +3219,8 @@ private
    then
    ev JSON:PARSE {: v :}
    v TYPE-OF {: t :}
-   t [: dup c COUNT-EVENT s" response.output_" STR:STARTS-WITH? ;] JSON:WITH-STRING
+   t [: dup v c COUNT-KEYED s" response.output_" STR:STARTS-WITH? ;]
+   JSON:WITH-STRING
    {: output:bool :}
    s STREAM-OUTPUT-NS @ 0= output and if
       TIME:MONO-NS s STREAM-OUTPUT-NS !
@@ -3960,8 +3992,9 @@ private
    rc 0<> if rc CURL+ then ;
 
 
-\ The count of each event type the stream carried and how long after dispatch
-\ its first output event came; nothing when it carried none.
+\ The count of each event type the stream carried, its added output items by
+\ type and a message's by phase, and how long after dispatch its first output
+\ event came; nothing when it carried none.
 : EVENTS+ ( ^call -- )
    {: c :}
    c EVENT-ROW-COUNT {: rows:n :}
@@ -4015,7 +4048,7 @@ private
 \ The text of a failed chat, embed, count or compaction call's line: its model
 \ and URL, response id once known, the caller's note, the code's name, a failed
 \ key's service, account and reason, the code's cause, and a chat stream's
-\ events.
+\ events, its added output items counted by type and a message's by phase.
 : REPORT+ ( n ^call -- )
    {: code:n c :}
    c MODEL-CALL:KIND @ MATCH call-kind
