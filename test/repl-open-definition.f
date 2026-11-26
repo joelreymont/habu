@@ -196,39 +196,6 @@ package REPL-OPEN-DEF-TEST
    s" neg" PTY-HARNESS:IN-BUF? TTRUE
    s" neg" s" habu> " PTY-HARNESS:AFTER? TFALSE ;
 
-\ A using opened on one line remains active after an unrelated rejected line; a
-\ rejected line that closed it and filled its slot with another puts both back.
-: USING-CASE ( -- )
-   ENGINE-CANDIDATE:PATH$ PTY-HARNESS:SPAWN-ON-PTY
-   s" habu> " PTY-HARNESS:WAIT-FOR TTRUE
-   s" package REPL-PERSIST public : TWICE ( n -- n ) 2 * ; ;package" STEP TTRUE
-   s" using REPL-PERSIST" STEP TTRUE
-   s" 21 TWICE ." STEP TTRUE
-   s" 42" PTY-HARNESS:IN-BUF? TTRUE
-   s" 33" STEP TTRUE
-   s" ." STEP TTRUE
-   s" 33" PTY-HARNESS:IN-BUF? TTRUE
-   PTY-HARNESS:BUF-CLEAR s" 5 NO-SUCH-WORD" PTY-HARNESS:SEND-LINE
-   s" error[E-UNDEFINED]" s" `NO-SUCH-WORD`" PTY-HARNESS:WAIT-AFTER TTRUE
-   s" `NO-SUCH-WORD`" s" habu> " PTY-HARNESS:WAIT-AFTER TTRUE
-   s" depth ." STEP TTRUE
-   s" 0" PTY-HARNESS:IN-BUF? TTRUE
-   s" 22 TWICE ." STEP TTRUE
-   s" 44" PTY-HARNESS:IN-BUF? TTRUE
-   s" ;using" STEP TTRUE
-   s" package RA public : AW ( -- n ) 11 ; ;package" STEP TTRUE
-   s" package RB public : AW ( n -- n ) 22 + ; : BW ( -- n ) 33 ; ;package" STEP TTRUE
-   s" using RA" STEP TTRUE
-   s" ;using using RB NO-SUCH-WORDX" STEP TFALSE
-   s" `NO-SUCH-WORDX`" PTY-HARNESS:IN-BUF? TTRUE
-   s" AW . cr" STEP TTRUE
-   s" 11" PTY-HARNESS:IN-BUF? TTRUE
-   s" BW . cr" STEP TFALSE
-   s" error[E-UNDEFINED]" s" `BW`" PTY-HARNESS:AFTER? TTRUE
-   s" ;using" STEP TTRUE
-   4 PTY-HARNESS:SEND-BYTE
-   0 EXIT= ;
-
 public
 
 : RUN ( -- )
@@ -241,7 +208,6 @@ public
    DEF-AFTER-DECL-CASE
    REJECT-CASE
    ZERO-THROW-CASE
-   USING-CASE
    HOOK-CASE
    DIE-HOOK-CASE
    T-REPORT ;

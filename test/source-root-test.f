@@ -295,7 +295,7 @@ variable EVAL-N
 public
 
 \ Unlike nested loads, these evaluations have no intervening catch: one throw
-\ must unwind every escaped evaluator frame, including changed package/usings.
+\ must unwind every escaped evaluator frame, including a changed package.
 \ Each text is a closed program, so the level count crosses in EVAL-N, not on
 \ the stack.
 : EVAL-DOWN ( -- )
@@ -306,7 +306,7 @@ public
 
 : EVAL-FAIL ( -- )
    EVAL-N @ 0= if
-      s" package EVAL-ESCAPED using FMT 9133 throw" evaluate-closed
+      s" package EVAL-ESCAPED 9133 throw" evaluate-closed
    then
    -1 EVAL-N +!
    s" SOURCE-ROOT-TEST:EVAL-FAIL" evaluate-closed ;

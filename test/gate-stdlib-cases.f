@@ -1059,10 +1059,6 @@ TEST:SUITE export-keyword-package
    test/export-package.f
 TEST:;SUITE
 
-TEST:SUITE using-import
-   test/using-test.f
-TEST:;SUITE
-
 TEST:SUITE postpone-define
    test/postpone-define.f
 TEST:;SUITE

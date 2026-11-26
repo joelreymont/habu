@@ -118,11 +118,6 @@
 \   ......................................................... shadowed-arity
 \ - a warning published with a severity other than 2 or not at the name of
 \   the definition whose effect it did not record ............ not-recorded
-\ - a bare use that names words of two used packages, or a global and a used
-\   package's public word, in a body or a does> clause, not published at its
-\   token as E-USING-AMBIGUOUS or E-USING-SHADOW-GLOBAL, or rejecting more
-\   than its definition, so a later definition's packet goes unpublished
-\   ................................ using-ambiguous, using-shadow, using-clause
 \ - a duplicate definition, of the document's own word or of one a file it
 \   requires defines, not published at the name defined again
 \   ......................................... duplicate, duplicate-of-required
@@ -548,7 +543,7 @@
 \   definition answered with a Location once the word is retired or replaced,
 \   its declaration rejected or parsed by another word, or the file deferred
 \   or holding an opaque call, a replaced definer, an unended definition or
-\   string, an unbalanced `;using` or more usings than the checker holds, or
+\   string, an unbalanced `;package` or a line at which the verifier dies, or
 \   a replaced declaration asked at answered with any location; a declaration
 \   before a rejected cast or TRUSTED:, after a rejected one, or by TRUSTED:,
 \   not answered by go to definition .......... references-source-backed-builtin
@@ -775,6 +770,7 @@ create PATH-B BUF:HDR-BYTES allot            \ a document's path
 create TXT-B BUF:HDR-BYTES allot             \ a generated document
 create BESIDE-B BUF:HDR-BYTES allot          \ the canonical path of the document open
 create BESIDE-TEXT-B BUF:HDR-BYTES allot     \ beside the test's check, and its text
+create STANDIN-B BUF:HDR-BYTES allot         \ the stand-in engine's path
 
 TYPED-VARIABLE IN-W fd                   \ a held conversation's ends of the server's stdin,
 TYPED-VARIABLE OUT-R fd                  \ stdout
@@ -788,6 +784,7 @@ TYPED-VARIABLE JSON-ST JSON:cursor
 TYPED-VARIABLE HL-W JSON:writer    \ a highlight written in this process
 TYPED-VARIABLE SHARED? bool                \ a case uses the initialized session
 TYPED-VARIABLE WORKSPACE? bool             \ shared cases use one fixed root
+TYPED-VARIABLE STANDIN? bool               \ the server's verifier is the stand-in
 TYPED-VARIABLE SESSION-INIT [ -- ]
 TYPED-VARIABLE SESSION-CASES [ -- renders nominal roots ]
 32 constant OPEN-CAP
@@ -1077,10 +1074,44 @@ variable OPEN-N
    0 OUT-AT !
    0 ERR-LEN ! ;
 
+\ A line at which the server's verifier dies: on the stand-in engine
+\ STANDIN-WRITE writes, a verifier child whose stdin holds it checks the text
+\ before it and exits 89 without a verdict. The stdin carries every open
+\ document, so while one holds the line every check dies there. hb reads it
+\ as a comment, so the test's own check reads past it.
+: DEATH-LINE$ ( -- str )  s" ( lsp-test: the verifier dies here )" ;
+
+\ Appends DEATH-LINE$ to TXT.
+: DEATH-LINE+ ( -- )
+   DEATH-LINE$ TXT-B BYTES+
+   s\" \n" TXT-B BYTES+ ;
+
+: STANDIN$ ( -- str )  STANDIN-B BUF:SPAN$ BUF:BLEN>N >str ;
+
+\ The stand-in runs hb, except for a verifier child whose stdin holds
+\ DEATH-LINE$: hb checks the stdin before the line holding it, the stand-in
+\ passes on every line hb writes to stdout but the last, the result, and
+\ exits 89. A batch's frame of that subject is cut, and so is the batch.
+: STANDIN-WRITE ( -- )
+   DIR$ STANDIN-B BYTES!  s" /standin" STANDIN-B BYTES+
+   MSG-CLEAR
+   s\" #!/bin/sh\ne='" MSG+  ENGINE-CANDIDATE:PATH$ MSG+  s\" '\n" MSG+
+   s\" case \"$*\" in *check-verify-child.f*) ;;\n" MSG+
+   s\" *) exec \"$e\" \"$@\";; esac\n" MSG+
+   s\" f=$(mktemp) || exit 70\ncat >\"$f\"\n" MSG+
+   s" grep -qF '" MSG+  DEATH-LINE$ MSG+  s\" ' \"$f\" ||\n" MSG+
+   s\" { exec <\"$f\"; rm -f \"$f\"; exec \"$e\" \"$@\"; }\n" MSG+
+   s" sed '/" MSG+  DEATH-LINE$ MSG+  s\" /,$d' \"$f\"" MSG+
+   s\"  | \"$e\" \"$@\" | sed '$d'\nrm -f \"$f\"\nexit 89\n" MSG+
+   STANDIN$ MSG$ FS:WRITE-ALL
+   STANDIN$ FS:CHMOD-X ;
+
+\ The server, on its verifier the stand-in while STANDIN? holds.
 : STAGED ( -- str )
    ENGINE-CANDIDATE:PATH$
    s" --load" PROC-ARGV+
    s" tools/lsp.f" PROC-ARGV+
+   STANDIN? @ if s" HABU_UNDER_TEST" STANDIN$ PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING ;
 
 : ARTIFACT$ ( str -- str )
@@ -2375,19 +2406,10 @@ variable PUB-COUNT
    A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 0 0 0 1 1 s" E-MISSING-NAME" DIAG+ PUBLISHES ;
 
-\ One `using` more than the checker holds open at once: the verifier dies and
-\ exits without a verdict, where `--load` rejects that using.
-USE-MAX 1 + constant OVER-USINGS
-
-: OVER-USINGS+ ( -- )
-   OVER-USINGS 0 ?do s\" using SOURCE-ROOT\n" TXT-B BYTES+ loop ;
-
-: OVER-USING-TEXT ( -- )
-   TXT-B BUF:CLEAR  OVER-USINGS+ ;
-
+\ The verifier dies at once and exits without a verdict.
 : INCOMPLETE-TURNS ( -- )
    SESSION-INITIALIZE
-   OVER-USING-TEXT
+   TXT-B BUF:CLEAR  DEATH-LINE+
    A-PATH TXT$ 1 OPENS
    SAY
    SESSION-CAPABILITIES
@@ -2395,12 +2417,12 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH s" not checked: exit 89" SAID
    LOGGED ;
 
-\ H1 is rejected, then one `using` more than the checker holds open: the
-\ verifier dies after writing H1's packet, which is published.
+\ H1 is rejected, then the verifier dies after writing H1's packet, which is
+\ published.
 : REJECTED-OVER-TEXT ( -- )
    TXT-B BUF:CLEAR
    s\" : H1 ( n -- n ) NOSUCHWORD ;\n" TXT-B BYTES+
-   OVER-USINGS+ ;
+   DEATH-LINE+ ;
 
 : INCOMPLETE-PACKET-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2453,46 +2475,6 @@ USE-MAX 1 + constant OVER-USINGS
    WIDENS A-PATH CHECKS
    A-PATH s" verified" COMPLETED
    A-PATH 1 EXPECT 2 2 2 11 2 s" W-EFFECT-NOT-RECORDED" DIAG+ PUBLISHES ;
-
-: TWO-USED ( -- str )
-   s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
-
-: TWO-USED-TURNS ( -- )
-   SESSION-INITIALIZE
-   A-PATH TWO-USED 1 OPENS
-   SAY
-   SESSION-CAPABILITIES
-   TWO-USED A-PATH CHECKS
-   A-PATH s" rejected" COMPLETED
-   A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+
-   11 16 11 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
-
-: GLOBAL-USED ( -- str )
-   s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-SP\npublic\n: LSPT-SW ( n -- ) drop ;\n;package\nusing LSPT-SP\n: LSPT-SU ( -- ) 1 LSPT-SW ;\n: LSPT-M ( -- ) 1 ;\n;using\n" ;
-
-: GLOBAL-USED-TURNS ( -- )
-   SESSION-INITIALIZE
-   A-PATH GLOBAL-USED 1 OPENS
-   SAY
-   SESSION-CAPABILITIES
-   GLOBAL-USED A-PATH CHECKS
-   A-PATH s" rejected" COMPLETED
-   A-PATH 1 EXPECT 6 19 6 26 1 s" E-USING-SHADOW-GLOBAL" DIAG+
-   7 16 7 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
-
-: CLAUSE-USED ( -- str )
-   s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-DA\npublic\n: LSPT-SW ( n -- ) drop ;\n: LSPT-DV ( n -- ) drop ;\n;package\npackage LSPT-DB\npublic\n: LSPT-DV ( n -- ) drop ;\n;package\nusing LSPT-DA\nusing LSPT-DB\n: LSPT-DS ( n -- ) create , does> ( -- ) @ LSPT-SW ;\n: LSPT-DM ( n -- ) create , does> ( -- ) @ LSPT-DV ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
-
-: CLAUSE-USED-TURNS ( -- )
-   SESSION-INITIALIZE
-   A-PATH CLAUSE-USED 1 OPENS
-   SAY
-   SESSION-CAPABILITIES
-   CLAUSE-USED A-PATH CHECKS
-   A-PATH s" rejected" COMPLETED
-   A-PATH 1 EXPECT 12 43 12 50 1 s" E-USING-SHADOW-GLOBAL" DIAG+
-   13 43 13 50 1 s" E-USING-AMBIGUOUS" DIAG+
-   14 16 14 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 \ DA defined twice: the packet at the second DA, line 1, characters 2-4.
 : TEXT-DUP ( -- str )  s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n" ;
@@ -3385,14 +3367,13 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : TEXT-DEF-C ( -- str )
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-ONE DEF-TWO + ;\n" ;
 
-\ TEXT-DEF-C with its uses swapped, then one `using` more than the checker
-\ holds open, at which the verifier dies with status 89 and exits without a
-\ verdict as in incomplete.
+\ TEXT-DEF-C with its uses swapped, then the line at which the verifier dies
+\ with status 89 and exits without a verdict as in incomplete.
 : TEXT-DEF-C-SWAPPED ( -- str )
    TXT-B BUF:CLEAR
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-TWO DEF-ONE + ;\n"
    TXT-B BYTES+
-   OVER-USINGS+
+   DEATH-LINE+
    TXT$ ;
 
 : DEF-INCOMPLETE-TURNS ( -- )
@@ -4454,12 +4435,12 @@ create WAS-B BUF:HDR-BYTES allot
 : TEXT-LK ( -- str )
    s\" ( é ) require lk-dep.f\nrequire src/lib/string.f\ns\" lk-dep.f\" required\ninclude lk-inc.f\nrequire lk-gone.f\n" ;
 
-\ TEXT-LK-ONE, then one `using` more than the checker holds open, at which the
-\ verifier dies, its load reported, and exits without a verdict.
+\ TEXT-LK-ONE, then the line at which the verifier dies, its load reported,
+\ and exits without a verdict.
 : TEXT-LK-OVER ( -- str )
    TXT-B BUF:CLEAR
    TEXT-LK-ONE TXT-B BYTES+
-   OVER-USINGS+
+   DEATH-LINE+
    TXT$ ;
 
 : LINKS-ASK ( str str -- )
@@ -5625,7 +5606,7 @@ variable WS-ROOT-U
 : PRIM-BATCH-FAIL-TURNS ( -- )
    s" refs-prim-fail" REFS-DIR s" refs-prim-fail/w" REFS-DIR
    65 0 ?do i PRIM-FAIL-PATH TEXT-PR-A REFS-FILE loop
-   OVER-USING-TEXT
+   TXT-B BUF:CLEAR  DEATH-LINE+
    65 PRIM-FAIL-PATH TXT$ REFS-FILE
    66 PRIM-FAIL-PATH TEXT-PR-A REFS-FILE
    s" refs-prim-fail/w" ROOT-URI+ PAR$ INITIALIZE-WITH
@@ -5802,17 +5783,17 @@ variable PROBE-DECLS
    TXT$ ;
 
 : BI-SOURCE-UNBALANCED$ ( -- str )
-   s\" : SCRIPT-ARGC ( -- n ) 1 ;\n;using\n" ;
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\n;package\n" ;
 : BI-SOURCE-RETIRED$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nundefine SCRIPT-ARGC\n" ;
 : BI-SOURCE-REPLACED$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nundefine SCRIPT-ARGC\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
 : BI-SOURCE-TRUST-UNENDED$ ( -- str )
    s\" TRUSTED: SCRIPT-ARGC ( -- n ) 1" ;
-: BI-SOURCE-USING-CRASH$ ( -- str )
+: BI-SOURCE-CRASH$ ( -- str )
    TXT-B BUF:CLEAR
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\n" HV+
-   17 0 ?do s\" using SOURCE-ROOT\n" HV+ loop
+   DEATH-LINE+
    TXT$ ;
 : BI-SOURCE-CAST-REJECTED$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nCAST: LV-BAD-TAIL ( R n -- S n )\n" ;
@@ -5955,7 +5936,7 @@ variable PROBE-DECLS
    s" 21" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 21" NOWHERE
-   BI-SOURCE-USING-CRASH$ SCRIPT-ARGV-PATH swap 9 CHANGES
+   BI-SOURCE-CRASH$ SCRIPT-ARGV-PATH swap 9 CHANGES
    SAY
    SCRIPT-ARGV-PATH 9 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -7110,9 +7091,6 @@ false constant ENGINE-ORIGINS?
    s" held" [: HELD-TURNS ;] TALK
    s" shadowed-arity" [: SHADOWED-TURNS ;] TALK
    s" not-recorded" [: NOT-RECORDED-TURNS ;] TALK
-   s" using-ambiguous" [: TWO-USED-TURNS ;] TALK
-   s" using-shadow" [: GLOBAL-USED-TURNS ;] TALK
-   s" using-clause" [: CLAUSE-USED-TURNS ;] TALK
    s" duplicate" [: DUPLICATE-TURNS ;] TALK
    s" duplicate-of-required" [: DUP-REQUIRED-TURNS ;] TALK
    s" top-level" [: TOP-LEVEL-TURNS ;] TALK
@@ -7144,6 +7122,9 @@ public
    WS-B READY
    LSP-DEFS:DEFS-PREPARE
    s" habu-lsp-test" FS:MKTEMP-DIR DIR-B BYTES!
+   STANDIN-B READY
+   false STANDIN? !
+   STANDIN-WRITE
    T-RESET ;
 
 \ These rooted cases share one initialize and a freshly written fixture tree.
@@ -7240,11 +7221,13 @@ public
    TEST-MALFORMED-FRAMES
    TEST-STDOUT-CLOSED
    TEST-CANCEL-SHUTDOWN
+   true STANDIN? !
    s" lsp-session" [: INITIALIZE ;] [: DEFAULT-CASES ;] SESSION-RUN
+   false STANDIN? !
    s" hover-session" [: MARKDOWN-CLIENT ;] [: HOVER-CASES ;] SESSION-RUN
-   true WORKSPACE? !
+   true WORKSPACE? !  true STANDIN? !
    s" workspace-session" [: WORKSPACE-INIT ;] [: WORKSPACE-CASES ;] SESSION-RUN
-   false WORKSPACE? !
+   false WORKSPACE? !  false STANDIN? !
    SPECIAL-CASES
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;

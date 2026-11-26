@@ -5,23 +5,12 @@ require src/habu/verify-source.f
 require src/lib/fmt.f
 require src/compiler/native/dict.f
 
-17 constant NDB-GLOBAL
-
 package NDB-LEFT
 7 constant HIDDEN
 10 constant SHARED
 public
 get-current constant WID
 20 constant SHARED
-19 constant NDB-GLOBAL
-29 constant SOLO
-31 constant AMBIG
-;package
-
-package NDB-RIGHT
-public
-30 constant SHARED
-32 constant AMBIG
 ;package
 
 package NDB-IMMEDIATE
@@ -52,25 +41,12 @@ variable ROLL-OCC
 
 
 : OPEN-SCOPE ( -- )
-   S\" package NDB-LEFT using NDICT s\q SHARED\q str> FIXED-VALUE 10 T= ;using ;package" EV
-   S\" package NDB-LEFT using NDB-RIGHT using NDICT s\q SHARED\q str> FIXED-VALUE 10 T= ;using ;using ;package" EV
+   S\" package NDB-LEFT s\q SHARED\q str> NDICT:FIXED-VALUE 10 T= ;package" EV
    s" NDB-LEFT:SHARED" str> NDICT:FIXED-VALUE 20 T=
    s" NDB-LEFT:HIDDEN" str> NDICT:SPELL-START 0 T=
    s" HIDDEN" str> NDICT:SPELL-START 0 T=
    s" NDB-LEFT:SHARED:BAD" str> NDICT:SPELL-START 0 T=
    s" NDB-NO-PACKAGE:SHARED" str> NDICT:SPELL-START 0 T= ;
-
-
-: AMBIGUOUS ( -- )
-   S\" using NDB-LEFT using NDB-RIGHT using NDICT s\q AMBIG\q str> SPELL-START drop" EV ;
-
-
-: USED-SCOPE ( -- )
-   S\" using NDB-LEFT using NDB-LEFT using NDICT s\q SOLO\q str> FIXED-VALUE 29 T= ;using ;using ;using" EV
-   S\" using NDB-LEFT using NDICT s\q NDB-GLOBAL\q str> FIXED-VALUE 17 T= ;using ;using" EV
-   ['] AMBIGUOUS E-USING-AMBIGUOUS TTHROWS
-   s" SOLO" str> NDICT:SPELL-START 0 T=
-   s" using NDB-LEFT : NDB-USED ( -- n ) SOLO ; ;using NDB-USED 29 T=" EV ;
 
 
 : HASH-SLOT ( str n -- n )
@@ -185,7 +161,7 @@ public
 private
 
 : FAIL-EVALUATION ( -- )
-   S\" : NDB-ROLLBACK ( -- n ) 71 ; using NDICT s\q NDB-ROLLBACK\q str> SPELL-START 0<> TTRUE ;using NDICT-BINDING-TEST:CAPTURE-ROLLBACK 73 throw" EV ;
+   S\" : NDB-ROLLBACK ( -- n ) 71 ; s\q NDB-ROLLBACK\q str> NDICT:SPELL-START 0<> TTRUE NDICT-BINDING-TEST:CAPTURE-ROLLBACK 73 throw" EV ;
 
 
 : ROLLBACK-KEPT ( -- )
@@ -205,7 +181,6 @@ private
 : RUN ( -- )
    T-RESET
    s" package visibility and scope precedence" T-LABEL OPEN-SCOPE T-NEXT
-   s" using identity and ambiguity" T-LABEL USED-SCOPE T-NEXT
    s" folded hash collisions retain exact identity" T-LABEL COLLISIONS T-NEXT
    s" a checker replay inside a definition leaves it pending" T-LABEL REPLAY-PENDING T-NEXT
    s" compiled calls retain the binding they captured" T-LABEL REDECLARATION T-NEXT

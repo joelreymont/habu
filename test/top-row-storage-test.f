@@ -2,8 +2,7 @@
 \ body does: a rejected top-level store gets its colon-body twin's code, token
 \ and reason with rc 70, and the cell keeps its old contents. Programs run
 \ through `evaluate-closed`, the row --load keeps in this process; a child runs
-\ only the boundaries named at their cases (a crash, a rewired search order, the
-\ file label, the REPL).
+\ only the boundaries named at their cases (a crash, the file label, the REPL).
 require src/lib/error.f
 require src/lib/test/assert.f
 require src/lib/string.f
@@ -302,8 +301,6 @@ variable ERR-U
    src OUT$ ERR$ oc want T-ENDING-EXITED= ;
 
 : ERR-HAS? ( str -- ) {: s :}   ERR$ s STR:CONTAINS? TTRUE ;
-: ERR-LACKS? ( str -- ) {: s :}   ERR$ s STR:CONTAINS? TFALSE ;
-: OUT-HAS? ( str -- ) {: s :}   OUT$ s STR:CONTAINS? TTRUE ;
 
 \ A child: unchecked, this program reads below the closed floor or branches to
 \ xt 0, which crashes the process.
@@ -413,35 +410,6 @@ variable ERR-U
    S\" true REJECTION:JSON ! TRUSTED: TS-EV2 ( str -- ) str> evaluate 2drop ; TRUSTED: TS-L3 ( -- ) 0 0 ; s\\\" TS-L3 s\\\" abc\\\"\" TS-EV2 drop c@ . cr"
    70 EXITS
    S\" \"code\":\"E-STALE-READ\"" ERR-HAS?  S\" \"token\":\"c@\"" ERR-HAS? ;
-
-\ A child, whose `using` outlives its program: a used public retired by
-\ `undefine` resolves past it to the global or the live public, as the engine does.
-: SHADOW ( -- )
-   s" package TS-SHADOW public : drop ( n -- ) . ; undefine drop ;package using TS-SHADOW 1 drop " SB-APPEND ;
-: AMBIG ( -- )
-   s" package TS-AMB-A public : TS-AMB ( n -- ) drop ; ;package " SB-APPEND
-   s" package TS-AMB-B public : TS-AMB ( n -- ) drop ; undefine TS-AMB ;package " SB-APPEND
-   s" using TS-AMB-A using TS-AMB-B 1 TS-AMB " SB-APPEND ;
-: AFTER ( -- )   S\" s\" AFTER\" type cr" SB-APPEND ;
-: P3 ( -- )   S\" true REJECTION:JSON ! s\" abc\" str> + . cr" SB-APPEND ;
-
-: RUNS-AFTER ( str -- ) {: code :}
-   SB$ 0 EXITS  s" AFTER" OUT-HAS?  code ERR-LACKS? ;
-
-: REJECTS-P3 ( str -- ) {: code :}
-   SB$ 70 EXITS
-   S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\".\"" ERR-HAS?
-   code ERR-LACKS? ;
-
-: CASE-SCOPES ( -- )
-   s" a retired used public shadowing a global: 1 drop runs, rc 0" T-LABEL
-   SB-RESET SHADOW AFTER  s" E-USING-SHADOW-GLOBAL" RUNS-AFTER
-   s" a retired used public shadowing a global: p3 is rejected by its own diagnostic" T-LABEL
-   SB-RESET SHADOW P3  s" E-USING-SHADOW-GLOBAL" REJECTS-P3
-   s" two used publics of one tail, one retired: 1 TS-AMB runs, rc 0" T-LABEL
-   SB-RESET AMBIG AFTER  s" ambiguous" RUNS-AFTER
-   s" two used publics of one tail, one retired: p3 is rejected by its own diagnostic" T-LABEL
-   SB-RESET AMBIG P3  s" ambiguous" REJECTS-P3 ;
 
 \ ---- the admitted programs ----------------------------------------------------
 
@@ -594,7 +562,6 @@ public
    CASE-RETURN-BELOW
    CASE-RETURN-BOUND
    CASE-SHORT-ROW
-   CASE-SCOPES
    CASE-NUMERIC
    CASE-CONSTANT-ADMITTED
    CASE-REAL

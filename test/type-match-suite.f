@@ -7,9 +7,7 @@
 require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/test/assert.f
-require src/lib/test/eval.f
 require src/lib/ffi-abi.f
-require src/core/include.f
 
 T-RESET
 
@@ -239,7 +237,7 @@ s" MATCH-NESTED" type cr
 
 \ Scope: family resolution is signature scope (eliminability = nameability),
 \ unlike construct's owner-only rule. In-package private matches; a cross-package
-\ public family matches qualified or imported, not bare.
+\ public family matches qualified, not bare.
 package mscp
 private
 SUMTYPE msec
@@ -255,16 +253,6 @@ SUMTYPE mpres
 ;package
 s" MS2=" type s" S2 ( mpub:mpres -- n ) MATCH mpres yes OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MS3=" type s" S3 ( mpub:mpres -- n ) MATCH mpub:mpres yes OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-\ A bare tail two used packages make public is ambiguous, not unknown.
-package MAMB-A public SUMTYPE mamb VARIANT a1 n ;VARIANT ;SUMTYPE ;package
-package MAMB-B public SUMTYPE mamb VARIANT b1 n ;VARIANT ;SUMTYPE ;package
-REJECTION:CAPTURE
-s" package MAMB-C using MAMB-A using MAMB-B : MAMB1 ( MAMB-A:mamb -- n ) MATCH mamb a1 OF ENDOF ;MATCH ; ;package"
-TEST-EVAL:RC 70 T=
-REJECTION:BUFFER$ s\" error[E-USING-AMBIGUOUS]: bad match: ambiguous type family\n" STR:STARTS-WITH? TTRUE
-SB-RESET  s" --> " SB-APPEND  SOURCE-ROOT:CWD$ SB-APPEND  s" /test/type-match-suite.f:" SB-APPEND
-REJECTION:BUFFER$ SB$ STR:CONTAINS? TTRUE
-REJECTION:BUFFER-OFF
 s" MATCH-SCOPE" type cr
 
 \ Diagnostics: every match/construct rejection carries a stable code and a label

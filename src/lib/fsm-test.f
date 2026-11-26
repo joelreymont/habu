@@ -518,15 +518,6 @@ variable SRC-LEN
    1 SHADOW-TRACE plain T=
    2 SHADOW-TRACE plain T= ;
 
-\ An ACTION a global and a used public both name is rejected
-\ (E-USING-SHADOW-GLOBAL), and the next DEFINE runs.
-: USING-SHADOW ( -- )
-   s" : FSM-USING-ACT ( n -- ) drop ; package FSM-USING-PUB public : FSM-USING-ACT ( n -- ) drop ; ;package"
-   TEST-EVAL:RC 0 T=
-   s" package FSM-USING ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM-USING-PUB FSM:DEFINE M ( n ) ph sig IN idle S go FSM-USING-ACT >busy halt - >idle FINAL busy - ;DEFINE ;package"
-   TEST-EVAL:RC 70 T=
-   14 VALID 2 T= ;
-
 \ The size table: STATES rows of INPUTS lines, each naming one long action, so
 \ each line word outgrows its line and the table's source passes 1 MiB.
 200 constant STATES
@@ -589,7 +580,6 @@ public
    PLACED-EFFECT
    PLACED-STATES
    SHADOWED
-   USING-SHADOW
    SIZE
    SRC-RELEASE
    T-REPORT ;

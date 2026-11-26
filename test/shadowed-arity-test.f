@@ -5,7 +5,6 @@
 
 require src/lib/prelude.f
 require src/lib/test/assert.f
-require src/lib/test/eval.f
 
 \ The suite's own helpers live in a package. The CASES stay at top level:
 \ each opens a package inside the evaluated source, which has to happen in
@@ -138,22 +137,7 @@ s\" package SAT-J\n: X ( n -- n ) 1 + ;\n: X ( n n -- n ) + ;\n;package"
 s" error[E-DUPLICATE-DEFINITION]" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 
 \ === nothing without a live record binds a name ===============================
-\ A rejected public leaves nothing behind: a later `using` of the package binds
-\ the global, as the engine does, so SAT-N-USE answers 7 and no
-\ E-USING-SHADOW-GLOBAL is raised. A nested TEST-EVAL:RC catches the rejection
-\ inside the package so `;package` still closes SAT-N with its private word.
-s" : SAT-T ( -- n ) 7 ;" SHADOWED-ARITY:SAE-CATCH 0 T=
-REJECTION:CAPTURE
-s\" package SAT-N\n: SAT-T ( n n -- n ) + ;\npublic\ns\q : SAT-T ( n -- n ) 1 + ;\q TEST-EVAL:RC 70 T=\n;package"
-   SHADOWED-ARITY:SAE-CATCH 0 T=
-s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : SAT-T ( n -- n ) 1 + ;" SHADOWED-ARITY:SAID
-s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
-s\" using SAT-N\n: SAT-N-USE ( -- n ) SAT-T ;\n;using"
-   SHADOWED-ARITY:SAE-CATCH 0 T=
-s\" : SAT-N-CK ( -- ) SAT-N-USE 7 <> if s\q the rejected public bound its tail\q 1 die then ;\nSAT-N-CK"
-   SHADOWED-ARITY:SAE-CATCH 0 T=
-
-\ An `undefine`d private word's tombstone binds nothing either: the engine binds
+\ An `undefine`d private word's tombstone binds nothing: the engine binds
 \ the global again once the private word is gone, and so does the checker.
 s" : SAT-U ( -- n ) 7 ;" SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" package SAT-UP\n: SAT-U ( -- n ) 1 ;\nundefine SAT-U\npublic\n: SAT-UP-USE ( -- n ) SAT-U ;\n;package"

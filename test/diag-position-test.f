@@ -404,49 +404,6 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" E-UNDEFINED" s" patch32" 1 3 2 9
    FX-PATH$ FX$ TOP-AT ;
 
-: SHADOW-FIXTURE ( str str -- )
-   {: decl:str body:str :}
-   SB-RESET
-   s" package P" SB-APPEND LF+
-   s" public" SB-APPEND LF+
-   decl SB-APPEND LF+
-   s" ;package" SB-APPEND LF+
-   decl SB-APPEND LF+
-   s" using P" SB-APPEND LF+
-   s" : USE-IT ( -- )" SB-APPEND LF+
-   body SB-APPEND LF+
-   s" ;using" SB-APPEND LF+ ;
-
-\ The checker resolves the token's lowercase fold; the packet names the file's
-\ spelling where it lies.
-: TEST-SHADOW ( -- )
-   s" a bare name a global and a used public share" T-LABEL
-   s" : SHADE ( -- ) ;" s"    SHADE ;" SHADOW-FIXTURE
-   s" shadow.f" FIXTURE!
-   s" " 70 CHECK-EXIT
-   GJA-LINE# @ 1 T=
-   0 s" SHADE" 8 4 87 92 AT
-   s" --all-errors" 70 CHECK-EXIT
-   GJA-LINE# @ 1 T=
-   0 s" SHADE" 8 4 87 92 AT ;
-
-\ `[']` and `is` read their target themselves, past the body walk's own token.
-: TEST-TICK-SHADOW ( -- )
-   s" that name as a ['] target" T-LABEL
-   s" : SHADE ( -- ) ;" s"    ['] SHADE drop ;" SHADOW-FIXTURE
-   s" tick-shadow.f" FIXTURE!
-   s" " 70 CHECK-EXIT
-   GJA-LINE# @ 1 T=
-   0 s" SHADE" 8 8 91 96 AT ;
-
-: TEST-IS-SHADOW ( -- )
-   s" that name as an is target" T-LABEL
-   s" defer SHADE ( -- )" s"    [: ;] is SHADE ;" SHADOW-FIXTURE
-   s" is-shadow.f" FIXTURE!
-   s" " 70 CHECK-EXIT
-   GJA-LINE# @ 1 T=
-   0 s" SHADE" 8 13 100 105 AT ;
-
 \ The public F moves other cells than its private twin: the rejection names the
 \ private F as written, at the public definition's name.
 : SHADOWED-FIXTURE ( -- )
@@ -806,23 +763,6 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" --verify-only" CHECK
    0 s" code" s" E-GENERATES-ROW" FIELD=
    0 s" GEN" 2 12 62 65 FX-PATH$ CANON$ FX$ AT-IN ;
-
-\ The row's registrar resolves its name as a use does.
-: TEST-GENERATES-SHADOW ( -- )
-   s" a generates: row naming that shared name" T-LABEL
-   SB-RESET
-   s" : SHADE ( -- ) ;" SB-APPEND LF+
-   s" package P" SB-APPEND LF+
-   s" public" SB-APPEND LF+
-   s" : SHADE ( -- ) ;" SB-APPEND LF+
-   s" ;package" SB-APPEND LF+
-   s" using P" SB-APPEND LF+
-   s" generates: SHADE ( -- n )" SB-APPEND LF+
-   s" ;using" SB-APPEND LF+
-   s" generates-shadow.f" FIXTURE!
-   s" " CHECK
-   GJA-LINE# @ 1 T=
-   0 s" SHADE" 7 12 79 84 AT ;
 
 \ compose-base.f certifies. It is longer than the files that require it and its
 \ lines are short, so a packet located in its bytes by mistake lands on another
@@ -4215,10 +4155,6 @@ HB-TARGET-LINUX? 0= [if]
    s" a signature that does not parse and an if open at ;" T-LABEL
    s" : X ( n -- zz ) dup if ;" s" badsig-open.f" LINE-FIXTURE
    s" E-CONTROL-OPEN" s" ;" 1 24 23 24 REJECTED-AT
-   s" a called shadowed name and an IF open at ;" T-LABEL
-   s" : SHADE ( -- ) ;" s"    SHADE IF ;" SHADOW-FIXTURE
-   s" shade-open.f" FIXTURE!
-   s" E-CONTROL-OPEN" s" ;" 8 13 96 97 REJECTED-AT
    s" a trust-boundary word and an if open at ;" T-LABEL
    s" : X ( n -- n ) evaluate if ;" s" unsafe-open.f" LINE-FIXTURE
    s" E-CONTROL-OPEN" s" ;" 1 28 27 28 REJECTED-AT
@@ -4678,64 +4614,6 @@ HB-TARGET-LINUX? 0= [if]
    GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
    GT-ERR$ s" caught-dep.f" STR:CONTAINS? TFALSE ;
 
-: AMBIG-FIXTURE ( bool str -- )
-   {: global:bool body:str :}
-   SB-RESET
-   s" package PA" SB-APPEND LF+
-   s" public" SB-APPEND LF+
-   s" : AMB ( -- ) ;" SB-APPEND LF+
-   s" ;package" SB-APPEND LF+
-   s" package PB" SB-APPEND LF+
-   s" public" SB-APPEND LF+
-   s" : AMB ( -- ) ;" SB-APPEND LF+
-   s" ;package" SB-APPEND LF+
-   global IF s" : AMB ( -- ) ;" ELSE s" : AMC ( -- ) ;" THEN SB-APPEND LF+
-   s" using PA" SB-APPEND LF+
-   s" using PB" SB-APPEND LF+
-   s" : USE-IT ( -- )" SB-APPEND LF+
-   body SB-APPEND LF+
-   s" ;using" SB-APPEND LF+
-   s" ;using" SB-APPEND LF+ ;
-
-\ A called name a used public shadows a global for, or two used publics export
-\ beside one, is rejected by the load's check at `;`: after every word the load
-\ cannot compile, wherever it stands, and before any other check. Ticked, or
-\ exported by two used publics and no global, the load's tick or lookup
-\ rejects it while compiling, in source order.
-: TEST-USING-ORDER ( -- )
-   s" a called shadowed name before an undefined word" T-LABEL
-   s" : SHADE ( -- ) ;" s"    SHADE NOPE ;" SHADOW-FIXTURE
-   s" shade-undefined.f" FIXTURE!
-   s" E-UNDEFINED" s" NOPE" 8 10 93 97 REJECTED-AT
-   s" an undefined word before a called shadowed name" T-LABEL
-   s" : SHADE ( -- ) ;" s"    NOPE SHADE ;" SHADOW-FIXTURE
-   s" undefined-shade.f" FIXTURE!
-   s" E-UNDEFINED" s" NOPE" 8 4 87 91 REJECTED-AT
-   s" an undefined word before a ticked shadowed name" T-LABEL
-   s" : SHADE ( -- ) ;" s"    NOPE ['] SHADE drop ;" SHADOW-FIXTURE
-   s" undefined-tick-shade.f" FIXTURE!
-   s" E-UNDEFINED" s" NOPE" 8 4 87 91 REJECTED-AT
-   s" a trust-boundary word before a called shadowed name" T-LABEL
-   s" : SHADE ( -- ) ;" s"    evaluate SHADE ;" SHADOW-FIXTURE
-   s" unsafe-shade.f" FIXTURE!
-   s" E-USING-SHADOW-GLOBAL" s" SHADE" 8 13 96 101 REJECTED-AT
-   s" a section word two used publics export" T-LABEL
-   s" package DPA1 public : TARGET ( -- ) ; ;package package DPA2 public : TARGET ( -- ) ; ;package using DPA1 using DPA2 target ;using ;using"
-   s" section-ambiguous.f" LINE-FIXTURE
-   s" E-USING-AMBIGUOUS" s" target" 1 117 116 122 REJECTED-MODES
-   s" a section word a global and a used public export" T-LABEL
-   s" : TARGET ( -- ) ; package DPG1 public : TARGET ( -- ) ; ;package using DPG1 target ;using"
-   s" section-shadow.f" LINE-FIXTURE
-   s" E-USING-SHADOW-GLOBAL" s" target" 1 77 76 82 REJECTED-MODES
-   s" a called name two used publics and a global export before an undefined word" T-LABEL
-   true s"    AMB NOPE ;" AMBIG-FIXTURE
-   s" ambig-global-undefined.f" FIXTURE!
-   s" E-UNDEFINED" s" NOPE" 13 8 140 144 REJECTED-AT
-   s" an undefined word before a name only two used publics export" T-LABEL
-   false s"    NOPE AMB ;" AMBIG-FIXTURE
-   s" undefined-ambig.f" FIXTURE!
-   s" E-UNDEFINED" s" NOPE" 13 4 136 140 REJECTED-AT ;
-
 \ Package SP, holding A and sealed, in 53 bytes over five lines.
 : SEALED-SP+ ( -- )
    s" package SP" SB-APPEND LF+
@@ -4933,9 +4811,6 @@ HB-TARGET-LINUX? 0= [if]
    TEST-TOP-PRIVATE-TICK
    TEST-UNDEF-HOLDER
    TEST-CLOSE-OUTER
-   TEST-SHADOW
-   TEST-TICK-SHADOW
-   TEST-IS-SHADOW
    TEST-SHADOWED-ARITY
    TEST-SHADOWED-FUNCTION
    TEST-SHADOWED-CASE
@@ -4979,7 +4854,6 @@ HB-TARGET-LINUX? 0= [if]
    TEST-PARSES-REJECT
    TEST-GENERATES
    TEST-GENERATES-READS-NONE
-   TEST-GENERATES-SHADOW
    TEST-COMPOSE-DEP
    TEST-COMPOSE-ALL
    TEST-COMPOSE-VERIFY
@@ -5067,7 +4941,6 @@ HB-TARGET-LINUX? 0= [if]
    TEST-RETHROW-TWO
    TEST-RETHROW-QUOT
    TEST-CAUGHT-STAYS
-   TEST-USING-ORDER
    TEST-TOP-MISMATCH
    TEST-SEALED-DEFINE
    TEST-SEALED-DUPLICATE

@@ -11,10 +11,8 @@ public
 PDESIGN:MAIN
 PDESIGN:NAMED
 s" front" PDEP:NAME-LEN PDEP:SHOW
-using PDEP
-: VIA ( -- n ) ANSWER ;
-VIA SHOW
-;using
+: VIA ( -- n ) PDEP:ANSWER ;
+VIA PDEP:SHOW
 PDESIGN:SMALL
 package PDESIGN
 public

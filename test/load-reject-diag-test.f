@@ -6,7 +6,6 @@
 \ HABU_UNDER_TEST when set, else the running engine. A file `?TARGET` stops is
 \ rejected in REJECTION's form: prose, or one JSON line under REJECTION:JSON.
 \ A rejected definition prints its one diagnostic and nothing else.
-\ A bare word a global and a used package both define is rejected in that form.
 \ A SOURCE-ROOT word's uncaught throw on a path prints the record it carries.
 require src/lib/error.f
 require src/lib/string.f
@@ -61,7 +60,6 @@ create ONCE-P PATH-CAP allot
 create ONCE-UNDEF-P PATH-CAP allot
 create CAPTURE-P PATH-CAP allot
 create ONCE-JSON-P PATH-CAP allot
-create SHADOW-P PATH-CAP allot
 create MARK-P PATH-CAP allot
 
 variable BASE-U
@@ -94,7 +92,6 @@ variable ONCE-U
 variable ONCE-UNDEF-U
 variable CAPTURE-U
 variable ONCE-JSON-U
-variable SHADOW-U
 variable MARK-U
 variable OUT-U
 variable ERR-U
@@ -191,9 +188,6 @@ variable RC
 : ONCE-JSON$ ( -- str )
    ONCE-JSON-P ONCE-JSON-U @ >str ;
 
-: SHADOW$ ( -- str )
-   SHADOW-P SHADOW-U @ >str ;
-
 : MARK$ ( -- str )
    MARK-P MARK-U @ >str ;
 
@@ -246,7 +240,6 @@ variable RC
    s" once-undef.f" ONCE-UNDEF-P ONCE-UNDEF-U PATH!
    s" capture.f" CAPTURE-P CAPTURE-U PATH!
    s" once-json.f" ONCE-JSON-P ONCE-JSON-U PATH!
-   s" shadow.f" SHADOW-P SHADOW-U PATH!
    s" mark.f" MARK-P MARK-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
@@ -264,8 +257,6 @@ variable RC
    ONCE-UNDEF$ s" : H ( -- ) FOO ;" FS:WRITE-ALL
    CAPTURE$ S\" REJECTION:CAPTURE\nCP-NOPE" FS:WRITE-ALL
    ONCE-JSON$ S\" -1 REJECTION:JSON !\n: F ( n -- n ) drop ;" FS:WRITE-ALL
-   SHADOW$ S\" : LRD-SHADOW ( -- ) ;\npackage LRD-SH\npublic\n: LRD-SHADOW ( -- ) ;\n;package\nusing LRD-SH\nLRD-SHADOW\n"
-   FS:WRITE-ALL
    \ A loaded file is a closed program, so the fragment shows it ran by
    \ printing: it can take no cell from its loader and leave none.
    FRAG$ s" 74 ." FS:WRITE-ALL
@@ -1337,19 +1328,6 @@ undefine include
    S\"  or check its spelling\n\n" SB-APPEND
    70 ASSERT-REJECTED ;
 
-: TEST-SHADOW ( -- )
-   s" a bare word a global and a used package share is rejected" T-LABEL
-   SHADOW$ RUN
-   SB-RESET
-   s" error[E-USING-SHADOW-GLOBAL]: `LRD-SHADOW` is both a global word" SB-APPEND
-   S\"  and a public of used package `LRD-SH`\n --> " SB-APPEND  SHADOW$ SB-APPEND
-   S\" :7:1\n  |\n7 | LRD-SHADOW\n  | ^^^^^^^^^^ ambiguous here\n" SB-APPEND
-   S\"   = global: LRD-SHADOW\n  = package: LRD-SH:LRD-SHADOW\n" SB-APPEND
-   s"   = help: write `LRD-SH:LRD-SHADOW` to call the package's word," SB-APPEND
-   S\"  or rename one of the two: the global word has no qualified form\n\n"
-   SB-APPEND
-   70 ASSERT-REJECTED ;
-
 \ A path no file name holds is rejected by the loader word, labelled with why.
 : TEST-EMPTY-PATH ( -- )
    s" an empty path is rejected at its loader word" T-LABEL
@@ -1591,7 +1569,6 @@ variable LONG-U
    TEST-TYPE-DEFERRED
    TEST-KEYWORD-OPERAND
    TEST-DEFERRED
-   TEST-SHADOW
    TEST-EMPTY-PATH
    TEST-PATH-PASS
    TEST-IMM-INCLUDE

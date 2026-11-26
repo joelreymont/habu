@@ -46,25 +46,6 @@ create TEXT CAP allot                  variable TEXT-U
    src OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    src SUBJECT-STORE! ;
 
-\ The checker's ambiguity rejection makes the native compiler exit with the
-\ reject status, naming the callee and the packages that publish it.
-\ Its own process: the uncaught throw ends it, and its exit status is tested.
-: AMBIGUOUS-CALLEE ( -- )
-   s" an ambiguous bare callee is rejected naming the callee" T-LABEL
-   s" package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
-   RC @ 70 T=
-   s" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package" SAYS
-   s" = packages: UA, UC" SAYS ;
-
-\ A used public that shadows a global is rejected the same way.
-\ Its own process: the uncaught throw ends it, and its exit status is tested.
-: SHADOWING-CALLEE ( -- )
-   s" a bare callee a used public shadows is rejected naming the callee" T-LABEL
-   s" : SW ( -- n ) 11 ; package US public : SW ( -- n ) 33 ; ;package using US : UT-SHADOW ( -- n ) SW ; ;using" SESSION
-   RC @ 70 T=
-   s" error[E-USING-SHADOW-GLOBAL]: `SW` is both a global word and a public of used package `US`" SAYS
-   s" = package: US:SW" SAYS ;
-
 \ A TRUSTED: row whose stored signature does not parse is rejected at that token.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : BAD-SIGNATURE ( -- )
@@ -104,8 +85,8 @@ create TEXT CAP allot                  variable TEXT-U
    s" = family: hr-v" SAYS ;
 
 \ ---- a rejected definition keeps no row ---------------------------------------
-: P-W+ ( -- ) s" package P-FORGET public : W-FORGET ( -- n ) 2 ; ;package " TEXT+ ;
-: Q-USING-P+ ( -- ) s" package Q-FORGET public using P-FORGET " TEXT+ ;
+: W+ ( -- ) s" : W-FORGET ( -- n ) 2 ; " TEXT+ ;
+: Q+ ( -- ) s" package Q-FORGET public " TEXT+ ;
 
 \ TRY-FORGET prints the rejection's code, 70. A row kept
 \ from the rejected ( -- n n ) would certify a T-FORGET ( -- n n ) over
@@ -114,11 +95,11 @@ create TEXT CAP allot                  variable TEXT-U
    S\" : TRY-FORGET ( -- n ) [: s\" : W-FORGET ( -- n n ) 3 ;\" evaluate-closed ;] catch ; " TEXT+
    s" TRY-FORGET . cr " TEXT+ ;
 
-\ The rejected W-FORGET keeps no row, so T-FORGET binds P-FORGET:W-FORGET.
+\ The rejected W-FORGET keeps no row, so T-FORGET binds the global W-FORGET.
 : REJECTED-CAUGHT ( -- )
-   s" a caught rejection leaves a call to the used package's word" T-LABEL
-   TEXT-U BUF-RESET P-W+ Q-USING-P+ REJECTED+
-   s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
+   s" a caught rejection leaves a call to the global word" T-LABEL
+   TEXT-U BUF-RESET W+ Q+ REJECTED+
+   s" : T-FORGET ( -- n n ) W-FORGET ; ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT$ SESSION
    RC @ 70 T=
    S\" 70\n" PRINTS
@@ -128,8 +109,6 @@ create TEXT CAP allot                  variable TEXT-U
 public
 : RUN ( -- )
    T-RESET
-   AMBIGUOUS-CALLEE
-   SHADOWING-CALLEE
    BAD-SIGNATURE
    SHADOWED-ARITY
    INCOMPLETE-SCAN

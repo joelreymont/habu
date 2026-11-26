@@ -139,24 +139,6 @@ CVPS:REPLAY-QUIET drop
 s" a package closing inside a structure rejects the structure" T-LABEL
 CVPS:DIAG$ s" error[E-UNCLOSED]: `BEGIN-STRUCTURE` is still open at `;package`" STR:CONTAINS? TTRUE
 
-\ ---- nested neutral scopes ---------------------------------------------------
-\ The inner scope's replay starts at using depth 0, so its `using` fills the slot
-\ the outer source's `using` holds; leaving the inner scope puts that slot back.
-package CVPS-NPA public : CVPS-NAW ( -- n ) 1 ; ;package
-package CVPS-NPB public : CVPS-NAW ( -- n ) 2 ; : CVPS-NBW ( -- n ) 3 ; ;package
-package CVPS-NEST
-public
-variable SEEN
-: INNER ( -- )
-   [: s" using CVPS-NPB CVPS-NBW drop ;using" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;
-: OUTER ( -- )
-   [: s" using CVPS-NPA CVPS-NEST:INNER CVPS-NAW CVPS-NEST:SEEN ! ;using" evaluate-closed ;]
-   CHECK:SCOPED ;
-;package
-CVPS-NEST:OUTER
-s" nested neutral scopes: the outer using resolves after the inner scope" T-LABEL
-CVPS-NEST:SEEN @ 1 T=
-
 \ ---- the two scope questions a name query can ask --------------------------
 \ A name resolves where a candidate calling it is accepted, and is defined
 \ where a new one is a duplicate: a global only at top level, which a package

@@ -431,8 +431,6 @@ create NEED-PATH PATH-CAP allot
    s" in a word whose effect names `pr`" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
    s" @pr.tag" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-LACKS
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
-   s" test/program-diagnostic-using.f" s" error[E-USING-UNKNOWN]" DIAGNOSTIC
-   s" no package is named `NOPE-PKG`" s" test/program-diagnostic-using.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-export.f" s" <input>:1:15" DIAGNOSTIC
    s" error[E-INPUT-UNDERFLOW]" s" test/program-diagnostic-export.f" GE-EXPECT-ERR-HAS
    s" 1 | XPU3 ( -- n ) XPD:XP-INC" s" test/program-diagnostic-export.f" GE-EXPECT-ERR-HAS
