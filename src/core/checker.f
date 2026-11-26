@@ -3297,7 +3297,6 @@ FO-BOOT FO-P !  FO-INIT-CAP FO-CAP !
    need FO-CAP @ <= IF EXIT THEN
    FO-CAP @ BEGIN dup need < WHILE 2 * REPEAT {: cap:n :}
    FO-P @ FO-CAP @ cells cap cells ARENA-BYTES-GROW FO-P !
-   FO-P @ FO-CAP @ cap ARENA-CELLS-ZERO
    cap FO-CAP ! ;
 
 : FO-RESET ( -- )
@@ -5695,19 +5694,23 @@ U-DRAIN-INSTALL
    UK-EXACT UNIFY-KIND ! ;
 
 
+\ A zero cell is never written, so a page no var reached holds no memory.
+: TV-CELL-CLEAR ( ^n -- )
+   dup @ 0 <> IF 0 swap ! ELSE drop THEN ;
+
 \ Every var id comes from FRESH, so only cells 0..FV-1 can be bound since
 \ the previous reset.
 : TV-CLEAR-FROM ( n -- )
    BEGIN dup FV @ < WHILE
-     dup cells TVT + 0 swap !
-     dup cells RVT + 0 swap !
-     dup cells TVK + 0 swap !
-     dup cells NSCOPE + 0 swap !
-     dup cells NLINEAR + 0 swap !
-     dup cells TVP + 0 swap !
-     dup cells TVO + 0 swap !
-     dup cells TVI + 0 swap !
-     dup cells TVS + 0 swap !
+     dup cells TVT + TV-CELL-CLEAR
+     dup cells RVT + TV-CELL-CLEAR
+     dup cells TVK + TV-CELL-CLEAR
+     dup cells NSCOPE + TV-CELL-CLEAR
+     dup cells NLINEAR + TV-CELL-CLEAR
+     dup cells TVP + TV-CELL-CLEAR
+     dup cells TVO + TV-CELL-CLEAR
+     dup cells TVI + TV-CELL-CLEAR
+     dup cells TVS + TV-CELL-CLEAR
      1 +
    REPEAT drop ;
 
@@ -9153,9 +9156,7 @@ defer ROOT-VAR-AT-XT ( n -- n )
    x READ-VIEW? x MUT-VIEW? or x RECORDS? or IF -1 EXIT THEN
    x PARAM>FAM {: fam:n :}
    fam TFAM-LAYOUT?* 0= IF -1 EXIT THEN
-   ROOT-FAM-CAP @ ROOT-FAM-ROW * {: old:n :}
    ROOT-FAM-P ROOT-FAM-CAP fam 1 + ROOT-FAM-ROW ARENA-ROWS-ENSURE
-   ROOT-FAM-P @ old ROOT-FAM-CAP @ ROOT-FAM-ROW * ARENA-CELLS-ZERO
    fam 0 ROOT-FAM-CELL @ ROOT-GEN @ = IF
       fam 2 ROOT-FAM-CELL @ dup 0 < IF drop ELSE ROOT-LOW @ min ROOT-LOW ! THEN
       fam 1 ROOT-FAM-CELL @ EXIT
@@ -12069,7 +12070,7 @@ variable CHX-C
    CHX-BKT-INIT CHX-BKT-CAP !
    CHX-ENT-INIT CHX-ENT-CELLS * cells ARENA-ALLOC CHX-ENT-P !
    CHX-ENT-INIT CHX-ENT-CAP !
-   CHX-DROP ;
+   0 CHX-N !  CHX-STAMP ;
 
 : CHX-RESET ( -- )
    NULL-PTR CHX-BKT-P !
