@@ -1,4 +1,3 @@
-split-str
 \ source-root-count.f - the counts test/source-root-test.f's fixtures and the
 \ files test/source-root-alias-child.f loads record as they load; the tests
 \ read them. A fixture requires this file by its absolute path, which names
@@ -16,12 +15,12 @@ create ROOT PATH-CAP allot
 variable ROOT-U
 
 : AT-ROOT ( -- )
-   SOURCE-ROOT:CURRENT$ ROOT ROOT-U @ STR:= 0= if 1 WRONG +! then ;
+   SOURCE-ROOT:CURRENT$ ROOT ROOT-U @ >str STR:= 0= if 1 WRONG +! then ;
 
 public
-: ROOT! ( str -- ) {: a:^ u:n :}
-   u PATH-CAP > if E-PATH-RANGE throw then
-   a ROOT u BYTE-COPY u ROOT-U ! ;
+: ROOT! ( str -- ) {: s:str :}
+   s STR:LEN PATH-CAP > if E-PATH-RANGE throw then
+   s STR:DATA ROOT s STR:LEN BYTE-COPY s STR:LEN ROOT-U ! ;
 
 : BUMP ( n -- ) LOADED +! ;
 

@@ -1,4 +1,3 @@
-split-str
 \ mcp-test.f - MCP:HANDLE answered over a real loopback port: both eras' handshakes and
 \ notifications, the protocol-version, _meta, Mcp-Method and Mcp-Name checks, the
 \ transport check, unknown methods and tools, an unknown tool's name cut at 128 bytes, a
@@ -111,22 +110,22 @@ TYPED-VARIABLE CFG HTTP:config
 CAP BUFFER: WANT
 variable WANT-U
 : W-RESET ( -- ) 0 WANT-U ! ;
-: W+ ( ^u8 n -- )
-   {: a:^ u:n :}
-   WANT-U @ u + CAP > if s" W+ past WANT" T-FAIL-AS exit then
-   a WANT WANT-U @ + u BYTE-COPY
-   WANT-U @ u + WANT-U ! ;
-: W$ ( -- str ) WANT WANT-U @ ;
+: W+ ( str -- )
+   {: s:str :}
+   WANT-U @ s STR:LEN + CAP > if s" W+ past WANT" T-FAIL-AS exit then
+   s STR:DATA WANT WANT-U @ + s STR:LEN BYTE-COPY
+   WANT-U @ s STR:LEN + WANT-U ! ;
+: W$ ( -- str ) WANT WANT-U @ >str ;
 
 \ A route's body, built in the HTTP worker.
 $100 constant NB-CAP
 NB-CAP BUFFER: NB
 variable NB-U
-: NB+ ( ^u8 n -- )
-   {: a:^ u:n :}
-   NB-U @ u + NB-CAP > if s" NB+ past NB" T-FAIL-AS exit then
-   a NB NB-U @ + u BYTE-COPY
-   NB-U @ u + NB-U ! ;
+: NB+ ( str -- )
+   {: s:str :}
+   NB-U @ s STR:LEN + NB-CAP > if s" NB+ past NB" T-FAIL-AS exit then
+   s STR:DATA NB NB-U @ + s STR:LEN BYTE-COPY
+   NB-U @ s STR:LEN + NB-U ! ;
 
 \ A JSON string past the client's first reply buffer ($1000 bytes).
 $1400 constant BIG-U
@@ -153,8 +152,8 @@ variable META-LEN
 KEPT-CAP BUFFER: BLOCKS-TEXT
 variable BLOCKS-LEN
 
-: KEPT= ( ^u8 ^n ^u8 n -- ) {: buf:^ len:^ want:^ wu:n :}
-   buf len atomic@ want wu T$= ;
+: KEPT= ( ^u8 ^n str -- ) {: buf:^ len:^ want:str :}
+   buf len atomic@ >str want T$= ;
 variable RELEASED
 variable LEFT
 variable CLOSED
@@ -191,25 +190,25 @@ TASK:MIN-STACK TASK:TASK STALLER
    ;MATCH ;
 
 
-: ADD ( CURL:handle ^u8 n -- CURL:handle )
-   {: h:CURL:handle a:^ u:n :}
-   h a u CURL:HEADER+ OK h ;
+: ADD ( CURL:handle str -- CURL:handle )
+   {: h:CURL:handle s:str :}
+   h s CURL:HEADER+ OK h ;
 
 
 : OPEN-PATH ( str str str -- CURL:handle )
-   {: path:^ pu:n kind:^ ku:n accept:^ au:n :}
+   {: path:str kind:str accept:str :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
       failed OF drop CURL:EMPTY-HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
-   SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  path pu SB-APPEND
+   SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  path SB-APPEND
    h SB$ CURL:URL! OK
-   h kind ku ADD accept au ADD ;
+   h kind ADD accept ADD ;
 
 : OPEN-WITH ( str str -- CURL:handle )
-   {: kind:^ ku:n accept:^ au:n :}
-   s" /mcp" kind ku accept au OPEN-PATH ;
+   {: kind:str accept:str :}
+   s" /mcp" kind accept OPEN-PATH ;
 
 : OPEN ( -- CURL:handle )
    s" Content-Type: application/json"
@@ -220,17 +219,17 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 \ Posts the body: answers the status, the response's body in BODY.
-: POST ( CURL:handle ^u8 n -- n )
-   {: h:CURL:handle a:^ u:n :}
-   h a u CURL:BODY! OK
+: POST ( CURL:handle str -- n )
+   {: h:CURL:handle s:str :}
+   h s CURL:BODY! OK
    h PERFORM {: status:n :}
    h CURL:CLEANUP
    status ;
 
 
-: ANSWERED ( n n ^u8 n -- )
-   {: status:n wanted:n want:^ wu:n :}
-   BODY$ want wu T$=
+: ANSWERED ( n n str -- )
+   {: status:n wanted:n want:str :}
+   BODY$ want T$=
    status wanted T= ;
 
 : META ( -- )
@@ -337,9 +336,9 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 \ Reply 6 to a call of an unknown tool, for the name it names, in WANT.
 : UNKNOWN-REPLY ( str -- str )
-   {: name:^ nu:n :}
+   {: name:str :}
    W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602," W+
-   S\" \"message\":\"Unknown tool: " W+ name nu W+
+   S\" \"message\":\"Unknown tool: " W+ name W+
    S\" ; if the client's list of test-server's tools names it," W+
    S\"  that list is out of date\"}}" W+ W$ ;
 
@@ -371,24 +370,24 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 \ A tools/call of strict with id n and the params after its name, in SB.
-: STRICT-CALL ( n ^u8 n -- ^u8 n )
-   {: id:n rest:^ ru:n :}
+: STRICT-CALL ( n str -- str )
+   {: id:n rest:str :}
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
    S\" ,\"method\":\"tools/call\",\"params\":{\"name\":\"strict\"" SB-APPEND
-   rest ru SB-APPEND S\" }}" SB-APPEND SB$ ;
+   rest SB-APPEND S\" }}" SB-APPEND SB$ ;
 
-: FILTERS ( -- ^u8 n ) S\" ,\"arguments\":{\"filters\":\"x\"}" ;
+: FILTERS ( -- str ) S\" ,\"arguments\":{\"filters\":\"x\"}" ;
 
 \ strict's tool error for a filters member.
-: FILTERS-TEXT ( -- ^u8 n )
+: FILTERS-TEXT ( -- str )
    s" arguments: expected only the member `filter`, found `filters`; rename it to `filter` or remove it" ;
 
 \ A legacy tool error with id n and the text.
-: ERROR-REPLY ( n ^u8 n -- ^u8 n )
-   {: id:n text:^ tu:n :}
+: ERROR-REPLY ( n str -- str )
+   {: id:n text:str :}
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
    S\" ,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" SB-APPEND
-   text tu SB-APPEND S\" \"}],\"isError\":true}}" SB-APPEND SB$ ;
+   text SB-APPEND S\" \"}],\"isError\":true}}" SB-APPEND SB$ ;
 
 : STRICT-REJECTED ( -- )
    s" arguments outside the inputSchema are a tool error and the body does not run" T-LABEL
@@ -473,23 +472,23 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 \ framed's arguments, its result's _meta, with space a modern result trims.
-: SPACED ( -- ^u8 n ) S\" { \"a\":1, \"b\":[2] }" ;
+: SPACED ( -- str ) S\" { \"a\":1, \"b\":[2] }" ;
 
 
 : LEGACY-FRAMED ( n str -- n )
-   {: id:n args:^ au:n :}
+   {: id:n args:str :}
    LEGACY
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
    S\" ,\"method\":\"tools/call\",\"params\":{\"name\":\"framed\",\"arguments\":" SB-APPEND
-   args au SB-APPEND S\" }}" SB-APPEND SB$ POST ;
+   args SB-APPEND S\" }}" SB-APPEND SB$ POST ;
 
 
 : MODERN-FRAMED ( n str -- n )
-   {: id:n args:^ au:n :}
+   {: id:n args:str :}
    MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: framed" ADD
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
    S\" ,\"method\":\"tools/call\",\"params\":{\"name\":\"framed\",\"arguments\":" SB-APPEND
-   args au SB-APPEND s" ," SB-APPEND META S\" }}" SB-APPEND SB$ POST ;
+   args SB-APPEND s" ," SB-APPEND META S\" }}" SB-APPEND SB$ POST ;
 
 
 \ framed's reply to the given id through isError, in SB.
@@ -556,36 +555,36 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 \ pictured's blocks: an image and an embedded resource's bytes, spaced as given.
-: PAIR ( -- ^u8 n )
+: PAIR ( -- str )
    S\" [{\"type\":\"image\",\"data\":\"iVBORw0KGgo=\",\"mimeType\":\"image/png\"}, {\"type\":\"resource\",\"resource\":{\"uri\":\"zen://versions/7/original\",\"mimeType\":\"application/pdf\",\"blob\":\"JVBERi0=\"}} ]" ;
 
 \ pictured's blocks for said: a text of the tool's own.
-: OWN-TEXT ( -- ^u8 n )
+: OWN-TEXT ( -- str )
    S\" [{\"type\":\"text\",\"text\":\"500 of 568090 records\"}]" ;
 
 \ The objects of a JSON array, as content holds them.
-: INSIDE ( str -- str ) {: a:^ u:n :} a 1+ u 2 - ;
+: INSIDE ( str -- str ) {: s:str :} s STR:DATA 1+ s STR:LEN 2 - >str ;
 
 : PAIR-CONTENT ( -- str ) PAIR INSIDE ;
 
 
 : PICTURED-CALL ( n str bool -- n )
-   {: id:n args:^ au:n modern:bool :}
+   {: id:n args:str modern:bool :}
    modern if MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: pictured" ADD else LEGACY then
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
    S\" ,\"method\":\"tools/call\",\"params\":{\"name\":\"pictured\",\"arguments\":" SB-APPEND
-   args au SB-APPEND
+   args SB-APPEND
    modern if s" ," SB-APPEND META then
    S\" }}" SB-APPEND SB$ POST ;
 
 
 \ pictured's reply to the given id, the content's objects as given, in SB.
 : PICTURED-RESULT ( n bool str -- )
-   {: id:n modern:bool blocks:^ bu:n :}
+   {: id:n modern:bool blocks:str :}
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
    S\" ,\"result\":{" SB-APPEND
    modern if S\" \"resultType\":\"complete\"," SB-APPEND then
-   S\" \"content\":[" SB-APPEND blocks bu SB-APPEND
+   S\" \"content\":[" SB-APPEND blocks SB-APPEND
    S\" ],\"structuredContent\":{\"ok\":true},\"isError\":false" SB-APPEND
    modern if s" ," SB-APPEND SERVER then
    S\" }}" SB-APPEND ;
@@ -620,12 +619,12 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : BLOCKS-REJECTED ( str str str -- )
-   {: label:^ lu:n args:^ au:n want:^ wu:n :}
-   label lu T-LABEL
+   {: label:str args:str want:str :}
+   label T-LABEL
    0 BLOCKS-CODE atomic!
-   44 args au false PICTURED-CALL 44 MCP:E-SCHEMA FAULTED
+   44 args false PICTURED-CALL 44 MCP:E-SCHEMA FAULTED
    BLOCKS-CODE atomic@ MCP:E-SCHEMA T=
-   BLOCKS-TEXT BLOCKS-LEN want wu KEPT= ;
+   BLOCKS-TEXT BLOCKS-LEN want KEPT= ;
 
 
 : BLOCKS-REJECTIONS ( -- )
@@ -663,23 +662,23 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 \ The advertised outputSchema wrapping a declared schema that is not an object's.
-: WRAPPER ( ^u8 n -- )
-   {: declared:^ du:n :}
-   S\" \"outputSchema\":{\"type\":\"object\",\"properties\":{\"data\":" W+ declared du W+
+: WRAPPER ( str -- )
+   {: declared:str :}
+   S\" \"outputSchema\":{\"type\":\"object\",\"properties\":{\"data\":" W+ declared W+
    S\" },\"required\":[\"data\"]}" W+ ;
 
-: OUTPUT ( ^u8 n -- ) WRAPPER S\" ,\"annotations\":{\"readOnlyHint\":" W+ ;
+: OUTPUT ( str -- ) WRAPPER S\" ,\"annotations\":{\"readOnlyHint\":" W+ ;
 
 \ shape's declared output schema, advertised as declared.
-: SOURCES ( -- ^u8 n )
+: SOURCES ( -- str )
    S\" {\"typ\\u0065\":\"object\",\"properties\":{\"sources\":{\"type\":\"array\"}}}" ;
 
 \ silent's declared output schema: no string "type" "object", so it is wrapped.
-: NULLABLE ( -- ^u8 n )
+: NULLABLE ( -- str )
    S\" {\"type\":[\"object\",\"null\"],\"items\":{\"type\":\"object\"}}" ;
 
 \ An app's tool, listed as registered: its outputSchema is an object's.
-: WIDGET ( -- ^u8 n )
+: WIDGET ( -- str )
    S\" {\"name\":\"widget\",\"description\":\"Show the widget.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"object\"},\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"openWorldHint\":false},\"_meta\":{\"ui\":{\"resourceUri\":\"ui://test/widget.html\",\"visibility\":[\"model\",\"app\"]},\"openai/fileParams\":[\"file\"]}}" ;
 
 \ A tool whose escaped outputSchema key and non-object schema sit between members.
@@ -693,11 +692,11 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" ,\"inputSchema\":{\"type\":\"object\"},\"_meta\":{\"ui\":{\"visibility\":[\"app\"]}}}" W+ ;
 
 \ A tool whose body gives a result with a _meta, listed as registered.
-: FRAMED ( -- ^u8 n )
+: FRAMED ( -- str )
    S\" {\"name\":\"framed\",\"description\":\"Answer with a _meta.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"object\"},\"annotations\":{\"readOnlyHint\":true}}" ;
 
 \ A tool whose body gives a result with content blocks, listed as registered.
-: PICTURED ( -- ^u8 n )
+: PICTURED ( -- str )
    S\" {\"name\":\"pictured\",\"description\":\"Answer with content blocks.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"object\"},\"annotations\":{\"readOnlyHint\":true}}" ;
 
 \ echo's entry, the first tools/list answers.
@@ -771,8 +770,8 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : NAME-MISMATCH ( -- )
    s" a modern Mcp-Name naming another tool is -32020" T-LABEL
-   13 ECHO-CALL {: h:CURL:handle a:^ u:n :}
-   h s" Mcp-Name: reject" ADD a u POST
+   13 ECHO-CALL {: h:CURL:handle s:str :}
+   h s" Mcp-Name: reject" ADD s POST
    400 S\" {\"jsonrpc\":\"2.0\",\"id\":13,\"error\":{\"code\":-32020,\"message\":\"Header mismatch\"}}"
    ANSWERED ;
 
@@ -899,13 +898,13 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" {\"uri\":\"ui://test/widget.html\",\"name\":\"widget\",\"mimeType\":\"text/html;profile=mcp-app\",\"description\":\"A test widget.\",\"_meta\":{\"ui\":{\"csp\":{\"resourceDomains\":[\"https://cdn.test\"]}}}}" ;
 
 \ A resource without _meta, as resources/list answers it.
-: PLAIN ( -- ^u8 n )
+: PLAIN ( -- str )
    S\" {\"uri\":\"ui://test/plain.html\",\"name\":\"plain\",\"mimeType\":\"text/html\"}" ;
 
 : RESOURCE-ITEMS ( -- ) WIDGET-RESOURCE W+ s" ," W+ PLAIN W+ ;
 
 \ Its page: a quote and a newline show the text's escaping.
-: PAGE ( -- ^u8 n ) S\" <p class=\"note\">Hi</p>\n" ;
+: PAGE ( -- str ) S\" <p class=\"note\">Hi</p>\n" ;
 
 \ The widget's resources/read contents, after the result's opening brace.
 : W-CONTENTS ( -- )
@@ -950,8 +949,8 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : WIDGET-READ ( n str -- n )
-   {: id:n name:^ nu:n :}
-   MODERN s" Mcp-Method: resources/read" ADD name nu ADD
+   {: id:n name:str :}
+   MODERN s" Mcp-Method: resources/read" ADD name ADD
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
    S\" ,\"method\":\"resources/read\",\"params\":{\"uri\":\"ui://test/widget.html\"," SB-APPEND
    META S\" }}" SB-APPEND SB$ POST ;
@@ -1004,23 +1003,23 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : ADD-REJECT ( -- )
    S\" {\"name\":\"reject\",\"description\":\"Reject every call.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":false}}"
-   [: 2drop s" nope" MCP:RESULT-ERROR ;] MCP:ADD-TOOL ;
+   [: drop s" nope" MCP:RESULT-ERROR ;] MCP:ADD-TOOL ;
 
 : ADD-RAW ( -- )
    S\" {\"name\":\"raw\",\"description\":\"Answer text that is not JSON.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
-   [: 2drop s" not json" MCP:RESULT ;] MCP:ADD-TOOL ;
+   [: drop s" not json" MCP:RESULT ;] MCP:ADD-TOOL ;
 
 : ADD-SILENT ( -- )
    S\" {\"name\":\"silent\",\"description\":\"Never answer.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":[\"object\",\"null\"],\"items\":{\"type\":\"object\"}},\"annotations\":{\"readOnlyHint\":true}}"
-   [: 2drop ;] MCP:ADD-TOOL ;
+   [: drop ;] MCP:ADD-TOOL ;
 
 : ADD-BIG ( -- )
    S\" {\"name\":\"big\",\"description\":\"Answer a long string.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"string\"},\"annotations\":{\"readOnlyHint\":true}}"
-   [: 2drop BIG BIG-U MCP:RESULT ;] MCP:ADD-TOOL ;
+   [: drop BIG BIG-U >str MCP:RESULT ;] MCP:ADD-TOOL ;
 
 : ADD-STALL ( -- )
    S\" {\"name\":\"stall\",\"description\":\"Answer once released.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
-   [: 2drop 1 ENTERED atomic!
+   [: drop 1 ENTERED atomic!
       [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL
       1 LEFT atomic!
       s" {}" MCP:RESULT ;] MCP:ADD-TOOL ;
@@ -1028,7 +1027,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 \ A tool whose arguments are one string filter.
 : ADD-STRICT ( -- )
    S\" {\"name\":\"strict\",\"description\":\"Answer a filter.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"filter\":{\"type\":\"string\"}},\"required\":[\"filter\"],\"additionalProperties\":false},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
-   [: 2drop 1 STRICT-RAN atomic! S\" {\"ran\":true}" MCP:RESULT ;] MCP:ADD-TOOL ;
+   [: drop 1 STRICT-RAN atomic! S\" {\"ran\":true}" MCP:RESULT ;] MCP:ADD-TOOL ;
 
 : ADD-LATE ( -- )
    S\" {\"name\":\"late\",\"description\":\"Registered while serving.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
@@ -1037,11 +1036,12 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 \ Keeps code's text where a case on another task reads it.
 : KEEP ( n ^u8 ^n -- ) {: code:n buf:^ len:^ :}
-   code REASON:TEXT$ KEPT-CAP min {: a:^ u:n :}
-   a buf u BYTE-COPY  u len atomic! ;
+   code REASON:TEXT$ {: t:str :}
+   t STR:LEN KEPT-CAP min {: u:n :}
+   t STR:DATA buf u BYTE-COPY  u len atomic! ;
 
 : SHAPE-TRY ( str -- )
-   [: 2dup MCP:RESULT ;] catch {: code:n :} 2drop
+   [: dup MCP:RESULT ;] catch {: code:n :} drop
    code SHAPE-TEXT SHAPE-LEN KEEP
    code SHAPE-CODE atomic!
    code 0<> if code throw then ;
@@ -1059,7 +1059,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : META-TRY ( str -- )
-   [: 2dup S\" {\"ok\":true}" 2swap MCP:RESULT-META ;] catch {: code:n :} 2drop
+   [: dup S\" {\"ok\":true}" swap MCP:RESULT-META ;] catch {: code:n :} drop
    code META-TEXT META-LEN KEEP
    code META-CODE atomic!
    code 0<> if code throw then ;
@@ -1068,30 +1068,30 @@ TASK:MIN-STACK TASK:TASK STALLER
 \ The meta the framed tool returns for its arguments: a request cannot repeat a
 \ member, so `twice` asks for a meta that does.
 : FRAMED-META ( str -- str )
-   2dup s" flat" STR:CONTAINS? if 2drop s" []" exit then
-   2dup s" twice" STR:CONTAINS? if 2drop S\" {\"a\":1,\"a\":2}" exit then ;
+   dup s" flat" STR:CONTAINS? if drop s" []" exit then
+   dup s" twice" STR:CONTAINS? if drop S\" {\"a\":1,\"a\":2}" exit then ;
 
 : ADD-FRAMED ( -- )
    FRAMED [: FRAMED-META META-TRY ;] MCP:ADD-TOOL ;
 
 
 : BLOCKS-TRY ( str -- )
-   [: 2dup S\" {\"ok\":true}" 2swap MCP:RESULT-CONTENT ;] catch {: code:n :} 2drop
+   [: dup S\" {\"ok\":true}" swap MCP:RESULT-CONTENT ;] catch {: code:n :} drop
    code BLOCKS-TEXT BLOCKS-LEN KEEP
    code BLOCKS-CODE atomic!
    code 0<> if code throw then ;
 
 
 : BLOCKS-OF ( str -- str )
-   {: args:^ au:n :}
-   args au s" pair" STR:CONTAINS? if PAIR exit then
-   args au s" said" STR:CONTAINS? if OWN-TEXT exit then
-   args au s" none" STR:CONTAINS? if s" [ ]" exit then
-   args au s" flat" STR:CONTAINS? if S\" {\"type\":\"image\"}" exit then
-   args au s" scalar" STR:CONTAINS? if S\" [{\"type\":\"text\",\"text\":\"a\"},1]" exit then
-   args au s" untyped" STR:CONTAINS? if S\" [{\"data\":\"x\"}]" exit then
-   args au s" numbered" STR:CONTAINS? if S\" [{\"type\":5}]" exit then
-   args au s" twice" STR:CONTAINS? if S\" [{\"type\":\"text\",\"type\":5}]" exit then
+   {: args:str :}
+   args s" pair" STR:CONTAINS? if PAIR exit then
+   args s" said" STR:CONTAINS? if OWN-TEXT exit then
+   args s" none" STR:CONTAINS? if s" [ ]" exit then
+   args s" flat" STR:CONTAINS? if S\" {\"type\":\"image\"}" exit then
+   args s" scalar" STR:CONTAINS? if S\" [{\"type\":\"text\",\"text\":\"a\"},1]" exit then
+   args s" untyped" STR:CONTAINS? if S\" [{\"data\":\"x\"}]" exit then
+   args s" numbered" STR:CONTAINS? if S\" [{\"type\":5}]" exit then
+   args s" twice" STR:CONTAINS? if S\" [{\"type\":\"text\",\"type\":5}]" exit then
    S\" [{\"type\":" ;
 
 
@@ -1101,8 +1101,8 @@ TASK:MIN-STACK TASK:TASK STALLER
 : ADD-PAGE ( str -- ) s" <p></p>" MCP:ADD-RESOURCE ;
 
 \ The last E-SCHEMA's text is exactly the one given.
-: SAID ( ^u8 n -- ) {: want:^ wu:n :}
-   MCP:E-SCHEMA REASON:TEXT$ want wu T$=
+: SAID ( str -- ) {: want:str :}
+   MCP:E-SCHEMA REASON:TEXT$ want T$=
    REASON:RELEASE ;
 
 : RESOURCE-REJECTIONS ( -- )
@@ -1130,13 +1130,13 @@ TASK:MIN-STACK TASK:TASK STALLER
       ADD-PAGE ;] MCP:E-DUPLICATE TTHROWSQ ;
 
 
-: URL ( ^u8 n -- ^u8 n )
-   {: path:^ pu:n :}
-   SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
+: URL ( str -- str )
+   {: path:str :}
+   SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path SB-APPEND SB$ ;
 
-: ASK ( ^u8 n ^u8 n -- ^u8 n bool )
-   {: name:^ nu:n args:^ au:n :}
-   CLIENT @ name nu args au 0 >MS MCP:CALL ;
+: ASK ( str str -- str bool )
+   {: name:str args:str :}
+   CLIENT @ name args 0 >MS MCP:CALL ;
 
 : JSON-HEADER ( HTTP:response -- )
    s" Content-Type" s" application/json" HTTP:HEADER! ;
@@ -1159,11 +1159,11 @@ TASK:MIN-STACK TASK:TASK STALLER
 \ A result naming the Mcp-Name header as it arrived.
 : NAMES-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
-   asked s" Mcp-Name" HTTP:HEADER-OF$ drop {: v:^ vu:n :}
+   asked s" Mcp-Name" HTTP:HEADER-OF$ drop {: v:str :}
    0 NB-U !
-   S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"name\":\"" NB+ v vu NB+ S\" \"}}" NB+
+   S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"name\":\"" NB+ v NB+ S\" \"}}" NB+
    answer JSON-HEADER
-   answer NB NB-U @ HTTP:BODY! ;
+   answer NB NB-U @ >str HTTP:BODY! ;
 
 \ A notification, then for a call a ping with the client's id, then the
 \ response. "none" starts with a priming event, "twice" ends with a stray.
@@ -1269,36 +1269,37 @@ TASK:MIN-STACK TASK:TASK STALLER
    s" big" s" {}" ASK TFALSE
    W-RESET S\" {\"resultType\":\"complete\",\"content\":[]," W+
    S\" \"structuredContent\":{\"data\":" W+
-   BIG BIG-U W+ S\" },\"isError\":false," W+ W-SERVER s" }" W+ W$ T$= ;
+   BIG BIG-U >str W+ S\" },\"isError\":false," W+ W-SERVER s" }" W+ W$ T$= ;
 
 create LOG-PATH PATH-CAP allot      \ a case's stderr capture file
 variable LOG-PATH-U
 create LOG-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
 $A constant LF
 
-: LOG-PATH$ ( -- str ) LOG-PATH LOG-PATH-U @ ;
+: LOG-PATH$ ( -- str ) LOG-PATH LOG-PATH-U @ >str ;
 
 : LOG-INIT ( -- )
-   s" mcp-test" FS:MKTEMP-DIR {: dir:^ dir-u:n :}
-   dir dir-u FS:CLEANUP-TREE+
-   dir dir-u s" stderr.txt" LOG-PATH FS:JOIN-PATH LOG-PATH-U !
+   s" mcp-test" FS:MKTEMP-DIR {: dir:str :}
+   dir FS:CLEANUP-TREE+
+   dir s" stderr.txt" LOG-PATH FS:JOIN-PATH LOG-PATH-U !
    LOG-B 1 BUF:N>BLEN BUF:INIT ;
 
 \ The whole capture file, valid until the next read.
 : LOG$ ( -- str )
    LOG-PATH$ FS:FILE-SIZE {: size:n :}
    LOG-B BUF:CLEAR
-   LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
-   LOG-B BUF:SPAN$ BUF:BLEN>N ;
+   LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ dup STR:DATA swap STR:LEN
+   FS:READ-ALL size T=
+   LOG-B BUF:SPAN$ BUF:BLEN>N >str ;
 
 \ The capture's lines, less each `<stamp> info mcp: ` line: the server
 \ in this process logs one for each message it dispatches.
 : LINES ( -- n )
-   LOG$ {: a:^ u:n :}
-   0 u 0 ?do
-      a i + c@ LF = if 1+ then
-      i 0= if true else a i 1- + c@ LF = then if
-         a i DATE:TIME-LEN 1- + +  u i - DATE:TIME-LEN 1- -
+   LOG$ {: s:str :}
+   0 s STR:LEN 0 ?do
+      s STR:DATA i + c@ LF = if 1+ then
+      i 0= if true else s STR:DATA i 1- + c@ LF = then if
+         s STR:DATA i DATE:TIME-LEN 1- + +  s STR:LEN i - DATE:TIME-LEN 1- - >str
          s" Z info mcp: " STR:STARTS-WITH? if 1- then
       then
    loop ;
@@ -1310,10 +1311,10 @@ $A constant LF
 \ The capture holds one line: MCP's account of a reply from this server, with
 \ the rest after the host.
 : REPLY-LOGGED ( str -- )
-   {: rest:^ ru:n :}
+   {: rest:str :}
    LINES 1 T=
    SB-RESET s"  error mcp: reply from 127.0.0.1:" SB-APPEND
-   HTTP:PORT FMT:SB-U s"  " SB-APPEND rest ru SB-APPEND
+   HTTP:PORT FMT:SB-U s"  " SB-APPEND rest SB-APPEND
    LOG$ SB$ STR:CONTAINS? TTRUE ;
 
 \ The server shares this process's fd 2, so its lines land in the capture.
@@ -1329,13 +1330,13 @@ $A constant LF
 
 : CLIENT-UNKNOWN ( -- )
    s" an unknown tool is E-RESPONSE and the client serves the next call" T-LABEL
-   [: [: s" nosuch" s" {}" ASK 2drop drop ;] MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
-   s" echo" s" {}" ASK TFALSE 2drop ;
+   [: [: s" nosuch" s" {}" ASK drop drop ;] MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
+   s" echo" s" {}" ASK TFALSE drop ;
 
 : CLIENT-TIMEOUT ( -- )
    s" a call past its limit is E-TRANSFER and the client serves the next call" T-LABEL
    ARM
-   [: [: CLIENT @ s" stall" s" {}" 300 >MS MCP:CALL 2drop drop ;]
+   [: [: CLIENT @ s" stall" s" {}" 300 >MS MCP:CALL drop drop ;]
       MCP:E-TRANSFER TTHROWSQ ;] CAPTURED
    s" the call past its limit logs curl's timeout once, tagged mcp" T-LABEL
    LINES 1 T=
@@ -1343,7 +1344,7 @@ $A constant LF
    HTTP:PORT FMT:SB-U s"  failed: curl 28: Timeout was reached" SB-APPEND
    LOG$ SB$ STR:CONTAINS? TTRUE
    1 RELEASED atomic!
-   CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop SETTLE ;
+   CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE drop SETTLE ;
 
 8000001 constant PAST-CURL-INPUT          \ CURL_MAX_INPUT_LENGTH + 1
 
@@ -1351,25 +1352,25 @@ $A constant LF
 \ logged line; valid until the next read.
 : FAILED-ON ( str -- str )
    MCP:OPEN ROUTE-CLIENT !
-   [: [: ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;]
+   [: [: ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL drop drop ;]
       MCP:E-TRANSFER TTHROWSQ ;] CAPTURED
    ROUTE-CLIENT @ MCP:CLOSE
    LINES 1 T=  LOG$ ;
 
 : SECRET-CUT ( str -- )
-   {: a:^ u:n :}
-   a u s"  error mcp: exchange with 127.0.0.1:1 failed: curl " STR:CONTAINS? TTRUE
-   a u s" user" STR:CONTAINS? TFALSE
-   a u s" SECRET" STR:CONTAINS? TFALSE
-   a u s" api_key" STR:CONTAINS? TFALSE
-   a u s" /mcp" STR:CONTAINS? TFALSE ;
+   {: s:str :}
+   s s"  error mcp: exchange with 127.0.0.1:1 failed: curl " STR:CONTAINS? TTRUE
+   s s" user" STR:CONTAINS? TFALSE
+   s s" SECRET" STR:CONTAINS? TFALSE
+   s s" api_key" STR:CONTAINS? TFALSE
+   s s" /mcp" STR:CONTAINS? TFALSE ;
 
 : HOST-HIDDEN ( str -- )
-   {: a:^ u:n :}
-   a u s"  error mcp: exchange failed: curl " STR:CONTAINS? TTRUE
-   a u s" user" STR:CONTAINS? TFALSE
-   a u s" PASS" STR:CONTAINS? TFALSE
-   a u s" WORD" STR:CONTAINS? TFALSE ;
+   {: s:str :}
+   s s"  error mcp: exchange failed: curl " STR:CONTAINS? TTRUE
+   s s" user" STR:CONTAINS? TFALSE
+   s s" PASS" STR:CONTAINS? TFALSE
+   s s" WORD" STR:CONTAINS? TFALSE ;
 
 \ Port 1 rejects the connection.
 : CLIENT-SECRET ( -- )
@@ -1394,10 +1395,10 @@ $A constant LF
    s" a URL libcurl does not set logs curl 43 with its host, not its userinfo"
    T-LABEL
    LONG-URL {: url :}
-   url SPAN:$ FAILED-ON {: a:^ u:n :}
-   a u s"  error mcp: exchange with 127.0.0.1:1 failed: curl 43: "
+   url SPAN:$ FAILED-ON {: s:str :}
+   s s"  error mcp: exchange with 127.0.0.1:1 failed: curl 43: "
    STR:CONTAINS? TTRUE
-   a u s" LONGPW" STR:CONTAINS? TFALSE
+   s s" LONGPW" STR:CONTAINS? TFALSE
    url MEM:FREE-SPAN ;
 
 : CLIENT-PAGES ( -- )
@@ -1425,21 +1426,21 @@ $A constant LF
    ROUTE-CLIENT @ s" stray" s" {}" 0 >MS MCP:CALL TFALSE
    S\" {\"content\":[],\"isError\":false}" T$=
    s" a stream with no response is E-RESPONSE and the client serves the next call" T-LABEL
-   [: [: ROUTE-CLIENT @ s" none" s" {}" 0 >MS MCP:CALL 2drop drop ;]
+   [: [: ROUTE-CLIENT @ s" none" s" {}" 0 >MS MCP:CALL drop drop ;]
       MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
    s" has no event answering the request: status 200" REPLY-LOGGED
-   ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
+   ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE drop
    s" an event that is not UTF-8 is E-RESPONSE and the client serves the next call" T-LABEL
-   [: [: ROUTE-CLIENT @ s" bad" s" {}" 0 >MS MCP:CALL 2drop drop ;]
+   [: [: ROUTE-CLIENT @ s" bad" s" {}" 0 >MS MCP:CALL drop drop ;]
       MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
    s" is an event stream that is not UTF-8: status 200" REPLY-LOGGED
-   ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
+   ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE drop
    ROUTE-CLIENT @ MCP:CLOSE ;
 
 : CLIENT-TWICE ( -- )
    s" a reply naming isError twice is E-RESPONSE, logged with the reader's text" T-LABEL
    s" /twice" URL MCP:OPEN ROUTE-CLIENT !
-   [: [: ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;]
+   [: [: ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL drop drop ;]
       MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
    W-RESET s" is not JSON-RPC: 1:64: expected a member name not used before in this object, " W+
    S\" found `\"isError\"`; remove the repeated member: status 200" W+
@@ -1449,7 +1450,7 @@ $A constant LF
 : CLIENT-EVENT-TWICE ( -- )
    s" an event naming isError twice is E-RESPONSE, logged with the reader's text" T-LABEL
    s" /events" URL MCP:OPEN ROUTE-CLIENT !
-   [: [: ROUTE-CLIENT @ s" twice" s" {}" 0 >MS MCP:CALL 2drop drop ;]
+   [: [: ROUTE-CLIENT @ s" twice" s" {}" 0 >MS MCP:CALL drop drop ;]
       MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
    W-RESET s" is not JSON-RPC: 1:64: expected a member name not used before in this object, " W+
    S\" found `\"isError\"`; remove the repeated member: status 200" W+
@@ -1460,7 +1461,7 @@ $A constant LF
    s" a tools/list past its limit is E-TRANSFER and the client serves the next call" T-LABEL
    ARM
    s" /slow" URL MCP:OPEN ROUTE-CLIENT !
-   [: ROUTE-CLIENT @ 300 >MS MCP:TOOLS 2drop ;] MCP:E-TRANSFER TTHROWSQ
+   [: ROUTE-CLIENT @ 300 >MS MCP:TOOLS drop ;] MCP:E-TRANSFER TTHROWSQ
    1 RELEASED atomic!
    ROUTE-CLIENT @ 0 >MS MCP:TOOLS s" []" T$=
    ROUTE-CLIENT @ MCP:CLOSE SETTLE ;
@@ -1470,7 +1471,7 @@ $A constant LF
    DEADLINE PAGES-END !
    s" /endless" URL MCP:OPEN ROUTE-CLIENT !
    mono-ns {: start:n :}
-   [: ROUTE-CLIENT @ LIST-MS >MS MCP:TOOLS 2drop ;] MCP:E-TRANSFER TTHROWSQ
+   [: ROUTE-CLIENT @ LIST-MS >MS MCP:TOOLS drop ;] MCP:E-TRANSFER TTHROWSQ
    mono-ns start - LIST-BOUND-MS NS-PER-MS * < TTRUE
    s" the client then serves a TOOLS to the last page" T-LABEL
    0 PAGES-END !
@@ -1482,7 +1483,7 @@ $A constant LF
    ARM
    s" /late" URL MCP:OPEN ROUTE-CLIENT !
    mono-ns {: start:n :}
-   [: ROUTE-CLIENT @ LATE-MS >MS MCP:TOOLS 2drop ;] MCP:E-TRANSFER TTHROWSQ
+   [: ROUTE-CLIENT @ LATE-MS >MS MCP:TOOLS drop ;] MCP:E-TRANSFER TTHROWSQ
    mono-ns start - LATE-BOUND-MS NS-PER-MS * < TTRUE
    1 RELEASED atomic!
    s" the client then serves a TOOLS to the last page" T-LABEL
@@ -1490,7 +1491,7 @@ $A constant LF
    ROUTE-CLIENT @ MCP:CLOSE SETTLE ;
 
 
-: STALL-CALL ( -- ) STALL-CLIENT @ s" stall" s" {}" 0 >MS MCP:CALL 2drop drop ;
+: STALL-CALL ( -- ) STALL-CLIENT @ s" stall" s" {}" 0 >MS MCP:CALL drop drop ;
 : STALL-CLOSE ( -- ) STALL-CLIENT @ MCP:CLOSE 1 CLOSED atomic! ;
 : STALL-WORK ( -- ) [: STALL-CALL ;] [: STALL-CLOSE ;] finally ;
 
@@ -1514,7 +1515,7 @@ $A constant LF
 
 : CANCEL-STORE ( [ -- ] -- ) catch CANCEL-CODE atomic! ;
 : CANCEL-CALL ( -- ) [: STALL-CALL ;] CANCEL-STORE ;
-: CANCEL-TOOLS ( -- ) [: ROUTE-CLIENT @ 0 >MS MCP:TOOLS 2drop ;] CANCEL-STORE ;
+: CANCEL-TOOLS ( -- ) [: ROUTE-CLIENT @ 0 >MS MCP:TOOLS drop ;] CANCEL-STORE ;
 
 \ Runs the call on STALLER and stops the client once the server has its
 \ request: the call ends E-TRANSFER while the server still holds it.
@@ -1539,8 +1540,8 @@ $A constant LF
    ['] CANCEL-TOOLS ROUTE-CLIENT @ ['] MCP:REQUEST-STOP CANCELLED
    ROUTE-CLIENT @ MCP:CLOSE ;
 
-: STOP-CALL ( -- ) STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;
-: STOP-TOOLS ( -- ) STALL-CLIENT @ 0 >MS MCP:TOOLS 2drop ;
+: STOP-CALL ( -- ) STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL drop drop ;
+: STOP-TOOLS ( -- ) STALL-CLIENT @ 0 >MS MCP:TOOLS drop ;
 
 \ A stopped client's CALL and TOOLS throw at once: /counted has had no
 \ request past the hits it had.
@@ -1561,7 +1562,7 @@ $A constant LF
    STALL-CLIENT @ MCP:CLOSE
    s" a client OPEN gives the stopped one's row calls normally" T-LABEL
    s" /counted" URL MCP:OPEN STALL-CLIENT !
-   STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
+   STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE drop
    HITS atomic@ 1 T=
    s" REQUEST-STOP during a CALL ends it with E-TRANSFER" T-LABEL
    [: ['] CANCEL-CALL STALL-CLIENT @ ['] MCP:REQUEST-STOP CANCELLED ;] CAPTURED
@@ -1609,10 +1610,10 @@ KEY-SET-CAP SPAN-BUFFER: KEY-SET
 variable KEY-SET-U
 
 \ The bytes copied into the span at off; answers the offset past them.
-: PUT ( ^u8 n SPAN:span<u8> n -- n )
-   {: a:^ u:n row off:n :}
-   a row off u SPAN:SUB SPAN:$ drop u BYTE-COPY
-   off u + ;
+: PUT ( str SPAN:span<u8> n -- n )
+   {: s:str row off:n :}
+   s STR:DATA row off s STR:LEN SPAN:SUB SPAN:$ STR:DATA s STR:LEN BYTE-COPY
+   off s STR:LEN + ;
 
 : KEY-SET+ ( str -- ) KEY-SET KEY-SET-U @ PUT KEY-SET-U ! ;
 : KEY-SET$ ( -- str ) KEY-SET 0 KEY-SET-U @ SPAN:SUB SPAN:$ ;
@@ -1625,7 +1626,7 @@ variable KEY-SET-U
    S\" \"}]}" KEY-SET+ ;
 
 : TOKEN+ ( str -- ) TOKEN TOKEN-U @ PUT TOKEN-U ! ;
-: TOKEN$ ( -- ^u8 n ) TOKEN 0 TOKEN-U @ SPAN:SUB SPAN:$ ;
+: TOKEN$ ( -- str ) TOKEN 0 TOKEN-U @ SPAN:SUB SPAN:$ ;
 
 : ENCODED+ ( str -- )
    TOKEN TOKEN-U @ TOKEN-CAP TOKEN-U @ - SPAN:SUB BASE64:ENCODE-URL
@@ -1640,12 +1641,12 @@ variable KEY-SET-U
    [: v VEC:DELETE ;] finally ;
 
 \ A current token in TOKEN for the caller's azp and oid.
-: MINT ( ^u8 n ^u8 n -- )
-   {: azp:^ au:n oid:^ ou:n :}
+: MINT ( str str -- )
+   {: azp:str oid:str :}
    SB-RESET S\" {\"iss\":\"https://issuer.test\",\"aud\":\"api://mcp-test\",\"exp\":" SB-APPEND
    epoch-seconds LIFE-S + FMT:SB-INT
-   S\" ,\"azp\":\"" SB-APPEND azp au SB-APPEND
-   S\" \",\"oid\":\"" SB-APPEND oid ou SB-APPEND S\" \"}" SB-APPEND
+   S\" ,\"azp\":\"" SB-APPEND azp SB-APPEND
+   S\" \",\"oid\":\"" SB-APPEND oid SB-APPEND S\" \"}" SB-APPEND
    0 TOKEN-U !
    S\" {\"alg\":\"RS256\",\"kid\":\"a\"}" ENCODED+ s" ." TOKEN+ SB$ ENCODED+
    SIGNATURE+ ;
@@ -1670,24 +1671,24 @@ variable KEY-SET-U
 : KEYS-ROUTE ( HTTP:request HTTP:response -- ) nip KEY-SET$ HTTP:BODY! ;
 
 \ Hides echo, the first tool listed, and secret from every caller but owner-app.
-: OWNER-ONLY ( ^u8 n -- bool )
-   {: a:^ u:n :}
-   a u s" echo" STR:= a u s" secret" STR:= or 0= if true exit then
-   s" azp" BEARER:CLAIM$ 0= if 2drop false exit then
+: OWNER-ONLY ( str -- bool )
+   {: s:str :}
+   s s" echo" STR:= s s" secret" STR:= or 0= if true exit then
+   s" azp" BEARER:CLAIM$ 0= if drop false exit then
    s" owner-app" STR:= ;
 
 : ADD-SECRET ( -- )
    S\" {\"name\":\"secret\",\"description\":\"Answer the owner.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
-   [: 2drop s" {}" MCP:RESULT ;] MCP:ADD-TOOL ;
+   [: drop s" {}" MCP:RESULT ;] MCP:ADD-TOOL ;
 
 \ A claim the caller lacks shows as an empty string.
 : CLAIM+ ( str -- ) BEARER:CLAIM$ drop NB+ ;
 
 : ADD-WHOAMI ( -- )
    S\" {\"name\":\"whoami\",\"description\":\"Answer the caller's claims.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
-   [: 2drop 0 NB-U !
+   [: drop 0 NB-U !
       S\" {\"azp\":\"" NB+ s" azp" CLAIM+ S\" \",\"oid\":\"" NB+ s" oid" CLAIM+ S\" \"}" NB+
-      NB NB-U @ MCP:RESULT ;] MCP:ADD-TOOL ;
+      NB NB-U @ >str MCP:RESULT ;] MCP:ADD-TOOL ;
 
 
 : SECRET-ENTRY ( -- )
@@ -1727,22 +1728,22 @@ variable KEY-SET-U
    200 SB$ ANSWERED ;
 
 
-: WHOAMI-CALL ( -- ) CLIENT @ s" whoami" s" {}" 0 >MS MCP:CALL 2drop drop ;
+: WHOAMI-CALL ( -- ) CLIENT @ s" whoami" s" {}" 0 >MS MCP:CALL drop drop ;
 
 : CAPTURED-CALL ( -- ) ['] WHOAMI-CALL CAPTURED ;
 
 \ A call on a client of the URL throws the code and logs one line, the rest
 \ after the host.
 : URL-THROWS ( str n str -- )
-   {: a:^ u:n code:n rest:^ ru:n :}
-   a u MCP:OPEN CLIENT !
+   {: s:str code:n rest:str :}
+   s MCP:OPEN CLIENT !
    ['] CAPTURED-CALL code TTHROWSQ
    CLIENT @ MCP:CLOSE
-   rest ru REPLY-LOGGED ;
+   rest REPLY-LOGGED ;
 
 : PATH-THROWS ( str n str -- )
-   {: a:^ u:n code:n rest:^ ru:n :}
-   a u URL code rest ru URL-THROWS ;
+   {: s:str code:n rest:str :}
+   s URL code rest URL-THROWS ;
 
 : GUARDED-CLIENT ( -- )
    CURL:LOOP-START
@@ -1784,8 +1785,8 @@ variable KEY-SET-U
 \ Keeps the open phase's port and names /keys on it, while HTTP serves.
 : KEEP-PORT ( -- )
    HTTP:PORT PORT !
-   s" /keys" URL {: a:^ u:n :}
-   a KEYS-URL u BYTE-COPY u KEYS-URL-U ! ;
+   s" /keys" URL {: s:str :}
+   s STR:DATA KEYS-URL s STR:LEN BYTE-COPY s STR:LEN KEYS-URL-U ! ;
 
 \ ISSUER! and VISIBLE! are rejected while HTTP serves, so the server starts again
 \ on the port /keys's URL names, with two workers: ADMIT? fetches /keys from
@@ -1801,7 +1802,7 @@ variable KEY-SET-U
    s" POST" s" /limited" [: LIMITED-ROUTE ;] HTTP:ROUTE
    s" POST" s" /teapot" [: TEAPOT-ROUTE ;] HTTP:ROUTE
    KEY-SET-FILL
-   s" https://issuer.test" s" api://mcp-test" KEYS-URL KEYS-URL-U @ BEARER:ISSUER!
+   s" https://issuer.test" s" api://mcp-test" KEYS-URL KEYS-URL-U @ >str BEARER:ISSUER!
    ['] OWNER-ONLY MCP:VISIBLE!
    ADD-SECRET ADD-WHOAMI
    PORT @ TWO-WORKERS SERVE-ON
@@ -1836,7 +1837,7 @@ TYPED-VARIABLE REPLIES ^VEC:vector<u8>   \ SERVE-CASES makes and deletes it
    200 W$ ANSWERED ;
 
 \ A modern call of strict with a filters member, in SB.
-: STRICT-MODERN ( -- ^u8 n )
+: STRICT-MODERN ( -- str )
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":73,\"method\":\"tools/call\",\"params\":" SB-APPEND
    S\" {\"name\":\"strict\"" SB-APPEND FILTERS SB-APPEND s" ," SB-APPEND
    META S\" }}" SB-APPEND SB$ ;
@@ -1908,23 +1909,23 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 
 \ A tool error whose text is in an arena released before the body returns.
 : FREED-ERROR ( -- )
-   s" freed text" {: t:^ tu:n :}
+   s" freed text" {: t:str :}
    ARENA:NEW {: a:^ :}
-   a tu ARENA:ALLOC {: p:^ pu:n :}
-   t p tu BYTE-COPY
-   p pu MCP:RESULT-ERROR
+   a t STR:LEN ARENA:ALLOC {: p:^ pu:n :}
+   t STR:DATA p t STR:LEN BYTE-COPY
+   p pu >str MCP:RESULT-ERROR
    a ARENA:RELEASE ;
 
 \ "freed" gives FREED-ERROR, a "late" key (quoted: "later" holds late)
 \ throws after its result, "now" answers at once, "fail" throws after HOLD,
 \ "mute" HOLDs for WAKE-MUTE, anything else HOLDs for WAKE.
 : WAIT-BODY ( str -- )
-   {: args:^ au:n :}
-   args au s" freed" STR:CONTAINS? if FREED-ERROR exit then
-   args au S\" \"late\"" STR:CONTAINS? if WAIT-RESULT MCP:E-STATE throw then
-   args au s" now" STR:CONTAINS? if WAIT-RESULT exit then
-   args au s" fail" STR:CONTAINS? if MCP:HOLD 2drop MCP:E-STATE throw then
-   args au s" mute" STR:CONTAINS? if MCP:HOLD [: WAKE-MUTE ;] HELD-WAIT exit then
+   {: args:str :}
+   args s" freed" STR:CONTAINS? if FREED-ERROR exit then
+   args S\" \"late\"" STR:CONTAINS? if WAIT-RESULT MCP:E-STATE throw then
+   args s" now" STR:CONTAINS? if WAIT-RESULT exit then
+   args s" fail" STR:CONTAINS? if MCP:HOLD 2drop MCP:E-STATE throw then
+   args s" mute" STR:CONTAINS? if MCP:HOLD [: WAKE-MUTE ;] HELD-WAIT exit then
    MCP:HOLD [: WAKE ;] HELD-WAIT ;
 
 : ADD-WAIT ( -- )
@@ -1932,14 +1933,14 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    [: WAIT-BODY ;] MCP:ADD-TOOL ;
 
 : WAIT-LEGACY ( str -- str )
-   {: args:^ au:n :}
+   {: args:str :}
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"tools/call\",\"params\":" SB-APPEND
-   S\" {\"name\":\"wait\",\"arguments\":" SB-APPEND args au SB-APPEND S\" }}" SB-APPEND SB$ ;
+   S\" {\"name\":\"wait\",\"arguments\":" SB-APPEND args SB-APPEND S\" }}" SB-APPEND SB$ ;
 
 : WAIT-MODERN ( str -- str )
-   {: args:^ au:n :}
+   {: args:str :}
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"tools/call\",\"params\":" SB-APPEND
-   S\" {\"name\":\"wait\",\"arguments\":" SB-APPEND args au SB-APPEND
+   S\" {\"name\":\"wait\",\"arguments\":" SB-APPEND args SB-APPEND
    s" ," SB-APPEND META S\" }}" SB-APPEND SB$ ;
 
 : MODERN-WAIT ( -- CURL:handle )
@@ -2003,20 +2004,20 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : DEBUG-HEAD ( -- str ) s" Z debug mcp: req " ;
 
 \ Where the line holding the offset starts.
-: LINE-START ( ^u8 n -- n )
-   {: a:^ at:n :}
-   at begin dup 0 > while
-      dup 1- a + c@ LF = if exit then
+: LINE-START ( str -- n )
+   {: s:str :}
+   s STR:LEN begin dup 0 > while
+      dup 1- s STR:DATA + c@ LF = if exit then
       1-
    repeat ;
 
 \ Whether the text is digits and `-` after its `r`.
 : REQ-ID? ( str -- bool )
-   {: a:^ u:n :}
-   u 2 < if false exit then
-   a c@ [char] r <> if false exit then
-   u 1 ?do
-      a i + c@ dup [char] 0 >= over [char] 9 <= and swap [char] - = or
+   {: s:str :}
+   s STR:LEN 2 < if false exit then
+   s STR:DATA c@ [char] r <> if false exit then
+   s STR:LEN 1 ?do
+      s STR:DATA i + c@ dup [char] 0 >= over [char] 9 <= and swap [char] - = or
       0= if false unloop exit then
    loop true ;
 
@@ -2030,72 +2031,72 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 \ The id of the `<stamp><head><id>` line of the text that holds the offset,
 \ the id running up to the offset.
 : ID-AT$ ( ^u8 str n -- str )
-   {: a:^ head:^ hu:n at:n :}
-   a at LINE-START DATE:TIME-LEN 1- + {: start:n :}
-   a start + at start - head hu STR:STARTS-WITH? TTRUE
-   start hu + {: from:n :}
-   a from + at from - 0 max ;
+   {: a:^ head:str at:n :}
+   a at >str LINE-START DATE:TIME-LEN 1- + {: start:n :}
+   a start + at start - >str head STR:STARTS-WITH? TTRUE
+   start head STR:LEN + {: from:n :}
+   a from + at from - 0 max >str ;
 
 \ The id of the text's `<stamp><head><id><rest>` line, rest from the space
 \ after the id through LF; empty when there is none.
 : LINE-ID$ ( str str str -- str )
-   {: a:^ u:n head:^ hu:n rest:^ ru:n :}
-   a u rest ru REST-AT {: at:n :}
+   {: s:str head:str rest:str :}
+   s rest REST-AT {: at:n :}
    at 0< if s" " exit then
-   a head hu at ID-AT$
-   2dup REQ-ID? TTRUE ;
+   s STR:DATA head at ID-AT$
+   dup REQ-ID? TTRUE ;
 
 \ How many digits start the text.
 : DIGITS-LEN ( str -- n )
-   {: a:^ u:n :}
-   u 0 ?do a i + c@ STR:DIGIT? 0= if i unloop exit then loop
-   u ;
+   {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ STR:DIGIT? 0= if i unloop exit then loop
+   s STR:LEN ;
 
 \ Whether the text starts ` in <digits> ms` and LF.
 : TIMED? ( str -- bool )
-   {: a:^ u:n :}
-   s"  in " {: in:^ inu:n :}
-   a u in inu STR:STARTS-WITH? 0= if false exit then
-   a inu + u inu - {: b:^ bu:n :}
-   b bu DIGITS-LEN {: len:n :}
+   {: s:str :}
+   s"  in " {: in:str :}
+   s in STR:STARTS-WITH? 0= if false exit then
+   s STR:DATA in STR:LEN + s STR:LEN in STR:LEN - >str {: b:str :}
+   b DIGITS-LEN {: len:n :}
    len 0= if false exit then
-   b len + bu len - S\"  ms\n" STR:STARTS-WITH? ;
+   b STR:DATA len + b STR:LEN len - >str S\"  ms\n" STR:STARTS-WITH? ;
 
 \ Where the text holds the rest followed by ` in <digits> ms` and LF, or -1
 \ after a failed check.
 : TIMED-AT ( str str -- n )
-   {: a:^ u:n rest:^ ru:n :}
-   a u rest ru REST-AT {: at:n :}
+   {: s:str rest:str :}
+   s rest REST-AT {: at:n :}
    at 0< if -1 exit then
-   at ru + {: end:n :}
-   a end + u end - TIMED? TTRUE
+   at rest STR:LEN + {: end:n :}
+   s STR:DATA end + s STR:LEN end - >str TIMED? TTRUE
    at ;
 
 \ The id of the text's `<stamp><head><id><rest> in <n> ms` line, rest from
 \ the space after the id; empty when there is none.
 : HEAD-ID$ ( str str str -- str )
-   {: a:^ u:n head:^ hu:n rest:^ ru:n :}
-   a u rest ru TIMED-AT {: at:n :}
+   {: s:str head:str rest:str :}
+   s rest TIMED-AT {: at:n :}
    at 0< if s" " exit then
-   a head hu at ID-AT$ ;
+   s STR:DATA head at ID-AT$ ;
 
 \ HEAD-ID$ of the `<stamp> info mcp: req ` line.
 : INFO-ID$ ( str str -- str )
-   {: a:^ u:n rest:^ ru:n :}
-   a u REQ-HEAD rest ru HEAD-ID$ ;
+   {: s:str rest:str :}
+   s REQ-HEAD rest HEAD-ID$ ;
 
 \ The id, `r` and its digits, of the text's INFO-ID$ line.
 : REQ-ID$ ( str str -- str )
-   INFO-ID$ 2dup REQ-ID? TTRUE ;
+   INFO-ID$ dup REQ-ID? TTRUE ;
 
 : REQ-LOGGED ( str -- )
-   {: rest:^ ru:n :}
-   LOG$ rest ru REQ-ID$ 2drop ;
+   {: rest:str :}
+   LOG$ rest REQ-ID$ drop ;
 
 \ LOG$ holds the rest on a `<stamp> error mcp: req <id>` line.
 : ERROR-LOGGED ( str -- )
-   {: rest:^ ru:n :}
-   LOG$ ERROR-HEAD rest ru HEAD-ID$ REQ-ID? TTRUE ;
+   {: rest:str :}
+   LOG$ ERROR-HEAD rest HEAD-ID$ REQ-ID? TTRUE ;
 
 : ECHO-LEGACY ( -- str )
    S\" {\"jsonrpc\":\"2.0\",\"id\":80,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"a\":1}}}" ;
@@ -2109,21 +2110,21 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 \ The debug child's fd 2 holds the rest on an info line and, under its id, a
 \ debug line with the tool error's text.
 : ERROR-TEXTED ( str str str -- )
-   {: e:^ eu:n rest:^ ru:n text:^ tu:n :}
-   e eu rest ru REQ-ID$ {: id:^ iu:n :}
-   W-RESET s"  tool error: " W+ text tu W+ S\" \n" W+
-   e eu DEBUG-HEAD W$ LINE-ID$ id iu T$= ;
+   {: e:str rest:str text:str :}
+   e rest REQ-ID$ {: id:str :}
+   W-RESET s"  tool error: " W+ text W+ S\" \n" W+
+   e DEBUG-HEAD W$ LINE-ID$ id T$= ;
 
 : STRICT-ERROR ( -- ) LEGACY 81 FILTERS STRICT-CALL POST 200 T= ;
 
 \ Given the debug child's fd 2.
 : LOGGED-STRICT ( str -- )
-   {: e:^ eu:n :}
+   {: e:str :}
    s" MCP:LOG logs a schema rejection as a tool error, its text at debug" T-LABEL
    [: STRICT-ERROR ;] CAPTURED
    s"  tools/call strict -> tool error" REQ-LOGGED
    LOG$ FILTERS-TEXT STR:CONTAINS? TFALSE
-   e eu s"  tools/call strict -> tool error" FILTERS-TEXT ERROR-TEXTED ;
+   e s"  tools/call strict -> tool error" FILTERS-TEXT ERROR-TEXTED ;
 
 : LOGGED-UNKNOWN ( -- )
    s" MCP:LOG logs an unknown tool's JSON-RPC error" T-LABEL
@@ -2149,8 +2150,8 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : LOGGED-HELD ( -- )
    [: HELD-LEGACY ;] CAPTURED
    s" MCP:LOG logs a held call as held and FINISH's line under its id" T-LABEL
-   LOG$ s"  tools/call wait -> held" REQ-ID$ {: id:^ iu:n :}
-   W-RESET REQ-HEAD W+ id iu W+ s"  tools/call wait -> ok" W+
+   LOG$ s"  tools/call wait -> held" REQ-ID$ {: id:str :}
+   W-RESET REQ-HEAD W+ id W+ s"  tools/call wait -> ok" W+
    LOG$ W$ TIMED-AT drop ;
 
 \ The sole worker logs the fault after the client has its answer, and before
@@ -2170,12 +2171,12 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 
 \ Given the debug child's fd 2.
 : LOGGED-FREED ( str -- )
-   {: e:^ eu:n :}
+   {: e:str :}
    s" MCP:LOG logs a tool error whose text the body freed, the text at debug" T-LABEL
    [: FREED-CALL ;] CAPTURED
    s"  tools/call wait -> tool error" REQ-LOGGED
    LOG$ s" freed text" STR:CONTAINS? TFALSE
-   e eu s"  tools/call wait -> tool error" s" freed text" ERROR-TEXTED ;
+   e s"  tools/call wait -> tool error" s" freed text" ERROR-TEXTED ;
 
 : LOGGED-LATE ( -- )
    s" MCP:LOG logs a throw after the result as a fault at error" T-LABEL
@@ -2214,7 +2215,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 \ An echo call whose arguments, {"b":<BIG>}, pass the 4096 bytes LOG writes of a text.
 : LONG-CALL ( -- str )
    W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":82,\"method\":\"tools/call\",\"params\":" W+
-   S\" {\"name\":\"echo\",\"arguments\":{\"b\":" W+ BIG BIG-U W+ s" }}}" W+ W$ ;
+   S\" {\"name\":\"echo\",\"arguments\":{\"b\":" W+ BIG BIG-U >str W+ s" }}}" W+ W$ ;
 
 \ The child's server: echo under MCP:LOG, called with {"a":1}, then with
 \ LONG-CALL's arguments; then strict's and wait's tool errors.
@@ -2251,22 +2252,22 @@ create CHILD-ERR CHILD-CAP allot
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    rc 0 <> if
-      CHILD-OUT outu LEN>N type cr  CHILD-ERR erru LEN>N type cr
+      CHILD-OUT outu LEN>N >str type cr  CHILD-ERR erru LEN>N >str type cr
    then
    rc 0 T=
-   CHILD-ERR erru LEN>N ;
+   CHILD-ERR erru LEN>N >str ;
 
 \ Given the debug child's fd 2.
 : LOGGED-DEBUG ( str -- )
-   {: e:^ eu:n :}
+   {: e:str :}
    s" at debug, MCP:LOG logs a tools/call's arguments under its id" T-LABEL
-   e eu s"  tools/call echo -> ok" REQ-ID$ {: id:^ iu:n :}
-   e eu DEBUG-HEAD S\"  arguments {\"a\":1}\n" LINE-ID$ id iu T$=
+   e s"  tools/call echo -> ok" REQ-ID$ {: id:str :}
+   e DEBUG-HEAD S\"  arguments {\"a\":1}\n" LINE-ID$ id T$=
    s" at debug, MCP:LOG cuts arguments past 4096 bytes and gives their length" T-LABEL
    \ The first 4096 bytes: `{"b":` and 4091 of BIG.
-   W-RESET S\"  arguments {\"b\":" W+ BIG 4091 W+
+   W-RESET S\"  arguments {\"b\":" W+ BIG 4091 >str W+
    s"  [" W+ BIG-U 6 + FMT:INT$ W+ S\"  B]\n" W+
-   e eu DEBUG-HEAD W$ LINE-ID$ 2drop ;
+   e DEBUG-HEAD W$ LINE-ID$ drop ;
 
 \ The server again, with LOG and every tool visible: LOG and VISIBLE! are
 \ rejected while HTTP serves.
@@ -2276,14 +2277,14 @@ create CHILD-ERR CHILD-CAP allot
    s" POST" s" /mcp" [: MCP:HANDLE ;] HTTP:ROUTE
    s" POST" s" /answer" [: ANSWER-ROUTE ;] HTTP:ROUTE
    s" POST" s" /capped" 16 [: MCP:HANDLE ;] HTTP:ROUTE-CAPPED
-   [: 2drop true ;] MCP:VISIBLE!
+   [: drop true ;] MCP:VISIBLE!
    MCP:LOG
    0 ONE-WORKER SERVE-ON
    s" this file run as `-- debug` exits 0" T-LABEL
-   DEBUG-ERR$ {: e:^ eu:n :}
-   LOGGED-ECHO  e eu LOGGED-STRICT  LOGGED-UNKNOWN LOGGED-TWICE LOGGED-NOTIFIED LOGGED-HELD
-   LOGGED-FAULT  e eu LOGGED-FREED  LOGGED-LATE LOGGED-MUTE LOGGED-CAPPED LOGGED-ANSWER
-   e eu LOGGED-DEBUG ;
+   DEBUG-ERR$ {: e:str :}
+   LOGGED-ECHO  e LOGGED-STRICT  LOGGED-UNKNOWN LOGGED-TWICE LOGGED-NOTIFIED LOGGED-HELD
+   LOGGED-FAULT  e LOGGED-FREED  LOGGED-LATE LOGGED-MUTE LOGGED-CAPPED LOGGED-ANSWER
+   e LOGGED-DEBUG ;
 
 
 : SERVE-CASES ( -- )

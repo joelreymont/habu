@@ -1,4 +1,3 @@
-split-str
 \ heap/wasm.f - the heap on the Wasm target, which has no libc: a two-level
 \ segregated-fit heap (TLSF) over regions from MEM-ALLOC-BYTES.
 \
