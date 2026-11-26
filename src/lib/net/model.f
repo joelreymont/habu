@@ -1021,6 +1021,13 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    OPTION:NONE t TOKENS-OUTPUT !
    OPTION:NONE t TOKENS-REASONING ! ;
 
+\ A call reports only the counts of its own answered reply.
+: CLEAR-COUNTS ( ^call -- )
+   {: c :}
+   0 c MODEL-CALL:INPUT-TOKENS !
+   0 c MODEL-CALL:CACHED-TOKENS !
+   0 c MODEL-CALL:COUNTED ! ;
+
 : OPEN-PREP ( ^call -- ^call )
    {: c :}
    SCRATCH-INITIAL OS-MEMORY:PAGE-SIZE max c SCRATCH-BASE-CELL !
@@ -1053,9 +1060,7 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    0 c PICK-CELL !
    0 c MAX-OUTPUT-CELL !
-   0 c MODEL-CALL:INPUT-TOKENS !
-   0 c MODEL-CALL:CACHED-TOKENS !
-   0 c MODEL-CALL:COUNTED !
+   c CLEAR-COUNTS
    c RESET-USAGE
    c ;
 
@@ -5058,6 +5063,7 @@ public
    {: c :}
    c TAKE-PREPARED {: ready:bool :}
    construct call-result none c MODEL-CALL:RESULT !
+   c CLEAR-COUNTS
    c START-LEDGER
    c REQUIRE-GOING
    ready 0= if
@@ -5068,8 +5074,6 @@ public
          c FINISH-INPUT
       then
    then
-   0 c MODEL-CALL:INPUT-TOKENS !
-   0 c MODEL-CALL:CACHED-TOKENS !
    construct call-kind chat c MODEL-CALL:KIND !
    c BEGIN-SEND ;
 
@@ -5078,6 +5082,7 @@ public
    {: c :}
    c UNPREPARE drop
    construct call-result none c MODEL-CALL:RESULT !
+   c CLEAR-COUNTS
    c START-LEDGER
    c REQUIRE-GOING
    c MODEL-CALL:JOURNAL-READY @ if c PREP-JOURNAL-EMBED else c CHECK-EMBED then
@@ -5214,6 +5219,7 @@ public
       landed OF E-STATE throw ENDOF
    ;MATCH
    construct call-result none c MODEL-CALL:RESULT !
+   c CLEAR-COUNTS
    c START-LEDGER
    c REQUIRE-GOING
    c MODEL-CALL:JOURNAL-READY @ if
@@ -5222,9 +5228,6 @@ public
       c CHECK-CHAT
       c FINISH-INPUT
    then
-   0 c MODEL-CALL:INPUT-TOKENS !
-   0 c MODEL-CALL:CACHED-TOKENS !
-   0 c MODEL-CALL:COUNTED !
    construct call-kind tally c MODEL-CALL:KIND !
    c BEGIN-SEND
    c AWAIT
@@ -5243,6 +5246,7 @@ public
       landed OF E-STATE throw ENDOF
    ;MATCH
    construct call-result none c MODEL-CALL:RESULT !
+   c CLEAR-COUNTS
    c START-LEDGER
    c REQUIRE-GOING
    c MODEL-CALL:JOURNAL-READY @ if
@@ -5251,8 +5255,6 @@ public
       c CHECK-INPUT
       c FINISH-INPUT
    then
-   0 c MODEL-CALL:INPUT-TOKENS !
-   0 c MODEL-CALL:CACHED-TOKENS !
    construct call-kind compaction c MODEL-CALL:KIND !
    c BEGIN-SEND
    c AWAIT ;
@@ -5269,12 +5271,11 @@ public
    s s" REPLAY's record" REQUIRE-LENGTH
    c TAKE-PREPARED 0= if E-STATE throw then
    construct call-result none c MODEL-CALL:RESULT !
+   c CLEAR-COUNTS
    c START-LEDGER
    c REQUIRE-GOING
    c JOURNAL-OUT-BUF c RESET-SCRATCH
    s c JOURNAL-OUT-BUF REPLACE$
-   0 c MODEL-CALL:INPUT-TOKENS !
-   0 c MODEL-CALL:CACHED-TOKENS !
    construct call-kind chat c MODEL-CALL:KIND !
    c BEGIN-CALL
    c RECEIPT-RESET
