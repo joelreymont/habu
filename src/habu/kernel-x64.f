@@ -4592,11 +4592,12 @@ $3A constant NAME-COLON                \ a qualified name's separator
 : REAL-WID, ( -- )
    RDX RDX ASM-SINK ENC-TEST-RR  C-S SEAL-TRAP-LBL JCC, ;
 
-\ rax is a package marker in the current or an imported namespace.
-: LIVE-NAMESPACE, ( -- )
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NS SEAL-TRAP-LBL JCC,
-   RAX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
-   RAX WL:RETIRED-NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC, ;
+\ rax is a package marker in the current or an imported namespace, else a jump
+\ to bad.
+: LIVE-NAMESPACE, ( label -- ) {: bad:label :}
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NS bad JCC,
+   RAX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E bad JCC,
+   RAX WL:RETIRED-NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E bad JCC, ;
 
 \ Store the frame's name in record NDICT, whose address DW-REC takes: [16]
 \ its length, with DNAME-EXT for a long one; [24] and [32] the bytes inline,
@@ -4707,7 +4708,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
    RAX R8 REC-WID MOV-LOAD,
-   LIVE-NAMESPACE,
+   SEAL-TRAP-LBL LIVE-NAMESPACE,
    RAX R8 REC-CODE CELL + MOV-LOAD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
    R8 WRITE-ALIAS,
@@ -4762,10 +4763,11 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ src/habu/prims.f states its contract.
 : PACKAGE-SCOPE-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: set:label scan:label part:label top:label store:label done:label :}
+   X64CODE:LBL
+   {: bad:label set:label scan:label part:label top:label store:label done:label :}
    RDX POP,  RCX POP,                                 \ the parent wid, the row
    RCX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE set JCC,
-   RDX RDX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,  \ only `-1 0` clears
+   RDX RDX ASM-SINK ENC-TEST-RR  C-NE bad JCC,  \ only `-1 0` clears
    RAX ZERO-REG,
    RAX PKG-PUB-CELL CELL!,  RAX PKG-PRI-CELL CELL!,
    RAX PKG-PARENT-CELL CELL!,  RAX PKG-REC-CELL CELL!,
@@ -4773,12 +4775,12 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX ENCLOSING:PARENT CELL!,  RAX ENCLOSING:REC CELL!,
    done JMP,
    set X64CODE:LBL,
-   RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE bad JCC,
    RCX RECORD-AT,
    RAX R8 REC-WID MOV-LOAD,
-   LIVE-NAMESPACE,
+   bad LIVE-NAMESPACE,
    R9 R8 REC-CODE CELL + MOV-LOAD,                    \ r9 = the private wid
-   R9 R9 ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E bad JCC,
    R8 RSI RAX NAME-LEN,  R8 RDI RAX NAME-AT,
    RCX ZERO-REG,
    scan X64CODE:LBL,
@@ -4789,9 +4791,9 @@ $3A constant NAME-COLON                \ a qualified name's separator
    scan JMP,
    part X64CODE:LBL,
    RAX PKG-PUB-CELL CELL@,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,  \ no package open
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E bad JCC,  \ no package open
    RAX ENCLOSING:PUB CELL@,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC, \ a part is open
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE bad JCC, \ a part is open
    RAX PKG-PUB-CELL CELL@,  RAX ENCLOSING:PUB CELL!,
    RAX PKG-PRI-CELL CELL@,  RAX ENCLOSING:PRI CELL!,
    RAX PKG-PARENT-CELL CELL@,  RAX ENCLOSING:PARENT CELL!,
@@ -4805,6 +4807,10 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX R8 REC-CODE MOV-LOAD,
    RAX PKG-PUB-CELL CELL!,  R9 PKG-PRI-CELL CELL!,
    RDX PKG-PARENT-CELL CELL!,  R8 PKG-REC-CELL CELL!,
+   done JMP,
+   bad X64CODE:LBL,
+   s" E-SEAL-VIOLATION habu: package-scope! row not a live package row below NDICT with a private wordlist, a part outside a package or inside a part, or -1 with a parent"
+   EXIT-STATUS:SEAL-VIOLATION X64CRASH:DIE-LINE,
    done X64CODE:LBL, ;
 
 \ def-open ( ^u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
@@ -4955,7 +4961,7 @@ variable REPLAY-TRAP-CELL
    REPLAY-REQUIRED,
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
-   RAX R8 REC-WID MOV-LOAD,  LIVE-NAMESPACE,
+   RAX R8 REC-WID MOV-LOAD,  SEAL-TRAP-LBL LIVE-NAMESPACE,
    R9 R8 REC-CODE CELL + MOV-LOAD,
    R10 R10 ASM-SINK ENC-TEST-RR  C-NE give JCC,
    RAX REPLAY-SCOPE:WIDN CELL@,
