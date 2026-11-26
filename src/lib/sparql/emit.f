@@ -103,7 +103,15 @@
 \
 \ A query that GROUP BY or an aggregate groups reads its groups, a derived
 \ table grouped on its keys' anchors, native where native, whose columns
-\ hold the aggregates and whose HAVING holds its conditions. Where the
+\ hold the aggregates and whose HAVING holds its conditions. SUM, AVG,
+\ MIN and MAX without DISTINCT of a variable bound always to a column of
+\ a numeric shape holding xsd:integer and xsd:decimal, and MIN and MAX of
+\ one of a text shape holding xsd:string, aggregate the column: SUM and
+\ AVG are sparql.number of its sum and of that over the count, in SPARQL's
+\ datatype, an integer 0 for no solution, and MIN and MAX the shape's
+\ `out` of its min or max, text compared COLLATE "C". Any other goes
+\ through sparql.aggregate over array_agg of its operand's terms,
+\ DISTINCT and GROUP_CONCAT always. Where the
 \ grouped solutions are one union's of two or more branches and no key or
 \ aggregate calls EXISTS, each branch groups on its own as the union's
 \ columns present it. Where a GROUP BY variable binds each branch always
@@ -113,15 +121,16 @@
 \ without DISTINCT and every GROUP BY key binds a variable, the branches'
 \ partial groups regroup: COUNT sums its counts, 0 for none; MIN and MAX
 \ take the first of their partials in ORDER BY's order, which an unbound
-\ leads as in the whole, and SAMPLE any bound one; a branch with no
-\ solution keeps no partial. SUM and AVG add doubles one by one, so
+\ leads as in the whole, or where the union's column is native the min
+\ or max of their native partials, and SAMPLE any bound one; a branch
+\ with no solution keeps no partial. SUM and AVG add doubles one by one, so
 \ regrouping changes their answer, and DISTINCT meets across branches:
 \ those group the whole union. A trailing VALUES joins the solutions that
 \ leaves. SELECT's expressions bind as
 \ BIND's do, over the solutions, each a maybe binding but an always bound
-\ aggregate's: COUNT's, and with GROUP BY, whose every group has a
-\ solution, MIN's, MAX's or SAMPLE's of a variable the grouped solutions
-\ bind always. DISTINCT groups the projected columns. ORDER BY's keys
+\ aggregate's: COUNT's, a native SUM's, and with GROUP BY, whose every
+\ group has a solution, MIN's, MAX's or SAMPLE's of a variable the
+\ grouped solutions bind always. DISTINCT groups the projected columns. ORDER BY's keys
 \ number the solutions, and the number orders the slice, the running byte
 \ total and the document. The projection is one derived table, which the
 \ document or a subquery reads.
@@ -223,10 +232,13 @@ STRUCTURE item DERIVE addr
 
 \ An aggregate call node and its SQL: the aggregate inside the grouped
 \ query, its column above it; always when no group leaves it unbound.
+\ native is the shape whose column the call reads natively over the
+\ grouped solutions, else -1.
 STRUCTURE aggregate DERIVE addr
    FIELD node n
    FIELD sql str
    FIELD always bool
+   FIELD native n
 ;STRUCTURE
 
 \ What a term's text says: whether the term is an IRI and, if not, its
@@ -3384,11 +3396,123 @@ STRUCTURE walk DERIVE addr
    sep 0= if s" NULL::text" exit then
    plan plan TREE sep TEXT$ TEXT-ARG ;
 
-\ The aggregate call over the relation: COUNT is count; any other goes
-\ through sparql.aggregate over array_agg of its operand's terms.
+\ Whether one of the datatypes is d.
+: HELD$? ( ^VEC:vector<datatype> str -- bool )
+   {: list:^ d:str :}
+   list VEC:COUNT 0 ?do
+      list i VEC:AT DATATYPE-IRI @ d STR:= if true unloop exit then
+   loop false ;
+
+\ Whether the datatypes are iri and other alone.
+: ONLY$? ( ^VEC:vector<datatype> str str -- bool )
+   {: list:^ iri:str other:str :}
+   list VEC:COUNT 0 ?do
+      list i VEC:AT DATATYPE-IRI @ {: d:str :}
+      d iri STR:= d other STR:= or 0= if false unloop exit then
+   loop list iri HELD$? list other HELD$? and ;
+
+\ Whether shape k has type t and holds iri and other literals alone.
+: CLASS? ( ^plan n str str str -- bool )
+   {: plan k:n t:str iri:str other:str :}
+   plan k SHAPE@ {: y:^ :}
+   y SHAPE-TYPE @ t STR:=CI 0= if false exit then
+   y SHAPE-HOLDS @ MATCH holds
+      any OF false ENDOF
+      uris OF false ENDOF
+      literals OF iri other ONLY$? ENDOF
+   ;MATCH ;
+
+\ Whether shape k holds xsd:integer and xsd:decimal, its values numeric.
+\ A float or double column stays generic: its native sum raises on
+\ overflow, where sparql.aggregate answers unbound, and its min and max do
+\ not tell -0 from 0, which ORDER BY's order does.
+: NUMBERS? ( ^plan n -- bool )
+   s" numeric" s" http://www.w3.org/2001/XMLSchema#integer"
+   s" http://www.w3.org/2001/XMLSchema#decimal" CLASS? ;
+
+\ Whether shape k holds strings, its values text.
+: STRINGS? ( ^plan n -- bool )
+   s" text" s" http://www.w3.org/2001/XMLSchema#string"
+   s" http://www.w3.org/2001/XMLSchema#string" CLASS? ;
+
+\ The binding in r of the call's operand, a variable r binds.
+: OPERAND-BINDING ( ^plan ^relation n -- ^binding )
+   {: plan r:^ call:n :}
+   plan TREE {: state :}
+   r RELATION-BINDINGS @ {: bs:^ :}
+   bs bs plan state state call NODE-A@ NODE-A@ VAR FIND-VAR VEC:AT ;
+
+\ The shape the call reads natively over r, else -1: SUM, AVG, MIN or
+\ MAX without DISTINCT of a variable r binds always to a column of a
+\ NUMBERS? shape, or MIN or MAX of a STRINGS? one.
+: NATIVE-SHAPE ( ^plan ^relation n -- n )
+   {: plan r:^ call:n :}
+   plan TREE {: state :}
+   state call NODE NODE-FLAGS @ F-DISTINCT and 0<> if -1 exit then
+   state call s" SUM AVG MIN MAX" CALL-IN? 0= if -1 exit then
+   plan r state state call NODE-A@ NODE-A@ BOUND? 0= if -1 exit then
+   plan r call OPERAND-BINDING BINDING-SHAPE @ {: k:n :}
+   k 0< if -1 exit then
+   plan k NUMBERS? if k exit then
+   state call s" MIN MAX" CALL-IN? plan k STRINGS? and if k exit then
+   -1 ;
+
+\ SUM over column c: its datatype decimal where a value has a fractional
+\ digit, else integer, and 0 for none.
+: SUM$ ( ^plan str -- str )
+   {: plan c:str :}
+   plan NEW-SQL {: v:^ :}
+   v s" sparql.number(coalesce(" +SQL v s" sum" c +CALL
+   v s" ,0),CASE WHEN max(" +SQL v s" min_scale" c +CALL
+   v s" )>0 THEN 'decimal' ELSE 'integer' END)" +SQL v VEC:BYTES ;
+
+\ AVG over column c as sparql.aggregate answers it: the sum's canonical
+\ value over the count, unbound where the sum's text is past the 16,383
+\ bytes sparql.numeric reads, an integer 0 for no value.
+: AVG$ ( ^plan str -- str )
+   {: plan c:str :}
+   plan NEW-SQL {: n:^ :} n s" count" c +CALL
+   n VEC:BYTES {: cnt:str :}
+   plan NEW-SQL {: t:^ :} t s" sum" c +CALL
+   t VEC:BYTES {: total:str :}
+   plan NEW-SQL {: v:^ :}
+   v s" sparql.number(CASE WHEN " +SQL v cnt +SQL
+   v s" =0 THEN 0 WHEN octet_length(" +SQL
+   v s" sparql.format_decimal" total +CALL
+   v s" )<=16383 THEN " +SQL v s" trim_scale" total +CALL
+   v s" /" +SQL v cnt +SQL v s"  END,CASE WHEN " +SQL v cnt +SQL
+   v s" =0 THEN 'integer' ELSE 'decimal' END)" +SQL v VEC:BYTES ;
+
+\ The call's min or max of column c of shape k, text by code point.
+: EXTREME$ ( ^plan n n str -- str )
+   {: plan call:n k:n c:str :}
+   plan NEW-SQL {: v:^ :}
+   plan TREE call s" MIN" CALL-IS? {: least:bool :}
+   least if v s" min(" +SQL else v s" max(" +SQL then
+   v c +SQL
+   plan k STRINGS? if v s\"  COLLATE \"C\"" +SQL then
+   v s" )" +SQL v VEC:BYTES ;
+
+\ The call over column c of shape k, as NATIVE-SHAPE found it.
+: NATIVE$ ( ^plan n n str -- str )
+   {: plan call:n k:n c:str :}
+   plan TREE {: state :}
+   state call s" SUM" CALL-IS? if plan c SUM$ exit then
+   state call s" AVG" CALL-IS? if plan c AVG$ exit then
+   plan call k c EXTREME$ {: e:str :}
+   plan NEW-SQL {: v:^ :}
+   v plan k SHAPE@ SHAPE-OUT @ e +CALL v VEC:BYTES ;
+
+\ The aggregate call over the relation: COUNT is count, a NATIVE-SHAPE
+\ one native; any other goes through sparql.aggregate over array_agg of
+\ its operand's terms.
 : AGGREGATE$ ( ^plan ^relation n -- str )
    {: plan r:^ call:n :}
    plan TREE {: state :}
+   plan r call NATIVE-SHAPE {: k:n :}
+   k -1 > if
+      plan call k plan r call OPERAND-BINDING BINDING-SQL @ NATIVE$ exit
+   then
    state call NODE NODE-FLAGS @ F-DISTINCT and 0<> {: unique:bool :}
    plan NEW-SQL {: v:^ :}
    state call s" COUNT" CALL-IS? if
@@ -3407,6 +3531,9 @@ STRUCTURE walk DERIVE addr
    {: plan query:n r:^ call:n :}
    plan TREE {: state :}
    state call s" COUNT" CALL-IS? if true exit then
+   state call s" SUM" CALL-IS? plan r call NATIVE-SHAPE -1 > and if
+      true exit
+   then
    state query GROUP-BY-NODE 0= if false exit then
    state call s" MIN MAX SAMPLE" CALL-IN? 0= if false exit then
    plan r state state call NODE-A@ NODE-A@ BOUND? ;
@@ -3422,6 +3549,7 @@ STRUCTURE walk DERIVE addr
       as VEC:PUSH {: a:^ :}
       call a AGGREGATE-NODE ! sql a AGGREGATE-SQL !
       plan query r call BOUND-CALL? a AGGREGATE-ALWAYS !
+      plan r call NATIVE-SHAPE a AGGREGATE-NATIVE !
       state list NODE-B@
    repeat drop as plan PLAN-AGGREGATES ! ;
 
@@ -3551,9 +3679,13 @@ STRUCTURE walk DERIVE addr
    then
    plan r g keys having GROUPS-FROM ;
 
-\ The aggregate call over u; when partial, COUNT's bare count.
-: PART$ ( ^plan ^relation n bool -- str )
-   {: plan u:^ call:n partial:bool :}
+\ The aggregate call over u; when partial, COUNT's bare count and the
+\ native min or max of a call native in shape k.
+: PART$ ( ^plan ^relation n bool n -- str )
+   {: plan u:^ call:n partial:bool k:n :}
+   partial k -1 > and if
+      plan call k plan u call OPERAND-BINDING BINDING-SQL @ EXTREME$ exit
+   then
    partial plan TREE call s" COUNT" CALL-IS? and 0= if
       plan u call AGGREGATE$ exit
    then
@@ -3566,7 +3698,8 @@ STRUCTURE walk DERIVE addr
    plan PLAN-AGGREGATES @ {: as:^ :}
    as VEC:COUNT 0 ?do
       as i VEC:AT {: a:^ :}
-      plan u a AGGREGATE-NODE @ partial PART$ a AGGREGATE-SQL !
+      plan u a AGGREGATE-NODE @ partial a AGGREGATE-NATIVE @ PART$
+      a AGGREGATE-SQL !
    loop ;
 
 \ Appends branch b's groups, b as the union of r's columns presents it;
@@ -3593,10 +3726,12 @@ STRUCTURE walk DERIVE addr
    loop ;
 
 \ The aggregate call over the partials in column c: the sum of COUNT's
-\ counts, else the aggregate of the partial terms.
-: COMBINED$ ( ^plan n str -- str )
-   {: plan call:n c:str :}
+\ counts, the min or max of the native partials of a call native in
+\ shape k, else the aggregate of the partial terms.
+: COMBINED$ ( ^plan n str n -- str )
+   {: plan call:n c:str k:n :}
    plan TREE {: state :}
+   k -1 > if plan call k c NATIVE$ exit then
    plan NEW-SQL {: v:^ :}
    state call s" COUNT" CALL-IS? if
       v s" sparql.number(coalesce(sum(" +SQL v c +SQL
@@ -3612,8 +3747,8 @@ STRUCTURE walk DERIVE addr
    plan PLAN-AGGREGATES @ {: as:^ :}
    as VEC:COUNT 0 ?do
       as i VEC:AT {: a:^ :}
-      plan a AGGREGATE-NODE @ a AGGREGATE-SQL @ COMBINED$
-      a AGGREGATE-SQL !
+      plan a AGGREGATE-NODE @ a AGGREGATE-SQL @ a AGGREGATE-NATIVE @
+      COMBINED$ a AGGREGATE-SQL !
    loop ;
 
 \ The groups of r's branches, each grouped on its own, HAVING over them.

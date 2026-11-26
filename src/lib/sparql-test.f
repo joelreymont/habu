@@ -984,6 +984,112 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" {'head':{'vars':['m']},'results':{'bindings':[{}]}}"
    EXPECT ;
 
+\ Numbers by subject: whole and fractional, wide, long fractions, scales
+\ apart.
+: EDGE-NUMBERS ( -- str )
+   s" (SELECT * FROM (VALUES (1::bigint,1::numeric),(1,2.5),(1,-3),(2,4),(2,6.000),(3,1e30),(3,0.1),(3,-0.1),(6,1),(6,2),(6,2),(7,0.3333333333333333333333333),(7,1),(8,1.50),(8,2.50)) t(s,x))" ;
+
+: MORE-NUMBERS ( -- str )
+   s" (SELECT * FROM (VALUES (1::bigint,-7.25::numeric),(2,10),(10,0.5)) t(s,x))" ;
+
+\ Strings by subject that order by code point: cases, an accent, the
+\ empty string, a character past U+FFFF.
+: EDGE-STRINGS ( -- str )
+   s" (SELECT * FROM (VALUES (1::bigint,$$b$$),(1,$$B$$),(1,$$é$$),(1,$$a$$),(2,$$$$),(2,$$😀$$),(2,$$z$$)) t(s,x))" ;
+
+: MORE-STRINGS ( -- str )
+   s" (SELECT * FROM (VALUES (1::bigint,$$A$$),(3,$$c$$)) t(s,x))" ;
+
+\ Appends a source of from's rows, predicate t:n, objects of the shape.
+: +EDGE ( str str str ^VEC:vector<u8> -- )
+   {: from:str n:str shape:str out:^ :}
+   s" {'from':'" out VEC:APPEND from out VEC:APPEND
+   s" ','graph':null,'s':{'col':'s','shape':'id'},'p':{'term':{'type':'uri','value':'urn:test:" out VEC:APPEND
+   n out VEC:APPEND s" '}},'o':{'col':'x','shape':'" out VEC:APPEND
+   shape out VEC:APPEND s" '}}" out VEC:APPEND ;
+
+\ t:97 holds EDGE-NUMBERS, t:95 them and MORE-NUMBERS, t:94 them of shape
+\ `decimal`, t:96 EDGE-STRINGS, t:98 them and MORE-STRINGS.
+: EDGE-SOURCES ( ^ARENA:arena -- ^VEC:vector<u8> )
+   {: a:^ :}
+   a TEXT-VEC {: out:^ :}
+   s" [" out VEC:APPEND
+   EDGE-NUMBERS s" 97" s" number" out +EDGE s" ," out VEC:APPEND
+   EDGE-NUMBERS s" 95" s" number" out +EDGE s" ," out VEC:APPEND
+   MORE-NUMBERS s" 95" s" number" out +EDGE s" ," out VEC:APPEND
+   EDGE-NUMBERS s" 94" s" decimal" out +EDGE s" ," out VEC:APPEND
+   EDGE-STRINGS s" 96" s" string" out +EDGE s" ," out VEC:APPEND
+   EDGE-STRINGS s" 98" s" string" out +EDGE s" ," out VEC:APPEND
+   MORE-STRINGS s" 98" s" string" out +EDGE s" ]" out VEC:APPEND
+   out $ a UNQUOTE ;
+
+: TYPED-SQL ( -- str )
+   s" select jsonb_set(s,'{sources}',$1::jsonb)::text from sparql_test.store(1048576) s" ;
+
+: UNTYPED-SQL ( -- str )
+   s" select jsonb_set(jsonb_set(s,'{sources}',$1::jsonb),'{shapes}',(select jsonb_object_agg(k,v-'type') from jsonb_each(s->'shapes') e(k,v)))::text from sparql_test.store(1048576) s" ;
+
+\ The description of EDGE-SOURCES that the statement sql answers.
+: EDGE-STORE ( str ^ARENA:arena -- ^VEC:vector<u8> )
+   {: sql:str a:^ :}
+   a TEXT-VEC {: out:^ :}
+   sql a EDGE-SOURCES $ out RUN-TEXT TTRUE out ;
+
+: TYPED-IN ( str bool ^ARENA:arena -- )
+   {: q:str generic:bool a:^ :}
+   TYPED-SQL a EDGE-STORE {: typed:^ :}
+   UNTYPED-SQL a EDGE-STORE {: plain:^ :}
+   q typed a ANSWER-ON {: tsql:^ tdoc:^ :}
+   q plain a ANSWER-ON {: psql:^ pdoc:^ :}
+   tsql $ s" sparql.aggregate(" STR:CONTAINS? generic xor TFALSE
+   psql $ s" sparql.aggregate(" STR:CONTAINS? TTRUE
+   tdoc $ pdoc $ a false SAME? dup TTRUE
+   0= if tdoc $ type cr pdoc $ type cr then ;
+
+\ The query answers alike on EDGE-SOURCES with and without the shapes'
+\ `type`; with it, its statement calls sparql.aggregate when generic.
+: TYPED ( str bool -- ) [: TYPED-IN ;] ARENA:WITH ;
+
+\ SUM, AVG, MIN and MAX of a numeric column and MIN and MAX of a text
+\ one aggregate natively, alone, in a union's groups and regrouped from
+\ a union's partials.
+: TYPED-AGGREGATES ( -- )
+   s" SELECT ?s (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x } GROUP BY ?s"
+   false TYPED
+   s" SELECT (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x }"
+   false TYPED
+   s" SELECT (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x }"
+   false TYPED
+   s" SELECT (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:97 ?x FILTER(?s = t:99) }"
+   false TYPED
+   \ A native SUM is always bound: it meets the column as a term.
+   s" SELECT ?s WHERE { { SELECT (SUM(?x) AS ?t) WHERE { ?r t:97 ?x FILTER(?r = t:6) } } ?s t:97 ?t }"
+   false TYPED
+   s" SELECT ?s (SUM(?x) AS ?t) (AVG(?x) AS ?a) (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:95 ?x } GROUP BY ?s"
+   false TYPED
+   s" SELECT ?s (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) (COUNT(*) AS ?n) WHERE { ?s t:95 ?x } GROUP BY ?s"
+   false TYPED
+   s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:95 ?x }"
+   false TYPED
+   s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:95 ?x FILTER(?s = t:99) }"
+   false TYPED
+   s" SELECT ?s (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:96 ?x } GROUP BY ?s"
+   false TYPED
+   s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:96 ?x }"
+   false TYPED
+   s" SELECT ?s (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:98 ?x } GROUP BY ?s"
+   false TYPED
+   s" SELECT (MIN(?x) AS ?lo) (MAX(?x) AS ?hi) WHERE { ?s t:98 ?x FILTER(?s = t:99) }"
+   false TYPED
+   \ DISTINCT, SUM of strings, GROUP_CONCAT and a shape holding xsd:decimal
+   \ alone stay generic.
+   s" SELECT ?s (SUM(?x) AS ?t) WHERE { ?s t:94 ?x } GROUP BY ?s"
+   true TYPED
+   s" SELECT ?s (SUM(DISTINCT ?x) AS ?t) (MIN(DISTINCT ?x) AS ?lo) WHERE { ?s t:97 ?x } GROUP BY ?s"
+   true TYPED
+   s" SELECT ?s (SUM(?x) AS ?t) (GROUP_CONCAT(?x) AS ?c) WHERE { ?s t:96 ?x } GROUP BY ?s"
+   true TYPED ;
+
 \ A union grouped branch by branch answers as the whole union does when a
 \ branch has an error or no solution. STRLEN of an IRI is an error.
 : BRANCH-GROUPING ( -- )
@@ -1166,7 +1272,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    SUBJECT-ROWS FILTERS FILTER-EQUALITIES GRAPHS NAMED-GRAPHS OPTIONALS
    UNIONS MINUSES FILTER-EXISTS
    SUBSTITUTIONS MANY CONSTANTS WIDE FORMS
-   PROJECTIONS GROUPING AGGREGATES BRANCH-GROUPING ORDERS DISTINCTS
+   PROJECTIONS GROUPING AGGREGATES TYPED-AGGREGATES BRANCH-GROUPING
+   ORDERS DISTINCTS
    SUBQUERIES
    BINDS CHAINS UUIDS VOLATILE-BINDS DATA-BLOCKS PATHS ;
 

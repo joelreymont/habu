@@ -1,12 +1,18 @@
 \ store.f - the store description a host passes with each query, read
 \ into the records the compiler walks. The description is a JSON object:
 \ `bytes`, a whole number above 0, the answer's limit; `shapes`, an object
-\ naming each shape `{"in": f, "out": f, "holds": h}`, f a SQL function
-\ called as f(x), `in` from a term to the shape's native value, NULL for
-\ every term outside `holds`, and `out` back, and h, optional, "uri" or an
-\ array of datatype IRIs (a plain literal's is xsd:string, a language-tagged
-\ one's rdf:langString), absent for any term; or `{"within": name}`, a part
-\ of shape name, which is within none, taking its `in`, `out` and `holds`.
+\ naming each shape `{"in": f, "out": f, "holds": h, "type": t}`, f a SQL
+\ function called as f(x), `in` from a term to the shape's native value,
+\ NULL for every term outside `holds`, and `out` back, h, optional, "uri"
+\ or an array of datatype IRIs (a plain literal's is xsd:string, a
+\ language-tagged one's rdf:langString), absent for any term, and t,
+\ optional, a string, the SQL type of its native values, as a key set's
+\ `type` names its array's; or `{"within": name}`, a part of shape name,
+\ which is within none, taking its `in`, `out`, `holds` and `type`. A
+\ shape of type numeric holding xsd:integer and xsd:decimal holds the
+\ integer term for a whole value and the decimal one otherwise, so its
+\ values are finite, and their text is at most 16,383 bytes; one of type
+\ text holding xsd:string holds the plain literal of its text.
 \ Different shapes hold disjoint terms unless one is within the other;
 \ parts of one parent are disjoint. Optionally `keys`, an object naming
 \ each key set `{"type": t, "values": {i: a}}`, t a SQL array type and a,
@@ -60,6 +66,7 @@ STRUCTURE shape DERIVE addr
    FIELD in str
    FIELD out str
    FIELD holds holds
+   FIELD type str
    FIELD root n
 ;STRUCTURE
 
@@ -284,6 +291,13 @@ STRUCTURE term-members DERIVE addr
      some OF arena HOLDS-OF ENDOF
    ;MATCH ;
 
+\ The shape's `type`, empty when it has none.
+: READ-TYPE ( JSON:value ^ARENA:arena -- str ) {: v arena :}
+   v s" type" JSON:FIND MATCH option
+     none OF s" " ENDOF
+     some OF arena STRING$ ENDOF
+   ;MATCH ;
+
 \ A part's root stays -1 until RESOLVE-PART reads its parent.
 : ADD-SHAPE ( JSON:value JSON:value ^store ^ARENA:arena -- )
    {: name v store:^ arena :}
@@ -294,7 +308,8 @@ STRUCTURE term-members DERIVE addr
    shapes VEC:COUNT 1- row SHAPE-ROOT !
    v s" in" arena STRING-MEMBER$ row SHAPE-IN !
    v s" out" arena STRING-MEMBER$ row SHAPE-OUT !
-   v arena READ-HOLDS row SHAPE-HOLDS ! ;
+   v arena READ-HOLDS row SHAPE-HOLDS !
+   v arena READ-TYPE row SHAPE-TYPE ! ;
 
 \ Adds an IRI and its keys, a string, to the set.
 : ADD-MEMBER ( JSON:value JSON:value ^key-set ^ARENA:arena -- )
@@ -515,7 +530,7 @@ STRUCTURE term-members DERIVE addr
    v s" the name of a shape in `shapes`"
    s" declare the shape in `shapes` or name a declared one" JSON:REJECT ;
 
-\ A part takes its parent's in, out, holds and index as its root.
+\ A part takes its parent's in, out, holds, type and index as its root.
 : RESOLVE-PART ( JSON:value JSON:value ^store -- )
    {: name v store:^ :}
    v s" within" HAS? 0= if exit then
@@ -531,6 +546,7 @@ STRUCTURE term-members DERIVE addr
    parent SHAPE-IN @ row SHAPE-IN !
    parent SHAPE-OUT @ row SHAPE-OUT !
    parent SHAPE-HOLDS @ row SHAPE-HOLDS !
+   parent SHAPE-TYPE @ row SHAPE-TYPE !
    k row SHAPE-ROOT ! ;
 
 \ A slot's `col` or `term` beside `cols`, rejected at its value.

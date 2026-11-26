@@ -1,8 +1,9 @@
 -- host.sql - a mapped store for src/lib/sparql-test.f: schema sparql_test,
--- its tables, the shapes `id`, `string` and `number`, the key set
+-- its tables, the shapes `id`, `string`, `number` and `decimal`, the key set
 -- `predicates`, and sparql_test.store, the store description. Node n is the
 -- IRI urn:test:n; a number renders an integral value as xsd:integer and
--- others as canonical xsd:decimal. The parts `class` and `thing` of `id`
+-- others as canonical xsd:decimal; a decimal renders every value as
+-- canonical xsd:decimal. The parts `class` and `thing` of `id`
 -- hold node kinds and the subjects and objects of edge and value, which are
 -- never a kind.
 DROP SCHEMA IF EXISTS sparql_test CASCADE;
@@ -61,18 +62,40 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
                                 'datatype','http://www.w3.org/2001/XMLSchema#decimal']) END
 $$;
 
+-- Only the canonical lexical forms are in the shape, so `in` inverts `out`.
+CREATE FUNCTION sparql_test.decimal(term jsonb) RETURNS numeric
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT CASE WHEN term->>'type'='literal'
+                 AND term->>'datatype'='http://www.w3.org/2001/XMLSchema#decimal'
+                 AND term->>'value' ~ '^(-?(0|[1-9][0-9]*)\.[0-9]*[1-9]|-?[1-9][0-9]*\.0|0\.0)$'
+                THEN (term->>'value')::numeric END
+$$;
+
+CREATE FUNCTION sparql_test.decimal_term(value numeric) RETURNS jsonb
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT CASE WHEN value IS NOT NULL
+        THEN jsonb_object(ARRAY['type','literal','value',
+                                CASE WHEN value=trunc(value) THEN trunc(value)::text || '.0'
+                                     ELSE trim_scale(value)::text END,
+                                'datatype','http://www.w3.org/2001/XMLSchema#decimal']) END
+$$;
+
 CREATE FUNCTION sparql_test.store(bytes bigint DEFAULT 1048576) RETURNS jsonb
 LANGUAGE sql IMMUTABLE STRICT AS $$
 SELECT jsonb_build_object('bytes',bytes) || $store${
   "shapes": {
-    "id": {"in": "sparql_test.id", "out": "sparql_test.id_term", "holds": "uri"},
+    "id": {"in": "sparql_test.id", "out": "sparql_test.id_term", "holds": "uri",
+           "type": "bigint"},
     "class": {"within": "id"},
     "thing": {"within": "id"},
     "string": {"in": "sparql_test.string", "out": "sparql_test.string_term",
-               "holds": ["http://www.w3.org/2001/XMLSchema#string"]},
+               "holds": ["http://www.w3.org/2001/XMLSchema#string"], "type": "text"},
     "number": {"in": "sparql_test.number", "out": "sparql_test.number_term",
                "holds": ["http://www.w3.org/2001/XMLSchema#integer",
-                         "http://www.w3.org/2001/XMLSchema#decimal"]}},
+                         "http://www.w3.org/2001/XMLSchema#decimal"],
+               "type": "numeric"},
+    "decimal": {"in": "sparql_test.decimal", "out": "sparql_test.decimal_term",
+                "holds": ["http://www.w3.org/2001/XMLSchema#decimal"], "type": "numeric"}},
   "keys": {
     "predicates": {"type": "bigint[]",
       "values": {"urn:test:70": "{700,701}", "urn:test:71": "{710}"}}},
