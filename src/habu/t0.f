@@ -1343,6 +1343,8 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 
 \ A call spills first. A body's last token outside every structure tail-calls a callee in the code
 \ region; a unit that built a record calls instead, since a tail call would free the record's frame.
+\ A kernel callee stays a call: a jump there saves about 1 KB of 2.4 MB of code and would make a
+\ kernel build's code differ from an engine build's, so the two could not share start-up objects.
 : DO-CALL ( n n -- ) {: to:n loc:n :}
    SPILL-ALL
    CS-N @ 0= AT-END? and to NPUB:IN-REGION? and REC-NEXT @ 0= and if
