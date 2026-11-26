@@ -25,7 +25,8 @@ split-str
 \ is not a diagnosis anybody can use.
 \
 \ Report rows and a row's callers are selected by repeated maximum, not sorted:
-\ each pass takes the largest count below the one before it. No second array is
+\ each pass takes the largest count below the one before it, or the same count
+\ at a later position, so equal counts each print once. No second array is
 \ needed, and the counters are left exactly as they were, so a later prof-report
 \ says the same thing.
 \
@@ -339,10 +340,10 @@ public
 \ live across a printed column sits in x3-x7, x17 or x19-x25: x19 arena, x7
 \ band until the header has printed, x21 the row's index entry, x22 samples,
 \ x23/x24 the (count, entry) threshold the next row must fall under, x25 the
-\ row rank, x7 the row's exclusive count, x17 its record index, x6/x3 the
-\ caller threshold and rank. x20 is never written: a fault here must find the
-\ caller's DATA in it. x17, x19 and x21-x25 are saved and restored because the
-\ compiled callers own them.
+\ row rank, x7 the row's exclusive count, x17 its record index, x6/x4 the
+\ (count, slot) threshold the next caller must fall under, x3 the caller rank.
+\ x20 is never written: a fault here must find the caller's DATA in it. x17,
+\ x19 and x21-x25 are saved and restored because the compiled callers own them.
 : C-PROF-REP-OPEN ( -- )
    SP SP 96 SUBI,
    30 SP 0 STR,  19 SP 8 STR,  21 SP 24 STR,  22 SP 32 STR,
@@ -513,9 +514,9 @@ public
    C-PROF-NL ;
 
 : C-PROF-REP-CALLERS ( -- )
-   LBL LBL LBL LBL LBL LBL {: cr cl cnext cdone ctake crd :}
+   LBL LBL LBL LBL LBL LBL {: cr cl cnext cdone ccmp crd :}
    3 0 MOVZ,
-   6 0 MOVN,                                       \ threshold: nothing printed yet
+   6 0 MOVN,  4 0 MOVN,                            \ threshold: nothing printed yet
    cr LBL,
       3 PROF-CALLERS CMPI,  C-CS crd BCOND,
       15 0 MOVZ,  16 0 MOVZ,
@@ -527,13 +528,16 @@ public
          13 13 1 SUBI,  10 13 PROF-REC-BITS LSRI,  10 17 CMP,  C-NE cnext BCOND,
          13 13 PROF-REC-MASK ANDI,
          9 11 8 LDR,
-         9 6 CMP,  C-CS cnext BCOND,               \ at or above the threshold: printed
-         9 15 CMP,  C-LS cnext BCOND,
-         15 9 0 ADDI,  16 13 0 ADDI,
+         9 6 CMP,  C-HI cnext BCOND,               \ above the threshold: printed
+         C-NE ccmp BCOND,
+         11 4 CMP,  C-LS cnext BCOND,              \ the threshold slot itself, or before it
+         ccmp LBL,
+         9 15 CMP,  C-LS cnext BCOND,              \ same count, later slot: keep the first
+         15 9 0 ADDI,  16 13 0 ADDI,  14 11 0 ADDI,
          cnext LBL,  11 11 PROF-CALL-ENT ADDI,  12 12 1 SUBI,  cl B,
       cdone LBL,
       15 crd CBZ,                                  \ no caller edge left
-      6 15 0 ADDI,
+      6 15 0 ADDI,  4 14 0 ADDI,
       9 16 0 ADDI,  10 15 0 ADDI,
       C-PROF-REP-CALLER
       3 3 1 ADDI,  cr B,

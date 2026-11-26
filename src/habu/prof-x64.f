@@ -946,12 +946,13 @@ variable SESSION-CELL
 8 constant AT-EXCL                      \ the row's exclusive count
 16 constant AT-DENOM                    \ what its caller shares are of
 24 constant AT-RANK                     \ the caller rank
-32 constant AT-CAP                      \ the caller count the next line must fall under
-40 constant AT-REC                      \ the caller line's record, 0 for none
-48 constant AT-N                        \ the caller line's count
-56 constant AT-WORDS                    \ samples attributed to a word
-64 constant AT-ATTR                     \ profile IDs either count reached
-72 constant FRAME-BYTES
+32 constant AT-CAP                      \ the caller count the next line must fall under,
+40 constant AT-CAP-SLOT                 \ or match at a later edge slot than this one
+48 constant AT-REC                      \ the caller line's record, 0 for none
+56 constant AT-N                        \ the caller line's count
+64 constant AT-WORDS                    \ samples attributed to a word
+72 constant AT-ATTR                     \ profile IDs either count reached
+80 constant FRAME-BYTES
 
 : SLOT@, ( r64 n -- ) {: r:r64 off:n :}  r RSP off MEM-OFF LOAD, ;
 : SLOT!, ( r64 n -- ) {: r:r64 off:n :}  r RSP off MEM-OFF STORE, ;
@@ -1080,12 +1081,13 @@ variable SESSION-CELL
    NL, ;
 
 \ The row's top callers: at most PROF-CALLERS passes over the edge table, each
-\ taking the largest count below the one before it, the first slot on a tie:
-\ the twin of prof.f C-PROF-REP-CALLERS.
+\ taking the largest count below the one before it, or the same count at a
+\ later slot.
 : REP-CALLERS, ( -- )
    LBL LBL LBL LBL LBL {: rank:label scan:label next:label scanned:label done:label :}
+   LBL {: tie:label :}
    RAX ZERO-REG,  RAX AT-RANK SLOT!,
-   RAX ALL-ONES,  RAX AT-CAP SLOT!,                              \ nothing printed yet
+   RAX ALL-ONES,  RAX AT-CAP SLOT!,  RAX AT-CAP-SLOT SLOT!,      \ nothing printed yet
    rank LBL,
       RAX AT-RANK SLOT@,  RAX PROF-CALLERS >IMM8 ASM-SINK ENC-CMP-RI8  C-AE done JCC,
       R8 ZERO-REG,  R9 ZERO-REG,                                 \ the best count, its caller
@@ -1098,13 +1100,17 @@ variable SESSION-CELL
          RSI RBX CMP-REG,  C-NE next JCC,                        \ another word's edge
          RAX PROF-REC-MASK >IMM32 ASM-SINK ENC-AND-RI32
          RDI RCX CELL MEM-OFF LOAD,
-         RDI R11 CMP-REG,  C-AE next JCC,                        \ at or above the cap: printed
-         RDI R8 CMP-REG,  C-BE next JCC,
-         R8 RDI COPY,  R9 RAX COPY,
+         RDI R11 CMP-REG,  C-A next JCC,                         \ above the cap: printed
+         C-NE tie JCC,
+         RSI AT-CAP-SLOT SLOT@,
+         RCX RSI CMP-REG,  C-BE next JCC,                        \ the cap's slot itself, or before it
+         tie LBL,
+         RDI R8 CMP-REG,  C-BE next JCC,                         \ same count, later slot: keep the first
+         R8 RDI COPY,  R9 RAX COPY,  R10 RCX COPY,
       next LBL,  RCX PROF-CALL-ENT ADDI,  RDX DEC,  scan JMP,
       scanned LBL,
       R8 TEST,  C-E done JCC,                                    \ no caller edge left
-      R8 AT-CAP SLOT!,
+      R8 AT-CAP SLOT!,  R10 AT-CAP-SLOT SLOT!,
       REP-CALLER,
       RAX AT-RANK SLOT@,  RAX INC,  RAX AT-RANK SLOT!,
       rank JMP,

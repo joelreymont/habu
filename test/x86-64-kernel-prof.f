@@ -658,9 +658,10 @@ variable GOT-N
    0 G-PUSH  DEFAULT-RATE WANT ;
 
 \ State S's fields in the columns the host's reports print. (B, A) and (B, C)
-\ tie at 3, and the caller lines print one of two tied counts: the JSON names both.
+\ tie at 3, and each prints a caller line.
 : S-CALLERS, ( -- )
-   s" <-        3  42.8 " true HAS,
+   s" <-        3  42.8 prof-a" true HAS,
+   s" <-        3  42.8 X64K-PROF-Q:CALLER-WITH-A-LONG-NAME" true HAS,
    s" <-        1  14.2 (unknown)" true HAS, ;
 
 : S-B-ROW, ( -- )
