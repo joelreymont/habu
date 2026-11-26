@@ -370,6 +370,8 @@ require src/os/env-base.f
 \ JSON Pointers: -9870..-9879, minted in src/lib/json/pointer.f, a file of
 \ package JSON (src/lib/json.f).
 \ Enum tags: -9880..-9889, minted in src/core/sumtype.f (FAM:TAG>).
+\ Encoding Standard decoding: -9890..-9899, minted in src/lib/encoding/fault.f,
+\ part of package ENCODING.
 \ Extended attributes: -9900..-9909, minted in src/lib/xattr.f, which owns
 \ package XATTR.
 \ JSON Schema: -9910..-9919, minted in src/lib/json-schema.f, which owns
