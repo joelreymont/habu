@@ -2203,7 +2203,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    other CURL:CLEANUP
    1 STREAM-ACK atomic!
    subject STREAM-REMAINING
-   STREAM-DONE atomic@ 1 T=
+   [: STREAM-DONE atomic@ 1 = ;] TEST-WAIT:POLL
    STREAM-READ @ STREAM-U T=
    STREAM-GOT STREAM-U >str STREAM-BUF STREAM-U >str T$=
    STREAM-HEAD
@@ -2521,7 +2521,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
       TWO-TOOK @ 0= if TASK:WAIT then
       0 TWO-END @ 1 TWO-END @ and 0<>
    until
-   STREAM-DONE atomic@ 1 T=
+   [: STREAM-DONE atomic@ 1 = ;] TEST-WAIT:POLL
    0 TWO-READ @ STREAM-U T=
    0 TWO-BODY STREAM-U >str STREAM-BUF STREAM-U >str T$=
    1 TWO-BODY 1 TWO-READ @ >str HELLO$ T$=
