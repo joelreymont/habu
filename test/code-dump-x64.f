@@ -4,6 +4,8 @@
 require src/lib/test/assert.f
 require test/gate-common.f
 require src/arch/x86-64/disasm.f
+require src/habu/boot-cells.f
+require src/habu/code-bytes.f
 require tools/code-dump-core.f
 require src/lib/test/runner.f
 
@@ -131,13 +133,42 @@ private
       GE-CAPTURE-ACTION
    s" mov" s" exported alias shares the original code" GE-EXPECT-OUT-HAS ;
 
+\ A kernel record lies in the engine's text, below dbase@.
+: KERNEL-REC? ( ^n -- bool ) {: rec:^ :}
+   rec XREF-RETIRED? if false exit then
+   rec XREF-WORDLIST BOOT:NAMESPACE-WL = if false exit then
+   rec XREF-CODE-BYTES 0 > rec XREF-START dbase@ < and ;
+
+: SPAN-ALL ( str -- ) {: s:str :}
+   0 begin dup s STR:LEN < while
+      {: off:n :}
+      s STR:DATA off + s STR:LEN off - >str X64DIS:SPAN drop off +
+   repeat drop ;
+
+: REC-DECODES? ( ^n -- bool ) {: rec:^ :}
+   [: rec XREF-START rec XREF-CODE-BYTES CODE-BYTES:AT SPAN-ALL ;] catch 0= ;
+
+\ The first kernel record whose bytes are not all instructions, empty when
+\ every one decodes: data inside a record does not.
+: FIRST-UNDECODED ( -- str )
+   ndict@ 0 ?do
+      i XREF-REC {: rec:^ :}
+      rec KERNEL-REC? if
+         rec REC-DECODES? 0= if rec XREF-NAME$ unloop exit then
+      then
+   loop
+   s" " ;
+
+: CHECK-RECORDS ( -- )
+   FIRST-UNDECODED s" " T$= ;
+
 public
 : RUN ( -- )
    T-RESET
    s" code-dump-x64" GT-START
    GE-HB-RESET
    CHECK-MEM CHECK-MEM-WIDTH CHECK-FP CHECK-PREFIX CHECK-IMM CHECK-CONTROL
-   CHECK-REJECTIONS CHECK-LIVE
+   CHECK-REJECTIONS CHECK-LIVE CHECK-RECORDS
    GT-CLEANUP
    T-REPORT ;
 ;package

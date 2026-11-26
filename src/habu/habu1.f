@@ -38,6 +38,8 @@
 \ a BLOCKED set takes POSIX_SPAWN_SETSIGMASK with this thread's mask and that
 \ set.
 require src/core/exit-status.f
+require src/lib/arena.f
+require src/lib/vector.f
 require src/arch/arm64/icode.f
 require src/habu/primitive-registry.f
 require src/habu/data-claims.f
@@ -75,6 +77,37 @@ defer FP-EMIT ( -- )
 
 variable FPL  variable FPE
 
+\ A datum a body names: its label and the bytes laid there.
+STRUCTURE row-datum DERIVE addr
+   FIELD lbl label
+   FIELD text str
+;STRUCTURE
+
+\ A file link zeroes scratch cells after each piece, so the list is made when
+\ first needed, in an arena: a cross-build runs this file on its host.
+TYPED-VARIABLE ROW-DATA-VEC ^VEC:vector<row-datum> SCRATCH-ONLY
+
+: ROW-DATA-LIST ( -- ^VEC:vector<row-datum> )
+   ROW-DATA-VEC @ NULL-PTR = if
+      ARENA:NEW ARENA:ALLOCATOR 0 [type] row-datum VEC:NEW ROW-DATA-VEC !
+   then
+   ROW-DATA-VEC @ ;
+
+\ The body's bytes, laid at the label after its record.
+: ROW-DATA ( label str -- ) {: lbl:label text:str :}
+   ROW-DATA-LIST VEC:PUSH {: d:^ :}
+   lbl d ROW-DATUM-LBL !  text d ROW-DATUM-TEXT ! ;
+
+\ The record ends at FPE; the data its body named follows it.
+: FP-END ( -- )
+   FPE A64ICODE:LABEL@ A64ICODE:LBL,
+   ROW-DATA-LIST {: list:^ :}
+   list VEC:COUNT 0 ?do
+      list i VEC:AT {: d:^ :}
+      d ROW-DATUM-LBL @ A64ICODE:LBL,  d ROW-DATUM-TEXT @ A64ICODE:BYTES,
+   loop
+   list 0 VEC:RESIZE ;
+
 : FP-ARGS ( str [ -- ] -- )
    is FP-EMIT  FP-NAME !
    FP-NAME @ ENGINE-PRIMS:SPEC-CHECK ;
@@ -88,7 +121,7 @@ public
    A64ICODE:LBL FPL !  A64ICODE:LBL FPE !
    FP-REG
    FPL A64ICODE:LABEL@ A64ICODE:LBL,  A64ICODE:SP A64ICODE:SP 16 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,
-   FP-EMIT  30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 16 A64ICODE:ADDI,  A64ICODE:RET,  FPE A64ICODE:LABEL@ A64ICODE:LBL, ;
+   FP-EMIT  30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 16 A64ICODE:ADDI,  A64ICODE:RET,  FP-END ;
 
 \ FPRIM-L only for a body that emits no BL or BLR of its own; any other body
 \ uses FPRIM, whose frame preserves the caller's return address in x30.
@@ -96,7 +129,7 @@ public
    FP-ARGS
    A64ICODE:LBL FPL !  A64ICODE:LBL FPE !
    FP-REG
-   FPL A64ICODE:LABEL@ A64ICODE:LBL,  FP-EMIT  A64ICODE:RET,  FPE A64ICODE:LABEL@ A64ICODE:LBL, ;
+   FPL A64ICODE:LABEL@ A64ICODE:LBL,  FP-EMIT  A64ICODE:RET,  FP-END ;
 
 \ label ids (forward refs)
 variable LFIND  variable LNUM  variable LDICT
@@ -3296,7 +3329,7 @@ private
    bad A64ICODE:LBL,
       0 2 A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 text STR:LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
       0 EXIT-STATUS:REJECTED A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-   msg A64ICODE:LBL,  text A64ICODE:BYTES,
+   msg text ROW-DATA
    done A64ICODE:LBL, ;
 
 \ The same readiness supplies the live tick gate and the verifier's entry
@@ -3374,8 +3407,7 @@ private
    emit A64ICODE:LBL,
       0 2 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
       0 EXIT-STATUS:REJECTED A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-   msg A64ICODE:LBL,  text A64ICODE:BYTES,
-   invalid-msg A64ICODE:LBL,  invalid-text A64ICODE:BYTES,
+   msg text ROW-DATA  invalid-msg invalid-text ROW-DATA
    done A64ICODE:LBL, ;
 ;package
 

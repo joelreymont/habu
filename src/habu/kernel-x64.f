@@ -16,6 +16,7 @@
 \ (proc-watch.f, proc-control.f) load here globally, so this file loads before
 \ any file that loads the seam into a private wordlist, as boot-x64.f does.
 require src/core/exit-status.f
+require src/lib/arena.f
 require src/lib/vector.f
 require src/lib/string.f
 require src/habu/prof-x64.f
@@ -127,21 +128,51 @@ variable ROW-U
    name STR:DATA ROW-A !  name STR:LEN ROW-U !
    ROW$ ENGINE-PRIMS:SPEC-CHECK ;
 
-\ The record spans [first, last): the body and the ret after it.
+\ A datum a body names: its label and the bytes laid there.
+STRUCTURE row-datum DERIVE addr
+   FIELD lbl label
+   FIELD text str
+;STRUCTURE
+
+\ A file link zeroes scratch cells after each piece, so the list is made when
+\ first needed, in an arena: a cross-build runs this file on its host.
+TYPED-VARIABLE ROW-DATA-VEC ^VEC:vector<row-datum> SCRATCH-ONLY
+
+: ROW-DATA-LIST ( -- ^VEC:vector<row-datum> )
+   ROW-DATA-VEC @ NULL-PTR = if
+      ARENA:NEW ARENA:ALLOCATOR 0 [type] row-datum VEC:NEW ROW-DATA-VEC !
+   then
+   ROW-DATA-VEC @ ;
+
+\ The body's bytes, laid at the label after its record.
+: ROW-DATA ( label str -- ) {: lbl:label text:str :}
+   ROW-DATA-LIST VEC:PUSH {: d:^ :}
+   lbl d ROW-DATUM-LBL !  text d ROW-DATUM-TEXT ! ;
+
+: ROW-DATA, ( -- )
+   ROW-DATA-LIST {: list:^ :}
+   list VEC:COUNT 0 ?do
+      list i VEC:AT {: d:^ :}
+      d ROW-DATUM-LBL @ X64CODE:LBL,  d ROW-DATUM-TEXT @ X64CODE:BYTES,
+   loop
+   list 0 VEC:RESIZE ;
+
+\ The record spans [first, last): the body and the ret after it. The data the
+\ body named follows last.
 : EMIT-ROW ( -- )
    X64CODE:LBL X64CODE:LBL {: first:label last:label :}
    ROW$ first last ENGINE-PRIMS:ADD drop
-   first X64CODE:LBL,  BODY  X64CODE:RET,  last X64CODE:LBL, ;
+   first X64CODE:LBL,  BODY  X64CODE:RET,  last X64CODE:LBL,  ROW-DATA, ;
 
 : STDERR-WRITE, ( label n -- ) {: msg:label len:n :}
    X64ASM:RDI STDERR IMM32,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX len IMM32,  NR-WRITE SYS, ;
 
-\ The text follows the exit, inside the record.
+\ The text follows the record.
 : STDERR-EXIT, ( str n -- ) {: t:str rc:n :}
    X64CODE:LBL {: msg:label :}
    msg t STR:LEN STDERR-WRITE,
    rc EXIT-GROUP,
-   msg X64CODE:LBL,  t X64CODE:BYTES, ;
+   msg t ROW-DATA ;
 
 public
 
@@ -251,8 +282,7 @@ CELL 4 * constant DIAG-BYTES
    X64ASM:RDI STDERR IMM32,  NR-WRITE SYS,
    noline colon SOURCE-LINE,
    noline X64CODE:LBL,  colon 2 STDERR-WRITE,
-   done X64CODE:JMP,
-   colon X64CODE:LBL,  s" : " X64CODE:BYTES,
+   colon s" : " ROW-DATA
    done X64CODE:LBL, ;
 
 \ (GENIO-OUT) ( rdi = device index, rsi = span, rdx = length ): the output
@@ -3807,12 +3837,22 @@ variable MARK-CELL
    known X64CODE:LBL,
    X64ASM:R9 SHA256-YES X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI8  X64ASM:C-NE none X64CODE:JCC, ;
 
-\ The constants, two words to a cell, then PSHUFB's byte swap of four words.
-: SHA256-TABLE, ( -- )
+\ The constants, two words to a cell, then PSHUFB's byte swap of four words:
+\ 34 little-endian cells.
+34 CELL * constant SHA256-TABLE-LEN
+SHA256-TABLE-LEN BUFFER: SHA256-TABLE
+
+: TABLE-CELL! ( n n -- ) {: v:n k:n :}
+   8 0 ?do  v i 8 * rshift $FF and  SHA256-TABLE k CELL * i + + c!  loop ;
+
+: SHA256-TABLE-FILL ( -- )
    32 0 ?do
-      KK i 2 * cells + @  KK i 2 * 1+ cells + @ 32 lshift or  X64CODE:U64,
+      KK i 2 * cells + @  KK i 2 * 1+ cells + @ 32 lshift or  i TABLE-CELL!
    loop
-   $0405060700010203 X64CODE:U64,  $0C0D0E0F08090A0B X64CODE:U64, ;
+   $0405060700010203 32 TABLE-CELL!  $0C0D0E0F08090A0B 33 TABLE-CELL! ;
+SHA256-TABLE-FILL
+
+: SHA256-TABLE-BYTES ( -- str ) SHA256-TABLE SHA256-TABLE-LEN >str ;
 
 16 constant XMM-BYTES
 64 4 * constant SHA256-SWAP
@@ -3890,7 +3930,7 @@ variable MARK-CELL
    X64ASM:R10 X64CODE:ASM-SINK X64ASM:ENC-DEC  X64ASM:C-NE next X64CODE:JCC,
    SHA256-STORE,
    done X64CODE:JMP,
-   table X64CODE:LBL,  SHA256-TABLE,
+   table SHA256-TABLE-BYTES ROW-DATA
    none X64CODE:LBL,  X64ASM:RDX ZERO-REG,
    done X64CODE:LBL,  X64ASM:RDX PUSH, ;
 
@@ -5285,8 +5325,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    SOURCE-PLACE,
    msg DOES-NONE$ STR:LEN STDERR-WRITE,
    X64ASM:RAX 70 IMM32,  THROW,
-   class X64CODE:LBL,  DOES-NONE-CLASS$ X64CODE:BYTES,
-   msg X64CODE:LBL,  DOES-NONE$ X64CODE:BYTES,
+   class DOES-NONE-CLASS$ ROW-DATA  msg DOES-NONE$ ROW-DATA
    have X64CODE:LBL,
    X64ASM:RDX X64ASM:R8 REC-CODE CELL + MOV-LOAD,
    X64ASM:RDX X64ASM:R8 REC-CODE X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
