@@ -340,12 +340,12 @@ compiled for itself, because it is all one anonymous mapping.
 
 ### Cross-checking with external perf
 
-`perf record` prints every Habu word as `[unknown]`; `tools/perf-map.f` puts
-the names back through the profiler's own search. Its `-g` chains are no better
-than the profiler's walk: Habu words keep no frame pointer (src/habu/prof.f).
+`perf record -g` prints every Habu word as `[unknown]`; `tools/perf-map.f` puts
+the names back through the profiler's own search. Its chains are no better than
+the profiler's walk: Habu words keep no frame pointer (src/habu/prof.f).
 
 ```
-perf record bin/hb --load prog.f
+perf record -g bin/hb --load prog.f
 perf script | bin/hb --load tools/perf-map.f
 ```
 
