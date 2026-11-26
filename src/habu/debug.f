@@ -5,10 +5,12 @@
 \ does and goes on where it does.
 \ With debug-watch.f and stepper.f it makes package DEBUG; the rest is private,
 \ so a program keeps its own FIND, FREE or STEP.
+\ Every engine carries its target's full disassembler.
 
 require src/core/exit-status.f
 require src/lib/le.f
 HB-TARGET-LINUX-X86-64? 0= [if] require src/arch/arm64/asm.f [then]
+HB-TARGET-LINUX-X86-64? 0= [if] require src/arch/arm64/disasm.f [then]
 HB-TARGET-LINUX-X86-64? [if] require src/arch/x86-64/disasm.f [then]
 require src/habu/code-bytes.f
 require src/compiler/native/dict.f
