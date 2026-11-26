@@ -3809,6 +3809,8 @@ package ENGINE-EMIT
    s" PTR>N" ['] BADDRESSVIEW FPRIM-L
    s" >str" ['] BADDRESSVIEW FPRIM-L
    s" str>" ['] BADDRESSVIEW FPRIM-L
+   s" >span" ['] BADDRESSVIEW FPRIM-L
+   s" span>" ['] BADDRESSVIEW FPRIM-L
    s" data" ['] BDROP FPRIM-L  s" len" ['] BNIP FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM

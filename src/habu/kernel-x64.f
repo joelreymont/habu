@@ -5686,6 +5686,8 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    s" PTR>N" [: ;] PRIM
    s" >str" [: ;] PRIM
    s" str>" [: ;] PRIM
+   s" >span" [: ;] PRIM
+   s" span>" [: ;] PRIM
    s" data" [: DROP, ;] PRIM
    s" len" [: X64ASM:RAX POP,  X64ASM:RAX TOP!, ;] PRIM
    s" +!" [: ADDSTORE-BODY ;] PRIM

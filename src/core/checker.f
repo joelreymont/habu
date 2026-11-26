@@ -1840,9 +1840,10 @@ variable PARAM-CAP     variable PARAM-SCR-CAP-V
 \ --- resolved type-family (TFAM) identity for T-PARAM terms. The registry
 \ lives in src/core/type-family.f, loaded after checker.f, so its queries are
 \ friend hooks. Each gets a registry-not-loaded default here and is rebound by
-\ type-family.f at prefix load. The TFAM-CON-LIN, TFAM-MEMBERS, TFAM-LIN-N
-\ and TFAM-MAY-LIN hooks have no default: their call sites never run before
-\ type-family.f installs them, and an unset one fails closed (DEFER-UNSET).
+\ type-family.f at prefix load. The TFAM-CON-LIN, TFAM-MEMBERS, TFAM-LIN-N,
+\ TFAM-MAY-LIN and REGISTER-SPAN hooks have no default: their call sites
+\ never run before type-family.f installs them, and an unset one fails closed
+\ (DEFER-UNSET).
 defer TFAM-RESOLVE-XT ( str str -- n bool nominal )   \ pkg + name -> family id, true | false
 defer TFAM-CLAIMED?-XT ( str -- bool nominal )             \ some scope reads the token as a family (any package, either visibility)
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
@@ -1863,6 +1864,7 @@ defer TFAM-MEMBERS-XT ( n -- n )                        \ layout term -> row of 
 defer TFAM-LIN-N-XT ( n -- n )                         \ instantiated owning schema's linear capability count
 defer TFAM-MAY-LIN-XT ( n -- bool )                    \ possible ownership in an open schema
 defer CTOR-ROW?-XT ( n -- bool )                       \ symbol is a generated constructor row (sum variant, product make/unmake)
+defer REGISTER-SPAN-XT ( -- nominal )                 \ declare SPAN:span, setting SPAN-FAM
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 variable LOAN-FIELD-FAM -1 LOAN-FIELD-FAM !
 variable C2-READ-FAM   -1 C2-READ-FAM ! \ reserved bounded shared-view family
@@ -1873,6 +1875,7 @@ variable WIDTH-FAM  -1 WIDTH-FAM !
 variable EFFECT-TYPE-FAM  -1 EFFECT-TYPE-FAM !
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
 variable C2-STOW-FAM -1 C2-STOW-FAM ! \ package C2-MEM's stow-layout
+variable SPAN-FAM -1 SPAN-FAM ! \ package SPAN's span
 0 constant STR-FAM          \ `str`, a string as one value: the first family
 \ Set while a file whose first line is split-str runs, and what it evaluates:
 \ rows a token is checked against read each str as ^u8 n.
@@ -14175,6 +14178,13 @@ variable PE-EFF-ID
 : PE-STOW-LAYOUT ( -- n )
    PARAM-SCR-N @ s" stow-layout" C2-STOW-FAM @ MK-PARAM ;
 
+\ SPAN:span is declared at the first row that needs it, never at load.
+: PE-SPAN ( n -- n ) {: t:n :}
+   SPAN-FAM @ 0< IF REGISTER-SPAN-XT THEN
+   PARAM-SCR-N @ {: base:n :}
+   t PARAM-SCR+
+   base s" span" SPAN-FAM @ MK-PARAM ;
+
 : PTABLE-START ( -- )
    NAV-CLEAR
    0 #PE !
@@ -14232,6 +14242,7 @@ variable PE-SPEC-TOS
    code PRIM-SPEC:A-BASE     = IF PE-SPEC-POP PE-BASE-ONLY! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-STORED   = IF PE-SPEC-POP PE-STORED! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-CELL     = IF PE-SPEC-POP PE-CELL! PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-SPAN     = IF PE-SPEC-POP PE-SPAN PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-QUOT     = IF PE-Q EXIT THEN
    code PRIM-SPEC:A-QUOT-IN  = IF PE-SPEC-POP PE-QIN EXIT THEN
    code PRIM-SPEC:A-QUOT-OUT = IF PE-SPEC-POP PE-QOUT EXIT THEN

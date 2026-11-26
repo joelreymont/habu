@@ -275,10 +275,12 @@ EXPORT CHECK:REC-ON
 EXPORT CHECK:RECORDED-STEP
 EXPORT CHECK:REG-EXT-AOT-FAMILY-NAME-XT
 EXPORT CHECK:REG-GROW1
+EXPORT CHECK:REGISTER-SPAN-XT
 EXPORT CHECK:SEED-TERM?
 EXPORT CHECK:SIG-EXACT-MODE
 EXPORT CHECK:SIG-FACTS-MODE
 EXPORT CHECK:SLOT>VAR
+EXPORT CHECK:SPAN-FAM
 EXPORT CHECK:STR-FAM
 EXPORT CHECK:T-RES
 EXPORT CHECK:T-UNSTALE
@@ -3039,6 +3041,22 @@ variable STOW-FAM
    INIT-FAM @ VIEW-FIELD-BASE @ 1 TFAM-FLD-RANGE!
    INIT-FAM @ 1 TFAM-SLOTS! ;
 
+\ `SPAN:span<a>`: a base `^a` below a reach in bytes, because `span<u8>`
+\ passes where `span<cell>` is declared, whose cell reads must stay inside it.
+: REGISTER-SPAN ( -- )
+   s" SPAN" CHECKER-PACKAGE-PUBLIC s" span" 1 TK-PRODUCT TFAM-DECL
+   dup SPAN-FAM ! {: fam:n :}
+   TYPE-FIELD:COUNT VIEW-FIELD-BASE !
+   fam TYPE-FIELD:NO-VARIANT s" base"
+      0 SCHEMA-PARAM SCHEMA-PTR SCHEMA-ROOT+
+      0 1 0 CELL CELL PF-FLAGS-NONE PF-ADD
+   fam TYPE-FIELD:NO-VARIANT s" len"
+      CC-N SCHEMA-CON SCHEMA-ROOT+
+      1 1 CELL CELL CELL PF-FLAGS-NONE PF-ADD
+   PF-COMMIT
+   fam VIEW-FIELD-BASE @ 2 TFAM-FLD-RANGE!
+   fam 2 TFAM-SLOTS! ;
+
 \ `width<t>`: one cell holding the bytes t takes in storage. Its slot is
 \ PK-TYPE, so t may be a type of any width, a record's included.
 : REGISTER-WIDTH ( -- )
@@ -4835,6 +4853,7 @@ EXPORT CHECK:OK
    [: READ-PENDING TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ generated-word undefine
    [: READ-PENDING TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ closed-package extra tail
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT
+   [: REGISTER-SPAN ;] is REGISTER-SPAN-XT
    [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ checker reaches the layout kind for its fail-closed guard
    [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
    [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ a signature graph's family package
@@ -4865,6 +4884,7 @@ TF-PK-P TF-PK-CAP-V CELL TF-PK-N STORE+
 TF-A-P TF-CAP-V TF-REC TFAM-N STORE+
 TFM-P TFM-CAP TFM-REC TABLE+
 TFX-A-P TFX-SLOTS-V CELL TABLE+
+SPAN-FAM -1 CELL-ROW+
 TFX-READY 0 CELL-ROW+
 TFX-HI 0 CELL-ROW+
 TFX-CAP 0 CELL-ROW+

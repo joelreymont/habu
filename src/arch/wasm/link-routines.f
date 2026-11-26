@@ -169,7 +169,7 @@ variable BUF-U
    0 I32,  WCODE:OP-END B, ;
 
 \ `cell-view`, `byte-view` and `PTR>N` ( a -- a ) leave the address as it is;
-\ `>str` and `str>` leave both cells as they are.
+\ `>str`, `str>`, `>span` and `span>` leave both cells as they are.
 : VIEW-BODY ( -- )  0 U32,  0 I32,  WCODE:OP-END B, ;
 
 \ STR's `data` ( str -- ^u8 ) drops the length above the base; `len`
@@ -776,6 +776,8 @@ public
    name s" PTR>N" STR:=CI if VIEW-BODY BODY$ true exit then
    name s" >str" STR:=CI if VIEW-BODY BODY$ true exit then
    name s" str>" STR:=CI if VIEW-BODY BODY$ true exit then
+   name s" >span" STR:=CI if VIEW-BODY BODY$ true exit then
+   name s" span>" STR:=CI if VIEW-BODY BODY$ true exit then
    name s" data" STR:=CI if DATA-BODY BODY$ true exit then
    name s" len" STR:=CI if LEN-BODY BODY$ true exit then
    name s" fence" STR:=CI if VIEW-BODY BODY$ true exit then

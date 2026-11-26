@@ -56,6 +56,8 @@ public
 28 constant A-STORED
 \ CELL-kind the pending var: a one-cell value the primitive reads.
 29 constant A-CELL
+\ `SPAN:span<t>`, t the operand: a base address below a reach in bytes.
+30 constant A-SPAN
 
 private
 
@@ -154,6 +156,8 @@ PERSISTED-PTR-VARIABLE INDEX
 : PE-PTR-B-BASE  A-VAR-B CODE, A-BASE CODE, A-PTR CODE, ;
 : PE-PTR-A-STORED A-VAR-A CODE, A-STORED CODE, A-PTR CODE, ;
 : PE-A-CELL      A-VAR-A CODE, A-CELL CODE, ;
+: PE-SPAN-U8     A-U8 CODE, A-SPAN CODE, ;
+: PE-SPAN-A      A-VAR-A CODE, A-SPAN CODE, ;
 \ PE-Q opens a quotation the primitive runs before it returns; PE-QANY is an xt it keeps.
 : PE-Q           A-QUOT CODE, ;
 : PE-QIN         A-QUOT-IN CODE, ;
@@ -446,6 +450,10 @@ EPRIM: cell-view  PE-PTR-U8 PE-IN PE-PTR-N PE-OUT EPRIM;
 \ make: base below length either way.
 EPRIM: >str       PE-PTR-U8 PE-IN PE-N PE-IN PE-STR PE-OUT EPRIM;
 EPRIM: str>       PE-STR PE-IN PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
+\ The crossing between a base and a reach in bytes and `SPAN:span<a>`, stated
+\ as the pair: a checker without A-SPAN cannot replay a span row.
+EPRIM: >span      PE-PTR-A PE-IN PE-N PE-IN PE-PTR-A PE-OUT PE-N PE-OUT EPRIM;
+EPRIM: span>      PE-PTR-A PE-IN PE-N PE-IN PE-PTR-A PE-OUT PE-N PE-OUT EPRIM;
 \ A str's base and its byte count.
 EPPRIM: STR data PE-STR PE-IN PE-PTR-U8 PE-OUT ECLOSE-PRIVATE
 EPPRIM: STR len PE-STR PE-IN PE-N PE-OUT ECLOSE-PRIVATE
