@@ -165,6 +165,10 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    X64ASM:R13 X64ASM:R12 X64ASM:R15 8 24 X64ASM:MEM-IDX SINK X64ASM:ENC-MOV-MR   s" 4f896cfc18" X=
    \ llvm-mc: movl %ebx, %eax
    0 X64ASM:>R32 3 X64ASM:>R32 SINK X64ASM:ENC-MOV32-RR   s" 89d8" X=
+   \ llvm-mc: movl %cs, %eax
+   0 X64ASM:>R32 X64ASM:CS SINK X64ASM:ENC-MOV32-RS   s" 8cc8" X=
+   \ llvm-mc: movl %ss, %eax
+   0 X64ASM:>R32 X64ASM:SS SINK X64ASM:ENC-MOV32-RS   s" 8cd0" X=
    \ llvm-mc: movl (%rdi), %eax
    0 X64ASM:>R32 X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOV32-RM   s" 8b07" X=
    \ llvm-mc: movl %eax, (%rdi)
@@ -301,6 +305,10 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    X64ASM:RBP SINK X64ASM:ENC-POP   s" 5d" X=
    \ llvm-mc: popq %r12
    X64ASM:R12 SINK X64ASM:ENC-POP   s" 415c" X=
+   \ llvm-mc: pushfq
+   SINK X64ASM:ENC-PUSHFQ   s" 9c" X=
+   \ llvm-mc: iretq
+   SINK X64ASM:ENC-IRETQ   s" 48cf" X=
    \ llvm-mc: xchgq %rbx, %rcx
    X64ASM:RCX X64ASM:RBX SINK X64ASM:ENC-XCHG-RR   s" 4887cb" X= ;
 

@@ -18,6 +18,7 @@ DEFTYPE R64
 DEFTYPE R32
 DEFTYPE R16
 DEFTYPE R8
+DEFTYPE SREG
 DEFTYPE XMM
 DEFTYPE IMM8
 DEFTYPE IMM32
@@ -321,6 +322,11 @@ public
 : R14 ( -- r64 ) 14 >R64 ;
 : R15 ( -- r64 ) 15 >R64 ;
 
+\ ---- segment registers -------------------------------------------------------
+\ A segment register is its ModRM reg-field number.
+: CS ( -- sreg )  1 >SREG ;
+: SS ( -- sreg )  2 >SREG ;
+
 \ ---- the SSE register file ---------------------------------------------------
 : XMM0  ( -- xmm )  0 >XMM ;
 : XMM1  ( -- xmm )  1 >XMM ;
@@ -465,6 +471,9 @@ public
 
 : ENC-MOV32-MR ( r32 mem ^VEC:vector<u8> -- ) {: sr:r32 m:mem s:^ :}
    W32 $89 sr R32>N REG-NUM m 0 s RM-ENC ;
+
+: ENC-MOV32-RS ( r32 sreg ^VEC:vector<u8> -- ) {: d:r32 sr:sreg s:^ :}
+   W32 $8C sr SREG>N 0 5 RANGE d R32>N REG-NUM 0 s RR-ENC ;
 
 : ENC-MOV16-RR ( r16 r16 ^VEC:vector<u8> -- ) {: d:r16 sr:r16 s:^ :}
    W16 $89 sr R16>N REG-NUM d R16>N REG-NUM 0 s RR-ENC ;
@@ -797,6 +806,12 @@ public
    r R64>N REG-NUM {: n:n :}
    0 0 0 n 3 rshift 0 s EMIT-REX
    $58 n 7 and + s EMIT-B ;
+
+: ENC-PUSHFQ ( ^VEC:vector<u8> -- ) {: s:^ :}  $9C s EMIT-B ;
+
+\ iretq pops rip, cs, rflags, rsp and ss, a cell each.
+: ENC-IRETQ ( ^VEC:vector<u8> -- ) {: s:^ :}
+   1 0 0 0 0 s EMIT-REX  $CF s EMIT-B ;
 
 \ xchg between two registers touches no memory, so nothing locks it. The first
 \ operand takes the reg field, the second the rm field.

@@ -24,6 +24,9 @@ create IMM-CODE $48 c, $B8 c, $C3 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,
 create JMP-CODE $E9 c, $FB c, $FF c, $FF c, $FF c,
 create RET-CODE $C3 c,
 create TRAP-CODE $CC c,
+create PUSHF-CODE $9C c,
+create IRET-CODE $48 c, $CF c,
+create SS-CODE $8C c, $D0 c,
 create WORD-CODE $66 c, $41 c, $89 c, $C0 c,
 create WORD-ALU $66 c, $81 c, $C0 c, $34 c, $12 c,
 create BYTE-REX $40 c, $88 c, $E0 c,
@@ -123,7 +126,13 @@ private
    [: RET-CODE 1 >str $5000 X64DIS:DIS1 1 T= ;] GE-CAPTURE-ACTION
    s" ret" s" one-byte return" GE-EXPECT-OUT-HAS
    [: TRAP-CODE 1 >str $5000 X64DIS:DIS1 1 T= ;] GE-CAPTURE-ACTION
-   s" int3" s" slot padding after code" GE-EXPECT-OUT-HAS ;
+   s" int3" s" slot padding after code" GE-EXPECT-OUT-HAS
+   [: PUSHF-CODE 1 >str $5000 X64DIS:DIS1 1 T= ;] GE-CAPTURE-ACTION
+   s" pushfq" s" flags pushed for a serializing iretq" GE-EXPECT-OUT-HAS
+   [: IRET-CODE 2 >str $5000 X64DIS:DIS1 2 T= ;] GE-CAPTURE-ACTION
+   s" iretq" s" REX.W return from a serializing frame" GE-EXPECT-OUT-HAS
+   [: SS-CODE 2 >str $5000 X64DIS:DIS1 2 T= ;] GE-CAPTURE-ACTION
+   s" mov eax, ss" s" stack segment read" GE-EXPECT-OUT-HAS ;
 
 : CHECK-REJECTIONS ( -- )
    [: BAD-MODRM 2 >str $6000 X64DIS:DIS1 drop ;] X64DIS:E-TRUNCATED TTHROWSQ

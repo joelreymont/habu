@@ -339,6 +339,17 @@ variable DQUIET  variable DSEG
    DOP @ $8A = DOP @ $8B = or if s" mov" width REG-RM
    else s" mov" width RM-REG then ;
 
+: SREG$ ( n -- str )
+   case
+      1 of s" cs" endof  2 of s" ss" endof
+      UNKNOWN
+   endcase ;
+
+: MOVE-SREG ( -- )
+   INT-PREFIX MODRM DMOD @ 3 <> if UNKNOWN then
+   DREG @ SREG$ {: sreg:str :}
+   s" mov" OUT GAP DRM @ WIDTH REG. SEP sreg OUT ;
+
 : MOVE-IMM ( -- )
    INT-PREFIX MODRM
    DREG @ 0<> if UNKNOWN then
@@ -374,6 +385,8 @@ variable DQUIET  variable DSEG
       DPFX @ $F3 <> DLOCK @ 0<> or D-HASREX @ 0<> or if UNKNOWN then
       s" rep movsb" OUT true exit then
    DOP @ $CC = if PLAIN-PREFIX s" int3" OUT true exit then
+   DOP @ $9C = if PLAIN-PREFIX s" pushfq" OUT true exit then
+   DOP @ $CF = if PLAIN-PREFIX REX-W? 0= if UNKNOWN then s" iretq" OUT true exit then
    DOP @ $90 = if
       DLOCK @ 0<> if UNKNOWN then
       DREX @ 7 and 0<> if UNKNOWN then
@@ -396,6 +409,7 @@ variable DQUIET  variable DSEG
    DOP @ $81 = DOP @ $83 = or if ALU-IMM true exit then
    DOP @ $88 >= DOP @ $8B <= and if MOVE true exit then
    DOP @ $C7 = if MOVE-IMM true exit then
+   DOP @ $8C = if MOVE-SREG true exit then
    DOP @ $85 = if INT-PREFIX MODRM s" test" WIDTH RM-REG true exit then
    DOP @ $87 = if INT-PREFIX MODRM s" xchg" WIDTH RM-REG true exit then
    DOP @ $8D = if
