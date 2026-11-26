@@ -1,4 +1,3 @@
-split-str
 \ disasm.f - bounded decoder for the Intel instructions Habu emits.
 \ DIS1 receives the remaining bytes of one recorded code span and its live PC
 \ and prints the instruction; SPAN decodes the same way and prints nothing.
@@ -35,8 +34,8 @@ variable DMOD  variable DREG  variable DRM  variable DBASE  variable DINDEX
 variable DSCALE  variable DDISP  variable DRIP  variable DREL
 variable DQUIET
 
-: OUT ( str -- ) {: a:^ u:n :}
-   DQUIET @ if exit then  a u type ;
+: OUT ( str -- ) {: s:str :}
+   DQUIET @ if exit then  s type ;
 
 : CHAR-OUT ( n -- ) {: c:n :}
    DQUIET @ if exit then  c emit ;
@@ -60,9 +59,9 @@ variable DQUIET
 
 : HEX. ( n -- ) s" 0x" OUT HEX-N ;
 
-: REJECT ( n str -- ) {: code:n msg:^ u:n :}
+: REJECT ( n str -- ) {: code:n msg:str :}
    DQUIET @ 0= if
-      s" x64dis: " OUT msg u OUT s"  at " OUT
+      s" x64dis: " OUT msg OUT s"  at " OUT
       DPC @ HEX. cr
    then
    code throw ;
@@ -310,22 +309,22 @@ variable DQUIET
 : SIMM. ( n -- )
    dup 0 < if [char] - CHAR-OUT negate then IMM. ;
 
-: REG-RM ( str n -- ) {: name:^ u:n width:n :}
-   name u OUT GAP DREG @ width REG. SEP width RM. ;
+: REG-RM ( str n -- ) {: name:str width:n :}
+   name OUT GAP DREG @ width REG. SEP width RM. ;
 
-: RM-REG ( str n -- ) {: name:^ u:n width:n :}
-   name u OUT GAP width RM. SEP DREG @ width REG. ;
+: RM-REG ( str n -- ) {: name:str width:n :}
+   name OUT GAP width RM. SEP DREG @ width REG. ;
 
 : ALU-REG ( -- )
    INT-PREFIX MODRM
-   DOP @ 3 rshift ALU$ WIDTH {: name:^ u:n width:n :}
-   DOP @ 7 and 1 = if name u width RM-REG else name u width REG-RM then ;
+   DOP @ 3 rshift ALU$ WIDTH {: name:str width:n :}
+   DOP @ 7 and 1 = if name width RM-REG else name width REG-RM then ;
 
 : ALU-IMM ( -- )
    INT-PREFIX MODRM
-   DREG @ ALU$ {: name:^ u:n :}
+   DREG @ ALU$ {: name:str :}
    DOP @ $83 = if S8 else WIDTH 16 = if S16 else S32 then then {: value:n :}
-   name u OUT GAP WIDTH RM. SEP value SIMM. ;
+   name OUT GAP WIDTH RM. SEP value SIMM. ;
 
 : MOVE ( -- )
    INT-PREFIX MODRM
@@ -354,9 +353,9 @@ variable DQUIET
    PLAIN-PREFIX
    DOP @ $E8 = if S32 s" call" else
    DOP @ $E9 = if S32 s" jmp" else S8 s" jmp" then then
-   {: delta:n name:^ u:n :}
+   {: delta:n name:str :}
    delta DREL !
-   name u OUT GAP delta PRINT-REL ;
+   name OUT GAP delta PRINT-REL ;
 
 : COND-BRANCH ( -- )
    PLAIN-PREFIX
@@ -441,11 +440,11 @@ variable DQUIET
 : SSE-PREFIX ( n -- ) {: want:n :}
    DPFX @ want <> DLOCK @ 0<> or if UNKNOWN then ;
 
-: SSE-REG-RM ( str -- ) {: name:^ u:n :}
-   MODRM name u OUT GAP DREG @ XMM. SEP XRM. ;
+: SSE-REG-RM ( str -- ) {: name:str :}
+   MODRM name OUT GAP DREG @ XMM. SEP XRM. ;
 
-: SSE-RM-REG ( str -- ) {: name:^ u:n :}
-   MODRM name u OUT GAP XRM. SEP DREG @ XMM. ;
+: SSE-RM-REG ( str -- ) {: name:str :}
+   MODRM name OUT GAP XRM. SEP DREG @ XMM. ;
 
 : SSE-REG-RM-IMM ( str -- )
    SSE-REG-RM SEP NEXT IMM. ;
@@ -558,9 +557,9 @@ variable DQUIET
 
 private
 
-: DECODE ( str n -- ) {: a:^ u:n pc:n :}
-   a DA ! u DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK ! 0 DRIP !
-   u 0 <= if TRUNC then
+: DECODE ( str n -- ) {: s:str pc:n :}
+   s STR:DATA DA ! s STR:LEN DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK ! 0 DRIP !
+   s STR:LEN 0 <= if TRUNC then
    PREFIXES OPCODE
    DECODE-ONE if exit then
    DECODE-GROUP if exit then

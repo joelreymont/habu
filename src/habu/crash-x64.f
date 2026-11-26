@@ -1,4 +1,3 @@
-split-str
 \ crash-x64.f - the x86-64 fault records and die lines, package X64CRASH: the
 \ twin of src/habu/crash.f's emitters over package FAULT-RECORD's texts. A site emits
 \ FAULT-OPEN,, any notes, then FAULT-STOP, or FAULT-KEEP,. Each part's text is
@@ -75,15 +74,15 @@ variable DEC-CELL
 \ Writes the prose or the JSON text as r10 says, then empties both.
 : PIECE, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prose:label json:label code:label put:label :}
-   FAULT-RECORD:FAULT-PROSE$ {: pa:^ pu:n :}
-   FAULT-RECORD:FAULT-JSON$ {: ja:^ ju:n :}
+   FAULT-RECORD:FAULT-PROSE$ {: p:str :}
+   FAULT-RECORD:FAULT-JSON$ {: j:str :}
    code X64CODE:JMP,
-   prose X64CODE:LBL,  pa pu X64CODE:BYTES,
-   json X64CODE:LBL,  ja ju X64CODE:BYTES,
+   prose X64CODE:LBL,  p X64CODE:BYTES,
+   json X64CODE:LBL,  j X64CODE:BYTES,
    code X64CODE:LBL,
-   X64ASM:RSI prose X64CODE:MOVABS,  X64ASM:RDX pu IMM32,
+   X64ASM:RSI prose X64CODE:MOVABS,  X64ASM:RDX p STR:LEN IMM32,
    JSON-REG TEST,  X64ASM:C-E put X64CODE:JCC,
-   X64ASM:RSI json X64CODE:MOVABS,  X64ASM:RDX ju IMM32,
+   X64ASM:RSI json X64CODE:MOVABS,  X64ASM:RDX j STR:LEN IMM32,
    put X64CODE:LBL,  X64ASM:RDI ZERO-REG,  PUT-LBL X64CODE:CALL,
    FAULT-RECORD:FAULT-EMPTY ;
 
@@ -215,23 +214,24 @@ variable DIE-CELL
    X64ASM:RDI X64ASM:R10 MOV,  NR-EXIT-GROUP SYS, ;
 
 : BAD-DIE-TEXT ( str -- )
-   {: a:^ u:n :}
+   {: t:str :}
    s" E-FAULT-SITE" REJECTION:OPEN
    s" the die line's text is empty, or is longer than the room "
    REJECTION:EMIT-STR  s" its frame holds" REJECTION:EMIT-STR
-   s" text" REJECTION:NOTE  a u REJECTION:EMIT-STR
-   s" length" REJECTION:NOTE  u REJECTION:EMIT-U
+   s" text" REJECTION:NOTE  t REJECTION:EMIT-STR
+   s" length" REJECTION:NOTE  t STR:LEN REJECTION:EMIT-U
    s" room" REJECTION:NOTE  DIE-LINE-ROOM REJECTION:EMIT-U
    REJECTION:HELP  s" give the line a text of 1 to " REJECTION:EMIT-STR
    DIE-LINE-ROOM REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : DIE-LINE-SITE, ( str n n -- )
-   X64CODE:LBL {: a:^ u:n status:n flag:n msg:label :}
-   u 0= u DIE-LINE-ROOM > or IF a u BAD-DIE-TEXT THEN
+   X64CODE:LBL {: t:str status:n flag:n msg:label :}
+   t STR:LEN {: u:n :}
+   u 0= u DIE-LINE-ROOM > or IF t BAD-DIE-TEXT THEN
    X64ASM:RDI status IMM32,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX u IMM32,  X64ASM:RCX flag IMM32,
    DIE-LBL X64CODE:JMP,
-   msg X64CODE:LBL,  a u X64CODE:BYTES, ;
+   msg X64CODE:LBL,  t X64CODE:BYTES, ;
 
 public
 \ A jump to DIE with the text and the exit status, the text laid after it. The
@@ -241,9 +241,9 @@ public
 \ DIE-LINE, that also prints the register's value; the register is copied
 \ first, so it may be any of rax, rcx, rdx, rsi and rdi.
 : DIE-LINE-VALUE, ( str n X64ASM:r64 -- )
-   {: a:^ u:n status:n reg:X64ASM:r64 :}
+   {: t:str status:n reg:X64ASM:r64 :}
    reg X64ASM:R64>N X64ASM:RAX X64ASM:R64>N <> IF X64ASM:RAX reg MOV, THEN
-   a u status 1 DIE-LINE-SITE, ;
+   t status 1 DIE-LINE-SITE, ;
 
 public
 \ Opens a record with its code and message: rsp drops FAULT-FRAME, r9 = its
@@ -276,30 +276,30 @@ public
 
 \ A note with the register's value in decimal.
 : FAULT-NUMBER, ( FAULT-RECORD:record str X64ASM:r64 -- FAULT-RECORD:record )
-   {: k:^ ku:n r:X64ASM:r64 :}
+   {: k:str r:X64ASM:r64 :}
    r PUSH,
-   k ku FAULT-RECORD:NOTE+  PIECE,
+   k FAULT-RECORD:NOTE+  PIECE,
    X64ASM:RAX POP,  DEC-LBL X64CODE:CALL, ;
 
 \ A note with the bytes at the pointer register, the length register's count
 \ of them.
 : FAULT-TEXT, ( FAULT-RECORD:record str X64ASM:r64 X64ASM:r64 -- FAULT-RECORD:record )
-   {: k:^ ku:n p:X64ASM:r64 l:X64ASM:r64 :}
+   {: k:str p:X64ASM:r64 l:X64ASM:r64 :}
    p PUSH,  l PUSH,
-   k ku FAULT-RECORD:NOTE+  PIECE,
+   k FAULT-RECORD:NOTE+  PIECE,
    X64ASM:RDX POP,  X64ASM:RSI POP,  X64ASM:RDI JSON-REG MOV,  PUT-LBL X64CODE:CALL, ;
 
 \ A note with the address in the register, `0x` and 16 hex digits.
 : FAULT-ADDRESS, ( FAULT-RECORD:record str X64ASM:r64 -- FAULT-RECORD:record )
-   {: k:^ ku:n r:X64ASM:r64 :}
+   {: k:str r:X64ASM:r64 :}
    r PUSH,
-   k ku FAULT-RECORD:FAULT-ADDRESS  PIECE,
+   k FAULT-RECORD:FAULT-ADDRESS  PIECE,
    X64ASM:RAX POP,  HEX, ;
 
 \ Ends the record with its help and exits with the status.
 : FAULT-STOP, ( FAULT-RECORD:record str n -- )
-   {: h:^ hu:n status:n :}
-   h hu FAULT-RECORD:FAULT-STOP
+   {: h:str status:n :}
+   h FAULT-RECORD:FAULT-STOP
    PIECE,  FLUSH,
    X64ASM:RDI status IMM32,  NR-EXIT-GROUP SYS, ;
 

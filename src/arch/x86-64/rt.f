@@ -1,4 +1,3 @@
-split-str
 \ rt.f - X64RT, x86-64 runtime emitters appending to X64CODE's ASM-SINK: twins
 \ of src/habu/rt.f G-PUSH, G-POP, G-OUT, G-PRINT9, G-PRINTU9 and G-EMITC, and
 \ habu1.f SYS-PUSH. Moves
@@ -152,7 +151,7 @@ public
 \ An x86-64 stencil is a byte string of whole instructions
 \ (src/os/linux-x86-64/sys.f), so it is appended as it stands where ARM64's
 \ consumer reassembles four-byte words.
-: EMIT-STENCIL ( str -- ) {: a:^ u:n :}
-   a u X64CODE:ASM-SINK VEC:APPEND ;
+: EMIT-STENCIL ( str -- )
+   X64CODE:ASM-SINK VEC:APPEND ;
 
 ;package

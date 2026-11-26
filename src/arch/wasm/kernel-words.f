@@ -1,4 +1,3 @@
-split-str
 \ kernel-words.f - WKWORDS, kernel words a Wasm module calls, written in checked
 \ Habu over the module's routines (src/arch/wasm/link-routines.f); WKMAP
 \ (src/arch/wasm/kernel-map.f) names each by the kernel word it answers for. A
@@ -74,8 +73,8 @@ public
    32 emit ;
 
 : TYPE-BYTES ( str -- )
-   {: a:^ u:n :}
-   u 0 ?do  a i + c@ emit  loop ;
+   {: s:str :}
+   s STR:LEN 0 ?do  s STR:DATA i + c@ emit  loop ;
 
 : U-DOT ( n -- )
    DIGITS NEWLINE ;

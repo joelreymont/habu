@@ -1,4 +1,3 @@
-split-str
 \ The x86-64 kernel object. Positions are bytes; relocation kinds are
 \ X64CODE's rel8, rel32 and abs64 fields. The other sections are shared.
 require src/habu/kernel-format.f
@@ -75,7 +74,7 @@ DYNAMIC-BUFFER NAME-OFF n
    DICTIONARY, ;
 
 : CODE+ ( -- )
-   X64CODE:ASM-LEN dup U64+ X64CODE:CODE swap SPAN+ ;
+   X64CODE:ASM-LEN U64+ X64CODE:ASM-SINK VEC:BYTES SPAN+ ;
 
 : LABELS+ ( -- )
    X64CODE:LABEL-COUNT dup U64+
@@ -183,7 +182,7 @@ DYNAMIC-BUFFER NAME-OFF n
    0 U64+                      \ no Mach-O imports
    ELF:IMPORTS ['] ELF:IMPORT$ IMPORTS+
    CHECK-ROWS+
-   SUM 0 OUT OUT-U @ sink execute ;
+   SUM 0 OUT OUT-U @ >str sink execute ;
 
 : RELEASE ( -- ) OUT-RELEASE NAME-OFF-RELEASE X64CODE:SINK-CLOSE ;
 
