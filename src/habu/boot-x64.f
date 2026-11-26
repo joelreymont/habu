@@ -901,6 +901,14 @@ variable HEX-AT
 
 public
 
+\ rax = this thread's pointer: mov rax, qword ptr fs:0, the segment form the
+\ assembler does not expose. glibc's fs:0 is the value pthread_self answers.
+: CB-SELF, ( -- )
+   $64 X64CODE:ASM-SINK VEC:PUSH c!  $48 X64CODE:ASM-SINK VEC:PUSH c!
+   $8B X64CODE:ASM-SINK VEC:PUSH c!  $04 X64CODE:ASM-SINK VEC:PUSH c!
+   $25 X64CODE:ASM-SINK VEC:PUSH c!
+   4 0 do  0 X64CODE:ASM-SINK VEC:PUSH c!  loop ;
+
 \ The label of the routine that runs the exit actions, called with the exit
 \ code in rdi; X64KERNEL:HELPERS, makes it and emits the routine.
 variable LEXITHOOK

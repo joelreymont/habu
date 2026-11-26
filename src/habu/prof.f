@@ -700,25 +700,21 @@ public
    11 PROF-ABI:SIGALRM A64ICODE:MOVZ,  11 10 SYSCALL:OS-SIGNAL-THREAD
    fself A64ICODE:LBL,  9 SYSCALL:OS-THREAD-RELEASE ;
 
-\ x7 = band: x3 = this sample's weight, as the file header states; ARN-LAST
-\ moves to now, ARN-CARRY keeps the remainder and ARN-SEQ counts the sample,
-\ whatever its weight. Plain loads and stores suffice: only the owner's handler
-\ reaches here, and a word that leaves ARMED-RUNS waits for it. The ISB keeps
-\ the timer clock from being read before the admission's load-acquire, ahead of
-\ the ARN-LAST a resume wrote.
-\ Clobbers x8 and x10-x12.
+\ x7 = band, x8 = arena: x3 = this sample's weight, as the file header states;
+\ ARN-LAST moves to now, ARN-CARRY keeps the remainder and ARN-SEQ counts the
+\ sample, whatever its weight. Plain loads and stores suffice: only the owner's
+\ handler reaches here, and a word that leaves ARMED-RUNS waits for it. The ISB
+\ keeps the timer clock from being read before the admission's load-acquire,
+\ ahead of the ARN-LAST a resume wrote.
+\ Clobbers x10-x12.
 : C-PROF-WEIGHT ( -- )
-   A64ICODE:LBL {: wdone :}
-   3 1 A64ICODE:MOVZ,
-   8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 wdone A64ICODE:CBZ,
    A64ICODE:ISB,  10 SYSCALL:OS-TIMER-NOW
    11 8 PROF-ABI:ARN-LAST A64ICODE:LDR,  10 8 PROF-ABI:ARN-LAST A64ICODE:STR,
    12 8 PROF-ABI:ARN-SEQ A64ICODE:LDR,  12 12 1 A64ICODE:ADDI,  12 8 PROF-ABI:ARN-SEQ A64ICODE:STR,
-   12 8 PROF-ABI:ARN-TICKS A64ICODE:LDR,  12 wdone A64ICODE:CBZ,
+   12 8 PROF-ABI:ARN-TICKS A64ICODE:LDR,
    10 10 11 A64ICODE:SUB,  11 8 PROF-ABI:ARN-CARRY A64ICODE:LDR,  10 10 11 A64ICODE:ADD,
    3 10 12 A64ICODE:UDIV,  11 3 12 A64ICODE:MUL,  10 10 11 A64ICODE:SUB,
-   10 8 PROF-ABI:ARN-CARRY A64ICODE:STR,
-   wdone A64ICODE:LBL, ;
+   10 8 PROF-ABI:ARN-CARRY A64ICODE:STR, ;
 
 \ x8 = arena, x21 = mcontext, a foreign sample: x6 = the index entry of the
 \ Habu word nearest it, or 0 when neither x30 nor the scan names one. Off the
@@ -786,20 +782,18 @@ public
 \ x3 holds the weight: no word the handler calls writes it.
 : EMIT-PROF ( -- )
    LPROFH A64ICODE:LABEL@ A64ICODE:LBL,
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: pnew pother pdone pforeign plost psig pexit :}
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: powner pfwd pleave pregion :}
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: pnew pother pforeign plost psig pexit :}
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: pfwd pleave pregion :}
    7 PROF-BAND-VA A64ICODE:LIT64,
    9 7 PROF-ABI:PROF-ARMED A64ICODE:ADDI,  9 9 A64ICODE:LDAR,  9 PROF-ABI:ARMED-RUNS A64ICODE:CMPI,  A64ASM:C-NE pexit A64ICODE:BCOND,
    1 C-PROF-IN-ADD
    9 7 PROF-ABI:PROF-ARMED A64ICODE:ADDI,  9 9 A64ICODE:LDAR,  9 PROF-ABI:ARMED-RUNS A64ICODE:CMPI,  A64ASM:C-NE pleave A64ICODE:BCOND,
-   8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 powner A64ICODE:CBZ,
+   8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,
    10 ENGINE-EMIT:CB-SELF,  11 8 PROF-ABI:ARN-OWNER A64ICODE:LDR,  10 11 A64ICODE:CMP,  A64ASM:C-NE pfwd A64ICODE:BCOND,
-   powner A64ICODE:LBL,
    C-PROF-WEIGHT
    3 pleave A64ICODE:CBZ,
    C-PROF-MCTX>R21  C-PROF-PC>R9
    17 1 A64ICODE:MOVZ,                                        \ x17 = 1: a Habu context, its count may report (x16 is the Darwin syscall number, never kept across a sys)
-   8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 pdone A64ICODE:CBZ,
    20 10 C-PROF-CTX-X>R  11 8 PROF-ABI:ARN-OWNER-DATA A64ICODE:LDR,  10 11 A64ICODE:CMP,  A64ASM:C-NE pforeign A64ICODE:BCOND,
    26 10 C-PROF-CTX-X>R  11 7 PROF-ABI:PROF-DBASE A64ICODE:LDR,  10 11 A64ICODE:CMP,  A64ASM:C-NE pforeign A64ICODE:BCOND,
    LPROFFIND A64ICODE:LABEL@ A64ICODE:BL,                            \ the handler never returns, so x30 needs no frame
@@ -824,12 +818,8 @@ public
    12 7 PROF-ABI:PROF-OTHER A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 7 PROF-ABI:PROF-OTHER A64ICODE:STR,
    C-PROF-WALK
    psig A64ICODE:B,
-   pdone A64ICODE:LBL,
-   12 7 PROF-ABI:PROF-OTHER A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 7 PROF-ABI:PROF-OTHER A64ICODE:STR,
-   psig A64ICODE:B,
    pforeign A64ICODE:LBL,
    17 0 A64ICODE:MOVZ,                                        \ not Habu code: no report from here
-   8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 plost A64ICODE:CBZ,
    C-PROF-FCALLER
    6 plost A64ICODE:CBZ,
    12 8 PROF-ABI:ARN-FCALLED A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 8 PROF-ABI:ARN-FCALLED A64ICODE:STR,

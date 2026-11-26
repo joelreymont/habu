@@ -4003,9 +4003,8 @@ private
 8 constant BUF-CELLS                    \ x0..x7
 8 constant VEC-REGS                     \ xmm0..7
 
-\ Outbound C calls publish a per-thread VM frame for callback-entry. glibc's
-\ x86-64 thread pointer is fs:0, the same value pthread_self answers, and it
-\ cannot name the free (0) or mover-busy (1) callback-row states.
+\ Outbound C calls publish a per-thread VM frame for callback-entry. A thread
+\ pointer cannot name the free (0) or mover-busy (1) callback-row states.
 0 constant CBO-ARG
 8 constant CBO-COUNT
 16 constant CBO-FN
@@ -4016,19 +4015,12 @@ private
 56 constant CBO-CP
 64 constant CBO-BYTES
 
-\ mov rax, qword ptr fs:0 (the segment form the assembler does not expose).
-: CB-SELF, ( -- )
-   $64 X64CODE:ASM-SINK VEC:PUSH c!  $48 X64CODE:ASM-SINK VEC:PUSH c!
-   $8B X64CODE:ASM-SINK VEC:PUSH c!  $04 X64CODE:ASM-SINK VEC:PUSH c!
-   $25 X64CODE:ASM-SINK VEC:PUSH c!
-   4 0 do  0 X64CODE:ASM-SINK VEC:PUSH c!  loop ;
-
 public
 
 \ The linked boot has established the VM registers and the main stacks.
 : START-RUNTIME, ( -- )
    X64ASM:RSP MAIN-STACK-TOP-CELL CELL!,
-   CB-SELF,  X64ASM:RAX MAIN-THREAD-CELL CELL!,
+   X64BOOT:CB-SELF,  X64ASM:RAX MAIN-THREAD-CELL CELL!,
    DBASE-REG DBASE-CELL CELL!, ;
 
 private
@@ -4045,7 +4037,7 @@ private
    X64ASM:RAX X64ASM:RSP CBO-ARG X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR
    X64ASM:R10 X64ASM:RSP CBO-COUNT X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR
    X64ASM:R11 X64ASM:RSP CBO-FN X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR
-   CB-SELF,
+   X64BOOT:CB-SELF,
    X64ASM:R9 X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
    X64ASM:R8 DATA-REG CB-OWNER X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
    X64ASM:RCX X64ASM:R8 X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
@@ -4358,7 +4350,7 @@ CBT-BYTES 6 cells + constant CBT-LR  \ above the six saved VM registers
    VEC-REGS 0 ?do  i X64ASM:>XMM X64ASM:RSP CBT-FLOATS i CELL * + X64ASM:MEM-OFF
       X64CODE:ASM-SINK X64ASM:ENC-MOVSD-MR  loop
    X64ASM:R10 X64ASM:RSP CBT-SLOT X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR
-   CB-SELF,
+   X64BOOT:CB-SELF,
    X64ASM:RAX X64ASM:RSP CBT-SELF X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR
    X64ASM:R11 SHARED-DATA,
    X64ASM:R11 X64ASM:R11 CB-ROWS X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
@@ -5768,8 +5760,8 @@ public
    s" prof-report" [: X64PROF:REPORT-BODY ;] PRIM
    s" prof-json" [: X64PROF:JSON-BODY ;] PRIM
    s" prof-row" [: X64PROF:ROW-BODY ;] PRIM
-   \ The x86-64 profiler's one process-wide state is the armed clock, which
-   \ prof-off's body clears; a forked child has no interval timer to stop.
+   \ A forked child has no interval timer and records its own owner at its
+   \ prof-on, so clearing PROF-ARMED, prof-off's body, is the whole reset.
    s" prof-child-reset" [: X64PROF:OFF-BODY ;] PRIM ;
 
 private

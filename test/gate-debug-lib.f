@@ -157,11 +157,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" habu-crash" s" profiler foreign no-crash" GE-EXPECT-ERR-LACKS
    s" PASS: profiler counts ticks inside foreign code instead of dying" type cr ;
 
-\ On arm64 a tick the kernel delivers to a thread other than prof-on's is sent
-\ on to that thread: a task that profiles itself while the main thread waits
-\ in its join still gets the samples. x86-64 counts a tick where it lands.
+\ A task that runs prof-on gets the ticks the kernel gives the main thread
+\ while that thread waits in its join.
 : GDB-PROFILER-TASK ( -- )
-   HB-TARGET-LINUX-X86-64? if exit then
    GE-HB-RESET
    GE-SRC-RESET
    s" require src/lib/task.f" GE-SRC-LINE
@@ -178,6 +176,49 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    then
    GT-OUT$ -1 GDB-ACCOUNT
    s" PASS: a task that runs prof-on gets its own samples" type cr ;
+
+\ The owner blocks SIGALRM while it joins, so the kernel gives the task every
+\ tick; a forward pending at the unblock arrives after prof-off.
+: GDB-PROFILER-OWNER ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" require src/lib/ffi-abi.f" GE-SRC-LINE
+   s" require src/lib/task.f" GE-SRC-LINE
+   s" package PROF-OWNER-CHILD" GE-SRC-LINE
+   s" PROCESS-SYMBOLS" GE-SRC-LINE
+   s" FUNCTION: PROF-OWNER-SIGMASK pthread_sigmask ( n ^u8 ^u8 -- i32 )" GE-SRC-LINE
+   s" ;FUNCTION" GE-SRC-LINE
+   s" FUNCTION: PROF-OWNER-SIGEMPTY sigemptyset ( ^u8 -- i32 )" GE-SRC-LINE
+   s" ;FUNCTION" GE-SRC-LINE
+   s" FUNCTION: PROF-OWNER-SIGADD sigaddset ( ^u8 n -- i32 )" GE-SRC-LINE
+   s" ;FUNCTION" GE-SRC-LINE
+   \ glibc's sigset_t is 128 bytes and macOS's 4; SIGALRM is 14 on both, and
+   \ SIG_BLOCK and SIG_UNBLOCK are 0 and 1 on Linux, 1 and 2 on macOS.
+   s" create PROF-OWNER-SET 128 allot" GE-SRC-LINE
+   S\" : PROF-OWNER-MASK ( n -- ) HB-TARGET-LINUX? 0= if 1+ then PROF-OWNER-SET PROF-OWNER-SIGEMPTY drop PROF-OWNER-SET 14 PROF-OWNER-SIGADD drop PROF-OWNER-SET NULL-PTR PROF-OWNER-SIGMASK 0 <> if s\" prof-owner: pthread_sigmask failed\" 78 die then ;" GE-SRC-LINE
+   s" : PROF-OWNER-LATE? ( n -- bool ) mono-ns <= ;" GE-SRC-LINE
+   s" : PROF-OWNER-TASK-SPIN ( -- ) 200000000 mono-ns + begin dup PROF-OWNER-LATE? until drop ;" GE-SRC-LINE
+   s" TASK:MIN-STACK TASK:TASK PROF-OWNER-WORKER" GE-SRC-LINE
+   s" : PROF-OWNER-TASK ( -- ) PROF-OWNER-TASK-SPIN 0 TASK:RETURN ;" GE-SRC-LINE
+   s" : PROF-OWNER-MAIN-SPIN ( -- ) 100000000 mono-ns + begin dup mono-ns <= until drop ;" GE-SRC-LINE
+   S\" : PROF-OWNER-JOIN ( -- ) PROF-OWNER-WORKER TASK:JOIN MATCH result ok OF drop ENDOF err OF drop s\" prof-owner: task failed\" 78 die ENDOF ;MATCH ;" GE-SRC-LINE
+   \ The task starts before the block: a thread inherits its creator's mask.
+   s" : PROF-OWNER-GO ( -- ) 0 prof-on PROF-OWNER-MAIN-SPIN ['] PROF-OWNER-TASK PROF-OWNER-WORKER TASK:ACTIVATE 0 PROF-OWNER-MASK PROF-OWNER-JOIN prof-off prof-json cr 1 PROF-OWNER-MASK prof-json cr ;" GE-SRC-LINE
+   s" PROF-OWNER-GO" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler owner" GE-EXPECT-OK
+   s\" \qword\q:\qPROF-OWNER-CHILD:PROF-OWNER-MAIN-SPIN\q" s" the owner's word has samples" GE-EXPECT-OUT-HAS
+   s\" \qword\q:\qPROF-OWNER-CHILD:PROF-OWNER-TASK\q" s" the task's entry has no sample" GE-EXPECT-OUT-LACKS
+   s\" \qword\q:\qPROF-OWNER-CHILD:PROF-OWNER-TASK-SPIN\q" s" the task's spin has no sample" GE-EXPECT-OUT-LACKS
+   s\" \qword\q:\qPROF-OWNER-CHILD:PROF-OWNER-LATE?\q" s" the task's clock test has no sample" GE-EXPECT-OUT-LACKS
+   GT-OUT$ GDB-SAMPLES {: before:n :}
+   0  GT-OUT$ s\" \n{\qsamples\q:" GDB-AFTER  GDB-NUM-AT {: after:n :}
+   before 0 <= if s" the owner's profile took no sample" GE-FAIL then
+   before after <> if
+      s" a forward delivered after prof-off was counted: the second report moved" GE-FAIL
+   then
+   s" PASS: only the thread that ran prof-on counts, and nothing after prof-off" type cr ;
 
 : GDB-PROFILER-CLOCK ( -- )
    GE-HB-RESET
@@ -618,6 +659,7 @@ variable GDB-SKEWED
    GDB-PROFILER
    GDB-PROFILER-FOREIGN
    GDB-PROFILER-TASK
+   GDB-PROFILER-OWNER
    GDB-PROFILER-CLOCK
    GDB-PROFILER-CLOCK-CALLER
    GDB-PROFILER-LIMIT1

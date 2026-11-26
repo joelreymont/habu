@@ -33,7 +33,7 @@ variable LPROFRECLAIM
 \ one. The aarch64 handler counts a tick only at ARMED-RUNS, and every word that
 \ clears or reads the counters leaves ARMED-RUNS before it stops the timer. The
 \ x86-64 twin stores 0 and ARMED-RUNS and never holds: Linux delivers a raised
-\ tick before setitimer returns (src/habu/prof-x64.f, prof-off).
+\ tick before setitimer returns.
 56 constant PROF-IN         \ the handlers between their increment and decrement, on any thread;
                             \ a word that leaves ARMED-RUNS waits for 0
 \ The public control words' ticket lock: words run in the order they asked.
@@ -82,14 +82,11 @@ variable LPROFRECLAIM
 \ PROF-FOREIGN.
 152 constant ARN-FCALLED     \ the weight of foreign samples charged to a calling word
 160 constant ARN-CARRY       \ the timer clock's ticks elapsed and not yet counted; a hold can lift it past ARN-TICKS
-\ A SIGALRM reaches any thread that does not block it, and macOS gives the
-\ process's to the main thread: the aarch64 handler counts only on ARN-OWNER
-\ and forwards a delivery on any other thread to ARN-OWNER-TID.
 168 constant ARN-OWNER       \ the thread pointer of the thread that ran prof-on
 176 constant ARN-OWNER-TID   \ that thread's kernel handle (Mach thread port, Linux tid), 0 for none
 \ A task has its own DATA region, so the handler tells the owner's Habu code by
-\ this x20, not by DATA-VA.
-184 constant ARN-OWNER-DATA  \ the owner's x20, its DATA region
+\ this, not by DATA-VA.
+184 constant ARN-OWNER-DATA  \ the owner's DATA (x20 on aarch64, rbp on x86-64)
 32 constant PROF-ENT        \ index entry bytes
 0  constant ENT-START
 8  constant ENT-END

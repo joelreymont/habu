@@ -214,6 +214,9 @@ variable GE-EVAL-SRC-U
 : GE-EXPECT-OUT-HAS ( str str -- ) {: want:str label:str :}
    GT-OUT$ want STR:CONTAINS? 0= if label GE-FAIL then ;
 
+: GE-EXPECT-OUT-LACKS ( str str -- ) {: want:str label:str :}
+   GT-OUT$ want STR:CONTAINS? if label GE-FAIL then ;
+
 \ The whole of stderr, byte for byte - the check a one-line diagnostic asks for.
 : GE-EXPECT-ERR ( str str -- ) {: want:str label:str :}
    GT-ERR$ want STR:= 0= if label GE-FAIL then ;

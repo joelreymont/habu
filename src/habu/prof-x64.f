@@ -78,6 +78,7 @@ variable SESSION-CELL
 : SNAP-LBL ( -- label ) SNAP-CELL @ >LABEL ;
 : SESSION-LBL ( -- label ) SESSION-CELL @ >LABEL ;
 
+: DATA-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-RBASE X64ASM:>R64 ;
 : DBASE-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-DBASE X64ASM:>R64 ;
 : NDICT-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-NDICT X64ASM:>R64 ;
 : CP-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-CP X64ASM:>R64 ;
@@ -649,7 +650,7 @@ variable SESSION-CELL
 : BAND-ADD, ( n -- ) {: off:n :}  X64ASM:RAX BAND-VA IMM,  X64ASM:RAX off ADD-WEIGHT, ;
 
 \ The ucontext slots the handler reads (src/habu/boot-x64.f UC-GREG).
-: DATA-SLOT ( -- n ) ENGINE-GPR:X64-RBASE X64ASM:>R64 X64BOOT:UC-GREG ;
+: DATA-SLOT ( -- n ) DATA-REG X64BOOT:UC-GREG ;
 : DBASE-SLOT ( -- n ) DBASE-REG X64BOOT:UC-GREG ;
 : RSP-SLOT ( -- n ) X64ASM:RSP X64BOOT:UC-GREG ;
 
@@ -777,63 +778,46 @@ variable SESSION-CELL
    X64ASM:RDI EXIT-STATUS:PROF-LIMIT IMM32,  NR-EXIT-GROUP SYS,
    below X64CODE:LBL, ;
 
-\ The weight, the twin of prof.f C-PROF-WEIGHT, whose comment gives it: rax =
-\ the whole intervals since ARN-LAST, with ARN-CARRY, and the remainder in
-\ ARN-CARRY; ARN-LAST moves to now and ARN-SEQ counts the sample, whatever its
-\ weight. With no arena or no interval yet it is 1. rdx survives; clobbers rcx
-\ rsi r8 r11.
+\ The weight, the twin of prof.f C-PROF-WEIGHT, whose comment gives it: with
+\ rsi = the arena, rax = the whole intervals since ARN-LAST, with ARN-CARRY,
+\ and the remainder in ARN-CARRY; ARN-LAST moves to now and ARN-SEQ counts the
+\ sample, whatever its weight. rdx and rsi survive; clobbers rcx r8 r11.
 : WEIGH, ( -- )
-   X64CODE:LBL X64CODE:LBL {: one:label done:label :}
-   ARENA>RSI,  X64ASM:RSI TEST,  X64ASM:C-E one X64CODE:JCC,
    CLOCK-NOW,
    X64ASM:RCX X64ASM:RSI PROF-ABI:ARN-LAST X64ASM:MEM-OFF LOAD,  X64ASM:RAX X64ASM:RSI PROF-ABI:ARN-LAST X64ASM:MEM-OFF STORE,
    X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-SUB-RR  X64ASM:RAX X64ASM:RSI PROF-ABI:ARN-CARRY X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
    X64ASM:RSI PROF-ABI:ARN-SEQ BUMP,
-   X64ASM:RCX X64ASM:RSI PROF-ABI:ARN-TICKS X64ASM:MEM-OFF LOAD,  X64ASM:RCX TEST,  X64ASM:C-E one X64CODE:JCC,
+   X64ASM:RCX X64ASM:RSI PROF-ABI:ARN-TICKS X64ASM:MEM-OFF LOAD,
    X64ASM:R8 X64ASM:RDX COPY,  X64ASM:RDX ZERO-REG,  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DIV                \ rdx = the remainder
-   X64ASM:RDX X64ASM:RSI PROF-ABI:ARN-CARRY X64ASM:MEM-OFF STORE,  X64ASM:RDX X64ASM:R8 COPY,
-   done X64CODE:JMP,
-   one X64CODE:LBL,  X64ASM:RAX 1 IMM32,
-   done X64CODE:LBL, ;
+   X64ASM:RDX X64ASM:RSI PROF-ABI:ARN-CARRY X64ASM:MEM-OFF STORE,  X64ASM:RDX X64ASM:R8 COPY, ;
 
-\ The handler: the twin of prof.f EMIT-PROF. The kernel enters it on the
-\ alternate stack with rdx = the ucontext. It weighs the sample first and
-\ keeps the weight at [rsp]; a sample that weighs 0 ends there. A context
-\ whose rbp is DATA and whose r13 is the DBASE prof-on recorded is a Habu
-\ sample unless its pc, which no record owns, lies outside the kernel text and
-\ the code region: C that keeps rbp and r13. Any other is a foreign callee's,
-\ which goes to the Habu word
-\ FCALLER, names: ARN-FCALLED counts it, that word's counter and inclusive
-\ count take it, and it walks. With no such word or no arena it counts in
-\ PROF-FOREIGN. With no arena a Habu sample counts in PROF-OTHER. Otherwise
-\ the pc goes to the index: an indexed pc adds to its record's counter and
-\ inclusive count; one in the code region, [DBASE, DBASE + REGION), at or
-\ above ARN-HI, compiled after prof-on, is deferred; one below it or in the
-\ kernel text, engine code or a gap, counts in PROF-OTHER; and each walks.
-\ Every count but ARN-SEQ, ARN-FRAMES and ARN-DEFER takes the weight, and
-\ PROF-TOT takes it last, so sum(counters) + ARN-NEW + the deferred slots'
-\ weights + ARN-SPILL + PROF-OTHER + PROF-FOREIGN == PROF-TOT whenever no tick
-\ is running, the sample that reaches the limit included. A foreign sample
-\ then returns; a Habu one runs the limit test first, so a limit reached on a
-\ foreign sample reports at the next Habu one. `ret` enters the restorer once
-\ the weight is popped. No tick lands in the handler or its restorer: the
-\ action has no SA_NODEFER, so the kernel blocks SIGALRM until rt_sigreturn
-\ restores the interrupted mask.
+\ The kernel enters on the alternate stack with rdx = the ucontext and [rsp] =
+\ the restorer; no SA_NODEFER, so SIGALRM stays blocked until its rt_sigreturn.
 : HANDLER, ( -- )
    HANDLER-LBL X64CODE:LBL,
+   X64CODE:LBL X64CODE:LBL {: owner:label drop:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: unnamed:label other:label walk:label :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: noarena:label foreign:label total:label :}
+   X64CODE:LBL X64CODE:LBL {: foreign:label total:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: lost:label ftotal:label out:label :}
    X64CODE:LBL X64CODE:LBL {: region:label fcall:label :}
+   X64ASM:RCX BAND-VA IMM,  X64ASM:RAX X64ASM:RCX PROF-ABI:PROF-ARMED X64ASM:MEM-OFF LOAD,  X64ASM:RAX TEST,  X64ASM:C-E drop X64CODE:JCC,
+   X64ASM:RSI X64ASM:RCX PROF-ABI:PROF-ARENA X64ASM:MEM-OFF LOAD,
+   X64BOOT:CB-SELF,  X64ASM:RAX X64ASM:RSI PROF-ABI:ARN-OWNER X64ASM:MEM-OFF CMP-MEM,  X64ASM:C-E owner X64CODE:JCC,
+   \ ARN-OWNER-TID names this thread between prof-on's two stores or by tid
+   \ reuse: a signal to itself would arrive again at its sigreturn.
+   NR-GETTID SYS,  X64ASM:RAX X64ASM:RSI PROF-ABI:ARN-OWNER-TID X64ASM:MEM-OFF CMP-MEM,  X64ASM:C-E drop X64CODE:JCC,
+   NR-GETPID SYS,  X64ASM:RDI X64ASM:RAX COPY,
+   X64ASM:RSI X64ASM:RSI PROF-ABI:ARN-OWNER-TID X64ASM:MEM-OFF LOAD,  X64ASM:RDX PROF-ABI:SIGALRM IMM32,  NR-TGKILL SYS,
+   drop X64CODE:LBL,  X64CODE:RET,
+   owner X64CODE:LBL,
    WEIGH,
    X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-PUSH
    X64ASM:RAX TEST,  X64ASM:C-E out X64CODE:JCC,
-   X64ASM:RAX X64ASM:RDX DATA-SLOT X64ASM:MEM-OFF LOAD,
-   X64ASM:RCX LINUX-LAYOUT:DATA-VA VA>N IMM,  X64ASM:RAX X64ASM:RCX CMP-REG,  X64ASM:C-NE foreign X64CODE:JCC,   \ rbp must be DATA
-   X64ASM:RAX X64ASM:RDX DBASE-SLOT X64ASM:MEM-OFF LOAD,
    X64ASM:RCX BAND-VA IMM,
+   X64ASM:RAX X64ASM:RDX DATA-SLOT X64ASM:MEM-OFF LOAD,
+   X64ASM:RAX X64ASM:RSI PROF-ABI:ARN-OWNER-DATA X64ASM:MEM-OFF CMP-MEM,  X64ASM:C-NE foreign X64CODE:JCC,    \ rbp must be the owner's DATA
+   X64ASM:RAX X64ASM:RDX DBASE-SLOT X64ASM:MEM-OFF LOAD,
    X64ASM:RAX X64ASM:RCX PROF-ABI:PROF-DBASE X64ASM:MEM-OFF CMP-MEM,  X64ASM:C-NE foreign X64CODE:JCC,       \ r13 must be the recorded DBASE
-   X64ASM:RSI X64ASM:RCX PROF-ABI:PROF-ARENA X64ASM:MEM-OFF LOAD,  X64ASM:RSI TEST,  X64ASM:C-E noarena X64CODE:JCC,
    CUR-REG X64ASM:RDX RSP-SLOT X64ASM:MEM-OFF LOAD,
    X64ASM:RDI X64ASM:RDX X64BOOT:UC-RIP X64ASM:MEM-OFF LOAD,
    FIND-LBL X64CODE:CALL,
@@ -857,18 +841,18 @@ variable SESSION-CELL
    other X64CODE:LBL,  PROF-ABI:PROF-OTHER BAND-ADD,
    walk X64CODE:LBL,  WALK,  total X64CODE:JMP,
    foreign X64CODE:LBL,                                                  \ no report from here
-   X64ASM:RCX BAND-VA IMM,  X64ASM:RSI X64ASM:RCX PROF-ABI:PROF-ARENA X64ASM:MEM-OFF LOAD,  X64ASM:RSI TEST,  X64ASM:C-E lost X64CODE:JCC,
    CUR-REG X64ASM:RDX RSP-SLOT X64ASM:MEM-OFF LOAD,
    fcall X64CODE:LBL,
    FCALLER,
    X64ASM:RAX TEST,  X64ASM:C-E lost X64CODE:JCC,
    X64ASM:RSI PROF-ABI:ARN-FCALLED ADD-WEIGHT,
    CHARGE,  WALK,  ftotal X64CODE:JMP,
+   \ PROF-TOT takes each weight last: sum(counters) + ARN-NEW + deferred weights
+   \ + ARN-SPILL + PROF-OTHER + PROF-FOREIGN == PROF-TOT whenever no tick runs.
    lost X64CODE:LBL,  PROF-ABI:PROF-FOREIGN BAND-ADD,
-   ftotal X64CODE:LBL,  PROF-ABI:PROF-TOT BAND-ADD,
+   ftotal X64CODE:LBL,  PROF-ABI:PROF-TOT BAND-ADD,   \ no LIMIT: a limit a foreign sample reaches reports at the next Habu one
    out X64CODE:LBL,  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-POP
    X64CODE:RET,
-   noarena X64CODE:LBL,  PROF-ABI:PROF-OTHER BAND-ADD,
    total X64CODE:LBL,  PROF-ABI:PROF-TOT BAND-ADD,
    LIMIT,
    X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-POP
@@ -1503,10 +1487,9 @@ private
 
 \ The main stack's bounds into the arena, the twin of prof.f C-PROF-OWNER's:
 \ the top boot stored, less the soft RLIMIT_STACK, or less PROF-STACK-BYTES
-\ when getrlimit fails, answers no limit or one above the top. Every thread
-\ samples on x86-64, so they are recorded whichever thread runs prof-on; Linux
-\ maps no other stack within the limit below the top. Clobbers rax rcx rdx rsi
-\ rdi r11.
+\ when getrlimit fails, answers no limit or one above the top. They are
+\ recorded whichever thread runs prof-on: Linux maps no other stack, a task's
+\ included, within the limit below the top. Clobbers rax rcx rdx rsi rdi r11.
 : STACK-BOUNDS, ( -- )
    X64CODE:LBL X64CODE:LBL {: dflt:label have:label :}
    X64ASM:RSP 16 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SUB-RI8                             \ struct rlimit: soft, then hard
@@ -1523,16 +1506,15 @@ private
 
 public
 
-\ prof-on ( n -- ): the twin of prof.f BPROF-ON. It runs as Habu code, where
-\ r13 and r14 are live: it stores the limit, records the DBASE the handler
-\ trusts, clears the band's counts, maps the arena, records the main stack's
-\ bounds and builds the index, clears the phase's counts and edges, installs
-\ the handler for SIGALRM and arms the clock.
+\ prof-on ( n -- ): the twin of prof.f BPROF-ON. It runs as Habu code on the
+\ thread that becomes the owner, where r13, r14 and rbp are live.
 : ON-BODY ( -- )
    X64ASM:RAX X64ASM:R64>N X64RT:G-POP  X64ASM:RCX BAND-VA IMM,  X64ASM:RAX X64ASM:RCX PROF-ABI:PROF-LIM X64ASM:MEM-OFF STORE,
    DBASE-REG X64ASM:RCX PROF-ABI:PROF-DBASE X64ASM:MEM-OFF STORE,
    BAND-CLEAR,
    ARENA-MAP,
+   NR-GETTID SYS,  ARENA>RSI,  X64ASM:RAX X64ASM:RSI PROF-ABI:ARN-OWNER-TID X64ASM:MEM-OFF STORE,
+   X64BOOT:CB-SELF,  X64ASM:RAX X64ASM:RSI PROF-ABI:ARN-OWNER X64ASM:MEM-OFF STORE,  DATA-REG X64ASM:RSI PROF-ABI:ARN-OWNER-DATA X64ASM:MEM-OFF STORE,
    STACK-BOUNDS,
    ARENA>RSI,  SESSION-LBL X64CODE:CALL,
    ARENA>RSI,  SNAP-LBL X64CODE:CALL,
@@ -1543,8 +1525,7 @@ public
    X64ASM:RCX BAND-VA IMM,  X64ASM:RAX 1 IMM32,  X64ASM:RAX X64ASM:RCX PROF-ABI:PROF-ARMED X64ASM:MEM-OFF STORE, ;
 
 \ prof-off ( -- ): stop the clock and nothing else, so the phase can be
-\ reported afterwards. A tick already raised is delivered as the setitimer
-\ returns, before the next instruction, so the counts are final once this does.
+\ reported afterwards.
 : OFF-BODY ( -- )
    DISARM,
    X64ASM:RCX BAND-VA IMM,  X64ASM:RAX ZERO-REG,  X64ASM:RAX X64ASM:RCX PROF-ABI:PROF-ARMED X64ASM:MEM-OFF STORE, ;

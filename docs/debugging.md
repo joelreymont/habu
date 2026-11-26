@@ -307,10 +307,9 @@ phase measurement:
   callers` says how many; `foreign` counts only the foreign samples charged to
   no word.
 - `n prof-row` prints one word's row whatever its rank.
-- On arm64 only the thread that ran `prof-on` is sampled: a tick the kernel
-  delivers to another thread is sent on to it, so a task's work shows only in
-  a profile that task started. On x86-64 a tick counts on whichever thread it
-  lands.
+- Only the thread that ran `prof-on` is sampled: a tick the kernel delivers
+  to another thread is sent on to it, so a task's work shows only in a profile
+  that task started.
 - A sample counts the sampling intervals elapsed since the last one, so time
   blocked in a syscall (an fsync, a file read) is charged where the sample that
   ends it lands, though the ticks of that wait arrive as one signal.
