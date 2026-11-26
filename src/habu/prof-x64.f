@@ -29,6 +29,8 @@ using LINUX-LAYOUT   \ the guard
 LINUX-LAYOUT:DATA-VA VA>N LINUX-LAYOUT:DATA-SIZE PROF-BAND-AT constant BAND-VA
 BAND-VA PROF-STATE-BYTES + constant CNT-VA      \ one counter per record
 LINUX-LAYOUT:DATA-VA VA>N MAIN-STACK-TOP-CELL + constant TOP-VA
+LINUX-LAYOUT:DATA-VA VA>N RBASE-CELL + constant RBASE-VA
+LINUX-LAYOUT:DATA-VA VA>N TEXT-SIZE-CELL + constant TEXT-SIZE-VA
 1000 constant DEFAULT-USEC                      \ the interval prof-on arms when prof-rate set none
 1000000000 constant NS-PER-SEC                  \ ARN-TICKS, ARN-LAST and ARN-CARRY count CLOCK_MONOTONIC ns
 1000 constant NS-PER-USEC
@@ -803,14 +805,17 @@ variable SESSION-CELL
 \ alternate stack with rdx = the ucontext. It weighs the sample first and
 \ keeps the weight at [rsp]; a sample that weighs 0 ends there. A context
 \ whose rbp is DATA and whose r13 is the DBASE prof-on recorded is a Habu
-\ sample; any other is a foreign callee's, which goes to the Habu word
+\ sample unless its pc, which no record owns, lies outside the kernel text and
+\ the code region: C that keeps rbp and r13. Any other is a foreign callee's,
+\ which goes to the Habu word
 \ FCALLER, names: ARN-FCALLED counts it, that word's counter and inclusive
 \ count take it, and it walks. With no such word or no arena it counts in
 \ PROF-FOREIGN. With no arena a Habu sample counts in PROF-OTHER. Otherwise
 \ the pc goes to the index: an indexed pc adds to its record's counter and
-\ inclusive count; one at or above ARN-HI, compiled after prof-on, is
-\ deferred; any other, engine code or a gap, counts in PROF-OTHER; and each
-\ walks. Every count but ARN-SEQ, ARN-FRAMES and ARN-DEFER takes the weight, and
+\ inclusive count; one in the code region, [DBASE, DBASE + REGION), at or
+\ above ARN-HI, compiled after prof-on, is deferred; one below it or in the
+\ kernel text, engine code or a gap, counts in PROF-OTHER; and each walks.
+\ Every count but ARN-SEQ, ARN-FRAMES and ARN-DEFER takes the weight, and
 \ PROF-TOT takes it last, so sum(counters) + ARN-NEW + the deferred slots'
 \ weights + ARN-SPILL + PROF-OTHER + PROF-FOREIGN == PROF-TOT whenever no tick
 \ is running, the sample that reaches the limit included. A foreign sample
@@ -824,6 +829,7 @@ variable SESSION-CELL
    LBL LBL LBL {: unnamed:label other:label walk:label :}
    LBL LBL LBL {: noarena:label foreign:label total:label :}
    LBL LBL LBL {: lost:label ftotal:label out:label :}
+   LBL LBL {: region:label fcall:label :}
    WEIGH,
    RAX ASM-SINK ENC-PUSH
    RAX TEST,  C-E out JCC,
@@ -841,7 +847,16 @@ variable SESSION-CELL
    walk JMP,
    unnamed LBL,
    SAMPLE-REG ALL-ONES,                                          \ no record of its own: callers only
-   RDI RSI ARN-HI MEM-OFF CMP-MEM,  C-B other JCC,               \ below the high mark: engine code or a gap
+   RCX BAND-VA IMM,  RCX RCX PROF-DBASE MEM-OFF LOAD,
+   RAX RDI COPY,  RAX RCX ASM-SINK ENC-SUB-RR
+   RCX REGION IMM,  RAX RCX CMP-REG,  C-B region JCC,            \ in the code region
+   RCX RBASE-VA IMM,  RCX RCX MEM-AT LOAD,
+   RAX RDI COPY,  RAX RCX ASM-SINK ENC-SUB-RR
+   RCX TEXT-SIZE-VA IMM,  RCX RCX MEM-AT LOAD,
+   RAX RCX CMP-REG,  C-B other JCC,                              \ in the kernel text: engine code or a gap
+   fcall JMP,                                                    \ outside Habu's code: C that keeps rbp and r13
+   region LBL,
+   RDI RSI ARN-HI MEM-OFF CMP-MEM,  C-B other JCC,               \ below the high mark: a gap
    DEFER,                                                        \ at or above it: compiled after prof-on
    walk JMP,
    other LBL,  PROF-OTHER BAND-ADD,
@@ -849,6 +864,7 @@ variable SESSION-CELL
    foreign LBL,                                                  \ no report from here
    RCX BAND-VA IMM,  RSI RCX PROF-ARENA MEM-OFF LOAD,  RSI TEST,  C-E lost JCC,
    CUR-REG RDX RSP-SLOT MEM-OFF LOAD,
+   fcall LBL,
    FCALLER,
    RAX TEST,  C-E lost JCC,
    RSI ARN-FCALLED ADD-WEIGHT,

@@ -57,7 +57,7 @@ variable LPROFRECLAIM
 8  constant ARN-LO          \ lowest code address in the index
 16 constant ARN-HI          \ one past the highest
 24 constant ARN-NDICT       \ the record count the index was built from
-32 constant ARN-NEW         \ samples at or above ARN-HI: code compiled after the build
+32 constant ARN-NEW         \ deferred samples a sync found no live record for
 40 constant ARN-DROP        \ caller edges dropped: the probe window was full
 48 constant ARN-FRAMES      \ caller frames attributed out of the machine stack
 56 constant ARN-WALK        \ cells a sample off the main stack may scan

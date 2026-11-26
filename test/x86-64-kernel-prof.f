@@ -131,6 +131,7 @@ C-IX XREF-REC XREF-WORDLIST constant C-WID
 A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
+: CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
 : ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
@@ -211,10 +212,11 @@ A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
    past LBL,
    a a-end b b-end ;
 
-\ The spin above B: once ARN-DEFER moves, the newest slot must hold a pc in
-\ this routine and the cell at the interrupted rsp, this routine's return
-\ address, since it pushes nothing.
-: HIGH, ( -- label )
+\ The spin above the index: once ARN-DEFER moves, the newest slot must hold a
+\ pc in this routine and the cell at the interrupted rsp, this routine's return
+\ address, since it pushes nothing. Its bounds are rip-relative, so its bytes
+\ run wherever they are copied.
+: HIGH, ( -- label label )
    LBL LBL LBL {: start:label end:label past:label :}
    past JMP,
    start LBL,
@@ -226,12 +228,27 @@ A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
    R10 R9 CELL MEM-OFF LOAD,
    R10 RSP MEM-AT ASM-SINK ENC-CMP-RM  C-NE POISON-IF,
    R10 R9 MEM-AT LOAD,
-   RCX start MOVABS,  R10 RCX ASM-SINK ENC-CMP-RR  C-B POISON-IF,
-   RCX end MOVABS,  R10 RCX ASM-SINK ENC-CMP-RR  C-AE POISON-IF,
+   RCX start LEA-REL,  R10 RCX ASM-SINK ENC-CMP-RR  C-B POISON-IF,
+   RCX end LEA-REL,  R10 RCX ASM-SINK ENC-CMP-RR  C-AE POISON-IF,
    ASM-SINK ENC-RET
    end LBL,
    past LBL,
-   start ;
+   start end ;
+
+\ Copy the bytes [start, end) to CP through the RW alias, move CP past them
+\ and call the copy, as code compiled after prof-on runs. It clobbers rax rcx
+\ rdx rsi rdi r11 and whatever the copy clobbers.
+: REGION-CALL, ( label label -- ) {: start:label end:label :}
+   LBL {: byte:label :}
+   RSI start LEA-REL,  RDX end LEA-REL,  RDX RSI ASM-SINK ENC-SUB-RR
+   RCX RDX COPY,  RDI CP-REG COPY,  RDI X64KERNEL:WRITE-ALIAS,
+   byte LBL,
+      RAX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+      RAX R64>N >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+      RSI ASM-SINK ENC-INC  RDI ASM-SINK ENC-INC
+      RCX ASM-SINK ENC-DEC  C-NE byte JCC,
+   R11 CP-REG COPY,  CP-REG RDX ASM-SINK ENC-ADD-RR
+   R11 ASM-SINK ENC-CALL-REG ;
 
 \ The foreign spin: rbp is not DATA while it waits for PROF-FOREIGN.
 : FOREIGN-SPIN, ( -- )
@@ -358,22 +375,23 @@ A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
 : RATE-CHECK, ( -- )  RATE N,  s" prof-rate" ROW  ARMED-CHECK, ;
 
 \ ---- the cases ---------------------------------------------------------------
-\ The routines first, so the spin below A precedes A in the text and the code
-\ after B, the case's own, lies above the index. A calls B with rsp GUARD-GAP
-\ bytes above the DO/LOOP stack's lower guard, where a signal frame pushed on
-\ that stack dies of SIGSEGV (139), and B holds five scratch registers intact;
-\ the spin below A runs GUARD-GAP bytes under the stack's upper guard.
+\ The routines first, so the spin below A precedes A in the text; the spin
+\ above the index runs from its copy in the code region. A calls B with rsp
+\ GUARD-GAP bytes above the DO/LOOP stack's lower guard, where a signal frame
+\ pushed on that stack dies of SIGSEGV (139), and B holds five scratch
+\ registers intact; the spin below A runs GUARD-GAP bytes under the stack's
+\ upper guard.
 : SAMPLES-CASE ( -- )
    [: R8 BAND IMM,  PROF-OTHER WAIT-MOVE, ;] X64HARNESS:ROUTINE, {: low:label :}
    RECORDS, {: a:label a-end:label b:label b-end:label :}
-   HIGH, {: high:label :}
+   HIGH, {: high:label high-end:label :}
    [: FOREIGN-SPIN, ;] X64HARNESS:ROUTINE, {: foreign:label :}
    s" prof-a" a a-end X64HARNESS:CODE-RECORD,
    s" prof-b" b b-end X64HARNESS:CODE-RECORD,
    0 N,  s" prof-on" ROW
    a GUARD-GAP CELL + STACK-CALL,  1 WANT
    low STACK-ABI:LOOP-BYTES GUARD-GAP - STACK-CALL,  1 WANT
-   high CALL,  0 G-PUSH  1 WANT
+   high high-end REGION-CALL,  0 G-PUSH  1 WANT
    foreign CALL,  0 G-PUSH  1 WANT
    s" prof-off" ROW
    IDENTITY,

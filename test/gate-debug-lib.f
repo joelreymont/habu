@@ -314,6 +314,27 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    n 3 > if s" a 1.5 s interval sampled more often than every 1.5 s" GE-FAIL then
    s" PASS: prof-on arms an interval of a second or more" type cr ;
 
+\ Linux's mono-ns calls libc's clock_gettime, outside Habu's code; macOS's calls
+\ no C. The phase is one word, so every sample is a word's or its caller's: new is 0.
+: GDB-PROFILER-CLOCK-CALLER ( -- )
+   HB-TARGET-LINUX? 0= if exit then
+   GE-HB-RESET
+   GE-SRC-RESET
+   GDB-DELAY-SRC
+   s" : GDB-CLOCK-PHASE ( -- ) 0 prof-on 300000000 GDB-DELAY prof-off ; GDB-CLOCK-PHASE prof-json" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler clock caller" GE-EXPECT-OK
+   GT-OUT$ -1 GDB-ACCOUNT
+   GT-OUT$ s" new" GDB-FIELD 0 <> if
+      s" profiler filed a sample inside libc's clock_gettime under new" GE-FAIL
+   then
+   GT-OUT$ s" foreign charged to callers" GDB-FIELD {: charged:n :}
+   charged 1 < if s" profiler charged no clock_gettime sample to its caller" GE-FAIL then
+   GT-OUT$ S\" {\"word\":\"GDB-DELAY\"," GDB-AFTER S\" \"incl\":" GDB-FIELD charged < if
+      s" GDB-DELAY's inclusive count lacks the clock samples charged under it" GE-FAIL
+   then
+   s" PASS: profiler charges a sample in C outside Habu's code to its caller" type cr ;
+
 \ The text reports in a run's output: how many, and how many whose header's
 \ buckets do not add up to its samples.
 variable GDB-SEEN
@@ -600,6 +621,7 @@ variable GDB-SKEWED
    GDB-PROFILER-FOREIGN
    GDB-PROFILER-TASK
    GDB-PROFILER-CLOCK
+   GDB-PROFILER-CLOCK-CALLER
    GDB-PROFILER-LIMIT1
    GDB-PROFILER-EXACT-ALL
    GDB-PROFILER-QUAL

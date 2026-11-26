@@ -68,8 +68,10 @@ split-str
 \ and ends there: no count, edge, deferred slot or walk.
 \
 \ A foreign sample (x20 not the owner's DATA, ARN-OWNER-DATA, which on a task
-\ is the task's own region, or x26 not the recorded DBASE) is inside C a
-\ Habu word called: an FFI word, libSystem's fsync. Its weight goes to the
+\ is the task's own region, or x26 not the recorded DBASE, or a pc no record
+\ owns outside the kernel text and [DBASE, DBASE + REGION), where C that keeps
+\ both, libc's pthread_sigmask, runs) is inside C a Habu word called: an FFI
+\ word, libSystem's fsync. Its weight goes to the
 \ nearest Habu word, the one the interrupted x30 returns into, else the first
 \ the scan up from SP finds, bounded as the walk's, as that word's own
 \ exclusive sample, and the walk names its callers from there. ARN-FCALLED
@@ -118,6 +120,8 @@ DATA-VA VA>N DATA-SIZE PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is 
 PROF-BAND-VA PROF-STATE-BYTES + constant PROF-CNT-VA
 DATA-VA VA>N MAIN-STACK-TOP-CELL + constant PROF-TOP-VA
 DATA-VA VA>N MAIN-THREAD-CELL + constant PROF-THREAD-VA
+DATA-VA VA>N RBASE-CELL + constant PROF-RBASE-VA          \ main DATA's: a task's region has no text size
+DATA-VA VA>N TEXT-SIZE-CELL + constant PROF-TEXT-SIZE-VA
 $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
 
 : C-PROF-MCTX>R21 ( -- )
@@ -400,8 +404,9 @@ public
 \ the main loop, engine helpers, gaps between spans), new (deferred ticks whose pc
 \ no live record owns), defer (ticks in code compiled after prof-on, still
 \ unnamed), spill (deferred ticks the buffer had no room for), foreign (ticks
-\ without the engine's XREG-RBASE and dictionary registers charged to no word; a
-\ foreign leaf that keeps both lands in other), foreign charged to callers
+\ without the engine's XREG-RBASE and dictionary registers, or with both at a pc
+\ outside the kernel text and the code region, charged to no word), foreign
+\ charged to callers
 \ (foreign ticks a calling word took, already in words), frames (caller frames
 \ attributed), dropped (caller edges a full probe window could not key), indexed
 \ (index entries), usec (the interval sampled at) and attributed (words that took
@@ -789,7 +794,7 @@ public
 : EMIT-PROF ( -- )
    LPROFH LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL LBL {: pnew pother pdone pforeign plost psig pexit :}
-   LBL LBL LBL {: powner pfwd pleave :}
+   LBL LBL LBL LBL {: powner pfwd pleave pregion :}
    7 PROF-BAND-VA LIT64,
    9 7 PROF-ARMED ADDI,  9 9 LDAR,  9 ARMED-RUNS CMPI,  C-NE pexit BCOND,
    1 C-PROF-IN-ADD
@@ -811,7 +816,14 @@ public
    psig B,
    pnew LBL,
    22 0 MOVN,                                        \ no record of its own: callers only
-   11 8 ARN-HI LDR,  9 11 CMP,  C-CC pother BCOND,   \ below the index's high mark: engine helpers, main loop, a gap
+   10 7 PROF-DBASE LDR,  10 9 10 SUB,
+   11 REGION LIT64,  10 11 CMP,  C-CC pregion BCOND,  \ in the code region
+   10 PROF-RBASE-VA LIT64,  10 10 0 LDR,  10 9 10 SUB,
+   11 PROF-TEXT-SIZE-VA LIT64,  11 11 0 LDR,
+   10 11 CMP,  C-CC pother BCOND,                    \ in the kernel text: engine helpers, main loop, a gap
+   pforeign B,                                       \ outside Habu's code: C that keeps x20 and x26
+   pregion LBL,
+   11 8 ARN-HI LDR,  9 11 CMP,  C-CC pother BCOND,   \ below the index's high mark: a gap
    C-PROF-DEFER                                      \ at or above it: compiled after prof-on built the index
    C-PROF-WALK
    psig B,
