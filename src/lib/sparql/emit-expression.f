@@ -7,6 +7,7 @@
 \ case.
 
 require src/lib/sparql/emit.f
+require src/lib/sparql/statement.f
 require src/lib/sparql/syntax.f
 require src/lib/vector.f
 require src/lib/sparql/expression.f
@@ -74,7 +75,7 @@ private
 : LOWER+ ( ^plan str -- )
    {: plan text:str :} plan PLAN-OUT @ {: out:^ :}
    text str> 0 ?do
-      dup i + c@ STR:ASCII-LOWER out VEC:PUSH c!
+      dup i + c@ STR:ASCII-LOWER out +BYTE c!
    loop drop ;
 
 \ The built-in call as its SQL function's.
