@@ -14,6 +14,7 @@ require src/lib/task.f
 require src/lib/aio.f
 require src/lib/net/tcp4.f
 require src/lib/be.f
+require src/lib/ieee754.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/date.f
@@ -498,6 +499,41 @@ TYPED-VARIABLE HELD-ID n
    huge-code PG:E-CAPACITY T=
    c s" select $1::text" [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" kept" T$= ;] PG:WITH-RESULT
    c ;
+
+
+: BITS-ANSWER ( str PG:result -- PG:result )
+   swap {: want:str :}
+   0 PG:>ROW 0 PG:>COL PG:TEXT$ want T$= ;
+
+
+\ want is the float's bits in hex. float8send takes only a float8, so its
+\ untyped $1 is read in a float8 context.
+: F64-CASE ( PG:connection r str -- PG:connection )
+   {: c value:r want:str :}
+   c PG:PARAMS
+   c value PG:F64+
+   want c s" select encode(float8send($1::float8), 'hex')" [: BITS-ANSWER ;] PG:WITH-RESULT
+   c PG:PARAMS
+   c value PG:F64+
+   want c s" select encode(float8send($1), 'hex')" [: BITS-ANSWER ;] PG:WITH-RESULT
+   c ;
+
+
+: F64-CASES ( PG:connection -- PG:connection )
+   s" F64+ binds 1e-400's nearest double, +0.0, by its bits" T-LABEL
+   0 IEEE754:BITS>F64 s" 0000000000000000" F64-CASE
+   s" F64+ binds the smallest subnormal by its bits" T-LABEL
+   1 IEEE754:BITS>F64 s" 0000000000000001" F64-CASE
+   s" F64+ binds 1.5 by its bits" T-LABEL
+   1.5 s" 3ff8000000000000" F64-CASE
+   s" F64+ binds -0.0 by its bits" T-LABEL
+   -0.0 s" 8000000000000000" F64-CASE
+   s" F64+ binds a quiet NaN by its bits" T-LABEL
+   $7FF8000000000000 IEEE754:BITS>F64 s" 7ff8000000000000" F64-CASE
+   s" F64+ binds +inf by its bits" T-LABEL
+   $7FF0000000000000 IEEE754:BITS>F64 s" 7ff0000000000000" F64-CASE
+   s" F64+ binds -inf by its bits" T-LABEL
+   $FFF0000000000000 IEEE754:BITS>F64 s" fff0000000000000" F64-CASE ;
 
 
 256 BUFFER: EVERY-BYTE
@@ -2241,6 +2277,7 @@ PW-RIGHT!
    PARAM-CASES
    TEXT-BOUNDARY-CASES
    BINARY-CASES
+   F64-CASES
    BINARY-RESULT-CASES
    HELD-SPAN-CASES
    LONG-MESSAGE-CASES

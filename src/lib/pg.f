@@ -41,6 +41,8 @@
 require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/le.f
+require src/lib/be.f
+require src/lib/ieee754.f
 require src/lib/span.f
 require src/lib/string.f
 require src/lib/memory.f
@@ -154,6 +156,7 @@ $FFFFFFFFFFFFFFF8 constant CELL-MASK      \ round an arena offset up to a cell
 -1 constant TEXT-LEN                      \ a text or NULL parameter: format 0
 $7FFFFFFF constant BINARY-MAX             \ a libpq parameter length is a C int
 4 constant INT-BYTES                      \ a C int's size
+8 constant F64-LEN                        \ float8's binary form
 3 constant LOGIN-N                        \ dbname, password and the NULL ending each array
 -1 constant NO-CONN                       \ RES-CONN of a free or half-claimed slot
 10 constant DEC-BASE
@@ -505,6 +508,14 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
    slot ARENA-U@ {: off:n :}
    s STR:DATA slot ARENA-BASE off + s STR:LEN BYTE-COPY
    off s STR:LEN + slot ARENA-U!
+   off ;
+
+
+: ARENA-U64 ( n n -- n ) {: value:n slot:n :}
+   slot F64-LEN ARENA-ENSURE
+   slot ARENA-U@ {: off:n :}
+   value slot ARENA-BASE off + BE:U64!
+   off F64-LEN + slot ARENA-U!
    off ;
 
 
@@ -1804,7 +1815,7 @@ public
 
 
 \ PARAMS empties the list and sets the result form back to text; TEXT+, INT+,
-\ NULL+ and BINARY+ append $1, $2, ...; a send that goes out consumes both,
+\ NULL+, BINARY+ and F64+ append $1, $2, ...; a send that goes out consumes both,
 \ but a call rejected before its send leaves them for the next call that does
 \ not begin with PARAMS.
 : PARAMS ( connection -- )
@@ -1853,6 +1864,15 @@ public
    slot PARAM-ROOM
    s STR:LEN BINARY-MAX > if E-CAPACITY throw then
    s slot ARENA-BYTES s STR:LEN slot PARAM-OFF+ ;
+
+
+\ The float's IEEE 754 bits, big-endian: float8's binary form, which a
+\ `$n::float8` or a float8 context reads exactly, NaN and the infinities too.
+: F64+ ( connection r -- ) {: handle:connection value:r :}
+   handle CONN-SLOT {: slot:n :}
+   slot IDLE-CHECK
+   slot PARAM-ROOM
+   value IEEE754:F64>BITS slot ARENA-U64 F64-LEN slot PARAM-OFF+ ;
 
 
 : SEND ( connection str -- ) {: handle:connection s:str :}
