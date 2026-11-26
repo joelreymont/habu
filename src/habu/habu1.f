@@ -2524,8 +2524,7 @@ public
          13 0 CMPI,  C-LT next BCOND,                      \ a package row, live or retired
       span LBL,
          13 11 0 LDR,  14 11 8 LDR,
-         15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
-         15 13 15 ADD,  15 9 CMP,  C-LS next BCOND,  9 15 0 ADDI,
+         15 13 14 ADD,  15 9 CMP,  C-LS next BCOND,  9 15 0 ADDI,
       next LBL,
          10 10 1 ADDI,  scan B,
       scanned LBL,
@@ -2715,15 +2714,13 @@ public
    \ The index names a live row or the one pending row, record[NDICT]; one
    \ unsigned compare also rejects a negative index.
    9 NDICT CMP,  C-HI bad BCOND,
-   14 CODE-SPAN:RAW-MAX LIT64,  10 14 CMP,  C-HI badlen BCOND,
-   14 10 3 ANDI,  14 badlen CBNZ,               \ encoded lengths remain instruction aligned
-   14 CODE-SPAN:MASK LIT64,  14 10 14 AND,  14 badlen CBZ,  \ spans cannot be empty
+   14 CODE-SPAN:MAX LIT64,  10 14 CMP,  C-HI badlen BCOND,  10 badlen CBZ,
    checked B,
    bad LBL,
    s" E-SEAL-VIOLATION habu: xref-retarget record index above NDICT:"
    EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
    badlen LBL,
-   s" E-SEAL-VIOLATION habu: xref-retarget length above CODE-SPAN:RAW-MAX, not whole instructions or empty:"
+   s" E-SEAL-VIOLATION habu: xref-retarget length 0 or above CODE-SPAN:MAX:"
    EXIT-STATUS:SEAL-VIOLATION B DIE-LINE-VALUE,
    checked LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
@@ -3007,8 +3004,7 @@ private
    span LBL,
       13 11 0 LDR,  13 CP CMP,  C-CS next BCOND,
       14 11 8 LDR,
-      15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
-      15 13 15 ADD,
+      15 13 14 ADD,
       15 9 CMP,  C-LS next BCOND,
       12 XREG-RBASE DEF-OCC:PTR-CELL LDR,
       14 10 3 LSLI,  12 12 14 ADD,
@@ -4499,8 +4495,8 @@ private
       15 0 CMPI,  C-LT miss BCOND,                          \ a package row, live or retired
    span LBL,
       15 11 0 LDR,  15 9 CMP,  C-HI miss BCOND,
-      16 11 8 LDR,  17 CODE-SPAN:MASK LIT64,  17 16 17 AND,
-      15 15 17 ADD,  15 9 CMP,  C-LS miss BCOND,
+      16 11 8 LDR,
+      15 15 16 ADD,  15 9 CMP,  C-LS miss BCOND,
    hit LBL,
       12 1 MOVZ,  RET,
    miss LBL,

@@ -1035,7 +1035,6 @@ SPN-ENVP0 CELL + constant SPN-FRAME
    span X64CODE:LBL,
    RAX R8 REC-CODE MEM-OFF ASM-SINK ENC-MOV-RM
    RDX R8 REC-CODE CELL + MEM-OFF ASM-SINK ENC-MOV-RM
-   RDX CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
    RAX RDX ASM-SINK ENC-ADD-RR
    R9 RAX ASM-SINK ENC-CMP-RR  C-B R9 RAX ASM-SINK ENC-CMOVCC
    next X64CODE:LBL,
@@ -2839,19 +2838,17 @@ variable SEAL-TRAP-CELL
    R8 DBASE-REG ASM-SINK ENC-ADD-RR ;
 
 \ xref-retarget ( n n n -- ): the twin of BXREFRETARGET. The index names a live
-\ record or the pending one, NDICT, and none past it; the length is at most
-\ CODE-SPAN:RAW-MAX and its low 31 bits are not zero, an empty span. Through
-\ the alias the length, the cell after the code cell, is stored first and
-\ the address last: under total store order a plain store publishes after the
-\ one before it, where ARM64 needs STLR.
+\ record or the pending one, NDICT, and none past it; a length of 0 or above
+\ CODE-SPAN:MAX traps. Through the alias the length, the cell after the code
+\ cell, is stored first and the address last: under total store order a plain
+\ store publishes after the one before it, where ARM64 needs STLR.
 : RETARGET, ( -- )
    X64CODE:LBL X64CODE:LBL {: pending:label done:label :}
    RCX POP,  R9 POP,  R10 POP,                         \ the index, the length, the start
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
-   RAX CODE-SPAN:RAW-MAX IMM32,
+   RAX CODE-SPAN:MAX IMM32,
    R9 RAX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
-   RAX CODE-SPAN:MASK IMM32,
-   RAX R9 ASM-SINK ENC-AND-RR  C-E SEAL-TRAP-LBL JCC,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
    RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8
    RAX ZERO-REG,  RAX RSP 0 MEM-OFF ASM-SINK ENC-MOV-MR
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-E pending JCC,
@@ -3252,7 +3249,6 @@ private
       R9 R8 REC-CODE MEM-OFF ASM-SINK ENC-MOV-RM
       R9 CP-REG ASM-SINK ENC-CMP-RR  C-AE next JCC,
       R10 R8 REC-CODE CELL + MEM-OFF ASM-SINK ENC-MOV-RM
-      RAX CODE-SPAN:MASK IMM64,  R10 RAX ASM-SINK ENC-AND-RR
       R9 R10 ASM-SINK ENC-ADD-RR
       R9 RDI ASM-SINK ENC-CMP-RR  C-BE next JCC,
       RAX DEF-OCC:PTR-CELL CELL@,
@@ -5200,7 +5196,7 @@ $C3 constant RET-OP
 \ A created word's routine ends `jmp rel32; ret`, its last six bytes: the jump
 \ falls through to the return while its displacement is 0, and does-patch aims
 \ it at a clause, where ARM64 rewrites the routine's final RET word (habu2.f
-\ LDOESPATCH). The slot is found by its position in the record's exact span.
+\ LDOESPATCH). The slot is found by its position in the record's code.
 \ The clause lies in the code region or the kernel's text, as every routine a
 \ linked call reaches does, so its displacement fits rel32.
 
@@ -5370,7 +5366,6 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    msg X64CODE:LBL,  DOES-NONE$ BYTES,
    have X64CODE:LBL,
    RDX R8 REC-CODE CELL + MOV-LOAD,
-   RDX CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
    RDX R8 REC-CODE MEM-OFF ASM-SINK ENC-ADD-RM
    RDX RDX PATCH-SLOT negate MEM-OFF ASM-SINK ENC-LEA
    RAX RDX MEM-AT ASM-SINK ENC-MOVZX-8-RM

@@ -35,7 +35,6 @@ split-str
 require src/core/exit-status.f
 require src/lib/fmt.f
 require src/habu/address-cells.f
-require src/habu/code-span.f
 require src/compiler/fixed-body.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/asm.f
@@ -574,7 +573,7 @@ public
    11 XREG-RBASE LASTC-CELL LDR,                               \ created slot
    11 SP 40 STR,
    12 11 0 LDR,  13 11 8 LDR,
-   13 13 CODE-SPAN:MASK ANDI,  13 13 4 SUBI,
+   13 13 4 SUBI,
    12 12 13 ADD,                                         \ the final RET/B slot
    12 SP 16 STR,
    9 12 0 ADDI,

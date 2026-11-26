@@ -1124,7 +1124,7 @@ private
       14 13 DICT-WL-OFF LDR,  14 0 CMPI,  C-GE word BCOND,
       15 WL:RETIRED invert MOVN,  14 15 CMP,  C-NE bnext BCOND,
       word LBL,
-      13 13 8 LDR,  13 13 CODE-SPAN:MASK ANDI,  13 bnext CBZ,
+      13 13 8 LDR,  13 bnext CBZ,
       12 5 RID-OWNER LDR,  15 DREC MOVZ,  12 12 15 MUL,
       12 DBASE 12 ADD,  12 12 0 LDR,  12 bnext CBZ,
       14 12 13 ADD,

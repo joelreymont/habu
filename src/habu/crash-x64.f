@@ -12,7 +12,6 @@ split-str
 require src/core/exit-status.f
 require src/habu/layout.f
 require src/habu/wl.f
-require src/habu/code-span.f
 require src/habu/fault-record.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
@@ -155,8 +154,7 @@ variable DEC-CELL
       RAX WL:RETIRED CMP8,  C-NE next JCC,
    code LBL,
       RAX RCX MEM-AT LOAD,  RDI RAX ASM-SINK ENC-CMP-RR  C-B next JCC,
-      R11 RCX CELL MEM-OFF LOAD,                \ the raw span (code-span.f)
-      R11 CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
+      R11 RCX CELL MEM-OFF LOAD,                \ the code's byte count
       RAX R11 ASM-SINK ENC-ADD-RR  RDI RAX ASM-SINK ENC-CMP-RR  C-B hit JCC,
    next LBL,
       RCX DREC ADD8,  RDX ASM-SINK ENC-DEC  scan JMP,

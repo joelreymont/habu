@@ -117,7 +117,7 @@ CAST: >RUN ( n -- [ -- ] )
 : RECORD. ( n -- )
    XREF-REC {: rec:^ :}
    rec XREF-NAME$ type cr
-   rec XREF-FLAGS FMT:.INT space  rec XREF-WORDLIST FMT:.INT space  rec XREF-RAW-LEN FMT:.INT cr ;
+   rec XREF-FLAGS FMT:.INT space  rec XREF-WORDLIST FMT:.INT space  rec XREF-LEN FMT:.INT cr ;
 
 \ Each record from the first, then the counts of emissions and interned
 \ strings.

@@ -5,7 +5,6 @@
 require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f
 require src/habu/kernel-x64.f
-require src/habu/code-span.f
 require src/lib/vector.f
 \ boot-x64.f and kernel-x64.f load the x86-64 seam globally, so they come
 \ before the peer harness, which would otherwise load it into its own private
@@ -318,8 +317,6 @@ public
    RCX RAX X64KERNEL:REC-CODE DREC - MEM-OFF ASM-SINK ENC-MOV-MR
    RDX last MOVABS,
    RDX RCX ASM-SINK ENC-SUB-RR
-   RCX R64>N >R32 CODE-SPAN:FULL >IMM32 ASM-SINK ENC-MOV32-RI32
-   RDX RCX ASM-SINK ENC-OR-RR
    RDX RAX X64KERNEL:REC-CODE CELL + DREC - MEM-OFF ASM-SINK ENC-MOV-MR ;
 
 ;using

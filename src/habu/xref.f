@@ -6,7 +6,7 @@
 \ engine build checks it. tools/check.f rejects it alone: every engine already
 \ holds its words (E-DUPLICATE-DEFINITION).
 
-\ The cold prefix loads CODE-SPAN and DOES-CLAUSE before XREF.
+\ The cold prefix loads DOES-CLAUSE before XREF.
 
 0 constant XREF-START-SLOT
 1 constant XREF-LEN-SLOT
@@ -72,9 +72,6 @@ public
 : XREF-START ( ^n -- n )
    XREF-START-SLOT XREF-CELL@ ;
 
-: XREF-RAW-LEN ( ^n -- n )
-   XREF-LEN-SLOT XREF-CELL@ ;
-
 : XREF-FLAGS ( ^n -- n )
    XREF-FLAGS-SLOT XREF-CELL@ ;
 
@@ -85,7 +82,7 @@ public
 \ two wordlist ids: the public wid where a word keeps its start, the private wid
 \ where a word keeps its length. A private wid of 0 means the package has opened
 \ no private section.
-\ Reading them as XREF-START / XREF-RAW-LEN says the opposite of what is meant.
+\ Reading them as XREF-START / XREF-LEN says the opposite of what is meant.
 : XREF-PKG-PUBLIC ( ^n -- n )
    XREF-START-SLOT XREF-CELL@ ;
 
@@ -104,12 +101,9 @@ public
    wid OWNER-API-PUB-WID = wid OWNER-API-PRI-WID = or if XREF-TRUE exit then
    XREF-FALSE ;
 
-\ A package row's length cell, live or retired, holds a wordlist id, so it is
-\ answered raw rather than sent through CODE-SPAN; a package reader names that
-\ cell XREF-PKG-PRIVATE. A raw length is only for record serialization.
-: XREF-LEN ( ^n -- n ) {: rec:^ :}
-   rec XREF-WORDLIST XREF:PACKAGE-WL? if rec XREF-RAW-LEN exit then
-   rec XREF-RAW-LEN dup CODE-SPAN:CHECK CODE-SPAN:BODY ;
+\ A code row's byte count.
+: XREF-LEN ( ^n -- n )
+   XREF-LEN-SLOT XREF-CELL@ ;
 
 : XREF-CODE-BYTES ( ^n -- n ) {: rec:^ :}
    rec XREF-WORDLIST XREF:PACKAGE-WL? if 0 exit then

@@ -5,7 +5,6 @@ require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fmt.f
-require src/habu/code-span.f
 require src/core/exit-status.f
 
 package IMAGE-NAMES
@@ -63,7 +62,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 : NUM-COL ( str n -- n ) FIELD$ NUMBER ;
 
 : ROW-LEN ( str -- n ) {: s:str :}
-   s COL-LEN @ NUM-COL dup CODE-SPAN:VALID? if CODE-SPAN:BODY else drop -1 then ;
+   s COL-LEN @ NUM-COL ;
 
 : ROW-BYTES ( str -- n )
    ROW-LEN dup 0 < if

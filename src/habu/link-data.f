@@ -242,7 +242,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 : PRIM-LEN ( n -- n )
-   dup 1 PRIM@ swap 0 PRIM@ - CODE-SPAN:EXACT ;
+   dup 1 PRIM@ swap 0 PRIM@ - ;
 
 \ A primitive's record: [8] the body's length, a package row's
 \ [0] and [8] its wordlist ids; [32] the facts text PRIM-TEXTS laid.
@@ -273,8 +273,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : TARGET-LEN ( n -- n )
    {: s:n :}
    s NSHADOW:EMISSION@ {: e:n :}
-   e NSHADOW:SIZE s NSHADOW:ENTRY@ - {: size:n :}
-   size CODE-SPAN:EXACT ;
+   e NSHADOW:SIZE s NSHADOW:ENTRY@ - ;
 
 \ A linked record names the target kernel or its packed emission.
 \ A record without either keeps its own span.
@@ -288,7 +287,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       a REC-AT {: s:n :}
       s 0 >= if s TARGET-LEN exit then
    then
-   rec XREF-RAW-LEN ;
+   rec XREF-LEN ;
 
 
 \ Build record r's entry at the target's link address.

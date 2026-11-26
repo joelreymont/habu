@@ -22,7 +22,6 @@ require src/habu/layout.f
 require src/habu/boot-cells.f
 require src/habu/wl.f
 require src/habu/xref.f
-require src/habu/code-span.f
 require src/arch/arm64/icode.f
 require src/habu/link-kernel.f
 require src/habu/linker.f
@@ -223,7 +222,7 @@ variable REGION-N
    rec MAP-INT+ s"  " MAP+  named MAP-INT+ s"  " MAP+  start MAP-INT+ s"  " MAP+
    len MAP-INT+ s"  " MAP+  wid MAP-INT+ s"  " MAP+ ;
 
-: MAP-LEN ( n -- n ) MAP-BYTES @ CODE-SPAN:EXACT ;
+: MAP-LEN ( n -- n ) MAP-BYTES @ ;
 
 \ The map's one global wid is 0.
 : MAP-WID ( n -- n )
@@ -276,14 +275,14 @@ variable REGION-N
 : RUNTIME-ROW+ ( n n -- )
    {: at:n end:n :}
    end at > if
-      REC+ 0 at  end at - CODE-SPAN:EXACT  -1 MAP-HEAD
+      REC+ 0 at  end at -  -1 MAP-HEAD
       s" runtime runtime generated -" MAP+  MAP-NL
    then ;
 
 : GAP-ROW+ ( n -- )
    {: end:n :}
    MAP-AT @ {: at:n :}
-   REC+ 0 at  end at - CODE-SPAN:EXACT  -1 MAP-HEAD
+   REC+ 0 at  end at -  -1 MAP-HEAD
    at BAND-AT @ <  ENGINE? @ or if s" - word baked -" else s" - word loaded -" then MAP+  MAP-NL
    end MAP-AT ! ;
 
@@ -328,7 +327,7 @@ variable REGION-N
 : TAIL-ROW+ ( str n n -- )
    {: kind:str at:n end:n :}
    end at > if
-      REC+ 0 at  end at - CODE-SPAN:EXACT  -1 MAP-HEAD
+      REC+ 0 at  end at -  -1 MAP-HEAD
       s" - " MAP+  kind MAP+  s"  generated -" MAP+  MAP-NL
    then ;
 

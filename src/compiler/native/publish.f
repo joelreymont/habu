@@ -17,7 +17,6 @@ require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
 require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
-require src/habu/code-span.f
 require src/compiler/workspace.f
 
 package NPUB
@@ -79,7 +78,7 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 
 : COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
    fn size PLACE
-   fn size CODE-SPAN:EXACT idx PUBLISH-REC ;
+   fn size idx PUBLISH-REC ;
 
 \ One routine's commit, held where COMMIT-OWNED's quotations read it. Compiler
 \ working storage: an image carries none of it.
@@ -101,7 +100,7 @@ create TRAILER TRAILER-BYTES allot
 \ A record a trailer follows ends at it: its span runs to the trailer's slot.
 : TRAILED ( n n -- n ) {: idx:n fn:n :}
    cp@ {: slot:n :}
-   fn slot fn - CODE-SPAN:EXACT idx PUBLISH-REC
+   fn slot fn - idx PUBLISH-REC
    slot ;
 
 \ A defer's trailer names the dispatch cell its body jumps through (layout.f
@@ -226,7 +225,7 @@ public
    fn NSHADOW:SOURCE-FUNS
    idx fn size 0 NULL-PTR 0 >str COMMIT-OWNED
    idx NSHADOW:PUBLISH
-   fn off + size off - CODE-SPAN:EXACT does-record
+   fn off + size off - does-record
    idx APPEND-PENDING
    idx XREF-REC XREF-NAME$ true DOES-PUBLISHED
    REC-WIDE-PUBLISH
@@ -256,10 +255,9 @@ private
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
    size 0 <= size IMPORT-ALIGNED? 0= or if E-NPUB-RELOC throw then
-   size CODE-SPAN:EXACT {: recorded:n :}
    size pad TRAILED-SIZE ROOM-CK {: fn:n :}
    code fn CODE-WINDOW
-   fn recorded idx PUBLISH-REC
+   fn size idx PUBLISH-REC
    idx fn ;
 
 : IMPORT-MARKS ( bool -- )
@@ -287,7 +285,7 @@ public
    if E-NPUB-RELOC throw then
    PENDING-IDX {: idx:n :}
    code idx DOES-NAME-PAD IMPORT-CODE {: at:n fn:n :}
-   fn off + code STR:LEN off - CODE-SPAN:EXACT does-record
+   fn off + code STR:LEN off - does-record
    at APPEND-PENDING
    wide IMPORT-MARKS
    at 1+ APPEND-PENDING
@@ -314,11 +312,10 @@ public
 \ A record for code already in place, a kernel primitive's: the pending row
 \ takes its entry and recorded span, and nothing is placed.
 : IMPORT-ENTRY ( n n -- n )
-   {: entry:n recorded:n :}
+   {: entry:n size:n :}
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
-   recorded CODE-SPAN:VALID? 0= if E-NPUB-RELOC throw then
-   entry recorded idx PUBLISH-REC
+   entry size idx PUBLISH-REC
    idx APPEND-PENDING
    idx ;
 

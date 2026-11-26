@@ -10,7 +10,6 @@ require src/lib/vector.f
 require src/lib/string.f
 require src/habu/layout.f
 require src/habu/wl.f
-require src/habu/code-span.f
 require src/habu/prof-abi.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
@@ -427,7 +426,7 @@ variable SESSION-CELL
       RAX TEST,  C-NS word JCC,
       RAX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
       word LBL,
-      RAX R11 CELL MEM-OFF LOAD,  RAX CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
+      RAX R11 CELL MEM-OFF LOAD,
       RAX TEST,  C-E next JCC,
       R9 R11 MEM-AT LOAD,  R9 TEST,  C-E next JCC,
       R10 R9 COPY,  R10 RAX ASM-SINK ENC-ADD-RR

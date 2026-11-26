@@ -310,8 +310,7 @@ private
       12 WL:RETIRED LIT64,  11 12 CMP,  C-NE next BCOND,
    code LBL,
       11 10 0 LDR,  3 11 CMP,  C-CC next BCOND,
-      12 10 8 LDR,                              \ the raw span (code-span.f)
-      12 12 CODE-SPAN:MASK ANDI,
+      12 10 8 LDR,                              \ the code's byte count
       11 11 12 ADD,  3 11 CMP,  C-CC hit BCOND,
    next LBL,
       10 10 DREC ADDI,  6 6 1 SUBI,  scan B,
