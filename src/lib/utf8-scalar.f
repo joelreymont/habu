@@ -6,10 +6,12 @@
 \ SUBPART-END answers the end of the longest prefix of a well-formed sequence at
 \ a cursor (Unicode 3.9, Table 3-7), at least the cursor's byte. CUT? is true
 \ when the bytes from a cursor to the end, at least one, are a proper prefix of
-\ a well-formed sequence.
+\ a well-formed sequence. APPEND-SCALAR appends a scalar's shortest UTF-8 to a
+\ vector.
 \ Negative lengths, caps and cursors are E-STR-BOUNDS. STORAGE CLASS. CALLER-OWNED.
 
 require src/lib/error.f
+require src/lib/vector.f
 
 package UTF8
 
@@ -209,7 +211,25 @@ $8F constant F4-SECOND-MOST
    lead index at STR:DATA index + c@ TRAIL-OK? 0= if index exit then
    at lead index 1+ recurse ;
 
+\ A lead byte holding the scalar's high bits, then TAIL continuation bytes of
+\ six bits each, highest first.
+: APPEND-ENCODED ( n n n ^VEC:vector<u8> -- )
+   {: scalar:n lead:n tail:n v:^ :}
+   scalar tail CONTINUATION-SHIFT * rshift lead or v VEC:PUSH c!
+   tail 0 ?do
+      scalar tail 1- i - CONTINUATION-SHIFT * rshift
+      CONTINUATION-PAYLOAD-MASK and CONTINUATION-TAG or v VEC:PUSH c!
+   loop ;
+
 public
+
+\ The caller passes a scalar (0 to U+10FFFF, no surrogate); nothing checks it.
+: APPEND-SCALAR ( n ^VEC:vector<u8> -- )
+   {: scalar:n v:^ :}
+   scalar TWO-MINIMUM < if scalar v VEC:PUSH c! exit then
+   scalar THREE-MINIMUM < if scalar TWO-LEAD-FIRST 1 v APPEND-ENCODED exit then
+   scalar FOUR-MINIMUM < if scalar THREE-LEAD-FIRST 2 v APPEND-ENCODED exit then
+   scalar FOUR-LEAD-FIRST 3 v APPEND-ENCODED ;
 
 : NEXT ( str n -- scalar-step ) {: source:str cursor:n :}
    source cursor LEAD@ {: lead:n :}

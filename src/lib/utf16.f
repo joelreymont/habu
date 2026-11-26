@@ -1,10 +1,12 @@
 \ utf16.f - UTF-16 code units of UTF-8 text (UNITS and OFFSET, the measure LSP
-\ positions take by default) and strict UTF-16LE conversion. UTF-8 is read with
-\ UTF8:NEXT (src/lib/utf8-scalar.f): each byte it answers as `raw-byte` is one
-\ unit, the width of its U+FFFD. A negative length or unit index is
+\ positions take by default), strict UTF-16LE conversion both ways and strict
+\ UTF-16BE decoding. UTF-8 is read with UTF8:NEXT and written with
+\ UTF8:APPEND-SCALAR (src/lib/utf8-scalar.f): each byte UTF8:NEXT answers as
+\ `raw-byte` is one unit, the width of its U+FFFD. A negative length or unit index is
 \ E-STR-BOUNDS, as UTF8:NEXT rejects a negative length.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
+require src/lib/be.f
 require src/lib/error.f
 require src/lib/le.f
 require src/lib/utf8-scalar.f
@@ -15,7 +17,7 @@ public
 
 -9530 constant E-FIRST
 -9539 constant E-LAST
--9530 s" UTF-16LE of odd byte length or with an unpaired surrogate" ERROR:CODE E-UTF16
+-9530 s" UTF-16 of odd byte length or with an unpaired surrogate" ERROR:CODE E-UTF16
 -9531 s" UTF-8 that UTF8:NEXT reads as a raw byte" ERROR:CODE E-UTF8
 
 private
@@ -29,15 +31,6 @@ $3FF constant PAIR-MASK
 2 constant UNIT-BYTES
 8 constant BYTE-SHIFT
 $FF constant BYTE-MASK
-
-$80 constant ONE-LIMIT            \ the first scalar UTF-8 writes in two bytes
-$800 constant TWO-LIMIT           \ the first scalar UTF-8 writes in three bytes
-$C0 constant TWO-LEAD
-$E0 constant THREE-LEAD
-$F0 constant FOUR-LEAD
-$80 constant CONT-TAG
-$3F constant CONT-MASK
-6 constant CONT-SHIFT
 
 : SCALAR-UNITS ( n -- n )
    PAIR-FIRST < if 1 else 2 then ;
@@ -93,42 +86,31 @@ private
    {: unit:n :}
    unit LOW-FIRST >= unit LOW-END < and ;
 
-
-\ A lead byte holding the scalar's high bits, then TAIL continuation bytes of
-\ six bits each, highest first.
-: APPEND-ENCODED ( n n n ^VEC:vector<u8> -- )
-   {: scalar:n lead:n tail:n v:^ :}
-   scalar tail CONT-SHIFT * rshift lead or v VEC:PUSH c!
-   tail 0 ?do
-      scalar tail 1- i - CONT-SHIFT * rshift CONT-MASK and CONT-TAG or
-      v VEC:PUSH c!
-   loop ;
-
-
-: APPEND-SCALAR ( n ^VEC:vector<u8> -- )
-   {: scalar:n v:^ :}
-   scalar ONE-LIMIT < if scalar v VEC:PUSH c! exit then
-   scalar TWO-LIMIT < if scalar TWO-LEAD 1 v APPEND-ENCODED exit then
-   scalar PAIR-FIRST < if scalar THREE-LEAD 2 v APPEND-ENCODED exit then
-   scalar FOUR-LEAD 3 v APPEND-ENCODED ;
-
-
-: APPEND-PAIR ( n n str ^VEC:vector<u8> -- n )
-   {: high:n at:n s:str v:^ :}
+\ The decoding words below take READ, which answers the unit at a byte in the
+\ input's byte order (LE:U16@ or BE:U16@).
+: APPEND-PAIR ( n n str [ ^u8 -- n ] ^VEC:vector<u8> -- n )
+   {: high:n at:n s:str read v:^ :}
    at UNIT-BYTES + s STR:LEN >= if E-UTF16 throw then
-   s STR:DATA at UNIT-BYTES + + LE:U16@ {: low:n :}
+   s STR:DATA at UNIT-BYTES + + read execute {: low:n :}
    low LOW? 0= if E-UTF16 throw then
-   high low PAIR>SCALAR v APPEND-SCALAR
+   high low PAIR>SCALAR v UTF8:APPEND-SCALAR
    at UNIT-BYTES 2 * + ;
 
 
-: DECODE-STEP ( n str ^VEC:vector<u8> -- n )
-   {: at:n s:str v:^ :}
-   s STR:DATA at + LE:U16@ {: unit:n :}
-   unit HIGH? if unit at s v APPEND-PAIR exit then
+: DECODE-STEP ( n str [ ^u8 -- n ] ^VEC:vector<u8> -- n )
+   {: at:n s:str read v:^ :}
+   s STR:DATA at + read execute {: unit:n :}
+   unit HIGH? if unit at s read v APPEND-PAIR exit then
    unit LOW? if E-UTF16 throw then
-   unit v APPEND-SCALAR
+   unit v UTF8:APPEND-SCALAR
    at UNIT-BYTES + ;
+
+: DECODE-UNITS ( str [ ^u8 -- n ] ^VEC:vector<u8> -- )
+   {: s:str read v:^ :}
+   s STR:LEN 0 < if E-STR-BOUNDS throw then
+   s STR:LEN UNIT-BYTES mod 0<> if E-UTF16 throw then
+   0 begin dup s STR:LEN < while s read v DECODE-STEP repeat
+   drop ;
 
 : APPEND-UNIT ( n ^VEC:vector<u8> -- )
    {: unit:n v:^ :}
@@ -152,7 +134,7 @@ private
 
 public
 
-\ Both conversions append to a vector without clearing it, strictly:
+\ Every conversion appends to a vector without clearing it, strictly:
 \ no replacement character, BOM, terminator or normalisation; NUL is ordinary.
 \ A negative length is E-STR-BOUNDS before a byte moves. Input may not overlap
 \ the destination's storage, which an append may move. A throw while
@@ -162,10 +144,12 @@ public
 \ E-UTF16.
 : APPEND-LE>UTF8 ( str ^VEC:vector<u8> -- )
    {: s:str v:^ :}
-   s STR:LEN 0 < if E-STR-BOUNDS throw then
-   s STR:LEN UNIT-BYTES mod 0<> if E-UTF16 throw then
-   0 begin dup s STR:LEN < while s v DECODE-STEP repeat
-   drop ;
+   s [: LE:U16@ ;] v DECODE-UNITS ;
+
+\ APPEND-LE>UTF8 with two-byte big-endian units.
+: APPEND-BE>UTF8 ( str ^VEC:vector<u8> -- )
+   {: s:str v:^ :}
+   s [: BE:U16@ ;] v DECODE-UNITS ;
 
 \ A scalar at or above U+10000 becomes a surrogate pair; every raw byte -
 \ malformed, overlong, an encoded surrogate, past U+10FFFF or truncated - is

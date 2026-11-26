@@ -1,10 +1,12 @@
 \ utf8-scalar-test.f - direct and property tests for UTF8:NEXT, the
-\ whole-span check UTF8:VALID? built on it, the boundary cut UTF8:FIT and the
-\ cut-character check UTF8:CUT?.
+\ whole-span check UTF8:VALID? built on it, the boundary cut UTF8:FIT, the
+\ cut-character check UTF8:CUT? and the writer UTF8:APPEND-SCALAR.
 
+require src/lib/heap.f
 require src/lib/test/assert.f
 require src/lib/property.f
 require src/lib/utf8-scalar.f
+require src/lib/vector.f
 
 package UTF8-SCALAR-TEST
 
@@ -497,6 +499,24 @@ variable STATE-B-CURSOR
    [: CASE-BUF 1+ -1 >str -1 UTF8:CUT? drop ;] E-STR-BOUNDS TTHROWSQ
    [: CASE-BUF 1+ 1 >str 2 UTF8:CUT? drop ;] E-STR-BOUNDS TTHROWSQ ;
 
+\ The bytes one scalar appends to an empty vector.
+: SCALAR= ( n str -- )
+   {: scalar:n want:str :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   scalar v UTF8:APPEND-SCALAR
+   v VEC:BYTES want T$=
+   v VEC:DELETE ;
+
+\ The last and first scalar of each UTF-8 length.
+: APPEND-SCALARS ( -- )
+   $7F s\" \x7F" SCALAR=
+   $80 s\" \xC2\x80" SCALAR=
+   $7FF s\" \xDF\xBF" SCALAR=
+   $800 s\" \xE0\xA0\x80" SCALAR=
+   $FFFF s\" \xEF\xBF\xBF" SCALAR=
+   $10000 s\" \xF0\x90\x80\x80" SCALAR=
+   $10FFFF s\" \xF4\x8F\xBF\xBF" SCALAR= ;
+
 public
 
 : RUN ( -- )
@@ -505,7 +525,7 @@ public
    TRUNCATIONS FINAL-LEAD BAD-CONTINUATIONS SURROGATES ABOVE-SCALAR-LIMIT
    ADJACENT-CALLS NESTED-CALL
    INTERLEAVED-STATES CURSOR-BOUNDS PROPERTY-WIDTHS RANDOM-PROPERTY
-   VALID-ACCEPTS VALID-REJECTS FIT-CUTS CUT-CHECKS ;
+   VALID-ACCEPTS VALID-REJECTS FIT-CUTS CUT-CHECKS APPEND-SCALARS ;
 
 ;package
 

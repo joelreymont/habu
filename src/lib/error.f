@@ -328,7 +328,7 @@ require src/os/env-base.f
 \ which owns package X64DIS.
 \ Raw DEFLATE and CRC-32: -9520..-9529, minted in src/lib/zlib.f, which owns
 \ package ZLIB.
-\ Strict UTF-16LE conversion: -9530..-9539, minted in src/lib/utf16.f, which
+\ Strict UTF-16 conversion: -9530..-9539, minted in src/lib/utf16.f, which
 \ owns package UTF16.
 \ OS random bytes: -9540..-9549, minted in src/lib/entropy.f, which owns
 \ package ENTROPY.

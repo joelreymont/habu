@@ -1,5 +1,6 @@
 \ utf16-test.f - UTF-16 code units of UTF-8 spans, the byte back from a unit,
-\ and strict UTF-16LE conversion, through src/lib/utf16.f.
+\ strict UTF-16LE conversion and strict UTF-16BE decoding, through
+\ src/lib/utf16.f.
 \ Run: bin/hb --load src/lib/utf16-test.f
 \ Expected counts and bytes are written from the definitions, not computed; each
 \ byte UTF8:NEXT answers as `raw-byte` is one unit. The column cases are the
@@ -211,6 +212,41 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    [: s" a" STR:DATA -2 >str LE-BUF @ UTF16:APPEND-LE>UTF8 ;] E-STR-BOUNDS TTHROWSQ ;
 
 
+: BE>UTF8= ( str str -- )
+   {: be:str want:str :}
+   LE-BUF @ 0 VEC:RESIZE
+   be LE-BUF @ UTF16:APPEND-BE>UTF8
+   LE-BUF @ GOT$ want T$= ;
+
+: BE-VECTORS ( -- )
+   s\" \x00\x44\x00\x65\x00\x66\x00\x61\x00\x75\x00\x6C\x00\x74" s" Default" BE>UTF8=
+   s\" \x00\xE9" s\" \xC3\xA9" BE>UTF8=                \ U+00E9
+   s\" \x20\xAC" s\" \xE2\x82\xAC" BE>UTF8=            \ U+20AC, whose LE reading is U+AC20
+   s\" \xD7\xFF\xE0\x00" s\" \xED\x9F\xBF\xEE\x80\x80" BE>UTF8= \ U+D7FF and U+E000, beside the surrogates
+   s\" \xD8\x00\xDC\x00" s\" \xF0\x90\x80\x80" BE>UTF8=  \ U+10000, the first pair
+   s\" \xDB\xFF\xDF\xFF" s\" \xF4\x8F\xBF\xBF" BE>UTF8=  \ U+10FFFF, the last pair
+   s\" \xD8\x3D\xDE\x00" s\" \xF0\x9F\x98\x80" BE>UTF8= ; \ U+1F600
+
+\ A rejected big-endian input leaves in the vector what its little-endian twin
+\ leaves, the third string.
+: BE-REJECTS ( str str str -- )
+   {: be:str le:str want:str :}
+   LE-BUF @ 0 VEC:RESIZE
+   [: le LE-BUF @ UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ
+   LE-OUT @ 0 VEC:RESIZE
+   [: be LE-OUT @ UTF16:APPEND-BE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ
+   LE-BUF @ GOT$ want T$=
+   LE-OUT @ GOT$ want T$= ;
+
+: BE-REJECTIONS ( -- )
+   s\" \x00" s\" \x00" s" " BE-REJECTS                                    \ one byte
+   s\" \x00\x44\x00" s\" \x44\x00\x65" s" " BE-REJECTS                    \ odd after a unit
+   s\" \xD8\x3D\x00a" s\" \x3D\xD8a\x00" s" " BE-REJECTS                  \ high, then a
+   s\" \xD8\x3D\xD8\x3D\xDE\x00" s\" \x3D\xD8\x3D\xD8\x00\xDE" s" " BE-REJECTS \ high, then a pair
+   s\" \x00a\xD8\x3D" s\" a\x00\x3D\xD8" s" a" BE-REJECTS                 \ high at the end
+   s\" \xDE\x00\x00a" s\" \x00\xDEa\x00" s" " BE-REJECTS                  \ low first
+   s\" \x00a\xDE\x00" s\" a\x00\x00\xDE" s" a" BE-REJECTS ;               \ low after a
+
 : UTF8-REJECTIONS ( -- )
    [: s\" \x80" LE-BUF @ UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ               \ a lone continuation
    [: s\" \xC0\x80" LE-BUF @ UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ           \ U+0000, overlong
@@ -226,6 +262,8 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
    ROUND-TRIP
    APPENDS
    LE-REJECTIONS
+   BE-VECTORS
+   BE-REJECTIONS
    UTF8-REJECTIONS
    LE-BUF RELEASE  LE-OUT RELEASE ;
 
