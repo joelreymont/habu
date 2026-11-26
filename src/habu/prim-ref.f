@@ -256,6 +256,6 @@ public
    dup @ rot + swap ! ;
 
 : COUNTED$ ( ^u8 -- str )       \ count
-   dup char+ swap c@ ;
+   dup char+ swap c@ >str ;
 
 ;package
