@@ -83,6 +83,13 @@ public
      some OF drop TRUE ENDOF
    ;MATCH ;
 
+: CONTAINS-CI? ( str str -- bool )   \ whether a holds b, letters compared as =CI compares them
+   {: s:str t:str :}
+   0 begin dup s STR:LEN t STR:LEN - <= while
+      dup s STR:DATA + t STR:LEN >str t =CI if drop TRUE exit then
+      1+
+   repeat drop FALSE ;
+
 global
 
 \ TASK-LOCAL: `data-base` is the running task's DATA region, at STRING-ABI's
