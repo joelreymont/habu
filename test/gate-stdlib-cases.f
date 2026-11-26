@@ -382,6 +382,10 @@ TEST:SUITE utf16-units
    src/lib/utf16-test.f
 TEST:;SUITE
 
+TEST:SUITE encoding-decode
+   src/lib/encoding-test.f
+TEST:;SUITE
+
 TEST:SUITE be-integers
    src/lib/be-test.f
 TEST:;SUITE
