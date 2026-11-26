@@ -1594,7 +1594,13 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" bool" s" n" RETURN-MEET
    s" an exit that leaves a changed return cell" T-LABEL
    s" : W ( n -- ) 0 >r 0= if r> drop true >r exit then r> drop ;" s" rmeet-exit.f" LINE-FIXTURE
-   s" E-RETURN-STACK" s" drop" 1 54 53 57 REJECTED-AT
+   s" E-RETURN-STACK" s" ;" 1 59 58 59 REJECTED-AT
+   0 s" message" s" return stack: the paths that meet here leave different return cells, nothing and bool" FIELD=
+   s" (nothing)" s" bool" RETURN-MEET
+   s" an exit from a definer's head that leaves a changed return cell" T-LABEL
+   s" : D ( n -- ) create 0 >r 0= if r> drop true >r exit then r> drop does> ( -- ) drop ;"
+      s" rmeet-exit-does.f" LINE-FIXTURE
+   s" E-RETURN-STACK" s" does>" 1 66 65 70 REJECTED-AT
    0 s" message" s" return stack: the paths that meet here leave different return cells, nothing and bool" FIELD=
    s" (nothing)" s" bool" RETURN-MEET
    s" a body that leaves a return cell the signature does not declare" T-LABEL

@@ -1006,13 +1006,15 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
    PATH-DEAD PATH!
    cs MAY-CALL$ DW-MAYJOIN CLOSER-LEFT! ;
 
-\ The join of the exits, a live input, with the body's end at closer CA CU,
-\ where a join left to the run is left.
+\ The join of the exits, a live input, with the body's end at closer CS, where
+\ a join left to the run is left and a rejection the join makes is pinned.
 : CHECK-FOLD-EXITS ( str -- )
    {: cs:str :}
    XSET @ 0= IF EXIT THEN
    [: EXITS-JOIN ;] PATH-LIVE MAY-LEFT? IF cs MAY-CALL$ DW-MAYJOIN CLOSER-LEFT!  PATH-DEAD PATH! THEN
-   EXITS-TAKE ;
+   FAILSET @ {: pin-in:n :}
+   EXITS-TAKE
+   pin-in 0=  FAILSET @ 0 <>  and IF cs CLOSER-PIN! THEN ;
 
 \ An effect too deep to record is uncheckable for it; a deferral would record it, so it
 \ yields; a pinned rejection stands.
@@ -2402,8 +2404,8 @@ package CHECK
    bs ss CLAUSE-START 0= IF 2 EXIT THEN
    s" ;" CHECK-SCAN
    TORDER-SCAN-UNKNOWN @ IF WRAP-CLEAR SIG-EFF-DROP 2 EXIT THEN
-   \ The end-of-body checks below pin no token of their own: their packet names
-   \ the token walked last. A clause that walked none names its `;` instead.
+   \ The end-of-body checks after the exits' join pin no token of their own: their
+   \ packet names the token walked last. A clause that walked none names its `;` instead.
    FAILSET @ 0= FAILTU @ 0= and IF s" ;" CLOSER-PIN! THEN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    s" ;" CHECK-FOLD-EXITS
