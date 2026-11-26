@@ -1,13 +1,13 @@
 \ crash-x64.f - the x86-64 fault records and die lines, package X64CRASH: the
 \ twin of src/habu/crash.f's emitters over package FAULT-RECORD's texts. A site emits
-\ FAULT-OPEN,, any notes, then FAULT-STOP, or FAULT-KEEP,. Each part's text is
-\ laid after a jump past it, and the run writes the one r10, the flag
-\ FAULT-OPEN, reads, picks. The record grows in a FAULT-FRAME on rsp from r9,
-\ its start, at the cursor r8, and is written to fd 2 when it fills and at the
-\ record's end. It uses no region and no VM stack and writes rax, rcx, rdx,
-\ rsi, rdi and r8..r11, no other register: rbx, rbp and r12..r15 survive. Its
-\ pushes go below the frame, so a register a part takes is pushed first and may
-\ be any register that holds the value when the part is emitted.
+\ FAULT-OPEN,, any notes, then FAULT-STOP, or FAULT-KEEP,. Of each part's texts,
+\ the run writes the one r10, the flag FAULT-OPEN, reads, picks. The record
+\ grows in a FAULT-FRAME on rsp from r9, its start, at the cursor r8, and is
+\ written to fd 2 when it fills and at the record's end. It uses no region and
+\ no VM stack and writes rax, rcx, rdx, rsi, rdi and r8..r11, no other register:
+\ rbx, rbp and r12..r15 survive. Its pushes go below the frame, so a register a
+\ part takes is pushed first and may be any register that holds the value when
+\ the part is emitted.
 require src/core/exit-status.f
 require src/habu/layout.f
 require src/habu/wl.f
@@ -73,13 +73,10 @@ variable DEC-CELL
 
 \ Writes the prose or the JSON text as r10 says, then empties both.
 : PIECE, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prose:label json:label code:label put:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prose:label json:label put:label :}
    FAULT-RECORD:FAULT-PROSE$ {: p:str :}
    FAULT-RECORD:FAULT-JSON$ {: j:str :}
-   code X64CODE:JMP,
-   prose X64CODE:LBL,  p X64CODE:BYTES,
-   json X64CODE:LBL,  j X64CODE:BYTES,
-   code X64CODE:LBL,
+   prose p X64CODE:DATA-AFTER  json j X64CODE:DATA-AFTER
    X64ASM:RSI prose X64CODE:MOVABS,  X64ASM:RDX p STR:LEN IMM32,
    JSON-REG TEST,  X64ASM:C-E put X64CODE:JCC,
    X64ASM:RSI json X64CODE:MOVABS,  X64ASM:RDX j STR:LEN IMM32,
@@ -231,11 +228,11 @@ variable DIE-CELL
    u 0= u DIE-LINE-ROOM > or IF t BAD-DIE-TEXT THEN
    X64ASM:RDI status IMM32,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX u IMM32,  X64ASM:RCX flag IMM32,
    DIE-LBL X64CODE:JMP,
-   msg X64CODE:LBL,  t X64CODE:BYTES, ;
+   msg t X64CODE:DATA-AFTER ;
 
 public
-\ A jump to DIE with the text and the exit status, the text laid after it. The
-\ caller places its own label before it, and rsp where its qword is the lr.
+\ A jump to DIE with the text and the exit status. The caller places its own
+\ label before it, and rsp where its qword is the lr.
 : DIE-LINE, ( str n -- )  0 DIE-LINE-SITE, ;
 
 \ DIE-LINE, that also prints the register's value; the register is copied

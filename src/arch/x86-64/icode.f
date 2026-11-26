@@ -14,6 +14,7 @@ require src/lib/arena.f
 require src/lib/span.f
 require src/lib/vector.f
 require src/compiler/native/relax.f
+require src/habu/literal-pool.f
 
 package X64CODE
 public
@@ -144,7 +145,8 @@ private
    SITE-LBL-RELEASE
    SITE-KIND-RELEASE
    END-FROMS-RELEASE
-   END-ATS-RELEASE ;
+   END-ATS-RELEASE
+   LITERAL-POOL:EMPTY ;
 
 public
 
@@ -322,8 +324,8 @@ public
 
 : ASM-LINK ( n -- ) FIXUPS! FORGET ;
 
-\ Empties the sink and forgets this stream's labels and sites, so nothing of one
-\ stream is patched into the next.
+\ Empties the sink and forgets this stream's labels, sites and unlaid data, so
+\ nothing of one stream is patched or laid into the next.
 : ASM-RESET ( -- )
    ASM-SINK 0 VEC:RESIZE
    FORGET ;
@@ -362,6 +364,22 @@ public
    ASM-LEN {: k:n at:n :}
    ASM-SINK at k + VEC:ENSURE
    ASM-SINK VEC:SPAN at SPAN:SKIP SPAN:$ STR:DATA ;
+
+\ The bytes DATA-AFTER, lays at the label after the code unit that names them,
+\ so no run of instructions holds them.
+: DATA-AFTER ( label str -- ) {: lbl:label text:str :}
+   lbl LABEL>N text LITERAL-POOL:ADD ;
+
+\ At a code unit's end, where control cannot fall through: the data its code
+\ named with DATA-AFTER.
+: DATA-AFTER, ( -- )
+   LITERAL-POOL:COUNT 0 ?do
+      i LITERAL-POOL:AT {: lbl:n text:str :}
+      lbl >LABEL LBL,  text BYTES,
+   loop
+   LITERAL-POOL:EMPTY ;
+
+: ?DATA-LAID ( -- ) LITERAL-POOL:?LAID ;
 
 private
 

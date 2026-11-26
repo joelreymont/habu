@@ -192,7 +192,7 @@ variable SESSION-CELL
    X64CODE:LBL {: msg:label :}
    X64ASM:RDI STDERR IMM32,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX t STR:LEN IMM32,  NR-WRITE SYS,
    X64ASM:RDI EXIT-STATUS:SYSTEM IMM32,  NR-EXIT-GROUP SYS,
-   msg X64CODE:LBL,  t X64CODE:BYTES, ;
+   msg t X64CODE:DATA-AFTER ;
 
 \ rdi = a live dictionary record; rsi/rdx = its raw name bytes and exact
 \ length. The caller copies those bytes before a rewind can reuse the record.
@@ -365,7 +365,7 @@ variable SESSION-CELL
    X64ASM:RSP 48 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8
    X64ASM:R15 X64CODE:ASM-SINK X64ASM:ENC-POP  X64ASM:R14 X64CODE:ASM-SINK X64ASM:ENC-POP  X64ASM:R13 X64CODE:ASM-SINK X64ASM:ENC-POP
    X64ASM:R12 X64CODE:ASM-SINK X64ASM:ENC-POP  X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-POP  X64ASM:RBX X64CODE:ASM-SINK X64ASM:ENC-POP
-   X64CODE:RET, ;
+   X64CODE:RET,  X64CODE:DATA-AFTER, ;
 
 \ A fresh prof-on releases prior name chunks and clears the ordinal map.
 : SESSION-HELPER, ( -- )
@@ -392,7 +392,7 @@ variable SESSION-CELL
       X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT STORE,  X64ASM:RCX CELL ADDI,  X64ASM:RDX DEC,
       X64ASM:RDX TEST,  X64ASM:C-NE done X64CODE:JCC,
    X64ASM:R13 X64CODE:ASM-SINK X64ASM:ENC-POP  X64ASM:R12 X64CODE:ASM-SINK X64ASM:ENC-POP  X64ASM:RBX X64CODE:ASM-SINK X64ASM:ENC-POP
-   X64CODE:RET, ;
+   X64CODE:RET,  X64CODE:DATA-AFTER, ;
 
 \ One entry per profile ID with code of its own, in ID order. A live or
 \ retired word's row uses its record's span; a seed-retired row uses its stored
@@ -861,12 +861,9 @@ variable SESSION-CELL
 \ JSON field agree about widths and about where a name comes from: the twins
 \ of prof.f's printers. Each writes fd 1 directly, as those do.
 
-\ Write the text; its bytes sit in the stream behind a jump.
 : SAY, ( str -- ) {: t:str :}
-   X64CODE:LBL X64CODE:LBL {: text:label past:label :}
-   past X64CODE:JMP,
-   text X64CODE:LBL,  t X64CODE:BYTES,
-   past X64CODE:LBL,
+   X64CODE:LBL {: text:label :}
+   text t X64CODE:DATA-AFTER
    X64ASM:RDI STDOUT IMM32,  X64ASM:RSI text X64CODE:MOVABS,  X64ASM:RDX t STR:LEN IMM32,  NR-WRITE SYS, ;
 
 \ Write the one byte, from a cell pushed for it.
@@ -1224,7 +1221,7 @@ variable SESSION-CELL
       s" by inclusive" SAY,  NL,
       true SECTION,
    then
-   CLOSE, ;
+   CLOSE,  X64CODE:DATA-AFTER, ;
 
 \ RDI is a stable profile ID; an explicit row requires a retained code span.
 : ROW-HELPER, ( -- )
@@ -1245,7 +1242,7 @@ variable SESSION-CELL
    CLOSE,
    none X64CODE:LBL,
    s" profiler: no row for that record" SAY,  NL,
-   CLOSE, ;
+   CLOSE,  X64CODE:DATA-AFTER, ;
 
 public
 

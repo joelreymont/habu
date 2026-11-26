@@ -201,11 +201,11 @@ private
    u 0= u DIE-LINE-ROOM > or IF t BAD-DIE-TEXT THEN
    0 status A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 u A64ICODE:MOVZ,  4 flag A64ICODE:MOVZ,
    LDIE-LINE A64ICODE:LABEL@ A64ICODE:B,
-   msg A64ICODE:LBL,  t A64ICODE:BYTES, ;
+   msg t A64ICODE:DATA-AFTER ;
 
 public
-\ A branch to LDIE-LINE with the text and the exit status, the text laid
-\ after it. The caller places its own label before it.
+\ A branch to LDIE-LINE with the text and the exit status. The caller places its
+\ own label before it.
 : DIE-LINE, ( str n -- )  0 DIE-LINE-SITE, ;
 
 \ DIE-LINE, that also prints the register's value; the register is copied
@@ -216,12 +216,11 @@ public
    t status 1 DIE-LINE-SITE, ;
 
 \ ---- fault records ----
-\ A site emits FAULT-OPEN,, any notes, then FAULT-STOP, or FAULT-KEEP,. Each
-\ part's text (package FAULT-RECORD) is laid after a branch past it, and the
-\ run writes the one x17, the flag FAULT-OPEN, reads, picks. The record grows in
-\ a FAULT-FRAME on sp at x14, written to fd 2 when it fills and at the record's
-\ end. It uses no region and no VM stack, and writes x0..x2, x6..x17 and x30,
-\ no other register.
+\ A site emits FAULT-OPEN,, any notes, then FAULT-STOP, or FAULT-KEEP,. Of each
+\ part's texts (package FAULT-RECORD), the run writes the one x17, the flag
+\ FAULT-OPEN, reads, picks. The record grows in a FAULT-FRAME on sp at x14,
+\ written to fd 2 when it fills and at the record's end. It uses no region and
+\ no VM stack, and writes x0..x2, x6..x17 and x30, no other register.
 private
 
 \ [x14] = the register's low byte, x14 one past it.
@@ -245,13 +244,10 @@ private
 
 \ Writes the prose or the JSON text as x17 says, then empties both.
 : PIECE, ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: prose:label json:label code:label put:label :}
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: prose:label json:label put:label :}
    FAULT-RECORD:FAULT-PROSE$ {: p:str :}
    FAULT-RECORD:FAULT-JSON$ {: j:str :}
-   code A64ICODE:B,
-   prose A64ICODE:LBL,  p A64ICODE:BYTES,
-   json A64ICODE:LBL,  j A64ICODE:BYTES,
-   code A64ICODE:LBL,
+   prose p A64ICODE:DATA-AFTER  json j A64ICODE:DATA-AFTER
    10 prose A64ICODE:ADR,  11 p STR:LEN A64ICODE:MOVZ,  17 put A64ICODE:CBZ,
    10 json A64ICODE:ADR,  11 j STR:LEN A64ICODE:MOVZ,
    put A64ICODE:LBL,  9 0 A64ICODE:MOVZ,  LFAULT-PUT A64ICODE:LABEL@ A64ICODE:BL,
@@ -789,7 +785,8 @@ public
       C-CRASH-PC0
       C-CRASH-PC+4
       C-CRASH-RERAISE
-   LHDR A64ICODE:LABEL@ A64ICODE:LBL,  CRH CRHL @ >str A64ICODE:BYTES, ;
+   LHDR A64ICODE:LABEL@  CRH CRHL @ >str A64ICODE:DATA-AFTER
+   A64ICODE:DATA-AFTER, ;
 
 \ The caller loads x11 with the handler's address: src/arch/arm64/boot.f
 \ STACKS, reaches it from the text base through TEXT-AT,.

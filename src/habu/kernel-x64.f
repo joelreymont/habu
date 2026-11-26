@@ -16,7 +16,6 @@
 \ (proc-watch.f, proc-control.f) load here globally, so this file loads before
 \ any file that loads the seam into a private wordlist, as boot-x64.f does.
 require src/core/exit-status.f
-require src/lib/arena.f
 require src/lib/vector.f
 require src/lib/string.f
 require src/habu/prof-x64.f
@@ -128,51 +127,20 @@ variable ROW-U
    name STR:DATA ROW-A !  name STR:LEN ROW-U !
    ROW$ ENGINE-PRIMS:SPEC-CHECK ;
 
-\ A datum a body names: its label and the bytes laid there.
-STRUCTURE row-datum DERIVE addr
-   FIELD lbl label
-   FIELD text str
-;STRUCTURE
-
-\ A file link zeroes scratch cells after each piece, so the list is made when
-\ first needed, in an arena: a cross-build runs this file on its host.
-TYPED-VARIABLE ROW-DATA-VEC ^VEC:vector<row-datum> SCRATCH-ONLY
-
-: ROW-DATA-LIST ( -- ^VEC:vector<row-datum> )
-   ROW-DATA-VEC @ NULL-PTR = if
-      ARENA:NEW ARENA:ALLOCATOR 0 [type] row-datum VEC:NEW ROW-DATA-VEC !
-   then
-   ROW-DATA-VEC @ ;
-
-\ The body's bytes, laid at the label after its record.
-: ROW-DATA ( label str -- ) {: lbl:label text:str :}
-   ROW-DATA-LIST VEC:PUSH {: d:^ :}
-   lbl d ROW-DATUM-LBL !  text d ROW-DATUM-TEXT ! ;
-
-: ROW-DATA, ( -- )
-   ROW-DATA-LIST {: list:^ :}
-   list VEC:COUNT 0 ?do
-      list i VEC:AT {: d:^ :}
-      d ROW-DATUM-LBL @ X64CODE:LBL,  d ROW-DATUM-TEXT @ X64CODE:BYTES,
-   loop
-   list 0 VEC:RESIZE ;
-
-\ The record spans [first, last): the body and the ret after it. The data the
-\ body named follows last.
+\ The record spans [first, last): the body and the ret after it.
 : EMIT-ROW ( -- )
    X64CODE:LBL X64CODE:LBL {: first:label last:label :}
    ROW$ first last ENGINE-PRIMS:ADD drop
-   first X64CODE:LBL,  BODY  X64CODE:RET,  last X64CODE:LBL,  ROW-DATA, ;
+   first X64CODE:LBL,  BODY  X64CODE:RET,  last X64CODE:LBL,  X64CODE:DATA-AFTER, ;
 
 : STDERR-WRITE, ( label n -- ) {: msg:label len:n :}
    X64ASM:RDI STDERR IMM32,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX len IMM32,  NR-WRITE SYS, ;
 
-\ The text follows the record.
 : STDERR-EXIT, ( str n -- ) {: t:str rc:n :}
    X64CODE:LBL {: msg:label :}
    msg t STR:LEN STDERR-WRITE,
    rc EXIT-GROUP,
-   msg t ROW-DATA ;
+   msg t X64CODE:DATA-AFTER ;
 
 public
 
@@ -282,7 +250,7 @@ CELL 4 * constant DIAG-BYTES
    X64ASM:RDI STDERR IMM32,  NR-WRITE SYS,
    noline colon SOURCE-LINE,
    noline X64CODE:LBL,  colon 2 STDERR-WRITE,
-   colon s" : " ROW-DATA
+   colon s" : " X64CODE:DATA-AFTER
    done X64CODE:LBL, ;
 
 \ (GENIO-OUT) ( rdi = device index, rsi = span, rdx = length ): the output
@@ -728,13 +696,14 @@ variable HEAD-ROW-CELL
    REBUILD-LBL X64CODE:JMP,                                    \ its ret is this one's
    fail X64CODE:LBL,
    s" E-DICT-INDEX habu: dictionary index alloc failed" EXIT-STATUS:SYSTEM
-   X64CRASH:DIE-LINE, ;
+   X64CRASH:DIE-LINE,  X64CODE:DATA-AFTER, ;
 
 \ HIDX-EMIT:LFULL's twin: the index cannot be kept, which is loud, never a quiet
 \ fall back to the scan.
 : FULL-HELPER, ( -- )
    FULL-LBL X64CODE:LBL,
-   s" E-DICT-INDEX habu: dictionary index exhausted" EXIT-STATUS:INTERNAL X64CRASH:DIE-LINE, ;
+   s" E-DICT-INDEX habu: dictionary index exhausted" EXIT-STATUS:INTERNAL X64CRASH:DIE-LINE,
+   X64CODE:DATA-AFTER, ;
 
 : INDEX-HELPERS, ( -- )
    X64CODE:LBL FIND-CELL !  X64CODE:LBL FIND-PAIR-CELL !
@@ -1717,9 +1686,9 @@ private
    X64ASM:RAX X64ASM:R8 X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  DIAG-U,
    nl 1 STDERR-WRITE,
    done X64CODE:LBL,  X64CODE:RET,
-   head X64CODE:LBL,  s" hb: uncaught throw code " X64CODE:BYTES,
-   minus X64CODE:LBL,  s" -" X64CODE:BYTES,
-   nl X64CODE:LBL,  s\" \n" X64CODE:BYTES, ;
+   head s" hb: uncaught throw code " X64CODE:DATA-AFTER
+   minus s" -" X64CODE:DATA-AFTER  nl s\" \n" X64CODE:DATA-AFTER
+   X64CODE:DATA-AFTER, ;
 
 \ Forward the code in rax without beginning another throw. Habu's `evaluate`
 \ recovers through `catch`; the handler's frame is restored and resumed.
@@ -3775,7 +3744,7 @@ variable MARK-CELL
    kind X64CODE:LBL,  X64ASM:RSP MARK-FRAME X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8
    s" E-XTKIND habu: address cell kind mismatch" EXIT-STATUS:ADDRESS-CELL
    X64CRASH:DIE-LINE,
-   finish X64CODE:LBL, ;
+   finish X64CODE:LBL,  X64CODE:DATA-AFTER, ;
 
 \ A build routes header stores to the image and records their destination in
 \ the mapped band below it. The store and its declaration then share a base.
@@ -3930,7 +3899,7 @@ SHA256-TABLE-FILL
    X64ASM:R10 X64CODE:ASM-SINK X64ASM:ENC-DEC  X64ASM:C-NE next X64CODE:JCC,
    SHA256-STORE,
    done X64CODE:JMP,
-   table SHA256-TABLE-BYTES ROW-DATA
+   table SHA256-TABLE-BYTES X64CODE:DATA-AFTER
    none X64CODE:LBL,  X64ASM:RDX ZERO-REG,
    done X64CODE:LBL,  X64ASM:RDX PUSH, ;
 
@@ -4471,7 +4440,7 @@ variable CB-THUNK-CELL
    s" (CALLBACK-THUNK)" CB-THUNK-LBL LABEL>N end LABEL>N
       ENGINE-PRIMS:HELPER-REGISTER
    CB-THUNK-LBL X64CODE:LBL,  CB-THUNK,
-   end X64CODE:LBL, ;
+   end X64CODE:LBL,  X64CODE:DATA-AFTER, ;
 
 public
 
@@ -5325,7 +5294,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    SOURCE-PLACE,
    msg DOES-NONE$ STR:LEN STDERR-WRITE,
    X64ASM:RAX 70 IMM32,  THROW,
-   class DOES-NONE-CLASS$ ROW-DATA  msg DOES-NONE$ ROW-DATA
+   class DOES-NONE-CLASS$ X64CODE:DATA-AFTER  msg DOES-NONE$ X64CODE:DATA-AFTER
    have X64CODE:LBL,
    X64ASM:RDX X64ASM:R8 REC-CODE CELL + MOV-LOAD,
    X64ASM:RDX X64ASM:R8 REC-CODE X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
@@ -5384,6 +5353,7 @@ public
    X64CODE:LBL REPLAY-TRAP-CELL !
    REPLAY-TRAP-LBL X64CODE:LBL,
    s" E-REPLAY-RECORD habu: replay record executed" EXIT-STATUS:INTERNAL X64CRASH:DIE-LINE,
+   X64CODE:DATA-AFTER,
    s" namespace-record" [: NAMESPACE-RECORD-BODY ;] PRIM
    s" namespace-private" [: NAMESPACE-PRIVATE-BODY ;] PRIM
    s" alias-record" [: ALIAS-RECORD-BODY ;] PRIM

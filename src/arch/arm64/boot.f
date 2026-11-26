@@ -187,7 +187,7 @@ public
    DBASE XREG-RBASE RBASE-CELL A64ICODE:LDR,  9 XREG-RBASE TEXT-SIZE-CELL A64ICODE:LDR,
    DBASE DBASE 9 A64ICODE:ADD,  CP DBASE 0 A64ICODE:ADDI,
    text0 STACKS,
-   APP-ENTRY:XT-CELL CALL-EXIT, ;
+   APP-ENTRY:XT-CELL CALL-EXIT,  A64ICODE:DATA-AFTER, ;
 
 \ An engine's start-up: START,'s labels, then the record image's and the record
 \ list's start and end; x17 keeps alias - base for REGION-ALIAS:DELTA-CELL.
@@ -212,6 +212,6 @@ public
    EM-DEF-OCC:LINIT A64ICODE:LABEL@ A64ICODE:BL,
    text0 STACKS,  text0 TRAP,
    ENGINE-EMIT:LHIDXBUILD A64ICODE:LABEL@ A64ICODE:BL,                    \ Maps the index, keys [0, NDICT)
-   ENGINE-MAIN:XT-CELL CALL-EXIT, ;
+   ENGINE-MAIN:XT-CELL CALL-EXIT,  A64ICODE:DATA-AFTER, ;
 
 ;package

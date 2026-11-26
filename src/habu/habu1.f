@@ -38,8 +38,6 @@
 \ a BLOCKED set takes POSIX_SPAWN_SETSIGMASK with this thread's mask and that
 \ set.
 require src/core/exit-status.f
-require src/lib/arena.f
-require src/lib/vector.f
 require src/arch/arm64/icode.f
 require src/habu/primitive-registry.f
 require src/habu/data-claims.f
@@ -77,36 +75,8 @@ defer FP-EMIT ( -- )
 
 variable FPL  variable FPE
 
-\ A datum a body names: its label and the bytes laid there.
-STRUCTURE row-datum DERIVE addr
-   FIELD lbl label
-   FIELD text str
-;STRUCTURE
-
-\ A file link zeroes scratch cells after each piece, so the list is made when
-\ first needed, in an arena: a cross-build runs this file on its host.
-TYPED-VARIABLE ROW-DATA-VEC ^VEC:vector<row-datum> SCRATCH-ONLY
-
-: ROW-DATA-LIST ( -- ^VEC:vector<row-datum> )
-   ROW-DATA-VEC @ NULL-PTR = if
-      ARENA:NEW ARENA:ALLOCATOR 0 [type] row-datum VEC:NEW ROW-DATA-VEC !
-   then
-   ROW-DATA-VEC @ ;
-
-\ The body's bytes, laid at the label after its record.
-: ROW-DATA ( label str -- ) {: lbl:label text:str :}
-   ROW-DATA-LIST VEC:PUSH {: d:^ :}
-   lbl d ROW-DATUM-LBL !  text d ROW-DATUM-TEXT ! ;
-
-\ The record ends at FPE; the data its body named follows it.
-: FP-END ( -- )
-   FPE A64ICODE:LABEL@ A64ICODE:LBL,
-   ROW-DATA-LIST {: list:^ :}
-   list VEC:COUNT 0 ?do
-      list i VEC:AT {: d:^ :}
-      d ROW-DATUM-LBL @ A64ICODE:LBL,  d ROW-DATUM-TEXT @ A64ICODE:BYTES,
-   loop
-   list 0 VEC:RESIZE ;
+\ The record ends at FPE.
+: FP-END ( -- )  FPE A64ICODE:LABEL@ A64ICODE:LBL,  A64ICODE:DATA-AFTER, ;
 
 : FP-ARGS ( str [ -- ] -- )
    is FP-EMIT  FP-NAME !
@@ -2304,7 +2274,7 @@ $58 constant CBT-LR                     \ C's x30
    A LCALLBACKTHUNK A64ICODE:LABEL@ A64ICODE:ADR,  A64ICODE:RET,
    body A64ICODE:LBL,
    BCALLBACK-THUNK
-   done A64ICODE:LBL, ;
+   done A64ICODE:LBL,  A64ICODE:DATA-AFTER, ;
 
 \ A C struct returned by value: x0 then x1, both intact through BCB-LEAVE.
 \ FFI stores the record they hold; an x8-indirect record is already written.
@@ -3329,7 +3299,7 @@ private
    bad A64ICODE:LBL,
       0 2 A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 text STR:LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
       0 EXIT-STATUS:REJECTED A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-   msg text ROW-DATA
+   msg text A64ICODE:DATA-AFTER
    done A64ICODE:LBL, ;
 
 \ The same readiness supplies the live tick gate and the verifier's entry
@@ -3407,7 +3377,7 @@ private
    emit A64ICODE:LBL,
       0 2 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
       0 EXIT-STATUS:REJECTED A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-   msg text ROW-DATA  invalid-msg invalid-text ROW-DATA
+   msg text A64ICODE:DATA-AFTER  invalid-msg invalid-text A64ICODE:DATA-AFTER
    done A64ICODE:LBL, ;
 ;package
 
@@ -4405,7 +4375,7 @@ private
       15 A64ICODE:SP 80 A64ICODE:LDR,  16 A64ICODE:SP 88 A64ICODE:LDR, 17 A64ICODE:SP 96 A64ICODE:LDR,
       A64ICODE:SP A64ICODE:SP 160 A64ICODE:ADDI,  A64ICODE:RET,
    HIDX-EMIT:LFULL A64ICODE:LABEL@ A64ICODE:LBL,
-      s" E-DICT-INDEX habu: dictionary index exhausted" EXIT-STATUS:INTERNAL CRASH:DIE-LINE, ;
+      s" E-DICT-INDEX habu: dictionary index exhausted" EXIT-STATUS:INTERNAL CRASH:DIE-LINE,  A64ICODE:DATA-AFTER, ;
 
 \ A dictionary slot's occurrence is owned by one anonymous mapping. The first
 \ cell is the last issued number; the remaining DICT-CAP cells are indexed by
@@ -4506,7 +4476,7 @@ private
    init-bad A64ICODE:LBL,
       3 DEF-OCC:STATE-BYTES A64ICODE:LIT64,
       s" hb: mapping the definition occurrence table failed; raise the address-space limit (ulimit -v) above its size in bytes:"
-      EXIT-STATUS:SYSTEM 3 CRASH:DIE-LINE-VALUE, ;
+      EXIT-STATUS:SYSTEM 3 CRASH:DIE-LINE-VALUE,  A64ICODE:DATA-AFTER, ;
 
 \ x9 names the four-byte patch (zero for an effect-only change); x10 names the
 \ created record. Every record covering changed bytes is replaced separately.

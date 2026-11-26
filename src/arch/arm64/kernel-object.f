@@ -48,7 +48,8 @@ variable K0                          \ the kernel's first word position
       TEXT-VA  0 TAIL@ 1 TAIL@ 2 TAIL@ 3 TAIL@  A64BOOT:START,
    then
    A64ICODE:ASM-CP @ K0 !
-   ENGINE-EMIT:KERNEL ;
+   ENGINE-EMIT:KERNEL
+   A64ICODE:?DATA-LAID ;
 
 
 : CODE+ ( -- ) A64ICODE:ASM-LEN dup U64+  A64ICODE:CODE swap >str SPAN+ ;

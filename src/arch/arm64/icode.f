@@ -10,6 +10,7 @@ require src/arch/arm64/asm.f
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
 require src/habu/layout.f
+require src/habu/literal-pool.f
 package A64ICODE
 public
 
@@ -114,7 +115,8 @@ public
    CODE drop
    ICODE-TABS drop
    0 ASM-CP !
-   0 NREF !  0 NSPAN ! ;
+   0 NREF !  0 NSPAN !
+   LITERAL-POOL:EMPTY ;
 
 : CODE-BYTE+ ( ^u8 n -- ^u8 ) + ;
 
@@ -725,6 +727,23 @@ variable BYU
    BYTES-PAD
    ASM-CP @  BYP@ CODE - 4 /  dup ASM-CP !
    2dup < if DATA-SPAN+ else 2drop then ;
+
+\ The bytes DATA-AFTER, lays at the label after the code unit that names them,
+\ so no run of instructions holds them.
+: DATA-AFTER ( label str -- ) {: lbl:label text:str :}
+   lbl LABEL>N text LITERAL-POOL:ADD ;
+
+\ At a code unit's end, where control cannot fall through: the data its code
+\ named with DATA-AFTER.
+: DATA-AFTER, ( -- )
+   LITERAL-POOL:COUNT 0 ?do
+      i LITERAL-POOL:AT {: lbl:n text:str :}
+      lbl >LABEL LBL,  text BYTES,
+   loop
+   LITERAL-POOL:EMPTY ;
+
+: ?DATA-LAID ( -- ) LITERAL-POOL:?LAID ;
+
 \ --- 64-bit constant synthesis: minimal MOVZ/MOVN + MOVK chain. The stage2
 \ fixpoint depends on this exact encoding policy. ---
 variable LIT-CH  variable LFI  variable LCI

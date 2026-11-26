@@ -265,10 +265,8 @@ public
    wret A64ICODE:LBL, ;
 
 : C-PROF-SAY ( str -- ) {: s:str :}
-   A64ICODE:LBL A64ICODE:LBL {: skip txt :}
-   skip A64ICODE:B,
-   txt A64ICODE:LBL,  s A64ICODE:BYTES,
-   skip A64ICODE:LBL,
+   A64ICODE:LBL {: txt :}
+   txt s A64ICODE:DATA-AFTER
    0 1 A64ICODE:MOVZ,  1 txt A64ICODE:ADR,  2 s STR:LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS, ;
 
 : C-PROF-BYTE ( n -- ) {: c:n :}
@@ -658,7 +656,7 @@ public
    false C-PROF-REP-SECTION
    s" by inclusive" C-PROF-SAY  C-PROF-NL
    true C-PROF-REP-SECTION
-   C-PROF-REP-CLOSE ;
+   C-PROF-REP-CLOSE  A64ICODE:DATA-AFTER, ;
 
 \ LPROFROW ( -- ): the text row for one dictionary record whatever its rank,
 \ with its callers.
@@ -684,7 +682,7 @@ public
    C-PROF-REP-CLOSE
    rnone A64ICODE:LBL,
    s" profiler: no row for that record" C-PROF-SAY  C-PROF-NL
-   C-PROF-REP-CLOSE ;
+   C-PROF-REP-CLOSE  A64ICODE:DATA-AFTER, ;
 
 \ x8 = arena, on a thread that is not ARN-OWNER: SIGALRM to ARN-OWNER-TID. An
 \ owner that exited leaves a handle the kernel can give this thread; that
@@ -901,7 +899,7 @@ private
    A64ASM:C-CC ok A64ICODE:BCOND,
       1 msg A64ICODE:ADR,  2 PROF-ABI:PROFARMMSG$ STR:LEN A64ICODE:MOVZ,  0 2 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
       0 EXIT-STATUS:SYSTEM A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-      msg A64ICODE:LBL,  PROF-ABI:PROFARMMSG$ A64ICODE:BYTES,
+      msg PROF-ABI:PROFARMMSG$ A64ICODE:DATA-AFTER
    ok A64ICODE:LBL, ;
 
 : C-PROF-TIMER-DONE ( -- )
@@ -933,7 +931,7 @@ private
       A64ASM:C-CC mok A64ICODE:BCOND,
          1 amsg A64ICODE:ADR,  2 PROF-ABI:PROFARNMSG$ STR:LEN A64ICODE:MOVZ,  0 2 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
          0 EXIT-STATUS:SYSTEM A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-      amsg A64ICODE:LBL,  PROF-ABI:PROFARNMSG$ A64ICODE:BYTES,
+      amsg PROF-ABI:PROFARNMSG$ A64ICODE:DATA-AFTER
       mok A64ICODE:LBL,
       7 PROF-BAND-VA A64ICODE:LIT64,  0 7 PROF-ABI:PROF-ARENA A64ICODE:STR,
    have A64ICODE:LBL, ;
@@ -942,7 +940,7 @@ private
    A64ICODE:LBL {: msg :}
    0 2 A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 s STR:LEN A64ICODE:LIT64,  SYSCALL:NR-WRITE SYSCALL:SYS,
    0 EXIT-STATUS:SYSTEM A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-   msg A64ICODE:LBL,  s A64ICODE:BYTES, ;
+   msg s A64ICODE:DATA-AFTER ;
 
 \ x5 = dictionary record; x1/x2 = raw name pointer/length. The external
 \ pointer is read while the record is live, then its exact bytes are copied.
@@ -1308,7 +1306,7 @@ private
    nosync A64ICODE:LBL,
    30 A64ICODE:SP 0 A64ICODE:LDR,  19 A64ICODE:SP 8 A64ICODE:LDR,  21 A64ICODE:SP 24 A64ICODE:LDR,  22 A64ICODE:SP 32 A64ICODE:LDR,
    23 A64ICODE:SP 40 A64ICODE:LDR,  24 A64ICODE:SP 48 A64ICODE:LDR,  25 A64ICODE:SP 56 A64ICODE:LDR,  17 A64ICODE:SP 64 A64ICODE:LDR,
-   A64ICODE:SP A64ICODE:SP 96 A64ICODE:ADDI,  A64ICODE:RET, ;
+   A64ICODE:SP A64ICODE:SP 96 A64ICODE:ADDI,  A64ICODE:RET,  A64ICODE:DATA-AFTER, ;
 
 \ Clear ARN-OWNER-TID, so a forwarding handler reads 0, which names no thread,
 \ then give the handle back. Clobbers x0-x2, x7-x9 and x16.
@@ -1530,7 +1528,7 @@ private
    next A64ICODE:LBL,
    0 8 0 A64ICODE:ADDI,  C-PROF-INDEX-PRUNE
    C-PROF-CLOCK-RESUME
-   absent A64ICODE:LBL,  C-PROF-RETIRE-CLOSE ;
+   absent A64ICODE:LBL,  C-PROF-RETIRE-CLOSE  A64ICODE:DATA-AFTER, ;
 
 \ CP lowering: no raw PC may survive reuse of its bytes. Retire live and
 \ seed-retained spans that intersect [new CP,old CP), after naming old samples.
@@ -1559,7 +1557,7 @@ private
    done A64ICODE:LBL,
    0 8 0 A64ICODE:ADDI,  C-PROF-INDEX-PRUNE
    C-PROF-CLOCK-RESUME
-   absent A64ICODE:LBL,  C-PROF-RETIRE-CLOSE ;
+   absent A64ICODE:LBL,  C-PROF-RETIRE-CLOSE  A64ICODE:DATA-AFTER, ;
 
 \ A REPORT NEVER SAMPLES ITSELF. It reads PROF-TOT once and then walks every
 \ counter; a tick in between would leave the header's own identity false by one.

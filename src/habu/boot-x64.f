@@ -205,16 +205,14 @@ private
    X64ASM:RAX STACK-ABI:LOOP-BASE-CELL CELL!
    X64ASM:RAX LOOPSP-CELL CELL! ;
 
-\ Bind a failure at the label: its line, newline included, to fd 2 in one
-\ write, then exit with the status. The line follows the exit syscall inside
-\ the loaded text, so it is readable before any region exists.
+\ Bind a failure at the label: one write of its line, newline included, to fd 2,
+\ then exit with the status. The line is readable before any region exists.
 : FAIL, ( label str n -- ) {: at:label t:str rc:n :}
    X64CODE:LBL {: msg:label :}
    at X64CODE:LBL,
    X64ASM:RDI STDERR IMM,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX t STR:LEN IMM,  NR-WRITE SYS,
    X64ASM:RDI rc IMM,  NR-EXIT-GROUP SYS,
-   msg X64CODE:LBL,
-   t X64CODE:BYTES, ;
+   msg t X64CODE:DATA-AFTER ;
 
 \ The width of the stub's one write: under PIPE_BUF, so a pipe takes it whole.
 4 constant SIGNO-BYTES
@@ -497,8 +495,7 @@ $F constant NIBBLE
    NR-WRITE SYS,
    X64ASM:RSP LINE-FRAME X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8
    X64CODE:RET,
-   digits X64CODE:LBL,
-   HEX$ X64CODE:BYTES, ;
+   digits HEX$ X64CODE:DATA-AFTER ;
 
 : PRINT, ( label n -- ) {: hex:label order:n :}
    X64ASM:RDX order IMM,  hex X64CODE:CALL, ;
@@ -702,10 +699,8 @@ $F constant NIBBLE
 \ The crash handler's printer, which the breakpoint handler calls too.
 variable HEX-AT
 
-\ Bind the handler at the first label, then the printer and the header it
-\ writes, where no control falls in. The second is the restorer RESTORER,
-\ binds right after, which the default action the handler installs names; the
-\ third is the last instruction of the signal handlers STUBS, lays out.
+\ Bind the handler at the first label, then the printer. The second label is the
+\ restorer's, the third the last instruction of the handlers STUBS, lays out.
 : CRASH-HANDLER, ( label label label -- ) {: at:label rest:label last:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
       {: dump:label raise:label hex:label head:label :}
@@ -720,8 +715,7 @@ variable HEX-AT
    dump X64CODE:LBL,
    head hex rest raise DUMP,
    hex HEX-LINE,
-   head X64CODE:LBL,
-   HEAD$ X64CODE:BYTES, ;
+   head HEAD$ X64CODE:DATA-AFTER ;
 
 \ The breakpoint handler, the twin of src/habu/habu2.f EMIT-TRAPH, entered on
 \ SIGTRAP with rdi = the signal, rsi = the siginfo and rdx = the ucontext; int3
@@ -834,8 +828,7 @@ variable HEX-AT
    X64ASM:RAX X64ASM:RBX UC-RIP X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR
    done X64CODE:LBL, ;
 
-\ Bind the handler at the first label, then its lines, where no control falls
-\ in; the second is the crash handler's.
+\ Bind the handler at the first label; the second is the crash handler's.
 : BP-HANDLER, ( label label -- ) {: at:label crash:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: resume:label head:label lr:label stack:label watch:label :}
@@ -855,10 +848,9 @@ variable HEX-AT
    resume X64CODE:LBL,
    BP-RESUME,
    X64CODE:RET,
-   head X64CODE:LBL,  BP-HEAD$ X64CODE:BYTES,
-   lr X64CODE:LBL,  BP-LR$ X64CODE:BYTES,
-   stack X64CODE:LBL,  BP-STACK$ X64CODE:BYTES,
-   watch X64CODE:LBL,  BP-WATCH$ X64CODE:BYTES, ;
+   head BP-HEAD$ X64CODE:DATA-AFTER  lr BP-LR$ X64CODE:DATA-AFTER
+   stack BP-STACK$ X64CODE:DATA-AFTER  watch BP-WATCH$ X64CODE:DATA-AFTER
+   X64CODE:DATA-AFTER, ;
 
 \ Install the handler at a label for crash.f's signals, each returning through
 \ the restorer at the other, on the alternate stack SIGNAL-STACK, registered.
@@ -916,7 +908,8 @@ variable HEX-AT
    EXIT-STATUS:SYSTEM FAIL,
    crash rest last CRASH-HANDLER,
    rest RESTORER,
-   stub last SIGNAL-STUB, ;
+   stub last SIGNAL-STUB,
+   X64CODE:DATA-AFTER, ;
 
 : CLOSE, ( label label label label -- ) {: booted:label crash:label rest:label stub:label :}
    crash rest stub STUBS,
@@ -964,6 +957,7 @@ variable LEXITHOOK
    X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CALL-REG
    X64ASM:RDI ZERO-REG,  LEXITHOOK @ >LABEL X64CODE:CALL,
    NR-EXIT-GROUP SYS,
-   none S\" hb: no entry\n" EXIT-STATUS:DISPATCH-UNSET FAIL, ;
+   none S\" hb: no entry\n" EXIT-STATUS:DISPATCH-UNSET FAIL,
+   X64CODE:DATA-AFTER, ;
 
 ;package
