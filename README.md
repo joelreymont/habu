@@ -95,7 +95,8 @@ Each library module's header states its contract and storage class.
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
 [MIT license](LICENSE-MIT) at your option. The Unicode data in
-[`data/unicode/`](data/unicode/16.0.0/LICENSE.txt) keeps its own licence.
+[`data/unicode/`](data/unicode/16.0.0/LICENSE.txt) and the Encoding Standard
+data in [`data/encoding/`](data/encoding/LICENSE) each keep their own licence.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in Habu by you, as defined in the Apache-2.0 license, shall be

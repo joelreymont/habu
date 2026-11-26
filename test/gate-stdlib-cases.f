@@ -705,6 +705,10 @@ TEST:SUITE unicode-script-exhaustive
    tools/unicode/script-verify-main.f
 TEST:;SUITE
 
+TEST:SUITE encoding-exhaustive
+   tools/encoding/verify-main.f
+TEST:;SUITE
+
 TEST:SUITE argv-stdlib-mocks
    src/lib/argv-test.f
 TEST:;SUITE
