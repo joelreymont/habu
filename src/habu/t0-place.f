@@ -1,4 +1,3 @@
-split-str
 \ t0-place.f - unit placement for the tier 0 emitters, part PLACE of package
 \ COMP.
 \

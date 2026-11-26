@@ -1,4 +1,3 @@
-split-str
 \ dict.f - what the running engine's dictionary says a spelling denotes, and
 \ what the chain may do with that record. The binding is the one `scope-find`
 \ answers. A `create`d or `constant` word's value is in no record slot and its
@@ -90,7 +89,7 @@ public
 
 : SPELL-START ( ^u8 n -- n )
    {: a u:n :}
-   a u SPELL-REC dup XREF-FOUND? 0= if drop 0 exit then
+   a u >str SPELL-REC dup XREF-FOUND? 0= if drop 0 exit then
    XREF-START ;
 
 \ ---- which definer made the record a spelling denotes -------------------------
@@ -120,8 +119,8 @@ private
 public
 
 : SPELL-FIXED ( str -- COMP:body )
-   {: a u:n :}
-   a u SPELL-REC REC-FIXED ;
+   {: s:str :}
+   s SPELL-REC REC-FIXED ;
 
 \ ---- one walk answers both the record and its start --------------------------
 \ The engine returned the record and its start together. Readers retain that
@@ -146,7 +145,7 @@ public
    rec FIXED-ENTRY drop
    rec XREF-START CK-ENTRY-VALUE ;
 
-: FIXED-VALUE ( ^u8 n -- n ) SPELL-REC REC-VALUE ;
+: FIXED-VALUE ( ^u8 n -- n ) >str SPELL-REC REC-VALUE ;
 
 \ A fixed DATA literal keeps the exact declaration that produced its address.
 \ -1 means the fixed value is a scalar and has no DATA owner.
@@ -221,12 +220,14 @@ private
 \ BOOT:NAMESPACE-WL holds, whatever its visibility, which REC-CALL checks; any
 \ other spelling binds none.
 : TOP-REC ( str -- ^n )
-   {: a:^ u:n :}
-   a u XREF-QUAL-INDEX {: q:n :}
+   {: s:str :}
+   s XREF-QUAL-INDEX {: q:n :}
    q 0 < if XREF-NULL exit then
-   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
+   s STR:DATA q >str BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE
+   {: pkg:^ :}
    pkg XREF-FOUND? 0= if XREF-NULL exit then
-   a q 1+ +  u q - 1-  pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE ;
+   s STR:DATA q 1+ +  s STR:LEN q - 1-  >str
+   pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE ;
 
 public
 
@@ -339,13 +340,14 @@ public
 \ whole instruction.
 : COPY-TRAILER ( ^n -- str ) {: rec:^ :}
    rec XREF-START  rec XREF-LEN +  >TRAILER-CELL BYTE-VIEW {: at:^ :}
-   at  at c@ 4 + -4 and ;
+   at  at c@ 4 + -4 and >str ;
 
-: COPY-STEPS ( ^n -- str ) COPY-TRAILER drop {: at:^ :}  at 1+  at c@ ;
+: COPY-STEPS ( ^n -- str )
+   COPY-TRAILER STR:DATA {: at:^ :}  at 1+  at c@ >str ;
 
 \ ---- and the engine word a does> body leaves through --------------------------
 private
-CAST: PATCH>N ( [ n ^u8 n -- ] -- n )
+CAST: PATCH>N ( [ n str -- ] -- n )
 
 public
 \ The engine's own, whatever the compiled source's package scope.
