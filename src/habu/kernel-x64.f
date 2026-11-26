@@ -2109,21 +2109,16 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    X64ASM:RAX DATA-REG CREATEP-CELL MOV-LOAD,
    X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CALL-REG ;
 
-\ A source token's scope is a dictionary-record lookup. The one-wordlist
-\ FIND-LBL helper also serves the public search rows; using it here keeps
-\ package and qualified names on the same name-folding path.
+\ The scope lookup searches each wordlist with FIND-LBL, as the public search rows
+\ do, so package and qualified names fold the same way.
 32 constant SCOPE-FRAME
 0 constant SF-TOKEN
 8 constant SF-LEN
 16 constant SF-COLON
 24 constant SF-QUAL-PUB
 
-\ bare-scope-bind ( ^u8 n -- ^n n ): the bound record, null when nothing
-\ binds, and the flags. A qualified name searches the namespace record's
-\ public wid. Bare names search the open private/public wids, the enclosing
-\ package's (layout.f ENCLOSING) while a part is open, then global. A bound
-\ seeded primitive sets flag 1. The record stays in RAX from the search to
-\ the push.
+\ bare-scope-bind ( ^u8 n -- ^n n ): the record a token binds, null for none,
+\ and flags (1 = a seeded primitive). RAX holds the record from search to push.
 : SCOPE-FIND-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
@@ -2215,12 +2210,6 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    X64ASM:RAX PUSH,  X64ASM:RCX PUSH,
    X64ASM:RSP SCOPE-FRAME X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8 ;
 
-\ bare-scope-find: stage 2 deletes it once its callers move to bare-scope-bind.
-: SCOPE-FIND-FOUR-BODY ( -- )
-   SCOPE-FIND-BODY
-   X64ASM:RCX POP,  X64ASM:RAX ZERO-REG,
-   X64ASM:RAX PUSH,  X64ASM:RAX PUSH,  X64ASM:RCX PUSH, ;
-
 \ parse-name follows the shared source cursor. Whitespace is every byte at
 \ or below space; on exhaustion the previous token cells remain untouched.
 : PARSE-NAME-BODY ( -- )
@@ -2255,9 +2244,8 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    X64ASM:RAX ZERO-REG,  X64ASM:RAX PUSH,
    finish X64CODE:LBL, ;
 
-\ bare-tok-imm? asks the scope bare-scope-bind asks; FIND-LBL supplies the
-\ same folded-name record lookup, and the immediate flag is its DNAME-IMM bit
-\ folded to 2.
+\ bare-tok-imm? binds as bare-scope-bind does and answers the bound record's
+\ DNAME-IMM bit as 2.
 : TOK-IMM-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
@@ -2592,7 +2580,6 @@ public
    s" parse-name" [: PARSE-NAME-BODY ;] PRIM
    s" num-parse" [: NUM-PARSE, ;] PRIM
    s" bare-tok-imm?" [: TOK-IMM-BODY ;] PRIM
-   s" bare-scope-find" [: SCOPE-FIND-FOUR-BODY ;] PRIM
    s" bare-scope-bind" [: SCOPE-FIND-BODY ;] PRIM
    s" scope-kind?" [: X64ASM:RAX POP,  SCOPE-KIND-LBL X64CODE:CALL,  X64ASM:RAX PUSH, ;] PRIM ;
 
@@ -4805,12 +4792,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    PKG-REC-CELL REPLAY-SCOPE:PKG-REC save SAVED,
    ENCLOSING:END ENCLOSING:PUB - 0 do
       ENCLOSING:PUB i +  REPLAY-SCOPE:ENCLOSING i +  save SAVED,
-   CELL +loop
-   USE-DEPTH-CELL REPLAY-SCOPE:USE-DEPTH save SAVED,
-   USE-PKG-SAVE-CELL REPLAY-SCOPE:USE-PKG-SAVE save SAVED,
-   USE-MAX 0 ?do
-      USE-WIDS-OFF i cells +  REPLAY-SCOPE:USE-WIDS i cells +  save SAVED,
-   loop ;
+   CELL +loop ;
 
 \ replay-open ( -- ): park a pending definition: PEND-CELL and record NDICT's
 \ bytes move into REPLAY-SCOPE:PEND and PEND-REC; with a task live it traps.

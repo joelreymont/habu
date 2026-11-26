@@ -929,7 +929,7 @@ EXPORT CHECKER-OVERLAY:VALUE
 \ The record a count name binds, rejected as a bare call's is.
 : COUNT-REC ( str -- ^n ) {: s:str :}
    s CHECKER-BIND drop
-   s scope-find drop drop drop ;
+   s scope-find drop ;
 \ A count token's value and true: an integer literal or the value of the
 \ constant it binds; false for anything else.
 : COUNT-VALUE ( str -- n bool ) {: s:str :}

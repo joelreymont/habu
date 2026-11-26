@@ -222,11 +222,11 @@ private
    -1 ;
 
 EXPORT BOOT:data-base
-EXPORT CHECKER-RESOLVE:bare-scope-find
+EXPORT CHECKER-RESOLVE:bare-scope-bind
 
 \ The scope's answer: open package, enclosing package, global, NAME:tail.
 : FIND-SCOPE ( str -- ^n )
-   bare-scope-find drop drop drop ;
+   bare-scope-bind drop ;
 
 public
 
@@ -499,14 +499,14 @@ TYPED-VARIABLE REC ^n
 \ The record the name binds, rejected, naming it, where a sealed source may
 \ not call it.
 : LOOKUP-NAME ( str -- ^n ) {: s:str :}
-   s scope-find drop drop drop {: rec:^ :}
+   s scope-find drop {: rec:^ :}
    s rec POLICY-CHECK-REC
    rec ;
 
 \ LOOKUP-NAME for the top-level token, whose policy also admits the exempt
 \ require.
 : SEARCH ( -- )
-   TOKEN$ bare-scope-find drop drop drop {: rec:^ :}
+   TOKEN$ bare-scope-bind drop {: rec:^ :}
    TOKEN$ rec POLICY-REQUIRE? 0= if TOKEN$ rec POLICY-CHECK-REC then
    TOKEN$ rec REQUIRE-CHECK
    rec REC ! ;

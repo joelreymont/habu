@@ -1145,7 +1145,7 @@ s" TPC-PKG-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-CROSS-A ( span<n,n,n> -- TDPM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-CROSS-B ( TDPM:span<n,n,n,n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 \ A foreign private row is invisible, and a foreign public family needs its
-\ package named or imported: the one public `tier` does not resolve bare.
+\ package named: the one public `tier` does not resolve bare.
 s" TPC-PRIVATE-HIDDEN ( TDPM:tier<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-PUBLIC-BARE ( tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-PUBLIC-QUAL ( OTHER:tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=

@@ -1914,9 +1914,8 @@ package CHECK
 
 EXPORT CHECKER-OVERLAY:OPEN-SCOPE
 
-\ The scope opener for replaying STANDALONE source. A separate file's package
-\ context is whatever it declares, so this scope starts at top level: no open
-\ package.
+\ The scope opener for replaying STANDALONE source: top level, since a separate
+\ file declares its own package context.
 : CHECKER-SCOPE-START-NEUTRAL ( -- )
    RBF-PUSH
    [: RES-TRUE RBF-DEPTH @ OPEN-SCOPE ;] catch {: rc:n :}
@@ -2530,10 +2529,10 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    THEN
    TOP-END ;
 
-\ Rejects the top-level token s for WHY, WALK's code, as the load does: the
-\ require check comes first.
-: WALK-REJECT ( str n -- ) {: s:str why:n :}
-   0 s BIND-REC @ USE-CHECK  why RAISE ;
+\ Rejects the top-level token s WALK rejected, as the load does: the require
+\ check comes first.
+: WALK-REJECT ( str -- ) {: s:str :}
+   0 s BIND-REC @ USE-CHECK  CHECKER-PKG-CONTEXT-REJECT ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
 \ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
@@ -2544,8 +2543,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 : TOP-ANSWER ( str bool -- n )
    {: s:str runs:bool :}
    runs  s LITERAL-RANGE?  and IF s REJECTION:LITERAL-RANGE  TOP-END EXIT THEN
-   s WALK {: sym:n why:n :}
-   why 0 <> IF s why WALK-REJECT THEN
+   s WALK {: sym:n rej:bool :}
+   rej IF s WALK-REJECT THEN
    sym HIDDEN-REC? {: hidden:bool :}
    CHECKER-QBAD-TOK @ 0= IF
       s sym TOP-BOUND-SYM {: s2:n rec:^ ok:bool :}
@@ -2572,9 +2571,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ pre-pass reads itself, so TOP-ANSWER never judges it.
 : REQUIRED-TOP ( str -- )
    {: s:str :}
-   s WALK {: sym:n why:n :}
+   s WALK {: sym:n rej:bool :}
    CHECKER-QBAD-TOK @ 0 <> IF EXIT THEN
-   why 0 <> IF s why WALK-REJECT THEN
+   rej IF s WALK-REJECT THEN
    s sym TOP-BOUND-SYM {: s2:n rec:^ ok:bool :}
    ok IF s2 s rec USE-CHECK THEN ;
 
@@ -2892,8 +2891,7 @@ private
 
 : ROW-UNBOUND ( str -- n )
    {: s:str :}
-   s WALK nip {: why:n :}
-   why 0 <> IF why RAISE THEN
+   s WALK nip IF CHECKER-PKG-CONTEXT-REJECT THEN
    CHECKER-QBAD-TOK @ IF PARSES-QUALIFIED EXIT THEN
    s UNSEEN-COVERS? IF -1 EXIT THEN
    PARSES-UNDEFINED ;
@@ -3774,14 +3772,10 @@ package CHECK
    hit 0= IF 0 EXIT THEN
    ps vis name CHECKER-PKG-SYM ;
 
-\ A read runs inside a caller's check, between its tokens, so it is a guest
-\ there, as a top step is (TOP-GUEST): it parses above the term pools' marks,
-\ and the parser's and recorder's cells, which the caller may hold, are saved
-\ and given back however the read ends. One read is open at a time.
-\ GUEST-POOLS saves 16 cells, GUEST-PARSER 40 and its two tables,
-\ GUEST-LATCHES 8; GUEST-POINTERS saves 10 pointers.
-16 40 + 8 +  BINDER-DEPTH-MAX +  26 +  constant GUEST-CAP
-10 constant GUEST-PTRS-CAP
+\ One read at a time is a guest in its caller's check, as a top step is (TOP-GUEST):
+\ it parses above the pools' marks and gives back the parser's and recorder's cells.
+16 40 + 8 +  BINDER-DEPTH-MAX +  26 +  constant GUEST-CAP  \ GUEST-POOLS 16, GUEST-PARSER 40 and its tables, GUEST-LATCHES 8
+10 constant GUEST-PTRS-CAP                                  \ GUEST-POINTERS
 SCRATCH{
 create GUEST-SAVED GUEST-CAP cells allot
 GUEST-PTRS-CAP PTR-U8-TABLE GUEST-SAVED-PTRS

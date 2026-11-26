@@ -696,38 +696,24 @@ EPPRIM: INTERPRETER stack-clear ECLOSE-PRIVATE
 EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
 \ Only CHECKER-OVERLAY types these six: elsewhere a checked call is E-UNDEFINED
 \ and a TRUSTED: one binds at tier 0 only. Rejections exit 79 on a task, else 83.
-\
-\ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells,
-\ the using band and a pending definition in the engine's REPLAY-SCOPE band;
-\ inside the overlay no definition pends. It rejects an open overlay and a
-\ pending definition while a task is live.
-\ replay-record ( ^u8 n n -- ) name, wid: publish a codeless record whose
-\ entry traps, exit 89. It rejects no overlay, a negative wid and what the
-\ three record writers above reject.
-\ record-wid! ( n n -- ) wid, index: retire a record (-2) or give it back its
-\ wid. It rejects no overlay, an index at or above NDICT, unsigned, a live
-\ package row and any negative wid but -2 and -3. A seeded primitive's record
-\ retires as the live `undefine` retires it.
-\ replay-private ( n bool -- ) namespace index, flag: give a row with no
-\ private wid a fresh one (true), as `package` does for a row a qualified
-\ definition made, or take back the one given (false). It rejects no overlay,
-\ an index at or above NDICT, unsigned, and a row not a live package row; true
-\ a row with a private wid, false one whose private wid is 0 or older than the
-\ overlay.
-\ replay-close ( -- ): zero the records from NDICT up to the highest count
-\ reached, put the saved state back, a saved pending definition included, and
-\ zero the band. The owner has already retired or dropped the ones below.
-\ It rejects no overlay, a definition pending, a parked definition while a
-\ task is live, NDICT below the saved count or above the highest count
-\ replay-record and namespace-record reached, and CP or WIDN below the saved.
-\ replay-widn! ( n -- ): put WIDN back to a mark the owner read inside the
-\ overlay, once its rollback dropped what it made since. It rejects no overlay
-\ and a mark below the saved WIDN or above WIDN, unsigned.
+
+\ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the package cells and a
+\ pending definition in REPLAY-SCOPE; no definition pends inside the overlay.
 EPPRIM: CHECKER-OVERLAY replay-open ECLOSE-PRIVATE
+\ replay-close ( -- ): zero the records from NDICT up to the highest count reached,
+\ the owner having retired those below, then put the saved state back.
 EPPRIM: CHECKER-OVERLAY replay-close ECLOSE-PRIVATE
+\ replay-widn! ( n -- ): put WIDN back to a mark read inside the overlay, once its
+\ rollback dropped what it made since.
 EPPRIM: CHECKER-OVERLAY replay-widn! PE-N PE-IN ECLOSE-PRIVATE
+\ replay-record ( ^u8 n n -- ) name, wid: publish a codeless record whose entry
+\ traps, exit 89.
 EPPRIM: CHECKER-OVERLAY replay-record PE-STR PE-IN PE-N PE-IN ECLOSE-PRIVATE
+\ record-wid! ( n n -- ) wid, index: retire a record (-2) or give back its wid; a
+\ seeded primitive's record retires as the live `undefine` retires it.
 EPPRIM: CHECKER-OVERLAY record-wid! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+\ replay-private ( n bool -- ) namespace index, flag: give a row with no private
+\ wid a fresh one (true), as `package` does, or take back the one given (false).
 EPPRIM: CHECKER-OVERLAY replay-private PE-N PE-IN PE-F PE-IN ECLOSE-PRIVATE
 EPRIM: DRAIN-PRETRUST EPRIM;
 \ data-base is a BASE ADDRESS: the start of the running task's DATA region, not
@@ -756,8 +742,6 @@ EPRIM: wordlist       PE-N PE-OUT EPRIM;
 EPRIM: get-current    PE-N PE-OUT EPRIM;
 EPPRIM: CHECKER-RESOLVE bare-search-wl PE-STR PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: CHECKER-RESOLVE xref-search-wl PE-STR PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
-EPPRIM: CHECKER-RESOLVE bare-scope-find PE-STR PE-IN
-   PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: CHECKER-RESOLVE bare-scope-bind PE-STR PE-IN
    PE-PTR-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: parse-name     PE-STR PE-OUT EPRIM;

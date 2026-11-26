@@ -20,8 +20,8 @@ package X64K-SCOPE-TEST
    flags X64HARNESS:EXPECT-POP,
    bound REC?, ;
 
-\ Pkg is record 6, so its harness code cell is public wid 7. Its private
-\ wordlist is wid 8; two other public wordlists are wids 9 and 10.
+\ Pkg is record 6, so its harness code cell is public wid 7; wid 8 is its
+\ private wordlist, wids 9 and 10 the enclosing package's public and private.
 : SEED, ( -- )
    s" Alpha" 0 0 X64HARNESS:RECORD,                     \ 0
    s" ALPHA" 7 0 X64HARNESS:RECORD,                     \ 1
@@ -31,7 +31,8 @@ package X64K-SCOPE-TEST
    s" both" 0 0 X64HARNESS:RECORD,                      \ 5
    s" Pkg" WL:NAMESPACE 0 X64HARNESS:RECORD,     \ 6: public wid 7
    s" OnlyPub" 7 0 X64HARNESS:RECORD,                   \ 7
-   s" OnlyPri" 8 0 X64HARNESS:RECORD, ;                 \ 8
+   s" OnlyPri" 8 0 X64HARNESS:RECORD,                   \ 8
+   s" alphA" 10 0 X64HARNESS:RECORD, ;                  \ 9
 
 : CASE, ( n -- )
    {: kind:n :}
@@ -52,6 +53,21 @@ package X64K-SCOPE-TEST
       s" Pkg:Both" SCOPE,  5 1 ANSWER,
    then
    kind 7 = if s" Pkg:Both" SCOPE,  -1 0 ANSWER, then
+   kind 7 > if
+      7 PKG-PUB-CELL X64HARNESS:CELL!,  8 PKG-PRI-CELL X64HARNESS:CELL!,
+   then
+   kind 8 = if
+      9 ENCLOSING:PUB X64HARNESS:CELL!,  10 ENCLOSING:PRI X64HARNESS:CELL!,
+      s" both" SCOPE,  4 1 ANSWER,
+   then
+   kind 9 = if
+      0 ENCLOSING:PUB X64HARNESS:CELL!,  0 ENCLOSING:PRI X64HARNESS:CELL!,
+      s" both" SCOPE,  5 1 ANSWER,
+   then
+   kind 10 = if
+      9 ENCLOSING:PUB X64HARNESS:CELL!,  10 ENCLOSING:PRI X64HARNESS:CELL!,
+      s" ALPHA" SCOPE,  2 1 ANSWER,
+   then
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
 
@@ -85,6 +101,9 @@ package X64K-SCOPE-TEST
    false 5 s" hb-x64-scope-bad-qual-scan" TMP-PATH BUILD
    false 6 s" hb-x64-scope-open-qual-scan" TMP-PATH BUILD
    false 7 s" hb-x64-scope-closed-qual-scan" TMP-PATH BUILD
+   false 8 s" hb-x64-scope-enclosing-pri-scan" TMP-PATH BUILD
+   false 9 s" hb-x64-scope-no-enclosing-scan" TMP-PATH BUILD
+   false 10 s" hb-x64-scope-open-first-scan" TMP-PATH BUILD
    true 0 s" hb-x64-scope-global-index" TMP-PATH BUILD
    true 1 s" hb-x64-scope-private-index" TMP-PATH BUILD
    true 2 s" hb-x64-scope-public-index" TMP-PATH BUILD
@@ -93,6 +112,9 @@ package X64K-SCOPE-TEST
    true 5 s" hb-x64-scope-bad-qual-index" TMP-PATH BUILD
    true 6 s" hb-x64-scope-open-qual-index" TMP-PATH BUILD
    true 7 s" hb-x64-scope-closed-qual-index" TMP-PATH BUILD
+   true 8 s" hb-x64-scope-enclosing-pri-index" TMP-PATH BUILD
+   true 9 s" hb-x64-scope-no-enclosing-index" TMP-PATH BUILD
+   true 10 s" hb-x64-scope-open-first-index" TMP-PATH BUILD
    BUILD-LATE
    X64HARNESS:DISPOSE
    T-REPORT ;

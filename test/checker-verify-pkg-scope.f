@@ -33,7 +33,7 @@ public
    s STR:LEN SRC-U !
    [: ACT ;] catch ;
 
-\ Replay in a neutral scope, which starts at top level with no imports.
+\ Replay in a neutral scope, which starts at top level.
 : REPLAY-NEUTRAL ( str -- n ) {: s:str :}
    s STR:DATA SRC-A !
    s STR:LEN SRC-U !

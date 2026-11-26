@@ -1383,17 +1383,12 @@ CAST: VISIBLE-ACTION ( n -- [ str n [ str n n n -- ] -- ] )
 : WITH-USES ( [ n n n n n n -- ] [ -- renders parses nominal ] -- )
    NCOMP-DISPATCH:DECL-VERIFY-USES-OFF OWNER-XT USES-ACTION execute ;
 
-\ The scope's two questions about a name, asked of the checker that owns the
-\ scope: RECORD-SYM? names the symbol a definition in THIS source is recorded
-\ under (0 when it never was) and FIND-SYM resolves a USE through the chain a
-\ body token resolves through: the open package's private and public
-\ wordlists, the enclosing package's while a part is open, and the global
-\ wordlist, or a qualified token's namespace.
+\ The symbol a definition in THIS source is recorded under, 0 when it never was,
+\ asked of the checker that owns the scope.
 : RECORD-SYM? ( str -- n )
    NCOMP-DISPATCH:DECL-VERIFY-RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
-\ FIND-SYM reports nothing: this scan asks it of tokens it is only
-\ classifying, and a rejection belongs to the definition's own check, which
-\ resolves the same token straight after.
+\ FIND-SYM binds a USE as a body token binds and raises the binder's rejection: a
+\ bare token no authority names a package context for stops the load here.
 : FIND-SYM ( str -- n )
    NCOMP-DISPATCH:DECL-VERIFY-FIND-SYM-OFF OWNER-XT SYM-ACTION execute ;
 
@@ -1788,9 +1783,8 @@ variable WRAP-MAKES                           \ a `create` or definer call befor
    WRAP-DEFINERS @ 1 <> IF EXIT THEN
    WRAP-ROW @  DEF-NAME-A @ DEF-NAME-U @ >str RECORD-SYM?  DEFINER-INHERIT ;
 
-\ The live probe follows interpreter syntax. A selected public word is probed
-\ by its qualified spelling; a private word has no qualified spelling and
-\ cannot prove it will not execute at compile time.
+\ The live probe spells a public word PKG:TAIL, as the interpreter does; a private
+\ word has no such spelling, so it cannot prove it will not run at compile time.
 DYNAMIC-BUFFER TICK-QUAL u8
 
 \ A package's word as a caller outside it spells it, PKG:TAIL, copied into
@@ -2291,7 +2285,7 @@ EXPORT CHECKER-OVERLAY:UNSTATED!
 : STATED-VALUE ( str -- n bool ) {: s:str :}
    s num-parse {: v:n flt:bool ok:bool :}
    ok IF v flt 0= EXIT THEN
-   s scope-find drop drop drop VALUE ;
+   s scope-find drop VALUE ;
 
 \ A `constant`'s value is stated when the token before it gives one and no
 \ skipped string literal or open stretch can have pushed another.
@@ -3982,7 +3976,7 @@ variable USER-XT s" TASK:+USER" USER-XT LIBRARY-XT!
 : LIBRARY-DEFINER? ( str n str -- bool )
    {: s:str code:n name:str :}
    s TOKEN-TAIL name STR:=CI 0= IF false EXIT THEN
-   s scope-find drop drop drop {: rec:^ :}
+   s scope-find drop {: rec:^ :}
    rec XREF-FOUND? 0= IF false EXIT THEN
    rec XREF-START code = IF true EXIT THEN
    s FIND-SYM {: sym:n :}

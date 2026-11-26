@@ -1719,7 +1719,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" probe-swl" s" get-current search-wl 0= if 0 else 1 then" s" probe-swl2" LOOKUP-RUN ;
 
 : SCOPE-FIND-CASE ( CMD:command -- CMD:command )
-   s" probe-find" s" scope-find drop drop drop NULL-PTR = if 0 else 1 then" s" probe-find2"
+   s" probe-find" s" scope-find drop NULL-PTR = if 0 else 1 then" s" probe-find2"
    LOOKUP-RUN ;
 
 \ The public-lookup sequence's s.f: package FILE-OBJECTS-QS with a private HELPER of value n.

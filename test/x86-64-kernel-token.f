@@ -1,5 +1,5 @@
 \ parse-name walks the live source cursor, including its end-of-input answer.
-\ bare-tok-imm? follows the primary name binding and ignores used publics.
+\ bare-tok-imm? answers for the record the token binds.
 \ Runtime CREATE dispatches through the captured handler. A defining word
 \ calls it with an existing user stack and source; the call must return with
 \ that stack intact. The emitted ELFs remain in TMPDIR as hb-x64-kernel-token,
@@ -39,11 +39,11 @@ package X64K-TOKEN-TEST
    s" bare-tok-imm?" X64HARNESS:CALL-ROW,
    want X64HARNESS:EXPECT-POP, ;
 
+\ Pkg is record 5, so its harness code cell is public wid 6.
 : SEED-IMM, ( -- )
    s" Tok" 0 DNAME-IMM X64HARNESS:RECORD,
    s" Tok" 8 0 X64HARNESS:RECORD,
-   s" Pub" 7 DNAME-IMM X64HARNESS:RECORD,
-   s" Use" 9 DNAME-IMM X64HARNESS:RECORD,
+   s" Pub" 6 DNAME-IMM X64HARNESS:RECORD,
    s" No" 0 0 X64HARNESS:RECORD,
    s" Pad" 0 0 X64HARNESS:RECORD,
    s" Pkg" WL:NAMESPACE 0 X64HARNESS:RECORD, ;
@@ -52,7 +52,7 @@ package X64K-TOKEN-TEST
    false X64HARNESS:BOOT-OPEN,
    SEED-IMM,
    s" tOk" 2 IMM?,
-   7 PKG-PUB-CELL X64HARNESS:CELL!,
+   6 PKG-PUB-CELL X64HARNESS:CELL!,
    8 PKG-PRI-CELL X64HARNESS:CELL!,
    s" Tok" 0 IMM?,
    s" Pub" 2 IMM?,
@@ -61,9 +61,6 @@ package X64K-TOKEN-TEST
    0 PKG-PUB-CELL X64HARNESS:CELL!,
    0 PKG-PRI-CELL X64HARNESS:CELL!,
    s" Pkg:Tok" 0 IMM?,
-   9 USE-WIDS-OFF X64HARNESS:CELL!,
-   1 USE-DEPTH-CELL X64HARNESS:CELL!,
-   s" Use" 0 IMM?,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    s" hb-x64-kernel-tok-imm" TMP-PATH X64HARNESS:BOOT-CLOSE, ;

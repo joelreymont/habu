@@ -9,7 +9,6 @@ $0 constant RAW-OFF
 $8 constant EFFECT-OFF
 $10 constant DEFER-OFF
 $18 constant CAST-OFF
-$20 constant USING-OFF
 $28 constant PACKAGE-OFF
 $30 constant PUBLIC-OFF
 $38 constant PRIVATE-OFF

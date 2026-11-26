@@ -21,8 +21,8 @@
 \ dynamic section names. The code starts at the entry, and the text's PT_LOAD
 \ maps the file from offset 0, so a file offset is an address less that
 \ load's. Offsets come from these headers, never from the inspecting host.
-\ CODE-OFF and DATA-VA are the target's, LINUX-LAYOUT's, which the `using`
-\ below keeps from reading bare; it closes before this file ends.
+\ CODE-OFF is the target's, LINUX-LAYOUT's, read with that prefix: a host's
+\ bare CODE-OFF is its own.
 
 require src/core/exit-status.f
 require src/arch/arm64/icode.f

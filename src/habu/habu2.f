@@ -824,7 +824,7 @@ package DEFWRITE
    then ;
 
 \ The scope replay-open saves and replay-close restores, beside NDICT and CP.
-\ x8 = the band. Clobbers x10 and x14.
+\ x8 = the band. Clobbers x14.
 : SCOPE, ( bool -- ) {: save:bool :}
    XREG-RBASE WIDN-CELL REPLAY-SCOPE:WIDN save SAVED,
    XREG-RBASE CUR-CELL REPLAY-SCOPE:CUR save SAVED,
@@ -834,13 +834,7 @@ package DEFWRITE
    XREG-RBASE PKG-REC-CELL REPLAY-SCOPE:PKG-REC save SAVED,
    ENCLOSING:END ENCLOSING:PUB - 0 do
       XREG-RBASE ENCLOSING:PUB i +  REPLAY-SCOPE:ENCLOSING i +  save SAVED,
-   CELL +loop
-   10 USE-BAND-OFF A64ICODE:LIT64,  10 XREG-RBASE 10 A64ICODE:ADD,
-   10 USE-DEPTH-CELL USE-BAND-OFF - REPLAY-SCOPE:USE-DEPTH save SAVED,
-   10 USE-PKG-SAVE-CELL USE-BAND-OFF - REPLAY-SCOPE:USE-PKG-SAVE save SAVED,
-   USE-MAX 0 ?do
-      10 USE-WIDS-OFF USE-BAND-OFF - i cells +  REPLAY-SCOPE:USE-WIDS i cells +  save SAVED,
-   loop ;
+   CELL +loop ;
 
 \ Zero the cells [x10, x11). Clobbers x10 and x15.
 : ZERO-SPAN, ( -- )
@@ -1808,16 +1802,8 @@ public
 ;package
 
 package ENGINE-EMIT
-\ LSCOPEREC: the name lookup as one leaf for every reader but the call site, in
-\ the call site's order: LFIND (open package, enclosing one, global, or
-\ NAME:tail). In: x9/x10 = the token, preserved. Out: x14 = the bound record
-\ (0 when nothing binds), x15 = flags: 1 when the bound record is a seeded
-\ primitive. Clobbers x2-x17 as the leaves do.
-\ Seeded is the identity of an operator row's word: the boot copies the
-\ primitives' records to dict[0..LNCOUNT), and every later record (a package
-\ word, an EXPORT alias, a redefinition after `undefine`) sits above. An
-\ operator row may claim its token only when the lookup bound that
-\ primitive's own record.
+\ LSCOPEREC: LFIND's lookup as one leaf for every reader but the call site. In:
+\ x9/x10 = the token, kept. Out: x14 = the record or 0, x15 = flags; x2-x17 clobbered.
 : EMIT-SCOPE-REC ( -- )
    A64ICODE:LBL {: notseed:label :}
    LSCOPEREC A64ICODE:LABEL@ A64ICODE:LBL,
@@ -1825,6 +1811,8 @@ package ENGINE-EMIT
    LFIND A64ICODE:LABEL@ A64ICODE:BL,                                       \ x5 = the record, 0 on a miss
    14 5 0 A64ICODE:ADDI,  15 0 A64ICODE:MOVZ,
    14 notseed A64ICODE:CBZ,
+   \ The boot copies the primitives' records below LNCOUNT; an operator row claims
+   \ its token only when the lookup bound one of them: flag 1.
    12 LNCOUNT A64ICODE:LABEL@ A64ICODE:ADR,  12 12 0 A64ICODE:LDR,  13 DREC A64ICODE:MOVZ,  12 12 13 A64ICODE:MUL,  12 DBASE 12 A64ICODE:ADD,
    14 12 A64ICODE:CMP,  A64ASM:C-CS notseed A64ICODE:BCOND,
       15 1 A64ICODE:MOVZ,
@@ -2085,20 +2073,12 @@ public
 ;package
 
 package ENGINE-EMIT
-\ bare-scope-bind ( ^u8 n -- ^n n ): LSCOPEREC's two answers for a token (the
-\ bound record and the flags), so the checker, tier 0 and the Habu interpreter
-\ bind a spelling to the record a compiled call binds.
+\ bare-scope-bind ( ^u8 n -- ^n n ): LSCOPEREC's record and flags, so every
+\ reader binds a spelling to the record a compiled call binds.
 : BSCOPEBIND ( -- )
    10 RT:G-POP  9 RT:G-POP                   \ x10 = len (TOS), x9 = addr
    LSCOPEREC A64ICODE:LABEL@ A64ICODE:BL,
    14 RT:G-PUSH  15 RT:G-PUSH ;
-
-\ bare-scope-find: stage 2 deletes it once its callers move to bare-scope-bind.
-: BSCOPEFIND ( -- )
-   10 RT:G-POP  9 RT:G-POP                   \ x10 = len (TOS), x9 = addr
-   LSCOPEREC A64ICODE:LABEL@ A64ICODE:BL,
-   16 0 A64ICODE:MOVZ,
-   14 RT:G-PUSH  16 RT:G-PUSH  16 RT:G-PUSH  15 RT:G-PUSH ;
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
@@ -2125,7 +2105,6 @@ package ENGINE-EMIT
    s" replay-private" ['] DEFWRITE:REPLAY-PRIVATE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" bare-tok-imm?" ['] BTOKIMM FPRIM
-   s" bare-scope-find" ['] BSCOPEFIND FPRIM
    s" bare-scope-bind" ['] BSCOPEBIND FPRIM
    s" scope-kind?" ['] BSCOPE-KIND FPRIM
    s" xt!" ['] RELOC-EMIT:BXTSTORE FPRIM

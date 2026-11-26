@@ -48,14 +48,14 @@ public
 
 \ The bound record whatever its flags, or none.
 : SCOPE-REC ( str -- ^n )
-   scope-find drop drop drop ;
+   scope-find drop ;
 
 \ Whether an operator row may stand for the spelling: the lookup binds the
 \ seeded primitive of that spelling, or nothing at all (a keyword such as `>r`
 \ has no record). A package word, an EXPORT alias and a redefinition after
 \ `undefine` each bind a record of their own, and the call path reaches it.
 : SPELL-PRIM? ( str -- bool )
-   scope-find {: rec:^ used:^ used2:^ flags:n :}
+   scope-find {: rec:^ flags:n :}
    rec XREF-FOUND? 0= if true exit then
    flags SCOPE-SEEDED and 0<> ;
 

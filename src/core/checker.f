@@ -452,7 +452,7 @@
 \ lookup, so while it runs the engine's dictionary holds what a compile of the
 \ replayed text would have defined, kept through the replay writers only
 \ CHECKER-OVERLAY may call. replay-open saves NDICT, CP, WIDN, CURRENT, the
-\ package cells and the using band; on every exit, clean or thrown, the log is
+\ package cells; on every exit, clean or thrown, the log is
 \ undone newest first, CLOSE lowers NDICT and CP back with ndict! and cp!, or
 \ while a task is live retires the overlay's records and keeps both, and
 \ replay-close zeroes the dropped records and restores the rest. A definition
@@ -527,11 +527,9 @@
 \ never recorded is the engine's own word and stays. NAME-TOK sets a horizon
 \ only inside the verifier window, so the overlay is open whenever one is set.
 \
-\ The binder's answers: LIVE-BIND answers its rejection rather than raising
-\ it. It leaves ( sym why ), why 0 or EXIT-STATUS:REJECTED when no authority
-\ names a package context for a bare token. Under a rejection sym is no
-\ answer. It renders nothing. CHECKER-BIND raises the rejection
-\ (CHECKER-RESOLVE:RAISE); a caller that only asks reads why. A name the
+\ The binder's answers: LIVE-BIND leaves ( sym bool ), true when no authority
+\ names a package context for a bare token; CHECKER-BIND raises that rejection.
+\ Under a rejection sym is no answer, and LIVE-BIND renders nothing. A name the
 \ split rejects (a malformed qualified name, or a length that describes no
 \ memory) binds nothing. A sym of 0 without a rejection does not prove the load
 \ cannot bind the name, since the engine holds words no checker symbol names
@@ -722,7 +720,7 @@
 \ body's named operand, a tick or `is` target no local answers
 \ (VISIBLE-NAMED). A word comes with its selected record's DECL-LOCS row
 \ (visit, start, end; 0 0 0 for none), a local with 0 0 0. A spelling is taken
-\ only when its walk answers why = 0 and binds a symbol or, under live
+\ only when its walk rejects nothing and binds a symbol or, under live
 \ authority, the record the engine's lookup found. Every walk output is put
 \ back after the walk, so the token at the cursor binds as it would unasked;
 \ nothing is interned or kept. Candidates are every dictionary record's and
@@ -1964,13 +1962,8 @@ variable CHECKER-PACKAGE-MODE
 EXPORT BOOT:data-base
 EXPORT ARENA-PAGES:DATA-OFF
 
-\ The mirror above records parser state and is rollback-aware. Every check, the
-\ verifier window's included, reads the engine's protected package record and
-\ WIDs through PKG-LIVE-XT, which names the open package, and the current target
-\ through CHECKER-RESOLVE:AUTHORITY; inside the window the checker overlay
-\ drives the engine's scope (CHECKER-OVERLAY). The boot provider reads
-\ layout.f's fixed DATA offsets; xref.f replaces it with full record validation
-\ before user source.
+\ The package mirror above records parser state and is rollback-aware; checks
+\ read the engine's package record and WIDs through PKG-LIVE-XT instead.
 
 \ The verifier window's state: none open, open inside the caller's scope (the
 \ overlay was open), or owning a scope of its own (check-walk.f's window).
@@ -14754,8 +14747,8 @@ public
    wu 0= IF w wu 0 0= 0= EXIT THEN
    TOKEN$ {: t:^ tu:n :}
    tu 0= IF w wu 0 0= 0= EXIT THEN
-   w wu >str scope-find drop drop drop {: wrec:^ :}
-   t tu >str scope-find drop drop drop {: trec:^ :}
+   w wu >str scope-find drop {: wrec:^ :}
+   t tu >str scope-find drop {: trec:^ :}
    wrec NULL-PTR = trec NULL-PTR = or IF w wu 0 0= 0= EXIT THEN
    trec 0 DICT-CELL@ wrec 0 DICT-CELL@ = IF t tu 0 0= EXIT THEN
    w wu 0 0= 0= ;
@@ -14912,13 +14905,9 @@ variable UNSTATED-CAP
 variable UNSTATED-N
 : UNSTATED ( -- ^u8 ) UNSTATED-P @ BYTE-VIEW ;
 
-\ The hidden records: the index and wid of each record a lookup under the
-\ binding horizon retired for its own time (HIDE, HORIZON-FIND). They are kept
-\ apart from the undo log, so putting them back can never revive a record a
-\ replayed `undefine` retired. A lookup hides at most one record of its name in
-\ each of the five wordlists it searches: the open package's two, the
-\ enclosing package's two and the global one.
-5 constant HIDE-MAX
+\ The index and wid of each record a lookup under the binding horizon hides, apart
+\ from the undo log, so putting one back never revives a record `undefine` retired.
+5 constant HIDE-MAX   \ one per wordlist searched: the open package's two, the enclosing's two, global
 create HIDDEN HIDE-MAX 2 * cells allot
 variable HIDDEN-N
 
@@ -15940,7 +15929,7 @@ EXPORT CHECKER-RESOLVE:TOP$
    sym ;
 
 EXPORT CHECKER-OVERLAY:HIDE
-EXPORT CHECKER-RESOLVE:bare-scope-find
+EXPORT CHECKER-RESOLVE:bare-scope-bind
 
 : HIDE-BEYOND? ( ^n str -- bool ) {: rec:^ s:str :}
    rec 0= 0= IF
@@ -15948,16 +15937,16 @@ EXPORT CHECKER-RESOLVE:bare-scope-find
    THEN
    RES-FALSE ;
 
-: HIDE-FIND ( str -- ^n ^n ^n n ) {: s:str :}
-   s bare-scope-find
-   BEGIN 2over drop s HIDE-BEYOND? WHILE
-      2drop 2drop  s bare-scope-find
+: HIDE-FIND ( str -- ^n n ) {: s:str :}
+   s bare-scope-bind
+   BEGIN over s HIDE-BEYOND? WHILE
+      2drop  s bare-scope-bind
    REPEAT ;
 
 EXPORT CHECKER-OVERLAY:UNHIDE
 
-: HORIZON-FIND ( str -- ^n ^n ^n n )
-   BIND-HORIZON @ 0= IF bare-scope-find EXIT THEN
+: HORIZON-FIND ( str -- ^n n )
+   BIND-HORIZON @ 0= IF bare-scope-bind EXIT THEN
    [: HIDE-FIND ;] [: UNHIDE ;] finally ;
 
 SCRATCH{
@@ -16028,12 +16017,12 @@ defer FACTS-READ-XT ( ^n -- nominal )
 : FACTS-READ-DEFAULT ( -- ) [: drop ;] is FACTS-READ-XT ;
 FACTS-READ-DEFAULT
 
-: LIVE-BIND ( str -- n n ) {: w:str :}
+: LIVE-BIND ( str -- n bool ) {: w:str :}
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    0 BIND-SEEDED !
    w CHECKER-QUALIFIED? 0= IF
-      CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
-      AUTHORITY 0= TOP-STEP @ 0= and IF drop drop 0 EXIT-STATUS:REJECTED EXIT THEN
+      CHECKER-QBAD-TOK @ IF 0 RES-FALSE EXIT THEN
+      AUTHORITY 0= TOP-STEP @ 0= and IF drop drop 0 RES-TRUE EXIT THEN
       drop drop
    THEN
    w CK-PENDING-SYM {: pending:n :}
@@ -16041,57 +16030,45 @@ FACTS-READ-DEFAULT
       ndict@ BIND-PEND-IX !  pending USIG-NEWEST BIND-PEND-OFF !
       \ The checker may still call this declaration pending after the engine
       \ has published its record. A later name query could bind another.
-      w HORIZON-FIND drop 2drop {: held:^ :}
+      w HORIZON-FIND drop {: held:^ :}
       held 0= 0= IF held BIND-REC ! THEN
-      pending 0 EXIT
+      pending RES-FALSE EXIT
    THEN
-   w HORIZON-FIND nip nip {: rec:^ flags:n :}
+   w HORIZON-FIND {: rec:^ flags:n :}
    flags BIND-SCOPE-SEEDED and BIND-SEEDED !
    MULTI-ERR? BODY-WALK @ WRITE-WINDOW @ or 0 <> and IF
       w rec RECOVERY-BIND {: rsym:n :}
-      rsym 0 <> IF rsym 0 EXIT THEN
+      rsym 0 <> IF rsym RES-FALSE EXIT THEN
    THEN
    rec 0= IF
-      w CHECKER-QUALIFIED? IF 0 0 EXIT THEN
-      w CK-AXIOM-SYM 0 EXIT
+      w CHECKER-QUALIFIED? IF 0 RES-FALSE EXIT THEN
+      w CK-AXIOM-SYM RES-FALSE EXIT
    THEN
    rec FACTS-READ-XT
    w rec CK-REC-BIND {: sym:n :}
    rec BIND-REC !
    -1 WALK-REC !
-   sym 0 ;
+   sym RES-FALSE ;
 
 ;package
 package CHECKER-RESOLVE
 EXPORT CHECK:WALK-REC
 EXPORT CHECK:LIVE-BIND
-: WALK ( str -- n n )
+: WALK ( str -- n bool )
    0 WALK-REC !  LIVE-BIND ;
 
-: RAISE ( n -- )
-   {: why:n :}
-   why EXIT-STATUS:REJECTED = IF CHECKER-PKG-CONTEXT-REJECT THEN
-   s" checker: CHECKER-RESOLVE:RAISE got a code LIVE-BIND never answers" EXIT-STATUS:INTERNAL die ;
-
 \ The scope question for a caller that defines nothing: would resolving NAME be
-\ rejected? It raises and renders nothing.
+\ rejected? It neither raises nor renders.
 : REJECTS? ( str -- bool )
-   WALK nip 0 <> ;
+   WALK nip ;
 ;package
 package CHECK
 
-EXPORT CHECKER-RESOLVE:RAISE
 EXPORT CHECKER-RESOLVE:WALK
 
-\ The symbol token t binds and WALK's code; a rejection WALK answers is raised.
-: CHECKER-BIND-WHY ( str -- n n )
-   {: t:str :}
-   t WALK {: sym:n why:n :}
-   why 0 <> IF why RAISE THEN
-   sym why ;
-
+\ The symbol token t binds; a rejection WALK answers is raised.
 : CHECKER-BIND ( str -- n )
-   CHECKER-BIND-WHY drop ;
+   WALK IF CHECKER-PKG-CONTEXT-REJECT THEN ;
 
 : CHECKER-TRUSTED-TICK? ( str -- bool )
    CHECKER-BIND PRIM-TRUSTED-SYM? ;
@@ -18389,8 +18366,8 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 \ stands for it.
 : CHECKER-TOP-SYM ( str -- n bool )
    {: s:str :}
-   s WALK {: sym:n why:n :}
-   why 0 <> IF why RAISE THEN
+   s WALK {: sym:n rej:bool :}
+   rej IF CHECKER-PKG-CONTEXT-REJECT THEN
    s sym TOP-BOUND-SYM nip ;
 
 : TOP-CONTROL ( n -- n bool ) {: sym:n :}
@@ -18950,10 +18927,8 @@ EXPORT CHECKER-RESOLVE:EXPORT-SEALED?
 EXPORT CHECKER-RESOLVE:EXPORT-SEALED
 EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
 
-\ Rejects the operand s, which names no word EXPORT may take. SYM is
-\ EXPORT-SYM's symbol.
-\ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
-\ and the first PES row lives at offset 0.
+\ Rejects the operand s, which names no word EXPORT may take; sym is EXPORT-SYM's.
+\ PRIM-FIRST-SYM answers an effect offset, 0 for the first PES row: hence -IDX.
 : EXPORT-MISS ( str n -- ) {: s:str sym:n :}
    sym PRIM-FIRST-IDX 0 <> IF s EXPORT-PRIM THEN
    sym CTL-FLAGS-SYM CTL-IDENTITY and 0 <> IF s EXPORT-JUDGED THEN
@@ -18986,7 +18961,7 @@ variable CHECKER-PREFIX-ACTIVE
    \ A primitive a package owns is one of its private words; a global one is not.
    sym PRIM-FIRST-IDX 0 <>  sym SYM-PKG$ STR:LEN 0 <>  and  or
    0= IF s sym EXPORT-MISS THEN
-   priv NULL-PTR = IF s HORIZON-FIND 2drop drop ELSE priv THEN {: rec:^ :}
+   priv NULL-PTR = IF s HORIZON-FIND drop ELSE priv THEN {: rec:^ :}
    sym s NAV-USE-NOW  sym s rec USE-CHECK ;
 
 \ The symbol an EXPORT operand names and, when its scope finds no word, the
@@ -19036,7 +19011,7 @@ EXPORT CHECKER-OVERLAY:CARRIES?
 : EXPORT-CARRIES? ( str ^n -- bool ) {: s:str priv:^ :}
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE = IF RES-FALSE EXIT THEN
    priv NULL-PTR <> IF priv CARRIES? EXIT THEN
-   s HORIZON-FIND 2drop drop CARRIES? ;
+   s HORIZON-FIND drop CARRIES? ;
 
 \ Only an armed name is scanned: the qualified-name scan leaves its state for
 \ the checker's next read.
@@ -20153,7 +20128,7 @@ PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
    -1 WALK-REC !
    prec REC-HOME-SYM ;
 
-: BIND-FILL ( n n str -- ) {: sym:n why:n s:str :}
+: BIND-FILL ( n str -- ) {: sym:n s:str :}
    sym TOK-SYM !
    BIND-REC @ TOK-REC !
    BIND-PEND-IX @ TOK-PEND-IX !
@@ -20161,11 +20136,9 @@ PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
    BIND-SEEDED @ TOK-SEEDED !
    TOK-SYM @ CTL-FLAGS-SYM CTL-DEAD and 0= IF 0 ELSE 1 THEN TOK-DEAD !
    WALK-REC @ TOK-LIVE-REC !
-   why 0= IF
-      TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ >str NAV-USE
-      TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ >str TOK-REC @ USE-CHECK
-      TOK-SYM @ CTL-FLAGS-SYM CTL-NAMES and 0 <> IF NAMED-OPERAND-XT THEN
-   THEN
+   TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ >str NAV-USE
+   TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ >str TOK-REC @ USE-CHECK
+   TOK-SYM @ CTL-FLAGS-SYM CTL-NAMES and 0 <> IF NAMED-OPERAND-XT THEN
    TOK-SYM @ s TOK-IDENTITY TOK-CTL ! ;
 
 EXPORT CHECKER-ITEMS:POSTPONED-REC
@@ -20179,14 +20152,14 @@ EXPORT CHECKER-ITEMS:POSTPONED-REC
    s ALLDIG?  s FLODIG?  or IF EXIT THEN
    BIND-START
    TSTART @ s STR:LEN POSTPONED-REC {: prec:^ :}
-   prec NULL-PTR <> IF prec BIND-PREC 0
-   ELSE s CHECKER-BIND-WHY THEN
+   prec NULL-PTR <> IF prec BIND-PREC
+   ELSE s CHECKER-BIND THEN
    s BIND-FILL ;
 
 \ A CALL item's token, spelled s, binds the record rec.
 : BIND-RECORD ( ^n str -- ) {: rec:^ s:str :}
    BIND-CLEAR  BIND-START
-   rec BIND-PREC 0 s BIND-FILL ;
+   rec BIND-PREC s BIND-FILL ;
 
 
 EXPORT CHECKER-TAPE:K-CONTROL
@@ -23323,8 +23296,8 @@ defer VIS-VISIT ( str n n n -- )
 \ dictionary record it binds, then whether the top-level walk rejected the name.
 : VIS-TOP-PICK ( str -- n n ^n bool bool )
    {: s:str :}
-   s WALK {: sym:n why:n :}
-   why 0 <> IF 0 0 NULL-PTR RES-FALSE RES-TRUE EXIT THEN
+   s WALK {: sym:n rej:bool :}
+   rej IF 0 0 NULL-PTR RES-FALSE RES-TRUE EXIT THEN
    CHECKER-QBAD-TOK @ 0 <> IF 0 0 NULL-PTR RES-FALSE RES-FALSE EXIT THEN
    s sym TOP-BOUND-SYM nip {: s2:n ok:bool :}
    ok 0= IF 0 0 NULL-PTR RES-FALSE RES-FALSE EXIT THEN
@@ -23338,8 +23311,8 @@ defer VIS-VISIT ( str n n n -- )
 
 : VIS-BODY-PICK ( str -- n n ^n bool bool )
    {: s:str :}
-   s WALK {: sym:n why:n :}
-   why 0 <>  sym 0=  WALK-REC @ 0=  and  or IF
+   s WALK {: sym:n rej:bool :}
+   rej  sym 0=  WALK-REC @ 0=  and  or IF
       0 0 NULL-PTR RES-FALSE RES-FALSE EXIT
    THEN
    sym  sym 0= IF 0 ELSE sym USIG-NEWEST-VISIBLE THEN  sym VIS-WALK-REC
@@ -23739,10 +23712,8 @@ variable IS-PEND-U                   \ and its length
       prec FACTS-READ-XT  prec BIND-REC !  0 BIND-PEND-IX !  -1 WALK-REC !
       prec REC-HOME-SYM EXIT
    THEN
-   TKF TKFU @ >str CHECKER-BIND-WHY {: sym:n why:n :}
-   why 0= IF
-      sym IS-TA@ IS-TU @ >str NAV-USE  sym IS-TA@ IS-TU @ >str BIND-REC @ USE-CHECK
-   THEN
+   TKF TKFU @ >str CHECKER-BIND {: sym:n :}
+   sym IS-TA@ IS-TU @ >str NAV-USE  sym IS-TA@ IS-TU @ >str BIND-REC @ USE-CHECK
    sym 0= CHECKER-PREFIX-ACTIVE @ and IF
       IS-TOFF @ TSTART @ PREFIX-MISS-AT
    THEN
@@ -25130,6 +25101,6 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    ndict@ 1- REC-AT CTL-ROOTS CTL-ADD-REC ;
 \ The registrars above are found by name: a record's index holds only in the
 \ process that made it, and a built hb numbers its records anew.
-s" CHECKER-DEFRECORD" scope-find drop drop drop NOMINAL-ADD-REC
-s" CHECKER-DEFLINEAR" scope-find drop drop drop NOMINAL-ADD-REC
+s" CHECKER-DEFRECORD" scope-find drop NOMINAL-ADD-REC
+s" CHECKER-DEFLINEAR" scope-find drop NOMINAL-ADD-REC
 ;package

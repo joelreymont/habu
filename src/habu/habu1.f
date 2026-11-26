@@ -1,6 +1,6 @@
 \ habu1.f, engine builder part 1: emits the native engine's primitive bodies,
 \ helper routines and seed dictionary for arm64 (Linux and macOS).
-\ Requests run before any package or `using` opens, so each file links
+\ Requests run before any package opens, so each file links
 \ (linker.f TOP-SCOPE?). A64ASM's encoders live in src/arch/arm64/asm.f.
 \
 \ An indirect call through an xt fences before it branches: an xt at or above
@@ -3515,8 +3515,8 @@ private
       s" admit every package before `VOCABULARY:RESTRICT`" POLICY-STOP,
    open A64ICODE:LBL, ;
 
-\ policy-admit ( ^u8 n -- ): admit the public wordlist of the package the
-\ span names, found as a top-level `using` finds it.
+\ policy-admit ( ^u8 n -- ): admit the public wordlist of the package the span
+\ names, found in the namespace wordlist as a top-level qualifier's head is.
 : BPOLICYADMIT ( -- )
    A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: found:label bounded:label walked:label :}
    POLICY-OPEN,
@@ -4547,13 +4547,12 @@ variable FIND-HCMP
 variable FIND-HMATCH
 
 public
-\ LHEADROW: the package row a qualifier's head names, read by LFIND, a
-\ qualified definition and `using`. Inside package A, or a part of it, the
-\ head names A's part `A:head` first, then a top-level package. In: x9 =
-\ head, x17 = its length. Out: x12 = the row or 0. It preserves x0, x1, x9,
-\ x10, x13 and x17 and clobbers x2-x8, x11, x14-x16.
+\ LHEADROW: the package row a qualifier's head names, for LFIND and a qualified
+\ definition; inside package A or a part of it, `A:head` first, then top level.
 variable LHEADROW
 private
+\ In: x9 = head, x17 = its length. Out: x12 = the row or 0. Preserves x0, x1, x9,
+\ x10, x13 and x17; clobbers x2-x8, x11 and x14-x16.
 : EMIT-HEAD-ROW ( -- )
    A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL
    {: top:label inline:label bare:label done:label :}

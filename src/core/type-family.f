@@ -3566,10 +3566,8 @@ EXPORT BOOT:TYPES-WL
    0 ENTRIES-PENDING ! ;
 
 
-\ A bare tail resolves as a bare word does: the active package's exact row
-\ (private or public), inside a part `A:B` the row of its package A, the exact
-\ global row; another package's family needs `PKG:tail`. At top level the
-\ first exact lookup is already global. Compaction-hidden `@name` tokens never resolve.
+\ A bare tail resolves as a bare word does: the open package, its enclosing one, then
+\ global; another package's family needs `PKG:tail`. Hidden `@name` tokens never do.
 : TFAM-RESOLVE ( str str -- n bool )
    {: ps:str ns:str :}
    ns TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
@@ -3665,10 +3663,8 @@ variable TFQ-COLON
 : TFAM-PARSE-RESOLVE ( str str -- n bool )
    TFAM-SIG-RESOLVE SR-FOUND = ;
 
-\ The signature parser asks this only after its normal family and concrete
-\ lookups missed. Another package's private family, a malformed qualifier or a
-\ noncanonical family tail is not an absent declaration a quiet producer may
-\ explain.
+\ Asked once the family and concrete lookups miss: another package's private family,
+\ a malformed qualifier or a noncanonical tail is no absence a quiet producer explains.
 : TFAM-MAY-ARRIVE? ( str -- bool ) {: s:str :}
    SIG-SCOPE$ s TFAM-SIG-RESOLVE nip {: sr:n :}
    sr SR-HIDDEN = IF RES-FALSE EXIT THEN

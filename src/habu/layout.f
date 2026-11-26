@@ -616,7 +616,6 @@ CHECKER-OWNER-ABI:EFFECT-OFF constant DECL-EFFECT-OFF
 CHECKER-OWNER-ABI:DEFER-OFF constant DECL-DEFER-OFF
 CHECKER-OWNER-ABI:CAST-OFF constant DECL-CAST-OFF
 CHECKER-OWNER-ABI:LINEAR-OFF constant DECL-LINEAR-OFF
-CHECKER-OWNER-ABI:USING-OFF constant DECL-USING-OFF
 CHECKER-OWNER-ABI:PACKAGE-OFF constant DECL-PACKAGE-OFF
 CHECKER-OWNER-ABI:PUBLIC-OFF constant DECL-PUBLIC-OFF
 CHECKER-OWNER-ABI:PRIVATE-OFF constant DECL-PRIVATE-OFF
@@ -1072,17 +1071,8 @@ PATHZ2-OFF PATHZ2-BYTES + constant ATOMIC-OFF
 ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
 ;package
 
-\ A `defer NAME ( E )` in src/core/checker.f before the checker defines
-\ `trust-decl` and `checker-defer` cannot register itself, so the Habu loop's
-\ `defer` copies the qualified name and effect signature into a slot here;
-\ DRAIN-PRETRUST, right after both, replays both registrations per slot, so
-\ the table is empty after it. Overflow or an over-long name or sig dies
-\ at declaration. The table sits after
-\ the private engine bands, below DATA-START, so its growth never moves the
-\ using ABI or the address-cell table. PD-TABLE-OFF is past the scaled-immediate range,
-\ so slots use a computed base. Slot: [0]=name-len [8]=sig-len
-\ [PD-NAME-OFF..)=name bytes [PD-SIG-OFF..)=sig bytes.
-\ The table is empty whenever user source runs.
+\ A `defer` in checker.f before `trust-decl` and `checker-defer` exist files its
+\ name and signature in a slot here; DRAIN-PRETRUST registers them and empties it.
 128 constant PD-CAP                         \ pending slots with room beyond the checker prefix
 48 constant PD-NAME-CAP
 64 constant PD-SIG-CAP
@@ -1100,22 +1090,6 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 16 constant PKGSNAP-PRI
 24 constant PKGSNAP-PARENT
 32 constant PKGSNAP-REC
-
-
-\ A fixed stack of public wordlist IDs plus a depth cell, the one count of live
-\ usings: engine code owns
-\ it (`using` pushes, `;using` pops, `package`/`;package` and the eval-frame
-\ and REPL boundaries save and restore it), and the checker reads the same cell
-\ through `data-base USE-DEPTH-CELL +`, so its package-name mirror
-\ has no counter of its own to drift. The depth is 0 at rest:
-\ usings are file-local and closed before seal.
-16 constant USE-MAX                       \ concurrent `using` capacity (E-code on overflow)
-\ A published engine ABI, not derived from the pending table's capacity.
-$9C08 constant USE-BAND-OFF
-USE-BAND-OFF          constant USE-DEPTH-CELL      \ live using depth (u64)
-USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` open (`;package` restores)
-USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
-USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
 package RELOC
 public
@@ -1135,10 +1109,9 @@ public
 $8000000000000000 constant XTCELL-DATA-TAG
 $4000000000000000 constant XTCELL-SCRATCH-TAG
 $3FFFFFFFFFFFFFFF constant XTCELL-OFF-MASK
-\ The bytes below the table hold nothing. A link lays its target's table at the
-\ running engine's offset, below the target's DATA-START, so a target that
-\ moves the table down is rejected with LINKER:E-HEAP-STORE.
-USE-BAND-END REGION 16 / + constant XTCELL-N-CELL        \ live count of used rows
+\ Running engines hold the table at $9CA0 and the bytes below it are a gap. A
+\ link lays its target's table there, so moving it down is LINKER:E-HEAP-STORE.
+$9CA0 REGION 16 / + constant XTCELL-N-CELL        \ live count of used rows
 XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
 XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
 
@@ -1173,10 +1146,7 @@ CUR CELL + constant PKG-PUB
 PKG-PUB CELL + constant PKG-PRI
 PKG-PRI CELL + constant PKG-PARENT
 PKG-PARENT CELL + constant PKG-REC
-PKG-REC CELL + constant USE-DEPTH
-USE-DEPTH CELL + constant USE-PKG-SAVE
-USE-PKG-SAVE CELL + constant USE-WIDS
-USE-WIDS USE-MAX cells + constant END
+PKG-REC CELL + constant END
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its
 \ order, saved and restored with the scope. It takes the cells after
 \ ENCLOSING, which replay-close zeroes too.
@@ -1187,14 +1157,11 @@ $4368 constant PEND
 PEND CELL + constant PEND-REC
 ;package
 
-\ While a part is open, the package it is a part of: that package's public
-\ wid, private wid, parent wid and row, as PKG-PUB-CELL..PKG-REC-CELL held
-\ them before the part opened; all four are 0 when no part is open. Only the
-\ engine's own code and package-scope! write them. $42E8, the cell before them,
-\ is free.
+\ While a part is open, its package's four cells as PKG-PUB-CELL..PKG-REC-CELL held
+\ them, else 0; only the engine's own code and package-scope! write them.
 package ENCLOSING
 public
-$42F0 constant PUB
+$42F0 constant PUB   \ the cells from REPLAY-SCOPE:END up to here are free
 PUB CELL + constant PRI
 PRI CELL + constant PARENT
 PARENT CELL + constant REC
@@ -1208,6 +1175,8 @@ $4DD0 constant PKG-OUTSIDE-CELL
 \ The section in force: 0 host, 1 target; `host` and `target` write it.
 $4DD8 constant SECTION-CELL
 
+\ After the address-cell table, so its growth never moves it; past the
+\ scaled-immediate range, so slots use a computed base.
 RELOC:XTCELL-END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
