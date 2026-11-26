@@ -689,7 +689,7 @@ defer EXISTS-SQL ( ^plan n -- )
 \ The column's shape and no term, or KNOWN and the term's text.
 : SLOT-KIND ( slot -- n str )
    MATCH slot
-      column OF {: c:str shape:n k u:bool :} shape s" " ENDOF
+      column OF {: c:str shape:n k u:bool nn:bool :} shape s" " ENDOF
       term OF {: t:str :} KNOWN t ENDOF
    ;MATCH ;
 
@@ -697,7 +697,7 @@ defer EXISTS-SQL ( ^plan n -- )
 : SLOT-SQL ( ^plan slot str -- str )
    {: plan sl alias:str :}
    sl MATCH slot
-      column OF {: c:str shape:n k u:bool :}
+      column OF {: c:str shape:n k u:bool nn:bool :}
          plan NEW-SQL {: v:^ :}
          v alias +SQL v s" ." +SQL v c +SQL v VEC:BYTES
       ENDOF
@@ -721,7 +721,7 @@ defer EXISTS-SQL ( ^plan n -- )
 : OUTSIDE? ( ^plan n slot -- bool )
    {: plan list:n sl :}
    sl MATCH slot
-      column OF 2drop 2drop true ENDOF
+      column OF 2drop 2drop drop true ENDOF
       term OF {: t:str :} plan list t LISTED? 0= ENDOF
    ;MATCH ;
 
@@ -759,7 +759,7 @@ defer EXISTS-SQL ( ^plan n -- )
       plan plan TREE node NODE-A@ sl OUTSIDE? exit
    then
    sl MATCH slot
-      column OF {: c:str shape:n k u:bool :}
+      column OF {: c:str shape:n k u:bool nn:bool :}
          plan shape plan node NODE-KNOWN HOLDS?
          k MATCH nullable
             none OF ENDOF
@@ -1215,7 +1215,7 @@ STRUCTURE pruning DERIVE addr
 \ The column slot's key, none for a term slot.
 : SLOT-KEY ( slot -- nullable<key> )
    MATCH slot
-      column OF {: c:str shape:n k u:bool :} k ENDOF
+      column OF {: c:str shape:n k u:bool nn:bool :} k ENDOF
       term OF drop NULLABLE:NONE ENDOF
    ;MATCH ;
 
@@ -1262,16 +1262,15 @@ STRUCTURE pruning DERIVE addr
       plan TREE each NODE-B@ dup 0<> if where s" ," +SQL then
    repeat drop where s" )) IS NOT TRUE" +SQL ;
 
-\ The slot under the alias for the triple's part: a variable's
-\ occurrence into occs and, for a column, not null in where; a constant a
-\ column holds, to where.
+\ A variable's occurrence of the slot under alias to occs, and IS NOT NULL to
+\ where on a column that may hold NULL; a constant a column holds, to where.
 : +SLOT ( ^plan n slot str ^VEC:vector<binding> ^VEC:vector<u8> -- )
    {: plan node:n sl alias:str occs:^ where:^ :}
    sl SLOT-KIND {: shape:n t:str :}
    plan TREE node VARIABLE? if
       plan sl alias SLOT-SQL {: sql:str :}
       plan occs plan node VAR shape sql t where OCCUR
-      shape -1 > if
+      shape -1 >  sl SLOT-NOTNULL? 0=  and if
          where s"  AND " +SEP where sql +SQL
          where s"  IS NOT NULL" +SQL
       then exit
@@ -1280,7 +1279,7 @@ STRUCTURE pruning DERIVE addr
 
 : SLOT-COL ( slot -- str )
    MATCH slot
-      column OF {: c:str shape:n k u:bool :} c ENDOF
+      column OF {: c:str shape:n k u:bool nn:bool :} c ENDOF
       term OF drop s" " ENDOF
    ;MATCH ;
 
@@ -1401,7 +1400,7 @@ STRUCTURE pruning DERIVE addr
 
 : SLOT-UNIQUE? ( slot -- bool )
    MATCH slot
-      column OF {: c:str shape:n k u:bool :} u ENDOF
+      column OF {: c:str shape:n k u:bool nn:bool :} u ENDOF
       term OF drop false ENDOF
    ;MATCH ;
 

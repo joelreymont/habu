@@ -18,7 +18,7 @@ package SPARQL
 : NEW-TEXT ( ^ARENA:arena -- ^VEC:vector<u8> )
    ARENA:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
-: REJECTS ( str str ^ARENA:arena -- )
+: READ-REJECTS ( str str ^ARENA:arena -- )
    {: text:str want:str arena :}
    [: text arena READ-STORE drop ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER REASON:TEXT$ want T$=
@@ -31,24 +31,24 @@ package SPARQL
    out s\" {\"bytes\": 1, \"shapes\": {\"id\": {\"in\": \"i\"," PART
    out s\" \"out\": \"o\"}}, \"sources\": [" PART
    out text PART  out s" ]}" PART
-   out TEXT-OF want arena REJECTS ;
+   out TEXT-OF want arena READ-REJECTS ;
 
 : TEST-STORE-REJECTS ( ^ARENA:arena -- ) {: arena :}
    s" a missing member is rejected by JSON:GET" T-LABEL
    s\" {\"shapes\": {}, \"sources\": []}"
    s" 1:1: expected a member `bytes`, found none; add the member or read it with JSON:FIND"
-   arena REJECTS
+   arena READ-REJECTS
    s" bytes is a whole number above 0" T-LABEL
    s\" {\"bytes\": 0, \"shapes\": {}, \"sources\": []}"
    s" 1:11: expected a whole number of bytes above 0, found `0`; give the largest answer in bytes"
-   arena REJECTS
+   arena READ-REJECTS
    s\" {\"bytes\": \"1\", \"shapes\": {}, \"sources\": []}"
    s\" 1:11: expected a whole number of bytes above 0, found `\"1\"`; give the largest answer in bytes"
-   arena REJECTS
+   arena READ-REJECTS
    s" a shape's in is a string" T-LABEL
    s\" {\"bytes\": 1, \"shapes\": {\"id\": {\"in\": 1, \"out\": \"o\"}}, \"sources\": []}"
    s" 1:38: expected a string, found `1`; write the value as a JSON string"
-   arena REJECTS ;
+   arena READ-REJECTS ;
 
 \ The shapes text inside a description with no sources.
 : SHAPES-REJECT ( str str ^ARENA:arena -- )
@@ -56,7 +56,7 @@ package SPARQL
    arena NEW-TEXT {: out:^ :}
    out s\" {\"bytes\": 1, \"shapes\": {" PART
    out text PART  out s\" }, \"sources\": []}" PART
-   out TEXT-OF want arena REJECTS ;
+   out TEXT-OF want arena READ-REJECTS ;
 
 : TEST-HOLDS-REJECTS ( ^ARENA:arena -- ) {: arena :}
    s" holds is uri or an array of datatype IRIs" T-LABEL
@@ -102,6 +102,10 @@ package SPARQL
    s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"col\": \"c\", \"shape\": \"id\", \"unique\": 1}}"
    s" 1:140: expected true or false, found `1`; write the value as a JSON boolean"
    arena SOURCE-REJECTS
+   s" a slot's notnull is a boolean" T-LABEL
+   s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"col\": \"c\", \"shape\": \"id\", \"notnull\": 1}}"
+   s" 1:141: expected true or false, found `1`; write the value as a JSON boolean"
+   arena SOURCE-REJECTS
    s" a slot is an object" T-LABEL
    s\" {\"from\": \"f\", \"graph\": null, \"s\": 1}"
    s" 1:102: expected an object, found `1`; write it as a JSON object"
@@ -115,6 +119,14 @@ package SPARQL
    s" cols has no key beside it" T-LABEL
    s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"cols\": [], \"key\": 1}}"
    s" 1:122: expected no `key` beside `cols`, found `1`; remove `key`: a key belongs on a column slot"
+   arena SOURCE-REJECTS
+   s" cols has no unique beside it" T-LABEL
+   s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"cols\": [], \"unique\": true}}"
+   s" 1:125: expected no `unique` beside `cols`, found `true`; remove `unique`: it belongs on a column slot or a column of `cols`"
+   arena SOURCE-REJECTS
+   s" cols has no notnull beside it" T-LABEL
+   s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"cols\": [], \"notnull\": true}}"
+   s" 1:126: expected no `notnull` beside `cols`, found `true`; remove `notnull`: it belongs on a column slot"
    arena SOURCE-REJECTS
    s" cols is an array of two columns or more" T-LABEL
    s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"cols\": 1}}"
@@ -130,7 +142,18 @@ package SPARQL
    s" a column of cols has no key" T-LABEL
    s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"cols\": [{\"col\": \"c\", \"shape\": \"id\", \"key\": 1}, 1]}}"
    s" 1:147: expected no `key` in a column of `cols`, found `1`; remove `key`: a key belongs on a column slot"
+   arena SOURCE-REJECTS
+   s" a column of cols has no notnull" T-LABEL
+   s\" {\"from\": \"f\", \"graph\": null, \"s\": {\"cols\": [{\"col\": \"c\", \"shape\": \"id\", \"notnull\": true}, 1]}}"
+   s" 1:151: expected no `notnull` in a column of `cols`, found `true`; remove `notnull`: a column of `cols` is NULL where another holds the value"
    arena SOURCE-REJECTS ;
+
+: TEST-NOTNULL ( ^ARENA:arena -- ) {: arena :}
+   s" a column's notnull is read" T-LABEL
+   s\" {\"bytes\": 1, \"shapes\": {\"id\": {\"in\": \"i\", \"out\": \"o\"}}, \"sources\": [{\"from\": \"f\", \"graph\": null, \"s\": {\"col\": \"c\", \"shape\": \"id\", \"notnull\": true}, \"p\": {\"col\": \"p\", \"shape\": \"id\"}, \"o\": {\"col\": \"o\", \"shape\": \"id\", \"notnull\": false}}]}"
+   arena READ-STORE STORE-SOURCES @ 0 VEC:AT {: src:^ :}
+   src SOURCE-S @ SLOT-NOTNULL? TTRUE
+   src SOURCE-O @ SLOT-NOTNULL? TFALSE ;
 
 : TEST-TERM-REJECTS ( ^ARENA:arena -- ) {: arena :}
    s" a graph is null or a uri term" T-LABEL
@@ -188,29 +211,29 @@ package SPARQL
    s" keys is an object" T-LABEL
    s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": 1, \"sources\": []}"
    s" 1:36: expected an object of key sets, found `1`; name each key set in `keys`"
-   arena REJECTS
+   arena READ-REJECTS
    s" a key set is an object" T-LABEL
    s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": {\"k\": 1}, \"sources\": []}"
    s" 1:42: expected a key set, found `1`; give the key set as an object with `type` and `values`"
-   arena REJECTS
+   arena READ-REJECTS
    s" a key set has a type and values" T-LABEL
    s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": {\"k\": {\"values\": {}}}, \"sources\": []}"
    s" 1:42: expected a member `type`, found none; add the member or read it with JSON:FIND"
-   arena REJECTS
+   arena READ-REJECTS
    s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": {\"k\": {\"type\": \"t\"}}, \"sources\": []}"
    s" 1:42: expected a member `values`, found none; add the member or read it with JSON:FIND"
-   arena REJECTS
+   arena READ-REJECTS
    s" a key set's values is an object of strings" T-LABEL
    s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": {\"k\": {\"type\": \"t\", \"values\": 1}}, \"sources\": []}"
    s" 1:66: expected an object of IRIs and their keys, found `1`; map each IRI to the SQL array literal of its keys"
-   arena REJECTS
+   arena READ-REJECTS
    s\" {\"bytes\": 1, \"shapes\": {}, \"keys\": {\"k\": {\"type\": \"t\", \"values\": {\"urn:a\": 1}}}, \"sources\": []}"
    s" 1:76: expected a string, found `1`; write the value as a JSON string"
-   arena REJECTS
+   arena READ-REJECTS
    s" a key's set is declared" T-LABEL
    s\" {\"bytes\": 1, \"shapes\": {\"id\": {\"in\": \"i\", \"out\": \"o\"}}, \"keys\": {\"k\": {\"type\": \"t\", \"values\": {}}}, \"sources\": [{\"from\": \"f\", \"graph\": null, \"s\": {\"col\": \"c\", \"shape\": \"id\", \"key\": {\"col\": \"k\", \"set\": \"no\"}}}]}"
    s\" 1:202: expected the name of a key set in `keys`, found `\"no\"`; declare the key set in `keys` or name a declared one"
-   arena REJECTS ;
+   arena READ-REJECTS ;
 
 : TEST-STORE ( -- )
    [: TEST-STORE-REJECTS ;] ARENA:WITH
@@ -218,6 +241,7 @@ package SPARQL
    [: TEST-WITHIN-REJECTS ;] ARENA:WITH
    [: TEST-SLOT-REJECTS ;] ARENA:WITH
    [: TEST-COLS-REJECTS ;] ARENA:WITH
+   [: TEST-NOTNULL ;] ARENA:WITH
    [: TEST-TERM-REJECTS ;] ARENA:WITH
    [: TEST-KEY-REJECTS ;] ARENA:WITH ;
 

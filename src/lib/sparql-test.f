@@ -266,9 +266,9 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 : SPELLED-KEYS ( -- str )
    s" 'keys':{'none':{'type':'bigint[]','values':{}},'facts':{'type':'bigint[]','values':{'urn:test:70':'{700,701}'}}}" ;
 
-\ A FROM with an escape.
+\ A FROM with an escape; its subject column is never NULL.
 : SPELLED-LABELS ( -- str )
-   s" {'from':'\'sparql_test\'.node','graph':null,'s':{'col':'id','shape':'id'},'p':{'term':{'type':'uri','value':'http://www.w3.org/2000/01/rdf-schema#label'}},'o':{'col':'label','shape':'text'}}" ;
+   s" {'from':'\'sparql_test\'.node','graph':null,'s':{'col':'id','shape':'id','notnull':true},'p':{'term':{'type':'uri','value':'http://www.w3.org/2000/01/rdf-schema#label'}},'o':{'col':'label','shape':'text'}}" ;
 
 : SPELLED-FACTS ( -- str )
    s" {'from':'sparql_test.fact','graph':null,'s':{'col':'s','shape':'id'},'p':{'col':'p','shape':'id','key':{'col':'pid','set':'facts'}},'o':{'col':'o','shape':'id'}}" ;
@@ -301,6 +301,17 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 
 \ On SPELLED-STORE the query answers the expected document.
 : SPELLED ( str str -- ) [: SPELLED-IN ;] ARENA:WITH ;
+
+: SPELLED-ALONE-IN ( str str str str ^ARENA:arena -- )
+   {: q:str keep:str gone:str w:str a:^ :}
+   q a SPELLED-STORE a ANSWER-ON {: sql:^ doc:^ :}
+   sql $ keep STR:CONTAINS? TTRUE
+   sql $ gone STR:CONTAINS? TFALSE
+   doc $ w a UNQUOTE $ a false SAME? TTRUE ;
+
+\ On SPELLED-STORE the query answers the expected document and its
+\ statement names keep but never gone.
+: SPELLED-ALONE ( str str str str -- ) [: SPELLED-ALONE-IN ;] ARENA:WITH ;
 
 \ The query's document on a limit of so many bytes.
 : ANSWER-WITHIN ( str n ^ARENA:arena -- ^VEC:vector<u8> )
@@ -356,7 +367,12 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    SPELLED
    s" SELECT ?s WHERE { ?s t:91 5 }"
    s" {'head':{'vars':['s']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'}}]}}"
-   SPELLED ;
+   SPELLED
+   \ A variable needs no test that a column never NULL holds a value.
+   s" SELECT ?s ?l WHERE { ?s rdfs:label ?l FILTER(?l = 'Lathe') }"
+   s" .label IS NOT NULL" s" .id IS NOT NULL"
+   s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'l':{'type':'literal','value':'Lathe'}}]}}"
+   SPELLED-ALONE ;
 
 : SLOTS ( -- )
    s" SELECT ?l WHERE { t:1 rdfs:label ?l }"

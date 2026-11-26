@@ -20,8 +20,10 @@
 \ `keys`: a row holds IRI i in the slot exactly where column k of `from`
 \ is one of i's keys, and an IRI the set does not list is in no row of the
 \ slot. A column slot's optional `"unique"`, a boolean, is true where no
-\ two rows of `from` hold one value in the column. A slot
-\ `{"cols": [e1, e2, ...]}` lists two or more column slots without `key`:
+\ two rows of `from` hold one value in the column, and its optional
+\ `"notnull"`, a boolean, true where no row of `from` holds NULL in it. A
+\ slot `{"cols": [e1, e2, ...]}` lists two or more column slots without
+\ `key` or `notnull`:
 \ at most one of their columns is non-null in a row, and it holds the
 \ slot's value; a row where all are null holds no triple. A description
 \ not in the format is the host's defect, rejected with JSON:E-MEMBER at
@@ -79,10 +81,16 @@ STRUCTURE key DERIVE addr FIELD col str FIELD set n ;STRUCTURE
 ENUM slot
    VARIANT column
       FIELD col str FIELD shape n FIELD key nullable<key>
-      FIELD unique bool
+      FIELD unique bool FIELD notnull bool
    ;VARIANT
    VARIANT term FIELD text str ;VARIANT
 ;ENUM
+
+: SLOT-NOTNULL? ( slot -- bool )
+   MATCH slot
+      column OF {: c:str shape:n k u:bool nn:bool :} nn ENDOF
+      term OF drop false ENDOF
+   ;MATCH ;
 
 \ A record: a source of the description, or one combination of its `cols`
 \ slots' columns; graph is empty for the default graph; origin indexes the
@@ -138,6 +146,7 @@ STRUCTURE slot-members DERIVE addr
    FIELD cols option<JSON:value>
    FIELD key option<JSON:value>
    FIELD unique option<JSON:value>
+   FIELD notnull option<JSON:value>
 ;STRUCTURE
 
 \ A term's; other is the first member name the format does not know.
@@ -164,7 +173,8 @@ STRUCTURE term-members DERIVE addr
    ABSENT k SLOT-MEMBERS-TERM !
    ABSENT k SLOT-MEMBERS-COLS !
    ABSENT k SLOT-MEMBERS-KEY !
-   ABSENT k SLOT-MEMBERS-UNIQUE ! ;
+   ABSENT k SLOT-MEMBERS-UNIQUE !
+   ABSENT k SLOT-MEMBERS-NOTNULL ! ;
 
 : NO-TERM-MEMBERS ( ^term-members -- ) {: t:^ :}
    ABSENT t TERM-MEMBERS-TYPE !
@@ -528,7 +538,8 @@ STRUCTURE term-members DERIVE addr
    name v s" term" k SLOT-MEMBERS-TERM KEPT-AS? if exit then
    name v s" cols" k SLOT-MEMBERS-COLS KEPT-AS? if exit then
    name v s" key" k SLOT-MEMBERS-KEY KEPT-AS? if exit then
-   name v s" unique" k SLOT-MEMBERS-UNIQUE KEPT-AS? drop ;
+   name v s" unique" k SLOT-MEMBERS-UNIQUE KEPT-AS? if exit then
+   name v s" notnull" k SLOT-MEMBERS-NOTNULL KEPT-AS? drop ;
 
 : KEEP-SLOT ( ^slot-members JSON:value -- ) {: k:^ m :}
    m k SLOT-MEMBERS-OBJECT !
@@ -550,7 +561,10 @@ STRUCTURE term-members DERIVE addr
    e JSON:OBJECT? 0= if e ENTRY-REJECT then
    k SLOT-MEMBERS-COL @ KEPT?  k SLOT-MEMBERS-SHAPE @ KEPT? and
    k SLOT-MEMBERS-TERM @ KEPT? 0= and 0= if e ENTRY-REJECT then
-   k SLOT-MEMBERS-KEY @ s" no `key` in a column of `cols`" REJECT-KEY ;
+   k SLOT-MEMBERS-KEY @ s" no `key` in a column of `cols`" REJECT-KEY
+   k SLOT-MEMBERS-NOTNULL @ s" no `notnull` in a column of `cols`"
+   s" remove `notnull`: a column of `cols` is NULL where another holds the value"
+   NO-MEMBER ;
 
 \ The entries of a `cols` array, kept.
 : KEEP-ENTRIES ( JSON:value ^ARENA:arena -- ^VEC:vector<slot-members> )
@@ -572,6 +586,10 @@ STRUCTURE term-members DERIVE addr
    {: k:^ arena :}
    k SLOT-MEMBERS-COL @ BESIDE-COLS  k SLOT-MEMBERS-TERM @ BESIDE-COLS
    k SLOT-MEMBERS-KEY @ s" no `key` beside `cols`" REJECT-KEY
+   k SLOT-MEMBERS-UNIQUE @ s" no `unique` beside `cols`"
+   s" remove `unique`: it belongs on a column slot or a column of `cols`" NO-MEMBER
+   k SLOT-MEMBERS-NOTNULL @ s" no `notnull` beside `cols`"
+   s" remove `notnull`: it belongs on a column slot" NO-MEMBER
    k SLOT-MEMBERS-COLS @ k SLOT-MEMBERS-OBJECT @ s" cols" KEPT
    arena KEEP-ENTRIES {: entries:^ :}
    entries VEC:COUNT 0 ?do entries i VEC:AT CHECK-ENTRY loop
@@ -613,7 +631,7 @@ STRUCTURE term-members DERIVE addr
      some OF store arena NEW-KEY NULLABLE:SOME ENDOF
    ;MATCH ;
 
-: READ-UNIQUE ( option<JSON:value> -- bool )
+: READ-FLAG ( option<JSON:value> -- bool )
    MATCH option
      none OF false ENDOF
      some OF {: u :}
@@ -638,7 +656,8 @@ STRUCTURE term-members DERIVE addr
    k SLOT-MEMBERS-COL @ m s" col" KEPT arena STRING$
    k SLOT-MEMBERS-SHAPE @ m s" shape" KEPT store SHAPE-INDEX
    k SLOT-MEMBERS-KEY @ store arena READ-KEY
-   k SLOT-MEMBERS-UNIQUE @ READ-UNIQUE SLOT-COLUMN ;
+   k SLOT-MEMBERS-UNIQUE @ READ-FLAG
+   k SLOT-MEMBERS-NOTNULL @ READ-FLAG SLOT-COLUMN ;
 
 : +ALTERNATIVE ( slot ^VEC:vector<alternative> -- )
    VEC:PUSH ALTERNATIVE-SLOT ! ;
@@ -746,7 +765,7 @@ STRUCTURE term-members DERIVE addr
 : INDEX-PREDICATE ( ^store n ^ARENA:arena -- )
    {: store:^ k:n arena :}
    store STORE-SOURCES @ k VEC:AT SOURCE-P @ MATCH slot
-      column OF 2drop 2drop store STORE-COLUMNS @ ENDOF
+      column OF 2drop 2drop drop store STORE-COLUMNS @ ENDOF
       term OF {: t:str :} store t arena TERM-RECORDS ENDOF
    ;MATCH VEC:PUSH k swap ! ;
 
