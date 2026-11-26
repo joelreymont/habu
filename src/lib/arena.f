@@ -272,6 +272,15 @@ public
    a len EXTENT BUMP len ;
 
 
+\ The bytes copied into the arena; an empty string allocates nothing.
+: COPY ( str ^arena -- str )
+   {: s:str a:^ :}
+   s STR:LEN 0= if s exit then
+   a s STR:LEN ALLOC SPAN:MAKE {: d :}
+   s d SPAN:COPY
+   d SPAN:$ ;
+
+
 \ The allocation and its action share one bump, so a failed mapping leaves
 \ neither. The action runs on this address: the block is never resized.
 : ALLOC-DISPOSE ( ^arena n [ ^u8 -- ] -- ^u8 n )

@@ -2340,7 +2340,9 @@ runtime or analysis layer.
   with its parent or by itself first. `ARENA:ALLOC ( ^ARENA:arena n -- ^u8
   n )` answers zeroed, cell-aligned bytes that never move. The size must be
   positive; a failed mapping throws `E-MEM-MAP` and leaves the arena
-  unchanged. `ARENA:ALLOC-DISPOSE (
+  unchanged. `ARENA:COPY ( str ^ARENA:arena -- str )` copies the bytes into
+  the arena and answers them there; an empty string answers an empty string.
+  `ARENA:ALLOC-DISPOSE (
   ^ARENA:arena n [ ^u8 -- ] -- ^u8 n )` answers such bytes and keeps an
   action the arena runs on them once, at its reset or release. `ARENA:RESET (
   ^ARENA:arena -- )` releases the children, runs the release actions newest

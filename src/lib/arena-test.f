@@ -12,7 +12,8 @@
 \ TRIM; runs an action twice when a release halted in it resumes; moves a
 \ newest block it could grow in place, gives back an older block's bytes when
 \ it shrinks, or loses a block's bytes or leaves stale ones in it when its
-\ allocator resizes it.
+\ allocator resizes it; copies a span's bytes wrongly or outside it, or
+\ allocates for an empty one.
 
 require src/lib/test/assert.f
 require src/lib/span.f
@@ -365,12 +366,28 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    al al RESIZE-MOVES RESIZE-REGROWS
    a ARENA:RELEASE ;
 
+
+\ 13. COPY answers the bytes at a new address bumped from the arena; an empty
+\ string answers an empty string and leaves the next allocation in place.
+: COPIES ( -- )
+   s" copy" T-LABEL
+   ARENA:NEW {: a:^ :}
+   a 8 ARENA:ALLOC drop {: first:^ :}
+   s" spanned" {: src:str :}
+   src a ARENA:COPY {: c:str :}
+   c src T$=
+   c STR:DATA src STR:DATA <> TTRUE
+   c STR:DATA first - 8 T=
+   s" " a ARENA:COPY STR:LEN 0 T=
+   a 1 ARENA:ALLOC drop c STR:DATA - 8 T=
+   a ARENA:RELEASE ;
+
 public
 
 : RUN ( -- )
    T-RESET
    MANY LARGE ACTIONS-ONCE RESET-ZEROES CHILDREN WITH-RELEASES ACTION-THROWS
-   EDGES HELD UNMAPPED HALTED RESIZES
+   EDGES HELD UNMAPPED HALTED RESIZES COPIES
    T-REPORT ;
 
 RUN
