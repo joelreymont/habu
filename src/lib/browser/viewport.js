@@ -6,8 +6,8 @@
 // The caller owns the page: nothing here looks up the DOM, and every other
 // record reaches the caller through a callback.
 //
-//   mount(canvas, { Module, module, fetch, rpc, onTree, onText, onSvg, onInput })
-//     -> Promise<viewport>
+//   mount(canvas, { Module, module, fetch, rpc, onTree, onToolbar, onText, onSvg,
+//     onInput, onLabels }) -> Promise<viewport>
 //   Module                 turn.js's Module class, which the caller imports
 //   module                 the module's URL, fetched with fetch
 //   fetch(url, init)       window.fetch's contract; the module, and every
@@ -16,19 +16,32 @@
 //                          Promise of { text, binary }; a rejection is a
 //                          transport failure
 //   onTree(rows, selected) a tree record's rows and selected key (turn.js)
+//   onToolbar(rows)        a toolbar record's checked rows (turn.js), held
+//                          until the next; [] removes the toolbar
 //   onText(text, error)    a text record, error false; a failure after mount
 //                          resolved, error true (it is also logged)
 //   onSvg(bytes)           an svg record's copied bytes, shown in place of the
 //                          canvas, whose visibility it hides; null when a draw
 //                          removes the shown image
 //   onInput(enabled)       true as the module starts, then each input record
+//   onLabels(placed)       after each draw, labels and svg record and each
+//                          resize: the held labels record's labels (turn.js)
+//                          whose points the last draw's matrix takes inside
+//                          the clip volume, in its order, each {text, x, y},
+//                          x and y in CSS pixels from the canvas's top-left at
+//                          its size then, so labels follow a resize the module
+//                          draws nothing after; [] before the first draw and
+//                          while an SVG shows
 //
 //   viewport.post(event)   { kind: "typed", text }, { kind: "control", key,
-//                          opened } or { kind: "key", key }: the field's
+//                          opened }, { kind: "key", key } or { kind: "set",
+//                          key, text }: the field's
 //                          submitted text, a tree row's key, selected or, when
 //                          opened is true, opened (turn.js's control event),
-//                          or a page control's KeyboardEvent.key, a key turn
-//                          with no modifiers; the promise settles
+//                          a toolbar row's key, sent by its button, its menu
+//                          item or its shortcut, a key turn with no
+//                          modifiers, or a toolbar range's or text row's key
+//                          and value (turn.js's set event); the promise settles
 //                          when the turn has, its failure already reported
 //                          through onText
 //   viewport.load(scene)   a load turn (turn.js) of the scene's bytes, an
@@ -81,7 +94,12 @@
 // a direction when 0. The normal is turned toward V: meshes are drawn
 // without culling and may be open. hit, after vs, marks the nearest fragment
 // in pick's one texel, with 1 in its fourth channel to tell a hit from the
-// clear.
+// clear. cut is the section (turn.js record 20) the last draw held: its plane
+// n, d and its cap's paint, encoded r, g, b and 1, or all zeros for none,
+// which keeps every point. fs and hit discard a fragment at p where
+// n·p + d < 0; while a section is held, fs paints the cap's colour, unlit, on
+// a fragment whose triangle faces away from V, the triangle's own normal
+// turned to the side of its vertex normal, unless that normal is zero.
 // The key casts the instances' soft shadow on the ground: caster draws every
 // row, cast-only (flags bit 1) or not, into the map, SHADOW_SIDE square, by
 // light.clip, whose x and y run along the key softbox's tangents and cover
@@ -114,10 +132,11 @@
 // box draws one occlude box per instance, under the camera's matrix, as the
 // 12 triangles of its faces:
 // vertex k takes corner corners[k], whose bit j picks the highest coordinate j
-// in place of the lowest. A box whose corners' clip z lie on both sides of 0,
-// the near plane, draws the full-viewport quad at depth 0 from vertices 0 to
-// 5 in place of its faces, which that plane can cut away while the box's
-// inside is in view.
+// in place of the lowest. A box whose eight corners all lie on the side cut
+// cuts away draws nothing: every vertex lies outside clip space. Else a box
+// whose corners' clip z lie on both sides of 0, the near plane, draws the
+// full-viewport quad at depth 0 from vertices 0 to 5 in place of its faces,
+// which that plane can cut away while the box's inside is in view.
 //
 // KEY is the key light's direction and KEY_BOX its softbox's half extents,
 // per unit along KEY, in studio coordinates. SHADOW_SIDE is the shadow map's
@@ -156,6 +175,14 @@ struct Light {
 @group(0) @binding(8) var shade: texture_2d<f32>;
 @group(0) @binding(9) var filtered: sampler;
 @group(0) @binding(10) var clears: texture_2d<u32>;
+
+struct Cut {
+  plane: vec4<f32>,
+  paint: vec4<f32>,
+}
+
+@group(0) @binding(11) var<uniform> cut: Cut;
+
 // The caster pass's mesh: its vertices, three u32 each as the vertex buffer
 // holds them, and its triangles' u16 indices, two to a u32.
 @group(1) @binding(0) var<storage, read> verts: array<u32>;
@@ -217,6 +244,11 @@ fn placed(v: Vertex) -> vec3<f32> {
   let n = select(vec3<f32>(0.0), normalize(w), dot(w, w) > 0.0);
   return Corner(clip * vec4<f32>(p, 1.0), n, v.grid.w, v.row.yz,
     v.paint.rgb, v.surface, p, v.row.x);
+}
+
+// Whether world point p is on the side cut keeps.
+fn kept(p: vec3<f32>) -> bool {
+  return dot(cut.plane.xyz, p) + cut.plane.w >= 0.0;
 }
 
 fn selected(face: u32, bits: vec2<u32>) -> bool {
@@ -315,10 +347,15 @@ fn keyed(n: vec3<f32>, v: vec3<f32>, f0: vec3<f32>, diffuse: vec3<f32>,
 
 @fragment fn fs(c: Corner) -> @location(0) vec4<f32> {
   let flat = normalize(cross(dpdx(c.world), dpdy(c.world)));
+  if (!kept(c.world)) { discard; }
+  let toward = normalize(view.eye.xyz - c.world * view.eye.w);
+  if (cut.paint.w != 0.0 && dot(flat, c.n) * dot(flat, toward) < 0.0) {
+    return vec4<f32>(cut.paint.rgb, 1.0);
+  }
   let w = select(normalize(c.n), flat, dot(c.n, c.n) == 0.0);
   let frame = transpose(mat3x3<f32>(view.right.xyz, view.up.xyz,
     view.back.xyz));
-  let v = frame * normalize(view.eye.xyz - c.world * view.eye.w);
+  let v = frame * toward;
   let n = select(frame * w, -(frame * w), dot(frame * w, v) < 0.0);
   let paint = select(c.paint, mark(c.paint), selected(c.face, c.bits));
   let base = linear(paint);
@@ -334,6 +371,7 @@ fn keyed(n: vec3<f32>, v: vec3<f32>, f0: vec3<f32>, diffuse: vec3<f32>,
 }
 
 @fragment fn hit(c: Corner) -> @location(0) vec4<u32> {
+  if (!kept(c.world)) { discard; }
   return vec4<u32>(c.id, c.face, bitcast<u32>(c.at.z), 1u);
 }
 
@@ -713,13 +751,23 @@ fn crosses(p: vec3<f32>, d: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> bool {
   discard;
 }
 
-fn corner(c: u32, lo: vec3<f32>, hi: vec3<f32>) -> vec4<f32> {
+// Corner c of the box lo to hi in world.
+fn worldCorner(c: u32, lo: vec3<f32>, hi: vec3<f32>) -> vec3<f32> {
   let high = vec3<bool>((c & 1u) != 0u, (c & 2u) != 0u, (c & 4u) != 0u);
-  return clip * vec4<f32>(select(lo, hi, high), 1.0);
+  return select(lo, hi, high);
+}
+
+fn corner(c: u32, lo: vec3<f32>, hi: vec3<f32>) -> vec4<f32> {
+  return clip * vec4<f32>(worldCorner(c, lo, hi), 1.0);
 }
 
 @vertex fn box(@builtin(vertex_index) k: u32, @location(0) lo: vec3<f32>,
     @location(1) hi: vec3<f32>) -> @builtin(position) vec4<f32> {
+  var away = 0u;
+  for (var c = 0u; c < 8u; c++) {
+    if (!kept(worldCorner(c, lo, hi))) { away++; }
+  }
+  if (away == 8u) { return vec4<f32>(2.0, 2.0, 2.0, 1.0); }
   var near = 0u;
   for (var c = 0u; c < 8u; c++) {
     if (corner(c, lo, hi).z < 0.0) { near++; }
@@ -936,7 +984,9 @@ function grouped(rows, count, origin) {
 // of the ground held then. While a ground is held, marks exist with area, the
 // caster pass's attachment SHADOW_SIDE square, and with shade and clears,
 // half the drawing buffer's size rounded up, which a draw that shades makes
-// again when that size has changed. Each draw that shades writes light and
+// again when that size has changed. section keeps a section record's plane
+// and colour as cut's eight f32s, which each draw writes to the cut buffer,
+// so a pick or occlude reads the last draw's section. Each draw that shades writes light and
 // shadeMatrix, so these stay the last such draw's until the next, and occlude
 // after a resize answers the last draw. clears is made, and cleared outside
 // the catcher, with every ray clear (ALL_CLEAR), as V is 1 there and marks are
@@ -1037,6 +1087,9 @@ function setup(canvas, context, device, release, fail) {
   const { UNIFORM, STORAGE, VERTEX, INDEX, COPY_DST, COPY_SRC, QUERY_RESOLVE, MAP_READ } =
     GPUBufferUsage;
   const matrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
+  // cut's plane and paint, zeros, none, until a draw writes the section held.
+  const cut = device.createBuffer({ size: 32, usage: UNIFORM | COPY_DST });
+  let sectioned = new Float32Array(8);
   // The last view viewer gave, kept for a draw whose matrix is singular; each
   // write of it or studio's view to the view buffer takes it to f32.
   let seen = viewer(Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1));
@@ -1046,7 +1099,8 @@ function setup(canvas, context, device, release, fail) {
   view.unmap();
   const boxBind = device.createBindGroup({
     layout: occluder.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: { buffer: matrix } }],
+    entries: [{ binding: 0, resource: { buffer: matrix } },
+      { binding: 11, resource: { buffer: cut } }],
   });
   const light = device.createBuffer({ size: 160, usage: UNIFORM | COPY_DST });
   const shadeMatrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
@@ -1098,7 +1152,8 @@ function setup(canvas, context, device, release, fail) {
   const probeMatrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
   const probeBind = device.createBindGroup({
     layout: prober.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: { buffer: probeMatrix } }],
+    entries: [{ binding: 0, resource: { buffer: probeMatrix } },
+      { binding: 11, resource: { buffer: cut } }],
   });
   const texel = device.createTexture({ size: [1, 1], format: "rgba32uint",
     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
@@ -1136,7 +1191,8 @@ function setup(canvas, context, device, release, fail) {
       layout: pipeline.getBindGroupLayout(0),
       entries: [{ binding: 0, resource: { buffer: matrix } },
         { binding: 1, resource: { buffer: words } },
-        { binding: 2, resource: { buffer: view } }],
+        { binding: 2, resource: { buffer: view } },
+        { binding: 11, resource: { buffer: cut } }],
     });
   };
   highlight(new Uint32Array(0));
@@ -1179,6 +1235,13 @@ function setup(canvas, context, device, release, fail) {
     if (!fit && shadows) unshadow();
   };
 
+  // A section's plane, four f32, and colour, its r, g and b bytes, held for
+  // the next draws; null for none.
+  const section = (plane, colour) => {
+    sectioned = plane ? Float32Array.of(...plane, ...Array.from(colour, (v) => v / 255), 1) :
+      new Float32Array(8);
+  };
+
   // The last draw's runs of drawn rows and its matrix, copied, as a pick
   // reads them, and whether it drew a shadow; null before the first.
   let last = null;
@@ -1194,6 +1257,7 @@ function setup(canvas, context, device, release, fail) {
       device.queue.writeBuffer(instances, 0, ordered);
     }
     device.queue.writeBuffer(matrix, 0, clip);
+    device.queue.writeBuffer(cut, 0, sectioned);
     seen = viewer(last.clip) ?? seen;
     const axes = fit ? [...seen.slice(0, 4), ...fit.subarray(4, 7), 0,
       ...fit.subarray(0, 3), 0, ...fit.subarray(7, 10), 0] : seen;
@@ -1380,7 +1444,7 @@ function setup(canvas, context, device, release, fail) {
     }
   };
 
-  return { mesh, unmesh, highlight, ground, draw, pick, occlude, release };
+  return { mesh, unmesh, highlight, ground, section, draw, pick, occlude, release };
 }
 
 function modifiers(e) {
@@ -1437,7 +1501,23 @@ function sceneBytes(scene) {
   throw new TypeError("a scene is an ArrayBuffer or a Uint8Array");
 }
 
-export async function mount(canvas, { Module, module: url, fetch: load, rpc, onTree, onText, onSvg, onInput }) {
+// The labels whose points matrix m, column-major, takes inside the clip volume
+// (turn.js), each {text, x, y} at its point's place in a w by h box from its
+// top-left.
+function projected(labels, m, w, h) {
+  const placed = [];
+  for (const { x, y, z, text } of labels) {
+    const [cx, cy, cz, cw] = [0, 1, 2, 3].map((i) =>
+      m[i] * x + m[4 + i] * y + m[8 + i] * z + m[12 + i]);
+    if (cw > 0 && Math.abs(cx) <= cw && Math.abs(cy) <= cw && cz >= 0 && cz <= cw)
+      placed.push({ text, x: (cx / cw + 1) * w / 2, y: (1 - cy / cw) * h / 2 });
+  }
+  return placed;
+}
+
+
+export async function mount(canvas, { Module, module: url, fetch: load, rpc, onTree, onToolbar, onText, onSvg,
+  onInput, onLabels }) {
   // One signal aborts the outstanding fetches and removes every listener.
   const ending = new AbortController();
   const { signal } = ending;
@@ -1460,6 +1540,16 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
     return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
   };
 
+  let shown = false; // an svg record's image shows in the canvas's place
+  let labels = []; // the labels record held, turn.js's entries
+  let clip = null; // the last draw's matrix, copied; null before the first
+  // Sends onLabels the held labels through clip in the canvas's CSS box as it
+  // is now; each draw, labels and svg record and each resize calls it.
+  const place = () => {
+    const box = canvas.getBoundingClientRect();
+    onLabels(shown || !clip ? [] : projected(labels, clip, box.width, box.height));
+  };
+
   const dispose = () => {
     if (disposed) return;
     disposed = true;
@@ -1479,7 +1569,6 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
     renderer = await gpu(canvas, fail);
     const r = await load(url, { signal });
     if (!r.ok) throw new Error(`${url}: ${r.status} ${r.statusText}`);
-    let shown = false;
     module = await Module.load(await r.arrayBuffer(), {
       hello: () => {},
       fetch: async (path) => {
@@ -1499,25 +1588,34 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
       unmesh: live((handle) => renderer.unmesh(handle)),
       highlight: live((words) => renderer.highlight(words)),
       ground: live((held) => renderer.ground(held)),
+      section: live((plane, colour) => renderer.section(plane, colour)),
       pick: live((x, y) => renderer.pick(x, y)),
       occlude: live((boxes) => renderer.occlude(boxes)),
-      draw: live((...args) => {
+      draw: live((rows, count, matrix) => {
         if (shown) {
           shown = false;
           // Visibility keeps the canvas's layout and drawing-buffer size stable.
           canvas.style.visibility = "visible";
           onSvg(null);
         }
-        renderer.draw(...args);
+        renderer.draw(rows, count, matrix);
+        clip = new Float32Array(matrix.slice().buffer);
+        place();
+      }),
+      labels: live((held) => {
+        labels = held;
+        place();
       }),
       svg: live((bytes) => {
         shown = true;
         canvas.style.visibility = "hidden";
         onSvg(bytes);
+        place();
       }),
       input: live(onInput),
       text: live((s) => onText(s, false)),
       tree: live(onTree),
+      toolbar: live(onToolbar),
       size: () => [canvas.width, canvas.height],
       ratio,
     });
@@ -1579,6 +1677,7 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
     send(() => module.wheel(
       Math.round(e.deltaX * xUnit * canvas.width / box.width),
       Math.round(e.deltaY * yUnit * canvas.height / box.height),
+      ...at(canvas, e),
       modifiers(e),
     ));
   }, { passive: false });
@@ -1594,7 +1693,11 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
   // The a the module was last told; 0 before the mount's first resize, so that
   // one always sends.
   let told = 0;
+  // Places the labels at the canvas's CSS size, whether or not the module
+  // draws again, then resizes the drawing buffer and sends a resize turn when
+  // its size or devicePixelRatio changed.
   const resize = () => {
+    place();
     const [width, height] = drawingSize(canvas);
     const sized = canvas.width === width && canvas.height === height;
     if (sized && ratio() === told) return;
@@ -1627,6 +1730,7 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
         case "control":
           return send(() => module.control(event.key, event.opened));
         case "key": return send(() => module.key(event.key, 0));
+        case "set": return send(() => module.set(event.key, event.text));
         default: throw new TypeError(`unknown viewport event ${event.kind}`);
       }
     },

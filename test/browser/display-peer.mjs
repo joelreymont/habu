@@ -162,13 +162,18 @@ async function browser() {
       import { Module } from '/turn.js';
       const load = Module.load;
       Module.load = async (...args) => window.subject = await load.call(Module, ...args);
+      // Each key and set reaching the module, as [kind, key, mods or text].
+      window.sent = [];
+      const key = Module.prototype.key, set = Module.prototype.set;
+      Module.prototype.key = function (k, mods) { sent.push(['key', k, mods]); return key.call(this, k, mods); };
+      Module.prototype.set = function (k, text) { sent.push(['set', k, text]); return set.call(this, k, text); };
       await import('/host.js');
     `, { headers: { "Content-Type": "text/javascript" } });
     if (path === "/mount") return new Response(
       '<!doctype html><canvas tabindex="0" style="width:320px;height:240px"></canvas><script type="module" src="/mount-boot.js"></script>',
       { headers: { "Content-Type": "text/html" } });
-    // Counts each instance's turns, keeps each resize turn's a in ratios and
-    // each WebGPU device, so a disposed viewport's listeners and device can be
+    // Counts each instance's turns, keeps each resize turn's a in ratios, each
+    // wheel turn's cells in wheels and each WebGPU device, so a disposed viewport's listeners and device can be
     // checked. Keeps each matchMedia list, since emulating another ratio fires
     // no change event. breakPipeline makes the next device's pipeline throw;
     // ignoreAbort fetches without the signal.
@@ -179,11 +184,12 @@ async function browser() {
       const media = window.matchMedia;
       window.matchMedia = (query) => { const list = media.call(window, query); lists.push(list); return list; };
       const load = Module.load;
-      Module.load = async (...args) => { const m = await load.call(Module, ...args); modules.push(m); m.turns = 0; m.ratios = [];
+      Module.load = async (...args) => { const m = await load.call(Module, ...args); modules.push(m); m.turns = 0; m.ratios = []; m.wheels = [];
         return m; };
       const turn = Module.prototype.turn;
       Module.prototype.turn = function (event) { this.turns++;
-        if (event && event[0] === 9n) this.ratios.push(Number(event[1])); return turn.call(this, event); };
+        if (event && event[0] === 9n) this.ratios.push(Number(event[1]));
+        if (event && event[0] === 7n) this.wheels.push(event.map(Number)); return turn.call(this, event); };
       const request = GPUAdapter.prototype.requestDevice;
       GPUAdapter.prototype.requestDevice = async function (...args) { const d = await request.apply(this, args);
         devices.push(d); d.lost.then((info) => { d.reason = info.reason; });
@@ -196,7 +202,7 @@ async function browser() {
         onTree: (rows, selected) => records.push(['tree', rows, selected]),
         onText: (text, error) => records.push(['text', text, error]),
         onSvg: (bytes) => records.push(['svg', bytes && bytes.length]),
-        onInput: (enabled) => records.push(['input', enabled]) });
+        onInput: (enabled) => records.push(['input', enabled]), onLabels: () => {} });
       window.ready = true;
     `, { headers: { "Content-Type": "text/javascript" } });
     if (path === "/host.js" || path === "/viewport.js" || path === "/turn.js" || path === "/page.js" ||
@@ -291,9 +297,9 @@ async function browser() {
     await command("text"); await command("tree");
     assert.equal((await state()).image, blue.image, "text and tree records must leave the viewport alone");
     // A row whose more is true opens from its toggle: the module sees b = 1
-    // and answers with the row's child Bracket and Bracket's child Bolt. The
-    // rebuilt tree keeps the row open and its toggle focused, and Bracket,
-    // whose child arrived with it, starts open.
+    // and answers with the row's child Bracket and Bracket's dim child Bolt.
+    // The rebuilt tree keeps the row open and its toggle focused, Bracket,
+    // whose child arrived with it, starts open, and only Bolt's line is dim.
     await command("more");
     const toggle = (label) =>
       `document.querySelector('#tree button[aria-label$=" ${label}"]')`;
@@ -314,6 +320,183 @@ async function browser() {
       "the opened row's toggle keeps focus across the rebuild");
     assert.equal(await expanded("Bracket"), "true",
       "a new row whose children arrive with it starts open");
+    const dimmed = (label) => evaluate("[...document.querySelectorAll('#tree .tree-row')]" +
+      `.find((line) => line.lastChild.textContent === ${JSON.stringify(label)}).classList.contains('dim')`);
+    assert.equal(await dimmed("Bolt"), true, "a dim row's line has class dim");
+    assert.equal(await dimmed("Bracket"), false, "a row without dim has no class dim");
+    // The toolbar (page.js toolbar): each button's press, a menu item's press
+    // and a shortcut pressed away from the canvas reach the module as the
+    // row's key, a range's input and a text's change as a set; a toolbar
+    // stated again with only pressed and a value changed keeps each element
+    // and the focus; ? opens the help screen of the rows with shortcuts, and
+    // neither ? nor Escape reaches the module while it is open.
+    await command("bar");
+    const tool = (label) => `document.querySelector('#toolbar button[aria-label=${JSON.stringify(label)}]')`;
+    const sent = () => evaluate("sent.slice(0)");
+    const lastSent = async () => (await sent()).at(-1);
+    await until(() => evaluate(`!!${tool("Fit")}`));
+    const ICONS = { fit: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5", grid: "M4 4h16v16H4zM4 12h16M12 4v16",
+      shaded: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18",
+      wire: "M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5",
+      find: "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14M20 20l-4-4" };
+    const fitted = await evaluate(`(() => { const b = ${tool("Fit")}, p = b.querySelector('svg > path');
+      const svg = p.parentNode;
+      return { d: p.getAttribute('d'), title: b.title, keys: b.getAttribute('aria-keyshortcuts'),
+        box: svg.getAttribute('viewBox'), size: svg.getBoundingClientRect().width, fill: svg.getAttribute('fill'),
+        stroke: getComputedStyle(p).stroke, width: getComputedStyle(p).strokeWidth,
+        caps: getComputedStyle(p).strokeLinecap + ' ' + getComputedStyle(p).strokeLinejoin,
+        color: getComputedStyle(b).color, group: b.closest('[role=group]').getAttribute('aria-label') }; })()`);
+    assert.deepEqual(fitted, { d: ICONS.fit, title: "Fit (Home)", keys: "Home", box: "0 0 24 24", size: 16, fill: "none",
+      stroke: fitted.color, width: "2px", caps: "round round", color: fitted.color, group: "View" },
+      "a button's icon is its row's path, 16 px, stroked in currentColor, its tooltip label (shortcut)");
+    assert.deepEqual(await evaluate(`[${tool("Note")}.textContent, ${tool("Note")}.title,
+      !!${tool("Note")}.querySelector('svg'), ${tool("Note")}.hasAttribute('aria-keyshortcuts')]`),
+      ["Note", "Note", false, false], "a button without an icon shows its label, its tooltip the label alone");
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('#toolbar .cluster')]
+      .map((c) => c.getAttribute('aria-label') ?? (c.querySelector('[aria-label]').getAttribute('aria-label')))`),
+      ["View", "Style", "Cut", "Note", "Keyboard shortcuts"],
+      "consecutive rows of one group are one cluster, the help button last");
+    await evaluate(`${tool("Fit")}.click()`);
+    await until(async () => (await lastSent())?.[1] === "bar-fit");
+    assert.deepEqual(await lastSent(), ["key", "bar-fit", 0], "a button's press sends its row's key");
+    // Style's menu shows its pressed item's icon, Shaded's here.
+    const style = tool("Style");
+    assert.deepEqual(await evaluate(`[${style}.title, ${style}.querySelector('path').getAttribute('d')]`),
+      ["Style", ICONS.shaded], "a menu button shows its pressed item's icon, its tooltip the group");
+    // A range's input and a text's change send set; the page keeps neither.
+    const range = "document.querySelector('#toolbar input[type=range]')";
+    const find = "document.querySelector('#toolbar input[type=search]')";
+    assert.deepEqual(await evaluate(`[${range}.min, ${range}.max, ${range}.value]`), ["0", "100", "50"]);
+    await evaluate(`${range}.value = '30'; ${range}.dispatchEvent(new Event('input', { bubbles: true }))`);
+    await until(async () => (await lastSent())?.[1] === "bar-cut");
+    assert.deepEqual(await lastSent(), ["set", "bar-cut", "30"], "a range's input sends set with its value");
+    await evaluate(`${find}.value = 'bolt'; ${find}.dispatchEvent(new Event('change', { bubbles: true }))`);
+    await until(async () => (await lastSent())?.[1] === "bar-find");
+    assert.deepEqual(await lastSent(), ["set", "bar-find", "bolt"], "a text's change sends set with its text");
+    // The same rows with Grid and Wireframe pressed and the range at 70.
+    await evaluate(`window.grid = ${tool("Grid")}; window.cut = ${range}; grid.focus()`);
+    assert.equal(await evaluate("grid.getAttribute('aria-pressed')"), "false");
+    await command("bar-on");
+    assert.deepEqual(await evaluate(`[grid === ${tool("Grid")}, document.activeElement === grid,
+      grid.getAttribute('aria-pressed'), cut === ${range}, cut.value, ${style}.querySelector('path').getAttribute('d')]`),
+      [true, true, "true", true, "70", ICONS.wire],
+      "a toolbar changed only in pressed and value keeps its elements and focus, updated in place");
+    const tinted = await evaluate(`getComputedStyle(grid).backgroundColor !== getComputedStyle(${tool("Fit")}).backgroundColor`);
+    assert.equal(tinted, true, "a pressed button is drawn tinted");
+    // The menu opens below its button and its item's press sends the key.
+    await evaluate(`${style}.click()`);
+    const menu = "document.querySelector('#toolbar .menu')";
+    await until(() => evaluate(`${menu}.matches(':popover-open')`));
+    const items = await evaluate(`[...${menu}.querySelectorAll('button')].map((b) =>
+      [b.querySelector('path').getAttribute('d'), b.querySelector('.menu-label').textContent,
+       b.querySelector('kbd')?.textContent ?? null, b.getAttribute('aria-pressed')])`);
+    assert.deepEqual(items, [[ICONS.shaded, "Shaded", null, "false"], [ICONS.wire, "Wireframe", "w", "true"]],
+      "the menu lists each item's icon, label and shortcut");
+    const placed = await evaluate(`(() => { const m = ${menu}.getBoundingClientRect(), b = ${style}.getBoundingClientRect();
+      return [Math.round(m.right - b.right), m.top >= b.bottom]; })()`);
+    assert.deepEqual(placed, [0, true], "the menu opens below its button's right edge");
+    await evaluate(`${menu}.querySelector('button:last-child').click()`);
+    await until(async () => (await lastSent())?.[1] === "bar-wire");
+    assert.deepEqual(await lastSent(), ["key", "bar-wire", 0], "a menu item's press sends its key");
+    assert.equal(await evaluate(`${menu}.matches(':popover-open')`), false, "a press closes the menu");
+    // A range and a search field are as tall as a button, in its colour, with
+    // no browser chrome; the range is 96 px wide, and the field leads with its
+    // icon and shows its label only as placeholder and accessible name.
+    const inputs = await evaluate(`(() => { const r = ${range}, f = ${find}, b = ${tool("Fit")};
+      const tall = (el) => el.getBoundingClientRect().height, colour = (el) => getComputedStyle(el).color;
+      return { range: [tall(r), r.getBoundingClientRect().width], field: tall(f.parentNode), button: tall(b),
+        colour: [colour(r.parentNode) === colour(b), colour(f) === colour(b)],
+        appearance: [getComputedStyle(r).appearance, getComputedStyle(f).appearance],
+        find: [f.placeholder, f.getAttribute('aria-label'), f.parentNode.textContent,
+          f.parentNode.firstChild.querySelector?.('path')?.getAttribute('d') ?? null] }; })()`);
+    assert.deepEqual(inputs, { range: [28, 96], field: 28, button: 28, colour: [true, true],
+      appearance: ["none", "none"], find: ["Find", "Find", "", ICONS.find] },
+      "a range and a search field match the buttons, the field led by its icon with its label as placeholder");
+    // The clusters' bounds, at twice their size, written to output as name.
+    const shootBar = async (name) => {
+      const clip = await evaluate(`(() => { const rs = [...document.querySelectorAll('#toolbar .cluster')]
+        .map((c) => c.getBoundingClientRect());
+        const x = Math.min(...rs.map((r) => r.left)) - 4, y = Math.min(...rs.map((r) => r.top)) - 4;
+        return { x, y, width: Math.max(...rs.map((r) => r.right)) + 4 - x,
+          height: Math.max(...rs.map((r) => r.bottom)) + 4 - y, scale: 2 }; })()`);
+      const shot = await call("Page.captureScreenshot", { format: "png", clip });
+      writeFileSync(join(output, name), Buffer.from(shot.data, "base64"));
+    };
+    // The toolbar shot in a frame wide enough for one line and in one narrow
+    // enough to wrap, each two frames after the frame is width wide.
+    const framed = async (width) => {
+      await call("Emulation.setDeviceMetricsOverride", { width, height: 600, deviceScaleFactor: 1, mobile: false });
+      await evaluate("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))");
+    };
+    await framed(1280);
+    await shootBar("toolbar.png");
+    await framed(640);
+    await shootBar("wrapped.png");
+    await call("Emulation.clearDeviceMetricsOverride");
+    await evaluate("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))");
+    // Keys: a shortcut away from the canvas presses its row; ? opens the help
+    // screen anywhere but in a text field; in a range, a moving key is the
+    // range's even when it is a shortcut (Fit's Home), and other keys still
+    // press their rows.
+    const key = async (k, code, shift = false) => {
+      for (const type of ["keyDown", "keyUp"])
+        await call("Input.dispatchKeyEvent", { type, key: k, code, text: type === "keyDown" && k.length === 1 ? k : undefined,
+          modifiers: shift ? 8 : 0 });
+    };
+    await evaluate(`${tool("Fit")}.focus()`);
+    await key("g", "KeyG");
+    await until(async () => (await lastSent())?.[1] === "bar-grid");
+    assert.deepEqual(await lastSent(), ["key", "bar-grid", 0], "a shortcut away from the canvas sends its row's press");
+    await evaluate(`${find}.focus()`);
+    const typedSince = (await sent()).length;
+    await key("g", "KeyG");
+    assert.equal(await evaluate(`${find}.value`), "boltg", "a shortcut in a text field is the field's text");
+    await key("?", "Slash", true);
+    assert.equal(await evaluate("!!document.querySelector('dialog.help')"), false, "? in a text field opens nothing");
+    // A draw of 0 rows shows the canvas, which a hidden one cannot take focus.
+    await command("zero");
+    await evaluate(`${find}.value = 'bolt'`);
+    assert.equal((await sent()).length, typedSince, "keys in a text field send nothing");
+    await evaluate(`${range}.focus()`);
+    const ranged = (await sent()).length;
+    await key("Home", "Home");
+    await until(() => evaluate(`${range}.value === '0'`));
+    assert.equal(await evaluate(`${range}.value`), "0", "Home in a range moves it to its min");
+    assert.deepEqual((await sent()).slice(ranged).filter(([kind, k]) => kind === "key" && k === "bar-fit"), [],
+      "Home in a range is the range's, not Fit's shortcut");
+    await key("g", "KeyG");
+    await until(async () => (await lastSent())?.[1] === "bar-grid");
+    assert.deepEqual(await lastSent(), ["key", "bar-grid", 0], "a shortcut that does not move a range presses its row");
+    await evaluate("document.querySelector('canvas').focus()");
+    assert.equal(await evaluate("document.activeElement === document.querySelector('canvas')"), true);
+    const heard = (await sent()).length;
+    await key("?", "Slash", true);
+    const help = "document.querySelector('dialog.help')";
+    await until(() => evaluate(`!!${help}?.open`));
+    const listed = await evaluate(`[...${help}.querySelectorAll('section')].map((s) => [s.querySelector('h3')?.textContent ?? '',
+      [...s.querySelectorAll('dd')].map((dd, i) => [dd.querySelector('path')?.getAttribute('d') ?? null, dd.textContent,
+        s.querySelectorAll('dt kbd')[i].textContent])])`);
+    assert.deepEqual(listed, [["View", [[ICONS.fit, "Fit", "Home"], [ICONS.grid, "Grid", "g"]]],
+      ["Style", [[ICONS.wire, "Wireframe", "w"]]]], "? on the canvas opens the help screen of the shortcut rows by group");
+    await key("Escape", "Escape");
+    await until(() => evaluate(`!${help}`));
+    assert.equal(await evaluate("document.activeElement === document.querySelector('canvas')"), true,
+      "closing the help screen returns focus where it was");
+    await evaluate(`${tool("Keyboard shortcuts")}.click()`);
+    await until(() => evaluate(`!!${help}?.open`));
+    await key("?", "Slash", true);
+    await until(() => evaluate(`!${help}`));
+    assert.equal((await sent()).length, heard, "neither ? nor Escape reaches the module around the help screen");
+    await command("bar-none");
+    assert.equal(await evaluate("document.querySelector('#toolbar').childElementCount"), 0, "[] removes the toolbar");
+    // The blue image the cases below expect, shown again.
+    await command("blue");
+    await until(() => evaluate("document.querySelector('img')?.naturalHeight === 400"));
+    console.log(`Headless Chrome toolbar: presses, menu and shortcut sent ${JSON.stringify((await sent())
+      .filter(([kind]) => kind === "key").map(([, k]) => k))}; sets ${JSON.stringify((await sent())
+      .filter(([kind]) => kind === "set").map(([, k, t]) => `${k}=${t}`))}; help listed ${listed.map(([g, rows]) =>
+      `${g}: ${rows.map(([, l, k]) => `${l} ${k}`).join(", ")}`).join("; ")}; screenshots ${join(output,
+      "toolbar.png")} and ${join(output, "wrapped.png")}`);
     await command("off");
     await evaluate("document.querySelector('input').value='red'; document.querySelector('form').dispatchEvent(new Event('submit',{cancelable:true}))");
     assert.equal((await state()).image, blue.image, "disabled form must not dispatch a typed turn");
@@ -364,6 +547,55 @@ async function browser() {
       `${upper}, marked orange face 1 ${face1}, marked metal triangle ` +
       `${triangle}, marked white ${right}, background ${above}, flat ` +
       `triangle ${flat}, its edge ${edge}, metal orange face 0 ${metal}`);
+    // display.f's labels under that draw's identity matrix: Centre's bottom
+    // centre at the canvas's centre and Hole A's at its upper left quarter
+    // point; Out, past x = 1, and Behind, before the near plane, are not
+    // placed. labels-none removes them.
+    const labelled = () => evaluate(`(() => {
+      const c = document.querySelector('canvas').getBoundingClientRect();
+      return Array.from(document.querySelectorAll('div.label'), (el) => {
+        const r = el.getBoundingClientRect();
+        return [el.textContent, (r.left + r.right) / 2 - c.left, r.bottom - c.top];
+      });
+    })()`);
+    await command("labels");
+    const marks = await labelled();
+    const [cssWidth, cssHeight] = drawn.canvas;
+    assert.deepEqual(marks.map(([text]) => text), ["Centre", "Hole A"],
+      `only the labels inside the clip volume are placed, got ${JSON.stringify(marks)}`);
+    for (const [[text, x, y], [wantX, wantY]] of marks.map((mark, k) =>
+      [mark, [[cssWidth / 2, cssHeight / 2], [cssWidth / 4, cssHeight / 4]][k]]))
+      assert.ok(Math.abs(x - wantX) <= 0.5 && Math.abs(y - wantY) <= 0.5,
+        `${text}'s bottom centre at ${x}, ${y}, not ${wantX}, ${wantY}`);
+    const labelShot = await call("Page.captureScreenshot", { format: "png" });
+    writeFileSync(join(output, "labels.png"), Buffer.from(labelShot.data, "base64"));
+    // Resized after still, the module draws nothing, yet the labels follow
+    // the new size through the last draw's matrix. Back at its size, metal
+    // draws that draw again.
+    const resized = async (width, height) => {
+      const before = await evaluate(`document.querySelector("canvas").width`);
+      await evaluate(`(() => { const { style } = document.querySelector("canvas");
+        style.width = ${JSON.stringify(width)}; style.height = ${JSON.stringify(height)}; })()`);
+      await until(() => evaluate(`document.querySelector("canvas").width !== ${before}`));
+      return evaluate(`(() => { const r = document.querySelector("canvas").getBoundingClientRect();
+        return [r.width, r.height]; })()`);
+    };
+    await command("still");
+    const [smallWidth, smallHeight] = await resized("200px", "150px");
+    const moved = await labelled();
+    assert.deepEqual(moved.map(([text]) => text), ["Centre", "Hole A"],
+      `a resize keeps the placed labels, got ${JSON.stringify(moved)}`);
+    for (const [[text, x, y], [wantX, wantY]] of moved.map((mark, k) =>
+      [mark, [[smallWidth / 2, smallHeight / 2], [smallWidth / 4, smallHeight / 4]][k]]))
+      assert.ok(Math.abs(x - wantX) <= 0.5 && Math.abs(y - wantY) <= 0.5,
+        `after a resize with no draw ${text}'s bottom centre at ${x}, ${y}, not ${wantX}, ${wantY}`);
+    await resized("", "");
+    await command("metal");
+    await command("labels-none");
+    assert.deepEqual(await labelled(), [], "labels of none remove every label");
+    console.log(`Headless Chrome labels under the identity in a ${cssWidth} by ` +
+      `${cssHeight} canvas: ${JSON.stringify(marks)}, resized to ${smallWidth} by ` +
+      `${smallHeight} with no draw: ${JSON.stringify(moved)}`);
     // display.f's occlude against that draw: the box behind the left square
     // answers 0, the box below every instance 1.
     await command("occlude");
@@ -393,6 +625,37 @@ async function browser() {
       `picked -1 0 ${one} 4`].toSorted(),
       "each pick answers its pixel's instance, face and depth, or none; " +
       `the page's text, where a failed pick goes: ${(await state()).text}`);
+    // display.f's section keeps x >= -0.5 of the metal draw. The left
+    // square's half past it is cut away to the background. The squares'
+    // normals, +z, face away from the eye at -z, so the square's kept half is
+    // a back face, painted the cap's c03060 exactly; the green triangle above
+    // it faces the eye and stays lit as it was. A pick on the cut half
+    // answers none, and one on the cap the square's face 1. Of two boxes, the
+    // one behind the left square, which failed the view test, passes through
+    // the cut half, and one wholly on the cut side, behind only cut surfaces,
+    // fails. section-none draws the metal draw whole again.
+    const cutPoints = [[-0.7, 0], [-0.3, 0], [-0.35, 0.6]];
+    const whole = await pixels(cutPoints);
+    await command("section");
+    const [gone, cap, kept] = await pixels(cutPoints);
+    assert.deepEqual(gone, background, `the cut half reads the background, got ${gone}`);
+    assert.deepEqual(cap, [0xc0, 0x30, 0x60], `the kept back face reads the cap's bytes, got ${cap}`);
+    assert.deepEqual(kept, whole[2], `the front triangle stays lit as ${whole[2]}, got ${kept}`);
+    const cutPicks = await evaluate(`Promise.all(${JSON.stringify(cutPoints.slice(0, 2))}.map(([x, y]) => {
+      const c = document.querySelector("canvas");
+      return subject.host.pick(BigInt(Math.floor((x + 1) * c.width / 2)),
+        BigInt(Math.floor((1 - y) * c.height / 2))); }))`);
+    assert.deepEqual(cutPicks, [[-1, 0, one], [1, 1, half]],
+      `a pick on the cut half answers none and one on the cap face 1, got ${JSON.stringify(cutPicks)}`);
+    const cutBoxes = await evaluate(`(async () => Array.from(await subject.host.occlude(Float32Array.of(
+      -0.7, -0.2, 0.6, -0.3, 0.2, 0.8, -0.9, -0.9, 0.6, -0.6, -0.6, 0.8))))()`);
+    assert.deepEqual(cutBoxes, [1, 0],
+      `the box behind the cut half passes and the box wholly cut fails, got ${cutBoxes}`);
+    await command("section-none");
+    const restored = await pixels(cutPoints);
+    assert.deepEqual(restored, whole, `section none draws the whole, got ${JSON.stringify(restored)}`);
+    console.log(`Headless Chrome section: cut ${gone}, cap ${cap}, front ${kept}, picks ` +
+      `${JSON.stringify(cutPicks)}, boxes ${cutBoxes}, none ${JSON.stringify(restored)}`);
     // z 0.5 through the matrix's 2z + 0.5 over w 2 is depth 0.75.
     await command("nearer");
     const nearer = (await state()).text;
@@ -827,6 +1090,14 @@ async function browser() {
         assert.match(await evaluate(`(() => { try { first.highlight(${bad}); } catch (e) { return String(e); } })()`),
           /TypeError: identit/, bad);
       assert.equal(await evaluate("modules[0].turns"), turns, "a malformed identity list runs no turn");
+      // A wheel 100, 60 CSS pixels into the 320x240 canvas, its 640x480
+      // buffer under ratio 2, turns with the pointer at buffer pixel 200, 120.
+      await evaluate(`(() => { const r = canvas.getBoundingClientRect();
+        canvas.dispatchEvent(new WheelEvent('wheel', { clientX: r.left + 100, clientY: r.top + 60,
+          deltaY: 3, cancelable: true })); })()`);
+      await until(() => evaluate("modules[0].wheels.length > 0"));
+      assert.deepEqual(await evaluate("modules[0].wheels"), [[7, 0, 6, 640, 480, 0, 0, 200, 120]],
+        "a wheel on the mounted canvas carries the pointer in buffer pixels");
       const key = "(canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' })), modules[0].turns)";
       const before = await evaluate("modules[0].turns");
       assert.equal(await evaluate(key), before + 1, "a key on the mounted canvas runs a turn");

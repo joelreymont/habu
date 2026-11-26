@@ -3,7 +3,7 @@
 \ a space and the event's bytes in lowercase hex. Typed "fetch" fetches the
 \ page-relative path slow. Typed "more" sends a tree whose row Shelf has more;
 \ opening Shelf sends the text opened and the tree again with its child and
-\ grandchild. Typed "draw" sends mesh 1, a square of two triangles of faces 0
+\ its dim grandchild. Typed "draw" sends mesh 1, a square of two triangles of faces 0
 \ and 1; mesh 2, one triangle of face 34 with normals (0, 0.8, -0.6); mesh
 \ 3, that triangle with normals +x; a highlight of two words, bit 1 of the
 \ first and bit 2 of the second set; and a draw of rows of handles 1, 2, 1,
@@ -44,11 +44,23 @@
 \ orange rectangles in one grid plane with origins 100000, 200000, 300000
 \ and 139000, 190000, 299000 that share the edge from grid 140000, 200000,
 \ 300000 to 140000, 240000, 300000, and draws them, ids 8 and 9, through one
-\ transform rotated about x then y. Typed "warn" writes warned to descriptor 2;
+\ transform rotated about x then y. Typed "section" sends the section that
+\ keeps x >= -0.5, capped in c03060, and "section-none" none; each draws the
+\ last draw again. Typed "warn" writes warned to descriptor 2;
 \ "warn-throw" writes it and throws 93; "die" writes warned and dies with an
 \ empty message; "die-255" writes byte 255 to descriptor 2 and dies with boom.
+\ Typed "bar" sends a toolbar: cluster View of Fit, shortcut Home, and the
+\ toggle Grid, shortcut g; the menu Style of the items Shaded, pressed, and
+\ Wireframe, shortcut w; cluster Cut of a range 0 to 100 at 50 and the text
+\ Find with an icon; and Note, in no group and with no icon. "bar-on" sends
+\ it again with Grid and Wireframe pressed and the range at 70, its only
+\ changes; "bar-none" sends no toolbar.
+\ Typed "labels" sends four labels in world, Centre at 0, 0, 0.5, Hole A at
+\ -0.5, 0.5, 0.25, Out at 2, 0, 0.5 and Behind at 0, 0, -0.25; "labels-none"
+\ sends labels of none. Typed "still" sends nothing and holds none, so
+\ resizes draw nothing until the next draw.
 \ A resize, which clears the canvas, draws the last draw again, unless an SVG
-\ has been shown since.
+\ has been shown or "still" typed since.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
@@ -81,6 +93,9 @@ CAST: BYTES>N ( ^u8 -- n )
 48 BUFFER: LIGHT
 64 BUFFER: VIEW
 84 BUFFER: FITTED
+\ Four labels, of 22, 22, 19 and 22 bytes.
+85 BUFFER: LABELS
+20 BUFFER: SECTION
 20 TYPED-BUFFER CULL r
 4097 24 * BUFFER: BOXES
 512 BUFFER: IMAGE
@@ -91,8 +106,8 @@ ECHO-CAP BUFFER: ECHO-BUF
 variable ECHO-U
 
 \ The machine a resize reads: none, the zeroed variable, before the first draw
-\ and after an SVG, which the host shows in the canvas's place; drawn, holding
-\ the last draw's rows, row count and matrix.
+\ and after an SVG, which the host shows in the canvas's place, or "still";
+\ drawn, holding the last draw's rows, row count and matrix.
 ENUM held
    VARIANT none ;VARIANT
    VARIANT drawn FIELD rows ^u8 FIELD count n FIELD matrix ^u8 ;VARIANT
@@ -149,6 +164,11 @@ TYPED-VARIABLE SHOWN held
 : U32! ( n ^u8 -- )
    {: bits:n dst:^ :}
    4 0 do bits i 8 * rshift $FF and dst i + c! loop ;
+
+: SECTION! ( -- )
+   \ The plane 1, 0, 0, 0.5 as f32 bits, then the cap's colour c03060 and 0.
+   $3F800000 SECTION U32!  0 SECTION 4 + U32!  0 SECTION 8 + U32!
+   $3F000000 SECTION 12 + U32!  $006030C0 SECTION 16 + U32! ;
 
 : VERTEX ( ^u8 n n n n -- )
    \ Vertex k of the mesh at m, at x, y and z 0 on the grid, of a face.
@@ -258,6 +278,22 @@ TYPED-VARIABLE SHOWN held
 : DRAW ( ^u8 n -- )
    MATRIX RENDER ;
 
+: LABEL ( n n n n str -- n )
+   \ The label at byte at, x, y and z as f32 bits, of text s; answers the
+   \ byte after it.
+   {: at:n x:n y:n z:n s:str :}
+   LABELS at + {: p:^ :}
+   x p U32!  y p 4 + U32!  z p 8 + U32!  s STR:LEN p 12 + U32!
+   s STR:DATA p 16 + s STR:LEN BYTE-COPY
+   at 16 + s STR:LEN + ;
+
+: LABELLED ( -- )
+   0 0 0 $3F000000 s" Centre" LABEL
+   $BF000000 $3F000000 $3E800000 s" Hole A" LABEL
+   $40000000 0 $3F000000 s" Out" LABEL
+   0 0 $BE800000 s" Behind" LABEL {: n:n :}
+   19 LABELS BYTES>N n 0 RECORD ;
+
 : INSTANCES ( -- )
    \ x -0.9, 0.1 and y -1.2, -0.4, 0.5 as f32 bits; z scales 0.2 and 0.
    0 1 $BF666666 $BECCCCCD PLACE  0 1 0 0 MARK
@@ -337,10 +373,49 @@ TYPED-VARIABLE SHOWN held
    SB-APPEND SB$ {: t:str :} 5 t STR:DATA BYTES>N t STR:LEN 0 RECORD ;
 
 : OPENED ( -- )
-   \ Shelf's child Bracket arrives with Bracket's child Bolt.
+   \ Shelf's child Bracket arrives with Bracket's dim child Bolt.
    s" opened" {: s:str :} 3 s STR:DATA BYTES>N s STR:LEN 0 RECORD
    ROWS s\" },{\"key\":3,\"parent\":2,\"label\":\"Bracket\"}," SB-APPEND
-   s\" {\"key\":4,\"parent\":3,\"label\":\"Bolt\"}]" TREE ;
+   s\" {\"key\":4,\"parent\":3,\"label\":\"Bolt\",\"dim\":true}]" TREE ;
+
+\ true or false, as the flag says.
+: BOOL+ ( bool -- )
+   if s" true" else s" false" then SB-APPEND ;
+
+: VIEW-ROWS ( bool -- )
+   \ Cluster View, Grid pressed when on.
+   {: on:bool :}
+   s\" [{\"key\":\"bar-fit\",\"label\":\"Fit\",\"group\":\"View\"," SB-APPEND
+   s\" \"shortcut\":\"Home\",\"icon\":\"M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5\"}," SB-APPEND
+   s\" {\"key\":\"bar-grid\",\"label\":\"Grid\",\"group\":\"View\"," SB-APPEND
+   s\" \"shortcut\":\"g\",\"icon\":\"M4 4h16v16H4zM4 12h16M12 4v16\",\"pressed\":" SB-APPEND
+   on BOOL+  s" }," SB-APPEND ;
+
+: STYLE-ROWS ( bool -- )
+   \ The menu Style, Wireframe pressed when on, else Shaded.
+   {: on:bool :}
+   s\" {\"key\":\"bar-shaded\",\"label\":\"Shaded\",\"kind\":\"item\"," SB-APPEND
+   s\" \"group\":\"Style\",\"icon\":\"M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18\"," SB-APPEND
+   s\" \"pressed\":" SB-APPEND
+   on if false else true then BOOL+  s" }," SB-APPEND
+   s\" {\"key\":\"bar-wire\",\"label\":\"Wireframe\",\"kind\":\"item\"," SB-APPEND
+   s\" \"group\":\"Style\",\"shortcut\":\"w\",\"pressed\":" SB-APPEND  on BOOL+
+   s\" ,\"icon\":\"M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5\"}," SB-APPEND ;
+
+: CUT-ROWS ( bool -- )
+   \ Cluster Cut, its range at 70 when on, else 50; then Note.
+   {: on:bool :}
+   s\" {\"key\":\"bar-cut\",\"label\":\"Cut\",\"kind\":\"range\",\"group\":\"Cut\"," SB-APPEND
+   s\" \"min\":0,\"max\":100,\"icon\":\"M4 20L20 4M4 4h6M14 20h6\",\"value\":" SB-APPEND
+   on if s" 70" else s" 50" then SB-APPEND  s" }," SB-APPEND
+   s\" {\"key\":\"bar-find\",\"label\":\"Find\",\"kind\":\"text\",\"group\":\"Cut\"," SB-APPEND
+   s\" \"icon\":\"M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14M20 20l-4-4\"}," SB-APPEND
+   s\" {\"key\":\"bar-note\",\"label\":\"Note\"}]" SB-APPEND ;
+
+: BAR ( bool -- )
+   {: on:bool :}
+   SB-RESET  on VIEW-ROWS  on STYLE-ROWS  on CUT-ROWS
+   SB$ {: t:str :} 18 t STR:DATA BYTES>N t STR:LEN 0 RECORD ;
 
 : PICK ( n n n -- )
    \ The pixel at clip x and y in tenths, from the typed event's buffer width
@@ -487,6 +562,11 @@ TYPED-VARIABLE SHOWN held
    s" pick" IS? if PICKS exit then
    s" nearer" IS? if NEARER exit then
    s" seam" IS? if SEAM exit then
+   s" labels" IS? if LABELLED exit then
+   s" labels-none" IS? if 19 0 0 0 RECORD exit then
+   s" still" IS? if HELD-NONE SHOWN ! exit then
+   s" section" IS? if SECTION! 20 SECTION BYTES>N 20 0 RECORD REPAINT exit then
+   s" section-none" IS? if 20 0 0 0 RECORD REPAINT exit then
    FIT? if FIT-READ FIT 0 GROUND exit then
 
    s" broken" IS? if s" <svg>" SVG exit then
@@ -504,6 +584,9 @@ TYPED-VARIABLE SHOWN held
       s" []" {: s:str :} 5 s STR:DATA BYTES>N s STR:LEN 0 RECORD exit
    then
    s" more" IS? if ROWS s\" ,\"more\":true}]" TREE exit then
+   s" bar" IS? if false BAR exit then
+   s" bar-on" IS? if true BAR exit then
+   s" bar-none" IS? if s" []" {: s:str :} 18 s STR:DATA BYTES>N s STR:LEN 0 RECORD exit then
    s" fetch" IS? if
       s" slow" {: s:str :} 1 s STR:DATA BYTES>N s STR:LEN 0 RECORD exit
    then

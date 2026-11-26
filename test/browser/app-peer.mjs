@@ -18,10 +18,10 @@
 // view_socket ask, that both notifications reach the module in the order
 // sent, that the tree gives way to the canvas in the 507 px frame, opened over
 // it by its toggle with a row pressed while it was closed in view, and is
-// docked at 900 px, that each key button reaches the
-// module as a key turn, while over a drawing "+" scales it by 1.25, "f" fits
-// it and a drag pans it with no key turn sent, and once the drawing is gone
-// "+" sends its key again, that a message from a window
+// docked at 900 px, that each button of the module's toolbar reaches the
+// module as a key turn, that the zoom buttons show only over a drawing, where
+// "+" scales it by 1.25, "f" fits it and a drag pans it with no key turn sent,
+// and once the drawing is gone the toolbar's "+" sends its key again, that a message from a window
 // other than the parent is ignored, a tools/call round trip over the socket,
 // the model context, an after tick, a
 // response holding both a result and an error, a dropped file read in two
@@ -414,23 +414,29 @@ try {
   await until(async () => (await layout()).width === narrow.width);
   console.log(`Headless Chrome: a 507 px frame's canvas is ${narrow.width} px wide and its toggled tree lies over it; a 900 px frame docks the tree beside a ${wide.width} px canvas`);
 
-  // Each zoom button reaches the module as a key turn of its key; while a
-  // drawing stands in the canvas's place the buttons stay shown and act on
-  // it instead, a drag pans it, and no key turn reaches the module.
-  const keyButtons = "frames[0].document.querySelectorAll('#viewport button[data-key]')";
-  const keys = await evaluate(`[...${keyButtons}].map((b) => b.dataset.key)`);
-  assert.deepEqual(keys, ["+", "-", "f"]);
+  // The module's toolbar gives the keys: each button's press reaches the
+  // module as a key turn of its row's key. #keys, the page's own zoom of a
+  // drawing, shows only while one stands in the canvas's place: over it "+"
+  // scales it by 1.25 and "f" fits it, a drag pans it, and no key turn
+  // reaches the module.
+  await submit("toolbar");
+  const toolButtons = "frames[0].document.querySelectorAll('#toolbar button')";
+  await until(() => evaluate(`${toolButtons}.length === 3`));
+  const keys = ["+", "-", "f"];
+  assert.deepEqual(await evaluate(`[...${toolButtons}].map((b) => b.getAttribute('aria-label'))`),
+    ["Zoom in", "Zoom out", "Fit"]);
   for (const [i, key] of keys.entries()) {
-    await evaluate(`${keyButtons}[${i}].click()`);
+    await evaluate(`${toolButtons}[${i}].click()`);
     await shows(`key ${key} 0`);
   }
+  const keyButtons = "frames[0].document.querySelectorAll('#keys button[data-key]')";
   const keysShown = () => evaluate(`[...${keyButtons}].map((b) => b.getBoundingClientRect().width > 0)`);
-  assert.deepEqual(await keysShown(), [true, true, true]);
+  assert.deepEqual(await keysShown(), [false, false, false], "with no drawing the zoom buttons are hidden");
   const image = "frames[0].document.querySelector('#viewport img')";
   const since = (await evaluate("shown")).length;
   await submit("svg");
   await until(() => evaluate(`!!${image}?.complete`));
-  assert.deepEqual(await keysShown(), [true, true, true], "a drawing leaves the zoom buttons shown");
+  assert.deepEqual(await keysShown(), [true, true, true], "a drawing shows the zoom buttons");
   const box = () => evaluate(`(() => { const r = ${image}.getBoundingClientRect();
     return { left: r.left, top: r.top, width: r.width, height: r.height }; })()`);
   const fitted = await box();
@@ -457,11 +463,12 @@ try {
   // A turn after the clicks and the drag answers after any key turn they sent.
   await typed("after", "tick 7");
   assert.deepEqual((await evaluate("shown")).slice(since).filter((t) => t.startsWith("key ")), [],
-    "no key turn reaches the module while a drawing shows");
+    "no key turn reaches the module from the zoom buttons");
   await submit("draw");
   await until(async () => !(await evaluate(`!!${image}`)));
-  await evaluate(`${keyButtons}[0].click()`); await shows("key + 0");
-  console.log(`Headless Chrome: the zoom buttons send the keys ${keys.join(" ")}; over a drawing "+" scales it by 1.25, "f" fits it and a drag pans it, and no key turn is sent; after a draw "+" sends its key again`);
+  assert.deepEqual(await keysShown(), [false, false, false], "the drawing's removal hides the zoom buttons");
+  await evaluate(`${toolButtons}[0].click()`); await shows("key + 0");
+  console.log(`Headless Chrome: the toolbar's buttons send the keys ${keys.join(" ")}; the zoom buttons show only over a drawing, where "+" scales it by 1.25, "f" fits it and a drag pans it, and no key turn is sent; after the drawing goes the toolbar's "+" sends its key again`);
 
   const later = `notified ui/notifications/tool-result ${JSON.stringify(LATER)}`;
   await evaluate(`stranger({ method: "ui/notifications/tool-result", params: ${JSON.stringify(STRANGER)} });

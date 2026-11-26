@@ -14,15 +14,16 @@
 // PROTOCOL is this protocol's revision: any change to the module's exports,
 // events or records, a kind added or removed included, raises it by one.
 //
-// An event is 56 bytes at the address hello names: kind, a, b, c, d, buttons,
-// mods. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
+// An event is 72 bytes at the address hello names: kind, a, b, c, d, buttons,
+// mods, x, y. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
 // 6 released, 7 wheel, 8 key, 9 resize, 10 control, 11 load, 12 focus,
 // 13 highlight, 14 notified, 15 tick, 16 file, 17 chunk, 18 picked,
-// 19 occluded, 20 light. c and d are the drawing buffer's width and height
+// 19 occluded, 20 light, 21 set. c and d are the drawing buffer's width and height
 // in device pixels except for answered, file, chunk, picked and occluded.
 //   bytes, typed, key: a, b name the fetched bytes, the field's text or
 //     KeyboardEvent.key (sent only while the canvas has focus, or by a page
-//     control that names a key)
+//     control that names a key: a press of a toolbar button or item, record
+//     18, sends its row's key, mods 0)
 //   pointer, moved, released: a, b are x, y from the canvas's top-left; the
 //     canvas captures the pointer, so either may be negative or past the buffer
 //   answered: a, b the response, c the status, d the request id, buttons and
@@ -32,7 +33,8 @@
 //     the n bytes of JSON (the result when c is 1, the error when c is 2,
 //     String(error) when c is 0), then the bytes of the call's binary
 //     messages, joined in the order sent
-//   wheel: a, b signed device-pixel deltas; resize: a the page's
+//   wheel: a, b signed device-pixel deltas, x, y the pointer's position as
+//     pointer's a, b give it; resize: a the page's
 //     devicePixelRatio, device pixels per CSS pixel (the screen's density
 //     times the page zoom), in thousandths, at least 1; b 0
 //   control: a is a tree row's key, transient across sessions and never a
@@ -67,8 +69,13 @@
 //     per unit along that direction and the shadow map's side in texels;
 //     its x tangent square to the studio's up, and every ray to its softbox
 //     rising. Sent once, after start and before every other event
+//   set: a, b a u64 key length, the key of a toolbar row (record 18), then
+//     the value's text, all UTF-8: a range's integer in decimal on each input,
+//     a text row's text on change. The page keeps no value of its own: the
+//     module answers with a new toolbar
 // buttons is the pointer's bitset; mods are Shift 1, Control 2, Alt 4, Meta 8.
-// The host writes all 56 bytes on every event; a field that does not apply is 0.
+// x and y are 0 for every kind but wheel.
+// The host writes all 72 bytes on every event; a field that does not apply is 0.
 //
 // A record is 32 bytes, kind a b c:
 //   0 hello: a is the event's address, b the turn protocol revision the
@@ -90,16 +97,19 @@
 //     colour and no depth, and no pick or occlude's view test sees it; its
 //     other fields are checked as any row's. A row with bit 1 clear is drawn
 //     and casts. c a column-major f32 4x4 matrix to clip space (x, y in [-1,
-//     1], z in [0, 1], 0 nearest). A draw of 0 rows clears, names no handle and
-//     needs no words; a draw removes a shown SVG. A host may draw the last
-//     draw's rows again on its own, so records 6 and 14 keep them valid until
-//     the next draw
+//     1], z in [0, 1], 0 nearest). A draw cuts its rows by the section held
+//     (record 20). A draw of 0 rows clears, names no handle and needs no
+//     words; a draw removes a shown SVG. A host may draw the last draw's rows
+//     again on its own, so records 6 and 14 keep them valid until the next
+//     draw
 //   3 text: a, b UTF-8 text
 //   4 post: span a, b whose first c bytes are the path and the rest the body
 //   5 tree: a, b strict UTF-8 JSON rows {key, parent, label} with an optional
 //     boolean more, true when the row has children and none of them are among
-//     the rows (absent is false), and an optional boolean open, whether the
-//     row starts open (absent: open when its children are among the rows);
+//     the rows (absent is false), an optional boolean open, whether the row
+//     starts open (absent: open when its children are among the rows), and an
+//     optional boolean dim, whether the row is drawn dimmed (absent is false),
+//     which changes nothing else; no other member is allowed;
 //     c the selected key or 0; keys are unique
 //     positive safe integers, a parent is 0 or an earlier row's key whose more
 //     is not true; a row the module sends again keeps its key from one tree to
@@ -144,8 +154,9 @@
 //     be used again after
 //   15 pick: a x, b y, a pixel of the drawing buffer from its top-left as
 //     pointer events give them; c a positive i64 id. It reads the last draw
-//     before it in record order, as that draw's rows, meshes, highlight and
-//     matrix stand: a pick after a draw in the same run reads that draw. A
+//     before it in record order, as that draw's rows, meshes, highlight,
+//     matrix and section stand: a pick after a draw in the same run reads
+//     that draw, and a point the section cuts away is not picked. A
 //     pick before any draw, of a draw of 0 rows, or of a pixel outside the
 //     buffer answers none. The ground is never picked: a pick on it answers
 //     none, as the background does. A pick that fails, the device lost,
@@ -153,24 +164,26 @@
 //   16 occlude: a, b a span of boxes, six f32 each in world space (the lowest
 //     x, y, z, then the highest), so b is a multiple of 24; c a positive i64
 //     id. It tests each box against the last draw before it in record order:
-//     the view test against its matrix and the depth its rows left, and, when
-//     it drew a shadow (record 17) and a ground is held, the key test against
-//     the rays that draw traced from the ground in view to the key light;
-//     else no box passes the key test. One before the first draw is rejected,
-//     as no matrix says what is in view. A box passes the view test when any
-//     of it in view is not behind that depth (WebGPU occlusion queries: the
-//     box's faces drawn writing neither colour nor depth, with depthCompare
-//     less-equal where the draw keeps less, so a part flush with a drawn
-//     surface passes). A box with corners on both sides of the view's near
-//     plane passes the view test: only its faces are drawn, and the plane can
-//     cut every face away while its inside is in view. A box passes the key
-//     test when a ray the draw traced from the ground in view to the key's
-//     softbox, past every caster, crosses it: a box that fails, added to the
-//     next draw's casters, leaves that draw's ground as it is. After a draw of
-//     0 rows nothing is drawn, so every box in view passes the view test, and
-//     until the next draw after a ground of b 0 every traced ray is clear for
-//     the key test; both tests after a resize answer the last draw. The ground
-//     leaves no depth, so it hides no box
+//     the view test against its matrix, its section and the depth its rows
+//     left, and, when it drew a shadow (record 17) and a ground is held, the
+//     key test against the rays that draw traced from the ground in view to
+//     the key light; else no box passes the key test. One before the first
+//     draw is rejected, as no matrix says what is in view. A box passes the
+//     view test when any of it in view is not behind that depth (WebGPU
+//     occlusion queries: the box's faces drawn writing neither colour nor
+//     depth, with depthCompare less-equal where the draw keeps less, so a
+//     part flush with a drawn surface passes). A box with corners on both
+//     sides of the view's near plane passes the view test: only its faces are
+//     drawn, and the plane can cut every face away while its inside is in
+//     view. A box whose eight corners the draw's section all cuts away fails
+//     the view test; a box the section's plane crosses is tested whole. A box
+//     passes the key test when a ray the draw traced from the ground in view
+//     to the key's softbox, past every caster, crosses it: a box that fails,
+//     added to the next draw's casters, leaves that draw's ground as it is.
+//     After a draw of 0 rows nothing is drawn, so every box in view passes
+//     the view test, and until the next draw after a ground of b 0 every
+//     traced ray is clear for the key test; both tests after a resize answer
+//     the last draw. The ground leaves no depth, so it hides no box
 //   17 ground: a, b a span of 40 bytes, ten f32 in world: nx, ny, nz, d,
 //     the plane n·p + d = 0, n its unit normal toward the side that is up,
 //     then the studio's right and back, up being n: turntable shading and no
@@ -186,6 +199,57 @@
 //     module sends it again before a draw whose matrix, plane or casters
 //     differ. A draw, of 0 rows too, draws a shadow while an 84-byte ground
 //     is held
+//   18 toolbar: a, b strict UTF-8 JSON rows, c 0; it holds until the next,
+//     and [] removes it. A row is {key, label} with optional members: key a
+//     non-empty string, unique among the rows; label a non-empty string,
+//     every button's tooltip and accessible name and the text shown when the
+//     row has no icon; kind "button" (absent), "item", "range" or "text";
+//     group a non-empty string, consecutive rows of one group forming a
+//     cluster, which an item needs, as it names the item's menu; pressed a
+//     boolean, on a button or item only, which makes a button a toggle; a
+//     range's min, max and value, integers with min < max and value within
+//     them, all three stated; a text row's value, a string; shortcut, on a
+//     button or item only, the non-empty KeyboardEvent.key a person presses
+//     for it, as the key event carries it, unique among the rows, never
+//     another row's key and never the page's own: "?" and "Escape", which
+//     its help screen takes, and "Tab", "Enter" and " ", which move focus and
+//     press the focused control; and icon, 1 to 2048 bytes of SVG path data
+//     for a 24 x 24 box, only MmLlHhVvCcSsQqTtAaZz, digits, . , - + e E and
+//     space, so the page sets it as a path's d and inserts no markup. Any
+//     other member is rejected. The page draws an icon at 16 CSS px, stroked
+//     in currentColor at width 2 with round caps and joins and no fill; an
+//     item group's menu button shows its pressed item's icon, else its first
+//     item's, with the group as its tooltip. A row with a shortcut has the
+//     tooltip "label (shortcut)"; ? or the page's own help button opens a
+//     help screen listing every row with a shortcut, by group, with its
+//     icon, label and shortcut, and Escape or ? closes it. A key the module
+//     handles has a row, so the toolbar is the one list of its shortcuts. A
+//     button or item's press is a key event (event 8) of its key, a range's
+//     or text's value a set event (event 21); the page never flips pressed
+//     or keeps a value, so the module answers each with a new toolbar. A
+//     pressed shortcut sends, with the canvas focused, the key event of that
+//     key with its modifiers, and elsewhere, but in a text field, as a
+//     range's moving key in a range or with Control, Alt or Meta held, the
+//     key event of its row's key with mods 0, so no shortcut is another
+//     row's key
+//   19 labels: a, b a span of entries, each three f32 x, y, z in world, the
+//     space a draw's matrix takes to clip space, a u32 byte length n, then n
+//     bytes of strict UTF-8, the label's text; the span ends where its last
+//     entry does. Or b 0 for none, the state before the first. c 0. A
+//     coordinate not finite is rejected. It holds for every later draw: the
+//     host places each label at its point as the last draw's matrix takes it
+//     to the drawing buffer, and only while the point is inside the clip
+//     volume and no SVG shows
+//   20 section: a, b a span of 20 bytes, four f32 in world, nx, ny, nz, d,
+//     each finite and n not zero, then the cap's colour, its bytes r, g, b
+//     (sRGB-encoded) and 0. Or b 0 for none, the state before the first. c 0.
+//     It holds for every later draw: a draw keeps the points p of its rows
+//     where n·p + d >= 0 and cuts the others away, which leave no colour and
+//     no depth, so a box behind them passes the view test. A kept fragment
+//     whose triangle faces away from the eye, the triangle's own plane
+//     oriented by its vertex normal, is painted the cap's colour, unlit; a
+//     triangle that takes its own normal (record 13) faces the eye. The
+//     ground, the shadow and the key test are not cut: a row casts whole
 // A post or request is answered for every HTTP status. Request, rpc, read,
 // pick and occlude records are tagged. A host that takes tagged records, or
 // fetches and posts from a run that throws, provides error(error): the first
@@ -221,7 +285,8 @@
 // old ArrayBuffer, so every view is taken from memory.buffer where it is used:
 // https://www.w3.org/TR/wasm-js-api-2/#memories
 
-const EVENT_BYTES = 56n;
+const EVENT_CELLS = 9;
+const EVENT_BYTES = 8n * BigInt(EVENT_CELLS);
 const RECORD_BYTES = 32;
 const MATRIX_BYTES = 64n; // 16 f32, column-major
 const ROW_BYTES = 72;
@@ -231,9 +296,10 @@ const MAX_VERTICES = 65536; // a mesh's u16 indices name at most this many
 const MAX_ORIGIN = 0xFF0000; // a mesh origin plus a u16 is exact in f32
 const MESH_HEAD = 20; // a mesh's counts and origin, in bytes
 const MAX_KEY = BigInt(Number.MAX_SAFE_INTEGER);
-// A tree row's keys, sorted: more and open are optional.
-const TREE_KEYS = new Set(["key,label,parent", "key,label,more,parent",
-  "key,label,open,parent", "key,label,more,open,parent"]);
+// A tree row's members: TREE_NEEDS are required, TREE_FLAGS optional booleans.
+const TREE_NEEDS = ["key", "parent", "label"];
+const TREE_FLAGS = ["more", "open", "dim"];
+const TREE_MEMBERS = new Set([...TREE_NEEDS, ...TREE_FLAGS]);
 
 // Events; start, kind 0, is the zero event block the first run reads.
 const BYTES = 1n;
@@ -256,10 +322,11 @@ const CHUNK = 17n;
 const PICKED = 18n;
 const OCCLUDED = 19n;
 const LIGHT = 20n;
+const SET = 21n;
 const LIGHT_VALUES = 12; // the light event's f32s
 const ID_BYTES = 16;
 
-const PROTOCOL = 7n;
+const PROTOCOL = 8n;
 
 // Records.
 const HELLO = 0n;
@@ -280,11 +347,28 @@ const UNMESH = 14n;
 const PICK = 15n;
 const OCCLUDE = 16n;
 const GROUND = 17n;
+const TOOLBAR = 18n;
+const LABELS = 19n;
+const SECTION = 20n;
 const TAGGED = new Set([REQUEST, RPC, READ, PICK, OCCLUDE]);
 const BOX_BYTES = 24n; // an occlude's box: six f32
 const GROUND_BYTES = 40n; // a ground's plane and studio axes: ten f32
 const FIT_BYTES = 84n; // a ground with the key light's fit: 21 f32
+const SECTION_BYTES = 20n; // a section's plane, four f32, and colour, four bytes
 const CAST_ONLY = 2; // a draw row's flags bit 1
+// The members a toolbar row of each kind may state.
+const TOOLBAR_MEMBERS = new Map([
+  ["button", new Set(["key", "label", "kind", "group", "pressed", "icon", "shortcut"])],
+  ["item", new Set(["key", "label", "kind", "group", "pressed", "icon", "shortcut"])],
+  ["range", new Set(["key", "label", "kind", "group", "min", "max", "value", "icon"])],
+  ["text", new Set(["key", "label", "kind", "group", "value", "icon"])],
+]);
+const MAX_ICON = 2048; // a toolbar icon's bytes, all ASCII
+const ICON_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9.,+eE -]*$/; // SVG path data
+// The page's own keys: its help screen's, and those that move focus and press
+// the focused control.
+const PAGE_KEYS = new Set(["?", "Escape", "Tab", "Enter", " "]);
+const LABEL_HEAD = 16; // a label's x, y, z and text length, before its text
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 // A request's leading BOM bytes are content, including at the start of a path.
@@ -293,6 +377,26 @@ const encoder = new TextEncoder();
 // Error text decodes a malformed byte as U+FFFD: a diagnostic never fails on
 // its own content.
 const lenient = new TextDecoder();
+
+// A record's bytes as strict UTF-8 JSON that must be an array, its rows for
+// the caller to check. Each rejection names the record: "<record> UTF-8 is
+// invalid", "<record> JSON is invalid" or "<record> JSON must be an array".
+function jsonRows(record, bytes) {
+  let source;
+  try {
+    source = utf8.decode(bytes);
+  } catch (e) {
+    throw new Error(`${record} UTF-8 is invalid`, { cause: e });
+  }
+  let rows;
+  try {
+    rows = JSON.parse(source);
+  } catch (e) {
+    throw new Error(`${record} JSON is invalid`, { cause: e });
+  }
+  if (!Array.isArray(rows)) throw new Error(`${record} JSON must be an array`);
+  return rows;
+}
 
 function joinLines(a, b) {
   return a.endsWith("\n") ? a + b : `${a}\n${b}`;
@@ -329,8 +433,12 @@ export class Module {
   // unmesh(handle), draw(rows, count, matrix) with the rows'
   // bytes copied, highlight(words) with a copied Uint32Array,
   // ground(fit) with a copied Float32Array of 10 or 21, or ground(null) for
-  // none,
-  // text(string), tree(rows, selected), svg(copiedBytes), input(enabled),
+  // none, labels(entries) with an array of {x, y, z, text}, the record's
+  // entries decoded, [] for none, section(plane, colour) with a copied
+  // Float32Array of 4 and a Uint8Array of the colour's r, g and b, or
+  // section(null) for none,
+  // text(string), tree(rows, selected), toolbar(rows), svg(copiedBytes),
+  // input(enabled),
   // size() -> [width, height] of the drawing buffer, and ratio() -> device
   // pixels per CSS pixel in thousandths, an integer of at least 1; 1000 for a
   // host with no screen.
@@ -371,8 +479,10 @@ export class Module {
     return this.turn([RELEASED, x, y, ...this.host.size(), buttons, mods]);
   }
 
-  wheel(dx, dy, mods) {
-    return this.turn([WHEEL, dx, dy, ...this.host.size(), 0, mods]);
+  // A wheel's deltas, turned with the pointer at x, y in the drawing buffer's
+  // pixels.
+  wheel(dx, dy, x, y, mods) {
+    return this.turn([WHEEL, dx, dy, ...this.host.size(), 0, mods, x, y]);
   }
 
   async key(text, mods) {
@@ -390,6 +500,19 @@ export class Module {
       throw new TypeError(`a light is a Float32Array of ${LIGHT_VALUES}`);
     const bytes = new Uint8Array(values.buffer, values.byteOffset, values.byteLength);
     await this.turn([LIGHT, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
+  }
+
+  // A toolbar range's or text row's value, its key and text (event set).
+  async set(key, text) {
+    if (typeof key !== "string" || typeof text !== "string")
+      throw new TypeError("a set's key and text must be strings");
+    const name = encoder.encode(key);
+    const value = encoder.encode(text);
+    const bytes = new Uint8Array(8 + name.length + value.length);
+    new DataView(bytes.buffer).setBigUint64(0, BigInt(name.length), true);
+    bytes.set(name, 8);
+    bytes.set(value, 8 + name.length);
+    await this.turn([SET, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
   }
 
   // A tree row selected, or opened when opened is true.
@@ -693,12 +816,14 @@ export class Module {
     return { kind: OCCLUDE, id, count, started: this.host.occlude(boxes, id) };
   }
 
+  // Writes the event's cells, 0 in each one past those it gives.
   write(event) {
     if (this.event === null) throw new Error("an event before the module's hello");
-    if (event.length !== 7) throw new Error(`an event has ${event.length} fields, expected 7`);
+    if (event.length > EVENT_CELLS)
+      throw new Error(`an event has ${event.length} fields, at most ${EVENT_CELLS}`);
     const s = this.span(this.event, EVENT_BYTES);
     const v = new DataView(s.buffer, s.byteOffset, s.byteLength);
-    event.forEach((f, i) => v.setBigInt64(8 * i, BigInt(f), true));
+    for (let i = 0; i < EVENT_CELLS; i++) v.setBigInt64(8 * i, BigInt(event[i] ?? 0), true);
   }
 
   // The run's error text, [err-base, err-base + err-len), empty when it has none.
@@ -744,6 +869,9 @@ export class Module {
       case TREE:
         this.tree(a, b, c);
         return;
+      case TOOLBAR:
+        this.toolbar(a, b, c);
+        return;
       case HIGHLIGHT:
         this.faces(a, b, c);
         return;
@@ -755,6 +883,12 @@ export class Module {
         return;
       case GROUND:
         this.ground(a, b, c);
+        return;
+      case LABELS:
+        this.labels(a, b, c);
+        return;
+      case SECTION:
+        this.section(a, b, c);
         return;
       case SVG:
         if (c !== 0n) throw new Error("svg c must be zero");
@@ -775,34 +909,23 @@ export class Module {
     }
   }
 
+  // A tree's rows, decoded by jsonRows, checked row by row, passed on whole
+  // with the selected key c.
   tree(a, b, c) {
-    const bytes = this.span(a, b);
-    let source;
-    try {
-      source = utf8.decode(bytes);
-    } catch (e) {
-      throw new Error("tree UTF-8 is invalid", { cause: e });
-    }
-    let rows;
-    try {
-      rows = JSON.parse(source);
-    } catch (e) {
-      throw new Error("tree JSON is invalid", { cause: e });
-    }
-    if (!Array.isArray(rows)) throw new Error("tree JSON must be an array");
+    const rows = jsonRows("tree", this.span(a, b));
     const keys = new Set();
     const more = new Set(); // keys of rows whose more is true
     for (const row of rows) {
       if (row === null || typeof row !== "object" || Array.isArray(row) ||
-          !TREE_KEYS.has(Object.keys(row).sort().join(",")) ||
+          !TREE_NEEDS.every((name) => Object.hasOwn(row, name)) ||
+          !Object.keys(row).every((name) => TREE_MEMBERS.has(name)) ||
           !Number.isSafeInteger(row.key) || row.key <= 0 ||
           !Number.isSafeInteger(row.parent) || row.parent < 0 ||
           typeof row.label !== "string")
         throw new Error("tree row must have a positive safe key, earlier parent, and string label");
-      if ("more" in row && typeof row.more !== "boolean")
-        throw new Error(`tree row ${row.key} more must be a boolean`);
-      if ("open" in row && typeof row.open !== "boolean")
-        throw new Error(`tree row ${row.key} open must be a boolean`);
+      for (const name of TREE_FLAGS)
+        if (Object.hasOwn(row, name) && typeof row[name] !== "boolean")
+          throw new Error(`tree row ${row.key} ${name} must be a boolean`);
       if (keys.has(row.key)) throw new Error(`duplicate tree key ${row.key}`);
       if (row.parent !== 0 && !keys.has(row.parent))
         throw new Error(`tree parent ${row.parent} must be an earlier row key`);
@@ -814,6 +937,77 @@ export class Module {
     if (c < 0n || c > MAX_KEY || (c !== 0n && !keys.has(Number(c))))
       throw new Error(`selected tree key ${c} is missing`);
     this.host.tree(rows, Number(c));
+  }
+
+  // A toolbar's rows, decoded by jsonRows, checked member by member, passed
+  // on whole.
+  toolbar(a, b, c) {
+    if (c !== 0n) throw new Error("toolbar c must be zero");
+    const rows = jsonRows("toolbar", this.span(a, b));
+    const keys = new Set();
+    const shortcuts = new Set();
+    for (const row of rows) {
+      if (row === null || typeof row !== "object" || Array.isArray(row))
+        throw new Error("a toolbar row must be an object");
+      const { key, label, group, pressed, icon } = row;
+      if (typeof key !== "string" || key === "")
+        throw new Error("a toolbar row's key must be a non-empty string");
+      if (keys.has(key)) throw new Error(`duplicate toolbar key ${JSON.stringify(key)}`);
+      keys.add(key);
+      const at = `toolbar row ${JSON.stringify(key)}`;
+      if (typeof label !== "string") throw new Error(`${at}'s label must be a string`);
+      if (label === "") throw new Error(`${at}'s label must not be empty`);
+      const kind = "kind" in row ? row.kind : "button";
+      const members = TOOLBAR_MEMBERS.get(kind);
+      if (members === undefined)
+        throw new Error(`${at}'s kind must be "button", "item", "range" or "text"`);
+      for (const member of Object.keys(row))
+        if (!members.has(member))
+          throw new Error(`${at} states ${member}, which a ${kind} does not take`);
+      if ("group" in row && typeof group !== "string")
+        throw new Error(`${at}'s group must be a string`);
+      if (group === "") throw new Error(`${at}'s group must not be empty`);
+      if (kind === "item" && !("group" in row))
+        throw new Error(`${at} is an item, which needs a group to name its menu`);
+      if ("pressed" in row && typeof pressed !== "boolean")
+        throw new Error(`${at}'s pressed must be a boolean`);
+      if (kind === "range") {
+        const { min, max, value } = row;
+        if (![min, max, value].every(Number.isSafeInteger))
+          throw new Error(`${at}'s min, max and value must be safe integers`);
+        if (min >= max) throw new Error(`${at}'s min ${min} is not below its max ${max}`);
+        if (value < min || value > max)
+          throw new Error(`${at}'s value ${value} is not within ${min} to ${max}`);
+      }
+      if (kind === "text" && "value" in row && typeof row.value !== "string")
+        throw new Error(`${at}'s value must be a string`);
+      if ("shortcut" in row) {
+        const { shortcut } = row;
+        if (typeof shortcut !== "string" || shortcut === "")
+          throw new Error(`${at}'s shortcut must be a non-empty KeyboardEvent.key`);
+        if (PAGE_KEYS.has(shortcut))
+          throw new Error(`${at}'s shortcut ${JSON.stringify(shortcut)} is the page's own, ` +
+            "as ?, Escape, Tab, Enter and space are");
+        if (shortcuts.has(shortcut))
+          throw new Error(`${at}'s shortcut ${JSON.stringify(shortcut)} is another row's`);
+        shortcuts.add(shortcut);
+      }
+      if ("icon" in row) {
+        if (typeof icon !== "string") throw new Error(`${at}'s icon must be a string`);
+        if (icon.length === 0 || icon.length > MAX_ICON)
+          throw new Error(`${at}'s icon of ${icon.length} bytes is not 1 to ${MAX_ICON}`);
+        if (!ICON_DATA.test(icon))
+          throw new Error(`${at}'s icon is not SVG path data: only ` +
+            "MmLlHhVvCcSsQqTtAaZz, digits, . , - + e E and space");
+      }
+    }
+    // A shortcut pressed on the canvas sends its own key, so it may be its
+    // own row's key but never another's.
+    for (const { key, shortcut } of rows)
+      if (shortcut !== undefined && shortcut !== key && keys.has(shortcut))
+        throw new Error(`toolbar row ${JSON.stringify(key)}'s shortcut ` +
+          `${JSON.stringify(shortcut)} is row ${JSON.stringify(shortcut)}'s key`);
+    this.host.toolbar(rows);
   }
 
   // A highlight's b u32 words, copied; b covers the last draw's rows, and
@@ -887,6 +1081,55 @@ export class Module {
     if (!values.every(Number.isFinite))
       throw new RangeError(`a ground of ${values.join(", ")}, not all finite`);
     this.host.ground(values);
+  }
+
+  // A labels record's entries, decoded, or none for b 0; every entry is read
+  // before the host is called, so a malformed one reaches it with none.
+  labels(a, b, c) {
+    if (c !== 0n) throw new Error("labels c must be zero");
+    const span = this.span(a, b);
+    const v = new DataView(span.buffer, span.byteOffset, span.byteLength);
+    const entries = [];
+    for (let at = 0; at < span.length;) {
+      const left = span.length - at;
+      if (left < LABEL_HEAD || v.getUint32(at + 12, true) > left - LABEL_HEAD)
+        throw new RangeError(`a labels span of ${b} bytes does not end on an ` +
+          `entry: ${left} bytes are left at byte ${at}`);
+      const [x, y, z] = [0, 4, 8].map((k) => v.getFloat32(at + k, true));
+      if (![x, y, z].every(Number.isFinite))
+        throw new RangeError(`label ${entries.length} at ${x}, ${y}, ${z}, ` +
+          "not all finite");
+      const end = at + LABEL_HEAD + v.getUint32(at + 12, true);
+      let text;
+      try {
+        text = utf8.decode(span.subarray(at + LABEL_HEAD, end));
+      } catch (e) {
+        throw new Error(`label ${entries.length}'s UTF-8 is invalid`, { cause: e });
+      }
+      entries.push({ x, y, z, text });
+      at = end;
+    }
+    this.host.labels(entries);
+  }
+
+  // A section's plane and colour, copied, or none for b 0.
+  section(a, b, c) {
+    if (c !== 0n) throw new Error("section c must be zero");
+    if (b === 0n) {
+      this.host.section(null);
+      return;
+    }
+    if (b !== SECTION_BYTES)
+      throw new RangeError(`a section of ${b} bytes, not 0 or ${SECTION_BYTES}`);
+    const bytes = this.span(a, b).slice();
+    const plane = new Float32Array(bytes.buffer, 0, 4);
+    if (!plane.every(Number.isFinite))
+      throw new RangeError(`a section of ${plane.join(", ")}, not all finite`);
+    if (plane[0] === 0 && plane[1] === 0 && plane[2] === 0)
+      throw new RangeError("a section's normal is zero");
+    if (bytes[19] !== 0)
+      throw new Error(`a section's colour byte 3 is ${bytes[19]}, not 0`);
+    this.host.section(plane, bytes.subarray(16, 19));
   }
 
   unmesh(a, b, c) {

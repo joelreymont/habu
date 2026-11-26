@@ -13,7 +13,8 @@
 //    --pointer X Y BUTTONS MODS, --move X Y BUTTONS MODS,
 //    --release X Y BUTTONS MODS
 //                          a pointer pressed, moved or released at X, Y
-//    --wheel DX DY MODS    signed device-pixel wheel deltas
+//    --wheel DX DY X Y MODS
+//                          signed device-pixel wheel deltas, the pointer at X, Y
 //    --key TEXT MODS       KeyboardEvent.key on the focused canvas
 //    --resize W H          change the drawing buffer and send a resize event
 //    --control KEY         select a transient tree row
@@ -23,6 +24,7 @@
 //                          focus or highlight HEX's packed 16-byte identities,
 //                          32 hex digits each; "" clears
 //    --typed TEXT          TEXT typed
+//    --set KEY TEXT        a toolbar range's or text row's KEY set to TEXT
 //    --repeat-typed TEXT N  type TEXT N times in the same module
 //    --memory              print final Wasm memory capacity in bytes
 //    --answer STATUS FILE  answers the oldest waiting request with STATUS and
@@ -60,12 +62,13 @@
 // post <path> <length> <body in hex>, request <method> <path> <id> <length>
 // <hex>, rpc <method> <id> <params JSON>, after <ms> <token>, read <file>
 // <offset> <length>, pick <x> <y> <id>, occlude <boxes> <id>, tree <selected>
-// <JSON>, mesh <handle> <V> <T> <origin x> <origin y> <origin z>, unmesh
+// <JSON>, toolbar <JSON>, mesh <handle> <V> <T> <origin x> <origin y> <origin z>, unmesh
 // <handle>, highlight <words> <words in
 // hex, little-endian>, draw <count> then each row's
 // <handle>/<id>/<flags>/<offset or ->/<rrggbb>/<metallic>/<roughness>, the
 // last two the u16s in decimal, ground then the record's 10 or 21 numbers,
-// or ground none, svg
+// or ground none, labels <count> then each label's <x>,<y>,<z>:<its text as
+// a JSON string>, section <nx> <ny> <nz> <d> <rrggbb> or section none, svg
 // <length> <bytes in hex>, input <0|1>, text <string>; a highlight or draw of
 // none prints only its count. At the end,
 // outstanding <fetch|post> <path>, outstanding request <method> <path> <id>,
@@ -85,10 +88,10 @@ import { mcpRpc } from "./mcp.js";
 const USAGE =
   "usage: bun host-cli.mjs <module.wasm> [--size W H] [--mcp URL TOKEN-FILE] " +
   "[--pointer X Y BUTTONS MODS | --move X Y BUTTONS MODS | --release X Y BUTTONS MODS | " +
-  "--wheel DX DY MODS | --key TEXT MODS | --resize W H | --control KEY | " +
+  "--wheel DX DY X Y MODS | --key TEXT MODS | --resize W H | --control KEY | " +
   "--open KEY | " +
   "--load FILE | --focus HEX | --highlight HEX | " +
-  "--typed TEXT | --repeat-typed TEXT N | --memory | " +
+  "--typed TEXT | --set KEY TEXT | --repeat-typed TEXT N | --memory | " +
   "--answer STATUS FILE | --answer-id ID STATUS FILE | --fail | " +
   "--notify METHOD FILE | --tick | --file NAME PATH | --answer-rpc ID FILE | --fail-rpc ID | " +
   "--picked INSTANCE FACE DEPTH | --occluded HEX | --until TEXT MS]...";
@@ -211,8 +214,8 @@ function parse(args) {
         break;
       }
       case "--wheel": {
-        const [dx, dy, mods] = take(3).map(BigInt);
-        steps.push((m) => m.wheel(dx, dy, mods).catch(report));
+        const [dx, dy, x, y, mods] = take(5).map(BigInt);
+        steps.push((m) => m.wheel(dx, dy, x, y, mods).catch(report));
         break;
       }
       case "--key": {
@@ -254,6 +257,11 @@ function parse(args) {
       case "--typed": {
         const [text] = take(1);
         steps.push((m) => m.typed(text).catch(report));
+        break;
+      }
+      case "--set": {
+        const [key, text] = take(2);
+        steps.push((m) => m.set(key, text).catch(report));
         break;
       }
       case "--repeat-typed": {
@@ -462,12 +470,17 @@ try {
       print(line);
     },
     tree: (rows, selected) => print(`tree ${selected} ${JSON.stringify(rows)}`),
+    toolbar: (rows) => print(`toolbar ${JSON.stringify(rows)}`),
     highlight: (words) => {
       const hex = Buffer.from(words.buffer, words.byteOffset,
         words.byteLength).toString("hex");
       print(`highlight ${words.length}${words.length ? ` ${hex}` : ""}`);
     },
     ground: (fit) => print(`ground ${fit ? fit.join(" ") : "none"}`),
+    labels: (entries) => print(`labels ${entries.length}${entries.map(({ x, y, z, text }) =>
+      ` ${x},${y},${z}:${JSON.stringify(text)}`).join("")}`),
+    section: (plane, colour) => print(plane ?
+      `section ${plane.join(" ")} ${Buffer.from(colour).toString("hex")}` : "section none"),
     svg: (bytes) => print(`svg ${bytes.length} ${Buffer.from(bytes).toString("hex")}`),
     input: (enabled) => print(`input ${enabled ? 1 : 0}`),
     text: (s) => print(`text ${s}`),

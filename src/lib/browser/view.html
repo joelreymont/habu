@@ -8,6 +8,12 @@ body { margin: 0; display: flex; font: 14px system-ui, sans-serif; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #viewport img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
+/* A module's label (page.js labels): its bottom centre at its point, white
+   text on a dark chip edged in white, legible on light and dark models; it
+   takes no pointer, so a drag on it reaches the canvas. */
+.label { position: absolute; transform: translate(-50%, -100%); pointer-events: none; white-space: nowrap;
+  font: 600 12px/1.3 system-ui, sans-serif; color: #fff; background: rgb(24 24 24 / 0.8); padding: 1px 5px;
+  border-radius: 3px; box-shadow: 0 0 0 1px rgb(255 255 255 / 0.7); }
 #tree ul { list-style: none; margin: 0; padding-left: 16px; }
 #tree > ul { padding-left: 4px; }
 .tree-row { display: flex; align-items: center; min-width: max-content; }
@@ -15,18 +21,72 @@ canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
 .tree-row button[aria-pressed="true"] { background: #d9eaff; font-weight: 600; }
 .tree-row button:focus-visible { outline: 2px solid #1168b6; }
 .tree-spacer { width: 22px; }
+.tree-row.dim button { color: #6b6b6b; }
 form, #text { margin: 4px 8px; }
 form input { box-sizing: border-box; width: 100%; }
 /* #text holds three of its lines and scrolls past them, so the canvas's size
    depends only on the frame's and the model never moves under the pointer. */
 #text { flex: none; height: 3lh; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 #text.error { color: #b00020; }
-/* The key buttons sit over the canvas's top right. Each sends its data-key
-   to the module as a key turn (page.js), and the module gives it its
-   meaning: "+" zoom in, "-" zoom out, "f" fit. While an image stands in the
-   canvas's place they stay shown and page.js gives them that meaning on the
-   image instead; no key turn is sent. */
-#keys { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+/* #toolbar lies over the viewport's top, right-aligned and wrapping, so the
+   canvas keeps its size; only its clusters take the pointer (page.js
+   toolbar). Each cluster is its own rounded pill, set apart from the next by
+   the gap, so a wrapped line needs no rule of its own. */
+#toolbar { position: absolute; top: 8px; right: 8px; left: 8px; z-index: 1; display: flex; flex-wrap: wrap;
+  justify-content: flex-end; gap: 4px; pointer-events: none; }
+#toolbar .cluster { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 6px;
+  pointer-events: auto; background: rgb(255 255 255 / 0.88); }
+.tool { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  min-width: 28px; height: 28px; padding: 0 6px; border: 1px solid transparent; border-radius: 4px;
+  background: none; color: inherit; font: inherit; cursor: pointer; }
+.tool:has(> svg) { width: 28px; padding: 0; }
+.tool:hover { border-color: #c4c4c4; }
+.tool:focus-visible, .menu-item:focus-visible { outline: 2px solid #1168b6; outline-offset: -1px; }
+.tool[aria-pressed="true"], .menu-item[aria-pressed="true"] { background: #d9eaff; color: #0b4f8a; }
+/* A range and a search field are as tall as a button, in the text colour and
+   the focus accent, with no browser chrome: a range a compact thin track and
+   round thumb, a search field a box holding its icon and a bare input. */
+.tool-input { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px; }
+.tool-input input[type="range"] { appearance: none; width: 96px; height: 28px; margin: 0; background: none;
+  border-radius: 4px; cursor: pointer; }
+.tool-input input[type="range"]::-webkit-slider-runnable-track { height: 2px; border-radius: 1px;
+  background: #c4c4c4; }
+.tool-input input[type="range"]::-moz-range-track { height: 2px; border-radius: 1px; background: #c4c4c4; }
+.tool-input input[type="range"]::-moz-range-progress { height: 2px; border-radius: 1px; background: #1168b6; }
+.tool-input input[type="range"]::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px;
+  margin-top: -5px; border: 0; border-radius: 50%; background: #1168b6; }
+.tool-input input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%;
+  background: #1168b6; }
+.tool-input input[type="range"]:focus-visible { outline: 2px solid #1168b6; outline-offset: 1px; }
+.tool-search { display: inline-flex; align-items: center; gap: 4px; box-sizing: border-box; height: 28px;
+  padding: 0 6px; border: 1px solid #c4c4c4; border-radius: 4px; background: #fff; cursor: text; }
+.tool-search:focus-within { border-color: #1168b6; box-shadow: 0 0 0 1px #1168b6; }
+.tool-search svg { flex: none; color: #6b6b6b; }
+.tool-search input { appearance: none; width: 112px; height: 100%; margin: 0; padding: 0; border: 0;
+  outline: 0; background: none; color: inherit; font: inherit; }
+.tool-search input::placeholder { color: #6b6b6b; }
+.tool-search input::-webkit-search-cancel-button, .tool-search input::-webkit-search-decoration {
+  appearance: none; }
+.menu { inset: auto; margin: 0; padding: 4px; border: 1px solid #c4c4c4; border-radius: 6px; background: #fff;
+  color: inherit; font: 14px system-ui, sans-serif; box-shadow: 0 4px 12px rgb(0 0 0 / 0.15); }
+.menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 8px; border: 0;
+  border-radius: 4px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.menu-item:hover { background: #f0f0f0; }
+.menu-icon { display: inline-flex; width: 16px; }
+.menu-label { flex: 1; }
+.menu-item kbd, .help kbd { font: 12px ui-monospace, monospace; color: #555; }
+.help { border: 1px solid #c4c4c4; border-radius: 8px; padding: 16px 20px; font: 14px system-ui, sans-serif; }
+.help h2 { margin: 0 0 8px; font-size: 16px; }
+.help h3 { margin: 12px 0 4px; font-size: 13px; color: #555; }
+.help dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0; }
+.help dt { text-align: right; }
+.help dd { display: flex; align-items: center; gap: 8px; margin: 0; }
+.help > button { margin-top: 12px; font: inherit; }
+/* #keys is the page's own zoom of a shown image, over the viewport's bottom
+   right: shown only while an image stands in the canvas's place, its buttons
+   "+" zoom in, "-" zoom out and "f" fit it (page.js), and never send a key. */
+#keys { position: absolute; bottom: 8px; right: 8px; display: flex; gap: 4px; }
+#keys[hidden] { display: none; }
 #keys button, #tree-toggle { font: inherit; min-width: 32px; padding: 4px 8px; border: 1px solid #bbb;
   border-radius: 4px; background: #fff; cursor: pointer; }
 #keys button:focus-visible, #tree-toggle:focus-visible { outline: 2px solid #1168b6; }
@@ -41,13 +101,15 @@ form input { box-sizing: border-box; width: 100%; }
     box-sizing: border-box; padding-top: 44px; background: #fff; }
   #side.open { visibility: visible; }
   #tree-toggle { display: block; position: absolute; top: 8px; left: 8px; z-index: 3; }
+  #toolbar { left: 72px; }
 }
 </style>
 <button type="button" id="tree-toggle" aria-controls="side" aria-expanded="false">Tree</button>
 <nav id="side" aria-label="Tree"><div id="tree"></div></nav>
 <div id="main">
 <div id="viewport"><canvas tabindex="0" aria-label="Drawing canvas"></canvas>
-<div id="keys" role="group" aria-label="Zoom"><button type="button" data-key="+" aria-label="Zoom in">+</button><button type="button" data-key="-" aria-label="Zoom out">&minus;</button><button type="button" data-key="f" aria-label="Fit">Fit</button></div>
+<div id="toolbar"></div>
+<div id="keys" role="group" aria-label="Zoom" hidden><button type="button" data-key="+" aria-label="Zoom in">+</button><button type="button" data-key="-" aria-label="Zoom out">&minus;</button><button type="button" data-key="f" aria-label="Fit">Fit</button></div>
 </div>
 <form><input aria-label="text" autocomplete="off" disabled></form>
 <div id="text">loading</div>

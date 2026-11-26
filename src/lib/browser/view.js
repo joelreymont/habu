@@ -5,7 +5,7 @@
 // page's body, imports turn.js, viewport.js, page.js and socket.js from blob:
 // URLs after it, since page.js reads the document as it loads, opens the view's
 // socket (socket.js), mounts the module with an rpc bridge, and listens to the
-// page's field, key buttons and drops and to its tree toggle, which in a
+// page's field, toolbar, keys, zoom buttons and drops and to its tree toggle, which in a
 // narrow frame opens and closes the tree over the canvas (view.html). It
 // resolves with the viewport, whose dispose also ends the socket and removes
 // the page's listeners, so a restart leaves none of this view's.
@@ -34,8 +34,8 @@
 //          body, the new body's canvas, or its element with that id, takes
 //          it, with preventScroll, once the module is mounted, unless focus
 //          left the view's window meanwhile or an element of the new body
-//          has it by then; focus on an element without an id (a key button,
-//          the field, a tree row) is not kept
+//          has it by then; focus on an element without an id (a toolbar or
+//          zoom button, the field, a tree row) is not kept
 //
 // The restart is a machine over phase, step(input, value) its one entry. The
 // states are
@@ -116,7 +116,7 @@ export async function start({ meta, files, request, restart, carried, initialize
   window.addEventListener("blur", leave);
   try {
     const [{ Module }, { mount }, page, { open }] = await Promise.all(scripts.map(load));
-    const { canvas, show, enable, sceneTree, svg, listen } = page;
+    const { canvas, show, enable, sceneTree, toolbar, svg, labels, listen } = page;
     let mounted = null;
     let held = []; // the socket's notifications before the module is mounted, then null
     const notify = (method, paramsJSON) => {
@@ -192,9 +192,11 @@ export async function start({ meta, files, request, restart, carried, initialize
         rpc,
         onTree: sceneTree((key, opened) =>
           mounted.post({ kind: "control", key, opened })),
+        onToolbar: toolbar((event) => mounted.post(event)),
         onText: show,
         onSvg: svg,
         onInput: enable,
+        onLabels: labels,
       });
     } catch (e) {
       socket.dispose();

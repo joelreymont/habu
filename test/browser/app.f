@@ -4,7 +4,9 @@
 \ naming its fields; typed text names the record to make. A key event answers
 \ key <text> <mods>, so a page control's key turn shows; typed "svg" sends an
 \ svg record and "draw" a draw of 0 rows, which removes it, so a page shows
-\ what it does while a drawing stands in the canvas's place. Typed "tree" sends
+\ what it does while a drawing stands in the canvas's place. Typed "toolbar"
+\ sends a toolbar of the buttons Zoom in, Zoom out and Fit, keyed + - f, so a
+\ press shows as the key turn of its row's key. Typed "tree" sends
 \ a tree of 40 rows with its last pressed, more than a 700 px frame shows. A
 \ view/restart notification also tells view/resume {"project":"p2"}.
 
@@ -122,6 +124,18 @@ variable FILE-SIZE
    93 SAY-C  5 TEXT BYTES>N TEXT-U @ 40 RECORD ;
 
 
+\ The buttons +, - and f, each with an icon.
+: TOOLBAR ( -- )
+   0 TEXT-U !
+   s\" [{\"key\":\"+\",\"label\":\"Zoom in\",\"group\":\"Zoom\"," SAY
+   s\" \"icon\":\"M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14M20 20l-4-4M8 11h6M11 8v6\"}," SAY
+   s\" {\"key\":\"-\",\"label\":\"Zoom out\",\"group\":\"Zoom\"," SAY
+   s\" \"icon\":\"M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14M20 20l-4-4M8 11h6\"}," SAY
+   s\" {\"key\":\"f\",\"label\":\"Fit\",\"group\":\"Zoom\"," SAY
+   s\" \"icon\":\"M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5\"}]" SAY
+   18 TEXT BYTES>N TEXT-U @ 0 RECORD ;
+
+
 : TYPED ( -- )
    1 EVENT@ 2 EVENT@ {: at:n u:n :}
    CALL
@@ -147,6 +161,7 @@ variable FILE-SIZE
    at u s" read unknown" IS? if FILE-NO @ 1+ 0 1 READ exit then
    at u s" svg" IS? if SVG exit then
    at u s" tree" IS? if TREE exit then
+   at u s" toolbar" IS? if TOOLBAR exit then
    at u s" draw" IS? if 2 MATRIX BYTES>N 0 MATRIX BYTES>N RECORD exit then ;
 
 

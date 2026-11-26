@@ -1,7 +1,15 @@
-\ navigation.f - Wasm fixture for the browser navigation, tree, highlight,
-\ pick and occlude protocol, built by `tools/hb-build.f -- --target wasm`,
-\ whose entry is MAIN. Typed "pick" picks pixel 5, 6 with id 9; a picked
-\ event's fields come back as text, as any event's but the light's do.
+\ navigation.f - Wasm fixture for the browser navigation, tree, toolbar,
+\ highlight, pick, occlude, labels and section protocol, built by
+\ `tools/hb-build.f -- --target wasm`, whose entry is MAIN. Typed "pick" picks
+\ pixel 5, 6 with id 9; a picked event's fields come back as text, as any
+\ event's but the light's do; a set event comes back as "set <key> <text>
+\ <c>,<d>". Typed "labels" sends two labels, A at 1, 2, -0.5 and Ø6 at 0,
+\ 0.25, 0; "labels-span" sends their span short of its last byte,
+\ "labels-infinite" them with A's x infinite and "labels-utf8" them with A's
+\ text the byte FF. Typed "section" sends the section z >= 0.5 capped in
+\ c08040, "section-none" none and "section-short" its first 12 bytes;
+\ "section-zero" sends it with a zero normal, "section-nan" with d NaN and
+\ "section-colour" with its colour's fourth byte 1.
 require src/lib/string.f
 require src/lib/browser/event.f
 require test/browser/turn-revision.f
@@ -12,6 +20,7 @@ using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ^u8 )
 CAST: BYTES>N ( ^u8 -- n )
+CAST: >CELLS ( ^u8 -- ^n )
 
 256 BUFFER: TEXT
 variable TEXT-U
@@ -25,6 +34,11 @@ variable PRESS-MODS
 64 BUFFER: MATRIX
 \ Two boxes of six f32, left zero: host-cli reads only their count.
 48 BUFFER: BOXES
+\ A toolbar whose one icon is a byte past the 2048 a row may state.
+2112 BUFFER: LONG
+\ Two labels, of 17 and 19 bytes.
+36 BUFFER: LABELS
+20 BUFFER: SECTION
 
 : FIELD, ( n -- )
    8 0 do dup $FF and emit 8 rshift loop drop ;
@@ -56,6 +70,22 @@ variable PRESS-MODS
    {: s:str key:n :}
    5 s STR:DATA BYTES>N s STR:LEN key RECORD ;
 
+: TOOLBAR ( str -- )
+   {: s:str :}
+   18 s STR:DATA BYTES>N s STR:LEN 0 RECORD ;
+
+: PUT ( str n -- n )
+   \ s at LONG's offset at, answering the offset past it.
+   {: s:str at:n :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ LONG at + i + c! loop
+   at s STR:LEN + ;
+
+: LONG-ICON ( -- )
+   s\" [{\"key\":\"a\",\"label\":\"A\",\"icon\":\"" 0 PUT {: at:n :}
+   2049 0 do 77 LONG at + i + c! loop
+   s\" \"}]" at 2049 + PUT {: u:n :}
+   LONG u >str TOOLBAR ;
+
 : MESH ( n n -- )
    {: u:n handle:n :}
    13 GEOMETRY BYTES>N u handle RECORD ;
@@ -86,6 +116,11 @@ variable PRESS-MODS
    {: k:n x:n y:n face:n :}
    GEOMETRY 20 + k 12 * + {: at:^ :}
    x at U16!  y at 2 + U16!  16384 at 4 + U16!  face at 6 + U16! ;
+
+: SECTION! ( -- )
+   \ The plane 0, 0, 1, -0.5 as f32 bits, then the cap's colour c08040 and 0.
+   0 SECTION U32!  0 SECTION 4 + U32!  $3F800000 SECTION 8 + U32!
+   $BF000000 SECTION 12 + U32!  $004080C0 SECTION 16 + U32! ;
 
 : INDEX! ( n n -- )
    \ Vertex v at triangle corner k, the vertices ending at byte 92.
@@ -124,6 +159,29 @@ variable PRESS-MODS
    $3F800000 MATRIX 40 + U32!
    $3F800000 MATRIX 60 + U32! ;
 
+: LABEL ( n n n n str -- n )
+   \ The label at byte at, x, y and z as f32 bits, of text s; answers the
+   \ byte after it.
+   {: at:n x:n y:n z:n s:str :}
+   LABELS at + {: p:^ :}
+   x p U32!  y p 4 + U32!  z p 8 + U32!  s STR:LEN p 12 + U32!
+   s STR:DATA p 16 + s STR:LEN BYTE-COPY
+   at 16 + s STR:LEN + ;
+
+: LABELS! ( -- )
+   \ The two labels.
+   0 $3F800000 $40000000 $BF000000 s" A" LABEL
+   0 $3E800000 0 s" Ø6" LABEL drop ;
+
+: LABELLED ( n -- )
+   \ A labels record of the first n bytes of LABELS.
+   {: n:n :}
+   19 LABELS BYTES>N n 0 RECORD ;
+
+: SECTIONED ( -- )
+   \ A section record of SECTION's 20 bytes.
+   20 SECTION BYTES>N 20 0 RECORD ;
+
 : ROWS ( -- )
    \ The tree's rows through Shelf's label; the caller closes Shelf's row and
    \ the array.
@@ -152,6 +210,7 @@ variable PRESS-MODS
    1 EVENT@ SIGNED 44 CHAR+ 2 EVENT@ SIGNED
    64 CHAR+ 3 EVENT@ SIGNED 44 CHAR+ 4 EVENT@ SIGNED
    32 CHAR+ 5 EVENT@ SIGNED 44 CHAR+ 6 EVENT@ SIGNED
+   32 CHAR+ 7 EVENT@ SIGNED 44 CHAR+ 8 EVENT@ SIGNED
    0 EVENT@ 6 = if
       s"  pressed " SAY PRESS-BUTTONS @ SIGNED 44 CHAR+ PRESS-MODS @ SIGNED
    then
@@ -179,6 +238,17 @@ variable PRESS-MODS
    32 CHAR+ 6 EVENT@ SIGNED
    TEXT-RECORD ;
 
+: SET-TEXT ( -- )
+   \ The set's key and text after its u64 key length, then c,d.
+   0 TEXT-U !
+   1 EVENT@ {: a:n :}
+   a >BYTES >CELLS @ {: u:n :}
+   s" set " SAY
+   a 8 + >BYTES u >str SAY 32 CHAR+
+   a 8 + u + >BYTES 2 EVENT@ 8 - u - >str SAY
+   32 CHAR+ 3 EVENT@ SIGNED 44 CHAR+ 4 EVENT@ SIGNED
+   TEXT-RECORD ;
+
 : IS? ( str -- bool )
    {: s:str :}
    2 EVENT@ s STR:LEN <> if false exit then
@@ -194,6 +264,10 @@ variable PRESS-MODS
       s\" [{\"key\":2,\"parent\":1,\"label\":\"Child\"}]" 0 TREE exit then
    s" more" IS? if
       s\" [{\"key\":1,\"parent\":0,\"label\":\"A\",\"more\":1}]" 0 TREE
+      exit
+   then
+   s" dim" IS? if
+      s\" [{\"key\":1,\"parent\":0,\"label\":\"A\",\"dim\":1}]" 0 TREE
       exit
    then
    s" unsent" IS? if
@@ -226,16 +300,85 @@ variable PRESS-MODS
    s" occlude" IS? if 16 BOXES BYTES>N 48 9 RECORD 2 DRAW exit then
    s" span" IS? if 16 BOXES BYTES>N 47 9 RECORD exit then
    s" id" IS? if 16 BOXES BYTES>N 48 0 RECORD exit then
+   s" labels" IS? if LABELS! 36 LABELLED exit then
+   s" labels-span" IS? if LABELS! 35 LABELLED exit then
+   s" labels-infinite" IS? if LABELS! $7F800000 LABELS U32! 36 LABELLED exit then
+   s" labels-utf8" IS? if LABELS! $FF LABELS 16 + c! 36 LABELLED exit then
+   s" section" IS? if SECTION! SECTIONED exit then
+   s" section-none" IS? if 20 0 0 0 RECORD exit then
+   s" section-short" IS? if SECTION! 20 SECTION BYTES>N 12 0 RECORD exit then
+   s" section-zero" IS? if SECTION! 0 SECTION 8 + U32! SECTIONED exit then
+   s" section-nan" IS? if SECTION! $7FC00000 SECTION 12 + U32! SECTIONED exit then
+   s" section-colour" IS? if SECTION! $014080C0 SECTION 16 + U32! SECTIONED exit then
    s" tree" IS? if
-      s\" [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"},{\"key\":2,\"parent\":1,\"label\":\"Part\"},{\"key\":3,\"parent\":2,\"label\":\"Face\"}]" 3 TREE exit then ;
+      s\" [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"},{\"key\":2,\"parent\":1,\"label\":\"Part\"},{\"key\":3,\"parent\":2,\"label\":\"Face\",\"dim\":true}]" 3 TREE exit then ;
+
+: BAR ( -- )
+   \ A toolbar of every kind, a button with an icon and a shortcut; then one
+   \ toolbar per rule a row breaks.
+   s" toolbar" IS? if
+      SB-RESET
+      s\" [{\"key\":\"fit\",\"label\":\"Fit\",\"shortcut\":\"f\"," SB-APPEND
+      s\" \"icon\":\"M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5\"}," SB-APPEND
+      s\" {\"key\":\"mark\",\"label\":\"Mark\",\"pressed\":true}," SB-APPEND
+      s\" {\"key\":\"top\",\"label\":\"Top\",\"kind\":\"item\",\"group\":\"Views\",\"pressed\":false}," SB-APPEND
+      s\" {\"key\":\"cut\",\"label\":\"Section\",\"kind\":\"range\",\"min\":-50,\"max\":50,\"value\":0}," SB-APPEND
+      s\" {\"key\":\"find\",\"label\":\"Filter\",\"kind\":\"text\",\"value\":\"\"}]" SB-APPEND
+      SB$ TOOLBAR exit
+   then
+   s" bar-key" IS? if s\" [{\"key\":\"\",\"label\":\"A\"}]" TOOLBAR exit then
+   s" bar-twice" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\"},{\"key\":\"a\",\"label\":\"B\"}]" TOOLBAR exit then
+   s" bar-label" IS? if s\" [{\"key\":\"a\",\"label\":1}]" TOOLBAR exit then
+   s" bar-label-empty" IS? if s\" [{\"key\":\"a\",\"label\":\"\"}]" TOOLBAR exit then
+   s" bar-kind" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"kind\":\"toggle\"}]" TOOLBAR exit then
+   s" bar-member" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"step\":1}]" TOOLBAR exit then
+   s" bar-group" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"group\":1}]" TOOLBAR exit then
+   s" bar-group-empty" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"group\":\"\"}]" TOOLBAR exit then
+   s" bar-item" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"kind\":\"item\"}]" TOOLBAR exit then
+   s" bar-pressed" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"pressed\":1}]" TOOLBAR exit then
+   s" bar-pressed-range" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"kind\":\"range\",\"min\":0,\"max\":1,\"value\":0,\"pressed\":true}]" TOOLBAR exit then
+   s" bar-integer" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"kind\":\"range\",\"min\":0.5,\"max\":1,\"value\":1}]" TOOLBAR exit then
+   s" bar-order" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"kind\":\"range\",\"min\":5,\"max\":5,\"value\":5}]" TOOLBAR exit then
+   s" bar-within" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"kind\":\"range\",\"min\":0,\"max\":10,\"value\":11}]" TOOLBAR exit then
+   s" bar-value" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"kind\":\"text\",\"value\":1}]" TOOLBAR exit then
+   s" bar-icon" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"icon\":\"\"}]" TOOLBAR exit then
+   s" bar-long" IS? if LONG-ICON exit then
+   s" bar-markup" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"icon\":\"M0 0<path/>\"}]" TOOLBAR exit then
+   s" bar-shortcut-twice" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"shortcut\":\"h\"},{\"key\":\"b\",\"label\":\"B\",\"shortcut\":\"h\"}]" TOOLBAR exit then
+   s" bar-shortcut-help" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"shortcut\":\"?\"}]" TOOLBAR exit then
+   s" bar-shortcut-escape" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"shortcut\":\"Escape\"}]" TOOLBAR exit then
+   s" bar-shortcut-tab" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"shortcut\":\"Tab\"}]" TOOLBAR exit then
+   s" bar-shortcut-key" IS? if
+      s\" [{\"key\":\"g\",\"label\":\"G\"},{\"key\":\"group\",\"label\":\"Group\",\"shortcut\":\"g\"}]" TOOLBAR exit then
+   s" bar-shortcut-range" IS? if
+      s\" [{\"key\":\"a\",\"label\":\"A\",\"kind\":\"range\",\"min\":0,\"max\":1,\"value\":0,\"shortcut\":\"r\"}]" TOOLBAR exit then ;
 
 : DISPATCH ( -- )
    0 EVENT@ {: kind:n :}
    kind 0 = if START exit then
-   kind 4 = if INVALID exit then
+   kind 4 = if INVALID BAR exit then
    kind 10 = if 2 EVENT@ 1 = if OPENED exit then then
    kind 8 = if KEY-TEXT exit then
    kind 19 = if OCCLUDED-TEXT exit then
+   kind 21 = if SET-TEXT exit then
    kind 20 = if exit then
    kind 2 = if 5 EVENT@ PRESS-BUTTONS ! 6 EVENT@ PRESS-MODS ! then
    EVENT-TEXT ;

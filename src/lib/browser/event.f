@@ -2,7 +2,7 @@
 \ (src/lib/browser/turn.js). A module built by tools/hb-build.f answers hello
 \ with EVENT's address and the turn protocol revision its events and records
 \ were written to, which must equal turn.js's PROTOCOL; the host writes each
-\ event's seven cells there before the run that reads it, and copies delivered
+\ event's nine cells there before the run that reads it, and copies delivered
 \ bytes into pages it reserved through the module's reserve export. HANDLE frees
 \ each delivery its turn does not TAKE. STORAGE CLASS.
 \ MODULE-OWNED: EVENT, written by the host between runs.
@@ -13,11 +13,11 @@ package BROWSER-EVENT
 private
 
 CAST: >BYTES ( n -- ^u8 )
-CAST: >CELLS ( ^u8 -- ^n )
+CAST: CELLS>BYTES ( ^n -- ^u8 )
 
-\ Seven cells: kind, a, b, c, d, buttons, mods; zero, which is start, until the
-\ host writes one.
-56 BUFFER: EVENT-BUF
+\ Nine cells: kind, a, b, c, d, buttons, mods, x, y; zero, which is start, until
+\ the host writes one.
+9 TYPED-BUFFER EVENT-BUF n
 
 \ This turn's delivery is the module's: HANDLE clears it before the dispatch and
 \ frees nothing while it is set.
@@ -27,14 +27,15 @@ TYPED-VARIABLE TAKEN bool
    {: kind:n :}
    kind 1 =  kind 3 = or  kind 4 = or  kind 8 = or
    kind 11 = or  kind 12 = or  kind 13 = or  kind 14 = or
-   kind 16 = or  kind 17 = or  kind 19 = or  kind 20 = or ;
+   kind 16 = or  kind 17 = or  kind 19 = or  kind 20 = or  kind 21 = or ;
 
 public
 
-: EVENT ( -- ^u8 )  EVENT-BUF ;
+: EVENT ( -- ^u8 )  0 EVENT-BUF CELLS>BYTES ;
 
+\ Cell n of the event, 0 to 8.
 : EVENT@ ( n -- n )
-   8 * EVENT-BUF + >CELLS @ ;
+   EVENT-BUF @ ;
 
 : DELIVERY ( -- str )
    0 EVENT@ DELIVERS? if  1 EVENT@ >BYTES 2 EVENT@ >str
