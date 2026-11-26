@@ -32,6 +32,10 @@ TEST:SUITE file-objects
    test/warm-engine.f
 TEST:;SUITE
 
+TEST:SUITE code-dump-arm64
+   test/code-dump-arm64.f
+TEST:;SUITE
+
 TEST:SUITE prop
    test/prop-test.f
 TEST:;SUITE

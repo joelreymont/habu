@@ -6,6 +6,7 @@ require test/gate-common.f
 require src/arch/x86-64/disasm.f
 require src/habu/boot-cells.f
 require src/habu/code-bytes.f
+require src/lib/fmt.f
 require tools/code-dump-core.f
 require src/lib/test/runner.f
 
@@ -154,14 +155,32 @@ private
    rec XREF-WORDLIST BOOT:NAMESPACE-WL = if false exit then
    rec XREF-CODE-BYTES 0 > rec XREF-START dbase@ < and ;
 
+: REC-BYTES ( ^n -- str ) {: rec:^ :}
+   rec XREF-START rec XREF-CODE-BYTES CODE-BYTES:AT ;
+
+\ The offset of the instruction SPAN-ALL decodes, kept when SPAN throws.
+variable SPAN-AT
+
 : SPAN-ALL ( str -- ) {: s:str :}
    0 begin dup s STR:LEN < while
       {: off:n :}
+      off SPAN-AT !
       s STR:DATA off + s STR:LEN off - >str X64DIS:SPAN drop off +
    repeat drop ;
 
 : REC-DECODES? ( ^n -- bool ) {: rec:^ :}
-   [: rec XREF-START rec XREF-CODE-BYTES CODE-BYTES:AT SPAN-ALL ;] catch 0= ;
+   [: rec REC-BYTES SPAN-ALL ;] catch 0= ;
+
+\ The record's name, the offset where decoding stops and the bytes there, at
+\ most an instruction's 15.
+: UNDECODED$ ( ^n -- str ) {: rec:^ :}
+   rec REC-BYTES {: s:str :}
+   SB-RESET rec XREF-NAME$ SB-APPEND s"  +" SB-APPEND
+   SPAN-AT @ FMT:INT$ SB-APPEND s" : " SB-APPEND
+   s STR:LEN SPAN-AT @ - 15 min 0 ?do
+      s STR:DATA SPAN-AT @ + i + c@ 2 FMT:HEX-WIDTH$ SB-APPEND
+   loop
+   SB$ ;
 
 \ The first kernel record whose bytes are not all instructions, empty when
 \ every one decodes: data inside a record does not.
@@ -169,7 +188,7 @@ private
    ndict@ 0 ?do
       i XREF-REC {: rec:^ :}
       rec KERNEL-REC? if
-         rec REC-DECODES? 0= if rec XREF-NAME$ unloop exit then
+         rec REC-DECODES? 0= if rec UNDECODED$ unloop exit then
       then
    loop
    s" " ;
