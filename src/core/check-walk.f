@@ -949,22 +949,23 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
    REPEAT
    CUR-END ;
 
-\ Walks a body under BODY-WALK, restored on every exit.
-: SCAN-BODY ( -- )
+\ Walks a body, holding its using rejections.
+: SCAN-HELD ( -- )
    BODY-WALK @ {: walk0:n :}
    -1 BODY-WALK !
    [: CHECK-SCAN-WALK ;] catch
-   walk0 BODY-WALK !
+   0 USING-HOLD !  walk0 BODY-WALK !
    {: rc:n :}
    rc 0 <> IF rc throw THEN ;
 
-\ SCAN-BODY, then a structure open at closer cs is rejected; a prefix passes
-\ none.
+\ SCAN-HELD, then what it held: a structure open at closer CA CU is rejected
+\ first; a prefix passes none.
 : CHECK-SCAN ( str -- )
    {: cs:str :}
-   SCAN-BODY
+   SCAN-HELD
    TORDER-SCAN-UNKNOWN @ IF EXIT THEN
-   cs CLOSER-REJECT ;
+   cs CLOSER-REJECT
+   USING-RAISE ;
 
 : SGHASR? ( -- bool )
    SGHASR @ 0 <> ;
@@ -1535,7 +1536,7 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    \ parent's closing pass checks it again once the clause is checked and
    \ neither rejected nor left to the run.
    TORDER-ACTIVE @ TORDER-PARENT-GATE >=
-   RCOMPILE @ 0= and IF
+   RCOMPILE @ 0= REJECTION @ USING-KIND? 0= and and IF
       0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
       2 EXIT
    THEN
@@ -1695,7 +1696,8 @@ $C8 constant RBF.PROWE-OFF                 \ the kept parses rows' end
 $D0 constant RBF.NDICT-OFF                 \ the dictionary's record count
 $D8 constant RBF.SIMMN-OFF                 \ the source-immediate table's row count
 $E0 constant RBF.PKGA-OFF                  \ the open package's name offset
-$E8 constant RBF-REC
+$E8 constant RBF.USE-OFF                   \ the import rows (CK-USE-SAVE)
+RBF.USE-OFF CK-USE-SNAP-BYTES + constant RBF-REC
 \ RBF.COORD distinguishes an ordinary checker scope (-1) from a declaration
 \ frame's START tag. The declaration runner uses zero: declarations do not nest.
 -1 constant RBF-NO-COORDINATOR
@@ -1717,6 +1719,7 @@ $E8 constant RBF-REC
 : RBF.PKGMODE ( ^a -- ^a ) RBF.PKGMODE-OFF + ;
 : RBF.PKGU ( ^a -- ^a ) RBF.PKGU-OFF + ;
 : RBF.PKGA ( ^a -- ^a ) RBF.PKGA-OFF + ;
+: RBF.USE ( ^a -- ^a ) RBF.USE-OFF + ;
 : RBF.DFEREND ( ^a -- ^a ) RBF.DFEREND-OFF + ;
 : RBF.COORD ( ^a -- ^a ) RBF.COORD-OFF + ;
 : RBF.OVNDICT ( ^a -- ^a ) RBF.OVNDICT-OFF + ;
@@ -1746,6 +1749,16 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    RBF-GROW ;
 : RBF-CUR ( -- ^n )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
 
+\ An import savepoint: the row count, then the reachable rows. Nested neutral
+\ scopes may overwrite any prefix, not just append imports. The names the rows
+\ point at lie below the scope's SYM-STR mark, which the rollback keeps.
+: CK-USE-SAVE ( ^n n -- ) {: dst:^ u:n :}
+   u dst !
+   CK-USE-NAMES dst CELL + u 2 * ARENA-CELLS-COPY ;
+
+: CK-USE-RESTORE ( ^n -- ) {: src:^ :}
+   src CELL + CK-USE-NAMES src @ 2 * ARENA-CELLS-COPY ;
+
 EXPORT CHECKER-OVERLAY:MARKS
 
 : RBF-SAVE-INTO ( ^n -- ) {: r:^ :}
@@ -1766,6 +1779,7 @@ EXPORT CHECKER-OVERLAY:MARKS
    CHECKER-PACKAGE-MODE @ r RBF.PKGMODE !
    CHECKER-PACKAGE-U @ r RBF.PKGU !
    CHECKER-PACKAGE-NAME @ r RBF.PKGA !
+   r RBF.USE CK-USE-SCAN-N CK-USE-SAVE
    MARKS
    r RBF.OVWIDN !  r RBF.OVCP !  r RBF.OVLOG !  r RBF.OVNDICT !
    DFER-END @ r RBF.DFEREND !
@@ -1787,6 +1801,7 @@ EXPORT CHECKER-OVERLAY:ROLLBACK
 
 : RBF-RESTORE-FROM ( ^n -- ) {: r:^ :}
    r RBF.PKGA @ CHECKER-PACKAGE-NAME !
+   r RBF.USE CK-USE-RESTORE
    r RBF.OVNDICT @  r RBF.OVLOG @  r RBF.OVCP @  r RBF.OVWIDN @
    ROLLBACK
    r RBF.UEND @ USIGS-RESTORE-END
@@ -1914,8 +1929,9 @@ package CHECK
 
 EXPORT CHECKER-OVERLAY:OPEN-SCOPE
 
-\ The scope opener for replaying STANDALONE source: top level, since a separate
-\ file declares its own package context.
+\ The scope opener for replaying STANDALONE source. A separate file's package
+\ context is whatever it declares, so this scope starts at top level: no open
+\ package and no imports.
 : CHECKER-SCOPE-START-NEUTRAL ( -- )
    RBF-PUSH
    [: RES-TRUE RBF-DEPTH @ OPEN-SCOPE ;] catch {: rc:n :}
@@ -1930,8 +1946,8 @@ EXPORT CHECKER-OVERLAY:OPEN-SCOPE
    RBF-DEPTH @ ;
 
 public
-\ Runs q in a checker scope at neutral top level, no open package, and
-\ closes the scope however q ends.
+\ Runs q in a checker scope at neutral top level, no open package and no
+\ imports, and closes the scope however q ends.
 : SCOPED ( [ -- ] -- ) {: q :}
    CHECKER-SCOPE-START-NEUTRAL
    q catch {: rc:n :}
@@ -1955,7 +1971,8 @@ EXPORT CHECKER-OVERLAY:OPEN?
       rc throw
    THEN
    win CHECKER-VERIFY-WINDOW !
-   PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR ! ;
+   PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR !
+   CK-USE-ENGINE-DEPTH SOURCE-FLOOR ! ;
 
 : CHECKER-VERIFY-PKG-DONE ( -- )
    CHECKER-VERIFY-WINDOW @ {: win:n :}
@@ -2529,10 +2546,10 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    THEN
    TOP-END ;
 
-\ Rejects the top-level token s WALK rejected, as the load does: the require
-\ check comes first.
-: WALK-REJECT ( str -- ) {: s:str :}
-   0 s BIND-REC @ USE-CHECK  CHECKER-PKG-CONTEXT-REJECT ;
+\ Rejects the top-level token a u for WHY, WALK's code, as the load does: it
+\ judges the require of a shadowed global before the shadow.
+: WALK-REJECT ( str n -- ) {: s:str why:n :}
+   0 s BIND-REC @ USE-CHECK  s why RAISE ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
 \ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
@@ -2543,8 +2560,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 : TOP-ANSWER ( str bool -- n )
    {: s:str runs:bool :}
    runs  s LITERAL-RANGE?  and IF s REJECTION:LITERAL-RANGE  TOP-END EXIT THEN
-   s WALK {: sym:n rej:bool :}
-   rej IF s WALK-REJECT THEN
+   s WALK {: sym:n why:n :}
+   why 0 <> IF s why WALK-REJECT THEN
    sym HIDDEN-REC? {: hidden:bool :}
    CHECKER-QBAD-TOK @ 0= IF
       s sym TOP-BOUND-SYM {: s2:n rec:^ ok:bool :}
@@ -2571,9 +2588,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ pre-pass reads itself, so TOP-ANSWER never judges it.
 : REQUIRED-TOP ( str -- )
    {: s:str :}
-   s WALK {: sym:n rej:bool :}
+   s WALK {: sym:n why:n :}
    CHECKER-QBAD-TOK @ 0 <> IF EXIT THEN
-   rej IF s WALK-REJECT THEN
+   why 0 <> IF s why WALK-REJECT THEN
    s sym TOP-BOUND-SYM {: s2:n rec:^ ok:bool :}
    ok IF s2 s rec USE-CHECK THEN ;
 
@@ -2590,7 +2607,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    {: s:str :}
    WRITE-WINDOW-CK
    [: -1 BWIN-UNJUDGED !  -1 VSIG !
-      0 [: drop s CHECK-RESET  SCAN-BODY  0 ;] SCAN nip
+      0 [: drop s CHECK-RESET  SCAN-HELD  0 ;] SCAN nip
       0 BWIN-UNJUDGED !
       DEF-RESUMED  SIG-EFF-DROP  SIG-UNRES-CLEAR  WRAP-CLEAR ;]
    CELLS-KEPT {: rc:n :}
@@ -2692,7 +2709,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ D's name NA NU and the effect SA SU the row states.
 : GENERATES-REJECT ( str str n -- )
    {: ns:str ss:str kind:n :}
-   s" E-GENERATES-ROW" REJECTION:OPEN  ns kind GENR-MESSAGE
+   kind GENR-BADSIG =  SGBAD-AMBIG?  and
+   IF s" E-USING-AMBIGUOUS" ELSE s" E-GENERATES-ROW" THEN
+   REJECTION:OPEN  ns kind GENR-MESSAGE
    kind GENR-BADSIG = IF
       ns ss GENR-SIG-PARTS
    ELSE
@@ -2705,7 +2724,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ record's offset+1, 0 for a rejected row; an opaque D's row stands unjudged.
 : CHECKER-GENERATES ( str str bool -- n n )
    {: ns:str ss:str already:bool :}
-   ns CHECKER-BIND
+   ns CHECKER-FIND-ACTIVE-SYM
    {: sym:n :}
    sym 0= IF ns ss GENR-UNRESOLVED GENERATES-REJECT sym 0 EXIT THEN
    sym ns NAV-USE-NOW
@@ -2822,6 +2841,8 @@ private
 : ROW-WHY$ ( n -- str ) {: kind:n :}
    kind PARSES-UNDEFINED = IF s" , which is not defined here" EXIT THEN
    kind PARSES-QUALIFIED = IF s" , a malformed qualified name" EXIT THEN
+   kind PARSES-SHADOW = IF s" , which a used package's public word shadows" EXIT THEN
+   kind PARSES-AMBIGUOUS = IF s" , which more than one used package makes public" EXIT THEN
    kind PARSES-READS-NONE = IF s" , which reads no source after it" EXIT THEN
    kind NAMES-NO-STRING = IF s" , which takes no string" EXIT THEN
    kind PARSES-COUNT = IF s"  with no count of 0 or more" EXIT THEN
@@ -2831,6 +2852,8 @@ private
    kind PARSES-NO-TARGET = IF s" no word follows" EXIT THEN
    kind PARSES-UNDEFINED = IF s" not defined here" EXIT THEN
    kind PARSES-QUALIFIED = IF s" malformed qualified name" EXIT THEN
+   kind PARSES-SHADOW = IF s" shadowed by a used public word" EXIT THEN
+   kind PARSES-AMBIGUOUS = IF s" ambiguous here" EXIT THEN
    kind PARSES-READS-NONE = IF s" reads no source" EXIT THEN
    kind NAMES-NO-STRING = IF s" takes no string" EXIT THEN
    kind PARSES-COUNT = IF s" no count of 0 or more follows" EXIT THEN
@@ -2854,6 +2877,14 @@ private
    kind PARSES-QUALIFIED = IF
       s" write one colon between a package and its public word, as `PKG:WORD`"
       REJECTION:EMIT-STR EXIT
+   THEN
+   kind PARSES-SHADOW = IF
+      s" rename the used package's public " REJECTION:EMIT-STR  ts CODE-SPAN
+      s" , which hides the global word of that name" REJECTION:EMIT-STR EXIT
+   THEN
+   kind PARSES-AMBIGUOUS = IF
+      s" write the package's name before the word, as `PKG:" REJECTION:EMIT-STR
+      ts REJECTION:EMIT-STR  96 REJECTION:EMIT1 EXIT
    THEN
    s" write the row after the definition of " REJECTION:EMIT-STR  ts CODE-SPAN
    s" , spelled as the definition spells it" REJECTION:EMIT-STR ;
@@ -2891,7 +2922,10 @@ private
 
 : ROW-UNBOUND ( str -- n )
    {: s:str :}
-   s WALK nip IF CHECKER-PKG-CONTEXT-REJECT THEN
+   s WALK nip {: why:n :}
+   why E-USING-SHADOW-GLOBAL = IF PARSES-SHADOW EXIT THEN
+   why E-USING-AMBIGUOUS = IF PARSES-AMBIGUOUS EXIT THEN
+   why 0 <> IF s why RAISE -1 EXIT THEN
    CHECKER-QBAD-TOK @ IF PARSES-QUALIFIED EXIT THEN
    s UNSEEN-COVERS? IF -1 EXIT THEN
    PARSES-UNDEFINED ;
@@ -3158,7 +3192,7 @@ EXPORT CHECKER-REG:TS-PTR
    u TOKBUF-ENSURE  a TBASE !  u TBLEN !  0 TOK0 !  u TI !  0 TSTART !
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !  0 STALE-HIT !
    NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
-   a TOK-SPELL-A !  u TOK-SPELL-U !
+   a TOK-SPELL-A !  u TOK-SPELL-U !  -1 USING-HOLD !
    a u >str TOKFOLD drop
    a u >str CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
@@ -3324,6 +3358,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    0 LAYOUT-XPORT !
    CHECK-NO-BORROW
    OK @ 0= FAILSET @ 0= and IF -1 FAILSET ! THEN
+   0 USING-HOLD !
    TOK-SPELL-A @ TOK-SPELL-U @ >str REJECTION-STEP
    CHECK-VERDICT dup DVERD ! {: v:n :}
    v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or  RCOMPILE @ 0=  and IF EXIT THEN
@@ -3689,7 +3724,7 @@ EXPORT CHECK:CHECKER-CTOR-DECL-AT!
 EXPORT CHECK:CHECKER-CURSOR!
 EXPORT CHECK:CHECKER-DECL-AT!
 EXPORT CHECK:CHECKER-DECL-AT-OFF
-EXPORT CHECK:CHECKER-BIND
+EXPORT CHECK:CHECKER-FIND-QUIET-SYM
 EXPORT CHECK:CHECKER-RECORD-CREATED
 EXPORT CHECK:CHECKER-RECORD-SYM?
 EXPORT CHECK:CHECKER-RETRACT-ROWS
@@ -3724,7 +3759,7 @@ EXPORT CHECK:CHECKER-VERIFY-TOP
 EXPORT CHECKER-RESOLVE:EACH-VISIBLE
 ' CHECKER-RECORD-SYM? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF + xt!
 ' CHECKER-CTOR-DECL-AT! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-CTOR-DECL-OFF + xt!
-' CHECKER-BIND DECLARATIONS CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF + xt!
+' CHECKER-FIND-QUIET-SYM DECLARATIONS CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF + xt!
 ' CHECKER-CREATES-SYM? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF + xt!
 ' CHECKER-RECORD-CREATED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF + xt!
 ' CHECKER-SOURCE-DOES! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF + xt!
@@ -3772,10 +3807,14 @@ package CHECK
    hit 0= IF 0 EXIT THEN
    ps vis name CHECKER-PKG-SYM ;
 
-\ One read at a time is a guest in its caller's check, as a top step is (TOP-GUEST):
-\ it parses above the pools' marks and gives back the parser's and recorder's cells.
-16 40 + 8 +  BINDER-DEPTH-MAX +  26 +  constant GUEST-CAP  \ GUEST-POOLS 16, GUEST-PARSER 40 and its tables, GUEST-LATCHES 8
-10 constant GUEST-PTRS-CAP                                  \ GUEST-POINTERS
+\ A read runs inside a caller's check, between its tokens, so it is a guest
+\ there, as a top step is (TOP-GUEST): it parses above the term pools' marks,
+\ and the parser's and recorder's cells, which the caller may hold, are saved
+\ and given back however the read ends. One read is open at a time.
+\ GUEST-POOLS saves 16 cells, GUEST-PARSER 41 and its two tables,
+\ GUEST-LATCHES 8; GUEST-POINTERS saves 10 pointers.
+16 41 + 8 +  BINDER-DEPTH-MAX +  26 +  constant GUEST-CAP
+10 constant GUEST-PTRS-CAP
 SCRATCH{
 create GUEST-SAVED GUEST-CAP cells allot
 GUEST-PTRS-CAP PTR-U8-TABLE GUEST-SAVED-PTRS
@@ -3824,7 +3863,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    NRES save GUEST-CELL  NDI save GUEST-CELL  NDH save GUEST-CELL
    SGBAD save GUEST-CELL  SGBAD-U save GUEST-CELL  SGBAD-KIND save GUEST-CELL
    SGBAD-AR-DECL save GUEST-CELL  SGBAD-AR-GOT save GUEST-CELL
-   SGBAD-EXP-U save GUEST-CELL  SGBAD-LOCAL save GUEST-CELL
+   SGBAD-EXP-U save GUEST-CELL  SGBAD-USED save GUEST-CELL  SGBAD-LOCAL save GUEST-CELL
    SIG-UNRES save GUEST-CELL  SIG-UNRES-U save GUEST-CELL
    SIG-RAW-MODE save GUEST-CELL  SIG-FACTS-MODE save GUEST-CELL  SIG-CTL save GUEST-CELL
    SIG-NONZERO save GUEST-CELL  SIG-TAGS-ONLY save GUEST-CELL

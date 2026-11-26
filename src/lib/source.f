@@ -181,6 +181,7 @@ public
 
 : PACKAGE-KEYWORD? ( str -- bool ) {: s:str :}
    s s" package" STR:=CI if STR:TRUE exit then
+   s s" using" STR:=CI if STR:TRUE exit then
    s s" export" STR:=CI ;
 
 \ A local a block declares ends with the block, and `else` ends the true arm's.

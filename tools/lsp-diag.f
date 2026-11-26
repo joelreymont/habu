@@ -27,6 +27,11 @@ require src/lib/json/read.f
 require src/lib/json/write.f
 
 package LSP-DIAG
+using JSON
+using JSON-RPC
+using LSP-DOCS
+using LSP-LINE
+using LSP-TEXT
 
 private
 
@@ -65,12 +70,12 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ string file; any line that is not one JSON value throws.
 : SCAN ( -- )
    FILE-B @ 0 VEC:RESIZE
-   JSON-ST LINE-A @ LINE-U @ >str JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE exit then
-   s" file" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE exit then
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE exit then
-   FILE-B @ JSON:READ-STR drop
-   JSON:READ-FINISH ;
+   JSON-ST LINE-A @ LINE-U @ >str READ-INIT
+   READ-NEXT T-OBJ <> if READ-CLOSE exit then
+   s" file" READ-FIND-KEY 0= if READ-CLOSE exit then
+   READ-TOKEN T-STR <> if READ-CLOSE exit then
+   FILE-B @ READ-STR drop
+   READ-FINISH ;
 
 \ Whether the line is a diagnostic: an object whose file names an absolute
 \ path, which FILE$ then holds.
@@ -97,62 +102,62 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ one, then a `key: value` line for each string note in the packet's order, then
 \ `help: ` and its help when non-empty. data: the whole packet.
 
-: QUOTE ( ^JSON:writer -- ^JSON:writer )  s\" \"" JSON:WRITE-RAW ;
+: QUOTE ( ^JSON:writer -- ^JSON:writer )  s\" \"" WRITE-RAW ;
 
 : QUOTED ( ^JSON:writer str -- ^JSON:writer )
    {: s:str :}
-   QUOTE s JSON:WRITE-RAW QUOTE ;
+   QUOTE s WRITE-RAW QUOTE ;
 
 : SEVERITY ( ^JSON:writer str -- ^JSON:writer )
-   s" severity" LSP-LINE:STRING-MEMBER 0= if drop exit then
+   s" severity" STRING-MEMBER 0= if drop exit then
    {: v:str :}
-   v s" error" STR:= if JSON:WRITE-COMMA s" severity" ERROR-SEVERITY JSON:WRITE-FIELD-U exit then
-   v s" warning" STR:= if JSON:WRITE-COMMA s" severity" WARNING-SEVERITY JSON:WRITE-FIELD-U then ;
+   v s" error" STR:= if WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit then
+   v s" warning" STR:= if WRITE-COMMA s" severity" WARNING-SEVERITY WRITE-FIELD-U then ;
 
 : CODE-FIELD ( ^JSON:writer str -- ^JSON:writer )
-   s" code" LSP-LINE:STRING-MEMBER 0= if drop exit then
+   s" code" STRING-MEMBER 0= if drop exit then
    {: c:str :}
-   JSON:WRITE-COMMA s" code" JSON:WRITE-KEY c QUOTED ;
+   WRITE-COMMA s" code" WRITE-KEY c QUOTED ;
 
 : HELP-LINE ( ^JSON:writer str -- ^JSON:writer )
-   s" help" LSP-LINE:STRING-MEMBER over STR:LEN 0 > and 0= if drop exit then
+   s" help" STRING-MEMBER over STR:LEN 0 > and 0= if drop exit then
    {: s:str :}
-   s" \nhelp: " JSON:WRITE-RAW s JSON:WRITE-RAW ;
+   s" \nhelp: " WRITE-RAW s WRITE-RAW ;
 
 \ A note with a string value as its line; any other value is passed over.
 : NOTE-LINE ( JSON:reader ^JSON:writer -- JSON:reader )
    {: w :}
-   JSON:READ-SPAN$ {: k:str :}
-   JSON:READ-NEXT JSON:T-STR <> if JSON:READ-SKIP-VALUE exit then
-   JSON:READ-SPAN$ {: v:str :}
-   w s" \n" JSON:WRITE-RAW k JSON:WRITE-RAW s" : " JSON:WRITE-RAW
-   v JSON:WRITE-RAW drop ;
+   READ-SPAN$ {: k:str :}
+   READ-NEXT T-STR <> if READ-SKIP-VALUE exit then
+   READ-SPAN$ {: v:str :}
+   w s" \n" WRITE-RAW k WRITE-RAW s" : " WRITE-RAW
+   v WRITE-RAW drop ;
 
 : NOTES ( ^JSON:writer str -- ^JSON:writer )
    {: w s:str :}
-   JSON-ST s JSON:READ-INIT
-   JSON:READ-NEXT drop
-   s" notes" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE w exit then
-   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE w exit then
-   begin JSON:READ-NEXT JSON:T-KEY = while w NOTE-LINE repeat
-   JSON:READ-CLOSE w ;
+   JSON-ST s READ-INIT
+   READ-NEXT drop
+   s" notes" READ-FIND-KEY 0= if READ-CLOSE w exit then
+   READ-TOKEN T-OBJ <> if READ-CLOSE w exit then
+   begin READ-NEXT T-KEY = while w NOTE-LINE repeat
+   READ-CLOSE w ;
 
 : EVALUATED-LINE ( ^JSON:writer str -- ^JSON:writer )
    {: w s:str :}
-   JSON-ST s JSON:READ-INIT
-   JSON:READ-NEXT drop
-   s" evaluated" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE w exit then
-   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE w exit then
-   s" source_line" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE w exit then
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE w exit then
-   JSON:READ-SPAN$ {: v:str :}
-   JSON:READ-CLOSE
-   w s" \nevaluated: " JSON:WRITE-RAW v JSON:WRITE-RAW ;
+   JSON-ST s READ-INIT
+   READ-NEXT drop
+   s" evaluated" READ-FIND-KEY 0= if READ-CLOSE w exit then
+   READ-TOKEN T-OBJ <> if READ-CLOSE w exit then
+   s" source_line" READ-FIND-KEY 0= if READ-CLOSE w exit then
+   READ-TOKEN T-STR <> if READ-CLOSE w exit then
+   READ-SPAN$ {: v:str :}
+   READ-CLOSE
+   w s" \nevaluated: " WRITE-RAW v WRITE-RAW ;
 
 : MESSAGE ( ^JSON:writer str -- ^JSON:writer )
    {: s:str :}
    QUOTE
-   s s" message" LSP-LINE:STRING-MEMBER if JSON:WRITE-RAW else drop then
+   s s" message" STRING-MEMBER if WRITE-RAW else drop then
    s EVALUATED-LINE
    s NOTES
    s HELP-LINE
@@ -160,14 +165,14 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 : DIAGNOSTIC ( ^JSON:writer str -- ^JSON:writer )
    {: s:str :}
-   JSON:WRITE-OBJECT-START
-   s LSP-TEXT:RANGE
+   WRITE-OBJECT-START
+   s RANGE
    s SEVERITY
    s CODE-FIELD
-   JSON:WRITE-COMMA s" source" s" habu" JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA s" message" JSON:WRITE-KEY s MESSAGE
-   JSON:WRITE-COMMA s" data" s JSON:WRITE-FIELD-RAW
-   JSON:WRITE-OBJECT-END ;
+   WRITE-COMMA s" source" s" habu" WRITE-FIELD-S
+   WRITE-COMMA s" message" WRITE-KEY s MESSAGE
+   WRITE-COMMA s" data" s WRITE-FIELD-RAW
+   WRITE-OBJECT-END ;
 
 \ ---- lists ---------------------------------------------------------------------
 
@@ -176,19 +181,19 @@ variable ITEMS                           \ and the diagnostics in it so far
 : OPENING ( str option<n> -- ^JSON:writer )
    {: u:str v :}
    W PUB-OUT @ JSON:OPEN
-   s" textDocument/publishDiagnostics" JSON-RPC:NOTIFY
-   JSON:WRITE-OBJECT-START
-   s" uri" u JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" textDocument/publishDiagnostics" NOTIFY
+   WRITE-OBJECT-START
+   s" uri" u WRITE-FIELD-S WRITE-COMMA
    v MATCH option
-      some OF >r s" version" r> JSON:WRITE-FIELD-INT JSON:WRITE-COMMA ENDOF
+      some OF >r s" version" r> WRITE-FIELD-INT WRITE-COMMA ENDOF
       none OF ENDOF
    ;MATCH
-   s" diagnostics" JSON:WRITE-KEY JSON:WRITE-ARRAY-START ;
+   s" diagnostics" WRITE-KEY WRITE-ARRAY-START ;
 
 : CLOSING ( ^JSON:writer -- )
-   JSON:WRITE-ARRAY-END JSON:WRITE-OBJECT-END JSON-RPC:END
+   WRITE-ARRAY-END WRITE-OBJECT-END END
    {: w :}
-   w JSON:WRITTEN$ {: s:str :}
+   w WRITTEN$ {: s:str :}
    w JSON:CLOSE
    FD:STDOUT s CONTENT-LENGTH:SEND ;
 
@@ -196,7 +201,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    {: s:str :}
    s SCREENED 0= if exit then
    FILE$ LIST-A @ LIST-U @ >str STR:= 0= if exit then
-   ITEMS @ 0 > if W JSON:WRITE-COMMA drop then
+   ITEMS @ 0 > if W WRITE-COMMA drop then
    W s DIAGNOSTIC drop
    1 ITEMS +! ;
 
@@ -205,7 +210,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 : LIST ( str option<n> -- )
    OPENING drop
    0 ITEMS !
-   PKTS-A @ PKTS-U @ >str [: ITEM ;] LSP-LINE:EACH-LINE
+   PKTS-A @ PKTS-U @ >str [: ITEM ;] EACH-LINE
    W CLOSING ;
 
 : LIST-URI ( -- str )
@@ -228,20 +233,20 @@ variable ITEMS                           \ and the diagnostics in it so far
    ;MATCH ;
 
 \ Whether an open document is the file the checker names by this path.
-: HELD-OPEN? ( str -- bool )  LSP-DOCS:DOC-HOLDING SLOT? ;
+: HELD-OPEN? ( str -- bool )  DOC-HOLDING SLOT? ;
 
 \ Whether an open document's own list is at this path's file URI: the client
 \ opened it by this path.
-: SHOWN? ( str -- bool )  LSP-DOCS:DOC-OPENED-AS SLOT? ;
+: SHOWN? ( str -- bool )  DOC-OPENED-AS SLOT? ;
 
 \ Whether another open document's last check published a list for this path;
 \ each such document waits for a check again.
 : CLAIMED? ( str -- bool )
    {: f:str :}
    false
-   LSP-DOCS:DOC-SLOTS 0 ?do
-      i SELF @ <> i LSP-DOCS:DOC-LIVE? and if
-         i LSP-DOCS:DOC-DEPS$ f LSP-LINE:HAS-LINE? if i LSP-DOCS:DOC-DIRTY drop true then
+   DOC-SLOTS 0 ?do
+      i SELF @ <> i DOC-LIVE? and if
+         i DOC-DEPS$ f HAS-LINE? if i DOC-DIRTY drop true then
       then
    loop ;
 
@@ -257,16 +262,16 @@ variable ITEMS                           \ and the diagnostics in it so far
 : DEP ( str -- )
    {: s:str :}
    s SCREENED 0= if s" lsp: " ERR s ERR s\" \n" ERR exit then
-   FILE$ SELF @ LSP-DOCS:DOC-CANON$ STR:= if exit then
-   NEW$ FILE$ LSP-LINE:HAS-LINE? if exit then
+   FILE$ SELF @ DOC-CANON$ STR:= if exit then
+   NEW$ FILE$ HAS-LINE? if exit then
    FILE$ HELD-OPEN? if exit then
    FILE$ KEEP-NEW dup STR:LEN LIST-U ! STR:DATA LIST-A !
-   LIST-A @ LIST-U @ >str LSP-TEXT:FILE-SNAPSHOT!
+   LIST-A @ LIST-U @ >str FILE-SNAPSHOT!
    LIST-URI OPTION:NONE LIST ;
 
 : WITHDRAW ( str -- )
    {: f:str :}
-   NEW$ f LSP-LINE:HAS-LINE? if exit then
+   NEW$ f HAS-LINE? if exit then
    f SHOWN? if exit then
    f CLAIMED? if exit then
    f STR:DATA LIST-A !
@@ -287,12 +292,12 @@ public
    p STR:LEN PKTS-U !
    slot SELF !
    NEW-B @ 0 VEC:RESIZE
-   slot LSP-DOCS:DOC-CANON$ dup STR:LEN LIST-U ! STR:DATA LIST-A !
-   slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
-   slot LSP-DOCS:DOC-URI$ slot LSP-DOCS:DOC-VERSION@ OPTION:SOME LIST
-   p [: DEP ;] LSP-LINE:EACH-LINE
-   slot LSP-DOCS:DOC-DEPS$ [: WITHDRAW ;] LSP-LINE:EACH-LINE
-   NEW$ slot LSP-DOCS:DOC-DEPS! ;
+   slot DOC-CANON$ dup STR:LEN LIST-U ! STR:DATA LIST-A !
+   slot DOC-TEXT$ TEXT!
+   slot DOC-URI$ slot DOC-VERSION@ OPTION:SOME LIST
+   p [: DEP ;] EACH-LINE
+   slot DOC-DEPS$ [: WITHDRAW ;] EACH-LINE
+   NEW$ slot DOC-DEPS! ;
 
 \ The document in this slot is closing: an empty list for it, without a
 \ version, and its check's lists for other files withdrawn.
@@ -300,7 +305,12 @@ public
    {: slot:n :}
    slot SELF !
    NEW-B @ 0 VEC:RESIZE
-   slot LSP-DOCS:DOC-URI$ OPTION:NONE OPENING CLOSING
-   slot LSP-DOCS:DOC-DEPS$ [: WITHDRAW ;] LSP-LINE:EACH-LINE ;
+   slot DOC-URI$ OPTION:NONE OPENING CLOSING
+   slot DOC-DEPS$ [: WITHDRAW ;] EACH-LINE ;
 
+;using
+;using
+;using
+;using
+;using
 ;package

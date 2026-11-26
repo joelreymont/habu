@@ -172,9 +172,13 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" tick" s" error[E-POLICY]: `'` is not in the vocabulary this source may use" s" test/policy/tick.f:2:" TIER0-REJECTS
    s" string" S\" error[E-POLICY]: `c\q` is not in the vocabulary this source may use" s" test/policy/string.f:2:" TIER0-REJECTS ;
 
+\ A global a used package also exports is outside the vocabulary before it is
+\ shadowed: the seal rejects it ahead of the shadowing rule, as in a body.
 \ A package loaded before the seal, admitted or not, cannot be reopened: inside
 \ it its private words come first. ok.f reopens the design's own package.
 : SCOPES ( -- )
+   s" using-ffi" s" error[E-POLICY]: `NOW` is not in the vocabulary this source may use" s" test/policy/using-ffi.f:3:" TIER0-REJECTS
+   s" shadow" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/shadow.f:3:" TIER0-REJECTS
    s" private" s" error[E-POLICY]: `PDEP:HIDDEN` is not in the vocabulary this source may use" s" test/policy/private.f:2:" TIER0-REJECTS
    s" reopen" s" error[E-POLICY]: package `PDEP` predates the seal, so sealed source cannot reopen it" s" test/policy/reopen.f:2:" TIER0-REJECTS
    s" reopen-foreign" s" error[E-POLICY]: package `PFOREIGN` predates the seal, so sealed source cannot reopen it" s" test/policy/reopen-foreign.f:2:" TIER0-REJECTS
@@ -191,7 +195,8 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" execute" s" error[E-POLICY]: `execute` is not in the vocabulary this source may use" s" test/policy/execute.f:1:" TIER0-REJECTS
    s" store" s" error[E-POLICY]: `!` is not in the vocabulary this source may use" s" test/policy/store.f:1:" TIER0-REJECTS
    s" arith" s" error[E-POLICY]: `+` is not in the vocabulary this source may use" s" test/policy/arith.f:1:" TIER0-REJECTS
-   s" dotq" S\" error[E-POLICY]: `.\q` is not in the vocabulary this source may use" s" test/policy/dotq.f:2:" TIER0-REJECTS ;
+   s" dotq" S\" error[E-POLICY]: `.\q` is not in the vocabulary this source may use" s" test/policy/dotq.f:2:" TIER0-REJECTS
+   s" used" s" error[E-POLICY]: `LEAK` is not in the vocabulary this source may use" s" test/policy/used.f:3:" TIER0-REJECTS ;
 
 \ A keyword the native compiler models itself, a character literal, a call to
 \ the definition being compiled and a `:}` outside a `{:` group are neither
@@ -309,7 +314,7 @@ PATH-CAP 1 + BUFFER: AT-BUF
    s" allow-root-scope-nested" HARNESS!
    s" " 0 ROOT$ s" `test/policy/confined/value.f` lies outside the source root" S\" 70\n0\n0\n\n" SAYS
    s" allow-root-scope-seal" HARNESS!
-   s" " 0 s" error[E-POLICY]: the source policy is already sealed" s" test/policy/allow-root-scope-seal.f:13:" S\" 70\n70\n70\n70\n\n" SAYS ;
+   s" " 0 s" error[E-POLICY]: the source policy is already sealed" s" test/policy/allow-root-scope-seal.f:14:" S\" 70\n70\n70\n70\n\n" SAYS ;
 
 \ A definer's built words call the names a sealed table gives as the table's
 \ text would: an ACTION outside the vocabulary is rejected at its name, and
@@ -317,8 +322,8 @@ PATH-CAP 1 + BUFFER: AT-BUF
 : BUILT ( -- )
    s" allow-fsm" HARNESS!
    s" fsm-table" 0 s" " s" " RUNS
-   s" fsm-action" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/fsm-action.f:2:55" REJECTS
-   s" fsm-require" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/fsm-require.f:2:55" REJECTS ;
+   s" fsm-action" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/fsm-action.f:3:36" REJECTS
+   s" fsm-require" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/fsm-require.f:3:36" REJECTS ;
 
 public
 

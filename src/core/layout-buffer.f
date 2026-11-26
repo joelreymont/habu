@@ -5,6 +5,8 @@
 \ identity by unification. The words live in package LBUF, and the four
 \ definers are its global words.
 
+using TYPE-DECL
+
 7122 constant E-LAYOUT-BOUNDS
 
 \ The bytes a stored type takes, for a container's own arithmetic.
@@ -674,3 +676,5 @@ public
    handle v 1 node hasaddr NODE-BIND ;
 
 ;package
+
+;using

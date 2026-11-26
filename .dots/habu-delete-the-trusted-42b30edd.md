@@ -91,7 +91,7 @@ Acceptance cases 2026-11-10 (TRUSTED: is machinery being replaced, so these are 
 
 Acceptance case, read not run: in a multi-error load a REJECT-DEF throw inside a TRUSTED: body becomes verdict 0 in CHECK-DEF-THREW, so the body is published, where a plain load abandons it. Deleting TRUSTED: removes the path; until then no fix is made in it.
 
-That case now runs (2026-11-10): inside a multi-error load a TRUSTED: body rejected by REJECT-DEF prints its packet, counts 1 and is published; a plain load of the same body stops with rc 70, 'ncomp: cannot compile TSH'. Both engines answer the same.
+That case now runs (2026-11-10): inside a multi-error load a TRUSTED: body rejected by REJECT-DEF (a `using` shadow of `over`) prints its packet, counts 1 and is published; a plain load of the same body stops with rc 70, 'ncomp: cannot compile TSH', uncaught 7141. Both engines answer the same.
 
 Acceptance case 2026-11-10 (bob; merged from habu-keep-the-declaration-16209954 "Keep the declaration frame API out of user source", one cause with this dot): TYPE-FIELD-OWNER:OPEN and DECL-EVENT:OPEN run from a top-level user file (rc 0 on the installed hb). Their only production caller is DEV-OPEN inside a checker frame; a user-driven field rollback outside a family frame leaves field names in TF-STR (pftx commit, type-family.f frame comment). Make the frame API private to the core (whitebox tests keep it), per the privacy rule: private sections plus the build strip.
 

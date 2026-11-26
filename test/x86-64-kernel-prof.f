@@ -31,9 +31,14 @@ public
 ;package
 
 package X64K-PROF
+using X64ASM
+using X64CODE
+using X64RT
+using PROF-ABI
+using LINUX-LAYOUT   \ the guard
 
 \ The band at the top of the target's DATA, and the counters after its cells.
-LINUX-LAYOUT:DATA-VA VA>N LINUX-LAYOUT:DATA-SIZE PROF-ABI:PROF-BAND-AT constant BAND
+LINUX-LAYOUT:DATA-VA VA>N LINUX-LAYOUT:DATA-SIZE PROF-BAND-AT constant BAND
 BAND PROF-STATE-BYTES + constant COUNTERS
 0 constant A-REC                        \ the records' indices, in seeding order
 1 constant B-REC
@@ -125,86 +130,86 @@ Q-IX XREF-REC XREF-PKG-PRIVATE constant Q-PRIVATE
 C-IX XREF-REC XREF-WORDLIST constant C-WID
 A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
 
-: DATA-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-RBASE X64ASM:>R64 ;
-: CP-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-CP X64ASM:>R64 ;
+: DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
+: CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
 : ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
-: LOAD, ( X64ASM:r64 X64ASM:mem -- ) X64CODE:ASM-SINK X64ASM:ENC-MOV-RM ;
-: STORE, ( X64ASM:r64 X64ASM:mem -- ) X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
-: COPY, ( X64ASM:r64 X64ASM:r64 -- ) X64CODE:ASM-SINK X64ASM:ENC-MOV-RR ;
-: TEST, ( X64ASM:r64 -- ) dup X64CODE:ASM-SINK X64ASM:ENC-TEST-RR ;
-: IMM, ( X64ASM:r64 n -- ) X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64 ;
-: ADDI, ( X64ASM:r64 n -- ) X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI32 ;
-: SUBI, ( X64ASM:r64 n -- ) X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-SUB-RI32 ;
+: LOAD, ( r64 mem -- ) ASM-SINK ENC-MOV-RM ;
+: STORE, ( r64 mem -- ) ASM-SINK ENC-MOV-MR ;
+: COPY, ( r64 r64 -- ) ASM-SINK ENC-MOV-RR ;
+: TEST, ( r64 -- ) dup ASM-SINK ENC-TEST-RR ;
+: IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
+: ADDI, ( r64 n -- ) >IMM32 ASM-SINK ENC-ADD-RI32 ;
+: SUBI, ( r64 n -- ) >IMM32 ASM-SINK ENC-SUB-RI32 ;
 
 \ r = the arena's base, read from the band.
-: ARENA, ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}  r BAND IMM,  r r PROF-ABI:PROF-ARENA X64ASM:MEM-OFF LOAD, ;
+: ARENA, ( r64 -- ) {: r:r64 :}  r BAND IMM,  r r PROF-ARENA MEM-OFF LOAD, ;
 
 \ Replace rax with POISON when the condition holds. It clobbers r11; a mov
 \ keeps the flags the condition reads.
-: POISON-IF, ( X64ASM:condition -- ) {: c:X64ASM:condition :}
-   X64ASM:R11 POISON IMM,
-   c X64ASM:RAX X64ASM:R11 X64CODE:ASM-SINK X64ASM:ENC-CMOVCC ;
+: POISON-IF, ( condition -- ) {: c:condition :}
+   R11 POISON IMM,
+   c RAX R11 ASM-SINK ENC-CMOVCC ;
 
 \ Poison rax unless the register holds n.
-: KEEP-IF-EQ, ( X64ASM:r64 n -- ) {: r:X64ASM:r64 v:n :}
-   r v X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI32
-   X64ASM:C-NE POISON-IF, ;
+: KEEP-IF-EQ, ( r64 n -- ) {: r:r64 v:n :}
+   r v >IMM32 ASM-SINK ENC-CMP-RI32
+   C-NE POISON-IF, ;
 
 \ ---- the spins ---------------------------------------------------------------
 \ Spin until the cell `off` bytes past r8 moves from the value it held on
 \ entry, at most SPIN-BOUND turns: rax = 1 when it moved, 0 when the bound ran
 \ out. It clobbers rcx and rdx.
 : WAIT-MOVE, ( n -- ) {: off:n :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: turn:label moved:label out:label :}
-   X64ASM:RDX X64ASM:R8 off X64ASM:MEM-OFF LOAD,
-   X64ASM:RCX SPIN-BOUND IMM,
-   turn X64CODE:LBL,
-      X64ASM:RDX X64ASM:R8 off X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-CMP-RM  X64ASM:C-NE moved X64CODE:JCC,
-      X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DEC  X64ASM:C-NE turn X64CODE:JCC,
-   X64ASM:RAX ZERO-REG,  out X64CODE:JMP,
-   moved X64CODE:LBL,  X64ASM:RAX 1 IMM,
-   out X64CODE:LBL, ;
+   LBL LBL LBL {: turn:label moved:label out:label :}
+   RDX R8 off MEM-OFF LOAD,
+   RCX SPIN-BOUND IMM,
+   turn LBL,
+      RDX R8 off MEM-OFF ASM-SINK ENC-CMP-RM  C-NE moved JCC,
+      RCX ASM-SINK ENC-DEC  C-NE turn JCC,
+   RAX ZERO-REG,  out JMP,
+   moved LBL,  RAX 1 IMM,
+   out LBL, ;
 
 \ The value a held register keeps across the ticks, one per register.
-: SENTINEL ( X64ASM:r64 -- n ) X64ASM:R64>N $5E000000 + ;
-: SEED, ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}  r r SENTINEL X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI32 ;
-: HELD, ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}  r r SENTINEL KEEP-IF-EQ, ;
+: SENTINEL ( r64 -- n ) R64>N $5E000000 + ;
+: SEED, ( r64 -- ) {: r:r64 :}  r r SENTINEL >IMM32 ASM-SINK ENC-MOV-RI32 ;
+: HELD, ( r64 -- ) {: r:r64 :}  r r SENTINEL KEEP-IF-EQ, ;
 
 \ B's body: spin until B's counter and A's inclusive count, in the first index
 \ entry, both leave 0; then rax = 1 while every held register keeps its
 \ sentinel, r11 checked first since the checks borrow it. rax = 0 when the
 \ bound ran out.
 : B-SPIN, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: turn:label next:label moved:label out:label :}
-   X64ASM:R8 COUNTERS B-REC CELL * + IMM,
-   X64ASM:R9 ARENA,  X64ASM:R9 PROF-ABI:ARN-IDX PROF-ABI:ENT-INCL + ADDI,
-   X64ASM:RDX SEED,  X64ASM:RSI SEED,  X64ASM:RDI SEED,  X64ASM:R10 SEED,  X64ASM:R11 SEED,
-   X64ASM:RCX SPIN-BOUND IMM,
-   turn X64CODE:LBL,
-      X64ASM:RAX X64ASM:R8 X64ASM:MEM-AT LOAD,  X64ASM:RAX TEST,  X64ASM:C-E next X64CODE:JCC,
-      X64ASM:RAX X64ASM:R9 X64ASM:MEM-AT LOAD,  X64ASM:RAX TEST,  X64ASM:C-NE moved X64CODE:JCC,
-   next X64CODE:LBL,
-      X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DEC  X64ASM:C-NE turn X64CODE:JCC,
-   X64ASM:RAX ZERO-REG,  out X64CODE:JMP,
-   moved X64CODE:LBL,
-   X64ASM:RAX 1 IMM,
-   X64ASM:R11 HELD,  X64ASM:RDX HELD,  X64ASM:RSI HELD,  X64ASM:RDI HELD,  X64ASM:R10 HELD,
-   out X64CODE:LBL, ;
+   LBL LBL LBL LBL {: turn:label next:label moved:label out:label :}
+   R8 COUNTERS B-REC CELL * + IMM,
+   R9 ARENA,  R9 ARN-IDX ENT-INCL + ADDI,
+   RDX SEED,  RSI SEED,  RDI SEED,  R10 SEED,  R11 SEED,
+   RCX SPIN-BOUND IMM,
+   turn LBL,
+      RAX R8 MEM-AT LOAD,  RAX TEST,  C-E next JCC,
+      RAX R9 MEM-AT LOAD,  RAX TEST,  C-NE moved JCC,
+   next LBL,
+      RCX ASM-SINK ENC-DEC  C-NE turn JCC,
+   RAX ZERO-REG,  out JMP,
+   moved LBL,
+   RAX 1 IMM,
+   R11 HELD,  RDX HELD,  RSI HELD,  RDI HELD,  R10 HELD,
+   out LBL, ;
 
 \ A and B behind a jump, each span its first label to its second. A is a `call
 \ B` alone and B a spin, with A's `ret` in the gap between them, so the return
 \ address the walk finds is A's end. The case's three other spins are no record:
 \ one below A and two above B.
 : RECORDS, ( -- label label label label )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: a:label a-end:label b:label b-end:label :}
-   X64CODE:LBL {: past:label :}
-   past X64CODE:JMP,
-   a X64CODE:LBL,  b X64CODE:CALL,  a-end X64CODE:LBL,
-   X64CODE:ASM-SINK X64ASM:ENC-RET
-   b X64CODE:LBL,  B-SPIN,  X64CODE:ASM-SINK X64ASM:ENC-RET  b-end X64CODE:LBL,
-   past X64CODE:LBL,
+   LBL LBL LBL LBL {: a:label a-end:label b:label b-end:label :}
+   LBL {: past:label :}
+   past JMP,
+   a LBL,  b CALL,  a-end LBL,
+   ASM-SINK ENC-RET
+   b LBL,  B-SPIN,  ASM-SINK ENC-RET  b-end LBL,
+   past LBL,
    a a-end b b-end ;
 
 \ The spin above the index: once ARN-DEFER moves, the newest slot must hold a
@@ -212,160 +217,160 @@ A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
 \ address, since it pushes nothing. Its bounds are rip-relative, so its bytes
 \ run wherever they are copied.
 : HIGH, ( -- label label )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: start:label end:label past:label :}
-   past X64CODE:JMP,
-   start X64CODE:LBL,
-   X64ASM:R8 ARENA,
-   PROF-ABI:ARN-DEFER WAIT-MOVE,
-   X64ASM:R9 X64ASM:R8 PROF-ABI:ARN-DEFER X64ASM:MEM-OFF LOAD,
-   X64ASM:R9 X64ASM:R9 PROF-ABI:PROF-DEFER-ENT X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-IMUL-RRI8
-   X64ASM:R9 X64ASM:R8 X64ASM:R9 1 PROF-ABI:ARN-DEF PROF-ABI:PROF-DEFER-ENT - X64ASM:MEM-IDX X64CODE:ASM-SINK X64ASM:ENC-LEA
-   X64ASM:R10 X64ASM:R9 CELL X64ASM:MEM-OFF LOAD,
-   X64ASM:R10 X64ASM:RSP X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-CMP-RM  X64ASM:C-NE POISON-IF,
-   X64ASM:R10 X64ASM:R9 X64ASM:MEM-AT LOAD,
-   X64ASM:RCX start X64CODE:LEA-REL,  X64ASM:R10 X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-B POISON-IF,
-   X64ASM:RCX end X64CODE:LEA-REL,  X64ASM:R10 X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-AE POISON-IF,
-   X64CODE:ASM-SINK X64ASM:ENC-RET
-   end X64CODE:LBL,
-   past X64CODE:LBL,
+   LBL LBL LBL {: start:label end:label past:label :}
+   past JMP,
+   start LBL,
+   R8 ARENA,
+   ARN-DEFER WAIT-MOVE,
+   R9 R8 ARN-DEFER MEM-OFF LOAD,
+   R9 R9 PROF-DEFER-ENT >IMM8 ASM-SINK ENC-IMUL-RRI8
+   R9 R8 R9 1 ARN-DEF PROF-DEFER-ENT - MEM-IDX ASM-SINK ENC-LEA
+   R10 R9 CELL MEM-OFF LOAD,
+   R10 RSP MEM-AT ASM-SINK ENC-CMP-RM  C-NE POISON-IF,
+   R10 R9 MEM-AT LOAD,
+   RCX start LEA-REL,  R10 RCX ASM-SINK ENC-CMP-RR  C-B POISON-IF,
+   RCX end LEA-REL,  R10 RCX ASM-SINK ENC-CMP-RR  C-AE POISON-IF,
+   ASM-SINK ENC-RET
+   end LBL,
+   past LBL,
    start end ;
 
 \ Copy the bytes [start, end) to CP through the RW alias, move CP past them
 \ and call the copy, as code compiled after prof-on runs. It clobbers rax rcx
 \ rdx rsi rdi r11 and whatever the copy clobbers.
 : REGION-CALL, ( label label -- ) {: start:label end:label :}
-   X64CODE:LBL {: byte:label :}
-   X64ASM:RSI start X64CODE:LEA-REL,  X64ASM:RDX end X64CODE:LEA-REL,  X64ASM:RDX X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-SUB-RR
-   X64ASM:RCX X64ASM:RDX COPY,  X64ASM:RDI CP-REG COPY,  X64ASM:RDI X64KERNEL:WRITE-ALIAS,
-   byte X64CODE:LBL,
-      X64ASM:RAX X64ASM:RSI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
-      X64ASM:RAX X64ASM:R64>N X64ASM:>R8 X64ASM:RDI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV8-MR
-      X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-INC  X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-INC
-      X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DEC  X64ASM:C-NE byte X64CODE:JCC,
-   X64ASM:R11 CP-REG COPY,  CP-REG X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-ADD-RR
-   X64ASM:R11 X64CODE:ASM-SINK X64ASM:ENC-CALL-REG ;
+   LBL {: byte:label :}
+   RSI start LEA-REL,  RDX end LEA-REL,  RDX RSI ASM-SINK ENC-SUB-RR
+   RCX RDX COPY,  RDI CP-REG COPY,  RDI X64KERNEL:WRITE-ALIAS,
+   byte LBL,
+      RAX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+      RAX R64>N >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+      RSI ASM-SINK ENC-INC  RDI ASM-SINK ENC-INC
+      RCX ASM-SINK ENC-DEC  C-NE byte JCC,
+   R11 CP-REG COPY,  CP-REG RDX ASM-SINK ENC-ADD-RR
+   R11 ASM-SINK ENC-CALL-REG ;
 
 \ The foreign spin: rbp is not DATA while it waits for PROF-FOREIGN.
 : FOREIGN-SPIN, ( -- )
-   X64ASM:R10 DATA-REG COPY,  DATA-REG ZERO-REG,
-   X64ASM:R8 BAND IMM,  PROF-ABI:PROF-FOREIGN WAIT-MOVE,
-   DATA-REG X64ASM:R10 COPY, ;
+   R10 DATA-REG COPY,  DATA-REG ZERO-REG,
+   R8 BAND IMM,  PROF-FOREIGN WAIT-MOVE,
+   DATA-REG R10 COPY, ;
 
 \ Call a routine with rsp n bytes past the DO/LOOP stack's base, put rsp back
 \ from the scratch cell and push the routine's rax.
 : STACK-CALL, ( label n -- ) {: at:label off:n :}
-   0 X64HARNESS:PUSH-SCRATCH,  X64ASM:RCX X64ASM:R64>N X64RT:G-POP  X64ASM:RSP X64ASM:RCX X64ASM:MEM-AT STORE,
-   X64ASM:RSP DATA-REG STACK-ABI:LOOP-BASE-CELL X64ASM:MEM-OFF LOAD,
-   X64ASM:RSP off CELL + ADDI,                       \ the call's push leaves the routine at n
-   at X64CODE:CALL,
-   0 X64RT:G-PUSH
-   0 X64HARNESS:PUSH-SCRATCH,  X64ASM:RCX X64ASM:R64>N X64RT:G-POP  X64ASM:RSP X64ASM:RCX X64ASM:MEM-AT LOAD, ;
+   0 X64HARNESS:PUSH-SCRATCH,  RCX R64>N G-POP  RSP RCX MEM-AT STORE,
+   RSP DATA-REG STACK-ABI:LOOP-BASE-CELL MEM-OFF LOAD,
+   RSP off CELL + ADDI,                       \ the call's push leaves the routine at n
+   at CALL,
+   0 G-PUSH
+   0 X64HARNESS:PUSH-SCRATCH,  RCX R64>N G-POP  RSP RCX MEM-AT LOAD, ;
 
 \ ---- the checks after the clock stops ---------------------------------------
 \ rax = sum(counters) + ARN-NEW + the deferred slots' weights + ARN-SPILL +
 \ PROF-OTHER + PROF-FOREIGN - PROF-TOT, over every profile ID: 0 while the
 \ identity holds. It clobbers rcx, rdx and r8.
 : SKEW, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: sum:label done:label slot:label slots:label :}
-   X64ASM:RAX ZERO-REG,
-   X64ASM:R8 ARENA,  X64ASM:RCX X64ASM:R8 PROF-ABI:ARN-IDS X64ASM:MEM-OFF LOAD,
-   X64ASM:RDX COUNTERS IMM,
-   sum X64CODE:LBL,
-      X64ASM:RCX TEST,  X64ASM:C-E done X64CODE:JCC,
-      X64ASM:RAX X64ASM:RDX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
-      X64ASM:RDX CELL ADDI,  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DEC  sum X64CODE:JMP,
-   done X64CODE:LBL,
-   X64ASM:R8 ARENA,
-   X64ASM:RAX X64ASM:R8 PROF-ABI:ARN-NEW X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
-   X64ASM:RCX X64ASM:R8 PROF-ABI:ARN-DEFER X64ASM:MEM-OFF LOAD,  X64ASM:RDX X64ASM:R8 PROF-ABI:ARN-DEF PROF-ABI:PROF-SLOT-WEIGHT + X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
-   slot X64CODE:LBL,
-      X64ASM:RCX TEST,  X64ASM:C-E slots X64CODE:JCC,
-      X64ASM:RAX X64ASM:RDX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
-      X64ASM:RDX PROF-ABI:PROF-DEFER-ENT ADDI,  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DEC  slot X64CODE:JMP,
-   slots X64CODE:LBL,
-   X64ASM:RAX X64ASM:R8 PROF-ABI:ARN-SPILL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
-   X64ASM:R8 BAND IMM,
-   X64ASM:RAX X64ASM:R8 PROF-ABI:PROF-OTHER X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
-   X64ASM:RAX X64ASM:R8 PROF-ABI:PROF-FOREIGN X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
-   X64ASM:RAX X64ASM:R8 PROF-ABI:PROF-TOT X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-SUB-RM ;
+   LBL LBL LBL LBL {: sum:label done:label slot:label slots:label :}
+   RAX ZERO-REG,
+   R8 ARENA,  RCX R8 ARN-IDS MEM-OFF LOAD,
+   RDX COUNTERS IMM,
+   sum LBL,
+      RCX TEST,  C-E done JCC,
+      RAX RDX MEM-AT ASM-SINK ENC-ADD-RM
+      RDX CELL ADDI,  RCX ASM-SINK ENC-DEC  sum JMP,
+   done LBL,
+   R8 ARENA,
+   RAX R8 ARN-NEW MEM-OFF ASM-SINK ENC-ADD-RM
+   RCX R8 ARN-DEFER MEM-OFF LOAD,  RDX R8 ARN-DEF PROF-SLOT-WEIGHT + MEM-OFF ASM-SINK ENC-LEA
+   slot LBL,
+      RCX TEST,  C-E slots JCC,
+      RAX RDX MEM-AT ASM-SINK ENC-ADD-RM
+      RDX PROF-DEFER-ENT ADDI,  RCX ASM-SINK ENC-DEC  slot JMP,
+   slots LBL,
+   RAX R8 ARN-SPILL MEM-OFF ASM-SINK ENC-ADD-RM
+   R8 BAND IMM,
+   RAX R8 PROF-OTHER MEM-OFF ASM-SINK ENC-ADD-RM
+   RAX R8 PROF-FOREIGN MEM-OFF ASM-SINK ENC-ADD-RM
+   RAX R8 PROF-TOT MEM-OFF ASM-SINK ENC-SUB-RM ;
 
-: IDENTITY, ( -- )  SKEW,  0 X64RT:G-PUSH  0 WANT ;
+: IDENTITY, ( -- )  SKEW,  0 G-PUSH  0 WANT ;
 
 \ Poison rax unless the edge table holds the pair (B, A), keyed as EDGE keys
 \ it, with a count, and B's own inclusive count, in the second index entry, is
 \ nonzero: the walk's edge and the sample's count of itself. It clobbers rcx,
 \ rdx and r8-r11.
 : EDGE-SEEN, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: turn:label hit:label out:label :}
-   X64ASM:R8 ARENA,
-   X64ASM:RCX X64ASM:R8 PROF-ABI:ARN-CALL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
-   X64ASM:RDX X64ASM:R8 PROF-ABI:ARN-INCL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
-   X64ASM:R9 B-REC PROF-ABI:PROF-REC-BITS lshift A-REC or 1+ IMM,
-   X64ASM:R10 ZERO-REG,
-   turn X64CODE:LBL,
-      X64ASM:RCX X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-AE out X64CODE:JCC,
-      X64ASM:R9 X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-CMP-RM  X64ASM:C-E hit X64CODE:JCC,
-      X64ASM:RCX PROF-ABI:PROF-CALL-ENT ADDI,  turn X64CODE:JMP,
-   hit X64CODE:LBL,  X64ASM:R10 X64ASM:RCX CELL X64ASM:MEM-OFF LOAD,
-   out X64CODE:LBL,
-   X64ASM:R10 TEST,  X64ASM:C-E POISON-IF,
-   X64ASM:R10 X64ASM:R8 PROF-ABI:ARN-IDX PROF-ABI:PROF-ENT + PROF-ABI:ENT-INCL + X64ASM:MEM-OFF LOAD,
-   X64ASM:R10 TEST,  X64ASM:C-E POISON-IF, ;
+   LBL LBL LBL {: turn:label hit:label out:label :}
+   R8 ARENA,
+   RCX R8 ARN-CALL MEM-OFF ASM-SINK ENC-LEA
+   RDX R8 ARN-INCL MEM-OFF ASM-SINK ENC-LEA
+   R9 B-REC PROF-REC-BITS lshift A-REC or 1+ IMM,
+   R10 ZERO-REG,
+   turn LBL,
+      RCX RDX ASM-SINK ENC-CMP-RR  C-AE out JCC,
+      R9 RCX MEM-AT ASM-SINK ENC-CMP-RM  C-E hit JCC,
+      RCX PROF-CALL-ENT ADDI,  turn JMP,
+   hit LBL,  R10 RCX CELL MEM-OFF LOAD,
+   out LBL,
+   R10 TEST,  C-E POISON-IF,
+   R10 R8 ARN-IDX PROF-ENT + ENT-INCL + MEM-OFF LOAD,
+   R10 TEST,  C-E POISON-IF, ;
 
 \ prof-pc>rec names B for B's first byte and nothing for A's end, the gap,
 \ and the edge (B, A) and B's inclusive count are nonzero.
 : PC-CHECK, ( label label -- ) {: b:label gap:label :}
    b 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW
    gap 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW
-   X64ASM:RCX X64ASM:R64>N X64RT:G-POP  X64ASM:RAX X64ASM:R64>N X64RT:G-POP
-   X64ASM:RCX -1 KEEP-IF-EQ,
+   RCX R64>N G-POP  RAX R64>N G-POP
+   RCX -1 KEEP-IF-EQ,
    EDGE-SEEN,
-   0 X64RT:G-PUSH  B-REC WANT ;
+   0 G-PUSH  B-REC WANT ;
 
 \ After prof-reset, every count the spins moved reads 0: the band's cells, B's
 \ counter, the arena's counts, A's inclusive count, and every cell of the edge
 \ table, the inclusive array and the stamps, which lie back to back.
 : RESET-CHECK, ( -- )
-   X64CODE:LBL {: next:label :}
-   X64ASM:RAX ZERO-REG,
-   X64ASM:R8 BAND IMM,
-   X64ASM:RAX X64ASM:R8 PROF-ABI:PROF-TOT X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-OR-RM
-   X64ASM:RAX X64ASM:R8 PROF-ABI:PROF-OTHER X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-OR-RM
-   X64ASM:RAX X64ASM:R8 PROF-ABI:PROF-FOREIGN X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-OR-RM
-   X64ASM:RAX X64ASM:R8 PROF-STATE-BYTES B-REC CELL * + X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-OR-RM
-   X64ASM:R8 ARENA,
-   X64ASM:RAX X64ASM:R8 PROF-ABI:ARN-DEFER X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-OR-RM
-   X64ASM:RAX X64ASM:R8 PROF-ABI:ARN-FRAMES X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-OR-RM
-   X64ASM:RAX X64ASM:R8 PROF-ABI:ARN-IDX PROF-ABI:ENT-INCL + X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-OR-RM
-   X64ASM:RCX X64ASM:R8 PROF-ABI:ARN-CALL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
-   X64ASM:RDX X64ASM:R8 PROF-ABI:ARN-DEF X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
-   next X64CODE:LBL,
-      X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-OR-RM
-      X64ASM:RCX CELL ADDI,  X64ASM:RCX X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-B next X64CODE:JCC,
-   0 X64RT:G-PUSH  0 WANT ;
+   LBL {: next:label :}
+   RAX ZERO-REG,
+   R8 BAND IMM,
+   RAX R8 PROF-TOT MEM-OFF ASM-SINK ENC-OR-RM
+   RAX R8 PROF-OTHER MEM-OFF ASM-SINK ENC-OR-RM
+   RAX R8 PROF-FOREIGN MEM-OFF ASM-SINK ENC-OR-RM
+   RAX R8 PROF-STATE-BYTES B-REC CELL * + MEM-OFF ASM-SINK ENC-OR-RM
+   R8 ARENA,
+   RAX R8 ARN-DEFER MEM-OFF ASM-SINK ENC-OR-RM
+   RAX R8 ARN-FRAMES MEM-OFF ASM-SINK ENC-OR-RM
+   RAX R8 ARN-IDX ENT-INCL + MEM-OFF ASM-SINK ENC-OR-RM
+   RCX R8 ARN-CALL MEM-OFF ASM-SINK ENC-LEA
+   RDX R8 ARN-DEF MEM-OFF ASM-SINK ENC-LEA
+   next LBL,
+      RAX RCX MEM-AT ASM-SINK ENC-OR-RM
+      RCX CELL ADDI,  RCX RDX ASM-SINK ENC-CMP-RR  C-B next JCC,
+   0 G-PUSH  0 WANT ;
 
 \ getitimer(ITIMER_REAL) into the itimerval at rsp.
 : TIMER?, ( -- )
-   X64ASM:RDI ITIMER-REAL X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI32
-   X64ASM:RSI X64ASM:RSP COPY,
+   RDI ITIMER-REAL >IMM32 ASM-SINK ENC-MOV-RI32
+   RSI RSP COPY,
    NR-GETITIMER SYS, ;
 
 \ prof-on after prof-rate RATE: the timer's interval is RATE us and no
 \ seconds; prof-off: every field of the timer reads 0.
 : ARMED-CHECK, ( -- )
    0 N,  s" prof-on" ROW
-   X64ASM:RSP ITIMER-BYTES SUBI,
+   RSP ITIMER-BYTES SUBI,
    TIMER?,
-   X64ASM:RAX X64ASM:RSP IT-USEC X64ASM:MEM-OFF LOAD,
-   X64ASM:RCX X64ASM:RSP X64ASM:MEM-AT LOAD,  X64ASM:RCX 0 KEEP-IF-EQ,
-   0 X64RT:G-PUSH
+   RAX RSP IT-USEC MEM-OFF LOAD,
+   RCX RSP MEM-AT LOAD,  RCX 0 KEEP-IF-EQ,
+   0 G-PUSH
    s" prof-off" ROW
    TIMER?,
-   X64ASM:RDX X64ASM:RSP X64ASM:MEM-AT LOAD,
-   ITIMER-BYTES CELL ?do  X64ASM:RDX X64ASM:RSP i X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-OR-RM  CELL +loop
-   X64ASM:RAX X64ASM:R64>N X64RT:G-POP  X64ASM:RDX 0 KEEP-IF-EQ,
-   X64ASM:RSP ITIMER-BYTES ADDI,
-   0 X64RT:G-PUSH  RATE WANT ;
+   RDX RSP MEM-AT LOAD,
+   ITIMER-BYTES CELL ?do  RDX RSP i MEM-OFF ASM-SINK ENC-OR-RM  CELL +loop
+   RAX R64>N G-POP  RDX 0 KEEP-IF-EQ,
+   RSP ITIMER-BYTES ADDI,
+   0 G-PUSH  RATE WANT ;
 
 : RATE-CHECK, ( -- )  RATE N,  s" prof-rate" ROW  ARMED-CHECK, ;
 
@@ -377,7 +382,7 @@ A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
 \ registers intact; the spin below A runs GUARD-GAP bytes under the stack's
 \ upper guard.
 : SAMPLES-CASE ( -- )
-   [: X64ASM:R8 BAND IMM,  PROF-ABI:PROF-OTHER WAIT-MOVE, ;] X64HARNESS:ROUTINE, {: low:label :}
+   [: R8 BAND IMM,  PROF-OTHER WAIT-MOVE, ;] X64HARNESS:ROUTINE, {: low:label :}
    RECORDS, {: a:label a-end:label b:label b-end:label :}
    HIGH, {: high:label high-end:label :}
    [: FOREIGN-SPIN, ;] X64HARNESS:ROUTINE, {: foreign:label :}
@@ -386,8 +391,8 @@ A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
    0 N,  s" prof-on" ROW
    a GUARD-GAP CELL + STACK-CALL,  1 WANT
    low STACK-ABI:LOOP-BYTES GUARD-GAP - STACK-CALL,  1 WANT
-   high high-end REGION-CALL,  0 X64RT:G-PUSH  1 WANT
-   foreign X64CODE:CALL,  0 X64RT:G-PUSH  1 WANT
+   high high-end REGION-CALL,  0 G-PUSH  1 WANT
+   foreign CALL,  0 G-PUSH  1 WANT
    s" prof-off" ROW
    IDENTITY,
    b a-end PC-CHECK,
@@ -398,12 +403,12 @@ A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
 \ for mmap, prof-on can only succeed by using the thread's runtime altstack.
 : SHARED-STACK-CASE ( -- )
    RATE N,  s" prof-rate" ROW
-   X64ASM:RSP 2 CELL * SUBI,
-   X64ASM:RAX ZERO-REG,  X64ASM:RAX X64ASM:RSP X64ASM:MEM-AT STORE,  X64ASM:RAX X64ASM:RSP CELL X64ASM:MEM-OFF STORE,
-   X64ASM:RDI RLIMIT-AS X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI32
-   X64ASM:RSI X64ASM:RSP COPY,
+   RSP 2 CELL * SUBI,
+   RAX ZERO-REG,  RAX RSP MEM-AT STORE,  RAX RSP CELL MEM-OFF STORE,
+   RDI RLIMIT-AS >IMM32 ASM-SINK ENC-MOV-RI32
+   RSI RSP COPY,
    NR-SETRLIMIT SYS,
-   X64ASM:RSP 2 CELL * ADDI,
+   RSP 2 CELL * ADDI,
    0 N,  s" prof-on" ROW
    s" prof-off" ROW ;
 
@@ -440,31 +445,31 @@ variable GOT-N
    [: B-IX prof-row ;] 2 CAPTURE ;
 
 \ ---- the report and limit cases --------------------------------------------------
-: NDICT-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-NDICT X64ASM:>R64 ;
-: DBASE-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-DBASE X64ASM:>R64 ;
+: NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
+: DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
 
 \ ( x -- ) into the scratch cell at an offset, and ( -- x ) back out of it.
-: KEEP, ( n -- ) AT,  1 X64RT:G-POP  0 X64RT:G-POP  X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT STORE, ;
-: RECALL, ( n -- ) AT,  0 X64RT:G-POP  X64ASM:RAX X64ASM:RAX X64ASM:MEM-AT LOAD,  0 X64RT:G-PUSH ;
+: KEEP, ( n -- ) AT,  1 G-POP  0 G-POP  RAX RCX MEM-AT STORE, ;
+: RECALL, ( n -- ) AT,  0 G-POP  RAX RAX MEM-AT LOAD,  0 G-PUSH ;
 
 : RECORD-CELL!, ( n n n -- ) {: v:n ix:n off:n :}
-   X64ASM:RAX v IMM,
-   X64ASM:RCX DBASE-REG ix DREC * off + X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
-   X64ASM:RCX X64KERNEL:WRITE-ALIAS,
-   X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT STORE, ;
+   RAX v IMM,
+   RCX DBASE-REG ix DREC * off + MEM-OFF ASM-SINK ENC-LEA
+   RCX X64KERNEL:WRITE-ALIAS,
+   RAX RCX MEM-AT STORE, ;
 
 \ A, B and C behind a jump, each span its first label to its second, in the
 \ host's start order: A and C each a `call B` alone, whose return address is
 \ its end, and B a `ret`. Nothing runs them; state S names their addresses.
 : SPANS, ( -- label label label label label label )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: a:label a-end:label b:label b-end:label :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: c:label c-end:label past:label :}
-   past X64CODE:JMP,
-   a X64CODE:LBL,  b X64CODE:CALL,  a-end X64CODE:LBL,
-   b X64CODE:LBL,  X64CODE:ASM-SINK X64ASM:ENC-RET  b-end X64CODE:LBL,
-   c X64CODE:LBL,  b X64CODE:CALL,  c-end X64CODE:LBL,
-   past X64CODE:LBL,
+   LBL LBL LBL LBL {: a:label a-end:label b:label b-end:label :}
+   LBL LBL LBL {: c:label c-end:label past:label :}
+   past JMP,
+   a LBL,  b CALL,  a-end LBL,
+   b LBL,  ASM-SINK ENC-RET  b-end LBL,
+   c LBL,  b CALL,  c-end LBL,
+   past LBL,
    a a-end b b-end c c-end ;
 
 \ The records at the host's indices: A, B, the package row with the host's
@@ -476,46 +481,46 @@ variable GOT-N
    NDICT-REG Q-IX IMM,  s" X64K-PROF-Q" WL:NAMESPACE 0 X64HARNESS:RECORD,
    Q-PUBLIC Q-IX 0 RECORD-CELL!,  Q-PRIVATE Q-IX CELL RECORD-CELL!,
    NDICT-REG C-IX IMM,  s" CALLER-WITH-A-LONG-NAME" c c-end X64HARNESS:CODE-RECORD,
-   C-WID C-IX PROF-ABI:DICT-WL-OFF RECORD-CELL!,
+   C-WID C-IX DICT-WL-OFF RECORD-CELL!,
    NDICT-REG TOP-IX IMM, ;
 
 \ Store n, or a label's address, into the cell at an offset past r8.
-: R8-N!, ( n n -- ) {: v:n off:n :}  X64ASM:RAX v IMM,  X64ASM:RAX X64ASM:R8 off X64ASM:MEM-OFF STORE, ;
-: R8-LABEL!, ( label n -- ) {: at:label off:n :}  X64ASM:RAX at X64CODE:MOVABS,  X64ASM:RAX X64ASM:R8 off X64ASM:MEM-OFF STORE, ;
+: R8-N!, ( n n -- ) {: v:n off:n :}  RAX v IMM,  RAX R8 off MEM-OFF STORE, ;
+: R8-LABEL!, ( label n -- ) {: at:label off:n :}  RAX at MOVABS,  RAX R8 off MEM-OFF STORE, ;
 
 \ Deferred slot i's offset in the arena: its pc, then the cell kept beside it,
 \ then its weight.
-: SLOT ( n -- n ) PROF-ABI:PROF-DEFER-ENT * PROF-ABI:ARN-DEF + ;
+: SLOT ( n -- n ) PROF-DEFER-ENT * ARN-DEF + ;
 
 \ State S in the image's band and arena. The cells kept beside B's pc are A's
 \ and C's return addresses, which the replay searches one byte back. A's
 \ entry is the index's first: its span is the lowest the image seeds.
 : IMAGE-STATE, ( label label label label -- )
    {: b:label a-end:label c:label c-end:label :}
-   X64ASM:R8 BAND IMM,
-   S-TOT PROF-ABI:PROF-TOT R8-N!,  S-OTHER PROF-ABI:PROF-OTHER R8-N!,  S-FOREIGN PROF-ABI:PROF-FOREIGN R8-N!,
-   X64ASM:R8 ARENA,
-   S-SPILL PROF-ABI:ARN-SPILL R8-N!,  S-FRAMES PROF-ABI:ARN-FRAMES R8-N!,  S-DROP PROF-ABI:ARN-DROP R8-N!,
-   S-FCALLED PROF-ABI:ARN-FCALLED R8-N!,
-   S-A-ARRAY  PROF-ABI:ARN-INCL A-IX CELL * +  R8-N!,
-   S-A-ENTRY  PROF-ABI:ARN-IDX PROF-ABI:ENT-INCL +  R8-N!,
-   c PROF-ABI:ARN-HI R8-LABEL!,
+   R8 BAND IMM,
+   S-TOT PROF-TOT R8-N!,  S-OTHER PROF-OTHER R8-N!,  S-FOREIGN PROF-FOREIGN R8-N!,
+   R8 ARENA,
+   S-SPILL ARN-SPILL R8-N!,  S-FRAMES ARN-FRAMES R8-N!,  S-DROP ARN-DROP R8-N!,
+   S-FCALLED ARN-FCALLED R8-N!,
+   S-A-ARRAY  ARN-INCL A-IX CELL * +  R8-N!,
+   S-A-ENTRY  ARN-IDX ENT-INCL +  R8-N!,
+   c ARN-HI R8-LABEL!,
    FROM-A 0 ?do  b i SLOT R8-LABEL!,  a-end i SLOT CELL + R8-LABEL!,  loop
    NONE-AT FROM-A ?do  b i SLOT R8-LABEL!,  c-end i SLOT CELL + R8-LABEL!,  loop
    b NONE-AT SLOT R8-LABEL!,  0 NONE-AT SLOT CELL + R8-N!,
    1 PC1-AT SLOT R8-N!,  0 PC1-AT SLOT CELL + R8-N!,
-   DEFERRED 0 ?do  i S-WEIGHT  i SLOT PROF-ABI:PROF-SLOT-WEIGHT +  R8-N!,  loop
-   DEFERRED PROF-ABI:ARN-DEFER R8-N!, ;
+   DEFERRED 0 ?do  i S-WEIGHT  i SLOT PROF-SLOT-WEIGHT +  R8-N!,  loop
+   DEFERRED ARN-DEFER R8-N!, ;
 
 \ Run the rows the quotation calls with fd 1 on a fresh pipe, put fd 1 back
 \ from SAVED, which closes the pipe's last write end, and push the two reads
 \ of the pipe into GOT: all the rows wrote, then EOF's 0.
 : PIPED, ( [ -- ] -- )
-   s" pipe" ROW  0 X64RT:G-POP  WFD KEEP,  RFD KEEP,
-   WFD RECALL,  FD:STDOUT FD>N N,  s" dup2" ROW  0 X64RT:G-POP
+   s" pipe" ROW  0 G-POP  WFD KEEP,  RFD KEEP,
+   WFD RECALL,  FD:STDOUT FD>N N,  s" dup2" ROW  0 G-POP
    WFD RECALL,  s" close" ROW
    execute
-   SAVED RECALL,  FD:STDOUT FD>N N,  s" dup2" ROW  0 X64RT:G-POP
+   SAVED RECALL,  FD:STDOUT FD>N N,  s" dup2" ROW  0 G-POP
    RFD RECALL,  GOT AT,  TEXT-CAP N,  s" read" ROW
    RFD RECALL,  GOT AT,  TEXT-CAP N,  s" read" ROW
    RFD RECALL,  s" close" ROW ;
@@ -523,15 +528,15 @@ variable GOT-N
 \ rax |= each of r9 bytes at rsi XORed with the one at rdi. It clobbers rcx
 \ rdx rsi rdi r9.
 : XOR-BYTES, ( -- )
-   X64CODE:LBL X64CODE:LBL {: turn:label done:label :}
-   turn X64CODE:LBL,
-      X64ASM:R9 TEST,  X64ASM:C-E done X64CODE:JCC,
-      X64ASM:RCX X64ASM:RSI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
-      X64ASM:RDX X64ASM:RDI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
-      X64ASM:RCX X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-XOR-RR  X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-OR-RR
-      X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-INC  X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-INC  X64ASM:R9 X64CODE:ASM-SINK X64ASM:ENC-DEC
-      turn X64CODE:JMP,
-   done X64CODE:LBL, ;
+   LBL LBL {: turn:label done:label :}
+   turn LBL,
+      R9 TEST,  C-E done JCC,
+      RCX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+      RDX RDI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+      RCX RDX ASM-SINK ENC-XOR-RR  RAX RCX ASM-SINK ENC-OR-RR
+      RSI ASM-SINK ENC-INC  RDI ASM-SINK ENC-INC  R9 ASM-SINK ENC-DEC
+      turn JMP,
+   done LBL, ;
 
 \ Check the two reads PIPED, pushed against capture k: the OR of the first
 \ count XORed with k's length, the second count and every byte XORed with
@@ -539,61 +544,61 @@ variable GOT-N
 : SAME, ( n -- ) {: k:n :}
    k TEXT X64HARNESS:PUSH-TEXT,
    GOT AT,
-   X64ASM:RSI X64ASM:R64>N X64RT:G-POP  X64ASM:R9 X64ASM:R64>N X64RT:G-POP  X64ASM:RDI X64ASM:R64>N X64RT:G-POP
-   X64ASM:RDX X64ASM:R64>N X64RT:G-POP  X64ASM:RAX X64ASM:R64>N X64RT:G-POP
-   X64ASM:RAX X64ASM:R9 X64CODE:ASM-SINK X64ASM:ENC-XOR-RR  X64ASM:RAX X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-OR-RR
+   RSI R64>N G-POP  R9 R64>N G-POP  RDI R64>N G-POP
+   RDX R64>N G-POP  RAX R64>N G-POP
+   RAX R9 ASM-SINK ENC-XOR-RR  RAX RDX ASM-SINK ENC-OR-RR
    XOR-BYTES,
-   0 X64RT:G-PUSH  0 WANT ;
+   0 G-PUSH  0 WANT ;
 
 \ Capture an image's report for the checks below, retaining the first read's
 \ length. PIPED, has restored fd 1 and closed the pipe's write end.
 : REPORT-TEXT, ( [ -- ] -- )
-   PIPED,  0 X64RT:G-POP  CAP-LEN KEEP, ;
+   PIPED,  0 G-POP  CAP-LEN KEEP, ;
 
 \ Check whether the latest captured report contains these bytes. This names
 \ a failed check with the sought text instead of spending a numbered status.
 : HAS, ( str bool -- )
    {: s:str present:bool :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: next:label byte:label miss:label found:label done:label :}
+   LBL LBL LBL LBL LBL {: next:label byte:label miss:label found:label done:label :}
    s X64HARNESS:PUSH-TEXT,
-   X64ASM:R9 X64ASM:R64>N X64RT:G-POP  X64ASM:RDI X64ASM:R64>N X64RT:G-POP
-   GOT AT,  X64ASM:RSI X64ASM:R64>N X64RT:G-POP
-   CAP-LEN RECALL,  X64ASM:RDX X64ASM:R64>N X64RT:G-POP  X64ASM:RDX X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-ADD-RR
-   X64ASM:RAX ZERO-REG,
-   next X64CODE:LBL,
-      X64ASM:RCX X64ASM:RSI X64ASM:R9 1 0 X64ASM:MEM-IDX X64CODE:ASM-SINK X64ASM:ENC-LEA
-      X64ASM:RCX X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-A done X64CODE:JCC,
-      X64ASM:R8 ZERO-REG,
-      byte X64CODE:LBL,
-         X64ASM:R8 X64ASM:R9 X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-AE found X64CODE:JCC,
-         X64ASM:RCX X64ASM:RSI X64ASM:R8 1 0 X64ASM:MEM-IDX X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
-         X64ASM:R10 X64ASM:RDI X64ASM:R8 1 0 X64ASM:MEM-IDX X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
-         X64ASM:RCX X64ASM:R10 X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-NE miss X64CODE:JCC,
-         X64ASM:R8 X64CODE:ASM-SINK X64ASM:ENC-INC  byte X64CODE:JMP,
-      miss X64CODE:LBL,  X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-INC  next X64CODE:JMP,
-   found X64CODE:LBL,  X64ASM:RAX 1 IMM,
-   done X64CODE:LBL,
-   X64ASM:RCX present if 1 else 0 then IMM,
+   R9 R64>N G-POP  RDI R64>N G-POP
+   GOT AT,  RSI R64>N G-POP
+   CAP-LEN RECALL,  RDX R64>N G-POP  RDX RSI ASM-SINK ENC-ADD-RR
+   RAX ZERO-REG,
+   next LBL,
+      RCX RSI R9 1 0 MEM-IDX ASM-SINK ENC-LEA
+      RCX RDX ASM-SINK ENC-CMP-RR  C-A done JCC,
+      R8 ZERO-REG,
+      byte LBL,
+         R8 R9 ASM-SINK ENC-CMP-RR  C-AE found JCC,
+         RCX RSI R8 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+         R10 RDI R8 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+         RCX R10 ASM-SINK ENC-CMP-RR  C-NE miss JCC,
+         R8 ASM-SINK ENC-INC  byte JMP,
+      miss LBL,  RSI ASM-SINK ENC-INC  next JMP,
+   found LBL,  RAX 1 IMM,
+   done LBL,
+   RCX present if 1 else 0 then IMM,
    s X64HARNESS:CHECK-RCX, ;
 
 \ ---- dictionary retirement and ordinal reuse -------------------------------------
 \ A cold record's span behind a jump.
 : COLD-SPAN, ( -- label label )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: start:label end:label past:label :}
-   past X64CODE:JMP,
-   start X64CODE:LBL,  X64CODE:ASM-SINK X64ASM:ENC-RET  end X64CODE:LBL,
-   past X64CODE:LBL,
+   LBL LBL LBL {: start:label end:label past:label :}
+   past JMP,
+   start LBL,  ASM-SINK ENC-RET  end LBL,
+   past LBL,
    start end ;
 
 \ The donor waits for its own stable counter to move. Both cases put it
 \ at ordinal 1 before prof-on gives that ordinal its initial identity.
 : DONOR-SPAN, ( -- label label )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: start:label end:label past:label :}
-   past X64CODE:JMP,
-   start X64CODE:LBL,
-   X64ASM:R8 COUNTERS CELL + IMM,  0 WAIT-MOVE,
-   X64CODE:ASM-SINK X64ASM:ENC-RET  end X64CODE:LBL,
-   past X64CODE:LBL,
+   LBL LBL LBL {: start:label end:label past:label :}
+   past JMP,
+   start LBL,
+   R8 COUNTERS CELL + IMM,  0 WAIT-MOVE,
+   ASM-SINK ENC-RET  end LBL,
+   past LBL,
    start end ;
 
 \ An ordinary count trim is HIDE's boundary. Reuse its ordinal before any report
@@ -609,7 +614,7 @@ variable GOT-N
    s" prof-hidden-donor" donor donor-end X64HARNESS:CODE-RECORD,
    FD:STDOUT FD>N N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
    0 N,  s" prof-on" ROW
-   donor X64CODE:CALL,  0 X64RT:G-PUSH  1 WANT
+   donor CALL,  0 G-PUSH  1 WANT
    s" prof-off" ROW
    1 N,  s" ndict!" ROW
    s" prof-reused-target" target target-end X64HARNESS:CODE-RECORD,
@@ -640,9 +645,9 @@ variable GOT-N
    s" prof-retired-donor" donor donor-end X64HARNESS:CODE-RECORD,
    FD:STDOUT FD>N N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
    0 N,  s" prof-on" ROW
-   donor X64CODE:CALL,  0 X64RT:G-PUSH  1 WANT
+   donor CALL,  0 G-PUSH  1 WANT
    s" prof-off" ROW
-   WL:RETIRED 1 PROF-ABI:DICT-WL-OFF RECORD-CELL!,
+   WL:RETIRED 1 DICT-WL-OFF RECORD-CELL!,
    [: s" prof-json" ROW ;] REPORT-TEXT,
    s\" ,\"indexed\":2," true HAS,
    s\" {\"word\":\"prof-retired-donor\",\"excl\":" true HAS,
@@ -653,22 +658,22 @@ variable GOT-N
 \ PROF-FOREIGN moves, so a tick reaches the limit on a foreign sample, which
 \ must return; PROF-LIM 0 again before rbp comes back.
 : FOREIGN-LIMIT, ( -- )
-   X64ASM:R10 DATA-REG COPY,  DATA-REG ZERO-REG,
-   X64ASM:R8 BAND IMM,
-   X64ASM:R9 1 IMM,  X64ASM:R9 X64ASM:R8 PROF-ABI:PROF-LIM X64ASM:MEM-OFF STORE,
-   PROF-ABI:PROF-FOREIGN WAIT-MOVE,
-   X64ASM:R9 ZERO-REG,  X64ASM:R9 X64ASM:R8 PROF-ABI:PROF-LIM X64ASM:MEM-OFF STORE,
-   DATA-REG X64ASM:R10 COPY, ;
+   R10 DATA-REG COPY,  DATA-REG ZERO-REG,
+   R8 BAND IMM,
+   R9 1 IMM,  R9 R8 PROF-LIM MEM-OFF STORE,
+   PROF-FOREIGN WAIT-MOVE,
+   R9 ZERO-REG,  R9 R8 PROF-LIM MEM-OFF STORE,
+   DATA-REG R10 COPY, ;
 
 \ After a report while armed, the timer's interval is prof-on's default and
 \ no seconds.
 : RESUMED, ( -- )
-   X64ASM:RSP ITIMER-BYTES SUBI,
+   RSP ITIMER-BYTES SUBI,
    TIMER?,
-   X64ASM:RAX X64ASM:RSP IT-USEC X64ASM:MEM-OFF LOAD,
-   X64ASM:RCX X64ASM:RSP X64ASM:MEM-AT LOAD,  X64ASM:RCX 0 KEEP-IF-EQ,
-   X64ASM:RSP ITIMER-BYTES ADDI,
-   0 X64RT:G-PUSH  DEFAULT-RATE WANT ;
+   RAX RSP IT-USEC MEM-OFF LOAD,
+   RCX RSP MEM-AT LOAD,  RCX 0 KEEP-IF-EQ,
+   RSP ITIMER-BYTES ADDI,
+   0 G-PUSH  DEFAULT-RATE WANT ;
 
 \ State S's fields in the columns the host's reports print. (B, A) and (B, C)
 \ tie at 3, and each prints a caller line.
@@ -719,8 +724,8 @@ variable GOT-N
    b a-end c c-end IMAGE-STATE,
    S-REPORT,  S-ROW,  S-JSON,
    0 N,  s" prof-on" ROW
-   FOREIGN-LIMIT,  0 X64RT:G-PUSH  1 WANT
-   [: s" prof-report" ROW ;] PIPED,  0 X64RT:G-POP  0 X64RT:G-POP
+   FOREIGN-LIMIT,  0 G-PUSH  1 WANT
+   [: s" prof-report" ROW ;] PIPED,  0 G-POP  0 G-POP
    RESUMED,
    s" prof-off" ROW ;
 
@@ -729,58 +734,58 @@ variable GOT-N
 \ the limit dumps and exits 99; a spin that outlasts the bound exits 0. The
 \ parent goes on with the pid.
 : LIMIT-CHILD, ( -- )
-   X64CODE:LBL X64CODE:LBL {: turn:label parent:label :}
-   0 X64RT:G-POP  X64ASM:RAX TEST,  X64ASM:C-NE parent X64CODE:JCC,
-   WFD RECALL,  FD:STDOUT FD>N N,  s" dup2" ROW  0 X64RT:G-POP
+   LBL LBL {: turn:label parent:label :}
+   0 G-POP  RAX TEST,  C-NE parent JCC,
+   WFD RECALL,  FD:STDOUT FD>N N,  s" dup2" ROW  0 G-POP
    LIMIT-SAMPLES N,  s" prof-on" ROW
-   X64ASM:RCX SPIN-BOUND IMM,
-   turn X64CODE:LBL,  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DEC  X64ASM:C-NE turn X64CODE:JCC,
-   X64ASM:RDI ZERO-REG,  NR-EXIT-GROUP SYS,
-   parent X64CODE:LBL,
-   0 X64RT:G-PUSH ;
+   RCX SPIN-BOUND IMM,
+   turn LBL,  RCX ASM-SINK ENC-DEC  C-NE turn JCC,
+   RDI ZERO-REG,  NR-EXIT-GROUP SYS,
+   parent LBL,
+   0 G-PUSH ;
 
 \ Check the count read into GOT and its bytes: 0 when GOT starts with the
 \ text, which the count must reach.
 : STARTS, ( str -- ) {: s:str :}
-   X64CODE:LBL {: enough:label :}
+   LBL {: enough:label :}
    s X64HARNESS:PUSH-TEXT,
    GOT AT,
-   X64ASM:RSI X64ASM:R64>N X64RT:G-POP  X64ASM:R9 X64ASM:R64>N X64RT:G-POP  X64ASM:RDI X64ASM:R64>N X64RT:G-POP  X64ASM:RDX X64ASM:R64>N X64RT:G-POP
-   X64ASM:RAX ZERO-REG,
-   X64ASM:RDX X64ASM:R9 X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-GE enough X64CODE:JCC,  X64ASM:RAX 1 IMM,
-   enough X64CODE:LBL,
+   RSI R64>N G-POP  R9 R64>N G-POP  RDI R64>N G-POP  RDX R64>N G-POP
+   RAX ZERO-REG,
+   RDX R9 ASM-SINK ENC-CMP-RR  C-GE enough JCC,  RAX 1 IMM,
+   enough LBL,
    XOR-BYTES,
-   0 X64RT:G-PUSH  0 WANT ;
+   0 G-PUSH  0 WANT ;
 
 \ Check the count read into GOT and its bytes: GOT starts with the head, the
 \ digits after it make a total at least n, and the tail follows them.
 : HEADER-TOTAL, ( str str n -- ) {: head:str tail:str least:n :}
-   X64CODE:LBL X64CODE:LBL {: digit:label parsed:label :}
+   LBL LBL {: digit:label parsed:label :}
    CAP-LEN KEEP,  CAP-LEN RECALL,  head STARTS,
    tail X64HARNESS:PUSH-TEXT,
-   X64ASM:R9 X64ASM:R64>N X64RT:G-POP  X64ASM:RDI X64ASM:R64>N X64RT:G-POP
-   GOT AT,  X64ASM:RSI X64ASM:R64>N X64RT:G-POP
-   CAP-LEN RECALL,  X64ASM:RDX X64ASM:R64>N X64RT:G-POP  X64ASM:RDX X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-ADD-RR     \ rdx = the end
-   X64ASM:RSI head STR:LEN ADDI,
-   X64ASM:R10 ZERO-REG,
-   digit X64CODE:LBL,
-      X64ASM:RSI X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-AE parsed X64CODE:JCC,
-      X64ASM:RCX X64ASM:RSI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
-      X64ASM:RCX [char] 0 SUBI,  X64ASM:RCX 9 X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI32  X64ASM:C-A parsed X64CODE:JCC,
-      X64ASM:R10 X64ASM:R10 10 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-IMUL-RRI8  X64ASM:R10 X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-ADD-RR
-      X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-INC  digit X64CODE:JMP,
-   parsed X64CODE:LBL,
-   X64ASM:RAX ZERO-REG,
-   X64ASM:R10 least X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI32  X64ASM:C-L POISON-IF,
-   X64ASM:RCX X64ASM:RSI X64ASM:R9 1 0 X64ASM:MEM-IDX X64CODE:ASM-SINK X64ASM:ENC-LEA
-   X64ASM:RCX X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-A POISON-IF,
+   R9 R64>N G-POP  RDI R64>N G-POP
+   GOT AT,  RSI R64>N G-POP
+   CAP-LEN RECALL,  RDX R64>N G-POP  RDX RSI ASM-SINK ENC-ADD-RR     \ rdx = the end
+   RSI head STR:LEN ADDI,
+   R10 ZERO-REG,
+   digit LBL,
+      RSI RDX ASM-SINK ENC-CMP-RR  C-AE parsed JCC,
+      RCX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+      RCX [char] 0 SUBI,  RCX 9 >IMM32 ASM-SINK ENC-CMP-RI32  C-A parsed JCC,
+      R10 R10 10 >IMM8 ASM-SINK ENC-IMUL-RRI8  R10 RCX ASM-SINK ENC-ADD-RR
+      RSI ASM-SINK ENC-INC  digit JMP,
+   parsed LBL,
+   RAX ZERO-REG,
+   R10 least >IMM32 ASM-SINK ENC-CMP-RI32  C-L POISON-IF,
+   RCX RSI R9 1 0 MEM-IDX ASM-SINK ENC-LEA
+   RCX RDX ASM-SINK ENC-CMP-RR  C-A POISON-IF,
    XOR-BYTES,
-   0 X64RT:G-PUSH  0 WANT ;
+   0 G-PUSH  0 WANT ;
 
 \ The limit's report is the text one, from its first line: at least LIMIT-SAMPLES samples,
 \ since the sample that reaches the limit may count several intervals.
 : LIMIT-CASE ( -- )
-   s" pipe" ROW  0 X64RT:G-POP  WFD KEEP,  RFD KEEP,
+   s" pipe" ROW  0 G-POP  WFD KEEP,  RFD KEEP,
    s" fork" ROW  LIMIT-CHILD,
    WFD RECALL,  s" close" ROW
    s" wait-status" ROW  99 8 lshift WANT
@@ -791,20 +796,20 @@ variable GOT-N
 \ ---- the clock's bounds -----------------------------------------------------------
 \ ( n -- ): spin until n more nanoseconds have passed by mono-ns.
 : DELAY, ( -- )
-   X64CODE:LBL {: turn:label :}
+   LBL {: turn:label :}
    s" mono-ns" ROW
-   X64ASM:RCX X64ASM:R64>N X64RT:G-POP  X64ASM:RAX X64ASM:R64>N X64RT:G-POP  X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-ADD-RR  0 X64RT:G-PUSH
-   turn X64CODE:LBL,
+   RCX R64>N G-POP  RAX R64>N G-POP  RAX RCX ASM-SINK ENC-ADD-RR  0 G-PUSH
+   turn LBL,
       s" mono-ns" ROW
-      X64ASM:RCX X64ASM:R64>N X64RT:G-POP  X64ASM:RAX X64ASM:R64>N X64RT:G-POP  0 X64RT:G-PUSH
-      X64ASM:RCX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-L turn X64CODE:JCC,
-   0 X64RT:G-POP ;
+      RCX R64>N G-POP  RAX R64>N G-POP  0 G-PUSH
+      RCX RAX ASM-SINK ENC-CMP-RR  C-L turn JCC,
+   0 G-POP ;
 
 \ PROF-TOT is at least n.
 : TOTAL-AT-LEAST, ( n -- ) {: least:n :}
-   X64ASM:R8 BAND IMM,  X64ASM:RCX X64ASM:R8 PROF-ABI:PROF-TOT X64ASM:MEM-OFF LOAD,
-   X64ASM:RAX 1 IMM,  X64ASM:RCX least X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI32  X64ASM:C-L POISON-IF,
-   0 X64RT:G-PUSH  1 WANT ;
+   R8 BAND IMM,  RCX R8 PROF-TOT MEM-OFF LOAD,
+   RAX 1 IMM,  RCX least >IMM32 ASM-SINK ENC-CMP-RI32  C-L POISON-IF,
+   0 G-PUSH  1 WANT ;
 
 \ prof-rate SLOW-RATE, then prof-on: the timer's interval is one whole second
 \ and the rest in microseconds; then a phase of SLOW-PHASE-NS, timed by
@@ -812,12 +817,12 @@ variable GOT-N
 : SLOW-CASE ( -- )
    SLOW-RATE N,  s" prof-rate" ROW
    0 N,  s" prof-on" ROW
-   X64ASM:RSP ITIMER-BYTES SUBI,
+   RSP ITIMER-BYTES SUBI,
    TIMER?,
-   X64ASM:RAX X64ASM:RSP IT-USEC X64ASM:MEM-OFF LOAD,
-   X64ASM:RCX X64ASM:RSP X64ASM:MEM-AT LOAD,  X64ASM:RCX SLOW-RATE PROF-ABI:USEC-PER-SEC / KEEP-IF-EQ,
-   X64ASM:RSP ITIMER-BYTES ADDI,
-   0 X64RT:G-PUSH  SLOW-RATE PROF-ABI:USEC-PER-SEC mod WANT
+   RAX RSP IT-USEC MEM-OFF LOAD,
+   RCX RSP MEM-AT LOAD,  RCX SLOW-RATE USEC-PER-SEC / KEEP-IF-EQ,
+   RSP ITIMER-BYTES ADDI,
+   0 G-PUSH  SLOW-RATE USEC-PER-SEC mod WANT
    SLOW-PHASE-NS N,  DELAY,
    s" prof-off" ROW
    SLOW-TICKS TOTAL-AT-LEAST, ;
@@ -825,11 +830,11 @@ variable GOT-N
 \ rt_sigprocmask(how, {SIGALRM}, NULL, SIGSET-BYTES) on this thread, the set in
 \ a cell below rsp: rax = 0 when the mask took.
 : ALARM-MASK, ( n -- ) {: how:n :}
-   X64ASM:RSP CELL SUBI,
-   X64ASM:RAX 1 PROF-ABI:SIGALRM 1- lshift IMM,  X64ASM:RAX X64ASM:RSP X64ASM:MEM-AT STORE,
-   X64ASM:RDI how IMM,  X64ASM:RSI X64ASM:RSP COPY,  X64ASM:RDX ZERO-REG,  X64ASM:R10 SIGSET-BYTES IMM,
+   RSP CELL SUBI,
+   RAX 1 SIGALRM 1- lshift IMM,  RAX RSP MEM-AT STORE,
+   RDI how IMM,  RSI RSP COPY,  RDX ZERO-REG,  R10 SIGSET-BYTES IMM,
    NR-RT-SIGPROCMASK SYS,
-   X64ASM:RSP CELL ADDI, ;
+   RSP CELL ADDI, ;
 
 \ prof-on at DEFAULT-RATE, then SIGALRM blocked across a WAIT-NS spin by
 \ mono-ns: the one signal the wait leaves pending weighs every interval it
@@ -837,9 +842,9 @@ variable GOT-N
 : WEIGH-CASE ( -- )
    DEFAULT-RATE N,  s" prof-rate" ROW
    0 N,  s" prof-on" ROW
-   SIG-BLOCK ALARM-MASK,  0 X64RT:G-PUSH  0 WANT
+   SIG-BLOCK ALARM-MASK,  0 G-PUSH  0 WANT
    WAIT-NS N,  DELAY,
-   SIG-UNBLOCK ALARM-MASK,  0 X64RT:G-PUSH  0 WANT
+   SIG-UNBLOCK ALARM-MASK,  0 G-PUSH  0 WANT
    s" prof-off" ROW
    WAIT-TICKS TOTAL-AT-LEAST, ;
 
@@ -847,16 +852,16 @@ variable GOT-N
 \ shorter than the interval, and a prof-row into a pipe, which stops the clock:
 \ only the carry across the rows lets the spins reach CARRY-TICKS samples.
 : CARRY-CASE ( -- )
-   X64CODE:LBL {: turn:label :}
+   LBL {: turn:label :}
    FD:STDOUT FD>N N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
    DEFAULT-RATE N,  s" prof-rate" ROW
    0 N,  s" prof-on" ROW
    CARRY-ROUNDS N,  TURNS KEEP,
-   turn X64CODE:LBL,
+   turn LBL,
       CARRY-SPIN-NS N,  DELAY,
-      [: -1 N,  s" prof-row" ROW ;] PIPED,  0 X64RT:G-POP  0 X64RT:G-POP
-      TURNS AT,  X64ASM:RCX X64ASM:R64>N X64RT:G-POP  X64ASM:RDX X64ASM:RCX X64ASM:MEM-AT LOAD,  X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-DEC  X64ASM:RDX X64ASM:RCX X64ASM:MEM-AT STORE,
-      X64ASM:C-NE turn X64CODE:JCC,
+      [: -1 N,  s" prof-row" ROW ;] PIPED,  0 G-POP  0 G-POP
+      TURNS AT,  RCX R64>N G-POP  RDX RCX MEM-AT LOAD,  RDX ASM-SINK ENC-DEC  RDX RCX MEM-AT STORE,
+      C-NE turn JCC,
    s" prof-off" ROW
    CARRY-TICKS TOTAL-AT-LEAST, ;
 
@@ -872,26 +877,26 @@ variable GOT-N
 \ the counter the band clears last, so any tick in the band's clear lands
 \ between the two stores the race needs.
 : RESETS-CASE ( -- )
-   X64CODE:LBL X64CODE:LBL {: turn:label same:label :}
+   LBL LBL {: turn:label same:label :}
    NDICT-REG TOP-IX IMM,
    s" prof-reset-alias" s" prof-reset" X64KERNEL:ENTRY-LABEL s" prof-rate" X64KERNEL:ENTRY-LABEL
    X64HARNESS:CODE-RECORD,
    NDICT-REG TOP-IX 1+ IMM,
    FAST-RATE N,  s" prof-rate" ROW
    RESET-TURNS N,  TURNS KEEP,  0 N,  SKEWED KEEP,
-   turn X64CODE:LBL,
+   turn LBL,
       0 N,  s" prof-on" ROW
-      TURNS AT,  X64ASM:RAX X64ASM:R64>N X64RT:G-POP  X64ASM:RAX X64ASM:RAX X64ASM:MEM-AT LOAD,
-      X64ASM:RAX PHASES 1- X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-AND-RI8
-      X64ASM:RCX PHASE-STEP-NS IMM,  X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-IMUL-RR  0 X64RT:G-PUSH
+      TURNS AT,  RAX R64>N G-POP  RAX RAX MEM-AT LOAD,
+      RAX PHASES 1- >IMM8 ASM-SINK ENC-AND-RI8
+      RCX PHASE-STEP-NS IMM,  RAX RCX ASM-SINK ENC-IMUL-RR  0 G-PUSH
       DELAY,
       s" prof-reset" ROW  s" prof-off" ROW
       SKEW,
-      X64ASM:RAX TEST,  X64ASM:C-E same X64CODE:JCC,
-      SKEWED AT,  X64ASM:RCX X64ASM:R64>N X64RT:G-POP  X64ASM:RDX X64ASM:RCX X64ASM:MEM-AT LOAD,  X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-INC  X64ASM:RDX X64ASM:RCX X64ASM:MEM-AT STORE,
-      same X64CODE:LBL,
-      TURNS AT,  X64ASM:RCX X64ASM:R64>N X64RT:G-POP  X64ASM:RDX X64ASM:RCX X64ASM:MEM-AT LOAD,  X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-DEC  X64ASM:RDX X64ASM:RCX X64ASM:MEM-AT STORE,
-      X64ASM:C-NE turn X64CODE:JCC,
+      RAX TEST,  C-E same JCC,
+      SKEWED AT,  RCX R64>N G-POP  RDX RCX MEM-AT LOAD,  RDX ASM-SINK ENC-INC  RDX RCX MEM-AT STORE,
+      same LBL,
+      TURNS AT,  RCX R64>N G-POP  RDX RCX MEM-AT LOAD,  RDX ASM-SINK ENC-DEC  RDX RCX MEM-AT STORE,
+      C-NE turn JCC,
    SKEWED RECALL,  0 WANT ;
 
 \ prof-rate -1 with no handler.
@@ -904,7 +909,7 @@ variable GOT-N
 : RATE-CAUGHT-CASE ( -- )
    [: -1 N,  s" prof-rate" ROW ;] X64HARNESS:ROUTINE, {: rejected:label :}
    RATE N,  s" prof-rate" ROW
-   X64ASM:RAX rejected X64CODE:MOVABS,  0 X64RT:G-PUSH  s" catch" ROW
+   RAX rejected MOVABS,  0 G-PUSH  s" catch" ROW
    PROF-ABI:E-PROF-RATE WANT
    ARMED-CHECK, ;
 
@@ -913,7 +918,7 @@ variable GOT-N
 : ARM-REJECTED-CASE ( -- )
    EXIT-STATUS:SYSTEM X64HARNESS:EXPECT-EXIT
    RATE N,  s" prof-rate" ROW
-   X64ASM:R8 ARENA,  X64ASM:RAX -1 IMM,  X64ASM:RAX X64ASM:R8 PROF-ABI:ARN-USEC X64ASM:MEM-OFF STORE,
+   R8 ARENA,  RAX -1 IMM,  RAX R8 ARN-USEC MEM-OFF STORE,
    0 N,  s" prof-on" ROW ;
 
 \ An image: the case, then the stack checks every case ends with.
@@ -947,6 +952,11 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
+;using   \ LINUX-LAYOUT
+;using
+;using
+;using
+;using
 ;package
 
 X64K-PROF:RUN

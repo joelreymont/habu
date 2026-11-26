@@ -10,7 +10,9 @@ require src/lib/codegen.f
 require src/lib/ffi-abi.f
 require src/habu/verify-source.f
 
-\ The resident package definer of section 5, compiled by the engine.
+\ The resident package definer of section 5, compiled by the engine: its two
+\ spellings, qualified and bare under `using`, are what a source can name it by,
+\ and both reach one row.
 package CDD-RESP
 public
 : CDD-RP-D ( n -- ) create , does> ( -- ^n ) ;
@@ -119,7 +121,7 @@ package CERTIFY-DOES-DEFINER
    s" a mixed-case `DoEs>` opens the clause, as the engine reads it" T-LABEL
    s" C1U ( -- ^n ) CERTIFY-DOES-DEFINER:CDD-ONE-U" CDD-VERDICT ACCEPTED T= ;
 
-\ Section 2: a package definer and its straight-line wrapper.
+\ Section 2: a package definer, its straight-line wrapper and both spellings.
 \ A wrapper body whose tokens hold exactly one definer call and no control flow
 \ creates whatever that definer creates.
 : CDD-SECTION-WRAPPER ( -- ) [:
@@ -127,10 +129,14 @@ package CERTIFY-DOES-DEFINER
       VERIFY:SOURCE-BUF-IN-SCOPE
    s\" 8 CDDP:CDD-PD CDD-QUAL\n9 CDDP:CDD-PW CDD-WRAP\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
+   s\" using CDDP\n7 CDD-PW CDD-BARE\n;using\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
    s" the qualified definer's created word certifies" T-LABEL
    s" C6 ( -- ^n ) CDD-QUAL" CDD-VERDICT ACCEPTED T=
    s" the wrapper's created word certifies the same effect" T-LABEL
    s" C7 ( -- ^n ) CDD-WRAP" CDD-VERDICT ACCEPTED T=
+   s" a bare wrapper call under `using` records the same row" T-LABEL
+   s" C8 ( -- ^n ) CDD-BARE" CDD-VERDICT ACCEPTED T=
    s" the wrapper's created word is rejected against a bare cell" T-LABEL
    s" C9 ( -- n ) CDD-WRAP" CDD-VERDICT REJECTED T=
    ;] CHECK:SCOPED ;
@@ -197,8 +203,11 @@ package CERTIFY-DOES-DEFINER
    s" and is rejected against a bare cell" T-LABEL
    s" C16 ( -- n ) CERTIFY-DOES-DEFINER:CDD-RES-ONE" CDD-VERDICT REJECTED T=
    s\" package CERTIFY-DOES-DEFINER\npublic\n8 CDD-RESP:CDD-RP-D CDD-RP-QUAL\n;package\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s\" package CERTIFY-DOES-DEFINER\npublic\nusing CDD-RESP\n7 CDD-RP-D CDD-RP-BARE\n;using\n;package\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" the qualified spelling of a resident package definer certifies" T-LABEL
    s" C17 ( -- ^n ) CERTIFY-DOES-DEFINER:CDD-RP-QUAL" CDD-VERDICT ACCEPTED T=
+   s" the bare spelling under `using` names the same definer" T-LABEL
+   s" C18 ( -- ^n ) CERTIFY-DOES-DEFINER:CDD-RP-BARE" CDD-VERDICT ACCEPTED T=
    s\" package CERTIFY-DOES-DEFINER\npublic\n9 CDD-RESX:CDD-RP-D CDD-RP-EXPORTED\n;package\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" an exported definer creates what the definer creates" T-LABEL
    s" C24 ( -- ^n ) CERTIFY-DOES-DEFINER:CDD-RP-EXPORTED" CDD-VERDICT ACCEPTED T=

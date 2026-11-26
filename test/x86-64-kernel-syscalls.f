@@ -11,6 +11,9 @@ require src/arch/x86-64/icode.f
 require src/habu/spawn-abi.f
 
 package X64K-SYSCALLS
+using X64ASM
+using X64CODE
+using X64RT
 
 : BUILD ( bool str -- ) {: negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
@@ -73,7 +76,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 100 constant DUP-FD
 999 constant BAD-FD
 
-: DSP ( -- X64ASM:r64 ) ENGINE-GPR:X64-DSTACK X64ASM:>R64 ;
+: DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 
 : ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
@@ -81,49 +84,49 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
 
 \ Emitted stack words over the data stack, for what a row leaves.
-: DROP, ( -- ) DSP CELL X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SUB-RI8 ;
+: DROP, ( -- ) DSP CELL >IMM8 ASM-SINK ENC-SUB-RI8 ;
 
 : FETCH, ( -- )                         \ ( a -- x )
-   0 X64RT:G-POP  X64ASM:RAX X64ASM:RAX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-RM  0 X64RT:G-PUSH ;
+   0 G-POP  RAX RAX MEM-AT ASM-SINK ENC-MOV-RM  0 G-PUSH ;
 
 : STORE, ( -- )                         \ ( x a -- )
-   1 X64RT:G-POP  0 X64RT:G-POP  X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
+   1 G-POP  0 G-POP  RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 : SUB, ( -- )                           \ ( x y -- x-y )
-   1 X64RT:G-POP  0 X64RT:G-POP  X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-SUB-RR  0 X64RT:G-PUSH ;
+   1 G-POP  0 G-POP  RAX RCX ASM-SINK ENC-SUB-RR  0 G-PUSH ;
 
 : ADD, ( -- )                           \ ( x y -- x+y )
-   1 X64RT:G-POP  0 X64RT:G-POP  X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-ADD-RR  0 X64RT:G-PUSH ;
+   1 G-POP  0 G-POP  RAX RCX ASM-SINK ENC-ADD-RR  0 G-PUSH ;
 
 : MASK, ( n -- ) {: m:n :}              \ ( x -- x&m )
-   0 X64RT:G-POP  X64ASM:RAX m X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-AND-RI32  0 X64RT:G-PUSH ;
+   0 G-POP  RAX m >IMM32 ASM-SINK ENC-AND-RI32  0 G-PUSH ;
 
 \ ( x -- 1|0 ): 1 when lo <= x < hi, unsigned: x - lo below hi - lo.
 : IN-RANGE, ( n n -- ) {: lo:n hi:n :}
-   0 X64RT:G-POP
-   X64ASM:RCX lo X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64  X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-SUB-RR
-   X64ASM:RCX hi lo - X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64  X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR
-   X64ASM:C-B 0 X64ASM:>R8 X64CODE:ASM-SINK X64ASM:ENC-SETCC  X64ASM:RAX 0 X64ASM:>R8 X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RR
-   0 X64RT:G-PUSH ;
+   0 G-POP
+   RCX lo >IMM64 ASM-SINK ENC-MOV-RI64  RAX RCX ASM-SINK ENC-SUB-RR
+   RCX hi lo - >IMM64 ASM-SINK ENC-MOV-RI64  RAX RCX ASM-SINK ENC-CMP-RR
+   C-B 0 >R8 ASM-SINK ENC-SETCC  RAX 0 >R8 ASM-SINK ENC-MOVZX-8-RR
+   0 G-PUSH ;
 
 : KEEP, ( n -- ) AT, STORE, ;          \ ( x -- ) into a scratch cell
 : RECALL, ( n -- ) AT, FETCH, ;        \ ( -- x ) from one
 
 \ Push the address of a NUL-terminated copy of the string, behind a jump.
 : PATH, ( str -- ) {: s:str :}
-   X64CODE:LBL X64CODE:LBL {: text:label past:label :}
-   past X64CODE:JMP,
-   text X64CODE:LBL,
-   s X64CODE:ASM-SINK VEC:APPEND  0 X64CODE:ASM-SINK VEC:PUSH c!
-   past X64CODE:LBL,
-   X64ASM:RAX text X64CODE:MOVABS,  0 X64RT:G-PUSH ;
+   LBL LBL {: text:label past:label :}
+   past JMP,
+   text LBL,
+   s ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
+   past LBL,
+   RAX text MOVABS,  0 G-PUSH ;
 
 : DATA-AT, ( n -- ) {: off:n :}
-   X64ASM:RAX ENGINE-GPR:X64-RBASE X64ASM:>R64 off X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA  0 X64RT:G-PUSH ;
+   RAX ENGINE-GPR:X64-RBASE >R64 off MEM-OFF ASM-SINK ENC-LEA  0 G-PUSH ;
 
 \ Call a row with the machine stack a cell deeper than CALL-ROW, leaves it.
 : SHIFTED-ROW ( str -- )
-   X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-PUSH  ROW  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-POP ;
+   RAX ASM-SINK ENC-PUSH  ROW  RCX ASM-SINK ENC-POP ;
 
 : IO-CASE ( -- )
    s" hbk-io" PATH, O-NEW N, MODE-644 N, s" open" ROW  KEPT KEEP,
@@ -225,12 +228,12 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 \ emits, which ends the process through the die row with its own status before
 \ the image's trailing checks, so the parent's wait-status proves what it ran.
 : CHILD, ( [ -- ] -- )
-   X64CODE:LBL {: parent:label :}
-   X64ASM:RAX DSP CELL negate X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
-   X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-NE parent X64CODE:JCC,
+   LBL {: parent:label :}
+   RAX DSP CELL negate MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE parent JCC,
    DROP,
    execute
-   parent X64CODE:LBL, ;
+   parent LBL, ;
 
 \ die's empty message, under the status a child leaves with.
 : QUIET, ( -- ) 0 N, 0 N, ;
@@ -462,6 +465,9 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
+;using
+;using
+;using
 ;package
 
 X64K-SYSCALLS:RUN

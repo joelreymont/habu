@@ -11,6 +11,7 @@ SETUP = '''
 require src/lib/fs.f
 require src/lib/heap.f
 require src/lib/vector.f
+using XMODEM
 TYPED-VARIABLE INPUT ^VEC:vector<u8>
 TYPED-VARIABLE OUTPUT ^VEC:vector<u8>
 : FRESH ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
@@ -58,7 +59,7 @@ class Checks:
 FRESH OUTPUT !
 s" preserved" OUTPUT @ VEC:APPEND
 : EXERCISE ( -- )
-   [: INPUT @ VEC:BYTES {sequence} XMODEM:>SEQUENCE {size} XMODEM:>PAYLOAD-SIZE {kind} XMODEM:>CHECK-KIND OUTPUT @ XMODEM:ENCODE ;] catch .
+   [: INPUT @ VEC:BYTES {sequence} >SEQUENCE {size} >PAYLOAD-SIZE {kind} >CHECK-KIND OUTPUT @ ENCODE ;] catch .
    s" {output}" OUTPUT @ VEC:BYTES FS:WRITE-ALL INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE ;
 EXERCISE
 '''
@@ -69,13 +70,13 @@ EXERCISE
     def decode(self, data, kind, *, error=0):
         output = self.out / 'payload.bin'
         source = self.input(data) + f'''
-: SAVE ( str XMODEM:sequence -- )
-   XMODEM:SEQUENCE>N . {{: payload:str :}}
+: SAVE ( str sequence -- )
+   SEQUENCE>N . {{: payload:str :}}
    s" {output}" payload FS:WRITE-ALL ;
 
 
 : EXERCISE ( -- )
-   [: INPUT @ VEC:BYTES {kind} XMODEM:>CHECK-KIND XMODEM:DECODE SAVE ;] catch . INPUT @ VEC:DELETE ;
+   [: INPUT @ VEC:BYTES {kind} >CHECK-KIND DECODE SAVE ;] catch . INPUT @ VEC:DELETE ;
 EXERCISE
 '''
         expected = [str(error)] if error else [str(data[1]), '0']
@@ -122,11 +123,12 @@ EXERCISE
              'leave xmodem:sequence in the body, or declare ( n -- n )')]:
             self.run(f': BAD ( {effect} ) ;\n', rejected=(first, help))
         source = '''
-: CRC-KIND ( -- XMODEM:check-kind ) XMODEM:CRC ;
-: SUM-KIND ( -- XMODEM:check-kind ) XMODEM:SUM ;
-: SIZE ( -- NUM:byte-len ) 1024 XMODEM:BLOCK CRC-KIND XMODEM:PACKET-BYTES ;
+using XMODEM
+: CRC-KIND ( -- check-kind ) CRC ;
+: SUM-KIND ( -- check-kind ) SUM ;
+: SIZE ( -- NUM:byte-len ) 1024 BLOCK CRC-KIND PACKET-BYTES ;
 CAST: BLEN>N ( NUM:byte-len -- n )
-SIZE BLEN>N . 128 XMODEM:BLOCK SUM-KIND XMODEM:PACKET-BYTES BLEN>N .
+SIZE BLEN>N . 128 BLOCK SUM-KIND PACKET-BYTES BLEN>N .
 '''
         assert self.run(source) == ['1029', '132']
 

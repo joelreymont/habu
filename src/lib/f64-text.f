@@ -12,6 +12,7 @@ require src/lib/string.f
 require src/lib/adt/result.f
 
 package F64-TEXT
+using MEM
 
 public
 \ Always enough for FORMAT: the length of the negative least subnormal.
@@ -263,7 +264,7 @@ public
    value FMATH:FINITE? 0= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    capacity 0 < if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
    value IEEE754:F64>BITS out capacity
-   FORMAT-BYTES MEM:BYTES-ALLOC-LEN [: FORMAT-COPY ;] MEM:WITH-BYTES ;
+   FORMAT-BYTES BYTES-ALLOC-LEN [: FORMAT-COPY ;] WITH-BYTES ;
 
 private
 \ A point halfway between two binary64 values has fewer significant digits.
@@ -396,7 +397,7 @@ private
    count q + 310 > if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    count q LIMBS {: limbs:n :}
    text count q dropped limbs sign
-   limbs 2 + cells MEM:BYTES-ALLOC-LEN [: CONVERT ;] MEM:WITH-BYTES ;
+   limbs 2 + cells BYTES-ALLOC-LEN [: CONVERT ;] WITH-BYTES ;
 
 
 public
@@ -411,4 +412,5 @@ public
    code 2 = if F64--TEXT-FAULT:TRAILING RESULT:ERR exit then
    text READ-DECIMAL ;
 
+;using
 ;package

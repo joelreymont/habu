@@ -1,2 +1,4 @@
 \ fsm-require.f - a table whose ACTION is the exempt top-level `require`.
-FSM:DEFINE M ( n ) PFSM:ph PFSM:sig IN idle PFSM:S go require PFSM:STAY halt - PFSM:STAY ;DEFINE
+using PFSM using FSM
+DEFINE M ( n ) ph sig IN idle S go require STAY halt - STAY ;DEFINE
+;using ;using

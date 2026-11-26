@@ -12,6 +12,7 @@ require src/lib/codegen.f
 require src/lib/adt/result.f
 
 package FFI-CB-TEST
+using FFI-CB
 
 8 constant ROW-N
 -9971 constant E-BOOM                \ the throwing comparator's code, outside every lib block
@@ -133,7 +134,7 @@ CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
    a b ROW-ORDER ;
 
 : CMP-UNBIND-IMPL ( ^u8 ^u8 -- n ) {: a b :}
-   [: CMP-UNBIND FFI-CB:UNBIND ;] catch UNBIND-CODE !
+   [: CMP-UNBIND UNBIND ;] catch UNBIND-CODE !
    a b ROW-ORDER ;
 
 \ Holds a callback body until the owner opens GATE or halts the task it runs
@@ -180,7 +181,7 @@ CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
    band CALLER-ENTER
    CALLER-UNBIND-ON @ 0<> if
       0 CALLER-UNBIND-ON !
-      [: CMP-CALLER FFI-CB:UNBIND ;] catch CALLER-UNBIND-CODE !
+      [: CMP-CALLER UNBIND ;] catch CALLER-UNBIND-CODE !
    then
    a b ROW-ORDER ;
 
@@ -199,18 +200,18 @@ CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 \ The five comparators on the calling task's own context: the main region on
 \ the main task, a worker's region on a worker.
 : BIND-SELF ( -- )
-   CMP TASK:SELF-CONTEXT FFI-CB:ENTRY CMP-FN !
-   CMP-SELF TASK:SELF-CONTEXT FFI-CB:ENTRY CMP-SELF-FN !
-   CMP-VIA TASK:SELF-CONTEXT FFI-CB:ENTRY CMP-VIA-FN !
-   CMP-BOOM TASK:SELF-CONTEXT FFI-CB:ENTRY CMP-BOOM-FN !
-   CMP-UNBIND TASK:SELF-CONTEXT FFI-CB:ENTRY CMP-UNBIND-FN ! ;
+   CMP TASK:SELF-CONTEXT ENTRY CMP-FN !
+   CMP-SELF TASK:SELF-CONTEXT ENTRY CMP-SELF-FN !
+   CMP-VIA TASK:SELF-CONTEXT ENTRY CMP-VIA-FN !
+   CMP-BOOM TASK:SELF-CONTEXT ENTRY CMP-BOOM-FN !
+   CMP-UNBIND TASK:SELF-CONTEXT ENTRY CMP-UNBIND-FN ! ;
 
 : UNBIND-SELF ( -- )
-   CMP FFI-CB:UNBIND
-   CMP-SELF FFI-CB:UNBIND
-   CMP-VIA FFI-CB:UNBIND
-   CMP-BOOM FFI-CB:UNBIND
-   CMP-UNBIND FFI-CB:UNBIND ;
+   CMP UNBIND
+   CMP-SELF UNBIND
+   CMP-VIA UNBIND
+   CMP-BOOM UNBIND
+   CMP-UNBIND UNBIND ;
 
 \ ---- the sorts a bound task runs ----------------------------------------------
 \ Three sorts under one local, one loop index and one stack cell, each live
@@ -239,17 +240,17 @@ CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 \ the stack under the call is where it was.
 : SORT-BOOM ( -- bool )
    0 BOOMS !  1 BOOM-ON !
-   CMP-BOOM FFI-CB:CLEAR
+   CMP-BOOM CLEAR
    OUTER 10 ROW-FILL
    depth {: before:n :}
    OUTER BYTE-VIEW ROW-N CELL CMP-BOOM-FN @ QSORT
    depth before =
    0 BOOM-ON !
-   CMP-BOOM FFI-CB:FAULT@ E-BOOM = and
+   CMP-BOOM FAULT@ E-BOOM = and
    BOOMS @ 0 > and
    OUTER ROW-SUM 116 = and
-   CMP-BOOM FFI-CB:CLEAR
-   CMP-BOOM FFI-CB:FAULT@ 0= and ;
+   CMP-BOOM CLEAR
+   CMP-BOOM FAULT@ 0= and ;
 
 \ The comparator tries to unbind the slot it arrived through.
 : SORT-UNBIND ( -- bool )
@@ -315,6 +316,7 @@ variable PADS
 \ A count that is a power of two fills both tables: the next declaration grows
 \ them.
 : POW2? ( n -- bool ) dup 1 - and 0= ;
-: PAD-TO-EDGE ( -- ) begin FFI-CB:DECLARED POW2? 0= while PAD repeat ;
+: PAD-TO-EDGE ( -- ) begin DECLARED POW2? 0= while PAD repeat ;
 
+;using
 ;package

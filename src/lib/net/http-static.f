@@ -16,6 +16,7 @@ require src/lib/net/http-request.f
 require src/lib/net/http-response.f
 
 package HTTP
+using MEM
 
 private
 
@@ -153,10 +154,10 @@ DEFAULT-RULES
 
 : ETAG-HASH ( str -- )
    {: bytes:str :}
-   SHA256-CTX-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: hash :}
+   SHA256-CTX-BYTES BYTES-ALLOC-LEN ALLOC-BYTES drop {: hash :}
    bytes hash [: ETAG-HASH-IN ;] catch {: code:n :}
    drop drop
-   hash SHA256-CTX-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
+   hash SHA256-CTX-BYTES BYTES-ALLOC-LEN RELEASE-BYTES
    code 0<> if code throw then ;
 
 
@@ -199,10 +200,10 @@ DEFAULT-RULES
    at 1+ FILE-ROWS
    url UNDER-ROOT {: pathlen:n :}
    PATH-BUF pathlen SPAN:TAKE SPAN:$ FS:FILE-SIZE 1 max
-      MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: body :}
+      BYTES-ALLOC-LEN ALLOC-SPAN {: body :}
    url pathlen body at [: FILE-ENTRY ;] catch {: code:n :}
    2drop 2drop
-   code 0<> if body MEM:FREE-SPAN code throw then
+   code 0<> if body FREE-SPAN code throw then
    body at FILE-BODY !
    at 1+ FILE-COUNT ! ;
 
@@ -358,7 +359,7 @@ public
 
 : STATIC-CLOSE ( -- )
    FILE-COUNT @ 0 ?do
-      i FILE-BODY @ MEM:FREE-SPAN
+      i FILE-BODY @ FREE-SPAN
    loop
    FILE-PATH-AT-RELEASE
    FILE-PATH-N-RELEASE
@@ -400,4 +401,5 @@ public
    FILE-COUNT @ ;
 
 
+;using
 ;package

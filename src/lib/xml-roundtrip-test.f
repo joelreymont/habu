@@ -10,6 +10,7 @@ require src/lib/vector.f
 require src/lib/heap.f
 
 package XML-ROUNDTRIP-TEST
+using XML
 CAST: TOKEN>N ( XML:kind -- n )
 $1000 constant BYTE-CAP
 create DOCUMENT BYTE-CAP allot
@@ -29,25 +30,25 @@ TYPED-VARIABLE RD XML:cursor
 
 : OPEN ( str -- XML:reader )
    {: source:str :}
-   RD HEAP:ALLOCATOR source XML:INIT ;
+   RD HEAP:ALLOCATOR source INIT ;
 
 : ATTRIBUTE-RANGE ( -- off len )
-   ORIGINAL$ OPEN XML:NEXT drop XML:NEXT drop
-   XML:ATTR-NEXT TTRUE XML:ATTR-NEXT TTRUE
-   XML:ATTR-VALUE {: start:off size:len :}
+   ORIGINAL$ OPEN NEXT drop NEXT drop
+   ATTR-NEXT TTRUE ATTR-NEXT TTRUE
+   ATTR-VALUE {: start:off size:len :}
    XML:CLOSE start size ;
 
 : TEXT-RANGE ( -- off len )
-   ORIGINAL$ OPEN XML:NEXT drop XML:NEXT drop XML:NEXT drop
-   XML:CONTENT {: start:off size:len :}
+   ORIGINAL$ OPEN NEXT drop NEXT drop NEXT drop
+   CONTENT {: start:off size:len :}
    XML:CLOSE start size ;
 
 : APPLY ( str -- n )
    {: value:str :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: attr:^ :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: text:^ :}
-   value attr XML:ESCAPE-ATTR
-   value text XML:ESCAPE-TEXT
+   value attr ESCAPE-ATTR
+   value text ESCAPE-TEXT
    ATTRIBUTE-RANGE {: attr-start:off attr-old:len :}
    TEXT-RANGE {: text-start:off text-old:len :}
    HEAP:ALLOCATOR ORIGINAL$ EDIT:INIT
@@ -65,14 +66,14 @@ TYPED-VARIABLE RD XML:cursor
 : VERIFY ( str n -- )
    {: value:str document-size:n :}
    DOCUMENT document-size >str OPEN
-   XML:NEXT drop XML:NEXT drop
-   XML:ATTR-NEXT TTRUE XML:ATTR-NEXT TTRUE
-   CLEARED XML:ATTR-TEXT READBACK$ value T$=
-   XML:NEXT drop
-   CLEARED XML:TEXT READBACK$ value T$=
-   XML:NEXT drop XML:NEXT drop
-   CLEARED XML:TEXT READBACK$ s" keep" T$=
-   XML:NEXT drop XML:CLOSE ;
+   NEXT drop NEXT drop
+   ATTR-NEXT TTRUE ATTR-NEXT TTRUE
+   CLEARED ATTR-TEXT READBACK$ value T$=
+   NEXT drop
+   CLEARED TEXT READBACK$ value T$=
+   NEXT drop NEXT drop
+   CLEARED TEXT READBACK$ s" keep" T$=
+   NEXT drop XML:CLOSE ;
 
 : ROUNDTRIP ( str -- )
    {: value:str :}
@@ -113,17 +114,17 @@ TYPED-VARIABLE RD XML:cursor
    RANDOM-BUF swap >str ;
 
 : DRAIN ( XML:reader -- XML:reader )
-   begin XML:NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
+   begin NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
 
 : NEXT-AFTER ( XML:reader -- XML:reader )
-   XML:NEXT drop ;
+   NEXT drop ;
 
 \ The body is a word reached by `[']`, not a quotation literal: the reader is read
 \ and closed after the catch, `catch` restores stack depth but not contents, and
 \ a literal would leave stale<XML:reader>, which can be neither read nor dropped.
 : REJECTS ( str -- )
    OPEN ['] DRAIN catch 0<> TTRUE
-   ['] NEXT-AFTER catch XML:E-STATE T=
+   ['] NEXT-AFTER catch E-STATE T=
    XML:CLOSE ;
 
 : RANDOM-REJECTION ( n -- )
@@ -148,4 +149,5 @@ s" <&>'é名😀🚀" ROUNDTRIP
 RANDOM-ROUNDTRIPS
 READBACK @ VEC:DELETE
 T-REPORT
+;using
 ;package

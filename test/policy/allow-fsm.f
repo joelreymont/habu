@@ -3,9 +3,11 @@
 require src/lib/vocabulary.f
 require src/lib/fsm.f
 require test/policy/fsm-dep.f
+using VOCABULARY
 
 : RUN ( -- )
-   s" test/policy" VOCABULARY:SOURCE-ROOT!
-   s" FSM" VOCABULARY:ALLOW-PACKAGE  s" PFSM" VOCABULARY:ALLOW-PACKAGE
-   VOCABULARY:RESTRICT 0 SCRIPT-ARGV$ included ;
+   s" test/policy" SOURCE-ROOT!
+   s" FSM" ALLOW-PACKAGE  s" PFSM" ALLOW-PACKAGE
+   RESTRICT 0 SCRIPT-ARGV$ included ;
 RUN
+;using

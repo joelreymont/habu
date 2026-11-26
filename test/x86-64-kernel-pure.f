@@ -15,6 +15,9 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 
 package X64K-PURE
+using X64ASM
+using X64CODE
+using X64RT
 
 \ What test/prim-cases.f's includer contract asks an includer for, beside the
 \ shapes.
@@ -35,9 +38,9 @@ variable DV-A
 variable DV-B
 TYPED-VARIABLE FLOATS bool              \ set while the float sets run
 
-: DATA-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-RBASE X64ASM:>R64 ;
-: DSP ( -- X64ASM:r64 ) ENGINE-GPR:X64-DSTACK X64ASM:>R64 ;
-: RCX! ( n -- ) {: v:n :}  X64ASM:RCX v X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64 ;
+: DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
+: DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
+: RCX! ( n -- ) {: v:n :}  RCX v >IMM64 ASM-SINK ENC-MOV-RI64 ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
 : CALL ( str -- ) X64HARNESS:CALL-ROW, ;
@@ -73,16 +76,16 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
 \ cells; a flag column's 1 is the all-ones cell.
 : CHECK, ( -- ) CASE$ X64HARNESS:CHECK-RCX, ;
 
-: WANT ( n -- ) {: v:n :}  0 X64RT:G-POP  v RCX!  CHECK, ;
+: WANT ( n -- ) {: v:n :}  0 G-POP  v RCX!  CHECK, ;
 
 \ Pop an address and check it lies n bytes into the fixture.
-: WANT-AT ( n -- ) {: off:n :}  off AT,  1 X64RT:G-POP  0 X64RT:G-POP  CHECK, ;
+: WANT-AT ( n -- ) {: off:n :}  off AT,  1 G-POP  0 G-POP  CHECK, ;
 
 : FLAG ( n -- n ) negate ;
 
 : SETTLED ( -- )
-   X64ASM:RAX DSP X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
-   X64ASM:RAX DATA-REG STACK-ABI:BASE-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-SUB-RM
+   RAX DSP ASM-SINK ENC-MOV-RR
+   RAX DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-SUB-RM
    0 RCX!  CHECK, ;
 
 \ Pop the window's cells against the digit spelling, top cell first.
@@ -134,7 +137,7 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
       v STORED  BUMP N, 0 AT, s" +!" CALL  0 AT, s" @" CALL  exit then
    SUBJ$ s" count" STR:= if
       v N, 0 AT, s" c!" CALL  0 AT, s" count" CALL
-      2 X64RT:G-POP  1 WANT-AT  2 X64RT:G-PUSH  exit then
+      2 G-POP  1 WANT-AT  2 G-PUSH  exit then
    SUBJ$ s" byte-view" STR:= if
       v STORED  0 AT, s" byte-view" CALL s" c@" CALL  exit then
    SUBJ$ s" cell-view" STR:= if
@@ -236,25 +239,25 @@ private
 $40 constant GOT                        \ the scratch bytes a read fills
 $40 constant GOT-CAP
 
-: KEEP, ( n -- ) AT,  1 X64RT:G-POP  0 X64RT:G-POP  X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
-: RECALL, ( n -- ) AT,  0 X64RT:G-POP  X64ASM:RAX X64ASM:RAX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-RM  0 X64RT:G-PUSH ;
+: KEEP, ( n -- ) AT,  1 G-POP  0 G-POP  RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
+: RECALL, ( n -- ) AT,  0 G-POP  RAX RAX MEM-AT ASM-SINK ENC-MOV-RM  0 G-PUSH ;
 
 \ ( -- diff ): the OR of the XORs of the text's bytes and the bytes the read
 \ left at GOT, 0 when they agree.
 : SAME, ( str -- ) {: s:str :}
-   X64CODE:LBL X64CODE:LBL {: top:label done:label :}
-   s X64HARNESS:PUSH-TEXT,  X64ASM:RCX X64ASM:R64>N X64RT:G-POP  X64ASM:RDI X64ASM:R64>N X64RT:G-POP
-   GOT AT,  X64ASM:RSI X64ASM:R64>N X64RT:G-POP
-   X64ASM:RAX ZERO-REG,
-   top X64CODE:LBL,
-      X64ASM:RCX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E done X64CODE:JCC,
-      X64ASM:RDX X64ASM:RSI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
-      X64ASM:R8 X64ASM:RDI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
-      X64ASM:RDX X64ASM:R8 X64CODE:ASM-SINK X64ASM:ENC-XOR-RR  X64ASM:RAX X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-OR-RR
-      X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-INC  X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-INC  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DEC
-      top X64CODE:JMP,
-   done X64CODE:LBL,
-   0 X64RT:G-PUSH ;
+   LBL LBL {: top:label done:label :}
+   s X64HARNESS:PUSH-TEXT,  RCX R64>N G-POP  RDI R64>N G-POP
+   GOT AT,  RSI R64>N G-POP
+   RAX ZERO-REG,
+   top LBL,
+      RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
+      RDX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+      R8 RDI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+      RDX R8 ASM-SINK ENC-XOR-RR  RAX RDX ASM-SINK ENC-OR-RR
+      RSI ASM-SINK ENC-INC  RDI ASM-SINK ENC-INC  RCX ASM-SINK ENC-DEC
+      top JMP,
+   done LBL,
+   0 G-PUSH ;
 
 \ A double's bits through f., and the line it must write.
 : FDOT ( n str -- ) {: bits:n s:str :}
@@ -311,4 +314,7 @@ s" hb-x64-kernel-pure-fdot" TMP-PATH CLOSE-IMAGE
 X64HARNESS:DISPOSE
 T-REPORT
 
+;using
+;using
+;using
 ;package

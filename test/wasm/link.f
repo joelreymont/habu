@@ -18,6 +18,7 @@ require src/compiler/native/emission.f
 
 package WASM-LINK-TEST
 private
+using WASM-W03
 
 \ ---- the module under test -----------------------------------------------------
 1 constant S-TYPE
@@ -118,22 +119,22 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 
 \ ---- bodies ----------------------------------------------------------------------
 \ RET-BODY and CALL-BODY build a body in WASM-W03's buffer, test/wasm/w03.f.
-: PAD10, ( n -- )   WASM-W03:ROOM WLEB:S64-PAD! WASM-W03:BODY-U +! ;
+: PAD10, ( n -- )   ROOM WLEB:S64-PAD! BODY-U +! ;
 
 \ i64.const v dropped, then status 0. The field is at 2.
 : ADDR-BODY ( n -- )
    {: v:n :}
-   0 WASM-W03:BODY-U !
-   0 WASM-W03:B,  $42 WASM-W03:B, v PAD10,  $1A WASM-W03:B,  $41 WASM-W03:B, 0 WASM-W03:B,  $0B WASM-W03:B, ;
+   0 BODY-U !
+   0 B,  $42 B, v PAD10,  $1A B,  $41 B, 0 B,  $0B B, ;
 
 \ The body built, as a function of in and out lanes, a frame variant and an
 \ origin.
 : ADD ( n n n WLINK:origin -- n )
    {: in:n out:n var:n o:WLINK:origin :}
-   WASM-W03:BODY$ in out var o WLINK:FUNCTION+ ;
+   BODY$ in out var o WLINK:FUNCTION+ ;
 
 : KERNEL ( n -- n )
-   0 WASM-W03:RET-BODY  0 0 0 WLINK-ORIGIN:KERNEL ADD ;
+   0 RET-BODY  0 0 0 WLINK-ORIGIN:KERNEL ADD ;
 
 \ ---- whole modules ---------------------------------------------------------------
 \ Functions are numbered kernel, captured, adapter, each in the order added,
@@ -151,7 +152,7 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 : MIN-ROW ( -- )
    WLINK:RESET
    0 KERNEL drop
-   WASM-W03:BODY-BUF 0 >str WLINK:DATA!
+   BODY-BUF 0 >str WLINK:DATA!
    0 LINKED
    s" one function, no image: memory and eight wrappers with task header stores" T-LABEL
    WANT-RESET
@@ -169,11 +170,11 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 \ function, of 0, 1, 3, 2 and 4 lanes in; each answers status 10 + its handle.
 : ORDER-ROW ( -- )
    WLINK:RESET
-   10 0 WASM-W03:RET-BODY  0 0 0 WLINK-ORIGIN:ADAPTER ADD drop
-   11 0 WASM-W03:RET-BODY  1 0 0 WLINK-ORIGIN:KERNEL ADD drop
-   12 0 WASM-W03:RET-BODY  3 0 0 WLINK-ORIGIN:CAPTURED ADD drop
-   13 0 WASM-W03:RET-BODY  2 0 0 WLINK-ORIGIN:KERNEL ADD drop
-   14 0 WASM-W03:RET-BODY  4 0 0 WLINK-ORIGIN:CAPTURED ADD drop
+   10 0 RET-BODY  0 0 0 WLINK-ORIGIN:ADAPTER ADD drop
+   11 0 RET-BODY  1 0 0 WLINK-ORIGIN:KERNEL ADD drop
+   12 0 RET-BODY  3 0 0 WLINK-ORIGIN:CAPTURED ADD drop
+   13 0 RET-BODY  2 0 0 WLINK-ORIGIN:KERNEL ADD drop
+   14 0 RET-BODY  4 0 0 WLINK-ORIGIN:CAPTURED ADD drop
    0 LINKED
    s" kernel, captured, adapter, each as added, then the wrappers; types as first used" T-LABEL
    WANT-RESET
@@ -191,11 +192,11 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 \ Kernels 0..4: no lanes; 17 in, in the aligned frame; one in, twice; one out.
 : TYPES-ROW ( -- )
    WLINK:RESET
-   1 0 WASM-W03:RET-BODY  0 0 0 WLINK-ORIGIN:KERNEL ADD drop
-   2 0 WASM-W03:RET-BODY  17 0 1 WLINK-ORIGIN:KERNEL ADD drop
-   3 0 WASM-W03:RET-BODY  1 0 0 WLINK-ORIGIN:KERNEL ADD drop
-   4 0 WASM-W03:RET-BODY  1 0 0 WLINK-ORIGIN:KERNEL ADD drop
-   5 1 WASM-W03:RET-BODY  0 1 0 WLINK-ORIGIN:KERNEL ADD drop
+   1 0 RET-BODY  0 0 0 WLINK-ORIGIN:KERNEL ADD drop
+   2 0 RET-BODY  17 0 1 WLINK-ORIGIN:KERNEL ADD drop
+   3 0 RET-BODY  1 0 0 WLINK-ORIGIN:KERNEL ADD drop
+   4 0 RET-BODY  1 0 0 WLINK-ORIGIN:KERNEL ADD drop
+   5 1 RET-BODY  0 1 0 WLINK-ORIGIN:KERNEL ADD drop
    0 LINKED
    s" types deduplicated by structure: the aligned frame shares the type of no lanes" T-LABEL
    WANT-RESET
@@ -222,15 +223,15 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 \ ---- sites ----------------------------------------------------------------------
 \ Two calls, the first one's status dropped: fields at 4 and 13.
 : TWO-CALLS ( -- )
-   0 WASM-W03:BODY-U !
-   0 WASM-W03:B,  $20 WASM-W03:B, 0 WASM-W03:B,  $10 WASM-W03:B, 0 WASM-W03:PAD5,  $1A WASM-W03:B,  $20 WASM-W03:B, 0 WASM-W03:B,  $10 WASM-W03:B, 0 WASM-W03:PAD5,  $0B WASM-W03:B, ;
+   0 BODY-U !
+   0 B,  $20 B, 0 B,  $10 B, 0 PAD5,  $1A B,  $20 B, 0 B,  $10 B, 0 PAD5,  $0B B, ;
 
 \ Handle 0, captured, calls kernel 3 and adapter 4.
 : CALLS-ROW ( -- )
    WLINK:RESET
    TWO-CALLS  0 0 0 WLINK-ORIGIN:CAPTURED ADD drop
    1 KERNEL drop  2 KERNEL drop  3 KERNEL drop
-   4 0 WASM-W03:RET-BODY  0 0 0 WLINK-ORIGIN:ADAPTER ADD drop
+   4 0 RET-BODY  0 0 0 WLINK-ORIGIN:ADAPTER ADD drop
    0 4 3 WLINK:CALL+
    0 13 4 WLINK:CALL+
    4 LINKED
@@ -338,9 +339,9 @@ $350000 constant PAGE-53-END
 \ Function k's body in the module is as added, its field holding k + 1.
 : CHAIN-OK? ( n -- bool )
    {: k:n :}
-   k k 1+ WASM-W03:CHAIN-BODY
+   k k 1+ CHAIN-BODY
    k BODY@ {: at:n u:n :}
-   MBUF at + u >str  WASM-W03:BODY$  STR:= ;
+   MBUF at + u >str  BODY$  STR:= ;
 
 \ Run's body, calling the entry at index 135.
 : RUN-135 ( -- )
@@ -350,8 +351,8 @@ $350000 constant PAGE-53-END
    s" 02404180800441808003360248418080044180a00736025841808004418080013602600b418080041087010b" W+ ;
 
 : W03-ROW ( -- )
-   WASM-W03:BUILD
-   WASM-W03:CHAIN LINKED
+   BUILD
+   CHAIN LINKED
    s" W03: the sections walk out to the module's end" T-LABEL
    IDS @ $1357AB T=
    WALKED @ MOD-U @ T=
@@ -367,10 +368,10 @@ $350000 constant PAGE-53-END
    136 TYPE-OF 135 T=
    137 TYPE-OF 136 T=
    s" W03: every body is as added, its call field the next function's index" T-LABEL
-   0  WASM-W03:CHAIN 0 do  i CHAIN-OK? 0= if 1+ then  loop  0 T=
+   0  CHAIN 0 do  i CHAIN-OK? 0= if 1+ then  loop  0 T=
    s" W03: the entry calls function 0, run calls the entry, 135, in two bytes" T-LABEL
-   WASM-W03:CHAIN BODY@ HEX$ s" 0020001080808080000b" T$=
-   RUN-135  WASM-W03:CHAIN 1+ BODY@ HEX$ WANT$ T$=
+   CHAIN BODY@ HEX$ s" 0020001080808080000b" T$=
+   RUN-135  CHAIN 1+ BODY@ HEX$ WANT$ T$=
    s" W03: the wrappers are exported at 136 to 143" T-LABEL
    WANT-RESET
    s" 09066d656d6f727902000372756e0088010a7468726f772d636f6465008901086f75742d62617365008a01076f75742d6c65" W+
@@ -387,7 +388,7 @@ $350000 constant PAGE-53-END
    IMAGE-FILL
    IMAGE-BUF 16 >str WLINK:DATA!
    0 KERNEL drop
-   0 0 0 0 WASM-W03:CALL-BODY  0 0 0 ADD0
+   0 0 0 0 CALL-BODY  0 0 0 ADD0
    0 ADDR-BODY  0 0 0 ADD0
    1 4 0 WLINK:CALL+
    2 2 NEMIT:ADDR-DATA 16 WLINK:ADDRESS+
@@ -413,7 +414,7 @@ $350000 constant PAGE-53-END
    s" a call site in no function is rejected" T-LABEL
    BASE  3 4 0 WLINK:CALL+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" a call field that is not padded is rejected" T-LABEL
-   BASE  0 WASM-W03:BODY-U !  0 WASM-W03:B, $20 WASM-W03:B, 0 WASM-W03:B, $10 WASM-W03:B, 0 WASM-W03:B, $0B WASM-W03:B,  0 0 0 ADD0
+   BASE  0 BODY-U !  0 B, $20 B, 0 B, $10 B, 0 B, $0B B,  0 0 0 ADD0
    3 4 0 WLINK:CALL+  [: LINK0 ;] WLEB:E-UNPADDED TTHROWSQ
    s" a call field past its function's body is rejected" T-LABEL
    BASE  1 11 0 WLINK:CALL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ ;
@@ -436,7 +437,7 @@ $350000 constant PAGE-53-END
    s" an address of a kind below none is rejected" T-LABEL
    BASE  2 2 ADDR-NONE 1- 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-KIND TTHROWSQ
    s" an address field that is not padded is rejected" T-LABEL
-   BASE  0 WASM-W03:BODY-U !  0 WASM-W03:B, $42 WASM-W03:B, 0 WASM-W03:B, $1A WASM-W03:B, $41 WASM-W03:B, 0 WASM-W03:B, $0B WASM-W03:B,  0 0 0 ADD0
+   BASE  0 BODY-U !  0 B, $42 B, 0 B, $1A B, $41 B, 0 B, $0B B,  0 0 0 ADD0
    3 2 NEMIT:ADDR-DATA 0 WLINK:ADDRESS+  [: LINK0 ;] WLEB:E-UNPADDED TTHROWSQ ;
 
 : SLOT-ROWS ( -- )

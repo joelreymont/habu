@@ -1,2 +1,4 @@
 \ fsm-table.f - a table whose words are all in the vocabulary.
-FSM:DEFINE M ( n ) PFSM:ph PFSM:sig IN idle PFSM:S go PFSM:ACT PFSM:STAY halt - PFSM:STAY ;DEFINE
+using PFSM using FSM
+DEFINE M ( n ) ph sig IN idle S go ACT STAY halt - STAY ;DEFINE
+;using ;using

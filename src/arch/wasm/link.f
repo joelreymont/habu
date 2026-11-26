@@ -59,6 +59,7 @@ ENUM origin
 ;ENUM
 
 private
+using WCODE
 
 \ ---- Wasm's numbers ----------------------------------------------------------
 $6D736100 constant MAGIC             \ "\0asm", low byte first
@@ -175,10 +176,10 @@ create LEB-ROW LEB-MOST SCRATCH-ALLOT
 
 \ i32.const of a number below 2^31, as every address of WPROF's layout is.
 : I32-CONST ( n -- )
-   WCODE:OP-I32-CONST PUT-BYTE  PUT-S32 ;
+   OP-I32-CONST PUT-BYTE  PUT-S32 ;
 
 : I64-CONST ( n -- )
-   WCODE:OP-I64-CONST PUT-BYTE  PUT-S64 ;
+   OP-I64-CONST PUT-BYTE  PUT-S64 ;
 
 \ i32.const of a memory address, 0 to 2^32 - 1: one from 2^31 up is written as
 \ the negative number of the same 32 bits.
@@ -247,8 +248,8 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
 : ROW ( n -- )
    {: k:n :}
    k 1+ TY-U32
-   WCODE:I32 TY-BYTE
-   k 0 ?do  WCODE:I64 TY-BYTE  loop ;
+   I32 TY-BYTE
+   k 0 ?do  I64 TY-BYTE  loop ;
 
 : FN-TYPE-OF ( n -- )
    {: k:n :}
@@ -287,10 +288,10 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
 : TYPE-ALL ( -- )
    0 NTYPES !  0 TYPES-U !
    [: TYPE-FN ;] IN-ORDER
-   WCODE:I32 RESULT-TYPE INTERN WR-I32 !
-   WCODE:I64 RESULT-TYPE INTERN WR-I64 !
+   I32 RESULT-TYPE INTERN WR-I32 !
+   I64 RESULT-TYPE INTERN WR-I64 !
    RESERVES @ 0<> if
-      0 TY-U !  FUNC-FORM TY-BYTE  1 TY-U32  WCODE:I64 TY-BYTE  1 TY-U32  WCODE:I64 TY-BYTE
+      0 TY-U !  FUNC-FORM TY-BYTE  1 TY-U32  I64 TY-BYTE  1 TY-U32  I64 TY-BYTE
       INTERN WR-RES !
    then
    NINDS @ 0 > if  0 TY-U !  FUNC-FORM TY-BYTE  0 ROW  0 ROW  INTERN WR-DYN !  then ;
@@ -300,24 +301,24 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
 : CTX! ( n n -- )
    {: v:n off:n :}
    WPROF:CTX-BASE I32-CONST  v I32-CONST
-   WCODE:OP-I32-STORE PUT-BYTE  WCODE:ALIGN-32 PUT-U32  off PUT-U32 ;
+   OP-I32-STORE PUT-BYTE  ALIGN-32 PUT-U32  off PUT-U32 ;
 
 \ A full cell in the task-local DATA header; the copied native image holds no
 \ Wasm stack address or capacity.
 : DATA-CELL! ( n n -- )
    {: v:n off:n :}
    WPROF:DATA-VA off + I32-CONST  v I64-CONST
-   WCODE:OP-I64-STORE PUT-BYTE  WCODE:ALIGN-64 PUT-U32  0 PUT-U32 ;
+   OP-I64-STORE PUT-BYTE  ALIGN-64 PUT-U32  0 PUT-U32 ;
 
 \ The data stack's first cell := local k, an i64.
 : STACK-CELL! ( n -- )
    {: k:n :}
-   WPROF:STACK-BASE I32-CONST  WCODE:OP-LOCAL-GET PUT-BYTE  k PUT-U32
-   WCODE:OP-I64-STORE PUT-BYTE  WCODE:ALIGN-64 PUT-U32  0 PUT-U32 ;
+   WPROF:STACK-BASE I32-CONST  OP-LOCAL-GET PUT-BYTE  k PUT-U32
+   OP-I64-STORE PUT-BYTE  ALIGN-64 PUT-U32  0 PUT-U32 ;
 
 : STACK-CELL@ ( -- )
    WPROF:STACK-BASE I32-CONST
-   WCODE:OP-I64-LOAD PUT-BYTE  WCODE:ALIGN-64 PUT-U32  0 PUT-U32 ;
+   OP-I64-LOAD PUT-BYTE  ALIGN-64 PUT-U32  0 PUT-U32 ;
 
 \ ctx's field at off, read by a load of the alignment al.
 : CTX@ ( n n n -- )
@@ -336,51 +337,51 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
    WPROF:STACK-BASE WPROF:CTX-STACK-TOP CTX!
    0 WPROF:CTX-OUT-LEN CTX!
    0 WPROF:CTX-ERR-LEN CTX!
-   WCODE:OP-I32-LOAD WCODE:ALIGN-32 WPROF:CTX-OUT-CAP CTX@  WCODE:OP-I32-EQZ PUT-BYTE
-   WCODE:OP-IF PUT-BYTE  WCODE:EMPTY-TYPE PUT-BYTE
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-OUT-CAP CTX@  OP-I32-EQZ PUT-BYTE
+   OP-IF PUT-BYTE  EMPTY-TYPE PUT-BYTE
       WPROF:OUT-BASE WPROF:CTX-OUT-BASE CTX!
       WPROF:OUT-CAP WPROF:CTX-OUT-CAP CTX!
       WPROF:ERR-BASE WPROF:CTX-ERR-BASE CTX!
       WPROF:ERR-CAP WPROF:CTX-ERR-CAP CTX!
-   WCODE:OP-END PUT-BYTE
+   OP-END PUT-BYTE
    WPROF:CTX-BASE I32-CONST
-   WCODE:OP-CALL PUT-BYTE  ENTRY-IDX @ PUT-U32
-   WCODE:OP-END PUT-BYTE ;
+   OP-CALL PUT-BYTE  ENTRY-IDX @ PUT-U32
+   OP-END PUT-BYTE ;
 
 : THROW-CODE-BODY ( -- )
    0 PUT-U32
-   WCODE:OP-I64-LOAD WCODE:ALIGN-64 WPROF:CTX-THROW-CODE CTX@
-   WCODE:OP-END PUT-BYTE ;
+   OP-I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE CTX@
+   OP-END PUT-BYTE ;
 
 : OUT-BASE-BODY ( -- )
    0 PUT-U32
-   WCODE:OP-I32-LOAD WCODE:ALIGN-32 WPROF:CTX-OUT-BASE CTX@
-   WCODE:OP-END PUT-BYTE ;
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-OUT-BASE CTX@
+   OP-END PUT-BYTE ;
 
 : OUT-LEN-BODY ( -- )
    0 PUT-U32
-   WCODE:OP-I32-LOAD WCODE:ALIGN-32 WPROF:CTX-OUT-LEN CTX@
-   WCODE:OP-END PUT-BYTE ;
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-OUT-LEN CTX@
+   OP-END PUT-BYTE ;
 
 : FAULT-KIND-BODY ( -- )
    0 PUT-U32
-   WCODE:OP-I32-LOAD WCODE:ALIGN-32 WPROF:CTX-FAULT-KIND CTX@
-   WCODE:OP-END PUT-BYTE ;
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-FAULT-KIND CTX@
+   OP-END PUT-BYTE ;
 
 : FAULT-ADDR-BODY ( -- )
    0 PUT-U32
-   WCODE:OP-I64-LOAD WCODE:ALIGN-64 WPROF:CTX-FAULT-ADDR CTX@
-   WCODE:OP-END PUT-BYTE ;
+   OP-I64-LOAD ALIGN-64 WPROF:CTX-FAULT-ADDR CTX@
+   OP-END PUT-BYTE ;
 
 : ERR-BASE-BODY ( -- )
    0 PUT-U32
-   WCODE:OP-I32-LOAD WCODE:ALIGN-32 WPROF:CTX-ERR-BASE CTX@
-   WCODE:OP-END PUT-BYTE ;
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-ERR-BASE CTX@
+   OP-END PUT-BYTE ;
 
 : ERR-LEN-BODY ( -- )
    0 PUT-U32
-   WCODE:OP-I32-LOAD WCODE:ALIGN-32 WPROF:CTX-ERR-LEN CTX@
-   WCODE:OP-END PUT-BYTE ;
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-ERR-LEN CTX@
+   OP-END PUT-BYTE ;
 
 \ Reserve's body. Its callee, in the aligned frame, takes the count at the data
 \ stack's first cell, empty between runs, and leaves the address there, ior above.
@@ -389,10 +390,10 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
    WPROF:STACK-BASE CELL-BYTES + WPROF:CTX-STACK-TOP CTX!
    0 STACK-CELL!
    WPROF:CTX-BASE I32-CONST
-   WCODE:OP-CALL PUT-BYTE  RES-FN @ FN-IDX @ PUT-U32
-   WCODE:OP-DROP PUT-BYTE
+   OP-CALL PUT-BYTE  RES-FN @ FN-IDX @ PUT-U32
+   OP-DROP PUT-BYTE
    STACK-CELL@
-   WCODE:OP-END PUT-BYTE ;
+   OP-END PUT-BYTE ;
 
 \ ---- the sections -------------------------------------------------------------
 : BODY$ ( n -- str )
@@ -444,7 +445,7 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
 
 : ELEMENT-SEC ( -- )
    1 PUT-U32
-   ACTIVE PUT-U32  FIRST-SLOT I32-CONST  WCODE:OP-END PUT-BYTE
+   ACTIVE PUT-U32  FIRST-SLOT I32-CONST  OP-END PUT-BYTE
    NSLOTS @ PUT-U32
    NSLOTS @ 0 ?do  i SLOT-FN @ FN-IDX @ PUT-U32  loop ;
 
@@ -470,7 +471,7 @@ SCRATCH-VARIABLE WR-DYN              \ (i32) -> (i32): an indirect call's
 : DATA-SEC ( -- )
    NRUNS @ PUT-U32
    NRUNS @ 0 ?do
-      ACTIVE PUT-U32  WPROF:DATA-VA i RUN-AT @ + ADDRESS-CONST  WCODE:OP-END PUT-BYTE
+      ACTIVE PUT-U32  WPROF:DATA-VA i RUN-AT @ + ADDRESS-CONST  OP-END PUT-BYTE
       i RUN-LEN @ PUT-U32
       i RUN-AT @ IMAGE  i RUN-LEN @ >str PUT-BYTES
    loop ;
@@ -614,7 +615,7 @@ SCRATCH-VARIABLE RUN-LAST            \ its last non-zero byte's offset
       i CALL-TGT @ FN-IDX @ {: t:n :}
       i CALL-FN @ FN-POS @ i CALL-AT @ + {: at:n :}
       i CALL-SLOT @ 0<> if
-         WCODE:OP-CALL at 1- OUT c!
+         OP-CALL at 1- OUT c!
          t  MODULE at SPAN:SKIP  WLEB:U32-PAD! drop
       else
          t MODULE at WLEB:U32-PATCH
@@ -745,6 +746,7 @@ public
    PATCH
    0 OUT u >str ;
 
+;using
 ;package
 
 WLINK:RESET

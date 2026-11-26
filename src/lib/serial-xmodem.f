@@ -48,6 +48,7 @@ STRUCTURE session OPAQUE DERIVE addr
 E-SXMODEM-OPERAND constant E-OPERAND
 
 private
+using XMODEM
 
 1000000 constant NS-PER-MS
 10 constant MAX-TRIES
@@ -129,23 +130,23 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : READ-CONTROL ( ns ^session -- n ) {: deadline:ns session:^ :}
-   deadline session READ-BYTE dup XMODEM:CAN <> if exit then drop
-   deadline session READ-BYTE dup XMODEM:CAN = if
-      drop XMODEM:ACK session SEND-BYTE E-SXMODEM-CANCELLED throw
+   deadline session READ-BYTE dup CAN <> if exit then drop
+   deadline session READ-BYTE dup CAN = if
+      drop ACK session SEND-BYTE E-SXMODEM-CANCELLED throw
    then ;
 
 
 : WAIT-REPLY ( ns ^session -- n ) {: deadline:ns session:^ :}
    begin
       deadline session READ-CONTROL
-      dup XMODEM:ACK = over XMODEM:NAK = or over -1 = or if exit then drop
+      dup ACK = over NAK = or over -1 = or if exit then drop
    again ;
 
 
 : WAIT-HEADER ( ns ^session -- n ) {: deadline:ns session:^ :}
    begin
       deadline session READ-CONTROL
-      dup XMODEM:SOH = over XMODEM:STX = or over XMODEM:EOT = or over -1 = or if exit then drop
+      dup SOH = over STX = or over EOT = or over -1 = or if exit then drop
    again ;
 
 
@@ -191,12 +192,12 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : CANCEL-PEER ( ^session -- ) {: session:^ :}
    session SESSION-CONTROL SPAN:$ {: buf:str :}
    buf STR:DATA {: control :}
-   XMODEM:CAN control c! XMODEM:CAN control 1 + c! XMODEM:CAN control 2 + c!
+   CAN control c! CAN control 1 + c! CAN control 2 + c!
    session SESSION-HANDLE @ buf 0 >MS SERIAL:WRITE IGNORE-IO ;
 
 
 : RESULT ( ^session n -- transfer-result ) {: session:^ error:n :}
-   error 0= if session SESSION-PROGRESS @ XMODEM:BYTES SERIAL--XMODEM-TRANSFER--RESULT:COMPLETED exit then
+   error 0= if session SESSION-PROGRESS @ BYTES SERIAL--XMODEM-TRANSFER--RESULT:COMPLETED exit then
    error E-SXMODEM-CANCELLED <> if session CANCEL-PEER then
    error E-SXMODEM-TIMEOUT = if SERIAL--XMODEM-TRANSFER--RESULT:TIMEOUT exit then
    error E-SXMODEM-CLOSED = if SERIAL--XMODEM-TRANSFER--RESULT:CLOSED exit then
@@ -211,40 +212,40 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    timeout CHECK-MS session PACKET 0 VEC:RESIZE
    timeout MS>N NS-PER-MS * mono-ns + >NS session SESSION-DEADLINE !
    0 SERIAL:>ERRNO session SESSION-IO-ERROR ! 0 session SESSION-PROGRESS ! 0 session SESSION-TRIES !
-   1 session SESSION-NEXT ! XMODEM:CRC session SESSION-KIND ! FALSE session SESSION-NEGOTIATED ! ;
+   1 session SESSION-NEXT ! CRC session SESSION-KIND ! FALSE session SESSION-NEGOTIATED ! ;
 
 
 : NEGOTIATE-SEND ( ^session -- ) {: session:^ :}
    begin
       session SESSION-DEADLINE @ session READ-CONTROL
-      dup XMODEM:REQUEST-CRC = if drop XMODEM:CRC session SESSION-KIND ! exit then
-      XMODEM:NAK = if XMODEM:SUM session SESSION-KIND ! 128 XMODEM:>PAYLOAD-SIZE session SESSION-BLOCK ! exit then
+      dup REQUEST-CRC = if drop CRC session SESSION-KIND ! exit then
+      NAK = if SUM session SESSION-KIND ! 128 >PAYLOAD-SIZE session SESSION-BLOCK ! exit then
       session CHECK-TIME
    again ;
 
 
 : CHUNK-SIZE ( ^session -- n ) {: session:^ :}
-   session SESSION-SOURCE-LEN @ session SESSION-PROGRESS @ - session SESSION-BLOCK @ XMODEM:PAYLOAD-SIZE>N min ;
+   session SESSION-SOURCE-LEN @ session SESSION-PROGRESS @ - session SESSION-BLOCK @ PAYLOAD-SIZE>N min ;
 
 
 : BUILD-PACKET ( ^session -- ) {: session:^ :}
    session SESSION-SOURCE @ session SESSION-PROGRESS @ + session CHUNK-SIZE >str
-   session SESSION-NEXT @ XMODEM:>SEQUENCE session SESSION-BLOCK @
-   session SESSION-KIND @ session PACKET XMODEM:ENCODE ;
+   session SESSION-NEXT @ >SEQUENCE session SESSION-BLOCK @
+   session SESSION-KIND @ session PACKET ENCODE ;
 
 
 : SEND-PACKET ( ^session -- ) {: session:^ :}
    MAX-TRIES 0 do
       session PACKET VEC:BYTES session WRITE-ALL
-      session CONTROL-WINDOW session WAIT-REPLY XMODEM:ACK = if unloop exit then
+      session CONTROL-WINDOW session WAIT-REPLY ACK = if unloop exit then
       session CHECK-TIME
    loop E-SXMODEM-RETRIES throw ;
 
 
 : SEND-EOT ( ^session -- ) {: session:^ :}
    MAX-TRIES 0 do
-      XMODEM:EOT session SEND-BYTE
-      session CONTROL-WINDOW session WAIT-REPLY XMODEM:ACK = if unloop exit then
+      EOT session SEND-BYTE
+      session CONTROL-WINDOW session WAIT-REPLY ACK = if unloop exit then
       session CHECK-TIME
    loop E-SXMODEM-RETRIES throw ;
 
@@ -263,60 +264,60 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : FRAME-SIZE ( n ^session -- NUM:byte-len ) {: header:n session:^ :}
-   header XMODEM:SOH = if 128 else 1024 then XMODEM:>PAYLOAD-SIZE
-   session SESSION-KIND @ XMODEM:PACKET-BYTES ;
+   header SOH = if 128 else 1024 then >PAYLOAD-SIZE
+   session SESSION-KIND @ PACKET-BYTES ;
 
 
 : READ-FRAME ( n ^session -- str ) {: header:n session:^ :}
    header session FRAME-SIZE BLEN>N {: size:n :}
    session PACKET {: v:^ :}
    v 0 VEC:RESIZE  header v VEC:PUSH c!
-   size session READ-REST 0= if XMODEM:E-FRAME throw then
+   size session READ-REST 0= if E-FRAME throw then
    v VEC:BYTES ;
 
 
-: PREVIOUS? ( XMODEM:sequence ^session -- bool ) {: sequence:XMODEM:sequence session:^ :}
+: PREVIOUS? ( sequence ^session -- bool ) {: sequence:sequence session:^ :}
    session SESSION-PROGRESS @ 0 >
-   sequence XMODEM:SEQUENCE>N session SESSION-NEXT @ 1 - $FF and = and ;
+   sequence SEQUENCE>N session SESSION-NEXT @ 1 - $FF and = and ;
 
 
-: ACCEPT-PAYLOAD ( str XMODEM:sequence ^session -- )
-   {: data:str sequence:XMODEM:sequence session:^ :}
-   sequence XMODEM:SEQUENCE>N session SESSION-NEXT @ = if
+: ACCEPT-PAYLOAD ( str sequence ^session -- )
+   {: data:str sequence:sequence session:^ :}
+   sequence SEQUENCE>N session SESSION-NEXT @ = if
       data STR:LEN session SESSION-MAXIMUM @ session SESSION-PROGRESS @ - >
       if E-SXMODEM-CAPACITY throw then
       data session SESSION-OUTPUT @ VEC:APPEND
-      data STR:LEN session ADVANCE XMODEM:ACK session SEND-BYTE exit
+      data STR:LEN session ADVANCE ACK session SEND-BYTE exit
    then
-   sequence session PREVIOUS? if session TRY+ XMODEM:ACK session SEND-BYTE exit then
-   XMODEM:E-FRAME throw ;
+   sequence session PREVIOUS? if session TRY+ ACK session SEND-BYTE exit then
+   E-FRAME throw ;
 
 
 : RECEIVE-PACKET ( n ^session -- ) {: header:n session:^ :}
    TRUE session SESSION-NEGOTIATED !
-   header session READ-FRAME session SESSION-KIND @ XMODEM:DECODE
+   header session READ-FRAME session SESSION-KIND @ DECODE
    session ACCEPT-PAYLOAD ;
 
 
 : RECEIVE-ONE ( n ^session -- bool ) {: header:n session:^ :}
    [: header session RECEIVE-PACKET ;] catch
    dup 0= if drop TRUE exit then
-   dup XMODEM:E-FRAME = if drop FALSE exit then throw ;
+   dup E-FRAME = if drop FALSE exit then throw ;
 
 
 : RECEIVE-RETRY ( ^session -- ) {: session:^ :}
    session CHECK-TIME session TRY+
-   session SESSION-NEGOTIATED @ if XMODEM:NAK else
-      session SESSION-TRIES @ 3 = if XMODEM:SUM session SESSION-KIND ! then
-      session SESSION-KIND @ XMODEM:CHECK-KIND>N 1 = if XMODEM:REQUEST-CRC else XMODEM:NAK then
+   session SESSION-NEGOTIATED @ if NAK else
+      session SESSION-TRIES @ 3 = if SUM session SESSION-KIND ! then
+      session SESSION-KIND @ CHECK-KIND>N 1 = if REQUEST-CRC else NAK then
    then session SEND-BYTE ;
 
 
 : RECEIVE-RUN ( ^session -- ) {: session:^ :}
-   session SESSION-OUTPUT @ 0 VEC:RESIZE XMODEM:REQUEST-CRC session SEND-BYTE
+   session SESSION-OUTPUT @ 0 VEC:RESIZE REQUEST-CRC session SEND-BYTE
    begin
       session CONTROL-WINDOW session WAIT-HEADER {: header:n :}
-      header XMODEM:EOT = if XMODEM:ACK session SEND-BYTE exit then
+      header EOT = if ACK session SEND-BYTE exit then
       header -1 = if session RECEIVE-RETRY else
          header session RECEIVE-ONE 0= if
             session DRAIN session RECEIVE-RETRY
@@ -350,7 +351,7 @@ public
 \ Success requires the peer's EOT ACK and reports the original source length.
 : SEND ( str XMODEM:payload-size ms ^session -- transfer-result )
    {: data:str block:XMODEM:payload-size timeout:ms session:^ :}
-   block XMODEM:PAYLOAD-SIZE>N XMODEM:BLOCK drop
+   block PAYLOAD-SIZE>N XMODEM:BLOCK drop
    timeout session START
    data STR:DATA session SESSION-SOURCE ! data STR:LEN session SESSION-SOURCE-LEN !
    block session SESSION-BLOCK !

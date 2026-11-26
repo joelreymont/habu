@@ -23,6 +23,7 @@ require src/lib/ffi-callback.f
 require src/lib/ffi-abi.f
 
 package FFI-CB-TEST
+using FFI-CB
 
 $3000 constant SCRIPT-CAP
 $4000 constant CAP
@@ -122,10 +123,10 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : CASE-THREAD ( -- )
    s" == the thread a callback runs on" SAY
-   WHO TASK:SELF-CONTEXT FFI-CB:ENTRY THREAD-STABLE?
+   WHO TASK:SELF-CONTEXT ENTRY THREAD-STABLE?
       s" the main task's callbacks run on one thread, a thousand calls and yields apart" FACT
    MAIN-THREAD @ 0 <> s" which every sort called" FACT
-   WHO FFI-CB:UNBIND ;
+   WHO UNBIND ;
 
 : CASE-WORKERS ( -- )
    UNBIND-SELF
@@ -145,7 +146,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : CASE-CALLER ( -- )
    s" == one slot on the caller's context, two tasks inside at once" SAY
-   CMP-CALLER TASK:CALLER-CONTEXT FFI-CB:ENTRY CMP-CALLER-FN !
+   CMP-CALLER TASK:CALLER-CONTEXT ENTRY CMP-CALLER-FN !
    2 CALLER-RESET
    ['] WORK-CALLER-A WORKER-A TASK:ACTIVATE
    ['] WORK-CALLER-B WORKER-B TASK:ACTIVATE
@@ -159,10 +160,10 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    OUTER 0 CALLER-SORT
    CALLER-UNBIND-CODE @ E-TASK-STATE = and CALLER-MISSES @ 0= and
       s" UNBIND inside its comparator is E-TASK-STATE and qsort completes" FACT
-   CMP-CALLER FFI-CB:UNBIND
-   [: CMP-CALLER TASK:SELF-CONTEXT FFI-CB:ENTRY drop ;] catch 0=
+   CMP-CALLER UNBIND
+   [: CMP-CALLER TASK:SELF-CONTEXT ENTRY drop ;] catch 0=
       s" UNBIND with no thread inside frees it: the slot binds to the main context" FACT
-   CMP-CALLER FFI-CB:UNBIND ;
+   CMP-CALLER UNBIND ;
 
 \ Slot k's cell at offset off of its row, reached as the thunk reaches it:
 \ through the table the main region's CB-ROWS publishes.
@@ -173,14 +174,14 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 \ CMP-CALLER's slot: the one idle caller row while it is bound; -1 if none is.
 : CALLER-SLOT ( -- n )
-   CMP-CALLER TASK:CALLER-CONTEXT FFI-CB:ENTRY drop
+   CMP-CALLER TASK:CALLER-CONTEXT ENTRY drop
    -1 CB-POOL 0 ?do
       i CB-ROW-OWNER SLOT-CELL atomic@ CB-ROW-CALLER = if drop i then
    loop
-   CMP-CALLER FFI-CB:UNBIND ;
+   CMP-CALLER UNBIND ;
 
 : WORK-CALLER-BIND ( -- )
-   CMP-CALLER TASK:CALLER-CONTEXT FFI-CB:ENTRY drop 1 TASK:RETURN ;
+   CMP-CALLER TASK:CALLER-CONTEXT ENTRY drop 1 TASK:RETURN ;
 
 \ A task binding a slot to the caller's context waits while a mover holds the
 \ row BUSY, and binds once it is handed back.
@@ -200,7 +201,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
       s" handed back, the row binds and the task does not throw" FACT
    k CB-ROW-OWNER SLOT-CELL atomic@ CB-ROW-CALLER =
       s" and the row is a caller row" FACT
-   CMP-CALLER FFI-CB:UNBIND ;
+   CMP-CALLER UNBIND ;
 
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
@@ -322,7 +323,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       s" a name starting with ':': E-FFI-SYNTAX" FACT
    [: DECL-NAME-100 ;] catch 0= s" a 100-byte name is kept whole" FACT ;
 
-: PAD-PAST-EDGE ( -- ) begin FFI-CB:DECLARED POW2? while PAD repeat ;
+: PAD-PAST-EDGE ( -- ) begin DECLARED POW2? while PAD repeat ;
 
 : THROWING$ ( -- str )
    s" CALLBACK: CBT-RB-IN ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK  1 throw" ;
@@ -349,7 +350,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ CBT-RB-NEXT takes slot n and binds as the caller, then is unbound.
 : NEXT-BINDS? ( n -- bool ) {: k:n :}
    s" CALLBACK: CBT-RB-NEXT ( -- ) ;CALLBACK" evaluate-closed
-   FFI-CB:DECLARED k 1 + =
+   DECLARED k 1 + =
    s" CBT-RB-NEXT TASK:CALLER-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and
    s" CBT-RB-NEXT FFI-CB:UNBIND" evaluate-closed ;
 
@@ -360,38 +361,38 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ CBT-RB-SELF takes slot n and binds to this context, then is unbound.
 : SELF-BINDS? ( n -- bool ) {: k:n :}
    s" CALLBACK: CBT-RB-SELF ( -- ) ;CALLBACK" evaluate-closed
-   FFI-CB:DECLARED k 1 + =
+   DECLARED k 1 + =
    s" CBT-RB-SELF TASK:SELF-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and
    s" CBT-RB-SELF FFI-CB:UNBIND" evaluate-closed ;
 
 \ Slot k rejects a bind to ctx while the binding a thrown text made holds it,
 \ then is unbound.
 : HELD? ( n n -- bool ) {: k:n ctx:n :}
-   k FFI-CB:DESCRIPTOR {: cb :}
-   [: cb ctx FFI-CB:ENTRY drop ;] catch E-TASK-STATE =
-   cb FFI-CB:UNBIND ;
+   k DESCRIPTOR {: cb :}
+   [: cb ctx ENTRY drop ;] catch E-TASK-STATE =
+   cb UNBIND ;
 
 \ The THROWING$ text at the edge grows the descriptor and task-row tables; C
 \ then calls through the grown tables the main region publishes.
 : CASE-THROWN ( -- )
    s" == a callback declared in a text that throws" SAY
-   PAD-PAST-EDGE FFI-CB:DECLARED {: before:n :}
-   THROWING$ TEST-EVAL:RC 1 = FFI-CB:DECLARED before 1 + = and
+   PAD-PAST-EDGE DECLARED {: before:n :}
+   THROWING$ TEST-EVAL:RC 1 = DECLARED before 1 + = and
       s" a thrown text keeps the slot it declared" FACT
-   BOUND$ TEST-EVAL:RC 1 = FFI-CB:DECLARED before 2 + = and {: bound:bool :}
+   BOUND$ TEST-EVAL:RC 1 = DECLARED before 2 + = and {: bound:bool :}
    bound if
       before 1 + TASK:CALLER-CONTEXT HELD? before 2 + NEXT-BINDS? and
    else false then
       s" a slot a thrown text bound stays bound; the next declaration takes a new slot" FACT
-   FFI-CB:DECLARED {: slot:n :}
-   CALLER-BOUND$ TEST-EVAL:RC 1 = FFI-CB:DECLARED slot 1 + = and {: caller:bool :}
+   DECLARED {: slot:n :}
+   CALLER-BOUND$ TEST-EVAL:RC 1 = DECLARED slot 1 + = and {: caller:bool :}
    caller if
       slot TASK:SELF-CONTEXT HELD? slot 1 + SELF-BINDS? and
    else false then
       s" a slot a thrown text bound as the caller stays bound as the caller" FACT
-   PAD-TO-EDGE FFI-CB:DECLARED {: edge:n :}
-   CMP TASK:SELF-CONTEXT FFI-CB:ENTRY {: early:n :}
-   THROWING$ TEST-EVAL:RC 1 = FFI-CB:DECLARED edge 1 + = and
+   PAD-TO-EDGE DECLARED {: edge:n :}
+   CMP TASK:SELF-CONTEXT ENTRY {: early:n :}
+   THROWING$ TEST-EVAL:RC 1 = DECLARED edge 1 + = and
       s" a throw after a declaration that grew the tables keeps its slot" FACT
    JUNK
    early SORTED-BY?
@@ -401,7 +402,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       s" a callback declared after the thrown text sorts" FACT
    early SORTED-BY? s" and the earlier one still does" FACT
    s" CBT-RB-LATE FFI-CB:UNBIND" evaluate-closed
-   CMP FFI-CB:UNBIND ;
+   CMP UNBIND ;
 
 \ A package whose private `@`, `execute` and `CMP-BODY` would run BACKWARD in
 \ place of the body declares a callback after them: its dispatch still runs the
@@ -507,15 +508,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ probe under UNSET's 0 and no row under UNSET-ONE's 1.
 : CASE-UNSET ( -- )
    s" == a body never stored" SAY
-   UNSET TASK:SELF-CONTEXT FFI-CB:ENTRY {: fn:n :}
+   UNSET TASK:SELF-CONTEXT ENTRY {: fn:n :}
    OUTER BYTE-VIEW OUTER BYTE-VIEW ROW-N CELL fn BSEARCH
    OUTER NULL-PTR - ROW-N 2 / cells + =
       s" bsearch through it answers the fallback: its first probe matches" FACT
-   UNSET FFI-CB:FAULT@ E-FFI-CALLBACK-STATE = s" and faults E-FFI-CALLBACK-STATE" FACT
-   UNSET FFI-CB:UNBIND
-   OUTER BYTE-VIEW OUTER BYTE-VIEW ROW-N CELL UNSET-ONE TASK:SELF-CONTEXT FFI-CB:ENTRY
+   UNSET FAULT@ E-FFI-CALLBACK-STATE = s" and faults E-FFI-CALLBACK-STATE" FACT
+   UNSET UNBIND
+   OUTER BYTE-VIEW OUTER BYTE-VIEW ROW-N CELL UNSET-ONE TASK:SELF-CONTEXT ENTRY
    BSEARCH 0= s" a fallback of 1 reaches C too: no row matches" FACT
-   UNSET-ONE FFI-CB:UNBIND ;
+   UNSET-ONE UNBIND ;
 
 : SUBJECT$ ( -- str ) SUBJECT-BUF SUBJECT-U @ >str ;
 : IMAGE$ ( -- str ) IMAGE-BUF IMAGE-U @ >str ;
@@ -777,6 +778,7 @@ public
    TRANSCRIPT-CASE
    T-REPORT ;
 
+;using
 ;package
 
 FFI-CB-TEST:RUN-SUITE

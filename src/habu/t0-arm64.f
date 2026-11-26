@@ -43,6 +43,8 @@ require src/habu/t0-place.f
 
 package COMP
 package ARM64
+using A64ASM
+using PLACE
 
 15 constant NVREG
 16 constant TMP
@@ -70,34 +72,34 @@ NVREG TYPED-BUFFER REGS n
 : REG ( vreg -- n ) VREG>N REGS @ ;
 
 6 TYPED-BUFFER CONDS n
-A64ASM:C-EQ CC-EQ CC>N CONDS !
-A64ASM:C-NE CC-NE CC>N CONDS !
-A64ASM:C-LT CC-LT CC>N CONDS !
-A64ASM:C-GE CC-GE CC>N CONDS !
-A64ASM:C-LE CC-LE CC>N CONDS !
-A64ASM:C-GT CC-GT CC>N CONDS !
+C-EQ CC-EQ CC>N CONDS !
+C-NE CC-NE CC>N CONDS !
+C-LT CC-LT CC>N CONDS !
+C-GE CC-GE CC>N CONDS !
+C-LE CC-LE CC>N CONDS !
+C-GT CC-GT CC>N CONDS !
 
 \ The register form of each ALU operation, and the bitmask-immediate form of
 \ the logical ones, OP-AND first.
 5 TYPED-BUFFER ALU-RR [ n n n -- n ]
-' A64ASM:ENC-ADD OP-ADD ALU>N ALU-RR !
-' A64ASM:ENC-SUB OP-SUB ALU>N ALU-RR !
-' A64ASM:ENC-AND OP-AND ALU>N ALU-RR !
-' A64ASM:ENC-ORR OP-OR ALU>N ALU-RR !
-' A64ASM:ENC-EOR OP-XOR ALU>N ALU-RR !
+' ENC-ADD OP-ADD ALU>N ALU-RR !
+' ENC-SUB OP-SUB ALU>N ALU-RR !
+' ENC-AND OP-AND ALU>N ALU-RR !
+' ENC-ORR OP-OR ALU>N ALU-RR !
+' ENC-EOR OP-XOR ALU>N ALU-RR !
 
 3 TYPED-BUFFER ALU-LOGI [ n n n -- n ]
-' A64ASM:ENC-ANDI 0 ALU-LOGI !
-' A64ASM:ENC-ORRI 1 ALU-LOGI !
-' A64ASM:ENC-EORI 2 ALU-LOGI !
+' ENC-ANDI 0 ALU-LOGI !
+' ENC-ORRI 1 ALU-LOGI !
+' ENC-EORI 2 ALU-LOGI !
 
 2 TYPED-BUFFER SH-RR [ n n n -- n ]
-' A64ASM:ENC-LSLV SH-LEFT SHIFTER>N SH-RR !
-' A64ASM:ENC-LSRV SH-RIGHT SHIFTER>N SH-RR !
+' ENC-LSLV SH-LEFT SHIFTER>N SH-RR !
+' ENC-LSRV SH-RIGHT SHIFTER>N SH-RR !
 
 2 TYPED-BUFFER SH-RI [ n n n -- n ]
-' A64ASM:ENC-LSLI SH-LEFT SHIFTER>N SH-RI !
-' A64ASM:ENC-LSRI SH-RIGHT SHIFTER>N SH-RI !
+' ENC-LSLI SH-LEFT SHIFTER>N SH-RI !
+' ENC-LSRI SH-RIGHT SHIFTER>N SH-RI !
 
 variable LINKED                       \ nonzero once this unit calls
 variable HELD                         \ nonzero while x29 holds the index
@@ -113,10 +115,10 @@ variable HELD                         \ nonzero while x29 holds the index
    v at INSN + VEC:ENSURE
    w  v at VEC:AT  LE:U32! ;
 
-: W ( n -- ) PLACE:RAW @ W32+ ;
+: W ( n -- ) RAW @ W32+ ;
 
 : W32! ( n n -- ) {: w:n at:n :}
-   w  PLACE:OUT @ at VEC:AT  LE:U32! ;
+   w  OUT @ at VEC:AT  LE:U32! ;
 
 : HALF ( n n -- n ) 16 * rshift $FFFF and ;
 
@@ -125,9 +127,9 @@ variable HELD                         \ nonzero while x29 holds the index
 
 : LANE ( bool n n n bool ^VEC:vector<u8> -- bool )
    {: first:bool h:n hw:n r:n inv:bool buf:^ :}
-   first 0= if r h hw A64ASM:MOVKHW buf W32+ false exit then
-   inv if r h $FFFF xor hw A64ASM:MOVNHW buf W32+ false exit then
-   r h hw A64ASM:MOVZHW buf W32+ false ;
+   first 0= if r h hw MOVKHW buf W32+ false exit then
+   inv if r h $FFFF xor hw MOVNHW buf W32+ false exit then
+   r h hw MOVZHW buf W32+ false ;
 
 \ Load the constant v into r with the shortest move-wide chain.
 : LIT-IN ( n n ^VEC:vector<u8> -- ) {: v:n r:n buf:^ :}
@@ -135,32 +137,32 @@ variable HELD                         \ nonzero while x29 holds the index
    inv if $FFFF else 0 then {: fill:n :}
    true 4 0 ?do v i HALF fill <> if v i HALF i r inv buf LANE then loop
    0= if exit then
-   inv if r 0 0 A64ASM:MOVNHW buf W32+ exit then
-   r 0 0 A64ASM:MOVZHW buf W32+ ;
+   inv if r 0 0 MOVNHW buf W32+ exit then
+   r 0 0 MOVZHW buf W32+ ;
 
-: LIT-R ( n n -- ) PLACE:RAW @ LIT-IN ;
+: LIT-R ( n n -- ) RAW @ LIT-IN ;
 
 : PAGES? ( n -- bool ) {: v:n :}
-   v 0 > v $FFF and 0= and v 12 rshift A64ASM:IMM12-LIM < and ;
+   v 0 > v $FFF and 0= and v 12 rshift IMM12-LIM < and ;
 
 \ rd becomes rn + v, in the fewest words: an immediate, its negation, a page
 \ count, else v in x16. sp as rn is copied first there, since a register add
 \ reads 31 as the zero register.
 : ADD-IMM ( n n n -- ) {: rd:n rn:n v:n :}
-   v 0 = if rd rn = if exit then rd rn 0 A64ASM:ENC-ADDI W exit then
-   v 0 > v A64ASM:IMM12-LIM < and if rd rn v A64ASM:ENC-ADDI W exit then
+   v 0 = if rd rn = if exit then rd rn 0 ENC-ADDI W exit then
+   v 0 > v IMM12-LIM < and if rd rn v ENC-ADDI W exit then
    v negate {: nv:n :}
-   nv 0 > nv A64ASM:IMM12-LIM < and if rd rn nv A64ASM:ENC-SUBI W exit then
-   v PAGES? if rd rn v 12 rshift A64ASM:ENC-ADDI-LSL12 W exit then
-   nv PAGES? if rd rn nv 12 rshift A64ASM:ENC-SUBI-LSL12 W exit then
-   rn SP = if rd SP 0 A64ASM:ENC-ADDI W rd else rn then {: src:n :}
+   nv 0 > nv IMM12-LIM < and if rd rn nv ENC-SUBI W exit then
+   v PAGES? if rd rn v 12 rshift ENC-ADDI-LSL12 W exit then
+   nv PAGES? if rd rn nv 12 rshift ENC-SUBI-LSL12 W exit then
+   rn SP = if rd SP 0 ENC-ADDI W rd else rn then {: src:n :}
    v TMP LIT-R
-   rd src TMP A64ASM:ENC-ADD W ;
+   rd src TMP ENC-ADD W ;
 
 \ Whether a cell access reaches base + off in one word: a scaled unsigned
 \ offset, or an unscaled signed nine-bit one.
 : SCALED? ( n -- bool ) {: off:n :}
-   off 0 >= off 7 and 0= and off 3 rshift A64ASM:IMM12-LIM < and ;
+   off 0 >= off 7 and 0= and off 3 rshift IMM12-LIM < and ;
 
 : SIMM9? ( n -- bool ) {: off:n :} off -256 >= off 255 <= and ;
 
@@ -174,9 +176,9 @@ variable HELD                         \ nonzero while x29 holds the index
 \ One cell access at base + off, which FITS? answered true for.
 : ACCESS ( n n n bool -- ) {: rt:n base:n off:n st:bool :}
    off SCALED? if
-      rt base off st if A64ASM:ENC-STR else A64ASM:ENC-LDR then W exit
+      rt base off st if ENC-STR else ENC-LDR then W exit
    then
-   rt base off st if A64ASM:ENC-STUR else A64ASM:ENC-LDUR then W ;
+   rt base off st if ENC-STUR else ENC-LDUR then W ;
 
 : XFER ( n n n bool -- ) {: rt:n base:n off:n st:bool :}
    base off ADDRESS {: b:n o:n :}
@@ -185,8 +187,8 @@ variable HELD                         \ nonzero while x29 holds the index
 : DSP ( -- n ) ENGINE-GPR:A64-DSTACK ;
 
 : SP-PAGES ( n bool -- n )
-   if SP SP rot A64ASM:ENC-ADDI-LSL12 exit then
-   SP SP rot A64ASM:ENC-SUBI-LSL12 ;
+   if SP SP rot ENC-ADDI-LSL12 exit then
+   SP SP rot ENC-SUBI-LSL12 ;
 
 : SP-ADJ ( n bool ^VEC:vector<u8> -- ) {: bytes:n add:bool buf:^ :}
    bytes 12 rshift
@@ -195,50 +197,50 @@ variable HELD                         \ nonzero while x29 holds the index
    repeat drop
    bytes ADJ-MAX and {: lo:n :}
    lo 0= if exit then
-   add if SP SP lo A64ASM:ENC-ADDI buf W32+ exit then
-   SP SP lo A64ASM:ENC-SUBI buf W32+ ;
+   add if SP SP lo ENC-ADDI buf W32+ exit then
+   SP SP lo ENC-SUBI buf W32+ ;
 
 \ Three halves, high first. Every data address a target holds is below 2^48:
 \ the DATA window, 2^38 bytes at $80000000 on Linux and 2^40 at $44000000000
 \ on macOS, and a build's space, which lies inside hb's window.
 : DATA-CHAIN ( n n -- ) {: v:n r:n :}
-   r v 2 HALF 2 A64ASM:MOVZHW W
-   r v 1 HALF 1 A64ASM:MOVKHW W
-   r v 0 HALF 0 A64ASM:MOVKHW W ;
+   r v 2 HALF 2 MOVZHW W
+   r v 1 HALF 1 MOVKHW W
+   r v 0 HALF 0 MOVKHW W ;
 
 \ The return stack: x16 its depth, x17 the address of slot x16.
-: RDEPTH ( -- ) TMP XREG-RBASE RSP-CELL A64ASM:ENC-LDR W ;
-: RDEPTH! ( -- ) TMP XREG-RBASE RSP-CELL A64ASM:ENC-STR W ;
+: RDEPTH ( -- ) TMP XREG-RBASE RSP-CELL ENC-LDR W ;
+: RDEPTH! ( -- ) TMP XREG-RBASE RSP-CELL ENC-STR W ;
 
 : RSLOT ( -- )
-   ADR XREG-RBASE STACK-ABI:RETURN-BASE-CELL A64ASM:ENC-LDR W
-   ADR ADR TMP 3 A64ASM:ENC-ADD-LSL W ;
+   ADR XREG-RBASE STACK-ABI:RETURN-BASE-CELL ENC-LDR W
+   ADR ADR TMP 3 ENC-ADD-LSL W ;
 
 \ ---- PLACE's hooks -----------------------------------------------------------
 : UNIT-RESET ( -- ) 0 LINKED !  0 HELD ! ;
 
 : PROLOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
-   LINKED @ if LR SP -16 A64ASM:ENC-STRPRE buf W32+ then
+   LINKED @ if LR SP -16 ENC-STRPRE buf W32+ then
    bytes false buf SP-ADJ ;
 
 : EPILOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
    bytes true buf SP-ADJ
-   LINKED @ if LR SP 16 A64ASM:ENC-LDRPOST buf W32+ then ;
+   LINKED @ if LR SP 16 ENC-LDRPOST buf W32+ then ;
 
-: SELF-PUT ( n -- ) {: at:n :}  at negate A64ASM:ENC-BL  at W32! ;
+: SELF-PUT ( n -- ) {: at:n :}  at negate ENC-BL  at W32! ;
 
 \ The `adr` in OUT holds its register in its first byte.
 : ADR-PUT ( n n -- ) {: at:n to:n :}
-   PLACE:OUT @ at VEC:AT c@ 31 and  to at - A64ASM:ENC-ADR  at W32! ;
+   OUT @ at VEC:AT c@ 31 and  to at - ENC-ADR  at W32! ;
 
 \ Branch k's word, for its site at and target to in OUT.
 : BR-WORD ( n n n -- n )
    {: k:n at:n to:n :}
-   k PLACE:BR-FORM @ {: form:n :}
+   k BR-FORM @ {: form:n :}
    to at - {: d:n :}
-   form FORM-B = if d A64ASM:ENC-B exit then
-   form FORM-BCOND = if d k PLACE:BR-ARG @ A64ASM:ENC-BCOND exit then
-   k PLACE:BR-ARG @ d A64ASM:ENC-CBZ ;
+   form FORM-B = if d ENC-B exit then
+   form FORM-BCOND = if d k BR-ARG @ ENC-BCOND exit then
+   k BR-ARG @ d ENC-CBZ ;
 
 \ Every form is the placeholder's one word.
 : BRANCH-LEN ( n n -- n ) 2drop 0 ;
@@ -247,21 +249,21 @@ variable HELD                         \ nonzero while x29 holds the index
    k at to BR-WORD  at W32! ;
 
 \ ---- the body ----------------------------------------------------------------
-: RETURN ( -- ) PLACE:EPI+  A64ASM:ENC-RET W ;
+: RETURN ( -- ) EPI+  ENC-RET W ;
 
 : SLOT-CLOSE ( -- )
    RETURN PLACE:CLOSE
-   PLACE:OUT-OFF INSN - EMIT-PATCH-SLOT! ;
+   OUT-OFF INSN - EMIT-PATCH-SLOT! ;
 
 \ The callback stub is appended after the last unit so each unit's
 \ code is the same armed or not. Answers where it starts.
 : CB-STUB ( -- n )
-   PLACE:OUT-OFF {: at:n :}
-   NCBSTUB:SLOT@ CB-ID PLACE:OUT @ LIT-IN
+   OUT-OFF {: at:n :}
+   NCBSTUB:SLOT@ CB-ID OUT @ LIT-IN
    NCBSTUB:THUNK@ {: thunk:n :}
-   PLACE:OUT-OFF NEMIT:ADDR-CODE thunk -1 EMIT-ADDR-ROW+
-   TMP 0 A64ASM:ENC-ADRP PLACE:OUT @ W32+  TMP TMP 0 A64ASM:ENC-ADDI PLACE:OUT @ W32+
-   TMP A64ASM:ENC-BR PLACE:OUT @ W32+
+   OUT-OFF NEMIT:ADDR-CODE thunk -1 EMIT-ADDR-ROW+
+   TMP 0 ENC-ADRP OUT @ W32+  TMP TMP 0 ENC-ADDI OUT @ W32+
+   TMP ENC-BR OUT @ W32+
    at ;
 
 \ Every call row's `bl` or `b`, and every code address row's `adrp` and `add`
@@ -270,12 +272,12 @@ variable HELD                         \ nonzero while x29 holds the index
    {: place:n :}
    EMIT-CALL-ROWS 0 ?do
       i EMIT-CALL-ROW {: at:n kind:n to:n :}
-      to place at + -  kind NEMIT:CALL = if A64ASM:ENC-BL else A64ASM:ENC-B then  at W32!
+      to place at + -  kind NEMIT:CALL = if ENC-BL else ENC-B then  at W32!
    loop
    EMIT-ADDR-ROWS 0 ?do
       i EMIT-ADDR-ROW {: at:n kind:n to:n :}
       kind NEMIT:ADDR-CODE = if
-         PLACE:OUT @ at VEC:AT c@ 31 and  to  place at +  A64ASM:ENC-ADRP-ADD
+         OUT @ at VEC:AT c@ 31 and  to  place at +  ENC-ADRP-ADD
          at INSN + W32!  at W32!
       then
    loop ;
@@ -285,25 +287,25 @@ variable HELD                         \ nonzero while x29 holds the index
 
 : ADDR-DATA ( n n vreg -- )
    {: v:n o:n d:vreg :}
-   PLACE:HERE-OFF NEMIT:ADDR-DATA v o PLACE:PEND+
+   HERE-OFF NEMIT:ADDR-DATA v o PEND+
    v d REG DATA-CHAIN ;
 
 : ADDR-CODE ( n vreg -- )
    {: v:n d:vreg :}
-   PLACE:HERE-OFF NEMIT:ADDR-CODE v -1 PLACE:PEND+
-   d REG 0 A64ASM:ENC-ADRP W  d REG d REG 0 A64ASM:ENC-ADDI W ;
+   HERE-OFF NEMIT:ADDR-CODE v -1 PEND+
+   d REG 0 ENC-ADRP W  d REG d REG 0 ENC-ADDI W ;
 
 \ `adr rd, 0` until ADR-PUT writes the distance to unit n.
 : ADDR-QUOT ( n vreg -- )
    {: n:n d:vreg :}
-   PLACE:HERE-OFF ADDR-QUOT-KIND n -1 PLACE:PEND+
-   d REG 0 A64ASM:ENC-ADR W ;
+   HERE-OFF ADDR-QUOT-KIND n -1 PEND+
+   d REG 0 ENC-ADR W ;
 
 : DSP+ ( n -- ) {: k:n :}  DSP DSP k CELL * ADD-IMM ;
 
 \ A push moves at most the virtual stack's 15 cells, within the offset's
 \ reach.
-: PUSH-R ( n n -- ) {: r:n k:n :}  r DSP k CELL * A64ASM:ENC-STRPOST W ;
+: PUSH-R ( n n -- ) {: r:n k:n :}  r DSP k CELL * ENC-STRPOST W ;
 
 : PUSH ( vreg n -- ) {: s:vreg k:n :}  s REG k PUSH-R ;
 
@@ -315,7 +317,7 @@ variable HELD                         \ nonzero while x29 holds the index
 \ pre-index `ldr` while the move fits its offset.
 : POP ( vreg n -- ) {: d:vreg k:n :}
    k CELL * negate {: off:n :}
-   off SIMM9? if d REG DSP off A64ASM:ENC-LDRPRE W exit then
+   off SIMM9? if d REG DSP off ENC-LDRPRE W exit then
    k negate DSP+
    d REG DSP 0 false ACCESS ;
 
@@ -335,42 +337,42 @@ variable HELD                         \ nonzero while x29 holds the index
 
 : MOV ( vreg vreg -- )
    {: d:vreg s:vreg :}
-   d REG s REG A64ASM:ENC-MOV W ;
+   d REG s REG ENC-MOV W ;
 
-: BASE ( vreg -- ) REG XREG-RBASE A64ASM:ENC-MOV W ;
+: BASE ( vreg -- ) REG XREG-RBASE ENC-MOV W ;
 
 : EXCHANGE ( vreg vreg -- )
    {: a:vreg b:vreg :}
-   TMP a REG A64ASM:ENC-MOV W
-   a REG b REG A64ASM:ENC-MOV W
-   b REG TMP A64ASM:ENC-MOV W ;
+   TMP a REG ENC-MOV W
+   a REG b REG ENC-MOV W
+   b REG TMP ENC-MOV W ;
 
 : SLOT-STORE ( vreg n -- )
    {: s:vreg k:n :}
-   s REG SP k PLACE:SLOT-OFF true XFER ;
+   s REG SP k SLOT-OFF true XFER ;
 
 : SLOT-LOAD ( vreg n -- )
    {: d:vreg k:n :}
-   d REG SP k PLACE:SLOT-OFF false XFER ;
+   d REG SP k SLOT-OFF false XFER ;
 
 : ENV-OPEN ( -- )
-   PLACE:BODY-EMPTY
-   1 PLACE:ENV !
-   REC-ARG SP 0 A64ASM:ENC-STR W ;
+   BODY-EMPTY
+   1 ENV !
+   REC-ARG SP 0 ENC-STR W ;
 
 : REC-STORE ( vreg n -- )
    {: s:vreg n:n :}
-   s REG SP n PLACE:REC-OFF true XFER ;
+   s REG SP n REC-OFF true XFER ;
 
 : REC-QUOT ( n vreg -- )
    {: n:n d:vreg :}
    d REG {: r:n :}
-   r SP n PLACE:REC-OFF ADD-IMM
-   r r $8000000000000000 A64ASM:>LIMM A64ASM:ENC-ORRI W ;
+   r SP n REC-OFF ADD-IMM
+   r r $8000000000000000 >LIMM ENC-ORRI W ;
 
 : ENV-LOAD ( vreg n -- )
    {: d:vreg n:n :}
-   PLACE:ENV @ 0= if E-T0-UNIT throw then
+   ENV @ 0= if E-T0-UNIT throw then
    d REG {: r:n :}
    r SP 0 false ACCESS
    r r n CELL * false XFER ;
@@ -385,8 +387,8 @@ variable HELD                         \ nonzero while x29 holds the index
    d REG {: r:n :}  o ALU>N {: k:n :}
    k OP-ADD ALU>N = if r r v ADD-IMM exit then
    k OP-SUB ALU>N = if r r v negate ADD-IMM exit then
-   v A64ASM:LIMM? if
-      r r v A64ASM:>LIMM  k OP-AND ALU>N - ALU-LOGI @ execute W exit
+   v LIMM? if
+      r r v >LIMM  k OP-AND ALU>N - ALU-LOGI @ execute W exit
    then
    v TMP LIT-R
    r r TMP k ALU-RR @ execute W ;
@@ -402,35 +404,35 @@ variable HELD                         \ nonzero while x29 holds the index
 
 : MULX ( vreg vreg -- )
    {: d:vreg s:vreg :}
-   d REG d REG s REG A64ASM:ENC-MUL W ;
+   d REG d REG s REG ENC-MUL W ;
 
 \ arm64 multiplies registers only.
 : MUL-LIT ( vreg n -- )
    {: d:vreg v:n :}
    v TMP LIT-R
-   d REG d REG TMP A64ASM:ENC-MUL W ;
+   d REG d REG TMP ENC-MUL W ;
 
 \ rd becomes rn, plus 2^k - 1 when rn is negative, so that dropping its low k
 \ bits rounds toward zero; k is 1 to 62.
 : ROUNDED ( n n n -- )
    {: rd:n rn:n k:n :}
-   k 1 = if rd rn rn 63 A64ASM:ENC-ADD-LSR W exit then
-   TMP rn 63 A64ASM:ENC-ASRI W
-   rd rn TMP 64 k - A64ASM:ENC-ADD-LSR W ;
+   k 1 = if rd rn rn 63 ENC-ADD-LSR W exit then
+   TMP rn 63 ENC-ASRI W
+   rd rn TMP 64 k - ENC-ADD-LSR W ;
 
 \ r less r rounded toward zero to a multiple of 2^k.
 : MOD-POW2 ( n n -- )
    {: r:n k:n :}
    k 0= if 0 r LIT-R exit then
    ADR r k ROUNDED
-   ADR ADR 1 k lshift negate A64ASM:>LIMM A64ASM:ENC-ANDI W
-   r r ADR A64ASM:ENC-SUB W ;
+   ADR ADR 1 k lshift negate >LIMM ENC-ANDI W
+   r r ADR ENC-SUB W ;
 
 : DIV-POW2 ( n n -- )
    {: r:n k:n :}
    k 0= if exit then
    r r k ROUNDED
-   r r k A64ASM:ENC-ASRI W ;
+   r r k ENC-ASRI W ;
 
 \ `sdiv` appears only here and in MOD-LIT, whose divisor is never 0 or -1:
 \ the hardware answers 0 for a zero divisor.
@@ -439,7 +441,7 @@ variable HELD                         \ nonzero while x29 holds the index
    v POW2-EXP {: k:n :}
    k 0 >= if d REG k DIV-POW2 exit then
    v TMP LIT-R
-   d REG d REG TMP A64ASM:ENC-SDIV W ;
+   d REG d REG TMP ENC-SDIV W ;
 
 : MOD-LIT ( vreg n -- )
    {: d:vreg v:n :}
@@ -447,28 +449,28 @@ variable HELD                         \ nonzero while x29 holds the index
    v POW2-EXP {: k:n :}
    k 0 >= if r k MOD-POW2 exit then
    v TMP LIT-R
-   ADR r TMP A64ASM:ENC-SDIV W
-   r ADR TMP r A64ASM:ENC-MSUB W ;
+   ADR r TMP ENC-SDIV W
+   r ADR TMP r ENC-MSUB W ;
 
-: NEG ( vreg -- ) REG dup A64ASM:ENC-NEG W ;
-: NOT ( vreg -- ) REG dup A64ASM:ENC-MVN W ;
+: NEG ( vreg -- ) REG dup ENC-NEG W ;
+: NOT ( vreg -- ) REG dup ENC-MVN W ;
 
 : CMP ( vreg vreg -- )
    {: a:vreg b:vreg :}
-   a REG b REG A64ASM:ENC-CMP W ;
+   a REG b REG ENC-CMP W ;
 
 : CMP-LIT ( vreg n -- )
    {: a:vreg v:n :}
    a REG v negate {: r:n nv:n :}
-   v 0 >= v A64ASM:IMM12-LIM < and if r v A64ASM:ENC-CMPI W exit then
-   nv 0 > nv A64ASM:IMM12-LIM < and if r nv A64ASM:ENC-CMNI W exit then
+   v 0 >= v IMM12-LIM < and if r v ENC-CMPI W exit then
+   nv 0 > nv IMM12-LIM < and if r nv ENC-CMNI W exit then
    v TMP LIT-R
-   r TMP A64ASM:ENC-CMP W ;
+   r TMP ENC-CMP W ;
 
 \ csetm makes the full-cell flag of the condition.
 : FLAG-CC ( vreg cc -- )
    {: d:vreg c:cc :}
-   d REG c CC>N CONDS @ A64ASM:ENC-CSETM W ;
+   d REG c CC>N CONDS @ ENC-CSETM W ;
 
 : FLAG ( vreg vreg vreg cc -- )
    {: d:vreg a:vreg b:vreg c:cc :}
@@ -479,8 +481,8 @@ variable HELD                         \ nonzero while x29 holds the index
    {: d:vreg a:vreg v:n c:cc :}
    v 0= if
       c CC>N {: k:n :}
-      k CC-LT CC>N = if d REG a REG 63 A64ASM:ENC-ASRI W exit then
-      k CC-GE CC>N = if d REG a REG 63 A64ASM:ENC-MVN-ASR W exit then
+      k CC-LT CC>N = if d REG a REG 63 ENC-ASRI W exit then
+      k CC-GE CC>N = if d REG a REG 63 ENC-MVN-ASR W exit then
    then
    a v CMP-LIT  d c FLAG-CC ;
 
@@ -492,18 +494,18 @@ variable HELD                         \ nonzero while x29 holds the index
 : LOAD ( vreg vreg width -- )
    {: d:vreg a:vreg w:width :}
    w WIDTH>N {: n:n :}
-   n 1 = if d REG a REG 0 A64ASM:ENC-LDRB W exit then
-   n 2 = if d REG a REG 0 A64ASM:ENC-LDRH W exit then
-   n 4 = if d REG a REG 0 A64ASM:ENC-LDRW W exit then
-   d REG a REG 0 A64ASM:ENC-LDR W ;
+   n 1 = if d REG a REG 0 ENC-LDRB W exit then
+   n 2 = if d REG a REG 0 ENC-LDRH W exit then
+   n 4 = if d REG a REG 0 ENC-LDRW W exit then
+   d REG a REG 0 ENC-LDR W ;
 
 : STORE ( vreg vreg width -- )
    {: s:vreg a:vreg w:width :}
    w WIDTH>N {: n:n :}
-   n 1 = if s REG a REG 0 A64ASM:ENC-STRB W exit then
-   n 2 = if s REG a REG 0 A64ASM:ENC-STRH W exit then
-   n 4 = if s REG a REG 0 A64ASM:ENC-STRW W exit then
-   s REG a REG 0 A64ASM:ENC-STR W ;
+   n 1 = if s REG a REG 0 ENC-STRB W exit then
+   n 2 = if s REG a REG 0 ENC-STRH W exit then
+   n 4 = if s REG a REG 0 ENC-STRW W exit then
+   s REG a REG 0 ENC-STR W ;
 
 \ ---- the return stack --------------------------------------------------------
 \ RSP-CELL cells deep from STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d.
@@ -514,12 +516,12 @@ variable HELD                         \ nonzero while x29 holds the index
 : TOR ( ^vreg n -- ) {: p:^ n:n :}
    RDEPTH RSLOT
    n 0 ?do p i i CELL * true RS-XFER loop
-   TMP TMP n A64ASM:ENC-ADDI W
+   TMP TMP n ENC-ADDI W
    RDEPTH! ;
 
 : RFROM ( ^vreg n -- ) {: p:^ n:n :}
    RDEPTH
-   TMP TMP n A64ASM:ENC-SUBI W
+   TMP TMP n ENC-SUBI W
    RDEPTH! RSLOT
    n 0 ?do p i i CELL * false RS-XFER loop ;
 
@@ -535,28 +537,28 @@ variable HELD                         \ nonzero while x29 holds the index
 : CALL ( n n -- )
    {: to:n loc:n :}
    1 LINKED !  0 HELD !
-   PLACE:HERE-OFF NEMIT:CALL to loc PLACE:PCALL+
-   0 A64ASM:ENC-BL W ;
+   HERE-OFF NEMIT:CALL to loc PCALL+
+   0 ENC-BL W ;
 
 
 : TAIL ( n n -- )
    {: to:n loc:n :}
-   PLACE:EPI+
-   PLACE:HERE-OFF NEMIT:TAIL to loc PLACE:PCALL+
-   0 A64ASM:ENC-B W ;
+   EPI+
+   HERE-OFF NEMIT:TAIL to loc PCALL+
+   0 ENC-B W ;
 
 
 : CALL-SELF ( -- )
    1 LINKED !  0 HELD !
-   PLACE:HERE-OFF PLACE:SELF+
-   0 A64ASM:ENC-BL W ;
+   HERE-OFF SELF+
+   0 ENC-BL W ;
 
 \ ---- control -----------------------------------------------------------------
 \ The branch primitives LABEL emits through. A forward branch is its number
 \ in the open unit's list, and a head a raw offset.
 
 \ A branch of the form, with its condition or register, to a raw offset or -1.
-: BRANCH ( n n n -- LABEL:branch ) INSN PLACE:BR+ ;
+: BRANCH ( n n n -- LABEL:branch ) INSN BR+ ;
 
 : RESOLVE ( LABEL:branch -- ) PLACE:RESOLVE  0 HELD ! ;
 
@@ -568,23 +570,23 @@ variable HELD                         \ nonzero while x29 holds the index
 
 : FWD-NE ( vreg vreg -- LABEL:branch )
    {: sel:vreg v:vreg :}
-   sel REG v REG A64ASM:ENC-CMP W
-   A64ASM:C-NE FWD-BCOND ;
+   sel REG v REG ENC-CMP W
+   C-NE FWD-BCOND ;
 
 : FWD-NE-LIT ( vreg n -- LABEL:branch )
    {: sel:vreg v:n :}
    sel v CMP-LIT
-   A64ASM:C-NE FWD-BCOND ;
+   C-NE FWD-BCOND ;
 
 : FWD-GE ( vreg vreg -- LABEL:branch )
    {: s:vreg l:vreg :}
-   s REG l REG A64ASM:ENC-CMP W
-   A64ASM:C-GE FWD-BCOND ;
+   s REG l REG ENC-CMP W
+   C-GE FWD-BCOND ;
 
 : FWD-CC ( cc -- LABEL:branch ) CC>N CONDS @ FWD-BCOND ;
 
 \ The b.cond branch becomes b.eq.
-: ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: k:n :}  A64ASM:C-EQ k PLACE:BR-ARG ! ;
+: ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: k:n :}  C-EQ k BR-ARG ! ;
 
 : BACK-JUMP ( LABEL:head -- ) LABEL:HEAD>N FORM-B 0 rot BRANCH drop ;
 
@@ -602,8 +604,8 @@ variable HELD                         \ nonzero while x29 holds the index
 
 \ ---- loops -------------------------------------------------------------------
 \ x17 holds the address one frame past the innermost.
-: LTOP ( -- ) ADR XREG-RBASE LOOPSP-CELL A64ASM:ENC-LDR W ;
-: LTOP! ( -- ) ADR XREG-RBASE LOOPSP-CELL A64ASM:ENC-STR W ;
+: LTOP ( -- ) ADR XREG-RBASE LOOPSP-CELL ENC-LDR W ;
+: LTOP! ( -- ) ADR XREG-RBASE LOOPSP-CELL ENC-STR W ;
 
 \ The index and limit of the innermost frame, below LTOP's address.
 -16 constant LIDX-OFF
@@ -625,10 +627,10 @@ variable HELD                         \ nonzero while x29 holds the index
 : LOOP-PUSH ( vreg vreg -- )
    {: s:vreg l:vreg :}
    LTOP
-   ADR ADR STACK-ABI:LOOP-FRAME-BYTES A64ASM:ENC-ADDI W
+   ADR ADR STACK-ABI:LOOP-FRAME-BYTES ENC-ADDI W
    LTOP!
-   s REG l REG ADR LIDX-OFF A64ASM:ENC-STP W
-   IDX s REG A64ASM:ENC-MOV W ;
+   s REG l REG ADR LIDX-OFF ENC-STP W
+   IDX s REG ENC-MOV W ;
 
 \ The head binds with x29 holding the index: the entry arrives from LOOP-PUSH
 \ and every back edge from LOOP-NEXT or LOOP-STEP.
@@ -637,23 +639,23 @@ variable HELD                         \ nonzero while x29 holds the index
 
 : LOOP-POP ( -- )
    LTOP
-   ADR ADR STACK-ABI:LOOP-FRAME-BYTES A64ASM:ENC-SUBI W
+   ADR ADR STACK-ABI:LOOP-FRAME-BYTES ENC-SUBI W
    LTOP!
    0 HELD ! ;
 
 : LOOP-I ( vreg -- )
    HELD @ 0= if FRAME-IDX then
-   REG IDX A64ASM:ENC-MOV W ;
+   REG IDX ENC-MOV W ;
 
 \ The step is x29's, so this target leaves the free vreg alone.
 : LOOP-NEXT ( vreg LABEL:head -- )
    nip {: m:LABEL:head :}
    FRAME-IDX
-   IDX IDX 1 A64ASM:ENC-ADDI W
+   IDX IDX 1 ENC-ADDI W
    IDX ADR LIDX-OFF true XFER
    TMP ADR LLIM-OFF false XFER
-   IDX TMP A64ASM:ENC-CMP W
-   A64ASM:C-LT m BACK-BCOND ;
+   IDX TMP ENC-CMP W
+   C-LT m BACK-BCOND ;
 
 \ With old = index - limit before the step, the index crossed the boundary
 \ when (old xor old + s) and (old xor s) is negative.
@@ -662,15 +664,15 @@ variable HELD                         \ nonzero while x29 holds the index
    s REG {: sr:n :}  t REG {: r:n :}
    FRAME-IDX
    TMP ADR LLIM-OFF false XFER
-   r IDX TMP A64ASM:ENC-SUB W
-   IDX IDX sr A64ASM:ENC-ADD W
+   r IDX TMP ENC-SUB W
+   IDX IDX sr ENC-ADD W
    IDX ADR LIDX-OFF true XFER
-   TMP r sr A64ASM:ENC-ADD W
-   TMP TMP r A64ASM:ENC-EOR W
-   sr sr r A64ASM:ENC-EOR W
-   TMP TMP sr A64ASM:ENC-AND W
-   TMP 0 A64ASM:ENC-CMPI W
-   A64ASM:C-GE m BACK-BCOND ;
+   TMP r sr ENC-ADD W
+   TMP TMP r ENC-EOR W
+   sr sr r ENC-EOR W
+   TMP TMP sr ENC-AND W
+   TMP 0 ENC-CMPI W
+   C-GE m BACK-BCOND ;
 
 \ ---- the seam ----------------------------------------------------------------
 : FILL-SLOT ( n -- )
@@ -779,5 +781,7 @@ variable HELD                         \ nonzero while x29 holds the index
 
 CTARGET-ARCH:AARCH64 ' FILL-SLOT EMIT-PROVIDE
 
+;using
+;using
 ;package
 ;package

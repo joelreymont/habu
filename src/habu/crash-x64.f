@@ -18,6 +18,10 @@ require src/os/linux-x86-64/sys.f
 require src/os/linux/layout.f
 
 package X64CRASH
+using X64ASM
+using X64CODE
+using FAULT-RECORD
+using LINUX-LAYOUT   \ the guard
 
 2 constant STDERR
 
@@ -30,46 +34,46 @@ variable DEC-CELL
 : OWNER-LBL ( -- label ) OWNER-CELL @ >LABEL ;
 : DEC-LBL ( -- label ) DEC-CELL @ >LABEL ;
 
-: CUR-REG ( -- X64ASM:r64 ) X64ASM:R8 ;
-: FRAME-REG ( -- X64ASM:r64 ) X64ASM:R9 ;
-: JSON-REG ( -- X64ASM:r64 ) X64ASM:R10 ;
+: CUR-REG ( -- r64 ) R8 ;
+: FRAME-REG ( -- r64 ) R9 ;
+: JSON-REG ( -- r64 ) R10 ;
 
-: IMM, ( X64ASM:r64 n -- ) X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64 ;
+: IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 \ mov r32, imm32, which zero-extends: a small non-negative number.
-: IMM32, ( X64ASM:r64 n -- ) {: r:X64ASM:r64 v:n :}
-   r X64ASM:R64>N X64ASM:>R32 v X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV32-RI32 ;
-: MOV, ( X64ASM:r64 X64ASM:r64 -- ) X64CODE:ASM-SINK X64ASM:ENC-MOV-RR ;
-: LOAD, ( X64ASM:r64 X64ASM:mem -- ) X64CODE:ASM-SINK X64ASM:ENC-MOV-RM ;
-: TEST, ( X64ASM:r64 -- ) dup X64CODE:ASM-SINK X64ASM:ENC-TEST-RR ;
-: CMP8, ( X64ASM:r64 n -- ) X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI8 ;
-: ADD8, ( X64ASM:r64 n -- ) X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8 ;
-: PUSH, ( X64ASM:r64 -- ) X64CODE:ASM-SINK X64ASM:ENC-PUSH ;
-: POP, ( X64ASM:r64 -- ) X64CODE:ASM-SINK X64ASM:ENC-POP ;
+: IMM32, ( r64 n -- ) {: r:r64 v:n :}
+   r R64>N >R32 v >IMM32 ASM-SINK ENC-MOV32-RI32 ;
+: MOV, ( r64 r64 -- ) ASM-SINK ENC-MOV-RR ;
+: LOAD, ( r64 mem -- ) ASM-SINK ENC-MOV-RM ;
+: TEST, ( r64 -- ) dup ASM-SINK ENC-TEST-RR ;
+: CMP8, ( r64 n -- ) >IMM8 ASM-SINK ENC-CMP-RI8 ;
+: ADD8, ( r64 n -- ) >IMM8 ASM-SINK ENC-ADD-RI8 ;
+: PUSH, ( r64 -- ) ASM-SINK ENC-PUSH ;
+: POP, ( r64 -- ) ASM-SINK ENC-POP ;
 
 \ [r8] = the register's low byte, r8 one past it.
-: PUT-BYTE, ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
-   r X64ASM:R64>N X64ASM:>R8 CUR-REG X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV8-MR
-   CUR-REG X64CODE:ASM-SINK X64ASM:ENC-INC ;
+: PUT-BYTE, ( r64 -- ) {: r:r64 :}
+   r R64>N >R8 CUR-REG MEM-AT ASM-SINK ENC-MOV8-MR
+   CUR-REG ASM-SINK ENC-INC ;
 \ [r8] = the byte n, through r11.
-: PUT-CHAR, ( n -- )  X64ASM:R11 swap IMM32,  X64ASM:R11 PUT-BYTE, ;
+: PUT-CHAR, ( n -- )  R11 swap IMM32,  R11 PUT-BYTE, ;
 
 \ Writes [r9, r8) to fd 2 and empties the frame. rax, rcx, rdx, rsi and rdi
 \ are saved across the write; clobbers r11.
 : FLUSH, ( -- )
-   X64ASM:RAX PUSH,  X64ASM:RCX PUSH,  X64ASM:RDX PUSH,  X64ASM:RSI PUSH,  X64ASM:RDI PUSH,
-   X64ASM:RDI STDERR IMM32,  X64ASM:RSI FRAME-REG MOV,
-   X64ASM:RDX CUR-REG MOV,  X64ASM:RDX FRAME-REG X64CODE:ASM-SINK X64ASM:ENC-SUB-RR
+   RAX PUSH,  RCX PUSH,  RDX PUSH,  RSI PUSH,  RDI PUSH,
+   RDI STDERR IMM32,  RSI FRAME-REG MOV,
+   RDX CUR-REG MOV,  RDX FRAME-REG ASM-SINK ENC-SUB-RR
    NR-WRITE SYS,
    CUR-REG FRAME-REG MOV,
-   X64ASM:RDI POP,  X64ASM:RSI POP,  X64ASM:RDX POP,  X64ASM:RCX POP,  X64ASM:RAX POP, ;
+   RDI POP,  RSI POP,  RDX POP,  RCX POP,  RAX POP, ;
 
 \ FLUSH, when fewer than n bytes of the frame are free. Clobbers r11.
 : FLUSH-BELOW, ( n -- ) {: room:n :}
-   X64CODE:LBL {: fits:label :}
-   X64ASM:R11 CUR-REG MOV,  X64ASM:R11 FRAME-REG X64CODE:ASM-SINK X64ASM:ENC-SUB-RR
-   X64ASM:R11 FAULT-RECORD:FAULT-FRAME room - X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI32  X64ASM:C-BE fits X64CODE:JCC,
+   LBL {: fits:label :}
+   R11 CUR-REG MOV,  R11 FRAME-REG ASM-SINK ENC-SUB-RR
+   R11 FAULT-FRAME room - >IMM32 ASM-SINK ENC-CMP-RI32  C-BE fits JCC,
    FLUSH,
-   fits X64CODE:LBL, ;
+   fits LBL, ;
 
 \ Writes the prose or the JSON text as r10 says, then empties both.
 : PIECE, ( -- )
@@ -86,46 +90,46 @@ variable DEC-CELL
 \ rax's 16 hex digits at the cursor, most significant first. Clobbers rax,
 \ rcx, rdx and r11.
 : HEX, ( -- )
-   X64CODE:LBL X64CODE:LBL {: next:label digit:label :}
+   LBL LBL {: next:label digit:label :}
    16 FLUSH-BELOW,
-   X64ASM:RCX CUR-REG 16 X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
-   next X64CODE:LBL,
-      X64ASM:RDX X64ASM:RAX MOV,  X64ASM:RDX $F X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-AND-RI8  X64ASM:RDX $30 ADD8,
-      X64ASM:RDX $39 CMP8,  X64ASM:C-BE digit X64CODE:JCC,  X64ASM:RDX $27 ADD8,
-      digit X64CODE:LBL,
-      X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DEC
-      X64ASM:RDX X64ASM:R64>N X64ASM:>R8 X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV8-MR
-      X64ASM:RAX 4 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SHR-RI8
-      X64ASM:RCX CUR-REG X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-NE next X64CODE:JCC,
+   RCX CUR-REG 16 MEM-OFF ASM-SINK ENC-LEA
+   next LBL,
+      RDX RAX MOV,  RDX $F >IMM8 ASM-SINK ENC-AND-RI8  RDX $30 ADD8,
+      RDX $39 CMP8,  C-BE digit JCC,  RDX $27 ADD8,
+      digit LBL,
+      RCX ASM-SINK ENC-DEC
+      RDX R64>N >R8 RCX MEM-AT ASM-SINK ENC-MOV8-MR
+      RAX 4 >IMM8 ASM-SINK ENC-SHR-RI8
+      RCX CUR-REG ASM-SINK ENC-CMP-RR  C-NE next JCC,
    CUR-REG 16 ADD8, ;
 
 \ PUT ( rsi = text, rdx = its length, rdi = nonzero to escape it as a JSON
 \ string's content ): the text at the cursor. Clobbers rax, rcx, rsi, rdx and
 \ r11; rdi survives.
 : EMIT-FAULT-PUT ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: next:label plain:label pair:label low:label done:label :}
-   PUT-LBL X64CODE:LBL,
-   next X64CODE:LBL,
-      X64ASM:RDX TEST,  X64ASM:C-E done X64CODE:JCC,
+   LBL LBL LBL LBL LBL {: next:label plain:label pair:label low:label done:label :}
+   PUT-LBL LBL,
+   next LBL,
+      RDX TEST,  C-E done JCC,
       6 FLUSH-BELOW,
-      X64ASM:RAX X64ASM:RSI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
-      X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-INC  X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-DEC
-      X64ASM:RDI TEST,  X64ASM:C-E plain X64CODE:JCC,
-      X64ASM:RCX X64ASM:RAX MOV,                              \ rcx = the byte after the backslash
-      X64ASM:RAX $22 CMP8,  X64ASM:C-E pair X64CODE:JCC,
-      X64ASM:RAX $5C CMP8,  X64ASM:C-E pair X64CODE:JCC,
-      X64ASM:RCX $6E IMM32,  X64ASM:RAX $0A CMP8,  X64ASM:C-E pair X64CODE:JCC,
-      X64ASM:RCX $72 IMM32,  X64ASM:RAX $0D CMP8,  X64ASM:C-E pair X64CODE:JCC,
-      X64ASM:RCX $74 IMM32,  X64ASM:RAX $09 CMP8,  X64ASM:C-E pair X64CODE:JCC,
-      X64ASM:RAX $20 CMP8,  X64ASM:C-AE plain X64CODE:JCC,
+      RAX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+      RSI ASM-SINK ENC-INC  RDX ASM-SINK ENC-DEC
+      RDI TEST,  C-E plain JCC,
+      RCX RAX MOV,                              \ rcx = the byte after the backslash
+      RAX $22 CMP8,  C-E pair JCC,
+      RAX $5C CMP8,  C-E pair JCC,
+      RCX $6E IMM32,  RAX $0A CMP8,  C-E pair JCC,
+      RCX $72 IMM32,  RAX $0D CMP8,  C-E pair JCC,
+      RCX $74 IMM32,  RAX $09 CMP8,  C-E pair JCC,
+      RAX $20 CMP8,  C-AE plain JCC,
       $5C PUT-CHAR,  $75 PUT-CHAR,  $30 PUT-CHAR,  $30 PUT-CHAR,
-      X64ASM:RCX X64ASM:RAX MOV,  X64ASM:RCX 4 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SHR-RI8  X64ASM:RCX $30 ADD8,  X64ASM:RCX PUT-BYTE,
-      X64ASM:RCX X64ASM:RAX MOV,  X64ASM:RCX $F X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-AND-RI8  X64ASM:RCX $30 ADD8,
-      X64ASM:RCX $39 CMP8,  X64ASM:C-BE low X64CODE:JCC,  X64ASM:RCX 7 ADD8,
-      low X64CODE:LBL,  X64ASM:RCX PUT-BYTE,  next X64CODE:JMP,
-   pair X64CODE:LBL,  $5C PUT-CHAR,  X64ASM:RCX PUT-BYTE,  next X64CODE:JMP,
-   plain X64CODE:LBL,  X64ASM:RAX PUT-BYTE,  next X64CODE:JMP,
-   done X64CODE:LBL,  X64CODE:RET, ;
+      RCX RAX MOV,  RCX 4 >IMM8 ASM-SINK ENC-SHR-RI8  RCX $30 ADD8,  RCX PUT-BYTE,
+      RCX RAX MOV,  RCX $F >IMM8 ASM-SINK ENC-AND-RI8  RCX $30 ADD8,
+      RCX $39 CMP8,  C-BE low JCC,  RCX 7 ADD8,
+      low LBL,  RCX PUT-BYTE,  next JMP,
+   pair LBL,  $5C PUT-CHAR,  RCX PUT-BYTE,  next JMP,
+   plain LBL,  RAX PUT-BYTE,  next JMP,
+   done LBL,  RET, ;
 
 \ OWNER ( rdi = an address, rsi = the dictionary's base or 0, rdx = its record
 \ count -- rsi = the name of the word whose code holds the address, 0 for none,
@@ -133,56 +137,56 @@ variable DEC-CELL
 \ hold wordlist ids where a word's span is. Clobbers rax, rcx and r11; rdi
 \ survives.
 : EMIT-FAULT-OWNER ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label code:label next:label hit:label none:label :}
-   X64CODE:LBL {: inline:label :}
-   OWNER-LBL X64CODE:LBL,
-   X64ASM:RSI TEST,  X64ASM:C-E none X64CODE:JCC,
-   X64ASM:RAX DICT-CAP IMM32,  X64ASM:RDX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-A X64ASM:RDX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CMOVCC
-   X64ASM:RCX X64ASM:RSI MOV,
-   scan X64CODE:LBL,
-      X64ASM:RDX TEST,  X64ASM:C-E none X64CODE:JCC,
-      X64ASM:RAX X64ASM:RCX DICT-WORDLIST-SLOT CELL * X64ASM:MEM-OFF LOAD,
-      X64ASM:RAX TEST,  X64ASM:C-NS code X64CODE:JCC,
-      X64ASM:RAX WL:RETIRED CMP8,  X64ASM:C-NE next X64CODE:JCC,
-   code X64CODE:LBL,
-      X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT LOAD,  X64ASM:RDI X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-B next X64CODE:JCC,
-      X64ASM:R11 X64ASM:RCX CELL X64ASM:MEM-OFF LOAD,                \ the code's byte count
-      X64ASM:RAX X64ASM:R11 X64CODE:ASM-SINK X64ASM:ENC-ADD-RR  X64ASM:RDI X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-B hit X64CODE:JCC,
-   next X64CODE:LBL,
-      X64ASM:RCX DREC ADD8,  X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-DEC  scan X64CODE:JMP,
-   hit X64CODE:LBL,
-      X64ASM:RAX X64ASM:RCX 16 X64ASM:MEM-OFF LOAD,
-      X64ASM:RSI X64ASM:RCX 24 X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
-      X64ASM:R11 DNAME-EXT IMM,  X64ASM:RAX X64ASM:R11 X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E inline X64CODE:JCC,
-      X64ASM:RSI X64ASM:RCX 24 X64ASM:MEM-OFF LOAD,
-      inline X64CODE:LBL,
-      X64ASM:R11 DNAME-LEN-MASK IMM,  X64ASM:RAX X64ASM:R11 X64CODE:ASM-SINK X64ASM:ENC-AND-RR  X64ASM:RDX X64ASM:RAX MOV,
-      X64CODE:RET,
-   none X64CODE:LBL,  X64ASM:RSI ZERO-REG,  X64CODE:RET, ;
+   LBL LBL LBL LBL LBL {: scan:label code:label next:label hit:label none:label :}
+   LBL {: inline:label :}
+   OWNER-LBL LBL,
+   RSI TEST,  C-E none JCC,
+   RAX DICT-CAP IMM32,  RDX RAX ASM-SINK ENC-CMP-RR  C-A RDX RAX ASM-SINK ENC-CMOVCC
+   RCX RSI MOV,
+   scan LBL,
+      RDX TEST,  C-E none JCC,
+      RAX RCX DICT-WORDLIST-SLOT CELL * MEM-OFF LOAD,
+      RAX TEST,  C-NS code JCC,
+      RAX WL:RETIRED CMP8,  C-NE next JCC,
+   code LBL,
+      RAX RCX MEM-AT LOAD,  RDI RAX ASM-SINK ENC-CMP-RR  C-B next JCC,
+      R11 RCX CELL MEM-OFF LOAD,                \ the code's byte count
+      RAX R11 ASM-SINK ENC-ADD-RR  RDI RAX ASM-SINK ENC-CMP-RR  C-B hit JCC,
+   next LBL,
+      RCX DREC ADD8,  RDX ASM-SINK ENC-DEC  scan JMP,
+   hit LBL,
+      RAX RCX 16 MEM-OFF LOAD,
+      RSI RCX 24 MEM-OFF ASM-SINK ENC-LEA
+      R11 DNAME-EXT IMM,  RAX R11 ASM-SINK ENC-TEST-RR  C-E inline JCC,
+      RSI RCX 24 MEM-OFF LOAD,
+      inline LBL,
+      R11 DNAME-LEN-MASK IMM,  RAX R11 ASM-SINK ENC-AND-RR  RDX RAX MOV,
+      RET,
+   none LBL,  RSI ZERO-REG,  RET, ;
 
 \ DEC ( rax = a signed number ): its decimal digits at the cursor, a minus
 \ first when it is negative. Clobbers rax, rcx, rdx, rsi, rdi and r11.
 : EMIT-FAULT-DEC ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: pos:label count:label digit:label :}
-   DEC-LBL X64CODE:LBL,
+   LBL LBL LBL {: pos:label count:label digit:label :}
+   DEC-LBL LBL,
    21 FLUSH-BELOW,
-   X64ASM:RAX TEST,  X64ASM:C-NS pos X64CODE:JCC,
-   $2D PUT-CHAR,  X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-NEG           \ unsigned from here
-   pos X64CODE:LBL,
-   X64ASM:RSI X64ASM:RAX MOV,  X64ASM:RCX 10 IMM32,  X64ASM:RDI ZERO-REG,
-   count X64CODE:LBL,
-      X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-INC  X64ASM:RDX ZERO-REG,  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DIV
-      X64ASM:RAX TEST,  X64ASM:C-NE count X64CODE:JCC,
-   CUR-REG X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-ADD-RR  X64ASM:RDI CUR-REG MOV,  X64ASM:RAX X64ASM:RSI MOV,
-   digit X64CODE:LBL,
-      X64ASM:RDX ZERO-REG,  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DIV  X64ASM:RDX $30 ADD8,
-      X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-DEC  X64ASM:RDX X64ASM:R64>N X64ASM:>R8 X64ASM:RDI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV8-MR
-      X64ASM:RAX TEST,  X64ASM:C-NE digit X64CODE:JCC,
-   X64CODE:RET, ;
+   RAX TEST,  C-NS pos JCC,
+   $2D PUT-CHAR,  RAX ASM-SINK ENC-NEG           \ unsigned from here
+   pos LBL,
+   RSI RAX MOV,  RCX 10 IMM32,  RDI ZERO-REG,
+   count LBL,
+      RDI ASM-SINK ENC-INC  RDX ZERO-REG,  RCX ASM-SINK ENC-DIV
+      RAX TEST,  C-NE count JCC,
+   CUR-REG RDI ASM-SINK ENC-ADD-RR  RDI CUR-REG MOV,  RAX RSI MOV,
+   digit LBL,
+      RDX ZERO-REG,  RCX ASM-SINK ENC-DIV  RDX $30 ADD8,
+      RDI ASM-SINK ENC-DEC  RDX R64>N >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+      RAX TEST,  C-NE digit JCC,
+   RET, ;
 
 \ The die line's text room in the frame: the rest holds " 0x", 16 hex digits,
 \ " lr 0x", 16 hex digits and the newline.
-FAULT-RECORD:FAULT-FRAME 42 - constant DIE-LINE-ROOM
+FAULT-FRAME 42 - constant DIE-LINE-ROOM
 
 variable DIE-CELL
 : DIE-LBL ( -- label ) DIE-CELL @ >LABEL ;
@@ -192,23 +196,23 @@ variable DIE-CELL
 \ the qword at rsp is the lr it prints. Writes `<text>[ <rax>] lr <lr>`, each
 \ `0x` and 16 hex digits, and a newline to fd 2 in one write, then exits.
 : EMIT-DIE-LINE ( -- )
-   X64CODE:LBL {: bare:label :}
-   DIE-LBL X64CODE:LBL,
-   X64ASM:R10 X64ASM:RDI MOV,
-   X64ASM:RSP FAULT-RECORD:FAULT-FRAME X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-SUB-RI32
-   FRAME-REG X64ASM:RSP MOV,  CUR-REG X64ASM:RSP MOV,
-   X64ASM:RAX PUSH,  X64ASM:RCX PUSH,
-   X64ASM:RDI ZERO-REG,  PUT-LBL X64CODE:CALL,
-   X64ASM:RCX POP,  X64ASM:RAX POP,
-   X64ASM:RCX TEST,  X64ASM:C-E bare X64CODE:JCC,
+   LBL {: bare:label :}
+   DIE-LBL LBL,
+   R10 RDI MOV,
+   RSP FAULT-FRAME >IMM32 ASM-SINK ENC-SUB-RI32
+   FRAME-REG RSP MOV,  CUR-REG RSP MOV,
+   RAX PUSH,  RCX PUSH,
+   RDI ZERO-REG,  PUT-LBL CALL,
+   RCX POP,  RAX POP,
+   RCX TEST,  C-E bare JCC,
    $20 PUT-CHAR,  $30 PUT-CHAR,  $78 PUT-CHAR,  HEX,
-   bare X64CODE:LBL,
+   bare LBL,
    $20 PUT-CHAR,  $6C PUT-CHAR,  $72 PUT-CHAR,  $20 PUT-CHAR,
    $30 PUT-CHAR,  $78 PUT-CHAR,
-   X64ASM:RAX FRAME-REG FAULT-RECORD:FAULT-FRAME X64ASM:MEM-OFF LOAD,  HEX,
+   RAX FRAME-REG FAULT-FRAME MEM-OFF LOAD,  HEX,
    $A PUT-CHAR,
    FLUSH,
-   X64ASM:RDI X64ASM:R10 MOV,  NR-EXIT-GROUP SYS, ;
+   RDI R10 MOV,  NR-EXIT-GROUP SYS, ;
 
 : BAD-DIE-TEXT ( str -- )
    {: t:str :}
@@ -246,30 +250,30 @@ public
 \ Opens a record with its code and message: rsp drops FAULT-FRAME, r9 = its
 \ start and r8 the cursor, r10 = the JSON flag.
 : FAULT-OPEN, ( str str -- FAULT-RECORD:record )
-   FAULT-RECORD:FAULT-OPEN
-   X64ASM:RSP FAULT-RECORD:FAULT-FRAME X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-SUB-RI32
-   FRAME-REG X64ASM:RSP MOV,  CUR-REG X64ASM:RSP MOV,
+   FAULT-OPEN
+   RSP FAULT-FRAME >IMM32 ASM-SINK ENC-SUB-RI32
+   FRAME-REG RSP MOV,  CUR-REG RSP MOV,
    JSON-REG LINUX-LAYOUT:DATA-VA VA>N REJECTION-JSON-CELL + IMM,
-   JSON-REG JSON-REG X64ASM:MEM-AT LOAD,
+   JSON-REG JSON-REG MEM-AT LOAD,
    PIECE, ;
 
 \ Note `in`: the word whose code holds the address in rdi, read from the rdx
 \ records at rsi; rsi = 0 when the site cannot trust the dictionary. With no
 \ such word, note `at` and the address.
 : FAULT-IN, ( FAULT-RECORD:record -- FAULT-RECORD:record )
-   X64CODE:LBL X64CODE:LBL {: at:label done:label :}
-   FAULT-RECORD:FAULT-IN {: was:n :}
-   OWNER-LBL X64CODE:CALL,
-   X64ASM:RSI TEST,  X64ASM:C-E at X64CODE:JCC,
-   X64ASM:RSI PUSH,  X64ASM:RDX PUSH,
+   LBL LBL {: at:label done:label :}
+   FAULT-IN {: was:n :}
+   OWNER-LBL CALL,
+   RSI TEST,  C-E at JCC,
+   RSI PUSH,  RDX PUSH,
    PIECE,
-   X64ASM:RDX POP,  X64ASM:RSI POP,  X64ASM:RDI JSON-REG MOV,  PUT-LBL X64CODE:CALL,
-   done X64CODE:JMP,
-   at X64CODE:LBL,
-   X64ASM:RDI PUSH,
-   was FAULT-RECORD:FAULT-AT  PIECE,
-   X64ASM:RAX POP,  HEX,
-   done X64CODE:LBL, ;
+   RDX POP,  RSI POP,  RDI JSON-REG MOV,  PUT-LBL CALL,
+   done JMP,
+   at LBL,
+   RDI PUSH,
+   was FAULT-AT  PIECE,
+   RAX POP,  HEX,
+   done LBL, ;
 
 \ A note with the register's value in decimal.
 : FAULT-NUMBER, ( FAULT-RECORD:record str X64ASM:r64 -- FAULT-RECORD:record )
@@ -298,19 +302,23 @@ public
    {: h:str status:n :}
    h FAULT-RECORD:FAULT-STOP
    PIECE,  FLUSH,
-   X64ASM:RDI status IMM32,  NR-EXIT-GROUP SYS, ;
+   RDI status IMM32,  NR-EXIT-GROUP SYS, ;
 
 \ Ends the record with its help, none for an empty text, and returns, rsp as
 \ FAULT-OPEN, found it.
 : FAULT-KEEP, ( FAULT-RECORD:record str -- )
-   FAULT-RECORD:FAULT-KEEP
+   FAULT-KEEP
    PIECE,  FLUSH,
-   X64ASM:RSP FAULT-RECORD:FAULT-FRAME X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI32 ;
+   RSP FAULT-FRAME >IMM32 ASM-SINK ENC-ADD-RI32 ;
 
 \ Makes the routines' labels and emits the routines, the die line's included,
 \ where no control falls in; a site emitted after it in the stream reaches them.
 : EMIT-FAULT-RECORD ( -- )
-   X64CODE:LBL PUT-CELL !  X64CODE:LBL OWNER-CELL !  X64CODE:LBL DEC-CELL !  X64CODE:LBL DIE-CELL !
+   LBL PUT-CELL !  LBL OWNER-CELL !  LBL DEC-CELL !  LBL DIE-CELL !
    EMIT-FAULT-PUT  EMIT-FAULT-OWNER  EMIT-FAULT-DEC  EMIT-DIE-LINE ;
 
+;using   \ LINUX-LAYOUT
+;using
+;using
+;using
 ;package

@@ -117,7 +117,7 @@ variable LBL-U
    p a STR:LEN b STR:LEN + >str ;
 
 \ A LONG-LEN package and part, a word in each and a SUMTYPE whose constructor
-\ package is longer still: each runs; prints PWS.
+\ package is longer still: each runs, qualified and under `using`; prints PWWS.
 : PKG-SRC$ ( -- str )
    LONG-LEN 81 LETTERS {: l:str :}
    LONG-LEN 82 LETTERS {: r:str :}
@@ -125,7 +125,8 @@ variable LBL-U
    S\" \npublic\n: NLT-W ( -- ) 87 emit ;\nSUMTYPE nltshape VARIANT dot ;VARIANT ;SUMTYPE\nprivate\npackage " JOIN
    r JOIN S\" \npublic\n: NLT-P ( -- ) 80 emit ;\n;package\n" JOIN
    r JOIN S\" :NLT-P\n;package\n" JOIN
-   l JOIN S\" :NLT-W\n: NLT-S ( -- ) " JOIN
+   l JOIN S\" :NLT-W\nusing " JOIN
+   l JOIN S\" \nNLT-W\n;using\n: NLT-S ( -- ) " JOIN
    l JOIN S\" -NLTSHAPE:DOT drop 83 emit ;\nNLT-S\n" JOIN ;
 
 \ `--load` and tools/check.f each take the package from a file, so each runs
@@ -139,7 +140,7 @@ variable LBL-U
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:NEED-OK
    s" ... and their words and the constructor run" T-LABEL
-   E2E-TREE:OUT$ s" PWS" T$=
+   E2E-TREE:OUT$ s" PWWS" T$=
    s" tools/check.f takes them" T-LABEL
    s" tools/check.f" E2E-TREE:ARGS
    s" --" PROC-ARGV+

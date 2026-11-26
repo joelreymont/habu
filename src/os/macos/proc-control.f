@@ -13,24 +13,33 @@ require src/arch/arm64/mnem.f
 require src/arch/arm64/asm.f
 require src/habu/rt.f
 require src/os/macos/sys.f
+using A64ASM
+using A64ICODE
+using RT
+using SYSCALL
 
 package ENGINE-EMIT
 : BKILLERRNO ( -- )                \ ( pid sig -- rc )
-   1 RT:G-POP  0 RT:G-POP
-   2 1 A64ICODE:MOVZ,
-   SYSCALL:NR-KILL SYSCALL:SYS,
-   A64ICODE:LBL {: ok:label :}
-   9 A64ASM:C-CS A64ICODE:CSET,  9 ok A64ICODE:CBZ,          \ carry clear -> success, x0 already holds 0
-      10 0 A64ICODE:MOVZ,  0 10 0 A64ICODE:SUB,
-   ok A64ICODE:LBL,
-   0 RT:G-PUSH ;
+   1 G-POP  0 G-POP
+   2 1 MOVZ,
+   NR-KILL SYS,
+   LBL {: ok:label :}
+   9 C-CS CSET,  9 ok CBZ,          \ carry clear -> success, x0 already holds 0
+      10 0 MOVZ,  0 10 0 SUB,
+   ok LBL,
+   0 G-PUSH ;
 
 : BEXECVE ( -- )                   \ ( pathz argv envp -- rc ) only returns on failure: rc=-errno
-   2 RT:G-POP  1 RT:G-POP  0 RT:G-POP
-   SYSCALL:NR-EXECVE SYSCALL:SYS,
-   A64ICODE:LBL {: ok:label :}
-   9 A64ASM:C-CS A64ICODE:CSET,  9 ok A64ICODE:CBZ,          \ carry clear -> would not return; carry set -> failure
-      10 0 A64ICODE:MOVZ,  0 10 0 A64ICODE:SUB,
-   ok A64ICODE:LBL,
-   0 RT:G-PUSH ;
+   2 G-POP  1 G-POP  0 G-POP
+   NR-EXECVE SYS,
+   LBL {: ok:label :}
+   9 C-CS CSET,  9 ok CBZ,          \ carry clear -> would not return; carry set -> failure
+      10 0 MOVZ,  0 10 0 SUB,
+   ok LBL,
+   0 G-PUSH ;
 ;package
+
+;using
+;using
+;using
+;using

@@ -18,6 +18,7 @@ require src/habu/verify-source.f
 require src/lib/process.f
 
 package SD-TEST
+using SOURCE-ROOT
 
 PATH-CAP constant SDT-PC
 $1000 constant SDT-SRC-CAP
@@ -53,9 +54,9 @@ private
    SDT-ENTRY$ content FS:WRITE-ALL ;
 
 : SDT-PATH ( str -- str )
-   SDT-ROOT$ swap SOURCE-ROOT:JOIN SOURCE-ROOT:CANONICAL drop ;
+   SDT-ROOT$ swap JOIN CANONICAL drop ;
 
-: SDT-READ ( -- )  SDT-ENTRY$ SOURCE-ROOT:ENTRY-RESOLVE drop SOURCE-ROOT:RESOLVED-ROOT$ DISCOVER:READ-IN ;
+: SDT-READ ( -- )  SDT-ENTRY$ ENTRY-RESOLVE drop RESOLVED-ROOT$ DISCOVER:READ-IN ;
 
 : SDT-DISCOVER ( -- )  SDT-READ DISCOVER:RUN-READ ;
 
@@ -303,14 +304,14 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ --- a name is data, a loader word's too --------------------------------------
 
-\ A definition, export, package or `undefine` naming a loader word
+\ A definition, export, package, using or `undefine` naming a loader word
 \ rejects nothing: each source loads, and the loader form after it is the one
 \ event.
 : SDT-TEST-LOADER-NAME ( -- )
    S\" package SDT-SH\n: include ( -- ) ;\nkernel: require ( -- ) ;\n;package\npackage SDT-SH2\nTRUSTED: include ( -- ) ;\n;package\ns\" sd-raw.f\" required\n"
    s" sd-raw.f" SDT-ONE-EVENT
    S\" undefine required\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT
-   S\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\npackage CVT-EXP\npublic\nEXPORT required\n;package\ns\" sd-raw.f\" required\n"
+   S\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nusing REQUIRED\n;using\npackage CVT-EXP\npublic\nEXPORT required\n;package\ns\" sd-raw.f\" required\n"
    s" sd-raw.f" SDT-ONE-EVENT
    S\" : U ( str -- ) undefine required ;\ns\" sd-raw.f\" required\n"
    s" sd-raw.f" SDT-ONE-EVENT ;
@@ -344,7 +345,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ An engine definer or a package keyword takes the next token as a name, a
 \ loader word's spelling too, so the require after it is the one event.
 : SDT-TEST-DEFINER-OPERAND ( -- )
-   S\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nrequire sd-raw.f\n"
+   S\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nusing REQUIRED\n;using\nrequire sd-raw.f\n"
    s" sd-raw.f" SDT-ONE-EVENT
    S\" package CVT-RES\nprivate\nvariable REQUIRED\ncreate INCLUDED\n1 constant INCLUDE\ndefer PROVIDED ( -- )\n;package\nrequire sd-raw.f\n"
    s" sd-raw.f" SDT-ONE-EVENT
@@ -510,7 +511,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
 \ --- a tree file: the loader's own definitions ---------------------------------
 
 : SDT-TEST-LOADER-SITE ( -- )
-   s" src/core/include.f" SOURCE-ROOT:ENTRY-RESOLVE drop SOURCE-ROOT:RESOLVED-ROOT$
+   s" src/core/include.f" ENTRY-RESOLVE drop RESOLVED-ROOT$
    DISCOVER:READ-IN DISCOVER:RUN-READ
    SOURCE-EVENT:COUNT 0 T= ;
 
@@ -907,6 +908,7 @@ public
    T-REPORT
    s" source-discovery-test: ok" type cr ;
 
+;using
 ;package
 
 SD-TEST:SDT-MAIN

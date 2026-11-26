@@ -118,6 +118,11 @@
 \   ......................................................... shadowed-arity
 \ - a warning published with a severity other than 2 or not at the name of
 \   the definition whose effect it did not record ............ not-recorded
+\ - a bare use that names words of two used packages, or a global and a used
+\   package's public word, in a body or a does> clause, not published at its
+\   token as E-USING-AMBIGUOUS or E-USING-SHADOW-GLOBAL, or rejecting more
+\   than its definition, so a later definition's packet goes unpublished
+\   ................................ using-ambiguous, using-shadow, using-clause
 \ - a duplicate definition, of the document's own word or of one a file it
 \   requires defines, not published at the name defined again
 \   ......................................... duplicate, duplicate-of-required
@@ -543,7 +548,7 @@
 \   definition answered with a Location once the word is retired or replaced,
 \   its declaration rejected or parsed by another word, or the file deferred
 \   or holding an opaque call, a replaced definer, an unended definition or
-\   string, an unbalanced `;package` or a line at which the verifier dies, or
+\   string, an unbalanced `;using` or more usings than the checker holds, or
 \   a replaced declaration asked at answered with any location; a declaration
 \   before a rejected cast or TRUSTED:, after a rejected one, or by TRUSTED:,
 \   not answered by go to definition .......... references-source-backed-builtin
@@ -741,6 +746,7 @@ require src/lib/json/read.f
 require src/lib/json/write.f
 
 package LSP-TEST
+using BUF
 
 \ ---- storage ------------------------------------------------------------------
 
@@ -758,19 +764,18 @@ variable OUT-LEN                         \ the bytes the server wrote to stdout,
 variable OUT-AT                          \ of them the bytes read as frames,
 variable ERR-LEN                         \ and the bytes it wrote to stderr
 
-create LABEL-B BUF:HDR-BYTES allot           \ the conversation's name
-create SESSION-B BUF:HDR-BYTES allot         \ the initialized process's name
-create IN-B BUF:HDR-BYTES allot              \ its input
-create WANT-B BUF:HDR-BYTES allot            \ the stderr it must write
+create LABEL-B HDR-BYTES allot           \ the conversation's name
+create SESSION-B HDR-BYTES allot         \ the initialized process's name
+create IN-B HDR-BYTES allot              \ its input
+create WANT-B HDR-BYTES allot            \ the stderr it must write
 TYPED-VARIABLE MSG-TEXT ^VEC:vector<u8>  \ a message, a reply or a line being composed
-create PAR-B BUF:HDR-BYTES allot             \ a notification's params
-create DIR-B BUF:HDR-BYTES allot             \ the artifact directory
-create EXP-B BUF:HDR-BYTES allot             \ a publish expected
-create PATH-B BUF:HDR-BYTES allot            \ a document's path
-create TXT-B BUF:HDR-BYTES allot             \ a generated document
-create BESIDE-B BUF:HDR-BYTES allot          \ the canonical path of the document open
-create BESIDE-TEXT-B BUF:HDR-BYTES allot     \ beside the test's check, and its text
-create STANDIN-B BUF:HDR-BYTES allot         \ the stand-in engine's path
+create PAR-B HDR-BYTES allot             \ a notification's params
+create DIR-B HDR-BYTES allot             \ the artifact directory
+create EXP-B HDR-BYTES allot             \ a publish expected
+create PATH-B HDR-BYTES allot            \ a document's path
+create TXT-B HDR-BYTES allot             \ a generated document
+create BESIDE-B HDR-BYTES allot          \ the canonical path of the document open
+create BESIDE-TEXT-B HDR-BYTES allot     \ beside the test's check, and its text
 
 TYPED-VARIABLE IN-W fd                   \ a held conversation's ends of the server's stdin,
 TYPED-VARIABLE OUT-R fd                  \ stdout
@@ -784,7 +789,6 @@ TYPED-VARIABLE JSON-ST JSON:cursor
 TYPED-VARIABLE HL-W JSON:writer    \ a highlight written in this process
 TYPED-VARIABLE SHARED? bool                \ a case uses the initialized session
 TYPED-VARIABLE WORKSPACE? bool             \ shared cases use one fixed root
-TYPED-VARIABLE STANDIN? bool               \ the server's verifier is the stand-in
 TYPED-VARIABLE SESSION-INIT [ -- ]
 TYPED-VARIABLE SESSION-CASES [ -- renders nominal roots ]
 32 constant OPEN-CAP
@@ -792,25 +796,25 @@ create OPEN-PATHS OPEN-CAP PATH-CAP * allot
 OPEN-CAP TYPED-BUFFER OPEN-LENS n
 variable OPEN-N
 
-: READY ( ^a -- )  256 BUF:N>BLEN BUF:INIT ;
-: BYTES+ ( str ^a -- )  {: s:str buf:^ :}  s STR:DATA s STR:LEN BUF:N>BLEN buf BUF:APPEND-SPAN ;
-: BYTES! ( str ^a -- )  {: s:str buf:^ :}  s STR:DATA s STR:LEN BUF:N>BLEN buf BUF:REPLACE ;
+: READY ( ^a -- )  256 N>BLEN INIT ;
+: BYTES+ ( str ^a -- )  {: s:str buf:^ :}  s STR:DATA s STR:LEN N>BLEN buf APPEND-SPAN ;
+: BYTES! ( str ^a -- )  {: s:str buf:^ :}  s STR:DATA s STR:LEN N>BLEN buf REPLACE ;
 
-: LABEL$ ( -- str )  LABEL-B BUF:SPAN$ BUF:BLEN>N >str ;
-: SESSION$ ( -- str )  SESSION-B BUF:SPAN$ BUF:BLEN>N >str ;
-: IN$ ( -- str )  IN-B BUF:SPAN$ BUF:BLEN>N >str ;
-: WANT$ ( -- str )  WANT-B BUF:SPAN$ BUF:BLEN>N >str ;
+: LABEL$ ( -- str )  LABEL-B SPAN$ BLEN>N >str ;
+: SESSION$ ( -- str )  SESSION-B SPAN$ BLEN>N >str ;
+: IN$ ( -- str )  IN-B SPAN$ BLEN>N >str ;
+: WANT$ ( -- str )  WANT-B SPAN$ BLEN>N >str ;
 : MSG$ ( -- str )  MSG-TEXT @ VEC:BYTES ;
-: PAR$ ( -- str )  PAR-B BUF:SPAN$ BUF:BLEN>N >str ;
-: DIR$ ( -- str )  DIR-B BUF:SPAN$ BUF:BLEN>N >str ;
+: PAR$ ( -- str )  PAR-B SPAN$ BLEN>N >str ;
+: DIR$ ( -- str )  DIR-B SPAN$ BLEN>N >str ;
 : IN+ ( str -- )  IN-B BYTES+ ;
 : WANT+ ( str -- )  WANT-B BYTES+ ;
 : MSG+ ( str -- )  MSG-TEXT @ VEC:APPEND ;
 : MSG-CLEAR ( -- )  MSG-TEXT @ 0 VEC:RESIZE ;
 : PAR+ ( str -- )  PAR-B BYTES+ ;
-: EXP$ ( -- str )  EXP-B BUF:SPAN$ BUF:BLEN>N >str ;
+: EXP$ ( -- str )  EXP-B SPAN$ BLEN>N >str ;
 : EXP+ ( str -- )  EXP-B BYTES+ ;
-: TXT$ ( -- str )  TXT-B BUF:SPAN$ BUF:BLEN>N >str ;
+: TXT$ ( -- str )  TXT-B SPAN$ BLEN>N >str ;
 : OUT$ ( -- str )  OUT-SPAN SPAN:$ STR:DATA OUT-LEN @ >str ;
 : ERR$ ( -- str )  ERR-SPAN SPAN:$ STR:DATA ERR-LEN @ >str ;
 
@@ -875,14 +879,14 @@ variable OPEN-N
 
 : OPEN-PARAMS ( str str str -- )
    {: u:str v:str t:str :}
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ u PAR+
    s\" ,\"languageId\":\"habu\",\"version\":" PAR+ v PAR+
    s\" ,\"text\":" PAR+ t PAR+ s" }}" PAR+ ;
 
 : CHANGE-PARAMS ( str str -- )
    {: u:str c:str :}
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ u PAR+
    s\" ,\"version\":2},\"contentChanges\":" PAR+ c PAR+ s" }" PAR+ ;
 
@@ -903,7 +907,7 @@ variable OPEN-N
 
 : CLOSE-DOC ( str -- )
    {: u:str :}
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ u PAR+ s" }}" PAR+
    s" textDocument/didClose" PAR$ TELL ;
 
@@ -923,14 +927,14 @@ variable OPEN-N
          some OF {: cut:idx :} s STR:DATA cut IDX>N 1+ + s STR:LEN cut IDX>N 1+ - >str ENDOF
       ;MATCH
    else s then PATH-B BYTES+
-   PATH-B BUF:SPAN$ BUF:BLEN>N >str ;
+   PATH-B SPAN$ BLEN>N >str ;
 
 : IN-TREE ( str -- str )
    {: s:str :}
    SOURCE-ROOT:CWD$ PATH-B BYTES!
    s" /" PATH-B BYTES+
    s PATH-B BYTES+
-   PATH-B BUF:SPAN$ BUF:BLEN>N >str ;
+   PATH-B SPAN$ BLEN>N >str ;
 
 : A-PATH ( -- str )  s" a.f" FIXTURE ;
 : B-PATH ( -- str )  s" b.f" FIXTURE ;
@@ -989,7 +993,7 @@ variable OPEN-N
 
 : OPENS ( str str n -- )
    {: p:str t:str v:n :}
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ p URI+
    s\" ,\"languageId\":\"habu\",\"version\":" PAR+ v INT$ PAR+
    s\" ,\"text\":" PAR+ t TEXT+ s" }}" PAR+
@@ -998,14 +1002,14 @@ variable OPEN-N
 
 : CHANGES ( str str n -- )
    {: p:str t:str v:n :}
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ p URI+
    s\" ,\"version\":" PAR+ v INT$ PAR+
    s\" },\"contentChanges\":[{\"text\":" PAR+ t TEXT+ s" }]}" PAR+
    s" textDocument/didChange" PAR$ TELL ;
 
 : NAMING ( str -- )
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ URI+ s" }}" PAR+ ;
 
 : SAVES ( str -- )  NAMING s" textDocument/didSave" PAR$ TELL ;
@@ -1015,7 +1019,7 @@ variable OPEN-N
    OPEN-REMOVE ;
 
 : WATCHES ( str -- )
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"changes\":[{\"uri\":" PAR+ URI+
    s\" ,\"type\":2}]}" PAR+
    s" workspace/didChangeWatchedFiles" PAR$ TELL ;
@@ -1068,50 +1072,16 @@ variable OPEN-N
 
 : CONVERSATION ( str -- )
    LABEL-B BYTES!
-   IN-B BUF:CLEAR
-   WANT-B BUF:CLEAR
+   IN-B CLEAR
+   WANT-B CLEAR
    0 OUT-LEN !
    0 OUT-AT !
    0 ERR-LEN ! ;
 
-\ A line at which the server's verifier dies: on the stand-in engine
-\ STANDIN-WRITE writes, a verifier child whose stdin holds it checks the text
-\ before it and exits 89 without a verdict. The stdin carries every open
-\ document, so while one holds the line every check dies there. hb reads it
-\ as a comment, so the test's own check reads past it.
-: DEATH-LINE$ ( -- str )  s" ( lsp-test: the verifier dies here )" ;
-
-\ Appends DEATH-LINE$ to TXT.
-: DEATH-LINE+ ( -- )
-   DEATH-LINE$ TXT-B BYTES+
-   s\" \n" TXT-B BYTES+ ;
-
-: STANDIN$ ( -- str )  STANDIN-B BUF:SPAN$ BUF:BLEN>N >str ;
-
-\ The stand-in runs hb, except for a verifier child whose stdin holds
-\ DEATH-LINE$: hb checks the stdin before the line holding it, the stand-in
-\ passes on every line hb writes to stdout but the last, the result, and
-\ exits 89. A batch's frame of that subject is cut, and so is the batch.
-: STANDIN-WRITE ( -- )
-   DIR$ STANDIN-B BYTES!  s" /standin" STANDIN-B BYTES+
-   MSG-CLEAR
-   s\" #!/bin/sh\ne='" MSG+  ENGINE-CANDIDATE:PATH$ MSG+  s\" '\n" MSG+
-   s\" case \"$*\" in *check-verify-child.f*) ;;\n" MSG+
-   s\" *) exec \"$e\" \"$@\";; esac\n" MSG+
-   s\" f=$(mktemp) || exit 70\ncat >\"$f\"\n" MSG+
-   s" grep -qF '" MSG+  DEATH-LINE$ MSG+  s\" ' \"$f\" ||\n" MSG+
-   s\" { exec <\"$f\"; rm -f \"$f\"; exec \"$e\" \"$@\"; }\n" MSG+
-   s" sed '/" MSG+  DEATH-LINE$ MSG+  s\" /,$d' \"$f\"" MSG+
-   s\"  | \"$e\" \"$@\" | sed '$d'\nrm -f \"$f\"\nexit 89\n" MSG+
-   STANDIN$ MSG$ FS:WRITE-ALL
-   STANDIN$ FS:CHMOD-X ;
-
-\ The server, on its verifier the stand-in while STANDIN? holds.
 : STAGED ( -- str )
    ENGINE-CANDIDATE:PATH$
    s" --load" PROC-ARGV+
    s" tools/lsp.f" PROC-ARGV+
-   STANDIN? @ if s" HABU_UNDER_TEST" STANDIN$ PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING ;
 
 : ARTIFACT$ ( str -- str )
@@ -1678,7 +1648,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 : BESIDE ( [ str str -- ] -- )
    {: each :}
-   BESIDE-B BUF:SPAN$ BUF:BLEN>N >str BESIDE-TEXT-B BUF:SPAN$ BUF:BLEN>N >str each execute ;
+   BESIDE-B SPAN$ BLEN>N >str BESIDE-TEXT-B SPAN$ BLEN>N >str each execute ;
 
 : CHECKS-BESIDE ( str str -- )  [: BESIDE ;] CHECKS-WITH ;
 
@@ -1742,7 +1712,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ with this version, or without one for -1: begun, up to its list's bracket.
 : EXPECT ( str n -- )
    {: p:str v:n :}
-   EXP-B BUF:CLEAR
+   EXP-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" EXP+
    p URI-OF EXP+ s\" \"," EXP+
    v 0 >= if s\" \"version\":" EXP+ v INT$ EXP+ s" ," EXP+ then
@@ -1864,9 +1834,9 @@ variable PUB-COUNT
    TRACE-APPEND
    WORKSPACE? @ if
       DIR$ PATH-B BYTES! s" /workspace" PATH-B BYTES+
-      PATH-B BUF:SPAN$ BUF:BLEN>N >str s" /fixtures" ARTIFACT$ FS:RENAME-FILE
+      PATH-B SPAN$ BLEN>N >str s" /fixtures" ARTIFACT$ FS:RENAME-FILE
       DIR$ PATH-B BYTES! s" /workspace" PATH-B BYTES+
-      PATH-B BUF:SPAN$ BUF:BLEN>N >str FS:MAKE-DIR
+      PATH-B SPAN$ BLEN>N >str FS:MAKE-DIR
    then ;
 
 \ Holds the conversation of this name, whose turns end its input before exit
@@ -1972,7 +1942,7 @@ variable PUB-COUNT
 \ A close naming textDocument twice, the first copy this URI.
 : CLOSE-TWICE ( str -- )
    {: u:str :}
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ u PAR+
    s\" },\"textDocument\":{}}" PAR+
    s" textDocument/didClose" PAR$ TELL ;
@@ -2114,7 +2084,7 @@ variable PUB-COUNT
 : BIG-PATH ( -- str )  s" big.f" FIXTURE ;
 
 : BIG-TEXT ( -- )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    BIG-LINES 0 ?do s\" ( twenty-byte line )\n" TXT-B BYTES+ loop
    TEXT-F TXT-B BYTES+ ;
 
@@ -2406,10 +2376,19 @@ variable PUB-COUNT
    A-PATH s" rejected" COMPLETED
    A-PATH 1 EXPECT 0 0 0 1 1 s" E-MISSING-NAME" DIAG+ PUBLISHES ;
 
-\ The verifier dies at once and exits without a verdict.
+\ One `using` more than the checker holds open at once: the verifier dies and
+\ exits without a verdict, where `--load` rejects that using.
+USE-MAX 1 + constant OVER-USINGS
+
+: OVER-USINGS+ ( -- )
+   OVER-USINGS 0 ?do s\" using SOURCE-ROOT\n" TXT-B BYTES+ loop ;
+
+: OVER-USING-TEXT ( -- )
+   TXT-B CLEAR  OVER-USINGS+ ;
+
 : INCOMPLETE-TURNS ( -- )
    SESSION-INITIALIZE
-   TXT-B BUF:CLEAR  DEATH-LINE+
+   OVER-USING-TEXT
    A-PATH TXT$ 1 OPENS
    SAY
    SESSION-CAPABILITIES
@@ -2417,12 +2396,12 @@ variable PUB-COUNT
    A-PATH s" not checked: exit 89" SAID
    LOGGED ;
 
-\ H1 is rejected, then the verifier dies after writing H1's packet, which is
-\ published.
+\ H1 is rejected, then one `using` more than the checker holds open: the
+\ verifier dies after writing H1's packet, which is published.
 : REJECTED-OVER-TEXT ( -- )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s\" : H1 ( n -- n ) NOSUCHWORD ;\n" TXT-B BYTES+
-   DEATH-LINE+ ;
+   OVER-USINGS+ ;
 
 : INCOMPLETE-PACKET-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2475,6 +2454,46 @@ variable PUB-COUNT
    WIDENS A-PATH CHECKS
    A-PATH s" verified" COMPLETED
    A-PATH 1 EXPECT 2 2 2 11 2 s" W-EFFECT-NOT-RECORDED" DIAG+ PUBLISHES ;
+
+: TWO-USED ( -- str )
+   s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
+
+: TWO-USED-TURNS ( -- )
+   SESSION-INITIALIZE
+   A-PATH TWO-USED 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TWO-USED A-PATH CHECKS
+   A-PATH s" rejected" COMPLETED
+   A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+
+   11 16 11 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
+
+: GLOBAL-USED ( -- str )
+   s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-SP\npublic\n: LSPT-SW ( n -- ) drop ;\n;package\nusing LSPT-SP\n: LSPT-SU ( -- ) 1 LSPT-SW ;\n: LSPT-M ( -- ) 1 ;\n;using\n" ;
+
+: GLOBAL-USED-TURNS ( -- )
+   SESSION-INITIALIZE
+   A-PATH GLOBAL-USED 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   GLOBAL-USED A-PATH CHECKS
+   A-PATH s" rejected" COMPLETED
+   A-PATH 1 EXPECT 6 19 6 26 1 s" E-USING-SHADOW-GLOBAL" DIAG+
+   7 16 7 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
+
+: CLAUSE-USED ( -- str )
+   s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-DA\npublic\n: LSPT-SW ( n -- ) drop ;\n: LSPT-DV ( n -- ) drop ;\n;package\npackage LSPT-DB\npublic\n: LSPT-DV ( n -- ) drop ;\n;package\nusing LSPT-DA\nusing LSPT-DB\n: LSPT-DS ( n -- ) create , does> ( -- ) @ LSPT-SW ;\n: LSPT-DM ( n -- ) create , does> ( -- ) @ LSPT-DV ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
+
+: CLAUSE-USED-TURNS ( -- )
+   SESSION-INITIALIZE
+   A-PATH CLAUSE-USED 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   CLAUSE-USED A-PATH CHECKS
+   A-PATH s" rejected" COMPLETED
+   A-PATH 1 EXPECT 12 43 12 50 1 s" E-USING-SHADOW-GLOBAL" DIAG+
+   13 43 13 50 1 s" E-USING-AMBIGUOUS" DIAG+
+   14 16 14 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 \ DA defined twice: the packet at the second DA, line 1, characters 2-4.
 : TEXT-DUP ( -- str )  s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n" ;
@@ -2532,7 +2551,7 @@ variable PUB-COUNT
    1 13 1 19 2 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
 
 : DEFERRED-UNENDED-TEXT ( -- )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    DEFERRED-IN-BODY TXT-B BYTES+
    UNENDED TXT-B BYTES+ ;
 
@@ -2595,7 +2614,7 @@ variable PUB-COUNT
 100 constant DEEP-NEST
 
 : DEEP-PARAMS ( -- str )
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"deep\":" PAR+
    DEEP-NEST 0 ?do s" [" PAR+ loop
    DEEP-NEST 0 ?do s" ]" PAR+ loop
@@ -2780,7 +2799,7 @@ variable PUB-COUNT
 \ twice with one effect; NAV-ODD malformed with nothing declared before it;
 \ NAV-KEPT's body rejected with its signature kept; NAV-LATER after them.
 : REDECLARED-TEXT ( -- )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" TXT-B BYTES+
    256 0 ?do s"  n" TXT-B BYTES+ loop
    s\"  -- ) ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\nTRUSTED: NAV-SAME ( -- n ) 1 ;\n" TXT-B BYTES+
@@ -2924,13 +2943,13 @@ variable PUB-COUNT
    SYMBOLS-END ;
 
 : LENGTH-TEXT ( -- )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s\" : Q ( -- ) ;\n" TXT-B BYTES+
    3 0 ?do
       36 0 ?do
          s" : " TXT-B BYTES+
-         s" QXZ" STR:DATA j + c@ TXT-B BUF:APPEND-BYTE
-         s" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" STR:DATA i + c@ TXT-B BUF:APPEND-BYTE
+         s" QXZ" STR:DATA j + c@ TXT-B APPEND-BYTE
+         s" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" STR:DATA i + c@ TXT-B APPEND-BYTE
          s\"  ( -- ) ;\n" TXT-B BYTES+
       loop
    loop ;
@@ -2942,7 +2961,7 @@ variable LENGTH-N
 : LENGTH-PATH ( -- str )
    LENGTH-DIR drop
    s" /g.f" PATH-B BYTES+
-   PATH-B BUF:SPAN$ BUF:BLEN>N >str ;
+   PATH-B SPAN$ BLEN>N >str ;
 
 : LENGTH-TURNS ( -- )
    LENGTH-DIR FS:MAKE-DIR
@@ -3367,13 +3386,14 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : TEXT-DEF-C ( -- str )
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-ONE DEF-TWO + ;\n" ;
 
-\ TEXT-DEF-C with its uses swapped, then the line at which the verifier dies
-\ with status 89 and exits without a verdict as in incomplete.
+\ TEXT-DEF-C with its uses swapped, then one `using` more than the checker
+\ holds open, at which the verifier dies with status 89 and exits without a
+\ verdict as in incomplete.
 : TEXT-DEF-C-SWAPPED ( -- str )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-TWO DEF-ONE + ;\n"
    TXT-B BYTES+
-   DEATH-LINE+
+   OVER-USINGS+
    TXT$ ;
 
 : DEF-INCOMPLETE-TURNS ( -- )
@@ -3511,7 +3531,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ this kind, whose value TXT-B holds, over characters C1 to C2 of line L.
 : HOVERED ( str str n n n -- )
    {: id:str k:str l:n c1:n c2:n :}
-   PAR-B BUF:CLEAR TXT$ TEXT+
+   PAR-B CLEAR TXT$ TEXT+
    MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ id MSG+
    s\" ,\"result\":{\"contents\":{\"kind\":\"" MSG+ k MSG+
@@ -3537,7 +3557,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SB-RESET line FMT:SB-INT SB$ HV+ ;
 
 : HV-ONE-MD ( n -- )
-   TXT-B BUF:CLEAR s\" ```habu\n" HV+ HV-ONE-LINES s\" \n```" HV+ ;
+   TXT-B CLEAR s\" ```habu\n" HV+ HV-ONE-LINES s\" \n```" HV+ ;
 
 : HOVER-TURNS ( -- )
    MARKDOWN-CLIENT
@@ -3561,9 +3581,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" DEF-B-PATH 1 19 HOVER-ASK
    s" 4" DEF-B-PATH 1 27 HOVER-ASK
    SAY
-   TXT-B BUF:CLEAR s\" ```habu\n: DEF-DEP ( -- n )\n\\ " HV+ DEF-DEP-CANON WHERE+ s\" :5\n```" HV+
+   TXT-B CLEAR s\" ```habu\n: DEF-DEP ( -- n )\n\\ " HV+ DEF-DEP-CANON WHERE+ s\" :5\n```" HV+
    s" 3" s" markdown" 1 19 26 HOVERED
-   TXT-B BUF:CLEAR s\" ```habu\n: DEF-PUB ( -- n )\n\\ package dd, " HV+ DEF-DEP-CANON WHERE+ s\" :3\n```" HV+
+   TXT-B CLEAR s\" ```habu\n: DEF-PUB ( -- n )\n\\ package dd, " HV+ DEF-DEP-CANON WHERE+ s\" :3\n```" HV+
    s" 4" s" markdown" 1 27 37 HOVERED ;
 
 : HOVER-OPEN-DEP-TURNS ( -- )
@@ -3579,9 +3599,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" DEF-OD-PATH 1 19 HOVER-ASK
    s" 4" DEF-OD-PATH 1 28 HOVER-ASK
    SAY
-   TXT-B BUF:CLEAR s\" ```habu\n: DEF-DEPA ( -- n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :5\n```" HV+
+   TXT-B CLEAR s\" ```habu\n: DEF-DEPA ( -- n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :5\n```" HV+
    s" 3" s" markdown" 1 19 27 HOVERED
-   TXT-B BUF:CLEAR s\" ```habu\n: DEF-DEPB ( -- n n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :4\n```" HV+
+   TXT-B CLEAR s\" ```habu\n: DEF-DEPB ( -- n n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :4\n```" HV+
    s" 4" s" markdown" 1 28 36 HOVERED ;
 
 : HOVER-DEF-TURNS ( -- )
@@ -3604,7 +3624,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ as Markdown.
 : MADE-MD ( str str str n -- )
    {: k:str w:str e:str l:n :}
-   TXT-B BUF:CLEAR s\" ```habu\n" HV+ k HV+ s"  " HV+ w HV+
+   TXT-B CLEAR s\" ```habu\n" HV+ k HV+ s"  " HV+ w HV+
    s"  ( " HV+ e HV+ s\"  )\n\\ package hv-m, hover-made.f:" HV+
    SB-RESET l FMT:SB-INT SB$ HV+ s\" \n```" HV+ ;
 
@@ -3636,7 +3656,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ The lines of CVT-T's converter W, of effect E, as Markdown.
 : CVT-MD ( str str -- )
    {: w:str e:str :}
-   TXT-B BUF:CLEAR s\" ```habu\nDEFTYPE " HV+ w HV+
+   TXT-B CLEAR s\" ```habu\nDEFTYPE " HV+ w HV+
    s"  ( " HV+ e HV+ s\"  )\n\\ package hv-p, hover-cvt.f:4\n```" HV+ ;
 
 \ A qualified use's whole spelling is neither converter's word,
@@ -3683,7 +3703,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HOVER-A-PATH 1 CLEAN
    s" 3" HOVER-A-PATH 2 18 HOVER-ASK
    SAY
-   TXT-B BUF:CLEAR 2 HV-ONE-LINES
+   TXT-B CLEAR 2 HV-ONE-LINES
    s" 3" s" plaintext" 2 18 24 HOVERED ;
 
 : HOVER-NOT-OPEN-TURNS ( -- )
@@ -3929,7 +3949,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 : HL-REREAD-ASK ( n -- )
    {: slot:n :}
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"file\":" PAR+ HL-REREAD-PATH TEXT+
    s\" }\n{\"file\":" PAR+ HL-CASE-PATH TEXT+ s\" }\n" PAR+
    PAR$ STR:LEN {: files:n :}
@@ -3990,7 +4010,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 : TOK-PATH ( -- str )  s" tok.f" FIXTURE ;
 : TEXT-TOK ( -- str )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s\" : ROOK ( -- n ) 1 ;\n: LOOK ( str -- ) drop ;\nnames: LOOK\n" HV+
    s\" 7 constant K7\nvariable V7\npackage TP\n: PRIV ( -- n ) K7 V7 @ + ;\n" HV+
    s\" public\n: PUB ( -- n ) PRIV ROOK + ;\nEXPORT ROOK\n;package\n" HV+
@@ -4083,11 +4103,11 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ ---- declaration identities --------------------------------------------------
 
-create SNAP-B BUF:HDR-BYTES allot
-create WAS-B BUF:HDR-BYTES allot
+create SNAP-B HDR-BYTES allot
+create WAS-B HDR-BYTES allot
 
-: SNAP$ ( -- str )  SNAP-B BUF:SPAN$ BUF:BLEN>N >str ;
-: WAS$ ( -- str )  WAS-B BUF:SPAN$ BUF:BLEN>N >str ;
+: SNAP$ ( -- str )  SNAP-B SPAN$ BLEN>N >str ;
+: WAS$ ( -- str )  WAS-B SPAN$ BLEN>N >str ;
 : SNAP+ ( str -- )  SNAP-B BYTES+ ;
 : SNAP-INT+ ( n -- )  s"  " SNAP+ INT$ SNAP+ ;
 
@@ -4158,7 +4178,7 @@ create WAS-B BUF:HDR-BYTES allot
 
 : SNAP ( n n -- )
    {: a:n b:n :}
-   SNAP-B BUF:CLEAR
+   SNAP-B CLEAR
    a SNAP-SLOT b SNAP-SLOT ;
 
 : WAS! ( -- )  SNAP$ WAS-B BYTES! ;
@@ -4435,12 +4455,12 @@ create WAS-B BUF:HDR-BYTES allot
 : TEXT-LK ( -- str )
    s\" ( é ) require lk-dep.f\nrequire src/lib/string.f\ns\" lk-dep.f\" required\ninclude lk-inc.f\nrequire lk-gone.f\n" ;
 
-\ TEXT-LK-ONE, then the line at which the verifier dies, its load reported,
-\ and exits without a verdict.
+\ TEXT-LK-ONE, then one `using` more than the checker holds open, at which the
+\ verifier dies, its load reported, and exits without a verdict.
 : TEXT-LK-OVER ( -- str )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    TEXT-LK-ONE TXT-B BYTES+
-   DEATH-LINE+
+   OVER-USINGS+
    TXT$ ;
 
 : LINKS-ASK ( str str -- )
@@ -4470,10 +4490,10 @@ create WAS-B BUF:HDR-BYTES allot
 : HELD-LINK+ ( n n n str -- )
    {: l:n c1:n c2:n p:str :}
    l c1 c2 p LINK+
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s" held " HV+ p WHERE+
    s" : this loader did not read it; the engine provides it or it was already recorded." HV+
-   PAR-B BUF:CLEAR TXT$ TEXT+
+   PAR-B CLEAR TXT$ TEXT+
    s\" ,\"tooltip\":" MSG+ PAR$ MSG+ s" }" MSG+ ;
 
 : LINKS-END ( -- )
@@ -4582,11 +4602,11 @@ create WAS-B BUF:HDR-BYTES allot
 
 \ The number in a file's name is the case it serves. A case names a path by
 \ its bytes after the tree's canonical path and its slash.
-create WS-B BUF:HDR-BYTES allot
+create WS-B HDR-BYTES allot
 variable WS-ROOT-U
 
 : WS+ ( str -- )  WS-B BYTES+ ;
-: WS$ ( -- str )  WS-B BUF:SPAN$ BUF:BLEN>N >str ;
+: WS$ ( -- str )  WS-B SPAN$ BLEN>N >str ;
 
 : IN-GRAPH ( str -- str )
    {: s:str :}
@@ -4656,7 +4676,7 @@ variable WS-ROOT-U
    s" w/c3.f" WS-CANON s\" require f3.f\n" q execute ;
 
 : WS-ANSWER$ ( -- str )
-   WS-B BUF:CLEAR
+   WS-B CLEAR
    LSP-WORKSPACE:REJECTED? if
       s" rejected " WS+ LSP-WORKSPACE:BLOCKED$ WS-NAME WS+ WS$ exit
    then
@@ -4675,7 +4695,7 @@ variable WS-ROOT-U
 \ is made.
 : REACHES ( str str str -- )
    {: f:str d:str w:str :}
-   WS-B BUF:CLEAR f WS-CANON WS+
+   WS-B CLEAR f WS-CANON WS+
    WS$ d WS-CANON [: WS-OPENS ;] LSP-WORKSPACE:REACHING
    SB-RESET s" workspace-reaching: " SB-APPEND f SB-APPEND s" , " SB-APPEND d SB-APPEND
    SB$ T-LABEL
@@ -4683,7 +4703,7 @@ variable WS-ROOT-U
 
 : REACHES-AGAIN ( str str -- )
    {: f:str w:str :}
-   WS-B BUF:CLEAR f WS-CANON WS+
+   WS-B CLEAR f WS-CANON WS+
    WS$ LSP-WORKSPACE:REACHING-AGAIN
    SB-RESET s" workspace-reaching: again " SB-APPEND f SB-APPEND
    SB$ T-LABEL
@@ -4765,7 +4785,7 @@ variable WS-ROOT-U
 : TEXT-RVE ( -- str )  s\" require ../h.f\nrequire lib/g.f\n: EU ( -- n ) GROOK ;\n" ;
 
 : TEXT-RID ( -- str )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s\" package RP\npublic\ninclude g.f\n: PU ( -- n ) KAY ;\n;package\n" HV+
    s\" package RQ\npublic\ninclude g.f\n;package\n" HV+
    s\" package RV\npublic\ninclude g.f\nprivate\ninclude g.f\n: VIN ( -- n ) KAY ;\n;package\n" HV+
@@ -4784,7 +4804,7 @@ variable WS-ROOT-U
    MSG$ FRAMED ;
 
 : ROOT-URI+ ( str -- )
-   PAR-B BUF:CLEAR s\" \"rootUri\":" PAR+ FIXTURE URI+ ;
+   PAR-B CLEAR s\" \"rootUri\":" PAR+ FIXTURE URI+ ;
 
 : WORKSPACE-INIT ( -- )
    s" workspace" FIXTURE FS:MAKE-DIR
@@ -4816,7 +4836,7 @@ variable WS-ROOT-U
 \ files out, begun in EXP: NAMED+ adds each file, NAMED-END hears it.
 : NAMED ( n -- )
    {: n:n :}
-   EXP-B BUF:CLEAR
+   EXP-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"window/showMessage\",\"params\":{\"type\":2," EXP+
    s\" \"message\":\"References may be incomplete: " EXP+ n NOT-COVERED ;
 
@@ -4825,7 +4845,7 @@ variable WS-ROOT-U
 \ NAMED-END hears it.
 : NOT-APPLIED ( str n -- )
    {: id:str n:n :}
-   EXP-B BUF:CLEAR
+   EXP-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" EXP+ id EXP+
    s\" ,\"error\":{\"code\":-32803,\"message\":\"Rename not applied: " EXP+ n NOT-COVERED ;
 
@@ -4943,7 +4963,7 @@ variable WS-ROOT-U
 \ No warning comes: out/m.f, which o.f's check reads, holds no use.
 : REFS-WS-TURNS ( -- )
    REFS-WS-TREE
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" \"workspaceFolders\":[{\"uri\":\"untitled:x\",\"name\":\"x\"},{\"uri\":" PAR+
    s" refs-ws/w" FIXTURE URI+ s\" ,\"name\":\"w\"}]" PAR+
    PAR$ INITIALIZE-WITH
@@ -5250,7 +5270,7 @@ variable WS-ROOT-U
    s" refs-fe/w/f.f" TEXT-RF REFS-FILE
    s" refs-fe/w/d.f" TEXT-RD REFS-FILE
    s" refs-fe/w/s.f" TEXT-RS REFS-FILE
-   PAR-B BUF:CLEAR s\" \"workspaceFolders\":[],\"rootUri\":" PAR+ s" refs-fe/w" FIXTURE URI+
+   PAR-B CLEAR s\" \"workspaceFolders\":[],\"rootUri\":" PAR+ s" refs-fe/w" FIXTURE URI+
    PAR$ INITIALIZE-WITH
    s" refs-fe/w/d.f" FIXTURE TEXT-RD 1 OPENS
    SAY
@@ -5423,7 +5443,7 @@ variable WS-ROOT-U
 
 \ A rename of the token would change RQ's word too, so q2.f is named.
 : TEXT-RVIS ( -- str )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s\" include f.f\npackage RQ\npublic\ninclude f.f\n;package\n" HV+
    s\" : QU ( -- n ) RQ:ROOK ROOK + ;\n" HV+
    TXT$ ;
@@ -5444,7 +5464,7 @@ variable WS-ROOT-U
    s" refs-vis/w/q2.f" DISK-URI 5 22 26 REF+ SYMBOLS-END ;
 
 : TEXT-RN ( -- str )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s\" : ROOK ( -- n ) 1 ;\n: LOOK ( str -- ) drop ;\nnames: LOOK\n" HV+
    s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: SEEK2 ( -- ) s\" ROOK\" XREF-FIND drop ;\n" HV+
    s\" : TWO ( -- n ) ROOK 1 + ;\n" HV+
@@ -5606,7 +5626,7 @@ variable WS-ROOT-U
 : PRIM-BATCH-FAIL-TURNS ( -- )
    s" refs-prim-fail" REFS-DIR s" refs-prim-fail/w" REFS-DIR
    65 0 ?do i PRIM-FAIL-PATH TEXT-PR-A REFS-FILE loop
-   TXT-B BUF:CLEAR  DEATH-LINE+
+   OVER-USING-TEXT
    65 PRIM-FAIL-PATH TXT$ REFS-FILE
    66 PRIM-FAIL-PATH TEXT-PR-A REFS-FILE
    s" refs-prim-fail/w" ROOT-URI+ PAR$ INITIALIZE-WITH
@@ -5764,36 +5784,36 @@ variable PROBE-DECLS
 : BI-FAKE-AT ( -- n )
    SCRIPT-ARGV-PATH TREE-READ s" : SCRIPT-ARGC " LINE-START 2 + ;
 : BI-SOURCE-FAKE$ ( -- str )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    BI-FAKE-AT 0 ?do s"  " HV+ loop
    s\" SCRIPT-ARGC drop\n" HV+
    TXT$ ;
 
 : BI-SOURCE-SHIFT$ ( str -- str )
    {: path:str :}
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s\" \n" HV+
    path TREE$ HV+
    TXT$ ;
 
 : BI-SOURCE-UNENDED$ ( -- str )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    SCRIPT-ARGV-PATH TREE$ HV+
    s\" \n: BAD ( -- n" HV+
    TXT$ ;
 
 : BI-SOURCE-UNBALANCED$ ( -- str )
-   s\" : SCRIPT-ARGC ( -- n ) 1 ;\n;package\n" ;
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\n;using\n" ;
 : BI-SOURCE-RETIRED$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nundefine SCRIPT-ARGC\n" ;
 : BI-SOURCE-REPLACED$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nundefine SCRIPT-ARGC\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
 : BI-SOURCE-TRUST-UNENDED$ ( -- str )
    s\" TRUSTED: SCRIPT-ARGC ( -- n ) 1" ;
-: BI-SOURCE-CRASH$ ( -- str )
-   TXT-B BUF:CLEAR
+: BI-SOURCE-USING-CRASH$ ( -- str )
+   TXT-B CLEAR
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\n" HV+
-   DEATH-LINE+
+   17 0 ?do s\" using SOURCE-ROOT\n" HV+ loop
    TXT$ ;
 : BI-SOURCE-CAST-REJECTED$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nCAST: LV-BAD-TAIL ( R n -- S n )\n" ;
@@ -5813,7 +5833,7 @@ variable PROBE-DECLS
 : BI-SOURCE-REJECTED-TRUST$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nTRUSTED: REVIEW-BAD ( -- zzz-unknown ) 1 ;\n" ;
 : BI-SOURCE-REJECTED-OPAQUE$ ( -- str )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    BI-SOURCE-REJECTED-TRUST$ HV+
    s\" undefine SCRIPT-ARGC\n" HV+
    TXT$ ;
@@ -5936,7 +5956,7 @@ variable PROBE-DECLS
    s" 21" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 21" NOWHERE
-   BI-SOURCE-CRASH$ SCRIPT-ARGV-PATH swap 9 CHANGES
+   BI-SOURCE-USING-CRASH$ SCRIPT-ARGV-PATH swap 9 CHANGES
    SAY
    SCRIPT-ARGV-PATH 9 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -6557,7 +6577,7 @@ variable PROBE-DECLS
 
 : RNN-PATH ( -- str )  s" rn-named.f" FIXTURE ;
 : TEXT-RNN ( -- str )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    s\" : ROOK ( -- n ) 1 ;\n: LOOK ( str -- ) drop ;\nnames: LOOK\n" HV+
    s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: TWO ( -- n ) ROOK 1 + ;\ns\" ROOK\" LOOK\n" HV+
    s\" package RNN\npublic\n: ROOK ( -- n ) 2 ;\n;package\n" HV+
@@ -6627,7 +6647,7 @@ variable PROBE-DECLS
 
 : CANCELS ( str -- )
    {: id:str :}
-   PAR-B BUF:CLEAR
+   PAR-B CLEAR
    s\" {\"id\":" PAR+ id PAR+ s" }" PAR+
    s" $/cancelRequest" PAR$ TELL ;
 
@@ -6825,7 +6845,7 @@ variable PROBE-DECLS
 
 \ big-frame's comment lines alone: about 700 KB.
 : BIG-QUIET ( -- )
-   TXT-B BUF:CLEAR
+   TXT-B CLEAR
    BIG-LINES 0 ?do s\" ( twenty-byte line )\n" TXT-B BYTES+ loop ;
 
 \ The document is src/lib/string.f, which the engine provides, so nothing
@@ -7091,6 +7111,9 @@ false constant ENGINE-ORIGINS?
    s" held" [: HELD-TURNS ;] TALK
    s" shadowed-arity" [: SHADOWED-TURNS ;] TALK
    s" not-recorded" [: NOT-RECORDED-TURNS ;] TALK
+   s" using-ambiguous" [: TWO-USED-TURNS ;] TALK
+   s" using-shadow" [: GLOBAL-USED-TURNS ;] TALK
+   s" using-clause" [: CLAUSE-USED-TURNS ;] TALK
    s" duplicate" [: DUPLICATE-TURNS ;] TALK
    s" duplicate-of-required" [: DUP-REQUIRED-TURNS ;] TALK
    s" top-level" [: TOP-LEVEL-TURNS ;] TALK
@@ -7122,9 +7145,6 @@ public
    WS-B READY
    LSP-DEFS:DEFS-PREPARE
    s" habu-lsp-test" FS:MKTEMP-DIR DIR-B BYTES!
-   STANDIN-B READY
-   false STANDIN? !
-   STANDIN-WRITE
    T-RESET ;
 
 \ These rooted cases share one initialize and a freshly written fixture tree.
@@ -7221,15 +7241,14 @@ public
    TEST-MALFORMED-FRAMES
    TEST-STDOUT-CLOSED
    TEST-CANCEL-SHUTDOWN
-   true STANDIN? !
    s" lsp-session" [: INITIALIZE ;] [: DEFAULT-CASES ;] SESSION-RUN
-   false STANDIN? !
    s" hover-session" [: MARKDOWN-CLIENT ;] [: HOVER-CASES ;] SESSION-RUN
-   true WORKSPACE? !  true STANDIN? !
+   true WORKSPACE? !
    s" workspace-session" [: WORKSPACE-INIT ;] [: WORKSPACE-CASES ;] SESSION-RUN
-   false WORKSPACE? !  false STANDIN? !
+   false WORKSPACE? !
    SPECIAL-CASES
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 
+;using
 ;package

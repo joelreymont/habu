@@ -45,20 +45,22 @@ variable HOLD                       \ the FIFO's write end
    {: stop:n :}
    TEXT at + stop at - >str ;
 
+using PG
+
 : OPEN ( -- PG:connection )
-   1 1 PG:CONFIGURE
-   0 SCRIPT-ARGV$ s" " PG:CONNECT MATCH PG:connect-result
+   1 1 CONFIGURE
+   0 SCRIPT-ARGV$ s" " CONNECT MATCH PG:connect-result
       connected OF ENDOF
       rejected OF type cr s" pg-hold: connect rejected" EXIT-STATUS:UNAVAILABLE die ENDOF
    ;MATCH ;
 
 \ The one value a one-row, one-column query answers, reported.
 : REPORT-SHOW ( PG:connection str -- ) {: c:PG:connection q:str :}
-   c q [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ REPORT ;] PG:WITH-RESULT ;
+   c q [: 0 >ROW 0 >COL TEXT$ REPORT ;] WITH-RESULT ;
 
 : REPORT-SEGMENT ( PG:connection -- ) {: c:PG:connection :}
    c s" show data_directory"
-   [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" postmaster.pid" PIDFILE FS:JOIN-PATH swap ;] PG:WITH-RESULT
+   [: 0 >ROW 0 >COL TEXT$ s" postmaster.pid" PIDFILE FS:JOIN-PATH swap ;] WITH-RESULT
    {: pu:n :}
    PIDFILE pu >str TEXT PIDFILE-CAP FS:READ-ALL {: u:n :}
    SHM-LINE u LINE$ REPORT ;
@@ -73,9 +75,10 @@ variable HOLD                       \ the FIFO's write end
    OPEN {: c :}
    c s" show unix_socket_directories" REPORT-SHOW
    c REPORT-SEGMENT
-   c s" select pg_sleep(600)" [: ;] PG:WITH-RESULT
+   c s" select pg_sleep(600)" [: ;] WITH-RESULT
    s" pg-hold: the sleep ended before the row was killed" EXIT-STATUS:FAILURE die ;
 
 MAIN
 
+;using
 ;package

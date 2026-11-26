@@ -158,6 +158,45 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
+\ U's public NAME, exported bare from a package under `using U`.
+: XPK-USED-FORGE$ ( str -- str ) {: s:str :}
+   SB-RESET
+   s" package U" XPK-LINE
+   s" public" XPK-LINE
+   s" : " SB-APPEND  s SB-APPEND  s"  ( -- n ) 7 ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" using U" XPK-LINE
+   s" package XP" XPK-LINE
+   s" public" XPK-LINE
+   s" EXPORT " SB-APPEND  s XPK-LINE
+   s" ;package" XPK-LINE
+   s" ;using" XPK-LINE
+   SB$ ;
+
+\ The part U's public XW, exported bare from its parent XPA under `using U`.
+: XPK-PART-FORGE$ ( -- str )
+   SB-RESET
+   s" package XPA" XPK-LINE
+   s" private package U" XPK-LINE
+   s" public : XW ( -- n ) 7 ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" using U" XPK-LINE
+   s" public EXPORT XW" XPK-LINE
+   s" ;using" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+\ Top-level U's public XW, exported bare from XPH, whose part U hides U.
+: XPK-HIDDEN-FORGE$ ( -- str )
+   SB-RESET
+   s" package U public : XW ( -- n ) 9 ; ;package" XPK-LINE
+   s" using U" XPK-LINE
+   s" package XPH private package U public : ZW ( -- n ) 7 ; ;package" XPK-LINE
+   s" using U public EXPORT XW ;using" XPK-LINE
+   s" ;package" XPK-LINE
+   s" ;using" XPK-LINE
+   SB$ ;
+
 \ An export whose source does not resolve, after a private STRUCTURE.
 : XPK-STRUCT-FORGE$ ( -- str )
    SB-RESET
@@ -523,6 +562,27 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
+\ As XPK-PART-SECTIONS$, with part B using another package.
+: XPK-PART-USING$ ( -- str )
+   SB-RESET
+   s" package U" XPK-LINE
+   s" public" XPK-LINE
+   s" : UW ( -- n ) 3 ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" : HID ( -- n ) 9 ;" XPK-LINE
+   s" seal-package" XPK-LINE
+   s" package B" XPK-LINE
+   s" using U" XPK-LINE
+   s" : PV ( -- n ) UW HID + ;" XPK-LINE
+   s" public" XPK-LINE
+   s" : PB ( -- n ) PV ;" XPK-LINE
+   s" ;using" XPK-LINE
+   s" ;package" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
 \ A sealed package's part B defines B:PV from its global section.
 : XPK-PART-QUALIFIED$ ( -- str )
    SB-RESET
@@ -713,6 +773,18 @@ create XPK-EMPTY 1 allot
    s" a top-level keyword rejects (E-EXPORT-UNDEFINED)" T-LABEL
    XPK-KEYWORD-FORGE$ s" error[E-EXPORT-UNDEFINED]" s" is a top-level keyword"
    XPK-REJECT-ALL
+   s" a used package's public rejects bare (E-EXPORT-UNDEFINED)" T-LABEL
+   s" XW" XPK-USED-FORGE$ s" error[E-EXPORT-UNDEFINED]"
+   s" is a public of used package `U`" XPK-REJECT-ALL
+   s" a used package's public HOST rejects bare (E-EXPORT-UNDEFINED)" T-LABEL
+   s" HOST" XPK-USED-FORGE$ s" error[E-EXPORT-UNDEFINED]"
+   s" is a public of used package `U`" XPK-REJECT-ALL
+   s" a used part's public rejects bare, named by its tail" T-LABEL
+   XPK-PART-FORGE$ s" error[E-EXPORT-UNDEFINED]"
+   s" is a public of used package `XPA:U`" XPK-REJECT-ALL
+   s" a used package a part hides rejects bare, with the part to rename" T-LABEL
+   XPK-HIDDEN-FORGE$ s" error[E-EXPORT-UNDEFINED]"
+   s" = help: rename the part `XPH:U`, which hides package `U` here" XPK-REJECT-ALL
    s" an undefined source after a private STRUCTURE rejects" T-LABEL
    XPK-STRUCT-FORGE$ s" error[E-EXPORT-UNDEFINED]"
    s" cannot find word `QX:BOX-MAKE` to export" XPK-REJECT-ALL
@@ -943,6 +1015,8 @@ create XPK-EMPTY 1 allot
    XPK-RUN-VERIFY  s" |          ^^ its clause's name is taken" XPK-ERR?  70 XPK-ASSERT-RC
    s" a sealed package's part defines in its private and public sections" T-LABEL
    XPK-PART-SECTIONS$ XPK-ACCEPT-BOTH
+   s" a sealed package's part defines under a using" T-LABEL
+   XPK-PART-USING$ XPK-ACCEPT-BOTH
    s" a sealed package's part defines B:X into itself" T-LABEL
    XPK-PART-QUALIFIED$ XPK-ACCEPT-BOTH
    s" a word spelled as a top-level keyword exports" T-LABEL

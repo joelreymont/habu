@@ -155,6 +155,7 @@ public
 
 
 package MODEL-PEER
+using MODEL-FIXTURE
 private
 create BASE-URL 64 allot
 create OLLAMA-URL 64 allot
@@ -224,47 +225,47 @@ $300000 constant BIG-U
 
 : ECHO+ ( str -- )
    {: s:str :}
-   ECHO-U @ s STR:LEN + 256 <= MODEL-FIXTURE:ASSERT
+   ECHO-U @ s STR:LEN + 256 <= ASSERT
    s ECHO 256 ECHO-U APPEND ;
 
 
 \ The value of the request body's member `key`.
 : BODY-MEMBER ( HTTP:request str -- JSON:value )
    {: r:HTTP:request key:str :}
-   r HTTP:BODY$ key MODEL-FIXTURE:MEMBER ;
+   r HTTP:BODY$ key MEMBER ;
 
 
 \ Whether a request body names a service tier.
 : TIERED? ( HTTP:request -- bool )
-   HTTP:BODY$ JSON:PARSE MODEL-FIXTURE:OBJECT s" service_tier" MODEL-FIXTURE:HAS? ;
+   HTTP:BODY$ JSON:PARSE OBJECT s" service_tier" HAS? ;
 
 
 \ An array's first element; an empty array fails.
 : FIRST ( JSON:value -- JSON:value )
    {: v :}
    v s" /0" JSON:AT MATCH option
-      none OF MODEL-FIXTURE:FAIL v ENDOF
+      none OF FAIL v ENDOF
       some OF ENDOF
    ;MATCH ;
 
 
 \ The content array of a chat request's user input.
 : CONTENT ( HTTP:request -- JSON:value )
-   s" input" BODY-MEMBER FIRST MODEL-FIXTURE:OBJECT s" content" MODEL-FIXTURE:FOUND ;
+   s" input" BODY-MEMBER FIRST OBJECT s" content" FOUND ;
 
 
 \ The text of a chat request's first part, escapes as written.
 : FIRST-TEXT ( HTTP:request -- str )
-   CONTENT FIRST MODEL-FIXTURE:OBJECT s" text" MODEL-FIXTURE:FOUND
+   CONTENT FIRST OBJECT s" text" FOUND
    JSON:TEXT$ {: a:str :} a STR:DATA 1+ a STR:LEN 2 - >str ;
 
 
 : INPUT-LINE ( JSON:value -- )
    {: s :}
-   s JSON:STRING? MODEL-FIXTURE:ASSERT
+   s JSON:STRING? ASSERT
    1 RECEIVED-N +!
    RECEIVED-U @ 0<> if
-      RECEIVED-U @ RECEIVED-CAP < MODEL-FIXTURE:ASSERT
+      RECEIVED-U @ RECEIVED-CAP < ASSERT
       10 RECEIVED RECEIVED-U @ + c! 1 RECEIVED-U +!
    then
    s [: RECEIVED RECEIVED-CAP RECEIVED-U APPEND ;] JSON:WITH-STRING ;
@@ -276,15 +277,15 @@ $300000 constant BIG-U
    0 RECEIVED-U !
    0 RECEIVED-N !
    s" input" BODY-MEMBER {: v :}
-   v JSON:ARRAY? MODEL-FIXTURE:ASSERT
+   v JSON:ARRAY? ASSERT
    v [: INPUT-LINE ;] JSON:EACH ;
 
 
 \ Echoes the decoded url of the content part when its type is input_image.
 : PART+ ( JSON:value -- )
    {: p :}
-   p MODEL-FIXTURE:OBJECT s" type" MODEL-FIXTURE:FOUND s" input_image" JSON:STRING= 0= if exit then
-   p MODEL-FIXTURE:OBJECT s" image_url" MODEL-FIXTURE:FOUND {: url :}
+   p OBJECT s" type" FOUND s" input_image" JSON:STRING= 0= if exit then
+   p OBJECT s" image_url" FOUND {: url :}
    IMAGES @ 0<> if s" ," ECHO+ then
    S\" \q" ECHO+
    url [: ECHO 256 ECHO-U APPEND ;] JSON:WITH-STRING
@@ -296,7 +297,7 @@ $300000 constant BIG-U
 : IMAGE-ECHO ( HTTP:request -- )
    0 ECHO-U ! 0 IMAGES !
    S\" {\qimages\q:[" ECHO+
-   CONTENT [: MODEL-FIXTURE:OBJECT PART+ ;] JSON:EACH
+   CONTENT [: OBJECT PART+ ;] JSON:EACH
    s" ]}" ECHO+ ;
 
 
@@ -378,7 +379,7 @@ $300000 constant BIG-U
    TCP4:WRITE
    MATCH TCP4:status
       ok OF ENDOF
-      failed OF TCP4:ERRNO>N drop MODEL-FIXTURE:FAIL ENDOF
+      failed OF TCP4:ERRNO>N drop FAIL ENDOF
    ;MATCH ;
 
 
@@ -401,7 +402,7 @@ $300000 constant BIG-U
    TCP4:CLOSE
    MATCH TCP4:status
       ok OF ENDOF
-      failed OF TCP4:ERRNO>N drop MODEL-FIXTURE:FAIL ENDOF
+      failed OF TCP4:ERRNO>N drop FAIL ENDOF
    ;MATCH ;
 
 
@@ -415,8 +416,8 @@ $300000 constant BIG-U
    [: TURN TASK:WAIT-SEM ;] finally
    MATCH AIO:readiness
       ready OF drop ENDOF
-      timed-out OF MODEL-FIXTURE:FAIL ENDOF
-      rejected OF drop MODEL-FIXTURE:FAIL ENDOF
+      timed-out OF FAIL ENDOF
+      rejected OF drop FAIL ENDOF
    ;MATCH
    conn RAW-CLOSE ;
 
@@ -954,7 +955,7 @@ variable KEPT-U
    r response FAILED-NEXT? if exit then
    r FIRST-TEXT {: t:str :}
    t s" too-large" STR:= if response TOO-LARGE exit then
-   t STR:LEN 64 > if MODEL-FIXTURE:FAIL then
+   t STR:LEN 64 > if FAIL then
    t KEPT 64 SPAN:MAKE SPAN:COPY t STR:LEN KEPT-U !
    r HTTP:BODY$ STR:LEN COMPACTED-U !
    t s" bad-compact" STR:= if response [: NO-WINDOW ;] HTTP:JSON! exit then
@@ -1050,8 +1051,8 @@ variable KEPT-U
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
    r response FAILED-NEXT? if exit then
    r s" encoding_format" BODY-MEMBER {: f :}
-   f JSON:STRING? MODEL-FIXTURE:ASSERT
-   f s" base64" JSON:STRING= MODEL-FIXTURE:ASSERT
+   f JSON:STRING? ASSERT
+   f s" base64" JSON:STRING= ASSERT
    r INPUT-LINES RECEIVED$ {: i:str :}
    i STR:DATA i STR:LEN 1 min >str s" x" STR:= if
       response [: LENGTH-VECTOR ;] HTTP:JSON! exit
@@ -1095,8 +1096,8 @@ variable KEPT-U
    1 CALLS atomic-add drop
    r s" Authorization" HTTP:HEADER-OF$ {: a:str present:bool :}
    present if response 401 HTTP:STATUS! exit then
-   r s" truncate" BODY-MEMBER JSON:TEXT$ s" false" STR:= MODEL-FIXTURE:ASSERT
-   r HTTP:BODY$ s" encoding_format" STR:CONTAINS? 0= MODEL-FIXTURE:ASSERT
+   r s" truncate" BODY-MEMBER JSON:TEXT$ s" false" STR:= ASSERT
+   r HTTP:BODY$ s" encoding_format" STR:CONTAINS? 0= ASSERT
    r INPUT-LINES RECEIVED$ {: i:str :}
    i S\" one\ntwo" STR:= if
       response [: S\" {\qembeddings\q:[[0.1,0.2,0.3],[0,1,2]]}" JSON:WRITE-RAW ;] HTTP:JSON!
@@ -1130,7 +1131,7 @@ variable KEPT-U
    {: dst:^ path:str :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-INT path SB-APPEND
    SB$ {: a:str :}
-   a STR:LEN 64 <= MODEL-FIXTURE:ASSERT
+   a STR:LEN 64 <= ASSERT
    a dst 64 SPAN:MAKE SPAN:COPY a STR:LEN ;
 
 
@@ -1170,14 +1171,14 @@ EXPORT WIDE-DIMS
 : CALLS@ ( -- n ) CALLS atomic@ ;
 \ The last chat, count, compaction or embedding request the peer received;
 \ one past SENT-CAP fails the test.
-: SENT$ ( -- str ) SENT-U @ dup 0< if MODEL-FIXTURE:FAIL then SENT-BODY swap >str ;
+: SENT$ ( -- str ) SENT-U @ dup 0< if FAIL then SENT-BODY swap >str ;
 \ Answers the next chat, count, compaction or OpenAI embedding request as the
 \ chat scenario named, whatever its text, as a provider outage does, its
 \ Retry-After the seconds' text, none when empty; the request after it as its
 \ own text says.
 : FAIL-AFTER ( str str -- )
    {: s:str seconds:str :}
-   s STR:LEN 0= s STR:LEN FAILURE-CAP > or if MODEL-FIXTURE:FAIL exit then
+   s STR:LEN 0= s STR:LEN FAILURE-CAP > or if FAIL exit then
    s FAILURE FAILURE-CAP SPAN:MAKE SPAN:COPY
    seconds RETRY-AFTER RETRY-CAP SPAN:MAKE SPAN:COPY
    seconds STR:LEN RETRY-AFTER-U !
@@ -1215,10 +1216,12 @@ EXPORT WIDE-DIMS
    GO TASK:SEMAPHORE-DESTROY
    WORKERS 0 ?do i STREAM-OUT @ VEC:DELETE loop
    BIG @ BIG-U MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+;using
 ;package
 
 
 package MODEL-TEST
+using MODEL-FIXTURE
 private
 4 TYPED-BUFFER CALL MODEL:call
 $10000 TASK:TASK WORK-TASK
@@ -1249,7 +1252,7 @@ variable JOURNAL-READY
 : CONFIG-SAYS ( n [ n -- n ] str -- )
    {: want:str :} CODE-OF {: code:n :}
    code REASON:TEXT$ {: ta:str :}
-   code MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
+   code MODEL:E-CONFIG = ASSERT
    ta want T$= ;
 variable CHAT-NS    \ TIME:MONO-NS as the last CHAT-CODE began
 : CHAT-CODE ( -- n ) TIME:MONO-NS CHAT-NS ! M [: dup MODEL:CHAT drop ;] catch {: code:n :} drop code ;
@@ -1261,8 +1264,8 @@ variable CHAT-NS    \ TIME:MONO-NS as the last CHAT-CODE began
 : INPUTS ( str -- )
    {: s:str :}
    M MODEL:INPUT-RESET s M MODEL:INPUT+ ;
-: CHAT ( -- ) s" valid" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT ;
-: FAILS ( str n -- ) {: a:str want:n :} a PREP CHAT-CODE want = MODEL-FIXTURE:ASSERT ;
+: CHAT ( -- ) s" valid" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT ;
+: FAILS ( str n -- ) {: a:str want:n :} a PREP CHAT-CODE want = ASSERT ;
 : INPUT-LEN ( n -- n ) {: u:n :} PAD u >str M MODEL:INPUT+ u ;
 : DIMS ( n -- n ) {: d:n :} s" test-embedding" d 60000 M MODEL:EMBEDDING-MODEL! d ;
 
@@ -1293,7 +1296,7 @@ variable REJECTED-BASE-U
    LOG-PATH$ FS:FILE-SIZE {: size:n :}
    LOG-B BUF:CLEAR
    LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ {: dst:str :}
-   LOG-PATH$ dst STR:DATA dst STR:LEN FS:READ-ALL size = MODEL-FIXTURE:ASSERT
+   LOG-PATH$ dst STR:DATA dst STR:LEN FS:READ-ALL size = ASSERT
    LOG-B BUF:SPAN$ BUF:BLEN>N >str ;
 
 
@@ -1351,7 +1354,7 @@ variable REJECTED-BASE-U
 
 \ A failed check prints the capture, which the failed run's exit deletes.
 : SB-LOGGED ( -- )
-   SB$ LOGGED? dup 0= if SB$ type cr LOG$ type then MODEL-FIXTURE:ASSERT ;
+   SB$ LOGGED? dup 0= if SB$ type cr LOG$ type then ASSERT ;
 
 
 \ Whether a captured line, after its stamp, is the text, a count of at most the
@@ -1372,7 +1375,7 @@ variable REJECTED-BASE-U
 
 \ SB-LOGGED for a line that ends with SB, a count of milliseconds and " ms".
 : SB-MS-LOGGED ( -- )
-   SB$ [: MS-LINE? ;] LOGGED-BY? dup 0= if SB$ type cr LOG$ type then MODEL-FIXTURE:ASSERT ;
+   SB$ [: MS-LINE? ;] LOGGED-BY? dup 0= if SB$ type cr LOG$ type then ASSERT ;
 
 
 : CHAT-LOGGED ( str str -- )
@@ -1415,10 +1418,10 @@ variable REJECTED-BASE-U
 : QUIET ( [ -- ] -- )
    LINES {: before:n :}
    execute
-   LINES before = dup 0= if LOG$ type then MODEL-FIXTURE:ASSERT ;
+   LINES before = dup 0= if LOG$ type then ASSERT ;
 
 
-: FIXTURE-KEY ( -- ) MODEL-FIXTURE:KEY-SERVICE$ MODEL-FIXTURE:KEY-ACCOUNT$ M MODEL:API-KEY! ;
+: FIXTURE-KEY ( -- ) KEY-SERVICE$ KEY-ACCOUNT$ M MODEL:API-KEY! ;
 
 
 \ Opens call n against the peer with the fixture key, system text and schema.
@@ -1428,7 +1431,7 @@ variable REJECTED-BASE-U
    MODEL-PEER:BASE-URL$ c MODEL:BASE-URL!
    s" test-generation" c MODEL:GENERATION-MODEL!
    s" test-embedding" 3 60000 c MODEL:EMBEDDING-MODEL!
-   MODEL-FIXTURE:KEY-SERVICE$ MODEL-FIXTURE:KEY-ACCOUNT$ c MODEL:API-KEY!
+   KEY-SERVICE$ KEY-ACCOUNT$ c MODEL:API-KEY!
    s" Read source evidence." c MODEL:SYSTEM!
    SCHEMA$ c MODEL:SCHEMA! ;
 
@@ -1439,10 +1442,10 @@ variable REJECTED-BASE-U
 : IMAGE ( -- )
    s" image" PREP
    s" image/png" s" aGVsbG8=" M MODEL:IMAGE+
-   M MODEL:CHAT S\" {\qimages\q:[\qdata:image/png;base64,aGVsbG8=\q]}" STR:= MODEL-FIXTURE:ASSERT ;
+   M MODEL:CHAT S\" {\qimages\q:[\qdata:image/png;base64,aGVsbG8=\q]}" STR:= ASSERT ;
 
 
-: SERVICE$ ( -- str ) MODEL-FIXTURE:KEY-SERVICE$ ;
+: SERVICE$ ( -- str ) KEY-SERVICE$ ;
 \ The second key item's account.
 : ACCOUNT$ ( -- str ) s" model-store" ;
 : STORE ( str -- ) {: v:str :} SERVICE$ ACCOUNT$ v SECRET:WRITE ;
@@ -1463,9 +1466,9 @@ variable REJECTED-BASE-U
 \ line names.
 : REJECTED-READ ( n str str -- )
    {: code:n name:str why:str :}
-   code MODEL-FIXTURE:READ-FAULT!
+   code READ-FAULT!
    s" valid" code FAILS
-   0 MODEL-FIXTURE:READ-FAULT!
+   0 READ-FAULT!
    name why KEY-LOGGED ;
 
 
@@ -1495,7 +1498,7 @@ variable REJECTED-BASE-U
    PAD 4096 XS
    PAD 4096 >str STORE
    s" valid" MODEL:E-KEY FAILS
-   M MODEL:HTTP-STATUS 401 = MODEL-FIXTURE:ASSERT ;
+   M MODEL:HTTP-STATUS 401 = ASSERT ;
 
 
 \ API-KEY! reads a second item; the fixture key is then back in force.
@@ -1531,14 +1534,14 @@ variable REJECTED-BASE-U
    KEYLESS-CALL {: c:^ :}
    0 [: drop 1 CALL MODEL:CHAT drop 0 ;] KEYLESS-TEXT$ CONFIG-SAYS
    c MODEL:CLOSE
-   MODEL-PEER:CALLS@ before = MODEL-FIXTURE:ASSERT ;
+   MODEL-PEER:CALLS@ before = ASSERT ;
 
 \ AWAIT throws the key item's rejection START kept with its own text, not the
 \ text of a rejection the task met since.
 : KEYLESS-AWAIT ( -- )
    KEYLESS-CALL {: c:^ :}
    c MODEL:START
-   0 [: -1 M MODEL:MAX-OUTPUT! ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
+   0 [: -1 M MODEL:MAX-OUTPUT! ;] CODE-OF MODEL:E-CONFIG = ASSERT
    0 [: drop 1 CALL MODEL:AWAIT 0 ;] KEYLESS-TEXT$ CONFIG-SAYS
    c MODEL:CLOSE ;
 
@@ -1596,9 +1599,9 @@ variable REJECTED-BASE-U
    s" kept" M MODEL:CACHE-TEXT+
    M MODEL:JOURNAL-INPUT$
    S\" [{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q},{\qtype\q:\qinput_text\q,\qtext\q:\qkept\q}]"
-   STR:CONTAINS? MODEL-FIXTURE:ASSERT
+   STR:CONTAINS? ASSERT
    M MODEL:CHAT drop
-   MODEL-PEER:SENT$ CACHED-CONTENT$ STR:CONTAINS? MODEL-FIXTURE:ASSERT ;
+   MODEL-PEER:SENT$ CACHED-CONTENT$ STR:CONTAINS? ASSERT ;
 
 
 : VALID-CHAT ( n -- n ) s" valid" PREP M MODEL:CHAT drop ;
@@ -1618,21 +1621,21 @@ variable REJECTED-BASE-U
    MODEL-PEER:REFUSAL$ SB-APPEND
    s" response.completed" STREAMED-LOGGED
    s" length" MODEL:E-INCOMPLETE FAILS
-   M MODEL:INCOMPLETE-REASON$ s" max_output_tokens" STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:INCOMPLETE-REASON$ s" max_output_tokens" STR:= ASSERT
    s" warn" CHAT-ID-LINE s" MODEL:E-INCOMPLETE incomplete max_output_tokens" SB-APPEND
    CUT-TAIL SB-MS-LOGGED
    s" filtered" MODEL:E-INCOMPLETE FAILS
-   M MODEL:INCOMPLETE-REASON$ s" content_filter" STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:INCOMPLETE-REASON$ s" content_filter" STR:= ASSERT
    s" long-finish" MODEL:E-INCOMPLETE FAILS
-   M MODEL:INCOMPLETE-REASON$ MODEL-PEER:LONG-FINISH$ STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:INCOMPLETE-REASON$ MODEL-PEER:LONG-FINISH$ STR:= ASSERT
    s" bad-content" MODEL:E-RESPONSE FAILS
-   M MODEL:INCOMPLETE-REASON$ STR:LEN 0= MODEL-FIXTURE:ASSERT
+   M MODEL:INCOMPLETE-REASON$ STR:LEN 0= ASSERT
    s" error" CHAT-ID-LINE s" MODEL:E-RESPONSE status 200 body: " SB-APPEND
    MODEL-PEER:BAD-CONTENT$ SB-APPEND
    s" response.completed" STREAMED-LOGGED
-   s" note-first" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   s" note-last" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   s" phase-null" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   s" note-first" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   s" note-last" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   s" phase-null" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" note-only" MODEL:E-RESPONSE FAILS
    s" answer-twice" MODEL:E-RESPONSE FAILS
    s" phase-other" MODEL:E-RESPONSE FAILS
@@ -1642,58 +1645,58 @@ variable REJECTED-BASE-U
    s" response.failed" STREAMED-LOGGED
    s" failed-size" MODEL:E-CAPACITY FAILS
    s" failed-other" MODEL:E-HTTP FAILS
-   M MODEL:ERROR$ s" bad prompt" STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:ERROR$ s" bad prompt" STR:= ASSERT
    s" error-event" MODEL:E-UNAVAILABLE FAILS
-   M MODEL:ERROR$ s" The server had an error." STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:ERROR$ s" The server had an error." STR:= ASSERT
    s" error" CHAT-ID-LINE
    s" MODEL:E-UNAVAILABLE status 200: The server had an error. body: " SB-APPEND
    MODEL-PEER:FLAT-ERROR$ SB-APPEND
    s" ; events response.created=1 response.in_progress=1 error=1; no output" SB-APPEND
    SB-LOGGED
    s" error-nested" MODEL:E-UNAVAILABLE FAILS
-   M MODEL:ERROR$ s" The server had an error." STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:ERROR$ s" The server had an error." STR:= ASSERT
    s" error-overloaded" MODEL:E-UNAVAILABLE FAILS
-   s" big" PREP M MODEL:CHAT MODEL-PEER:BIG$ STR:= MODEL-FIXTURE:ASSERT
+   s" big" PREP M MODEL:CHAT MODEL-PEER:BIG$ STR:= ASSERT
    s" http-bad" MODEL:E-HTTP FAILS
-   M MODEL:HTTP-STATUS 400 = MODEL-FIXTURE:ASSERT
-   M MODEL:ERROR$ s" bad request" STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:HTTP-STATUS 400 = ASSERT
+   M MODEL:ERROR$ s" bad request" STR:= ASSERT
    s" error" s" MODEL:E-HTTP status 400: bad request" CHAT-LOGGED
-   CHAT M MODEL:ERROR$ STR:LEN 0= MODEL-FIXTURE:ASSERT
+   CHAT M MODEL:ERROR$ STR:LEN 0= ASSERT
    0 [: drop s" http-text" PREP M MODEL:CHAT drop 0 ;]
    s" expected a generation model the provider serves, found `test-generation`; pass GENERATION-MODEL! or PURPOSE-MODEL! a model the provider serves: it answered status 404"
    CONFIG-SAYS
-   M MODEL:HTTP-STATUS 404 = MODEL-FIXTURE:ASSERT
-   M MODEL:ERROR$ s" model not found" STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:HTTP-STATUS 404 = ASSERT
+   M MODEL:ERROR$ s" model not found" STR:= ASSERT
    s" error" s" MODEL:E-CONFIG status 404: model not found" CHAT-LOGGED
    s" http-detail" MODEL:E-HTTP FAILS
    s" error" S\" MODEL:E-HTTP status 422 body: {\qdetail\q:\qbad field\q}" CHAT-LOGGED
    s" forbidden" MODEL:E-KEY FAILS
-   M MODEL:HTTP-STATUS 403 = MODEL-FIXTURE:ASSERT
+   M MODEL:HTTP-STATUS 403 = ASSERT
    s" error" CHAT-LINE s" MODEL:E-KEY key service " SB-APPEND
-   MODEL-FIXTURE:KEY-SERVICE$ SB-APPEND s" , account " SB-APPEND MODEL-FIXTURE:KEY-ACCOUNT$ SB-APPEND
+   KEY-SERVICE$ SB-APPEND s" , account " SB-APPEND KEY-ACCOUNT$ SB-APPEND
    s" : rejected by the provider status 403" SB-APPEND SB-LOGGED
    \ A fault before sending reports no earlier call's status: a builder's,
    \ and one in a chat call made again over the same parts.
    INVALID-IMAGE
-   M MODEL:HTTP-STATUS 0= MODEL-FIXTURE:ASSERT
+   M MODEL:HTTP-STATUS 0= ASSERT
    s" forbidden" MODEL:E-KEY FAILS
    s" {bad" M MODEL:SCHEMA!
-   [: CHAT-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT ;] QUIET
-   M MODEL:HTTP-STATUS 0= MODEL-FIXTURE:ASSERT
+   [: CHAT-CODE MODEL:E-CONFIG = ASSERT ;] QUIET
+   M MODEL:HTTP-STATUS 0= ASSERT
    SCHEMA$ M MODEL:SCHEMA!
    s" too-large" MODEL:E-CAPACITY FAILS
-   M MODEL:HTTP-STATUS 400 = MODEL-FIXTURE:ASSERT
+   M MODEL:HTTP-STATUS 400 = ASSERT
    s" warn" s" MODEL:E-CAPACITY status 400: Your input exceeds the context window of this model." CHAT-LOGGED
    s" oversized" MODEL:E-CAPACITY FAILS
-   M MODEL:HTTP-STATUS 413 = MODEL-FIXTURE:ASSERT
-   M MODEL:ERROR$ STR:LEN 0= MODEL-FIXTURE:ASSERT ;
+   M MODEL:HTTP-STATUS 413 = ASSERT
+   M MODEL:ERROR$ STR:LEN 0= ASSERT ;
 
 
 \ A stream that ends before the response ends the call; one that drops after
 \ it does not.
 : EARLY-ENDS ( -- )
-   s" done-drop" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   M MODEL:HTTP-STATUS 200 = MODEL-FIXTURE:ASSERT
+   s" done-drop" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   M MODEL:HTTP-STATUS 200 = ASSERT
    s" early-drop" MODEL:E-TRANSPORT FAILS
    s" error" CHAT-LINE s" MODEL:E-TRANSPORT curl 18: " SB-APPEND
    18 CURL:>CODE CURL:ERROR$ SB-APPEND s" ; events keepalive=1; no output" SB-APPEND
@@ -1742,17 +1745,17 @@ variable REJECTED-BASE-U
    $7F000001 TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
    MATCH TCP4:bind-result
       bound OF TCP4:LISTENER>N ENDOF
-      failed OF TCP4:ERRNO>N drop MODEL-FIXTURE:FAIL -1 ENDOF
+      failed OF TCP4:ERRNO>N drop FAIL -1 ENDOF
    ;MATCH {: fd:n :}
    fd TCP4:>LISTENER TCP4:LOCAL
    MATCH TCP4:endpoint-result
       endpoint OF TCP4:PORT>N swap TCP4:ADDRESS>N drop ENDOF
-      failed OF TCP4:ERRNO>N drop MODEL-FIXTURE:FAIL 0 ENDOF
+      failed OF TCP4:ERRNO>N drop FAIL 0 ENDOF
    ;MATCH {: port:n :}
    fd TCP4:>LISTENER TCP4:CLOSE-LISTENER
    MATCH TCP4:status
       ok OF ENDOF
-      failed OF TCP4:ERRNO>N drop MODEL-FIXTURE:FAIL ENDOF
+      failed OF TCP4:ERRNO>N drop FAIL ENDOF
    ;MATCH
    port ;
 
@@ -1762,7 +1765,7 @@ variable REJECTED-BASE-U
 : REJECTED ( -- )
    SB-RESET s" http://127.0.0.1:" SB-APPEND CLOSED-PORT FMT:SB-INT
    SB$ {: a:str :}
-   a STR:LEN 64 <= MODEL-FIXTURE:ASSERT
+   a STR:LEN 64 <= ASSERT
    a REJECTED-BASE 64 SPAN:MAKE SPAN:COPY a STR:LEN REJECTED-BASE-U !
    REJECTED-BASE$ M MODEL:BASE-URL!
    s" valid" MODEL:E-TRANSPORT FAILS
@@ -1778,8 +1781,8 @@ variable REJECTED-BASE-U
 
 : CANCELLED ( -- )
    WORK-TASK TASK:JOIN MATCH result
-      ok OF drop MODEL-FIXTURE:FAIL ENDOF
-      err OF MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT ENDOF
+      ok OF drop FAIL ENDOF
+      err OF MODEL:E-CANCELLED = ASSERT ENDOF
    ;MATCH ;
 
 
@@ -1799,14 +1802,14 @@ variable REJECTED-BASE-U
 : HOLD-ENDED ( n -- )
    {: t0:n :}
    CANCELLED
-   mono-ns t0 - PROMPT-NS < MODEL-FIXTURE:ASSERT ;
+   mono-ns t0 - PROMPT-NS < ASSERT ;
 
 
 : CANCELLATION ( -- )
    HOLD mono-ns
-   M MODEL:CANCEL MODEL-FIXTURE:ASSERT
+   M MODEL:CANCEL ASSERT
    HOLD-ENDED
-   M MODEL:CANCEL 0= MODEL-FIXTURE:ASSERT ;
+   M MODEL:CANCEL 0= ASSERT ;
 
 
 \ The first CHAT has returned before STOP-READY is signalled. The worker
@@ -1816,8 +1819,8 @@ variable REJECTED-BASE-U
    STOP-READY TASK:SIGNAL-SEM
    STOP-GO TASK:WAIT-SEM
    first-code 0<> if first-code throw then
-   CHAT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   EMBED-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
+   CHAT-CODE MODEL:E-CANCELLED = ASSERT
+   EMBED-CODE MODEL:E-CANCELLED = ASSERT
    0 TASK:RETURN ;
 
 
@@ -1832,13 +1835,13 @@ variable REJECTED-BASE-U
    s" stopped-chat" PREP
    s" stopped-embed" INPUTS
    M MODEL:REQUEST-STOP
-   M MODEL:CANCEL 0= MODEL-FIXTURE:ASSERT
+   M MODEL:CANCEL 0= ASSERT
    STOP-GO TASK:SIGNAL-SEM
    WORK-TASK TASK:JOIN MATCH result
-      ok OF 0= MODEL-FIXTURE:ASSERT ENDOF
-      err OF drop MODEL-FIXTURE:FAIL ENDOF
+      ok OF 0= ASSERT ENDOF
+      err OF drop FAIL ENDOF
    ;MATCH
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
    STOP-GO TASK:SEMAPHORE-DESTROY
    STOP-READY TASK:SEMAPHORE-DESTROY ;
 
@@ -1847,30 +1850,30 @@ variable REJECTED-BASE-U
    HOLD mono-ns
    M MODEL:REQUEST-STOP
    HOLD-ENDED
-   CHAT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT ;
+   CHAT-CODE MODEL:E-CANCELLED = ASSERT ;
 
 
 \ A call stopped before its request reports no counts, not the last reply's.
 : STOPPED-COUNTS ( -- )
-   s" usage" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   M MODEL:INPUT-TOKENS 11 = MODEL-FIXTURE:ASSERT
-   M MODEL:OUTPUT-TOKENS 6 = MODEL-FIXTURE:ASSERT
-   M MODEL:REASONING-TOKENS 2 = MODEL-FIXTURE:ASSERT
+   s" usage" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   M MODEL:INPUT-TOKENS 11 = ASSERT
+   M MODEL:OUTPUT-TOKENS 6 = ASSERT
+   M MODEL:REASONING-TOKENS 2 = ASSERT
    M MODEL:REQUEST-STOP
-   CHAT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   M MODEL:INPUT-TOKENS 0 = MODEL-FIXTURE:ASSERT
-   M MODEL:CACHED-TOKENS 0 = MODEL-FIXTURE:ASSERT
-   M MODEL:OUTPUT-TOKENS 0 = MODEL-FIXTURE:ASSERT
-   M MODEL:REASONING-TOKENS 0 = MODEL-FIXTURE:ASSERT ;
+   CHAT-CODE MODEL:E-CANCELLED = ASSERT
+   M MODEL:INPUT-TOKENS 0 = ASSERT
+   M MODEL:CACHED-TOKENS 0 = ASSERT
+   M MODEL:OUTPUT-TOKENS 0 = ASSERT
+   M MODEL:REASONING-TOKENS 0 = ASSERT ;
 
 
 \ The vector is three binary32 values with these bits.
 : VECTOR-IS ( str n n n -- )
    {: s:str x:n y:n z:n :}
-   s STR:LEN 12 = MODEL-FIXTURE:ASSERT
-   s STR:DATA F32-BUF:LOAD x = MODEL-FIXTURE:ASSERT
-   s STR:DATA 4 + F32-BUF:LOAD y = MODEL-FIXTURE:ASSERT
-   s STR:DATA 8 + F32-BUF:LOAD z = MODEL-FIXTURE:ASSERT ;
+   s STR:LEN 12 = ASSERT
+   s STR:DATA F32-BUF:LOAD x = ASSERT
+   s STR:DATA 4 + F32-BUF:LOAD y = ASSERT
+   s STR:DATA 8 + F32-BUF:LOAD z = ASSERT ;
 
 
 : EMBEDDINGS ( -- )
@@ -1891,24 +1894,24 @@ variable REJECTED-BASE-U
 : PREPARED-CHAT ( -- )
    MODEL-PEER:CALLS@ {: before:n :}
    s" valid" PREPARE
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT
-   CHAT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   CHAT-CODE MODEL:E-STATE = ASSERT
    s" valid" PREPARE
    s" x" INPUTS M MODEL:EMBED
-   CHAT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CHAT-CODE MODEL:E-STATE = ASSERT
    s" valid" PREPARE
    s" assemble" M MODEL:PURPOSE!
-   CHAT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CHAT-CODE MODEL:E-STATE = ASSERT
    s" valid" PREPARE
    s" Read source evidence." M MODEL:SYSTEM!
-   CHAT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT ;
+   CHAT-CODE MODEL:E-STATE = ASSERT ;
 
 
 : START-CODE ( -- n ) 0 [: drop M MODEL:START 0 ;] CODE-OF ;
 : AWAIT-CODE ( -- n ) 0 [: drop M MODEL:AWAIT 0 ;] CODE-OF ;
 : CONTENT-CODE ( -- n ) 0 [: drop M MODEL:CONTENT$ drop 0 ;] CODE-OF ;
-: STATE-IS ( n [ n -- n ] -- ) CODE-OF MODEL:E-STATE = MODEL-FIXTURE:ASSERT ;
+: STATE-IS ( n [ n -- n ] -- ) CODE-OF MODEL:E-STATE = ASSERT ;
 : SERVE-CODE ( -- n ) 0 [: drop M MODEL:SERVE drop 0 ;] CODE-OF ;
 \ The longest one wait between tries; a transfer's bytes or end wake the
 \ task sooner.
@@ -1927,45 +1930,45 @@ variable REJECTED-BASE-U
 \ PARTS-RESET; CONTENT$ reads only the chat AWAIT last ended.
 : STARTED-CALLS ( -- )
    CHAT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   AWAIT-CODE MODEL:E-STATE = ASSERT
    s" valid" PREPARE
-   AWAIT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   CONTENT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   AWAIT-CODE MODEL:E-STATE = ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT
    MODEL-PEER:CALLS@ {: before:n :}
    M MODEL:START M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
    s" valid" PREP
    M MODEL:START M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 2 + = MODEL-FIXTURE:ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 2 + = ASSERT
    s" one" INPUTS
    s" two" M MODEL:INPUT+
    M MODEL:START-EMBED M MODEL:AWAIT
    0 M MODEL:VECTOR@ $3DCCCCCD $3E4CCCCD $3E99999A VECTOR-IS
    1 M MODEL:VECTOR@ $3ECCCCCD $3F000000 $3F19999A VECTOR-IS
-   CONTENT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT ;
+   CONTENT-CODE MODEL:E-STATE = ASSERT ;
 
 
 \ A started call rejects the words that send, prepare, set or close it, and
 \ CONTENT$; CANCEL cuts it, so AWAIT throws E-CANCELLED at once.
 : HELD-START ( -- )
    s" hold" PREP M MODEL:START MODEL-PEER:AWAIT-HOLD
-   START-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   START-CODE MODEL:E-STATE = ASSERT
    0 [: drop M MODEL:START-EMBED 0 ;] STATE-IS
-   CHAT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   EMBED-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CHAT-CODE MODEL:E-STATE = ASSERT
+   EMBED-CODE MODEL:E-STATE = ASSERT
    0 [: drop M MODEL:JOURNAL-INPUT$ drop 0 ;] STATE-IS
-   CONTENT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT
    0 [: drop s" Read source evidence." M MODEL:SYSTEM! 0 ;] STATE-IS
    0 [: drop M MODEL:CLOSE 0 ;] STATE-IS
    mono-ns {: t0:n :}
-   M MODEL:CANCEL MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   mono-ns t0 - PROMPT-NS < MODEL-FIXTURE:ASSERT
-   CONTENT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT ;
+   M MODEL:CANCEL ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   mono-ns t0 - PROMPT-NS < ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT
+   AWAIT-CODE MODEL:E-STATE = ASSERT ;
 
 
 \ A fault before the transfer lands the call in START, which still returns;
@@ -1974,10 +1977,10 @@ variable REJECTED-BASE-U
    SERVICE$ s" missing" M MODEL:API-KEY!
    MODEL-PEER:CALLS@ {: calls:n :}
    s" valid" PREP M MODEL:START
-   M MODEL:CANCEL 0= MODEL-FIXTURE:ASSERT
-   START-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-KEY = MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT
+   M MODEL:CANCEL 0= ASSERT
+   START-CODE MODEL:E-STATE = ASSERT
+   AWAIT-CODE MODEL:E-KEY = ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
    FIXTURE-KEY ;
 
 
@@ -1985,15 +1988,15 @@ variable REJECTED-BASE-U
 \ CHAT or EMBED throws for it, and leaves no content of the chat before it.
 : FAILED-START ( -- )
    s" too-large" PREP CHAT-CODE {: c:n :}
-   c MODEL:E-CAPACITY = MODEL-FIXTURE:ASSERT
+   c MODEL:E-CAPACITY = ASSERT
    CHAT
    s" too-large" PREP M MODEL:START
-   AWAIT-CODE c = MODEL-FIXTURE:ASSERT
-   CONTENT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   AWAIT-CODE c = ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT
    CHAT
    s" too-large" INPUTS M MODEL:START-EMBED
-   AWAIT-CODE MODEL:E-CAPACITY = MODEL-FIXTURE:ASSERT
-   CONTENT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT ;
+   AWAIT-CODE MODEL:E-CAPACITY = ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT ;
 
 
 create KEPT 65536 allot    \ the request body the peer received before a resend
@@ -2004,7 +2007,7 @@ variable KEPT-U
    MODEL-PEER:SENT$ {: a:str :}
    a KEPT 65536 SPAN:MAKE SPAN:COPY a STR:LEN KEPT-U ! ;
 \ The peer received the body it received before the resend.
-: SENT-AGAIN ( -- ) MODEL-PEER:SENT$ KEPT$ STR:= MODEL-FIXTURE:ASSERT ;
+: SENT-AGAIN ( -- ) MODEL-PEER:SENT$ KEPT$ STR:= ASSERT ;
 : RETRY ( -- ) s" retry" M MODEL:PURPOSE! ;
 
 
@@ -2015,11 +2018,11 @@ variable KEPT-U
    {: s:str code:n :}
    MODEL-PEER:CALLS@ {: before:n :}
    s MODEL-PEER:FAIL-NEXT
-   CHAT-CODE code = MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT
+   CHAT-CODE code = ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
    KEEP-SENT
-   RETRY M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 2 + = MODEL-FIXTURE:ASSERT
+   RETRY M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 2 + = ASSERT
    SENT-AGAIN ;
 
 
@@ -2029,16 +2032,16 @@ variable KEPT-U
 \ key fault sends nothing, so its resend is the one request the peer receives.
 : FAILED-RESENT ( -- )
    RETRY s" valid" PREPARE s" http-error" MODEL:E-UNAVAILABLE RESENT
-   CHAT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CHAT-CODE MODEL:E-STATE = ASSERT
    RETRY s" valid" PREP s" early-drop" MODEL:E-TRANSPORT RESENT
-   CHAT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CHAT-CODE MODEL:E-STATE = ASSERT
    SERVICE$ s" missing" M MODEL:API-KEY!
    MODEL-PEER:CALLS@ {: before:n :}
-   RETRY s" valid" PREP CHAT-CODE MODEL:E-KEY = MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before = MODEL-FIXTURE:ASSERT
+   RETRY s" valid" PREP CHAT-CODE MODEL:E-KEY = ASSERT
+   MODEL-PEER:CALLS@ before = ASSERT
    FIXTURE-KEY
-   RETRY M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT ;
+   RETRY M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT ;
 
 
 \ A failing send's line names the work by the call's note, before its code;
@@ -2069,21 +2072,21 @@ variable KEPT-U
 \ and again until AWAIT ends it, and a fault before the transfer lands it.
 : SERVED-CALL ( -- )
    CHAT
-   SERVE-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   SERVE-CODE MODEL:E-STATE = ASSERT
    s" valid" PREPARE
-   SERVE-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   SERVE-CODE MODEL:E-STATE = ASSERT
    MODEL-PEER:CALLS@ {: before:n :}
    M MODEL:START M SERVED
-   M MODEL:SERVE MODEL-FIXTURE:ASSERT
+   M MODEL:SERVE ASSERT
    M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT
-   SERVE-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   SERVE-CODE MODEL:E-STATE = ASSERT
    SERVICE$ s" missing" M MODEL:API-KEY!
    s" valid" PREP M MODEL:START
-   M MODEL:SERVE MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-KEY = MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT
+   M MODEL:SERVE ASSERT
+   AWAIT-CODE MODEL:E-KEY = ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
    FIXTURE-KEY ;
 
 
@@ -2094,8 +2097,8 @@ variable KEPT-U
 \ The work task's run ended with E-STATE.
 : STATE-WORK ( -- )
    WORK-TASK TASK:JOIN MATCH result
-      ok OF drop MODEL-FIXTURE:FAIL ENDOF
-      err OF MODEL:E-STATE = MODEL-FIXTURE:ASSERT ENDOF
+      ok OF drop FAIL ENDOF
+      err OF MODEL:E-STATE = ASSERT ENDOF
    ;MATCH ;
 
 
@@ -2108,8 +2111,8 @@ variable KEPT-U
    ['] AWAIT-WORK WORK-TASK TASK:ACTIVATE STATE-WORK
    M SERVED
    M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
    M MODEL:CLOSE ;
 
 
@@ -2119,10 +2122,10 @@ variable KEPT-U
    HOLD
    WORK-TASK TASK:HALT
    WORK-TASK TASK:JOIN MATCH result
-      ok OF drop MODEL-FIXTURE:FAIL ENDOF
+      ok OF drop FAIL ENDOF
       err OF drop ENDOF
    ;MATCH
-   AWAIT-CODE MODEL:E-TRANSPORT = MODEL-FIXTURE:ASSERT
+   AWAIT-CODE MODEL:E-TRANSPORT = ASSERT
    M MODEL:CLOSE ;
 
 
@@ -2130,12 +2133,12 @@ variable KEPT-U
 \ throws E-CANCELLED.
 : HELD-SERVE ( -- )
    s" hold" PREP M MODEL:START MODEL-PEER:AWAIT-HOLD
-   M MODEL:SERVE 0= MODEL-FIXTURE:ASSERT
-   M MODEL:SERVE 0= MODEL-FIXTURE:ASSERT
-   M MODEL:CANCEL MODEL-FIXTURE:ASSERT
+   M MODEL:SERVE 0= ASSERT
+   M MODEL:SERVE 0= ASSERT
+   M MODEL:CANCEL ASSERT
    M SERVED
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   SERVE-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT ;
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   SERVE-CODE MODEL:E-STATE = ASSERT ;
 
 
 : START-CHAT ( str ^MODEL:call -- )
@@ -2177,34 +2180,34 @@ variable LANDED
    2 CALL MODEL:START-EMBED
    s" valid" 3 CALL START-CHAT
    ROUNDS
-   M MODEL:CANCEL MODEL-FIXTURE:ASSERT
+   M MODEL:CANCEL ASSERT
    M SERVED
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
    1 CALL MODEL:AWAIT
-   1 CALL MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   1 CALL MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    2 CALL MODEL:AWAIT
    0 2 CALL MODEL:VECTOR@ $3DCCCCCD $3E4CCCCD $3E99999A VECTOR-IS
    1 2 CALL MODEL:VECTOR@ $3ECCCCCD $3F000000 $3F19999A VECTOR-IS
    3 CALL MODEL:AWAIT
-   3 CALL MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 4 + = MODEL-FIXTURE:ASSERT
+   3 CALL MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 4 + = ASSERT
    1 CALL MODEL:CLOSE 2 CALL MODEL:CLOSE 3 CALL MODEL:CLOSE ;
 
 
 \ A reply spoiled mid-stream is the served call's fault, the code CHAT throws.
 : SPOILED-SERVE ( -- )
    s" bad-utf8" PREP CHAT-CODE {: c:n :}
-   c MODEL:E-RESPONSE = MODEL-FIXTURE:ASSERT
+   c MODEL:E-RESPONSE = ASSERT
    s" bad-utf8" PREP M MODEL:START M SERVED
-   AWAIT-CODE c = MODEL-FIXTURE:ASSERT
-   CONTENT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT ;
+   AWAIT-CODE c = ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT ;
 
 
 \ A malformed embeddings reply fails the call and leaves no vectors.
 : EMBED-ERROR ( str -- )
    INPUTS
-   EMBED-CODE MODEL:E-RESPONSE = MODEL-FIXTURE:ASSERT
-   VECTOR-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT ;
+   EMBED-CODE MODEL:E-RESPONSE = ASSERT
+   VECTOR-CODE MODEL:E-STATE = ASSERT ;
 
 
 \ An escaped base64 vector reads as the plain one; a short, long, malformed,
@@ -2222,21 +2225,21 @@ variable LANDED
 
 : BAD-VECTORS ( -- )
    s" wrong-dims" INPUTS
-   EMBED-CODE MODEL:E-RESPONSE = MODEL-FIXTURE:ASSERT
+   EMBED-CODE MODEL:E-RESPONSE = ASSERT
    s" error" EMBED-LINE s" MODEL:E-RESPONSE status 200 body: " SB-APPEND
    S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2],\qindex\q:0}]}" SB-APPEND
    SB-LOGGED
    s" wrong-index" INPUTS
-   EMBED-CODE MODEL:E-RESPONSE = MODEL-FIXTURE:ASSERT ;
+   EMBED-CODE MODEL:E-RESPONSE = ASSERT ;
 
 
 \ The provider's rejection for size fails the call with its status.
 : EMBED-TOO-LARGE ( -- )
    s" too-large" INPUTS
-   EMBED-CODE MODEL:E-CAPACITY = MODEL-FIXTURE:ASSERT
-   M MODEL:HTTP-STATUS 400 = MODEL-FIXTURE:ASSERT
-   0 [: s" " INPUTS ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   M MODEL:HTTP-STATUS 0= MODEL-FIXTURE:ASSERT ;
+   EMBED-CODE MODEL:E-CAPACITY = ASSERT
+   M MODEL:HTTP-STATUS 400 = ASSERT
+   0 [: s" " INPUTS ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   M MODEL:HTTP-STATUS 0= ASSERT ;
 
 
 \ An embed with no input is E-CONFIG.
@@ -2252,9 +2255,9 @@ variable LANDED
 : EMBED-RESENT ( -- )
    s" x" INPUTS
    s" http-error" MODEL-PEER:FAIL-NEXT
-   EMBED-CODE MODEL:E-UNAVAILABLE = MODEL-FIXTURE:ASSERT
+   EMBED-CODE MODEL:E-UNAVAILABLE = ASSERT
    KEEP-SENT
-   EMBED-CODE 0= MODEL-FIXTURE:ASSERT
+   EMBED-CODE 0= ASSERT
    SENT-AGAIN ;
 
 
@@ -2277,7 +2280,7 @@ variable LANDED
    s" expected INPUT+'s input, found `-1`; pass the text with its length in bytes"
    CONFIG-SAYS
    MODEL:INPUT-MAX 0 ?do 1 INPUT-LEN drop loop
-   1 [: INPUT-LEN ;] CODE-OF MODEL:E-CAPACITY = MODEL-FIXTURE:ASSERT ;
+   1 [: INPUT-LEN ;] CODE-OF MODEL:E-CAPACITY = ASSERT ;
 
 
 \ A call of MODEL:INPUT-MAX inputs reaches the provider in one request, and
@@ -2287,7 +2290,7 @@ variable LANDED
    MODEL:INPUT-MAX 0 ?do s" y" M MODEL:INPUT+ loop
    MODEL-PEER:CALLS@ {: calls:n :}
    M MODEL:EMBED
-   MODEL-PEER:CALLS@ calls 1+ = MODEL-FIXTURE:ASSERT
+   MODEL-PEER:CALLS@ calls 1+ = ASSERT
    MODEL:INPUT-MAX 0 ?do
       i M MODEL:VECTOR@ i s>f F32:NARROW 0 0 VECTOR-IS
    loop ;
@@ -2296,9 +2299,9 @@ variable LANDED
 \ The vector is the WIDE-VECTOR components, 0 up, as binary32 values.
 : WIDE-IS ( str -- )
    {: s:str :}
-   s STR:LEN MODEL-PEER:WIDE-DIMS 4 * = MODEL-FIXTURE:ASSERT
+   s STR:LEN MODEL-PEER:WIDE-DIMS 4 * = ASSERT
    MODEL-PEER:WIDE-DIMS 0 ?do
-      s STR:DATA i 4 * + F32-BUF:LOAD i s>f F32:NARROW = MODEL-FIXTURE:ASSERT
+      s STR:DATA i 4 * + F32-BUF:LOAD i s>f F32:NARROW = ASSERT
    loop ;
 
 
@@ -2335,9 +2338,9 @@ variable LANDED
 \ The call answers the embedding model it was last given.
 : EMBEDDING-NAMED ( -- )
    s" named-embedding" 3 60000 M MODEL:EMBEDDING-MODEL!
-   M MODEL:EMBEDDING-MODEL$ s" named-embedding" STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:EMBEDDING-MODEL$ s" named-embedding" STR:= ASSERT
    3 DIMS drop
-   M MODEL:EMBEDDING-MODEL$ s" test-embedding" STR:= MODEL-FIXTURE:ASSERT ;
+   M MODEL:EMBEDDING-MODEL$ s" test-embedding" STR:= ASSERT ;
 
 
 \ Rejected bases: another scheme, no host, a blank, a trailing slash, and
@@ -2353,10 +2356,10 @@ variable LANDED
 : QUERY-AT-BASE ( n -- n ) s" https://host/v1?email=me@example.com&key=SECRET" M MODEL:BASE-URL! ;
 : USER-OLLAMA ( n -- n ) s" http://user:token@x/api/embed" s" bge-m3" s" bge-m3" 3 60000 M MODEL:OLLAMA! ;
 : BASES ( -- )
-   0 [: FTP-BASE ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   0 [: BARE-BASE ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   0 [: BLANK-BASE ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   0 [: SLASH-BASE ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
+   0 [: FTP-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: BARE-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: BLANK-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: SLASH-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    0 [: USER-BASE ;]
    s" expected BASE-URL!'s http or https base with no trailing slash, userinfo, query or fragment, found `https://<redacted>@x`; pass the provider's base, as https://api.openai.com/v1, or an empty text for OpenAI's"
    CONFIG-SAYS
@@ -2381,15 +2384,15 @@ variable LANDED
 : JOURNAL-GET ( n str ^n -- bool )
    {: ctx:n input:str out:^ :}
    JOURNAL-READY @ 0= if false exit then
-   input JOURNAL-INPUT JOURNAL-INPUT-U @ >str STR:= MODEL-FIXTURE:ASSERT
+   input JOURNAL-INPUT JOURNAL-INPUT-U @ >str STR:= ASSERT
    JOURNAL-RECORD JOURNAL-RECORD-U @ BUF:N>BLEN out BUF:REPLACE
    true ;
 
 
 : JOURNAL-PUT ( n str str -- )
    {: ctx:n input:str record:str :}
-   JOURNAL-READY @ 0= MODEL-FIXTURE:ASSERT
-   input STR:LEN 32768 <= record STR:LEN 65536 <= and MODEL-FIXTURE:ASSERT
+   JOURNAL-READY @ 0= ASSERT
+   input STR:LEN 32768 <= record STR:LEN 65536 <= and ASSERT
    input JOURNAL-INPUT 32768 SPAN:MAKE SPAN:COPY
    input STR:LEN JOURNAL-INPUT-U !
    record JOURNAL-RECORD 65536 SPAN:MAKE SPAN:COPY
@@ -2403,7 +2406,7 @@ variable LANDED
 
 : CAPTURE-PUT ( n str str -- )
    {: ctx:n input:str record:str :}
-   input STR:LEN 32768 <= record STR:LEN 65536 <= and MODEL-FIXTURE:ASSERT
+   input STR:LEN 32768 <= record STR:LEN 65536 <= and ASSERT
    input JOURNAL-INPUT 32768 SPAN:MAKE SPAN:COPY
    input STR:LEN JOURNAL-INPUT-U !
    record JOURNAL-RECORD 65536 SPAN:MAKE SPAN:COPY
@@ -2420,15 +2423,15 @@ variable LANDED
 \ The value of the journal record's usage member `key`.
 : USAGE ( str -- JSON:value )
    {: key:str :}
-   RECORD$ s" usage" MODEL-FIXTURE:MEMBER key MODEL-FIXTURE:FOUND ;
+   RECORD$ s" usage" MEMBER key FOUND ;
 
 
-: STR-IS ( JSON:value str -- ) JSON:STRING= MODEL-FIXTURE:ASSERT ;
+: STR-IS ( JSON:value str -- ) JSON:STRING= ASSERT ;
 : INT-IS ( JSON:value n -- )
    {: v want:n :}
-   v JSON:TEXT$ want FMT:INT$ STR:= MODEL-FIXTURE:ASSERT ;
-: NULL-IS ( JSON:value -- ) JSON:NULL? MODEL-FIXTURE:ASSERT ;
-: NO-USAGE ( -- ) RECORD$ JSON:PARSE MODEL-FIXTURE:OBJECT s" usage" MODEL-FIXTURE:HAS? 0= MODEL-FIXTURE:ASSERT ;
+   v JSON:TEXT$ want FMT:INT$ STR:= ASSERT ;
+: NULL-IS ( JSON:value -- ) JSON:NULL? ASSERT ;
+: NO-USAGE ( -- ) RECORD$ JSON:PARSE OBJECT s" usage" HAS? 0= ASSERT ;
 
 
 \ A recorder that numbers the rows it records from 1, keeps the last record
@@ -2444,7 +2447,7 @@ variable ROW-FAIL
 : TEST-RECORD ( n str -- n )
    {: ctx:n record:str :}
    ROW-FAIL @ if E-RECORDER throw then
-   record STR:LEN 65536 <= MODEL-FIXTURE:ASSERT
+   record STR:LEN 65536 <= ASSERT
    record ROW-TEXT 65536 SPAN:MAKE SPAN:COPY
    record STR:LEN ROW-U !
    1 ROWS-MADE +!
@@ -2455,7 +2458,7 @@ variable ROW-FAIL
 : TEST-RECORDER ( -- ) 0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER! ;
 : ROW$ ( -- str ) ROW-TEXT ROW-U @ >str ;
 \ The value of the last recorded row's member `key`.
-: ROW ( str -- JSON:value ) {: key:str :} ROW$ key MODEL-FIXTURE:MEMBER ;
+: ROW ( str -- JSON:value ) {: key:str :} ROW$ key MEMBER ;
 : BLANK-PURPOSE ( n -- n ) s"  " M MODEL:PURPOSE! ;
 : NEGATIVE-PURPOSE ( n -- n ) s" x" STR:DATA -1 >str M MODEL:PURPOSE! ;
 : PURPOSE ( -- ) s" assemble" M MODEL:PURPOSE! ;
@@ -2463,7 +2466,7 @@ variable ROW-FAIL
 create HASH 64 allot
 : KEEP-HASH ( str -- )
    {: s:str :}
-   s HASH 64 SPAN:MAKE SPAN:COPY s STR:LEN 64 = MODEL-FIXTURE:ASSERT ;
+   s HASH 64 SPAN:MAKE SPAN:COPY s STR:LEN 64 = ASSERT ;
 
 
 \ How long a locked callback waits, as on a database lock, unless halted.
@@ -2493,11 +2496,11 @@ create HASH 64 allot
    mono-ns {: t0:n :}
    WORK-TASK TASK:HALT
    WORK-TASK TASK:JOIN MATCH result
-      ok OF drop MODEL-FIXTURE:FAIL ENDOF
+      ok OF drop FAIL ENDOF
       err OF drop ENDOF
    ;MATCH
-   mono-ns t0 - PROMPT-NS < MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
+   mono-ns t0 - PROMPT-NS < ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
    M MODEL:CLOSE ;
 
 
@@ -2533,12 +2536,12 @@ variable PAUSED-ROWS
    mono-ns {: t0:n :}
    WORK-TASK TASK:HALT
    WORK-TASK TASK:JOIN MATCH result
-      ok OF drop MODEL-FIXTURE:FAIL ENDOF
+      ok OF drop FAIL ENDOF
       err OF drop ENDOF
    ;MATCH
-   mono-ns t0 - PROMPT-NS < MODEL-FIXTURE:ASSERT
-   PAUSED-ROWS @ 0= MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
+   mono-ns t0 - PROMPT-NS < ASSERT
+   PAUSED-ROWS @ 0= ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
    M MODEL:CLOSE ;
 
 
@@ -2562,17 +2565,17 @@ variable PAUSED-ROWS
    CONFIG-SAYS
    MODEL-PEER:CALLS@ {: calls:n :}
    [: s" valid" MODEL:E-STATE FAILS ;] QUIET
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ 0= MODEL-FIXTURE:ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   ROWS-MADE @ 0= ASSERT
    SERVICE$ s" missing" M MODEL:API-KEY!
    PURPOSE s" valid" MODEL:E-KEY FAILS
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ 0= MODEL-FIXTURE:ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   ROWS-MADE @ 0= ASSERT
    FIXTURE-KEY
    PURPOSE
-   s" usage" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ 1 = MODEL-FIXTURE:ASSERT
-   M MODEL:CALL-ID 1 = MODEL-FIXTURE:ASSERT
+   s" usage" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   ROWS-MADE @ 1 = ASSERT
+   M MODEL:CALL-ID 1 = ASSERT
    s" kind" ROW s" generation" STR-IS
    s" backend" ROW s" openai" STR-IS
    s" model" ROW s" test-generation" STR-IS
@@ -2587,7 +2590,7 @@ variable PAUSED-ROWS
    s" output_tokens" ROW 6 INT-IS
    s" reasoning_tokens" ROW 2 INT-IS
    s" prefix_hash" ROW [: KEEP-HASH ;] JSON:WITH-STRING
-   RECORD$ s" call_id" MODEL-FIXTURE:MEMBER 1 INT-IS
+   RECORD$ s" call_id" MEMBER 1 INT-IS
    s" kind" USAGE s" generation" STR-IS
    s" model" USAGE s" test-generation" STR-IS
    s" input_tokens" USAGE 11 INT-IS
@@ -2598,24 +2601,24 @@ variable PAUSED-ROWS
    s" usage" MODEL:E-STATE FAILS
    s" read-pdf" M MODEL:PURPOSE!
    s" http-error" MODEL:E-UNAVAILABLE FAILS
-   M MODEL:HTTP-STATUS 429 = MODEL-FIXTURE:ASSERT
+   M MODEL:HTTP-STATUS 429 = ASSERT
    s" error" s" MODEL:E-UNAVAILABLE status 429: rate limit" CHAT-LOGGED
-   ROWS-MADE @ 2 = MODEL-FIXTURE:ASSERT
+   ROWS-MADE @ 2 = ASSERT
    s" purpose" ROW s" read-pdf" STR-IS
    s" outcome" ROW s" failed" STR-IS
    s" fault" ROW MODEL:E-UNAVAILABLE INT-IS
    s" http_status" ROW 429 INT-IS
    s" incomplete_reason" ROW NULL-IS
    s" prefix_hash" ROW HASH 64 >str STR-IS
-   M MODEL:RECORD-FAULT 0= MODEL-FIXTURE:ASSERT
+   M MODEL:RECORD-FAULT 0= ASSERT
    \ A call that got no reply records no HTTP status, not zero.
    PURPOSE REJECTED
-   ROWS-MADE @ 3 = MODEL-FIXTURE:ASSERT
+   ROWS-MADE @ 3 = ASSERT
    s" fault" ROW MODEL:E-TRANSPORT INT-IS
    s" http_status" ROW NULL-IS
    s" embed" M MODEL:PURPOSE!
    s" one" INPUTS s" two" M MODEL:INPUT+ M MODEL:EMBED
-   ROWS-MADE @ 4 = MODEL-FIXTURE:ASSERT
+   ROWS-MADE @ 4 = ASSERT
    s" kind" ROW s" embedding" STR-IS
    s" purpose" ROW s" embed" STR-IS
    s" incomplete_reason" ROW NULL-IS
@@ -2628,56 +2631,56 @@ variable PAUSED-ROWS
    s" reasoning_tokens" USAGE NULL-IS
    s" Read other evidence." M MODEL:SYSTEM!
    PURPOSE CHAT
-   s" prefix_hash" ROW HASH 64 >str JSON:STRING= 0= MODEL-FIXTURE:ASSERT
+   s" prefix_hash" ROW HASH 64 >str JSON:STRING= 0= ASSERT
    s" Read source evidence." M MODEL:SYSTEM!
    NO-USAGE
    M MODEL:REJECTED
-   REJECTED-ROW @ 5 = MODEL-FIXTURE:ASSERT
+   REJECTED-ROW @ 5 = ASSERT
    true ROW-FAIL !
    false JOURNAL-READY !
    0 [: JOURNAL-GET ;] [: JOURNAL-PUT ;] M MODEL:JOURNAL!
    PURPOSE s" valid" E-RECORDER FAILS
-   M MODEL:RECORD-FAULT E-RECORDER = MODEL-FIXTURE:ASSERT
+   M MODEL:RECORD-FAULT E-RECORDER = ASSERT
    MODEL-PEER:CALLS@ {: sent:n :}
    PURPOSE CHAT
-   MODEL-PEER:CALLS@ sent = MODEL-FIXTURE:ASSERT
+   MODEL-PEER:CALLS@ sent = ASSERT
    CAPTURE
    PURPOSE s" http-error" MODEL:E-UNAVAILABLE FAILS
-   M MODEL:RECORD-FAULT E-RECORDER = MODEL-FIXTURE:ASSERT
+   M MODEL:RECORD-FAULT E-RECORDER = ASSERT
    false ROW-FAIL !
    PURPOSE CHAT
-   M MODEL:RECORD-FAULT 0= MODEL-FIXTURE:ASSERT
+   M MODEL:RECORD-FAULT 0= ASSERT
    PURPOSE s" length" MODEL:E-INCOMPLETE FAILS
    s" incomplete_reason" ROW s" max_output_tokens" STR-IS
    \ A reply whose vectors fail records its usage counts.
    s" embed" M MODEL:PURPOSE!
    s" bad-data" INPUTS
-   EMBED-CODE MODEL:E-RESPONSE = MODEL-FIXTURE:ASSERT
+   EMBED-CODE MODEL:E-RESPONSE = ASSERT
    s" fault" ROW MODEL:E-RESPONSE INT-IS
    s" input_tokens" ROW 2 INT-IS ;
 
 
 \ The value of the last request's member `key`.
-: SENT ( str -- JSON:value ) {: key:str :} MODEL-PEER:SENT$ key MODEL-FIXTURE:MEMBER ;
+: SENT ( str -- JSON:value ) {: key:str :} MODEL-PEER:SENT$ key MEMBER ;
 \ The value of the journal input's configuration member `key`.
 : CONFIG ( str -- JSON:value )
    {: key:str :}
-   INPUT$ s" configuration" MODEL-FIXTURE:MEMBER key MODEL-FIXTURE:FOUND ;
+   INPUT$ s" configuration" MEMBER key FOUND ;
 \ The last chat request's reasoning effort.
-: SENT-EFFORT ( -- JSON:value ) s" reasoning" SENT s" effort" MODEL-FIXTURE:FOUND ;
+: SENT-EFFORT ( -- JSON:value ) s" reasoning" SENT s" effort" FOUND ;
 \ Neither the last chat request nor its journal input names an effort.
 : NO-EFFORT ( -- )
-   MODEL-PEER:SENT$ JSON:PARSE MODEL-FIXTURE:OBJECT s" reasoning" MODEL-FIXTURE:HAS? 0= MODEL-FIXTURE:ASSERT
-   INPUT$ s" configuration" MODEL-FIXTURE:MEMBER s" effort" MODEL-FIXTURE:HAS? 0= MODEL-FIXTURE:ASSERT ;
+   MODEL-PEER:SENT$ JSON:PARSE OBJECT s" reasoning" HAS? 0= ASSERT
+   INPUT$ s" configuration" MEMBER s" effort" HAS? 0= ASSERT ;
 \ A chat request is not stored, carries the system text as its instructions
 \ and asks for an answer in the configured JSON schema.
 : CHAT-REQUEST ( -- )
    CHAT
-   s" store" SENT JSON:TEXT$ s" false" STR:= MODEL-FIXTURE:ASSERT
-   s" stream" SENT JSON:TEXT$ s" true" STR:= MODEL-FIXTURE:ASSERT
+   s" store" SENT JSON:TEXT$ s" false" STR:= ASSERT
+   s" stream" SENT JSON:TEXT$ s" true" STR:= ASSERT
    s" instructions" SENT s" Read source evidence." STR-IS
-   s" text" SENT s" format" MODEL-FIXTURE:FOUND
-   s" type" MODEL-FIXTURE:FOUND s" json_schema" STR-IS ;
+   s" text" SENT s" format" FOUND
+   s" type" FOUND s" json_schema" STR-IS ;
 create ROW-NAME 1 allot
 \ A one-letter purpose row from "a"; its model and effort do not matter.
 : NTH-ROW ( n -- )
@@ -2717,7 +2720,7 @@ create ROW-NAME 1 allot
    0 [: SAME-ROW ;]
    s" expected a purpose with no row yet, found `extract`; give each purpose one PURPOSE-MODEL! row"
    CONFIG-SAYS
-   0 [: EMPTY-MODEL ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
+   0 [: EMPTY-MODEL ;] CODE-OF MODEL:E-CONFIG = ASSERT
    16 0 ?do i NTH-ROW loop
    s" z" s" last-model" s" " s" " M MODEL:PURPOSE-MODEL!
    s" z" M MODEL:PURPOSE! CHAT
@@ -2728,7 +2731,7 @@ create ROW-NAME 1 allot
 
 \ The last request names no prompt cache key.
 : NO-CACHE-KEY ( -- )
-   MODEL-PEER:SENT$ JSON:PARSE MODEL-FIXTURE:OBJECT s" prompt_cache_key" MODEL-FIXTURE:HAS? 0= MODEL-FIXTURE:ASSERT ;
+   MODEL-PEER:SENT$ JSON:PARSE OBJECT s" prompt_cache_key" HAS? 0= ASSERT ;
 32768 constant KEYLESS-CAP
 create KEYLESS KEYLESS-CAP allot
 variable KEYLESS-U
@@ -2741,12 +2744,12 @@ variable KEYLESS-U
    PURPOSE CHAT
    NO-CACHE-KEY
    INPUT$ {: a:str :}
-   a STR:LEN KEYLESS-CAP <= MODEL-FIXTURE:ASSERT
+   a STR:LEN KEYLESS-CAP <= ASSERT
    a KEYLESS KEYLESS-CAP SPAN:MAKE SPAN:COPY a STR:LEN KEYLESS-U !
    s" test:extract:7" M MODEL:CACHE-KEY!
    PURPOSE CHAT
    s" prompt_cache_key" SENT s" test:extract:7" STR-IS
-   INPUT$ KEYLESS KEYLESS-U @ >str STR:= MODEL-FIXTURE:ASSERT
+   INPUT$ KEYLESS KEYLESS-U @ >str STR:= ASSERT
    PURPOSE CHAT
    s" prompt_cache_key" SENT s" test:extract:7" STR-IS
    s" embed" M MODEL:PURPOSE!
@@ -2759,14 +2762,14 @@ variable KEYLESS-U
 
 \ Neither the last request nor its journal input names an output limit.
 : NO-MAX-OUTPUT ( -- )
-   MODEL-PEER:SENT$ JSON:PARSE MODEL-FIXTURE:OBJECT s" max_output_tokens" MODEL-FIXTURE:HAS? 0= MODEL-FIXTURE:ASSERT
-   INPUT$ s" configuration" MODEL-FIXTURE:MEMBER s" max_output_tokens" MODEL-FIXTURE:HAS? 0= MODEL-FIXTURE:ASSERT ;
+   MODEL-PEER:SENT$ JSON:PARSE OBJECT s" max_output_tokens" HAS? 0= ASSERT
+   INPUT$ s" configuration" MEMBER s" max_output_tokens" HAS? 0= ASSERT ;
 \ The last request's output limit is the JSON number n.
 : MAX-OUTPUT-IS ( n -- )
    {: n:n :}
    s" max_output_tokens" SENT {: v :}
-   v JSON:INTEGER? MODEL-FIXTURE:ASSERT
-   v JSON:TEXT$ n FMT:INT$ STR:= MODEL-FIXTURE:ASSERT ;
+   v JSON:INTEGER? ASSERT
+   v JSON:TEXT$ n FMT:INT$ STR:= ASSERT ;
 : NEGATIVE-MAX-OUTPUT ( n -- n ) -1 M MODEL:MAX-OUTPUT! ;
 
 
@@ -2797,7 +2800,7 @@ variable KEYLESS-U
 
 \ The last chat request names no service tier.
 : NO-TIER ( -- )
-   MODEL-PEER:SENT$ JSON:PARSE MODEL-FIXTURE:OBJECT s" service_tier" MODEL-FIXTURE:HAS? 0= MODEL-FIXTURE:ASSERT ;
+   MODEL-PEER:SENT$ JSON:PARSE OBJECT s" service_tier" HAS? 0= ASSERT ;
 
 
 : NEGATIVE-TIER ( n -- n ) s" y" s" m" s" " s" " STR:DATA -1 >str M MODEL:PURPOSE-MODEL! ;
@@ -2822,7 +2825,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
 : SERVE-TO ( n -- )
    {: n:n :}
    begin SENDS-SINCE n < while
-      M MODEL:SERVE 0= MODEL-FIXTURE:ASSERT
+      M MODEL:SERVE 0= ASSERT
       SERVE-PAUSE
    repeat ;
 
@@ -2840,11 +2843,11 @@ variable LOOKUPS    \ COUNT-GET's lookups
    0 [: COUNT-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
    0 LOOKUPS !
    RESEND-MARK
-   PURPOSE s" flex-then" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 2 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
-   LOOKUPS @ 2 = MODEL-FIXTURE:ASSERT
-   M MODEL:CALL-ID ROWS-MADE @ = MODEL-FIXTURE:ASSERT
+   PURPOSE s" flex-then" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   LOOKUPS @ 2 = ASSERT
+   M MODEL:CALL-ID ROWS-MADE @ = ASSERT
    s" outcome" ROW s" ok" STR-IS
    s" requested_tier" ROW NULL-IS
    NO-TIER
@@ -2852,77 +2855,77 @@ variable LOOKUPS    \ COUNT-GET's lookups
    0 [: ONCE-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
    RESEND-MARK
    PURPOSE s" flex-then" E-RECORDER FAILS
-   SENDS-SINCE 2 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   M MODEL:CALL-ID 0= MODEL-FIXTURE:ASSERT
-   M MODEL:RECORD-FAULT E-RECORDER = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   M MODEL:CALL-ID 0= ASSERT
+   M MODEL:RECORD-FAULT E-RECORDER = ASSERT
    false ROW-FAIL !
    TEST-RECORDER
    RESEND-MARK
    PURPOSE s" flex-gate" PREP M MODEL:START
    2 SERVE-TO
    MODEL-PEER:AWAIT-HOLD
-   M MODEL:SERVE 0= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 2 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   M MODEL:SERVE 0= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 1 = ASSERT
    s" outcome" ROW s" tier_unavailable" STR-IS
    MODEL-PEER:LET-GO
    M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 2 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" ok" STR-IS
    RESEND-MARK
    PURPOSE s" flex-hold" PREP M MODEL:START
    2 SERVE-TO
    MODEL-PEER:AWAIT-HOLD
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   ROWS-SINCE 1 = ASSERT
    s" outcome" ROW s" tier_unavailable" STR-IS
-   M MODEL:CANCEL MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 2 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   M MODEL:CANCEL ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
    RESEND-MARK
    PURPOSE s" flex-out" MODEL:E-TIER FAILS
-   SENDS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 2 = ASSERT
    s" outcome" ROW s" tier_unavailable" STR-IS
    s" requested_tier" ROW NULL-IS
    s" flexed" s" test-generation" s" " s" flex" M MODEL:PURPOSE-MODEL!
    s" " M MODEL:SERVICE-TIER!
    RESEND-MARK
    s" flexed" M MODEL:PURPOSE!
-   s" flex-then" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 2 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   s" flex-then" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" ok" STR-IS
    s" requested_tier" ROW NULL-IS
    s" purpose" ROW s" flexed" STR-IS
    NO-TIER
    RESEND-MARK
    PURPOSE s" flex-out" MODEL:E-TIER FAILS
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
    s" outcome" ROW s" tier_unavailable" STR-IS
    s" requested_tier" ROW NULL-IS
    s" flex" M MODEL:SERVICE-TIER!
    true ROW-FAIL !
    RESEND-MARK
    PURPOSE s" flex-then" MODEL:E-TIER FAILS
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   M MODEL:RECORD-FAULT E-RECORDER = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 1 = ASSERT
+   M MODEL:RECORD-FAULT E-RECORDER = ASSERT
    false ROW-FAIL !
    false M MODEL:TIER-RESEND!
    RESEND-MARK
    PURPOSE s" flex-then" MODEL:E-TIER FAILS
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
    \ A stop stays with the call: CLOSE and SETUP give the rest of TIERS a new one.
    true M MODEL:TIER-RESEND!
    0 [: STOP-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
    RESEND-MARK
    PURPOSE s" flex-then" MODEL:E-CANCELLED FAILS
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 1 = ASSERT
    M MODEL:CLOSE
    SETUP
    CAPTURE
@@ -2954,7 +2957,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    s" service_tier" ROW NULL-IS
    s" requested_tier" ROW s" flex" STR-IS
    PURPOSE s" flex-out" MODEL:E-TIER FAILS
-   M MODEL:ERROR$ s" Flex processing is temporarily unavailable. Please try again later or use standard processing." STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:ERROR$ s" Flex processing is temporarily unavailable. Please try again later or use standard processing." STR:= ASSERT
    s" error" CHAT-ID-LINE
    s" MODEL:E-TIER status 200: Flex processing is temporarily unavailable. Please try again later or use standard processing. body: " SB-APPEND
    MODEL-PEER:FLEX-OUT$ SB-APPEND
@@ -2967,7 +2970,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    s" service_tier" ROW NULL-IS
    TIER-RESENDS
    s" auto" M MODEL:SERVICE-TIER!
-   PURPOSE s" tiered" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   PURPOSE s" tiered" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" service_tier" SENT s" auto" STR-IS
    s" service_tier" ROW s" flex" STR-IS
    s" requested_tier" ROW s" auto" STR-IS
@@ -2976,7 +2979,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    s" kind" ROW s" embedding" STR-IS
    s" service_tier" ROW NULL-IS
    s" requested_tier" ROW NULL-IS
-   PURPOSE s" tier-null" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   PURPOSE s" tier-null" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" service_tier" ROW NULL-IS
    s" requested_tier" ROW s" auto" STR-IS
    PURPOSE s" tier-number" MODEL:E-RESPONSE FAILS
@@ -2998,18 +3001,18 @@ variable LOOKUPS    \ COUNT-GET's lookups
    PURPOSE CHAT
    s" service_tier" SENT s" flex" STR-IS
    s" requested_tier" ROW s" flex" STR-IS
-   0 [: NEGATIVE-TIER ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT ;
+   0 [: NEGATIVE-TIER ;] CODE-OF MODEL:E-CONFIG = ASSERT ;
 
 
 : LONG-CHAT ( -- )
    PURPOSE JOURNAL-TEXT JOURNAL-U >str PREP
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT ;
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT ;
 
 
 \ Keeps only the journaled record's configuration and an incomplete rejection,
 \ a record with no reply and no call id.
 : BARE-REJECTION ( -- )
-   RECORD$ s" configuration" MODEL-FIXTURE:MEMBER MODEL-FIXTURE:OBJECT JSON:TEXT$ {: a:str :}
+   RECORD$ s" configuration" MEMBER OBJECT JSON:TEXT$ {: a:str :}
    SB-RESET S\" {\qconfiguration\q:" SB-APPEND a SB-APPEND
    S\" ,\qrejection\q:\qincomplete\q}" SB-APPEND
    SB$ JOURNAL-RECORD 65536 SPAN:MAKE SPAN:COPY
@@ -3033,41 +3036,41 @@ variable LOOKUPS    \ COUNT-GET's lookups
    MODEL-PEER:CALLS@ {: calls:n :}
    s" flex" M MODEL:SERVICE-TIER!
    LONG-CHAT
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ rows = MODEL-FIXTURE:ASSERT
-   M MODEL:CALL-ID id = MODEL-FIXTURE:ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   ROWS-MADE @ rows = ASSERT
+   M MODEL:CALL-ID id = ASSERT
    0 REJECTED-ROW !
    M MODEL:REJECTED
-   REJECTED-ROW @ id = MODEL-FIXTURE:ASSERT
+   REJECTED-ROW @ id = ASSERT
    \ START lands a journal hit at once: no request, no row, the live call's id.
    PURPOSE JOURNAL-TEXT JOURNAL-U >str PREP M MODEL:START
-   M MODEL:CANCEL 0= MODEL-FIXTURE:ASSERT
+   M MODEL:CANCEL 0= ASSERT
    M MODEL:AWAIT
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ rows = MODEL-FIXTURE:ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   M MODEL:CALL-ID id = MODEL-FIXTURE:ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   ROWS-MADE @ rows = ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   M MODEL:CALL-ID id = ASSERT
    \ A rejection its live call journaled replays with no request and no line.
    false JOURNAL-READY !
    PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
    MODEL-PEER:CALLS@ {: rejected:n :}
    [: PURPOSE s" too-large" MODEL:E-CAPACITY FAILS ;] QUIET
-   MODEL-PEER:CALLS@ rejected = MODEL-FIXTURE:ASSERT
+   MODEL-PEER:CALLS@ rejected = ASSERT
    \ A cut reply's record holds the provider's reply as received, the text
    \ streamed before the cut included, and the call's id. It replays as the
    \ cut, and so does a record holding neither.
    false JOURNAL-READY !
    PURPOSE s" length" MODEL:E-INCOMPLETE FAILS
    M MODEL:CALL-ID {: cut:n :}
-   cut 0<> MODEL-FIXTURE:ASSERT
-   RECORD$ s" rejection" MODEL-FIXTURE:MEMBER s" incomplete" STR-IS
-   RECORD$ s" response" MODEL-FIXTURE:MEMBER MODEL-PEER:CUT$ STR-IS
-   RECORD$ s" call_id" MODEL-FIXTURE:MEMBER cut INT-IS
+   cut 0<> ASSERT
+   RECORD$ s" rejection" MEMBER s" incomplete" STR-IS
+   RECORD$ s" response" MEMBER MODEL-PEER:CUT$ STR-IS
+   RECORD$ s" call_id" MEMBER cut INT-IS
    MODEL-PEER:CALLS@ {: sent:n :}
    [: PURPOSE s" length" MODEL:E-INCOMPLETE FAILS ;] QUIET
    BARE-REJECTION
    [: PURPOSE s" length" MODEL:E-INCOMPLETE FAILS ;] QUIET
-   MODEL-PEER:CALLS@ sent = MODEL-FIXTURE:ASSERT
+   MODEL-PEER:CALLS@ sent = ASSERT
    s" " M MODEL:SERVICE-TIER! ;
 
 
@@ -3109,11 +3112,11 @@ variable ASKED-U
    TEST-RECORDER
    MODEL-PEER:CALLS@ {: before:n :}
    PURPOSE s" valid" ASK
-   MODEL-PEER:CALLS@ before = MODEL-FIXTURE:ASSERT
-   M MODEL:JOURNAL-INPUT$ ASKED$ STR:= MODEL-FIXTURE:ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT
-   INPUT$ ASKED$ STR:= MODEL-FIXTURE:ASSERT
+   MODEL-PEER:CALLS@ before = ASSERT
+   M MODEL:JOURNAL-INPUT$ ASKED$ STR:= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   INPUT$ ASKED$ STR:= ASSERT
    M MODEL:CALL-ID {: id:n :}
    ROWS-MADE @ {: rows:n :}
    MODEL-PEER:CALLS@ {: calls:n :}
@@ -3121,33 +3124,33 @@ variable ASKED-U
    0 [: NEGATIVE-REPLAY ;]
    s" expected REPLAY's record, found `-1`; pass the text with its length in bytes"
    CONFIG-SAYS
-   RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ rows = MODEL-FIXTURE:ASSERT
-   M MODEL:CALL-ID id = MODEL-FIXTURE:ASSERT
-   M [: dup MODEL:JOURNAL-INPUT$ drop ;] catch {: code:n :} drop code MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   ROWS-MADE @ rows = ASSERT
+   M MODEL:CALL-ID id = ASSERT
+   M [: dup MODEL:JOURNAL-INPUT$ drop ;] catch {: code:n :} drop code MODEL:E-STATE = ASSERT
    PURPOSE s" valid" PREP
-   REPLAY-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   REPLAY-CODE MODEL:E-STATE = ASSERT
    PURPOSE s" valid" ASK
-   M [: ADD-TEXT ;] catch {: code:n :} drop code MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   REPLAY-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   M [: ADD-TEXT ;] catch {: code:n :} drop code MODEL:E-STATE = ASSERT
+   REPLAY-CODE MODEL:E-STATE = ASSERT
    s" reason" s" test-generation" s" low" s" " M MODEL:PURPOSE-MODEL!
    s" reason" M MODEL:PURPOSE! s" valid" ASK
-   ASKED$ s" configuration" MODEL-FIXTURE:MEMBER s" effort" MODEL-FIXTURE:FOUND s" low" STR-IS
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   ASKED$ s" configuration" MEMBER s" effort" FOUND s" low" STR-IS
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" effort" ROW s" low" STR-IS
    \ A record that is not JSON replays as E-RESPONSE.
    PURPOSE s" valid" ASK
    M [: OPEN-REPLAY ;] catch {: bad:n :} drop
-   bad MODEL:E-RESPONSE = MODEL-FIXTURE:ASSERT
+   bad MODEL:E-RESPONSE = ASSERT
    \ A saved rejection replays as the rejection, with no request and no line, and
    \ keeps the request, which JOURNAL-INPUT$ answers again.
    PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
    MODEL-PEER:CALLS@ {: rejected:n :}
    PURPOSE s" too-large" ASK
-   [: REPLAY-CODE MODEL:E-CAPACITY = MODEL-FIXTURE:ASSERT ;] QUIET
-   MODEL-PEER:CALLS@ rejected = MODEL-FIXTURE:ASSERT
-   PURPOSE M MODEL:JOURNAL-INPUT$ ASKED$ STR:= MODEL-FIXTURE:ASSERT ;
+   [: REPLAY-CODE MODEL:E-CAPACITY = ASSERT ;] QUIET
+   MODEL-PEER:CALLS@ rejected = ASSERT
+   PURPOSE M MODEL:JOURNAL-INPUT$ ASKED$ STR:= ASSERT ;
 
 
 create GOT 32768 allot    \ the journal input KEEP-GET last received
@@ -3157,7 +3160,7 @@ variable GOT-NS           \ TIME:MONO-NS as KEEP-GET last ran
 \ A journal getter that never hits and keeps the input it receives and when.
 : KEEP-GET ( n str ^n -- bool )
    {: ctx:n input:str out:^ :}
-   input STR:LEN 32768 <= MODEL-FIXTURE:ASSERT
+   input STR:LEN 32768 <= ASSERT
    input GOT 32768 SPAN:MAKE SPAN:COPY input STR:LEN GOT-U !
    TIME:MONO-NS GOT-NS !
    false ;
@@ -3173,28 +3176,28 @@ variable GOT-NS           \ TIME:MONO-NS as KEEP-GET last ran
    MODEL-PEER:CALLS@ {: calls:n :}
    PURPOSE s" valid" ASK
    s" http-error" MODEL-PEER:FAIL-NEXT
-   CHAT-CODE MODEL:E-UNAVAILABLE = MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ calls 1+ = MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ rows 1+ = MODEL-FIXTURE:ASSERT
+   CHAT-CODE MODEL:E-UNAVAILABLE = ASSERT
+   MODEL-PEER:CALLS@ calls 1+ = ASSERT
+   ROWS-MADE @ rows 1+ = ASSERT
    s" purpose" ROW s" assemble" STR-IS
    s" outcome" ROW s" failed" STR-IS
-   GOT$ ASKED$ STR:= MODEL-FIXTURE:ASSERT
+   GOT$ ASKED$ STR:= ASSERT
    KEEP-SENT
    0 GOT-U ! 0 JOURNAL-INPUT-U !
-   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ calls 2 + = MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ rows 2 + = MODEL-FIXTURE:ASSERT
+   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ calls 2 + = ASSERT
+   ROWS-MADE @ rows 2 + = ASSERT
    s" purpose" ROW s" assemble" STR-IS
    s" outcome" ROW s" ok" STR-IS
-   GOT$ ASKED$ STR:= MODEL-FIXTURE:ASSERT
-   INPUT$ ASKED$ STR:= MODEL-FIXTURE:ASSERT
+   GOT$ ASKED$ STR:= ASSERT
+   INPUT$ ASKED$ STR:= ASSERT
    SENT-AGAIN ;
 
 
 \ Serves M, each SERVE answering false, until the call rests.
 : SERVE-TO-REST ( -- )
    begin M MODEL:RESEND-DUE 0= while
-      M MODEL:SERVE 0= MODEL-FIXTURE:ASSERT
+      M MODEL:SERVE 0= ASSERT
       SERVE-PAUSE
    repeat ;
 
@@ -3217,13 +3220,13 @@ variable ACTED-NS   \ mono-ns as CANCEL-WORK or STOP-WORK-LATER acted
 \ park took the wake, which then leaves no hint pending on this task.
 : AWAIT-WOKEN ( [ n -- bool ] -- bool )
    {: test :}
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
    mono-ns {: t1:n :}
    WORK-TASK TASK:JOIN MATCH result
-      ok OF test execute MODEL-FIXTURE:ASSERT ENDOF
-      err OF drop MODEL-FIXTURE:FAIL ENDOF
+      ok OF test execute ASSERT ENDOF
+      err OF drop FAIL ENDOF
    ;MATCH
-   t1 ACTED-NS @ - PROMPT-NS < MODEL-FIXTURE:ASSERT
+   t1 ACTED-NS @ - PROMPT-NS < ASSERT
    0 >MS TASK:WAIT-MS 0= ;
 
 
@@ -3238,7 +3241,7 @@ variable ACTED-NS   \ mono-ns as CANCEL-WORK or STOP-WORK-LATER acted
    3 0 do
       i TRY-MS try execute if unloop exit then 2drop
    loop
-   MODEL-FIXTURE:FAIL 0 0 ;
+   FAIL 0 0 ;
 
 
 variable MATCHES   \ COUNT-BY's count
@@ -3265,7 +3268,7 @@ variable MATCHES   \ COUNT-BY's count
 : NEW-LINES ( n n n n -- )
    {: now:n same:n before:n k:n :}
    LINES before k + = now same k + = and
-   dup 0= if SB$ type cr LOG$ type then MODEL-FIXTURE:ASSERT ;
+   dup 0= if SB$ type cr LOG$ type then ASSERT ;
 
 
 \ SB-COUNT is one more than `same` and LINES one more than `before`.
@@ -3336,8 +3339,8 @@ variable REST-NTH    \ and the resend it names
 
 
 \ The last recorded row's send was throttled, or holds no throttled member.
-: THROTTLED ( -- ) s" throttled" ROW JSON:TEXT$ s" true" STR:= MODEL-FIXTURE:ASSERT ;
-: UNTHROTTLED ( -- ) ROW$ JSON:PARSE MODEL-FIXTURE:OBJECT s" throttled" MODEL-FIXTURE:HAS? 0= MODEL-FIXTURE:ASSERT ;
+: THROTTLED ( -- ) s" throttled" ROW JSON:TEXT$ s" true" STR:= ASSERT ;
+: UNTHROTTLED ( -- ) ROW$ JSON:PARSE OBJECT s" throttled" HAS? 0= ASSERT ;
 
 
 \ Starts M's chat, which the provider answers 503 with a minute's Retry-After:
@@ -3353,14 +3356,14 @@ variable REST-NTH    \ and the resend it names
    s" http-busy" s" 60" MODEL-PEER:FAIL-AFTER
    PURPOSE s" valid" PREP M MODEL:START
    SERVE-TO-REST
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
    s" outcome" ROW s" failed" STR-IS
    UNTHROTTLED
    M MODEL:RESEND-DUE {: due:n :}
-   M MODEL:SERVE 0= MODEL-FIXTURE:ASSERT
-   M MODEL:RESEND-DUE due = MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   M MODEL:SERVE 0= ASSERT
+   M MODEL:RESEND-DUE due = ASSERT
+   SENDS-SINCE 1 = ASSERT
    ['] CANCEL-WORK WORK-TASK TASK:ACTIVATE
    [: 0<> ;] AWAIT-WOKEN ;
 
@@ -3376,10 +3379,10 @@ variable REST-NTH    \ and the resend it names
    s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded" NOTED
    60000 61000 1 REST-IS
    [: CANCELLED-REST ;] WAKE-TRIES {: same:n before:n :}
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
-   M MODEL:RESEND-DUE 0= MODEL-FIXTURE:ASSERT
+   M MODEL:RESEND-DUE 0= ASSERT
    same before ONE-REST ;
 
 
@@ -3399,21 +3402,21 @@ variable REST-NTH    \ and the resend it names
    M MODEL:START
    SERVE-TO-REST
    same before ONE-REST
-   GOT$ ASKED$ STR:= MODEL-FIXTURE:ASSERT
+   GOT$ ASKED$ STR:= ASSERT
    KEEP-SENT
    0 GOT-U ! 0 GOT-NS ! 0 JOURNAL-INPUT-U !
    M MODEL:RESEND-DUE {: due:n :}
-   mono-ns due < MODEL-FIXTURE:ASSERT
+   mono-ns due < ASSERT
    M MODEL:AWAIT
-   GOT-NS @ due >= MODEL-FIXTURE:ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 2 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   GOT-NS @ due >= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" ok" STR-IS
    s" purpose" ROW s" assemble" STR-IS
    SENT-AGAIN
-   GOT$ ASKED$ STR:= MODEL-FIXTURE:ASSERT
-   INPUT$ ASKED$ STR:= MODEL-FIXTURE:ASSERT
+   GOT$ ASKED$ STR:= ASSERT
+   INPUT$ ASKED$ STR:= ASSERT
    same before ONE-REST
    s" " M MODEL:SERVICE-TIER! ;
 
@@ -3426,11 +3429,11 @@ variable REST-NTH    \ and the resend it names
    RESEND-MARK
    s" http-busy" MODEL-PEER:FAIL-NEXT
    PURPOSE s" valid" MODEL:E-UNAVAILABLE FAILS
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
    s" outcome" ROW s" failed" STR-IS
    same before ONE-LINE
-   M MODEL:RESEND-DUE 0= MODEL-FIXTURE:ASSERT ;
+   M MODEL:RESEND-DUE 0= ASSERT ;
 
 
 : RESTS ( -- )
@@ -3458,7 +3461,7 @@ variable LANDED-CANCELLED   \ CANCEL-ROW's CANCEL answer
    M MODEL:START
    mono-ns {: t0:n :}
    AWAIT-CODE
-   mono-ns t0 - PROMPT-NS < MODEL-FIXTURE:ASSERT
+   mono-ns t0 - PROMPT-NS < ASSERT
    TEST-RECORDER ;
 
 
@@ -3475,21 +3478,21 @@ variable LANDED-CANCELLED   \ CANCEL-ROW's CANCEL answer
    SB-COUNT LINES {: same:n before:n :}
    RESEND-MARK
    s" http-busy" MODEL-PEER:FAIL-NEXT
-   PURPOSE s" valid" PREP CANCELLED-LANDING MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   LANDED-CANCELLED @ 0<> MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   PURPOSE s" valid" PREP CANCELLED-LANDING MODEL:E-CANCELLED = ASSERT
+   LANDED-CANCELLED @ 0<> ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
-   M MODEL:RESEND-DUE 0= MODEL-FIXTURE:ASSERT
+   M MODEL:RESEND-DUE 0= ASSERT
    same before ONE-LINE
    0 M MODEL:RESEND-WAIT!
    SB-COUNT LINES {: again:n after:n :}
    RESEND-MARK
    s" http-busy" MODEL-PEER:FAIL-NEXT
-   PURPOSE s" valid" PREP CANCELLED-LANDING MODEL:E-UNAVAILABLE = MODEL-FIXTURE:ASSERT
-   LANDED-CANCELLED @ 0= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   PURPOSE s" valid" PREP CANCELLED-LANDING MODEL:E-UNAVAILABLE = ASSERT
+   LANDED-CANCELLED @ 0= ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
    s" outcome" ROW s" failed" STR-IS
    again after ONE-LINE
    s" " M MODEL:LOG-NOTE! ;
@@ -3505,31 +3508,31 @@ variable LANDED-CANCELLED   \ CANCEL-ROW's CANCEL answer
    1 M MODEL:RESEND-WAIT!
    NOTE$ M MODEL:LOG-NOTE!
    SERVICE$ ACCOUNT$ M MODEL:API-KEY!
-   MODEL-FIXTURE:KEY$ STORE
+   KEY$ STORE
    s" warn" s" SECRET:E-UNAVAILABLE key service " NOTED
    SERVICE$ SB-APPEND s" , account " SB-APPEND ACCOUNT$ SB-APPEND
    s" : store unavailable" SB-APPEND
    0 1 2 REST-IS REST-COUNT {: again:n :}
    0 1 1 REST-IS REST-COUNT LINES {: same:n before:n :}
-   SECRET:E-UNAVAILABLE MODEL-FIXTURE:READ-FAULT!
+   SECRET:E-UNAVAILABLE READ-FAULT!
    RESEND-MARK
    PURPOSE s" valid" PREP M MODEL:START
    M MODEL:RESEND-DUE {: due:n :}
-   due 0<> MODEL-FIXTURE:ASSERT
+   due 0<> ASSERT
    same before ONE-REST
    begin mono-ns due < while 1 >MS TASK:SLEEP repeat
-   M MODEL:SERVE 0= MODEL-FIXTURE:ASSERT
+   M MODEL:SERVE 0= ASSERT
    M MODEL:RESEND-DUE {: next:n :}
-   next 0<> next due <> and MODEL-FIXTURE:ASSERT
+   next 0<> next due <> and ASSERT
    0 1 2 REST-IS again before 1+ ONE-REST
-   SENDS-SINCE 0= MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 0= MODEL-FIXTURE:ASSERT
-   0 MODEL-FIXTURE:READ-FAULT!
+   SENDS-SINCE 0= ASSERT
+   ROWS-SINCE 0= ASSERT
+   0 READ-FAULT!
    M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   LINES before 2 + = MODEL-FIXTURE:ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   LINES before 2 + = ASSERT
    0 M MODEL:RESEND-WAIT!
    s" " M MODEL:LOG-NOTE!
    FIXTURE-KEY ;
@@ -3554,22 +3557,22 @@ variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
    FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N PIPE-R !
    FD:STDERR FD>N 0 10 fcntl {: saved:n :}
-   saved 0 >= MODEL-FIXTURE:ASSERT
+   saved 0 >= ASSERT
    saved SAVED-ERR !
-   w FD>N FD:STDERR FD>N dup2 0 >= MODEL-FIXTURE:ASSERT
-   w FD>N close-rc 0= MODEL-FIXTURE:ASSERT ;
+   w FD>N FD:STDERR FD>N dup2 0 >= ASSERT
+   w FD>N close-rc 0= ASSERT ;
 
 
 \ Gives fd 2 its capture file back, which ends the pipe for its reader.
 : ERR-BACK ( -- )
-   SAVED-ERR @ FD:STDERR FD>N dup2 0 >= MODEL-FIXTURE:ASSERT
-   SAVED-ERR @ close-rc 0= MODEL-FIXTURE:ASSERT ;
+   SAVED-ERR @ FD:STDERR FD>N dup2 0 >= ASSERT
+   SAVED-ERR @ close-rc 0= ASSERT ;
 
 
 : PIPE-BYTE@ ( -- n )
    PIPE-IN PIPE-BYTE 1 SPAN:MAKE FD:READ-EXACT MATCH FD:fill
       full OF ENDOF
-      eof OF drop MODEL-FIXTURE:FAIL ENDOF
+      eof OF drop FAIL ENDOF
    ;MATCH
    PIPE-BYTE c@ ;
 
@@ -3627,16 +3630,16 @@ variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
    SERVE-SETTLED {: landed:bool :}
    ERR-BACK
    WORK-TASK TASK:JOIN MATCH result
-      ok OF 0<> MODEL-FIXTURE:ASSERT ENDOF
-      err OF drop MODEL-FIXTURE:FAIL ENDOF
+      ok OF 0<> ASSERT ENDOF
+      err OF drop FAIL ENDOF
    ;MATCH
-   PIPE-R @ close-rc 0= MODEL-FIXTURE:ASSERT
-   landed MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   PIPE-R @ close-rc 0= ASSERT
+   landed ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
-   M MODEL:RESEND-DUE 0= MODEL-FIXTURE:ASSERT
+   M MODEL:RESEND-DUE 0= ASSERT
    s" " M MODEL:LOG-NOTE!
    0 M MODEL:RESEND-WAIT! ;
 
@@ -3672,26 +3675,26 @@ variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
    ['] REST-AWAIT-WORK WORK-TASK TASK:ACTIVATE
    STOP-READY TASK:WAIT-SEM
    M MODEL:RESEND-DUE {: due:n :}
-   due 0<> MODEL-FIXTURE:ASSERT
+   due 0<> ASSERT
    0 GOT-U !
    begin mono-ns due < while 1 >MS TASK:SLEEP repeat
    WORK-TASK TASK:HALT
    STOP-GO TASK:SIGNAL-SEM
    WORK-TASK TASK:JOIN MATCH result
-      ok OF drop MODEL-FIXTURE:FAIL ENDOF
+      ok OF drop FAIL ENDOF
       err OF drop ENDOF
    ;MATCH
-   M MODEL:RESEND-DUE due = MODEL-FIXTURE:ASSERT
-   GOT-U @ 0= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   M MODEL:RESEND-DUE due = ASSERT
+   GOT-U @ 0= ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
    ['] CANCEL-AWAIT-WORK WORK-TASK TASK:ACTIVATE
    WORK-TASK TASK:JOIN MATCH result
-      ok OF MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT ENDOF
-      err OF drop MODEL-FIXTURE:FAIL ENDOF
+      ok OF MODEL:E-CANCELLED = ASSERT ENDOF
+      err OF drop FAIL ENDOF
    ;MATCH
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
    0 M MODEL:RESEND-WAIT!
    STOP-READY TASK:SEMAPHORE-DESTROY
@@ -3707,12 +3710,12 @@ variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
    s" http-busy" MODEL-PEER:FAIL-NEXT
    PURPOSE s" valid" PREP M MODEL:START
    SERVE-TO-REST
-   M MODEL:CANCEL MODEL-FIXTURE:ASSERT
-   M MODEL:SERVE MODEL-FIXTURE:ASSERT
-   M MODEL:CANCEL MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   M MODEL:CANCEL ASSERT
+   M MODEL:SERVE ASSERT
+   M MODEL:CANCEL ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
    0 M MODEL:RESEND-WAIT! ;
 
@@ -3730,11 +3733,11 @@ variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
    LINES {: before:n :}
    RESEND-MARK
    PURPOSE s" valid" PREP M MODEL:START
-   M MODEL:RESEND-DUE 0= MODEL-FIXTURE:ASSERT
-   M MODEL:SERVE MODEL-FIXTURE:ASSERT
-   AWAIT-CODE SECRET:E-UNAVAILABLE = MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 0= MODEL-FIXTURE:ASSERT
-   LINES before = MODEL-FIXTURE:ASSERT
+   M MODEL:RESEND-DUE 0= ASSERT
+   M MODEL:SERVE ASSERT
+   AWAIT-CODE SECRET:E-UNAVAILABLE = ASSERT
+   SENDS-SINCE 0= ASSERT
+   LINES before = ASSERT
    0 M MODEL:RESEND-WAIT!
    s" " M MODEL:LOG-NOTE!
    0 [: CAPTURE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL! ;
@@ -3752,10 +3755,10 @@ variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
    60000 M MODEL:RESEND-WAIT!
    RESEND-MARK
    PURPOSE s" valid" PREP M MODEL:START
-   SERVE-SETTLED MODEL-FIXTURE:ASSERT
-   M MODEL:RESEND-DUE 0= MODEL-FIXTURE:ASSERT
-   AWAIT-CODE SECRET:E-UNAVAILABLE = MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   SERVE-SETTLED ASSERT
+   M MODEL:RESEND-DUE 0= ASSERT
+   AWAIT-CODE SECRET:E-UNAVAILABLE = ASSERT
+   SENDS-SINCE 1 = ASSERT
    0 M MODEL:RESEND-WAIT!
    0 [: CAPTURE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL! ;
 
@@ -3779,9 +3782,9 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    SB-COUNT LINES {: same:n before:n :}
    false GET-CANCELLED !
    RESEND-MARK
-   PURPOSE s" valid" PREP CHAT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   GET-CANCELLED @ 0<> MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 0= MODEL-FIXTURE:ASSERT
+   PURPOSE s" valid" PREP CHAT-CODE MODEL:E-CANCELLED = ASSERT
+   GET-CANCELLED @ 0<> ASSERT
+   SENDS-SINCE 0= ASSERT
    same before ONE-LINE
    s" " M MODEL:LOG-NOTE!
    FIXTURE-KEY
@@ -3800,10 +3803,10 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" : rejected by the provider status 401" SB-APPEND
    SB-COUNT LINES {: same:n before:n :}
    PURPOSE s" valid" MODEL:E-KEY FAILS
-   M MODEL:HTTP-STATUS 401 = MODEL-FIXTURE:ASSERT
+   M MODEL:HTTP-STATUS 401 = ASSERT
    same before ONE-LINE
    s" " M MODEL:LOG-NOTE!
-   MODEL-FIXTURE:KEY$ STORE
+   KEY$ STORE
    FIXTURE-KEY ;
 
 
@@ -3817,11 +3820,11 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    RESEND-MARK
    PURPOSE s" valid" PREP M MODEL:START
    SERVE-TO-REST
-   SENDS-SINCE sends = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE sends = ASSERT
    same before ONE-REST
-   M MODEL:CANCEL MODEL-FIXTURE:ASSERT
-   M MODEL:SERVE MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
+   M MODEL:CANCEL ASSERT
+   M MODEL:SERVE ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
    same before ONE-REST ;
 
 
@@ -3834,17 +3837,17 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    counted execute LINES {: same:n before:n :}
    RESEND-MARK
    PURPOSE s PREP M MODEL:START
-   SERVE-SETTLED MODEL-FIXTURE:ASSERT
-   M MODEL:RESEND-DUE 0= MODEL-FIXTURE:ASSERT
-   AWAIT-CODE code = MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   SERVE-SETTLED ASSERT
+   M MODEL:RESEND-DUE 0= ASSERT
+   AWAIT-CODE code = ASSERT
+   SENDS-SINCE 1 = ASSERT
    counted execute same before 1 NEW-LINES ;
 
 
 \ NOTED, then the fixture key's service and ", account ": a key fault's line
 \ up to the account.
 : KEY-NOTED ( str str -- )
-   NOTED MODEL-FIXTURE:KEY-SERVICE$ SB-APPEND s" , account " SB-APPEND ;
+   NOTED KEY-SERVICE$ SB-APPEND s" , account " SB-APPEND ;
 
 
 \ With RESEND-WAIT! on, a send that fails for want of the transport, the key
@@ -3864,18 +3867,18 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    1 RESTS-ON
    s" forbidden" MODEL-PEER:FAIL-NEXT
    s" error" s" MODEL:E-KEY key service " KEY-NOTED
-   MODEL-FIXTURE:KEY-ACCOUNT$ SB-APPEND s" : rejected by the provider status 403" SB-APPEND
+   KEY-ACCOUNT$ SB-APPEND s" : rejected by the provider status 403" SB-APPEND
    1 RESTS-ON
-   MODEL-FIXTURE:KEY-SERVICE$ s" missing" M MODEL:API-KEY!
+   KEY-SERVICE$ s" missing" M MODEL:API-KEY!
    s" error" s" MODEL:E-KEY key service " KEY-NOTED
    s" missing: not found" SB-APPEND
    0 RESTS-ON
    FIXTURE-KEY
-   SECRET:E-UNAVAILABLE MODEL-FIXTURE:READ-FAULT!
+   SECRET:E-UNAVAILABLE READ-FAULT!
    s" warn" s" SECRET:E-UNAVAILABLE key service " KEY-NOTED
-   MODEL-FIXTURE:KEY-ACCOUNT$ SB-APPEND s" : store unavailable" SB-APPEND
+   KEY-ACCOUNT$ SB-APPEND s" : store unavailable" SB-APPEND
    0 RESTS-ON
-   0 MODEL-FIXTURE:READ-FAULT!
+   0 READ-FAULT!
    s" error" s" MODEL:E-REFUSED status 200 body: " ID-NOTED
    MODEL-PEER:REFUSAL$ SB-APPEND s" response.completed" STREAM-TAIL
    s" refusal" MODEL:E-REFUSED [: MS-COUNT ;] SETTLES-ON
@@ -3901,12 +3904,12 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    RESEND-MARK
    s" http-busy" MODEL-PEER:FAIL-NEXT
    PURPOSE s" valid" PREP M MODEL:START
-   SERVE-SETTLED MODEL-FIXTURE:ASSERT
-   M MODEL:RESEND-DUE 0= MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-UNAVAILABLE = MODEL-FIXTURE:ASSERT
+   SERVE-SETTLED ASSERT
+   M MODEL:RESEND-DUE 0= ASSERT
+   AWAIT-CODE MODEL:E-UNAVAILABLE = ASSERT
    false ROW-FAIL !
-   M MODEL:RECORD-FAULT E-RECORDER = MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   M MODEL:RECORD-FAULT E-RECORDER = ASSERT
+   SENDS-SINCE 1 = ASSERT
    same before ONE-LINE
    0 M MODEL:RESEND-WAIT!
    s" " M MODEL:LOG-NOTE! ;
@@ -3932,12 +3935,12 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    RESEND-MARK
    s" http-busy" MODEL-PEER:FAIL-NEXT
    PURPOSE s" valid" PREP M MODEL:START
-   AWAIT-CODE 0= MODEL-FIXTURE:ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 3 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 3 = MODEL-FIXTURE:ASSERT
+   AWAIT-CODE 0= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   SENDS-SINCE 3 = ASSERT
+   ROWS-SINCE 3 = ASSERT
    s" outcome" ROW s" ok" STR-IS
-   REST-COUNT same 1+ = MODEL-FIXTURE:ASSERT
+   REST-COUNT same 1+ = ASSERT
    0 1 2 REST-IS again before 1+ ONE-REST
    TEST-RECORDER
    0 M MODEL:RESEND-WAIT!
@@ -3965,9 +3968,9 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 \ CANCELs the resting M, which lands E-CANCELLED with one send since
 \ RESEND-MARK, its cancelled row not throttled.
 : REST-CUT ( -- )
-   M MODEL:CANCEL MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   M MODEL:CANCEL ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   SENDS-SINCE 1 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
    UNTHROTTLED
    0 M MODEL:RESEND-WAIT!
@@ -3980,8 +3983,8 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    {: seconds:str ms:n :}
    ms ms 1000 + 1 REST-IS
    s" http-error" seconds RESTED {: t0:n due:n :}
-   due t0 - ms 1000000 * >= MODEL-FIXTURE:ASSERT
-   due mono-ns - ms 1000 + 1000000 * <= MODEL-FIXTURE:ASSERT
+   due t0 - ms 1000000 * >= ASSERT
+   due mono-ns - ms 1000 + 1000000 * <= ASSERT
    THROTTLED
    REST-CUT ;
 
@@ -4004,8 +4007,8 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    PURPOSE s" valid" PREP M MODEL:START
    SERVE-TO-REST
    M MODEL:RESEND-DUE {: due:n :}
-   due t0 - ms 1000000 * >= MODEL-FIXTURE:ASSERT
-   due mono-ns - ms 1000 + 1000000 * <= MODEL-FIXTURE:ASSERT
+   due t0 - ms 1000000 * >= ASSERT
+   due mono-ns - ms 1000 + 1000000 * <= ASSERT
    s" fault" ROW MODEL:E-UNAVAILABLE INT-IS ;
 
 
@@ -4033,7 +4036,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 : FIRST-REST ( -- )
    0 1000 1 REST-IS
    s" http-error" s" " RESTED {: t0:n due:n :}
-   due mono-ns - 1000 1000000 * <= MODEL-FIXTURE:ASSERT
+   due mono-ns - 1000 1000000 * <= ASSERT
    THROTTLED
    REST-CUT ;
 
@@ -4046,14 +4049,14 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" failed-slow" MODEL-PEER:FAIL-NEXT
    PURPOSE s" valid" PREP M MODEL:START
    SERVE-TO-REST
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   ROWS-SINCE 1 = ASSERT
    s" outcome" ROW s" failed" STR-IS
    s" http_status" ROW 200 INT-IS
    THROTTLED
-   AWAIT-CODE 0= MODEL-FIXTURE:ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 2 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   AWAIT-CODE 0= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" ok" STR-IS
    UNTHROTTLED
    0 M MODEL:RESEND-WAIT! ;
@@ -4096,8 +4099,8 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded" NOTED
    60000 61000 1 REST-IS
    [: STOPPED-REST ;] WAKE-TRIES {: same:n before:n :}
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
    same before ONE-REST ;
 
@@ -4116,10 +4119,10 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" ; events response.created=1 response.in_progress=1 error=1; no output" SB-APPEND
    SB-COUNT LINES {: same:n before:n :}
    RESEND-MARK
-   PURPOSE s" flex-then" PREP CANCELLED-LANDING MODEL:E-CANCELLED = MODEL-FIXTURE:ASSERT
-   LANDED-CANCELLED @ 0<> MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   PURPOSE s" flex-then" PREP CANCELLED-LANDING MODEL:E-CANCELLED = ASSERT
+   LANDED-CANCELLED @ 0<> ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" cancelled" STR-IS
    same before ONE-LINE
    s" " M MODEL:LOG-NOTE!
@@ -4141,15 +4144,15 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    REST-COUNT LINES {: same:n before:n :}
    RESEND-MARK
    PURPOSE s" flex-then" PREP M MODEL:START
-   AWAIT-CODE 0= MODEL-FIXTURE:ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 3 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 3 = MODEL-FIXTURE:ASSERT
+   AWAIT-CODE 0= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   SENDS-SINCE 3 = ASSERT
+   ROWS-SINCE 3 = ASSERT
    s" outcome" ROW s" ok" STR-IS
    s" requested_tier" ROW NULL-IS
    NO-TIER
-   LINES before 2 + = MODEL-FIXTURE:ASSERT
-   REST-COUNT same 1+ = MODEL-FIXTURE:ASSERT
+   LINES before 2 + = ASSERT
+   REST-COUNT same 1+ = ASSERT
    TEST-RECORDER
    0 M MODEL:RESEND-WAIT!
    s" " M MODEL:LOG-NOTE!
@@ -4165,10 +4168,10 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    RESEND-MARK
    s" http-busy" MODEL-PEER:FAIL-NEXT
    PURPOSE s" valid" PREP M MODEL:START
-   AWAIT-CODE 0= MODEL-FIXTURE:ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 2 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 2 = MODEL-FIXTURE:ASSERT
+   AWAIT-CODE 0= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" ok" STR-IS
    s" requested_tier" ROW s" flex" STR-IS
    s" service_tier" SENT s" flex" STR-IS
@@ -4200,13 +4203,13 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    WORK-TASK TASK:HALT
    STOP-GO TASK:SIGNAL-SEM
    WORK-TASK TASK:JOIN MATCH result
-      ok OF drop MODEL-FIXTURE:FAIL ENDOF
+      ok OF drop FAIL ENDOF
       err OF drop ENDOF
    ;MATCH
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   ROWS-SINCE 1 = MODEL-FIXTURE:ASSERT
-   M MODEL:CANCEL 0= MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-TIER = MODEL-FIXTURE:ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   M MODEL:CANCEL 0= ASSERT
+   AWAIT-CODE MODEL:E-TIER = ASSERT
    TEST-RECORDER
    STOP-READY TASK:SEMAPHORE-DESTROY
    STOP-GO TASK:SEMAPHORE-DESTROY
@@ -4226,9 +4229,9 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    0 [: CAPTURE-GET ;] [: TIER-PUT ;] M MODEL:JOURNAL!
    RESEND-MARK
    PURPOSE s" valid" PREP M MODEL:START
-   SERVE-SETTLED MODEL-FIXTURE:ASSERT
-   AWAIT-CODE MODEL:E-TIER = MODEL-FIXTURE:ASSERT
-   SENDS-SINCE 1 = MODEL-FIXTURE:ASSERT
+   SERVE-SETTLED ASSERT
+   AWAIT-CODE MODEL:E-TIER = ASSERT
+   SENDS-SINCE 1 = ASSERT
    0 [: CAPTURE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
    false M MODEL:TIER-RESEND! ;
 
@@ -4275,10 +4278,10 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" valid" ASK
    s" schema" INPUT-HEAD SCHEMA$ SB-APPEND
    S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" SB-APPEND
-   ASKED$ SB$ STR:= MODEL-FIXTURE:ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   ASKED$ SB$ STR:= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    SCHEMA-REQUEST
-   MODEL-PEER:SENT$ SB$ STR:= MODEL-FIXTURE:ASSERT ;
+   MODEL-PEER:SENT$ SB$ STR:= ASSERT ;
 
 
 \ History items in OpenAI's shapes; OUTPUT$ keeps a space between members.
@@ -4297,20 +4300,20 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 \ The value is exactly these source bytes.
 : RAW-IS ( JSON:value str -- )
    {: want:str :}
-   JSON:TEXT$ want STR:= MODEL-FIXTURE:ASSERT ;
+   JSON:TEXT$ want STR:= ASSERT ;
 
 
 \ ITEM+ before PARTS-RESET, after CHAT or after JOURNAL-INPUT$ is E-STATE, the
 \ last dropping the request as a builder does; no part or item is E-CONFIG.
 : ITEM-TURNS ( -- )
-   CALLED$ ITEM-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CALLED$ ITEM-CODE MODEL:E-STATE = ASSERT
    CHAT
-   CALLED$ ITEM-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CALLED$ ITEM-CODE MODEL:E-STATE = ASSERT
    s" valid" ASK
-   CALLED$ ITEM-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   REPLAY-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CALLED$ ITEM-CODE MODEL:E-STATE = ASSERT
+   REPLAY-CODE MODEL:E-STATE = ASSERT
    M MODEL:PARTS-RESET
-   CALLED$ ITEM-CODE 0= MODEL-FIXTURE:ASSERT
+   CALLED$ ITEM-CODE 0= ASSERT
    M MODEL:PARTS-RESET
    0 [: drop M MODEL:CHAT drop 0 ;]
    s" expected at least one part or item, found `0`; add a part with TEXT+ or IMAGE+, or an item with ITEM+"
@@ -4325,8 +4328,8 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    SB-RESET
    S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}],\qitems\q:[" SB-APPEND
    CALLED$ SB-APPEND s" ," SB-APPEND OUTPUT$ SB-APPEND s" ]}" SB-APPEND
-   a SB$ STR:ENDS-WITH? MODEL-FIXTURE:ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   a SB$ STR:ENDS-WITH? ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    SB-RESET s" [" SB-APPEND HEAD$ SB-APPEND s" ," SB-APPEND
    CALLED$ SB-APPEND s" ," SB-APPEND OUTPUT$ SB-APPEND s" ]" SB-APPEND
    s" input" SENT SB$ RAW-IS ;
@@ -4339,8 +4342,8 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    M MODEL:JOURNAL-INPUT$ {: a:str :}
    SB-RESET S\" ,\qparts\q:[],\qitems\q:[" SB-APPEND
    USER-ITEM$ SB-APPEND s" ]}" SB-APPEND
-   a SB$ STR:ENDS-WITH? MODEL-FIXTURE:ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   a SB$ STR:ENDS-WITH? ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    SB-RESET s" [" SB-APPEND USER-ITEM$ SB-APPEND s" ]" SB-APPEND
    s" input" SENT SB$ RAW-IS ;
 
@@ -4350,17 +4353,17 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 \ An item that is not exactly one JSON object is E-CONFIG and adds nothing.
 : ITEM-REJECTIONS ( -- )
    s" valid" PREP CALLED$ ITEM
-   s" " ITEM-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
+   s" " ITEM-CODE MODEL:E-CONFIG = ASSERT
    0 [: ARRAY-ITEM ;]
    s" ITEM+'s item 1:1: expected an object, found `[`; pass one JSON object"
    CONFIG-SAYS
    0 [: NEGATIVE-ITEM ;]
    s" expected ITEM+'s item, found `-1`; pass the text with its length in bytes"
    CONFIG-SAYS
-   S\" \qx\q" ITEM-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   s" {}{}" ITEM-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   s" {" ITEM-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   S\" \qx\q" ITEM-CODE MODEL:E-CONFIG = ASSERT
+   s" {}{}" ITEM-CODE MODEL:E-CONFIG = ASSERT
+   s" {" ITEM-CODE MODEL:E-CONFIG = ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    SB-RESET s" [" SB-APPEND HEAD$ SB-APPEND s" ," SB-APPEND
    CALLED$ SB-APPEND s" ]" SB-APPEND
    s" input" SENT SB$ RAW-IS ;
@@ -4390,16 +4393,16 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 \ and no text format; OUTPUT$ is the reply's output array, the content empty.
 : TOOLS-BODY ( -- )
    TOOLS s" tool-call" PREP
-   M MODEL:CHAT STR:LEN 0= MODEL-FIXTURE:ASSERT
-   TOOLS-REQUEST MODEL-PEER:SENT$ SB$ STR:= MODEL-FIXTURE:ASSERT
-   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= MODEL-FIXTURE:ASSERT ;
+   M MODEL:CHAT STR:LEN 0= ASSERT
+   TOOLS-REQUEST MODEL-PEER:SENT$ SB$ STR:= ASSERT
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= ASSERT ;
 
 
 \ The last of SCHEMA! and TOOLS! decides the call's form.
 : FORM-LAST ( -- )
    TOOLS SCHEMA$ M MODEL:SCHEMA!
    CHAT
-   SCHEMA-REQUEST MODEL-PEER:SENT$ SB$ STR:= MODEL-FIXTURE:ASSERT ;
+   SCHEMA-REQUEST MODEL-PEER:SENT$ SB$ STR:= ASSERT ;
 
 
 : TOOLS-CODE ( str -- n ) M MODEL:TOOLS! s" tool-call" PREP CHAT-CODE ;
@@ -4410,26 +4413,26 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 \ tools, are E-CONFIG at CHAT with no request sent; that call has no output.
 : TOOLS-REJECTIONS ( -- )
    MODEL-PEER:CALLS@ {: before:n :}
-   s" {}" TOOLS-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   s" []" TOOLS-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
+   s" {}" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   s" []" TOOLS-CODE MODEL:E-CONFIG = ASSERT
    0 [: NUMBER-TOOL ;]
    s" TOOLS!'s tools 1:2: expected an object, found `1`; pass one JSON array of one or more tool objects"
    CONFIG-SAYS
-   S\" \q\q" TOOLS-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   s" [{},1]" TOOLS-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   s" [{}][]" TOOLS-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   s" [{}" TOOLS-CODE MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
+   S\" \q\q" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   s" [{},1]" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   s" [{}][]" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   s" [{}" TOOLS-CODE MODEL:E-CONFIG = ASSERT
    1 CALL {: c:^ :}
    c MODEL:OPEN
    MODEL-PEER:BASE-URL$ c MODEL:BASE-URL!
    s" test-generation" c MODEL:GENERATION-MODEL!
-   MODEL-FIXTURE:KEY-SERVICE$ MODEL-FIXTURE:KEY-ACCOUNT$ c MODEL:API-KEY!
+   KEY-SERVICE$ KEY-ACCOUNT$ c MODEL:API-KEY!
    s" Read source evidence." c MODEL:SYSTEM!
    c MODEL:PARTS-RESET s" valid" c MODEL:TEXT+
-   c [: dup MODEL:CHAT drop ;] catch {: chat-code:n :} drop chat-code MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   c [: dup MODEL:OUTPUT$ drop ;] catch {: output-code:n :} drop output-code MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   c [: dup MODEL:CHAT drop ;] catch {: chat-code:n :} drop chat-code MODEL:E-CONFIG = ASSERT
+   c [: dup MODEL:OUTPUT$ drop ;] catch {: output-code:n :} drop output-code MODEL:E-STATE = ASSERT
    c MODEL:CLOSE
-   MODEL-PEER:CALLS@ before = MODEL-FIXTURE:ASSERT ;
+   MODEL-PEER:CALLS@ before = ASSERT ;
 
 
 \ A tools reply of anything but one function call is E-RESPONSE, a rejection
@@ -4454,7 +4457,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" tools" INPUT-HEAD TOOLS$ SB-APPEND
    S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}],\qitems\q:[" SB-APPEND
    CALLED$ SB-APPEND s" ]}" SB-APPEND
-   a SB$ STR:= MODEL-FIXTURE:ASSERT ;
+   a SB$ STR:= ASSERT ;
 
 
 \ The record a tools call saved holds empty content and replays with no
@@ -4462,13 +4465,13 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 : TOOLS-REPLAY ( -- )
    CAPTURE
    TOOLS s" tool-call" PREP
-   M MODEL:CHAT STR:LEN 0= MODEL-FIXTURE:ASSERT
-   RECORD$ s" content" MODEL-FIXTURE:MEMBER s" " STR-IS
+   M MODEL:CHAT STR:LEN 0= ASSERT
+   RECORD$ s" content" MEMBER s" " STR-IS
    MODEL-PEER:CALLS@ {: calls:n :}
    s" tool-call" ASK
-   RECORD$ M MODEL:REPLAY STR:LEN 0= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT
-   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= MODEL-FIXTURE:ASSERT ;
+   RECORD$ M MODEL:REPLAY STR:LEN 0= ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= ASSERT ;
 
 
 : COUNT-CODE ( ^MODEL:call -- n )
@@ -4500,16 +4503,16 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" tool-call" COUNT-HEAD s" ," SB-APPEND CALLED$ SB-APPEND
    S\" ],\qtools\q:" SB-APPEND TOOLS$ SB-APPEND
    S\" ,\qtool_choice\q:\qrequired\q,\qparallel_tool_calls\q:false}" SB-APPEND
-   MODEL-PEER:SENT$ SB$ STR:= MODEL-FIXTURE:ASSERT
-   tools-n MODEL-PEER:SENT$ STR:LEN = MODEL-FIXTURE:ASSERT
+   MODEL-PEER:SENT$ SB$ STR:= ASSERT
+   tools-n MODEL-PEER:SENT$ STR:LEN = ASSERT
    SCHEMA$ M MODEL:SCHEMA!
    s" valid" PREP
    M MODEL:COUNT-INPUT {: schema-n:n :}
    s" valid" COUNT-HEAD
    S\" ],\qtext\q:{\qformat\q:{\qtype\q:\qjson_schema\q,\qname\q:\qanswer\q," SB-APPEND
    S\" \qstrict\q:true,\qschema\q:" SB-APPEND SCHEMA$ SB-APPEND s" }}}" SB-APPEND
-   MODEL-PEER:SENT$ SB$ STR:= MODEL-FIXTURE:ASSERT
-   schema-n MODEL-PEER:SENT$ STR:LEN = MODEL-FIXTURE:ASSERT
+   MODEL-PEER:SENT$ SB$ STR:= ASSERT
+   schema-n MODEL-PEER:SENT$ STR:LEN = ASSERT
    s" " M MODEL:EFFORT! s" " M MODEL:CACHE-KEY! s" " M MODEL:SERVICE-TIER!
    0 M MODEL:MAX-OUTPUT! ;
 
@@ -4525,11 +4528,11 @@ variable COUNTED-U
    TOOLS s" tool-call" PREP CALLED$ ITEM
    M MODEL:COUNT-INPUT drop
    s" input" SENT JSON:TEXT$ {: a:str :}
-   a STR:LEN 32768 <= MODEL-FIXTURE:ASSERT
+   a STR:LEN 32768 <= ASSERT
    a COUNTED 32768 SPAN:MAKE SPAN:COPY a STR:LEN COUNTED-U !
-   M MODEL:CHAT STR:LEN 0= MODEL-FIXTURE:ASSERT
+   M MODEL:CHAT STR:LEN 0= ASSERT
    s" input" SENT COUNTED$ RAW-IS
-   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= MODEL-FIXTURE:ASSERT
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= ASSERT
    SCHEMA$ M MODEL:SCHEMA! ;
 
 
@@ -4545,10 +4548,10 @@ variable COUNTED-U
    0 ROWS-MADE ! false ROW-FAIL !
    PURPOSE s" valid" PREP
    M MODEL:COUNT-INPUT {: tokens:n :}
-   tokens MODEL-PEER:SENT$ STR:LEN = MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ 1 = MODEL-FIXTURE:ASSERT
+   tokens MODEL-PEER:SENT$ STR:LEN = ASSERT
+   ROWS-MADE @ 1 = ASSERT
    s" kind" ROW s" input_tokens" STR-IS
-   RECORD$ s" content" MODEL-FIXTURE:MEMBER s" " STR-IS
+   RECORD$ s" content" MEMBER s" " STR-IS
    SB-RESET
    S\" {\qkind\q:\qinput_tokens\q,\qconfiguration\q:{\qbackend\q:\qopenai-responses\q," SB-APPEND
    S\" \qmodel\q:\qtest-generation\q,\qendpoint\q:\q" SB-APPEND
@@ -4556,18 +4559,18 @@ variable COUNTED-U
    S\" /responses/input_tokens\q},\qinstructions\q:\qRead source evidence.\q,\qschema\q:" SB-APPEND
    SCHEMA$ SB-APPEND
    S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" SB-APPEND
-   INPUT$ SB$ STR:= MODEL-FIXTURE:ASSERT
+   INPUT$ SB$ STR:= ASSERT
    MODEL-PEER:CALLS@ {: calls:n :}
    true JOURNAL-READY !
    0 [: JOURNAL-GET ;] [: JOURNAL-PUT ;] M MODEL:JOURNAL!
    PURPOSE s" valid" PREP
-   M MODEL:COUNT-INPUT tokens = MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ 1 = MODEL-FIXTURE:ASSERT
+   M MODEL:COUNT-INPUT tokens = ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   ROWS-MADE @ 1 = ASSERT
    CAPTURE
-   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    PURPOSE s" valid" ASK
-   ASKED$ INPUT$ STR:= MODEL-FIXTURE:ASSERT
+   ASKED$ INPUT$ STR:= ASSERT
    M MODEL:CLOSE SETUP ;
 
 
@@ -4577,20 +4580,20 @@ variable COUNTED-U
    CAPTURE
    MODEL-PEER:CALLS@ {: before:n :}
    s" valid" ASK
-   M COUNT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before = MODEL-FIXTURE:ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT
+   M COUNT-CODE MODEL:E-STATE = ASSERT
+   MODEL-PEER:CALLS@ before = ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
    s" valid" ASK
-   M COUNT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT ;
+   M COUNT-CODE MODEL:E-STATE = ASSERT
+   RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT ;
 
 
 \ OpenAI's rejection of a count over the model's context is E-CAPACITY.
 : COUNT-TOO-LARGE ( -- )
    s" too-large" PREP
-   M COUNT-CODE MODEL:E-CAPACITY = MODEL-FIXTURE:ASSERT ;
+   M COUNT-CODE MODEL:E-CAPACITY = ASSERT ;
 
 
 \ A count the provider fails keeps its request: COUNT-INPUT sends the same
@@ -4598,9 +4601,9 @@ variable COUNTED-U
 : COUNT-RESENT ( -- )
    s" valid" PREP
    s" http-error" MODEL-PEER:FAIL-NEXT
-   M COUNT-CODE MODEL:E-UNAVAILABLE = MODEL-FIXTURE:ASSERT
+   M COUNT-CODE MODEL:E-UNAVAILABLE = ASSERT
    KEEP-SENT
-   M COUNT-CODE 0= MODEL-FIXTURE:ASSERT
+   M COUNT-CODE 0= ASSERT
    SENT-AGAIN ;
 
 
@@ -4609,23 +4612,23 @@ variable COUNTED-U
 \ neither schema nor tools E-CONFIG, each sending nothing.
 : COUNT-RESULT ( -- )
    s" valid" PREP M MODEL:COUNT-INPUT drop
-   CONTENT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   M [: dup MODEL:OUTPUT$ drop ;] catch {: code:n :} drop code MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT
+   M [: dup MODEL:OUTPUT$ drop ;] catch {: code:n :} drop code MODEL:E-STATE = ASSERT
    CHAT
    MODEL-PEER:CALLS@ {: before:n :}
-   M COUNT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   M COUNT-CODE MODEL:E-STATE = ASSERT
    1 CALL {: c:^ :}
    c MODEL:OPEN
    MODEL-PEER:BASE-URL$ c MODEL:BASE-URL!
    s" test-generation" c MODEL:GENERATION-MODEL!
-   MODEL-FIXTURE:KEY-SERVICE$ MODEL-FIXTURE:KEY-ACCOUNT$ c MODEL:API-KEY!
+   KEY-SERVICE$ KEY-ACCOUNT$ c MODEL:API-KEY!
    s" Read source evidence." c MODEL:SYSTEM!
    c MODEL:PARTS-RESET s" valid" c MODEL:TEXT+
    0 [: drop 1 CALL MODEL:COUNT-INPUT drop 0 ;]
    s" expected a reply form set by SCHEMA! or TOOLS!, found an empty text; pass the reply's JSON schema to SCHEMA! or its tools to TOOLS!"
    CONFIG-SAYS
    c MODEL:CLOSE
-   MODEL-PEER:CALLS@ before = MODEL-FIXTURE:ASSERT ;
+   MODEL-PEER:CALLS@ before = ASSERT ;
 
 
 : COMPACT-CODE ( ^MODEL:call -- n )
@@ -4655,7 +4658,7 @@ variable COUNTED-U
    S\" \qservice_tier\q:\qflex\q,\qinstructions\q:\qRead source evidence.\q,\qinput\q:[" SB-APPEND
    S\" {\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}," SB-APPEND
    CALLED$ SB-APPEND s" ]}" SB-APPEND
-   MODEL-PEER:SENT$ SB$ STR:= MODEL-FIXTURE:ASSERT
+   MODEL-PEER:SENT$ SB$ STR:= ASSERT
    s" " M MODEL:EFFORT! s" " M MODEL:CACHE-KEY! s" " M MODEL:SERVICE-TIER!
    SCHEMA$ M MODEL:SCHEMA! ;
 
@@ -4671,10 +4674,10 @@ variable COUNTED-U
    TOOLS
    M MODEL:COUNT-INPUT drop
    s" tool-call" body-u WINDOW s" input" SENT SB$ RAW-IS
-   M MODEL:CHAT STR:LEN 0= MODEL-FIXTURE:ASSERT
+   M MODEL:CHAT STR:LEN 0= ASSERT
    s" tool-call" body-u WINDOW s" input" SENT SB$ RAW-IS
    s" tools" SENT TOOLS$ RAW-IS
-   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= MODEL-FIXTURE:ASSERT
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= ASSERT
    SCHEMA$ M MODEL:SCHEMA! ;
 
 
@@ -4694,14 +4697,14 @@ variable COUNTED-U
    PURPOSE s" valid" PREP CALLED$ ITEM
    M MODEL:COMPACT
    MODEL-PEER:SENT$ STR:LEN {: body-u:n :}
-   ROWS-MADE @ 1 = MODEL-FIXTURE:ASSERT
+   ROWS-MADE @ 1 = ASSERT
    s" kind" ROW s" compaction" STR-IS
    s" effort" ROW NULL-IS
-   RECORD$ s" configuration" MODEL-FIXTURE:MEMBER s" effort" MODEL-FIXTURE:HAS? 0= MODEL-FIXTURE:ASSERT
+   RECORD$ s" configuration" MEMBER s" effort" HAS? 0= ASSERT
    s" input_tokens" ROW 11 INT-IS
    s" kind" USAGE s" compaction" STR-IS
    s" input_tokens" USAGE 11 INT-IS
-   RECORD$ s" content" MODEL-FIXTURE:MEMBER s" " STR-IS
+   RECORD$ s" content" MEMBER s" " STR-IS
    SB-RESET
    S\" {\qkind\q:\qcompaction\q,\qconfiguration\q:{\qbackend\q:\qopenai-responses\q," SB-APPEND
    S\" \qmodel\q:\qtest-generation\q,\qendpoint\q:\q" SB-APPEND
@@ -4709,14 +4712,14 @@ variable COUNTED-U
    S\" /responses/compact\q},\qinstructions\q:\qRead source evidence.\q," SB-APPEND
    S\" \qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}],\qitems\q:[" SB-APPEND
    CALLED$ SB-APPEND s" ]}" SB-APPEND
-   INPUT$ SB$ STR:= MODEL-FIXTURE:ASSERT
+   INPUT$ SB$ STR:= ASSERT
    MODEL-PEER:CALLS@ {: calls:n :}
    true JOURNAL-READY !
    0 [: JOURNAL-GET ;] [: JOURNAL-PUT ;] M MODEL:JOURNAL!
    PURPOSE s" valid" PREP CALLED$ ITEM
    M MODEL:COMPACT
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT
-   M MODEL:GENERATION-CONFIG$ s" effort" MODEL-FIXTURE:MEMBER s" high" STR-IS
+   MODEL-PEER:CALLS@ calls = ASSERT
+   M MODEL:GENERATION-CONFIG$ s" effort" MEMBER s" high" STR-IS
    CAPTURE
    PURPOSE M MODEL:COUNT-INPUT drop
    s" valid" body-u WINDOW s" input" SENT SB$ RAW-IS
@@ -4729,16 +4732,16 @@ variable COUNTED-U
    CAPTURE
    MODEL-PEER:CALLS@ {: before:n :}
    s" valid" ASK
-   M COMPACT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before = MODEL-FIXTURE:ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before 1+ = MODEL-FIXTURE:ASSERT ;
+   M COMPACT-CODE MODEL:E-STATE = ASSERT
+   MODEL-PEER:CALLS@ before = ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT ;
 
 
 \ OpenAI's rejection of a compaction over the model's context is E-CAPACITY.
 : COMPACT-TOO-LARGE ( -- )
    s" too-large" PREP
-   M COMPACT-CODE MODEL:E-CAPACITY = MODEL-FIXTURE:ASSERT ;
+   M COMPACT-CODE MODEL:E-CAPACITY = ASSERT ;
 
 
 \ A compaction the provider fails keeps its request: COMPACT sends the same
@@ -4746,9 +4749,9 @@ variable COUNTED-U
 : COMPACT-RESENT ( -- )
    s" valid" PREP
    s" http-error" MODEL-PEER:FAIL-NEXT
-   M COMPACT-CODE MODEL:E-UNAVAILABLE = MODEL-FIXTURE:ASSERT
+   M COMPACT-CODE MODEL:E-UNAVAILABLE = ASSERT
    KEEP-SENT
-   M COMPACT-CODE 0= MODEL-FIXTURE:ASSERT
+   M COMPACT-CODE 0= ASSERT
    SENT-AGAIN ;
 
 
@@ -4758,25 +4761,25 @@ variable COUNTED-U
 \ nothing.
 : COMPACT-RESULT ( -- )
    s" valid" PREP M MODEL:COMPACT
-   CONTENT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   M [: dup MODEL:OUTPUT$ drop ;] catch {: code:n :} drop code MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   M MODEL:INPUT-TOKENS 11 = MODEL-FIXTURE:ASSERT
-   M MODEL:CACHED-TOKENS 4 = MODEL-FIXTURE:ASSERT
-   M MODEL:OUTPUT-TOKENS 6 = MODEL-FIXTURE:ASSERT
-   M MODEL:REASONING-TOKENS 2 = MODEL-FIXTURE:ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT
+   M [: dup MODEL:OUTPUT$ drop ;] catch {: code:n :} drop code MODEL:E-STATE = ASSERT
+   M MODEL:INPUT-TOKENS 11 = ASSERT
+   M MODEL:CACHED-TOKENS 4 = ASSERT
+   M MODEL:OUTPUT-TOKENS 6 = ASSERT
+   M MODEL:REASONING-TOKENS 2 = ASSERT
    1 CALL {: c:^ :}
    c MODEL:OPEN
    MODEL-PEER:BASE-URL$ c MODEL:BASE-URL!
    s" test-generation" c MODEL:GENERATION-MODEL!
-   MODEL-FIXTURE:KEY-SERVICE$ MODEL-FIXTURE:KEY-ACCOUNT$ c MODEL:API-KEY!
+   KEY-SERVICE$ KEY-ACCOUNT$ c MODEL:API-KEY!
    s" Read source evidence." c MODEL:SYSTEM!
    c MODEL:PARTS-RESET s" valid" c MODEL:TEXT+
-   c COMPACT-CODE 0= MODEL-FIXTURE:ASSERT
+   c COMPACT-CODE 0= ASSERT
    c MODEL:CLOSE
    CHAT
    MODEL-PEER:CALLS@ {: before:n :}
-   M COMPACT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ before = MODEL-FIXTURE:ASSERT ;
+   M COMPACT-CODE MODEL:E-STATE = ASSERT
+   MODEL-PEER:CALLS@ before = ASSERT ;
 
 
 \ The count after a compaction that failed E-RESPONSE sends the input as built:
@@ -4794,7 +4797,7 @@ variable COUNTED-U
 : BAD-WINDOW ( str -- )
    {: s:str :}
    s PREP
-   M COMPACT-CODE MODEL:E-RESPONSE = MODEL-FIXTURE:ASSERT
+   M COMPACT-CODE MODEL:E-RESPONSE = ASSERT
    s UNTOUCHED ;
 
 
@@ -4808,8 +4811,8 @@ variable COUNTED-U
    0 ROWS-MADE ! false ROW-FAIL !
    s" auto" M MODEL:SERVICE-TIER!
    PURPOSE s" bad-compact" PREP
-   M COMPACT-CODE MODEL:E-RESPONSE = MODEL-FIXTURE:ASSERT
-   ROWS-MADE @ 1 = MODEL-FIXTURE:ASSERT
+   M COMPACT-CODE MODEL:E-RESPONSE = ASSERT
+   ROWS-MADE @ 1 = ASSERT
    s" input_tokens" ROW 11 INT-IS
    s" requested_tier" ROW s" auto" STR-IS
    s" service_tier" ROW s" flex" STR-IS
@@ -4828,14 +4831,14 @@ variable COUNTED-U
 \ Both producer configurations name this base.
 : BASE-IS ( str -- )
    {: want:str :}
-   M MODEL:GENERATION-CONFIG$ s" base_url" MODEL-FIXTURE:MEMBER want STR-IS
-   M MODEL:EMBEDDING-CONFIG$ s" base_url" MODEL-FIXTURE:MEMBER want STR-IS ;
+   M MODEL:GENERATION-CONFIG$ s" base_url" MEMBER want STR-IS
+   M MODEL:EMBEDDING-CONFIG$ s" base_url" MEMBER want STR-IS ;
 
 
 : OPENAI-GET ( n str ^n -- bool )
    {: ctx:n input:str out:^ :}
-   input s" configuration" MODEL-FIXTURE:MEMBER
-   s" endpoint" MODEL-FIXTURE:FOUND
+   input s" configuration" MEMBER
+   s" endpoint" FOUND
    s" https://api.openai.com/v1/responses" STR-IS
    JOURNAL-RECORD JOURNAL-RECORD-U @ BUF:N>BLEN out BUF:REPLACE
    true ;
@@ -4851,14 +4854,14 @@ variable COUNTED-U
    JOURNAL-TEXT 5 + JOURNAL-U 5 - XS
    CAPTURE
    JOURNAL-TEXT JOURNAL-U >str PREP
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" " M MODEL:BASE-URL!
    s" https://api.openai.com/v1" BASE-IS
    0 [: OPENAI-GET ;] [: JOURNAL-PUT ;] M MODEL:JOURNAL!
    MODEL-PEER:CALLS@ {: calls:n :}
    JOURNAL-TEXT JOURNAL-U >str PREP
-   M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
-   MODEL-PEER:CALLS@ calls = MODEL-FIXTURE:ASSERT ;
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT ;
 
 
 : IDENTITY$ ( -- str ) s" 7907646426070047a77226ac3e684fbbe8410524f7b4a74d02837e43f2146bab" ;
@@ -4877,8 +4880,8 @@ variable COUNTED-U
    3 300 OLLAMA-AT
    s" hold" INPUTS
    mono-ns {: t0:n :}
-   EMBED-CODE MODEL:E-TRANSPORT = MODEL-FIXTURE:ASSERT
-   mono-ns t0 - DEADLINE-NS < MODEL-FIXTURE:ASSERT
+   EMBED-CODE MODEL:E-TRANSPORT = ASSERT
+   mono-ns t0 - DEADLINE-NS < ASSERT
    MODEL-PEER:AWAIT-HOLD ;
 
 
@@ -4889,7 +4892,7 @@ variable COUNTED-U
 
 : OLLAMA-CASES ( -- )
    3 OLLAMA-DIMS drop
-   M MODEL:EMBEDDING-CONFIG$ s" identity" MODEL-FIXTURE:MEMBER IDENTITY$ STR-IS
+   M MODEL:EMBEDDING-CONFIG$ s" identity" MEMBER IDENTITY$ STR-IS
    0 [: EMPTY-OLLAMA ;] s" expected OLLAMA!'s model, found an empty text; pass a text of 1 byte or more" CONFIG-SAYS
    s" one" INPUTS
    s" two" M MODEL:INPUT+
@@ -4901,14 +4904,14 @@ variable COUNTED-U
    s" bad-finite" EMBED-ERROR
    s" bad-single" EMBED-ERROR
    s" too-large" INPUTS
-   EMBED-CODE MODEL:E-CAPACITY = MODEL-FIXTURE:ASSERT
-   M MODEL:HTTP-STATUS 400 = MODEL-FIXTURE:ASSERT
+   EMBED-CODE MODEL:E-CAPACITY = ASSERT
+   M MODEL:HTTP-STATUS 400 = ASSERT
    DEADLINE-ENDS
-   0 [: OLLAMA-DIMS ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT ;
+   0 [: OLLAMA-DIMS ;] CODE-OF MODEL:E-CONFIG = ASSERT ;
 
 
 : ST ( -- ^MODEL:settings ) 0 SETS ;
-: SVC$ ( -- str ) MODEL-FIXTURE:SETTINGS-SERVICE$ ;
+: SVC$ ( -- str ) SETTINGS-SERVICE$ ;
 : FILE ( str str -- ) {: a:str v:str :} SVC$ a v SECRET:WRITE ;
 : UNFILE ( str -- ) {: s:str :} SVC$ s SECRET:ERASE drop ;
 : ST-OPEN ( n -- n ) SVC$ ST MODEL:SETTINGS-OPEN ;
@@ -4918,14 +4921,14 @@ variable COUNTED-U
 : ST-BASE ( n -- n ) ST MODEL:SETTINGS-BASE$ drop ;
 : GEN-IS ( str str -- )
    {: k:str want:str :}
-   M MODEL:GENERATION-CONFIG$ k MODEL-FIXTURE:MEMBER want STR-IS ;
+   M MODEL:GENERATION-CONFIG$ k MEMBER want STR-IS ;
 
 
 \ Opens the settings, checks that they read base, applies them to the call
 \ and closes them.
 : APPLIED ( str -- )
    SVC$ ST MODEL:SETTINGS-OPEN
-   ST MODEL:SETTINGS-BASE$ swap STR:= MODEL-FIXTURE:ASSERT
+   ST MODEL:SETTINGS-BASE$ swap STR:= ASSERT
    ST M MODEL:SETTINGS-APPLY
    ST MODEL:SETTINGS-CLOSE ;
 
@@ -4939,16 +4942,16 @@ variable COUNTED-U
 : SETTINGS-CASES ( -- )
    M MODEL:OPEN
    SVC$ ST MODEL:SETTINGS-OPEN
-   0 [: ST-OPEN ;] CODE-OF MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   ST MODEL:SETTINGS-SERVICE$ SVC$ STR:= MODEL-FIXTURE:ASSERT
-   ST MODEL:SETTINGS-MODEL$ s" settings-generation" STR:= MODEL-FIXTURE:ASSERT
-   ST MODEL:SETTINGS-BASE$ MODEL-PEER:BASE-URL$ STR:= MODEL-FIXTURE:ASSERT
+   0 [: ST-OPEN ;] CODE-OF MODEL:E-STATE = ASSERT
+   ST MODEL:SETTINGS-SERVICE$ SVC$ STR:= ASSERT
+   ST MODEL:SETTINGS-MODEL$ s" settings-generation" STR:= ASSERT
+   ST MODEL:SETTINGS-BASE$ MODEL-PEER:BASE-URL$ STR:= ASSERT
    ST M MODEL:SETTINGS-APPLY
    ST MODEL:SETTINGS-CLOSE
-   0 [: ST-APPLY ;] CODE-OF MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   0 [: ST-SERVICE ;] CODE-OF MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   0 [: ST-MODEL ;] CODE-OF MODEL:E-STATE = MODEL-FIXTURE:ASSERT
-   0 [: ST-BASE ;] CODE-OF MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   0 [: ST-APPLY ;] CODE-OF MODEL:E-STATE = ASSERT
+   0 [: ST-SERVICE ;] CODE-OF MODEL:E-STATE = ASSERT
+   0 [: ST-MODEL ;] CODE-OF MODEL:E-STATE = ASSERT
+   0 [: ST-BASE ;] CODE-OF MODEL:E-STATE = ASSERT
    s" Read source evidence." M MODEL:SYSTEM!
    SCHEMA$ M MODEL:SCHEMA!
    CHAT
@@ -4961,16 +4964,16 @@ variable COUNTED-U
    0 [: ST-OPEN ;]
    s" expected a service whose base-url item holds a base BASE-URL! takes, found `habu-test-settings`; file an http or https base with no trailing slash, userinfo, query or fragment in the service's base-url item, or erase the item"
    CONFIG-SAYS
-   0 [: ST-APPLY ;] CODE-OF MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   0 [: ST-APPLY ;] CODE-OF MODEL:E-STATE = ASSERT
    s" base-url" UNFILE
    s" model" UNFILE
-   0 [: ST-OPEN ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
-   0 [: ST-APPLY ;] CODE-OF MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   0 [: ST-OPEN ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: ST-APPLY ;] CODE-OF MODEL:E-STATE = ASSERT
    M MODEL:CLOSE ;
 
 
 : SETTINGS ( -- )
-   s" settings-generation" MODEL-PEER:BASE-URL$ MODEL-FIXTURE:SETTINGS!
+   s" settings-generation" MODEL-PEER:BASE-URL$ SETTINGS!
    SETTINGS-CASES ;
 
 
@@ -4987,12 +4990,12 @@ variable COUNTED-U
 : MAX-OUTPUT-KINDS ( -- )
    CAPTURE
    9200 M MODEL:MAX-OUTPUT!
-   0 [: NEGATIVE-MAX-OUTPUT ;] CODE-OF MODEL:E-CONFIG = MODEL-FIXTURE:ASSERT
+   0 [: NEGATIVE-MAX-OUTPUT ;] CODE-OF MODEL:E-CONFIG = ASSERT
    PURPOSE CHAT
    9200 MAX-OUTPUT-IS
    PURPOSE s" valid" PREP M MODEL:COUNT-INPUT drop
    NO-MAX-OUTPUT
-   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR:= MODEL-FIXTURE:ASSERT
+   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    9200 MAX-OUTPUT-IS
    s" max_output_tokens" CONFIG 9200 INT-IS
    PURPOSE s" valid" PREP CALLED$ ITEM M MODEL:COMPACT
@@ -5000,13 +5003,13 @@ variable COUNTED-U
    0 M MODEL:MAX-OUTPUT!
    PURPOSE s" valid" PREPARE
    9200 M MODEL:MAX-OUTPUT!
-   CHAT-CODE MODEL:E-STATE = MODEL-FIXTURE:ASSERT
+   CHAT-CODE MODEL:E-STATE = ASSERT
    0 M MODEL:MAX-OUTPUT! ;
 
 
 : CASES ( -- )
    SETUP
-   M MODEL:CANCEL 0= MODEL-FIXTURE:ASSERT
+   M MODEL:CANCEL 0= ASSERT
    BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY KEYLESS-CHAT KEYLESS-AWAIT INVALID-IMAGE INVALID-TEXT CACHE-TEXT
    INVALID-SCHEMA
    REPLIES EARLY-ENDS UNREADABLE REJECTED [: CANCELLATION ;] QUIET
@@ -5065,13 +5068,14 @@ variable COUNTED-U
 public
 : RUN ( -- )
    T-RESET
-   MODEL-FIXTURE:STORE-INSTALL
+   STORE-INSTALL
    LOG-INIT
    [: CAPTURED ;] CURL:WITH-LOOPS
-   LOG$ MODEL-FIXTURE:KEY$ STR:CONTAINS? 0= MODEL-FIXTURE:ASSERT
+   LOG$ KEY$ STR:CONTAINS? 0= ASSERT
    LOG-B BUF:DISPOSE
    s" model-test: " type T-CASES FMT:.INT s"  checks" type cr
    T-REPORT ;
+;using
 ;package
 
 MODEL-TEST:RUN

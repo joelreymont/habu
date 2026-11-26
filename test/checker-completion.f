@@ -267,12 +267,12 @@ PTR-VARIABLE RUN-A   variable RUN-U
 \ - a local is missed inside a quotation, or offered for a tick or `is` target;
 \ - two locals that differ only in case merge, or a spelling a local holds is
 \   offered as the word that local hides;
-\ - a tombstone is offered;
+\ - a rejected spelling (one two used publics export) or a tombstone is offered;
 \ - the definition's own name is offered before it is declared;
 \ - the cursor changes the composition's throw, its census or its uses;
 \ - a word is offered twice, once for each source that names it;
-\ - a qualified prefix offers a private name, or a bare prefix offers another
-\   package's public bare;
+\ - a qualified prefix offers a private name, or a bare prefix offers bare a
+\   public of a package not in use;
 \ - a bare prefix or a package's edge colon misses a qualified spelling a
 \   qualified prefix offers there, or one only the dictionary holds;
 \ - a part's public is missed behind its own name inside its package or the
@@ -401,13 +401,16 @@ PTR-VARIABLE RUN-A   variable RUN-U
    s" CMPDF" PLACED
    s" cmploc" ABSENT ;
 
-\ 3. Publics of one tail, and qualified names.
-: CASE-SAME-TAIL ( -- )
+\ 3. What the scope rejects, and qualified names.
+: CASE-AMBIGUOUS ( -- )
    s" cmp" KEPT-RESET
-   s" : CMPU ( -- n ) CMPA ;" SUBJECT-OF
+   s" using CMPX using CMPY : CMPU ( -- n ) CMPA ; ;using ;using" SUBJECT-OF
    dup s" CMPA ;" 2 CURSOR-AT COMPOSE-AT
-   s" the same-tail body's check runs through" T-LABEL 0 T=
+   s" the using scope's check runs through" T-LABEL 0 T=
    KEPT-ALL
+   s" CMPA" PLACED
+   s" CMPAMB" ABSENT
+   s" each package's public is offered behind its name" T-LABEL
    s" CMPX:CMPAMB" PLACED
    s" CMPY:CMPAMB" s" package CMPY" PLACED-AFTER ;
 
@@ -885,7 +888,7 @@ DEP-CAP BUFFER: DEP-BUF
    CASE-LOCAL
    CASE-QUOT-LOCAL
    CASE-NO-LOCAL
-   CASE-SAME-TAIL
+   CASE-AMBIGUOUS
    CASE-QUALIFIED
    CASE-TOP
    CASE-RELEASE

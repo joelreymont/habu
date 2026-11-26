@@ -12,6 +12,9 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 
 package X64K-FFI
+using X64ASM
+using X64CODE
+using X64RT
 
 \ Scratch the harness hands out (PUSH-SCRATCH,): the argument cells, then the
 \ ABI rows' fpbuf and stackbuf and snprintf's buffer.
@@ -37,29 +40,29 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 \ Call a row with the machine stack a cell deeper than ROW leaves it, so the
 \ trampoline's alignment takes its other case.
 : SHIFTED-ROW ( str -- )
-   X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-PUSH  ROW  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-POP ;
+   RAX ASM-SINK ENC-PUSH  ROW  RCX ASM-SINK ENC-POP ;
 
 : SUB, ( -- )                           \ ( x y -- x-y )
-   1 X64RT:G-POP  0 X64RT:G-POP  X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-SUB-RR  0 X64RT:G-PUSH ;
+   1 G-POP  0 G-POP  RAX RCX ASM-SINK ENC-SUB-RR  0 G-PUSH ;
 
-: PUSH-XT, ( label -- ) {: at:label :}  X64ASM:RAX at X64CODE:MOVABS,  0 X64RT:G-PUSH ;
+: PUSH-XT, ( label -- ) {: at:label :}  RAX at MOVABS,  0 G-PUSH ;
 
 : SCRATCH!, ( n n -- ) {: v:n off:n :}
-   off AT,  1 X64RT:G-POP
-   X64ASM:RAX v X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64
-   X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
+   off AT,  1 G-POP
+   RAX v >IMM64 ASM-SINK ENC-MOV-RI64
+   RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 \ Argument cell i holds i + 1.
 : ARGS, ( -- )
    PLACES 0 ?do  i 1+ ARGS i CELL * + SCRATCH!,  loop ;
 
 : SCRATCH-AT!, ( n n -- ) {: at:n off:n :}
-   off AT,  at AT,  0 X64RT:G-POP  1 X64RT:G-POP
-   X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
+   off AT,  at AT,  0 G-POP  1 G-POP
+   RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 : LABEL!, ( label n -- ) {: at:label off:n :}
-   off AT,  1 X64RT:G-POP  X64ASM:RAX at X64CODE:MOVABS,
-   X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
+   off AT,  1 G-POP  RAX at MOVABS,
+   RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 \ The ABI rows' cells: fpbuf cell i holds i + 1 and stackbuf the nine-place
 \ stub's last three places, which argbuf's cells past the registers must not
@@ -77,33 +80,33 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 
 \ A NUL-terminated copy of a string behind a jump, and its label.
 : C-TEXT, ( str -- label ) {: s:str :}
-   X64CODE:LBL X64CODE:LBL {: text:label past:label :}
-   past X64CODE:JMP,
-   text X64CODE:LBL,  s X64CODE:ASM-SINK VEC:APPEND  0 X64CODE:ASM-SINK VEC:PUSH c!
-   past X64CODE:LBL,
+   LBL LBL {: text:label past:label :}
+   past JMP,
+   text LBL,  s ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
+   past LBL,
    text ;
 
 : LIBC, ( str -- )
    C-TEXT, {: name:label :}
-   X64ASM:RSI name X64CODE:MOVABS,  X64KERNEL:DLSYM,  0 X64RT:G-PUSH ;
+   RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
 
 \ A SysV function of six register and n stack integer arguments. It folds each
 \ argument place in order into rax as one hex digit, rax * 16 + the place, then
 \ rsp & 15 at its entry as one more, then al at its entry as a byte, so a place
 \ out of order, a misaligned call or a dirty al changes its answer.
-: FOLD-REG, ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
-   X64ASM:RAX 4 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SHL-RI8  X64ASM:RAX r X64CODE:ASM-SINK X64ASM:ENC-ADD-RR ;
+: FOLD-REG, ( r64 -- ) {: r:r64 :}
+   RAX 4 >IMM8 ASM-SINK ENC-SHL-RI8  RAX r ASM-SINK ENC-ADD-RR ;
 
 : FOLD-MEM, ( n -- ) {: off:n :}
-   X64ASM:RAX 4 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SHL-RI8  X64ASM:RAX X64ASM:RSP off X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-ADD-RM ;
+   RAX 4 >IMM8 ASM-SINK ENC-SHL-RI8  RAX RSP off MEM-OFF ASM-SINK ENC-ADD-RM ;
 
 : STUB, ( n -- ) {: cells:n :}
-   X64ASM:R11 0 X64ASM:>R8 X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RR
-   X64ASM:RAX X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
-   X64ASM:RSI FOLD-REG,  X64ASM:RDX FOLD-REG,  X64ASM:RCX FOLD-REG,  X64ASM:R8 FOLD-REG,  X64ASM:R9 FOLD-REG,
+   R11 0 >R8 ASM-SINK ENC-MOVZX-8-RR
+   RAX RDI ASM-SINK ENC-MOV-RR
+   RSI FOLD-REG,  RDX FOLD-REG,  RCX FOLD-REG,  R8 FOLD-REG,  R9 FOLD-REG,
    cells 0 ?do  i 1+ CELL * FOLD-MEM,  loop
-   X64ASM:R10 X64ASM:RSP X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  X64ASM:R10 15 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-AND-RI8  X64ASM:R10 FOLD-REG,
-   X64ASM:RAX 8 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SHL-RI8  X64ASM:RAX X64ASM:R11 X64CODE:ASM-SINK X64ASM:ENC-ADD-RR ;
+   R10 RSP ASM-SINK ENC-MOV-RR  R10 15 >IMM8 ASM-SINK ENC-AND-RI8  R10 FOLD-REG,
+   RAX 8 >IMM8 ASM-SINK ENC-SHL-RI8  RAX R11 ASM-SINK ENC-ADD-RR ;
 
 \ What the stub of n places answers when argument cell i holds i + 1.
 : STUB-ANSWER ( n -- n ) {: places:n :}
@@ -120,12 +123,12 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 \ answers the fold in xmm0 and its complement in rax, so a register out of
 \ order, a dirty al or the wrong answer register changes what a row pushes.
 : FSTUB, ( -- )
-   X64ASM:R11 0 X64ASM:>R8 X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RR
-   X64ASM:RAX X64ASM:XMM0 X64CODE:ASM-SINK X64ASM:ENC-MOVQ-RX
-   FLOATS 1 ?do  X64ASM:RCX i X64ASM:>XMM X64CODE:ASM-SINK X64ASM:ENC-MOVQ-RX  X64ASM:RCX FOLD-REG,  loop
-   X64ASM:RAX 8 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SHL-RI8  X64ASM:RAX X64ASM:R11 X64CODE:ASM-SINK X64ASM:ENC-ADD-RR
-   X64ASM:XMM0 X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOVQ-XR
-   X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-NOT ;
+   R11 0 >R8 ASM-SINK ENC-MOVZX-8-RR
+   RAX XMM0 ASM-SINK ENC-MOVQ-RX
+   FLOATS 1 ?do  RCX i >XMM ASM-SINK ENC-MOVQ-RX  RCX FOLD-REG,  loop
+   RAX 8 >IMM8 ASM-SINK ENC-SHL-RI8  RAX R11 ASM-SINK ENC-ADD-RR
+   XMM0 RAX ASM-SINK ENC-MOVQ-XR
+   RAX ASM-SINK ENC-NOT ;
 
 \ The float stub's fold when fpbuf cell i holds i + 1, through an ABI row.
 : FSTUB-ANSWER ( -- n )
@@ -210,12 +213,12 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
 \ stores xmm0..7 there only when al is nonzero, and va_arg reads the doubles
 \ back from it.
 : ZERO-BELOW, ( -- )
-   X64ASM:RAX ZERO-REG,
-   ZEROED-CELLS 0 ?do  X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-PUSH  loop
-   X64ASM:RSP ZEROED-CELLS CELL * X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI32 ;
+   RAX ZERO-REG,
+   ZEROED-CELLS 0 ?do  RAX ASM-SINK ENC-PUSH  loop
+   RSP ZEROED-CELLS CELL * >IMM32 ASM-SINK ENC-ADD-RI32 ;
 
-: XMM-BITS, ( X64ASM:xmm n -- ) {: x:X64ASM:xmm v:n :}
-   X64ASM:RAX v X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64  x X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOVQ-XR ;
+: XMM-BITS, ( xmm n -- ) {: x:xmm v:n :}
+   RAX v >IMM64 ASM-SINK ENC-MOV-RI64  x RAX ASM-SINK ENC-MOVQ-XR ;
 
 \ The control first: xmm0 and xmm1 loaded and ffi-call-n's al of 0, so
 \ snprintf reads its doubles from the zeroed slots. Then ffi-call-abi, whose al
@@ -227,7 +230,7 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
    fmt ARGS 2 CELL * + LABEL!,
    ONE-HALF FPS SCRATCH!,  TWO-HALF FPS CELL + SCRATCH!,
    ARGS AT, 3 N, s" snprintf" LIBC,
-   ZERO-BELOW,  X64ASM:XMM0 ONE-HALF XMM-BITS,  X64ASM:XMM1 TWO-HALF XMM-BITS,
+   ZERO-BELOW,  XMM0 ONE-HALF XMM-BITS,  XMM1 TWO-HALF XMM-BITS,
    s" ffi-call-n" ROW  PRINTED WANT
    ZEROS-TEXT OUT X64HARNESS:EXPECT-SCRATCH,
    0 ABI, s" snprintf" LIBC, s" ffi-call-abi" ROW  PRINTED WANT
@@ -254,6 +257,9 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
+;using
+;using
+;using
 ;package
 
 X64K-FFI:RUN

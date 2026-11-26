@@ -13,6 +13,7 @@ private
 
 package WASM
 private
+using WCODE
 
 8 constant CELL-BYTES
 3 constant CELL-SHIFT                \ log2 of CELL-BYTES
@@ -107,11 +108,11 @@ variable BUF-U
 : U32, ( n -- )  ROOM WLEB:U32! BUF-U +! ;
 : S32, ( n -- )  ROOM WLEB:S32! BUF-U +! ;
 : S64, ( n -- )  ROOM WLEB:S64! BUF-U +! ;
-: GET, ( n -- )  WCODE:OP-LOCAL-GET B, U32, ;
-: SET, ( n -- )  WCODE:OP-LOCAL-SET B, U32, ;
-: I32, ( n -- )  WCODE:OP-I32-CONST B, S32, ;
-: I64, ( n -- )  WCODE:OP-I64-CONST B, S64, ;
-: IF, ( -- )  WCODE:OP-IF B, WCODE:EMPTY-TYPE B, ;
+: GET, ( n -- )  OP-LOCAL-GET B, U32, ;
+: SET, ( n -- )  OP-LOCAL-SET B, U32, ;
+: I32, ( n -- )  OP-I32-CONST B, S32, ;
+: I64, ( n -- )  OP-I64-CONST B, S64, ;
+: IF, ( -- )  OP-IF B, EMPTY-TYPE B, ;
 
 \ A load or a store: the opcode, its alignment's exponent, its memory offset.
 : MEM, ( n n n -- )
@@ -120,23 +121,23 @@ variable BUF-U
 
 : CTX@, ( n -- )
    {: off:n :}
-   L-CTX GET,  WCODE:OP-I32-LOAD WCODE:ALIGN-32 off MEM, ;
+   L-CTX GET,  OP-I32-LOAD ALIGN-32 off MEM, ;
 
 \ The context's top becomes SP: the caller reloads its stack pointer from it.
 : SP!, ( -- )
-   L-CTX GET,  L-SP GET,  WCODE:OP-I32-STORE WCODE:ALIGN-32 WPROF:CTX-STACK-TOP MEM, ;
+   L-CTX GET,  L-SP GET,  OP-I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM, ;
 
 \ A store ( x a -- ) by opcode op of alignment al.
 : STORE-BODY ( n n -- )
    {: op:n al:n :}
-   2 U32,  1 U32,  WCODE:I32 B,  1 U32,  WCODE:I64 B,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  WCODE:OP-I32-SUB B,  L-SP SET,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 CELL-BYTES MEM,  L-ADDR SET,
-   L-ADDR GET,  WCODE:OP-I32-WRAP-I64 B,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,
+   2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-ADDR SET,
+   L-ADDR GET,  OP-I32-WRAP-I64 B,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,
    op al 0 MEM,
    SP!,
-   0 I32,  WCODE:OP-END B, ;
+   0 I32,  OP-END B, ;
 
 
 \ ---- division, views and atomics
@@ -145,28 +146,28 @@ variable BUF-U
 
 \ The cell stored at SP is the routine's one result: the top moves past it.
 : ONE-RESULT, ( -- )
-   L-SP GET,  CELL-BYTES I32,  WCODE:OP-I32-ADD B,  L-SP SET,  SP!, ;
+   L-SP GET,  CELL-BYTES I32,  OP-I32-ADD B,  L-SP SET,  SP!, ;
 
 
 \ `/` or `mod` by op; a zero divisor traps in div_s or rem_s. With neg1 a divisor
 \ of -1 answers 0 - a: div_s traps on MIN-N / -1.
 : DIVIDE-BODY ( n bool -- )
    {: op:n neg1:bool :}
-   2 U32,  1 U32,  WCODE:I32 B,  1 U32,  WCODE:I64 B,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  WCODE:OP-I32-SUB B,  L-SP SET,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 CELL-BYTES MEM,  L-DIVISOR SET,
+   2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-DIVISOR SET,
    neg1 if
-      L-DIVISOR GET,  -1 I64,  WCODE:OP-I64-EQ B,  IF,
-         L-SP GET,  0 I64,  L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  WCODE:OP-I64-SUB B,
-         WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
-         ONE-RESULT,  0 I32,  WCODE:OP-RETURN B,
-      WCODE:OP-END B,
+      L-DIVISOR GET,  -1 I64,  OP-I64-EQ B,  IF,
+         L-SP GET,  0 I64,  L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I64-SUB B,
+         OP-I64-STORE ALIGN-64 0 MEM,
+         ONE-RESULT,  0 I32,  OP-RETURN B,
+      OP-END B,
    then
    L-SP GET,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  L-DIVISOR GET,  op B,
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-DIVISOR GET,  op B,
+   OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,
-   0 I32,  WCODE:OP-END B, ;
+   0 I32,  OP-END B, ;
 
 \ `cell-view`, `byte-view` and `PTR>N` ( a -- a ) leave the address as it is;
 \ `>str`, `str>`, `>span` and `span>` leave both cells as they are.
@@ -175,81 +176,81 @@ variable BUF-U
 \ STR's `data` ( str -- ^u8 ) drops the length above the base; `len`
 \ ( str -- n ) stores the length over the base.
 : DATA-BODY ( -- )
-   1 U32,  1 U32,  WCODE:I32 B,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  WCODE:OP-I32-SUB B,  L-SP SET,  SP!,
-   0 I32,  WCODE:OP-END B, ;
+   1 U32,  1 U32,  I32 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,  SP!,
+   0 I32,  OP-END B, ;
 
 : LEN-BODY ( -- )
-   1 U32,  1 U32,  WCODE:I32 B,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  WCODE:OP-I32-SUB B,  L-SP SET,
-   L-SP GET,  L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 CELL-BYTES MEM,
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   1 U32,  1 U32,  I32 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,
+   OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,
-   0 I32,  WCODE:OP-END B, ;
+   0 I32,  OP-END B, ;
 
 \ A load ( a -- x ) by opcode op of alignment al.
 : LOAD-BODY ( n n -- )
    {: op:n al:n :}
-   1 U32,  1 U32,  WCODE:I32 B,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  WCODE:OP-I32-SUB B,  L-SP SET,
+   1 U32,  1 U32,  I32 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
    L-SP GET,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  WCODE:OP-I32-WRAP-I64 B,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I32-WRAP-I64 B,
    op al 0 MEM,
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
-   0 I32,  WCODE:OP-END B, ;
+   OP-I64-STORE ALIGN-64 0 MEM,
+   0 I32,  OP-END B, ;
 
 \ atomic-cas ( expected new a -- actual ).
 : CAS-BODY ( -- )
-   2 U32,  1 U32,  WCODE:I32 B,  2 U32,  WCODE:I64 B,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  WCODE:OP-I32-SUB B,  L-SP SET,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 CELL-BYTES 2 * MEM,  L-ADDR SET,
-   L-ADDR GET,  WCODE:OP-I32-WRAP-I64 B,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  L-ACTUAL SET,
-   L-ACTUAL GET,  L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  WCODE:OP-I64-EQ B,  IF,
-      L-ADDR GET,  WCODE:OP-I32-WRAP-I64 B,
-      L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 CELL-BYTES MEM,
-      WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
-   WCODE:OP-END B,
-   L-SP GET,  L-ACTUAL GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   2 U32,  1 U32,  I32 B,  2 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,  L-ADDR SET,
+   L-ADDR GET,  OP-I32-WRAP-I64 B,  OP-I64-LOAD ALIGN-64 0 MEM,  L-ACTUAL SET,
+   L-ACTUAL GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I64-EQ B,  IF,
+      L-ADDR GET,  OP-I32-WRAP-I64 B,
+      L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,
+      OP-I64-STORE ALIGN-64 0 MEM,
+   OP-END B,
+   L-SP GET,  L-ACTUAL GET,  OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,
-   0 I32,  WCODE:OP-END B, ;
+   0 I32,  OP-END B, ;
 
 \ atomic-add ( delta a -- old ) stores old + delta at a.
 : FETCH-ADD-BODY ( -- )
-   2 U32,  1 U32,  WCODE:I32 B,  2 U32,  WCODE:I64 B,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  WCODE:OP-I32-SUB B,  L-SP SET,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 CELL-BYTES MEM,  L-ADDR SET,
-   L-ADDR GET,  WCODE:OP-I32-WRAP-I64 B,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  L-ACTUAL SET,
-   L-ADDR GET,  WCODE:OP-I32-WRAP-I64 B,
-   L-ACTUAL GET,  L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  WCODE:OP-I64-ADD B,
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
-   L-SP GET,  L-ACTUAL GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   2 U32,  1 U32,  I32 B,  2 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-ADDR SET,
+   L-ADDR GET,  OP-I32-WRAP-I64 B,  OP-I64-LOAD ALIGN-64 0 MEM,  L-ACTUAL SET,
+   L-ADDR GET,  OP-I32-WRAP-I64 B,
+   L-ACTUAL GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I64-ADD B,
+   OP-I64-STORE ALIGN-64 0 MEM,
+   L-SP GET,  L-ACTUAL GET,  OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,
-   0 I32,  WCODE:OP-END B, ;
+   0 I32,  OP-END B, ;
 
 
 \ ---- floats
 \ A real is one stack cell holding the double's bits, which f64.load and
 \ f64.store move unchanged.
-: FLOAT-LOCALS, ( -- )  2 U32,  1 U32,  WCODE:I32 B,  3 U32,  WCODE:F64 B, ;
-: DONE, ( -- )  0 I32,  WCODE:OP-END B, ;
+: FLOAT-LOCALS, ( -- )  2 U32,  1 U32,  I32 B,  3 U32,  F64 B, ;
+: DONE, ( -- )  0 I32,  OP-END B, ;
 
 : SP-AT, ( n -- )
    {: back:n :}
-   WPROF:CTX-STACK-TOP CTX@,  back I32,  WCODE:OP-I32-SUB B,  L-SP SET, ;
+   WPROF:CTX-STACK-TOP CTX@,  back I32,  OP-I32-SUB B,  L-SP SET, ;
 
 : F@, ( n -- )
    {: off:n :}
-   L-SP GET,  WCODE:OP-F64-LOAD WCODE:ALIGN-64 off MEM, ;
+   L-SP GET,  OP-F64-LOAD ALIGN-64 off MEM, ;
 
 \ Its eight bytes follow the opcode low first.
 : F64, ( n -- )
    {: v:n :}
-   WCODE:OP-F64-CONST B,  8 0 do  v i 8 * rshift $FF and B,  loop ;
+   OP-F64-CONST B,  8 0 do  v i 8 * rshift $FF and B,  loop ;
 
 \ Over x and y on the Wasm stack: x when the double in local c is a NaN, else y.
 : IF-NAN, ( n -- )
    {: c:n :}
-   c GET,  c GET,  WCODE:OP-F64-NE B,  WCODE:OP-SELECT B, ;
+   c GET,  c GET,  OP-F64-NE B,  OP-SELECT B, ;
 
 \ select.f THE FLOATS' rule without a branch: r becomes NAN-MADE when it is a
 \ NaN, then the operand in local c when that is one.
@@ -263,15 +264,15 @@ variable BUF-U
    0 F@,  L-A SET,  CELL-BYTES F@,  L-B SET,
    L-A GET,  L-B GET,  op B,  L-R SET,
    CANON,  L-B PASS,  L-A PASS,
-   L-SP GET,  L-R GET,  WCODE:OP-F64-STORE WCODE:ALIGN-64 0 MEM,
+   L-SP GET,  L-R GET,  OP-F64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,  DONE, ;
 
 : FSQRT-BODY ( -- )
    FLOAT-LOCALS,  CELL-BYTES SP-AT,
    0 F@,  L-A SET,
-   L-A GET,  WCODE:OP-F64-SQRT B,  L-R SET,
+   L-A GET,  OP-F64-SQRT B,  L-R SET,
    CANON,  L-A PASS,
-   L-SP GET,  L-R GET,  WCODE:OP-F64-STORE WCODE:ALIGN-64 0 MEM,
+   L-SP GET,  L-R GET,  OP-F64-STORE ALIGN-64 0 MEM,
    DONE, ;
 
 \ The top cell, loaded by ld, turned by what the caller writes next, stored back
@@ -279,29 +280,29 @@ variable BUF-U
 : IN-PLACE, ( n -- )
    {: ld:n :}
    FLOAT-LOCALS,  CELL-BYTES SP-AT,
-   L-SP GET,  L-SP GET,  ld WCODE:ALIGN-64 0 MEM, ;
+   L-SP GET,  L-SP GET,  ld ALIGN-64 0 MEM, ;
 
-: ;IN-PLACE, ( n -- )  WCODE:ALIGN-64 0 MEM,  DONE, ;
+: ;IN-PLACE, ( n -- )  ALIGN-64 0 MEM,  DONE, ;
 
-: FSIGN-BODY ( n -- )  WCODE:OP-F64-LOAD IN-PLACE,  B,  WCODE:OP-F64-STORE ;IN-PLACE, ;
-: S>F-BODY ( -- )  WCODE:OP-I64-LOAD IN-PLACE,  WCODE:OP-F64-CONVERT-I64-S B,  WCODE:OP-F64-STORE ;IN-PLACE, ;
+: FSIGN-BODY ( n -- )  OP-F64-LOAD IN-PLACE,  B,  OP-F64-STORE ;IN-PLACE, ;
+: S>F-BODY ( -- )  OP-I64-LOAD IN-PLACE,  OP-F64-CONVERT-I64-S B,  OP-F64-STORE ;IN-PLACE, ;
 
 \ The truncation saturates and answers 0 for a NaN, as the engine BF>S's FCVTZS.
 : F>S-BODY ( -- )
-   WCODE:OP-F64-LOAD IN-PLACE,
-   WCODE:OP-MISC B,  WCODE:MISC-I64-TRUNC-SAT-F64-S U32,
-   WCODE:OP-I64-STORE ;IN-PLACE, ;
+   OP-F64-LOAD IN-PLACE,
+   OP-MISC B,  MISC-I64-TRUNC-SAT-F64-S U32,
+   OP-I64-STORE ;IN-PLACE, ;
 
 \ The i32 predicate on the Wasm stack, over the i64 0 pushed before it, as a
 \ flag: 0 - extend_u(p), all ones for true.
-: FLAG, ( -- )  WCODE:OP-I64-EXTEND-I32-U B,  WCODE:OP-I64-SUB B, ;
+: FLAG, ( -- )  OP-I64-EXTEND-I32-U B,  OP-I64-SUB B, ;
 
 \ ( a b -- flag ) by the f64 compare op.
 : FCOMPARE-BODY ( n -- )
    {: op:n :}
    FLOAT-LOCALS,  CELL-BYTES 2 * SP-AT,
    L-SP GET,  0 I64,  0 F@,  CELL-BYTES F@,  op B,  FLAG,
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,  DONE, ;
 
 \ ( a -- flag ) by op against +0.0, whose bits are zero: -0.0 equals it and is
@@ -310,7 +311,7 @@ variable BUF-U
    {: op:n :}
    FLOAT-LOCALS,  CELL-BYTES SP-AT,
    L-SP GET,  0 I64,  0 F@,  0 F64,  op B,  FLAG,
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   OP-I64-STORE ALIGN-64 0 MEM,
    DONE, ;
 
 
@@ -319,48 +320,48 @@ variable BUF-U
 \ WPROF:STACK-END records EXIT-STATUS:STACK-BOUNDS with that address and traps.
 : STACK-ROOM, ( n -- )
    {: n:n :}
-   L-SP GET,  n I32,  WCODE:OP-I32-ADD B,  WPROF:STACK-END I32,  WCODE:OP-I32-GT-U B,  IF,
+   L-SP GET,  n I32,  OP-I32-ADD B,  WPROF:STACK-END I32,  OP-I32-GT-U B,  IF,
       L-CTX GET,  EXIT-STATUS:STACK-BOUNDS I32,
-      WCODE:OP-I32-STORE WCODE:ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
-      L-CTX GET,  L-SP GET,  n I32,  WCODE:OP-I32-ADD B,  WCODE:OP-I64-EXTEND-I32-U B,
-      WCODE:OP-I64-STORE WCODE:ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
-      WCODE:OP-UNREACHABLE B,
-   WCODE:OP-END B, ;
+      OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
+      L-CTX GET,  L-SP GET,  n I32,  OP-I32-ADD B,  OP-I64-EXTEND-I32-U B,
+      OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
+      OP-UNREACHABLE B,
+   OP-END B, ;
 
-: BLOCK, ( -- )  WCODE:OP-BLOCK B,  WCODE:EMPTY-TYPE B, ;
-: LOOP, ( -- )  WCODE:OP-LOOP B,  WCODE:EMPTY-TYPE B, ;
+: BLOCK, ( -- )  OP-BLOCK B,  EMPTY-TYPE B, ;
+: LOOP, ( -- )  OP-LOOP B,  EMPTY-TYPE B, ;
 \ A branch to the label n blocks, loops or ifs out from here, 0 the innermost.
-: BR, ( n -- )  WCODE:OP-BR B,  U32, ;
-: BR-IF, ( n -- )  WCODE:OP-BR-IF B,  U32, ;
+: BR, ( n -- )  OP-BR B,  U32, ;
+: BR-IF, ( n -- )  OP-BR-IF B,  U32, ;
 
-: ALLOC-LOCALS, ( -- )  2 U32,  8 U32,  WCODE:I32 B,  4 U32,  WCODE:I64 B, ;
+: ALLOC-LOCALS, ( -- )  2 U32,  8 U32,  I32 B,  4 U32,  I64 B, ;
 
 \ The i32 at offset off past the address in i32 local l.
 : LD32, ( n n -- )
    {: l:n off:n :}
-   l GET,  WCODE:OP-I32-LOAD WCODE:ALIGN-32 off MEM, ;
+   l GET,  OP-I32-LOAD ALIGN-32 off MEM, ;
 
 \ An i32 store at offset off past the address under the value.
 : ST32, ( n -- )
    {: off:n :}
-   WCODE:OP-I32-STORE WCODE:ALIGN-32 off MEM, ;
+   OP-I32-STORE ALIGN-32 off MEM, ;
 
 \ The i64 bytes on the Wasm stack, 1 through 2^32, as the i32 pages they take.
 : PAGES-OF, ( -- )
-   WPROF:PAGE-BYTES 1- I64,  WCODE:OP-I64-ADD B,
-   PAGE-SHIFT I64,  WCODE:OP-I64-SHR-U B,  WCODE:OP-I32-WRAP-I64 B, ;
+   WPROF:PAGE-BYTES 1- I64,  OP-I64-ADD B,
+   PAGE-SHIFT I64,  OP-I64-SHR-U B,  OP-I32-WRAP-I64 B, ;
 
 \ The i32 pages on the Wasm stack as their i64 bytes.
-: BYTES-OF, ( -- )  WCODE:OP-I64-EXTEND-I32-U B,  PAGE-SHIFT I64,  WCODE:OP-I64-SHL B, ;
+: BYTES-OF, ( -- )  OP-I64-EXTEND-I32-U B,  PAGE-SHIFT I64,  OP-I64-SHL B, ;
 
 \ The i64 address past the free run whose node is in i32 local l.
 : RUN-END, ( n -- )
    {: l:n :}
-   l GET,  WCODE:OP-I64-EXTEND-I32-U B,  l NODE-PAGES LD32,  BYTES-OF,  WCODE:OP-I64-ADD B, ;
+   l GET,  OP-I64-EXTEND-I32-U B,  l NODE-PAGES LD32,  BYTES-OF,  OP-I64-ADD B, ;
 
 \ The link becomes the address of ctx's free head, cur the run it names.
 : LIST-HEAD, ( -- )
-   L-CTX GET,  WPROF:CTX-FREE-HEAD I32,  WCODE:OP-I32-ADD B,  L-LINK SET,
+   L-CTX GET,  WPROF:CTX-FREE-HEAD I32,  OP-I32-ADD B,  L-LINK SET,
    L-LINK NODE-NEXT LD32,  L-CUR SET, ;
 
 \ The link becomes cur's next cell, cur the run it names.
@@ -370,18 +371,18 @@ variable BUF-U
 \ map-anon's scan found cur with the pages: its run, but for a tail left free in
 \ place, is cleared and answered. The branch leaves the if, loop and two blocks.
 : FIT, ( -- )
-   L-CUR NODE-PAGES LD32,  L-PAGES GET,  WCODE:OP-I32-SUB B,  L-REST SET,
-   L-REST GET,  WCODE:OP-I32-EQZ B,  IF,
+   L-CUR NODE-PAGES LD32,  L-PAGES GET,  OP-I32-SUB B,  L-REST SET,
+   L-REST GET,  OP-I32-EQZ B,  IF,
       L-LINK GET,  L-CUR NODE-NEXT LD32,  NODE-NEXT ST32,
-   WCODE:OP-ELSE B,
-      L-CUR GET,  L-PAGES GET,  PAGE-SHIFT I32,  WCODE:OP-I32-SHL B,  WCODE:OP-I32-ADD B,  L-REM SET,
+   OP-ELSE B,
+      L-CUR GET,  L-PAGES GET,  PAGE-SHIFT I32,  OP-I32-SHL B,  OP-I32-ADD B,  L-REM SET,
       L-REM GET,  L-CUR NODE-NEXT LD32,  NODE-NEXT ST32,
       L-REM GET,  L-REST GET,  NODE-PAGES ST32,
       L-LINK GET,  L-REM GET,  NODE-NEXT ST32,
-   WCODE:OP-END B,
-   L-CUR GET,  0 I32,  L-PAGES GET,  PAGE-SHIFT I32,  WCODE:OP-I32-SHL B,
-   WCODE:OP-MISC B,  WCODE:MISC-MEMORY-FILL U32,  MEMORY-0 B,
-   L-CUR GET,  WCODE:OP-I64-EXTEND-I32-U B,  L-PTR SET,  0 I64,  L-IOR SET,
+   OP-END B,
+   L-CUR GET,  0 I32,  L-PAGES GET,  PAGE-SHIFT I32,  OP-I32-SHL B,
+   OP-MISC B,  MISC-MEMORY-FILL U32,  MEMORY-0 B,
+   L-CUR GET,  OP-I64-EXTEND-I32-U B,  L-PTR SET,  0 I64,  L-IOR SET,
    3 BR, ;
 
 \ A run of L-PAGES pages holding L-BYTES in L-PTR, L-IOR 0, by first fit, else
@@ -389,31 +390,31 @@ variable BUF-U
 : MAP-RUN, ( -- )
    -1 I64,  L-IOR SET,
    BLOCK,
-      L-BYTES GET,  0 I64,  WCODE:OP-I64-LE-S B,
-      L-BYTES GET,  WPROF:PAGES-MAX WPROF:PAGE-BYTES * I64,  WCODE:OP-I64-GT-S B,
-      WCODE:OP-I32-OR B,  0 BR-IF,
+      L-BYTES GET,  0 I64,  OP-I64-LE-S B,
+      L-BYTES GET,  WPROF:PAGES-MAX WPROF:PAGE-BYTES * I64,  OP-I64-GT-S B,
+      OP-I32-OR B,  0 BR-IF,
       L-BYTES GET,  PAGES-OF,  L-PAGES SET,
       LIST-HEAD,
       BLOCK,
          LOOP,
-            L-CUR GET,  WCODE:OP-I32-EQZ B,  1 BR-IF,
-            L-CUR NODE-PAGES LD32,  L-PAGES GET,  WCODE:OP-I32-GE-U B,  IF,  FIT,  WCODE:OP-END B,
+            L-CUR GET,  OP-I32-EQZ B,  1 BR-IF,
+            L-CUR NODE-PAGES LD32,  L-PAGES GET,  OP-I32-GE-U B,  IF,  FIT,  OP-END B,
             LIST-STEP,  0 BR,
-         WCODE:OP-END B,
-      WCODE:OP-END B,
-      L-PAGES GET,  WCODE:OP-MEMORY-GROW B,  MEMORY-0 B,  L-CUR SET,
-      L-CUR GET,  -1 I32,  WCODE:OP-I32-EQ B,  0 BR-IF,
+         OP-END B,
+      OP-END B,
+      L-PAGES GET,  OP-MEMORY-GROW B,  MEMORY-0 B,  L-CUR SET,
+      L-CUR GET,  -1 I32,  OP-I32-EQ B,  0 BR-IF,
       L-CUR GET,  BYTES-OF,  L-PTR SET,  0 I64,  L-IOR SET,
-   WCODE:OP-END B, ;
+   OP-END B, ;
 
 \ map-anon ( bytes -- ptr ior ): MAP-RUN,'s run, 0 -1 when rejected.
 : MAP-BODY ( -- )
    ALLOC-LOCALS,  CELL-BYTES SP-AT,  CELL-BYTES 2 * STACK-ROOM,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  L-BYTES SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-BYTES SET,
    MAP-RUN,
-   L-SP GET,  L-PTR GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
-   L-SP GET,  L-IOR GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 CELL-BYTES MEM,
-   L-SP GET,  CELL-BYTES 2 * I32,  WCODE:OP-I32-ADD B,  L-SP SET,  SP!,
+   L-SP GET,  L-PTR GET,  OP-I64-STORE ALIGN-64 0 MEM,
+   L-SP GET,  L-IOR GET,  OP-I64-STORE ALIGN-64 CELL-BYTES MEM,
+   L-SP GET,  CELL-BYTES 2 * I32,  OP-I32-ADD B,  L-SP SET,  SP!,
    DONE, ;
 
 \ Where munmap's scan stopped: a cur starting before the freed run's end overlaps
@@ -421,27 +422,27 @@ variable BUF-U
 : AFTER-RUN, ( -- )
    L-CUR GET,  L-NEXT SET,  L-PAGES GET,  L-TOTAL SET,
    L-CUR GET,  IF,
-      L-CUR GET,  WCODE:OP-I64-EXTEND-I32-U B,  L-END GET,  WCODE:OP-I64-LT-S B,  IF,
-         WCODE:OP-UNREACHABLE B,
-      WCODE:OP-END B,
-      L-END GET,  L-CUR GET,  WCODE:OP-I64-EXTEND-I32-U B,  WCODE:OP-I64-EQ B,  IF,
+      L-CUR GET,  OP-I64-EXTEND-I32-U B,  L-END GET,  OP-I64-LT-S B,  IF,
+         OP-UNREACHABLE B,
+      OP-END B,
+      L-END GET,  L-CUR GET,  OP-I64-EXTEND-I32-U B,  OP-I64-EQ B,  IF,
          L-CUR NODE-NEXT LD32,  L-NEXT SET,
-         L-PAGES GET,  L-CUR NODE-PAGES LD32,  WCODE:OP-I32-ADD B,  L-TOTAL SET,
-      WCODE:OP-END B,
-   WCODE:OP-END B, ;
+         L-PAGES GET,  L-CUR NODE-PAGES LD32,  OP-I32-ADD B,  L-TOTAL SET,
+      OP-END B,
+   OP-END B, ;
 
 \ The freed run joins the list at the link; the run before, when the link is its
 \ node and it ends at the freed run, takes it in.
 : INSERT-RUN, ( -- )
-   L-PTR GET,  WCODE:OP-I32-WRAP-I64 B,  L-NEXT GET,  NODE-NEXT ST32,
-   L-PTR GET,  WCODE:OP-I32-WRAP-I64 B,  L-TOTAL GET,  NODE-PAGES ST32,
-   L-LINK GET,  L-PTR GET,  WCODE:OP-I32-WRAP-I64 B,  NODE-NEXT ST32,
-   L-LINK GET,  L-CTX GET,  WPROF:CTX-FREE-HEAD I32,  WCODE:OP-I32-ADD B,  WCODE:OP-I32-NE B,  IF,
-      L-LINK RUN-END,  L-PTR GET,  WCODE:OP-I64-EQ B,  IF,
+   L-PTR GET,  OP-I32-WRAP-I64 B,  L-NEXT GET,  NODE-NEXT ST32,
+   L-PTR GET,  OP-I32-WRAP-I64 B,  L-TOTAL GET,  NODE-PAGES ST32,
+   L-LINK GET,  L-PTR GET,  OP-I32-WRAP-I64 B,  NODE-NEXT ST32,
+   L-LINK GET,  L-CTX GET,  WPROF:CTX-FREE-HEAD I32,  OP-I32-ADD B,  OP-I32-NE B,  IF,
+      L-LINK RUN-END,  L-PTR GET,  OP-I64-EQ B,  IF,
          L-LINK GET,  L-NEXT GET,  NODE-NEXT ST32,
-         L-LINK GET,  L-LINK NODE-PAGES LD32,  L-TOTAL GET,  WCODE:OP-I32-ADD B,  NODE-PAGES ST32,
-      WCODE:OP-END B,
-   WCODE:OP-END B, ;
+         L-LINK GET,  L-LINK NODE-PAGES LD32,  L-TOTAL GET,  OP-I32-ADD B,  NODE-PAGES ST32,
+      OP-END B,
+   OP-END B, ;
 
 \ The run of L-BYTES bytes at L-PTR joins the free list, L-IOR 0; -1 for bytes
 \ outside 1 through 2^32, addr 0, or an addr that is not a page-aligned offset
@@ -449,36 +450,36 @@ variable BUF-U
 : UNMAP-RUN, ( -- )
    -1 I64,  L-IOR SET,
    BLOCK,
-      L-BYTES GET,  1 I64,  WCODE:OP-I64-SUB B,  L-PTR GET,  WCODE:OP-I64-OR B,
-      OFFSET-BITS I64,  WCODE:OP-I64-SHR-U B,
-      L-PTR GET,  WPROF:PAGE-BYTES 1- I64,  WCODE:OP-I64-AND B,  WCODE:OP-I64-OR B,
-      0 I64,  WCODE:OP-I64-NE B,  L-PTR GET,  WCODE:OP-I64-EQZ B,  WCODE:OP-I32-OR B,  0 BR-IF,
+      L-BYTES GET,  1 I64,  OP-I64-SUB B,  L-PTR GET,  OP-I64-OR B,
+      OFFSET-BITS I64,  OP-I64-SHR-U B,
+      L-PTR GET,  WPROF:PAGE-BYTES 1- I64,  OP-I64-AND B,  OP-I64-OR B,
+      0 I64,  OP-I64-NE B,  L-PTR GET,  OP-I64-EQZ B,  OP-I32-OR B,  0 BR-IF,
       L-BYTES GET,  PAGES-OF,  L-PAGES SET,
-      L-PTR GET,  L-PAGES GET,  BYTES-OF,  WCODE:OP-I64-ADD B,  L-END SET,
+      L-PTR GET,  L-PAGES GET,  BYTES-OF,  OP-I64-ADD B,  L-END SET,
       LIST-HEAD,
       BLOCK,
          LOOP,
-            L-CUR GET,  WCODE:OP-I32-EQZ B,  1 BR-IF,
-            L-CUR RUN-END,  L-PTR GET,  WCODE:OP-I64-GT-S B,  1 BR-IF,
+            L-CUR GET,  OP-I32-EQZ B,  1 BR-IF,
+            L-CUR RUN-END,  L-PTR GET,  OP-I64-GT-S B,  1 BR-IF,
             LIST-STEP,  0 BR,
-         WCODE:OP-END B,
-      WCODE:OP-END B,
+         OP-END B,
+      OP-END B,
       AFTER-RUN,  INSERT-RUN,
       0 I64,  L-IOR SET,
-   WCODE:OP-END B, ;
+   OP-END B, ;
 
 \ munmap ( addr bytes -- ior ): UNMAP-RUN,'s ior.
 : UNMAP-BODY ( -- )
    ALLOC-LOCALS,  CELL-BYTES 2 * SP-AT,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  L-PTR SET,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 CELL-BYTES MEM,  L-BYTES SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-PTR SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-BYTES SET,
    UNMAP-RUN,
-   L-SP GET,  L-IOR GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   L-SP GET,  L-IOR GET,  OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,  DONE, ;
 
 
 \ ---- emit, write and die
-: STREAM-LOCALS, ( -- )  3 U32,  8 U32,  WCODE:I32 B,  5 U32,  WCODE:I64 B,  2 U32,  WCODE:I32 B, ;
+: STREAM-LOCALS, ( -- )  3 U32,  8 U32,  I32 B,  5 U32,  I64 B,  2 U32,  I32 B, ;
 
 \ A stream, OUT or ERR: the ctx fields of its length, address and capacity, and
 \ the fixed run it starts in.
@@ -489,29 +490,29 @@ variable BUF-U
 
 \ The i64 address past the stream's length plus L-NEED.
 : STREAM-END, ( -- )
-   L-OLD GET,  WCODE:OP-I64-EXTEND-I32-U B,  L-LEN GET,  WCODE:OP-I64-EXTEND-I32-U B,
-   WCODE:OP-I64-ADD B,  L-NEED GET,  WCODE:OP-I64-ADD B, ;
+   L-OLD GET,  OP-I64-EXTEND-I32-U B,  L-LEN GET,  OP-I64-EXTEND-I32-U B,
+   OP-I64-ADD B,  L-NEED GET,  OP-I64-ADD B, ;
 
 \ L-BYTES becomes the larger of twice the capacity in ctx field cap and the
 \ length plus L-NEED, or -1, which map-anon rejects, for an L-NEED past 2^32.
 : STREAM-WANT, ( n -- )
    {: cap:n :}
-   cap CTX@,  WCODE:OP-I64-EXTEND-I32-U B,  1 I64,  WCODE:OP-I64-SHL B,
+   cap CTX@,  OP-I64-EXTEND-I32-U B,  1 I64,  OP-I64-SHL B,
    L-END SET,
    -1 I64,
-   L-LEN GET,  WCODE:OP-I64-EXTEND-I32-U B,  L-NEED GET,  WCODE:OP-I64-ADD B,
-   L-NEED GET,  1 OFFSET-BITS lshift I64,  WCODE:OP-I64-GT-U B,  WCODE:OP-SELECT B,  L-BYTES SET,
-   L-END GET,  L-BYTES GET,  L-END GET,  L-BYTES GET,  WCODE:OP-I64-GT-U B,  WCODE:OP-SELECT B,
+   L-LEN GET,  OP-I64-EXTEND-I32-U B,  L-NEED GET,  OP-I64-ADD B,
+   L-NEED GET,  1 OFFSET-BITS lshift I64,  OP-I64-GT-U B,  OP-SELECT B,  L-BYTES SET,
+   L-END GET,  L-BYTES GET,  L-END GET,  L-BYTES GET,  OP-I64-GT-U B,  OP-SELECT B,
    L-BYTES SET, ;
 
 \ A failed growth records EXIT-STATUS:STREAM-GROW with STREAM-END, and traps.
 : STREAM-REJECTED, ( -- )
-   L-IOR GET,  WCODE:OP-I32-WRAP-I64 B,  IF,
+   L-IOR GET,  OP-I32-WRAP-I64 B,  IF,
       L-CTX GET,  EXIT-STATUS:STREAM-GROW I32,
-      WCODE:OP-I32-STORE WCODE:ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
-      L-CTX GET,  STREAM-END,  WCODE:OP-I64-STORE WCODE:ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
-      WCODE:OP-UNREACHABLE B,
-   WCODE:OP-END B, ;
+      OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
+      L-CTX GET,  STREAM-END,  OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
+      OP-UNREACHABLE B,
+   OP-END B, ;
 
 \ The stream moves to a run of STREAM-WANT,'s pages holding its bytes, which the
 \ ctx fields base and cap name; the old run is freed unless it is fixed.
@@ -519,16 +520,16 @@ variable BUF-U
    {: base:n cap:n fixed:n :}
    base CTX@,  L-OLD SET,
    cap STREAM-WANT,  MAP-RUN,  STREAM-REJECTED,
-   L-PTR GET,  WCODE:OP-I32-WRAP-I64 B,  L-OLD GET,  L-LEN GET,
-   WCODE:OP-MISC B,  WCODE:MISC-MEMORY-COPY U32,  MEMORY-0 B,  MEMORY-0 B,
-   cap CTX@,  WCODE:OP-I64-EXTEND-I32-U B,  L-BYTES SET,
-   L-CTX GET,  L-PTR GET,  WCODE:OP-I32-WRAP-I64 B,
-   WCODE:OP-I32-STORE WCODE:ALIGN-32 base MEM,
-   L-CTX GET,  L-PAGES GET,  PAGE-SHIFT I32,  WCODE:OP-I32-SHL B,
-   WCODE:OP-I32-STORE WCODE:ALIGN-32 cap MEM,
-   L-OLD GET,  fixed I32,  WCODE:OP-I32-NE B,  IF,
-      L-OLD GET,  WCODE:OP-I64-EXTEND-I32-U B,  L-PTR SET,  UNMAP-RUN,
-   WCODE:OP-END B, ;
+   L-PTR GET,  OP-I32-WRAP-I64 B,  L-OLD GET,  L-LEN GET,
+   OP-MISC B,  MISC-MEMORY-COPY U32,  MEMORY-0 B,  MEMORY-0 B,
+   cap CTX@,  OP-I64-EXTEND-I32-U B,  L-BYTES SET,
+   L-CTX GET,  L-PTR GET,  OP-I32-WRAP-I64 B,
+   OP-I32-STORE ALIGN-32 base MEM,
+   L-CTX GET,  L-PAGES GET,  PAGE-SHIFT I32,  OP-I32-SHL B,
+   OP-I32-STORE ALIGN-32 cap MEM,
+   L-OLD GET,  fixed I32,  OP-I32-NE B,  IF,
+      L-OLD GET,  OP-I64-EXTEND-I32-U B,  L-PTR SET,  UNMAP-RUN,
+   OP-END B, ;
 
 \ L-LEN becomes the stream's length, and the stream grows when L-NEED more bytes
 \ pass its capacity.
@@ -536,56 +537,56 @@ variable BUF-U
    {: len:n base:n cap:n fixed:n :}
    len CTX@,  L-LEN SET,
    L-NEED GET,
-   cap CTX@,  L-LEN GET,  WCODE:OP-I32-SUB B,  WCODE:OP-I64-EXTEND-I32-U B,
-   WCODE:OP-I64-GT-U B,  IF,  base cap fixed STREAM-GROW,  WCODE:OP-END B, ;
+   cap CTX@,  L-LEN GET,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
+   OP-I64-GT-U B,  IF,  base cap fixed STREAM-GROW,  OP-END B, ;
 
 \ Pushes the i32 address of the stream's next byte, a full stream grown first.
 : BYTE-ROOM, ( n n n n -- )
    {: len:n base:n cap:n fixed:n :}
    1 I64,  L-NEED SET,  len base cap fixed STREAM-ROOM,
-   base CTX@,  L-LEN GET,  WCODE:OP-I32-ADD B, ;
+   base CTX@,  L-LEN GET,  OP-I32-ADD B, ;
 
 \ Stores the i64 on top's low byte at the address below it and counts it in ctx
 \ field len.
 : BYTE-STORE, ( n -- )
    {: len:n :}
-   WCODE:OP-I64-STORE8 WCODE:ALIGN-8 0 MEM,
-   L-CTX GET,  L-LEN GET,  1 I32,  WCODE:OP-I32-ADD B,
-   WCODE:OP-I32-STORE WCODE:ALIGN-32 len MEM, ;
+   OP-I64-STORE8 ALIGN-8 0 MEM,
+   L-CTX GET,  L-LEN GET,  1 I32,  OP-I32-ADD B,
+   OP-I32-STORE ALIGN-32 len MEM, ;
 
 \ emit ( c -- ) appends c's low byte to OUT.
 : EMIT-BODY ( -- )
    STREAM-LOCALS,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  WCODE:OP-I32-SUB B,  L-SP SET,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
    OUT-STREAM BYTE-ROOM,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,
    WPROF:CTX-OUT-LEN BYTE-STORE,
    SP!,
-   0 I32,  WCODE:OP-END B, ;
+   0 I32,  OP-END B, ;
 
 \ Appends to the stream the L-NEED bytes at the address in the cell at SP plus
 \ off, grown first.
 : APPEND, ( n n n n n -- )
    {: off:n len:n base:n cap:n fixed:n :}
    len base cap fixed STREAM-ROOM,
-   base CTX@,  L-LEN GET,  WCODE:OP-I32-ADD B,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 off MEM,  WCODE:OP-I32-WRAP-I64 B,
-   L-NEED GET,  WCODE:OP-I32-WRAP-I64 B,
-   WCODE:OP-MISC B,  WCODE:MISC-MEMORY-COPY U32,  MEMORY-0 B,  MEMORY-0 B,
-   L-CTX GET,  L-LEN GET,  L-NEED GET,  WCODE:OP-I32-WRAP-I64 B,  WCODE:OP-I32-ADD B,
-   WCODE:OP-I32-STORE WCODE:ALIGN-32 len MEM, ;
+   base CTX@,  L-LEN GET,  OP-I32-ADD B,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 off MEM,  OP-I32-WRAP-I64 B,
+   L-NEED GET,  OP-I32-WRAP-I64 B,
+   OP-MISC B,  MISC-MEMORY-COPY U32,  MEMORY-0 B,  MEMORY-0 B,
+   L-CTX GET,  L-LEN GET,  L-NEED GET,  OP-I32-WRAP-I64 B,  OP-I32-ADD B,
+   OP-I32-STORE ALIGN-32 len MEM, ;
 
 \ write ( fd a u -- u ) appends the u bytes at a to ERR for descriptor 2, else to
 \ OUT.
 : WRITE-BODY ( -- )
    STREAM-LOCALS,  CELL-BYTES 3 * SP-AT,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 CELL-BYTES 2 * MEM,  L-NEED SET,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  2 I64,  WCODE:OP-I64-EQ B,  IF,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,  L-NEED SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  2 I64,  OP-I64-EQ B,  IF,
       CELL-BYTES ERR-STREAM APPEND,
-   WCODE:OP-ELSE B,
+   OP-ELSE B,
       CELL-BYTES OUT-STREAM APPEND,
-   WCODE:OP-END B,
-   L-SP GET,  L-NEED GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   OP-END B,
+   L-SP GET,  L-NEED GET,  OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,  DONE, ;
 
 
@@ -604,20 +605,20 @@ variable SITES-N
 
 \ Adds 1 to the throw count, at each routine that begins a throw.
 : COUNT-THROW, ( -- )
-   0 I32,  0 I32,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 THROWS-AT MEM,  1 I64,  WCODE:OP-I64-ADD B,
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 THROWS-AT MEM, ;
+   0 I32,  0 I32,  OP-I64-LOAD ALIGN-64 THROWS-AT MEM,  1 I64,  OP-I64-ADD B,
+   OP-I64-STORE ALIGN-64 THROWS-AT MEM, ;
 
 \ throw ( n -- ) pops its code into ctx.throw-code and answers status 1; a
 \ code of 0 becomes -9854, E-THROW-ZERO.
 : THROW-BODY ( -- )
-   2 U32,  1 U32,  WCODE:I32 B,  1 U32,  WCODE:I64 B,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  WCODE:OP-I32-SUB B,  L-SP SET,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  L-CODE SET,
-   L-CODE GET,  WCODE:OP-I64-EQZ B,  IF,  -9854 I64,  L-CODE SET,  WCODE:OP-END B,
+   2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-CODE SET,
+   L-CODE GET,  OP-I64-EQZ B,  IF,  -9854 I64,  L-CODE SET,  OP-END B,
    SP!,
    COUNT-THROW,
-   L-CTX GET,  L-CODE GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 WPROF:CTX-THROW-CODE MEM,
-   1 I32,  WCODE:OP-END B, ;
+   L-CTX GET,  L-CODE GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+   1 I32,  OP-END B, ;
 
 
 \ die ( a u code -- ) appends its message and a line feed to ERR, nothing for
@@ -625,75 +626,75 @@ variable SITES-N
 \ consumes.
 : DIE-BODY ( -- )
    STREAM-LOCALS,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  WCODE:OP-I32-SUB B,  L-SP SET,
-   L-CTX GET,  L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 CELL-BYTES 2 * MEM,
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 WPROF:CTX-THROW-CODE MEM,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 CELL-BYTES MEM,  L-NEED SET,
-   L-NEED GET,  0 I64,  WCODE:OP-I64-NE B,  IF,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-CTX GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,
+   OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-NEED SET,
+   L-NEED GET,  0 I64,  OP-I64-NE B,  IF,
       0 ERR-STREAM APPEND,
       ERR-STREAM BYTE-ROOM,  10 I64,  WPROF:CTX-ERR-LEN BYTE-STORE,
-   WCODE:OP-END B,
-   WCODE:OP-UNREACHABLE B,  WCODE:OP-END B, ;
+   OP-END B,
+   OP-UNREACHABLE B,  OP-END B, ;
 
 
 \ Pops a cell and calls a table slot for its status: a zero upper half leaves the slot below
 \ it; exactly $80000000 a record's address, stored in ctx.env, slot in cell 0; any other traps.
 : DISPATCH, ( -- )
    L-CTX GET,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  WCODE:OP-I32-SUB B,
-   WCODE:OP-LOCAL-TEE B,  L-SP U32,
-   WCODE:OP-I32-STORE WCODE:ALIGN-32 WPROF:CTX-STACK-TOP MEM,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,
+   OP-LOCAL-TEE B,  L-SP U32,
+   OP-I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM,
    L-CTX GET,
-   L-SP GET,  WCODE:OP-I32-LOAD WCODE:ALIGN-32 HIGH-HALF MEM,
-   WCODE:OP-IF B,  WCODE:I32 B,
-      L-SP GET,  WCODE:OP-I32-LOAD WCODE:ALIGN-32 HIGH-HALF MEM,
-      -2147483648 I32,  WCODE:OP-I32-NE B,          \ $80000000 as i32.const's signed operand
-      IF,  WCODE:OP-UNREACHABLE B,  WCODE:OP-END B,
-      L-CTX GET,  L-SP GET,  WCODE:OP-I32-LOAD WCODE:ALIGN-32 0 MEM,
-      WCODE:OP-I32-STORE WCODE:ALIGN-32 WPROF:CTX-ENV MEM,
-      L-SP GET,  WCODE:OP-I32-LOAD WCODE:ALIGN-32 0 MEM,  WCODE:OP-I32-LOAD WCODE:ALIGN-32 0 MEM,
-   WCODE:OP-ELSE B,
-      L-SP GET,  WCODE:OP-I32-LOAD WCODE:ALIGN-32 0 MEM,
-   WCODE:OP-END B,
-   WCODE:OP-CALL-INDIRECT B,  TYPE-PAD,  TABLE0 B, ;
+   L-SP GET,  OP-I32-LOAD ALIGN-32 HIGH-HALF MEM,
+   OP-IF B,  I32 B,
+      L-SP GET,  OP-I32-LOAD ALIGN-32 HIGH-HALF MEM,
+      -2147483648 I32,  OP-I32-NE B,          \ $80000000 as i32.const's signed operand
+      IF,  OP-UNREACHABLE B,  OP-END B,
+      L-CTX GET,  L-SP GET,  OP-I32-LOAD ALIGN-32 0 MEM,
+      OP-I32-STORE ALIGN-32 WPROF:CTX-ENV MEM,
+      L-SP GET,  OP-I32-LOAD ALIGN-32 0 MEM,  OP-I32-LOAD ALIGN-32 0 MEM,
+   OP-ELSE B,
+      L-SP GET,  OP-I32-LOAD ALIGN-32 0 MEM,
+   OP-END B,
+   OP-CALL-INDIRECT B,  TYPE-PAD,  TABLE0 B, ;
 
 
 \ execute ( xt -- ) answers the callee's status.
 : EXECUTE-BODY ( -- )
-   1 U32,  1 U32,  WCODE:I32 B,
+   1 U32,  1 U32,  I32 B,
    DISPATCH,
-   WCODE:OP-END B, ;
+   OP-END B, ;
 
 
 \ ---- catch and finally
 \ A throw leaves the return and loop stacks as deep as inside the thrown body;
 \ a caught one restores the tops saved before it, as the native handler frame does.
 : TOPS-SAVE, ( -- )
-   0 I32,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 WCODE:RDEPTH-AT MEM,  L-RDEPTH SET,
-   0 I32,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 WCODE:LTOP-AT MEM,  L-LTOP SET, ;
+   0 I32,  OP-I64-LOAD ALIGN-64 RDEPTH-AT MEM,  L-RDEPTH SET,
+   0 I32,  OP-I64-LOAD ALIGN-64 LTOP-AT MEM,  L-LTOP SET, ;
 
 : TOPS-RESTORE, ( -- )
-   0 I32,  L-RDEPTH GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 WCODE:RDEPTH-AT MEM,
-   0 I32,  L-LTOP GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 WCODE:LTOP-AT MEM, ;
+   0 I32,  L-RDEPTH GET,  OP-I64-STORE ALIGN-64 RDEPTH-AT MEM,
+   0 I32,  L-LTOP GET,  OP-I64-STORE ALIGN-64 LTOP-AT MEM, ;
 
 
 \ catch ( xt -- code ): after a status 1 the code is ctx.throw-code, stored
 \ where the xt lay; after a 0 it is zero, pushed over the callee's results.
 : CATCH-BODY ( -- )
-   2 U32,  2 U32,  WCODE:I32 B,  2 U32,  WCODE:I64 B,
+   2 U32,  2 U32,  I32 B,  2 U32,  I64 B,
    TOPS-SAVE,
    DISPATCH,  L-STATUS SET,
    L-STATUS GET,  IF,
       TOPS-RESTORE,
-      L-SP GET,  L-CTX GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 WPROF:CTX-THROW-CODE MEM,
-      WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
-      ONE-RESULT,  0 I32,  WCODE:OP-RETURN B,
-   WCODE:OP-END B,
+      L-SP GET,  L-CTX GET,  OP-I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+      OP-I64-STORE ALIGN-64 0 MEM,
+      ONE-RESULT,  0 I32,  OP-RETURN B,
+   OP-END B,
    WPROF:CTX-STACK-TOP CTX@,  L-SP SET,
    CELL-BYTES STACK-ROOM,
-   L-SP GET,  0 I64,  WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   L-SP GET,  0 I64,  OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,
-   0 I32,  WCODE:OP-END B, ;
+   0 I32,  OP-END B, ;
 
 
 \ finally ( body cleanup -- ): the body's throw code is stored again whether or
@@ -701,46 +702,46 @@ variable SITES-N
 \ The body's code goes on as a new throw, which carries the kept record when the
 \ body's throw did.
 : FINALLY-BODY ( -- )
-   2 U32,  2 U32,  WCODE:I32 B,  5 U32,  WCODE:I64 B,
+   2 U32,  2 U32,  I32 B,  5 U32,  I64 B,
    L-CTX GET,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  WCODE:OP-I32-SUB B,
-   WCODE:OP-LOCAL-TEE B,  L-SP U32,
-   WCODE:OP-I32-STORE WCODE:ALIGN-32 WPROF:CTX-STACK-TOP MEM,
-   L-SP GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM,  WCODE:OP-LOCAL-TEE B,  L-CLEANUP U32,
-   WCODE:OP-I64-EQZ B,  IF,  WCODE:OP-UNREACHABLE B,  WCODE:OP-END B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,
+   OP-LOCAL-TEE B,  L-SP U32,
+   OP-I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-LOCAL-TEE B,  L-CLEANUP U32,
+   OP-I64-EQZ B,  IF,  OP-UNREACHABLE B,  OP-END B,
    TOPS-SAVE,
    DISPATCH,  L-STATUS SET,
-   L-CTX GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 WPROF:CTX-THROW-CODE MEM,  L-BODY-CODE SET,
-   0 I32,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 THROWS-AT MEM,  L-COUNT SET,
-   L-STATUS GET,  IF,  SP!,  TOPS-RESTORE,  WCODE:OP-END B,
+   L-CTX GET,  OP-I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE MEM,  L-BODY-CODE SET,
+   0 I32,  OP-I64-LOAD ALIGN-64 THROWS-AT MEM,  L-COUNT SET,
+   L-STATUS GET,  IF,  SP!,  TOPS-RESTORE,  OP-END B,
    WPROF:CTX-STACK-TOP CTX@,  L-SP SET,
    CELL-BYTES STACK-ROOM,
-   L-SP GET,  L-CLEANUP GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   L-SP GET,  L-CLEANUP GET,  OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,
    DISPATCH,
    L-STATUS GET,  IF,
-      L-CTX GET,  L-BODY-CODE GET,  WCODE:OP-I64-STORE WCODE:ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+      L-CTX GET,  L-BODY-CODE GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
       COUNT-THROW,
-      0 I32,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 STAMP-AT MEM,  L-COUNT GET,  WCODE:OP-I64-EQ B,
+      0 I32,  OP-I64-LOAD ALIGN-64 STAMP-AT MEM,  L-COUNT GET,  OP-I64-EQ B,
       IF,
-         0 I32,  0 I32,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 THROWS-AT MEM,
-         WCODE:OP-I64-STORE WCODE:ALIGN-64 STAMP-AT MEM,
-      WCODE:OP-END B,
-   WCODE:OP-END B,
-   L-STATUS GET,  WCODE:OP-I32-OR B,
-   WCODE:OP-END B, ;
+         0 I32,  0 I32,  OP-I64-LOAD ALIGN-64 THROWS-AT MEM,
+         OP-I64-STORE ALIGN-64 STAMP-AT MEM,
+      OP-END B,
+   OP-END B,
+   L-STATUS GET,  OP-I32-OR B,
+   OP-END B, ;
 
 
 \ ---- depth
 \ depth ( -- n ) pushes the count of cells from ctx's stack base to its top.
 : DEPTH-BODY ( -- )
-   1 U32,  1 U32,  WCODE:I32 B,
+   1 U32,  1 U32,  I32 B,
    WPROF:CTX-STACK-TOP CTX@,  L-SP SET,
    CELL-BYTES STACK-ROOM,
    L-SP GET,
-   L-SP GET,  WPROF:CTX-STACK-BASE CTX@,  WCODE:OP-I32-SUB B,  WCODE:OP-I64-EXTEND-I32-U B,
-   CELL-SHIFT I64,  WCODE:OP-I64-SHR-U B,
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM,
+   L-SP GET,  WPROF:CTX-STACK-BASE CTX@,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
+   CELL-SHIFT I64,  OP-I64-SHR-U B,
+   OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,  DONE, ;
 
 \ The count of call_indirect sites in the last body ROUTINE-BODY answered, and
@@ -759,18 +760,18 @@ public
    0 BUF-U !  0 SITES-N !
    name s" emit" STR:=CI if EMIT-BODY BODY$ true exit then
    name s" write" STR:=CI if WRITE-BODY BODY$ true exit then
-   name s" !" STR:=CI if WCODE:OP-I64-STORE WCODE:ALIGN-64 STORE-BODY BODY$ true exit then
-   name s" c!" STR:=CI if WCODE:OP-I64-STORE8 WCODE:ALIGN-8 STORE-BODY BODY$ true exit then
+   name s" !" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
+   name s" c!" STR:=CI if OP-I64-STORE8 ALIGN-8 STORE-BODY BODY$ true exit then
    \ LE's words take any alignment, so their hint is ALIGN-8.
-   name s" u16@" STR:=CI if WCODE:OP-I64-LOAD16-U WCODE:ALIGN-8 LOAD-BODY BODY$ true exit then
-   name s" u32@" STR:=CI if WCODE:OP-I64-LOAD32-U WCODE:ALIGN-8 LOAD-BODY BODY$ true exit then
-   name s" u16!" STR:=CI if WCODE:OP-I64-STORE16 WCODE:ALIGN-8 STORE-BODY BODY$ true exit then
-   name s" u32!" STR:=CI if WCODE:OP-I64-STORE32 WCODE:ALIGN-8 STORE-BODY BODY$ true exit then
+   name s" u16@" STR:=CI if OP-I64-LOAD16-U ALIGN-8 LOAD-BODY BODY$ true exit then
+   name s" u32@" STR:=CI if OP-I64-LOAD32-U ALIGN-8 LOAD-BODY BODY$ true exit then
+   name s" u16!" STR:=CI if OP-I64-STORE16 ALIGN-8 STORE-BODY BODY$ true exit then
+   name s" u32!" STR:=CI if OP-I64-STORE32 ALIGN-8 STORE-BODY BODY$ true exit then
    \ A module saves no image, so xt! is a plain store.
-   name s" xt!" STR:=CI if WCODE:OP-I64-STORE WCODE:ALIGN-64 STORE-BODY BODY$ true exit then
+   name s" xt!" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    \ ---- division, views and atomics
-   name s" /" STR:=CI if WCODE:OP-I64-DIV-S true DIVIDE-BODY BODY$ true exit then
-   name s" mod" STR:=CI if WCODE:OP-I64-REM-S false DIVIDE-BODY BODY$ true exit then
+   name s" /" STR:=CI if OP-I64-DIV-S true DIVIDE-BODY BODY$ true exit then
+   name s" mod" STR:=CI if OP-I64-REM-S false DIVIDE-BODY BODY$ true exit then
    name s" cell-view" STR:=CI if VIEW-BODY BODY$ true exit then
    name s" byte-view" STR:=CI if VIEW-BODY BODY$ true exit then
    name s" PTR>N" STR:=CI if VIEW-BODY BODY$ true exit then
@@ -781,27 +782,27 @@ public
    name s" data" STR:=CI if DATA-BODY BODY$ true exit then
    name s" len" STR:=CI if LEN-BODY BODY$ true exit then
    name s" fence" STR:=CI if VIEW-BODY BODY$ true exit then
-   name s" atomic@" STR:=CI if WCODE:OP-I64-LOAD WCODE:ALIGN-64 LOAD-BODY BODY$ true exit then
-   name s" atomic!" STR:=CI if WCODE:OP-I64-STORE WCODE:ALIGN-64 STORE-BODY BODY$ true exit then
-   name s" atomic-u32@" STR:=CI if WCODE:OP-I64-LOAD32-U WCODE:ALIGN-32 LOAD-BODY BODY$ true exit then
-   name s" atomic-u32!" STR:=CI if WCODE:OP-I64-STORE32 WCODE:ALIGN-32 STORE-BODY BODY$ true exit then
+   name s" atomic@" STR:=CI if OP-I64-LOAD ALIGN-64 LOAD-BODY BODY$ true exit then
+   name s" atomic!" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
+   name s" atomic-u32@" STR:=CI if OP-I64-LOAD32-U ALIGN-32 LOAD-BODY BODY$ true exit then
+   name s" atomic-u32!" STR:=CI if OP-I64-STORE32 ALIGN-32 STORE-BODY BODY$ true exit then
    name s" atomic-cas" STR:=CI if CAS-BODY BODY$ true exit then
    name s" atomic-add" STR:=CI if FETCH-ADD-BODY BODY$ true exit then
    \ ---- floats
-   name s" f+" STR:=CI if WCODE:OP-F64-ADD FARITH-BODY BODY$ true exit then
-   name s" f-" STR:=CI if WCODE:OP-F64-SUB FARITH-BODY BODY$ true exit then
-   name s" f*" STR:=CI if WCODE:OP-F64-MUL FARITH-BODY BODY$ true exit then
-   name s" f/" STR:=CI if WCODE:OP-F64-DIV FARITH-BODY BODY$ true exit then
+   name s" f+" STR:=CI if OP-F64-ADD FARITH-BODY BODY$ true exit then
+   name s" f-" STR:=CI if OP-F64-SUB FARITH-BODY BODY$ true exit then
+   name s" f*" STR:=CI if OP-F64-MUL FARITH-BODY BODY$ true exit then
+   name s" f/" STR:=CI if OP-F64-DIV FARITH-BODY BODY$ true exit then
    name s" fsqrt" STR:=CI if FSQRT-BODY BODY$ true exit then
-   name s" fnegate" STR:=CI if WCODE:OP-F64-NEG FSIGN-BODY BODY$ true exit then
-   name s" fabs" STR:=CI if WCODE:OP-F64-ABS FSIGN-BODY BODY$ true exit then
-   name s" f<" STR:=CI if WCODE:OP-F64-LT FCOMPARE-BODY BODY$ true exit then
-   name s" f>" STR:=CI if WCODE:OP-F64-GT FCOMPARE-BODY BODY$ true exit then
-   name s" f=" STR:=CI if WCODE:OP-F64-EQ FCOMPARE-BODY BODY$ true exit then
-   name s" f<=" STR:=CI if WCODE:OP-F64-LE FCOMPARE-BODY BODY$ true exit then
-   name s" f>=" STR:=CI if WCODE:OP-F64-GE FCOMPARE-BODY BODY$ true exit then
-   name s" f0<" STR:=CI if WCODE:OP-F64-LT FCOMPARE0-BODY BODY$ true exit then
-   name s" f0=" STR:=CI if WCODE:OP-F64-EQ FCOMPARE0-BODY BODY$ true exit then
+   name s" fnegate" STR:=CI if OP-F64-NEG FSIGN-BODY BODY$ true exit then
+   name s" fabs" STR:=CI if OP-F64-ABS FSIGN-BODY BODY$ true exit then
+   name s" f<" STR:=CI if OP-F64-LT FCOMPARE-BODY BODY$ true exit then
+   name s" f>" STR:=CI if OP-F64-GT FCOMPARE-BODY BODY$ true exit then
+   name s" f=" STR:=CI if OP-F64-EQ FCOMPARE-BODY BODY$ true exit then
+   name s" f<=" STR:=CI if OP-F64-LE FCOMPARE-BODY BODY$ true exit then
+   name s" f>=" STR:=CI if OP-F64-GE FCOMPARE-BODY BODY$ true exit then
+   name s" f0<" STR:=CI if OP-F64-LT FCOMPARE0-BODY BODY$ true exit then
+   name s" f0=" STR:=CI if OP-F64-EQ FCOMPARE0-BODY BODY$ true exit then
    name s" s>f" STR:=CI if S>F-BODY BODY$ true exit then
    name s" f>s" STR:=CI if F>S-BODY BODY$ true exit then
    \ ---- map-anon and munmap
@@ -818,5 +819,6 @@ public
    name s" depth" STR:=CI if DEPTH-BODY BODY$ true exit then
    s" " false ;
 
+;using
 ;package
 ;package

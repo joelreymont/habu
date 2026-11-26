@@ -30,6 +30,7 @@ TYPED-VARIABLE LINE-REC line
 : USED@ ( ^line -- n ) FSM--TEST-LINE:USED @ ;
 : USED! ( n ^line -- ) FSM--TEST-LINE:USED ! ;
 
+using FSM
 ENUM entry start whole fraction ended ;ENUM
 ENUM key other digit minus point enter ;ENUM
 
@@ -55,7 +56,7 @@ ENUM key other digit minus point enter ;ENUM
    l USED@ 1+ l USED!
    l DROP-KEY ;
 
-FSM:DEFINE GETAFIX ( ^line ) entry key
+DEFINE GETAFIX ( ^line ) entry key
    IN start     READ-KEY
       other   DROP-KEY  >start
       digit   ECHO      >whole
@@ -76,6 +77,7 @@ FSM:DEFINE GETAFIX ( ^line ) entry key
       enter   -         >ended
    FINAL ended  -
 ;DEFINE
+;using
 
 
 : GETAFIX$ ( str -- str )
@@ -99,6 +101,7 @@ FSM:DEFINE GETAFIX ( ^line ) entry key
    s" x" GETAFIX$ s" " T$= ;
 
 \ A NEXT word.
+using FSM
 ENUM tally counting counted ;ENUM
 ENUM pulse tick ;ENUM
 TYPED-VARIABLE COUNT-CELL n
@@ -111,11 +114,12 @@ TYPED-VARIABLE COUNT-CELL n
 : TALLY-NEXT ( ^n -- tally )
    @ LIMIT < if construct tally counting else construct tally counted then ;
 
-FSM:DEFINE COUNT-UP ( ^n ) tally pulse
+DEFINE COUNT-UP ( ^n ) tally pulse
    IN counting  PULSE
       tick  BUMP  TALLY-NEXT
    FINAL counted  -
 ;DEFINE
+;using
 
 : COUNTS ( -- )
    0 COUNT-CELL !
@@ -123,6 +127,7 @@ FSM:DEFINE COUNT-UP ( ^n ) tally pulse
    COUNT-CELL @ LIMIT T= ;
 
 \ FINAL actions.
+using FSM
 ENUM door opening opened shut ;ENUM
 ENUM push left right ;ENUM
 TYPED-VARIABLE DOOR-CELL n
@@ -134,13 +139,14 @@ TYPED-VARIABLE DOOR-CELL n
 : MARK-OPENED ( ^n -- ) 10 swap +! ;
 : MARK-SHUT ( ^n -- ) 100 swap +! ;
 
-FSM:DEFINE SWING ( ^n ) door push
+DEFINE SWING ( ^n ) door push
    IN opening  PUSH-SIDE
       left   NOTE  >opened
       right  NOTE  >shut
    FINAL opened  MARK-OPENED
    FINAL shut    MARK-SHUT
 ;DEFINE
+;using
 
 : SWUNG ( n door -- n )
    swap DOOR-CELL !
@@ -155,6 +161,7 @@ FSM:DEFINE SWING ( ^n ) door push
    0 construct door opened SWUNG 10 T= ;
 
 \ A throw.
+using FSM
 ENUM spin turning stopped ;ENUM
 ENUM turn step ;ENUM
 TYPED-VARIABLE SPIN-CELL n
@@ -168,11 +175,12 @@ TYPED-VARIABLE SPIN-CELL n
    1 c +!
    c @ 3 = if THIRD-CODE throw then ;
 
-FSM:DEFINE SPIN ( ^n ) spin turn
+DEFINE SPIN ( ^n ) spin turn
    IN turning  TURN
       step   TURN-COUNT  >turning
    FINAL stopped  -
 ;DEFINE
+;using
 
 : SPIN-RUN ( -- ) SPIN-CELL construct spin turning SPIN ;
 
@@ -184,6 +192,7 @@ FSM:DEFINE SPIN ( ^n ) spin turn
 
 \ A failure end: the FINAL row's action always throws FAIL-CODE, and the
 \ machine still loads.
+using FSM
 ENUM job working failed ;ENUM
 ENUM work break ;ENUM
 TYPED-VARIABLE JOB-CELL n
@@ -192,11 +201,12 @@ TYPED-VARIABLE JOB-CELL n
 : BREAK ( ^n -- work ) drop construct work break ;
 : FAIL ( ^n -- ) drop FAIL-CODE throw ;
 
-FSM:DEFINE JOB ( ^n ) job work
+DEFINE JOB ( ^n ) job work
    IN working  BREAK
       break  -  >failed
    FINAL failed  FAIL
 ;DEFINE
+;using
 
 : JOB-RUN ( -- ) JOB-CELL construct job working JOB ;
 
@@ -206,6 +216,7 @@ FSM:DEFINE JOB ( ^n ) job work
 
 \ A total table: kick is rejected by an ACTION that always throws, and every
 \ line of stuck by a NEXT that does.
+using FSM
 ENUM gate closed stuck opened ;ENUM
 ENUM knock tap kick wedge ;ENUM
 TYPED-VARIABLE GATE-CELL n
@@ -222,7 +233,7 @@ TYPED-VARIABLE GATE-CELL n
 : KICKED ( ^n -- ) drop KICK-CODE throw ;
 : JAMMED ( ^n -- gate ) drop STUCK-CODE throw ;
 
-FSM:DEFINE GATE ( ^n ) gate knock
+DEFINE GATE ( ^n ) gate knock
    IN closed  KNOCK
       tap    OPEN-UP  >opened
       kick   KICKED   >closed
@@ -233,6 +244,7 @@ FSM:DEFINE GATE ( ^n ) gate knock
       wedge  -  JAMMED
    FINAL opened  -
 ;DEFINE
+;using
 
 : GATE-RUN ( n -- ) GATE-CELL ! GATE-CELL construct gate closed GATE ;
 
@@ -243,6 +255,7 @@ FSM:DEFINE GATE ( ^n ) gate knock
 
 \ A row's own inputs: arming senses the header's probe, armed only a latch, and
 \ both ENUMs carry ok.
+using FSM
 ENUM relay arming armed tripped ;ENUM
 ENUM probe ok fault ;ENUM
 ENUM latch ok ;ENUM
@@ -253,7 +266,7 @@ TYPED-VARIABLE RELAY-CELL n
 : ARM ( ^n -- ) 1 swap +! ;
 : TRIP ( ^n -- ) 10 swap +! ;
 
-FSM:DEFINE RELAY ( ^n ) relay probe
+DEFINE RELAY ( ^n ) relay probe
    IN arming  PROBE
       ok     ARM  >armed
       fault  -    >tripped
@@ -261,6 +274,7 @@ FSM:DEFINE RELAY ( ^n ) relay probe
       ok     TRIP  >tripped
    FINAL tripped  -
 ;DEFINE
+;using
 
 : RELAY-RUN ( relay -- n ) 0 RELAY-CELL ! RELAY-CELL swap RELAY RELAY-CELL @ ;
 
@@ -268,30 +282,34 @@ FSM:DEFINE RELAY ( ^n ) relay probe
    construct relay arming RELAY-RUN 11 T= ;
 
 \ No FINAL row: LAMP's runner never returns, so the test steps it.
+using FSM
 ENUM lamp dark lit ;ENUM
 ENUM flick flip ;ENUM
 TYPED-VARIABLE LAMP-CELL n
 
 : FLICK ( ^n -- flick ) drop construct flick flip ;
 
-FSM:DEFINE LAMP ( ^n ) lamp flick
+DEFINE LAMP ( ^n ) lamp flick
    IN dark  FLICK
       flip  BUMP  >lit
    IN lit   FLICK
       flip  BUMP  >dark
 ;DEFINE
+;using
 
 \ A throw from SENSE.
+using FSM
 TYPED-VARIABLE PEEK-CELL n
 48 constant SENSE-CODE
 
 : BLIND ( ^n -- pulse ) @ 0= if SENSE-CODE throw then construct pulse tick ;
 
-FSM:DEFINE PEEK ( ^n ) tally pulse
+DEFINE PEEK ( ^n ) tally pulse
    IN counting  BLIND
       tick  BUMP  >counted
    FINAL counted  -
 ;DEFINE
+;using
 
 \ The test ENUMs are private, so phases are read by exhaustive MATCH.
 : TALLY>N ( tally -- n ) MATCH tally counting OF 0 ENDOF counted OF 1 ENDOF ;MATCH ;
@@ -342,8 +360,8 @@ variable SRC-LEN
    s" package FSM-OK-" SRC+ k N+
    s"  TYPED-VARIABLE C n ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM" SRC+
    s"  : S ( ^n -- sig ) drop construct sig go ; : BUMP ( ^n -- ) 1 swap +! ;" SRC+
-   s"  FSM:DEFINE M ( ^n ) ph sig IN idle S go BUMP >busy halt - >idle" SRC+
-   s"  FINAL busy BUMP ;DEFINE" SRC+
+   s"  using FSM DEFINE M ( ^n ) ph sig IN idle S go BUMP >busy halt - >idle" SRC+
+   s"  FINAL busy BUMP ;DEFINE ;using" SRC+
    s"  public : GO ( -- n ) 0 C ! C construct ph idle M C @ ; ;package FSM-OK-" SRC+
    k N+ s" :GO" SRC+
    SRC$ TEST-EVAL:N ;
@@ -352,37 +370,37 @@ variable SRC-LEN
 \ Each text opens its own package, so a failed one leaves nothing a later one
 \ meets.
 : SYNTAX ( -- )
-   s" package FSM-SYN-END ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy"
+   s" package FSM-SYN-END ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-CTX ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM FSM:DEFINE M ( n"
+   s" package FSM-SYN-CTX ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM using FSM DEFINE M ( n"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-HEAD ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M n ph sig IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-SYN-HEAD ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M n ph sig IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-FIRST ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig go - >busy IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-SYN-FIRST ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig go - >busy IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-IN ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go - IN busy S go - >idle halt - >idle ;DEFINE ;package"
+   s" package FSM-SYN-IN ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - IN busy S go - >idle halt - >idle ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-FINAL ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go FINAL busy - ;DEFINE ;package"
+   s" package FSM-SYN-FINAL ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-CLOSE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go - ;DEFINE ;package"
+   s" package FSM-SYN-CLOSE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-AFTER ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy - go - >idle ;DEFINE ;package"
+   s" package FSM-SYN-AFTER ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy - go - >idle ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-SLASH ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle \ old line FINAL busy - ;DEFINE ;package"
+   s" package FSM-SYN-SLASH ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle \ old line FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-PAREN ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go ( >busy halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-SYN-PAREN ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go ( >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-OPEN ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S ( sig ph go - >busy halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-SYN-OPEN ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S ( sig ph go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-EMPTY ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S ( ) ) go - >busy halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-SYN-EMPTY ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S ( ) ) go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-TWO ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S ( sig go ) - >busy halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-SYN-TWO ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S ( sig go ) - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-ROWBARE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S ( sig ) IN busy S go - >idle halt - >idle ;DEFINE ;package"
+   s" package FSM-SYN-ROWBARE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S ( sig ) IN busy S go - >idle halt - >idle ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-BARE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S IN busy S go - >idle halt - >idle ;DEFINE ;package"
+   s" package FSM-SYN-BARE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S IN busy S go - >idle halt - >idle ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
-   s" package FSM-SYN-HEAD-END ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph ;DEFINE IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-SYN-HEAD-END ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph ;DEFINE IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC FSM:E-SYNTAX T=
    5 VALID 2 T= ;
 
@@ -408,7 +426,7 @@ variable SRC-LEN
 \ A table word's undefined ACTION is placed at the ACTION's own line.
 : PLACED-ACTION ( -- )
    s" include test/fixtures/fsm/undefined-action.f" 70
-   s" undefined-action.f:13" SUBJECT:REJECTED? TTRUE ;
+   s" undefined-action.f:14" SUBJECT:REJECTED? TTRUE ;
 
 \ A wrong action is named as the table spells it, not as it was defined, at
 \ the action's own line.
@@ -417,53 +435,53 @@ variable SRC-LEN
    {: e:str exited:bool :}
    exited TTRUE
    e s" `bump`" STR:CONTAINS? TTRUE
-   e s" wrong-effect.f:14" STR:CONTAINS? TTRUE ;
+   e s" wrong-effect.f:15" STR:CONTAINS? TTRUE ;
 
 \ An unknown states type is placed at the header's states token.
 : PLACED-STATES ( -- )
    s" include test/fixtures/fsm/unknown-states.f" 70
-   s" unknown-states.f:10" SUBJECT:REJECTED? TTRUE ;
+   s" unknown-states.f:11" SUBJECT:REJECTED? TTRUE ;
 
 \ The corrected twin loads; the checker rejects each faulty table at load, 70.
 : REJECTED ( -- )
-   s" package FSM-GOOD-INPUT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-GOOD-INPUT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC 0 T=
-   s" package FSM-BAD-INPUT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy FINAL busy - ;DEFINE ;package"
+   s" package FSM-BAD-INPUT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    1 VALID 2 T=
-   s" package FSM-BAD-NEXT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >gone halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-BAD-NEXT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >gone halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    2 VALID 2 T=
-   s" package FSM-BAD-STATE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle ;DEFINE ;package"
+   s" package FSM-BAD-STATE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    3 VALID 2 T=
-   s" package FSM-BAD-ACTION ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : KEEP ( n -- n ) ; FSM:DEFINE M ( n ) ph sig IN idle S go KEEP >busy halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-BAD-ACTION ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : KEEP ( n -- n ) ; using FSM DEFINE M ( n ) ph sig IN idle S go KEEP >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    4 VALID 2 T=
-   s" package FSM-DEAD-NEXT 46 constant E-K ENUM st ready done ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : KICKED ( n -- ) drop E-K throw ; : PICK ( n -- st ) drop construct st done ; FSM:DEFINE M ( n ) st sig IN ready S go KICKED PICK halt - >done FINAL done - ;DEFINE ;package"
+   s" package FSM-DEAD-NEXT 46 constant E-K ENUM st ready done ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : KICKED ( n -- ) drop E-K throw ; : PICK ( n -- st ) drop construct st done ; using FSM DEFINE M ( n ) st sig IN ready S go KICKED PICK halt - >done FINAL done - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    6 VALID 2 T=
-   s" package FSM-DEAD-RUN 47 constant E-L ENUM st ready only ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : LOST ( n -- ) drop E-L throw ; FSM:DEFINE M ( n ) st sig IN ready S go LOST >only halt LOST >only FINAL only LOST ;DEFINE ;package"
+   s" package FSM-DEAD-RUN 47 constant E-L ENUM st ready only ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : LOST ( n -- ) drop E-L throw ; using FSM DEFINE M ( n ) st sig IN ready S go LOST >only halt LOST >only FINAL only LOST ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    7 VALID 2 T=
-   s" package FSM-GOOD-ROW ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM ENUM bell go ring ;ENUM : S ( n -- sig ) drop construct sig go ; : R ( n -- bell ) drop construct bell go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle IN busy R ( bell ) go - >done ring - >idle FINAL done - ;DEFINE ;package"
+   s" package FSM-GOOD-ROW ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM ENUM bell go ring ;ENUM : S ( n -- sig ) drop construct sig go ; : R ( n -- bell ) drop construct bell go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle IN busy R ( bell ) go - >done ring - >idle FINAL done - ;DEFINE ;using ;package"
    TEST-EVAL:RC 0 T=
-   s" package FSM-BAD-ROW-MISS ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM ENUM bell go ring ;ENUM : S ( n -- sig ) drop construct sig go ; : R ( n -- bell ) drop construct bell go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle IN busy R ( bell ) go - >done FINAL done - ;DEFINE ;package"
+   s" package FSM-BAD-ROW-MISS ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM ENUM bell go ring ;ENUM : S ( n -- sig ) drop construct sig go ; : R ( n -- bell ) drop construct bell go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle IN busy R ( bell ) go - >done FINAL done - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    8 VALID 2 T=
-   s" package FSM-BAD-ROW-TAG ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM ENUM bell go ring ;ENUM : S ( n -- sig ) drop construct sig go ; : R ( n -- bell ) drop construct bell go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle IN busy R ( bell ) go - >done ring - >idle halt - >idle FINAL done - ;DEFINE ;package"
+   s" package FSM-BAD-ROW-TAG ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM ENUM bell go ring ;ENUM : S ( n -- sig ) drop construct sig go ; : R ( n -- bell ) drop construct bell go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle IN busy R ( bell ) go - >done ring - >idle halt - >idle FINAL done - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    9 VALID 2 T=
-   s" package FSM-BAD-ROW-SENSE ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM ENUM bell go ring ;ENUM : S ( n -- sig ) drop construct sig go ; : R ( n -- bell ) drop construct bell go ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle IN busy S ( bell ) go - >done ring - >idle FINAL done - ;DEFINE ;package"
+   s" package FSM-BAD-ROW-SENSE ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM ENUM bell go ring ;ENUM : S ( n -- sig ) drop construct sig go ; : R ( n -- bell ) drop construct bell go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle IN busy S ( bell ) go - >done ring - >idle FINAL done - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    10 VALID 2 T=
-   s" package FSM-BAD-FINAL ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : RETRY ( bool ph n -- bool ph ) drop ; FSM:DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy RETRY ;DEFINE ;package"
+   s" package FSM-BAD-FINAL ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : RETRY ( bool ph n -- bool ph ) drop ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy RETRY ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    11 VALID 2 T=
-   s" package FSM-BAD-PICK-ACTION ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : TWIN ( n n -- n ) drop ; : PICK ( n -- ph ) drop construct ph busy ; FSM:DEFINE M ( n ) ph sig IN idle S go TWIN PICK halt - >idle FINAL busy - ;DEFINE ;package"
+   s" package FSM-BAD-PICK-ACTION ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : TWIN ( n n -- n ) drop ; : PICK ( n -- ph ) drop construct ph busy ; using FSM DEFINE M ( n ) ph sig IN idle S go TWIN PICK halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    12 VALID 2 T=
-   s" package FSM-BAD-STATE-ACTION ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : SNEAK ( ph n -- ph ) drop drop construct ph done ; FSM:DEFINE M ( n ) ph sig IN idle S go SNEAK >busy halt - >idle FINAL busy - FINAL done - ;DEFINE ;package"
+   s" package FSM-BAD-STATE-ACTION ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : SNEAK ( ph n -- ph ) drop drop construct ph done ; using FSM DEFINE M ( n ) ph sig IN idle S go SNEAK >busy halt - >idle FINAL busy - FINAL done - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
    13 VALID 2 T= ;
 
@@ -501,10 +519,10 @@ variable SRC-LEN
    s"  : ADD100 ( ^n -- ) 100 swap +! ;" SRC+
    k 1 = if SHADOW-WORDS then
    k 2 = if IMMEDIATE-WORDS then
-   s"  FSM:DEFINE M ( ^n ) ph sig" SRC+
+   s"  using FSM DEFINE M ( ^n ) ph sig" SRC+
    s"  IN idle S go ADD1 >busy stop - >done" SRC+
    s"  IN busy S go ADD10 PICK stop - PICK" SRC+
-   s"  FINAL done ADD100 FINAL halted - ;DEFINE" SRC+
+   s"  FINAL done ADD100 FINAL halted - ;DEFINE ;using" SRC+
    s"  : RUN1 ( n ph -- n ) {: v:n p :} v C ! C p M C @ ;" SRC+
    s"  public : GO ( -- n ) 0 construct ph idle RUN1 50 construct ph idle RUN1 +" SRC+
    s"  50 construct ph busy RUN1 + 7 construct ph halted RUN1 + ;" SRC+
@@ -517,6 +535,15 @@ variable SRC-LEN
    plain 428 T=
    1 SHADOW-TRACE plain T=
    2 SHADOW-TRACE plain T= ;
+
+\ An ACTION a global and a used public both name is rejected
+\ (E-USING-SHADOW-GLOBAL), and the next DEFINE runs.
+: USING-SHADOW ( -- )
+   s" : FSM-USING-ACT ( n -- ) drop ; package FSM-USING-PUB public : FSM-USING-ACT ( n -- ) drop ; ;package"
+   TEST-EVAL:RC 0 T=
+   s" package FSM-USING ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM-USING-PUB using FSM DEFINE M ( n ) ph sig IN idle S go FSM-USING-ACT >busy halt - >idle FINAL busy - ;DEFINE ;using ;using ;package"
+   TEST-EVAL:RC 70 T=
+   14 VALID 2 T= ;
 
 \ The size table: STATES rows of INPUTS lines, each naming one long action, so
 \ each line word outgrows its line and the table's source passes 1 MiB.
@@ -537,7 +564,7 @@ $100000 constant MIB
    s"  ;ENUM TYPED-VARIABLE BIG-CELL n" SRC+
    s"  : BIG-SENSE ( ^n -- big-input ) drop construct big-input i0 ;" SRC+
    s"  : " SRC+ LONG$ SRC+ s"  ( ^n -- ) 1 swap +! ;" SRC+
-   s"  FSM:DEFINE BIG ( ^n ) big-state big-input" SRC+ ;
+   s"  using FSM DEFINE BIG ( ^n ) big-state big-input" SRC+ ;
 
 
 : BIG-ROW ( n -- )
@@ -552,7 +579,7 @@ $100000 constant MIB
    BIG-HEAD
    STATES 1- 0 ?do i BIG-ROW loop
    s"  FINAL s" SRC+ STATES 1- N+ s"  -" SRC+
-   s"  ;DEFINE public : GO ( -- n ) 0 BIG-CELL ! BIG-CELL construct big-state s0 BIG BIG-CELL @ ; ;package FSM-BIG:GO" SRC+
+   s"  ;DEFINE ;using public : GO ( -- n ) 0 BIG-CELL ! BIG-CELL construct big-state s0 BIG BIG-CELL @ ; ;package FSM-BIG:GO" SRC+
    SRC$ ;
 
 
@@ -580,6 +607,7 @@ public
    PLACED-EFFECT
    PLACED-STATES
    SHADOWED
+   USING-SHADOW
    SIZE
    SRC-RELEASE
    T-REPORT ;

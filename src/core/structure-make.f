@@ -5,6 +5,8 @@
 \ product bundle is its field cells in slot order, so MAKE and UNMAKE are casts
 \ the checker certifies, with no TRUST, TRUSTED: or set-check.
 
+using TYPE-DECL
+
 package TYPE-DECL
 private
 package STRUCTURE-MAKE
@@ -96,3 +98,5 @@ public
 
 ;package
 ;package
+
+;using

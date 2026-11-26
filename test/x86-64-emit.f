@@ -23,6 +23,9 @@ s" src/os/linux-x86-64/proc-control.f" required
 
 package X64-EMIT-TEST
 private
+using X64ASM
+using X64CODE
+using X64RT
 
 \ ---- comparing a byte span against its expected string -----------------------
 : HEX-DIGIT ( n -- n ) {: c:n :}
@@ -50,11 +53,11 @@ private
    true ;
 
 : SINK$ ( -- str )
-   X64CODE:CODE X64CODE:ASM-LEN >str ;
+   CODE ASM-LEN >str ;
 
 : X= ( str -- ) {: es:str :}
    SINK$ es SPAN=HEX? TTRUE
-   X64CODE:ASM-RESET ;
+   ASM-RESET ;
 
 : S= ( str str -- ) {: ds:str es:str :}
    ds es SPAN=HEX? TTRUE ;
@@ -73,7 +76,7 @@ variable WANT-N
 
 : E= ( -- )
    SINK$ WANT WANT-N @ >str SPAN=? TTRUE
-   X64CODE:ASM-RESET
+   ASM-RESET
    0 WANT-N ! ;
 
 \ ---- the trap ----------------------------------------------------------------
@@ -94,9 +97,9 @@ variable WANT-N
 
    s" a register is zeroed with the two-byte 32-bit xor" T-LABEL
    \ llvm-mc: xorl %edx, %edx
-   X64ASM:RDX ZERO-REG,  s" 31d2" X=
+   RDX ZERO-REG,  s" 31d2" X=
    \ llvm-mc: xorl %r10d, %r10d
-   X64ASM:R10 ZERO-REG,  s" 4531d2" X= ;
+   R10 ZERO-REG,  s" 4531d2" X= ;
 
 \ ---- the runtime-emit stencils -----------------------------------------------
 : STENCIL-CASES ( -- )
@@ -109,16 +112,16 @@ variable WANT-N
    SYS-EMIT-SVC s" 0f05" S=
 
    s" and are byte for byte what X64ASM encodes for the same instructions" T-LABEL
-   0 X64ASM:>R32 NR-WRITE X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV32-RI32
-   SINK$ SYS-EMIT-WRITE SPAN=? TTRUE   X64CODE:ASM-RESET
-   0 X64ASM:>R32 NR-EXIT-GROUP X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV32-RI32
-   SINK$ SYS-EMIT-EXIT SPAN=? TTRUE    X64CODE:ASM-RESET
-   X64CODE:ASM-SINK X64ASM:ENC-SYSCALL
-   SINK$ SYS-EMIT-SVC SPAN=? TTRUE     X64CODE:ASM-RESET
+   0 >R32 NR-WRITE >IMM32 ASM-SINK ENC-MOV32-RI32
+   SINK$ SYS-EMIT-WRITE SPAN=? TTRUE   ASM-RESET
+   0 >R32 NR-EXIT-GROUP >IMM32 ASM-SINK ENC-MOV32-RI32
+   SINK$ SYS-EMIT-EXIT SPAN=? TTRUE    ASM-RESET
+   ASM-SINK ENC-SYSCALL
+   SINK$ SYS-EMIT-SVC SPAN=? TTRUE     ASM-RESET
 
    s" EMIT-STENCIL appends each stencil whole, in order, to the code stream" T-LABEL
-   SYS-EMIT-WRITE X64RT:EMIT-STENCIL  SYS-EMIT-SVC X64RT:EMIT-STENCIL      \ the MATCH bad-tag
-   SYS-EMIT-EXIT X64RT:EMIT-STENCIL   SYS-EMIT-SVC X64RT:EMIT-STENCIL      \ die's two traps
+   SYS-EMIT-WRITE EMIT-STENCIL  SYS-EMIT-SVC EMIT-STENCIL      \ the MATCH bad-tag
+   SYS-EMIT-EXIT EMIT-STENCIL   SYS-EMIT-SVC EMIT-STENCIL      \ die's two traps
    s" b801000000" E+          \ llvm-mc: movl $1, %eax
    s" 0f05" E+                \ llvm-mc: syscall
    s" b8e7000000" E+          \ llvm-mc: movl $231, %eax
@@ -140,7 +143,7 @@ variable WANT-N
    E=
 
    s" one flag bit selects the Linux bit with no branch" T-LABEL
-   X64ASM:RSI $8 $400 OS-FLAG-BIT,
+   RSI $8 $400 OS-FLAG-BIT,
    s" 31c9" E+                \ llvm-mc: xorl %ecx, %ecx
    s" 49c7c300040000" E+      \ llvm-mc: movq $1024, %r11
    s" 48f7c608000000" E+      \ llvm-mc: testq $8, %rsi
@@ -248,33 +251,33 @@ variable WANT-N
 \ GNU ld linked the llvm-mc object at.
 $401000 constant LINK-VA
 
-: NOPS ( n -- )  0 ?do X64CODE:ASM-SINK X64ASM:ENC-NOP loop ;
+: NOPS ( n -- )  0 ?do ASM-SINK ENC-NOP loop ;
 
 : LINK-FIXTURE ( -- )
-   X64CODE:LBL X64CODE:LBL {: a:label b:label :}
-   a X64CODE:LBL,
-   b X64CODE:JMP,
-   X64ASM:C-NE b X64CODE:JCC,
-   a X64CODE:CALL,
-   b X64CODE:JMP,
-   X64ASM:C-E a X64CODE:JCC,
-   X64ASM:RAX b X64CODE:MOVABS,
-   b X64CODE:LBL,
-   X64CODE:ASM-SINK X64ASM:ENC-RET ;
+   LBL LBL {: a:label b:label :}
+   a LBL,
+   b JMP,
+   C-NE b JCC,
+   a CALL,
+   b JMP,
+   C-E a JCC,
+   RAX b MOVABS,
+   b LBL,
+   ASM-SINK ENC-RET ;
 
 \ The forward label binds at the very end of the stream, where no instruction
 \ follows it.
 : REL8-FWD ( n -- ) {: gap:n :}
-   X64CODE:LBL {: e:label :}
-   e X64CODE:JMP,  gap NOPS  e X64CODE:LBL, ;
+   LBL {: e:label :}
+   e JMP,  gap NOPS  e LBL, ;
 
 : REL8-BACK ( n -- ) {: gap:n :}
-   X64CODE:LBL {: f:label :}
-   f X64CODE:LBL,  gap NOPS  X64ASM:C-NE f X64CODE:JCC, ;
+   LBL {: f:label :}
+   f LBL,  gap NOPS  C-NE f JCC, ;
 
 : LINK-CASES ( -- )
    s" every site kind links to its label, forward and backward" T-LABEL
-   LINK-FIXTURE  LINK-VA X64CODE:ASM-LINK
+   LINK-FIXTURE  LINK-VA ASM-LINK
    s" eb15" E+                \ llvm-mc: {disp8} jmp B
    s" 7513" E+                \ llvm-mc: {disp8} jne B
    s" e8f7ffffff" E+          \ llvm-mc: call A
@@ -285,32 +288,32 @@ $401000 constant LINK-VA
    E=
 
    s" a branch stays short 127 bytes ahead and 128 behind, and grows one byte past" T-LABEL
-   127 REL8-FWD  LINK-VA X64CODE:ASM-LINK
-   X64CODE:CODE 2 >str s" eb7f" SPAN=HEX? TTRUE        \ llvm-mc: {disp8} jmp E, 127 bytes to E
-   X64CODE:ASM-RESET
-   128 REL8-FWD  LINK-VA X64CODE:ASM-LINK
-   X64CODE:CODE 5 >str s" e980000000" SPAN=HEX? TTRUE  \ llvm-mc: {disp32} jmp E, 128 bytes to E
-   X64CODE:ASM-RESET
-   126 REL8-BACK  LINK-VA X64CODE:ASM-LINK
-   X64CODE:CODE 126 + 2 >str s" 7580" SPAN=HEX? TTRUE  \ llvm-mc: {disp8} jne F, 126 bytes after F
-   X64CODE:ASM-RESET
-   127 REL8-BACK  LINK-VA X64CODE:ASM-LINK
-   X64CODE:CODE 127 + 6 >str s" 0f857bffffff" SPAN=HEX? TTRUE  \ llvm-mc: {disp32} jne F, 127 bytes after F
-   X64CODE:ASM-RESET
+   127 REL8-FWD  LINK-VA ASM-LINK
+   CODE 2 >str s" eb7f" SPAN=HEX? TTRUE        \ llvm-mc: {disp8} jmp E, 127 bytes to E
+   ASM-RESET
+   128 REL8-FWD  LINK-VA ASM-LINK
+   CODE 5 >str s" e980000000" SPAN=HEX? TTRUE  \ llvm-mc: {disp32} jmp E, 128 bytes to E
+   ASM-RESET
+   126 REL8-BACK  LINK-VA ASM-LINK
+   CODE 126 + 2 >str s" 7580" SPAN=HEX? TTRUE  \ llvm-mc: {disp8} jne F, 126 bytes after F
+   ASM-RESET
+   127 REL8-BACK  LINK-VA ASM-LINK
+   CODE 127 + 6 >str s" 0f857bffffff" SPAN=HEX? TTRUE  \ llvm-mc: {disp32} jne F, 127 bytes after F
+   ASM-RESET
 
    s" linking forgets the stream's sites, so the next stream is not patched" T-LABEL
-   X64CODE:LBL {: l:label :}
-   l X64CODE:JMP,  l X64CODE:LBL,  LINK-VA X64CODE:ASM-LINK
+   LBL {: l:label :}
+   l JMP,  l LBL,  LINK-VA ASM-LINK
    s" eb00" X=                \ llvm-mc: {disp8} jmp B, B next
-   5 NOPS  LINK-VA X64CODE:ASM-LINK
+   5 NOPS  LINK-VA ASM-LINK
    s" 9090909090" X=
 
    s" a reset stream's sites never reach the longer stream after it" T-LABEL
-   X64CODE:LBL {: old:label :}
-   old X64CODE:JMP,  3 NOPS  old X64CODE:LBL,
-   X64CODE:ASM-RESET
-   X64CODE:LBL {: new:label :}
-   new X64CODE:LBL,  8 NOPS  new X64CODE:JMP,  LINK-VA X64CODE:ASM-LINK
+   LBL {: old:label :}
+   old JMP,  3 NOPS  old LBL,
+   ASM-RESET
+   LBL {: new:label :}
+   new LBL,  8 NOPS  new JMP,  LINK-VA ASM-LINK
    s" 9090909090909090" E+
    s" ebf6" E+                \ llvm-mc: {disp8} jmp T, 8 bytes after T
    E= ;
@@ -322,11 +325,11 @@ $401000 constant LINK-VA
 
 \ The offsets are: 0 nop, 1 A, 3 the cut routine with its text, 7 B, 23 the end.
 : CUT-FIXTURE ( -- label label )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: a:label gone:label b:label :}
+   LBL LBL LBL {: a:label gone:label b:label :}
    1 NOPS
-   a X64CODE:LBL,  b X64CODE:JMP,
-   gone X64CODE:LBL,  gone X64CODE:JMP,  s" hi" X64CODE:BYTES,
-   b X64CODE:LBL,  a X64CODE:CALL,  X64ASM:RAX b X64CODE:MOVABS,  X64CODE:RET,
+   a LBL,  b JMP,
+   gone LBL,  gone JMP,  s" hi" BYTES,
+   b LBL,  a CALL,  RAX b MOVABS,  RET,
    1 3 0 RANGE!  7 23 1 RANGE!
    gone b ;
 
@@ -334,13 +337,13 @@ $401000 constant LINK-VA
    s" a cut moves the kept code and its labels, sites and ends" T-LABEL
    CUT-FIXTURE {: gone:label b:label :}
    0 RANGES 2 1 X64CODE:CUT
-   gone X64CODE:LABEL-BOUND? TFALSE
-   b X64CODE:LABEL-AT 3 T=
-   X64CODE:SITES 3 T=
-   X64CODE:ENDS 2 T=
-   0 X64CODE:END-AT 3 T=
-   1 X64CODE:END-AT 19 T=
-   LINK-VA X64CODE:ASM-LINK
+   gone LABEL-BOUND? TFALSE
+   b LABEL-AT 3 T=
+   SITES 3 T=
+   ENDS 2 T=
+   0 END-AT 3 T=
+   1 END-AT 19 T=
+   LINK-VA ASM-LINK
    s" 90" E+                  \ llvm-mc: nop
    s" eb00" E+                \ llvm-mc: {disp8} jmp B, B next
    s" e8f9ffffff" E+          \ llvm-mc: call A, 2 bytes before B
@@ -355,37 +358,37 @@ $1000 constant CAPTURE-CAP
 create OUT CAPTURE-CAP allot
 create ERR CAPTURE-CAP allot
 
-: UNRESOLVED ( -- )  X64CODE:LBL X64CODE:JMP,  LINK-VA X64CODE:ASM-LINK ;
-: REDEFINED ( -- )  X64CODE:LBL {: l:label :}  l X64CODE:LBL,  l X64CODE:LBL, ;
-: FOREIGN ( -- )  X64CODE:LBL LABEL>N 1 + >LABEL X64CODE:JMP, ;
+: UNRESOLVED ( -- )  LBL JMP,  LINK-VA ASM-LINK ;
+: REDEFINED ( -- )  LBL {: l:label :}  l LBL,  l LBL, ;
+: FOREIGN ( -- )  LBL LABEL>N 1 + >LABEL JMP, ;
 
 : STALE-LINKED ( -- )
-   X64CODE:LBL {: old:label :}
-   old X64CODE:LBL,  LINK-VA X64CODE:ASM-LINK
-   X64CODE:LBL X64CODE:LBL,  old X64CODE:JMP, ;
+   LBL {: old:label :}
+   old LBL,  LINK-VA ASM-LINK
+   LBL LBL,  old JMP, ;
 : STALE-RESET ( -- )
-   X64CODE:LBL {: old:label :}
-   old X64CODE:LBL,  X64CODE:ASM-RESET
-   X64CODE:LBL X64CODE:LBL,  old X64CODE:JMP, ;
+   LBL {: old:label :}
+   old LBL,  ASM-RESET
+   LBL LBL,  old JMP, ;
 
 : TRUNCATED ( -- )
-   X64CODE:LBL {: l:label :}
-   l X64CODE:JMP,  l X64CODE:LBL,
-   X64CODE:ASM-SINK 0 VEC:RESIZE
-   LINK-VA X64CODE:ASM-LINK ;
+   LBL {: l:label :}
+   l JMP,  l LBL,
+   ASM-SINK 0 VEC:RESIZE
+   LINK-VA ASM-LINK ;
 
 \ A jump to the ret after it, then two bytes of data, keeping [0, n).
 : KEEP-FIRST ( n -- ) {: n:n :}
-   X64CODE:LBL {: l:label :}
-   l X64CODE:JMP,  l X64CODE:LBL,  X64CODE:RET,  s" hi" X64CODE:BYTES,
+   LBL {: l:label :}
+   l JMP,  l LBL,  RET,  s" hi" BYTES,
    0 n 0 RANGE!
    0 RANGES 1 0 X64CODE:CUT ;
 
 : CUT-LABEL ( -- ) 2 KEEP-FIRST ;
 \ A call's rel32 field is [1, 5); keeping [0, 3) splits it.
 : CUT-SITE ( -- )
-   X64CODE:LBL {: l:label :}
-   l X64CODE:CALL,  l X64CODE:LBL,  X64CODE:RET,
+   LBL {: l:label :}
+   l CALL,  l LBL,  RET,
    0 3 0 RANGE!
    0 RANGES 1 0 X64CODE:CUT ;
 : CUT-DATA ( -- ) 4 KEEP-FIRST ;
@@ -421,7 +424,7 @@ create ERR CAPTURE-CAP allot
 
 : RUN ( -- )
    T-RESET
-   X64CODE:SINK-OPEN
+   SINK-OPEN
    TRAP-CASES
    STENCIL-CASES
    OPEN-CASES
@@ -430,7 +433,7 @@ create ERR CAPTURE-CAP allot
    LINK-CASES
    CUT-CASES
    REJECTION-CASES
-   X64CODE:SINK-CLOSE
+   SINK-CLOSE
    T-REPORT ;
 
 RUN

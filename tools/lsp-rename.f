@@ -17,6 +17,8 @@ require tools/lsp-references.f
 require src/lib/json/write.f
 
 package LSP-RENAME
+using JSON
+using LSP-DEFS
 
 private
 
@@ -55,8 +57,8 @@ public
 : PREPARED ( ^JSON:writer n n -- ^JSON:writer )
    {: slot:n at:n :}
    slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
-   slot at LSP-DEFS:DEFS-USE-AT MATCH option
-      some OF LSP-DEFS:USE-BYTES ENDOF
+   slot at DEFS-USE-AT MATCH option
+      some OF USE-BYTES ENDOF
       none OF LSP-REFERENCES:TOKEN ENDOF
    ;MATCH {: from:n to:n :}
    from to LSP-REFERENCES:TAIL-FROM LSP-TEXT:LINE-CHARACTER
@@ -98,22 +100,24 @@ public
 \ each URI's locations are one run.
 : ANSWER ( ^JSON:writer str -- ^JSON:writer )
    {: name:str :}
-   JSON:WRITE-OBJECT-START
-   s" changes" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
+   WRITE-OBJECT-START
+   s" changes" WRITE-KEY WRITE-OBJECT-START
    LSP-REFERENCES:LOCATIONS 0 ?do
       i NEW-URI? if
-         i 0 > if JSON:WRITE-ARRAY-END JSON:WRITE-COMMA then
-         i LSP-REFERENCES:LOC-URI$ JSON:WRITE-KEY JSON:WRITE-ARRAY-START
+         i 0 > if WRITE-ARRAY-END WRITE-COMMA then
+         i LSP-REFERENCES:LOC-URI$ WRITE-KEY WRITE-ARRAY-START
       else
-         JSON:WRITE-COMMA
+         WRITE-COMMA
       then
-      JSON:WRITE-OBJECT-START
-      i LSP-REFERENCES:LOC-TAIL LSP-TEXT:RANGE-AT JSON:WRITE-COMMA
-      s" newText" name JSON:WRITE-FIELD-S
-      JSON:WRITE-OBJECT-END
+      WRITE-OBJECT-START
+      i LSP-REFERENCES:LOC-TAIL LSP-TEXT:RANGE-AT WRITE-COMMA
+      s" newText" name WRITE-FIELD-S
+      WRITE-OBJECT-END
    loop
-   JSON:WRITE-ARRAY-END
-   JSON:WRITE-OBJECT-END
-   JSON:WRITE-OBJECT-END ;
+   WRITE-ARRAY-END
+   WRITE-OBJECT-END
+   WRITE-OBJECT-END ;
 
+;using
+;using
 ;package

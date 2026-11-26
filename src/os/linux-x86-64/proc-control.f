@@ -16,12 +16,16 @@
 require src/arch/x86-64/rt.f
 require src/os/linux-x86-64/sys.f
 
+using X64RT
+
 : BKILLERRNO ( -- )                \ ( pid sig -- rc ) rc=0 or -errno
-   6 X64RT:G-POP  7 X64RT:G-POP                \ rsi = sig, rdi = pid
+   6 G-POP  7 G-POP                \ rsi = sig, rdi = pid
    NR-KILL SYS,
-   0 X64RT:G-PUSH ;
+   0 G-PUSH ;
 
 : BEXECVE ( -- )                   \ ( pathz argv envp -- rc ) only returns on failure: rc=-errno
-   2 X64RT:G-POP  6 X64RT:G-POP  7 X64RT:G-POP       \ rdx = envp, rsi = argv, rdi = pathz
+   2 G-POP  6 G-POP  7 G-POP       \ rdx = envp, rsi = argv, rdi = pathz
    NR-EXECVE SYS,
-   0 X64RT:G-PUSH ;
+   0 G-PUSH ;
+
+;using

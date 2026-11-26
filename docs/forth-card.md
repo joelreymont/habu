@@ -38,16 +38,23 @@ public
   inside `package P private` publishes `Y` into wordlist `Q`, where `Q:Y`
   resolves it while `P:Y` stays `E-UNDEFINED`. Define into a package
   by being in it, never by qualifying.
-- Call another package's public word as `NAME:WORD`, however often a file
-  calls it.
+- Call another package's public word as `NAME:WORD`, or import NAME's publics
+  for bare calls with `using NAME … ;using`: pick whichever makes the source
+  shorter and clearer, such as `using` in a file that calls one package
+  throughout. A bare tail a global also owns is rejected (§ 3) — rename the
+  public. A file loaded under a `using` resolves through it. Close a using
+  opened before `package` after `;package`: a `;using` inside the package that
+  would close it is rejected as `E-USING-OUTER`, status 70. A load file is a
+  using scope too: a `;using` in an included file or `evaluate` buffer that
+  would close its includer's using is rejected the same way.
 - `package B` in package A's private section, in the file or string A is
-  open in, opens the **part** `A:B`; a part holds no parts. Inside A and its
-  parts `B:X` in a word or a family type and `: B:Q` name the part first,
-  then a top-level B; outside A nothing reaches it, `A:B:X` included, and a
-  top-level `package B` is another package. A `DEFLINEAR` or `VALUE-RECORD`
-  name `B:X` is an exact global spelling no part shadows: it is rejected while
-  top-level B or a part named B declares the family X
-  (`checker: bad or duplicate signature type`, or
+  open in and under no `using` A opened, opens the **part** `A:B`; a part
+  holds no parts. Inside A and its parts `B:X` in a word or a family type,
+  `using B` and `: B:Q` name the part first, then a top-level B; outside A
+  nothing reaches it, `A:B:X` included, and a top-level `package B` is another
+  package. A `DEFLINEAR` or `VALUE-RECORD` name `B:X` is an exact global
+  spelling no part shadows: it is rejected while top-level B or a part named B
+  declares the family X (`checker: bad or duplicate signature type`, or
   `checker: bad or duplicate value-record type` for `VALUE-RECORD`, rc 70), and
   that family is rejected while the name exists (for `NEWTYPE x`, `bad newtype
   declaration 'x': reserved name`, rc 70). `;package` of a part returns to A's
@@ -64,7 +71,8 @@ public
   tail: same xt, same effect, no body. `EXPORT PKG:NAME` also takes a private
   `NAME` of a package that is not sealed (`E-SEALED-PACKAGE` once sealed),
   an engine-owned primitive such as `BOOT:data-base` included; a global
-  primitive (`dup`) is `E-EXPORT-PRIM`.
+  primitive (`dup`) is `E-EXPORT-PRIM`. A bare `NAME` only a `using` brings
+  in is `E-EXPORT-UNDEFINED`: write `EXPORT U:NAME`.
 - The package keyword `seal-package` seals the open package: a later
   `package` of it, or a definition or `EXPORT` into it, is
   `E-SEALED-PACKAGE`, rc 70, and `tools/check.f` rejects the same. A sealed
@@ -98,7 +106,8 @@ public
   `E-RESERVED-DEFINITION`, rc 70. A number-shaped name (`: 42`, an
   overflowed `: 99999999999999999999` too) is rejected by every definer: rc 70.
 
-forth.md: **Naming**, **Packages**, **Rules learned by rejection**.
+forth.md: **Naming**, **Packages**, **Importing … with `using`**, **Rules
+learned by rejection**.
 
 ## 2 Effects, locals, quotations
 
@@ -247,6 +256,7 @@ before the word runs, and `--load` exits 70.
 | `( R [ R -- S ] -- S ) drop`, `( R n -- ) drop`, `( R -- S ) 1`: a body that unifies two declared rows, a row with the unnamed row, or binds a row other than its own return row to fixed cells | `E-NONPARAMETRIC-EFFECT`, naming the rows — run the quotation on every path, or declare the row the body leaves |
 | `2 3 DEMO:AT dup`: an engine stack primitive (`dup`, `swap`, `over`, `2>r`, their kin) at top level whose operands hold a multi-cell value, or `constant` over one; a word that takes or returns one runs there, and `drop` drops the whole value, rejecting one of open width; a width-generic family's field accessor or `AT` called at top level on an instance that moves its member: `0 HELDS HELD:SET` for `held<a>` over a two-cell `a` | `E-LAYOUT-VALUE`, rc 70, before it runs; for a primitive, pass the value to a word whose effect names its type, or move the primitive inside a definition; for `constant`, define a word that leaves the whole value, `: NAME ( -- TYPE ) ... ;`; for `drop`, name a concrete type in the effect that leaves the value, `option<n>` in place of `option<a>`; for a field accessor or `AT`, move the call inside a definition |
 | `depth` or `.s` over a value held in more than one cell, or a layout value whose width is open there: `3 OPTION:SOME depth`, `( option<a> -- ) depth` | `E-DEPTH-WIDE`, `count_values`, ``cannot count `option<n>`: it is one value held in 2 cells``, or ``cannot count `option<a>`: it is one value, and how many cells it holds is not known here``; take the value apart first (`MATCH` needs concrete arguments, `E-MATCH-OPEN-ARGS`), or count another way |
+| a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with status 70 |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED` at the token |
 | `' F execute` or `['] F execute` with F's inputs missing; `0 0 catch` or `0 execute`, a number where an xt belongs | `E-INPUT-UNDERFLOW` at `execute`; `E-MISMATCH` at `catch`, `execute` |
 | `7 0 /`, `: F ( n -- n ) 0 dup drop mod ;`, `0 throw`, `7 0 HALVE` for `: HALVE ( n n -- n ) / ;` or `0 FAIL` for `: FAIL ( n -- ) throw ;`, in a body or at top level: a literal 0 divisor of `/`, `mod` or `/mod`, a literal 0 thrown, or a literal 0 at an input a word with a signature divides by or throws with only stack words, locals, integer and string literals and calls before it; a computed 0 is not rejected | `E-DIV-ZERO`, `fix_divisor`, at the word; `E-THROW-ZERO`, `fix_throw_code`, at `throw` or the call |
@@ -747,6 +757,7 @@ forth.md: **Testing**.
 | Checked code and primitive boundaries | a new `EPRIM:`, what `evaluate-closed` checks |
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require, search roots and `SOURCE-ROOT` |
+| Importing … with `using` | ambiguity, scope end, the limit |
 | Structures And Enums | `NEWTYPE`/`SUMTYPE`/`STRUCTURE`/`ENUM`, `construct`, `MATCH`, `CAST:`, `LINEAR:`, `FSM:DEFINE` |
 | Words & factoring | word size, argument limits, splits |
 | Files | one concern per file, script argv |

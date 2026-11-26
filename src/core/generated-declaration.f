@@ -11,11 +11,13 @@
 \ code raised with no reason armed for it arrives bare, and PICK-REASON reads the
 \ rows each code's owner lays with EXPLAIN. Declarations never nest, so the
 \ record is one frame.
+using TYPE-DECL
 
 package DECL-REJECT
 EXPORT CHECK:TDECL-DIAG
 EXPORT CHECK:DEF-NAME-REJECT?
 EXPORT TYPE-DECL:DECL-FAMILY-NAME
+EXPORT TYPE-DECL:TDECL-AMBIG-DIAG
 EXPORT TYPE-DECL:TDECL-ARM
 EXPORT TYPE-DECL:TDECL-ARMED
 EXPORT TYPE-DECL:TDECL-SEALED-WORD
@@ -185,7 +187,8 @@ private
 \ A variant or field name is read only after the family name passed the name rule.
 : RENDER ( n -- ) {: code:n :}
    TOKEN-SPAN@ {: ts:str :}
-   code TYPE-DECL:E-TDECL-SEALED = IF FAMILY$ TDECL-SEALED-WORD AT-FAMILY TOKEN-SPAN@ REJECTION:SEALED EXIT THEN
+   code E-USING-AMBIGUOUS = IF KIND$ FAMILY$ ts TDECL-AMBIG-DIAG EXIT THEN
+   code E-TDECL-SEALED = IF FAMILY$ TDECL-SEALED-WORD AT-FAMILY TOKEN-SPAN@ REJECTION:SEALED EXIT THEN
    code TFAM:E-TDECL-DEF-NAME = IF FAMILY$ ts DEF-NAME-REJECT? 0= IF ts ts DEF-NAME-REJECT? drop THEN EXIT THEN
    KIND$ FAMILY$ ts  code PICK-REASON  ts code TDECL-WORD-NOTE  TDECL-DIAG ;
 
@@ -239,25 +242,25 @@ private
 \ Reasons for codes whose owners load before EXPLAIN exists.
 s" malformed declaration"
 s" write `STRUCTURE name` or `ENUM name`, then its clauses, then `;STRUCTURE` or `;ENUM`"
-TYPE-DECL:E-TDECL-SYNTAX EXPLAIN
+E-TDECL-SYNTAX EXPLAIN
 s" invalid type parameter header"
 s" name each type parameter once in the header, as in `box<a>` or `result<a,b>`"
-TYPE-DECL:E-TDECL-ARITY EXPLAIN
+E-TDECL-ARITY EXPLAIN
 s" unknown payload type"
 s" give each field a type declared before it: `n`, `^u8`, a `STRUCTURE` or an `ENUM`"
-TYPE-DECL:E-TDECL-PAYLOAD EXPLAIN
+E-TDECL-PAYLOAD EXPLAIN
 s" unknown layout policy"
 s" name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`"
-TYPE-DECL:E-TDECL-POLICY EXPLAIN
+E-TDECL-POLICY EXPLAIN
 s" invalid layout policy for recursive sum"
 s" drop the payload that names the family being declared: no family can hold itself"
-TYPE-DECL:E-TDECL-RECURSIVE EXPLAIN
+E-TDECL-RECURSIVE EXPLAIN
 s" record too wide or type too deep to make"
 s" split the record, or declare an inner part as a type of its own"
-TYPE-DECL:E-TDECL-CAP EXPLAIN
+E-TDECL-CAP EXPLAIN
 s" derive requirement not met"
 s" derive a feature only when every payload type has it, or drop it from `DERIVE`"
-TYPE-DECL:E-TDECL-DERIVE EXPLAIN
+E-TDECL-DERIVE EXPLAIN
 \ Both front ends arm "reserved name" at their own name gates, so E-TDECL-NAME
 \ reaching the table was raised by a deeper owner: the variant-name gate (a
 \ reserved tail, a family-name collision or a word the DERIVE clause generates)
@@ -265,7 +268,7 @@ TYPE-DECL:E-TDECL-DERIVE EXPLAIN
 \ name). The text has to be true of both.
 s" name is reserved or already taken"
 s" rename it so it is no reserved word and no word this declaration generates"
-TYPE-DECL:E-TDECL-NAME EXPLAIN
+E-TDECL-NAME EXPLAIN
 s" name must be a lowercase tail"
 s" write the name as a lowercase tail with no package qualifier, as in `point`"
 TFAM:E-TFAM-CASE EXPLAIN
@@ -486,7 +489,7 @@ public
    fam node TDECL-DERIVE-WHY {: ws:str fs:str :}
    ws STR:LEN 0= IF EXIT THEN
    ts DECL-REJECT:TOKEN!
-   ws fs TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw ;
+   ws fs E-TDECL-DERIVE DECL-REJECT:REJECT throw ;
 
 110 constant ASCII-N
 102 constant ASCII-F
@@ -651,13 +654,13 @@ public
 : POLICY-CODE ( str -- n )         \ policy name -> layout code (or reject)
    dup STR:LEN 0= IF drop s" missing layout policy name"
       s" name a policy after `POLICY`: `stack-cell-tag`, `packed-tag` or `niche-null`"
-      TYPE-DECL:E-TDECL-POLICY DECL-REJECT:REJECT throw THEN
+      E-TDECL-POLICY DECL-REJECT:REJECT throw THEN
    dup s" stack-cell-tag" STR:=CI IF drop TL-STACK-CELL-TAG EXIT THEN
    dup s" packed-tag" STR:=CI IF drop TL-PACKED-TAG EXIT THEN
    dup s" niche-null" STR:=CI IF drop TL-NICHE EXIT THEN
    drop s" unknown layout policy"
    s" name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`"
-   TYPE-DECL:E-TDECL-POLICY DECL-REJECT:REJECT throw ;
+   E-TDECL-POLICY DECL-REJECT:REJECT throw ;
 
 private
 
@@ -772,3 +775,5 @@ RESET MISS-CLEAR
 
 ;package
 ;package
+
+;using

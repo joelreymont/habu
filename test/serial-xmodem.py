@@ -18,6 +18,7 @@ require src/lib/fs.f
 require src/lib/heap.f
 require src/lib/vector.f
 package SXMODEM-TEST
+using XMODEM
 TYPED-VARIABLE INPUT ^VEC:vector<u8>
 TYPED-VARIABLE OUTPUT ^VEC:vector<u8>
 TYPED-VARIABLE SESSION SERIAL-XMODEM:session
@@ -109,10 +110,10 @@ class Checks:
         source.write_bytes(data)
         output = self.out / 'received.bin'
         if sending:
-            call = f'INPUT @ VEC:BYTES {block} XMODEM:BLOCK {total} >MS SESSION SERIAL-XMODEM:SEND'
+            call = f'INPUT @ VEC:BYTES {block} BLOCK {total} >MS SESSION SERIAL-XMODEM:SEND'
             expected = expected or f'completed {len(data)}'
         else:
-            call = f'{maximum} XMODEM:BYTES OUTPUT @ {total} >MS SESSION SERIAL-XMODEM:RECEIVE'
+            call = f'{maximum} BYTES OUTPUT @ {total} >MS SESSION SERIAL-XMODEM:RECEIVE'
             expected = expected or f'completed {len(received)}'
         if actions is not None:
             call = actions
@@ -384,10 +385,10 @@ RUN
 
     def reuse(self):
         actions = '''
-INPUT @ VEC:BYTES 128 XMODEM:BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
-128 XMODEM:BYTES OUTPUT @ 5000 >MS SESSION SERIAL-XMODEM:RECEIVE REPORT
-INPUT @ VEC:BYTES 1024 XMODEM:BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
-1024 XMODEM:BYTES OUTPUT @ 5000 >MS SESSION SERIAL-XMODEM:RECEIVE
+INPUT @ VEC:BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+128 BYTES OUTPUT @ 5000 >MS SESSION SERIAL-XMODEM:RECEIVE REPORT
+INPUT @ VEC:BYTES 1024 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+1024 BYTES OUTPUT @ 5000 >MS SESSION SERIAL-XMODEM:RECEIVE
 '''
         def peer(port):
             for crc, size in [(True, 128), (False, 1024)]:
@@ -414,8 +415,8 @@ INPUT @ VEC:BYTES 1024 XMODEM:BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
             port.expect(b'\x04')
             port.write(b'\x06')
         self.exchange('reuse-after-peer-cancel', recover, actions='''
-INPUT @ VEC:BYTES 128 XMODEM:BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
-INPUT @ VEC:BYTES 128 XMODEM:BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
+INPUT @ VEC:BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+INPUT @ VEC:BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
 ''', expected='cancelled completed 7')
 
     def native(self, body, *, rejected=None):
@@ -501,8 +502,8 @@ TASK:MIN-STACK TASK:TASK WORKER1
    handle 1000 >MS 1000 >MS session SERIAL-XMODEM:INIT FRESH output ! handle READY
    4 0 do
       identity i + data c!
-      data 1 >str 128 XMODEM:BLOCK 5000 >MS session SERIAL-XMODEM:SEND COUNT 1 <> if -1 throw then
-      128 XMODEM:BYTES output @ 5000 >MS session SERIAL-XMODEM:RECEIVE COUNT 128 <> if -1 throw then
+      data 1 >str 128 BLOCK 5000 >MS session SERIAL-XMODEM:SEND COUNT 1 <> if -1 throw then
+      128 BYTES output @ 5000 >MS session SERIAL-XMODEM:RECEIVE COUNT 128 <> if -1 throw then
       identity i + output @ CHECK-REPLY
    loop
    session SERIAL-XMODEM:DISPOSE output @ VEC:DELETE handle CLOSE-HANDLE

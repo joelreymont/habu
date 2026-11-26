@@ -37,6 +37,9 @@ require tools/lsp-workspace.f
 require src/lib/json/write.f
 
 package LSP-REFERENCES
+using JSON
+using LSP-DOCS
+using LSP-DEFS
 
 private
 
@@ -311,7 +314,7 @@ public
 : TAIL-FROM ( n n -- n )
    SPAN-IN {: w:str a:n :}
    w NAME$ STR:=CI if a exit then
-   w LSP-DEFS:QUALIFIER-AT {: at:n :}
+   w QUALIFIER-AT {: at:n :}
    at 0 < if -1 exit then
    w STR:DATA at + w STR:LEN at - >str NAME$ STR:=CI if a at + else -1 then ;
 
@@ -410,17 +413,17 @@ private
 \ establishes coverage when its verdict was verified.
 : READS ( n -- )
    {: by:n :}
-   LSP-DEFS:PROBE LSP-DEFS:DEFS-GROUP-RANGE ?do
-      i LSP-DEFS:GROUP-CONSUMED? if
-         i LSP-DEFS:GROUP-PATH$ KNOWN-AT {: k:n :}
+   PROBE DEFS-GROUP-RANGE ?do
+      i GROUP-CONSUMED? if
+         i GROUP-PATH$ KNOWN-AT {: k:n :}
          1 k K-CONSUMED KNOWN!
-         by 0 > i LSP-DEFS:GROUP-STAMPED? and if k by READ! then
+         by 0 > i GROUP-STAMPED? and if k by READ! then
       then
    loop ;
 
 \ A partial check contributes known bindings without certifying full coverage.
 : PROBE-READS ( n -- )
-   LSP-DEFS:PROBE LSP-DEFS:DEFS-VERIFIED? if READS else drop 0 READS then ;
+   PROBE DEFS-VERIFIED? if READS else drop 0 READS then ;
 
 \ The file at this canonical path, which does not lie in POOL, the last
 \ subject, unless it is one.
@@ -441,11 +444,11 @@ private
 
 : DECL-KEY? ( n -- bool )
    {: d:n :}
-   d LSP-DEFS:DECL-NAME$ d LSP-DEFS:DECL-PACKAGE$ d LSP-DEFS:DECL-VIS KEY? ;
+   d DECL-NAME$ d DECL-PACKAGE$ d DECL-VIS KEY? ;
 
 : USE-KEY? ( n -- bool )
    {: u:n :}
-   u LSP-DEFS:USE-NAME$ u LSP-DEFS:USE-PACKAGE$ u LSP-DEFS:USE-VIS KEY? ;
+   u USE-NAME$ u USE-PACKAGE$ u USE-VIS KEY? ;
 
 : TOKEN? ( n n -- bool )
    {: from:n to:n :}
@@ -453,11 +456,11 @@ private
 
 : DECL-AT? ( n n -- bool )
    {: d:n g:n :}
-   d LSP-DEFS:DECL-GROUP g = if d LSP-DEFS:DECL-BYTES TOKEN? else false then ;
+   d DECL-GROUP g = if d DECL-BYTES TOKEN? else false then ;
 
 : USE-AT? ( n n -- bool )
    {: u:n g:n :}
-   u LSP-DEFS:USE-GROUP g = if u LSP-DEFS:USE-TARGET TOKEN? else false then ;
+   u USE-GROUP g = if u USE-TARGET TOKEN? else false then ;
 
 : P-PATH! ( str -- )
    {: s:str :}
@@ -468,7 +471,7 @@ private
 : P! ( n -- )
    {: g:n :}
    g G !
-   g LSP-DEFS:GROUP-PATH$ P-PATH! ;
+   g GROUP-PATH$ P-PATH! ;
 
 : NAME! ( str str -- )
    {: w:str k:str :}
@@ -479,8 +482,8 @@ private
 
 : TEXT-OF! ( str -- )
    {: s:str :}
-   s LSP-DOCS:DOC-HOLDING MATCH option
-      some OF LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
+   s DOC-HOLDING MATCH option
+      some OF DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
       none OF s LSP-TEXT:FILE-TEXT! ENDOF
    ;MATCH ;
 
@@ -498,12 +501,12 @@ private
 \ compiled-binding locator. An older packet may have an empty target end.
 : ORIGIN-USE-SYM ( n -- n bool )
    {: u:n :}
-   u LSP-DEFS:USE-VISIT -1 <> if 0 false exit then
-   u LSP-DEFS:USE-GROUP {: g:n :}
+   u USE-VISIT -1 <> if 0 false exit then
+   u USE-GROUP {: g:n :}
    g 0 < if 0 false exit then
-   u LSP-DEFS:USE-TARGET {: at:n end:n :}
+   u USE-TARGET {: at:n end:n :}
    at 0 < end 0 < or if 0 false exit then
-   g LSP-DEFS:GROUP-PATH$ at ENGINE-ORIGIN:SYMBOL-AT
+   g GROUP-PATH$ at ENGINE-ORIGIN:SYMBOL-AT
    {: sym:n found:bool :}
    found 0= if 0 false exit then
    sym ENGINE-ORIGIN:TARGET
@@ -554,39 +557,39 @@ private
 
 : FROM-USE ( n -- )
    {: u:n :}
-   u LSP-DEFS:USE-GROUP P!
-   u LSP-DEFS:USE-TARGET TE ! TS !
-   u LSP-DEFS:USE-NAME$ u LSP-DEFS:USE-PACKAGE$ NAME!
-   u LSP-DEFS:USE-VIS KEY-VIS !
-   u LSP-DEFS:USE-VISIT VISIT !
+   u USE-GROUP P!
+   u USE-TARGET TE ! TS !
+   u USE-NAME$ u USE-PACKAGE$ NAME!
+   u USE-VIS KEY-VIS !
+   u USE-VISIT VISIT !
    true FOUND ! ;
 
 : FROM-DECL ( n -- )
    {: d:n :}
-   d LSP-DEFS:DECL-GROUP P!
-   d LSP-DEFS:DECL-BYTES TE ! TS !
-   d LSP-DEFS:DECL-NAME$ d LSP-DEFS:DECL-PACKAGE$ NAME!
-   d LSP-DEFS:DECL-VIS KEY-VIS !
-   d LSP-DEFS:DECL-VISIT VISIT !
+   d DECL-GROUP P!
+   d DECL-BYTES TE ! TS !
+   d DECL-NAME$ d DECL-PACKAGE$ NAME!
+   d DECL-VIS KEY-VIS !
+   d DECL-VISIT VISIT !
    true FOUND ! ;
 
 : AT-USE ( n n -- )
    {: slot:n u:n :}
-   u LSP-DEFS:USE-PRIMITIVE-ROW {: row:n :}
+   u USE-PRIMITIVE-ROW {: row:n :}
    row 0 >= if
       row FROM-PRIMITIVE
-      u LSP-DEFS:USE-BYTES TAIL-FROM 0 < if false SPELT ! then
+      u USE-BYTES TAIL-FROM 0 < if false SPELT ! then
       exit
    then
    u ORIGIN-USE-SYM {: sym:n origin:bool :}
    origin if
       sym FROM-BUILTIN
-      u LSP-DEFS:USE-BYTES TAIL-FROM 0 < if false SPELT ! then
+      u USE-BYTES TAIL-FROM 0 < if false SPELT ! then
       exit
    then
-   u LSP-DEFS:USE-VISIT 0 < if slot LSP-DOCS:DOC-CANON$ s" the use has no declaration identity" REJECT exit then
+   u USE-VISIT 0 < if slot DOC-CANON$ s" the use has no declaration identity" REJECT exit then
    u FROM-USE
-   u LSP-DEFS:USE-BYTES TAIL-FROM 0 < if false SPELT ! then ;
+   u USE-BYTES TAIL-FROM 0 < if false SPELT ! then ;
 
 : HOLDS? ( n n n -- bool )
    {: from:n to:n at:n :}
@@ -594,25 +597,25 @@ private
 
 : DECL-HOLDING ( n n n -- option<n> )
    {: slot:n g:n at:n :}
-   slot LSP-DEFS:DEFS-DECL-RANGE ?do
-      i LSP-DEFS:DECL-GROUP g = if
-         i LSP-DEFS:DECL-BYTES at HOLDS? if i OPTION:SOME unloop exit then
+   slot DEFS-DECL-RANGE ?do
+      i DECL-GROUP g = if
+         i DECL-BYTES at HOLDS? if i OPTION:SOME unloop exit then
       then
    loop
-   slot LSP-DEFS:DEFS-DECL-RANGE ?do
-      i LSP-DEFS:DECL-GROUP g = if
-         i LSP-DEFS:DECL-BYTES at = swap at < and if i OPTION:SOME unloop exit then
+   slot DEFS-DECL-RANGE ?do
+      i DECL-GROUP g = if
+         i DECL-BYTES at = swap at < and if i OPTION:SOME unloop exit then
       then
    loop
    OPTION:NONE ;
 
 : TOKEN-WHY ( n n -- str )
    {: slot:n g:n :}
-   slot LSP-DEFS:DEFS-DECL-RANGE ?do
+   slot DEFS-DECL-RANGE ?do
       i g DECL-AT? if
-         i LSP-DEFS:DECL-VISIT 0 < if s" the token has no declaration identity" unloop exit then
+         i DECL-VISIT 0 < if s" the token has no declaration identity" unloop exit then
          i DECL-KEY? 0= if s" the token declares several words" unloop exit then
-         i LSP-DEFS:DECL-VISIT VISIT @ <> if
+         i DECL-VISIT VISIT @ <> if
             s" the token declares the word in several visits" unloop exit
          then
       then
@@ -634,7 +637,7 @@ private
 
 : AT-TOKEN ( n n -- )
    {: slot:n at:n :}
-   slot LSP-DEFS:DEFS-OWN-GROUP MATCH option
+   slot DEFS-OWN-GROUP MATCH option
       some OF slot swap at AT-TOKEN-IN ENDOF
       none OF ENDOF
    ;MATCH ;
@@ -644,7 +647,7 @@ private
    {: slot:n at:n :}
    PRIM-SOURCE:ENGINE-PATH$ {: path:str ready:bool :}
    ready 0= if exit then
-   slot LSP-DOCS:DOC-CANON$ path STR:= 0= if exit then
+   slot DOC-CANON$ path STR:= 0= if exit then
    path TEXT-OF!
    LSP-TEXT:TEXT$ at PRIM-SOURCE:MARKER-IN
    {: marker:n start:n end:n located:bool :}
@@ -654,7 +657,7 @@ private
 \ image symbol from its declaration.
 : AT-BUILTIN-TOKEN ( n n -- )
    {: slot:n at:n :}
-   slot LSP-DOCS:DOC-CANON$ {: path:str :}
+   slot DOC-CANON$ {: path:str :}
    path TEXT-OF!
    path at LSP-TEXT:TEXT$ SOURCE-INDEX:SYMBOL-IN
    {: sym:n found:bool :}
@@ -663,23 +666,23 @@ private
 : HELD ( n -- n )
    {: slot:n :}
    0
-   slot LSP-DEFS:DEFS-DECL-RANGE ?do
+   slot DEFS-DECL-RANGE ?do
       i G @ DECL-AT? if
-         i LSP-DEFS:DECL-VISIT VISIT @ = if i DECL-KEY? if 1+ then then
+         i DECL-VISIT VISIT @ = if i DECL-KEY? if 1+ then then
       then
    loop ;
 
 : ANCHORED ( n -- )
    {: slot:n :}
    slot HELD 1 <> if P$ s" the check does not hold the declaration once" REJECT exit then
-   G @ LSP-DEFS:GROUP-STAMPED? 0= if P$ s" the check states no consistent source revision" REJECT then ;
+   G @ GROUP-STAMPED? 0= if P$ s" the check states no consistent source revision" REJECT then ;
 
 : LOCATE ( n n -- )
    {: slot:n at:n :}
-   slot at LSP-DEFS:DEFS-USE-AT MATCH option
+   slot at DEFS-USE-AT MATCH option
       some OF
          {: u:n :}
-         u LSP-DEFS:USE-PRIMITIVE-ROW 0 >= if slot at AT-TOKEN then
+         u USE-PRIMITIVE-ROW 0 >= if slot at AT-TOKEN then
          FOUND @ 0= if slot u AT-USE then
       ENDOF
       none OF
@@ -700,9 +703,9 @@ private
       exit
    then
    IMPLICIT? 0= if
-      G @ LSP-DEFS:GROUP-TEXT-FRESH? 0= if P$ s" changed since it was checked" REJECT exit then
+      G @ GROUP-TEXT-FRESH? 0= if P$ s" changed since it was checked" REJECT exit then
    else
-      P$ LSP-DOCS:DOC-HOLDING MATCH option
+      P$ DOC-HOLDING MATCH option
          some OF drop ENDOF
          none OF P$ LSP-TEXT:DISK-CURRENT? 0= if P$ s" changed while locating source" REJECT exit then ENDOF
       ;MATCH
@@ -710,8 +713,8 @@ private
    TS @ TE @ SPAN-IN drop {: s:str :}
    s POOL+ TOK-AT !
    s STR:LEN TOK-U !
-   IMPLICIT? if P$ P$ LSP-DEFS:DEP-URI$
-   else G @ LSP-DEFS:GROUP-PATH$ G @ LSP-DEFS:GROUP-SOURCE-URI$ then
+   IMPLICIT? if P$ P$ DEP-URI$
+   else G @ GROUP-PATH$ G @ GROUP-SOURCE-URI$ then
    FILE-AT TS @ TE @ LOC+
    true DECLARED ! ;
 
@@ -730,11 +733,11 @@ private
 \ an implicit word needs no load.
 : SUBJECTS! ( n -- )
    {: slot:n :}
-   slot LSP-DOCS:DOC-CANON$ {: s:str :}
+   slot DOC-CANON$ {: s:str :}
    s POOL+ D-AT !
    s STR:LEN D-U !
    IMPLICIT? if
-      [: -1 swap LSP-DOCS:DOC-EACH-BUT ;] LSP-WORKSPACE:ALL-SUBJECTS
+      [: -1 swap DOC-EACH-BUT ;] LSP-WORKSPACE:ALL-SUBJECTS
       LSP-WORKSPACE:REJECTED? if
          LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REJECT exit
       then
@@ -742,7 +745,7 @@ private
       SUB-N @ WALKED !
       exit
    then
-   P$ D$ [: -1 swap LSP-DOCS:DOC-EACH-BUT ;] LSP-WORKSPACE:REACHING
+   P$ D$ [: -1 swap DOC-EACH-BUT ;] LSP-WORKSPACE:REACHING
    LSP-WORKSPACE:REJECTED? if
       LSP-WORKSPACE:BLOCKED$ s" the workspace folder cannot be walked" REJECT exit
    then
@@ -759,12 +762,12 @@ private
 : DECL-WHY ( n n -- str )
    {: slot:n g:n :}
    -1 SUB-VISIT !
-   slot LSP-DEFS:DEFS-DECL-RANGE ?do
+   slot DEFS-DECL-RANGE ?do
       i g DECL-AT? if
-         i LSP-DEFS:DECL-VISIT 0 < if s" no declaration identity" unloop exit then
+         i DECL-VISIT 0 < if s" no declaration identity" unloop exit then
          i DECL-KEY? if
-            SUB-VISIT @ 0 < if i LSP-DEFS:DECL-VISIT SUB-VISIT ! then
-            i LSP-DEFS:DECL-VISIT SUB-VISIT @ <> if s" several declaration visits" unloop exit then
+            SUB-VISIT @ 0 < if i DECL-VISIT SUB-VISIT ! then
+            i DECL-VISIT SUB-VISIT @ <> if s" several declaration visits" unloop exit then
          then
       then
    loop
@@ -772,12 +775,12 @@ private
 
 : USE-WHY ( n n -- str )
    {: slot:n g:n :}
-   slot LSP-DEFS:DEFS-USE-RANGE ?do
+   slot DEFS-USE-RANGE ?do
       i g USE-AT? if
-         i LSP-DEFS:USE-VISIT 0 < if s" no use identity" unloop exit then
+         i USE-VISIT 0 < if s" no use identity" unloop exit then
          i USE-KEY? if
             SUB-VISIT @ 0 < if s" no declaration visit" unloop exit then
-            i LSP-DEFS:USE-VISIT SUB-VISIT @ <> if s" a use of another visit" unloop exit then
+            i USE-VISIT SUB-VISIT @ <> if s" a use of another visit" unloop exit then
          then
       then
    loop
@@ -785,8 +788,8 @@ private
 
 : WHY ( n n -- str )
    {: slot:n g:n :}
-   g LSP-DEFS:GROUP-STAMPED? 0= if s" no consistent source revision" exit then
-   g G @ LSP-DEFS:GROUP-SAME? 0= if s" source revision differs" exit then
+   g GROUP-STAMPED? 0= if s" no consistent source revision" exit then
+   g G @ GROUP-SAME? 0= if s" source revision differs" exit then
    slot g DECL-WHY {: w:str :}
    w STR:LEN 0<> if w exit then
    slot g USE-WHY ;
@@ -798,18 +801,18 @@ private
 \ SUB-VISIT, as a DEFTYPE's converters are beside each other, is not.
 : OTHER-VISIT? ( n n -- bool )
    {: slot:n g:n :}
-   slot LSP-DEFS:DEFS-DECL-RANGE ?do
+   slot DEFS-DECL-RANGE ?do
       i g DECL-AT? if
-         i DECL-KEY? 0= i LSP-DEFS:DECL-VISIT SUB-VISIT @ <> and if true unloop exit then
+         i DECL-KEY? 0= i DECL-VISIT SUB-VISIT @ <> and if true unloop exit then
       then
    loop
    false ;
 
 : OTHER-DECL ( n n n n -- option<n> )
    {: slot:n g:n from:n to:n :}
-   slot LSP-DEFS:DEFS-DECL-RANGE ?do
-      i LSP-DEFS:DECL-GROUP g = if
-         i LSP-DEFS:DECL-BYTES to = swap from = and if
+   slot DEFS-DECL-RANGE ?do
+      i DECL-GROUP g = if
+         i DECL-BYTES to = swap from = and if
             i DECL-KEY? 0= if i OPTION:SOME unloop exit then
          then
       then
@@ -821,15 +824,15 @@ private
 : RE-EXPORT! ( n n n -- )
    {: in:n u:n d:n :}
    0 MSG-U !
-   in LSP-DEFS:GROUP-PATH$ SHOWN$ MSG+
+   in GROUP-PATH$ SHOWN$ MSG+
    s" : the token " MSG+
-   u LSP-DEFS:USE-BYTES SPAN-IN drop MSG+
+   u USE-BYTES SPAN-IN drop MSG+
    s"  at line " MSG+
    SB-RESET LOC-N @ 1- L-LINE LOC@ 1+ FMT:SB-INT SB$ MSG+
    s"  also declares " MSG+
-   d LSP-DEFS:DECL-PACKAGE$ {: k:str :}
+   d DECL-PACKAGE$ {: k:str :}
    k STR:LEN 0<> if k MSG+ s" :" MSG+ then
-   d LSP-DEFS:DECL-NAME$ MSG+
+   d DECL-NAME$ MSG+
    s" , whose uses a rename would not edit" MSG+
    MSG$ POOL+ RX-AT !
    MSG-U @ RX-U !
@@ -838,7 +841,7 @@ private
 : RE-EXPORTS ( n n -- )
    {: in:n u:n :}
    RX-U @ 0<> if exit then
-   LSP-DEFS:PROBE in u LSP-DEFS:USE-BYTES OTHER-DECL MATCH option
+   PROBE in u USE-BYTES OTHER-DECL MATCH option
       some OF {: d:n :} in u d RE-EXPORT! ENDOF
       none OF ENDOF
    ;MATCH ;
@@ -847,17 +850,17 @@ private
 : TEXT-IN! ( n -- )
    {: in:n :}
    in TEXT-IN !
-   in LSP-DEFS:GROUP-TEXT-FRESH? {: ok:bool :}
+   in GROUP-TEXT-FRESH? {: ok:bool :}
    ok TEXT-OK !
    ok if exit then
-   in LSP-DEFS:GROUP-PATH$ NAMED? if exit then
-   in LSP-DEFS:GROUP-PATH$ s" changed since it was checked" MISS+ ;
+   in GROUP-PATH$ NAMED? if exit then
+   in GROUP-PATH$ s" changed since it was checked" MISS+ ;
 
 : PLACE-USE ( n -- )
    {: u:n :}
-   u LSP-DEFS:USE-IN {: in:n :}
-   in LSP-DEFS:GROUP-PATH$ in LSP-DEFS:GROUP-SOURCE-URI$ FILE-AT {: f:n :}
-   u LSP-DEFS:USE-BYTES {: from:n to:n :}
+   u USE-IN {: in:n :}
+   in GROUP-PATH$ in GROUP-SOURCE-URI$ FILE-AT {: f:n :}
+   u USE-BYTES {: from:n to:n :}
    f from to LOCATED? if exit then
    in TEXT-IN @ <> if in TEXT-IN! then
    TEXT-OK @ 0= if exit then
@@ -866,9 +869,9 @@ private
 
 : OTHER+ ( n -- )
    {: u:n :}
-   u LSP-DEFS:USE-NAME$ NAME$ STR:=CI 0= if exit then
-   u LSP-DEFS:USE-IN LSP-DEFS:GROUP-PATH$ KNOWN-AT {: k:n :}
-   u LSP-DEFS:USE-BYTES {: from:n to:n :}
+   u USE-NAME$ NAME$ STR:=CI 0= if exit then
+   u USE-IN GROUP-PATH$ KNOWN-AT {: k:n :}
+   u USE-BYTES {: from:n to:n :}
    OTHER-N @ {: o:n :}
    o 1+ OTHER-CELLS * OTHERS-RESERVE
    k o O-FILE OTHER!
@@ -884,7 +887,7 @@ private
 : PLACED ( n -- )
    {: g:n :}
    -1 TEXT-IN !
-   LSP-DEFS:PROBE LSP-DEFS:DEFS-USE-RANGE ?do
+   PROBE DEFS-USE-RANGE ?do
       i g BOUND? if i PLACE-USE else i OTHER+ then
    loop ;
 
@@ -894,15 +897,15 @@ private
 
 : CONTRIBUTED ( n -- )
    {: g:n :}
-   LSP-DEFS:PROBE g WHY {: w:str :}
+   PROBE g WHY {: w:str :}
    w STR:LEN 0<> if BY-VERIFIED PROBE-READS CUR @ w SUBJECT-MISS+ exit then
    BY-PLACING PROBE-READS
    g PLACED
-   LSP-DEFS:PROBE g OTHER-VISIT? if DECL-CONFLICT then ;
+   PROBE g OTHER-VISIT? if DECL-CONFLICT then ;
 
 : WITHOUT-P ( -- )
    BY-VERIFIED PROBE-READS
-   LSP-DEFS:PROBE LSP-DEFS:DEFS-USE-RANGE ?do i OTHER+ loop ;
+   PROBE DEFS-USE-RANGE ?do i OTHER+ loop ;
 
 \ The subject being gathered held for SETTLE with its check's verdict, which
 \ does not lie in POOL.
@@ -919,19 +922,19 @@ private
 \ A check that read no P has no matching bindings, but may report uses of
 \ the tail.
 : CONTRIBUTE ( -- )
-   LSP-DEFS:PROBE LSP-DEFS:DEFS-VERIFIED? 0= if LSP-CHECK:OUTCOME$ PENDING+ then
+   PROBE DEFS-VERIFIED? 0= if LSP-CHECK:OUTCOME$ PENDING+ then
    IMPLICIT? if
       BY-PLACING PROBE-READS
       -1 TEXT-IN !
-      LSP-DEFS:PROBE LSP-DEFS:DEFS-USE-RANGE ?do
+      PROBE DEFS-USE-RANGE ?do
          BUILTIN-SYM @ 0 > if
             i ORIGIN-USE-SYM if BUILTIN-SYM @ = else drop false then
-         else i LSP-DEFS:USE-PRIMITIVE-ROW PRIM-ROW @ = then
+         else i USE-PRIMITIVE-ROW PRIM-ROW @ = then
          if i PLACE-USE else i OTHER+ then
       loop
       exit
    then
-   LSP-DEFS:PROBE P$ LSP-DEFS:DEFS-GROUP-OF MATCH option
+   PROBE P$ DEFS-GROUP-OF MATCH option
       some OF CONTRIBUTED ENDOF
       none OF WITHOUT-P ENDOF
    ;MATCH ;
@@ -952,7 +955,7 @@ private
 
 : SRC-STAMP! ( -- )
    CUR$ SRC-SIZE @ SRC-MSEC @ SRC-MNS @ SRC-CSEC @ SRC-CNS @
-   LSP-DEFS:PROBE-DISK-STAMP! ;
+   PROBE-DISK-STAMP! ;
 
 : BATCH-TEXT ( str -- )
    CUR$ LSP-CHECK:USES-BATCH-ADD
@@ -1062,8 +1065,8 @@ public
 
 : RENAME-VERIFIED? ( n -- bool )
    {: slot:n :}
-   slot LSP-DEFS:DEFS-VERIFIED? if true exit then
-   slot LSP-DOCS:DOC-CANON$ s" its check is not verified" REJECT
+   slot DEFS-VERIFIED? if true exit then
+   slot DOC-CANON$ s" its check is not verified" REJECT
    false ;
 
 : PRIMITIVE? ( -- bool )  IMPLICIT? ;
@@ -1102,8 +1105,8 @@ public
    MSG$ ;
 
 : EXPORT? ( -- bool )
-   G @ TS @ TE @ LSP-DEFS:GROUP-REC-AT MATCH option
-      some OF LSP-DEFS:REC-CLASS LSP-DEFS:CLASS-EXPORT = ENDOF
+   G @ TS @ TE @ GROUP-REC-AT MATCH option
+      some OF REC-CLASS CLASS-EXPORT = ENDOF
       none OF false ENDOF
    ;MATCH ;
 : EXPORT$ ( -- str )
@@ -1114,8 +1117,8 @@ public
 \ SUMTYPE constructor calls bind to the generated word, while MATCH arm names
 \ are parsed as variants and do not occur in the checker's use inventory.
 : CONSTRUCTOR? ( -- bool )
-   G @ TS @ TE @ LSP-DEFS:GROUP-REC-AT MATCH option
-      some OF LSP-DEFS:REC-CLASS LSP-DEFS:CLASS-CONSTRUCTOR = ENDOF
+   G @ TS @ TE @ GROUP-REC-AT MATCH option
+      some OF REC-CLASS CLASS-CONSTRUCTOR = ENDOF
       none OF false ENDOF
    ;MATCH ;
 : CONSTRUCTOR-RENAME$ ( -- str )
@@ -1155,8 +1158,8 @@ public
 : GATHER ( n -- )
    CUR !
    CUR$ NAMED? if exit then
-   CUR$ LSP-DOCS:DOC-HOLDING MATCH option
-      some OF {: slot:n :} slot LSP-DOCS:DOC-TEXT$ slot FROM-TEXT ENDOF
+   CUR$ DOC-HOLDING MATCH option
+      some OF {: slot:n :} slot DOC-TEXT$ slot FROM-TEXT ENDOF
       none OF FROM-DISK ENDOF
    ;MATCH ;
 
@@ -1195,8 +1198,8 @@ public
 : WAVE-SUBJECT ( n -- )
    CUR !
    CUR$ NAMED? if exit then
-   CUR$ LSP-DOCS:DOC-HOLDING MATCH option
-      some OF {: slot:n :} slot LSP-DOCS:DOC-TEXT$ slot WAVE-TEXT ENDOF
+   CUR$ DOC-HOLDING MATCH option
+      some OF {: slot:n :} slot DOC-TEXT$ slot WAVE-TEXT ENDOF
       none OF WAVE-DISK ENDOF
    ;MATCH ;
 
@@ -1225,7 +1228,7 @@ public
    WAVE-AT @ WAVE-DISK? @ 0<> if
       WAVE-AT @ 5 * {: at:n :}
       CUR$ at WAVE-META @ at 1+ WAVE-META @ at 2 + WAVE-META @
-      at 3 + WAVE-META @ at 4 + WAVE-META @ LSP-DEFS:PROBE-DISK-STAMP!
+      at 3 + WAVE-META @ at 4 + WAVE-META @ PROBE-DISK-STAMP!
    then
    CUR$ NAMED? {: named:bool :}
    result 0< if
@@ -1290,10 +1293,10 @@ public
 : WARNING ( ^JSON:writer -- ^JSON:writer )
    s" References may be incomplete" UNCOVERED$ {: m:str :}
    s" window/showMessage" JSON-RPC:NOTIFY
-   JSON:WRITE-OBJECT-START
-   s" type" WARNING-TYPE JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" message" m JSON:WRITE-FIELD-S
-   JSON:WRITE-OBJECT-END ;
+   WRITE-OBJECT-START
+   s" type" WARNING-TYPE WRITE-FIELD-U WRITE-COMMA
+   s" message" m WRITE-FIELD-S
+   WRITE-OBJECT-END ;
 
 \ How many locations the request answers; location K's URI, the range from
 \ where its tail starts to its end, the bytes a rename edits, and whether a
@@ -1314,19 +1317,22 @@ private
 : LOCATION ( ^JSON:writer n -- ^JSON:writer )
    {: k:n :}
    k RANKED {: r:n :}
-   JSON:WRITE-OBJECT-START
-   s" uri" k LOC-URI$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   WRITE-OBJECT-START
+   s" uri" k LOC-URI$ WRITE-FIELD-S WRITE-COMMA
    r L-LINE LOC@ r L-CHAR LOC@ r L-END-LINE LOC@ r L-END-CHAR LOC@ LSP-TEXT:RANGE-AT
-   JSON:WRITE-OBJECT-END ;
+   WRITE-OBJECT-END ;
 
 public
 
 : ANSWER ( ^JSON:writer -- ^JSON:writer )
-   JSON:WRITE-ARRAY-START
+   WRITE-ARRAY-START
    LOC-N @ 0 ?do
-      i 0 > if JSON:WRITE-COMMA then
+      i 0 > if WRITE-COMMA then
       i LOCATION
    loop
-   JSON:WRITE-ARRAY-END ;
+   WRITE-ARRAY-END ;
 
+;using
+;using
+;using
 ;package

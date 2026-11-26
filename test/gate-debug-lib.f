@@ -10,6 +10,8 @@ require test/gate-common.f
 require src/lib/test/eval.f
 require src/lib/test/runner.f
 
+using CODE-DUMP    \ DECODE / FIND-XT / LOAD-PROGRAM, called bare in GDB-CODE-DUMP
+
 : GDB-PROFILER-SOURCE ( -- )
    GE-SRC-RESET
    s" : LONG-PROFILER-BUSY-WORD ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
@@ -584,8 +586,8 @@ variable GDB-SKEWED
 
 : GDB-CODE-DUMP ( -- )
    GE-HB-RESET
-   [: s" : CODE-DUMP-SMOKE ( -- i64 ) 7 ;" CODE-DUMP:LOAD-PROGRAM
-      s" CODE-DUMP-SMOKE" CODE-DUMP:FIND-XT CODE-DUMP:DECODE ;] GE-CAPTURE-ACTION
+   [: s" : CODE-DUMP-SMOKE ( -- i64 ) 7 ;" LOAD-PROGRAM
+      s" CODE-DUMP-SMOKE" FIND-XT DECODE ;] GE-CAPTURE-ACTION
    s" code-dump direct core" GE-EXPECT-OK
    s" mov" s" code-dump decodes a real move" GE-EXPECT-OUT-HAS
    s" ret" s" code-dump direct core output" GE-EXPECT-OUT-HAS
@@ -683,3 +685,5 @@ variable GDB-SKEWED
    GDB-BREAKPOINT-NATIVE
    GT-CLEANUP
    s" PASS: native profiler/debug tests" type cr ;
+
+;using

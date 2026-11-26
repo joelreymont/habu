@@ -7,6 +7,7 @@ require src/arch/arm64/icode.f
 require src/os/linux-flags.f
 require src/arch/arm64/mnem.f
 require src/os/linux/elf.f
+using A64ICODE
 package SYSCALL
 public
 $22 constant MAP-ANON-PRIVATE
@@ -89,20 +90,20 @@ public
 $100 constant AT-SYMLINK-NOFOLLOW
 
 : SYS, ( n -- )
-   8 swap A64ICODE:MOVZ,  0 A64ICODE:SVC,
-   16 -4095 A64ICODE:LIT64,  0 16 A64ICODE:CMP, ;
+   8 swap MOVZ,  0 SVC,
+   16 -4095 LIT64,  0 16 CMP, ;
 
 : OS-OPEN-RD ( n -- )
    {: pathreg :}
-   1 pathreg 0 A64ICODE:ADDI,  0 99 A64ICODE:MOVN,  2 0 A64ICODE:MOVZ,  3 0 A64ICODE:MOVZ,  NR-OPEN SYS, ;
+   1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
 
 \ x(n) = this thread's tid. Clobbers x0, x8 and x16.
 : OS-THREAD-HANDLE ( n -- )
    {: reg :}
-   NR-GETTID SYS,  reg 0 0 A64ICODE:ADDI, ;
+   NR-GETTID SYS,  reg 0 0 ADDI, ;
 
 \ x(n) = OS-TIMER-NOW's ticks per second. Clobbers only x(n).
-: OS-TIMER-HZ ( n -- ) 1000000000 A64ICODE:LIT64, ;
+: OS-TIMER-HZ ( n -- ) 1000000000 LIT64, ;
 
 \ The longest interval in us setitimer arms as given: a tv_sec of 9223372036
 \ or more saturates.
@@ -111,9 +112,9 @@ $100 constant AT-SYMLINK-NOFOLLOW
 \ x16 = the named import's address, read from the GOT each run (an image saves
 \ none), from x16 = the text address RBASE-CELL holds. Clobbers x15, x17.
 : SLOT-AT, ( str -- ) {: name:str :}
-   15 CODE-OFF A64ICODE:LIT64,  16 16 15 A64ICODE:SUB,
-   17 16 IMAGE-TEXT-SIZE-OFF A64ICODE:LDR,
-   16 16 17 A64ICODE:ADD,  16 16 name ELF:IMPORT-ROW ELF:SLOT-OFF A64ICODE:LDR, ;
+   15 CODE-OFF LIT64,  16 16 15 SUB,
+   17 16 IMAGE-TEXT-SIZE-OFF LDR,
+   16 16 17 ADD,  16 16 name ELF:IMPORT-ROW ELF:SLOT-OFF LDR, ;
 
 private
 \ OS-TIMER-NOW's frame: the timespec, then x0-x18 and x30, the registers a C
@@ -127,24 +128,24 @@ public
 \ the main DATA: C under the profiler reuses x20. Clobbers x(n), flags and SIMD.
 : OS-TIMER-NOW ( n -- )
    {: reg :}
-   A64ICODE:SP A64ICODE:SP TIMER-FRAME A64ICODE:SUBI,
+   SP SP TIMER-FRAME SUBI,
    TIMER-REGS 1 + 0 ?do
-      i TIMER-REG reg <> if i TIMER-REG A64ICODE:SP i 8 * 16 + A64ICODE:STR, then
+      i TIMER-REG reg <> if i TIMER-REG SP i 8 * 16 + STR, then
    loop
-   16 DATA-VA VA>N RBASE-CELL + A64ICODE:LIT64,  16 16 0 A64ICODE:LDR,  s" clock_gettime" SLOT-AT,
-   0 CLOCK-MONOTONIC A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  16 A64ICODE:BLR,
-   0 A64ICODE:SP 0 A64ICODE:LDR,  1 OS-TIMER-HZ  0 0 1 A64ICODE:MUL,
-   1 A64ICODE:SP 8 A64ICODE:LDR,  reg 0 1 A64ICODE:ADD,
+   16 DATA-VA VA>N RBASE-CELL + LIT64,  16 16 0 LDR,  s" clock_gettime" SLOT-AT,
+   0 CLOCK-MONOTONIC MOVZ,  1 SP 0 ADDI,  16 BLR,
+   0 SP 0 LDR,  1 OS-TIMER-HZ  0 0 1 MUL,
+   1 SP 8 LDR,  reg 0 1 ADD,
    TIMER-REGS 1 + 0 ?do
-      i TIMER-REG reg <> if i TIMER-REG A64ICODE:SP i 8 * 16 + A64ICODE:LDR, then
+      i TIMER-REG reg <> if i TIMER-REG SP i 8 * 16 + LDR, then
    loop
-   A64ICODE:SP A64ICODE:SP TIMER-FRAME A64ICODE:ADDI, ;
+   SP SP TIMER-FRAME ADDI, ;
 
 \ tgkill(getpid(), the tid in x(t), the signal in x(s)); s is not x8.
 \ Clobbers x0-x2, x8 and x16.
 : OS-SIGNAL-THREAD ( n n -- )
    {: sigreg treg :}
-   8 treg 0 A64ICODE:ADDI,  2 sigreg 0 A64ICODE:ADDI,  1 8 0 A64ICODE:ADDI,
+   8 treg 0 ADDI,  2 sigreg 0 ADDI,  1 8 0 ADDI,
    NR-GETPID SYS,  NR-TGKILL SYS, ;
 
 \ A tid holds no reference: nothing to give back.
@@ -159,32 +160,33 @@ public
 \ frame on sp that it gives back. Clobbers x0..x3, x8, x10 and x16.
 : OS-BLOCK-SELF ( n -- )
    {: sigreg :}
-   10 1 A64ICODE:MOVZ,  1 sigreg 1 A64ICODE:SUBI,  10 10 1 A64ICODE:LSLV,     \ bit sig - 1
-   A64ICODE:SP A64ICODE:SP $10 A64ICODE:SUBI,  10 A64ICODE:SP 0 A64ICODE:STR,
-   0 0 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 0 A64ICODE:MOVZ,  3 8 A64ICODE:MOVZ,  NR-RT-SIGPROCMASK SYS,
-   A64ICODE:SP A64ICODE:SP $10 A64ICODE:ADDI, ;
+   10 1 MOVZ,  1 sigreg 1 SUBI,  10 10 1 LSLV,     \ bit sig - 1
+   SP SP $10 SUBI,  10 SP 0 STR,
+   0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  3 8 MOVZ,  NR-RT-SIGPROCMASK SYS,
+   SP SP $10 ADDI, ;
 
 private
 \ x6 takes the Linux bit when register src holds the BSD bit. Clobbers x7.
 : FLAG-BIT, ( n n n -- )
    {: bsd:n lin:n src:n :}
-   A64ICODE:LBL {: skip :}
-   7 bsd A64ICODE:LIT64,  7 src 7 A64ICODE:AND,  7 skip A64ICODE:CBZ,
-      7 lin A64ICODE:LIT64,  6 6 7 A64ICODE:ORR,
-   skip A64ICODE:LBL, ;
+   LBL {: skip :}
+   7 bsd LIT64,  7 src 7 AND,  7 skip CBZ,
+      7 lin LIT64,  6 6 7 ORR,
+   skip LBL, ;
 public
 
 \ x1's BSD-shaped open flags into x2: the access mode as it is, each flag to
 \ its Linux bit. Clobbers x6 and x7.
 : OS-OPEN-FLAGS ( -- )
-   7 LINUX-FLAGS:OPEN-KEPT A64ICODE:MOVZ,  6 1 7 A64ICODE:AND,
+   7 LINUX-FLAGS:OPEN-KEPT MOVZ,  6 1 7 AND,
    [: 1 FLAG-BIT, ;] LINUX-FLAGS:OPEN-PAIRS
-   2 6 0 A64ICODE:ADDI, ;
+   2 6 0 ADDI, ;
 
 \ x3 carries mmap's flags both ways: the kept bits as they are, each flag to
 \ its Linux bit. Clobbers x6 and x7.
 : OS-MMAP-FLAGS ( -- )
-   7 LINUX-FLAGS:MMAP-KEPT A64ICODE:MOVZ,  6 3 7 A64ICODE:AND,
+   7 LINUX-FLAGS:MMAP-KEPT MOVZ,  6 3 7 AND,
    [: 3 FLAG-BIT, ;] LINUX-FLAGS:MMAP-PAIRS
-   3 6 0 A64ICODE:ADDI, ;
+   3 6 0 ADDI, ;
 ;package
+;using

@@ -124,7 +124,7 @@ public
 13 constant LINT-CR
 
 \ Shared split results: (offset, length) rows into the caller's source string.
-\ Consumers call the public words by prefix, as `LINT-SPLIT:WORD`.
+\ Consumers call the public words bare through `using LINT-SPLIT`.
 package LINT-SPLIT
 private
 

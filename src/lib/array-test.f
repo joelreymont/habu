@@ -4,6 +4,8 @@
 require src/lib/array.f
 require src/lib/test/assert.f
 
+using ARRAY
+
 create AT-EMPTY
 create AT-ONE 42 ,
 create AT-NORMAL 3 , -1 , 4 , 4 , 2 ,
@@ -20,13 +22,13 @@ create AT-WORK 5 cells allot
    AT-WORK ! ;
 
 : AT-A-SUM ( ^n n -- n ) {: arr:^ len :}
-   arr len >LEN ARRAY:A-SUM ;
+   arr len >LEN A-SUM ;
 
 : AT-A-COUNT-EVEN ( ^n n -- n ) {: arr:^ len :}
-   arr len >LEN ARRAY:A-COUNT-EVEN COUNT>N ;
+   arr len >LEN A-COUNT-EVEN COUNT>N ;
 
 : AT-A-PREFIX-SUM! ( ^n n -- ) {: arr:^ len :}
-   arr len >LEN ARRAY:A-PREFIX-SUM! ;
+   arr len >LEN A-PREFIX-SUM! ;
 
 : AT-WORK5@ ( -- n n n n n )
    AT-WORK @
@@ -60,3 +62,5 @@ create AT-WORK 5 cells allot
 
 T-RESET
 AT-MAIN
+
+;using

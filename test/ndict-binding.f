@@ -5,12 +5,23 @@ require src/habu/verify-source.f
 require src/lib/fmt.f
 require src/compiler/native/dict.f
 
+17 constant NDB-GLOBAL
+
 package NDB-LEFT
 7 constant HIDDEN
 10 constant SHARED
 public
 get-current constant WID
 20 constant SHARED
+19 constant NDB-GLOBAL
+29 constant SOLO
+31 constant AMBIG
+;package
+
+package NDB-RIGHT
+public
+30 constant SHARED
+32 constant AMBIG
 ;package
 
 package NDB-IMMEDIATE
@@ -27,6 +38,7 @@ public
 ;package
 
 package NDICT-BINDING-TEST
+using NDICT
 
 \ Test-only record identity and retired-wordlist inspection.
 \ No raw record is exported.
@@ -41,12 +53,25 @@ variable ROLL-OCC
 
 
 : OPEN-SCOPE ( -- )
-   S\" package NDB-LEFT s\q SHARED\q str> NDICT:FIXED-VALUE 10 T= ;package" EV
-   s" NDB-LEFT:SHARED" str> NDICT:FIXED-VALUE 20 T=
-   s" NDB-LEFT:HIDDEN" str> NDICT:SPELL-START 0 T=
-   s" HIDDEN" str> NDICT:SPELL-START 0 T=
-   s" NDB-LEFT:SHARED:BAD" str> NDICT:SPELL-START 0 T=
-   s" NDB-NO-PACKAGE:SHARED" str> NDICT:SPELL-START 0 T= ;
+   S\" package NDB-LEFT using NDICT s\q SHARED\q str> FIXED-VALUE 10 T= ;using ;package" EV
+   S\" package NDB-LEFT using NDB-RIGHT using NDICT s\q SHARED\q str> FIXED-VALUE 10 T= ;using ;using ;package" EV
+   s" NDB-LEFT:SHARED" str> FIXED-VALUE 20 T=
+   s" NDB-LEFT:HIDDEN" str> SPELL-START 0 T=
+   s" HIDDEN" str> SPELL-START 0 T=
+   s" NDB-LEFT:SHARED:BAD" str> SPELL-START 0 T=
+   s" NDB-NO-PACKAGE:SHARED" str> SPELL-START 0 T= ;
+
+
+: AMBIGUOUS ( -- )
+   S\" using NDB-LEFT using NDB-RIGHT using NDICT s\q AMBIG\q str> SPELL-START drop" EV ;
+
+
+: USED-SCOPE ( -- )
+   S\" using NDB-LEFT using NDB-LEFT using NDICT s\q SOLO\q str> FIXED-VALUE 29 T= ;using ;using ;using" EV
+   S\" using NDB-LEFT using NDICT s\q NDB-GLOBAL\q str> FIXED-VALUE 17 T= ;using ;using" EV
+   ['] AMBIGUOUS E-USING-AMBIGUOUS TTHROWS
+   s" SOLO" str> SPELL-START 0 T=
+   s" using NDB-LEFT : NDB-USED ( -- n ) SOLO ; ;using NDB-USED 29 T=" EV ;
 
 
 : HASH-SLOT ( str n -- n )
@@ -112,11 +137,11 @@ variable TEXT-U
 : CHECK-PAIR ( n n -- )
    {: a:n b:n :}
    a b DEFINE-PAIR
-   s" NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ str> NDICT:FIXED-VALUE 41 T=
-   s" ndb-left:ndb-collide-" b SPELL TEXT$ str> NDICT:FIXED-VALUE 42 T=
+   s" NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ str> FIXED-VALUE 41 T=
+   s" ndb-left:ndb-collide-" b SPELL TEXT$ str> FIXED-VALUE 42 T=
    s" undefine NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ EV
-   s" NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ str> NDICT:SPELL-START 0 T=
-   s" NDB-LEFT:NDB-COLLIDE-" b SPELL TEXT$ str> NDICT:FIXED-VALUE 42 T= ;
+   s" NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ str> SPELL-START 0 T=
+   s" NDB-LEFT:NDB-COLLIDE-" b SPELL TEXT$ str> FIXED-VALUE 42 T= ;
 
 
 : COLLISIONS ( -- )
@@ -138,16 +163,16 @@ variable TEXT-U
    new-slot new-occ REF-VALUE 32 T=
    old-occ new-occ T<>
    s" : NDB-AFTER ( -- n ) NDB-REBIND ; NDB-BEFORE 31 T= NDB-AFTER 32 T=" EV
-   s" NDB-REBIND" str> NDICT:FIXED-VALUE 32 T= ;
+   s" NDB-REBIND" str> FIXED-VALUE 32 T= ;
 
 
 : RETIRED-LATEST ( -- )
    s" 11 constant NDB-RETIRED" EV
-   s" NDB-RETIRED" str> NDICT:SPELL-START {: first:n :}
+   s" NDB-RETIRED" str> SPELL-START {: first:n :}
    s" undefine NDB-RETIRED 22 constant NDB-RETIRED" EV
-   s" NDB-RETIRED" str> NDICT:SPELL-START {: latest:n :}
+   s" NDB-RETIRED" str> SPELL-START {: latest:n :}
    s" undefine NDB-RETIRED" EV
-   s" NDB-RETIRED" str> NDICT:SPELL-START 0 T=
+   s" NDB-RETIRED" str> SPELL-START 0 T=
    s" NDB-RETIRED" XREF-RETIRED-WL RECORD XREF-START latest T=
    latest first T<>
    s" NDB-RETIRED" XREF-RETIRED-WL RECORD
@@ -161,7 +186,7 @@ public
 private
 
 : FAIL-EVALUATION ( -- )
-   S\" : NDB-ROLLBACK ( -- n ) 71 ; s\q NDB-ROLLBACK\q str> NDICT:SPELL-START 0<> TTRUE NDICT-BINDING-TEST:CAPTURE-ROLLBACK 73 throw" EV ;
+   S\" : NDB-ROLLBACK ( -- n ) 71 ; using NDICT s\q NDB-ROLLBACK\q str> SPELL-START 0<> TTRUE ;using NDICT-BINDING-TEST:CAPTURE-ROLLBACK 73 throw" EV ;
 
 
 : ROLLBACK-KEPT ( -- )
@@ -170,10 +195,10 @@ private
    ['] FAIL-EVALUATION 73 TTHROWS
    ndict@ before 1+ T=
    ROLL-SLOT @ before T=
-   s" NDB-ROLLBACK" str> NDICT:SPELL-START 0 T=
+   s" NDB-ROLLBACK" str> SPELL-START 0 T=
    s" 74 constant NDB-AFTER-ROLLBACK" EV
    s" NDB-AFTER-ROLLBACK" 0 RECORD before 1+ XREF-REC = TTRUE
-   s" NDB-AFTER-ROLLBACK" str> NDICT:FIXED-VALUE 74 T=
+   s" NDB-AFTER-ROLLBACK" str> FIXED-VALUE 74 T=
    \ The occurrence the failed text selected still reaches its word.
    ROLL-SLOT @ ROLL-OCC @ REF-VALUE 71 T= ;
 
@@ -181,6 +206,7 @@ private
 : RUN ( -- )
    T-RESET
    s" package visibility and scope precedence" T-LABEL OPEN-SCOPE T-NEXT
+   s" using identity and ambiguity" T-LABEL USED-SCOPE T-NEXT
    s" folded hash collisions retain exact identity" T-LABEL COLLISIONS T-NEXT
    s" a checker replay inside a definition leaves it pending" T-LABEL REPLAY-PENDING T-NEXT
    s" compiled calls retain the binding they captured" T-LABEL REDECLARATION T-NEXT
@@ -189,5 +215,6 @@ private
    T-REPORT ;
 
 ' RUN
+;using
 ;package
 execute

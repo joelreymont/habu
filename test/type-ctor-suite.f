@@ -26,6 +26,8 @@ require src/lib/adt/result.f
 require src/lib/string.f
 require src/lib/test/assert.f
 
+using TYPE-DECL
+
 T-RESET
 
 TYPED-VARIABLE TCE-A ^u8   variable TCE-U
@@ -791,3 +793,5 @@ s" : ZS-Z ( -- option<n> option<zsflag> ) 3 OPTION:SOME construct zsflag up OPTI
 s" : ZS-B ( -- zsbox<zsflag> ) 3 ZSBOX:FULL drop construct zsflag up ZSBOX:FULL ;" TCE-CATCH 0 T=
 
 T-REPORT
+
+;using

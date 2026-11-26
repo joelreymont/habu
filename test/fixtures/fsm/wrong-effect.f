@@ -7,7 +7,8 @@ ENUM ph idle busy ;ENUM
 ENUM sig go halt ;ENUM
 : S ( n -- sig ) drop construct sig go ;
 : BUMP ( n -- n ) 1 + ;
-FSM:DEFINE M ( n ) ph sig
+using FSM
+DEFINE M ( n ) ph sig
 IN idle S
    halt - >idle
    go
@@ -15,4 +16,5 @@ IN idle S
    >busy
 FINAL busy -
 ;DEFINE
+;using
 ;package

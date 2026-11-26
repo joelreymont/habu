@@ -44,6 +44,7 @@ require src/habu/t0-emit.f
 
 package COMP
 package WASM
+using WCODE
 
 15 constant NVREG
 
@@ -102,12 +103,12 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : PAD32, ( n -- ) 5 GROW WLEB:U32-PAD! drop ;
 : PAD64, ( n -- ) 10 GROW WLEB:S64-PAD! drop ;
 
-: GET, ( n -- ) WCODE:OP-LOCAL-GET B, U32, ;
-: SET, ( n -- ) WCODE:OP-LOCAL-SET B, U32, ;
-: I32, ( n -- ) WCODE:OP-I32-CONST B, S32, ;
-: I64, ( n -- ) WCODE:OP-I64-CONST B, S64, ;
-: OPENER, ( n -- ) B, WCODE:EMPTY-TYPE B, ;
-: END, ( -- ) WCODE:OP-END B, ;
+: GET, ( n -- ) OP-LOCAL-GET B, U32, ;
+: SET, ( n -- ) OP-LOCAL-SET B, U32, ;
+: I32, ( n -- ) OP-I32-CONST B, S32, ;
+: I64, ( n -- ) OP-I64-CONST B, S64, ;
+: OPENER, ( n -- ) B, EMPTY-TYPE B, ;
+: END, ( -- ) OP-END B, ;
 
 \ A load or a store: the opcode, its alignment's exponent, its offset.
 : MEM, ( n n n -- ) {: o:n al:n off:n :}
@@ -124,44 +125,44 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ SP is loaded from the context at a unit's start and after each call; SYNC
 \ is the only write of the context's top.
 : SP@, ( -- )
-   L-CTX GET,  WCODE:OP-I32-LOAD WCODE:ALIGN-32 WPROF:CTX-STACK-TOP MEM,  L-SP SET, ;
+   L-CTX GET,  OP-I32-LOAD ALIGN-32 WPROF:CTX-STACK-TOP MEM,  L-SP SET, ;
 
 : SYNC ( -- )
-   L-CTX GET,  L-SP GET,  WCODE:OP-I32-STORE WCODE:ALIGN-32 WPROF:CTX-STACK-TOP MEM, ;
+   L-CTX GET,  L-SP GET,  OP-I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM, ;
 
 \ The address of the cell k cells above SP; k stays out of the memory offset,
 \ which is unsigned.
 : CELL-AT, ( n -- ) {: k:n :}
    L-SP GET,
    k 0= if exit then
-   k CELL-BYTES * I32,  WCODE:OP-I32-ADD B, ;
+   k CELL-BYTES * I32,  OP-I32-ADD B, ;
 
-: LD64, ( -- ) WCODE:OP-I64-LOAD WCODE:ALIGN-64 0 MEM, ;
-: ST64, ( -- ) WCODE:OP-I64-STORE WCODE:ALIGN-64 0 MEM, ;
+: LD64, ( -- ) OP-I64-LOAD ALIGN-64 0 MEM, ;
+: ST64, ( -- ) OP-I64-STORE ALIGN-64 0 MEM, ;
 
 \ A stack's top is an i64 in the DATA cell c native code keeps it in, the return
 \ stack's a depth in cells, the loop's the address past its innermost frame.
 : TOP@, ( n -- ) I32,  LD64, ;
 
 : TOP+!, ( n n -- ) {: c:n k:n :}
-   c I32,  c TOP@,  k I64,  WCODE:OP-I64-ADD B,  ST64, ;
+   c I32,  c TOP@,  k I64,  OP-I64-ADD B,  ST64, ;
 
 \ A fault records its kind and the i64 address the caller writes between
 \ FAULT-KIND, and FAULT-ADDR,; FAULT-END, then traps, as a stack-bounds fault.
 : FAULT-KIND, ( n -- ) {: kind:n :}
-   L-CTX GET,  kind I32,  WCODE:OP-I32-STORE WCODE:ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
+   L-CTX GET,  kind I32,  OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
    L-CTX GET, ;
 
 : FAULT-ADDR, ( -- )
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 WPROF:CTX-FAULT-ADDR MEM, ;
+   OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM, ;
 
-: FAULT-END, ( -- )  FAULT-ADDR,  WCODE:OP-UNREACHABLE B, ;
+: FAULT-END, ( -- )  FAULT-ADDR,  OP-UNREACHABLE B, ;
 
 \ The check follows the move's stores, so a failed one has written at most that
 \ move's cells past it.
 : ROOM ( -- )
-   L-SP GET,  WPROF:STACK-END I32,  WCODE:OP-I32-GT-U B,  WCODE:OP-IF OPENER,
-   EXIT-STATUS:STACK-BOUNDS FAULT-KIND,  L-SP GET,  WCODE:OP-I64-EXTEND-I32-U B,
+   L-SP GET,  WPROF:STACK-END I32,  OP-I32-GT-U B,  OP-IF OPENER,
+   EXIT-STATUS:STACK-BOUNDS FAULT-KIND,  L-SP GET,  OP-I64-EXTEND-I32-U B,
    FAULT-END,  END, ;
 
 \ A unit is a function (i32 ctx) -> (i32 status): four i32 locals, SP, AT, ENV
@@ -170,8 +171,8 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    HERE-OFF EMIT-UNIT+
    NUNIT @ 1 + NUNIT !
    0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !
-   2 B,  4 B,  WCODE:I32 B,
-   HERE-OFF COUNT-AT !  FIXED-I64 PAD32,  WCODE:I64 B,
+   2 B,  4 B,  I32 B,
+   HERE-OFF COUNT-AT !  FIXED-I64 PAD32,  I64 B,
    SP@,
    HERE-OFF BODY-AT ! ;
 
@@ -194,17 +195,17 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 : REC-RELEASE ( -- )
    REC-CELLS @ 0= if exit then
-   WCODE:RDEPTH-AT REC-CELLS @ negate TOP+!, ;
+   RDEPTH-AT REC-CELLS @ negate TOP+!, ;
 
 \ Status 0 is a return.
 : RETURN ( -- )
-   REC-RELEASE  SYNC  0 I32,  WCODE:OP-RETURN B, ;
+   REC-RELEASE  SYNC  0 I32,  OP-RETURN B, ;
 
 \ Every path of a unit leaves by RETURN or TAIL, so the closing `unreachable`
 \ makes the fall-through valid whatever precedes it.
 : CLOSE ( -- )
    FIXED-I64 FRAME-CELLS @ +  SINK @ VEC:SPAN  COUNT-AT @  WLEB:U32-PATCH
-   WCODE:OP-UNREACHABLE B,  END, ;
+   OP-UNREACHABLE B,  END, ;
 
 
 \ The return is the does> patch slot over the context: the link writes a call of
@@ -212,8 +213,8 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : SLOT-CLOSE ( -- )
    REC-RELEASE  SYNC  L-CTX GET,
    HERE-OFF EMIT-PATCH-SLOT!
-   WCODE:OP-DROP B,  0 I32,  WCODE:OP-NOP B,  WCODE:OP-NOP B,  WCODE:OP-NOP B,
-   WCODE:OP-RETURN B,
+   OP-DROP B,  0 I32,  OP-NOP B,  OP-NOP B,  OP-NOP B,
+   OP-RETURN B,
    CLOSE ;
 
 : BYTES ( -- str ) SINK @ VEC:BYTES ;
@@ -229,7 +230,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 : ADDR ( n n vreg n -- ) {: v:n o:n d:vreg kind:n :}
    HERE-OFF kind v o EMIT-ADDR-ROW+
-   WCODE:OP-I64-CONST B,  v PAD64,  d SET-REG ;
+   OP-I64-CONST B,  v PAD64,  d SET-REG ;
 
 : ADDR-DATA ( n n vreg -- ) NEMIT:ADDR-DATA ADDR ;
 
@@ -240,7 +241,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : ADDR-QUOT ( n vreg -- ) {: n:n d:vreg :}
    n 1 + UNIT-REF-RESERVE
    HERE-OFF ADDR-QUOT-KIND n -1 EMIT-ADDR-ROW+
-   WCODE:OP-I64-CONST B,  HERE-OFF n UNIT-REF !  0 PAD64,  d SET-REG ;
+   OP-I64-CONST B,  HERE-OFF n UNIT-REF !  0 PAD64,  d SET-REG ;
 
 : SPILL ( vreg n -- ) {: s:vreg k:n :}
    k CELL-AT,  s GET-REG  ST64, ;
@@ -285,28 +286,28 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ ---- arithmetic --------------------------------------------------------------
 : ALU-OP ( alu -- n )
    ALU>N {: k:n :}
-   k 0 = if WCODE:OP-I64-ADD exit then
-   k 1 = if WCODE:OP-I64-SUB exit then
-   k 2 = if WCODE:OP-I64-AND exit then
-   k 3 = if WCODE:OP-I64-OR exit then
-   k 4 = if WCODE:OP-I64-XOR exit then
+   k 0 = if OP-I64-ADD exit then
+   k 1 = if OP-I64-SUB exit then
+   k 2 = if OP-I64-AND exit then
+   k 3 = if OP-I64-OR exit then
+   k 4 = if OP-I64-XOR exit then
    E-T0-OPERAND throw ;
 
 \ Wasm masks a shift count to six bits.
 : SHIFT-OP ( shifter -- n )
    SHIFTER>N {: k:n :}
-   k 0 = if WCODE:OP-I64-SHL exit then
-   k 1 = if WCODE:OP-I64-SHR-U exit then
+   k 0 = if OP-I64-SHL exit then
+   k 1 = if OP-I64-SHR-U exit then
    E-T0-OPERAND throw ;
 
 : COND ( cc -- n )
    CC>N {: k:n :}
-   k 0 = if WCODE:OP-I64-EQ exit then
-   k 1 = if WCODE:OP-I64-NE exit then
-   k 2 = if WCODE:OP-I64-LT-S exit then
-   k 3 = if WCODE:OP-I64-GE-S exit then
-   k 4 = if WCODE:OP-I64-LE-S exit then
-   k 5 = if WCODE:OP-I64-GT-S exit then
+   k 0 = if OP-I64-EQ exit then
+   k 1 = if OP-I64-NE exit then
+   k 2 = if OP-I64-LT-S exit then
+   k 3 = if OP-I64-GE-S exit then
+   k 4 = if OP-I64-LE-S exit then
+   k 5 = if OP-I64-GT-S exit then
    E-T0-OPERAND throw ;
 
 : REG-OP ( vreg vreg n -- ) {: d:vreg s:vreg o:n :}
@@ -322,17 +323,17 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : SHIFT-LIT ( vreg n shifter -- ) {: d:vreg v:n o:shifter :}
    d  v 63 and  o SHIFT-OP LIT-OP ;
 
-: MULX ( vreg vreg -- ) WCODE:OP-I64-MUL REG-OP ;
-: MUL-LIT ( vreg n -- ) WCODE:OP-I64-MUL LIT-OP ;
+: MULX ( vreg vreg -- ) OP-I64-MUL REG-OP ;
+: MUL-LIT ( vreg n -- ) OP-I64-MUL LIT-OP ;
 
 \ v is neither 0 nor -1, so neither traps; both truncate toward zero.
-: DIV-LIT ( vreg n -- ) WCODE:OP-I64-DIV-S LIT-OP ;
-: MOD-LIT ( vreg n -- ) WCODE:OP-I64-REM-S LIT-OP ;
+: DIV-LIT ( vreg n -- ) OP-I64-DIV-S LIT-OP ;
+: MOD-LIT ( vreg n -- ) OP-I64-REM-S LIT-OP ;
 
 : NEG ( vreg -- ) {: d:vreg :}
-   0 I64,  d GET-REG  WCODE:OP-I64-SUB B,  d SET-REG ;
+   0 I64,  d GET-REG  OP-I64-SUB B,  d SET-REG ;
 
-: NOT ( vreg -- ) -1 WCODE:OP-I64-XOR LIT-OP ;
+: NOT ( vreg -- ) -1 OP-I64-XOR LIT-OP ;
 
 \ The compare copies its operands into CA and CB: the moves before its reader
 \ may overwrite the vregs, and none of them writes CA or CB.
@@ -345,7 +346,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ Over 0, a and b on the Wasm stack: 0 minus the zero-extended i32 condition,
 \ -1 when it holds, else 0.
 : FLAG-END ( vreg cc -- ) {: d:vreg c:cc :}
-   c COND B,  WCODE:OP-I64-EXTEND-I32-U B,  WCODE:OP-I64-SUB B,  d SET-REG ;
+   c COND B,  OP-I64-EXTEND-I32-U B,  OP-I64-SUB B,  d SET-REG ;
 
 : FLAG ( vreg vreg vreg cc -- ) {: d:vreg a:vreg b:vreg c:cc :}
    0 I64,  a GET-REG  b GET-REG  d c FLAG-END ;
@@ -355,33 +356,33 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 \ ---- memory ------------------------------------------------------------------
 : LOAD ( vreg vreg width -- ) {: d:vreg a:vreg w:width :}
-   a GET-REG  WCODE:OP-I32-WRAP-I64 B,
+   a GET-REG  OP-I32-WRAP-I64 B,
    w WIDTH>N {: n:n :}
-   n 1 = if WCODE:OP-I64-LOAD8-U WCODE:ALIGN-8 0 MEM, then
-   n 2 = if WCODE:OP-I64-LOAD16-U WCODE:ALIGN-8 0 MEM, then
-   n 4 = if WCODE:OP-I64-LOAD32-U WCODE:ALIGN-8 0 MEM, then
+   n 1 = if OP-I64-LOAD8-U ALIGN-8 0 MEM, then
+   n 2 = if OP-I64-LOAD16-U ALIGN-8 0 MEM, then
+   n 4 = if OP-I64-LOAD32-U ALIGN-8 0 MEM, then
    n 8 = if LD64, then
    d SET-REG ;
 
 : STORE ( vreg vreg width -- ) {: s:vreg a:vreg w:width :}
-   a GET-REG  WCODE:OP-I32-WRAP-I64 B,  s GET-REG
+   a GET-REG  OP-I32-WRAP-I64 B,  s GET-REG
    w WIDTH>N {: n:n :}
-   n 1 = if WCODE:OP-I64-STORE8 WCODE:ALIGN-8 0 MEM, then
-   n 2 = if WCODE:OP-I64-STORE16 WCODE:ALIGN-8 0 MEM, then
-   n 4 = if WCODE:OP-I64-STORE32 WCODE:ALIGN-8 0 MEM, then
+   n 1 = if OP-I64-STORE8 ALIGN-8 0 MEM, then
+   n 2 = if OP-I64-STORE16 ALIGN-8 0 MEM, then
+   n 4 = if OP-I64-STORE32 ALIGN-8 0 MEM, then
    n 8 = if ST64, then ;
 
 \ ---- calls -------------------------------------------------------------------
 : CALL-SITE ( n n n -- ) {: kind:n to:n loc:n :}
    SYNC  L-CTX GET,
    HERE-OFF kind to loc EMIT-CALL-ROW+
-   WCODE:OP-CALL B,  0 PAD32, ;
+   OP-CALL B,  0 PAD32, ;
 
 \ A nonzero status propagates the throw with the context's top where the
 \ throw left it.
 : CALL ( n n -- ) {: to:n loc:n :}
    NEMIT:CALL to loc CALL-SITE
-   WCODE:OP-IF OPENER,  1 I32,  WCODE:OP-RETURN B,  END,
+   OP-IF OPENER,  1 I32,  OP-RETURN B,  END,
    SP@, ;
 
 \ `recurse` calls function offset 0, unit 0.
@@ -390,7 +391,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ The callee's status is this unit's.
 : TAIL ( n n -- ) {: to:n loc:n :}
    NEMIT:TAIL to loc CALL-SITE
-   WCODE:OP-RETURN B, ;
+   OP-RETURN B, ;
 
 \ ---- control -----------------------------------------------------------------
 0 constant CF-IF
@@ -422,37 +423,37 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    begin CF-N @ 0 > if CF-N @ 1 - CF-KIND @ CF-LOOP-DONE = else false then
    while END, CF-POP repeat ;
 
-: BR, ( n -- ) WCODE:OP-BR B, U32, ;
-: BR-IF, ( n -- ) WCODE:OP-BR-IF B, U32, ;
-: ARM, ( -- ) WCODE:OP-IF OPENER,  CF-IF CF-PUSH ;
+: BR, ( n -- ) OP-BR B, U32, ;
+: BR-IF, ( n -- ) OP-BR-IF B, U32, ;
+: ARM, ( -- ) OP-IF OPENER,  CF-IF CF-PUSH ;
 
 \ Condition c of the last compare, as an i32.
 : TEST, ( cc -- ) {: c:cc :}
    L-CA GET,  L-CB GET,  c COND B, ;
 
-: IF, ( vreg -- ) GET-REG  WCODE:OP-I64-EQZ B,  WCODE:OP-I32-EQZ B,  ARM, ;
+: IF, ( vreg -- ) GET-REG  OP-I64-EQZ B,  OP-I32-EQZ B,  ARM, ;
 : IF-CC, ( cc -- ) TEST,  ARM, ;
-: ELSE, ( -- ) WCODE:OP-ELSE B, ;
+: ELSE, ( -- ) OP-ELSE B, ;
 : THEN, ( -- ) END,  CF-POP  CLOSE-DONE ;
-: BEGIN, ( -- ) WCODE:OP-LOOP OPENER,  CF-LOOP CF-PUSH ;
+: BEGIN, ( -- ) OP-LOOP OPENER,  CF-LOOP CF-PUSH ;
 
 : REPEAT, ( -- )
    CF-LOOP DEPTH-OF BR,  END,  CF-POP  MARK-DONE  CLOSE-DONE ;
 
 : UNTIL, ( vreg -- )
-   GET-REG  WCODE:OP-I64-EQZ B,  CF-LOOP DEPTH-OF BR-IF,  MARK-DONE  CLOSE-DONE ;
+   GET-REG  OP-I64-EQZ B,  CF-LOOP DEPTH-OF BR-IF,  MARK-DONE  CLOSE-DONE ;
 
 : UNTIL-CC, ( cc -- )
    CC-NOT TEST,  CF-LOOP DEPTH-OF BR-IF,  MARK-DONE  CLOSE-DONE ;
 
 : AGAIN, ( -- ) CF-LOOP DEPTH-OF BR,  MARK-DONE  CLOSE-DONE ;
-: CASE, ( -- ) WCODE:OP-BLOCK OPENER,  CF-CASE CF-PUSH ;
+: CASE, ( -- ) OP-BLOCK OPENER,  CF-CASE CF-PUSH ;
 
 : OF, ( vreg vreg -- ) {: s:vreg v:vreg :}
-   s GET-REG  v GET-REG  WCODE:OP-I64-EQ B,  ARM, ;
+   s GET-REG  v GET-REG  OP-I64-EQ B,  ARM, ;
 
 : OF-LIT ( vreg n -- ) {: s:vreg v:n :}
-   s GET-REG  v I64,  WCODE:OP-I64-EQ B,  ARM, ;
+   s GET-REG  v I64,  OP-I64-EQ B,  ARM, ;
 
 : ENDOF, ( -- ) CF-CASE DEPTH-OF BR,  END,  CF-POP  CLOSE-DONE ;
 : ENDCASE, ( -- ) END,  CF-POP  CLOSE-DONE ;
@@ -462,33 +463,33 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 \ AT becomes the address one cell past the return stack's top.
 : RTOP ( -- )
-   WCODE:RDEPTH-AT TOP@,  WCODE:OP-I32-WRAP-I64 B,  3 I32,  WCODE:OP-I32-SHL B,
-   WPROF:RETURN-BASE I32,  WCODE:OP-I32-ADD B,  L-AT SET, ;
+   RDEPTH-AT TOP@,  OP-I32-WRAP-I64 B,  3 I32,  OP-I32-SHL B,
+   WPROF:RETURN-BASE I32,  OP-I32-ADD B,  L-AT SET, ;
 
 \ AT moves down k bytes; a memory offset is unsigned.
 : AT-, ( n -- ) {: k:n :}
-   L-AT GET,  k I32,  WCODE:OP-I32-SUB B,  L-AT SET, ;
+   L-AT GET,  k I32,  OP-I32-SUB B,  L-AT SET, ;
 
 : AT-STORE ( vreg n -- ) {: s:vreg off:n :}
-   L-AT GET,  s GET-REG  WCODE:OP-I64-STORE WCODE:ALIGN-64 off MEM, ;
+   L-AT GET,  s GET-REG  OP-I64-STORE ALIGN-64 off MEM, ;
 
 : AT-LOAD ( vreg n -- ) {: d:vreg off:n :}
-   L-AT GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 off MEM,  d SET-REG ;
+   L-AT GET,  OP-I64-LOAD ALIGN-64 off MEM,  d SET-REG ;
 
 \ Wasm memory has no guard page, so a push checks before its stores.
 : BOUND ( n -- ) {: most:n :}
-   L-AT GET,  most I32,  WCODE:OP-I32-GT-U B,  WCODE:OP-IF OPENER,
-   EXIT-STATUS:STACK-BOUNDS FAULT-KIND,  L-AT GET,  WCODE:OP-I64-EXTEND-I32-U B,
+   L-AT GET,  most I32,  OP-I32-GT-U B,  OP-IF OPENER,
+   EXIT-STATUS:STACK-BOUNDS FAULT-KIND,  L-AT GET,  OP-I64-EXTEND-I32-U B,
    FAULT-END,  END, ;
 
 : TOR ( ^vreg n -- ) {: p:^ n:n :}
    RTOP
    WPROF:RETURN-BASE STACK-ABI:RETURN-BYTES +  n CELL-BYTES * -  BOUND
    n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-STORE  loop
-   WCODE:RDEPTH-AT n TOP+!, ;
+   RDEPTH-AT n TOP+!, ;
 
 : RFROM ( ^vreg n -- ) {: p:^ n:n :}
-   WCODE:RDEPTH-AT n negate TOP+!,
+   RDEPTH-AT n negate TOP+!,
    RTOP
    n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-LOAD  loop ;
 
@@ -507,47 +508,47 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
       RTOP
       WPROF:RETURN-BASE STACK-ABI:RETURN-BYTES +  n CELL-BYTES * -  BOUND
       L-AT GET,  L-REC SET,
-      WCODE:RDEPTH-AT n TOP+!,
+      RDEPTH-AT n TOP+!,
    then
    HERE-OFF BODY-AT ! ;
 
 \ ctx's env holds the record only until the unit's first call.
 : ENV-OPEN ( -- )
    BODY-EMPTY
-   L-CTX GET,  WCODE:OP-I32-LOAD WCODE:ALIGN-32 WPROF:CTX-ENV MEM,  L-ENV SET,
+   L-CTX GET,  OP-I32-LOAD ALIGN-32 WPROF:CTX-ENV MEM,  L-ENV SET,
    1 ENV !
    HERE-OFF BODY-AT ! ;
 
 : REC-STORE ( vreg n -- ) {: s:vreg n:n :}
-   L-REC GET,  s GET-REG  WCODE:OP-I64-STORE WCODE:ALIGN-64 n CELL-BYTES * MEM, ;
+   L-REC GET,  s GET-REG  OP-I64-STORE ALIGN-64 n CELL-BYTES * MEM, ;
 
 \ The record's address in the lower half, $80000000 in the upper.
 : REC-QUOT ( n vreg -- ) {: n:n d:vreg :}
-   L-REC GET,  WCODE:OP-I64-EXTEND-I32-U B,
-   $8000000000000000 n CELL-BYTES * + I64,  WCODE:OP-I64-ADD B,  d SET-REG ;
+   L-REC GET,  OP-I64-EXTEND-I32-U B,
+   $8000000000000000 n CELL-BYTES * + I64,  OP-I64-ADD B,  d SET-REG ;
 
 : ENV-LOAD ( vreg n -- ) {: d:vreg n:n :}
    ENV @ 0= if E-T0-UNIT throw then
-   L-ENV GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 n CELL-BYTES * MEM,  d SET-REG ;
+   L-ENV GET,  OP-I64-LOAD ALIGN-64 n CELL-BYTES * MEM,  d SET-REG ;
 
 \ ---- loops ---------------------------------------------------------------------
 0 constant INDEX-OFF
 8 constant LIMIT-OFF
 
-: LTOP ( -- ) WCODE:LTOP-AT TOP@,  WCODE:OP-I32-WRAP-I64 B,  L-AT SET, ;
+: LTOP ( -- ) LTOP-AT TOP@,  OP-I32-WRAP-I64 B,  L-AT SET, ;
 
 \ AT becomes the frame k levels out of the innermost.
 : FRAME ( n -- ) LTOP  1 + STACK-ABI:LOOP-FRAME-BYTES * AT-, ;
 
-: LIMIT, ( -- ) L-AT GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 LIMIT-OFF MEM, ;
+: LIMIT, ( -- ) L-AT GET,  OP-I64-LOAD ALIGN-64 LIMIT-OFF MEM, ;
 
 : LOOP-PUSH ( vreg vreg -- ) {: s:vreg l:vreg :}
    LTOP
    WPROF:LOOP-BASE STACK-ABI:LOOP-BYTES +  STACK-ABI:LOOP-FRAME-BYTES -  BOUND
    s INDEX-OFF AT-STORE  l LIMIT-OFF AT-STORE
-   WCODE:LTOP-AT STACK-ABI:LOOP-FRAME-BYTES TOP+!, ;
+   LTOP-AT STACK-ABI:LOOP-FRAME-BYTES TOP+!, ;
 
-: LOOP-POP ( -- ) WCODE:LTOP-AT STACK-ABI:LOOP-FRAME-BYTES negate TOP+!, ;
+: LOOP-POP ( -- ) LTOP-AT STACK-ABI:LOOP-FRAME-BYTES negate TOP+!, ;
 : LOOP-I ( vreg -- ) 0 FRAME  INDEX-OFF AT-LOAD ;
 : LOOP-J ( vreg -- ) 1 FRAME  INDEX-OFF AT-LOAD ;
 
@@ -555,12 +556,12 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    CF-N @ {: k:n :}
    k 1 + CF-ENTRY-RESERVE
    at k CF-ENTRY !
-   WCODE:OP-LOOP OPENER,  CF-DO-HEAD CF-PUSH ;
+   OP-LOOP OPENER,  CF-DO-HEAD CF-PUSH ;
 
 : LOOP-OPEN ( vreg vreg bool -- ) {: s:vreg l:vreg entry:bool :}
-   WCODE:OP-BLOCK OPENER,  CF-DO CF-PUSH
+   OP-BLOCK OPENER,  CF-DO CF-PUSH
    entry if
-      s GET-REG  l GET-REG  HERE-OFF  WCODE:OP-I64-GE-S B,  0 BR-IF,
+      s GET-REG  l GET-REG  HERE-OFF  OP-I64-GE-S B,  0 BR-IF,
    else -1 then
    HEAD-PUSH ;
 
@@ -568,25 +569,25 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 : LOOP-NEXT ( vreg -- ) {: t:vreg :}
    0 FRAME
-   t INDEX-OFF AT-LOAD  t 1 WCODE:OP-I64-ADD LIT-OP  t INDEX-OFF AT-STORE
-   t GET-REG  LIMIT,  WCODE:OP-I64-LT-S B,  CF-DO-HEAD DEPTH-OF BR-IF, ;
+   t INDEX-OFF AT-LOAD  t 1 OP-I64-ADD LIT-OP  t INDEX-OFF AT-STORE
+   t GET-REG  LIMIT,  OP-I64-LT-S B,  CF-DO-HEAD DEPTH-OF BR-IF, ;
 
 \ `+loop` skips equal bounds only: its `?do` compare becomes i64.eq.
 : ENTRY-EQ ( -- )
    CF-DO-HEAD CF-FIND CF-ENTRY @ {: at:n :}
    at 0 < if exit then
-   WCODE:OP-I64-EQ  SINK @ at VEC:AT c! ;
+   OP-I64-EQ  SINK @ at VEC:AT c! ;
 
 \ With t = index - limit before the step, the index crossed the boundary when
 \ (t xor t + s) and (t xor s) is negative.
 : LOOP-STEP ( vreg vreg -- ) {: s:vreg t:vreg :}
    0 FRAME
-   t INDEX-OFF AT-LOAD  t GET-REG  LIMIT,  WCODE:OP-I64-SUB B,  t SET-REG
-   L-AT GET,  L-AT GET,  WCODE:OP-I64-LOAD WCODE:ALIGN-64 INDEX-OFF MEM,  s GET-REG  WCODE:OP-I64-ADD B,
-   WCODE:OP-I64-STORE WCODE:ALIGN-64 INDEX-OFF MEM,
-   t GET-REG  t GET-REG  s GET-REG  WCODE:OP-I64-ADD B,  WCODE:OP-I64-XOR B,
-   t GET-REG  s GET-REG  WCODE:OP-I64-XOR B,  WCODE:OP-I64-AND B,
-   0 I64,  WCODE:OP-I64-GE-S B,  CF-DO-HEAD DEPTH-OF BR-IF,
+   t INDEX-OFF AT-LOAD  t GET-REG  LIMIT,  OP-I64-SUB B,  t SET-REG
+   L-AT GET,  L-AT GET,  OP-I64-LOAD ALIGN-64 INDEX-OFF MEM,  s GET-REG  OP-I64-ADD B,
+   OP-I64-STORE ALIGN-64 INDEX-OFF MEM,
+   t GET-REG  t GET-REG  s GET-REG  OP-I64-ADD B,  OP-I64-XOR B,
+   t GET-REG  s GET-REG  OP-I64-XOR B,  OP-I64-AND B,
+   0 I64,  OP-I64-GE-S B,  CF-DO-HEAD DEPTH-OF BR-IF,
    ENTRY-EQ ;
 
 : LOOP-CLOSE ( -- ) END,  CF-POP  END,  CF-POP  LOOP-POP  CLOSE-DONE ;
@@ -676,5 +677,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 CTARGET-ARCH:WASM ' FILL-SLOT EMIT-PROVIDE
 
+;using
 ;package
 ;package

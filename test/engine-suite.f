@@ -1436,6 +1436,54 @@ s" linear-local diagnostic names E-LINEAR-LOCAL" T-LABEL
 REJECTION:BUFFER$ s" E-LINEAR-LOCAL" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ES-OWN:nosuch` in the annotation of local `x`" T-CHECK-SAYS
+\ A bare family tail two used packages make public is ambiguous, not unknown.
+package ES-AMB-A public NEWTYPE es-amb<a> ;package
+package ES-AMB-B public NEWTYPE es-amb<a> ;package
+using ES-AMB-A using ES-AMB-B
+REJECTION:CAPTURE
+s" a family two used packages make public is rejected" T-LABEL
+s" CBAD-FAM-AMBIG ( es-amb<n> -- ) drop" CHECK-CANDIDATE! 0 T=
+s" its record says the family is ambiguous" T-LABEL
+REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]: type family `es-amb` is public in more than one used package" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" ^^^^^^ ambiguous here" STR:CONTAINS? TTRUE
+s" its note names both packages" T-LABEL
+REJECTION:BUFFER$ s" = packages: ES-AMB-A, ES-AMB-B" STR:CONTAINS? TTRUE
+s" its help gives each qualified spelling" T-LABEL
+REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" STR:CONTAINS? TTRUE
+REJECTION:BUFFER-OFF
+\ A local's annotation verdict is pinned at the local's token `x:es-amb<n>`:
+\ the help spells the family, never that token.
+REJECTION:CAPTURE
+s" a family two used packages make public is rejected in a local's annotation" T-LABEL
+s" CBAD-LOCAL-AMBIG ( n -- ) {: x:es-amb<n> :}" CHECK-CANDIDATE! 0 T=
+s" its record names the family and the local" T-LABEL
+REJECTION:BUFFER$ s" type family `es-amb` in the annotation of local `x` is public in more than one used package" STR:CONTAINS? TTRUE
+s" its help gives each qualified spelling of the family" T-LABEL
+REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" STR:CONTAINS? TTRUE
+REJECTION:BUFFER-OFF
+\ A built definition's type naming that family is ambiguous too.
+: ES-AMB-READ ( -- n ) [: s" es-amb<n>" EFFECT:READ-TYPE drop ;] catch ;
+REJECTION:CAPTURE
+s" a built type naming that family is rejected" T-LABEL
+ES-AMB-READ 70 T=
+s" its record says the family is ambiguous" T-LABEL
+REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]: ambiguous type family 'es-amb' in the type 'es-amb<n>'" STR:CONTAINS? TTRUE
+s" its note names both packages" T-LABEL
+REJECTION:BUFFER$ s" = packages: ES-AMB-A, ES-AMB-B" STR:CONTAINS? TTRUE
+s" its help gives each qualified spelling" T-LABEL
+REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" STR:CONTAINS? TTRUE
+REJECTION:BUFFER-OFF
+\ A variant payload naming that family is ambiguous too.
+s" a variant payload naming that family is rejected" T-LABEL
+s" SUMTYPE es-amb-sum VARIANT one es-amb<n> ;VARIANT ;SUMTYPE" ES-RES-REJECT:CAPTURED 70 T=
+s" its record says the family is ambiguous" T-LABEL
+s" error[E-USING-AMBIGUOUS]: bad sumtype declaration `es-amb-sum`" ES-RES-REJECT:HAS
+s" ^^^^^^ ambiguous type family" ES-RES-REJECT:HAS
+s" its note names both packages" T-LABEL
+s" = packages: ES-AMB-A, ES-AMB-B" ES-RES-REJECT:HAS
+s" its help gives each qualified spelling" T-LABEL
+s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" ES-RES-REJECT:HAS
+;using ;using
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD

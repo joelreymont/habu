@@ -21,6 +21,7 @@ $10000 constant MEMORY-BYTES
 $FFFFFFE0 constant RETURN-ADDRESS          \ what B3 holds when CALL starts
 
 private
+using C6XFACTS
 
 $FFFFFFFF constant MASK32
 4 constant LOAD-DELAY
@@ -140,8 +141,8 @@ variable F-IDLE
 \ undefined on the chip: E-CONFLICT.
 : LAND ( ^n -- ) {: row:^ :}
    row PENDING.REG @ {: reg:n :}
-   LANDED @ reg C6XFACTS:MASK-BIT and 0 <> WRITTEN-LAST @ reg C6XFACTS:MASK-BIT and 0 <> or if E-CONFLICT throw then
-   LANDED @ reg C6XFACTS:MASK-BIT or LANDED !
+   LANDED @ reg MASK-BIT and 0 <> WRITTEN-LAST @ reg MASK-BIT and 0 <> or if E-CONFLICT throw then
+   LANDED @ reg MASK-BIT or LANDED !
    row PENDING.VALUE @ reg REG! ;
 
 : SETTLE ( -- )
@@ -161,8 +162,8 @@ variable F-IDLE
 : LAND-COMMIT ( n -- ) {: idx:n :}
    idx COMMIT-ROW {: row:^ :}
    row COMMIT.REG @ {: reg:n :}
-   WRITTEN-LAST @ reg C6XFACTS:MASK-BIT and 0 <> if E-CONFLICT throw then
-   WRITTEN-LAST @ reg C6XFACTS:MASK-BIT or WRITTEN-LAST !
+   WRITTEN-LAST @ reg MASK-BIT and 0 <> if E-CONFLICT throw then
+   WRITTEN-LAST @ reg MASK-BIT or WRITTEN-LAST !
    row COMMIT.VALUE @ reg REG! ;
 
 : OVERLAP? ( n n -- bool ) {: a:n b:n :}
@@ -376,10 +377,10 @@ variable F-IDLE
    reg 32 >= if CROSS-1X else CROSS-2X then {: path:^ :}
    path @ 0 >= path @ reg <> and if E-CONFLICT throw then
    reg path !
-   CROSS-READS @ reg C6XFACTS:MASK-BIT or CROSS-READS ! ;
+   CROSS-READS @ reg MASK-BIT or CROSS-READS ! ;
 
 : DESCRIBE ( -- )
-   CHECKING @ C6XFACTS:CLASSIFY C6XFACTS-FACTS:UNMAKE
+   CHECKING @ CLASSIFY C6XFACTS-FACTS:UNMAKE
    {: unit:n cross:n reads:n writes:n loads:n memory:n side:n branch:bool idle:n :}
    unit F-UNIT ! cross F-CROSS ! memory F-MEMORY ! side F-SIDE ! idle F-IDLE ! ;
 
@@ -391,12 +392,12 @@ variable F-IDLE
    code 0 <> if code throw then
    F-IDLE @ 1 > if IDLE-TICKS @ 0 <> if E-CONFLICT throw then F-IDLE @ IDLE-TICKS ! then
    F-IDLE @ 0 <> if exit then
-   F-UNIT @ C6XFACTS:MASK-BIT UNITS-USED @ and 0 <> if E-CONFLICT throw then
-   F-UNIT @ C6XFACTS:MASK-BIT UNITS-USED @ or UNITS-USED !
+   F-UNIT @ MASK-BIT UNITS-USED @ and 0 <> if E-CONFLICT throw then
+   F-UNIT @ MASK-BIT UNITS-USED @ or UNITS-USED !
    F-CROSS @ 0 >= if CLAIM-CROSS then
    F-MEMORY @ 0 <> if
-      F-SIDE @ C6XFACTS:MASK-BIT MEMORY-SIDES @ and 0 <> if E-CONFLICT throw then
-      F-SIDE @ C6XFACTS:MASK-BIT MEMORY-SIDES @ or MEMORY-SIDES !
+      F-SIDE @ MASK-BIT MEMORY-SIDES @ and 0 <> if E-CONFLICT throw then
+      F-SIDE @ MASK-BIT MEMORY-SIDES @ or MEMORY-SIDES !
    then ;
 
 \ The packet's resource use against SPRUGH7 3.8.1, 3.8.4, 3.8.6 and 3.8.11.

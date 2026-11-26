@@ -2,7 +2,9 @@
 \ the harness can catch; it prints the code it caught.
 require src/lib/vocabulary.f
 require test/policy/dep.f
+using VOCABULARY
 
 : LOAD ( -- ) 0 SCRIPT-ARGV$ included ;
-: RUN ( -- ) s" PDEP" VOCABULARY:ALLOW-PACKAGE VOCABULARY:RESTRICT [: LOAD ;] catch . ;
+: RUN ( -- ) s" PDEP" ALLOW-PACKAGE RESTRICT [: LOAD ;] catch . ;
 RUN
+;using

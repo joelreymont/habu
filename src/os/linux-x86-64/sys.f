@@ -29,6 +29,9 @@ require src/os/linux-flags.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 
+using X64ASM
+using X64CODE
+
 $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
 $01 constant MAP-SHARED
@@ -123,16 +126,16 @@ $200 constant AT-REMOVEDIR
 \ (it holds the return rip) and r11 (the saved rflags), so nothing live can be
 \ sitting in either one after the trap.
 : SYS, ( n -- )
-   0 X64ASM:>R32 swap X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV32-RI32   \ mov eax, #NR (zero-extends into rax)
-   X64CODE:ASM-SINK X64ASM:ENC-SYSCALL                          \ syscall
-   X64ASM:RCX -4096 X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI32        \ mov rcx, -4096
-   X64ASM:RCX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR ;                 \ cmp rcx, rax -> CF = error
+   0 >R32 swap >IMM32 ASM-SINK ENC-MOV32-RI32   \ mov eax, #NR (zero-extends into rax)
+   ASM-SINK ENC-SYSCALL                          \ syscall
+   RCX -4096 >IMM32 ASM-SINK ENC-MOV-RI32        \ mov rcx, -4096
+   RCX RAX ASM-SINK ENC-CMP-RR ;                 \ cmp rcx, rax -> CF = error
 
 \ Zero a register with the two-byte 32-bit xor, which clears all 64 bits because
 \ a 32-bit result zero-extends.
-: ZERO-REG, ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
-   r X64ASM:R64>N {: n:n :}
-   n X64ASM:>R32 n X64ASM:>R32 X64CODE:ASM-SINK X64ASM:ENC-XOR32-RR ;
+: ZERO-REG, ( r64 -- ) {: r:r64 :}
+   r R64>N {: n:n :}
+   n >R32 n >R32 ASM-SINK ENC-XOR32-RR ;
 
 \ ---- runtime-emit syscall stencils -------------------------------------------
 \ The MATCH bad-tag die is EMITTED into the user word, so its write+exit syscall
@@ -172,33 +175,36 @@ $05 SYS-SVC-STENCIL 1 + c!
 \ openat(AT_FDCWD, path, 0, 0). The path register is set before AT_FDCWD so a
 \ caller may name rdi itself.
 : OS-OPEN-RD ( n -- ) {: pathreg:n :}
-   X64ASM:RSI pathreg X64ASM:>R64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RR         \ mov rsi, path
-   X64ASM:RDI AT-FDCWD X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI32    \ mov rdi, AT_FDCWD
-   X64ASM:RDX ZERO-REG,                                 \ flags 0
-   X64ASM:R10 ZERO-REG,                                 \ mode 0
+   RSI pathreg >R64 ASM-SINK ENC-MOV-RR         \ mov rsi, path
+   RDI AT-FDCWD >IMM32 ASM-SINK ENC-MOV-RI32    \ mov rdi, AT_FDCWD
+   RDX ZERO-REG,                                 \ flags 0
+   R10 ZERO-REG,                                 \ mode 0
    NR-OPEN SYS, ;
 
 \ rax takes the Linux bit when src holds the BSD bit, with no branch. Clobbers
 \ rcx and r11, which hold no VM register or syscall argument.
-: OS-FLAG-BIT, ( X64ASM:r64 n n -- ) {: src:X64ASM:r64 srcbit:n dstbit:n :}
-   X64ASM:RCX ZERO-REG,
-   X64ASM:R11 dstbit X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI32      \ mov r11, the Linux bit
-   src srcbit X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-TEST-RI32     \ test src, the BSD bit
-   X64ASM:C-NE X64ASM:RCX X64ASM:R11 X64CODE:ASM-SINK X64ASM:ENC-CMOVCC             \ cmovne rcx, r11
-   X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-OR-RR ;                 \ or rax, rcx
+: OS-FLAG-BIT, ( r64 n n -- ) {: src:r64 srcbit:n dstbit:n :}
+   RCX ZERO-REG,
+   R11 dstbit >IMM32 ASM-SINK ENC-MOV-RI32      \ mov r11, the Linux bit
+   src srcbit >IMM32 ASM-SINK ENC-TEST-RI32     \ test src, the BSD bit
+   C-NE RCX R11 ASM-SINK ENC-CMOVCC             \ cmovne rcx, r11
+   RAX RCX ASM-SINK ENC-OR-RR ;                 \ or rax, rcx
 
 \ rsi's BSD-shaped open flags into rdx: the access mode as it is, each flag to
 \ its Linux bit. Clobbers rax, rcx and r11, so stage other arguments first.
 : OS-OPEN-FLAGS ( -- )
-   X64ASM:RAX X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
-   X64ASM:RAX LINUX-FLAGS:OPEN-KEPT X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-AND-RI8
-   [: X64ASM:RSI -rot OS-FLAG-BIT, ;] LINUX-FLAGS:OPEN-PAIRS
-   X64ASM:RDX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR ;
+   RAX RSI ASM-SINK ENC-MOV-RR
+   RAX LINUX-FLAGS:OPEN-KEPT >IMM8 ASM-SINK ENC-AND-RI8
+   [: RSI -rot OS-FLAG-BIT, ;] LINUX-FLAGS:OPEN-PAIRS
+   RDX RAX ASM-SINK ENC-MOV-RR ;
 
 \ r10 carries mmap's flags both ways: the kept bits as they are, each flag to
 \ its Linux bit. Clobbers rax, rcx and r11.
 : OS-MMAP-FLAGS ( -- )
-   X64ASM:RAX X64ASM:R10 X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
-   X64ASM:RAX LINUX-FLAGS:MMAP-KEPT X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-AND-RI8
-   [: X64ASM:R10 -rot OS-FLAG-BIT, ;] LINUX-FLAGS:MMAP-PAIRS
-   X64ASM:R10 X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR ;
+   RAX R10 ASM-SINK ENC-MOV-RR
+   RAX LINUX-FLAGS:MMAP-KEPT >IMM8 ASM-SINK ENC-AND-RI8
+   [: R10 -rot OS-FLAG-BIT, ;] LINUX-FLAGS:MMAP-PAIRS
+   R10 RAX ASM-SINK ENC-MOV-RR ;
+
+;using
+;using

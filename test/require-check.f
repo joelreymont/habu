@@ -18,8 +18,9 @@
 \ --verify-only gives each file the load's verdict, at the same place: a call
 \ in a body, a top-level token, a tick, an EXPORT operand, one after a body,
 \ an `is` target, a TRUSTED: body or its clause, a word hb carries that another
-\ file called first and a top-level definer: learned, a storage definer of a
-\ library, or FUNCTION:. It checks the rest after a definer it rejects. A text a word evaluates and a body a definer renders are no file's:
+\ file called first and a top-level definer: learned, a storage definer of a library, or FUNCTION:,
+\ whether or not a `using` shadows it. It checks the rest after a definer it
+\ rejects. A text a word evaluates and a body a definer renders are no file's:
 \ their calls are not judged and a require the text makes grants the file that
 \ evaluates it nothing, while the words they define are that file's. The
 \ file's own tokens are judged after such a text, one that throws too, and in
@@ -133,6 +134,16 @@ private
       evaluate-closed ;]
    catch ;
 
+: SHADOW-RC ( -- n )
+   [: s\" s\" test/fixtures/require-check/shadow-bad.f\" required"
+      evaluate-closed ;]
+   catch ;
+
+: PLAIN-RC ( -- n )
+   [: s\" s\" test/fixtures/require-check/shadow-plain.f\" required"
+      evaluate-closed ;]
+   catch ;
+
 : TEXT-RC ( -- n )
    [: s\" s\" test/fixtures/require-check/text-bad.f\" required"
       evaluate-closed ;]
@@ -150,6 +161,16 @@ private
 
 : BUILT-RC ( -- n )
    [: s\" s\" test/fixtures/require-check/built-bad.f\" required"
+      evaluate-closed ;]
+   catch ;
+
+: CLAUSE-RC ( -- n )
+   [: s\" s\" test/fixtures/require-check/shadow-clause.f\" required"
+      evaluate-closed ;]
+   catch ;
+
+: GLOBAL-RC ( -- n )
+   [: s\" s\" test/fixtures/require-check/shadow-global.f\" required"
       evaluate-closed ;]
    catch ;
 
@@ -235,6 +256,12 @@ private
 : FUNCTION-HEAD ( -- str )
    s" error[E-UNREQUIRED]: `FUNCTION:` is defined in `src/lib/ffi-abi.f`, which `test/fixtures/require-check/function-bad.f` does not require" ;
 
+: SHADOW-HEAD ( -- str )
+   s" error[E-UNREQUIRED]: `CWORK-BUFFER` is defined in `src/compiler/workspace.f`, which `test/fixtures/require-check/shadow-bad.f` does not require" ;
+
+: PLAIN-HEAD ( -- str )
+   s" error[E-UNREQUIRED]: `RQC-GLOBAL` is defined in `test/fixtures/require-check/global.f`, which `test/fixtures/require-check/shadow-plain.f` does not require" ;
+
 : TEXT-HEAD ( -- str )
    s" error[E-UNREQUIRED]: `RQC-WORD:SEVEN` is defined in `test/fixtures/require-check/word.f`, which `test/fixtures/require-check/text-bad.f` does not require" ;
 
@@ -246,6 +273,12 @@ private
 
 : BUILT-HEAD ( -- str )
    s" error[E-UNREQUIRED]: `RQC-WORD:SEVEN` is defined in `test/fixtures/require-check/word.f`, which `test/fixtures/require-check/built-bad.f` does not require" ;
+
+: CLAUSE-HEAD ( -- str )
+   s" error[E-UNREQUIRED]: `VARIADIC` is defined in `src/lib/ffi-abi.f`, which `test/fixtures/require-check/shadow-clause.f` does not require" ;
+
+: GLOBAL-HEAD ( -- str )
+   s" error[E-USING-SHADOW-GLOBAL]: `TYPED-VARIABLE` is both a global word and a public of used package `RQC-SHADOW-GLOBAL`" ;
 
 : REST-HEAD ( -- str )
    s" error[E-UNREQUIRED]: `TASK:+USER` is defined in `src/lib/task.f`, which `test/fixtures/require-check/definer-rest.f` does not require" ;
@@ -605,6 +638,12 @@ PATH-CAP BUFFER: FOUND   variable FOUND-U
    s" and FUNCTION:" T-LABEL
    s" test/fixtures/require-check/function-bad.f" FUNCTION-HEAD
    s" require-check/function-bad.f:2:1" VERIFY-REJECTS
+   s" and a definer a using shadows, as unrequired" T-LABEL
+   s" test/fixtures/require-check/shadow-bad.f" SHADOW-HEAD
+   s" require-check/shadow-bad.f:8:4" VERIFY-REJECTS
+   s" and such a plain call" T-LABEL
+   s" test/fixtures/require-check/shadow-plain.f" PLAIN-HEAD
+   s" require-check/shadow-plain.f:8:1" VERIFY-REJECTS
    s" and a call in the file after text that requires its file" T-LABEL
    s" test/fixtures/require-check/text-bad.f" TEXT-HEAD
    s" require-check/text-bad.f:6:1" VERIFY-REJECTS
@@ -617,6 +656,12 @@ PATH-CAP BUFFER: FOUND   variable FOUND-U
    s" and a call in the file in a body another file's definer opened" T-LABEL
    s" test/fixtures/require-check/built-bad.f" BUILT-HEAD
    s" require-check/built-bad.f:3:34" VERIFY-REJECTS
+   s" and such a clause" T-LABEL
+   s" test/fixtures/require-check/shadow-clause.f" CLAUSE-HEAD
+   s" require-check/shadow-clause.f:7:3" VERIFY-REJECTS
+   s" and as shadowed where it needs no require" T-LABEL
+   s" test/fixtures/require-check/shadow-global.f" GLOBAL-HEAD
+   s" require-check/shadow-global.f:7:1" VERIFY-REJECTS
    s" and each rejected token after a definer it rejects" T-LABEL
    s" test/fixtures/require-check/definer-rest.f" REST-HEAD
    s" require-check/definer-rest.f:4:1" VERIFY-REJECTS
@@ -746,6 +791,12 @@ public
    s" and FUNCTION:" T-LABEL
    REJECTION:CAPTURE  FUNCTION-RC  REJECTION:BUFFER-OFF
    FUNCTION-HEAD s" require-check/function-bad.f:2:1" REJECTED-AT
+   s" and a definer a using shadows, as unrequired" T-LABEL
+   REJECTION:CAPTURE  SHADOW-RC  REJECTION:BUFFER-OFF
+   SHADOW-HEAD s" require-check/shadow-bad.f:8:4" REJECTED-AT
+   s" and such a plain call" T-LABEL
+   REJECTION:CAPTURE  PLAIN-RC  REJECTION:BUFFER-OFF
+   PLAIN-HEAD s" require-check/shadow-plain.f:8:1" REJECTED-AT
    s" and a call in the file after text that requires its file" T-LABEL
    REJECTION:CAPTURE  TEXT-RC  REJECTION:BUFFER-OFF
    TEXT-HEAD s" require-check/text-bad.f:6:1" REJECTED-AT
@@ -758,6 +809,12 @@ public
    s" and a call in the file in a body another file's definer opened" T-LABEL
    REJECTION:CAPTURE  BUILT-RC  REJECTION:BUFFER-OFF
    BUILT-HEAD s" require-check/built-bad.f:3:34" REJECTED-AT
+   s" and such a clause" T-LABEL
+   REJECTION:CAPTURE  CLAUSE-RC  REJECTION:BUFFER-OFF
+   CLAUSE-HEAD s" require-check/shadow-clause.f:7:3" REJECTED-AT
+   s" and as shadowed where it needs no require" T-LABEL
+   REJECTION:CAPTURE  GLOBAL-RC  REJECTION:BUFFER-OFF
+   GLOBAL-HEAD s" require-check/shadow-global.f:7:1" REJECTED-AT
    s" and a library definer before other rejected tokens" T-LABEL
    REJECTION:CAPTURE  REST-RC  REJECTION:BUFFER-OFF
    REST-HEAD s" require-check/definer-rest.f:4:1" REJECTED-AT

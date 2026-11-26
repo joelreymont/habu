@@ -21,6 +21,9 @@ require src/arch/x86-64/asm.f
 require src/os/image-bytes.f
 
 package X64HARNESS
+using X64ASM
+using X64CODE
+using IMAGE-BYTES
 public
 
 $8000000000000000 constant MIN-CELL
@@ -46,17 +49,19 @@ variable ENDING                      \ the image's exit status, or its signal ne
 \ src/os/linux-flags.f, load at top level above, because a file required
 \ inside a package cannot open one.
 s" src/habu/driver-io.f" required
+using DRIVER
 s" src/os/linux-x86-64/sys.f" required
+using LINUX-LAYOUT   \ the guard
 
-: IMM ( X64ASM:r64 n -- ) X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64 ;
+: IMM ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
 \ MOV preserves the flags being tested. A mismatch branches to the one exit
 \ syscall with the assertion's nonzero status in edi.
-: FAIL-IF ( X64ASM:condition n -- ) {: cond:X64ASM:condition failure:n :}
-   X64ASM:RDI failure IMM
-   cond EXIT-LBL X64CODE:JCC, ;
+: FAIL-IF ( condition n -- ) {: cond:condition failure:n :}
+   RDI failure IMM
+   cond EXIT-LBL JCC, ;
 
-: ASSERT-EQ ( n -- ) X64ASM:C-NE swap FAIL-IF ;
+: ASSERT-EQ ( n -- ) C-NE swap FAIL-IF ;
 
 : STATUS ( -- n )
    CASE-NEXT @ {: s:n :}
@@ -68,17 +73,17 @@ s" src/os/linux-x86-64/sys.f" required
 \ in the check a negative image gets wrong.
 : EXPECT-RCX, ( -- )
    STATUS {: s:n :}
-   s WRONG-AT @ = if X64ASM:RCX 1 X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-SUB-RI32 then
-   X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR s ASSERT-EQ ;
+   s WRONG-AT @ = if RCX 1 >IMM32 ASM-SINK ENC-SUB-RI32 then
+   RAX RCX ASM-SINK ENC-CMP-RR s ASSERT-EQ ;
 
-: EXPECT, ( n -- ) {: want:n :}  X64ASM:RCX want IMM EXPECT-RCX, ;
+: EXPECT, ( n -- ) {: want:n :}  RCX want IMM EXPECT-RCX, ;
 
 \ exit_group ends every thread: a booted image's task thread that outlives a
 \ thread-local exit(2) would end the process with its own status instead.
 : EXIT, ( -- )
-   EXIT-LBL X64CODE:LBL,
-   0 X64ASM:>R32 NR-EXIT-GROUP X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV32-RI32
-   X64CODE:ASM-SINK X64ASM:ENC-SYSCALL ;
+   EXIT-LBL LBL,
+   0 >R32 NR-EXIT-GROUP >IMM32 ASM-SINK ENC-MOV32-RI32
+   ASM-SINK ENC-SYSCALL ;
 
 : TEXT-VA ( -- n ) LINUX-LAYOUT:IMAGE-VA LINUX-LAYOUT:CODE-OFF + ;
 
@@ -121,20 +126,20 @@ public
 
 \ The address the next routine appended lands at, so the one it is emitted at.
 \ The stream is placed first, so no byte before the read moves again.
-: POSITION ( -- n ) X64CODE:PLACE-BRANCHES TEXT-VA X64CODE:ASM-LEN + ;
+: POSITION ( -- n ) PLACE-BRANCHES TEXT-VA ASM-LEN + ;
 
 \ Write the staged stream as it stands: byte 0 is the ELF entry. The quotation
 \ adds the arguments the image runs with.
 : WRITE-WITH ( str [ CMD:command -- CMD:command ] -- ) {: path:str args :}
-   TEXT-VA X64CODE:ASM-LINK
-   X64CODE:CODE X64CODE:ASM-LEN >str TEXT-VA IMPORTS$ LINUX-LAYOUT:CARRIER-VA VA>N s" "
+   TEXT-VA ASM-LINK
+   CODE ASM-LEN >str TEXT-VA IMPORTS$ LINUX-LAYOUT:CARRIER-VA VA>N s" "
    ELF:BUILD-X64   \ no DATA, so an empty carrier
    s" x64-peer" ELF:SET-SIGID ELF:CODESIG2
-   path DRIVER:DRV-WRITE-IMAGE
+   path DRV-WRITE-IMAGE
    s" ELF names x86-64 and enters this fixture's code" T-LABEL
-   $12 IMAGE-BYTES:M-OFF IMAGE-BYTES:M-LE32@ $FFFF and 62 T=
-   $18 IMAGE-BYTES:M-OFF IMAGE-BYTES:M-LE32@ TEXT-VA T=
-   $1C IMAGE-BYTES:M-OFF IMAGE-BYTES:M-LE32@ 0 T=
+   $12 M-OFF M-LE32@ $FFFF and 62 T=
+   $18 M-OFF M-LE32@ TEXT-VA T=
+   $1C M-OFF M-LE32@ 0 T=
    HB-TARGET-LINUX-X86-64? if
       [: path args RUN-IMAGE ;] CMD:WITH-COMMAND
    then ;
@@ -143,6 +148,7 @@ public
 
 \ The sink every image is staged in and the import names, held across the
 \ images of one run.
-: INIT ( -- ) X64CODE:SINK-OPEN  X64CODE:ASM-SINK X64CODE:CODE-CAP-BYTES VEC:RESERVE  IMPORTS! ;
-: DISPOSE ( -- ) X64CODE:SINK-CLOSE  IMPORT-BUF @ VEC:DELETE  NULL-PTR IMPORT-BUF ! ;
+: INIT ( -- ) SINK-OPEN  ASM-SINK CODE-CAP-BYTES VEC:RESERVE  IMPORTS! ;
+: DISPOSE ( -- ) SINK-CLOSE  IMPORT-BUF @ VEC:DELETE  NULL-PTR IMPORT-BUF ! ;
+;using   \ LINUX-LAYOUT
 ;package

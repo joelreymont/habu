@@ -13,6 +13,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process.f
 
+using SOURCE-ROOT
 package SOURCE-ROOT-TEST
 
 PATH-CAP 1+ constant CAP
@@ -58,23 +59,23 @@ private
 : A$ ( -- str ) APP-A APP-A-U @ >str ;
 : B$ ( -- str ) APP-B APP-B-U @ >str ;
 : FALLBACK$ ( -- str ) FALLBACK FALLBACK-U @ >str ;
-: A-PATH ( str -- str ) A$ swap SOURCE-ROOT:JOIN ;
-: B-PATH ( str -- str ) B$ swap SOURCE-ROOT:JOIN ;
-: FALLBACK-PATH ( str -- str ) FALLBACK$ swap SOURCE-ROOT:JOIN ;
+: A-PATH ( str -- str ) A$ swap JOIN ;
+: B-PATH ( str -- str ) B$ swap JOIN ;
+: FALLBACK-PATH ( str -- str ) FALLBACK$ swap JOIN ;
 
 : RESTORED ( -- )
-   SOURCE-ROOT:CURRENT$ SAVED-ROOT SAVED-ROOT-U @ >str T$=
+   CURRENT$ SAVED-ROOT SAVED-ROOT-U @ >str T$=
    SOURCE-ROOT:ACTIVE-SOURCE drop drop SAVED-TOP SAVED-TOP-U @ >str T$= ;
 
 : PREP ( -- )
    FS:CLEANUP-RESET 0 SOURCE-ROOT-COUNT:LOADED !
-   SOURCE-ROOT:CURRENT$ SAVED-ROOT SAVED-ROOT-U COPY!
-   s" test/fixtures/source-root-count.f" SOURCE-ROOT:RESOLVE TTRUE COUNT-PATH COUNT-PATH-U COPY!
+   CURRENT$ SAVED-ROOT SAVED-ROOT-U COPY!
+   s" test/fixtures/source-root-count.f" RESOLVE TTRUE COUNT-PATH COUNT-PATH-U COPY!
    SOURCE-ROOT:ACTIVE-SOURCE drop drop SAVED-TOP SAVED-TOP-U COPY!
-   s" habu-source-root" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL TTRUE ROOT ROOT-U COPY!
+   s" habu-source-root" FS:MKTEMP-DIR CANONICAL TTRUE ROOT ROOT-U COPY!
    ROOT$ FS:CLEANUP-TREE+
-   ROOT$ s" a" SOURCE-ROOT:JOIN APP-A APP-A-U COPY!
-   ROOT$ s" b" SOURCE-ROOT:JOIN APP-B APP-B-U COPY!
+   ROOT$ s" a" JOIN APP-A APP-A-U COPY!
+   ROOT$ s" b" JOIN APP-B APP-B-U COPY!
    s" src/nested" A-PATH FS:MAKE-DIRS
    s" src" B-PATH FS:MAKE-DIRS
    s" src/leaf.f" A-PATH 1 BUMP-TEXT FS:WRITE-ALL
@@ -143,10 +144,10 @@ private
 : RELATIVE-CANON ( str -- str bool ) drop s" src/core/include.f" true ;
 : LONG-READ ( str -- str ) drop LONG-PATH CAP >str SOURCE-ROOT:READ-OS ;
 : LEAF-BYTES ( str str -- )
-   drop 1 BUMP-TEXT T$= SOURCE-ROOT:CURRENT$ A$ T$= 1 SOURCE-ROOT-COUNT:BUMP ;
+   drop 1 BUMP-TEXT T$= CURRENT$ A$ T$= 1 SOURCE-ROOT-COUNT:BUMP ;
 : SUPPLIED-BYTES ( str str -- )
    drop s" 2 SOURCE-ROOT-COUNT:BUMP" T$=
-   SOURCE-ROOT:CURRENT$ A$ T$= 1 SOURCE-ROOT-COUNT:BUMP ;
+   CURRENT$ A$ T$= 1 SOURCE-ROOT-COUNT:BUMP ;
 
 : READ-NUL ( -- )
    s" a path holding a 0 byte is rejected by SOURCE-ROOT:READ-OS" T-LABEL
@@ -216,11 +217,11 @@ private
 : WITH-OPENS ( -- )
    s" SOURCE-ROOT:WITH-BYTES and WITH-SUPPLIED open a file under the root their caller passes" T-LABEL
    0 SOURCE-ROOT-COUNT:LOADED !
-   s" main.f" B-PATH SOURCE-ROOT:RESOLVE drop drop
+   s" main.f" B-PATH RESOLVE drop drop
    A$ s" src/leaf.f" A-PATH 0
-   [: LEAF-BYTES ;] SOURCE-ROOT:WITH-BYTES
+   [: LEAF-BYTES ;] WITH-BYTES
    A$ s" src/leaf.f" A-PATH s" 2 SOURCE-ROOT-COUNT:BUMP" 0
-   [: SUPPLIED-BYTES ;] SOURCE-ROOT:WITH-SUPPLIED
+   [: SUPPLIED-BYTES ;] WITH-SUPPLIED
    SOURCE-ROOT-COUNT:LOADED @ 2 T= RESTORED ;
 
 : WITH-LONG ( -- )
@@ -235,36 +236,36 @@ private
    RESTORED ;
 
 : DISCOVERY ( -- )
-   s" main.f" A-PATH SOURCE-ROOT:ENTRY-RESOLVE drop SOURCE-ROOT:RESOLVED-ROOT$
+   s" main.f" A-PATH ENTRY-RESOLVE drop RESOLVED-ROOT$
    DISCOVER:READ-IN DISCOVER:RUN-READ
    SOURCE-EVENT:COUNT 3 T=
    0 SOURCE-EVENT:PATH@ s" src/nested/dep.f" A-PATH T$=
    0 SOURCE-EVENT:ROOT@ A$ T$=
-   2 SOURCE-EVENT:PATH@ s" shared.f" FALLBACK-PATH SOURCE-ROOT:CANONICAL TTRUE T$=
-   2 SOURCE-EVENT:ROOT@ SOURCE-ROOT:CWD$ T$=
+   2 SOURCE-EVENT:PATH@ s" shared.f" FALLBACK-PATH CANONICAL TTRUE T$=
+   2 SOURCE-EVENT:ROOT@ CWD$ T$=
    2 SOURCE-EVENT:PATH@ 2 SOURCE-EVENT:ROOT@ DISCOVER:READ-IN DISCOVER:RUN-READ
    SOURCE-EVENT:COUNT 1 T=
-   0 SOURCE-EVENT:PATH@ s" leaf.f" FALLBACK-PATH SOURCE-ROOT:CANONICAL TTRUE T$=
+   0 SOURCE-EVENT:PATH@ s" leaf.f" FALLBACK-PATH CANONICAL TTRUE T$=
    s" src/nested/dep.f" A-PATH A$ DISCOVER:READ-IN DISCOVER:RUN-READ
    SOURCE-EVENT:COUNT 1 T=
    0 SOURCE-EVENT:PATH@ s" src/leaf.f" A-PATH T$=
    0 SOURCE-EVENT:ROOT@ A$ T$=
    RESTORED ;
 
-: INVOCATION$ ( -- str ) ROOT$ s" invoke" SOURCE-ROOT:JOIN ;
+: INVOCATION$ ( -- str ) ROOT$ s" invoke" JOIN ;
 
 : ENGINE-LINK ( str -- ) {: name:str :}
-   SOURCE-ROOT:CWD$ name SOURCE-ROOT:JOIN TARGET TARGET-U COPY!
-   TARGET TARGET-U @ >str INVOCATION$ name SOURCE-ROOT:JOIN FS:MAKE-SYMLINK ;
+   CWD$ name JOIN TARGET TARGET-U COPY!
+   TARGET TARGET-U @ >str INVOCATION$ name JOIN FS:MAKE-SYMLINK ;
 
 : PREP-ENGINE-ALIASES ( -- )
    INVOCATION$ FS:MAKE-DIR
    s" src" ENGINE-LINK s" test" ENGINE-LINK
-   ROOT$ s" other/nested" SOURCE-ROOT:JOIN FS:MAKE-DIRS
-   ROOT$ s" other/src/lib" SOURCE-ROOT:JOIN FS:MAKE-DIRS
-   ROOT$ s" other/src/lib/error.f" SOURCE-ROOT:JOIN 100 BUMP-TEXT FS:WRITE-ALL
-   ROOT$ s" other/nested" SOURCE-ROOT:JOIN TARGET TARGET-U COPY!
-   TARGET TARGET-U @ >str INVOCATION$ s" branch" SOURCE-ROOT:JOIN FS:MAKE-SYMLINK
+   ROOT$ s" other/nested" JOIN FS:MAKE-DIRS
+   ROOT$ s" other/src/lib" JOIN FS:MAKE-DIRS
+   ROOT$ s" other/src/lib/error.f" JOIN 100 BUMP-TEXT FS:WRITE-ALL
+   ROOT$ s" other/nested" JOIN TARGET TARGET-U COPY!
+   TARGET TARGET-U @ >str INVOCATION$ s" branch" JOIN FS:MAKE-SYMLINK
    s" src/lib" A-PATH FS:MAKE-DIRS s" src/lib" B-PATH FS:MAKE-DIRS
    s" src/lib/error.f" A-PATH 1 BUMP-TEXT FS:WRITE-ALL
    s" src/lib/error.f" B-PATH 10 BUMP-TEXT FS:WRITE-ALL ;
@@ -278,7 +279,7 @@ private
    s" --load" PROC-ARGV+
    s" test/source-root-alias-child.f" PROC-ARGV+
    s" --" PROC-ARGV+ ROOT$ PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CANONICAL TTRUE INVOCATION$
+   ENGINE-CANDIDATE:PATH$ CANONICAL TTRUE INVOCATION$
    CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCAP-RESULT:>N {: outu:n erru:n rc:n :}
@@ -295,7 +296,7 @@ variable EVAL-N
 public
 
 \ Unlike nested loads, these evaluations have no intervening catch: one throw
-\ must unwind every escaped evaluator frame, including a changed package.
+\ must unwind every escaped evaluator frame, including changed package/usings.
 \ Each text is a closed program, so the level count crosses in EVAL-N, not on
 \ the stack.
 : EVAL-DOWN ( -- )
@@ -306,7 +307,7 @@ public
 
 : EVAL-FAIL ( -- )
    EVAL-N @ 0= if
-      s" package EVAL-ESCAPED 9133 throw" evaluate-closed
+      s" package EVAL-ESCAPED using FMT 9133 throw" evaluate-closed
    then
    -1 EVAL-N +!
    s" SOURCE-ROOT-TEST:EVAL-FAIL" evaluate-closed ;
@@ -341,10 +342,10 @@ private
    loop ;
 
 : DEEP-THROW ( -- )
-   A$ [: s" bad/0.f" included ;] SOURCE-ROOT:WITH ;
+   A$ [: s" bad/0.f" included ;] WITH ;
 
 : DEEP-GOOD ( -- )
-   A$ [: s" good/0.f" required ;] SOURCE-ROOT:WITH ;
+   A$ [: s" good/0.f" required ;] WITH ;
 
 : DEEP-EVALS ( -- )
    40 EVAL-N ! EVAL-DOWN EVAL-N @ 47 T=
@@ -411,7 +412,7 @@ create CHUNK LARGE-CHUNK allot
    s" a file past 1 MiB loads through require and include around a small one" T-LABEL
    LARGE-MAKE
    0 SOURCE-ROOT-COUNT:LOADED !
-   A$ [: s" large/outer.f" included ;] SOURCE-ROOT:WITH
+   A$ [: s" large/outer.f" included ;] WITH
    SOURCE-ROOT-COUNT:LOADED @ 122 T= RESTORED ;
 
 \ JOIN joins a root longer than PATH-CAP whole, and rejects a root length below 0
@@ -426,18 +427,18 @@ create JOIN-SRC JOIN-WORK allot
    JOIN-WORK 0 ?do 97 JOIN-SRC i + c! loop
    47 JOIN-SRC c!
    s" a root twice PATH-CAP long joins whole" T-LABEL
-   JOIN-WORK 3 - JOIN-ROOT$ s" x" SOURCE-ROOT:JOIN STR:LEN JOIN-WORK 1- T=
+   JOIN-WORK 3 - JOIN-ROOT$ s" x" JOIN STR:LEN JOIN-WORK 1- T=
    s" a root length of -1 or the maximum cell is rejected" T-LABEL
-   [: -1 JOIN-ROOT$ s" x" SOURCE-ROOT:JOIN drop ;] E-PATH-RANGE TTHROWSQ
-   [: MAX-CELL JOIN-ROOT$ s" x" SOURCE-ROOT:JOIN drop ;] E-PATH-RANGE TTHROWSQ ;
+   [: -1 JOIN-ROOT$ s" x" JOIN drop ;] E-PATH-RANGE TTHROWSQ
+   [: MAX-CELL JOIN-ROOT$ s" x" JOIN drop ;] E-PATH-RANGE TTHROWSQ ;
 
 : DIRNAMES ( -- )
    s" a bare relative name's directory is the current directory" T-LABEL
-   s" stamp" SOURCE-ROOT:DIRNAME s" ." T$=
+   s" stamp" DIRNAME s" ." T$=
    s" a directory part, rooted or relative, is kept and / is its own parent" T-LABEL
-   s" out/stamp" SOURCE-ROOT:DIRNAME s" out" T$=
-   s" /stamp" SOURCE-ROOT:DIRNAME s" /" T$=
-   s" /" SOURCE-ROOT:DIRNAME s" /" T$= ;
+   s" out/stamp" DIRNAME s" out" T$=
+   s" /stamp" DIRNAME s" /" T$=
+   s" /" DIRNAME s" /" T$= ;
 
 public
 : RUN ( -- )
@@ -450,3 +451,4 @@ public
 
 ;package
 SOURCE-ROOT-TEST:RUN
+;using

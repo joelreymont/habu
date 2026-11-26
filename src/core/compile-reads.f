@@ -278,7 +278,7 @@ public
 private
 
 EXPORT CHECKER-RESOLVE:bare-search-wl
-EXPORT CHECKER-RESOLVE:bare-scope-bind
+EXPORT CHECKER-RESOLVE:bare-scope-find
 EXPORT CHECKER-RESOLVE:bare-tok-imm?
 
 global
@@ -288,8 +288,8 @@ global
    s wid NAME+  s wid bare-search-wl ;
 
 \ The search order's binding of the name, a dependency as the part's text is.
-: scope-find ( str -- ^n n ) {: s:str :}
-   s TEXT+  s bare-scope-bind ;
+: scope-find ( str -- ^n ^n ^n n ) {: s:str :}
+   s TEXT+  s bare-scope-find ;
 
 \ The name's immediate flag (2) or 0, a dependency as scope-find's name is.
 : tok-imm? ( str -- n ) {: s:str :}

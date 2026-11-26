@@ -46,16 +46,31 @@ public
    {: rec:^ :}
    rec XREF-START CHECK:SCOPE-CODE-KIND 0<> ;
 
-\ The bound record whatever its flags, or none.
+\ The bound record whatever its flags, or none. Two used publics that both
+\ export the tail, with nothing earlier binding it, are the ambiguity the engine
+\ rejects.
 : SCOPE-REC ( str -- ^n )
-   scope-find drop ;
+   scope-find {: rec:^ used:^ used2:^ flags:n :}
+   rec XREF-FOUND? 0= flags SCOPE-FIND-AMBIGUOUS and 0<> and if E-USING-AMBIGUOUS throw then
+   rec ;
+
+\ Whether a bare reference to the spelling is a using rejection, so that it binds
+\ no word: two used publics export the tail and nothing earlier binds it, or a
+\ used public also exports the tail a global binds (E-USING-SHADOW-GLOBAL, or
+\ E-USING-AMBIGUOUS when a second used public exports it too). The engine's
+\ lookup and the checker's binder reject the same two shapes.
+: USING-REJECTED? ( str -- bool )
+   scope-find {: rec:^ used:^ used2:^ flags:n :}
+   rec XREF-FOUND? 0= if flags SCOPE-FIND-AMBIGUOUS and 0<> exit then
+   rec XREF-WORDLIST WL:GLOBAL?  used XREF-FOUND?  and ;
 
 \ Whether an operator row may stand for the spelling: the lookup binds the
 \ seeded primitive of that spelling, or nothing at all (a keyword such as `>r`
 \ has no record). A package word, an EXPORT alias and a redefinition after
 \ `undefine` each bind a record of their own, and the call path reaches it.
 : SPELL-PRIM? ( str -- bool )
-   scope-find {: rec:^ flags:n :}
+   scope-find {: rec:^ used:^ used2:^ flags:n :}
+   flags SCOPE-FIND-AMBIGUOUS and 0<> if false exit then
    rec XREF-FOUND? 0= if true exit then
    flags SCOPE-SEEDED and 0<> ;
 
@@ -223,7 +238,7 @@ public
 : CALL-TARGET ( str -- n ) CALL-BINDING drop ;
 
 \ CALL-TARGET for a runtime word the compiler itself calls: bound at the top
-\ level, so no part of the code being compiled can stand in for it.
+\ level, so no part or using of the code being compiled can stand in for it.
 : TOP-TARGET ( str -- n ) TOP-REC REC-CALL drop ;
 
 \ Where a compiled `[']` may take its xt from, or zero. An xt runs wherever it

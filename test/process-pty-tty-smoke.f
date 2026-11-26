@@ -19,6 +19,8 @@ require src/lib/vector.f
 
 package PTY-TTY-SMOKE
 
+using PTY-HARNESS
+
 $64 constant STEP-MS               \ one poll blocks at most this long
 $0A constant PROBE-MS              \ the pause between two probes of its pid
 $200 constant STEP-CAP             \ one read's most: the harness room always holds it
@@ -50,7 +52,7 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
 \ What the target said so far: the end of every failed wait's diagnostic, which
 \ goes to stdout and leaves stderr to the engine.
 : READ-SO-FAR ( -- )
-   PTY-HARNESS:BUF$ {: r:str :}
+   BUF$ {: r:str :}
    s" read so far (" type r STR:LEN FMT:.INT s"  bytes):" type cr r type cr ;
 
 : WAIT-SHOW ( str str -- ) {: hs:str ts:str :}
@@ -67,9 +69,9 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
 : EXPECT-AFTER ( process-pty-handle str str -- process-pty-handle bool )
    {: hs:str ts:str :}
    begin
-      hs ts PTY-HARNESS:AFTER? if true exit then
+      hs ts AFTER? if true exit then
       READ-STEP {: n:n :}
-      n 0 < if hs ts PTY-HARNESS:AFTER? exit then
+      n 0 < if hs ts AFTER? exit then
    again ;
 
 \ After the target exited, read everything it left behind until the hang-up.
@@ -104,7 +106,7 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
 \ fresh child has echoed nothing, so its first prompt is its own and the head
 \ is ANYWHERE$ (test/repl-address-cell-rollback.f PROMPT waits the same way).
 : SETTLE ( process-pty-handle str -- process-pty-handle )
-   PROMPT-AFTER! PTY-HARNESS:BUF-CLEAR ;
+   PROMPT-AFTER! BUF-CLEAR ;
 
 \ One line typed at the target. Not SEND: that is the module's own master, and
 \ this suite's bytes go through the supervised handle.
@@ -117,8 +119,8 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
 \ PIPE-STOPS: under WITH-TARGET a rejected definition ends the child and the next
 \ line is never evaluated (the batch contract).
 : PIPE-STOPS-BODY ( process-pty-handle -- process-pty-handle )
-   PTY-HARNESS:WATCH-RESET
-   s" 42" PTY-HARNESS:WATCH+ {: answered:PTY-HARNESS:watch :}   \ the claim below outlives every compaction
+   WATCH-RESET
+   s" 42" WATCH+ {: answered:watch :}   \ the claim below outlives every compaction
    PROCESS-PTY:LAUNCH
    BAD-DEF$ TELL
    ARITH$ TELL
@@ -126,23 +128,23 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
    s" error[E-INPUT-UNDERFLOW]" s" TTY-BAD" EXPECT-AFTER!
    EXPECT-EXIT
    DRAIN-ALL
-   answered PTY-HARNESS:NEVER-SEEN? TTRUE ;
+   answered NEVER-SEEN? TTRUE ;
 
 : PIPE-STOPS ( -- )
-   PTY-HARNESS:BUF-CLEAR
+   BUF-CLEAR
    HB$ [: PIPE-STOPS-BODY ;] PROCESS-PTY:WITH-TARGET
    s" PASS: batch REPL over pipes stops at the rejected definition" type cr ;
 
 \ TTY-RECOVERS: under WITH-TTY-TARGET the child rejects BAD-DEF$, answers
 \ `6 7 * . cr` with 42 and prompts again.
 : TTY-RECOVERS ( -- )
-   PTY-HARNESS:BUF-CLEAR
+   BUF-CLEAR
    HB$ [:
       PROCESS-PTY:LAUNCH
       ANYWHERE$ SETTLE
       BAD-DEF$ TELL
       s" error[E-INPUT-UNDERFLOW]" s" TTY-BAD" EXPECT-AFTER!
-      PTY-HARNESS:BUF-CLEAR
+      BUF-CLEAR
       ARITH$ TELL
       s" 42" PROMPT-AFTER!
       PROCESS-PTY:ALIVE? TTRUE
@@ -168,7 +170,7 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
    PROCESS-PTY:ALIVE? TTRUE ;
 
 : TTY-LAYOUT ( -- )
-   PTY-HARNESS:BUF-CLEAR
+   BUF-CLEAR
    HB$ [: TTY-LAYOUT-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
    s" PASS: a layout value runs at the REPL, and dup on it is rejected" type cr ;
 
@@ -181,12 +183,12 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
 \ The number the target printed on the line after 48879, or -1 when there is
 \ none.
 : SLEEPER-PID ( -- n )
-   0 S\" 48879\r\n" PTY-HARNESS:FIND-FROM {: at:n :}
+   0 S\" 48879\r\n" FIND-FROM {: at:n :}
    at 0 < if -1 exit then
    at 7 + {: from:n :}
-   from S\" \r" PTY-HARNESS:FIND-FROM {: end:n :}
+   from S\" \r" FIND-FROM {: end:n :}
    end 0 < if -1 exit then
-   PTY-HARNESS:BUF$ STR:DATA from + end from - >str STR:>NUMBER? MATCH option
+   BUF$ STR:DATA from + end from - >str STR:>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -213,7 +215,7 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
    SLEEPER-PID swap ;
 
 : TREE-ENDS ( -- )
-   PTY-HARNESS:BUF-CLEAR
+   BUF-CLEAR
    HB$ [: TREE-ENDS-BODY ;] PROCESS-PTY:WITH-TTY-TARGET {: pid:n :}
    pid 0 > TTRUE
    pid AWAIT-GONE
@@ -227,15 +229,15 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
    ANYWHERE$ SETTLE
    ARITH$ TELL
    s" 42" PROMPT-AFTER!
-   0 PROMPT$ PTY-HARNESS:FIND-FROM {: echo-at:n :}
-   0 s" 42" PTY-HARNESS:FIND-FROM {: ans-at:n :}
+   0 PROMPT$ FIND-FROM {: echo-at:n :}
+   0 s" 42" FIND-FROM {: ans-at:n :}
    echo-at 0 >= TTRUE                      \ a bare prompt wait had a prompt to take
    echo-at ans-at < TTRUE                  \ and it was the editor's, ahead of the answer
-   s" 42" PROMPT$ PTY-HARNESS:FIND-AFTER ans-at > TTRUE   \ the barrier took one that follows it
+   s" 42" PROMPT$ FIND-AFTER ans-at > TTRUE   \ the barrier took one that follows it
    PROCESS-PTY:ALIVE? TTRUE ;
 
 : ECHO-PROMPT-REJECTED ( -- )
-   PTY-HARNESS:BUF-CLEAR
+   BUF-CLEAR
    HB$ [: ECHO-PROMPT-REJECTED-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
    s" PASS: the prompt barrier is not answered by the echo's own prompt" type cr ;
 
@@ -258,6 +260,8 @@ public
    [: CASES ;] [: AIO:STOP STEP-BYTES @ VEC:DELETE ;] finally
    T-REPORT
    s" process-pty-tty-smoke: ok" type cr ;
+
+;using
 
 ;package
 

@@ -22,6 +22,8 @@ require src/os/linux/layout.f
 require src/habu/crash.f
 require src/habu/habu1.f
 require src/habu/habu2.f
+using CRASH
+using ENGINE-EMIT
 
 package KERNEL-OBJECT
 private
@@ -123,10 +125,10 @@ variable K0                          \ the kernel's first word position
    s" IMAGE-END" 1 TAIL@ LSYM+
    s" LIST" 2 TAIL@ LSYM+
    s" LIST-END" 3 TAIL@ LSYM+
-   s" UNCAUGHT" ENGINE-EMIT:LUNCAUGHT A64ICODE:LABEL@ LSYM+
-   s" SIGH" CRASH:LSIGH A64ICODE:LABEL@ LSYM+
-   s" NCOUNT" ENGINE-EMIT:LNCOUNT A64ICODE:LABEL@ LSYM+
-   s" DICT" ENGINE-EMIT:LDICT A64ICODE:LABEL@ LSYM+
+   s" UNCAUGHT" LUNCAUGHT A64ICODE:LABEL@ LSYM+
+   s" SIGH" LSIGH A64ICODE:LABEL@ LSYM+
+   s" NCOUNT" LNCOUNT A64ICODE:LABEL@ LSYM+
+   s" DICT" LDICT A64ICODE:LABEL@ LSYM+
    s" TEXT-VA" TEXT-VA SYM+
    s" DATA-VA" DATA-VA VA>N SYM+
    HB-TARGET-LINUX? if s" CARRIER-VA" LINUX-LAYOUT:CARRIER-VA VA>N SYM+ then
@@ -149,7 +151,7 @@ variable K0                          \ the kernel's first word position
    s" RECS-END" 5 TAIL@ LSYM+
    s" RLIST" 6 TAIL@ LSYM+
    s" RLIST-END" 7 TAIL@ LSYM+
-   s" FLOORREC" ENGINE-EMIT:LFLOORREC A64ICODE:LABEL@ LSYM+
+   s" FLOORREC" LFLOORREC A64ICODE:LABEL@ LSYM+
    s" FLOORREC-CELL" FLOORREC-CELL SYM+
    s" SEAL-NDICT-CELL" SEAL-NDICT-CELL SYM+
    s" WIDN-CELL" WIDN-CELL SYM+
@@ -186,7 +188,7 @@ variable K0                          \ the kernel's first word position
       0 PKG-REC-CELL PRESET+
       0 ENCLOSING:REC PRESET+
       0 POLICY-NDICT-CELL PRESET+
-      ENGINE-EMIT:LDICT A64ICODE:LABEL@ CODE-OFFSET PRIM-TABLE-CELL PRESET+
+      LDICT A64ICODE:LABEL@ CODE-OFFSET PRIM-TABLE-CELL PRESET+
    then
    ;SECTION ;
 
@@ -211,3 +213,5 @@ public
 : WRITE ( bool [ str -- ] -- ) ['] WRITE-OUT ['] RELEASE finally ;
 
 ;package
+;using
+;using

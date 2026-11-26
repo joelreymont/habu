@@ -4,6 +4,7 @@
 \ rendering only decides whether that effect is declarable
 \ (RQM). Compiles after checker.f and before any src/lib/ file: no emit or
 \ +!; bytes go out through REJECTION.
+using REJECTION
 package CHECK
 EXPORT TFAM:SUMV-FAM@
 EXPORT TFAM:SUMV-NAME$
@@ -34,7 +35,7 @@ variable RFACTS   0 RFACTS !   \ set while REND-EFFECT writes facts text
 : RFACTS? ( -- bool ) RFACTS @ 0 <> ;
 
 
-: EMIT-UNSAID ( -- ) 1 RQM !  63 REJECTION:EMIT1 ;
+: EMIT-UNSAID ( -- ) 1 RQM !  63 EMIT1 ;
 PERSISTED-PTR-VARIABLE SEEN-P   NULL-PTR SEEN-P !
 variable SEEN-CAP   0 SEEN-CAP !
 \ Only the assigned prefix needs clearing; allocation initializes every cell
@@ -141,16 +142,16 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    key RATOM-ADD ;
 
 : RSTR ( str -- ) {: s:str :}
-   0 BEGIN dup s STR:LEN < WHILE dup s STR:DATA + c@ REJECTION:EMIT1 1 + REPEAT drop ;
+   0 BEGIN dup s STR:LEN < WHILE dup s STR:DATA + c@ EMIT1 1 + REPEAT drop ;
 
 \ RFOLD emits the case-folded spelling. Diagnostics name identifiers folded; only
 \ a declaring-package name reaches the renderer unfolded, because TFAM-DECL
 \ interns the spelling the source `package` line typed.
 : RFOLD ( str -- ) {: s:str :}
-   0 BEGIN dup s STR:LEN < WHILE dup s STR:DATA + c@ STR:ASCII-LOWER REJECTION:EMIT1 1 + REPEAT drop ;
+   0 BEGIN dup s STR:LEN < WHILE dup s STR:DATA + c@ STR:ASCII-LOWER EMIT1 1 + REPEAT drop ;
 
 : CON-OUT ( n -- ) {: p:n :}
-   p 2 = IF 102 REJECTION:EMIT1 ELSE
+   p 2 = IF 102 EMIT1 ELSE
    p 0 > p CTN @ < and IF
       p CT-NAME$ dup STR:LEN 0 <> IF RSTR ELSE drop EMIT-UNSAID THEN
    ELSE EMIT-UNSAID THEN THEN ;
@@ -159,23 +160,23 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 \ reads back; a fresh atom's ordinal tells two identities of one name apart.
 : ATOM-REND {: t :}
    t ATOM>K 0 = IF
-      RFACTS? t OPAQUE-XT? 0= and IF 39 REJECTION:EMIT1 THEN
+      RFACTS? t OPAQUE-XT? 0= and IF 39 EMIT1 THEN
       t ATOM>A t ATOM>U >str RSTR EXIT THEN
    s" fresh-" RSTR
    t ATOM>A t ATOM>U >str RSTR
-   45 REJECTION:EMIT1
-   t ATOM>K RATOM-ORD RATOM-CHAR REJECTION:EMIT1 ;
+   45 EMIT1
+   t ATOM>K RATOM-ORD RATOM-CHAR EMIT1 ;
 
 : RNUM ( n -- )                 \ small non-negative number (hidden slot index)
    dup 10 >= IF dup 10 / RECURSE THEN
-   10 mod 48 + REJECTION:EMIT1 ;
+   10 mod 48 + EMIT1 ;
 
 
 \ Name index idx is a letter, then the ordinal; the signature parser reads both back.
 : VAR-NAME ( n -- )
    {: idx:n :}
    idx VAR-LETTERS < 0= IF 1 RORDINAL !  idx RNUM EXIT THEN
-   idx IDX>LETTER REJECTION:EMIT1 ;
+   idx IDX>LETTER EMIT1 ;
 
 
 \ A term minted before the registry loads holds an id outside it. A slot a
@@ -199,7 +200,7 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 \ The package folds: packages compare case-insensitively (TFAM-PKG-MATCH?).
 : FAM-QNAME-REND ( n -- )
    {: fam:n :}
-   fam FAM-FOREIGN? IF fam TFAM-PKG$ RFOLD 58 REJECTION:EMIT1 THEN
+   fam FAM-FOREIGN? IF fam TFAM-PKG$ RFOLD 58 EMIT1 THEN
    fam TFAM-NAME$ RSTR ;
 
 
@@ -219,9 +220,9 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 : PARAM-HEAD {: t:n :}
    t HIDDEN-PARAM? IF
       1 RQM !
-      64 REJECTION:EMIT1
+      64 EMIT1
       t FAM-NAME-REND
-      46 REJECTION:EMIT1
+      46 EMIT1
       t HIDDEN-SLOT@  t T-WIDTH 1 -  = IF
          s" tag" RSTR
       ELSE
@@ -308,7 +309,7 @@ variable RBUF-TAIL   \ the tail of the row pushed last
 \ values go; call it before the values print: a quotation among them resets RLOST.
 : CUT-MARK ( -- )
    RLOST @ 0=  RFACTS?  or IF EXIT THEN
-   40 REJECTION:EMIT1  RLOST @ RNUM  s"  more) " RSTR ;
+   40 EMIT1  RLOST @ RNUM  s"  more) " RSTR ;
 
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
@@ -376,7 +377,7 @@ create RROW-LTR RROW-CAP cells allot   \ the letter each RROW-KEY row prints by
    \ RBUF-ROW prints a stale tail among the values
    row ROW-TAIL ISROW 0= IF EXIT THEN
    RTAILS @ 1 =  row PAIR-ROW? 0=  and IF EXIT THEN
-   row ROW-TAIL RROW-LETTER REJECTION:EMIT1  32 REJECTION:EMIT1 ;
+   row ROW-TAIL RROW-LETTER EMIT1  32 EMIT1 ;
 
 
 \ RPOS holds a (tail, owner) pair per row a first pass (RNAMES 1) visits: owner
@@ -454,7 +455,7 @@ PTR-VARIABLE RQUOT-P   variable RQUOT-CAP
    {: row:n owner:n :}
    RNAMES @ 0= IF EXIT THEN
    row owner RPOS-LETTER {: l:n :}
-   l 0 <> IF l REJECTION:EMIT1 32 REJECTION:EMIT1 THEN ;
+   l 0 <> IF l EMIT1 32 EMIT1 THEN ;
 
 
 \ The return clause of quotation q whose sides resolve to one row. The parser
@@ -465,7 +466,7 @@ PTR-VARIABLE RQUOT-P   variable RQUOT-CAP
    q Q>RIN owner RPOS-LETTER {: l:n :}
    q Q>ROUT owner RPOS-LETTER drop
    l 0 = IF EXIT THEN
-   124 REJECTION:EMIT1 32 REJECTION:EMIT1  l REJECTION:EMIT1 32 REJECTION:EMIT1  45 REJECTION:EMIT1 45 REJECTION:EMIT1 32 REJECTION:EMIT1  l REJECTION:EMIT1 32 REJECTION:EMIT1 ;
+   124 EMIT1 32 EMIT1  l EMIT1 32 EMIT1  45 EMIT1 45 EMIT1 32 EMIT1  l EMIT1 32 EMIT1 ;
 
 
 \ QREND ( x d mode -- ): mode>0 renders row x bottom value first, each value
@@ -475,7 +476,7 @@ PTR-VARIABLE RQUOT-P   variable RQUOT-CAP
    mode 0 > IF
       RBN @ {: base:n :}
       x RBUF-ROW  CUT-MARK
-      RBN @ BEGIN dup base > WHILE 1 - dup cells RBUF + @ d 0 RECURSE 32 REJECTION:EMIT1 REPEAT drop
+      RBN @ BEGIN dup base > WHILE 1 - dup cells RBUF + @ d 0 RECURSE 32 EMIT1 REPEAT drop
       base RBN !
       EXIT
    THEN
@@ -490,9 +491,9 @@ PTR-VARIABLE RQUOT-P   variable RQUOT-CAP
       T-STALE of
         1 RQM !
         s" stale<" RSTR
-        r STALE-ROW? IF r RROW-LETTER REJECTION:EMIT1
+        r STALE-ROW? IF r RROW-LETTER EMIT1
         ELSE r STALE>INNER d 0 RECURSE THEN
-        62 REJECTION:EMIT1
+        62 EMIT1
       endof
       T-QUOT of
         d QDEPTH-CAP < IF
@@ -501,20 +502,20 @@ PTR-VARIABLE RQUOT-P   variable RQUOT-CAP
            RQUOT-OWNER {: owner:n :}
            \ A later visit records no tails: RPOS-NAMED? would count them twice.
            RNAMES @ 1 =  owner RVISIT @ 2 * <>  and {: seen:bool :}
-           91 REJECTION:EMIT1 32 REJECTION:EMIT1  named IF r Q>DIN QTAIL THEN
+           91 EMIT1 32 EMIT1  named IF r Q>DIN QTAIL THEN
            seen 0= IF r Q>DIN owner RROW-NAME THEN  r Q>DIN d 1+ 1 RECURSE
-           45 REJECTION:EMIT1 45 REJECTION:EMIT1 32 REJECTION:EMIT1  named IF r Q>DOUT QTAIL THEN
+           45 EMIT1 45 EMIT1 32 EMIT1  named IF r Q>DOUT QTAIL THEN
            seen 0= IF r Q>DOUT owner RROW-NAME THEN  r Q>DOUT d 1+ 1 RECURSE
            r QRET? IF
               RNAMES @ 0 <> IF 1 RQM !  1 RROW-UNSAID ! THEN
-              124 REJECTION:EMIT1 32 REJECTION:EMIT1  r Q>RIN d 1+ 1 RECURSE
-              45 REJECTION:EMIT1 45 REJECTION:EMIT1 32 REJECTION:EMIT1  r Q>ROUT d 1+ 1 RECURSE
+              124 EMIT1 32 EMIT1  r Q>RIN d 1+ 1 RECURSE
+              45 EMIT1 45 EMIT1 32 EMIT1  r Q>ROUT d 1+ 1 RECURSE
            ELSE RNAMES @ 0 <> seen 0= and IF r owner 1 + QRET-NAME THEN THEN
            r Q>FACTS CTL-STATABLE and {: facts:n :}
            63 0 ?do
-              facts 1 i lshift and 0 <> IF i CTL-BIT>TAG$ RSTR 32 REJECTION:EMIT1 THEN
+              facts 1 i lshift and 0 <> IF i CTL-BIT>TAG$ RSTR 32 EMIT1 THEN
            loop
-           93 REJECTION:EMIT1
+           93 EMIT1
         ELSE EMIT-UNSAID THEN
       endof
       T-FORALL of
@@ -528,11 +529,11 @@ PTR-VARIABLE RQUOT-P   variable RQUOT-CAP
            r F>DOMAIN BIND-REGION = IF s" forall-region<" ELSE s" forall<" THEN RSTR idx VAR-NAME
            r F>PARENT dup 0= IF drop ELSE
               r F>SECOND 0= IF s"  inside " RSTR d 1+ 0 RECURSE ELSE
-                 s"  inside [" RSTR d 1+ 0 RECURSE  44 REJECTION:EMIT1
-                 r F>SECOND d 1+ 0 RECURSE  93 REJECTION:EMIT1 THEN THEN
+                 s"  inside [" RSTR d 1+ 0 RECURSE  44 EMIT1
+                 r F>SECOND d 1+ 0 RECURSE  93 EMIT1 THEN THEN
            RBIND-N @ 1 + RBIND-N !
-           44 REJECTION:EMIT1
-           r F>BODY d 1+ 0 RECURSE 62 REJECTION:EMIT1
+           44 EMIT1
+           r F>BODY d 1+ 0 RECURSE 62 EMIT1
            RBIND-N @ 1 - RBIND-N !
            \ A body that named no free variable frees the name for a sibling.
            RNAMED @ given 1 + = IF
@@ -548,7 +549,7 @@ PTR-VARIABLE RQUOT-P   variable RQUOT-CAP
       endof
       T-SCOPE of
         1 RQM !
-        s" <live-scope-" RSTR r PAY RNUM 62 REJECTION:EMIT1
+        s" <live-scope-" RSTR r PAY RNUM 62 EMIT1
       endof
       T-ATOM of r ATOM-REND endof
       \ A family applied to no arguments renders as its bare name, the spelling a
@@ -557,12 +558,12 @@ PTR-VARIABLE RQUOT-P   variable RQUOT-CAP
         d QDEPTH-CAP < IF
            r PARAM-HEAD
            r PARAM>ARGC 0 > IF
-              60 REJECTION:EMIT1
+              60 EMIT1
               0 BEGIN dup r PARAM>ARGC < WHILE
-                dup 0 > IF 44 REJECTION:EMIT1 THEN
+                dup 0 > IF 44 EMIT1 THEN
                 r over PARAM>ARG d 1+ 0 RECURSE
                 1 +
-              REPEAT drop 62 REJECTION:EMIT1
+              REPEAT drop 62 EMIT1
            THEN
         ELSE EMIT-UNSAID THEN
       endof
@@ -574,23 +575,23 @@ PTR-VARIABLE RQUOT-P   variable RQUOT-CAP
 
 \ Type T as a diagnostic spells it, in TEXT until TEXT is next written.
 : TYPE-TEXT ( n -- str ) {: t:n :}
-   1 REJECTION:DEST !  0 REJECTION:TEXT-LEN !  SEEN-RESET RATOM-RESET 0 NLET !
+   1 DEST !  0 TEXT-LEN !  SEEN-RESET RATOM-RESET 0 NLET !
    t REND-TYPE
-   0 REJECTION:DEST !  REJECTION:TEXT REJECTION:TEXT-LEN @ >str ;
+   0 DEST !  TEXT TEXT-LEN @ >str ;
 variable RSHOW-DST
 
 : REND-COLLECT ( n -- )  0 RBN !  RBUF-ROW ;
 
 : SHOW-LOCAL-TYPE ( str n -- ) {: name:str t:n :}
-   REJECTION:DEST @ RSHOW-DST !
-   0 REJECTION:DEST !
+   DEST @ RSHOW-DST !
+   0 DEST !
    s" inferred " RSTR
    name RSTR
    s" : " RSTR
    SEEN-RESET RATOM-RESET 0 NLET !
    t REND-TYPE
-   10 REJECTION:EMIT1
-   RSHOW-DST @ REJECTION:DEST ! ;
+   10 EMIT1
+   RSHOW-DST @ DEST ! ;
 : LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOCSHOW-INSTALL
 
@@ -604,10 +605,10 @@ LOCSHOW-INSTALL
 
 : DROW {: s :}  s REND-COLLECT  RBUF-TAIL @ {: t:n :}
    s PAIR-STALE? {: pair:bool :}  RTAILS @ {: tails:n :}
-   pair  t ISROW  and IF t RROW-LETTER REJECTION:EMIT1 32 REJECTION:EMIT1 THEN
+   pair  t ISROW  and IF t RROW-LETTER EMIT1 32 EMIT1 THEN
    CUT-MARK
    pair  tails 0=  and IF 1 RTAILS ! THEN
-   RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 REJECTION:EMIT1 REPEAT drop
+   RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop
    tails RTAILS ! ;
 
 
@@ -615,13 +616,13 @@ LOCSHOW-INSTALL
    {: din:n dout:n rin:n rout:n hasr:bool :}
    0 RQM !  0 RROW-UNSAID !  0 RBIND-FULL !  SEEN-RESET RATOM-RESET 0 NLET !  0 RROW-N !  0 RVISIT !
    din 0 RROW-NAME  din DROW
-   hasr IF  s" | " REJECTION:EMIT-STR  rin 1 RROW-NAME  rin DROW  THEN
-   45 REJECTION:EMIT1  45 REJECTION:EMIT1
+   hasr IF  s" | " EMIT-STR  rin 1 RROW-NAME  rin DROW  THEN
+   45 EMIT1  45 EMIT1
    dout 0 RPOS-LETTER {: lo:n :}
-   lo 0 <> IF 32 REJECTION:EMIT1 lo REJECTION:EMIT1 THEN
+   lo 0 <> IF 32 EMIT1 lo EMIT1 THEN
    dout REND-COLLECT
-   RBN @ BEGIN dup 0 > WHILE 1 - 32 REJECTION:EMIT1 dup cells RBUF + @ REND-TYPE REPEAT drop
-   hasr IF  s"  | " REJECTION:EMIT-STR  rout 1 RROW-NAME  rout DROW  THEN ;
+   RBN @ BEGIN dup 0 > WHILE 1 - 32 EMIT1 dup cells RBUF + @ REND-TYPE REPEAT drop
+   hasr IF  s"  | " EMIT-STR  rout 1 RROW-NAME  rout DROW  THEN ;
 
 
 \ Both passes write from the TEXT-LEN it is called with, after what the caller
@@ -629,20 +630,20 @@ LOCSHOW-INSTALL
 \ names them.
 : REND-EFFECT ( n n n n bool -- str )
    {: din:n dout:n rin:n rout:n hasr:bool :}
-   REJECTION:TEXT-LEN @ {: base:n :}
-   1 REJECTION:DEST !  0 RPOS-N !  0 RRESV !  1 RFACTS !
-   1 RNAMES !  base REJECTION:TEXT-LEN !  din dout rin rout hasr REND-PASS
-   2 RNAMES !  base REJECTION:TEXT-LEN !  din dout rin rout hasr REND-PASS
-   0 RNAMES !  0 RFACTS !  0 REJECTION:DEST !  REJECTION:TEXT REJECTION:TEXT-LEN @ >str ;
+   TEXT-LEN @ {: base:n :}
+   1 DEST !  0 RPOS-N !  0 RRESV !  1 RFACTS !
+   1 RNAMES !  base TEXT-LEN !  din dout rin rout hasr REND-PASS
+   2 RNAMES !  base TEXT-LEN !  din dout rin rout hasr REND-PASS
+   0 RNAMES !  0 RFACTS !  0 DEST !  TEXT TEXT-LEN @ >str ;
 
 
 : FACT-TAG ( str n -- ) {: s:str letter:n :}
-   s REJECTION:EMIT-STR  32 REJECTION:EMIT1  letter REJECTION:EMIT1  32 REJECTION:EMIT1 ;
+   s EMIT-STR  32 EMIT1  letter EMIT1  32 EMIT1 ;
 
 
 : VAR-FACT-TAG ( str n -- )
    {: s:str idx:n :}
-   s REJECTION:EMIT-STR  32 REJECTION:EMIT1  idx VAR-NAME  32 REJECTION:EMIT1 ;
+   s EMIT-STR  32 EMIT1  idx VAR-NAME  32 EMIT1 ;
 
 \ The type variable REND-EFFECT gave name index idx, -1 for a forall's name.
 : SEEN-VAR ( n -- n ) {: idx:n :}
@@ -686,23 +687,23 @@ LOCSHOW-INSTALL
    q RQUOT@ ISVAR 0= IF EXIT THEN
    q RQUOT-FIRST {: first:n :}
    first q = IF EXIT THEN
-   s" block " REJECTION:EMIT-STR  first RNUM  32 REJECTION:EMIT1  q RNUM  32 REJECTION:EMIT1 ;
+   s" block " EMIT-STR  first RNUM  32 EMIT1  q RNUM  32 EMIT1 ;
 
 \ `noblock q` when quotation q's block part is a flagged variable no earlier one's is.
 : QUOT-NOBLOCK-TAG ( n -- ) {: q:n :}
    q RQUOT@ ISVAR 0= IF EXIT THEN
    q RQUOT-FIRST q <> IF EXIT THEN
    q RQUOT@ PAY NSCOPE@ 0= IF EXIT THEN
-   s" noblock " REJECTION:EMIT-STR  q RNUM  32 REJECTION:EMIT1 ;
+   s" noblock " EMIT-STR  q RNUM  32 EMIT1 ;
 
 \ Facts text, `( E ) offset a noscope A nolinear a block 1 2 noblock 1 `,
 \ written from the TEXT-LEN it is called with: a caller that wants a fresh text
 \ sets `0 TEXT-LEN !` first.
 : REND-FACTS ( n n n n bool -- str )
    {: din:n dout:n rin:n rout:n hasr:bool :}
-   1 REJECTION:DEST !  s" ( " REJECTION:EMIT-STR
+   1 DEST !  s" ( " EMIT-STR
    din dout rin rout hasr REND-EFFECT drop
-   1 REJECTION:DEST !  s"  ) " REJECTION:EMIT-STR
+   1 DEST !  s"  ) " EMIT-STR
    0 BEGIN dup NLET @ < WHILE dup VAR-KIND-TAG 1 + REPEAT drop
    0 BEGIN dup NLET @ < WHILE dup VAR-SCOPE-TAG 1 + REPEAT drop
    0 BEGIN dup RROW-N @ < WHILE dup ROW-KIND-TAG 1 + REPEAT drop
@@ -710,7 +711,7 @@ LOCSHOW-INSTALL
    RVISIT @ 1 + {: nq:n :}
    2 BEGIN dup nq < WHILE dup QUOT-BLOCK-TAG 1 + REPEAT drop
    1 BEGIN dup nq < WHILE dup QUOT-NOBLOCK-TAG 1 + REPEAT drop
-   0 REJECTION:DEST !  REJECTION:TEXT REJECTION:TEXT-LEN @ >str ;
+   0 DEST !  TEXT TEXT-LEN @ >str ;
 
 
 : CTL-FLAG-TAG ( n n -- )
@@ -718,25 +719,25 @@ LOCSHOW-INSTALL
    ctl 1 bit lshift and 0= IF EXIT THEN
    bit CTL-BIT>TAG$ {: s:str :}
    s STR:LEN 0 = IF EXIT THEN
-   s REJECTION:EMIT-STR  32 REJECTION:EMIT1 ;
+   s EMIT-STR  32 EMIT1 ;
 
 
 : CTL-THROWS-TAG ( n -- )
    {: ctl:n :}
    ctl CTL-THROW and 0= IF EXIT THEN
-   s" throws " REJECTION:EMIT-STR  ctl XFER-DMASK RNUM  32 REJECTION:EMIT1  ctl XFER-RMASK RNUM  32 REJECTION:EMIT1 ;
+   s" throws " EMIT-STR  ctl XFER-DMASK RNUM  32 EMIT1  ctl XFER-RMASK RNUM  32 EMIT1 ;
 
 
 \ checker.f NORET.NONZERO n as the tag `nonzero D T` appended at TEXT-LEN, D
 \ the divisor and T the thrown inputs' mask; 0 appends nothing.
 : REND-NONZERO ( n -- str )
    {: n:n :}
-   1 REJECTION:DEST !
+   1 DEST !
    n 0 <> IF
       n NONZERO-UNPACK {: div:n thr:n :}
-      s" nonzero " REJECTION:EMIT-STR  div RNUM  32 REJECTION:EMIT1  thr RNUM  32 REJECTION:EMIT1
+      s" nonzero " EMIT-STR  div RNUM  32 EMIT1  thr RNUM  32 EMIT1
    THEN
-   0 REJECTION:DEST !  REJECTION:TEXT REJECTION:TEXT-LEN @ >str ;
+   0 DEST !  TEXT TEXT-LEN @ >str ;
 
 
 : CTL-INTRINSIC-TAG ( n -- )
@@ -745,14 +746,14 @@ LOCSHOW-INSTALL
    id 0 = IF EXIT THEN
    id INTRINSIC-NAME$ {: s:str :}
    s STR:LEN 0 = IF 1 RQM ! EXIT THEN
-   s" intrinsic " REJECTION:EMIT-STR  s REJECTION:EMIT-STR  32 REJECTION:EMIT1 ;
+   s" intrinsic " EMIT-STR  s EMIT-STR  32 EMIT1 ;
 
 
 \ Control word n's tags for checker.f SIG-CTL-TAG, in bit order, appended at TEXT-LEN.
 \ RQM: a bit XFER-PACK does not keep, an unnamed intrinsic id, masks without CTL-THROW.
 : REND-CTL ( n -- str )
    {: ctl:n :}
-   1 REJECTION:DEST !
+   1 DEST !
    ctl XFER-FLAGS  ctl XFER-DMASK  ctl XFER-RMASK  XFER-PACK  ctl <> IF 1 RQM ! THEN
    ctl CTL-THROW and 0=  ctl XFER-DMASK ctl XFER-RMASK or 0 <>  and IF 1 RQM ! THEN
    ctl 0 CTL-FLAG-TAG
@@ -761,7 +762,7 @@ LOCSHOW-INSTALL
       i CTL-INTRINSIC-SHIFT = IF ctl CTL-INTRINSIC-TAG THEN
       ctl i CTL-FLAG-TAG
    loop
-   0 REJECTION:DEST !  REJECTION:TEXT REJECTION:TEXT-LEN @ >str ;
+   0 DEST !  TEXT TEXT-LEN @ >str ;
 
 
 \ A PE row's flags as facts tags appended at TEXT-LEN; the PE-ACTIVE,
@@ -771,11 +772,11 @@ LOCSHOW-INSTALL
 \ its quotation (`['] die`).
 : REND-PE ( n -- str )
    {: flags:n :}
-   1 REJECTION:DEST !
-   flags PE-ACTIVE and 0 <> IF s" primitive " REJECTION:EMIT-STR THEN
-   flags PE-TRUSTED-ONLY and 0 <> IF s" trusted-only " REJECTION:EMIT-STR THEN
-   flags PE-TOP-ONLY and 0 <> IF s" top-only " REJECTION:EMIT-STR THEN
-   0 REJECTION:DEST !  REJECTION:TEXT REJECTION:TEXT-LEN @ >str ;
+   1 DEST !
+   flags PE-ACTIVE and 0 <> IF s" primitive " EMIT-STR THEN
+   flags PE-TRUSTED-ONLY and 0 <> IF s" trusted-only " EMIT-STR THEN
+   flags PE-TOP-ONLY and 0 <> IF s" top-only " EMIT-STR THEN
+   0 DEST !  TEXT TEXT-LEN @ >str ;
 
 
 \ A `parses:` row as a facts tag appended at TEXT-LEN, spelled as the row:
@@ -783,13 +784,13 @@ LOCSHOW-INSTALL
 \ followed by a blank; nothing for a count of -1.
 : REND-PARSES ( n str -- str )
    {: cnt:n t:str :}
-   1 REJECTION:DEST !
+   1 DEST !
    cnt 0 >= IF
-      t STR:LEN 0= IF s" parses " ELSE s" parses-through " THEN REJECTION:EMIT-STR
-      cnt RNUM  32 REJECTION:EMIT1
-      t STR:LEN 0 <> IF s" ( " REJECTION:EMIT-STR  t REJECTION:EMIT-STR  s" ) " REJECTION:EMIT-STR THEN
+      t STR:LEN 0= IF s" parses " ELSE s" parses-through " THEN EMIT-STR
+      cnt RNUM  32 EMIT1
+      t STR:LEN 0 <> IF s" ( " EMIT-STR  t EMIT-STR  s" ) " EMIT-STR THEN
    THEN
-   0 REJECTION:DEST !  REJECTION:TEXT REJECTION:TEXT-LEN @ >str ;
+   0 DEST !  TEXT TEXT-LEN @ >str ;
 
 
 \ Record off instantiated: its data rows, its return rows (0 0 when it has
@@ -814,9 +815,9 @@ LOCSHOW-INSTALL
 \ set.
 : REND-CREATES ( n -- str )
    {: n:n :}
-   n 0= IF 0 REJECTION:DEST !  REJECTION:TEXT REJECTION:TEXT-LEN @ >str EXIT THEN
+   n 0= IF 0 DEST !  TEXT TEXT-LEN @ >str EXIT THEN
    RQM @ {: qm:n :}
-   1 REJECTION:DEST !  s" creates-effect " REJECTION:EMIT-STR
+   1 DEST !  s" creates-effect " EMIT-STR
    n 1 - REND-RECORD
    qm 0 <> IF 1 RQM ! THEN ;
 
@@ -826,7 +827,7 @@ LOCSHOW-INSTALL
 \ the row needs no `primitive`.
 : REND-OVERLOAD ( n -- str )
    {: k:n :}
-   1 REJECTION:DEST !  s" overload " REJECTION:EMIT-STR
+   1 DEST !  s" overload " EMIT-STR
    k PE-EFF@ REND-RECORD drop
    k PE-FLAGS@ PE-ACTIVE invert and REND-PE ;
 
@@ -838,12 +839,12 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 
 \ Writes record off's facts text into TEXT from its start.
 : FACTS-REND ( n -- )
-   NEW  0 REJECTION:TEXT-LEN !  REND-RECORD drop ;
+   NEW  0 TEXT-LEN !  REND-RECORD drop ;
 
 
 : FACTS-PARSE ( -- n n n n )
    RES-TRUE SIG-FACTS!
-   [: REJECTION:TEXT REJECTION:TEXT-LEN @ >str PARSE-SIG-RAW ;] [: RES-FALSE SIG-FACTS! ;] finally ;
+   [: TEXT TEXT-LEN @ >str PARSE-SIG-RAW ;] [: RES-FALSE SIG-FACTS! ;] finally ;
 
 
 \ The record is built under symbol 0, as CREATED-RECORD-BUILD builds one, so no
@@ -852,7 +853,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
    NEW
    FACTS-PARSE {: din:n dout:n rin:n rout:n :}
    SGBAD @ 0 <>  SIG-UNRES @ 0 <>  or IF EXIT THEN
-   REJECTION:TEXT REJECTION:TEXT-LEN @ >str din dout rin rout SGBAD-UNFIT!
+   TEXT TEXT-LEN @ >str din dout rin rout SGBAD-UNFIT!
    SGBAD @ 0 <> IF EXIT THEN
    0 CHECKER-REC-SYM !
    din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + FACTS-NEW ! ;
@@ -889,7 +890,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 
 \ Inputs from the base row's instantiation (BROW), outputs from DCUR.
 : REND-SIG ( -- str )
-   0 REJECTION:TEXT-LEN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
+   0 TEXT-LEN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
 
 variable DSUGE  variable DSUGA
 
@@ -897,9 +898,9 @@ variable DSUGE  variable DSUGA
 \ One pass of INFERRED-FROM: RROW-NAME names each row as in REND-EFFECT.
 : JEFFECT-TEXT ( n n n n bool -- )
    {: din:n dout:n rin:n rout:n hasr:bool :}
-   din 0 RROW-NAME  din DROW  s" -- " REJECTION:EMIT-STR  dout 0 RROW-NAME  dout DROW
+   din 0 RROW-NAME  din DROW  s" -- " EMIT-STR  dout 0 RROW-NAME  dout DROW
    hasr IF
-      s" | " REJECTION:EMIT-STR  rin 1 RROW-NAME  rin DROW  s" -- " REJECTION:EMIT-STR  rout 1 RROW-NAME  rout DROW
+      s" | " EMIT-STR  rin 1 RROW-NAME  rin DROW  s" -- " EMIT-STR  rout 1 RROW-NAME  rout DROW
    THEN ;
 
 : INFERRED-PASS ( n -- )   \ input row n to the current rows
@@ -937,9 +938,9 @@ PTR-VARIABLE RSEEN-P   variable RSEEN-CAP
 \ both start from the letters already given, so its names follow the record's.
 : INFERRED-FROM ( n -- )
    {: din:n :}
-   REJECTION:TEXT-LEN @ {: base:n :}  NAMES-MARK
+   TEXT-LEN @ {: base:n :}  NAMES-MARK
    0 RPOS-N !  0 RRESV !  1 RNAMES !  din INFERRED-PASS
-   NAMES-BACK  base REJECTION:TEXT-LEN !  2 RNAMES !  din INFERRED-PASS
+   NAMES-BACK  base TEXT-LEN !  2 RNAMES !  din INFERRED-PASS
    0 RNAMES ! ;
 : INFERRED-EFFECT ( -- )   \ from the declared inputs
    SGSEEN @ IF SGIN @ ELSE BROW @ THEN INFERRED-FROM ;
@@ -979,20 +980,20 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 
 
 : TAIL-CAPTURE ( -- )
-   REJECTION:DEST @ {: dst:n :}  REJECTION:TEXT-LEN @ {: base:n :}  RQM @ {: qm:n :}
-   1 REJECTION:DEST !  SEEN-RESET 0 NLET !  0 RROW-N !
+   DEST @ {: dst:n :}  TEXT-LEN @ {: base:n :}  RQM @ {: qm:n :}
+   1 DEST !  SEEN-RESET 0 NLET !  0 RROW-N !
    -1 RTAILS !
-   DF-EXP @ REND-TYPE 32 REJECTION:EMIT1  REJECTION:TEXT-LEN @ base - TCAP-EXP !
-   DF-ACT @ REND-TYPE 32 REJECTION:EMIT1  REJECTION:TEXT-LEN @ base - TCAP-ACT !
-   TAIL-SKOLEM @ ROW-TAIL RROW-LETTER REJECTION:EMIT1  s"  would escape into " REJECTION:EMIT-STR
-   TAIL-ROW @ TCAP-ROW  REJECTION:TEXT-LEN @ base - TCAP-HELD !
+   DF-EXP @ REND-TYPE 32 EMIT1  TEXT-LEN @ base - TCAP-EXP !
+   DF-ACT @ REND-TYPE 32 EMIT1  TEXT-LEN @ base - TCAP-ACT !
+   TAIL-SKOLEM @ ROW-TAIL RROW-LETTER EMIT1  s"  would escape into " EMIT-STR
+   TAIL-ROW @ TCAP-ROW  TEXT-LEN @ base - TCAP-HELD !
    0 RTAILS !
-   INFERRED-EFFECT  REJECTION:TEXT-LEN @ base - TCAP-INF !
+   INFERRED-EFFECT  TEXT-LEN @ base - TCAP-INF !
    TCAP-INF @ TCAP-ROOM
    0 BEGIN dup TCAP-INF @ < WHILE
-      dup base + REJECTION:TEXT + c@  over TCAP + c!  1 +
+      dup base + TEXT + c@  over TCAP + c!  1 +
    REPEAT drop
-   base REJECTION:TEXT-LEN !  qm RQM !  dst REJECTION:DEST ! ;
+   base TEXT-LEN !  qm RQM !  dst DEST ! ;
 
 
 : TAIL-CAPTURE-INSTALL ( -- ) [: TAIL-CAPTURE ;] is TAIL-CAPTURE-XT ;
@@ -1022,6 +1023,7 @@ variable MDV-I   variable MDV-F
 : MD-CODE$ ( n -- str )
    case
       MD-FAM-UNKNOWN  of s" E-MATCH-UNKNOWN-FAMILY" endof
+      MD-FAM-AMBIG    of s" E-USING-AMBIGUOUS" endof
       MD-FAM-KIND     of s" E-MATCH-FAMILY-KIND" endof
       MD-SCRUT        of s" E-MATCH-SCRUTINEE" endof
       MD-FAM-MISMATCH of s" E-MATCH-FAMILY-MISMATCH" endof
@@ -1142,7 +1144,8 @@ variable MDV-I   variable MDV-F
       MD-VAR-DUP      of s" keep one `OF ... ENDOF` arm for this variant and delete the other" endof
       MD-VAR-UNKNOWN  of s" write a variant the family declares, spelled as its declaration spells it" endof
       MD-CON-VAR      of s" write a variant the family declares, spelled as its declaration spells it" endof
-      MD-FAM-UNKNOWN  of s" name a family visible here: one of this package, a global one, or `PKG:family`" endof
+      MD-FAM-UNKNOWN  of s" name a family visible here: one of this package, a global one, one a `using` imports, or `PKG:family`" endof
+      MD-FAM-AMBIG    of s" qualify the family as `PKG:family` with the package you mean" endof
       MD-CON-FAM      of s" name a family of this package after `construct`, or call another package's generated constructor, as `PKG-FAMILY:VARIANT`" endof
       MD-FAM-KIND     of s" name a `SUMTYPE` or `ENUM` family after `MATCH`" endof
       MD-CON-KIND     of s" name a `SUMTYPE` or `ENUM` family after `construct`" endof
@@ -1180,7 +1183,7 @@ variable MDV-I   variable MDV-F
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
       MD-RECURSE-SIG  of s" declare the definition's stack effect after its name, as `: NAME ( n -- n )`" endof
       MD-RECURSE-DOES of s" move the recursion into a named word with a declared effect and call that word from the `does>` clause" endof
-      MD-IS-UNKNOWN   of s" name a word declared with `defer` after `is`, qualified as `PKG:NAME` when another package declares it" endof
+      MD-IS-UNKNOWN   of s" name a word declared with `defer` after `is`, as `PKG:NAME` or with its package imported by `using`" endof
       MD-LOCAL-ENDED  of s" read the local inside the `{:` block that binds it, and keep a value needed after the block on the stack" endof
       MD-LOCAL-STRAY  of s" append a built local between the `{:` and `:}` keywords of its group" endof
       MD-LOCAL-UNBOUND of s" read a built local by the index `EFFECT:LOCAL` answered, after the `:}` that binds it" endof
@@ -1245,6 +1248,7 @@ variable MDV-I   variable MDV-F
 : MD-REASON$ ( n -- str )
    case
       MD-FAM-UNKNOWN  of s" bad match: unknown type family" endof
+      MD-FAM-AMBIG    of s" bad match: ambiguous type family" endof
       MD-FAM-KIND     of s" bad match: family is not a sum or enum" endof
       MD-SCRUT        of s" bad match: expected sum or enum value on stack" endof
       MD-FAM-MISMATCH of s" bad match: family mismatch" endof
@@ -1361,6 +1365,7 @@ variable MDV-I   variable MDV-F
       MD-MEMORY-ARG   of s" type argument may be linear" endof
       MD-MEMORY-EMPTY of s" zero-width value" endof
       MD-FAM-UNKNOWN  of s" names no visible family" endof
+      MD-FAM-AMBIG    of s" names a family two used packages make public" endof
       MD-FAM-KIND     of s" family of another kind" endof
       MD-SCRUT        of s" no matchable value on top" endof
       MD-FAM-MISMATCH of s" top value of another family" endof
@@ -1471,8 +1476,8 @@ variable MDV-I   variable MDV-F
    0 MDV-I !  0 MDV-F !
    BEGIN MDV-I @ MDIAG-VCNT @ < WHILE
       MDIAG-SEEN @ MDV-I @ MSEEN-GET 0= IF
-         json MDV-F @ 0= and 0= IF s"  " REJECTION:EMIT-STR THEN
-         vstart MDV-I @ + SUMV-NAME$ REJECTION:EMIT-STR
+         json MDV-F @ 0= and 0= IF s"  " EMIT-STR THEN
+         vstart MDV-I @ + SUMV-NAME$ EMIT-STR
          -1 MDV-F !
       THEN
       MDV-I @ 1 + MDV-I !
@@ -1483,43 +1488,43 @@ variable MDV-I   variable MDV-F
    0 0= 0= MDIAG-MISSING-WALK ;
 
 : MDIAG-UF-COUNTS ( -- )
-   s"  (needs " REJECTION:EMIT-STR  MDIAG-NEED @ REJECTION:EMIT-U
-   s" , has " REJECTION:EMIT-STR  MDIAG-HAVE @ REJECTION:EMIT-U  s" )" REJECTION:EMIT-STR ;
+   s"  (needs " EMIT-STR  MDIAG-NEED @ EMIT-U
+   s" , has " EMIT-STR  MDIAG-HAVE @ EMIT-U  s" )" EMIT-STR ;
 
 \ The literal that does not fit and its type's range, after the reason's
 \ `literal`: `300` does not fit `u8` (`0`..`255`).
 : LIT-FIT-COUNTS ( -- )
-   s"  `" REJECTION:EMIT-STR  MDIAG-LITV @ REJECTION:EMIT-N
-   s" ` does not fit `" REJECTION:EMIT-STR  MDIAG-LITT @ CT-NAME$ REJECTION:EMIT-STR
-   s" ` (`0`..`" REJECTION:EMIT-STR  MDIAG-LITT @ LIT-HI REJECTION:EMIT-U  s" `)" REJECTION:EMIT-STR ;
+   s"  `" EMIT-STR  MDIAG-LITV @ EMIT-N
+   s" ` does not fit `" EMIT-STR  MDIAG-LITT @ CT-NAME$ EMIT-STR
+   s" ` (`0`..`" EMIT-STR  MDIAG-LITT @ LIT-HI EMIT-U  s" `)" EMIT-STR ;
 
 \ The ended local's index, after the reason's `reads built local`.
 : LOCAL-ENDED-COUNTS ( -- )
-   s"  " REJECTION:EMIT-STR  MDIAG-LOCAL @ REJECTION:EMIT-U
-   s" , whose `{:` block has ended" REJECTION:EMIT-STR ;
+   s"  " EMIT-STR  MDIAG-LOCAL @ EMIT-U
+   s" , whose `{:` block has ended" EMIT-STR ;
 
 \ The unbound local's index, after the reason's `reads built local`.
 : LOCAL-UNBOUND-COUNTS ( -- )
-   s"  " REJECTION:EMIT-STR  MDIAG-LOCAL @ REJECTION:EMIT-N
-   s" , which no `{:` group bound before it" REJECTION:EMIT-STR ;
+   s"  " EMIT-STR  MDIAG-LOCAL @ EMIT-N
+   s" , which no `{:` group bound before it" EMIT-STR ;
 
 \ The call a literal 0 reached, as written, and the input it reached, after the
 \ reason's prose: `NAME` divides by its top input, or its input J below the top.
 : ZERO-COUNTS ( -- )
-   s" ; `" REJECTION:EMIT-STR  FAILTK FAILTU @ >str REJECTION:EMIT-STR
-   MDIAG @ MD-DIV-ZERO = IF s" ` divides by its " ELSE s" ` throws its " THEN REJECTION:EMIT-STR
-   MDIAG-ZIN @ 0= IF s" top input" REJECTION:EMIT-STR EXIT THEN
-   s" input " REJECTION:EMIT-STR  MDIAG-ZIN @ REJECTION:EMIT-U  s"  below the top" REJECTION:EMIT-STR ;
+   s" ; `" EMIT-STR  FAILTK FAILTU @ >str EMIT-STR
+   MDIAG @ MD-DIV-ZERO = IF s" ` divides by its " ELSE s" ` throws its " THEN EMIT-STR
+   MDIAG-ZIN @ 0= IF s" top input" EMIT-STR EXIT THEN
+   s" input " EMIT-STR  MDIAG-ZIN @ EMIT-U  s"  below the top" EMIT-STR ;
 
 \ The wide value `depth` or `.s` met and its cells, or that they are not known
 \ where its width is open, after the reason's `cannot count`.
 : DEPTH-WIDE-COUNTS ( -- )
    AT-PIN
-   s"  `" REJECTION:EMIT-STR  MDIAG-WIDE @ REND-TYPE
+   s"  `" EMIT-STR  MDIAG-WIDE @ REND-TYPE
    MDIAG-OPEN @ IF
-      s" `: it is one value, and how many cells it holds is not known here" REJECTION:EMIT-STR
+      s" `: it is one value, and how many cells it holds is not known here" EMIT-STR
    ELSE
-      s" `: it is one value held in " REJECTION:EMIT-STR  MDIAG-WIDE @ T-WIDTH REJECTION:EMIT-U  s"  cells" REJECTION:EMIT-STR
+      s" `: it is one value held in " EMIT-STR  MDIAG-WIDE @ T-WIDTH EMIT-U  s"  cells" EMIT-STR
    THEN
    ;AT-PIN ;
 
@@ -1538,35 +1543,35 @@ variable MDV-I   variable MDV-F
 
 \ The variable and that word, before the reason's prose.
 : ONE-CELL-LEAD ( -- )
-   AT-PIN  s" `" REJECTION:EMIT-STR  MDIAG-CELL-VAR @ MK-VAR REND-TYPE  s" `" REJECTION:EMIT-STR  ;AT-PIN
+   AT-PIN  s" `" EMIT-STR  MDIAG-CELL-VAR @ MK-VAR REND-TYPE  s" `" EMIT-STR  ;AT-PIN
    CELL-VAR-SYM {: sym:n :}
    sym 0= IF EXIT THEN
-   s"  in `" REJECTION:EMIT-STR  sym SYM-SPELLING$ REJECTION:EMIT-STR  s" `'s effect" REJECTION:EMIT-STR ;
+   s"  in `" EMIT-STR  sym SYM-SPELLING$ EMIT-STR  s" `'s effect" EMIT-STR ;
 
 \ The declared type a one-cell variable met, after the reason's prose: its
 \ cells, or that it is a declared type where it fits one cell.
 : ONE-CELL-COUNTS ( -- )
    AT-PIN
    CELL-TYPE {: t:n :}
-   s" ; `" REJECTION:EMIT-STR  t REND-TYPE
+   s" ; `" EMIT-STR  t REND-TYPE
    t T-WIDTH 1 > IF
-      s" ` is " REJECTION:EMIT-STR  t T-WIDTH REJECTION:EMIT-U  s"  cells" REJECTION:EMIT-STR
+      s" ` is " EMIT-STR  t T-WIDTH EMIT-U  s"  cells" EMIT-STR
    ELSE
-      s" ` is a declared type, not a plain cell" REJECTION:EMIT-STR
+      s" ` is a declared type, not a plain cell" EMIT-STR
    THEN
    ;AT-PIN ;
 
 : OFF-STEP-COUNTS ( -- )
-   AT-PIN  s" ; `" REJECTION:EMIT-STR  CELL-TYPE REND-TYPE  s" ` is not a plain cell type" REJECTION:EMIT-STR  ;AT-PIN ;
+   AT-PIN  s" ; `" EMIT-STR  CELL-TYPE REND-TYPE  s" ` is not a plain cell type" EMIT-STR  ;AT-PIN ;
 
 : MOVED-LIN-COUNTS ( -- )
-   AT-PIN  s" ; `" REJECTION:EMIT-STR  CELL-TYPE REND-TYPE  s" ` may hold a linear value" REJECTION:EMIT-STR  ;AT-PIN ;
+   AT-PIN  s" ; `" EMIT-STR  CELL-TYPE REND-TYPE  s" ` may hold a linear value" EMIT-STR  ;AT-PIN ;
 
 
 \ What a reason carries after its prose, in text and JSON alike.
 : MDIAG-COUNTS ( -- )
-   MDIAG @ MD-TAIL-ESCAPE = IF s" ; held row " REJECTION:EMIT-STR
-      TCAP-HELD$ REJECTION:EMIT-STR EXIT THEN
+   MDIAG @ MD-TAIL-ESCAPE = IF s" ; held row " EMIT-STR
+      TCAP-HELD$ EMIT-STR EXIT THEN
    MDIAG @ MD-LIT-FIT = IF LIT-FIT-COUNTS EXIT THEN
    MDIAG @ MD-LOCAL-ENDED = IF LOCAL-ENDED-COUNTS EXIT THEN
    MDIAG @ MD-LOCAL-UNBOUND = IF LOCAL-UNBOUND-COUNTS EXIT THEN
@@ -1599,6 +1604,7 @@ variable MDV-I   variable MDV-F
 \ A definition's signature, a local's type or a stored signature that does not
 \ parse; SGBAD's state from the failed parse names the kind.
 : SGBAD-CODE$ ( -- str )
+   SGBAD-AMBIG? IF s" E-USING-AMBIGUOUS" EXIT THEN
    SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" EXIT THEN
    SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" EXIT THEN
    SGBAD-ARITY? IF s" E-WRONG-ARITY" EXIT THEN
@@ -1695,6 +1701,8 @@ s" ;package" TOP-KEYWORD-ID constant KW-END-PACKAGE
 s" host" TOP-KEYWORD-ID constant KW-HOST
 s" target" TOP-KEYWORD-ID constant KW-TARGET
 s" seal-package" TOP-KEYWORD-ID constant KW-SEAL
+s" using" TOP-KEYWORD-ID constant KW-USING
+s" ;using" TOP-KEYWORD-ID constant KW-END-USING
 s" export" TOP-KEYWORD-ID constant KW-EXPORT
 s" split-str" TOP-KEYWORD-ID constant KW-SPLIT-STR
 s" :" TOP-KEYWORD-ID constant KW-COLON
@@ -1715,17 +1723,17 @@ s" immediate" TOP-KEYWORD-ID constant KW-IMMEDIATE
 
 : LOCALS-END-HELP ( -- )
    s" a locals list begins with `{:` and this `:}` closes none: delete it, or write `{:` where the list begins"
-   REJECTION:EMIT-STR ;
+   EMIT-STR ;
 
 : TRIM-SPACE ( -- )
-   REJECTION:TEXT-LEN @ 0= IF EXIT THEN
-   REJECTION:TEXT REJECTION:TEXT-LEN @ 1 - + c@ 32 = IF REJECTION:TEXT-LEN @ 1 - REJECTION:TEXT-LEN ! THEN ;
+   TEXT-LEN @ 0= IF EXIT THEN
+   TEXT TEXT-LEN @ 1 - + c@ 32 = IF TEXT-LEN @ 1 - TEXT-LEN ! THEN ;
 
 \ Row s as DROW writes it, or the word e for an empty row.
 : ROW-OR ( n str -- ) {: s:n es:str :}
-   REJECTION:TEXT-LEN @ {: at:n :}
+   TEXT-LEN @ {: at:n :}
    s DROW
-   REJECTION:TEXT-LEN @ at = IF es REJECTION:EMIT-STR EXIT THEN
+   TEXT-LEN @ at = IF es EMIT-STR EXIT THEN
    TRIM-SPACE ;
 : ROW-WORD ( n -- ) s" nothing" ROW-OR ;
 : ROW-NOTE ( n -- ) s" (nothing)" ROW-OR ;
@@ -1754,10 +1762,10 @@ SCRATCH{
 PTR-VARIABLE TAKEN-P   variable TAKEN-CAP   variable TAKEN-N
 }SCRATCH
 : TAKEN-AT ( n -- ^n ) 2 * cells TAKEN-P @ + ;
-: TAKEN$ ( n -- str ) TAKEN-AT {: row:^ :}  REJECTION:TEXT row @ +  row cell+ @ >str ;
+: TAKEN$ ( n -- str ) TAKEN-AT {: row:^ :}  TEXT row @ +  row cell+ @ >str ;
 : TAKEN? ( n n -- bool ) {: at:n len:n :}
    0 BEGIN dup TAKEN-N @ < WHILE
-      dup TAKEN$  REJECTION:TEXT at + len >str  STR:= IF drop RES-TRUE EXIT THEN
+      dup TAKEN$  TEXT at + len >str  STR:= IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
 : TAKEN+ ( n n -- ) {: at:n len:n :}
@@ -1769,26 +1777,26 @@ PTR-VARIABLE TAKEN-P   variable TAKEN-CAP   variable TAKEN-N
 \ Row i's inputs after ` or ` unless no row was written, taken back when an
 \ earlier row wrote the same text.
 : TAKES-ROW ( n -- ) {: i:n :}
-   REJECTION:TEXT-LEN @ {: at:n :}
-   TAKEN-N @ 0 <> IF s"  or " REJECTION:EMIT-STR THEN
-   REJECTION:TEXT-LEN @ {: from:n :}
+   TEXT-LEN @ {: at:n :}
+   TAKEN-N @ 0 <> IF s"  or " EMIT-STR THEN
+   TEXT-LEN @ {: from:n :}
    i PE-INPUTS
-   REJECTION:TEXT-LEN @ from - {: len:n :}
-   from len TAKEN? IF at REJECTION:TEXT-LEN ! EXIT THEN
+   TEXT-LEN @ from - {: len:n :}
+   from len TAKEN? IF at TEXT-LEN ! EXIT THEN
    from len TAKEN+ ;
 
 \ Names the variables of the expected row, then of the found one, writing
 \ nothing, so a form list takes none of their letters.
 : RECORD-NAMES ( -- )
-   REJECTION:TEXT-LEN @ RQM @ {: at:n qm:n :}
+   TEXT-LEN @ RQM @ {: at:n qm:n :}
    DEXP @ 0 <> IF DEXP @ DROW THEN
    DACT @ 0 <> IF DACT @ DROW THEN
-   at REJECTION:TEXT-LEN !  qm RQM ! ;
+   at TEXT-LEN !  qm RQM ! ;
 
 \ What the pinned token takes: the expected row, or, when the token's word has
 \ more than one row, each row's inputs in table order.
 : TAKES-WORD ( -- )
-   PIN-TOK$ CHECKER-BIND {: sym:n :}
+   PIN-TOK$ CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym SYM-ROWS 2 < IF DEXP @ ROW-WORD EXIT THEN
    RECORD-NAMES
    0 TAKEN-N !
@@ -1815,42 +1823,42 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
 \ The body whose end is checked: a colon definition's name, or a does>
 \ clause's definer, as written.
 : END-SUBJECT ( -- )
-   CLAUSE-WALK @ 0= IF NM-SPAN REJECTION:EMIT-STR EXIT THEN
-   s" the `does>` clause of " REJECTION:EMIT-STR
-   DOES-NA @ DOES-NU @ >str REJECTION:EMIT-STR ;
+   CLAUSE-WALK @ 0= IF NM-SPAN EMIT-STR EXIT THEN
+   s" the `does>` clause of " EMIT-STR
+   DOES-NA @ DOES-NU @ >str EMIT-STR ;
 : END-MESSAGE ( -- )
-   END-SUBJECT  s"  ends with " REJECTION:EMIT-STR  DACT @ ROW-WORD
-   s"  on the stack; its signature promises " REJECTION:EMIT-STR  DEXP @ ROW-WORD ;
+   END-SUBJECT  s"  ends with " EMIT-STR  DACT @ ROW-WORD
+   s"  on the stack; its signature promises " EMIT-STR  DEXP @ ROW-WORD ;
 : MISMATCH-MESSAGE ( -- )
    DEND @ 0 <> IF END-MESSAGE EXIT THEN
-   TOK-SPAN  s"  takes " REJECTION:EMIT-STR  TAKES-WORD
-   s" ; the stack holds " REJECTION:EMIT-STR  DACT @ ROW-WORD ;
+   TOK-SPAN  s"  takes " EMIT-STR  TAKES-WORD
+   s" ; the stack holds " EMIT-STR  DACT @ ROW-WORD ;
 
 : LOCAL-MESSAGE ( -- )
-   LOCALBAD-GROUP? IF LOCALBAD-REASON$ REJECTION:EMIT-STR EXIT THEN
-   s" a local cannot be bound inside a quotation, or bound on a dead path" REJECTION:EMIT-STR ;
+   LOCALBAD-GROUP? IF LOCALBAD-REASON$ EMIT-STR EXIT THEN
+   s" a local cannot be bound inside a quotation, or bound on a dead path" EMIT-STR ;
 
 \ Names the local l whose annotation the verdict rejects.
 : LOCAL-PHRASE ( str -- ) {: l:str :}
    l STR:LEN 0= IF EXIT THEN
-   s"  in the annotation of local " REJECTION:EMIT-STR  l CODE-SPAN ;
+   s"  in the annotation of local " EMIT-STR  l CODE-SPAN ;
 \ The rejected token, then the local whose annotation holds it.
 : SUBJECT-SPAN ( str str -- )   swap CODE-SPAN LOCAL-PHRASE ;
 : ARITY-MESSAGE ( str str -- )
-   s" type family " REJECTION:EMIT-STR  SUBJECT-SPAN
-   s"  takes " REJECTION:EMIT-STR  SGBAD-AR-DECL @ REJECTION:EMIT-U
-   SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN REJECTION:EMIT-STR
-   s" , not " REJECTION:EMIT-STR  SGBAD-AR-GOT @ REJECTION:EMIT-U ;
+   s" type family " EMIT-STR  SUBJECT-SPAN
+   s"  takes " EMIT-STR  SGBAD-AR-DECL @ EMIT-U
+   SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN EMIT-STR
+   s" , not " EMIT-STR  SGBAD-AR-GOT @ EMIT-U ;
 \ What ended: the signature, or the annotation of the local l.
 : SIG-WHOLE ( str -- ) {: l:str :}
-   l STR:LEN 0= IF s" the signature" REJECTION:EMIT-STR EXIT THEN
-   s" the annotation of local " REJECTION:EMIT-STR  l CODE-SPAN ;
+   l STR:LEN 0= IF s" the signature" EMIT-STR EXIT THEN
+   s" the annotation of local " EMIT-STR  l CODE-SPAN ;
 \ A signature, or the annotation of the local l, that ended where the parser
 \ expected a word.
 : SIG-END-MESSAGE ( str -- ) {: l:str :}
-   SGBAD-EXP-U @ 0= IF l SIG-WHOLE  s"  ends before it is complete" REJECTION:EMIT-STR EXIT THEN
-   s" expected " REJECTION:EMIT-STR  SGBAD-EXP-A @ SGBAD-EXP-U @ >str CODE-SPAN
-   s" , found the end of " REJECTION:EMIT-STR  l SIG-WHOLE ;
+   SGBAD-EXP-U @ 0= IF l SIG-WHOLE  s"  ends before it is complete" EMIT-STR EXIT THEN
+   s" expected " EMIT-STR  SGBAD-EXP-A @ SGBAD-EXP-U @ >str CODE-SPAN
+   s" , found the end of " EMIT-STR  l SIG-WHOLE ;
 \ A local's annotation is pinned as the local's token, `name:type`: the token
 \ its verdict rejects and its name.
 : PIN-LOCAL$ ( -- str str ) PIN-TOK$ {: s:str :}
@@ -1862,76 +1870,80 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    PIN-TOK$ dup STR:DATA 0 >str ;
 : SIG-MESSAGE ( -- )
    SIG-SUBJECT$ {: t:str l:str :}
-   SGBAD-UNKNOWN? IF
-      s" unknown type " REJECTION:EMIT-STR  t l SUBJECT-SPAN
-      l STR:LEN 0= IF s"  in signature" REJECTION:EMIT-STR THEN EXIT
+   SGBAD-AMBIG? IF
+      s" type family " EMIT-STR  t l SUBJECT-SPAN
+      s"  is public in more than one used package" EMIT-STR EXIT
    THEN
-   SGBAD-SCHEME? IF s" polymorphic type " REJECTION:EMIT-STR  t l SUBJECT-SPAN EXIT THEN
-   SGBAD-BAREPTR? IF s" `^` needs an element type" REJECTION:EMIT-STR  l LOCAL-PHRASE EXIT THEN
+   SGBAD-UNKNOWN? IF
+      s" unknown type " EMIT-STR  t l SUBJECT-SPAN
+      l STR:LEN 0= IF s"  in signature" EMIT-STR THEN EXIT
+   THEN
+   SGBAD-SCHEME? IF s" polymorphic type " EMIT-STR  t l SUBJECT-SPAN EXIT THEN
+   SGBAD-BAREPTR? IF s" `^` needs an element type" EMIT-STR  l LOCAL-PHRASE EXIT THEN
    SGBAD-ARITY? IF t l ARITY-MESSAGE EXIT THEN
    SGBAD-RETURN? IF
-      s" return-stack effect " REJECTION:EMIT-STR  l STR:LEN 0= IF s" in signature " REJECTION:EMIT-STR THEN
+      s" return-stack effect " EMIT-STR  l STR:LEN 0= IF s" in signature " EMIT-STR THEN
       t l SUBJECT-SPAN EXIT
    THEN
-   SGBAD-SIZE? IF BADSIG-REASON  s"  at " REJECTION:EMIT-STR  t l SUBJECT-SPAN EXIT THEN
+   SGBAD-SIZE? IF BADSIG-REASON  s"  at " EMIT-STR  t l SUBJECT-SPAN EXIT THEN
    t STR:LEN 0= IF l SIG-END-MESSAGE EXIT THEN
-   l STR:LEN 0= IF s" bad signature at " ELSE s" unexpected " THEN REJECTION:EMIT-STR
+   l STR:LEN 0= IF s" bad signature at " ELSE s" unexpected " THEN EMIT-STR
    t l SUBJECT-SPAN ;
 
 : NP-FAM-REND ( -- )
    NPBAD-TERM @ NP-FAM {: fam:n :}
-   fam 0 >= IF s" family `" REJECTION:EMIT-STR  fam FAM-QNAME-REND  96 REJECTION:EMIT1
-   ELSE s" a concrete type" REJECTION:EMIT-STR THEN ;
+   fam 0 >= IF s" family `" EMIT-STR  fam FAM-QNAME-REND  96 EMIT1
+   ELSE s" a concrete type" EMIT-STR THEN ;
 : NP-VAR ( n -- ) {: q:n :}
-   s" declared type variable `" REJECTION:EMIT-STR  q REJECTION:EMIT1  96 REJECTION:EMIT1 ;
-: NP-KEEP ( -- ) s" ; its declared kind must stay unchanged" REJECTION:EMIT-STR ;
+   s" declared type variable `" EMIT-STR  q EMIT1  96 EMIT1 ;
+: NP-KEEP ( -- ) s" ; its declared kind must stay unchanged" EMIT-STR ;
 : NP-ROWS ( -- )
-   s" declared row variable `" REJECTION:EMIT-STR  NPBAD-Q1 @ REJECTION:EMIT1
-   NPBAD-Q2 @ IF s" ` and row `" REJECTION:EMIT-STR  NPBAD-Q2 @ REJECTION:EMIT1  96 REJECTION:EMIT1
-   ELSE s" ` and the unnamed row" REJECTION:EMIT-STR THEN
-   s"  are unified; each declared row must stay a distinct row variable" REJECTION:EMIT-STR ;
+   s" declared row variable `" EMIT-STR  NPBAD-Q1 @ EMIT1
+   NPBAD-Q2 @ IF s" ` and row `" EMIT-STR  NPBAD-Q2 @ EMIT1  96 EMIT1
+   ELSE s" ` and the unnamed row" EMIT-STR THEN
+   s"  are unified; each declared row must stay a distinct row variable" EMIT-STR ;
 : NP-ROW-FIXED ( -- )
-   NPBAD-Q1 @ IF s" declared row variable `" REJECTION:EMIT-STR  NPBAD-Q1 @ REJECTION:EMIT1  96 REJECTION:EMIT1
-   ELSE s" the unnamed row" REJECTION:EMIT-STR THEN
-   s"  is bound to fixed cells; a declared effect must stay polymorphic over its row" REJECTION:EMIT-STR ;
+   NPBAD-Q1 @ IF s" declared row variable `" EMIT-STR  NPBAD-Q1 @ EMIT1  96 EMIT1
+   ELSE s" the unnamed row" EMIT-STR THEN
+   s"  is bound to fixed cells; a declared effect must stay polymorphic over its row" EMIT-STR ;
 : VAR-SPAN ( n -- ) {: q:n :}
-   96 REJECTION:EMIT1  q REJECTION:EMIT1  96 REJECTION:EMIT1 ;
+   96 EMIT1  q EMIT1  96 EMIT1 ;
 : NP-ROW ( -- )
-   NPBAD-Q1 @ IF s" row " REJECTION:EMIT-STR  NPBAD-Q1 @ VAR-SPAN EXIT THEN
-   s" the unnamed row" REJECTION:EMIT-STR ;
+   NPBAD-Q1 @ IF s" row " EMIT-STR  NPBAD-Q1 @ VAR-SPAN EXIT THEN
+   s" the unnamed row" EMIT-STR ;
 : NP-MESSAGE ( -- )
    NPBAD-KIND @ case
       4 of NPBAD-Q1 @ NP-VAR
-         s"  is restricted to a base address -- the DATA region, or a pointer computed off NULL-PTR" REJECTION:EMIT-STR
+         s"  is restricted to a base address -- the DATA region, or a pointer computed off NULL-PTR" EMIT-STR
          NP-KEEP endof
-      5 of NPBAD-Q1 @ NP-VAR  s"  is restricted to the null address" REJECTION:EMIT-STR  NP-KEEP endof
-      3 of NPBAD-Q1 @ NP-VAR  s"  is restricted by raw storage" REJECTION:EMIT-STR  NP-KEEP endof
-      0 of NPBAD-Q1 @ NP-VAR  s"  is specialized to " REJECTION:EMIT-STR  NP-FAM-REND
-         s" ; a declared effect must stay parametric over its quantifier" REJECTION:EMIT-STR endof
-      1 of s" declared type variables `" REJECTION:EMIT-STR  NPBAD-Q1 @ REJECTION:EMIT1
-         s" ` and `" REJECTION:EMIT-STR  NPBAD-Q2 @ REJECTION:EMIT1
-         s" ` are unified; each declared quantifier must stay a distinct variable" REJECTION:EMIT-STR endof
+      5 of NPBAD-Q1 @ NP-VAR  s"  is restricted to the null address" EMIT-STR  NP-KEEP endof
+      3 of NPBAD-Q1 @ NP-VAR  s"  is restricted by raw storage" EMIT-STR  NP-KEEP endof
+      0 of NPBAD-Q1 @ NP-VAR  s"  is specialized to " EMIT-STR  NP-FAM-REND
+         s" ; a declared effect must stay parametric over its quantifier" EMIT-STR endof
+      1 of s" declared type variables `" EMIT-STR  NPBAD-Q1 @ EMIT1
+         s" ` and `" EMIT-STR  NPBAD-Q2 @ EMIT1
+         s" ` are unified; each declared quantifier must stay a distinct variable" EMIT-STR endof
       6 of NP-ROWS endof
       8 of NP-ROWS endof
       7 of NP-ROW-FIXED endof
-      NPBAD-Q1 @ NP-VAR  s"  is minted into " REJECTION:EMIT-STR  NP-FAM-REND
-      s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type" REJECTION:EMIT-STR
+      NPBAD-Q1 @ NP-VAR  s"  is minted into " EMIT-STR  NP-FAM-REND
+      s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type" EMIT-STR
    endcase ;
 : NP-ROWS-LABEL ( -- )
-   s" unifies " REJECTION:EMIT-STR  NP-ROW  s"  and " REJECTION:EMIT-STR
-   NPBAD-Q2 @ IF s" row " REJECTION:EMIT-STR  NPBAD-Q2 @ VAR-SPAN ELSE s" the unnamed row" REJECTION:EMIT-STR THEN
-   s"  here" REJECTION:EMIT-STR ;
+   s" unifies " EMIT-STR  NP-ROW  s"  and " EMIT-STR
+   NPBAD-Q2 @ IF s" row " EMIT-STR  NPBAD-Q2 @ VAR-SPAN ELSE s" the unnamed row" EMIT-STR THEN
+   s"  here" EMIT-STR ;
 : NP-LABEL ( -- )
    NPBAD-KIND @ case
-      0 of s" makes " REJECTION:EMIT-STR  NPBAD-Q1 @ VAR-SPAN  32 REJECTION:EMIT1  NP-FAM-REND
-         s"  here" REJECTION:EMIT-STR endof
-      1 of s" unifies " REJECTION:EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  and " REJECTION:EMIT-STR
-         NPBAD-Q2 @ VAR-SPAN  s"  here" REJECTION:EMIT-STR endof
+      0 of s" makes " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  32 EMIT1  NP-FAM-REND
+         s"  here" EMIT-STR endof
+      1 of s" unifies " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  and " EMIT-STR
+         NPBAD-Q2 @ VAR-SPAN  s"  here" EMIT-STR endof
       6 of NP-ROWS-LABEL endof
       8 of NP-ROWS-LABEL endof
-      7 of s" gives " REJECTION:EMIT-STR  NP-ROW  s"  fixed cells here" REJECTION:EMIT-STR endof
-      2 of s" mints " REJECTION:EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  here" REJECTION:EMIT-STR endof
-      s" restricts " REJECTION:EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  here" REJECTION:EMIT-STR
+      7 of s" gives " EMIT-STR  NP-ROW  s"  fixed cells here" EMIT-STR endof
+      2 of s" mints " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  here" EMIT-STR endof
+      s" restricts " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  here" EMIT-STR
    endcase ;
 
 \ Whether a stale row was read: the end check returns a tail `catch` left stale,
@@ -1942,9 +1954,9 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
 
 : REASON-MESSAGE ( -- )
    STALE-ROW-READ? IF
-      s" stale row: " REJECTION:EMIT-STR
-      DEND @ 0 <> IF END-SUBJECT  s"  returns" ELSE TOK-SPAN  s"  takes" THEN REJECTION:EMIT-STR
-      s"  cells `catch` left stale: a throw path of the caught body may have overwritten them" REJECTION:EMIT-STR
+      s" stale row: " EMIT-STR
+      DEND @ 0 <> IF END-SUBJECT  s"  returns" ELSE TOK-SPAN  s"  takes" THEN EMIT-STR
+      s"  cells `catch` left stale: a throw path of the caught body may have overwritten them" EMIT-STR
       EXIT
    THEN
    MDIAG @ MD-SCOPED-TICK =  MDIAG @ MD-IS-UNKNOWN = or  MDIAG @ MD-IS-NOT-DEFER = or
@@ -1953,70 +1965,70 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    \ A built local's read leads with the type its `{:` group gave it, which a
    \ read of an index no group declared lacks.
    MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or
-   PIN-TOK$ STR:LEN 0 <>  and IF TOK-SPAN 32 REJECTION:EMIT1 THEN
+   PIN-TOK$ STR:LEN 0 <>  and IF TOK-SPAN 32 EMIT1 THEN
    MDIAG @ MD-ONE-CELL =  MDIAG @ MD-OFF-STEP = or  MDIAG @ MD-MOVED-LINEAR = or
    IF ONE-CELL-LEAD THEN
-   MDIAG @ MD-REASON$ REJECTION:EMIT-STR
+   MDIAG @ MD-REASON$ EMIT-STR
    MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
    MDIAG-COUNTS ;
 
 : DEAD-MESSAGE ( -- )
-   TOK-SPAN  s"  never runs: " REJECTION:EMIT-STR  DEADTA @ DEADTU @ >str CODE-SPAN
-   s"  before it never returns" REJECTION:EMIT-STR ;
+   TOK-SPAN  s"  never runs: " EMIT-STR  DEADTA @ DEADTU @ >str CODE-SPAN
+   s"  before it never returns" EMIT-STR ;
 
 : TOK-MESSAGE ( str -- ) {: s:str :}
-   TOK-SPAN  s REJECTION:EMIT-STR ;
+   TOK-SPAN  s EMIT-STR ;
 
 : UNDEF-MESSAGE ( str -- ) {: t:str :}
    t LOCALS-END? IF
-      t CODE-SPAN  s"  closes no locals list" REJECTION:EMIT-STR EXIT
+      t CODE-SPAN  s"  closes no locals list" EMIT-STR EXIT
    THEN
    t TOP-KEYWORD?  t TOP-PARSER?  or IF
-      t CODE-SPAN  s"  is a top-level keyword, not a word" REJECTION:EMIT-STR EXIT
+      t CODE-SPAN  s"  is a top-level keyword, not a word" EMIT-STR EXIT
    THEN
    t STATE-SWITCH? IF
       t CODE-SPAN
-      s"  switches the compiler's state, which a checked body cannot do" REJECTION:EMIT-STR EXIT
+      s"  switches the compiler's state, which a checked body cannot do" EMIT-STR EXIT
    THEN
-   s" cannot find word " REJECTION:EMIT-STR  t CODE-SPAN ;
+   s" cannot find word " EMIT-STR  t CODE-SPAN ;
 
 \ The message for keyword t named where a word is needed.
 : KEYWORD-MESSAGE ( str -- )
    {: t:str :}
-   t CODE-SPAN  s"  is a keyword, not a word" REJECTION:EMIT-STR ;
+   t CODE-SPAN  s"  is a keyword, not a word" EMIT-STR ;
 
 \ The help for keyword t named where a word is needed.
 : KEYWORD-HELP ( str -- )
    {: t:str :}
-   s" name a word defined with `:` … `;` that uses " REJECTION:EMIT-STR
+   s" name a word defined with `:` … `;` that uses " EMIT-STR
    t CODE-SPAN ;
 
 \ Why a body does not admit immediate t: IMM-READS of its binding.
 : IMM-WHY ( str -- n ) {: t:str :}
-   t  t CHECKER-BIND IMM-READS ;
+   t  t CHECKER-FIND-ACTIVE-SYM IMM-READS ;
 
 : IMM-MESSAGE ( str -- ) {: t:str :}
    t CODE-SPAN
    t IMM-WHY {: why:n :}
    why IMM-EFFECT = IF
-      s"  runs while the definition compiles, so its effect must be `( -- )`" REJECTION:EMIT-STR EXIT
+      s"  runs while the definition compiles, so its effect must be `( -- )`" EMIT-STR EXIT
    THEN
    why IMM-WRITES = IF
       s"  runs while the definition compiles and may define words or add to a definition"
-      REJECTION:EMIT-STR EXIT
+      EMIT-STR EXIT
    THEN
    why IMM-ROOTS = IF
-      s"  runs while the definition compiles and may move the source root" REJECTION:EMIT-STR EXIT
+      s"  runs while the definition compiles and may move the source root" EMIT-STR EXIT
    THEN
-   s"  reads the source after it and no `parses:` row says how many tokens" REJECTION:EMIT-STR ;
+   s"  reads the source after it and no `parses:` row says how many tokens" EMIT-STR ;
 
 \ A message naming the rows that failed to meet (RSBAD 5 to 8).
 : RS-MEET ( str str -- ) {: a:str b:str :}
-   AT-PIN  a REJECTION:EMIT-STR  RSR-EXP @ ROW-WORD  b REJECTION:EMIT-STR  RSR-ACT @ ROW-WORD  ;AT-PIN ;
+   AT-PIN  a EMIT-STR  RSR-EXP @ ROW-WORD  b EMIT-STR  RSR-ACT @ ROW-WORD  ;AT-PIN ;
 : RS-MESSAGE ( -- )
-   RSBAD @ 2 = IF s" return stack: this reads below the return-stack cells pushed here" REJECTION:EMIT-STR EXIT THEN
-   RSBAD @ 3 = IF s" return stack: the quotation leaves its return row unbalanced" REJECTION:EMIT-STR EXIT THEN
-   RSBAD @ 4 = IF s" return stack: the quotation reads below the return-stack cells it pushed" REJECTION:EMIT-STR EXIT THEN
+   RSBAD @ 2 = IF s" return stack: this reads below the return-stack cells pushed here" EMIT-STR EXIT THEN
+   RSBAD @ 3 = IF s" return stack: the quotation leaves its return row unbalanced" EMIT-STR EXIT THEN
+   RSBAD @ 4 = IF s" return stack: the quotation reads below the return-stack cells it pushed" EMIT-STR EXIT THEN
    RSBAD @ 5 = IF
       s" return stack: the paths that meet here leave different return cells, " s"  and " RS-MEET EXIT
    THEN
@@ -2029,18 +2041,18 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    RSBAD @ 8 = IF
       s" return stack: the signature declares " s"  on the return stack at exit; the body leaves " RS-MEET EXIT
    THEN
-   s" return stack: the return row does not balance at exit" REJECTION:EMIT-STR ;
+   s" return stack: the return row does not balance at exit" EMIT-STR ;
 
 : DIAG-MESSAGE ( -- )
    DKIND case
       RF-MISMATCH of AT-PIN MISMATCH-MESSAGE ;AT-PIN endof
       RF-UNDEF of PIN-TOK$ UNDEF-MESSAGE endof
       RF-KEYWORD of PIN-TOK$ KEYWORD-MESSAGE endof
-      RF-QUAL of s" malformed qualified name " REJECTION:EMIT-STR  TOK-SPAN endof
+      RF-QUAL of s" malformed qualified name " EMIT-STR  TOK-SPAN endof
       RF-IMM of PIN-TOK$ IMM-MESSAGE endof
       RF-CAP of s"  is a trust-boundary primitive" TOK-MESSAGE endof
       RF-UNSAFE of s"  reads source or changes the compiler's or checker's state, which no stack effect describes" TOK-MESSAGE endof
-      RF-LINLOCAL of s" a linear value cannot be bound to a local" REJECTION:EMIT-STR endof
+      RF-LINLOCAL of s" a linear value cannot be bound to a local" EMIT-STR endof
       RF-LOCAL of LOCAL-MESSAGE endof
       RF-SIG of SIG-MESSAGE endof
       RF-NP of NP-MESSAGE endof
@@ -2052,58 +2064,59 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    endcase ;
 
 : END-LABEL ( -- )
-   CLOSER-PINNED? IF s" the body ends here" REJECTION:EMIT-STR EXIT THEN
+   CLOSER-PINNED? IF s" the body ends here" EMIT-STR EXIT THEN
    DACT @ ROW-VALUES 0=  DACT @ ROW-TAIL STALE-ROW? 0=  and IF
-      s" the stack is empty after this" REJECTION:EMIT-STR EXIT
+      s" the stack is empty after this" EMIT-STR EXIT
    THEN
-   s" the stack holds " REJECTION:EMIT-STR  DACT @ ROW-WORD  s"  after this" REJECTION:EMIT-STR ;
+   s" the stack holds " EMIT-STR  DACT @ ROW-WORD  s"  after this" EMIT-STR ;
 : MISMATCH-LABEL ( -- )
    DEND @ 0 <> IF END-LABEL EXIT THEN
-   s" takes " REJECTION:EMIT-STR  TAKES-WORD ;
+   s" takes " EMIT-STR  TAKES-WORD ;
 
 : LOCAL-LABEL ( -- )
-   LOCALBAD-GROUP? IF s" not a local name" REJECTION:EMIT-STR EXIT THEN
-   s" bound here" REJECTION:EMIT-STR ;
+   LOCALBAD-GROUP? IF s" not a local name" EMIT-STR EXIT THEN
+   s" bound here" EMIT-STR ;
 
 : SIG-LABEL ( -- )
-   SGBAD-UNKNOWN? IF s" unknown type" REJECTION:EMIT-STR EXIT THEN
-   SGBAD-SCHEME? IF s" a local holds one type" REJECTION:EMIT-STR EXIT THEN
-   SGBAD-BAREPTR? IF s" no element type" REJECTION:EMIT-STR EXIT THEN
-   SGBAD-ARITY? IF s" wrong number of type arguments" REJECTION:EMIT-STR EXIT THEN
-   SGBAD-RETURN? IF s" return-stack effect" REJECTION:EMIT-STR EXIT THEN
-   s" here" REJECTION:EMIT-STR ;
+   SGBAD-AMBIG? IF s" ambiguous here" EMIT-STR EXIT THEN
+   SGBAD-UNKNOWN? IF s" unknown type" EMIT-STR EXIT THEN
+   SGBAD-SCHEME? IF s" a local holds one type" EMIT-STR EXIT THEN
+   SGBAD-BAREPTR? IF s" no element type" EMIT-STR EXIT THEN
+   SGBAD-ARITY? IF s" wrong number of type arguments" EMIT-STR EXIT THEN
+   SGBAD-RETURN? IF s" return-stack effect" EMIT-STR EXIT THEN
+   s" here" EMIT-STR ;
 
 : UNDEF-LABEL ( str -- ) {: t:str :}
-   t LOCALS-END? IF s" no `{:` open" REJECTION:EMIT-STR EXIT THEN
-   t TOP-KEYWORD?  t TOP-PARSER?  or IF s" keyword, not a word" REJECTION:EMIT-STR EXIT THEN
-   t STATE-SWITCH? IF s" state switch" REJECTION:EMIT-STR EXIT THEN
-   s" not found" REJECTION:EMIT-STR ;
+   t LOCALS-END? IF s" no `{:` open" EMIT-STR EXIT THEN
+   t TOP-KEYWORD?  t TOP-PARSER?  or IF s" keyword, not a word" EMIT-STR EXIT THEN
+   t STATE-SWITCH? IF s" state switch" EMIT-STR EXIT THEN
+   s" not found" EMIT-STR ;
 
 : DIAG-LABEL ( -- )
    DKIND case
       RF-MISMATCH of AT-PIN MISMATCH-LABEL ;AT-PIN endof
       RF-UNDEF of PIN-TOK$ UNDEF-LABEL endof
-      RF-KEYWORD of s" not a word" REJECTION:EMIT-STR endof
-      RF-QUAL of s" more than one `:`" REJECTION:EMIT-STR endof
-      RF-IMM of s" unmodeled immediate" REJECTION:EMIT-STR endof
+      RF-KEYWORD of s" not a word" EMIT-STR endof
+      RF-QUAL of s" more than one `:`" EMIT-STR endof
+      RF-IMM of s" unmodeled immediate" EMIT-STR endof
       RF-CAP of TOP-STEP @ IF s" not callable from checked code"
-         ELSE s" not callable from a checked body" THEN REJECTION:EMIT-STR endof
-      RF-UNSAFE of s" not allowed in a checked body" REJECTION:EMIT-STR endof
-      RF-LINLOCAL of s" bound here" REJECTION:EMIT-STR endof
+         ELSE s" not callable from a checked body" THEN EMIT-STR endof
+      RF-UNSAFE of s" not allowed in a checked body" EMIT-STR endof
+      RF-LINLOCAL of s" bound here" EMIT-STR endof
       RF-LOCAL of LOCAL-LABEL endof
       RF-SIG of SIG-LABEL endof
       RF-NP of NP-LABEL endof
-      RF-DEAD of s" never runs" REJECTION:EMIT-STR endof
-      RF-UNCHECKABLE of s" checking stops here" REJECTION:EMIT-STR endof
+      RF-DEAD of s" never runs" EMIT-STR endof
+      RF-UNCHECKABLE of s" checking stops here" EMIT-STR endof
       RF-REASON of
-         STALE-ROW-READ? IF s" stale after `catch`" ELSE MDIAG @ MD-LABEL$ THEN REJECTION:EMIT-STR
+         STALE-ROW-READ? IF s" stale after `catch`" ELSE MDIAG @ MD-LABEL$ THEN EMIT-STR
       endof
-      RF-RETURN of RS-LABEL$ REJECTION:EMIT-STR endof
+      RF-RETURN of RS-LABEL$ EMIT-STR endof
       s" render: a rejection with no label" EXIT-STATUS:INTERNAL die
    endcase ;
 
 : TEXT-NOTE ( str str -- ) {: ks:str vs:str :}
-   ks REJECTION:NOTE  vs SIG-RTRIM REJECTION:EMIT-STR ;
+   ks REJECTION:NOTE  vs SIG-RTRIM EMIT-STR ;
 : PAIR-NOTES ( n n -- ) {: e:n a:n :}
    s" expected" REJECTION:NOTE  e ROW-NOTE
    s" found" REJECTION:NOTE  a ROW-NOTE ;
@@ -2131,13 +2144,13 @@ EXPORT TFAM:SUMV-PAY-N
    DVAR @ SUMV-PAY-N {: cnt:n :}
    DPOS @ cnt < 0= IF EXIT THEN
    DVAR @  cnt 1 - DPOS @ -  SUMV-PAY-FIELD IF
-      s" field" REJECTION:NOTE  PF-NAME$ REJECTION:EMIT-STR
+      s" field" REJECTION:NOTE  PF-NAME$ EMIT-STR
    ELSE drop THEN ;
 : FAMILY-NOTES ( -- )
    DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  DIAG-FAM-ID {: fam:n :}
    fam 0 >= IF s" family" REJECTION:NOTE  fam FAM-QNAME-REND THEN
    DVAR @ 0 < IF EXIT THEN
-   s" variant" REJECTION:NOTE  DVAR @ SUMV-NAME$ REJECTION:EMIT-STR
+   s" variant" REJECTION:NOTE  DVAR @ SUMV-NAME$ EMIT-STR
    FIELD-NOTE ;
 
 : ESCAPE-NOTES ( -- )
@@ -2182,9 +2195,9 @@ EXPORT TFAM:SUMV-PAY-N
    k RF-MISMATCH =  k RF-RETURN = or  k RF-NP = or  REJECTION-UNCHECKABLE? or
    k RF-REASON =  DEXP @ 0 <>  MDIAG @ MD-UNDERFLOW = or  and  or ;
 : EFFECT-NOTES ( -- )
-   s" declared" REJECTION:NOTE  SGA @ SGU @ >str SIG-BARE REJECTION:EMIT-STR
+   s" declared" REJECTION:NOTE  SGA @ SGU @ >str SIG-BARE EMIT-STR
    s" inferred" REJECTION:NOTE
-   MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ SIG-RTRIM REJECTION:EMIT-STR EXIT THEN
+   MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ SIG-RTRIM EMIT-STR EXIT THEN
    DECLARABLE ;
 
 : RS-NOTES ( -- )
@@ -2195,19 +2208,19 @@ EXPORT TFAM:SUMV-PAY-N
 \ in place into the record.
 : IMM-NOTES ( str -- ) {: t:str :}
    t IMM-WHY IMM-EFFECT <> IF EXIT THEN
-   s" expected" REJECTION:NOTE  s" ( -- )" REJECTION:EMIT-STR
-   t CHECKER-BIND USIG-NEWEST-VISIBLE {: rec1:n :}
+   s" expected" REJECTION:NOTE  s" ( -- )" EMIT-STR
+   t CHECKER-FIND-ACTIVE-SYM USIG-NEWEST-VISIBLE {: rec1:n :}
    rec1 0= IF EXIT THEN
-   s" found" REJECTION:NOTE  s" ( " REJECTION:EMIT-STR
+   s" found" REJECTION:NOTE  s" ( " EMIT-STR
    RQM @ REJECTION:DEST @ {: qm:n dst:n :}
    rec1 1 - REND-RECORD-EFFECT drop
    qm RQM !  dst REJECTION:DEST !
-   s"  )" REJECTION:EMIT-STR ;
+   s"  )" EMIT-STR ;
 
 \ A reason one row of a many-row word gave still names every form the word takes.
 : FORMS-NOTE ( -- )
-   PIN-TOK$ CHECKER-BIND SYM-ROWS 2 < IF EXIT THEN
-   s" note" REJECTION:NOTE  TOK-SPAN  s"  takes " REJECTION:EMIT-STR  AT-PIN TAKES-WORD ;AT-PIN ;
+   PIN-TOK$ CHECKER-FIND-ACTIVE-SYM SYM-ROWS 2 < IF EXIT THEN
+   s" note" REJECTION:NOTE  TOK-SPAN  s"  takes " EMIT-STR  AT-PIN TAKES-WORD ;AT-PIN ;
 
 : DIAG-NOTES ( -- )
    DKIND {: k:n :}
@@ -2218,9 +2231,9 @@ EXPORT TFAM:SUMV-PAY-N
       s" missing" REJECTION:NOTE  0 0= MDIAG-MISSING-WALK
    THEN
    k RF-REASON =  MDIAG @ MD-FACT-UNSTATED = and  MDIAG-CELL-VAR @ 0 <> and IF
-      s" note" REJECTION:NOTE  s" it may run the `" REJECTION:EMIT-STR
+      s" note" REJECTION:NOTE  s" it may run the `" EMIT-STR
       AT-PIN  MDIAG-CELL-VAR @ REND-TYPE  ;AT-PIN
-      s" ` the type that keeps it hands it" REJECTION:EMIT-STR
+      s" ` the type that keeps it hands it" EMIT-STR
    THEN
    k RF-REASON = IF FORMS-NOTE THEN
    k EFFECT-NOTES? IF EFFECT-NOTES THEN ;
@@ -2228,13 +2241,13 @@ EXPORT TFAM:SUMV-PAY-N
 \ The help for a body whose end does not fit its signature: the row it should
 \ leave after its last word, or the effect it has when a signature can spell it.
 : END-WHERE ( -- )
-   CLOSER-PINNED? IF s"  in the body" REJECTION:EMIT-STR EXIT THEN
-   s"  after " REJECTION:EMIT-STR  TOK-SPAN ;
+   CLOSER-PINNED? IF s"  in the body" EMIT-STR EXIT THEN
+   s"  after " EMIT-STR  TOK-SPAN ;
 : END-HELP ( -- )
-   s" leave " REJECTION:EMIT-STR  AT-PIN DEXP @ ROW-WORD ;AT-PIN  END-WHERE
-   REJECTION:TEXT-LEN @ {: at:n :}  RQM @ {: qm:n :}  0 RORDINAL !  0 RQM !
-   s" , or declare ( " REJECTION:EMIT-STR  DECLARABLE  s"  )" REJECTION:EMIT-STR
-   RQM @ RORDINAL @ or 0 <> IF at REJECTION:TEXT-LEN ! THEN
+   s" leave " EMIT-STR  AT-PIN DEXP @ ROW-WORD ;AT-PIN  END-WHERE
+   TEXT-LEN @ {: at:n :}  RQM @ {: qm:n :}  0 RORDINAL !  0 RQM !
+   s" , or declare ( " EMIT-STR  DECLARABLE  s"  )" EMIT-STR
+   RQM @ RORDINAL @ or 0 <> IF at TEXT-LEN ! THEN
    qm RQM @ or RQM ! ;
 \ The stack misses values only where the found row holds fewer values and fewer
 \ cells than expected: a narrower value is a wrong one, a wider one fills cells.
@@ -2242,11 +2255,11 @@ EXPORT TFAM:SUMV-PAY-N
    ROWS-DEPTHS
    AT-PIN  DACT @ ROW-VALUES  DEXP @ ROW-VALUES  <  ;AT-PIN
    DSUGA @ DSUGE @ <  and IF
-      s" put what " REJECTION:EMIT-STR  TOK-SPAN
-      s"  takes on the stack before it, or declare it as an input" REJECTION:EMIT-STR EXIT
+      s" put what " EMIT-STR  TOK-SPAN
+      s"  takes on the stack before it, or declare it as an input" EMIT-STR EXIT
    THEN
-   s" give " REJECTION:EMIT-STR  TOK-SPAN  32 REJECTION:EMIT1  AT-PIN DEXP @ ROW-WORD ;AT-PIN
-   s" : convert or replace the value before it" REJECTION:EMIT-STR ;
+   s" give " EMIT-STR  TOK-SPAN  32 EMIT1  AT-PIN DEXP @ ROW-WORD ;AT-PIN
+   s" : convert or replace the value before it" EMIT-STR ;
 
 \ The package record at dictionary index i whose public wordlist holds the
 \ token t, else NULL-PTR. A part, named A:B, is left out: no qualifier
@@ -2270,44 +2283,46 @@ PTR-VARIABLE HOLDER-FIRST
       t i PUBLIC-IN {: rec:^ :}
       rec NULL-PTR <> IF
          HOLDER-N @ 0= IF rec HOLDER-FIRST ! THEN
-         list IF HOLDER-N @ 0 > IF s" , " REJECTION:EMIT-STR THEN  rec HOLDER-NAME THEN
+         list IF HOLDER-N @ 0 > IF s" , " EMIT-STR THEN  rec HOLDER-NAME THEN
          HOLDER-N @ 1 + HOLDER-N !
       THEN
    loop ;
 : QUALIFIED ( str -- ) {: t:str :}
-   96 REJECTION:EMIT1  HOLDER-FIRST @ CK-REC-NAME$ REJECTION:EMIT-STR
-   58 REJECTION:EMIT1  t REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+   96 EMIT1  HOLDER-FIRST @ CK-REC-NAME$ EMIT-STR
+   58 EMIT1  t EMIT-STR  96 EMIT1 ;
 \ The help for t, which nothing defines and which closes no locals list,
 \ used in the body of d, empty outside one: a body's own name is found only
 \ after its `;`. Names fold case.
 : UNDEF-HELP ( str str -- )
    {: t:str d:str :}
    t TOP-PARSER? IF
-      s" write `[" REJECTION:EMIT-STR  t REJECTION:EMIT-STR  s" ]` in a body" REJECTION:EMIT-STR EXIT
+      s" write `[" EMIT-STR  t EMIT-STR  s" ]` in a body" EMIT-STR EXIT
    THEN
    t TOP-KEYWORD? IF
-      s" write " REJECTION:EMIT-STR  t CODE-SPAN  s"  at top level, outside any definition"
-      REJECTION:EMIT-STR EXIT
+      s" write " EMIT-STR  t CODE-SPAN  s"  at top level, outside any definition"
+      EMIT-STR EXIT
    THEN
    t STATE-SWITCH? IF
       s" compute the value at top level before the definition and name it with `constant`"
-      REJECTION:EMIT-STR EXIT
+      EMIT-STR EXIT
    THEN
    t d STR:=CI IF
-      96 REJECTION:EMIT1  t REJECTION:EMIT-STR
-      s" ` is the word this definition defines: " REJECTION:EMIT-STR
-      s" call it from its own body with `recurse`" REJECTION:EMIT-STR EXIT
+      96 EMIT1  t EMIT-STR
+      s" ` is the word this definition defines: " EMIT-STR
+      s" call it from its own body with `recurse`" EMIT-STR EXIT
    THEN
    t RES-FALSE HOLDER-SCAN
    HOLDER-N @ 0= IF
-      s" define `" REJECTION:EMIT-STR  t REJECTION:EMIT-STR
-      s" ` before this point, or check its spelling" REJECTION:EMIT-STR EXIT
+      s" define `" EMIT-STR  t EMIT-STR
+      s" ` before this point, or check its spelling" EMIT-STR EXIT
    THEN
-   t CODE-SPAN  s"  is public in " REJECTION:EMIT-STR
+   t CODE-SPAN  s"  is public in " EMIT-STR
    HOLDER-N @ 1 = IF
-      HOLDER-FIRST @ HOLDER-NAME  s" : write " REJECTION:EMIT-STR  t QUALIFIED EXIT
+      HOLDER-FIRST @ HOLDER-NAME  s" : write " EMIT-STR  t QUALIFIED
+      s" , or call it inside `using " EMIT-STR
+      HOLDER-FIRST @ CK-REC-NAME$ EMIT-STR  s" ` … `;using`" EMIT-STR EXIT
    THEN
-   t RES-TRUE HOLDER-SCAN  s" : write it qualified, as " REJECTION:EMIT-STR  t QUALIFIED ;
+   t RES-TRUE HOLDER-SCAN  s" : write it qualified, as " EMIT-STR  t QUALIFIED ;
 
 \ The record of t, which nothing defines, written through UNDEF-HELP for
 \ d: the caller stops or keeps it.
@@ -2319,7 +2334,7 @@ PTR-VARIABLE HOLDER-FIRST
    REJECTION:HELP
    t LOCALS-END? IF
       d STR:LEN 0= IF
-         s" delete it: a locals list is written only inside a definition" REJECTION:EMIT-STR
+         s" delete it: a locals list is written only inside a definition" EMIT-STR
       ELSE LOCALS-END-HELP THEN EXIT
    THEN
    t d UNDEF-HELP ;
@@ -2328,126 +2343,126 @@ PTR-VARIABLE HOLDER-FIRST
 : BODY-ONLY-RECORD ( str -- )
    {: t:str :}
    s" E-UNDEFINED" REJECTION:OPEN
-   t CODE-SPAN  s"  works only inside a definition" REJECTION:EMIT-STR
-   t REJECTION:AT  s" outside a definition" REJECTION:EMIT-STR
-   REJECTION:HELP  s" move " REJECTION:EMIT-STR  t CODE-SPAN
-   s"  into a `:` … `;` body" REJECTION:EMIT-STR ;
+   t CODE-SPAN  s"  works only inside a definition" EMIT-STR
+   t REJECTION:AT  s" outside a definition" EMIT-STR
+   REJECTION:HELP  s" move " EMIT-STR  t CODE-SPAN
+   s"  into a `:` … `;` body" EMIT-STR ;
 
 \ `include` and `require` take their path as the definition compiles, which
 \ the engine rejects; their string form w takes it when the word runs.
 : LOADER-HELP ( str str -- ) {: t:str w:str :}
-   s" move " REJECTION:EMIT-STR  t CODE-SPAN
-   s"  and its path out of the definition to top level, or load the file when the word runs with `s" REJECTION:EMIT-STR
-   34 REJECTION:EMIT1  s"  path" REJECTION:EMIT-STR  34 REJECTION:EMIT1  32 REJECTION:EMIT1
-   w REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+   s" move " EMIT-STR  t CODE-SPAN
+   s"  and its path out of the definition to top level, or load the file when the word runs with `s" EMIT-STR
+   34 EMIT1  s"  path" EMIT-STR  34 EMIT1  32 EMIT1
+   w EMIT-STR  96 EMIT1 ;
 
 \ Keyword t named where a word is wanted; the caller stops or keeps it.
 : KEYWORD-RECORD ( str -- )
    {: t:str :}
    s" E-UNDEFINED" REJECTION:OPEN
    t KEYWORD-MESSAGE
-   t REJECTION:AT  s" not a word" REJECTION:EMIT-STR
+   t REJECTION:AT  s" not a word" EMIT-STR
    REJECTION:HELP  t KEYWORD-HELP ;
 
 : IMM-HELP ( str -- ) {: t:str :}
    \ The token's binding is read afresh: the walk's last bound token may be another.
-   t CHECKER-BIND t TOK-IDENTITY CTL>INTRINSIC {: id:n :}
+   t CHECKER-FIND-ACTIVE-SYM t TOK-IDENTITY CTL>INTRINSIC {: id:n :}
    id INTRINSIC-INCLUDE = IF t s" included" LOADER-HELP EXIT THEN
    id INTRINSIC-REQUIRE = IF t s" required" LOADER-HELP EXIT THEN
    t IMM-WHY {: why:n :}
    why IMM-EFFECT = IF
-      s" give " REJECTION:EMIT-STR  t CODE-SPAN
-      s"  the effect `( -- )`, or drop `immediate`" REJECTION:EMIT-STR EXIT
+      s" give " EMIT-STR  t CODE-SPAN
+      s"  the effect `( -- )`, or drop `immediate`" EMIT-STR EXIT
    THEN
    why IMM-WRITES = IF
-      s" write those tokens in the definition, or build the word with `define-word`" REJECTION:EMIT-STR EXIT
+      s" write those tokens in the definition, or build the word with `define-word`" EMIT-STR EXIT
    THEN
    why IMM-ROOTS = IF
-      s" move the root at top level, before the definition" REJECTION:EMIT-STR EXIT
+      s" move the root at top level, before the definition" EMIT-STR EXIT
    THEN
-   s" state the count with `parses: " REJECTION:EMIT-STR  t REJECTION:EMIT-STR
-   s"  n` after " REJECTION:EMIT-STR  t CODE-SPAN ;
+   s" state the count with `parses: " EMIT-STR  t EMIT-STR
+   s"  n` after " EMIT-STR  t CODE-SPAN ;
 
 : QUAL-HELP ( -- )
-   s" write " REJECTION:EMIT-STR  TOK-SPAN
-   s"  with one `:` between the package and the word, as `PKG:WORD`" REJECTION:EMIT-STR ;
+   s" write " EMIT-STR  TOK-SPAN
+   s"  with one `:` between the package and the word, as `PKG:WORD`" EMIT-STR ;
 
 : LOCAL-HELP ( -- )
    LOCALBAD-GROUP? IF
-      s" remove " REJECTION:EMIT-STR  TOK-SPAN  s"  from the locals group" REJECTION:EMIT-STR EXIT
+      s" remove " EMIT-STR  TOK-SPAN  s"  from the locals group" EMIT-STR EXIT
    THEN
    s" bind the local outside the quotation, on a path that runs, or move this code into a word of its own"
-   REJECTION:EMIT-STR ;
+   EMIT-STR ;
 
 : SIG-HELP ( -- )   SIG-SUBJECT$ SGBAD-FIX ;
 
 : DEAD-HELP ( -- )
-   s" remove " REJECTION:EMIT-STR  TOK-SPAN
-   s"  and what follows it in this branch, or move that work before " REJECTION:EMIT-STR
+   s" remove " EMIT-STR  TOK-SPAN
+   s"  and what follows it in this branch, or move that work before " EMIT-STR
    DEADTA @ DEADTU @ >str CODE-SPAN ;
 
 \ A declared type or row variable's letter in backticks.
 : NP-GENERIC ( -- )
-   s" , or keep the body generic over " REJECTION:EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
+   s" , or keep the body generic over " EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
 : NP-POINTEE ( str -- ) {: s:str :}
-   s" declare the pointee the " REJECTION:EMIT-STR  s REJECTION:EMIT-STR
-   s" , as `^n` or `^u8`, in place of " REJECTION:EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
+   s" declare the pointee the " EMIT-STR  s EMIT-STR
+   s" , as `^n` or `^u8`, in place of " EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
 : NP-HELP ( -- )
    NPBAD-KIND @ case
       4 of s" base address reaches" NP-POINTEE endof
       5 of s" null stands in for" NP-POINTEE endof
-      3 of s" declare the type the raw storage holds in place of " REJECTION:EMIT-STR
+      3 of s" declare the type the raw storage holds in place of " EMIT-STR
          NPBAD-Q1 @ VAR-SPAN  NP-GENERIC endof
-      0 of s" declare " REJECTION:EMIT-STR  NP-FAM-REND  s"  in place of " REJECTION:EMIT-STR
+      0 of s" declare " EMIT-STR  NP-FAM-REND  s"  in place of " EMIT-STR
          NPBAD-Q1 @ VAR-SPAN  NP-GENERIC endof
-      1 of s" write one type variable for " REJECTION:EMIT-STR  NPBAD-Q1 @ VAR-SPAN
-         s"  and " REJECTION:EMIT-STR  NPBAD-Q2 @ VAR-SPAN
-         s" , or keep the body from making them one type" REJECTION:EMIT-STR endof
+      1 of s" write one type variable for " EMIT-STR  NPBAD-Q1 @ VAR-SPAN
+         s"  and " EMIT-STR  NPBAD-Q2 @ VAR-SPAN
+         s" , or keep the body from making them one type" EMIT-STR endof
       6 of s" run the quotation that yields the output row on every path, or declare the row the body leaves"
-         REJECTION:EMIT-STR endof
-      8 of s" declare " REJECTION:EMIT-STR  NP-ROW
+         EMIT-STR endof
+      8 of s" declare " EMIT-STR  NP-ROW
          s"  as the row the body leaves and read it only where the code is 0: after `code 0<> if code throw then`"
-         REJECTION:EMIT-STR endof
-      7 of s" declare the cells the body leaves in place of " REJECTION:EMIT-STR  NP-ROW
-         s" , or keep the body generic over it" REJECTION:EMIT-STR endof
-      s" declare an input that carries " REJECTION:EMIT-STR  NPBAD-Q1 @ VAR-SPAN
-      s" , or write a concrete type in its place" REJECTION:EMIT-STR
+         EMIT-STR endof
+      7 of s" declare the cells the body leaves in place of " EMIT-STR  NP-ROW
+         s" , or keep the body generic over it" EMIT-STR endof
+      s" declare an input that carries " EMIT-STR  NPBAD-Q1 @ VAR-SPAN
+      s" , or write a concrete type in its place" EMIT-STR
    endcase ;
 
 : CAP-HELP ( -- )
-   s" call a checked word that wraps " REJECTION:EMIT-STR  TOK-SPAN
+   s" call a checked word that wraps " EMIT-STR  TOK-SPAN
    TOP-STEP @ IF s"  in place of calling it here"
-   ELSE s"  in place of calling it from this body" THEN REJECTION:EMIT-STR ;
+   ELSE s"  in place of calling it from this body" THEN EMIT-STR ;
 
 : UNSAFE-HELP ( -- )
    PIN-TOK$ s" evaluate" STR:=CI IF
-      s" call `evaluate-closed` in place of " REJECTION:EMIT-STR  TOK-SPAN EXIT
+      s" call `evaluate-closed` in place of " EMIT-STR  TOK-SPAN EXIT
    THEN
-   s" move " REJECTION:EMIT-STR  TOK-SPAN  s"  out of the body to top level" REJECTION:EMIT-STR ;
+   s" move " EMIT-STR  TOK-SPAN  s"  out of the body to top level" EMIT-STR ;
 
 : SCOPED-TICK-HELP ( -- )
-   s" call " REJECTION:EMIT-STR  TOK-SPAN
-   s"  directly where the checker proves its scope instead of ticking it" REJECTION:EMIT-STR ;
+   s" call " EMIT-STR  TOK-SPAN
+   s"  directly where the checker proves its scope instead of ticking it" EMIT-STR ;
 
 : ONE-CELL-HELP ( -- )
-   MD-ONE-CELL MD-SUGGEST$ REJECTION:EMIT-STR
-   AT-PIN  s"  `" REJECTION:EMIT-STR  CELL-TYPE REND-TYPE  s" `" REJECTION:EMIT-STR  ;AT-PIN ;
+   MD-ONE-CELL MD-SUGGEST$ EMIT-STR
+   AT-PIN  s"  `" EMIT-STR  CELL-TYPE REND-TYPE  s" `" EMIT-STR  ;AT-PIN ;
 
 : OFF-STEP-HELP ( -- )
    CELL-VAR-SYM {: sym:n :}
    sym 0 <> IF
-      s" declare `" REJECTION:EMIT-STR  sym SYM-SPELLING$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   ELSE s" declare the word" REJECTION:EMIT-STR THEN
-   s"  for the plain cell type it steps, or step `" REJECTION:EMIT-STR
-   AT-PIN  CELL-TYPE REND-TYPE  ;AT-PIN  s" ` by its size" REJECTION:EMIT-STR ;
+      s" declare `" EMIT-STR  sym SYM-SPELLING$ EMIT-STR  s" `" EMIT-STR
+   ELSE s" declare the word" EMIT-STR THEN
+   s"  for the plain cell type it steps, or step `" EMIT-STR
+   AT-PIN  CELL-TYPE REND-TYPE  ;AT-PIN  s" ` by its size" EMIT-STR ;
 
 \ A word whose effect names the type is checked as linear; a mover's var is not.
 : MOVED-LIN-HELP ( -- )
-   s" call a word whose effect names `" REJECTION:EMIT-STR  AT-PIN  CELL-TYPE REND-TYPE  ;AT-PIN
-   s" ` in place of " REJECTION:EMIT-STR
+   s" call a word whose effect names `" EMIT-STR  AT-PIN  CELL-TYPE REND-TYPE  ;AT-PIN
+   s" ` in place of " EMIT-STR
    CELL-VAR-SYM {: sym:n :}
-   sym 0= IF s" the stack words that move it" REJECTION:EMIT-STR EXIT THEN
-   s" `" REJECTION:EMIT-STR  sym SYM-SPELLING$ REJECTION:EMIT-STR  s" `, which moves any type" REJECTION:EMIT-STR ;
+   sym 0= IF s" the stack words that move it" EMIT-STR EXIT THEN
+   s" `" EMIT-STR  sym SYM-SPELLING$ EMIT-STR  s" `, which moves any type" EMIT-STR ;
 
 \ The latched FACT-HIT's facts in bit order, joined by one space.
 : FACT-NAMES ( -- )
@@ -2455,63 +2470,63 @@ PTR-VARIABLE HOLDER-FIRST
    63 0 ?do
       1 i lshift {: f:n :}
       MDIAG-CELL @ f and 0 <> IF
-         f low <> IF s"  " REJECTION:EMIT-STR THEN  i CTL-BIT>TAG$ REJECTION:EMIT-STR
+         f low <> IF s"  " EMIT-STR THEN  i CTL-BIT>TAG$ EMIT-STR
       THEN
    loop ;
 
 \ The type that keeps it may be a primitive's row (`compile,`), which no program
 \ changes, so the help names the other fix too.
 : FACT-HELP ( -- )
-   MDIAG @ MD-SUGGEST$ REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR  FACT-NAMES
+   MDIAG @ MD-SUGGEST$ EMIT-STR  s"  `" EMIT-STR  FACT-NAMES
    MDIAG @ MD-FACT-UNSTATED = IF
-      s" ` in the type that keeps it, or keep a word without `" REJECTION:EMIT-STR
+      s" ` in the type that keeps it, or keep a word without `" EMIT-STR
    ELSE
-      s" ` in the input `" REJECTION:EMIT-STR  AT-PIN  MDIAG-CELL-VAR @ REND-TYPE  ;AT-PIN
-      s" ` of the quotation's type, or " REJECTION:EMIT-STR
-      MDIAG @ MD-FACT-INPUT = IF s" keep it in" ELSE s" pass it as" THEN REJECTION:EMIT-STR
-      s"  a type whose input states no `" REJECTION:EMIT-STR
+      s" ` in the input `" EMIT-STR  AT-PIN  MDIAG-CELL-VAR @ REND-TYPE  ;AT-PIN
+      s" ` of the quotation's type, or " EMIT-STR
+      MDIAG @ MD-FACT-INPUT = IF s" keep it in" ELSE s" pass it as" THEN EMIT-STR
+      s"  a type whose input states no `" EMIT-STR
    THEN
-   FACT-NAMES  s" `" REJECTION:EMIT-STR ;
+   FACT-NAMES  s" `" EMIT-STR ;
 
 : LINLOCAL-HELP ( -- )
    s" keep the linear value on the stack and pass it on with stack words, in place of binding it to a local"
-   REJECTION:EMIT-STR ;
+   EMIT-STR ;
 
 : UNCK-HELP ( -- )
-   s" call a word whose stack effect the checker knows in place of " REJECTION:EMIT-STR
+   s" call a word whose stack effect the checker knows in place of " EMIT-STR
    TOK-SPAN ;
 
 : RETURN-HELP ( -- )
    RSBAD @ 2 = IF
       s" read or pop with `r@` and `r>` only cells this definition pushed with `>r`"
-      REJECTION:EMIT-STR EXIT
+      EMIT-STR EXIT
    THEN
    RSBAD @ 3 = IF
       s" take back with `r>` every cell the quotation pushes with `>r` before its `;]`"
-      REJECTION:EMIT-STR EXIT
+      EMIT-STR EXIT
    THEN
    RSBAD @ 4 = IF
       s" read or pop with `r@` and `r>` only cells this quotation pushed with `>r`"
-      REJECTION:EMIT-STR EXIT
+      EMIT-STR EXIT
    THEN
    RSBAD @ 5 = IF
       s" leave the same return cells, of the same types, on every path that meets here; take back with `r>` before an `exit` or `leave` any cell pushed since the entry"
-      REJECTION:EMIT-STR EXIT
+      EMIT-STR EXIT
    THEN
    RSBAD @ 6 = IF
       s" keep each return cell's type on every pass, or take it back with `r>` before the loop ends"
-      REJECTION:EMIT-STR EXIT
+      EMIT-STR EXIT
    THEN
    RSBAD @ 7 = IF
       s" give it the return cells its effect takes: push or take back cells with `>r` and `r>` before it"
-      REJECTION:EMIT-STR EXIT
+      EMIT-STR EXIT
    THEN
    RSBAD @ 8 = IF
       s" leave the return cells the signature declares: take back with `r>` every cell the body pushes with `>r`, keeping each one's type"
-      REJECTION:EMIT-STR EXIT
+      EMIT-STR EXIT
    THEN
    s" take back with `r>` every cell the definition pushes with `>r` before it exits"
-   REJECTION:EMIT-STR ;
+   EMIT-STR ;
 
 : DIAG-HELP ( -- )
    DKIND {: k:n :}
@@ -2544,10 +2559,10 @@ PTR-VARIABLE HOLDER-FIRST
          FACT-HELP EXIT
       THEN
       STALE-ROW-READ? IF
-         DEND @ 0 <> IF s" return them" ELSE s" pass them on" THEN REJECTION:EMIT-STR
-         s"  where the code is 0: after `code 0<> if code throw then`" REJECTION:EMIT-STR EXIT
+         DEND @ 0 <> IF s" return them" ELSE s" pass them on" THEN EMIT-STR
+         s"  where the code is 0: after `code 0<> if code throw then`" EMIT-STR EXIT
       THEN
-      MDIAG @ MD-SUGGEST$ REJECTION:EMIT-STR EXIT
+      MDIAG @ MD-SUGGEST$ EMIT-STR EXIT
    THEN
    k RF-UNCHECKABLE = IF UNCK-HELP EXIT THEN
    k RF-RETURN = IF RETURN-HELP EXIT THEN
@@ -2557,12 +2572,14 @@ PTR-VARIABLE HOLDER-FIRST
 \ t, for a reader that judges the head without CHECK; the caller ends it.
 : DOES-UNMADE-OPEN ( str -- ) {: t:str :}
    MD-DOES-UNMADE MD-CODE$ REJECTION:OPEN
-   MD-DOES-UNMADE MD-REASON$ REJECTION:EMIT-STR
-   t REJECTION:AT  MD-DOES-UNMADE MD-LABEL$ REJECTION:EMIT-STR
-   REJECTION:HELP  MD-DOES-UNMADE MD-SUGGEST$ REJECTION:EMIT-STR ;
+   MD-DOES-UNMADE MD-REASON$ EMIT-STR
+   t REJECTION:AT  MD-DOES-UNMADE MD-LABEL$ EMIT-STR
+   REJECTION:HELP  MD-DOES-UNMADE MD-SUGGEST$ EMIT-STR ;
 
-\ The notes and the help.
+\ The notes and the help; an ambiguous family's packages note and help are
+\ one part.
 : DIAG-ADVICE ( -- )
+   DKIND RF-SIG =  SGBAD-AMBIG?  and IF SIG-SUBJECT$ drop SGBAD-AMBIG-HELP EXIT THEN
    DIAG-NOTES
    REJECTION:HELP  DIAG-HELP ;
 
@@ -2584,41 +2601,41 @@ PTR-VARIABLE HOLDER-FIRST
 
 : TDECL-TITLE ( str str str -- ) {: c:str ks:str fs:str :}
    c REJECTION:OPEN
-   s" bad " REJECTION:EMIT-STR  ks REJECTION:EMIT-STR  s"  declaration" REJECTION:EMIT-STR
-   fs STR:LEN 0 > IF s"  `" REJECTION:EMIT-STR  fs REJECTION:EMIT-STR  96 REJECTION:EMIT1 THEN ;
+   s" bad " EMIT-STR  ks EMIT-STR  s"  declaration" EMIT-STR
+   fs STR:LEN 0 > IF s"  `" EMIT-STR  fs EMIT-STR  96 EMIT1 THEN ;
 \ A rejected declaration of a kind and family: its token labeled with the
 \ reason, the word it names as a `word` note unless empty, the fix as help.
 \ The caller ends the record.
 : TDECL-DIAG ( str str str str str str -- )
    {: ks:str fs:str ts:str ws:str xs:str ns:str :}
    s" E-BAD-DECLARATION" ks fs TDECL-TITLE
-   ts REJECTION:AT  ws REJECTION:EMIT-STR
-   ns STR:LEN 0 > IF s" word" REJECTION:NOTE  ns REJECTION:EMIT-STR THEN
-   REJECTION:HELP  xs REJECTION:EMIT-STR ;
+   ts REJECTION:AT  ws EMIT-STR
+   ns STR:LEN 0 > IF s" word" REJECTION:NOTE  ns EMIT-STR THEN
+   REJECTION:HELP  xs EMIT-STR ;
 
 \ Why REC-SIG left a certified sig-less word unrecorded; the last arm answers
 \ every other RQM cause, a stale or scoped type among them, as an unmodeled tag.
 : REC-REJECT-WHY ( -- )
-   RBIND-FULL @ IF BINDERS-REASON s"  in inferred effect" REJECTION:EMIT-STR EXIT THEN
+   RBIND-FULL @ IF BINDERS-REASON s"  in inferred effect" EMIT-STR EXIT THEN
    RROW-UNSAID @ IF
-      s" quotation return-stack clause or more than " REJECTION:EMIT-STR  RROW-CAP REJECTION:EMIT-U
-      s"  named rows the effect text cannot say" REJECTION:EMIT-STR EXIT
+      s" quotation return-stack clause or more than " EMIT-STR  RROW-CAP EMIT-U
+      s"  named rows the effect text cannot say" EMIT-STR EXIT
    THEN
-   s" unmodeled type tag in inferred effect" REJECTION:EMIT-STR ;
+   s" unmodeled type tag in inferred effect" EMIT-STR ;
 
 \ The fix for REC-REJECT-WHY's reason, for the word ns.
 : REC-REJECT-HELP ( str -- ) {: ns:str :}
    RBIND-FULL @ IF
       s" name an inner callback's effect in a word of its own, so at most "
-      REJECTION:EMIT-STR  BINDER-DEPTH-MAX REJECTION:EMIT-U  s"  binders nest" REJECTION:EMIT-STR EXIT
+      EMIT-STR  BINDER-DEPTH-MAX EMIT-U  s"  binders nest" EMIT-STR EXIT
    THEN
    RROW-UNSAID @ IF
-      s" balance `>r` and `r>` inside each quotation `" REJECTION:EMIT-STR  ns REJECTION:EMIT-STR
-      s" ` returns, and split it if its effect names more than " REJECTION:EMIT-STR
-      RROW-CAP REJECTION:EMIT-U  s"  rows" REJECTION:EMIT-STR EXIT
+      s" balance `>r` and `r>` inside each quotation `" EMIT-STR  ns EMIT-STR
+      s" ` returns, and split it if its effect names more than " EMIT-STR
+      RROW-CAP EMIT-U  s"  rows" EMIT-STR EXIT
    THEN
-   s" declare the stack effect after the name, as `: " REJECTION:EMIT-STR  ns REJECTION:EMIT-STR
-   s"  ( inputs -- outputs )`, so a call is checked against it" REJECTION:EMIT-STR ;
+   s" declare the stack effect after the name, as `: " EMIT-STR  ns EMIT-STR
+   s"  ( inputs -- outputs )`, so a call is checked against it" EMIT-STR ;
 
 \ W-EFFECT-NOT-RECORDED warns that the word certified and loaded, but a later
 \ call rejects it as undefined; the run's status stands. It names the word as
@@ -2626,10 +2643,10 @@ PTR-VARIABLE HOLDER-FIRST
 : REC-REJECT-DIAG ( -- )
    NM-SPAN {: ns:str :}
    s" W-EFFECT-NOT-RECORDED" REJECTION:WARN
-   s" the effect of `" REJECTION:EMIT-STR  ns REJECTION:EMIT-STR
+   s" the effect of `" EMIT-STR  ns EMIT-STR
    s" ` cannot be recorded, so a later call of it is rejected as undefined"
-   REJECTION:EMIT-STR
-   NM-SPAN REJECTION:AT  s" effect not recorded" REJECTION:EMIT-STR
+   EMIT-STR
+   NM-SPAN REJECTION:AT  s" effect not recorded" EMIT-STR
    s" reason" REJECTION:NOTE  REC-REJECT-WHY
    REJECTION:HELP  ns REC-REJECT-HELP
    REJECTION:KEEP ;
@@ -2677,10 +2694,10 @@ package CAST-ERROR
 \ The message: the declaration in backticks, why ws, then the token TOKEN!
 \ named in backticks.
 : TITLE ( str -- ) {: ws:str :}
-   s" in `" REJECTION:EMIT-STR  KEY-A @ KEY-U @ >str REJECTION:EMIT-STR  32 REJECTION:EMIT1  WORD$ REJECTION:EMIT-STR
-   s" `, " REJECTION:EMIT-STR  ws REJECTION:EMIT-STR
+   s" in `" EMIT-STR  KEY-A @ KEY-U @ >str EMIT-STR  32 EMIT1  WORD$ EMIT-STR
+   s" `, " EMIT-STR  ws EMIT-STR
    TOK-U @ 0 > IF
-      s"  `" REJECTION:EMIT-STR  TOK-A @ TOK-U @ >str REJECTION:EMIT-STR  96 REJECTION:EMIT1
+      s"  `" EMIT-STR  TOK-A @ TOK-U @ >str EMIT-STR  96 EMIT1
    THEN ;
 \ The token the record places: TOKEN!'s when the signature holds it (a package
 \ name it named is no source), else the declared name.

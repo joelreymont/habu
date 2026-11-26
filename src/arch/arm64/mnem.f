@@ -1,169 +1,176 @@
 \ mnem.f - one word per mnemonic: encode with asm.f, emit with icode.f EMITW.
-\ Condition-code names live in asm.f beside ?COND.
+\ The encoders are imported and called bare: a qualifier on every one-line
+\ mnemonic would be the whole file. Condition-code names live in asm.f beside
+\ ?COND.
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
+using A64ASM
+using A64ICODE
 
 package A64ICODE
 public
 9 constant T0   10 constant T1   11 constant T2
 ENGINE-GPR:A64-DSTACK constant XDS  31 constant SP
 
-: MOVZ, ( n n -- )  0 A64ASM:MOVZHW EMITW ;
+: MOVZ, ( n n -- )  0 MOVZHW EMITW ;
 
-: MOVN, ( n n -- )  0 A64ASM:MOVNHW EMITW ;
+: MOVN, ( n n -- )  0 MOVNHW EMITW ;
 
 \ The shift is in bits; a shift that is not a whole half is rejected, not rounded.
-: MOVK, ( n n n -- )  $10 A64ASM:SCALE/ A64ASM:MOVKHW EMITW ;
+: MOVK, ( n n n -- )  $10 SCALE/ MOVKHW EMITW ;
 
-: ADD, ( n n n -- )  A64ASM:ENC-ADD EMITW ;
+: ADD, ( n n n -- )  ENC-ADD EMITW ;
 
-: ADDI, ( n n n -- )  A64ASM:ENC-ADDI EMITW ;
+: ADDI, ( n n n -- )  ENC-ADDI EMITW ;
 
-: SUB, ( n n n -- )  A64ASM:ENC-SUB EMITW ;
+: SUB, ( n n n -- )  ENC-SUB EMITW ;
 
-: SUBI, ( n n n -- )  A64ASM:ENC-SUBI EMITW ;
+: SUBI, ( n n n -- )  ENC-SUBI EMITW ;
 
-: MUL, ( n n n -- )  A64ASM:ENC-MUL EMITW ;
+: MUL, ( n n n -- )  ENC-MUL EMITW ;
 
-: SDIV, ( n n n -- )  A64ASM:ENC-SDIV EMITW ;
+: SDIV, ( n n n -- )  ENC-SDIV EMITW ;
 
-: UDIV, ( n n n -- )  A64ASM:ENC-UDIV EMITW ;
+: UDIV, ( n n n -- )  ENC-UDIV EMITW ;
 
-: AND, ( n n n -- )  A64ASM:ENC-AND EMITW ;
+: AND, ( n n n -- )  ENC-AND EMITW ;
 
-: ORR, ( n n n -- )  A64ASM:ENC-ORR EMITW ;
+: ORR, ( n n n -- )  ENC-ORR EMITW ;
 
-: EOR, ( n n n -- )  A64ASM:ENC-EOR EMITW ;
+: EOR, ( n n n -- )  ENC-EOR EMITW ;
 
-: ANDI, ( n n n -- )  A64ASM:>LIMM A64ASM:ENC-ANDI EMITW ;
+: ANDI, ( n n n -- )  >LIMM ENC-ANDI EMITW ;
 
-: ORRI, ( n n n -- )  A64ASM:>LIMM A64ASM:ENC-ORRI EMITW ;
+: ORRI, ( n n n -- )  >LIMM ENC-ORRI EMITW ;
 
-: EORI, ( n n n -- )  A64ASM:>LIMM A64ASM:ENC-EORI EMITW ;
+: EORI, ( n n n -- )  >LIMM ENC-EORI EMITW ;
 
-: LSLI, ( n n n -- )  A64ASM:ENC-LSLI EMITW ;
+: LSLI, ( n n n -- )  ENC-LSLI EMITW ;
 
-: LSRI, ( n n n -- )  A64ASM:ENC-LSRI EMITW ;
+: LSRI, ( n n n -- )  ENC-LSRI EMITW ;
 
-: ASRI, ( n n n -- )  A64ASM:ENC-ASRI EMITW ;
+: ASRI, ( n n n -- )  ENC-ASRI EMITW ;
 
-: LSLV, ( n n n -- )  A64ASM:ENC-LSLV EMITW ;
+: LSLV, ( n n n -- )  ENC-LSLV EMITW ;
 
-: LSRV, ( n n n -- )  A64ASM:ENC-LSRV EMITW ;
+: LSRV, ( n n n -- )  ENC-LSRV EMITW ;
 
-: CMP, ( n n -- )  A64ASM:ENC-CMP EMITW ;
+: CMP, ( n n -- )  ENC-CMP EMITW ;
 
-: CMPI, ( n n -- )  A64ASM:ENC-CMPI EMITW ;
+: CMPI, ( n n -- )  ENC-CMPI EMITW ;
 
-: CSET, ( n n -- )  A64ASM:ENC-CSET EMITW ;
+: CSET, ( n n -- )  ENC-CSET EMITW ;
 
-: CSETM, ( n n -- )  A64ASM:ENC-CSETM EMITW ;
+: CSETM, ( n n -- )  ENC-CSETM EMITW ;
 
-: CSEL, ( n n n n -- )  A64ASM:ENC-CSEL EMITW ;
+: CSEL, ( n n n n -- )  ENC-CSEL EMITW ;
 
-: LDR, ( n n n -- )  A64ASM:ENC-LDR EMITW ;
+: LDR, ( n n n -- )  ENC-LDR EMITW ;
 
-: STR, ( n n n -- )  A64ASM:ENC-STR EMITW ;
+: STR, ( n n n -- )  ENC-STR EMITW ;
 
-: LDRB, ( n n n -- )  A64ASM:ENC-LDRB EMITW ;
+: LDRB, ( n n n -- )  ENC-LDRB EMITW ;
 
-: STRB, ( n n n -- )  A64ASM:ENC-STRB EMITW ;
+: STRB, ( n n n -- )  ENC-STRB EMITW ;
 
-: LDRH, ( n n n -- )  A64ASM:ENC-LDRH EMITW ;
+: LDRH, ( n n n -- )  ENC-LDRH EMITW ;
 
-: STRH, ( n n n -- )  A64ASM:ENC-STRH EMITW ;
+: STRH, ( n n n -- )  ENC-STRH EMITW ;
 
-: LDRW, ( n n n -- )  A64ASM:ENC-LDRW EMITW ;
+: LDRW, ( n n n -- )  ENC-LDRW EMITW ;
 
-: STRW, ( n n n -- )  A64ASM:ENC-STRW EMITW ;
+: STRW, ( n n n -- )  ENC-STRW EMITW ;
 
 \ The data-stack pair: push is STRPOST, +8; pop is LDRPRE, -8. The offset is the
 \ distance the base register travels.
-: STRPOST, ( n n n -- )  A64ASM:ENC-STRPOST EMITW ;
+: STRPOST, ( n n n -- )  ENC-STRPOST EMITW ;
 
-: LDRPRE, ( n n n -- )  A64ASM:ENC-LDRPRE EMITW ;
+: LDRPRE, ( n n n -- )  ENC-LDRPRE EMITW ;
 
-: LDAR, ( n n -- )  A64ASM:ENC-LDAR EMITW ;
+: LDAR, ( n n -- )  ENC-LDAR EMITW ;
 
-: STLR, ( n n -- )  A64ASM:ENC-STLR EMITW ;
+: STLR, ( n n -- )  ENC-STLR EMITW ;
 
-: LDARW, ( n n -- )  A64ASM:ENC-LDARW EMITW ;
+: LDARW, ( n n -- )  ENC-LDARW EMITW ;
 
-: STLRW, ( n n -- )  A64ASM:ENC-STLRW EMITW ;
+: STLRW, ( n n -- )  ENC-STLRW EMITW ;
 
-: SVC, ( n -- )  A64ASM:ENC-SVC EMITW ;
+: SVC, ( n -- )  ENC-SVC EMITW ;
 
-: RET, ( -- ) A64ASM:ENC-RET EMITW ;
+: RET, ( -- ) ENC-RET EMITW ;
 
-: BLR, ( n -- )  A64ASM:ENC-BLR EMITW ;
+: BLR, ( n -- )  ENC-BLR EMITW ;
 
-: BR, ( n -- )  A64ASM:ENC-BR EMITW ;
+: BR, ( n -- )  ENC-BR EMITW ;
 
-: BRK, ( -- ) A64ASM:ENC-BRK EMITW ;
+: BRK, ( -- ) ENC-BRK EMITW ;
 
-: NOP, ( -- ) A64ASM:ENC-NOP EMITW ;
+: NOP, ( -- ) ENC-NOP EMITW ;
 
-: ICIVAU, ( n -- )  A64ASM:ENC-ICIVAU EMITW ;
+: ICIVAU, ( n -- )  ENC-ICIVAU EMITW ;
 
-: DCCVAU, ( n -- )  A64ASM:ENC-DCCVAU EMITW ;
+: DCCVAU, ( n -- )  ENC-DCCVAU EMITW ;
 
-: DSB-ISH, ( -- ) A64ASM:ENC-DSB-ISH EMITW ;
+: DSB-ISH, ( -- ) ENC-DSB-ISH EMITW ;
 
-: DMB-ISH, ( -- ) A64ASM:ENC-DMB-ISH EMITW ;
+: DMB-ISH, ( -- ) ENC-DMB-ISH EMITW ;
 
-: ISB, ( -- ) A64ASM:ENC-ISB EMITW ;
+: ISB, ( -- ) ENC-ISB EMITW ;
 
-: YIELD, ( -- ) A64ASM:ENC-YIELD EMITW ;
+: YIELD, ( -- ) ENC-YIELD EMITW ;
 
-: CASAL, ( n n n -- )  A64ASM:ENC-CASAL EMITW ;
+: CASAL, ( n n n -- )  ENC-CASAL EMITW ;
 
-: LDADDAL, ( n n n -- )  A64ASM:ENC-LDADDAL EMITW ;
+: LDADDAL, ( n n n -- )  ENC-LDADDAL EMITW ;
 
-: FMOVXD, ( n n -- )  A64ASM:ENC-FMOVXD EMITW ;
+: FMOVXD, ( n n -- )  ENC-FMOVXD EMITW ;
 
-: FMOVDX, ( n n -- )  A64ASM:ENC-FMOVDX EMITW ;
+: FMOVDX, ( n n -- )  ENC-FMOVDX EMITW ;
 
-: FADD, ( n n n -- )  A64ASM:ENC-FADD EMITW ;
+: FADD, ( n n n -- )  ENC-FADD EMITW ;
 
-: FSUB, ( n n n -- )  A64ASM:ENC-FSUB EMITW ;
+: FSUB, ( n n n -- )  ENC-FSUB EMITW ;
 
-: FMUL, ( n n n -- )  A64ASM:ENC-FMUL EMITW ;
+: FMUL, ( n n n -- )  ENC-FMUL EMITW ;
 
-: FDIV, ( n n n -- )  A64ASM:ENC-FDIV EMITW ;
+: FDIV, ( n n n -- )  ENC-FDIV EMITW ;
 
-: FNEG, ( n n -- )  A64ASM:ENC-FNEG EMITW ;
+: FNEG, ( n n -- )  ENC-FNEG EMITW ;
 
-: FABS, ( n n -- )  A64ASM:ENC-FABS EMITW ;
+: FABS, ( n n -- )  ENC-FABS EMITW ;
 
-: FSQRT, ( n n -- )  A64ASM:ENC-FSQRT EMITW ;
+: FSQRT, ( n n -- )  ENC-FSQRT EMITW ;
 
-: FCMP, ( n n -- )  A64ASM:ENC-FCMP EMITW ;
+: FCMP, ( n n -- )  ENC-FCMP EMITW ;
 
-: FCMP0, ( n -- )  A64ASM:ENC-FCMP0 EMITW ;
+: FCMP0, ( n -- )  ENC-FCMP0 EMITW ;
 
-: SCVTF, ( n n -- )  A64ASM:ENC-SCVTF EMITW ;
+: SCVTF, ( n n -- )  ENC-SCVTF EMITW ;
 
-: FCVTZS, ( n n -- )  A64ASM:ENC-FCVTZS EMITW ;
+: FCVTZS, ( n n -- )  ENC-FCVTZS EMITW ;
 
-: LD1V-POST, ( n n -- )  A64ASM:ENC-LD1V-POST EMITW ;
+: LD1V-POST, ( n n -- )  ENC-LD1V-POST EMITW ;
 
-: LD1V4-POST, ( n n -- )  A64ASM:ENC-LD1V4-POST EMITW ;
+: LD1V4-POST, ( n n -- )  ENC-LD1V4-POST EMITW ;
 
-: LD2V, ( n n -- )  A64ASM:ENC-LD2V EMITW ;
+: LD2V, ( n n -- )  ENC-LD2V EMITW ;
 
-: ST2V, ( n n -- )  A64ASM:ENC-ST2V EMITW ;
+: ST2V, ( n n -- )  ENC-ST2V EMITW ;
 
-: REV32V, ( n n -- )  A64ASM:ENC-REV32V EMITW ;
+: REV32V, ( n n -- )  ENC-REV32V EMITW ;
 
-: ADD4S, ( n n n -- )  A64ASM:ENC-ADD4S EMITW ;
+: ADD4S, ( n n n -- )  ENC-ADD4S EMITW ;
 
-: MOVV, ( n n -- )  A64ASM:ENC-MOVV EMITW ;
+: MOVV, ( n n -- )  ENC-MOVV EMITW ;
 
-: SHA256H, ( n n n -- )  A64ASM:ENC-SHA256H EMITW ;
+: SHA256H, ( n n n -- )  ENC-SHA256H EMITW ;
 
-: SHA256H2, ( n n n -- )  A64ASM:ENC-SHA256H2 EMITW ;
+: SHA256H2, ( n n n -- )  ENC-SHA256H2 EMITW ;
 
-: SHA256SU0, ( n n -- )  A64ASM:ENC-SHA256SU0 EMITW ;
+: SHA256SU0, ( n n -- )  ENC-SHA256SU0 EMITW ;
 
-: SHA256SU1, ( n n n -- )  A64ASM:ENC-SHA256SU1 EMITW ;
+: SHA256SU1, ( n n n -- )  ENC-SHA256SU1 EMITW ;
 ;package
+
+;using
+;using

@@ -28,6 +28,8 @@ require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
 require tools/check-verify-core.f
 
 package LSP-CHECK
+using SOURCE                             \ the shared source-string emitters
+using SOURCE-ROOT
 
 $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
@@ -126,7 +128,7 @@ variable CHK-EXP-OUT-U
 \ Reads the file at a path into CHK-SRC whole. The buffer may move as it grows,
 \ so a caller takes CHK-SRC-BUF after the read.
 : CHK-SRC-READ ( str -- n )
-   [: CHK-SRC-ROOM drop ;] SOURCE:READ-WHOLE-FILE ;
+   [: CHK-SRC-ROOM drop ;] READ-WHOLE-FILE ;
 
 : CHK-RUN-ROOM ( n -- str )
    1 max dup CHK-RUN-MEM-RESERVE 0 CHK-RUN-MEM swap >str ;
@@ -479,7 +481,7 @@ private
    s STR:DATA CHK-SRC-A CHK-PTR-U8! ;
 
 : CHK-ENTRY$ ( str -- str )
-   SOURCE-ROOT:ENTRY-RESOLVE drop ;
+   ENTRY-RESOLVE drop ;
 
 \ The --all-errors core writes its records into a new report file, in the run's
 \ mode; the caller closes the descriptor answered and gives the core stderr back.
@@ -495,10 +497,10 @@ private
 
 : CHK-EXP-APP ( str -- ) {: s:str :}
    s
-   CHK-EXP-OUT-U @ LEN>N s STR:LEN + CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE:SOURCE-APPEND-BYTES ;
+   CHK-EXP-OUT-U @ LEN>N s STR:LEN + CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE-APPEND-BYTES ;
 
 : CHK-EXP-C ( n -- )
-   CHK-EXP-OUT-U @ LEN>N 1+ CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE:SOURCE-APPEND-C ;
+   CHK-EXP-OUT-U @ LEN>N 1+ CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE-APPEND-C ;
 
 \ A record of check.f's own stands in no source: it names the file NO-FILE$, as the loader
 \ names a missing entry, and is in the run's mode.
@@ -520,7 +522,7 @@ private
    endcase ;
 
 : CHK-UNSAFE-BYTE? ( ^u8 -- bool ) {: p:^ :}
-   [: p 1 >str SOURCE:SOURCE-QPATH-CHECK ;] catch {: rc:n :}
+   [: p 1 >str SOURCE-QPATH-CHECK ;] catch {: rc:n :}
    rc E-FS-PATH-UNSAFE = if true exit then
    rc 0<> if rc throw then
    false ;
@@ -552,7 +554,7 @@ private
    EXIT-STATUS:USAGE CHK-THROW ;
 
 : CHK-QPATH-JUDGE ( str str str -- ) {: s:str w:str h:str :}
-   [: s SOURCE:SOURCE-QPATH-CHECK ;] catch {: rc:n :}
+   [: s SOURCE-QPATH-CHECK ;] catch {: rc:n :}
    rc 0= if exit then
    rc E-FS-PATH-UNSAFE = if s w h CHK-PATH-UNSAFE then
    rc throw ;
@@ -560,8 +562,8 @@ private
 : CHK-EXP-QPATH ( str -- ) {: s:str :}
    s s" path" s" rename or move the file so its path holds none of them" CHK-QPATH-JUDGE
    s
-   CHK-EXP-OUT-U @ LEN>N s STR:LEN SOURCE:SOURCE-QPATH-BYTES + CHK-SRC-ROOM >LEN
-   CHK-EXP-OUT-U SOURCE:SOURCE-APPEND-QPATH ;
+   CHK-EXP-OUT-U @ LEN>N s STR:LEN SOURCE-QPATH-BYTES + CHK-SRC-ROOM >LEN
+   CHK-EXP-OUT-U SOURCE-APPEND-QPATH ;
 
 \ A named file is loaded the way the command line loads it: the engine turns
 \ `--load PATH` into `s" PATH" script-required`, which resolves PATH as an
@@ -590,7 +592,7 @@ private
 \ Standard input holds a source of any size, read to its end into CHK-SRC with
 \ no size to start from.
 : CHK-READ-STDIN ( -- n )
-   0 [: CHK-SRC-ROOM drop ;] SOURCE:READ-WHOLE-FD ;
+   0 [: CHK-SRC-ROOM drop ;] READ-WHOLE-FD ;
 
 \ A source given as bytes, on stdin or through SOURCE, is the file CHK-SRC-PATH
 \ the run loads, so its requires resolve as they will there.
@@ -613,7 +615,7 @@ private
 
 \ The canonical path of a command-line path; the loader place after it is empty.
 : CHK-CANON-PATH ( str str -- str bool )
-   drop SOURCE-ROOT:CANONICAL ;
+   drop CANONICAL ;
 
 \ Position idx becomes its canonical path when it exists. A missing one stays
 \ as written, so the composition meets it in its place, as the load does.
@@ -743,8 +745,8 @@ private
 
 : CHK-RUN-QPATH+ ( str -- ) {: s:str :}
    s
-   CHK-RUN-U @ s STR:LEN SOURCE:SOURCE-QPATH-BYTES + CHK-RUN-ROOM dup STR:DATA swap STR:LEN >LEN
-   CHK-RUN-U SOURCE:SOURCE-APPEND-QPATH ;
+   CHK-RUN-U @ s STR:LEN SOURCE-QPATH-BYTES + CHK-RUN-ROOM dup STR:DATA swap STR:LEN >LEN
+   CHK-RUN-U SOURCE-APPEND-QPATH ;
 
 : CHK-SEL-BYTES? ( -- bool )
    CHK-SEL-MODE @ dup CHK-SEL-NONE = swap CHK-SEL-SOURCE = or ;
@@ -891,7 +893,7 @@ private
    1 max dup CHK-REPORT-MEM-RESERVE 0 CHK-REPORT-MEM swap >str ;
 
 : CHK-REPORT-SEND ( -- )
-   CHK-REPORT-PATH [: CHK-REPORT-ROOM STR:DATA ;] SOURCE:READ-WHOLE-FILE {: len:n :}
+   CHK-REPORT-PATH [: CHK-REPORT-ROOM STR:DATA ;] READ-WHOLE-FILE {: len:n :}
    1 CHK-REPORT-ROOM STR:DATA len >str CHK-ERR ;
 
 \ A verifier child that exited or died of a signal before it answered.
@@ -1184,4 +1186,6 @@ public
    CHK-SIGNAL-CHECK
    rc 0 <> if rc throw then ;
 
+;using
+;using
 ;package

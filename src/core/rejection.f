@@ -1460,6 +1460,33 @@ public
    s" put this in a package of your own: a sealed package takes no new words"
    EMIT-STR ;
 
+\ The package name t tu that `using` takes holds a colon. It is written through
+\ its help, and the caller stops it.
+: USING-BAD-NAME ( str -- ) {: t:str :}
+   s" E-USING-BAD-NAME" OPEN
+   s" the package name `" EMIT-STR  t EMIT-STR  s" ` contains a colon" EMIT-STR
+   t AT  s" not a package name" EMIT-STR
+   HELP  s" use a top-level package, named without `:`" EMIT-STR ;
+
+\ The `;using` token t tu has no open using to close. It is written through its
+\ help, and the caller stops it.
+: USING-UNBALANCED ( str -- ) {: t:str :}
+   s" E-USING-UNBALANCED" OPEN
+   96 EMIT1  t EMIT-STR  s" ` has no open using to close" EMIT-STR
+   t AT  s" nothing to close" EMIT-STR
+   HELP  s" remove this `" EMIT-STR  t EMIT-STR
+   s" `, or open a using before it" EMIT-STR ;
+
+\ The `;using` token t tu would close a using opened outside w wu, a package or
+\ a file. It is written through its help, and the caller stops it.
+: USING-OUTER ( str str -- ) {: t:str w:str :}
+   s" E-USING-OUTER" OPEN
+   96 EMIT1  t EMIT-STR  s" ` would close a using opened outside this " EMIT-STR
+   w EMIT-STR
+   t AT  s" using opened outside" EMIT-STR
+   HELP  s" close each using in the " EMIT-STR  w EMIT-STR
+   s"  that opens it" EMIT-STR ;
+
 private
 \ FILE! takes any path a tool names, so a long one is rejected here, after the
 \ words that print a rejection. The record stands at the path where a source

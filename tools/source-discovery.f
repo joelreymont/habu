@@ -28,6 +28,8 @@ require src/habu/interpreter.f
 require src/lib/source-syntax.f
 
 package DISCOVER
+using SOURCE
+using SOURCE-ROOT
 
 PATH-CAP constant SD-PATH-CAP
 
@@ -893,8 +895,8 @@ DYNAMIC-BUFFER SD-DEC u8
    {: off:n len:n kind:n :}
    off len SD-TOK$ {: w:str :}
    SD-PATH-SRC @ SD-PATH-U @ >str {: p:str :}
-   kind SD-K-INCLUDED = if w p SOURCE-ROOT:INCLUDED-AS exit then
-   kind SD-K-REQUIRED = if w p SOURCE-ROOT:REQUIRED-AS exit then
+   kind SD-K-INCLUDED = if w p INCLUDED-AS exit then
+   kind SD-K-REQUIRED = if w p REQUIRED-AS exit then
    p provided ;
 
 \ The loader word at off len, read last as on the native path, takes the path
@@ -1021,8 +1023,8 @@ DYNAMIC-BUFFER SD-DEC u8
 : SD-SCOPE-STEP ( n n -- ) {: off:n len:n :}
    off len SD-TOK$ s" ;" STR:= if SD-LOCALS-RESET 0 SD-DEF ! exit then
    off len SD-TOK$ s" else" STR:=CI if SD-SCOPE-RESTORE exit then
-   off len SD-TOK$ SOURCE:BLOCK-OPENER? if SD-SCOPE-OPEN exit then
-   off len SD-TOK$ SOURCE:BLOCK-CLOSER? if SD-SCOPE-CLOSE then ;
+   off len SD-TOK$ BLOCK-OPENER? if SD-SCOPE-OPEN exit then
+   off len SD-TOK$ BLOCK-CLOSER? if SD-SCOPE-CLOSE then ;
 
 
 \ These type definers consume a declaration through its matching closer. Its names
@@ -1101,7 +1103,7 @@ DYNAMIC-BUFFER SD-DEC u8
    SD-BODY? if
       off len SD-TOK$ SOURCE-SYNTAX:BODY-PARSING-KEYWORD? exit
    then
-   off len SD-TOK$ SOURCE:PARSING-KEYWORD? ;
+   off len SD-TOK$ PARSING-KEYWORD? ;
 
 \ A comment is skipped first, as the loader skips it, and like blanks it keeps a
 \ pending literal path: `s" x.f" ( why ) required` loads x.f. Every other token
@@ -1144,7 +1146,7 @@ DYNAMIC-BUFFER SD-DEC u8
    SD-DEF @ 0= off len SD-SECTION? and if
       off len SD-TOK$ s" global" STR:=CI if 1 else 0 then SD-C-GLOBAL ! exit
    then
-   SD-DEF @ 0= off len SD-TOK$ SOURCE:PACKAGE-KEYWORD? and if
+   SD-DEF @ 0= off len SD-TOK$ PACKAGE-KEYWORD? and if
       SD-RAW {: noff:n nu:n :}
       off len SD-TOK$ s" export" STR:=CI if noff nu SD-R-DECL-NAME then
       exit
@@ -1207,7 +1209,7 @@ DYNAMIC-BUFFER SD-DEC u8
    again ;
 
 : SD-READ-ENTRY ( str -- ) {: ps:str :}
-   ps  ps FS:FILE-SIZE  [: SD-ROOM ;] SOURCE:READ-WHOLE-SAMPLED SD-U !
+   ps  ps FS:FILE-SIZE  [: SD-ROOM ;] READ-WHOLE-SAMPLED SD-U !
    SD-STORAGE @ SPAN:$ STR:DATA SD-A ! ;
 
 : SD-KIND-NAME ( n -- str ) {: ix:n :}
@@ -1216,15 +1218,15 @@ DYNAMIC-BUFFER SD-DEC u8
    s" provided" ;
 
 : SD-EMIT-EVENT ( n ^u8 len ^len -- ) {: ix:n dst:^ cap:len lenp:^ :}
-   ix SD-KIND-NAME dst cap lenp SOURCE:SOURCE-APPEND-BYTES
-   SD-SP dst cap lenp SOURCE:SOURCE-APPEND-C
-   ix SOURCE-EVENT:STATE@ $30 + dst cap lenp SOURCE:SOURCE-APPEND-C
-   SD-SP dst cap lenp SOURCE:SOURCE-APPEND-C
-   ix SOURCE-EVENT:PATH@ dst cap lenp SOURCE:SOURCE-APPEND-QPATH
-   SD-LF dst cap lenp SOURCE:SOURCE-APPEND-C ;
+   ix SD-KIND-NAME dst cap lenp SOURCE-APPEND-BYTES
+   SD-SP dst cap lenp SOURCE-APPEND-C
+   ix SOURCE-EVENT:STATE@ $30 + dst cap lenp SOURCE-APPEND-C
+   SD-SP dst cap lenp SOURCE-APPEND-C
+   ix SOURCE-EVENT:PATH@ dst cap lenp SOURCE-APPEND-QPATH
+   SD-LF dst cap lenp SOURCE-APPEND-C ;
 
 : SD-WALK-IN ( -- )
-   SD-ROOT SD-ROOT-U @ >str [: SD-WALK ;] SOURCE-ROOT:WITH ;
+   SD-ROOT SD-ROOT-U @ >str [: SD-WALK ;] WITH ;
 
 : SELECT-ENTRY ( str str -- ) {: ps:str root:str :}
    0 VERIFY:DISCOVERY-STOPPED !
@@ -1342,4 +1344,6 @@ public
    repeat drop
    SD-EMIT-LEN @ LEN>N ;
 
+;using
+;using
 ;package

@@ -110,6 +110,8 @@ EXPORT BOOT:data-base
 EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-TOP-ONLY
 
+using TASK-ABI
+
 \ Both converters stay private: no caller mints a handle over its own memory or
 \ projects one back to an address.
 CAST: >SEM ( ^n -- sem )
@@ -180,10 +182,10 @@ CAST: TASK-CELL>PTR-SLOT ( ^n -- ^^n )
 CAST: TASK-CELL>XT-SLOT ( ^n -- ^[ -- ] )
 
 : TCB.XT ( ^n -- ^[ -- ] )
-   TASK-ABI:TCB.XT-CELL TASK-CELL>XT-SLOT ;
+   TCB.XT-CELL TASK-CELL>XT-SLOT ;
 
 : TCB.USER-XT ( ^n -- ^[ -- ] )
-   TASK-ABI:TCB.USER-XT-CELL TASK-CELL>XT-SLOT ;
+   TCB.USER-XT-CELL TASK-CELL>XT-SLOT ;
 
 \ ---- host semaphore bindings ----------------------------------------
 \ sem_wait blocks inside the call; that is safe because the generated body
@@ -263,19 +265,19 @@ FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
 \ load. The entry's STLR release-stores DONE, so an owner that polls DONE?
 \ sees every write the body made before it ended.
 : TASK-STATE@ ( ^n -- n )
-   TASK-ABI:TCB.STATUS atomic@ ;
+   TCB.STATUS atomic@ ;
 
 \ Owner-only: PREPARE and ACTIVATE store before pthread_create orders the store
 \ into the thread, TASK-KILL on a task with no thread. A worker publishes DONE,
 \ and TASK-JOIN-RELEASE EMPTY, with a release store.
 : TASK-STATE! ( n ^n -- )
-   TASK-ABI:TCB.STATUS ! ;
+   TCB.STATUS ! ;
 
 : TASK-THROW@ ( ^n -- n )
-   TASK-ABI:TCB.THROW @ ;
+   TCB.THROW @ ;
 
 : TASK-THROW! ( n ^n -- )
-   TASK-ABI:TCB.THROW ! ;
+   TCB.THROW ! ;
 
 : TASK-SELF ( -- ^n )
    data-base TASK-TCB-CELL + @ TASK-N>PTR ;
@@ -294,10 +296,10 @@ host
    SEM-REC FFI:>CELL ;
 
 : SEM-GUARD ( sem -- ^n )
-   SEM-REC TASK-ABI:SEM-GUARD-OFF + ;
+   SEM-REC SEM-GUARD-OFF + ;
 
 : SEM-OBJ ( sem -- ^u8 )
-   SEM-REC BYTE-VIEW TASK-ABI:SEM-OBJ-OFF + ;
+   SEM-REC BYTE-VIEW SEM-OBJ-OFF + ;
 
 \ The guard cell holds the record's OWN
 \ address exactly while the POSIX object behind it is live.
@@ -373,7 +375,7 @@ $40 constant TASK-SEM-POOL-N
 BEGIN-STRUCTURE TASK-SEM-CHUNK-SIZE
    CELL +FIELD SEM-CHUNK.LINK
    TASK-SEM-POOL-N cells +FIELD SEM-CHUNK.USED
-   TASK-SEM-POOL-N TASK-ABI:SEMAPHORE-BYTES * +FIELD SEM-CHUNK.RECS
+   TASK-SEM-POOL-N SEMAPHORE-BYTES * +FIELD SEM-CHUNK.RECS
 END-STRUCTURE
 
 NULL-PTR SEM-CHUNK.USED NULL-PTR - constant TASK-SEM-CHUNK-USED-OFF
@@ -404,7 +406,7 @@ create TASK-SEM-POOL CELL SCRATCH-ALLOT
    c TASK-SEM-CHUNK-USED-OFF + idx cells + TASK-N>PTR ;
 
 : SEM-CHUNK-REC ( n n -- n ) {: c:n idx:n :}
-   c TASK-SEM-CHUNK-RECS-OFF + idx TASK-ABI:SEMAPHORE-BYTES * + ;
+   c TASK-SEM-CHUNK-RECS-OFF + idx SEMAPHORE-BYTES * + ;
 
 \ The used cell moves 0 -> 1 in one step, so racing claimers get different
 \ records. Answers the record, or 0 when the chunk has none free.
@@ -420,9 +422,9 @@ create TASK-SEM-POOL CELL SCRATCH-ALLOT
 : SEM-CHUNK-SLOT ( sem n -- n ) {: s:sem c:n :}
    s SEM>N c 0 SEM-CHUNK-REC - {: off:n :}
    off 0 < if 0 exit then
-   off TASK-SEM-POOL-N TASK-ABI:SEMAPHORE-BYTES * >= if 0 exit then
-   off TASK-ABI:SEMAPHORE-BYTES mod 0 <> if 0 exit then
-   c off TASK-ABI:SEMAPHORE-BYTES / SEM-CHUNK-USED FFI:>CELL ;
+   off TASK-SEM-POOL-N SEMAPHORE-BYTES * >= if 0 exit then
+   off SEMAPHORE-BYTES mod 0 <> if 0 exit then
+   c off SEMAPHORE-BYTES / SEM-CHUNK-USED FFI:>CELL ;
 
 : SEM-POOL-SLOT ( sem -- n ) {: s:sem :}
    SEM-POOL-FIRST
@@ -466,7 +468,7 @@ create TASK-SEM-POOL CELL SCRATCH-ALLOT
    0 slot TASK-N>PTR atomic! ;
 
 : TASK-PARK-SEM ( ^n -- sem )
-   TASK-ABI:TCB.PARK >SEM ;
+   TCB.PARK >SEM ;
 
 \ The park outlives every release of its TCB, TASK:FREE included: a post from
 \ any thread (TASK-WAKE, HALT) is ordered before no KILL, JOIN or ACTIVATE.
@@ -481,7 +483,7 @@ create TASK-SEM-POOL CELL SCRATCH-ALLOT
 \ The main thread has no TCB, so a WAKE of the null TCB posts this record. It
 \ and READY are scratch, so a program starts with no park and its first wake
 \ makes one.
-create MAIN-PARK-REC TASK-ABI:SEMAPHORE-BYTES SCRATCH-ALLOT
+create MAIN-PARK-REC SEMAPHORE-BYTES SCRATCH-ALLOT
 SCRATCH-VARIABLE MAIN-PARK-READY
 
 : MAIN-PARK ( -- sem )
@@ -577,7 +579,7 @@ EXIT-CHUNK-BYTES EXIT-CHUNK-HEAD - EXIT-ROW-BYTES / constant EXIT-CHUNK-ROWS
 TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ] SCRATCH-ONLY
 
 : TASK-DONE-SEM ( ^n -- sem )
-   TASK-ABI:TCB.DONE >SEM ;
+   TCB.DONE >SEM ;
 
 \ Created with the task and destroyed with its memory: a task never activated has nothing to signal, and a released task's record is gone
 \ before the next PREPARE opens a fresh one.
@@ -588,7 +590,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ] SCRATCH-ONLY
    tcb TASK-DONE-SEM SEM-DESTROY ;
 
 : TASK-RESULT? ( ^n -- bool )
-   TASK-ABI:TCB.RESULT-SET atomic@ 0 <> ;
+   TCB.RESULT-SET atomic@ 0 <> ;
 
 \ The answer is single-assignment: the flag moves 0 -> 1 in one step and the
 \ first call wins, so neither a second call nor the task's own cleanup can
@@ -597,24 +599,24 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ] SCRATCH-ONLY
 : TASK-RETURN ( n -- ) {: value:n :}
    TASK-SELF-N 0= if E-TASK-STATE throw then
    TASK-SELF {: self:^ :}
-   0 1 self TASK-ABI:TCB.RESULT-SET atomic-cas 0 <> if E-TASK-STATE throw then
-   value self TASK-ABI:TCB.RESULT ! ;
+   0 1 self TCB.RESULT-SET atomic-cas 0 <> if E-TASK-STATE throw then
+   value self TCB.RESULT ! ;
 
 \ Cleared by ACTIVATE, so a reactivated task answers for its new run alone.
 : TASK-OUTCOME-RESET ( ^n -- ) {: tcb:^ :}
-   0 tcb TASK-ABI:TCB.RESULT !
-   0 tcb TASK-ABI:TCB.RESULT-SET atomic!
-   0 tcb TASK-ABI:TCB.JOINER atomic! ;
+   0 tcb TCB.RESULT !
+   0 tcb TCB.RESULT-SET atomic!
+   0 tcb TCB.JOINER atomic! ;
 
 \ The heads of the task's run and declared chains, read and written under
 \ TASK-EXIT-LOCK, which orders a head and its rows, but by TCB-CLEAR, where no
 \ other task reaches the record.
 : EXIT-HEADS ( ^n -- n n ) {: tcb:^ :}
-   tcb TASK-ABI:TCB.EXIT-RUN @ tcb TASK-ABI:TCB.EXIT-SLOT @ ;
+   tcb TCB.EXIT-RUN @ tcb TCB.EXIT-SLOT @ ;
 
 \ The head of the row's chain.
 : EXIT-HEAD ( n ^n -- ^n ) {: idx:n tcb:^ :}
-   idx TASK-EXIT-TABLE-N < if tcb TASK-ABI:TCB.EXIT-SLOT else tcb TASK-ABI:TCB.EXIT-RUN then ;
+   idx TASK-EXIT-TABLE-N < if tcb TCB.EXIT-SLOT else tcb TCB.EXIT-RUN then ;
 
 : EXIT-CHUNK-FIRST ( n -- n )
    CELL + TASK-N>PTR @ ;
@@ -714,7 +716,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ] SCRATCH-ONLY
 \ The run chain's row that holds the scratch quotation, if any, holds the empty
 \ one instead. It stays linked: TASK-RUN-EXIT-ONE reads EXIT-QT outside the lock.
 : EXIT-BLANK ( ^n -- )
-   TASK-ABI:TCB.EXIT-RUN @ [: EXIT-WANTED? ;] EXIT-CHAIN-FIND {: idx:n held:bool :}
+   TCB.EXIT-RUN @ [: EXIT-WANTED? ;] EXIT-CHAIN-FIND {: idx:n held:bool :}
    held if [: ;] idx EXIT-QT ! then ;
 
 \ The row serves a registration, declared where the flag is true, and owes it.
@@ -727,7 +729,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ] SCRATCH-ONLY
 \ runs the chain; the lock orders this against a registration on any task.
 : EXIT-ROWS-FREE ( ^n -- ) {: tcb:^ :}
    TASK-EXIT-LOCK-GET
-   tcb TASK-ABI:TCB.EXIT-RUN @
+   tcb TCB.EXIT-RUN @
    begin dup 0 <> while
       1 -
       dup EXIT-PAY
@@ -736,7 +738,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ] SCRATCH-ONLY
       1 + TASK-EXIT-FREE !
    repeat
    drop
-   0 tcb TASK-ABI:TCB.EXIT-RUN !
+   0 tcb TCB.EXIT-RUN !
    TASK-EXIT-UNLOCK ;
 
 \ A cleanup that throws ends nothing else: its code becomes the task's error when
@@ -919,7 +921,7 @@ variable ROW-N
 \ Stop mark first, so a cleanup's PAUSE only yields (TCB-HALT-PENDING?); signal
 \ last, so a woken joiner finds cleanups run, outcome final, no row on its region.
 : TASK-END ( -- )
-   1 TASK-SELF TASK-ABI:TCB.STOP !
+   1 TASK-SELF TCB.STOP !
    TASK-RUN-EXIT
    REASON:RELEASE
    REJECTION:FREE
@@ -943,32 +945,32 @@ variable ROW-N
 \ join writes RET, and ACTIVATE writes DBASE, NDICT and CP.
 : TASK-RELEASE-MEM ( ^n -- ) {: tcb:^ :}
    tcb DONE-DESTROY
-   tcb TASK-ABI:TCB.STACK-U @ 0 <> if
-      tcb TASK-ABI:TCB.STACK @ tcb TASK-ABI:TCB.STACK-U @ MEM:RELEASE-GUARDED
-      TASK-NULL tcb TASK-ABI:TCB.STACK !
-      0 tcb TASK-ABI:TCB.STACK-U !
+   tcb TCB.STACK-U @ 0 <> if
+      tcb TCB.STACK @ tcb TCB.STACK-U @ MEM:RELEASE-GUARDED
+      TASK-NULL tcb TCB.STACK !
+      0 tcb TCB.STACK-U !
    then
-   tcb TASK-ABI:TCB.RSTACK-U @ 0 <> if
-      tcb TASK-ABI:TCB.RSTACK @ tcb TASK-ABI:TCB.RSTACK-U @ MEM:RELEASE-GUARDED
-      TASK-NULL tcb TASK-ABI:TCB.RSTACK !
-      0 tcb TASK-ABI:TCB.RSTACK-U !
+   tcb TCB.RSTACK-U @ 0 <> if
+      tcb TCB.RSTACK @ tcb TCB.RSTACK-U @ MEM:RELEASE-GUARDED
+      TASK-NULL tcb TCB.RSTACK !
+      0 tcb TCB.RSTACK-U !
    then
-   tcb TASK-ABI:TCB.LSTACK-U @ 0 <> if
-      tcb TASK-ABI:TCB.LSTACK @ tcb TASK-ABI:TCB.LSTACK-U @ MEM:RELEASE-GUARDED
-      TASK-NULL tcb TASK-ABI:TCB.LSTACK !
-      0 tcb TASK-ABI:TCB.LSTACK-U !
+   tcb TCB.LSTACK-U @ 0 <> if
+      tcb TCB.LSTACK @ tcb TCB.LSTACK-U @ MEM:RELEASE-GUARDED
+      TASK-NULL tcb TCB.LSTACK !
+      0 tcb TCB.LSTACK-U !
    then
-   tcb TASK-ABI:TCB.REGION-U @ 0 <> if
-      tcb TASK-ABI:TCB.REGION @ BYTE-VIEW MEM:RELEASE-SCOPES
-      tcb TASK-ABI:TCB.REGION @ BYTE-VIEW tcb TASK-ABI:TCB.REGION-U @ >str TASK-MUNMAP-SPAN
-      TASK-NULL tcb TASK-ABI:TCB.REGION !
-      0 tcb TASK-ABI:TCB.REGION-U !
+   tcb TCB.REGION-U @ 0 <> if
+      tcb TCB.REGION @ BYTE-VIEW MEM:RELEASE-SCOPES
+      tcb TCB.REGION @ BYTE-VIEW tcb TCB.REGION-U @ >str TASK-MUNMAP-SPAN
+      TASK-NULL tcb TCB.REGION !
+      0 tcb TCB.REGION-U !
    then
-   0 tcb TASK-ABI:TCB.THREAD !
-   0 tcb TASK-ABI:TCB.RET !
-   0 tcb TASK-ABI:TCB.DBASE !
-   0 tcb TASK-ABI:TCB.NDICT !
-   0 tcb TASK-ABI:TCB.CP ! ;
+   0 tcb TCB.THREAD !
+   0 tcb TCB.RET !
+   0 tcb TCB.DBASE !
+   0 tcb TCB.NDICT !
+   0 tcb TCB.CP ! ;
 
 \ ---- every declared TCB ------------------------------------------------------
 \ Head and links (TASK-LINK@) are declared address cells; 0 ends. Read unlocked:
@@ -1094,7 +1096,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    TASK-PTR-SLOT @ ;
 
 : TASK-REGION-INIT ( ^n -- ) {: tcb:^ :}
-   tcb TASK-ABI:TCB.REGION @ {: reg:^ :}
+   tcb TCB.REGION @ {: reg:^ :}
    \ A 0 here would select main's copies.
    reg TASK-REGION-BYTES + FFI:>CELL reg TASK-AREA-OFF + !
    \ DP-CHECK's bounds: zeroed cells would admit a task's `0 allot`.
@@ -1126,12 +1128,12 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    0 reg GENIO-ABI:ACTIVE-CELL + !
    rbase reg RBASE-CELL + !
    data-base reg REGION-ALIAS:DELTA-CELL TASK-COPY-CELL
-   tcb TASK-ABI:TCB.STACK @ reg STACK-ABI:BASE-CELL TASK-PTR!
-   tcb TASK-ABI:TCB.STACK-U @ reg STACK-ABI:CAP-CELL + !
-   tcb TASK-ABI:TCB.RSTACK @ reg STACK-ABI:RETURN-BASE-CELL TASK-PTR!
-   tcb TASK-ABI:TCB.LSTACK @ reg STACK-ABI:LOOP-BASE-CELL TASK-PTR!
+   tcb TCB.STACK @ reg STACK-ABI:BASE-CELL TASK-PTR!
+   tcb TCB.STACK-U @ reg STACK-ABI:CAP-CELL + !
+   tcb TCB.RSTACK @ reg STACK-ABI:RETURN-BASE-CELL TASK-PTR!
+   tcb TCB.LSTACK @ reg STACK-ABI:LOOP-BASE-CELL TASK-PTR!
    0 reg RSP-CELL + !
-   tcb TASK-ABI:TCB.LSTACK @ reg LOOPSP-CELL TASK-PTR!
+   tcb TCB.LSTACK @ reg LOOPSP-CELL TASK-PTR!
    0 reg HND-CELL + !
    0 reg EVALD-CELL + !
    tcb reg TASK-TCB-CELL TASK-PTR!
@@ -1153,16 +1155,16 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    8 / >COUNT MEM-ALLOC-CELLS ;
 
 : TASK-PREPARE-RESOURCES ( ^n -- ) {: tcb:^ :}
-   tcb TASK-ABI:TCB.SIZE @ TASK-STACK-BYTES MEM:ALLOC-GUARDED tcb TASK-ABI:TCB.STACK-U ! tcb TASK-ABI:TCB.STACK !
-   STACK-ABI:RETURN-BYTES MEM:ALLOC-GUARDED tcb TASK-ABI:TCB.RSTACK-U ! tcb TASK-ABI:TCB.RSTACK !
-   STACK-ABI:LOOP-BYTES MEM:ALLOC-GUARDED tcb TASK-ABI:TCB.LSTACK-U ! tcb TASK-ABI:TCB.LSTACK !
+   tcb TCB.SIZE @ TASK-STACK-BYTES MEM:ALLOC-GUARDED tcb TCB.STACK-U ! tcb TCB.STACK !
+   STACK-ABI:RETURN-BYTES MEM:ALLOC-GUARDED tcb TCB.RSTACK-U ! tcb TCB.RSTACK !
+   STACK-ABI:LOOP-BYTES MEM:ALLOC-GUARDED tcb TCB.LSTACK-U ! tcb TCB.LSTACK !
    TASK-REGION-TOTAL {: total:n :}
    total TASK-REGION-MAP
-   total tcb TASK-ABI:TCB.REGION-U !
-   tcb TASK-ABI:TCB.REGION !
+   total tcb TCB.REGION-U !
+   tcb TCB.REGION !
    \ A plain store, as ACTIVATE's: pthread_create orders it into the new thread,
    \ the cell's only writer afterwards (TCB-HALT-PENDING?).
-   0 tcb TASK-ABI:TCB.STOP !
+   0 tcb TCB.STOP !
    tcb TASK-REGION-INIT
    tcb PARK-CREATE
    tcb DONE-INIT
@@ -1173,7 +1175,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ partial record; release it here before propagating the original error.
 : PREPARE ( ^n -- ) {: tcb:^ :}
    tcb TASK-CONSTRUCTED? if exit then
-   tcb TASK-ABI:TCB.SIZE @ TASK-CHECK-SIZE
+   tcb TCB.SIZE @ TASK-CHECK-SIZE
    tcb [: dup TASK-PREPARE-RESOURCES ;] catch {: rc:n :}
    drop
    rc 0<> if
@@ -1183,21 +1185,21 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 
 \ No thread is inside a CONSTRUCTED TCB's region and no row names it.
 : TASK-REGION-FIT ( ^n -- ) {: tcb:^ :}
-   tcb TASK-ABI:TCB.REGION-U @ TASK-REGION-BYTES - TASK-USER-NEXT @ >= if exit then
-   tcb TASK-ABI:TCB.REGION @ {: old:^ :}
-   tcb TASK-ABI:TCB.REGION-U @ {: oldu:n :}
+   tcb TCB.REGION-U @ TASK-REGION-BYTES - TASK-USER-NEXT @ >= if exit then
+   tcb TCB.REGION @ {: old:^ :}
+   tcb TCB.REGION-U @ {: oldu:n :}
    TASK-REGION-TOTAL {: total:n :}
-   total TASK-REGION-MAP tcb TASK-ABI:TCB.REGION !
-   total tcb TASK-ABI:TCB.REGION-U !
+   total TASK-REGION-MAP tcb TCB.REGION !
+   total tcb TCB.REGION-U !
    tcb TASK-REGION-INIT
    old BYTE-VIEW MEM:RELEASE-SCOPES
    old BYTE-VIEW oldu >str TASK-MUNMAP-SPAN ;
 
 : TASK-PTHREAD-CREATE-RC ( ^n -- n ) {: tcb:^ :}
-   tcb TASK-ABI:TCB.THREAD BYTE-VIEW 0 PTHREAD-ENTRY tcb BYTE-VIEW PTHREAD-CREATE-CALL ;
+   tcb TCB.THREAD BYTE-VIEW 0 PTHREAD-ENTRY tcb BYTE-VIEW PTHREAD-CREATE-CALL ;
 
 : TASK-PTHREAD-JOIN-CALL ( ^n -- ) {: tcb:^ :}
-   tcb TASK-ABI:TCB.THREAD @ tcb TASK-ABI:TCB.RET BYTE-VIEW PTHREAD-JOIN-CALL TASK-RC0 ;
+   tcb TCB.THREAD @ tcb TCB.RET BYTE-VIEW PTHREAD-JOIN-CALL TASK-RC0 ;
 
 \ EMPTY is a release store, as DONE is: a TASK:FREE on another
 \ thread that reads it (TASK-STATE@, an acquire load) clears the record, so
@@ -1206,7 +1208,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    tcb TASK-PTHREAD-JOIN-CALL
    TASK-LIVE-
    tcb TASK-RELEASE-MEM
-   TASK-EMPTY tcb TASK-ABI:TCB.STATUS atomic! ;
+   TASK-EMPTY tcb TCB.STATUS atomic! ;
 
 : TASK-RUN-USER ( -- n )
    [: KEY-ENSURE CALLER-REGISTER TASK-SELF TCB.USER-XT @ execute ;] catch ;
@@ -1249,15 +1251,15 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    \ PREPARE: main may still compile between a public PREPARE and this ACTIVATE,
    \ or after a failed create, and the task's NDICT and CP registers, loaded
    \ from these, bound what LIBC-OS:FORK copies on the task.
-   dbase@ tcb TASK-ABI:TCB.DBASE !
-   ndict@ tcb TASK-ABI:TCB.NDICT !
-   LIVE-CP tcb TASK-ABI:TCB.CP !
+   dbase@ tcb TCB.DBASE !
+   ndict@ tcb TCB.NDICT !
+   LIVE-CP tcb TCB.CP !
    \ The park outlives this TCB's earlier runs (PARK-CREATE), so it may hold a
    \ hint posted after a run ended or around a create that failed.
    tcb PARK-DRAIN
    xt tcb TCB.USER-XT !
    ['] TASK-RUNNER tcb TCB.XT !
-   0 tcb TASK-ABI:TCB.STOP !
+   0 tcb TCB.STOP !
    0 tcb TASK-THROW!
    tcb TASK-OUTCOME-RESET
    \ The state the new thread inherits: this store precedes the create and the
@@ -1283,7 +1285,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ thread exists. No other thread writes it, so it is a plain cell, and a second
 \ HALT racing the exit cannot re-arm it.
 : TCB-HALT-PENDING? ( ^n -- bool ) {: tcb:^ :}
-   tcb TASK-STATE@ TASK-HALT-REQ = tcb TASK-ABI:TCB.STOP @ 0= and ;
+   tcb TASK-STATE@ TASK-HALT-REQ = tcb TCB.STOP @ 0= and ;
 
 \ Inside a callback the request stays pending: a throw there would unwind
 \ through C's frames, holding the slot it entered through, with C's call never
@@ -1304,7 +1306,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    TASK-SELF-N dup 0= if drop exit then
    TASK-N>PTR {: self:^ :}
    self TCB-HALT-DUE? if
-      1 self TASK-ABI:TCB.STOP !
+      1 self TCB.STOP !
       1 data-base HALT-UNWIND-CELL + !
       rc halt-throw
    then ;
@@ -1327,7 +1329,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ The post is the only step after the CAS: a task that ends between them is
 \ left at most the one stale hint its next run drains or its re-check absorbs.
 : HALT ( ^n -- ) {: tcb:^ :}
-   TASK-RUNNING TASK-HALT-REQ tcb TASK-ABI:TCB.STATUS atomic-cas {: st:n :}
+   TASK-RUNNING TASK-HALT-REQ tcb TCB.STATUS atomic-cas {: st:n :}
    st TASK-RUNNING <> st TASK-HALT-REQ <> and if exit then
    tcb TASK-PARK-SEM SEM-SIGNAL ;
 
@@ -1419,7 +1421,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    st TASK-EMPTY = if exit then
    st TASK-CONSTRUCTED = if
       tcb TASK-RELEASE-MEM
-      TASK-EMPTY tcb TASK-ABI:TCB.STATUS atomic!
+      TASK-EMPTY tcb TCB.STATUS atomic!
       exit
    then
    st TASK-DONE <> if tcb HALT then
@@ -1436,14 +1438,14 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    tcb TASK-STATE@ {: st:n :}
    st TASK-RUNNING <> st TASK-HALT-REQ <> and st TASK-DONE <> and
       if E-TASK-JOIN throw then
-   0 1 tcb TASK-ABI:TCB.JOINER atomic-cas 0 <> if E-TASK-JOIN throw then ;
+   0 1 tcb TCB.JOINER atomic-cas 0 <> if E-TASK-JOIN throw then ;
 
 \ An error beats a value: a body that returned and then failed in its cleanup did
 \ not finish.
 : TASK-JOIN-ANSWER ( ^n -- result<n,n> ) {: tcb:^ :}
    tcb TASK-THROW@ dup 0 <> if RESULT:ERR exit then
    drop
-   tcb TASK-RESULT? if tcb TASK-ABI:TCB.RESULT @ RESULT:OK exit then
+   tcb TASK-RESULT? if tcb TCB.RESULT @ RESULT:OK exit then
    E-TASK-NO-RESULT RESULT:ERR ;
 
 \ The release is the one TASK:KILL does, which is why a joined task needs no
@@ -1491,13 +1493,13 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    size TASK-CHECK-SIZE
    TCB-TAKE dup 0= if drop TCB-GROW then
    TASK-N>PTR {: tcb:^ :}
-   size tcb TASK-ABI:TCB.SIZE !
+   size tcb TCB.SIZE !
    tcb ;
 
 \ Zeroes the TCB but its park, which a post in flight may still meet.
 : TCB-CLEAR ( ^n -- ) {: tcb:^ :}
    TASK-ABI:PARK-OFF 0 ?do 0 tcb i + ! CELL +loop
-   TASK-TCB-BYTES TASK-ABI:PARK-OFF TASK-ABI:SEMAPHORE-BYTES + ?do 0 tcb i + ! CELL +loop ;
+   TASK-TCB-BYTES TASK-ABI:PARK-OFF SEMAPHORE-BYTES + ?do 0 tcb i + ! CELL +loop ;
 
 \ Of two TASK:FREEs on one task only one proceeds and the other is rejected; a
 \ task in any state but EMPTY is rejected. The record is cleared before its claim
@@ -1643,7 +1645,7 @@ CAST: >SLOT-AT ( n -- ^t )
 : HIS ( ^n ^t -- ^t ) {: tcb:^ cur:^ :}
    data-base TASK-AREA-OFF + @ {: area:n :}
    area 0= if cur MAIN-SLOT-OFF else cur FFI:>CELL area - then
-   tcb TASK-ABI:TCB.REGION @ TASK-REGION-BYTES + FFI:>CELL + >SLOT-AT ;
+   tcb TCB.REGION @ TASK-REGION-BYTES + FFI:>CELL + >SLOT-AT ;
 
 \ The record is this process's lock and its holder, so every cell is a scratch
 \ cell, which a link writes zero.
@@ -1691,7 +1693,7 @@ CAST: >SLOT-AT ( n -- ^t )
    f FACILITY-MUTEX BYTE-VIEW MUTEX-UNLOCK-CALL TASK-RC0 ;
 
 : SEMAPHORE ( -- )
-   create TASK-ABI:SEMAPHORE-BYTES SCRATCH-ALLOT
+   create SEMAPHORE-BYTES SCRATCH-ALLOT
    does> ( -- TASK:sem ) CELL-VIEW >SEM ;
 
 \ ---- sleeping ----------------------------------------------------------------
@@ -2056,6 +2058,8 @@ TASK-FACILITY-BYTES constant FACILITY-BYTES
 \ that did not come from the pool is E-TASK-SEM-POOL.
 : FREE-SEMAPHORE ( sem -- )
    SEM-FREE ;
+
+;using
 
 seal-package
 

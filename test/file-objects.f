@@ -1719,7 +1719,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" probe-swl" s" get-current search-wl 0= if 0 else 1 then" s" probe-swl2" LOOKUP-RUN ;
 
 : SCOPE-FIND-CASE ( CMD:command -- CMD:command )
-   s" probe-find" s" scope-find drop NULL-PTR = if 0 else 1 then" s" probe-find2"
+   s" probe-find" s" scope-find drop drop drop NULL-PTR = if 0 else 1 then" s" probe-find2"
    LOOKUP-RUN ;
 
 \ The public-lookup sequence's s.f: package FILE-OBJECTS-QS with a private HELPER of value n.
@@ -2134,8 +2134,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ each other, mtlink holding the closed mtnode by value; mt-main.f's mtuser holds
 \ an mtlink by value, its MAIN prints 7, and the text given follows.
 : WRITE-MT-MAIN ( str -- ) {: c:str :}
-   s" mt.f" REQUIRE+
-   s\" STRUCTURE mtuser DERIVE addr\n   FIELD l FILE-OBJECTS-MUTUAL:mtlink\n;STRUCTURE\n" SRC+
+   s" mt.f" REQUIRE+  s\" using FILE-OBJECTS-MUTUAL\n" SRC+
+   s\" STRUCTURE mtuser DERIVE addr\n   FIELD l mtlink\n;STRUCTURE\n" SRC+
    s\" : MAIN ( -- ) 7 . ;\n" SRC+  c SRC+  s" mt-main.f" NEST-WRITE ;
 
 : WRITE-MUTUAL ( -- )
@@ -2487,15 +2487,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" TURNS-TURN:MAKE 3 TURNS-BOX:MAKE ;\n;package\n" SRC+
    s" t.f" NEST-WRITE ;
 
-\ bare.f spells TURNS:turn itself, boxed.f only inside
+\ bare.f spells turn bare under `using TURNS`, boxed.f only inside
 \ TURNS:box<TURNS:turn>: each a typed buffer's stride and an effect.
 : WRITE-PACKAGED ( -- )
    L$ s" packaged" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
    NEST-DIR NEST-DIR-U @ >str FS:MAKE-DIR
    false WRITE-TURNS
-   s\" 4 TYPED-BUFFER BT TURNS:turn\n" SRC+
+   s\" using TURNS\n4 TYPED-BUFFER BT turn\n" SRC+
    s\" : B-STEP ( -- n ) 1 BT NULL-PTR -  0 BT NULL-PTR -  - ;\n" SRC+
-   s\" : W ( TURNS:turn -- n ) drop 7 ;\n" SRC+  s" bare.f" NEST-WRITE
+   s\" : W ( turn -- n ) drop 7 ;\n;using\n" SRC+  s" bare.f" NEST-WRITE
    s\" 4 TYPED-BUFFER UT TURNS:box<TURNS:turn>\n" SRC+
    s\" : U-STEP ( -- n ) 1 UT NULL-PTR -  0 UT NULL-PTR -  - ;\n" SRC+
    s\" : V ( TURNS:box<TURNS:turn> -- n ) drop 8 ;\n" SRC+
@@ -2505,7 +2505,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" 12 TURNS:MAKE-BOX V . . ;\n" SRC+
    s" main.f" NEST-WRITE ;
 
-\ Guards a packaged type its users name: after turn gains a field,
+\ Guards a packaged type its user names by its tail: after turn gains a field,
 \ PK2 compiles bare.f and boxed.f, and its program prints a cold build's
 \ strides, W's 7, V's 8 and the numbers under them.
 : PACKAGED-CASE ( CMD:command -- CMD:command )

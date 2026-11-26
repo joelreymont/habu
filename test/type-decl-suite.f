@@ -12,6 +12,8 @@ require src/lib/fs.f
 require src/lib/process-argv.f
 require src/lib/fs-mutate.f
 
+using TYPE-DECL
+
 T-RESET
 
 \ Evaluate a declaration string through evaluate-closed, returning its throw
@@ -1023,7 +1025,7 @@ NEWTYPE tres<a>
 ;package
 
 \ package-scoped SIG resolution: unqualified family tokens resolve through the
-\ ACTIVE package, then the globals; qualified PKG:tail folds
+\ ACTIVE package, then the globals and `using` imports; qualified PKG:tail folds
 \ the qualifier, requires a lowercase tail, and resolves public rows only (plus
 \ the active package's own private rows).
 package tdpa
@@ -1145,7 +1147,7 @@ s" TPC-PKG-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-CROSS-A ( span<n,n,n> -- TDPM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-CROSS-B ( TDPM:span<n,n,n,n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 \ A foreign private row is invisible, and a foreign public family needs its
-\ package named: the one public `tier` does not resolve bare.
+\ package named or imported: the one public `tier` does not resolve bare.
 s" TPC-PRIVATE-HIDDEN ( TDPM:tier<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-PUBLIC-BARE ( tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-PUBLIC-QUAL ( OTHER:tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -2761,3 +2763,5 @@ TD-JSON-WAS @ REJECTION:JSON !
 
 \ A failure prints F<index> + detail; T-REPORT exits 1.
 T-REPORT
+
+;using

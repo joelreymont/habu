@@ -15,6 +15,7 @@ require test/browser/turn-revision.f
 
 package APP-TURN
 private
+using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ^u8 )
 CAST: BYTES>N ( ^u8 -- n )
@@ -122,7 +123,7 @@ variable FILE-SIZE
 
 
 : TYPED ( -- )
-   1 BROWSER-EVENT:EVENT@ 2 BROWSER-EVENT:EVENT@ {: at:n u:n :}
+   1 EVENT@ 2 EVENT@ {: at:n u:n :}
    CALL
    at u s" rpc" IS? if 1 RPC exit then
    at u s" two" IS? if 1 RPC 2 RPC exit then
@@ -163,21 +164,21 @@ variable FILE-SIZE
 \ answered <c> <d> <json>, then a space and the bytes after the
 \ JSON when there are any
 : ANSWERED ( -- )
-   1 BROWSER-EVENT:EVENT@ {: at:n :}
+   1 EVENT@ {: at:n :}
    at LE@ {: ju:n :}
    0 TEXT-U !
-   s" answered " SAY  3 BROWSER-EVENT:EVENT@ SAY-N  4 BROWSER-EVENT:EVENT@ SAY-N
+   s" answered " SAY  3 EVENT@ SAY-N  4 EVENT@ SAY-N
    at 8 + ju SAY-AT
-   at 8 + ju +  2 BROWSER-EVENT:EVENT@ 8 - ju -  SAY-REST  TEXT-RECORD ;
+   at 8 + ju +  2 EVENT@ 8 - ju -  SAY-REST  TEXT-RECORD ;
 
 
 \ notified <method> <params>
 : NOTIFIED ( -- )
-   1 BROWSER-EVENT:EVENT@ {: at:n :}
+   1 EVENT@ {: at:n :}
    at LE@ {: mu:n :}
    0 TEXT-U !
    s" notified " SAY  at 8 + mu SAY-AT  32 SAY-C
-   at 8 + mu +  2 BROWSER-EVENT:EVENT@ 8 - mu -  SAY-AT  TEXT-RECORD
+   at 8 + mu +  2 EVENT@ 8 - mu -  SAY-AT  TEXT-RECORD
    at 8 + mu s" view/restart" IS? if
       s" view/resume" s\" {\"project\":\"p2\"}" MAKE  5 RPC then ;
 
@@ -185,33 +186,33 @@ variable FILE-SIZE
 \ key <KeyboardEvent.key> <mods>
 : KEYED ( -- )
    0 TEXT-U !
-   s" key " SAY  1 BROWSER-EVENT:EVENT@ 2 BROWSER-EVENT:EVENT@ SAY-AT  32 SAY-C  6 BROWSER-EVENT:EVENT@ DIGITS  TEXT-RECORD ;
+   s" key " SAY  1 EVENT@ 2 EVENT@ SAY-AT  32 SAY-C  6 EVENT@ DIGITS  TEXT-RECORD ;
 
 
 \ file <name> <size> <number>
 : FILE ( -- )
-   3 BROWSER-EVENT:EVENT@ FILE-SIZE !  4 BROWSER-EVENT:EVENT@ FILE-NO !
+   3 EVENT@ FILE-SIZE !  4 EVENT@ FILE-NO !
    0 TEXT-U !
-   s" file " SAY  1 BROWSER-EVENT:EVENT@ 2 BROWSER-EVENT:EVENT@ SAY-AT  32 SAY-C
-   3 BROWSER-EVENT:EVENT@ SAY-N  4 BROWSER-EVENT:EVENT@ DIGITS  TEXT-RECORD ;
+   s" file " SAY  1 EVENT@ 2 EVENT@ SAY-AT  32 SAY-C
+   3 EVENT@ SAY-N  4 EVENT@ DIGITS  TEXT-RECORD ;
 
 
 \ chunk <file> <offset> <buttons> <each byte in decimal, then a comma>
 : CHUNK ( -- )
-   1 BROWSER-EVENT:EVENT@ 2 BROWSER-EVENT:EVENT@ {: at:n u:n :}
+   1 EVENT@ 2 EVENT@ {: at:n u:n :}
    0 TEXT-U !
-   s" chunk " SAY  3 BROWSER-EVENT:EVENT@ SAY-N  4 BROWSER-EVENT:EVENT@ SAY-N  5 BROWSER-EVENT:EVENT@ SAY-N
+   s" chunk " SAY  3 EVENT@ SAY-N  4 EVENT@ SAY-N  5 EVENT@ SAY-N
    u 0 ?do at i + >BYTES c@ DIGITS 44 SAY-C loop
    TEXT-RECORD ;
 
 
 : TICK ( -- )
-   0 TEXT-U !  s" tick " SAY  1 BROWSER-EVENT:EVENT@ DIGITS  TEXT-RECORD ;
+   0 TEXT-U !  s" tick " SAY  1 EVENT@ DIGITS  TEXT-RECORD ;
 
 
 : DISPATCH ( -- )
-   0 BROWSER-EVENT:EVENT@ {: kind:n :}
-   kind 0 = if 0 BROWSER-EVENT:EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD exit then
+   0 EVENT@ {: kind:n :}
+   kind 0 = if 0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD exit then
    kind 4 = if TYPED exit then
    kind 8 = if KEYED exit then
    kind 3 = if ANSWERED exit then
@@ -223,8 +224,9 @@ variable FILE-SIZE
 public
 
 : TURN ( -- )
-   [: DISPATCH ;] BROWSER-EVENT:HANDLE ;
+   [: DISPATCH ;] HANDLE ;
 
+;using
 ;package
 
 : MAIN ( -- ) APP-TURN:TURN ;

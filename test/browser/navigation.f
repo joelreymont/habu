@@ -8,6 +8,7 @@ require test/browser/turn-revision.f
 
 package NAV
 private
+using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ^u8 )
 CAST: BYTES>N ( ^u8 -- n )
@@ -134,7 +135,7 @@ variable PRESS-MODS
 
 : START ( -- )
    INIT-GEOMETRY
-   0 BROWSER-EVENT:EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
+   0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
    ROWS s\" ,\"more\":true}]" SB-APPEND SB$ 2 TREE
    104 7 MESH 1 HIGHLIGHT 2 DRAW ;
 
@@ -147,11 +148,11 @@ variable PRESS-MODS
 
 : EVENT-TEXT ( -- )
    0 TEXT-U !
-   0 BROWSER-EVENT:EVENT@ SIGNED 58 CHAR+
-   1 BROWSER-EVENT:EVENT@ SIGNED 44 CHAR+ 2 BROWSER-EVENT:EVENT@ SIGNED
-   64 CHAR+ 3 BROWSER-EVENT:EVENT@ SIGNED 44 CHAR+ 4 BROWSER-EVENT:EVENT@ SIGNED
-   32 CHAR+ 5 BROWSER-EVENT:EVENT@ SIGNED 44 CHAR+ 6 BROWSER-EVENT:EVENT@ SIGNED
-   0 BROWSER-EVENT:EVENT@ 6 = if
+   0 EVENT@ SIGNED 58 CHAR+
+   1 EVENT@ SIGNED 44 CHAR+ 2 EVENT@ SIGNED
+   64 CHAR+ 3 EVENT@ SIGNED 44 CHAR+ 4 EVENT@ SIGNED
+   32 CHAR+ 5 EVENT@ SIGNED 44 CHAR+ 6 EVENT@ SIGNED
+   0 EVENT@ 6 = if
       s"  pressed " SAY PRESS-BUTTONS @ SIGNED 44 CHAR+ PRESS-MODS @ SIGNED
    then
    TEXT-RECORD ;
@@ -163,25 +164,25 @@ variable PRESS-MODS
    \ The answer's bytes in hex, then c,d buttons,mods.
    0 TEXT-U !
    s" occluded " SAY
-   2 BROWSER-EVENT:EVENT@ 0 ?do
-      1 BROWSER-EVENT:EVENT@ i + >BYTES c@ {: v:n :}  v 4 rshift HEX+  v 15 and HEX+
+   2 EVENT@ 0 ?do
+      1 EVENT@ i + >BYTES c@ {: v:n :}  v 4 rshift HEX+  v 15 and HEX+
    loop
-   32 CHAR+ 3 BROWSER-EVENT:EVENT@ SIGNED 44 CHAR+ 4 BROWSER-EVENT:EVENT@ SIGNED
-   32 CHAR+ 5 BROWSER-EVENT:EVENT@ SIGNED 44 CHAR+ 6 BROWSER-EVENT:EVENT@ SIGNED
+   32 CHAR+ 3 EVENT@ SIGNED 44 CHAR+ 4 EVENT@ SIGNED
+   32 CHAR+ 5 EVENT@ SIGNED 44 CHAR+ 6 EVENT@ SIGNED
    TEXT-RECORD ;
 
 : KEY-TEXT ( -- )
    0 TEXT-U !
    s" key " SAY
-   1 BROWSER-EVENT:EVENT@ >BYTES 2 BROWSER-EVENT:EVENT@ >str SAY
-   32 CHAR+ 3 BROWSER-EVENT:EVENT@ SIGNED 44 CHAR+ 4 BROWSER-EVENT:EVENT@ SIGNED
-   32 CHAR+ 6 BROWSER-EVENT:EVENT@ SIGNED
+   1 EVENT@ >BYTES 2 EVENT@ >str SAY
+   32 CHAR+ 3 EVENT@ SIGNED 44 CHAR+ 4 EVENT@ SIGNED
+   32 CHAR+ 6 EVENT@ SIGNED
    TEXT-RECORD ;
 
 : IS? ( str -- bool )
    {: s:str :}
-   2 BROWSER-EVENT:EVENT@ s STR:LEN <> if false exit then
-   s STR:LEN 0 ?do 1 BROWSER-EVENT:EVENT@ i + >BYTES c@ s STR:DATA i + c@ <> if false unloop exit then loop
+   2 EVENT@ s STR:LEN <> if false exit then
+   s STR:LEN 0 ?do 1 EVENT@ i + >BYTES c@ s STR:DATA i + c@ <> if false unloop exit then loop
    true ;
 
 : INVALID ( -- )
@@ -229,21 +230,22 @@ variable PRESS-MODS
       s\" [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"},{\"key\":2,\"parent\":1,\"label\":\"Part\"},{\"key\":3,\"parent\":2,\"label\":\"Face\"}]" 3 TREE exit then ;
 
 : DISPATCH ( -- )
-   0 BROWSER-EVENT:EVENT@ {: kind:n :}
+   0 EVENT@ {: kind:n :}
    kind 0 = if START exit then
    kind 4 = if INVALID exit then
-   kind 10 = if 2 BROWSER-EVENT:EVENT@ 1 = if OPENED exit then then
+   kind 10 = if 2 EVENT@ 1 = if OPENED exit then then
    kind 8 = if KEY-TEXT exit then
    kind 19 = if OCCLUDED-TEXT exit then
    kind 20 = if exit then
-   kind 2 = if 5 BROWSER-EVENT:EVENT@ PRESS-BUTTONS ! 6 BROWSER-EVENT:EVENT@ PRESS-MODS ! then
+   kind 2 = if 5 EVENT@ PRESS-BUTTONS ! 6 EVENT@ PRESS-MODS ! then
    EVENT-TEXT ;
 
 public
 
 : TURN ( -- )
-   [: DISPATCH ;] BROWSER-EVENT:HANDLE ;
+   [: DISPATCH ;] HANDLE ;
 
+;using
 ;package
 
 : MAIN ( -- ) NAV:TURN ;

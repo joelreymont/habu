@@ -19,6 +19,8 @@ require src/lib/zip-state.f
 require src/lib/zip-types.f
 
 package ZIP
+using FFI
+using MEM
 
 : PATH-CHECK ( n -- )
    {: len:n :}
@@ -31,7 +33,7 @@ package ZIP
 CAST: MAPPED>RAW ( n -- ^u8 )
 
 $4000 constant FILE-CHUNK
-PATH-CAP FFI:CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
+PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 
 \ The path, which the task's next temp reuses, goes into room allocated first,
 \ so the node owns the file once it is made; the exit removes it unless the
@@ -39,7 +41,7 @@ PATH-CAP FFI:CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 : SNAPSHOT-WORK ( ^n ^u8 -- ^n ^u8 )
    {: node:^ copy:^ :}
    s" habu-zip-source" FS:MKTEMP FD>N node SNAP-FD ! {: path:str :}
-   path copy SNAPSHOT-ROOM SPAN:MAKE FFI:CSTR
+   path copy SNAPSHOT-ROOM SPAN:MAKE CSTR
    node SOURCE-PTR ! path STR:LEN node SOURCE-LEN ! 1 node SOURCE-LIVE !
    path FS:CLEANUP+
    node copy ;
@@ -76,8 +78,8 @@ PATH-CAP FFI:CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 : OPEN-WORK ( ^n str n -- ^n str n )
    {: node:^ path:str flags:n :}
    flags node MODE !
-   path STR:LEN FFI:CSTR-ROOM {: room:n :}
-   path node room BUFFER-ALLOC room SPAN:MAKE FFI:CSTR node PATH-PTR !
+   path STR:LEN CSTR-ROOM {: room:n :}
+   path node room BUFFER-ALLOC room SPAN:MAKE CSTR node PATH-PTR !
    path STR:LEN node PATH-LEN !
    node SNAPSHOT-OPEN
    path node PATH-PTR @ COMPILE-READS:FILE+
@@ -393,4 +395,6 @@ public
 \ Discards pending changes.
 : CLOSE ( archive -- ) ARCHIVE-NODE DISCARD-NODE ;
 
+;using
+;using
 ;package

@@ -1765,6 +1765,17 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdbcolon BUFFER b SDB-N13 ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbcolon`\n" DECL-DIAG:HAS? TTRUE
 s" SDB-N13" s" buffer byte count must be a number or a constant above 0" DECL-DIAG:CAUSE? TTRUE
+\ A count name a used public shares with a global is rejected as a call of it.
+package SDBPA
+public
+13 constant DREC
+;package
+using SDBPA
+DECL-DIAG:PROSE
+s" STRUCTURE sdbshadow BUFFER b DREC ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-USING-SHADOW-GLOBAL]: `DREC` is both a global word and a public of used package `SDBPA`\n" DECL-DIAG:HAS? TTRUE
+s" ^^^^ ambiguous here" DECL-DIAG:HAS? TTRUE
+;using
 DECL-DIAG:OFF
 
 \ DERIVE eq, hash and init are each rejected with a buffer.

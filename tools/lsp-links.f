@@ -16,6 +16,7 @@ require src/lib/json/read.f
 require src/lib/json/write.f
 
 package LSP-LINKS
+using JSON
 
 private
 
@@ -33,18 +34,18 @@ variable SHOWN-N                         \ and the links written so far
 \ The member whose key the reader is at, decoded; one a link needs nothing
 \ of, passed over.
 : MEMBER ( JSON:reader -- JSON:reader )
-   s" path" JSON:READ-STR-EQ? if JSON:READ-NEXT drop PATH-B @ JSON:READ-STR drop exit then
-   s" outcome" JSON:READ-STR-EQ? if JSON:READ-NEXT drop s" held" JSON:READ-STR-EQ? HELD ! exit then
-   JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
+   s" path" READ-STR-EQ? if READ-NEXT drop PATH-B @ READ-STR drop exit then
+   s" outcome" READ-STR-EQ? if READ-NEXT drop s" held" READ-STR-EQ? HELD ! exit then
+   READ-NEXT drop READ-SKIP-VALUE ;
 
 : DECODE ( str -- )
    {: s:str :}
    PATH-B @ 0 VEC:RESIZE
    false HELD !
-   JSON-ST s JSON:READ-INIT
-   JSON:READ-NEXT drop
-   begin JSON:READ-NEXT JSON:T-KEY = while MEMBER repeat
-   JSON:READ-CLOSE ;
+   JSON-ST s READ-INIT
+   READ-NEXT drop
+   begin READ-NEXT T-KEY = while MEMBER repeat
+   READ-CLOSE ;
 
 \ A loader that held its file (the engine provided it, or a load before recorded
 \ it) says so, naming the file as hover does: relative to the server's working
@@ -60,12 +61,12 @@ variable SHOWN-N                         \ and the links written so far
    {: s:str :}
    s DECODE
    OUT @
-   SHOWN-N @ 0 > if JSON:WRITE-COMMA then
-   JSON:WRITE-OBJECT-START
-   s LSP-TEXT:RANGE JSON:WRITE-COMMA
-   s" target" PATH$ LSP-DEFS:DEP-URI$ JSON:WRITE-FIELD-S
-   HELD @ if JSON:WRITE-COMMA s" tooltip" HELD-TIP JSON:WRITE-FIELD-S then
-   JSON:WRITE-OBJECT-END drop
+   SHOWN-N @ 0 > if WRITE-COMMA then
+   WRITE-OBJECT-START
+   s LSP-TEXT:RANGE WRITE-COMMA
+   s" target" PATH$ LSP-DEFS:DEP-URI$ WRITE-FIELD-S
+   HELD @ if WRITE-COMMA s" tooltip" HELD-TIP WRITE-FIELD-S then
+   WRITE-OBJECT-END drop
    1 SHOWN-N +! ;
 
 public
@@ -79,8 +80,9 @@ public
    w OUT !
    0 SHOWN-N !
    slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
-   w JSON:WRITE-ARRAY-START drop
+   w WRITE-ARRAY-START drop
    slot LSP-DOCS:DOC-LOADS$ [: LINK ;] LSP-LINE:EACH-LINE
-   w JSON:WRITE-ARRAY-END ;
+   w WRITE-ARRAY-END ;
 
+;using
 ;package

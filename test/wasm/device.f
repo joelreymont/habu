@@ -29,6 +29,7 @@ require test/browser/take-test.f
 
 package WASM-DEVICE
 private
+using WASM-W03
 
 PATH-CAP BUFFER: DIR
 variable DIR-U
@@ -48,34 +49,34 @@ variable PATH-U
    PATH PATH-U @ >str ;
 
 \ ---- bodies, in WASM-W03's buffer, test/wasm/w03.f --------------------------------
-: S32, ( n -- )   WASM-W03:ROOM WLEB:S32! WASM-W03:BODY-U +! ;
-: S64, ( n -- )   WASM-W03:ROOM WLEB:S64! WASM-W03:BODY-U +! ;
+: S32, ( n -- )   ROOM WLEB:S32! BODY-U +! ;
+: S64, ( n -- )   ROOM WLEB:S64! BODY-U +! ;
 
 \ The body as kernel function 0 of a new link, of no lanes.
 : KERNEL0 ( -- )
    WLINK:RESET
-   WASM-W03:BODY$ 0 0 0 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ drop ;
+   BODY$ 0 0 0 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ drop ;
 
 \ ---- one function ------------------------------------------------------------------
 $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN-N
 : TEXT$ ( -- str )  S\" wasm ok\n" ;
 
 \ i32.const ctx's base, the address of a store into one of its fields.
-: CTX, ( -- )  $41 WASM-W03:B, WPROF:CTX-BASE S32, ;
+: CTX, ( -- )  $41 B, WPROF:CTX-BASE S32, ;
 
 \ TEXT$ into OUT a byte at a time and its length into out-len, CODE into the
 \ throw code, then status 1.
 : THROWER ( -- )
-   0 WASM-W03:BODY-U !
-   0 WASM-W03:B,
+   0 BODY-U !
+   0 B,
    TEXT$ {: t:str :}
    t STR:LEN 0 do
-      $41 WASM-W03:B, WPROF:OUT-BASE i + S32,  $41 WASM-W03:B, t STR:DATA i + c@ S32,  $3A WASM-W03:B, 0 WASM-W03:B, 0 WASM-W03:B,
+      $41 B, WPROF:OUT-BASE i + S32,  $41 B, t STR:DATA i + c@ S32,  $3A B, 0 B, 0 B,
    loop
-   CTX,  $41 WASM-W03:B, t STR:LEN S32,  $36 WASM-W03:B, 2 WASM-W03:B, WPROF:CTX-OUT-LEN WASM-W03:B,
-   CTX,  $42 WASM-W03:B, CODE S64,  $37 WASM-W03:B, 3 WASM-W03:B, WPROF:CTX-THROW-CODE WASM-W03:B,
-   $41 WASM-W03:B, 1 S32,
-   $0B WASM-W03:B, ;
+   CTX,  $41 B, t STR:LEN S32,  $36 B, 2 B, WPROF:CTX-OUT-LEN B,
+   CTX,  $42 B, CODE S64,  $37 B, 3 B, WPROF:CTX-THROW-CODE B,
+   $41 B, 1 S32,
+   $0B B, ;
 
 : ONE-ROW ( -- )
    THROWER KERNEL0
@@ -90,7 +91,7 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
    WASM-HARNESS:THROW-CODE CODE T= ;
 
 : TRAP-ROW ( -- )
-   0 WASM-W03:BODY-U !  0 WASM-W03:B,  $00 WASM-W03:B,  $0B WASM-W03:B,            \ unreachable
+   0 BODY-U !  0 B,  $00 B,  $0B B,            \ unreachable
    KERNEL0
    0 s" trap.wasm" MODULE {: s:str :}
    s" a body that traps validates" T-LABEL
@@ -99,7 +100,7 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
    s WASM-HARNESS:RUN 2 T= ;
 
 : INVALID-ROW ( -- )
-   0 WASM-W03:BODY-U !  0 WASM-W03:B,  $42 WASM-W03:B, 0 S64,  $0B WASM-W03:B,     \ an i64 for its i32 status
+   0 BODY-U !  0 B,  $42 B, 0 S64,  $0B B,     \ an i64 for its i32 status
    KERNEL0
    0 s" invalid.wasm" MODULE {: s:str :}
    s" a body answering the wrong type is invalid" T-LABEL
@@ -109,8 +110,8 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
 
 \ ---- W03 -------------------------------------------------------------------------
 : W03-ROW ( -- )
-   WASM-W03:BUILD
-   WASM-W03:CHAIN s" w03.wasm" MODULE {: s:str :}
+   BUILD
+   CHAIN s" w03.wasm" MODULE {: s:str :}
    s" W03's module validates" T-LABEL
    s WASM-HARNESS:VALID? TTRUE
    s" W03's module runs to status 0" T-LABEL

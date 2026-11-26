@@ -27,6 +27,9 @@ CAST: >I64 ( n -- i64 )
 \ record the engine's lookup binds to a scope by it.
 5 constant DICT-WORDLIST-SLOT
 
+\ The scope-find flag bit set when two used publics hold the tail.
+2 constant SCOPE-FIND-AMBIGUOUS
+
 variable RDP
 
 : RD32 {: p:^ :} ( ^u8 -- n )

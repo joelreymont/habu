@@ -3,7 +3,6 @@
 
 import argparse
 from pathlib import Path
-import re
 import struct
 import subprocess
 
@@ -19,17 +18,11 @@ def run(command, **kwargs):
     return result.stdout
 
 
-def qualify(package, expression):
-    """Write each word of an expression as package:WORD; numbers stay as they are."""
-    return " ".join(token if re.fullmatch(r"-?[0-9]+|\$[0-9A-Fa-f]+", token)
-                    else f"{package}:{token}" for token in expression.split())
-
-
 def habu_words(package, source, expressions, projection):
     path = OUT / f"{package.lower()}-values.f"
-    lines = [f"require {source}", ": VALUES ( -- )"]
-    lines += [f"  {qualify(package, expression + ' ' + projection)} ." for expression in expressions]
-    lines += [";", "VALUES"]
+    lines = [f"require {source}", f"using {package}", ": VALUES ( -- )"]
+    lines += [f"  {expression} {projection} ." for expression in expressions]
+    lines += [";", "VALUES", ";using"]
     path.write_text("\n".join(lines) + "\n")
     values = run([str(ROOT / "bin/hb"), str(path)], input="")
     return [int(value) for value in values.split()]

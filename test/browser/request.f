@@ -8,6 +8,7 @@ require test/browser/turn-revision.f
 
 package REQUEST-TURN
 private
+using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ^u8 )
 CAST: BYTES>N ( ^u8 -- n )
@@ -70,7 +71,7 @@ variable TEXT-U
    0 REQ-C $FF REQ-C ;
 
 : TYPED ( -- )
-   1 BROWSER-EVENT:EVENT@ 2 BROWSER-EVENT:EVENT@ {: at:n u:n :}
+   1 EVENT@ 2 EVENT@ {: at:n u:n :}
    MAKE
    at u s" trap" IS? if SINK exit then
    at u s" throw" IS? if $20000000000001 REQUEST 94 throw then
@@ -158,27 +159,27 @@ variable TEXT-U
    REQUEST ;
 
 : ANSWERED ( -- )
-   3 BROWSER-EVENT:EVENT@ 470 = if 99 0 0 0 RECORD exit then
-   3 BROWSER-EVENT:EVENT@ 471 = if SINK exit then
+   3 EVENT@ 470 = if 99 0 0 0 RECORD exit then
+   3 EVENT@ 471 = if SINK exit then
    0 TEXT-U !
-   4 BROWSER-EVENT:EVENT@ DIGITS 32 SAY-C 3 BROWSER-EVENT:EVENT@ DIGITS 32 SAY-C
-   5 BROWSER-EVENT:EVENT@ DIGITS 44 SAY-C 6 BROWSER-EVENT:EVENT@ DIGITS 32 SAY-C
-   1 BROWSER-EVENT:EVENT@ 2 BROWSER-EVENT:EVENT@ {: at:n u:n :}
+   4 EVENT@ DIGITS 32 SAY-C 3 EVENT@ DIGITS 32 SAY-C
+   5 EVENT@ DIGITS 44 SAY-C 6 EVENT@ DIGITS 32 SAY-C
+   1 EVENT@ 2 EVENT@ {: at:n u:n :}
    u 0 ?do at i + >BYTES c@ DIGITS 44 SAY-C loop
    TEXT-RECORD
-   3 BROWSER-EVENT:EVENT@ 202 = if
+   3 EVENT@ 202 = if
       0 REQ-U ! s" /followup" REQ+ 42 REQ-C
       4 REQ BYTES>N REQ-U @ 9 RECORD
    then ;
 
 : BYTES ( -- )
    0 TEXT-U !
-   5 BROWSER-EVENT:EVENT@ DIGITS 44 SAY-C 6 BROWSER-EVENT:EVENT@ DIGITS
+   5 EVENT@ DIGITS 44 SAY-C 6 EVENT@ DIGITS
    TEXT-RECORD ;
 
 : DISPATCH ( -- )
-   0 BROWSER-EVENT:EVENT@ {: kind:n :}
-   kind 0 = if 0 BROWSER-EVENT:EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD exit then
+   0 EVENT@ {: kind:n :}
+   kind 0 = if 0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD exit then
    kind 4 = if TYPED exit then
    kind 3 = if ANSWERED exit then
    kind 1 = if BYTES exit then ;
@@ -186,8 +187,9 @@ variable TEXT-U
 public
 
 : TURN ( -- )
-   [: DISPATCH ;] BROWSER-EVENT:HANDLE ;
+   [: DISPATCH ;] HANDLE ;
 
+;using
 ;package
 
 : MAIN ( -- ) REQUEST-TURN:TURN ;

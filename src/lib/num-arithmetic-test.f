@@ -83,16 +83,18 @@ RT
 STAT
 
 package NUM-ARITH-TEST
+using NUM
+using PROP
 private
 
 : OFFSET-BOUNDS ( -- )
-   0 OKBO 0 OKBL NUM:BYTE-OFF-IN-LEN? TFALSE
-   0 OKBO 1 OKBL NUM:BYTE-OFF-IN-LEN? TTRUE
-   1 OKBO 1 OKBL NUM:BYTE-OFF-IN-LEN? TFALSE
-   $10000 OKBO 1 OKBL NUM:BYTE-OFF-IN-LEN? TFALSE
-   1 OKBO $10000 OKBL NUM:BYTE-OFF-IN-LEN? TTRUE
-   T-MAX-N 1- OKBO T-MAX-N OKBL NUM:BYTE-OFF-IN-LEN? TTRUE
-   T-MAX-N OKBO T-MAX-N OKBL NUM:BYTE-OFF-IN-LEN? TFALSE ;
+   0 OKBO 0 OKBL BYTE-OFF-IN-LEN? TFALSE
+   0 OKBO 1 OKBL BYTE-OFF-IN-LEN? TTRUE
+   1 OKBO 1 OKBL BYTE-OFF-IN-LEN? TFALSE
+   $10000 OKBO 1 OKBL BYTE-OFF-IN-LEN? TFALSE
+   1 OKBO $10000 OKBL BYTE-OFF-IN-LEN? TTRUE
+   T-MAX-N 1- OKBO T-MAX-N OKBL BYTE-OFF-IN-LEN? TTRUE
+   T-MAX-N OKBO T-MAX-N OKBL BYTE-OFF-IN-LEN? TFALSE ;
 
 variable LOWER-PAIR-N
 variable UPPER-PAIR-N
@@ -141,17 +143,17 @@ variable ZERO-BITS
 : CMP-PROP-ROW ( n n -- )
    {: x:n y:n :}
    x y < if
-      x OKBO y OKBL NUM:BYTE-OFF-IN-LEN? TTRUE
+      x OKBO y OKBL BYTE-OFF-IN-LEN? TTRUE
    else
-      x OKBO y OKBL NUM:BYTE-OFF-IN-LEN? TFALSE
+      x OKBO y OKBL BYTE-OFF-IN-LEN? TFALSE
    then ;
 
 \ Three 31-bit draws span 0..T-MAX-N. The third draw's high bit supplies
 \ cell bit 62; the alternating low bit is not used.
 : RND-N ( -- n )
-   PROP:RND
-   PROP:RND 31 lshift or
-   PROP:RND 32 lshift T-LARGEST-POW2 and or
+   RND
+   RND 31 lshift or
+   RND 32 lshift T-LARGEST-POW2 and or
    dup NOTE-BIT-COVERAGE ;
 
 : PROPERTY-ROW ( -- )
@@ -160,15 +162,15 @@ variable ZERO-BITS
    x y CMP-PROP-ROW ;
 
 : PROPERTIES ( -- )
-   314159 512 PROP:RUN-RESET
+   314159 512 RUN-RESET
    COVERAGE-RESET
-   PROP:COUNT@ 0 ?do
+   COUNT@ 0 ?do
       PROPERTY-ROW
    loop
    COVERAGE-CHECK ;
 
-\ The advance is called by prefix throughout, as NUM:BYTE+: a bare `BYTE+` is
-\ the raw primitive.
+\ The advance is called QUALIFIED throughout: `using NUM` is in scope here and
+\ the raw `BYTE+` primitive shares the tail, so a bare call would be ambiguous.
 \ Byte i of the buffer carries the value i, so the byte read back after advancing
 \ by i IS the offset that was advanced by - a wrong or ignored offset shows up as
 \ a wrong byte rather than as a crash.
@@ -218,4 +220,6 @@ create BP-BUF 16 allot
    T-REPORT ;
 
 RUN
+;using
+;using
 ;package

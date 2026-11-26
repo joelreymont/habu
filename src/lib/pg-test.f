@@ -30,11 +30,14 @@ package PG-TEST
 
 TYPED-VARIABLE POLL-FD n
 
+\ Resolve the OS primitive before importing PG's POLL.
 : READY? ( fd n -- bool ) {: socket:fd events:n :}
    events 32 lshift socket FD>N $FFFFFFFF and or POLL-FD !
    POLL-FD 1 0 poll {: count:n :}
    count 0 < if PG:E-EXEC throw then
    count 0 > ;
+
+using PG
 
 -77 constant BOOM
 20 constant CONNECTIONS
@@ -52,15 +55,15 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : OPEN ( -- PG:connection )
-   CONNECTIONS RESULTS PG:CONFIGURE
-   CONNINFO$ s" " PG:CONNECT MATCH PG:connect-result
+   CONNECTIONS RESULTS CONFIGURE
+   CONNINFO$ s" " CONNECT MATCH PG:connect-result
       connected OF ENDOF
-      rejected OF type cr PG:E-CONNECT throw ENDOF
+      rejected OF type cr E-CONNECT throw ENDOF
    ;MATCH ;
 
 
 : OUTCOME-TAG ( PG:result -- PG:result n )
-   PG:OUTCOME MATCH PG:outcome
+   OUTCOME MATCH PG:outcome
       ok OF TAG-OK ENDOF
       rows OF TAG-ROWS ENDOF
       failed OF 2drop TAG-FAILED ENDOF
@@ -68,7 +71,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : FAILED-SQLSTATE$ ( PG:result -- PG:result str )
-   PG:OUTCOME MATCH PG:outcome
+   OUTCOME MATCH PG:outcome
       ok OF s" <ok>" ENDOF
       rows OF s" <rows>" ENDOF
       failed OF drop ENDOF
@@ -76,7 +79,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : FAILED-MESSAGE$ ( PG:result -- PG:result str )
-   PG:OUTCOME MATCH PG:outcome
+   OUTCOME MATCH PG:outcome
       ok OF s" " ENDOF
       rows OF s" " ENDOF
       failed OF nip ENDOF
@@ -84,7 +87,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : EXEC-TAG ( PG:connection str -- n )
-   [: OUTCOME-TAG swap ;] PG:WITH-RESULT ;
+   [: OUTCOME-TAG swap ;] WITH-RESULT ;
 
 
 : EXEC-OK ( PG:connection str -- )
@@ -94,7 +97,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 \ A connection to port 1 fails before any protocol runs, so the arm carries
 \ libpq's own message and no connection is left behind.
 : PORT-REJECTED$ ( -- str )
-   s" host=127.0.0.1 port=1 dbname=none user=none" s" " PG:CONNECT
+   s" host=127.0.0.1 port=1 dbname=none user=none" s" " CONNECT
    MATCH PG:connect-result
       connected OF PG:CLOSE s" " ENDOF
       rejected OF ENDOF
@@ -112,26 +115,26 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : AWAIT-REJECTED ( str -- )
-   s" " PG:CONNECT-START {: rejected :}
+   s" " CONNECT-START {: rejected :}
    rejected PG:AWAIT MATCH PG:progress
       rejected OF drop true ENDOF
       connected OF PG:CLOSE false ENDOF
       waiting OF 2drop false ENDOF
-      completed OF PG:CLEAR false ENDOF
+      completed OF CLEAR false ENDOF
    ;MATCH TTRUE
    rejected PG:LIVE? TFALSE
    rejected [: CLOSE-KEEP ;] catch {: stale code:n :}
-   code PG:E-HANDLE T= ;
+   code E-HANDLE T= ;
 
 
 : CONNECT-NUL ( -- )
    S\" host=127.0.0.1 port=1\x00 dbname=none" s" "
-   PG:CONNECT-START PG:CLOSE ;
+   CONNECT-START PG:CLOSE ;
 
 
 : PASSWORD-NUL ( -- )
    s" host=127.0.0.1 port=1 dbname=none" S\" pw\x00x"
-   PG:CONNECT-START PG:CLOSE ;
+   CONNECT-START PG:CLOSE ;
 
 
 : CONNECT-TEXT-CASES ( -- )
@@ -155,11 +158,11 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 : MISSING-DB ( str -- PG:connect-result )
    {: name:str :}
    SB-RESET CONNINFO$ SB-APPEND s"  dbname=" SB-APPEND name SB-APPEND
-   SB$ s" " PG:CONNECT ;
+   SB$ s" " CONNECT ;
 
 : REJECTED$ ( PG:connect-result -- str )
    MATCH PG:connect-result
-      connected OF PG:CLOSE PG:E-CONNECT throw ENDOF
+      connected OF PG:CLOSE E-CONNECT throw ENDOF
       rejected OF ENDOF
    ;MATCH ;
 
@@ -201,7 +204,7 @@ TASK:MIN-STACK TASK:TASK LONG-REJECTED-WORKER
 
 : SOCKET-REJECTION-CASES ( -- )
    s" a connection libpq rejects at once answers its text" T-LABEL
-   SOCKET-CONNINFO$ s" " PG:CONNECT REJECTED$ STR:LEN 0 > TTRUE
+   SOCKET-CONNINFO$ s" " CONNECT REJECTED$ STR:LEN 0 > TTRUE
    s" an attempt libpq rejects at once is rejected by AWAIT" T-LABEL
    SOCKET-CONNINFO$ AWAIT-REJECTED ;
 
@@ -209,16 +212,16 @@ TASK:MIN-STACK TASK:TASK LONG-REJECTED-WORKER
 \ The attempt keeps no slot, as CAPACITY-CASES then needs.
 : MALFORMED-CASES ( -- )
    s" a conninfo libpq cannot parse throws E-CONNECT" T-LABEL
-   [: s" postgresql://u:SECRETPW%zz@127.0.0.1:1/db" s" " PG:CONNECT-START
+   [: s" postgresql://u:SECRETPW%zz@127.0.0.1:1/db" s" " CONNECT-START
       PG:CLOSE ;]
-   PG:E-CONNECT TTHROWSQ ;
+   E-CONNECT TTHROWSQ ;
 
 
 : CAPACITY-CASES ( -- )
    s" application-declared connections remain usable at capacity" T-LABEL
    CONNECTIONS 0 ?do OPEN i HELD-CONNS ! loop
-   [: OPEN PG:CLOSE ;] PG:E-CAPACITY TTHROWSQ
-   [: CONNECTIONS 1+ RESULTS PG:CONFIGURE ;] PG:E-CAPACITY TTHROWSQ
+   [: OPEN PG:CLOSE ;] E-CAPACITY TTHROWSQ
+   [: CONNECTIONS 1+ RESULTS CONFIGURE ;] E-CAPACITY TTHROWSQ
    0 HELD-CONNS @ {: stale :}
    stale PG:CLOSE
    stale PG:LIVE? TFALSE
@@ -227,7 +230,7 @@ TASK:MIN-STACK TASK:TASK LONG-REJECTED-WORKER
    0 HELD-CONNS @ PG:LIVE? TTRUE
    CONNECTIONS 0 ?do
       i HELD-CONNS @ {: c :}
-      c s" select 42" [: 0 PG:>ROW 0 PG:>COL PG:INT 42 T= ;] PG:WITH-RESULT
+      c s" select 42" [: 0 >ROW 0 >COL INT 42 T= ;] WITH-RESULT
       c PG:CLOSE
    loop ;
 
@@ -238,7 +241,7 @@ TASK:MIN-STACK TASK:TASK LONG-REJECTED-WORKER
 TYPED-VARIABLE HELD-ID n
 
 : HELD-EXEC ( -- )
-   HELD-ID @ PG:OF-ID s" select 1" [: ;] PG:WITH-RESULT ;
+   HELD-ID @ PG:OF-ID s" select 1" [: ;] WITH-RESULT ;
 
 
 : IDENTITY-CASES ( -- )
@@ -247,10 +250,10 @@ TYPED-VARIABLE HELD-ID n
    c PG:ID HELD-ID !
    HELD-ID @ PG:OF-ID {: held :}
    held s" select 1" EXEC-TAG TAG-ROWS T=
-   held PG:IDLE? TTRUE
+   held IDLE? TTRUE
    c PG:CLOSE
    HELD-ID @ PG:OF-ID PG:LIVE? TFALSE
-   ['] HELD-EXEC PG:E-HANDLE TTHROWSQ
+   ['] HELD-EXEC E-HANDLE TTHROWSQ
    OPEN {: fresh :}
    HELD-ID @ PG:OF-ID PG:LIVE? TFALSE
    fresh PG:LIVE? TTRUE
@@ -271,63 +274,63 @@ TYPED-VARIABLE HELD-ID n
       c PG:POLL MATCH PG:progress
          waiting OF AWAIT-READY ENDOF
          connected OF exit ENDOF
-         rejected OF drop PG:E-CONNECT throw ENDOF
-         completed OF PG:CLEAR PG:E-CONNECT throw ENDOF
+         rejected OF drop E-CONNECT throw ENDOF
+         completed OF CLEAR E-CONNECT throw ENDOF
       ;MATCH
       TASK:PAUSE
    again ;
 
 : OPEN-POLL ( -- PG:connection )
-   CONNINFO$ s" " PG:CONNECT-START POLL-CONNECTED ;
+   CONNINFO$ s" " CONNECT-START POLL-CONNECTED ;
 
 : RESULT-POLL ( PG:connection -- PG:result ) {: c :}
    begin
       c PG:POLL MATCH PG:progress
          waiting OF AWAIT-READY ENDOF
          completed OF exit ENDOF
-         connected OF drop PG:E-EXEC throw ENDOF
-         rejected OF drop PG:E-EXEC throw ENDOF
+         connected OF drop E-EXEC throw ENDOF
+         rejected OF drop E-EXEC throw ENDOF
       ;MATCH
       TASK:PAUSE
    again ;
 
 : POLL-EXEC ( PG:connection str -- PG:result ) {: c s:str :}
-   c s PG:SEND c RESULT-POLL ;
+   c s SEND c RESULT-POLL ;
 
 : SEND-SELECT ( PG:connection -- PG:connection )
-   dup s" select 1" PG:SEND ;
+   dup s" select 1" SEND ;
 
 : PROGRESS-CASES ( -- )
    s" one task releases a lock another query is waiting for" T-LABEL
    OPEN-POLL {: holder :}
    OPEN-POLL {: waiter :}
-   holder s" select pg_advisory_lock(987654)" POLL-EXEC PG:CLEAR
-   waiter s" select pg_advisory_lock(987654)" PG:SEND
+   holder s" select pg_advisory_lock(987654)" POLL-EXEC CLEAR
+   waiter s" select pg_advisory_lock(987654)" SEND
    waiter PG:POLL MATCH PG:progress
       waiting OF 2drop true ENDOF
-      completed OF PG:CLEAR false ENDOF
+      completed OF CLEAR false ENDOF
       connected OF drop false ENDOF
       rejected OF drop false ENDOF
    ;MATCH TTRUE
    waiter [: SEND-SELECT ;] catch {: held code:n :}
-   code PG:E-STATEMENT T=
+   code E-STATEMENT T=
    holder s" select pg_advisory_unlock(987654)::int" POLL-EXEC
-   0 PG:>ROW 0 PG:>COL PG:INT 1 T= PG:CLEAR
-   waiter RESULT-POLL OUTCOME-TAG TAG-ROWS T= PG:CLEAR
+   0 >ROW 0 >COL INT 1 T= CLEAR
+   waiter RESULT-POLL OUTCOME-TAG TAG-ROWS T= CLEAR
    \ Closing with a query in flight releases its reserved result as well.
-   holder s" select pg_advisory_lock(987654)" PG:SEND
+   holder s" select pg_advisory_lock(987654)" SEND
    holder PG:CLOSE
-   waiter s" select pg_advisory_unlock(987654)::int" POLL-EXEC PG:CLEAR
+   waiter s" select pg_advisory_unlock(987654)::int" POLL-EXEC CLEAR
    waiter PG:CLOSE ;
 
 : SEND-REJECTED ( PG:connection -- PG:connection ) {: c :}
    c [: SEND-SELECT ;] catch {: held code:n :}
-   code PG:E-CAPACITY T=
+   code E-CAPACITY T=
    c ;
 
 : HOLD-RESULTS ( PG:connection n -- PG:connection ) {: c k:n :}
    k 0= if c SEND-REJECTED exit then
-   c s" select 7" POLL-EXEC c k 1- RECURSE swap PG:CLEAR ;
+   c s" select 7" POLL-EXEC c k 1- RECURSE swap CLEAR ;
 
 : RESULT-CAPACITY-CASES ( -- )
    s" closed pending queries leave the declared result capacity available" T-LABEL
@@ -343,7 +346,7 @@ TYPED-VARIABLE HELD-ID n
    c PG:AWAIT MATCH PG:progress
       waiting OF 2drop ENDOF
       connected OF drop ENDOF
-      completed OF PG:CLEAR ENDOF
+      completed OF CLEAR ENDOF
       rejected OF drop ENDOF
    ;MATCH
    c ;
@@ -354,7 +357,7 @@ TYPED-VARIABLE HELD-ID n
 
 : AIO-FAIL-CASES ( -- )
    OPEN {: c :}
-   c s" select pg_sleep(10)" PG:SEND
+   c s" select pg_sleep(10)" SEND
    c [: STOPPED-AWAIT ;] catch {: stale code:n :}
    code E-AIO-STATE T=
    c PG:LIVE? TFALSE ;
@@ -368,30 +371,30 @@ TYPED-VARIABLE HELD-ID n
 
 
 : INSERT-ROW ( PG:connection n str -- ) {: c id:n ls:str :}
-   c PG:PARAMS
-   c id PG:INT+
-   c ls PG:TEXT+
-   c PG:NULL+
+   c PARAMS
+   c id INT+
+   c ls TEXT+
+   c NULL+
    c s" insert into pqt (id, label, note) values ($1, $2, $3)"
-   [: OUTCOME-TAG TAG-OK T= PG:AFFECTED COUNT>N 1 T= ;] PG:WITH-RESULT ;
+   [: OUTCOME-TAG TAG-OK T= AFFECTED COUNT>N 1 T= ;] WITH-RESULT ;
 
 
 : SELECTED ( PG:result -- PG:result )
    OUTCOME-TAG TAG-ROWS T=
-   PG:ROWS COUNT>N 1 T=
-   PG:COLS COUNT>N 3 T=
-   0 PG:>COL PG:NAME$ s" id" T$=
-   1 PG:>COL PG:NAME$ s" label" T$=
-   0 PG:>ROW 0 PG:>COL PG:INT 1 T=
-   0 PG:>ROW 1 PG:>COL PG:TEXT$ s" one" T$=
-   0 PG:>ROW 1 PG:>COL PG:NULL? TFALSE
-   0 PG:>ROW 2 PG:>COL PG:NULL? TTRUE ;
+   ROWS COUNT>N 1 T=
+   COLS COUNT>N 3 T=
+   0 >COL NAME$ s" id" T$=
+   1 >COL NAME$ s" label" T$=
+   0 >ROW 0 >COL INT 1 T=
+   0 >ROW 1 >COL TEXT$ s" one" T$=
+   0 >ROW 1 >COL NULL? TFALSE
+   0 >ROW 2 >COL NULL? TTRUE ;
 
 
 : SELECT-CASES ( PG:connection -- PG:connection ) {: c :}
-   c PG:PARAMS
-   c 1 PG:INT+
-   c s" select id, label, note from pqt where id = $1" [: SELECTED ;] PG:WITH-RESULT
+   c PARAMS
+   c 1 INT+
+   c s" select id, label, note from pqt where id = $1" [: SELECTED ;] WITH-RESULT
    c ;
 
 
@@ -402,32 +405,32 @@ TYPED-VARIABLE HELD-ID n
 
 
 : NUL-LEADING ( PG:connection -- PG:connection )
-   dup S\" \x00A" PG:TEXT+ ;
+   dup S\" \x00A" TEXT+ ;
 
 : NUL-EMBEDDED ( PG:connection -- PG:connection )
-   dup S\" A\x00B" PG:TEXT+ ;
+   dup S\" A\x00B" TEXT+ ;
 
 : NUL-TRAILING ( PG:connection -- PG:connection )
-   dup S\" A\x00" PG:TEXT+ ;
+   dup S\" A\x00" TEXT+ ;
 
 : TEXT-BOUNDARY-CASES ( PG:connection -- PG:connection )
    {: c :}
    s" text parameters reject NUL without losing staged parameters" T-LABEL
-   c PG:PARAMS
-   c s" kept" PG:TEXT+
+   c PARAMS
+   c s" kept" TEXT+
    c [: NUL-LEADING ;] catch {: stale-lead lead-code:n :}
    lead-code E-FFI-NUL T=
    c [: NUL-EMBEDDED ;] catch {: stale-mid mid-code:n :}
    mid-code E-FFI-NUL T=
    c [: NUL-TRAILING ;] catch {: stale-tail tail-code:n :}
    tail-code E-FFI-NUL T=
-   c s" select $1::text" [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" kept" T$= ;] PG:WITH-RESULT
+   c s" select $1::text" [: 0 >ROW 0 >COL TEXT$ s" kept" T$= ;] WITH-RESULT
    s" empty and UTF-8 text parameters round trip exactly" T-LABEL
-   c PG:PARAMS
-   c s" " PG:TEXT+
-   c S\" \xc3\xa9A" PG:TEXT+
+   c PARAMS
+   c s" " TEXT+
+   c S\" \xc3\xa9A" TEXT+
    c s" select $1::text, $2::text"
-   [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" " T$= 0 PG:>ROW 1 PG:>COL PG:TEXT$ S\" \xc3\xa9A" T$= ;] PG:WITH-RESULT
+   [: 0 >ROW 0 >COL TEXT$ s" " T$= 0 >ROW 1 >COL TEXT$ S\" \xc3\xa9A" T$= ;] WITH-RESULT
    c ;
 
 
@@ -455,49 +458,49 @@ TYPED-VARIABLE HELD-ID n
 
 
 : HEX-ANSWER ( PG:result -- PG:result )
-   0 PG:>ROW 0 PG:>COL PG:TEXT$ s" 00ff10" T$= ;
+   0 >ROW 0 >COL TEXT$ s" 00ff10" T$= ;
 
 
 \ One past a C int's largest length; reading it would run past HEX-BYTES.
 : HUGE-BINARY ( PG:connection -- PG:connection )
-   dup HEX-BYTES $80000000 >str PG:BINARY+ ;
+   dup HEX-BYTES $80000000 >str BINARY+ ;
 
 
 : BINARY-CASES ( PG:connection -- PG:connection )
    {: c :}
    HEX-BYTES! REAL-PAIR!
    s" a binary parameter's bytes arrive exactly" T-LABEL
-   c PG:PARAMS
-   c HEX-BYTES 3 >str PG:BINARY+
-   c s" select encode($1::bytea, 'hex')" [: HEX-ANSWER ;] PG:WITH-RESULT
+   c PARAMS
+   c HEX-BYTES 3 >str BINARY+
+   c s" select encode($1::bytea, 'hex')" [: HEX-ANSWER ;] WITH-RESULT
    s" a binary real[] arrives in PostgreSQL's array binary form" T-LABEL
-   c PG:PARAMS
-   c REAL-PAIR 36 >str PG:BINARY+
+   c PARAMS
+   c REAL-PAIR 36 >str BINARY+
    c s" select array_to_string($1::real[], ',')"
-   [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" 1.5,-2" T$= ;] PG:WITH-RESULT
+   [: 0 >ROW 0 >COL TEXT$ s" 1.5,-2" T$= ;] WITH-RESULT
    s" text and binary parameters share one statement" T-LABEL
-   c PG:PARAMS
-   c s" ab" PG:TEXT+
-   c FIVE-BYTES 5 >str PG:BINARY+
+   c PARAMS
+   c s" ab" TEXT+
+   c FIVE-BYTES 5 >str BINARY+
    c s" select $1::text || ':' || length($2::bytea)"
-   [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" ab:5" T$= ;] PG:WITH-RESULT
+   [: 0 >ROW 0 >COL TEXT$ s" ab:5" T$= ;] WITH-RESULT
    s" an empty binary parameter is zero bytes, not NULL" T-LABEL
-   c PG:PARAMS
-   c HEX-BYTES 0 >str PG:BINARY+
+   c PARAMS
+   c HEX-BYTES 0 >str BINARY+
    c s" select length($1::bytea)"
-   [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" 0" T$= ;] PG:WITH-RESULT
+   [: 0 >ROW 0 >COL TEXT$ s" 0" T$= ;] WITH-RESULT
    s" a prepared statement takes a binary parameter" T-LABEL
    c s" pqt_hex" s" select encode($1::bytea, 'hex')"
-   [: OUTCOME-TAG TAG-OK T= ;] PG:WITH-PREPARE
-   c PG:PARAMS
-   c HEX-BYTES 3 >str PG:BINARY+
-   c s" pqt_hex" [: HEX-ANSWER ;] PG:WITH-PREPARED
+   [: OUTCOME-TAG TAG-OK T= ;] WITH-PREPARE
+   c PARAMS
+   c HEX-BYTES 3 >str BINARY+
+   c s" pqt_hex" [: HEX-ANSWER ;] WITH-PREPARED
    s" BINARY+ rejects a length past a C int and keeps what is staged" T-LABEL
-   c PG:PARAMS
-   c s" kept" PG:TEXT+
+   c PARAMS
+   c s" kept" TEXT+
    c [: HUGE-BINARY ;] catch {: stale-huge huge-code:n :}
-   huge-code PG:E-CAPACITY T=
-   c s" select $1::text" [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" kept" T$= ;] PG:WITH-RESULT
+   huge-code E-CAPACITY T=
+   c s" select $1::text" [: 0 >ROW 0 >COL TEXT$ s" kept" T$= ;] WITH-RESULT
    c ;
 
 
@@ -549,31 +552,31 @@ TYPED-VARIABLE HELD-ID n
 
 
 : BINARY-ANSWER ( PG:result -- PG:result )
-   0 PG:>ROW 0 PG:>COL PG:TEXT$ EVERY-BYTE 256 >str T$=
-   0 PG:>ROW 1 PG:>COL PG:TEXT$ s" kept" T$=
-   0 PG:>ROW 2 PG:>COL PG:INT drop ;
+   0 >ROW 0 >COL TEXT$ EVERY-BYTE 256 >str T$=
+   0 >ROW 1 >COL TEXT$ s" kept" T$=
+   0 >ROW 2 >COL INT drop ;
 
 
 : READ-BINARY ( PG:connection -- PG:connection )
-   dup PG:BINARY-RESULT
-   dup EVERY-BYTE-SQL$ [: BINARY-ANSWER ;] PG:WITH-RESULT ;
+   dup BINARY-RESULT
+   dup EVERY-BYTE-SQL$ [: BINARY-ANSWER ;] WITH-RESULT ;
 
 
 : BINARY-RESULT-CASES ( PG:connection -- PG:connection )
    {: c :}
    EVERY-BYTE!
    s" a binary result gives a bytea's and a text's bytes; INT of it is E-TYPE" T-LABEL
-   c PG:PARAMS
+   c PARAMS
    c [: READ-BINARY ;] catch {: stale-bin bin-code:n :}
-   bin-code PG:E-TYPE T=
+   bin-code E-TYPE T=
    s" the query after a binary result is text again" T-LABEL
-   c s" select 1234" [: 0 PG:>ROW 0 PG:>COL PG:INT 1234 T= ;] PG:WITH-RESULT
+   c s" select 1234" [: 0 >ROW 0 >COL INT 1234 T= ;] WITH-RESULT
    s" PARAMS after a call rejected before its send leaves no binary form staged" T-LABEL
-   c PG:BINARY-RESULT
-   c [: dup s" " [: ;] PG:WITH-RESULT ;] catch {: stale-unsent unsent-code:n :}
-   unsent-code PG:E-STATEMENT T=
-   c PG:PARAMS
-   c s" select 1234" [: 0 PG:>ROW 0 PG:>COL PG:INT 1234 T= ;] PG:WITH-RESULT
+   c BINARY-RESULT
+   c [: dup s" " [: ;] WITH-RESULT ;] catch {: stale-unsent unsent-code:n :}
+   unsent-code E-STATEMENT T=
+   c PARAMS
+   c s" select 1234" [: 0 >ROW 0 >COL INT 1234 T= ;] WITH-RESULT
    c ;
 
 
@@ -581,10 +584,10 @@ TYPED-VARIABLE HELD-ID n
 \ then a longer message the connection's copy must grow past the first to hold.
 : RAISED-SAME ( PG:connection str str -- PG:connection )
    {: c same:str ms:str :}
-   c PG:PARAMS
-   c ms PG:TEXT+
+   c PARAMS
+   c ms TEXT+
    c same
-   [: OUTCOME-TAG TAG-ROWS T= 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" t" T$= ;] PG:WITH-RESULT
+   [: OUTCOME-TAG TAG-ROWS T= 0 >ROW 0 >COL TEXT$ s" t" T$= ;] WITH-RESULT
    c ;
 
 
@@ -596,8 +599,8 @@ TYPED-VARIABLE HELD-ID n
 
 : RAISED-WHOLE ( PG:connection str str -- PG:connection )
    {: c raise:str same:str :}
-   c PG:PARAMS
-   c same c raise [: RAISED-BODY ;] PG:WITH-RESULT ;
+   c PARAMS
+   c same c raise [: RAISED-BODY ;] WITH-RESULT ;
 
 
 : LONG-MESSAGE-CASES ( PG:connection -- PG:connection )
@@ -616,7 +619,7 @@ TYPED-VARIABLE HELD-ID n
 \ length, so a copy the connection shared would show the inner bytes.
 : INNER-FAILS ( PG:connection -- PG:connection )
    dup s" do $$ begin raise exception 'inner message'; end $$"
-   [: FAILED-MESSAGE$ s" inner message" T$= ;] PG:WITH-RESULT ;
+   [: FAILED-MESSAGE$ s" inner message" T$= ;] WITH-RESULT ;
 
 
 : NESTED-SPAN-BODY ( PG:connection PG:result -- PG:connection PG:result )
@@ -629,7 +632,7 @@ TYPED-VARIABLE HELD-ID n
 : NESTED-SPAN-CASES ( PG:connection -- PG:connection ) {: c :}
    s" a failed span survives a nested failing statement on its connection" T-LABEL
    c c s" do $$ begin raise exception 'outer message'; end $$"
-   [: NESTED-SPAN-BODY ;] PG:WITH-RESULT ;
+   [: NESTED-SPAN-BODY ;] WITH-RESULT ;
 
 
 \ A deferred constraint fails the COMMIT, not the insert, with a message longer
@@ -641,12 +644,12 @@ TYPED-VARIABLE HELD-ID n
 
 
 : DEFERRED-RUN ( PG:connection -- PG:connection )
-   dup [: DEFERRED-INSERT ;] PG:WITH-TRANSACTION ;
+   dup [: DEFERRED-INSERT ;] WITH-TRANSACTION ;
 
 
 : DEFERRED-FAILS ( PG:connection -- PG:connection ) {: c :}
    c [: DEFERRED-RUN ;] catch {: stale code:n :}
-   code PG:E-EXEC T=
+   code E-EXEC T=
    c ;
 
 
@@ -663,12 +666,12 @@ TYPED-VARIABLE HELD-ID n
    c s" select report_f()"
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" P0001" T$=
-      FAILED-MESSAGE$ s" m" T$= ;] PG:WITH-RESULT
+      FAILED-MESSAGE$ s" m" T$= ;] WITH-RESULT
    s" a comment-only statement fails with an empty report" T-LABEL
    c s" -- only a comment"
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" " T$=
-      FAILED-MESSAGE$ s" " T$= ;] PG:WITH-RESULT
+      FAILED-MESSAGE$ s" " T$= ;] WITH-RESULT
    c ;
 
 
@@ -677,25 +680,25 @@ TYPED-VARIABLE HELD-ID n
    c s" create table held_t (x int)" EXEC-OK
    c s" create function held_f() returns trigger language plpgsql as $$ begin raise exception '%', repeat('z', 100000); end $$" EXEC-OK
    c s" create constraint trigger held_tg after insert on held_t deferrable initially deferred for each row execute function held_f()" EXEC-OK
-   c c s" do $$ begin raise exception 'short'; end $$" [: HELD-SPAN-BODY ;] PG:WITH-RESULT ;
+   c c s" do $$ begin raise exception 'short'; end $$" [: HELD-SPAN-BODY ;] WITH-RESULT ;
 
 
 : PREPARED-INSERT ( PG:connection n str -- ) {: c id:n ls:str :}
-   c PG:PARAMS
-   c id PG:INT+
-   c ls PG:TEXT+
-   c s" pqt-note" PG:TEXT+
-   c s" pqt_ins" [: OUTCOME-TAG TAG-OK T= ;] PG:WITH-PREPARED ;
+   c PARAMS
+   c id INT+
+   c ls TEXT+
+   c s" pqt-note" TEXT+
+   c s" pqt_ins" [: OUTCOME-TAG TAG-OK T= ;] WITH-PREPARED ;
 
 
 : PREPARED-CASES ( PG:connection -- PG:connection ) {: c :}
    c s" pqt_ins" s" insert into pqt (id, label, note) values ($1, $2, $3)"
-   [: OUTCOME-TAG TAG-OK T= ;] PG:WITH-PREPARE
+   [: OUTCOME-TAG TAG-OK T= ;] WITH-PREPARE
    c 10 s" ten" PREPARED-INSERT
    c 11 s" eleven" PREPARED-INSERT
-   c PG:PARAMS
+   c PARAMS
    c s" select count(*) from pqt where note = 'pqt-note'"
-   [: 0 PG:>ROW 0 PG:>COL PG:INT 2 T= ;] PG:WITH-RESULT
+   [: 0 >ROW 0 >COL INT 2 T= ;] WITH-RESULT
    c ;
 
 
@@ -717,46 +720,46 @@ TYPED-VARIABLE HELD-ID n
 
 : DESCRIBED ( PG:result -- PG:result )
    OUTCOME-TAG TAG-OK T=
-   PG:ROWS COUNT>N 0 T=
-   PG:COLS COUNT>N 3 T=
-   0 PG:>COL PG:NAME$ s" nap" T$=
-   1 PG:>COL PG:NAME$ s" ids" T$=
-   2 PG:>COL PG:NAME$ s" label" T$=
-   0 PG:>COL PG:OID VOID-OID T=
-   1 PG:>COL PG:OID INT8-ARRAY-OID T=
-   2 PG:>COL PG:OID TEXT-OID T= ;
+   ROWS COUNT>N 0 T=
+   COLS COUNT>N 3 T=
+   0 >COL NAME$ s" nap" T$=
+   1 >COL NAME$ s" ids" T$=
+   2 >COL NAME$ s" label" T$=
+   0 >COL PG:OID VOID-OID T=
+   1 >COL PG:OID INT8-ARRAY-OID T=
+   2 >COL PG:OID TEXT-OID T= ;
 
 
 : OID-PAST ( PG:connection -- PG:connection )
-   dup DESCRIBED$ [: 3 PG:>COL PG:OID drop ;] PG:WITH-DESCRIPTION ;
+   dup DESCRIBED$ [: 3 >COL PG:OID drop ;] WITH-DESCRIPTION ;
 
 : OID-BEFORE ( PG:connection -- PG:connection )
-   dup DESCRIBED$ [: -1 PG:>COL PG:OID drop ;] PG:WITH-DESCRIPTION ;
+   dup DESCRIBED$ [: -1 >COL PG:OID drop ;] WITH-DESCRIPTION ;
 
 : DESCRIBE-PENDING ( PG:connection -- PG:connection )
-   dup s" select $1::int8" [: ;] PG:WITH-DESCRIPTION ;
+   dup s" select $1::int8" [: ;] WITH-DESCRIPTION ;
 
 
 : DESCRIBE-CASES ( PG:connection -- PG:connection )
    {: c :}
    s" describe answers ordered names and type OIDs without executing" T-LABEL
-   c PG:PARAMS
+   c PARAMS
    mono-ns {: started:n :}
-   c DESCRIBED$ [: DESCRIBED ;] PG:WITH-DESCRIPTION
+   c DESCRIBED$ [: DESCRIBED ;] WITH-DESCRIPTION
    started ELAPSED-MS PROMPT-MS < TTRUE
    c [: OID-PAST ;] catch {: stale-past past-code:n :}
-   past-code PG:E-COLUMN T=
+   past-code E-COLUMN T=
    c [: OID-BEFORE ;] catch {: stale-before before-code:n :}
-   before-code PG:E-COLUMN T=
+   before-code E-COLUMN T=
    s" describe of invalid SQL is a failed outcome on a usable connection" T-LABEL
    c s" selec 1"
-   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 42601" T$= ;] PG:WITH-DESCRIPTION
+   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 42601" T$= ;] WITH-DESCRIPTION
    c s" select 1" EXEC-TAG TAG-ROWS T=
    s" describe rejects a pending parameter list" T-LABEL
-   c 1 PG:INT+
+   c 1 INT+
    c [: DESCRIBE-PENDING ;] catch {: stale-pending pending-code:n :}
-   pending-code PG:E-STATEMENT T=
-   c PG:PARAMS
+   pending-code E-STATEMENT T=
+   c PARAMS
    c ;
 
 
@@ -765,18 +768,18 @@ TYPED-VARIABLE HELD-ID n
 
 
 : SCALAR ( PG:connection str -- n )
-   [: 0 PG:>ROW 0 PG:>COL PG:INT swap ;] PG:WITH-RESULT ;
+   [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
 
 
 : ATTNUM ( PG:connection str -- n ) {: c name:str :}
-   c PG:PARAMS
-   c name PG:TEXT+
+   c PARAMS
+   c name TEXT+
    c s" select attnum from pg_attribute where attrelid = 'pqt'::regclass and attname = $1"
    SCALAR ;
 
 : ORIGIN= ( PG:result n n n -- PG:result ) {: c:n tab:n num:n :}
-   c PG:>COL PG:TABLE tab T=
-   c PG:>COL PG:TABLE-COL num T= ;
+   c >COL TABLE tab T=
+   c >COL TABLE-COL num T= ;
 
 
 : ORIGIN-CHECK ( n n n PG:result -- PG:result )
@@ -792,9 +795,9 @@ TYPED-VARIABLE HELD-ID n
    c s" id" ATTNUM {: id-num:n :}
    c s" label" ATTNUM {: label-num:n :}
    s" a result column names its source table and attnum, 0 for an expression" T-LABEL
-   tab id-num label-num c ORIGIN-SQL$ [: ORIGIN-CHECK ;] PG:WITH-RESULT
+   tab id-num label-num c ORIGIN-SQL$ [: ORIGIN-CHECK ;] WITH-RESULT
    s" a described statement names the same column origins" T-LABEL
-   tab id-num label-num c ORIGIN-SQL$ [: ORIGIN-CHECK ;] PG:WITH-DESCRIPTION
+   tab id-num label-num c ORIGIN-SQL$ [: ORIGIN-CHECK ;] WITH-DESCRIPTION
    c ;
 
 
@@ -802,43 +805,43 @@ TYPED-VARIABLE HELD-ID n
 2000 constant ROOMY-MS
 
 : SLEEP-PAST ( PG:connection -- PG:connection )
-   dup s" select pg_sleep(5)" [: ;] PG:WITH-RESULT ;
+   dup s" select pg_sleep(5)" [: ;] WITH-RESULT ;
 
 : NEGATIVE-BOUND ( PG:connection -- PG:connection )
-   dup -1 >MS PG:DEADLINE! ;
+   dup -1 >MS DEADLINE! ;
 
 : HUGE-BOUND ( PG:connection -- PG:connection )
-   dup $80000000 >MS PG:DEADLINE! ;
+   dup $80000000 >MS DEADLINE! ;
 
 : TX-SLEEP ( PG:connection -- PG:connection )
-   dup [: SLEEP-PAST ;] PG:WITH-TRANSACTION ;
+   dup [: SLEEP-PAST ;] WITH-TRANSACTION ;
 
 \ Two rows of 200 kB, each 150 ms apart: every wait for the next bytes is
 \ shorter than BOUND-MS, the whole statement longer.
 : SPLIT-WAITS ( PG:connection -- PG:connection )
    dup s" select repeat($$x$$, 200000), pg_sleep(0.15) from generate_series(1,2)"
-   [: ;] PG:WITH-RESULT ;
+   [: ;] WITH-RESULT ;
 
 : SLEEPING ( PG:connection n -- n )
    {: w pid:n :}
-   w PG:PARAMS
-   w pid PG:INT+
+   w PARAMS
+   w pid INT+
    w s" select count(*) from pg_stat_activity where pid = $1 and state = 'active' and query like '%pg_sleep(5)%'"
-   [: 0 PG:>ROW 0 PG:>COL PG:INT swap ;] PG:WITH-RESULT ;
+   [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
 
 : OPEN-BOUNDED ( -- PG:connection )
    OPEN {: c :}
    \ The client abandons the sleep without a cancel; the server's
    \ statement_timeout is what ends it.
    c s" set statement_timeout='1s'" EXEC-OK
-   c BOUND-MS >MS PG:DEADLINE!
+   c BOUND-MS >MS DEADLINE!
    c ;
 
 : EXPIRY ( PG:connection -- PG:connection ) {: c :}
    mono-ns {: started:n :}
    c [: SLEEP-PAST ;] catch {: stale code:n :}
    started ELAPSED-MS {: took:n :}
-   code PG:E-DEADLINE T=
+   code E-DEADLINE T=
    took BOUND-MS >= TTRUE
    took PROMPT-MS < TTRUE
    c PG:LIVE? TFALSE
@@ -853,81 +856,81 @@ TYPED-VARIABLE HELD-ID n
 \ The expiry inside the body closes the connection and clears the body's
 \ result with it, so the token's next read throws out of the body.
 : KEPT-BODY ( PG:connection PG:result -- PG:connection PG:result )
-   0 PG:>ROW 0 PG:>COL PG:INT >r
+   0 >ROW 0 >COL INT >r
    swap EXPIRY r> STILL-SLEEPING swap
    s" a result taken before the expiry is cleared with its connection" T-LABEL
-   PG:ROWS drop ;
+   ROWS drop ;
 
 : KEPT-RUN ( PG:connection -- PG:connection )
-   dup s" select pg_backend_pid()" [: KEPT-BODY ;] PG:WITH-RESULT ;
+   dup s" select pg_backend_pid()" [: KEPT-BODY ;] WITH-RESULT ;
 
 
 : DEADLINE-CASES ( -- )
    s" a wait past its deadline closes the connection and throws" T-LABEL
    OPEN-BOUNDED {: c :}
    c [: KEPT-RUN ;] catch {: stale-kept kept-code:n :}
-   kept-code PG:E-CLEARED T=
+   kept-code E-CLEARED T=
    s" one bound covers every wait of an operation" T-LABEL
    OPEN-BOUNDED {: whole :}
    whole [: SPLIT-WAITS ;] catch {: stale-whole whole-code:n :}
-   whole-code PG:E-DEADLINE T=
+   whole-code E-DEADLINE T=
    s" an expiry inside a transaction body skips the rollback" T-LABEL
    OPEN-BOUNDED {: t :}
    t [: TX-SLEEP ;] catch {: stale-tx tx-code:n :}
-   tx-code PG:E-DEADLINE T=
+   tx-code E-DEADLINE T=
    t PG:LIVE? TFALSE
    OPEN {: u :}
    u s" select 1" EXEC-TAG TAG-ROWS T=
-   u PG:IDLE? TTRUE
+   u IDLE? TTRUE
    u PG:CLOSE
    s" describe under a deadline does not run the statement" T-LABEL
    OPEN-BOUNDED {: v :}
    mono-ns {: described:n :}
-   v s" select pg_sleep(5)" [: OUTCOME-TAG TAG-OK T= ;] PG:WITH-DESCRIPTION
+   v s" select pg_sleep(5)" [: OUTCOME-TAG TAG-OK T= ;] WITH-DESCRIPTION
    described ELAPSED-MS BOUND-MS < TTRUE
    v PG:LIVE? TTRUE
    v PG:CLOSE
    s" a bound reads back as last set, 0 when none" T-LABEL
    OPEN {: d :}
-   d PG:DEADLINE@ MS>N 0 T=
-   d ROOMY-MS >MS PG:DEADLINE!
-   d PG:DEADLINE@ MS>N ROOMY-MS T=
-   d 0 >MS PG:DEADLINE!
-   d PG:DEADLINE@ MS>N 0 T=
+   d DEADLINE@ MS>N 0 T=
+   d ROOMY-MS >MS DEADLINE!
+   d DEADLINE@ MS>N ROOMY-MS T=
+   d 0 >MS DEADLINE!
+   d DEADLINE@ MS>N 0 T=
    s" work inside its deadline, or with none, completes" T-LABEL
-   d ROOMY-MS >MS PG:DEADLINE!
+   d ROOMY-MS >MS DEADLINE!
    d s" select pg_sleep(0.3)" EXEC-TAG TAG-ROWS T=
-   d BOUND-MS >MS PG:DEADLINE!
-   d 0 >MS PG:DEADLINE!
+   d BOUND-MS >MS DEADLINE!
+   d 0 >MS DEADLINE!
    d s" select pg_sleep(0.3)" EXEC-TAG TAG-ROWS T=
    d PG:LIVE? TTRUE
    s" a negative deadline bound is a caller error that keeps the bound" T-LABEL
-   d ROOMY-MS >MS PG:DEADLINE!
+   d ROOMY-MS >MS DEADLINE!
    d [: NEGATIVE-BOUND ;] catch {: stale-bound bound-code:n :}
-   bound-code PG:E-BOUND T=
-   d PG:DEADLINE@ MS>N ROOMY-MS T=
+   bound-code E-BOUND T=
+   d DEADLINE@ MS>N ROOMY-MS T=
    s" the widest bound is accepted and one past it is a caller error" T-LABEL
-   d $7FFFFFFF >MS PG:DEADLINE!
+   d $7FFFFFFF >MS DEADLINE!
    d s" select 1" EXEC-TAG TAG-ROWS T=
    d [: HUGE-BOUND ;] catch {: stale-huge huge-code:n :}
-   huge-code PG:E-BOUND T=
+   huge-code E-BOUND T=
    d PG:CLOSE ;
 
 
 : TX-BODY ( PG:connection -- PG:connection )
    dup s" insert into pqt (id, label, note) values (900, 'rolled', null)"
-   [: OUTCOME-TAG TAG-OK T= ;] PG:WITH-RESULT
+   [: OUTCOME-TAG TAG-OK T= ;] WITH-RESULT
    BOOM throw ;
 
 
 : TX-RUN ( PG:connection -- PG:connection )
-   dup [: TX-BODY ;] PG:WITH-TRANSACTION ;
+   dup [: TX-BODY ;] WITH-TRANSACTION ;
 
 
 : COUNT-ID ( PG:connection n -- n ) {: c id:n :}
-   c PG:PARAMS
-   c id PG:INT+
-   c s" select count(*) from pqt where id = $1" [: 0 PG:>ROW 0 PG:>COL PG:INT swap ;] PG:WITH-RESULT ;
+   c PARAMS
+   c id INT+
+   c s" select count(*) from pqt where id = $1" [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
 
 
 : ROLLBACK-CASES ( PG:connection -- PG:connection ) {: c :}
@@ -940,25 +943,25 @@ TYPED-VARIABLE HELD-ID n
 \ The parameters are built before the transaction opens, so BEGIN must leave
 \ the pending list alone.
 : COMMIT-BODY ( PG:connection -- PG:connection )
-   dup PG:IDLE? TFALSE
+   dup IDLE? TFALSE
    dup s" insert into pqt (id, label, note) values ($1, $2, null)"
-   [: OUTCOME-TAG TAG-OK T= ;] PG:WITH-RESULT ;
+   [: OUTCOME-TAG TAG-OK T= ;] WITH-RESULT ;
 
 
 : COMMIT-CASES ( PG:connection -- PG:connection ) {: c :}
-   c PG:PARAMS
-   c 901 PG:INT+
-   c s" kept" PG:TEXT+
-   c [: c COMMIT-BODY drop ;] PG:WITH-TRANSACTION
-   c PG:IDLE? TTRUE
+   c PARAMS
+   c 901 INT+
+   c s" kept" TEXT+
+   c [: c COMMIT-BODY drop ;] WITH-TRANSACTION
+   c IDLE? TTRUE
    c s" begin" EXEC-OK
-   c PG:IDLE? TFALSE
+   c IDLE? TFALSE
    c s" rollback" EXEC-OK
    c 901 COUNT-ID 1 T=
-   c PG:PARAMS
-   c 901 PG:INT+
+   c PARAMS
+   c 901 INT+
    c s" select label from pqt where id = $1"
-   [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" kept" T$= ;] PG:WITH-RESULT
+   [: 0 >ROW 0 >COL TEXT$ s" kept" T$= ;] WITH-RESULT
    c ;
 
 
@@ -970,8 +973,8 @@ TYPED-VARIABLE HELD-ID n
 
 : ANSWER-CASES ( PG:connection -- PG:connection ) {: c :}
    s" a transaction's body answers a value read inside it" T-LABEL
-   c [: c COUNTED-BODY ;] PG:WITH-TRANSACTION 1 T=
-   c PG:IDLE? TTRUE
+   c [: c COUNTED-BODY ;] WITH-TRANSACTION 1 T=
+   c IDLE? TTRUE
    c 902 COUNT-ID 1 T=
    c ;
 
@@ -983,14 +986,14 @@ TYPED-VARIABLE HELD-ID n
 
 
 : SOFT-FAIL-RUN ( PG:connection -- PG:connection )
-   dup [: SOFT-FAIL-BODY ;] PG:WITH-TRANSACTION ;
+   dup [: SOFT-FAIL-BODY ;] WITH-TRANSACTION ;
 
 
 : SOFT-FAIL-CASES ( PG:connection -- PG:connection ) {: c :}
    s" a body that returns after a failed statement rolls back with E-EXEC" T-LABEL
    c [: SOFT-FAIL-RUN ;] catch {: stale code:n :}
-   code PG:E-EXEC T=
-   c PG:IDLE? TTRUE
+   code E-EXEC T=
+   c IDLE? TTRUE
    c 970 COUNT-ID 0 T=
    c ;
 
@@ -1002,14 +1005,14 @@ TYPED-VARIABLE HELD-ID n
 
 
 : OWN-END-RUN ( PG:connection -- PG:connection )
-   dup [: OWN-END-BODY ;] PG:WITH-TRANSACTION ;
+   dup [: OWN-END-BODY ;] WITH-TRANSACTION ;
 
 
 : OWN-END-CASES ( PG:connection -- PG:connection ) {: c :}
    s" a body that ended its own transaction throws E-EXEC" T-LABEL
    c [: OWN-END-RUN ;] catch {: stale code:n :}
-   code PG:E-EXEC T=
-   c PG:IDLE? TTRUE
+   code E-EXEC T=
+   c IDLE? TTRUE
    c 973 COUNT-ID 0 T=
    c ;
 
@@ -1023,32 +1026,32 @@ TYPED-VARIABLE HELD-ID n
 
 
 : REOPEN-RUN ( PG:connection -- PG:connection )
-   dup [: REOPEN-BODY ;] PG:WITH-TRANSACTION ;
+   dup [: REOPEN-BODY ;] WITH-TRANSACTION ;
 
 
 : REOPEN-THROW-BODY ( PG:connection -- PG:connection ) REOPEN-BODY BOOM throw ;
 
 
 : REOPEN-THROW-RUN ( PG:connection -- PG:connection )
-   dup [: REOPEN-THROW-BODY ;] PG:WITH-TRANSACTION ;
+   dup [: REOPEN-THROW-BODY ;] WITH-TRANSACTION ;
 
 
 : PENDING-BODY ( PG:connection -- PG:connection )
-   dup s" select pg_sleep(5)" PG:SEND
+   dup s" select pg_sleep(5)" SEND
    BOOM throw ;
 
 
 : PENDING-RUN ( PG:connection -- PG:connection )
-   dup [: PENDING-BODY ;] PG:WITH-TRANSACTION ;
+   dup [: PENDING-BODY ;] WITH-TRANSACTION ;
 
 
 : LEFT-BODY-CASES ( PG:connection -- PG:connection ) {: c :}
    s" a body that closed its connection commits nothing on the slot's next one" T-LABEL
    OPEN {: t :}
    t [: REOPEN-RUN ;] catch {: stale-reopen reopen-code:n :}
-   reopen-code PG:E-HANDLE T=
+   reopen-code E-HANDLE T=
    0 REOPENED @ {: u :}
-   u PG:IDLE? TFALSE
+   u IDLE? TFALSE
    u s" rollback" EXEC-OK
    u PG:CLOSE
    s" a body that closed its connection and threw rolls back nothing on the slot's next one" T-LABEL
@@ -1056,7 +1059,7 @@ TYPED-VARIABLE HELD-ID n
    w [: REOPEN-THROW-RUN ;] catch {: stale-throw throw-code:n :}
    throw-code BOOM T=
    0 REOPENED @ {: v :}
-   v PG:IDLE? TFALSE
+   v IDLE? TFALSE
    v s" rollback" EXEC-OK
    v PG:CLOSE
    s" a failed rollback closes the connection and the body's throw stands" T-LABEL
@@ -1068,66 +1071,66 @@ TYPED-VARIABLE HELD-ID n
 
 
 : UNIQUE-CASES ( PG:connection -- PG:connection ) {: c :}
-   c PG:PARAMS
+   c PARAMS
    c s" insert into pqt (id, label, note) values (1, 'duplicate', null)"
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" 23505" T$=
-      FAILED-MESSAGE$ STR:LEN 0 > TTRUE ;] PG:WITH-RESULT
+      FAILED-MESSAGE$ STR:LEN 0 > TTRUE ;] WITH-RESULT
    c ;
 
 
 : READ-BAD-COLUMN ( PG:connection -- PG:connection )
    dup s" select id from pqt where id = 1"
-   [: OUTCOME-TAG TAG-ROWS T= 0 PG:>ROW 99 PG:>COL PG:TEXT$ drop ;] PG:WITH-RESULT ;
+   [: OUTCOME-TAG TAG-ROWS T= 0 >ROW 99 >COL TEXT$ drop ;] WITH-RESULT ;
 
 
 : READ-BAD-ROW ( PG:connection -- PG:connection )
-   dup s" select id from pqt where id = 1" [: 99 PG:>ROW 0 PG:>COL PG:TEXT$ drop ;] PG:WITH-RESULT ;
+   dup s" select id from pqt where id = 1" [: 99 >ROW 0 >COL TEXT$ drop ;] WITH-RESULT ;
 
 
 : BAD-COLUMN-CASES ( PG:connection -- PG:connection ) {: c :}
-   c PG:PARAMS
+   c PARAMS
    c [: READ-BAD-COLUMN ;] catch {: stale-col code:n :}
-   code PG:E-COLUMN T=
+   code E-COLUMN T=
    c [: READ-BAD-ROW ;] catch {: stale-row row-code:n :}
-   row-code PG:E-COLUMN T=
+   row-code E-COLUMN T=
    c ;
 
 
 : EXEC-EMPTY ( PG:connection -- PG:connection )
-   dup s" " [: ;] PG:WITH-RESULT ;
+   dup s" " [: ;] WITH-RESULT ;
 
 
 : PREPARE-UNNAMED ( PG:connection -- PG:connection )
-   dup s" " s" select 1" [: ;] PG:WITH-PREPARE ;
+   dup s" " s" select 1" [: ;] WITH-PREPARE ;
 
 
 : EXEC-PREPARED-UNNAMED ( PG:connection -- PG:connection )
-   dup s" " [: ;] PG:WITH-PREPARED ;
+   dup s" " [: ;] WITH-PREPARED ;
 
 
 : EXEC-NUL ( PG:connection -- PG:connection )
-   dup S\" select $1::text\x00; select 2" [: ;] PG:WITH-RESULT ;
+   dup S\" select $1::text\x00; select 2" [: ;] WITH-RESULT ;
 
 : PREPARE-NUL-NAME ( PG:connection -- PG:connection )
-   dup S\" p\x00q" s" select 1" [: ;] PG:WITH-PREPARE ;
+   dup S\" p\x00q" s" select 1" [: ;] WITH-PREPARE ;
 
 : EXEC-NUL-NAME ( PG:connection -- PG:connection )
-   dup S\" p\x00q" [: ;] PG:WITH-PREPARED ;
+   dup S\" p\x00q" [: ;] WITH-PREPARED ;
 
 
 : STATEMENT-BOUNDARY-CASES ( PG:connection -- PG:connection )
    {: c :}
    s" statements and prepared names reject NUL before libpq" T-LABEL
-   c PG:PARAMS
-   c s" kept" PG:TEXT+
+   c PARAMS
+   c s" kept" TEXT+
    c [: EXEC-NUL ;] catch {: stale-sql sql-code:n :}
    sql-code E-FFI-NUL T=
    c [: PREPARE-NUL-NAME ;] catch {: stale-prepare prepare-code:n :}
    prepare-code E-FFI-NUL T=
    c [: EXEC-NUL-NAME ;] catch {: stale-name name-code:n :}
    name-code E-FFI-NUL T=
-   c s" select $1::text" [: 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" kept" T$= ;] PG:WITH-RESULT
+   c s" select $1::text" [: 0 >ROW 0 >COL TEXT$ s" kept" T$= ;] WITH-RESULT
    c ;
 
 
@@ -1136,22 +1139,22 @@ TYPED-VARIABLE HELD-ID n
 \ it by name instead.
 : EMPTY-STATEMENT-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: EXEC-EMPTY ;] catch {: stale-exec code:n :}
-   code PG:E-STATEMENT T=
+   code E-STATEMENT T=
    c [: PREPARE-UNNAMED ;] catch {: stale-prepare prepare-code:n :}
-   prepare-code PG:E-STATEMENT T=
+   prepare-code E-STATEMENT T=
    c [: EXEC-PREPARED-UNNAMED ;] catch {: stale-name name-code:n :}
-   name-code PG:E-STATEMENT T=
+   name-code E-STATEMENT T=
    c ;
 
 
 \ Each repeated case runs one more scope than the registry has result slots, so
 \ a slot a scope failed to retire ends the run in E-CAPACITY.
 : THROW-BODY ( PG:connection -- PG:connection )
-   dup s" select 1" [: BOOM throw ;] PG:WITH-RESULT ;
+   dup s" select 1" [: BOOM throw ;] WITH-RESULT ;
 
 
 : INNER-THROW ( PG:connection -- PG:connection )
-   dup s" select 2" [: BOOM throw ;] PG:WITH-RESULT ;
+   dup s" select 2" [: BOOM throw ;] WITH-RESULT ;
 
 
 : INNER-CAUGHT ( PG:connection -- PG:connection ) {: c :}
@@ -1162,22 +1165,22 @@ TYPED-VARIABLE HELD-ID n
 
 : NESTED-BODY ( PG:connection PG:result -- PG:connection PG:result )
    swap
-   dup s" select 2" [: 0 PG:>ROW 0 PG:>COL PG:INT 2 T= ;] PG:WITH-RESULT
+   dup s" select 2" [: 0 >ROW 0 >COL INT 2 T= ;] WITH-RESULT
    INNER-CAUGHT
    swap
-   0 PG:>ROW 0 PG:>COL PG:INT 1 T= ;
+   0 >ROW 0 >COL INT 1 T= ;
 
 
 : NESTED-RUN ( PG:connection -- PG:connection )
-   dup s" select 1" [: NESTED-BODY ;] PG:WITH-RESULT ;
+   dup s" select 1" [: NESTED-BODY ;] WITH-RESULT ;
 
 
 : HAND-OUTER ( PG:connection PG:result -- PG:connection PG:result )
-   swap dup s" select 2" [: rot ;] PG:WITH-RESULT ;
+   swap dup s" select 2" [: rot ;] WITH-RESULT ;
 
 
 : OUTER-HANDED ( PG:connection -- PG:connection )
-   dup s" select 1" [: HAND-OUTER ;] PG:WITH-RESULT ;
+   dup s" select 1" [: HAND-OUTER ;] WITH-RESULT ;
 
 
 \ CLEAR rejects the body's own token, before the body could hand back another.
@@ -1185,12 +1188,12 @@ variable CLEAR-RETURNED
 
 : SWAP-TOKEN ( PG:connection PG:result -- PG:connection PG:result )
    swap dup s" select 3" POLL-EXEC
-   rot PG:CLEAR
+   rot CLEAR
    1 CLEAR-RETURNED ! ;
 
 
 : CLEAR-SCOPED ( PG:connection -- PG:connection )
-   dup s" select 1" [: SWAP-TOKEN ;] PG:WITH-RESULT ;
+   dup s" select 1" [: SWAP-TOKEN ;] WITH-RESULT ;
 
 
 : SCOPE-CASES ( PG:connection -- PG:connection ) {: c :}
@@ -1204,14 +1207,14 @@ variable CLEAR-RETURNED
    s" an inner body handing back the outer token is E-HANDLE and both retire" T-LABEL
    RESULTS 1+ 0 ?do
       c [: OUTER-HANDED ;] catch {: stale code:n :}
-      code PG:E-HANDLE T=
+      code E-HANDLE T=
    loop
-   c s" select 5" [: 0 PG:>ROW 0 PG:>COL PG:INT 5 T= ;] PG:WITH-RESULT
+   c s" select 5" [: 0 >ROW 0 >COL INT 5 T= ;] WITH-RESULT
    s" CLEAR of a scope's token is E-HANDLE" T-LABEL
    0 CLEAR-RETURNED !
    OPEN {: own :}
    own [: CLEAR-SCOPED ;] catch {: stale-own own-code:n :}
-   own-code PG:E-HANDLE T=
+   own-code E-HANDLE T=
    CLEAR-RETURNED @ 0 T=
    own PG:CLOSE
    c ;
@@ -1243,16 +1246,16 @@ variable STMT-U
 : BIG-TEXT-CASES ( PG:connection -- PG:connection ) {: c :}
    FILL-BIG
    c s" create table pqtbig (id int primary key, body text)" EXEC-OK
-   c PG:PARAMS
-   c 1 PG:INT+
-   c BIG$ PG:TEXT+
+   c PARAMS
+   c 1 INT+
+   c BIG$ TEXT+
    c s" insert into pqtbig (id, body) values ($1, $2)" EXEC-OK
-   c PG:PARAMS
-   c 1 PG:INT+
+   c PARAMS
+   c 1 INT+
    c s" select body, length(body) from pqtbig where id = $1"
    [: OUTCOME-TAG TAG-ROWS T=
-      0 PG:>ROW 1 PG:>COL PG:INT BIG-LEN T=
-      0 PG:>ROW 0 PG:>COL PG:TEXT$ BIG$ T$= ;] PG:WITH-RESULT
+      0 >ROW 1 >COL INT BIG-LEN T=
+      0 >ROW 0 >COL TEXT$ BIG$ T$= ;] WITH-RESULT
    c ;
 
 
@@ -1261,13 +1264,13 @@ variable STMT-U
 
 
 : STMT+ ( str -- ) {: s:str :}
-   STMT-U @ s STR:LEN + STMT-CAP > if PG:E-CAPACITY throw then
+   STMT-U @ s STR:LEN + STMT-CAP > if E-CAPACITY throw then
    s STR:DATA STMT-BUF BYTE-VIEW STMT-U @ + s STR:LEN BYTE-COPY
    STMT-U @ s STR:LEN + STMT-U ! ;
 
 
 : STMT-C+ ( n -- ) {: ch:n :}
-   STMT-U @ 1 + STMT-CAP > if PG:E-CAPACITY throw then
+   STMT-U @ 1 + STMT-CAP > if E-CAPACITY throw then
    ch STMT-BUF BYTE-VIEW STMT-U @ + c!
    STMT-U @ 1 + STMT-U ! ;
 
@@ -1295,8 +1298,8 @@ variable STMT-U
    c s" create table pqtrow (id int primary key)" EXEC-OK
    BIG-VALUES
    STMT$ STR:LEN OLD-STATEMENT-CAP > TTRUE
-   c PG:PARAMS
-   c STMT$ [: OUTCOME-TAG TAG-OK T= PG:AFFECTED COUNT>N BIG-ROWS T= ;] PG:WITH-RESULT
+   c PARAMS
+   c STMT$ [: OUTCOME-TAG TAG-OK T= AFFECTED COUNT>N BIG-ROWS T= ;] WITH-RESULT
    c ;
 
 
@@ -1311,12 +1314,12 @@ variable STMT-U
 
 
 : BIND-WIDE ( PG:connection -- PG:connection )
-   dup PG:PARAMS
-   BIND-MAX 0 ?do dup i PG:INT+ loop ;
+   dup PARAMS
+   BIND-MAX 0 ?do dup i INT+ loop ;
 
 
 : BIND-PAST-MAX ( PG:connection -- PG:connection )
-   dup 0 PG:INT+ ;
+   dup 0 INT+ ;
 
 
 \ The sum reads every value back, so an offset lost as the list grows shows.
@@ -1325,9 +1328,9 @@ variable STMT-U
    c BIND-WIDE drop
    s" a 65536th parameter is rejected and leaves the 65535 to run" T-LABEL
    c [: BIND-PAST-MAX ;] catch {: stale-param code:n :}
-   code PG:E-CAPACITY T=
+   code E-CAPACITY T=
    c STMT$
-   [: 0 PG:>ROW 0 PG:>COL PG:INT BIND-SUM T= ;] PG:WITH-RESULT
+   [: 0 >ROW 0 >COL INT BIND-SUM T= ;] WITH-RESULT
    c ;
 
 
@@ -1335,43 +1338,43 @@ variable STMT-U
 \ staged parameter is enough for a length near the maximum cell to wrap that sum
 \ back under the capacity, and the copy then runs past the arena.
 : ADD-HUGE-TEXT ( PG:connection -- PG:connection )
-   dup PG:PARAMS
-   dup s" kept" PG:TEXT+
-   dup BIG$ STR:DATA MEM-MAX-N 1- >str PG:TEXT+ ;
+   dup PARAMS
+   dup s" kept" TEXT+
+   dup BIG$ STR:DATA MEM-MAX-N 1- >str TEXT+ ;
 
 
 \ With nothing staged the fill is zero and the same length wraps no sum: the
 \ arena asks for a MEM-MAX-N-byte mapping, and the mapping is what fails.
 : ADD-LONE-HUGE-TEXT ( PG:connection -- PG:connection )
-   dup PG:PARAMS
-   dup BIG$ STR:DATA MEM-MAX-N 1- >str PG:TEXT+ ;
+   dup PARAMS
+   dup BIG$ STR:DATA MEM-MAX-N 1- >str TEXT+ ;
 
 
 : PARAM-LENGTH-CASES ( PG:connection -- PG:connection ) {: c :}
    s" TEXT+ rejects a length that would wrap the arena fill" T-LABEL
    c [: ADD-HUGE-TEXT ;] catch {: stale-param code:n :}
-   code PG:E-CAPACITY T=
+   code E-CAPACITY T=
    s" TEXT+ of that length on an empty list fails in the allocator" T-LABEL
    c [: ADD-LONE-HUGE-TEXT ;] catch {: stale-lone lone-code:n :}
    lone-code E-MEM-MAP T=
-   c PG:PARAMS
+   c PARAMS
    c ;
 
 
 \ WITH-SCRIPT is the only path that takes more than one statement; WITH-RESULT
 \ and WITH-PREPARED ride the extended protocol, where a second command is 42601.
 : MULTI-VIA-EXEC-CASES ( PG:connection -- PG:connection ) {: c :}
-   c PG:PARAMS
+   c PARAMS
    c s" select 1; select 2"
-   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 42601" T$= ;] PG:WITH-RESULT
+   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 42601" T$= ;] WITH-RESULT
    c ;
 
 
 : SCRIPT-OK-CASES ( PG:connection -- PG:connection ) {: c :}
    c s" drop table if exists pqtscript; create table pqtscript (id int); insert into pqtscript values (7)"
-   [: OUTCOME-TAG TAG-OK T= PG:AFFECTED COUNT>N 1 T= ;] PG:WITH-SCRIPT
-   c PG:PARAMS
-   c s" select count(*) from pqtscript" [: 0 PG:>ROW 0 PG:>COL PG:INT 1 T= ;] PG:WITH-RESULT
+   [: OUTCOME-TAG TAG-OK T= AFFECTED COUNT>N 1 T= ;] WITH-SCRIPT
+   c PARAMS
+   c s" select count(*) from pqtscript" [: 0 >ROW 0 >COL INT 1 T= ;] WITH-RESULT
    c ;
 
 
@@ -1379,52 +1382,52 @@ variable STMT-U
    c s" insert into pqtscript values (8); insert into pqtnosuch values (1)"
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" 42P01" T$=
-      FAILED-MESSAGE$ STR:LEN 0 > TTRUE ;] PG:WITH-SCRIPT
-   c PG:PARAMS
-   c s" select count(*) from pqtscript where id = 8" [: 0 PG:>ROW 0 PG:>COL PG:INT 0 T= ;] PG:WITH-RESULT
+      FAILED-MESSAGE$ STR:LEN 0 > TTRUE ;] WITH-SCRIPT
+   c PARAMS
+   c s" select count(*) from pqtscript where id = 8" [: 0 >ROW 0 >COL INT 0 T= ;] WITH-RESULT
    c ;
 
 
 : SCRIPT-BODY ( PG:connection -- PG:connection )
    dup s" insert into pqtscript values (9); insert into pqtscript values (10)"
-   [: OUTCOME-TAG TAG-OK T= ;] PG:WITH-SCRIPT
+   [: OUTCOME-TAG TAG-OK T= ;] WITH-SCRIPT
    BOOM throw ;
 
 
 : SCRIPT-TX-RUN ( PG:connection -- PG:connection )
-   dup [: SCRIPT-BODY ;] PG:WITH-TRANSACTION ;
+   dup [: SCRIPT-BODY ;] WITH-TRANSACTION ;
 
 
 : SCRIPT-TX-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: SCRIPT-TX-RUN ;] catch {: stale-tx code:n :}
    code BOOM T=
-   c PG:PARAMS
+   c PARAMS
    c s" select count(*) from pqtscript where id in (9, 10)"
-   [: 0 PG:>ROW 0 PG:>COL PG:INT 0 T= ;] PG:WITH-RESULT
+   [: 0 >ROW 0 >COL INT 0 T= ;] WITH-RESULT
    c ;
 
 
 : SCRIPT-EMPTY ( PG:connection -- PG:connection )
-   dup s" " [: ;] PG:WITH-SCRIPT ;
+   dup s" " [: ;] WITH-SCRIPT ;
 
 
 : SCRIPT-WITH-PARAMS ( PG:connection -- PG:connection )
-   dup PG:PARAMS
-   dup 1 PG:INT+
-   dup s" select 1" [: ;] PG:WITH-SCRIPT ;
+   dup PARAMS
+   dup 1 INT+
+   dup s" select 1" [: ;] WITH-SCRIPT ;
 
 
 : SCRIPT-REJECTION-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: SCRIPT-EMPTY ;] catch {: stale-empty code:n :}
-   code PG:E-STATEMENT T=
+   code E-STATEMENT T=
    c [: SCRIPT-WITH-PARAMS ;] catch {: stale-params param-code:n :}
-   param-code PG:E-STATEMENT T=
-   c PG:PARAMS
+   param-code E-STATEMENT T=
+   c PARAMS
    c ;
 
 
 : SELECT-ONE ( PG:connection -- )
-   s" select 1" [: 0 PG:>ROW 0 PG:>COL PG:INT 1 T= ;] PG:WITH-RESULT ;
+   s" select 1" [: 0 >ROW 0 >COL INT 1 T= ;] WITH-RESULT ;
 
 
 \ COPY TO STDOUT fails with PG's own spans although the server completed it.
@@ -1433,7 +1436,7 @@ variable STMT-U
    c s
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" 0A000" T$=
-      FAILED-MESSAGE$ s" COPY is not supported" T$= ;] PG:WITH-RESULT
+      FAILED-MESSAGE$ s" COPY is not supported" T$= ;] WITH-RESULT
    c SELECT-ONE ;
 
 
@@ -1449,22 +1452,22 @@ variable STMT-U
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" 57014" T$=
       FAILED-MESSAGE$ s" COPY from stdin failed: COPY is not supported" STR:CONTAINS? TTRUE ;]
-   PG:WITH-RESULT
+   WITH-RESULT
    c SELECT-ONE
    s" A COPY TO STDOUT the server fails midway is the server's failure" T-LABEL
    c s" copy (select 1/(x-1) from generate_series(0,2) x) to stdout"
-   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 22012" T$= ;] PG:WITH-RESULT
+   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 22012" T$= ;] WITH-RESULT
    c SELECT-ONE
    s" A script's error after its COPY TO STDOUT is the outcome" T-LABEL
    c s" copy (select 1) to stdout; select 1/0"
-   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 22012" T$= ;] PG:WITH-SCRIPT
+   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 22012" T$= ;] WITH-SCRIPT
    c SELECT-ONE
    s" A script's statements after its COPY TO STDOUT run and stand" T-LABEL
    c s" copy (select 1) to stdout; insert into pqtcopy values (1); select 1"
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" 0A000" T$=
-      FAILED-MESSAGE$ s" COPY is not supported" T$= ;] PG:WITH-SCRIPT
-   c s" select count(*) from pqtcopy" [: 0 PG:>ROW 0 PG:>COL PG:INT 1 T= ;] PG:WITH-RESULT
+      FAILED-MESSAGE$ s" COPY is not supported" T$= ;] WITH-SCRIPT
+   c s" select count(*) from pqtcopy" [: 0 >ROW 0 >COL INT 1 T= ;] WITH-RESULT
    c ;
 
 
@@ -1472,11 +1475,11 @@ variable STMT-U
 \ slot back or the run ends in PG:E-CAPACITY rather than an assertion.
 : RECYCLE-CASES ( PG:connection -- PG:connection ) {: c :}
    64 0 ?do
-      c PG:PARAMS
-      c s" select 1" [: ;] PG:WITH-RESULT
+      c PARAMS
+      c s" select 1" [: ;] WITH-RESULT
    loop
-   c PG:PARAMS
-   c s" select count(*) from pqt" [: OUTCOME-TAG TAG-ROWS T= ;] PG:WITH-RESULT
+   c PARAMS
+   c s" select count(*) from pqt" [: OUTCOME-TAG TAG-ROWS T= ;] WITH-RESULT
    c ;
 
 
@@ -1484,16 +1487,16 @@ variable STMT-U
 \ orphan PGresult and the body's token is rejected afterwards. The scope still
 \ retires the slot, so the case runs one more time than there are slots.
 : CLOSE-UNDER ( PG:connection -- PG:connection )
-   dup dup s" select 1" [: swap PG:CLOSE PG:ROWS drop ;] PG:WITH-RESULT ;
+   dup dup s" select 1" [: swap PG:CLOSE ROWS drop ;] WITH-RESULT ;
 
 
 : CLOSE-CLEARS-CASES ( -- )
    s" a close in the body clears its token and leaves the slot to the scope" T-LABEL
    RESULTS 1+ 0 ?do
       OPEN {: c :}
-      c PG:PARAMS
+      c PARAMS
       c [: CLOSE-UNDER ;] catch {: stale code:n :}
-      code PG:E-CLEARED T=
+      code E-CLEARED T=
       c PG:LIVE? TFALSE
    loop ;
 
@@ -1501,19 +1504,19 @@ variable STMT-U
 \ A backend terminating its own session may fail the terminating query or the
 \ next query. Either path leaves no connection for owner cleanup to close.
 : END-SESSION ( PG:connection -- PG:connection )
-   dup s" select pg_terminate_backend(pg_backend_pid())" [: ;] PG:WITH-RESULT ;
+   dup s" select pg_terminate_backend(pg_backend_pid())" [: ;] WITH-RESULT ;
 
 : PROBE-SESSION ( PG:connection -- PG:connection )
-   dup s" select 1" [: ;] PG:WITH-RESULT ;
+   dup s" select 1" [: ;] WITH-RESULT ;
 
 : LOST-CONNECTION-CASES ( -- )
    OPEN {: c :}
    c [: END-SESSION ;] catch {: held code:n :}
    code 0= if
       c [: PROBE-SESSION ;] catch {: again probe-code:n :}
-      probe-code PG:E-EXEC T=
+      probe-code E-EXEC T=
    else
-      code PG:E-EXEC T=
+      code E-EXEC T=
    then
    c PG:LIVE? TFALSE ;
 
@@ -1543,7 +1546,7 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    ['] FOREIGN-WORK FOREIGN-WORKER TASK:ACTIVATE
    begin FOREIGN-DONE atomic@ 1 < while TASK:PAUSE repeat
    FOREIGN-WORKER TASK:KILL
-   FOREIGN-CODE @ PG:E-HANDLE T=
+   FOREIGN-CODE @ E-HANDLE T=
    c ;
 
 
@@ -1561,40 +1564,40 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    if 0 EXIT-CONN @ PG:CLOSE then ;
 
 : EXIT-OPEN ( -- )
-   CONNINFO$ s" " PG:CONNECT-START 0 EXIT-CONN !
+   CONNINFO$ s" " CONNECT-START 0 EXIT-CONN !
    0 TASK:RETURN ;
 
 : EXIT-REJECTED ( -- )
    s" host=127.0.0.1 port=1 dbname=none user=none" s" "
-   PG:CONNECT-START 0 EXIT-CONN !
+   CONNECT-START 0 EXIT-CONN !
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
       rejected OF drop ENDOF
-      connected OF PG:CLOSE PG:E-CONNECT throw ENDOF
-      waiting OF 2drop PG:E-CONNECT throw ENDOF
-      completed OF PG:CLEAR PG:E-CONNECT throw ENDOF
+      connected OF PG:CLOSE E-CONNECT throw ENDOF
+      waiting OF 2drop E-CONNECT throw ENDOF
+      completed OF CLEAR E-CONNECT throw ENDOF
    ;MATCH
    0 TASK:RETURN ;
 
 : EXIT-SEND ( -- )
-   CONNINFO$ s" " PG:CONNECT-START 0 EXIT-CONN !
+   CONNINFO$ s" " CONNECT-START 0 EXIT-CONN !
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
       connected OF drop ENDOF
-      rejected OF drop PG:E-CONNECT throw ENDOF
-      waiting OF 2drop PG:E-CONNECT throw ENDOF
-      completed OF PG:CLEAR PG:E-CONNECT throw ENDOF
+      rejected OF drop E-CONNECT throw ENDOF
+      waiting OF 2drop E-CONNECT throw ENDOF
+      completed OF CLEAR E-CONNECT throw ENDOF
    ;MATCH
    0 EXIT-CONN @ s" select pg_backend_pid()"
-   [: 0 PG:>ROW 0 PG:>COL PG:INT EXIT-BACKEND atomic! ;] PG:WITH-RESULT
-   0 EXIT-CONN @ s" update pqtcancel set value=1 where id=1" PG:SEND
+   [: 0 >ROW 0 >COL INT EXIT-BACKEND atomic! ;] WITH-RESULT
+   0 EXIT-CONN @ s" update pqtcancel set value=1 where id=1" SEND
    1 EXIT-STARTED atomic! ;
 
 : EXIT-HALT ( -- )
    EXIT-SEND
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
-      completed OF PG:CLEAR ENDOF
-      connected OF drop PG:E-EXEC throw ENDOF
-      waiting OF 2drop PG:E-EXEC throw ENDOF
-      rejected OF drop PG:E-EXEC throw ENDOF
+      completed OF CLEAR ENDOF
+      connected OF drop E-EXEC throw ENDOF
+      waiting OF 2drop E-EXEC throw ENDOF
+      rejected OF drop E-EXEC throw ENDOF
    ;MATCH
    0 TASK:RETURN ;
 
@@ -1625,8 +1628,8 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
 
 : BACKEND-COUNT ( PG:connection n str -- n )
    {: c pid:n sql:str :}
-   c PG:PARAMS c pid PG:INT+
-   c sql [: 0 PG:>ROW 0 PG:>COL PG:INT swap ;] PG:WITH-RESULT ;
+   c PARAMS c pid INT+
+   c sql [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
 
 : LOCKED? ( PG:connection n -- bool )
    s" select count(*) from pg_stat_activity where pid=$1 and wait_event_type='Lock'"
@@ -1643,7 +1646,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    while TASK:PAUSE repeat ;
 
 : BACKEND ( PG:connection -- n )
-   s" select pg_backend_pid()" [: 0 PG:>ROW 0 PG:>COL PG:INT swap ;] PG:WITH-RESULT ;
+   s" select pg_backend_pid()" [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
 
 : CANCEL-CASES ( PG:connection -- PG:connection )
    {: c :}
@@ -1655,8 +1658,8 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    OPEN {: peer :}
    peer BACKEND {: peer-pid:n :}
    holder s" begin" EXEC-OK
-   holder s" select * from pqtcancel for update" [: ;] PG:WITH-RESULT
-   peer s" update pqtcancel set value=1 where id=2" PG:SEND
+   holder s" select * from pqtcancel for update" [: ;] WITH-RESULT
+   peer s" update pqtcancel set value=1 where id=2" SEND
    c peer-pid AWAIT-LOCK
    0 EXIT-STARTED !
    ['] EXIT-HALT EXIT-WORKER TASK:ACTIVATE
@@ -1664,7 +1667,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    c EXIT-BACKEND atomic@ AWAIT-LOCK
    EXIT-WORKER TASK:HALT
    EXIT-WORKER TASK:JOIN MATCH result
-      ok OF drop PG:E-EXEC throw ENDOF
+      ok OF drop E-EXEC throw ENDOF
       err OF E-TASK-NO-RESULT T= ENDOF
    ;MATCH
    EXIT-LIVE @ TTRUE
@@ -1673,30 +1676,30 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    c peer-pid LOCKED? TTRUE
    holder s" rollback" EXEC-OK
    peer PG:AWAIT MATCH PG:progress
-      completed OF OUTCOME-TAG TAG-OK T= PG:CLEAR ENDOF
-      connected OF PG:CLOSE PG:E-EXEC throw ENDOF
-      waiting OF 2drop PG:E-EXEC throw ENDOF
-      rejected OF drop PG:E-EXEC throw ENDOF
+      completed OF OUTCOME-TAG TAG-OK T= CLEAR ENDOF
+      connected OF PG:CLOSE E-EXEC throw ENDOF
+      waiting OF 2drop E-EXEC throw ENDOF
+      rejected OF drop E-EXEC throw ENDOF
    ;MATCH
    c s" select value from pqtcancel order by id"
-   [: 0 PG:>ROW 0 PG:>COL PG:INT 0 T= 1 PG:>ROW 0 PG:>COL PG:INT 1 T= ;] PG:WITH-RESULT
+   [: 0 >ROW 0 >COL INT 0 T= 1 >ROW 0 >COL INT 1 T= ;] WITH-RESULT
    holder s" begin" EXEC-OK
-   holder s" select * from pqtcancel for update" [: ;] PG:WITH-RESULT
+   holder s" select * from pqtcancel for update" [: ;] WITH-RESULT
    s" a statement timeout returns its SQL error and leaves the connection usable" T-LABEL
    peer s" set statement_timeout='20ms'" EXEC-OK
    peer s" update pqtcancel set value=2 where id=1"
-   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 57014" T$= ;] PG:WITH-RESULT
+   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 57014" T$= ;] WITH-RESULT
    peer PG:LIVE? TTRUE
    peer s" set statement_timeout=0" EXEC-OK
    s" direct close cancels a pending blocked write" T-LABEL
-   peer s" update pqtcancel set value=2 where id=1" PG:SEND
+   peer s" update pqtcancel set value=2 where id=1" SEND
    c peer-pid AWAIT-LOCK
    peer PG:CLOSE
    c peer-pid AWAIT-GONE
    holder s" rollback" EXEC-OK
    s" pending close cleanup preserves the task body's exception" T-LABEL
    holder s" begin" EXEC-OK
-   holder s" select * from pqtcancel for update" [: ;] PG:WITH-RESULT
+   holder s" select * from pqtcancel for update" [: ;] WITH-RESULT
    0 EXIT-STARTED !
    0 EXIT-RELEASE !
    ['] EXIT-THROW EXIT-WORKER TASK:ACTIVATE
@@ -1704,24 +1707,24 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    c EXIT-BACKEND atomic@ AWAIT-LOCK
    1 EXIT-RELEASE atomic!
    EXIT-WORKER TASK:JOIN MATCH result
-      ok OF drop PG:E-EXEC throw ENDOF
+      ok OF drop E-EXEC throw ENDOF
       err OF BOOM T= ENDOF
    ;MATCH
    c EXIT-BACKEND atomic@ AWAIT-GONE
    holder s" rollback" EXEC-OK
    holder PG:CLOSE
-   c s" select value from pqtcancel where id=1" [: 0 PG:>ROW 0 PG:>COL PG:INT 0 T= ;] PG:WITH-RESULT
+   c s" select value from pqtcancel where id=1" [: 0 >ROW 0 >COL INT 0 T= ;] WITH-RESULT
    c ;
 
 
 : UNREAD-BODY ( PG:connection -- PG:connection )
    dup s" insert into pqt (id, label, note) values (971, 'unread', null)"
    EXEC-OK
-   dup s" select 1" PG:SEND ;
+   dup s" select 1" SEND ;
 
 
 : UNREAD-RUN ( PG:connection -- PG:connection )
-   dup [: UNREAD-BODY ;] PG:WITH-TRANSACTION ;
+   dup [: UNREAD-BODY ;] WITH-TRANSACTION ;
 
 
 \ The backend of a connection wrongly left open never goes, so it is closed.
@@ -1730,7 +1733,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    OPEN {: p :}
    p BACKEND {: pid:n :}
    p [: UNREAD-RUN ;] catch {: stale code:n :}
-   code PG:E-STATEMENT T=
+   code E-STATEMENT T=
    p PG:LIVE? dup TFALSE if p PG:CLOSE then
    c pid AWAIT-GONE
    c 971 COUNT-ID 0 T=
@@ -1748,7 +1751,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
 : TX-PAUSED ( -- )
    OPEN dup 0 EXIT-CONN !
    dup BACKEND EXIT-BACKEND atomic!
-   [: TX-PAUSE ;] PG:WITH-TRANSACTION ;
+   [: TX-PAUSE ;] WITH-TRANSACTION ;
 
 
 : TX-HALT-CASES ( PG:connection -- PG:connection ) {: c :}
@@ -1759,7 +1762,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    mono-ns {: halted:n :}
    EXIT-WORKER TASK:HALT
    EXIT-WORKER TASK:JOIN MATCH result
-      ok OF drop PG:E-EXEC throw ENDOF
+      ok OF drop E-EXEC throw ENDOF
       err OF E-TASK-NO-RESULT T= ENDOF
    ;MATCH
    halted ELAPSED-MS PROMPT-MS < TTRUE
@@ -1783,7 +1786,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
 \ A server that never answers: the kernel completes the handshake from the
 \ listen backlog, so libpq sends its first packet and waits for a reply.
 : SILENT-CONNECT ( -- )
-   LISTENER-CONNINFO$ s" " PG:CONNECT MATCH PG:connect-result
+   LISTENER-CONNINFO$ s" " CONNECT MATCH PG:connect-result
       connected OF PG:CLOSE ENDOF
       rejected OF drop ENDOF
    ;MATCH
@@ -1798,12 +1801,12 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
 : LISTENER ( -- TCP4:listener )
    LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND MATCH TCP4:bind-result
       bound OF ENDOF
-      failed OF TCP4:ERRNO>N drop PG:E-EXEC throw ENDOF
+      failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
    ;MATCH
    dup 1 TCP4:LISTEN STATUS-ERRNO 0 T=
    dup TCP4:LOCAL MATCH TCP4:endpoint-result
       endpoint OF TCP4:PORT>N LISTENER-PORT ! drop ENDOF
-      failed OF TCP4:ERRNO>N drop PG:E-EXEC throw ENDOF
+      failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
    ;MATCH ;
 
 \ A queued connection is libpq's socket, so the attempt holds its slot and its
@@ -1814,7 +1817,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
       lis TCP4:PENDING? MATCH TCP4:ready-result
          ready OF exit ENDOF
          idle OF ENDOF
-         failed OF TCP4:ERRNO>N drop PG:E-EXEC throw ENDOF
+         failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
       ;MATCH
       TASK:PAUSE
    again ;
@@ -1832,7 +1835,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    SILENT-WORKER TASK:HALT
    AWAIT-SILENT-DONE
    SILENT-WORKER TASK:JOIN MATCH result
-      ok OF drop PG:E-EXEC throw ENDOF
+      ok OF drop E-EXEC throw ENDOF
       err OF E-TASK-NO-RESULT T= ENDOF
    ;MATCH
    CONNECTIONS 1- 0 ?do OPEN i HELD-CONNS ! loop
@@ -1856,14 +1859,14 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
       lis TCP4:PENDING? MATCH TCP4:ready-result
          ready OF true ENDOF
          idle OF false ENDOF
-         failed OF TCP4:ERRNO>N drop PG:E-EXEC throw ENDOF
+         failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
       ;MATCH
    0= while
       TASK:PAUSE
    repeat
    lis TCP4:ACCEPT MATCH TCP4:accept-result
       accepted OF TCP4:PORT>N drop TCP4:ADDRESS>N drop ENDOF
-      failed OF TCP4:ERRNO>N drop PG:E-EXEC throw ENDOF
+      failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
    ;MATCH ;
 
 : PEER-WRITE ( TCP4:connection str -- ) {: peer s:str :}
@@ -1875,15 +1878,15 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    s" a failed send throws E-EXEC and closes the connection" T-LABEL
    FILL-PEER
    LISTENER {: lis :}
-   LISTENER-CONNINFO$ s" " PG:CONNECT-START {: c :}
+   LISTENER-CONNINFO$ s" " CONNECT-START {: c :}
    lis ACCEPT-PEER {: peer :}
    peer PEER-BYTES STARTUP-LEN >str PEER-WRITE
    c POLL-CONNECTED drop
-   c s" select 1" PG:SEND
+   c s" select 1" SEND
    peer PEER-BYTES STARTUP-LEN + 5 >str PEER-WRITE
-   c RESULT-POLL PG:CLEAR
+   c RESULT-POLL CLEAR
    c [: SEND-SELECT ;] catch {: held code:n :}
-   code PG:E-EXEC T=
+   code E-EXEC T=
    c PG:LIVE? TFALSE
    peer TCP4:CLOSE STATUS-ERRNO 0 T=
    lis TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
@@ -1897,9 +1900,9 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    gone s" select 1" POLL-EXEC
    gone PG:CLOSE
    other s" select 2" POLL-EXEC
-   swap PG:CLEAR
+   swap CLEAR
    1 CLEAR-RETURNED !
-   PG:CLEAR
+   CLEAR
    gone other ;
 
 
@@ -1908,7 +1911,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    s" a stale token is E-CLEARED after a later query reuses its slot" T-LABEL
    0 CLEAR-RETURNED !
    OPEN fresh [: CLEAR-REUSED ;] catch {: gone kept code:n :}
-   code PG:E-CLEARED T=
+   code E-CLEARED T=
    CLEAR-RETURNED @ 0 T=
    fresh PG:CLOSE ;
 
@@ -1918,16 +1921,16 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
 MEM-MAX-N constant FOREVER-MS
 
 : NOTIFY-NOW ( PG:connection -- PG:connection )
-   dup 0 >MS PG:NOTIFIED? drop ;
+   dup 0 >MS NOTIFIED? drop ;
 
 : NOTIFY-LONG ( PG:connection -- PG:connection )
-   dup FOREVER-MS >MS PG:NOTIFIED? drop ;
+   dup FOREVER-MS >MS NOTIFIED? drop ;
 
 : NOTIFY-NEGATIVE ( PG:connection -- PG:connection )
-   dup -1 >MS PG:NOTIFIED? drop ;
+   dup -1 >MS NOTIFIED? drop ;
 
 : NOTIFY-IN-TX ( PG:connection -- PG:connection )
-   dup [: NOTIFY-NOW ;] PG:WITH-TRANSACTION ;
+   dup [: NOTIFY-NOW ;] WITH-TRANSACTION ;
 
 : REJECTS ( PG:connection [ PG:connection -- PG:connection ] n -- )
    {: c body want:n :}
@@ -1938,9 +1941,9 @@ MEM-MAX-N constant FOREVER-MS
 \ exit is awaited in pg_stat_activity.
 : TERMINATE ( PG:connection n -- )
    {: c pid:n :}
-   c PG:PARAMS c pid PG:INT+
+   c PARAMS c pid INT+
    c s" select pg_terminate_backend($1)"
-   [: OUTCOME-TAG TAG-ROWS T= 0 PG:>ROW 0 PG:>COL PG:TEXT$ s" t" T$= ;] PG:WITH-RESULT
+   [: OUTCOME-TAG TAG-ROWS T= 0 >ROW 0 >COL TEXT$ s" t" T$= ;] WITH-RESULT
    c pid AWAIT-GONE ;
 
 
@@ -1957,7 +1960,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    OPEN dup 0 NOTE-CONN !
    dup s" listen pqtnote" EXEC-OK
    1 NOTE-STARTED atomic!
-   FOREVER-MS >MS PG:NOTIFIED? drop
+   FOREVER-MS >MS NOTIFIED? drop
    0 TASK:RETURN ;
 
 
@@ -1970,7 +1973,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    mono-ns {: halted:n :}
    NOTE-WORKER TASK:HALT
    NOTE-WORKER TASK:JOIN MATCH result
-      ok OF drop PG:E-EXEC throw ENDOF
+      ok OF drop E-EXEC throw ENDOF
       err OF E-TASK-NO-RESULT T= ENDOF
    ;MATCH
    halted ELAPSED-MS PROMPT-MS < TTRUE
@@ -1998,44 +2001,44 @@ variable PATH-U
    a s" listen pqtnote" EXEC-OK
    s" a wait of 0 ms takes a notification libpq already holds" T-LABEL
    a s" notify pqtnote, 'self'" EXEC-OK
-   a 0 >MS PG:NOTIFIED? TTRUE
+   a 0 >MS NOTIFIED? TTRUE
    s" a wait of 0 ms with nothing sent answers false" T-LABEL
-   a 0 >MS PG:NOTIFIED? TFALSE
+   a 0 >MS NOTIFIED? TFALSE
    s" a notification ends a wait bound past one poll's, which takes every one queued" T-LABEL
    b s" notify pqtnote, 'one'; notify pqtnote, 'two'"
-   [: OUTCOME-TAG TAG-OK T= ;] PG:WITH-SCRIPT
+   [: OUTCOME-TAG TAG-OK T= ;] WITH-SCRIPT
    mono-ns {: sent:n :}
-   a FOREVER-MS >MS PG:NOTIFIED? TTRUE
+   a FOREVER-MS >MS NOTIFIED? TTRUE
    sent ELAPSED-MS PROMPT-MS < TTRUE
-   a 0 >MS PG:NOTIFIED? TFALSE
+   a 0 >MS NOTIFIED? TFALSE
    s" a wait with nothing sent answers false once its time is up" T-LABEL
    mono-ns {: idle:n :}
-   a BOUND-MS >MS PG:NOTIFIED? TFALSE
+   a BOUND-MS >MS NOTIFIED? TFALSE
    idle ELAPSED-MS {: took:n :}
    took BOUND-MS >= TTRUE
    took BOUND-MS PROMPT-MS + < TTRUE
    s" a wait in a transaction, failed or not, with a statement pending or out of range is rejected" T-LABEL
-   a [: NOTIFY-IN-TX ;] PG:E-TRANSACTION REJECTS
-   a PG:IDLE? TTRUE
+   a [: NOTIFY-IN-TX ;] E-TRANSACTION REJECTS
+   a IDLE? TTRUE
    a s" begin" EXEC-OK
-   a [: NOTIFY-NOW ;] PG:E-TRANSACTION REJECTS
+   a [: NOTIFY-NOW ;] E-TRANSACTION REJECTS
    a s" select 1/0" EXEC-TAG TAG-FAILED T=
-   a [: NOTIFY-NOW ;] PG:E-TRANSACTION REJECTS
+   a [: NOTIFY-NOW ;] E-TRANSACTION REJECTS
    a s" rollback" EXEC-OK
-   a s" select 1" PG:SEND
-   a [: NOTIFY-NOW ;] PG:E-STATEMENT REJECTS
-   a RESULT-POLL PG:CLEAR
-   a [: NOTIFY-NEGATIVE ;] PG:E-BOUND REJECTS
+   a s" select 1" SEND
+   a [: NOTIFY-NOW ;] E-STATEMENT REJECTS
+   a RESULT-POLL CLEAR
+   a [: NOTIFY-NEGATIVE ;] E-BOUND REJECTS
    a PG:LIVE? TTRUE
    s" a wait on a lost connection closes it and fails at once" T-LABEL
    b a BACKEND TERMINATE
    mono-ns {: cut:n :}
-   a [: NOTIFY-LONG ;] PG:E-EXEC REJECTS
+   a [: NOTIFY-LONG ;] E-EXEC REJECTS
    cut ELAPSED-MS PROMPT-MS < TTRUE
    a PG:LIVE? TFALSE
    s" a wait on a closed connection is rejected" T-LABEL
    b PG:CLOSE
-   b [: NOTIFY-NOW ;] PG:E-HANDLE REJECTS
+   b [: NOTIFY-NOW ;] E-HANDLE REJECTS
    NOTE-HALT-CASES ;
 
 
@@ -2044,7 +2047,7 @@ HEARD-CAP BUFFER: HEARD
 variable HEARD-U
 
 : HEARD+ ( str -- ) {: s:str :}
-   HEARD-U @ s STR:LEN + HEARD-CAP > if PG:E-CAPACITY throw then
+   HEARD-U @ s STR:LEN + HEARD-CAP > if E-CAPACITY throw then
    s STR:DATA HEARD HEARD-U @ + s STR:LEN BYTE-COPY
    HEARD-U @ s STR:LEN + HEARD-U ! ;
 
@@ -2062,23 +2065,23 @@ variable HEARD-U
    s" NOTIFIED hands each channel and payload over in order" T-LABEL
    0 HEARD-U !
    b s" notify pqtjob, '17'; notify pqtview, 'p2'; notify pqtjob, ''"
-   [: OUTCOME-TAG TAG-OK T= ;] PG:WITH-SCRIPT
-   a FOREVER-MS >MS [: HEAR ;] PG:NOTIFIED TTRUE
+   [: OUTCOME-TAG TAG-OK T= ;] WITH-SCRIPT
+   a FOREVER-MS >MS [: HEAR ;] NOTIFIED TTRUE
    HEARD HEARD-U @ >str s" pqtjob=17;pqtview=p2;pqtjob=;" T$=
    a PG:CLOSE
    b PG:CLOSE ;
 
 
 : ENDED-NOW ( PG:connection -- PG:connection )
-   dup PG:ENDED? drop ;
+   dup ENDED? drop ;
 
 \ A pending statement's socket, which stays the connection's for its life.
 : PENDING-SOCKET ( PG:connection -- fd )
    PG:POLL MATCH PG:progress
       waiting OF drop ENDOF
-      completed OF PG:CLEAR PG:E-EXEC throw ENDOF
-      connected OF drop PG:E-EXEC throw ENDOF
-      rejected OF drop PG:E-EXEC throw ENDOF
+      completed OF CLEAR E-EXEC throw ENDOF
+      connected OF drop E-EXEC throw ENDOF
+      rejected OF drop E-EXEC throw ENDOF
    ;MATCH ;
 
 
@@ -2088,25 +2091,25 @@ variable HEARD-U
    OPEN {: a :}
    OPEN {: b :}
    s" an idle open connection has not ended and runs a statement" T-LABEL
-   a PG:ENDED? TFALSE
+   a ENDED? TFALSE
    a s" select 1" EXEC-TAG TAG-ROWS T=
    s" a pending connection is rejected" T-LABEL
    b s" select pg_advisory_lock(987655)" EXEC-TAG TAG-ROWS T=
-   a s" select pg_advisory_xact_lock(987655)" PG:SEND
+   a s" select pg_advisory_xact_lock(987655)" SEND
    a PENDING-SOCKET {: socket:fd :}
-   a [: ENDED-NOW ;] PG:E-STATEMENT REJECTS
+   a [: ENDED-NOW ;] E-STATEMENT REJECTS
    b s" select pg_advisory_unlock(987655)" EXEC-TAG TAG-ROWS T=
-   a RESULT-POLL OUTCOME-TAG TAG-ROWS T= PG:CLEAR
+   a RESULT-POLL OUTCOME-TAG TAG-ROWS T= CLEAR
    s" a notification ENDED? reads stays for NOTIFIED?" T-LABEL
    a s" listen pqtended" EXEC-OK
    b s" notify pqtended" EXEC-OK
    socket AIO:READABLE AWAIT-READY
-   a PG:ENDED? TFALSE
-   a 0 >MS PG:NOTIFIED? TTRUE
+   a ENDED? TFALSE
+   a 0 >MS NOTIFIED? TTRUE
    s" a connection the server ended has ended and is closed" T-LABEL
    b a BACKEND TERMINATE
    \ The backend leaves pg_stat_activity before its socket closes.
-   begin a PG:ENDED? 0= while TASK:PAUSE repeat
+   begin a ENDED? 0= while TASK:PAUSE repeat
    a PG:LIVE? TFALSE
    b PG:CLOSE ;
 
@@ -2170,7 +2173,7 @@ variable WARN-LINES
    b a BACKEND TERMINATE
    PATH-MAKE
    PATH$ STDERR:CAPTURE
-   [: a [: NOTIFY-LONG ;] PG:E-EXEC REJECTS  b RAISES ;]
+   [: a [: NOTIFY-LONG ;] E-EXEC REJECTS  b RAISES ;]
    [: STDERR:;CAPTURE ;] finally
    a PG:LIVE? TFALSE
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW FILE-B !
@@ -2194,7 +2197,7 @@ variable WARN-LINES
    OPEN {: c :}
    c s" set statement_timeout='1s'" EXEC-OK
    c BACKEND {: backend:n :}
-   c s" select pg_sleep(5)" PG:SEND
+   c s" select pg_sleep(5)" SEND
    mono-ns {: started:n :}
    c PG:ABANDON
    started ELAPSED-MS PROMPT-MS < TTRUE
@@ -2205,7 +2208,7 @@ variable WARN-LINES
    w backend AWAIT-GONE
    s" abandon of a closed handle is E-HANDLE" T-LABEL
    c [: ABANDON-KEEP ;] catch {: stale code:n :}
-   code PG:E-HANDLE T=
+   code E-HANDLE T=
    w PG:CLOSE ;
 
 
@@ -2261,11 +2264,11 @@ PW-RIGHT!
 : PASSWORD-CASES ( PG:connection -- PG:connection ) {: c :}
    c CREATE-ROLE
    s" a password argument signs in to a role that needs one" T-LABEL
-   PW-CONNINFO$ PW-RIGHT$ PG:CONNECT SIGNED-IN? TTRUE
+   PW-CONNINFO$ PW-RIGHT$ CONNECT SIGNED-IN? TTRUE
    s" a password argument overrides the one the conninfo holds" T-LABEL
-   PW-HELD$ PW-RIGHT$ PG:CONNECT SIGNED-IN? TTRUE
+   PW-HELD$ PW-RIGHT$ CONNECT SIGNED-IN? TTRUE
    s" a wrong password argument is rejected and its text omits it" T-LABEL
-   PW-CONNINFO$ PW-WRONG$ PG:CONNECT REJECTED$
+   PW-CONNINFO$ PW-WRONG$ CONNECT REJECTED$
    PW-WRONG$ STR:CONTAINS? TFALSE
    c ;
 
@@ -2335,7 +2338,7 @@ PW-RIGHT!
    SCRIPT-ARGC 1 <> if
       s" pg-test: no conninfo argument; test/db/pg-cluster.f runs this file" EXIT-STATUS:USAGE die
    then
-   CONNECTIONS RESULTS PG:CONFIGURE
+   CONNECTIONS RESULTS CONFIGURE
    PROGRESS-CASES
    RESULT-CAPACITY-CASES
    AIO:START
@@ -2347,4 +2350,5 @@ T-RESET
 MAIN
 T-REPORT
 
+;using
 ;package

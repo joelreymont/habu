@@ -50,6 +50,13 @@ HB-TARGET-LINUX-ARM64? [if]
 HB-TARGET-MACOS? [if]
    require src/os/macos/sys.f
 [then]
+using A64ASM
+using A64ICODE
+using CRASH
+using RT
+using SYSCALL
+
+using ENGINE-EMIT
 
 package ENGINE-EMIT
 public
@@ -99,16 +106,16 @@ here NL-KW - constant NL-LEN
 
 private
 : C-TRAP-MCTX>R9 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 9 2 CRASH:LINUX-UC-MCTX-OFF A64ICODE:ADDI, exit THEN
-   9 4 CRASH:MCTX-OFF A64ICODE:LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 9 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
+   9 4 MCTX-OFF LDR, ;
 
 : C-MCTX-PC>R10 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 10 9 CRASH:LINUX-MCTX-PC-OFF A64ICODE:LDR, exit THEN
-   10 9 CRASH:MACOS-MCTX-PC-OFF A64ICODE:LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 10 9 LINUX-MCTX-PC-OFF LDR, exit THEN
+   10 9 MACOS-MCTX-PC-OFF LDR, ;
 
 : C-MCTX-X19>R12 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 12 9 CRASH:LINUX-MCTX-X19-OFF A64ICODE:LDR, exit THEN
-   12 9 CRASH:MACOS-MCTX-X19-OFF A64ICODE:LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 12 9 LINUX-MCTX-X19-OFF LDR, exit THEN
+   12 9 MACOS-MCTX-X19-OFF LDR, ;
 ;package
 
 \ The `habu-bp-lr:` line: its label, bytes and the read of the interrupted x30
@@ -121,123 +128,123 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 here BPL-KW - constant BPL-LEN
 
 : C-MCTX-LR>R9 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 9 9 CRASH:LINUX-MCTX-LR-OFF A64ICODE:LDR, exit THEN
-   9 9 CRASH:MACOS-MCTX-LR-OFF A64ICODE:LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 9 9 LINUX-MCTX-LR-OFF LDR, exit THEN
+   9 9 MACOS-MCTX-LR-OFF LDR, ;
 ;package
 
 package ENGINE-EMIT
 : C-BP-HIT-SAVE ( -- )
-   A64ICODE:SP A64ICODE:SP 80 A64ICODE:SUBI,
-   1 A64ICODE:SP 0 A64ICODE:STR,  4 A64ICODE:SP 8 A64ICODE:STR,  5 A64ICODE:SP 16 A64ICODE:STR,
-   9 A64ICODE:SP 24 A64ICODE:STR,  10 A64ICODE:SP 32 A64ICODE:STR,  8 A64ICODE:SP 40 A64ICODE:STR,
-   14 8 16 A64ICODE:LDR,  14 14 1 A64ICODE:ADDI,  14 8 16 A64ICODE:STR,
-   15 8 24 A64ICODE:LDR,  12 15 1 A64ICODE:LSRI, ;
+   SP SP 80 SUBI,
+   1 SP 0 STR,  4 SP 8 STR,  5 SP 16 STR,
+   9 SP 24 STR,  10 SP 32 STR,  8 SP 40 STR,
+   14 8 16 LDR,  14 14 1 ADDI,  14 8 16 STR,
+   15 8 24 LDR,  12 15 1 LSRI, ;
 
 : C-BP-STACK-RANGE ( -- )
-   14 XREG-RBASE STACK-ABI:BASE-CELL A64ICODE:LDR,
-   9 A64ICODE:SP 24 A64ICODE:LDR,  C-MCTX-X19>R12
-   12 A64ICODE:SP 56 A64ICODE:STR,  17 14 0 A64ICODE:ADDI, ;
+   14 XREG-RBASE STACK-ABI:BASE-CELL LDR,
+   9 SP 24 LDR,  C-MCTX-X19>R12
+   12 SP 56 STR,  17 14 0 ADDI, ;
 
 : C-BP-PRINT-HIT ( -- )
-   A64ICODE:LBL {: empty:label :}
-   1 LBPH A64ICODE:LABEL@ A64ICODE:ADR,  0 2 A64ICODE:MOVZ,  2 BPH-LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
-   9 A64ICODE:SP 32 A64ICODE:LDR,  CRASH:LHEX A64ICODE:LABEL@ A64ICODE:BL,
+   LBL {: empty:label :}
+   1 LBPH LABEL@ ADR,  0 2 MOVZ,  2 BPH-LEN MOVZ,  NR-WRITE SYS,
+   9 SP 32 LDR,  LHEX LABEL@ BL,
    \ An empty interrupted stack has no top cell to print.
    C-BP-STACK-RANGE
-   12 17 A64ICODE:CMP, A64ASM:C-EQ empty A64ICODE:BCOND,
-   9 12 8 A64ICODE:SUBI,  9 9 0 A64ICODE:LDR,  CRASH:LHEX A64ICODE:LABEL@ A64ICODE:BL,
-   empty A64ICODE:LBL,
-   1 BP-CALLER:LBPLH A64ICODE:LABEL@ A64ICODE:ADR,  0 2 A64ICODE:MOVZ,  2 BP-CALLER:BPL-LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
-   9 A64ICODE:SP 24 A64ICODE:LDR,  BP-CALLER:C-MCTX-LR>R9  CRASH:LHEX A64ICODE:LABEL@ A64ICODE:BL,
-   1 LBPSH A64ICODE:LABEL@ A64ICODE:ADR,  0 2 A64ICODE:MOVZ,  2 BPS-LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS, ;
+   12 17 CMP, C-EQ empty BCOND,
+   9 12 8 SUBI,  9 9 0 LDR,  LHEX LABEL@ BL,
+   empty LBL,
+   1 BP-CALLER:LBPLH LABEL@ ADR,  0 2 MOVZ,  2 BP-CALLER:BPL-LEN MOVZ,  NR-WRITE SYS,
+   9 SP 24 LDR,  BP-CALLER:C-MCTX-LR>R9  LHEX LABEL@ BL,
+   1 LBPSH LABEL@ ADR,  0 2 MOVZ,  2 BPS-LEN MOVZ,  NR-WRITE SYS, ;
 
 : C-BP-WATCH-HEAD ( -- )
-   1 LBPWH A64ICODE:LABEL@ A64ICODE:ADR,  0 2 A64ICODE:MOVZ,  2 BPW-LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
-   6 XREG-RBASE BPWN-CELL A64ICODE:LDR,  7 XREG-RBASE BPWBASE-CELL A64ICODE:LDR,
-   17 0 A64ICODE:MOVZ, ;
+   1 LBPWH LABEL@ ADR,  0 2 MOVZ,  2 BPW-LEN MOVZ,  NR-WRITE SYS,
+   6 XREG-RBASE BPWN-CELL LDR,  7 XREG-RBASE BPWBASE-CELL LDR,
+   17 0 MOVZ, ;
 
 : C-BP-WATCH-ROW ( -- )
-   22 17 3 A64ICODE:LSLI,  22 7 22 A64ICODE:ADD,  23 22 0 A64ICODE:LDR,
-   9 23 0 A64ICODE:ADDI,  CRASH:LHEX A64ICODE:LABEL@ A64ICODE:BL,
-   9 23 0 A64ICODE:LDR,  CRASH:LHEX A64ICODE:LABEL@ A64ICODE:BL,
-   17 17 1 A64ICODE:ADDI, ;
+   22 17 3 LSLI,  22 7 22 ADD,  23 22 0 LDR,
+   9 23 0 ADDI,  LHEX LABEL@ BL,
+   9 23 0 LDR,  LHEX LABEL@ BL,
+   17 17 1 ADDI, ;
 
 : C-BP-RESTORE-ONESHOT ( -- )
-   8 A64ICODE:SP 40 A64ICODE:LDR,  11 8 0 A64ICODE:LDR,  12 8 8 A64ICODE:LDR,
-   13 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  13 11 13 A64ICODE:ADD,  12 13 0 A64ICODE:STRW,
-   9 11 0 A64ICODE:ADDI,  LFLUSH A64ICODE:LABEL@ A64ICODE:BL,
-   8 A64ICODE:SP 40 A64ICODE:LDR,  12 0 A64ICODE:MOVZ,  12 8 0 A64ICODE:STR, ;
+   8 SP 40 LDR,  11 8 0 LDR,  12 8 8 LDR,
+   13 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  13 11 13 ADD,  12 13 0 STRW,
+   9 11 0 ADDI,  LFLUSH LABEL@ BL,
+   8 SP 40 LDR,  12 0 MOVZ,  12 8 0 STR, ;
 
 : C-MCTX-PC<R12 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 12 9 CRASH:LINUX-MCTX-PC-OFF A64ICODE:STR, exit THEN
-   12 9 CRASH:MACOS-MCTX-PC-OFF A64ICODE:STR, ;
+   HB-TARGET-LINUX-ARM64? IF 12 9 LINUX-MCTX-PC-OFF STR, exit THEN
+   12 9 MACOS-MCTX-PC-OFF STR, ;
 
 \ The slot's index is its offset in BPTAB over 32 bytes.
 : C-BP-TRAMP ( -- )
-   14 8 XREG-RBASE A64ICODE:SUB,  15 BPTAB-OFF A64ICODE:LIT64,  14 14 15 A64ICODE:SUB,  14 14 5 A64ICODE:LSRI,
-   15 BREAKPOINT:TRAMP A64ICODE:MOVZ,  14 14 15 A64ICODE:MUL,
-   12 XREG-RBASE BPTRAMP-CELL A64ICODE:LDR,  12 12 14 A64ICODE:ADD,
-   9 A64ICODE:SP 24 A64ICODE:LDR,  C-MCTX-PC<R12 ;
+   14 8 XREG-RBASE SUB,  15 BPTAB-OFF LIT64,  14 14 15 SUB,  14 14 5 LSRI,
+   15 BREAKPOINT:TRAMP MOVZ,  14 14 15 MUL,
+   12 XREG-RBASE BPTRAMP-CELL LDR,  12 12 14 ADD,
+   9 SP 24 LDR,  C-MCTX-PC<R12 ;
 
 \ A persistent slot resumes at its trampoline, a one-shot one on its entry.
 : C-BP-RESUME ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: tramp:label done:label :}
-   8 A64ICODE:SP 40 A64ICODE:LDR,  15 8 24 A64ICODE:LDR,  15 15 1 A64ICODE:ANDI,  15 tramp A64ICODE:CBNZ,
+   LBL LBL {: tramp:label done:label :}
+   8 SP 40 LDR,  15 8 24 LDR,  15 15 1 ANDI,  15 tramp CBNZ,
    C-BP-RESTORE-ONESHOT
-   done A64ICODE:B,
-   tramp A64ICODE:LBL,
+   done B,
+   tramp LBL,
    C-BP-TRAMP
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 : C-BP-SCAN ( label label label label -- )
    {: tno:label bscan:label bnext:label bhit:label :}
-   6 BREAKPOINT:SLOTS A64ICODE:MOVZ,  7 0 A64ICODE:MOVZ,
-   bscan A64ICODE:LBL,
-      7 6 A64ICODE:CMP,  A64ASM:C-GE tno A64ICODE:BCOND,
-      8 7 5 A64ICODE:LSLI,  14 BPTAB-OFF A64ICODE:LIT64,  8 8 14 A64ICODE:ADD,  8 XREG-RBASE 8 A64ICODE:ADD,
-      13 8 0 A64ICODE:LDR,  13 bnext A64ICODE:CBZ,
-      10 13 A64ICODE:CMP,  A64ASM:C-EQ bhit A64ICODE:BCOND,
-      bnext A64ICODE:LBL,  7 7 1 A64ICODE:ADDI,  bscan A64ICODE:B, ;
+   6 BREAKPOINT:SLOTS MOVZ,  7 0 MOVZ,
+   bscan LBL,
+      7 6 CMP,  C-GE tno BCOND,
+      8 7 5 LSLI,  14 BPTAB-OFF LIT64,  8 8 14 ADD,  8 XREG-RBASE 8 ADD,
+      13 8 0 LDR,  13 bnext CBZ,
+      10 13 CMP,  C-EQ bhit BCOND,
+      bnext LBL,  7 7 1 ADDI,  bscan B, ;
 
 : C-BP-STACK-DUMP ( label label -- )
    {: sdump:label sdone:label :}
-   sdump A64ICODE:LBL,
-      14 A64ICODE:SP 56 A64ICODE:LDR,  17 14 A64ICODE:CMP,  A64ASM:C-CS sdone A64ICODE:BCOND,
-      9 17 0 A64ICODE:LDR,  17 A64ICODE:SP 48 A64ICODE:STR,  CRASH:LHEX A64ICODE:LABEL@ A64ICODE:BL,
-      17 A64ICODE:SP 48 A64ICODE:LDR,  17 17 8 A64ICODE:ADDI,  sdump A64ICODE:B,
-   sdone A64ICODE:LBL, ;
+   sdump LBL,
+      14 SP 56 LDR,  17 14 CMP,  C-CS sdone BCOND,
+      9 17 0 LDR,  17 SP 48 STR,  LHEX LABEL@ BL,
+      17 SP 48 LDR,  17 17 8 ADDI,  sdump B,
+   sdone LBL, ;
 
 : C-BP-WATCH-DUMP ( label label -- )
    {: wloop:label wdone:label :}
-   6 XREG-RBASE BPWN-CELL A64ICODE:LDR,  6 wdone A64ICODE:CBZ,
-   7 XREG-RBASE BPWBASE-CELL A64ICODE:LDR,  7 wdone A64ICODE:CBZ,
+   6 XREG-RBASE BPWN-CELL LDR,  6 wdone CBZ,
+   7 XREG-RBASE BPWBASE-CELL LDR,  7 wdone CBZ,
    C-BP-WATCH-HEAD
-   wloop A64ICODE:LBL,
-      17 6 A64ICODE:CMP,  A64ASM:C-GE wdone A64ICODE:BCOND,
-      C-BP-WATCH-ROW  wloop A64ICODE:B,
-   wdone A64ICODE:LBL, ;
+   wloop LBL,
+      17 6 CMP,  C-GE wdone BCOND,
+      C-BP-WATCH-ROW  wloop B,
+   wdone LBL, ;
 
 \ LTRAPH, the trap signal entry: a BPTAB hit past its skip count is reported,
 \ and every hit is resumed; any other trap falls through to the crash dump with
 \ x2/x4 untouched.
 : EMIT-TRAPH ( -- )
-   LTRAPH A64ICODE:LABEL@ A64ICODE:LBL,
-   A64ICODE:LBL {: tno :}
+   LTRAPH LABEL@ LBL,
+   LBL {: tno :}
    C-TRAP-MCTX>R9
    C-MCTX-PC>R10
-   A64ICODE:LBL {: bscan :}  A64ICODE:LBL {: bnext :}  A64ICODE:LBL {: bhit :}
-   A64ICODE:LBL {: sdump :}  A64ICODE:LBL {: sdone :}  A64ICODE:LBL {: wloop :}  A64ICODE:LBL {: wdone :}
-   A64ICODE:LBL {: resume :}
+   LBL {: bscan :}  LBL {: bnext :}  LBL {: bhit :}
+   LBL {: sdump :}  LBL {: sdone :}  LBL {: wloop :}  LBL {: wdone :}
+   LBL {: resume :}
    tno bscan bnext bhit C-BP-SCAN
    \ slot layout: +0 addr  +8 saved-instr  +16 hits  +24 ctrl(skip<<1 | persist)
-   bhit A64ICODE:LBL,                                         \ x8=&slot x9=mctx x10=pc
+   bhit LBL,                                         \ x8=&slot x9=mctx x10=pc
    C-BP-HIT-SAVE                                     \ x15=ctrl  x12=skip
-   14 12 A64ICODE:CMP,  A64ASM:C-LS resume A64ICODE:BCOND,                    \ hits <= skip -> silent
+   14 12 CMP,  C-LS resume BCOND,                    \ hits <= skip -> silent
    C-BP-PRINT-HIT
    C-BP-STACK-RANGE
    sdump sdone C-BP-STACK-DUMP
    wloop wdone C-BP-WATCH-DUMP
-   resume A64ICODE:LBL,
+   resume LBL,
    C-BP-RESUME
    0 A64ICODE:SP 8 A64ICODE:LDR,  1 A64ICODE:SP 0 A64ICODE:LDR,  2 A64ICODE:SP 16 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 80 A64ICODE:ADDI,
    SYSCALL:NR-SIGRETURN SYSCALL:SYS,                                 \ sigreturn(uctx, infostyle, token)
@@ -267,29 +274,29 @@ private
 \ reports a failure by latching it for its next checked operation; a throw out
 \ of its write is caught with the device state its catch saved.
 : EMIT-GENIO-OUT ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: term:label done:label end:label :}
-   s" (GENIO-OUT)" RT:LGENIOOUT A64ICODE:LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   RT:LGENIOOUT A64ICODE:LABEL@ A64ICODE:LBL,
-   A64ICODE:SP A64ICODE:SP $10 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,
-   9 XREG-RBASE GENIO-ABI:BUSY-CELL A64ICODE:LDR,  9 term A64ICODE:CBNZ,
-   0 GENIO-ABI:DEVICES A64ICODE:CMPI,  A64ASM:C-HI term A64ICODE:BCOND,          \ index outside 1..DEVICES
-   9 GENIO-ABI:WRITE-OFF A64ICODE:LIT64,  9 XREG-RBASE 9 A64ICODE:ADD,
-   10 0 0 A64ICODE:ADDI,  10 10 1 A64ICODE:SUBI,  10 10 3 A64ICODE:LSLI,  9 9 10 A64ICODE:ADD,
-   9 9 0 A64ICODE:LDR,  9 term A64ICODE:CBZ,                              \ row never registered
-   10 XREG-RBASE GENIO-ABI:ACTIVE-CELL A64ICODE:LDR,  10 A64ICODE:SP 8 A64ICODE:STR,     \ save the caller's active device
-   0 XREG-RBASE GENIO-ABI:ACTIVE-CELL A64ICODE:STR,                    \ the write runs for this one
-   10 1 A64ICODE:MOVZ,  10 XREG-RBASE GENIO-ABI:BUSY-CELL A64ICODE:STR,
-   1 RT:G-PUSH  2 RT:G-PUSH
-   9 A64ICODE:BLR,
-   10 0 A64ICODE:MOVZ,  10 XREG-RBASE GENIO-ABI:BUSY-CELL A64ICODE:STR,
-   10 A64ICODE:SP 8 A64ICODE:LDR,  10 XREG-RBASE GENIO-ABI:ACTIVE-CELL A64ICODE:STR,
-   done A64ICODE:B,
-   term A64ICODE:LBL,
-   0 1 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
-   done A64ICODE:LBL,
-   30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP $10 A64ICODE:ADDI,
-   A64ICODE:RET,
-   end A64ICODE:LBL, ;
+   LBL LBL LBL {: term:label done:label end:label :}
+   s" (GENIO-OUT)" LGENIOOUT LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   LGENIOOUT LABEL@ LBL,
+   SP SP $10 SUBI,  30 SP 0 STR,
+   9 XREG-RBASE GENIO-ABI:BUSY-CELL LDR,  9 term CBNZ,
+   0 GENIO-ABI:DEVICES CMPI,  C-HI term BCOND,          \ index outside 1..DEVICES
+   9 GENIO-ABI:WRITE-OFF LIT64,  9 XREG-RBASE 9 ADD,
+   10 0 0 ADDI,  10 10 1 SUBI,  10 10 3 LSLI,  9 9 10 ADD,
+   9 9 0 LDR,  9 term CBZ,                              \ row never registered
+   10 XREG-RBASE GENIO-ABI:ACTIVE-CELL LDR,  10 SP 8 STR,     \ save the caller's active device
+   0 XREG-RBASE GENIO-ABI:ACTIVE-CELL STR,                    \ the write runs for this one
+   10 1 MOVZ,  10 XREG-RBASE GENIO-ABI:BUSY-CELL STR,
+   1 G-PUSH  2 G-PUSH
+   9 BLR,
+   10 0 MOVZ,  10 XREG-RBASE GENIO-ABI:BUSY-CELL STR,
+   10 SP 8 LDR,  10 XREG-RBASE GENIO-ABI:ACTIVE-CELL STR,
+   done B,
+   term LBL,
+   0 1 MOVZ,  NR-WRITE SYS,
+   done LBL,
+   30 SP 0 LDR,  SP SP $10 ADDI,
+   RET,
+   end LBL, ;
 
 ;package
 
@@ -310,7 +317,7 @@ variable LKWTRUSTDECL
 : TRUSTDECL$ ( -- str )   s" trust-decl" ;
 
 : EMIT ( -- )
-   LKWTRUSTDECL A64ICODE:LABEL@ A64ICODE:LBL, TRUSTDECL$ A64ICODE:BYTES,      LKWTRUSTRAW A64ICODE:LABEL@ A64ICODE:LBL, TRUSTRAW$ A64ICODE:BYTES, ;
+   LKWTRUSTDECL LABEL@ LBL, TRUSTDECL$ BYTES,      LKWTRUSTRAW LABEL@ LBL, TRUSTRAW$ BYTES, ;
 
 ;package
 
@@ -319,31 +326,31 @@ package ENGINE-EMIT
 public
 
 : C-EXIT-LABEL ( ^n n -- ) {: msg:^ len:n :}
-   0 2 A64ICODE:MOVZ,  1 msg A64ICODE:LABEL@ A64ICODE:ADR,  2 len A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
-   0 2 A64ICODE:MOVZ,  1 LOPENNL A64ICODE:LABEL@ A64ICODE:ADR,  2 NL-LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
-   0 EXIT-STATUS:INTERNAL A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS, ;
+   0 2 MOVZ,  1 msg LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
+   0 EXIT-STATUS:INTERNAL MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Push the pending definition's name, the body text's first token (DEF-TKA
 \ is stale once a multi-line body refills the reader); x11 is left alone.
 \ The token is PKG:tail, so the checker's row is ( pkg, tail ) PUBLIC.
 : C-PUSH-DREC-NAME ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: scan:label done:label :}
-   9 XREG-RBASE BODY-TEXT:BASE-CELL A64ICODE:LDR,      \ x9 = name start (body text base)
-   10 0 A64ICODE:MOVZ,                           \ x10 = name length
-   12 XREG-RBASE BODYLEN-CELL A64ICODE:LDR,            \ x12 = body length bound (fail-closed)
-   scan A64ICODE:LBL,
-      10 12 A64ICODE:CMP,  A64ASM:C-GE done A64ICODE:BCOND,
-      13 9 10 A64ICODE:ADD,  13 13 0 A64ICODE:LDRB,       \ x13 = name[x10]
-      13 $20 A64ICODE:CMPI,  A64ASM:C-EQ done A64ICODE:BCOND,    \ the seeded trailing space ends the name
-      13 done A64ICODE:CBZ,
-      10 10 1 A64ICODE:ADDI,  scan A64ICODE:B,
-   done A64ICODE:LBL,
-   9 RT:G-PUSH
-   10 RT:G-PUSH ;
+   LBL LBL {: scan:label done:label :}
+   9 XREG-RBASE BODY-TEXT:BASE-CELL LDR,      \ x9 = name start (body text base)
+   10 0 MOVZ,                           \ x10 = name length
+   12 XREG-RBASE BODYLEN-CELL LDR,            \ x12 = body length bound (fail-closed)
+   scan LBL,
+      10 12 CMP,  C-GE done BCOND,
+      13 9 10 ADD,  13 13 0 LDRB,       \ x13 = name[x10]
+      13 $20 CMPI,  C-EQ done BCOND,    \ the seeded trailing space ends the name
+      13 done CBZ,
+      10 10 1 ADDI,  scan B,
+   done LBL,
+   9 G-PUSH
+   10 G-PUSH ;
 
 private
 : C-PUSH-DATA-CELL ( n -- ) {: off :}
-   9 XREG-RBASE off A64ICODE:LDR,  9 RT:G-PUSH ;
+   9 XREG-RBASE off LDR,  9 G-PUSH ;
 
 public
 : C-PUSH-TRUST-SIG ( n n -- ) {: aoff uoff :}
@@ -351,9 +358,9 @@ public
    uoff C-PUSH-DATA-CELL ;
 
 : C-CALL-X11-SAVED ( -- )
-   A64ICODE:SP A64ICODE:SP 16 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,
-   11 A64ICODE:BLR,
-   30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 16 A64ICODE:ADDI, ;
+   SP SP 16 SUBI,  30 SP 0 STR,
+   11 BLR,
+   30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 ;package
 
@@ -361,10 +368,10 @@ package DECL-OWNER
 public
 
 : SKIP-SAME ( n label -- ) {: off:n same:label :}
-   A64ICODE:LBL {: different:label :}
-   12 XREG-RBASE NCOMP-DISPATCH:DECL-CELL A64ICODE:LDR,  12 different A64ICODE:CBZ,
-   12 12 off A64ICODE:LDR,  11 12 A64ICODE:CMP,  A64ASM:C-EQ same A64ICODE:BCOND,
-   different A64ICODE:LBL, ;
+   LBL {: different:label :}
+   12 XREG-RBASE NCOMP-DISPATCH:DECL-CELL LDR,  12 different CBZ,
+   12 12 off LDR,  11 12 CMP,  C-EQ same BCOND,
+   different LBL, ;
 
 ;package
 
@@ -376,7 +383,7 @@ public
 \ exits EXIT-STATUS:INTERNAL rather than publishing a definition whose effect nothing recorded.
 \ Public because BDRAINPRETRUST needs the XT for its own push sequence.
 : FIND ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: absent:label ready:label :}
+   LBL LBL {: absent:label ready:label :}
    NCOMP-DISPATCH:DECL-EFFECT-OFF absent DECL-OWNER:TARGET
    ready A64ICODE:B,
    absent A64ICODE:LBL,  KWDATA:LKWTRUSTDECL KWDATA:TRUSTDECL$ STR:LEN ENGINE-EMIT:C-EXIT-LABEL
@@ -388,7 +395,7 @@ package LASTC-TRUST
 
 \ Resolve `trust-raw`. A missing registrar names itself on fd 2 and exits EXIT-STATUS:INTERNAL.
 : FIND-RAW ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: absent:label ready:label :}
+   LBL LBL {: absent:label ready:label :}
    NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:TARGET
    ready A64ICODE:B,
    absent A64ICODE:LBL,  KWDATA:LKWTRUSTRAW KWDATA:TRUSTRAW$ STR:LEN ENGINE-EMIT:C-EXIT-LABEL
@@ -397,28 +404,28 @@ package LASTC-TRUST
 public
 
 : FIND-ACTIVE ( label -- ) {: absent:label :}
-   A64ICODE:LBL {: ready:label :}
-   NCOMP-DISPATCH:DECL-RAW-OFF DECL-OWNER:FIND  11 ready A64ICODE:CBNZ,
-   9 XREG-RBASE HOOK-CELL A64ICODE:LDR,  9 absent A64ICODE:CBZ,
+   LBL {: ready:label :}
+   NCOMP-DISPATCH:DECL-RAW-OFF DECL-OWNER:FIND  11 ready CBNZ,
+   9 XREG-RBASE HOOK-CELL LDR,  9 absent CBZ,
    FIND-RAW
-   ready A64ICODE:LBL, ;
+   ready LBL, ;
 
 : FIND-TARGET ( label -- ) {: absent:label :}
-   11 XREG-RBASE NCOMP-DISPATCH:DECL-CELL A64ICODE:LDR,  11 absent A64ICODE:CBZ,
+   11 XREG-RBASE NCOMP-DISPATCH:DECL-CELL LDR,  11 absent CBZ,
    NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:TARGET
    NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:SKIP-SAME ;
 
 : PUBLISH ( -- )
-   A64ICODE:LBL {: nohook:label :}
+   LBL {: nohook:label :}
    nohook FIND-ACTIVE
-   ENGINE-EMIT:C-PUSH-DREC-NAME
-   CRSIG-A-CELL CRSIG-U-CELL ENGINE-EMIT:C-PUSH-TRUST-SIG
-   ENGINE-EMIT:C-CALL-X11-SAVED
+   C-PUSH-DREC-NAME
+   CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED
    nohook FIND-TARGET
-   ENGINE-EMIT:C-PUSH-DREC-NAME
-   CRSIG-A-CELL CRSIG-U-CELL ENGINE-EMIT:C-PUSH-TRUST-SIG
-   ENGINE-EMIT:C-CALL-X11-SAVED
-   nohook A64ICODE:LBL, ;
+   C-PUSH-DREC-NAME
+   CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED
+   nohook LBL, ;
 
 ;package
 
@@ -447,18 +454,18 @@ public
 \ no HOOK-CELL, and its does> runtime publishes here. The engine prefix
 \ self-load before checker.f has no owner.
 : EM-REC-WIDE-PUBLISH ( -- )
-   A64ICODE:LBL {: nohook:label :}
-   9 XREG-RBASE NCOMP-DISPATCH:DECL-CELL A64ICODE:LDR,  9 nohook A64ICODE:CBZ,
+   LBL {: nohook:label :}
+   9 XREG-RBASE NCOMP-DISPATCH:DECL-CELL LDR,  9 nohook CBZ,
    NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF RECWPUB$ C-OWNER-FIELD
    C-CALL-X11-SAVED
-   nohook A64ICODE:LBL, ;
+   nohook LBL, ;
 
 public
 
 : C-RUNTIME-CRSIG-CLEAR ( -- )
-   9 0 A64ICODE:MOVZ,
-   9 XREG-RBASE CRSIG-A-CELL A64ICODE:STR,
-   9 XREG-RBASE CRSIG-U-CELL A64ICODE:STR, ;
+   9 0 MOVZ,
+   9 XREG-RBASE CRSIG-A-CELL STR,
+   9 XREG-RBASE CRSIG-U-CELL STR, ;
 
 ;package
 
@@ -476,19 +483,19 @@ public
 package DOESPATCH
 
 : NOTIFY-PUBLICATION ( -- )
-   A64ICODE:LBL {: done:label :}
-   11 XREG-RBASE NCOMP-DISPATCH:DECL-CELL A64ICODE:LDR,  11 done A64ICODE:CBZ,
-   12 11 CHECKER-OWNER-ABI:HEADER-BYTES A64ICODE:SUBI,
-   13 12 0 A64ICODE:LDR,  14 CHECKER-OWNER-ABI:MAGIC A64ICODE:LIT64,
-   13 14 A64ICODE:CMP,  A64ASM:C-NE done A64ICODE:BCOND,
-   13 12 8 A64ICODE:LDR,
-   14 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF CELL + A64ICODE:LIT64,
-   13 14 A64ICODE:CMP,  A64ASM:C-LT done A64ICODE:BCOND,
-   11 11 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF A64ICODE:LDR,  11 done A64ICODE:CBZ,
-   9 A64ICODE:SP 40 A64ICODE:LDR,  9 9 DBASE A64ICODE:SUB,
-   12 DREC A64ICODE:MOVZ,  9 9 12 A64ICODE:UDIV,
-   9 RT:G-PUSH  ENGINE-EMIT:C-CALL-X11-SAVED
-   done A64ICODE:LBL, ;
+   LBL {: done:label :}
+   11 XREG-RBASE NCOMP-DISPATCH:DECL-CELL LDR,  11 done CBZ,
+   12 11 CHECKER-OWNER-ABI:HEADER-BYTES SUBI,
+   13 12 0 LDR,  14 CHECKER-OWNER-ABI:MAGIC LIT64,
+   13 14 CMP,  C-NE done BCOND,
+   13 12 8 LDR,
+   14 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF CELL + LIT64,
+   13 14 CMP,  C-LT done BCOND,
+   11 11 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF LDR,  11 done CBZ,
+   9 SP 40 LDR,  9 9 DBASE SUB,
+   12 DREC MOVZ,  9 9 12 UDIV,
+   9 G-PUSH  C-CALL-X11-SAVED
+   done LBL, ;
 
 \ Clear the kind of the patched record x11 and of every record that shares its
 \ body. The body is a clause now, not a push or cell definer, so no record whose
@@ -500,33 +507,33 @@ package DOESPATCH
 \ scans nothing. Each match is rewritten through the alias. Clobbers x0, x5, x10
 \ and x13-x15.
 : CLEAR-KIND ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: scan:label next:label done:label :}
-   5 DKIND:MASK DNAME-CELL or -1 xor A64ICODE:LIT64,
-   13 11 16 A64ICODE:LDR,  14 DKIND:MASK A64ICODE:LIT64,  14 13 14 A64ICODE:AND,
-   13 13 5 A64ICODE:AND,
-   0 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  0 11 0 A64ICODE:ADD,  13 0 16 A64ICODE:STR,
-   14 done A64ICODE:CBZ,
-   13 11 0 A64ICODE:LDR,                                          \ x13 = the patched body
-   14 11 DREC A64ICODE:ADDI,                                      \ x14 = the record above it
-   15 XREG-RBASE NDICT-HW-CELL A64ICODE:LDR,  15 NDICT A64ICODE:CMP,  15 15 NDICT A64ASM:C-HI A64ICODE:CSEL,
-   10 DREC A64ICODE:MOVZ,  15 15 10 A64ICODE:MUL,  15 DBASE 15 A64ICODE:ADD,       \ x15 = the end of every record ever published
-   scan A64ICODE:LBL,
-   14 15 A64ICODE:CMP,  A64ASM:C-CS done A64ICODE:BCOND,
-   10 14 0 A64ICODE:LDR,  10 13 A64ICODE:CMP,  A64ASM:C-NE next A64ICODE:BCOND,
-      0 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  0 14 0 A64ICODE:ADD,                \ x0 = the record through the alias
-      10 14 16 A64ICODE:LDR,  10 10 5 A64ICODE:AND,  10 0 16 A64ICODE:STR,
-   next A64ICODE:LBL,
-   14 14 DREC A64ICODE:ADDI,  scan A64ICODE:B,
-   done A64ICODE:LBL, ;
+   LBL LBL LBL {: scan:label next:label done:label :}
+   5 DKIND:MASK DNAME-CELL or -1 xor LIT64,
+   13 11 16 LDR,  14 DKIND:MASK LIT64,  14 13 14 AND,
+   13 13 5 AND,
+   0 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  0 11 0 ADD,  13 0 16 STR,
+   14 done CBZ,
+   13 11 0 LDR,                                          \ x13 = the patched body
+   14 11 DREC ADDI,                                      \ x14 = the record above it
+   15 XREG-RBASE NDICT-HW-CELL LDR,  15 NDICT CMP,  15 15 NDICT C-HI CSEL,
+   10 DREC MOVZ,  15 15 10 MUL,  15 DBASE 15 ADD,       \ x15 = the end of every record ever published
+   scan LBL,
+   14 15 CMP,  C-CS done BCOND,
+   10 14 0 LDR,  10 13 CMP,  C-NE next BCOND,
+      0 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  0 14 0 ADD,                \ x0 = the record through the alias
+      10 14 16 LDR,  10 10 5 AND,  10 0 16 STR,
+   next LBL,
+   14 14 DREC ADDI,  scan B,
+   done LBL, ;
 
 public
 
 \ Native defining words pass the measured clause entry and the already
 \ parsed created-word signature.
 : PRIM ( -- )
-   ENGINE-EMIT:C RT:G-POP  ENGINE-EMIT:B RT:G-POP  ENGINE-EMIT:A RT:G-POP
-   ENGINE-EMIT:B XREG-RBASE CRSIG-A-CELL A64ICODE:STR,  ENGINE-EMIT:C XREG-RBASE CRSIG-U-CELL A64ICODE:STR,
-   ENGINE-EMIT:B ENGINE-EMIT:A 0 A64ICODE:ADDI,  ENGINE-EMIT:LDOESPATCH A64ICODE:LABEL@ A64ICODE:BL, ;
+   C G-POP  B G-POP  A G-POP
+   B XREG-RBASE CRSIG-A-CELL STR,  C XREG-RBASE CRSIG-U-CELL STR,
+   B A 0 ADDI,  LDOESPATCH LABEL@ BL, ;
 
 private
 
@@ -555,62 +562,62 @@ private
 public
 
 : EMIT ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL
+   LBL LBL LBL LBL LBL LBL
    {: nocr:label declared:label write:label flush:label
       have:label before:label :}
-   ENGINE-EMIT:LDOESPATCH A64ICODE:LABEL@ A64ICODE:LBL,
+   LDOESPATCH LABEL@ LBL,
    have EMIT-NONE
-   have A64ICODE:LBL,
-   A64ICODE:SP A64ICODE:SP 48 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,  10 A64ICODE:SP 8 A64ICODE:STR,
-   11 XREG-RBASE LASTC-CELL A64ICODE:LDR,                               \ created slot
-   11 A64ICODE:SP 40 A64ICODE:STR,
-   12 11 0 A64ICODE:LDR,  13 11 8 A64ICODE:LDR,
-   13 13 4 A64ICODE:SUBI,
-   12 12 13 A64ICODE:ADD,                                         \ the final RET/B slot
-   12 A64ICODE:SP 16 A64ICODE:STR,
-   9 12 0 A64ICODE:ADDI,
-   10 before A64ICODE:CBNZ,
-   14 12 0 A64ICODE:LDRW,  5 ENGINE-EMIT:W-RET A64ICODE:LIT64,  14 5 A64ICODE:CMP,  A64ASM:C-NE before A64ICODE:BCOND,
-   9 0 A64ICODE:MOVZ,
-   before A64ICODE:LBL,
-   9 A64ICODE:SP 24 A64ICODE:STR,
-   10 11 0 A64ICODE:ADDI,  EM-DEF-OCC:LBEFORE A64ICODE:LABEL@ A64ICODE:BL,
-   10 A64ICODE:SP 8 A64ICODE:LDR,  9 A64ICODE:SP 24 A64ICODE:LDR,
-   9 declared A64ICODE:CBZ,
-   10 A64ICODE:SP 8 A64ICODE:LDR,  12 A64ICODE:SP 16 A64ICODE:LDR,  11 XREG-RBASE LASTC-CELL A64ICODE:LDR,
-   14 ENGINE-EMIT:W-RET A64ICODE:LIT64,  10 write A64ICODE:CBZ,                       \ an empty replacement cancels the previous clause
-   14 10 12 A64ICODE:SUB,  14 14 2 A64ICODE:ASRI,                          \ delta words (negative)
-   5 $3FFFFFF A64ICODE:LIT64,  14 14 5 A64ICODE:AND,
-   5 $14000000 A64ICODE:LIT64,  14 14 5 A64ICODE:ORR,                      \ b D
-   write A64ICODE:LBL,
-   13 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  13 12 13 A64ICODE:ADD,  14 13 0 A64ICODE:STRW,
-   10 flush A64ICODE:CBZ,
+   have LBL,
+   SP SP 48 SUBI,  30 SP 0 STR,  10 SP 8 STR,
+   11 XREG-RBASE LASTC-CELL LDR,                               \ created slot
+   11 SP 40 STR,
+   12 11 0 LDR,  13 11 8 LDR,
+   13 13 4 SUBI,
+   12 12 13 ADD,                                         \ the final RET/B slot
+   12 SP 16 STR,
+   9 12 0 ADDI,
+   10 before CBNZ,
+   14 12 0 LDRW,  5 W-RET LIT64,  14 5 CMP,  C-NE before BCOND,
+   9 0 MOVZ,
+   before LBL,
+   9 SP 24 STR,
+   10 11 0 ADDI,  EM-DEF-OCC:LBEFORE LABEL@ BL,
+   10 SP 8 LDR,  9 SP 24 LDR,
+   9 declared CBZ,
+   10 SP 8 LDR,  12 SP 16 LDR,  11 XREG-RBASE LASTC-CELL LDR,
+   14 W-RET LIT64,  10 write CBZ,                       \ an empty replacement cancels the previous clause
+   14 10 12 SUB,  14 14 2 ASRI,                          \ delta words (negative)
+   5 $3FFFFFF LIT64,  14 14 5 AND,
+   5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
+   write LBL,
+   13 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  13 12 13 ADD,  14 13 0 STRW,
+   10 flush CBZ,
    CLEAR-KIND
-   flush A64ICODE:LBL,
-   12 A64ICODE:SP 16 A64ICODE:LDR,
-   12 A64ICODE:DCCVAU,  A64ICODE:DSB-ISH,  12 A64ICODE:ICIVAU,  A64ICODE:DSB-ISH,  A64ICODE:ISB,
-   declared A64ICODE:LBL,
+   flush LBL,
+   12 SP 16 LDR,
+   12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,
+   declared LBL,
    \ The patched body is now executable. Reissue its occurrence before the
    \ checker publishes the created word's contract through trust-raw.
-   9 A64ICODE:SP 24 A64ICODE:LDR,  10 XREG-RBASE LASTC-CELL A64ICODE:LDR,  EM-DEF-OCC:LAFTER A64ICODE:LABEL@ A64ICODE:BL,
-   A64ICODE:LBL {: noshadow:label :}
-   11 XREG-RBASE NCOMP-DISPATCH:DOES-SHADOW-CELL A64ICODE:LDR,  11 noshadow A64ICODE:CBZ,
-   9 XREG-RBASE LASTC-CELL A64ICODE:LDR,  9 9 DBASE A64ICODE:SUB,
-   10 DREC A64ICODE:MOVZ,  9 9 10 A64ICODE:UDIV,  9 RT:G-PUSH
-   9 A64ICODE:SP 8 A64ICODE:LDR,  9 RT:G-PUSH
-   11 XREG-RBASE NCOMP-DISPATCH:DOES-SHADOW-CELL A64ICODE:LDR,  ENGINE-EMIT:C-CALL-X11-SAVED
-   noshadow A64ICODE:LBL,
-   9 XREG-RBASE CRSIG-U-CELL A64ICODE:LDR,  9 nocr A64ICODE:CBZ,
+   9 SP 24 LDR,  10 XREG-RBASE LASTC-CELL LDR,  EM-DEF-OCC:LAFTER LABEL@ BL,
+   LBL {: noshadow:label :}
+   11 XREG-RBASE NCOMP-DISPATCH:DOES-SHADOW-CELL LDR,  11 noshadow CBZ,
+   9 XREG-RBASE LASTC-CELL LDR,  9 9 DBASE SUB,
+   10 DREC MOVZ,  9 9 10 UDIV,  9 G-PUSH
+   9 SP 8 LDR,  9 G-PUSH
+   11 XREG-RBASE NCOMP-DISPATCH:DOES-SHADOW-CELL LDR,  C-CALL-X11-SAVED
+   noshadow LBL,
+   9 XREG-RBASE CRSIG-U-CELL LDR,  9 nocr CBZ,
       LASTC-TRUST:PUBLISH
       \ A second does> may replace an existing clause. Its new effect replaces
       \ the old wide mark, so a scalar result clears it.
-      9 XREG-RBASE LASTC-CELL A64ICODE:LDR,
-      12 9 16 A64ICODE:LDR,  10 DNAME-WIDE -1 xor A64ICODE:LIT64,
-      11 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  11 9 11 A64ICODE:ADD,              \ x11 = the record through the alias
-      12 12 10 A64ICODE:AND,  12 11 16 A64ICODE:STR,
-      ENGINE-EMIT:EM-REC-WIDE-PUBLISH
-      ENGINE-EMIT:C-RUNTIME-CRSIG-CLEAR
-   nocr A64ICODE:LBL,
+      9 XREG-RBASE LASTC-CELL LDR,
+      12 9 16 LDR,  10 DNAME-WIDE -1 xor LIT64,
+      11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,              \ x11 = the record through the alias
+      12 12 10 AND,  12 11 16 STR,
+      EM-REC-WIDE-PUBLISH
+      C-RUNTIME-CRSIG-CLEAR
+   nocr LBL,
    \ The source observer sees the final effect.
    NOTIFY-PUBLICATION
    30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 48 A64ICODE:ADDI,  A64ICODE:RET,
@@ -627,44 +634,44 @@ public
 \ a length no region holds (a negative one among them), are rejected rather than
 \ added. x12 = the length. Clobbers x11, x15 and the flags.
 : NAME-ROOM ( label -- ) {: full:label :}
-   A64ICODE:LBL {: fits:label :}
-   12 DNAME-INL A64ICODE:CMPI,  A64ASM:C-LS fits A64ICODE:BCOND,
-   11 CODE-CEILING A64ICODE:LIT64,  11 DBASE 11 A64ICODE:ADD,
-   CP 11 A64ICODE:CMP,  A64ASM:C-CS full A64ICODE:BCOND,                       \ CP is already at the ceiling
-   11 11 CP A64ICODE:SUB,                                      \ x11 = the room below it
-   12 11 A64ICODE:CMP,  A64ASM:C-CS full A64ICODE:BCOND,                       \ the bytes alone reach it
-   15 12 3 A64ICODE:ADDI,  15 15 2 A64ICODE:LSRI,  15 15 2 A64ICODE:LSLI,
-   15 11 A64ICODE:CMP,  A64ASM:C-CS full A64ICODE:BCOND,                       \ so do the padded bytes
-   fits A64ICODE:LBL, ;
+   LBL {: fits:label :}
+   12 DNAME-INL CMPI,  C-LS fits BCOND,
+   11 CODE-CEILING LIT64,  11 DBASE 11 ADD,
+   CP 11 CMP,  C-CS full BCOND,                       \ CP is already at the ceiling
+   11 11 CP SUB,                                      \ x11 = the room below it
+   12 11 CMP,  C-CS full BCOND,                       \ the bytes alone reach it
+   15 12 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI,
+   15 11 CMP,  C-CS full BCOND,                       \ so do the padded bytes
+   fits LBL, ;
 
 \ Store record x9's name, x12 >= 1 bytes at x10, in room NAME-ROOM admitted.
 \ Clobbers x10 x11 x13-x16.
 : NAME-COPY ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: short lcopy lcd scopy scd done :}
-   11 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  11 9 11 A64ICODE:ADD,
-   14 0 A64ICODE:MOVZ,  14 11 24 A64ICODE:STR,  14 11 32 A64ICODE:STR,           \ canonical name/padding before either form
-   13 12 0 A64ICODE:ADDI,
-   12 DNAME-INL A64ICODE:CMPI,  A64ASM:C-LS short A64ICODE:BCOND,
-      14 DNAME-EXT A64ICODE:LIT64,  13 13 14 A64ICODE:ORR,  13 11 16 A64ICODE:STR,
-      15 12 3 A64ICODE:ADDI,  15 15 2 A64ICODE:LSRI,  15 15 2 A64ICODE:LSLI,
-      16 CP 15 A64ICODE:ADD,
-      CP 11 24 A64ICODE:STR,
-      11 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  11 CP 11 A64ICODE:ADD,
-      14 12 0 A64ICODE:ADDI,
-      lcopy A64ICODE:LBL,  14 lcd A64ICODE:CBZ,
-         15 10 0 A64ICODE:LDRB,  15 11 0 A64ICODE:STRB,
-         10 10 1 A64ICODE:ADDI,  11 11 1 A64ICODE:ADDI,  14 14 1 A64ICODE:SUBI,  lcopy A64ICODE:B,
-      lcd A64ICODE:LBL,
-      CP 16 0 A64ICODE:ADDI,
-      done A64ICODE:B,
-   short A64ICODE:LBL,
-      13 11 16 A64ICODE:STR,
-      11 11 24 A64ICODE:ADDI,  14 12 0 A64ICODE:ADDI,
-      scopy A64ICODE:LBL,  14 scd A64ICODE:CBZ,
-         15 10 0 A64ICODE:LDRB,  15 11 0 A64ICODE:STRB,
-         10 10 1 A64ICODE:ADDI,  11 11 1 A64ICODE:ADDI,  14 14 1 A64ICODE:SUBI,  scopy A64ICODE:B,
-      scd A64ICODE:LBL,
-   done A64ICODE:LBL, ;
+   LBL LBL LBL LBL LBL LBL {: short lcopy lcd scopy scd done :}
+   11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,
+   14 0 MOVZ,  14 11 24 STR,  14 11 32 STR,           \ canonical name/padding before either form
+   13 12 0 ADDI,
+   12 DNAME-INL CMPI,  C-LS short BCOND,
+      14 DNAME-EXT LIT64,  13 13 14 ORR,  13 11 16 STR,
+      15 12 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI,
+      16 CP 15 ADD,
+      CP 11 24 STR,
+      11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 CP 11 ADD,
+      14 12 0 ADDI,
+      lcopy LBL,  14 lcd CBZ,
+         15 10 0 LDRB,  15 11 0 STRB,
+         10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  lcopy B,
+      lcd LBL,
+      CP 16 0 ADDI,
+      done B,
+   short LBL,
+      13 11 16 STR,
+      11 11 24 ADDI,  14 12 0 ADDI,
+      scopy LBL,  14 scd CBZ,
+         15 10 0 LDRB,  15 11 0 STRB,
+         10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  scopy B,
+      scd LBL,
+   done LBL, ;
 
 ;package
 
@@ -680,73 +687,73 @@ public
 \ x11 = the parent's pending record, x13 = the clause name's length, x14 = the
 \ parent's name bytes, x15 = the clause name's length rounded up to a word.
 : NAME$ ( -- )
-   A64ICODE:LBL {: inl:label :}
-   11 XREG-RBASE PEND-CELL A64ICODE:LDR,
-   12 11 16 A64ICODE:LDR,
-   13 12 0 A64ICODE:ADDI,  13 13 DNAME-FLAG-BITS A64ICODE:LSLI,  13 13 DNAME-FLAG-BITS A64ICODE:LSRI,       \ the parent's own name length
-   14 11 24 A64ICODE:ADDI,
-   12 12 DNAME-EXT A64ICODE:ANDI,  12 inl A64ICODE:CBZ,
-      14 11 24 A64ICODE:LDR,                                    \ ... which is a pointer when it is long
-   inl A64ICODE:LBL,
-   13 13 SUF-LEN A64ICODE:ADDI,
-   15 13 3 A64ICODE:ADDI,  15 15 2 A64ICODE:LSRI,  15 15 2 A64ICODE:LSLI, ;
+   LBL {: inl:label :}
+   11 XREG-RBASE PEND-CELL LDR,
+   12 11 16 LDR,
+   13 12 0 ADDI,  13 13 DNAME-FLAG-BITS LSLI,  13 13 DNAME-FLAG-BITS LSRI,       \ the parent's own name length
+   14 11 24 ADDI,
+   12 12 DNAME-EXT ANDI,  12 inl CBZ,
+      14 11 24 LDR,                                    \ ... which is a pointer when it is long
+   inl LBL,
+   13 13 SUF-LEN ADDI,
+   15 13 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI, ;
 
 \ Copy the derived name to x10, padded to x15 bytes. NAME$ has already supplied
 \ x11..x15 and the caller owns the padded span.
 : COPY-NAME ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: cpy:label cpd:label pad:label pend:label :}
-   12 13 SUF-LEN A64ICODE:SUBI,
-   cpy A64ICODE:LBL,  12 cpd A64ICODE:CBZ,
-      9 14 0 A64ICODE:LDRB,  9 10 0 A64ICODE:STRB,
-      14 14 1 A64ICODE:ADDI,  10 10 1 A64ICODE:ADDI,  12 12 1 A64ICODE:SUBI,  cpy A64ICODE:B,
-   cpd A64ICODE:LBL,
-   9 $3B A64ICODE:MOVZ,  9 10 0 A64ICODE:STRB,  10 10 1 A64ICODE:ADDI,            \ ';'
-   9 $64 A64ICODE:MOVZ,  9 10 0 A64ICODE:STRB,  10 10 1 A64ICODE:ADDI,            \ 'd'
-   9 $6F A64ICODE:MOVZ,  9 10 0 A64ICODE:STRB,  10 10 1 A64ICODE:ADDI,            \ 'o'
-   9 $65 A64ICODE:MOVZ,  9 10 0 A64ICODE:STRB,  10 10 1 A64ICODE:ADDI,            \ 'e'
-   9 $73 A64ICODE:MOVZ,  9 10 0 A64ICODE:STRB,  10 10 1 A64ICODE:ADDI,            \ 's'
-   12 15 13 A64ICODE:SUB,  9 0 A64ICODE:MOVZ,
-   pad A64ICODE:LBL,  12 pend A64ICODE:CBZ,
-      9 10 0 A64ICODE:STRB,  10 10 1 A64ICODE:ADDI,  12 12 1 A64ICODE:SUBI,  pad A64ICODE:B,
-   pend A64ICODE:LBL, ;
+   LBL LBL LBL LBL {: cpy:label cpd:label pad:label pend:label :}
+   12 13 SUF-LEN SUBI,
+   cpy LBL,  12 cpd CBZ,
+      9 14 0 LDRB,  9 10 0 STRB,
+      14 14 1 ADDI,  10 10 1 ADDI,  12 12 1 SUBI,  cpy B,
+   cpd LBL,
+   9 $3B MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ ';'
+   9 $64 MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 'd'
+   9 $6F MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 'o'
+   9 $65 MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 'e'
+   9 $73 MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 's'
+   12 15 13 SUB,  9 0 MOVZ,
+   pad LBL,  12 pend CBZ,
+      9 10 0 STRB,  10 10 1 ADDI,  12 12 1 SUBI,  pad B,
+   pend LBL, ;
 
 \ Write the clause record in the existing pending+1 slot; entry and len name
 \ the registers that hold the clause entry and its recorded body length.
 : RECORD ( n n -- )
    {: entry:n len:n :}
-   14 NDICT 1 A64ICODE:ADDI,  9 DREC A64ICODE:MOVZ,  14 14 9 A64ICODE:MUL,  14 DBASE 14 A64ICODE:ADD,
-   9 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  14 14 9 A64ICODE:ADD,
-   9 0 A64ICODE:MOVZ,                                           \ a slot an abandoned definition may have written
-   9 14 0 A64ICODE:STR,  9 14 8 A64ICODE:STR,  9 14 16 A64ICODE:STR,
-   9 14 24 A64ICODE:STR,  9 14 32 A64ICODE:STR,  9 14 40 A64ICODE:STR,
-   entry 14 0 A64ICODE:STR,                                     \ [0] = the clause entry
-   len 14 8 A64ICODE:STR,                                       \ [8] = its recorded body length
-   9 DNAME-EXT A64ICODE:LIT64,  9 13 9 A64ICODE:ORR,  9 14 16 A64ICODE:STR,       \ [16] = its name length, out of line
-   9 CP 0 A64ICODE:ADDI,  9 14 24 A64ICODE:STR,                          \ [24] = the name bytes
-   11 XREG-RBASE PEND-CELL A64ICODE:LDR,  9 11 40 A64ICODE:LDR,  9 14 40 A64ICODE:STR, ; \ [40] = the parent's wordlist
+   14 NDICT 1 ADDI,  9 DREC MOVZ,  14 14 9 MUL,  14 DBASE 14 ADD,
+   9 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  14 14 9 ADD,
+   9 0 MOVZ,                                           \ a slot an abandoned definition may have written
+   9 14 0 STR,  9 14 8 STR,  9 14 16 STR,
+   9 14 24 STR,  9 14 32 STR,  9 14 40 STR,
+   entry 14 0 STR,                                     \ [0] = the clause entry
+   len 14 8 STR,                                       \ [8] = its recorded body length
+   9 DNAME-EXT LIT64,  9 13 9 ORR,  9 14 16 STR,       \ [16] = its name length, out of line
+   9 CP 0 ADDI,  9 14 24 STR,                          \ [24] = the name bytes
+   11 XREG-RBASE PEND-CELL LDR,  9 11 40 LDR,  9 14 40 STR, ; \ [40] = the parent's wordlist
 
 \ Native publication has already emitted the clause. Append only the permanent
 \ derived name and record, using the measured entry and length it supplies.
 : NATIVE-PRIM ( -- )
-   ENGINE-EMIT:B RT:G-POP  ENGINE-EMIT:A RT:G-POP
-   5 ENGINE-EMIT:A 0 A64ICODE:ADDI,  6 ENGINE-EMIT:B 0 A64ICODE:ADDI,
+   B G-POP  A G-POP
+   5 A 0 ADDI,  6 B 0 ADDI,
    NAME$
-   10 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  10 CP 10 A64ICODE:ADD,  COPY-NAME
+   10 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  10 CP 10 ADD,  COPY-NAME
    5 6 RECORD
-   9 1 A64ICODE:MOVZ,  9 XREG-RBASE CLAUSE-CELL A64ICODE:STR,                  \ an imported definer had no `does>`
-   CP CP 15 A64ICODE:ADD, ;
+   9 1 MOVZ,  9 XREG-RBASE CLAUSE-CELL STR,                  \ an imported definer had no `does>`
+   CP CP 15 ADD, ;
 
 ;package
 
 package ENGINE-EMIT
 public
 : C-CLEAR-TRUSTED-STATE ( -- )
-   9 0 A64ICODE:MOVZ,
-   9 XREG-RBASE NCOMP-DISPATCH:COMP-LATCH-CELL A64ICODE:STR,
-   9 XREG-RBASE TSIG-A-CELL A64ICODE:STR,   9 XREG-RBASE TSIG-U-CELL A64ICODE:STR,
-   9 XREG-RBASE TCSIG-A-CELL A64ICODE:STR,  9 XREG-RBASE TCSIG-U-CELL A64ICODE:STR,
-   9 XREG-RBASE DOESB-CELL A64ICODE:STR,  9 XREG-RBASE CLAUSE-CELL A64ICODE:STR,
-   9 XREG-RBASE TRUSTED-CELL A64ICODE:STR, ;
+   9 0 MOVZ,
+   9 XREG-RBASE NCOMP-DISPATCH:COMP-LATCH-CELL STR,
+   9 XREG-RBASE TSIG-A-CELL STR,   9 XREG-RBASE TSIG-U-CELL STR,
+   9 XREG-RBASE TCSIG-A-CELL STR,  9 XREG-RBASE TCSIG-U-CELL STR,
+   9 XREG-RBASE DOESB-CELL STR,  9 XREG-RBASE CLAUSE-CELL STR,
+   9 XREG-RBASE TRUSTED-CELL STR, ;
 
 ;package
 
@@ -761,71 +768,71 @@ package DEFWRITE
 
 \ x<dst> = the address of record x<ix>; dst and ix differ.
 : REC-AT, ( n n -- ) {: dst:n ix:n :}
-   dst DREC A64ICODE:MOVZ,  dst ix dst A64ICODE:MUL,  dst DBASE dst A64ICODE:ADD, ;
+   dst DREC MOVZ,  dst ix dst MUL,  dst DBASE dst ADD, ;
 
 \ A pending definition's record is slot NDICT, the slot a record writer fills.
 : NOT-PENDING, ( label -- ) {: bad:label :}
-   9 XREG-RBASE PEND-CELL A64ICODE:LDR,  9 bad A64ICODE:CBNZ, ;
+   9 XREG-RBASE PEND-CELL LDR,  9 bad CBNZ, ;
 
 \ Slot DICT-CAP is the control-flow band, not a record.
 : DICT-ROOM, ( label -- ) {: bad:label :}
-   9 DICT-CAP A64ICODE:LIT64,  NDICT 9 A64ICODE:CMP,  A64ASM:C-CS bad A64ICODE:BCOND, ;
+   9 DICT-CAP LIT64,  NDICT 9 CMP,  C-CS bad BCOND, ;
 
 \ An empty name, and one whose copy would reach the code ceiling. x1 = the
 \ length; x12 takes a copy for NAME-ROOM.
 : NAME-SIZE, ( label -- ) {: bad:label :}
-   1 bad A64ICODE:CBZ,
-   12 1 0 A64ICODE:ADDI,  bad NAME-ROOM ;
+   1 bad CBZ,
+   12 1 0 ADDI,  bad NAME-ROOM ;
 
 \ A live record for the folded name x0/x1 in wordlist x2. WLFIND keeps x0, x1,
 \ x2 and x13, and clobbers x3-x12 and x14-x17.
 : FRESH, ( label -- ) {: bad:label :}
-   WLFIND:LENTRY A64ICODE:LABEL@ A64ICODE:BL,  12 bad A64ICODE:CBNZ, ;
+   WLFIND:LENTRY LABEL@ BL,  12 bad CBNZ, ;
 
 \ Wid x2 is one of wl.f's WL markers, not a wordlist: every wordlist id
 \ is at least 0.
 : REAL-WID, ( label -- ) {: bad:label :}
-   2 0 A64ICODE:CMPI,  A64ASM:C-LT bad A64ICODE:BCOND, ;
+   2 0 CMPI,  C-LT bad BCOND, ;
 
 \ After the seal, wid x2 is protected when it is an OWNER-API wordlist.
 : OPEN-WID, ( label -- ) {: prot:label :}
-   A64ICODE:LBL {: open:label :}
-   9 XREG-RBASE SEAL-NDICT-CELL A64ICODE:LDR,  9 open A64ICODE:CBZ,
-   2 OWNER-API-PUB-WID A64ICODE:CMPI,  A64ASM:C-EQ prot A64ICODE:BCOND,
-   2 OWNER-API-PRI-WID A64ICODE:CMPI,  A64ASM:C-EQ prot A64ICODE:BCOND,
-   open A64ICODE:LBL, ;
+   LBL {: open:label :}
+   9 XREG-RBASE SEAL-NDICT-CELL LDR,  9 open CBZ,
+   2 OWNER-API-PUB-WID CMPI,  C-EQ prot BCOND,
+   2 OWNER-API-PRI-WID CMPI,  C-EQ prot BCOND,
+   open LBL, ;
 
 \ Count record NDICT and index it.
 : PUBLISH, ( -- )
-   EM-DEF-OCC:LAPPEND A64ICODE:LABEL@ A64ICODE:BL,  ENGINE-EMIT:LHIDXADD A64ICODE:LABEL@ A64ICODE:BL, ;
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL, ;
 
 \ x<r> = the replay scope band; its cells are reached as offsets from that base.
 : BAND, ( n -- ) {: r:n :}
-   r REPLAY-SCOPE:LATCH A64ICODE:LIT64,  r XREG-RBASE r A64ICODE:ADD, ;
+   r REPLAY-SCOPE:LATCH LIT64,  r XREG-RBASE r ADD, ;
 
 : BAND-OFF ( n -- n ) REPLAY-SCOPE:LATCH - ;
 
 \ While an overlay is open, raise its high-water mark to NDICT: the records the
 \ overlay published are [the saved NDICT, HW). Clobbers x8 and x14.
 : HW-RAISE, ( -- )
-   A64ICODE:LBL {: keep:label :}
+   LBL {: keep:label :}
    8 BAND,
-   14 8 REPLAY-SCOPE:LATCH BAND-OFF A64ICODE:LDR,  14 keep A64ICODE:CBZ,
-   14 8 REPLAY-SCOPE:HW BAND-OFF A64ICODE:LDR,  NDICT 14 A64ICODE:CMP,  A64ASM:C-LS keep A64ICODE:BCOND,
-   NDICT 8 REPLAY-SCOPE:HW BAND-OFF A64ICODE:STR,
-   keep A64ICODE:LBL, ;
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 keep CBZ,
+   14 8 REPLAY-SCOPE:HW BAND-OFF LDR,  NDICT 14 CMP,  C-LS keep BCOND,
+   NDICT 8 REPLAY-SCOPE:HW BAND-OFF STR,
+   keep LBL, ;
 
 \ One scope cell, at off from x<base>, into band cell `cell` at x8 when save is
 \ true and back out of it when it is false. Clobbers x14.
 : SAVED, ( n n n bool -- ) {: base:n off:n cell:n save:bool :}
    save if
-      14 base off A64ICODE:LDR,  14 8 cell BAND-OFF A64ICODE:STR,
+      14 base off LDR,  14 8 cell BAND-OFF STR,
    else
-      14 8 cell BAND-OFF A64ICODE:LDR,  14 base off A64ICODE:STR,
+      14 8 cell BAND-OFF LDR,  14 base off STR,
    then ;
 
 \ The scope replay-open saves and replay-close restores, beside NDICT and CP.
-\ x8 = the band. Clobbers x14.
+\ x8 = the band. Clobbers x10 and x14.
 : SCOPE, ( bool -- ) {: save:bool :}
    XREG-RBASE WIDN-CELL REPLAY-SCOPE:WIDN save SAVED,
    XREG-RBASE CUR-CELL REPLAY-SCOPE:CUR save SAVED,
@@ -835,15 +842,21 @@ package DEFWRITE
    XREG-RBASE PKG-REC-CELL REPLAY-SCOPE:PKG-REC save SAVED,
    ENCLOSING:END ENCLOSING:PUB - 0 do
       XREG-RBASE ENCLOSING:PUB i +  REPLAY-SCOPE:ENCLOSING i +  save SAVED,
-   CELL +loop ;
+   CELL +loop
+   10 USE-BAND-OFF LIT64,  10 XREG-RBASE 10 ADD,
+   10 USE-DEPTH-CELL USE-BAND-OFF - REPLAY-SCOPE:USE-DEPTH save SAVED,
+   10 USE-PKG-SAVE-CELL USE-BAND-OFF - REPLAY-SCOPE:USE-PKG-SAVE save SAVED,
+   USE-MAX 0 ?do
+      10 USE-WIDS-OFF USE-BAND-OFF - i cells +  REPLAY-SCOPE:USE-WIDS i cells +  save SAVED,
+   loop ;
 
 \ Zero the cells [x10, x11). Clobbers x10 and x15.
 : ZERO-SPAN, ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: next:label done:label :}
-   15 0 A64ICODE:MOVZ,
-   next A64ICODE:LBL,  10 11 A64ICODE:CMP,  A64ASM:C-CS done A64ICODE:BCOND,
-      15 10 0 A64ICODE:STR,  10 10 8 A64ICODE:ADDI,  next A64ICODE:B,
-   done A64ICODE:LBL, ;
+   LBL LBL {: next:label done:label :}
+   15 0 MOVZ,
+   next LBL,  10 11 CMP,  C-CS done BCOND,
+      15 10 0 STR,  10 10 8 ADDI,  next B,
+   done LBL, ;
 
 public
 
@@ -858,200 +871,200 @@ variable LREPLAYTRAP
 \ namespace-record ( ^u8 n bool -- n )
 \ A name holds at most one colon, never at an edge: a part's path `A:B`.
 : NAMESPACE-RECORD ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bad scan next clean nopri done :}
-   s" E-TASK-COMPILE" s" namespace-record" ENGINE-EMIT:B-TASK-GUARD
-   13 RT:G-POP  1 RT:G-POP  0 RT:G-POP                         \ x13 = the flag, x1 = the length, x0 = the name
+   LBL LBL LBL LBL LBL LBL {: bad scan next clean nopri done :}
+   s" E-TASK-COMPILE" s" namespace-record" B-TASK-GUARD
+   13 G-POP  1 G-POP  0 G-POP                         \ x13 = the flag, x1 = the length, x0 = the name
    bad NOT-PENDING,
    bad DICT-ROOM,
    bad NAME-SIZE,
-   14 0 A64ICODE:MOVZ,  16 0 A64ICODE:MOVZ,                             \ x16 = a colon seen
-   scan A64ICODE:LBL,  14 1 A64ICODE:CMP,  A64ASM:C-CS clean A64ICODE:BCOND,
-      15 0 14 A64ICODE:ADD,  15 15 0 A64ICODE:LDRB,  15 $3A A64ICODE:CMPI,  A64ASM:C-NE next A64ICODE:BCOND,
-         16 bad A64ICODE:CBNZ,  14 bad A64ICODE:CBZ,
-         15 14 1 A64ICODE:ADDI,  15 1 A64ICODE:CMP,  A64ASM:C-CS bad A64ICODE:BCOND,
-         16 1 A64ICODE:MOVZ,
-   next A64ICODE:LBL,  14 14 1 A64ICODE:ADDI,  scan A64ICODE:B,
-   clean A64ICODE:LBL,
-   2 XREG-RBASE BOOT:NAMESPACE-WL-CELL A64ICODE:LDR,
+   14 0 MOVZ,  16 0 MOVZ,                             \ x16 = a colon seen
+   scan LBL,  14 1 CMP,  C-CS clean BCOND,
+      15 0 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-NE next BCOND,
+         16 bad CBNZ,  14 bad CBZ,
+         15 14 1 ADDI,  15 1 CMP,  C-CS bad BCOND,
+         16 1 MOVZ,
+   next LBL,  14 14 1 ADDI,  scan B,
+   clean LBL,
+   2 XREG-RBASE BOOT:NAMESPACE-WL-CELL LDR,
    bad FRESH,
-   10 0 0 A64ICODE:ADDI,  12 1 0 A64ICODE:ADDI,  3 13 0 A64ICODE:ADDI,           \ the name, the flag
+   10 0 0 ADDI,  12 1 0 ADDI,  3 13 0 ADDI,           \ the name, the flag
    9 NDICT REC-AT,
    NAME-COPY
-   11 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  11 9 11 A64ICODE:ADD,
-   14 XREG-RBASE WIDN-CELL A64ICODE:LDR,  14 11 0 A64ICODE:STR,                \ [0] = a fresh wid
-   14 14 1 A64ICODE:ADDI,  15 0 A64ICODE:MOVZ,
-   3 nopri A64ICODE:CBZ,
-      15 14 0 A64ICODE:ADDI,  14 14 1 A64ICODE:ADDI,                    \ [8] = a second one
-   nopri A64ICODE:LBL,
-   15 11 8 A64ICODE:STR,  14 XREG-RBASE WIDN-CELL A64ICODE:STR,
-   15 XREG-RBASE BOOT:NAMESPACE-WL-CELL A64ICODE:LDR,  15 11 40 A64ICODE:STR,
+   11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,
+   14 XREG-RBASE WIDN-CELL LDR,  14 11 0 STR,                \ [0] = a fresh wid
+   14 14 1 ADDI,  15 0 MOVZ,
+   3 nopri CBZ,
+      15 14 0 ADDI,  14 14 1 ADDI,                    \ [8] = a second one
+   nopri LBL,
+   15 11 8 STR,  14 XREG-RBASE WIDN-CELL STR,
+   15 XREG-RBASE BOOT:NAMESPACE-WL-CELL LDR,  15 11 40 STR,
    PUBLISH,
    HW-RAISE,                                          \ an overlay's row dies at replay-close
-   9 NDICT 1 A64ICODE:SUBI,  9 RT:G-PUSH
-   done A64ICODE:B,
+   9 NDICT 1 SUBI,  9 G-PUSH
+   done B,
    s" E-SEAL-VIOLATION habu: namespace-record with a definition pending, no record room, an empty name or one reaching the code ceiling, a colon at an edge or twice, or a name already recorded"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ namespace-private ( n -- )
 : NAMESPACE-PRIVATE ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: bad done :}
-   s" E-TASK-COMPILE" s" namespace-private" ENGINE-EMIT:B-TASK-GUARD
+   LBL LBL {: bad done :}
+   s" E-TASK-COMPILE" s" namespace-private" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
-   0 RT:G-POP
-   0 NDICT A64ICODE:CMP,  A64ASM:C-CS bad A64ICODE:BCOND,
+   0 G-POP
+   0 NDICT CMP,  C-CS bad BCOND,
    9 0 REC-AT,
-   14 9 40 A64ICODE:LDR,  14 0 A64ICODE:CMPI,  A64ASM:C-GE bad A64ICODE:BCOND,             \ a live package row
-   15 WL:RETIRED invert A64ICODE:MOVN,  14 15 A64ICODE:CMP,  A64ASM:C-EQ bad A64ICODE:BCOND,
-   15 WL:RETIRED-NAMESPACE invert A64ICODE:MOVN,  14 15 A64ICODE:CMP,  A64ASM:C-EQ bad A64ICODE:BCOND,
-   14 9 8 A64ICODE:LDR,  14 bad A64ICODE:CBNZ,
-   11 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  11 9 11 A64ICODE:ADD,
-   14 XREG-RBASE WIDN-CELL A64ICODE:LDR,  14 11 8 A64ICODE:STR,
-   14 14 1 A64ICODE:ADDI,  14 XREG-RBASE WIDN-CELL A64ICODE:STR,
-   done A64ICODE:B,
+   14 9 40 LDR,  14 0 CMPI,  C-GE bad BCOND,             \ a live package row
+   15 WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   14 9 8 LDR,  14 bad CBNZ,
+   11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,
+   14 XREG-RBASE WIDN-CELL LDR,  14 11 8 STR,
+   14 14 1 ADDI,  14 XREG-RBASE WIDN-CELL STR,
+   done B,
    s" E-SEAL-VIOLATION habu: namespace-private index not a live package row below NDICT, or a row that has a private wordlist"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ alias-record ( ^u8 n n n -- ) name, source index, wid
 : ALIAS-RECORD ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bad prot notval done :}
-   s" E-TASK-COMPILE" s" alias-record" ENGINE-EMIT:B-TASK-GUARD
+   LBL LBL LBL LBL {: bad prot notval done :}
+   s" E-TASK-COMPILE" s" alias-record" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
-   2 RT:G-POP  4 RT:G-POP  1 RT:G-POP  0 RT:G-POP                 \ x2 = the wid, x4 = the source, x1/x0 = the name
+   2 G-POP  4 G-POP  1 G-POP  0 G-POP                 \ x2 = the wid, x4 = the source, x1/x0 = the name
    bad REAL-WID,
    prot OPEN-WID,
    bad NOT-PENDING,
-   4 NDICT A64ICODE:CMP,  A64ASM:C-CS bad A64ICODE:BCOND,
+   4 NDICT CMP,  C-CS bad BCOND,
    5 4 REC-AT,
-   14 5 40 A64ICODE:LDR,  14 0 A64ICODE:CMPI,  A64ASM:C-LT bad A64ICODE:BCOND,           \ a package row or a retired record has no live body
-   14 5 16 A64ICODE:LDR,  14 14 DNAME-INT A64ICODE:ANDI,  14 bad A64ICODE:CBNZ,  \ an internal body: the alias would drop its gate
+   14 5 40 LDR,  14 0 CMPI,  C-LT bad BCOND,           \ a package row or a retired record has no live body
+   14 5 16 LDR,  14 14 DNAME-INT ANDI,  14 bad CBNZ,  \ an internal body: the alias would drop its gate
    bad DICT-ROOM,
    bad NAME-SIZE,
-   13 4 0 A64ICODE:ADDI,
+   13 4 0 ADDI,
    bad FRESH,
-   3 2 0 A64ICODE:ADDI,  4 13 0 A64ICODE:ADDI,  10 0 0 A64ICODE:ADDI,  12 1 0 A64ICODE:ADDI,
+   3 2 0 ADDI,  4 13 0 ADDI,  10 0 0 ADDI,  12 1 0 ADDI,
    9 NDICT REC-AT,
    NAME-COPY
-   11 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  11 9 11 A64ICODE:ADD,
+   11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,
    5 4 REC-AT,
-   14 5 0 A64ICODE:LDR,  14 11 0 A64ICODE:STR,                           \ [0] = the source's entry
-   14 5 8 A64ICODE:LDR,  14 11 8 A64ICODE:STR,                           \ [8] = its recorded length
-   16 5 16 A64ICODE:LDR,
-   15 DNAME-IMM DNAME-WIDE or DNAME-TARGET or DNAME-COPY or A64ICODE:LIT64,  14 16 15 A64ICODE:AND,
-   15 DKIND:MASK A64ICODE:LIT64,  16 16 15 A64ICODE:AND,
-   15 DKIND:VAL A64ICODE:LIT64,  16 15 A64ICODE:CMP,  A64ASM:C-NE notval A64ICODE:BCOND,
-      14 14 15 A64ICODE:ORR,                                    \ only an immutable value keeps its fixed kind
-   notval A64ICODE:LBL,
-   15 9 16 A64ICODE:LDR,  15 15 14 A64ICODE:ORR,  15 11 16 A64ICODE:STR,
-   3 11 40 A64ICODE:STR,
+   14 5 0 LDR,  14 11 0 STR,                           \ [0] = the source's entry
+   14 5 8 LDR,  14 11 8 STR,                           \ [8] = its recorded length
+   16 5 16 LDR,
+   15 DNAME-IMM DNAME-WIDE or DNAME-TARGET or DNAME-COPY or LIT64,  14 16 15 AND,
+   15 DKIND:MASK LIT64,  16 16 15 AND,
+   15 DKIND:VAL LIT64,  16 15 CMP,  C-NE notval BCOND,
+      14 14 15 ORR,                                    \ only an immutable value keeps its fixed kind
+   notval LBL,
+   15 9 16 LDR,  15 15 14 ORR,  15 11 16 STR,
+   3 11 40 STR,
    PUBLISH,
-   done A64ICODE:B,
+   done B,
    s" E-SEAL-VIOLATION habu: alias-record with a marker wid, a definition pending, a source that is no live definition or is internal, no record room, an empty name or one reaching the code ceiling, or a name taken"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    s" E-SEAL-WORDLIST habu: alias-record into a wordlist protected by the seal"
    prot EXIT-STATUS:SEAL-WORDLIST REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ package-scope! ( n n -- )
 : PACKAGE-SCOPE ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bad set inline scan part top store done :}
-   1 RT:G-POP  0 RT:G-POP                                   \ x1 = the parent wid, x0 = the row
-   15 0 A64ICODE:MOVN,  0 15 A64ICODE:CMP,  A64ASM:C-NE set A64ICODE:BCOND,
-      1 bad A64ICODE:CBNZ,                                     \ only `-1 0` clears
-      9 0 A64ICODE:MOVZ,
-      9 XREG-RBASE PKG-PUB-CELL A64ICODE:STR,  9 XREG-RBASE PKG-PRI-CELL A64ICODE:STR,
-      9 XREG-RBASE PKG-PARENT-CELL A64ICODE:STR,  9 XREG-RBASE PKG-REC-CELL A64ICODE:STR,
-      9 XREG-RBASE ENCLOSING:PUB A64ICODE:STR,  9 XREG-RBASE ENCLOSING:PRI A64ICODE:STR,
-      9 XREG-RBASE ENCLOSING:PARENT A64ICODE:STR,  9 XREG-RBASE ENCLOSING:REC A64ICODE:STR,
-      done A64ICODE:B,
-   set A64ICODE:LBL,
-   0 NDICT A64ICODE:CMP,  A64ASM:C-CS bad A64ICODE:BCOND,
+   LBL LBL LBL LBL LBL LBL LBL LBL {: bad set inline scan part top store done :}
+   1 G-POP  0 G-POP                                   \ x1 = the parent wid, x0 = the row
+   15 0 MOVN,  0 15 CMP,  C-NE set BCOND,
+      1 bad CBNZ,                                     \ only `-1 0` clears
+      9 0 MOVZ,
+      9 XREG-RBASE PKG-PUB-CELL STR,  9 XREG-RBASE PKG-PRI-CELL STR,
+      9 XREG-RBASE PKG-PARENT-CELL STR,  9 XREG-RBASE PKG-REC-CELL STR,
+      9 XREG-RBASE ENCLOSING:PUB STR,  9 XREG-RBASE ENCLOSING:PRI STR,
+      9 XREG-RBASE ENCLOSING:PARENT STR,  9 XREG-RBASE ENCLOSING:REC STR,
+      done B,
+   set LBL,
+   0 NDICT CMP,  C-CS bad BCOND,
    9 0 REC-AT,
-   14 9 40 A64ICODE:LDR,  14 0 A64ICODE:CMPI,  A64ASM:C-GE bad A64ICODE:BCOND,             \ a live package row
-   15 WL:RETIRED invert A64ICODE:MOVN,  14 15 A64ICODE:CMP,  A64ASM:C-EQ bad A64ICODE:BCOND,
-   15 WL:RETIRED-NAMESPACE invert A64ICODE:MOVN,  14 15 A64ICODE:CMP,  A64ASM:C-EQ bad A64ICODE:BCOND,
-   12 9 8 A64ICODE:LDR,  12 bad A64ICODE:CBZ,
-   2 9 16 A64ICODE:LDR,  2 2 DNAME-FLAG-BITS A64ICODE:LSLI,  2 2 DNAME-FLAG-BITS A64ICODE:LSRI,   \ x2 = the name's length
-   4 9 24 A64ICODE:ADDI,
-   14 9 16 A64ICODE:LDR,  14 14 DNAME-EXT A64ICODE:ANDI,  14 inline A64ICODE:CBZ,
-      4 9 24 A64ICODE:LDR,                                     \ x4 = the name's bytes
-   inline A64ICODE:LBL,
-   3 0 A64ICODE:MOVZ,
-   scan A64ICODE:LBL,  3 2 A64ICODE:CMP,  A64ASM:C-CS top A64ICODE:BCOND,
-      15 4 3 A64ICODE:ADD,  15 15 0 A64ICODE:LDRB,  15 $3A A64ICODE:CMPI,  A64ASM:C-EQ part A64ICODE:BCOND,
-      3 3 1 A64ICODE:ADDI,  scan A64ICODE:B,
-   part A64ICODE:LBL,
-      14 XREG-RBASE PKG-PUB-CELL A64ICODE:LDR,  14 bad A64ICODE:CBZ,          \ no package open
-      14 XREG-RBASE ENCLOSING:PUB A64ICODE:LDR,  14 bad A64ICODE:CBNZ,        \ a part is open
-      14 XREG-RBASE PKG-PUB-CELL A64ICODE:LDR,  14 XREG-RBASE ENCLOSING:PUB A64ICODE:STR,
-      14 XREG-RBASE PKG-PRI-CELL A64ICODE:LDR,  14 XREG-RBASE ENCLOSING:PRI A64ICODE:STR,
-      14 XREG-RBASE PKG-PARENT-CELL A64ICODE:LDR,  14 XREG-RBASE ENCLOSING:PARENT A64ICODE:STR,
-      14 XREG-RBASE PKG-REC-CELL A64ICODE:LDR,  14 XREG-RBASE ENCLOSING:REC A64ICODE:STR,
-      store A64ICODE:B,
-   top A64ICODE:LBL,
-      14 0 A64ICODE:MOVZ,
-      14 XREG-RBASE ENCLOSING:PUB A64ICODE:STR,  14 XREG-RBASE ENCLOSING:PRI A64ICODE:STR,
-      14 XREG-RBASE ENCLOSING:PARENT A64ICODE:STR,  14 XREG-RBASE ENCLOSING:REC A64ICODE:STR,
-   store A64ICODE:LBL,
-   11 9 0 A64ICODE:LDR,
-   11 XREG-RBASE PKG-PUB-CELL A64ICODE:STR,  12 XREG-RBASE PKG-PRI-CELL A64ICODE:STR,
-   1 XREG-RBASE PKG-PARENT-CELL A64ICODE:STR,  9 XREG-RBASE PKG-REC-CELL A64ICODE:STR,
-   done A64ICODE:B,
+   14 9 40 LDR,  14 0 CMPI,  C-GE bad BCOND,             \ a live package row
+   15 WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   12 9 8 LDR,  12 bad CBZ,
+   2 9 16 LDR,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,   \ x2 = the name's length
+   4 9 24 ADDI,
+   14 9 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
+      4 9 24 LDR,                                     \ x4 = the name's bytes
+   inline LBL,
+   3 0 MOVZ,
+   scan LBL,  3 2 CMP,  C-CS top BCOND,
+      15 4 3 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ part BCOND,
+      3 3 1 ADDI,  scan B,
+   part LBL,
+      14 XREG-RBASE PKG-PUB-CELL LDR,  14 bad CBZ,          \ no package open
+      14 XREG-RBASE ENCLOSING:PUB LDR,  14 bad CBNZ,        \ a part is open
+      14 XREG-RBASE PKG-PUB-CELL LDR,  14 XREG-RBASE ENCLOSING:PUB STR,
+      14 XREG-RBASE PKG-PRI-CELL LDR,  14 XREG-RBASE ENCLOSING:PRI STR,
+      14 XREG-RBASE PKG-PARENT-CELL LDR,  14 XREG-RBASE ENCLOSING:PARENT STR,
+      14 XREG-RBASE PKG-REC-CELL LDR,  14 XREG-RBASE ENCLOSING:REC STR,
+      store B,
+   top LBL,
+      14 0 MOVZ,
+      14 XREG-RBASE ENCLOSING:PUB STR,  14 XREG-RBASE ENCLOSING:PRI STR,
+      14 XREG-RBASE ENCLOSING:PARENT STR,  14 XREG-RBASE ENCLOSING:REC STR,
+   store LBL,
+   11 9 0 LDR,
+   11 XREG-RBASE PKG-PUB-CELL STR,  12 XREG-RBASE PKG-PRI-CELL STR,
+   1 XREG-RBASE PKG-PARENT-CELL STR,  9 XREG-RBASE PKG-REC-CELL STR,
+   done B,
    s" E-SEAL-VIOLATION habu: package-scope! row not a live package row below NDICT with a private wordlist, a part outside a package or inside a part, or -1 with a parent"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ replay-open ( -- )
 : REPLAY-OPEN ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bad none done :}
-   s" E-TASK-COMPILE" s" replay-open" ENGINE-EMIT:B-TASK-GUARD
+   LBL LBL LBL {: bad none done :}
+   s" E-TASK-COMPILE" s" replay-open" B-TASK-GUARD
    8 BAND,
-   14 8 REPLAY-SCOPE:LATCH BAND-OFF A64ICODE:LDR,  14 bad A64ICODE:CBNZ,   \ an overlay is open
-   9 XREG-RBASE PEND-CELL A64ICODE:LDR,  9 none A64ICODE:CBZ,
-      14 XREG-RBASE TASKS-LIVE-CELL A64ICODE:LDR,  14 bad A64ICODE:CBNZ,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBNZ,   \ an overlay is open
+   9 XREG-RBASE PEND-CELL LDR,  9 none CBZ,
+      14 XREG-RBASE TASKS-LIVE-CELL LDR,  14 bad CBNZ,
       10 NDICT REC-AT,
-      DREC 0 do  14 10 i A64ICODE:LDR,  14 XREG-RBASE REPLAY-SCOPE:PEND-REC i + A64ICODE:STR,  CELL +loop
-      9 XREG-RBASE REPLAY-SCOPE:PEND A64ICODE:STR,
-      14 0 A64ICODE:MOVZ,  14 XREG-RBASE PEND-CELL A64ICODE:STR,
-   none A64ICODE:LBL,
-   NDICT 8 REPLAY-SCOPE:NDICT BAND-OFF A64ICODE:STR,
-   CP 8 REPLAY-SCOPE:CP BAND-OFF A64ICODE:STR,
+      DREC 0 do  14 10 i LDR,  14 XREG-RBASE REPLAY-SCOPE:PEND-REC i + STR,  CELL +loop
+      9 XREG-RBASE REPLAY-SCOPE:PEND STR,
+      14 0 MOVZ,  14 XREG-RBASE PEND-CELL STR,
+   none LBL,
+   NDICT 8 REPLAY-SCOPE:NDICT BAND-OFF STR,
+   CP 8 REPLAY-SCOPE:CP BAND-OFF STR,
    0 0= SCOPE,
-   NDICT 8 REPLAY-SCOPE:HW BAND-OFF A64ICODE:STR,
-   14 1 A64ICODE:MOVZ,  14 8 REPLAY-SCOPE:LATCH BAND-OFF A64ICODE:STR,
-   done A64ICODE:B,
+   NDICT 8 REPLAY-SCOPE:HW BAND-OFF STR,
+   14 1 MOVZ,  14 8 REPLAY-SCOPE:LATCH BAND-OFF STR,
+   done B,
    s" E-SEAL-VIOLATION habu: replay-open with an overlay open, or a definition pending while a task is live"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ replay-record ( ^u8 n n -- ) name, wid: a codeless record, whose entry
 \ is the trap. It needs no OPEN-WID: it can only trap, and replay-close
 \ removes it.
 : REPLAY-RECORD ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: bad done :}
-   s" E-TASK-COMPILE" s" replay-record" ENGINE-EMIT:B-TASK-GUARD
-   2 RT:G-POP  1 RT:G-POP  0 RT:G-POP                          \ x2 = the wid, x1/x0 = the name
+   LBL LBL {: bad done :}
+   s" E-TASK-COMPILE" s" replay-record" B-TASK-GUARD
+   2 G-POP  1 G-POP  0 G-POP                          \ x2 = the wid, x1/x0 = the name
    bad REAL-WID,
    8 BAND,
-   14 8 REPLAY-SCOPE:LATCH BAND-OFF A64ICODE:LDR,  14 bad A64ICODE:CBZ,   \ no overlay
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
    bad NOT-PENDING,
    bad DICT-ROOM,
    bad NAME-SIZE,
    bad FRESH,
-   3 2 0 A64ICODE:ADDI,  10 0 0 A64ICODE:ADDI,  12 1 0 A64ICODE:ADDI,
+   3 2 0 ADDI,  10 0 0 ADDI,  12 1 0 ADDI,
    9 NDICT REC-AT,
    NAME-COPY
-   11 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  11 9 11 A64ICODE:ADD,
-   14 LREPLAYTRAP A64ICODE:LABEL@ A64ICODE:ADR,  14 11 0 A64ICODE:STR,            \ [0] = the trap
-   14 0 A64ICODE:MOVZ,  14 11 8 A64ICODE:STR,
-   3 11 40 A64ICODE:STR,
+   11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,
+   14 LREPLAYTRAP LABEL@ ADR,  14 11 0 STR,            \ [0] = the trap
+   14 0 MOVZ,  14 11 8 STR,
+   3 11 40 STR,
    PUBLISH,
    HW-RAISE,
-   done A64ICODE:B,
+   done B,
    s" E-SEAL-VIOLATION habu: replay-record with a marker wid, no overlay, a definition pending, no record room, an empty name or one reaching the code ceiling, or a name taken"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ record-wid! ( n n -- ) wid, index: the overlay retires a record with wid -2
 \ and later gives it back the wid it logged, in reverse order. The wid cell is
@@ -1064,31 +1077,31 @@ variable LREPLAYTRAP
 \ window before any lookup: CLOSE's restore with replay-close, a frame
 \ ROLLBACK's with the ndict! that drops the replay record.
 : RECORD-WID ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bad wid store done :}
-   s" E-TASK-COMPILE" s" record-wid!" ENGINE-EMIT:B-TASK-GUARD
-   3 RT:G-POP  13 RT:G-POP                                  \ x3 = the index, x13 = the wid
+   LBL LBL LBL LBL {: bad wid store done :}
+   s" E-TASK-COMPILE" s" record-wid!" B-TASK-GUARD
+   3 G-POP  13 G-POP                                  \ x3 = the index, x13 = the wid
    8 BAND,
-   14 8 REPLAY-SCOPE:LATCH BAND-OFF A64ICODE:LDR,  14 bad A64ICODE:CBZ,   \ no overlay
-   3 NDICT A64ICODE:CMP,  A64ASM:C-CS bad A64ICODE:BCOND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   3 NDICT CMP,  C-CS bad BCOND,
    9 3 REC-AT,
-   14 9 40 A64ICODE:LDR,  14 0 A64ICODE:CMPI,  A64ASM:C-GE wid A64ICODE:BCOND,             \ a live package row
-   15 WL:RETIRED invert A64ICODE:MOVN,  14 15 A64ICODE:CMP,  A64ASM:C-EQ wid A64ICODE:BCOND,
-   15 WL:RETIRED-NAMESPACE invert A64ICODE:MOVN,  14 15 A64ICODE:CMP,  A64ASM:C-NE bad A64ICODE:BCOND,
-   wid A64ICODE:LBL,
-   13 0 A64ICODE:CMPI,  A64ASM:C-GE store A64ICODE:BCOND,                         \ a live package row's marker
-   15 WL:RETIRED invert A64ICODE:MOVN,  13 15 A64ICODE:CMP,  A64ASM:C-EQ store A64ICODE:BCOND,
-   15 WL:RETIRED-NAMESPACE invert A64ICODE:MOVN,  13 15 A64ICODE:CMP,  A64ASM:C-NE bad A64ICODE:BCOND,
-   store A64ICODE:LBL,
-   14 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  14 9 14 A64ICODE:ADD,  13 14 40 A64ICODE:STR,
-   HIDX-EMIT:LREKEY A64ICODE:LABEL@ A64ICODE:BL,
-   done A64ICODE:B,
+   14 9 40 LDR,  14 0 CMPI,  C-GE wid BCOND,             \ a live package row
+   15 WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ wid BCOND,
+   15 WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
+   wid LBL,
+   13 0 CMPI,  C-GE store BCOND,                         \ a live package row's marker
+   15 WL:RETIRED invert MOVN,  13 15 CMP,  C-EQ store BCOND,
+   15 WL:RETIRED-NAMESPACE invert MOVN,  13 15 CMP,  C-NE bad BCOND,
+   store LBL,
+   14 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  14 9 14 ADD,  13 14 40 STR,
+   HIDX-EMIT:LREKEY LABEL@ BL,
+   done B,
    s" E-SEAL-VIOLATION habu: record-wid! with no overlay, an index at or past NDICT, or an old or new wid neither a wordlist nor a retired marker"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ record-rekey ( n -- ) index, below NDICT: the body checks nothing.
 : RECORD-REKEY ( -- )
-   3 RT:G-POP  HIDX-EMIT:LREKEY A64ICODE:LABEL@ A64ICODE:BL, ;
+   3 G-POP  HIDX-EMIT:LREKEY LABEL@ BL, ;
 
 \ replay-private ( n bool -- ) namespace index, flag: true gives the row a
 \ fresh private wid, as `package` gives one to a row a qualified definition
@@ -1096,72 +1109,72 @@ variable LREPLAYTRAP
 \ nothing of a row below the saved NDICT, so the owner logs each grant and
 \ takes it back before the close.
 : REPLAY-PRIVATE ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bad give done :}
-   s" E-TASK-COMPILE" s" replay-private" ENGINE-EMIT:B-TASK-GUARD
-   13 RT:G-POP  3 RT:G-POP                                  \ x13 = the flag, x3 = the index
+   LBL LBL LBL {: bad give done :}
+   s" E-TASK-COMPILE" s" replay-private" B-TASK-GUARD
+   13 G-POP  3 G-POP                                  \ x13 = the flag, x3 = the index
    8 BAND,
-   14 8 REPLAY-SCOPE:LATCH BAND-OFF A64ICODE:LDR,  14 bad A64ICODE:CBZ,   \ no overlay
-   3 NDICT A64ICODE:CMP,  A64ASM:C-CS bad A64ICODE:BCOND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   3 NDICT CMP,  C-CS bad BCOND,
    9 3 REC-AT,
-   14 9 40 A64ICODE:LDR,  14 0 A64ICODE:CMPI,  A64ASM:C-GE bad A64ICODE:BCOND,             \ a live package row
-   15 WL:RETIRED invert A64ICODE:MOVN,  14 15 A64ICODE:CMP,  A64ASM:C-EQ bad A64ICODE:BCOND,
-   15 WL:RETIRED-NAMESPACE invert A64ICODE:MOVN,  14 15 A64ICODE:CMP,  A64ASM:C-EQ bad A64ICODE:BCOND,
-   14 9 8 A64ICODE:LDR,
-   13 give A64ICODE:CBNZ,
-      15 8 REPLAY-SCOPE:WIDN BAND-OFF A64ICODE:LDR,  14 15 A64ICODE:CMP,  A64ASM:C-CC bad A64ICODE:BCOND,
-      15 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  15 9 15 A64ICODE:ADD,
-      14 0 A64ICODE:MOVZ,  14 15 8 A64ICODE:STR,
-      done A64ICODE:B,
-   give A64ICODE:LBL,
-   14 bad A64ICODE:CBNZ,
-   15 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  15 9 15 A64ICODE:ADD,
-   14 XREG-RBASE WIDN-CELL A64ICODE:LDR,  14 15 8 A64ICODE:STR,
-   14 14 1 A64ICODE:ADDI,  14 XREG-RBASE WIDN-CELL A64ICODE:STR,
-   done A64ICODE:B,
+   14 9 40 LDR,  14 0 CMPI,  C-GE bad BCOND,             \ a live package row
+   15 WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   14 9 8 LDR,
+   13 give CBNZ,
+      15 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  14 15 CMP,  C-CC bad BCOND,
+      15 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  15 9 15 ADD,
+      14 0 MOVZ,  14 15 8 STR,
+      done B,
+   give LBL,
+   14 bad CBNZ,
+   15 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  15 9 15 ADD,
+   14 XREG-RBASE WIDN-CELL LDR,  14 15 8 STR,
+   14 14 1 ADDI,  14 XREG-RBASE WIDN-CELL STR,
+   done B,
    s" E-SEAL-VIOLATION habu: replay-private with no overlay, an index not a live package row below NDICT, a grant to a row that has one, or a take-back below the saved WIDN"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ replay-close ( -- ): every check comes before the first store, and the parked
 \ definition goes back into slot NDICT last, after the records [NDICT, HW) are
 \ zeroed. Engine writers only raise WIDN past the saved count, so the WIDN
 \ rejection meets a raw store to WIDN-CELL, which nothing else rejects.
 : REPLAY-CLOSE ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bad unparked done :}
-   s" E-TASK-COMPILE" s" replay-close" ENGINE-EMIT:B-TASK-GUARD
+   LBL LBL LBL {: bad unparked done :}
+   s" E-TASK-COMPILE" s" replay-close" B-TASK-GUARD
    8 BAND,
-   14 8 REPLAY-SCOPE:LATCH BAND-OFF A64ICODE:LDR,  14 bad A64ICODE:CBZ,   \ no overlay
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
    bad NOT-PENDING,
-   4 8 REPLAY-SCOPE:NDICT BAND-OFF A64ICODE:LDR,  NDICT 4 A64ICODE:CMP,  A64ASM:C-CC bad A64ICODE:BCOND,
-   5 8 REPLAY-SCOPE:HW BAND-OFF A64ICODE:LDR,  NDICT 5 A64ICODE:CMP,  A64ASM:C-HI bad A64ICODE:BCOND,
-   6 8 REPLAY-SCOPE:CP BAND-OFF A64ICODE:LDR,  CP 6 A64ICODE:CMP,  A64ASM:C-CC bad A64ICODE:BCOND,
-   14 8 REPLAY-SCOPE:WIDN BAND-OFF A64ICODE:LDR,  15 XREG-RBASE WIDN-CELL A64ICODE:LDR,
-   15 14 A64ICODE:CMP,  A64ASM:C-CC bad A64ICODE:BCOND,
-   14 XREG-RBASE REPLAY-SCOPE:PEND A64ICODE:LDR,  14 unparked A64ICODE:CBZ,
-   14 XREG-RBASE TASKS-LIVE-CELL A64ICODE:LDR,  14 bad A64ICODE:CBNZ,
-   unparked A64ICODE:LBL,
-   10 DREC A64ICODE:MOVZ,  11 5 10 A64ICODE:MUL,  10 NDICT 10 A64ICODE:MUL,
-   10 DBASE 10 A64ICODE:ADD,  11 DBASE 11 A64ICODE:ADD,                 \ records [x10, x11)
-   12 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  10 10 12 A64ICODE:ADD,  11 11 12 A64ICODE:ADD,
+   4 8 REPLAY-SCOPE:NDICT BAND-OFF LDR,  NDICT 4 CMP,  C-CC bad BCOND,
+   5 8 REPLAY-SCOPE:HW BAND-OFF LDR,  NDICT 5 CMP,  C-HI bad BCOND,
+   6 8 REPLAY-SCOPE:CP BAND-OFF LDR,  CP 6 CMP,  C-CC bad BCOND,
+   14 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  15 XREG-RBASE WIDN-CELL LDR,
+   15 14 CMP,  C-CC bad BCOND,
+   14 XREG-RBASE REPLAY-SCOPE:PEND LDR,  14 unparked CBZ,
+   14 XREG-RBASE TASKS-LIVE-CELL LDR,  14 bad CBNZ,
+   unparked LBL,
+   10 DREC MOVZ,  11 5 10 MUL,  10 NDICT 10 MUL,
+   10 DBASE 10 ADD,  11 DBASE 11 ADD,                 \ records [x10, x11)
+   12 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  10 10 12 ADD,  11 11 12 ADD,
    ZERO-SPAN,
    8 BAND,
    0 0<> SCOPE,
-   10 8 0 A64ICODE:ADDI,  11 8 REPLAY-SCOPE:END BAND-OFF A64ICODE:ADDI,
+   10 8 0 ADDI,  11 8 REPLAY-SCOPE:END BAND-OFF ADDI,
    ZERO-SPAN,
-   10 8 REPLAY-SCOPE:ENCLOSING BAND-OFF A64ICODE:ADDI,
-   11 10 ENCLOSING:END ENCLOSING:PUB - A64ICODE:ADDI,
+   10 8 REPLAY-SCOPE:ENCLOSING BAND-OFF ADDI,
+   11 10 ENCLOSING:END ENCLOSING:PUB - ADDI,
    ZERO-SPAN,
-   14 XREG-RBASE REPLAY-SCOPE:PEND A64ICODE:LDR,  14 done A64ICODE:CBZ,
+   14 XREG-RBASE REPLAY-SCOPE:PEND LDR,  14 done CBZ,
    9 NDICT REC-AT,
-   11 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  11 9 11 A64ICODE:ADD,
-   DREC 0 do  14 XREG-RBASE REPLAY-SCOPE:PEND-REC i + A64ICODE:LDR,  14 11 i A64ICODE:STR,  CELL +loop
-   9 XREG-RBASE PEND-CELL A64ICODE:STR,
-   14 0 A64ICODE:MOVZ,  14 XREG-RBASE REPLAY-SCOPE:PEND A64ICODE:STR,
-   DREC 0 do  14 XREG-RBASE REPLAY-SCOPE:PEND-REC i + A64ICODE:STR,  CELL +loop
-   done A64ICODE:B,
+   11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,
+   DREC 0 do  14 XREG-RBASE REPLAY-SCOPE:PEND-REC i + LDR,  14 11 i STR,  CELL +loop
+   9 XREG-RBASE PEND-CELL STR,
+   14 0 MOVZ,  14 XREG-RBASE REPLAY-SCOPE:PEND STR,
+   DREC 0 do  14 XREG-RBASE REPLAY-SCOPE:PEND-REC i + STR,  CELL +loop
+   done B,
    s" E-SEAL-VIOLATION habu: replay-close with no overlay, a definition pending, a parked definition while a task is live, NDICT below the saved count or above HW, CP below the saved CP, or WIDN below the saved WIDN"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ replay-widn! ( n -- ): put WIDN back to N, a mark the owner read while the
 \ overlay was open, as a rollback inside the overlay drops what it made since
@@ -1171,70 +1184,70 @@ variable LREPLAYTRAP
 \ the overlay, and N above WIDN, both compared unsigned. A mark is never below
 \ the saved WIDN, so replay-close's WIDN check keeps holding.
 : REPLAY-WIDN ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: bad done :}
-   s" E-TASK-COMPILE" s" replay-widn!" ENGINE-EMIT:B-TASK-GUARD
-   13 RT:G-POP                                           \ x13 = the mark
+   LBL LBL {: bad done :}
+   s" E-TASK-COMPILE" s" replay-widn!" B-TASK-GUARD
+   13 G-POP                                           \ x13 = the mark
    8 BAND,
-   14 8 REPLAY-SCOPE:LATCH BAND-OFF A64ICODE:LDR,  14 bad A64ICODE:CBZ,   \ no overlay
-   14 8 REPLAY-SCOPE:WIDN BAND-OFF A64ICODE:LDR,  13 14 A64ICODE:CMP,  A64ASM:C-CC bad A64ICODE:BCOND,
-   15 XREG-RBASE WIDN-CELL A64ICODE:LDR,  13 15 A64ICODE:CMP,  A64ASM:C-HI bad A64ICODE:BCOND,
-   13 XREG-RBASE WIDN-CELL A64ICODE:STR,
-   done A64ICODE:B,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   14 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  13 14 CMP,  C-CC bad BCOND,
+   15 XREG-RBASE WIDN-CELL LDR,  13 15 CMP,  C-HI bad BCOND,
+   13 XREG-RBASE WIDN-CELL STR,
+   done B,
    s" E-SEAL-VIOLATION habu: replay-widn! with no overlay, or a mark below the saved WIDN or above WIDN"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ def-open ( ^u8 n n n -- ) name, wid, kind
 : DEF-OPEN ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bad prot done :}
-   s" E-TASK-COMPILE" s" def-open" ENGINE-EMIT:B-TASK-GUARD
+   LBL LBL LBL {: bad prot done :}
+   s" E-TASK-COMPILE" s" def-open" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
-   4 RT:G-POP  2 RT:G-POP  1 RT:G-POP  0 RT:G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
-   14 DKIND:MASK DNAME-CELL or DNAME-ALLOC or DNAME-TARGET or invert A64ICODE:LIT64,  14 4 14 A64ICODE:AND,  14 bad A64ICODE:CBNZ,
+   4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
+   14 DKIND:MASK DNAME-CELL or DNAME-ALLOC or DNAME-TARGET or invert LIT64,  14 4 14 AND,  14 bad CBNZ,
    bad REAL-WID,
    prot OPEN-WID,
    bad NOT-PENDING,
-   9 CODE-CEILING A64ICODE:LIT64,  9 DBASE 9 A64ICODE:ADD,  CP 9 A64ICODE:CMP,  A64ASM:C-CS bad A64ICODE:BCOND,
+   9 CODE-CEILING LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-CS bad BCOND,
    bad DICT-ROOM,
    bad NAME-SIZE,
-   13 4 0 A64ICODE:ADDI,
+   13 4 0 ADDI,
    bad FRESH,
-   3 2 0 A64ICODE:ADDI,  4 13 0 A64ICODE:ADDI,  10 0 0 A64ICODE:ADDI,  12 1 0 A64ICODE:ADDI,
+   3 2 0 ADDI,  4 13 0 ADDI,  10 0 0 ADDI,  12 1 0 ADDI,
    9 NDICT REC-AT,
    NAME-COPY
-   11 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  11 9 11 A64ICODE:ADD,
-   CP 11 0 A64ICODE:STR,                                       \ [0] = the entry, past a long name
-   14 0 A64ICODE:MOVZ,  14 11 8 A64ICODE:STR,
-   14 9 16 A64ICODE:LDR,  14 14 4 A64ICODE:ORR,  14 11 16 A64ICODE:STR,          \ the kind beside the length
-   3 11 40 A64ICODE:STR,
-   9 XREG-RBASE PEND-CELL A64ICODE:STR,  14 XREG-RBASE TKA-CELL A64ICODE:LDR,  14 XREG-RBASE PENDTKA-CELL A64ICODE:STR,
-   14 0 A64ICODE:MOVZ,
-   14 XREG-RBASE TSIG-A-CELL A64ICODE:STR,   14 XREG-RBASE TSIG-U-CELL A64ICODE:STR,
-   14 XREG-RBASE TCSIG-A-CELL A64ICODE:STR,  14 XREG-RBASE TCSIG-U-CELL A64ICODE:STR,
-   14 XREG-RBASE DOESB-CELL A64ICODE:STR,    14 XREG-RBASE TRUSTED-CELL A64ICODE:STR,
-   14 XREG-RBASE CLAUSE-CELL A64ICODE:STR,
-   14 ENGINE-EMIT:COMP-LATCH  14 XREG-RBASE NCOMP-DISPATCH:COMP-LATCH-CELL A64ICODE:STR,
-   done A64ICODE:B,
+   11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,
+   CP 11 0 STR,                                       \ [0] = the entry, past a long name
+   14 0 MOVZ,  14 11 8 STR,
+   14 9 16 LDR,  14 14 4 ORR,  14 11 16 STR,          \ the kind beside the length
+   3 11 40 STR,
+   9 XREG-RBASE PEND-CELL STR,  14 XREG-RBASE TKA-CELL LDR,  14 XREG-RBASE PENDTKA-CELL STR,
+   14 0 MOVZ,
+   14 XREG-RBASE TSIG-A-CELL STR,   14 XREG-RBASE TSIG-U-CELL STR,
+   14 XREG-RBASE TCSIG-A-CELL STR,  14 XREG-RBASE TCSIG-U-CELL STR,
+   14 XREG-RBASE DOESB-CELL STR,    14 XREG-RBASE TRUSTED-CELL STR,
+   14 XREG-RBASE CLAUSE-CELL STR,
+   14 COMP-LATCH  14 XREG-RBASE NCOMP-DISPATCH:COMP-LATCH-CELL STR,
+   done B,
    s" E-SEAL-VIOLATION habu: def-open with a bad kind, a marker wid, a definition pending, CP at the code ceiling, no record room, an empty name or one reaching the code ceiling, or a name taken"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
    s" E-SEAL-WORDLIST habu: def-open into a wordlist protected by the seal"
    prot EXIT-STATUS:SEAL-WORDLIST REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ body-capture ( ^u8 n -- ): LBCS is the capture `:` appends through; it grows
 \ the body text block as every capture does.
 : BODY-APPEND ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: bad done :}
-   12 RT:G-POP  11 RT:G-POP                                 \ LBCS: x11 = the bytes, x12 = their count
-   14 XREG-RBASE BODYLEN-CELL A64ICODE:LDR,  15 XREG-RBASE BODY-TEXT:CAP-CELL A64ICODE:LDR,
-   14 15 A64ICODE:CMP,  A64ASM:C-HI bad A64ICODE:BCOND,                        \ BODYLEN is already past the text capacity
-   15 0 A64ICODE:MOVN,  15 15 14 A64ICODE:SUB,                          \ x15 = 2^64 - 1 - BODYLEN
-   12 15 A64ICODE:CMP,  A64ASM:C-CS bad A64ICODE:BCOND,                        \ BODYLEN + u + 1 wraps
-   ENGINE-EMIT:LBCS A64ICODE:LABEL@ A64ICODE:BL,
-   done A64ICODE:B,
+   LBL LBL {: bad done :}
+   12 G-POP  11 G-POP                                 \ LBCS: x11 = the bytes, x12 = their count
+   14 XREG-RBASE BODYLEN-CELL LDR,  15 XREG-RBASE BODY-TEXT:CAP-CELL LDR,
+   14 15 CMP,  C-HI bad BCOND,                        \ BODYLEN is already past the text capacity
+   15 0 MOVN,  15 15 14 SUB,                          \ x15 = 2^64 - 1 - BODYLEN
+   12 15 CMP,  C-CS bad BCOND,                        \ BODYLEN + u + 1 wraps
+   LBCS LABEL@ BL,
+   done B,
    s" E-SEAL-VIOLATION habu: body-capture past the body text capacity or wrapping"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 \ ( ^u8 n -- ): the span into the cells aoff and uoff while a
 \ definition is pending.
@@ -1259,24 +1272,24 @@ variable LREPLAYTRAP
 
 \ The close def-close runs; PEND-CELL clears last.
 : NATIVE-CLOSE ( -- )
-   ENGINE-EMIT:C-CLEAR-TRUSTED-STATE
-   ENGINE-EMIT:C-CLEAR-LOCALS
-   9 0 A64ICODE:MOVZ,  9 XREG-RBASE PEND-CELL A64ICODE:STR, ;
+   C-CLEAR-TRUSTED-STATE
+   C-CLEAR-LOCALS
+   9 0 MOVZ,  9 XREG-RBASE PEND-CELL STR, ;
 
 \ def-close ( -- )
 : DEF-CLOSE ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bad done nolast :}
-   9 XREG-RBASE PEND-CELL A64ICODE:LDR,  9 bad A64ICODE:CBZ,
-   10 XREG-RBASE NCOMP-DISPATCH:COMP-LATCH-CELL A64ICODE:LDR,  10 bad A64ICODE:CBZ,
-   10 9 16 A64ICODE:LDR,  10 10 DKIND:MASK A64ICODE:ANDI,  10 nolast A64ICODE:CBZ,   \ a published body that pushes a cell is the slot `does>` patches (LDOESPATCH), set after the body as the kernel's definers set it
-   11 DKIND:CAST A64ICODE:LIT64,  10 11 A64ICODE:CMP,  A64ASM:C-EQ nolast A64ICODE:BCOND,
-   9 XREG-RBASE LASTC-CELL A64ICODE:STR,
-   nolast A64ICODE:LBL,
+   LBL LBL LBL {: bad done nolast :}
+   9 XREG-RBASE PEND-CELL LDR,  9 bad CBZ,
+   10 XREG-RBASE NCOMP-DISPATCH:COMP-LATCH-CELL LDR,  10 bad CBZ,
+   10 9 16 LDR,  10 10 DKIND:MASK ANDI,  10 nolast CBZ,   \ a published body that pushes a cell is the slot `does>` patches (LDOESPATCH), set after the body as the kernel's definers set it
+   11 DKIND:CAST LIT64,  10 11 CMP,  C-EQ nolast BCOND,
+   9 XREG-RBASE LASTC-CELL STR,
+   nolast LBL,
    NATIVE-CLOSE
-   done A64ICODE:B,
+   done B,
    s" E-SEAL-VIOLATION habu: def-close with no definition pending or no compiler latched"
    bad EXIT-STATUS:SEAL-VIOLATION REJECT-AT
-   done A64ICODE:LBL, ;
+   done LBL, ;
 
 ;package
 
@@ -1289,31 +1302,31 @@ package ENGINE-EMIT
 \ words. The band count is the loop state, so it survives the checker BLR
 \ calls. A framed prim (FPRIM).
 : BDRAINPRETRUST ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: loop done :}
-   loop A64ICODE:LBL,
-      12 PD-TABLE-OFF A64ICODE:LIT64,  12 XREG-RBASE 12 A64ICODE:ADD,  13 12 0 A64ICODE:LDR,  13 done A64ICODE:CBZ,   \ remaining==0 -> done
+   LBL LBL {: loop done :}
+   loop LBL,
+      12 PD-TABLE-OFF LIT64,  12 XREG-RBASE 12 ADD,  13 12 0 LDR,  13 done CBZ,   \ remaining==0 -> done
       DEF-TRUST:FIND                                  \ x11 = trust-decl XT (clobbers x12-x16)
-      12 PD-TABLE-OFF A64ICODE:LIT64,  12 XREG-RBASE 12 A64ICODE:ADD,  13 12 0 A64ICODE:LDR,  13 13 1 A64ICODE:SUBI,  \ index = remaining-1
-      15 PD-SLOT A64ICODE:MOVZ,  15 13 15 A64ICODE:MUL,  14 12 PD-SLOTS-REL A64ICODE:ADDI,  14 14 15 A64ICODE:ADD,   \ x14 = slot base (x11 preserved)
-      9 14 PD-NAME-OFF A64ICODE:ADDI,  9 RT:G-PUSH   9 14 PD-NLEN-OFF A64ICODE:LDR,  9 RT:G-PUSH
-      9 14 PD-SIG-OFF A64ICODE:ADDI,   9 RT:G-PUSH   9 14 PD-SLEN-OFF A64ICODE:LDR,  9 RT:G-PUSH
+      12 PD-TABLE-OFF LIT64,  12 XREG-RBASE 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  \ index = remaining-1
+      15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = slot base (x11 preserved)
+      9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH
+      9 14 PD-SIG-OFF ADDI,   9 G-PUSH   9 14 PD-SLEN-OFF LDR,  9 G-PUSH
       C-CALL-X11-SAVED
       NCOMP-DISPATCH:DECL-DEFER-OFF done DECL-OWNER:TARGET  \ x11 = target defer XT
-      12 PD-TABLE-OFF A64ICODE:LIT64,  12 XREG-RBASE 12 A64ICODE:ADD,  13 12 0 A64ICODE:LDR,  13 13 1 A64ICODE:SUBI,
-      15 PD-SLOT A64ICODE:MOVZ,  15 13 15 A64ICODE:MUL,  14 12 PD-SLOTS-REL A64ICODE:ADDI,  14 14 15 A64ICODE:ADD,
-      9 14 PD-NAME-OFF A64ICODE:ADDI,  9 RT:G-PUSH   9 14 PD-NLEN-OFF A64ICODE:LDR,  9 RT:G-PUSH
+      12 PD-TABLE-OFF LIT64,  12 XREG-RBASE 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,
+      15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,
+      9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH
       C-CALL-X11-SAVED
-      12 PD-TABLE-OFF A64ICODE:LIT64,  12 XREG-RBASE 12 A64ICODE:ADD,  13 12 0 A64ICODE:LDR,  13 13 1 A64ICODE:SUBI,  13 12 0 A64ICODE:STR,
-      loop A64ICODE:B,
-   done A64ICODE:LBL, ;
+      12 PD-TABLE-OFF LIT64,  12 XREG-RBASE 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  13 12 0 STR,
+      loop B,
+   done LBL, ;
 
 public
 \ `immediate` writes one flag cell of the record just published and emits
 \ nothing, through the alias. The imm-mark row's body is this word too.
 : C-IMMEDIATE ( -- )
-   9 NDICT 0 A64ICODE:ADDI,  9 9 1 A64ICODE:SUBI,  10 DREC A64ICODE:MOVZ,  9 9 10 A64ICODE:MUL,  9 DBASE 9 A64ICODE:ADD,
-   11 XREG-RBASE REGION-ALIAS:DELTA-CELL A64ICODE:LDR,  11 9 11 A64ICODE:ADD,   \ x11 = the record through the alias
-   10 9 16 A64ICODE:LDR,  10 10 DNAME-IMM A64ICODE:ORRI,  10 11 16 A64ICODE:STR, ;
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = the record through the alias
+   10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 11 16 STR, ;
 
 private
 
@@ -1321,12 +1334,12 @@ private
 \ again after each signal that ends it. Linux's ppoll takes a NULL timespec
 \ for none, Darwin's poll -1.
 : EXIT-WAIT, ( -- )
-   A64ICODE:LBL {: again:label :}
-   again A64ICODE:LBL,  0 0 A64ICODE:MOVZ,  1 0 A64ICODE:MOVZ,
+   LBL {: again:label :}
+   again LBL,  0 0 MOVZ,  1 0 MOVZ,
    HB-TARGET-LINUX-ARM64? IF
-      2 0 A64ICODE:MOVZ,  3 0 A64ICODE:MOVZ,  4 0 A64ICODE:MOVZ,  SYSCALL:NR-POLL SYSCALL:SYS,  again A64ICODE:B,  exit
+      2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  NR-POLL SYS,  again B,  exit
    THEN
-   HB-TARGET-MACOS? IF 2 0 A64ICODE:MOVN,  SYSCALL:NR-POLL SYSCALL:SYS,  again A64ICODE:B,  exit THEN
+   HB-TARGET-MACOS? IF 2 0 MOVN,  NR-POLL SYS,  again B,  exit THEN
    TARGET-UNKNOWN ;
 
 \ LEXITHOOK: EXIT-HOOK-CELL's trampoline, BL-called with the code in x0; it
@@ -1334,24 +1347,24 @@ private
 \ DATA-VA; the handler chain it empties is this thread's. The thread that claims
 \ EXIT-OWNER-CELL runs the vector, again on an action's `die`; any other blocks.
 : EMIT-EXITHOOK ( -- )
-   A64ICODE:LBL A64ICODE:LBL {: nohk:label end:label :}
-   A64ICODE:LBL {: owned:label :}
-   s" (LEXITHOOK)" LEXITHOOK A64ICODE:LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   LEXITHOOK A64ICODE:LABEL@ A64ICODE:LBL,
-   11 DATA-VA VA>N A64ICODE:LIT64,
-   12 EXIT-OWNER-CELL A64ICODE:MOVZ,  12 11 12 A64ICODE:ADD,
-   9 0 A64ICODE:MOVZ,  9 XREG-RBASE 12 A64ICODE:CASAL,
-   9 owned A64ICODE:CBZ,  9 XREG-RBASE A64ICODE:CMP,  A64ASM:C-EQ owned A64ICODE:BCOND,
+   LBL LBL {: nohk:label end:label :}
+   LBL {: owned:label :}
+   s" (LEXITHOOK)" LEXITHOOK LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   LEXITHOOK LABEL@ LBL,
+   11 DATA-VA VA>N LIT64,
+   12 EXIT-OWNER-CELL MOVZ,  12 11 12 ADD,
+   9 0 MOVZ,  9 XREG-RBASE 12 CASAL,
+   9 owned CBZ,  9 XREG-RBASE CMP,  C-EQ owned BCOND,
    EXIT-WAIT,
-   owned A64ICODE:LBL,
-   9 11 EXIT-HOOK-CELL A64ICODE:LDR,  9 nohk A64ICODE:CBZ,
-   A64ICODE:SP A64ICODE:SP 16 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,  0 A64ICODE:SP 8 A64ICODE:STR,
-   10 0 A64ICODE:MOVZ,  10 11 EXIT-HOOK-CELL A64ICODE:STR,  10 XREG-RBASE HND-CELL A64ICODE:STR,
-   9 A64ICODE:BLR,
-   0 A64ICODE:SP 8 A64ICODE:LDR,  30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 16 A64ICODE:ADDI,
-   nohk A64ICODE:LBL,
-   A64ICODE:RET,
-   end A64ICODE:LBL, ;
+   owned LBL,
+   9 11 EXIT-HOOK-CELL LDR,  9 nohk CBZ,
+   SP SP 16 SUBI,  30 SP 0 STR,  0 SP 8 STR,
+   10 0 MOVZ,  10 11 EXIT-HOOK-CELL STR,  10 XREG-RBASE HND-CELL STR,
+   9 BLR,
+   0 SP 8 LDR,  30 SP 0 LDR,  SP SP 16 ADDI,
+   nohk LBL,
+   RET,
+   end LBL, ;
 
 ;package
 
@@ -1360,12 +1373,12 @@ package ENGINE-EMIT
 public
 : EM-ENTRY-ARGS ( -- )
    HB-TARGET-LINUX-ARM64? IF
-      13 A64ICODE:SP 0 A64ICODE:LDR,  14 A64ICODE:SP 8 A64ICODE:ADDI,
-      15 13 1 A64ICODE:ADDI,  15 15 3 A64ICODE:LSLI,  15 14 15 A64ICODE:ADD,
+      13 SP 0 LDR,  14 SP 8 ADDI,
+      15 13 1 ADDI,  15 15 3 LSLI,  15 14 15 ADD,
       exit
    THEN
    HB-TARGET-MACOS? IF
-      13 0 0 A64ICODE:ADDI,  14 1 0 A64ICODE:ADDI,  15 2 0 A64ICODE:ADDI,
+      13 0 0 ADDI,  14 1 0 ADDI,  15 2 0 ADDI,
       exit
    THEN
    C-TARGET-UNKNOWN ;
@@ -1377,10 +1390,10 @@ public
 \ pair and publishes them into its own region copy.
 : EM-FRAME-STACKS ( -- )
    STACK-ABI:RETURN-BYTES 10 STACK-GUARD:EMIT-MAP
-   10 XREG-RBASE STACK-ABI:RETURN-BASE-CELL A64ICODE:STR,
+   10 XREG-RBASE STACK-ABI:RETURN-BASE-CELL STR,
    STACK-ABI:LOOP-BYTES 10 STACK-GUARD:EMIT-MAP
-   10 XREG-RBASE STACK-ABI:LOOP-BASE-CELL A64ICODE:STR,
-   10 XREG-RBASE LOOPSP-CELL A64ICODE:STR, ;
+   10 XREG-RBASE STACK-ABI:LOOP-BASE-CELL STR,
+   10 XREG-RBASE LOOPSP-CELL STR, ;
 
 : EM-MMAP-CODE-REGION ( -- )
    \ Leaves x0 = the base code runs from and x21 = the RW alias - base; x13-x15
@@ -1388,69 +1401,69 @@ public
    HB-TARGET-LINUX-ARM64? IF
       \ The RX view maps fixed over the image's own load of the region, at its
       \ base plus REGION-OFF; the RW alias goes where the kernel puts it.
-      A64ICODE:LBL A64ICODE:LBL {: vfail:label vdone:label :}
-      9 CODE-OFF A64ICODE:MOVZ,  9 XREG-RBASE 9 A64ICODE:SUB,           \ x9 = this run's image base
-      10 REGION-OFF A64ICODE:LIT64,  9 9 10 A64ICODE:ADD,               \ x9 = region base
-      vfail LIBC-OS:REGION-MEMFD  10 0 0 A64ICODE:ADDI,        \ x10 = fd
-      0 9 0 A64ICODE:ADDI,  1 REGION A64ICODE:LIT64,  2 5 A64ICODE:MOVZ,  3 SYSCALL:MAP-SHARED-FIXED A64ICODE:LIT64,
-      4 10 0 A64ICODE:ADDI,  5 0 A64ICODE:MOVZ,  SYSCALL:NR-MMAP SYSCALL:SYS,  A64ASM:C-CS vfail A64ICODE:BCOND,
-      0 0 A64ICODE:MOVZ,  1 REGION A64ICODE:LIT64,  2 3 A64ICODE:MOVZ,  3 SYSCALL:MAP-SHARED A64ICODE:LIT64,
-      4 10 0 A64ICODE:ADDI,  5 0 A64ICODE:MOVZ,  SYSCALL:NR-MMAP SYSCALL:SYS,  A64ASM:C-CS vfail A64ICODE:BCOND,
-      21 0 9 A64ICODE:SUB,
-      0 10 0 A64ICODE:ADDI,  SYSCALL:NR-CLOSE SYSCALL:SYS,  A64ASM:C-CS vfail A64ICODE:BCOND,
-      0 9 0 A64ICODE:ADDI,  vdone A64ICODE:B,
-      vfail A64ICODE:LBL,
+      LBL LBL {: vfail:label vdone:label :}
+      9 CODE-OFF MOVZ,  9 XREG-RBASE 9 SUB,           \ x9 = this run's image base
+      10 REGION-OFF LIT64,  9 9 10 ADD,               \ x9 = region base
+      vfail LIBC-OS:REGION-MEMFD  10 0 0 ADDI,        \ x10 = fd
+      0 9 0 ADDI,  1 REGION LIT64,  2 5 MOVZ,  3 MAP-SHARED-FIXED LIT64,
+      4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS vfail BCOND,
+      0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-SHARED LIT64,
+      4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS vfail BCOND,
+      21 0 9 SUB,
+      0 10 0 ADDI,  NR-CLOSE SYS,  C-CS vfail BCOND,
+      0 9 0 ADDI,  vdone B,
+      vfail LBL,
          s" hb: mapping the code region's views failed; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)"
-         EXIT-STATUS:SYSTEM CRASH:DIE-LINE,
-      vdone A64ICODE:LBL,
+         EXIT-STATUS:SYSTEM DIE-LINE,
+      vdone LBL,
    ELSE
       \ A macOS image is placed by ASLR and reserves no region: hint it at
       \ __text + REGION-OFF, past the image's last segment, and take any base.
-      A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: rok:label rvok:label afail:label adone:label :}
-      6 REGION-OFF A64ICODE:LIT64,  6 XREG-RBASE 6 A64ICODE:ADD,
-      9 PROT-PAGE-MAX 1 - A64ICODE:MOVZ,  6 6 9 A64ICODE:ADD,
-      9 PROT-PAGE-MAX negate A64ICODE:LIT64,  6 6 9 A64ICODE:AND,    \ x6 = page-aligned canonical hint
-      9 CODE-OFF A64ICODE:MOVZ,  9 XREG-RBASE 9 A64ICODE:SUB,        \ x9 = this run's image base
-      7 9 $1B0 A64ICODE:LDR,  8 9 $80 A64ICODE:LDR,  7 7 8 A64ICODE:SUB,
-      8 9 $1B8 A64ICODE:LDR,
-      7 7 8 A64ICODE:ADD,                                   \ x7 = final segment end offset
-      7 9 7 A64ICODE:ADD,
-      8 PROT-PAGE-MAX 1 - A64ICODE:MOVZ,  7 7 8 A64ICODE:ADD,
-      8 PROT-PAGE-MAX negate A64ICODE:LIT64,  7 7 8 A64ICODE:AND,
-      6 7 A64ICODE:CMP,  6 6 7 A64ASM:C-HI A64ICODE:CSEL,                   \ x6 = the higher of hint and image end
+      LBL LBL LBL LBL {: rok:label rvok:label afail:label adone:label :}
+      6 REGION-OFF LIT64,  6 XREG-RBASE 6 ADD,
+      9 PROT-PAGE-MAX 1 - MOVZ,  6 6 9 ADD,
+      9 PROT-PAGE-MAX negate LIT64,  6 6 9 AND,    \ x6 = page-aligned canonical hint
+      9 CODE-OFF MOVZ,  9 XREG-RBASE 9 SUB,        \ x9 = this run's image base
+      7 9 $1B0 LDR,  8 9 $80 LDR,  7 7 8 SUB,
+      8 9 $1B8 LDR,
+      7 7 8 ADD,                                   \ x7 = final segment end offset
+      7 9 7 ADD,
+      8 PROT-PAGE-MAX 1 - MOVZ,  7 7 8 ADD,
+      8 PROT-PAGE-MAX negate LIT64,  7 7 8 AND,
+      6 7 CMP,  6 6 7 C-HI CSEL,                   \ x6 = the higher of hint and image end
       \ PROT-PAGE-MAX spare bytes let the base round up to PROT-PAGE-MAX when
       \ the kernel aligns it only to a page.
-      0 6 0 A64ICODE:ADDI,  1 REGION PROT-PAGE-MAX + A64ICODE:LIT64,  2 3 A64ICODE:MOVZ,  3 SYSCALL:MAP-ANON-PRIVATE A64ICODE:LIT64,  4 0 A64ICODE:MOVN,  5 0 A64ICODE:MOVZ,
-      SYSCALL:NR-MMAP SYSCALL:SYS,
+      0 6 0 ADDI,  1 REGION PROT-PAGE-MAX + LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
+      NR-MMAP SYS,
       \ Darwin sets the carry flag on a failed call, so a failed mapping is
       \ read from the flag, not guessed from the shape of x0.
-      A64ASM:C-CC rok A64ICODE:BCOND,
-         3 REGION PROT-PAGE-MAX + A64ICODE:LIT64,
+      C-CC rok BCOND,
+         3 REGION PROT-PAGE-MAX + LIT64,
          s" hb: mapping the code region failed; raise the address-space limit (ulimit -v) above its size in bytes:"
-         EXIT-STATUS:SYSTEM 3 CRASH:DIE-LINE-VALUE,
-      rok A64ICODE:LBL,
-      9 PROT-PAGE-MAX 1 - A64ICODE:MOVZ,  0 0 9 A64ICODE:ADD,
-      9 PROT-PAGE-MAX negate A64ICODE:LIT64,  0 0 9 A64ICODE:AND,    \ page-aligned region base
+         EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE,
+      rok LBL,
+      9 PROT-PAGE-MAX 1 - MOVZ,  0 0 9 ADD,
+      9 PROT-PAGE-MAX negate LIT64,  0 0 9 AND,    \ page-aligned region base
       \ Region-to-text calls are relocated, so any base serves whose region
       \ lies within BL-REACH of __text. x0 (region base) survives.
-      9 REGION A64ICODE:LIT64,  9 0 9 A64ICODE:ADD,  9 9 XREG-RBASE A64ICODE:SUB,
-      5 BL-REACH A64ICODE:LIT64,  9 5 A64ICODE:CMP,
-      A64ASM:C-CC rvok A64ICODE:BCOND,
-         s" E-BL-RANGE habu: code region out of BL range" EXIT-STATUS:BL-RANGE CRASH:DIE-LINE,
-      rvok A64ICODE:LBL,
+      9 REGION LIT64,  9 0 9 ADD,  9 9 XREG-RBASE SUB,
+      5 BL-REACH LIT64,  9 5 CMP,
+      C-CC rvok BCOND,
+         s" E-BL-RANGE habu: code region out of BL range" EXIT-STATUS:BL-RANGE DIE-LINE,
+      rvok LBL,
       \ The anonymous pages become the RX view, and the RW alias is remapped
       \ from them.
-      A64ICODE:SP A64ICODE:SP 32 A64ICODE:SUBI,  13 A64ICODE:SP 0 A64ICODE:STR,  14 A64ICODE:SP 8 A64ICODE:STR,  15 A64ICODE:SP 16 A64ICODE:STR,  0 A64ICODE:SP 24 A64ICODE:STR,
-      16 XREG-RBASE 0 A64ICODE:ADDI,  false afail LIBC-OS:REGION-REMAP
-      21 0 0 A64ICODE:ADDI,
-      0 A64ICODE:SP 24 A64ICODE:LDR,  1 REGION A64ICODE:LIT64,  2 5 A64ICODE:MOVZ,  SYSCALL:NR-MPROTECT SYSCALL:SYS,
-      A64ASM:C-CS afail A64ICODE:BCOND,
-      13 A64ICODE:SP 0 A64ICODE:LDR,  14 A64ICODE:SP 8 A64ICODE:LDR,  15 A64ICODE:SP 16 A64ICODE:LDR,  0 A64ICODE:SP 24 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 32 A64ICODE:ADDI,
-      adone A64ICODE:B,
-      afail A64ICODE:LBL,
+      SP SP 32 SUBI,  13 SP 0 STR,  14 SP 8 STR,  15 SP 16 STR,  0 SP 24 STR,
+      16 XREG-RBASE 0 ADDI,  false afail LIBC-OS:REGION-REMAP
+      21 0 0 ADDI,
+      0 SP 24 LDR,  1 REGION LIT64,  2 5 MOVZ,  NR-MPROTECT SYS,
+      C-CS afail BCOND,
+      13 SP 0 LDR,  14 SP 8 LDR,  15 SP 16 LDR,  0 SP 24 LDR,  SP SP 32 ADDI,
+      adone B,
+      afail LBL,
          s" hb: mapping the code region's writable alias failed; raise the address-space limit (ulimit -v)"
-         EXIT-STATUS:SYSTEM CRASH:DIE-LINE,
-      adone A64ICODE:LBL,
+         EXIT-STATUS:SYSTEM DIE-LINE,
+      adone LBL,
    THEN ;
 
 ;package
@@ -1459,15 +1472,15 @@ package ENGINE-EMIT
 
 public
 : EM-MMAP-DATA-REGION ( -- )
-   A64ICODE:LBL {: dvok :}
-   0 DATA-VA VA>N A64ICODE:LIT64,  1 DATA-SIZE A64ICODE:LIT64,  2 3 A64ICODE:MOVZ,  3 SYSCALL:MAP-DATA-RESERVE A64ICODE:LIT64,  4 0 A64ICODE:MOVN,  5 0 A64ICODE:MOVZ,
-   SYSCALL:NR-MMAP SYSCALL:SYS,
-   5 DATA-VA VA>N A64ICODE:LIT64,  0 5 A64ICODE:CMP,
-   A64ASM:C-EQ dvok A64ICODE:BCOND,
-      3 DATA-SIZE A64ICODE:LIT64,
+   LBL {: dvok :}
+   0 DATA-VA VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-DATA-RESERVE LIT64,  4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,
+   5 DATA-VA VA>N LIT64,  0 5 CMP,
+   C-EQ dvok BCOND,
+      3 DATA-SIZE LIT64,
       s" hb: mapping the fixed data region failed; raise the address-space limit (ulimit -v) above its size in bytes:"
-      EXIT-STATUS:SYSTEM 3 CRASH:DIE-LINE-VALUE,
-   dvok A64ICODE:LBL, ;
+      EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE,
+   dvok LBL, ;
 
 ;package
 
@@ -1476,251 +1489,251 @@ public
 
 \ Saves x0-x17, all MARK writes: its callers are mid-handler or mid-word.
 : MARK-SAVE ( -- )
-   A64ICODE:SP A64ICODE:SP 192 A64ICODE:SUBI,
-   18 0 ?do i A64ICODE:SP i cells A64ICODE:STR, loop
-   16 DATA-VA VA>N A64ICODE:LIT64,  16 A64ICODE:SP 184 A64ICODE:STR, ;
+   SP SP 192 SUBI,
+   18 0 ?do i SP i cells STR, loop
+   16 DATA-VA VA>N LIT64,  16 SP 184 STR, ;
 
 : MARK-RESTORE ( -- )
-   18 0 ?do i A64ICODE:SP i cells A64ICODE:LDR, loop
-   A64ICODE:SP A64ICODE:SP 192 A64ICODE:ADDI, A64ICODE:RET, ;
+   18 0 ?do i SP i cells LDR, loop
+   SP SP 192 ADDI, RET, ;
 
 \ x16 = the table's base from SP+184: DATA-VA, never a task's x20, or the open
 \ image's base for a cell inside it. SYS, clobbers x16: reload after each.
 : MARK-HEADER ( -- )
-   16 A64ICODE:SP 184 A64ICODE:LDR,
-   4 RELOC:XTCELL-N-CELL A64ICODE:LIT64, 4 16 4 A64ICODE:ADD, ;
+   16 SP 184 LDR,
+   4 RELOC:XTCELL-N-CELL LIT64, 4 16 4 ADD, ;
 
 \ One owner serializes lookup and publication, including backing replacement.
 \ x16 is the table's base; all registers touched here are MARK-SAVE'd.
 : MARK-LOCK ( -- )
-   A64ICODE:LBL {: retry:label :}
-   17 16 ADDRESS-CELLS:LOCK-CELL A64ICODE:ADDI,
-   7 1 A64ICODE:MOVZ,
-   retry A64ICODE:LBL, 6 0 A64ICODE:MOVZ,
-   6 7 17 A64ICODE:CASAL,
-   6 retry A64ICODE:CBNZ, ;
+   LBL {: retry:label :}
+   17 16 ADDRESS-CELLS:LOCK-CELL ADDI,
+   7 1 MOVZ,
+   retry LBL, 6 0 MOVZ,
+   6 7 17 CASAL,
+   6 retry CBNZ, ;
 
 : MARK-UNLOCK ( -- )
-   17 16 ADDRESS-CELLS:LOCK-CELL A64ICODE:ADDI,
-   6 0 A64ICODE:MOVZ, 6 17 A64ICODE:STLR, ;
+   17 16 ADDRESS-CELLS:LOCK-CELL ADDI,
+   6 0 MOVZ, 6 17 STLR, ;
 
 \ Reacquire the row backing after SYS,. Only ordinals live in the index, so
 \ moving this backing does not invalidate any entry.
 : MARK-ROWS ( -- )
-   5 4 ADDRESS-CELLS:BASE-FIELD A64ICODE:LDR,
-   11 4 ADDRESS-CELLS:MODE-FIELD A64ICODE:LDR,
-   A64ICODE:LBL {: mapped:label :}
-   11 mapped A64ICODE:CBNZ, 5 16 5 A64ICODE:ADD, mapped A64ICODE:LBL, ;
+   5 4 ADDRESS-CELLS:BASE-FIELD LDR,
+   11 4 ADDRESS-CELLS:MODE-FIELD LDR,
+   LBL {: mapped:label :}
+   11 mapped CBNZ, 5 16 5 ADD, mapped LBL, ;
 
 \ x8 = owned index mapping; x10 = slot capacity on return. Requested bytes
 \ and geometric rounding are bounded separately. An incoming snapshot pointer
 \ is cleared without entering here: only this process can own the mapping.
 : INDEX-SHAPE ( label -- ) {: bad:label :}
-   8 0 A64ICODE:CMPI, A64ASM:C-LE bad A64ICODE:BCOND,
-   6 8 7 A64ICODE:ANDI, 6 bad A64ICODE:CBNZ,
-   7 $7FFFFFFFFFFFFFFF ADDRESS-CELLS:INDEX-HEADER - A64ICODE:LIT64,
-   8 7 A64ICODE:CMP, A64ASM:C-HI bad A64ICODE:BCOND,
-   10 8 ADDRESS-CELLS:INDEX-SLOTS A64ICODE:LDR,
-   10 2 A64ICODE:CMPI, A64ASM:C-LT bad A64ICODE:BCOND,
-   7 ADDRESS-CELLS:INDEX-MAX-SLOTS A64ICODE:LIT64, 10 7 A64ICODE:CMP, A64ASM:C-HI bad A64ICODE:BCOND,
-   7 10 1 A64ICODE:SUBI, 6 10 7 A64ICODE:AND, 6 bad A64ICODE:CBNZ,
-   6 $7FFFFFFFFFFFFFFF A64ICODE:LIT64, 6 6 8 A64ICODE:SUB,
-   7 10 3 A64ICODE:LSLI, 7 7 ADDRESS-CELLS:INDEX-HEADER A64ICODE:ADDI,
-   7 6 A64ICODE:CMP, A64ASM:C-HI bad A64ICODE:BCOND, ;
+   8 0 CMPI, C-LE bad BCOND,
+   6 8 7 ANDI, 6 bad CBNZ,
+   7 $7FFFFFFFFFFFFFFF ADDRESS-CELLS:INDEX-HEADER - LIT64,
+   8 7 CMP, C-HI bad BCOND,
+   10 8 ADDRESS-CELLS:INDEX-SLOTS LDR,
+   10 2 CMPI, C-LT bad BCOND,
+   7 ADDRESS-CELLS:INDEX-MAX-SLOTS LIT64, 10 7 CMP, C-HI bad BCOND,
+   7 10 1 SUBI, 6 10 7 AND, 6 bad CBNZ,
+   6 $7FFFFFFFFFFFFFFF LIT64, 6 6 8 SUB,
+   7 10 3 LSLI, 7 7 ADDRESS-CELLS:INDEX-HEADER ADDI,
+   7 6 CMP, C-HI bad BCOND, ;
 
 \ x8 = index, x10 = slots, x5 = current rows, x13 = row count, x12 = key.
 \ A slot holds ordinal+1; compare the exact offset in that authoritative row.
 \ Return x7 = tagged row on a hit, or x6 = empty slot / x11 = its bucket.
 \ Probe at most the capacity even if a malformed derived table has no hole.
 : INDEX-PROBE ( label label label -- ) {: hit:label miss:label bad:label :}
-   A64ICODE:LBL {: probe:label :}
-   7 $9E3779B97F4A7C15 A64ICODE:LIT64, 11 12 7 A64ICODE:MUL,
-   7 11 32 A64ICODE:LSRI, 11 11 7 A64ICODE:EOR,
-   17 10 1 A64ICODE:SUBI, 11 11 17 A64ICODE:AND, 14 10 0 A64ICODE:ADDI,
-   probe A64ICODE:LBL,
-      14 bad A64ICODE:CBZ,
-      6 11 3 A64ICODE:LSLI, 6 8 6 A64ICODE:ADD, 6 6 ADDRESS-CELLS:INDEX-HEADER A64ICODE:ADDI,
-      9 6 0 A64ICODE:LDR, 9 miss A64ICODE:CBZ,
-      9 9 1 A64ICODE:SUBI, 9 13 A64ICODE:CMP, A64ASM:C-CS bad A64ICODE:BCOND,
-      7 9 3 A64ICODE:LSLI, 7 5 7 A64ICODE:ADD, 7 7 0 A64ICODE:LDR,
-      9 RELOC:XTCELL-OFF-MASK A64ICODE:LIT64, 9 7 9 A64ICODE:AND,
-      9 12 A64ICODE:CMP, A64ASM:C-EQ hit A64ICODE:BCOND,
-      11 11 1 A64ICODE:ADDI, 11 11 17 A64ICODE:AND,
-      14 14 1 A64ICODE:SUBI, probe A64ICODE:B, ;
+   LBL {: probe:label :}
+   7 $9E3779B97F4A7C15 LIT64, 11 12 7 MUL,
+   7 11 32 LSRI, 11 11 7 EOR,
+   17 10 1 SUBI, 11 11 17 AND, 14 10 0 ADDI,
+   probe LBL,
+      14 bad CBZ,
+      6 11 3 LSLI, 6 8 6 ADD, 6 6 ADDRESS-CELLS:INDEX-HEADER ADDI,
+      9 6 0 LDR, 9 miss CBZ,
+      9 9 1 SUBI, 9 13 CMP, C-CS bad BCOND,
+      7 9 3 LSLI, 7 5 7 ADD, 7 7 0 LDR,
+      9 RELOC:XTCELL-OFF-MASK LIT64, 9 7 9 AND,
+      9 12 CMP, C-EQ hit BCOND,
+      11 11 1 ADDI, 11 11 17 AND,
+      14 14 1 SUBI, probe B, ;
 
 \ Build a replacement solely from the ordered rows. It is complete before the
 \ old index is unmapped; failure leaves authoritative rows/header untouched.
 \ Existing duplicate keys retain their first ordinal.
 \ Stack scratch: 144 new slots, 152 new map, 160 incoming key, 168 old map.
 : INDEX-BUILD ( label label label -- ) {: lookup:label full:label bad:label :}
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: size:label sized:label mapped:label rows:label hole:label next:label
       built:label publish:label released:label :}
-   8 A64ICODE:SP 168 A64ICODE:STR, 12 A64ICODE:SP 160 A64ICODE:STR,
-   7 ADDRESS-CELLS:INDEX-MAX-SLOTS 2 / 1- A64ICODE:LIT64,
-   13 7 A64ICODE:CMP, A64ASM:C-HI full A64ICODE:BCOND,
-   7 13 1 A64ICODE:ADDI, 7 7 1 A64ICODE:LSLI, 10 2 A64ICODE:MOVZ,
-   size A64ICODE:LBL, 10 7 A64ICODE:CMP, A64ASM:C-CS sized A64ICODE:BCOND,
-      6 ADDRESS-CELLS:INDEX-MAX-SLOTS 2 / A64ICODE:LIT64,
-      10 6 A64ICODE:CMP, A64ASM:C-HI full A64ICODE:BCOND,
-      10 10 1 A64ICODE:LSLI, size A64ICODE:B,
-   sized A64ICODE:LBL,
-   10 A64ICODE:SP 144 A64ICODE:STR,
-   0 0 A64ICODE:MOVZ, 1 10 3 A64ICODE:LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER A64ICODE:ADDI,
-   2 3 A64ICODE:MOVZ, 3 SYSCALL:MAP-ANON-PRIVATE A64ICODE:LIT64, 4 0 A64ICODE:MOVN, 5 0 A64ICODE:MOVZ,
-   SYSCALL:NR-MMAP SYSCALL:SYS, A64ASM:C-CS full A64ICODE:BCOND,
-   0 mapped A64ICODE:CBNZ,
-      1 A64ICODE:SP 144 A64ICODE:LDR, 1 1 3 A64ICODE:LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER A64ICODE:ADDI,
-      SYSCALL:NR-MUNMAP SYSCALL:SYS, full A64ICODE:B,
-   mapped A64ICODE:LBL,
-   0 A64ICODE:SP 152 A64ICODE:STR, 8 0 0 A64ICODE:ADDI,
+   8 SP 168 STR, 12 SP 160 STR,
+   7 ADDRESS-CELLS:INDEX-MAX-SLOTS 2 / 1- LIT64,
+   13 7 CMP, C-HI full BCOND,
+   7 13 1 ADDI, 7 7 1 LSLI, 10 2 MOVZ,
+   size LBL, 10 7 CMP, C-CS sized BCOND,
+      6 ADDRESS-CELLS:INDEX-MAX-SLOTS 2 / LIT64,
+      10 6 CMP, C-HI full BCOND,
+      10 10 1 LSLI, size B,
+   sized LBL,
+   10 SP 144 STR,
+   0 0 MOVZ, 1 10 3 LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER ADDI,
+   2 3 MOVZ, 3 MAP-ANON-PRIVATE LIT64, 4 0 MOVN, 5 0 MOVZ,
+   NR-MMAP SYS, C-CS full BCOND,
+   0 mapped CBNZ,
+      1 SP 144 LDR, 1 1 3 LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER ADDI,
+      NR-MUNMAP SYS, full B,
+   mapped LBL,
+   0 SP 152 STR, 8 0 0 ADDI,
    MARK-HEADER MARK-ROWS
-   10 A64ICODE:SP 144 A64ICODE:LDR,
-   10 8 ADDRESS-CELLS:INDEX-SLOTS A64ICODE:STR,
-   13 8 ADDRESS-CELLS:INDEX-COUNT A64ICODE:STR,
-   3 0 A64ICODE:MOVZ,
-   rows A64ICODE:LBL, 3 13 A64ICODE:CMP, A64ASM:C-CS built A64ICODE:BCOND,
-      7 3 3 A64ICODE:LSLI, 7 5 7 A64ICODE:ADD, 12 7 0 A64ICODE:LDR,
-      7 RELOC:XTCELL-OFF-MASK A64ICODE:LIT64, 12 12 7 A64ICODE:AND,
+   10 SP 144 LDR,
+   10 8 ADDRESS-CELLS:INDEX-SLOTS STR,
+   13 8 ADDRESS-CELLS:INDEX-COUNT STR,
+   3 0 MOVZ,
+   rows LBL, 3 13 CMP, C-CS built BCOND,
+      7 3 3 LSLI, 7 5 7 ADD, 12 7 0 LDR,
+      7 RELOC:XTCELL-OFF-MASK LIT64, 12 12 7 AND,
       next hole bad INDEX-PROBE
-   hole A64ICODE:LBL, 7 3 1 A64ICODE:ADDI, 7 6 0 A64ICODE:STR,
-   next A64ICODE:LBL, 3 3 1 A64ICODE:ADDI, rows A64ICODE:B,
-   built A64ICODE:LBL,
-   0 A64ICODE:SP 168 A64ICODE:LDR, 0 publish A64ICODE:CBZ,
-   1 0 ADDRESS-CELLS:INDEX-SLOTS A64ICODE:LDR,
-   1 1 3 A64ICODE:LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER A64ICODE:ADDI,
-   SYSCALL:NR-MUNMAP SYSCALL:SYS, 0 released A64ICODE:CBZ,
-      0 A64ICODE:SP 152 A64ICODE:LDR, 1 A64ICODE:SP 144 A64ICODE:LDR,
-      1 1 3 A64ICODE:LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER A64ICODE:ADDI,
-      SYSCALL:NR-MUNMAP SYSCALL:SYS, full A64ICODE:B,
-   released A64ICODE:LBL,
+   hole LBL, 7 3 1 ADDI, 7 6 0 STR,
+   next LBL, 3 3 1 ADDI, rows B,
+   built LBL,
+   0 SP 168 LDR, 0 publish CBZ,
+   1 0 ADDRESS-CELLS:INDEX-SLOTS LDR,
+   1 1 3 LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER ADDI,
+   NR-MUNMAP SYS, 0 released CBZ,
+      0 SP 152 LDR, 1 SP 144 LDR,
+      1 1 3 LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER ADDI,
+      NR-MUNMAP SYS, full B,
+   released LBL,
    MARK-HEADER
-   publish A64ICODE:LBL,
-   8 A64ICODE:SP 152 A64ICODE:LDR, 8 16 ADDRESS-CELLS:INDEX-CELL A64ICODE:STR,
-   12 A64ICODE:SP 160 A64ICODE:LDR,
+   publish LBL,
+   8 SP 152 LDR, 8 16 ADDRESS-CELLS:INDEX-CELL STR,
+   12 SP 160 LDR,
    MARK-ROWS
-   lookup A64ICODE:B, ;
+   lookup B, ;
 
 \ The row was written and every fallible allocation/release is over. Publish
 \ its derived entry and finally the live count while still holding the mutex.
 : MARK-COMMIT-INDEX ( -- )
-   8 16 ADDRESS-CELLS:INDEX-CELL A64ICODE:LDR,
-   11 A64ICODE:SP 176 A64ICODE:LDR, 7 11 3 A64ICODE:LSLI,
-   7 8 7 A64ICODE:ADD, 7 7 ADDRESS-CELLS:INDEX-HEADER A64ICODE:ADDI,
-   13 13 1 A64ICODE:ADDI, 13 7 0 A64ICODE:STR,
-   13 8 ADDRESS-CELLS:INDEX-COUNT A64ICODE:STR,
-   13 4 0 A64ICODE:STR, ;
+   8 16 ADDRESS-CELLS:INDEX-CELL LDR,
+   11 SP 176 LDR, 7 11 3 LSLI,
+   7 8 7 ADD, 7 7 ADDRESS-CELLS:INDEX-HEADER ADDI,
+   13 13 1 ADDI, 13 7 0 STR,
+   13 8 ADDRESS-CELLS:INDEX-COUNT STR,
+   13 4 0 STR, ;
 
 \ (MARK) spans [LMARK, end) as one sealed record: xt!'s direct BL lands on its entry.
 : EMIT-MARK ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: common:label lookup:label full:label band:label kind:label
       ret:label shape:label mapped:label ready:label grow:label copy:label
       copied:label publish:label rebuild:label hit:label missing:label :}
-   A64ICODE:LBL {: end:label :}
-   s" (MARK)" LMARK A64ICODE:LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   LMARK A64ICODE:LABEL@ A64ICODE:LBL, MARK-SAVE
-   15 0 A64ICODE:MOVZ, common A64ICODE:B,
-   LSCRATCHMARK A64ICODE:LABEL@ A64ICODE:LBL, MARK-SAVE
-   15 RELOC:XTCELL-DATA-TAG RELOC:XTCELL-SCRATCH-TAG or A64ICODE:LIT64,
-   common A64ICODE:B,
-   LPTRMARK A64ICODE:LABEL@ A64ICODE:LBL, MARK-SAVE
-   15 RELOC:XTCELL-DATA-TAG A64ICODE:LIT64,
+   LBL {: end:label :}
+   s" (MARK)" LMARK LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   LMARK LABEL@ LBL, MARK-SAVE
+   15 0 MOVZ, common B,
+   LSCRATCHMARK LABEL@ LBL, MARK-SAVE
+   15 RELOC:XTCELL-DATA-TAG RELOC:XTCELL-SCRATCH-TAG or LIT64,
+   common B,
+   LPTRMARK LABEL@ LBL, MARK-SAVE
+   15 RELOC:XTCELL-DATA-TAG LIT64,
    \ x9 = the cell, unchanged on return; x15 = its kind.
-   common A64ICODE:LBL,
-   A64ICODE:LBL {: host:label :}
-   6 XREG-RBASE BOOT:IMAGE-BASE-CELL A64ICODE:LDR,  6 host A64ICODE:CBZ,      \ x6 = the image's base
-   9 6 A64ICODE:CMP,  A64ASM:C-CC host A64ICODE:BCOND,
-   7 DATA-SIZE A64ICODE:LIT64,  7 6 7 A64ICODE:ADD,  9 7 A64ICODE:CMP,  A64ASM:C-CS host A64ICODE:BCOND,
-   6 A64ICODE:SP 184 A64ICODE:STR,
-   host A64ICODE:LBL,
+   common LBL,
+   LBL {: host:label :}
+   6 XREG-RBASE BOOT:IMAGE-BASE-CELL LDR,  6 host CBZ,      \ x6 = the image's base
+   9 6 CMP,  C-CC host BCOND,
+   7 DATA-SIZE LIT64,  7 6 7 ADD,  9 7 CMP,  C-CS host BCOND,
+   6 SP 184 STR,
+   host LBL,
    MARK-HEADER
    \ A cell outside DATA and the open image stops the process: a dropped row
    \ would leave a stale address in a saved image.
-   12 9 16 A64ICODE:SUB,
-   6 RELOC:XTCELL-OFF-MAX A64ICODE:LIT64, 12 6 A64ICODE:CMP, A64ASM:C-HI band A64ICODE:BCOND,
+   12 9 16 SUB,
+   6 RELOC:XTCELL-OFF-MAX LIT64, 12 6 CMP, C-HI band BCOND,
    MARK-LOCK
-   6 4 ADDRESS-CELLS:MAGIC-FIELD A64ICODE:LDR,
-   7 ADDRESS-CELLS:MAGIC A64ICODE:LIT64, 6 7 A64ICODE:CMP, A64ASM:C-NE shape A64ICODE:BCOND,
-   13 4 0 A64ICODE:LDR, 10 4 ADDRESS-CELLS:CAP-FIELD A64ICODE:LDR,
-   7 ADDRESS-CELLS:MAX-ROWS A64ICODE:LIT64,
-   10 shape A64ICODE:CBZ, 10 7 A64ICODE:CMP, A64ASM:C-HI shape A64ICODE:BCOND,
-   13 10 A64ICODE:CMP, A64ASM:C-HI shape A64ICODE:BCOND,
-   5 4 ADDRESS-CELLS:BASE-FIELD A64ICODE:LDR,
-   11 4 ADDRESS-CELLS:MODE-FIELD A64ICODE:LDR,
-   11 1 A64ICODE:CMPI, A64ASM:C-EQ mapped A64ICODE:BCOND, A64ASM:C-HI shape A64ICODE:BCOND,
-   6 DATA-SIZE A64ICODE:LIT64, 5 6 A64ICODE:CMP, A64ASM:C-HI shape A64ICODE:BCOND,
-   6 6 5 A64ICODE:SUB, 6 6 3 A64ICODE:LSRI, 10 6 A64ICODE:CMP, A64ASM:C-HI shape A64ICODE:BCOND,
-   5 16 5 A64ICODE:ADD, ready A64ICODE:B,
-   mapped A64ICODE:LBL,
-   5 0 A64ICODE:CMPI, A64ASM:C-LE shape A64ICODE:BCOND,
-   6 5 7 A64ICODE:ANDI, 6 shape A64ICODE:CBNZ,
-   6 $7FFFFFFFFFFFFFFF A64ICODE:LIT64, 6 6 5 A64ICODE:SUB, 6 6 3 A64ICODE:LSRI,
-   10 6 A64ICODE:CMP, A64ASM:C-HI shape A64ICODE:BCOND,
-   ready A64ICODE:LBL,
-   8 16 ADDRESS-CELLS:INDEX-CELL A64ICODE:LDR, 8 rebuild A64ICODE:CBZ,
+   6 4 ADDRESS-CELLS:MAGIC-FIELD LDR,
+   7 ADDRESS-CELLS:MAGIC LIT64, 6 7 CMP, C-NE shape BCOND,
+   13 4 0 LDR, 10 4 ADDRESS-CELLS:CAP-FIELD LDR,
+   7 ADDRESS-CELLS:MAX-ROWS LIT64,
+   10 shape CBZ, 10 7 CMP, C-HI shape BCOND,
+   13 10 CMP, C-HI shape BCOND,
+   5 4 ADDRESS-CELLS:BASE-FIELD LDR,
+   11 4 ADDRESS-CELLS:MODE-FIELD LDR,
+   11 1 CMPI, C-EQ mapped BCOND, C-HI shape BCOND,
+   6 DATA-SIZE LIT64, 5 6 CMP, C-HI shape BCOND,
+   6 6 5 SUB, 6 6 3 LSRI, 10 6 CMP, C-HI shape BCOND,
+   5 16 5 ADD, ready B,
+   mapped LBL,
+   5 0 CMPI, C-LE shape BCOND,
+   6 5 7 ANDI, 6 shape CBNZ,
+   6 $7FFFFFFFFFFFFFFF LIT64, 6 6 5 SUB, 6 6 3 LSRI,
+   10 6 CMP, C-HI shape BCOND,
+   ready LBL,
+   8 16 ADDRESS-CELLS:INDEX-CELL LDR, 8 rebuild CBZ,
    shape INDEX-SHAPE
-   7 8 ADDRESS-CELLS:INDEX-COUNT A64ICODE:LDR,
-   7 13 A64ICODE:CMP, A64ASM:C-NE rebuild A64ICODE:BCOND,
-   7 10 1 A64ICODE:LSRI, 13 7 A64ICODE:CMP, A64ASM:C-HI shape A64ICODE:BCOND,
-   lookup A64ICODE:LBL,
-   8 16 ADDRESS-CELLS:INDEX-CELL A64ICODE:LDR,
-   10 8 ADDRESS-CELLS:INDEX-SLOTS A64ICODE:LDR,
+   7 8 ADDRESS-CELLS:INDEX-COUNT LDR,
+   7 13 CMP, C-NE rebuild BCOND,
+   7 10 1 LSRI, 13 7 CMP, C-HI shape BCOND,
+   lookup LBL,
+   8 16 ADDRESS-CELLS:INDEX-CELL LDR,
+   10 8 ADDRESS-CELLS:INDEX-SLOTS LDR,
    hit missing shape INDEX-PROBE
    \ A cell declared again keeps one row, since a second would relocate it
    \ twice; a second kind stops the process.
-   hit A64ICODE:LBL,
-      6 12 15 A64ICODE:ORR, 7 6 A64ICODE:CMP, A64ASM:C-EQ ret A64ICODE:BCOND, kind A64ICODE:B,
-   missing A64ICODE:LBL,
-      7 13 1 A64ICODE:ADDI, 6 10 1 A64ICODE:LSRI, 7 6 A64ICODE:CMP, A64ASM:C-HI rebuild A64ICODE:BCOND,
-      11 A64ICODE:SP 176 A64ICODE:STR,
-      10 4 ADDRESS-CELLS:CAP-FIELD A64ICODE:LDR,
-      13 10 A64ICODE:CMP, A64ASM:C-EQ grow A64ICODE:BCOND,
-      6 13 3 A64ICODE:LSLI, 6 5 6 A64ICODE:ADD, 7 12 15 A64ICODE:ORR, 7 6 0 A64ICODE:STR,
-      MARK-COMMIT-INDEX ret A64ICODE:B,
-   rebuild A64ICODE:LBL,
+   hit LBL,
+      6 12 15 ORR, 7 6 CMP, C-EQ ret BCOND, kind B,
+   missing LBL,
+      7 13 1 ADDI, 6 10 1 LSRI, 7 6 CMP, C-HI rebuild BCOND,
+      11 SP 176 STR,
+      10 4 ADDRESS-CELLS:CAP-FIELD LDR,
+      13 10 CMP, C-EQ grow BCOND,
+      6 13 3 LSLI, 6 5 6 ADD, 7 12 15 ORR, 7 6 0 STR,
+      MARK-COMMIT-INDEX ret B,
+   rebuild LBL,
       lookup full shape INDEX-BUILD
-   grow A64ICODE:LBL,
+   grow LBL,
       \ Overflow checks precede doubling and the byte product. mmap and copying
       \ complete before publication; failure preserves the old header and rows.
-      7 ADDRESS-CELLS:MAX-ROWS 2 / A64ICODE:LIT64,
-      10 7 A64ICODE:CMP, A64ASM:C-HI full A64ICODE:BCOND,
-      10 10 1 A64ICODE:LSLI, 10 A64ICODE:SP 144 A64ICODE:STR,
-      0 0 A64ICODE:MOVZ, 1 10 3 A64ICODE:LSLI, 2 3 A64ICODE:MOVZ,
-      3 SYSCALL:MAP-ANON-PRIVATE A64ICODE:LIT64, 4 0 A64ICODE:MOVN, 5 0 A64ICODE:MOVZ,
-      SYSCALL:NR-MMAP SYSCALL:SYS, A64ASM:C-CS full A64ICODE:BCOND,
-      0 copied A64ICODE:CBNZ,
-      10 A64ICODE:SP 144 A64ICODE:LDR, 1 10 3 A64ICODE:LSLI, SYSCALL:NR-MUNMAP SYSCALL:SYS, full A64ICODE:B,
-   copied A64ICODE:LBL,
-      0 A64ICODE:SP 152 A64ICODE:STR, 17 0 0 A64ICODE:ADDI,
+      7 ADDRESS-CELLS:MAX-ROWS 2 / LIT64,
+      10 7 CMP, C-HI full BCOND,
+      10 10 1 LSLI, 10 SP 144 STR,
+      0 0 MOVZ, 1 10 3 LSLI, 2 3 MOVZ,
+      3 MAP-ANON-PRIVATE LIT64, 4 0 MOVN, 5 0 MOVZ,
+      NR-MMAP SYS, C-CS full BCOND,
+      0 copied CBNZ,
+      10 SP 144 LDR, 1 10 3 LSLI, NR-MUNMAP SYS, full B,
+   copied LBL,
+      0 SP 152 STR, 17 0 0 ADDI,
       MARK-HEADER
-      5 4 ADDRESS-CELLS:BASE-FIELD A64ICODE:LDR,
-      11 4 ADDRESS-CELLS:MODE-FIELD A64ICODE:LDR,
-      A64ICODE:LBL {: source:label :} 11 source A64ICODE:CBNZ, 5 16 5 A64ICODE:ADD, source A64ICODE:LBL,
-      14 0 A64ICODE:MOVZ,
-   copy A64ICODE:LBL, 14 13 A64ICODE:CMP, A64ASM:C-CS publish A64ICODE:BCOND,
-      6 14 3 A64ICODE:LSLI, 7 5 6 A64ICODE:ADD, 7 7 0 A64ICODE:LDR,
-      6 17 6 A64ICODE:ADD, 7 6 0 A64ICODE:STR,
-      14 14 1 A64ICODE:ADDI, copy A64ICODE:B,
-   publish A64ICODE:LBL,
+      5 4 ADDRESS-CELLS:BASE-FIELD LDR,
+      11 4 ADDRESS-CELLS:MODE-FIELD LDR,
+      LBL {: source:label :} 11 source CBNZ, 5 16 5 ADD, source LBL,
+      14 0 MOVZ,
+   copy LBL, 14 13 CMP, C-CS publish BCOND,
+      6 14 3 LSLI, 7 5 6 ADD, 7 7 0 LDR,
+      6 17 6 ADD, 7 6 0 STR,
+      14 14 1 ADDI, copy B,
+   publish LBL,
       \ An owned mapping is released only after the replacement is complete.
       \ A failed release discards the replacement and leaves the old view live.
-      A64ICODE:LBL A64ICODE:LBL {: commit:label released:label :}
-      11 commit A64ICODE:CBZ,
-      0 5 0 A64ICODE:ADDI, 1 4 ADDRESS-CELLS:CAP-FIELD A64ICODE:LDR, 1 1 3 A64ICODE:LSLI,
-      SYSCALL:NR-MUNMAP SYSCALL:SYS, 0 released A64ICODE:CBZ,
-      0 A64ICODE:SP 152 A64ICODE:LDR, 1 A64ICODE:SP 144 A64ICODE:LDR, 1 1 3 A64ICODE:LSLI,
-      SYSCALL:NR-MUNMAP SYSCALL:SYS, full A64ICODE:B,
-   released A64ICODE:LBL,
+      LBL LBL {: commit:label released:label :}
+      11 commit CBZ,
+      0 5 0 ADDI, 1 4 ADDRESS-CELLS:CAP-FIELD LDR, 1 1 3 LSLI,
+      NR-MUNMAP SYS, 0 released CBZ,
+      0 SP 152 LDR, 1 SP 144 LDR, 1 1 3 LSLI,
+      NR-MUNMAP SYS, full B,
+   released LBL,
       MARK-HEADER
-   commit A64ICODE:LBL,
-      5 A64ICODE:SP 152 A64ICODE:LDR, 10 A64ICODE:SP 144 A64ICODE:LDR,
-      6 13 3 A64ICODE:LSLI, 6 5 6 A64ICODE:ADD, 7 12 15 A64ICODE:ORR, 7 6 0 A64ICODE:STR,
-      5 4 ADDRESS-CELLS:BASE-FIELD A64ICODE:STR,
-      10 4 ADDRESS-CELLS:CAP-FIELD A64ICODE:STR,
-      11 1 A64ICODE:MOVZ, 11 4 ADDRESS-CELLS:MODE-FIELD A64ICODE:STR,
-      MARK-COMMIT-INDEX ret A64ICODE:B,
-   full A64ICODE:LBL,
+   commit LBL,
+      5 SP 152 LDR, 10 SP 144 LDR,
+      6 13 3 LSLI, 6 5 6 ADD, 7 12 15 ORR, 7 6 0 STR,
+      5 4 ADDRESS-CELLS:BASE-FIELD STR,
+      10 4 ADDRESS-CELLS:CAP-FIELD STR,
+      11 1 MOVZ, 11 4 ADDRESS-CELLS:MODE-FIELD STR,
+      MARK-COMMIT-INDEX ret B,
+   full LBL,
       \ Every branch here leaves the header, rows and index whole, so the throw is
       \ safe to catch.
       MARK-HEADER MARK-UNLOCK
@@ -1735,25 +1748,25 @@ public
    end A64ICODE:LBL,  A64ICODE:DATA-AFTER, ;
 
 : BPTRCELLMARK ( -- )
-   ENGINE-EMIT:A RT:G-POP
-   LPTRMARK A64ICODE:LABEL@ A64ICODE:BL, ;
+   A G-POP
+   LPTRMARK LABEL@ BL, ;
 
 : BSCRATCHCELLMARK ( -- )
-   ENGINE-EMIT:A RT:G-POP
-   LSCRATCHMARK A64ICODE:LABEL@ A64ICODE:BL, ;
+   A G-POP
+   LSCRATCHMARK LABEL@ BL, ;
 
 \ While a build writes an image, a store into this engine's header goes to the
 \ same offset in the image, and marks the cell: its address goes to the cell
 \ ROUTED-BYTES below it and to the cell below the image, in the band the build
 \ maps there. Clobbers x12 and x13, as the store's guard does.
 : ROUTE-HEADER ( n -- ) {: reg:n :}
-   A64ICODE:LBL {: own:label :}
-   13 reg XREG-RBASE A64ICODE:SUB,  12 DATA-START A64ICODE:LIT64,  13 12 A64ICODE:CMP,  A64ASM:C-CS own A64ICODE:BCOND,
-   12 XREG-RBASE BOOT:IMAGE-BASE-CELL A64ICODE:LDR,  12 own A64ICODE:CBZ,
-   reg 12 13 A64ICODE:ADD,
-   13 12 8 A64ICODE:SUBI,  reg 13 0 A64ICODE:STR,
-   12 ROUTED-BYTES A64ICODE:LIT64,  13 reg 12 A64ICODE:SUB,  reg 13 0 A64ICODE:STR,
-   own A64ICODE:LBL, ;
+   LBL {: own:label :}
+   13 reg XREG-RBASE SUB,  12 DATA-START LIT64,  13 12 CMP,  C-CS own BCOND,
+   12 XREG-RBASE BOOT:IMAGE-BASE-CELL LDR,  12 own CBZ,
+   reg 12 13 ADD,
+   13 12 8 SUBI,  reg 13 0 STR,
+   12 ROUTED-BYTES LIT64,  13 reg 12 SUB,  reg 13 0 STR,
+   own LBL, ;
 
 \ xt! ( q ^q -- ): store an execution token into a persisted cell and declare
 \ the cell. `defer` and `is` declare cells known at compile time; a table of
@@ -1762,21 +1775,21 @@ public
 \ the cell in x9, so the token is parked in x11 (scratch here; LMARK preserves
 \ x9 and saves the rest). Registered framed: LMARK is a BL.
 : BXTSTORE ( -- )
-   ENGINE-EMIT:B RT:G-POP  ENGINE-EMIT:A RT:G-POP
-   ENGINE-EMIT:B ROUTE-HEADER
-   ENGINE-EMIT:C ENGINE-EMIT:A 0 A64ICODE:ADDI,                                      \ x11 = the token
-   ENGINE-EMIT:A ENGINE-EMIT:B 0 A64ICODE:ADDI,                                      \ x9 = the cell, for LMARK
-   LMARK A64ICODE:LABEL@ A64ICODE:BL,
-   ENGINE-EMIT:C ENGINE-EMIT:B 0 A64ICODE:STR, ;
+   B G-POP  A G-POP
+   B ROUTE-HEADER
+   C A 0 ADDI,                                      \ x11 = the token
+   A B 0 ADDI,                                      \ x9 = the cell, for LMARK
+   LMARK LABEL@ BL,
+   C B 0 STR, ;
 
 \ ptr-cell! ( a ^ -- ): BXTSTORE for a DATA-pointer cell.
 : BPTRCELLSTORE ( -- )
-   ENGINE-EMIT:B RT:G-POP  ENGINE-EMIT:A RT:G-POP
-   ENGINE-EMIT:B ROUTE-HEADER
-   ENGINE-EMIT:C ENGINE-EMIT:A 0 A64ICODE:ADDI,                                      \ x11 = the pointer
-   ENGINE-EMIT:A ENGINE-EMIT:B 0 A64ICODE:ADDI,                                      \ x9 = the cell, for LPTRMARK
-   LPTRMARK A64ICODE:LABEL@ A64ICODE:BL,
-   ENGINE-EMIT:C ENGINE-EMIT:B 0 A64ICODE:STR, ;
+   B G-POP  A G-POP
+   B ROUTE-HEADER
+   C A 0 ADDI,                                      \ x11 = the pointer
+   A B 0 ADDI,                                      \ x9 = the cell, for LPTRMARK
+   LPTRMARK LABEL@ BL,
+   C B 0 STR, ;
 
 ;package
 
@@ -1785,7 +1798,7 @@ package ENGINE-EMIT
 public
 
 : EM-TEXT-SIZE ( -- )
-   9 XREG-RBASE RBASE-CELL A64ICODE:LDR,  9 10 CRASH:TEXT-SIZE,  9 XREG-RBASE TEXT-SIZE-CELL A64ICODE:STR, ;
+   9 XREG-RBASE RBASE-CELL LDR,  9 10 TEXT-SIZE,  9 XREG-RBASE TEXT-SIZE-CELL STR, ;
 
 ;package
 
@@ -1795,32 +1808,168 @@ package DEFWRITE
 public
 
 : DEF-ABORT ( -- )
-   ENGINE-EMIT:EM-ABORT-COMPILE-STATE ;
+   EM-ABORT-COMPILE-STATE ;
 
 : STACK-CLEAR ( -- )
-   A64ICODE:XDS XREG-RBASE S0-CELL A64ICODE:LDR, ;
+   XDS XREG-RBASE S0-CELL LDR, ;
 
 ;package
 
 package ENGINE-EMIT
-\ LSCOPEREC: LFIND's lookup as one leaf for every reader but the call site. In:
-\ x9/x10 = the token, kept. Out: x14 = the record or 0, x15 = flags; x2-x17 clobbered.
+private
+
+\ In x9/x10 = the token; out x13 = 0, or the FIND flags with x11 = code, x12 =
+\ body-len and x5 = the record. Two distinct records bind nothing: x6 = 2.
+: EMIT-FIND-USED ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: qscan:label qnone:label ret:label uloop:label mloop:label member:label
+      ninl:label ncmp:label nmatch:label unext:label udone:label
+      lscan:label kloop:label knext:label ploop:label pnext:label pinl:label
+      pcmp:label pmatch:label pamb:label :}
+   LFINDUSED-CORE LABEL@ LBL,
+   13 0 MOVZ,
+   17 0 MOVZ,
+   6 0 MOVZ,                                                        \ the match count every exit answers
+   qscan LBL,
+      17 10 CMP,  C-GE qnone BCOND,
+      14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ ret BCOND,   \ colon -> not a bare tail; miss
+      17 17 1 ADDI,  qscan B,
+   qnone LBL,
+   14 USE-DEPTH-CELL LIT64,  14 XREG-RBASE 14 ADD,  8 14 0 LDR,
+   8 ret CBZ,
+   7 USE-WIDS-OFF LIT64,  7 XREG-RBASE 7 ADD,
+   14 XREG-RBASE HIDXP-CELL LDR,  14 lscan CBZ,                          \ no table -> the scan answers
+   9 10 15 4 5 17 C-HIDX-HASH                                      \ x15 = folded-name hash, once
+   16 0 MOVZ,  6 0 MOVZ,                                            \ x16 = matched record (0=none), x6 = match count
+   3 0 MOVZ,                                                        \ x3 = used-wid index
+   kloop LBL,
+      3 8 CMP,  C-GE udone BCOND,
+      2 3 3 LSLI,  2 7 2 ADD,  2 2 0 LDR,
+      5 15 2 4 C-HIDX-SLOT,                                        \ x5 = the wid's first slot
+      4 HIDX-SLOTS LIT64,                                          \ x4 = step budget
+   ploop LBL,
+      12 5 2 LSLI,  12 14 12 ADD,  11 12 0 LDRW,                   \ x11 = slot value (index+1)
+      11 knext CBZ,                                                \ empty slot -> absent from this wid
+      11 11 1 SUBI,  11 NDICT CMP,  C-GE pnext BCOND,              \ stale (truncated) index
+      12 DREC MOVZ,  12 11 12 MUL,  12 DBASE 12 ADD,
+      11 12 40 LDR,  11 2 CMP,  C-NE pnext BCOND,                  \ wid mismatch
+      11 12 16 LDR,  11 11 DNAME-FLAG-BITS LSLI,  11 11 DNAME-FLAG-BITS LSRI,  11 10 CMP,  C-NE pnext BCOND,  \ name-len mismatch
+      17 12 24 ADDI,
+      11 12 16 LDR,  11 11 DNAME-EXT ANDI,  11 pinl CBZ,
+         17 12 24 LDR,
+      pinl LBL,
+      13 0 MOVZ,
+      pcmp LBL,
+         \ x2 and x11 carry the two bytes, x12 is the fold scratch; the record
+         \ pointer is recomputed at pmatch and the wid reloaded from USE-WIDS[x3]
+         \ at pnext.
+         13 10 CMP,  C-GE pmatch BCOND,
+         11 17 13 ADD,  11 11 0 LDRB,
+         12 11 $41 SUBI,  12 $1A CMPI,  12 C-CC CSET,  12 12 5 LSLI,  11 11 12 ORR,
+         2 9 13 ADD,  2 2 0 LDRB,
+         12 2 $41 SUBI,  12 $1A CMPI,  12 C-CC CSET,  12 12 5 LSLI,  2 2 12 ORR,
+         11 2 CMP,  C-NE pnext BCOND,
+         13 13 1 ADDI,  pcmp B,
+      pmatch LBL,
+         12 5 2 LSLI,  12 14 12 ADD,  12 12 0 LDRW,
+         12 12 1 SUBI,  11 DREC MOVZ,  12 12 11 MUL,  12 DBASE 12 ADD,
+         12 16 CMP,  C-EQ knext BCOND,                             \ same record again (same package used twice)
+         6 6 1 ADDI,  6 2 CMPI,  C-GE pamb BCOND,                  \ 2nd distinct record -> ambiguous: x16 1st, x12 2nd
+         16 12 0 ADDI,
+   knext LBL,
+      3 3 1 ADDI,  kloop B,
+   pnext LBL,
+      2 3 3 LSLI,  2 7 2 ADD,  2 2 0 LDR,
+      4 4 1 SUBI,  4 lscan CBZ,                                    \ full wrap -> the scan answers
+      5 5 1 ADDI,  12 HIDX-SLOTS 1 - LIT64,  5 5 12 AND,  ploop B,
+   lscan LBL,
+   16 0 MOVZ,  6 0 MOVZ,                                            \ x16 = matched record (0=none), x6 = match count
+   5 DBASE 0 ADDI,  4 NDICT 0 ADDI,
+   uloop LBL,
+      4 udone CBZ,
+      14 5 40 LDR,                                                 \ x14 = record wid
+      3 0 MOVZ,
+      mloop LBL,
+         3 8 CMP,  C-GE unext BCOND,
+         2 3 3 LSLI,  2 7 2 ADD,  15 2 0 LDR,
+         15 14 CMP,  C-EQ member BCOND,
+         3 3 1 ADDI,  mloop B,
+      member LBL,
+         15 5 16 LDR,  15 15 DNAME-FLAG-BITS LSLI,  15 15 DNAME-FLAG-BITS LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
+         2 5 24 ADDI,
+         14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
+            2 5 24 LDR,
+         ninl LBL,
+         17 0 MOVZ,
+         ncmp LBL,
+            17 10 CMP,  C-GE nmatch BCOND,
+            15 2 17 ADD,  15 15 0 LDRB,
+            3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+            14 9 17 ADD,  14 14 0 LDRB,
+            3 14 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  14 14 3 ORR,
+            15 14 CMP,  C-NE unext BCOND,
+            17 17 1 ADDI,  ncmp B,
+         nmatch LBL,
+            6 6 1 ADDI,  12 5 0 ADDI,
+            6 2 CMPI,  C-GE pamb BCOND,                            \ 2nd distinct match -> ambiguous: x16 1st, x12 2nd
+            16 5 0 ADDI,
+      unext LBL,  5 5 DREC ADDI,  4 4 1 SUBI,  uloop B,
+   udone LBL,
+   13 0 MOVZ,                                                      \ the probes used x13 as a byte index
+   16 ret CBZ,
+   5 16 0 ADDI,
+   11 5 0 LDR,  12 5 8 LDR,
+   14 5 16 LDR,
+   15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
+   16 14 DNAME-INT ANDI,  16 16 59 LSRI,
+   15 15 16 ORR,
+   14 14 DNAME-IMM ANDI,  14 14 59 LSRI,
+   14 14 15 ORR,
+   13 1 MOVZ,  13 13 14 ORR,
+   RET,                                                            \ hit: x5 is the matched record, LFIND's own output shape
+   ret LBL,  5 0 MOVZ,  RET,                                       \ every miss leaves x5 = 0, including the two that never wrote it
+   pamb LBL,  13 0 MOVZ,  5 0 MOVZ,  RET, ;
+;package
+
+package ENGINE-EMIT
+\ LSCOPEREC: the name lookup as one leaf for every reader but the call site, in
+\ the call site's order: LFIND (open package, enclosing one, global, or
+\ NAME:tail), then the used publics only when LFIND missed. In: x9/x10 = the
+\ token, preserved. Out: x14 = the bound record (0 when nothing binds), x16 =
+\ the used publics' record (0 when none, the first of two), x17 = the second of
+\ two, x15 = flags: 1 when the bound record is a seeded primitive, 2 when the
+\ used publics hold two distinct records (then nothing binds and both are
+\ named). Clobbers x2-x17 as the leaves do.
+\ Seeded is the identity of an operator row's word: the boot copies the
+\ primitives' records to dict[0..LNCOUNT), and every later record (a package
+\ word, an EXPORT alias, a redefinition after `undefine`) sits above. An
+\ operator row may claim its token only when the lookup bound that
+\ primitive's own record.
 : EMIT-SCOPE-REC ( -- )
-   A64ICODE:LBL {: notseed:label :}
-   LSCOPEREC A64ICODE:LABEL@ A64ICODE:LBL,
-   A64ICODE:SP A64ICODE:SP 32 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,  9 A64ICODE:SP 8 A64ICODE:STR,  10 A64ICODE:SP 16 A64ICODE:STR,
-   LFIND A64ICODE:LABEL@ A64ICODE:BL,                                       \ x5 = the record, 0 on a miss
-   14 5 0 A64ICODE:ADDI,  15 0 A64ICODE:MOVZ,
-   14 notseed A64ICODE:CBZ,
-   \ The boot copies the primitives' records below LNCOUNT; an operator row claims
-   \ its token only when the lookup bound one of them: flag 1.
-   12 LNCOUNT A64ICODE:LABEL@ A64ICODE:ADR,  12 12 0 A64ICODE:LDR,  13 DREC A64ICODE:MOVZ,  12 12 13 A64ICODE:MUL,  12 DBASE 12 A64ICODE:ADD,
-   14 12 A64ICODE:CMP,  A64ASM:C-CS notseed A64ICODE:BCOND,
-      15 1 A64ICODE:MOVZ,
-   notseed A64ICODE:LBL,
-   9 A64ICODE:SP 8 A64ICODE:LDR,  10 A64ICODE:SP 16 A64ICODE:LDR,                             \ LFIND moved them onto a qualified tail
-   30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 32 A64ICODE:ADDI,
-   A64ICODE:RET, ;
+   LBL LBL LBL {: two:label have:label notseed:label :}
+   LSCOPEREC LABEL@ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
+   LFIND LABEL@ BL,                                       \ x5 = the record, 0 on a miss
+   5 SP 24 STR,
+   9 SP 8 LDR,  10 SP 16 LDR,                             \ LFIND moved them onto a qualified tail
+   LFINDUSED-CORE LABEL@ BL,                              \ x5 = the one used record, x6 = records met
+   17 12 0 ADDI,
+   6 2 CMPI,  C-GE two BCOND,
+      16 5 0 ADDI,  17 0 MOVZ,
+   two LBL,
+   14 SP 24 LDR,  14 have CBNZ,
+      14 5 0 ADDI,
+   have LBL,
+   6 2 CMPI,  15 C-GE CSET,  15 15 1 LSLI,
+   14 notseed CBZ,
+   12 LNCOUNT LABEL@ ADR,  12 12 0 LDR,  13 DREC MOVZ,  12 12 13 MUL,  12 DBASE 12 ADD,
+   14 12 CMP,  C-CS notseed BCOND,
+      13 1 MOVZ,  15 15 13 ORR,
+   notseed LBL,
+   9 SP 8 LDR,  10 SP 16 LDR,
+   30 SP 0 LDR,  SP SP 32 ADDI,
+   RET, ;
 
 ;package
 
@@ -1830,37 +1979,37 @@ private
 \ The uncaught-throw exit, x9 = code: one in [1,255] exits as itself; any other prints
 \ "hb: uncaught throw code <n>" on fd 2 and exits EXIT-STATUS:UNCAUGHT. No RET: leaf-safe.
 : EM-UNCAUGHT ( -- )
-   LUNCAUGHT A64ICODE:LABEL@ A64ICODE:LBL,
-   A64ICODE:LBL LUNCRPT !  A64ICODE:LBL LUNCPOS !  A64ICODE:LBL LUNCLOOP !  A64ICODE:LBL LUNCDONE !
-   0 9 0 A64ICODE:ADDI,
+   LUNCAUGHT LABEL@ LBL,
+   LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
+   0 9 0 ADDI,
    \ One hook call serves both legs below. x0 is the trampoline's to preserve;
    \ x9 and x15 are re-derived from it because the hook is compiled code and
    \ owns every caller-saved register.
-   LEXITHOOK A64ICODE:LABEL@ A64ICODE:BL,  9 0 0 A64ICODE:ADDI,  15 0 0 A64ICODE:ADDI,
-   9 1 A64ICODE:CMPI,    A64ASM:C-LT LUNCRPT A64ICODE:LABEL@ A64ICODE:BCOND,
-   9 255 A64ICODE:CMPI,  A64ASM:C-GT LUNCRPT A64ICODE:LABEL@ A64ICODE:BCOND,
-   SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
-   LUNCRPT A64ICODE:LABEL@ A64ICODE:LBL,
-   1 LUNCMSG A64ICODE:LABEL@ A64ICODE:ADR,  0 2 A64ICODE:MOVZ,  2 UNCMSG-LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,   \ "hb: uncaught throw code "
-   9 15 0 A64ICODE:ADDI,
-   A64ICODE:SP A64ICODE:SP $20 A64ICODE:SUBI,  12 A64ICODE:SP $20 A64ICODE:ADDI,
-   13 $A A64ICODE:MOVZ,  12 12 1 A64ICODE:SUBI,  13 12 0 A64ICODE:STRB,           \ trailing newline
-   14 0 A64ICODE:MOVZ,  9 0 A64ICODE:CMPI,
-   A64ASM:C-GE LUNCPOS A64ICODE:LABEL@ A64ICODE:BCOND,
-   14 1 A64ICODE:MOVZ,  9 A64ICODE:SP 9 A64ICODE:SUB,                             \ x9 = -x9 (abs); x14 = sign flag
-   LUNCPOS A64ICODE:LABEL@ A64ICODE:LBL,
-   10 $A A64ICODE:MOVZ,
-   LUNCLOOP A64ICODE:LABEL@ A64ICODE:LBL,                                \ unsigned: -MIN-N is MIN-N, magnitude 2^63
-   11 9 10 A64ICODE:UDIV,  13 11 10 A64ICODE:MUL,  13 9 13 A64ICODE:SUB,
-   13 13 $30 A64ICODE:ADDI,  12 12 1 A64ICODE:SUBI,  13 12 0 A64ICODE:STRB,
-   9 11 0 A64ICODE:ADDI,  9 LUNCLOOP A64ICODE:LABEL@ A64ICODE:CBNZ,
-   14 LUNCDONE A64ICODE:LABEL@ A64ICODE:CBZ,
-   13 $2D A64ICODE:MOVZ,  12 12 1 A64ICODE:SUBI,  13 12 0 A64ICODE:STRB,          \ leading '-'
-   LUNCDONE A64ICODE:LABEL@ A64ICODE:LBL,
-   0 2 A64ICODE:MOVZ,  1 12 0 A64ICODE:ADDI,  2 A64ICODE:SP $20 A64ICODE:ADDI,  2 2 12 A64ICODE:SUB,
-   SYSCALL:NR-WRITE SYSCALL:SYS,                                       \ write(2, digits, len)
-   0 EXIT-STATUS:UNCAUGHT A64ICODE:MOVZ,
-   SYSCALL:NR-EXIT-GROUP SYSCALL:SYS, ;
+   LEXITHOOK LABEL@ BL,  9 0 0 ADDI,  15 0 0 ADDI,
+   9 1 CMPI,    C-LT LUNCRPT LABEL@ BCOND,
+   9 255 CMPI,  C-GT LUNCRPT LABEL@ BCOND,
+   NR-EXIT-GROUP SYS,
+   LUNCRPT LABEL@ LBL,
+   1 LUNCMSG LABEL@ ADR,  0 2 MOVZ,  2 UNCMSG-LEN MOVZ,  NR-WRITE SYS,   \ "hb: uncaught throw code "
+   9 15 0 ADDI,
+   SP SP $20 SUBI,  12 SP $20 ADDI,
+   13 $A MOVZ,  12 12 1 SUBI,  13 12 0 STRB,           \ trailing newline
+   14 0 MOVZ,  9 0 CMPI,
+   C-GE LUNCPOS LABEL@ BCOND,
+   14 1 MOVZ,  9 SP 9 SUB,                             \ x9 = -x9 (abs); x14 = sign flag
+   LUNCPOS LABEL@ LBL,
+   10 $A MOVZ,
+   LUNCLOOP LABEL@ LBL,                                \ unsigned: -MIN-N is MIN-N, magnitude 2^63
+   11 9 10 UDIV,  13 11 10 MUL,  13 9 13 SUB,
+   13 13 $30 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
+   9 11 0 ADDI,  9 LUNCLOOP LABEL@ CBNZ,
+   14 LUNCDONE LABEL@ CBZ,
+   13 $2D MOVZ,  12 12 1 SUBI,  13 12 0 STRB,          \ leading '-'
+   LUNCDONE LABEL@ LBL,
+   0 2 MOVZ,  1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
+   NR-WRITE SYS,                                       \ write(2, digits, len)
+   0 EXIT-STATUS:UNCAUGHT MOVZ,
+   NR-EXIT-GROUP SYS, ;
 
 : EM-RECOVER-EXITS ( -- )
    \ LFLOORREC: C-CRASH-DATA-RECOVER resumes a thread here, every other register
@@ -1870,73 +2019,73 @@ private
    \ anything runs on it (a catch restores XDS from its frame; the uncaught exit
    \ runs the exit hook on the empty stack). It throws -9851, E-UNDERFLOW: the
    \ fault is inside running code, maybe under a catch, which receives the throw.
-   LFLOORREC A64ICODE:LABEL@ A64ICODE:LBL,
-   A64ICODE:XDS XREG-RBASE STACK-ABI:BASE-CELL A64ICODE:LDR,
-   9 -9851 A64ICODE:LIT64,  CRASH:LFAULTREC A64ICODE:LABEL@ A64ICODE:B, ;                \ -9851 = E-UNDERFLOW
+   LFLOORREC LABEL@ LBL,
+   XDS XREG-RBASE STACK-ABI:BASE-CELL LDR,
+   9 -9851 LIT64,  LFAULTREC LABEL@ B, ;                \ -9851 = E-UNDERFLOW
 
 \ LPLACE, a leaf (x0-x2, x9-x14 and SYS,'s registers; x15 kept), writes
 \ `<path>:<line>: `, or `<path>: ` off the file's bytes, or nothing outside one.
 : EM-SOURCE-PLACE ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: noline:label nlloop:label nldone:label digloop:label done:label :}
-   LPLACE A64ICODE:LABEL@ A64ICODE:LBL,
-   9 XREG-RBASE SRCLOC:PATHLEN-CELL A64ICODE:LDR,  9 done A64ICODE:CBZ,             \ no open source file -> nothing
-   2 XREG-RBASE SRCLOC:PATHLEN-CELL A64ICODE:LDR,  1 XREG-RBASE SRCLOC:PATH-CELL A64ICODE:LDR,  0 2 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
-   10 XREG-RBASE SRCLOC:OWNED-CELL A64ICODE:LDR,  10 noline A64ICODE:CBZ,           \ x10 = the file's first owned byte; none -> the path alone
-   11 XREG-RBASE SRCLOC:INB-CELL A64ICODE:LDR,  11 10 A64ICODE:CMP,  A64ASM:C-CC noline A64ICODE:BCOND,       \ the buffer starts before the file -> the path alone
-   12 XREG-RBASE SRCLOC:OWNEDLEN-CELL A64ICODE:LDR,  12 10 12 A64ICODE:ADD,
-   11 XREG-RBASE INE-CELL A64ICODE:LDR,  11 12 A64ICODE:CMP,  A64ASM:C-HI noline A64ICODE:BCOND,    \ the buffer ends past the file -> the path alone
-   11 XREG-RBASE INP-CELL A64ICODE:LDR,
-   12 1 A64ICODE:MOVZ,                                               \ x12 = line, 1-based
-   nlloop A64ICODE:LBL,
-      10 11 A64ICODE:CMP,  A64ASM:C-CS nldone A64ICODE:BCOND,
-      13 10 0 A64ICODE:LDRB,  10 10 1 A64ICODE:ADDI,
-      13 $A A64ICODE:CMPI,  A64ASM:C-NE nlloop A64ICODE:BCOND,
-      12 12 1 A64ICODE:ADDI,  nlloop A64ICODE:B,
-   nldone A64ICODE:LBL,
+   LBL LBL LBL LBL LBL {: noline:label nlloop:label nldone:label digloop:label done:label :}
+   LPLACE LABEL@ LBL,
+   9 XREG-RBASE SRCLOC:PATHLEN-CELL LDR,  9 done CBZ,             \ no open source file -> nothing
+   2 XREG-RBASE SRCLOC:PATHLEN-CELL LDR,  1 XREG-RBASE SRCLOC:PATH-CELL LDR,  0 2 MOVZ,  NR-WRITE SYS,
+   10 XREG-RBASE SRCLOC:OWNED-CELL LDR,  10 noline CBZ,           \ x10 = the file's first owned byte; none -> the path alone
+   11 XREG-RBASE SRCLOC:INB-CELL LDR,  11 10 CMP,  C-CC noline BCOND,       \ the buffer starts before the file -> the path alone
+   12 XREG-RBASE SRCLOC:OWNEDLEN-CELL LDR,  12 10 12 ADD,
+   11 XREG-RBASE INE-CELL LDR,  11 12 CMP,  C-HI noline BCOND,    \ the buffer ends past the file -> the path alone
+   11 XREG-RBASE INP-CELL LDR,
+   12 1 MOVZ,                                               \ x12 = line, 1-based
+   nlloop LBL,
+      10 11 CMP,  C-CS nldone BCOND,
+      13 10 0 LDRB,  10 10 1 ADDI,
+      13 $A CMPI,  C-NE nlloop BCOND,
+      12 12 1 ADDI,  nlloop B,
+   nldone LBL,
    \ ":" + decimal line, built backwards in a 32-byte stack scratch.
-   A64ICODE:SP A64ICODE:SP $20 A64ICODE:SUBI,  14 A64ICODE:SP $20 A64ICODE:ADDI,
-   9 $A A64ICODE:MOVZ,
-   digloop A64ICODE:LBL,
-      11 12 9 A64ICODE:UDIV,  13 11 9 A64ICODE:MUL,  13 12 13 A64ICODE:SUB,
-      13 13 $30 A64ICODE:ADDI,  14 14 1 A64ICODE:SUBI,  13 14 0 A64ICODE:STRB,
-      12 11 0 A64ICODE:ADDI,  12 digloop A64ICODE:CBNZ,
-   13 $3A A64ICODE:MOVZ,  14 14 1 A64ICODE:SUBI,  13 14 0 A64ICODE:STRB,
-   2 A64ICODE:SP $20 A64ICODE:ADDI,  2 2 14 A64ICODE:SUB,  1 14 0 A64ICODE:ADDI,  0 2 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
-   A64ICODE:SP A64ICODE:SP $20 A64ICODE:ADDI,
-   noline A64ICODE:LBL,
-   0 2 A64ICODE:MOVZ,  1 LPLACEEND A64ICODE:LABEL@ A64ICODE:ADR,  2 PLACEEND-LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
-   done A64ICODE:LBL,
-   A64ICODE:RET, ;
+   SP SP $20 SUBI,  14 SP $20 ADDI,
+   9 $A MOVZ,
+   digloop LBL,
+      11 12 9 UDIV,  13 11 9 MUL,  13 12 13 SUB,
+      13 13 $30 ADDI,  14 14 1 SUBI,  13 14 0 STRB,
+      12 11 0 ADDI,  12 digloop CBNZ,
+   13 $3A MOVZ,  14 14 1 SUBI,  13 14 0 STRB,
+   2 SP $20 ADDI,  2 2 14 SUB,  1 14 0 ADDI,  0 2 MOVZ,  NR-WRITE SYS,
+   SP SP $20 ADDI,
+   noline LBL,
+   0 2 MOVZ,  1 LPLACEEND LABEL@ ADR,  2 PLACEEND-LEN MOVZ,  NR-WRITE SYS,
+   done LBL,
+   RET, ;
 
 \ In x0 = the exit or throw code, the diagnostic written without its newline.
 : EM-COMPILE-DIE ( -- )
-   A64ICODE:LBL {: ldie:label :}
-   A64ICODE:LBL {: dpbad-end:label :}
-   LCOMPILEDIE A64ICODE:LABEL@ A64ICODE:LBL,
-   15 0 0 A64ICODE:ADDI,                                             \ x15 = code across the write
-   0 2 A64ICODE:MOVZ,  1 LOPENNL A64ICODE:LABEL@ A64ICODE:ADR,  2 NL-LEN A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
-   9 XREG-RBASE EVALD-CELL A64ICODE:LDR,  9 ldie A64ICODE:CBZ,
-      9 15 0 A64ICODE:ADDI,  CRASH:LFAULTREC A64ICODE:LABEL@ A64ICODE:B,
-   ldie A64ICODE:LBL,
-   0 15 0 A64ICODE:ADDI,
-   SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
+   LBL {: ldie:label :}
+   LBL {: dpbad-end:label :}
+   LCOMPILEDIE LABEL@ LBL,
+   15 0 0 ADDI,                                             \ x15 = code across the write
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
+   9 XREG-RBASE EVALD-CELL LDR,  9 ldie CBZ,
+      9 15 0 ADDI,  LFAULTREC LABEL@ B,
+   ldie LBL,
+   0 15 0 ADDI,
+   NR-EXIT-GROUP SYS,
    EM-SOURCE-PLACE
    \ DP-CHECK found the DP outside the data space: it throws -9850, E-DATA-SPACE.
-   LDPBAD A64ICODE:LABEL@ A64ICODE:LBL,
-   9 -9850 A64ICODE:LIT64,  CRASH:LFAULTREC A64ICODE:LABEL@ A64ICODE:B,                    \ -9850 = E-DATA-SPACE
-   dpbad-end A64ICODE:LBL,
-   s" (LDPBAD)" LDPBAD A64ICODE:LABEL@ LABEL>N dpbad-end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   LDPBAD LABEL@ LBL,
+   9 -9850 LIT64,  LFAULTREC LABEL@ B,                    \ -9850 = E-DATA-SPACE
+   dpbad-end LBL,
+   s" (LDPBAD)" LDPBAD LABEL@ LABEL>N dpbad-end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    \ A writer of a record or a wid ran while a checker overlay was open, before
    \ it wrote anything: it throws -9852, E-OVERLAY-OPEN. Each code here is a
    \ literal so a host without src/lib/error.f's word still builds.
-   OVERLAY-EMIT:LDIE A64ICODE:LABEL@ A64ICODE:LBL,
-   9 -9852 A64ICODE:LIT64,  CRASH:LFAULTREC A64ICODE:LABEL@ A64ICODE:B, ;                  \ -9852 = E-OVERLAY-OPEN
+   OVERLAY-EMIT:LDIE LABEL@ LBL,
+   9 -9852 LIT64,  LFAULTREC LABEL@ B, ;                  \ -9852 = E-OVERLAY-OPEN
 
 \ Growing the body text block failed: it throws -9853, E-BODY-TEXT.
 \ Nothing is stored before the grow fails, so the throw is safe to catch.
 : EM-BODY-GROW-DIE ( -- )
-   LBGROWFAIL A64ICODE:LABEL@ A64ICODE:LBL,
-   9 -9853 A64ICODE:LIT64,  CRASH:LFAULTREC A64ICODE:LABEL@ A64ICODE:B, ;                  \ -9853 = E-BODY-TEXT
+   LBGROWFAIL LABEL@ LBL,
+   9 -9853 LIT64,  LFAULTREC LABEL@ B, ;                  \ -9853 = E-BODY-TEXT
 
 ;package
 
@@ -1954,48 +2103,48 @@ package ENGINE-EMIT
 package ENGINE-EMIT
 public
 : EMIT-RESET-BUILDER ( -- )
-   A64ICODE:ASM-INIT  ENGINE-PRIMS:RESET ;
+   ASM-INIT  ENGINE-PRIMS:RESET ;
 ;package
 
 package LABELS
 
 : CORE ( -- )
-   A64ICODE:LBL ENGINE-EMIT:LFIND !  A64ICODE:LBL ENGINE-EMIT:LNUM !  A64ICODE:LBL ENGINE-EMIT:LDICT !
-   A64ICODE:LBL ENGINE-EMIT:LTOK !  A64ICODE:LBL ENGINE-EMIT:LFLUSH !  A64ICODE:LBL ENGINE-EMIT:LFLUSHTO !  A64ICODE:LBL ENGINE-EMIT:LNCOUNT !
-   A64ICODE:LBL ENGINE-EMIT:LBCS !
-   A64ICODE:LBL ENGINE-EMIT:LHIDXADD !  A64ICODE:LBL ENGINE-EMIT:LHIDXBUILD !
-   A64ICODE:LBL HIDX-EMIT:LREBUILD !  A64ICODE:LBL HIDX-EMIT:LFULL !  A64ICODE:LBL HIDX-EMIT:LREKEY !
-   A64ICODE:LBL WLFIND:LENTRY !  A64ICODE:LBL WLFIND:LPAIR !  A64ICODE:LBL ENGINE-EMIT:LHEADROW !
-   A64ICODE:LBL EM-DEF-OCC:LCOUNT !  A64ICODE:LBL EM-DEF-OCC:LAPPEND !  A64ICODE:LBL EM-DEF-OCC:LRESET !
-   A64ICODE:LBL EM-DEF-OCC:LISSUE !  A64ICODE:LBL EM-DEF-OCC:LINIT !
-   A64ICODE:LBL EM-DEF-OCC:LBEFORE !  A64ICODE:LBL EM-DEF-OCC:LAFTER !  A64ICODE:LBL EM-DEF-OCC:LMATCH !
-   A64ICODE:LBL EM-DEF-OCC:LRECLAIM !
-   A64ICODE:LBL RELOC-EMIT:LMARK !  A64ICODE:LBL RELOC-EMIT:LPTRMARK !  A64ICODE:LBL RELOC-EMIT:LSCRATCHMARK ! ;
+   LBL LFIND !  LBL LNUM !  LBL LDICT !
+   LBL LTOK !  LBL LFLUSH !  LBL LFLUSHTO !  LBL LNCOUNT !
+   LBL LBCS !
+   LBL LHIDXADD !  LBL LHIDXBUILD !
+   LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL HIDX-EMIT:LREKEY !
+   LBL WLFIND:LENTRY !  LBL WLFIND:LPAIR !  LBL LHEADROW !
+   LBL EM-DEF-OCC:LCOUNT !  LBL EM-DEF-OCC:LAPPEND !  LBL EM-DEF-OCC:LRESET !
+   LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
+   LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
+   LBL EM-DEF-OCC:LRECLAIM !
+   LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !  LBL RELOC-EMIT:LSCRATCHMARK ! ;
 
 : CONTROL ( -- )
-   A64ICODE:LBL KWDATA:LKWTRUSTDECL !  A64ICODE:LBL KWDATA:LKWTRUSTRAW !
-   A64ICODE:LBL ENGINE-EMIT:LSCOPEREC !
-   A64ICODE:LBL DEFWRITE:LREPLAYTRAP ! ;
+   LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !
+   LBL LFINDUSED-CORE !  LBL LSCOPEREC !
+   LBL DEFWRITE:LREPLAYTRAP ! ;
 
 : RUNTIME ( -- )
-   A64ICODE:LBL ENGINE-EMIT:LDOESPATCH !  A64ICODE:LBL RT:LGENIOOUT !
-   A64ICODE:LBL ENGINE-EMIT:LEXITHOOK !
-   A64ICODE:LBL CRASH:LCRASHH !  A64ICODE:LBL CRASH:LHANDLERS-END !  A64ICODE:LBL CRASH:LFAULTREC !  A64ICODE:LBL CRASH:LSIGH !  A64ICODE:LBL CRASH:LHEX !  A64ICODE:LBL CRASH:LDIE-LINE !  A64ICODE:LBL CRASH:LFAULT-PUT !  A64ICODE:LBL CRASH:LFAULT-OWNER !  A64ICODE:LBL CRASH:LFAULT-DEC !  A64ICODE:LBL CRASH:LHDR !  A64ICODE:LBL ENGINE-EMIT:LTRAPH !  A64ICODE:LBL ENGINE-EMIT:LBPH !  A64ICODE:LBL BP-CALLER:LBPLH !  A64ICODE:LBL ENGINE-EMIT:LBPSH !  A64ICODE:LBL ENGINE-EMIT:LBPWH !
-   A64ICODE:LBL ENGINE-EMIT:LOPENNL !
-   A64ICODE:LBL ENGINE-EMIT:LUNCAUGHT !  A64ICODE:LBL ENGINE-EMIT:LUNCMSG !
-   A64ICODE:LBL ENGINE-EMIT:LFLOORREC !
-   A64ICODE:LBL ENGINE-EMIT:LDPBAD !
-   A64ICODE:LBL OVERLAY-EMIT:LDIE !
-   A64ICODE:LBL ENGINE-EMIT:LBGROWFAIL !
-   A64ICODE:LBL ENGINE-EMIT:LCOMPILEDIE !  A64ICODE:LBL ENGINE-EMIT:LPLACE !
-   A64ICODE:LBL ENGINE-EMIT:LPLACEEND !  ;
+   LBL LDOESPATCH !  LBL LGENIOOUT !
+   LBL LEXITHOOK !
+   LBL LCRASHH !  LBL LHANDLERS-END !  LBL LFAULTREC !  LBL LSIGH !  LBL LHEX !  LBL LDIE-LINE !  LBL LFAULT-PUT !  LBL LFAULT-OWNER !  LBL LFAULT-DEC !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !
+   LBL LOPENNL !
+   LBL LUNCAUGHT !  LBL LUNCMSG !
+   LBL LFLOORREC !
+   LBL LDPBAD !
+   LBL OVERLAY-EMIT:LDIE !
+   LBL LBGROWFAIL !
+   LBL LCOMPILEDIE !  LBL LPLACE !
+   LBL LPLACEEND !  ;
 
 : PROF ( -- )
-   A64ICODE:LBL PROF:LPROFH !  A64ICODE:LBL PROF:LPROFDUMP !  A64ICODE:LBL PROF:LPROFFIND !  A64ICODE:LBL PROF:LPROFEDGE !
-   A64ICODE:LBL PROF:LPROFJSON !  A64ICODE:LBL PROF:LPROFNUM !  A64ICODE:LBL PROF:LPROFPCT !
-   A64ICODE:LBL PROF:LPROFNAME !  A64ICODE:LBL PROF:LPROFSYNC !
-   A64ICODE:LBL PROF:LPROFROW !
-   A64ICODE:LBL PROF-ABI:LPROFTRIM !  A64ICODE:LBL PROF-ABI:LPROFRECLAIM ! ;
+   LBL PROF:LPROFH !  LBL PROF:LPROFDUMP !  LBL PROF:LPROFFIND !  LBL PROF:LPROFEDGE !
+   LBL PROF:LPROFJSON !  LBL PROF:LPROFNUM !  LBL PROF:LPROFPCT !
+   LBL PROF:LPROFNAME !  LBL PROF:LPROFSYNC !
+   LBL PROF:LPROFROW !
+   LBL PROF-ABI:LPROFTRIM !  LBL PROF-ABI:LPROFRECLAIM ! ;
 
 public
 
@@ -2015,10 +2164,10 @@ package ENGINE-EMIT
 \ LFIND clobbers x3-x16 and preserves XDS (x19)/XREG-RBASE (x20); the FPRIM frame
 \ holds x30 across the BL.
 : BTOKIMM ( -- )
-   10 RT:G-POP  9 RT:G-POP                   \ x10 = len (TOS), x9 = addr: LFIND's token registers
-   LFIND A64ICODE:LABEL@ A64ICODE:BL,                    \ x13 = found | imm<<1 | int flags
-   9 13 2 A64ICODE:ANDI,
-   A RT:G-PUSH ;
+   10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr: LFIND's token registers
+   LFIND LABEL@ BL,                    \ x13 = found | imm<<1 | int flags
+   9 13 2 ANDI,
+   A G-PUSH ;
 ;package
 
 package ENGINE-EMIT
@@ -2034,23 +2183,23 @@ create SCOPE-SITES 9 cells allot
 \ and labels do not depend on which entries a complete runtime binds.
 : SCOPE-TEST ( n label -- )
    {: k:n done:label :}
-   A64ICODE:LBL {: next:label :}
+   LBL {: next:label :}
    LINKED-SCOPES @ 0<> if
-      A64ICODE:LBL dup  SCOPE-SITES k cells +  A64ICODE:LABEL!  A64ICODE:LBL,
+      LBL dup  SCOPE-SITES k cells +  LABEL!  LBL,
       \ the adrp + add LINKER's ARM64:CODE-ADDRESS! writes, 0 until written
-      5 0 A64ICODE:MOVZ,  A64ICODE:NOP,
-      5 next A64ICODE:CBZ,
-      A 5 A64ICODE:CMP,  A64ASM:C-NE next A64ICODE:BCOND,
-      A k A64ICODE:MOVZ,  done A64ICODE:B,
+      5 0 MOVZ,  NOP,
+      5 next CBZ,
+      A 5 CMP,  C-NE next BCOND,
+      A k MOVZ,  done B,
    then
-   next A64ICODE:LBL, ;
+   next LBL, ;
 
 \ Entry kinds are fixed by the link's chains in code, never by source
 \ declarations or writable DATA. A restored alias has the same
 \ code entry and thus the same kind.
 : BSCOPE-KIND ( -- )
-   A RT:G-POP
-   A64ICODE:LBL {: done:label :}
+   A G-POP
+   LBL {: done:label :}
    6 done SCOPE-TEST
    7 done SCOPE-TEST
    8 done SCOPE-TEST
@@ -2058,9 +2207,9 @@ create SCOPE-SITES 9 cells allot
    3 done SCOPE-TEST
    4 done SCOPE-TEST
    2 done SCOPE-TEST
-   A 0 A64ICODE:MOVZ,
-   done A64ICODE:LBL,
-   A RT:G-PUSH ;
+   A 0 MOVZ,
+   done LBL,
+   A G-PUSH ;
 
 public
 
@@ -2069,17 +2218,19 @@ public
 : LINK-SCOPE-ENTRIES ( -- ) -1 LINKED-SCOPES ! ;
 
 \ The label of the chain holding kind k's entry, k from 2 to 8.
-: SCOPE-ENTRY-SITE ( n -- label ) cells SCOPE-SITES + A64ICODE:LABEL@ ;
+: SCOPE-ENTRY-SITE ( n -- label ) cells SCOPE-SITES + LABEL@ ;
 
 ;package
 
 package ENGINE-EMIT
-\ bare-scope-bind ( ^u8 n -- ^n n ): LSCOPEREC's record and flags, so every
-\ reader binds a spelling to the record a compiled call binds.
-: BSCOPEBIND ( -- )
-   10 RT:G-POP  9 RT:G-POP                   \ x10 = len (TOS), x9 = addr
-   LSCOPEREC A64ICODE:LABEL@ A64ICODE:BL,
-   14 RT:G-PUSH  15 RT:G-PUSH ;
+\ bare-scope-find ( ^u8 n -- ^n ^n ^n n ): LSCOPEREC's four answers for a
+\ token (bound record, used publics' record, second used record when two hold
+\ the tail, flags), so the checker, tier 0 and the Habu interpreter bind a
+\ spelling to the record a compiled call binds.
+: BSCOPEFIND ( -- )
+   10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr
+   LSCOPEREC LABEL@ BL,
+   14 G-PUSH  16 G-PUSH  17 G-PUSH  15 G-PUSH ;
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
@@ -2106,7 +2257,7 @@ package ENGINE-EMIT
    s" replay-private" ['] DEFWRITE:REPLAY-PRIVATE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" bare-tok-imm?" ['] BTOKIMM FPRIM
-   s" bare-scope-bind" ['] BSCOPEBIND FPRIM
+   s" bare-scope-find" ['] BSCOPEFIND FPRIM
    s" scope-kind?" ['] BSCOPE-KIND FPRIM
    s" xt!" ['] RELOC-EMIT:BXTSTORE FPRIM
    s" ptr-cell-mark" ['] RELOC-EMIT:BPTRCELLMARK FPRIM
@@ -2121,6 +2272,7 @@ package ENGINE-EMIT
    EMIT-FIND
    WLFIND:EMIT
    EMIT-HEAD-ROW
+   EMIT-FIND-USED
    EMIT-SCOPE-REC
    DEFWRITE:EMIT-REPLAY-TRAP
    EMIT-HIDX
@@ -2143,14 +2295,14 @@ package ENGINE-EMIT
    PROF:EMIT-PROFEDGE
    PROF:EMIT-PROF-REPORTS
    EMIT-FAULT-REC
-   CRASH:EMIT-CRASH-HANDLER
-   CRASH:EMIT-SIGNAL-HANDLER
+   EMIT-CRASH-HANDLER
+   EMIT-SIGNAL-HANDLER
    PROF:EMIT-PROF
    EMIT-TRAPH
-   CRASH:LHANDLERS-END A64ICODE:LABEL@ A64ICODE:LBL,
-   CRASH:EMIT-HEX
-   CRASH:EMIT-DIE-LINE
-   CRASH:EMIT-FAULT-RECORD ;
+   LHANDLERS-END LABEL@ LBL,
+   EMIT-HEX
+   EMIT-DIE-LINE
+   EMIT-FAULT-RECORD ;
 
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-ROUTINES
@@ -2172,3 +2324,10 @@ public
    EMIT-CODE-SECTIONS ;
 
 ;package
+
+;using
+;using
+;using
+;using
+;using
+;using

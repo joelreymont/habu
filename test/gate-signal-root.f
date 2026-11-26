@@ -17,8 +17,12 @@ require src/lib/test/suite.f
 
 STDLIB-GATE:MAIN
 
-TEST:SUITE gate-signal-row
-   test/gate-signal-row.f
-TEST:;SUITE
+using TEST
 
-TEST:RUN
+SUITE gate-signal-row
+   test/gate-signal-row.f
+;SUITE
+
+RUN
+
+;using

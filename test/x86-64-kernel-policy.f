@@ -24,23 +24,26 @@ require src/arch/x86-64/asm.f
 require src/lib/test/assert.f
 
 package X64K-POLICY
+using X64ASM
+using X64CODE
+using X64RT
 
 5 constant PUB-WID
 
-: DATA-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-RBASE X64ASM:>R64 ;
-: DBASE-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-DBASE X64ASM:>R64 ;
+: DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
+: DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 : ROW, ( str -- ) X64HARNESS:CALL-ROW, ;
 
 \ The callback has the captured INTERPRETER policy check's effect: a public wid
 \ in, the first colliding spelling and a flag out. The normal arm returns no
 \ name.
 : NO-KEYWORD ( -- label )
-   [: 0 X64RT:G-POP
+   [: 0 G-POP
       0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH, ;]
    X64HARNESS:ROUTINE, ;
 
 : DUP-KEYWORD ( -- label )
-   [: 0 X64RT:G-POP
+   [: 0 G-POP
       s" DUP" X64HARNESS:PUSH-TEXT,  -1 X64HARNESS:PUSH, ;]
    X64HARNESS:ROUTINE, ;
 
@@ -117,6 +120,9 @@ public
    [: KEYWORD, ;] EXIT-STATUS:POLICY s" hb-x64-kernel-policy-keyword" TMP-PATH IMAGE
    X64HARNESS:DISPOSE T-REPORT ;
 
+;using
+;using
+;using
 ;package
 
 X64K-POLICY:RUN

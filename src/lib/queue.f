@@ -23,6 +23,8 @@ DEFTYPE QUEUE
 
 private
 
+using TASK
+
 $100 constant Q-MAX
 
 \ One record per definition: the ring's indexes and how many pool semaphores the
@@ -113,13 +115,13 @@ variable Q-N
 \ Each handle is stored before the count moves, so what the count says the queue
 \ holds is exactly what it holds, even when the pool rejects part way.
 : Q-SEM-TAKE ( n -- ) {: idx:n :}
-   TASK:NEW-SEMAPHORE OPTION:SOME idx idx Q-SEMS-N@ Q-SEM-SLOT !
+   NEW-SEMAPHORE OPTION:SOME idx idx Q-SEMS-N@ Q-SEM-SLOT !
    idx Q-SEMS-N@ 1 + idx Q-SEMS-N! ;
 
 : Q-SEMS-DROP ( n -- ) {: idx:n :}
    begin idx Q-SEMS-N@ 0 > while
       idx Q-SEMS-N@ 1 - idx Q-SEMS-N!
-      idx idx Q-SEMS-N@ Q-SEM@ TASK:FREE-SEMAPHORE
+      idx idx Q-SEMS-N@ Q-SEM@ FREE-SEMAPHORE
       OPTION:NONE idx idx Q-SEMS-N@ Q-SEM-SLOT !
    repeat ;
 
@@ -127,9 +129,9 @@ variable Q-N
    idx Q-SEM-TAKE
    idx Q-SEM-TAKE
    idx Q-SEM-TAKE
-   idx Q-REC Q.CAP @ idx Q-FREE-SEM TASK:SEMAPHORE-INIT
-   0 idx Q-ITEM-SEM TASK:SEMAPHORE-INIT
-   1 idx Q-LOCK-SEM TASK:SEMAPHORE-INIT ;
+   idx Q-REC Q.CAP @ idx Q-FREE-SEM SEMAPHORE-INIT
+   0 idx Q-ITEM-SEM SEMAPHORE-INIT
+   1 idx Q-LOCK-SEM SEMAPHORE-INIT ;
 
 \ Either the queue ends up holding three open semaphores or none: a rejection part
 \ way gives back what it took and rethrows, so a failed INIT leaks no record.
@@ -144,10 +146,10 @@ variable Q-N
 \ below. They touch only the queue's own record, so only a corrupt queue throws
 \ between them: a memory fault, with the lock still held.
 : Q-LOCK-GET ( n -- )
-   Q-LOCK-SEM TASK:WAIT-SEM ;
+   Q-LOCK-SEM WAIT-SEM ;
 
 : Q-LOCK-RELEASE ( n -- )
-   Q-LOCK-SEM TASK:SIGNAL-SEM ;
+   Q-LOCK-SEM SIGNAL-SEM ;
 
 : Q-DATA ( ^n n -- ^n )
    cells Q-REC-BYTES + + ;
@@ -193,30 +195,30 @@ variable Q-N
    idx Q-SEMS-DROP ;
 
 : Q-PUSH ( n n -- ) {: v:n idx:n :}
-   idx Q-FREE-SEM TASK:WAIT-SEM
+   idx Q-FREE-SEM WAIT-SEM
    v idx Q-PUT-LOCKED
-   idx Q-ITEM-SEM TASK:SIGNAL-SEM ;
+   idx Q-ITEM-SEM SIGNAL-SEM ;
 
 : Q-POP ( n -- n ) {: idx:n :}
-   idx Q-ITEM-SEM TASK:WAIT-SEM
+   idx Q-ITEM-SEM WAIT-SEM
    idx Q-TAKE-LOCKED {: v:n :}
-   idx Q-FREE-SEM TASK:SIGNAL-SEM
+   idx Q-FREE-SEM SIGNAL-SEM
    v ;
 
 \ The free-slot count is the number of free slots exactly, so taking one without
 \ blocking is the whole rejection: false means the ring was full.
 : Q-TRY-PUSH ( n n -- bool ) {: v:n idx:n :}
-   idx Q-FREE-SEM TASK:TRY-WAIT-SEM 0= if 0 0= 0= exit then
+   idx Q-FREE-SEM TRY-WAIT-SEM 0= if 0 0= 0= exit then
    v idx Q-PUT-LOCKED
-   idx Q-ITEM-SEM TASK:SIGNAL-SEM
+   idx Q-ITEM-SEM SIGNAL-SEM
    0 0= ;
 
 \ The value is zero when the flag is false: the ring was empty and nothing was
 \ taken.
 : Q-TRY-POP ( n -- n bool ) {: idx:n :}
-   idx Q-ITEM-SEM TASK:TRY-WAIT-SEM 0= if 0 0 0= 0= exit then
+   idx Q-ITEM-SEM TRY-WAIT-SEM 0= if 0 0 0= 0= exit then
    idx Q-TAKE-LOCKED {: v:n :}
-   idx Q-FREE-SEM TASK:SIGNAL-SEM
+   idx Q-FREE-SEM SIGNAL-SEM
    v 0 0= ;
 
 : Q-COUNT ( n -- n ) {: idx:n :}
@@ -268,5 +270,7 @@ Q-MAX constant MAX-QUEUES
 \ The elements in the queue at the moment it is asked.
 : COUNT ( queue -- n )
    Q-INDEX Q-COUNT ;
+
+;using
 
 ;package

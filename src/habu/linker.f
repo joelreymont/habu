@@ -1037,8 +1037,9 @@ PTR-VARIABLE OBJ-BASE
 
 EXPORT BOOT:TYPES-WL
 
-\ Files the record's name in NAMES with the value; a packaged type `A:turn` is also
-\ filed under `turn`, the spelling `package A` and `A:box<A:turn>` use.
+\ The record's name into NAMES with the value. A packaged type's entry is named
+\ `A:turn`, but `using A`, `package A` and `A:box<A:turn>` spell only `turn`:
+\ its tail is filed too.
 : REC-NAME+ ( n n -- )
    {: idx:n v:n :}
    idx XREF-REC XREF-NAME$ {: a:str :}
@@ -4940,10 +4941,13 @@ EXPORT CHECK:TYPE-END
    ev SOURCE-EVENT:PATH@ path STR:=  and  if ev else -2 then ;
 
 
-\ The scope a top-level file starts in: no package or part open, the build's global
-\ wordlist current (MOVE-IN). An object records no scope, so only such a file links.
+\ The scope a build's top-level file starts in: no package or part open, the build's global
+\ wordlist current (MOVE-IN) and no `using` open. A compile's records, sections and lookups
+\ follow the scope, which an object does not record, and a link opens no package: so a file
+\ links only when its load starts in this scope, and a file with a piece that starts or ends
+\ in another (a package it leaves open, a request inside a package) is UNLINKABLE.
 : TOP-SCOPE? ( -- bool )
-   PKG-REC-CELL HOST@ 0=  get-current BOOT:GLOBAL-WL =  and ;
+   PKG-REC-CELL HOST@ 0=  get-current BOOT:GLOBAL-WL =  and  USE-DEPTH-CELL HOST@ 0=  and ;
 
 : SCOPE-CK ( -- ) TOP-SCOPE? 0= if true UNLINKABLE ! then ;
 
