@@ -2,8 +2,9 @@
 \ and full lowercasing. CASEFOLD= compares whole UTF-8 spans by full case
 \ folding (Straße equals STRASSE), with no normalization, keeping embedded
 \ NULs. FOLD writes a span's full case folding and LOWER its full lowercase
-\ (Straße folds to strasse but lowercases to straße), and LOWERS-TO? tells
-\ whether a span's full lowercase is another span byte for byte. With no
+\ (Straße folds to strasse but lowercases to straße). LOWERS-TO? tells
+\ whether a span's full lowercase is another span byte for byte, and LOWER=
+\ whether two spans' full lowercases are the same bytes. With no
 \ language, both mappings take an all-ASCII span (every byte below $80) to
 \ itself with A-Z lowered to a-z (UnicodeData.txt, CaseFolding.txt; no
 \ SpecialCasing entry has an ASCII source without a language), which these
@@ -233,6 +234,17 @@ public
    {: lowered:str :}
    lowered target STR:=
    lowered STR:DATA RELEASE ;
+
+\ Whether two spans' full lowercases are the same bytes.
+: LOWER= ( str str -- bool )
+   {: left:str right:str :}
+   left VALID-UTF8 right VALID-UTF8
+   left ASCII? right ASCII? and if
+      left right STR:=CI exit
+   then
+   left [: SIGMA-LOWER ;] ALLOCATE-MAP
+   {: lowered:str :}
+   [: right lowered LOWERS-TO? ;] [: lowered STR:DATA RELEASE ;] finally ;
 
 seal-package
 ;using

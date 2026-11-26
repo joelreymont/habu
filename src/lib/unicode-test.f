@@ -49,6 +49,14 @@ create SECOND-BUF CAPACITY allot
    [: s\" x\xFF" s" x" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ
    [: s" x" s\" x\xFF" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ ;
 
+: SAME-LOWER ( -- )
+   s" Ꭰ.txt" s" ꭰ.txt" LOWER= TTRUE
+   s" Straße" s" strasse" LOWER= TFALSE
+   s" ABC" s" abc" LOWER= TTRUE
+   s" ΟΔΟΣ" s" οδος" LOWER= TTRUE
+   [: s\" x\xFF" s" x" LOWER= drop ;] E-UTF8 TTHROWSQ
+   [: s" x" s\" x\xFF" LOWER= drop ;] E-UTF8 TTHROWSQ ;
+
 : CHUNK$ ( -- str )
    8 RND% case
       0 of s" ẞ" endof
@@ -159,6 +167,7 @@ s" ΑΣΑ" s" ασα" LOWERED=
 s\" A\zB" s\" a\zb" LOWERED=
 s" @AZ[`az{ MiXeD" s" @az[`az{ mixed" LOWERED=
 LOWER-PREFLIGHT
+SAME-LOWER
 RANDOM-FOLDS
 T-REPORT
 ;using
