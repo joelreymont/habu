@@ -172,6 +172,8 @@ STRUCTURE call DERIVE addr
    FIELD deadline n
    FIELD input-tokens n
    FIELD cached-tokens n
+   FIELD output-tokens n
+   FIELD reasoning-tokens n
    FIELD counted n
    FIELD response-u n
    FIELD content-u n
@@ -1026,6 +1028,8 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    {: c :}
    0 c MODEL-CALL:INPUT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
+   0 c MODEL-CALL:OUTPUT-TOKENS !
+   0 c MODEL-CALL:REASONING-TOKENS !
    0 c MODEL-CALL:COUNTED ! ;
 
 : OPEN-PREP ( ^call -- ^call )
@@ -3443,6 +3447,8 @@ ENUM poll none fed spoiled done ;ENUM
    code RESPONSE-ERROR
    c TOKENS TOKENS-INPUT @ OR-ZERO c MODEL-CALL:INPUT-TOKENS !
    c TOKENS TOKENS-CACHED @ OR-ZERO c MODEL-CALL:CACHED-TOKENS !
+   c TOKENS TOKENS-OUTPUT @ OR-ZERO c MODEL-CALL:OUTPUT-TOKENS !
+   c TOKENS TOKENS-REASONING @ OR-ZERO c MODEL-CALL:REASONING-TOKENS !
    c ;
 
 \ Reads an embed reply's vectors and usage.
@@ -3529,7 +3535,9 @@ ENUM poll none fed spoiled done ;ENUM
    items CHECK-WINDOW
    items c TAKE-WINDOW
    c TOKENS TOKENS-INPUT @ OR-ZERO c MODEL-CALL:INPUT-TOKENS !
-   c TOKENS TOKENS-CACHED @ OR-ZERO c MODEL-CALL:CACHED-TOKENS ! ;
+   c TOKENS TOKENS-CACHED @ OR-ZERO c MODEL-CALL:CACHED-TOKENS !
+   c TOKENS TOKENS-OUTPUT @ OR-ZERO c MODEL-CALL:OUTPUT-TOKENS !
+   c TOKENS TOKENS-REASONING @ OR-ZERO c MODEL-CALL:REASONING-TOKENS ! ;
 
 \ Reads a compaction reply into the call's input and usage.
 : COMPACT-PARSE ( ^call -- ^call )
@@ -5341,5 +5349,8 @@ public
    then
    rc throw ;
 : CACHED-TOKENS ( ^call -- n ) MODEL-CALL:CACHED-TOKENS @ ;
+: OUTPUT-TOKENS ( ^call -- n ) MODEL-CALL:OUTPUT-TOKENS @ ;
+\ Reasoning tokens are counted inside OUTPUT-TOKENS, not beside them.
+: REASONING-TOKENS ( ^call -- n ) MODEL-CALL:REASONING-TOKENS @ ;
 
 ;package
