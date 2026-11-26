@@ -142,7 +142,6 @@ package EM-DEF-OCC
 public
 variable LCOUNT
 variable LAPPEND
-variable LRESET
 variable LISSUE
 variable LINIT
 variable LBEFORE
@@ -4388,11 +4387,11 @@ private
 \ slot. None of these cells are in the rewindable DATA heap or captured image.
 \ The last issued number rises by one per issue: 64 bits never run out.
 : EMIT-DEF-OCC ( -- )
-   LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL
    {: lower:label raise:label loop:label raised:label
-      done:label clear-loop:label reset:label :}
-   LBL LBL LBL
-   {: reset-loop:label init-bad:label append-done:label :}
+      done:label clear-loop:label :}
+   LBL LBL
+   {: init-bad:label append-done:label :}
    EM-DEF-OCC:LISSUE LABEL@ LBL,
       SP SP 32 SUBI,
       9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
@@ -4453,22 +4452,6 @@ private
       30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
       12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,  15 SP 56 LDR,
       16 SP 64 LDR,  17 SP 72 LDR,  SP SP 80 ADDI,  RET,
-   EM-DEF-OCC:LRESET LABEL@ LBL,
-      SP SP 64 SUBI,
-      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
-      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,
-      10 XREG-RBASE DEF-OCC:PTR-CELL LDR,  11 0 MOVZ,
-      reset-loop LBL,
-         12 DICT-CAP LIT64,  11 12 CMP,  C-CS reset BCOND,
-         12 11 3 LSLI,  12 10 12 ADD,
-         13 0 MOVZ,  13 12 8 STR,
-         11 11 1 ADDI,  reset-loop B,
-      reset LBL,
-      NDICT 0 MOVZ,
-      EM-DEF-OCC:LCOUNT LABEL@ BL,
-      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
-      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,
-      SP SP 64 ADDI,  RET,
    \ Fresh process installation. Seed records already occupy [0,NDICT).
    EM-DEF-OCC:LINIT LABEL@ LBL,
       SP SP 32 SUBI,  30 SP 0 STR,  13 SP 8 STR,  14 SP 16 STR,  15 SP 24 STR,
@@ -4476,7 +4459,7 @@ private
       3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,  C-CS init-bad BCOND,
       0 XREG-RBASE DEF-OCC:PTR-CELL STR,
-      9 NDICT 0 ADDI,  EM-DEF-OCC:LRESET LABEL@ BL,
+      9 NDICT 0 ADDI,  NDICT 0 MOVZ,  EM-DEF-OCC:LCOUNT LABEL@ BL,
       30 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  15 SP 24 LDR,
       SP SP 32 ADDI,  RET,
    init-bad LBL,
