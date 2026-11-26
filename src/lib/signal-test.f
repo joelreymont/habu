@@ -12,6 +12,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-fork.f
 require src/lib/test/ending.f
+require src/lib/test/subject.f
 require src/lib/task.f
 require src/lib/ffi-abi.f
 require src/lib/aio.f
@@ -111,6 +112,9 @@ create DIE-ROOT PATH-CAP allot     \ the stopped child's scratch, removed at exi
 variable DIE-ROOT-U
 create DIE-PATH PATH-CAP allot     \ the path the stopped child is judged by
 variable DIE-PATH-U
+$1000 constant DIE-CAP
+create DIE-OUT DIE-CAP allot       \ the stopped child's captured streams
+create DIE-ERR DIE-CAP allot
 
 TASK:MIN-STACK TASK:TASK SIG-RAISER
 TASK:MIN-STACK TASK:TASK RACER-A
@@ -644,11 +648,11 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    [: E-FS-IO throw ;] AT-EXIT:ADD
    STOP-SELF ;
 
-: DIE-WAIT ( [ -- ] -- PROCESS:ending )
-   {: q :}
-   PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if q ERROR:CHILD-TOP then
-   pid PROCESS:WAIT PROCESS:STATUS>ENDING ;
+\ SUBJECT:RUN evaluates text with no package open, so the text reopens this
+\ package to name DIE-CHILD.
+: DIE-WAIT ( -- len len PROCESS:ending )
+   s" package SIGNAL-TEST DIE-CHILD ;package"
+   DIE-OUT DIE-CAP >LEN DIE-ERR DIE-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
 : DIE-OF-CASE ( -- )
    s" signal-test" FS:MKTEMP-DIR {: root:str :}
@@ -657,10 +661,14 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    DIE-ROOT DIE-ROOT-U @ >str FS:CLEANUP-TREE+
 
    s" stopped" DIE-PATH DIE-FILE DIE-PATH-U !
-   [: DIE-CHILD ;] DIE-WAIT {: done :}
+   DIE-WAIT {: outu:len erru:len done :}
+   DIE-ERR erru LEN>N >str {: err:str :}
 
    s" a child whose exit action throws still dies of the SIGTERM it caught" T-LABEL
-   s" DIE-CHILD" s" " s" " done SIGNAL:SIGTERM T-ENDING-SIGNALED=
+   s" DIE-CHILD" DIE-OUT outu LEN>N >str err done SIGNAL:SIGTERM T-ENDING-SIGNALED=
+
+   s" ... after its exit action's throw reached its stderr" T-LABEL
+   err s" E-FS-IO" STR:CONTAINS? TTRUE
 
    s" ... once its exit actions removed the path it registered" T-LABEL
    DIE-PATH DIE-PATH-U @ >str FS:EXISTS? 0= TTRUE ;
