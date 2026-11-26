@@ -81,6 +81,7 @@ $7F constant STOP-MARK             \ a stop report's low status byte
 
 create SA-ACT SA-BUF-BYTES allot
 create SA-OLD SA-BUF-BYTES allot
+create SIGNO-OUT 1 cells allot    \ the bytes a stub writes for one signal
 
 PTR-VARIABLE ABI-KEPT
 variable MAIN-FD-WORD
@@ -304,7 +305,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    [: SIGNAL:SIGUSR1 SIGNAL:IGNORE ;] E-SIGNAL-STATE TTHROWSQ
 
    s" RELEASE before INIT is rejected by name" T-LABEL
-   [: SIGNAL:RELEASE ;] E-SIGNAL-STATE TTHROWSQ ;
+   [: SIGNAL:RELEASE drop ;] E-SIGNAL-STATE TTHROWSQ ;
 
 : ARMED-CASE ( -- )
    s" INIT armed the fd word with a descriptor" T-LABEL
@@ -489,7 +490,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 
 : OUTSIDER-WORK ( -- )
    [: SIGNAL:SIGUSR1 SIGNAL:CATCH ;] catch OUTSIDER-CATCH !
-   [: SIGNAL:RELEASE ;] catch OUTSIDER-RELEASE !
+   [: SIGNAL:RELEASE drop ;] catch OUTSIDER-RELEASE !
    [: SIGNAL:FD drop ;] catch OUTSIDER-FD ! ;
 
 : OWNER-CASE ( -- )
@@ -511,7 +512,14 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 : RELEASE-CASE ( -- )
    SIGNAL:FD FD>N RELEASED-FD !
    FD-WORD @ MAIN-FD-WORD !
-   SIGNAL:RELEASE
+   SIGNAL:SIGUSR1 RAISE
+   [: SIGNAL:PENDING? ;] TEST-WAIT:POLL
+   SIGNAL:SIGUSR2 SIGNO-OUT cell-view !
+   MAIN-FD-WORD @ SIGNO-OUT 4 >str write 4 <> if E-PROC-OUTPUT throw then
+   SIGNAL:RELEASE {: last:n :}
+
+   s" RELEASE answers the last of two signals never taken" T-LABEL
+   last SIGNAL:SIGUSR2 T=
 
    s" RELEASE cleared the fd word, so a late signal writes nothing" T-LABEL
    FD-WORD @ 0 T=
@@ -557,7 +565,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    [: QUIET-MS >MS SIGNAL:WAIT drop ;] E-SIGNAL-POLL TTHROWSQ
 
    s" ... and RELEASE names the close it could not make" T-LABEL
-   [: SIGNAL:RELEASE ;] E-SIGNAL-CLOSE TTHROWSQ ;
+   [: SIGNAL:RELEASE drop ;] E-SIGNAL-CLOSE TTHROWSQ ;
 
 \ SIGUSR1 carries SIG_DFL here (case eleven), and its default action ends the
 \ process: a raise the ignore did not take ends this run with that signal.
@@ -584,13 +592,15 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    s" IGNORE rejects a signal number outside the range by name" T-LABEL
    [: SIG-ABOVE SIGNAL:IGNORE ;] E-SIGNAL-NUMBER TTHROWSQ
 
-   SIGNAL:RELEASE
+   s" RELEASE answers 0 when nothing arrived after the last take" T-LABEL
+   SIGNAL:RELEASE 0 T=
+
    SIGNAL:INIT
 
    s" RELEASE restored the default disposition of an ignored signal" T-LABEL
    SIGNAL:SIGUSR1 SIGNAL:IGNORED? 0= TTRUE
 
-   SIGNAL:RELEASE ;
+   SIGNAL:RELEASE drop ;
 
 \ The child raises both: the ignored SIGUSR1 leaves it running, and the caught
 \ SIGUSR2, back under the default action, ends it.
@@ -605,7 +615,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if [: FORKED-RAISES ;] ERROR:CHILD-TOP then
    pid PROCESS:WAIT PROCESS:STATUS>ENDING {: done :}
-   SIGNAL:RELEASE
+   SIGNAL:RELEASE drop
 
    s" a forked child keeps an ignore and drops the stub of a catch" T-LABEL
    s" FORKED-RAISES" s" " s" " done SIGNAL:SIGUSR2 T-ENDING-SIGNALED= ;

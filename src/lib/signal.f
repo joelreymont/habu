@@ -266,13 +266,13 @@ REGISTER-RESET
 \ all: a short read is a torn number the stub guarantees against, not a partial
 \ delivery to be resumed.
 \
-\ A REJECTED read is the lost race. The engine collapses every failed syscall but
+\ A REJECTED read is an empty pipe. The engine collapses every failed syscall but
 \ poll to a bare -1 (src/habu/habu1.f, "THE ERRNO RULE FOR THIS FILE'S SYSCALL
 \ WRAPPERS"), so there is no errno here to branch on - and on a non-blocking
 \ descriptor this facility owns, reading four bytes into its own span with a
 \ write end held open for the facility's life, EAGAIN is the only rejection the
-\ kernel has left: the bytes poll saw went to another task in between. EINTR
-\ cannot appear, because read is one of the calls SA_RESTART restarts.
+\ kernel has left. Under WAIT, the bytes poll saw went to another task. EINTR
+\ cannot appear: a read of a non-blocking pipe never sleeps.
 -1 constant SIGNO-REJECTED
 
 : SIGNO@ ( -- n )
@@ -281,6 +281,11 @@ REGISTER-RESET
    got 0 < if SIGNO-REJECTED exit then
    got SIGNO-BYTES <> if E-SIGNAL-READ throw then
    SIGNO-BUF cell-view @ ;
+
+\ Every number left on the read end, keeping the last; 0 when it holds none.
+\ The read end is non-blocking, so the read that finds it empty is rejected.
+: DRAIN ( -- n )
+   0 begin SIGNO@ dup SIGNO-REJECTED <> while nip repeat drop ;
 
 : NEED-READY ( -- )
    READY @ 0= if E-SIGNAL-STATE throw then ;
@@ -372,17 +377,19 @@ public
       drop
    again ;
 
-\ The fd word is cleared FIRST, so a signal delivered during the restore is
-\ absorbed instead of written to a descriptor that is about to close.
-: RELEASE ( -- )
+\ The last caught signal not yet taken, or 0. Restoring before DISARM sends each
+\ signal to the pipe or its default, bar one a stub on another thread holds.
+: RELEASE ( -- n )
    NEED-READY
    NEED-OWNER
-   DISARM
    RESTORE-ALL
+   DISARM
+   DRAIN {: last:n :}
    READ-FD-CELL @ WRITE-FD-CELL @ {: r:n w:n :}
    FORGET-FDS
    0 READY !
-   r w CLOSE-PIPE ;
+   r w CLOSE-PIPE
+   last ;
 
 \ SIGTERM, SIGINT and SIGHUP ask a process to stop. Under the default action a
 \ program that runs children or makes scratch ends where it stands, and what it
@@ -416,7 +423,7 @@ public
 \ second signal, then the process dies OF the signal, as an uncaught one ends it.
 : DIE-OF ( str n -- ) {: msg:str sig:n :}
    AT-EXIT:RUN-NOW
-   RELEASE
+   RELEASE drop
    getpid >PID sig PROCESS:KILL-RAW drop
    \ Reached only when another thread took the signal: a shell's status for it.
    msg 128 sig + die ;

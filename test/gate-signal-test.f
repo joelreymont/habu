@@ -78,7 +78,8 @@ PROCESS:NO-FD ROOT-WATCH !
    SIGNAL:SIGTERM SIGNAL:CATCH
    SIGNAL:SIGINT SIGNAL:CATCH
    SIGNAL:SIGHUP SIGNAL:CATCH
-   SIGNAL:RELEASE ;
+   SIGNAL:RELEASE {: last:n :}
+   last 0<> if getpid >PID last PROCESS:KILL-RAW drop then ;
 
 \ ---- the scratch ------------------------------------------------------------
 

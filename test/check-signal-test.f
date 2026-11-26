@@ -88,7 +88,8 @@ PROCESS:NO-FD FEED-WR !
    SIGNAL:SIGTERM SIGNAL:CATCH
    SIGNAL:SIGINT SIGNAL:CATCH
    SIGNAL:SIGHUP SIGNAL:CATCH
-   SIGNAL:RELEASE ;
+   SIGNAL:RELEASE {: last:n :}
+   last 0<> if getpid >PID last PROCESS:KILL-RAW drop then ;
 
 \ TMP, under this test's runner root, is the TMPDIR check.f is handed, so what
 \ check.f leaves is whatever TMP holds; its stderr and stdout sit beside it.
