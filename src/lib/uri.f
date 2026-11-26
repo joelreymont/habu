@@ -1,5 +1,6 @@
 \ uri.f - file URIs (RFC 8089) decoded to the paths they name, paths encoded,
-\ bytes encoded as a web form or a query component and decoded from a form,
+\ bytes encoded as a web form or a query component and decoded from a form
+\ or a fragment (RFC 3986 section 3.5, without its `#`),
 \ whether a request path holds a dot segment, and http(s) URLs read: one's
 \ origin, whether a text is an origin alone, a reference resolved against
 \ one, two compared by origin, and the request target sliced out. A file path
@@ -162,6 +163,34 @@ $5D constant CLOSE-BRACKET
    {: s:str at:n :}
    s STR:DATA at + c@ [char] + = if STR:SPACE at 1+ exit then
    s at PERCENT-AT ;
+
+: SUB-DELIM? ( n -- bool )   \ RFC 3986's `!$&'()*+,;=`
+   {: c:n :}
+   s" !$&'()*+,;=" c STR:INDEX-OF MATCH option
+      none OF false ENDOF
+      some OF drop true ENDOF
+   ;MATCH ;
+
+\ The bytes a fragment holds as themselves (RFC 3986 section 3.5): unreserved,
+\ sub-delims, `:`, `@`, `/` and `?`.
+: FRAGMENT-BYTE? ( n -- bool )
+   {: c:n :}
+   c UNRESERVED? c SUB-DELIM? or  c [char] : = or  c [char] @ = or
+   c SLASH = or  c QUESTION = or ;
+
+\ The byte a fragment's text spells at that offset, and the offset after it;
+\ E-URI-ESCAPE for a byte a fragment does not hold as itself, or a `%`
+\ without two hex digits after it, which PERCENT-AT answers as itself.
+: FRAGMENT-AT ( str n -- n n )
+   {: s:str at:n :}
+   s at PERCENT-AT {: b:n next:n :}
+   next at - ESCAPE-WIDTH =  s STR:DATA at + c@ FRAGMENT-BYTE?  or
+   0= if E-URI-ESCAPE throw then
+   b next ;
+
+: FRAGMENT-CHECK ( str -- )
+   {: s:str :}
+   0 begin dup s STR:LEN < while s swap FRAGMENT-AT nip repeat drop ;
 
 : DOTS? ( n -- bool )
    {: dots:n :}
@@ -439,6 +468,18 @@ public
    {: s:str v:^ :}
    0 begin dup s STR:LEN < while
       s swap DECODED-AT swap v VEC:PUSH c!
+   repeat drop ;
+
+\ Appends the bytes a URI fragment's text, without its `#`, spells (RFC 3986
+\ section 3.5): each byte a fragment holds as itself as it is, each `%XX`, in
+\ either hex case, as its byte. Any other byte, or a `%` without two hex
+\ digits, is E-URI-ESCAPE, before a byte is appended. The text must not lie
+\ in the vector: a push may move its block.
+: FRAGMENT-DECODE+ ( str ^VEC:vector<u8> -- )
+   {: s:str v:^ :}
+   s FRAGMENT-CHECK
+   0 begin dup s STR:LEN < while
+      s swap PERCENT-AT swap v VEC:PUSH c!
    repeat drop ;
 
 \ Whether form-encoded text decodes to exactly the name; recurses once per

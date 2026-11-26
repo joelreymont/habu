@@ -1,7 +1,8 @@
 \ uri-test.f - file URIs decoded to paths, paths encoded to file URIs, bytes
-\ encoded as a web form or a query component and decoded from a form, request
-\ paths checked for a dot segment, and http(s) URLs resolved, compared, sliced
-\ and checked for an origin alone, through src/lib/uri.f.
+\ encoded as a web form or a query component and decoded from a form or a
+\ fragment, request paths checked for a dot segment, and http(s) URLs
+\ resolved, compared, sliced and checked for an origin alone, through
+\ src/lib/uri.f.
 \ Run: bin/hb --load src/lib/uri-test.f
 
 require src/lib/error.f
@@ -217,6 +218,36 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" %" DECODED$ s" %" T$=
    s" a%4" DECODED$ s" a%4" T$=
    s" %G1%1G" DECODED$ s" %G1%1G" T$= ;
+
+: FRAGMENT$ ( str -- str )
+   DECODED @ 0 VEC:RESIZE
+   DECODED @ URI:FRAGMENT-DECODE+
+   DECODED @ VEC:BYTES ;
+
+\ Every byte a fragment holds as itself is kept, and each escape, in either
+\ hex case, is its byte: `%2F` is a `/`. An empty text is empty.
+: FRAGMENTS ( -- )
+   s" aZ09-._~!$&'()*+,;=:@/?" FRAGMENT$
+   s" aZ09-._~!$&'()*+,;=:@/?" T$=
+   s" a%2Fb%2fc%7E%7e%41" FRAGMENT$ s" a/b/c~~A" T$=
+   s" " FRAGMENT$ STR:LEN 0 T= ;
+
+\ The text appended to `x`; a rejected text leaves `x` alone.
+: FRAGMENT-REJECTED ( str -- )
+   {: s:str :}
+   DECODED @ 0 VEC:RESIZE
+   s" x" DECODED @ VEC:APPEND
+   [: s DECODED @ URI:FRAGMENT-DECODE+ ;] E-URI-ESCAPE TTHROWSQ
+   DECODED @ VEC:BYTES s" x" T$= ;
+
+\ A raw space or `#`, a `%` at the end, before a non-hex digit or with one
+\ digit is rejected whole, the bytes before it included.
+: FRAGMENT-REJECTIONS ( -- )
+   s" a b" FRAGMENT-REJECTED
+   s" a#b" FRAGMENT-REJECTED
+   s" a%" FRAGMENT-REJECTED
+   s" a%G0" FRAGMENT-REJECTED
+   s" a%4" FRAGMENT-REJECTED ;
 
 \ `~` and `/`, which a path keeps, are escaped in a form.
 : FORM-MIXED ( -- )
@@ -465,6 +496,8 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    FORM-BARE-PERCENT
    FORM-MIXED
    FORM-ALL-OR-NOTHING
+   FRAGMENTS
+   FRAGMENT-REJECTIONS
    DOT-SEGMENTS
    RESOLVES
    SAME-ORIGINS
