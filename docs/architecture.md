@@ -242,16 +242,11 @@ and build again; hb neither removes it nor compiles around it. An object that pa
 no longer fits the build, such as one whose source was edited, compiles its
 part.
 
-**A part whose load a link could not repeat never links** and compiles on
-every build: one that starts or ends inside an open package, one
-whose request is not a plain one at its top level (made inside a definition,
-with cells on the stack or from evaluated text), the part after such a
-request, one that catches a load it asks for before the load runs, every part
-of a file with no stamp (src/habu/linker.f UNLINKABLE), and one whose compile
-read what it could not record: on a task's or a callback's thread, through
-src/lib/fs-anchored.f or in a process it started. Its object only
-keeps its words' times, so the parts that depend on it link while those words
-compile to the same bytes.
+**A part links only when a link repeats its load exactly and its data ends
+below the short-address line** (src/os/linux/layout.f DATA-LOW); any other part
+compiles on every build (src/habu/linker.f UNLINKABLE). Its object only keeps
+its words' times, so the parts that depend on it link while those words compile
+to the same bytes.
 
 **An edit during a build is read in due course.** A file already compiled
 keeps the version it read for that build and is rebuilt on the next; a file not

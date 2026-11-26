@@ -23,11 +23,11 @@
 \ first interned it, and every later piece spelling it shares it.
 \
 \ THE IMAGE'S DATA. A stripped program's is the header as the build left it,
-\ its bodies the program does not keep zeroed; then the live units in build
-\ order, each laid at the first offset past the one before that keeps its
-\ offset modulo a cell, a monotone map, so an interior or end address keeps its
-\ meaning; then the kept bodies whose unit is dead, sorted by length then
-\ bytes, each from a cell boundary with its length cell and the byte past it.
+\ its bodies the program does not keep zeroed; then in build order the live
+\ units and the kept bodies whose unit is dead, a body with its length cell and
+\ the byte past it, each laid at the first offset past the one before that
+\ keeps its offset modulo a cell: a monotone map, so an interior or end address
+\ keeps its meaning and no kept byte's offset exceeds its build offset.
 \ The alignment bytes no unit holds are not laid. An address cell not read and
 \ a scratch cell hold zeros where they are laid, and the list names neither: a
 \ scratch row only tells a link to write its cell zero, which this copy has
@@ -69,10 +69,9 @@ variable STR-N
 3 constant SEG-CELLS
 DYNAMIC-BUFFER SEGS n
 variable SEG-N
-DYNAMIC-BUFFER LAID-AT n             \ body k's image offset, 0 for a body not laid
-DYNAMIC-BUFFER BY-BODY n             \ the laid bodies in laid order
 variable LAID-END                    \ where LAY-DATA lays next; then the laid length
 variable EXT-I                       \ BY-EXT's next row to lay
+variable BODY-I                      \ STR-AT's next body to lay
 
 : HEADER-UNIT ( -- n ) BUILT-EXTS-N @ ;
 : REST-UNIT ( -- n ) BUILT-EXTS-N @ 1 + ;
@@ -143,22 +142,6 @@ variable EXT-I                       \ BY-EXT's next row to lay
    k STR-AT @ {: b:n :}
    v  b  b BODY-U 1 + +  < if k exit then
    -1 ;
-
-\ Whether body j sorts before body k: the shorter first, then by the first
-\ byte that differs.
-: BODY< ( n n -- bool )
-   {: j:n k:n :}
-   j STR-AT @ {: a:n :}
-   k STR-AT @ {: b:n :}
-   a BODY-U {: au:n :}
-   b BODY-U {: bu:n :}
-   au bu <> if au bu < exit then
-   NULL-PTR BYTE-VIEW a + {: p:^ :}
-   NULL-PTR BYTE-VIEW b + {: q:^ :}
-   au 0 ?do
-      p i + c@  q i + c@  2dup <> if < unloop exit then  2drop
-   loop
-   false ;
 
 
 \ Keeps the body holding data address v, true when one does.
@@ -296,14 +279,41 @@ variable EXT-I                       \ BY-EXT's next row to lay
    {: b:n :}
    b UNIT-LIVE? if b EXT-SPAN SEG+ then ;
 
-\ Each extent not yet laid that starts below v, in data order.
-: EXTS-BELOW ( n -- )
+\ Whether body k is laid as its own segment: kept, its length cell past the
+\ header and its unit dead.
+: LAID? ( n -- bool )
+   {: k:n :}
+   k STR-KEPT @ 0= if false exit then
+   k STR-AT @ CELL - {: at:n :}
+   at OPEN-DP @ < if false exit then
+   at UNIT-OF {: u:n :}
+   u 0< if true exit then
+   u UNIT-LIVE? 0= ;
+
+\ Body k's length cell, its bytes and the byte past them.
+: LAY-BODY ( n -- )
+   STR-AT @ {: b:n :}
+   b CELL -  CELL b BODY-U + 1 +  SEG+ ;
+
+\ Each body not yet passed whose length cell starts below v, laid when LAID?.
+: BODIES-BELOW ( n -- )
+   {: v:n :}
+   begin
+      BODY-I @ STR-N @ < if BODY-I @ STR-AT @ CELL - v < else false then
+   while
+      BODY-I @ LAID? if BODY-I @ LAY-BODY then  1 BODY-I +!
+   repeat ;
+
+\ Each extent and body not yet passed that starts below v, in data order.
+: LAY-BELOW ( n -- )
    {: v:n :}
    begin
       EXT-I @ BUILT-EXTS-N @ < if EXT-I @ BY-EXT @ EXT-SPAN drop v < else false then
    while
-      EXT-I @ BY-EXT @ LAY-EXT  1 EXT-I +!
-   repeat ;
+      EXT-I @ BY-EXT @ {: b:n :}
+      b EXT-SPAN drop BODIES-BELOW  b LAY-EXT  1 EXT-I +!
+   repeat
+   v BODIES-BELOW ;
 
 : SORT-EXTS ( -- )
    BUILT-EXTS-N @ {: n:n :}
@@ -317,59 +327,29 @@ variable EXT-I                       \ BY-EXT's next row to lay
    n 0 ?do i i BY-START ! loop
    n 0 > if 0 BY-START n [: swap PIECE-SPAN drop swap PIECE-SPAN drop < ;] SORT:SORT! then ;
 
-\ The live units from OPEN-DP in data order: the extents, and when the rest
-\ unit is live each span no piece holds, before, between and after the pieces.
+\ From OPEN-DP in data order: the live extents, the bodies LAID? keeps, and when
+\ the rest unit is live each span no piece holds. A body lies in no live unit.
 : LAY-UNITS ( -- )
    SORT-EXTS  SORT-PIECES
-   0 SEG-N !  0 EXT-I !
+   0 SEG-N !  0 EXT-I !  0 BODY-I !
    REST-UNIT UNIT-LIVE? {: rest:bool :}
    OPEN-DP @
    BUILT-N 0 ?do
       {: at:n :}
       i BY-START @ PIECE-SPAN {: from:n to:n :}
-      at EXTS-BELOW
+      at LAY-BELOW
       rest  from at >  and if at  from at -  SEG+ then
       at to max
    loop
    {: last:n :}
-   last EXTS-BELOW
-   rest  SPACE-END last >  and if last  SPACE-END last -  SEG+ then ;
+   last LAY-BELOW
+   rest  SPACE-END last >  and if last  SPACE-END last -  SEG+ then
+   SPACE-END LAY-BELOW ;
 
-
-\ Whether body k is laid after the units: kept, its length cell past the
-\ header and its unit dead.
-: LAID? ( n -- bool )
-   {: k:n :}
-   k STR-KEPT @ 0= if false exit then
-   k STR-AT @ CELL - {: at:n :}
-   at OPEN-DP @ < if false exit then
-   at UNIT-OF {: u:n :}
-   u 0< if true exit then
-   u UNIT-LIVE? 0= ;
-
-\ Body k's length cell at the next cell boundary, its bytes and the byte past.
-: LAY-BODY ( n -- )
-   {: k:n :}
-   LAID-END @ CELL 1- +  CELL negate and {: at:n :}
-   at CELL + {: img:n :}
-   img k LAID-AT !
-   img  k STR-AT @ BODY-U +  1 +  CELL 1- +  CELL negate and  LAID-END ! ;
-
-: LAY-BODIES ( -- )
-   STR-N @ LAID-AT-RESERVE
-   0
-   STR-N @ 0 ?do
-      0 i LAID-AT !
-      i LAID? if  dup 1 + BY-BODY-RESERVE  i over BY-BODY !  1 +  then
-   loop
-   {: n:n :}
-   n 0 > if 0 BY-BODY n [: BODY< ;] SORT:SORT! then
-   n 0 ?do i BY-BODY @ LAY-BODY loop ;
-
-\ A stripped program's image data: the header, the live units, the laid bodies.
+\ A stripped program's image data: the header, then LAY-UNITS' segments.
 : LAY-DATA ( -- )
    OPEN-DP @ BASE @ - LAID-END !
-   LAY-UNITS  LAY-BODIES ;
+   LAY-UNITS ;
 
 
 \ The units the program reaches from the header, in rounds of reads until one
@@ -407,9 +387,6 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ space's end, the profiler band and ceiling stay where they are.
 : LAID-OFFSET ( n -- n )
    {: v:n :}
-   v STRING-OF {: k:n :}
-   k 0 >= if k LAID-AT @ else 0 then {: img:n :}
-   img 0<> if img  v +  k STR-AT @ - exit then
    v SEG-OF {: s:n :}
    s 0 >= if s 2 SEG @  v +  s 0 SEG @ - exit then
    v OPEN-DP @ < if v BASE @ - exit then
@@ -492,16 +469,10 @@ variable EXT-I                       \ BY-EXT's next row to lay
    {: from:n at:n u:n :}
    from SPACE-BYTES  at COPY-AT  u BYTE-COPY ;
 
-\ The header, each segment and each laid body with its length cell.
+\ The header and each segment.
 : COPY-LAID ( -- )
    0 0  OPEN-DP @ BASE @ -  COPY-BYTES-AT
-   SEG-N @ 0 ?do  i 0 SEG @ BASE @ -  i 2 SEG @  i 1 SEG @  COPY-BYTES-AT  loop
-   STR-N @ 0 ?do
-      i LAID-AT @ {: img:n :}
-      img 0<> if
-         i STR-AT @ CELL - BASE @ -  img CELL -  CELL i STR-AT @ BODY-U +  COPY-BYTES-AT
-      then
-   loop ;
+   SEG-N @ 0 ?do  i 0 SEG @ BASE @ -  i 2 SEG @  i 1 SEG @  COPY-BYTES-AT  loop ;
 
 : FILL-COPY ( -- )
    COPY-N {: n:n :}

@@ -15,6 +15,7 @@ require src/lib/sort.f
 require src/lib/build-out.f
 require src/lib/fmt.f
 require src/habu/layout.f
+require src/os/linux/layout.f
 require src/habu/fnv.f
 require src/habu/boot-cells.f
 require src/habu/xref.f
@@ -438,7 +439,8 @@ variable CALLS-U                     \ its length
 DYNAMIC-BUFFER ACT-IDS n             \ the checked part's held requires its file's own text made: their file ids, in order (CALLS-HOLD?)
 variable ACT-IDS-N
 \ The compiling part never links (WRITE-OBJECT): no stamp, text an evaluated text includes, a start or end off TOP-SCOPE?, an unclean cut
-\ ending it or the part before (NEST), a load it asked for the runner never ran (ACTS+).
+\ ending it or the part before (NEST), a load it asked for the runner never ran (ACTS+), data ending at or past
+\ DATA-LOW from hb's data, where an address's form changes (PIECE-END).
 TYPED-VARIABLE UNLINKABLE bool
 \ What LOAD's loop over the file's parts does next: link part FILE-PART at FILE-OFF, compile it,
 \ or, once NEST cut the compiling part at a clean request, go back to linking the next.
@@ -3918,8 +3920,9 @@ variable PRIOR-STORES-SIZE
    true ;
 
 \ After INPUT!: true when part FILE-PART's object can stand for its compile: stamped (an UNLINKABLE part's INPUT-STAMP
-\ is 0 0 -1), whole and checked, its records fitting the dictionary, in the current root, its reads, roots and request
-\ answering as they did. A part whose records do not fit compiles, so a full dictionary is rejected at its source token.
+\ is 0 0 -1), whole and checked, its data laid from FILE-DP ending below LINUX-LAYOUT:DATA-LOW, its records fitting
+\ the dictionary, in the current root, its reads, roots and request answering as they did. A part whose records do not
+\ fit compiles, so a full dictionary is rejected at its source token.
 : PART-FRESH? ( -- bool )
    STAMPED? 0= if false exit then
    HITS-CLEAR                          \ the check replays NAMES into HITS
@@ -3928,6 +3931,7 @@ variable PRIOR-STORES-SIZE
    HEADER-CK
    PIECE-CK
    GOOD? 0= if false exit then
+   FILE-DP @ DATA-AT @ OBJ@ + DATA-N - LINUX-LAYOUT:DATA-LOW >= if false exit then
    ndict@ RECS-N @ + DICT-CAP > if false exit then
    0 INPUT-AT FIELD$ ENTRY-HOLDS? 0= if false exit then
    2 INPUT-AT FIELD$ READS-HOLD? 0= if false exit then
@@ -5055,6 +5059,7 @@ EXPORT CHECK:LINEAR-TEXT$
    TYPE-ENTRIES
    req 0< if SOURCE-ROOT:END-TYPES then   \ a request's part keeps its nodes through the request
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-END !
+   FILE-END @ DATA-N - LINUX-LAYOUT:DATA-LOW >= if true UNLINKABLE ! then
    RETIRED!  CHECK-EARLIER  FIND-STORES
    STORED-N @ 0 ?do i STORED @ dup HSTORE+ STORER+ loop
    WIDN-CELL HOST@ FILE-WID @ -  MINTED {: ids:n held:n :}

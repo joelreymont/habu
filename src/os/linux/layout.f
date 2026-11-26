@@ -38,6 +38,8 @@ public
 $1000 constant IMAGE-TEXT-CONTENT-ADJ
 0 constant IMAGE-TEXT-TRAILER-ADJ
 $80000000 constant DATA-VA
+\ Data at an offset below this lies below 4 GiB.
+$100000000 DATA-VA - constant DATA-LOW
 $4000000000 constant DATA-SIZE
 DATA-VA DATA-SIZE + constant CARRIER-VA
 $1000 constant CODE-OFF
