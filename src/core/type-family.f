@@ -275,7 +275,6 @@ EXPORT CHECK:REC-ON
 EXPORT CHECK:RECORDED-STEP
 EXPORT CHECK:REG-EXT-AOT-FAMILY-NAME-XT
 EXPORT CHECK:REG-GROW1
-EXPORT CHECK:REGISTER-SPAN-XT
 EXPORT CHECK:SEED-TERM?
 EXPORT CHECK:SIG-EXACT-MODE
 EXPORT CHECK:SIG-FACTS-MODE
@@ -3100,6 +3099,7 @@ variable STOW-FAM
 REGISTER-READ-VIEW
 REGISTER-MUT-VIEW
 REGISTER-INIT
+REGISTER-SPAN
 REGISTER-WIDTH
 REGISTER-EFFECT-TYPE
 REGISTER-RECORDS
@@ -3538,8 +3538,6 @@ EXPORT BOOT:TYPES-WL
    sp ER-P !  su ER-U !
    id ;
 
-\ TFAM-FIND-IN, else the family's type entry `pkg:tail` read into the registry
-\ (ER-READ).
 : TFAM-FIND ( str str -- n bool )
    {: ps:str ns:str :}
    ps ns TFAM-FIND-IN IF RES-TRUE EXIT THEN drop
@@ -4187,8 +4185,7 @@ TFAM-MEMBERS-INSTALL
    loop ;
 
 : SPAN-U8 ( -- n )
-   s" SPAN" s" span" TFAM-FIND 0= IF s" tfam: no SPAN:span family" EXIT-STATUS:INTERNAL die THEN
-   {: fam:n :}
+   SPAN-FAM @ {: fam:n :}
    PARAM-SCR-N @ {: pbase:n :}
    CC-U8 MK-CON PARAM-SCR+
    pbase fam TFAM-NAME$ fam MK-PARAM ;
@@ -4853,7 +4850,6 @@ EXPORT CHECK:OK
    [: READ-PENDING TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ generated-word undefine
    [: READ-PENDING TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ closed-package extra tail
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT
-   [: REGISTER-SPAN ;] is REGISTER-SPAN-XT
    [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ checker reaches the layout kind for its fail-closed guard
    [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
    [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ a signature graph's family package
@@ -4870,9 +4866,8 @@ TFAM-HOOK-INSTALL
 ;package
 
 \ A build's registries start with the families above, which every program
-\ starts with; a product declares the rest for itself (CHECK:STORES-OPEN), so
-\ its SPAN:span never meets hb's. The tail indexes and the memo start empty, and
-\ their first use rebuilds them.
+\ starts with; a product declares the rest for itself (CHECK:STORES-OPEN). The
+\ tail indexes and the memo start empty, and their first use rebuilds them.
 package TFAM
 private
 EXPORT CHECK:STORE+
@@ -4884,7 +4879,6 @@ TF-PK-P TF-PK-CAP-V CELL TF-PK-N STORE+
 TF-A-P TF-CAP-V TF-REC TFAM-N STORE+
 TFM-P TFM-CAP TFM-REC TABLE+
 TFX-A-P TFX-SLOTS-V CELL TABLE+
-SPAN-FAM -1 CELL-ROW+
 TFX-READY 0 CELL-ROW+
 TFX-HI 0 CELL-ROW+
 TFX-CAP 0 CELL-ROW+

@@ -1840,10 +1840,9 @@ variable PARAM-CAP     variable PARAM-SCR-CAP-V
 \ --- resolved type-family (TFAM) identity for T-PARAM terms. The registry
 \ lives in src/core/type-family.f, loaded after checker.f, so its queries are
 \ friend hooks. Each gets a registry-not-loaded default here and is rebound by
-\ type-family.f at prefix load. The TFAM-CON-LIN, TFAM-MEMBERS, TFAM-LIN-N,
-\ TFAM-MAY-LIN and REGISTER-SPAN hooks have no default: their call sites
-\ never run before type-family.f installs them, and an unset one fails closed
-\ (DEFER-UNSET).
+\ type-family.f at prefix load. The TFAM-CON-LIN, TFAM-MEMBERS, TFAM-LIN-N
+\ and TFAM-MAY-LIN hooks have no default: their call sites never run before
+\ type-family.f installs them, and an unset one fails closed (DEFER-UNSET).
 defer TFAM-RESOLVE-XT ( str str -- n bool nominal )   \ pkg + name -> family id, true | false
 defer TFAM-CLAIMED?-XT ( str -- bool nominal )             \ some scope reads the token as a family (any package, either visibility)
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
@@ -1864,7 +1863,6 @@ defer TFAM-MEMBERS-XT ( n -- n )                        \ layout term -> row of 
 defer TFAM-LIN-N-XT ( n -- n )                         \ instantiated owning schema's linear capability count
 defer TFAM-MAY-LIN-XT ( n -- bool )                    \ possible ownership in an open schema
 defer CTOR-ROW?-XT ( n -- bool )                       \ symbol is a generated constructor row (sum variant, product make/unmake)
-defer REGISTER-SPAN-XT ( -- nominal )                 \ declare SPAN:span, setting SPAN-FAM
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 variable LOAN-FIELD-FAM -1 LOAN-FIELD-FAM !
 variable C2-READ-FAM   -1 C2-READ-FAM ! \ reserved bounded shared-view family
@@ -14178,9 +14176,7 @@ variable PE-EFF-ID
 : PE-STOW-LAYOUT ( -- n )
    PARAM-SCR-N @ s" stow-layout" C2-STOW-FAM @ MK-PARAM ;
 
-\ SPAN:span is declared at the first row that needs it, never at load.
 : PE-SPAN ( n -- n ) {: t:n :}
-   SPAN-FAM @ 0< IF REGISTER-SPAN-XT THEN
    PARAM-SCR-N @ {: base:n :}
    t PARAM-SCR+
    base s" span" SPAN-FAM @ MK-PARAM ;

@@ -741,9 +741,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   effects and `MATCH` name the family `PKG:family` (`( -- TCP4:read-result )`,
   `MATCH TCP4:read-result`); a body inside the owning package writes the bare
   family name in `MATCH`.
-- **An OPEN family instance is placeable.** `STRUCTURE span<a> FIELD base ^a
-  FIELD len n ;STRUCTURE` is two cells for every argument, so `: SKIP ( span<t>
-  n -- span<t> ) …` compiles exactly like the `span<u8>` row, and so does a row
+- **An OPEN family instance is placeable.** `STRUCTURE pair<a> FIELD base ^a
+  FIELD len n ;STRUCTURE` is two cells for every argument, so `: SKIP ( pair<t>
+  n -- pair<t> ) …` compiles exactly like the `pair<u8>` row, and so does a row
   carrying an open instance of a family whose parameter is a payload cell
   (`FIELD it a`) below another value.
 - `CAST: NAME ( source -- destination )` declares a checked retype: a reader
@@ -2961,6 +2961,8 @@ grows; a row never says `^u8 n`. A `SPAN:span<u8>` is for storage a word is
 handed to index: `src/lib/span.f` checks each access against the reach it
 carries. Take one from a producer — `n SPAN-BUFFER: NAME`, `n SPAN-CELLS:
 NAME`, `MEM:ALLOC-SPAN` — or narrow one with `SPAN:SKIP` / `SPAN:TAKE` /
-`SPAN:SUB`, which can never widen it. `SPAN:MAKE`, the one place an address
-and a number become a reach, belongs to library source, and so does bare
-`BYTE-COPY`. The reach is counted in bytes whatever the element type.
+`SPAN:SUB`, which can never widen it. `SPAN:MAKE` makes a reach from an
+address and a number and rejects a negative one; it belongs to library source,
+and so does bare `BYTE-COPY`. The primitives `>span` and `span>` cross between
+a span and `^a n` unchecked, as `>str` and `str>` do for `str`. The reach is
+counted in bytes whatever the element type.

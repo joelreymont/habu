@@ -450,10 +450,9 @@ EPRIM: cell-view  PE-PTR-U8 PE-IN PE-PTR-N PE-OUT EPRIM;
 \ make: base below length either way.
 EPRIM: >str       PE-PTR-U8 PE-IN PE-N PE-IN PE-STR PE-OUT EPRIM;
 EPRIM: str>       PE-STR PE-IN PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
-\ The crossing between a base and a reach in bytes and `SPAN:span<a>`, stated
-\ as the pair: a checker without A-SPAN cannot replay a span row.
-EPRIM: >span      PE-PTR-A PE-IN PE-N PE-IN PE-PTR-A PE-OUT PE-N PE-OUT EPRIM;
-EPRIM: span>      PE-PTR-A PE-IN PE-N PE-IN PE-PTR-A PE-OUT PE-N PE-OUT EPRIM;
+\ The crossing between a base and a reach in bytes and `SPAN:span<a>`.
+EPRIM: >span      PE-PTR-A PE-IN PE-N PE-IN PE-SPAN-A PE-OUT EPRIM;
+EPRIM: span>      PE-SPAN-A PE-IN PE-PTR-A PE-OUT PE-N PE-OUT EPRIM;
 \ A str's base and its byte count.
 EPPRIM: STR data PE-STR PE-IN PE-PTR-U8 PE-OUT ECLOSE-PRIVATE
 EPPRIM: STR len PE-STR PE-IN PE-N PE-OUT ECLOSE-PRIVATE

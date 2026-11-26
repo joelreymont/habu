@@ -12,19 +12,6 @@ split-str
 require src/lib/error.f
 
 package SPAN
-public
-
-\ base is `^a` so the pointee survives (c@ on a byte span, @ on a cell span,
-\ and nothing else); len is the reach in bytes, a soundness rule: a family
-\ argument widens like an integer, so `span<u8>` is accepted where `span<cell>` is
-\ declared (src/lib/span-test.f pins it). An element-counted reach would let a
-\ 64-byte `span<u8>` pass `i < len` at i=7 and cell-read bytes 56..63; a byte
-\ reach keeps every accessor inside it. Closing the widening is the checker's.
-STRUCTURE span<a>
-   FIELD base ^a
-   FIELD len n
-;STRUCTURE
-
 private
 
 1 cells constant CELL-BYTES
@@ -36,34 +23,34 @@ private
 
 public
 
-\ The one place an address and a number become a reach. `n` counts bytes from
-\ `p`, and the caller owes it: the checker knows the pointee, never the extent.
+\ `n` counts bytes from `p`, and the caller owes it: the checker knows the
+\ pointee, never the extent.
 : MAKE ( ^t n -- span<t> )
    dup 0 < if E-SPAN-LENGTH throw then
-   SPAN-SPAN:MAKE ;
+   >span ;
 
 : LEN ( span<t> -- n )
-   SPAN-SPAN:UNMAKE nip ;
+   span> nip ;
 
 : CELL-LEN ( span<cell> -- n )
    LEN CELL-BYTES / ;
 
 : $ ( span<u8> -- str )
-   SPAN-SPAN:UNMAKE ;
+   span> ;
 
 : BYTES ( span<cell> -- span<u8> )
-   SPAN-SPAN:UNMAKE {: b l :}
+   span> {: b l :}
    b byte-view l MAKE ;
 
 \ Generic: the return stack keeps the scalar out of the way with no frame, and the
 \ bundle is unmade where it stands.
 : SKIP ( span<t> n -- span<t> )
-   >r SPAN-SPAN:UNMAKE r>
+   >r span> r>
    2dup BOUND
    tuck - >r + r> MAKE ;
 
 : TAKE ( span<t> n -- span<t> )
-   >r SPAN-SPAN:UNMAKE r>
+   >r span> r>
    2dup BOUND
    nip MAKE ;
 
@@ -80,7 +67,7 @@ public
 \ would change the generated accessor set (src/core/layout-buffer.f); hand a
 \ TYPED-BUFFER accessor result to SPAN:MAKE instead.
 : AT ( span<u8> n -- ^u8 ) {: s i :}
-   s SPAN-SPAN:UNMAKE {: b l :}
+   s span> {: b l :}
    i 0 < i l >= or if E-SPAN-RANGE throw then
    b i + ;
 
@@ -93,7 +80,7 @@ public
 \ The index is checked against the reach in WHOLE cells, so a byte span that
 \ reached here through integer widening still cannot address past its end.
 : CELL-AT ( span<cell> n -- ^cell ) {: s i :}
-   s SPAN-SPAN:UNMAKE {: b l :}
+   s span> {: b l :}
    i 0 < i l CELL-BYTES / >= or if E-SPAN-RANGE throw then
    b i cells + ;
 
@@ -106,7 +93,7 @@ public
 \ All of it or none of it.
 : COPY ( str span<u8> -- ) {: src u s :}
    u 0 < if E-SPAN-LENGTH throw then
-   s SPAN-SPAN:UNMAKE {: b l :}
+   s span> {: b l :}
    u l > if E-SPAN-CAPACITY throw then
    src b u BYTE-COPY ;
 
@@ -124,7 +111,7 @@ public
 
 \ Bytes up to a cell boundary, whole cells, then the bytes after them.
 : FILL ( u8 span<u8> -- ) {: v s :}
-   s SPAN-SPAN:UNMAKE {: b l :}
+   s span> {: b l :}
    b l LEAD {: k :}
    l k - CELL-BYTES / CELL-BYTES * {: m :}
    v b k SET-BYTES

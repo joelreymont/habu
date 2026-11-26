@@ -809,7 +809,7 @@ STRUCTURE sdpnode DERIVE addr
    7 1 SDP-NODES SDPNODE:KIND !
    1 SDP-NODES 1 SDP-REFS !
    0 SDP-REFS 2 cells SPAN:MAKE 0 SDP-NODES SDPNODE:KEPT !
-   0 SDP-NODES SDPNODE:KEPT @ SPAN-SPAN:UNMAKE {: b:^ l:n :}
+   0 SDP-NODES SDPNODE:KEPT @ span> {: b:^ l:n :}
    b 1 cells + @ SDPNODE:KIND @ l ;
 SDP-KEPT 2 cells T= 7 T=
 

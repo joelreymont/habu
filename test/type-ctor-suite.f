@@ -40,7 +40,7 @@ TYPED-VARIABLE TCE-A ^u8   variable TCE-U
    REJECTION:BUFFER-OFF ;
 
 \ An engine family's generated word is protected before anything names the family.
-s" undefine SPAN-SPAN:MAKE" TCE-PROTECTED
+s" undefine PCAP-CAPTURED:MAKE" TCE-PROTECTED
 
 : TWX-MULTI-ERR-BEGIN ( -- ) CHECK:MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) CHECK:MULTI-ERR-END ;
