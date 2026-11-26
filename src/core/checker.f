@@ -14981,10 +14981,14 @@ public
 
 : CEILING ( -- n ) dbase@ REGION + RESERVE - ;
 
-: SPAN ( n -- n )
-   dup DNAME-INL <= IF drop 0 EXIT THEN
+\ The bytes n bytes written at CP take: whole target code slots.
+: SLOTS ( n -- n )
    SLOT {: slot:n :}
    slot 1 - + slot negate and ;
+
+: SPAN ( n -- n )
+   dup DNAME-INL <= IF drop 0 EXIT THEN
+   SLOTS ;
 
 private
 

@@ -2928,8 +2928,6 @@ variable SEAL-TRAP-CELL
 \ record PEND-CELL points at, and its clause takes the slot past the pending
 \ one, NDICT+1: the entry and length given, the parent's name and ";does" out of
 \ line at CP, zero-padded to a CODE-SLOT multiple, and the parent's wid.
-\ src/compiler/native/publish.f DOES-NAME-PAD measures the name padded to a
-\ four-byte word; CODE-RESERVE absorbs the rest.
 : DOES-RECORD, ( -- )
    ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
    RSP DR-FRAME >IMM8 ASM-SINK ENC-SUB-RI8

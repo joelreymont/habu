@@ -25,6 +25,7 @@ package NPUB
 private
 
 EXPORT CHECK:DOES-PUBLISHED
+EXPORT CODE-RECLAIM:TRUNCATE
 EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 
 : CODE-WINDOW ( str n -- ) {: s:str dst:n :}
@@ -39,11 +40,26 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 : APPEND-PENDING ( n -- )
    ndict-append ;
 
-\ Rejects size bytes of code the ceiling has no room for at cp@, the pending
-\ definition's name copied before it.
+\ Where cp stood at the pending definition's open: its long name's copy is
+\ all the open placed.
+: OPEN-CP ( ^n -- n ) {: rec:^ :}
+   rec XREF-EXT? 0= if cp@ exit then
+   rec XREF-NAME-SLOT XREF-CELL@ ;
+
+\ Rejects size bytes of code the ceiling has no room for after the pending
+\ definition's name, measured from its open; a rejection leaves cp there.
 : CODE-ROOM ( n -- ) {: size:n :}
-   NULL-PTR 0 ndict@ XREF-REC XREF-NAME$ dup STR:DATA swap STR:LEN
-   size CODE-SPACE:ROOM ;
+   ndict@ XREF-REC {: rec:^ :}
+   rec XREF-NAME$ {: name:str :}
+   cp@ {: cp:n :}
+   rec OPEN-CP TRUNCATE
+   name STR:DATA name STR:LEN  name STR:DATA name STR:LEN  size CODE-SPACE:ROOM
+   cp TRUNCATE ;
+
+\ The bytes size bytes of code and the u bytes written after them take: each
+\ write starts on a code slot.
+: TRAILED-SIZE ( n n -- n ) {: size:n u:n :}
+   size CODE-SPACE:SLOTS u CODE-SPACE:SLOTS + ;
 
 \ The code slot size bytes go to.
 : ROOM-CK ( n -- n )
@@ -153,18 +169,15 @@ create TRAILER TRAILER-BYTES allot
    size VALIDATE-EMISSION {: fn:n :}
    idx fn size ;
 
-: PAD-INSTRUCTION ( n -- n )
-   3 + -4 and ;
-
 : DOES-NAME-PAD ( n -- n )
    XREF-REC XREF-NAME$ STR:LEN
-   DOES-CLAUSE:SUFFIX$ STR:LEN + PAD-INSTRUCTION ;
+   DOES-CLAUSE:SUFFIX$ STR:LEN + CODE-SPACE:SLOTS ;
 
 \ The definer's `does>` rejected a clause with no record left.
 : DOES-PROVE ( n -- n n n n ) {: fun:n :}
    PENDING-PROVE {: idx:n fn:n size:n :}
    idx DOES-NAME-PAD {: pad:n :}
-   size pad + CODE-ROOM
+   size CODE-SPACE:SLOTS pad + CODE-ROOM
    fun NEMIT:FUNCTION-OFFSET@ {: off:n :}
    off 0 <= if E-NPUB-OFFSET throw then
    idx fn size off ;
@@ -192,7 +205,7 @@ public
 
 : PUBLISH-PENDING-DEFER ( n -- ) {: cell:n :}
    PENDING-PROVE {: idx:n fn:n size:n :}
-   size TRAILER-BYTES + CODE-ROOM
+   size TRAILER-BYTES TRAILED-SIZE CODE-ROOM
    fn NSHADOW:SOURCE-FUNS
    idx fn size cell NULL-PTR 0 >str COMMIT-OWNED
    idx NSHADOW:PUBLISH
@@ -202,7 +215,7 @@ public
 \ A copy word with its steps' trailer, whole instructions.
 : PUBLISH-PENDING-COPY ( str -- ) {: s:str :}
    PENDING-PROVE {: idx:n fn:n size:n :}
-   size s STR:LEN + CODE-ROOM
+   size s STR:LEN TRAILED-SIZE CODE-ROOM
    fn NSHADOW:SOURCE-FUNS
    idx fn size 0 s COMMIT-OWNED
    idx NSHADOW:PUBLISH
@@ -247,7 +260,7 @@ private
    size 0 <= size IMPORT-ALIGNED? 0= or if E-NPUB-RELOC throw then
    recorded CODE-SPAN:VALID? 0= if E-NPUB-RELOC throw then
    recorded CODE-SPAN:BYTES size <> if E-NPUB-RELOC throw then
-   size pad + ROOM-CK {: fn:n :}
+   size pad TRAILED-SIZE ROOM-CK {: fn:n :}
    code fn CODE-WINDOW
    fn recorded idx PUBLISH-REC
    idx fn ;
