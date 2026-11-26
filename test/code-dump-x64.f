@@ -43,6 +43,12 @@ create BAD-SIB $48 c, $8B c, $04 c,
 create BAD-IMM $48 c, $B8 c, $01 c,
 create BAD-OP $0F c, $FF c,
 create PALIGNR-CODE $66 c, $45 c, $0F c, $3A c, $0F c, $C7 c, $04 c,
+create REP-MOVSB $F3 c, $A4 c,
+create BARE-MOVSB $A4 c,
+create FS-LOAD $64 c, $48 c, $8B c, $04 c, $25 c, 0 c, 0 c, 0 c, 0 c,
+create FS-LOAD-R12 $64 c, $4C c, $8B c, $24 c, $25 c, $F8 c, $FF c, $FF c, $FF c,
+create FS-ADD $64 c, $48 c, $03 c, $04 c, $25 c, 0 c, 0 c, 0 c, 0 c,
+create FS-REG $64 c, $48 c, $8B c, $C1 c,
 
 public
 : DUMP-IMM ( -- n ) $C3 ;
@@ -98,7 +104,13 @@ private
    [: REX-BEFORE-66 4 >str $2500 X64DIS:DIS1 4 T= ;] GE-CAPTURE-ACTION
    s" mov ax, ax" s" legacy prefix cancels earlier REX" GE-EXPECT-OUT-HAS
    [: WORD-CWD 2 >str $2500 X64DIS:DIS1 2 T= ;] GE-CAPTURE-ACTION
-   s" cwd" s" operand prefix selects word sign extension" GE-EXPECT-OUT-HAS ;
+   s" cwd" s" operand prefix selects word sign extension" GE-EXPECT-OUT-HAS
+   [: REP-MOVSB 2 >str $2500 X64DIS:DIS1 2 T= ;] GE-CAPTURE-ACTION
+   s" rep movsb" s" F3 repeats the byte copy" GE-EXPECT-OUT-HAS
+   [: FS-LOAD 9 >str $2500 X64DIS:DIS1 9 T= ;] GE-CAPTURE-ACTION
+   s" mov rax, qword ptr fs:[0]" s" fs: load from an absolute disp32" GE-EXPECT-OUT-HAS
+   [: FS-LOAD-R12 9 >str $2500 X64DIS:DIS1 9 T= ;] GE-CAPTURE-ACTION
+   s" mov r12, qword ptr fs:[-8]" s" fs: load into a REX register" GE-EXPECT-OUT-HAS ;
 
 : CHECK-IMM ( -- )
    [: IMM-CODE 10 >str $3000 X64DIS:DIS1 10 T= ;] GE-CAPTURE-ACTION
@@ -118,7 +130,10 @@ private
    [: BAD-IMM 3 >str $6000 X64DIS:DIS1 drop ;] X64DIS:E-TRUNCATED TTHROWSQ
    [: BYTE-LEGACY 2 >str $6000 X64DIS:DIS1 drop ;] X64DIS:E-UNKNOWN TTHROWSQ
    [: REX-NOP 2 >str $6000 X64DIS:DIS1 drop ;] X64DIS:E-UNKNOWN TTHROWSQ
-   [: BAD-OP 2 >str $6000 X64DIS:DIS1 drop ;] X64DIS:E-UNKNOWN TTHROWSQ ;
+   [: BAD-OP 2 >str $6000 X64DIS:DIS1 drop ;] X64DIS:E-UNKNOWN TTHROWSQ
+   [: BARE-MOVSB 1 >str $6000 X64DIS:DIS1 drop ;] X64DIS:E-UNKNOWN TTHROWSQ
+   [: FS-ADD 9 >str $6000 X64DIS:DIS1 drop ;] X64DIS:E-UNKNOWN TTHROWSQ
+   [: FS-REG 4 >str $6000 X64DIS:DIS1 drop ;] X64DIS:E-UNKNOWN TTHROWSQ ;
 
 : CHECK-LIVE ( -- )
    [: s" DUMP-IMM" CODE-DUMP:FIND-XT CODE-DUMP:DECODE ;] GE-CAPTURE-ACTION

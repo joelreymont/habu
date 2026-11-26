@@ -327,6 +327,22 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    \ llvm-mc: mfence
    SINK X64ASM:ENC-MFENCE   s" 0faef0" X= ;
 
+\ the string copy and the fs: load. These bytes came from
+\ `clang -cc1as -triple x86_64 -show-encoding` (clang 18.1.3, LLVM's MC layer).
+: STRING-AND-SEGMENT ( -- )
+   \ llvm-mc: rep movsb
+   SINK X64ASM:ENC-REP-MOVSB   s" f3a4" X=
+   \ llvm-mc: movq %fs:0, %rax
+   X64ASM:RAX 0 SINK X64ASM:ENC-MOV-FS   s" 64488b042500000000" X=
+   \ llvm-mc: movq %fs:0, %r12
+   X64ASM:R12 0 SINK X64ASM:ENC-MOV-FS   s" 644c8b242500000000" X=
+   \ llvm-mc: movq %fs:-8, %rcx
+   X64ASM:RCX -8 SINK X64ASM:ENC-MOV-FS   s" 64488b0c25f8ffffff" X=
+   \ llvm-mc: movq %fs:305419896, %r9
+   X64ASM:R9 305419896 SINK X64ASM:ENC-MOV-FS   s" 644c8b0c2578563412" X=
+   \ llvm-mc: movq %fs:-2147483648, %rax
+   X64ASM:RAX -2147483648 SINK X64ASM:ENC-MOV-FS   s" 64488b042500000080" X= ;
+
 \ the addressing forms that have no ARM counterpart: rsp and
 \ r12 forcing a SIB, rbp and r13 forcing a disp8 of zero, the disp8 boundary,
 \ rip-relative, and an rsp base carrying an index.
@@ -772,7 +788,7 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
    MOVES WIDENING ADDRESS-AND-ZERO ONE-REGISTER SIGNED-MULTIPLY
    IMMEDIATE-STORES CELL-STORES STORE-REJECTIONS
    PADDING-AND-TRAP
-   SHIFTS CONTROL ATOMICS MEMORY-TRAPS CONDITION-NAMES REGISTER-NAMES BRANCHES
+   SHIFTS CONTROL ATOMICS STRING-AND-SEGMENT MEMORY-TRAPS CONDITION-NAMES REGISTER-NAMES BRANCHES
    SSE-REGISTERS SSE-MOVES SSE-ARITHMETIC SSE-PACKED SHA-ROUNDS
    SSE-CROSS SSE-REJECTIONS SSE-NOMINAL-CASES
    REGISTER-REJECTIONS IMMEDIATE-REJECTIONS MEMORY-REJECTIONS BRANCH-REJECTIONS

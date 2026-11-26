@@ -32,7 +32,7 @@ variable DU  variable DI  variable DPC
 variable DREX  variable D-HASREX  variable DPFX  variable DLOCK  variable DOP
 variable DMOD  variable DREG  variable DRM  variable DBASE  variable DINDEX
 variable DSCALE  variable DDISP  variable DRIP  variable DREL
-variable DQUIET
+variable DQUIET  variable DSEG
 
 : OUT ( str -- ) {: s:str :}
    DQUIET @ if exit then  s type ;
@@ -91,7 +91,7 @@ variable DQUIET
 : REX-B ( -- n ) DREX @ 1 and 0<> if 8 else 0 then ;
 
 : PREFIX? ( n -- bool ) {: c:n :}
-   c $66 = c $F2 = or c $F3 = or c $F0 = or
+   c $66 = c $F2 = or c $F3 = or c $F0 = or c $64 = or
    c $40 >= c $4F <= and or ;
 
 : PREFIXES ( -- )
@@ -99,8 +99,9 @@ variable DQUIET
       NEXT {: c:n :}
       c $40 >= c $4F <= and 0= if 0 DREX ! 0 D-HASREX ! then
       c $F0 = if 1 DLOCK ! else
+      c $64 = if c DSEG ! else
       c $66 = c $F2 = or c $F3 = or if c DPFX ! else
-         c $F and DREX ! 1 D-HASREX ! then then
+         c $F and DREX ! 1 D-HASREX ! then then then
    repeat ;
 
 \ 0Fxx reads $1xx, 0F38xx $2xx and 0F3Axx $3xx.
@@ -205,6 +206,7 @@ variable DQUIET
 : XMM. ( n -- ) s" xmm" OUT INT-OUT ;
 
 : MEM. ( -- )
+   DSEG @ 0<> if s" fs:" OUT then
    [char] [ CHAR-OUT
    DRIP @ if s" rip" OUT else
       DBASE @ 0 >= if DBASE @ 64 REG. then
@@ -328,6 +330,7 @@ variable DQUIET
 
 : MOVE ( -- )
    INT-PREFIX MODRM
+   DSEG @ 0<> DMOD @ 3 = and if UNKNOWN then
    DOP @ $88 = DOP @ $8A = or if 8 else WIDTH then {: width:n :}
    width 8 = if
       DREG @ BYTE-REG-CHECK
@@ -367,6 +370,9 @@ variable DQUIET
 
 : DECODE-ONE ( -- bool )
    DOP @ $C3 = if PLAIN-PREFIX s" ret" OUT true exit then
+   DOP @ $A4 = if
+      DPFX @ $F3 <> DLOCK @ 0<> or D-HASREX @ 0<> or if UNKNOWN then
+      s" rep movsb" OUT true exit then
    DOP @ $CC = if PLAIN-PREFIX s" int3" OUT true exit then
    DOP @ $90 = if
       DLOCK @ 0<> if UNKNOWN then
@@ -558,9 +564,11 @@ variable DQUIET
 private
 
 : DECODE ( str n -- ) {: s:str pc:n :}
-   s STR:DATA DA ! s STR:LEN DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK ! 0 DRIP !
+   s STR:DATA DA ! s STR:LEN DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK ! 0 DRIP ! 0 DSEG !
    s STR:LEN 0 <= if TRUNC then
    PREFIXES OPCODE
+   \ The one segment Habu names is fs:, and only in a mov's memory operand.
+   DSEG @ 0<> DOP @ $88 < DOP @ $8B > or and if UNKNOWN then
    DECODE-ONE if exit then
    DECODE-GROUP if exit then
    SIMPLE-GROUP if exit then

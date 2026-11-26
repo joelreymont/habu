@@ -752,6 +752,21 @@ public
 
 : ENC-UD2 ( ^VEC:vector<u8> -- ) {: s:^ :}  $0F0B s EMIT-OP ;
 
+\ Copies rcx bytes from [rsi] to [rdi] upward, leaving rcx zero and both
+\ pointers past the copy.
+: ENC-REP-MOVSB ( ^VEC:vector<u8> -- ) {: s:^ :}
+   $F3 s EMIT-B  $A4 s EMIT-B ;
+
+\ mov r64, qword ptr fs:[disp32]: the 64 prefix and a SIB naming neither base
+\ (101 under mod 00) nor index (100), so the address is the disp32 alone.
+: ENC-MOV-FS ( r64 n ^VEC:vector<u8> -- ) {: d:r64 disp:n s:^ :}
+   d R64>N REG-NUM {: dn:n :}  disp ?SIMM32 {: dv:n :}
+   $64 s EMIT-B
+   1 dn 3 rshift 0 0 0 s EMIT-REX
+   $8B s EMIT-OP
+   0 dn 4 MODRM s EMIT-B  0 4 5 SIB s EMIT-B
+   dv s EMIT-D ;
+
 \ setcc writes one byte, so its destination is a byte register and carries that
 \ file's REX rule.
 : ENC-SETCC ( condition r8 ^VEC:vector<u8> -- ) {: c:condition r:r8 s:^ :}
