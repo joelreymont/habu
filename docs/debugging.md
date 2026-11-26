@@ -312,13 +312,12 @@ phase measurement:
   delivers to another thread is sent on to it, so a task's work shows only in
   a profile that task started. On x86-64 a tick counts on whichever thread it
   lands.
-- On arm64 a sample counts the sampling intervals elapsed since the last one,
-  so time blocked in a syscall (an fsync, a file read) is charged where the
-  sample that ends it lands, though the ticks of that wait arrive as one
-  signal. On x86-64 each signal counts one sample.
+- A sample counts the sampling intervals elapsed since the last one, so time
+  blocked in a syscall (an fsync, a file read) is charged where the sample that
+  ends it lands, though the ticks of that wait arrive as one signal.
 - A non-zero `prof-on` limit reports from inside the signal handler and exits
-  99 when the sample total reaches or passes the limit: on arm64 the sample
-  that reaches it may count several intervals. Words compiled after `prof-on` stay in the `defer`
+  99 when the sample total reaches or passes the limit: the sample that reaches
+  it may count several intervals. Words compiled after `prof-on` stay in the `defer`
   column of that report; a program that can reach its own `prof-off` should
   use one and call `prof-report`.
 

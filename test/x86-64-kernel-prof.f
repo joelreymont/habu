@@ -74,18 +74,27 @@ $40 constant GOT                        \ and what it read
 40 constant SKEWED                      \ and those that found the identity false
 64 constant PHASES                      \ the delays between a turn's arm and its reset
 800 constant PHASE-STEP-NS              \ and their step: together they cross the interval
+0 constant SIG-BLOCK
+1 constant SIG-UNBLOCK
+8 constant SIGSET-BYTES                 \ the kernel's sigset_t
+50000000 constant WAIT-NS               \ the weigh case's wait with SIGALRM blocked
+WAIT-NS DEFAULT-RATE 1000 * / constant WAIT-TICKS   \ the intervals it spans
+50 constant CARRY-ROUNDS                \ the carry case's spins, each followed by a prof-row
+600000 constant CARRY-SPIN-NS           \ and each spin's length, under the interval
+20 constant CARRY-TICKS                 \ the samples their 30 ms take at least
 
 \ State S: B's pc deferred three times with A's return address kept beside it,
-\ twice with C's and once with 0, and pc 1, which no record owns, once; A's
+\ twice with C's and once with 0, and pc 1, which no record owns, once, the
+\ first of C's slots weighing HEAVY intervals and every other slot one; A's
 \ inclusive count 9 with no exclusive one, 4 in the per-record array and 5 in
 \ its index entry; ARN-HI at C's start, as if C were compiled after prof-on;
 \ PROF-OTHER, PROF-FOREIGN, ARN-SPILL, ARN-FRAMES and ARN-DROP nonzero;
-\ PROF-TOT their sum with the deferred samples; and ARN-FCALLED six, as if
+\ PROF-TOT their sum with the slots' weights; and ARN-FCALLED six, as if
 \ each of B's samples were in a foreign callee of B. A report's sync folds A's
-\ entry into the array and replays the deferred samples: B takes six
-\ exclusive and inclusive samples, the edges (B, A), (B, C) and (B, none)
-\ count 3, 2 and 1, C, which only the rebuild reaches, takes two inclusive
-\ samples, and ARN-NEW the sample at pc 1. A and B are global, and C, whose
+\ entry into the array and replays the deferred samples by weight: B takes
+\ seven exclusive and inclusive samples, the edges (B, A), (B, C) and
+\ (B, none) count 3, 3 and 1, C, which only the rebuild reaches, takes three
+\ inclusive samples, and ARN-NEW the sample at pc 1. A and B are global, and C, whose
 \ name is longer than DNAME-INL, is package X64K-PROF-Q's, so the reports
 \ print an inline name, one behind DNAME-EXT and a qualifier.
 3 constant FROM-A                       \ B's deferred samples A called, in the slots from 0
@@ -93,6 +102,9 @@ $40 constant GOT                        \ and what it read
 FROM-A FROM-C + constant NONE-AT        \ B's sample whose kept cell is 0
 NONE-AT 1+ constant PC1-AT              \ the sample at pc 1
 PC1-AT 1+ constant DEFERRED
+2 constant HEAVY                        \ slot FROM-A's weight in intervals
+: S-WEIGHT ( n -- n ) FROM-A = if HEAVY else 1 then ;
+: S-WEIGHTS ( -- n ) 0  DEFERRED 0 ?do  i S-WEIGHT +  loop ;
 5 constant S-OTHER
 4 constant S-FOREIGN
 3 constant S-SPILL
@@ -101,7 +113,7 @@ PC1-AT 1+ constant DEFERRED
 6 constant S-FCALLED
 4 constant S-A-ARRAY                    \ A's inclusive samples in the per-record array
 5 constant S-A-ENTRY                    \ and in its index entry, which the sync folds
-DEFERRED S-OTHER + S-FOREIGN + S-SPILL + constant S-TOT
+S-WEIGHTS S-OTHER + S-FOREIGN + S-SPILL + constant S-TOT
 
 : HOST-IX ( str n -- n )
    XREF-FIND-WL-INDEX dup 0 >= if exit then
@@ -238,11 +250,11 @@ A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
    0 X64HARNESS:PUSH-SCRATCH,  RCX R64>N G-POP  RSP RCX MEM-AT LOAD, ;
 
 \ ---- the checks after the clock stops ---------------------------------------
-\ rax = sum(counters) + ARN-NEW + ARN-DEFER + ARN-SPILL + PROF-OTHER +
-\ PROF-FOREIGN - PROF-TOT, over every profile ID: 0 while the identity
-\ holds. It clobbers rcx, rdx and r8.
+\ rax = sum(counters) + ARN-NEW + the deferred slots' weights + ARN-SPILL +
+\ PROF-OTHER + PROF-FOREIGN - PROF-TOT, over every profile ID: 0 while the
+\ identity holds. It clobbers rcx, rdx and r8.
 : SKEW, ( -- )
-   LBL LBL {: sum:label done:label :}
+   LBL LBL LBL LBL {: sum:label done:label slot:label slots:label :}
    RAX ZERO-REG,
    R8 ARENA,  RCX R8 ARN-IDS MEM-OFF LOAD,
    RDX COUNTERS IMM,
@@ -253,7 +265,12 @@ A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
    done LBL,
    R8 ARENA,
    RAX R8 ARN-NEW MEM-OFF ASM-SINK ENC-ADD-RM
-   RAX R8 ARN-DEFER MEM-OFF ASM-SINK ENC-ADD-RM
+   RCX R8 ARN-DEFER MEM-OFF LOAD,  RDX R8 ARN-DEF PROF-SLOT-WEIGHT + MEM-OFF ASM-SINK ENC-LEA
+   slot LBL,
+      RCX TEST,  C-E slots JCC,
+      RAX RDX MEM-AT ASM-SINK ENC-ADD-RM
+      RDX PROF-DEFER-ENT ADDI,  RCX ASM-SINK ENC-DEC  slot JMP,
+   slots LBL,
    RAX R8 ARN-SPILL MEM-OFF ASM-SINK ENC-ADD-RM
    R8 BAND IMM,
    RAX R8 PROF-OTHER MEM-OFF ASM-SINK ENC-ADD-RM
@@ -453,7 +470,8 @@ variable GOT-N
 : R8-N!, ( n n -- ) {: v:n off:n :}  RAX v IMM,  RAX R8 off MEM-OFF STORE, ;
 : R8-LABEL!, ( label n -- ) {: at:label off:n :}  RAX at MOVABS,  RAX R8 off MEM-OFF STORE, ;
 
-\ Deferred slot i's offset in the arena: its pc, then the cell kept beside it.
+\ Deferred slot i's offset in the arena: its pc, then the cell kept beside it,
+\ then its weight.
 : SLOT ( n -- n ) PROF-DEFER-ENT * ARN-DEF + ;
 
 \ State S in the image's band and arena. The cells kept beside B's pc are A's
@@ -473,6 +491,7 @@ variable GOT-N
    NONE-AT FROM-A ?do  b i SLOT R8-LABEL!,  c-end i SLOT CELL + R8-LABEL!,  loop
    b NONE-AT SLOT R8-LABEL!,  0 NONE-AT SLOT CELL + R8-N!,
    1 PC1-AT SLOT R8-N!,  0 PC1-AT SLOT CELL + R8-N!,
+   DEFERRED 0 ?do  i S-WEIGHT  i SLOT PROF-SLOT-WEIGHT +  R8-N!,  loop
    DEFERRED ARN-DEFER R8-N!, ;
 
 \ Run the rows the quotation calls with fd 1 on a fresh pipe, put fd 1 back
@@ -638,22 +657,22 @@ variable GOT-N
    RSP ITIMER-BYTES ADDI,
    0 G-PUSH  DEFAULT-RATE WANT ;
 
-\ State S's fields in the columns the host's reports print.
+\ State S's fields in the columns the host's reports print. (B, A) and (B, C)
+\ tie at 3, and the caller lines print one of two tied counts: the JSON names both.
 : S-CALLERS, ( -- )
-   s" <-        3  50.0 prof-a" true HAS,
-   s" <-        2  33.3 X64K-PROF-Q:CALLER-WITH-A-LONG-NAME" true HAS,
-   s" <-        1  16.6 (unknown)" true HAS, ;
+   s" <-        3  42.8 " true HAS,
+   s" <-        1  14.2 (unknown)" true HAS, ;
 
 : S-B-ROW, ( -- )
-   s" 6  31.5       6  31.5  prof-b" true HAS,  S-CALLERS, ;
+   s" 7  35.0       7  35.0  prof-b" true HAS,  S-CALLERS, ;
 
 : S-REPORT, ( -- )
    [: s" prof-report" ROW ;] REPORT-TEXT,
    s"  new 1 " true HAS,
    s"  indexed 3 " true HAS,
    S-B-ROW,
-   s" 0   0.0       9  47.3  prof-a" true HAS,
-   s" 0   0.0       2  10.5  X64K-PROF-Q:CALLER-WITH-A-LONG-NAME" true HAS, ;
+   s" 0   0.0       9  45.0  prof-a" true HAS,
+   s" 0   0.0       3  15.0  X64K-PROF-Q:CALLER-WITH-A-LONG-NAME" true HAS, ;
 
 : S-ROW, ( -- )
    [: B-IX N,  s" prof-row" ROW ;] REPORT-TEXT,  S-B-ROW, ;
@@ -663,10 +682,10 @@ variable GOT-N
    s\" \"new\":1," true HAS,
    s\" \"indexed\":3," true HAS,
    s\" {\"word\":\"prof-a\",\"excl\":0,\"incl\":9}" true HAS,
-   s\" {\"word\":\"prof-b\",\"excl\":6,\"incl\":6}" true HAS,
-   s\" {\"word\":\"X64K-PROF-Q:CALLER-WITH-A-LONG-NAME\",\"excl\":0,\"incl\":2}" true HAS,
+   s\" {\"word\":\"prof-b\",\"excl\":7,\"incl\":7}" true HAS,
+   s\" {\"word\":\"X64K-PROF-Q:CALLER-WITH-A-LONG-NAME\",\"excl\":0,\"incl\":3}" true HAS,
    s\" {\"word\":\"prof-b\",\"caller\":\"prof-a\",\"n\":3}" true HAS,
-   s\" {\"word\":\"prof-b\",\"caller\":\"X64K-PROF-Q:CALLER-WITH-A-LONG-NAME\",\"n\":2}" true HAS,
+   s\" {\"word\":\"prof-b\",\"caller\":\"X64K-PROF-Q:CALLER-WITH-A-LONG-NAME\",\"n\":3}" true HAS,
    s\" {\"word\":\"prof-b\",\"caller\":\"(unknown)\",\"n\":1}" true HAS, ;
 
 \ The report case compares every byte the image's prof-report, prof-json and
@@ -719,15 +738,40 @@ variable GOT-N
    XOR-BYTES,
    0 G-PUSH  0 WANT ;
 
-\ The limit's report is the text one, from its first line: LIMIT-SAMPLES
-\ samples.
+\ Check the count read into GOT and its bytes: GOT starts with the head, the
+\ digits after it make a total at least n, and the tail follows them.
+: HEADER-TOTAL, ( str str n -- ) {: head:str tail:str least:n :}
+   LBL LBL {: digit:label parsed:label :}
+   CAP-LEN KEEP,  CAP-LEN RECALL,  head STARTS,
+   tail X64HARNESS:PUSH-TEXT,
+   R9 R64>N G-POP  RDI R64>N G-POP
+   GOT AT,  RSI R64>N G-POP
+   CAP-LEN RECALL,  RDX R64>N G-POP  RDX RSI ASM-SINK ENC-ADD-RR     \ rdx = the end
+   RSI head STR:LEN ADDI,
+   R10 ZERO-REG,
+   digit LBL,
+      RSI RDX ASM-SINK ENC-CMP-RR  C-AE parsed JCC,
+      RCX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+      RCX [char] 0 SUBI,  RCX 9 >IMM32 ASM-SINK ENC-CMP-RI32  C-A parsed JCC,
+      R10 R10 10 >IMM8 ASM-SINK ENC-IMUL-RRI8  R10 RCX ASM-SINK ENC-ADD-RR
+      RSI ASM-SINK ENC-INC  digit JMP,
+   parsed LBL,
+   RAX ZERO-REG,
+   R10 least >IMM32 ASM-SINK ENC-CMP-RI32  C-L POISON-IF,
+   RCX RSI R9 1 0 MEM-IDX ASM-SINK ENC-LEA
+   RCX RDX ASM-SINK ENC-CMP-RR  C-A POISON-IF,
+   XOR-BYTES,
+   0 G-PUSH  0 WANT ;
+
+\ The limit's report is the text one, from its first line: at least LIMIT-SAMPLES samples,
+\ since the sample that reaches the limit may count several intervals.
 : LIMIT-CASE ( -- )
    s" pipe" ROW  0 G-POP  WFD KEEP,  RFD KEEP,
    s" fork" ROW  LIMIT-CHILD,
    WFD RECALL,  s" close" ROW
    s" wait-status" ROW  99 8 lshift WANT
    RFD RECALL,  GOT AT,  TEXT-CAP N,  s" read" ROW
-   s" profiler samples 3 words " STARTS,
+   s" profiler samples " s"  words " LIMIT-SAMPLES HEADER-TOTAL,
    RFD RECALL,  s" close" ROW ;
 
 \ ---- the clock's bounds -----------------------------------------------------------
@@ -741,6 +785,12 @@ variable GOT-N
       RCX R64>N G-POP  RAX R64>N G-POP  0 G-PUSH
       RCX RAX ASM-SINK ENC-CMP-RR  C-L turn JCC,
    0 G-POP ;
+
+\ PROF-TOT is at least n.
+: TOTAL-AT-LEAST, ( n -- ) {: least:n :}
+   R8 BAND IMM,  RCX R8 PROF-TOT MEM-OFF LOAD,
+   RAX 1 IMM,  RCX least >IMM32 ASM-SINK ENC-CMP-RI32  C-L POISON-IF,
+   0 G-PUSH  1 WANT ;
 
 \ prof-rate SLOW-RATE, then prof-on: the timer's interval is one whole second
 \ and the rest in microseconds; then a phase of SLOW-PHASE-NS, timed by
@@ -756,9 +806,45 @@ variable GOT-N
    0 G-PUSH  SLOW-RATE USEC-PER-SEC mod WANT
    SLOW-PHASE-NS N,  DELAY,
    s" prof-off" ROW
-   R8 BAND IMM,  RCX R8 PROF-TOT MEM-OFF LOAD,
-   RAX 1 IMM,  RCX SLOW-TICKS >IMM32 ASM-SINK ENC-CMP-RI32  C-L POISON-IF,
-   0 G-PUSH  1 WANT ;
+   SLOW-TICKS TOTAL-AT-LEAST, ;
+
+\ rt_sigprocmask(how, {SIGALRM}, NULL, SIGSET-BYTES) on this thread, the set in
+\ a cell below rsp: rax = 0 when the mask took.
+: ALARM-MASK, ( n -- ) {: how:n :}
+   RSP CELL SUBI,
+   RAX 1 SIGALRM 1- lshift IMM,  RAX RSP MEM-AT STORE,
+   RDI how IMM,  RSI RSP COPY,  RDX ZERO-REG,  R10 SIGSET-BYTES IMM,
+   NR-RT-SIGPROCMASK SYS,
+   RSP CELL ADDI, ;
+
+\ prof-on at DEFAULT-RATE, then SIGALRM blocked across a WAIT-NS spin by
+\ mono-ns: the one signal the wait leaves pending weighs every interval it
+\ spanned, so PROF-TOT reaches WAIT-TICKS.
+: WEIGH-CASE ( -- )
+   DEFAULT-RATE N,  s" prof-rate" ROW
+   0 N,  s" prof-on" ROW
+   SIG-BLOCK ALARM-MASK,  0 G-PUSH  0 WANT
+   WAIT-NS N,  DELAY,
+   SIG-UNBLOCK ALARM-MASK,  0 G-PUSH  0 WANT
+   s" prof-off" ROW
+   WAIT-TICKS TOTAL-AT-LEAST, ;
+
+\ prof-on at DEFAULT-RATE, then CARRY-ROUNDS rounds of a CARRY-SPIN-NS spin, each
+\ shorter than the interval, and a prof-row into a pipe, which stops the clock:
+\ only the carry across the rows lets the spins reach CARRY-TICKS samples.
+: CARRY-CASE ( -- )
+   LBL {: turn:label :}
+   FD:STDOUT FD>N N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
+   DEFAULT-RATE N,  s" prof-rate" ROW
+   0 N,  s" prof-on" ROW
+   CARRY-ROUNDS N,  TURNS KEEP,
+   turn LBL,
+      CARRY-SPIN-NS N,  DELAY,
+      [: -1 N,  s" prof-row" ROW ;] PIPED,  0 G-POP  0 G-POP
+      TURNS AT,  RCX R64>N G-POP  RDX RCX MEM-AT LOAD,  RDX ASM-SINK ENC-DEC  RDX RCX MEM-AT STORE,
+      C-NE turn JCC,
+   s" prof-off" ROW
+   CARRY-TICKS TOTAL-AT-LEAST, ;
 
 \ prof-rate FAST-RATE, then RESET-TURNS turns of prof-on, a delay, prof-reset,
 \ prof-off and the identity: SKEWED counts the turns that found it false. A
@@ -838,6 +924,8 @@ public
    [: RETIRED-CASE ;] false s" hb-x64-kernel-prof-retired" TMP-PATH BUILD
    [: LIMIT-CASE ;] false s" hb-x64-kernel-prof-limit" TMP-PATH BUILD
    [: SLOW-CASE ;] false s" hb-x64-kernel-prof-slow" TMP-PATH BUILD
+   [: WEIGH-CASE ;] false s" hb-x64-kernel-prof-weigh" TMP-PATH BUILD
+   [: CARRY-CASE ;] false s" hb-x64-kernel-prof-carry" TMP-PATH BUILD
    [: RESETS-CASE ;] false s" hb-x64-kernel-prof-resets" TMP-PATH BUILD
    [: RATE-REJECTED-CASE ;] false s" hb-x64-kernel-prof-rate-rejected" TMP-PATH BUILD
    [: RATE-CAUGHT-CASE ;] false s" hb-x64-kernel-prof-rate-caught" TMP-PATH BUILD

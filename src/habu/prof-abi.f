@@ -16,7 +16,7 @@ variable LPROFRECLAIM
 \ The band: PROF-STATE-BYTES of state cells, then one counter per dict record.
 \ The band closes the DATA region: it starts PROF-CNT-BYTES below DATA's end.
 : PROF-BAND-AT ( n n -- n ) {: base:n size:n :} size PROF-CNT-BYTES - base + ;
-0  constant PROF-TOT        \ sample intervals elapsed: aarch64 weighs each sample (ARN-LAST)
+0  constant PROF-TOT        \ sample intervals elapsed: each sample weighs the intervals since ARN-LAST
 8  constant PROF-LIM        \ report + exit(EXIT-STATUS:PROF-LIMIT) at this many,
                             \ 0 = sample until prof-off
 16 constant PROF-OTHER      \ Habu-code samples outside any dict word (main loop, helpers)
@@ -71,13 +71,11 @@ variable LPROFRECLAIM
 112 constant ARN-STACK-TOP   \ the main stack's top, as boot recorded it
 120 constant ARN-STACK-LOW   \ the top less the stack limit
 \ A standard signal does not queue: the ticks that expire while the process is
-\ blocked in a syscall or descheduled arrive as one SIGALRM. The aarch64 handler
+\ blocked in a syscall or descheduled arrive as one SIGALRM. The handler
 \ therefore counts each sample as the whole intervals elapsed since the last
 \ one, so blocked time is charged where the sample lands.
 128 constant ARN-LAST        \ the timer clock at the last sample, or at arming
 136 constant ARN-TICKS       \ the sampling interval in the timer clock's ticks, at least 1
-\ The x86-64 twin weighs nothing and keeps no ARN-SEQ: its stamp is PROF-TOT + 1,
-\ which is the serial only while every sample adds exactly one to PROF-TOT.
 144 constant ARN-SEQ         \ samples taken, one each whatever their weight: the stamps' serial
 \ A sample inside C is charged to the Habu word that called it when the bounded
 \ caller search names one, so that weight is in the word's counter and not in
@@ -115,11 +113,12 @@ $FFF constant PROF-PAGE-MASK            \ off the main stack: never past SP's 4 
 $800000 constant PROF-STACK-BYTES       \ the main stack's limit when getrlimit has none
 \ A tick in code compiled after prof-on has no index entry. The handler keeps the
 \ pc, the interrupted return address and the sample's weight (three cells, fixed
-\ stride, no walk, no allocation; x86-64 leaves the weight cell unused); the next report rebuilds the index and replays them, the only
+\ stride, no walk, no allocation); the next report rebuilds the index and replays them, the only
 \ point at which every word the phase compiled exists. Sizing: a 92-second
 \ self-build at 1 kHz put 13,991 of 92,000 samples here, so $40000 slots hold
 \ about eighteen such builds; past that a sample is counted in ARN-SPILL.
 24 constant PROF-DEFER-ENT              \ pc, return address (aarch64: x30), weight
+16 constant PROF-SLOT-WEIGHT            \ a deferred slot's weight, after its pc and return address
 $40000 constant PROF-DEFER-SLOTS
 64 constant PROF-ROWS                   \ rows one report prints: enough that a compiler phase's roots,
                                         \ which carry a large inclusive share on a small exclusive one, reach the report

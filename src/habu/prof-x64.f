@@ -31,6 +31,8 @@ LINUX-LAYOUT:DATA-VA VA>N LINUX-LAYOUT:DATA-SIZE PROF-BAND-AT constant BAND-VA
 BAND-VA PROF-STATE-BYTES + constant CNT-VA      \ one counter per record
 LINUX-LAYOUT:DATA-VA VA>N MAIN-STACK-TOP-CELL + constant TOP-VA
 1000 constant DEFAULT-USEC                      \ the interval prof-on arms when prof-rate set none
+1000000000 constant NS-PER-SEC                  \ ARN-TICKS, ARN-LAST and ARN-CARRY count CLOCK_MONOTONIC ns
+1000 constant NS-PER-USEC
 1 constant STDOUT
 2 constant STDERR
 16 constant REC-FLAGS                           \ a record's flags: its name's length, low
@@ -111,6 +113,28 @@ variable SESSION-CELL
 
 : ARENA>RSI, ( -- )  RSI BAND-VA IMM,  RSI RSI PROF-ARENA MEM-OFF LOAD, ;
 
+\ The handler and the replay keep the sample's weight at [rsp]: r = the
+\ weight `at` bytes above rsp.
+: WEIGHT, ( r64 n -- ) {: r:r64 at:n :}  r RSP at MEM-OFF LOAD, ;
+
+\ Add r to the cell `off` past base.
+: ADD-MEM, ( r64 r64 n -- ) {: r:r64 base:r64 off:n :}
+   r base off MEM-OFF ASM-SINK ENC-ADD-MR ;
+
+\ Add the weight at [rsp] to the cell `off` past the register. It clobbers rcx.
+: ADD-WEIGHT, ( r64 n -- ) {: base:r64 off:n :}  RCX 0 WEIGHT,  RCX base off ADD-MEM, ;
+
+\ rax = ns on CLOCK_MONOTONIC, ITIMER_REAL's clock, by the system call, which
+\ a signal handler may make. rsi and rdi survive; clobbers rcx r11.
+: CLOCK-NOW, ( -- )
+   RSI ASM-SINK ENC-PUSH  RDI ASM-SINK ENC-PUSH
+   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8                             \ struct timespec: s, then ns
+   RDI CLOCK-MONOTONIC IMM32,  RSI RSP COPY,  NR-CLOCK-GETTIME SYS,
+   RAX RSP MEM-AT LOAD,  RAX RAX NS-PER-SEC >IMM32 ASM-SINK ENC-IMUL-RRI32
+   RAX RSP CELL MEM-OFF ASM-SINK ENC-ADD-RM
+   RSP RSP 16 MEM-OFF LEA,
+   RDI ASM-SINK ENC-POP  RSI ASM-SINK ENC-POP ;
+
 \ FIND ( rdi = pc, rsi = arena -- rax = index entry or 0 ): the twin of prof.f
 \ LPROFFIND, the whole of pc attribution, shared by the handler and by
 \ prof-pc>rec, so the row answers what a tick counts: the entry with the
@@ -140,12 +164,13 @@ variable SESSION-CELL
    miss LBL,  RAX ZERO-REG,
    out LBL,  RET, ;
 
-\ EDGE ( rsi = arena, rdi = the sampled record, rdx = its caller's ): the twin
-\ of prof.f LPROFEDGE, one caller edge counted in the open-addressed table,
-\ keyed (sampled << PROF-REC-BITS | caller) + 1 as there. A sample whose own
-\ record is unknown (rdi < 0) has no edge to key, and a full probe window
-\ counts a drop rather than overwriting another pair. Clobbers rax rcx r8-r11
-\ and the flags; rsi, rdi and rdx survive.
+\ EDGE ( rsi = arena, rdi = the sampled record, rdx = its caller's, the
+\ caller's [rsp] = the weight ): the twin of prof.f LPROFEDGE, the weight added
+\ to one caller edge in the open-addressed table, keyed (sampled <<
+\ PROF-REC-BITS | caller) + 1 as there. A sample whose own record is unknown
+\ (rdi < 0) has no edge to key, and a full probe window counts the weight as
+\ dropped rather than overwriting another pair. Clobbers rax rcx r8-r11 and
+\ the flags; rsi, rdi and rdx survive.
 : EDGE-HELPER, ( -- )
    EDGE-LBL LBL,
    LBL LBL LBL LBL {: probe:label free:label hit:label done:label :}
@@ -163,9 +188,9 @@ variable SESSION-CELL
       R11 RAX CMP-REG,  C-E hit JCC,
       RCX INC,  RCX PROF-CALL-MASK >IMM32 ASM-SINK ENC-AND-RI32
       R9 DEC,  C-NE probe JCC,
-   RSI ARN-DROP BUMP,  done JMP,
-   free LBL,  RAX R10 MEM-AT STORE,  R11 1 IMM32,  R11 R10 CELL MEM-OFF STORE,  done JMP,
-   hit LBL,  R10 CELL BUMP,
+   R11 CELL WEIGHT,  R11 RSI ARN-DROP ADD-MEM,  done JMP,
+   free LBL,  RAX R10 MEM-AT STORE,  R11 CELL WEIGHT,  R11 R10 CELL MEM-OFF STORE,  done JMP,
+   hit LBL,  R11 CELL WEIGHT,  R11 R10 CELL ADD-MEM,
    done LBL,  RET, ;
 
 \ rax = a record's raw length cell: its code bytes, the twin of prof.f
@@ -552,21 +577,22 @@ variable SESSION-CELL
    next LBL,  RCX PROF-ENT ADDI,  turn JMP,
    done LBL, ;
 
-\ Add one to the cell of the per-record array at rsi + reg * CELL + off.
-\ Clobbers rax.
-: RECORD-BUMP, ( r64 n -- ) {: ix:r64 off:n :}
-   RAX RSI ix CELL off MEM-IDX LOAD,  RAX INC,  RAX RSI ix CELL off MEM-IDX STORE, ;
+\ Add the weight at [rsp] to the cell of the per-record array at rsi + reg *
+\ CELL + off. Clobbers rax.
+: RECORD-ADD, ( r64 n -- ) {: ix:r64 off:n :}
+   RAX 0 WEIGHT,  RAX RSI ix CELL off MEM-IDX ASM-SINK ENC-ADD-MR ;
 
 \ rsi = arena: replay the deferred samples through the rebuilt index, the twin
 \ of prof.f C-PROF-REPLAY, whose comment gives the rules. The pc names the
 \ sampled record, which takes the exclusive and the inclusive sample the
-\ handler could not give it. The cell the handler kept at the interrupted rsp
-\ names the caller when it is not 0, searched one byte back as the walk
-\ searches a return address; a caller only the rebuild reached, its start at or
-\ above ARN-OLDHI, takes the inclusive sample the handler's walk could not. A
-\ pc that still names no record counts in ARN-NEW. It borrows rbx and r12, the
-\ slot and the samples left, on the machine stack, and r10 holds the sampled
-\ record across FIND, which keeps it.
+\ handler could not give it. Each sample counts at the weight the handler kept
+\ in its slot, at [rsp] while the slot replays. The cell the handler kept at
+\ the interrupted rsp names the caller when it is not 0, searched one byte back
+\ as the walk searches a return address; a caller only the rebuild reached,
+\ its start at or above ARN-OLDHI, takes the inclusive sample the handler's
+\ walk could not. A pc that still names no record counts in ARN-NEW. It
+\ borrows rbx and r12, the slot and the samples left, on the machine stack,
+\ and r10 holds the sampled record across FIND, which keeps it.
 : REPLAY, ( -- )
    LBL LBL LBL LBL LBL LBL {: turn:label miss:label nocall:label go:label next:label done:label :}
    RBX ASM-SINK ENC-PUSH  R12 ASM-SINK ENC-PUSH
@@ -574,13 +600,14 @@ variable SESSION-CELL
    R12 RSI ARN-DEFER MEM-OFF LOAD,
    turn LBL,
       R12 TEST,  C-E done JCC,
+      RAX RBX PROF-SLOT-WEIGHT MEM-OFF LOAD,  RAX ASM-SINK ENC-PUSH
       RDI RBX MEM-AT LOAD,
       FIND-LBL CALL,
       RAX TEST,  C-E miss JCC,
       R10 RAX ENT-IDX MEM-OFF LOAD,
       R8 CNT-VA IMM,
-      RAX R8 R10 CELL 0 MEM-IDX LOAD,  RAX INC,  RAX R8 R10 CELL 0 MEM-IDX STORE,
-      R10 ARN-INCL RECORD-BUMP,                                 \ a word is inside itself
+      RAX 0 WEIGHT,  RAX R8 R10 CELL 0 MEM-IDX ASM-SINK ENC-ADD-MR
+      R10 ARN-INCL RECORD-ADD,                                  \ a word is inside itself
       RDI RBX CELL MEM-OFF LOAD,
       RDI TEST,  C-E nocall JCC,
       RDI DEC,                                                  \ inside the call, not past it
@@ -590,14 +617,15 @@ variable SESSION-CELL
       RDX R10 CMP-REG,  C-E nocall JCC,
       RCX RAX ENT-START MEM-OFF LOAD,
       RCX RSI ARN-OLDHI MEM-OFF CMP-MEM,  C-B go JCC,           \ the old index named it
-      RDX ARN-INCL RECORD-BUMP,
+      RDX ARN-INCL RECORD-ADD,
       go JMP,
       nocall LBL,  RDX PROF-CALLER-NONE IMM32,
       go LBL,
       RDI R10 COPY,  EDGE-LBL CALL,
       next JMP,
-      miss LBL,  RSI ARN-NEW BUMP,
-   next LBL,  RBX PROF-DEFER-ENT ADDI,  R12 DEC,  turn JMP,
+      miss LBL,  RSI ARN-NEW ADD-WEIGHT,
+   next LBL,  RAX ASM-SINK ENC-POP
+   RBX PROF-DEFER-ENT ADDI,  R12 DEC,  turn JMP,
    done LBL,
    RAX ZERO-REG,  RAX RSI ARN-DEFER MEM-OFF STORE,
    R12 ASM-SINK ENC-POP  RBX ASM-SINK ENC-POP ;
@@ -630,40 +658,41 @@ variable SESSION-CELL
 : EDGED-REG ( -- r64 ) R14 ;            \ nonzero once the immediate caller's edge is in
 : SCAN-REG ( -- r64 ) R10 ;             \ a foreign sample's caller search, from the interrupted rsp up
 
-\ Add one to the band's cell at n. It clobbers rax and rcx.
-: BAND-BUMP, ( n -- ) {: off:n :}  RAX BAND-VA IMM,  RAX off BUMP, ;
+\ Add the weight at [rsp] to the band's cell at n. It clobbers rax and rcx.
+: BAND-ADD, ( n -- ) {: off:n :}  RAX BAND-VA IMM,  RAX off ADD-WEIGHT, ;
 
 \ The ucontext slots the handler reads (src/habu/boot-x64.f UC-GREG).
 : DATA-SLOT ( -- n ) ENGINE-GPR:X64-RBASE >R64 X64BOOT:UC-GREG ;
 : DBASE-SLOT ( -- n ) DBASE-REG X64BOOT:UC-GREG ;
 : RSP-SLOT ( -- n ) RSP X64BOOT:UC-GREG ;
 
-\ rax = an index entry, rdx = its record: one inclusive sample for that record,
-\ and only the first time THIS sample reaches it, the twin of prof.f
-\ C-PROF-INCL-ONCE, whose comment gives the reason. The stamp is the sample's
-\ serial, PROF-TOT + 1, because TOT is bumped last. Clobbers rcx and r8.
+\ rsi = arena, rax = an index entry, rdx = its record, [rsp] = the weight: one
+\ inclusive sample for that record, and only the first time THIS sample
+\ reaches it, the twin of prof.f C-PROF-INCL-ONCE, whose comment gives the
+\ reason. The stamp is ARN-SEQ. Clobbers rcx and r8.
 : INCL-ONCE, ( -- )
    LBL {: seen:label :}
-   RCX BAND-VA IMM,  RCX RCX PROF-TOT MEM-OFF LOAD,  RCX INC,
+   RCX RSI ARN-SEQ MEM-OFF LOAD,
    R8 RSI RDX CELL ARN-STAMP MEM-IDX LEA,
    RCX R8 MEM-AT CMP-MEM,  C-E seen JCC,
    RCX R8 MEM-AT STORE,
-   RAX ENT-INCL BUMP,
+   RAX ENT-INCL ADD-WEIGHT,
    seen LBL, ;
 
-\ rax = an index entry: the sample is that word's own, exclusive and
+\ rax = an index entry, [rsp] = the weight: the sample is that word's own, exclusive and
 \ inclusive, the twin of prof.f C-PROF-CHARGE; SAMPLE-REG = its record for the
 \ walk. Clobbers rcx rdx r8.
 : CHARGE, ( -- )
    SAMPLE-REG RAX ENT-IDX MEM-OFF LOAD,
    R8 CNT-VA IMM,
-   RCX R8 SAMPLE-REG CELL 0 MEM-IDX LOAD,  RCX INC,  RCX R8 SAMPLE-REG CELL 0 MEM-IDX STORE,
+   RCX 0 WEIGHT,  RCX R8 SAMPLE-REG CELL 0 MEM-IDX ASM-SINK ENC-ADD-MR
    RDX SAMPLE-REG COPY,  INCL-ONCE, ;                             \ a word is inside itself
 
 \ rdi = the pc: keep a sample whose code the index cannot name yet, the twin
-\ of prof.f C-PROF-DEFER. It keeps the pc and the cell at the interrupted rsp,
-\ where a leaf's call left its return address and aarch64 keeps x30, at a
-\ fixed stride; a full buffer counts a spill. Clobbers rcx r8 r9.
+\ of prof.f C-PROF-DEFER. It keeps the pc, the cell at the interrupted rsp,
+\ where a leaf's call left its return address and aarch64 keeps x30, and the
+\ weight at [rsp], at a fixed stride; a full buffer adds the weight to
+\ ARN-SPILL. Clobbers rcx r8 r9.
 : DEFER, ( -- )
    LBL LBL {: full:label done:label :}
    RCX RSI ARN-DEFER MEM-OFF LOAD,
@@ -672,9 +701,10 @@ variable SESSION-CELL
    R8 RSI R8 1 ARN-DEF MEM-IDX LEA,
    RDI R8 MEM-AT STORE,
    R9 CUR-REG MEM-AT LOAD,  R9 R8 CELL MEM-OFF STORE,
+   R9 0 WEIGHT,  R9 R8 PROF-SLOT-WEIGHT MEM-OFF STORE,
    RCX INC,  RCX RSI ARN-DEFER MEM-OFF STORE,
    done JMP,
-   full LBL,  RSI ARN-SPILL BUMP,
+   full LBL,  RSI ARN-SPILL ADD-WEIGHT,
    done LBL, ;
 
 \ END-REG = where a scan up from rsp in CUR-REG stops: ARN-WALK cells above it
@@ -748,7 +778,7 @@ variable SESSION-CELL
    done LBL, ;
 
 \ The limit test, the sample counted: the twin of prof.f EMIT-PROF's. A Habu
-\ sample that brings PROF-TOT to a nonzero PROF-LIM, compared signed, prints
+\ sample that brings PROF-TOT to or past a nonzero PROF-LIM, compared signed, prints
 \ the text report and exits EXIT-STATUS:PROF-LIMIT. The dump does not sync, so its
 \ deferred samples stay in the header's "defer".
 : LIMIT, ( -- )
@@ -760,28 +790,53 @@ variable SESSION-CELL
    RDI EXIT-STATUS:PROF-LIMIT IMM32,  NR-EXIT-GROUP SYS,
    below LBL, ;
 
+\ The weight, the twin of prof.f C-PROF-WEIGHT, whose comment gives it: rax =
+\ the whole intervals since ARN-LAST, with ARN-CARRY, and the remainder in
+\ ARN-CARRY; ARN-LAST moves to now and ARN-SEQ counts the sample, whatever its
+\ weight. With no arena or no interval yet it is 1. rdx survives; clobbers rcx
+\ rsi r8 r11.
+: WEIGH, ( -- )
+   LBL LBL {: one:label done:label :}
+   ARENA>RSI,  RSI TEST,  C-E one JCC,
+   CLOCK-NOW,
+   RCX RSI ARN-LAST MEM-OFF LOAD,  RAX RSI ARN-LAST MEM-OFF STORE,
+   RAX RCX ASM-SINK ENC-SUB-RR  RAX RSI ARN-CARRY MEM-OFF ASM-SINK ENC-ADD-RM
+   RSI ARN-SEQ BUMP,
+   RCX RSI ARN-TICKS MEM-OFF LOAD,  RCX TEST,  C-E one JCC,
+   R8 RDX COPY,  RDX ZERO-REG,  RCX ASM-SINK ENC-DIV                \ rdx = the remainder
+   RDX RSI ARN-CARRY MEM-OFF STORE,  RDX R8 COPY,
+   done JMP,
+   one LBL,  RAX 1 IMM32,
+   done LBL, ;
+
 \ The handler: the twin of prof.f EMIT-PROF. The kernel enters it on the
-\ alternate stack with rdx = the ucontext. A context whose rbp is DATA and
-\ whose r13 is the DBASE prof-on recorded is a Habu sample; any other is a
-\ foreign callee's, which goes to the Habu word FCALLER, names: ARN-FCALLED
-\ counts it, that word's counter and inclusive count take it, and it walks.
-\ With no such word or no arena it counts in PROF-FOREIGN. With no arena a
-\ Habu sample counts in PROF-OTHER. Otherwise the pc goes to the index: an
-\ indexed pc bumps its record's counter and inclusive count; one at or above
-\ ARN-HI, compiled after prof-on, is deferred; any other, engine code or a
-\ gap, counts in PROF-OTHER; and each walks. PROF-TOT counts the sample last,
-\ so sum(counters) + ARN-NEW + ARN-DEFER + ARN-SPILL + PROF-OTHER +
-\ PROF-FOREIGN == PROF-TOT whenever no tick is running, the sample that
-\ reaches the limit included. A foreign sample then returns; a Habu one runs
-\ the limit test first, so a limit reached on a foreign sample reports at the
-\ next Habu one. `ret` enters the restorer. No tick lands in the handler or
-\ its restorer: the action has no SA_NODEFER, so the kernel blocks SIGALRM
-\ until rt_sigreturn restores the interrupted mask.
+\ alternate stack with rdx = the ucontext. It weighs the sample first and
+\ keeps the weight at [rsp]; a sample that weighs 0 ends there. A context
+\ whose rbp is DATA and whose r13 is the DBASE prof-on recorded is a Habu
+\ sample; any other is a foreign callee's, which goes to the Habu word
+\ FCALLER, names: ARN-FCALLED counts it, that word's counter and inclusive
+\ count take it, and it walks. With no such word or no arena it counts in
+\ PROF-FOREIGN. With no arena a Habu sample counts in PROF-OTHER. Otherwise
+\ the pc goes to the index: an indexed pc adds to its record's counter and
+\ inclusive count; one at or above ARN-HI, compiled after prof-on, is
+\ deferred; any other, engine code or a gap, counts in PROF-OTHER; and each
+\ walks. Every count but ARN-SEQ, ARN-FRAMES and ARN-DEFER takes the weight, and
+\ PROF-TOT takes it last, so sum(counters) + ARN-NEW + the deferred slots'
+\ weights + ARN-SPILL + PROF-OTHER + PROF-FOREIGN == PROF-TOT whenever no tick
+\ is running, the sample that reaches the limit included. A foreign sample
+\ then returns; a Habu one runs the limit test first, so a limit reached on a
+\ foreign sample reports at the next Habu one. `ret` enters the restorer once
+\ the weight is popped. No tick lands in the handler or its restorer: the
+\ action has no SA_NODEFER, so the kernel blocks SIGALRM until rt_sigreturn
+\ restores the interrupted mask.
 : HANDLER, ( -- )
    HANDLER-LBL LBL,
    LBL LBL LBL {: unnamed:label other:label walk:label :}
    LBL LBL LBL {: noarena:label foreign:label total:label :}
-   LBL LBL {: lost:label ftotal:label :}
+   LBL LBL LBL {: lost:label ftotal:label out:label :}
+   WEIGH,
+   RAX ASM-SINK ENC-PUSH
+   RAX TEST,  C-E out JCC,
    RAX RDX DATA-SLOT MEM-OFF LOAD,
    RCX LINUX-LAYOUT:DATA-VA VA>N IMM,  RAX RCX CMP-REG,  C-NE foreign JCC,   \ rbp must be DATA
    RAX RDX DBASE-SLOT MEM-OFF LOAD,
@@ -799,21 +854,23 @@ variable SESSION-CELL
    RDI RSI ARN-HI MEM-OFF CMP-MEM,  C-B other JCC,               \ below the high mark: engine code or a gap
    DEFER,                                                        \ at or above it: compiled after prof-on
    walk JMP,
-   other LBL,  PROF-OTHER BAND-BUMP,
+   other LBL,  PROF-OTHER BAND-ADD,
    walk LBL,  WALK,  total JMP,
    foreign LBL,                                                  \ no report from here
    RCX BAND-VA IMM,  RSI RCX PROF-ARENA MEM-OFF LOAD,  RSI TEST,  C-E lost JCC,
    CUR-REG RDX RSP-SLOT MEM-OFF LOAD,
    FCALLER,
    RAX TEST,  C-E lost JCC,
-   RSI ARN-FCALLED BUMP,
+   RSI ARN-FCALLED ADD-WEIGHT,
    CHARGE,  WALK,  ftotal JMP,
-   lost LBL,  PROF-FOREIGN BAND-BUMP,
-   ftotal LBL,  PROF-TOT BAND-BUMP,
+   lost LBL,  PROF-FOREIGN BAND-ADD,
+   ftotal LBL,  PROF-TOT BAND-ADD,
+   out LBL,  RCX ASM-SINK ENC-POP
    RET,
-   noarena LBL,  PROF-OTHER BAND-BUMP,
-   total LBL,  PROF-TOT BAND-BUMP,
+   noarena LBL,  PROF-OTHER BAND-ADD,
+   total LBL,  PROF-TOT BAND-ADD,
    LIMIT,
+   RCX ASM-SINK ENC-POP
    RET, ;
 
 \ Everything a report prints goes through these, so a row, a caller line and a
@@ -957,6 +1014,17 @@ variable SESSION-CELL
    a u SAY,  RAX BAND-VA IMM,  RAX RAX off MEM-OFF LOAD,  1 NUM, ;
 : ARENA-FIELD, ( str n -- ) {: a:^ u:n off:n :}
    a u SAY,  RAX R15 off MEM-OFF LOAD,  1 NUM, ;
+\ The deferred slots' summed weights, from r15 = arena: the twin of prof.f C-PROF-DEFER-WEIGHT.
+: DEFER-FIELD, ( str -- ) {: a:^ u:n :}
+   LBL LBL {: turn:label done:label :}
+   a u SAY,
+   RAX ZERO-REG,  RCX R15 ARN-DEFER MEM-OFF LOAD,
+   RDX R15 ARN-DEF PROF-SLOT-WEIGHT + MEM-OFF LEA,
+   turn LBL,
+      RCX TEST,  C-E done JCC,
+      RAX RDX MEM-AT ASM-SINK ENC-ADD-RM
+      RDX PROF-DEFER-ENT ADDI,  RCX DEC,  turn JMP,
+   done LBL,  1 NUM, ;
 
 \ The header: words + other + new + defer + spill + foreign == samples is the
 \ identity it states; foreign charged to callers is a share of words. After a
@@ -967,7 +1035,7 @@ variable SESSION-CELL
    json if s\" ,\"words\":" else s"  words " then AT-WORDS FRAME-FIELD,
    json if s\" ,\"other\":" else s"  other " then PROF-OTHER BAND-FIELD,
    json if s\" ,\"new\":" else s"  new " then ARN-NEW ARENA-FIELD,
-   json if s\" ,\"defer\":" else s"  defer " then ARN-DEFER ARENA-FIELD,
+   json if s\" ,\"defer\":" else s"  defer " then DEFER-FIELD,
    json if s\" ,\"spill\":" else s"  spill " then ARN-SPILL ARENA-FIELD,
    json if s\" ,\"foreign\":" else s"  foreign " then PROF-FOREIGN BAND-FIELD,
    json if s\" ,\"foreign charged to callers\":" else s"  foreign charged to callers " then
@@ -1219,35 +1287,67 @@ private
    RCX BAND-VA IMM,  RAX RCX PROF-ARENA MEM-OFF STORE,
    have LBL, ;
 
-\ setitimer(ITIMER_REAL) with the interval and the first expiry both rax
-\ seconds and rdx microseconds; CF is set when the call failed. Clobbers
-\ rax rcx rdx rsi rdi r11.
+\ setitimer(ITIMER_REAL) with the interval rax seconds and rdx microseconds
+\ and the first expiry r8 seconds and r9 microseconds; CF is set when the call
+\ failed. Clobbers rax rcx rdx rsi rdi r11.
 : TIMER, ( -- )
    RSP ITIMER-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
    RAX RSP IT-INTERVAL-SEC MEM-OFF STORE,  RDX RSP IT-INTERVAL-USEC MEM-OFF STORE,
-   RAX RSP IT-VALUE-SEC MEM-OFF STORE,  RDX RSP IT-VALUE-USEC MEM-OFF STORE,
+   R8 RSP IT-VALUE-SEC MEM-OFF STORE,  R9 RSP IT-VALUE-USEC MEM-OFF STORE,
    RDI ITIMER-REAL IMM32,  RSI RSP COPY,  RDX ZERO-REG,  NR-SETITIMER SYS,
    RSP RSP ITIMER-BYTES MEM-OFF LEA, ;                            \ the frame back, CF kept
 
 \ Stop the clock: a zero interval and expiry, which setitimer always takes.
-: DISARM, ( -- )  RAX ZERO-REG,  RDX ZERO-REG,  TIMER, ;
+: DISARM, ( -- )  RAX ZERO-REG,  RDX ZERO-REG,  R8 ZERO-REG,  R9 ZERO-REG,  TIMER, ;
 
-\ rsi = arena: arm the clock at the interval prof-rate left there, or
+\ rax = microseconds: rax = its seconds, rdx = the microseconds below
+\ USEC-PER-SEC. The signed divide keeps an interval below 0 negative, which
+\ setitimer rejects. Clobbers rcx.
+: SPLIT, ( -- )
+   ASM-SINK ENC-CQO  RCX USEC-PER-SEC IMM32,  RCX ASM-SINK ENC-IDIV ;
+
+\ rsi = arena: stamp ARN-TICKS with the interval prof-rate left there, or
 \ DEFAULT-USEC, which is written back so a report states the rate it sampled
-\ at, split into seconds and the microseconds below USEC-PER-SEC; the signed
-\ divide keeps an interval below 0 negative, which setitimer rejects. A rejected
-\ arm is named and fatal. The twin of prof.f C-PROF-TIMER-FRAME and
-\ C-PROF-TIMER.
-: TIMER-START, ( -- )
-   LBL LBL {: set:label ok:label :}
+\ at, and ARN-LAST with now; run before the clock arms. The twin of prof.f
+\ C-PROF-CLOCK-MARK. Clobbers rax rcx rdx r11.
+: MARK, ( -- )
+   LBL {: set:label :}
    RAX RSI ARN-USEC MEM-OFF LOAD,  RAX TEST,  C-NE set JCC,
    RAX DEFAULT-USEC IMM32,
    set LBL,  RAX RSI ARN-USEC MEM-OFF STORE,
-   ASM-SINK ENC-CQO  RCX USEC-PER-SEC IMM32,  RCX ASM-SINK ENC-IDIV   \ rax = seconds, rdx = microseconds
+   SPLIT,
+   RAX RAX NS-PER-SEC >IMM32 ASM-SINK ENC-IMUL-RRI32
+   RDX RDX NS-PER-USEC >IMM32 ASM-SINK ENC-IMUL-RRI32
+   RAX RDX ASM-SINK ENC-ADD-RR  RAX RSI ARN-TICKS MEM-OFF STORE,
+   CLOCK-NOW,  RAX RSI ARN-LAST MEM-OFF STORE, ;
+
+\ rsi = arena, MARK, run, r8 = the first expiry in microseconds, at least 1:
+\ arm the clock at the interval MARK, wrote back. A rejected arm is named and
+\ fatal. The twin of prof.f C-PROF-TIMER-FRAME and C-PROF-TIMER. Clobbers
+\ rax rcx rdx rsi rdi r8 r9 r11.
+: ARM, ( -- )
+   LBL {: ok:label :}
+   RAX R8 COPY,  SPLIT,  R8 RAX COPY,  R9 RDX COPY,
+   RAX RSI ARN-USEC MEM-OFF LOAD,  SPLIT,
    TIMER,
    C-AE ok JCC,
    PROFARMMSG$ REJECTED,
    ok LBL, ;
+
+\ rsi = arena, MARK, run: arm the clock, its first expiry a whole interval.
+: TIMER-START, ( -- )  R8 RSI ARN-USEC MEM-OFF LOAD,  ARM, ;
+
+\ rsi = arena, MARK, run: arm the clock, its first expiry the interval less
+\ ARN-CARRY, or 1 us once the carry reaches a whole interval. The twin of prof.f
+\ C-PROF-TIMER-REST.
+: REST-START, ( -- )
+   LBL LBL {: whole:label go:label :}
+   R8 RSI ARN-USEC MEM-OFF LOAD,
+   RAX RSI ARN-CARRY MEM-OFF LOAD,  RAX RSI ARN-TICKS MEM-OFF CMP-MEM,  C-AE whole JCC,
+   RDX ZERO-REG,  RCX NS-PER-USEC IMM32,  RCX ASM-SINK ENC-DIV
+   R8 RAX ASM-SINK ENC-SUB-RR  go JMP,
+   whole LBL,  R8 1 IMM32,
+   go LBL,  ARM, ;
 
 \ Zero [rcx, rdx) a cell at a time with rax = 0.
 : ZERO-SPAN, ( -- )
@@ -1273,6 +1373,7 @@ private
    RAX RSI ARN-NEW MEM-OFF STORE,  RAX RSI ARN-DROP MEM-OFF STORE,
    RAX RSI ARN-FRAMES MEM-OFF STORE,  RAX RSI ARN-SPILL MEM-OFF STORE,
    RAX RSI ARN-DEFER MEM-OFF STORE,  RAX RSI ARN-FCALLED MEM-OFF STORE,
+   RAX RSI ARN-CARRY MEM-OFF STORE,                             \ a phase's weights sum to its own armed time
    RCX PROF-WALK-CELLS IMM32,  RCX RSI ARN-WALK MEM-OFF STORE,
    RCX RSI ARN-CALL MEM-OFF LEA,  RDX RSI ARN-DEF MEM-OFF LEA,    \ the edges, the inclusive array
    ZERO-SPAN,                                                    \ and the stamps lie back to back
@@ -1287,15 +1388,24 @@ private
 \ A REPORT NEVER SAMPLES ITSELF, for the reason prof.f C-PROF-REPORT-CALL
 \ gives: the clock stops and the index syncs before the report reads PROF-TOT,
 \ and the clock starts again at the recorded interval after it, unless
-\ prof-off had stopped it.
+\ prof-off had stopped it. A running clock's time since the last sample goes
+\ to ARN-CARRY once the timer is stopped, and the restart's first expiry is
+\ the interval less that carry, the twins of prof.f C-PROF-CLOCK-HOLD and
+\ C-PROF-CLOCK-RESUME.
 : QUIET, ( -- )
+   LBL {: stopped:label :}
    DISARM,
+   RCX BAND-VA IMM,  RAX RCX PROF-ARMED MEM-OFF LOAD,  RAX TEST,  C-E stopped JCC,
+   ARENA>RSI,  CLOCK-NOW,
+   RAX RSI ARN-LAST MEM-OFF ASM-SINK ENC-SUB-RM
+   RAX RSI ARN-CARRY MEM-OFF ASM-SINK ENC-ADD-RM  RAX RSI ARN-CARRY MEM-OFF STORE,
+   stopped LBL,
    SYNC-LBL CALL, ;
 
 : RESUME, ( -- )
    LBL {: stopped:label :}
    RCX BAND-VA IMM,  RAX RCX PROF-ARMED MEM-OFF LOAD,  RAX TEST,  C-E stopped JCC,
-   ARENA>RSI,  TIMER-START,
+   ARENA>RSI,  MARK,  REST-START,
    stopped LBL, ;
 
 \ Retirement runs inside engine helpers whose scratch registers still belong
@@ -1422,7 +1532,7 @@ public
    ARENA>RSI,  INDEX,
    COUNTS-CLEAR,
    SIGALRM LINUX-SA-PROF-FLAGS HANDLER-LBL RESTORER-LBL X64BOOT:SIGACTION,
-   ARENA>RSI,  TIMER-START,
+   ARENA>RSI,  MARK,  TIMER-START,
    RCX BAND-VA IMM,  RAX 1 IMM32,  RAX RCX PROF-ARMED MEM-OFF STORE, ;
 
 \ prof-off ( -- ): stop the clock and nothing else, so the phase can be
