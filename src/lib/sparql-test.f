@@ -527,8 +527,9 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" {'head':{'vars':['l','w']},'results':{'bindings':[{'l':{'type':'literal','value':'Spindle'},'w':{'type':'literal','value':'12','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'l':{'type':'literal','value':'Bolt'},'w':{'type':'literal','value':'0.25','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}}]}}"
    EXPECT ;
 
-\ A column that may hold NULL is tested IS NOT NULL unless a join's `=`
-\ reads it: edge's o and mark's s here, in a union's branch too.
+\ A column that may hold NULL is tested IS NOT NULL once, unless a
+\ join's `=` reads it: edge's o and mark's s here, in a union's branch
+\ too, a key's column in a keyed branch, and a label read twice.
 : NULL-TESTS ( -- )
    s" SELECT ?x ?m ?y WHERE { ?x t:20 ?m . GRAPH t:7 { ?m t:23 ?y } }"
    s" t1.o = t2.s" s" t1.o IS NOT NULL"
@@ -537,7 +538,13 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?x ?m WHERE { { ?x t:20 ?m } UNION { GRAPH t:7 { ?x t:23 ?m } } }"
    s" u.o IS NOT NULL" s" t2.s IS NOT NULL"
    s" {'head':{'vars':['x','m']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:3'},'m':{'type':'uri','value':'urn:test:1'}},{'x':{'type':'uri','value':'urn:test:4'},'m':{'type':'uri','value':'urn:test:2'}},{'x':{'type':'uri','value':'urn:test:5'},'m':{'type':'uri','value':'urn:test:1'}},{'x':{'type':'uri','value':'urn:test:1'},'m':{'type':'uri','value':'urn:test:7'}},{'x':{'type':'uri','value':'urn:test:2'},'m':{'type':'uri','value':'urn:test:8'}}]}}"
-   BOTH ;
+   BOTH
+   s" SELECT ?s ?l WHERE { ?s rdfs:label ?l . ?s rdfs:label ?l . ?s a t:10 }"
+   s" .label IS NOT NULL" 1
+   s" {'head':{'vars':['s','l']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'l':{'type':'literal','value':'Lathe'}},{'s':{'type':'uri','value':'urn:test:2'},'l':{'type':'literal','value':'Mill'}}]}}"
+   ON-NODES
+   s" SELECT ?p ?o WHERE { ?s rdfs:label 'Lathe' . ?s ?p ?o }"
+   s"  CROSS JOIN LATERAL (" s" u.s IS NOT NULL" LATHE ALONE ;
 
 \ Patterns of one subject read its row once where the source's subject
 \ column is unique, while the FROM holds that row.

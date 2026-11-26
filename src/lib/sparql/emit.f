@@ -730,8 +730,9 @@ defer EXISTS-SQL ( ^plan n -- )
 
 \ Joins binding o into the scope, its condition to where. A first o's
 \ copy is nullable as o is; a strict `=` leaves the scope's binding not
-\ nullable, else a nullable o's null test goes to where at once. An
-\ OPTIONAL's ON drops no row of the scope, so it changes no flag.
+\ nullable, else a nullable o's null test goes to where at once, unless
+\ o reads the scope binding's column, which that binding's flag covers.
+\ An OPTIONAL's ON drops no row of the scope, so it changes no flag.
 : MEET ( ^plan ^VEC:vector<binding> ^binding ^VEC:vector<u8> bool -- )
    {: plan scope:^ o:^ where:^ optional:bool :}
    scope o BINDING-VAR @ FIND-VAR {: k:n :}
@@ -742,7 +743,8 @@ defer EXISTS-SQL ( ^plan n -- )
    then
    scope k VEC:AT {: s:^ :}
    plan s o where +MEETS {: strict:bool :}
-   o BINDING-NULLABLE @ {: open:bool :}
+   s BINDING-SQL @ o BINDING-SQL @ STR:= {: same:bool :}
+   o BINDING-NULLABLE @ same 0= and {: open:bool :}
    plan s o optional MERGE
    optional if exit then
    strict if false s BINDING-NULLABLE ! exit then
@@ -1286,8 +1288,8 @@ STRUCTURE pruning DERIVE addr
 \ Binds a slot's occurrence of var into occs and meets it in where with
 \ the substitution's binding of var; one bound always keeps it out of occs.
 \ null: the slot's column may hold NULL. The occurrence is nullable unless
-\ the meeting is a strict `=`; one kept out of occs has its null test
-\ written to where at once.
+\ the meeting is a strict `=` or it reads the substitution's column; one
+\ kept out of occs has its null test written to where at once.
 : OCCUR ( ^plan ^VEC:vector<binding> n n str str bool ^VEC:vector<u8> -- )
    {: plan occs:^ var:n shape:n sql:str t:str null:bool where:^ :}
    plan PLAN-OUTER @ {: outer:^ :}
@@ -1298,7 +1300,8 @@ STRUCTURE pruning DERIVE addr
    outer k VEC:AT {: o:^ :}
    o BINDING-ALWAYS @ if plan NEW-BINDINGS else occs then {: list:^ :}
    list var shape sql t BIND
-   plan list LAST o where +MEETS 0= null and {: open:bool :}
+   plan list LAST o where +MEETS 0= null and
+   sql o BINDING-SQL @ STR:= 0= and {: open:bool :}
    o BINDING-ALWAYS @ 0= if open list LAST BINDING-NULLABLE ! exit then
    open if where sql +NULL-TEST then ;
 
@@ -1799,13 +1802,15 @@ STRUCTURE pruning DERIVE addr
    loop -1 ;
 
 \ Appends to where that binding b of a key's variable is the key of
-\ row: `b = row.k`, through b's shape's `in` for a term key.
+\ row: `b = row.k`, through b's shape's `in` for a term key. That strict
+\ `=` leaves b not nullable.
 : +MEET-KEY ( ^plan ^binding ^binding str ^VEC:vector<u8> -- )
    {: plan key:^ b:^ row:str where:^ :}
    plan NEW-SQL {: k:^ :} k row +SQL k s" .k" +SQL
    where s"  AND " +SEP where b BINDING-SQL @ +SQL where s"  = " +SQL
-   key BINDING-SHAPE @ GENERIC <> if where k VEC:BYTES +SQL exit then
-   where plan b BINDING-SHAPE @ SHAPE@ SHAPE-IN @ k VEC:BYTES +CALL ;
+   key BINDING-SHAPE @ GENERIC <> if where k VEC:BYTES +SQL else
+      where plan b BINDING-SHAPE @ SHAPE@ SHAPE-IN @ k VEC:BYTES +CALL
+   then false b BINDING-NULLABLE ! ;
 
 \ Meets the key of row in each branch that PROBED it; answers the
 \ indexes of those branches, then of the others.
