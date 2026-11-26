@@ -270,7 +270,7 @@ require src/os/env-base.f
 -9280 constant E-SIGNAL-FIRST
 -9289 constant E-SIGNAL-LAST
 
-\ The io_uring readiness loop (package AIO): -9290..-9299, declared at this
+\ Asynchronous I/O (package AIO): -9290..-9299, declared at this
 \ file's end.
 -9290 constant E-AIO-FIRST
 -9299 constant E-AIO-LAST
@@ -650,7 +650,7 @@ generates: FAULT ( -- n )
 -3505 s" a library a FUNCTION: names could not be opened" ERROR:FAULT E-FFI-DLOPEN
 -3507 s" a callback frame accessor used outside a live callback, a descriptor no declaration made, or a dispatch whose body was never stored" ERROR:CODE E-FFI-CALLBACK-STATE
 -3600 s" a task's data stack is smaller than TASK:MIN-STACK" ERROR:CODE E-TASK-SIZE
--3603 s" a thread, semaphore or sleep call failed" ERROR:FAULT E-TASK-THREAD
+-3603 s" a thread, semaphore, sleep or queue call failed" ERROR:FAULT E-TASK-THREAD
 -3604 s" a task word called in a state it rejects, for example TASK:RETURN outside a task or a second result, an activation of a running or halting task, a free of a task that is not pooled and empty, a context or callback slot used outside its owner, the task table changed while tasks run, or a task started while the checker's replay parks a definition" ERROR:CODE E-TASK-STATE
 -3605 s" a task user-area claim does not fit, is made while a task is live, or names no slot of the area" ERROR:CODE E-TASK-USER
 -3606 s" a semaphore initialized twice" ERROR:CODE E-TASK-SEM-STATE
@@ -796,14 +796,8 @@ generates: FAULT ( -- n )
 -9284 s" the self-pipe answered short of the four-byte signal number" ERROR:FAULT E-SIGNAL-READ
 -9285 s" poll of the self-pipe's read end failed with an errno" ERROR:FAULT E-SIGNAL-POLL
 -9286 s" closing an end of the self-pipe failed" ERROR:FAULT E-SIGNAL-CLOSE
--9290 s" the host's queues could not be set up: io_uring_setup, a ring mapping, the eventfd or its registration on Linux; the self-pipe or its non-blocking mark on Darwin" ERROR:FAULT E-AIO-SETUP
--9291 s" the host failed a submission or the loop's wait: io_uring_enter failed or took fewer entries than offered, or the eventfd failed, on Linux; poll failed on Darwin" ERROR:FAULT E-AIO-ENTER
--9292 s" no loop running, STOP ending it, or a second START" ERROR:CODE E-AIO-STATE
--9293 s" asynchronous I/O is full: as many operations in flight as the process may hold, no io_uring submission entry free, or as many operations in flight as half a completion ring holds" ERROR:CODE E-AIO-FULL
--9294 s" STOP with an operation its task has still to await" ERROR:CODE E-AIO-BUSY
+-9291 s" the host's wait failed: epoll_wait on Linux" ERROR:FAULT E-AIO-WAIT
 -9295 s" the group is empty, holds no such ticket, or names no defined group" ERROR:CODE E-AIO-GROUP
--9296 s" a transfer count past its allocation or below zero, a file offset below -1, or a socket address length not positive" ERROR:CODE E-AIO-BOUNDS
--9297 s" Darwin's poll(2) takes at most OPEN_MAX (10240) descriptors per call, and one more would be needed" ERROR:CODE E-AIO-POLL-BOUND
 -9330 s" a reserved bit set in a frame's first byte" ERROR:CODE E-WS-RSV
 -9331 s" a reserved opcode" ERROR:CODE E-WS-OPCODE
 -9332 s" a control frame that is fragmented or carries more than 125 bytes" ERROR:CODE E-WS-CONTROL

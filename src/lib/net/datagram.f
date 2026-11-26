@@ -1,9 +1,9 @@
 \ datagram.f - datagram sockets of any address family, on Linux and macOS,
 \ through exact libc bindings. A socket is blocking and close-on-exec; a
-\ receive try never blocks, and RECEIVE waits between tries on the AIO loop.
-\ RECEIVE's timeout: zero makes one try and never reaches the AIO loop; a
+\ receive try never blocks, and RECEIVE waits between tries in AIO.
+\ RECEIVE's timeout: zero makes one try and never reaches AIO; a
 \ negative one waits with no deadline; any other is the milliseconds the call
-\ may wait in all. AIO:START must have run before the first wait.
+\ may wait in all.
 \ STORAGE CLASS. TASK-LOCAL on macOS: two 4-byte TASK:+USERS rows hold
 \ getsockopt's answer and its length; none on Linux. The vector and the
 \ address buffers are caller-owned.

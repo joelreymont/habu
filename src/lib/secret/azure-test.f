@@ -24,7 +24,6 @@ require src/lib/net/http-request.f
 require src/lib/net/http-response.f
 require src/lib/net/http-router.f
 require src/lib/test/assert.f
-require src/lib/aio.f
 require src/lib/fmt.f
 require src/lib/heap.f
 require src/lib/string.f
@@ -383,11 +382,11 @@ TASK:MIN-STACK TASK:TASK READER-7
 
 
 : TEST-MAIN ( -- )
-   T-RESET SETUP AIO:START
+   T-RESET SETUP
    HTTP:ROUTES-RESET
    s" GET" s" /metadata/identity/oauth2/token" [: IMDS-ROUTE ;] HTTP:ROUTE
    s" GET" s" /secrets/{name}" [: VAULT-ROUTE ;] HTTP:ROUTE
-   [: CASES ;] [: HTTP:STOP AIO:STOP ;] finally
+   [: CASES ;] [: HTTP:STOP ;] finally
    OUT VEC:DELETE ORIGIN-VEC @ VEC:DELETE
    T-REPORT ;
 TEST-MAIN

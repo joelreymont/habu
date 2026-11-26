@@ -825,8 +825,6 @@ variable EXIT-HOOK-N
    ;MATCH ;
 
 
-\ A sleep, not an AIO timer: the pause also waits out an AIO that rejects
-\ records.
 : ACCEPT-PAUSE ( -- )
    STOP-READ-MS >MS TASK:SLEEP ;
 
@@ -871,18 +869,6 @@ variable EXIT-HOOK-N
    1 WAKE-ARMED ! ;
 
 
-\ One arm of the listener's own polls. A poll rejected at AIO's ceiling waits
-\ for records to be freed, so it is a warning and a pause.
-: ARM-OR-PAUSE ( [ -- ] -- ) {: arm :}
-   arm catch {: code:n :}
-   code 0= if exit then
-   code E-AIO-FULL <> code E-AIO-POLL-BOUND <> and if code throw then
-   LOG:WARN s" http" LOG:LINE
-   s" poll rejected, throw " LOG:TEXT+  code LOG:CODE+
-   LOG:;LINE
-   ACCEPT-PAUSE ;
-
-
 : HANDED? ( n -- bool )
    PARK-PHASE @
    MATCH parking
@@ -900,9 +886,9 @@ variable EXIT-HOOK-N
 
 
 \ Under PARK-LOCK: the row polled until it is readable or its deadline passes.
-\ A poll AIO rejects (E-AIO-FULL at Linux's record ceiling, E-AIO-POLL-BOUND on
-\ Darwin) closes the row's connection and vacates the row, as ROW-HEARD does for
-\ a rejected poll, and the listener goes on.
+\ A POLL that throws (no memory for its record) closes the row's connection and
+\ vacates the row, as ROW-HEARD does for a rejected poll, and the listener goes
+\ on.
 : ARM-ROW ( n -- ) {: at:n :}
    at [: ROW-POLL ;] catch {: code:n :} drop
    code 0 <> if at PARK-CONN @ CLOSE-CONNECTION at VACATE exit then
@@ -975,8 +961,8 @@ variable EXIT-HOOK-N
 : LISTEN-LOOP ( -- )
    begin
       STOPPING? if exit then
-      ACCEPT-ARMED @ 0= if ['] ARM-ACCEPT ARM-OR-PAUSE else
-      WAKE-ARMED @ 0= if ['] ARM-WAKE ARM-OR-PAUSE else
+      ACCEPT-ARMED @ 0= if ARM-ACCEPT else
+      WAKE-ARMED @ 0= if ARM-WAKE else
       LISTENING AIO:AWAIT-ANY HEARD then then
    again ;
 
@@ -1444,11 +1430,7 @@ public
 \ Every hook and route is registered before START: a running server makes each
 \ hook and route word E-STATE, and a worker reads the route table unordered,
 \ while a word reaches a running task only through a channel that orders
-\ (src/lib/task.f). Route strings must outlive the server. The AIO loop is a
-\ precondition and not this package's to start: every readiness wait is an AIO
-\ submission, and one with no loop is E-AIO-STATE. Thrown inside the listener's
-\ task that code is a report nobody reads (no connection is accepted and the
-\ caller hangs on the idle deadline), so it is re-thrown here.
+\ (src/lib/task.f). Route strings must outlive the server.
 : START ( ^config -- )
    {: cfg:^config :}
    cfg HTTP-CONFIG:ADDRESS @ {: address:n :}
@@ -1456,7 +1438,6 @@ public
    cfg HTTP-CONFIG:WORKERS @ {: workers:n :}
    cfg HTTP-CONFIG:IDLE @ MS>N {: idle:n :}
    RUNNING @ 0 <> if E-STATE throw then
-   AIO:RUNNING? 0= if E-AIO-STATE throw then
    workers 1 < workers MAX-WORKERS > or if
       s" workers" workers s" " START-SETTING
       s" 1 to " REASON:APPEND MAX-WORKERS FMT:INT$ REASON:APPEND

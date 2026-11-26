@@ -15,7 +15,6 @@ require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/task.f
 require src/lib/ffi-abi.f
-require src/lib/aio.f
 require src/lib/signal.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -330,21 +329,6 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    s" a second INIT without RELEASE is rejected by name" T-LABEL
    [: SIGNAL:INIT ;] E-SIGNAL-STATE TTHROWSQ ;
 
-\ The facility is armed and the loop is not: WAIT and PENDING? say so by name
-\ instead of falling back to a thread parked in poll(2). A COLD facility still
-\ names E-SIGNAL-STATE (case one), because NEED-READY runs before the wait.
-
-: NO-LOOP-CASE ( -- )
-   AIO:STOP
-
-   s" WAIT with the loop stopped is rejected by name" T-LABEL
-   [: QUIET-MS >MS SIGNAL:WAIT drop ;] E-AIO-STATE TTHROWSQ
-
-   s" ... and so is PENDING?, which asks the same question with a zero window" T-LABEL
-   [: SIGNAL:PENDING? drop ;] E-AIO-STATE TTHROWSQ
-
-   AIO:START ;
-
 : CAUGHT-CASE ( -- )
    SIGNAL:SIGUSR1 REINSTALL
 
@@ -553,13 +537,8 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    s" the facility rejects its words again once released" T-LABEL
    [: SIGNAL:FD drop ;] E-SIGNAL-STATE TTHROWSQ ;
 
-\ Not a state a caller reaches politely - it is the one thing a wait on that
-\ read end must never do, which is re-ask a descriptor the kernel will not poll
-\ until the deadline runs out. The loop answers it on the REJECTED arm: the
-\ descriptor number no longer names anything, so io_uring rejects the POLL
-\ with EBADF rather than completing it with POLLNVAL, and READABLE-WITHIN? names
-\ the poll for both. A wait that only counted an outcome would spin here and a
-\ PENDING? that only counted one would answer true.
+\ The read end closed: epoll_ctl rejects the POLL with EBADF on the REJECTED
+\ arm, so a wait answers at once, never spinning to the deadline.
 
 : BROKEN-CASE ( -- )
    SIGNAL:INIT
@@ -699,18 +678,14 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 
 public
 
-\ The loop is started after the last definition and stopped at the end; every
-\ WAIT and PENDING? below runs on it.
 : RUN ( -- )
    T-RESET
-   AIO:START
    HOST-CASE
    STOP-CASE
    COLD-CASE
    SIGNAL:INIT
    KEEP-FD-WORD
    ARMED-CASE
-   NO-LOOP-CASE
    SIGNAL:SIGUSR1 SIGNAL:CATCH
    SIGNAL:SIGUSR2 SIGNAL:CATCH
    CAUGHT-CASE
@@ -727,7 +702,6 @@ public
    FORK-CASE
    DIE-OF-CASE
    RESEND-CASE
-   AIO:STOP
    T-REPORT ;
 
 ;package

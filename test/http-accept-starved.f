@@ -14,7 +14,6 @@ require src/lib/date.f
 require src/lib/fd.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
-require src/lib/aio.f
 require src/lib/net/tcp4.f
 require src/lib/net/http.f
 
@@ -225,13 +224,11 @@ variable READ-ERRNO
 
 
 : RUN ( -- )
-   AIO:START
    s" GET" s" /ok" [: OK ;] HTTP:ROUTE
    SERVER-CONFIG HTTP:START
    STARVED-CASE
    HTTP:STOP
-   HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
-   AIO:STOP ;
+   HTTP:ENDED-TASKS HTTP:TASK-TOTAL T= ;
 
 
 T-RESET

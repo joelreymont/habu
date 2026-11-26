@@ -2,7 +2,7 @@
 \ else under TMPDIR, and abstract names.
 \
 \ A unix datagram is queued before sendto returns, so every receive is one
-\ try with timeout zero and the AIO loop never starts.
+\ try with timeout zero and AIO never starts.
 \ Run: bin/hb --load src/lib/net/udp-test.f
 require src/lib/test/assert.f
 require src/lib/string.f

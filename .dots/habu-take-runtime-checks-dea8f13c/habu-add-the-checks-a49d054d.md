@@ -22,4 +22,9 @@ Acceptance case (from the FFI callback checks): src/lib/ffi-callback-test.f CASE
 
 Acceptance case (from the poll slot checks): src/lib/process-test.f TEST-POLL-BOUNDS sits in a `false [if]` block; turning it on must also call it in the suite list beside TEST-POLL-TWO.
 
-Acceptance case (split-str batch plain-15): src/lib/string-test.f :363-558 and src/lib/task-test.f after :2589, in `false [if]`, still use split str pairs and words that no longer exist (STR-LEN, STR-FIND-SUB>N); turning them on converts them to one-value str and current words.
+Acceptance case (split-str batch plain-15): src/lib/string-test.f :363-558 and src/lib/task-test.f :2786, in `false [if]`, still use split str pairs and words that no longer exist (STR-LEN, STR-FIND-SUB>N); turning them on converts them to one-value str and current words.
+
+Acceptance case (AIO loop words deleted): E-AIO-STATE no longer exists; the
+switched-off cases in src/lib/aio-test.f (CASE-OWNER-REJECTION, CASE-AWAIT-TWICE,
+CASE-GROUP-OWNER) expect it, so the restored ownership checks name their own code
+and those cases expect that.

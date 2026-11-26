@@ -4,7 +4,7 @@
 \ interpret-mode string literal that keeps its text, `evaluate`, a load and the
 \ package keywords run on the main thread while tasks are live, and exit $4F on
 \ a thread whose DATA holds a TCB in TASK-TCB-CELL: a task or a callback.
-\ While TASKS-LIVE-CELL (the main region's count, the AIO loop task included) is
+\ While TASKS-LIVE-CELL (the main region's count of live tasks) is
 \ nonzero, an engine rollback retires records instead of lowering the counts and
 \ keeps every cursor: lowering would free code a task may be running and records
 \ it may reference. A task's DBASE, NDICT and CP are registers loaded
@@ -238,6 +238,14 @@ FUNCTION: KEY-CREATE-CALL pthread_key_create ( ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: KEY-DELETE-CALL pthread_key_delete ( n -- i32 ) ;FUNCTION
 FUNCTION: SETSPECIFIC-CALL pthread_setspecific ( n n -- i32 ) ;FUNCTION
 FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
+
+HB-TARGET-LINUX? [if]
+FUNCTION: EPOLL-CREATE-CALL epoll_create1 ( n -- i32 ) ;FUNCTION
+FUNCTION: EPOLL-CTL-CALL epoll_ctl ( n n n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: EVENTFD-CALL eventfd ( n n -- i32 ) ;FUNCTION
+FUNCTION: EVENTFD-WRITE-CALL eventfd_write ( n n -- i32 ) ;FUNCTION
+FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
+[then]
 
 \ Sets the host errno FS:ERRNO answers after an E-TASK-THREAD, 0 when the
 \ rejected call gave none.
@@ -489,6 +497,9 @@ SCRATCH-VARIABLE MAIN-PARK-READY
 : MAIN-PARK ( -- sem )
    MAIN-PARK-REC CELL-VIEW >SEM ;
 
+\ The main thread's TCB.QUEUE, scratch, so a program starts with no queue.
+SCRATCH-VARIABLE MAIN-QUEUE
+
 \ The semaphore, Darwin's Mach port included, belongs to this process. A failed
 \ MAIN-PARK-CREATE gives it back here, so the next wake makes the park again.
 : MAIN-PARK-RESET ( -- )
@@ -536,6 +547,65 @@ SCRATCH-VARIABLE MAIN-PARK-READY
    tcb TASK-STATE@ {: st:n :}
    st TASK-RUNNING <> st TASK-HALT-REQ <> and if exit then
    tcb TASK-PARK-SEM SEM-SIGNAL ;
+
+\ ---- the task's queue --------------------------------------------------------
+\ Only its own task makes a queue and stores the cell; any task reads it to
+\ post the wake, so the store comes after the eventfd is registered.
+
+: QUEUE-CELL ( ^n -- ^n ) {: tcb:^ :}
+   tcb FFI:>CELL 0= if MAIN-QUEUE exit then
+   tcb TCB.QUEUE ;
+
+: QUEUE-SELF ( -- ^n )
+   TASK-SELF-N 0= if MAIN-QUEUE exit then
+   TASK-SELF TCB.QUEUE ;
+
+HB-TARGET-LINUX? [if]
+$80000 constant EPOLL-CLOEXEC            \ also EFD_CLOEXEC
+$800 constant EFD-NONBLOCK
+1 constant EPOLL-CTL-ADD
+
+\ epoll_event { u32 events; u64 data }, data at 4 on x86-64 (packed) and at 8
+\ on arm64: EPOLLIN|EPOLLET under data 0 in either layout.
+create QUEUE-EVENT $80000001 , 0 ,
+
+: QUEUE-CLOSE ( n -- )
+   dup 0 < if drop exit then
+   CLOSE-CALL drop ;
+
+\ Keeps the failed call's errno, then closes what was made (-1 for none).
+: QUEUE-REJECT ( n n -- ) {: ep:n ev:n :}
+   FFI:ERRNO TASK-CAUSE!
+   ep QUEUE-CLOSE  ev QUEUE-CLOSE
+   E-TASK-THREAD throw ;
+
+: QUEUE-EPOLL ( -- n )
+   EPOLL-CLOEXEC EPOLL-CREATE-CALL
+   dup 0 < if -1 QUEUE-REJECT then ;
+
+: QUEUE-EVENTFD ( n -- n ) {: ep:n :}
+   0 EPOLL-CLOEXEC EFD-NONBLOCK or EVENTFD-CALL
+   dup 0 < if drop ep -1 QUEUE-REJECT then ;
+
+\ Edge-triggered, so the eventfd is never read.
+: QUEUE-ADD ( n n -- ) {: ep:n ev:n :}
+   ep EPOLL-CTL-ADD ev QUEUE-EVENT EPOLL-CTL-CALL
+   0 <> if ep ev QUEUE-REJECT then ;
+
+: QUEUE-OPEN ( -- n )
+   QUEUE-EPOLL dup QUEUE-EVENTFD {: ep:n ev:n :}
+   ep ev QUEUE-ADD
+   ev 32 lshift ep or ;
+
+: QUEUE ( -- n )
+   QUEUE-SELF {: q:^ :}
+   q atomic@ dup 0= if drop QUEUE-OPEN dup q atomic! then
+   $FFFFFFFF and ;
+
+: QUEUE-WAKE ( ^n -- )
+   QUEUE-CELL atomic@ dup 0= if drop exit then
+   32 rshift 1 EVENTFD-WRITE-CALL TASK-RC-ERRNO ;
+[then]
 
 \ ---- the task's outcome ------------------------------------------------------
 \ The outcome lives in the TCB, which outlives the thread and its memory, so
@@ -1033,6 +1103,19 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    repeat
    drop false ;
 
+: CHAIN-QUEUES-FORGET ( n -- )
+   begin dup 0 <> while
+      TASK-N>PTR 0 over TCB.QUEUE ! TASK-LINK@
+   repeat
+   drop ;
+
+\ A fork copies every record's queue cell, and the epoll and eventfd
+\ descriptors it inherits name the parent's instances.
+: QUEUES-FORGET ( -- )
+   0 MAIN-QUEUE !
+   TASK-CHAIN@ FFI:>CELL CHAIN-QUEUES-FORGET
+   TCB-POOL atomic@ CHAIN-QUEUES-FORGET ;
+
 \ Maps outside the lock, since a mapping may block or throw, and appends under
 \ it: the chunk starts where the rows end, and its header (first row index, link
 \ to the chunk before) is stored before the release store that publishes it to
@@ -1326,12 +1409,24 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ ended) and the state is left alone: an ended task has no PAUSE to reach, and
 \ DONE is never overwritten by a request nobody can observe.
 \
-\ The post is the only step after the CAS: a task that ends between them is
-\ left at most the one stale hint its next run drains or its re-check absorbs.
-: HALT ( ^n -- ) {: tcb:^ :}
+\ The posts are the only steps after the CAS: a task that ends between them is
+\ left at most one stale hint in its park, which its next run drains or its
+\ re-check absorbs, and one in its queue, which its next wait absorbs.
+: HALT-REQUEST? ( ^n -- bool ) {: tcb:^ :}
    TASK-RUNNING TASK-HALT-REQ tcb TCB.STATUS atomic-cas {: st:n :}
-   st TASK-RUNNING <> st TASK-HALT-REQ <> and if exit then
+   st TASK-RUNNING = st TASK-HALT-REQ = or ;
+
+HB-TARGET-LINUX? [if]
+: HALT ( ^n -- ) {: tcb:^ :}
+   tcb HALT-REQUEST? 0= if exit then
+   tcb TASK-PARK-SEM SEM-SIGNAL
+   tcb QUEUE-WAKE ;
+[then]
+HB-TARGET-LINUX? 0= [if]
+: HALT ( ^n -- ) {: tcb:^ :}
+   tcb HALT-REQUEST? 0= if exit then
    tcb TASK-PARK-SEM SEM-SIGNAL ;
+[then]
 
 : SELF-CONTEXT ( -- n )
    data-base FFI:>CELL ;
@@ -1496,10 +1591,10 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    size tcb TCB.SIZE !
    tcb ;
 
-\ Zeroes the TCB but its park, which a post in flight may still meet.
+\ Zeroes the TCB but its park and queue, which a post in flight may still meet.
 : TCB-CLEAR ( ^n -- ) {: tcb:^ :}
    TASK-ABI:PARK-OFF 0 ?do 0 tcb i + ! CELL +loop
-   TASK-TCB-BYTES TASK-ABI:PARK-OFF SEMAPHORE-BYTES + ?do 0 tcb i + ! CELL +loop ;
+   TASK-TCB-BYTES TASK-ABI:QUEUE-OFF CELL + ?do 0 tcb i + ! CELL +loop ;
 
 \ Of two TASK:FREEs on one task only one proceeds and the other is rejected; a
 \ task in any state but EMPTY is rejected. The record is cleared before its claim
@@ -1926,12 +2021,24 @@ TASK-MIN-STACK constant MIN-STACK
    TASK-WAKE ;
 
 \ Requests the stop the target observes at its next TASK:PAUSE, and wakes it so
-\ a task parked in TASK:WAIT gets there. A task inside a callback observes it at
-\ its first TASK:PAUSE after C returns. A task that has ended, one that was
-\ never activated and one that is only prepared have no PAUSE to reach: halting
-\ them is a no-op that leaves their state alone.
+\ a task parked in TASK:WAIT or waiting on its TASK:QUEUE gets there. A task
+\ inside a callback observes it at its first TASK:PAUSE after C returns. A task
+\ that has ended, one that was never activated and one that is only prepared
+\ have no PAUSE to reach: halting them is a no-op that leaves their state alone.
 : HALT ( ^n -- )
    HALT ;
+
+HB-TARGET-LINUX? [if]
+\ The calling task's epoll descriptor, its wake eventfd registered under event
+\ data 0. Never closed, so a wait may see one stale data 0.
+: QUEUE ( -- n )
+   QUEUE ;
+
+\ Ends the named task's wait on its queue, or its next, with event data 0; the
+\ null TCB is the main thread.
+: QUEUE-WAKE ( ^n -- )
+   QUEUE-WAKE ;
+[then]
 
 \ Releases the task: a task that was activated is halted if it is still running,
 \ joined, and its memory given back, whichever of those states it reaches first
@@ -1997,11 +2104,12 @@ TASK-MIN-STACK constant MIN-STACK
 \ What a process just forked owes this runtime, before any code of its own:
 \ tasks do not cross a fork.
 \ fork copies only the thread that called it: the exit-chain lock another task
-\ held stays held in the child with nobody to free it, and the main thread's
-\ park is the parent's.
+\ held stays held in the child with nobody to free it, the main thread's
+\ park is the parent's, and so is every task's queue.
 : CHILD-RESET ( -- )
    TASK-EXIT-UNLOCK
-   MAIN-PARK-FORGET ;
+   MAIN-PARK-FORGET
+   QUEUES-FORGET ;
 
 \ No program calls it: tests time a cancel by watching a running task's slots.
 : HIS ( ^n ^t -- ^t )

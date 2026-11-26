@@ -13,7 +13,6 @@ from xmodem import packet
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = '''
-require src/lib/aio.f
 require src/lib/fs.f
 require src/lib/heap.f
 require src/lib/vector.f
@@ -121,7 +120,6 @@ class Checks:
 s" {source}" {len(data)} INPUT-READ
 FRESH OUTPUT !
 : RUN ( -- )
-   AIO:START
    s" {os.ttyname(slave)}" OPEN-HANDLE {{: handle:SERIAL:handle :}}
    handle {wait if ack_wait is None else ack_wait} >MS {wait} >MS SESSION SERIAL-XMODEM:INIT
    {'handle CLOSE-HANDLE' if close_before else ''}
@@ -129,8 +127,7 @@ FRESH OUTPUT !
    {call} REPORT
    s" {output}" OUTPUT @ VEC:BYTES FS:WRITE-ALL
    SESSION SERIAL-XMODEM:DISPOSE {'handle CLOSE-HANDLE' if not close_before else ''}
-   INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE
-   AIO:STOP ;
+   INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE ;
 RUN
 ;package
 '''
@@ -519,11 +516,9 @@ TASK:MIN-STACK TASK:TASK WORKER1
 
 
 : RUN ( -- )
-   AIO:START
    ['] WORK0 WORKER0 TASK:ACTIVATE ['] WORK1 WORKER1 TASK:ACTIVATE
    WORKER0 WAIT-DONE WORKER1 WAIT-DONE
-   WORKER0 TASK:KILL WORKER1 TASK:KILL DONE atomic@ .
-   AIO:STOP ;
+   WORKER0 TASK:KILL WORKER1 TASK:KILL DONE atomic@ . ;
 RUN
 ;package
 '''

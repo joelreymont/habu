@@ -27,7 +27,6 @@ require src/lib/le.f
 require src/lib/memory.f                   \ the request body past 64 MiB
 require src/lib/task.f
 require test/host-threads.f
-require src/lib/aio.f                       \ the loop the multiplexed transfers wait on
 require src/lib/net/tcp4.f
 require src/lib/net/curl.f
 require src/lib/arena.f
@@ -2669,13 +2668,13 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
 
 : CASE-MANY ( -- )
    MANY-ROUND
-   s" a hundred transfers cost the CURL loop and the AIO loop alone" T-LABEL
-   DURING-THREADS @ 2 T=
+   s" a hundred transfers cost the CURL loop alone" T-LABEL
+   DURING-THREADS @ 1 T=
    CURL-TEST:RECORDS {: grown:n :}
    MANY-ROUND
    s" a second round of a hundred transfers grows no record" T-LABEL
    CURL-TEST:RECORDS grown T=
-   DURING-THREADS @ 2 T= ;
+   DURING-THREADS @ 1 T= ;
 
 
 : CASE-STALLED ( -- )
@@ -3423,11 +3422,9 @@ TIGHT-FILL
    LIMITS @ SAVED-LIMIT !
    s" stderr.txt" CAPTURE-BUF UNDER-ROOT {: u:n :}
    ARENA:NEW {: a:^ :}
-   AIO:START
    s" a failed wake pipe is CURL:E-LOOP" T-LABEL
    [: STARVED-START ;] CAPTURE-BUF u >str a STDERR:CAPTURING
    {: text:str :}
-   AIO:STOP
    CURL:E-LOOP T=
    s" CURL logs the rejected pipe and the code it was rejected with" T-LABEL
    text s"  error curl: the wake pipe was not made: " STR:CONTAINS? TTRUE
@@ -3442,23 +3439,20 @@ TIGHT-FILL
    subject CURL:CLEANUP ;
 
 
-\ AIO is stopped here, so WITH-LOOPS starts both loops itself. E-OPERAND is a
-\ code neither loop throws.
+\ WITH-LOOPS starts the CURL loop itself. E-OPERAND is a code it never throws.
 : TEST-WITH-LOOPS ( -- )
    PATH-HELLO$ GET-READY [: LOOPS-FETCH ;] CURL:WITH-LOOPS
    s" WITH-LOOPS carries a transfer to the server" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    BODY$ HELLO$ T$=
-   s" WITH-LOOPS stops AIO's loop when the step returns" T-LABEL
-   AIO:RUNNING? TFALSE
+   s" WITH-LOOPS stops the CURL loop when the step returns" T-LABEL
+   [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
    s" a second WITH-LOOPS runs a step and passes its throw on" T-LABEL
    [: [: CURL:E-OPERAND throw ;] CURL:WITH-LOOPS ;] CURL:E-OPERAND TTHROWSQ
-   s" both loops are stopped after the step threw" T-LABEL
-   AIO:RUNNING? TFALSE
+   s" the CURL loop is stopped after the step threw" T-LABEL
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
-   s" a LOOP-STOP that throws still stops AIO" T-LABEL
-   [: [: CURL:LOOP-STOP ;] CURL:WITH-LOOPS ;] CURL:E-STATE TTHROWSQ
-   AIO:RUNNING? TFALSE ;
+   s" WITH-LOOPS passes a LOOP-STOP's throw on" T-LABEL
+   [: [: CURL:LOOP-STOP ;] CURL:WITH-LOOPS ;] CURL:E-STATE TTHROWSQ ;
 
 
 : OPT-IN ( -- )
@@ -3521,9 +3515,7 @@ public
    TEST-REJECTIONS
    TEST-LONG-TEXT
    TEST-HOST:SNAPSHOT
-   AIO:START
    TEST-MULTI
-   AIO:STOP
    TEST-PIPE-REJECTED
    TEST-WITH-LOOPS
    OPT-IN

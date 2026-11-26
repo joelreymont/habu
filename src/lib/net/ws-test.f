@@ -30,7 +30,7 @@ require src/lib/net/tcp4.f
 require src/lib/net/http.f
 require src/lib/net/ws.f
 require src/lib/test/stderr.f
-require src/lib/test/aio-fill.f
+require src/lib/test/fd-limit.f
 require src/lib/date.f
 require src/lib/ffi-abi.f
 require src/lib/fmt.f
@@ -95,7 +95,7 @@ $10 constant SOCKADDR-N          \ sockaddr_in
 $2000000 constant FLOOD-PUSH      \ what the overflow case may push: QUEUE-MAX and every kernel buffer, many times over
 $101 constant CROWD               \ the run's sockets: one past a one-byte slot field
 $400 constant LOG-CAP             \ the sockets one run may close
-CROWD 2 * $40 + AIO-FILL:FILL-CAP 2 * + constant FDS-WANT \ both ends of CROWD+1 loopback connections, the server's, the files' and the fill's
+CROWD 2 * $40 + constant FDS-WANT \ both ends of CROWD+1 loopback connections, the server's and the files'
 8 constant STRAYS                 \ the wake pipe's two, the only ones a stale send's POKE writes, with room to spare
 $12000 constant BUF-CAP           \ the longest frame a case sends or is sent, with its header
 $11170 constant BIG               \ 70000 bytes: past the 16-bit length form
@@ -242,7 +242,6 @@ STRAYS TYPED-BUFFER STRAY-FD n    \ descriptors on one file, taking the numbers 
 CROWD 1+ TYPED-BUFFER CONNS TCP4:connection  \ the client connections a case holds open at once
 TASK:SEMAPHORE ACCEPTED           \ the route has kept its outcome
 variable ROUTE-CODE               \ what the route threw before it posted ACCEPTED
-TASK:SEMAPHORE FILLED             \ AIO is full: the held handshake goes on
 TASK:SEMAPHORE UNHELD             \ lets the handler of `hold` return
 TASK:SEMAPHORE RELEASED           \ lets the handler of `wait` return
 TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a close
@@ -787,13 +786,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : STALLED ( HTTP:request HTTP:response -- )
    [: 2dup [: NOTE ;] 0 [: STALL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
 
-: AWAIT-FILL ( -- )
-   1 STALLING !
-   FILLED TASK:WAIT-SEM ;
-
-: FILLING ( HTTP:request HTTP:response -- )
-   [: 2dup [: NOTE ;] 0 [: AWAIT-FILL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
-
 : PLAIN ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    answer 200 HTTP:STATUS!
    answer s" plain" HTTP:BODY! ;
@@ -805,7 +797,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" GET" s" /twice" [: TWICE ;] HTTP:ROUTE
    s" GET" s" /seven" [: SEVEN ;] HTTP:ROUTE
    s" GET" s" /stall" [: STALLED ;] HTTP:ROUTE
-   s" GET" s" /fill" [: FILLING ;] HTTP:ROUTE
    s" GET" s" /plain" [: PLAIN ;] HTTP:ROUTE ;
 
 
@@ -1903,51 +1894,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    ['] RESTARTED AWAITED drop
    WS:STOP ;
 
-\ The line WS logs after its stamp when its task ends on this declared code.
-: TASK-LINE ( n -- )
-   {: code:n :}
-   SB-RESET
-   s"  error ws: task failed, throw " SB-APPEND
-   code FMT:SB-INT
-   s"  " SB-APPEND  code ERROR:NAME$ SB-APPEND
-   s" : " SB-APPEND  code ERROR:TEXT$ SB-APPEND
-   LF SB-APPEND-C
-   SB$ ERR-W ;
-
-\ AIO is filled while a handshake holds its slot, so the poll WS's task makes
-\ for the new socket is rejected.
-: FAULTING ( -- )
-   0 STALLING !
-   s" GET" s" /fill" REQ-START GOOD-LINES S\" \r\n" REQ+
-   DIAL {: conn:TCP4:connection :}
-   conn REQ$ SEND-RAW
-   [: STALLING @ ;] AWAITED drop
-   AIO-FILL:FILL {: code:n :}
-   s" AIO rejects the poll past its ceiling" T-LABEL
-   code AIO-FILL:CEILING T=
-   code TASK-LINE
-   FILLED TASK:SIGNAL-SEM
-   AWAIT-ROUTE
-   [: ERR-WRITTEN ;] AWAITED drop
-   AIO-FILL:UNFILL
-   conn TCP4:CLOSE DROP-STATUS
-   0 STREAM-AT ! 0 STREAM-U ! ;
-
-\ A throw that ends WS's task, here the poll AIO rejects at its ceiling, is
-\ one line on stderr with its code, and WS:STOP still ends the run.
-: FAULT-CASE ( -- )
-   s" a task that fails" T-LABEL
-   s" build" FS:MAKE-DIRS
-   0 ERR-WANT-U !
-   2 SIZED WS:START
-   ERR-PATH$ STDERR:CAPTURE
-   [: FAULTING ;] [: AIO-FILL:UNFILL STDERR:;CAPTURE ;] finally
-   [: WS:STOP ;] catch 0 T=
-   s" the task's fault reported once" T-LABEL
-   ERR-READ UNSTAMP
-   ERR$ ERR-WANT$ T$=
-   ERR-PATH$ FS:REMOVE-FILE ;
-
 : SEND-HELD ( -- )
    0 HELD @ s" wrapped" WS:SEND-TEXT ;
 
@@ -2333,22 +2279,19 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 public
 
-\ The loop first: every wait the server, WS's task and this client make rides
-\ it. WS stops before the server, and the server's stop kills no task: no
+\ WS stops before the server, and the server's stop kills no task: no
 \ socket holds a worker.
 : RUN ( -- )
    T-RESET
-   FDS-WANT AIO-FILL:RAISE-FDS
+   FDS-WANT FD-LIMIT:RAISE
    0 SCRIPT-U !
    0 CLOSED-N !
    CLOSED-LOCK TASK:FACILITY-INIT
    FILL-BUFFERS
    PATHS-MAKE
    0 ACCEPTED TASK:SEMAPHORE-INIT
-   0 FILLED TASK:SEMAPHORE-INIT
    0 UNHELD TASK:SEMAPHORE-INIT
    0 RELEASED TASK:SEMAPHORE-INIT
-   AIO:START
    INSTALL-ROUTES
    SERVER-CONFIG HTTP:START
    CROWD SIZED WS:START
@@ -2357,15 +2300,12 @@ public
    STOP-CASE STALE-CASE IDLE-STOP-CASE CLOSING-STOP-CASE
    SHRINK-CASE STRAGGLER-CASE STOP-TWICE-CASE START-RACE-CASE HANDLER-STOP-CASE
    BLOCKED-STOP-CASE QUEUED-STOP-CASE BRIEF-STOP-CASE
-   FAULT-CASE
    WRAP-CASE
    HTTP:STOP
    s" every handler returned" T-LABEL
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=
-   AIO:STOP
    ACCEPTED TASK:SEMAPHORE-DESTROY
-   FILLED TASK:SEMAPHORE-DESTROY
    UNHELD TASK:SEMAPHORE-DESTROY
    RELEASED TASK:SEMAPHORE-DESTROY
    TRANSCRIPT-CASE ;

@@ -9,7 +9,6 @@ require src/lib/process-pty-io.f
 require src/lib/pty-harness.f
 require src/lib/prelude.f
 require src/lib/string.f
-require src/lib/aio.f
 require src/lib/test/assert.f
 require src/lib/task.f                 \ TASK:SLEEP between probes of a sleeper's pid
 require src/lib/engine-candidate.f
@@ -250,14 +249,10 @@ TYPED-VARIABLE STEP-BYTES ^VEC:vector<u8>   \ RUN's, emptied for every read
 
 public
 
-\ AWAIT and AWAIT-BYTES wait on the AIO loop, so the loop runs for the body of
-\ RUN: it is started after the last definition. It stops however the cases
-\ end, so a case's throw passes on with no loop running.
 : RUN ( -- )
    T-RESET
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW STEP-BYTES !
-   AIO:START
-   [: CASES ;] [: AIO:STOP STEP-BYTES @ VEC:DELETE ;] finally
+   [: CASES ;] [: STEP-BYTES @ VEC:DELETE ;] finally
    T-REPORT
    s" process-pty-tty-smoke: ok" type cr ;
 

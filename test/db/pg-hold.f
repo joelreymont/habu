@@ -8,7 +8,6 @@
 require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/fs.f
-require src/lib/aio.f
 require src/lib/pg.f
 require src/lib/test/fifo.f
 
@@ -71,7 +70,6 @@ using PG
    SCRIPT-ARGC 1 <> if
       s" pg-hold: test/db/pg-cluster.f runs this with a conninfo" EXIT-STATUS:USAGE die
    then
-   AIO:START
    OPEN {: c :}
    c s" show unix_socket_directories" REPORT-SHOW
    c REPORT-SEGMENT

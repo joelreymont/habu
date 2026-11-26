@@ -340,29 +340,6 @@ TYPED-VARIABLE HELD-ID n
    PG:CLOSE ;
 
 
-\ An AIO wait failure retires the connection while AWAIT throws. The caller
-\ still has the CONNECT-START handle for its owner cleanup.
-: AWAIT-DROP ( PG:connection -- PG:connection ) {: c :}
-   c PG:AWAIT MATCH PG:progress
-      waiting OF 2drop ENDOF
-      connected OF drop ENDOF
-      completed OF CLEAR ENDOF
-      rejected OF drop ENDOF
-   ;MATCH
-   c ;
-
-: STOPPED-AWAIT ( PG:connection -- PG:connection )
-   AIO:STOP
-   [: AWAIT-DROP ;] [: AIO:START ;] finally ;
-
-: AIO-FAIL-CASES ( -- )
-   OPEN {: c :}
-   c s" select pg_sleep(10)" SEND
-   c [: STOPPED-AWAIT ;] catch {: stale code:n :}
-   code E-AIO-STATE T=
-   c PG:LIVE? TFALSE ;
-
-
 : DDL-CASES ( PG:connection -- PG:connection ) {: c :}
    c s" set client_min_messages = warning" EXEC-OK
    c s" drop table if exists pqt" EXEC-OK
@@ -2390,12 +2367,6 @@ PW-RIGHT!
    REUSE-CASES ;
 
 
-: LOOP-CASES ( -- )
-   CONNECT-CASES REJECTION-TEXT-CASES SOCKET-REJECTION-CASES MALFORMED-CASES
-   CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
-   HALT-CONNECT-CASES FAILED-SEND-CASES AIO-FAIL-CASES SERVER-CASES ;
-
-\ AIO:STOP runs whatever the cases threw; a code it throws replaces theirs.
 : MAIN ( -- )
    SCRIPT-ARGC 1 <> if
       s" pg-test: no conninfo argument; test/db/pg-cluster.f runs this file" EXIT-STATUS:USAGE die
@@ -2403,10 +2374,9 @@ PW-RIGHT!
    CONNECTIONS RESULTS CONFIGURE
    PROGRESS-CASES
    RESULT-CAPACITY-CASES
-   AIO:START
-   [: LOOP-CASES ;] catch {: code:n :}
-   AIO:STOP
-   code 0<> if code throw then ;
+   CONNECT-CASES REJECTION-TEXT-CASES SOCKET-REJECTION-CASES MALFORMED-CASES
+   CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
+   HALT-CONNECT-CASES FAILED-SEND-CASES SERVER-CASES ;
 
 T-RESET
 MAIN

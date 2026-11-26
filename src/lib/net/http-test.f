@@ -11,7 +11,6 @@ require src/lib/net/http-router.f
 require src/lib/net/http-static.f
 require src/lib/test/assert.f
 require src/lib/test/wait.f
-require src/lib/test/aio-fill.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/string-option.f
@@ -57,24 +56,28 @@ package HTTP
    ACCEPTED-COUNT atomic@ ;
 : HTTP-TEST:QUEUED ( -- n ) JOB-SLOTS 1+ ;
 : HTTP-TEST:STOP-MARGIN-MS ( -- n ) STOP-MARGIN-MS ;
-: HTTP-TEST:LEFT ( -- n ) LEFT-COUNT atomic@ ;
-\ Whether the first worker's slot holds a connection: the one-worker server
-\ sets it just before READ-REQUEST starts that connection's deadline.
-: HTTP-TEST:SERVING? ( -- bool ) 0 SERVING-LIVE @ 0<> ;
 \ A stop leaves the slot's late budget as its last deadline left it, so this
 \ answers once the server has stopped.
 : HTTP-TEST:LATE-UNTAKEN? ( -- bool ) 0 LATE-LEFT@ UNTAKEN = ;
 : HTTP-TEST:BODY-TAKEN ( -- n ) 0 BODY-U@ ;
+\ The one worker idle and nothing left for the listener to arm before it waits:
+\ no job queued, no row taken, its accept and wake polls armed.
+: HTTP-TEST:QUIET? ( -- bool )
+   0 SERVING-LIVE @ 0= JOB-N @ 0= and
+   ACCEPT-ARMED @ 0<> and WAKE-ARMED @ 0<> and
+   PARK-SLOTS 0 ?do i VACANT? and loop ;
+\ Whether the first worker's last request found a route: READ-REQUEST clears
+\ it once the next request's deadline has started.
+: HTTP-TEST:ROUTED? ( -- bool ) 0 ROUTE-AT@ 0 >= ;
 \ LOG has no public undoing: the cases after ACCESS-LOG-CASE run without it.
 : HTTP-TEST:UNLOG ( -- ) 0 LOGGING ! ;
 ;package
 
-\ Holding the facility AIO's loop task takes to deliver a completion stalls every
-\ parked waiter's wake, as a loaded host stalls a worker, while bytes still
-\ reach the socket.
+\ A claim takes AIO-LOCK, so holding it stalls every new POLL, as a loaded host
+\ stalls a worker, while bytes still reach the socket.
 package AIO
-: HTTP-TEST:LOOP-HOLD ( -- ) AIO-LOCK TASK:GET ;
-: HTTP-TEST:LOOP-FREE ( -- ) AIO-LOCK TASK:RELEASE ;
+: HTTP-TEST:AIO-HOLD ( -- ) AIO-LOCK TASK:GET ;
+: HTTP-TEST:AIO-FREE ( -- ) AIO-LOCK TASK:RELEASE ;
 ;package
 
 package HTTP-TEST
@@ -1300,10 +1303,9 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 \ A server reports each fault on fd 2 under the id its client is given. For one
 \ server fd 2 is a file, read back while it runs or after the stop.
-\ A full job queue's fault lines: a connection's and a request's for each
-\ queued peer and the gated one, each a log line's frame and E-AIO-FULL's text.
-E-AIO-FULL ERROR:TEXT$ STR:LEN $80 + constant ERR-LINE
-HTTP-TEST:QUEUED 1+ 2 * ERR-LINE * constant ERR-CAP
+\ ERR-LINE fits E-BOOM's fault line; ERR-CAP the most lines a case reads back.
+E-BOOM ERROR:TEXT$ STR:LEN $80 + constant ERR-LINE
+$10 ERR-LINE * constant ERR-CAP
 
 variable ERR-PATH-U
 variable ERR-U
@@ -2158,19 +2160,32 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    kept TCP4:CLOSE DROP-TCP-STATUS ;
 
 
-$C8 constant STALL-MARGIN-MS
+: PING-CLOSE$ ( -- str )
+   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" ;
 
-: STALLED-WORKER-CASE ( -- )
-   [: HTTP-TEST:SERVING? 0= ;] TEST-WAIT:POLL
-   RAW-OPEN {: stalled:TCP4:connection :}
-   [: HTTP-TEST:SERVING? ;] TEST-WAIT:POLL
-   HTTP-TEST:LOOP-HOLD
-   stalled s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
-   IDLE-MS STALL-MARGIN-MS + >MS TASK:SLEEP
-   HTTP-TEST:LOOP-FREE
-   s" a request that arrived before its deadline is served after it" T-LABEL
-   stalled S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
-   stalled TCP4:CLOSE DROP-TCP-STATUS ;
+
+\ With AIO-LOCK held the worker's first POLL on conn stalls before it reads.
+\ ROUTED? turns false once the head's deadline has started, so IDLE-MS past
+\ that the head, sent before, is still unread.
+: STALL-PAST-DEADLINE ( TCP4:connection -- )
+   {: conn:TCP4:connection :}
+   conn PING-CLOSE$ RAW-SEND
+   [: HTTP-TEST:ROUTED? 0= ;] TEST-WAIT:POLL
+   mono-ns IDLE-MS NS-PER-MS * +
+   [: dup mono-ns < ;] TEST-WAIT:POLL drop ;
+
+
+\ The lock is taken before the connection opens, so the worker reads nothing of
+\ it until the head's deadline has passed; the late budget then takes the head.
+: LATE-HEAD-CASE ( -- )
+   PING-CLOSE$ RAW-ONE
+   [: HTTP-TEST:QUIET? ;] TEST-WAIT:POLL
+   HTTP-TEST:AIO-HOLD
+   RAW-OPEN {: late:TCP4:connection :}
+   [: late STALL-PAST-DEADLINE ;] [: HTTP-TEST:AIO-FREE ;] finally
+   s" a head that arrived before its deadline is served after it" T-LABEL
+   late S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
+   late TCP4:CLOSE DROP-TCP-STATUS ;
 
 
 : HEAD-CASE ( -- )
@@ -2505,12 +2520,12 @@ $BB8 constant FLOOD-MARGIN-MS
 variable FLOOD-ENDED
 variable FLOOD-ENTERED            \ mono-ns as the flood's handler starts
 variable FLOOD-GO
-variable LOOP-HELD
+variable LOCK-HELD
 TASK:MIN-STACK TASK:TASK FLOOD-TASK
 TASK:MIN-STACK TASK:TASK HOLD-TASK
 
 
-\ Reads its body only once FLOOD-GO is set, so a held AIO loop stalls that
+\ Reads its body only once FLOOD-GO is set, so a held AIO-LOCK stalls that
 \ read at its first fill, before it reads from the socket.
 : FLOOD-READ ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
@@ -2524,9 +2539,9 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 
 
 : HOLD-UNTIL-STOP ( -- )
-   HTTP-TEST:LOOP-HOLD
-   1 LOOP-HELD !
-   [: [: HTTP:STOPPING? ;] TEST-WAIT:POLL ;] [: HTTP-TEST:LOOP-FREE ;] finally ;
+   HTTP-TEST:AIO-HOLD
+   1 LOCK-HELD !
+   [: [: HTTP:STOPPING? ;] TEST-WAIT:POLL ;] [: HTTP-TEST:AIO-FREE ;] finally ;
 
 
 \ Waits until the flooding peer has ended, which the worker's close does, then
@@ -2537,12 +2552,12 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    FLOOD-IDLE-MS FLOOD-MARGIN-MS + NS-PER-MS * < TTRUE ;
 
 
-\ Leaves the flood's body read stalled behind the held loop past its deadline,
-\ with nothing read late, until a stop frees the loop.
+\ Leaves the flood's body read stalled behind the held AIO-LOCK past its
+\ deadline, with nothing read late, until a stop frees the lock.
 : STALL-LATE ( -- )
    [: FLOOD-ENTERED @ 0<> ;] TEST-WAIT:POLL
    [: HOLD-UNTIL-STOP ;] HOLD-TASK TASK:ACTIVATE
-   [: LOOP-HELD @ 0<> ;] TEST-WAIT:POLL
+   [: LOCK-HELD @ 0<> ;] TEST-WAIT:POLL
    1 FLOOD-GO !
    \ the request's deadline started before its handler did
    [: FLOOD-ENTERED @ FLOOD-IDLE-MS NS-PER-MS * + mono-ns <= ;] TEST-WAIT:POLL ;
@@ -2575,7 +2590,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    first TCP4:CLOSE DROP-TCP-STATUS
    0 FLOOD-GO !
    0 FLOOD-ENTERED !
-   0 LOOP-HELD !
+   0 LOCK-HELD !
    FLOOD drop {: second:TCP4:connection :}
    STALL-LATE
    mono-ns {: raised:n :}
@@ -2931,15 +2946,6 @@ variable REJECTED-CODE
    REJECTED-CODE @ E-HTTP-SOCKET T=
    HTTP:RUNNING? TFALSE
    HELD @ TCP4:>LISTENER TCP4:CLOSE-LISTENER DROP-TCP-STATUS ;
-
-
-\ A start whose tasks have no loop to ride their readiness waits on is rejected
-\ with AIO's own code. The same code thrown inside the listener's own task would
-\ be a report nobody reads and a suite hanging on its first request.
-: NO-LOOP-CASE ( -- )
-   AIO:RUNNING? TFALSE
-   [: LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON ;] E-AIO-STATE TTHROWSQ
-   HTTP:RUNNING? TFALSE ;
 
 
 : SAID ( str -- ) HTTP:E-WORKERS REASON:TEXT$ swap T$= ;
@@ -3476,76 +3482,9 @@ $32 constant CALL-WAIT-MS         \ far under IDLE-MS, which a held worker waits
    HTTP:KILLED-TASKS 0 T= ;
 
 
-AIO-FILL:FILL-CAP HTTP-TEST:QUEUED 1+ + 2 * $40 + constant FDS-WANT \ both ends of each fill pipe and of each queued peer, the server's and the case's own
-$1388 constant SERVED-MS          \ a dial's deadline: far past the listener's pause
-
-
-\ A ping on a new connection, answered within SERVED-MS.
-: SERVED? ( -- bool )
-   RAW-OPEN {: conn:TCP4:connection :}
-   conn s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
-   conn SERVED-MS >MS TCP4:READABLE-WITHIN?
-   MATCH TCP4:ready-result
-      ready OF conn RAW-DRAIN s" HTTP/1.1 200 OK" BEGINS? ENDOF
-      idle OF false ENDOF
-      failed OF drop false ENDOF
-   ;MATCH
-   conn TCP4:CLOSE DROP-TCP-STATUS ;
-
-
-\ True once fd 2 holds the listener's warning, or a task of the server has
-\ left, which ends the wait where a rejected poll ends the listener or worker.
-: REJECTED-OR-LEFT? ( -- bool )
-   READ-STDERR
-   ERR$ s" poll rejected" STR:CONTAINS? HTTP-TEST:LEFT 0<> or ;
-
-
-\ Each queued peer is read to its end while AIO is full: its worker's rejected
-\ first wait closes it, where with AIO back that wait would last IDLE-MS.
-: REARMING ( -- )
-   GATE TASK:SIGNAL-SEM
-   ['] REJECTED-OR-LEFT? TEST-WAIT:POLL
-   ERR$ s" poll rejected" STR:CONTAINS? 0= if exit then
-   OPENED @ 0 ?do i QUEUED-CONN @ RAW-DRAIN loop ;
-
-
-\ The listener waits in a full job queue with its accept poll unarmed, so its
-\ re-arm meets AIO full: a warning, and once the fill is gone a ping is served.
-: REARM-CASE ( -- )
-   TRACE-RESET
-   0 PARKED !
-   0 GATE TASK:SEMAPHORE-INIT
-   FDS-WANT AIO-FILL:RAISE-FDS
-   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
-   RAW-OPEN {: gated:TCP4:connection :}
-   gated s\" GET /api/gate HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
-   PARK-AWAIT
-   QUEUE-PEERS
-   OPENED @ HTTP-TEST:QUEUED T=
-   s" AIO rejects the poll past its ceiling" T-LABEL
-   AIO-FILL:FILL AIO-FILL:CEILING T=
-   ERR-PATH-MAKE
-   ERR-PATH$ STDERR:CAPTURE
-   [: REARMING ;] [: AIO-FILL:UNFILL STDERR:;CAPTURE ;] finally
-   s" the listener's re-arm rejected at the ceiling is a warning" T-LABEL
-   READ-STDERR
-   ERR$ s" warn http: poll rejected, throw " STR:CONTAINS? TTRUE
-   s" the listener outlives its re-arm rejected at the ceiling" T-LABEL
-   SERVED? TTRUE
-   gated TCP4:CLOSE DROP-TCP-STATUS
-   DROP-PEERS
-   HTTP:STOP
-   HTTP:KILLED-TASKS 0 T=
-   GATE TASK:SEMAPHORE-DESTROY ;
-
-
-\ The loop first: the listener's own wait and this suite's raw READABLE? ride
-\ it, and it is stopped once every server has been stopped.
 : LIFECYCLE ( -- )
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW RES !
    RES @ RES-CAP VEC:RESERVE
-   NO-LOOP-CASE
-   AIO:START
    SETTINGS-CASE
    MAKE-STATIC
    ROUTE-COVER-CASES
@@ -3586,7 +3525,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    HEAD-CASE
    IDLE-CASE
    PARKED-REQUEST-CASE
-   STALLED-WORKER-CASE
+   LATE-HEAD-CASE
    WRITER-RECOVERY-CASE
    SPLIT-HEAD-CASE
    HOOK-LIVE-CASES
@@ -3616,7 +3555,6 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    SATURATED-STOP-CASE
    IDLE-STOP-CASE
    IDLE-CALL-CASE
-   REARM-CASE
    FULL-QUEUE-CASE
    SENDING-PEER-CASE
    FLOOD-CASE
@@ -3627,8 +3565,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    THROWING-HOOK-CASE
    GATED-HOOK-CASE
    RES @ VEC:DELETE
-   ROOT$ FS:REMOVE-TREE
-   AIO:STOP ;
+   ROOT$ FS:REMOVE-TREE ;
 
 
 T-RESET

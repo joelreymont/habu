@@ -8,7 +8,6 @@
 
 require src/core/exit-status.f
 require src/lib/test/assert.f
-require src/lib/aio.f
 require src/lib/arena.f
 require src/lib/span.f
 require src/lib/vector.f
@@ -106,7 +105,6 @@ public
 
 : MAIN ( str [ -- ] -- ) {: name:str body :}
    SCRIPT-ARGC 1 <> if name [: USAGE ;] ARENA:WITH then
-   AIO:START
-   [: body SERVE ;] [: AIO:STOP ;] finally ;
+   body SERVE ;
 
 ;package

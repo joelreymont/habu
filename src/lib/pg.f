@@ -23,7 +23,7 @@
 \ registers the descriptor each POLL answers afresh, and uses a Unix socket or
 \ a numeric hostaddr so DNS cannot block startup. POLL advances an attempt to
 \ connected or rejected; CLOSE abandons it at any earlier point. CONNECT and the
-\ WITH- scopes wait through AIO:AWAIT and need AIO:START. One operation may be
+\ WITH- scopes wait through AIO:AWAIT. One operation may be
 \ pending per connection; a send copies its statement and parameters. A SQL
 \ rejection is the result's `failed` outcome with SQLSTATE and message. A
 \ TASK:HALT ends a wait and leaves the connection to the task's own cleanup:
@@ -1783,7 +1783,7 @@ public
 
 
 \ True when what has arrived ends the connection, which it then closes; it never
-\ waits, needs AIO:START, and leaves notifications it reads for NOTIFIED? or NOTIFIED.
+\ waits and leaves notifications it reads for NOTIFIED? or NOTIFIED.
 : ENDED? ( connection -- bool )
    OP-SLOT {: slot:n :}
    slot IDLE-CHECK
@@ -2002,11 +2002,11 @@ public
 \ 0 reads only what has arrived, including what libpq queued during earlier
 \ operations. It takes every notification queued, so one answer covers several
 \ NOTIFYs, and keeps neither channel nor payload. It waits through AIO:AWAIT,
-\ so it needs AIO:START and ends at a TASK:HALT. A connecting or pending
+\ so it ends at a TASK:HALT. A connecting or pending
 \ connection is E-STATEMENT; one inside a transaction, which holds
 \ notifications back until it ends, is E-TRANSACTION; a negative ms is E-BOUND.
-\ A failed read closes the connection and throws E-EXEC; a readiness wait the
-\ AIO loop rejects throws E-EXEC, or the loop's own code, and leaves it open.
+\ A failed read closes the connection and throws E-EXEC; a readiness wait AIO
+\ rejects throws E-EXEC, or AIO's own code, and leaves it open.
 : NOTIFIED? ( connection ms -- bool )
    [: FORGET-NOTE ;] WAIT-NOTIFIES ;
 

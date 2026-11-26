@@ -23,5 +23,4 @@ Rust library or required SPARQL worker executable after migration.
 The x86-64 T0 build of Habu master 141823c4 runs the native SPARQL suite.
 PostgreSQL 18.7 passes all 316 syntax cases and 532 of 539 evaluation cases
 with exact RDF terms, including all 24 ordered fixtures. The seven numeric
-lexical mismatches are recorded in test/sparql/README.md. Live MCP transport
-still needs a host that permits io_uring.
+lexical mismatches are recorded in test/sparql/README.md.

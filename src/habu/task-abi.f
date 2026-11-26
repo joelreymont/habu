@@ -45,6 +45,9 @@ public
    CELL +FIELD TCB.THROW
    \ The task's own wake-up semaphore.
    SEMAPHORE-BYTES +FIELD TCB.PARK
+   \ The task's queue: its epoll descriptor in the low 32 bits and its wake
+   \ eventfd in the high 32, 0 for none. Never closed.
+   CELL +FIELD TCB.QUEUE
    CELL +FIELD TCB.RESULT
    CELL +FIELD TCB.RESULT-SET
    CELL +FIELD TCB.JOINER
@@ -64,6 +67,7 @@ NULL-PTR TCB.NDICT NULL-PTR - constant NDICT-OFF
 NULL-PTR TCB.CP NULL-PTR - constant CP-OFF
 NULL-PTR TCB.STATUS NULL-PTR - constant STATUS-OFF
 NULL-PTR TCB.PARK NULL-PTR - constant PARK-OFF
+NULL-PTR TCB.QUEUE NULL-PTR - constant QUEUE-OFF
 NULL-PTR TCB.EXIT-SLOT NULL-PTR - constant EXIT-SLOT-OFF
 TCB-SIZE constant TCB-BYTES
 

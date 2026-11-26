@@ -2289,10 +2289,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ bodies it prints. Their connections are open at once, each with a worker, which registers cleanups on itself.
 : WRITE-WEB ( -- )
    s\" TYPED-VARIABLE CFG HTTP:config\n" SRC+
-   s\" : UP ( -- ) AIO:START  s\" GET\" s\" /hi\" [: nip s\" hello\" HTTP:BODY! ;] HTTP:ROUTE\n" SRC+
+   s\" : UP ( -- ) s\" GET\" s\" /hi\" [: nip s\" hello\" HTTP:BODY! ;] HTTP:ROUTE\n" SRC+
    s\"    $7F000001 CFG HTTP-CONFIG:ADDRESS !  0 CFG HTTP-CONFIG:PORT !\n" SRC+
    s\"    8 CFG HTTP-CONFIG:WORKERS !  500 >MS CFG HTTP-CONFIG:IDLE !  CFG HTTP:START ;\n" SRC+
-   s\" : DOWN ( -- ) HTTP:STOP  AIO:STOP ;\n" SRC+
+   s\" : DOWN ( -- ) HTTP:STOP ;\n" SRC+
    s\" : DIAL ( -- TCP4:connection ) $7F000001 TCP4:ADDRESS HTTP:PORT TCP4:PORT TCP4:CONNECT\n" SRC+
    s\"    MATCH TCP4:connect-result connected OF ENDOF failed OF drop 1 throw ENDOF ;MATCH ;\n" SRC+
    s\" : DONE ( TCP4:status -- ) MATCH TCP4:status ok OF ENDOF failed OF drop 1 throw ENDOF ;MATCH ;\n" SRC+
@@ -2336,8 +2336,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" : HOLD ( -- ) s\" TMPDIR\" GETENV {: t:str :} t STR:DATA t STR:LEN 1- + c@ [char] 0 -\n" SRC+
    s\"    0 ?do s\" /dev/null\" FS:>PATHZ 0 0 open drop loop ;\n" SRC+
    s\" TASK:MIN-STACK TASK:TASK WAITER\n: REST ( -- ) 1 >MS AIO:TIMEOUT AIO:AWAIT drop  0 TASK:RETURN ;\n" SRC+
-   s\" : WAIT ( -- ) AIO:START  ['] REST WAITER TASK:ACTIVATE  WAITER TASK:JOIN\n" SRC+
-   s\"    MATCH result ok OF drop ENDOF err OF throw ENDOF ;MATCH  AIO:STOP ;\n" SRC+
+   s\" : WAIT ( -- ) ['] REST WAITER TASK:ACTIVATE  WAITER TASK:JOIN\n" SRC+
+   s\"    MATCH result ok OF drop ENDOF err OF throw ENDOF ;MATCH ;\n" SRC+
    WRITE-WEB
    s\" ASK  8 WEB  SERVE TYPE-LINE BIND  FN WLINK:LINK drop  CHILD HOLD WAIT\n" SRC+
    s\" : MAIN ( -- ) ASK  HTTP:STATIC-COUNT . HTTP:STATIC-CLOSE\n   s\" " SRC+

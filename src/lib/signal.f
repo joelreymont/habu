@@ -26,7 +26,7 @@
 s" src/lib/error.f" required
 s" src/lib/process.f" required                \ PROCESS:KILL-RAW, PROCESS:NO-FD, PROCESS:DEADLINE-AT and PROCESS:LEFT-MS
 s" src/lib/fd.f" required                     \ FD:PIPE, the close-on-exec self-pipe, FD:NONBLOCK! and FD:POLLIN
-s" src/lib/aio.f" required                    \ the loop the WAIT window runs on
+s" src/lib/aio.f" required                    \ the WAIT window's POLL and AWAIT
 s" src/lib/task.f" required                   \ TASK:+USER carries the staging span, TASK:SELF-N the owner
 s" src/lib/ffi-abi.f" required                \ sigaction is declared here, not assumed
 require src/habu/layout.f                 \ package SIGNAL-ABI publishes the two cells
@@ -272,17 +272,15 @@ REGISTER-RESET
    w close-rc {: wrc:n :}
    rrc 0 <> wrc 0 <> or if E-SIGNAL-CLOSE throw then ;
 
-\ One window of the read end, waited out on the AIO loop: a POLL for ms with
-\ the deadline as the poll's own linked timeout, and an AWAIT. A signal reaches
-\ no thread parked here, so there is no -EINTR to restart.
+\ One window of the read end, waited out in the task's own AIO queue: a POLL
+\ with ms as its own deadline, and an AWAIT. A signal does not cut the window
+\ short, so there is no -EINTR to restart.
 \
 \ A rejected read is only ever the lost race when POLLIN put the bytes there in
-\ the first place, so the answered bits are read and not just counted: POLLNVAL,
-\ and a bare POLLERR, are a read end gone behind the facility's back and would
-\ otherwise be re-read against the deadline forever. The kernel answers that
-\ state two ways - as those bits when it still has the descriptor, and as a
-\ failed poll (EBADF) when the number no longer names one - and both name the
-\ poll.
+\ the first place, so the answered bits are read and not just counted: a ready
+\ answer without POLLIN (POLLHUP, every write end closed) and a rejected POLL
+\ (EBADF, the read end closed) would otherwise be re-read against the deadline
+\ forever, so both name the poll.
 : READABLE-WITHIN? ( ms -- bool ) {: window:ms :}
    READ-FD AIO:READABLE window AIO:WAIT-READY
    MATCH AIO:readiness
@@ -377,7 +375,7 @@ public
 
 \ The next delivered signal, or `timeout` at once when none is waiting. This
 \ is the read for a program that waits in a loop of its own - FD in its poll
-\ set, or a poll that a signal interrupts - and so runs no AIO loop.
+\ set, or a poll that a signal interrupts - and so needs no AIO.
 : TAKE ( -- signal-result )
    NEED-READY
    SIGNO@ dup SIGNO-REJECTED = if
@@ -394,7 +392,7 @@ public
    0 >MS READABLE-WITHIN? ;
 
 \ The next signal number, or `timeout` once ms has passed; a negative ms waits
-\ unbounded. Like PENDING?, it needs AIO:START or throws E-AIO-STATE.
+\ unbounded.
 : WAIT ( ms -- signal-result ) {: window:ms :}
    NEED-READY
    window PROCESS:DEADLINE-AT {: deadline :}

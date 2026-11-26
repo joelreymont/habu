@@ -26,7 +26,6 @@ require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/fmt.f
-require src/lib/aio.f
 require src/lib/task.f
 require src/lib/heap.f
 require src/lib/vector.f
@@ -855,7 +854,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 \ The key set's URL names the port the first START's port 0 chose, and
 \ ISSUER! is rejected while serving: the server starts again on that port.
 : SERVE-CASES ( -- )
-   AIO:START
    VECTORS
    SET-ONE-FILL SET-TWO-FILL SET-THREE-FILL
    ROUTES
@@ -915,8 +913,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    METADATA-REJECTS
    PORT @ SERVE-ON
    METADATA
-   HTTP:STOP
-   AIO:STOP ;
+   HTTP:STOP ;
 
 T-RESET
 SERVE-CASES

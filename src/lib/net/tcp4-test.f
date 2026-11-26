@@ -1,7 +1,6 @@
 \ tcp4-test.f - a loopback TCP connection carries bytes both ways.
 \ One process holds both peers: a listener task blocks in ACCEPT while the main
-\ task connects, writes and reads back. Every timed wait runs on the AIO loop,
-\ which this suite starts before its first case and stops after its last.
+\ task connects, writes and reads back. Every timed wait runs in AIO.
 \ Run: bin/hb --load src/lib/net/tcp4-test.f
 require src/lib/test/assert.f
 require src/lib/test/wait.f
@@ -13,7 +12,6 @@ require src/lib/memory.f
 require src/lib/fmt.f
 require src/lib/task.f
 require test/host-threads.f
-require src/lib/aio.f
 require src/lib/net/tcp4.f
 
 package TCP4-TEST
@@ -120,13 +118,6 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
       failed OF TCP4:ERRNO>N drop s" poll failed" T-FAIL-AS false ENDOF
    ;MATCH ;
 
-
-: READY-DROP ( TCP4:ready-result -- )
-   MATCH TCP4:ready-result
-      ready OF ENDOF
-      idle OF ENDOF
-      failed OF TCP4:ERRNO>N drop ENDOF
-   ;MATCH ;
 
 
 : READ-DROP ( TCP4:read-result -- )
@@ -526,10 +517,10 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
 
 
 \ The waits do not park threads: one task waiting on a silent connection costs
-\ its own thread and the loop's, and nothing per wait. This case runs before any
-\ other task of the suite exists, so the count it pins is the base plus those two.
+\ its own thread, and nothing per wait. This case runs before any other task of
+\ the suite exists, so the count it pins is the base plus that one.
 : T-PARKED-THREADS ( -- )
-   s" a task parked in a wait costs no thread beyond the loop's" T-LABEL
+   s" a task parked in a wait costs no thread but its own" T-LABEL
    0 PARK-ARMED ! 0 PARK-DONE ! 0 PARK-READY !
    OPEN-PAIR
    PROBE-CONNECTION @ PARK-FD !
@@ -537,7 +528,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    PARK-ARMED 1 PARK-TASK TEST-WAIT:FOR-CELL
    SETTLE-MS >MS TASK:SLEEP
    THREADS PARKED-THREADS !
-   PARKED-THREADS @ BASE-THREADS @ 1 + 1 + T=
+   PARKED-THREADS @ BASE-THREADS @ 1 + T=
    s" and the peer's write answers that parked wait" T-LABEL
    CLIENT-FD @ TCP4:>CONNECTION CHAT$ TCP4:WRITE STATUS-ERRNO 0 T=
    PARK-DONE 1 PARK-TASK TEST-WAIT:FOR-CELL
@@ -546,21 +537,6 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    PROBE-CONNECTION @ TCP4:>CONNECTION SERVER-BUF BUF-CAP TCP4:TRANSFER-BYTES TCP4:READ
       CHAT-BYTES WANT-DATA
    SERVER-BUF CHAT-BYTES >str CHAT$ T$=
-   CLOSE-PAIR ;
-
-
-: STOPPED-WAIT ( -- )
-   PROBE-CONNECTION @ TCP4:>CONNECTION IDLE-MS >MS TCP4:READABLE-WITHIN? READY-DROP ;
-
-
-\ The loop is the program's to start, and a wait without one says so by name
-\ instead of falling back to a thread parked in poll(2).
-: T-NO-LOOP ( -- )
-   s" a wait with the loop stopped is rejected by name" T-LABEL
-   OPEN-PAIR
-   AIO:STOP
-   [: STOPPED-WAIT ;] E-AIO-STATE TTHROWSQ
-   AIO:START
    CLOSE-PAIR ;
 
 
@@ -1035,7 +1011,6 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
 : RUN ( -- )
    T-RESET
    THREADS BASE-THREADS !
-   AIO:START
    T-OPERANDS
    T-PARKED-THREADS
    T-ECHO
@@ -1060,8 +1035,6 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    T-SLICE-FAILED
    T-QUEUES
    T-NODELAY
-   T-NO-LOOP
-   AIO:STOP
    T-REPORT
    s" tcp4-test: ok" type cr ;
 

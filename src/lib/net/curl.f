@@ -1667,7 +1667,7 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
 \ owner is left parked on a loop that is gone: every transfer in flight is ended
 \ first and what ended the loop is the task's answer, which LOOP-STOP rethrows.
 \ A loop that ended by a throw leaves its tickets to AIO's own per-task cleanup,
-\ because the ring is what just failed.
+\ because the wait is what just failed.
 : LOOP-BODY ( -- )
    CURLM-OK LOOP-MRC !
    [: LOOP-RUN-STORE ;] catch {: rc:n :}
@@ -1829,11 +1829,10 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
 
 public
 
-\ Starts the task that drives every multiplexed transfer; AIO's loop must be
-\ running. A failed libcurl, wake pipe or thread setup is logged, then E-LOOP.
+\ Starts the task that drives every multiplexed transfer. A failed libcurl,
+\ wake pipe or thread setup is logged, then E-LOOP.
 : LOOP-START ( -- )
    LOOP-LIVE atomic@ 0 <> if E-STATE throw then
-   0 >MS AIO:TIMEOUT AIO:AWAIT OUTCOME-DROP
    GLOBAL-READY dup CURLE-OK <> if GLOBAL-FAILED then drop
    LOCK-READY @ 0= if CURL-LOCK TASK:FACILITY-INIT 1 LOCK-READY ! then
    FS:CAUSE-CLEAR [: WAKER AIO:WAKER-OPEN ;] catch FS:ERRNO {: pcode:n e:n :}
@@ -1871,17 +1870,10 @@ public
    mrc CURLM-OK <> if E-RESULT throw then ;
 
 
-private
-
-: LOOPS-RUN ( R [ R -- S ] -- S )
-   LOOP-START [: LOOP-STOP ;] finally ;
-
-public
-
-\ Runs the step under both loops, which must be stopped, and each started loop's
-\ stop on every path; a transfer left in flight is E-STATE, both left running.
+\ Runs the step with the transfer loop started and stops it on every path; a
+\ transfer left in flight is E-STATE.
 : WITH-LOOPS ( R [ R -- S ] -- S )
-   AIO:START [: LOOPS-RUN ;] [: AIO:STOP ;] finally ;
+   LOOP-START [: LOOP-STOP ;] finally ;
 
 
 private

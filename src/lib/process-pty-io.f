@@ -71,20 +71,19 @@ SCRATCH-VARIABLE IO-GO-R                         \ child-side release gate
    r RC>N EPERM# negate = if true exit then
    E-PROC-OUTPUT throw ;
 
-\ True only when the descriptor reports a clean readable exit; a POLLERR/POLLNVAL
-\ revent means the descriptor is broken and must not masquerade as an exit.
+\ True only when the descriptor reports a clean readable exit; a POLLERR revent
+\ means the descriptor is broken and must not masquerade as an exit.
 : IO-WATCH-EVENT? ( n -- bool ) {: ev:n :}
-   ev FD:POLLERR FD:POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
+   ev FD:POLLERR and 0 <> if E-PROC-OUTPUT throw then
    ev FD:POLLIN and 0 <> ;
 
 : IO-READ-SPAN ( fd SPAN:span<u8> -- n ) {: m:fd s :}
    m FD>N s read ;
 
-\ What the master had to give once the loop answered: the bytes appended, or -1
-\ for a hang-up or an end of file. POLLNVAL is a broken descriptor, not an exit.
+\ What the master had to give once the wait answered: the bytes appended, or -1
+\ for a hang-up or an end of file.
 : IO-READ-READY ( n fd ^VEC:vector<u8> n -- n )
    {: ev:n m:fd v:^ cap:n :}
-   ev FD:POLLNVAL and 0 <> if E-PROC-OUTPUT throw then
    ev FD:POLLIN and 0= if -1 exit then
    v VEC:COUNT {: old:n :}
    m v cap VEC:EXTEND IO-READ-SPAN {: got:n :}
@@ -92,9 +91,9 @@ SCRATCH-VARIABLE IO-GO-R                         \ child-side release gate
    got 0 > if got exit then
    -1 ;
 
-\ One POLL on the AIO loop for the milliseconds the caller named, and one
-\ AWAIT; the deadline is the poll's own linked timeout, so a signal cannot cut
-\ the watch short and there is nothing to restart.
+\ One POLL for the milliseconds the caller named, and one AWAIT; the deadline
+\ is the poll's own, so a signal cannot cut the watch short and there is
+\ nothing to restart.
 : IO-POLL-READY? ( fd n -- bool ) {: wfd:fd ms:n :}
    wfd AIO:READABLE ms >MS AIO:WAIT-READY
    MATCH AIO:readiness
@@ -195,7 +194,7 @@ SCRATCH-VARIABLE IO-GO-R                         \ child-side release gate
 \ The target is forked before its watch opens, so it cannot inherit the watch;
 \ opening the watch while the child is alive makes the exit observable on both
 \ backends (Linux pidfd_open, macOS kqueue NOTE_EXIT). The child closes 3..MAXFD
-\ but its gate before it waits, and never touches the parent's AIO loop.
+\ but its gate before it waits, and never touches the parent's AIO queue.
 : IO-BUILD ( -- )
    IO-TTY @ if IO-MK-TTY else IO-MK-STDIO then
    IO-MK-GATE
@@ -325,9 +324,8 @@ public
 \ there: the count appended, 0 when nothing arrived in time, -1 once the
 \ target's side is gone (hang-up or end of file). A broken descriptor throws,
 \ and so does an n below one, which could otherwise only masquerade as a
-\ hang-up. The wait is one POLL on the AIO loop and one AWAIT, with ms -1 the
-\ unbounded wait POLL spells the same way. AIO:START comes first: a wait with
-\ no loop running is E-AIO-STATE. It answers ONE read, never a whole reply: a
+\ hang-up. The wait is one POLL and one AWAIT, with ms -1 the unbounded wait
+\ POLL spells the same way. It answers ONE read, never a whole reply: a
 \ caller waiting for text loops to its marker under one absolute deadline
 \ (PROCESS:DEADLINE-AT).
 : AWAIT-BYTES ( process-pty-handle ^VEC:vector<u8> n n -- process-pty-handle n )

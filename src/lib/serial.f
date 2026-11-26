@@ -205,16 +205,13 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    HB-TARGET-LINUX? if 11 else 35 then = or ;
 
 
-\ Positive event bits, zero for the deadline, or a negative errno. One POLL on
-\ the AIO loop for the time this operation has left, then one AWAIT: the
-\ deadline is the poll's own linked timeout, so a signal cannot cut the wait
-\ short. The answered bits keep the POLLNVAL rule; a descriptor whose poll
-\ the kernel fails arrives as EBADF on the rejected arm. A wait without
-\ AIO:START is E-AIO-STATE.
+\ Positive event bits, zero for the deadline, or a negative errno. One POLL
+\ for the time this operation has left, then one AWAIT: the deadline is the
+\ poll's own, so a signal cannot cut the wait short.
 : AWAIT ( handle n ns -- n ) {: handle:handle events:n deadline:ns :}
    handle HANDLE>N >FD events deadline REMAINING AIO:WAIT-READY
    MATCH AIO:readiness
-      ready OF dup $20 and 0 <> if drop -9 then ENDOF
+      ready OF ENDOF
       timed-out OF 0 ENDOF
       rejected OF negate ENDOF
    ;MATCH ;

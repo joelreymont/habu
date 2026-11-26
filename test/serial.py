@@ -15,7 +15,6 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = r'''
-require src/lib/aio.f
 require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/serial.f
@@ -153,7 +152,6 @@ int main(void) {
 def binary_io(habu, output):
     body = '''
 : RUN ( -- )
-   AIO:START
    s" /dev/null" 115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
       opened OF SERIAL:CLOSE OK -1 throw ENDOF
       failed OF SERIAL:ERRNO>N 25 <> if -1 throw then ENDOF
@@ -181,8 +179,7 @@ def binary_io(habu, output):
    handle SERIAL:CLOSE MATCH SERIAL:status
       ok OF -1 throw ENDOF failed OF SERIAL:ERRNO>N . ENDOF
    ;MATCH
-   v VEC:DELETE
-   AIO:STOP ;
+   v VEC:DELETE ;
 RUN
 '''
 
@@ -217,7 +214,6 @@ RUN
 def partial_write(habu, output):
     body = '''
 : RUN ( -- )
-   AIO:START
    1048576 0 do i $FF and BODY i + c! loop
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
    handle READY
@@ -233,8 +229,7 @@ def partial_write(habu, output):
          failed OF SERIAL:ERRNO>N throw ENDOF
       ;MATCH
    until
-   . handle SERIAL:CLOSE OK
-   AIO:STOP ;
+   . handle SERIAL:CLOSE OK ;
 RUN
 '''
     def peer(master, slave, pid):
@@ -249,15 +244,13 @@ RUN
 def disconnect(habu, output):
     body = '''
 : RUN ( -- )
-   AIO:START
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
    handle READY
    FRESH {: v:^ :}
    handle v 1 SERIAL:BYTES 2000 >MS SERIAL:READ REPORT
    v VEC:DELETE
    handle BODY 1 >str 0 >MS SERIAL:WRITE REPORT
-   handle SERIAL:CLOSE OK
-   AIO:STOP ;
+   handle SERIAL:CLOSE OK ;
 RUN
 '''
     # Close the master while Habu waits, to exercise real terminal hangup.
@@ -322,13 +315,11 @@ TASK:MIN-STACK TASK:TASK WORKER1
 
 
 : RUN ( -- )
-   AIO:START
    ['] WORK0 WORKER0 TASK:ACTIVATE
    ['] WORK1 WORKER1 TASK:ACTIVATE
    WORKER0 WAIT-DONE WORKER1 WAIT-DONE
    WORKER0 TASK:KILL WORKER1 TASK:KILL
-   DONE atomic@ .
-   AIO:STOP ;
+   DONE atomic@ . ;
 RUN
 '''
         def serve():
@@ -368,11 +359,8 @@ def main():
                        ('0 SERIAL:BYTES', '0'), ('$7FFFF001 SERIAL:BYTES', '0')):
         assert native(habu, output, f': RUN ( -- ) [: {expr} drop ;] catch . ; RUN') == [code]
         checks += 1
-    # A zero-byte request transfers nothing at once. A negative timeout is no
-    # deadline and one past INT32_MAX waits INT32_MAX ms, so either wait, with
-    # no AIO:START, is E-AIO-STATE (-9292).
-    for length, timeout, handle, code in ((0, -1, 0, 'moved 0 0'), (1, -1, 0, '-9292'),
-                                           (1, 0x80000000, 0, '-9292')):
+    # A zero-byte request transfers nothing at once.
+    for length, timeout, handle, code in ((0, -1, 0, 'moved 0 0'),):
         for operation, data in (('READ', f'''v {length} NUM:BYTE-LEN MATCH option
       none OF -1 throw ENDOF some OF ENDOF
    ;MATCH'''), ('WRITE', f'BODY {length} >str')):

@@ -49,7 +49,6 @@ require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/fmt.f
-require src/lib/aio.f
 require src/lib/base64.f
 require src/lib/heap.f
 require src/lib/vector.f
@@ -1210,7 +1209,7 @@ TASKS!
 \ BEARER:ISSUER! names this server's URL and is rejected while HTTP serves, so
 \ the server starts once to take a port and serves again on it.
 : SERVE-CASES ( -- )
-   AIO:START LOG-INIT
+   LOG-INIT
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HEADS !
    s" app" s" s3cr&t+1" TEST-ISSUER:CLIENT+
@@ -1232,8 +1231,7 @@ TASKS!
    BEARER-GRANTS REDEEMS FORGED-REDEEM LONG-REDEEM ADMITTED-REDEEM BEARER-CURRENT BEARER-IDENTITY BEARER-FAULTS
    HTTP:STOP
    BEARER-UNREACHED BEARER-LONG
-   TOOL
-   AIO:STOP ;
+   TOOL ;
 
 T-RESET
 SERVE-CASES

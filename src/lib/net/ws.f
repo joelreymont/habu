@@ -73,8 +73,8 @@ $100000 constant MESSAGE-MAX
 \ How a WS run is sized and bounded; WS:START reads it once.
 \ sockets bounds open sockets (past it, 503); each maps REGION-BYTES, queues
 \ up to QUEUE-MAX and costs one AIO record, its poll, beside the task's two,
-\ the wake's and the timer's. Size it from memory and descriptors, under
-\ AIO's ceiling (SERVE).
+\ the wake's and the timer's. Size it from memory and descriptors: a socket is
+\ one, beside the run's four, its waker's pipe and its task's queue's two.
 \ An open socket from which no byte has arrived for ping ms is pinged, and
 \ lost under 1006 once pong ms more pass with none, counted from when the
 \ ping left the queue for the kernel. The count runs only while its read is
@@ -1409,10 +1409,10 @@ ENUM course
    LOG:;LINE ;
 
 
-\ WS's task. A throw from its loop - a poll or the timer AIO rejects at its
-\ ceiling, a mapping the task cannot get - is reported and rethrown, so
-\ TASK:THROW@ keeps it and CLEANUP closes every socket: each handshake is then
-\ 503 until STOP and START. A halt passes the catch unreported.
+\ WS's task. A throw from its loop, such as a mapping the task cannot get, is
+\ reported and rethrown, so TASK:THROW@ keeps it and CLEANUP closes every
+\ socket: each handshake is then 503 until STOP and START. A halt passes the
+\ catch unreported.
 : SERVE ( -- )
    [: CLEANUP ;] TASK:SELF TASK:AT-EXIT
    [: SERVING ;] catch {: code:n :}
@@ -1761,7 +1761,6 @@ ENUM course
 
 
 : LAUNCH ( ^config -- ^config ) {: cfg:^ :}
-   AIO:RUNNING? 0= if E-AIO-STATE throw then
    cfg WS-CONFIG:SOCKETS @ {: n:n :}
    cfg WS-CONFIG:CALLS @ {: c:n :}
    n c LIMITS? 0= if E-WS-LIMIT throw then

@@ -1,8 +1,7 @@
 \ serial-test.f - package SERIAL over a pseudoterminal pair, in one process: the
 \ master is the peer, the slave opened by SERIAL:OPEN8N1 at 115200 as
-\ test/serial.py's host does. Pinned here, not by the host: a parked READ is not
-\ a thread parked in poll(2), a zero window answers a terminal holding bytes,
-\ and a wait with no loop is rejected by name.
+\ test/serial.py's host does. Pinned here, not by the host: a parked READ waits
+\ in its task's own queue, and a zero window answers a terminal holding bytes.
 \ Run: bin/hb --load src/lib/serial-test.f
 
 require src/lib/test/assert.f
@@ -67,9 +66,6 @@ TASK:MIN-STACK TASK:TASK READER
    CLASSIFY {: got-kind:n got-payload:n :}
    got-kind kind T=
    got-payload payload T= ;
-
-: IO-DROP ( SERIAL:io-result -- )
-   CLASSIFY 2drop ;
 
 : OPENED ( SERIAL:open-result -- n )
    MATCH SERIAL:open-result
@@ -195,21 +191,8 @@ TASK:MIN-STACK TASK:TASK READER
    PARK-KIND @ K-MOVED T=
    PARK-COUNT @ 4 T= ;
 
-\ The loop is the program's to start, and a library never starts one: a wait
-\ without one says so instead of falling back to a thread parked in poll(2).
-
-: STOPPED-READ ( -- )
-   PORT EMPTY 1 SERIAL:BYTES IDLE-MS >MS SERIAL:READ IO-DROP ;
-
-: NO-LOOP-CASE ( -- )
-   s" a read with the loop stopped is rejected by name" T-LABEL
-   AIO:STOP
-   [: STOPPED-READ ;] E-AIO-STATE TTHROWSQ
-   AIO:START ;
-
-\ The kernel fails the poll of a descriptor that names nothing with EBADF, so
-\ the rejected arm answers what POLLNVAL answered on the poll(2) path: errno 9,
-\ the number test/serial.py pins for a read after close.
+\ A wait on a closed descriptor is rejected with EBADF: errno 9, the number
+\ test/serial.py pins for a read after close.
 
 : AFTER-CLOSE-CASE ( -- )
    s" CLOSE of the open port succeeds" T-LABEL
@@ -221,7 +204,7 @@ TASK:MIN-STACK TASK:TASK READER
    PEER PTY:CLOSE ;
 
 \ test/serial.py's `disconnect` case pins `closed` then `error 5` on the poll(2)
-\ path; the loop answers the same, through the same two steps. The hang-up
+\ path; AIO's wait answers the same, through the same two steps. The hang-up
 \ reaches the poll as POLLHUP, the read that follows it is rejected with EAGAIN,
 \ and the answered bits are what makes that a hang-up rather than a retry.
 
@@ -245,7 +228,6 @@ public
 : RUN ( -- )
    T-RESET
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BUF !
-   AIO:START
    OPEN-CASE
    READ-CASE
    APPEND-CASE
@@ -253,10 +235,8 @@ public
    ZERO-CASE
    WRITE-CASE
    PARKED-CASE
-   NO-LOOP-CASE
    AFTER-CLOSE-CASE
    HANGUP-CASE
-   AIO:STOP
    BUF @ VEC:DELETE
    T-REPORT
    s" serial-test: ok" type cr ;

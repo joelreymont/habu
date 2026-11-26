@@ -10,7 +10,6 @@ require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
-require src/lib/aio.f
 require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/net/curl.f
@@ -99,7 +98,6 @@ TYPED-VARIABLE CFG HTTP:config
    BODY @ VEC:BYTES WANT @ VEC:BYTES T$= ;
 
 : SERVE-CASES ( -- )
-   AIO:START
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HEAD !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW WANT !
@@ -116,8 +114,7 @@ TYPED-VARIABLE CFG HTTP:config
    s" /turn.js" s" src/lib/browser/turn.js" s" text/javascript; charset=utf-8" SERVED
    s" GET /page.js answers src/lib/browser/page.js as text/javascript" T-LABEL
    s" /page.js" s" src/lib/browser/page.js" s" text/javascript; charset=utf-8" SERVED
-   HTTP:STOP
-   AIO:STOP ;
+   HTTP:STOP ;
 
 T-RESET
 SERVE-CASES

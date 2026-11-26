@@ -121,7 +121,7 @@ $80800 constant ACCEPT-FLAGS       \ SOCK_CLOEXEC | SOCK_NONBLOCK on the accepte
 : MSG-NOSIGNAL ( -- n ) HB-TARGET-LINUX? if $4000 else $80000 then ;   \ A write to a closed peer never signals.
 4 constant F-SETFL
 : O-NONBLOCK ( -- n ) HB-TARGET-LINUX? if $800 else 4 then ;   \ Linux's SOCK_NONBLOCK is the same bit.
-$39 constant POLL-DONE             \ POLLIN|POLLERR|POLLHUP|POLLNVAL: a read will not block.
+$19 constant POLL-DONE             \ POLLIN|POLLERR|POLLHUP: a read will not block.
 $01 constant POLLIN                \ a receive will not block, on both.
 $04 constant POLLOUT               \ a send will not block, on both.
 \ Linux raises POLLHUP on a peer's FIN only once this end has shut too, and
@@ -339,16 +339,15 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    OPTION LE:U32@ N>BLEN TCP4-QUEUE--RESULT:QUEUED ;
 
 
-\ POLLERR, POLLHUP and POLLNVAL all mean a read returns at once, with the end of
-\ stream or the error as its answer, so they are readiness and not a failure.
+\ POLLERR and POLLHUP both mean a read returns at once, with the end of stream or
+\ the error as its answer, so they are readiness and not a failure.
 : REVENTS>READY ( n -- ready-result )
    POLL-DONE and 0 <> if TCP4-READY--RESULT:READY exit then
    TCP4-READY--RESULT:IDLE ;
 
 
-\ The deadline is the poll's own linked timeout, so a signal does not cut the
-\ wait short; a zero timeout still answers `ready` for a descriptor already
-\ ready. A wait without AIO:START is E-AIO-STATE.
+\ The deadline is the poll's own, so a signal does not cut the wait short; a
+\ zero timeout still answers `ready` for a descriptor already ready.
 : WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
    fd >FD AIO:READABLE timeout AIO:WAIT-READY
    MATCH AIO:readiness
@@ -358,9 +357,8 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    ;MATCH ;
 
 
-\ One poll(2) of the descriptor for the events, on this task's own thread with
-\ no AIO loop: how many descriptors are ready, 0 once the timeout in
-\ milliseconds has passed, or the errno negated.
+\ One poll(2) of the descriptor for the events, without AIO: the ready count, 0
+\ once the timeout in milliseconds has passed, or the errno negated.
 : POLL-FD ( n n n -- n ) {: fd:n events:n timeout:n :}
    fd >FD events FD:>POLLFD POLLFD-ROW !
    POLLFD-ROW 1 timeout poll ;
@@ -570,7 +568,7 @@ public
 
 
 \ One partial read of up to capacity bytes, waiting in poll(2) on the task's own
-\ thread, with no AIO loop or deadline, until the stream answers. The caller owns
+\ thread, with no AIO or deadline, until the stream answers. The caller owns
 \ the writable span. `closed` carries zero bytes.
 : READ ( connection ^u8 NUM:byte-len -- read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
@@ -697,8 +695,8 @@ public
    again ;
 
 
-\ Parks the task on the AIO loop until the stream would answer a READ or the
-\ deadline passes, which is `idle`; ms -1 parks it with no deadline.
+\ Waits in the task's own AIO queue until the stream would answer a READ or
+\ the deadline passes, which is `idle`; ms -1 waits with no deadline.
 : READABLE-WITHIN? ( connection ms -- ready-result )
    {: conn:connection timeout:ms :}
    conn CONNECTION>N timeout WAIT-READY ;

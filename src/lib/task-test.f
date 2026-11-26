@@ -14,6 +14,7 @@ require src/lib/test/assert.f
 require src/lib/test/eval.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/process-fork.f
 require src/lib/engine-candidate.f
 require src/lib/task.f
 require src/lib/time-cpu.f
@@ -2522,6 +2523,142 @@ variable NEW-STRAY
    [: TASK:SELF TASK:FREE ;] E-TASK-STATE TTHROWSQ
    NEW-GATE TASK:SEMAPHORE-DESTROY ;
 
+HB-TARGET-LINUX? [if]
+PROCESS-SYMBOLS
+FUNCTION: EPOLL-WAIT-CALL epoll_wait ( n ^u8 n n -- i32 ) ;FUNCTION
+
+\ epoll_event is 12 bytes on x86-64 (packed) and 16 on arm64; its u64 data
+\ follows the u32 events at 4 or 8.
+: EPOLL-DATA-OFF ( -- n )
+   HB-TARGET-LINUX-X86-64? if 4 else 8 then ;
+
+variable QUEUE-A1
+variable QUEUE-A2
+variable QUEUE-B1
+TASK:MIN-STACK TASK:TASK QUEUE-TASK-A
+TASK:MIN-STACK TASK:TASK QUEUE-TASK-B
+
+: QUEUE-A-WORK ( -- )
+   TASK:QUEUE QUEUE-A1 !
+   TASK:QUEUE QUEUE-A2 ! ;
+
+: QUEUE-B-WORK ( -- )
+   TASK:QUEUE QUEUE-B1 ! ;
+
+: TASK-TEST-QUEUE-SAME ( -- )
+   ['] QUEUE-A-WORK QUEUE-TASK-A TASK:ACTIVATE
+   ['] QUEUE-B-WORK QUEUE-TASK-B TASK:ACTIVATE
+   QUEUE-TASK-A APP-WAIT-DONE
+   QUEUE-TASK-B APP-WAIT-DONE
+   TASK:QUEUE {: main:n :}
+   s" TASK:QUEUE answers one descriptor twice in a task" T-LABEL
+   QUEUE-A1 @ QUEUE-A2 @ T=
+   s" TASK:QUEUE answers one descriptor twice on the main thread" T-LABEL
+   TASK:QUEUE main T=
+   s" two tasks' queues differ" T-LABEL
+   QUEUE-A1 @ QUEUE-B1 @ T<>
+   s" a task's queue is not the main thread's" T-LABEL
+   QUEUE-A1 @ main T<>
+   QUEUE-TASK-A TASK:KILL
+   QUEUE-TASK-B TASK:KILL ;
+
+variable WAKE-READY
+variable WAKE-RC
+variable WAKE-DATA
+create WAKE-EVENT 2 cells allot
+TASK:MIN-STACK TASK:TASK WAKE-OWNER
+
+: WAKE-OWNER-WORK ( -- )
+   TASK:QUEUE {: q:n :}
+   -1 WAKE-EVENT EPOLL-DATA-OFF + !
+   1 WAKE-READY atomic!
+   q WAKE-EVENT 1 1000 EPOLL-WAIT-CALL WAKE-RC !
+   WAKE-EVENT EPOLL-DATA-OFF + @ WAKE-DATA ! ;
+
+: TASK-TEST-QUEUE-WAKE ( -- )
+   0 WAKE-READY !  -1 WAKE-RC !  -1 WAKE-DATA !
+   TEST-WAIT:EPOLL-BLOCKED {: blocked:n :}
+   ['] WAKE-OWNER-WORK WAKE-OWNER TASK:ACTIVATE
+   WAKE-READY 1 WAKE-OWNER TEST-WAIT:FOR-CELL
+   blocked 1+ WAKE-OWNER TEST-WAIT:FOR-EPOLL
+   WAKE-OWNER TASK:QUEUE-WAKE
+   WAKE-OWNER APP-WAIT-DONE
+   s" TASK:QUEUE-WAKE ends the owner's epoll_wait inside 1 s" T-LABEL
+   WAKE-RC @ 1 T=
+   s" the wake's event data is 0" T-LABEL
+   WAKE-DATA @ 0 T=
+   WAKE-OWNER TASK:KILL ;
+
+variable HALT-Q-READY
+variable HALT-Q-CLEAN
+create HALT-Q-EVENT 2 cells allot
+TASK:MIN-STACK TASK:TASK HALT-Q-TASK
+
+\ Blocks with no timeout, so only a post to its queue ends a wait.
+: HALT-Q-WAIT ( -- )
+   TASK:QUEUE {: q:n :}
+   1 HALT-Q-READY atomic!
+   begin
+      0 TASK:HALT-UNWIND
+      q HALT-Q-EVENT 1 -1 EPOLL-WAIT-CALL drop
+   again ;
+
+: HALT-Q-CLEAN-UP ( -- )
+   1 HALT-Q-CLEAN atomic! ;
+
+: HALT-Q-BODY ( -- )
+   [: HALT-Q-WAIT ;] [: HALT-Q-CLEAN-UP ;] finally ;
+
+: TASK-TEST-QUEUE-HALT ( -- )
+   0 HALT-Q-READY !  0 HALT-Q-CLEAN !
+   TEST-WAIT:EPOLL-BLOCKED {: blocked:n :}
+   ['] HALT-Q-BODY HALT-Q-TASK TASK:ACTIVATE
+   HALT-Q-READY 1 HALT-Q-TASK TEST-WAIT:FOR-CELL
+   blocked 1+ HALT-Q-TASK TEST-WAIT:FOR-EPOLL
+   HALT-Q-TASK TASK:HALT
+   HALT-Q-TASK APP-WAIT-DONE
+   s" TASK:HALT ends a wait on the task's queue and runs its finally" T-LABEL
+   HALT-Q-CLEAN atomic@ 1 T=
+   HALT-Q-TASK TASK:JOIN E-TASK-NO-RESULT JOIN-ERR= ;
+
+variable FORK-Q-SEEN
+TASK:MIN-STACK TASK:TASK FORK-Q-TASK
+
+: FORK-Q-WORK ( -- )
+   TASK:QUEUE FORK-Q-SEEN ! ;
+
+\ Leaves the task EMPTY, so the child activates it without joining a thread
+\ only the parent had.
+: FORK-Q-RUN ( -- )
+   ['] FORK-Q-WORK FORK-Q-TASK TASK:ACTIVATE
+   FORK-Q-TASK APP-WAIT-DONE
+   FORK-Q-TASK TASK:KILL ;
+
+\ Exits 0 when the record answers a queue of its own, 1 when it answers the
+\ parent's descriptor, 2 when the run throws.
+: FORK-Q-CHILD ( n -- ) {: parent:n :}
+   [: FORK-Q-RUN ;] catch 0<> if s" " 2 die then
+   FORK-Q-SEEN @ parent = if s" " 1 die then
+   s" " 0 die ;
+
+: TASK-TEST-QUEUE-FORK ( -- )
+   FORK-Q-RUN
+   FORK-Q-SEEN @ {: parent:n :}
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if parent FORK-Q-CHILD then
+   s" a task record run again in a forked child answers a queue of its own"
+   s" " s" " pid PROCESS:WAIT PROCESS:STATUS>ENDING 0 T-ENDING-EXITED= ;
+
+: TASK-TEST-QUEUE ( -- )
+   TASK-TEST-QUEUE-SAME
+   TASK-TEST-QUEUE-WAKE
+   TASK-TEST-QUEUE-HALT
+   TASK-TEST-QUEUE-FORK ;
+[then]
+HB-TARGET-LINUX? 0= [if]
+: TASK-TEST-QUEUE ( -- ) ;
+[then]
+
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
@@ -2639,6 +2776,7 @@ variable NEW-STRAY
    TASK-TEST-NEW-LOOP
    TASK-TEST-EXIT-GROW
    TASK-TEST-FREE-REJECTED
+   TASK-TEST-QUEUE
    TASK-TEST-WORKER-ACTIVATES
    T-REPORT ;
 

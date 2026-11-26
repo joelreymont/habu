@@ -140,8 +140,7 @@ public
 
 \ Appends at most n bytes of one datagram; `truncated` carries the
 \ datagram's own length. On timeout or failure COUNT is as it was. Timeout
-\ zero makes one try, a negative one waits with no deadline; a wait needs
-\ AIO:START to have run.
+\ zero makes one try, a negative one waits with no deadline.
 : RECEIVE ( socket ^VEC:vector<u8> NUM:byte-len ms -- receive-result )
    {: socket:socket v:^ most:NUM:byte-len timeout:ms :}
    socket SOCKET>N v most timeout NULL-PTR NULL-PTR

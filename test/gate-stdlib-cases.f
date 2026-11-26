@@ -341,8 +341,8 @@ SUITE task-prepare-failure
    test/task-prepare-failure.f
 ;SUITE
 
-\ Readiness, timers and cancellation on io_uring, over pipes only.
-SUITE aio-uring
+\ Readiness, timers and cancellation on each task's queue, over pipes only.
+SUITE aio
    src/lib/aio-test.f
 ;SUITE
 

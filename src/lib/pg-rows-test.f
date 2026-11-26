@@ -24,7 +24,6 @@ require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/float.f
 require src/lib/task.f
-require src/lib/aio.f
 require src/lib/pg.f
 require src/lib/pg-rows.f
 
@@ -578,21 +577,6 @@ TYPED-VARIABLE LOST-B PG:connection
    CLOSE-AB ;
 
 
-: AWAIT-STOPPED ( -- )
-   [: AWAIT-A ;] E-AIO-STATE TTHROWSQ ;
-
-: STOPPED-WAIT ( -- )
-   s" a wait the AIO loop rejects empties the rejection text" T-LABEL
-   OPEN-AB
-   s" select pg_sleep(10)" SEND-A
-   REJECT-B PG:E-QUERY T=
-   AIO:STOP
-   [: AWAIT-STOPPED ;] [: AIO:START ;] finally
-   NO-REJECTION
-   LOST-A @ PG:LIVE? TFALSE
-   CLOSE-AB ;
-
-
 : A-UNSTAGED ( -- )
    LOST-A @ s" select 1" [: ;] PG:WITH-RESULT ;
 
@@ -827,7 +811,6 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    NOTIFIED-LOSS
    NOTIFIED-NOW-LOSS
    ANSWERED-LOSS
-   STOPPED-WAIT
    STALE-HANDLE
    TEXTLESS-FAILURES
    COMMIT-REJECTED
@@ -847,8 +830,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    s" a declaration of no readers" T-LABEL
    [: 0 PG:CONFIGURE-READERS ;] PG:E-CAPACITY TTHROWSQ
    READERS PG:CONFIGURE-READERS
-   AIO:START
-   [: SESSION ;] [: AIO:STOP ;] finally ;
+   SESSION ;
 
 T-RESET
 MAIN

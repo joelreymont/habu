@@ -4,7 +4,6 @@
 require src/core/exit-status.f
 require src/lib/process-pty-io.f
 require src/lib/prelude.f
-require src/lib/aio.f
 require src/lib/process-fork.f
 require src/lib/test/assert.f
 require src/lib/test/wait.f
@@ -155,9 +154,8 @@ TASK:MIN-STACK TASK:TASK HALTEE
    cpid PROCESS:WAIT drop ;                           \ reap the zombie
 
 \ A gated target stays alive beyond the 100 ms deadline. A 1 kHz profiler storms
-\ the process while its watch wait is on the AIO loop; no signal reaches a
-\ thread parked in poll(2), so the wait must neither throw, shorten nor renew
-\ time.
+\ the process while its watch waits in its task's AIO queue; the wait must
+\ neither throw, shorten nor renew time.
 : SIGNAL-WATCH-BODY ( process-pty-handle -- process-pty-handle )
    1000 prof-rate 1000000 prof-on
    mono-ns {: started:n :}
@@ -225,14 +223,8 @@ TASK:MIN-STACK TASK:TASK HALTEE
    TRUE-PATH [: NO-LEAK-BODY ;] PROCESS-PTY:WITH-TARGET
    TRUE-PATH [: NO-LEAK-BODY ;] PROCESS-PTY:WITH-TTY-TARGET ;
 
-\ AWAIT with the loop stopped is E-AIO-STATE, like every other wait on the loop;
-\ src/lib/serial-test.f and src/lib/signal-test.f pin that
-\ rejection, and this suite does not.
-\
-\ The loop is started after the last definition and stopped at the end.
 : RUN ( -- )
    T-RESET
-   AIO:START
    LIFECYCLE
    BALANCE
    THROW-FREES
@@ -242,7 +234,6 @@ TASK:MIN-STACK TASK:TASK HALTEE
    SIGNAL-WATCH
    SIGNAL-OUTPUT
    NO-LEAK
-   AIO:STOP
    T-REPORT
    s" process-pty-io-smoke: ok" type cr ;
 

@@ -58,7 +58,6 @@ require src/lib/span.f
 require src/lib/string.f
 require src/lib/string-option.f
 require src/lib/fmt.f
-require src/lib/aio.f
 require src/lib/task.f
 require src/lib/heap.f
 require src/lib/vector.f
@@ -2220,7 +2219,6 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 \ The child's server: echo under MCP:LOG, called with {"a":1}, then with
 \ LONG-CALL's arguments; then strict's and wait's tool errors.
 : DEBUG-SERVE ( -- )
-   AIO:START
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
    HTTP:ROUTES-RESET
    s" POST" s" /mcp" [: MCP:HANDLE ;] HTTP:ROUTE
@@ -2232,8 +2230,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    LEGACY LONG-CALL POST 200 T=
    STRICT-ERROR FREED-CALL
    HTTP:STOP
-   BODY @ VEC:DELETE
-   AIO:STOP ;
+   BODY @ VEC:DELETE ;
 
 $4000 constant CHILD-CAP
 create CHILD-OUT CHILD-CAP allot
@@ -2288,7 +2285,6 @@ create CHILD-ERR CHILD-CAP allot
 
 
 : SERVE-CASES ( -- )
-   AIO:START
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
    HTTP:ROUTES-RESET
    s" POST" s" /mcp" [: MCP:HANDLE ;] HTTP:ROUTE
@@ -2385,8 +2381,7 @@ create CHILD-ERR CHILD-CAP allot
    PROTECTED-CASES
    LOGGED-CASES
    HTTP:STOP
-   REPLIES @ VEC:DELETE
-   AIO:STOP ;
+   REPLIES @ VEC:DELETE ;
 
 public
 

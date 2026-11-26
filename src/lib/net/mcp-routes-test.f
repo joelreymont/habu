@@ -10,7 +10,6 @@
 require src/lib/test/assert.f
 require src/lib/string.f
 require src/lib/fmt.f
-require src/lib/aio.f
 require src/lib/task.f
 require src/lib/heap.f
 require src/lib/vector.f
@@ -275,7 +274,6 @@ variable CALLS                      \ requests the quotation was given
    PORT @ SERVE-ON ;
 
 : SERVE-CASES ( -- )
-   AIO:START
    VECTORS
    s" mcp-routes-test" s" 1.0" MCP:SERVER-INFO!
    ADD-WHO
@@ -290,8 +288,7 @@ variable CALLS                      \ requests the quotation was given
    HTTP:STOP
    s" https://mcp.example/.well-known/oauth-protected-resource/mcp" STATE
    SERVING-CASES CALLERS ORIGIN-CASES GETS
-   HTTP:STOP
-   AIO:STOP ;
+   HTTP:STOP ;
 
 T-RESET
 SERVE-CASES

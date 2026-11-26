@@ -14,8 +14,8 @@ blocks:
   - habu-emit-the-x86-3b63853e
 ---
 
-Problem: the task, signal-stub, stack-guard and io_uring suites have never run on x86; their x86 bodies arrive in K10a-c, K11c, R2 and R3. Split from habu-port-the-ffi-676f745d (task entry and guard-page model).
-Acceptance: the `tasking-threads`, `task-entry`, `signal-stub`, `stack-guard` and `aio-uring` suites green on the ThinkPad.
+Problem: the task, signal-stub, stack-guard and AIO suites have never run on x86; their x86 bodies arrive in K10a-c, K11c, R2 and R3. Split from habu-port-the-ffi-676f745d (task entry and guard-page model).
+Acceptance: the `tasking-threads`, `task-entry`, `signal-stub` and `stack-guard` suites and src/lib/aio-test.f green on the ThinkPad.
 Files: `src/lib/task.f` and the suite files as the reds require.
 Verify: ThinkPad: each suite through the cross-built `hb-x64`.
 Depends: habu-port-signals-crash-2c7768ca (K10a), habu-port-the-crash-99c87339 (K10b), habu-port-the-profiler-97103e6e (K10c), habu-add-the-x86-efc81b26 (K11c), habu-marshal-ffi-calls-46dfd999 (R2), habu-add-linux-family-56c75040 (R3).

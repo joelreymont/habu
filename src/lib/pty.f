@@ -122,10 +122,8 @@ public
 
 \ Appends one chunk of at most n bytes that arrived within ms and answers its
 \ length; zero means nothing arrived in time. A timeout or a failure leaves
-\ COUNT as it was. Waits on the AIO loop (src/lib/aio.f), one POLL with its
-\ own linked timeout and one AWAIT, so no thread parks in poll(2) and a signal
-\ does not cut the window short. Call AIO:START before the first READ; with no
-\ loop it is E-AIO-STATE.
+\ COUNT as it was. Waits in the task's own AIO queue, one POLL with its own
+\ deadline and one AWAIT, so a signal does not cut the window short.
 : READ ( master ^VEC:vector<u8> n ms -- n )
    {: m:master v:^ cap:n timeout:ms :}
    m MASTER>N >FD AIO:READABLE timeout AIO:WAIT-READY

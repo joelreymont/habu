@@ -8,7 +8,7 @@
 \ DEADLINES. HTTP's START deadline bounds each head; a configured body timeout
 \ starts at the handler's first BODY$, otherwise that same deadline also bounds
 \ the body. Before its deadline a fill reads what the
-\ socket holds, serving a pending TASK:HALT, and parks the task on the AIO loop
+\ socket holds, serving a pending TASK:HALT, and waits in AIO
 \ only when it holds nothing. Past it WAIT-READABLE asks once without waiting,
 \ and the first fill to find it passed takes the bytes then queued as the late
 \ budget against that deadline: every later fill reads at most what is left of
@@ -154,9 +154,8 @@ private
    whole >MS ;
 
 
-\ Parks the task, not its thread, on the AIO loop (TCP4:READABLE-WITHIN? is an
-\ AIO:POLL and an AIO:AWAIT, src/lib/aio.f) until the peer speaks or the
-\ deadline passes.
+\ Waits in the task's own AIO queue until the peer speaks or the deadline
+\ passes.
 : WAIT-READABLE ( TCP4:connection n -- bool )
    {: conn:TCP4:connection deadline:n :}
    conn deadline REMAINING TCP4:READABLE-WITHIN?
