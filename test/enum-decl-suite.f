@@ -176,7 +176,7 @@ DECL-DIAG:PROSE
 s" ENUM compact-missing-derive DERIVE ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-missing-derive`\n" DECL-DIAG:HAS? TTRUE
 s" ;ENUM" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name `eq`, `hash` or `tag` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name `eq`, `hash`, `tag` or `name` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM compact-bad-policy POLICY unknown alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-bad-policy`\n" DECL-DIAG:HAS? TTRUE
@@ -185,12 +185,12 @@ DECL-DIAG:PROSE
 s" ENUM compact-bad-feature DERIVE unknown alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-bad-feature`\n" DECL-DIAG:HAS? TTRUE
 s" unknown" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name `eq`, `hash` or `tag` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name `eq`, `hash`, `tag` or `name` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM compact-order DERIVE order alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-order`\n" DECL-DIAG:HAS? TTRUE
 s" order" s" derive feature not yet supported" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: derive `eq`, `hash` or `tag` instead: `order` is not implemented\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: derive `eq`, `hash`, `tag` or `name` instead: `order` is not implemented\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM compact-no-variant POLICY packed-tag ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-no-variant`\n" DECL-DIAG:HAS? TTRUE
@@ -386,6 +386,32 @@ s" ENUM tagpay DERIVE tag VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;E
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tagpay`\n" DECL-DIAG:HAS? TTRUE
 s" tagpay" s" derive tag requires variants without payload" DECL-DIAG:CAUSE? TTRUE
 
+\      DERIVE name adds NAME$ ( fam -- str ), each variant's spelling as
+\      declared; a payload variant drops its payload.
+ENUM namedrv DERIVE name low mid-point high ;ENUM
+NAMEDRV:LOW NAMEDRV:NAME$ s" low" T$=
+NAMEDRV:MID-POINT NAMEDRV:NAME$ s" mid-point" T$=
+NAMEDRV:HIGH NAMEDRV:NAME$ s" high" T$=
+s" NM1 ( namedrv -- str ) NAMEDRV:NAME$" CHECK-QUIET-CANDIDATE! -1 T=
+s" NM2 ( namedrv -- n ) NAMEDRV:NAME$" CHECK-QUIET-CANDIDATE! 0 T=
+ENUM namepay DERIVE eq name
+   VARIANT bare ;VARIANT
+   VARIANT held FIELD a n FIELD b n ;VARIANT
+;ENUM
+: NAMEPAY-BARE$ ( -- str ) NAMEPAY:BARE NAMEPAY:NAME$ ;
+: NAMEPAY-HELD$ ( -- str ) 1 2 NAMEPAY:HELD NAMEPAY:NAME$ ;
+NAMEPAY-BARE$ s" bare" T$=
+NAMEPAY-HELD$ s" held" T$=
+DECL-DIAG:PROSE
+s" undefine NAMEDRV:NAME$" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `NAMEDRV:NAME$`" DECL-DIAG:HAS? TTRUE
+\      Only an ENUM derives name: a SUMTYPE's DERIVE name rejects.
+DECL-DIAG:PROSE
+s" SUMTYPE sumname DERIVE eq name VARIANT bare ;VARIANT ;SUMTYPE"
+   TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `sumname`\n" DECL-DIAG:HAS? TTRUE
+s" name" s" derive name requires an enum" DECL-DIAG:CAUSE? TTRUE
+
 \      A private ENUM or SUMTYPE generates its variants and derived words into
 \      its package's private wordlist, protected there as a public family's are.
 package enum-tag-test
@@ -398,6 +424,10 @@ s" error[E-CTOR-PROTECTED]: `TAGPRIV-ONE`" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" undefine TAGPRIV-TAG>" TEST-EVAL:RC 70 T=
 s" error[E-CTOR-PROTECTED]: `TAGPRIV-TAG>`" DECL-DIAG:HAS? TTRUE
+ENUM namepriv DERIVE name one two ;ENUM
+DECL-DIAG:PROSE
+s" undefine NAMEPRIV-NAME$" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `NAMEPRIV-NAME$`" DECL-DIAG:HAS? TTRUE
 SUMTYPE sumpriv DERIVE eq
   VARIANT bare ;VARIANT
   VARIANT held n ;VARIANT
@@ -408,12 +438,14 @@ public
 : TPEQF ( -- bool ) TAGPRIV-ONE TAGPRIV-TWO TAGPRIV-EQ ;
 : TPSEQT ( -- bool ) 5 SUMPRIV-HELD 5 SUMPRIV-HELD SUMPRIV-EQ ;
 : TPSEQF ( -- bool ) 5 SUMPRIV-HELD SUMPRIV-BARE SUMPRIV-EQ ;
+: TPNAME$ ( -- str ) NAMEPRIV-TWO NAMEPRIV-NAME$ ;
 ;package
 1 enum-tag-test:TPRT 1 T=
 enum-tag-test:TPEQT TTRUE
 enum-tag-test:TPEQF TFALSE
 enum-tag-test:TPSEQT TTRUE
 enum-tag-test:TPSEQF TFALSE
+enum-tag-test:TPNAME$ s" two" T$=
 
 \      Another package reaches the derived TAG> under no spelling.
 package enum-tag-other
@@ -534,13 +566,13 @@ DECL-DIAG:PROSE
 s" ENUM dgdrv DERIVE nosuch red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgdrv`\n" DECL-DIAG:HAS? TTRUE
 s" nosuch" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name `eq`, `hash` or `tag` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name `eq`, `hash`, `tag` or `name` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM dgord DERIVE order red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgord`\n" DECL-DIAG:HAS? TTRUE
 s" order" s" derive feature not yet supported" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: derive `eq`, `hash` or `tag` instead: `order` is not implemented\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: derive `eq`, `hash`, `tag` or `name` instead: `order` is not implemented\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM dgfn VARIANT vv FIELD make n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=

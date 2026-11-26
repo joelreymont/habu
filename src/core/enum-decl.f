@@ -76,6 +76,7 @@ ED-RESET
    dup s" eq" STR:=CI IF drop YES EXIT THEN
    dup s" hash" STR:=CI IF drop YES EXIT THEN
    dup s" tag" STR:=CI IF drop YES EXIT THEN
+   dup s" name" STR:=CI IF drop YES EXIT THEN
    s" order" STR:=CI ;
 
 \ The first token after the header clauses picks the mode: VARIANT starts full
@@ -121,18 +122,19 @@ ED-RESET
    dup s" eq" STR:=CI IF drop FAM @ TFAM-DERIVE-EQ! DRV-EQ DECL-EVENT:DERIVE EXIT THEN
    dup s" hash" STR:=CI IF drop FAM @ TFAM-DERIVE-HASH! DRV-HASH DECL-EVENT:DERIVE EXIT THEN
    dup s" tag" STR:=CI IF drop FAM @ TFAM-DERIVE-TAG! DRV-TAG DECL-EVENT:DERIVE EXIT THEN
+   dup s" name" STR:=CI IF drop FAM @ TFAM-DERIVE-NAME! DRV-NAME DECL-EVENT:DERIVE EXIT THEN
    dup s" order" STR:=CI IF
       drop s" derive feature not yet supported"
-      s" derive `eq`, `hash` or `tag` instead: `order` is not implemented"
+      s" derive `eq`, `hash`, `tag` or `name` instead: `order` is not implemented"
       E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
    drop s" unknown derive feature"
-   s" name `eq`, `hash` or `tag` after `DERIVE`"
+   s" name `eq`, `hash`, `tag` or `name` after `DERIVE`"
    E-TDECL-DERIVE DECL-REJECT:REJECT throw ;
 : DERIVE-CLAUSE ( -- )
    HEADER-ORDER
    NEXT dup STR:LEN 0= IF
       drop s" missing derive feature"
-      s" name `eq`, `hash` or `tag` after `DERIVE`"
+      s" name `eq`, `hash`, `tag` or `name` after `DERIVE`"
       E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
    BEGIN NEXT dup STR:LEN 0= IF drop EXIT THEN
       dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN

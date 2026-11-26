@@ -528,6 +528,9 @@ unwritten: `variable V  here V !` is `E-RAW-CELL-PTR` at `!` and
 `5 V !`, `1 V +!`, `here PV !` with the pointer kept across a `:` definition or
 a `require`, and `' X HK !` for `TYPED-VARIABLE HK [ -- ]`.
 
+An `ENUM`'s `DERIVE name` adds `NAME$ ( family -- str )`, the variant's name
+as declared.
+
 An integer or an `xt` becomes an address or a quotation only through a private
 `CAST:` (`CAST: >BYTES ( n -- ^u8 )` in a package's private section, else
 `E-CAST-MINT`); `X NULL-PTR -` is the address-to-integer distance for any

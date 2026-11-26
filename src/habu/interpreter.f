@@ -2384,10 +2384,26 @@ variable LIT-AT
    {: dense:n :}
    s dense LBUF:TYPED-VARIABLE-NODE ;
 
-\ Runs a definer's item: ITEM-ABI op OP, one-token spelling S, and V, a
-\ TYPE's or LOCAL's schema node or a LOCAL-REF's index.
+\ A string item's text: `s" `, its bytes and the closing quote.
+DYNAMIC-BUFFER STRING-TEXT u8
+
+\ No item row: the body walk reads the run as source, the literal a body's
+\ s" ..." text is.
+: STRING-ITEM ( str -- ) {: s:str :}
+   s STR:LEN 4 + STRING-TEXT-RESERVE
+   S\" s\q " STR:DATA  0 STRING-TEXT  3 BYTE-COPY
+   s STR:DATA  3 STRING-TEXT  s STR:LEN BYTE-COPY
+   34  s STR:LEN 3 + STRING-TEXT c!
+   BODYLEN-CELL CELL@ {: off:n :}
+   0 STRING-TEXT  s STR:LEN 4 + >str DEF-CAPTURE
+   off PLACE-RUN ;
+
+\ Runs a definer's item: ITEM-ABI op OP, spelling S, and V, a TYPE's or
+\ LOCAL's schema node or a LOCAL-REF's index. Every op but STRING takes one
+\ token.
 : ITEM-RUN ( str n n -- ) {: s:str v:n op:n :}
    s BUILT-PENDING
+   op ITEM-ABI:STRING = if s STRING-ITEM exit then
    s DEF-ONE-TOKEN? 0= if s" item" s DEF-NAME-REJECT then
    op ITEM-ABI:KEYWORD = if BODY-ITEM-KIND:KEYWORD 0 0 s ITEM+ exit then
    op ITEM-ABI:OPERAND = if BODY-ITEM-KIND:OPERAND 0 0 s ITEM+ exit then

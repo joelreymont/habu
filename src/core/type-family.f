@@ -483,6 +483,7 @@ private
 4 constant DRV-ADDR              \ address surface: one accessor per field
 8 constant DRV-INIT              \ initialized-record field accessors
 16 constant DRV-TAG              \ checked conversion from a tag, TAG>
+32 constant DRV-NAME             \ the variant's declared name, NAME$
 
 : TFAM-DERIVE@ ( n -- n ) TF-REC@ TF.DERIVE @ ;
 
@@ -496,6 +497,8 @@ private
 : TFAM-DERIVE-INIT? ( n -- bool ) TFAM-DERIVE@ DRV-INIT and 0 <> ;
 : TFAM-DERIVE-TAG! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-TAG or swap ! ;
 : TFAM-DERIVE-TAG? ( n -- bool ) TFAM-DERIVE@ DRV-TAG and 0 <> ;
+: TFAM-DERIVE-NAME! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-NAME or swap ! ;
+: TFAM-DERIVE-NAME? ( n -- bool ) TFAM-DERIVE@ DRV-NAME and 0 <> ;
 : TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
 
 \ The OPAQUE header clause: the family stays as visible as it was declared, and
@@ -1069,12 +1072,14 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    s s" eq" STR:=CI IF RES-TRUE EXIT THEN
    s s" hash" STR:=CI IF RES-TRUE EXIT THEN
    s s" tag>" STR:=CI IF RES-TRUE EXIT THEN
+   s s" name$" STR:=CI IF RES-TRUE EXIT THEN
    s s" tag" STR:=CI ;
 
 : TFAM-DERIVED-KIND-TAIL? ( str n -- bool ) {: s:str fam:n :}   \ derived tail the FAMILY generates
    s s" eq" STR:=CI IF fam TFAM-DERIVE-EQ? EXIT THEN
    s s" hash" STR:=CI IF fam TFAM-DERIVE-HASH? EXIT THEN
    s s" tag>" STR:=CI IF fam TFAM-DERIVE-TAG? EXIT THEN   \ enums only
+   s s" name$" STR:=CI IF fam TFAM-DERIVE-NAME? EXIT THEN   \ enums only
    fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
    s s" tag" STR:=CI ;                  \ tag rides ANY derive on sum/enum
 

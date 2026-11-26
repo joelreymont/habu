@@ -619,7 +619,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   payload adds `PKG-FAMILY:TAG> ( n -- family )`, the inverse of the
   `PKG-FAMILY:TAG ( family -- n )` (the variant's declaration order) that any
   `DERIVE` on an enum generates; a number that is not one of the enum's tags
-  throws `TYPE-DECL:E-ENUM-TAG` (-9880). A public `STRUCTURE`'s `MAKE`/`UNMAKE` let any package
+  throws `TYPE-DECL:E-ENUM-TAG` (-9880). `DERIVE name` on an arity-0 enum,
+  payload variants included, adds `PKG-FAMILY:NAME$ ( family -- str )`, the
+  variant's name as its declaration spells it. A public `STRUCTURE`'s `MAKE`/`UNMAKE` let any package
   rebuild it with any field values; an owner that validates its fields
   declares `OPAQUE`.
 - `POLICY` takes `stack-cell-tag` (the default), `packed-tag` or `niche-null`;

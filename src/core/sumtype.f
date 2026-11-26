@@ -20,6 +20,7 @@ EXPORT TFAM:DRV-ADDR
 EXPORT TFAM:DRV-EQ
 EXPORT TFAM:DRV-HASH
 EXPORT TFAM:DRV-INIT
+EXPORT TFAM:DRV-NAME
 EXPORT TFAM:DRV-TAG
 EXPORT TFAM:INIT-FIELD?
 EXPORT TFAM:INIT-RECORD?
@@ -46,6 +47,7 @@ EXPORT TFAM:PK-TYPE
 EXPORT TFAM:READ-PENDING
 EXPORT TFAM:SR-AMBIG
 EXPORT TFAM:SR-FOUND
+EXPORT TFAM:STR-FAM
 EXPORT TFAM:SUMV-ADD
 EXPORT TFAM:SUMV-CTOR-PKG!
 EXPORT TFAM:SUMV-CTOR-PKG$
@@ -88,6 +90,8 @@ EXPORT TFAM:TFAM-DERIVE-HASH!
 EXPORT TFAM:TFAM-DERIVE-HASH?
 EXPORT TFAM:TFAM-DERIVE-INIT!
 EXPORT TFAM:TFAM-DERIVE-INIT?
+EXPORT TFAM:TFAM-DERIVE-NAME!
+EXPORT TFAM:TFAM-DERIVE-NAME?
 EXPORT TFAM:TFAM-DERIVE-TAG!
 EXPORT TFAM:TFAM-DERIVE-TAG?
 EXPORT TFAM:TFAM-DERIVED-TAIL?
@@ -1481,6 +1485,10 @@ EXPORT CHECKER-RESOLVE:PART-ROW
       s s" derive tag requires an enum"
          s" drop `tag` from `DERIVE`: only an `ENUM` derives it"
          E-TDECL-DERIVE TDECL-THROW THEN
+   s s" name" STR:=CI IF
+      s s" derive name requires an enum"
+         s" drop `name` from `DERIVE`: only an `ENUM` derives it"
+         E-TDECL-DERIVE TDECL-THROW THEN
    s s" order" STR:=CI IF
       s s" derive feature not yet supported"
          s" drop `order` from `DERIVE` and write the comparison as a word of your own"
@@ -1495,6 +1503,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    s s" hash" STR:=CI or
    s s" init" STR:=CI or
    s s" tag" STR:=CI or
+   s s" name" STR:=CI or
    s s" order" STR:=CI or
    0= IF s PK! RES-FALSE EXIT THEN
    s fam TDECL-DERIVE-SET
@@ -1641,6 +1650,7 @@ TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 5 constant TDPLAN-MAKE
 6 constant TDPLAN-UNMAKE
 7 constant TDPLAN-FROM-TAG
+8 constant TDPLAN-VARIANT-NAME
 create TDPLAN-BOOT TDPLAN-CAP-INIT allot
 create TDPLAN-ROW-BOOT TDPLAN-ROW-CAP-INIT TDPLAN-REC * allot
 PERSISTED-PTR-VARIABLE TDPLAN-P       TDPLAN-BOOT TDPLAN-P !
@@ -1800,7 +1810,8 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
    fam TDECL-SELF-NODE  EMPTY-EFFECT over EFFECT-IN
    kind TDPLAN-EQ = IF
       over EFFECT-IN  CC-BOOL SCHEMA-CON EFFECT-OUT
-   ELSE CC-N SCHEMA-CON EFFECT-OUT THEN
+   ELSE kind TDPLAN-VARIANT-NAME = IF STR-FAM TDECL-SELF-NODE
+   ELSE CC-N SCHEMA-CON THEN EFFECT-OUT THEN
    nip ;
 
 \ FAM applied to its own parameters, fam<p0,..>.
@@ -1952,13 +1963,14 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
       fam vid pb qb i TDGEN-CMP1
       i 0 > IF postpone and THEN
    loop ;
-: TDGEN-TAG-BODY ( n -- ) {: fam:n :}   \ match fam v of <drops> <tag> endof .. ;match
+\ match fam v of <drops> <ARM v> endof .. ;match, ARM laying the arm's answer.
+: TDGEN-MATCH-BODY ( n [ n -- ] -- ) {: fam:n arm :}
    fam TDGEN-MATCH-OPEN
    fam TFAM-VAR-START@ {: vstart:n :}
    vstart fam TFAM-VAR-COUNT@ + vstart ?do
       i SUMV-NAME$ TDGEN-OF
       i SUMV-PAY-N TDGEN-DROPS
-      i SUMV-TAG@ literal
+      i arm execute
       s" endof" TDGEN-KW
    loop
    s" ;match" TDGEN-KW ;
@@ -2061,12 +2073,16 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
 : TDECL-FROM-TAG-WORD ( n -- ) {: fam:n :}
    fam s" tag>" TDGEN-DRV-NAME
    fam TDPLAN-FROM-TAG TDPLAN-BUILT+ ;
+: TDECL-NAME-WORD ( n -- ) {: fam:n :}
+   fam s" name$" TDGEN-DRV-NAME
+   fam TDPLAN-VARIANT-NAME TDPLAN-BUILT+ ;
 : TDECL-DRV-WORDS ( n -- ) {: fam:n :}
    fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
    fam TFAM-PRODUCT? 0= IF fam TDECL-TAG-WORD THEN   \ discriminant rides any derive
    fam TFAM-DERIVE-EQ? IF fam TDECL-EQ-WORD THEN
    fam TFAM-DERIVE-HASH? IF fam TDECL-HASH-WORD THEN
-   fam TFAM-DERIVE-TAG? IF fam TDECL-FROM-TAG-WORD THEN ;
+   fam TFAM-DERIVE-TAG? IF fam TDECL-FROM-TAG-WORD THEN
+   fam TFAM-DERIVE-NAME? IF fam TDECL-NAME-WORD THEN ;
 
 : TDECL-BUILT-OPEN ( n -- ) {: row:n :}
    row TDPLAN-NAME$  row TDECL-DRV-EFFECT
@@ -2074,7 +2090,7 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
 : TDECL-BUILT-END ( -- ) postpone ; ;
 : TDECL-TAG-BUILD ( n n -- ) {: fam:n row:n :}
    row TDECL-BUILT-OPEN
-   fam TDGEN-TAG-BODY
+   fam [: SUMV-TAG@ literal ;] TDGEN-MATCH-BODY
    TDECL-BUILT-END ;
 : TDECL-EQ-BUILD ( n n -- ) {: fam:n row:n :}
    row TDECL-BUILT-OPEN
@@ -2089,6 +2105,11 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
    row TDECL-BUILT-OPEN
    fam TDGEN-FROM-TAG-BODY
    TDECL-BUILT-END ;
+\ Each arm answers the variant's name as the declaration spells it.
+: TDECL-NAME-BUILD ( n n -- ) {: fam:n row:n :}
+   row TDECL-BUILT-OPEN
+   fam [: SUMV-NAME$ 0 ITEM-ABI:STRING TDGEN-ITEM ;] TDGEN-MATCH-BODY
+   TDECL-BUILT-END ;
 : TDECL-CTOR-BUILD ( n n -- ) {: fam:n row:n :}
    row TDECL-BUILT-OPEN
    s" construct" TDGEN-KW
@@ -2102,6 +2123,7 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
    kind TDPLAN-EQ = IF fam row TDECL-EQ-BUILD EXIT THEN
    kind TDPLAN-HASH = IF fam row TDECL-HASH-BUILD EXIT THEN
    kind TDPLAN-FROM-TAG = IF fam row TDECL-FROM-TAG-BUILD EXIT THEN
+   kind TDPLAN-VARIANT-NAME = IF fam row TDECL-NAME-BUILD EXIT THEN
    kind TDPLAN-PROD? IF
       row TDPLAN-NAME$ kind TDPLAN-SHAPE fam TDECL-CHILD EXIT
    THEN

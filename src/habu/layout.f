@@ -719,6 +719,9 @@ public
 5 constant LOCAL
 \ A read of a local's index.
 6 constant LOCAL-REF
+\ A string literal whose bytes are the spelling, as `s"` gives one; the
+\ bytes hold no quote.
+7 constant STRING
 ;package
 \ The latest `,` run of a created body.
 CREATED-BODY-ABI:COMMA-RUN-CELL constant COMMA-RUN-CELL

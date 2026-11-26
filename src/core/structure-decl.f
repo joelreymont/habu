@@ -811,6 +811,7 @@ private
    dup s" addr" STR:=CI IF drop YES EXIT THEN
    dup s" init" STR:=CI IF drop YES EXIT THEN
    dup s" tag" STR:=CI IF drop YES EXIT THEN
+   dup s" name" STR:=CI IF drop YES EXIT THEN
    s" order" STR:=CI ;
 \ Visibility is not a condition for a derived surface: it picks the spelling and
 \ the wordlist (type-family.f TF-CTOR-PRIV$, rendered by sumtype.f TDGEN-DRV-REF).
@@ -830,6 +831,10 @@ private
    dup s" tag" STR:=CI IF
       drop s" derive tag requires an enum"
       s" drop `tag` from `DERIVE`: only an `ENUM` derives it"
+      TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
+   dup s" name" STR:=CI IF
+      drop s" derive name requires an enum"
+      s" drop `name` from `DERIVE`: only an `ENUM` derives it"
       TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
    dup s" order" STR:=CI IF
       drop s" derive feature not yet supported"

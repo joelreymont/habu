@@ -555,6 +555,11 @@ s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgtag`\n" DECL-DIAG:HA
 s" tag" s" derive tag requires an enum" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
+s" STRUCTURE sdgname DERIVE name FIELD a n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgname`\n" DECL-DIAG:HAS? TTRUE
+s" name" s" derive name requires an enum" DECL-DIAG:CAUSE? TTRUE
+
+DECL-DIAG:PROSE
 s" STRUCTURE sdgstray VARIANT ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgstray`\n" DECL-DIAG:HAS? TTRUE
 s" VARIANT" s" unexpected token in structure declaration" DECL-DIAG:CAUSE? TTRUE
