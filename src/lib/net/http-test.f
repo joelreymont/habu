@@ -147,6 +147,7 @@ TASK:SEMAPHORE HOOK-READY
 TASK:SEMAPHORE HOOK-GATE
 TASK:SEMAPHORE GATE               \ holds the handler of /api/gate
 TASK:MIN-STACK TASK:TASK HOOK-RELEASER
+TASK:MIN-STACK TASK:TASK GATE-OPENER
 variable PARKED
 1 TYPED-BUFFER LARGE-SPAN SPAN:span<u8>
 \ The last response's bytes; its room never falls below RES-CAP.
@@ -2636,6 +2637,25 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    HOOK-GATE TASK:SEMAPHORE-DESTROY ;
 
 
+\ An idle bound that saturates the stop bound still lets STOP wait out a worker
+\ held in its handler until the stop is raised.
+: SATURATED-STOP-CASE ( -- )
+   0 PARKED !
+   0 GATE TASK:SEMAPHORE-INIT
+   LOOPBACK 0 ONE-WORKER 9223372036854 SERVE-ON
+   RAW-OPEN {: gated:TCP4:connection :}
+   gated s\" GET /api/gate HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
+   PARK-AWAIT
+   [: [: HTTP:STOPPING? ;] TEST-WAIT:POLL  GATE TASK:SIGNAL-SEM ;]
+   GATE-OPENER TASK:ACTIVATE
+   HTTP:STOP
+   HTTP:RUNNING? TFALSE
+   HTTP:KILLED-TASKS 0 T=
+   GATE-OPENER TASK:JOIN DROP-RELEASER-RESULT
+   gated TCP4:CLOSE DROP-TCP-STATUS
+   GATE TASK:SEMAPHORE-DESTROY ;
+
+
 : ERROR-HOOK-SERVER ( -- )
    LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    s\" GET\r\nHost: x\r\n\r\n"
@@ -3494,6 +3514,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    TWO-SELF-LINKS-CASE
    LINKED-TREE-CASE
    PARKED-WORKER-CASE
+   SATURATED-STOP-CASE
    IDLE-STOP-CASE
    IDLE-CALL-CASE
    REARM-CASE

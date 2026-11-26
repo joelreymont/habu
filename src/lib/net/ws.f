@@ -1487,14 +1487,9 @@ ENUM course
 
 
 \ CLEANUP's hint wakes this, or the deadline ends it; the other hints a stop
-\ gets are read past. Each wait is bounded by the deadline, so a deadline
-\ that passes after the check makes it a wait of zero.
+\ gets are read past.
 : AWAIT-LEFT ( n -- ) {: deadline:n :}
-   begin
-      LEFT @ 0 <> if exit then
-      mono-ns deadline >= if exit then
-      deadline REMAINING TASK:WAIT-MS drop
-   again ;
+   begin LEFT @ 0 <> if exit then deadline TASK:WAIT-UNTIL 0= until ;
 
 
 \ Under LOCK: a handshake inside ACCEPT holds a slot.
@@ -1531,7 +1526,7 @@ ENUM course
       LOCK TASK:RELEASE
       swap if drop TASK:WAIT else
          0= if exit then
-         deadline REMAINING TASK:WAIT-MS drop
+         deadline TASK:WAIT-UNTIL drop
       then
    again ;
 

@@ -1107,26 +1107,9 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    LEFT-COUNT @ TASK-COUNT = ;
 
 
-\ The bound's timer is cancelled and then awaited: a cancel does not wait, and a
-\ record nobody awaits is one the ring still holds (src/lib/aio.f), which
-\ would reject the LOOP-STOP that follows this server.
-: DROP-TIMER ( AIO:ticket -- ) {: timer:AIO:ticket :}
-   timer AIO:CANCEL
-   timer SETTLE ;
-
-
-\ Waits for the tasks to leave their own bodies, to the bound. The only wake-ups
-\ are each task's own LEAVING and one AIO:TIMEOUT for the bound - the loop wakes
-\ the record's owner when the timer completes (src/lib/aio.f) - so nothing
-\ here polls a clock, and the stopper re-reads the count after every hint, as the
-\ hint protocol requires (src/lib/task.f).
 : AWAIT-TASKS ( -- )
    STOP-BOUND-MS DEADLINE-AT {: deadline:n :}
-   STOP-BOUND-MS >MS AIO:TIMEOUT {: timer:AIO:ticket :}
-   begin
-      TASKS-LEFT? mono-ns deadline >= or if timer DROP-TIMER exit then
-      TASK:WAIT
-   again ;
+   begin TASKS-LEFT? if exit then deadline TASK:WAIT-UNTIL 0= until ;
 
 
 \ The backstop past the bound. A task still inside its body now is one the stop

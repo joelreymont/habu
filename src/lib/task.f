@@ -1719,7 +1719,9 @@ TASK:+USER SLEEP-REM timespec
    want TASK-NS-PER-MS * now + ;
 
 : SLEEP-LEFT-NS ( n -- n ) {: deadline:n :}
-   deadline mono-ns - dup 0 <= if drop 0 then ;
+   mono-ns {: now:n :}
+   deadline now <= if 0 exit then
+   deadline now - ;
 
 : SLEEP-CALL ( -- n )
    SLEEP-REQ BYTE-VIEW SLEEP-REM BYTE-VIEW NANOSLEEP-CALL
@@ -1776,14 +1778,9 @@ TASK:+USER SLEEP-REM timespec
    HB-TARGET-MACOS? if MACH-WAIT-NS exit then
    POSIX-WAIT-NS ;
 
-\ Each wait asks for what is left of one absolute mono-ns deadline taken before
-\ the first, so a signal that cuts a wait short neither shortens nor stretches
-\ the total, and a host timer that fires early waits again for the rest: false
-\ comes only once mono-ns reaches the deadline. A hint posted as the deadline
-\ passes is either taken by the last wait or stays in the count for the next
-\ WAIT or WAIT-MS.
-: TASK-STOP-FOR ( ms -- bool ) {: timeout:ms :}
-   timeout SLEEP-DEADLINE-AT {: deadline:n :}
+\ Each wait asks for what is left of the one deadline, so neither a signal nor
+\ an early host timer moves the total; a hint the last wait misses stays counted.
+: TASK-STOP-UNTIL ( n -- bool ) {: deadline:n :}
    PARK-SELF {: park:sem :}
    begin
       deadline SLEEP-LEFT-NS park SEM-WAIT-NS if true exit then
@@ -1916,7 +1913,12 @@ TASK-MIN-STACK constant MIN-STACK
 \ hint without blocking; a duration below zero, or one whose nanosecond
 \ deadline past mono-ns would not fit a cell, is E-TASK-SLEEP-MS.
 : WAIT-MS ( ms -- bool )
-   TASK-STOP-FOR ;
+   SLEEP-DEADLINE-AT TASK-STOP-UNTIL ;
+
+\ Parks as WAIT-MS does, but to the mono-ns deadline n, any cell; a past n takes
+\ a pending hint without blocking.
+: WAIT-UNTIL ( n -- bool )
+   TASK-STOP-UNTIL ;
 
 \ Posts a running task's park, or the main thread's for the null TCB TASK:SELF
 \ answers there. A task that is not running has no run to hint at: no post.
