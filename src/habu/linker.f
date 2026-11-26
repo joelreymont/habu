@@ -77,7 +77,10 @@ EXPORT XREF:REVIVE-BELOW
 EXPORT XREF:RETIRE-IF-TASKS
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
-TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
+TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel" or "rows": hb's own layout, no program
+TYPED-VARIABLE ROWS? bool            \ the mode is "rows": hb's own rows
+DYNAMIC-BUFFER HELD u8               \ the rows LINKER:ROWS holds for the next kernel build, HELD-U long
+variable HELD-U
 TYPED-VARIABLE STARTED? bool         \ the build's shared start has ended (STARTED)
 TYPED-VARIABLE TARGET RTARGET:resolved-target   \ the target the build's program runs on
 \ The machines of an object's even and odd emissions: SHADOW fixes them while the shadow it
@@ -132,7 +135,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : SPACE-DATA ( -- str )
    NULL-PTR BYTE-VIEW BASE @ +  DP-CELL HOST@ BASE @ - >str ;
 
-: ROWS ( -- ^n n ) SPACE-DATA ADDRESS-CELLS:DATA-SPAN ;
+: CELL-ROWS ( -- ^n n ) SPACE-DATA ADDRESS-CELLS:DATA-SPAN ;
 
 \ A row's cell offset from the space's start, and its kind (layout.f).
 : ROW-OFF ( n -- n ) RELOC:XTCELL-OFF-MASK and ;
@@ -2232,7 +2235,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
 \ The running piece's cell rows into EXT-ROWS, grouped by extent and in the space's order within one: a cell not
 \ 8-aligned from FILE-DP, crossing its extent's end or ending past the data is E-COMP-STATE.
 : GROUP-ROWS ( -- )
-   ROWS {: rows:^ count:n :}
+   CELL-ROWS {: rows:^ count:n :}
    0  count 0 ?do
       rows i cells + @ {: row:n :}
       row IN-FILE? if
@@ -2349,7 +2352,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    BELOW COPY-RANGE
    FILE-REC @ FIRST-REC @ 1 - ?do i COPY-REC loop
    NSHADOW:PATCHES OLD-PATCHES !
-   ROWS nip FILE-CELLS ! ;
+   CELL-ROWS nip FILE-CELLS ! ;
 
 
 \ Earlier record k's copy (COPY-BELOW) and its index.
@@ -2445,7 +2448,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
 \ The space's address-cell row of the cell at v, and true; false when it has none.
 : ROW-OF ( n -- n bool )
    {: v:n :}
-   ROWS {: rows:^ count:n :}
+   CELL-ROWS {: rows:^ count:n :}
    count 0 ?do
       rows i cells + @ {: row:n :}
       row ROW-AT v = if row true unloop exit then
@@ -2510,7 +2513,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
          i cells MARK-AT @ 0<> if E-HEAP-STORE throw then
       loop
    then
-   ROWS {: rows:^ count:n :}
+   CELL-ROWS {: rows:^ count:n :}
    count FILE-CELLS @ ?do
       rows i cells + @ ROW-AT {: at:n :}
       at FILE-DP @ < if
@@ -2638,7 +2641,7 @@ EXPORT CHECK:HELD-AMENDED
 \ A linked file's top level never runs, so what a piece stores in scratch ends with it: every
 \ scratch cell in file data, [OPEN-DP, DP), reads zero after each piece.
 : RESET-SCRATCH ( -- )
-   ROWS {: rows:^ count:n :}
+   CELL-ROWS {: rows:^ count:n :}
    count 0 ?do
       rows i cells + @ {: row:n :}
       row SCRATCH-ROW? if
@@ -5435,8 +5438,8 @@ EXPORT CHECK:DROP-FACTS
    a OWNED-COPY  at 6 + OWNED !  at 5 + OWNED !
    1 OWNED-N +! ;
 
-\ A build that links the object NATIVE:READ read types the kernel's primitives by
-\ its rows; a kernel build and a Wasm target's link, which link no kernel object, by hb's own.
+\ A build that links the object NATIVE:READ read types the kernel's primitives by its rows; a kernel build, the rows
+\ build and a Wasm target's link link no kernel object.
 : OBJECT-ROWS? ( -- bool ) KERNEL? @ 0=  NATIVE:READ? and  WASM? 0= and ;
 
 \ hb's own row k, stated as NATIVE:STATE-PRIMS states the row the object carries of it.
@@ -5492,21 +5495,32 @@ EXPORT CHECK:DROP-FACTS
    ndict@ FILE-REC @ ?do  OWNED-TIME i WORD-TIMES !  loop
    0 EXTS-N !  0 0 BUILT+ ;
 
-\ The primitives' rows, the object's or else hb's own, then the owned primitives' records'
-\ texts, which those rows render.
+\ The rows in the bytes, then the owned primitives' records' texts, which those rows render.
+: STATE-ROWS ( str -- )
+   NATIVE:STATE-PRIMS
+   NATIVE:OWNED-N 0 ?do  i NATIVE:OWNED-PKG$  i NATIVE:OWNED-NAME$  OWNED+  loop ;
+
+\ The rows LINKER:ROWS holds, once.
+: STATE-HELD ( -- )
+   HELD-U @ 0= if
+      s" link: a kernel build needs the rows of a rows build before it" EXIT-STATUS:INTERNAL die
+   then
+   0 HELD HELD-U @ >str  0 HELD-U !  STATE-ROWS  HELD-RELEASE ;
+
+: STATE-HB-ROWS ( -- )
+   PRIM-SPEC:COUNT 0 ?do i STATE-HB-ROW loop
+   PRIMS-END
+   PRIM-SPEC:COUNT 0 ?do
+      i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if  i PRIM-SPEC:PKG$  i PRIM-SPEC:NAME$  OWNED+  then
+   loop ;
+
+\ The primitives' rows: the object's, a kernel build's held ones, or else hb's own.
 : PRIMS-IN ( -- )
    0 OWNED-N !  0 OWNED-TEXT-N !
    ROWS-BEGIN
-   OBJECT-ROWS? if
-      NATIVE:STATE-PRIMS
-      NATIVE:OWNED-N 0 ?do  i NATIVE:OWNED-PKG$  i NATIVE:OWNED-NAME$  OWNED+  loop
-   else
-      PRIM-SPEC:COUNT 0 ?do i STATE-HB-ROW loop
-      PRIMS-END
-      PRIM-SPEC:COUNT 0 ?do
-         i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if  i PRIM-SPEC:PKG$  i PRIM-SPEC:NAME$  OWNED+  then
-      loop
-   then
+   OBJECT-ROWS? if  NATIVE:CHECK-ROWS$ STATE-ROWS
+   else KERNEL? @ ROWS? @ 0= and if  STATE-HELD
+   else  STATE-HB-ROWS  then then
    BASIS! ;
 
 : OPEN ( -- )
@@ -5618,14 +5632,15 @@ public
 
 \ Run the body in a build's space with no package of hb's open, close on every
 \ exit, reopen the caller's package, rethrow; E-COMP-STATE while a build is open.
-\ The mode is "engine", "kernel" for a kernel build, or a stripped program's; the
+\ The mode is "engine", "kernel" for a kernel build, "rows" for the link before a kernel build, or a stripped program's; the
 \ target is the one the program runs on, and another than hb's own makes a cross build.
 : WITH ( str RTARGET:resolved-target [ -- renders nominal roots ] -- )
    {: mode:str target:RTARGET:resolved-target body :}
    IDLE? 0= if E-COMP-STATE throw then
    target TARGET !
    mode s" engine" STR:= ENGINE? !
-   mode s" kernel" STR:= KERNEL? !
+   mode s" rows" STR:= ROWS? !
+   mode s" kernel" STR:= ROWS? @ or KERNEL? !
    false STARTED? !
    body BODY !
    [: ['] RUN ['] CLOSE finally ;] INTERPRETER:WITHOUT-PACKAGE ;
@@ -5636,6 +5651,14 @@ public
 \ The kernel object at the path, written by a kernel build: the engine and
 \ program builds that follow lay their space as its kernel reads it and link it.
 : KERNEL ( str -- ) NATIVE:READ ;
+
+\ Appends the bytes to the primitive rows the next kernel build states: the
+\ count, then the rows, as the tree's PRIM-SPEC:ROWS-WRITE writes them.
+: ROWS ( str -- )
+   {: s:str :}
+   HELD-U @ s STR:LEN + HELD-RESERVE
+   s STR:DATA  0 HELD HELD-U @ +  s STR:LEN BYTE-COPY
+   s STR:LEN HELD-U +! ;
 
 \ True while a build's space is open, from WITH's open to the end of its close.
 : OPEN? ( -- bool ) IDLE? 0= ;

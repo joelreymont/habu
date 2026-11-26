@@ -7,10 +7,14 @@
 \ The kernel and engine builds load util.f at startup, where their loads agree,
 \ so the first build keeps one object of it; they load icode.f after startup,
 \ where their loads differ, so the padded warm build, which reruns the kernel
-\ build, rewrites no object of icode.f the first build wrote.
+\ build, rewrites no object of icode.f the first build wrote. Last, the copy's
+\ realpath row gains a data cell, and its warm build is rejected: build-time
+\ code typed by the tree's row would run hb's body.
 
 require src/lib/error.f
+require src/core/exit-status.f
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/test/assert.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -30,6 +34,8 @@ PATH-CAP BUFFER: OBJ-ROOT   variable OBJ-ROOT-U   \ out-warm's obj directory
 PATH-CAP BUFFER: KEPT-ROOT  variable KEPT-ROOT-U  \ the first build's icode.f objects
 variable SEEN-N                                   \ the walk's paths its word counts
 variable ALL-SAME                                 \ SAME-ICODE's copies all match
+1 17 lshift constant PRIMS-CAP
+create PRIMS PRIMS-CAP allot                      \ the copy's src/habu/prims.f
 
 : ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
 
@@ -43,8 +49,9 @@ variable ALL-SAME                                 \ SAME-ICODE's copies all matc
    s" warm-engine: exited " type rc .
    s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr ;
 
-\ The candidate builds the copy's engine to dst, with out as its out root.
-: BUILD ( CMD:command str str -- CMD:command )
+\ The candidate builds the copy's engine to dst, with out as its out root, and
+\ answers its status.
+: RUN-BUILD ( CMD:command str str -- CMD:command n )
    {: out:str dst:str :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+
@@ -53,9 +60,20 @@ variable ALL-SAME                                 \ SAME-ICODE's copies all matc
    s" TMPDIR" s" tmp" AT$ CMD:ENV+
    s" tree" AT$ CMD:CWD!
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
-   PROCESS:ENDING>RC RC>N {: rc:n :}
+   PROCESS:ENDING>RC RC>N ;
+
+: BUILD ( CMD:command str str -- CMD:command )
+   RUN-BUILD {: rc:n :}
    rc 0<> if rc SHOW then
    rc 0 T= ;
+
+\ The build is rejected for realpath's row.
+: REJECTED ( CMD:command str str -- CMD:command )
+   RUN-BUILD {: rc:n :}
+   rc EXIT-STATUS:DATAERR <> if rc SHOW then
+   rc EXIT-STATUS:DATAERR T=
+   CMD:ERR$ s" E-PRIM-CELLS" STR:CONTAINS? TTRUE
+   CMD:ERR$ s" realpath" STR:CONTAINS? TTRUE ;
 
 : PAD ( -- )
    s" tree/src/core/checker.f" AT$
@@ -64,6 +82,23 @@ variable ALL-SAME                                 \ SAME-ICODE's copies all matc
 : NOTE ( -- )
    s" tree/src/habu/linker.f" AT$
    s\" \n\\ warm-engine\n" FS:APPEND-FILE ;
+
+\ The copy's realpath row takes one more data cell.
+: WIDEN ( -- )
+   s" tree/src/habu/prims.f" AT$ {: p:str :}
+   p PRIMS PRIMS-CAP FS:READ-ALL {: u:n :}
+   PRIMS u >str {: text:str :}
+   s" EPRIM: realpath PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN PE-N PE-IN " {: row:str :}
+   text row STR:FIND-SUB MATCH option
+      none OF -1 ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH {: at:n :}
+   s" the copy's prims.f has the realpath row" T-LABEL
+   at 0 >= TTRUE
+   at 0 < if exit then
+   p PRIMS at row STR:LEN + >str FS:WRITE-ALL
+   p s" PE-N PE-IN " FS:APPEND-FILE
+   p text STR:DATA at + row STR:LEN +  u at - row STR:LEN -  >str FS:APPEND-FILE ;
 
 \ The path below root.
 : BELOW$ ( str str -- str ) {: p:str root:str :}
@@ -136,7 +171,10 @@ variable ALL-SAME                                 \ SAME-ICODE's copies all matc
    s" the noted copy builds warm" T-LABEL
    s" out-warm" s" warm-hb-2" BUILD
    s" the noted copy builds cold" T-LABEL
-   s" out-cold-2" s" cold-hb-2" BUILD ;
+   s" out-cold-2" s" cold-hb-2" BUILD
+   WIDEN
+   s" a row whose cells differ from hb's is rejected" T-LABEL
+   s" out-warm" s" wide-hb" REJECTED ;
 
 : CHECKS ( -- )
    ROOT$ s" out-warm/obj" OBJ-ROOT FS:JOIN-PATH OBJ-ROOT-U !

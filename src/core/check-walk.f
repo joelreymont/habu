@@ -4166,6 +4166,14 @@ FACTS-READ-INSTALL
    trusted IF PRIM-TRUSTED-ONLY! THEN
    fixed IF PRIM-FIXED-ABI! THEN ;
 
+\ Closes the open row as PRIM-CLOSE does, adding no row: its cells of data in,
+\ data out, return in and return out.
+: PRIM-CELLS ( -- n n n n )
+   PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" EXIT-STATUS:INTERNAL die THEN
+   PE-DIN @ ROW-CELLS  PE-DOUT @ ROW-CELLS
+   PE-HASR @ 0= IF 0 0 EXIT THEN
+   PE-RIN @ ROW-CELLS  PE-ROUT @ ROW-CELLS ;
+
 \ The stated symbols join the prefix; the primitives' axioms follow
 \ (NORET-AXIOM names prefix symbols only).
 : PRIMS-END ( -- )

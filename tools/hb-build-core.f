@@ -2,7 +2,8 @@
 \ (--repl), or a stripped program, as a cross-build in the running hb and writes
 \ it with its map beside it. A native build first compiles the target's
 \ kernel writer and writes the kernel object the build then links
-\ (KERNEL-BUILD); a Wasm program builds none. Each loads hb's startup files in
+\ (KERNEL-BUILD) after a rows link that hands the linker the tree's primitive
+\ rows (ROWS-BODY); a Wasm program builds none. Each loads hb's startup files in
 \ hb's own order (STARTUP); hb and --repl then load the runtime's files. Every
 \ build loads the engine-library list (ENGINE-LIB-FILES) and seals every package
 \ it holds (SEAL-ENGINE); then --repl loads the program's source, hb and --repl
@@ -406,19 +407,46 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    s" src/habu/app-end.f" INCLUDE-FILE
    OUT$ LINKER:WRITE ;
 
+\ The start of the tree's public word PKG:NAME, which the open build compiled.
+: TREE-WORD ( str str -- n )
+   {: p:str w:str :}
+   p BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
+   pkg XREF-FOUND? if
+      w pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
+      rec XREF-FOUND? if rec XREF-START exit then
+   then
+   s" E-TREE-WORD" REJECTION:OPEN
+   s" the tree defines no public `" REJECTION:EMIT-STR  p REJECTION:EMIT-STR  s" :" REJECTION:EMIT-STR
+   w REJECTION:EMIT-STR  s" `, which this hb's build runs" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" build this tree with an hb built from its own revision" REJECTION:EMIT-STR
+   EXIT-STATUS:DATAERR REJECTION:STOP ;
+
 \ The tree's KERNEL-OBJECT:WRITE, which the kernel build compiled.
 CAST: >WRITER ( n -- [ bool [ str -- ] -- ] )
 
 : WRITER ( -- [ bool [ str -- ] -- ] )
-   s" KERNEL-OBJECT" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
-   pkg XREF-FOUND? 0= if
-      s" hb-build: the tree has no package KERNEL-OBJECT" EXIT-STATUS:INTERNAL die
-   then
-   s" WRITE" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
-   rec XREF-FOUND? 0= if
-      s" hb-build: KERNEL-OBJECT has no public WRITE" EXIT-STATUS:INTERNAL die
-   then
-   rec XREF-START >WRITER ;
+   s" KERNEL-OBJECT" s" WRITE" TREE-WORD >WRITER ;
+
+\ The tree's PRIM-SPEC:ROWS-WRITE, which the rows build compiled.
+CAST: >ROWS-WRITER ( n -- [ [ str -- ] -- ] )
+
+TYPED-VARIABLE PRIMS-LOADED? bool       \ ROWS-BODY's walk has loaded src/habu/prims.f
+
+: ROW-TO-PRIMS ( n n str -- )
+   {: idx:n kind:n s:str :}
+   PRIMS-LOADED? @ if exit then
+   idx kind s ROW
+   s s" src/habu/prims.f" STR:= PRIMS-LOADED? ! ;
+
+\ Loads the start-up files through the tree's prims.f and hands its rows to
+\ the linker, which the kernel build after it states.
+: ROWS-BODY ( -- )
+   BETWEEN
+   false PRIMS-LOADED? !
+   BOOT-FILES:CHECKER ['] ROW-TO-PRIMS BOOT-FILES:EACH
+   [: LINKER:ROWS ;]
+   s" PRIM-SPEC" s" ROWS-WRITE" TREE-WORD >ROWS-WRITER execute ;
 
 \ An inputs file is the object's checksum (its bytes 8-40), the object's stamp
 \ after its write (change time seconds, nanoseconds, size), the length of the
@@ -584,6 +612,7 @@ public
    PATHS  KERNEL-PATHS
    SOURCE-ROOT:ENGINE$ [:
       ADOPT? 0= if
+         s" rows" target ['] ROWS-BODY LINK
          s" kernel" target ['] KERNEL-BODY LINK
       then
    ;] SOURCE-ROOT:WITH

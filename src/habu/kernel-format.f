@@ -80,24 +80,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    PAD+ ;
 
 
-: FLAG+ ( bool -- ) if 1 else 0 then U64+ ;
-
-: CHECK-ROW+ ( n -- )
-   {: row:n :}
-   row PRIM-SPEC:KIND@ U64+
-   row PRIM-SPEC:TRUSTED-ONLY? FLAG+
-   row PRIM-SPEC:FIXED-ABI? FLAG+
-   row PRIM-SPEC:NAME$ NAME+
-   row PRIM-SPEC:PKG$ NAME+
-   row PRIM-SPEC:CODE-LEN@ dup U64+
-   0 ?do row i PRIM-SPEC:CODE@ U64+ loop ;
-
-\ The table in its own order: an overloaded name's rows replay in it.
 : CHECK-ROWS+ ( -- )
    OUT-U @ {: at:n :}
    0 U64+
-   PRIM-SPEC:COUNT dup U64+
-   0 ?do i CHECK-ROW+ loop
+   [: BYTES+ ;] PRIM-SPEC:ROWS-WRITE
    OUT-U @ at - 8 -  0 OUT at + LE:U64! ;
 
 

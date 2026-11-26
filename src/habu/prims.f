@@ -287,6 +287,47 @@ public
 
 private
 
+8 SCRATCH-BUFFER: OUT-CELL
+
+\ Hands n to the sink as eight bytes, low byte first.
+: N-OUT ( n [ str -- ] -- )
+   {: n:n sink :}
+   8 0 ?do  n i 8 * rshift $FF and  OUT-CELL i + c!  loop
+   OUT-CELL 8 >str sink execute ;
+
+: FLAG-OUT ( bool [ str -- ] -- )
+   {: f:bool sink :}
+   f if 1 else 0 then sink N-OUT ;
+
+\ Its length, then its bytes padded with zeros to 8.
+: NAME-OUT ( str [ str -- ] -- )
+   {: s:str sink :}
+   s STR:LEN sink N-OUT  s sink execute
+   0 s STR:LEN - 7 and {: pad:n :}
+   8 0 ?do  0 OUT-CELL i + c!  loop
+   OUT-CELL pad >str sink execute ;
+
+: ROW-OUT ( n [ str -- ] -- )
+   {: row:n sink :}
+   row KIND@ sink N-OUT
+   row TRUSTED-ONLY? sink FLAG-OUT
+   row FIXED-ABI? sink FLAG-OUT
+   row NAME$ sink NAME-OUT
+   row PKG$ sink NAME-OUT
+   row CODE-LEN@ dup sink N-OUT
+   0 ?do  row i CODE@ sink N-OUT  loop ;
+
+public
+
+\ The row count, then each row in table order, which overloads keep: kind, trusted-only, fixed-ABI, name, package, atom
+\ count and atoms, each number eight bytes low byte first. The sink takes them in pieces.
+: ROWS-WRITE ( [ str -- ] -- )
+   {: sink :}
+   ROW-N @ sink N-OUT
+   ROW-N @ 0 ?do  i sink ROW-OUT  loop ;
+
+private
+
 \ THE ROWS ARE THE CHECKER'S AXIOMS: a primitive has no Habu body to infer an
 \ effect from. A row with a REF is held to its reference; a row with none
 \ (every syscall, control, defining-word, image, FFI and atomic row) is held

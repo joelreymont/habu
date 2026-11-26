@@ -78,9 +78,10 @@ EXPORT CHECK:PRIM-NAME
 EXPORT CHECK:PRIM-OPEN
 EXPORT CHECK:PRIM-ATOM
 EXPORT CHECK:PRIM-CLOSE
+EXPORT CHECK:PRIM-CELLS
 EXPORT CHECK:PRIMS-END
 
-\ Both row sources, hb's and the kernel object's, reach the checker through these STATE- words into ROWS-CTX; each
+\ Every row source, hb's own table and the bytes STATE-PRIMS reads, reaches the checker through these STATE- words into ROWS-CTX; each
 \ tag fixes the fields after it and a text carries its length, so equal rows digest alike and different rows apart.
 SHA256-CTX-BYTES BUFFER: ROWS-CTX
 8 BUFFER: ROWS-NUM
@@ -113,7 +114,9 @@ variable N-HOSTS
 
 DYNAMIC-BUFFER KOBJ u8
 variable KOBJ-U                      \ its length, 0 before READ
-variable AT                          \ READ's offset in it
+PTR-VARIABLE PARSED                  \ the bytes NEXT parses: READ's object, or the rows STATE-PRIMS states
+variable PARSED-U                    \ their length
+variable AT                          \ NEXT's offset in them
 variable CODE-AT
 variable CODE-U
 variable LABELS-AT
@@ -140,7 +143,7 @@ variable ELF-AT                      \ the ELF import names' bytes in KOBJ
 variable ELF-U
 variable CHECK-ROWS-AT               \ the checker rows' bytes in KOBJ
 variable CHECK-ROWS-U
-DYNAMIC-BUFFER OWNED-AT n            \ each package-private row's package, then name: offset in KOBJ, length
+DYNAMIC-BUFFER OWNED-AT n            \ each package-private row's package, then name: offset in PARSED, length
 variable OWNED-ROWS
 PATH-CAP BUFFER: PATH                \ READ's path, for its error lines
 variable PATH-U
@@ -154,27 +157,29 @@ variable PATH-U
 
 : KOBJ@ ( n -- n ) 0 KOBJ swap + LE:U64@ ;
 
+: PARSED-BASE ( -- ^u8 ) PARSED @ ;
+
 : NEXT ( -- n )
-   AT @ 8 + KOBJ-U @ > if BAD then
-   AT @ KOBJ@  8 AT +! ;
+   AT @ 8 + PARSED-U @ > if BAD then
+   PARSED-BASE AT @ + LE:U64@  8 AT +! ;
 
 : SKIP ( n -- )
    {: u:n :}
-   u 0<  u KOBJ-U @ > or if BAD then
+   u 0<  u PARSED-U @ > or if BAD then
    u 7 + -8 and AT +!
-   AT @ KOBJ-U @ > if BAD then ;
+   AT @ PARSED-U @ > if BAD then ;
 
 \ A section of entries of n cells each: its first entry's offset and its count.
 : TABLE ( n -- n n )
    {: each:n :}
    NEXT {: count:n :}
-   count 0<  count KOBJ-U @ > or if BAD then
+   count 0<  count PARSED-U @ > or if BAD then
    AT @  count each * 8 * SKIP  count ;
 
 \ Each primitive row's offset: three cells, then its name.
 : PRIM-ROWS ( -- )
    NEXT {: count:n :}
-   count 0<  count KOBJ-U @ > or if BAD then
+   count 0<  count PARSED-U @ > or if BAD then
    count PRIMS-N !
    count 1 max PRIM-AT-RESERVE
    count 0 ?do  AT @ i PRIM-AT !  24 SKIP  NEXT SKIP  loop ;
@@ -182,7 +187,7 @@ variable PATH-U
 \ Each symbol: its name, then its value.
 : SYMBOLS ( -- )
    NEXT {: count:n :}
-   count 0<  count KOBJ-U @ > or if BAD then
+   count 0<  count PARSED-U @ > or if BAD then
    AT @ SYMS-AT !  count SYMS-N !
    count 0 ?do  NEXT SKIP  8 SKIP  loop ;
 
@@ -192,7 +197,7 @@ variable PATH-U
    NEXT {: u:n :}
    AT @ {: off:n :}
    u SKIP
-   u 0 > if off u + 1 - 0 KOBJ swap + c@ 0<> if BAD then then
+   u 0 > if off u + 1 - PARSED-BASE swap + c@ 0<> if BAD then then
    off u ;
 
 : SECTIONS ( -- )
@@ -212,7 +217,7 @@ variable PATH-U
    IMPORTS ELF-U ! ELF-AT !
    NEXT {: rowsu:n :}
    AT @ CHECK-ROWS-AT !  rowsu CHECK-ROWS-U !  rowsu SKIP
-   AT @ KOBJ-U @ <> if BAD then ;
+   AT @ PARSED-U @ <> if BAD then ;
 
 : CHECK ( -- )
    KOBJ-U @ 40 < if PATH PATH-U @ >str s" checksum" DAMAGED then
@@ -229,7 +234,56 @@ variable PATH-U
    NEXT {: u:n :}
    AT @ {: at:n :}
    u SKIP
-   0 KOBJ at +  u >str ;
+   PARSED-BASE at +  u >str ;
+
+\ Cells 0-3 hold hb's row's cells, 4-7 the tree's: data in, data out, return
+\ in, return out.
+8 TYPED-BUFFER COUNTS n
+
+: COUNTS! ( n n n n n -- ) {: din:n dout:n rin:n rout:n at:n :}
+   din at COUNTS !  dout at 1 + COUNTS !
+   rin at 2 + COUNTS !  rout at 3 + COUNTS ! ;
+
+: SAME-COUNTS? ( -- bool )
+   true  4 0 ?do  i COUNTS @  i 4 + COUNTS @ =  and  loop ;
+
+: EMIT-COUNTS ( n str -- ) {: at:n whose:str :}
+   s" data " REJECTION:EMIT-STR  at COUNTS @ REJECTION:EMIT-U
+   s"  -- " REJECTION:EMIT-STR  at 1 + COUNTS @ REJECTION:EMIT-U
+   s" , return " REJECTION:EMIT-STR  at 2 + COUNTS @ REJECTION:EMIT-U
+   s"  -- " REJECTION:EMIT-STR  at 3 + COUNTS @ REJECTION:EMIT-U
+   whose REJECTION:EMIT-STR ;
+
+: CELLS-DIFFER ( str -- ) {: name:str :}
+   s" E-PRIM-CELLS" REJECTION:OPEN
+   s" the row of primitive `" REJECTION:EMIT-STR  name REJECTION:EMIT-STR
+   s" ` in src/habu/prims.f takes other cells than the running hb's body" REJECTION:EMIT-STR
+   s" expected" REJECTION:NOTE  0 s" , the running hb's row" EMIT-COUNTS
+   s" found" REJECTION:NOTE  4 s" , the tree's row" EMIT-COUNTS
+   REJECTION:HELP
+   s" give the new cells to a new primitive first, build with it, then move the callers" REJECTION:EMIT-STR
+   EXIT-STATUS:DATAERR REJECTION:STOP ;
+
+: HB-CELLS ( n -- n n n n ) {: k:n :}
+   k PRIM-SPEC:NAME$ PRIM-OPEN
+   k PRIM-SPEC:CODE-LEN@ 0 ?do  k i PRIM-SPEC:CODE@ PRIM-ATOM  loop
+   PRIM-CELLS ;
+
+\ The cells of the tree's row of the name, whose n atoms start at AT, left there.
+: TREE-CELLS ( str n -- n n n n ) {: name:str atoms:n :}
+   AT @ {: at:n :}
+   name PRIM-OPEN  atoms 0 ?do NEXT PRIM-ATOM loop  PRIM-CELLS
+   at AT ! ;
+
+\ Stops the build when hb's row of the name takes other cells than the tree's, whose n atoms start at AT: build-time code
+\ typed by the tree's row runs hb's body. A name hb lacks is a new primitive; a row hb elaborates has no cells to compare.
+: SAME-CELLS ( str n -- ) {: name:str atoms:n :}
+   name PRIM-SPEC:FIND {: k:n :}
+   k 0< if exit then
+   k PRIM-SPEC:KIND@ PRIM-SPEC:K-ELAB = if exit then
+   k HB-CELLS 0 COUNTS!
+   name atoms TREE-CELLS 4 COUNTS!
+   SAME-COUNTS? 0= if name CELLS-DIFFER then ;
 
 \ One row, stated by kind: a package's private row on its package's private
 \ symbol, kept for the record linker.f OWNED+ lays of it.
@@ -240,7 +294,7 @@ variable PATH-U
    AT @ 8 + {: pkg-at:n :}
    NAME-NEXT {: pkg:str :}
    NEXT {: atoms:n :}
-   atoms 0<  atoms KOBJ-U @ > or if BAD then
+   atoms 0<  atoms PARSED-U @ > or if BAD then
    kind PRIM-SPEC:K-PKG-PRIVATE = {: owned:bool :}
    owned if
       OWNED-ROWS @ 4 * {: o:n :}
@@ -250,6 +304,7 @@ variable PATH-U
       1 OWNED-ROWS +!
    then
    kind PRIM-SPEC:K-PRIM =  owned or if
+      name atoms SAME-CELLS
       name STATE-OPEN
       atoms 0 ?do NEXT STATE-ATOM loop
       pkg  trusted 0<>  fixed 0<>  STATE-CLOSE
@@ -303,8 +358,8 @@ public
 
 \ The package-private rows STATE-PRIMS stated: row k's package and name.
 : OWNED-N ( -- n ) OWNED-ROWS @ ;
-: OWNED-PKG$ ( n -- str ) 4 * {: o:n :}  0 KOBJ o OWNED-AT @ +  o 1 + OWNED-AT @ >str ;
-: OWNED-NAME$ ( n -- str ) 4 * {: o:n :}  0 KOBJ o 2 + OWNED-AT @ +  o 3 + OWNED-AT @ >str ;
+: OWNED-PKG$ ( n -- str ) 4 * {: o:n :}  PARSED-BASE o OWNED-AT @ +  o 1 + OWNED-AT @ >str ;
+: OWNED-NAME$ ( n -- str ) 4 * {: o:n :}  PARSED-BASE o 2 + OWNED-AT @ +  o 3 + OWNED-AT @ >str ;
 
 \ The label of the chain holding the entry scope-kind? answers kind k for, k
 \ from 2 to 8.
@@ -354,7 +409,9 @@ public
       s" link: no kernel object at " SAY path SAY SAY-CR
       s" link: the kernel object is missing" EXIT-STATUS:NOINPUT die
    then
-   CHECK SECTIONS
+   CHECK
+   0 KOBJ PARSED !  KOBJ-U @ PARSED-U !
+   SECTIONS
    s" DATA-START" SYM {: theirs:n :}
    theirs DATA-START > if
       SAY-OBJECT
@@ -364,16 +421,19 @@ public
    then
    s" TEXT-VA" SYM KTEXT-VA !  s" DATA-VA" SYM KDATA-VA ! ;
 
-\ States READ's object's primitive rows to the open build's checker in table
-\ order, which overloads keep; the section ends the object, which NEXT bounds.
-: STATE-PRIMS ( -- )
-   CHECK-ROWS-AT @ AT !
-   CHECK-ROWS-AT @ CHECK-ROWS-U @ + {: end:n :}
+\ READ's object's checker rows: the count, then the rows.
+: CHECK-ROWS$ ( -- str ) 0 KOBJ CHECK-ROWS-AT @ +  CHECK-ROWS-U @ >str ;
+
+\ States the rows in the bytes, a count then the rows, to the open build's checker in table order, which overloads
+\ keep. OWNED-PKG$ and OWNED-NAME$ read the bytes, so the caller keeps them until it has read those.
+: STATE-PRIMS ( str -- )
+   {: s:str :}
+   s STR:DATA PARSED !  s STR:LEN PARSED-U !  0 AT !
    NEXT {: count:n :}
-   count 0<  count KOBJ-U @ > or if BAD then
+   count 0<  count PARSED-U @ > or if BAD then
    0 OWNED-ROWS !
    count 0 ?do STATE-ROW loop
-   AT @ end <> if BAD then
+   AT @ PARSED-U @ <> if BAD then
    PRIMS-END ;
 
 : HOST-KERNEL? ( n -- bool )

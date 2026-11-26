@@ -176,7 +176,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ Address row n's cell's offset.
 : NTH-OFF ( n -- n )
    {: n:n :}
-   ROWS drop n cells + @ ROW-OFF ;
+   CELL-ROWS drop n cells + @ ROW-OFF ;
 
 \ Each address row's cell's unit; no unit live, no piece reached.
 : UNITS ( -- )
@@ -185,7 +185,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
    BUILT-EXTS-N @ 2 + {: units:n :}
    units UNIT-LIVE-RESERVE
    units 0 ?do 0 i UNIT-LIVE ! loop
-   ROWS {: rows:^ count:n :}
+   CELL-ROWS {: rows:^ count:n :}
    count CELLS-N !
    count CELL-UNIT-RESERVE  count CELL-READ-RESERVE
    count 0 ?do
@@ -236,7 +236,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ Rows are read in offset order: a cold build lists them in mark order and an
 \ object in extent order.
 : READ-CELLS ( -- )
-   ROWS {: rows:^ count:n :}
+   CELL-ROWS {: rows:^ count:n :}
    count CELLS-N @ <> if E-COMP-STATE throw then
    count 0 ?do
       i BY-OFF @ {: k:n :}
@@ -451,11 +451,11 @@ variable EXT-I                       \ BY-EXT's next row to lay
    {: i:n :}
    ENGINE? @ if true exit then
    i CELL-READ @ 0= if false exit then
-   ROWS drop i cells + @ SCRATCH-ROW? 0= ;
+   CELL-ROWS drop i cells + @ SCRATCH-ROW? 0= ;
 
 \ The rows the program keeps, and where their list lies.
 : PLACE-LIST ( -- )
-   0  ROWS nip 0 ?do i ROW-KEPT? if 1 + then loop  KEPT-N !
+   0  CELL-ROWS nip 0 ?do i ROW-KEPT? if 1 + then loop  KEPT-N !
    DATA-LEN CELL 1- +  CELL negate and
    IN-BAND? if drop ADDRESS-CELLS:BOOT-OFF then
    LIST-OFF ! ;
@@ -476,7 +476,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 
 : EACH-KEPT ( [ n -- ] -- )
    {: visit :}
-   ROWS {: rows:^ count:n :}
+   CELL-ROWS {: rows:^ count:n :}
    count 0 ?do i ROW-KEPT? if rows i cells + @ visit execute then loop ;
 
 
@@ -563,7 +563,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 : KEEP-LIST ( -- )
    ADDRESS-CELLS:BOOT-OFF RELOC:XTCELL-END ZERO-COPY
    LIST-AT
-   ROWS {: rows:^ count:n :}
+   CELL-ROWS {: rows:^ count:n :}
    count 0 ?do
       rows i cells + @ {: row:n :}
       i ROW-KEPT? if

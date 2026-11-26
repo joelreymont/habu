@@ -141,15 +141,21 @@ rejects an object whose DATA-START is above hb's: the hb building
 it sends a build's xt! and ptr-cell! stores into its header to the image only
 below its own DATA start (src/habu/habu2.f ROUTE-HEADER).
 
-A build types the primitives by the tree's kernel object, not by the running
-hb's rows (src/habu/link-kernel.f STATE-PRIMS), so an engine carries the
-facts of a primitive its tree adds after one build. A primitive with a package
-row is the exception: the link takes its record from the running hb's kernel
-(src/habu/linker.f OWNED+), and a build whose hb lacks the primitive lays no
-record for it, so the owner's first use or `EXPORT` of it binds whatever
-else of that name is in scope, or is rejected as undefined. Build such a tree with an hb that holds the primitive. A kernel build checks the tree's files
-against the running hb's rows, package rows included, so a call through a new
-package row needs a stage that adds the row first. The running hb's no-return
+Every native build types the primitives by the tree's rows, not by the
+running hb's: the engine and program builds by the rows the kernel object
+carries (src/habu/link-kernel.f STATE-PRIMS), the kernel build by the rows a
+short link before it writes from the tree's src/habu/prims.f
+(tools/hb-build-core.f ROWS-BODY), so a row may change its types in one build
+and an engine carries the facts of a primitive its tree adds. A primitive with a
+package row is the exception: the link takes its record from the running hb's
+kernel (src/habu/linker.f OWNED+), and a build whose hb lacks the primitive lays
+no record for it, so the owner's first use or `EXPORT` of it binds whatever else
+of that name is in scope, or is rejected as undefined. Build such a tree with an
+hb that holds the primitive. The short link checks prims.f and the start-up
+files before it against the running hb's rows: a change to a row those files
+call needs a stage. A row whose cells differ from the running hb's row of that
+name stops the build, since the tree's code runs on hb's body: give the new
+cells to a new primitive first, build with it, then move the callers. The running hb's no-return
 axioms each name a primitive (src/core/checker.f NORET-AXIOMS): a tree that
 drops one needs a stage that drops the axiom first, or the build stops with
 `checker: the kernel object has no row for <name>, which a no-return axiom
