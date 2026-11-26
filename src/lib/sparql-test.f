@@ -946,6 +946,42 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" {'head':{'vars':['m']},'results':{'bindings':[{}]}}"
    EXPECT ;
 
+\ A union grouped branch by branch answers as the whole union does when a
+\ branch has an error or no solution. STRLEN of an IRI is an error.
+: BRANCH-GROUPING ( -- )
+   \ ?g is apart: each graph's branch holds its own groups.
+   s" SELECT ?g (SUM(STRLEN(?o)) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g"
+   s"  GROUP BY " 2
+   s" {'head':{'vars':['g','n']},'results':{'bindings':[{'g':{'type':'uri','value':'urn:test:notes'},'n':{'type':'literal','value':'9','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'g':{'type':'uri','value':'urn:test:7'}}]}}"
+   TIMES
+   s" SELECT ?g (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o FILTER(?s = t:3) } } GROUP BY ?g"
+   s"  GROUP BY " 2
+   s" {'head':{'vars':['g','n']},'results':{'bindings':[{'g':{'type':'uri','value':'urn:test:notes'},'n':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   TIMES
+   \ HAVING drops urn:test:7's group of one.
+   s" SELECT ?g (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o FILTER(?s != t:2) } } GROUP BY ?g HAVING (COUNT(*) > 1)"
+   s"  GROUP BY " 2
+   s" {'head':{'vars':['g','n']},'results':{'bindings':[{'g':{'type':'uri','value':'urn:test:notes'},'n':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   TIMES
+   \ The second branch leaves ?o unbound: its solutions are one group.
+   s" SELECT ?o (COUNT(*) AS ?n) WHERE { { ?s t:20 ?o } UNION { ?s t:30 ?w } } GROUP BY ?o"
+   s"  GROUP BY " 3
+   s" {'head':{'vars':['o','n']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:1'},'n':{'type':'literal','value':'2','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'o':{'type':'uri','value':'urn:test:2'},'n':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'n':{'type':'literal','value':'4','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   TIMES
+   \ A group of ?s spans both graphs: the partials combine.
+   s" SELECT ?s (MIN(STRLEN(?o)) AS ?lo) (MAX(STRLEN(?o)) AS ?hi) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?s"
+   s"  GROUP BY " 3
+   s" {'head':{'vars':['s','lo','hi']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'hi':{'type':'literal','value':'5','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'s':{'type':'uri','value':'urn:test:2'}},{'s':{'type':'uri','value':'urn:test:3'},'lo':{'type':'literal','value':'4','datatype':'http://www.w3.org/2001/XMLSchema#integer'},'hi':{'type':'literal','value':'4','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   TIMES
+   s" SELECT (COUNT(*) AS ?n) (MIN(?o) AS ?lo) WHERE { GRAPH ?g { ?s ?p ?o FILTER(?s = t:3) } }"
+   s"  HAVING count(*)>0" 2
+   s" {'head':{'vars':['n','lo']},'results':{'bindings':[{'n':{'type':'literal','value':'1','datatype':'http://www.w3.org/2001/XMLSchema#integer'},'lo':{'type':'literal','value':'worn'}}]}}"
+   TIMES
+   s" SELECT (COUNT(*) AS ?n) (MIN(?o) AS ?lo) WHERE { GRAPH ?g { ?s ?p ?o FILTER(?s = t:9) } }"
+   s"  HAVING count(*)>0" 2
+   s" {'head':{'vars':['n','lo']},'results':{'bindings':[{'n':{'type':'literal','value':'0','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
+   TIMES ;
+
 \ ORDER BY, then OFFSET and LIMIT; strings order by code point.
 : ORDERS ( -- )
    s" SELECT ?s ?w WHERE { ?s t:30 ?w } ORDER BY DESC(?w) LIMIT 2 OFFSET 1"
@@ -1086,7 +1122,8 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    SUBJECT-ROWS FILTERS FILTER-EQUALITIES GRAPHS NAMED-GRAPHS OPTIONALS
    UNIONS MINUSES FILTER-EXISTS
    SUBSTITUTIONS MANY CONSTANTS WIDE FORMS
-   PROJECTIONS GROUPING AGGREGATES ORDERS DISTINCTS SUBQUERIES
+   PROJECTIONS GROUPING AGGREGATES BRANCH-GROUPING ORDERS DISTINCTS
+   SUBQUERIES
    BINDS CHAINS UUIDS DATA-BLOCKS PATHS ;
 
 T-RESET

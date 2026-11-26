@@ -89,8 +89,21 @@
 \
 \ A query that GROUP BY or an aggregate groups reads its groups, a derived
 \ table grouped on its keys' anchors, native where native, whose columns
-\ hold the aggregates and whose HAVING holds its conditions. A trailing
-\ VALUES joins the solutions that leaves. SELECT's expressions bind as
+\ hold the aggregates and whose HAVING holds its conditions. Where the
+\ grouped solutions are one union's of two or more branches and no key or
+\ aggregate calls EXISTS, each branch groups on its own as the union's
+\ columns present it. Where a GROUP BY variable binds each branch always
+\ to a term no other branch binds it to, each group lies in one branch:
+\ the branches' groups are the groups, and a WHERE over them holds the
+\ conditions. Else, where every aggregate is COUNT, MIN, MAX or SAMPLE
+\ without DISTINCT and every GROUP BY key binds a variable, the branches'
+\ partial groups regroup: COUNT sums its counts, 0 for none; MIN and MAX
+\ take the first of their partials in ORDER BY's order, which an unbound
+\ leads as in the whole, and SAMPLE any bound one; a branch with no
+\ solution keeps no partial. SUM and AVG add doubles one by one, so
+\ regrouping changes their answer, and DISTINCT meets across branches:
+\ those group the whole union. A trailing VALUES joins the solutions that
+\ leaves. SELECT's expressions bind as
 \ BIND's do, over the solutions, each a maybe binding but an always bound
 \ aggregate's: COUNT's, and with GROUP BY, whose every group has a
 \ solution, MIN's, MAX's or SAMPLE's of a variable the grouped solutions
@@ -161,12 +174,14 @@ STRUCTURE subject-row DERIVE addr
    FIELD alias str
 ;STRUCTURE
 
+\ branches are a union's when its solutions are the relation's, else empty.
 STRUCTURE relation DERIVE addr
    FIELD from ^VEC:vector<u8>
    FIELD where ^VEC:vector<u8>
    FIELD bindings ^VEC:vector<binding>
    FIELD rows ^VEC:vector<subject-row>
    FIELD empty bool
+   FIELD branches ^VEC:vector<relation>
 ;STRUCTURE
 
 \ One way an item matches: a source's index, or -1 for a derived table,
@@ -178,18 +193,18 @@ STRUCTURE choice DERIVE addr
 ;STRUCTURE
 
 \ An item of a group: a triple's or a BIND's node, or zero and a derived
-\ table with its columns. mode is zero for a joined item, else N-OPTIONAL,
-\ N-MINUS, N-BIND or N-PATH; filters are an OPTIONAL's; graph is the
-\ active graph's term; union whether UNION? holds of it once pruned.
+\ table with its columns.
 STRUCTURE item DERIVE addr
    FIELD node n
+   \ Zero for a joined item, else N-OPTIONAL, N-MINUS, N-BIND or N-PATH.
    FIELD mode n
    FIELD table str
    FIELD columns ^VEC:vector<binding>
-   FIELD filters ^VEC:vector<n>
+   FIELD filters ^VEC:vector<n>  \ an OPTIONAL's
    FIELD choices ^VEC:vector<choice>
-   FIELD graph str
-   FIELD union bool
+   FIELD graph str  \ the active graph's term
+   FIELD union bool  \ whether UNION? holds of it once pruned
+   FIELD branches ^VEC:vector<relation>  \ a union's, else empty
 ;STRUCTURE
 
 \ An aggregate call node and its SQL: the aggregate inside the grouped
@@ -454,7 +469,8 @@ defer EXISTS-SQL ( ^plan n -- )
    plan NEW-SQL r RELATION-FROM !
    plan NEW-SQL r RELATION-WHERE !
    plan NEW-BINDINGS r RELATION-BINDINGS !
-   plan AL 0 [type] subject-row VEC:NEW r RELATION-ROWS ! ;
+   plan AL 0 [type] subject-row VEC:NEW r RELATION-ROWS !
+   plan AL 0 [type] relation VEC:NEW r RELATION-BRANCHES ! ;
 
 : NEW-RELATION ( ^plan -- ^relation )
    {: plan :}
@@ -841,6 +857,7 @@ defer EXISTS-SQL ( ^plan n -- )
    items VEC:PUSH {: it:^ :}
    node it ITEM-NODE ! 0 it ITEM-MODE !
    plan PLAN-GRAPH @ it ITEM-GRAPH !
+   plan AL 0 [type] relation VEC:NEW it ITEM-BRANCHES !
    plan AL 0 [type] choice VEC:NEW it ITEM-CHOICES ! it ;
 
 : TRY-EACH ( ^plan ^item ^VEC:vector<n> -- )
@@ -1562,37 +1579,11 @@ STRUCTURE pruning DERIVE addr
    v s"  " +SQL plan v b shape +VALUE
    v s"  AS " +SQL v plan b BINDING-VAR @ COLUMN$ +SQL ;
 
-\ Appends ` NULL AS vK`, typed as the column's form.
-: +NULL-COLUMN ( ^plan ^VEC:vector<u8> ^binding -- )
-   {: plan v:^ col:^ :}
-   col BINDING-SHAPE @ {: shape:n :}
-   v s"  " +SQL
+\ Appends NULL typed as form shape.
+: +NULL ( ^plan ^VEC:vector<u8> n -- )
+   {: plan v:^ shape:n :}
    shape 0< if v s" NULL::jsonb" +SQL
-   else v plan shape SHAPE@ SHAPE-IN @ s" NULL::jsonb" +CALL then
-   v s"  AS " +SQL v plan col BINDING-VAR @ COLUMN$ +SQL ;
-
-: +BRANCH ( ^plan ^VEC:vector<u8> ^relation ^VEC:vector<binding> -- )
-   {: plan v:^ r:^ cols:^ :}
-   r RELATION-BINDINGS @ {: bs:^ :}
-   v s" SELECT" +SQL
-   cols VEC:COUNT 0 ?do
-      cols i VEC:AT {: col:^ :}
-      i 0<> if v s" ," +SQL then
-      bs col BINDING-VAR @ FIND-VAR {: k:n :}
-      k 0< if plan v col +NULL-COLUMN
-      else plan v bs k VEC:AT col BINDING-SHAPE @ +COLUMN then
-   loop v r +FROM-WHERE ;
-
-\ The branches as one UNION ALL derived table, and its columns.
-: UNION-TABLE ( ^plan ^VEC:vector<relation> -- str ^VEC:vector<binding> )
-   {: plan branches:^ :}
-   plan branches COLUMNS {: cols:^ :}
-   plan NEW-SQL {: v:^ :}
-   v s" (" +SQL
-   branches VEC:COUNT 0 ?do
-      i 0<> if v s"  UNION ALL " +SQL then
-      plan v branches i VEC:AT cols +BRANCH
-   loop v s" )" +SQL v VEC:BYTES cols ;
+   else v plan shape SHAPE@ SHAPE-IN @ s" NULL::jsonb" +CALL then ;
 
 \ Appends `SELECT columns FROM ... WHERE ...`, the relation's solutions.
 : +SELECT ( ^plan ^VEC:vector<u8> ^relation -- )
@@ -1604,6 +1595,47 @@ STRUCTURE pruning DERIVE addr
       bs i VEC:AT {: b:^ :}
       plan v b b BINDING-SHAPE @ +COLUMN
    loop v r +FROM-WHERE ;
+
+\ Binds var to what the union's column of form shape holds in branch b:
+\ b's value in that form, NULL where b binds none.
+: +PRESENTED ( ^plan ^VEC:vector<binding> ^relation n n -- )
+   {: plan list:^ b:^ var:n shape:n :}
+   b RELATION-BINDINGS @ {: bs:^ :}
+   bs var FIND-VAR {: k:n :}
+   plan NEW-SQL {: v:^ :}
+   k 0< if plan v shape +NULL else plan v bs k VEC:AT shape +VALUE then
+   list var shape v VEC:BYTES s" " BIND
+   k 0< if false list LAST BINDING-ALWAYS ! exit then
+   bs k VEC:AT list LAST {: from:^ to:^ :}
+   from BINDING-ALWAYS @ to BINDING-ALWAYS !
+   from BINDING-COPIES @ to BINDING-COPIES ! ;
+
+\ Branch b as the union of columns cols presents it.
+: PRESENTED ( ^plan ^relation ^VEC:vector<binding> -- ^relation )
+   {: plan b:^ cols:^ :}
+   plan NEW-RELATION {: u:^ :}
+   b RELATION-FROM @ u RELATION-FROM !
+   b RELATION-WHERE @ u RELATION-WHERE !
+   cols VEC:COUNT 0 ?do
+      cols i VEC:AT {: c:^ :}
+      plan u RELATION-BINDINGS @ b c BINDING-VAR @ c BINDING-SHAPE @
+         +PRESENTED
+   loop u ;
+
+: +BRANCH ( ^plan ^VEC:vector<u8> ^relation ^VEC:vector<binding> -- )
+   {: plan v:^ r:^ cols:^ :}
+   plan v plan r cols PRESENTED +SELECT ;
+
+\ The branches as one UNION ALL derived table, and its columns.
+: UNION-TABLE ( ^plan ^VEC:vector<relation> -- str ^VEC:vector<binding> )
+   {: plan branches:^ :}
+   plan branches COLUMNS {: cols:^ :}
+   plan NEW-SQL {: v:^ :}
+   v s" (" +SQL
+   branches VEC:COUNT 0 ?do
+      i 0<> if v s"  UNION ALL " +SQL then
+      plan v branches i VEC:AT cols +BRANCH
+   loop v s" )" +SQL v VEC:BYTES cols ;
 
 \ The relation as a derived table, and its columns.
 : SUBSELECT ( ^plan ^relation -- str ^VEC:vector<binding> )
@@ -1678,7 +1710,7 @@ STRUCTURE pruning DERIVE addr
       branches VEC:PUSH {: b:^ :}
       plan it ITEM-NODE @ recs b SOURCE-BRANCH
       plan keys b +KEYS
-   loop
+   loop branches it ITEM-BRANCHES !
    group RELATION-FROM @ {: from:^ :}
    from s"  CROSS JOIN " +SEP
    plan plan branches UNION-TABLE from +TABLE ;
@@ -1829,9 +1861,10 @@ STRUCTURE pruning DERIVE addr
    then plan items plan r SUBSELECT false CHILD-ITEM ;
 
 \ Adds a relation that is not statically empty to the branches.
-: +RELATION ( ^VEC:vector<relation> ^relation -- )
-   {: branches:^ r:^ :}
+: +RELATION ( ^plan ^VEC:vector<relation> ^relation -- )
+   {: plan branches:^ r:^ :}
    branches VEC:PUSH {: c:^ :}
+   plan c INIT-RELATION
    r RELATION-FROM @ c RELATION-FROM !
    r RELATION-WHERE @ c RELATION-WHERE !
    r RELATION-BINDINGS @ c RELATION-BINDINGS !
@@ -1842,14 +1875,15 @@ STRUCTURE pruning DERIVE addr
    {: plan branches:^ group:n :}
    plan group CLOSED {: r:^ :}
    r RELATION-EMPTY @ if exit then
-   branches r +RELATION ;
+   plan branches r +RELATION ;
 
 \ The branches as one UNION ALL derived table; none is statically empty.
 : UNION-CHILD ( ^plan ^VEC:vector<item> ^VEC:vector<relation> -- )
    {: plan items:^ branches:^ :}
    branches VEC:COUNT 0= if
       plan items s" " plan NEW-BINDINGS true CHILD-ITEM exit
-   then plan items plan branches UNION-TABLE false CHILD-ITEM ;
+   then plan items plan branches UNION-TABLE false CHILD-ITEM
+   branches items dup VEC:COUNT 1- VEC:AT ITEM-BRANCHES ! ;
 
 \ A chain of UNIONs: one UNION ALL derived table of its groups.
 : UNION-ITEM ( ^plan ^VEC:vector<item> n -- )
@@ -1889,7 +1923,7 @@ STRUCTURE pruning DERIVE addr
       own plan g VAR KNOWN plan t TERM-ARG t BIND
       plan own LAST r RELATION-WHERE @ +OUTER
       plan r RELATION-BINDINGS @ own r RELATION-WHERE @ false MEET-ALL
-   then branches r +RELATION ;
+   then plan branches r +RELATION ;
 
 \ GRAPH g { P } (SPARQL 1.1 section 18.5): P with each named graph that g
 \ can be active, a variable g bound to it. One branch is a derived table
@@ -2996,7 +3030,8 @@ STRUCTURE walk DERIVE addr
    from ITEM-FILTERS @ to ITEM-FILTERS !
    from ITEM-CHOICES @ to ITEM-CHOICES !
    from ITEM-GRAPH @ to ITEM-GRAPH !
-   from ITEM-UNION @ to ITEM-UNION ! ;
+   from ITEM-UNION @ to ITEM-UNION !
+   from ITEM-BRANCHES @ to ITEM-BRANCHES ! ;
 
 \ Copies of items from..to.
 : COPY-RUN ( ^plan ^VEC:vector<item> n n -- ^VEC:vector<item> )
@@ -3048,6 +3083,13 @@ STRUCTURE walk DERIVE addr
    loop
    plan items rot items VEC:COUNT r RUN ;
 
+\ r's solutions are a union's when r folded that one item alone and no
+\ FILTER.
+: KEEP-BRANCHES ( ^VEC:vector<item> ^VEC:vector<n> ^relation -- )
+   {: items:^ filters:^ r:^ :}
+   items VEC:COUNT 1 <> filters VEC:COUNT 0<> or if exit then
+   items 0 VEC:AT ITEM-BRANCHES @ r RELATION-BRANCHES ! ;
+
 \ The group's items folded in order, and its FILTERs.
 : GROUP ( ^plan n -- ^relation ^VEC:vector<n> )
    {: plan group:n :}
@@ -3057,7 +3099,9 @@ STRUCTURE walk DERIVE addr
    plan items PRUNE
    plan NEW-RELATION {: r:^ :}
    items DEAD? r RELATION-EMPTY !
-   r RELATION-EMPTY @ 0= if plan items r FOLD-ALL then r filters ;
+   r RELATION-EMPTY @ 0= if
+      plan items r FOLD-ALL items filters r KEEP-BRANCHES
+   then r filters ;
 
 \ [NOT] EXISTS (SELECT 1 ...): the call's group with the scope as its
 \ substitution.
@@ -3226,15 +3270,14 @@ STRUCTURE walk DERIVE addr
       c VEC:BYTES as i VEC:AT AGGREGATE-SQL !
    loop ;
 
-\ g's FROM item: the grouped SELECT of g's keys and the aggregates over r,
-\ whose columns then bind g's variables and hold the aggregates.
-: GROUPS-FROM ( ^plan ^relation ^relation ^VEC:vector<u8>
-      ^VEC:vector<u8> -- )
-   {: plan r:^ g:^ keys:^ having:^ :}
+\ Appends `SELECT` g's columns and the aggregates `FROM` r, grouped by
+\ keys and kept by having.
+: +GROUPED-SELECT ( ^plan ^VEC:vector<u8> ^relation ^relation
+      ^VEC:vector<u8> ^VEC:vector<u8> -- )
+   {: plan v:^ r:^ g:^ keys:^ having:^ :}
    g RELATION-BINDINGS @ {: gs:^ :}
    plan PLAN-AGGREGATES @ {: as:^ :}
-   g RELATION-FROM @ {: v:^ :}
-   v s" (SELECT" +SQL
+   v s" SELECT" +SQL
    gs VEC:COUNT 0 ?do
       i 0<> if v s" ," +SQL then
       gs i VEC:AT {: b:^ :} plan v b b BINDING-SHAPE @ +COLUMN
@@ -3246,30 +3289,232 @@ STRUCTURE walk DERIVE addr
    loop
    v r +FROM-WHERE
    keys VEC:COUNT 0<> if v s"  GROUP BY " +SQL v keys VEC:BYTES +SQL then
-   having VEC:COUNT 0<> if v s"  HAVING " +SQL v having VEC:BYTES +SQL then
+   having VEC:COUNT 0<> if v s"  HAVING " +SQL v having VEC:BYTES +SQL then ;
+
+\ Closes the derived table in v under a new alias, whose columns then
+\ bind g's variables and hold the aggregates.
+: CLOSE-GROUPS ( ^plan ^VEC:vector<u8> ^relation -- )
+   {: plan v:^ g:^ :}
    plan NEXT-ALIAS {: alias:str :}
    v s" ) AS " +SQL v alias +SQL
    plan alias g RENAME ;
 
-\ The groups as a relation over r's solutions. A GROUP BY that leaves no
-\ key still answers no group for no solution.
-: GROUPED ( ^plan n ^relation -- ^relation )
-   {: plan query:n r:^ :}
-   plan TREE {: state :}
-   plan NEW-RELATION {: g:^ :}
-   plan NEW-SQL {: keys:^ :} plan NEW-SQL {: having:^ :}
-   state query GROUP-BY-NODE {: grouping:n :}
-   grouping 0<> if plan state grouping NODE-A@ r g keys GROUP-KEYS then
-   plan query r AGGREGATES
-   plan query g having HAVING-SQL
+\ g's FROM item: the grouped SELECT of g's keys and the aggregates over r.
+: GROUPS-FROM ( ^plan ^relation ^relation ^VEC:vector<u8>
+      ^VEC:vector<u8> -- )
+   {: plan r:^ g:^ keys:^ having:^ :}
+   g RELATION-FROM @ {: v:^ :}
+   v s" (" +SQL plan v r g keys having +GROUPED-SELECT
+   plan v g CLOSE-GROUPS ;
+
+: +KEY-COLUMNS ( ^VEC:vector<u8> ^relation -- )
+   {: keys:^ g:^ :}
    g RELATION-BINDINGS @ {: gs:^ :}
    gs VEC:COUNT 0 ?do
       keys s" ," +SEP keys gs i VEC:AT BINDING-SQL @ +SQL
-   loop
-   grouping 0<> keys VEC:COUNT 0= and if
+   loop ;
+
+\ GROUP BY's keys over r: g's bindings, the other keys' terms to keys.
+: KEYS-OF ( ^plan n ^relation ^relation ^VEC:vector<u8> -- )
+   {: plan query:n r:^ g:^ keys:^ :}
+   plan TREE {: state :}
+   state query GROUP-BY-NODE {: grouping:n :}
+   grouping 0<> if plan state grouping NODE-A@ r g keys GROUP-KEYS then ;
+
+\ g's FROM item over r, with HAVING. A GROUP BY that leaves no key still
+\ answers no group for no solution.
+: GROUPS-OF ( ^plan n ^relation ^relation ^VEC:vector<u8> -- )
+   {: plan query:n r:^ g:^ keys:^ :}
+   plan NEW-SQL {: having:^ :}
+   plan query g having HAVING-SQL
+   keys g +KEY-COLUMNS
+   plan TREE query GROUP-BY-NODE 0<> keys VEC:COUNT 0= and if
       having s"  AND " +SEP having s" count(*)>0" +SQL
    then
-   plan r g keys having GROUPS-FROM g ;
+   plan r g keys having GROUPS-FROM ;
+
+\ The aggregate call over u; when partial, COUNT's bare count.
+: PART$ ( ^plan ^relation n bool -- str )
+   {: plan u:^ call:n partial:bool :}
+   partial plan TREE call s" COUNT" CALL-IS? and 0= if
+      plan u call AGGREGATE$ exit
+   then
+   plan NEW-SQL {: v:^ :}
+   v s" count(" +SQL v plan u call COUNTED +SQL v s" )" +SQL v VEC:BYTES ;
+
+\ Points the plan's aggregates at their SQL over u.
+: PARTS ( ^plan ^relation bool -- )
+   {: plan u:^ partial:bool :}
+   plan PLAN-AGGREGATES @ {: as:^ :}
+   as VEC:COUNT 0 ?do
+      as i VEC:AT {: a:^ :}
+      plan u a AGGREGATE-NODE @ partial PART$ a AGGREGATE-SQL !
+   loop ;
+
+\ Appends branch b's groups, b as the union of r's columns presents it;
+\ without a key, a branch with no solution has none.
+: +BRANCH-GROUPS ( ^plan n ^VEC:vector<u8> ^relation ^relation bool -- )
+   {: plan query:n v:^ b:^ r:^ partial:bool :}
+   plan b r RELATION-BINDINGS @ PRESENTED {: u:^ :}
+   plan NEW-RELATION {: gb:^ :}
+   plan NEW-SQL {: keys:^ :} plan NEW-SQL {: having:^ :}
+   plan query u gb keys KEYS-OF
+   plan u partial PARTS
+   keys gb +KEY-COLUMNS
+   keys VEC:COUNT 0= if having s" count(*)>0" +SQL then
+   plan v u gb keys having +GROUPED-SELECT ;
+
+\ Appends `(` and the groups of r's branches, a UNION ALL.
+: +BRANCHES ( ^plan n ^VEC:vector<u8> ^relation bool -- )
+   {: plan query:n v:^ r:^ partial:bool :}
+   r RELATION-BRANCHES @ {: bs:^ :}
+   v s" (" +SQL
+   bs VEC:COUNT 0 ?do
+      i 0<> if v s"  UNION ALL " +SQL then
+      plan query v bs i VEC:AT r partial +BRANCH-GROUPS
+   loop ;
+
+\ The aggregate call over the partials in column c: the sum of COUNT's
+\ counts, else the aggregate of the partial terms.
+: COMBINED$ ( ^plan n str -- str )
+   {: plan call:n c:str :}
+   plan TREE {: state :}
+   plan NEW-SQL {: v:^ :}
+   state call s" COUNT" CALL-IS? if
+      v s" sparql.number(coalesce(sum(" +SQL v c +SQL
+      v s" ),0),'integer')" +SQL v VEC:BYTES exit
+   then
+   v s" sparql.aggregate(" +SQL v plan state call TEXT$ TEXT-ARG +SQL
+   v s" ,array_agg(" +SQL v c +SQL v s" ),false," +SQL
+   v plan state call NODE-B@ SEPARATOR-SQL +SQL v s" )" +SQL v VEC:BYTES ;
+
+\ Points each aggregate at its combination over the partials it names.
+: COMBINE ( ^plan -- )
+   {: plan :}
+   plan PLAN-AGGREGATES @ {: as:^ :}
+   as VEC:COUNT 0 ?do
+      as i VEC:AT {: a:^ :}
+      plan a AGGREGATE-NODE @ a AGGREGATE-SQL @ COMBINED$
+      a AGGREGATE-SQL !
+   loop ;
+
+\ The groups of r's branches, each grouped on its own, HAVING over them.
+: SPLIT ( ^plan n ^relation -- ^relation )
+   {: plan query:n r:^ :}
+   plan NEW-RELATION {: g:^ :}
+   plan query r g plan NEW-SQL KEYS-OF
+   plan query r AGGREGATES
+   g RELATION-FROM @ {: v:^ :}
+   plan query v r false +BRANCHES
+   plan v g CLOSE-GROUPS
+   plan query g g RELATION-WHERE @ HAVING-SQL g ;
+
+\ The groups of the partial groups of r's branches, combined.
+: COMBINED ( ^plan n ^relation -- ^relation )
+   {: plan query:n r:^ :}
+   plan NEW-RELATION {: g:^ :} plan NEW-SQL {: keys:^ :}
+   plan query r g keys KEYS-OF
+   plan query r AGGREGATES
+   plan NEW-RELATION {: p:^ :}
+   p RELATION-FROM @ {: v:^ :}
+   plan query v r true +BRANCHES
+   plan v g CLOSE-GROUPS
+   plan COMBINE
+   plan query p g keys GROUPS-OF g ;
+
+\ An EXISTS call ends the walk found; any other leaf walks on.
+: EXISTS-LEAF ( bool ^syntax n -- bool n )
+   {: found:bool state leaf:n :}
+   state leaf NODE-K N-CALL = if
+      state leaf EXISTS-CALL? if true 0 exit then
+   then found state leaf OPERAND ;
+
+\ Whether an expression of the list calls EXISTS.
+: EXISTS-IN? ( ^syntax n -- bool )
+   {: state list:n :}
+   list begin dup 0<> while
+      {: each:n :}
+      false state state each NODE-A@ [: EXISTS-LEAF ;] WALK
+      if true exit then
+      state each NODE-B@
+   repeat drop false ;
+
+\ Whether r's solutions are a union's of two or more branches and no
+\ GROUP BY key or aggregate calls EXISTS, which each would compile again.
+: BRANCHED? ( ^plan n ^relation -- bool )
+   {: plan query:n r:^ :}
+   r RELATION-BRANCHES @ VEC:COUNT 2 < if false exit then
+   plan TREE {: state :}
+   state state query QUERY-AGGREGATES EXISTS-IN? if false exit then
+   state query GROUP-BY-NODE {: grouping:n :}
+   grouping 0= if true exit then
+   state state grouping NODE-A@ EXISTS-IN? 0= ;
+
+\ Whether each branch binds var always to a term no other binds it to.
+: APART? ( ^plan ^VEC:vector<relation> n -- bool )
+   {: plan branches:^ var:n :}
+   plan INDEXES {: places:^ :}
+   branches VEC:COUNT 0 ?do
+      branches i VEC:AT RELATION-BINDINGS @ {: bs:^ :}
+      bs var FIND-VAR {: k:n :}
+      k 0< if false unloop exit then
+      bs k VEC:AT {: b:^ :}
+      b BINDING-SHAPE @ KNOWN <> b BINDING-ALWAYS @ 0= or if
+         false unloop exit
+      then
+      plan b BINDING-TERM @ TERM-PLACE places VEC:PUSH !
+   loop
+   plan AL plan PLAN-KNOWN @ VEC:COUNT [type] bool VEC:NEW {: seen:^ :}
+   places VEC:COUNT 0 ?do
+      seen places i VEC:AT @ VEC:AT {: mark:^ :}
+      mark @ if false unloop exit then
+      true mark !
+   loop true ;
+
+\ Whether a GROUP BY variable is APART? in r's branches.
+: SPLIT? ( ^plan n ^relation -- bool )
+   {: plan query:n r:^ :}
+   plan TREE {: state :}
+   state query GROUP-BY-NODE {: grouping:n :}
+   grouping 0= if false exit then
+   state grouping NODE-A@ begin dup 0<> while
+      {: list:n :} state list NODE-A@ {: e:n :}
+      state e NODE-K N-VAR = if
+         plan r RELATION-BRANCHES @ plan e VAR APART? if true exit then
+      then state list NODE-B@
+   repeat drop false ;
+
+\ Whether partial groups regroup to the same answer: a GROUP BY key must
+\ bind a variable, which a partial keeps.
+: COMBINES? ( ^plan n -- bool )
+   {: plan query:n :}
+   plan TREE {: state :}
+   state query QUERY-AGGREGATES begin dup 0<> while
+      {: list:n :} state list NODE-A@ {: call:n :}
+      state call NODE NODE-FLAGS @ F-DISTINCT and 0<> if false exit then
+      state call s" COUNT MIN MAX SAMPLE" CALL-IN? 0= if false exit then
+      state list NODE-B@
+   repeat drop
+   state query GROUP-BY-NODE {: grouping:n :}
+   grouping 0= if true exit then
+   state grouping NODE-A@ begin dup 0<> while
+      {: list:n :} state state list NODE-A@ NODE-K {: kind:n :}
+      kind N-VAR <> kind N-ALIAS <> and if false exit then
+      state list NODE-B@
+   repeat drop true ;
+
+\ The groups as a relation over r's solutions, grouped per branch where
+\ they are a union's and that answers as grouping the whole union does.
+: GROUPED ( ^plan n ^relation -- ^relation )
+   {: plan query:n r:^ :}
+   plan query r BRANCHED? if
+      plan query r SPLIT? if plan query r SPLIT exit then
+      plan query COMBINES? if plan query r COMBINED exit then
+   then
+   plan NEW-RELATION {: g:^ :} plan NEW-SQL {: keys:^ :}
+   plan query r g keys KEYS-OF
+   plan query r AGGREGATES
+   plan query r g keys GROUPS-OF g ;
 
 \ Joins the trailing VALUES' data block with s; no rows is no solution.
 : JOIN-VALUES ( ^plan ^relation n -- )
