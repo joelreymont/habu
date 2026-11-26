@@ -1,0 +1,1 @@
+{"head":{"vars":["price","title"]},"results":{"bindings":[{"title":{"type":"literal","value":"TITLE 1"},"price":{"type":"literal","value":"10","datatype":"http://www.w3.org/2001/XMLSchema#integer"}}]}}

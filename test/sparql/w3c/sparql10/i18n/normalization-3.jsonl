@@ -1,0 +1,3 @@
+[{"type":"uri","value":"http://example/vocab#s3"},{"type":"uri","value":"http://example/vocab#p"},{"type":"uri","value":"http://example.com:80/#abc"},null]
+[{"type":"uri","value":"http://example/vocab#s4"},{"type":"uri","value":"http://example/vocab#p"},{"type":"uri","value":"http://example.com/#abc"},null]
+[{"type":"uri","value":"http://example/vocab#s5"},{"type":"uri","value":"http://example/vocab#p"},{"type":"uri","value":"http://example.com/#abc"},null]

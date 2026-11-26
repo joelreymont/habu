@@ -1,0 +1,1 @@
+{"head":{"vars":["a"]},"results":{"bindings":[{"a":{"type":"uri","value":"http://example.org/ns#x1"}},{"a":{"type":"uri","value":"http://example.org/ns#x2"}},{"a":{"type":"uri","value":"http://example.org/ns#x3"}},{"a":{"type":"uri","value":"http://example.org/ns#x4"}}]}}

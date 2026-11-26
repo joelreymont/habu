@@ -1,0 +1,8 @@
+[{"type":"uri","value":"http://example.org/a"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/knows"},{"type":"uri","value":"http://example.org/b"},null]
+[{"type":"uri","value":"http://example.org/a"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/mbox"},{"type":"literal","value":"alan@example.org"},null]
+[{"type":"uri","value":"http://example.org/a"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Alan"},null]
+[{"type":"uri","value":"http://example.org/b"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/knows"},{"type":"uri","value":"http://example.org/c"},null]
+[{"type":"uri","value":"http://example.org/b"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/mbox"},{"type":"literal","value":"bob@example.org"},null]
+[{"type":"uri","value":"http://example.org/b"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Bob"},null]
+[{"type":"uri","value":"http://example.org/c"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/mbox"},{"type":"literal","value":"alice@example.org"},null]
+[{"type":"uri","value":"http://example.org/c"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Alice"},null]

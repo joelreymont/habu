@@ -1,0 +1,1 @@
+{"head":{"vars":["x","y"]},"results":{"bindings":[{"x":{"type":"bnode","value":"b0"},"y":{"type":"bnode","value":"b1"}},{"x":{"type":"bnode","value":"b1"},"y":{"type":"bnode","value":"b0"}},{"x":{"type":"bnode","value":"b2"},"y":{"type":"bnode","value":"b3"}}]}}

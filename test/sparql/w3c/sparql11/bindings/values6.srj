@@ -1,0 +1,1 @@
+{"head":{"vars":["s","p1","o1"]},"results":{"bindings":[{"s":{"type":"uri","value":"http://example.org/a"},"p1":{"type":"uri","value":"http://xmlns.com/foaf/0.1/knows"},"o1":{"type":"uri","value":"http://example.org/b"}}]}}

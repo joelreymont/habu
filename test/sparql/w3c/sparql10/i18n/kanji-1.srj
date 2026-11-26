@@ -1,0 +1,1 @@
+{"head":{"vars":["food","name"]},"results":{"bindings":[{"name":{"type":"literal","value":"Alice"},"food":{"type":"uri","value":"http://www.w3.org/2001/sw/DataAccess/tests/data/i18n/kanji.ttl#納豆"}},{"name":{"type":"literal","value":"Bob"},"food":{"type":"uri","value":"http://www.w3.org/2001/sw/DataAccess/tests/data/i18n/kanji.ttl#海老"}}]}}

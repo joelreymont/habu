@@ -1,0 +1,4 @@
+[{"type":"uri","value":"http://example/s1"},{"type":"uri","value":"http://example/p"},{"type":"literal","value":"1","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example/s1"},{"type":"uri","value":"http://example/q"},{"type":"literal","value":"9","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example/s2"},{"type":"uri","value":"http://example/p"},{"type":"literal","value":"2","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example/s3"},{"type":"uri","value":"http://example/p"},{"type":"literal","value":"1","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]

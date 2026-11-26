@@ -1,0 +1,8 @@
+[{"type":"uri","value":"http://example.org/ns#x1"},{"type":"uri","value":"http://example.org/ns#p"},{"type":"literal","value":"1","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example.org/ns#x2"},{"type":"uri","value":"http://example.org/ns#p"},{"type":"literal","value":"foo"},null]
+[{"type":"uri","value":"http://example.org/ns#x3"},{"type":"uri","value":"http://example.org/ns#p"},{"type":"literal","value":"0.01","datatype":"http://www.w3.org/2001/XMLSchema#double"},null]
+[{"type":"uri","value":"http://example.org/ns#x4"},{"type":"uri","value":"http://example.org/ns#p"},{"type":"literal","value":"true","datatype":"http://www.w3.org/2001/XMLSchema#boolean"},null]
+[{"type":"uri","value":"http://example.org/ns#y1"},{"type":"uri","value":"http://example.org/ns#p"},{"type":"literal","value":"0","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example.org/ns#y2"},{"type":"uri","value":"http://example.org/ns#p"},{"type":"literal","value":"0.0","datatype":"http://www.w3.org/2001/XMLSchema#double"},null]
+[{"type":"uri","value":"http://example.org/ns#y3"},{"type":"uri","value":"http://example.org/ns#p"},{"type":"literal","value":""},null]
+[{"type":"uri","value":"http://example.org/ns#y4"},{"type":"uri","value":"http://example.org/ns#p"},{"type":"literal","value":"false","datatype":"http://www.w3.org/2001/XMLSchema#boolean"},null]

@@ -1,0 +1,7 @@
+[{"type":"uri","value":"http://example.org/bool"},{"type":"uri","value":"http://example.org/p"},{"type":"literal","value":"true"},null]
+[{"type":"uri","value":"http://example.org/dT"},{"type":"uri","value":"http://example.org/p"},{"type":"literal","value":"2002-10-10T17:00:00Z"},null]
+[{"type":"uri","value":"http://example.org/decimal"},{"type":"uri","value":"http://example.org/p"},{"type":"literal","value":"+33.3300"},null]
+[{"type":"uri","value":"http://example.org/fltdbl"},{"type":"uri","value":"http://example.org/p"},{"type":"literal","value":"-10.2E3"},null]
+[{"type":"uri","value":"http://example.org/int"},{"type":"uri","value":"http://example.org/p"},{"type":"literal","value":"13"},null]
+[{"type":"uri","value":"http://example.org/iri"},{"type":"uri","value":"http://example.org/p"},{"type":"uri","value":"http://example.org/z"},null]
+[{"type":"uri","value":"http://example.org/str"},{"type":"uri","value":"http://example.org/p"},{"type":"literal","value":"string"},null]

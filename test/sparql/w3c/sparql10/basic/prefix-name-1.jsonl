@@ -1,0 +1,2 @@
+[{"type":"uri","value":"http://example.org/ns#x"},{"type":"uri","value":"http://example.org/ns#p1"},{"type":"literal","value":"1","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example.org/ns#x"},{"type":"uri","value":"http://example.org/ns#p1"},{"type":"literal","value":"2","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]

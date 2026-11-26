@@ -1,0 +1,4 @@
+[{"type":"bnode","value":"b0"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Alice"},null]
+[{"type":"bnode","value":"b1"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Bob"},null]
+[{"type":"bnode","value":"b2"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Eve"},null]
+[{"type":"bnode","value":"b3"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Fred"},null]

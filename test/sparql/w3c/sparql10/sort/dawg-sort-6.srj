@@ -1,0 +1,1 @@
+{"head":{"vars":["address"]},"results":{"bindings":[{"address":{"type":"uri","value":"http://example.org/eve"}},{"address":{"type":"uri","value":"mailto:bob@work.example"}},{"address":{"type":"literal","value":"Fascination Street 11"}},{"address":{"type":"literal","value":"fred@work.example"}}]}}

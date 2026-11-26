@@ -1,0 +1,1 @@
+{"head":{"vars":["p","v"]},"results":{"bindings":[{"p":{"type":"uri","value":"http://example.org/ns#p2"},"v":{"type":"literal","value":"2","datatype":"http://www.w3.org/2001/XMLSchema#integer"}},{"p":{"type":"uri","value":"http://example.org/ns#p1"},"v":{"type":"literal","value":"1","datatype":"http://www.w3.org/2001/XMLSchema#integer"}}]}}

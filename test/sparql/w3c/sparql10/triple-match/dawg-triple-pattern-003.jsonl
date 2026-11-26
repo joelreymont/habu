@@ -1,0 +1,3 @@
+[{"type":"uri","value":"http://example.org/data/x"},{"type":"uri","value":"http://example.org/data/y"},{"type":"uri","value":"http://example.org/data/y"},null]
+[{"type":"uri","value":"http://example.org/data/y"},{"type":"uri","value":"http://example.org/data/x"},{"type":"uri","value":"http://example.org/data/y"},null]
+[{"type":"uri","value":"http://example.org/data/y"},{"type":"uri","value":"http://example.org/data/y"},{"type":"uri","value":"http://example.org/data/x"},null]

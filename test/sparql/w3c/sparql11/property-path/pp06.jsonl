@@ -1,0 +1,2 @@
+[{"type":"uri","value":"http://www.example.org/instance#a"},{"type":"uri","value":"http://www.example.org/schema#p1"},{"type":"uri","value":"http://www.example.org/instance#b"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/property-path/pp061.ttl"}]
+[{"type":"uri","value":"http://www.example.org/instance#b"},{"type":"uri","value":"http://www.example.org/schema#p2"},{"type":"uri","value":"http://www.example.org/instance#c"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/property-path/pp062.ttl"}]

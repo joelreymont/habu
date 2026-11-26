@@ -1,0 +1,6 @@
+[{"type":"uri","value":"http://www.example.org/a"},{"type":"uri","value":"http://www.example.org/p0"},{"type":"uri","value":"http://www.example.org/c"},null]
+[{"type":"uri","value":"http://www.example.org/a"},{"type":"uri","value":"http://www.example.org/p3"},{"type":"uri","value":"http://www.example.org/b"},null]
+[{"type":"uri","value":"http://www.example.org/c"},{"type":"uri","value":"http://www.example.org/p2"},{"type":"uri","value":"http://www.example.org/f"},null]
+[{"type":"uri","value":"http://www.example.org/c"},{"type":"uri","value":"http://www.example.org/p3"},{"type":"uri","value":"http://www.example.org/g"},null]
+[{"type":"uri","value":"http://www.example.org/d"},{"type":"uri","value":"http://www.example.org/p1"},{"type":"uri","value":"http://www.example.org/a"},null]
+[{"type":"uri","value":"http://www.example.org/d"},{"type":"uri","value":"http://www.example.org/p2"},{"type":"uri","value":"http://www.example.org/e"},null]

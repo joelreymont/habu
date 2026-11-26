@@ -1,0 +1,4 @@
+[{"type":"uri","value":"http://example/a"},{"type":"uri","value":"http://example/p"},{"type":"uri","value":"http://example/b"},null]
+[{"type":"uri","value":"http://example/a"},{"type":"uri","value":"http://example/p"},{"type":"uri","value":"http://example/c"},null]
+[{"type":"uri","value":"http://example/b"},{"type":"uri","value":"http://example/p"},{"type":"uri","value":"http://example/z"},null]
+[{"type":"uri","value":"http://example/c"},{"type":"uri","value":"http://example/p"},{"type":"uri","value":"http://example/z"},null]

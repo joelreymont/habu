@@ -1,0 +1,4 @@
+[{"type":"uri","value":"http://example.org/book/book1"},{"type":"uri","value":"http://example.org/ns#price"},{"type":"literal","value":"42","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example.org/book/book1"},{"type":"uri","value":"http://purl.org/dc/elements/1.1/title"},{"type":"literal","value":"SPARQL Tutorial"},null]
+[{"type":"uri","value":"http://example.org/book/book2"},{"type":"uri","value":"http://example.org/ns#price"},{"type":"literal","value":"23","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example.org/book/book2"},{"type":"uri","value":"http://purl.org/dc/elements/1.1/title"},{"type":"literal","value":"The Semantic Web"},null]

@@ -1,0 +1,2 @@
+[{"type":"uri","value":"http://example.org/john"},{"type":"uri","value":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/Person"},null]
+[{"type":"uri","value":"http://example.org/john"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"John Smith"},null]

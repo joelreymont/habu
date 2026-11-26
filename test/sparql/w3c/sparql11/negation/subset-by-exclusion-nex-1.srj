@@ -1,0 +1,1 @@
+{"head":{"vars":["animal"]},"results":{"bindings":[{"animal":{"type":"uri","value":"http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation#lifeForm1"}},{"animal":{"type":"uri","value":"http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation#lifeForm2"}}]}}

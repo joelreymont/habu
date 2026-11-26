@@ -1,0 +1,1 @@
+{"head":{"vars":["exam","date"]},"results":{"bindings":[{"exam":{"type":"uri","value":"http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation#examination1"},"date":{"type":"literal","value":"2010-01-10","datatype":"http://www.w3.org/2001/XMLSchema#date"}}]}}

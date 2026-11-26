@@ -1,0 +1,3 @@
+[{"type":"uri","value":"http://example.org/#x"},{"type":"uri","value":"http://example.org/#p3"},{"type":"literal","value":"abc","xml:lang":"de"},null]
+[{"type":"uri","value":"http://example.org/#x"},{"type":"uri","value":"http://example.org/#p4"},{"type":"literal","value":"abc","xml:lang":"de-de"},null]
+[{"type":"uri","value":"http://example.org/#x"},{"type":"uri","value":"http://example.org/#p5"},{"type":"literal","value":"abc","xml:lang":"de-latn-de"},null]

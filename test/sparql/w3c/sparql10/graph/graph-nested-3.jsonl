@@ -1,0 +1,4 @@
+[{"type":"uri","value":"http://example.com/s"},{"type":"uri","value":"http://example.com/p"},{"type":"uri","value":"http://example.com/o"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/graph/data-nested-g1.ttl"}]
+[{"type":"uri","value":"http://example.com/s"},{"type":"uri","value":"http://example.com/p"},{"type":"uri","value":"http://example.com/o"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/graph/data-nested-g2.ttl"}]
+[{"type":"uri","value":"http://example.com/s1"},{"type":"uri","value":"http://example.com/p"},{"type":"uri","value":"http://example.com/o1"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/graph/data-nested-g1.ttl"}]
+[{"type":"uri","value":"http://example.com/s2"},{"type":"uri","value":"http://example.com/p"},{"type":"uri","value":"http://example.com/o2"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/graph/data-nested-g2.ttl"}]

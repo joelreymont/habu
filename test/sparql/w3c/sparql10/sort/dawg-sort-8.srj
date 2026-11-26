@@ -1,0 +1,1 @@
+{"head":{"vars":["emp","name"]},"results":{"bindings":[{"name":{"type":"literal","value":"John"},"emp":{"type":"bnode","value":"b0"}},{"name":{"type":"literal","value":"Dirk"},"emp":{"type":"uri","value":"http://example.org/dirk01"}},{"name":{"type":"literal","value":"Eve"},"emp":{"type":"literal","value":"9","datatype":"http://www.w3.org/2001/XMLSchema#integer"}}]}}

@@ -1,0 +1,1 @@
+{"head":{"vars":["s","s2"]},"results":{"bindings":[{"s":{"type":"uri","value":"http://example.org/s2"},"s2":{"type":"literal","value":"bar","xml:lang":"en-us"}}]}}

@@ -1,0 +1,1 @@
+{"head":{"vars":["id","ssn"]},"results":{"bindings":[{"id":{"type":"literal","value":"29","datatype":"http://www.w3.org/2001/XMLSchema#integer"}},{"ssn":{"type":"literal","value":"000000000"}}]}}

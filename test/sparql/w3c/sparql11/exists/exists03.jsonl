@@ -1,0 +1,8 @@
+[{"type":"uri","value":"http://www.example.org/a"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"http://www.example.org/o1"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/exists/exists02.ttl"}]
+[{"type":"uri","value":"http://www.example.org/b"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"http://www.example.org/o1"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/exists/exists02.ttl"}]
+[{"type":"uri","value":"http://www.example.org/b"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"http://www.example.org/o2"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/exists/exists02.ttl"}]
+[{"type":"uri","value":"http://www.example.org/s"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"http://www.example.org/o"},null]
+[{"type":"uri","value":"http://www.example.org/s"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"http://www.example.org/o1"},null]
+[{"type":"uri","value":"http://www.example.org/s"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"http://www.example.org/o2"},null]
+[{"type":"uri","value":"http://www.example.org/t"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"http://www.example.org/o1"},null]
+[{"type":"uri","value":"http://www.example.org/t"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"http://www.example.org/o2"},null]

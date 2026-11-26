@@ -1,0 +1,6 @@
+[{"type":"bnode","value":"b0"},{"type":"uri","value":"http://www.w3.org/2001/sw/DataAccess/tests/data/i18n/kanji.ttl#食べる"},{"type":"uri","value":"http://www.w3.org/2001/sw/DataAccess/tests/data/i18n/kanji.ttl#海老"},null]
+[{"type":"bnode","value":"b0"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Bob"},null]
+[{"type":"bnode","value":"b1"},{"type":"uri","value":"http://www.w3.org/2001/sw/DataAccess/tests/data/i18n/kanji.ttl#食べる"},{"type":"uri","value":"http://www.w3.org/2001/sw/DataAccess/tests/data/i18n/kanji.ttl#納豆"},null]
+[{"type":"bnode","value":"b1"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Alice"},null]
+[{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/i18n/kanji.ttl"},{"type":"uri","value":"http://www.w3.org/2000/01/rdf-schema#comment"},{"type":"literal","value":"test kanji IRIs (composed from QNames)"},null]
+[{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/i18n/kanji.ttl"},{"type":"uri","value":"http://www.w3.org/2002/07/owl#versionInfo"},{"type":"literal","value":"$Id: kanji.ttl,v 1.5 2005/11/06 08:27:50 eric Exp $"},null]

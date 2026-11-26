@@ -1,0 +1,1 @@
+{"head":{"vars":["s"]},"results":{"bindings":[{"s":{"type":"uri","value":"http://example.org/ntzasc"}},{"s":{"type":"uri","value":"http://example.org/tzasc"}},{"s":{"type":"uri","value":"http://example.org/tzntzasc"}},{"s":{"type":"uri","value":"http://example.org/ntztzasc"}}]}}

@@ -1,0 +1,7 @@
+[{"type":"uri","value":"http://example.org/ns#x"},{"type":"uri","value":"http://example.org/ns#n1"},{"type":"literal","value":"123.0","datatype":"http://www.w3.org/2001/XMLSchema#decimal"},null]
+[{"type":"uri","value":"http://example.org/ns#x"},{"type":"uri","value":"http://example.org/ns#n2"},{"type":"literal","value":"456.","datatype":"http://www.w3.org/2001/XMLSchema#decimal"},null]
+[{"type":"uri","value":"http://example.org/ns#x"},{"type":"uri","value":"http://example.org/ns#n3"},{"type":"literal","value":"+5","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example.org/ns#x"},{"type":"uri","value":"http://example.org/ns#n4"},{"type":"literal","value":"-18","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example.org/ns#x"},{"type":"uri","value":"http://example.org/ns#p1"},{"type":"literal","value":"true","datatype":"http://www.w3.org/2001/XMLSchema#boolean"},null]
+[{"type":"uri","value":"http://example.org/ns#x"},{"type":"uri","value":"http://example.org/ns#p2"},{"type":"literal","value":"false","datatype":"http://www.w3.org/2001/XMLSchema#boolean"},null]
+[{"type":"uri","value":"http://example.org/ns#x"},{"type":"uri","value":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type"},{"type":"uri","value":"http://example.org/ns#C"},null]

@@ -1,0 +1,1 @@
+{"head":{"vars":["p","v"]},"results":{"bindings":[{"v":{"type":"literal","value":"abc"},"p":{"type":"uri","value":"http://example.org/#p1"}}]}}

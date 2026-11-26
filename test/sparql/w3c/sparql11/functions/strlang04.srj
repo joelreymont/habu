@@ -1,0 +1,1 @@
+{"head":{"vars":["res0","res1"]},"results":{"bindings":[{"res0":{"type":"literal","value":"true","datatype":"http://www.w3.org/2001/XMLSchema#boolean"},"res1":{"type":"literal","value":"true","datatype":"http://www.w3.org/2001/XMLSchema#boolean"}}]}}

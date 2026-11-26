@@ -1,0 +1,1 @@
+{"head":{"vars":["set"]},"results":{"bindings":[{"set":{"type":"uri","value":"http://example/b"}},{"set":{"type":"uri","value":"http://example/d"}}]}}

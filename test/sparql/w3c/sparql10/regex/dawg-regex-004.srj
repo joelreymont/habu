@@ -1,0 +1,1 @@
+{"head":{"vars":["val"]},"results":{"bindings":[{"val":{"type":"literal","value":"http://example.com/literal"}},{"val":{"type":"uri","value":"http://example.com/uri"}}]}}

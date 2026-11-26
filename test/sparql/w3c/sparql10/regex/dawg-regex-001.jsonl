@@ -1,0 +1,5 @@
+[{"type":"uri","value":"http://example.com/#foo"},{"type":"uri","value":"http://www.w3.org/1999/02/22-rdf-syntax-ns#value"},{"type":"literal","value":"0123456789"},null]
+[{"type":"uri","value":"http://example.com/#foo"},{"type":"uri","value":"http://www.w3.org/1999/02/22-rdf-syntax-ns#value"},{"type":"literal","value":"ABCdefGHIjkl"},null]
+[{"type":"uri","value":"http://example.com/#foo"},{"type":"uri","value":"http://www.w3.org/1999/02/22-rdf-syntax-ns#value"},{"type":"literal","value":"abcDEFghiJKL"},null]
+[{"type":"uri","value":"http://example.com/#foo"},{"type":"uri","value":"http://www.w3.org/1999/02/22-rdf-syntax-ns#value"},{"type":"literal","value":"http://example.com/literal"},null]
+[{"type":"uri","value":"http://example.com/#foo"},{"type":"uri","value":"http://www.w3.org/1999/02/22-rdf-syntax-ns#value"},{"type":"uri","value":"http://example.com/uri"},null]

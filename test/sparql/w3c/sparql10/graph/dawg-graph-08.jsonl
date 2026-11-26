@@ -1,0 +1,3 @@
+[{"type":"uri","value":"http://example/a"},{"type":"uri","value":"http://example/p"},{"type":"literal","value":"9","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example/x"},{"type":"uri","value":"http://example/p"},{"type":"literal","value":"1","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example/x"},{"type":"uri","value":"http://example/q"},{"type":"literal","value":"2","datatype":"http://www.w3.org/2001/XMLSchema#integer"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/graph/data-g2.ttl"}]

@@ -1,0 +1,1 @@
+{"head":{"vars":["sum"]},"results":{"bindings":[{"sum":{"type":"literal","value":"11.1","datatype":"http://www.w3.org/2001/XMLSchema#decimal"}}]}}

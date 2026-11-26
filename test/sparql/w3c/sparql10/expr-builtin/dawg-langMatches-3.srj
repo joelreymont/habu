@@ -1,0 +1,1 @@
+{"head":{"vars":["p","v"]},"results":{"bindings":[{"p":{"type":"uri","value":"http://example.org/#p4"},"v":{"type":"literal","value":"abc","xml:lang":"en-gb"}},{"p":{"type":"uri","value":"http://example.org/#p5"},"v":{"type":"literal","value":"abc","xml:lang":"fr"}},{"v":{"type":"literal","value":"abc","xml:lang":"en"},"p":{"type":"uri","value":"http://example.org/#p3"}}]}}

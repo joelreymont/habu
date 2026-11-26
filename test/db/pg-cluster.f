@@ -1,5 +1,6 @@
-\ pg-cluster.f - src/lib/pg-test.f and src/lib/pg-rows-test.f against a private
-\ PostgreSQL cluster.
+\ pg-cluster.f - src/lib/pg-test.f, src/lib/pg-rows-test.f,
+\ src/lib/sparql/runtime-test.f, src/lib/sparql-test.f and
+\ test/sparql/w3c-test.f against a private PostgreSQL cluster.
 \
 \     bin/hb --load test/db/pg-cluster.f [-- case.f ...]
 require src/core/exit-status.f
@@ -409,16 +410,20 @@ false STOPPED !
    CASE-REAP
    file EXITED-0? ;
 
-\ The case files are the script arguments, or src/lib/pg-test.f and then
-\ src/lib/pg-rows-test.f when there are none.
+\ The case files are the script arguments, or src/lib/pg-test.f,
+\ src/lib/pg-rows-test.f, src/lib/sparql/runtime-test.f,
+\ src/lib/sparql-test.f and test/sparql/w3c-test.f when there are none.
 : CASE-N ( -- n )
-   SCRIPT-ARGC 0= if 2 exit then
+   SCRIPT-ARGC 0= if 5 exit then
    SCRIPT-ARGC ;
 
 : CASE$ ( n -- str ) {: i:n :}
    SCRIPT-ARGC 0 > if i SCRIPT-ARGV$ exit then
    i 0= if s" src/lib/pg-test.f" exit then
-   s" src/lib/pg-rows-test.f" ;
+   i 1 = if s" src/lib/pg-rows-test.f" exit then
+   i 2 = if s" src/lib/sparql/runtime-test.f" exit then
+   i 3 = if s" src/lib/sparql-test.f" exit then
+   s" test/sparql/w3c-test.f" ;
 
 \ The first file to fail ends the run; the answer is the last file run and
 \ whether it passed.

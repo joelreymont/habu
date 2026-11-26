@@ -1,0 +1,1 @@
+{"head":{"vars":["w","S"]},"results":{"bindings":[{"w":{"type":"literal","value":"9","datatype":"http://www.w3.org/2001/XMLSchema#integer"},"S":{"type":"literal","value":"1","datatype":"http://www.w3.org/2001/XMLSchema#integer"}},{"S":{"type":"literal","value":"2","datatype":"http://www.w3.org/2001/XMLSchema#integer"}}]}}

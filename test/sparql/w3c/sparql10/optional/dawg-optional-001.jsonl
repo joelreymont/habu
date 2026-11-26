@@ -1,0 +1,7 @@
+[{"type":"bnode","value":"b0"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/mbox"},{"type":"uri","value":"mailto:alice@example.net"},null]
+[{"type":"bnode","value":"b0"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Alice"},null]
+[{"type":"bnode","value":"b0"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/nick"},{"type":"literal","value":"WhoMe?"},null]
+[{"type":"bnode","value":"b1"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/mbox"},{"type":"uri","value":"mailto:bert@example.net"},null]
+[{"type":"bnode","value":"b1"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Bert"},null]
+[{"type":"bnode","value":"b2"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/mbox"},{"type":"uri","value":"mailto:eve@example.net"},null]
+[{"type":"bnode","value":"b2"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/nick"},{"type":"literal","value":"DuckSoup"},null]

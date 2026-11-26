@@ -1,0 +1,1 @@
+{"head":{"vars":["str","len"]},"results":{"bindings":[{"str":{"type":"literal","value":"👪"},"len":{"type":"literal","value":"1","datatype":"http://www.w3.org/2001/XMLSchema#integer"}},{"str":{"type":"literal","value":"👨‍👩‍👧‍👦"},"len":{"type":"literal","value":"7","datatype":"http://www.w3.org/2001/XMLSchema#integer"}}]}}

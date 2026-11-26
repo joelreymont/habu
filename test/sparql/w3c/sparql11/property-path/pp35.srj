@@ -1,0 +1,1 @@
+{"head":{"vars":["t"]},"results":{"bindings":[{"t":{"type":"uri","value":"http://www.example.org/a"}},{"t":{"type":"uri","value":"http://www.example.org/b"}},{"t":{"type":"uri","value":"http://www.example.org/b"}}]}}

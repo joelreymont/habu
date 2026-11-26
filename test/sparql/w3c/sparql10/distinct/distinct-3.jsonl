@@ -1,0 +1,4 @@
+[{"type":"uri","value":"http://example/x1"},{"type":"uri","value":"http://example/p1"},{"type":"bnode","value":"b0"},null]
+[{"type":"uri","value":"http://example/x1"},{"type":"uri","value":"http://example/p1"},{"type":"uri","value":"http://example/z1"},null]
+[{"type":"uri","value":"http://example/x1"},{"type":"uri","value":"http://example/p2"},{"type":"bnode","value":"b0"},null]
+[{"type":"uri","value":"http://example/x1"},{"type":"uri","value":"http://example/p2"},{"type":"uri","value":"http://example/z1"},null]

@@ -1,0 +1,1 @@
+{"head":{"vars":["g","o","p","s"]},"results":{"bindings":[{"p":{"type":"uri","value":"http://example/q"},"o":{"type":"literal","value":"2","datatype":"http://www.w3.org/2001/XMLSchema#integer"},"g":{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/graph/data-g2.ttl"},"s":{"type":"uri","value":"http://example/x"}}]}}

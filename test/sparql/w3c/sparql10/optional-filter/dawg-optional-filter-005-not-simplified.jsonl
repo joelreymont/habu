@@ -1,0 +1,5 @@
+[{"type":"uri","value":"http://example.org/books#book1"},{"type":"uri","value":"http://example.org/ns#price"},{"type":"literal","value":"10","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example.org/books#book1"},{"type":"uri","value":"http://purl.org/dc/elements/1.1/title"},{"type":"literal","value":"TITLE 1"},null]
+[{"type":"uri","value":"http://example.org/books#book2"},{"type":"uri","value":"http://example.org/ns#price"},{"type":"literal","value":"20","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example.org/books#book2"},{"type":"uri","value":"http://purl.org/dc/elements/1.1/title"},{"type":"literal","value":"TITLE 2"},null]
+[{"type":"uri","value":"http://example.org/books#book3"},{"type":"uri","value":"http://purl.org/dc/elements/1.1/title"},{"type":"literal","value":"TITLE 3"},null]

@@ -1,0 +1,1 @@
+{"head":{"vars":["s","str","substr"]},"results":{"bindings":[{"s":{"type":"uri","value":"http://example.org/s8"},"str":{"type":"literal","value":"👪"},"substr":{"type":"literal","value":""}},{"s":{"type":"uri","value":"http://example.org/s9"},"str":{"type":"literal","value":"👨‍👩‍👧‍👦"},"substr":{"type":"literal","value":"‍👩‍👧‍👦"}}]}}

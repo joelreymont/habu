@@ -1,0 +1,4 @@
+[{"type":"uri","value":"http://www.example.org/instance#a"},{"type":"uri","value":"http://www.example.org/schema#p1"},{"type":"uri","value":"http://www.example.org/instance#b"},null]
+[{"type":"uri","value":"http://www.example.org/instance#a"},{"type":"uri","value":"http://www.example.org/schema#p1"},{"type":"uri","value":"http://www.example.org/instance#d"},null]
+[{"type":"uri","value":"http://www.example.org/instance#b"},{"type":"uri","value":"http://www.example.org/schema#p2"},{"type":"uri","value":"http://www.example.org/instance#c"},null]
+[{"type":"uri","value":"http://www.example.org/instance#d"},{"type":"uri","value":"http://www.example.org/schema#p2"},{"type":"uri","value":"http://www.example.org/instance#c"},null]

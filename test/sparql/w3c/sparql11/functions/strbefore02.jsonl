@@ -1,0 +1,3 @@
+[{"type":"uri","value":"http://example.org/s1"},{"type":"uri","value":"http://example.org/str"},{"type":"literal","value":"abc"},null]
+[{"type":"uri","value":"http://example.org/s2"},{"type":"uri","value":"http://example.org/str"},{"type":"literal","value":"abc","xml:lang":"en"},null]
+[{"type":"uri","value":"http://example.org/s3"},{"type":"uri","value":"http://example.org/str"},{"type":"literal","value":"abc"},null]

@@ -1,0 +1,7 @@
+[{"type":"bnode","value":"b0"},{"type":"uri","value":"http://example.org/things#empId"},{"type":"bnode","value":"b1"},null]
+[{"type":"bnode","value":"b0"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"John"},null]
+[{"type":"bnode","value":"b1"},{"type":"uri","value":"http://example.org/things#number"},{"type":"literal","value":"29","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"bnode","value":"b2"},{"type":"uri","value":"http://example.org/things#empId"},{"type":"literal","value":"9","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"bnode","value":"b2"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Eve"},null]
+[{"type":"bnode","value":"b3"},{"type":"uri","value":"http://example.org/things#empId"},{"type":"uri","value":"http://example.org/dirk01"},null]
+[{"type":"bnode","value":"b3"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"Dirk"},null]

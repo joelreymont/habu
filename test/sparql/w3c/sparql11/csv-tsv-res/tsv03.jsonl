@@ -1,0 +1,7 @@
+[{"type":"uri","value":"http://example.org/s1"},{"type":"uri","value":"http://example.org/p1"},{"type":"literal","value":"1"},null]
+[{"type":"uri","value":"http://example.org/s2"},{"type":"uri","value":"http://example.org/p2"},{"type":"literal","value":"2.2","datatype":"http://www.w3.org/2001/XMLSchema#decimal"},null]
+[{"type":"uri","value":"http://example.org/s3"},{"type":"uri","value":"http://example.org/p3"},{"type":"literal","value":"-3","datatype":"http://www.w3.org/2001/XMLSchema#negativeInteger"},null]
+[{"type":"uri","value":"http://example.org/s4"},{"type":"uri","value":"http://example.org/p4"},{"type":"literal","value":"4,4"},null]
+[{"type":"uri","value":"http://example.org/s5"},{"type":"uri","value":"http://example.org/p5"},{"type":"literal","value":"5,5","datatype":"http://example.org/myCustomDatatype"},null]
+[{"type":"uri","value":"http://example.org/s6"},{"type":"uri","value":"http://example.org/p6"},{"type":"literal","value":"1.0e6","datatype":"http://www.w3.org/2001/XMLSchema#double"},null]
+[{"type":"uri","value":"http://example.org/s7"},{"type":"uri","value":"http://example.org/p7"},{"type":"literal","value":"a7","datatype":"http://www.w3.org/2001/XMLSchema#hexBinary"},null]

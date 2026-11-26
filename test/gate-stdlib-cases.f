@@ -404,6 +404,11 @@ TEST:SUITE json-rpc
    src/lib/json-rpc-test.f
 TEST:;SUITE
 
+TEST:SUITE sparql
+   src/lib/sparql/syntax-test.f
+   src/lib/sparql/store-test.f
+TEST:;SUITE
+
 TEST:SUITE regex
    src/lib/regex-test.f
 TEST:;SUITE
@@ -464,9 +469,9 @@ TEST:SUITE ffi-callback-growth
    test/ffi-callback-growth.f
 TEST:;SUITE
 
-\ Package PG against a private PostgreSQL cluster (test/db/pg-cluster.f), then
-\ the harness killed by a pool, which must leave no server process and no
-\ socket directory. initdb and postgres on PATH are a gate requirement
+\ Package PG and the SPARQL term runtime against a private PostgreSQL cluster
+\ (test/db/pg-cluster.f), then the harness killed by a pool, which must leave no
+\ server process and no socket directory. initdb and postgres on PATH are a gate requirement
 \ (docs/bootstrap.md "Requirements").
 TEST:SUITE pg
    test/db/pg-cluster.f

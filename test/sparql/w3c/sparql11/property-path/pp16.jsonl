@@ -1,0 +1,8 @@
+[{"type":"uri","value":"http://example.org/a"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/homepage"},{"type":"uri","value":"http://example.org/h"},null]
+[{"type":"uri","value":"http://example.org/a"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/knows"},{"type":"uri","value":"http://example.org/b"},null]
+[{"type":"uri","value":"http://example.org/a"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/knows"},{"type":"uri","value":"http://example.org/c"},null]
+[{"type":"uri","value":"http://example.org/b"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/knows"},{"type":"uri","value":"http://example.org/c"},null]
+[{"type":"uri","value":"http://example.org/d"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/knows"},{"type":"uri","value":"http://example.org/e"},null]
+[{"type":"uri","value":"http://example.org/e"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/knows"},{"type":"uri","value":"http://example.org/f"},null]
+[{"type":"uri","value":"http://example.org/f"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/knows"},{"type":"uri","value":"http://example.org/e"},null]
+[{"type":"uri","value":"http://example.org/f"},{"type":"uri","value":"http://xmlns.com/foaf/0.1/name"},{"type":"literal","value":"test"},null]

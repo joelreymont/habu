@@ -1,0 +1,1 @@
+{"head":{"vars":["g"]},"results":{"bindings":[{"g":{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/graph/data-g1.ttl"}},{"g":{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/graph/data-g2.ttl"}}]}}

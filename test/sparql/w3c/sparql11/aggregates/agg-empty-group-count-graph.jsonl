@@ -1,0 +1,3 @@
+[{"type":"uri","value":"http://example/s"},{"type":"uri","value":"http://example/p"},{"type":"uri","value":"http://example/o"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/aggregates/singleton.ttl"}]
+[{"type":"uri","value":"http://example/s"},{"type":"uri","value":"http://example/p"},{"type":"uri","value":"http://example/o2"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/aggregates/pair.ttl"}]
+[{"type":"uri","value":"http://example/s"},{"type":"uri","value":"http://example/p"},{"type":"uri","value":"http://example/o3"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/aggregates/pair.ttl"}]

@@ -1,0 +1,6 @@
+[{"type":"uri","value":"http://example.org/s1"},{"type":"uri","value":"http://example.org/p1"},{"type":"uri","value":"http://example.org/s2"},null]
+[{"type":"uri","value":"http://example.org/s2"},{"type":"uri","value":"http://example.org/p2"},{"type":"literal","value":"foo"},null]
+[{"type":"uri","value":"http://example.org/s3"},{"type":"uri","value":"http://example.org/p3"},{"type":"literal","value":"bar"},null]
+[{"type":"uri","value":"http://example.org/s4"},{"type":"uri","value":"http://example.org/p4"},{"type":"literal","value":"4","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]
+[{"type":"uri","value":"http://example.org/s5"},{"type":"uri","value":"http://example.org/p5"},{"type":"literal","value":"5.5","datatype":"http://www.w3.org/2001/XMLSchema#decimal"},null]
+[{"type":"uri","value":"http://example.org/s6"},{"type":"uri","value":"http://example.org/p6"},{"type":"bnode","value":"b0"},null]

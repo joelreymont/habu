@@ -1,0 +1,4 @@
+[{"type":"uri","value":"http://example.org/decimal"},{"type":"uri","value":"http://example.org/p"},{"type":"literal","value":"3","datatype":"http://www.w3.org/2001/XMLSchema#decimal"},null]
+[{"type":"uri","value":"http://example.org/fdouble"},{"type":"uri","value":"http://example.org/p"},{"type":"literal","value":"3","datatype":"http://www.w3.org/2001/XMLSchema#double"},null]
+[{"type":"uri","value":"http://example.org/float"},{"type":"uri","value":"http://example.org/p"},{"type":"literal","value":"3","datatype":"http://www.w3.org/2001/XMLSchema#float"},null]
+[{"type":"uri","value":"http://example.org/integer"},{"type":"uri","value":"http://example.org/p"},{"type":"literal","value":"3","datatype":"http://www.w3.org/2001/XMLSchema#integer"},null]

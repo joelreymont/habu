@@ -1,0 +1,4 @@
+[{"type":"uri","value":"http://www.example.org/s1"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/exists/exists-graph-variable.ttl"},null]
+[{"type":"uri","value":"http://www.example.org/s1"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/exists/exists-graph-variable.ttl"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/exists/exists-graph-variable.ttl"}]
+[{"type":"uri","value":"http://www.example.org/s2"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"http://www.example.org/o2"},null]
+[{"type":"uri","value":"http://www.example.org/s2"},{"type":"uri","value":"http://www.example.org/p"},{"type":"uri","value":"http://www.example.org/o2"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql11/exists/exists-graph-variable.ttl"}]

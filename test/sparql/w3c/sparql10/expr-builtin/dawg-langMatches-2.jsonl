@@ -1,0 +1,5 @@
+[{"type":"uri","value":"http://example.org/#x"},{"type":"uri","value":"http://example.org/#p1"},{"type":"literal","value":"abc"},null]
+[{"type":"uri","value":"http://example.org/#x"},{"type":"uri","value":"http://example.org/#p2"},{"type":"uri","value":"https://w3c.github.io/rdf-tests/sparql/sparql10/expr-builtin/abc"},null]
+[{"type":"uri","value":"http://example.org/#x"},{"type":"uri","value":"http://example.org/#p3"},{"type":"literal","value":"abc","xml:lang":"en"},null]
+[{"type":"uri","value":"http://example.org/#x"},{"type":"uri","value":"http://example.org/#p4"},{"type":"literal","value":"abc","xml:lang":"en-gb"},null]
+[{"type":"uri","value":"http://example.org/#x"},{"type":"uri","value":"http://example.org/#p5"},{"type":"literal","value":"abc","xml:lang":"fr"},null]

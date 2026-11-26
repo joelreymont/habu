@@ -1,0 +1,2 @@
+[{"type":"uri","value":"http://example/vocab#s1"},{"type":"uri","value":"http://example/vocab#p"},{"type":"uri","value":"example://a/b/c/%7Bfoo%7D#xyz"},null]
+[{"type":"uri","value":"http://example/vocab#s2"},{"type":"uri","value":"http://example/vocab#p"},{"type":"uri","value":"eXAMPLE://a/./b/../b/%63/%7bfoo%7d#xyz"},null]
