@@ -709,7 +709,7 @@ generates: FAULT ( -- n )
 -8506 s" a branch distance that is not a whole instruction or does not fit the field its form encodes it in, or an adr or adrp distance its 21-bit field cannot hold" ERROR:CODE E-A64EMIT-REACH
 -8563 s" an instruction whose source-map offset does not lie inside the emission it belongs to, or that is not instruction aligned" ERROR:FAULT E-NPUB-OFFSET
 -8564 s" a reader asked src/compiler/native/emission.f about rows no backend has sealed, or that its RETIRE row has cleared; rows opened over live ones or added to none; a placement asked of an unplaced emission" ERROR:FAULT E-NEMIT-STATE
--8565 s" a row index at or past the count the sealed emission holds, a row offset outside the emission, an empty emission, a trailing return longer than it, or a call site of neither kind" ERROR:FAULT E-NEMIT-ROW
+-8565 s" a row index at or past the count the sealed emission holds, a row offset outside the emission, an empty emission or a call site of neither kind" ERROR:FAULT E-NEMIT-ROW
 -8566 s" an emission whose branches were measured from an address that is not the code slot this seam is claiming for it" ERROR:FAULT E-NPUB-PLACE
 -8570 s" a compiler entry reached while another one is open, or a checker scan or store write from a callback while a definition compiles" ERROR:CODE E-COMP-STATE
 -8572 s" the engine's own check did not certify the pending definition" ERROR:CODE E-COMP-VERDICT

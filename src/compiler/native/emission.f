@@ -1,5 +1,5 @@
 \ emission.f - one sealed transient emission: bytes, function starts, call and
-\ address sites and the trailing return, in no machine's terms. publish.f reads
+\ address sites, in no machine's terms. publish.f reads
 \ the rows while they stand sealed and decodes nothing; the backend decodes its
 \ own forms when sealing. Offsets are bytes from the emission's first byte;
 \ targets are absolute addresses. Rows answer from SEAL until CLEAR.
@@ -16,7 +16,6 @@ TYPED-VARIABLE ST state
 
 PTR-VARIABLE CODE-AT                 \ the emission's first byte
 variable CODE-N                      \ and how many bytes it is
-variable RET-N                       \ how many of them are the trailing return
 variable PATCH-AT                    \ x86 created-word does> jump, or -1
 variable HAS-PLACE                   \ whether the emission was measured from a placement
 variable PLACE-N                     \ and which
@@ -79,10 +78,6 @@ ADDR-CODE constant ADDR-KIND-MAX
 : BYTES ( -- ^u8 )
    SEAL-CK CODE-AT @ ;
 
-\ Zero when the emission ends in no return, so its whole span is its record.
-: RET-BYTES ( -- n )
-   SEAL-CK RET-N @ ;
-
 : PATCH-SLOT ( -- n )
    SEAL-CK PATCH-AT @ ;
 
@@ -142,7 +137,7 @@ ADDR-CODE constant ADDR-KIND-MAX
 : CLEAR ( -- )
    construct state empty ST !
    NULL-PTR CODE-AT !
-   0 CODE-N !  0 RET-N !
+   0 CODE-N !
    -1 PATCH-AT !
    0 HAS-PLACE !  0 PLACE-N !
    0 N-FUNS !  0 N-CALLS !  0 N-ADDRS ! ;
@@ -150,7 +145,7 @@ ADDR-CODE constant ADDR-KIND-MAX
 \ The bytes stay the backend's: they are read in place until CLEAR. OPEN over
 \ uncleared rows is rejected, and the architecture it names makes a reader for
 \ another machine reject before copying a byte.
-: OPEN ( str n CTARGET:arch -- ) {: s:str ret:n a:CTARGET:arch :}
+: OPEN ( str CTARGET:arch -- ) {: s:str a:CTARGET:arch :}
    ST @
    MATCH state
       empty OF ENDOF
@@ -158,8 +153,7 @@ ADDR-CODE constant ADDR-KIND-MAX
       sealed OF E-NEMIT-STATE throw ENDOF
    ;MATCH
    s STR:LEN 1 < if E-NEMIT-ROW throw then
-   ret 0 <  ret s STR:LEN > or if E-NEMIT-ROW throw then
-   s STR:DATA CODE-AT !  s STR:LEN CODE-N !  ret RET-N !
+   s STR:DATA CODE-AT !  s STR:LEN CODE-N !
    -1 PATCH-AT !
    a ARCH-AT !
    construct state open ST ! ;

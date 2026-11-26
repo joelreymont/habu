@@ -659,10 +659,9 @@ private
 \ there. THE FLOOR IS A RETIRED RECORD'S OWN START, CHOSEN BY ADDRESS: a
 \ build's records, its aliases included, name its own routines, which lie above
 \ every survivor's, or kernel text below the arena. A start is the one address
-\ nameable without knowing the length of the routine below it (the recorded
-\ length excludes a trailing return). The cost, when the lowest retirement is
-\ not the first routine above the survivors, is a routine's worth of bytes left
-\ claimed. No floor is kept in a cell: an arena address moves with every
+\ nameable without knowing the length of the routine below it. The cost, when
+\ the lowest retirement is not the first routine above the survivors, is a
+\ routine's worth of bytes left claimed. No floor is kept in a cell: an arena address moves with every
 \ launch, and a cell would carry it into a captured image.
 
 \ The first address of the engine's code arena. Below it are the dictionary

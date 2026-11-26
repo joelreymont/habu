@@ -235,7 +235,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
    r NSHADOW:EMISSION@ {: e:n :}
    r NSHADOW:ENTRY@ {: ent:n :}
    e NSHADOW:SIZE ent - {: slen:n :}
-   slen hlen =  slen hlen e NSHADOW:RET-BYTES + = or {: sized:bool :}
+   slen hlen = {: sized:bool :}
    start e ent  slen hlen min  FIRST-DIFF {: off:n :}
    idx start e ent  slen hlen min  ADDRS-OK? 0= if exit then
    sized off 0< and if s" ok " type rec XREF-NAME$ type cr exit then

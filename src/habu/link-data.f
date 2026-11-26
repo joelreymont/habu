@@ -242,8 +242,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 : PRIM-LEN ( n -- n )
-   dup 1 PRIM@ swap 0 PRIM@ -
-   NATIVE:X64? if CODE-SPAN:EXACT else 4 - then ;
+   dup 1 PRIM@ swap 0 PRIM@ - CODE-SPAN:EXACT ;
 
 \ A primitive's record: [8] the body's length, a package row's
 \ [0] and [8] its wordlist ids; [32] the facts text PRIM-TEXTS laid.
@@ -275,8 +274,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: s:n :}
    s NSHADOW:EMISSION@ {: e:n :}
    e NSHADOW:SIZE s NSHADOW:ENTRY@ - {: size:n :}
-   e TRAILERS @ 0<>  e STEPPED @ 0 >=  or if size CODE-SPAN:EXACT exit then
-   size e NSHADOW:RET-BYTES CODE-SPAN:RECORDED ;
+   size CODE-SPAN:EXACT ;
 
 \ A linked record names the target kernel or its packed emission.
 \ A record without either keeps its own span.

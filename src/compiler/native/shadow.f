@@ -42,7 +42,6 @@ variable CODE-N
 variable N-EMS
 DYNAMIC-BUFFER EM-AT n               \ where an emission starts in CODE-BUF
 DYNAMIC-BUFFER EM-SIZE n             \ how many bytes it is
-DYNAMIC-BUFFER EM-RET n              \ how many of them are its trailing return
 DYNAMIC-BUFFER EM-FUN0 n             \ its first function row
 DYNAMIC-BUFFER EM-FUNS n             \ and how many it has
 DYNAMIC-BUFFER EM-CALL0 n            \ its first call row
@@ -222,7 +221,7 @@ private
    loop ;
 
 : EM-RESERVE ( n -- ) {: n:n :}
-   n EM-AT-RESERVE  n EM-SIZE-RESERVE  n EM-RET-RESERVE
+   n EM-AT-RESERVE  n EM-SIZE-RESERVE
    n EM-FUN0-RESERVE  n EM-FUNS-RESERVE
    n EM-CALL0-RESERVE  n EM-CALLS-RESERVE
    n EM-ADDR0-RESERVE  n EM-ADDRS-RESERVE
@@ -237,7 +236,6 @@ private
    e t > {: past:bool :}
    CODE-N @  past if t EM-SIZE @ + then  e EM-AT !
    NEMIT:SIZE e EM-SIZE !
-   NEMIT:RET-BYTES e EM-RET !
    N-FUNS @  past if t EM-FUNS @ + then  e EM-FUN0 !
    NEMIT:FUNCTIONS e EM-FUNS !
    N-CALLS @  past if t EM-CALLS @ + then  e EM-CALL0 !
@@ -349,7 +347,7 @@ private
 
 : RELEASE-ROWS ( -- )
    CODE-BUF-RELEASE
-   EM-AT-RELEASE  EM-SIZE-RELEASE  EM-RET-RELEASE
+   EM-AT-RELEASE  EM-SIZE-RELEASE
    EM-FUN0-RELEASE  EM-FUNS-RELEASE
    EM-CALL0-RELEASE  EM-CALLS-RELEASE
    EM-ADDR0-RELEASE  EM-ADDRS-RELEASE
@@ -579,9 +577,6 @@ EXPORT TRIM
 \ Its first byte, until the next take moves the storage.
 : BYTES ( n -- ^u8 )
    EM-AT @ CODE-BUF ;
-
-: RET-BYTES ( n -- n )
-   EM-RET @ ;
 
 : FUNCTIONS ( n -- n )
    EM-FUNS @ ;

@@ -1983,7 +1983,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    e NSHADOW:BYTES {: src:^ :}
    e NSHADOW:PATCH-SITE@ {: p:n :}
    e NSHADOW:CALL-SITES {: calls:n :}
-   s PIECES @ U64+  e NSHADOW:RET-BYTES PIECES @ U64+
+   s PIECES @ U64+
    src s >str PIECES @ VEC:APPEND
    PIECES @ BYTES$ STR:LEN s - {: off:n :}
    e NSHADOW:FUNCTIONS {: f:n :}
@@ -2046,7 +2046,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
 \                          build's in pairs (COPIES), a definition's target copy in the target's
 \                          site encodings and then its host copy (NSHADOW:HOST@)
 \   per emission, in number order:
-\     S, R                 size in bytes; return bytes (R <= S)
+\     S                    size in bytes
 \     S raw bytes          unpadded, as the compile sealed them, except that each address
 \                          value is written as 0 in its machine's encoding
 \     F, then F offsets    function starts
@@ -2936,7 +2936,7 @@ variable RD-AT
 : OWN-FUN-AT ( n n -- n )
    {: e:n j:n :}
    e EM-OFFS @ {: at:n :}
-   at 24 + at OBJ@ +  j 8 * + OBJ@ ;
+   at 16 + at OBJ@ +  j 8 * + OBJ@ ;
 
 
 \ A reference: its tag and four fields, 0 for absent ones (CODE+ states them).
@@ -3413,7 +3413,6 @@ variable RD-AT
    {: e:n :}
    RD-AT @ e EM-OFFS !
    RD-U64 {: s:n :}
-   8 RD-SKIP
    s RD-SKIP
    RD-U64 8 * RD-SKIP
    RD-U64 0 ?do 16 RD-SKIP SKIP-REF loop
@@ -4437,12 +4436,12 @@ EXPORT TFAM:TFAM-N@
 : NEMIT-FILL ( n -- n )
    {: e:n :}
    e EM-OFFS @  RD-OPEN
-   RD-U64 RD-U64 {: s:n r:n :}
+   RD-U64 {: s:n :}
    CODE-COPY @ 0 VEC:RESIZE
    RD-AT @ OBJ-PTR s >str CODE-COPY @ VEC:APPEND
    s RD-SKIP
    CODE-COPY @ BYTES$ STR:DATA {: copy:^ :}
-   copy s >str r  e EM-ARCH  NEMIT:OPEN
+   copy s >str  e EM-ARCH  NEMIT:OPEN
    RD-U64 0 ?do RD-U64 NEMIT:FUNCTION+ loop
    RD-U64 0 ?do
       RD-U64 RD-U64 {: site:n k:n :}
@@ -4525,8 +4524,8 @@ EXPORT TFAM:TFAM-N@
    \ the host runs every unit, so each site is written.
    NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;] [: 2drop true ;]  NATIVE:PATCH
    h EM-OFFS @ {: at:n :}
-   at OBJ@  at 8 + OBJ@ {: s:n r:n :}
-   s r CODE-SPAN:RECORDED {: recorded:n :}
+   at OBJ@ {: s:n :}
+   s CODE-SPAN:EXACT {: recorded:n :}
    does if
       copy s >str recorded false hoff NPUB:IMPORT-PENDING-DOES
    else

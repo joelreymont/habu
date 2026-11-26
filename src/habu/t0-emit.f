@@ -677,8 +677,7 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
    stub STUB-AT !
    stub ;
 
-\ No trailing return, so the record spans the whole emission.
-: NEMIT-OPEN ( -- ) EMIT-BYTES 0 CUR-ARCH @ NEMIT:OPEN ;
+: NEMIT-OPEN ( -- ) EMIT-BYTES CUR-ARCH @ NEMIT:OPEN ;
 
 : NEMIT-ROWS ( n -- ) {: stub:n :}
    N-UNITS @ 0 ?do i UNIT-AT @ NEMIT:FUNCTION+ loop

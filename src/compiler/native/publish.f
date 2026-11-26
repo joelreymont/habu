@@ -79,7 +79,7 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 
 : COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
    fn size PLACE
-   fn size NEMIT:RET-BYTES CODE-SPAN:RECORDED idx PUBLISH-REC ;
+   fn size CODE-SPAN:EXACT idx PUBLISH-REC ;
 
 \ One routine's commit, held where COMMIT-OWNED's quotations read it. Compiler
 \ working storage: an image carries none of it.
@@ -98,8 +98,7 @@ create TRAILER TRAILER-BYTES allot
    cell TRAILER CELL + !
    TRAILER TRAILER-BYTES >str slot CODE-WINDOW ;
 
-\ A record a trailer follows ends at it, so the span is the slot and not the
-\ emission's return-trimmed length.
+\ A record a trailer follows ends at it: its span runs to the trailer's slot.
 : TRAILED ( n n -- n ) {: idx:n fn:n :}
    cp@ {: slot:n :}
    fn slot fn - CODE-SPAN:EXACT idx PUBLISH-REC
@@ -227,7 +226,7 @@ public
    fn NSHADOW:SOURCE-FUNS
    idx fn size 0 NULL-PTR 0 >str COMMIT-OWNED
    idx NSHADOW:PUBLISH
-   fn off + size off - NEMIT:RET-BYTES CODE-SPAN:RECORDED does-record
+   fn off + size off - CODE-SPAN:EXACT does-record
    idx APPEND-PENDING
    idx XREF-REC XREF-NAME$ true DOES-PUBLISHED
    REC-WIDE-PUBLISH
