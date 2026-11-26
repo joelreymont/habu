@@ -4,8 +4,9 @@
 \ token's, the 401 challenges, plain and naming METADATA!'s URL, its scope or
 \ both, a METADATA! URL holding a quote or CR LF or lacking the well-known
 \ segment and a scope holding a quote or two spaces rejected, ISSUER!, CLIENT!
-\ and METADATA! rejecting http but to a loopback IP literal, the metadata
-\ route's body, malformed tokens, alg none, crit and HS256, repeated member
+\ and METADATA! rejecting http but to a loopback IP literal, CLIENT! rejecting a
+\ secret holding a control byte, the metadata route's body, malformed tokens,
+\ alg none, crit and HS256, repeated member
 \ names, aud, iss, exp and nbf, claim strings, CLAIM-HOLDS? on string, scope,
 \ number and absent claims and an array holding nested values and an escape,
 \ CLAIM$ after the admitted request, CLAIM$ and CLAIM-HOLDS? in a task it
@@ -758,6 +759,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    [: NAMED-HOST$ CLIENT-AT ;] BEARER:E-OPERAND TTHROWSQ
    s" CLIENT! rejects http://localhost" T-LABEL
    [: LOCALHOST$ CLIENT-AT ;] BEARER:E-OPERAND TTHROWSQ
+   s" CLIENT! rejects a secret ending in a line end" T-LABEL
+   [: SECURE$ s" app" s\" secret\n" BEARER:CLIENT! ;] BEARER:E-OPERAND TTHROWSQ
    s" ISSUER! and CLIENT! accept http to 127.0.0.1 and [::1], and https" T-LABEL
    V4$ ISSUED-AT V6$ ISSUED-AT SECURE$ ISSUED-AT
    V4$ CLIENT-AT V6$ CLIENT-AT SECURE$ CLIENT-AT ;

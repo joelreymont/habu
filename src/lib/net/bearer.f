@@ -70,7 +70,7 @@ public
 
 -9630 s" no answer from the token endpoint" ERROR:CODE E-TRANSFER
 -9631 s" the issuer rejected the request with a 4xx a retry will not change" ERROR:CODE E-REJECTED
--9632 s" a URL is not https (state https, or http only to 127.0.0.0/8 or [::1]), a METADATA! URL is not /.well-known/oauth-protected-resource right after its authority, then nothing or a path with no query or fragment (insert the segment before the resource's path; drop the query and fragment), a METADATA! URL holds a quote, backslash, brace, control or non-ASCII byte (percent-encode it), a scope is not tokens of printable ASCII but quote and backslash one space apart (remove the other bytes and spaces), or an APP! id is empty or holds a space, control or non-ASCII byte (state the app's client id alone)"
+-9632 s" a URL is not https (state https, or http only to 127.0.0.0/8 or [::1]), a METADATA! URL is not /.well-known/oauth-protected-resource right after its authority, then nothing or a path with no query or fragment (insert the segment before the resource's path; drop the query and fragment), a METADATA! URL holds a quote, backslash, brace, control or non-ASCII byte (percent-encode it), a scope is not tokens of printable ASCII but quote and backslash one space apart (remove the other bytes and spaces), a CLIENT! id or secret holds a control or non-ASCII byte (drop the line end a pasted or piped value keeps), or an APP! id is empty or holds a space, control or non-ASCII byte (state the app's client id alone)"
    ERROR:CODE E-OPERAND
 -9633 s" the token endpoint answered a status a retry may change" ERROR:CODE E-UNAVAILABLE
 -9634 s" the token endpoint answered a reply TOKEN or REFRESH cannot use" ERROR:CODE E-RESPONSE
@@ -661,6 +661,14 @@ ENUM lookup-step
    loop ;
 
 
+\ RFC 6749 A.1 and A.2: a client id and secret are VSCHAR, %x20-7E.
+: VSCHARS ( str -- )
+   {: text:str :}
+   text STR:LEN 0 ?do
+      text STR:DATA i + c@ {: c :}
+      c $20 < c $7E > or if E-OPERAND throw then
+   loop ;
+
 \ RFC 6749 3.3: tokens of NQCHAR (%x21, %x23-5B, %x5D-7E), each one space
 \ from the next. An empty scope names none.
 : SCOPE-TOKENS ( str -- )
@@ -1052,11 +1060,13 @@ ENUM grant
 \ presents none (RFC 6749 2.3.1). The texts are borrowed and outlive every
 \ TOKEN and REFRESH, as literals do. A built program keeps none: it states them
 \ at run time. E-OPERAND for a URL neither https nor http to a loopback IP
-\ literal, URI:ORIGIN's rejection for one it cannot read, either leaving the
-\ previous client in force.
+\ literal or an id or secret holding a byte outside %x20-7E, URI:ORIGIN's
+\ rejection for a URL it cannot read, each leaving the previous client in
+\ force.
 : CLIENT! ( str str str -- )
    {: url:str id:str secret:str :}
    url SECURE
+   id VSCHARS  secret VSCHARS
    url STR:DATA url STR:LEN SPAN:MAKE ENDPOINT !
    id STR:DATA id STR:LEN SPAN:MAKE CLIENT-ID !
    secret STR:DATA secret STR:LEN SPAN:MAKE SECRET !
