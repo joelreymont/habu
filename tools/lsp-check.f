@@ -15,7 +15,6 @@ require tools/lsp-defs.f
 require tools/lsp-diag.f
 
 package LSP-CHECK
-using LSP-DOCS
 
 private
 
@@ -54,7 +53,7 @@ variable BATCH-K
 \    lsp: URI: not checked: throw N
 : HEAD ( -- )
    s" lsp: " ERR
-   SUBJECT @ DOC-URI$ ERR
+   SUBJECT @ LSP-DOCS:DOC-URI$ ERR
    s" : " ERR ;
 
 : NEWLINE ( -- )  s\" \n" ERR ;
@@ -82,11 +81,11 @@ variable BATCH-K
    ;MATCH
    NEWLINE RELAY ;
 
-: OTHERS ( [ str str -- ] -- )  SUBJECT @ swap DOC-EACH-BUT ;
+: OTHERS ( [ str str -- ] -- )  SUBJECT @ swap LSP-DOCS:DOC-EACH-BUT ;
 
 : VERIFY ( -- )
    SUBJECT @ {: slot:n :}
-   slot DOC-TEXT$ slot DOC-PATH$ CURSOR @ [: OTHERS ;] CHECK-MS >MS
+   slot LSP-DOCS:DOC-TEXT$ slot LSP-DOCS:DOC-PATH$ CURSOR @ [: OTHERS ;] CHECK-MS >MS
    VERIFY-BYTES-AT
    MATCH verdict
       verified OF true VERIFIED ! s" verified" COMPLETED ENDOF
@@ -126,7 +125,7 @@ variable BATCH-K
 
 : CHECKED ( -- )
    SRC-A @ SRC-U @ >str SRC-P @ SRC-PU @ >str SRC-T @ SRC-TU @ >str
-   [: -1 swap DOC-EACH-BUT ;] CHECK-MS >MS
+   [: -1 swap LSP-DOCS:DOC-EACH-BUT ;] CHECK-MS >MS
    VERIFY-BYTES-OF USES-VERDICT ;
 
 : PROBED ( [ -- ] -- [ -- ] )
@@ -143,9 +142,9 @@ public
 \ end keeps its definitions for workspace symbols. A negative cursor is none.
 : RUN-AT ( n n -- )
    {: slot:n at:n :}
-   slot DOC-CLEAN
+   slot LSP-DOCS:DOC-CLEAN
    slot LSP-DEFS:DEFS-USES-DROP
-   NULL$ slot DOC-LOADS!
+   NULL$ slot LSP-DOCS:DOC-LOADS!
    slot SUBJECT !
    at CURSOR !
    false PUBLISHABLE !
@@ -155,7 +154,7 @@ public
       HEAD s" not checked: throw " ERR code NUMBER$ ERR NEWLINE RELAY
    then
    PUBLISHABLE @ if
-      VERIFY-LOADS$ slot DOC-LOADS!
+      VERIFY-LOADS$ slot LSP-DOCS:DOC-LOADS!
       VERIFY-FILES$ VERIFY-DEFS$ VERIFY-USES$
       VERIFY-UNREAD$ slot
       VERIFIED @ LSP-DEFS:DEFS-KEEP
@@ -192,7 +191,7 @@ public
    0 BATCH-CODE ! VERIFY-REF-BATCH-BEGIN ;
 
 : USES-BATCH-ADD ( str str -- )
-   [: -1 swap DOC-EACH-BUT ;] VERIFY-BATCH-ADD ;
+   [: -1 swap LSP-DOCS:DOC-EACH-BUT ;] VERIFY-BATCH-ADD ;
 
 : USES-BATCH-RUN ( -- )
    [: CHECK-MS >MS VERIFY-BATCH-RUN ;] catch BATCH-CODE ! ;
@@ -231,5 +230,4 @@ public
 : OUTCOME$ ( -- str )  OUTCOME-B OUTCOME-U @ >str ;
 
 
-;using
 ;package

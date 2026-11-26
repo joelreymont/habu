@@ -19,10 +19,6 @@ require src/arch/x86-64/icode.f
 require src/habu/kernel-x64.f
 
 package X64K-CRASH
-using X64ASM
-using X64CODE
-using X64RT
-using LINUX-LAYOUT   \ the guard
 
 \ Scratch the harness hands out (PUSH-SCRATCH,): the pipe's two ends and the
 \ expected text's address, then the bytes the parent reads.
@@ -47,15 +43,15 @@ REGION-VA REGION + CELL - constant LAST-VA      \ the region's last cell
 REGION-VA REGION + constant PAST-VA             \ never mapped
 $0B0F008948 constant STORE-CODE                 \ 48 89 00 0f 0b: mov [rax], rax; ud2
 
-: DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
+: DATA-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-RBASE X64ASM:>R64 ;
 : ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
 
 \ ( x -- ) into the scratch cell at an offset, and ( -- x ) back out of it.
-: KEEP, ( n -- ) AT,  1 G-POP  0 G-POP  RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
-: RECALL, ( n -- ) AT,  0 G-POP  RAX RAX MEM-AT ASM-SINK ENC-MOV-RM  0 G-PUSH ;
+: KEEP, ( n -- ) AT,  1 X64RT:G-POP  0 X64RT:G-POP  X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
+: RECALL, ( n -- ) AT,  0 X64RT:G-POP  X64ASM:RAX X64ASM:RAX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-RM  0 X64RT:G-PUSH ;
 
 \ ---- the expected text -------------------------------------------------------
 \ What the child's fd 2 must carry, built while the child is emitted. SKIP-AT
@@ -106,10 +102,10 @@ $0123456789ABCDEF constant NIBBLES
    NIBBLES  k 0 ?do  dup 4 lshift  swap 60 rshift  or  loop ;
 
 : REG-VALUE ( n n -- n ) {: bp:n r:n :}
-   r RBP R64>N = if bp exit then
+   r X64ASM:RBP X64ASM:R64>N = if bp exit then
    r TURNED ;
 
-RBP R64>N TURNED constant WILD-RBP
+X64ASM:RBP X64ASM:R64>N TURNED constant WILD-RBP
 
 \ The dump for a signal, rbp's value and the rip, then the three code cells
 \ from rip - 8.
@@ -118,7 +114,7 @@ RBP R64>N TURNED constant WILD-RBP
    HEAD$ WANT-TEXT
    sig VALUE-LINE
    16 0 ?do
-      i RSP R64>N = if RSP-LINE else bp i REG-VALUE VALUE-LINE then
+      i X64ASM:RSP X64ASM:R64>N = if RSP-LINE else bp i REG-VALUE VALUE-LINE then
    loop
    rip VALUE-LINE
    lo MEMORY-LINE  mid MEMORY-LINE  hi MEMORY-LINE ;
@@ -148,18 +144,18 @@ RBP R64>N TURNED constant WILD-RBP
 \ Give every register but rsp its value, rbp the one given.
 : REGS, ( n -- ) {: bp:n :}
    16 0 ?do
-      i RSP R64>N <> if  i >R64  bp i REG-VALUE >IMM64 ASM-SINK ENC-MOV-RI64  then
+      i X64ASM:RSP X64ASM:R64>N <> if  i X64ASM:>R64  bp i REG-VALUE X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64  then
    loop ;
 
 \ jmp rel32 to an absolute address.
 : JUMP, ( n -- ) {: to:n :}
-   to  X64HARNESS:POSITION JMP-BYTES +  -  >REL ASM-SINK ENC-JMP-REL32 ;
+   to  X64HARNESS:POSITION JMP-BYTES +  -  X64ASM:>REL X64CODE:ASM-SINK X64ASM:ENC-JMP-REL32 ;
 
 \ Store a cell at a region address, through the region's RW alias.
 : POKE, ( n n -- ) {: v:n at:n :}
-   RCX at >IMM64 ASM-SINK ENC-MOV-RI64  RCX X64KERNEL:WRITE-ALIAS,
-   RAX v >IMM64 ASM-SINK ENC-MOV-RI64
-   RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
+   X64ASM:RCX at X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64  X64ASM:RCX X64KERNEL:WRITE-ALIAS,
+   X64ASM:RAX v X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64
+   X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
 
 \ The code cells a region image writes: each byte from 00 to 17 once, so a byte
 \ out of place shows. CELL-B begins with ud2, 0f 0b.
@@ -177,7 +173,7 @@ $1716151413121110 constant CELL-C
 : ILL-CHILD ( -- )
    WILD-RBP REGS,
    X64HARNESS:POSITION {: rip:n :}
-   ASM-SINK ENC-UD2
+   X64CODE:ASM-SINK X64ASM:ENC-UD2
    SIGILL WILD-RBP rip 0 0 0 DUMP-TEXT ;
 
 \ The region is executable, and read-only through its own address, so the jump
@@ -196,34 +192,34 @@ $1716151413121110 constant CELL-C
 \ A push with rbx at the data stack's base plus the capacity the boot
 \ published: the first byte of its high guard page.
 : DATA-CHILD ( -- )
-   ENGINE-GPR:X64-DSTACK >R64 {: dsp:r64 :}
-   dsp DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   dsp DATA-REG STACK-ABI:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM
+   ENGINE-GPR:X64-DSTACK X64ASM:>R64 {: dsp:X64ASM:r64 :}
+   dsp DATA-REG STACK-ABI:BASE-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
+   dsp DATA-REG STACK-ABI:CAP-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
    X64HARNESS:POSITION {: rip:n :}
-   0 G-PUSH
+   0 X64RT:G-PUSH
    FAULT-RECORD:CRS-DATA$ rip BOUNDS-TEXT ;
 
 \ A store at the return stack's end, its high guard page.
 : RETURN-CHILD ( -- )
-   RAX DATA-REG STACK-ABI:RETURN-BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   X64ASM:RAX DATA-REG STACK-ABI:RETURN-BASE-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64HARNESS:POSITION {: rip:n :}
-   RAX RAX STACK-ABI:RETURN-BYTES MEM-OFF ASM-SINK ENC-MOV-MR
+   X64ASM:RAX X64ASM:RAX STACK-ABI:RETURN-BYTES X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR
    FAULT-RECORD:CRS-RET$ rip BOUNDS-TEXT ;
 
 \ A store one cell below the loop stack's base, its low guard page.
 : LOOP-CHILD ( -- )
-   RAX DATA-REG STACK-ABI:LOOP-BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   X64ASM:RAX DATA-REG STACK-ABI:LOOP-BASE-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64HARNESS:POSITION {: rip:n :}
-   RAX RAX CELL negate MEM-OFF ASM-SINK ENC-MOV-MR
+   X64ASM:RAX X64ASM:RAX CELL negate X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR
    FAULT-RECORD:CRS-LOOP$ rip BOUNDS-TEXT ;
 
 \ A call to itself, forever: the return addresses walk rsp down the machine
 \ stack until a push lands in the kernel's guard below it, where no signal
 \ frame fits; the handler runs on the alternate stack START, registered.
 : MACHINE-CHILD ( -- )
-   LBL {: self:label :}
+   X64CODE:LBL {: self:label :}
    X64HARNESS:POSITION {: rip:n :}
-   self LBL,  self CALL,
+   self X64CODE:LBL,  self X64CODE:CALL,
    FAULT-RECORD:CRS-MACHINE$ rip BOUNDS-TEXT ;
 
 \ A jump to the first byte past the region, which nothing maps: rip one past
@@ -238,8 +234,8 @@ $1716151413121110 constant CELL-C
 \ rax one cell below the loop stack's base.
 : REGION-GUARD-CHILD ( -- )
    STORE-CODE CP-VA POKE,
-   RAX DATA-REG STACK-ABI:LOOP-BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX CELL negate >IMM32 ASM-SINK ENC-ADD-RI32
+   X64ASM:RAX DATA-REG STACK-ABI:LOOP-BASE-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
+   X64ASM:RAX CELL negate X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI32
    CP-VA JUMP,
    FAULT-RECORD:CRS-LOOP$ CP-VA BOUNDS-TEXT ;
 
@@ -250,38 +246,38 @@ $1716151413121110 constant CELL-C
    0 STACK-ABI:LOOP-BASE-CELL X64HARNESS:CELL!,
    LINUX-LAYOUT:DATA-VA REGS,
    X64HARNESS:POSITION {: rip:n :}
-   RAX  STACK-ABI:LOOP-BYTES rip RIP-STORE-BYTES + -  MEM-RIP ASM-SINK ENC-MOV-MR
+   X64ASM:RAX  STACK-ABI:LOOP-BYTES rip RIP-STORE-BYTES + -  X64ASM:MEM-RIP X64CODE:ASM-SINK X64ASM:ENC-MOV-MR
    STACK-ABI:LOOP-BYTES rip FAULT-TEXT ;
 
 \ ---- the image ---------------------------------------------------------------
 \ After fork: the child, whose answer is 0, takes the pipe's write end as fd 2
 \ and runs what the quotation emits; the parent goes on with the pid.
 : CHILD, ( [ -- ] -- )
-   LBL {: parent:label :}
-   0 G-POP  RAX RAX ASM-SINK ENC-TEST-RR  C-NE parent JCC,
-   WFD RECALL,  FD:STDERR FD>N N,  s" dup2" ROW  0 G-POP
+   X64CODE:LBL {: parent:label :}
+   0 X64RT:G-POP  X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-NE parent X64CODE:JCC,
+   WFD RECALL,  FD:STDERR FD>N N,  s" dup2" ROW  0 X64RT:G-POP
    execute
-   parent LBL,
-   0 G-PUSH ;
+   parent X64CODE:LBL,
+   0 X64RT:G-PUSH ;
 
 \ ( -- diff ): the OR of the XORs of the n bytes from an offset in the
 \ expected text and in what the parent read, 0 when they agree.
 : SAME, ( n n -- ) {: off:n len:n :}
-   LBL LBL {: top:label done:label :}
-   TEXT-AT RECALL,  0 G-POP  RDI RAX ASM-SINK ENC-MOV-RR
-   RDI off >IMM32 ASM-SINK ENC-ADD-RI32
-   GOT off + AT,  0 G-POP  RSI RAX ASM-SINK ENC-MOV-RR
-   RCX len >IMM32 ASM-SINK ENC-MOV-RI32
-   RAX ZERO-REG,
-   top LBL,
-      RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
-      RDX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
-      R8 RDI MEM-AT ASM-SINK ENC-MOVZX-8-RM
-      RDX R8 ASM-SINK ENC-XOR-RR  RAX RDX ASM-SINK ENC-OR-RR
-      RSI ASM-SINK ENC-INC  RDI ASM-SINK ENC-INC  RCX ASM-SINK ENC-DEC
-      top JMP,
-   done LBL,
-   0 G-PUSH ;
+   X64CODE:LBL X64CODE:LBL {: top:label done:label :}
+   TEXT-AT RECALL,  0 X64RT:G-POP  X64ASM:RDI X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
+   X64ASM:RDI off X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI32
+   GOT off + AT,  0 X64RT:G-POP  X64ASM:RSI X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
+   X64ASM:RCX len X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI32
+   X64ASM:RAX ZERO-REG,
+   top X64CODE:LBL,
+      X64ASM:RCX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E done X64CODE:JCC,
+      X64ASM:RDX X64ASM:RSI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
+      X64ASM:R8 X64ASM:RDI X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOVZX-8-RM
+      X64ASM:RDX X64ASM:R8 X64CODE:ASM-SINK X64ASM:ENC-XOR-RR  X64ASM:RAX X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-OR-RR
+      X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-INC  X64ASM:RDI X64CODE:ASM-SINK X64ASM:ENC-INC  X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-DEC
+      top X64CODE:JMP,
+   done X64CODE:LBL,
+   0 X64RT:G-PUSH ;
 
 \ The parent, holding the pid: close the write end, wait, read the pipe to
 \ EOF, then check the status without its core bit (a dumped child dies of its
@@ -290,11 +286,11 @@ $1716151413121110 constant CELL-C
 : PARENT, ( n -- ) {: status:n :}
    WFD RECALL,  s" close" ROW
    s" wait-status" ROW
-   0 G-POP  RAX WCOREFLAG invert >IMM32 ASM-SINK ENC-AND-RI32  0 G-PUSH
+   0 X64RT:G-POP  X64ASM:RAX WCOREFLAG invert X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-AND-RI32  0 X64RT:G-PUSH
    status WANT
    RFD RECALL,  GOT AT,  GOT-CAP N,  s" read" ROW  WANT-N @ WANT
    RFD RECALL,  GOT AT,  GOT-CAP N,  s" read" ROW  0 WANT
-   WANT-BUF WANT-N @ >str X64HARNESS:PUSH-TEXT,  0 G-POP  TEXT-AT KEEP,
+   WANT-BUF WANT-N @ >str X64HARNESS:PUSH-TEXT,  0 X64RT:G-POP  TEXT-AT KEEP,
    0 SKIP-AT @ SAME,  0 WANT
    SKIP-AT @ WANT-N @ < if
       SKIP-AT @ DIGITS +  WANT-N @ over -  SAME,  0 WANT
@@ -304,7 +300,7 @@ $1716151413121110 constant CELL-C
 \ parent's checks, then the stack checks every image ends with.
 : IMAGE ( [ -- ] n bool str -- ) {: status:n negative:bool path:str :}
    negative X64HARNESS:BOOT-OPEN,
-   s" pipe" ROW  0 G-POP  WFD KEEP,  RFD KEEP,
+   s" pipe" ROW  0 X64RT:G-POP  WFD KEEP,  RFD KEEP,
    s" fork" ROW  CHILD,
    status PARENT,
    0 X64HARNESS:EXPECT-DEPTH,
@@ -331,10 +327,6 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
-;using   \ LINUX-LAYOUT
-;using
-;using
-;using
 ;package
 
 X64K-CRASH:RUN

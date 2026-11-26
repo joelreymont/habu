@@ -6,8 +6,6 @@ require src/lib/ffi-abi.f
 require src/lib/adt/option.f
 require test/policy/dep.f
 require test/policy/foreign.f
-using VOCABULARY
 
-: RUN ( -- ) s" PDEP" ALLOW-PACKAGE RESTRICT 0 SCRIPT-ARGV$ included ;
+: RUN ( -- ) s" PDEP" VOCABULARY:ALLOW-PACKAGE VOCABULARY:RESTRICT 0 SCRIPT-ARGV$ included ;
 RUN
-;using

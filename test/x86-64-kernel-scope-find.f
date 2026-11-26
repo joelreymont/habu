@@ -10,9 +10,6 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 
 package X64K-SCOPE-TEST
-using X64ASM
-using X64CODE
-using LINUX-LAYOUT
 
 : ROW ( str -- ) X64HARNESS:CALL-ROW, ;
 : SCOPE, ( str -- ) X64HARNESS:PUSH-TEXT,  s" bare-scope-find" ROW ;
@@ -85,7 +82,7 @@ using LINUX-LAYOUT
 : BUILD-LATE ( -- )
    false X64HARNESS:BOOT-OPEN,
    ENGINE-PRIMS:COUNT 1- {: row:n :}
-   ENGINE-GPR:X64-NDICT >R64 row >IMM64 ASM-SINK ENC-MOV-RI64
+   ENGINE-GPR:X64-NDICT X64ASM:>R64 row X64ASM:>IMM64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI64
    row ENGINE-PRIMS:NAME$ row ENGINE-PRIMS:HELPER-WID 0 X64HARNESS:RECORD,
    row ENGINE-PRIMS:NAME$ SCOPE,  row -1 -1 1 ANSWER,
    0 X64HARNESS:EXPECT-DEPTH,
@@ -130,7 +127,4 @@ using LINUX-LAYOUT
 
 RUN
 
-;using
-;using
-;using
 ;package

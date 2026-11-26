@@ -9,49 +9,47 @@ require src/arch/x86-64/asm.f
 
 package X64BOOT
 private
-using X64ASM
-using X64CODE
 
 \ Move each run [off][bytes] in [r9, last) from the carrier, rdi at its pages,
 \ to DATA-VA + off; the syscall keeps rdi, rsi and r9. A failed move dies.
 : MOVE-RUNS, ( label label -- )
    {: first:label last:label :}
-   LBL LBL LBL {: more:label bad:label done:label :}
-   RDI LINUX-LAYOUT:CARRIER-VA VA>N IMM,
-   R9 first MOVABS,
-   more LBL,
-   RAX last MOVABS,
-   R9 RAX ASM-SINK ENC-CMP-RR C-AE done JCC,
-   R8 R9 MEM-AT ASM-SINK ENC-MOV-RM
-   RSI R9 8 MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
-   R8 RAX ASM-SINK ENC-ADD-RR
-   RDX RSI ASM-SINK ENC-MOV-RR
-   R10 MREMAP-MOVE-FIXED IMM,
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: more:label bad:label done:label :}
+   X64ASM:RDI LINUX-LAYOUT:CARRIER-VA VA>N IMM,
+   X64ASM:R9 first X64CODE:MOVABS,
+   more X64CODE:LBL,
+   X64ASM:RAX last X64CODE:MOVABS,
+   X64ASM:R9 X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR X64ASM:C-AE done X64CODE:JCC,
+   X64ASM:R8 X64ASM:R9 X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
+   X64ASM:RSI X64ASM:R9 8 X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
+   X64ASM:RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
+   X64ASM:R8 X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-ADD-RR
+   X64ASM:RDX X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
+   X64ASM:R10 MREMAP-MOVE-FIXED IMM,
    NR-MREMAP SYS,
-   RAX R8 ASM-SINK ENC-CMP-RR C-NE bad JCC,
-   RDI RSI ASM-SINK ENC-ADD-RR
-   R9 16 >IMM8 ASM-SINK ENC-ADD-RI8
-   more JMP,
+   X64ASM:RAX X64ASM:R8 X64CODE:ASM-SINK X64ASM:ENC-CMP-RR X64ASM:C-NE bad X64CODE:JCC,
+   X64ASM:RDI X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-ADD-RR
+   X64ASM:R9 16 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8
+   more X64CODE:JMP,
    bad S\" hb: cannot move the image's data into the fixed data region\n" EXIT-STATUS:SYSTEM FAIL,
-   done LBL, ;
+   done X64CODE:LBL, ;
 
 : COPY-RECORDS, ( label label -- )
    {: first:label last:label :}
-   LBL LBL {: more:label done:label :}
-   R8 first MOVABS, R9 last MOVABS,
-   R10 DBASE-REG ASM-SINK ENC-MOV-RR  R10 DELTA-REG ASM-SINK ENC-ADD-RR
-   more LBL,
-   R8 R9 ASM-SINK ENC-CMP-RR C-AE done JCC,
+   X64CODE:LBL X64CODE:LBL {: more:label done:label :}
+   X64ASM:R8 first X64CODE:MOVABS, X64ASM:R9 last X64CODE:MOVABS,
+   X64ASM:R10 DBASE-REG X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  X64ASM:R10 DELTA-REG X64CODE:ASM-SINK X64ASM:ENC-ADD-RR
+   more X64CODE:LBL,
+   X64ASM:R8 X64ASM:R9 X64CODE:ASM-SINK X64ASM:ENC-CMP-RR X64ASM:C-AE done X64CODE:JCC,
    DREC 0 ?do
-      RAX R8 i MEM-OFF ASM-SINK ENC-MOV-RM
-      RAX R10 i MEM-OFF ASM-SINK ENC-MOV-MR
+      X64ASM:RAX X64ASM:R8 i X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
+      X64ASM:RAX X64ASM:R10 i X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR
    CELL +loop
-   R8 DREC >IMM8 ASM-SINK ENC-ADD-RI8
-   R10 DREC >IMM8 ASM-SINK ENC-ADD-RI8
-   ENGINE-GPR:X64-NDICT >R64 ASM-SINK ENC-INC
-   more JMP,
-   done LBL, ;
+   X64ASM:R8 DREC X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8
+   X64ASM:R10 DREC X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8
+   ENGINE-GPR:X64-NDICT X64ASM:>R64 X64CODE:ASM-SINK X64ASM:ENC-INC
+   more X64CODE:JMP,
+   done X64CODE:LBL, ;
 
 public
 
@@ -59,19 +57,17 @@ public
 \ their code cells. The returned entry is bound after the kernel is emitted.
 : LINK-START, ( bool label label label label -- label label )
    {: engine:bool image:label end:label records:label records-end:label :}
-   LBL LBL LBL LBL LBL {: go:label crash:label rest:label stub:label trap:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: go:label crash:label rest:label stub:label trap:label :}
    OPEN, CODE-REGION, DATA-REGION,
    image end MOVE-RUNS,
    engine if records records-end COPY-RECORDS, then
-   RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
+   X64ASM:RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
    false DATA-INIT,  ALIAS-DELTA,
    crash rest stub SETTLE,
    engine if TRAMPOLINES, trap rest TRAP, then
-   go JMP,
+   go X64CODE:JMP,
    crash rest stub STUBS,
    engine if trap crash BP-HANDLER, then
    go stub ;
 
-;using
-;using
 ;package

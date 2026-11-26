@@ -17,7 +17,6 @@ require src/lib/engine-candidate.f
 require test/pcap-result.f
 require src/lib/process.f
 
-using SOURCE-ROOT
 package SOURCE-ROOT-EXE-TEST
 private
 
@@ -130,8 +129,8 @@ variable RC
 : B-COPY ( str -- )
    {: s:str :}
    s FS:FILE? 0= if exit then
-   B-ROOT$ s CWD$ RELATIVE COPY-DST FS:JOIN-PATH {: size:n :}
-   COPY-DST size >str DIRNAME FS:MAKE-DIRS
+   B-ROOT$ s SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE COPY-DST FS:JOIN-PATH {: size:n :}
+   COPY-DST size >str SOURCE-ROOT:DIRNAME FS:MAKE-DIRS
    s COPY-DST size >str FS:COPY-FILE-STREAM ;
 
 : B-TREE ( -- )
@@ -194,10 +193,10 @@ variable DEEP-U
 \ (src/lib/engine-candidate.f), placed in the layout it needs.
 : PREP ( -- )
    FS:CLEANUP-RESET
-   s" habu-source-root-exe" FS:MKTEMP-DIR CANONICAL TTRUE TOP TOP-U COPY!
+   s" habu-source-root-exe" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL TTRUE TOP TOP-U COPY!
    TOP$ FS:CLEANUP-TREE+
-   CWD$ GATE GATE-U COPY!
-   ENGINE-CANDIDATE:PATH$ CANONICAL TTRUE HB HB-U COPY!
+   SOURCE-ROOT:CWD$ GATE GATE-U COPY!
+   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CANONICAL TTRUE HB HB-U COPY!
    s" foreign" A$ FS:MAKE-DIR
    s" foreign" A$ FOREIGN FOREIGN-U COPY!
    \ The executable's tree, its files the gate tree's, and a link to its engine.
@@ -632,22 +631,19 @@ variable DEEP-U
    s" error[E-SOURCE-ROOT]" REJECTED
    s" `SOURCE-ROOT:POPPATH` runs with no directory saved" SAYS ;
 
-\ A null slot is the working directory, which the last POPPATH restores. The
-\ round trip spells the words bare under `using SOURCE-ROOT`.
+\ A null slot is the working directory, which the last POPPATH restores.
 : PATH-STACK ( -- )
    s" PUSHPATH and POPPATH save and restore the current path" T-LABEL
    PROG-RESET
-   s" using SOURCE-ROOT" PLINE
-   s" PUSHPATH" PLINE
-   s" CD" s" cd" PATH-LINE
-   s" PUSHPATH" PLINE
-   s" CD sub" PLINE
-   s" CD" PLINE
-   s" POPPATH" PLINE
-   s" CD" PLINE
-   s" POPPATH" PLINE
-   s" CD" PLINE
-   s" ;using" PLINE
+   s" SOURCE-ROOT:PUSHPATH" PLINE
+   s" SOURCE-ROOT:CD" s" cd" PATH-LINE
+   s" SOURCE-ROOT:PUSHPATH" PLINE
+   s" SOURCE-ROOT:CD sub" PLINE
+   s" SOURCE-ROOT:CD" PLINE
+   s" SOURCE-ROOT:POPPATH" PLINE
+   s" SOURCE-ROOT:CD" PLINE
+   s" SOURCE-ROOT:POPPATH" PLINE
+   s" SOURCE-ROOT:CD" PLINE
    RUN-TREE
    SB-RESET s" cd/sub" A$ LINE s" cd" A$ LINE FOREIGN$ LINE SB$ 0 EXPECT
    s" POPPATH on an empty stack is rejected, named as written" T-LABEL
@@ -688,4 +684,3 @@ variable DEEP-U
 MAIN
 
 ;package
-;using

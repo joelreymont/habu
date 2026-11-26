@@ -11,8 +11,6 @@ require tools/lsp-text.f
 require src/lib/json/write.f
 
 package LSP-HIGHLIGHT
-using JSON
-using LSP-DEFS
 
 private
 
@@ -20,23 +18,23 @@ private
 
 : NAMED ( str n -- option<n> )
    {: t:str u:n :}
-   u USE-GROUP u USE-TARGET t u USE-WORD$ GROUP-REC-NAMED ;
+   u LSP-DEFS:USE-GROUP u LSP-DEFS:USE-TARGET t u LSP-DEFS:USE-WORD$ LSP-DEFS:GROUP-REC-NAMED ;
 
 \ LISTED: whether an item came before, for the comma; it holds after.
 : ITEM ( ^JSON:writer bool n n -- ^JSON:writer bool )
    {: listed:bool from:n to:n :}
-   listed if WRITE-COMMA then
-   WRITE-OBJECT-START
+   listed if JSON:WRITE-COMMA then
+   JSON:WRITE-OBJECT-START
    from LSP-TEXT:LINE-CHARACTER to from max LSP-TEXT:LINE-CHARACTER
-   LSP-TEXT:RANGE-AT WRITE-COMMA
-   s" kind" TEXT-KIND WRITE-FIELD-U
-   WRITE-OBJECT-END true ;
+   LSP-TEXT:RANGE-AT JSON:WRITE-COMMA
+   s" kind" TEXT-KIND JSON:WRITE-FIELD-U
+   JSON:WRITE-OBJECT-END true ;
 
 \ A use that names no record there is of no word.
 : OF-WORD? ( str n n n n n -- bool )
    {: t:str u:n g:n ts:n te:n rec:n :}
-   u USE-GROUP g <> if false exit then
-   u USE-TARGET {: us:n ue:n :}
+   u LSP-DEFS:USE-GROUP g <> if false exit then
+   u LSP-DEFS:USE-TARGET {: us:n ue:n :}
    us ts <> ue te <> or if false exit then
    t u NAMED MATCH option
       some OF rec = ENDOF
@@ -49,12 +47,12 @@ private
 : HIGHLIGHTS ( ^JSON:writer n n n n n -- ^JSON:writer )
    {: slot:n g:n ts:n te:n rec:n :}
    slot LSP-DOCS:DOC-TEXT$ {: t:str :}
-   WRITE-ARRAY-START false
-   g GROUP-OWN? if ts te ITEM then
-   slot DEFS-USE-RANGE ?do
-      t i g ts te rec OF-WORD? if i USE-BYTES ITEM then
+   JSON:WRITE-ARRAY-START false
+   g LSP-DEFS:GROUP-OWN? if ts te ITEM then
+   slot LSP-DEFS:DEFS-USE-RANGE ?do
+      t i g ts te rec OF-WORD? if i LSP-DEFS:USE-BYTES ITEM then
    loop
-   drop WRITE-ARRAY-END ;
+   drop JSON:WRITE-ARRAY-END ;
 
 \ At a use (LSP-DEFS:DEFS-USE-AT) the record is the one its spelling names
 \ (LSP-DEFS:GROUP-REC-NAMED); at a definition token in the document's own file,
@@ -66,25 +64,25 @@ private
 : SELECTED-LIST ( ^JSON:writer n n n n option<n> -- ^JSON:writer )
    MATCH option
       some OF {: slot:n g:n ts:n te:n rec:n :}
-         rec REC-SEVERAL? if WRITE-NULL else slot g ts te rec HIGHLIGHTS then
+         rec LSP-DEFS:REC-SEVERAL? if JSON:WRITE-NULL else slot g ts te rec HIGHLIGHTS then
       ENDOF
-      none OF 2drop 2drop WRITE-NULL ENDOF
+      none OF 2drop 2drop JSON:WRITE-NULL ENDOF
    ;MATCH ;
 
 : USE-LIST ( ^JSON:writer n n -- ^JSON:writer )
    {: slot:n u:n :}
-   slot u USE-GROUP u USE-TARGET slot LSP-DOCS:DOC-TEXT$ u NAMED SELECTED-LIST ;
+   slot u LSP-DEFS:USE-GROUP u LSP-DEFS:USE-TARGET slot LSP-DOCS:DOC-TEXT$ u NAMED SELECTED-LIST ;
 
 : REC-LIST ( ^JSON:writer n n n -- ^JSON:writer )
    {: slot:n g:n r:n :}
-   r REC-BYTES {: ts:n te:n :}
-   slot g ts te g ts te GROUP-REC-SOLE SELECTED-LIST ;
+   r LSP-DEFS:REC-BYTES {: ts:n te:n :}
+   slot g ts te g ts te LSP-DEFS:GROUP-REC-SOLE SELECTED-LIST ;
 
 : HELD-LIST ( ^JSON:writer n n n -- ^JSON:writer )
    {: slot:n g:n at:n :}
-   g at GROUP-REC-HOLDING MATCH option
+   g at LSP-DEFS:GROUP-REC-HOLDING MATCH option
       some OF {: r:n :} slot g r REC-LIST ENDOF
-      none OF WRITE-ARRAY-START WRITE-ARRAY-END ENDOF
+      none OF JSON:WRITE-ARRAY-START JSON:WRITE-ARRAY-END ENDOF
    ;MATCH ;
 
 public
@@ -97,17 +95,15 @@ public
 \ holds answers an empty list.
 : ANSWER ( ^JSON:writer n n -- ^JSON:writer )
    {: slot:n at:n :}
-   slot DEFS-VERIFIED? 0= if WRITE-NULL exit then
-   slot at DEFS-USE-AT MATCH option
+   slot LSP-DEFS:DEFS-VERIFIED? 0= if JSON:WRITE-NULL exit then
+   slot at LSP-DEFS:DEFS-USE-AT MATCH option
       some OF {: u:n :} slot u USE-LIST ENDOF
       none OF
-         slot DEFS-OWN-GROUP MATCH option
+         slot LSP-DEFS:DEFS-OWN-GROUP MATCH option
             some OF {: g:n :} slot g at HELD-LIST ENDOF
-            none OF WRITE-ARRAY-START WRITE-ARRAY-END ENDOF
+            none OF JSON:WRITE-ARRAY-START JSON:WRITE-ARRAY-END ENDOF
          ;MATCH
       ENDOF
    ;MATCH ;
 
-;using
-;using
 ;package

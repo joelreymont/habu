@@ -9,7 +9,6 @@ require test/browser/turn-revision.f
 
 package STALE
 private
-using BROWSER-EVENT
 
 CAST: BYTES>N ( ^u8 -- n )
 
@@ -22,11 +21,10 @@ public
 \ Start's hello, one revision past the fixtures'; the host ends the module
 \ there, so no other event reaches it.
 : TURN ( -- )
-   0 EVENT@ 0 = if
-      0 FIELD,  EVENT BYTES>N FIELD,  TURN-REVISION:PROTOCOL 1+ FIELD,  0 FIELD,
+   0 BROWSER-EVENT:EVENT@ 0 = if
+      0 FIELD,  BROWSER-EVENT:EVENT BYTES>N FIELD,  TURN-REVISION:PROTOCOL 1+ FIELD,  0 FIELD,
    then ;
 
-;using
 ;package
 
 : MAIN ( -- ) STALE:TURN ;

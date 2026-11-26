@@ -2134,8 +2134,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ each other, mtlink holding the closed mtnode by value; mt-main.f's mtuser holds
 \ an mtlink by value, its MAIN prints 7, and the text given follows.
 : WRITE-MT-MAIN ( str -- ) {: c:str :}
-   s" mt.f" REQUIRE+  s\" using FILE-OBJECTS-MUTUAL\n" SRC+
-   s\" STRUCTURE mtuser DERIVE addr\n   FIELD l mtlink\n;STRUCTURE\n" SRC+
+   s" mt.f" REQUIRE+
+   s\" STRUCTURE mtuser DERIVE addr\n   FIELD l FILE-OBJECTS-MUTUAL:mtlink\n;STRUCTURE\n" SRC+
    s\" : MAIN ( -- ) 7 . ;\n" SRC+  c SRC+  s" mt-main.f" NEST-WRITE ;
 
 : WRITE-MUTUAL ( -- )

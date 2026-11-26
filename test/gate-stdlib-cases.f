@@ -2,8 +2,6 @@ require src/lib/test/suite.f
 
 STDLIB-GATE:MAIN
 
-using TEST
-
 \ Registry order is start order among ready rows. A row whose load closure needs
 \ an unsettled image waits out of the pool and starts at the first start after
 \ its images settle, ahead of every later unstarted row (src/lib/test/suite.f
@@ -14,160 +12,160 @@ using TEST
 \ Each `false [if]` block holds tests that are off until their target's step:
 \ Wasm, then x86-64.
 
-SUITE lsp-boundary
+TEST:SUITE lsp-boundary
    tools/lsp-test.f
    tools/lsp-entry-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE cross-engine-build
+TEST:SUITE cross-engine-build
    test/cross-engine-build.f
-;SUITE
+TEST:;SUITE
 
 \ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
 \ TCP4; writes its transcript to a file and compares it whole.
-SUITE websocket
+TEST:SUITE websocket
    src/lib/net/ws-test.f
-;SUITE
+TEST:;SUITE
 
 \ The Wasm and browser modules, validated by wasm-tools and run by bun; both on
 \ PATH are a suite requirement (docs/bootstrap.md "Requirements").
-SUITE wasm-device
+TEST:SUITE wasm-device
    test/wasm/device.f
-;SUITE
+TEST:;SUITE
 
-SUITE xml-owner-consumer
+TEST:SUITE xml-owner-consumer
    test/xml-owner-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE engine-stack-machine
+TEST:SUITE engine-stack-machine
    test/engine-stack-machine.f
-;SUITE
+TEST:;SUITE
 
-SUITE main-routing
+TEST:SUITE main-routing
    test/main-routing.f
-;SUITE
+TEST:;SUITE
 
-SUITE aot-shifted-bytes
+TEST:SUITE aot-shifted-bytes
    test/aot-shifted-bytes.f
-;SUITE
+TEST:;SUITE
 
-SUITE diag-position
+TEST:SUITE diag-position
    test/diag-position-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE source-root-exe
+TEST:SUITE source-root-exe
    test/source-root-exe-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE require-check
+TEST:SUITE require-check
    test/require-check.f
-;SUITE
+TEST:;SUITE
 
-SUITE codesign
+TEST:SUITE codesign
    src/lib/codesign-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE checker-redefinition-order
+TEST:SUITE checker-redefinition-order
    test/checker-redefinition-order-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE checker-rollback-signature
+TEST:SUITE checker-rollback-signature
    test/checker-rollback-signature-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE signature-nesting
+TEST:SUITE signature-nesting
    test/signature-nesting.f
-;SUITE
+TEST:;SUITE
 
-SUITE memory-guarded-failure
+TEST:SUITE memory-guarded-failure
    test/memory-guarded-failure.f
-;SUITE
+TEST:;SUITE
 
-SUITE memory-fault
+TEST:SUITE memory-fault
    test/memory-fault.f
-;SUITE
+TEST:;SUITE
 
-SUITE byte-copy
+TEST:SUITE byte-copy
    test/byte-copy-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE imagedisasm-tool
+TEST:SUITE imagedisasm-tool
    tools/imagedisasm-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE streaming-sha256
+TEST:SUITE streaming-sha256
    tools/sha256-file-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE content-key
+TEST:SUITE content-key
    src/lib/content-key-test.f
-;SUITE
+TEST:;SUITE
 
 \ These manifests execute the native schema and case checks without a prover.
-SUITE compiler-checker-model-manifest
+TEST:SUITE compiler-checker-model-manifest
    test/compiler/checker-model-manifest.f
-;SUITE
+TEST:;SUITE
 
-SUITE linker
+TEST:SUITE linker
    test/linker.f
-;SUITE
+TEST:;SUITE
 
 HB-TARGET-LINUX-X86-64? [if]
-SUITE x86-64-link-run
+TEST:SUITE x86-64-link-run
    test/compiler/x86-64-link-run.f
-;SUITE
+TEST:;SUITE
 
-SUITE code-dump-x64
+TEST:SUITE code-dump-x64
    test/code-dump-x64.f
-;SUITE
+TEST:;SUITE
 [then]
 
 \ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f
 \ and binding.f through their public words. A row of its own is reachable by
 \ name in the registry, not only inside a fork list.
-SUITE compiler-target-resolve
+TEST:SUITE compiler-target-resolve
    test/compiler/target-resolve.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-target-policy
+TEST:SUITE compiler-target-policy
    test/compiler/target-policy.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-workspace
+TEST:SUITE compiler-workspace
    test/compiler/workspace.f
-;SUITE
+TEST:;SUITE
 
 \ The N01-N06 and W32 numeric rows of test/wasm/numeric-rows.f, each forked and
 \ its printed bytes compared.
-SUITE wasm-numeric
+TEST:SUITE wasm-numeric
    test/wasm/numeric.f
-;SUITE
+TEST:;SUITE
 
 \ WLEB, tier 0's Wasm LEB128: the shortest and padded forms at their
 \ edges, the call and address fields rewritten in place, and each rejection.
-SUITE wasm-leb
+TEST:SUITE wasm-leb
    test/wasm/leb.f
-;SUITE
+TEST:;SUITE
 
 \ WLINK, tier 0's Wasm linker, src/arch/wasm/link.f: modules wasm-tools
 \ assembles byte for byte, index and type order, patched call and address
 \ fields, the table, data cells and memory pages, W03 and each rejection.
-SUITE wasm-link
+TEST:SUITE wasm-link
    test/wasm/link.f
-;SUITE
+TEST:;SUITE
 
 \ Some of src/arch/wasm/kernel-words.f's words beside the engine's primitives, on the host.
-SUITE wasm-kernel-words
+TEST:SUITE wasm-kernel-words
    test/wasm/kernel.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-arm32-asm
+TEST:SUITE compiler-arm32-asm
    test/compiler/arm32-asm.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-x86-64-asm
+TEST:SUITE compiler-x86-64-asm
    test/compiler/x86-64-asm.f
-;SUITE
+TEST:;SUITE
 
 \ Tests that need an arm64 host live in test/gate-arm-cases.f; tests for every
 \ host stay here.
@@ -178,545 +176,545 @@ private
 HOST-ROWS
 ;package
 
-SUITE compiler-tic6x-asm
+TEST:SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
    test/compiler/tic6x-facts.f
    test/compiler/tic6x-sim.f
    test/compiler/tic6x-eabi.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-eval-prefix
+TEST:SUITE compiler-native-eval-prefix
    test/compiler/native-eval-prefix.f
-;SUITE
+TEST:;SUITE
 
-SUITE prim-parity
+TEST:SUITE prim-parity
    test/prim-parity.f
-;SUITE
+TEST:;SUITE
 
 \ The engine's own `.` and `u.` over MIN-N, read back through a genio device.
 \ The parity gate cannot hold these: a printer's answer is text on a device, not
 \ a cell a case column can state.
-SUITE print-min-int
+TEST:SUITE print-min-int
    test/print-min-int.f
-;SUITE
+TEST:;SUITE
 
-SUITE genio
+TEST:SUITE genio
    src/lib/genio-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE loop-obligations
+TEST:SUITE loop-obligations
    test/loop-obligations.f
-;SUITE
+TEST:;SUITE
 
-SUITE native-quote-forward
+TEST:SUITE native-quote-forward
    test/native-quote-forward-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-hookless-reject
+TEST:SUITE compiler-native-hookless-reject
    test/compiler/native-hookless-reject.f
-;SUITE
+TEST:;SUITE
 
-SUITE caught-text-keeps
+TEST:SUITE caught-text-keeps
    test/caught-text-keeps.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-plusloop
+TEST:SUITE compiler-native-plusloop
    test/compiler/native-plusloop.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-rstack-input
+TEST:SUITE compiler-native-rstack-input
    test/compiler/native-rstack-input.f
-;SUITE
+TEST:;SUITE
 
-SUITE finally
+TEST:SUITE finally
    test/finally.f
-;SUITE
+TEST:;SUITE
 
-SUITE quotation-locals
+TEST:SUITE quotation-locals
    test/quotation-locals.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-lexical-recovery
+TEST:SUITE compiler-native-lexical-recovery
    test/compiler/native-lexical-recovery.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-local-case
+TEST:SUITE compiler-native-local-case
    test/compiler/native-local-case.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-local-ambiguity
+TEST:SUITE compiler-native-local-ambiguity
    test/compiler/native-local-ambiguity.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-product-locals
+TEST:SUITE compiler-native-product-locals
    test/compiler/native-product-locals.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-word-binding
+TEST:SUITE compiler-native-word-binding
    test/compiler/native-word-binding.f
-;SUITE
+TEST:;SUITE
 
-SUITE reopen-binding
+TEST:SUITE reopen-binding
    test/reopen-binding.f
-;SUITE
+TEST:;SUITE
 
-SUITE undefine-binding
+TEST:SUITE undefine-binding
    test/undefine-binding.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-integer-literals
+TEST:SUITE compiler-integer-literals
    test/compiler/integer-literals.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-divide-literal
+TEST:SUITE compiler-divide-literal
    test/compiler/divide-literal.f
-;SUITE
+TEST:;SUITE
 
-SUITE interpreter-number
+TEST:SUITE interpreter-number
    test/interpreter-number.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-eval
+TEST:SUITE compiler-native-eval
    test/compiler/native-eval.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-wide-mem
+TEST:SUITE compiler-native-wide-mem
    test/compiler/native-wide-mem.f
-;SUITE
+TEST:;SUITE
 
-SUITE compiler-native-vocab
+TEST:SUITE compiler-native-vocab
    test/compiler/native-vocab.f
-;SUITE
+TEST:;SUITE
 
-SUITE raw-storage-load-seal
+TEST:SUITE raw-storage-load-seal
    test/raw-storage-load-seal-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE raw-cell-pointer-rejections
+TEST:SUITE raw-cell-pointer-rejections
    test/compiler/raw-cell-pointer-rejections.f
-;SUITE
+TEST:;SUITE
 
-SUITE stored-type-param
+TEST:SUITE stored-type-param
    test/compiler/stored-type-param.f
-;SUITE
+TEST:;SUITE
 
-SUITE width-type
+TEST:SUITE width-type
    test/compiler/width-type.f
-;SUITE
+TEST:;SUITE
 
-SUITE input-underflow-rejections
+TEST:SUITE input-underflow-rejections
    test/compiler/input-underflow-rejections.f
-;SUITE
+TEST:;SUITE
 
-SUITE zero-operand-rejections
+TEST:SUITE zero-operand-rejections
    test/compiler/zero-operand-rejections.f
-;SUITE
+TEST:;SUITE
 
-SUITE base-pointer-arith-rejections
+TEST:SUITE base-pointer-arith-rejections
    test/compiler/base-pointer-arith-rejections.f
-;SUITE
+TEST:;SUITE
 
-SUITE proc-capture-under-signals
+TEST:SUITE proc-capture-under-signals
    test/proc-capture-signal.f
-;SUITE
+TEST:;SUITE
 
-SUITE proc-pty-io-supervisor-smoke
+TEST:SUITE proc-pty-io-supervisor-smoke
    test/process-pty-io-smoke.f
-;SUITE
+TEST:;SUITE
 
-SUITE proc-pty-tty-smoke
+TEST:SUITE proc-pty-tty-smoke
    test/process-pty-tty-smoke.f
-;SUITE
+TEST:;SUITE
 
 \ CPU tasking over pthread, including shared storage and task-local FFI staging.
-SUITE tasking-threads
+TEST:SUITE tasking-threads
    src/lib/task-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE task-signal-altstack
+TEST:SUITE task-signal-altstack
    test/task-signal-altstack.f
-;SUITE
+TEST:;SUITE
 
-SUITE task-prepare-failure
+TEST:SUITE task-prepare-failure
    test/task-prepare-failure.f
-;SUITE
+TEST:;SUITE
 
 \ Readiness, timers and cancellation on io_uring, over pipes only.
-SUITE aio-uring
+TEST:SUITE aio-uring
    src/lib/aio-test.f
-;SUITE
+TEST:;SUITE
 
 \ Process signals on the engine's baked stub and a self-pipe.
-SUITE process-signals
+TEST:SUITE process-signals
    src/lib/signal-test.f
-;SUITE
+TEST:;SUITE
 
 \ The bounded queue: many producers and many consumers over one ring.
-SUITE bounded-queue
+TEST:SUITE bounded-queue
    src/lib/queue-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE task-entry
+TEST:SUITE task-entry
    test/task-entry.f
-;SUITE
+TEST:;SUITE
 
-SUITE string-helpers
+TEST:SUITE string-helpers
    src/lib/string-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE utf8-scalar
+TEST:SUITE utf8-scalar
    src/lib/utf8-scalar-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE utf8-lossy
+TEST:SUITE utf8-lossy
    src/lib/utf8-lossy-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE base64
+TEST:SUITE base64
    src/lib/base64-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE base85
+TEST:SUITE base85
    src/lib/base85-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE utf16-units
+TEST:SUITE utf16-units
    src/lib/utf16-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE be-integers
+TEST:SUITE be-integers
    src/lib/be-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE file-uri
+TEST:SUITE file-uri
    src/lib/uri-test.f
-;SUITE
+TEST:;SUITE
 
 \ Exact reads and full writes over pipes; the write cases run under the
 \ profiler's SIGALRM storm to force short writes.
-SUITE fd
+TEST:SUITE fd
    src/lib/fd-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE content-length
+TEST:SUITE content-length
    src/lib/content-length-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE json-rpc
+TEST:SUITE json-rpc
    src/lib/json-rpc-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE regex
+TEST:SUITE regex
    src/lib/regex-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE json-schema
+TEST:SUITE json-schema
    src/lib/json-schema-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE diff
+TEST:SUITE diff
    src/lib/diff-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE ffi-abi
+TEST:SUITE ffi-abi
    src/lib/ffi-abi-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE svg-pdf
+TEST:SUITE svg-pdf
    test/svg-pdf-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE zip
+TEST:SUITE zip
    src/lib/zip-test.f
    src/lib/zip-lifecycle-test.f
    src/lib/zip-offset-test.f
    test/zip-remove-source.f
-;SUITE
+TEST:;SUITE
 
-SUITE zip-temp
+TEST:SUITE zip-temp
    test/zip-temp-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE ffi-cabi
+TEST:SUITE ffi-cabi
    src/lib/ffi-test.f
-;SUITE
+TEST:;SUITE
 
 \ Raw DEFLATE and CRC-32 through libz; keeps its 10 MiB original, compressed and
 \ decoded payloads.
-SUITE zlib
+TEST:SUITE zlib
    test/zlib-source.f
-;SUITE
+TEST:;SUITE
 
 \ FONT on the host's installed fonts; HarfBuzz and the fonts are a gate
 \ requirement (docs/bootstrap.md "Requirements").
-SUITE font-native
+TEST:SUITE font-native
    test/font-native.f
-;SUITE
+TEST:;SUITE
 
 \ C calling back into checked code through libc's qsort and pthread_create, on
 \ the calling task and on foreign threads; writes
 \ build/ffi-callback-transcript.txt and compares it whole.
-SUITE ffi-callback
+TEST:SUITE ffi-callback
    src/lib/ffi-callback-test.f
-;SUITE
+TEST:;SUITE
 
 \ More than 129 native C entries, stable pointers through growth, high-row
 \ lifecycle and fallback.
-SUITE ffi-callback-growth
+TEST:SUITE ffi-callback-growth
    test/ffi-callback-growth.f
-;SUITE
+TEST:;SUITE
 
 \ Package PG against a private PostgreSQL cluster (test/db/pg-cluster.f), then
 \ the harness killed by a pool, which must leave no server process and no
 \ socket directory. initdb and postgres on PATH are a gate requirement
 \ (docs/bootstrap.md "Requirements").
-SUITE pg
+TEST:SUITE pg
    test/db/pg-cluster.f
    test/db/pg-kill-test.f
-;SUITE
+TEST:;SUITE
 
 \ Package SQLITE through libsqlite3, on database files in its own temporary
 \ directory.
-SUITE sqlite
+TEST:SUITE sqlite
    src/lib/sqlite-test.f
-;SUITE
+TEST:;SUITE
 
 \ Loopback HTTP in one process; the one HTTPS request is opt-in behind
 \ HABU_NET_TESTS.
-SUITE curl-http
+TEST:SUITE curl-http
    src/lib/net/curl-test.f
-;SUITE
+TEST:;SUITE
 
 \ HTTPC's connection lifecycle against a scripted loopback HTTP/1.1 server, and
 \ its https origins against openssl s_server on loopback, with certificates
 \ made at test time. mbedTLS 4 and openssl are a gate requirement
 \ (docs/bootstrap.md "Requirements").
 HB-TARGET-LINUX? [if]
-SUITE httpc
+TEST:SUITE httpc
    src/lib/net/httpc-test.f
-;SUITE
+TEST:;SUITE
 [then]
 
 \ TLS client sessions over mbedTLS against openssl s_server on loopback, with
 \ certificates made at test time. mbedTLS 4 and openssl are a gate requirement
 \ (docs/bootstrap.md "Requirements").
 HB-TARGET-LINUX? [if]
-SUITE tls
+TEST:SUITE tls
    src/lib/net/tls-test.f
-;SUITE
+TEST:;SUITE
 [then]
 
 \ The HTTP/1.1 server on a loopback port, answered by CURL and by raw TCP4;
 \ writes build/http-transcript.txt and compares it whole.
-SUITE http
+TEST:SUITE http
    src/lib/net/http-test.f
-;SUITE
+TEST:;SUITE
 
 \ HTTP:BASIC-CREDENTIALS: RFC 7617's example, each `:` place, the rejections.
-SUITE http-basic
+TEST:SUITE http-basic
    src/lib/net/http-basic-test.f
-;SUITE
+TEST:;SUITE
 
 \ MCP:HANDLE on a loopback port: both eras' handshakes, tools/list and
 \ tools/call, and the protocol's rejections, answered to CURL.
-SUITE mcp
+TEST:SUITE mcp
    src/lib/net/mcp-test.f
-;SUITE
+TEST:;SUITE
 
 \ BEARER:ADMIT? on a loopback port that serves its own key set.
-SUITE bearer
+TEST:SUITE bearer
    src/lib/net/bearer-test.f
-;SUITE
+TEST:;SUITE
 
 \ MCP:ROUTES on a loopback port: the Origin check, BEARER:CALLER? and the
 \ metadata routes.
-SUITE mcp-routes
+TEST:SUITE mcp-routes
    src/lib/net/mcp-routes-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE odata
+TEST:SUITE odata
    src/lib/odata-test.f
-;SUITE
+TEST:;SUITE
 
 \ SECRET's words with no store bound and over a host store. Its own suite:
 \ STORE! holds SECRET's store for the whole process.
-SUITE secret
+TEST:SUITE secret
    src/lib/secret-test.f
-;SUITE
+TEST:;SUITE
 
 \ SECRET:DIR-BIND over a directory under TMPDIR. Its own suite: the bind holds
 \ SECRET's store for the whole process.
-SUITE secret-dir
+TEST:SUITE secret-dir
    src/lib/secret/dir-test.f
-;SUITE
+TEST:;SUITE
 
 \ SECRET:AZURE-BIND against a loopback metadata service and vault. Its own
 \ suite: the bind holds SECRET's store for the whole process.
-SUITE secret-azure
+TEST:SUITE secret-azure
    src/lib/secret/azure-test.f
-;SUITE
+TEST:;SUITE
 
 \ SECRET:WRITE and SECRET:READ on Linux against a private bus and keyring, with
 \ secret-tool. Its own suite: SECRET:LINUX-ITEM! and libsecret's connection
 \ hold for the whole process.
 HB-TARGET-LINUX? [if]
-SUITE secret-linux
+TEST:SUITE secret-linux
    src/lib/secret/linux-test.f
-;SUITE
+TEST:;SUITE
 [then]
 
 \ MODEL against an in-process OpenAI- and Ollama-shaped peer on a loopback port.
-SUITE model
+TEST:SUITE model
    src/lib/net/model-test.f
-;SUITE
+TEST:;SUITE
 
 \ TEST-ISSUER's routes on a loopback port and tools/test-issuer.f as a child.
-SUITE test-issuer
+TEST:SUITE test-issuer
    src/lib/net/test-issuer-test.f
-;SUITE
+TEST:;SUITE
 
 \ MODEL:CHAT against TEST-MODEL's replies on a loopback port.
-SUITE test-model
+TEST:SUITE test-model
    src/lib/net/test-model-test.f
-;SUITE
+TEST:;SUITE
 
 \ The HTTP listener through an accept rejected for want of descriptors. Its own
 \ row: it lowers RLIMIT_NOFILE and puts a pipe in place of stderr.
-SUITE http-accept-starved
+TEST:SUITE http-accept-starved
    test/http-accept-starved.f
-;SUITE
+TEST:;SUITE
 
 \ BROWSER-HOST:ROUTES on a loopback port: CURL fetches the browser host's page,
 \ each file's content type and bytes.
-SUITE browser-host
+TEST:SUITE browser-host
    src/lib/browser/host-test.f
-;SUITE
+TEST:;SUITE
 
 \ MCP-APP:PAGE+ and CODE+ of a small module: the kept prefix, the escaped
 \ title, the page id and app.js's base64 in one UTF-8 page, and CODE+'s same
 \ page id and the base64 of the view's files and the module; PAGE-ID$ as the
 \ page's id, FILE+'s member, and the rejected title.
-SUITE mcp-app
+TEST:SUITE mcp-app
    src/lib/browser/app-test.f
-;SUITE
+TEST:;SUITE
 
 \ STUDIO:KEY-FIT's ground record, planes and pixel for stated scenes, and
 \ the matrices it rejects.
-SUITE studio
+TEST:SUITE studio
    src/lib/browser/studio-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE crypto-evp
+TEST:SUITE crypto-evp
    src/lib/crypto/evp-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE crypto-sha1
+TEST:SUITE crypto-sha1
    src/lib/crypto/sha1-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE float-parse
+TEST:SUITE float-parse
    src/lib/float-test.f
    src/lib/fmath-test.f
    src/lib/fmath-basis-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE finite-float-text
+TEST:SUITE finite-float-text
    src/lib/f64-text-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE ieee-float32
+TEST:SUITE ieee-float32
    src/lib/ieee754-test.f
    src/lib/float32-test.f
    src/lib/float32-buffer-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE fmt-numbers
+TEST:SUITE fmt-numbers
    src/lib/fmt-test.f
-;SUITE
+TEST:;SUITE
 
 \ State machines DEFINE builds from a table, their checker rejections and size.
-SUITE fsm
+TEST:SUITE fsm
    src/lib/fsm-test.f
-;SUITE
+TEST:;SUITE
 
 \ A table in a source file rendered as its TLA+ model's Table module.
-SUITE test-fsm
+TEST:SUITE test-fsm
    src/lib/test-fsm-test.f
-;SUITE
+TEST:;SUITE
 
 \ Rotations of a 3D affine transform about a line, and points mapped by one.
-SUITE affine
+TEST:SUITE affine
    src/lib/affine-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE log
+TEST:SUITE log
    src/lib/log-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE error
+TEST:SUITE error
    src/lib/error-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE reason
+TEST:SUITE reason
    src/lib/reason-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE hashmap
+TEST:SUITE hashmap
    src/lib/hashmap-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE siphash
+TEST:SUITE siphash
    src/lib/siphash-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE array-helpers
+TEST:SUITE array-helpers
    src/lib/array-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE num-arithmetic
+TEST:SUITE num-arithmetic
    src/lib/num-arithmetic-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE map-stdlib
+TEST:SUITE map-stdlib
    src/lib/map-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE codegen-stdlib
+TEST:SUITE codegen-stdlib
    src/lib/codegen-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE unicode-casefold
+TEST:SUITE unicode-casefold
    src/lib/unicode-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE unicode-class-exhaustive
+TEST:SUITE unicode-class-exhaustive
    tools/unicode/class-verify-main.f
-;SUITE
+TEST:;SUITE
 
-SUITE unicode-script-exhaustive
+TEST:SUITE unicode-script-exhaustive
    tools/unicode/script-verify-main.f
-;SUITE
+TEST:;SUITE
 
-SUITE argv-stdlib-mocks
+TEST:SUITE argv-stdlib-mocks
    src/lib/argv-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE test-stdlib
+TEST:SUITE test-stdlib
    src/lib/test/assert-test.f
    src/lib/test/mapped-test.f
    src/lib/test/stderr-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE date-helpers
+TEST:SUITE date-helpers
    tools/stdlib-date-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE memory
+TEST:SUITE memory
    src/lib/memory-test.f
    src/lib/arena-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE tail-pure-fixtures
+TEST:SUITE tail-pure-fixtures
    src/lib/json-write-test.f
    src/lib/json-read-test.f
    src/lib/json-pointer-test.f
@@ -727,197 +725,197 @@ SUITE tail-pure-fixtures
    src/lib/fs-test.f
    tools/asm-src-test.f
    tools/image-bytes-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE json-value
+TEST:SUITE json-value
    src/lib/json-value-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE byte-buffer
+TEST:SUITE byte-buffer
    src/lib/byte-buffer-test.f
-;SUITE
+TEST:;SUITE
 
 \ The x86_64 seam is exercised from this aarch64 host: the mov r64, imm64
 \ relocation site and the x86-64 target contract.
-SUITE x86-64-seam
+TEST:SUITE x86-64-seam
    test/x86-64-seam.f
-;SUITE
+TEST:;SUITE
 
 \ The same seam's instruction emitters, whose bytes an aarch64 engine can produce
 \ and read back. Its own suite because it loads src/os/linux-x86-64/sys.f, which
 \ spells the host's syscall-number words.
-SUITE x86-64-emit
+TEST:SUITE x86-64-emit
    test/x86-64-emit.f
-;SUITE
+TEST:;SUITE
 
 \ The x86-64 boot skeleton, src/habu/boot-x64.f, and its guard-page twin, for the
 \ peer to run.
-SUITE x86-64-skel-image
+TEST:SUITE x86-64-skel-image
    test/x86-64-skel-image.f
-;SUITE
+TEST:;SUITE
 
 \ Both captured entry cells in a real x86-64 boot: ARM emits the image and
 \ the x86-64 host also runs it, requiring MAIN to invoke APP before stdin.
-SUITE x86-64-main-entry
+TEST:SUITE x86-64-main-entry
    test/x86-64-main-entry.f
-;SUITE
+TEST:;SUITE
 
 \ The x86-64 kernel's rows (src/habu/kernel-x64.f) in the booted harness,
 \ test/x86-64-boot-harness.f, for the peer to run. They load the x86-64 seam
 \ globally, as skel-image does, so each is a suite.
-SUITE x86-64-kernel-syscalls
+TEST:SUITE x86-64-kernel-syscalls
    test/x86-64-kernel-syscalls.f
-;SUITE
+TEST:;SUITE
 
-SUITE x86-64-kernel-control
+TEST:SUITE x86-64-kernel-control
    test/x86-64-kernel-control.f
-;SUITE
+TEST:;SUITE
 
-SUITE x86-64-kernel-policy
+TEST:SUITE x86-64-kernel-policy
    test/x86-64-kernel-policy.f
-;SUITE
+TEST:;SUITE
 
-SUITE x86-64-kernel-atomics
+TEST:SUITE x86-64-kernel-atomics
    test/x86-64-kernel-atomics.f
-;SUITE
+TEST:;SUITE
 
-SUITE x86-64-kernel-engine
+TEST:SUITE x86-64-kernel-engine
    test/x86-64-kernel-engine.f
-;SUITE
+TEST:;SUITE
 
-SUITE x86-64-kernel-scope-find
+TEST:SUITE x86-64-kernel-scope-find
    test/x86-64-kernel-scope-find.f
-;SUITE
+TEST:;SUITE
 
-SUITE x86-64-kernel-token
+TEST:SUITE x86-64-kernel-token
    test/x86-64-kernel-token.f
-;SUITE
+TEST:;SUITE
 
-SUITE x86-64-kernel-ffi
+TEST:SUITE x86-64-kernel-ffi
    test/x86-64-kernel-ffi.f
-;SUITE
+TEST:;SUITE
 
-SUITE x86-64-kernel-pure
+TEST:SUITE x86-64-kernel-pure
    test/x86-64-kernel-pure.f
-;SUITE
+TEST:;SUITE
 
 \ The sampling profiler's rows, src/habu/prof-x64.f, in the booted harness.
-SUITE x86-64-kernel-prof
+TEST:SUITE x86-64-kernel-prof
    test/x86-64-kernel-prof.f
-;SUITE
+TEST:;SUITE
 \ The signal stub src/habu/boot-x64.f START, publishes, installed and raised in
 \ the booted harness.
-SUITE x86-64-boot-signal
+TEST:SUITE x86-64-boot-signal
    test/x86-64-boot-signal.f
-;SUITE
+TEST:;SUITE
 
-SUITE x86-64-kernel-task
+TEST:SUITE x86-64-kernel-task
    test/x86-64-kernel-task.f
-;SUITE
+TEST:;SUITE
 
-SUITE x86-64-kernel-callback
+TEST:SUITE x86-64-kernel-callback
    test/x86-64-kernel-callback.f
-;SUITE
+TEST:;SUITE
 
 \ The crash handler the x86-64 boot installs, src/habu/boot-x64.f, in the
 \ booted harness: each image's child faults with fd 2 on a pipe, and its parent
 \ checks the dump or the guard page's line and the exit status.
-SUITE x86-64-kernel-crash
+TEST:SUITE x86-64-kernel-crash
    test/x86-64-kernel-crash.f
-;SUITE
+TEST:;SUITE
 
 \ The definition writers of the x86-64 kernel in the booted harness.
-SUITE x86-64-kernel-definition
+TEST:SUITE x86-64-kernel-definition
    test/x86-64-kernel-definition.f
-;SUITE
+TEST:;SUITE
 
-SUITE xml-byte-edits
+TEST:SUITE xml-byte-edits
    src/lib/xml-test.f
    src/lib/byte-edit-test.f
    src/lib/xml-roundtrip-test.f
    src/lib/xml-source-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE stdlib-source-default
+TEST:SUITE stdlib-source-default
    src/lib/source-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE source-lex
+TEST:SUITE source-lex
    src/lib/source-lex-test.f
    src/lib/word-docs-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE stdlib-process-fixtures
+TEST:SUITE stdlib-process-fixtures
    tools/hb-cli-contracts-test.f
    src/lib/process-test.f
    src/lib/process-command-test.f
    src/lib/power-test.f
    src/lib/process-pty-handle-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE seal
+TEST:SUITE seal
    test/seal.f
-;SUITE
+TEST:;SUITE
 
-SUITE pointer-storage
+TEST:SUITE pointer-storage
    test/pointer-storage-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE ptr-elem
+TEST:SUITE ptr-elem
    test/ptr-elem-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE typed-storage
+TEST:SUITE typed-storage
    test/typed-storage-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE typed-storage-structural
+TEST:SUITE typed-storage-structural
    test/typed-storage-structural-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE storage-binding
+TEST:SUITE storage-binding
    test/storage-binding-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-records-source
+TEST:SUITE c2-records-source
    test/c2-records-program.f
    test/c2-records-rejections.f
    test/c2-records-lifecycle.f
    test/c2-records-scopes.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-view-record-source
+TEST:SUITE c2-view-record-source
    test/c2-view-record-source.f
    test/c2-view-record-rejections.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-bytes-rejections
+TEST:SUITE c2-bytes-rejections
    test/c2-bytes-rejections.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-read-effects
+TEST:SUITE c2-read-effects
    test/c2-read-effects.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-mut-view
+TEST:SUITE c2-mut-view
    test/c2-mut-view.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-mut-records
+TEST:SUITE c2-mut-records
    test/c2-mut-records.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-loan-checker
+TEST:SUITE c2-loan-checker
    test/c2-loan-checker-positive.f
    test/c2-loan-checker-region.f
    test/c2-loan-checker-rejection.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-memory-runtime
+TEST:SUITE c2-memory-runtime
    test/c2-memory-runtime.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-memory-source
+TEST:SUITE c2-memory-source
    test/c2-memory-native-boundary.f
    test/c2-memory-program.f
    test/c2-init-program.f
@@ -933,563 +931,561 @@ SUITE c2-memory-source
    test/c2-field-loan-program.f
    test/c2-field-loan-rejections.f
    test/c2-field-loan-lifecycle.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-view-record-mut
+TEST:SUITE c2-view-record-mut
    test/c2-view-record-mut.f
-;SUITE
+TEST:;SUITE
 
-SUITE certify-does-definer
+TEST:SUITE certify-does-definer
    test/certify-does-definer.f
-;SUITE
+TEST:;SUITE
 
-SUITE underdepth-gate
+TEST:SUITE underdepth-gate
    test/underdepth-gate.f
-;SUITE
+TEST:;SUITE
 
-SUITE top-row-storage
+TEST:SUITE top-row-storage
    test/top-row-storage-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE xt-effect
+TEST:SUITE xt-effect
    test/xt-effect-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE xt-cell
+TEST:SUITE xt-cell
    test/xt-cell-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE catch-stale
+TEST:SUITE catch-stale
    test/catch-stale-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE create-axiom
+TEST:SUITE create-axiom
    test/create-axiom-test.f
    test/prim-row-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE ndict-binding
+TEST:SUITE ndict-binding
    test/ndict-binding.f
-;SUITE
+TEST:;SUITE
 
-SUITE engine-span-end
+TEST:SUITE engine-span-end
    test/engine-span-end.f
-;SUITE
+TEST:;SUITE
 
-SUITE checker-soundness
+TEST:SUITE checker-soundness
    test/checker-soundness-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE checker-verify-pkg-scope
+TEST:SUITE checker-verify-pkg-scope
    test/checker-verify-pkg-scope.f
-;SUITE
+TEST:;SUITE
 
-SUITE checker-dup-record
+TEST:SUITE checker-dup-record
    test/checker-dup-record.f
-;SUITE
+TEST:;SUITE
 
-SUITE checker-completion
+TEST:SUITE checker-completion
    test/checker-completion.f
-;SUITE
+TEST:;SUITE
 
-SUITE checker-dead-path
+TEST:SUITE checker-dead-path
    test/checker-dead-path-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE local-spelling
+TEST:SUITE local-spelling
    test/local-spelling-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE stdlib-standalone-load
+TEST:SUITE stdlib-standalone-load
    test/stdlib-standalone-load.f
-;SUITE
+TEST:;SUITE
 
-SUITE definition-name
+TEST:SUITE definition-name
    test/definition-name.f
-;SUITE
+TEST:;SUITE
 
-SUITE address-cell-rollback
+TEST:SUITE address-cell-rollback
    test/address-cell-rollback.f
-;SUITE
+TEST:;SUITE
 
-SUITE address-cell-cap-grown
+TEST:SUITE address-cell-cap-grown
    test/address-cell-cap-grown.f
-;SUITE
+TEST:;SUITE
 
-SUITE address-cell-storage-oom
+TEST:SUITE address-cell-storage-oom
    test/address-cell-storage-oom.f
-;SUITE
+TEST:;SUITE
 
-SUITE catch-frame
+TEST:SUITE catch-frame
    test/catch-frame.f
-;SUITE
+TEST:;SUITE
 
-SUITE engine-stack-wide
+TEST:SUITE engine-stack-wide
    test/engine-stack-wide.f
-;SUITE
+TEST:;SUITE
 
-SUITE engine-stack-lifecycle
+TEST:SUITE engine-stack-lifecycle
    test/engine-stack-lifecycle.f
-;SUITE
+TEST:;SUITE
 
-SUITE engine-stack-debugger
+TEST:SUITE engine-stack-debugger
    test/engine-stack-debugger.f
-;SUITE
+TEST:;SUITE
 
-SUITE debugger-resume
+TEST:SUITE debugger-resume
    test/debugger-resume.f
-;SUITE
+TEST:;SUITE
 
-SUITE stack-guard
+TEST:SUITE stack-guard
    test/stack-guard.f
-;SUITE
+TEST:;SUITE
 
-SUITE combinators
+TEST:SUITE combinators
    test/combinators.f
-;SUITE
+TEST:;SUITE
 
-SUITE int-convert
+TEST:SUITE int-convert
    test/int-convert.f
-;SUITE
+TEST:;SUITE
 
-SUITE export-keyword-package
+TEST:SUITE export-keyword-package
    test/export-package.f
-;SUITE
+TEST:;SUITE
 
-SUITE using-import
+TEST:SUITE using-import
    test/using-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE postpone-define
+TEST:SUITE postpone-define
    test/postpone-define.f
-;SUITE
+TEST:;SUITE
 
-SUITE postpone-effect
+TEST:SUITE postpone-effect
    test/postpone-effect.f
-;SUITE
+TEST:;SUITE
 
 \ Apart from postpone-define, whose file is also a build source: a definition
 \ these cases reject gives data space back, which a build rejects.
-SUITE postpone-reject
+TEST:SUITE postpone-reject
    test/postpone-reject.f
-;SUITE
+TEST:;SUITE
 
-SUITE build-items
+TEST:SUITE build-items
    test/build-items.f
-;SUITE
+TEST:;SUITE
 
 \ The design seal: each test/policy case loaded sealed at tier 0, one child per
 \ case; writes build/vocabulary-run.txt.
-SUITE vocabulary
+TEST:SUITE vocabulary
    src/lib/vocabulary-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE engine-private
+TEST:SUITE engine-private
    test/engine-private-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE shadowed-arity-rejection
+TEST:SUITE shadowed-arity-rejection
    test/shadowed-arity-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE load-reject-diag
+TEST:SUITE load-reject-diag
    test/load-reject-diag-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE dictionary-full
+TEST:SUITE dictionary-full
    test/dictionary-full-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE load-argv-contract
+TEST:SUITE load-argv-contract
    tools/load-argv-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE tmp-path
+TEST:SUITE tmp-path
    test/tmp-path-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE num-types
+TEST:SUITE num-types
    src/lib/num-types-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE span
+TEST:SUITE span
    src/lib/span-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE fs-mutate
+TEST:SUITE fs-mutate
    src/lib/fs-mutate-test.f
    src/lib/fs-rename-noreplace-test.f
-;SUITE
+TEST:;SUITE
 
 \ Host failures come from an LD_PRELOAD shim of glibc's fsync and renameat2.
 HB-TARGET-LINUX? [if]
-SUITE fs-atomic-faults
+TEST:SUITE fs-atomic-faults
    test/fs-atomic-faults.f
-;SUITE
+TEST:;SUITE
 [then]
 
 \ sd_notify(3) is Linux's: the cases bind unix datagram sockets, abstract ones too.
 HB-TARGET-LINUX? [if]
-SUITE systemd
+TEST:SUITE systemd
    src/lib/systemd-test.f
-;SUITE
+TEST:;SUITE
 [then]
 
 \ The attribute calls are bound on the Linux kernel only, arm64 and x86-64.
 HB-TARGET-LINUX? [if]
-SUITE xattr
+TEST:SUITE xattr
    src/lib/xattr-test.f
-;SUITE
+TEST:;SUITE
 [then]
 
 \ inotify is bound on the Linux kernel only.
 HB-TARGET-LINUX? [if]
-SUITE inotify
+TEST:SUITE inotify
    src/lib/inotify-test.f
-;SUITE
+TEST:;SUITE
 [then]
 
-SUITE exit-hook
+TEST:SUITE exit-hook
    test/exit-hook-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE fs-lock
+TEST:SUITE fs-lock
    src/lib/fs-lock-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE os-cpu
+TEST:SUITE os-cpu
    src/lib/os-cpu-test.f
-;SUITE
+TEST:;SUITE
 
 \ statx(2) is Linux's: birth time and subvolume of a file under TMPDIR.
 HB-TARGET-MACOS? 0= [if]
-SUITE fs-statx
+TEST:SUITE fs-statx
    src/lib/fs-statx-test.f
-;SUITE
+TEST:;SUITE
 [then]
 
-SUITE fs-list
+TEST:SUITE fs-list
    src/lib/fs-list-test.f
    src/lib/fs-cause-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE fs-anchored
+TEST:SUITE fs-anchored
    test/fs-anchored-consumer.f
-;SUITE
+TEST:;SUITE
 
 \ Raw serial streams over a pty pair: the loop supplies every wait.
-SUITE serial
+TEST:SUITE serial
    src/lib/serial-test.f
-;SUITE
+TEST:;SUITE
 
 \ IPv4 stream sockets: a listener task and a client in one process.
-SUITE tcp4
+TEST:SUITE tcp4
    src/lib/net/tcp4-test.f
-;SUITE
+TEST:;SUITE
 
 \ IPv4 datagrams: two loopback sockets in one process.
-SUITE udp4
+TEST:SUITE udp4
    src/lib/net/udp4-test.f
-;SUITE
+TEST:;SUITE
 
 \ Unix datagrams: sockets at paths and, on Linux, abstract names.
-SUITE udp
+TEST:SUITE udp
    src/lib/net/udp-test.f
-;SUITE
+TEST:;SUITE
 
 \ The RFC 6455 frame codec: bytes in and bytes out, no socket.
-SUITE websocket-frame
+TEST:SUITE websocket-frame
    src/lib/net/ws-frame-test.f
-;SUITE
+TEST:;SUITE
 
 \ SSE framing over arbitrary byte chunks, with no network dependency.
-SUITE event-stream
+TEST:SUITE event-stream
    src/lib/net/event-stream-test.f
-;SUITE
+TEST:;SUITE
 
 \ The process row is per task: a capturing task and a polling task at once.
-SUITE process-tasks
+TEST:SUITE process-tasks
    src/lib/process-task-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE process-argv
+TEST:SUITE process-argv
    src/lib/process-argv-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE process-cwd
+TEST:SUITE process-cwd
    src/lib/process-cwd-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE process-env
+TEST:SUITE process-env
    src/lib/process-env-test.f
-;SUITE
+TEST:;SUITE
 
 \ A spawn request: arguments, environment, directory and descriptor map, spawned once.
-SUITE spawn
+TEST:SUITE spawn
    src/lib/spawn-test.f
-;SUITE
+TEST:;SUITE
 
 \ A reaper kills what its pool spawned REAPED when the pool dies or stops it.
-SUITE process-reaper
+TEST:SUITE process-reaper
    src/lib/process-reaper-test.f
-;SUITE
+TEST:;SUITE
 
 \ A tree walk the kernel rejects throws rather than reading the rejection as
 \ nobody there, and one at a capture's early end leaves the capture its own
 \ answer and names the walk's code.
-SUITE process-tree
+TEST:SUITE process-tree
    src/lib/process-tree-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE hb-open-failure
+TEST:SUITE hb-open-failure
    tools/hb-open-failure-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE realpath
+TEST:SUITE realpath
    test/realpath-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE source-root
+TEST:SUITE source-root
    test/source-root-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE deep-cwd
+TEST:SUITE deep-cwd
    test/deep-cwd-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE include-rejection
+TEST:SUITE include-rejection
    test/include-rejection-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE whole-source-read
+TEST:SUITE whole-source-read
    test/whole-source-read-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE name-length
+TEST:SUITE name-length
    test/name-length-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE boot-relocation
+TEST:SUITE boot-relocation
    test/boot-relocation-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE install-e2e
+TEST:SUITE install-e2e
    test/install-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE source-discovery
+TEST:SUITE source-discovery
    tools/source-discovery-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE cast-negative
+TEST:SUITE cast-negative
    test/cast-negative-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE nominal-pointer
+TEST:SUITE nominal-pointer
    test/nominal-pointer.f
-;SUITE
+TEST:;SUITE
 
-SUITE pointer-view
+TEST:SUITE pointer-view
    test/pointer-view.f
-;SUITE
+TEST:;SUITE
 
-SUITE linear
+TEST:SUITE linear
    test/linear-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE deftype
+TEST:SUITE deftype
    test/deftype-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE split-str
+TEST:SUITE split-str
    test/split-str-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE closed-source
+TEST:SUITE closed-source
    test/closed-source-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE engine
+TEST:SUITE engine
    test/engine-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE program-diagnostics
+TEST:SUITE program-diagnostics
    test/program-diagnostics-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE diag-json-escape
+TEST:SUITE diag-json-escape
    test/diag-json-escape.f
-;SUITE
+TEST:;SUITE
 
-SUITE native-gate-debug
+TEST:SUITE native-gate-debug
    test/gate-debug.f
-;SUITE
+TEST:;SUITE
 
-SUITE profiler-index
+TEST:SUITE profiler-index
    test/prof-index.f
-;SUITE
+TEST:;SUITE
 
-SUITE profiler-rewind
+TEST:SUITE profiler-rewind
    test/prof-rewind.f
-;SUITE
+TEST:;SUITE
 
-SUITE perf-map-fixtures
+TEST:SUITE perf-map-fixtures
    tools/perf-map-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE native-gate-dictionary
+TEST:SUITE native-gate-dictionary
    test/gate-dictionary.f
-;SUITE
+TEST:;SUITE
 
-SUITE type-layout-lower-pending
+TEST:SUITE type-layout-lower-pending
    test/type-layout-lower-pending.f
-;SUITE
+TEST:;SUITE
 
-SUITE wide-typed-local-probe
+TEST:SUITE wide-typed-local-probe
    test/wide-typed-local-probe.f
-;SUITE
+TEST:;SUITE
 
-SUITE layout-buffer
+TEST:SUITE layout-buffer
    test/layout-buffer.f
-;SUITE
+TEST:;SUITE
 
-SUITE dynamic-buffer
+TEST:SUITE dynamic-buffer
    test/dynamic-buffer.f
-;SUITE
+TEST:;SUITE
 
-SUITE arena
+TEST:SUITE arena
    test/arena.f
-;SUITE
+TEST:;SUITE
 
-SUITE allocator
+TEST:SUITE allocator
    src/lib/allocator-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE heap
+TEST:SUITE heap
    test/heap.f
    src/lib/heap-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE dynamic-buffer-tasks
+TEST:SUITE dynamic-buffer-tasks
    test/dynamic-buffer-tasks.f
-;SUITE
+TEST:;SUITE
 
-SUITE rejection-tasks
+TEST:SUITE rejection-tasks
    test/rejection-tasks.f
-;SUITE
+TEST:;SUITE
 
-SUITE layout-defer
+TEST:SUITE layout-defer
    test/layout-defer.f
-;SUITE
+TEST:;SUITE
 
-SUITE protection-span
+TEST:SUITE protection-span
    test/protection-span.f
-;SUITE
+TEST:;SUITE
 
-SUITE code-window
+TEST:SUITE code-window
    test/code-window.f
-;SUITE
+TEST:;SUITE
 
-SUITE enum-decl
+TEST:SUITE enum-decl
    test/enum-decl-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE extent-product
+TEST:SUITE extent-product
    test/extent-product-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE gate-pool-orphan
+TEST:SUITE gate-pool-orphan
    test/gate-pool-orphan-test.f
-;SUITE
+TEST:;SUITE
 
 \ A signalled gate root leaves no process and no scratch behind.
-SUITE gate-signal
+TEST:SUITE gate-signal
    test/gate-signal-test.f
-;SUITE
+TEST:;SUITE
 
 \ A signalled check.f, and a check run past its deadline, leave no process and
 \ no scratch behind.
-SUITE check-signal
+TEST:SUITE check-signal
    test/check-signal-test.f
-;SUITE
+TEST:;SUITE
 
 \ A capture an overflow ends early leaves nothing its child started.
-SUITE capture-tree
+TEST:SUITE capture-tree
    test/capture-tree-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE require-cap
+TEST:SUITE require-cap
    test/require-cap-test.f
-;SUITE
+TEST:;SUITE
 
-SUITE rigid-region
+TEST:SUITE rigid-region
    test/rigid-region-suite.f
    test/rigid-region-inferred-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE structure-certify
+TEST:SUITE structure-certify
    test/structure-certify-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE structure-quotation-rollback
+TEST:SUITE structure-quotation-rollback
    test/structure-quotation-rollback.f
-;SUITE
+TEST:;SUITE
 
-SUITE structure-decl
+TEST:SUITE structure-decl
    test/structure-decl-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE structure-mutual
+TEST:SUITE structure-mutual
    test/structure-mutual.f
-;SUITE
+TEST:;SUITE
 
-SUITE structure-opaque
+TEST:SUITE structure-opaque
    test/structure-opaque-e2e.f
-;SUITE
+TEST:;SUITE
 
-SUITE type-ctor
+TEST:SUITE type-ctor
    test/type-ctor-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE type-decl
+TEST:SUITE type-decl
    test/type-decl-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-init-schema
+TEST:SUITE c2-init-schema
    test/c2-init-schema.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-init-accessors
+TEST:SUITE c2-init-accessors
    test/c2-init-accessor-rejections.f
-;SUITE
+TEST:;SUITE
 
-SUITE c2-diagnostics
+TEST:SUITE c2-diagnostics
    test/c2-diagnostics.f
-;SUITE
+TEST:;SUITE
 
-SUITE type-linear
+TEST:SUITE type-linear
    test/type-linear-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE type-match
+TEST:SUITE type-match
    test/type-match-suite.f
-;SUITE
+TEST:;SUITE
 
-SUITE repl-address-cell-rollback
+TEST:SUITE repl-address-cell-rollback
    test/repl-address-cell-rollback.f
-;SUITE
+TEST:;SUITE
 
 \ The open-definition PTY fixture starts and reaps one engine child per case.
-SUITE repl-open-definition
+TEST:SUITE repl-open-definition
    test/repl-open-definition.f
-;SUITE
+TEST:;SUITE
 
-SUITE dictionary-zero
+TEST:SUITE dictionary-zero
    test/dictionary-zero.f
-;SUITE
+TEST:;SUITE
 
-RUN
-
-;using
+TEST:RUN
 
 s" PASS: native tests" type cr

@@ -28,8 +28,6 @@ require src/os/image-bytes.f
 require src/os/import-names.f
 require src/lib/le.f
 require src/lib/string.f
-using A64ICODE
-using IMAGE-BYTES
 package MACHO
 $FEEDFACF constant MH-MAGIC64
 $0100000C constant CPU-ARM64
@@ -90,7 +88,7 @@ private
 
 : SYMBOL, ( str -- )
    {: s:str :}
-   s" _" M-BYTES  s M-BYTES  s SUFFIX$ M-BYTES ;
+   s" _" IMAGE-BYTES:M-BYTES  s IMAGE-BYTES:M-BYTES  s SUFFIX$ IMAGE-BYTES:M-BYTES ;
 
 \ From a symbol's offset in the symbol strings and its name's in the imports to
 \ the next one's.
@@ -130,7 +128,7 @@ private
    24 DATA-CONST-PAGES 1- 2 * + 3 + -4 and ;
 
 : ASM-CODELEN! ( -- )
-   ASM-LEN CODELEN ! ;
+   A64ICODE:ASM-LEN CODELEN ! ;
 
 public
 : ASM-CODE ( -- asm )
@@ -169,7 +167,7 @@ $1000     constant CS-PAGE
 
 \ The buffer fits the file BUILD-MACHO writes and its signature.
 : MACHO-MSIZE! ( -- )
-   MACHO-FILE-BYTES dup SB-SIZE + MSIZE! ;
+   MACHO-FILE-BYTES dup SB-SIZE + IMAGE-BYTES:MSIZE! ;
 
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)
 variable LE-BASE-SIZE
@@ -187,49 +185,49 @@ variable NCMDS
 
 : SEGX, ( str n n n n n n n n -- )
    {: s:str vma:n vmsz:n foff:n fsz:n prot:n nsects:n extra:n flags:n :}
-   LC-SEG64 IMG-M32   72 extra + IMG-M32
-   s M-NAME16
-   vma IMG-M64  vmsz IMG-M64  foff IMG-M64  fsz IMG-M64
-   prot IMG-M32  prot IMG-M32  nsects IMG-M32  flags IMG-M32 ;
+   LC-SEG64 IMAGE-BYTES:IMG-M32   72 extra + IMAGE-BYTES:IMG-M32
+   s IMAGE-BYTES:M-NAME16
+   vma IMAGE-BYTES:IMG-M64  vmsz IMAGE-BYTES:IMG-M64  foff IMAGE-BYTES:IMG-M64  fsz IMAGE-BYTES:IMG-M64
+   prot IMAGE-BYTES:IMG-M32  prot IMAGE-BYTES:IMG-M32  nsects IMAGE-BYTES:IMG-M32  flags IMAGE-BYTES:IMG-M32 ;
 
 : SEG, ( str n n n n n n n -- )
    0 SEGX, ;
 
 : SECT, ( str str n n n n n -- )
    {: ns:str ss:str addr:n size:n off:n al:n fl:n :}
-   ns M-NAME16   ss M-NAME16
-   addr IMG-M64  size IMG-M64  off IMG-M32  al IMG-M32
-   0 IMG-M32  0 IMG-M32  fl IMG-M32  0 IMG-M32 0 IMG-M32 0 IMG-M32 ;
+   ns IMAGE-BYTES:M-NAME16   ss IMAGE-BYTES:M-NAME16
+   addr IMAGE-BYTES:IMG-M64  size IMAGE-BYTES:IMG-M64  off IMAGE-BYTES:IMG-M32  al IMAGE-BYTES:IMG-M32
+   0 IMAGE-BYTES:IMG-M32  0 IMAGE-BYTES:IMG-M32  fl IMAGE-BYTES:IMG-M32  0 IMAGE-BYTES:IMG-M32 0 IMAGE-BYTES:IMG-M32 0 IMAGE-BYTES:IMG-M32 ;
 
 : DYLINKER, ( -- )
-   LC-DYLINKER IMG-M32  32 IMG-M32  12 IMG-M32
+   LC-DYLINKER IMAGE-BYTES:IMG-M32  32 IMAGE-BYTES:IMG-M32  12 IMAGE-BYTES:IMG-M32
    s" /usr/lib/dyld" {: s:str :}
-   s M-BYTES
-   32 12 - s STR:LEN - M-LEN M-ZEROS-LEN ;
+   s IMAGE-BYTES:M-BYTES
+   32 12 - s STR:LEN - IMAGE-BYTES:M-LEN IMAGE-BYTES:M-ZEROS-LEN ;
 
 : MAIN, ( n -- ) {: entryoff :}
-   LC-MAIN IMG-M32  24 IMG-M32  entryoff IMG-M64  0 IMG-M64 ;
+   LC-MAIN IMAGE-BYTES:IMG-M32  24 IMAGE-BYTES:IMG-M32  entryoff IMAGE-BYTES:IMG-M64  0 IMAGE-BYTES:IMG-M64 ;
 
 : DYLIB, ( -- )
-   LC-DYLIB IMG-M32  56 IMG-M32  24 IMG-M32
-   2 IMG-M32  $054C0000 IMG-M32  $00010000 IMG-M32     \ ts=2, cur=1356.0.0, compat=1.0.0
+   LC-DYLIB IMAGE-BYTES:IMG-M32  56 IMAGE-BYTES:IMG-M32  24 IMAGE-BYTES:IMG-M32
+   2 IMAGE-BYTES:IMG-M32  $054C0000 IMAGE-BYTES:IMG-M32  $00010000 IMAGE-BYTES:IMG-M32     \ ts=2, cur=1356.0.0, compat=1.0.0
    s" /usr/lib/libSystem.B.dylib" {: s:str :}
-   s M-BYTES
-   56 24 - s STR:LEN - M-LEN M-ZEROS-LEN ;
+   s IMAGE-BYTES:M-BYTES
+   56 24 - s STR:LEN - IMAGE-BYTES:M-LEN IMAGE-BYTES:M-ZEROS-LEN ;
 
 \ dyld searches these runpaths for basename dlopen calls. System libraries keep
 \ their normal dyld-cache lookup; Homebrew's arm64 prefix is outside that path.
 : RPATH, ( str -- ) {: path:str :}
    path STR:LEN 13 + 7 + -8 and {: size:n :}
-   LC-RPATH IMG-M32 size IMG-M32 12 IMG-M32
-   path M-BYTES
-   size 12 - path STR:LEN - M-ZEROS ;
+   LC-RPATH IMAGE-BYTES:IMG-M32 size IMAGE-BYTES:IMG-M32 12 IMAGE-BYTES:IMG-M32
+   path IMAGE-BYTES:M-BYTES
+   size 12 - path STR:LEN - IMAGE-BYTES:M-ZEROS ;
 
 : CHAINED-FIXUPS, ( n -- ) {: linkoff:n :}
-   LC-DYLD-CHAINED-FIXUPS IMG-M32
-   16 IMG-M32
-   linkoff IMG-M32
-   MACHO-FIXUPS-BYTES IMG-M32 ;
+   LC-DYLD-CHAINED-FIXUPS IMAGE-BYTES:IMG-M32
+   16 IMAGE-BYTES:IMG-M32
+   linkoff IMAGE-BYTES:IMG-M32
+   MACHO-FIXUPS-BYTES IMAGE-BYTES:IMG-M32 ;
 
 : DATA-CONST-SEG, ( n -- ) {: textsz:n :}
    s" __DATA_CONST" textsz VA+ DATA-CONST-BYTES textsz DATA-CONST-BYTES 3 1 80 SG-READ-ONLY SEGX,
@@ -237,7 +235,7 @@ variable NCMDS
 
 : LINKEDIT-SEG, ( n -- ) {: textsz:n :}
    textsz LINKOFF {: linkoff:n :}
-   M-HERE LE-OFF !
+   IMAGE-BYTES:M-HERE LE-OFF !
    s" __LINKEDIT" linkoff VA+ MACHO-PAGE linkoff MACHO-FIXUPS-BYTES 1 0 0 SEG, ;
 
 \ Whether row n's chain goes on to the next row, which it does only within
@@ -250,8 +248,8 @@ variable NCMDS
 \ in its page, a next of two 4-byte strides.
 : MACHO-GOT, ( -- )
    IMPORT-NAMES:COUNT 0 ?do
-      i IMG-M32
-      $80000000 i NEXT-IN-PAGE? if $00100000 or then IMG-M32
+      i IMAGE-BYTES:IMG-M32
+      $80000000 i NEXT-IN-PAGE? if $00100000 or then IMAGE-BYTES:IMG-M32
    loop ;
 
 \ Page n's chain start. The GOT opens the segment and its cells tile a page, so
@@ -261,41 +259,41 @@ variable NCMDS
 \ Each import names libSystem (ordinal 1) and its name's offset.
 : MACHO-IMPORTS, ( -- )
    1 0 begin dup IMPORT-NAMES:END? 0= while
-      over 9 lshift 1 or IMG-M32  STEP
+      over 9 lshift 1 or IMAGE-BYTES:IMG-M32  STEP
    repeat 2drop ;
 
 : MACHO-SYMBOLS, ( -- )
-   0 IMG-M8
+   0 IMAGE-BYTES:IMG-M8
    0 begin dup IMPORT-NAMES:END? 0= while
-      dup IMPORT-NAMES:NAME-AT SYMBOL, 0 IMG-M8  IMPORT-NAMES:NEXT-AT
+      dup IMPORT-NAMES:NAME-AT SYMBOL, 0 IMAGE-BYTES:IMG-M8  IMPORT-NAMES:NEXT-AT
    repeat drop
-   MACHO-FIXUPS-SIZE MACHO-FIXUPS-USED - M-ZEROS ;
+   MACHO-FIXUPS-SIZE MACHO-FIXUPS-USED - IMAGE-BYTES:M-ZEROS ;
 
 : MACHO-FIXUPS, ( n -- ) {: segoff:n :}
-   0 IMG-M32                 \ fixups_version
-   $20 IMG-M32               \ starts_offset
-   $38 MACHO-STARTS-BYTES + IMG-M32  \ imports_offset
-   $38 MACHO-STARTS-BYTES + IMPORT-NAMES:COUNT 4 * + IMG-M32  \ symbols_offset
-   IMPORT-NAMES:COUNT IMG-M32  \ imports_count
-   1 IMG-M32                 \ DYLD_CHAINED_IMPORT
-   0 IMG-M32                 \ uncompressed symbol strings
-   4 M-ZEROS
-   4 IMG-M32  0 IMG-M32  0 IMG-M32  $18 IMG-M32  0 IMG-M32
-   4 M-ZEROS
-   MACHO-STARTS-BYTES IMG-M32
-   MACHO-PAGE IMG-M16
-   DYLD-CHAINED-PTR-64-OFFSET IMG-M16
-   segoff IMG-M64
-   0 IMG-M32
-   DATA-CONST-PAGES IMG-M16
-   DATA-CONST-PAGES 0 ?do i PAGE-START IMG-M16 loop
-   DATA-CONST-PAGES 1 and 0= if 0 IMG-M16 then
+   0 IMAGE-BYTES:IMG-M32                 \ fixups_version
+   $20 IMAGE-BYTES:IMG-M32               \ starts_offset
+   $38 MACHO-STARTS-BYTES + IMAGE-BYTES:IMG-M32  \ imports_offset
+   $38 MACHO-STARTS-BYTES + IMPORT-NAMES:COUNT 4 * + IMAGE-BYTES:IMG-M32  \ symbols_offset
+   IMPORT-NAMES:COUNT IMAGE-BYTES:IMG-M32  \ imports_count
+   1 IMAGE-BYTES:IMG-M32                 \ DYLD_CHAINED_IMPORT
+   0 IMAGE-BYTES:IMG-M32                 \ uncompressed symbol strings
+   4 IMAGE-BYTES:M-ZEROS
+   4 IMAGE-BYTES:IMG-M32  0 IMAGE-BYTES:IMG-M32  0 IMAGE-BYTES:IMG-M32  $18 IMAGE-BYTES:IMG-M32  0 IMAGE-BYTES:IMG-M32
+   4 IMAGE-BYTES:M-ZEROS
+   MACHO-STARTS-BYTES IMAGE-BYTES:IMG-M32
+   MACHO-PAGE IMAGE-BYTES:IMG-M16
+   DYLD-CHAINED-PTR-64-OFFSET IMAGE-BYTES:IMG-M16
+   segoff IMAGE-BYTES:IMG-M64
+   0 IMAGE-BYTES:IMG-M32
+   DATA-CONST-PAGES IMAGE-BYTES:IMG-M16
+   DATA-CONST-PAGES 0 ?do i PAGE-START IMAGE-BYTES:IMG-M16 loop
+   DATA-CONST-PAGES 1 and 0= if 0 IMAGE-BYTES:IMG-M16 then
    MACHO-IMPORTS,
    MACHO-SYMBOLS, ;
 
 : MACHO-EXTRA, ( -- )
    MACHO-GOT,
-   TEXTSZ DATA-CONST-BYTES + M-OFF M-PAD-OFF
+   TEXTSZ DATA-CONST-BYTES + IMAGE-BYTES:M-OFF IMAGE-BYTES:M-PAD-OFF
    TEXTSZ MACHO-FIXUPS,
    MACHO-FIXUPS-BYTES LE-BASE-SIZE ! ;
 
@@ -313,23 +311,23 @@ variable NCMDS
    s" /opt/homebrew/opt/libpq/lib" RPATH, LC+ ;
 
 : MH-HDR, ( -- )
-   MH-MAGIC64 IMG-M32  CPU-ARM64 IMG-M32  0 IMG-M32  MH-EXECUTE IMG-M32
-   0 IMG-M32  0 IMG-M32  MH-FLAGS IMG-M32  0 IMG-M32 ;
+   MH-MAGIC64 IMAGE-BYTES:IMG-M32  CPU-ARM64 IMAGE-BYTES:IMG-M32  0 IMAGE-BYTES:IMG-M32  MH-EXECUTE IMAGE-BYTES:IMG-M32
+   0 IMAGE-BYTES:IMG-M32  0 IMAGE-BYTES:IMG-M32  MH-FLAGS IMAGE-BYTES:IMG-M32  0 IMAGE-BYTES:IMG-M32 ;
 
 : PATCH-HDR ( -- )
-   NCMDS @ 16 M-OFF M-LE32!
-   M-HERE MH-HDR-SZ - 20 M-OFF M-LE32! ;
+   NCMDS @ 16 IMAGE-BYTES:M-OFF IMAGE-BYTES:M-LE32!
+   IMAGE-BYTES:M-HERE MH-HDR-SZ - 20 IMAGE-BYTES:M-OFF IMAGE-BYTES:M-LE32! ;
 
 : BUILD-MACHO ( -- )                        \ assumes icode's CODE holds the program
-   ASM-CODELEN!  MACHO-MSIZE!  M-RESET  0 NCMDS !
+   ASM-CODELEN!  MACHO-MSIZE!  IMAGE-BYTES:M-RESET  0 NCMDS !
    MH-HDR,
    TEXTSZ CODELEN @ MACHO-CMDS,
    PATCH-HDR
-   CODE-OFF M-OFF M-PAD-OFF
-   CODE CODELEN @ >str M-BYTES
-   TEXTSZ M-OFF M-PAD-OFF
+   CODE-OFF IMAGE-BYTES:M-OFF IMAGE-BYTES:M-PAD-OFF
+   A64ICODE:CODE CODELEN @ >str IMAGE-BYTES:M-BYTES
+   TEXTSZ IMAGE-BYTES:M-OFF IMAGE-BYTES:M-PAD-OFF
    MACHO-EXTRA,
-   M-HERE MLEN! ;
+   IMAGE-BYTES:M-HERE IMAGE-BYTES:MLEN! ;
 
 public
 \ The program in icode's CODE as a Mach-O file whose code maps at the address,
@@ -467,5 +465,3 @@ public
    CHECK-TEXT CHECK-DATA CHECK-LINK ;
 
 ;package
-;using
-;using

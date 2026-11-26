@@ -80,26 +80,25 @@ the build stack. `.` pops and prints one value, for a specific intermediate.
 A probe in `src/habu/linker.f` shows only in a rebuilt engine:
 `tools/hb-build.f` runs the linker inside `bin/hb`, not the source file.
 
-## The debugger: watched cells, `step`, breakpoints
+## The debugger: watched cells, `DEBUG:STEP`, breakpoints
 
 The engine bakes the debugger as package DEBUG (`src/habu/debug.f` lists its
-commands). `using DEBUG`, once in a session or at the head of a program, opens
-its commands for bare use; a one-off call qualifies the name instead, as in
-`' WORD DEBUG:BP+`. Every example below assumes `using DEBUG` ran.
+commands). Call each command by prefix, as in `' WORD DEBUG:BP+`.
 
-**Watched cells.** `BPW+` adds a cell address, `BPW-` removes it, `BPW-CLEAR`
-clears all, `BPW.` lists `address value` pairs. Both `step` and breakpoints
-print the watch table.
+**Watched cells.** `DEBUG:BPW+` adds a cell address, `DEBUG:BPW-` removes it,
+`DEBUG:BPW-CLEAR` clears all, `DEBUG:BPW.` lists `address value` pairs. Both
+`DEBUG:STEP` and breakpoints print the watch table.
 
-**`step`** (in the REPL, `bin/hb` on a tty): `step 5 dup * 3 +` runs the rest
-of the line one token at a time, echoing each token and printing the data stack
-and watch table after it executes.
+**`DEBUG:STEP`** (in the REPL, `bin/hb` on a tty): `DEBUG:STEP 5 dup * 3 +`
+runs the rest of the line one token at a time, echoing each token and printing
+the data stack and watch table after it executes.
 
-**Breakpoints on compiled words.** `' WORD BP+` is one-shot, `' WORD BP*`
-fires on every call, and `N ' WORD BPN` fires on every call after the first N
-(the supported conditional breakpoint). `BP-` removes, `BP.` lists.
+**Breakpoints on compiled words.** `' WORD DEBUG:BP+` is one-shot,
+`' WORD DEBUG:BP*` fires on every call, and `N ' WORD DEBUG:BPN` fires on every
+call after the first N (the supported conditional breakpoint). `DEBUG:BP-`
+removes, `DEBUG:BP.` lists.
 A copy word's mention compiles its steps into the caller, so a breakpoint on one
-fires only for a call through its xt or from top level; `BP+` says so.
+fires only for a call through its xt or from top level; `DEBUG:BP+` says so.
 A persistent breakpoint runs the entry instruction out of line; on an entry
 that cannot run there it is removed by its first call. A hit prints `habu-bp:`
 with the pc and stack top, `habu-bp-lr:` with the address the word will return

@@ -1010,8 +1010,6 @@ ROOT-MOVER
 
 ;package
 
-using SOURCE-ROOT
-
 package LOADER
 
 : INCLUDE-DIE ( str -- )
@@ -1862,7 +1860,7 @@ public
 \ one never does. The path comes back in storage the store did not reuse, for
 \ the caller's load.
 : STORE ( str -- str )
-   REQUIRE-BOOT-OPEN? if BOOT-ROW else dup then
+   REQUIRE-BOOT-OPEN? if SOURCE-ROOT:BOOT-ROW else dup then
    APPEND ;
 
 ;package
@@ -2043,7 +2041,7 @@ private
 public
 
 : STORE-ROOT ( n -- ) {: ix:n :}
-   RESOLVED-ROOT$ COPY-SHARED {: off:n len:n :}
+   SOURCE-ROOT:RESOLVED-ROOT$ COPY-SHARED {: off:n len:n :}
    off ix 6 EVENT-FIELD!
    len ix 7 EVENT-FIELD!
    SOURCE-ROOT:CURRENT$ COPY-SHARED {: coff:n clen:n :}
@@ -2932,19 +2930,19 @@ global
 : included ( str -- )
    {: s:str :}
    s" included" LOAD-BEGINS
-   s" included" s INCLUDED-AS ;
+   s" included" s SOURCE-ROOT:INCLUDED-AS ;
 
 : required ( str -- )
    {: s:str :}
    s" required" LOAD-BEGINS
-   s" required" s REQUIRED-AS ;
+   s" required" s SOURCE-ROOT:REQUIRED-AS ;
 
 \ The `--load` argv row.
-: script-required ( str -- ) ENTRY-REQUIRED ;
+: script-required ( str -- ) SOURCE-ROOT:ENTRY-REQUIRED ;
 
 : provided ( str -- )
    {: s:str :}
-   s" provided" s [: RESOLVE-AT ;] RESOLVE {: path:str known:bool :}
+   s" provided" s [: SOURCE-ROOT:RESOLVE-AT ;] RESOLVE {: path:str known:bool :}
    s" provided" path SOURCE-ROOT:BUILD-REJECT
    s path SOURCE-EVENT:KIND-PROVIDED known REQUIRE-STATE EVENT-RECORD
    known if exit then
@@ -2971,7 +2969,7 @@ global
    s" include" dup STR:DATA swap STR:LEN SRCLOC:SPELLED drop >str {: w:str :}
    parse-name {: s:str :}
    s STR:LEN INCLUDE-CHECK-PATH
-   w s INCLUDED-AS ;
+   w s SOURCE-ROOT:INCLUDED-AS ;
 immediate
 INTRINSIC-INCLUDE INTRINSIC
 
@@ -2983,7 +2981,7 @@ create SOURCE-ORIGINAL-INCLUDE-ENTRY 0 ,
    s" require" dup STR:DATA swap STR:LEN SRCLOC:SPELLED drop >str {: w:str :}
    parse-name {: s:str :}
    s STR:LEN INCLUDE-CHECK-PATH
-   w s REQUIRED-AS ;
+   w s SOURCE-ROOT:REQUIRED-AS ;
 immediate
 INTRINSIC-REQUIRE INTRINSIC
 
@@ -3111,7 +3109,7 @@ public
    INCLUDE-FALSE REQUIRE-BOOT-V ! ;
 
 : ENGINE-PROVIDES? ( str -- bool )
-   ENGINE-KNOWN? ;
+   SOURCE-ROOT:ENGINE-KNOWN? ;
 
 ;package
 
@@ -3133,5 +3131,3 @@ global
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 ;package
-
-;using

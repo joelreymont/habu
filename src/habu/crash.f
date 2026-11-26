@@ -34,7 +34,6 @@ HB-TARGET-LINUX-ARM64? [if]
 HB-TARGET-MACOS? [if]
    require src/os/macos/sys.f
 [then]
-using SYSCALL
 package CRASH
 public
 variable LCRASHH   variable LHEX   variable LDIE-LINE   variable LHDR   variable LSIGH
@@ -45,9 +44,6 @@ create CRH 80 allot  variable CRHL
 variable CR-L1  variable CR-L2
 variable CR-OFF  variable CR-HANDLER  variable CR-FLAGS  variable CR-RERAISE
 ;package
-using A64ASM
-using A64ICODE
-using FAULT-RECORD
 
 package CRASH
 : CRH-BYTE+ ( ^u8 n -- ^u8 ) + ;
@@ -84,9 +80,9 @@ private
 : SIGSTK-DISABLE ( -- n )  HB-TARGET-LINUX? IF 2 ELSE 4 THEN ;      \ SS_DISABLE
 \ `sub/add xd, xn, #n` for n in whole 4 KiB units: the shifted-immediate form,
 \ which also takes sp. A remainder is rejected (asm.f SCALE/).
-: SUBI-4K, ( n n n -- )  $1000 SCALE/ ENC-SUBI-LSL12 EMITW ;
+: SUBI-4K, ( n n n -- )  $1000 A64ASM:SCALE/ A64ASM:ENC-SUBI-LSL12 A64ICODE:EMITW ;
 public
-: ADDI-4K, ( n n n -- )  $1000 SCALE/ ENC-ADDI-LSL12 EMITW ;
+: ADDI-4K, ( n n n -- )  $1000 A64ASM:SCALE/ A64ASM:ENC-ADDI-LSL12 A64ICODE:EMITW ;
 private
 $8 constant CRASH-LINUX-SIGSET-SIZE
 public
@@ -117,37 +113,37 @@ private
 \ x9's 16 hex digits, most significant first, at [x14, x14 + 16). Clobbers
 \ x9, x11..x13 and x15.
 : C-HEX-DIGITS ( -- )
-   LBL LBL LBL {: next:label done:label digit:label :}
-   11 $F MOVZ,
-   next LBL,
-      12 9 $F ANDI,
-      13 12 $30 ADDI,
-      12 $A CMPI,  C-LT digit BCOND,  13 13 $27 ADDI,
-      digit LBL,
-      15 14 11 ADD,  13 15 0 STRB,
-      9 9 4 LSRI,
-      11 done CBZ,
-      11 11 1 SUBI,  next B,
-   done LBL, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: next:label done:label digit:label :}
+   11 $F A64ICODE:MOVZ,
+   next A64ICODE:LBL,
+      12 9 $F A64ICODE:ANDI,
+      13 12 $30 A64ICODE:ADDI,
+      12 $A A64ICODE:CMPI,  A64ASM:C-LT digit A64ICODE:BCOND,  13 13 $27 A64ICODE:ADDI,
+      digit A64ICODE:LBL,
+      15 14 11 A64ICODE:ADD,  13 15 0 A64ICODE:STRB,
+      9 9 4 A64ICODE:LSRI,
+      11 done A64ICODE:CBZ,
+      11 11 1 A64ICODE:SUBI,  next A64ICODE:B,
+   done A64ICODE:LBL, ;
 
 public
 \ rd = the text content size of the image whose code offset 0 is at rd: its
 \ header's text-size field less IMAGE-TEXT-CONTENT-ADJ. Clobbers tmp.
 : TEXT-SIZE, ( n n -- )
    {: rd:n tmp:n :}
-   tmp CODE-OFF LIT64,  rd rd tmp SUB,
-   rd rd IMAGE-TEXT-SIZE-OFF LDR,  tmp IMAGE-TEXT-CONTENT-ADJ LIT64,  rd rd tmp SUB, ;
+   tmp CODE-OFF A64ICODE:LIT64,  rd rd tmp A64ICODE:SUB,
+   rd rd IMAGE-TEXT-SIZE-OFF A64ICODE:LDR,  tmp IMAGE-TEXT-CONTENT-ADJ A64ICODE:LIT64,  rd rd tmp A64ICODE:SUB, ;
 
 \ LHEX ( x9=val ): write 16 hex digits + newline to fd 2. Leaf; clobbers
 \ x9..x15 and x0-x2/x16 (write syscall).
 : EMIT-HEX ( -- )
-   LHEX LABEL@ LBL,
-   SP SP $20 SUBI,
-   14 SP 0 ADDI,
+   LHEX A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:SP A64ICODE:SP $20 A64ICODE:SUBI,
+   14 A64ICODE:SP 0 A64ICODE:ADDI,
    C-HEX-DIGITS
-   12 $A MOVZ,  12 14 $10 STRB,
-   0 2 MOVZ,  1 14 0 ADDI,  2 $11 MOVZ,  NR-WRITE SYS,
-   SP SP $20 ADDI,  RET, ;
+   12 $A A64ICODE:MOVZ,  12 14 $10 A64ICODE:STRB,
+   0 2 A64ICODE:MOVZ,  1 14 0 A64ICODE:ADDI,  2 $11 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   A64ICODE:SP A64ICODE:SP $20 A64ICODE:ADDI,  A64ICODE:RET, ;
 
 private
 256 constant DIE-LINE-FRAME
@@ -157,34 +153,34 @@ DIE-LINE-FRAME 42 - constant DIE-LINE-ROOM
 
 \ [x14] = the byte n, x14 one past it. Clobbers x13.
 : DIE-LINE-BYTE, ( n -- )
-   13 swap MOVZ,  13 14 0 STRB,  14 14 1 ADDI, ;
+   13 swap A64ICODE:MOVZ,  13 14 0 A64ICODE:STRB,  14 14 1 A64ICODE:ADDI, ;
 
 \ [x14, x14 + 18) = `0x` and the register's 16 hex digits, x14 past them.
 : DIE-LINE-HEX, ( n -- )
    $30 DIE-LINE-BYTE,  $78 DIE-LINE-BYTE,
-   9 swap 0 ADDI,  C-HEX-DIGITS  14 14 16 ADDI, ;
+   9 swap 0 A64ICODE:ADDI,  C-HEX-DIGITS  14 14 16 A64ICODE:ADDI, ;
 
 public
 \ Entered by B, so x30 is the lr it prints. Writes `<text>[ <x3>] lr <x30>`,
 \ each `0x` and 16 hex digits, and a newline to fd 2 in one write, then exits x0.
 \ x1/x2 = the text, 1 to DIE-LINE-ROOM bytes; x3 prints when x4 is nonzero.
 : EMIT-DIE-LINE ( -- )
-   LBL LBL {: copy:label bare:label :}
-   LDIE-LINE LABEL@ LBL,
-   5 0 0 ADDI,
-   SP SP DIE-LINE-FRAME SUBI,
-   14 SP 0 ADDI,
-   copy LBL,
-      13 1 0 LDRB,  13 14 0 STRB,
-      1 1 1 ADDI,  14 14 1 ADDI,  2 2 1 SUBI,  2 copy CBNZ,
-   4 bare CBZ,
+   A64ICODE:LBL A64ICODE:LBL {: copy:label bare:label :}
+   LDIE-LINE A64ICODE:LABEL@ A64ICODE:LBL,
+   5 0 0 A64ICODE:ADDI,
+   A64ICODE:SP A64ICODE:SP DIE-LINE-FRAME A64ICODE:SUBI,
+   14 A64ICODE:SP 0 A64ICODE:ADDI,
+   copy A64ICODE:LBL,
+      13 1 0 A64ICODE:LDRB,  13 14 0 A64ICODE:STRB,
+      1 1 1 A64ICODE:ADDI,  14 14 1 A64ICODE:ADDI,  2 2 1 A64ICODE:SUBI,  2 copy A64ICODE:CBNZ,
+   4 bare A64ICODE:CBZ,
    $20 DIE-LINE-BYTE,  3 DIE-LINE-HEX,
-   bare LBL,
+   bare A64ICODE:LBL,
    $20 DIE-LINE-BYTE,  $6C DIE-LINE-BYTE,  $72 DIE-LINE-BYTE,  $20 DIE-LINE-BYTE,
    30 DIE-LINE-HEX,
    $A DIE-LINE-BYTE,
-   0 2 MOVZ,  1 SP 0 ADDI,  2 14 1 SUB,  NR-WRITE SYS,
-   0 5 0 ADDI,  NR-EXIT-GROUP SYS, ;
+   0 2 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 14 1 A64ICODE:SUB,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   0 5 0 A64ICODE:ADDI,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS, ;
 
 private
 : BAD-DIE-TEXT ( str -- )
@@ -200,11 +196,11 @@ private
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : DIE-LINE-SITE, ( str n n -- )
-   LBL {: a:^ u:n status:n flag:n msg:label :}
+   A64ICODE:LBL {: a:^ u:n status:n flag:n msg:label :}
    u 0= u DIE-LINE-ROOM > or IF a u BAD-DIE-TEXT THEN
-   0 status MOVZ,  1 msg ADR,  2 u MOVZ,  4 flag MOVZ,
-   LDIE-LINE LABEL@ B,
-   msg LBL,  a u BYTES, ;
+   0 status A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 u A64ICODE:MOVZ,  4 flag A64ICODE:MOVZ,
+   LDIE-LINE A64ICODE:LABEL@ A64ICODE:B,
+   msg A64ICODE:LBL,  a u A64ICODE:BYTES, ;
 
 public
 \ A branch to LDIE-LINE with the text and the exit status, the text laid
@@ -215,7 +211,7 @@ public
 \ first, so it may be any of x0..x4.
 : DIE-LINE-VALUE, ( str n n -- )
    {: a:^ u:n status:n reg:n :}
-   reg 3 <> IF 3 reg 0 ADDI, THEN
+   reg 3 <> IF 3 reg 0 A64ICODE:ADDI, THEN
    a u status 1 DIE-LINE-SITE, ;
 
 \ ---- fault records ----
@@ -229,115 +225,115 @@ private
 
 \ [x14] = the register's low byte, x14 one past it.
 : PUT-BYTE, ( n -- ) {: r:n :}
-   r 14 0 STRB,  14 14 1 ADDI, ;
+   r 14 0 A64ICODE:STRB,  14 14 1 A64ICODE:ADDI, ;
 \ [x14] = the byte n, through x12.
-: PUT-CHAR, ( n -- )  12 swap MOVZ,  12 PUT-BYTE, ;
+: PUT-CHAR, ( n -- )  12 swap A64ICODE:MOVZ,  12 PUT-BYTE, ;
 
 \ Writes [sp, x14) to fd 2 and empties the frame. Clobbers x0..x2.
 : FLUSH, ( -- )
-   0 2 MOVZ,  1 SP 0 ADDI,  2 14 1 SUB,  NR-WRITE SYS,
-   14 SP 0 ADDI, ;
+   0 2 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 14 1 A64ICODE:SUB,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   14 A64ICODE:SP 0 A64ICODE:ADDI, ;
 
 \ FLUSH, when fewer than n bytes of the frame are free. Clobbers x12, x13.
 : FLUSH-BELOW, ( n -- ) {: room:n :}
-   LBL {: fits:label :}
-   13 SP 0 ADDI,  12 14 13 SUB,
-   12 FAULT-FRAME room - CMPI,  C-LS fits BCOND,
+   A64ICODE:LBL {: fits:label :}
+   13 A64ICODE:SP 0 A64ICODE:ADDI,  12 14 13 A64ICODE:SUB,
+   12 FAULT-RECORD:FAULT-FRAME room - A64ICODE:CMPI,  A64ASM:C-LS fits A64ICODE:BCOND,
    FLUSH,
-   fits LBL, ;
+   fits A64ICODE:LBL, ;
 
 \ Writes the prose or the JSON text as x17 says, then empties both.
 : PIECE, ( -- )
-   LBL LBL LBL LBL {: prose:label json:label code:label put:label :}
-   FAULT-PROSE$ {: pa:^ pu:n :}
-   FAULT-JSON$ {: ja:^ ju:n :}
-   code B,
-   prose LBL,  pa pu BYTES,
-   json LBL,  ja ju BYTES,
-   code LBL,
-   10 prose ADR,  11 pu MOVZ,  17 put CBZ,
-   10 json ADR,  11 ju MOVZ,
-   put LBL,  9 0 MOVZ,  LFAULT-PUT LABEL@ BL,
-   FAULT-EMPTY ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: prose:label json:label code:label put:label :}
+   FAULT-RECORD:FAULT-PROSE$ {: pa:^ pu:n :}
+   FAULT-RECORD:FAULT-JSON$ {: ja:^ ju:n :}
+   code A64ICODE:B,
+   prose A64ICODE:LBL,  pa pu A64ICODE:BYTES,
+   json A64ICODE:LBL,  ja ju A64ICODE:BYTES,
+   code A64ICODE:LBL,
+   10 prose A64ICODE:ADR,  11 pu A64ICODE:MOVZ,  17 put A64ICODE:CBZ,
+   10 json A64ICODE:ADR,  11 ju A64ICODE:MOVZ,
+   put A64ICODE:LBL,  9 0 A64ICODE:MOVZ,  LFAULT-PUT A64ICODE:LABEL@ A64ICODE:BL,
+   FAULT-RECORD:FAULT-EMPTY ;
 
 \ The register's 16 hex digits at the cursor; a FLUSH-BELOW, keeps it, so it
 \ is none of x0..x2, x8, x12, x13 and x16.
 : HEX, ( n -- ) {: r:n :}
-   16 FLUSH-BELOW,  9 r 0 ADDI,  C-HEX-DIGITS  14 14 16 ADDI, ;
+   16 FLUSH-BELOW,  9 r 0 A64ICODE:ADDI,  C-HEX-DIGITS  14 14 16 A64ICODE:ADDI, ;
 
 \ LFAULT-PUT ( x10 = text, x11 = its length, x9 = nonzero to escape it as a
 \ JSON string's content ): the text at the cursor. Leaf; clobbers x0..x2,
 \ x10..x13 and x15.
 : EMIT-FAULT-PUT ( -- )
-   LBL LBL LBL LBL LBL {: next:label plain:label pair:label low:label done:label :}
-   LFAULT-PUT LABEL@ LBL,
-   next LBL,
-      11 done CBZ,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: next:label plain:label pair:label low:label done:label :}
+   LFAULT-PUT A64ICODE:LABEL@ A64ICODE:LBL,
+   next A64ICODE:LBL,
+      11 done A64ICODE:CBZ,
       6 FLUSH-BELOW,
-      13 10 0 LDRB,  10 10 1 ADDI,  11 11 1 SUBI,
-      9 plain CBZ,
-      15 13 0 ADDI,                             \ x15 = the byte after the backslash
-      13 $22 CMPI,  C-EQ pair BCOND,
-      13 $5C CMPI,  C-EQ pair BCOND,
-      15 $6E MOVZ,  13 $0A CMPI,  C-EQ pair BCOND,
-      15 $72 MOVZ,  13 $0D CMPI,  C-EQ pair BCOND,
-      15 $74 MOVZ,  13 $09 CMPI,  C-EQ pair BCOND,
-      13 $20 CMPI,  C-CS plain BCOND,
+      13 10 0 A64ICODE:LDRB,  10 10 1 A64ICODE:ADDI,  11 11 1 A64ICODE:SUBI,
+      9 plain A64ICODE:CBZ,
+      15 13 0 A64ICODE:ADDI,                             \ x15 = the byte after the backslash
+      13 $22 A64ICODE:CMPI,  A64ASM:C-EQ pair A64ICODE:BCOND,
+      13 $5C A64ICODE:CMPI,  A64ASM:C-EQ pair A64ICODE:BCOND,
+      15 $6E A64ICODE:MOVZ,  13 $0A A64ICODE:CMPI,  A64ASM:C-EQ pair A64ICODE:BCOND,
+      15 $72 A64ICODE:MOVZ,  13 $0D A64ICODE:CMPI,  A64ASM:C-EQ pair A64ICODE:BCOND,
+      15 $74 A64ICODE:MOVZ,  13 $09 A64ICODE:CMPI,  A64ASM:C-EQ pair A64ICODE:BCOND,
+      13 $20 A64ICODE:CMPI,  A64ASM:C-CS plain A64ICODE:BCOND,
       $5C PUT-CHAR,  $75 PUT-CHAR,  $30 PUT-CHAR,  $30 PUT-CHAR,
-      12 13 4 LSRI,  12 12 $30 ADDI,  12 PUT-BYTE,
-      12 13 $F ANDI,  15 12 $30 ADDI,
-      12 $A CMPI,  C-CC low BCOND,  15 12 $37 ADDI,
-      low LBL,  15 PUT-BYTE,  next B,
-   pair LBL,  $5C PUT-CHAR,  15 PUT-BYTE,  next B,
-   plain LBL,  13 PUT-BYTE,  next B,
-   done LBL,  RET, ;
+      12 13 4 A64ICODE:LSRI,  12 12 $30 A64ICODE:ADDI,  12 PUT-BYTE,
+      12 13 $F A64ICODE:ANDI,  15 12 $30 A64ICODE:ADDI,
+      12 $A A64ICODE:CMPI,  A64ASM:C-CC low A64ICODE:BCOND,  15 12 $37 A64ICODE:ADDI,
+      low A64ICODE:LBL,  15 PUT-BYTE,  next A64ICODE:B,
+   pair A64ICODE:LBL,  $5C PUT-CHAR,  15 PUT-BYTE,  next A64ICODE:B,
+   plain A64ICODE:LBL,  13 PUT-BYTE,  next A64ICODE:B,
+   done A64ICODE:LBL,  A64ICODE:RET, ;
 
 \ LFAULT-OWNER ( x3 = an address, x4 = the dictionary's base or 0, x6 = its
 \ record count -- x7 = the name of the word whose code holds the address, 0
 \ for none, x6 = its length ): a scan of the records, as many as DICT-CAP.
 \ Package rows hold wordlist ids where a word's span is. Leaf; clobbers x10..x12.
 : EMIT-FAULT-OWNER ( -- )
-   LBL LBL LBL LBL LBL {: scan:label code:label next:label hit:label done:label :}
-   LFAULT-OWNER LABEL@ LBL,
-   7 0 MOVZ,
-   4 done CBZ,
-   10 DICT-CAP LIT64,  6 10 CMP,  6 6 10 C-CC CSEL,
-   10 4 0 ADDI,
-   scan LBL,
-      6 done CBZ,
-      11 10 DICT-WORDLIST-SLOT 8 * LDR,
-      11 0 CMPI,  C-GE code BCOND,
-      12 WL:RETIRED LIT64,  11 12 CMP,  C-NE next BCOND,
-   code LBL,
-      11 10 0 LDR,  3 11 CMP,  C-CC next BCOND,
-      12 10 8 LDR,                              \ the code's byte count
-      11 11 12 ADD,  3 11 CMP,  C-CC hit BCOND,
-   next LBL,
-      10 10 DREC ADDI,  6 6 1 SUBI,  scan B,
-   hit LBL,
-      12 10 16 LDR,  6 12 DNAME-LEN-MASK ANDI,
-      7 10 24 ADDI,
-      12 12 DNAME-EXT ANDI,  12 done CBZ,
-      7 10 24 LDR,
-   done LBL,  RET, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: scan:label code:label next:label hit:label done:label :}
+   LFAULT-OWNER A64ICODE:LABEL@ A64ICODE:LBL,
+   7 0 A64ICODE:MOVZ,
+   4 done A64ICODE:CBZ,
+   10 DICT-CAP A64ICODE:LIT64,  6 10 A64ICODE:CMP,  6 6 10 A64ASM:C-CC A64ICODE:CSEL,
+   10 4 0 A64ICODE:ADDI,
+   scan A64ICODE:LBL,
+      6 done A64ICODE:CBZ,
+      11 10 DICT-WORDLIST-SLOT 8 * A64ICODE:LDR,
+      11 0 A64ICODE:CMPI,  A64ASM:C-GE code A64ICODE:BCOND,
+      12 WL:RETIRED A64ICODE:LIT64,  11 12 A64ICODE:CMP,  A64ASM:C-NE next A64ICODE:BCOND,
+   code A64ICODE:LBL,
+      11 10 0 A64ICODE:LDR,  3 11 A64ICODE:CMP,  A64ASM:C-CC next A64ICODE:BCOND,
+      12 10 8 A64ICODE:LDR,                              \ the code's byte count
+      11 11 12 A64ICODE:ADD,  3 11 A64ICODE:CMP,  A64ASM:C-CC hit A64ICODE:BCOND,
+   next A64ICODE:LBL,
+      10 10 DREC A64ICODE:ADDI,  6 6 1 A64ICODE:SUBI,  scan A64ICODE:B,
+   hit A64ICODE:LBL,
+      12 10 16 A64ICODE:LDR,  6 12 DNAME-LEN-MASK A64ICODE:ANDI,
+      7 10 24 A64ICODE:ADDI,
+      12 12 DNAME-EXT A64ICODE:ANDI,  12 done A64ICODE:CBZ,
+      7 10 24 A64ICODE:LDR,
+   done A64ICODE:LBL,  A64ICODE:RET, ;
 
 \ LFAULT-DEC ( x7 = a signed number ): its decimal digits at the cursor, a
 \ minus first when it is negative. Leaf; clobbers x0..x2, x7, x10..x13 and x15.
 : EMIT-FAULT-DEC ( -- )
-   LBL LBL LBL {: pos:label count:label digit:label :}
-   LFAULT-DEC LABEL@ LBL,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: pos:label count:label digit:label :}
+   LFAULT-DEC A64ICODE:LABEL@ A64ICODE:LBL,
    21 FLUSH-BELOW,
-   7 0 CMPI,  C-GE pos BCOND,
-   $2D PUT-CHAR,  7 31 7 SUB,                     \ -x7 through xzr, unsigned from here
-   pos LBL,
-   13 10 MOVZ,  10 7 0 ADDI,  11 0 MOVZ,
-   count LBL,  11 11 1 ADDI,  10 10 13 UDIV,  10 count CBNZ,
-   14 14 11 ADD,  12 14 0 ADDI,
-   digit LBL,
-      10 7 13 UDIV,  15 10 13 MUL,  15 7 15 SUB,  15 15 $30 ADDI,
-      12 12 1 SUBI,  15 12 0 STRB,
-      7 10 0 ADDI,  7 digit CBNZ,
-   RET, ;
+   7 0 A64ICODE:CMPI,  A64ASM:C-GE pos A64ICODE:BCOND,
+   $2D PUT-CHAR,  7 31 7 A64ICODE:SUB,                     \ -x7 through xzr, unsigned from here
+   pos A64ICODE:LBL,
+   13 10 A64ICODE:MOVZ,  10 7 0 A64ICODE:ADDI,  11 0 A64ICODE:MOVZ,
+   count A64ICODE:LBL,  11 11 1 A64ICODE:ADDI,  10 10 13 A64ICODE:UDIV,  10 count A64ICODE:CBNZ,
+   14 14 11 A64ICODE:ADD,  12 14 0 A64ICODE:ADDI,
+   digit A64ICODE:LBL,
+      10 7 13 A64ICODE:UDIV,  15 10 13 A64ICODE:MUL,  15 7 15 A64ICODE:SUB,  15 15 $30 A64ICODE:ADDI,
+      12 12 1 A64ICODE:SUBI,  15 12 0 A64ICODE:STRB,
+      7 10 0 A64ICODE:ADDI,  7 digit A64ICODE:CBNZ,
+   A64ICODE:RET, ;
 
 : BAD-TEXT-REGS ( n n -- )
    {: p:n l:n :}
@@ -355,32 +351,32 @@ public
 \ Opens a record with its code and message: sp drops FAULT-FRAME, x14 = its
 \ start, x17 = the JSON flag.
 : FAULT-OPEN, ( str str -- FAULT-RECORD:record )
-   FAULT-OPEN
-   SP SP FAULT-FRAME SUBI,  14 SP 0 ADDI,
-   17 DATA-VA VA>N REJECTION-JSON-CELL + LIT64,  17 17 0 LDR,
+   FAULT-RECORD:FAULT-OPEN
+   A64ICODE:SP A64ICODE:SP FAULT-RECORD:FAULT-FRAME A64ICODE:SUBI,  14 A64ICODE:SP 0 A64ICODE:ADDI,
+   17 DATA-VA VA>N REJECTION-JSON-CELL + A64ICODE:LIT64,  17 17 0 A64ICODE:LDR,
    PIECE, ;
 
 \ Note `in`: the word whose code holds the address in x3, read from the x6
 \ records at x4; x4 = 0 when the site cannot trust the dictionary. With no
 \ such word, note `at` and the address.
 : FAULT-IN, ( FAULT-RECORD:record -- FAULT-RECORD:record )
-   LBL LBL {: at:label done:label :}
-   FAULT-IN {: was:n :}
-   LFAULT-OWNER LABEL@ BL,
-   7 at CBZ,
+   A64ICODE:LBL A64ICODE:LBL {: at:label done:label :}
+   FAULT-RECORD:FAULT-IN {: was:n :}
+   LFAULT-OWNER A64ICODE:LABEL@ A64ICODE:BL,
+   7 at A64ICODE:CBZ,
    PIECE,
-   10 7 0 ADDI,  11 6 0 ADDI,  9 17 0 ADDI,  LFAULT-PUT LABEL@ BL,
-   done B,
-   at LBL,
-   was FAULT-AT  PIECE,  3 HEX,
-   done LBL, ;
+   10 7 0 A64ICODE:ADDI,  11 6 0 A64ICODE:ADDI,  9 17 0 A64ICODE:ADDI,  LFAULT-PUT A64ICODE:LABEL@ A64ICODE:BL,
+   done A64ICODE:B,
+   at A64ICODE:LBL,
+   was FAULT-RECORD:FAULT-AT  PIECE,  3 HEX,
+   done A64ICODE:LBL, ;
 
 \ A note with the register's value in decimal; the register is copied first.
 : FAULT-NUMBER, ( FAULT-RECORD:record str n -- FAULT-RECORD:record )
    {: k:^ ku:n r:n :}
-   7 r 0 ADDI,
-   k ku NOTE+  PIECE,
-   LFAULT-DEC LABEL@ BL, ;
+   7 r 0 A64ICODE:ADDI,
+   k ku FAULT-RECORD:NOTE+  PIECE,
+   LFAULT-DEC A64ICODE:LABEL@ A64ICODE:BL, ;
 
 \ A note with the bytes at the pointer register, the length register's count of
 \ them. Both are among x3..x7, which the record's parts keep until a note writes
@@ -388,29 +384,29 @@ public
 : FAULT-TEXT, ( FAULT-RECORD:record str n n -- FAULT-RECORD:record )
    {: k:^ ku:n p:n l:n :}
    p 3 < p 7 > or  l 3 < or  l 7 > or IF p l BAD-TEXT-REGS THEN
-   k ku NOTE+  PIECE,
-   10 p 0 ADDI,  11 l 0 ADDI,  9 17 0 ADDI,  LFAULT-PUT LABEL@ BL, ;
+   k ku FAULT-RECORD:NOTE+  PIECE,
+   10 p 0 A64ICODE:ADDI,  11 l 0 A64ICODE:ADDI,  9 17 0 A64ICODE:ADDI,  LFAULT-PUT A64ICODE:LABEL@ A64ICODE:BL, ;
 
 \ A note with the address in the register, `0x` and 16 hex digits; the
 \ register is copied first.
 : FAULT-ADDRESS, ( FAULT-RECORD:record str n -- FAULT-RECORD:record )
    {: k:^ ku:n r:n :}
-   7 r 0 ADDI,
-   k ku FAULT-ADDRESS  PIECE,  7 HEX, ;
+   7 r 0 A64ICODE:ADDI,
+   k ku FAULT-RECORD:FAULT-ADDRESS  PIECE,  7 HEX, ;
 
 \ Ends the record with its help and exits with the status.
 : FAULT-STOP, ( FAULT-RECORD:record str n -- )
    {: h:^ hu:n status:n :}
-   h hu FAULT-STOP
+   h hu FAULT-RECORD:FAULT-STOP
    PIECE,  FLUSH,
-   0 status MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 status A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS, ;
 
 \ Ends the record with its help, none for an empty text, and returns, sp as
 \ FAULT-OPEN, found it.
 : FAULT-KEEP, ( FAULT-RECORD:record str -- )
-   FAULT-KEEP
+   FAULT-RECORD:FAULT-KEEP
    PIECE,  FLUSH,
-   SP SP FAULT-FRAME ADDI, ;
+   A64ICODE:SP A64ICODE:SP FAULT-RECORD:FAULT-FRAME A64ICODE:ADDI, ;
 
 \ The fault records' routines, beside LDIE-LINE.
 : EMIT-FAULT-RECORD ( -- )
@@ -419,13 +415,13 @@ public
 \ x30 = the caller's lr, saved at [sp + off], for a site whose own BL or BLR
 \ replaced x30; LDIE-LINE prints it.
 : CALLER-LR, ( n -- ) {: off:n :}
-   30 SP off LDR, ;
+   30 A64ICODE:SP off A64ICODE:LDR, ;
 
 \ x30 = the interrupted code's lr, read from the signal mcontext the register
 \ points at; LDIE-LINE prints it.
 : C-CRASH-LR>R30 ( n -- ) {: mctx:n :}
-   HB-TARGET-LINUX-ARM64? IF 30 mctx LINUX-MCTX-LR-OFF LDR, exit THEN
-   30 mctx MACOS-MCTX-LR-OFF LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 30 mctx LINUX-MCTX-LR-OFF A64ICODE:LDR, exit THEN
+   30 mctx MACOS-MCTX-LR-OFF A64ICODE:LDR, ;
 
 private
 \ x20 = signal number, x19 = ucontext, x23 = siginfo, whose si_addr tells a
@@ -434,79 +430,79 @@ private
 \ (catcher, style, sig, info, uctx) in x0..x4.
 : C-CRASH-ENTRY ( -- )
    HB-TARGET-LINUX-ARM64? IF
-      20 0 0 ADDI,
-      23 1 0 ADDI,
-      19 2 0 ADDI,
+      20 0 0 A64ICODE:ADDI,
+      23 1 0 A64ICODE:ADDI,
+      19 2 0 A64ICODE:ADDI,
       exit
    THEN
-   20 2 0 ADDI,
-   23 3 0 ADDI,
-   19 4 0 ADDI, ;
+   20 2 0 A64ICODE:ADDI,
+   23 3 0 A64ICODE:ADDI,
+   19 4 0 A64ICODE:ADDI, ;
 
 \ si_addr's byte offset inside siginfo_t: Linux aarch64 pads si_signo/errno/code
 \ to 16 bytes, macOS puts six ints ahead of it.
 : C-CRASH-FAULT-ADDR>R25 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 25 23 LINUX-SI-ADDR-OFF LDR, exit THEN
-   25 23 MACOS-SI-ADDR-OFF LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 25 23 LINUX-SI-ADDR-OFF A64ICODE:LDR, exit THEN
+   25 23 MACOS-SI-ADDR-OFF A64ICODE:LDR, ;
 
 \ The interrupted x20 from the mcontext, as the handler's own x20 is the signal
 \ number by now: this thread's DATA wherever kernel code can fault, 0 from a
 \ task's or a callback's entry until DATA loads, the frame sp across an FFI
 \ call's BLR.
 : C-CRASH-DATA>R24 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 24 21 LINUX-MCTX-X0-OFF XREG-RBASE 8 * + LDR, exit THEN
-   24 21 SS-OFF XREG-RBASE 8 * + LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 24 21 LINUX-MCTX-X0-OFF XREG-RBASE 8 * + A64ICODE:LDR, exit THEN
+   24 21 SS-OFF XREG-RBASE 8 * + A64ICODE:LDR, ;
 
 : C-CRASH-MCTX>R21 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 21 19 LINUX-UC-MCTX-OFF ADDI, exit THEN
-   21 19 MCTX-OFF LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 21 19 LINUX-UC-MCTX-OFF A64ICODE:ADDI, exit THEN
+   21 19 MCTX-OFF A64ICODE:LDR, ;
 
 : C-CRASH-XREG>R9 ( -- )
-   22 20 3 LSLI,
+   22 20 3 A64ICODE:LSLI,
    HB-TARGET-LINUX-ARM64? IF
-      22 22 LINUX-MCTX-X0-OFF ADDI,
+      22 22 LINUX-MCTX-X0-OFF A64ICODE:ADDI,
    ELSE
-      22 22 SS-OFF ADDI,
+      22 22 SS-OFF A64ICODE:ADDI,
    THEN
-   22 21 22 ADD,  9 22 0 LDR, ;
+   22 21 22 A64ICODE:ADD,  9 22 0 A64ICODE:LDR, ;
 
 : C-CRASH-PC>R9 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 9 21 LINUX-MCTX-PC-OFF LDR, exit THEN
-   9 21 MACOS-MCTX-PC-OFF LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 9 21 LINUX-MCTX-PC-OFF A64ICODE:LDR, exit THEN
+   9 21 MACOS-MCTX-PC-OFF A64ICODE:LDR, ;
 
 : C-CRASH-SP>R9 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 9 21 LINUX-MCTX-SP-OFF LDR, exit THEN
-   9 21 MACOS-MCTX-SP-OFF LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 9 21 LINUX-MCTX-SP-OFF A64ICODE:LDR, exit THEN
+   9 21 MACOS-MCTX-SP-OFF A64ICODE:LDR, ;
 
 : C-CRASH-PRINT-REGS ( -- )
    HB-TARGET-LINUX-ARM64? IF
-      9 21 LINUX-MCTX-FP-OFF LDR,  LHEX LABEL@ BL,
-      9 21 LINUX-MCTX-LR-OFF LDR,  LHEX LABEL@ BL,
+      9 21 LINUX-MCTX-FP-OFF A64ICODE:LDR,  LHEX A64ICODE:LABEL@ A64ICODE:BL,
+      9 21 LINUX-MCTX-LR-OFF A64ICODE:LDR,  LHEX A64ICODE:LABEL@ A64ICODE:BL,
    ELSE
-      9 21 MACOS-MCTX-FP-OFF LDR,  LHEX LABEL@ BL,
-      9 21 MACOS-MCTX-LR-OFF LDR,  LHEX LABEL@ BL,
+      9 21 MACOS-MCTX-FP-OFF A64ICODE:LDR,  LHEX A64ICODE:LABEL@ A64ICODE:BL,
+      9 21 MACOS-MCTX-LR-OFF A64ICODE:LDR,  LHEX A64ICODE:LABEL@ A64ICODE:BL,
    THEN
-   C-CRASH-SP>R9  LHEX LABEL@ BL,
-   C-CRASH-PC>R9  LHEX LABEL@ BL, ;
+   C-CRASH-SP>R9  LHEX A64ICODE:LABEL@ A64ICODE:BL,
+   C-CRASH-PC>R9  LHEX A64ICODE:LABEL@ A64ICODE:BL, ;
 
 \ x10 = the live region's base, 0 when there is none, read at the absolute
 \ address DATA-VA + DBASE-CELL and never from the saved x26: in foreign code
 \ x26 is anything, and a forged base would pass a pc in C as Habu code.
 : C-CRASH-REGION>R10 ( -- )
-   10 DATA-VA VA>N DBASE-CELL + LIT64,  10 10 0 LDR, ;
+   10 DATA-VA VA>N DBASE-CELL + A64ICODE:LIT64,  10 10 0 A64ICODE:LDR, ;
 
 : C-CRASH-PC-WORD ( n -- )
    CR-OFF !
-   LBL CR-L1 !  LBL CR-L2 !
+   A64ICODE:LBL CR-L1 !  A64ICODE:LBL CR-L2 !
    C-CRASH-PC>R9
-   CR-OFF @ 0< IF 9 9 CR-OFF @ negate SUBI, ELSE 9 9 CR-OFF @ ADDI, THEN
+   CR-OFF @ 0< IF 9 9 CR-OFF @ negate A64ICODE:SUBI, ELSE 9 9 CR-OFF @ A64ICODE:ADDI, THEN
    \ x9 holds the PC being classified; x10 = region base then end-4.
-   C-CRASH-REGION>R10  10 CR-L1 LABEL@ CBZ,
-   9 10 CMP,  C-LT CR-L1 LABEL@ BCOND,
-   11 REGION $4 - LIT64,  10 10 11 ADD,  9 10 CMP,  C-GT CR-L1 LABEL@ BCOND,
-   9 9 0 LDRW,  LHEX LABEL@ BL,  CR-L2 LABEL@ B,
-   CR-L1 LABEL@ LBL,  9 0 MOVZ,  LHEX LABEL@ BL,
-   CR-L2 LABEL@ LBL, ;
+   C-CRASH-REGION>R10  10 CR-L1 A64ICODE:LABEL@ A64ICODE:CBZ,
+   9 10 A64ICODE:CMP,  A64ASM:C-LT CR-L1 A64ICODE:LABEL@ A64ICODE:BCOND,
+   11 REGION $4 - A64ICODE:LIT64,  10 10 11 A64ICODE:ADD,  9 10 A64ICODE:CMP,  A64ASM:C-GT CR-L1 A64ICODE:LABEL@ A64ICODE:BCOND,
+   9 9 0 A64ICODE:LDRW,  LHEX A64ICODE:LABEL@ A64ICODE:BL,  CR-L2 A64ICODE:LABEL@ A64ICODE:B,
+   CR-L1 A64ICODE:LABEL@ A64ICODE:LBL,  9 0 A64ICODE:MOVZ,  LHEX A64ICODE:LABEL@ A64ICODE:BL,
+   CR-L2 A64ICODE:LABEL@ A64ICODE:LBL, ;
 
 : C-CRASH-PC-8 ( -- )
    -8 C-CRASH-PC-WORD ;
@@ -537,43 +533,43 @@ variable CRS-THROW
 \ CRS-CAPCELL is a header offset to read the capacity from, or 0 to use CRS-CAP.
 \ A low-guard hit branches to CRS-HIT-LOW, a high-guard hit to CRS-HIT.
 : C-CRASH-GUARD-CASE ( -- )
-   9 24 CRS-BASE @ LDR,
-   9 CRS-NEXT LABEL@ CBZ,
-   10 9 7 ANDI,  10 CRS-NEXT LABEL@ CBNZ,
-   CRS-CAPCELL @ 0= IF 13 CRS-CAP @ LIT64, ELSE 13 24 CRS-CAPCELL @ LDR, THEN
-   13 9 13 ADD,                                  \ high guard starts at base + capacity,
-   10 13 12 AND,  10 CRS-NEXT LABEL@ CBNZ,       \ a page boundary
-   10 25 13 SUB,
-   10 11 CMP,  C-CC CRS-HIT LABEL@ BCOND,
-   13 9 12 AND,  13 9 13 SUB,  13 13 11 SUB,     \ low guard: the page under the rounded base
-   10 25 13 SUB,
-   10 11 CMP,  C-CC CRS-HIT-LOW LABEL@ BCOND,
-   CRS-NEXT LABEL@ LBL, ;
+   9 24 CRS-BASE @ A64ICODE:LDR,
+   9 CRS-NEXT A64ICODE:LABEL@ A64ICODE:CBZ,
+   10 9 7 A64ICODE:ANDI,  10 CRS-NEXT A64ICODE:LABEL@ A64ICODE:CBNZ,
+   CRS-CAPCELL @ 0= IF 13 CRS-CAP @ A64ICODE:LIT64, ELSE 13 24 CRS-CAPCELL @ A64ICODE:LDR, THEN
+   13 9 13 A64ICODE:ADD,                                  \ high guard starts at base + capacity,
+   10 13 12 A64ICODE:AND,  10 CRS-NEXT A64ICODE:LABEL@ A64ICODE:CBNZ,       \ a page boundary
+   10 25 13 A64ICODE:SUB,
+   10 11 A64ICODE:CMP,  A64ASM:C-CC CRS-HIT A64ICODE:LABEL@ A64ICODE:BCOND,
+   13 9 12 A64ICODE:AND,  13 9 13 A64ICODE:SUB,  13 13 11 A64ICODE:SUB,     \ low guard: the page under the rounded base
+   10 25 13 A64ICODE:SUB,
+   10 11 A64ICODE:CMP,  A64ASM:C-CC CRS-HIT-LOW A64ICODE:LABEL@ A64ICODE:BCOND,
+   CRS-NEXT A64ICODE:LABEL@ A64ICODE:LBL, ;
 
 \ x3 = the interrupted pc, x4 = the live region's base, whose records the
 \ saved x27 counts in x6: FAULT-IN,'s registers, once Habu code faulted.
 : C-CRASH-OWNER>R3 ( -- )
-   C-CRASH-PC>R9  3 9 0 ADDI,
-   C-CRASH-REGION>R10  4 10 0 ADDI,
-   HB-TARGET-LINUX-ARM64? IF 6 21 LINUX-MCTX-X0-OFF NDICT 8 * + LDR, exit THEN
-   6 21 SS-OFF NDICT 8 * + LDR, ;
+   C-CRASH-PC>R9  3 9 0 A64ICODE:ADDI,
+   C-CRASH-REGION>R10  4 10 0 A64ICODE:ADDI,
+   HB-TARGET-LINUX-ARM64? IF 6 21 LINUX-MCTX-X0-OFF NDICT 8 * + A64ICODE:LDR, exit THEN
+   6 21 SS-OFF NDICT 8 * + A64ICODE:LDR, ;
 
 \ The record of a stack's overflow, x3, x4 and x6 as FAULT-IN, reads them.
 \ Never returns.
 : C-CRASH-GUARD-RECORD ( str -- ) {: a:^ u:n :}
    s" E-STACK-BOUNDS" a u FAULT-OPEN,  FAULT-IN,
-   CRS-HELP$ EXIT-STATUS:STACK-BOUNDS FAULT-STOP, ;
+   FAULT-RECORD:CRS-HELP$ EXIT-STATUS:STACK-BOUNDS FAULT-STOP, ;
 
 \ The record for the guard page hit at the label, which Habu code hit.
 : C-CRASH-GUARD-REPORT ( str label -- )
    {: a:^ u:n hit:label :}
-   hit LBL,  C-CRASH-OWNER>R3  a u C-CRASH-GUARD-RECORD ;
+   hit A64ICODE:LBL,  C-CRASH-OWNER>R3  a u C-CRASH-GUARD-RECORD ;
 
 \ Row 1's record, whose pc may be C's: it names no word.
 : C-CRASH-MACHINE-REPORT ( -- )
-   CRS-MACHINE-H LABEL@ LBL,
-   C-CRASH-PC>R9  3 9 0 ADDI,  4 0 MOVZ,
-   CRS-MACHINE$ C-CRASH-GUARD-RECORD ;
+   CRS-MACHINE-H A64ICODE:LABEL@ A64ICODE:LBL,
+   C-CRASH-PC>R9  3 9 0 A64ICODE:ADDI,  4 0 A64ICODE:MOVZ,
+   FAULT-RECORD:CRS-MACHINE$ C-CRASH-GUARD-RECORD ;
 
 \ x14 = the pc the interrupted thread resumes at; sigreturn resumes it there
 \ with every other register as the saved context holds it. On macOS x1 and x5
@@ -581,13 +577,13 @@ variable CRS-THROW
 \ fails.
 : C-CRASH-RESUME ( -- )
    HB-TARGET-LINUX-ARM64? IF
-      14 21 LINUX-MCTX-PC-OFF STR,
-      NR-SIGRETURN SYS,                          \ rt_sigreturn reads the frame at the entry sp
+      14 21 LINUX-MCTX-PC-OFF A64ICODE:STR,
+      SYSCALL:NR-SIGRETURN SYSCALL:SYS,                          \ rt_sigreturn reads the frame at the entry sp
       exit
    THEN
-   14 21 MACOS-MCTX-PC-OFF STR,
-   0 19 0 ADDI,  2 5 0 ADDI,
-   NR-SIGRETURN SYS, ;                           \ sigreturn(uctx, infostyle, token)
+   14 21 MACOS-MCTX-PC-OFF A64ICODE:STR,
+   0 19 0 A64ICODE:ADDI,  2 5 0 A64ICODE:ADDI,
+   SYSCALL:NR-SIGRETURN SYSCALL:SYS, ;                           \ sigreturn(uctx, infostyle, token)
 
 \ x9 = nonzero if the interrupted sp lies in the signal stack this thread
 \ registered, as sigaltstack(NULL, old) answers it; zero when none is. An sp of
@@ -596,18 +592,18 @@ variable CRS-THROW
 \ SS_ONSTACK. Writes x0, x9, x10 and the system call's registers; x1, the
 \ trampoline's infostyle on macOS, is kept in the frame across the call.
 : C-CRASH-ONSTACK>R9 ( -- )
-   LBL {: off:label :}
-   SP SP SIGSTK-FRAME SUBI,
-   1 SP 24 STR,
-   0 0 MOVZ,  1 SP 0 ADDI,  NR-SIGALTSTACK SYS,
-   1 SP 24 LDR,
-   9 0 MOVZ,
-   10 SP SIGSTK-FLAGS LDRW,  10 10 SIGSTK-DISABLE ANDI,  10 off CBNZ,
+   A64ICODE:LBL {: off:label :}
+   A64ICODE:SP A64ICODE:SP SIGSTK-FRAME A64ICODE:SUBI,
+   1 A64ICODE:SP 24 A64ICODE:STR,
+   0 0 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  SYSCALL:NR-SIGALTSTACK SYSCALL:SYS,
+   1 A64ICODE:SP 24 A64ICODE:LDR,
+   9 0 A64ICODE:MOVZ,
+   10 A64ICODE:SP SIGSTK-FLAGS A64ICODE:LDRW,  10 10 SIGSTK-DISABLE A64ICODE:ANDI,  10 off A64ICODE:CBNZ,
    C-CRASH-SP>R9
-   10 SP 0 LDR,  9 9 10 SUB,  9 9 1 SUBI,        \ sp - 1 - ss_sp, unsigned
-   10 SP SIGSTK-SIZE LDR,  9 10 CMP,  9 C-CC CSET,
-   off LBL,
-   SP SP SIGSTK-FRAME ADDI, ;
+   10 A64ICODE:SP 0 A64ICODE:LDR,  9 9 10 A64ICODE:SUB,  9 9 1 A64ICODE:SUBI,        \ sp - 1 - ss_sp, unsigned
+   10 A64ICODE:SP SIGSTK-SIZE A64ICODE:LDR,  9 10 A64ICODE:CMP,  9 A64ASM:C-CC A64ICODE:CSET,
+   off A64ICODE:LBL,
+   A64ICODE:SP A64ICODE:SP SIGSTK-FRAME A64ICODE:ADDI, ;
 
 \ Row 2, from the ucontext, the saved registers and DBASE-CELL, reading through
 \ none of the registers; falls through when Habu code faulted. A fetch's pc is
@@ -616,22 +612,22 @@ variable CRS-THROW
 \ stack with x20 = DATA. Leaves x24 = the saved x20, DATA, and x9 = the saved
 \ pc.
 : C-CRASH-HABU-PC ( -- )
-   LBL LBL LBL {: text:label region:label habu:label :}
-   C-CRASH-ONSTACK>R9  9 CRS-SKIP LABEL@ CBNZ,
-   C-CRASH-DATA>R24  24 CRS-SKIP LABEL@ CBZ,
-   C-CRASH-PC>R9  9 25 CMP,  C-EQ CRS-SKIP LABEL@ BCOND,
-   10 LCRASHH LABEL@ ADR,  9 10 CMP,  C-CC text BCOND,
-   11 LHANDLERS-END LABEL@ ADR,  9 11 CMP,  C-CC CRS-SKIP LABEL@ BCOND,
-   text LBL,
-   11 LCRASHH LABEL@ LOFF,  10 10 11 SUB,       \ code offset 0
-   9 10 CMP,  C-CC region BCOND,
-   11 10 0 ADDI,  11 12 TEXT-SIZE,  10 10 11 ADD,
-   9 10 CMP,  C-CC habu BCOND,
-   region LBL,
-   C-CRASH-REGION>R10  10 CRS-SKIP LABEL@ CBZ,
-   9 10 CMP,  C-CC CRS-SKIP LABEL@ BCOND,
-   11 REGION LIT64,  10 10 11 ADD,  9 10 CMP,  C-CS CRS-SKIP LABEL@ BCOND,
-   habu LBL, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: text:label region:label habu:label :}
+   C-CRASH-ONSTACK>R9  9 CRS-SKIP A64ICODE:LABEL@ A64ICODE:CBNZ,
+   C-CRASH-DATA>R24  24 CRS-SKIP A64ICODE:LABEL@ A64ICODE:CBZ,
+   C-CRASH-PC>R9  9 25 A64ICODE:CMP,  A64ASM:C-EQ CRS-SKIP A64ICODE:LABEL@ A64ICODE:BCOND,
+   10 LCRASHH A64ICODE:LABEL@ A64ICODE:ADR,  9 10 A64ICODE:CMP,  A64ASM:C-CC text A64ICODE:BCOND,
+   11 LHANDLERS-END A64ICODE:LABEL@ A64ICODE:ADR,  9 11 A64ICODE:CMP,  A64ASM:C-CC CRS-SKIP A64ICODE:LABEL@ A64ICODE:BCOND,
+   text A64ICODE:LBL,
+   11 LCRASHH A64ICODE:LABEL@ A64ICODE:LOFF,  10 10 11 A64ICODE:SUB,       \ code offset 0
+   9 10 A64ICODE:CMP,  A64ASM:C-CC region A64ICODE:BCOND,
+   11 10 0 A64ICODE:ADDI,  11 12 TEXT-SIZE,  10 10 11 A64ICODE:ADD,
+   9 10 A64ICODE:CMP,  A64ASM:C-CC habu A64ICODE:BCOND,
+   region A64ICODE:LBL,
+   C-CRASH-REGION>R10  10 CRS-SKIP A64ICODE:LABEL@ A64ICODE:CBZ,
+   9 10 A64ICODE:CMP,  A64ASM:C-CC CRS-SKIP A64ICODE:LABEL@ A64ICODE:BCOND,
+   11 REGION A64ICODE:LIT64,  10 10 11 A64ICODE:ADD,  9 10 A64ICODE:CMP,  A64ASM:C-CS CRS-SKIP A64ICODE:LABEL@ A64ICODE:BCOND,
+   habu A64ICODE:LBL, ;
 
 \ Row 4: a word reached below the data stack's base -- `dup` on an empty
 \ stack, `1 ' W execute` handing a two-cell word one cell, a closed text's xt
@@ -639,100 +635,100 @@ variable CRS-THROW
 \ underdepth throw. A zero entry and a sigreturn that comes back take the named
 \ data exit emitted right after this.
 : C-CRASH-DATA-RECOVER ( -- )
-   CRS-DATA-LOW-H LABEL@ LBL,
-   14 24 FLOORREC-CELL LDR,  14 CRS-DATA-H LABEL@ CBZ,
+   CRS-DATA-LOW-H A64ICODE:LABEL@ A64ICODE:LBL,
+   14 24 FLOORREC-CELL A64ICODE:LDR,  14 CRS-DATA-H A64ICODE:LABEL@ A64ICODE:CBZ,
    C-CRASH-RESUME ;
 
 \ Row 6, x24 = DATA and x25 = the fault address: set the mark, write the
 \ record, store the code in the saved x9 and resume at the fault entry. x26
 \ keeps macOS's infostyle across the write, and the record keeps x5, its token.
 : C-CRASH-THROW ( -- )
-   CRS-THROW LABEL@ LBL,
-   HB-TARGET-LINUX? 0= IF 26 1 0 ADDI, THEN
-   14 1 MOVZ,  14 24 FAULT-MARK-CELL STR,
+   CRS-THROW A64ICODE:LABEL@ A64ICODE:LBL,
+   HB-TARGET-LINUX? 0= IF 26 1 0 A64ICODE:ADDI, THEN
+   14 1 A64ICODE:MOVZ,  14 24 FAULT-MARK-CELL A64ICODE:STR,
    s" E-MEMORY-FAULT" s" a read or write faulted" FAULT-OPEN,
    s" address" 25 FAULT-ADDRESS,
    C-CRASH-OWNER>R3  FAULT-IN,
    s" " FAULT-KEEP,
-   10 EXIT-STATUS:MEMORY-FAULT MOVZ,
+   10 EXIT-STATUS:MEMORY-FAULT A64ICODE:MOVZ,
    HB-TARGET-LINUX-ARM64? IF
-      10 21 LINUX-MCTX-X0-OFF 9 8 * + STR,
+      10 21 LINUX-MCTX-X0-OFF 9 8 * + A64ICODE:STR,
    ELSE
-      10 21 SS-OFF 9 8 * + STR,
+      10 21 SS-OFF 9 8 * + A64ICODE:STR,
    THEN
-   14 LFAULTREC LABEL@ ADR,
-   HB-TARGET-LINUX? 0= IF 1 26 0 ADDI, THEN
+   14 LFAULTREC A64ICODE:LABEL@ A64ICODE:ADR,
+   HB-TARGET-LINUX? 0= IF 1 26 0 A64ICODE:ADDI, THEN
    C-CRASH-RESUME ;
 
 \ Rows 1 to 6 of the file header's list.
 : C-CRASH-STACK-GUARDS ( -- )
-   LBL CRS-SKIP !  LBL CRS-FAULT !  LBL CRS-THROW !
-   LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !  LBL CRS-DATA-LOW-H !
-   LBL CRS-MACHINE-H !
+   A64ICODE:LBL CRS-SKIP !  A64ICODE:LBL CRS-FAULT !  A64ICODE:LBL CRS-THROW !
+   A64ICODE:LBL CRS-DATA-H !  A64ICODE:LBL CRS-RET-H !  A64ICODE:LBL CRS-LOOP-H !  A64ICODE:LBL CRS-DATA-LOW-H !
+   A64ICODE:LBL CRS-MACHINE-H !
    \ si_addr only describes a memory fault; a trap or an FPE carries no address.
-   20 CRASH-SIGSEGV CMPI,  C-EQ CRS-FAULT LABEL@ BCOND,
-   20 CRASH-SIGBUS CMPI,   C-NE CRS-SKIP LABEL@ BCOND,
-   CRS-FAULT LABEL@ LBL,
+   20 CRASH-SIGSEGV A64ICODE:CMPI,  A64ASM:C-EQ CRS-FAULT A64ICODE:LABEL@ A64ICODE:BCOND,
+   20 CRASH-SIGBUS A64ICODE:CMPI,   A64ASM:C-NE CRS-SKIP A64ICODE:LABEL@ A64ICODE:BCOND,
+   CRS-FAULT A64ICODE:LABEL@ A64ICODE:LBL,
    C-CRASH-FAULT-ADDR>R25
    \ The machine stack first, by the interrupted sp alone (stack-abi.f
    \ MACHINE-REACH): it needs no DATA, so it holds in foreign code and on a
    \ thread whose x20 is not a region. x1 and x5 stay the trampoline's.
    C-CRASH-SP>R9
-   11 STACK-ABI:MACHINE-REACH LIT64,
-   10 25 9 SUB,  10 10 11 ADD,                   \ fault - sp + reach
-   11 11 1 LSLI,
-   10 11 CMP,  C-CC CRS-MACHINE-H LABEL@ BCOND,
+   11 STACK-ABI:MACHINE-REACH A64ICODE:LIT64,
+   10 25 9 A64ICODE:SUB,  10 10 11 A64ICODE:ADD,                   \ fault - sp + reach
+   11 11 1 A64ICODE:LSLI,
+   10 11 A64ICODE:CMP,  A64ASM:C-CC CRS-MACHINE-H A64ICODE:LABEL@ A64ICODE:BCOND,
    C-CRASH-HABU-PC
-   14 24 FAULT-MARK-CELL LDR,  14 CRS-SKIP LABEL@ CBNZ,
-   11 STACK-ABI:PAGE-BYTES LIT64,
-   12 STACK-ABI:PAGE-BYTES 1 - LIT64,
+   14 24 FAULT-MARK-CELL A64ICODE:LDR,  14 CRS-SKIP A64ICODE:LABEL@ A64ICODE:CBNZ,
+   11 STACK-ABI:PAGE-BYTES A64ICODE:LIT64,
+   12 STACK-ABI:PAGE-BYTES 1 - A64ICODE:LIT64,
    STACK-ABI:BASE-CELL CRS-BASE !  STACK-ABI:CAP-CELL CRS-CAPCELL !
    CRS-DATA-H @ CRS-HIT !  CRS-DATA-LOW-H @ CRS-HIT-LOW !
-   LBL CRS-NEXT !  C-CRASH-GUARD-CASE
+   A64ICODE:LBL CRS-NEXT !  C-CRASH-GUARD-CASE
    STACK-ABI:RETURN-BASE-CELL CRS-BASE !  0 CRS-CAPCELL !
    STACK-ABI:RETURN-BYTES CRS-CAP !
    CRS-RET-H @ CRS-HIT !  CRS-RET-H @ CRS-HIT-LOW !
-   LBL CRS-NEXT !  C-CRASH-GUARD-CASE
+   A64ICODE:LBL CRS-NEXT !  C-CRASH-GUARD-CASE
    STACK-ABI:LOOP-BASE-CELL CRS-BASE !  0 CRS-CAPCELL !
    STACK-ABI:LOOP-BYTES CRS-CAP !
    CRS-LOOP-H @ CRS-HIT !  CRS-LOOP-H @ CRS-HIT-LOW !
-   LBL CRS-NEXT !  C-CRASH-GUARD-CASE
-   CRS-THROW LABEL@ B,
+   A64ICODE:LBL CRS-NEXT !  C-CRASH-GUARD-CASE
+   CRS-THROW A64ICODE:LABEL@ A64ICODE:B,
    C-CRASH-DATA-RECOVER
-   CRS-DATA$ CRS-DATA-H LABEL@ C-CRASH-GUARD-REPORT
-   CRS-RET$ CRS-RET-H LABEL@ C-CRASH-GUARD-REPORT
-   CRS-LOOP$ CRS-LOOP-H LABEL@ C-CRASH-GUARD-REPORT
+   FAULT-RECORD:CRS-DATA$ CRS-DATA-H A64ICODE:LABEL@ C-CRASH-GUARD-REPORT
+   FAULT-RECORD:CRS-RET$ CRS-RET-H A64ICODE:LABEL@ C-CRASH-GUARD-REPORT
+   FAULT-RECORD:CRS-LOOP$ CRS-LOOP-H A64ICODE:LABEL@ C-CRASH-GUARD-REPORT
    C-CRASH-MACHINE-REPORT
    C-CRASH-THROW                                 \ a sigreturn that comes back dumps
-   CRS-SKIP LABEL@ LBL, ;
+   CRS-SKIP A64ICODE:LABEL@ A64ICODE:LBL, ;
 
 \ sigaction(x0, the frame at sp, NULL).
 : C-SIGACTION-CALL ( -- )
-   1 SP 0 ADDI,  2 0 MOVZ,
-   HB-TARGET-LINUX-ARM64? IF 3 CRASH-LINUX-SIGSET-SIZE MOVZ, THEN
-   NR-SIGACTION SYS, ;
+   1 A64ICODE:SP 0 A64ICODE:ADDI,  2 0 A64ICODE:MOVZ,
+   HB-TARGET-LINUX-ARM64? IF 3 CRASH-LINUX-SIGSET-SIZE A64ICODE:MOVZ, THEN
+   SYSCALL:NR-SIGACTION SYSCALL:SYS, ;
 
 public
 : INSTALL-SIGACT ( n -- )
-   0 swap MOVZ,  C-SIGACTION-CALL ;
+   0 swap A64ICODE:MOVZ,  C-SIGACTION-CALL ;
 
 \ The sigaction frame for the handler in a register and the sa_flags given.
 \ Darwin's __sigaction is the handler, sa_tramp, then the u32 sa_mask and the
 \ u32 sa_flags: the flags are the high half of the cell at +16.
 : C-SIGACTION-FRAME ( n n -- )
    CR-FLAGS !  CR-HANDLER !
-   SP SP $40 SUBI,
-   CR-HANDLER @ SP 0 STR,
+   A64ICODE:SP A64ICODE:SP $40 A64ICODE:SUBI,
+   CR-HANDLER @ A64ICODE:SP 0 A64ICODE:STR,
    HB-TARGET-LINUX-ARM64? IF
-      10 CR-FLAGS @ LIT64,  10 SP $8 STR,
-      10 0 MOVZ,  10 SP $10 STR,  10 SP $18 STR,
+      10 CR-FLAGS @ A64ICODE:LIT64,  10 A64ICODE:SP $8 A64ICODE:STR,
+      10 0 A64ICODE:MOVZ,  10 A64ICODE:SP $10 A64ICODE:STR,  10 A64ICODE:SP $18 A64ICODE:STR,
       exit
    THEN
-   CR-HANDLER @ SP $8 STR,
-   10 CR-FLAGS @ $20 lshift LIT64,  10 SP $10 STR, ;
+   CR-HANDLER @ A64ICODE:SP $8 A64ICODE:STR,
+   10 CR-FLAGS @ $20 lshift A64ICODE:LIT64,  10 A64ICODE:SP $10 A64ICODE:STR, ;
 
 : C-SIGACTION-FRAME-DONE ( -- )
-   SP SP $40 ADDI, ;
+   A64ICODE:SP A64ICODE:SP $40 A64ICODE:ADDI, ;
 
 private
 \ The end of a reported crash: the process dies by the signal itself, so the
@@ -744,14 +740,14 @@ private
 \ faulting pc and takes its default action there. Linux rt_sigreturn reads the
 \ frame at the entry sp, which every call in the dump and here gives back.
 : C-CRASH-RERAISE ( -- )
-   CR-RERAISE LABEL@ LBL,
-   11 0 MOVZ,  11 0 C-SIGACTION-FRAME            \ handler SIG_DFL, no flags
-   0 27 0 ADDI,  C-SIGACTION-CALL
+   CR-RERAISE A64ICODE:LABEL@ A64ICODE:LBL,
+   11 0 A64ICODE:MOVZ,  11 0 C-SIGACTION-FRAME            \ handler SIG_DFL, no flags
+   0 27 0 A64ICODE:ADDI,  C-SIGACTION-CALL
    C-SIGACTION-FRAME-DONE
-   27 OS-BLOCK-SELF
-   27 OS-RAISE-SELF
-   HB-TARGET-LINUX? 0= IF 0 19 0 ADDI,  1 24 0 ADDI,  2 5 0 ADDI, THEN
-   NR-SIGRETURN SYS,                             \ macOS: sigreturn(uctx, infostyle, token)
+   27 SYSCALL:OS-BLOCK-SELF
+   27 SYSCALL:OS-RAISE-SELF
+   HB-TARGET-LINUX? 0= IF 0 19 0 A64ICODE:ADDI,  1 24 0 A64ICODE:ADDI,  2 5 0 A64ICODE:ADDI, THEN
+   SYSCALL:NR-SIGRETURN SYSCALL:SYS,                             \ macOS: sigreturn(uctx, infostyle, token)
    \ Reached only if sigreturn fails.
    21 C-CRASH-LR>R30
    s" E-SIGRETURN habu: sigreturn failed in the crash handler" EXIT-STATUS:SYSTEM DIE-LINE, ;
@@ -759,40 +755,40 @@ private
 \ Row 0: a saved pc in [LCRASHH, LSIGH), the crash handler's own code, goes
 \ straight to the re-raise. On macOS x1 is still the trampoline's infostyle.
 : C-CRASH-NESTED ( -- )
-   LBL {: outside:label :}
+   A64ICODE:LBL {: outside:label :}
    C-CRASH-PC>R9
-   10 LCRASHH LABEL@ ADR,  9 10 CMP,  C-CC outside BCOND,
-   10 LSIGH LABEL@ ADR,  9 10 CMP,  C-CS outside BCOND,
-   HB-TARGET-LINUX? 0= IF 24 1 0 ADDI, THEN
-   CR-RERAISE LABEL@ B,
-   outside LBL, ;
+   10 LCRASHH A64ICODE:LABEL@ A64ICODE:ADR,  9 10 A64ICODE:CMP,  A64ASM:C-CC outside A64ICODE:BCOND,
+   10 LSIGH A64ICODE:LABEL@ A64ICODE:ADR,  9 10 A64ICODE:CMP,  A64ASM:C-CS outside A64ICODE:BCOND,
+   HB-TARGET-LINUX? 0= IF 24 1 0 A64ICODE:ADDI, THEN
+   CR-RERAISE A64ICODE:LABEL@ A64ICODE:B,
+   outside A64ICODE:LBL, ;
 
 public
 : EMIT-CRASH-HANDLER ( -- )
-   LCRASHH LABEL@ LBL,
-   LBL CR-L1 !  LBL CR-L2 !  LBL CR-RERAISE !
+   LCRASHH A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL CR-L1 !  A64ICODE:LBL CR-L2 !  A64ICODE:LBL CR-RERAISE !
       C-CRASH-ENTRY
-      27 20 0 ADDI,                                 \ x27 = the signal; the dump reuses x20
+      27 20 0 A64ICODE:ADDI,                                 \ x27 = the signal; the dump reuses x20
       C-CRASH-MCTX>R21
       C-CRASH-NESTED
       C-CRASH-STACK-GUARDS                          \ rows 2 and 3 fall through
       HB-TARGET-LINUX? 0= IF                        \ x24 = the trampoline's infostyle:
-         24 1 0 ADDI,                               \ the dump's writes clobber x1
+         24 1 0 A64ICODE:ADDI,                               \ the dump's writes clobber x1
       THEN
-      1 LHDR LABEL@ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,
-      9 20 0 ADDI,  LHEX LABEL@ BL,
-      20 0 MOVZ,
-      CR-L1 LABEL@ LBL,  20 $1D CMPI,  C-GE CR-L2 LABEL@ BCOND,
-         C-CRASH-XREG>R9  LHEX LABEL@ BL,
-         20 20 1 ADDI,  CR-L1 LABEL@ B,
-      CR-L2 LABEL@ LBL,
+      1 LHDR A64ICODE:LABEL@ A64ICODE:ADR,  0 2 A64ICODE:MOVZ,  2 CRHL @ A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+      9 20 0 A64ICODE:ADDI,  LHEX A64ICODE:LABEL@ A64ICODE:BL,
+      20 0 A64ICODE:MOVZ,
+      CR-L1 A64ICODE:LABEL@ A64ICODE:LBL,  20 $1D A64ICODE:CMPI,  A64ASM:C-GE CR-L2 A64ICODE:LABEL@ A64ICODE:BCOND,
+         C-CRASH-XREG>R9  LHEX A64ICODE:LABEL@ A64ICODE:BL,
+         20 20 1 A64ICODE:ADDI,  CR-L1 A64ICODE:LABEL@ A64ICODE:B,
+      CR-L2 A64ICODE:LABEL@ A64ICODE:LBL,
       C-CRASH-PRINT-REGS
       C-CRASH-PC-8
       C-CRASH-PC-4
       C-CRASH-PC0
       C-CRASH-PC+4
       C-CRASH-RERAISE
-   LHDR LABEL@ LBL,  CRH CRHL @ BYTES, ;
+   LHDR A64ICODE:LABEL@ A64ICODE:LBL,  CRH CRHL @ A64ICODE:BYTES, ;
 
 \ The caller loads x11 with the handler's address: src/arch/arm64/boot.f
 \ STACKS, reaches it from the text base through TEXT-AT,.
@@ -824,38 +820,38 @@ public
 \ registration is named and fatal: the handler would run on the interrupted
 \ stack, and a machine-stack overflow would die unnamed again.
 : C-SIGNAL-STACK ( -- )
-   LBL {: ok:label :}
-   SP SP STACK-ABI:SIGNAL-BYTES SUBI-4K,
-   SP SP SIGSTK-FRAME SUBI,
-   12 0 MOVZ,  12 SP SIGSTK-FLAGS STR,
-   12 STACK-ABI:SIGNAL-BYTES LIT64,  12 SP SIGSTK-SIZE STR,
-   12 SP SIGSTK-FRAME ADDI,  12 SP 0 STR,             \ ss_sp: the band, right above this frame
-   0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
-   SP SP SIGSTK-FRAME ADDI,                           \ ADD, not ADDS: the flags are the call's
-   C-CC ok BCOND,
+   A64ICODE:LBL {: ok:label :}
+   A64ICODE:SP A64ICODE:SP STACK-ABI:SIGNAL-BYTES SUBI-4K,
+   A64ICODE:SP A64ICODE:SP SIGSTK-FRAME A64ICODE:SUBI,
+   12 0 A64ICODE:MOVZ,  12 A64ICODE:SP SIGSTK-FLAGS A64ICODE:STR,
+   12 STACK-ABI:SIGNAL-BYTES A64ICODE:LIT64,  12 A64ICODE:SP SIGSTK-SIZE A64ICODE:STR,
+   12 A64ICODE:SP SIGSTK-FRAME A64ICODE:ADDI,  12 A64ICODE:SP 0 A64ICODE:STR,             \ ss_sp: the band, right above this frame
+   0 A64ICODE:SP 0 A64ICODE:ADDI,  1 0 A64ICODE:MOVZ,  SYSCALL:NR-SIGALTSTACK SYSCALL:SYS,
+   A64ICODE:SP A64ICODE:SP SIGSTK-FRAME A64ICODE:ADDI,                           \ ADD, not ADDS: the flags are the call's
+   A64ASM:C-CC ok A64ICODE:BCOND,
       s" hb: registering the signal stack failed (sigaltstack)"
       EXIT-STATUS:SYSTEM DIE-LINE,
-   ok LBL, ;
+   ok A64ICODE:LBL, ;
 
 \ The way out of the code that registered: SS_DISABLE, then the caller gives
 \ the band back. Its result goes unchecked because it cannot fail off the
 \ alternate stack: the one failure of a well-formed disable is a thread running
 \ on its alternate stack, and sp is below the band.
 : C-SIGNAL-STACK-OFF ( -- )
-   SP SP SIGSTK-FRAME SUBI,
-   12 SIGSTK-DISABLE MOVZ,  12 SP SIGSTK-FLAGS STR,
-   0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
-   SP SP SIGSTK-FRAME ADDI, ;
+   A64ICODE:SP A64ICODE:SP SIGSTK-FRAME A64ICODE:SUBI,
+   12 SIGSTK-DISABLE A64ICODE:MOVZ,  12 A64ICODE:SP SIGSTK-FLAGS A64ICODE:STR,
+   0 A64ICODE:SP 0 A64ICODE:ADDI,  1 0 A64ICODE:MOVZ,  SYSCALL:NR-SIGALTSTACK SYSCALL:SYS,
+   A64ICODE:SP A64ICODE:SP SIGSTK-FRAME A64ICODE:ADDI, ;
 
 \ x12 = nonzero when this thread has no alternate stack registered: the query
 \ sigaltstack(NULL, old) answers SS_DISABLE in old's flags. A query cannot be
 \ rejected: its one error is an unwritable buffer, and the buffer is this frame.
 : C-SIGNAL-STACK-ABSENT>R12 ( -- )
-   SP SP SIGSTK-FRAME SUBI,
-   0 0 MOVZ,  1 SP 0 ADDI,  NR-SIGALTSTACK SYS,
-   12 SP SIGSTK-FLAGS LDRW,                           \ ss_flags is an int
-   12 12 SIGSTK-DISABLE ANDI,
-   SP SP SIGSTK-FRAME ADDI, ;
+   A64ICODE:SP A64ICODE:SP SIGSTK-FRAME A64ICODE:SUBI,
+   0 0 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  SYSCALL:NR-SIGALTSTACK SYSCALL:SYS,
+   12 A64ICODE:SP SIGSTK-FLAGS A64ICODE:LDRW,                           \ ss_flags is an int
+   12 12 SIGSTK-DISABLE A64ICODE:ANDI,
+   A64ICODE:SP A64ICODE:SP SIGSTK-FRAME A64ICODE:ADDI, ;
 
 \ LSIGH: the async-signal-safe stub a program installs through sigaction to get
 \ a signal on a file descriptor. No Forth word is async-signal-safe, so this is
@@ -882,19 +878,14 @@ public
 \ non-blocking: a blocking write into a full pipe would stall the thread the
 \ signal landed on.
 : EMIT-SIGNAL-HANDLER ( -- )
-   LSIGH LABEL@ LBL,
-   LBL {: done:label :}
-   SP SP $10 SUBI,
-   0 SP 0 STR,                                   \ the four low bytes ARE the number the fd receives
-   0 DATA-VA VA>N SIGNAL-ABI:FD-CELL + LIT64,
-   0 0 0 LDR,
-   0 done CBZ,
-   1 SP 0 ADDI,  2 4 MOVZ,  NR-WRITE SYS,
-   done LBL,
-   SP SP $10 ADDI,  RET, ;
+   LSIGH A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL {: done:label :}
+   A64ICODE:SP A64ICODE:SP $10 A64ICODE:SUBI,
+   0 A64ICODE:SP 0 A64ICODE:STR,                                   \ the four low bytes ARE the number the fd receives
+   0 DATA-VA VA>N SIGNAL-ABI:FD-CELL + A64ICODE:LIT64,
+   0 0 0 A64ICODE:LDR,
+   0 done A64ICODE:CBZ,
+   1 A64ICODE:SP 0 A64ICODE:ADDI,  2 4 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   done A64ICODE:LBL,
+   A64ICODE:SP A64ICODE:SP $10 A64ICODE:ADDI,  A64ICODE:RET, ;
 ;package
-
-;using
-;using
-;using
-;using

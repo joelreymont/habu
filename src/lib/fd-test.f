@@ -24,9 +24,6 @@ require src/lib/fs.f
 require src/lib/ffi-abi.f
 
 package FD-TEST
-using FD
-using SPAN
-using MEM
 
 PROCESS-SYMBOLS
 FUNCTION: KQUEUE-CALL kqueue ( -- i32 ) ;FUNCTION
@@ -66,11 +63,11 @@ variable FILLED                   \ FILLER's descriptors still open
    ;MATCH ;
 
 : PATTERN! ( SPAN:span<u8> -- )
-   $ {: s:str :}
+   SPAN:$ {: s:str :}
    s STR:LEN 0 ?do i PATTERN-MOD mod s STR:DATA i + c! loop ;
 
 : PATTERN? ( SPAN:span<u8> -- bool )
-   $ {: s:str :}
+   SPAN:$ {: s:str :}
    s STR:LEN 0 ?do s STR:DATA i + c@ i PATTERN-MOD mod <> if false unloop exit then loop
    true ;
 
@@ -85,7 +82,7 @@ variable FILLED                   \ FILLER's descriptors still open
    CHILD-CODE @ CHILD-EXIT ;
 
 : WRITER ( -- )
-   CHILD-FD @ >FD SRC @ $ WRITE-FULL
+   CHILD-FD @ >FD SRC @ SPAN:$ FD:WRITE-FULL
    0 CHILD-CODE ! ;
 
 \ Waits for the writer's first bytes, so the writer is about to block on a full
@@ -96,13 +93,13 @@ variable FILLED                   \ FILLER's descriptors still open
 
 : DRAIN ( -- )
    HOLD-BACK
-   CHILD-FD @ >FD DST @ READ-EXACT OUTCOME drop
+   CHILD-FD @ >FD DST @ FD:READ-EXACT OUTCOME drop
    0 CHILD-CODE ! ;
 
 : DELIVERED? ( -- bool )           \ the whole pattern, then end of file
-   CHILD-FD @ >FD DST @ READ-EXACT OUTCOME FULL-MARK <> if false exit then
+   CHILD-FD @ >FD DST @ FD:READ-EXACT OUTCOME FULL-MARK <> if false exit then
    DST @ PATTERN? 0= if false exit then
-   CHILD-FD @ >FD SMALL READ-EXACT OUTCOME 0= ;
+   CHILD-FD @ >FD SMALL FD:READ-EXACT OUTCOME 0= ;
 
 : SLOW-READER ( -- )
    HOLD-BACK
@@ -119,19 +116,19 @@ variable FILLED                   \ FILLER's descriptors still open
    FD>N 3 0 fcntl dup 0 < if E-FS-IO throw then ;
 
 : UNTIL-WRITE ( -- )
-   ERR-FD @ >FD SRC @ $ UNTIL-AT @ WRITE-FULL-UNTIL ;
+   ERR-FD @ >FD SRC @ SPAN:$ UNTIL-AT @ FD:WRITE-FULL-UNTIL ;
 
 : FULL-WRITE ( -- )
-   ERR-FD @ >FD SRC @ $ WRITE-FULL ;
+   ERR-FD @ >FD SRC @ SPAN:$ FD:WRITE-FULL ;
 
 : UNTIL-BROKEN ( -- )
-   ERR-FD @ >FD s" broken" UNTIL-AT @ WRITE-FULL-UNTIL ;
+   ERR-FD @ >FD s" broken" UNTIL-AT @ FD:WRITE-FULL-UNTIL ;
 
 : UNTIL-NEGATIVE ( -- )
-   ERR-FD @ >FD s" x" STR:DATA -1 >str UNTIL-AT @ WRITE-FULL-UNTIL ;
+   ERR-FD @ >FD s" x" STR:DATA -1 >str UNTIL-AT @ FD:WRITE-FULL-UNTIL ;
 
 : UNTIL-EXPIRED ( -- )
-   ERR-FD @ >FD s" x" UNTIL-AT @ WRITE-FULL-UNTIL ;
+   ERR-FD @ >FD s" x" UNTIL-AT @ FD:WRITE-FULL-UNTIL ;
 
 \ A descriptor already nonblocking remains nonblocking. An expired request
 \ writes nothing; an empty request has no transfer to time out.
@@ -139,15 +136,15 @@ variable FILLED                   \ FILLER's descriptors still open
    FD:PIPE-PAIR {: r:fd w:fd :}
    w FD-FLAGS {: flags:n :}
    w FD>N 4 flags FD:O-NONBLOCK or fcntl 0 T=
-   w s" abc" mono-ns 1000 1000000 * + WRITE-FULL-UNTIL
+   w s" abc" mono-ns 1000 1000000 * + FD:WRITE-FULL-UNTIL
    w FD-FLAGS FD:O-NONBLOCK and FD:O-NONBLOCK T=
-   r SMALL 3 TAKE READ-EXACT OUTCOME FULL-MARK T=
-   SMALL $ STR:DATA 3 >str s" abc" T$=
+   r SMALL 3 SPAN:TAKE FD:READ-EXACT OUTCOME FULL-MARK T=
+   SMALL SPAN:$ STR:DATA 3 >str s" abc" T$=
    w FD>N ERR-FD !
    mono-ns 1- UNTIL-AT !
    [: UNTIL-EXPIRED ;] E-FS-TIMEOUT TTHROWSQ
    [: UNTIL-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
-   w s" " UNTIL-AT @ WRITE-FULL-UNTIL
+   w s" " UNTIL-AT @ FD:WRITE-FULL-UNTIL
    r 0 >MS PROCESS:POLL-IN COUNT>N 0 T=
    w FD>N 4 flags fcntl 0 T=
    r FD>N close
@@ -163,17 +160,17 @@ variable FILLED                   \ FILLER's descriptors still open
 \ moves bytes again once the reader has taken what was there.
 : NONBLOCK-WRITE ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
-   w NONBLOCK!
-   SRC @ $ {: src:str :}
+   w FD:NONBLOCK!
+   SRC @ SPAN:$ {: src:str :}
    w src FD:TRY-WRITE {: k:n :}
    k 0 > TTRUE
    k src STR:LEN < TTRUE
    w src STR:DATA k + src STR:LEN k - >str FD:TRY-WRITE 0 T=
-   r DST @ k TAKE READ-EXACT OUTCOME FULL-MARK T=
+   r DST @ k SPAN:TAKE FD:READ-EXACT OUTCOME FULL-MARK T=
    w src STR:DATA k + src STR:LEN k - >str FD:TRY-WRITE 0 > TTRUE
    r FD>N close
    w FD>N ERR-FD !
-   w [: [: NONBLOCK-BROKEN ;] E-FS-IO TTHROWSQ ;] WITH-NOSIGPIPE
+   w [: [: NONBLOCK-BROKEN ;] E-FS-IO TTHROWSQ ;] FD:WITH-NOSIGPIPE
    [: NONBLOCK-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    w FD>N close ;
 
@@ -182,7 +179,7 @@ variable FILLED                   \ FILLER's descriptors still open
 \ status flags afterwards, including after the short writes in this case. Once
 \ the reader is reaped, a throw from the write is rethrown.
 : BOUNDED-SUCCESS ( -- )
-   0 DST @ FILL
+   0 DST @ SPAN:FILL
    FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N CHILD-FD !
    w FD-FLAGS {: flags:n :}
@@ -238,8 +235,8 @@ variable FILLED                   \ FILLER's descriptors still open
 \ nothing.
 : EMPTY-REQUEST ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
-   r SMALL 0 TAKE READ-EXACT OUTCOME FULL-MARK T=
-   w s" " WRITE-FULL
+   r SMALL 0 SPAN:TAKE FD:READ-EXACT OUTCOME FULL-MARK T=
+   w s" " FD:WRITE-FULL
    r 0 >MS PROCESS:POLL-IN COUNT>N 0 T=
    r FD>N close
    w FD>N close ;
@@ -251,9 +248,9 @@ variable FILLED                   \ FILLER's descriptors still open
    FD:PIPE-PAIR {: r:fd w:fd :}
    w FD>N s" abc" write 3 T=
    w FD>N close
-   r SMALL 8 TAKE READ-EXACT OUTCOME 3 T=
-   SMALL $ STR:DATA 3 >str s" abc" T$=
-   r SMALL READ-EXACT OUTCOME 0 T=
+   r SMALL 8 SPAN:TAKE FD:READ-EXACT OUTCOME 3 T=
+   SMALL SPAN:$ STR:DATA 3 >str s" abc" T$=
+   r SMALL FD:READ-EXACT OUTCOME 0 T=
    r FD>N close ;
 
 \ An empty pipe is not readable within 20 ms; a byte makes it readable at
@@ -264,7 +261,7 @@ variable FILLED                   \ FILLER's descriptors still open
    w FD>N s" x" write 1 T=
    r 0 FD:READABLE-WITHIN TTRUE
    w FD>N close
-   r SMALL 1 TAKE READ-EXACT OUTCOME FULL-MARK T=
+   r SMALL 1 SPAN:TAKE FD:READ-EXACT OUTCOME FULL-MARK T=
    r 0 FD:READABLE-WITHIN TTRUE
    r FD>N close ;
 
@@ -272,18 +269,18 @@ variable FILLED                   \ FILLER's descriptors still open
 \ premise - and READ-EXACT fills the rest across many more short reads; the end
 \ of file then lands on the boundary.
 : EXACT-OVER-SHORT-READS ( -- )
-   0 DST @ FILL
+   0 DST @ SPAN:FILL
    FD:PIPE-PAIR {: r:fd w:fd :}
    w FD>N CHILD-FD !
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if r FD>N close [: WRITER ;] IN-CHILD then
    w FD>N close
-   r FD>N DST @ $ dup STR:DATA swap STR:LEN read {: got:n :}
+   r FD>N DST @ SPAN:$ dup STR:DATA swap STR:LEN read {: got:n :}
    got 0 > TTRUE
    got PAYLOAD < TTRUE
-   r DST @ got SKIP READ-EXACT OUTCOME FULL-MARK T=
+   r DST @ got SPAN:SKIP FD:READ-EXACT OUTCOME FULL-MARK T=
    DST @ PATTERN? TTRUE
-   r SMALL READ-EXACT OUTCOME 0 T=
+   r SMALL FD:READ-EXACT OUTCOME 0 T=
    r FD>N close
    s" forked writer" s" " s" "
    pid PROCESS:WAIT PROCESS:STATUS>ENDING 0 T-ENDING-EXITED= ;
@@ -291,7 +288,7 @@ variable FILLED                   \ FILLER's descriptors still open
 \ The premise of WRITE-FULL's case: with the storm landing on a write blocked by
 \ a full pipe, one raw write of PAYLOAD comes back short.
 : SHORT-WRITE-PREMISE ( -- )
-   0 DST @ FILL
+   0 DST @ SPAN:FILL
    FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N CHILD-FD !
    STORM-LIMIT prof-on
@@ -299,7 +296,7 @@ variable FILLED                   \ FILLER's descriptors still open
    pid PID>N 0= if w FD>N close [: DRAIN ;] IN-CHILD then
    r FD>N close
    w FD:FD-NOSIGPIPE!
-   w FD>N SRC @ $ write {: wrote:n :}
+   w FD>N SRC @ SPAN:$ write {: wrote:n :}
    prof-off
    w FD>N close
    pid REAP-READER {: oc :}
@@ -311,7 +308,7 @@ variable FILLED                   \ FILLER's descriptors still open
 \ writes the premise proved, and the reader gets every byte in order, then the
 \ end of file.
 : FULL-WRITE-UNDER-STORM ( -- )
-   0 DST @ FILL
+   0 DST @ SPAN:FILL
    FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N CHILD-FD !
    STORM-LIMIT prof-on
@@ -333,57 +330,57 @@ variable FILLED                   \ FILLER's descriptors still open
    s" fd-test" FS:MKTEMP {: path:str made:fd :}
    made FD>N close
    path FS:OPEN-APPEND-FD >FD {: f:fd :}
-   f s" part-one" WRITE-FULL
-   f s" partial" WRITE-FULL
-   f 8 RESIZE
-   f s" part-two" WRITE-FULL
-   f SYNC
+   f s" part-one" FD:WRITE-FULL
+   f s" partial" FD:WRITE-FULL
+   f 8 FD:RESIZE
+   f s" part-two" FD:WRITE-FULL
+   f FD:SYNC
    f FD>N close
-   path SMALL $ dup STR:DATA swap STR:LEN FS:READ-ALL 16 T=
-   SMALL $ s" part-onepart-two" T$=
+   path SMALL SPAN:$ dup STR:DATA swap STR:LEN FS:READ-ALL 16 T=
+   SMALL SPAN:$ s" part-onepart-two" T$=
    path FS:REMOVE-FILE ;
 
 \ CHMOD's bits read back through the descriptor's stat, and a read after SEEK
 \ starts at the offset.
 : MODE-THEN-SEEK ( -- )
    s" fd-test" FS:MKTEMP {: path:str f:fd :}
-   f 416 MODE!                       \ 0640, where mkstemp made 0600
+   f 416 FD:MODE!                       \ 0640, where mkstemp made 0600
    f FS:FD-STAT
    FS:STAT-MODE@ $FFF and 416 T=
-   f s" 0123456789" WRITE-FULL
-   f 4 SEEK
-   f SMALL READ-EXACT OUTCOME 6 T=
-   SMALL $ STR:DATA 6 >str s" 456789" T$=
+   f s" 0123456789" FD:WRITE-FULL
+   f 4 FD:SEEK
+   f SMALL FD:READ-EXACT OUTCOME 6 T=
+   SMALL SPAN:$ STR:DATA 6 >str s" 456789" T$=
    f FD>N close
    path FS:REMOVE-FILE ;
 
 : DIR-SYNC ( -- )
    s" fd-test" FS:MKTEMP-DIR {: path:str :}
    path FS:OPEN-DIR-READ {: d:n :}
-   d >FD SYNC
+   d >FD FD:SYNC
    d FS:CLOSE-FD 0 T=
    path FS:REMOVE-DIR ;
 
 : READ-CLOSED ( -- )
-   ERR-FD @ >FD SMALL READ-EXACT OUTCOME drop ;
+   ERR-FD @ >FD SMALL FD:READ-EXACT OUTCOME drop ;
 
 : SYNC-CLOSED ( -- )
-   ERR-FD @ >FD SYNC ;
+   ERR-FD @ >FD FD:SYNC ;
 
 : NONBLOCK-ERR ( -- )
-   ERR-FD @ >FD NONBLOCK! ;
+   ERR-FD @ >FD FD:NONBLOCK! ;
 
 : WRITE-NO-READER ( -- )
-   ERR-FD @ >FD s" data" WRITE-FULL ;
+   ERR-FD @ >FD s" data" FD:WRITE-FULL ;
 
 : WRITE-NEGATIVE ( -- )
-   ERR-FD @ >FD s" x" STR:DATA -1 >str WRITE-FULL ;
+   ERR-FD @ >FD s" x" STR:DATA -1 >str FD:WRITE-FULL ;
 
 : RESIZE-PIPE ( -- )
-   ERR-FD @ >FD 0 RESIZE ;
+   ERR-FD @ >FD 0 FD:RESIZE ;
 
 : RESIZE-NEGATIVE ( -- )
-   ERR-FD @ >FD -1 RESIZE ;
+   ERR-FD @ >FD -1 FD:RESIZE ;
 
 \ The rest of a forked child's life: a minute's sleep, outliving the case.
 : SLEEPER ( -- )
@@ -403,7 +400,7 @@ variable FILLED                   \ FILLER's descriptors still open
    w FD>N close
    r -1 >MS PROCESS:POLL-IN COUNT>N {: ready:n :}
    ready 1 T=
-   ready 1 = if r SMALL READ-EXACT OUTCOME 0 T= then
+   ready 1 = if r SMALL FD:READ-EXACT OUTCOME 0 T= then
    r FD>N close
    pid PROCESS:SIGKILL PROCESS:KILL-RAW RC>N 0 T=
    s" exec'd sleeper" s" " s" "
@@ -426,16 +423,16 @@ variable FILLED                   \ FILLER's descriptors still open
    w FD>N close ;
 
 : SEEK-PIPE ( -- )
-   ERR-FD @ >FD 0 SEEK ;
+   ERR-FD @ >FD 0 FD:SEEK ;
 
 : CLOEXEC-ERR ( -- )
-   ERR-FD @ >FD FD-CLOEXEC! ;
+   ERR-FD @ >FD FD:FD-CLOEXEC! ;
 
 : NOSIGPIPE-ERR ( -- )
-   ERR-FD @ >FD FD-NOSIGPIPE! ;
+   ERR-FD @ >FD FD:FD-NOSIGPIPE! ;
 
 : HOLD-ERR ( -- )
-   ERR-FD @ >FD [: ;] WITH-NOSIGPIPE ;
+   ERR-FD @ >FD [: ;] FD:WITH-NOSIGPIPE ;
 
 : CAUSE-LEFT ( [ -- ] n n -- )
    {: want:n :}
@@ -454,7 +451,7 @@ variable FILLED                   \ FILLER's descriptors still open
    [: HOLD-ERR ;] E-PROC-OUTPUT EBADF-LEFT ;
 
 : MODE-CLOSED ( -- )
-   ERR-FD @ >FD 416 MODE! ;
+   ERR-FD @ >FD 416 FD:MODE! ;
 
 \ A rejected seek on a pipe, and a rejected mode change or flags read on a
 \ closed descriptor, leave the call's errno in FS:ERRNO.
@@ -475,17 +472,17 @@ variable FILLED                   \ FILLER's descriptors still open
 \ once the original is closed; end of file then shows no write end is left.
 : DUPLICATE-WRITE ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
-   w DUPLICATE {: d:fd :}
+   w FD:DUPLICATE {: d:fd :}
    w FD>N close
-   d FD>N F-GETFD 0 fcntl FD-CLOEXEC T=
-   d s" abc" WRITE-FULL
+   d FD>N F-GETFD 0 fcntl FD:FD-CLOEXEC T=
+   d s" abc" FD:WRITE-FULL
    d FD>N close
-   r SMALL 8 TAKE READ-EXACT OUTCOME 3 T=
-   SMALL $ STR:DATA 3 >str s" abc" T$=
+   r SMALL 8 SPAN:TAKE FD:READ-EXACT OUTCOME 3 T=
+   SMALL SPAN:$ STR:DATA 3 >str s" abc" T$=
    r FD>N close ;
 
 : DUPLICATE-ERR ( -- )
-   ERR-FD @ >FD DUPLICATE FD>N close ;
+   ERR-FD @ >FD FD:DUPLICATE FD>N close ;
 
 : DUPLICATE-CLOSED ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
@@ -497,7 +494,7 @@ variable FILLED                   \ FILLER's descriptors still open
    FS:ERRNO FS:EBADF T= ;
 
 \ fd's SIGPIPE flag: macOS keeps one per open file description, Linux none.
-: NOSIGPIPE@ ( fd -- n )  FD>N F-GETNOSIGPIPE 0 fcntl ;
+: NOSIGPIPE@ ( fd -- n )  FD>N FD:F-GETNOSIGPIPE 0 fcntl ;
 
 
 : HELD-FLAG ( -- )
@@ -505,11 +502,11 @@ variable FILLED                   \ FILLER's descriptors still open
 
 
 : HELD-RETURN ( -- )
-   ERR-FD @ >FD [: HELD-FLAG ;] WITH-NOSIGPIPE ;
+   ERR-FD @ >FD [: HELD-FLAG ;] FD:WITH-NOSIGPIPE ;
 
 
 : HELD-NO-READER ( -- )
-   ERR-FD @ >FD [: HELD-FLAG WRITE-NO-READER ;] WITH-NOSIGPIPE ;
+   ERR-FD @ >FD [: HELD-FLAG WRITE-NO-READER ;] FD:WITH-NOSIGPIPE ;
 
 
 \ On macOS the flag was set inside the quotation and is clear again after it.
@@ -533,7 +530,7 @@ variable FILLED                   \ FILLER's descriptors still open
    -1 FLAG-IN !
    [: HELD-NO-READER ;] E-FS-IO TTHROWSQ
    w HELD=
-   w FD-NOSIGPIPE!
+   w FD:FD-NOSIGPIPE!
    HELD-RETURN
    HB-TARGET-MACOS? if w NOSIGPIPE@ 1 T= then
    w FD>N close ;
@@ -548,23 +545,23 @@ variable FILLED                   \ FILLER's descriptors still open
 
 
 : TRY-NO-READER ( -- )
-   ERR-FD @ >FD s" data" TRY-WRITE-FULL WROTE>N WROTE-IN ! ;
+   ERR-FD @ >FD s" data" FD:TRY-WRITE-FULL WROTE>N WROTE-IN ! ;
 
 
 \ TRY-WRITE-FULL answers `all` on an ordinary write, `part` once a full
 \ non-blocking pipe rejects after taking bytes, and `none` once the reader is gone.
 : FULL-WRITE-OUTCOMES ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
-   w s" abc" TRY-WRITE-FULL WROTE>N ALL-MARK T=
-   r SMALL 3 TAKE READ-EXACT OUTCOME FULL-MARK T=
-   SMALL $ STR:DATA 3 >str s" abc" T$=
-   w NONBLOCK!
-   w SRC @ $ TRY-WRITE-FULL WROTE>N PART-MARK T=
+   w s" abc" FD:TRY-WRITE-FULL WROTE>N ALL-MARK T=
+   r SMALL 3 SPAN:TAKE FD:READ-EXACT OUTCOME FULL-MARK T=
+   SMALL SPAN:$ STR:DATA 3 >str s" abc" T$=
+   w FD:NONBLOCK!
+   w SRC @ SPAN:$ FD:TRY-WRITE-FULL WROTE>N PART-MARK T=
    r 0 >MS PROCESS:POLL-IN COUNT>N 1 T=
    r FD>N close
    w FD>N ERR-FD !
    -1 WROTE-IN !
-   w [: TRY-NO-READER ;] WITH-NOSIGPIPE
+   w [: TRY-NO-READER ;] FD:WITH-NOSIGPIPE
    WROTE-IN @ NONE-MARK T=
    w FD>N close ;
 
@@ -625,8 +622,8 @@ variable FILLED                   \ FILLER's descriptors still open
 
 : MAIN ( -- )
    T-RESET
-   PAYLOAD BYTES-ALLOC-LEN ALLOC-SPAN SRC !
-   PAYLOAD BYTES-ALLOC-LEN ALLOC-SPAN DST !
+   PAYLOAD MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SRC !
+   PAYLOAD MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN DST !
    SRC @ PATTERN!
    EMPTY-REQUEST
    EOF-INSIDE
@@ -651,14 +648,11 @@ variable FILLED                   \ FILLER's descriptors still open
    HELD-WRITE
    FULL-WRITE-OUTCOMES
    REJECTED-MARK
-   SRC @ FREE-SPAN
-   DST @ FREE-SPAN
+   SRC @ MEM:FREE-SPAN
+   DST @ MEM:FREE-SPAN
    T-REPORT
    s" fd-test: ok" type cr ;
 
 MAIN
 
-;using
-;using
-;using
 ;package

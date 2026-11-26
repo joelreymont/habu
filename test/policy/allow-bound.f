@@ -4,7 +4,6 @@
 \ tries to admit PBIG itself.
 require src/lib/vocabulary.f
 require test/policy/dep.f
-using VOCABULARY
 
 : MANY ( -- ) POLICY-WID-MAX 0 do wordlist drop loop ;
 MANY
@@ -15,7 +14,6 @@ public
 ;package
 
 : RUN ( -- )
-   SCRIPT-ARGC 0= if s" PBIG" ALLOW-PACKAGE exit then
-   s" PDEP" ALLOW-PACKAGE RESTRICT 0 SCRIPT-ARGV$ included ;
+   SCRIPT-ARGC 0= if s" PBIG" VOCABULARY:ALLOW-PACKAGE exit then
+   s" PDEP" VOCABULARY:ALLOW-PACKAGE VOCABULARY:RESTRICT 0 SCRIPT-ARGV$ included ;
 RUN
-;using

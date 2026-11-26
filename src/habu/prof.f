@@ -92,13 +92,6 @@ HB-TARGET-LINUX-ARM64? [if]
 HB-TARGET-MACOS? [if]
    require src/os/macos/sys.f
 [then]
-using A64ASM
-using A64ICODE
-using PROF-ABI
-using CRASH
-using ENGINE-EMIT
-using RT
-using SYSCALL
 
 package PROF
 
@@ -116,7 +109,7 @@ private
    s" hb: this target's signal frame is not modelled" EXIT-STATUS:INTERNAL die ;
 PROF-TARGET-OK
 
-DATA-VA VA>N DATA-SIZE PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is fixed at DATA-VA
+DATA-VA VA>N DATA-SIZE PROF-ABI:PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is fixed at DATA-VA
 PROF-BAND-VA PROF-STATE-BYTES + constant PROF-CNT-VA
 DATA-VA VA>N MAIN-STACK-TOP-CELL + constant PROF-TOP-VA
 DATA-VA VA>N MAIN-THREAD-CELL + constant PROF-THREAD-VA
@@ -125,17 +118,17 @@ DATA-VA VA>N TEXT-SIZE-CELL + constant PROF-TEXT-SIZE-VA
 $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
 
 : C-PROF-MCTX>R21 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 21 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
-   21 4 MCTX-OFF LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 21 2 CRASH:LINUX-UC-MCTX-OFF A64ICODE:ADDI, exit THEN
+   21 4 CRASH:MCTX-OFF A64ICODE:LDR, ;
 
 : C-PROF-PC>R9 ( -- )
-   HB-TARGET-LINUX-ARM64? IF 9 21 LINUX-MCTX-PC-OFF LDR, exit THEN
-   9 21 MACOS-MCTX-PC-OFF LDR, ;
+   HB-TARGET-LINUX-ARM64? IF 9 21 CRASH:LINUX-MCTX-PC-OFF A64ICODE:LDR, exit THEN
+   9 21 CRASH:MACOS-MCTX-PC-OFF A64ICODE:LDR, ;
 
 \ rd = the interrupted context's x<n>, read from the signal frame (x21 = mcontext).
 : C-PROF-CTX-X>R ( n n -- ) {: x:n rd:n :}
-   HB-TARGET-LINUX-ARM64? IF rd 21 LINUX-MCTX-X0-OFF x 8 * + LDR, exit THEN
-   rd 21 SS-OFF x 8 * + LDR, ;
+   HB-TARGET-LINUX-ARM64? IF rd 21 CRASH:LINUX-MCTX-X0-OFF x 8 * + A64ICODE:LDR, exit THEN
+   rd 21 CRASH:SS-OFF x 8 * + A64ICODE:LDR, ;
 
 public
 
@@ -144,26 +137,26 @@ public
 \ x10-x13 and obeys the primitive ABI (x19-x28 untouched), because prof-pc>rec
 \ calls it from compiled Habu code.
 : EMIT-PROFFIND ( -- )
-   LPROFFIND LABEL@ LBL,
-   LBL LBL LBL LBL LBL {: bl bhi bdone miss out :}
-   10 8 ARN-COUNT LDR,  10 miss CBZ,
-   11 8 ARN-LO LDR,  9 11 CMP,  C-CC miss BCOND,
-   11 8 ARN-HI LDR,  9 11 CMP,  C-CS miss BCOND,
-   11 0 MOVZ,                                         \ lo
-   bl LBL,                                            \ rightmost entry with start <= pc
-      11 10 CMP,  C-CS bdone BCOND,
-      12 11 10 ADD,  12 12 1 LSRI,                    \ mid = (lo + hi) / 2
-      13 12 5 LSLI,  13 8 13 ADD,  13 13 ARN-IDX ADDI,
-      13 13 ENT-START LDR,
-      13 9 CMP,  C-HI bhi BCOND,                      \ start > pc: mid is the new hi
-      11 12 1 ADDI,  bl B,
-   bhi LBL,  10 12 0 ADDI,  bl B,
-   bdone LBL,
-   11 miss CBZ,                                       \ every start is above the pc
-   11 11 1 SUBI,  6 11 5 LSLI,  6 8 6 ADD,  6 6 ARN-IDX ADDI,
-   13 6 ENT-END LDR,  9 13 CMP,  C-CC out BCOND,      \ the pc sits in a gap above it
-   miss LBL,  6 0 MOVZ,
-   out LBL,  RET, ;
+   LPROFFIND A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bl bhi bdone miss out :}
+   10 8 PROF-ABI:ARN-COUNT A64ICODE:LDR,  10 miss A64ICODE:CBZ,
+   11 8 PROF-ABI:ARN-LO A64ICODE:LDR,  9 11 A64ICODE:CMP,  A64ASM:C-CC miss A64ICODE:BCOND,
+   11 8 PROF-ABI:ARN-HI A64ICODE:LDR,  9 11 A64ICODE:CMP,  A64ASM:C-CS miss A64ICODE:BCOND,
+   11 0 A64ICODE:MOVZ,                                         \ lo
+   bl A64ICODE:LBL,                                            \ rightmost entry with start <= pc
+      11 10 A64ICODE:CMP,  A64ASM:C-CS bdone A64ICODE:BCOND,
+      12 11 10 A64ICODE:ADD,  12 12 1 A64ICODE:LSRI,                    \ mid = (lo + hi) / 2
+      13 12 5 A64ICODE:LSLI,  13 8 13 A64ICODE:ADD,  13 13 PROF-ABI:ARN-IDX A64ICODE:ADDI,
+      13 13 PROF-ABI:ENT-START A64ICODE:LDR,
+      13 9 A64ICODE:CMP,  A64ASM:C-HI bhi A64ICODE:BCOND,                      \ start > pc: mid is the new hi
+      11 12 1 A64ICODE:ADDI,  bl A64ICODE:B,
+   bhi A64ICODE:LBL,  10 12 0 A64ICODE:ADDI,  bl A64ICODE:B,
+   bdone A64ICODE:LBL,
+   11 miss A64ICODE:CBZ,                                       \ every start is above the pc
+   11 11 1 A64ICODE:SUBI,  6 11 5 A64ICODE:LSLI,  6 8 6 A64ICODE:ADD,  6 6 PROF-ABI:ARN-IDX A64ICODE:ADDI,
+   13 6 PROF-ABI:ENT-END A64ICODE:LDR,  9 13 A64ICODE:CMP,  A64ASM:C-CC out A64ICODE:BCOND,      \ the pc sits in a gap above it
+   miss A64ICODE:LBL,  6 0 A64ICODE:MOVZ,
+   out A64ICODE:LBL,  A64ICODE:RET, ;
 
 \ LPROFEDGE ( x8 = arena, x22 = sampled record, x10 = caller record, x3 = the
 \ sample's weight ): add the weight to one caller edge. Clobbers x11-x16. A
@@ -171,31 +164,31 @@ public
 \ probe window counts the weight as dropped rather than overwriting somebody
 \ else's pair.
 : EMIT-PROFEDGE ( -- )
-   LPROFEDGE LABEL@ LBL,
-   LBL LBL LBL LBL {: eprobe efree ehit edone :}
-   22 0 CMPI,  C-LT edone BCOND,
-   11 22 PROF-REC-BITS LSLI,  11 11 10 ORR,  11 11 1 ADDI,   \ key, never 0
-   12 PROF-HASH LIT64,  12 11 12 MUL,  12 12 48 LSRI,
-   14 ARN-CALL LIT64,  14 8 14 ADD,
-   13 PROF-CALL-PROBE MOVZ,
-   eprobe LBL,
-      15 12 4 LSLI,  15 14 15 ADD,
-      16 15 0 LDR,
-      16 efree CBZ,
-      16 11 CMP,  C-EQ ehit BCOND,
-      12 12 1 ADDI,  12 12 PROF-CALL-MASK ANDI,
-      13 13 1 SUBI,  13 eprobe CBNZ,
-   16 8 ARN-DROP LDR,  16 16 3 ADD,  16 8 ARN-DROP STR,  edone B,
-   efree LBL,  11 15 0 STR,  3 15 8 STR,  edone B,
-   ehit LBL,  16 15 8 LDR,  16 16 3 ADD,  16 15 8 STR,
-   edone LBL,  RET, ;
+   LPROFEDGE A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: eprobe efree ehit edone :}
+   22 0 A64ICODE:CMPI,  A64ASM:C-LT edone A64ICODE:BCOND,
+   11 22 PROF-ABI:PROF-REC-BITS A64ICODE:LSLI,  11 11 10 A64ICODE:ORR,  11 11 1 A64ICODE:ADDI,   \ key, never 0
+   12 PROF-ABI:PROF-HASH A64ICODE:LIT64,  12 11 12 A64ICODE:MUL,  12 12 48 A64ICODE:LSRI,
+   14 PROF-ABI:ARN-CALL A64ICODE:LIT64,  14 8 14 A64ICODE:ADD,
+   13 PROF-ABI:PROF-CALL-PROBE A64ICODE:MOVZ,
+   eprobe A64ICODE:LBL,
+      15 12 4 A64ICODE:LSLI,  15 14 15 A64ICODE:ADD,
+      16 15 0 A64ICODE:LDR,
+      16 efree A64ICODE:CBZ,
+      16 11 A64ICODE:CMP,  A64ASM:C-EQ ehit A64ICODE:BCOND,
+      12 12 1 A64ICODE:ADDI,  12 12 PROF-ABI:PROF-CALL-MASK A64ICODE:ANDI,
+      13 13 1 A64ICODE:SUBI,  13 eprobe A64ICODE:CBNZ,
+   16 8 PROF-ABI:ARN-DROP A64ICODE:LDR,  16 16 3 A64ICODE:ADD,  16 8 PROF-ABI:ARN-DROP A64ICODE:STR,  edone A64ICODE:B,
+   efree A64ICODE:LBL,  11 15 0 A64ICODE:STR,  3 15 8 A64ICODE:STR,  edone A64ICODE:B,
+   ehit A64ICODE:LBL,  16 15 8 A64ICODE:LDR,  16 16 3 A64ICODE:ADD,  16 15 8 A64ICODE:STR,
+   edone A64ICODE:LBL,  A64ICODE:RET, ;
 
 \ x23 = SP off the main stack: x24 = the scan's end, ARN-WALK cells above SP
 \ or the end of SP's 4 KiB block, whichever is lower. Clobbers x10.
 : C-PROF-BLOCK-END ( -- )
-   10 8 ARN-WALK LDR,  10 10 3 LSLI,  24 23 10 ADD,
-   10 23 PROF-PAGE-MASK ORRI,  10 10 1 ADDI,
-   24 10 CMP,  24 24 10 C-LS CSEL, ;
+   10 8 PROF-ABI:ARN-WALK A64ICODE:LDR,  10 10 3 A64ICODE:LSLI,  24 23 10 A64ICODE:ADD,
+   10 23 PROF-ABI:PROF-PAGE-MASK A64ICODE:ORRI,  10 10 1 A64ICODE:ADDI,
+   24 10 A64ICODE:CMP,  24 24 10 A64ASM:C-LS A64ICODE:CSEL, ;
 
 \ x8 = arena, x6 = an index entry, x10 = its record index, x3 = the sample's
 \ weight: one inclusive sample for that record, and only the first time THIS
@@ -205,138 +198,138 @@ public
 \ program did. The stamp is ARN-SEQ, which a weight above one does not move.
 \ Clobbers x11-x13.
 : C-PROF-INCL-ONCE ( -- )
-   LBL {: seen :}
-   11 ARN-STAMP LIT64,  11 8 11 ADD,  12 10 3 LSLI,  11 11 12 ADD,
-   12 11 0 LDR,
-   13 8 ARN-SEQ LDR,
-   12 13 CMP,  C-EQ seen BCOND,
-   13 11 0 STR,
-   12 6 ENT-INCL LDR,  12 12 3 ADD,  12 6 ENT-INCL STR,
-   seen LBL, ;
+   A64ICODE:LBL {: seen :}
+   11 PROF-ABI:ARN-STAMP A64ICODE:LIT64,  11 8 11 A64ICODE:ADD,  12 10 3 A64ICODE:LSLI,  11 11 12 A64ICODE:ADD,
+   12 11 0 A64ICODE:LDR,
+   13 8 PROF-ABI:ARN-SEQ A64ICODE:LDR,
+   12 13 A64ICODE:CMP,  A64ASM:C-EQ seen A64ICODE:BCOND,
+   13 11 0 A64ICODE:STR,
+   12 6 PROF-ABI:ENT-INCL A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 6 PROF-ABI:ENT-INCL A64ICODE:STR,
+   seen A64ICODE:LBL, ;
 
 \ x8 = arena, x9 = the interrupted pc, x21 = mcontext, x3 = the weight: keep one
 \ sample whose code the index cannot name yet. Only the pc, the interrupted x30
 \ and the weight are kept, at a fixed stride, so the handler still walks nothing here and allocates nothing; the
 \ next report rebuilds the index and replays them. Clobbers x10-x14.
 : C-PROF-DEFER ( -- )
-   LBL LBL {: full done :}
-   10 8 ARN-DEFER LDR,
-   11 PROF-DEFER-SLOTS LIT64,  10 11 CMP,  C-CS full BCOND,
-   12 ARN-DEF LIT64,  12 8 12 ADD,
-   13 PROF-DEFER-ENT MOVZ,  13 10 13 MUL,  12 12 13 ADD,
-   9 12 0 STR,
-   30 14 C-PROF-CTX-X>R  14 12 8 STR,  3 12 PROF-SLOT-WEIGHT STR,
-   10 10 1 ADDI,  10 8 ARN-DEFER STR,
-   done B,
-   full LBL,  10 8 ARN-SPILL LDR,  10 10 3 ADD,  10 8 ARN-SPILL STR,
-   done LBL, ;
+   A64ICODE:LBL A64ICODE:LBL {: full done :}
+   10 8 PROF-ABI:ARN-DEFER A64ICODE:LDR,
+   11 PROF-ABI:PROF-DEFER-SLOTS A64ICODE:LIT64,  10 11 A64ICODE:CMP,  A64ASM:C-CS full A64ICODE:BCOND,
+   12 PROF-ABI:ARN-DEF A64ICODE:LIT64,  12 8 12 A64ICODE:ADD,
+   13 PROF-ABI:PROF-DEFER-ENT A64ICODE:MOVZ,  13 10 13 A64ICODE:MUL,  12 12 13 A64ICODE:ADD,
+   9 12 0 A64ICODE:STR,
+   30 14 C-PROF-CTX-X>R  14 12 8 A64ICODE:STR,  3 12 PROF-ABI:PROF-SLOT-WEIGHT A64ICODE:STR,
+   10 10 1 A64ICODE:ADDI,  10 8 PROF-ABI:ARN-DEFER A64ICODE:STR,
+   done A64ICODE:B,
+   full A64ICODE:LBL,  10 8 PROF-ABI:ARN-SPILL A64ICODE:LDR,  10 10 3 A64ICODE:ADD,  10 8 PROF-ABI:ARN-SPILL A64ICODE:STR,
+   done A64ICODE:LBL, ;
 
 : C-PROF-WALK ( -- )
-   LBL LBL LBL LBL LBL {: wl wlr wdone wret wblock :}
-   25 22 0 ADDI,                                     \ dedup seed: the sampled word
-   19 0 MOVZ,                                        \ no caller edge recorded yet
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: wl wlr wdone wret wblock :}
+   25 22 0 A64ICODE:ADDI,                                     \ dedup seed: the sampled word
+   19 0 A64ICODE:MOVZ,                                        \ no caller edge recorded yet
    30 9 C-PROF-CTX-X>R
-   9 9 4 SUBI,                                       \ the call site, not the return address
-   10 8 ARN-LO LDR,  9 10 CMP,  C-CC wlr BCOND,
-   10 8 ARN-HI LDR,  9 10 CMP,  C-CS wlr BCOND,
-   LPROFFIND LABEL@ BL,
-   6 wlr CBZ,
-   10 6 ENT-IDX LDR,  10 25 CMP,  C-EQ wlr BCOND,    \ x30 still points inside the sample
+   9 9 4 A64ICODE:SUBI,                                       \ the call site, not the return address
+   10 8 PROF-ABI:ARN-LO A64ICODE:LDR,  9 10 A64ICODE:CMP,  A64ASM:C-CC wlr A64ICODE:BCOND,
+   10 8 PROF-ABI:ARN-HI A64ICODE:LDR,  9 10 A64ICODE:CMP,  A64ASM:C-CS wlr A64ICODE:BCOND,
+   LPROFFIND A64ICODE:LABEL@ A64ICODE:BL,
+   6 wlr A64ICODE:CBZ,
+   10 6 PROF-ABI:ENT-IDX A64ICODE:LDR,  10 25 A64ICODE:CMP,  A64ASM:C-EQ wlr A64ICODE:BCOND,    \ x30 still points inside the sample
    C-PROF-INCL-ONCE
-   25 10 0 ADDI,  19 1 MOVZ,
-   11 8 ARN-FRAMES LDR,  11 11 1 ADDI,  11 8 ARN-FRAMES STR,
-   LPROFEDGE LABEL@ BL,
-   wlr LBL,
+   25 10 0 A64ICODE:ADDI,  19 1 A64ICODE:MOVZ,
+   11 8 PROF-ABI:ARN-FRAMES A64ICODE:LDR,  11 11 1 A64ICODE:ADDI,  11 8 PROF-ABI:ARN-FRAMES A64ICODE:STR,
+   LPROFEDGE A64ICODE:LABEL@ A64ICODE:BL,
+   wlr A64ICODE:LBL,
    31 23 C-PROF-CTX-X>R                              \ the interrupted machine stack
-   10 8 ARN-STACK-LOW LDR,  23 10 CMP,  C-CC wblock BCOND,
-   24 8 ARN-STACK-TOP LDR,  23 24 CMP,  C-CC wl BCOND,
-   wblock LBL,  C-PROF-BLOCK-END                     \ not the main stack
-   wl LBL,
-      23 24 CMP,  C-CS wdone BCOND,
-      9 23 0 LDR,  23 23 8 ADDI,
-      10 8 ARN-LO LDR,  9 10 CMP,  C-CC wl BCOND,
-      10 8 ARN-HI LDR,  9 10 CMP,  C-CS wl BCOND,
-      9 9 4 SUBI,
-      LPROFFIND LABEL@ BL,
-      6 wl CBZ,
-      10 6 ENT-IDX LDR,  10 25 CMP,  C-EQ wl BCOND,  \ the frame below named the same word
+   10 8 PROF-ABI:ARN-STACK-LOW A64ICODE:LDR,  23 10 A64ICODE:CMP,  A64ASM:C-CC wblock A64ICODE:BCOND,
+   24 8 PROF-ABI:ARN-STACK-TOP A64ICODE:LDR,  23 24 A64ICODE:CMP,  A64ASM:C-CC wl A64ICODE:BCOND,
+   wblock A64ICODE:LBL,  C-PROF-BLOCK-END                     \ not the main stack
+   wl A64ICODE:LBL,
+      23 24 A64ICODE:CMP,  A64ASM:C-CS wdone A64ICODE:BCOND,
+      9 23 0 A64ICODE:LDR,  23 23 8 A64ICODE:ADDI,
+      10 8 PROF-ABI:ARN-LO A64ICODE:LDR,  9 10 A64ICODE:CMP,  A64ASM:C-CC wl A64ICODE:BCOND,
+      10 8 PROF-ABI:ARN-HI A64ICODE:LDR,  9 10 A64ICODE:CMP,  A64ASM:C-CS wl A64ICODE:BCOND,
+      9 9 4 A64ICODE:SUBI,
+      LPROFFIND A64ICODE:LABEL@ A64ICODE:BL,
+      6 wl A64ICODE:CBZ,
+      10 6 PROF-ABI:ENT-IDX A64ICODE:LDR,  10 25 A64ICODE:CMP,  A64ASM:C-EQ wl A64ICODE:BCOND,  \ the frame below named the same word
       C-PROF-INCL-ONCE
-      25 10 0 ADDI,
-      11 8 ARN-FRAMES LDR,  11 11 1 ADDI,  11 8 ARN-FRAMES STR,
-      19 wl CBNZ,                                    \ the immediate caller is already in
-      19 1 MOVZ,
-      LPROFEDGE LABEL@ BL,
-      wl B,
-   wdone LBL,
-   19 wret CBNZ,                                     \ nothing named a caller: say so
-   10 PROF-CALLER-NONE LIT64,  LPROFEDGE LABEL@ BL,
-   wret LBL, ;
+      25 10 0 A64ICODE:ADDI,
+      11 8 PROF-ABI:ARN-FRAMES A64ICODE:LDR,  11 11 1 A64ICODE:ADDI,  11 8 PROF-ABI:ARN-FRAMES A64ICODE:STR,
+      19 wl A64ICODE:CBNZ,                                    \ the immediate caller is already in
+      19 1 A64ICODE:MOVZ,
+      LPROFEDGE A64ICODE:LABEL@ A64ICODE:BL,
+      wl A64ICODE:B,
+   wdone A64ICODE:LBL,
+   19 wret A64ICODE:CBNZ,                                     \ nothing named a caller: say so
+   10 PROF-ABI:PROF-CALLER-NONE A64ICODE:LIT64,  LPROFEDGE A64ICODE:LABEL@ A64ICODE:BL,
+   wret A64ICODE:LBL, ;
 
 : C-PROF-SAY ( str -- ) {: a:^ u:n :}
-   LBL LBL {: skip txt :}
-   skip B,
-   txt LBL,  a u BYTES,
-   skip LBL,
-   0 1 MOVZ,  1 txt ADR,  2 u MOVZ,  NR-WRITE SYS, ;
+   A64ICODE:LBL A64ICODE:LBL {: skip txt :}
+   skip A64ICODE:B,
+   txt A64ICODE:LBL,  a u A64ICODE:BYTES,
+   skip A64ICODE:LBL,
+   0 1 A64ICODE:MOVZ,  1 txt A64ICODE:ADR,  2 u A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS, ;
 
 : C-PROF-BYTE ( n -- ) {: c:n :}
-   SP SP 16 SUBI,  13 c MOVZ,  13 SP 0 STRB,
-   0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-   SP SP 16 ADDI, ;
+   A64ICODE:SP A64ICODE:SP 16 A64ICODE:SUBI,  13 c A64ICODE:MOVZ,  13 A64ICODE:SP 0 A64ICODE:STRB,
+   0 1 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 1 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   A64ICODE:SP A64ICODE:SP 16 A64ICODE:ADDI, ;
 
 : C-PROF-NL ( -- )  s\" \n" C-PROF-SAY ;
 : C-PROF-DQ ( -- )  s\" \q" C-PROF-SAY ;
 
 : C-PROF-FIELD ( str n -- ) {: a:^ u:n reg:n :}
    a u C-PROF-SAY
-   9 reg 0 ADDI,  10 1 MOVZ,  LPROFNUM LABEL@ BL, ;
+   9 reg 0 A64ICODE:ADDI,  10 1 A64ICODE:MOVZ,  LPROFNUM A64ICODE:LABEL@ A64ICODE:BL, ;
 
 \ LPROFNUM ( x9 = value, x10 = width ): unsigned decimal, right-aligned in x10
 \ columns and never truncated, no newline. Clobbers x0-x2, x9-x15.
 : EMIT-PROFNUM ( -- )
-   LPROFNUM LABEL@ LBL,
-   LBL LBL LBL {: dl pl pd :}
-   15 10 0 ADDI,
-   SP SP 48 SUBI,
-   12 SP 48 ADDI,
-   11 10 MOVZ,
-   dl LBL,
-      14 9 11 UDIV,  13 14 11 MUL,  13 9 13 SUB,
-      13 13 $30 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
-      9 14 0 ADDI,  9 dl CBNZ,
-   10 SP 48 ADDI,  10 10 12 SUB,
-   15 15 10 SUB,
-   pl LBL,
-      15 0 CMPI,  C-LE pd BCOND,
-      13 $20 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,
-      15 15 1 SUBI,  pl B,
-   pd LBL,
-   0 1 MOVZ,  1 12 0 ADDI,  2 SP 48 ADDI,  2 2 12 SUB,  NR-WRITE SYS,
-   SP SP 48 ADDI,  RET, ;
+   LPROFNUM A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: dl pl pd :}
+   15 10 0 A64ICODE:ADDI,
+   A64ICODE:SP A64ICODE:SP 48 A64ICODE:SUBI,
+   12 A64ICODE:SP 48 A64ICODE:ADDI,
+   11 10 A64ICODE:MOVZ,
+   dl A64ICODE:LBL,
+      14 9 11 A64ICODE:UDIV,  13 14 11 A64ICODE:MUL,  13 9 13 A64ICODE:SUB,
+      13 13 $30 A64ICODE:ADDI,  12 12 1 A64ICODE:SUBI,  13 12 0 A64ICODE:STRB,
+      9 14 0 A64ICODE:ADDI,  9 dl A64ICODE:CBNZ,
+   10 A64ICODE:SP 48 A64ICODE:ADDI,  10 10 12 A64ICODE:SUB,
+   15 15 10 A64ICODE:SUB,
+   pl A64ICODE:LBL,
+      15 0 A64ICODE:CMPI,  A64ASM:C-LE pd A64ICODE:BCOND,
+      13 $20 A64ICODE:MOVZ,  12 12 1 A64ICODE:SUBI,  13 12 0 A64ICODE:STRB,
+      15 15 1 A64ICODE:SUBI,  pl A64ICODE:B,
+   pd A64ICODE:LBL,
+   0 1 A64ICODE:MOVZ,  1 12 0 A64ICODE:ADDI,  2 A64ICODE:SP 48 A64ICODE:ADDI,  2 2 12 A64ICODE:SUB,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   A64ICODE:SP A64ICODE:SP 48 A64ICODE:ADDI,  A64ICODE:RET, ;
 
 \ LPROFPCT ( x9 = count, x10 = total ): the share as "100.0", one decimal, right
 \ aligned in six columns. A zero total prints 0.0 rather than dividing by it.
 : EMIT-PROFPCT ( -- )
-   LPROFPCT LABEL@ LBL,
-   LBL LBL {: zero go :}
-   SP SP 16 SUBI,  30 SP 0 STR,
-   10 zero CBZ,
-   11 1000 MOVZ,  9 9 11 MUL,  9 9 10 UDIV,
-   go B,
-   zero LBL,  9 0 MOVZ,
-   go LBL,
-   12 10 MOVZ,  13 9 12 UDIV,  14 13 12 MUL,  14 9 14 SUB,
-   14 SP 8 STR,
-   9 13 0 ADDI,  10 4 MOVZ,  LPROFNUM LABEL@ BL,
+   LPROFPCT A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL A64ICODE:LBL {: zero go :}
+   A64ICODE:SP A64ICODE:SP 16 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,
+   10 zero A64ICODE:CBZ,
+   11 1000 A64ICODE:MOVZ,  9 9 11 A64ICODE:MUL,  9 9 10 A64ICODE:UDIV,
+   go A64ICODE:B,
+   zero A64ICODE:LBL,  9 0 A64ICODE:MOVZ,
+   go A64ICODE:LBL,
+   12 10 A64ICODE:MOVZ,  13 9 12 A64ICODE:UDIV,  14 13 12 A64ICODE:MUL,  14 9 14 A64ICODE:SUB,
+   14 A64ICODE:SP 8 A64ICODE:STR,
+   9 13 0 A64ICODE:ADDI,  10 4 A64ICODE:MOVZ,  LPROFNUM A64ICODE:LABEL@ A64ICODE:BL,
    $2E C-PROF-BYTE
-   9 SP 8 LDR,  10 1 MOVZ,  LPROFNUM LABEL@ BL,
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+   9 A64ICODE:SP 8 A64ICODE:LDR,  10 1 A64ICODE:MOVZ,  LPROFNUM A64ICODE:LABEL@ A64ICODE:BL,
+   30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 16 A64ICODE:ADDI,  A64ICODE:RET, ;
 
 \ LPROFNAME ( x5 = profile row ): the complete copied qualified name.
 : EMIT-PROFNAME ( -- )
-   LPROFNAME LABEL@ LBL,
-   0 1 MOVZ,  1 5 RID-NAME LDR,  2 5 RID-LEN LDR,  NR-WRITE SYS,
-   RET, ;
+   LPROFNAME A64ICODE:LABEL@ A64ICODE:LBL,
+   0 1 A64ICODE:MOVZ,  1 5 PROF-ABI:RID-NAME A64ICODE:LDR,  2 5 PROF-ABI:RID-LEN A64ICODE:LDR,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   A64ICODE:RET, ;
 
 \ LPROFDUMP / LPROFJSON ( -- ): the same walk, printed two ways.
 \
@@ -349,54 +342,54 @@ public
 \ x20 is never written: a fault here must find the caller's DATA in it. x17,
 \ x19 and x21-x25 are saved and restored because the compiled callers own them.
 : C-PROF-REP-OPEN ( -- )
-   SP SP 96 SUBI,
-   30 SP 0 STR,  19 SP 8 STR,  21 SP 24 STR,  22 SP 32 STR,
-   23 SP 40 STR,  24 SP 48 STR,  25 SP 56 STR,  17 SP 64 STR, ;
+   A64ICODE:SP A64ICODE:SP 96 A64ICODE:SUBI,
+   30 A64ICODE:SP 0 A64ICODE:STR,  19 A64ICODE:SP 8 A64ICODE:STR,  21 A64ICODE:SP 24 A64ICODE:STR,  22 A64ICODE:SP 32 A64ICODE:STR,
+   23 A64ICODE:SP 40 A64ICODE:STR,  24 A64ICODE:SP 48 A64ICODE:STR,  25 A64ICODE:SP 56 A64ICODE:STR,  17 A64ICODE:SP 64 A64ICODE:STR, ;
 
 : C-PROF-REP-CLOSE ( -- )
-   30 SP 0 LDR,  19 SP 8 LDR,  21 SP 24 LDR,  22 SP 32 LDR,
-   23 SP 40 LDR,  24 SP 48 LDR,  25 SP 56 LDR,  17 SP 64 LDR,
-   SP SP 96 ADDI,  RET, ;
+   30 A64ICODE:SP 0 A64ICODE:LDR,  19 A64ICODE:SP 8 A64ICODE:LDR,  21 A64ICODE:SP 24 A64ICODE:LDR,  22 A64ICODE:SP 32 A64ICODE:LDR,
+   23 A64ICODE:SP 40 A64ICODE:LDR,  24 A64ICODE:SP 48 A64ICODE:LDR,  25 A64ICODE:SP 56 A64ICODE:LDR,  17 A64ICODE:SP 64 A64ICODE:LDR,
+   A64ICODE:SP A64ICODE:SP 96 A64ICODE:ADDI,  A64ICODE:RET, ;
 
 \ x0 = arena, and the clock stopped. Empty every entry's inclusive count into the
 \ per-record array, so the rebuild that follows can move the entries freely.
 : C-PROF-INCL-FOLD ( -- )
-   LBL LBL LBL {: fl fdone fnext :}
-   8 0 0 ADDI,
-   12 ARN-IDX LIT64,  12 8 12 ADD,
-   13 8 ARN-COUNT LDR,  13 13 5 LSLI,  13 12 13 ADD,
-   fl LBL,
-      12 13 CMP,  C-CS fdone BCOND,
-      14 12 ENT-INCL LDR,  14 fnext CBZ,
-      10 12 ENT-IDX LDR,
-      11 ARN-INCL LIT64,  11 8 11 ADD,  15 10 3 LSLI,  11 11 15 ADD,
-      15 11 0 LDR,  15 15 14 ADD,  15 11 0 STR,
-      14 0 MOVZ,  14 12 ENT-INCL STR,
-      fnext LBL,  12 12 PROF-ENT ADDI,  fl B,
-   fdone LBL, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: fl fdone fnext :}
+   8 0 0 A64ICODE:ADDI,
+   12 PROF-ABI:ARN-IDX A64ICODE:LIT64,  12 8 12 A64ICODE:ADD,
+   13 8 PROF-ABI:ARN-COUNT A64ICODE:LDR,  13 13 5 A64ICODE:LSLI,  13 12 13 A64ICODE:ADD,
+   fl A64ICODE:LBL,
+      12 13 A64ICODE:CMP,  A64ASM:C-CS fdone A64ICODE:BCOND,
+      14 12 PROF-ABI:ENT-INCL A64ICODE:LDR,  14 fnext A64ICODE:CBZ,
+      10 12 PROF-ABI:ENT-IDX A64ICODE:LDR,
+      11 PROF-ABI:ARN-INCL A64ICODE:LIT64,  11 8 11 A64ICODE:ADD,  15 10 3 A64ICODE:LSLI,  11 11 15 A64ICODE:ADD,
+      15 11 0 A64ICODE:LDR,  15 15 14 A64ICODE:ADD,  15 11 0 A64ICODE:STR,
+      14 0 A64ICODE:MOVZ,  14 12 PROF-ABI:ENT-INCL A64ICODE:STR,
+      fnext A64ICODE:LBL,  12 12 PROF-ABI:PROF-ENT A64ICODE:ADDI,  fl A64ICODE:B,
+   fdone A64ICODE:LBL, ;
 
 \ x11 = the count for profile ID x12. Clobbers x10.
 : C-PROF-RANK ( bool -- ) {: incl:bool :}
-   incl IF 11 ARN-INCL LIT64,  11 19 11 ADD,
-   ELSE 11 PROF-CNT-VA LIT64, THEN
-   10 12 3 LSLI,  11 11 10 ADD,  11 11 0 LDR, ;
+   incl IF 11 PROF-ABI:ARN-INCL A64ICODE:LIT64,  11 19 11 A64ICODE:ADD,
+   ELSE 11 PROF-CNT-VA A64ICODE:LIT64, THEN
+   10 12 3 A64ICODE:LSLI,  11 11 10 A64ICODE:ADD,  11 11 0 A64ICODE:LDR, ;
 
 \ The report walks every stable profile ID, including reclaimed code. Folding
 \ first gives each identity one inclusive count independent of index lifetime.
 : C-PROF-REP-WORDSUM ( -- )
-   LBL LBL {: turn done :}
-   4 0 MOVZ,  3 0 MOVZ,  12 0 MOVZ,
-   13 19 ARN-IDS LDR,
-   turn LBL,
-      12 13 CMP,  C-CS done BCOND,
+   A64ICODE:LBL A64ICODE:LBL {: turn done :}
+   4 0 A64ICODE:MOVZ,  3 0 A64ICODE:MOVZ,  12 0 A64ICODE:MOVZ,
+   13 19 PROF-ABI:ARN-IDS A64ICODE:LDR,
+   turn A64ICODE:LBL,
+      12 13 A64ICODE:CMP,  A64ASM:C-CS done A64ICODE:BCOND,
       false C-PROF-RANK
-      4 4 11 ADD,  14 11 0 ADDI,
+      4 4 11 A64ICODE:ADD,  14 11 0 A64ICODE:ADDI,
       true C-PROF-RANK
-      14 14 11 ORR,
-      LBL {: next :}
-      14 next CBZ,  3 3 1 ADDI,
-      next LBL,  12 12 1 ADDI,  turn B,
-   done LBL, ;
+      14 14 11 A64ICODE:ORR,
+      A64ICODE:LBL {: next :}
+      14 next A64ICODE:CBZ,  3 3 1 A64ICODE:ADDI,
+      next A64ICODE:LBL,  12 12 1 A64ICODE:ADDI,  turn A64ICODE:B,
+   done A64ICODE:LBL, ;
 
 \ The header line names every field: samples (sampling intervals elapsed, the
 \ unit of every count below but frames), words (ticks in a dictionary word, the sum of
@@ -424,37 +417,37 @@ public
 \ so its deferred samples are still sitting in defer.
 \ x19 = arena: x10 = the weight of the deferred samples. Clobbers x11-x13.
 : C-PROF-DEFER-WEIGHT ( -- )
-   LBL LBL {: dl dd :}
-   10 0 MOVZ,  11 19 ARN-DEFER LDR,
-   12 ARN-DEF LIT64,  12 19 12 ADD,
-   dl LBL,  11 dd CBZ,
-      13 12 PROF-SLOT-WEIGHT LDR,  10 10 13 ADD,
-      12 12 PROF-DEFER-ENT ADDI,  11 11 1 SUBI,  dl B,
-   dd LBL, ;
+   A64ICODE:LBL A64ICODE:LBL {: dl dd :}
+   10 0 A64ICODE:MOVZ,  11 19 PROF-ABI:ARN-DEFER A64ICODE:LDR,
+   12 PROF-ABI:ARN-DEF A64ICODE:LIT64,  12 19 12 A64ICODE:ADD,
+   dl A64ICODE:LBL,  11 dd A64ICODE:CBZ,
+      13 12 PROF-ABI:PROF-SLOT-WEIGHT A64ICODE:LDR,  10 10 13 A64ICODE:ADD,
+      12 12 PROF-ABI:PROF-DEFER-ENT A64ICODE:ADDI,  11 11 1 A64ICODE:SUBI,  dl A64ICODE:B,
+   dd A64ICODE:LBL, ;
 
 : C-PROF-REP-HEAD ( bool -- ) {: json:bool :}
    json IF s\" {\"samples\":" ELSE s" profiler samples " THEN 22 C-PROF-FIELD
    json IF s\" ,\"words\":" ELSE s"  words " THEN 4 C-PROF-FIELD
-   10 7 PROF-OTHER LDR,
+   10 7 PROF-ABI:PROF-OTHER A64ICODE:LDR,
    json IF s\" ,\"other\":" ELSE s"  other " THEN 10 C-PROF-FIELD
-   10 19 ARN-NEW LDR,
+   10 19 PROF-ABI:ARN-NEW A64ICODE:LDR,
    json IF s\" ,\"new\":" ELSE s"  new " THEN 10 C-PROF-FIELD
    C-PROF-DEFER-WEIGHT
    json IF s\" ,\"defer\":" ELSE s"  defer " THEN 10 C-PROF-FIELD
-   10 19 ARN-SPILL LDR,
+   10 19 PROF-ABI:ARN-SPILL A64ICODE:LDR,
    json IF s\" ,\"spill\":" ELSE s"  spill " THEN 10 C-PROF-FIELD
-   10 7 PROF-FOREIGN LDR,
+   10 7 PROF-ABI:PROF-FOREIGN A64ICODE:LDR,
    json IF s\" ,\"foreign\":" ELSE s"  foreign " THEN 10 C-PROF-FIELD
-   10 19 ARN-FCALLED LDR,
+   10 19 PROF-ABI:ARN-FCALLED A64ICODE:LDR,
    json IF s\" ,\"foreign charged to callers\":"
    ELSE s"  foreign charged to callers " THEN 10 C-PROF-FIELD
-   10 19 ARN-FRAMES LDR,
+   10 19 PROF-ABI:ARN-FRAMES A64ICODE:LDR,
    json IF s\" ,\"frames\":" ELSE s"  frames " THEN 10 C-PROF-FIELD
-   10 19 ARN-DROP LDR,
+   10 19 PROF-ABI:ARN-DROP A64ICODE:LDR,
    json IF s\" ,\"dropped\":" ELSE s"  dropped " THEN 10 C-PROF-FIELD
-   10 19 ARN-COUNT LDR,
+   10 19 PROF-ABI:ARN-COUNT A64ICODE:LDR,
    json IF s\" ,\"indexed\":" ELSE s"  indexed " THEN 10 C-PROF-FIELD
-   10 19 ARN-USEC LDR,
+   10 19 PROF-ABI:ARN-USEC A64ICODE:LDR,
    json IF s\" ,\"usec\":" ELSE s"  usec " THEN 10 C-PROF-FIELD
    json IF s\" ,\"attributed\":" ELSE s"  attributed " THEN 3 C-PROF-FIELD
    json IF exit THEN
@@ -462,42 +455,42 @@ public
 
 \ x21 is the stable profile ID selected for this row.
 : C-PROF-ROW-INCL ( -- )
-   10 ARN-INCL LIT64,  10 19 10 ADD,
-   9 21 3 LSLI,  9 10 9 ADD,  9 9 0 LDR, ;
+   10 PROF-ABI:ARN-INCL A64ICODE:LIT64,  10 19 10 A64ICODE:ADD,
+   9 21 3 A64ICODE:LSLI,  9 10 9 A64ICODE:ADD,  9 9 0 A64ICODE:LDR, ;
 
 : C-PROF-REP-ROW-REC ( -- )
-   17 21 0 ADDI,
-   5 ARN-RECS LIT64,  5 19 5 ADD,
-   10 PROF-ID-ENT MOVZ,  10 17 10 MUL,  5 5 10 ADD, ;
+   17 21 0 A64ICODE:ADDI,
+   5 PROF-ABI:ARN-RECS A64ICODE:LIT64,  5 19 5 A64ICODE:ADD,
+   10 PROF-ABI:PROF-ID-ENT A64ICODE:MOVZ,  10 17 10 A64ICODE:MUL,  5 5 10 A64ICODE:ADD, ;
 
 : C-PROF-REP-ROW ( -- )
-   9 7 0 ADDI,  10 8 MOVZ,  LPROFNUM LABEL@ BL,
-   9 7 0 ADDI,  10 22 0 ADDI,  LPROFPCT LABEL@ BL,
-   C-PROF-ROW-INCL  10 8 MOVZ,  LPROFNUM LABEL@ BL,
-   C-PROF-ROW-INCL  10 22 0 ADDI,  LPROFPCT LABEL@ BL,
+   9 7 0 A64ICODE:ADDI,  10 8 A64ICODE:MOVZ,  LPROFNUM A64ICODE:LABEL@ A64ICODE:BL,
+   9 7 0 A64ICODE:ADDI,  10 22 0 A64ICODE:ADDI,  LPROFPCT A64ICODE:LABEL@ A64ICODE:BL,
+   C-PROF-ROW-INCL  10 8 A64ICODE:MOVZ,  LPROFNUM A64ICODE:LABEL@ A64ICODE:BL,
+   C-PROF-ROW-INCL  10 22 0 A64ICODE:ADDI,  LPROFPCT A64ICODE:LABEL@ A64ICODE:BL,
    s"   " C-PROF-SAY
    C-PROF-REP-ROW-REC
-   LPROFNAME LABEL@ BL,
+   LPROFNAME A64ICODE:LABEL@ A64ICODE:BL,
    C-PROF-NL ;
 
 \ x5 = the record behind a caller index in x9, or 0 for PROF-CALLER-NONE, which
 \ stands for a sample the walk could not attribute and owns no dictionary row.
 : C-PROF-CALLER-REC ( -- )
-   LBL LBL {: none done :}
-   11 PROF-CALLER-NONE LIT64,  9 11 CMP,  C-EQ none BCOND,
-   5 ARN-RECS LIT64,  5 19 5 ADD,
-   11 PROF-ID-ENT MOVZ,  11 9 11 MUL,  5 5 11 ADD,
-   done B,
-   none LBL,  5 0 MOVZ,
-   done LBL, ;
+   A64ICODE:LBL A64ICODE:LBL {: none done :}
+   11 PROF-ABI:PROF-CALLER-NONE A64ICODE:LIT64,  9 11 A64ICODE:CMP,  A64ASM:C-EQ none A64ICODE:BCOND,
+   5 PROF-ABI:ARN-RECS A64ICODE:LIT64,  5 19 5 A64ICODE:ADD,
+   11 PROF-ABI:PROF-ID-ENT A64ICODE:MOVZ,  11 9 11 A64ICODE:MUL,  5 5 11 A64ICODE:ADD,
+   done A64ICODE:B,
+   none A64ICODE:LBL,  5 0 A64ICODE:MOVZ,
+   done A64ICODE:LBL, ;
 
 : C-PROF-CALLER-NAME ( -- )
-   LBL LBL {: none done :}
-   5 none CBZ,
-   LPROFNAME LABEL@ BL,
-   done B,
-   none LBL,  s" (unknown)" C-PROF-SAY
-   done LBL, ;
+   A64ICODE:LBL A64ICODE:LBL {: none done :}
+   5 none A64ICODE:CBZ,
+   LPROFNAME A64ICODE:LABEL@ A64ICODE:BL,
+   done A64ICODE:B,
+   none A64ICODE:LBL,  s" (unknown)" C-PROF-SAY
+   done A64ICODE:LBL, ;
 
 \ One caller line: x9 = the caller's record index, x10 = the edge count.
 \
@@ -510,75 +503,75 @@ public
 \ the edges actually cover.
 : C-PROF-REP-CALLER ( -- )
    C-PROF-CALLER-REC
-   10 SP 72 STR,
+   10 A64ICODE:SP 72 A64ICODE:STR,
    s"          <- " C-PROF-SAY
-   9 SP 72 LDR,  10 8 MOVZ,  LPROFNUM LABEL@ BL,
-   9 SP 72 LDR,  10 SP 88 LDR,  LPROFPCT LABEL@ BL,
+   9 A64ICODE:SP 72 A64ICODE:LDR,  10 8 A64ICODE:MOVZ,  LPROFNUM A64ICODE:LABEL@ A64ICODE:BL,
+   9 A64ICODE:SP 72 A64ICODE:LDR,  10 A64ICODE:SP 88 A64ICODE:LDR,  LPROFPCT A64ICODE:LABEL@ A64ICODE:BL,
    s"  " C-PROF-SAY
    C-PROF-CALLER-NAME
    C-PROF-NL ;
 
 : C-PROF-REP-CALLERS ( -- )
-   LBL LBL LBL LBL LBL LBL {: cr cl cnext cdone ccmp crd :}
-   3 0 MOVZ,
-   6 0 MOVN,  4 0 MOVN,                            \ threshold: nothing printed yet
-   cr LBL,
-      3 PROF-CALLERS CMPI,  C-CS crd BCOND,
-      15 0 MOVZ,  16 0 MOVZ,
-      11 ARN-CALL LIT64,  11 19 11 ADD,
-      12 PROF-CALL-SLOTS LIT64,
-      cl LBL,
-         12 cdone CBZ,
-         13 11 0 LDR,  13 cnext CBZ,
-         13 13 1 SUBI,  10 13 PROF-REC-BITS LSRI,  10 17 CMP,  C-NE cnext BCOND,
-         13 13 PROF-REC-MASK ANDI,
-         9 11 8 LDR,
-         9 6 CMP,  C-HI cnext BCOND,               \ above the threshold: printed
-         C-NE ccmp BCOND,
-         11 4 CMP,  C-LS cnext BCOND,              \ the threshold slot itself, or before it
-         ccmp LBL,
-         9 15 CMP,  C-LS cnext BCOND,              \ same count, later slot: keep the first
-         15 9 0 ADDI,  16 13 0 ADDI,  14 11 0 ADDI,
-         cnext LBL,  11 11 PROF-CALL-ENT ADDI,  12 12 1 SUBI,  cl B,
-      cdone LBL,
-      15 crd CBZ,                                  \ no caller edge left
-      6 15 0 ADDI,  4 14 0 ADDI,
-      9 16 0 ADDI,  10 15 0 ADDI,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: cr cl cnext cdone ccmp crd :}
+   3 0 A64ICODE:MOVZ,
+   6 0 A64ICODE:MOVN,  4 0 A64ICODE:MOVN,                            \ threshold: nothing printed yet
+   cr A64ICODE:LBL,
+      3 PROF-ABI:PROF-CALLERS A64ICODE:CMPI,  A64ASM:C-CS crd A64ICODE:BCOND,
+      15 0 A64ICODE:MOVZ,  16 0 A64ICODE:MOVZ,
+      11 PROF-ABI:ARN-CALL A64ICODE:LIT64,  11 19 11 A64ICODE:ADD,
+      12 PROF-ABI:PROF-CALL-SLOTS A64ICODE:LIT64,
+      cl A64ICODE:LBL,
+         12 cdone A64ICODE:CBZ,
+         13 11 0 A64ICODE:LDR,  13 cnext A64ICODE:CBZ,
+         13 13 1 A64ICODE:SUBI,  10 13 PROF-ABI:PROF-REC-BITS A64ICODE:LSRI,  10 17 A64ICODE:CMP,  A64ASM:C-NE cnext A64ICODE:BCOND,
+         13 13 PROF-ABI:PROF-REC-MASK A64ICODE:ANDI,
+         9 11 8 A64ICODE:LDR,
+         9 6 A64ICODE:CMP,  A64ASM:C-HI cnext A64ICODE:BCOND,               \ above the threshold: printed
+         A64ASM:C-NE ccmp A64ICODE:BCOND,
+         11 4 A64ICODE:CMP,  A64ASM:C-LS cnext A64ICODE:BCOND,              \ the threshold slot itself, or before it
+         ccmp A64ICODE:LBL,
+         9 15 A64ICODE:CMP,  A64ASM:C-LS cnext A64ICODE:BCOND,              \ same count, later slot: keep the first
+         15 9 0 A64ICODE:ADDI,  16 13 0 A64ICODE:ADDI,  14 11 0 A64ICODE:ADDI,
+         cnext A64ICODE:LBL,  11 11 PROF-ABI:PROF-CALL-ENT A64ICODE:ADDI,  12 12 1 A64ICODE:SUBI,  cl A64ICODE:B,
+      cdone A64ICODE:LBL,
+      15 crd A64ICODE:CBZ,                                  \ no caller edge left
+      6 15 0 A64ICODE:ADDI,  4 14 0 A64ICODE:ADDI,
+      9 16 0 A64ICODE:ADDI,  10 15 0 A64ICODE:ADDI,
       C-PROF-REP-CALLER
-      3 3 1 ADDI,  cr B,
-   crd LBL, ;
+      3 3 1 A64ICODE:ADDI,  cr A64ICODE:B,
+   crd A64ICODE:LBL, ;
 
 : C-PROF-REP-SECTION ( bool -- ) {: incl:bool :}
-   LBL LBL LBL LBL LBL LBL LBL {: rowl sell selcmp selnx seld seltake rowsd :}
-   23 0 MOVN,  24 0 MOVN,  25 0 MOVZ,
-   rowl LBL,
-      7 0 MOVZ,  21 0 MOVN,
-      12 0 MOVZ,  13 19 ARN-IDS LDR,
-      sell LBL,
-         12 13 CMP,  C-CS seld BCOND,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: rowl sell selcmp selnx seld seltake rowsd :}
+   23 0 A64ICODE:MOVN,  24 0 A64ICODE:MOVN,  25 0 A64ICODE:MOVZ,
+   rowl A64ICODE:LBL,
+      7 0 A64ICODE:MOVZ,  21 0 A64ICODE:MOVN,
+      12 0 A64ICODE:MOVZ,  13 19 PROF-ABI:ARN-IDS A64ICODE:LDR,
+      sell A64ICODE:LBL,
+         12 13 A64ICODE:CMP,  A64ASM:C-CS seld A64ICODE:BCOND,
          incl C-PROF-RANK
-         11 selnx CBZ,
-         11 23 CMP,  C-HI selnx BCOND,             \ above the threshold: already printed
-         C-NE selcmp BCOND,
-         12 24 CMP,  C-LS selnx BCOND,             \ the threshold row itself, or before it
-         selcmp LBL,
-         11 7 CMP,  C-HI seltake BCOND,
-         C-NE selnx BCOND,
-         12 21 CMP,  C-CS selnx BCOND,             \ same count, later entry: keep the first
-         seltake LBL,
-         7 11 0 ADDI,  21 12 0 ADDI,
-         selnx LBL,  12 12 1 ADDI,  sell B,
-      seld LBL,
-      7 rowsd CBZ,                                 \ no counted row left
-      23 7 0 ADDI,  24 21 0 ADDI,
-      17 21 0 ADDI,
-      7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,  \ the row prints exclusive
-      incl IF C-PROF-ROW-INCL ELSE 9 7 0 ADDI, THEN  9 SP 88 STR,
+         11 selnx A64ICODE:CBZ,
+         11 23 A64ICODE:CMP,  A64ASM:C-HI selnx A64ICODE:BCOND,             \ above the threshold: already printed
+         A64ASM:C-NE selcmp A64ICODE:BCOND,
+         12 24 A64ICODE:CMP,  A64ASM:C-LS selnx A64ICODE:BCOND,             \ the threshold row itself, or before it
+         selcmp A64ICODE:LBL,
+         11 7 A64ICODE:CMP,  A64ASM:C-HI seltake A64ICODE:BCOND,
+         A64ASM:C-NE selnx A64ICODE:BCOND,
+         12 21 A64ICODE:CMP,  A64ASM:C-CS selnx A64ICODE:BCOND,             \ same count, later entry: keep the first
+         seltake A64ICODE:LBL,
+         7 11 0 A64ICODE:ADDI,  21 12 0 A64ICODE:ADDI,
+         selnx A64ICODE:LBL,  12 12 1 A64ICODE:ADDI,  sell A64ICODE:B,
+      seld A64ICODE:LBL,
+      7 rowsd A64ICODE:CBZ,                                 \ no counted row left
+      23 7 0 A64ICODE:ADDI,  24 21 0 A64ICODE:ADDI,
+      17 21 0 A64ICODE:ADDI,
+      7 PROF-CNT-VA A64ICODE:LIT64,  10 17 3 A64ICODE:LSLI,  7 7 10 A64ICODE:ADD,  7 7 0 A64ICODE:LDR,  \ the row prints exclusive
+      incl IF C-PROF-ROW-INCL ELSE 9 7 0 A64ICODE:ADDI, THEN  9 A64ICODE:SP 88 A64ICODE:STR,
       C-PROF-REP-ROW
       C-PROF-REP-CALLERS
-      25 25 1 ADDI,
-      25 PROF-ROWS CMPI,  C-CC rowl BCOND,
-   rowsd LBL, ;
+      25 25 1 A64ICODE:ADDI,
+      25 PROF-ABI:PROF-ROWS A64ICODE:CMPI,  A64ASM:C-CC rowl A64ICODE:BCOND,
+   rowsd A64ICODE:LBL, ;
 
 \ EVERY ATTRIBUTED WORD, not a top-N. A phase word - a compiler pass, a verifier
 \ entry - is often invisible in an exclusive ranking and is exactly what a
@@ -589,28 +582,28 @@ public
 \ one pass emits every edge there is. Both are bounded by the arena, at most
 \ ARN-IDS rows and PROF-CALL-SLOTS edges, so nothing is truncated.
 : C-PROF-JSON-ROWS ( -- )
-   LBL LBL LBL LBL {: jl jdone jnext jcomma :}
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: jl jdone jnext jcomma :}
    s\" ,\"rows\":[" C-PROF-SAY
-   25 0 MOVZ,
-   21 0 MOVZ,  23 19 ARN-IDS LDR,
-   jl LBL,
-      21 23 CMP,  C-CS jdone BCOND,
-      17 21 0 ADDI,
-      7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,
+   25 0 A64ICODE:MOVZ,
+   21 0 A64ICODE:MOVZ,  23 19 PROF-ABI:ARN-IDS A64ICODE:LDR,
+   jl A64ICODE:LBL,
+      21 23 A64ICODE:CMP,  A64ASM:C-CS jdone A64ICODE:BCOND,
+      17 21 0 A64ICODE:ADDI,
+      7 PROF-CNT-VA A64ICODE:LIT64,  10 17 3 A64ICODE:LSLI,  7 7 10 A64ICODE:ADD,  7 7 0 A64ICODE:LDR,
       C-PROF-ROW-INCL
-      10 7 9 ORR,  10 jnext CBZ,                   \ neither count moved: not a row
-      25 jcomma CBZ,  s" ," C-PROF-SAY
-      jcomma LBL,  25 1 MOVZ,
+      10 7 9 A64ICODE:ORR,  10 jnext A64ICODE:CBZ,                   \ neither count moved: not a row
+      25 jcomma A64ICODE:CBZ,  s" ," C-PROF-SAY
+      jcomma A64ICODE:LBL,  25 1 A64ICODE:MOVZ,
       s\" {\"word\":\"" C-PROF-SAY
       C-PROF-REP-ROW-REC
-      LPROFNAME LABEL@ BL,
+      LPROFNAME A64ICODE:LABEL@ A64ICODE:BL,
       C-PROF-DQ  s\" ,\"excl\":" C-PROF-SAY
-      9 7 0 ADDI,  10 1 MOVZ,  LPROFNUM LABEL@ BL,
+      9 7 0 A64ICODE:ADDI,  10 1 A64ICODE:MOVZ,  LPROFNUM A64ICODE:LABEL@ A64ICODE:BL,
       s\" ,\"incl\":" C-PROF-SAY
-      C-PROF-ROW-INCL  10 1 MOVZ,  LPROFNUM LABEL@ BL,
+      C-PROF-ROW-INCL  10 1 A64ICODE:MOVZ,  LPROFNUM A64ICODE:LABEL@ A64ICODE:BL,
       s" }" C-PROF-SAY
-   jnext LBL,  21 21 1 ADDI,  jl B,
-   jdone LBL,
+   jnext A64ICODE:LBL,  21 21 1 A64ICODE:ADDI,  jl A64ICODE:B,
+   jdone A64ICODE:LBL,
    s" ]" C-PROF-SAY ;
 
 \ x9 = a record index, or PROF-CALLER-NONE: its name as a JSON string body.
@@ -619,43 +612,43 @@ public
    C-PROF-CALLER-NAME ;
 
 : C-PROF-JSON-EDGES ( -- )
-   LBL LBL LBL LBL {: el edone enext ecomma :}
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: el edone enext ecomma :}
    s\" ,\"edges\":[" C-PROF-SAY
-   25 0 MOVZ,
-   21 ARN-CALL LIT64,  21 19 21 ADD,
-   23 PROF-CALL-SLOTS LIT64,
-   el LBL,
-      23 edone CBZ,
-      17 21 0 LDR,  17 enext CBZ,
-      17 17 1 SUBI,
-      7 17 PROF-REC-BITS LSRI,                     \ the sampled word
-      17 17 PROF-REC-MASK ANDI,                    \ its caller
-      10 21 8 LDR,  10 SP 72 STR,
-      25 ecomma CBZ,  s" ," C-PROF-SAY
-      ecomma LBL,  25 1 MOVZ,
+   25 0 A64ICODE:MOVZ,
+   21 PROF-ABI:ARN-CALL A64ICODE:LIT64,  21 19 21 A64ICODE:ADD,
+   23 PROF-ABI:PROF-CALL-SLOTS A64ICODE:LIT64,
+   el A64ICODE:LBL,
+      23 edone A64ICODE:CBZ,
+      17 21 0 A64ICODE:LDR,  17 enext A64ICODE:CBZ,
+      17 17 1 A64ICODE:SUBI,
+      7 17 PROF-ABI:PROF-REC-BITS A64ICODE:LSRI,                     \ the sampled word
+      17 17 PROF-ABI:PROF-REC-MASK A64ICODE:ANDI,                    \ its caller
+      10 21 8 A64ICODE:LDR,  10 A64ICODE:SP 72 A64ICODE:STR,
+      25 ecomma A64ICODE:CBZ,  s" ," C-PROF-SAY
+      ecomma A64ICODE:LBL,  25 1 A64ICODE:MOVZ,
       s\" {\"word\":\"" C-PROF-SAY
-      9 7 0 ADDI,  C-PROF-JSON-NAME
+      9 7 0 A64ICODE:ADDI,  C-PROF-JSON-NAME
       C-PROF-DQ  s\" ,\"caller\":\"" C-PROF-SAY
-      9 17 0 ADDI,  C-PROF-JSON-NAME
+      9 17 0 A64ICODE:ADDI,  C-PROF-JSON-NAME
       C-PROF-DQ  s\" ,\"n\":" C-PROF-SAY
-      9 SP 72 LDR,  10 1 MOVZ,  LPROFNUM LABEL@ BL,
+      9 A64ICODE:SP 72 A64ICODE:LDR,  10 1 A64ICODE:MOVZ,  LPROFNUM A64ICODE:LABEL@ A64ICODE:BL,
       s" }" C-PROF-SAY
-   enext LBL,  21 21 PROF-CALL-ENT ADDI,  23 23 1 SUBI,  el B,
-   edone LBL,
+   enext A64ICODE:LBL,  21 21 PROF-ABI:PROF-CALL-ENT A64ICODE:ADDI,  23 23 1 A64ICODE:SUBI,  el A64ICODE:B,
+   edone A64ICODE:LBL,
    s\" ]}\n" C-PROF-SAY ;
 
 : EMIT-PROFREP ( bool -- ) {: json:bool :}
-   json IF LPROFJSON LABEL@ LBL, ELSE LPROFDUMP LABEL@ LBL, THEN
-   LBL {: armed :}
+   json IF LPROFJSON A64ICODE:LABEL@ A64ICODE:LBL, ELSE LPROFDUMP A64ICODE:LABEL@ A64ICODE:LBL, THEN
+   A64ICODE:LBL {: armed :}
    C-PROF-REP-OPEN
-   7 PROF-BAND-VA LIT64,
-   22 7 PROF-TOT LDR,
-   19 7 PROF-ARENA LDR,
-   19 armed CBNZ,
+   7 PROF-BAND-VA A64ICODE:LIT64,
+   22 7 PROF-ABI:PROF-TOT A64ICODE:LDR,
+   19 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,
+   19 armed A64ICODE:CBNZ,
       json IF s\" {\"samples\":0,\"armed\":false}\n" ELSE s\" profiler not armed\n" THEN C-PROF-SAY
       C-PROF-REP-CLOSE
-   armed LBL,
-   0 19 0 ADDI,  C-PROF-INCL-FOLD
+   armed A64ICODE:LBL,
+   0 19 0 A64ICODE:ADDI,  C-PROF-INCL-FOLD
    C-PROF-REP-WORDSUM
    json C-PROF-REP-HEAD
    json IF
@@ -671,26 +664,26 @@ public
 \ LPROFROW ( -- ): the text row for one dictionary record whatever its rank,
 \ with its callers.
 : EMIT-PROFROW ( -- )
-   LPROFROW LABEL@ LBL,
-   LBL {: rnone :}
+   LPROFROW A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL {: rnone :}
    C-PROF-REP-OPEN                                 \ x6 = the profile ID requested
-   7 PROF-BAND-VA LIT64,
-   22 7 PROF-TOT LDR,
-   19 7 PROF-ARENA LDR,
-   19 rnone CBZ,
-   6 0 CMPI,  C-LT rnone BCOND,
-   23 19 ARN-IDS LDR,  6 23 CMP,  C-CS rnone BCOND,
-   21 6 0 ADDI,
+   7 PROF-BAND-VA A64ICODE:LIT64,
+   22 7 PROF-ABI:PROF-TOT A64ICODE:LDR,
+   19 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,
+   19 rnone A64ICODE:CBZ,
+   6 0 A64ICODE:CMPI,  A64ASM:C-LT rnone A64ICODE:BCOND,
+   23 19 PROF-ABI:ARN-IDS A64ICODE:LDR,  6 23 A64ICODE:CMP,  A64ASM:C-CS rnone A64ICODE:BCOND,
+   21 6 0 A64ICODE:ADDI,
    C-PROF-REP-ROW-REC
-   10 5 RID-START LDR,  10 rnone CBZ,
-   0 19 0 ADDI,  C-PROF-INCL-FOLD
-   17 21 0 ADDI,
-   7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,
-   C-PROF-ROW-INCL  9 SP 88 STR,
+   10 5 PROF-ABI:RID-START A64ICODE:LDR,  10 rnone A64ICODE:CBZ,
+   0 19 0 A64ICODE:ADDI,  C-PROF-INCL-FOLD
+   17 21 0 A64ICODE:ADDI,
+   7 PROF-CNT-VA A64ICODE:LIT64,  10 17 3 A64ICODE:LSLI,  7 7 10 A64ICODE:ADD,  7 7 0 A64ICODE:LDR,
+   C-PROF-ROW-INCL  9 A64ICODE:SP 88 A64ICODE:STR,
    C-PROF-REP-ROW
    C-PROF-REP-CALLERS
    C-PROF-REP-CLOSE
-   rnone LBL,
+   rnone A64ICODE:LBL,
    s" profiler: no row for that record" C-PROF-SAY  C-PROF-NL
    C-PROF-REP-CLOSE ;
 
@@ -700,12 +693,12 @@ public
 \ and the thread would never run its own code.
 \ Clobbers x0-x2, x8-x11 and x16.
 : C-PROF-FORWARD ( -- )
-   LBL {: fself :}
-   10 8 ARN-OWNER-TID LDR,
-   9 OS-THREAD-HANDLE
-   9 10 CMP,  C-EQ fself BCOND,
-   11 SIGALRM MOVZ,  11 10 OS-SIGNAL-THREAD
-   fself LBL,  9 OS-THREAD-RELEASE ;
+   A64ICODE:LBL {: fself :}
+   10 8 PROF-ABI:ARN-OWNER-TID A64ICODE:LDR,
+   9 SYSCALL:OS-THREAD-HANDLE
+   9 10 A64ICODE:CMP,  A64ASM:C-EQ fself A64ICODE:BCOND,
+   11 PROF-ABI:SIGALRM A64ICODE:MOVZ,  11 10 SYSCALL:OS-SIGNAL-THREAD
+   fself A64ICODE:LBL,  9 SYSCALL:OS-THREAD-RELEASE ;
 
 \ x7 = band: x3 = this sample's weight, as the file header states; ARN-LAST
 \ moves to now, ARN-CARRY keeps the remainder and ARN-SEQ counts the sample,
@@ -715,17 +708,17 @@ public
 \ the ARN-LAST a resume wrote.
 \ Clobbers x8 and x10-x12.
 : C-PROF-WEIGHT ( -- )
-   LBL {: wdone :}
-   3 1 MOVZ,
-   8 7 PROF-ARENA LDR,  8 wdone CBZ,
-   ISB,  10 OS-TIMER-NOW
-   11 8 ARN-LAST LDR,  10 8 ARN-LAST STR,
-   12 8 ARN-SEQ LDR,  12 12 1 ADDI,  12 8 ARN-SEQ STR,
-   12 8 ARN-TICKS LDR,  12 wdone CBZ,
-   10 10 11 SUB,  11 8 ARN-CARRY LDR,  10 10 11 ADD,
-   3 10 12 UDIV,  11 3 12 MUL,  10 10 11 SUB,
-   10 8 ARN-CARRY STR,
-   wdone LBL, ;
+   A64ICODE:LBL {: wdone :}
+   3 1 A64ICODE:MOVZ,
+   8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 wdone A64ICODE:CBZ,
+   A64ICODE:ISB,  10 SYSCALL:OS-TIMER-NOW
+   11 8 PROF-ABI:ARN-LAST A64ICODE:LDR,  10 8 PROF-ABI:ARN-LAST A64ICODE:STR,
+   12 8 PROF-ABI:ARN-SEQ A64ICODE:LDR,  12 12 1 A64ICODE:ADDI,  12 8 PROF-ABI:ARN-SEQ A64ICODE:STR,
+   12 8 PROF-ABI:ARN-TICKS A64ICODE:LDR,  12 wdone A64ICODE:CBZ,
+   10 10 11 A64ICODE:SUB,  11 8 PROF-ABI:ARN-CARRY A64ICODE:LDR,  10 10 11 A64ICODE:ADD,
+   3 10 12 A64ICODE:UDIV,  11 3 12 A64ICODE:MUL,  10 10 11 A64ICODE:SUB,
+   10 8 PROF-ABI:ARN-CARRY A64ICODE:STR,
+   wdone A64ICODE:LBL, ;
 
 \ x8 = arena, x21 = mcontext, a foreign sample: x6 = the index entry of the
 \ Habu word nearest it, or 0 when neither x30 nor the scan names one. Off the
@@ -733,45 +726,45 @@ public
 \ x30 and each scanned cell are tested as C-PROF-WALK tests them.
 \ Clobbers x9-x13, x23 and x24.
 : C-PROF-FCALLER ( -- )
-   LBL LBL LBL LBL LBL {: fl fnone fdone fblock fx30 :}
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: fl fnone fdone fblock fx30 :}
    31 23 C-PROF-CTX-X>R
-   10 8 ARN-STACK-LOW LDR,  23 10 CMP,  C-CC fblock BCOND,
-   24 8 ARN-STACK-TOP LDR,  23 24 CMP,  C-CC fx30 BCOND,
-   fblock LBL,  C-PROF-BLOCK-END
-   fx30 LBL,
+   10 8 PROF-ABI:ARN-STACK-LOW A64ICODE:LDR,  23 10 A64ICODE:CMP,  A64ASM:C-CC fblock A64ICODE:BCOND,
+   24 8 PROF-ABI:ARN-STACK-TOP A64ICODE:LDR,  23 24 A64ICODE:CMP,  A64ASM:C-CC fx30 A64ICODE:BCOND,
+   fblock A64ICODE:LBL,  C-PROF-BLOCK-END
+   fx30 A64ICODE:LBL,
    30 9 C-PROF-CTX-X>R
-   9 9 4 SUBI,
-   10 8 ARN-LO LDR,  9 10 CMP,  C-CC fl BCOND,
-   10 8 ARN-HI LDR,  9 10 CMP,  C-CS fl BCOND,
-   LPROFFIND LABEL@ BL,
-   6 fdone CBNZ,
-   fl LBL,
-      23 24 CMP,  C-CS fnone BCOND,
-      9 23 0 LDR,  23 23 8 ADDI,
-      10 8 ARN-LO LDR,  9 10 CMP,  C-CC fl BCOND,
-      10 8 ARN-HI LDR,  9 10 CMP,  C-CS fl BCOND,
-      9 9 4 SUBI,
-      LPROFFIND LABEL@ BL,
-      6 fl CBZ,
-      fdone B,
-   fnone LBL,  6 0 MOVZ,
-   fdone LBL, ;
+   9 9 4 A64ICODE:SUBI,
+   10 8 PROF-ABI:ARN-LO A64ICODE:LDR,  9 10 A64ICODE:CMP,  A64ASM:C-CC fl A64ICODE:BCOND,
+   10 8 PROF-ABI:ARN-HI A64ICODE:LDR,  9 10 A64ICODE:CMP,  A64ASM:C-CS fl A64ICODE:BCOND,
+   LPROFFIND A64ICODE:LABEL@ A64ICODE:BL,
+   6 fdone A64ICODE:CBNZ,
+   fl A64ICODE:LBL,
+      23 24 A64ICODE:CMP,  A64ASM:C-CS fnone A64ICODE:BCOND,
+      9 23 0 A64ICODE:LDR,  23 23 8 A64ICODE:ADDI,
+      10 8 PROF-ABI:ARN-LO A64ICODE:LDR,  9 10 A64ICODE:CMP,  A64ASM:C-CC fl A64ICODE:BCOND,
+      10 8 PROF-ABI:ARN-HI A64ICODE:LDR,  9 10 A64ICODE:CMP,  A64ASM:C-CS fl A64ICODE:BCOND,
+      9 9 4 A64ICODE:SUBI,
+      LPROFFIND A64ICODE:LABEL@ A64ICODE:BL,
+      6 fl A64ICODE:CBZ,
+      fdone A64ICODE:B,
+   fnone A64ICODE:LBL,  6 0 A64ICODE:MOVZ,
+   fdone A64ICODE:LBL, ;
 
 \ x7 = band, x8 = arena, x6 = an index entry, x3 = the weight: the sample is
 \ that word's own, exclusive and inclusive; x22 = its record for the walk.
 \ Clobbers x10-x14.
 : C-PROF-CHARGE ( -- )
-   12 6 ENT-IDX LDR,
-   14 PROF-CNT-VA LIT64,  13 12 3 LSLI,  14 14 13 ADD,
-   12 14 0 LDR,  12 12 3 ADD,  12 14 0 STR,
-   10 6 ENT-IDX LDR,  C-PROF-INCL-ONCE                \ a word is inside itself
-   22 6 ENT-IDX LDR, ;
+   12 6 PROF-ABI:ENT-IDX A64ICODE:LDR,
+   14 PROF-CNT-VA A64ICODE:LIT64,  13 12 3 A64ICODE:LSLI,  14 14 13 A64ICODE:ADD,
+   12 14 0 A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 14 0 A64ICODE:STR,
+   10 6 PROF-ABI:ENT-IDX A64ICODE:LDR,  C-PROF-INCL-ONCE                \ a word is inside itself
+   22 6 PROF-ABI:ENT-IDX A64ICODE:LDR, ;
 
 \ x7 = band: PROF-IN += n, 1 or -1, by an acquire-release atomic add.
 \ Clobbers x9 and x10.
 : C-PROF-IN-ADD ( n -- ) {: n:n :}
-   n 0 < IF 9 0 MOVN, ELSE 9 n MOVZ, THEN
-   10 7 PROF-IN ADDI,  9 9 10 LDADDAL, ;
+   n 0 < IF 9 0 A64ICODE:MOVN, ELSE 9 n A64ICODE:MOVZ, THEN
+   10 7 PROF-ABI:PROF-IN A64ICODE:ADDI,  9 9 10 A64ICODE:LDADDAL, ;
 
 \ THE HANDLER TAKES NOTHING FROM THE LIVE REGISTERS: a foreign callee (libc's
 \ dlsym, libzip's inflate) reuses x20 (XREG-RBASE), x26 (DBASE) and x27 (NDICT).
@@ -792,225 +785,225 @@ public
 \ weighs an interval is counted, including the sample that reaches the limit.
 \ x3 holds the weight: no word the handler calls writes it.
 : EMIT-PROF ( -- )
-   LPROFH LABEL@ LBL,
-   LBL LBL LBL LBL LBL LBL LBL {: pnew pother pdone pforeign plost psig pexit :}
-   LBL LBL LBL LBL {: powner pfwd pleave pregion :}
-   7 PROF-BAND-VA LIT64,
-   9 7 PROF-ARMED ADDI,  9 9 LDAR,  9 ARMED-RUNS CMPI,  C-NE pexit BCOND,
+   LPROFH A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: pnew pother pdone pforeign plost psig pexit :}
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: powner pfwd pleave pregion :}
+   7 PROF-BAND-VA A64ICODE:LIT64,
+   9 7 PROF-ABI:PROF-ARMED A64ICODE:ADDI,  9 9 A64ICODE:LDAR,  9 PROF-ABI:ARMED-RUNS A64ICODE:CMPI,  A64ASM:C-NE pexit A64ICODE:BCOND,
    1 C-PROF-IN-ADD
-   9 7 PROF-ARMED ADDI,  9 9 LDAR,  9 ARMED-RUNS CMPI,  C-NE pleave BCOND,
-   8 7 PROF-ARENA LDR,  8 powner CBZ,
-   10 CB-SELF,  11 8 ARN-OWNER LDR,  10 11 CMP,  C-NE pfwd BCOND,
-   powner LBL,
+   9 7 PROF-ABI:PROF-ARMED A64ICODE:ADDI,  9 9 A64ICODE:LDAR,  9 PROF-ABI:ARMED-RUNS A64ICODE:CMPI,  A64ASM:C-NE pleave A64ICODE:BCOND,
+   8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 powner A64ICODE:CBZ,
+   10 ENGINE-EMIT:CB-SELF,  11 8 PROF-ABI:ARN-OWNER A64ICODE:LDR,  10 11 A64ICODE:CMP,  A64ASM:C-NE pfwd A64ICODE:BCOND,
+   powner A64ICODE:LBL,
    C-PROF-WEIGHT
-   3 pleave CBZ,
+   3 pleave A64ICODE:CBZ,
    C-PROF-MCTX>R21  C-PROF-PC>R9
-   17 1 MOVZ,                                        \ x17 = 1: a Habu context, its count may report (x16 is the Darwin syscall number, never kept across a sys)
-   8 7 PROF-ARENA LDR,  8 pdone CBZ,
-   20 10 C-PROF-CTX-X>R  11 8 ARN-OWNER-DATA LDR,  10 11 CMP,  C-NE pforeign BCOND,
-   26 10 C-PROF-CTX-X>R  11 7 PROF-DBASE LDR,  10 11 CMP,  C-NE pforeign BCOND,
-   LPROFFIND LABEL@ BL,                            \ the handler never returns, so x30 needs no frame
-   6 pnew CBZ,
+   17 1 A64ICODE:MOVZ,                                        \ x17 = 1: a Habu context, its count may report (x16 is the Darwin syscall number, never kept across a sys)
+   8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 pdone A64ICODE:CBZ,
+   20 10 C-PROF-CTX-X>R  11 8 PROF-ABI:ARN-OWNER-DATA A64ICODE:LDR,  10 11 A64ICODE:CMP,  A64ASM:C-NE pforeign A64ICODE:BCOND,
+   26 10 C-PROF-CTX-X>R  11 7 PROF-ABI:PROF-DBASE A64ICODE:LDR,  10 11 A64ICODE:CMP,  A64ASM:C-NE pforeign A64ICODE:BCOND,
+   LPROFFIND A64ICODE:LABEL@ A64ICODE:BL,                            \ the handler never returns, so x30 needs no frame
+   6 pnew A64ICODE:CBZ,
    C-PROF-CHARGE
    C-PROF-WALK
-   psig B,
-   pnew LBL,
-   22 0 MOVN,                                        \ no record of its own: callers only
-   10 7 PROF-DBASE LDR,  10 9 10 SUB,
-   11 REGION LIT64,  10 11 CMP,  C-CC pregion BCOND,  \ in the code region
-   10 PROF-RBASE-VA LIT64,  10 10 0 LDR,  10 9 10 SUB,
-   11 PROF-TEXT-SIZE-VA LIT64,  11 11 0 LDR,
-   10 11 CMP,  C-CC pother BCOND,                    \ in the kernel text: engine helpers, main loop, a gap
-   pforeign B,                                       \ outside Habu's code: C that keeps x20 and x26
-   pregion LBL,
-   11 8 ARN-HI LDR,  9 11 CMP,  C-CC pother BCOND,   \ below the index's high mark: a gap
+   psig A64ICODE:B,
+   pnew A64ICODE:LBL,
+   22 0 A64ICODE:MOVN,                                        \ no record of its own: callers only
+   10 7 PROF-ABI:PROF-DBASE A64ICODE:LDR,  10 9 10 A64ICODE:SUB,
+   11 REGION A64ICODE:LIT64,  10 11 A64ICODE:CMP,  A64ASM:C-CC pregion A64ICODE:BCOND,  \ in the code region
+   10 PROF-RBASE-VA A64ICODE:LIT64,  10 10 0 A64ICODE:LDR,  10 9 10 A64ICODE:SUB,
+   11 PROF-TEXT-SIZE-VA A64ICODE:LIT64,  11 11 0 A64ICODE:LDR,
+   10 11 A64ICODE:CMP,  A64ASM:C-CC pother A64ICODE:BCOND,                    \ in the kernel text: engine helpers, main loop, a gap
+   pforeign A64ICODE:B,                                       \ outside Habu's code: C that keeps x20 and x26
+   pregion A64ICODE:LBL,
+   11 8 PROF-ABI:ARN-HI A64ICODE:LDR,  9 11 A64ICODE:CMP,  A64ASM:C-CC pother A64ICODE:BCOND,   \ below the index's high mark: a gap
    C-PROF-DEFER                                      \ at or above it: compiled after prof-on built the index
    C-PROF-WALK
-   psig B,
-   pother LBL,
-   12 7 PROF-OTHER LDR,  12 12 3 ADD,  12 7 PROF-OTHER STR,
+   psig A64ICODE:B,
+   pother A64ICODE:LBL,
+   12 7 PROF-ABI:PROF-OTHER A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 7 PROF-ABI:PROF-OTHER A64ICODE:STR,
    C-PROF-WALK
-   psig B,
-   pdone LBL,
-   12 7 PROF-OTHER LDR,  12 12 3 ADD,  12 7 PROF-OTHER STR,
-   psig B,
-   pforeign LBL,
-   17 0 MOVZ,                                        \ not Habu code: no report from here
-   8 7 PROF-ARENA LDR,  8 plost CBZ,
+   psig A64ICODE:B,
+   pdone A64ICODE:LBL,
+   12 7 PROF-ABI:PROF-OTHER A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 7 PROF-ABI:PROF-OTHER A64ICODE:STR,
+   psig A64ICODE:B,
+   pforeign A64ICODE:LBL,
+   17 0 A64ICODE:MOVZ,                                        \ not Habu code: no report from here
+   8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 plost A64ICODE:CBZ,
    C-PROF-FCALLER
-   6 plost CBZ,
-   12 8 ARN-FCALLED LDR,  12 12 3 ADD,  12 8 ARN-FCALLED STR,
+   6 plost A64ICODE:CBZ,
+   12 8 PROF-ABI:ARN-FCALLED A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 8 PROF-ABI:ARN-FCALLED A64ICODE:STR,
    C-PROF-CHARGE
    C-PROF-WALK
-   psig B,
-   plost LBL,
-   12 7 PROF-FOREIGN LDR,  12 12 3 ADD,  12 7 PROF-FOREIGN STR,
-   psig LBL,
-   10 7 PROF-TOT LDR,  10 10 3 ADD,  10 7 PROF-TOT STR,
-   11 7 PROF-LIM LDR,  11 pleave CBZ,                \ limit 0: sample until prof-off
-   10 11 CMP,  C-LT pleave BCOND,
+   psig A64ICODE:B,
+   plost A64ICODE:LBL,
+   12 7 PROF-ABI:PROF-FOREIGN A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 7 PROF-ABI:PROF-FOREIGN A64ICODE:STR,
+   psig A64ICODE:LBL,
+   10 7 PROF-ABI:PROF-TOT A64ICODE:LDR,  10 10 3 A64ICODE:ADD,  10 7 PROF-ABI:PROF-TOT A64ICODE:STR,
+   11 7 PROF-ABI:PROF-LIM A64ICODE:LDR,  11 pleave A64ICODE:CBZ,                \ limit 0: sample until prof-off
+   10 11 A64ICODE:CMP,  A64ASM:C-LT pleave A64ICODE:BCOND,
    \ the limit reached on a foreign sample: the next Habu sample that weighs
    \ an interval reports
-   17 pleave CBZ,
-   LPROFDUMP LABEL@ BL,
-   7 PROF-BAND-VA LIT64,  -1 C-PROF-IN-ADD
-   0 EXIT-STATUS:PROF-LIMIT MOVZ,  NR-EXIT-GROUP SYS,
-   pfwd LBL,  C-PROF-FORWARD
-   pleave LBL,  -1 C-PROF-IN-ADD
-   pexit LBL,  0 4 0 ADDI,  NR-SIGRETURN SYS,  BRK, ;
+   17 pleave A64ICODE:CBZ,
+   LPROFDUMP A64ICODE:LABEL@ A64ICODE:BL,
+   7 PROF-BAND-VA A64ICODE:LIT64,  -1 C-PROF-IN-ADD
+   0 EXIT-STATUS:PROF-LIMIT A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
+   pfwd A64ICODE:LBL,  C-PROF-FORWARD
+   pleave A64ICODE:LBL,  -1 C-PROF-IN-ADD
+   pexit A64ICODE:LBL,  0 4 0 A64ICODE:ADDI,  SYSCALL:NR-SIGRETURN SYSCALL:SYS,  A64ICODE:BRK, ;
 
 private
 
 : C-PROF-SIGACTION-FRAME ( -- )
-   SP SP 32 SUBI,
-   9 LPROFH LABEL@ ADR,  9 SP 0 STR,
+   A64ICODE:SP A64ICODE:SP 32 A64ICODE:SUBI,
+   9 LPROFH A64ICODE:LABEL@ A64ICODE:ADR,  9 A64ICODE:SP 0 A64ICODE:STR,
    HB-TARGET-LINUX-ARM64? IF
-      10 LINUX-SA-PROF-FLAGS LIT64,  10 SP 8 STR,
-      10 0 MOVZ,  10 SP 16 STR,  10 SP 24 STR,
+      10 PROF-ABI:LINUX-SA-PROF-FLAGS A64ICODE:LIT64,  10 A64ICODE:SP 8 A64ICODE:STR,
+      10 0 A64ICODE:MOVZ,  10 A64ICODE:SP 16 A64ICODE:STR,  10 A64ICODE:SP 24 A64ICODE:STR,
       exit
    THEN
-   9 SP 8 STR,
-   10 MACOS-SA-PROF-FLAGS MOVZ,  10 10 32 LSLI,  10 SP 16 STR, ;
+   9 A64ICODE:SP 8 A64ICODE:STR,
+   10 MACOS-SA-PROF-FLAGS A64ICODE:MOVZ,  10 10 32 A64ICODE:LSLI,  10 A64ICODE:SP 16 A64ICODE:STR, ;
 
 : C-PROF-SIGACTION ( -- )
-   0 SIGALRM MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,
-   HB-TARGET-LINUX-ARM64? IF 3 LINUX-SIGSET-SIZE MOVZ, THEN
-   NR-SIGACTION SYS, ;
+   0 PROF-ABI:SIGALRM A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 0 A64ICODE:MOVZ,
+   HB-TARGET-LINUX-ARM64? IF 3 ENGINE-EMIT:LINUX-SIGSET-SIZE A64ICODE:MOVZ, THEN
+   SYSCALL:NR-SIGACTION SYSCALL:SYS, ;
 
 : C-PROF-SIGACTION-DONE ( -- )
-   SP SP 32 ADDI, ;
+   A64ICODE:SP A64ICODE:SP 32 A64ICODE:ADDI, ;
 
 \ x0 = arena: x10 = the interval prof-rate left there, or the 1000 us default,
 \ written back so the report states the rate it actually sampled at.
 : C-PROF-USEC>R10 ( -- )
-   LBL {: dflt :}
-   10 0 ARN-USEC LDR,  10 dflt CBNZ,  10 1000 MOVZ,
-   dflt LBL,  10 0 ARN-USEC STR, ;
+   A64ICODE:LBL {: dflt :}
+   10 0 PROF-ABI:ARN-USEC A64ICODE:LDR,  10 dflt A64ICODE:CBNZ,  10 1000 A64ICODE:MOVZ,
+   dflt A64ICODE:LBL,  10 0 PROF-ABI:ARN-USEC A64ICODE:STR, ;
 
 \ x0 = arena; run before ARMED-RUNS. Seconds and the rest scale apart so no
 \ product wraps for an interval prof-rate takes. Clobbers x10-x12.
 : C-PROF-CLOCK-MARK ( -- )
-   LBL {: tk :}
+   A64ICODE:LBL {: tk :}
    C-PROF-USEC>R10
-   11 USEC-PER-SEC LIT64,  12 10 11 UDIV,
-   11 12 11 MUL,  10 10 11 SUB,
-   11 OS-TIMER-HZ  12 12 11 MUL,  10 10 11 MUL,
-   11 USEC-PER-SEC LIT64,  10 10 11 UDIV,  10 10 12 ADD,
-   10 tk CBNZ,  10 1 MOVZ,
-   tk LBL,  10 0 ARN-TICKS STR,
-   10 OS-TIMER-NOW  10 0 ARN-LAST STR, ;
+   11 PROF-ABI:USEC-PER-SEC A64ICODE:LIT64,  12 10 11 A64ICODE:UDIV,
+   11 12 11 A64ICODE:MUL,  10 10 11 A64ICODE:SUB,
+   11 SYSCALL:OS-TIMER-HZ  12 12 11 A64ICODE:MUL,  10 10 11 A64ICODE:MUL,
+   11 PROF-ABI:USEC-PER-SEC A64ICODE:LIT64,  10 10 11 A64ICODE:UDIV,  10 10 12 A64ICODE:ADD,
+   10 tk A64ICODE:CBNZ,  10 1 A64ICODE:MOVZ,
+   tk A64ICODE:LBL,  10 0 PROF-ABI:ARN-TICKS A64ICODE:STR,
+   10 SYSCALL:OS-TIMER-NOW  10 0 PROF-ABI:ARN-LAST A64ICODE:STR, ;
 
 \ x0 = arena: the interval split for setitimer. The signed divide keeps an
 \ interval below 0 negative, which C-PROF-TIMER's arm rejects rather than
 \ reading it as years. Clobbers x9-x11.
 : C-PROF-TIMER-FRAME ( -- )
    C-PROF-USEC>R10
-   11 USEC-PER-SEC LIT64,  9 10 11 SDIV,               \ x9 = seconds
-   11 9 11 MUL,  10 10 11 SUB,                        \ x10 = microseconds
-   SP SP 32 SUBI,
-   9 SP 0 STR,  10 SP 8 STR,
-   9 SP 16 STR,  10 SP 24 STR, ;
+   11 PROF-ABI:USEC-PER-SEC A64ICODE:LIT64,  9 10 11 A64ICODE:SDIV,               \ x9 = seconds
+   11 9 11 A64ICODE:MUL,  10 10 11 A64ICODE:SUB,                        \ x10 = microseconds
+   A64ICODE:SP A64ICODE:SP 32 A64ICODE:SUBI,
+   9 A64ICODE:SP 0 A64ICODE:STR,  10 A64ICODE:SP 8 A64ICODE:STR,
+   9 A64ICODE:SP 16 A64ICODE:STR,  10 A64ICODE:SP 24 A64ICODE:STR, ;
 
 \ A failed setitimer is named and fatal: the phase would sample nothing and
 \ report zeros.
 : C-PROF-TIMER ( -- )
-   LBL LBL {: ok msg :}
-   0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
-   C-CC ok BCOND,
-      1 msg ADR,  2 PROFARMMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
-      0 EXIT-STATUS:SYSTEM MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  PROFARMMSG$ BYTES,
-   ok LBL, ;
+   A64ICODE:LBL A64ICODE:LBL {: ok msg :}
+   0 0 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 0 A64ICODE:MOVZ,  SYSCALL:NR-SETITIMER SYSCALL:SYS,
+   A64ASM:C-CC ok A64ICODE:BCOND,
+      1 msg A64ICODE:ADR,  2 PROF-ABI:PROFARMMSG$ nip A64ICODE:MOVZ,  0 2 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+      0 EXIT-STATUS:SYSTEM A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
+      msg A64ICODE:LBL,  PROF-ABI:PROFARMMSG$ A64ICODE:BYTES,
+   ok A64ICODE:LBL, ;
 
 : C-PROF-TIMER-DONE ( -- )
-   SP SP 32 ADDI, ;
+   A64ICODE:SP A64ICODE:SP 32 A64ICODE:ADDI, ;
 
 \ x0 = arena, a C-PROF-TIMER-FRAME frame on SP: first expiry = interval less
 \ carry, seconds and rest scaled apart so no product wraps. Clobbers x9-x11.
 : C-PROF-TIMER-REST ( -- )
-   LBL LBL {: whole split :}
-   9 0 ARN-CARRY LDR,  10 0 ARN-TICKS LDR,
-   9 10 CMP,  C-CS whole BCOND,
-   10 OS-TIMER-HZ  11 9 10 UDIV,
-   10 11 10 MUL,  9 9 10 SUB,
-   10 USEC-PER-SEC LIT64,  11 11 10 MUL,  9 9 10 MUL,
-   10 OS-TIMER-HZ  9 9 10 UDIV,  9 9 11 ADD,
-   11 0 ARN-USEC LDR,  9 11 9 SUB,
-   split B,
-   whole LBL,  9 1 MOVZ,
-   split LBL,
-   11 USEC-PER-SEC LIT64,  10 9 11 UDIV,
-   11 10 11 MUL,  9 9 11 SUB,
-   10 SP 16 STR,  9 SP 24 STR, ;
+   A64ICODE:LBL A64ICODE:LBL {: whole split :}
+   9 0 PROF-ABI:ARN-CARRY A64ICODE:LDR,  10 0 PROF-ABI:ARN-TICKS A64ICODE:LDR,
+   9 10 A64ICODE:CMP,  A64ASM:C-CS whole A64ICODE:BCOND,
+   10 SYSCALL:OS-TIMER-HZ  11 9 10 A64ICODE:UDIV,
+   10 11 10 A64ICODE:MUL,  9 9 10 A64ICODE:SUB,
+   10 PROF-ABI:USEC-PER-SEC A64ICODE:LIT64,  11 11 10 A64ICODE:MUL,  9 9 10 A64ICODE:MUL,
+   10 SYSCALL:OS-TIMER-HZ  9 9 10 A64ICODE:UDIV,  9 9 11 A64ICODE:ADD,
+   11 0 PROF-ABI:ARN-USEC A64ICODE:LDR,  9 11 9 A64ICODE:SUB,
+   split A64ICODE:B,
+   whole A64ICODE:LBL,  9 1 A64ICODE:MOVZ,
+   split A64ICODE:LBL,
+   11 PROF-ABI:USEC-PER-SEC A64ICODE:LIT64,  10 9 11 A64ICODE:UDIV,
+   11 10 11 A64ICODE:MUL,  9 9 11 A64ICODE:SUB,
+   10 A64ICODE:SP 16 A64ICODE:STR,  9 A64ICODE:SP 24 A64ICODE:STR, ;
 
 : C-PROF-ARENA-MAP ( -- )
-   LBL LBL LBL {: have mok amsg :}
-   7 PROF-BAND-VA LIT64,  9 7 PROF-ARENA LDR,  9 have CBNZ,
-      0 0 MOVZ,  1 ARN-BYTES LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
-      NR-MMAP SYS,
-      C-CC mok BCOND,
-         1 amsg ADR,  2 PROFARNMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
-         0 EXIT-STATUS:SYSTEM MOVZ,  NR-EXIT-GROUP SYS,
-      amsg LBL,  PROFARNMSG$ BYTES,
-      mok LBL,
-      7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA STR,
-   have LBL, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: have mok amsg :}
+   7 PROF-BAND-VA A64ICODE:LIT64,  9 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  9 have A64ICODE:CBNZ,
+      0 0 A64ICODE:MOVZ,  1 PROF-ABI:ARN-BYTES A64ICODE:LIT64,  2 3 A64ICODE:MOVZ,  3 SYSCALL:MAP-ANON-PRIVATE A64ICODE:LIT64,  4 0 A64ICODE:MOVN,  5 0 A64ICODE:MOVZ,
+      SYSCALL:NR-MMAP SYSCALL:SYS,
+      A64ASM:C-CC mok A64ICODE:BCOND,
+         1 amsg A64ICODE:ADR,  2 PROF-ABI:PROFARNMSG$ nip A64ICODE:MOVZ,  0 2 A64ICODE:MOVZ,  SYSCALL:NR-WRITE SYSCALL:SYS,
+         0 EXIT-STATUS:SYSTEM A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
+      amsg A64ICODE:LBL,  PROF-ABI:PROFARNMSG$ A64ICODE:BYTES,
+      mok A64ICODE:LBL,
+      7 PROF-BAND-VA A64ICODE:LIT64,  0 7 PROF-ABI:PROF-ARENA A64ICODE:STR,
+   have A64ICODE:LBL, ;
 
 : C-PROF-DIE ( str -- ) {: a:^ u:n :}
-   LBL {: msg :}
-   0 2 MOVZ,  1 msg ADR,  2 u LIT64,  NR-WRITE SYS,
-   0 EXIT-STATUS:SYSTEM MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  a u BYTES, ;
+   A64ICODE:LBL {: msg :}
+   0 2 A64ICODE:MOVZ,  1 msg A64ICODE:ADR,  2 u A64ICODE:LIT64,  SYSCALL:NR-WRITE SYSCALL:SYS,
+   0 EXIT-STATUS:SYSTEM A64ICODE:MOVZ,  SYSCALL:NR-EXIT-GROUP SYSCALL:SYS,
+   msg A64ICODE:LBL,  a u A64ICODE:BYTES, ;
 
 \ x5 = dictionary record; x1/x2 = raw name pointer/length. The external
 \ pointer is read while the record is live, then its exact bytes are copied.
 : C-PROF-RAW-NAME ( -- )
-   LBL {: inl :}
-   1 5 24 ADDI,  2 5 16 LDR,
-   0 2 DNAME-EXT ANDI,  0 inl CBZ,
-   1 5 24 LDR,
-   inl LBL,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI, ;
+   A64ICODE:LBL {: inl :}
+   1 5 24 A64ICODE:ADDI,  2 5 16 A64ICODE:LDR,
+   0 2 DNAME-EXT A64ICODE:ANDI,  0 inl A64ICODE:CBZ,
+   1 5 24 A64ICODE:LDR,
+   inl A64ICODE:LBL,  2 2 DNAME-FLAG-BITS A64ICODE:LSLI,  2 2 DNAME-FLAG-BITS A64ICODE:LSRI, ;
 
 \ x1 = destination, x2 = source, x3 = byte count. Advance the destination.
 : C-PROF-COPY-NAME ( -- )
-   LBL LBL {: cp done :}
-   cp LBL,  3 done CBZ,
-      0 2 0 LDRB,  0 1 0 STRB,
-      1 1 1 ADDI,  2 2 1 ADDI,  3 3 1 SUBI,  cp B,
-   done LBL, ;
+   A64ICODE:LBL A64ICODE:LBL {: cp done :}
+   cp A64ICODE:LBL,  3 done A64ICODE:CBZ,
+      0 2 0 A64ICODE:LDRB,  0 1 0 A64ICODE:STRB,
+      1 1 1 A64ICODE:ADDI,  2 2 1 A64ICODE:ADDI,  3 3 1 A64ICODE:SUBI,  cp A64ICODE:B,
+   done A64ICODE:LBL, ;
 
 \ x17 = arena. Build WID -> namespace row in the sort scratch; keep x6 and x17.
 \ A namespace has at most two WIDs, so the cell table remains at most half full.
 : C-PROF-QUAL-INDEX ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL {: clear cleared recs next insert probe store keydone :}
-   LBL {: done :}
-   13 ARN-SCR LIT64,  13 17 13 ADD,
-   14 13 0 ADDI,  15 ARN-IDX-BYTES LIT64,  15 13 15 ADD,
-   0 0 MOVZ,
-   clear LBL,
-      14 15 CMP,  C-CS cleared BCOND,
-      0 14 0 STR,  14 14 CELL ADDI,  clear B,
-   cleared LBL,
-   4 0 MOVZ,  5 DBASE 0 ADDI,
-   recs LBL,
-      4 NDICT CMP,  C-CS done BCOND,
-      0 5 DICT-WL-OFF LDR,  0 0 1 ADDI,  0 next CBNZ,
-      0 5 0 LDR,  7 5 CELL LDR,
-      insert LBL,
-         0 keydone CBZ,
-         9 PROF-HASH LIT64,  9 0 9 MUL,  9 9 PROF-QUAL-MASK ANDI,
-      probe LBL,
-         10 9 3 LSLI,  10 13 10 ADD,
-         11 10 0 LDR,  11 store CBZ,
-         12 11 $FFFFFFFF ANDI,  12 0 CMP,  C-EQ keydone BCOND,
-         9 9 1 ADDI,  9 9 PROF-QUAL-MASK ANDI,  probe B,
-      store LBL,
-         11 4 1 ADDI,  11 11 PROF-QUAL-BITS LSLI,  11 11 0 ORR,
-         11 10 0 STR,
-      keydone LBL,
-         0 7 0 ADDI,  7 0 MOVZ,  0 insert CBNZ,
-   next LBL,  4 4 1 ADDI,  5 5 DREC ADDI,  recs B,
-   done LBL, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: clear cleared recs next insert probe store keydone :}
+   A64ICODE:LBL {: done :}
+   13 PROF-ABI:ARN-SCR A64ICODE:LIT64,  13 17 13 A64ICODE:ADD,
+   14 13 0 A64ICODE:ADDI,  15 PROF-ABI:ARN-IDX-BYTES A64ICODE:LIT64,  15 13 15 A64ICODE:ADD,
+   0 0 A64ICODE:MOVZ,
+   clear A64ICODE:LBL,
+      14 15 A64ICODE:CMP,  A64ASM:C-CS cleared A64ICODE:BCOND,
+      0 14 0 A64ICODE:STR,  14 14 CELL A64ICODE:ADDI,  clear A64ICODE:B,
+   cleared A64ICODE:LBL,
+   4 0 A64ICODE:MOVZ,  5 DBASE 0 A64ICODE:ADDI,
+   recs A64ICODE:LBL,
+      4 NDICT A64ICODE:CMP,  A64ASM:C-CS done A64ICODE:BCOND,
+      0 5 PROF-ABI:DICT-WL-OFF A64ICODE:LDR,  0 0 1 A64ICODE:ADDI,  0 next A64ICODE:CBNZ,
+      0 5 0 A64ICODE:LDR,  7 5 CELL A64ICODE:LDR,
+      insert A64ICODE:LBL,
+         0 keydone A64ICODE:CBZ,
+         9 PROF-ABI:PROF-HASH A64ICODE:LIT64,  9 0 9 A64ICODE:MUL,  9 9 PROF-ABI:PROF-QUAL-MASK A64ICODE:ANDI,
+      probe A64ICODE:LBL,
+         10 9 3 A64ICODE:LSLI,  10 13 10 A64ICODE:ADD,
+         11 10 0 A64ICODE:LDR,  11 store A64ICODE:CBZ,
+         12 11 $FFFFFFFF A64ICODE:ANDI,  12 0 A64ICODE:CMP,  A64ASM:C-EQ keydone A64ICODE:BCOND,
+         9 9 1 A64ICODE:ADDI,  9 9 PROF-ABI:PROF-QUAL-MASK A64ICODE:ANDI,  probe A64ICODE:B,
+      store A64ICODE:LBL,
+         11 4 1 A64ICODE:ADDI,  11 11 PROF-ABI:PROF-QUAL-BITS A64ICODE:LSLI,  11 11 0 A64ICODE:ORR,
+         11 10 0 A64ICODE:STR,
+      keydone A64ICODE:LBL,
+         0 7 0 A64ICODE:ADDI,  7 0 A64ICODE:MOVZ,  0 insert A64ICODE:CBNZ,
+   next A64ICODE:LBL,  4 4 1 A64ICODE:ADDI,  5 5 DREC A64ICODE:ADDI,  recs A64ICODE:B,
+   done A64ICODE:LBL, ;
 
 \ x0 = arena. Assign a stable ID to each newly live ordinal and copy its
 \ qualified name into session-owned mmap chunks. The live map is -1 for an
@@ -1018,292 +1011,292 @@ private
 \ lookup only when new IDs need names; the later merge sort reuses its scratch.
 \ Reports keep copied names.
 : C-PROF-SNAPSHOT ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: recs next qscan qfound qdone usechunk newchunk :}
-   LBL LBL LBL LBL LBL LBL LBL {: idok sized mapok qready owncopy copydone done :}
-   LBL LBL {: pending prepare :}
-   17 0 0 ADDI,  6 0 MOVZ,
-   pending LBL,
-      6 NDICT CMP,  C-CS done BCOND,
-      15 ARN-LIVE LIT64,  15 17 15 ADD,  0 6 3 LSLI,  15 15 0 ADD,
-      0 15 0 LDR,  1 0 MOVN,  0 1 CMP,  C-EQ prepare BCOND,
-      6 6 1 ADDI,  pending B,
-   prepare LBL,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: recs next qscan qfound qdone usechunk newchunk :}
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: idok sized mapok qready owncopy copydone done :}
+   A64ICODE:LBL A64ICODE:LBL {: pending prepare :}
+   17 0 0 A64ICODE:ADDI,  6 0 A64ICODE:MOVZ,
+   pending A64ICODE:LBL,
+      6 NDICT A64ICODE:CMP,  A64ASM:C-CS done A64ICODE:BCOND,
+      15 PROF-ABI:ARN-LIVE A64ICODE:LIT64,  15 17 15 A64ICODE:ADD,  0 6 3 A64ICODE:LSLI,  15 15 0 A64ICODE:ADD,
+      0 15 0 A64ICODE:LDR,  1 0 A64ICODE:MOVN,  0 1 A64ICODE:CMP,  A64ASM:C-EQ prepare A64ICODE:BCOND,
+      6 6 1 A64ICODE:ADDI,  pending A64ICODE:B,
+   prepare A64ICODE:LBL,
    C-PROF-QUAL-INDEX
-   recs LBL,
-      6 NDICT CMP,  C-CS done BCOND,
-      15 ARN-LIVE LIT64,  15 17 15 ADD,  0 6 3 LSLI,  15 15 0 ADD,
-      0 15 0 LDR,  1 0 MOVN,  0 1 CMP,  C-NE next BCOND,
-      10 17 ARN-IDS LDR,
-      0 DICT-CAP LIT64,  10 0 CMP,  C-CC idok BCOND,
-      PROFIDMSG$ C-PROF-DIE
-      idok LBL,
-      7 ARN-RECS LIT64,  7 17 7 ADD,
-      0 PROF-ID-ENT MOVZ,  0 10 0 MUL,  7 7 0 ADD,
-      5 DREC MOVZ,  5 6 5 MUL,  5 DBASE 5 ADD,
-      14 0 MOVZ,                                  \ no qualifier yet
-      0 5 DICT-WL-OFF LDR,
-      0 0 CMPI,  C-LE qdone BCOND,
-      13 ARN-SCR LIT64,  13 17 13 ADD,
-      15 PROF-HASH LIT64,  15 0 15 MUL,  15 15 PROF-QUAL-MASK ANDI,
-      qscan LBL,
-         1 15 3 LSLI,  1 13 1 ADD,  1 1 0 LDR,  1 qdone CBZ,
-         2 1 $FFFFFFFF ANDI,  0 2 CMP,  C-EQ qfound BCOND,
-         15 15 1 ADDI,  15 15 PROF-QUAL-MASK ANDI,  qscan B,
-      qfound LBL,
-         14 1 PROF-QUAL-BITS LSRI,  14 14 1 SUBI,
-         1 DREC MOVZ,  14 14 1 MUL,  14 DBASE 14 ADD,
-      qdone LBL,
-      C-PROF-RAW-NAME  9 1 0 ADDI,  10 2 0 ADDI,  \ own source and length
-      11 0 MOVZ,  12 0 MOVZ,
-      14 qready CBZ,
-      5 14 0 ADDI,  C-PROF-RAW-NAME
-      11 1 0 ADDI,  12 2 1 ADDI,                    \ qualifier plus ':'
-      qready LBL,
-      13 10 12 ADD,                               \ total exact name bytes
-      14 17 ARN-CHUNKS LDR,
-      14 newchunk CBZ,
-      15 14 CHUNK-USED LDR,  0 15 13 ADD,
-      1 14 CHUNK-LEN LDR,  0 1 CMP,  C-LS usechunk BCOND,
-      newchunk LBL,
-         1 13 CHUNK-DATA ADDI,
-         15 PROF-NAME-CHUNK LIT64,  1 15 CMP,  C-CS sized BCOND,
-         1 15 0 ADDI,
-      sized LBL,
-         15 1 0 ADDI,                              \ Darwin mmap clears x1; x15 keeps the requested extent
-         0 0 MOVZ,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,
-         4 0 MOVN,  5 0 MOVZ,  NR-MMAP SYS,
-         C-CC mapok BCOND,
-         PROFNAMEMSG$ C-PROF-DIE
-      mapok LBL,
-         14 0 0 ADDI,
-         0 17 ARN-CHUNKS LDR,  0 14 CHUNK-NEXT STR,
-         15 14 CHUNK-LEN STR,
-         15 13 CHUNK-DATA ADDI,  15 14 CHUNK-USED STR,
-         14 17 ARN-CHUNKS STR,
-         4 14 CHUNK-DATA ADDI,  owncopy B,
-      usechunk LBL,
-         4 14 15 ADD,  15 15 13 ADD,  15 14 CHUNK-USED STR,
-      owncopy LBL,
-      6 7 RID-OWNER STR,  4 7 RID-NAME STR,  13 7 RID-LEN STR,
-      0 0 MOVZ,  0 7 RID-START STR,  0 7 RID-END STR,
-      1 4 0 ADDI,
-      11 copydone CBZ,
-      2 11 0 ADDI,  3 12 1 SUBI,  C-PROF-COPY-NAME
-      0 $3A MOVZ,  0 1 0 STRB,  1 1 1 ADDI,
-      copydone LBL,
-      2 9 0 ADDI,  3 10 0 ADDI,  C-PROF-COPY-NAME
-      15 ARN-LIVE LIT64,  15 17 15 ADD,  0 6 3 LSLI,  15 15 0 ADD,
-      0 17 ARN-IDS LDR,  0 15 0 STR,
-      0 0 1 ADDI,  0 17 ARN-IDS STR,
-   next LBL,  6 6 1 ADDI,  recs B,
-   done LBL,  0 17 0 ADDI, ;
+   recs A64ICODE:LBL,
+      6 NDICT A64ICODE:CMP,  A64ASM:C-CS done A64ICODE:BCOND,
+      15 PROF-ABI:ARN-LIVE A64ICODE:LIT64,  15 17 15 A64ICODE:ADD,  0 6 3 A64ICODE:LSLI,  15 15 0 A64ICODE:ADD,
+      0 15 0 A64ICODE:LDR,  1 0 A64ICODE:MOVN,  0 1 A64ICODE:CMP,  A64ASM:C-NE next A64ICODE:BCOND,
+      10 17 PROF-ABI:ARN-IDS A64ICODE:LDR,
+      0 DICT-CAP A64ICODE:LIT64,  10 0 A64ICODE:CMP,  A64ASM:C-CC idok A64ICODE:BCOND,
+      PROF-ABI:PROFIDMSG$ C-PROF-DIE
+      idok A64ICODE:LBL,
+      7 PROF-ABI:ARN-RECS A64ICODE:LIT64,  7 17 7 A64ICODE:ADD,
+      0 PROF-ABI:PROF-ID-ENT A64ICODE:MOVZ,  0 10 0 A64ICODE:MUL,  7 7 0 A64ICODE:ADD,
+      5 DREC A64ICODE:MOVZ,  5 6 5 A64ICODE:MUL,  5 DBASE 5 A64ICODE:ADD,
+      14 0 A64ICODE:MOVZ,                                  \ no qualifier yet
+      0 5 PROF-ABI:DICT-WL-OFF A64ICODE:LDR,
+      0 0 A64ICODE:CMPI,  A64ASM:C-LE qdone A64ICODE:BCOND,
+      13 PROF-ABI:ARN-SCR A64ICODE:LIT64,  13 17 13 A64ICODE:ADD,
+      15 PROF-ABI:PROF-HASH A64ICODE:LIT64,  15 0 15 A64ICODE:MUL,  15 15 PROF-ABI:PROF-QUAL-MASK A64ICODE:ANDI,
+      qscan A64ICODE:LBL,
+         1 15 3 A64ICODE:LSLI,  1 13 1 A64ICODE:ADD,  1 1 0 A64ICODE:LDR,  1 qdone A64ICODE:CBZ,
+         2 1 $FFFFFFFF A64ICODE:ANDI,  0 2 A64ICODE:CMP,  A64ASM:C-EQ qfound A64ICODE:BCOND,
+         15 15 1 A64ICODE:ADDI,  15 15 PROF-ABI:PROF-QUAL-MASK A64ICODE:ANDI,  qscan A64ICODE:B,
+      qfound A64ICODE:LBL,
+         14 1 PROF-ABI:PROF-QUAL-BITS A64ICODE:LSRI,  14 14 1 A64ICODE:SUBI,
+         1 DREC A64ICODE:MOVZ,  14 14 1 A64ICODE:MUL,  14 DBASE 14 A64ICODE:ADD,
+      qdone A64ICODE:LBL,
+      C-PROF-RAW-NAME  9 1 0 A64ICODE:ADDI,  10 2 0 A64ICODE:ADDI,  \ own source and length
+      11 0 A64ICODE:MOVZ,  12 0 A64ICODE:MOVZ,
+      14 qready A64ICODE:CBZ,
+      5 14 0 A64ICODE:ADDI,  C-PROF-RAW-NAME
+      11 1 0 A64ICODE:ADDI,  12 2 1 A64ICODE:ADDI,                    \ qualifier plus ':'
+      qready A64ICODE:LBL,
+      13 10 12 A64ICODE:ADD,                               \ total exact name bytes
+      14 17 PROF-ABI:ARN-CHUNKS A64ICODE:LDR,
+      14 newchunk A64ICODE:CBZ,
+      15 14 PROF-ABI:CHUNK-USED A64ICODE:LDR,  0 15 13 A64ICODE:ADD,
+      1 14 PROF-ABI:CHUNK-LEN A64ICODE:LDR,  0 1 A64ICODE:CMP,  A64ASM:C-LS usechunk A64ICODE:BCOND,
+      newchunk A64ICODE:LBL,
+         1 13 PROF-ABI:CHUNK-DATA A64ICODE:ADDI,
+         15 PROF-ABI:PROF-NAME-CHUNK A64ICODE:LIT64,  1 15 A64ICODE:CMP,  A64ASM:C-CS sized A64ICODE:BCOND,
+         1 15 0 A64ICODE:ADDI,
+      sized A64ICODE:LBL,
+         15 1 0 A64ICODE:ADDI,                              \ Darwin mmap clears x1; x15 keeps the requested extent
+         0 0 A64ICODE:MOVZ,  2 3 A64ICODE:MOVZ,  3 SYSCALL:MAP-ANON-PRIVATE A64ICODE:LIT64,
+         4 0 A64ICODE:MOVN,  5 0 A64ICODE:MOVZ,  SYSCALL:NR-MMAP SYSCALL:SYS,
+         A64ASM:C-CC mapok A64ICODE:BCOND,
+         PROF-ABI:PROFNAMEMSG$ C-PROF-DIE
+      mapok A64ICODE:LBL,
+         14 0 0 A64ICODE:ADDI,
+         0 17 PROF-ABI:ARN-CHUNKS A64ICODE:LDR,  0 14 PROF-ABI:CHUNK-NEXT A64ICODE:STR,
+         15 14 PROF-ABI:CHUNK-LEN A64ICODE:STR,
+         15 13 PROF-ABI:CHUNK-DATA A64ICODE:ADDI,  15 14 PROF-ABI:CHUNK-USED A64ICODE:STR,
+         14 17 PROF-ABI:ARN-CHUNKS A64ICODE:STR,
+         4 14 PROF-ABI:CHUNK-DATA A64ICODE:ADDI,  owncopy A64ICODE:B,
+      usechunk A64ICODE:LBL,
+         4 14 15 A64ICODE:ADD,  15 15 13 A64ICODE:ADD,  15 14 PROF-ABI:CHUNK-USED A64ICODE:STR,
+      owncopy A64ICODE:LBL,
+      6 7 PROF-ABI:RID-OWNER A64ICODE:STR,  4 7 PROF-ABI:RID-NAME A64ICODE:STR,  13 7 PROF-ABI:RID-LEN A64ICODE:STR,
+      0 0 A64ICODE:MOVZ,  0 7 PROF-ABI:RID-START A64ICODE:STR,  0 7 PROF-ABI:RID-END A64ICODE:STR,
+      1 4 0 A64ICODE:ADDI,
+      11 copydone A64ICODE:CBZ,
+      2 11 0 A64ICODE:ADDI,  3 12 1 A64ICODE:SUBI,  C-PROF-COPY-NAME
+      0 $3A A64ICODE:MOVZ,  0 1 0 A64ICODE:STRB,  1 1 1 A64ICODE:ADDI,
+      copydone A64ICODE:LBL,
+      2 9 0 A64ICODE:ADDI,  3 10 0 A64ICODE:ADDI,  C-PROF-COPY-NAME
+      15 PROF-ABI:ARN-LIVE A64ICODE:LIT64,  15 17 15 A64ICODE:ADD,  0 6 3 A64ICODE:LSLI,  15 15 0 A64ICODE:ADD,
+      0 17 PROF-ABI:ARN-IDS A64ICODE:LDR,  0 15 0 A64ICODE:STR,
+      0 0 1 A64ICODE:ADDI,  0 17 PROF-ABI:ARN-IDS A64ICODE:STR,
+   next A64ICODE:LBL,  6 6 1 A64ICODE:ADDI,  recs A64ICODE:B,
+   done A64ICODE:LBL,  0 17 0 A64ICODE:ADDI, ;
 
 : C-PROF-SESSION-START ( -- )
-   LBL LBL LBL {: chunks clear done :}
-   17 0 0 ADDI,
-   9 17 ARN-CHUNKS LDR,
-   chunks LBL,
-      9 clear CBZ,
-      10 9 CHUNK-NEXT LDR,
-      0 9 0 ADDI,  1 9 CHUNK-LEN LDR,  NR-MUNMAP SYS,
-      C-CC done BCOND,
-      PROFNAMEFREEMSG$ C-PROF-DIE
-      done LBL,
-      9 10 0 ADDI,  chunks B,
-   clear LBL,
-   9 0 MOVZ,  9 17 ARN-CHUNKS STR,  9 17 ARN-IDS STR,
-   10 ARN-LIVE LIT64,  10 17 10 ADD,
-   11 DICT-CAP LIT64,  11 11 3 LSLI,  11 10 11 ADD,
-   9 0 MOVN,
-   LBL LBL {: zeroed turn :}
-   turn LBL,
-      10 11 CMP,  C-CS zeroed BCOND,
-      9 10 0 STR,  10 10 8 ADDI,  turn B,
-   zeroed LBL,  0 17 0 ADDI, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: chunks clear done :}
+   17 0 0 A64ICODE:ADDI,
+   9 17 PROF-ABI:ARN-CHUNKS A64ICODE:LDR,
+   chunks A64ICODE:LBL,
+      9 clear A64ICODE:CBZ,
+      10 9 PROF-ABI:CHUNK-NEXT A64ICODE:LDR,
+      0 9 0 A64ICODE:ADDI,  1 9 PROF-ABI:CHUNK-LEN A64ICODE:LDR,  SYSCALL:NR-MUNMAP SYSCALL:SYS,
+      A64ASM:C-CC done A64ICODE:BCOND,
+      PROF-ABI:PROFNAMEFREEMSG$ C-PROF-DIE
+      done A64ICODE:LBL,
+      9 10 0 A64ICODE:ADDI,  chunks A64ICODE:B,
+   clear A64ICODE:LBL,
+   9 0 A64ICODE:MOVZ,  9 17 PROF-ABI:ARN-CHUNKS A64ICODE:STR,  9 17 PROF-ABI:ARN-IDS A64ICODE:STR,
+   10 PROF-ABI:ARN-LIVE A64ICODE:LIT64,  10 17 10 A64ICODE:ADD,
+   11 DICT-CAP A64ICODE:LIT64,  11 11 3 A64ICODE:LSLI,  11 10 11 A64ICODE:ADD,
+   9 0 A64ICODE:MOVN,
+   A64ICODE:LBL A64ICODE:LBL {: zeroed turn :}
+   turn A64ICODE:LBL,
+      10 11 A64ICODE:CMP,  A64ASM:C-CS zeroed A64ICODE:BCOND,
+      9 10 0 A64ICODE:STR,  10 10 8 A64ICODE:ADDI,  turn A64ICODE:B,
+   zeroed A64ICODE:LBL,  0 17 0 A64ICODE:ADDI, ;
 
 \ One index entry per profile ID with code of its own. A live or retired
 \ word's ID takes its record's span; a seed-retired ID takes its stored span;
 \ a package row has no entry. The old index's inclusive counts are folded first.
 : C-PROF-INDEX-BUILD ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: bl bnext bdone blo bhi retained span :}
-   LBL {: word :}
-   9 ARN-IDX LIT64,  9 0 9 ADD,
-   11 0 MOVZ,  6 0 MOVZ,
-   1 0 MOVN,  2 0 MOVZ,                              \ lo = all ones, hi = 0
-   bl LBL,
-      12 0 ARN-IDS LDR,  6 12 CMP,  C-CS bdone BCOND,
-      5 ARN-RECS LIT64,  5 0 5 ADD,
-      12 PROF-ID-ENT MOVZ,  12 6 12 MUL,  5 5 12 ADD,
-      12 5 RID-OWNER LDR,  12 0 CMPI,  C-LT retained BCOND,
-      15 0 MOVZ,  15 5 RID-START STR,  15 5 RID-END STR,
-      13 DREC MOVZ,  13 12 13 MUL,  13 DBASE 13 ADD,
-      14 13 DICT-WL-OFF LDR,  14 0 CMPI,  C-GE word BCOND,
-      15 WL:RETIRED invert MOVN,  14 15 CMP,  C-NE bnext BCOND,
-      word LBL,
-      13 13 8 LDR,  13 bnext CBZ,
-      12 5 RID-OWNER LDR,  15 DREC MOVZ,  12 12 15 MUL,
-      12 DBASE 12 ADD,  12 12 0 LDR,  12 bnext CBZ,
-      14 12 13 ADD,
-      12 5 RID-START STR,  14 5 RID-END STR,  span B,
-      retained LBL,
-      12 5 RID-START LDR,  14 5 RID-END LDR,
-      12 bnext CBZ,
-      12 14 CMP,  C-CS bnext BCOND,
-      span LBL,
-      12 9 ENT-START STR,
-      14 9 ENT-END STR,
-      6 9 ENT-IDX STR,
-      15 0 MOVZ,  15 9 ENT-INCL STR,
-      9 9 PROF-ENT ADDI,  11 11 1 ADDI,
-      12 1 CMP,  C-CS blo BCOND,  1 12 0 ADDI,
-      blo LBL,  14 2 CMP,  C-LS bhi BCOND,  2 14 0 ADDI,
-      bhi LBL,
-   bnext LBL,  6 6 1 ADDI,  bl B,
-   bdone LBL,
-   11 0 ARN-COUNT STR,  1 0 ARN-LO STR,  2 0 ARN-HI STR,
-   NDICT 0 ARN-NDICT STR, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: bl bnext bdone blo bhi retained span :}
+   A64ICODE:LBL {: word :}
+   9 PROF-ABI:ARN-IDX A64ICODE:LIT64,  9 0 9 A64ICODE:ADD,
+   11 0 A64ICODE:MOVZ,  6 0 A64ICODE:MOVZ,
+   1 0 A64ICODE:MOVN,  2 0 A64ICODE:MOVZ,                              \ lo = all ones, hi = 0
+   bl A64ICODE:LBL,
+      12 0 PROF-ABI:ARN-IDS A64ICODE:LDR,  6 12 A64ICODE:CMP,  A64ASM:C-CS bdone A64ICODE:BCOND,
+      5 PROF-ABI:ARN-RECS A64ICODE:LIT64,  5 0 5 A64ICODE:ADD,
+      12 PROF-ABI:PROF-ID-ENT A64ICODE:MOVZ,  12 6 12 A64ICODE:MUL,  5 5 12 A64ICODE:ADD,
+      12 5 PROF-ABI:RID-OWNER A64ICODE:LDR,  12 0 A64ICODE:CMPI,  A64ASM:C-LT retained A64ICODE:BCOND,
+      15 0 A64ICODE:MOVZ,  15 5 PROF-ABI:RID-START A64ICODE:STR,  15 5 PROF-ABI:RID-END A64ICODE:STR,
+      13 DREC A64ICODE:MOVZ,  13 12 13 A64ICODE:MUL,  13 DBASE 13 A64ICODE:ADD,
+      14 13 PROF-ABI:DICT-WL-OFF A64ICODE:LDR,  14 0 A64ICODE:CMPI,  A64ASM:C-GE word A64ICODE:BCOND,
+      15 WL:RETIRED invert A64ICODE:MOVN,  14 15 A64ICODE:CMP,  A64ASM:C-NE bnext A64ICODE:BCOND,
+      word A64ICODE:LBL,
+      13 13 8 A64ICODE:LDR,  13 bnext A64ICODE:CBZ,
+      12 5 PROF-ABI:RID-OWNER A64ICODE:LDR,  15 DREC A64ICODE:MOVZ,  12 12 15 A64ICODE:MUL,
+      12 DBASE 12 A64ICODE:ADD,  12 12 0 A64ICODE:LDR,  12 bnext A64ICODE:CBZ,
+      14 12 13 A64ICODE:ADD,
+      12 5 PROF-ABI:RID-START A64ICODE:STR,  14 5 PROF-ABI:RID-END A64ICODE:STR,  span A64ICODE:B,
+      retained A64ICODE:LBL,
+      12 5 PROF-ABI:RID-START A64ICODE:LDR,  14 5 PROF-ABI:RID-END A64ICODE:LDR,
+      12 bnext A64ICODE:CBZ,
+      12 14 A64ICODE:CMP,  A64ASM:C-CS bnext A64ICODE:BCOND,
+      span A64ICODE:LBL,
+      12 9 PROF-ABI:ENT-START A64ICODE:STR,
+      14 9 PROF-ABI:ENT-END A64ICODE:STR,
+      6 9 PROF-ABI:ENT-IDX A64ICODE:STR,
+      15 0 A64ICODE:MOVZ,  15 9 PROF-ABI:ENT-INCL A64ICODE:STR,
+      9 9 PROF-ABI:PROF-ENT A64ICODE:ADDI,  11 11 1 A64ICODE:ADDI,
+      12 1 A64ICODE:CMP,  A64ASM:C-CS blo A64ICODE:BCOND,  1 12 0 A64ICODE:ADDI,
+      blo A64ICODE:LBL,  14 2 A64ICODE:CMP,  A64ASM:C-LS bhi A64ICODE:BCOND,  2 14 0 A64ICODE:ADDI,
+      bhi A64ICODE:LBL,
+   bnext A64ICODE:LBL,  6 6 1 A64ICODE:ADDI,  bl A64ICODE:B,
+   bdone A64ICODE:LBL,
+   11 0 PROF-ABI:ARN-COUNT A64ICODE:STR,  1 0 PROF-ABI:ARN-LO A64ICODE:STR,  2 0 PROF-ABI:ARN-HI A64ICODE:STR,
+   NDICT 0 PROF-ABI:ARN-NDICT A64ICODE:STR, ;
 
 \ Cleared by prof-on and prof-reset, and NEVER by C-PROF-INDEX-BUILD, which a
 \ report runs again over a phase already counted.
 : C-PROF-COUNTERS-CLEAR ( -- )
-   LBL LBL LBL LBL {: il idone el edone :}
-   15 0 MOVZ,
-   15 0 ARN-NEW STR,  15 0 ARN-DROP STR,  15 0 ARN-FRAMES STR,
-   15 0 ARN-SPILL STR,  15 0 ARN-DEFER STR,  15 0 ARN-FCALLED STR,
-   15 0 ARN-CARRY STR,                            \ a phase's weights sum to its own armed time
-   15 PROF-WALK-CELLS MOVZ,  15 0 ARN-WALK STR,
-   12 ARN-INCL LIT64,  12 0 12 ADD,               \ the inclusive array and the stamps
-   13 ARN-DEF LIT64,  13 0 13 ADD,                \ sit back to back, so one loop clears both
-   15 0 MOVZ,
-   il LBL,
-      12 13 CMP,  C-CS idone BCOND,
-      15 12 0 STR,  12 12 8 ADDI,  il B,
-   idone LBL,
-   12 ARN-IDX LIT64,  12 0 12 ADD,
-   13 0 ARN-COUNT LDR,  13 13 5 LSLI,  13 12 13 ADD,
-   el LBL,
-      12 13 CMP,  C-CS edone BCOND,
-      15 12 ENT-INCL STR,  12 12 PROF-ENT ADDI,  el B,
-   edone LBL, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: il idone el edone :}
+   15 0 A64ICODE:MOVZ,
+   15 0 PROF-ABI:ARN-NEW A64ICODE:STR,  15 0 PROF-ABI:ARN-DROP A64ICODE:STR,  15 0 PROF-ABI:ARN-FRAMES A64ICODE:STR,
+   15 0 PROF-ABI:ARN-SPILL A64ICODE:STR,  15 0 PROF-ABI:ARN-DEFER A64ICODE:STR,  15 0 PROF-ABI:ARN-FCALLED A64ICODE:STR,
+   15 0 PROF-ABI:ARN-CARRY A64ICODE:STR,                            \ a phase's weights sum to its own armed time
+   15 PROF-ABI:PROF-WALK-CELLS A64ICODE:MOVZ,  15 0 PROF-ABI:ARN-WALK A64ICODE:STR,
+   12 PROF-ABI:ARN-INCL A64ICODE:LIT64,  12 0 12 A64ICODE:ADD,               \ the inclusive array and the stamps
+   13 PROF-ABI:ARN-DEF A64ICODE:LIT64,  13 0 13 A64ICODE:ADD,                \ sit back to back, so one loop clears both
+   15 0 A64ICODE:MOVZ,
+   il A64ICODE:LBL,
+      12 13 A64ICODE:CMP,  A64ASM:C-CS idone A64ICODE:BCOND,
+      15 12 0 A64ICODE:STR,  12 12 8 A64ICODE:ADDI,  il A64ICODE:B,
+   idone A64ICODE:LBL,
+   12 PROF-ABI:ARN-IDX A64ICODE:LIT64,  12 0 12 A64ICODE:ADD,
+   13 0 PROF-ABI:ARN-COUNT A64ICODE:LDR,  13 13 5 A64ICODE:LSLI,  13 12 13 A64ICODE:ADD,
+   el A64ICODE:LBL,
+      12 13 A64ICODE:CMP,  A64ASM:C-CS edone A64ICODE:BCOND,
+      15 12 PROF-ABI:ENT-INCL A64ICODE:STR,  12 12 PROF-ABI:PROF-ENT A64ICODE:ADDI,  el A64ICODE:B,
+   edone A64ICODE:LBL, ;
 
 \ Every caller edge from the last run has to go before this one counts: the
 \ table is keyed on record indices, and a rebuilt index gives them new meanings.
 : C-PROF-CALL-CLEAR ( -- )
-   LBL LBL {: cl cd :}
-   9 ARN-CALL LIT64,  9 0 9 ADD,
-   10 ARN-CALL-BYTES LIT64,  10 9 10 ADD,
-   11 0 MOVZ,
-   cl LBL,
-      9 10 CMP,  C-CS cd BCOND,
-      11 9 0 STR,  9 9 8 ADDI,  cl B,
-   cd LBL, ;
+   A64ICODE:LBL A64ICODE:LBL {: cl cd :}
+   9 PROF-ABI:ARN-CALL A64ICODE:LIT64,  9 0 9 A64ICODE:ADD,
+   10 PROF-ABI:ARN-CALL-BYTES A64ICODE:LIT64,  10 9 10 A64ICODE:ADD,
+   11 0 A64ICODE:MOVZ,
+   cl A64ICODE:LBL,
+      9 10 A64ICODE:CMP,  A64ASM:C-CS cd A64ICODE:BCOND,
+      11 9 0 A64ICODE:STR,  9 9 8 A64ICODE:ADDI,  cl A64ICODE:B,
+   cd A64ICODE:LBL, ;
 
 \ The merge's two moves: one entry from the a side (x17) or the b side (x5) to
 \ the output cursor (x6), each source advancing with it.
 : C-PROF-ENT-COPY-A ( -- )
-   3 17 0 LDR,   3 6 0 STR,
-   3 17 8 LDR,   3 6 8 STR,
-   3 17 16 LDR,  3 6 16 STR,
-   3 17 24 LDR,  3 6 24 STR,
-   17 17 PROF-ENT ADDI,  6 6 PROF-ENT ADDI, ;
+   3 17 0 A64ICODE:LDR,   3 6 0 A64ICODE:STR,
+   3 17 8 A64ICODE:LDR,   3 6 8 A64ICODE:STR,
+   3 17 16 A64ICODE:LDR,  3 6 16 A64ICODE:STR,
+   3 17 24 A64ICODE:LDR,  3 6 24 A64ICODE:STR,
+   17 17 PROF-ABI:PROF-ENT A64ICODE:ADDI,  6 6 PROF-ABI:PROF-ENT A64ICODE:ADDI, ;
 
 : C-PROF-ENT-COPY-B ( -- )
-   3 5 0 LDR,   3 6 0 STR,
-   3 5 8 LDR,   3 6 8 STR,
-   3 5 16 LDR,  3 6 16 STR,
-   3 5 24 LDR,  3 6 24 STR,
-   5 5 PROF-ENT ADDI,  6 6 PROF-ENT ADDI, ;
+   3 5 0 A64ICODE:LDR,   3 6 0 A64ICODE:STR,
+   3 5 8 A64ICODE:LDR,   3 6 8 A64ICODE:STR,
+   3 5 16 A64ICODE:LDR,  3 6 16 A64ICODE:STR,
+   3 5 24 A64ICODE:LDR,  3 6 24 A64ICODE:STR,
+   5 5 PROF-ABI:PROF-ENT A64ICODE:ADDI,  6 6 PROF-ABI:PROF-ENT A64ICODE:ADDI, ;
 
 \ An odd number of passes leaves the sorted entries in the scratch half; bring
 \ them home so the index always lives at one address the handler knows.
 : C-PROF-SORT-LAND ( -- )
-   LBL LBL {: cpl fin :}
-   2 ARN-IDX LIT64,  2 0 2 ADD,
-   9 2 CMP,  C-EQ fin BCOND,
-   3 0 MOVZ,
-   cpl LBL,
-      3 14 CMP,  C-CS fin BCOND,
-      4 9 3 ADD,   4 4 0 LDR,
-      15 2 3 ADD,  4 15 0 STR,
-      3 3 8 ADDI,  cpl B,
-   fin LBL, ;
+   A64ICODE:LBL A64ICODE:LBL {: cpl fin :}
+   2 PROF-ABI:ARN-IDX A64ICODE:LIT64,  2 0 2 A64ICODE:ADD,
+   9 2 A64ICODE:CMP,  A64ASM:C-EQ fin A64ICODE:BCOND,
+   3 0 A64ICODE:MOVZ,
+   cpl A64ICODE:LBL,
+      3 14 A64ICODE:CMP,  A64ASM:C-CS fin A64ICODE:BCOND,
+      4 9 3 A64ICODE:ADD,   4 4 0 A64ICODE:LDR,
+      15 2 3 A64ICODE:ADD,  4 15 0 A64ICODE:STR,
+      3 3 8 A64ICODE:ADDI,  cpl A64ICODE:B,
+   fin A64ICODE:LBL, ;
 
 \ Bottom-up merge sort of x11 entries by start address, arena in x0. Stable,
 \ so records that share a start stay in dictionary order and the search's
 \ "last start <= pc" answer is the same one an exhaustive scan in record order
 \ reports.
 : C-PROF-SORT ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL {: pass block mrg ta tb arest brest bfin cb done skip :}
-   11 1 CMPI,  C-LS skip BCOND,
-   9 ARN-IDX LIT64,  9 0 9 ADD,
-   10 ARN-SCR LIT64,  10 0 10 ADD,
-   14 PROF-ENT MOVZ,  14 11 14 MUL,                  \ total bytes
-   12 PROF-ENT MOVZ,                                 \ merge width, bytes
-   pass LBL,
-      12 14 CMP,  C-CS done BCOND,
-      13 9 0 ADDI,  11 9 14 ADD,
-      block LBL,
-         13 11 CMP,  C-CS bfin BCOND,
-         15 13 12 ADD,  15 11 CMP,  15 15 11 C-LS CSEL,     \ mid
-         16 15 12 ADD,  16 11 CMP,  16 16 11 C-LS CSEL,     \ hi
-         17 13 0 ADDI,  5 15 0 ADDI,
-         6 13 9 SUB,  6 6 10 ADD,
-         mrg LBL,
-            17 15 CMP,  C-CS brest BCOND,
-            5 16 CMP,  C-CS arest BCOND,
-            3 17 ENT-START LDR,  4 5 ENT-START LDR,  3 4 CMP,  C-HI tb BCOND,
-         ta LBL,  C-PROF-ENT-COPY-A  mrg B,
-         tb LBL,  C-PROF-ENT-COPY-B  mrg B,
-         arest LBL,  17 15 CMP,  C-CS cb BCOND,  C-PROF-ENT-COPY-A  arest B,
-         brest LBL,  5 16 CMP,  C-CS cb BCOND,  C-PROF-ENT-COPY-B  brest B,
-         cb LBL,  13 16 0 ADDI,  block B,
-      bfin LBL,
-      3 9 0 ADDI,  9 10 0 ADDI,  10 3 0 ADDI,
-      12 12 1 LSLI,  pass B,
-   done LBL,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: pass block mrg ta tb arest brest bfin cb done skip :}
+   11 1 A64ICODE:CMPI,  A64ASM:C-LS skip A64ICODE:BCOND,
+   9 PROF-ABI:ARN-IDX A64ICODE:LIT64,  9 0 9 A64ICODE:ADD,
+   10 PROF-ABI:ARN-SCR A64ICODE:LIT64,  10 0 10 A64ICODE:ADD,
+   14 PROF-ABI:PROF-ENT A64ICODE:MOVZ,  14 11 14 A64ICODE:MUL,                  \ total bytes
+   12 PROF-ABI:PROF-ENT A64ICODE:MOVZ,                                 \ merge width, bytes
+   pass A64ICODE:LBL,
+      12 14 A64ICODE:CMP,  A64ASM:C-CS done A64ICODE:BCOND,
+      13 9 0 A64ICODE:ADDI,  11 9 14 A64ICODE:ADD,
+      block A64ICODE:LBL,
+         13 11 A64ICODE:CMP,  A64ASM:C-CS bfin A64ICODE:BCOND,
+         15 13 12 A64ICODE:ADD,  15 11 A64ICODE:CMP,  15 15 11 A64ASM:C-LS A64ICODE:CSEL,     \ mid
+         16 15 12 A64ICODE:ADD,  16 11 A64ICODE:CMP,  16 16 11 A64ASM:C-LS A64ICODE:CSEL,     \ hi
+         17 13 0 A64ICODE:ADDI,  5 15 0 A64ICODE:ADDI,
+         6 13 9 A64ICODE:SUB,  6 6 10 A64ICODE:ADD,
+         mrg A64ICODE:LBL,
+            17 15 A64ICODE:CMP,  A64ASM:C-CS brest A64ICODE:BCOND,
+            5 16 A64ICODE:CMP,  A64ASM:C-CS arest A64ICODE:BCOND,
+            3 17 PROF-ABI:ENT-START A64ICODE:LDR,  4 5 PROF-ABI:ENT-START A64ICODE:LDR,  3 4 A64ICODE:CMP,  A64ASM:C-HI tb A64ICODE:BCOND,
+         ta A64ICODE:LBL,  C-PROF-ENT-COPY-A  mrg A64ICODE:B,
+         tb A64ICODE:LBL,  C-PROF-ENT-COPY-B  mrg A64ICODE:B,
+         arest A64ICODE:LBL,  17 15 A64ICODE:CMP,  A64ASM:C-CS cb A64ICODE:BCOND,  C-PROF-ENT-COPY-A  arest A64ICODE:B,
+         brest A64ICODE:LBL,  5 16 A64ICODE:CMP,  A64ASM:C-CS cb A64ICODE:BCOND,  C-PROF-ENT-COPY-B  brest A64ICODE:B,
+         cb A64ICODE:LBL,  13 16 0 A64ICODE:ADDI,  block A64ICODE:B,
+      bfin A64ICODE:LBL,
+      3 9 0 A64ICODE:ADDI,  9 10 0 A64ICODE:ADDI,  10 3 0 A64ICODE:ADDI,
+      12 12 1 A64ICODE:LSLI,  pass A64ICODE:B,
+   done A64ICODE:LBL,
    C-PROF-SORT-LAND
-   skip LBL, ;
+   skip A64ICODE:LBL, ;
 
 \ x8 = arena, x10 = a record index, x3 = the sample's weight: one inclusive
 \ sample for that record. Clobbers x11 and x12, and preserves x10 for the caller.
 : C-PROF-INCL+ ( -- )
-   11 ARN-INCL LIT64,  11 8 11 ADD,  12 10 3 LSLI,  11 11 12 ADD,
-   12 11 0 LDR,  12 12 3 ADD,  12 11 0 STR, ;
+   11 PROF-ABI:ARN-INCL A64ICODE:LIT64,  11 8 11 A64ICODE:ADD,  12 10 3 A64ICODE:LSLI,  11 11 12 A64ICODE:ADD,
+   12 11 0 A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 11 0 A64ICODE:STR, ;
 
 \ x0 = arena. The handler already took an inclusive sample for every frame the
 \ OLD index could name, so replay adds one only for a record that index did not
 \ reach - start at or above ARN-OLDHI. Each sample counts at the weight the
 \ handler kept with it, in x3.
 : C-PROF-REPLAY ( -- )
-   LBL LBL LBL LBL LBL LBL {: rl rdone rmiss rnocall rgo rnext :}
-   8 0 0 ADDI,                                       \ LPROFFIND and LPROFEDGE take the arena in x8
-   24 8 ARN-DEFER LDR,
-   23 ARN-DEF LIT64,  23 8 23 ADD,
-   rl LBL,
-      24 rdone CBZ,
-      9 23 0 LDR,  3 23 16 LDR,
-      LPROFFIND LABEL@ BL,
-      6 rmiss CBZ,
-      22 6 ENT-IDX LDR,
-      14 PROF-CNT-VA LIT64,  13 22 3 LSLI,  14 14 13 ADD,
-      12 14 0 LDR,  12 12 3 ADD,  12 14 0 STR,       \ the exclusive sample this stands for
-      10 22 0 ADDI,  C-PROF-INCL+                    \ and the word is inside itself
-      9 23 8 LDR,  9 rnocall CBZ,
-      9 9 4 SUBI,                                    \ the call site, not the return address
-      LPROFFIND LABEL@ BL,
-      6 rnocall CBZ,
-      10 6 ENT-IDX LDR,  10 22 CMP,  C-EQ rnocall BCOND,
-      13 6 ENT-START LDR,  14 8 ARN-OLDHI LDR,  13 14 CMP,  C-CC rgo BCOND,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: rl rdone rmiss rnocall rgo rnext :}
+   8 0 0 A64ICODE:ADDI,                                       \ LPROFFIND and LPROFEDGE take the arena in x8
+   24 8 PROF-ABI:ARN-DEFER A64ICODE:LDR,
+   23 PROF-ABI:ARN-DEF A64ICODE:LIT64,  23 8 23 A64ICODE:ADD,
+   rl A64ICODE:LBL,
+      24 rdone A64ICODE:CBZ,
+      9 23 0 A64ICODE:LDR,  3 23 16 A64ICODE:LDR,
+      LPROFFIND A64ICODE:LABEL@ A64ICODE:BL,
+      6 rmiss A64ICODE:CBZ,
+      22 6 PROF-ABI:ENT-IDX A64ICODE:LDR,
+      14 PROF-CNT-VA A64ICODE:LIT64,  13 22 3 A64ICODE:LSLI,  14 14 13 A64ICODE:ADD,
+      12 14 0 A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 14 0 A64ICODE:STR,       \ the exclusive sample this stands for
+      10 22 0 A64ICODE:ADDI,  C-PROF-INCL+                    \ and the word is inside itself
+      9 23 8 A64ICODE:LDR,  9 rnocall A64ICODE:CBZ,
+      9 9 4 A64ICODE:SUBI,                                    \ the call site, not the return address
+      LPROFFIND A64ICODE:LABEL@ A64ICODE:BL,
+      6 rnocall A64ICODE:CBZ,
+      10 6 PROF-ABI:ENT-IDX A64ICODE:LDR,  10 22 A64ICODE:CMP,  A64ASM:C-EQ rnocall A64ICODE:BCOND,
+      13 6 PROF-ABI:ENT-START A64ICODE:LDR,  14 8 PROF-ABI:ARN-OLDHI A64ICODE:LDR,  13 14 A64ICODE:CMP,  A64ASM:C-CC rgo A64ICODE:BCOND,
       C-PROF-INCL+
-      rgo B,
-      rnocall LBL,  10 PROF-CALLER-NONE LIT64,
-      rgo LBL,
-      LPROFEDGE LABEL@ BL,
-      rnext B,
-      rmiss LBL,  12 8 ARN-NEW LDR,  12 12 3 ADD,  12 8 ARN-NEW STR,
-      rnext LBL,  23 23 PROF-DEFER-ENT ADDI,  24 24 1 SUBI,  rl B,
-   rdone LBL,
-   12 0 MOVZ,  12 8 ARN-DEFER STR, ;
+      rgo A64ICODE:B,
+      rnocall A64ICODE:LBL,  10 PROF-ABI:PROF-CALLER-NONE A64ICODE:LIT64,
+      rgo A64ICODE:LBL,
+      LPROFEDGE A64ICODE:LABEL@ A64ICODE:BL,
+      rnext A64ICODE:B,
+      rmiss A64ICODE:LBL,  12 8 PROF-ABI:ARN-NEW A64ICODE:LDR,  12 12 3 A64ICODE:ADD,  12 8 PROF-ABI:ARN-NEW A64ICODE:STR,
+      rnext A64ICODE:LBL,  23 23 PROF-ABI:PROF-DEFER-ENT A64ICODE:ADDI,  24 24 1 A64ICODE:SUBI,  rl A64ICODE:B,
+   rdone A64ICODE:LBL,
+   12 0 A64ICODE:MOVZ,  12 8 PROF-ABI:ARN-DEFER A64ICODE:STR, ;
 
 \ LPROFSYNC ( -- ): rebuild the pc index from the dictionary as it now stands and
 \ replay the deferred samples through it.
@@ -1311,33 +1304,33 @@ private
 \ the build reads NDICT, and the handler validates the interrupted x20 and x26
 \ but not x27.
 : EMIT-PROFSYNC ( -- )
-   LPROFSYNC LABEL@ LBL,
-   LBL {: nosync :}
-   SP SP 96 SUBI,
-   30 SP 0 STR,  19 SP 8 STR,  21 SP 24 STR,  22 SP 32 STR,
-   23 SP 40 STR,  24 SP 48 STR,  25 SP 56 STR,  17 SP 64 STR,
-   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,  0 nosync CBZ,
-   9 0 ARN-HI LDR,  9 0 ARN-OLDHI STR,
+   LPROFSYNC A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL {: nosync :}
+   A64ICODE:SP A64ICODE:SP 96 A64ICODE:SUBI,
+   30 A64ICODE:SP 0 A64ICODE:STR,  19 A64ICODE:SP 8 A64ICODE:STR,  21 A64ICODE:SP 24 A64ICODE:STR,  22 A64ICODE:SP 32 A64ICODE:STR,
+   23 A64ICODE:SP 40 A64ICODE:STR,  24 A64ICODE:SP 48 A64ICODE:STR,  25 A64ICODE:SP 56 A64ICODE:STR,  17 A64ICODE:SP 64 A64ICODE:STR,
+   7 PROF-BAND-VA A64ICODE:LIT64,  0 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  0 nosync A64ICODE:CBZ,
+   9 0 PROF-ABI:ARN-HI A64ICODE:LDR,  9 0 PROF-ABI:ARN-OLDHI A64ICODE:STR,
    C-PROF-INCL-FOLD
    C-PROF-SNAPSHOT
    C-PROF-INDEX-BUILD
    C-PROF-SORT
    C-PROF-REPLAY
-   nosync LBL,
-   30 SP 0 LDR,  19 SP 8 LDR,  21 SP 24 LDR,  22 SP 32 LDR,
-   23 SP 40 LDR,  24 SP 48 LDR,  25 SP 56 LDR,  17 SP 64 LDR,
-   SP SP 96 ADDI,  RET, ;
+   nosync A64ICODE:LBL,
+   30 A64ICODE:SP 0 A64ICODE:LDR,  19 A64ICODE:SP 8 A64ICODE:LDR,  21 A64ICODE:SP 24 A64ICODE:LDR,  22 A64ICODE:SP 32 A64ICODE:LDR,
+   23 A64ICODE:SP 40 A64ICODE:LDR,  24 A64ICODE:SP 48 A64ICODE:LDR,  25 A64ICODE:SP 56 A64ICODE:LDR,  17 A64ICODE:SP 64 A64ICODE:LDR,
+   A64ICODE:SP A64ICODE:SP 96 A64ICODE:ADDI,  A64ICODE:RET, ;
 
 \ Clear ARN-OWNER-TID, so a forwarding handler reads 0, which names no thread,
 \ then give the handle back. Clobbers x0-x2, x7-x9 and x16.
 : C-PROF-OWNER-RELEASE ( -- )
-   LBL {: none :}
-   7 PROF-BAND-VA LIT64,  9 7 PROF-ARENA LDR,  9 none CBZ,
-   2 9 ARN-OWNER-TID LDR,
-   0 0 MOVZ,  0 9 ARN-OWNER-TID STR,
-   2 none CBZ,
-   2 OS-THREAD-RELEASE
-   none LBL, ;
+   A64ICODE:LBL {: none :}
+   7 PROF-BAND-VA A64ICODE:LIT64,  9 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  9 none A64ICODE:CBZ,
+   2 9 PROF-ABI:ARN-OWNER-TID A64ICODE:LDR,
+   0 0 A64ICODE:MOVZ,  0 9 PROF-ABI:ARN-OWNER-TID A64ICODE:STR,
+   2 none A64ICODE:CBZ,
+   2 SYSCALL:OS-THREAD-RELEASE
+   none A64ICODE:LBL, ;
 
 \ The calling thread into ARN-OWNER and ARN-OWNER-TID, its x20 into
 \ ARN-OWNER-DATA (prof-on runs on the owner, in Habu code), the previous handle
@@ -1348,72 +1341,72 @@ private
 \ block-bounded. Leaves x0 = arena, x7 = band; clobbers x1, x2, x9-x11 and the
 \ syscall's registers.
 : C-PROF-OWNER ( -- )
-   LBL LBL LBL LBL {: dflt have other done :}
-   SP SP 16 SUBI,
-   0 RLIMIT-STACK MOVZ,  1 SP 0 ADDI,  NR-GETRLIMIT SYS,
-   10 SP 0 LDR,  SP SP 16 ADDI,
-   C-CS dflt BCOND,
-   11 RLIM-INFINITY LIT64,  10 11 CMP,  C-EQ dflt BCOND,
-   9 PROF-TOP-VA LIT64,  9 9 0 LDR,  10 9 CMP,  C-LS have BCOND,
-   dflt LBL,  10 PROF-STACK-BYTES LIT64,
-   have LBL,  C-PROF-OWNER-RELEASE  2 OS-THREAD-HANDLE
-   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
-   2 0 ARN-OWNER-TID STR,  XREG-RBASE 0 ARN-OWNER-DATA STR,
-   11 CB-SELF,  11 0 ARN-OWNER STR,
-   9 PROF-THREAD-VA LIT64,  9 9 0 LDR,  9 11 CMP,  C-NE other BCOND,
-   9 PROF-TOP-VA LIT64,  9 9 0 LDR,  9 0 ARN-STACK-TOP STR,
-   9 9 10 SUB,  9 0 ARN-STACK-LOW STR,  done B,
-   other LBL,
-   9 0 MOVZ,  9 0 ARN-STACK-TOP STR,  9 0 ARN-STACK-LOW STR,
-   done LBL, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: dflt have other done :}
+   A64ICODE:SP A64ICODE:SP 16 A64ICODE:SUBI,
+   0 SYSCALL:RLIMIT-STACK A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  SYSCALL:NR-GETRLIMIT SYSCALL:SYS,
+   10 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 16 A64ICODE:ADDI,
+   A64ASM:C-CS dflt A64ICODE:BCOND,
+   11 SYSCALL:RLIM-INFINITY A64ICODE:LIT64,  10 11 A64ICODE:CMP,  A64ASM:C-EQ dflt A64ICODE:BCOND,
+   9 PROF-TOP-VA A64ICODE:LIT64,  9 9 0 A64ICODE:LDR,  10 9 A64ICODE:CMP,  A64ASM:C-LS have A64ICODE:BCOND,
+   dflt A64ICODE:LBL,  10 PROF-ABI:PROF-STACK-BYTES A64ICODE:LIT64,
+   have A64ICODE:LBL,  C-PROF-OWNER-RELEASE  2 SYSCALL:OS-THREAD-HANDLE
+   7 PROF-BAND-VA A64ICODE:LIT64,  0 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,
+   2 0 PROF-ABI:ARN-OWNER-TID A64ICODE:STR,  XREG-RBASE 0 PROF-ABI:ARN-OWNER-DATA A64ICODE:STR,
+   11 ENGINE-EMIT:CB-SELF,  11 0 PROF-ABI:ARN-OWNER A64ICODE:STR,
+   9 PROF-THREAD-VA A64ICODE:LIT64,  9 9 0 A64ICODE:LDR,  9 11 A64ICODE:CMP,  A64ASM:C-NE other A64ICODE:BCOND,
+   9 PROF-TOP-VA A64ICODE:LIT64,  9 9 0 A64ICODE:LDR,  9 0 PROF-ABI:ARN-STACK-TOP A64ICODE:STR,
+   9 9 10 A64ICODE:SUB,  9 0 PROF-ABI:ARN-STACK-LOW A64ICODE:STR,  done A64ICODE:B,
+   other A64ICODE:LBL,
+   9 0 A64ICODE:MOVZ,  9 0 PROF-ABI:ARN-STACK-TOP A64ICODE:STR,  9 0 PROF-ABI:ARN-STACK-LOW A64ICODE:STR,
+   done A64ICODE:LBL, ;
 
 \ x7 = band: PROF-ARMED = ARMED-RUNS by store-release, so a handler on any
 \ thread that sees ARMED-RUNS sees ARN-OWNER and the session's cells. Clobbers
 \ x9 and x10.
 : C-PROF-ARM ( -- )
-   9 ARMED-RUNS MOVZ,  10 7 PROF-ARMED ADDI,  9 10 STLR, ;
+   9 PROF-ABI:ARMED-RUNS A64ICODE:MOVZ,  10 7 PROF-ABI:PROF-ARMED A64ICODE:ADDI,  9 10 A64ICODE:STLR, ;
 
 \ x7 = band: PROF-ARMED = state by store-release, then wait until PROF-IN reads
 \ 0. On the owner thread it reads 0 at once: its handler is never suspended by
 \ the code it interrupted. Clobbers x9 and x10.
 : C-PROF-LEAVE-RUNS ( n -- ) {: state:n :}
-   LBL LBL {: spin out :}
-   9 state MOVZ,  10 7 PROF-ARMED ADDI,  9 10 STLR,
-   10 7 PROF-IN ADDI,
-   spin LBL,  9 10 LDAR,  9 out CBZ,  YIELD,  spin B,
-   out LBL, ;
+   A64ICODE:LBL A64ICODE:LBL {: spin out :}
+   9 state A64ICODE:MOVZ,  10 7 PROF-ABI:PROF-ARMED A64ICODE:ADDI,  9 10 A64ICODE:STLR,
+   10 7 PROF-ABI:PROF-IN A64ICODE:ADDI,
+   spin A64ICODE:LBL,  9 10 A64ICODE:LDAR,  9 out A64ICODE:CBZ,  A64ICODE:YIELD,  spin A64ICODE:B,
+   out A64ICODE:LBL, ;
 
 \ The ticket lock: take a ticket from PROF-CTL-NEXT by an acquire-release
 \ atomic add, then wait until PROF-CTL-SERVE reads it. The handler never
 \ touches either cell, so the owner's handler cannot wait on its own thread.
 \ Clobbers x9-x11.
 : C-PROF-CTL-TAKE ( -- )
-   LBL LBL {: spin got :}
-   9 1 MOVZ,  10 PROF-BAND-VA PROF-CTL-NEXT + LIT64,
-   9 9 10 LDADDAL,
-   11 PROF-BAND-VA PROF-CTL-SERVE + LIT64,
-   spin LBL,  10 11 LDAR,  10 9 CMP,  C-EQ got BCOND,  YIELD,  spin B,
-   got LBL, ;
+   A64ICODE:LBL A64ICODE:LBL {: spin got :}
+   9 1 A64ICODE:MOVZ,  10 PROF-BAND-VA PROF-ABI:PROF-CTL-NEXT + A64ICODE:LIT64,
+   9 9 10 A64ICODE:LDADDAL,
+   11 PROF-BAND-VA PROF-ABI:PROF-CTL-SERVE + A64ICODE:LIT64,
+   spin A64ICODE:LBL,  10 11 A64ICODE:LDAR,  10 9 A64ICODE:CMP,  A64ASM:C-EQ got A64ICODE:BCOND,  A64ICODE:YIELD,  spin A64ICODE:B,
+   got A64ICODE:LBL, ;
 
 \ PROF-CTL-SERVE + 1 by store-release: the next ticket runs. Clobbers x10 and
 \ x11.
 : C-PROF-CTL-FREE ( -- )
-   11 PROF-BAND-VA PROF-CTL-SERVE + LIT64,
-   10 11 0 LDR,  10 10 1 ADDI,  10 11 STLR, ;
+   11 PROF-BAND-VA PROF-ABI:PROF-CTL-SERVE + A64ICODE:LIT64,
+   10 11 0 A64ICODE:LDR,  10 10 1 A64ICODE:ADDI,  10 11 A64ICODE:STLR, ;
 
 \ The handler counts nothing until the arm: a clock already running keeps
 \ ticking through the clears and the rebuild.
 : BPROF-ON ( -- )
-   LBL LBL {: zl zd :}
+   A64ICODE:LBL A64ICODE:LBL {: zl zd :}
    C-PROF-CTL-TAKE
-   7 PROF-BAND-VA LIT64,
+   7 PROF-BAND-VA A64ICODE:LIT64,
    0 C-PROF-LEAVE-RUNS
-   A G-POP  A 7 PROF-LIM STR,
-   9 0 MOVZ,  9 7 PROF-TOT STR,  9 7 PROF-OTHER STR,  9 7 PROF-FOREIGN STR,
-   DBASE 7 PROF-DBASE STR,
-   14 PROF-CNT-VA LIT64,  8 DICT-CAP LIT64,
-   zl LBL,  8 zd CBZ,  9 0 MOVZ,  9 14 0 STR,  14 14 8 ADDI,  8 8 1 SUBI,  zl B,
-   zd LBL,
+   ENGINE-EMIT:A RT:G-POP  ENGINE-EMIT:A 7 PROF-ABI:PROF-LIM A64ICODE:STR,
+   9 0 A64ICODE:MOVZ,  9 7 PROF-ABI:PROF-TOT A64ICODE:STR,  9 7 PROF-ABI:PROF-OTHER A64ICODE:STR,  9 7 PROF-ABI:PROF-FOREIGN A64ICODE:STR,
+   DBASE 7 PROF-ABI:PROF-DBASE A64ICODE:STR,
+   14 PROF-CNT-VA A64ICODE:LIT64,  8 DICT-CAP A64ICODE:LIT64,
+   zl A64ICODE:LBL,  8 zd A64ICODE:CBZ,  9 0 A64ICODE:MOVZ,  9 14 0 A64ICODE:STR,  14 14 8 A64ICODE:ADDI,  8 8 1 A64ICODE:SUBI,  zl A64ICODE:B,
+   zd A64ICODE:LBL,
    C-PROF-ARENA-MAP
    C-PROF-OWNER
    C-PROF-SESSION-START
@@ -1425,7 +1418,7 @@ private
    C-PROF-SIGACTION-FRAME
    C-PROF-SIGACTION
    C-PROF-SIGACTION-DONE
-   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,   \ the sigaction calls above own x0
+   7 PROF-BAND-VA A64ICODE:LIT64,  0 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,   \ the sigaction calls above own x0
    C-PROF-CLOCK-MARK
    C-PROF-ARM
    C-PROF-TIMER-FRAME
@@ -1435,41 +1428,41 @@ private
 
 \ Clobbers x0-x2, x8, x9 and x16.
 : C-PROF-TIMER-STOP ( -- )
-   SP SP 32 SUBI,
-   9 0 MOVZ,  9 SP 0 STR,  9 SP 8 STR,  9 SP 16 STR,  9 SP 24 STR,
-   0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
-   SP SP 32 ADDI, ;
+   A64ICODE:SP A64ICODE:SP 32 A64ICODE:SUBI,
+   9 0 A64ICODE:MOVZ,  9 A64ICODE:SP 0 A64ICODE:STR,  9 A64ICODE:SP 8 A64ICODE:STR,  9 A64ICODE:SP 16 A64ICODE:STR,  9 A64ICODE:SP 24 A64ICODE:STR,
+   0 0 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 0 A64ICODE:MOVZ,  SYSCALL:NR-SETITIMER SYSCALL:SYS,
+   A64ICODE:SP A64ICODE:SP 32 A64ICODE:ADDI, ;
 
 \ Hold the clock for a walk or a clear: a running clock goes to ARMED-HELD
 \ before the timer stops, so the handler counts nothing from here on, and its
 \ time since the last sample goes to ARN-CARRY once its handler is out; a held
 \ or stopped clock only has its timer stopped. Clobbers x0-x2, x7-x10 and x16.
 : C-PROF-CLOCK-HOLD ( -- )
-   LBL {: off :}
-   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,
-   9 ARMED-RUNS CMPI,  C-NE off BCOND,
-   ARMED-HELD C-PROF-LEAVE-RUNS
-   0 7 PROF-ARENA LDR,  0 off CBZ,
-   9 OS-TIMER-NOW  1 0 ARN-LAST LDR,  9 9 1 SUB,
-   1 0 ARN-CARRY LDR,  9 9 1 ADD,  9 0 ARN-CARRY STR,
-   off LBL,
+   A64ICODE:LBL {: off :}
+   7 PROF-BAND-VA A64ICODE:LIT64,  9 7 PROF-ABI:PROF-ARMED A64ICODE:LDR,
+   9 PROF-ABI:ARMED-RUNS A64ICODE:CMPI,  A64ASM:C-NE off A64ICODE:BCOND,
+   PROF-ABI:ARMED-HELD C-PROF-LEAVE-RUNS
+   0 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  0 off A64ICODE:CBZ,
+   9 SYSCALL:OS-TIMER-NOW  1 0 PROF-ABI:ARN-LAST A64ICODE:LDR,  9 9 1 A64ICODE:SUB,
+   1 0 PROF-ABI:ARN-CARRY A64ICODE:LDR,  9 9 1 A64ICODE:ADD,  9 0 PROF-ABI:ARN-CARRY A64ICODE:STR,
+   off A64ICODE:LBL,
    C-PROF-TIMER-STOP ;
 
 \ Start a held clock again at the recorded interval, its first expiry at the
 \ interval's remainder after ARN-CARRY; only a held clock moves, so one
 \ prof-off stopped stays stopped. Clobbers x0-x2, x7 and x9-x12.
 : C-PROF-CLOCK-RESUME ( -- )
-   LBL {: off :}
-   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,
-   9 ARMED-HELD CMPI,  C-NE off BCOND,
-   0 7 PROF-ARENA LDR,
+   A64ICODE:LBL {: off :}
+   7 PROF-BAND-VA A64ICODE:LIT64,  9 7 PROF-ABI:PROF-ARMED A64ICODE:LDR,
+   9 PROF-ABI:ARMED-HELD A64ICODE:CMPI,  A64ASM:C-NE off A64ICODE:BCOND,
+   0 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,
    C-PROF-CLOCK-MARK
    C-PROF-ARM
    C-PROF-TIMER-FRAME
    C-PROF-TIMER-REST
    C-PROF-TIMER
    C-PROF-TIMER-DONE
-   off LBL, ;
+   off A64ICODE:LBL, ;
 
 \ Retirement is reached from engine helpers whose scratch registers still
 \ belong to their caller. It holds the ticket lock from before its first read
@@ -1477,117 +1470,117 @@ private
 \ rebuilds the index under another thread's report. x9 is the bodies' input.
 : C-PROF-RETIRE-OPEN ( label -- )
    {: absent:label :}
-   SP SP 160 SUBI,
-   18 0 ?do i SP i cells STR, loop
-   30 SP 144 STR,
-   C-PROF-CTL-TAKE  9 SP 9 cells LDR,
-   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,  8 absent CBZ,
-   10 8 ARN-IDS LDR,  10 absent CBZ, ;
+   A64ICODE:SP A64ICODE:SP 160 A64ICODE:SUBI,
+   18 0 ?do i A64ICODE:SP i cells A64ICODE:STR, loop
+   30 A64ICODE:SP 144 A64ICODE:STR,
+   C-PROF-CTL-TAKE  9 A64ICODE:SP 9 cells A64ICODE:LDR,
+   7 PROF-BAND-VA A64ICODE:LIT64,  8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 absent A64ICODE:CBZ,
+   10 8 PROF-ABI:ARN-IDS A64ICODE:LDR,  10 absent A64ICODE:CBZ, ;
 
 : C-PROF-RETIRE-CLOSE ( -- )
    C-PROF-CTL-FREE
-   18 0 ?do i SP i cells LDR, loop
-   30 SP 144 LDR,  SP SP 160 ADDI,  RET, ;
+   18 0 ?do i A64ICODE:SP i cells A64ICODE:LDR, loop
+   30 A64ICODE:SP 144 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 160 A64ICODE:ADDI,  A64ICODE:RET, ;
 
 \ Compact the sorted index in place, dropping IDs whose span was released. After
 \ a sync every inclusive count is durable, so their history stays.
 : C-PROF-INDEX-PRUNE ( -- )
-   LBL LBL LBL {: turn next done :}
-   8 0 0 ADDI,
-   1 ARN-IDX LIT64,  1 8 1 ADD,  2 1 0 ADDI,
-   3 8 ARN-COUNT LDR,  3 3 5 LSLI,  3 1 3 ADD,
-   4 0 MOVN,  5 0 MOVZ,
-   turn LBL,
-      1 3 CMP,  C-CS done BCOND,
-      6 1 ENT-IDX LDR,
-      7 PROF-ID-ENT MOVZ,  6 6 7 MUL,
-      7 ARN-RECS LIT64,  7 8 7 ADD,  6 7 6 ADD,
-      6 6 RID-START LDR,  6 next CBZ,
-      6 1 ENT-START LDR,  7 1 ENT-END LDR,
-      6 2 ENT-START STR,  7 2 ENT-END STR,
-      10 1 ENT-IDX LDR,  10 2 ENT-IDX STR,
-      10 0 MOVZ,  10 2 ENT-INCL STR,
-      6 4 CMP,  4 6 4 C-CC CSEL,
-      7 5 CMP,  5 7 5 C-HI CSEL,
-      2 2 PROF-ENT ADDI,
-   next LBL,  1 1 PROF-ENT ADDI,  turn B,
-   done LBL,
-   1 ARN-IDX LIT64,  1 8 1 ADD,
-   2 2 1 SUB,  2 2 5 LSRI,
-   2 8 ARN-COUNT STR,  4 8 ARN-LO STR,  5 8 ARN-HI STR, ;
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: turn next done :}
+   8 0 0 A64ICODE:ADDI,
+   1 PROF-ABI:ARN-IDX A64ICODE:LIT64,  1 8 1 A64ICODE:ADD,  2 1 0 A64ICODE:ADDI,
+   3 8 PROF-ABI:ARN-COUNT A64ICODE:LDR,  3 3 5 A64ICODE:LSLI,  3 1 3 A64ICODE:ADD,
+   4 0 A64ICODE:MOVN,  5 0 A64ICODE:MOVZ,
+   turn A64ICODE:LBL,
+      1 3 A64ICODE:CMP,  A64ASM:C-CS done A64ICODE:BCOND,
+      6 1 PROF-ABI:ENT-IDX A64ICODE:LDR,
+      7 PROF-ABI:PROF-ID-ENT A64ICODE:MOVZ,  6 6 7 A64ICODE:MUL,
+      7 PROF-ABI:ARN-RECS A64ICODE:LIT64,  7 8 7 A64ICODE:ADD,  6 7 6 A64ICODE:ADD,
+      6 6 PROF-ABI:RID-START A64ICODE:LDR,  6 next A64ICODE:CBZ,
+      6 1 PROF-ABI:ENT-START A64ICODE:LDR,  7 1 PROF-ABI:ENT-END A64ICODE:LDR,
+      6 2 PROF-ABI:ENT-START A64ICODE:STR,  7 2 PROF-ABI:ENT-END A64ICODE:STR,
+      10 1 PROF-ABI:ENT-IDX A64ICODE:LDR,  10 2 PROF-ABI:ENT-IDX A64ICODE:STR,
+      10 0 A64ICODE:MOVZ,  10 2 PROF-ABI:ENT-INCL A64ICODE:STR,
+      6 4 A64ICODE:CMP,  4 6 4 A64ASM:C-CC A64ICODE:CSEL,
+      7 5 A64ICODE:CMP,  5 7 5 A64ASM:C-HI A64ICODE:CSEL,
+      2 2 PROF-ABI:PROF-ENT A64ICODE:ADDI,
+   next A64ICODE:LBL,  1 1 PROF-ABI:PROF-ENT A64ICODE:ADDI,  turn A64ICODE:B,
+   done A64ICODE:LBL,
+   1 PROF-ABI:ARN-IDX A64ICODE:LIT64,  1 8 1 A64ICODE:ADD,
+   2 2 1 A64ICODE:SUB,  2 2 5 A64ICODE:LSRI,
+   2 8 PROF-ABI:ARN-COUNT A64ICODE:STR,  4 8 PROF-ABI:ARN-LO A64ICODE:STR,  5 8 PROF-ABI:ARN-HI A64ICODE:STR, ;
 
 \ NDICT lowering: resolve deferred PCs before their dictionary rows disappear.
 : EMIT-PROFTRIM ( -- )
-   LPROFTRIM LABEL@ LBL,
-   LBL LBL LBL LBL LBL {: absent scan sync turn next :}
+   PROF-ABI:LPROFTRIM A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: absent scan sync turn next :}
    absent C-PROF-RETIRE-OPEN
-   10 8 ARN-DEFER LDR,  10 sync CBNZ,
-   6 9 0 ADDI,
-   scan LBL,
-      6 NDICT CMP,  C-CS absent BCOND,
-      10 ARN-LIVE LIT64,  10 8 10 ADD,  11 6 3 LSLI,  10 10 11 ADD,
-      10 10 0 LDR,  10 0 CMPI,  C-GE sync BCOND,
-      6 6 1 ADDI,  scan B,
-   sync LBL,
+   10 8 PROF-ABI:ARN-DEFER A64ICODE:LDR,  10 sync A64ICODE:CBNZ,
+   6 9 0 A64ICODE:ADDI,
+   scan A64ICODE:LBL,
+      6 NDICT A64ICODE:CMP,  A64ASM:C-CS absent A64ICODE:BCOND,
+      10 PROF-ABI:ARN-LIVE A64ICODE:LIT64,  10 8 10 A64ICODE:ADD,  11 6 3 A64ICODE:LSLI,  10 10 11 A64ICODE:ADD,
+      10 10 0 A64ICODE:LDR,  10 0 A64ICODE:CMPI,  A64ASM:C-GE sync A64ICODE:BCOND,
+      6 6 1 A64ICODE:ADDI,  scan A64ICODE:B,
+   sync A64ICODE:LBL,
    C-PROF-CLOCK-HOLD
-   LPROFSYNC LABEL@ BL,
-   6 SP 72 LDR,
-   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,
-   turn LBL,
-      6 NDICT CMP,  C-CS next BCOND,
-      10 ARN-LIVE LIT64,  10 8 10 ADD,  11 6 3 LSLI,  10 10 11 ADD,
-      11 10 0 LDR,
-      LBL {: skip :}
-      11 0 CMPI,  C-LT skip BCOND,
-      12 0 MOVN,  12 10 0 STR,
-      10 ARN-RECS LIT64,  10 8 10 ADD,
-      13 PROF-ID-ENT MOVZ,  11 11 13 MUL,  10 10 11 ADD,
-      12 10 RID-OWNER STR,
-      12 0 MOVZ,  12 10 RID-START STR,  12 10 RID-END STR,
-      skip LBL,  6 6 1 ADDI,  turn B,
-   next LBL,
-   0 8 0 ADDI,  C-PROF-INDEX-PRUNE
+   LPROFSYNC A64ICODE:LABEL@ A64ICODE:BL,
+   6 A64ICODE:SP 72 A64ICODE:LDR,
+   7 PROF-BAND-VA A64ICODE:LIT64,  8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,
+   turn A64ICODE:LBL,
+      6 NDICT A64ICODE:CMP,  A64ASM:C-CS next A64ICODE:BCOND,
+      10 PROF-ABI:ARN-LIVE A64ICODE:LIT64,  10 8 10 A64ICODE:ADD,  11 6 3 A64ICODE:LSLI,  10 10 11 A64ICODE:ADD,
+      11 10 0 A64ICODE:LDR,
+      A64ICODE:LBL {: skip :}
+      11 0 A64ICODE:CMPI,  A64ASM:C-LT skip A64ICODE:BCOND,
+      12 0 A64ICODE:MOVN,  12 10 0 A64ICODE:STR,
+      10 PROF-ABI:ARN-RECS A64ICODE:LIT64,  10 8 10 A64ICODE:ADD,
+      13 PROF-ABI:PROF-ID-ENT A64ICODE:MOVZ,  11 11 13 A64ICODE:MUL,  10 10 11 A64ICODE:ADD,
+      12 10 PROF-ABI:RID-OWNER A64ICODE:STR,
+      12 0 A64ICODE:MOVZ,  12 10 PROF-ABI:RID-START A64ICODE:STR,  12 10 PROF-ABI:RID-END A64ICODE:STR,
+      skip A64ICODE:LBL,  6 6 1 A64ICODE:ADDI,  turn A64ICODE:B,
+   next A64ICODE:LBL,
+   0 8 0 A64ICODE:ADDI,  C-PROF-INDEX-PRUNE
    C-PROF-CLOCK-RESUME
-   absent LBL,  C-PROF-RETIRE-CLOSE ;
+   absent A64ICODE:LBL,  C-PROF-RETIRE-CLOSE ;
 
 \ CP lowering: no raw PC may survive reuse of its bytes. Retire live and
 \ seed-retained spans that intersect [new CP,old CP), after naming old samples.
 : EMIT-PROFRECLAIM ( -- )
-   LPROFRECLAIM LABEL@ LBL,
-   LBL LBL LBL LBL {: absent turn next done :}
+   PROF-ABI:LPROFRECLAIM A64ICODE:LABEL@ A64ICODE:LBL,
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: absent turn next done :}
    absent C-PROF-RETIRE-OPEN
-   9 CP CMP,  C-CS absent BCOND,
+   9 CP A64ICODE:CMP,  A64ASM:C-CS absent A64ICODE:BCOND,
    C-PROF-CLOCK-HOLD
-   LPROFSYNC LABEL@ BL,
-   9 SP 72 LDR,
-   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,
-   6 0 MOVZ,  13 8 ARN-IDS LDR,
-   turn LBL,
-      6 13 CMP,  C-CS done BCOND,
-      10 ARN-RECS LIT64,  10 8 10 ADD,
-      11 PROF-ID-ENT MOVZ,  11 6 11 MUL,  10 10 11 ADD,
-      11 10 RID-START LDR,  11 next CBZ,
-      11 CP CMP,  C-CS next BCOND,
-      11 10 RID-END LDR,  11 9 CMP,  C-LS next BCOND,
+   LPROFSYNC A64ICODE:LABEL@ A64ICODE:BL,
+   9 A64ICODE:SP 72 A64ICODE:LDR,
+   7 PROF-BAND-VA A64ICODE:LIT64,  8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,
+   6 0 A64ICODE:MOVZ,  13 8 PROF-ABI:ARN-IDS A64ICODE:LDR,
+   turn A64ICODE:LBL,
+      6 13 A64ICODE:CMP,  A64ASM:C-CS done A64ICODE:BCOND,
+      10 PROF-ABI:ARN-RECS A64ICODE:LIT64,  10 8 10 A64ICODE:ADD,
+      11 PROF-ABI:PROF-ID-ENT A64ICODE:MOVZ,  11 6 11 A64ICODE:MUL,  10 10 11 A64ICODE:ADD,
+      11 10 PROF-ABI:RID-START A64ICODE:LDR,  11 next A64ICODE:CBZ,
+      11 CP A64ICODE:CMP,  A64ASM:C-CS next A64ICODE:BCOND,
+      11 10 PROF-ABI:RID-END A64ICODE:LDR,  11 9 A64ICODE:CMP,  A64ASM:C-LS next A64ICODE:BCOND,
       \ Keep a published ordinal's existing ID: SNAPSHOT must not recreate
       \ this invalidated dictionary span before ordinary trimming drops it.
-      11 0 MOVN,  11 10 RID-OWNER STR,
-      11 0 MOVZ,  11 10 RID-START STR,  11 10 RID-END STR,
-   next LBL,  6 6 1 ADDI,  turn B,
-   done LBL,
-   0 8 0 ADDI,  C-PROF-INDEX-PRUNE
+      11 0 A64ICODE:MOVN,  11 10 PROF-ABI:RID-OWNER A64ICODE:STR,
+      11 0 A64ICODE:MOVZ,  11 10 PROF-ABI:RID-START A64ICODE:STR,  11 10 PROF-ABI:RID-END A64ICODE:STR,
+   next A64ICODE:LBL,  6 6 1 A64ICODE:ADDI,  turn A64ICODE:B,
+   done A64ICODE:LBL,
+   0 8 0 A64ICODE:ADDI,  C-PROF-INDEX-PRUNE
    C-PROF-CLOCK-RESUME
-   absent LBL,  C-PROF-RETIRE-CLOSE ;
+   absent A64ICODE:LBL,  C-PROF-RETIRE-CLOSE ;
 
 \ A REPORT NEVER SAMPLES ITSELF. It reads PROF-TOT once and then walks every
 \ counter; a tick in between would leave the header's own identity false by one.
 : C-PROF-REPORT-CALL ( label -- ) {: rep:label :}
-   SP SP 16 SUBI,  30 SP 0 STR,
+   A64ICODE:SP A64ICODE:SP 16 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,
    C-PROF-CLOCK-HOLD
-   LPROFSYNC LABEL@ BL,
-   rep BL,
+   LPROFSYNC A64ICODE:LABEL@ A64ICODE:BL,
+   rep A64ICODE:BL,
    C-PROF-CLOCK-RESUME
-   30 SP 0 LDR,  SP SP 16 ADDI, ;
+   30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 16 A64ICODE:ADDI, ;
 
 \ prof-off stops the clock and gives back the owner's handle, nothing else: the
 \ handler, the index and every counter stay, so the phase can be reported
@@ -1595,7 +1588,7 @@ private
 \ arrives after the stop counts nothing.
 : BPROF-OFF ( -- )
    C-PROF-CTL-TAKE
-   7 PROF-BAND-VA LIT64,  0 C-PROF-LEAVE-RUNS
+   7 PROF-BAND-VA A64ICODE:LIT64,  0 C-PROF-LEAVE-RUNS
    C-PROF-TIMER-STOP
    C-PROF-OWNER-RELEASE
    C-PROF-CTL-FREE ;
@@ -1605,83 +1598,83 @@ private
 \ bucket after it, so a tick counted in between would survive in PROF-TOT and
 \ not in its bucket, and the identity would be off by one.
 : BPROF-RESET ( -- )
-   LBL LBL LBL {: zl zd noarena :}
+   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: zl zd noarena :}
    C-PROF-CTL-TAKE
    C-PROF-CLOCK-HOLD
-   7 PROF-BAND-VA LIT64,
-   9 0 MOVZ,  9 7 PROF-TOT STR,  9 7 PROF-OTHER STR,  9 7 PROF-FOREIGN STR,
-   14 PROF-CNT-VA LIT64,  8 DICT-CAP LIT64,
-   zl LBL,  8 zd CBZ,  9 0 MOVZ,  9 14 0 STR,  14 14 8 ADDI,  8 8 1 SUBI,  zl B,
-   zd LBL,
-   0 7 PROF-ARENA LDR,  0 noarena CBZ,
+   7 PROF-BAND-VA A64ICODE:LIT64,
+   9 0 A64ICODE:MOVZ,  9 7 PROF-ABI:PROF-TOT A64ICODE:STR,  9 7 PROF-ABI:PROF-OTHER A64ICODE:STR,  9 7 PROF-ABI:PROF-FOREIGN A64ICODE:STR,
+   14 PROF-CNT-VA A64ICODE:LIT64,  8 DICT-CAP A64ICODE:LIT64,
+   zl A64ICODE:LBL,  8 zd A64ICODE:CBZ,  9 0 A64ICODE:MOVZ,  9 14 0 A64ICODE:STR,  14 14 8 A64ICODE:ADDI,  8 8 1 A64ICODE:SUBI,  zl A64ICODE:B,
+   zd A64ICODE:LBL,
+   0 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  0 noarena A64ICODE:CBZ,
    C-PROF-COUNTERS-CLEAR
    C-PROF-CALL-CLEAR
-   noarena LBL,
+   noarena A64ICODE:LBL,
    C-PROF-CLOCK-RESUME
    C-PROF-CTL-FREE ;
 
 : BPROF-REPORT ( -- )
-   C-PROF-CTL-TAKE  LPROFDUMP LABEL@ C-PROF-REPORT-CALL  C-PROF-CTL-FREE ;
+   C-PROF-CTL-TAKE  LPROFDUMP A64ICODE:LABEL@ C-PROF-REPORT-CALL  C-PROF-CTL-FREE ;
 
 : BPROF-JSON ( -- )
-   C-PROF-CTL-TAKE  LPROFJSON LABEL@ C-PROF-REPORT-CALL  C-PROF-CTL-FREE ;
+   C-PROF-CTL-TAKE  LPROFJSON A64ICODE:LABEL@ C-PROF-REPORT-CALL  C-PROF-CTL-FREE ;
 
 \ prof-row ( n -- ): the row for dictionary record n, whatever its rank.
 : BPROF-ROW ( -- )
-   LBL LBL {: bad ready :}
+   A64ICODE:LBL A64ICODE:LBL {: bad ready :}
    C-PROF-CTL-TAKE
-   SP SP 16 SUBI,  30 SP 0 STR,
-   6 G-POP  6 SP 8 STR,
+   A64ICODE:SP A64ICODE:SP 16 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,
+   6 RT:G-POP  6 A64ICODE:SP 8 A64ICODE:STR,
    C-PROF-CLOCK-HOLD
-   LPROFSYNC LABEL@ BL,
-   6 SP 8 LDR,
-   6 0 CMPI,  C-LT bad BCOND,
-   6 NDICT CMP,  C-CS bad BCOND,
-   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,  8 bad CBZ,
-   9 ARN-LIVE LIT64,  9 8 9 ADD,
-   10 6 3 LSLI,  9 9 10 ADD,  6 9 0 LDR,
-   ready B,
-   bad LBL,  6 0 MOVN,
-   ready LBL,
-   LPROFROW LABEL@ BL,
+   LPROFSYNC A64ICODE:LABEL@ A64ICODE:BL,
+   6 A64ICODE:SP 8 A64ICODE:LDR,
+   6 0 A64ICODE:CMPI,  A64ASM:C-LT bad A64ICODE:BCOND,
+   6 NDICT A64ICODE:CMP,  A64ASM:C-CS bad A64ICODE:BCOND,
+   7 PROF-BAND-VA A64ICODE:LIT64,  8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 bad A64ICODE:CBZ,
+   9 PROF-ABI:ARN-LIVE A64ICODE:LIT64,  9 8 9 A64ICODE:ADD,
+   10 6 3 A64ICODE:LSLI,  9 9 10 A64ICODE:ADD,  6 9 0 A64ICODE:LDR,
+   ready A64ICODE:B,
+   bad A64ICODE:LBL,  6 0 A64ICODE:MOVN,
+   ready A64ICODE:LBL,
+   LPROFROW A64ICODE:LABEL@ A64ICODE:BL,
    C-PROF-CLOCK-RESUME
    C-PROF-CTL-FREE
-   30 SP 0 LDR,  SP SP 16 ADDI, ;
+   30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 16 A64ICODE:ADDI, ;
 
 \ prof-rate sets the interval the NEXT prof-on arms, rather than re-arming here:
 \ a rate written while no handler is installed would hand the process a SIGALRM
 \ it has no handler for. x10 holds n across C-PROF-ARENA-MAP, which writes only
 \ x0-x5, x7-x9 and x16.
 : BPROF-RATE ( -- )
-   LBL {: ok :}
+   A64ICODE:LBL {: ok :}
    C-PROF-CTL-TAKE
-   10 G-POP
-   11 OS-TIMER-MAX-USEC LIT64,  10 11 CMP,  C-LS ok BCOND,
+   10 RT:G-POP
+   11 SYSCALL:OS-TIMER-MAX-USEC A64ICODE:LIT64,  10 11 A64ICODE:CMP,  A64ASM:C-LS ok A64ICODE:BCOND,
       C-PROF-CTL-FREE
-      9 PROF-ABI:E-PROF-RATE LIT64,  9 G-PUSH  BTHROW
-   ok LBL,
+      9 PROF-ABI:E-PROF-RATE A64ICODE:LIT64,  9 RT:G-PUSH  ENGINE-EMIT:BTHROW
+   ok A64ICODE:LBL,
    C-PROF-ARENA-MAP
-   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
-   10 0 ARN-USEC STR,
+   7 PROF-BAND-VA A64ICODE:LIT64,  0 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,
+   10 0 PROF-ABI:ARN-USEC A64ICODE:STR,
    C-PROF-CTL-FREE ;
 
 \ prof-pc>rec ( pc -- n ): the record index the armed index gives that pc, or -1.
 : BPROF-PCREC ( -- )
-   LBL LBL {: miss out :}
+   A64ICODE:LBL A64ICODE:LBL {: miss out :}
    C-PROF-CTL-TAKE
-   SP SP 16 SUBI,  30 SP 0 STR,
-   9 G-POP
-   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,  8 miss CBZ,
-   LPROFFIND LABEL@ BL,
-   6 miss CBZ,
-   10 6 ENT-IDX LDR,
-   9 ARN-RECS LIT64,  9 8 9 ADD,
-   11 PROF-ID-ENT MOVZ,  11 10 11 MUL,  9 9 11 ADD,
-   9 9 RID-OWNER LDR,  out B,
-   miss LBL,  9 0 MOVN,
-   out LBL,  9 G-PUSH
+   A64ICODE:SP A64ICODE:SP 16 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,
+   9 RT:G-POP
+   7 PROF-BAND-VA A64ICODE:LIT64,  8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 miss A64ICODE:CBZ,
+   LPROFFIND A64ICODE:LABEL@ A64ICODE:BL,
+   6 miss A64ICODE:CBZ,
+   10 6 PROF-ABI:ENT-IDX A64ICODE:LDR,
+   9 PROF-ABI:ARN-RECS A64ICODE:LIT64,  9 8 9 A64ICODE:ADD,
+   11 PROF-ABI:PROF-ID-ENT A64ICODE:MOVZ,  11 10 11 A64ICODE:MUL,  9 9 11 A64ICODE:ADD,
+   9 9 PROF-ABI:RID-OWNER A64ICODE:LDR,  out A64ICODE:B,
+   miss A64ICODE:LBL,  9 0 A64ICODE:MOVN,
+   out A64ICODE:LBL,  9 RT:G-PUSH
    C-PROF-CTL-FREE
-   30 SP 0 LDR,  SP SP 16 ADDI, ;
+   30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 16 A64ICODE:ADDI, ;
 
 \ prof-child-reset ( -- ): in a process just forked, which has only the forking
 \ thread, the profiler state other threads were part way through: no handler
@@ -1690,23 +1683,23 @@ private
 \ never released: a Mach port name is the parent's, never the child's. Plain
 \ stores, no lock, no syscall: it runs where FORK-CHILD's resets run.
 : BPROF-CHILD-RESET ( -- )
-   LBL {: none :}
-   7 PROF-BAND-VA LIT64,
-   9 0 MOVZ,  9 7 PROF-IN STR,  9 7 PROF-ARMED STR,
-   10 7 PROF-CTL-NEXT LDR,  10 7 PROF-CTL-SERVE STR,
-   8 7 PROF-ARENA LDR,  8 none CBZ,
-   9 8 ARN-OWNER STR,  9 8 ARN-OWNER-TID STR,
-   none LBL, ;
+   A64ICODE:LBL {: none :}
+   7 PROF-BAND-VA A64ICODE:LIT64,
+   9 0 A64ICODE:MOVZ,  9 7 PROF-ABI:PROF-IN A64ICODE:STR,  9 7 PROF-ABI:PROF-ARMED A64ICODE:STR,
+   10 7 PROF-ABI:PROF-CTL-NEXT A64ICODE:LDR,  10 7 PROF-ABI:PROF-CTL-SERVE A64ICODE:STR,
+   8 7 PROF-ABI:PROF-ARENA A64ICODE:LDR,  8 none A64ICODE:CBZ,
+   9 8 PROF-ABI:ARN-OWNER A64ICODE:STR,  9 8 PROF-ABI:ARN-OWNER-TID A64ICODE:STR,
+   none A64ICODE:LBL, ;
 
 public
 
 : EMIT-PROF-PRIMS ( -- )
-   s" prof-on" ['] BPROF-ON FPRIM-L  s" prof-report" ['] BPROF-REPORT FPRIM-L
-   s" prof-off" ['] BPROF-OFF FPRIM-L  s" prof-reset" ['] BPROF-RESET FPRIM-L
-   s" prof-rate" ['] BPROF-RATE FPRIM-L  s" prof-json" ['] BPROF-JSON FPRIM-L
-   s" prof-row" ['] BPROF-ROW FPRIM-L
-   s" prof-pc>rec" ['] BPROF-PCREC FPRIM-L
-   s" prof-child-reset" ['] BPROF-CHILD-RESET FPRIM-L ;
+   s" prof-on" ['] BPROF-ON ENGINE-EMIT:FPRIM-L  s" prof-report" ['] BPROF-REPORT ENGINE-EMIT:FPRIM-L
+   s" prof-off" ['] BPROF-OFF ENGINE-EMIT:FPRIM-L  s" prof-reset" ['] BPROF-RESET ENGINE-EMIT:FPRIM-L
+   s" prof-rate" ['] BPROF-RATE ENGINE-EMIT:FPRIM-L  s" prof-json" ['] BPROF-JSON ENGINE-EMIT:FPRIM-L
+   s" prof-row" ['] BPROF-ROW ENGINE-EMIT:FPRIM-L
+   s" prof-pc>rec" ['] BPROF-PCREC ENGINE-EMIT:FPRIM-L
+   s" prof-child-reset" ['] BPROF-CHILD-RESET ENGINE-EMIT:FPRIM-L ;
 
 : EMIT-PROF-REPORTS ( -- )
    EMIT-PROFNUM  EMIT-PROFPCT  EMIT-PROFNAME  EMIT-PROFSYNC
@@ -1714,11 +1707,3 @@ public
    false EMIT-PROFREP  true EMIT-PROFREP  EMIT-PROFROW ;
 
 ;package
-
-;using
-;using
-;using
-;using
-;using
-;using
-;using

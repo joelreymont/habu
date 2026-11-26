@@ -47,7 +47,6 @@ TRUSTED: TS-EVD ( -- ) s" 1 drop" str> evaluate ;
 TRUSTED: TS-Z ( -- ) s" TS-R1" str> evaluate TS-R2 ;
 
 package TOP-ROW-STORAGE-TEST
-using PTY-HARNESS
 
 private
 
@@ -547,24 +546,24 @@ variable ERR-U
 \ A child on a terminal: only the REPL's line loop recovers from a throw and
 \ reads the next line.
 : STEP ( str -- bool )
-   BUF-CLEAR SEND-LINE WAIT-ANSWER ;
+   PTY-HARNESS:BUF-CLEAR PTY-HARNESS:SEND-LINE PTY-HARNESS:WAIT-ANSWER ;
 
 : CASE-REPL ( -- )
    s" a rejected REPL line names no file or definition" T-LABEL
-   ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY
-   s" habu> " WAIT-FOR TTRUE
+   ENGINE-CANDIDATE:PATH$ PTY-HARNESS:SPAWN-ON-PTY
+   s" habu> " PTY-HARNESS:WAIT-FOR TTRUE
    s" variable TS-RV  here TS-RV !" STEP TFALSE
-   s" error[E-RAW-CELL-PTR]: raw storage cell" IN-BUF? TTRUE
+   s" error[E-RAW-CELL-PTR]: raw storage cell" PTY-HARNESS:IN-BUF? TTRUE
    s" a REPL line that throws, then a fresh line storing a pointer typed" T-LABEL
    s" PTR-VARIABLE TS-RP" STEP TTRUE
    s" here 7 throw" STEP TFALSE
    s" here TS-RP !  42 ." STEP TTRUE
-   s\" 42\r\n" IN-BUF? TTRUE
-   s" E-" IN-BUF? TFALSE
-   4 SEND-BYTE
-   REAP {: oc :}
-   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-ENDING-EXITED=
-   CLOSE-MASTER ;
+   s\" 42\r\n" PTY-HARNESS:IN-BUF? TTRUE
+   s" E-" PTY-HARNESS:IN-BUF? TFALSE
+   4 PTY-HARNESS:SEND-BYTE
+   PTY-HARNESS:REAP {: oc :}
+   ENGINE-CANDIDATE:PATH$ PTY-HARNESS:BUF$ s" " oc 0 T-ENDING-EXITED=
+   PTY-HARNESS:CLOSE-MASTER ;
 
 public
 
@@ -612,7 +611,6 @@ public
    CASE-REPL
    T-REPORT ;
 
-;using
 ;package
 
 TOP-ROW-STORAGE-TEST:RUN

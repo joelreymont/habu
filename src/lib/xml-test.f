@@ -11,7 +11,6 @@ require src/lib/reason.f
 require src/lib/test/counting-allocator.f
 
 package XML-TEST
-using XML
 
 $400 constant TEXT-CAP
 create OTHER-BUF TEXT-CAP allot
@@ -36,23 +35,23 @@ CAST: TOKEN>N ( XML:kind -- n )
 
 : OPEN ( str -- XML:reader )
    {: source:str :}
-   RD HEAP:ALLOCATOR source INIT ;
+   RD HEAP:ALLOCATOR source XML:INIT ;
 
 : NEXT= ( XML:reader XML:kind -- XML:reader )
    TOKEN>N {: expected:n :}
-   NEXT TOKEN>N expected T= ;
+   XML:NEXT TOKEN>N expected T= ;
 
 : RAW= ( XML:reader n n -- XML:reader )
    {: start:n size:n :}
-   RAW LEN>N size T= OFF>N start T= ;
+   XML:RAW LEN>N size T= OFF>N start T= ;
 
 : NAME= ( XML:reader str -- XML:reader )
    {: expected:str :}
-   NAME$ expected T$= ;
+   XML:NAME$ expected T$= ;
 
 : LOCAL= ( XML:reader str -- XML:reader )
    {: expected:str :}
-   LOCAL$ expected T$= ;
+   XML:LOCAL$ expected T$= ;
 
 : DECODED-NEW ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DECODED ! ;
 : DECODED-CLEAR ( -- ) DECODED @ 0 VEC:RESIZE ;
@@ -61,41 +60,41 @@ CAST: TOKEN>N ( XML:kind -- n )
 
 : URI= ( XML:reader str -- XML:reader )
    {: expected:str :}
-   CLEARED URI DECODED$ expected T$= ;
+   CLEARED XML:URI DECODED$ expected T$= ;
 
 : PREFIX= ( XML:reader str str -- XML:reader )
    {: prefix:str expected:str :}
    prefix T-LABEL
-   prefix CLEARED PREFIX-URI TTRUE
+   prefix CLEARED XML:PREFIX-URI TTRUE
    DECODED$ expected T$= ;
 
 : PREFIX-MISSING ( XML:reader str -- XML:reader )
    {: prefix:str :}
    s" Z" CLEARED VEC:APPEND
-   prefix DECODED @ PREFIX-URI TFALSE
+   prefix DECODED @ XML:PREFIX-URI TFALSE
    DECODED$ s" Z" T$= ;
 
 : PREFIX-READ ( XML:reader -- XML:reader )
-   s" p" CLEARED PREFIX-URI drop ;
+   s" p" CLEARED XML:PREFIX-URI drop ;
 
 : TEXT= ( XML:reader str -- XML:reader )
    {: expected:str :}
-   CLEARED TEXT DECODED$ expected T$= ;
+   CLEARED XML:TEXT DECODED$ expected T$= ;
 
 : ATTR-NAME= ( XML:reader str -- XML:reader )
    {: expected:str :}
-   ATTR-NAME$ expected T$= ;
+   XML:ATTR-NAME$ expected T$= ;
 
 : ATTR-URI= ( XML:reader str -- XML:reader )
    {: expected:str :}
-   CLEARED ATTR-URI DECODED$ expected T$= ;
+   CLEARED XML:ATTR-URI DECODED$ expected T$= ;
 
 : ATTR-TEXT= ( XML:reader str -- XML:reader )
    {: expected:str :}
-   CLEARED ATTR-TEXT DECODED$ expected T$= ;
+   CLEARED XML:ATTR-TEXT DECODED$ expected T$= ;
 
 : DRAIN ( XML:reader -- XML:reader )
-   begin NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
+   begin XML:NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
 
 : INPUT-SET ( str n n -- )
    {: source:str limit:n fail-at:n :}
@@ -113,7 +112,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    count pos +! count ;
 
 : INPUT-OPEN ( -- XML:reader )
-   RD HEAP:ALLOCATOR INPUT-POS ['] INPUT-FILL INIT-INPUT ;
+   RD HEAP:ALLOCATOR INPUT-POS ['] INPUT-FILL XML:INIT-INPUT ;
 
 : INPUT-FAILURE ( -- n )
    INPUT-OPEN ['] DRAIN catch swap XML:CLOSE ;
@@ -124,7 +123,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    output SPAN:LEN 1 + ;
 
 : INPUT-OVER-COUNT-RC ( -- n )
-   RD HEAP:ALLOCATOR INPUT-POS ['] INPUT-OVER-COUNT INIT-INPUT
+   RD HEAP:ALLOCATOR INPUT-POS ['] INPUT-OVER-COUNT XML:INIT-INPUT
    ['] DRAIN catch swap XML:CLOSE ;
 
 : INPUT-BAD ( str n -- )
@@ -148,7 +147,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    s" <a/>" OPEN
    XML-KIND:START NEXT= 0 4 RAW= s" a" NAME=
    XML:DEPTH 1 T=
-   ATTR-NEXT TFALSE
+   XML:ATTR-NEXT TFALSE
    XML-KIND:END NEXT= 4 0 RAW= s" a" NAME=
    XML:DEPTH 1 T=
    XML-KIND:EOF NEXT= 4 0 RAW= XML:DEPTH 0 T=
@@ -157,14 +156,14 @@ CAST: TOKEN>N ( XML:kind -- n )
 : NAMESPACE-SCOPES ( -- )
    s\" <a xmlns='urn:outer' xmlns:p='urn:p' plain='x' p:id='1'><p:b xmlns:p='urn:inner'><c xmlns=''/></p:b></a>" OPEN
    XML-KIND:START NEXT= s" urn:outer" URI=
-   ATTR-NEXT TTRUE s" xmlns" ATTR-NAME=
+   XML:ATTR-NEXT TTRUE s" xmlns" ATTR-NAME=
    s" http://www.w3.org/2000/xmlns/" ATTR-URI=
-   ATTR-NEXT TTRUE s" xmlns:p" ATTR-NAME=
-   ATTR-NEXT TTRUE s" plain" ATTR-NAME= s" " ATTR-URI=
-   ATTR-NEXT TTRUE s" p:id" ATTR-NAME= s" urn:p" ATTR-URI=
-   ATTR-LOCAL$ s" id" T$=
-   ATTR-NEXT TFALSE
-   ATTR-RESET ATTR-NEXT TTRUE s" xmlns" ATTR-NAME=
+   XML:ATTR-NEXT TTRUE s" xmlns:p" ATTR-NAME=
+   XML:ATTR-NEXT TTRUE s" plain" ATTR-NAME= s" " ATTR-URI=
+   XML:ATTR-NEXT TTRUE s" p:id" ATTR-NAME= s" urn:p" ATTR-URI=
+   XML:ATTR-LOCAL$ s" id" T$=
+   XML:ATTR-NEXT TFALSE
+   XML:ATTR-RESET XML:ATTR-NEXT TTRUE s" xmlns" ATTR-NAME=
    XML-KIND:START NEXT= s" p:b" NAME= s" b" LOCAL= s" urn:inner" URI=
    XML-KIND:START NEXT= s" " URI=
    XML-KIND:END NEXT= s" " URI=
@@ -175,9 +174,9 @@ CAST: TOKEN>N ( XML:kind -- n )
 : NAMESPACE-ENTITIES ( -- )
    s\" <p:a p:x='1' xmlns:p='urn:&#x61;' xml:lang='en'/>" OPEN
    XML-KIND:START NEXT= s" urn:a" URI=
-   ATTR-NEXT TTRUE s" urn:a" ATTR-URI=
-   ATTR-NEXT TTRUE
-   ATTR-NEXT TTRUE s" http://www.w3.org/XML/1998/namespace" ATTR-URI=
+   XML:ATTR-NEXT TTRUE s" urn:a" ATTR-URI=
+   XML:ATTR-NEXT TTRUE
+   XML:ATTR-NEXT TTRUE s" http://www.w3.org/XML/1998/namespace" ATTR-URI=
    XML:CLOSE ;
 
 : PREFIX-VALUES ( -- )
@@ -190,7 +189,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    s" xmlns" PREFIX-MISSING
    s" absent" PREFIX-MISSING
    XML-KIND:START NEXT=
-   ATTR-NEXT TTRUE s" Requires" ATTR-NAME=
+   XML:ATTR-NEXT TTRUE s" Requires" ATTR-NAME=
    s" req alias" ATTR-TEXT=
    s" req" s" urn:one" PREFIX=
    s" alias" s" urn:one" PREFIX=
@@ -208,7 +207,7 @@ CAST: TOKEN>N ( XML:kind -- n )
 : PREFIX-ENTITY-AND-SCOPE ( -- )
    s\" <?go?><a xmlns:p='urn:&#97;\r\nz'><!--inside--><?go in?><b/></a><!--outside-->" OPEN
    XML-KIND:PI NEXT=
-   ['] PREFIX-READ catch E-STATE T=
+   ['] PREFIX-READ catch XML:E-STATE T=
    XML-KIND:START NEXT=
    s" p" s" urn:a z" PREFIX=
    XML-KIND:COMMENT NEXT= s" p" s" urn:a z" PREFIX=
@@ -216,7 +215,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    XML-KIND:START NEXT= s" p" s" urn:a z" PREFIX=
    XML-KIND:END NEXT= s" p" s" urn:a z" PREFIX=
    XML-KIND:END NEXT= s" p" s" urn:a z" PREFIX=
-   XML-KIND:COMMENT NEXT= ['] PREFIX-READ catch E-STATE T=
+   XML-KIND:COMMENT NEXT= ['] PREFIX-READ catch XML:E-STATE T=
    XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : SCALARS-AND-OFFSETS ( -- )
@@ -231,10 +230,10 @@ CAST: TOKEN>N ( XML:kind -- n )
 : ATTRIBUTES-AND-SPANS ( -- )
    s\" <a q = 'x\r\ny\t&amp;&#9;&#13;&quot;&apos;&lt;&gt;'/>" OPEN
    XML-KIND:START NEXT=
-   ATTR-NEXT TTRUE
-   ATTR-RAW LEN>N 45 T= OFF>N 3 T=
+   XML:ATTR-NEXT TTRUE
+   XML:ATTR-RAW LEN>N 45 T= OFF>N 3 T=
    s\" x y &\t\r\q'<>" ATTR-TEXT=
-   ATTR-VALUE$ s\" x\r\ny\t&amp;&#9;&#13;&quot;&apos;&lt;&gt;" T$=
+   XML:ATTR-VALUE$ s\" x\r\ny\t&amp;&#9;&#13;&quot;&apos;&lt;&gt;" T$=
    XML:CLOSE ;
 
 : MARKUP-TEXT ( -- )
@@ -255,62 +254,62 @@ CAST: TOKEN>N ( XML:kind -- n )
    DRAIN XML:CLOSE ;
 
 : MALFORMED-INPUT ( -- )
-   s" " E-MALFORMED BAD
-   s" <a>" E-TRUNCATED BAD
-   s" <a" E-TRUNCATED BAD
-   s" <a></b>" E-MALFORMED BAD
-   s" <a/><b/>" E-MALFORMED BAD
-   s" x<a/>" E-MALFORMED BAD
-   s" <a/>x" E-MALFORMED BAD
-   s" <a>]]></a>" E-MALFORMED BAD
-   s" <!--a--b--><a/>" E-MALFORMED BAD
-   s" <!--a" E-TRUNCATED BAD
-   s" <![CDATA[x]]><a/>" E-MALFORMED BAD
-   s" <a><![CDATA[x" E-TRUNCATED BAD
-   s" <?go" E-TRUNCATED BAD
+   s" " XML:E-MALFORMED BAD
+   s" <a>" XML:E-TRUNCATED BAD
+   s" <a" XML:E-TRUNCATED BAD
+   s" <a></b>" XML:E-MALFORMED BAD
+   s" <a/><b/>" XML:E-MALFORMED BAD
+   s" x<a/>" XML:E-MALFORMED BAD
+   s" <a/>x" XML:E-MALFORMED BAD
+   s" <a>]]></a>" XML:E-MALFORMED BAD
+   s" <!--a--b--><a/>" XML:E-MALFORMED BAD
+   s" <!--a" XML:E-TRUNCATED BAD
+   s" <![CDATA[x]]><a/>" XML:E-MALFORMED BAD
+   s" <a><![CDATA[x" XML:E-TRUNCATED BAD
+   s" <?go" XML:E-TRUNCATED BAD
    s" <?go?><a/>" OPEN DRAIN XML:CLOSE
-   s" <a q='x'v='y'/>" E-MALFORMED BAD
-   s" <a q='<x'/>" E-MALFORMED BAD
-   s" <a q='x/>" E-TRUNCATED BAD
-   s" <a></a x='1'>" E-MALFORMED BAD
-   s" <!DOCTYPE a [<!ENTITY x SYSTEM 'file:///no'>]><a/>" E-DTD BAD ;
+   s" <a q='x'v='y'/>" XML:E-MALFORMED BAD
+   s" <a q='<x'/>" XML:E-MALFORMED BAD
+   s" <a q='x/>" XML:E-TRUNCATED BAD
+   s" <a></a x='1'>" XML:E-MALFORMED BAD
+   s" <!DOCTYPE a [<!ENTITY x SYSTEM 'file:///no'>]><a/>" XML:E-DTD BAD ;
 
 : BAD-ENTITIES ( -- )
-   s" <a>&unknown;</a>" E-ENTITY BAD
-   s" <a>&amp</a>" E-ENTITY BAD
-   s" <a>&#;</a>" E-ENTITY BAD
-   s" <a>&#x;</a>" E-ENTITY BAD
-   s" <a>&#x110000;</a>" E-ENTITY BAD
-   s" <a>&#99999999999999999999;</a>" E-ENTITY BAD
-   s" <a>&#xD800;</a>" E-SCALAR BAD
-   s" <a>&#0;</a>" E-SCALAR BAD
-   s" <a>&#12;</a>" E-SCALAR BAD
-   s" <a>&#X20;</a>" E-ENTITY BAD ;
+   s" <a>&unknown;</a>" XML:E-ENTITY BAD
+   s" <a>&amp</a>" XML:E-ENTITY BAD
+   s" <a>&#;</a>" XML:E-ENTITY BAD
+   s" <a>&#x;</a>" XML:E-ENTITY BAD
+   s" <a>&#x110000;</a>" XML:E-ENTITY BAD
+   s" <a>&#99999999999999999999;</a>" XML:E-ENTITY BAD
+   s" <a>&#xD800;</a>" XML:E-SCALAR BAD
+   s" <a>&#0;</a>" XML:E-SCALAR BAD
+   s" <a>&#12;</a>" XML:E-SCALAR BAD
+   s" <a>&#X20;</a>" XML:E-ENTITY BAD ;
 
 : BAD-NAMESPACES ( -- )
-   s" <p:a/>" E-NAMESPACE BAD
-   s" <a p:q='x'/>" E-NAMESPACE BAD
-   s" <:a/>" E-NAMESPACE BAD
-   s" <p:/>" E-NAMESPACE BAD
-   s" <p:1/>" E-NAMESPACE BAD
-   s" <p:a:b/>" E-NAMESPACE BAD
-   s" <a q='1' q='2'/>" E-NAMESPACE BAD
-   s" <a xmlns:p='u' xmlns:p='v'/>" E-NAMESPACE BAD
-   s" <a xmlns:p='u0' xmlns:q='u&#48;' p:x='1' q:x='2'/>" E-NAMESPACE BAD
-   s" <a xmlns:p=''/>" E-NAMESPACE BAD
-   s" <a xmlns:xml='other'/>" E-NAMESPACE BAD
-   s" <a xmlns:xmlns='u'/>" E-NAMESPACE BAD
-   s" <a xmlns='http://www.w3.org/XML/1998/namespace'/>" E-NAMESPACE BAD
-   s" <a xmlns:p='http://www.w3.org/2000/xmlns/'/>" E-NAMESPACE BAD ;
+   s" <p:a/>" XML:E-NAMESPACE BAD
+   s" <a p:q='x'/>" XML:E-NAMESPACE BAD
+   s" <:a/>" XML:E-NAMESPACE BAD
+   s" <p:/>" XML:E-NAMESPACE BAD
+   s" <p:1/>" XML:E-NAMESPACE BAD
+   s" <p:a:b/>" XML:E-NAMESPACE BAD
+   s" <a q='1' q='2'/>" XML:E-NAMESPACE BAD
+   s" <a xmlns:p='u' xmlns:p='v'/>" XML:E-NAMESPACE BAD
+   s" <a xmlns:p='u0' xmlns:q='u&#48;' p:x='1' q:x='2'/>" XML:E-NAMESPACE BAD
+   s" <a xmlns:p=''/>" XML:E-NAMESPACE BAD
+   s" <a xmlns:xml='other'/>" XML:E-NAMESPACE BAD
+   s" <a xmlns:xmlns='u'/>" XML:E-NAMESPACE BAD
+   s" <a xmlns='http://www.w3.org/XML/1998/namespace'/>" XML:E-NAMESPACE BAD
+   s" <a xmlns:p='http://www.w3.org/2000/xmlns/'/>" XML:E-NAMESPACE BAD ;
 
 \ Each start tag reuses the attribute table: a sibling with fewer or more
 \ attributes than the one before still finds its own duplicates, and only them.
 : SIBLING-ATTRIBUTES ( -- )
    s" <r><a x='1' y='2' z='3'/><b z='1' w='2'/></r>" OPEN DRAIN XML:CLOSE
-   s" <r><a x='1' y='2' z='3'/><b y='1' y='2'/></r>" E-NAMESPACE BAD
-   s" <r><a x='1'/><b y='1' z='2' y='3'/></r>" E-NAMESPACE BAD
+   s" <r><a x='1' y='2' z='3'/><b y='1' y='2'/></r>" XML:E-NAMESPACE BAD
+   s" <r><a x='1'/><b y='1' z='2' y='3'/></r>" XML:E-NAMESPACE BAD
    s" <r xmlns:p='u' xmlns:q='u'><a p:x='1' q:y='2' z='3'/><b z='1' p:x='2' q:x='3'/></r>"
-      E-NAMESPACE BAD ;
+      XML:E-NAMESPACE BAD ;
 
 \ A child's rebinding is seen by its descendants and ends with it, whether it
 \ closes with an end tag or self-closes.
@@ -318,74 +317,74 @@ CAST: TOKEN>N ( XML:kind -- n )
    s" <a xmlns:p='urn:outer'><b xmlns:p='urn:inner'><p:c p:x='1'/></b><p:m/><d xmlns:p='urn:self' p:x='2'/><p:e p:x='3'/></a>" OPEN
    XML-KIND:START NEXT= s" p" s" urn:outer" PREFIX=
    XML-KIND:START NEXT= s" p" s" urn:inner" PREFIX=
-   XML-KIND:START NEXT= s" urn:inner" URI= ATTR-NEXT TTRUE s" urn:inner" ATTR-URI=
+   XML-KIND:START NEXT= s" urn:inner" URI= XML:ATTR-NEXT TTRUE s" urn:inner" ATTR-URI=
    XML-KIND:END NEXT=
    XML-KIND:END NEXT= s" b" NAME= s" p" s" urn:inner" PREFIX=
    XML-KIND:START NEXT= s" urn:outer" URI= s" p" s" urn:outer" PREFIX=
    XML-KIND:END NEXT=
    XML-KIND:START NEXT= s" p" s" urn:self" PREFIX=
-   ATTR-NEXT TTRUE ATTR-NEXT TTRUE s" urn:self" ATTR-URI=
+   XML:ATTR-NEXT TTRUE XML:ATTR-NEXT TTRUE s" urn:self" ATTR-URI=
    XML-KIND:END NEXT= s" d" NAME=
    XML-KIND:START NEXT= s" urn:outer" URI= s" p" s" urn:outer" PREFIX=
-   ATTR-NEXT TTRUE s" urn:outer" ATTR-URI=
+   XML:ATTR-NEXT TTRUE s" urn:outer" ATTR-URI=
    XML-KIND:END NEXT=
    XML-KIND:END NEXT= s" a" NAME= s" p" s" urn:outer" PREFIX=
    XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : BAD-ENCODINGS ( -- )
-   s\" \xFF\xFE<\z" E-ENCODING BAD-INIT
-   s\" \xFE\xFF\z<" E-ENCODING BAD-INIT
-   s\" <\za\z/\z>\z" E-ENCODING BAD-INIT
-   s\" \z<\za\z/\z>" E-ENCODING BAD-INIT
-   s" <?xml version='1.0' encoding='UTF-16'?><a/>" E-ENCODING BAD
-   s" <?xml version='1.1'?><a/>" E-ENCODING BAD
-   s" <?XML version='1.0'?><a/>" E-MALFORMED BAD
-   s"  <?xml version='1.0'?><a/>" E-MALFORMED BAD
-   s" <?xml encoding='UTF-8' version='1.0'?><a/>" E-MALFORMED BAD
-   s" <?xml version='1.0' standalone='maybe'?><a/>" E-MALFORMED BAD
-   s\" <a>\xC0\x80</a>" E-UTF8 BAD
-   s\" <a>\xED\xA0\x80</a>" E-UTF8 BAD
-   s\" <a>\xF4\x90\x80\x80</a>" E-UTF8 BAD
-   s\" <a>\z</a>" E-SCALAR BAD ;
+   s\" \xFF\xFE<\z" XML:E-ENCODING BAD-INIT
+   s\" \xFE\xFF\z<" XML:E-ENCODING BAD-INIT
+   s\" <\za\z/\z>\z" XML:E-ENCODING BAD-INIT
+   s\" \z<\za\z/\z>" XML:E-ENCODING BAD-INIT
+   s" <?xml version='1.0' encoding='UTF-16'?><a/>" XML:E-ENCODING BAD
+   s" <?xml version='1.1'?><a/>" XML:E-ENCODING BAD
+   s" <?XML version='1.0'?><a/>" XML:E-MALFORMED BAD
+   s"  <?xml version='1.0'?><a/>" XML:E-MALFORMED BAD
+   s" <?xml encoding='UTF-8' version='1.0'?><a/>" XML:E-MALFORMED BAD
+   s" <?xml version='1.0' standalone='maybe'?><a/>" XML:E-MALFORMED BAD
+   s\" <a>\xC0\x80</a>" XML:E-UTF8 BAD
+   s\" <a>\xED\xA0\x80</a>" XML:E-UTF8 BAD
+   s\" <a>\xF4\x90\x80\x80</a>" XML:E-UTF8 BAD
+   s\" <a>\z</a>" XML:E-SCALAR BAD ;
 
 : ASCII-WIRE ( -- )
    s\" <?xml version=\q1.0\q encoding='Us-AsCiI'?><a q='&#x4E2D;'>&#x4E2D;</a>"
    OPEN XML-KIND:PI NEXT= XML-KIND:START NEXT=
-   ATTR-NEXT TTRUE s" 中" ATTR-TEXT=
+   XML:ATTR-NEXT TTRUE s" 中" ATTR-TEXT=
    XML-KIND:TEXT NEXT= s" 中" TEXT=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
    s\" <?xml version='1.0' encoding='US-ASCII'?><a><!--é--></a>"
-      E-ENCODING BAD
+      XML:E-ENCODING BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a><![CDATA[é]]></a>"
-      E-ENCODING BAD
+      XML:E-ENCODING BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a/><?p é?>"
-      E-ENCODING BAD
+      XML:E-ENCODING BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a>é</a>"
-      E-ENCODING BAD
+      XML:E-ENCODING BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a/>é"
-      E-ENCODING BAD
+      XML:E-ENCODING BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a x='é'/>"
-      E-ENCODING BAD
+      XML:E-ENCODING BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><é/>"
-      E-ENCODING BAD
+      XML:E-ENCODING BAD
    s\" \xEF\xBB\xBF<?xml version='1.0' encoding='US-ASCII'?><a/>"
-      E-ENCODING BAD
+      XML:E-ENCODING BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a>é</a>"
-      E-ENCODING INPUT-BAD
+      XML:E-ENCODING INPUT-BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a><!--é--></a>"
-      E-ENCODING INPUT-BAD
+      XML:E-ENCODING INPUT-BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a><![CDATA[é]]></a>"
-      E-ENCODING INPUT-BAD
+      XML:E-ENCODING INPUT-BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a/><?p é?>"
-      E-ENCODING INPUT-BAD
+      XML:E-ENCODING INPUT-BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><é/>"
-      E-ENCODING INPUT-BAD
+      XML:E-ENCODING INPUT-BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a q='é'/>"
-      E-ENCODING INPUT-BAD
+      XML:E-ENCODING INPUT-BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a/>é"
-      E-ENCODING INPUT-BAD
+      XML:E-ENCODING INPUT-BAD
    s\" \xEF\xBB\xBF<?xml version='1.0' encoding='US-ASCII'?><a/>"
-      E-ENCODING INPUT-BAD
+      XML:E-ENCODING INPUT-BAD
    s\" <?xml version='1.0' encoding='US-ASCII'?><a>&#x4E2D;</a>"
       1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
    XML-KIND:PI NEXT= XML-KIND:START NEXT=
@@ -400,36 +399,36 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ window typed until callee evidence lets the checker prove the handle intact.
 \ ATTR-RESET already has that shape and is ticked by its bare name, the one a
 \ `using` import resolves.
-: NEXT-ONE ( XML:reader -- XML:reader ) NEXT drop ;
-: ATTR-NEXT-ONE ( XML:reader -- XML:reader ) ATTR-NEXT drop ;
-: NAME-READ ( XML:reader -- XML:reader ) NAME$ drop ;
-: ATTR-NAME-READ ( XML:reader -- XML:reader ) ATTR-NAME$ drop ;
-: ATTR-RAW-READ ( XML:reader -- XML:reader ) ATTR-RAW 2drop ;
-: ATTR-VALUE-READ ( XML:reader -- XML:reader ) ATTR-VALUE 2drop ;
-: ATTR-VALUE$-READ ( XML:reader -- XML:reader ) ATTR-VALUE$ drop ;
-: CONTENT-READ ( XML:reader -- XML:reader ) CONTENT 2drop ;
-: TEXT-FULL ( XML:reader -- XML:reader ) CLEARED TEXT ;
+: NEXT-ONE ( XML:reader -- XML:reader ) XML:NEXT drop ;
+: ATTR-NEXT-ONE ( XML:reader -- XML:reader ) XML:ATTR-NEXT drop ;
+: NAME-READ ( XML:reader -- XML:reader ) XML:NAME$ drop ;
+: ATTR-NAME-READ ( XML:reader -- XML:reader ) XML:ATTR-NAME$ drop ;
+: ATTR-RAW-READ ( XML:reader -- XML:reader ) XML:ATTR-RAW 2drop ;
+: ATTR-VALUE-READ ( XML:reader -- XML:reader ) XML:ATTR-VALUE 2drop ;
+: ATTR-VALUE$-READ ( XML:reader -- XML:reader ) XML:ATTR-VALUE$ drop ;
+: CONTENT-READ ( XML:reader -- XML:reader ) XML:CONTENT 2drop ;
+: TEXT-FULL ( XML:reader -- XML:reader ) CLEARED XML:TEXT ;
 
 : FAILURE-AND-STATE ( -- )
    s" <a><b></a>" OPEN
-   ['] DRAIN catch E-MALFORMED T=
-   ['] NEXT-ONE catch E-STATE T=
+   ['] DRAIN catch XML:E-MALFORMED T=
+   ['] NEXT-ONE catch XML:E-STATE T=
    XML:CLOSE
    s" <a q='x'/>" OPEN
-   ['] ATTR-NEXT-ONE catch E-STATE T=
-   ['] ATTR-RESET catch E-STATE T=
-   ['] NAME-READ catch E-STATE T=
-   ['] ATTR-RAW-READ catch E-STATE T=
-   ['] ATTR-VALUE-READ catch E-STATE T=
-   ['] ATTR-VALUE$-READ catch E-STATE T=
+   ['] ATTR-NEXT-ONE catch XML:E-STATE T=
+   ['] XML:ATTR-RESET catch XML:E-STATE T=
+   ['] NAME-READ catch XML:E-STATE T=
+   ['] ATTR-RAW-READ catch XML:E-STATE T=
+   ['] ATTR-VALUE-READ catch XML:E-STATE T=
+   ['] ATTR-VALUE$-READ catch XML:E-STATE T=
    XML-KIND:START NEXT=
-   ['] CONTENT-READ catch E-STATE T=
-   ['] TEXT-FULL catch E-STATE T=
+   ['] CONTENT-READ catch XML:E-STATE T=
+   ['] TEXT-FULL catch XML:E-STATE T=
    s" a" NAME=
-   ['] ATTR-NAME-READ catch E-STATE T=
-   ATTR-NEXT TTRUE s" q" ATTR-NAME=
-   ATTR-NEXT TFALSE
-   ['] ATTR-NAME-READ catch E-STATE T=
+   ['] ATTR-NAME-READ catch XML:E-STATE T=
+   XML:ATTR-NEXT TTRUE s" q" ATTR-NAME=
+   XML:ATTR-NEXT TFALSE
+   ['] ATTR-NAME-READ catch XML:E-STATE T=
    XML:CLOSE ;
 
 \ A namespace error once bindings exist fails the reader. A new reader starts
@@ -437,10 +436,10 @@ CAST: TOKEN>N ( XML:kind -- n )
 : NAMESPACE-FAILURE ( -- )
    s" <a xmlns:p='urn:stale'><b xmlns:q='urn:q' q:x='1' x='2' x='3'/></a>" OPEN
    XML-KIND:START NEXT=
-   ['] NEXT-ONE catch E-NAMESPACE T=
-   ['] PREFIX-READ catch E-STATE T=
-   ['] NAME-READ catch E-STATE T=
-   ['] NEXT-ONE catch E-STATE T=
+   ['] NEXT-ONE catch XML:E-NAMESPACE T=
+   ['] PREFIX-READ catch XML:E-STATE T=
+   ['] NAME-READ catch XML:E-STATE T=
+   ['] NEXT-ONE catch XML:E-STATE T=
    XML:CLOSE
    s" <c xmlns:r='urn:r'><d/></c>" OPEN
    XML-KIND:START NEXT=
@@ -451,28 +450,28 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ A second TEXT appends after the first's bytes.
 : TEXT-APPENDS ( -- )
    s" <a>long&amp;text</a>" OPEN
-   NEXT drop NEXT drop
-   CLEARED TEXT DECODED @ TEXT
+   XML:NEXT drop XML:NEXT drop
+   CLEARED XML:TEXT DECODED @ XML:TEXT
    DECODED$ s" long&textlong&text" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : PREFIX-RECOVERY ( -- )
    s" <a xmlns:p='urn:&#97;'/>" OPEN
-   ['] PREFIX-READ catch E-STATE T=
+   ['] PREFIX-READ catch XML:E-STATE T=
    XML-KIND:START NEXT=
    s" " s" " PREFIX=
    s" p" s" urn:a" PREFIX=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
-   ['] PREFIX-READ catch E-STATE T=
+   ['] PREFIX-READ catch XML:E-STATE T=
    XML:CLOSE
    s" <a><b></a>" OPEN
-   ['] DRAIN catch E-MALFORMED T=
-   ['] PREFIX-READ catch E-STATE T=
+   ['] DRAIN catch XML:E-MALFORMED T=
+   ['] PREFIX-READ catch XML:E-STATE T=
    XML:CLOSE ;
 
 : PREFIX-READERS ( -- )
-   RD HEAP:ALLOCATOR s" <a xmlns:p='urn:first'/>" INIT
-   RD2 HEAP:ALLOCATOR s" <b xmlns:p='urn:second'/>" INIT
+   RD HEAP:ALLOCATOR s" <a xmlns:p='urn:first'/>" XML:INIT
+   RD2 HEAP:ALLOCATOR s" <b xmlns:p='urn:second'/>" XML:INIT
    XML-KIND:START NEXT= s" p" s" urn:second" PREFIX=
    swap XML-KIND:START NEXT= s" p" s" urn:first" PREFIX=
    swap s" p" s" urn:second" PREFIX=
@@ -488,14 +487,14 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ The caller's own throw abandons a live reader, so record RD keeps its tables
 \ and, for an input reader, its stream.
 : ABANDON ( -- )
-   RD ALLOC-TEST:COUNTING s" <a><b/></a>" INIT
+   RD ALLOC-TEST:COUNTING s" <a><b/></a>" XML:INIT
    XML-KIND:START NEXT= XML-KIND:START NEXT=
    CALLER-FAIL
    XML:CLOSE ;
 
 : ABANDON-INPUT ( -- )
    s" <a><b/></a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET
-   RD ALLOC-TEST:COUNTING INPUT-POS ['] INPUT-FILL INIT-INPUT
+   RD ALLOC-TEST:COUNTING INPUT-POS ['] INPUT-FILL XML:INIT-INPUT
    XML-KIND:START NEXT=
    CALLER-FAIL
    XML:CLOSE ;
@@ -510,7 +509,7 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ INIT on a record that still holds tables releases them before it reads.
 : ABANDON-REINIT ( -- )
    [: ABANDON-INPUT ;] CALLER-CODE TTHROWSQ
-   RD ALLOC-TEST:COUNTING s" <c/>" INIT
+   RD ALLOC-TEST:COUNTING s" <c/>" XML:INIT
    XML-KIND:START NEXT= XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE ;
 
@@ -531,14 +530,14 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ rejected at each of its requests in turn until one build succeeds.
 : FAILED-BUILDS ( -- )
    s" a rejected INIT keeps nothing" T-LABEL
-   [: [: RD ALLOC-TEST:COUNTING s\" \xFF\xFE<\z" INIT XML:CLOSE ;] catch
-      E-ENCODING T= ;] RELEASES
+   [: [: RD ALLOC-TEST:COUNTING s\" \xFF\xFE<\z" XML:INIT XML:CLOSE ;] catch
+      XML:E-ENCODING T= ;] RELEASES
    s" a rejected INIT-INPUT request keeps nothing" T-LABEL
    1 begin
       {: k:n :}
       0 ALLOC-TEST:TAKEN !  0 ALLOC-TEST:FREED !  k ALLOC-TEST:REJECTED !
       s" <a/>" 1 $7FFFFFFFFFFFFFFF INPUT-SET
-      [: RD ALLOC-TEST:COUNTING INPUT-POS ['] INPUT-FILL INIT-INPUT XML:CLOSE ;]
+      [: RD ALLOC-TEST:COUNTING INPUT-POS ['] INPUT-FILL XML:INIT-INPUT XML:CLOSE ;]
       catch {: code:n :}
       ALLOC-TEST:TAKEN @ ALLOC-TEST:FREED @ T=
       code 0<>
@@ -607,11 +606,11 @@ variable URI-LEN
    tail WIDE+
    s" />" WIDE+ ;
 
-: WIDE-OPEN ( -- XML:reader ) RD HEAP:ALLOCATOR WIDE-DOC @ WIDE-LEN @ >str INIT ;
+: WIDE-OPEN ( -- XML:reader ) RD HEAP:ALLOCATOR WIDE-DOC @ WIDE-LEN @ >str XML:INIT ;
 
 : WIDE-BAD ( str -- )
    WIDE-BUILD
-   [: WIDE-OPEN ['] DRAIN catch swap XML:CLOSE throw ;] catch E-NAMESPACE T= ;
+   [: WIDE-OPEN ['] DRAIN catch swap XML:CLOSE throw ;] catch XML:E-NAMESPACE T= ;
 
 : WIDE-ELEMENT ( -- )
    WIDE-DOC-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop WIDE-DOC !
@@ -619,7 +618,7 @@ variable URI-LEN
    WIDE-OPEN XML-KIND:START NEXT=
    s" p0" s" aaaaaaaaaaaaaaa" PREFIX=
    s" p32767" WIDE-LAST EXPECTED-URI$ PREFIX=
-   WIDE-PREFIXES 2 * 0 ?do ATTR-NEXT drop loop
+   WIDE-PREFIXES 2 * 0 ?do XML:ATTR-NEXT drop loop
    s" p32767:a" ATTR-NAME= WIDE-LAST EXPECTED-URI$ ATTR-URI=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
    s"  p0:a='2'" WIDE-BAD
@@ -631,14 +630,14 @@ variable URI-LEN
 : ESCAPING ( -- )
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
    v ESCAPED-OUT !
-   s\" A<&>\r\n\q'😀" v ESCAPE-TEXT
+   s\" A<&>\r\n\q'😀" v XML:ESCAPE-TEXT
    v VEC:BYTES s\" A&lt;&amp;&gt;&#13;\n\q'😀" T$=
    v 0 VEC:RESIZE
-   s\" A<&>\r\n\t\q'😀" v ESCAPE-ATTR
+   s\" A<&>\r\n\t\q'😀" v XML:ESCAPE-ATTR
    v VEC:BYTES s" A&lt;&amp;&gt;&#13;&#10;&#9;&quot;&apos;😀" T$=
    v 0 VEC:RESIZE
-   s" " v ESCAPE-TEXT  v VEC:COUNT 0 T=
-   [: s\" \z" ESCAPED-OUT @ ESCAPE-TEXT ;] E-SCALAR TTHROWSQ
+   s" " v XML:ESCAPE-TEXT  v VEC:COUNT 0 T=
+   [: s\" \z" ESCAPED-OUT @ XML:ESCAPE-TEXT ;] XML:E-SCALAR TTHROWSQ
    v VEC:COUNT 0 T=
    v VEC:DELETE ;
 
@@ -654,22 +653,22 @@ variable URI-LEN
    XML-KIND:START NEXT= 24 15 RAW=
    XML-KIND:START NEXT= 39 15 RAW= s" p:b" NAME= s" b" LOCAL=
    s" u" URI=
-   ATTR-NEXT TTRUE
-   ATTR-RAW {: attr-off:off attr-len:len :}
+   XML:ATTR-NEXT TTRUE
+   XML:ATTR-RAW {: attr-off:off attr-len:len :}
    attr-off OFF>N 44 T= attr-len LEN>N 9 T=
-   ATTR-VALUE {: value-off:off value-len:len :}
+   XML:ATTR-VALUE {: value-off:off value-len:len :}
    value-off OFF>N 47 T= value-len LEN>N 5 T=
    s" &" ATTR-TEXT=
    54 INPUT-OFF ! DECODED-CLEAR
-   begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
-      RAW {: start:off size:len :}
+   begin XML:NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
+      XML:RAW {: start:off size:len :}
       start OFF>N INPUT-OFF @ T=
-      DECODED @ TEXT
+      DECODED @ XML:TEXT
       size LEN>N INPUT-OFF +!
    repeat
    INPUT-OFF @ 63 T=
    DECODED$ s" Aé&Z" T$=
-   RAW {: end-off:off end-len:len :}
+   XML:RAW {: end-off:off end-len:len :}
    end-off OFF>N 63 T= end-len LEN>N 6 T=
    s" p" s" u" PREFIX=
    XML-KIND:START NEXT= 69 4 RAW=
@@ -692,11 +691,11 @@ variable URI-LEN
    S\" <a>x\r\ny</a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
    XML-KIND:START NEXT=
    DECODED-CLEAR
-   begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
-      DECODED @ TEXT
+   begin XML:NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
+      DECODED @ XML:TEXT
    repeat
    DECODED$ S\" x\ny" T$=
-   KIND TOKEN>N XML-KIND:END TOKEN>N T=
+   XML:KIND TOKEN>N XML-KIND:END TOKEN>N T=
    XML-KIND:EOF NEXT= XML:CLOSE ;
 
 \ Fills of at most limit bytes; an unlimited one fills each span it is lent until input runs short.
@@ -707,16 +706,16 @@ variable URI-LEN
    INPUT-BIG 8199 >str limit $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
    XML-KIND:START NEXT=
    0 INPUT-USED ! 3 INPUT-OFF !
-   begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
-      RAW {: start:off size:len :}
+   begin XML:NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
+      XML:RAW {: start:off size:len :}
       start OFF>N INPUT-OFF @ T=
-      CLEARED TEXT DECODED @ VEC:COUNT {: count:n :}
+      CLEARED XML:TEXT DECODED @ VEC:COUNT {: count:n :}
       size LEN>N count T=
       count INPUT-USED +!
       size LEN>N INPUT-OFF +!
    repeat
    INPUT-USED @ 8192 T= INPUT-OFF @ 8195 T=
-   RAW {: end-off:off end-len:len :}
+   XML:RAW {: end-off:off end-len:len :}
    end-off OFF>N 8195 T= end-len LEN>N 4 T=
    XML-KIND:EOF NEXT= XML:CLOSE ;
 
@@ -731,7 +730,7 @@ variable URI-LEN
    XML-KIND:START NEXT=
    XML-KIND:START NEXT=
    XML-KIND:START NEXT= s" p:c" NAME=
-   CLEARED URI DECODED @ VEC:COUNT 1000 T=
+   CLEARED XML:URI DECODED @ VEC:COUNT 1000 T=
    DECODED$ STR:DATA {: uri:^ :}
    uri c@ [char] x T=
    uri 999 + c@ [char] x T=
@@ -751,10 +750,10 @@ variable URI-LEN
    XML-KIND:START NEXT= s" urn:d" URI= s" p" s" urn:outer" PREFIX=
    XML-KIND:START NEXT= s" b" NAME= s" p" s" urn:inner" PREFIX=
    XML-KIND:START NEXT= s" urn:inner" URI=
-   ATTR-NEXT TTRUE s" urn:inner" ATTR-URI=
+   XML:ATTR-NEXT TTRUE s" urn:inner" ATTR-URI=
    XML-KIND:END NEXT= s" p:c" NAME= s" urn:inner" URI=
    XML-KIND:START NEXT= s" e" NAME= s" urn:d" URI= s" p" s" urn:self" PREFIX=
-   ATTR-NEXT TTRUE ATTR-NEXT TTRUE s" urn:self" ATTR-URI=
+   XML:ATTR-NEXT TTRUE XML:ATTR-NEXT TTRUE s" urn:self" ATTR-URI=
    XML-KIND:END NEXT= s" e" NAME= s" p" s" urn:self" PREFIX=
    XML-KIND:START NEXT= s" p:f" NAME= s" urn:inner" URI=
    s" p" s" urn:inner" PREFIX=
@@ -762,24 +761,24 @@ variable URI-LEN
    XML-KIND:END NEXT= s" b" NAME= s" p" s" urn:inner" PREFIX=
    XML-KIND:START NEXT= s" p:g" NAME= s" urn:outer" URI=
    s" p" s" urn:outer" PREFIX=
-   ATTR-NEXT TTRUE s" urn:outer" ATTR-URI=
+   XML:ATTR-NEXT TTRUE s" urn:outer" ATTR-URI=
    XML-KIND:END NEXT=
    XML-KIND:START NEXT= s" h" NAME= s" q" s" urn:outer" PREFIX=
    s" " s" urn:d" PREFIX=
-   12 0 ?do ATTR-NEXT drop loop
-   ATTR-NEXT TTRUE s" q:a1" ATTR-NAME= s" urn:outer" ATTR-URI=
-   ATTR-NEXT TFALSE
+   12 0 ?do XML:ATTR-NEXT drop loop
+   XML:ATTR-NEXT TTRUE s" q:a1" ATTR-NAME= s" urn:outer" ATTR-URI=
+   XML:ATTR-NEXT TFALSE
    XML-KIND:END NEXT=
    XML-KIND:START NEXT= s" i" NAME= s" q" PREFIX-MISSING
-   ATTR-NEXT TTRUE s" urn:outer" ATTR-URI=
-   ATTR-NEXT TTRUE s" a0" ATTR-NAME= s" " ATTR-URI=
+   XML:ATTR-NEXT TTRUE s" urn:outer" ATTR-URI=
+   XML:ATTR-NEXT TTRUE s" a0" ATTR-NAME= s" " ATTR-URI=
    XML-KIND:END NEXT=
    XML-KIND:END NEXT= s" a" NAME= s" urn:d" URI= s" p" s" urn:outer" PREFIX=
    XML-KIND:EOF NEXT= XML:CLOSE
    s" <a xmlns:p='urn:u'><b xmlns:r='urn:v'><c xmlns:q='urn:&#117;' r:x='0' p:x='1' q:x='2'/></b></a>"
-      E-NAMESPACE INPUT-BAD
+      XML:E-NAMESPACE INPUT-BAD
    s" <a xmlns:p='urn:u' xmlns:q='urn:u'><b><c p:x='1' q:x='2'/></b></a>"
-      E-NAMESPACE INPUT-BAD ;
+      XML:E-NAMESPACE INPUT-BAD ;
 
 : DOC-START ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DEEP-DOC ! ;
 : DOC$ ( -- str ) DEEP-DOC @ VEC:BYTES ;
@@ -803,8 +802,8 @@ variable URI-LEN
 
 : DEEP-EVENT ( XML:reader XML:kind n -- XML:reader )
    {: expected:XML:kind level:n :}
-   NEXT TOKEN>N expected TOKEN>N = 0= if 1 DEEP-BAD +! exit then
-   NAME$ level LEVEL-NAME STR:= 0= if 1 DEEP-BAD +! then ;
+   XML:NEXT TOKEN>N expected TOKEN>N = 0= if 1 DEEP-BAD +! exit then
+   XML:NAME$ level LEVEL-NAME STR:= 0= if 1 DEEP-BAD +! then ;
 
 \ A chain 100000 elements deep streams through one-byte fills. Each level's name,
 \ which its end tag must match, and the root's binding live in scope storage
@@ -844,7 +843,7 @@ variable SEEN
 : EVENTS ( XML:reader XML:kind n -- XML:reader )
    {: expected:XML:kind count:n :}
    count 0 ?do
-      NEXT TOKEN>N expected TOKEN>N <> if 1 DEEP-BAD +! then
+      XML:NEXT TOKEN>N expected TOKEN>N <> if 1 DEEP-BAD +! then
    loop ;
 
 : TALL-TREE ( -- )
@@ -868,9 +867,9 @@ variable SEEN
    s" />" DEEP+
    DOC$ OPEN XML-KIND:START NEXT=
    0 SEEN !
-   begin ATTR-NEXT while 1 SEEN +! repeat
+   begin XML:ATTR-NEXT while 1 SEEN +! repeat
    SEEN @ WIDE-ATTRS T=
-   ATTR-RESET WIDE-ATTRS 0 ?do ATTR-NEXT drop loop
+   XML:ATTR-RESET WIDE-ATTRS 0 ?do XML:ATTR-NEXT drop loop
    s" a1999" ATTR-NAME= s" 1999" ATTR-TEXT=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
    DEEP-DOC @ VEC:DELETE ;
@@ -898,36 +897,36 @@ variable SEEN
    DEEP-DOC @ VEC:DELETE ;
 
 : INPUT-FAILURES ( -- )
-   s" <a><b></a>" E-MALFORMED INPUT-BAD
-   s" <a/>x" E-MALFORMED INPUT-BAD
-   s" <a/><b/>" E-MALFORMED INPUT-BAD
-   s" " E-MALFORMED INPUT-BAD
-   s" <a>&amp" E-TRUNCATED INPUT-BAD
-   s" <!DOCTYPE a><a/>" E-DTD INPUT-BAD
-   s\" \xFF\xFE<a/>" E-ENCODING INPUT-BAD
-   s" <?xml version='1.0' encoding='UTF-16'?><a/>" E-ENCODING INPUT-BAD
+   s" <a><b></a>" XML:E-MALFORMED INPUT-BAD
+   s" <a/>x" XML:E-MALFORMED INPUT-BAD
+   s" <a/><b/>" XML:E-MALFORMED INPUT-BAD
+   s" " XML:E-MALFORMED INPUT-BAD
+   s" <a>&amp" XML:E-TRUNCATED INPUT-BAD
+   s" <!DOCTYPE a><a/>" XML:E-DTD INPUT-BAD
+   s\" \xFF\xFE<a/>" XML:E-ENCODING INPUT-BAD
+   s" <?xml version='1.0' encoding='UTF-16'?><a/>" XML:E-ENCODING INPUT-BAD
    s" <a>&#12<later" 1 8 INPUT-SET
-   INPUT-FAILURE E-ENTITY T=
+   INPUT-FAILURE XML:E-ENTITY T=
    s" <a>&#1114112;tail" 1 12 INPUT-SET
-   INPUT-FAILURE E-ENTITY T=
+   INPUT-FAILURE XML:E-ENTITY T=
    s" <a>&#x110000;tail" 1 12 INPUT-SET
-   INPUT-FAILURE E-ENTITY T=
+   INPUT-FAILURE XML:E-ENTITY T=
    s" <1x/>" 1 2 INPUT-SET
-   INPUT-FAILURE E-MALFORMED T=
+   INPUT-FAILURE XML:E-MALFORMED T=
    s\" <\xFFx/>" 1 2 INPUT-SET
-   INPUT-FAILURE E-UTF8 T=
+   INPUT-FAILURE XML:E-UTF8 T=
    s\" <\xE0\x80x/>" 1 3 INPUT-SET
-   INPUT-FAILURE E-UTF8 T=
+   INPUT-FAILURE XML:E-UTF8 T=
    s\" <a\xFFx/>" 1 3 INPUT-SET
-   INPUT-FAILURE E-UTF8 T=
+   INPUT-FAILURE XML:E-UTF8 T=
    s\" <a>\zx</a>" 1 4 INPUT-SET
-   INPUT-FAILURE E-SCALAR T=
+   INPUT-FAILURE XML:E-SCALAR T=
    s\" <a>\r\n</a>" 1 4 INPUT-SET
    INPUT-FAILURE -9299 T=
    s" <a>&#00000000000065;</a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET
    INPUT-OPEN XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
    s" A" TEXT= XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
-   INPUT-OVER-COUNT-RC E-RANGE T=
+   INPUT-OVER-COUNT-RC XML:E-RANGE T=
    s" <a/>" 1 2 INPUT-SET
    INPUT-FAILURE -9299 T= ;
 
@@ -938,232 +937,232 @@ variable SEEN
 
 : REJECTION-TEXTS ( -- )
    s" an end tag that closes another element names the open one" T-LABEL
-   s" <a></b>" E-MALFORMED BAD
-   E-MALFORMED s" 1:6: expected `</a>`, found `b`; close elements in the reverse of the order they were opened" SAID
+   s" <a></b>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:6: expected `</a>`, found `b`; close elements in the reverse of the order they were opened" SAID
    s" a found run takes a UTF-8 character above ASCII whole" T-LABEL
-   s\" <a></caf\xC3\xA9>" E-MALFORMED BAD
-   E-MALFORMED s\" 1:6: expected `</a>`, found `caf\xC3\xA9`; close elements in the reverse of the order they were opened" SAID
+   s\" <a></caf\xC3\xA9>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s\" 1:6: expected `</a>`, found `caf\xC3\xA9`; close elements in the reverse of the order they were opened" SAID
    s" a found run may start with a UTF-8 character above ASCII" T-LABEL
-   s\" <a></\xC3\xA9crit>" E-MALFORMED BAD
-   E-MALFORMED s\" 1:6: expected `</a>`, found `\xC3\xA9crit`; close elements in the reverse of the order they were opened" SAID
+   s\" <a></\xC3\xA9crit>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s\" 1:6: expected `</a>`, found `\xC3\xA9crit`; close elements in the reverse of the order they were opened" SAID
    s" a found run cut inside a character ends before it" T-LABEL
-   s\" <a></xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\xC3\xA9z>" E-MALFORMED BAD
-   E-MALFORMED s" 1:6: expected `</a>`, found `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...`; close elements in the reverse of the order they were opened" SAID
+   s\" <a></xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\xC3\xA9z>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:6: expected `</a>`, found `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...`; close elements in the reverse of the order they were opened" SAID
    s" a found run writes a control or format character as U+XXXX" T-LABEL
-   s\" <a></c\xE2\x80\xAEd\xC2\x85e>" E-MALFORMED BAD
-   E-MALFORMED s" 1:6: expected `</a>`, found `cU+202EdU+0085e`; close elements in the reverse of the order they were opened" SAID
+   s\" <a></c\xE2\x80\xAEd\xC2\x85e>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:6: expected `</a>`, found `cU+202EdU+0085e`; close elements in the reverse of the order they were opened" SAID
    s" an expected end tag writes a format character in the open name as U+XXXX" T-LABEL
-   s\" <a\xD8\x9C></b>" E-MALFORMED BAD
-   E-MALFORMED s" 1:8: expected `</aU+061C>`, found `b`; close elements in the reverse of the order they were opened" SAID
+   s\" <a\xD8\x9C></b>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:8: expected `</aU+061C>`, found `b`; close elements in the reverse of the order they were opened" SAID
    s" the end tag a truncated document expects writes a tag character as U+XXXX" T-LABEL
-   s\" <a\xF3\xA0\x81\x81>" E-TRUNCATED BAD
-   E-TRUNCATED s" 1:8: expected `</aU+E0041>`, found the end of the input; write the rest of the document, closing each open element" SAID
+   s\" <a\xF3\xA0\x81\x81>" XML:E-TRUNCATED BAD
+   XML:E-TRUNCATED s" 1:8: expected `</aU+E0041>`, found the end of the input; write the rest of the document, closing each open element" SAID
    s" a document that ends inside an element names its end tag" T-LABEL
-   s\" <a>\n<b>" E-TRUNCATED BAD
-   E-TRUNCATED s" 2:4: expected `</b>`, found the end of the input; write the rest of the document, closing each open element" SAID
+   s\" <a>\n<b>" XML:E-TRUNCATED BAD
+   XML:E-TRUNCATED s" 2:4: expected `</b>`, found the end of the input; write the rest of the document, closing each open element" SAID
    s" an input reader places a rejection in the whole input after it drops consumed bytes" T-LABEL
    s\" <a>\n<b>xxxxxxxx</b>\n<c>yyyyyyyy</c>\n<d></e>\n</a>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
-   INPUT-FAILURE E-MALFORMED T=
-   E-MALFORMED s" 4:6: expected `</d>`, found `e`; close elements in the reverse of the order they were opened" SAID
+   INPUT-FAILURE XML:E-MALFORMED T=
+   XML:E-MALFORMED s" 4:6: expected `</d>`, found `e`; close elements in the reverse of the order they were opened" SAID
    s" a found run that reaches the end of an input reader's window ends in ..." T-LABEL
    s" <a></a bbbbbbbbbbbb>" 3 $7FFFFFFFFFFFFFFF INPUT-SET
-   INPUT-FAILURE E-MALFORMED T=
-   E-MALFORMED s" 1:8: expected `>`, found `bb...`; write that byte here, or correct the markup before it" SAID
+   INPUT-FAILURE XML:E-MALFORMED T=
+   XML:E-MALFORMED s" 1:8: expected `>`, found `bb...`; write that byte here, or correct the markup before it" SAID
    s" a found run that stops at a character the end of an input reader's window cuts ends in ..." T-LABEL
    s\" <a></a b\xC3\xA9bbbbbbb>" 3 $7FFFFFFFFFFFFFFF INPUT-SET
-   INPUT-FAILURE E-MALFORMED T=
-   E-MALFORMED s" 1:8: expected `>`, found `b...`; write that byte here, or correct the markup before it" SAID
+   INPUT-FAILURE XML:E-MALFORMED T=
+   XML:E-MALFORMED s" 1:8: expected `>`, found `b...`; write that byte here, or correct the markup before it" SAID
    s" a character the end of an input reader's window cuts is found as ..." T-LABEL
    s\" <a></a \xC3\xA9>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
-   INPUT-FAILURE E-MALFORMED T=
-   E-MALFORMED s" 1:8: expected `>`, found `...`; write that byte here, or correct the markup before it" SAID
+   INPUT-FAILURE XML:E-MALFORMED T=
+   XML:E-MALFORMED s" 1:8: expected `>`, found `...`; write that byte here, or correct the markup before it" SAID
    s" an input reader rejects a character XML 1.0 does not allow as a plain reader does" T-LABEL
    s\" <a>\n<b>xxxxxxxx</b>\n<c>yyyyyyyy</c>\n<d>\x01</d>\n</a>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
-   INPUT-FAILURE E-SCALAR T=
-   E-SCALAR s" 4:4: expected a character XML 1.0 allows, found byte $01; remove the character, or write one XML 1.0 allows" SAID
+   INPUT-FAILURE XML:E-SCALAR T=
+   XML:E-SCALAR s" 4:4: expected a character XML 1.0 allows, found byte $01; remove the character, or write one XML 1.0 allows" SAID
    s" an input reader rejects a bad character reference as a plain reader does" T-LABEL
    s\" <a>\n&#xZZ;</a>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
-   INPUT-FAILURE E-ENTITY T=
-   E-ENTITY s" 2:1: expected a character reference such as `&#65;` or `&#x41;`, found `&#xZ...`; write the character's number in decimal after `&#`, or in hex after `&#x`, and end the reference with `;`" SAID
+   INPUT-FAILURE XML:E-ENTITY T=
+   XML:E-ENTITY s" 2:1: expected a character reference such as `&#65;` or `&#x41;`, found `&#xZ...`; write the character's number in decimal after `&#`, or in hex after `&#x`, and end the reference with `;`" SAID
    s" an input reader rejects a document cut inside a reference as a plain reader does" T-LABEL
    s\" <a>\n&am" 2 $7FFFFFFFFFFFFFFF INPUT-SET
-   INPUT-FAILURE E-TRUNCATED T=
-   E-TRUNCATED s" 2:4: expected the rest of the document, found the end of the input; write the rest of the document" SAID
+   INPUT-FAILURE XML:E-TRUNCATED T=
+   XML:E-TRUNCATED s" 2:4: expected the rest of the document, found the end of the input; write the rest of the document" SAID
    s" a found run that stops at bytes no character begins at the end of an input reader's window ends before them" T-LABEL
    s\" <a></a b\xC0\x80bbbbbbb>" 3 $7FFFFFFFFFFFFFFF INPUT-SET
-   INPUT-FAILURE E-MALFORMED T=
-   E-MALFORMED s" 1:8: expected `>`, found `b`; write that byte here, or correct the markup before it" SAID
+   INPUT-FAILURE XML:E-MALFORMED T=
+   XML:E-MALFORMED s" 1:8: expected `>`, found `b`; write that byte here, or correct the markup before it" SAID
    s" a byte no character begins at the end of an input reader's window is found as that byte" T-LABEL
    s\" <a></a \xC0\x80>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
-   INPUT-FAILURE E-MALFORMED T=
-   E-MALFORMED s" 1:8: expected `>`, found byte $C0; write that byte here, or correct the markup before it" SAID
+   INPUT-FAILURE XML:E-MALFORMED T=
+   XML:E-MALFORMED s" 1:8: expected `>`, found byte $C0; write that byte here, or correct the markup before it" SAID
    s" a rejected reader rejects a further NEXT" T-LABEL
    s\" <a>\n&bogus;</a>" 2 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
-   ['] DRAIN catch E-ENTITY T=
-   E-ENTITY s" 2:1: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&bogus;`; write `&amp;` for a literal `&`, and end each reference with `;`" SAID
-   ['] NEXT-ONE catch E-STATE T=
+   ['] DRAIN catch XML:E-ENTITY T=
+   XML:E-ENTITY s" 2:1: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&bogus;`; write `&amp;` for a literal `&`, and end each reference with `;`" SAID
+   ['] NEXT-ONE catch XML:E-STATE T=
    XML:CLOSE ;
 
 : MARKUP-TEXTS ( -- )
    s" a start tag with no space between attributes" T-LABEL
-   s" <a q='x'v='y'/>" E-MALFORMED BAD
-   E-MALFORMED s" 1:9: expected white space, `>` or `/>` after the element name or an attribute, found `v`; separate attributes with white space, and end the start tag with `>` or `/>`" SAID
+   s" <a q='x'v='y'/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:9: expected white space, `>` or `/>` after the element name or an attribute, found `v`; separate attributes with white space, and end the start tag with `>` or `/>`" SAID
    s" a second root element" T-LABEL
-   s" <a/><b/>" E-MALFORMED BAD
-   E-MALFORMED s" 1:5: expected white space, a comment or a processing instruction after the root element, found `<`; wrap the elements in one root element" SAID
+   s" <a/><b/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:5: expected white space, a comment or a processing instruction after the root element, found `<`; wrap the elements in one root element" SAID
    s" an end tag with no open element" T-LABEL
-   s" <a/></a>" E-MALFORMED BAD
-   E-MALFORMED s" 1:5: expected an end tag only after its start tag, found `<`; remove the end tag, or write its start tag before it" SAID
+   s" <a/></a>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:5: expected an end tag only after its start tag, found `<`; remove the end tag, or write its start tag before it" SAID
    s" `]]>` in text, after a newline and a two-byte character" T-LABEL
-   s\" <a>\né]]></a>" E-MALFORMED BAD
-   E-MALFORMED s" 2:3: expected text without `]]>`, found `]]`; write `]]&gt;` for a literal `]]>` in text" SAID
+   s\" <a>\né]]></a>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 2:3: expected text without `]]>`, found `]]`; write `]]&gt;` for a literal `]]>` in text" SAID
    s" text after the root element" T-LABEL
-   s" <a/>x" E-MALFORMED BAD
-   E-MALFORMED s" 1:5: expected only white space outside the root element, found `x`; move the text inside the root element, or remove it" SAID
+   s" <a/>x" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:5: expected only white space outside the root element, found `x`; move the text inside the root element, or remove it" SAID
    s" `--` inside a comment" T-LABEL
-   s" <!--a--b--><a/>" E-MALFORMED BAD
-   E-MALFORMED s" 1:6: expected `-->` or comment text without `--`, found `--b--`; remove `--` from the comment, or end the comment with `-->`" SAID
+   s" <!--a--b--><a/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:6: expected `-->` or comment text without `--`, found `--b--`; remove `--` from the comment, or end the comment with `-->`" SAID
    s" a CDATA section outside the root element" T-LABEL
-   s" <![CDATA[x]]><a/>" E-MALFORMED BAD
-   E-MALFORMED s" 1:1: expected a CDATA section only inside the root element, found `<`; move the CDATA section inside the root element, or remove it" SAID
+   s" <![CDATA[x]]><a/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:1: expected a CDATA section only inside the root element, found `<`; move the CDATA section inside the root element, or remove it" SAID
    s" an XML declaration after the document's start" T-LABEL
-   s"  <?xml version='1.0'?><a/>" E-MALFORMED BAD
-   E-MALFORMED s" 1:2: expected `<?xml` only at the start of the document, found `<`; move the XML declaration to the start of the document, or remove it" SAID ;
+   s"  <?xml version='1.0'?><a/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:2: expected `<?xml` only at the start of the document, found `<`; move the XML declaration to the start of the document, or remove it" SAID ;
 
 \ The XML declaration's, a processing instruction's and `<!` markup's texts.
 : PROLOG-TEXTS ( -- )
    s" an attribute after the declaration's last names the extra one" T-LABEL
-   s" <?xml version='1.0' standalone='yes' foo='x'?><a/>" E-MALFORMED BAD
-   E-MALFORMED s" 1:38: expected `?>` to end the XML declaration, found `foo`; write only `version`, `encoding` and `standalone`, in that order" SAID
+   s" <?xml version='1.0' standalone='yes' foo='x'?><a/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:38: expected `?>` to end the XML declaration, found `foo`; write only `version`, `encoding` and `standalone`, in that order" SAID
    s" a misnamed last declaration attribute names it" T-LABEL
-   s" <?xml version='1.0' foo='x'?><a/>" E-MALFORMED BAD
-   E-MALFORMED s" 1:21: expected `standalone` as the declaration's last attribute, found `foo`; correct the attribute's name, or remove the attribute" SAID
+   s" <?xml version='1.0' foo='x'?><a/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:21: expected `standalone` as the declaration's last attribute, found `foo`; correct the attribute's name, or remove the attribute" SAID
    s" a standalone value other than yes or no names the value" T-LABEL
-   s\" <?xml version='1.0'\nstandalone='maybe'?><a/>" E-MALFORMED BAD
-   E-MALFORMED s" 2:13: expected `yes` or `no`, found `maybe`; write `yes` or `no` as `standalone`'s value" SAID
+   s\" <?xml version='1.0'\nstandalone='maybe'?><a/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 2:13: expected `yes` or `no`, found `maybe`; write `yes` or `no` as `standalone`'s value" SAID
    s" a declaration not in lower case names its target" T-LABEL
-   s" <?XML version='1.0'?><a/>" E-MALFORMED BAD
-   E-MALFORMED s" 1:3: expected `xml` in lower case, found `XML`; begin the XML declaration with `<?xml`" SAID
+   s" <?XML version='1.0'?><a/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:3: expected `xml` in lower case, found `XML`; begin the XML declaration with `<?xml`" SAID
    s" a document that ends inside the declaration asks for its end" T-LABEL
-   s" <?xml version='1.0'" E-TRUNCATED BAD
-   E-TRUNCATED s" 1:20: expected `?>` to end the XML declaration, found the end of the input; end the declaration with `?>`" SAID
+   s" <?xml version='1.0'" XML:E-TRUNCATED BAD
+   XML:E-TRUNCATED s" 1:20: expected `?>` to end the XML declaration, found the end of the input; end the declaration with `?>`" SAID
    s" declaration attributes with no space between them" T-LABEL
-   s" <?xml version='1.0'?x?><a/>" E-MALFORMED BAD
-   E-MALFORMED s" 1:20: expected white space or `?>`, found `?`; separate the declaration's attributes with a space" SAID
+   s" <?xml version='1.0'?x?><a/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:20: expected white space or `?>`, found `?`; separate the declaration's attributes with a space" SAID
    s" a document that ends after a processing instruction's target" T-LABEL
-   s" <?p" E-TRUNCATED BAD
-   E-TRUNCATED s" 1:4: expected `?>` to end the processing instruction, found the end of the input; end the processing instruction with `?>`" SAID
+   s" <?p" XML:E-TRUNCATED BAD
+   XML:E-TRUNCATED s" 1:4: expected `?>` to end the processing instruction, found the end of the input; end the processing instruction with `?>`" SAID
    s" a target joined to its content counts columns in bytes" T-LABEL
-   s\" <a>\n\xC3\xA9<?p/?></a>" E-MALFORMED BAD
-   E-MALFORMED s" 2:6: expected white space or `?>` after the target, found `/`; put a space between the target and the instruction's content" SAID
+   s\" <a>\n\xC3\xA9<?p/?></a>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 2:6: expected white space or `?>` after the target, found `/`; put a space between the target and the instruction's content" SAID
    s" a DOCTYPE is rejected where it starts" T-LABEL
-   s" <!DOCTYPE a><a/>" E-DTD BAD
-   E-DTD s" 1:1: expected an element, a comment or a processing instruction, found `<`; remove the `<!DOCTYPE`: the reader reads no DTD" SAID
+   s" <!DOCTYPE a><a/>" XML:E-DTD BAD
+   XML:E-DTD s" 1:1: expected an element, a comment or a processing instruction, found `<`; remove the `<!DOCTYPE`: the reader reads no DTD" SAID
    s" `<!` that opens neither a comment nor CDATA" T-LABEL
-   s" <a><!x></a>" E-MALFORMED BAD
-   E-MALFORMED s" 1:4: expected `<!--` or `<![CDATA[`, found `<`; write `<!--` for a comment or `<![CDATA[` for character data" SAID ;
+   s" <a><!x></a>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:4: expected `<!--` or `<![CDATA[`, found `<`; write `<!--` for a comment or `<![CDATA[` for character data" SAID ;
 
 : NAME-TEXTS ( -- )
    s" a name that starts with neither a letter, `_` nor `:` is rejected at it" T-LABEL
-   s\" <a>\n<\xC3\xA9 1='x'/></a>" E-MALFORMED BAD
-   E-MALFORMED s" 2:5: expected a name, found `1`; start the name with a letter, `_` or `:`" SAID
+   s\" <a>\n<\xC3\xA9 1='x'/></a>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 2:5: expected a name, found `1`; start the name with a letter, `_` or `:`" SAID
    s" a name that starts with `:` is rejected at the name" T-LABEL
-   s" <:a/>" E-NAMESPACE BAD
-   E-NAMESPACE s" 1:2: expected a name that starts with a letter or `_`, found `:a`; write a prefix before the leading `:`, or remove it" SAID
+   s" <:a/>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 1:2: expected a name that starts with a letter or `_`, found `:a`; write a prefix before the leading `:`, or remove it" SAID
    s" a name with a second `:` is rejected at the name" T-LABEL
-   s" <p:a:b/>" E-NAMESPACE BAD
-   E-NAMESPACE s" 1:2: expected a name with at most one `:`, between a prefix and a local name, found `p:a:b`; write the name as `prefix:local` or `local`" SAID
+   s" <p:a:b/>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 1:2: expected a name with at most one `:`, between a prefix and a local name, found `p:a:b`; write the name as `prefix:local` or `local`" SAID
    s" an attribute whose local name starts with a digit is rejected at the attribute's name" T-LABEL
-   s" <a p:1='x'/>" E-NAMESPACE BAD
-   E-NAMESPACE s" 1:4: expected a local name after `:` that starts with a letter or `_`, found `p:1`; start the part after `:` with a letter or `_`" SAID
+   s" <a p:1='x'/>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 1:4: expected a local name after `:` that starts with a letter or `_`, found `p:1`; start the part after `:` with a letter or `_`" SAID
    s" an unquoted attribute value is rejected at it" T-LABEL
-   s" <a b=c/>" E-MALFORMED BAD
-   E-MALFORMED s\" 1:6: expected a value in `\"` or `'` quotes, found `c`; write the value between `\"` or `'` quotes" SAID
+   s" <a b=c/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s\" 1:6: expected a value in `\"` or `'` quotes, found `c`; write the value between `\"` or `'` quotes" SAID
    s" a `<` in an attribute value is rejected at it" T-LABEL
-   s" <a q='<x'/>" E-MALFORMED BAD
-   E-MALFORMED s" 1:7: expected the attribute value's closing quote, found `<`; close the value with its quote, or write `&lt;` for a literal `<`" SAID ;
+   s" <a q='<x'/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s" 1:7: expected the attribute value's closing quote, found `<`; close the value with its quote, or write `&lt;` for a literal `<`" SAID ;
 
 : NAMESPACE-TEXTS ( -- )
    s" a declaration of the xmlns prefix is rejected at its name" T-LABEL
-   s" <a xmlns:xmlns='u'/>" E-NAMESPACE BAD
-   E-NAMESPACE s" 1:4: expected a prefix other than `xmlns`, found `xmlns:xmlns`; remove the declaration: XML binds `xmlns` itself" SAID
+   s" <a xmlns:xmlns='u'/>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 1:4: expected a prefix other than `xmlns`, found `xmlns:xmlns`; remove the declaration: XML binds `xmlns` itself" SAID
    s" a binding of the xmlns namespace is rejected at its name" T-LABEL
-   s" <a xmlns:p='http://www.w3.org/2000/xmlns/'/>" E-NAMESPACE BAD
-   E-NAMESPACE s" 1:4: expected a namespace other than `http://www.w3.org/2000/xmlns/`, found `xmlns:p`; declare another namespace URI, or remove the declaration" SAID
+   s" <a xmlns:p='http://www.w3.org/2000/xmlns/'/>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 1:4: expected a namespace other than `http://www.w3.org/2000/xmlns/`, found `xmlns:p`; declare another namespace URI, or remove the declaration" SAID
    s" the xml prefix bound to another namespace is rejected at its name" T-LABEL
-   s" <a xmlns:xml='other'/>" E-NAMESPACE BAD
-   E-NAMESPACE s" 1:4: expected `xml` bound to `http://www.w3.org/XML/1998/namespace`, found `xmlns:xml`; remove the declaration: XML binds `xml` itself" SAID
+   s" <a xmlns:xml='other'/>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 1:4: expected `xml` bound to `http://www.w3.org/XML/1998/namespace`, found `xmlns:xml`; remove the declaration: XML binds `xml` itself" SAID
    s" the XML namespace bound to another prefix is rejected at its name" T-LABEL
-   s" <a xmlns='http://www.w3.org/XML/1998/namespace'/>" E-NAMESPACE BAD
-   E-NAMESPACE s" 1:4: expected a namespace other than `http://www.w3.org/XML/1998/namespace`, found `xmlns`; write the `xml` prefix for that namespace, and remove this declaration" SAID
+   s" <a xmlns='http://www.w3.org/XML/1998/namespace'/>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 1:4: expected a namespace other than `http://www.w3.org/XML/1998/namespace`, found `xmlns`; write the `xml` prefix for that namespace, and remove this declaration" SAID
    s" an empty prefix declaration counts the line and the bytes of the column" T-LABEL
-   s\" <r>\n\xC3\xA9<a xmlns:p=''/></r>" E-NAMESPACE BAD
-   E-NAMESPACE s" 2:6: expected a prefix declaration with a URI, found `xmlns:p`; write the prefix's URI: XML 1.0 cannot undeclare a prefix" SAID
+   s\" <r>\n\xC3\xA9<a xmlns:p=''/></r>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 2:6: expected a prefix declaration with a URI, found `xmlns:p`; write the prefix's URI: XML 1.0 cannot undeclare a prefix" SAID
    s" a repeated attribute is rejected at the second one" T-LABEL
-   s" <a q='1' q='2'/>" E-NAMESPACE BAD
-   E-NAMESPACE s" 1:10: expected an attribute the element does not already have, found `q`; remove the repeated attribute, or give it another name or namespace" SAID
+   s" <a q='1' q='2'/>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 1:10: expected an attribute the element does not already have, found `q`; remove the repeated attribute, or give it another name or namespace" SAID
    s" a repeated expanded attribute name is rejected at the second one" T-LABEL
-   s" <a xmlns:p='u' xmlns:q='u' p:x='1' q:x='2'/>" E-NAMESPACE BAD
-   E-NAMESPACE s" 1:36: expected an attribute the element does not already have, found `q:x`; remove the repeated attribute, or give it another name or namespace" SAID
+   s" <a xmlns:p='u' xmlns:q='u' p:x='1' q:x='2'/>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 1:36: expected an attribute the element does not already have, found `q:x`; remove the repeated attribute, or give it another name or namespace" SAID
    s" an input reader rejects an unbound prefix at the name in the whole input" T-LABEL
    s\" <r>\n<a>\n<p:b/></a></r>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
-   INPUT-FAILURE E-NAMESPACE T=
-   E-NAMESPACE s" 3:2: expected a prefix an `xmlns:` declaration binds in scope, found `p:b`; declare it with `xmlns:` on this element or an enclosing one" SAID
+   INPUT-FAILURE XML:E-NAMESPACE T=
+   XML:E-NAMESPACE s" 3:2: expected a prefix an `xmlns:` declaration binds in scope, found `p:b`; declare it with `xmlns:` on this element or an enclosing one" SAID
    s" an element name with the xmlns prefix is rejected at the name" T-LABEL
-   s" <xmlns:a/>" E-NAMESPACE BAD
-   E-NAMESPACE s" 1:2: expected an element name without the `xmlns` prefix, found `xmlns:a`; rename the element: `xmlns` marks only namespace declarations" SAID ;
+   s" <xmlns:a/>" XML:E-NAMESPACE BAD
+   XML:E-NAMESPACE s" 1:2: expected an element name without the `xmlns` prefix, found `xmlns:a`; rename the element: `xmlns` marks only namespace declarations" SAID ;
 
 
 : DECLARATION-TEXTS ( -- )
    s" a declaration without attributes names `version` where it is missing" T-LABEL
-   s" <?xml?><a/>" E-MALFORMED BAD
-   E-MALFORMED s\" 1:6: expected `version=\q1.0\q`, found `?`; write `version=\q1.0\q` after `<?xml`" SAID
+   s" <?xml?><a/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s\" 1:6: expected `version=\q1.0\q`, found `?`; write `version=\q1.0\q` after `<?xml`" SAID
    s" a declaration whose first attribute is not `version` names that attribute" T-LABEL
-   s" <?xml encoding='UTF-8' version='1.0'?><a/>" E-MALFORMED BAD
-   E-MALFORMED s\" 1:7: expected `version` as the first attribute, found `encoding`; write `version=\q1.0\q` before the declaration's other attributes" SAID
+   s" <?xml encoding='UTF-8' version='1.0'?><a/>" XML:E-MALFORMED BAD
+   XML:E-MALFORMED s\" 1:7: expected `version` as the first attribute, found `encoding`; write `version=\q1.0\q` before the declaration's other attributes" SAID
    s" a version other than 1.0 is rejected at its value" T-LABEL
-   s" <?xml version='1.1'?><a/>" E-ENCODING BAD
-   E-ENCODING s\" 1:16: expected `1.0`, found `1.1`; declare `version=\q1.0\q`: the reader reads XML 1.0" SAID
+   s" <?xml version='1.1'?><a/>" XML:E-ENCODING BAD
+   XML:E-ENCODING s\" 1:16: expected `1.0`, found `1.1`; declare `version=\q1.0\q`: the reader reads XML 1.0" SAID
    s" an input reader counts a byte order mark's three bytes in the column" T-LABEL
    s\" \xEF\xBB\xBF<?xml version='1.0' encoding='US-ASCII'?><a/>"
-   1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-FAILURE E-ENCODING T=
-   E-ENCODING s\" 1:34: expected `UTF-8` after a UTF-8 byte order mark, found `US-ASCII`; declare `encoding=\qUTF-8\q`, or remove the byte order mark" SAID
+   1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-FAILURE XML:E-ENCODING T=
+   XML:E-ENCODING s\" 1:34: expected `UTF-8` after a UTF-8 byte order mark, found `US-ASCII`; declare `encoding=\qUTF-8\q`, or remove the byte order mark" SAID
    s" US-ASCII after a byte order mark is rejected at the value on its line" T-LABEL
-   s\" \xEF\xBB\xBF<?xml\nversion='1.0' encoding='US-ASCII'?><a/>" E-ENCODING BAD
-   E-ENCODING s\" 2:25: expected `UTF-8` after a UTF-8 byte order mark, found `US-ASCII`; declare `encoding=\qUTF-8\q`, or remove the byte order mark" SAID
+   s\" \xEF\xBB\xBF<?xml\nversion='1.0' encoding='US-ASCII'?><a/>" XML:E-ENCODING BAD
+   XML:E-ENCODING s\" 2:25: expected `UTF-8` after a UTF-8 byte order mark, found `US-ASCII`; declare `encoding=\qUTF-8\q`, or remove the byte order mark" SAID
    s" a plain reader takes UTF-8 or US-ASCII only" T-LABEL
-   s" <?xml version='1.0' encoding='ISO-8859-1'?><a/>" E-ENCODING BAD
-   E-ENCODING s\" 1:31: expected `UTF-8` or `US-ASCII`, found `ISO-8859-1`; save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID ;
+   s" <?xml version='1.0' encoding='ISO-8859-1'?><a/>" XML:E-ENCODING BAD
+   XML:E-ENCODING s\" 1:31: expected `UTF-8` or `US-ASCII`, found `ISO-8859-1`; save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID ;
 
 : SCALAR-TEXTS ( -- )
    s" a character XML 1.0 does not allow is rejected where it stands" T-LABEL
-   s\" <a>\n\x01</a>" E-SCALAR BAD
-   E-SCALAR s" 2:1: expected a character XML 1.0 allows, found byte $01; remove the character, or write one XML 1.0 allows" SAID
+   s\" <a>\n\x01</a>" XML:E-SCALAR BAD
+   XML:E-SCALAR s" 2:1: expected a character XML 1.0 allows, found byte $01; remove the character, or write one XML 1.0 allows" SAID
    s" a reference to a character XML 1.0 does not allow is rejected at its `&`" T-LABEL
-   s" <a>&#1;</a>" E-SCALAR BAD
-   E-SCALAR s" 1:4: expected a character XML 1.0 allows, found `&#1;`; remove the character, or write one XML 1.0 allows" SAID
+   s" <a>&#1;</a>" XML:E-SCALAR BAD
+   XML:E-SCALAR s" 1:4: expected a character XML 1.0 allows, found `&#1;`; remove the character, or write one XML 1.0 allows" SAID
    s" a reference to no predefined entity is rejected at its `&`" T-LABEL
-   s" <a>&foo;</a>" E-ENTITY BAD
-   E-ENTITY s" 1:4: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&foo;`; write `&amp;` for a literal `&`, and end each reference with `;`" SAID
+   s" <a>&foo;</a>" XML:E-ENTITY BAD
+   XML:E-ENTITY s" 1:4: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&foo;`; write `&amp;` for a literal `&`, and end each reference with `;`" SAID
    s" a character reference with a digit outside its radix is rejected at its `&`" T-LABEL
-   s" <a>&#xZZ;</a>" E-ENTITY BAD
-   E-ENTITY s" 1:4: expected a character reference such as `&#65;` or `&#x41;`, found `&#xZZ;`; write the character's number in decimal after `&#`, or in hex after `&#x`, and end the reference with `;`" SAID
+   s" <a>&#xZZ;</a>" XML:E-ENTITY BAD
+   XML:E-ENTITY s" 1:4: expected a character reference such as `&#65;` or `&#x41;`, found `&#xZZ;`; write the character's number in decimal after `&#`, or in hex after `&#x`, and end the reference with `;`" SAID
    s" a byte no UTF-8 character starts counts a two-byte character's bytes in the column" T-LABEL
-   s\" <a>\n\xC3\xA9\xFF</a>" E-UTF8 BAD
-   E-UTF8 s" 2:3: expected a UTF-8 character, found byte $FF; write the text in UTF-8" SAID
+   s\" <a>\n\xC3\xA9\xFF</a>" XML:E-UTF8 BAD
+   XML:E-UTF8 s" 2:3: expected a UTF-8 character, found byte $FF; write the text in UTF-8" SAID
    s" ESCAPE-TEXT places bad UTF-8 in the text it is given" T-LABEL
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ESCAPED-OUT !
-   [: s\" ab\xFF" ESCAPED-OUT @ ESCAPE-TEXT ;] E-UTF8 TTHROWSQ
+   [: s\" ab\xFF" ESCAPED-OUT @ XML:ESCAPE-TEXT ;] XML:E-UTF8 TTHROWSQ
    ESCAPED-OUT @ VEC:DELETE
-   E-UTF8 s" 1:3: expected a UTF-8 character, found byte $FF; write the text in UTF-8" SAID
+   XML:E-UTF8 s" 1:3: expected a UTF-8 character, found byte $FF; write the text in UTF-8" SAID
    s" a US-ASCII input stream places a high byte of a later chunk in the whole input" T-LABEL
    s\" <?xml version='1.0' encoding='US-ASCII'?>\n<a>\xC3\xA9</a>"
-   1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-FAILURE E-ENCODING T=
-   E-ENCODING s\" 2:4: expected a US-ASCII character, found `...`; write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID
+   1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-FAILURE XML:E-ENCODING T=
+   XML:E-ENCODING s\" 2:4: expected a US-ASCII character, found `...`; write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID
    s" a US-ASCII input stream places a high byte its first chunk holds" T-LABEL
    s\" <?xml version='1.0' encoding='US-ASCII'?>\n<a>\xC3\xA9</a>"
-   $7FFFFFFFFFFFFFFF $7FFFFFFFFFFFFFFF INPUT-SET INPUT-FAILURE E-ENCODING T=
-   E-ENCODING s\" 2:4: expected a US-ASCII character, found `\xC3\xA9`; write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID ;
+   $7FFFFFFFFFFFFFFF $7FFFFFFFFFFFFFFF INPUT-SET INPUT-FAILURE XML:E-ENCODING T=
+   XML:E-ENCODING s\" 2:4: expected a US-ASCII character, found `\xC3\xA9`; write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID ;
 
 DECODED-NEW
 T-RESET
@@ -1214,5 +1213,4 @@ MANY-ATTRIBUTES
 MANY-BINDINGS
 DECODED @ VEC:DELETE
 T-REPORT
-;using
 ;package

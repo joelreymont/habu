@@ -14,7 +14,6 @@ require src/lib/ffi-abi.f
 require src/lib/span.f
 
 package FS
-using MEM
 
 private
 STAT-CAP PATHZ-CAP + constant WORK-BYTES
@@ -76,34 +75,33 @@ FUNCTION: STAT-CALL stat ( ^u8 ^u8 -- i32 )
 
 
 : COMPARE-IDENTITIES ( str str ^u8 NUM:alloc-byte-len -- bool )
-   ALLOCATION>SPAN {: left:str right:str work :}
+   MEM:ALLOCATION>SPAN {: left:str right:str work :}
    left work IDENTITY STAT-EXISTS? {: left-device:n left-inode:n left-exists:bool :}
    right work IDENTITY STAT-EXISTS? {: right-device:n right-inode:n right-exists:bool :}
    left-exists right-exists and left-device right-device = and left-inode right-inode = and ;
 
 
 : LOOKUP-IDENTITY ( str ^u8 NUM:alloc-byte-len -- n n )
-   ALLOCATION>SPAN {: text:str work :}
+   MEM:ALLOCATION>SPAN {: text:str work :}
    text work IDENTITY 0<> if E-FS-STAT throw then ;
 
 : INSPECT-IDENTITY ( str ^u8 NUM:alloc-byte-len -- n n bool )
-   ALLOCATION>SPAN {: text:str work :}
+   MEM:ALLOCATION>SPAN {: text:str work :}
    text work IDENTITY STAT-INSPECTED? ;
 
 : SAME-OPEN-FILE? ( fd fd -- bool )
-   STAT-CAP BYTES-ALLOC-LEN [: COMPARE-FDS ;] WITH-BYTES ;
+   STAT-CAP MEM:BYTES-ALLOC-LEN [: COMPARE-FDS ;] MEM:WITH-BYTES ;
 
 public
 \ WITH-BYTES hands the quotation exactly the WORK-BYTES mapping it allocated
 \ here; ALLOCATION>SPAN preserves that producer's base and reach together.
 : SAMEFILE ( str str -- bool )
-   WORK-BYTES BYTES-ALLOC-LEN [: COMPARE-IDENTITIES ;] WITH-BYTES ;
+   WORK-BYTES MEM:BYTES-ALLOC-LEN [: COMPARE-IDENTITIES ;] MEM:WITH-BYTES ;
 
 : PATH-IDENTITY ( str -- n n )
-   WORK-BYTES BYTES-ALLOC-LEN [: LOOKUP-IDENTITY ;] WITH-BYTES ;
+   WORK-BYTES MEM:BYTES-ALLOC-LEN [: LOOKUP-IDENTITY ;] MEM:WITH-BYTES ;
 
 : TRY-PATH-IDENTITY ( str -- n n bool )
-   WORK-BYTES BYTES-ALLOC-LEN [: INSPECT-IDENTITY ;] WITH-BYTES ;
+   WORK-BYTES MEM:BYTES-ALLOC-LEN [: INSPECT-IDENTITY ;] MEM:WITH-BYTES ;
 
-;using
 ;package

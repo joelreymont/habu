@@ -9,7 +9,6 @@ require src/lib/task.f
 require src/lib/ffi-callback.f
 
 package FFI-CB-TEST
-using FFI-CB
 
 \ A worker sorts through CMP-FN, which the scenario binds to the main region; a
 \ non-zero argument first waits until the main thread is inside a foreign call
@@ -26,7 +25,7 @@ using FFI-CB
    0 <> if s" ffi-callback-child: pthread_create failed" EXIT-STATUS:SYSTEM die then ;
 
 : RAID-START ( [ -- ] -- ) {: body :}
-   CMP TASK:SELF-CONTEXT ENTRY CMP-FN !
+   CMP TASK:SELF-CONTEXT FFI-CB:ENTRY CMP-FN !
    body WORKER-A TASK:ACTIVATE
    WAIT-INSIDE ;
 
@@ -48,9 +47,9 @@ using FFI-CB
    OUTER BYTE-VIEW ROW-N CELL CMP-FN @ QSORT ;
 
 : UNBOUND ( -- )
-   CMP TASK:SELF-CONTEXT ENTRY CMP-FN !
+   CMP TASK:SELF-CONTEXT FFI-CB:ENTRY CMP-FN !
    SORT-PLAIN if s" unbound: sorted while bound" type cr then
-   CMP UNBIND
+   CMP FFI-CB:UNBIND
    SORT-STALE
    s" ffi-callback-child: unbound was not rejected" EXIT-STATUS:FAILURE die ;
 
@@ -73,7 +72,7 @@ CALLBACK: CMP-PARK ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 ' CMP-PARK-IMPL CMP-PARK-BODY !
 
 : WORK-PARKS ( -- )
-   CMP-PARK TASK:SELF-CONTEXT ENTRY {: fn:n :}
+   CMP-PARK TASK:SELF-CONTEXT FFI-CB:ENTRY {: fn:n :}
    OUTER 10 ROW-FILL
    OUTER BYTE-VIEW ROW-N CELL fn QSORT ;
 
@@ -104,7 +103,7 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
 ' CMP-YIELD-IMPL CMP-YIELD-BODY !
 
 : WORK-YIELDS ( -- )
-   CMP-YIELD TASK:SELF-CONTEXT ENTRY {: fn:n :}
+   CMP-YIELD TASK:SELF-CONTEXT FFI-CB:ENTRY {: fn:n :}
    OUTER 40 ROW-FILL
    OUTER BYTE-VIEW ROW-N CELL fn QSORT
    OUTER 40 ROW-SORTED? if 1 SORTED atomic! then
@@ -125,7 +124,7 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
 \ A thread C started is no task's, so a slot on the caller's context finds no
 \ region for it.
 : CALLER-THREAD ( -- )
-   START TASK:CALLER-CONTEXT ENTRY {: fn:n :}
+   START TASK:CALLER-CONTEXT FFI-CB:ENTRY {: fn:n :}
    s" caller-thread: the slot is bound to the caller's context" type cr
    fn 1 THREAD-START STARTED
    10000 >MS TASK:SLEEP
@@ -164,5 +163,4 @@ variable GROWN-FN                     \ the C entry the thrown text answered
 
 DISPATCH
 
-;using
 ;package

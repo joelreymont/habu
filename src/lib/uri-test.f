@@ -15,7 +15,6 @@ require src/lib/uri.f
 require src/lib/test/counting-allocator.f
 
 package URI-TEST
-using SPAN
 
 64 SPAN-BUFFER: DST
 64 SPAN-BUFFER: URI-DST
@@ -27,7 +26,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 : PATH$ ( str -- str )
    DST URI:FILE>PATH {: u:n :}
-   DST $ STR:DATA u >str ;
+   DST SPAN:$ STR:DATA u >str ;
 
 : PATH= ( str str -- )
    {: a:str b:str :}
@@ -88,10 +87,10 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 : UNTOUCHED ( n -- )
    {: n:n :}
-   n 0 ?do DST i U8@ CANARY T= loop ;
+   n 0 ?do DST i SPAN:U8@ CANARY T= loop ;
 
 : FOUR-SHORT ( -- )
-   s" file:///abcd" DST 4 TAKE URI:FILE>PATH drop ;
+   s" file:///abcd" DST 4 SPAN:TAKE URI:FILE>PATH drop ;
 
 : LATE-ESCAPE ( -- )
    s" file:///abcd%G" DECODE-DROP ;
@@ -103,18 +102,18 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 \ measured against the span, before the first byte lands. A span of exactly the
 \ path's length is enough.
 : ALL-OR-NOTHING ( -- )
-   CANARY DST FILL
+   CANARY DST SPAN:FILL
    [: FOUR-SHORT ;] E-SPAN-CAPACITY TTHROWSQ
    5 UNTOUCHED
    [: LATE-ESCAPE ;] E-URI-ESCAPE TTHROWSQ
    5 UNTOUCHED
    [: NEGATIVE-LENGTH ;] E-SPAN-LENGTH TTHROWSQ
-   s" file:///abcd" DST 5 TAKE URI:FILE>PATH 5 T=
-   DST $ STR:DATA 5 >str s" /abcd" T$= ;
+   s" file:///abcd" DST 5 SPAN:TAKE URI:FILE>PATH 5 T=
+   DST SPAN:$ STR:DATA 5 >str s" /abcd" T$= ;
 
 : URI$ ( str -- str )
    URI-DST URI:PATH>FILE {: u:n :}
-   URI-DST $ STR:DATA u >str ;
+   URI-DST SPAN:$ STR:DATA u >str ;
 
 : URI= ( str str -- )
    {: a:str b:str :}
@@ -146,7 +145,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    [: s" file:///a" ENCODE-DROP ;] E-URI-RELATIVE TTHROWSQ ;
 
 : ENCODE-SHORT ( -- )   \ `file:///a%20b` is 13 bytes
-   s" /a b" DST 12 TAKE URI:PATH>FILE drop ;
+   s" /a b" DST 12 SPAN:TAKE URI:PATH>FILE drop ;
 
 : ENCODE-RELATIVE ( -- )
    s" a b" DST URI:PATH>FILE drop ;
@@ -157,15 +156,15 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 \ An encoding rejected writes nothing, and a span of exactly the URI's length
 \ is enough.
 : ENCODE-ALL-OR-NOTHING ( -- )
-   CANARY DST FILL
+   CANARY DST SPAN:FILL
    [: ENCODE-SHORT ;] E-SPAN-CAPACITY TTHROWSQ
    13 UNTOUCHED
    [: ENCODE-RELATIVE ;] E-URI-RELATIVE TTHROWSQ
    13 UNTOUCHED
    [: ENCODE-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    13 UNTOUCHED
-   s" /a b" DST 13 TAKE URI:PATH>FILE 13 T=
-   DST $ STR:DATA 13 >str s" file:///a%20b" T$= ;
+   s" /a b" DST 13 SPAN:TAKE URI:PATH>FILE 13 T=
+   DST SPAN:$ STR:DATA 13 >str s" file:///a%20b" T$= ;
 
 : TRIP ( n -- )
    {: b:n :}
@@ -179,7 +178,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 : FORM$ ( str -- str )
    URI-DST URI:FORM-ENCODE {: u:n :}
-   URI-DST $ STR:DATA u >str ;
+   URI-DST SPAN:$ STR:DATA u >str ;
 
 : FORM-SAFE$ ( -- str )
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*-._" ;
@@ -254,7 +253,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" a b*-._~/" FORM$ s" a+b*-._%7E%2F" T$= ;
 
 : FORM-SHORT ( -- )   \ `a+%7E` is 5 bytes
-   s" a ~" DST 4 TAKE URI:FORM-ENCODE drop ;
+   s" a ~" DST 4 SPAN:TAKE URI:FORM-ENCODE drop ;
 
 : FORM-NEGATIVE ( -- )
    s" a" STR:DATA -1 >str DST URI:FORM-ENCODE drop ;
@@ -262,13 +261,13 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 \ A form encoding rejected writes nothing, and a span of exactly its length
 \ is enough.
 : FORM-ALL-OR-NOTHING ( -- )
-   CANARY DST FILL
+   CANARY DST SPAN:FILL
    [: FORM-SHORT ;] E-SPAN-CAPACITY TTHROWSQ
    5 UNTOUCHED
    [: FORM-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    5 UNTOUCHED
-   s" a ~" DST 5 TAKE URI:FORM-ENCODE 5 T=
-   DST $ STR:DATA 5 >str s" a+%7E" T$= ;
+   s" a ~" DST 5 SPAN:TAKE URI:FORM-ENCODE 5 T=
+   DST SPAN:$ STR:DATA 5 >str s" a+%7E" T$= ;
 
 \ A dot segment in each reading, raw or decoded once, and none decoded twice.
 : DOT-SEGMENTS ( -- )
@@ -302,7 +301,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 : RESOLVED$ ( str str -- str )
    URL-DST URI:RESOLVE {: u:n :}
-   URL-DST $ STR:DATA u >str ;
+   URL-DST SPAN:$ STR:DATA u >str ;
 
 : RESOLVE= ( str str str -- )   \ base, reference, target
    {: b:str r:str t:str :}
@@ -403,16 +402,16 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" 1a:b" s" http://a/b/c/1a:b" RFC= ;
 
 : RESOLVE-SHORT ( -- )   \ `http://a/b/c/g` is 14 bytes
-   s" http://a/b/c/d;p?q" s" g" DST 13 TAKE URI:RESOLVE drop ;
+   s" http://a/b/c/d;p?q" s" g" DST 13 SPAN:TAKE URI:RESOLVE drop ;
 
 \ A span short of the target writes nothing; one of exactly its length is
 \ enough.
 : RESOLVE-ALL-OR-NOTHING ( -- )
-   CANARY DST FILL
+   CANARY DST SPAN:FILL
    [: RESOLVE-SHORT ;] E-SPAN-CAPACITY TTHROWSQ
    14 UNTOUCHED
-   s" http://a/b/c/d;p?q" s" g" DST 14 TAKE URI:RESOLVE 14 T=
-   DST $ STR:DATA 14 >str s" http://a/b/c/g" T$= ;
+   s" http://a/b/c/d;p?q" s" g" DST 14 SPAN:TAKE URI:RESOLVE 14 T=
+   DST SPAN:$ STR:DATA 14 >str s" http://a/b/c/g" T$= ;
 
 \ A reference resolved against an http(s) base: a server's pages, RFC 3986's
 \ examples, paths holding `:`, authorities rejected and a short span.
@@ -463,9 +462,9 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 : QUERY-ENCODES ( -- )
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
    s" a+b&c=d/" v URI:QUERY-ENCODE
-   v VEC:SPAN $ s" a%2Bb%26c%3Dd%2F" T$=
+   v VEC:SPAN SPAN:$ s" a%2Bb%26c%3Dd%2F" T$=
    s" MaterialDocument eq '4900037654'" v URI:QUERY-ENCODE
-   v VEC:SPAN $
+   v VEC:SPAN SPAN:$
    s" a%2Bb%26c%3Dd%2FMaterialDocument%20eq%20%274900037654%27" T$=
    v VEC:DELETE ;
 
@@ -473,8 +472,8 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 : QUERY-OWN ( -- )
    ALLOC-TEST:MOVING 0 [type] u8 VEC:NEW {: v:^ :}
    s" a b/" v VEC:APPEND
-   v VEC:SPAN $ v URI:QUERY-ENCODE
-   v VEC:SPAN $ s" a b/a%20b%2F" T$=
+   v VEC:SPAN SPAN:$ v URI:QUERY-ENCODE
+   v VEC:SPAN SPAN:$ s" a b/a%20b%2F" T$=
    v VEC:DELETE ;
 
 : MAIN ( -- )
@@ -511,5 +510,4 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 MAIN
 
-;using
 ;package

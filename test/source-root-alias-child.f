@@ -2,7 +2,6 @@
 require src/lib/test/assert.f
 require test/fixtures/source-root-count.f
 
-using SOURCE-ROOT
 package SOURCE-ROOT-ALIAS-CHILD
 
 create PATH-BUF PATH-CAP allot
@@ -21,50 +20,49 @@ variable PATH-U
 : KNOWN ( str -- )
    PATH!
    PATH$ REQUIRE-REG:ENGINE-PROVIDES? TTRUE
-   PATH$ RESOLVE TTRUE drop
-   PATH$ ENTRY-RESOLVE TTRUE drop
+   PATH$ SOURCE-ROOT:RESOLVE TTRUE drop
+   PATH$ SOURCE-ROOT:ENTRY-RESOLVE TTRUE drop
    PATH$ required ;
 
 : UNKNOWN ( str -- )
    PATH!
    PATH$ REQUIRE-REG:ENGINE-PROVIDES? TFALSE
-   PATH$ RESOLVE TFALSE drop ;
+   PATH$ SOURCE-ROOT:RESOLVE TFALSE drop ;
 
 : PORTABLE ( -- )
    REQUIRE-REG:COUNT {: before:n :}
    s" src/lib/error.f" KNOWN
    s" ./src/lib/error.f" KNOWN
    s" src/lib/../lib/error.f" KNOWN
-   CWD$ s" src/lib/error.f" JOIN KNOWN
-   CWD$ s" ./src/lib/../lib/error.f" JOIN KNOWN
+   SOURCE-ROOT:CWD$ s" src/lib/error.f" SOURCE-ROOT:JOIN KNOWN
+   SOURCE-ROOT:CWD$ s" ./src/lib/../lib/error.f" SOURCE-ROOT:JOIN KNOWN
    \ src is a link too, so this checkout is a tree and the engine root.
    s" src/core/util.f" KNOWN
    REQUIRE-REG:COUNT before T=
    REQUIRE-REG:SNAPSHOT
    s" src/lib/error.f" REQUIRE-REG:ENGINE-PROVIDES? TTRUE
-   s" src/lib/error.f" RESOLVE TFALSE drop
+   s" src/lib/error.f" SOURCE-ROOT:RESOLVE TFALSE drop
    REQUIRE-REG:RESTORE ;
 
 : OWNED ( str -- )
-   [: s" src/lib/error.f" required ;] WITH ;
+   [: s" src/lib/error.f" required ;] SOURCE-ROOT:WITH ;
 
 : DISTINCT ( -- )
-   ROOT$ s" a/src/lib/error.f" JOIN UNKNOWN
-   ROOT$ s" a" JOIN OWNED
-   ROOT$ s" b/src/lib/error.f" JOIN UNKNOWN
-   ROOT$ s" b" JOIN OWNED
+   ROOT$ s" a/src/lib/error.f" SOURCE-ROOT:JOIN UNKNOWN
+   ROOT$ s" a" SOURCE-ROOT:JOIN OWNED
+   ROOT$ s" b/src/lib/error.f" SOURCE-ROOT:JOIN UNKNOWN
+   ROOT$ s" b" SOURCE-ROOT:JOIN OWNED
    SOURCE-ROOT-COUNT:LOADED @ 11 T=
    \ Lexical branch/.. is CWD, but physical branch/.. is ROOT/other.
    s" branch/../src/lib/error.f" UNKNOWN
-   CWD$ s" branch/../src/lib/error.f" JOIN UNKNOWN
+   SOURCE-ROOT:CWD$ s" branch/../src/lib/error.f" SOURCE-ROOT:JOIN UNKNOWN
    s" branch/../src/lib/error.f" required
-   CWD$ s" branch/../src/lib/error.f" JOIN required
+   SOURCE-ROOT:CWD$ s" branch/../src/lib/error.f" SOURCE-ROOT:JOIN required
    SOURCE-ROOT-COUNT:LOADED @ 111 T= ;
 
 : RUN ( -- )
-   T-RESET CWD$ [: PORTABLE DISTINCT ;] WITH T-REPORT
+   T-RESET SOURCE-ROOT:CWD$ [: PORTABLE DISTINCT ;] SOURCE-ROOT:WITH T-REPORT
    s" source root aliases: ok" type cr ;
 
 RUN
 ;package
-;using

@@ -64,8 +64,6 @@ require src/compiler/native/relax.f
 
 package COMP
 package X86-64
-using X64ASM
-using PLACE
 
 8 constant NVREG
 
@@ -77,16 +75,16 @@ using PLACE
 : SHORT? ( n -- bool ) {: v:n :}
    v -128 >= v 127 <= and ;
 
-: COND ( cc -- condition )
+: COND ( cc -- X64ASM:condition )
    {: c:cc :}
    c CC>N {: k:n :}
-   k 0 = if C-E exit then
-   k 1 = if C-NE exit then
-   k 2 = if C-L exit then
-   k 3 = if C-GE exit then
-   k 4 = if C-LE exit then
-   k 5 = if C-G exit then
-   E-OPERAND throw ;
+   k 0 = if X64ASM:C-E exit then
+   k 1 = if X64ASM:C-NE exit then
+   k 2 = if X64ASM:C-L exit then
+   k 3 = if X64ASM:C-GE exit then
+   k 4 = if X64ASM:C-LE exit then
+   k 5 = if X64ASM:C-G exit then
+   X64ASM:E-OPERAND throw ;
 
 variable FLAGS                        \ nonzero while the condition codes are held
 variable HELD                         \ nonzero while r12 holds the index
@@ -98,7 +96,7 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 0 constant FORM-JMP
 1 constant FORM-JCC
 
-: SINK ( -- ^VEC:vector<u8> ) RAW @ ;
+: SINK ( -- ^VEC:vector<u8> ) PLACE:RAW @ ;
 
 \ A body's contract: rbp is DATA, rbx the data stack pointer, r12 the loop
 \ index, which any callee may write, and r13-r15 the other engine registers;
@@ -107,23 +105,23 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 \ value between two of its words. A body is entered by `call`, leaves by `ret`
 \ and saves nothing; its frame on the machine stack is its own cells rounded to
 \ 16.
-: DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
-: DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
-: IDX ( -- r64 ) ENGINE-GPR:X64-INDEX >R64 ;
+: DSP ( -- X64ASM:r64 ) ENGINE-GPR:X64-DSTACK X64ASM:>R64 ;
+: DATA-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-RBASE X64ASM:>R64 ;
+: IDX ( -- X64ASM:r64 ) ENGINE-GPR:X64-INDEX X64ASM:>R64 ;
 
-: REG ( vreg -- r64 )
+: REG ( vreg -- X64ASM:r64 )
    {: v:vreg :}
    v VREG>N {: k:n :}
-   k 0 < k NVREG >= or if E-OPERAND throw then
-   k 0 = if RCX exit then
-   k 1 = if RDX exit then
-   k 2 = if RSI exit then
-   k 3 = if RDI exit then
-   k 4 + >R64 ;
+   k 0 < k NVREG >= or if X64ASM:E-OPERAND throw then
+   k 0 = if X64ASM:RCX exit then
+   k 1 = if X64ASM:RDX exit then
+   k 2 = if X64ASM:RSI exit then
+   k 3 = if X64ASM:RDI exit then
+   k 4 + X64ASM:>R64 ;
 
 \ The low k bytes of v into OUT at off.
 : PUT ( n n n -- ) {: v:n off:n k:n :}
-   OUT @ off VEC:AT {: p:^ :}
+   PLACE:OUT @ off VEC:AT {: p:^ :}
    k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
 
 : REL32! ( n n -- )
@@ -133,36 +131,36 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 
 \ Load the constant n into r with the shortest form that holds it and keeps
 \ held condition codes.
-: LIT-IN ( n r64 ^VEC:vector<u8> -- ) {: v:n r:r64 buf:^ :}
-   r R64>N >R32 {: r4:r32 :}
-   v 0 =  FLAGS @ 0=  and if r4 r4 buf ENC-XOR32-RR exit then
-   v 0 >= v $FFFFFFFF <= and if r4 v >IMM32 buf ENC-MOV32-RI32 exit then
-   v IMM? if r v >IMM32 buf ENC-MOV-RI32 exit then
-   r v >IMM64 buf ENC-MOV-RI64 ;
+: LIT-IN ( n X64ASM:r64 ^VEC:vector<u8> -- ) {: v:n r:X64ASM:r64 buf:^ :}
+   r X64ASM:R64>N X64ASM:>R32 {: r4:X64ASM:r32 :}
+   v 0 =  FLAGS @ 0=  and if r4 r4 buf X64ASM:ENC-XOR32-RR exit then
+   v 0 >= v $FFFFFFFF <= and if r4 v X64ASM:>IMM32 buf X64ASM:ENC-MOV32-RI32 exit then
+   v IMM? if r v X64ASM:>IMM32 buf X64ASM:ENC-MOV-RI32 exit then
+   r v X64ASM:>IMM64 buf X64ASM:ENC-MOV-RI64 ;
 
-: LIT-R ( n r64 -- ) SINK LIT-IN ;
+: LIT-R ( n X64ASM:r64 -- ) SINK LIT-IN ;
 
 : ADDR ( n n vreg n -- )
    {: v:n o:n d:vreg kind:n :}
-   HERE-OFF kind v o PEND+
-   d REG v >IMM64 SINK ENC-MOV-RI64 ;
+   PLACE:HERE-OFF kind v o PLACE:PEND+
+   d REG v X64ASM:>IMM64 SINK X64ASM:ENC-MOV-RI64 ;
 
 \ r, holding the return stack depth, becomes the address one cell past its top.
-: RTOP ( r64 -- ) {: r:r64 :}
-   r 3 >IMM8 SINK ENC-SHL-RI8
-   r DATA-REG STACK-ABI:RETURN-BASE-CELL MEM-OFF SINK ENC-ADD-RM ;
+: RTOP ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
+   r 3 X64ASM:>IMM8 SINK X64ASM:ENC-SHL-RI8
+   r DATA-REG STACK-ABI:RETURN-BASE-CELL X64ASM:MEM-OFF SINK X64ASM:ENC-ADD-RM ;
 
-: RDEPTH ( r64 -- ) {: r:r64 :}
-   r DATA-REG RSP-CELL MEM-OFF SINK ENC-MOV-RM ;
+: RDEPTH ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
+   r DATA-REG RSP-CELL X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-RM ;
 
-: RDEPTH! ( r64 -- ) {: r:r64 :}
-   r DATA-REG RSP-CELL MEM-OFF SINK ENC-MOV-MR ;
+: RDEPTH! ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
+   r DATA-REG RSP-CELL X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-MR ;
 
 \ ---- the data stack pointer --------------------------------------------------
 \ Move rbx up k cells; the stack's top stays.
 : RBX+ ( n -- ) {: k:n :}
    k 0 = if exit then
-   DSP DSP k CELL * MEM-OFF SINK ENC-LEA
+   DSP DSP k CELL * X64ASM:MEM-OFF SINK X64ASM:ENC-LEA
    k negate AHEAD +! ;
 
 : SETTLE ( -- ) AHEAD @ RBX+ ;
@@ -187,22 +185,22 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
    k s STEP? if s RBX+ 1 else 0 then STEPPED ! ;
 
 \ The cell k cells above the stack's top.
-: TOP-MEM ( n -- mem ) {: k:n :}
+: TOP-MEM ( n -- X64ASM:mem ) {: k:n :}
    AHEAD @ k + REACH
-   DSP AHEAD @ k + CELL * MEM-OFF ;
+   DSP AHEAD @ k + CELL * X64ASM:MEM-OFF ;
 
 \ ---- PLACE's hooks -----------------------------------------------------------
 : UNIT-RESET ( -- ) 0 FLAGS !  0 HELD !  0 AHEAD !  0 STEPPED !  0 GONE ! ;
 
 : PROLOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
    bytes 0= if exit then
-   bytes SHORT? if RSP bytes >IMM8 buf ENC-SUB-RI8 exit then
-   RSP bytes >IMM32 buf ENC-SUB-RI32 ;
+   bytes SHORT? if X64ASM:RSP bytes X64ASM:>IMM8 buf X64ASM:ENC-SUB-RI8 exit then
+   X64ASM:RSP bytes X64ASM:>IMM32 buf X64ASM:ENC-SUB-RI32 ;
 
 : EPILOGUE ( n ^VEC:vector<u8> -- ) {: bytes:n buf:^ :}
    bytes 0= if exit then
-   bytes SHORT? if RSP bytes >IMM8 buf ENC-ADD-RI8 exit then
-   RSP bytes >IMM32 buf ENC-ADD-RI32 ;
+   bytes SHORT? if X64ASM:RSP bytes X64ASM:>IMM8 buf X64ASM:ENC-ADD-RI8 exit then
+   X64ASM:RSP bytes X64ASM:>IMM32 buf X64ASM:ENC-ADD-RI32 ;
 
 \ The call is E8 rel32, and the address lea its REX, opcode, ModRM and disp32.
 : SELF-PUT ( n -- ) {: at:n :}  at 5 + negate  at 1 + REL32! ;
@@ -211,14 +209,14 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 
 \ Branch k's rel8 opcode.
 : OPCODE ( n -- n ) {: k:n :}
-   k BR-FORM @ FORM-JMP = if $EB exit then
-   $70 k BR-ARG @ + ;
+   k PLACE:BR-FORM @ FORM-JMP = if $EB exit then
+   $70 k PLACE:BR-ARG @ + ;
 
-: BRANCH-LEN ( n n -- n ) {: k:n d:n :}  k OPCODE d BRANCH-GROWTH ;
+: BRANCH-LEN ( n n -- n ) {: k:n d:n :}  k OPCODE d X64ASM:BRANCH-GROWTH ;
 
 : BRANCH-PUT ( n n n -- ) {: k:n at:n to:n :}
    k RELAX:BR-LEN @ {: growth:n :}
-   OUT @ at VEC:AT  k OPCODE  growth  to at - BRANCH-HOLE - growth -
+   PLACE:OUT @ at VEC:AT  k OPCODE  growth  to at - X64ASM:BRANCH-HOLE - growth -
    X64ASM:BRANCH-PUT ;
 
 \ ---- the body ----------------------------------------------------------------
@@ -228,26 +226,26 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 \ until PATCH measures it from its placed end; an address site is movabs r64,
 \ imm64, whose imm64 starts two bytes past the row's offset. A quotation's
 \ RIP-relative lea names its unit inside the emission and needs no row.
-: RETURN ( -- ) SETTLE EPI+  SINK ENC-RET  1 GONE ! ;
+: RETURN ( -- ) SETTLE PLACE:EPI+  SINK X64ASM:ENC-RET  1 GONE ! ;
 
 \ The return is the kernel's does> patch slot, `jmp rel32` and the `ret` it
 \ falls through to, filed at the jump's offset.
 : SLOT-CLOSE ( -- )
-   SETTLE EPI+
-   0 >REL SINK ENC-JMP-REL32
-   SINK ENC-RET
+   SETTLE PLACE:EPI+
+   0 X64ASM:>REL SINK X64ASM:ENC-JMP-REL32
+   SINK X64ASM:ENC-RET
    PLACE:CLOSE
-   OUT-OFF 6 - EMIT-PATCH-SLOT! ;
+   PLACE:OUT-OFF 6 - EMIT-PATCH-SLOT! ;
 
 \ The stub after the last unit, answering its offset: r10 its slot, rax the
 \ thunk, which writes rax first (src/habu/kernel-x64.f CALLBACK-ENTRY-BODY).
 : CB-STUB ( -- n )
-   OUT-OFF {: at:n :}
-   NCBSTUB:SLOT@ R10 OUT @ LIT-IN
+   PLACE:OUT-OFF {: at:n :}
+   NCBSTUB:SLOT@ X64ASM:R10 PLACE:OUT @ LIT-IN
    NCBSTUB:THUNK@ {: thunk:n :}
-   OUT-OFF NEMIT:ADDR-CODE thunk -1 EMIT-ADDR-ROW+
-   RAX thunk >IMM64 OUT @ ENC-MOV-RI64
-   RAX OUT @ ENC-JMP-REG
+   PLACE:OUT-OFF NEMIT:ADDR-CODE thunk -1 EMIT-ADDR-ROW+
+   X64ASM:RAX thunk X64ASM:>IMM64 PLACE:OUT @ X64ASM:ENC-MOV-RI64
+   X64ASM:RAX PLACE:OUT @ X64ASM:ENC-JMP-REG
    at ;
 
 \ A call's rel32 is measured from the end of its five bytes, placed at.
@@ -274,18 +272,18 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 \ `lea r, [rip]` until ADR-PUT writes the distance to unit n.
 : ADDR-QUOT ( n vreg -- )
    {: n:n d:vreg :}
-   HERE-OFF ADDR-QUOT-KIND n -1 PEND+
-   d REG 0 MEM-RIP SINK ENC-LEA ;
+   PLACE:HERE-OFF ADDR-QUOT-KIND n -1 PLACE:PEND+
+   d REG 0 X64ASM:MEM-RIP SINK X64ASM:ENC-LEA ;
 
 : PUSH ( vreg n -- ) {: s:vreg k:n :}
-   s REG 0 TOP-MEM SINK ENC-MOV-MR
+   s REG 0 TOP-MEM SINK X64ASM:ENC-MOV-MR
    k DSP+ ;
 
 \ Store the constant n at m, keeping held condition codes.
-: LIT-M ( n mem -- ) {: v:n m:mem :}
-   v IMM? if v >IMM32 m SINK ENC-MOV-MI32 exit then
-   v RAX LIT-R
-   RAX m SINK ENC-MOV-MR ;
+: LIT-M ( n X64ASM:mem -- ) {: v:n m:X64ASM:mem :}
+   v IMM? if v X64ASM:>IMM32 m SINK X64ASM:ENC-MOV-MI32 exit then
+   v X64ASM:RAX LIT-R
+   X64ASM:RAX m SINK X64ASM:ENC-MOV-MR ;
 
 : PUSH-LIT ( n n -- ) {: v:n k:n :}
    v 0 TOP-MEM LIT-M
@@ -293,127 +291,127 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 
 : POP ( vreg n -- ) {: d:vreg k:n :}
    k negate DSP+
-   d REG 0 TOP-MEM SINK ENC-MOV-RM ;
+   d REG 0 TOP-MEM SINK X64ASM:ENC-MOV-RM ;
 
 : SPILL ( vreg n -- )
    {: s:vreg k:n :}
-   s REG k TOP-MEM SINK ENC-MOV-MR ;
+   s REG k TOP-MEM SINK X64ASM:ENC-MOV-MR ;
 
 : SPILL-LIT ( n n -- ) {: v:n k:n :}
    v k TOP-MEM LIT-M ;
 
 : FILL ( vreg n -- )
    {: d:vreg k:n :}
-   d REG k TOP-MEM SINK ENC-MOV-RM ;
+   d REG k TOP-MEM SINK X64ASM:ENC-MOV-RM ;
 
 : MOV ( vreg vreg -- )
    {: d:vreg s:vreg :}
-   d REG s REG SINK ENC-MOV-RR ;
+   d REG s REG SINK X64ASM:ENC-MOV-RR ;
 
-: BASE ( vreg -- ) REG DATA-REG SINK ENC-MOV-RR ;
+: BASE ( vreg -- ) REG DATA-REG SINK X64ASM:ENC-MOV-RR ;
 
 : EXCHANGE ( vreg vreg -- )
    {: a:vreg b:vreg :}
-   a REG b REG SINK ENC-XCHG-RR ;
+   a REG b REG SINK X64ASM:ENC-XCHG-RR ;
 
 : SLOT-STORE ( vreg n -- )
    {: s:vreg k:n :}
-   s REG RSP k SLOT-OFF MEM-OFF SINK ENC-MOV-MR ;
+   s REG X64ASM:RSP k PLACE:SLOT-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-MR ;
 
 : SLOT-LOAD ( vreg n -- )
    {: d:vreg k:n :}
-   d REG RSP k SLOT-OFF MEM-OFF SINK ENC-MOV-RM ;
+   d REG X64ASM:RSP k PLACE:SLOT-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-RM ;
 
 : ENV-OPEN ( -- )
-   BODY-EMPTY 1 ENV !
-   RDI RSP MEM-AT SINK ENC-MOV-MR ;
+   PLACE:BODY-EMPTY 1 PLACE:ENV !
+   X64ASM:RDI X64ASM:RSP X64ASM:MEM-AT SINK X64ASM:ENC-MOV-MR ;
 
 : REC-STORE ( vreg n -- )
    {: s:vreg n:n :}
-   s REG RSP n REC-OFF MEM-OFF SINK ENC-MOV-MR ;
+   s REG X64ASM:RSP n PLACE:REC-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-MR ;
 
 : REC-QUOT ( n vreg -- )
    {: n:n d:vreg :}
-   d REG RSP n REC-OFF MEM-OFF SINK ENC-LEA
-   $8000000000000000 RAX LIT-R
-   d REG RAX SINK ENC-OR-RR ;
+   d REG X64ASM:RSP n PLACE:REC-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-LEA
+   $8000000000000000 X64ASM:RAX LIT-R
+   d REG X64ASM:RAX SINK X64ASM:ENC-OR-RR ;
 
 : ENV-LOAD ( vreg n -- )
    {: d:vreg n:n :}
-   ENV @ 0= if E-T0-UNIT throw then
-   d REG {: r:r64 :}
-   r RSP MEM-AT SINK ENC-MOV-RM
-   r r n CELL * MEM-OFF SINK ENC-MOV-RM ;
+   PLACE:ENV @ 0= if E-T0-UNIT throw then
+   d REG {: r:X64ASM:r64 :}
+   r X64ASM:RSP X64ASM:MEM-AT SINK X64ASM:ENC-MOV-RM
+   r r n CELL * X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-RM ;
 
 \ ---- arithmetic --------------------------------------------------------------
 : OP ( vreg vreg alu -- )
    {: d:vreg s:vreg o:alu :}
-   d REG {: dr:r64 :}  s REG {: sr:r64 :}  o ALU>N {: k:n :}
-   k 0 = if dr sr SINK ENC-ADD-RR exit then
-   k 1 = if dr sr SINK ENC-SUB-RR exit then
-   k 2 = if dr sr SINK ENC-AND-RR exit then
-   k 3 = if dr sr SINK ENC-OR-RR exit then
-   k 4 = if dr sr SINK ENC-XOR-RR exit then
-   E-OPERAND throw ;
+   d REG {: dr:X64ASM:r64 :}  s REG {: sr:X64ASM:r64 :}  o ALU>N {: k:n :}
+   k 0 = if dr sr SINK X64ASM:ENC-ADD-RR exit then
+   k 1 = if dr sr SINK X64ASM:ENC-SUB-RR exit then
+   k 2 = if dr sr SINK X64ASM:ENC-AND-RR exit then
+   k 3 = if dr sr SINK X64ASM:ENC-OR-RR exit then
+   k 4 = if dr sr SINK X64ASM:ENC-XOR-RR exit then
+   X64ASM:E-OPERAND throw ;
 
-: OP-RI8 ( r64 imm8 alu -- )
-   {: dr:r64 iv:imm8 o:alu :}
+: OP-RI8 ( X64ASM:r64 X64ASM:imm8 alu -- )
+   {: dr:X64ASM:r64 iv:X64ASM:imm8 o:alu :}
    o ALU>N {: k:n :}
-   k 0 = if dr iv SINK ENC-ADD-RI8 exit then
-   k 1 = if dr iv SINK ENC-SUB-RI8 exit then
-   k 2 = if dr iv SINK ENC-AND-RI8 exit then
-   k 3 = if dr iv SINK ENC-OR-RI8 exit then
-   k 4 = if dr iv SINK ENC-XOR-RI8 exit then
-   E-OPERAND throw ;
+   k 0 = if dr iv SINK X64ASM:ENC-ADD-RI8 exit then
+   k 1 = if dr iv SINK X64ASM:ENC-SUB-RI8 exit then
+   k 2 = if dr iv SINK X64ASM:ENC-AND-RI8 exit then
+   k 3 = if dr iv SINK X64ASM:ENC-OR-RI8 exit then
+   k 4 = if dr iv SINK X64ASM:ENC-XOR-RI8 exit then
+   X64ASM:E-OPERAND throw ;
 
-: OP-RI32 ( r64 imm32 alu -- )
-   {: dr:r64 iv:imm32 o:alu :}
+: OP-RI32 ( X64ASM:r64 X64ASM:imm32 alu -- )
+   {: dr:X64ASM:r64 iv:X64ASM:imm32 o:alu :}
    o ALU>N {: k:n :}
-   k 0 = if dr iv SINK ENC-ADD-RI32 exit then
-   k 1 = if dr iv SINK ENC-SUB-RI32 exit then
-   k 2 = if dr iv SINK ENC-AND-RI32 exit then
-   k 3 = if dr iv SINK ENC-OR-RI32 exit then
-   k 4 = if dr iv SINK ENC-XOR-RI32 exit then
-   E-OPERAND throw ;
+   k 0 = if dr iv SINK X64ASM:ENC-ADD-RI32 exit then
+   k 1 = if dr iv SINK X64ASM:ENC-SUB-RI32 exit then
+   k 2 = if dr iv SINK X64ASM:ENC-AND-RI32 exit then
+   k 3 = if dr iv SINK X64ASM:ENC-OR-RI32 exit then
+   k 4 = if dr iv SINK X64ASM:ENC-XOR-RI32 exit then
+   X64ASM:E-OPERAND throw ;
 
 : OP-LIT ( vreg n alu -- )
    {: d:vreg v:n o:alu :}
-   v SHORT? if d REG v >IMM8 o OP-RI8 exit then
-   d REG v >IMM32 o OP-RI32 ;
+   v SHORT? if d REG v X64ASM:>IMM8 o OP-RI8 exit then
+   d REG v X64ASM:>IMM32 o OP-RI32 ;
 
 \ A shift by a register takes its count in cl, and cl is vreg 0's low byte;
 \ the hardware masks the count to six bits. SHIFT-LIT masks its count here.
-: SHIFT-CL ( r64 shifter -- )
-   {: r:r64 o:shifter :}
-   o SHIFTER>N 0 = if r SINK ENC-SHL-CL exit then
-   r SINK ENC-SHR-CL ;
+: SHIFT-CL ( X64ASM:r64 shifter -- )
+   {: r:X64ASM:r64 o:shifter :}
+   o SHIFTER>N 0 = if r SINK X64ASM:ENC-SHL-CL exit then
+   r SINK X64ASM:ENC-SHR-CL ;
 
 : SHIFT ( vreg vreg shifter -- )
    {: d:vreg s:vreg o:shifter :}
    s VREG>N 0 = if d REG o SHIFT-CL exit then
-   RAX RCX SINK ENC-MOV-RR
-   RCX s REG SINK ENC-MOV-RR
+   X64ASM:RAX X64ASM:RCX SINK X64ASM:ENC-MOV-RR
+   X64ASM:RCX s REG SINK X64ASM:ENC-MOV-RR
    d VREG>N 0 = if
-      RAX o SHIFT-CL
-      RCX RAX SINK ENC-MOV-RR exit
+      X64ASM:RAX o SHIFT-CL
+      X64ASM:RCX X64ASM:RAX SINK X64ASM:ENC-MOV-RR exit
    then
    d REG o SHIFT-CL
-   RCX RAX SINK ENC-MOV-RR ;
+   X64ASM:RCX X64ASM:RAX SINK X64ASM:ENC-MOV-RR ;
 
 : SHIFT-LIT ( vreg n shifter -- )
    {: d:vreg v:n o:shifter :}
-   v 63 and >IMM8 {: c:imm8 :}
-   o SHIFTER>N 0 = if d REG c SINK ENC-SHL-RI8 exit then
-   d REG c SINK ENC-SHR-RI8 ;
+   v 63 and X64ASM:>IMM8 {: c:X64ASM:imm8 :}
+   o SHIFTER>N 0 = if d REG c SINK X64ASM:ENC-SHL-RI8 exit then
+   d REG c SINK X64ASM:ENC-SHR-RI8 ;
 
 : MULX ( vreg vreg -- )
    {: d:vreg s:vreg :}
-   d REG s REG SINK ENC-IMUL-RR ;
+   d REG s REG SINK X64ASM:ENC-IMUL-RR ;
 
-: MUL-R ( r64 n -- )
-   {: r:r64 v:n :}
-   v SHORT? if r r v >IMM8 SINK ENC-IMUL-RRI8 exit then
-   r r v >IMM32 SINK ENC-IMUL-RRI32 ;
+: MUL-R ( X64ASM:r64 n -- )
+   {: r:X64ASM:r64 v:n :}
+   v SHORT? if r r v X64ASM:>IMM8 SINK X64ASM:ENC-IMUL-RRI8 exit then
+   r r v X64ASM:>IMM32 SINK X64ASM:ENC-IMUL-RRI32 ;
 
 : MUL-LIT ( vreg n -- )
    {: d:vreg v:n :}
@@ -423,35 +421,35 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 \ saved on the machine stack unless d is rdx; then rcx stands in for d and is
 \ saved instead. The saved register is the only one restored, so every vreg
 \ but d keeps its value.
-: IN-RDX? ( r64 -- bool ) R64>N RDX R64>N = ;
-: STAND-IN ( r64 -- r64 ) dup IN-RDX? if drop RCX then ;
-: SAVED ( r64 -- r64 ) IN-RDX? if RCX else RDX then ;
+: IN-RDX? ( X64ASM:r64 -- bool ) X64ASM:R64>N X64ASM:RDX X64ASM:R64>N = ;
+: STAND-IN ( X64ASM:r64 -- X64ASM:r64 ) dup IN-RDX? if drop X64ASM:RCX then ;
+: SAVED ( X64ASM:r64 -- X64ASM:r64 ) IN-RDX? if X64ASM:RCX else X64ASM:RDX then ;
 
-: MOV-R ( r64 r64 -- )
-   {: d:r64 s:r64 :}
-   d R64>N s R64>N <> if d s SINK ENC-MOV-RR then ;
+: MOV-R ( X64ASM:r64 X64ASM:r64 -- )
+   {: d:X64ASM:r64 s:X64ASM:r64 :}
+   d X64ASM:R64>N s X64ASM:R64>N <> if d s SINK X64ASM:ENC-MOV-RR then ;
 
 \ The divisor goes into d or its stand-in, which cqo does not write, once the
 \ dividend is in rax.
-: DIVIDE ( r64 n bool -- )
-   {: r:r64 v:n rem:bool :}
-   r STAND-IN {: w:r64 :}
-   r SAVED SINK ENC-PUSH
-   RAX r SINK ENC-MOV-RR
+: DIVIDE ( X64ASM:r64 n bool -- )
+   {: r:X64ASM:r64 v:n rem:bool :}
+   r STAND-IN {: w:X64ASM:r64 :}
+   r SAVED SINK X64ASM:ENC-PUSH
+   X64ASM:RAX r SINK X64ASM:ENC-MOV-RR
    v w LIT-R
-   SINK ENC-CQO
-   w SINK ENC-IDIV
-   r rem if RDX else RAX then MOV-R
-   r SAVED SINK ENC-POP ;
+   SINK X64ASM:ENC-CQO
+   w SINK X64ASM:ENC-IDIV
+   r rem if X64ASM:RDX else X64ASM:RAX then MOV-R
+   r SAVED SINK X64ASM:ENC-POP ;
 
 \ rax becomes what makes dropping the low k bits of r + rax round toward zero,
 \ 2^k - 1 when r is negative, else 0, and is added to r; k is 1 to 62.
-: BIAS ( r64 n -- )
-   {: r:r64 k:n :}
-   RAX r SINK ENC-MOV-RR
-   k 1 > if RAX 63 >IMM8 SINK ENC-SAR-RI8 then
-   RAX 64 k - >IMM8 SINK ENC-SHR-RI8
-   r RAX SINK ENC-ADD-RR ;
+: BIAS ( X64ASM:r64 n -- )
+   {: r:X64ASM:r64 k:n :}
+   X64ASM:RAX r SINK X64ASM:ENC-MOV-RR
+   k 1 > if X64ASM:RAX 63 X64ASM:>IMM8 SINK X64ASM:ENC-SAR-RI8 then
+   X64ASM:RAX 64 k - X64ASM:>IMM8 SINK X64ASM:ENC-SHR-RI8
+   r X64ASM:RAX SINK X64ASM:ENC-ADD-RR ;
 
 : LOW-BITS ( vreg n -- )
    {: d:vreg k:n :}
@@ -464,14 +462,14 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
    {: d:vreg k:n :}
    k 0= if exit then
    d REG k BIAS
-   d REG k >IMM8 SINK ENC-SAR-RI8 ;
+   d REG k X64ASM:>IMM8 SINK X64ASM:ENC-SAR-RI8 ;
 
 : MOD-POW2 ( vreg n -- )
    {: d:vreg k:n :}
    k 0= if 0 d LIT exit then
    d REG k BIAS
    d k LOW-BITS
-   d REG RAX SINK ENC-SUB-RR ;
+   d REG X64ASM:RAX SINK X64ASM:ENC-SUB-RR ;
 
 : RECIP? ( n -- bool ) {: v:n :}  v 0 > v $80000000 < and ;
 
@@ -488,38 +486,38 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
       i v POW-DIV v swap - 2 i lshift <= if 1+ i unloop exit then
       drop
    loop
-   E-OPERAND throw ;
+   X64ASM:E-OPERAND throw ;
 
 \ rdx becomes floor(r m / 2^(64+s)); imul reads an m past 2^63 as m - 2^64, so
 \ r is added back.
-: HIGH-MUL ( r64 n n -- )
-   {: r:r64 m:n s:n :}
-   m RAX LIT-R
-   r SINK ENC-IMUL1
-   m 0 < if RDX r SINK ENC-ADD-RR then
-   s 0 > if RDX s >IMM8 SINK ENC-SAR-RI8 then ;
+: HIGH-MUL ( X64ASM:r64 n n -- )
+   {: r:X64ASM:r64 m:n s:n :}
+   m X64ASM:RAX LIT-R
+   r SINK X64ASM:ENC-IMUL1
+   m 0 < if X64ASM:RDX r SINK X64ASM:ENC-ADD-RR then
+   s 0 > if X64ASM:RDX s X64ASM:>IMM8 SINK X64ASM:ENC-SAR-RI8 then ;
 
 \ r becomes the quotient, rdx plus r's sign bit.
-: RECIP-QUOT ( r64 -- ) {: r:r64 :}
-   r 63 >IMM8 SINK ENC-SHR-RI8
-   r RDX SINK ENC-ADD-RR ;
+: RECIP-QUOT ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
+   r 63 X64ASM:>IMM8 SINK X64ASM:ENC-SHR-RI8
+   r X64ASM:RDX SINK X64ASM:ENC-ADD-RR ;
 
-: RECIP-DIV ( r64 n bool -- )
-   {: r:r64 v:n rem:bool :}
-   r STAND-IN {: w:r64 :}
-   r SAVED SINK ENC-PUSH
+: RECIP-DIV ( X64ASM:r64 n bool -- )
+   {: r:X64ASM:r64 v:n rem:bool :}
+   r STAND-IN {: w:X64ASM:r64 :}
+   r SAVED SINK X64ASM:ENC-PUSH
    w r MOV-R
    w v RECIPROCAL HIGH-MUL
    rem if
-      RAX w SINK ENC-MOV-RR
-      RAX RECIP-QUOT
-      RAX v MUL-R
-      w RAX SINK ENC-SUB-RR
+      X64ASM:RAX w SINK X64ASM:ENC-MOV-RR
+      X64ASM:RAX RECIP-QUOT
+      X64ASM:RAX v MUL-R
+      w X64ASM:RAX SINK X64ASM:ENC-SUB-RR
    else
       w RECIP-QUOT
    then
    r w MOV-R
-   r SAVED SINK ENC-POP ;
+   r SAVED SINK X64ASM:ENC-POP ;
 
 : DIVIDE-LIT ( vreg n bool -- )
    {: d:vreg v:n rem:bool :}
@@ -530,21 +528,21 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 : DIV-LIT ( vreg n -- ) false DIVIDE-LIT ;
 : MOD-LIT ( vreg n -- ) true DIVIDE-LIT ;
 
-: NEG ( vreg -- ) REG SINK ENC-NEG ;
-: NOT ( vreg -- ) REG SINK ENC-NOT ;
+: NEG ( vreg -- ) REG SINK X64ASM:ENC-NEG ;
+: NOT ( vreg -- ) REG SINK X64ASM:ENC-NOT ;
 
 : CMP ( vreg vreg -- )
    {: a:vreg b:vreg :}
    SETTLE
    1 FLAGS !
-   a REG b REG SINK ENC-CMP-RR ;
+   a REG b REG SINK X64ASM:ENC-CMP-RR ;
 
 \ `test r, r` sets every signed condition as `cmp r, 0` does.
-: CMP-R ( r64 n -- )
-   {: r:r64 v:n :}
-   v 0 = if r r SINK ENC-TEST-RR exit then
-   v SHORT? if r v >IMM8 SINK ENC-CMP-RI8 exit then
-   r v >IMM32 SINK ENC-CMP-RI32 ;
+: CMP-R ( X64ASM:r64 n -- )
+   {: r:X64ASM:r64 v:n :}
+   v 0 = if r r SINK X64ASM:ENC-TEST-RR exit then
+   v SHORT? if r v X64ASM:>IMM8 SINK X64ASM:ENC-CMP-RI8 exit then
+   r v X64ASM:>IMM32 SINK X64ASM:ENC-CMP-RI32 ;
 
 : CMP-LIT ( vreg n -- )
    {: a:vreg v:n :}
@@ -554,45 +552,45 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 
 : SAME? ( vreg vreg -- bool ) VREG>N swap VREG>N = ;
 
-: ZERO ( vreg -- ) REG R64>N >R32 dup SINK ENC-XOR32-RR ;
+: ZERO ( vreg -- ) REG X64ASM:R64>N X64ASM:>R32 dup SINK X64ASM:ENC-XOR32-RR ;
 
 \ -1 in d when the codes hold a borrow, else 0.
-: BORROW ( vreg -- ) REG dup SINK ENC-SBB-RR ;
+: BORROW ( vreg -- ) REG dup SINK X64ASM:ENC-SBB-RR ;
 
 \ d's flag from the codes of a compare; d is zero unless via, when d is an
 \ operand and the byte goes through al.
 : FLAG-END ( vreg cc bool -- )
    {: d:vreg c:cc via:bool :}
-   d REG {: r:r64 :}
+   d REG {: r:X64ASM:r64 :}
    via if
-      c COND 0 >R8 SINK ENC-SETCC
-      r R64>N >R32 0 >R8 SINK ENC-MOVZX32-8-RR
+      c COND 0 X64ASM:>R8 SINK X64ASM:ENC-SETCC
+      r X64ASM:R64>N X64ASM:>R32 0 X64ASM:>R8 SINK X64ASM:ENC-MOVZX32-8-RR
    else
-      c COND r R64>N >R8 SINK ENC-SETCC
+      c COND r X64ASM:R64>N X64ASM:>R8 SINK X64ASM:ENC-SETCC
    then
-   r SINK ENC-NEG ;
+   r SINK X64ASM:ENC-NEG ;
 
 : FLAG ( vreg vreg vreg cc -- )
    {: d:vreg a:vreg b:vreg c:cc :}
    d a SAME? d b SAME? or {: via:bool :}
    via 0= if d ZERO then
-   a REG b REG SINK ENC-CMP-RR
+   a REG b REG SINK X64ASM:ENC-CMP-RR
    d c via FLAG-END ;
 
 \ -1 in d when a is negative, else 0.
 : SIGN ( vreg vreg -- )
    {: d:vreg a:vreg :}
    d a SAME? 0= if d a MOV then
-   d REG 63 >IMM8 SINK ENC-SAR-RI8 ;
+   d REG 63 X64ASM:>IMM8 SINK X64ASM:ENC-SAR-RI8 ;
 
 \ An unsigned compare with 1, or of 0 with a, borrows only when the flag holds.
 : ZERO-EQ ( vreg vreg -- )
    {: d:vreg a:vreg :}
-   a REG 1 >IMM8 SINK ENC-CMP-RI8  d BORROW ;
+   a REG 1 X64ASM:>IMM8 SINK X64ASM:ENC-CMP-RI8  d BORROW ;
 
 : ZERO-NE ( vreg vreg -- )
    {: d:vreg a:vreg :}
-   d a SAME? if d NEG else d ZERO  d REG a REG SINK ENC-CMP-RR then
+   d a SAME? if d NEG else d ZERO  d REG a REG SINK X64ASM:ENC-CMP-RR then
    d BORROW ;
 
 : FLAG-LIT ( vreg vreg n cc -- )
@@ -613,38 +611,38 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 : LOAD ( vreg vreg width -- )
    {: d:vreg a:vreg w:width :}
    w WIDTH>N {: n:n :}
-   n 1 = if d REG a REG MEM-AT SINK ENC-MOVZX-8-RM exit then
-   n 2 = if d REG a REG MEM-AT SINK ENC-MOVZX-16-RM exit then
-   n 4 = if d REG R64>N >R32 a REG MEM-AT SINK ENC-MOV32-RM exit then
-   d REG a REG MEM-AT SINK ENC-MOV-RM ;
+   n 1 = if d REG a REG X64ASM:MEM-AT SINK X64ASM:ENC-MOVZX-8-RM exit then
+   n 2 = if d REG a REG X64ASM:MEM-AT SINK X64ASM:ENC-MOVZX-16-RM exit then
+   n 4 = if d REG X64ASM:R64>N X64ASM:>R32 a REG X64ASM:MEM-AT SINK X64ASM:ENC-MOV32-RM exit then
+   d REG a REG X64ASM:MEM-AT SINK X64ASM:ENC-MOV-RM ;
 
 : STORE ( vreg vreg width -- )
    {: s:vreg a:vreg w:width :}
-   s REG {: r:r64 :}
+   s REG {: r:X64ASM:r64 :}
    w WIDTH>N {: n:n :}
-   n 1 = if r R64>N >R8 a REG MEM-AT SINK ENC-MOV8-MR exit then
-   n 2 = if r R64>N >R16 a REG MEM-AT SINK ENC-MOV16-MR exit then
-   n 4 = if r R64>N >R32 a REG MEM-AT SINK ENC-MOV32-MR exit then
-   r a REG MEM-AT SINK ENC-MOV-MR ;
+   n 1 = if r X64ASM:R64>N X64ASM:>R8 a REG X64ASM:MEM-AT SINK X64ASM:ENC-MOV8-MR exit then
+   n 2 = if r X64ASM:R64>N X64ASM:>R16 a REG X64ASM:MEM-AT SINK X64ASM:ENC-MOV16-MR exit then
+   n 4 = if r X64ASM:R64>N X64ASM:>R32 a REG X64ASM:MEM-AT SINK X64ASM:ENC-MOV32-MR exit then
+   r a REG X64ASM:MEM-AT SINK X64ASM:ENC-MOV-MR ;
 
 \ ---- calls -------------------------------------------------------------------
 : CALL ( n n -- ) {: to:n loc:n :}
    SETTLE
    0 HELD !
-   HERE-OFF NEMIT:CALL to loc PCALL+
-   0 >REL SINK ENC-CALL-REL32 ;
+   PLACE:HERE-OFF NEMIT:CALL to loc PLACE:PCALL+
+   0 X64ASM:>REL SINK X64ASM:ENC-CALL-REL32 ;
 
 : TAIL ( n n -- ) {: to:n loc:n :}
-   SETTLE EPI+
-   HERE-OFF NEMIT:TAIL to loc PCALL+
-   0 >REL SINK ENC-JMP-REL32
+   SETTLE PLACE:EPI+
+   PLACE:HERE-OFF NEMIT:TAIL to loc PLACE:PCALL+
+   0 X64ASM:>REL SINK X64ASM:ENC-JMP-REL32
    1 GONE ! ;
 
 : CALL-SELF ( -- )
    SETTLE
    0 HELD !
-   HERE-OFF SELF+
-   0 >REL SINK ENC-CALL-REL32 ;
+   PLACE:HERE-OFF PLACE:SELF+
+   0 X64ASM:>REL SINK X64ASM:ENC-CALL-REL32 ;
 
 \ ---- control -----------------------------------------------------------------
 \ The branch primitives LABEL emits through. A forward branch is its number
@@ -653,7 +651,7 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 \ A branch of the form, with its condition or 0, to a raw offset or -1.
 : BRANCH ( n n n -- LABEL:branch ) {: form:n arg:n to:n :}
    to 0 >= if SETTLE then
-   form arg to BRANCH-HOLE BR+ {: b:LABEL:branch :}
+   form arg to X64ASM:BRANCH-HOLE PLACE:BR+ {: b:LABEL:branch :}
    b LABEL:BRANCH>N {: k:n :}
    k 1 + BR-AHEAD-RESERVE
    AHEAD @ k BR-AHEAD !
@@ -671,30 +669,30 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 
 : FWD-JUMP ( -- LABEL:branch ) FORM-JMP 0 -1 BRANCH  1 GONE ! ;
 
-: FWD-JCC ( condition -- LABEL:branch ) {: c:condition :}
-   FORM-JCC c CONDITION>N -1 BRANCH ;
+: FWD-JCC ( X64ASM:condition -- LABEL:branch ) {: c:X64ASM:condition :}
+   FORM-JCC c X64ASM:CONDITION>N -1 BRANCH ;
 
 : TEST ( vreg -- )
    {: c:vreg :}
-   c REG c REG SINK ENC-TEST-RR ;
+   c REG c REG SINK X64ASM:ENC-TEST-RR ;
 
-: FWD-ZERO ( vreg -- LABEL:branch ) TEST C-E FWD-JCC ;
+: FWD-ZERO ( vreg -- LABEL:branch ) TEST X64ASM:C-E FWD-JCC ;
 
 : FWD-NE ( vreg vreg -- LABEL:branch )
    {: sel:vreg v:vreg :}
-   sel REG v REG SINK ENC-CMP-RR
-   C-NE FWD-JCC ;
+   sel REG v REG SINK X64ASM:ENC-CMP-RR
+   X64ASM:C-NE FWD-JCC ;
 
 : FWD-NE-LIT ( vreg n -- LABEL:branch )
    {: sel:vreg v:n :}
    sel REG v CMP-R
-   C-NE FWD-JCC ;
+   X64ASM:C-NE FWD-JCC ;
 
 : FWD-GE ( vreg vreg -- LABEL:branch )
    {: s:vreg l:vreg :}
    SETTLE
-   s REG l REG SINK ENC-CMP-RR
-   C-GE FWD-JCC ;
+   s REG l REG SINK X64ASM:ENC-CMP-RR
+   X64ASM:C-GE FWD-JCC ;
 
 : FWD-CC ( cc -- LABEL:branch )
    0 FLAGS !
@@ -702,17 +700,17 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 
 \ The branch becomes je.
 : ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: k:n :}
-   C-E CONDITION>N k BR-ARG ! ;
+   X64ASM:C-E X64ASM:CONDITION>N k PLACE:BR-ARG ! ;
 
 : BACK-JUMP ( LABEL:head -- ) LABEL:HEAD>N FORM-JMP 0 rot BRANCH drop  1 GONE ! ;
 
-: BACK-JCC ( condition LABEL:head -- )
-   LABEL:HEAD>N {: c:condition m:n :}
-   FORM-JCC c CONDITION>N m BRANCH drop ;
+: BACK-JCC ( X64ASM:condition LABEL:head -- )
+   LABEL:HEAD>N {: c:X64ASM:condition m:n :}
+   FORM-JCC c X64ASM:CONDITION>N m BRANCH drop ;
 
 : BACK-ZERO ( vreg LABEL:head -- )
    {: c:vreg m:LABEL:head :}
-   SETTLE c TEST C-E m BACK-JCC ;
+   SETTLE c TEST X64ASM:C-E m BACK-JCC ;
 
 : BACK-CC ( cc LABEL:head -- )
    {: c:cc m:LABEL:head :}
@@ -723,37 +721,37 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 \ Each goes through rax. Vreg i of p moved to or from the slot off bytes above
 \ rax.
 : RS-XFER ( ^vreg n n bool -- ) {: p:^ i:n off:n st:bool :}
-   p i VREG-AT REG RAX off MEM-OFF SINK
-   st if ENC-MOV-MR exit then ENC-MOV-RM ;
+   p i VREG-AT REG X64ASM:RAX off X64ASM:MEM-OFF SINK
+   st if X64ASM:ENC-MOV-MR exit then X64ASM:ENC-MOV-RM ;
 
-: RDEPTH+ ( n -- ) {: k:n :} RAX RAX k MEM-OFF SINK ENC-LEA ;
+: RDEPTH+ ( n -- ) {: k:n :} X64ASM:RAX X64ASM:RAX k X64ASM:MEM-OFF SINK X64ASM:ENC-LEA ;
 
 : TOR ( ^vreg n -- ) {: p:^ n:n :}
-   RAX RDEPTH
+   X64ASM:RAX RDEPTH
    n RDEPTH+
-   RAX RDEPTH!
-   RAX RTOP
+   X64ASM:RAX RDEPTH!
+   X64ASM:RAX RTOP
    n 0 ?do p i i n - CELL * true RS-XFER loop ;
 
 : RFROM ( ^vreg n -- ) {: p:^ n:n :}
-   RAX RDEPTH
+   X64ASM:RAX RDEPTH
    n negate RDEPTH+
-   RAX RDEPTH!
-   RAX RTOP
+   X64ASM:RAX RDEPTH!
+   X64ASM:RAX RTOP
    n 0 ?do p i i CELL * false RS-XFER loop ;
 
 : RFETCH ( ^vreg n n -- ) {: p:^ n:n k:n :}
-   RAX RDEPTH
-   RAX RTOP
+   X64ASM:RAX RDEPTH
+   X64ASM:RAX RTOP
    n 0 ?do p i i n - k - CELL * false RS-XFER loop ;
 
 
 \ ---- loops ---------------------------------------------------------------------
-: LTOP ( r64 -- ) {: r:r64 :}
-   r DATA-REG LOOPSP-CELL MEM-OFF SINK ENC-MOV-RM ;
+: LTOP ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
+   r DATA-REG LOOPSP-CELL X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-RM ;
 
-: LTOP! ( r64 -- ) {: r:r64 :}
-   r DATA-REG LOOPSP-CELL MEM-OFF SINK ENC-MOV-MR ;
+: LTOP! ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
+   r DATA-REG LOOPSP-CELL X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-MR ;
 
 \ The index and limit of the innermost frame, below LTOP's address.
 -16 constant LIDX-OFF
@@ -761,25 +759,25 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 
 : LOOP-J ( vreg -- )
    {: d:vreg :}
-   RAX LTOP
-   d REG RAX LIDX-OFF STACK-ABI:LOOP-FRAME-BYTES - MEM-OFF SINK ENC-MOV-RM ;
+   X64ASM:RAX LTOP
+   d REG X64ASM:RAX LIDX-OFF STACK-ABI:LOOP-FRAME-BYTES - X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-RM ;
 
 \ rax the address past the innermost frame, and r12 its index unless HELD
 \ says it holds it already.
 : FRAME-IDX ( -- )
-   RAX LTOP
+   X64ASM:RAX LTOP
    HELD @ if exit then
-   IDX RAX LIDX-OFF MEM-OFF SINK ENC-MOV-RM
+   IDX X64ASM:RAX LIDX-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-RM
    1 HELD ! ;
 
 : LOOP-PUSH ( vreg vreg -- )
    {: s:vreg l:vreg :}
-   RAX LTOP
-   RAX STACK-ABI:LOOP-FRAME-BYTES >IMM8 SINK ENC-ADD-RI8
-   RAX LTOP!
-   s REG RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
-   l REG RAX LLIM-OFF MEM-OFF SINK ENC-MOV-MR
-   IDX s REG SINK ENC-MOV-RR ;
+   X64ASM:RAX LTOP
+   X64ASM:RAX STACK-ABI:LOOP-FRAME-BYTES X64ASM:>IMM8 SINK X64ASM:ENC-ADD-RI8
+   X64ASM:RAX LTOP!
+   s REG X64ASM:RAX LIDX-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-MR
+   l REG X64ASM:RAX LLIM-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-MR
+   IDX s REG SINK X64ASM:ENC-MOV-RR ;
 
 \ The head binds with r12 holding the index: the entry arrives from LOOP-PUSH
 \ and every back edge from LOOP-NEXT or LOOP-STEP.
@@ -787,41 +785,41 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
    LABEL:LOOP-OPEN  1 HELD ! ;
 
 : LOOP-POP ( -- )
-   DATA-REG LOOPSP-CELL MEM-OFF
-   STACK-ABI:LOOP-FRAME-BYTES negate >IMM8 SINK ENC-ADD-MI8
+   DATA-REG LOOPSP-CELL X64ASM:MEM-OFF
+   STACK-ABI:LOOP-FRAME-BYTES negate X64ASM:>IMM8 SINK X64ASM:ENC-ADD-MI8
    0 HELD ! ;
 
 : LOOP-I ( vreg -- )
    HELD @ 0= if FRAME-IDX then
-   REG IDX SINK ENC-MOV-RR ;
+   REG IDX SINK X64ASM:ENC-MOV-RR ;
 
 \ The step is r12's, so this target leaves the free vreg alone.
 : LOOP-NEXT ( vreg LABEL:head -- )
    nip {: m:LABEL:head :}
    SETTLE
    FRAME-IDX
-   IDX SINK ENC-INC
-   IDX RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
-   IDX RAX LLIM-OFF MEM-OFF SINK ENC-CMP-RM
-   C-L m BACK-JCC ;
+   IDX SINK X64ASM:ENC-INC
+   IDX X64ASM:RAX LIDX-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-MR
+   IDX X64ASM:RAX LLIM-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-CMP-RM
+   X64ASM:C-L m BACK-JCC ;
 
 \ With old = index - limit before the step, the index crossed the boundary
 \ when (old xor old + s) and (old xor s) is negative.
 : LOOP-STEP ( vreg vreg LABEL:head -- )
    {: s:vreg t:vreg m:LABEL:head :}
-   s REG {: sr:r64 :}  t REG {: r:r64 :}
+   s REG {: sr:X64ASM:r64 :}  t REG {: r:X64ASM:r64 :}
    SETTLE
    FRAME-IDX
-   r IDX SINK ENC-MOV-RR
-   r RAX LLIM-OFF MEM-OFF SINK ENC-SUB-RM
-   IDX sr SINK ENC-ADD-RR
-   IDX RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
-   RAX r SINK ENC-MOV-RR
-   RAX sr SINK ENC-ADD-RR
-   RAX r SINK ENC-XOR-RR
-   sr r SINK ENC-XOR-RR
-   RAX sr SINK ENC-AND-RR
-   C-NS m BACK-JCC ;
+   r IDX SINK X64ASM:ENC-MOV-RR
+   r X64ASM:RAX LLIM-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-SUB-RM
+   IDX sr SINK X64ASM:ENC-ADD-RR
+   IDX X64ASM:RAX LIDX-OFF X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-MR
+   X64ASM:RAX r SINK X64ASM:ENC-MOV-RR
+   X64ASM:RAX sr SINK X64ASM:ENC-ADD-RR
+   X64ASM:RAX r SINK X64ASM:ENC-XOR-RR
+   sr r SINK X64ASM:ENC-XOR-RR
+   X64ASM:RAX sr SINK X64ASM:ENC-AND-RR
+   X64ASM:C-NS m BACK-JCC ;
 
 \ ---- the seam ----------------------------------------------------------------
 \ Make this file's words, and LABEL's over its branch primitives, the ones the
@@ -932,7 +930,5 @@ DYNAMIC-BUFFER BR-AHEAD n             \ the AHEAD each forward branch carries
 
 CTARGET-ARCH:X86-64 ' FILL-SLOT EMIT-PROVIDE
 
-;using
-;using
 ;package
 ;package

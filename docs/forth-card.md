@@ -38,13 +38,14 @@ public
   inside `package P private` publishes `Y` into wordlist `Q`, where `Q:Y`
   resolves it while `P:Y` stays `E-UNDEFINED`. Define into a package
   by being in it, never by qualifying.
-- `using NAME … ;using` imports NAME's publics for bare calls. A bare tail a
-  global also owns is rejected (§ 3) — rename the public. A file loaded under a
-  `using` resolves through it. Close a using opened before `package` after
-  `;package`: a `;using` inside the package that would close it is rejected
-  as `E-USING-OUTER`, status 70. A load file is a using scope too: a `;using` in
-  an included file or `evaluate` buffer that would close its includer's using
-  is rejected the same way.
+- Call another package's public word as `NAME:WORD`; Habu code does not import
+  with `using`. `using NAME … ;using` imports NAME's publics for bare calls. A
+  bare tail a global also owns is rejected (§ 3) — rename the public. A file
+  loaded under a `using` resolves through it. Close a using opened before
+  `package` after `;package`: a `;using` inside the package that would close it
+  is rejected as `E-USING-OUTER`, status 70. A load file is a using scope too: a
+  `;using` in an included file or `evaluate` buffer that would close its
+  includer's using is rejected the same way.
 - `package B` in package A's private section, in the file or string A is
   open in and under no `using` A opened, opens the **part** `A:B`; a part
   holds no parts. Inside A and its parts `B:X` in a word or a family type,

@@ -11,7 +11,6 @@
 package TYPE-DECL
 private
 package STRUCTURE-DECL
-using DECL-FRONT
 EXPORT TFAM:PF-KIND-MEMO-END
 EXPORT TFAM:PF-KIND-MEMO-START
 EXPORT TFAM:TFAM-FLD-RANGE!
@@ -98,7 +97,7 @@ variable MEM-LAST                     \ members of the declaration last ended
    loop -1 ;
 \ Whether family id is a listed member, whose ;STRUCTURE has not been read.
 : MEM-LISTED? ( n -- bool )
-   MEM-OF {: i:n :}  i 0 < IF NO EXIT THEN  i MEM-LISTED@ ;
+   MEM-OF {: i:n :}  i 0 < IF DECL-FRONT:NO EXIT THEN  i MEM-LISTED@ ;
 
 PTR-VARIABLE SD-ARGS
 SCRATCH-VARIABLE SD-ARGS-CAP          \ in rows
@@ -118,7 +117,7 @@ private
 : SD-RESET ( -- )
    0 SEEN-FIELD !  0 SD-FLDS !  SELF-PTR-RESET ;
 SD-RESET
-: SD-MISSING! ( -- ) TYPE@ DW-TYPE MISSING! ;
+: SD-MISSING! ( -- ) DECL-FRONT:TYPE@ DW-TYPE DECL-FRONT:MISSING! ;
 
 \ The node parser's rejections name the type as its caller does ("type",
 \ "payload type"); SD-TYPE-NODE sets the noun for one parse.
@@ -210,7 +209,7 @@ variable HELP-U
 \ A family whose parameters are all cells: `n` fills each (`option<n>` loads,
 \ `width<n>` and `init<n,n>` do not).
 : CELL-PARAMS? ( n -- bool ) {: fam:n :}
-   YES fam TFAM-ARITY@ 0 ?do fam i TFAM-PK@ PK-CELL = and loop ;
+   DECL-FRONT:YES fam TFAM-ARITY@ 0 ?do fam i TFAM-PK@ PK-CELL = and loop ;
 \ Whether the token at a is a DEFTYPE's whole base, which a help naming one
 \ type may replace.
 : WHOLE-BASE? ( str -- bool ) {: s:str :}
@@ -246,8 +245,8 @@ variable HELP-U
 \ asks: a copy kept here drifted twice (it admitted `if`, then value-record names).
 \ Case and duplicate are TFAM-DECL's.
 : NAME-RESERVED? ( str -- bool )
-   dup s" structure" STR:=CI IF drop YES EXIT THEN
-   dup s" ;structure" STR:=CI IF drop YES EXIT THEN
+   dup s" structure" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" ;structure" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
    TYPE-NAME:FAMILY-RESERVED? ;
 
 : REQUIRE-NAME ( str -- )
@@ -281,12 +280,12 @@ EXPORT CHECK:WIDTH-FAM
 : FIELD-FAM? ( str -- n bool ) {: s:str :}
    TFAM-ACTIVE-PKG$ s TFAM-SIG-RESOLVE {: id:n sr:n :}
    sr SR-AMBIG = IF s DECL-REJECT:TOKEN!  s TDECL-AMBIG throw THEN
-   sr SR-FOUND <> IF 0 NO EXIT THEN
+   sr SR-FOUND <> IF 0 DECL-FRONT:NO EXIT THEN
    id UNSTORED-REASON IF
       s DECL-REJECT:TOKEN!
       id WIDTH-FAM @ = DEFTYPE? and s WHOLE-BASE? 0= and IF drop s WIDTH-HELP$ THEN
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN drop drop
-   id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
+   id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 DECL-FRONT:NO EXIT THEN
    id FAM @ = POINTEE @ 0= and IF
       s DECL-REJECT:TOKEN!
       s" " s" cannot recursively name its owner"
@@ -303,7 +302,7 @@ EXPORT CHECK:WIDTH-FAM
       s" " s" names a MUTUAL member before its `;STRUCTURE`"
       s" name it only beneath `^` until its `;STRUCTURE`, as in `FIELD first ^link`"
       TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
-   id YES ;
+   id DECL-FRONT:YES ;
 
 : USE-KIND$ ( n -- str )
    dup PK-CELL = IF drop s" a value type" EXIT THEN
@@ -355,15 +354,15 @@ EXPORT CHECK:WIDTH-FAM
 
 : LETTER-TYPE ( str n -- n ) {: s:str want:n :}
    s STR:DATA c@
-   dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
-   dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
-   dup ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
+   dup DECL-FRONT:ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
+   dup DECL-FRONT:ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
+   dup DECL-FRONT:ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
    DECL-PARAM 0= IF
       drop s DECL-REJECT:TOKEN!
       s" unknown" s" " SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    {: idx:n :}
    want PK-SCOPE = want PK-REGION = or SELF-U @ 0 <> and IF
-      SELF-A @ SELF-U @ >str YES PTR-VIEW-REJECT THEN
+      SELF-A @ SELF-U @ >str DECL-FRONT:YES PTR-VIEW-REJECT THEN
    idx want DECL-PARAM-USE IF s want PARAM-KIND-REJECT THEN
    drop drop
    want PK-SCOPE = want PK-REGION = or
@@ -388,7 +387,7 @@ EXPORT CHECK:WIDTH-FAM
    THEN
    start
    BEGIN
-      dup s STR:LEN < IF s STR:DATA over + c@ SD-DELIM? 0= ELSE NO THEN
+      dup s STR:LEN < IF s STR:DATA over + c@ SD-DELIM? 0= ELSE DECL-FRONT:NO THEN
    WHILE
       1 +
    REPEAT {: j:n :}
@@ -403,7 +402,7 @@ EXPORT CHECK:WIDTH-FAM
 : SD-SKIP ( str n -- n ) {: text:str i:n :}
    text STR:DATA {: a:^ :}  text STR:LEN {: u:n :}
    i BEGIN
-      dup u < IF a over + c@ SD-BLANK? ELSE NO THEN
+      dup u < IF a over + c@ SD-BLANK? ELSE DECL-FRONT:NO THEN
    WHILE
       1 +
    REPEAT {: s:n :}
@@ -414,7 +413,7 @@ EXPORT CHECK:WIDTH-FAM
    a s + 1 >str DECL-FRONT:COMMENT-END {: e:n :}
    e 0= IF s EXIT THEN
    s 1 + BEGIN
-      dup u < IF a over + c@ e <> ELSE NO THEN
+      dup u < IF a over + c@ e <> ELSE DECL-FRONT:NO THEN
    WHILE
       1 +
    REPEAT
@@ -425,15 +424,15 @@ EXPORT CHECK:WIDTH-FAM
 \ from: the byte after `^`. An atom `ptr` not followed by `<` names no type.
 : SD-POINTEE-AT ( str str n -- n bool ) {: ns:str s:str j:n :}
    ns STR:DATA c@ 94 = IF
-      ns STR:LEN 1 = j s STR:LEN < IF s STR:DATA j + c@ 91 = ELSE NO THEN and IF j YES EXIT THEN
+      ns STR:LEN 1 = j s STR:LEN < IF s STR:DATA j + c@ 91 = ELSE DECL-FRONT:NO THEN and IF j DECL-FRONT:YES EXIT THEN
       ns STR:LEN 1 = IF
          ns DECL-REJECT:TOKEN!
          s" pointer without a pointee"
          ns SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
-      j ns STR:LEN - 1 + YES EXIT
+      j ns STR:LEN - 1 + DECL-FRONT:YES EXIT
    THEN
-   ns s" ptr" STR:=CI 0= IF 0 NO EXIT THEN
-   j s STR:LEN < IF s STR:DATA j + c@ 60 = ELSE NO THEN IF 0 NO EXIT THEN
+   ns s" ptr" STR:=CI 0= IF 0 DECL-FRONT:NO EXIT THEN
+   j s STR:LEN < IF s STR:DATA j + c@ 60 = ELSE DECL-FRONT:NO THEN IF 0 DECL-FRONT:NO EXIT THEN
    ns DECL-REJECT:TOKEN!
    s" unknown" s" " ns SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
 
@@ -443,7 +442,7 @@ defer SD-PARSE-NODE ( str n n -- n n nominal )
 \ parameter argument. A wrap reaches no region slot: each follows two scope
 \ slots, the first of which rejects it.
 : SD-ARG-KIND ( str n n n -- ) {: arg:str fam:n k:n node:n :}
-   FIELD-MISS @ IF EXIT THEN
+   DECL-FRONT:FIELD-MISS @ IF EXIT THEN
    node SCHEMA-PARAM? IF EXIT THEN
    FAM @ node PF-NODE-KIND? 0= IF drop EXIT THEN
    fam k TFAM-PK@ {: want:n :}
@@ -511,7 +510,7 @@ defer SD-PARSE-NODE ( str n n -- n n nominal )
       s" " s" has wrong arity"
       s" give the family as many type arguments as its header declares"
       TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
-   FIELD-MISS @ IF base SD-ARG-N ! 0 j EXIT THEN
+   DECL-FRONT:FIELD-MISS @ IF base SD-ARG-N ! 0 j EXIT THEN
    SCHEMA-ROOT-N@ {: start:n :}
    base BEGIN dup SD-ARG-N @ < WHILE
       dup cells SD-ARGS @ + @ SCHEMA-ROOT+ drop 1 +
@@ -545,7 +544,7 @@ defer SD-LOOSE-NODE ( str n -- n nominal )
 
 : SD-LOOSE-ATOM ( str -- ) {: s:str :}
    s STR:LEN 1 = IF
-      s STR:DATA c@ dup ASCII-N = over ASCII-F = or over ASCII-R = or
+      s STR:DATA c@ dup DECL-FRONT:ASCII-N = over DECL-FRONT:ASCII-F = or over DECL-FRONT:ASCII-R = or
       IF drop EXIT THEN
       TFAM-DECL-CHAR>PARAM IF
          drop s STR:DATA c@ DECL-PARAM IF drop EXIT THEN
@@ -580,9 +579,9 @@ variable SD-QUOT-AT
 : SD-QUOT-NEXT ( str -- str ) {: text:str :}
    text STR:DATA {: a:^ :}  text STR:LEN {: u:n :}
    text SD-QUOT-AT @ SD-SKIP {: s:n :}
-   s u < IF a s + c@ SIG-DELIM-CHAR? ELSE NO THEN IF s 1 + ELSE
+   s u < IF a s + c@ SIG-DELIM-CHAR? ELSE DECL-FRONT:NO THEN IF s 1 + ELSE
       s BEGIN
-         dup u < IF a over + c@ SD-DELIM? 0= ELSE NO THEN
+         dup u < IF a over + c@ SD-DELIM? 0= ELSE DECL-FRONT:NO THEN
       WHILE 1 + REPEAT
    THEN {: e:n :}
    e SD-QUOT-AT !
@@ -640,7 +639,7 @@ variable SD-QUOT-AT
    s  s i SD-SKIP  SD-ATOM {: ns:str j:n :}
    ns s j SD-POINTEE-AT IF {: k:n :} s k SD-LOOSE-PTR EXIT THEN drop
    ns s" [" STR:= IF s j 1 - SD-QUOT-NODE nip EXIT THEN
-   j s STR:LEN < IF s STR:DATA j + c@ 60 = ELSE NO THEN IF
+   j s STR:LEN < IF s STR:DATA j + c@ 60 = ELSE DECL-FRONT:NO THEN IF
       ns FIELD-FAM? IF
          {: fam:n :}
          ns fam SD-REACH
@@ -667,7 +666,7 @@ SD-LOOSE-INSTALL
    -1 POINTEE !
    s k ANY-VALUE SD-PARSE-NODE {: node:n e:n :}
    outer POINTEE !
-   FIELD-MISS @ IF 0 e EXIT THEN
+   DECL-FRONT:FIELD-MISS @ IF 0 e EXIT THEN
    node TFCL-NODE? IF s STR:DATA k +  e k -  >str DECL-REJECT:TOKEN! THEN
    node s" " s" is a pointer to a linear value and cannot own it" SD-TEXT
    DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR e ;
@@ -678,7 +677,7 @@ SD-LOOSE-INSTALL
    s  s i SD-SKIP  SD-ATOM {: ns:str j:n :}
    ns s j SD-POINTEE-AT IF {: k:n :} s k SD-PTR-NODE EXIT THEN drop
    ns s" [" STR:= IF s j 1 - SD-QUOT-NODE EXIT THEN
-   j s STR:LEN < IF s STR:DATA j + c@ 60 = ELSE NO THEN IF
+   j s STR:LEN < IF s STR:DATA j + c@ 60 = ELSE DECL-FRONT:NO THEN IF
       ns FIELD-FAM? 0= IF
          drop
          ns TYPE-MAY-ARRIVE-XT 0= IF
@@ -723,9 +722,9 @@ SD-PARSER-INSTALL
 : SD-SPAN-REST ( str n str str -- str ) {: s:str depth:n cs:str ns:str :}
    s STR:LEN depth
    BEGIN dup 0 > WHILE
-      NEXT dup STR:LEN 0= IF YES ELSE
-         dup cs STR:=CI IF YES ELSE dup TERMINATOR? THEN THEN IF
-         UNGET  drop s STR:DATA swap >str
+      DECL-FRONT:NEXT dup STR:LEN 0= IF DECL-FRONT:YES ELSE
+         dup cs STR:=CI IF DECL-FRONT:YES ELSE dup DECL-FRONT:TERMINATOR? THEN THEN IF
+         DECL-FRONT:UNGET  drop s STR:DATA swap >str
          dup SD-QUOT-OPEN? IF EXIT THEN
          DECL-REJECT:TOKEN!
          s" unclosed" ns s" application" SD-NOUN-TEXT
@@ -760,13 +759,13 @@ public
 : SD-TYPE-NODE ( str n n str -- n )
    {: s:str fam:n want:n ns:str :}
    FAM @ TYPE-LEVEL @ {: ofam:n olevel:n :}
-   TYPE@ NOUN@ {: ot:str on:str :}
+   DECL-FRONT:TYPE@ NOUN@ {: ot:str on:str :}
    fam FAM !  0 TYPE-LEVEL !  0 POINTEE !  0 SD-ARG-N !
-   s TYPE!  ns STR:DATA NOUN-A !  ns STR:LEN NOUN-U !
+   s DECL-FRONT:TYPE!  ns STR:DATA NOUN-A !  ns STR:LEN NOUN-U !
    PF-KIND-MEMO-START
    [: s want SD-WHOLE-NODE ;]
    [: PF-KIND-MEMO-END  ofam FAM !  olevel TYPE-LEVEL !
-      ot TYPE!  on STR:DATA NOUN-A !  on STR:LEN NOUN-U ! ;] finally ;
+      ot DECL-FRONT:TYPE!  on STR:DATA NOUN-A !  on STR:LEN NOUN-U ! ;] finally ;
 private
 
 \ A field type's text, from its first token (SD-SPAN).
@@ -776,7 +775,7 @@ private
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    dup DECL-REJECT:TOKEN!
    s" ;structure" s" type" SD-SPAN
-   dup TYPE!
+   dup DECL-FRONT:TYPE!
    FAM @ want s" type" SD-TYPE-NODE ;
 
 \ Clause drivers emit through DECL-EVENT, which owns duplicate, ordinal and
@@ -789,7 +788,7 @@ private
 
 : POLICY-CLAUSE ( -- )
    HEADER-ORDER
-   NEXT POLICY-CODE {: code:n :}
+   DECL-FRONT:NEXT DECL-FRONT:POLICY-CODE {: code:n :}
    code TL-NICHE = IF
       TDECL-NICHE-MESSAGE$
       s" drop `POLICY niche-null`: only an `ENUM` with an empty variant, then one `^` field, can use it"
@@ -806,12 +805,12 @@ private
    FAM @ TFAM-OPAQUE! ;
 
 : DERIVE-FEATURE? ( str -- bool )
-   dup s" eq" STR:=CI IF drop YES EXIT THEN
-   dup s" hash" STR:=CI IF drop YES EXIT THEN
-   dup s" addr" STR:=CI IF drop YES EXIT THEN
-   dup s" init" STR:=CI IF drop YES EXIT THEN
-   dup s" tag" STR:=CI IF drop YES EXIT THEN
-   dup s" name" STR:=CI IF drop YES EXIT THEN
+   dup s" eq" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" hash" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" addr" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" init" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" tag" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" name" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
    s" order" STR:=CI ;
 \ Visibility is not a condition for a derived surface: it picks the spelling and
 \ the wordlist (type-family.f TF-CTOR-PRIV$, rendered by sumtype.f TDGEN-DRV-REF).
@@ -845,15 +844,15 @@ private
    TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw ;
 : DERIVE-CLAUSE ( -- )
    HEADER-ORDER
-   NEXT dup STR:LEN 0= IF
+   DECL-FRONT:NEXT dup STR:LEN 0= IF
       drop s" missing derive feature"
       s" name a feature after `DERIVE`: `eq`, `hash`, `addr` or `init`"
       TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
-   NEXT dup STR:LEN 0= IF drop EXIT THEN
+   DECL-FRONT:NEXT dup STR:LEN 0= IF drop EXIT THEN
    dup DERIVE-FEATURE? IF
       DECL-REJECT:TOKEN!
       TDECL-DERIVE-ONE-WHY TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
-   UNGET ;
+   DECL-FRONT:UNGET ;
 
 : EMIT-FIELD ( str n -- )
    SCHEMA-ROOT+ {: sch:n :}
@@ -870,9 +869,9 @@ private
 \ derived tail) would make the generator define a name twice, a die inside the
 \ plan. Rejected only under DERIVE addr, which header clauses have fixed by now.
 : MEMBER-CLASH? ( str -- bool )
-   dup s" make" STR:=CI IF drop YES EXIT THEN
-   dup s" unmake" STR:=CI IF drop YES EXIT THEN
-   dup TFAM-ADDR-FIXED-TAIL? IF drop YES EXIT THEN
+   dup s" make" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" unmake" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup TFAM-ADDR-FIXED-TAIL? IF drop DECL-FRONT:YES EXIT THEN
    TFAM-DERIVED-TAIL? ;
 \ A public family's accessor is a word named by the field itself (`POINT:X`),
 \ so its field name takes the definer name rule; a private family's is `POINT-X`.
@@ -884,14 +883,14 @@ private
       s" rename the field: under `DERIVE addr` the names `make`, `unmake`, `at`, `bytes`, `cells`, `eq`, `hash` and `tag` are taken"
       TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 : FIELD-NAME ( -- str )                 \ a FIELD or BUFFER name, judged
-   NEXT dup STR:LEN 0= IF
+   DECL-FRONT:NEXT dup STR:LEN 0= IF
       drop s" missing field name"
       s" write a name and a type after `FIELD`, as in `FIELD x n`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    {: ns:str :}
    ns REQUIRE-FIELD-NAME
-   OUTCOME-NAMES @ 0 <> IF
-      ns SD-FIELD-FIX$ NAME-CHECK THEN
+   DECL-FRONT:OUTCOME-NAMES @ 0 <> IF
+      ns SD-FIELD-FIX$ DECL-FRONT:NAME-CHECK THEN
    ns ;
 \ ITEMS-FULL's reason and fix, composed in one label.
 : ITEMS-TEXTS ( -- str str )
@@ -912,11 +911,11 @@ private
 : FIELD-CLAUSE ( -- )
    FIELD-NAME {: ns:str :}
    ns DECL-FIELD!
-   0 FIELD-MISS !
-   NEXT {: ts:str :}
+   0 DECL-FRONT:FIELD-MISS !
+   DECL-FRONT:NEXT {: ts:str :}
    ts PK-CELL RESOLVE-TYPE {: node:n :}
-   FIELD-MISS @ 0= IF
-      ts FAM @ node REQUIRE-DERIVABLE
+   DECL-FRONT:FIELD-MISS @ 0= IF
+      ts FAM @ node DECL-FRONT:REQUIRE-DERIVABLE
       ITEM-ROOM 1 < IF ns DECL-REJECT:TOKEN! ITEMS-FULL THEN
       SD-ITEMS @ 1 + SD-ITEMS !
       ns node EMIT-FIELD THEN
@@ -943,20 +942,20 @@ EXPORT CHECK:UNSEEN-COVERS?
 \ In a replay, whether the run may still give the count a value: it names a
 \ `constant` whose source states none, or nothing yet under an unseen mark.
 : COUNT-LATER? ( str -- bool ) {: s:str :}
-   OUTCOME-NAMES @ 0= IF NO EXIT THEN
-   s num-parse nip nip IF NO EXIT THEN
+   DECL-FRONT:OUTCOME-NAMES @ 0= IF DECL-FRONT:NO EXIT THEN
+   s num-parse nip nip IF DECL-FRONT:NO EXIT THEN
    s COUNT-REC {: rec:^ :}
-   rec UNSTATED? IF YES EXIT THEN
+   rec UNSTATED? IF DECL-FRONT:YES EXIT THEN
    rec NULL-PTR =  s UNSEEN-COVERS?  and ;
 \ Such a count leaves the declaration to the run, and the read goes on to its
 \ end, so every member's OPAQUE flag is known; any other is rejected.
 : COUNT-UNREAD ( str -- ) {: s:str :}
-   s COUNT-LATER? IF s DW-COUNT MISSING! EXIT THEN
+   s COUNT-LATER? IF s DW-COUNT DECL-FRONT:MISSING! EXIT THEN
    COUNT-BAD ;
 \ `BUFFER name N`: N bytes inline from the next slot, in whole cells, read
 \ without running program code. A count left to the run answers 0, FIELD-MISS set.
 : BUFFER-COUNT ( -- n )
-   NEXT dup STR:LEN 0= IF
+   DECL-FRONT:NEXT dup STR:LEN 0= IF
       drop s" missing buffer byte count"
       s" write a byte count after the buffer's name, as in `BUFFER bytes 16`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
@@ -992,9 +991,9 @@ EXPORT CHECK:UNSEEN-COVERS?
 : BUFFER-CLAUSE ( -- )
    FIELD-NAME {: ns:str :}
    BUFFER-DERIVABLE
-   0 FIELD-MISS !
+   0 DECL-FRONT:FIELD-MISS !
    BUFFER-COUNT {: bytes:n :}
-   FIELD-MISS @ 0= IF
+   DECL-FRONT:FIELD-MISS @ 0= IF
       bytes 1 - CELL / 1 + SD-ITEMS @ + SD-ITEMS !
       ns bytes EMIT-BUFFER THEN
    -1 SEEN-FIELD ! ;
@@ -1043,7 +1042,7 @@ EXPORT CHECK:UNSEEN-COVERS?
 \ gives, a plain STRUCTURE's name or `;MUTUAL`; by WRAP-DRIVE at the family.
 : SD-SEAL ( -- )
    FAM @ TFAM-FLD-START@ {: base:n :}  FAM @ TFAM-FLD-COUNT@ {: count:n :}
-   MISSING? IF E-UNRESOLVED throw THEN
+   DECL-FRONT:MISSING? IF DECL-FRONT:E-UNRESOLVED throw THEN
    count 0 ?do
       base i + PF-SCH@ SCHEMA-ROOT@
       s" type is a pointer to a linear value and cannot own it"
@@ -1066,7 +1065,7 @@ EXPORT CHECK:UNSEEN-COVERS?
 : MEM-BEGIN ( n -- ) {: i:n :}
    i M.FAM MEM-CELL @ SD-OPEN
    0 SEEN-FIELD !
-   SEEN-CLEAR
+   DECL-FRONT:SEEN-CLEAR
    i M.PTEE-U MEM-CELL @ {: pu:n :}
    pu 0 <> IF i MEM-PTEE @ SELF-A ! THEN
    pu SELF-U !
@@ -1095,17 +1094,17 @@ EXPORT CHECK:UNSEEN-COVERS?
    loop ;
 
 : CLAUSE ( -- bool )                    \ read + dispatch one body token; YES = ;STRUCTURE
-   NEXT dup STR:LEN 0= IF drop
+   DECL-FRONT:NEXT dup STR:LEN 0= IF drop
       DECL-REJECT:AT-FAMILY
       s" missing ;STRUCTURE"
       s" end the declaration with `;STRUCTURE` after its last field"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   dup s" ;structure" STR:=CI IF drop MEM-END YES EXIT THEN
-   dup s" field" STR:=CI IF drop FIELD-CLAUSE NO EXIT THEN
-   dup s" buffer" STR:=CI IF drop BUFFER-CLAUSE NO EXIT THEN
-   dup s" policy" STR:=CI IF drop POLICY-CLAUSE NO EXIT THEN
-   dup s" derive" STR:=CI IF drop DERIVE-CLAUSE NO EXIT THEN
-   dup s" opaque" STR:=CI IF drop OPAQUE-CLAUSE NO EXIT THEN
+   dup s" ;structure" STR:=CI IF drop MEM-END DECL-FRONT:YES EXIT THEN
+   dup s" field" STR:=CI IF drop FIELD-CLAUSE DECL-FRONT:NO EXIT THEN
+   dup s" buffer" STR:=CI IF drop BUFFER-CLAUSE DECL-FRONT:NO EXIT THEN
+   dup s" policy" STR:=CI IF drop POLICY-CLAUSE DECL-FRONT:NO EXIT THEN
+   dup s" derive" STR:=CI IF drop DERIVE-CLAUSE DECL-FRONT:NO EXIT THEN
+   dup s" opaque" STR:=CI IF drop OPAQUE-CLAUSE DECL-FRONT:NO EXIT THEN
    drop s" unexpected token in structure declaration"
    s" start each clause with `FIELD`, `POLICY`, `DERIVE` or `OPAQUE`, and end with `;STRUCTURE`"
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
@@ -1128,10 +1127,10 @@ EXPORT CHECK:UNSEEN-COVERS?
 \ A plain STRUCTURE: one member, registered and opened at once, closed at its
 \ ;STRUCTURE. Its name never counts as the terminator.
 : DRIVE ( -- )
-   NAME-TOKEN STRUCTURE-HEADER {: ns:str ar:n :}
+   DECL-FRONT:NAME-TOKEN STRUCTURE-HEADER {: ns:str ar:n :}
    ns NAME-GATE
    ns ns ar SD-DECL {: fam:n :}
-   ns fam NO MEM-ADD
+   ns fam DECL-FRONT:NO MEM-ADD
    0 MEM-BEGIN
    CLAUSES
    ns CLOSE-ALL ;
@@ -1146,16 +1145,16 @@ EXPORT CHECK:UNSEEN-COVERS?
    HEADER {: ns:str ar:n :}
    ns NAME-GATE
    ns ns ar SD-DECL {: fam:n :}
-   ns fam YES MEM-ADD ;
+   ns fam DECL-FRONT:YES MEM-ADD ;
 \ The token after the list: end of input, a member or the terminator.
 : LIST-END? ( str -- bool ) {: s:str :}
    s STR:LEN 0=  s s" structure" STR:=CI or  s s" ;mutual" STR:=CI or ;
 : LIST ( -- )
-   NEXT dup LIST-END? IF
+   DECL-FRONT:NEXT dup LIST-END? IF
       drop s" missing name" LIST-NAME-FIX$
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   BEGIN LIST-ENTRY NEXT dup LIST-END? UNTIL
-   UNGET ;
+   BEGIN LIST-ENTRY DECL-FRONT:NEXT dup LIST-END? UNTIL
+   DECL-FRONT:UNGET ;
 
 \ `STRUCTURE h` in a MUTUAL: h names a listed member with its listed arity,
 \ which opens; its body is a plain STRUCTURE's. The name is judged as a plain
@@ -1163,7 +1162,7 @@ EXPORT CHECK:UNSEEN-COVERS?
 \ as the verifier's scan ends the declaration there: once the member is
 \ rejected, the load resumes after it.
 : MEMBER ( -- )
-   NEXT STRUCTURE-HEADER {: ns:str ar:n :}
+   DECL-FRONT:NEXT STRUCTURE-HEADER {: ns:str ar:n :}
    ns NAME-GATE
    ns MEM-FIND {: i:n :}
    i 0 < IF
@@ -1191,14 +1190,14 @@ EXPORT CHECK:UNSEEN-COVERS?
    loop ;
 
 : MUTUAL-STEP ( -- bool )               \ read + dispatch one member; YES = ;MUTUAL
-   NEXT dup STR:LEN 0= IF drop
+   DECL-FRONT:NEXT dup STR:LEN 0= IF drop
       DECL-REJECT:AT-FAMILY
       s" missing ;MUTUAL"
       s" end the declaration with `;MUTUAL` after its last `;STRUCTURE`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   dup s" structure" STR:=CI IF drop MEMBER NO EXIT THEN
+   dup s" structure" STR:=CI IF drop MEMBER DECL-FRONT:NO EXIT THEN
    dup s" ;mutual" STR:=CI IF
-      UNDECLARED  CLOSE-ALL YES EXIT THEN
+      UNDECLARED  CLOSE-ALL DECL-FRONT:YES EXIT THEN
    drop s" unexpected token in mutual declaration"
    s" write each member as `STRUCTURE name … ;STRUCTURE` and end with `;MUTUAL`"
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
@@ -1227,7 +1226,7 @@ EXPORT CHECK:UNSEEN-COVERS?
 \ converter NAME>BASE is named after it, offering the NEWTYPE that loads.
 : ONE-NAME-GATE ( str str -- ) {: ns:str bs:str :}
    DEFTYPE? 0= IF EXIT THEN
-   NO bs STR:LEN 0 ?do bs STR:DATA i + c@ NAME-STOP? or loop 0= IF EXIT THEN
+   DECL-FRONT:NO bs STR:LEN 0 ?do bs STR:DATA i + c@ NAME-STOP? or loop 0= IF EXIT THEN
    bs DECL-REJECT:TOKEN!
    s" a deftype base is one name"  ns bs BASE-HELP$
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
@@ -1239,7 +1238,7 @@ EXPORT CHECK:UNSEEN-COVERS?
 \ folded, in a buffer no source holds.
 : WRAP-DRIVE ( -- )
    DECL-PARAM-CLEAR
-   NEXT {: ns:str :}
+   DECL-FRONT:NEXT {: ns:str :}
    NAME-A @ NAME-U @ >str DECL-REJECT:FAMILY!
    ns STR:LEN 0= IF s" missing name"
       s" write the family name after `NEWTYPE`, as in `NEWTYPE path str`"
@@ -1247,11 +1246,11 @@ EXPORT CHECK:UNSEEN-COVERS?
    NAME-A @ NAME-U @ >str DECL-REJECT:TOKEN!
    ns dup TDECL-NAME-PREFLIGHT-XT REQUIRE-NAME
    ns NAME-A @ NAME-U @ >str 0 SD-REGISTER
-   0 FIELD-MISS !
-   NEXT dup STR:DATA BASE-A !  dup STR:LEN BASE-U !
+   0 DECL-FRONT:FIELD-MISS !
+   DECL-FRONT:NEXT dup STR:DATA BASE-A !  dup STR:LEN BASE-U !
    PK-CELL RESOLVE-TYPE {: node:n :}
-   FIELD-MISS @ 0= IF s" base" node EMIT-FIELD THEN
-   NEXT STR:LEN 0 <> IF
+   DECL-FRONT:FIELD-MISS @ 0= IF s" base" node EMIT-FIELD THEN
+   DECL-FRONT:NEXT STR:LEN 0 <> IF
       s" a newtype takes one base type"
       s" give one base type after the name, as in `NEWTYPE path str`, and end the line there"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
@@ -1332,11 +1331,11 @@ public
 \ Whether BASE holds no `[`: a quotation type spans tokens and a DEFTYPE base
 \ is one; if it does, rejects NAME. The wrap judges any other base.
 : SD-ONE-NAME ( str str -- bool ) {: ns:str bs:str :}
-   NO bs STR:LEN 0 ?do bs STR:DATA i + c@ 91 = or loop 0= IF YES EXIT THEN
+   DECL-FRONT:NO bs STR:LEN 0 ?do bs STR:DATA i + c@ 91 = or loop 0= IF DECL-FRONT:YES EXIT THEN
    ns bs s" a deftype base is one name"
    s" write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it"
    TYPE-DECL:E-TDECL-SYNTAX ONE-NAME-REJECT
-   NO ;
+   DECL-FRONT:NO ;
 
 \ Registers the family HEADER names over BASE: one field base, no word made;
 \ each record of the name stands at TOKEN, the name as written. KIND is the
@@ -1356,7 +1355,7 @@ private
 : SD-WRAP ( ^u8 n ^u8 n ^u8 n ^u8 n -- n )
    {: ha:^ hu:n ta:^ tu:n ba:^ bu:n ka:^ ku:n :}
    ha hu >str  ta tu >str  ba bu >str  ka ku >str  SD-WRAP-OUTCOME
-   0 <> IF drop E-UNRESOLVED throw THEN drop
+   0 <> IF drop DECL-FRONT:E-UNRESOLVED throw THEN drop
    TDECL-FAM-REG @ ;
 
 ;package

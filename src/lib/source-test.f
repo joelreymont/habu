@@ -8,7 +8,6 @@ require src/lib/fs.f
 require src/lib/source.f
 
 package SOURCE-TEST
-using SOURCE
 
 2048 constant ST-CAP
 92 constant ST-BACKSLASH
@@ -21,18 +20,18 @@ create ST-QP-BUF ST-CAP allot
 
 : TEST-SOURCE-APPEND-NEG-LEN ( -- )
    -1 ST-APPEND-LEN !
-   s" x" ST-BUF 4 >LEN ST-APPEND-LEN SOURCE-APPEND-BYTES ;
+   s" x" ST-BUF 4 >LEN ST-APPEND-LEN SOURCE:SOURCE-APPEND-BYTES ;
 
 : TEST-SOURCE-APPEND-HIGH-LEN ( -- )
    5 ST-APPEND-LEN !
-   s" x" ST-BUF 4 >LEN ST-APPEND-LEN SOURCE-APPEND-BYTES ;
+   s" x" ST-BUF 4 >LEN ST-APPEND-LEN SOURCE:SOURCE-APPEND-BYTES ;
 
 : ST-QP$ ( -- str )
    ST-QP-BUF ST-QP-U @ LEN>N >str ;
 
 : ST-QPATH ( str -- ) {: s:str :}
    0 >LEN ST-QP-U !
-   s ST-QP-BUF ST-CAP >LEN ST-QP-U SOURCE-APPEND-QPATH ;
+   s ST-QP-BUF ST-CAP >LEN ST-QP-U SOURCE:SOURCE-APPEND-QPATH ;
 
 : ST-QPATH-WANT$ ( str -- str ) {: s:str :}
    SB-RESET
@@ -89,5 +88,4 @@ create ST-QP-BUF ST-CAP allot
 
 ST-MAIN
 
-;using
 ;package

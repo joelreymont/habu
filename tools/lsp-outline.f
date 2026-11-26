@@ -12,8 +12,6 @@ require tools/lsp-symbols.f
 require src/lib/json/write.f
 
 package LSP-OUTLINE
-using JSON
-using LSP-DEFS
 
 private
 
@@ -21,14 +19,14 @@ private
 \ group's first.
 : LISTED ( ^JSON:writer n n -- ^JSON:writer )
    {: w g:n r:n :}
-   w r g GROUP-FIRST <> if WRITE-COMMA then
+   w r g LSP-DEFS:GROUP-FIRST <> if JSON:WRITE-COMMA then
    g r LSP-SYMBOLS:SYMBOL ;
 
 : SYMBOLS ( ^JSON:writer n -- ^JSON:writer )
    {: w g:n :}
-   g GROUP-FIRST begin dup 0 >= while
+   g LSP-DEFS:GROUP-FIRST begin dup 0 >= while
       w over g swap LISTED drop
-      REC-NEXT
+      LSP-DEFS:REC-NEXT
    repeat drop
    w ;
 
@@ -36,13 +34,11 @@ public
 
 : ANSWER ( ^JSON:writer n -- ^JSON:writer )
    {: w slot:n :}
-   w WRITE-ARRAY-START
-   slot DEFS-OWN-GROUP MATCH option
+   w JSON:WRITE-ARRAY-START
+   slot LSP-DEFS:DEFS-OWN-GROUP MATCH option
       some OF SYMBOLS ENDOF
       none OF ENDOF
    ;MATCH
-   WRITE-ARRAY-END ;
+   JSON:WRITE-ARRAY-END ;
 
-;using
-;using
 ;package

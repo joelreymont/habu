@@ -13,8 +13,6 @@ require src/lib/json/value.f
 require src/lib/json/write.f
 
 package JSON-RPC-TEST
-using JSON-RPC
-using JSON
 
 TYPED-VARIABLE OUT ^VEC:vector<u8>   \ TEST-MAIN makes and deletes it
 TYPED-VARIABLE W JSON:writer
@@ -50,7 +48,7 @@ TYPED-VARIABLE W JSON:writer
 
 : SORTS ( str str -- )
    {: body:str want:str :}
-   body >MESSAGE SHOW$ want T$= ;
+   body JSON-RPC:>MESSAGE SHOW$ want T$= ;
 
 \ Members in any order and with blanks between; params an object, an array,
 \ absent or null; ids as their exact text: an integer, a negative fraction with
@@ -101,7 +99,7 @@ TYPED-VARIABLE W JSON:writer
 
 \ The body sorts as PARSE-ERROR with the null id.
 : NOT-JSON ( str -- )
-   >MESSAGE SHOW$ {: s:str :}
+   JSON-RPC:>MESSAGE SHOW$ {: s:str :}
    PARSE-HEAD$ STR:LEN s STR:LEN min {: hu:n :}
    s STR:DATA hu >str PARSE-HEAD$ T$= ;
 
@@ -203,7 +201,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
 
 : CLOSED$ ( ^JSON:writer -- str )
    {: w :}
-   w WRITTEN$ {: s:str :}
+   w JSON:WRITTEN$ {: s:str :}
    w JSON:CLOSE
    s ;
 
@@ -212,18 +210,18 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
 \ RESULT, ERROR and NOTIFY: exact bytes, a message escaped, each read back by
 \ >MESSAGE.
 : TEST-WRITE ( -- )
-   WRITER s" 2" ID RESULT WRITE-NULL END CLOSED$
+   WRITER s" 2" ID JSON-RPC:RESULT JSON:WRITE-NULL JSON-RPC:END CLOSED$
    dup s\" {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":null}" T$=
    s" success 2 null" SORTS
-   WRITER s\" \"a\\\"b\"" ID RESULT WRITE-OBJECT-START WRITE-OBJECT-END
-   END CLOSED$
+   WRITER s\" \"a\\\"b\"" ID JSON-RPC:RESULT JSON:WRITE-OBJECT-START JSON:WRITE-OBJECT-END
+   JSON-RPC:END CLOSED$
    dup s\" {\"jsonrpc\":\"2.0\",\"id\":\"a\\\"b\",\"result\":{}}" T$=
    s\" success \"a\\\"b\" {}" SORTS
-   WRITER NULL-ID METHOD-NOT-FOUND s\" no \"x\"" ERROR CLOSED$
+   WRITER JSON-RPC:NULL-ID JSON-RPC:METHOD-NOT-FOUND s\" no \"x\"" JSON-RPC:ERROR CLOSED$
    dup s\" {\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32601,\"message\":\"no \\\"x\\\"\"}}" T$=
    s\" failure null {\"code\":-32601,\"message\":\"no \\\"x\\\"\"}" SORTS
-   WRITER s" textDocument/publishDiagnostics" NOTIFY
-   WRITE-ARRAY-START WRITE-ARRAY-END END CLOSED$
+   WRITER s" textDocument/publishDiagnostics" JSON-RPC:NOTIFY
+   JSON:WRITE-ARRAY-START JSON:WRITE-ARRAY-END JSON-RPC:END CLOSED$
    dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":[]}" T$=
    s\" notification \"textDocument/publishDiagnostics\" []" SORTS ;
 
@@ -246,6 +244,4 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
 
 TEST-MAIN
 
-;using
-;using
 ;package

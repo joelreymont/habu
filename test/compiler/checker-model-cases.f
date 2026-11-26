@@ -9,7 +9,6 @@ require src/lib/test/ending.f
 require test/compiler/checker-model-schema.f
 
 package CHECKER-MODEL-CASES
-using CHECKER-MODEL-PROOF
 public
 
 \ The model's `wStep1` .. `wKeepAny` word effects and its `ltok` linear con, one
@@ -73,15 +72,15 @@ private
 \ mapping is written once so an uncheckable never reads as a rejection.
 
 : VERDICT-OF ( n -- n ) {: answer:n :}
-   answer -1 = if V-CERT exit then
-   answer 1 = if V-UNCK exit then
-   V-REJECT ;
+   answer -1 = if CHECKER-MODEL-PROOF:V-CERT exit then
+   answer 1 = if CHECKER-MODEL-PROOF:V-UNCK exit then
+   CHECKER-MODEL-PROOF:V-REJECT ;
 
 : VECTOR-ROW ( n -- ) {: k:n :}
    SB-RESET s" the shipped checker answers " SB-APPEND
-   k VEC-VERD@ VERDICT-NAME$ SB-APPEND s"  for " SB-APPEND
-   k VEC-NAME$ SB-APPEND SB$ T-LABEL
-   k VEC-SRC$ CHECK-QUIET-CANDIDATE! VERDICT-OF k VEC-VERD@ T= ;
+   k CHECKER-MODEL-PROOF:VEC-VERD@ CHECKER-MODEL-PROOF:VERDICT-NAME$ SB-APPEND s"  for " SB-APPEND
+   k CHECKER-MODEL-PROOF:VEC-NAME$ SB-APPEND SB$ T-LABEL
+   k CHECKER-MODEL-PROOF:VEC-SRC$ CHECK-QUIET-CANDIDATE! VERDICT-OF k CHECKER-MODEL-PROOF:VEC-VERD@ T= ;
 
 \ ---- where these vectors have to be asked ------------------------------------
 \ Every `construct` row resolves its family in the active package
@@ -92,12 +91,11 @@ private
 public
 
 : VECTOR-PHASE ( -- )
-   VECTORS 0 ?do i VECTOR-ROW loop ;
+   CHECKER-MODEL-PROOF:VECTORS 0 ?do i VECTOR-ROW loop ;
 
 \ ---- the whole Habu side -----------------------------------------------------
 
 : HABU-SIDE ( -- )
    VECTOR-PHASE ;
 
-;using
 ;package

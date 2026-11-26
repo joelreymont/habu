@@ -25,7 +25,6 @@ require src/lib/fs.f
 require src/lib/adt/option.f
 
 package FD
-using SPAN
 public
 
 : STDIN ( -- fd ) 0 >FD ;
@@ -237,7 +236,7 @@ private
 
 : MORE ( n fd SPAN:span<u8> -- n )
    {: got:n f:fd dst :}
-   dst got SKIP $ {: room:str :}
+   dst got SPAN:SKIP SPAN:$ {: room:str :}
    f FD>N room STR:DATA room STR:LEN read {: k:n :}
    k 0 < if E-FS-IO throw then
    k room STR:LEN > if E-FS-IO throw then
@@ -264,7 +263,7 @@ public
 \ on the boundary.
 : READ-EXACT ( fd SPAN:span<u8> -- fill )
    {: f:fd dst :}
-   dst LEN {: want:n :}
+   dst SPAN:LEN {: want:n :}
    0 begin dup want < while
       dup f dst MORE
       dup 0= if drop FD-FILL:EOF exit then
@@ -378,5 +377,4 @@ public
    rc 0 < if opened close rc E-FS-IO RC-FAIL then
    opened >FD OPTION:SOME ;
 
-;using
 ;package

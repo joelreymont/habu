@@ -17,8 +17,6 @@ require src/lib/json/read.f
 require src/lib/json/write.f
 
 package LSP-COMPLETION
-using JSON
-using LSP-DEFS
 
 private
 
@@ -40,11 +38,11 @@ variable SHOWN-N                         \ and the items written so far
 \ The member whose key the reader is at, decoded; one an item needs nothing
 \ of, passed over.
 : MEMBER ( JSON:reader -- JSON:reader )
-   s" word" READ-STR-EQ? if READ-NEXT drop WORD-B @ READ-STR drop exit then
-   s" file" READ-STR-EQ? if READ-NEXT drop FILE-B @ READ-STR drop exit then
-   s" target_start" READ-STR-EQ? if READ-NEXT drop READ-INT TARGET-V ! exit then
-   s" target_end" READ-STR-EQ? if READ-NEXT drop READ-INT TARGET-END-V ! exit then
-   READ-NEXT drop READ-SKIP-VALUE ;
+   s" word" JSON:READ-STR-EQ? if JSON:READ-NEXT drop WORD-B @ JSON:READ-STR drop exit then
+   s" file" JSON:READ-STR-EQ? if JSON:READ-NEXT drop FILE-B @ JSON:READ-STR drop exit then
+   s" target_start" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT TARGET-V ! exit then
+   s" target_end" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT TARGET-END-V ! exit then
+   JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
 
 \ The candidate line's members decoded, each once; a member it lacks is empty
 \ or 0.
@@ -54,15 +52,15 @@ variable SHOWN-N                         \ and the items written so far
    FILE-B @ 0 VEC:RESIZE
    0 TARGET-V !
    0 TARGET-END-V !
-   JSON-ST s READ-INIT
-   READ-NEXT drop
-   begin READ-NEXT T-KEY = while MEMBER repeat
-   READ-CLOSE ;
+   JSON-ST s JSON:READ-INIT
+   JSON:READ-NEXT drop
+   begin JSON:READ-NEXT JSON:T-KEY = while MEMBER repeat
+   JSON:READ-CLOSE ;
 
 : TARGET-REC ( -- option<n> )
    FILE-B @ VEC:COUNT 0= if OPTION:NONE exit then
-   ASKED @ FILE$ DEFS-GROUP-OF MATCH option
-      some OF TARGET-V @ TARGET-END-V @ WORD$ GROUP-REC-NAMED ENDOF
+   ASKED @ FILE$ LSP-DEFS:DEFS-GROUP-OF MATCH option
+      some OF TARGET-V @ TARGET-END-V @ WORD$ LSP-DEFS:GROUP-REC-NAMED ENDOF
       none OF OPTION:NONE ENDOF
    ;MATCH ;
 
@@ -75,8 +73,8 @@ variable SHOWN-N                         \ and the items written so far
 \ no effect, gets none.
 : DETAIL ( n -- )
    {: r:n :}
-   r REC-EFFECT$ {: e:str :}
-   r REC-PACKAGE$ {: p:str :}
+   r LSP-DEFS:REC-EFFECT$ {: e:str :}
+   r LSP-DEFS:REC-PACKAGE$ {: p:str :}
    e STR:LEN p STR:LEN or 0= if exit then
    DETAIL-B @ 0 VEC:RESIZE
    e STR:LEN 0 > if s" ( " D+ e D+ s"  )" D+ then
@@ -85,19 +83,19 @@ variable SHOWN-N                         \ and the items written so far
       s" \ package " D+ p D+
 
    then
-   OUT @ WRITE-COMMA s" detail" DETAIL$ WRITE-FIELD-S drop ;
+   OUT @ JSON:WRITE-COMMA s" detail" DETAIL$ JSON:WRITE-FIELD-S drop ;
 
 : ITEM ( str -- )
    DECODE
    OUT @
-   SHOWN-N @ 0 > if WRITE-COMMA then
-   WRITE-OBJECT-START
-   s" label" WORD$ WRITE-FIELD-S drop
+   SHOWN-N @ 0 > if JSON:WRITE-COMMA then
+   JSON:WRITE-OBJECT-START
+   s" label" WORD$ JSON:WRITE-FIELD-S drop
    TARGET-REC MATCH option
       some OF DETAIL ENDOF
       none OF ENDOF
    ;MATCH
-   OUT @ WRITE-OBJECT-END drop
+   OUT @ JSON:WRITE-OBJECT-END drop
    1 SHOWN-N +! ;
 
 public
@@ -113,12 +111,10 @@ public
    w OUT !
    slot ASKED !
    0 SHOWN-N !
-   w WRITE-OBJECT-START
-   s" isIncomplete" false WRITE-FIELD-BOOL WRITE-COMMA
-   s" items" WRITE-KEY WRITE-ARRAY-START drop
+   w JSON:WRITE-OBJECT-START
+   s" isIncomplete" false JSON:WRITE-FIELD-BOOL JSON:WRITE-COMMA
+   s" items" JSON:WRITE-KEY JSON:WRITE-ARRAY-START drop
    LSP-CHECK:VERIFY-CANDIDATES$ [: ITEM ;] LSP-LINE:EACH-LINE
-   w WRITE-ARRAY-END WRITE-OBJECT-END ;
+   w JSON:WRITE-ARRAY-END JSON:WRITE-OBJECT-END ;
 
-;using
-;using
 ;package

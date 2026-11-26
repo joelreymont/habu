@@ -14,8 +14,6 @@ require tools/lsp-text.f
 require src/lib/json/write.f
 
 package LSP-HOVER
-using JSON
-using LSP-DEFS
 
 private
 
@@ -40,35 +38,35 @@ variable TARGET-G                        \ and the group of the record it shows
 \ and the 1-based line of its token. Fenced as habu under Markdown.
 : RECORD-LINES ( n n -- )
    {: g:n r:n :}
-   r REC-KIND$ V+ s"  " V+ r REC-WORD$ V+
-   r REC-EFFECT$ {: e:str :}
+   r LSP-DEFS:REC-KIND$ V+ s"  " V+ r LSP-DEFS:REC-WORD$ V+
+   r LSP-DEFS:REC-EFFECT$ {: e:str :}
    e STR:LEN 0 > if s"  ( " V+ e V+ s"  )" V+ then
    NL s" \ " V+
-   r REC-PACKAGE$ {: p:str :}
+   r LSP-DEFS:REC-PACKAGE$ {: p:str :}
    p STR:LEN 0 > if s" package " V+ p V+ s" , " V+ then
-   g GROUP-PATH$ WHERE+ s" :" V+
-   r REC-RANGE 2drop drop 1+ SB-RESET FMT:SB-INT SB$ V+ ;
+   g LSP-DEFS:GROUP-PATH$ WHERE+ s" :" V+
+   r LSP-DEFS:REC-RANGE 2drop drop 1+ SB-RESET FMT:SB-INT SB$ V+ ;
 
 : USE-LINES ( str n -- )
    {: t:str u:n :}
-   t u USE-WORD$ V+
-   NL s" \ " V+ u USE-GROUP GROUP-PATH$ WHERE+ ;
+   t u LSP-DEFS:USE-WORD$ V+
+   NL s" \ " V+ u LSP-DEFS:USE-GROUP LSP-DEFS:GROUP-PATH$ WHERE+ ;
 
 : CONTENTS ( bool -- ^JSON:writer )
    {: md:bool :}
    md if NL s" ```" V+ then
    OUT @
-   WRITE-OBJECT-START
-   s" contents" WRITE-KEY WRITE-OBJECT-START
-   md if s" kind" s" markdown" WRITE-FIELD-S else s" kind" s" plaintext" WRITE-FIELD-S then
-   WRITE-COMMA s" value" VALUE$ WRITE-FIELD-S
-   WRITE-OBJECT-END WRITE-COMMA ;
+   JSON:WRITE-OBJECT-START
+   s" contents" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
+   md if s" kind" s" markdown" JSON:WRITE-FIELD-S else s" kind" s" plaintext" JSON:WRITE-FIELD-S then
+   JSON:WRITE-COMMA s" value" VALUE$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END JSON:WRITE-COMMA ;
 
 \ Leaves the record's group in TARGET-G.
 : TARGET-REC ( str n -- option<n> )
    {: t:str u:n :}
-   u USE-GROUP dup TARGET-G !
-   u USE-TARGET t u USE-WORD$ GROUP-REC-NAMED ;
+   u LSP-DEFS:USE-GROUP dup TARGET-G !
+   u LSP-DEFS:USE-TARGET t u LSP-DEFS:USE-WORD$ LSP-DEFS:GROUP-REC-NAMED ;
 
 : USE-HOVER ( str n bool -- )
    {: t:str u:n md:bool :}
@@ -77,22 +75,22 @@ variable TARGET-G                        \ and the group of the record it shows
       some OF TARGET-G @ swap RECORD-LINES ENDOF
       none OF t u USE-LINES ENDOF
    ;MATCH
-   u USE-BYTES {: from:n to:n :}
+   u LSP-DEFS:USE-BYTES {: from:n to:n :}
    md CONTENTS
    from LSP-TEXT:LINE-CHARACTER to from max LSP-TEXT:LINE-CHARACTER
-   LSP-TEXT:RANGE-AT WRITE-OBJECT-END drop ;
+   LSP-TEXT:RANGE-AT JSON:WRITE-OBJECT-END drop ;
 
 : RECORD-HOVER ( n bool -- )
    {: r:n md:bool :}
    md OPEN
    TARGET-G @ r RECORD-LINES
-   md CONTENTS r REC-RANGE LSP-TEXT:RANGE-AT WRITE-OBJECT-END drop ;
+   md CONTENTS r LSP-DEFS:REC-RANGE LSP-TEXT:RANGE-AT JSON:WRITE-OBJECT-END drop ;
 
 \ Leaves the record's group in TARGET-G.
 : HELD-REC ( n n -- option<n> )
    {: slot:n at:n :}
-   slot DEFS-OWN-GROUP MATCH option
-      some OF dup TARGET-G ! at GROUP-REC-HOLDING ENDOF
+   slot LSP-DEFS:DEFS-OWN-GROUP MATCH option
+      some OF dup TARGET-G ! at LSP-DEFS:GROUP-REC-HOLDING ENDOF
       none OF OPTION:NONE ENDOF
    ;MATCH ;
 
@@ -100,7 +98,7 @@ variable TARGET-G                        \ and the group of the record it shows
    {: slot:n at:n md:bool :}
    slot at HELD-REC MATCH option
       some OF md RECORD-HOVER ENDOF
-      none OF OUT @ WRITE-NULL drop ENDOF
+      none OF OUT @ JSON:WRITE-NULL drop ENDOF
    ;MATCH ;
 
 public
@@ -120,12 +118,10 @@ public
    {: w slot:n at:n md:bool :}
    w OUT !
    VALUE-B @ 0 VEC:RESIZE
-   slot at DEFS-USE-AT MATCH option
+   slot at LSP-DEFS:DEFS-USE-AT MATCH option
       some OF slot LSP-DOCS:DOC-TEXT$ swap md USE-HOVER ENDOF
       none OF slot at md DEF-HOVER ENDOF
    ;MATCH
    w ;
 
-;using
-;using
 ;package

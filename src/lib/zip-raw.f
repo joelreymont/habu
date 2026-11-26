@@ -11,7 +11,6 @@ require src/lib/zip-state.f
 require src/lib/zip-types.f
 
 package ZIP
-using FFI
 
 $04034B50 constant LOCAL-SIG
 $02014B50 constant CENTRAL-SIG
@@ -612,5 +611,4 @@ $14 constant LOCATOR-BYTES
       E-COMMIT throw
    then ;
 
-;using
 ;package

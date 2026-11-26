@@ -11,7 +11,6 @@ require src/lib/test/assert.f
 require test/fixtures/source-root-exe/inner.f
 require src/lib/error.f
 
-using SOURCE-ROOT
 package SOURCE-ROOT-EXE-APP
 
 create PATH-BUF PATH-CAP allot
@@ -22,16 +21,16 @@ variable PATH-U
 
 \ JOIN answers in resolver scratch that the next query overwrites.
 : ENGINE-COPY$ ( -- str )
-   ROOT$ s" src/lib/error.f" JOIN {: s:str :}
+   ROOT$ s" src/lib/error.f" SOURCE-ROOT:JOIN {: s:str :}
    s STR:DATA PATH-BUF s STR:LEN BYTE-COPY s STR:LEN PATH-U !
    PATH-BUF PATH-U @ >str ;
 
 : RUN ( -- )
    T-RESET
    s" the working directory is where the engine was started" T-LABEL
-   CWD$ INVOKED$ T$=
+   SOURCE-ROOT:CWD$ INVOKED$ T$=
    s" the engine root is the executable's tree" T-LABEL
-   ENGINE$ ROOT$ T$=
+   SOURCE-ROOT:ENGINE$ ROOT$ T$=
    s" the app's own src/lib/error.f loaded at its owner" T-LABEL
    SOURCE-ROOT-EXE-APP-ERRORS:MARK 1 T=
    s" the app's own src/lib/error.f is not engine-provided" T-LABEL
@@ -52,4 +51,3 @@ variable PATH-U
 
 RUN
 ;package
-;using

@@ -17,8 +17,6 @@ require tools/lsp-line.f
 require src/lib/json/write.f
 
 package LSP-TEXT
-using JSON
-using LSP-LINE
 
 private
 
@@ -156,23 +154,23 @@ private
 
 : POSITION ( ^JSON:writer n n -- ^JSON:writer )
    {: ln:n ch:n :}
-   WRITE-OBJECT-START
-   s" line" ln WRITE-FIELD-U WRITE-COMMA
-   s" character" ch WRITE-FIELD-U
-   WRITE-OBJECT-END ;
+   JSON:WRITE-OBJECT-START
+   s" line" ln JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" character" ch JSON:WRITE-FIELD-U
+   JSON:WRITE-OBJECT-END ;
 
 public
 
 : RANGE-VALUE ( ^JSON:writer n n n n -- ^JSON:writer )
    {: l1:n c1:n l2:n c2:n :}
-   WRITE-OBJECT-START
-   s" start" WRITE-KEY l1 c1 POSITION WRITE-COMMA
-   s" end" WRITE-KEY l2 c2 POSITION
-   WRITE-OBJECT-END ;
+   JSON:WRITE-OBJECT-START
+   s" start" JSON:WRITE-KEY l1 c1 POSITION JSON:WRITE-COMMA
+   s" end" JSON:WRITE-KEY l2 c2 POSITION
+   JSON:WRITE-OBJECT-END ;
 
 : RANGE-AT ( ^JSON:writer n n n n -- ^JSON:writer )
    {: l1:n c1:n l2:n c2:n :}
-   s" range" WRITE-KEY l1 c1 l2 c2 RANGE-VALUE ;
+   s" range" JSON:WRITE-KEY l1 c1 l2 c2 RANGE-VALUE ;
 
 \ The range member for a line that holds one JSON object with byte_start and
 \ byte_end, as the checker's packets do: a missing start is 0, a missing end
@@ -180,8 +178,8 @@ public
 \ so the range is valid whatever the line says.
 : RANGE ( ^JSON:writer str -- ^JSON:writer )
    {: s:str :}
-   s s" byte_start" INT-MEMBER 0= if drop 0 then {: from:n :}
-   s s" byte_end" INT-MEMBER 0= if drop from then from max {: to:n :}
+   s s" byte_start" LSP-LINE:INT-MEMBER 0= if drop 0 then {: from:n :}
+   s s" byte_end" LSP-LINE:INT-MEMBER 0= if drop from then from max {: to:n :}
    from LINE-CHARACTER to LINE-CHARACTER RANGE-AT ;
 
 private
@@ -208,6 +206,4 @@ public
    TEXT-A @ start + start LINE-END start - >str
    ch UTF16:OFFSET start + ;
 
-;using
-;using
 ;package

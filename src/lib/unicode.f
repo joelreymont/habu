@@ -23,7 +23,6 @@ require src/lib/string.f
 s" src/lib/task.f" required
 
 package UNICODE
-using FFI
 
 public
 
@@ -168,7 +167,7 @@ $82 constant FINAL-TAIL
    source VALID-UTF8
    0 RESULT !
    source 0 0 0 RESULT BYTE-VIEW map execute
-   dup >CELL 0= if E-CASEFOLD throw then
+   dup FFI:>CELL 0= if E-CASEFOLD throw then
    RESULT @ >str ;
 
 \ Keep the same stack shape on success and failure for the cleanup path.
@@ -247,5 +246,4 @@ public
    [: right lowered LOWERS-TO? ;] [: lowered STR:DATA RELEASE ;] finally ;
 
 seal-package
-;using
 ;package

@@ -29,8 +29,6 @@ require src/lib/json/read.f
 require src/lib/json/write.f
 
 package LSP-DEFS
-using LSP-DOCS
-using LSP-TEXT
 
 public
 
@@ -376,8 +374,8 @@ public
 \ checked document's own.
 : DEP-URI$ ( str -- str )
    {: p:str :}
-   p DOC-HOLDING MATCH option
-      some OF DOC-URI$ ENDOF
+   p LSP-DOCS:DOC-HOLDING MATCH option
+      some OF LSP-DOCS:DOC-URI$ ENDOF
       none OF p FILE-URI$ ENDOF
    ;MATCH ;
 
@@ -397,12 +395,12 @@ private
    GROUP-N @ {: g:n :}
    g 1+ GROUP-CELLS * GROUPS-RESERVE
    KEPT-SLOT {: slot:n :}
-   slot 0 >= if p slot DOC-CANON$ STR:= else false then {: own:bool :}
+   slot 0 >= if p slot LSP-DOCS:DOC-CANON$ STR:= else false then {: own:bool :}
    0 g G-OVER GROUP!
    ST-UNSEEN g G-STAMP GROUP!
    p BYTES+ g G-PATH GROUP!
    p STR:LEN g G-PATH-U GROUP!
-   own if KEPT-SLOT DOC-URI$ else p DEP-URI$ then URI-JSON {: us:str :}
+   own if KEPT-SLOT LSP-DOCS:DOC-URI$ else p DEP-URI$ then URI-JSON {: us:str :}
    us BYTES+ g G-URI GROUP!
    us STR:LEN g G-URI-U GROUP!
    -1 g G-FIRST GROUP!
@@ -413,10 +411,10 @@ private
 
 : COUNT-IN ( n -- )
    {: g:n :}
-   g G-OWN GROUP@ 0<> if KEPT-SLOT DOC-TEXT$ TEXT! g CUR-G ! exit then
-   g PATH$ DOC-HOLDING MATCH option
-      some OF DOC-TEXT$ TEXT! ENDOF
-      none OF g PATH$ FILE-TEXT! ENDOF
+   g G-OWN GROUP@ 0<> if KEPT-SLOT LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT! g CUR-G ! exit then
+   g PATH$ LSP-DOCS:DOC-HOLDING MATCH option
+      some OF LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
+      none OF g PATH$ LSP-TEXT:FILE-TEXT! ENDOF
    ;MATCH
    g CUR-G ! ;
 
@@ -514,8 +512,8 @@ private
    START-V @ {: from:n :}
    from r R-START REC!
    END-V @ r R-END REC!
-   from LINE-CHARACTER r R-CHAR REC! r R-LINE REC!
-   END-V @ from max LINE-CHARACTER r R-END-CHAR REC! r R-END-LINE REC!
+   from LSP-TEXT:LINE-CHARACTER r R-CHAR REC! r R-LINE REC!
+   END-V @ from max LSP-TEXT:LINE-CHARACTER r R-END-CHAR REC! r R-END-LINE REC!
    WORD-AT @ r R-WORD REC!
    WORD-U @ r R-WORD-U REC!
    PKG-AT @ r R-PKG REC!
@@ -557,7 +555,7 @@ private
    STAMP-V @ ST-SUBJECT = if
       SUBJECT-OWNER MATCH option
          some OF
-            dup SOURCE-V ! DOC-VERSION@ VERSION-V !
+            dup SOURCE-V ! LSP-DOCS:DOC-VERSION@ VERSION-V !
             ST-DOCUMENT STAMP-V !
          ENDOF
          none OF
@@ -572,8 +570,8 @@ private
       exit
    then
    STAMP-V @ ST-DOCUMENT = if
-      FILE$ DOC-HOLDING MATCH option
-         some OF dup SOURCE-V ! DOC-VERSION@ VERSION-V ! ENDOF
+      FILE$ LSP-DOCS:DOC-HOLDING MATCH option
+         some OF dup SOURCE-V ! LSP-DOCS:DOC-VERSION@ VERSION-V ! ENDOF
          none OF ST-UNUSABLE STAMP-V ! ENDOF
       ;MATCH
    then
@@ -584,7 +582,7 @@ private
    g G-STAMP GROUP@ STAMP-V @ <> if false exit then
    STAMP-V @ ST-DOCUMENT = if
       g G-SOURCE GROUP@ SOURCE-V @ =
-      g G-ID GROUP@ SOURCE-V @ DOC-ID@ = and
+      g G-ID GROUP@ SOURCE-V @ LSP-DOCS:DOC-ID@ = and
       g G-VERSION GROUP@ VERSION-V @ = and exit
    then
    STAMP-V @ ST-DISK = if
@@ -604,7 +602,7 @@ private
    then
    STAMP-V @ g G-STAMP GROUP!
    SOURCE-V @ g G-SOURCE GROUP!
-   SOURCE-V @ 0 >= if SOURCE-V @ DOC-ID@ else 0 then g G-ID GROUP!
+   SOURCE-V @ 0 >= if SOURCE-V @ LSP-DOCS:DOC-ID@ else 0 then g G-ID GROUP!
    VERSION-V @ g G-VERSION GROUP!
    SIZE-V @ g G-SIZE GROUP!
    MSEC-V @ g G-MSEC GROUP!
@@ -938,7 +936,7 @@ public
 \ The raw URI whose document or disk bytes the group read.
 : GROUP-SOURCE-URI$ ( n -- str )
    {: g:n :}
-   g G-STAMP GROUP@ ST-DOCUMENT = if g G-SOURCE GROUP@ DOC-URI$ exit then
+   g G-STAMP GROUP@ ST-DOCUMENT = if g G-SOURCE GROUP@ LSP-DOCS:DOC-URI$ exit then
    g PATH$ FILE-URI$ ;
 
 : GROUP-FIRST ( n -- n )  G-FIRST GROUP@ ;
@@ -1001,8 +999,8 @@ public
 : USE-TARGET-RANGE ( n -- n n n n )
    {: u:n :}
    u USE-GROUP COUNT-IN
-   u U-TARGET USE@ LINE-CHARACTER
-   u U-TARGET-END USE@ LINE-CHARACTER ;
+   u U-TARGET USE@ LSP-TEXT:LINE-CHARACTER
+   u U-TARGET-END USE@ LSP-TEXT:LINE-CHARACTER ;
 
 \ The bytes of the document's text the use starts and ends at.
 : USE-BYTES ( n -- n n )
@@ -1073,17 +1071,17 @@ public
    {: g:n :}
    g G-STAMP GROUP@ ST-DOCUMENT = if
       g G-SOURCE GROUP@ {: slot:n :}
-      slot DOC-LIVE? 0= if false exit then
-      slot DOC-ID@ g G-ID GROUP@ <> if false exit then
-      slot DOC-VERSION@ g G-VERSION GROUP@ <> if false exit then
+      slot LSP-DOCS:DOC-LIVE? 0= if false exit then
+      slot LSP-DOCS:DOC-ID@ g G-ID GROUP@ <> if false exit then
+      slot LSP-DOCS:DOC-VERSION@ g G-VERSION GROUP@ <> if false exit then
       g G-OWN GROUP@ 0<> if true exit then
-      g PATH$ DOC-HOLDING MATCH option
+      g PATH$ LSP-DOCS:DOC-HOLDING MATCH option
          some OF slot = ENDOF
          none OF false ENDOF
       ;MATCH exit
    then
    g G-STAMP GROUP@ ST-DISK <> if false exit then
-   g PATH$ DOC-HOLDING MATCH option
+   g PATH$ LSP-DOCS:DOC-HOLDING MATCH option
       some OF drop false exit ENDOF
       none OF ENDOF
    ;MATCH
@@ -1101,9 +1099,9 @@ public
    {: g:n :}
    g GROUP-FRESH? 0= if false exit then
    g G-STAMP GROUP@ ST-DOCUMENT = if
-      g G-SOURCE GROUP@ DOC-TEXT$ LSP-TEXT:TEXT! true exit
+      g G-SOURCE GROUP@ LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT! true exit
    then
-   g PATH$ FILE-TEXT!
+   g PATH$ LSP-TEXT:FILE-TEXT!
    LSP-TEXT:DISK-META {: size:n msec:n mns:n csec:n cns:n valid:bool :}
    valid 0= if false exit then
    size g G-SIZE GROUP@ =
@@ -1329,6 +1327,4 @@ public
       none OF OPTION:NONE ENDOF
    ;MATCH ;
 
-;using
-;using
 ;package

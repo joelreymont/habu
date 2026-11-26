@@ -15,7 +15,6 @@ require src/lib/browser/event.f
 require test/browser/turn-revision.f
 package TAKE-TURN
 private
-using BROWSER-EVENT
 
 CAST: BYTES>N ( ^u8 -- n )
 
@@ -43,36 +42,35 @@ variable HELD-U
    HELD-U @ 0= if exit then
    0 TEXT-U !  s" held " SAY  HELD @ HELD-U @ >str SAY
    TEXT TEXT-U @ >str TEXT-RECORD
-   HELD @ HELD-U @ FREE  0 HELD-U ! ;
+   HELD @ HELD-U @ BROWSER-EVENT:FREE  0 HELD-U ! ;
 
 : SAME? ( str str -- bool )
    {: a:str b:str :}
    a STR:DATA BYTES>N b STR:DATA BYTES>N =  a STR:LEN b STR:LEN =  and ;
 
 : HOLD ( -- )
-   0 EVENT@ 1 EVENT@ 2 EVENT@ DELIVERY {: kind:n at:n u:n d:str :}
+   0 BROWSER-EVENT:EVENT@ 1 BROWSER-EVENT:EVENT@ 2 BROWSER-EVENT:EVENT@ BROWSER-EVENT:DELIVERY {: kind:n at:n u:n d:str :}
    BROWSER-EVENT:TAKE {: k:str :}
    k d SAME? 0= if 91 throw then
-   DELIVERY d SAME? 0= if 91 throw then
-   0 EVENT@ kind <>  1 EVENT@ at <> or  2 EVENT@ u <> or if 91 throw then
+   BROWSER-EVENT:DELIVERY d SAME? 0= if 91 throw then
+   0 BROWSER-EVENT:EVENT@ kind <>  1 BROWSER-EVENT:EVENT@ at <> or  2 BROWSER-EVENT:EVENT@ u <> or if 91 throw then
    k STR:DATA HELD !  k STR:LEN HELD-U ! ;
 
 : TYPED ( -- )
    SHOW-HELD
-   DELIVERY s" take" STR:= if  HOLD  DELIVERY TEXT-RECORD exit  then
-   DELIVERY s" boom" STR:= if  HOLD  93 throw  then ;
+   BROWSER-EVENT:DELIVERY s" take" STR:= if  HOLD  BROWSER-EVENT:DELIVERY TEXT-RECORD exit  then
+   BROWSER-EVENT:DELIVERY s" boom" STR:= if  HOLD  93 throw  then ;
 
 : DISPATCH ( -- )
-   0 EVENT@ {: kind:n :}
-   kind 0 = if  0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD exit  then
+   0 BROWSER-EVENT:EVENT@ {: kind:n :}
+   kind 0 = if  0 BROWSER-EVENT:EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD exit  then
    kind 4 = if TYPED then ;
 
 public
 
 : TURN ( -- )
-   [: DISPATCH ;] HANDLE ;
+   [: DISPATCH ;] BROWSER-EVENT:HANDLE ;
 
-;using
 ;package
 
 : MAIN ( -- ) TAKE-TURN:TURN ;

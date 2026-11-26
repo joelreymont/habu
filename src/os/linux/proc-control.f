@@ -8,18 +8,14 @@
 require src/habu/rt.f
 require src/os/linux/sys.f
 
-using RT
-using SYSCALL
 package ENGINE-EMIT
 : BKILLERRNO ( -- )                \ ( pid sig -- rc )
-   1 G-POP  0 G-POP
-   NR-KILL SYS,
-   0 G-PUSH ;
+   1 RT:G-POP  0 RT:G-POP
+   SYSCALL:NR-KILL SYSCALL:SYS,
+   0 RT:G-PUSH ;
 
 : BEXECVE ( -- )                   \ ( pathz argv envp -- rc ) only returns on failure: rc=-errno
-   2 G-POP  1 G-POP  0 G-POP
-   NR-EXECVE SYS,
-   0 G-PUSH ;
+   2 RT:G-POP  1 RT:G-POP  0 RT:G-POP
+   SYSCALL:NR-EXECVE SYSCALL:SYS,
+   0 RT:G-PUSH ;
 ;package
-;using
-;using

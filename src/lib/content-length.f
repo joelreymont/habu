@@ -14,8 +14,6 @@ require src/lib/fd.f
 require src/lib/adt/option.f
 
 package CONTENT-LENGTH
-using SPAN
-using FD
 public
 
 \ fd is the descriptor read; buf and cap the caller's buffer; pos is the first
@@ -232,7 +230,7 @@ private
    {: r s want:n k:n :}
    r CAP@ {: cap:n :}
    r SPEND
-   r FD@  s k want k - SUB  READ-EXACT MATCH FD:fill
+   r FD@  s k want k - SPAN:SUB  FD:READ-EXACT MATCH FD:fill
       full OF ENDOF
       eof OF drop r TRUNCATED ENDOF
    ;MATCH
@@ -269,7 +267,7 @@ public
 \ E-CONTENT-LENGTH-STATE.
 : BIND ( ^reader fd SPAN:span<u8> n -- )
    {: r f:fd s max:n :}
-   s $ {: bytes:str :}
+   s SPAN:$ {: bytes:str :}
    bytes STR:LEN LINE-CAP 2 + < if E-CONTENT-LENGTH-STATE throw then
    max 0 < if E-CONTENT-LENGTH-STATE throw then
    f bytes STR:DATA bytes STR:LEN 0 0 -1 max
@@ -297,9 +295,9 @@ public
    r LIVE
    r WANT@ {: want:n :}
    want 0 < if E-CONTENT-LENGTH-STATE throw then
-   s LEN want < if E-SPAN-CAPACITY throw then
+   s SPAN:LEN want < if E-SPAN-CAPACITY throw then
    r HELD want min {: k:n :}
-   r BUF@ r POS@ +  k >str  s COPY
+   r BUF@ r POS@ +  k >str  s SPAN:COPY
    r POS@ k + r POS!
    -1 r WANT!
    want k > if r s want k REST then ;
@@ -313,9 +311,7 @@ public
 : SEND ( fd str -- )
    {: f:fd s:str :}
    s STR:LEN 0 < if E-SPAN-LENGTH throw then
-   f s STR:LEN HEADER$ WRITE-FULL
-   f s WRITE-FULL ;
+   f s STR:LEN HEADER$ FD:WRITE-FULL
+   f s FD:WRITE-FULL ;
 
-;using
-;using
 ;package

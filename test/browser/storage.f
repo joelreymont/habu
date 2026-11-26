@@ -19,7 +19,6 @@ require src/lib/browser/event.f
 require test/browser/turn-revision.f
 package STORAGE-TURN
 private
-using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ^u8 )
 CAST: BYTES>N ( ^u8 -- n )
@@ -61,7 +60,7 @@ variable TYPED-N
    131072 HELD-RESERVE
    0 HELD FIRST !
    42 131071 HELD c!
-   0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
+   0 BROWSER-EVENT:EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
    s" fixture" {: path:str :}
    1 path STR:DATA BYTES>N path STR:LEN 0 RECORD
    0 TEXT-U !
@@ -70,15 +69,15 @@ variable TYPED-N
    TEXT-RECORD ;
 
 : BYTES ( -- )
-   1 EVENT@ FETCH-AT !
-   2 EVENT@ FETCH-LEN !
+   1 BROWSER-EVENT:EVENT@ FETCH-AT !
+   2 BROWSER-EVENT:EVENT@ FETCH-LEN !
    FETCH-AT @ FETCH-LEN @ SUM FETCH-SUM !
    262144 HELD-RESERVE
    131071 HELD c@ 42 <> if 92 throw then
    HELD-RELEASE
    196608 HELD-RESERVE
    0 TEXT-U !
-   1 EVENT@ 2 EVENT@ SUM DIGITS
+   1 BROWSER-EVENT:EVENT@ 2 BROWSER-EVENT:EVENT@ SUM DIGITS
    TEXT-RECORD ;
 
 : POINTER ( -- )
@@ -87,15 +86,15 @@ variable TYPED-N
    0 HELD FIRST @ <> if 94 throw then
    131071 HELD c@ 0<> if 95 throw then
    0 TEXT-U !
-   1 EVENT@ DIGITS  44 CHAR+  2 EVENT@ DIGITS
+   1 BROWSER-EVENT:EVENT@ DIGITS  44 CHAR+  2 BROWSER-EVENT:EVENT@ DIGITS
    TEXT-RECORD ;
 
 : TYPED ( -- )
-   2 EVENT@ 1 <> if 96 throw then
-   1 EVENT@ >BYTES c@ TYPED-N @ 500 < if 97 else 98 then <> if 97 throw then
-   TYPED-N @ 0= if 1 EVENT@ TYPED-AT ! then
-   1 EVENT@ TYPED-AT @ <> if 91 throw then
-   DELIVERY str> FREE
+   2 BROWSER-EVENT:EVENT@ 1 <> if 96 throw then
+   1 BROWSER-EVENT:EVENT@ >BYTES c@ TYPED-N @ 500 < if 97 else 98 then <> if 97 throw then
+   TYPED-N @ 0= if 1 BROWSER-EVENT:EVENT@ TYPED-AT ! then
+   1 BROWSER-EVENT:EVENT@ TYPED-AT @ <> if 91 throw then
+   BROWSER-EVENT:DELIVERY str> BROWSER-EVENT:FREE
    TYPED-N @ 1+ TYPED-N !
    TYPED-N @ 1000 = if
       FETCH-AT @ FETCH-LEN @ SUM FETCH-SUM @ <> if 99 throw then
@@ -108,14 +107,13 @@ variable TYPED-N
 public
 
 : TURN ( -- )
-   0 EVENT@ {: kind:n :}
+   0 BROWSER-EVENT:EVENT@ {: kind:n :}
    kind 0 = if START exit then
    kind 1 = if BYTES exit then
    kind 4 = if TYPED exit then
-   kind 20 = if DELIVERY str> FREE exit then
+   kind 20 = if BROWSER-EVENT:DELIVERY str> BROWSER-EVENT:FREE exit then
    POINTER ;
 
-;using
 ;package
 
 : MAIN ( -- ) STORAGE-TURN:TURN ;

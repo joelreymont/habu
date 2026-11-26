@@ -2442,8 +2442,6 @@ EXPORT TFAM:TFAM-NAME$
    CLAUSE @ DO-CLAUSE
    CLAUSE @ 1+ UNITS drop ;
 
-using NDEFINITION
-
 \ The unit's body kind: COMP-BODY:COMPILED for a colon definition, else the
 \ fixed body's kind.
 TYPED-VARIABLE BODY-KIND body
@@ -2497,13 +2495,13 @@ variable SCAN-LO                     \ the ordinal of its first row
 : ON-SCAN ( str -- )
    STR:DATA {: a:^ :}
    a SCAN-TXT !
-   a SRC$ STR:DATA - {: base:n :}
+   a NDEFINITION:SRC$ STR:DATA - {: base:n :}
    base SCAN-BASE !
    base 0= if
       0 ROWS !  0 BODIES-N !  -1 SPLIT !
       0 MEASURES !  0 BIND-COUNT !  0 HEAD-BINDS !
    else
-      base DOES-SPAN -  DOES-SPAN 1-  LAY-ROW SPLIT !
+      base NDEFINITION:DOES-SPAN -  NDEFINITION:DOES-SPAN 1-  LAY-ROW SPLIT !
       ROWS @ CLAUSE-ORD !
    then
    ROWS @ SCAN-LO ! ;
@@ -2518,7 +2516,7 @@ variable SCAN-LO                     \ the ordinal of its first row
       s STR:LEN k ROW-U !
       s STR:DATA at <> if s k KEEP-BODY then
    then
-   k 0= if at NAME-A !  ru NAME-U ! then ;
+   k 0= if at NDEFINITION:NAME-A !  ru NDEFINITION:NAME-U ! then ;
 
 : KEEP-MEASURES ( -- )
    SCAN-BASE @ {: base:n :}
@@ -2571,11 +2569,11 @@ EXPORT CHECKER-TAPE:TAPE-INSTALL
 
 \ A does> clause is named for a rejection by the definition's name.
 : CHECK-UNIT ( -- n )
-   M-DOES @ 0<> if
-      CHECK-DOES-HEAD
-      NAME$ CHECK-DOES-CLAUSE exit
+   NDEFINITION:M-DOES @ 0<> if
+      NDEFINITION:CHECK-DOES-HEAD
+      NDEFINITION:NAME$ NDEFINITION:CHECK-DOES-CLAUSE exit
    then
-   CHECK-SOURCE ;
+   NDEFINITION:CHECK-SOURCE ;
 
 EXPORT CHECKER-TAPE:ARM
 EXPORT CHECKER-TAPE:DISARM
@@ -2586,9 +2584,9 @@ EXPORT CHECKER-TAPE:DISARM
    OBSERVE
    0 SCAN-VERDICT !
    ARM
-   [: CHECK-UNIT M-VERDICT ! ;] [: DISARM ;] finally
-   M-VERDICT @ 0<> if SCAN-VERDICT @ M-VERDICT ! then
-   DECLARE-ROW M-ROW-REJECTED ! ;
+   [: CHECK-UNIT NDEFINITION:M-VERDICT ! ;] [: DISARM ;] finally
+   NDEFINITION:M-VERDICT @ 0<> if SCAN-VERDICT @ NDEFINITION:M-VERDICT ! then
+   NDEFINITION:DECLARE-ROW NDEFINITION:M-ROW-REJECTED ! ;
 
 \ ---- the walks ---------------------------------------------------------------
 \ THE WALKS. While a shadow is open (src/compiler/native/shadow.f), SHADOWED
@@ -2615,13 +2613,13 @@ EXPORT CHECKER-TAPE:DISARM
 
 \ A `does>` definer's copy enters at its clause.
 : SHADOW-TAKE ( -- )
-   M-DOES @ 0<> if CLAUSE @ NSHADOW:TAKE-DOES exit then
+   NDEFINITION:M-DOES @ 0<> if CLAUSE @ NSHADOW:TAKE-DOES exit then
    NSHADOW:TAKE ;
 
 \ The host's copy, picked as SHADOW-TAKE picks; NSHADOW takes nothing when no
 \ target copy is pending.
 : HOST-TAKE ( -- )
-   M-DOES @ 0<> if CLAUSE @ NSHADOW:TAKE-HOST-DOES exit then
+   NDEFINITION:M-DOES @ 0<> if CLAUSE @ NSHADOW:TAKE-HOST-DOES exit then
    NSHADOW:TAKE-HOST ;
 
 \ A native shadow has no walk of its own: its one copy is HOSTED's.
@@ -2645,8 +2643,8 @@ EXPORT CHECKER-TAPE:DISARM
 : PUBLISH-IT ( -- )
    BODY-KIND @ MATCH body
       compiled OF
-         M-DOES @ 0<> if
-            CLAUSE @ NPUB:PUBLISH-PENDING-DOES  0 M-DOES-FRAME !
+         NDEFINITION:M-DOES @ 0<> if
+            CLAUSE @ NPUB:PUBLISH-PENDING-DOES  0 NDEFINITION:M-DOES-FRAME !
          else
             COPY-WORD? if CODED$ NPUB:PUBLISH-PENDING-COPY
             else NPUB:PUBLISH-PENDING then
@@ -2669,7 +2667,7 @@ EXPORT CHECKER-TAPE:DISARM
    execute
    NSHADOW:OPEN? if EMIT-SEAL-UNPLACED HOST-TAKE NEMIT:CLEAR then
    NPUB:NEXT-SLOT EMIT-PLACE EMIT-SEAL
-   STUB-TAKE
+   NDEFINITION:STUB-TAKE
    PUBLISH-IT ;
 
 \ In a cross-build the pending record carrying DNAME-TARGET is a target word:
@@ -2693,10 +2691,10 @@ EXPORT CHECKER-TAPE:DISARM
    loop ;
 
 : LOWER ( n -- ) {: before:n :}
-   before SOURCE-PUBLICATION-CK
-   RECORD-NAME-CK
-   ARITY-CK
-   STUB-ARM
+   before NDEFINITION:SOURCE-PUBLICATION-CK
+   NDEFINITION:RECORD-NAME-CK
+   NDEFINITION:ARITY-CK
+   NDEFINITION:STUB-ARM
    [: WALK ;] SHADOWED
    [: TARGET-WORD? if NQ @ ERROR-EMIT else WALK then ;] HOSTED ;
 
@@ -2713,10 +2711,10 @@ EXPORT CHECKER-TAPE:DISARM
 : RUN ( -- )
    ndict@ {: before:n :}
    SCAN
-   VERDICT-CK
+   NDEFINITION:VERDICT-CK
    E-COMP-STATE CHECKER-OWNER:WRITE-WINDOW
    before [: [: LOWER ;] [: SHUT ;] finally ;]
-   SRC$ BODY-ARM DISARMER finally ;
+   NDEFINITION:SRC$ BODY-ARM DISARMER finally ;
 
 \ ---- the fixed bodies --------------------------------------------------------
 \ The fixed bodies, on one unit.
@@ -2798,7 +2796,7 @@ EXPORT TFAM:PF-CELLS@
    ;MATCH ;
 
 : FIXED-LOWER ( -- )
-   STUB-ARM
+   NDEFINITION:STUB-ARM
    [: FIXED-BODY ;] SHADOWED
    [: TARGET-WORD? if 1 ERROR-EMIT else FIXED-BODY then ;] HOSTED ;
 
@@ -2809,26 +2807,26 @@ EXPORT TFAM:PF-CELLS@
 : COMPILE-FIXED ( n n body -- )
    {: val:n entry:n kind:body :}
    kind FIXED-KIND? 0= if E-COMP-STATE throw then
-   IDLE-CK
-   NULL$ STAGE-UNIT
+   NDEFINITION:IDLE-CK
+   NULL$ NDEFINITION:STAGE-UNIT
    val FIXED-VAL !  entry FIXED-ENTRY !  kind BODY-KIND !
-   1 M-OPEN !
+   1 NDEFINITION:M-OPEN !
    [: FIXED-RUN ;] catch {: rc:n :}
-   0 M-OPEN !
-   STUB-END
-   rc SETTLE-UNIT  rc 0<> if rc throw then ;
+   0 NDEFINITION:M-OPEN !
+   NDEFINITION:STUB-END
+   rc NDEFINITION:SETTLE-UNIT  rc 0<> if rc throw then ;
 
 \ Compile the pending definition whose body text the engine captured.
 : COMPILE ( str -- )
-   IDLE-CK
-   STAGE-UNIT
+   NDEFINITION:IDLE-CK
+   NDEFINITION:STAGE-UNIT
    COMP-BODY:COMPILED BODY-KIND !
-   1 M-OPEN !
+   1 NDEFINITION:M-OPEN !
    [: RUN ;] catch {: rc:n :}
-   0 M-OPEN !
-   STUB-END
+   0 NDEFINITION:M-OPEN !
+   NDEFINITION:STUB-END
    FORGET-MEASURES
-   rc SETTLE-UNIT  rc 0<> if rc throw then ;
+   rc NDEFINITION:SETTLE-UNIT  rc 0<> if rc throw then ;
 
 : DISPATCH! ( [ str -- nominal ] -- )
    data-base NCOMP-DISPATCH:COMP-CELL + xt! ;
@@ -2838,10 +2836,9 @@ public
 EXPORT XT>N
 
 : INSTALL ( -- )
-   ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!
-   ['] CALLBACK-STUB@ data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + xt!
+   ['] NDEFINITION:CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!
+   ['] NDEFINITION:CALLBACK-STUB@ data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + xt!
    ['] COMPILE-FIXED data-base NCOMP-DISPATCH:FIXED-COMP-CELL + xt!
    ['] COMPILE DISPATCH! ;
 
-;using
 ;package

@@ -2,8 +2,7 @@
 \ (linux-aarch64, linux-x86-64), as package LINUX-LAYOUT any host can load: a
 \ Linux engine loads it at boot before `require` exists. A host's bare layout
 \ names are its own (a macOS host's DATA-VA differs), so x86-64 code reads these
-\ qualified, LINUX-LAYOUT:DATA-VA, under the guard `using LINUX-LAYOUT`, which
-\ rejects a bare name a host global also owns.
+\ by prefix, as LINUX-LAYOUT:DATA-VA.
 \ The image offsets are ELF64 format facts: IMAGE-TEXT-SIZE-OFF is the first
 \ program header's p_filesz (64-byte header, then type, flags, offset, vaddr and
 \ paddr). DATA-VA is a Linux fixed mapping, not an architecture fact: on

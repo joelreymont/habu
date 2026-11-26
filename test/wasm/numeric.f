@@ -10,6 +10,7 @@ require src/lib/string.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/process.f
+require test/wasm/numeric-rows.f
 
 package WASM-NUMERIC-TEST
 private
@@ -45,7 +46,5 @@ public
 
 \ SUBJECT:RUN forks this process, so the rows run with no package open.
 T-RESET
-using WASM-NUMERIC-TEST
-include test/wasm/numeric-rows.f
-;using
+' WASM-NUMERIC-TEST:ROW WASM-NUMERIC-ROWS:EACH
 T-REPORT

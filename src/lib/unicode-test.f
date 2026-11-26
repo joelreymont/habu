@@ -3,22 +3,20 @@ require src/lib/property.f
 require src/lib/unicode.f
 
 package UNICODE-TEST
-using UNICODE
-using PROP
 256 constant CAPACITY
 create OUTPUT CAPACITY allot
 create SECOND-BUF CAPACITY allot
 
 : FOLDED= ( str str -- )
    {: expected:str :}
-   dup FOLDED-BYTES expected STR:LEN T=
+   dup UNICODE:FOLDED-BYTES expected STR:LEN T=
    OUTPUT CAPACITY UNICODE:FOLD
    OUTPUT swap >str expected T$= ;
 
 : LOWERED= ( str str -- )
    {: expected:str :}
-   dup expected LOWERS-TO? TTRUE
-   dup LOWERED-BYTES expected STR:LEN T=
+   dup expected UNICODE:LOWERS-TO? TTRUE
+   dup UNICODE:LOWERED-BYTES expected STR:LEN T=
    OUTPUT CAPACITY UNICODE:LOWER
    OUTPUT swap >str expected T$= ;
 
@@ -30,35 +28,35 @@ create SECOND-BUF CAPACITY allot
 
 : FOLD-PREFLIGHT ( -- )
    CANARY!
-   [: s" İ" OUTPUT 2 UNICODE:FOLD drop ;] E-CAPACITY TTHROWSQ CANARY=
-   [: s" x" OUTPUT -1 UNICODE:FOLD drop ;] E-CAPACITY TTHROWSQ CANARY=
-   [: s\" x\xFF" OUTPUT CAPACITY UNICODE:FOLD drop ;] E-UTF8 TTHROWSQ CANARY=
-   [: s\" \xC0\xAF" FOLDED-BYTES drop ;] E-UTF8 TTHROWSQ
+   [: s" İ" OUTPUT 2 UNICODE:FOLD drop ;] UNICODE:E-CAPACITY TTHROWSQ CANARY=
+   [: s" x" OUTPUT -1 UNICODE:FOLD drop ;] UNICODE:E-CAPACITY TTHROWSQ CANARY=
+   [: s\" x\xFF" OUTPUT CAPACITY UNICODE:FOLD drop ;] UNICODE:E-UTF8 TTHROWSQ CANARY=
+   [: s\" \xC0\xAF" UNICODE:FOLDED-BYTES drop ;] UNICODE:E-UTF8 TTHROWSQ
    s" Straße" s" strasse" FOLDED= ;
 
 : LOWER-PREFLIGHT ( -- )
    CANARY!
-   [: s" İ" OUTPUT 2 UNICODE:LOWER drop ;] E-CAPACITY TTHROWSQ CANARY=
-   [: s\" x\xFF" OUTPUT CAPACITY UNICODE:LOWER drop ;] E-UTF8 TTHROWSQ CANARY=
-   [: s\" \xC0\xAF" LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ
-   [: s" xy" OUTPUT 1 UNICODE:LOWER drop ;] E-CAPACITY TTHROWSQ CANARY=
-   [: s" x" STR:DATA -1 >str LOWERED-BYTES drop ;] E-UTF8 TTHROWSQ
-   s" Az" s" Az" LOWERS-TO? TFALSE
-   s" STRASSE" s" straße" LOWERS-TO? TFALSE
-   s" Straße" s" Straße" LOWERS-TO? TFALSE
-   [: s\" x\xFF" s" x" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ
-   [: s" x" s\" x\xFF" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ ;
+   [: s" İ" OUTPUT 2 UNICODE:LOWER drop ;] UNICODE:E-CAPACITY TTHROWSQ CANARY=
+   [: s\" x\xFF" OUTPUT CAPACITY UNICODE:LOWER drop ;] UNICODE:E-UTF8 TTHROWSQ CANARY=
+   [: s\" \xC0\xAF" UNICODE:LOWERED-BYTES drop ;] UNICODE:E-UTF8 TTHROWSQ
+   [: s" xy" OUTPUT 1 UNICODE:LOWER drop ;] UNICODE:E-CAPACITY TTHROWSQ CANARY=
+   [: s" x" STR:DATA -1 >str UNICODE:LOWERED-BYTES drop ;] UNICODE:E-UTF8 TTHROWSQ
+   s" Az" s" Az" UNICODE:LOWERS-TO? TFALSE
+   s" STRASSE" s" straße" UNICODE:LOWERS-TO? TFALSE
+   s" Straße" s" Straße" UNICODE:LOWERS-TO? TFALSE
+   [: s\" x\xFF" s" x" UNICODE:LOWERS-TO? drop ;] UNICODE:E-UTF8 TTHROWSQ
+   [: s" x" s\" x\xFF" UNICODE:LOWERS-TO? drop ;] UNICODE:E-UTF8 TTHROWSQ ;
 
 : SAME-LOWER ( -- )
-   s" Ꭰ.txt" s" ꭰ.txt" LOWER= TTRUE
-   s" Straße" s" strasse" LOWER= TFALSE
-   s" ABC" s" abc" LOWER= TTRUE
-   s" ΟΔΟΣ" s" οδος" LOWER= TTRUE
-   [: s\" x\xFF" s" x" LOWER= drop ;] E-UTF8 TTHROWSQ
-   [: s" x" s\" x\xFF" LOWER= drop ;] E-UTF8 TTHROWSQ ;
+   s" Ꭰ.txt" s" ꭰ.txt" UNICODE:LOWER= TTRUE
+   s" Straße" s" strasse" UNICODE:LOWER= TFALSE
+   s" ABC" s" abc" UNICODE:LOWER= TTRUE
+   s" ΟΔΟΣ" s" οδος" UNICODE:LOWER= TTRUE
+   [: s\" x\xFF" s" x" UNICODE:LOWER= drop ;] UNICODE:E-UTF8 TTHROWSQ
+   [: s" x" s\" x\xFF" UNICODE:LOWER= drop ;] UNICODE:E-UTF8 TTHROWSQ ;
 
 : CHUNK$ ( -- str )
-   8 RND% case
+   8 PROP:RND% case
       0 of s" ẞ" endof
       1 of s" İ" endof
       2 of s" УКРАЇНА" endof
@@ -70,27 +68,27 @@ create SECOND-BUF CAPACITY allot
    endcase ;
 
 : RANDOM-FOLDS ( -- )
-   913 2048 RUN-RESET
-   COUNT@ 0 ?do
-      PROP:BUF-RESET 16 RND% 0 ?do CHUNK$ BUF+ loop
-      BUF$ OUTPUT CAPACITY UNICODE:FOLD {: size:n :}
-      BUF$ FOLDED-BYTES size T=
-      BUF$ OUTPUT size >str CASEFOLD= TTRUE
+   913 2048 PROP:RUN-RESET
+   PROP:COUNT@ 0 ?do
+      PROP:BUF-RESET 16 PROP:RND% 0 ?do CHUNK$ PROP:BUF+ loop
+      PROP:BUF$ OUTPUT CAPACITY UNICODE:FOLD {: size:n :}
+      PROP:BUF$ UNICODE:FOLDED-BYTES size T=
+      PROP:BUF$ OUTPUT size >str UNICODE:CASEFOLD= TTRUE
       OUTPUT size >str SECOND-BUF CAPACITY UNICODE:FOLD {: repeated:n :}
       OUTPUT size >str SECOND-BUF repeated >str T$=
    loop ;
 
 : EQUAL ( str str -- )
-   over over CASEFOLD= TTRUE
-   swap CASEFOLD= TTRUE ;
+   over over UNICODE:CASEFOLD= TTRUE
+   swap UNICODE:CASEFOLD= TTRUE ;
 
 : DIFFERENT ( str str -- )
-   over over CASEFOLD= TFALSE
-   swap CASEFOLD= TFALSE ;
+   over over UNICODE:CASEFOLD= TFALSE
+   swap UNICODE:CASEFOLD= TFALSE ;
 
 : INVALID ( str -- )
-   [: dup s" " CASEFOLD= drop ;] catch E-UTF8 T=
-   [: dup s" " swap CASEFOLD= drop ;] catch E-UTF8 T=
+   [: dup s" " UNICODE:CASEFOLD= drop ;] catch UNICODE:E-UTF8 T=
+   [: dup s" " swap UNICODE:CASEFOLD= drop ;] catch UNICODE:E-UTF8 T=
    drop ;
 
 : BAD-UTF8 ( -- )
@@ -126,24 +124,24 @@ s" " s" x" DIFFERENT
 s\" a\zB" s\" a\zC" DIFFERENT
 s" @" s" `" DIFFERENT
 s" [" s" {" DIFFERENT
-$20 WHITE-SPACE? TTRUE
-$A0 WHITE-SPACE? TTRUE
-$2009 WHITE-SPACE? TTRUE
-$202F WHITE-SPACE? TTRUE
-$3000 WHITE-SPACE? TTRUE
-$200B WHITE-SPACE? TFALSE
-$FEFF WHITE-SPACE? TFALSE
-$D800 WHITE-SPACE? TFALSE
-$301 MARK? TTRUE
-$93E MARK? TTRUE
-$20DD MARK? TTRUE
-$E48 MARK? TTRUE
-$41 MARK? TFALSE
-$915 MARK? TFALSE
-$30 MARK? TFALSE
-$20 MARK? TFALSE
-$DC00 MARK? TFALSE
-$110000 MARK? TFALSE
+$20 UNICODE:WHITE-SPACE? TTRUE
+$A0 UNICODE:WHITE-SPACE? TTRUE
+$2009 UNICODE:WHITE-SPACE? TTRUE
+$202F UNICODE:WHITE-SPACE? TTRUE
+$3000 UNICODE:WHITE-SPACE? TTRUE
+$200B UNICODE:WHITE-SPACE? TFALSE
+$FEFF UNICODE:WHITE-SPACE? TFALSE
+$D800 UNICODE:WHITE-SPACE? TFALSE
+$301 UNICODE:MARK? TTRUE
+$93E UNICODE:MARK? TTRUE
+$20DD UNICODE:MARK? TTRUE
+$E48 UNICODE:MARK? TTRUE
+$41 UNICODE:MARK? TFALSE
+$915 UNICODE:MARK? TFALSE
+$30 UNICODE:MARK? TFALSE
+$20 UNICODE:MARK? TFALSE
+$DC00 UNICODE:MARK? TFALSE
+$110000 UNICODE:MARK? TFALSE
 BAD-UTF8
 s" " s" " FOLDED=
 s" STRAẞE" s" strasse" FOLDED=
@@ -170,6 +168,4 @@ LOWER-PREFLIGHT
 SAME-LOWER
 RANDOM-FOLDS
 T-REPORT
-;using
-;using
 ;package

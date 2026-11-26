@@ -6,12 +6,10 @@ package FSM-UNKNOWN
 ENUM ph idle busy ;ENUM
 ENUM sig go halt ;ENUM
 : S ( n -- sig ) drop construct sig go ;
-using FSM
-DEFINE M ( n )
+FSM:DEFINE M ( n )
    no-such-type
    sig
 IN idle S go - >busy halt - >idle
 FINAL busy -
 ;DEFINE
-;using
 ;package

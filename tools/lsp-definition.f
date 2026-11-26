@@ -15,9 +15,6 @@ require tools/lsp-text.f
 require src/lib/json/write.f
 
 package LSP-DEFINITION
-using JSON
-using LSP-DEFS
-using LSP-DOCS
 
 private
 
@@ -27,34 +24,34 @@ TYPED-VARIABLE OUT ^JSON:writer
 : LOCATION-AT ( n n n n n -- )
    {: g:n line:n col:n end-line:n end-col:n :}
    OUT @
-   WRITE-OBJECT-START
-   s" uri" g GROUP-URI$ WRITE-FIELD-RAW WRITE-COMMA
+   JSON:WRITE-OBJECT-START
+   s" uri" g LSP-DEFS:GROUP-URI$ JSON:WRITE-FIELD-RAW JSON:WRITE-COMMA
    line col end-line end-col LSP-TEXT:RANGE-AT
-   WRITE-OBJECT-END drop ;
+   JSON:WRITE-OBJECT-END drop ;
 
 : LOCATION ( n n -- )
    {: g:n r:n :}
-   g r REC-RANGE LOCATION-AT ;
+   g r LSP-DEFS:REC-RANGE LOCATION-AT ;
 
 : TEXT-OF! ( str -- )
    {: path:str :}
-   path DOC-HOLDING MATCH option
-      some OF DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
+   path LSP-DOCS:DOC-HOLDING MATCH option
+      some OF LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
       none OF path LSP-TEXT:FILE-TEXT! ENDOF
    ;MATCH ;
 
 : BUILTIN-TARGET ( n n -- )
    {: u:n g:n :}
-   u USE-TARGET {: old:n old-end:n :}
-   g GROUP-PATH$ old ENGINE-ORIGIN:SYMBOL-AT
+   u LSP-DEFS:USE-TARGET {: old:n old-end:n :}
+   g LSP-DEFS:GROUP-PATH$ old ENGINE-ORIGIN:SYMBOL-AT
    {: sym:n found:bool :}
    found 0= if exit then
    sym ENGINE-ORIGIN:TARGET
    {: rel:str at:n end:n name:str live:bool :}
    live at old = and old-end 0= old-end end = or and 0= if exit then
-   g [: dup GROUP-PATH$ TEXT-OF! ;] catch {: rc:n :} drop
+   g [: dup LSP-DEFS:GROUP-PATH$ TEXT-OF! ;] catch {: rc:n :} drop
    rc 0<> if rc LSP-TEXT:FS-RC? 0= if rc throw then exit then
-   sym g GROUP-PATH$
+   sym g LSP-DEFS:GROUP-PATH$
    LSP-TEXT:TEXT$ SOURCE-INDEX:TARGET-IN
    {: start:n stop:n located:bool :}
    located 0= if exit then
@@ -67,14 +64,14 @@ TYPED-VARIABLE OUT ^JSON:writer
 \ declaration, a primitive's validated source target, or a source record.
 : TARGET ( n -- )
    {: u:n :}
-   u USE-GROUP {: g:n :}
-   u USE-VISIT -1 = if g 0 >= if u g BUILTIN-TARGET then exit then
-   u USE-VISIT 0< if
-      u USE-TARGET {: start:n end:n :}
-      end start > if g u USE-TARGET-RANGE LOCATION-AT then
+   u LSP-DEFS:USE-GROUP {: g:n :}
+   u LSP-DEFS:USE-VISIT -1 = if g 0 >= if u g BUILTIN-TARGET then exit then
+   u LSP-DEFS:USE-VISIT 0< if
+      u LSP-DEFS:USE-TARGET {: start:n end:n :}
+      end start > if g u LSP-DEFS:USE-TARGET-RANGE LOCATION-AT then
       exit
    then
-   g u USE-TARGET GROUP-REC-AT MATCH option
+   g u LSP-DEFS:USE-TARGET LSP-DEFS:GROUP-REC-AT MATCH option
       some OF g swap LOCATION ENDOF
       none OF ENDOF
    ;MATCH ;
@@ -89,14 +86,11 @@ public
 : ANSWER ( ^JSON:writer n n -- ^JSON:writer )
    {: w slot:n at:n :}
    w OUT !
-   w WRITE-ARRAY-START drop
-   slot at DEFS-USE-AT MATCH option
+   w JSON:WRITE-ARRAY-START drop
+   slot at LSP-DEFS:DEFS-USE-AT MATCH option
       some OF TARGET ENDOF
       none OF ENDOF
    ;MATCH
-   w WRITE-ARRAY-END ;
+   w JSON:WRITE-ARRAY-END ;
 
-;using
-;using
-;using
 ;package

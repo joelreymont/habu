@@ -59,7 +59,6 @@ require test/browser/turn-revision.f
 
 package DISPLAY
 private
-using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ^u8 )
 CAST: BYTES>N ( ^u8 -- n )
@@ -346,7 +345,7 @@ TYPED-VARIABLE SHOWN held
    \ The pixel at clip x and y in tenths, from the typed event's buffer width
    \ and height, picked with an id.
    {: x:n y:n id:n :}
-   15  10 x + 3 EVENT@ * 20 /  10 y - 4 EVENT@ * 20 /  id RECORD ;
+   15  10 x + 3 BROWSER-EVENT:EVENT@ * 20 /  10 y - 4 BROWSER-EVENT:EVENT@ * 20 /  id RECORD ;
 
 : PICKS ( -- )
    -3 2 1 PICK  4 -2 2 PICK  0 7 3 PICK  -7 -11 4 PICK ;
@@ -396,7 +395,7 @@ TYPED-VARIABLE SHOWN held
 
 : BYTE@ ( n -- n )
    \ Byte k of the event's bytes.
-   1 EVENT@ + >BYTES c@ ;
+   1 BROWSER-EVENT:EVENT@ + >BYTES c@ ;
 
 : NAMED ( str -- )
    {: s:str :}
@@ -406,9 +405,9 @@ TYPED-VARIABLE SHOWN held
 \ buffer.
 : ECHOED ( str -- )
    {: s:str :}
-   s STR:LEN 2 EVENT@ dup + + ECHO-CAP > if -1 throw then
+   s STR:LEN 2 BROWSER-EVENT:EVENT@ dup + + ECHO-CAP > if -1 throw then
    s NAMED
-   2 EVENT@ 0 ?do i BYTE@ BYTE, loop ;
+   2 BROWSER-EVENT:EVENT@ 0 ?do i BYTE@ BYTE, loop ;
 
 : ECHO-RECORD ( -- )
    3 ECHO-BUF BYTES>N ECHO-U @ 0 RECORD ;
@@ -418,7 +417,7 @@ TYPED-VARIABLE SHOWN held
    v F32:NARROW  p i 4 * +  F32-BUF:STORE ;
 
 : LIGHT! ( -- )
-   1 EVENT@ >BYTES LIGHT 48 BYTE-COPY ;
+   1 BROWSER-EVENT:EVENT@ >BYTES LIGHT 48 BYTE-COPY ;
 
 : DOWN ( -- )
    \ x / 2, y / 2 and depth 0.5 - z / 4, column-major.
@@ -440,7 +439,7 @@ TYPED-VARIABLE SHOWN held
 
 \ Whether the typed text is "fit " and 208 hex digits.
 : FIT? ( -- bool )
-   2 EVENT@ 212 <> if false exit then
+   2 BROWSER-EVENT:EVENT@ 212 <> if false exit then
    s" fit " {: s:str :}
    4 0 ?do
       i BYTE@ s STR:DATA i + c@ <> if false unloop exit then
@@ -462,8 +461,8 @@ TYPED-VARIABLE SHOWN held
 
 : IS? ( str -- bool )
    {: s:str :}
-   2 EVENT@ s STR:LEN <> if false exit then
-   s STR:LEN 0 ?do 1 EVENT@ i + >BYTES c@ s STR:DATA i + c@ <> if false unloop exit then loop
+   2 BROWSER-EVENT:EVENT@ s STR:LEN <> if false exit then
+   s STR:LEN 0 ?do 1 BROWSER-EVENT:EVENT@ i + >BYTES c@ s STR:DATA i + c@ <> if false unloop exit then loop
    true ;
 
 : WARNED ( -- )
@@ -529,46 +528,45 @@ TYPED-VARIABLE SHOWN held
    ECHOED ECHO-RECORD ;
 
 : ONES ( -- n )
-   0  2 EVENT@ 0 ?do i BYTE@ + loop ;
+   0  2 BROWSER-EVENT:EVENT@ 0 ?do i BYTE@ + loop ;
 
 : SUMMARY ( -- )
    s" occluded " NAMED  4095 BYTE@ BYTE,  4096 BYTE@ BYTE,
    32 CHAR+  ONES DIGITS ;
 
 : OCCLUDED ( -- )
-   4 EVENT@ 9 = if SUMMARY else s" occluded " ECHOED then
-   32 CHAR+  4 EVENT@ DIGITS  ECHO-RECORD ;
+   4 BROWSER-EVENT:EVENT@ 9 = if SUMMARY else s" occluded " ECHOED then
+   32 CHAR+  4 BROWSER-EVENT:EVENT@ DIGITS  ECHO-RECORD ;
 
 : SIGNED ( n -- )
    dup 0< if [char] - CHAR+ negate then DIGITS ;
 
 : PICKED ( -- )
    s" picked" NAMED
-   5 1 do 32 CHAR+ i EVENT@ SIGNED loop
+   5 1 do 32 CHAR+ i BROWSER-EVENT:EVENT@ SIGNED loop
    ECHO-RECORD ;
 
 : DISPATCH ( -- )
-   0 EVENT@ 0 = if
-      0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
+   0 BROWSER-EVENT:EVENT@ 0 = if
+      0 BROWSER-EVENT:EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
       9 0 0 0 RECORD
       RED exit
    then
-   0 EVENT@ 4 = if COMMAND exit then
-   0 EVENT@ 9 = if REPAINT exit then
-   0 EVENT@ 10 = if 1 EVENT@ 2 = if 2 EVENT@ 1 = if OPENED then then exit then
-   0 EVENT@ 11 = if s" load " ECHO exit then
-   0 EVENT@ 12 = if s" focus " ECHO exit then
-   0 EVENT@ 13 = if s" highlight " ECHO exit then
-   0 EVENT@ 18 = if PICKED exit then
-   0 EVENT@ 19 = if OCCLUDED exit then
-   0 EVENT@ 20 = if LIGHT! then ;
+   0 BROWSER-EVENT:EVENT@ 4 = if COMMAND exit then
+   0 BROWSER-EVENT:EVENT@ 9 = if REPAINT exit then
+   0 BROWSER-EVENT:EVENT@ 10 = if 1 BROWSER-EVENT:EVENT@ 2 = if 2 BROWSER-EVENT:EVENT@ 1 = if OPENED then then exit then
+   0 BROWSER-EVENT:EVENT@ 11 = if s" load " ECHO exit then
+   0 BROWSER-EVENT:EVENT@ 12 = if s" focus " ECHO exit then
+   0 BROWSER-EVENT:EVENT@ 13 = if s" highlight " ECHO exit then
+   0 BROWSER-EVENT:EVENT@ 18 = if PICKED exit then
+   0 BROWSER-EVENT:EVENT@ 19 = if OCCLUDED exit then
+   0 BROWSER-EVENT:EVENT@ 20 = if LIGHT! then ;
 
 public
 
 : TURN ( -- )
-   [: DISPATCH ;] HANDLE ;
+   [: DISPATCH ;] BROWSER-EVENT:HANDLE ;
 
-;using
 ;package
 
 : MAIN ( -- ) DISPLAY:TURN ;

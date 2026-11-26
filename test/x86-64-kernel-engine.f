@@ -12,7 +12,6 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 
 package X64K-ENGINE
-using LINUX-LAYOUT   \ the guard
 
 PROT-PAGE-MAX constant FILL-BYTES
 create FILL FILL-BYTES allot
@@ -598,7 +597,6 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
-;using   \ LINUX-LAYOUT
 ;package
 
 X64K-ENGINE:RUN

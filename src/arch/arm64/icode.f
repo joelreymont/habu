@@ -11,7 +11,6 @@ require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
 require src/habu/layout.f
 package A64ICODE
-using A64ASM
 public
 
 \ ---- the window this assembler emits into ------------------------------------
@@ -20,7 +19,7 @@ public
 \ ASM-RELEASE; nothing walks the span, so the window costs reserved address
 \ space only. A B/BL across the window must fit REL26-HI words (128 MiB).
 $1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
-ADR-HI AOT-SECTION-CAP + constant CODE-CAP-BYTES
+A64ASM:ADR-HI AOT-SECTION-CAP + constant CODE-CAP-BYTES
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS
 \ The fixup tables FXS, FXN and FXK hold $2000 rows each: the native recovery
 \ build's identity shadow branches pass 4096 labels, and their pending fixups
@@ -361,9 +360,9 @@ variable I-RBITS                    \ the field bits FX-BITS packs for I-RDELTA
 \ I-RKIND's encoder's word for I-RDELTA xor its word for 0, into I-RBITS: catch
 \ admits only a stack-preserving word. b.cond, cbz and cbnz share one field.
 : FX-BITS ( -- )
-   I-RKIND @ FX-B26 = if I-RDELTA @ ENC-B  0 ENC-B xor I-RBITS ! exit then
-   I-RKIND @ FX-B19 = if 0 I-RDELTA @ ENC-CBZ  0 0 ENC-CBZ xor I-RBITS ! exit then
-   I-RKIND @ FX-ADR = if 0 I-RDELTA @ ENC-ADR  0 0 ENC-ADR xor I-RBITS ! exit then
+   I-RKIND @ FX-B26 = if I-RDELTA @ A64ASM:ENC-B  0 A64ASM:ENC-B xor I-RBITS ! exit then
+   I-RKIND @ FX-B19 = if 0 I-RDELTA @ A64ASM:ENC-CBZ  0 0 A64ASM:ENC-CBZ xor I-RBITS ! exit then
+   I-RKIND @ FX-ADR = if 0 I-RDELTA @ A64ASM:ENC-ADR  0 0 A64ASM:ENC-ADR xor I-RBITS ! exit then
    s" icode: invalid fixup kind" EXIT-STATUS:ENCODE die ;
 
 
@@ -374,12 +373,12 @@ variable I-RBITS                    \ the field bits FX-BITS packs for I-RDELTA
    ['] FX-BITS catch  dup 0= if drop I-RBITS @ exit then
    dup E-A64EMIT-REACH <> if throw then  drop
    I-RKIND @ FX-B26 = if
-      REL26-HI $4 * I-RLIMIT !  s" icode: branch out of reach" REACH-DIE
+      A64ASM:REL26-HI $4 * I-RLIMIT !  s" icode: branch out of reach" REACH-DIE
    then
    I-RKIND @ FX-B19 = if
-      REL19-HI $4 * I-RLIMIT !  s" icode: cond branch out of reach" REACH-DIE
+      A64ASM:REL19-HI $4 * I-RLIMIT !  s" icode: cond branch out of reach" REACH-DIE
    then
-   ADR-HI I-RLIMIT !  s" icode: adr out of reach" REACH-DIE ;
+   A64ASM:ADR-HI I-RLIMIT !  s" icode: adr out of reach" REACH-DIE ;
 
 public
 
@@ -410,27 +409,27 @@ variable BBASE  variable BKIND
 \ A branch base word is its asm.f encoder applied to a zero delta, so ENC-BCOND
 \ and ENC-CBZ/ENC-CBNZ own the bit layout and screen the condition and register
 \ before this layer folds the delta in.
-: B, ( label -- )  0 ENC-B  BBASE !  FX-B26 BKIND !  BR-EMIT ;
+: B, ( label -- )  0 A64ASM:ENC-B  BBASE !  FX-B26 BKIND !  BR-EMIT ;
 
-: BL, ( label -- )  0 ENC-BL BBASE !  FX-B26 BKIND !  BR-EMIT ;
+: BL, ( label -- )  0 A64ASM:ENC-BL BBASE !  FX-B26 BKIND !  BR-EMIT ;
 
 : BCOND, ( n label -- )
-   LABEL>N I-LBL ! I-COND !  0 I-COND @ ENC-BCOND BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
+   LABEL>N I-LBL ! I-COND !  0 I-COND @ A64ASM:ENC-BCOND BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
 : CBZ, ( n label -- )
-   LABEL>N I-LBL ! I-RD !  I-RD @ 0 ENC-CBZ BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
+   LABEL>N I-LBL ! I-RD !  I-RD @ 0 A64ASM:ENC-CBZ BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
 : CBNZ, ( n label -- )
-   LABEL>N I-LBL ! I-RD !  I-RD @ 0 ENC-CBNZ BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
+   LABEL>N I-LBL ! I-RD !  I-RD @ 0 A64ASM:ENC-CBNZ BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
 
 : ADR, ( n label -- )
    ASM-CP @ over FX-ADR REF+
    LABEL>N I-LBL ! I-RD !
    I-LBL @ LBLP @ dup 0 < IF
-     drop  ASM-CP @ I-LBL @ >LABEL FX-ADR FX+  I-RD @ 0 ENC-ADR EMITW
+     drop  ASM-CP @ I-LBL @ >LABEL FX-ADR FX+  I-RD @ 0 A64ASM:ENC-ADR EMITW
    ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !
-     ASM-CP @ - $4 *  FX-ADR FX-REACH  I-RD @ 0 ENC-ADR or EMITW  THEN ;
+     ASM-CP @ - $4 *  FX-ADR FX-REACH  I-RD @ 0 A64ASM:ENC-ADR or EMITW  THEN ;
 
 
 \ LOFF, is two words on either side of the label: a forward site reserves both
@@ -442,10 +441,10 @@ variable BBASE  variable BKIND
    LABEL>N I-LBL ! I-RD !
    I-LBL @ LBLP @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL FX-LOFF FX+
-     I-RD @ 0 0 MOVZHW EMITW  I-RD @ 0 1 MOVKHW EMITW
+     I-RD @ 0 0 A64ASM:MOVZHW EMITW  I-RD @ 0 1 A64ASM:MOVKHW EMITW
    ELSE  $4 * ?LOFF I-X !
-     I-RD @ I-X @ $FFFF and 0 MOVZHW EMITW
-     I-RD @ I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW EMITW  THEN ;
+     I-RD @ I-X @ $FFFF and 0 A64ASM:MOVZHW EMITW
+     I-RD @ I-X @ MOVW-LANE-BITS rshift $FFFF and 1 A64ASM:MOVKHW EMITW  THEN ;
 variable LBI
 
 private
@@ -458,8 +457,8 @@ variable FILL-TARGET                \ word position the site names
 \ are patched after ?LOFF.
 : FILL-LOFF ( -- )
    FILL-TARGET @ $4 * ?LOFF I-X !
-   0 I-X @ $FFFF and 0 MOVZHW  FILL-SITE @ PATCH
-   0 I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW  FILL-SITE @ 1 + PATCH ;
+   0 I-X @ $FFFF and 0 A64ASM:MOVZHW  FILL-SITE @ PATCH
+   0 I-X @ MOVW-LANE-BITS rshift $FFFF and 1 A64ASM:MOVKHW  FILL-SITE @ 1 + PATCH ;
 
 \ The target's byte offset, low 32 bits first, as DCQ, lays a cell.
 : FILL-CELL ( -- )
@@ -490,8 +489,8 @@ variable FILL-TARGET                \ word position the site names
 : FX-CLEAR ( n n -- )                            \ ( kind site -- )
    FILL-SITE ! FILL-KIND !
    FILL-KIND @ FX-LOFF = if
-      0 $FFFF 0 MOVZHW  0 0 0 MOVZHW xor  FILL-SITE @ UNPATCH
-      0 $FFFF 1 MOVKHW  0 0 1 MOVKHW xor  FILL-SITE @ 1 + UNPATCH  exit
+      0 $FFFF 0 A64ASM:MOVZHW  0 0 0 A64ASM:MOVZHW xor  FILL-SITE @ UNPATCH
+      0 $FFFF 1 A64ASM:MOVKHW  0 0 1 A64ASM:MOVKHW xor  FILL-SITE @ 1 + UNPATCH  exit
    then
    FILL-KIND @ FX-CELL = if
       $FFFFFFFF FILL-SITE @ UNPATCH  $FFFFFFFF FILL-SITE @ 1 + UNPATCH  exit
@@ -754,20 +753,20 @@ variable LIT-CH  variable LFI  variable LCI
 
 : LITZ ( n n -- )
    I-X ! I-RD !  I-X @ 1STNZ LFI !
-   I-RD @  I-X @ LFI @ CHUNK16  LFI @ MOVZHW EMITW
+   I-RD @  I-X @ LFI @ CHUNK16  LFI @ A64ASM:MOVZHW EMITW
    0 LCI ! BEGIN LCI @ 4 < WHILE
      LCI @ LFI @ <> IF
       I-X @ LCI @ CHUNK16 LIT-CH !
-      LIT-CH @ 0 <> IF I-RD @ LIT-CH @ LCI @ MOVKHW EMITW THEN THEN
+      LIT-CH @ 0 <> IF I-RD @ LIT-CH @ LCI @ A64ASM:MOVKHW EMITW THEN THEN
      LCI @ 1 + LCI ! REPEAT ;
 
 : LITN ( n n -- )
    I-X ! I-RD !  I-X @ 1STNF LFI !
-   I-RD @  I-X @ LFI @ CHUNK16 invert $FFFF and  LFI @ MOVNHW EMITW
+   I-RD @  I-X @ LFI @ CHUNK16 invert $FFFF and  LFI @ A64ASM:MOVNHW EMITW
    0 LCI ! BEGIN LCI @ 4 < WHILE
      LCI @ LFI @ <> IF
       I-X @ LCI @ CHUNK16 LIT-CH !
-      LIT-CH @ $FFFF <> IF I-RD @ LIT-CH @ LCI @ MOVKHW EMITW THEN THEN
+      LIT-CH @ $FFFF <> IF I-RD @ LIT-CH @ LCI @ A64ASM:MOVKHW EMITW THEN THEN
      LCI @ 1 + LCI ! REPEAT ;
 
 : LIT64, ( n n -- )
@@ -776,5 +775,4 @@ variable LIT-CH  variable LFI  variable LCI
 
 : ASM-LEN ( -- n )  ASM-CP @ $4 * ;
 
-;using
 ;package

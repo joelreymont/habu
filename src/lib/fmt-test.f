@@ -9,22 +9,21 @@ require src/lib/fmt.f
 require src/lib/ieee754.f
 
 package FMT-TEST
-using FMT
 
 : T-U ( n str -- ) {: s:str :}
-   SB-RESET SB-U  SB$ s T$= ;
+   SB-RESET FMT:SB-U  SB$ s T$= ;
 : T-HEX ( n str -- ) {: s:str :}
-   SB-RESET s" pre:" SB-APPEND SB-HEX  SB$ s T$= ;
+   SB-RESET s" pre:" SB-APPEND FMT:SB-HEX  SB$ s T$= ;
 : T-HEXW ( n n str -- ) {: s:str :}       \ ( value width expect )
-   SB-RESET s" pre:" SB-APPEND SB-HEX-WIDTH  SB$ s T$= ;
+   SB-RESET s" pre:" SB-APPEND FMT:SB-HEX-WIDTH  SB$ s T$= ;
 : T-INT ( n str -- ) {: s:str :}
-   SB-RESET SB-INT  SB$ s T$= ;
+   SB-RESET FMT:SB-INT  SB$ s T$= ;
 : T-SCALED ( n n str -- ) {: s:str :}
-   SB-RESET s" pre:" SB-APPEND SB-SCALED  SB$ s T$= ;
+   SB-RESET s" pre:" SB-APPEND FMT:SB-SCALED  SB$ s T$= ;
 : T-FIX ( r n str -- ) {: s:str :}        \ ( value places expect )
-   SB-RESET SB-FIX  SB$ s T$= ;
+   SB-RESET FMT:SB-FIX  SB$ s T$= ;
 : T-SCI ( r n str -- ) {: s:str :}
-   SB-RESET SB-SCI SB$ s T$= ;
+   SB-RESET FMT:SB-SCI SB$ s T$= ;
 
 \ .U and .INT render the same bytes SB-U / SB-INT append -- one renderer, one
 \ set of digit cases above -- and type them without disturbing the builder. The
@@ -32,30 +31,30 @@ using FMT
 \ would leave that number's digits in the buffer instead.
 : T-PU ( n -- )
    SB-RESET s" sb-sentinel" SB-APPEND
-   .U    SB$ s" sb-sentinel" T$= ;
+   FMT:.U    SB$ s" sb-sentinel" T$= ;
 : T-PINT ( n -- )
    SB-RESET s" sb-sentinel" SB-APPEND
-   .INT  SB$ s" sb-sentinel" T$= ;
+   FMT:.INT  SB$ s" sb-sentinel" T$= ;
 : T-INT$ ( n str -- )
    {: s:str :}
    SB-RESET s" sb-sentinel" SB-APPEND
-   INT$ s T$=  SB$ s" sb-sentinel" T$= ;
+   FMT:INT$ s T$=  SB$ s" sb-sentinel" T$= ;
 : T-OCT ( n n str -- ) {: s:str :}       \ ( value width expect )
-   OCT-WIDTH$ s T$= ;
+   FMT:OCT-WIDTH$ s T$= ;
 \ F.N has no bounded width and does build in the shared builder, so its text is
 \ still readable through SB$ after the call.
 : T-PFN ( r n str -- ) {: s:str :}      \ ( value places expect )
-   F.N   SB$ s T$= ;
+   FMT:F.N   SB$ s T$= ;
 
-: NEG-U-CASE ( -- )        SB-RESET -1 SB-U ;
-: OVERFLOW-FIX-CASE ( -- ) SB-RESET 1000000000000000000.0 2 SB-FIX ;     \ 1e18 * 10^2 overflows i64
-: OVERFLOW-2P63-CASE ( -- ) SB-RESET 4611686018427387904.0 2.0 f* 0 SB-FIX ;  \ boundary is exclusive at 2^63
-: SCALED-LOW-CASE ( -- ) 1 -1 SB-SCALED ;
-: SCALED-HIGH-CASE ( -- ) 1 19 SB-SCALED ;
-: SCI-LOW-CASE ( -- ) 1.0 -1 SB-SCI ;
-: SCI-HIGH-CASE ( -- ) 1.0 18 SB-SCI ;
-: SCI-INF-CASE ( -- ) $7FF0000000000000 IEEE754:BITS>F64 16 SB-SCI ;
-: SCI-NAN-CASE ( -- ) $7FF8000000000000 IEEE754:BITS>F64 16 SB-SCI ;
+: NEG-U-CASE ( -- )        SB-RESET -1 FMT:SB-U ;
+: OVERFLOW-FIX-CASE ( -- ) SB-RESET 1000000000000000000.0 2 FMT:SB-FIX ;     \ 1e18 * 10^2 overflows i64
+: OVERFLOW-2P63-CASE ( -- ) SB-RESET 4611686018427387904.0 2.0 f* 0 FMT:SB-FIX ;  \ boundary is exclusive at 2^63
+: SCALED-LOW-CASE ( -- ) 1 -1 FMT:SB-SCALED ;
+: SCALED-HIGH-CASE ( -- ) 1 19 FMT:SB-SCALED ;
+: SCI-LOW-CASE ( -- ) 1.0 -1 FMT:SB-SCI ;
+: SCI-HIGH-CASE ( -- ) 1.0 18 FMT:SB-SCI ;
+: SCI-INF-CASE ( -- ) $7FF0000000000000 IEEE754:BITS>F64 16 FMT:SB-SCI ;
+: SCI-NAN-CASE ( -- ) $7FF8000000000000 IEEE754:BITS>F64 16 FMT:SB-SCI ;
 
 : FMT-RUN ( -- )
    T-RESET
@@ -137,20 +136,20 @@ using FMT
    \ fail-closed domain guards
    [: NEG-U-CASE ;]        E-FMT-DOMAIN   TTHROWSQ
    SB-RESET s" carry" SB-APPEND
-   [: -1 SB-HEX ;] E-FMT-DOMAIN TTHROWSQ
+   [: -1 FMT:SB-HEX ;] E-FMT-DOMAIN TTHROWSQ
    SB$ s" carry" T$=
-   [: 256 2 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ   \ needs a third digit
+   [: 256 2 FMT:SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ   \ needs a third digit
    SB$ s" carry" T$=
-   [: -1 15 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ   \ negative below width 16
+   [: -1 15 FMT:SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ   \ negative below width 16
    SB$ s" carry" T$=
-   [: 0 0 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ
+   [: 0 0 FMT:SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ
    SB$ s" carry" T$=
-   [: 0 17 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ
+   [: 0 17 FMT:SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ
    SB$ s" carry" T$=
-   [: $1000 4 OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ   \ 10000 octal
-   [: -1 21 OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ
-   [: 0 0 OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ
-   [: 0 22 OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ
+   [: $1000 4 FMT:OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ   \ 10000 octal
+   [: -1 21 FMT:OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ
+   [: 0 0 FMT:OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ
+   [: 0 22 FMT:OCT-WIDTH$ drop ;] E-FMT-DOMAIN TTHROWSQ
    [: OVERFLOW-FIX-CASE ;]  E-FMT-OVERFLOW TTHROWSQ
    [: OVERFLOW-2P63-CASE ;] E-FMT-OVERFLOW TTHROWSQ \ exactly 2^63 does not fit i64
    [: SCI-LOW-CASE ;] E-FMT-DOMAIN TTHROWSQ
@@ -167,5 +166,4 @@ using FMT
 FMT-RUN
 T-REPORT
 
-;using
 ;package

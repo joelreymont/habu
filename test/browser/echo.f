@@ -11,7 +11,6 @@ require test/browser/turn-revision.f
 
 package ECHO
 private
-using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ^u8 )
 CAST: BYTES>N ( ^u8 -- n )
@@ -63,7 +62,7 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 \ pointer texts share, so a host that answers the fetch before it shows that
 \ text shows the bytes run's text.
 : START ( -- )
-   0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
+   0 BROWSER-EVENT:EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
    FETCH-FIXTURE
    0 TEXT-U !  s" loading" SAY  TEXT-RECORD ;
 
@@ -75,11 +74,11 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 \ mod 2^32 from 0, in decimal: a payload not copied, or copied elsewhere, fails.
 : BYTES ( -- )
    0 TEXT-U !
-   1 EVENT@ 2 EVENT@ SUM DIGITS
+   1 BROWSER-EVENT:EVENT@ 2 BROWSER-EVENT:EVENT@ SUM DIGITS
    TEXT-RECORD ;
 
 : AT ( str -- )
-   0 TEXT-U !  SAY  1 EVENT@ SIGNED  44 CHAR+  2 EVENT@ SIGNED
+   0 TEXT-U !  SAY  1 BROWSER-EVENT:EVENT@ SIGNED  44 CHAR+  2 BROWSER-EVENT:EVENT@ SIGNED
    TEXT-RECORD ;
 
 \ The u bytes at at are the text t.
@@ -104,7 +103,7 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 \ (SINK); "long path" names a path one byte past the span and "neg path" one of
 \ -1 bytes.
 : TYPED ( -- )
-   1 EVENT@ 2 EVENT@ {: at:n u:n :}
+   1 BROWSER-EVENT:EVENT@ 2 BROWSER-EVENT:EVENT@ {: at:n u:n :}
    at u s" trap" IS? if  SINK exit  then
    0 REQ-U !  at u REQ+  at u REQ+  at u REQ+
    at u s" long path" IS? if  REQ-U @ 1+
@@ -116,15 +115,15 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 \ The status's text, then the body; status 200 fetches `fixture` in the record
 \ before them, so its answer would rewrite that status text.
 : ANSWERED ( -- )
-   3 EVENT@ 200 = if FETCH-FIXTURE then
-   0 TEXT-U !  3 EVENT@ DIGITS  TEXT-RECORD
-   DELIVERY {: d:str :}
+   3 BROWSER-EVENT:EVENT@ 200 = if FETCH-FIXTURE then
+   0 TEXT-U !  3 BROWSER-EVENT:EVENT@ DIGITS  TEXT-RECORD
+   BROWSER-EVENT:DELIVERY {: d:str :}
    d STR:LEN 1 max ANSWER-RESERVE
    d STR:DATA 0 ANSWER d STR:LEN BYTE-COPY
    3 0 ANSWER BYTES>N d STR:LEN 0 RECORD ;
 
 : DISPATCH ( -- )
-   0 EVENT@ {: kind:n :}
+   0 BROWSER-EVENT:EVENT@ {: kind:n :}
    kind 0 = if START exit then
    kind 1 = if BYTES exit then
    kind 2 = if s" " AT exit then
@@ -136,9 +135,8 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 public
 
 : TURN ( -- )
-   [: DISPATCH ;] HANDLE ;
+   [: DISPATCH ;] BROWSER-EVENT:HANDLE ;
 
-;using
 ;package
 
 : MAIN ( -- ) ECHO:TURN ;

@@ -1,8 +1,8 @@
 \ icode.f - X64CODE, the x86-64 code layer: ASM-SINK, the sink X64ASM
 \ (src/arch/x86-64/asm.f) appends every instruction to, and the labels a stream
 \ branches to; the counterpart of src/arch/arm64/icode.f. The seam
-\ (src/os/linux-x86-64/sys.f, proc-watch.f) and the image writer (elf.f) bind to
-\ it with `using X64CODE`.
+\ (src/os/linux-x86-64/sys.f, proc-watch.f) and the image writer (elf.f) call
+\ it by prefix, as `X64CODE:WORD`.
 
 require src/core/exit-status.f
 require src/lib/error.f
@@ -16,7 +16,6 @@ require src/lib/vector.f
 require src/compiler/native/relax.f
 
 package X64CODE
-using X64ASM
 public
 
 \ The linked text and ELF's writable tail end below the runtime code region.
@@ -194,36 +193,36 @@ public
 \ Each site's label is checked before its instruction is emitted.
 : JMP, ( label -- )
    ?KNOWN {: k:n :}
-   0 >REL ASM-SINK ENC-JMP-REL8
+   0 X64ASM:>REL ASM-SINK X64ASM:ENC-JMP-REL8
    k SITE-BRANCH END-SITE
    ENDED ;
 
-: RET, ( -- ) ASM-SINK ENC-RET ENDED ;
-: UD2, ( -- ) ASM-SINK ENC-UD2 ENDED ;
-: JMP-REG, ( r64 -- ) ASM-SINK ENC-JMP-REG ENDED ;
+: RET, ( -- ) ASM-SINK X64ASM:ENC-RET ENDED ;
+: UD2, ( -- ) ASM-SINK X64ASM:ENC-UD2 ENDED ;
+: JMP-REG, ( X64ASM:r64 -- ) ASM-SINK X64ASM:ENC-JMP-REG ENDED ;
 
-: JCC, ( condition label -- )
-   ?KNOWN {: c:condition k:n :}
-   c 0 >REL ASM-SINK ENC-JCC-REL8
+: JCC, ( X64ASM:condition label -- )
+   ?KNOWN {: c:X64ASM:condition k:n :}
+   c 0 X64ASM:>REL ASM-SINK X64ASM:ENC-JCC-REL8
    k SITE-BRANCH END-SITE ;
 
 : CALL, ( label -- )
    ?KNOWN {: k:n :}
-   0 >REL ASM-SINK ENC-CALL-REL32
+   0 X64ASM:>REL ASM-SINK X64ASM:ENC-CALL-REL32
    k SITE-REL32 END-SITE ;
 
 \ lea r, [rip+disp32]: a rip-relative displacement is measured from the
 \ instruction's end, which is its field's end.
-: LEA-REL, ( r64 label -- )
-   ?KNOWN {: r:r64 k:n :}
-   r 0 MEM-RIP ASM-SINK ENC-LEA
+: LEA-REL, ( X64ASM:r64 label -- )
+   ?KNOWN {: r:X64ASM:r64 k:n :}
+   r 0 X64ASM:MEM-RIP ASM-SINK X64ASM:ENC-LEA
    k SITE-REL32 END-SITE ;
 
 \ The site is X64ASM's own statement of where the immediate starts.
-: MOVABS, ( r64 label -- )
-   ?KNOWN {: r:r64 k:n :}
-   ASM-LEN MOV-RI64-IMM-OFF + {: at:n :}
-   r 0 >IMM64 ASM-SINK ENC-MOV-RI64
+: MOVABS, ( X64ASM:r64 label -- )
+   ?KNOWN {: r:X64ASM:r64 k:n :}
+   ASM-LEN X64ASM:MOV-RI64-IMM-OFF + {: at:n :}
+   r 0 X64ASM:>IMM64 ASM-SINK X64ASM:ENC-MOV-RI64
    at k SITE-ABS64 SITE+ ;
 
 \ Read before ASM-LINK forgets it: the number the link adds the load address
@@ -248,15 +247,15 @@ private
 \ not yet bound takes the form that reaches wherever the label lands.
 : GROWTH ( n n -- n ) {: k:n d:n :}
    CODE k RELAX:BR-AT @ + c@
-   k RELAX:BR-TO @ UNBOUND = if BRANCH-LONG exit then
-   d BRANCH-GROWTH ;
+   k RELAX:BR-TO @ UNBOUND = if X64ASM:BRANCH-LONG exit then
+   d X64ASM:BRANCH-GROWTH ;
 
 : FILE-BRANCHES ( -- )
    RELAX:RESET
    NSITE @ 0 ?do
       i SITE-KIND @ SITE-BRANCH = if
          i SITE-END ?IN-CODE
-         i SITE-END BRANCH-HOLE -  i SITE-LBL @ LBL-AT @  BRANCH-HOLE RELAX:BRANCH+ drop
+         i SITE-END X64ASM:BRANCH-HOLE -  i SITE-LBL @ LBL-AT @  X64ASM:BRANCH-HOLE RELAX:BRANCH+ drop
       then
    loop ;
 
@@ -267,7 +266,7 @@ private
    ASM-SINK new s" " RELAX:COPY
    RELAX:BRANCHES 0 ?do
       i RELAX:BR-AT @ {: at:n :}
-      new at RELAX:PLACED VEC:AT  CODE at + c@  i RELAX:BR-LEN @  0 BRANCH-PUT
+      new at RELAX:PLACED VEC:AT  CODE at + c@  i RELAX:BR-LEN @  0 X64ASM:BRANCH-PUT
    loop
    new ;
 
@@ -275,7 +274,7 @@ private
 : BRANCH-SITE ( n n -- ) {: k:n x:n :}
    k RELAX:BR-LEN @ {: growth:n :}
    growth 0= if SITE-REL8 else SITE-REL32 then {: kind:n :}
-   k RELAX:BR-AT @ RELAX:PLACED  BRANCH-HOLE +  growth +  kind SITE-WIDTH -
+   k RELAX:BR-AT @ RELAX:PLACED  X64ASM:BRANCH-HOLE +  growth +  kind SITE-WIDTH -
    x SITE-AT !
    kind x SITE-KIND ! ;
 
@@ -487,5 +486,4 @@ public
    ASM-SINK ASM-LEN MOVED VEC:RESIZE
    BELOW-RELEASE ;
 
-;using
 ;package

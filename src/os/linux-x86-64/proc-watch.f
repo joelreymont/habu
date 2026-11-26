@@ -10,15 +10,10 @@ require src/arch/x86-64/asm.f
 \ than qualified at each call so the emitter below keeps the shape its aarch64
 \ counterpart has: this file carries no package, so the ownership gate reports a
 \ changed global definition in it.
-using X64ASM
-using X64RT
 
 \ SYS, leaves the syscall's fd or negative errno in rax.
 : BPROCWATCHOPEN ( -- )            \ ( pid -- fd|-errno ) pidfd_open(pid, 0)
-   7 G-POP                         \ rdi = pid
-   RSI ZERO-REG,                   \ flags 0
+   7 X64RT:G-POP                         \ rdi = pid
+   X64ASM:RSI ZERO-REG,                   \ flags 0
    NR-PIDFD-OPEN SYS,
-   0 G-PUSH ;
-
-;using
-;using
+   0 X64RT:G-PUSH ;

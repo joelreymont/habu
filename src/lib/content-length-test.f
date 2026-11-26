@@ -17,10 +17,6 @@ require src/lib/adt/option.f
 require src/lib/content-length.f
 
 package CONTENT-LENGTH-TEST
-using CONTENT-LENGTH
-using SPAN
-using FD
-using MEM
 
 $1000000 constant MAX-BODY        \ the reader's maximum: 16 MiB
 $100000 constant BIG              \ 1 MiB: far past a pipe and the reader's buffer
@@ -40,14 +36,14 @@ variable CHILD-CODE
 
 : BIND-ON ( fd n -- )
    {: f:fd max:n :}
-   R f INBUF max BIND ;
+   R f INBUF max CONTENT-LENGTH:BIND ;
 
 \ A pipe that holds these bytes and then ends; a reader taking bodies up to the
 \ maximum reads its read end.
 : FEED-MAX ( str n -- )
    {: s:str max:n :}
    FD:PIPE-PAIR {: r:fd w:fd :}
-   w s WRITE-FULL
+   w s FD:WRITE-FULL
    w FD>N close
    r FD>N FEED-FD !
    r max BIND-ON ;
@@ -60,7 +56,7 @@ variable CHILD-CODE
 
 \ The next body length, or -1 for the end on a boundary.
 : NEXT-LEN ( -- n )
-   R NEXT-LENGTH MATCH option
+   R CONTENT-LENGTH:NEXT-LENGTH MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -68,18 +64,18 @@ variable CHILD-CODE
 \ The pending body of u bytes, read into SMALL.
 : BODY$ ( n -- str )
    {: u:n :}
-   R SMALL BODY
-   SMALL $ STR:DATA u >str ;
+   R SMALL CONTENT-LENGTH:BODY
+   SMALL SPAN:$ STR:DATA u >str ;
 
 : SPENT ( -- )
    [: NEXT-LEN drop ;] E-CONTENT-LENGTH-STATE TTHROWSQ ;
 
 : PATTERN! ( SPAN:span<u8> -- )
-   $ {: p:str :}
+   SPAN:$ {: p:str :}
    p STR:LEN 0 ?do i PATTERN-MOD mod p STR:DATA i + c! loop ;
 
 : PATTERN? ( SPAN:span<u8> -- bool )
-   $ {: p:str :}
+   SPAN:$ {: p:str :}
    p STR:LEN 0 ?do
       p STR:DATA i + c@ i PATTERN-MOD mod <> if false unloop exit then
    loop
@@ -186,7 +182,7 @@ TYPED-VARIABLE PAD-LEN len
    s\" Content-Length: 2\n\n{}" MALFORMED
    s\" \nContent-Length: 2\r\n\r\n{}" MALFORMED
    s\" Content-Length: 2\r\r\n\r\n{}" MALFORMED
-   LINE-CAP 1+ PAD-LINE$ MALFORMED
+   CONTENT-LENGTH:LINE-CAP 1+ PAD-LINE$ MALFORMED
    3000 PAD-LINE$ MALFORMED ;
 
 : FORM ( str str -- )
@@ -211,7 +207,7 @@ TYPED-VARIABLE PAD-LEN len
    s\" X-A!#$%&'*+.^_`|~9: a\r\nContent-Length: 2\r\n\r\n{}" s" {}" FORM
    s\" Content-Type: application/vscode-jsonrpc; charset=utf-8\r\nContent-Length: 2\r\n\r\n{}" s" {}" FORM
    s\" Content-Type: application/json; foo=bar;CHARSET=\"UTF8\"\r\nContent-Length: 2\r\n\r\n{}" s" {}" FORM
-   LINE-CAP PAD-LINE$ s" {}" FORM
+   CONTENT-LENGTH:LINE-CAP PAD-LINE$ s" {}" FORM
    s\" Content-Length: 0\r\n\r\nContent-Length: 1\r\n\r\nz" FEED
    NEXT-LEN 0 T=  0 BODY$ STR:LEN 0 T=
    NEXT-LEN 1 T=  1 BODY$ s" z" T$=
@@ -220,18 +216,18 @@ TYPED-VARIABLE PAD-LEN len
 
 
 : BIG-WRITER ( -- )
-   CHILD-FD @ >FD s\" Content-Length: 1048576\r\n\r\n" WRITE-FULL
-   CHILD-FD @ >FD BIG-BODY @ $ WRITE-FULL
-   CHILD-FD @ >FD s\" Content-Length: 2\r\n\r\n{}" WRITE-FULL ;
+   CHILD-FD @ >FD s\" Content-Length: 1048576\r\n\r\n" FD:WRITE-FULL
+   CHILD-FD @ >FD BIG-BODY @ SPAN:$ FD:WRITE-FULL
+   CHILD-FD @ >FD s\" Content-Length: 2\r\n\r\n{}" FD:WRITE-FULL ;
 
 \ A body far longer than the pipe and the reader's buffer, from a writer that
 \ blocks, then a message after it.
 : TEST-BIG ( -- )
    BIG-BODY @ PATTERN!
    [: BIG-WRITER ;] FORKED {: pid:pid :}
-   0 BIG-BODY @ FILL
+   0 BIG-BODY @ SPAN:FILL
    NEXT-LEN BIG T=
-   R BIG-BODY @ BODY
+   R BIG-BODY @ CONTENT-LENGTH:BODY
    BIG-BODY @ PATTERN? TTRUE
    NEXT-LEN 2 T=  2 BODY$ s" {}" T$=
    NEXT-LEN -1 T=
@@ -242,7 +238,7 @@ TYPED-VARIABLE PAD-LEN len
 
 : PIECE ( str -- )
    {: s:str :}
-   CHILD-FD @ >FD s WRITE-FULL
+   CHILD-FD @ >FD s FD:WRITE-FULL
    PIECE-MS >MS TASK:SLEEP ;
 
 : PIECE-WRITER ( -- )
@@ -264,13 +260,13 @@ TYPED-VARIABLE PAD-LEN len
 
 
 : FRESH-NEXT ( -- )
-   FRESH NEXT-LENGTH MATCH option none OF ENDOF some OF drop ENDOF ;MATCH ;
+   FRESH CONTENT-LENGTH:NEXT-LENGTH MATCH option none OF ENDOF some OF drop ENDOF ;MATCH ;
 
 : SHORT-BIND ( -- )
-   R 0 >FD INBUF LINE-CAP 1+ TAKE MAX-BODY BIND ;
+   R 0 >FD INBUF CONTENT-LENGTH:LINE-CAP 1+ SPAN:TAKE MAX-BODY CONTENT-LENGTH:BIND ;
 
 : NEGATIVE-BIND ( -- )
-   R 0 >FD INBUF -1 BIND ;
+   R 0 >FD INBUF -1 CONTENT-LENGTH:BIND ;
 
 \ STATE: a reader never bound, a buffer under LINE-CAP + 2, a negative maximum,
 \ BODY with no body pending, NEXT-LENGTH with one pending. A span shorter than
@@ -283,7 +279,7 @@ TYPED-VARIABLE PAD-LEN len
    [: 0 BODY$ drop ;] E-CONTENT-LENGTH-STATE TTHROWSQ
    NEXT-LEN 5 T=
    [: NEXT-LEN drop ;] E-CONTENT-LENGTH-STATE TTHROWSQ
-   [: R SMALL 4 TAKE BODY ;] E-SPAN-CAPACITY TTHROWSQ
+   [: R SMALL 4 SPAN:TAKE CONTENT-LENGTH:BODY ;] E-SPAN-CAPACITY TTHROWSQ
    5 BODY$ s" hello" T$=
    NEXT-LEN -1 T=
    DONE ;
@@ -297,7 +293,7 @@ TYPED-VARIABLE PAD-LEN len
    PAD-BUF PAD-LEN BUF-LEN@ >str ;
 
 : LONG-BODY ( -- )
-   R BIG-BODY @ LONG TAKE BODY ;
+   R BIG-BODY @ LONG SPAN:TAKE CONTENT-LENGTH:BODY ;
 
 \ The reader's descriptor is closed under it, before a header and inside a body
 \ the buffer did not hold: the kernel rejects the read, and the reader is spent.
@@ -325,28 +321,28 @@ TYPED-VARIABLE PAD-LEN len
 
 : SENT$ ( fd n -- str )
    {: r:fd u:n :}
-   r SMALL u TAKE READ-EXACT MATCH FD:fill
+   r SMALL u SPAN:TAKE FD:READ-EXACT MATCH FD:fill
       full OF ENDOF
       eof OF drop 1 0 T= ENDOF
    ;MATCH
-   SMALL $ STR:DATA u >str ;
+   SMALL SPAN:$ STR:DATA u >str ;
 
 : NO-READER ( -- )
-   CHILD-FD @ >FD s" lost" SEND ;
+   CHILD-FD @ >FD s" lost" CONTENT-LENGTH:SEND ;
 
 \ The exact header and body, an empty body, a body built in SB, read back by a
 \ reader. A pipe with no reader, SIGPIPE disarmed: E-FS-IO.
 : TEST-SEND ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
-   w s" hello" SEND
+   w s" hello" CONTENT-LENGTH:SEND
    r 26 SENT$ s\" Content-Length: 5\r\n\r\nhello" T$=
-   w s" " SEND
+   w s" " CONTENT-LENGTH:SEND
    r 21 SENT$ s\" Content-Length: 0\r\n\r\n" T$=
    SB-RESET s" {}" SB-APPEND
-   w SB$ SEND
+   w SB$ CONTENT-LENGTH:SEND
    r 23 SENT$ s\" Content-Length: 2\r\n\r\n{}" T$=
-   w s" {}" SEND
-   w s" " SEND
+   w s" {}" CONTENT-LENGTH:SEND
+   w s" " CONTENT-LENGTH:SEND
    w FD>N close
    r FD>N FEED-FD !
    r MAX-BODY BIND-ON
@@ -362,7 +358,7 @@ TYPED-VARIABLE PAD-LEN len
    w2 FD>N close ;
 
 : TEST-MAIN ( -- )
-   BIG BYTES-ALLOC-LEN ALLOC-SPAN BIG-BODY !
+   BIG MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN BIG-BODY !
    T-RESET
    TEST-BOUNDARY
    TEST-TRUNCATED
@@ -374,14 +370,10 @@ TYPED-VARIABLE PAD-LEN len
    TEST-MAXIMUM
    TEST-READ-ERROR
    TEST-SEND
-   BIG-BODY @ FREE-SPAN
+   BIG-BODY @ MEM:FREE-SPAN
    T-REPORT
    s" content-length-test: ok" type cr ;
 
 TEST-MAIN
 
-;using
-;using
-;using
-;using
 ;package

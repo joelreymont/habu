@@ -27,7 +27,6 @@ require src/lib/json/read.f
 require src/lib/json/write.f
 
 package JSON-RPC
-using JSON
 public
 
 -32700 constant PARSE-ERROR
@@ -51,7 +50,7 @@ ENUM message
    ;VARIANT
 ;ENUM
 
-: NULL-ID ( -- JSON:value )  s" null" PARSE ;
+: NULL-ID ( -- JSON:value )  s" null" JSON:PARSE ;
 
 private
 
@@ -79,17 +78,17 @@ private
 
 : ID-KIND? ( JSON:value -- bool )
    {: v :}
-   v NUMBER? v STRING? or v NULL? or ;
+   v JSON:NUMBER? v JSON:STRING? or v JSON:NULL? or ;
 
 : V2? ( JSON:value -- bool )
-   s" jsonrpc" FIND [: s" 2.0" STRING= ;] HOLDS? ;
+   s" jsonrpc" JSON:FIND [: s" 2.0" JSON:STRING= ;] HOLDS? ;
 
 \ An object with an integer code and a string message.
 : ERROR-OBJECT? ( JSON:value -- bool )
    {: e :}
-   e OBJECT? 0= if false exit then
-   e s" code" FIND [: INTEGER? ;] HOLDS?
-   e s" message" FIND [: STRING? ;] HOLDS? and ;
+   e JSON:OBJECT? 0= if false exit then
+   e s" code" JSON:FIND [: JSON:INTEGER? ;] HOLDS?
+   e s" message" JSON:FIND [: JSON:STRING? ;] HOLDS? and ;
 
 \ The id a fault answers: the message's own when it has a method, else null.
 : REPLY-ID ( option<JSON:value> option<JSON:value> -- JSON:value )
@@ -104,8 +103,8 @@ private
 \ whether they are null, an object or an array.
 : GIVEN-PARAMS ( JSON:value -- option<JSON:value> bool )
    {: p :}
-   p NULL? if OPTION:NONE true exit then
-   p OPTION:SOME  p OBJECT? p ARRAY? or ;
+   p JSON:NULL? if OPTION:NONE true exit then
+   p OPTION:SOME  p JSON:OBJECT? p JSON:ARRAY? or ;
 
 \ The params as a message carries them, and whether they are allowed.
 : PARAMS ( option<JSON:value> -- option<JSON:value> bool )
@@ -124,10 +123,10 @@ private
 \ A message with a method: a request with an id, else a notification.
 : CALL ( option<JSON:value> JSON:value JSON:value JSON:value -- message )
    {: i m root reply :}
-   m STRING? 0= if
+   m JSON:STRING? 0= if
       s" a method that is not a string" reply FAULT exit
    then
-   root s" params" FIND PARAMS {: p ok:bool :}
+   root s" params" JSON:FIND PARAMS {: p ok:bool :}
    ok 0= if
       s" params that are not an object or array" reply FAULT exit
    then
@@ -150,8 +149,8 @@ private
 \ A response answering this id.
 : RESPONSE ( JSON:value JSON:value -- message )
    {: id root :}
-   root s" error" FIND {: x :}
-   root s" result" FIND MATCH option
+   root s" error" JSON:FIND {: x :}
+   root s" result" JSON:FIND MATCH option
       none OF id x FAILED ENDOF
       some OF {: r :}
          x PRESENT? if NOT-ONE else
@@ -184,18 +183,18 @@ private
 
 : SORT-OBJECT ( JSON:value -- message )
    {: root :}
-   root s" id" FIND {: i :}
+   root s" id" JSON:FIND {: i :}
    i [: ID-KIND? 0= ;] HOLDS? if
       s" an id that is not a number, string or null" NULL-ID FAULT exit
    then
-   i root s" method" FIND root ENVELOPE ;
+   i root s" method" JSON:FIND root ENVELOPE ;
 
 : SORT-ROOT ( JSON:value -- message )
    {: root :}
-   root ARRAY? if
+   root JSON:ARRAY? if
       s" an array, a batch this reader does not take" NULL-ID FAULT exit
    then
-   root OBJECT? 0= if
+   root JSON:OBJECT? 0= if
       s" a body that is not an object" NULL-ID FAULT exit
    then
    root SORT-OBJECT ;
@@ -211,7 +210,7 @@ private
 \ of the reader's storage, is misuse and is thrown.
 : NOT-PARSED ( n -- message )
    {: code:n :}
-   code E-MEMBER = if
+   code JSON:E-MEMBER = if
       INVALID-REQUEST code REASON:TEXT$ NULL-ID INVALID exit
    then
    code SYNTAX? 0= if code throw then
@@ -221,7 +220,7 @@ private
 \ catch leaves the types it was given.
 : PARSE-SLOT ( JSON:value str -- JSON:value str )
    {: v body:str :}
-   body PARSE  body ;
+   body JSON:PARSE  body ;
 
 public
 
@@ -234,11 +233,11 @@ public
 private
 
 : HEAD ( ^JSON:writer -- ^JSON:writer )
-   WRITE-OBJECT-START  s" jsonrpc" s" 2.0" WRITE-FIELD-S ;
+   JSON:WRITE-OBJECT-START  s" jsonrpc" s" 2.0" JSON:WRITE-FIELD-S ;
 
 : ID-FIELD ( ^JSON:writer JSON:value -- ^JSON:writer )
    {: id :}
-   WRITE-COMMA  s" id" id TEXT$ WRITE-FIELD-RAW ;
+   JSON:WRITE-COMMA  s" id" id JSON:TEXT$ JSON:WRITE-FIELD-RAW ;
 
 public
 
@@ -246,28 +245,27 @@ public
 : RESULT ( ^JSON:writer JSON:value -- ^JSON:writer )
    {: id :}
    HEAD id ID-FIELD
-   WRITE-COMMA  s" result" WRITE-KEY ;
+   JSON:WRITE-COMMA  s" result" JSON:WRITE-KEY ;
 
 \ A whole error reply: `{"jsonrpc":"2.0","id":ID,"error":{"code":N,"message":M}}`.
 : ERROR ( ^JSON:writer JSON:value n str -- ^JSON:writer )
    {: id code:n msg:str :}
    HEAD id ID-FIELD
-   WRITE-COMMA  s" error" WRITE-KEY
-   WRITE-OBJECT-START
-   s" code" code WRITE-FIELD-INT
-   WRITE-COMMA  s" message" msg WRITE-FIELD-S
-   WRITE-OBJECT-END
-   WRITE-OBJECT-END ;
+   JSON:WRITE-COMMA  s" error" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" code" code JSON:WRITE-FIELD-INT
+   JSON:WRITE-COMMA  s" message" msg JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-OBJECT-END ;
 
 \ `{"jsonrpc":"2.0","method":M,"params":`; the caller writes params, then END.
 : NOTIFY ( ^JSON:writer str -- ^JSON:writer )
    {: m:str :}
    HEAD
-   WRITE-COMMA  s" method" m WRITE-FIELD-S
-   WRITE-COMMA  s" params" WRITE-KEY ;
+   JSON:WRITE-COMMA  s" method" m JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA  s" params" JSON:WRITE-KEY ;
 
 : END ( ^JSON:writer -- ^JSON:writer )
-   WRITE-OBJECT-END ;
+   JSON:WRITE-OBJECT-END ;
 
-;using
 ;package

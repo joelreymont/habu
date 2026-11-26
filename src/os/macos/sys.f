@@ -6,7 +6,6 @@ require src/core/exit-status.f
 require src/arch/arm64/mnem.f
 require src/arch/arm64/icode.f
 require src/os/macos/macho.f
-using A64ICODE
 package SYSCALL
 public
 $1002 constant MAP-ANON-PRIVATE
@@ -92,30 +91,30 @@ $20 constant AT-SYMLINK-NOFOLLOW   \ sys/fcntl.h AT_SYMLINK_NOFOLLOW; only Linux
 
 : SYS, ( n -- )
    dup 0 < if s" hb: sys: a Linux-only syscall number" EXIT-STATUS:INTERNAL die then
-   16 swap MOVZ,  $80 SVC, ;
+   16 swap A64ICODE:MOVZ,  $80 A64ICODE:SVC, ;
 
 : OS-OPEN-RD ( n -- )
-   0 swap 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;
+   0 swap 0 A64ICODE:ADDI,  1 0 A64ICODE:MOVZ,  2 0 A64ICODE:MOVZ,  NR-OPEN SYS, ;
 
 \ x(n) = this thread's Mach thread port. The trap adds a user reference to the
 \ port on every call; the caller gives it back with OS-THREAD-RELEASE.
 \ Clobbers x0 and x16.
 : OS-THREAD-HANDLE ( n -- )
    {: reg :}
-   16 MACH-THREAD-SELF MOVN,  $80 SVC,  reg 0 0 ADDI, ;
+   16 MACH-THREAD-SELF A64ICODE:MOVN,  $80 A64ICODE:SVC,  reg 0 0 A64ICODE:ADDI, ;
 
 \ x16 = the named import's address, read from the GOT each run (an image saves
 \ none), from x16 = this run's __text base. Clobbers x15, x17.
 : SLOT-AT, ( str -- ) {: name:str :}
-   15 CODE-OFF LIT64,  16 16 15 SUB,
-   17 16 IMAGE-TEXT-SIZE-OFF LDR,
-   15 CODE-OFF LIT64,  17 17 15 ADD,  15 $3FFF LIT64,
-   17 17 15 ADD,  15 $3FFF invert LIT64,  17 17 15 AND,
-   16 16 17 ADD,  16 16 name MACHO:IMPORT-ROW MACHO:SLOT-OFF LDR, ;
+   15 CODE-OFF A64ICODE:LIT64,  16 16 15 A64ICODE:SUB,
+   17 16 IMAGE-TEXT-SIZE-OFF A64ICODE:LDR,
+   15 CODE-OFF A64ICODE:LIT64,  17 17 15 A64ICODE:ADD,  15 $3FFF A64ICODE:LIT64,
+   17 17 15 A64ICODE:ADD,  15 $3FFF invert A64ICODE:LIT64,  17 17 15 A64ICODE:AND,
+   16 16 17 A64ICODE:ADD,  16 16 name MACHO:IMPORT-ROW MACHO:SLOT-OFF A64ICODE:LDR, ;
 
 private
-: CNTVCT>R ( n -- ) $D53BE040 or EMITW ;   \ mrs xn, CNTVCT_EL0
-: CNTFRQ>R ( n -- ) $D53BE000 or EMITW ;   \ mrs xn, CNTFRQ_EL0
+: CNTVCT>R ( n -- ) $D53BE040 or A64ICODE:EMITW ;   \ mrs xn, CNTVCT_EL0
+: CNTFRQ>R ( n -- ) $D53BE000 or A64ICODE:EMITW ;   \ mrs xn, CNTFRQ_EL0
 public
 
 \ x(n) = the clock setitimer's ITIMER_REAL expires on, mach absolute time.
@@ -133,7 +132,7 @@ public
 \ Clobbers x0, x1 and x16.
 : OS-SIGNAL-THREAD ( n n -- )
    {: sigreg treg :}
-   16 treg 0 ADDI,  1 sigreg 0 ADDI,  0 16 0 ADDI,  NR-PTHREAD-KILL SYS, ;
+   16 treg 0 A64ICODE:ADDI,  1 sigreg 0 A64ICODE:ADDI,  0 16 0 A64ICODE:ADDI,  NR-PTHREAD-KILL SYS, ;
 
 \ mach_port_deallocate(mach_task_self(), the port in x(n)), then the same for
 \ the reference task_self_trap adds to the task port. Each is the deallocate
@@ -142,10 +141,10 @@ public
 \ be in an exchange on that port. Clobbers x0-x2 and x16.
 : OS-THREAD-RELEASE ( n -- )
    {: reg :}
-   1 reg 0 ADDI,
-   16 MACH-TASK-SELF MOVN,  $80 SVC,  2 0 0 ADDI,
-   16 MACH-PORT-DEALLOCATE MOVN,  $80 SVC,
-   0 2 0 ADDI,  1 2 0 ADDI,  16 MACH-PORT-DEALLOCATE MOVN,  $80 SVC, ;
+   1 reg 0 A64ICODE:ADDI,
+   16 MACH-TASK-SELF A64ICODE:MOVN,  $80 A64ICODE:SVC,  2 0 0 A64ICODE:ADDI,
+   16 MACH-PORT-DEALLOCATE A64ICODE:MOVN,  $80 A64ICODE:SVC,
+   0 2 0 A64ICODE:ADDI,  1 2 0 A64ICODE:ADDI,  16 MACH-PORT-DEALLOCATE A64ICODE:MOVN,  $80 A64ICODE:SVC, ;
 
 \ Clobbers x0-x2 and x16, none of which holds the signal.
 : OS-RAISE-SELF ( n -- )
@@ -156,13 +155,12 @@ public
 \ frame on sp that it gives back. Clobbers x0, x1, x2, x10 and x16.
 : OS-BLOCK-SELF ( n -- )
    {: sigreg :}
-   10 1 MOVZ,  1 sigreg 1 SUBI,  10 10 1 LSLV,     \ bit sig - 1
-   SP SP $10 SUBI,  10 SP 0 STRW,
-   0 1 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-PTHREAD-SIGMASK SYS,
-   SP SP $10 ADDI, ;
+   10 1 A64ICODE:MOVZ,  1 sigreg 1 A64ICODE:SUBI,  10 10 1 A64ICODE:LSLV,     \ bit sig - 1
+   A64ICODE:SP A64ICODE:SP $10 A64ICODE:SUBI,  10 A64ICODE:SP 0 A64ICODE:STRW,
+   0 1 A64ICODE:MOVZ,  1 A64ICODE:SP 0 A64ICODE:ADDI,  2 0 A64ICODE:MOVZ,  NR-PTHREAD-SIGMASK SYS,
+   A64ICODE:SP A64ICODE:SP $10 A64ICODE:ADDI, ;
 
 : OS-OPEN-FLAGS ( -- ) ;
 
 : OS-MMAP-FLAGS ( -- ) ;
 ;package
-;using

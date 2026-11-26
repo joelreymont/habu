@@ -12,8 +12,6 @@ require tools/lsp-text.f
 require src/lib/json/write.f
 
 package LSP-SYMBOLS
-using JSON
-using LSP-DEFS
 
 private
 
@@ -50,7 +48,7 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 \ nor its last byte, else the whole word: what a caller writes after a
 \ package's colon, also for a word re-exported by EXPORT PKG:WORD.
 : REC-TAIL$ ( n -- str )
-   REC-WORD$ {: w:str :}
+   LSP-DEFS:REC-WORD$ {: w:str :}
    w COLON-IN {: at:n :}
    at 0 > at w STR:LEN 1- < and if w STR:DATA at 1+ + w STR:LEN at 1+ - >str exit then
    w ;
@@ -60,10 +58,10 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 \ holds the text after it. ASCII letters compare without case.
 : LISTED? ( n -- bool )
    {: r:n :}
-   r REC-WORD$ QUERY-A @ QUERY-U @ >str CONTAINS-CI? if true exit then
+   r LSP-DEFS:REC-WORD$ QUERY-A @ QUERY-U @ >str CONTAINS-CI? if true exit then
    COLON-AT @ 0 < if false exit then
-   r REC-PUBLIC? 0= if false exit then
-   r REC-PACKAGE$ PACKAGE$ STR:=CI 0= if false exit then
+   r LSP-DEFS:REC-PUBLIC? 0= if false exit then
+   r LSP-DEFS:REC-PACKAGE$ PACKAGE$ STR:=CI 0= if false exit then
    r REC-TAIL$ TAIL$ CONTAINS-CI? ;
 
 \ The name the header gives record R: its word, or PKG:TAIL built in NAME-B
@@ -71,9 +69,9 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 \ place has an address however short the tail is.
 : NAME$ ( n -- str )
    {: r:n :}
-   r REC-PUBLIC? 0= if r REC-WORD$ exit then
+   r LSP-DEFS:REC-PUBLIC? 0= if r LSP-DEFS:REC-WORD$ exit then
    r REC-TAIL$ {: w:str :}
-   r REC-PACKAGE$ {: p:str :}
+   r LSP-DEFS:REC-PACKAGE$ {: p:str :}
    p STR:LEN 1+ w STR:LEN + {: nu:n :}
    nu 1+ NAME-B-RESERVE
    p STR:DATA 0 NAME-B p STR:LEN BYTE-COPY
@@ -83,8 +81,8 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 
 : KIND ( n -- n )
    {: class:n :}
-   class CLASS-CONSTANT = if CONSTANT-KIND exit then
-   class CLASS-STORAGE = if VARIABLE-KIND exit then
+   class LSP-DEFS:CLASS-CONSTANT = if CONSTANT-KIND exit then
+   class LSP-DEFS:CLASS-STORAGE = if VARIABLE-KIND exit then
    FUNCTION-KIND ;
 
 \ name: PKG:TAIL for a definition recorded public in a package, else the word as
@@ -96,38 +94,38 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 \ containerName: the package the word was recorded under; a global has none.
 : NAMED ( ^JSON:writer n n str -- ^JSON:writer )
    {: g:n r:n nm:str :}
-   WRITE-OBJECT-START
-   s" name" nm WRITE-FIELD-S WRITE-COMMA
-   s" kind" r REC-CLASS KIND WRITE-FIELD-U WRITE-COMMA
-   s" location" WRITE-KEY WRITE-OBJECT-START
-      s" uri" g GROUP-URI$ WRITE-FIELD-RAW WRITE-COMMA
-      r REC-RANGE LSP-TEXT:RANGE-AT
-   WRITE-OBJECT-END
-   r REC-PACKAGE$ {: p:str :}
-   p STR:LEN 0 > if WRITE-COMMA s" containerName" p WRITE-FIELD-S then
-   WRITE-OBJECT-END ;
+   JSON:WRITE-OBJECT-START
+   s" name" nm JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" kind" r LSP-DEFS:REC-CLASS KIND JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" location" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
+      s" uri" g LSP-DEFS:GROUP-URI$ JSON:WRITE-FIELD-RAW JSON:WRITE-COMMA
+      r LSP-DEFS:REC-RANGE LSP-TEXT:RANGE-AT
+   JSON:WRITE-OBJECT-END
+   r LSP-DEFS:REC-PACKAGE$ {: p:str :}
+   p STR:LEN 0 > if JSON:WRITE-COMMA s" containerName" p JSON:WRITE-FIELD-S then
+   JSON:WRITE-OBJECT-END ;
 
 public
 
 \ Named by its word as the source wrote it, whatever its package.
 : SYMBOL ( ^JSON:writer n n -- ^JSON:writer )
    {: g:n r:n :}
-   g r r REC-WORD$ NAMED ;
+   g r r LSP-DEFS:REC-WORD$ NAMED ;
 
 private
 
 : SHOWN ( n n -- )
    {: g:n r:n :}
    OUT @
-   SHOWN-N @ 0 > if WRITE-COMMA then
+   SHOWN-N @ 0 > if JSON:WRITE-COMMA then
    g r r NAME$ NAMED drop
    1 SHOWN-N +! ;
 
 : GROUP-SYMBOLS ( n -- )
    {: g:n :}
-   g GROUP-FIRST begin dup 0 >= while
+   g LSP-DEFS:GROUP-FIRST begin dup 0 >= while
       dup LISTED? if g over SHOWN then
-      REC-NEXT
+      LSP-DEFS:REC-NEXT
    repeat drop ;
 
 public
@@ -143,10 +141,8 @@ public
    q STR:LEN QUERY-U !
    q COLON-IN COLON-AT !
    0 SHOWN-N !
-   w WRITE-ARRAY-START drop
-   [: GROUP-SYMBOLS ;] DEFS-EACH
-   w WRITE-ARRAY-END ;
+   w JSON:WRITE-ARRAY-START drop
+   [: GROUP-SYMBOLS ;] LSP-DEFS:DEFS-EACH
+   w JSON:WRITE-ARRAY-END ;
 
-;using
-;using
 ;package

@@ -314,7 +314,7 @@ PATH-CAP 1 + BUFFER: AT-BUF
    s" allow-root-scope-nested" HARNESS!
    s" " 0 ROOT$ s" `test/policy/confined/value.f` lies outside the source root" S\" 70\n0\n0\n\n" SAYS
    s" allow-root-scope-seal" HARNESS!
-   s" " 0 s" error[E-POLICY]: the source policy is already sealed" s" test/policy/allow-root-scope-seal.f:14:" S\" 70\n70\n70\n70\n\n" SAYS ;
+   s" " 0 s" error[E-POLICY]: the source policy is already sealed" s" test/policy/allow-root-scope-seal.f:13:" S\" 70\n70\n70\n70\n\n" SAYS ;
 
 \ A definer's built words call the names a sealed table gives as the table's
 \ text would: an ACTION outside the vocabulary is rejected at its name, and
@@ -322,8 +322,8 @@ PATH-CAP 1 + BUFFER: AT-BUF
 : BUILT ( -- )
    s" allow-fsm" HARNESS!
    s" fsm-table" 0 s" " s" " RUNS
-   s" fsm-action" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/fsm-action.f:3:36" REJECTS
-   s" fsm-require" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/fsm-require.f:3:36" REJECTS ;
+   s" fsm-action" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/fsm-action.f:2:55" REJECTS
+   s" fsm-require" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/fsm-require.f:2:55" REJECTS ;
 
 public
 

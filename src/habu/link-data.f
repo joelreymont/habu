@@ -38,7 +38,6 @@ require src/arch/x86-64/icode.f
 require src/compiler/native/shadow.f
 require src/compiler/target/model.f
 require src/habu/link-code.f
-using DRIVER
 
 package LINKER
 private
@@ -588,7 +587,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       then
       ELF:CODESIG2
    then
-   path DRV-WRITE-IMAGE ;
+   path DRIVER:DRV-WRITE-IMAGE ;
 
 
 \ Link the open space's program and write it, signed, to the path, as Mach-O
@@ -635,4 +634,3 @@ public
    ;MATCH ;
 
 ;package
-;using

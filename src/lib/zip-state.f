@@ -11,8 +11,6 @@ require src/lib/task.f
 require src/lib/fork-child.f
 
 package ZIP
-using FFI
-using MEM
 
 $7FFFFFFFFFFFFFFF constant MAX-SIZE
 31 constant NODE-CELLS
@@ -65,7 +63,7 @@ PTR-VARIABLE INPUTS
 \ handle's number.
 variable SERIAL
 
-: NULL? ( ^a -- bool ) >CELL 0= ;
+: NULL? ( ^a -- bool ) FFI:>CELL 0= ;
 : LINK ( ^n -- ^^n ) 0 ptr-field ;
 : ID ( ^n -- ^n ) 1 cells + ;
 : OBJECT ( ^n -- ^^u8 ) 2 ptr-field ;
@@ -93,7 +91,7 @@ variable SERIAL
 : NODE-ALLOC ( -- ^n ) NODE-CELLS >COUNT MEM-ALLOC-CELLS ;
 : ARCHIVE-ALLOC ( -- ^n ) ARCHIVE-CELLS >COUNT MEM-ALLOC-CELLS ;
 : BYTES-FREE ( str -- ) {: b:str :}
-   b STR:DATA b STR:LEN BYTES-ALLOC-LEN RELEASE-BYTES ;
+   b STR:DATA b STR:LEN MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 : NODE-FREE ( ^n -- ) BYTE-VIEW NODE-CELLS cells >str BYTES-FREE ;
 : ARCHIVE-FREE ( ^n -- ) BYTE-VIEW ARCHIVE-CELLS cells >str BYTES-FREE ;
 
@@ -248,6 +246,4 @@ variable SERIAL
    archive src STR:LEN BUFFER-ALLOC {: dst:^ :}
    src STR:DATA dst src STR:LEN BYTE-COPY dst src STR:LEN >str ;
 
-;using
-;using
 ;package

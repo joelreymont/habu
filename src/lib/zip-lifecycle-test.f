@@ -20,7 +20,6 @@ EXPORT ORIGINAL$
 ;package
 
 package ZIP
-using FFI
 
 create BASE PATH-CAP allot
 variable BASE-LEN
@@ -125,5 +124,4 @@ TASK:SEMAPHORE LOCK-RELEASE
 
 
 LIFECYCLE-RUN
-;using
 ;package

@@ -5,7 +5,6 @@
 require src/core/exit-status.f
 require src/habu/fdio.f
 require src/os/image-bytes.f
-using IMAGE-BYTES
 
 package DRIVER
 variable DRV-WFD
@@ -13,7 +12,7 @@ variable DRV-WFD
 : DRV-WRITE-IMAGE-PATH ( str -- )
    PATH0 1537 493 open DRV-WFD !
    DRV-WFD @ 0 < IF s" driver: cannot open output" EXIT-STATUS:IOERR die THEN
-   DRV-WFD @ MBUF MLEN@ >str FDIO:WALL
+   DRV-WFD @ IMAGE-BYTES:MBUF IMAGE-BYTES:MLEN@ >str FDIO:WALL
    DRV-WFD @ close ;
 
 public
@@ -21,4 +20,3 @@ public
    phase IMG-DROP
    path DRV-WRITE-IMAGE-PATH ;
 ;package
-;using

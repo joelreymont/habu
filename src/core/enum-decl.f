@@ -5,12 +5,9 @@
 \ (generated-declaration.f) builds constructors at commit, so a reject publishes
 \ none. Loads after decl-event.f and structure-decl.f.
 
-using TYPE-DECL
-
 package TYPE-DECL
 private
 package ENUM-DECL
-using DECL-FRONT
 EXPORT TFAM:TFAM-FLD-RANGE!
 
 \ Transient parse state, not declaration state: ENUM is top-level
@@ -68,15 +65,15 @@ ED-RESET
 
 : POLICY-CLAUSE ( -- )
    HEADER-ORDER
-   NEXT POLICY-CODE {: code:n :}
+   DECL-FRONT:NEXT DECL-FRONT:POLICY-CODE {: code:n :}
    FAM @ code TFAM-LAYOUT!
    code DECL-EVENT:POLICY ;
 
 : DERIVE-FEATURE? ( str -- bool )
-   dup s" eq" STR:=CI IF drop YES EXIT THEN
-   dup s" hash" STR:=CI IF drop YES EXIT THEN
-   dup s" tag" STR:=CI IF drop YES EXIT THEN
-   dup s" name" STR:=CI IF drop YES EXIT THEN
+   dup s" eq" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" hash" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" tag" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" name" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
    s" order" STR:=CI ;
 
 \ The first token after the header clauses picks the mode: VARIANT starts full
@@ -86,26 +83,26 @@ ED-RESET
 \ DECL-FRONT's token source (HEAD!): registration fixes the kind before any clause
 \ applies, and diagnostics keep their bytes.
 : ED-LOOK-END? ( str -- bool )
-   dup STR:LEN 0= IF drop YES EXIT THEN
+   dup STR:LEN 0= IF drop DECL-FRONT:YES EXIT THEN
    s" ;enum" STR:=CI ;
 : ED-FIRST-VARIANT ( str -- str )
    BEGIN
       dup s" policy" STR:=CI  over s" derive" STR:=CI or IF
-         drop SOURCE-NEXT
+         drop DECL-FRONT:SOURCE-NEXT
          dup ED-LOOK-END? IF EXIT THEN
-         drop SOURCE-NEXT
+         drop DECL-FRONT:SOURCE-NEXT
       ELSE
          \ OPAQUE may be a compact variant or a forbidden header before
          \ VARIANT blocks. Keep it in the lookahead and inspect the next token.
-         dup s" opaque" STR:=CI IF drop SOURCE-NEXT ELSE EXIT THEN
+         dup s" opaque" STR:=CI IF drop DECL-FRONT:SOURCE-NEXT ELSE EXIT THEN
       THEN
    AGAIN ;
 : ED-FULL? ( -- bool )
-   SOURCE-NEXT {: first:str :}
+   DECL-FRONT:SOURCE-NEXT {: first:str :}
    first ED-FIRST-VARIANT {: last:str :}
    first STR:DATA {: a:^ :}
    last STR:DATA last STR:LEN + a - {: u:n :}
-   first STR:LEN 0 <> IF a u >str HEAD! THEN
+   first STR:LEN 0 <> IF a u >str DECL-FRONT:HEAD! THEN
    last s" variant" STR:=CI ;
 : DERIVE-GUARD ( -- )
    FAM @ TFAM-ARITY@ 0 <> IF
@@ -127,15 +124,15 @@ ED-RESET
    E-TDECL-DERIVE DECL-REJECT:REJECT throw ;
 : DERIVE-CLAUSE ( -- )
    HEADER-ORDER
-   NEXT dup STR:LEN 0= IF
+   DECL-FRONT:NEXT dup STR:LEN 0= IF
       drop s" missing derive feature"
       s" name `eq`, `hash`, `tag` or `name` after `DERIVE`"
       E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
-   NEXT dup STR:LEN 0= IF drop EXIT THEN
+   DECL-FRONT:NEXT dup STR:LEN 0= IF drop EXIT THEN
    dup DERIVE-FEATURE? IF
       DECL-REJECT:TOKEN!
       TDECL-DERIVE-ONE-WHY E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
-   UNGET ;
+   DECL-FRONT:UNGET ;
 
 : ED-FIELD-FIX$ ( -- str ) s" give each field of the variant its own name" ;
 
@@ -154,23 +151,23 @@ ED-RESET
    fw VCELLS @ + VCELLS !
    NFLD @ 1 + NFLD ! ;
 : FIELD-CLAUSE ( -- )
-   NEXT dup STR:LEN 0= IF
+   DECL-FRONT:NEXT dup STR:LEN 0= IF
       drop s" missing field name"
       s" write a name and a type after `FIELD`, as in `FIELD x n`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    {: ns:str :}
-   OUTCOME-NAMES @ 0 <> IF
-      ns ED-FIELD-FIX$ NAME-CHECK THEN
+   DECL-FRONT:OUTCOME-NAMES @ 0 <> IF
+      ns ED-FIELD-FIX$ DECL-FRONT:NAME-CHECK THEN
    ns DECL-FIELD!
-   0 FIELD-MISS !
-   NEXT {: ts:str :}
+   0 DECL-FRONT:FIELD-MISS !
+   DECL-FRONT:NEXT {: ts:str :}
    ts PK-CELL RESOLVE-TYPE {: node:n :}
-   FIELD-MISS @ 0= IF
-      ts FAM @ node REQUIRE-DERIVABLE
+   DECL-FRONT:FIELD-MISS @ 0= IF
+      ts FAM @ node DECL-FRONT:REQUIRE-DERIVABLE
       ns node EMIT-FIELD THEN ;
 
 : VARIANT-NAME ( -- str )
-   NEXT dup STR:LEN 0= IF
+   DECL-FRONT:NEXT dup STR:LEN 0= IF
       drop s" missing variant name"
       s" write a name after `VARIANT`, as in `VARIANT quit ;VARIANT`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN ;
@@ -186,7 +183,7 @@ ED-RESET
    TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
    FAM @ ns DECL-EVENT:VARIANT ;
 : OPEN-VARIANT ( -- )
-   SEEN-CLEAR
+   DECL-FRONT:SEEN-CLEAR
    VARIANT-NAME VARIANT-START
    0 VCELLS ! ;
 : CLOSE-VARIANT ( -- )
@@ -194,12 +191,12 @@ ED-RESET
    DECL-EVENT:END-VARIANT
    NVAR @ 1 + NVAR ! ;
 : VARIANT-CLAUSE ( -- bool )            \ read one variant-body token; YES = ;VARIANT
-   NEXT dup STR:LEN 0= IF drop
+   DECL-FRONT:NEXT dup STR:LEN 0= IF drop
       s" missing ;VARIANT"
       s" close each variant block with `;VARIANT`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   dup s" ;variant" STR:=CI IF drop YES EXIT THEN
-   dup s" field" STR:=CI IF drop FIELD-CLAUSE NO EXIT THEN
+   dup s" ;variant" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" field" STR:=CI IF drop FIELD-CLAUSE DECL-FRONT:NO EXIT THEN
    drop s" unexpected token in variant block"
    s" write only `FIELD name type` clauses before `;VARIANT`"
    E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
@@ -211,8 +208,8 @@ ED-RESET
 \ Compact body: full-mode block keywords always reject; a header after a variant
 \ rejects through HEADER-ORDER.
 : COMPACT-KW? ( str -- bool )
-   dup s" variant" STR:=CI IF drop YES EXIT THEN
-   dup s" ;variant" STR:=CI IF drop YES EXIT THEN
+   dup s" variant" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" ;variant" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
    s" field" STR:=CI ;
 : COMPACT-VARIANT ( str -- )
    {: ns:str :}
@@ -222,14 +219,14 @@ ED-RESET
    NVAR @ 1 + NVAR ! ;
 : COMPACT-CLAUSE ( str -- bool )    \ dispatch one compact token; YES = ;ENUM
    dup DECL-REJECT:TOKEN!               \ the mode-selecting token arrives pre-read
-   dup s" ;enum" STR:=CI IF drop YES EXIT THEN
+   dup s" ;enum" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
    dup COMPACT-KW? IF
       drop s" block keyword in a compact enum"
       s" write bare variant names only, or every variant as a `VARIANT name ;VARIANT` block"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   dup s" policy" STR:=CI IF drop POLICY-CLAUSE NO EXIT THEN
-   dup s" derive" STR:=CI IF drop DERIVE-CLAUSE NO EXIT THEN
-   COMPACT-VARIANT NO ;
+   dup s" policy" STR:=CI IF drop POLICY-CLAUSE DECL-FRONT:NO EXIT THEN
+   dup s" derive" STR:=CI IF drop DERIVE-CLAUSE DECL-FRONT:NO EXIT THEN
+   COMPACT-VARIANT DECL-FRONT:NO ;
 
 \ The kind is fixed at registration, before any variant parses, as TFAM-DECL sets it once: compact
 \ registers TK-ENUM (arity 0), full TK-SUM with the declared arity; both have one width at zero payload.
@@ -259,9 +256,9 @@ ED-RESET
 \ The variants' fields are still events until commit, so the niche-null shape
 \ is read through DECL-EVENT.
 : NICHE-SHAPE? ( -- bool )
-   NVAR @ 2 <> IF NO EXIT THEN
-   VBASE @ DECL-EVENT:PAYLOAD-N 0 <> IF NO EXIT THEN
-   VBASE @ 1 + DECL-EVENT:PAYLOAD-N 1 <> IF NO EXIT THEN
+   NVAR @ 2 <> IF DECL-FRONT:NO EXIT THEN
+   VBASE @ DECL-EVENT:PAYLOAD-N 0 <> IF DECL-FRONT:NO EXIT THEN
+   VBASE @ 1 + DECL-EVENT:PAYLOAD-N 1 <> IF DECL-FRONT:NO EXIT THEN
    VBASE @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@
    SCHEMA-ROOT@ SCHEMA-PTR? ;
 : NICHE-REQUIRE ( -- )
@@ -294,7 +291,7 @@ ED-RESET
       s" empty enum"
       s" declare at least one variant before `;ENUM`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   MISSING? IF E-UNRESOLVED throw THEN
+   DECL-FRONT:MISSING? IF DECL-FRONT:E-UNRESOLVED throw THEN
    NICHE-REQUIRE
    TAG-REQUIRE
    FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
@@ -309,15 +306,15 @@ ED-RESET
    FAM @ GENERATED-DECL-CTOR:OWNS? IF FAM @ GENERATED-DECL-CTOR:ARM THEN ;
 
 : FULL-CLAUSE ( -- bool )               \ read + dispatch one full-body token; YES = ;ENUM
-   NEXT dup STR:LEN 0= IF drop
+   DECL-FRONT:NEXT dup STR:LEN 0= IF drop
       DECL-REJECT:AT-FAMILY
       s" missing ;ENUM"
       s" end the declaration with `;ENUM`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   dup s" ;enum" STR:=CI IF drop YES EXIT THEN
-   dup s" policy" STR:=CI IF drop POLICY-CLAUSE NO EXIT THEN
-   dup s" derive" STR:=CI IF drop DERIVE-CLAUSE NO EXIT THEN
-   dup s" variant" STR:=CI IF drop VARIANT-BLOCK NO EXIT THEN
+   dup s" ;enum" STR:=CI IF drop DECL-FRONT:YES EXIT THEN
+   dup s" policy" STR:=CI IF drop POLICY-CLAUSE DECL-FRONT:NO EXIT THEN
+   dup s" derive" STR:=CI IF drop DERIVE-CLAUSE DECL-FRONT:NO EXIT THEN
+   dup s" variant" STR:=CI IF drop VARIANT-BLOCK DECL-FRONT:NO EXIT THEN
    drop s" unexpected token in enum declaration"
    s" write only `POLICY`, `DERIVE` and `VARIANT` clauses before `;ENUM`"
    E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
@@ -331,11 +328,11 @@ ED-RESET
          s" end the declaration with `;ENUM`"
          E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
       COMPACT-CLAUSE IF EXIT THEN
-      NEXT
+      DECL-FRONT:NEXT
    AGAIN ;
 
 : DRIVE ( -- )
-   NAME-TOKEN dup DECL-REJECT:FAMILY!
+   DECL-FRONT:NAME-TOKEN dup DECL-REJECT:FAMILY!
    dup STR:LEN 0= IF drop
       s" missing name"
       s" write the family name after `ENUM`, as in `ENUM color red green ;ENUM`"
@@ -355,7 +352,7 @@ ED-RESET
       FULL-BODY
    ELSE
       ns REGISTER-COMPACT
-      NEXT COMPACT-BODY
+      DECL-FRONT:NEXT COMPACT-BODY
    THEN
    ED-CLOSE ;
 
@@ -370,7 +367,7 @@ public
 \ no word; a body without ;ENUM is rejected "missing ;ENUM".
 : REPLAY-ENUM ( str str -- str n ) {: ns:str bs:str :}
    ns bs ED-FRONT DECL-FRONT:REPLAY-OUTCOME
-   dup 0 <> IF ns DECL-FAMILY-NAME NO STRUCTURE-DECL:LEFT-MARK THEN ;
+   dup 0 <> IF ns DECL-FAMILY-NAME DECL-FRONT:NO STRUCTURE-DECL:LEFT-MARK THEN ;
 
 ;package
 
@@ -387,5 +384,3 @@ global
 : ENUM ( -- ) DECLARE-ENUM ;
 INTRINSIC-DECLARATION INTRINSIC
 ;package
-
-;using

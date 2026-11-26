@@ -178,7 +178,7 @@ $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 : PROFNAMEFREEMSG$ ( -- str ) S\" hb: profiler cannot release name snapshot\n" ;
 
 \ prof-rate's rejection, re-registered from src/lib/error.f, which loads after
-\ prof.f. Qualify it: a bare E-PROF-RATE under `using PROF-ABI` meets error.f's.
+\ prof.f. Call it by prefix, PROF-ABI:E-PROF-RATE: error.f defines its own.
 -3803 constant E-PROF-RATE
 
 ;package

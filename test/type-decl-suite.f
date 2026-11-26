@@ -12,8 +12,6 @@ require src/lib/fs.f
 require src/lib/process-argv.f
 require src/lib/fs-mutate.f
 
-using TYPE-DECL
-
 T-RESET
 
 \ Evaluate a declaration string through evaluate-closed, returning its throw
@@ -2763,5 +2761,3 @@ TD-JSON-WAS @ REJECTION:JSON !
 
 \ A failure prints F<index> + detail; T-REPORT exits 1.
 T-REPORT
-
-;using

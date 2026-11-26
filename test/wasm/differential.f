@@ -18,6 +18,7 @@ require src/lib/process-argv.f
 require src/lib/test/assert.f
 require src/lib/test/eval.f
 require test/wasm/harness.f
+require test/wasm/numeric-rows.f
 
 package WASM-DIFFERENTIAL
 private
@@ -256,46 +257,45 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 T-RESET
 WASM-DIFFERENTIAL:SETUP
-using WASM-DIFFERENTIAL
-s" W05-FEATURE" s" : W05-FEATURE ( -- ) 1 s>f f>s . ;" s\" 1\n" ROW
-include test/wasm/numeric-rows.f
+s" W05-FEATURE" s" : W05-FEATURE ( -- ) 1 s>f f>s . ;" s\" 1\n" WASM-DIFFERENTIAL:ROW
+' WASM-DIFFERENTIAL:ROW WASM-NUMERIC-ROWS:EACH
 
 \ ---- W01 a loop's edge copies form a cycle; nested exits keep their depths -------
 \ Each turn swaps two cells, or rotates three, so the back edge copies cyclically.
 s" W01-CYCLE"
 s" : W01-CYCLE ( -- ) 1 2 5 0 do swap loop 3 4 5 4 0 do rot loop depth . .s 2drop 2drop drop ;"
-s\" 5\n2\n1\n4\n5\n3\n" ROW
+s\" 5\n2\n1\n4\n5\n3\n" WASM-DIFFERENTIAL:ROW
 
 \ The Collatz steps of 1 to 10: an if inside a while inside a do loop.
 s" W01-NEST"
 s" : W01-NEST ( -- ) 0 11 1 do i begin dup 1 <> while dup 1 and 0<> if 3 * 1+ else 2 / then swap 1+ swap repeat drop loop depth . .s drop ;"
-s\" 1\n67\n" ROW
+s\" 1\n67\n" WASM-DIFFERENTIAL:ROW
 
 \ leave from an if inside the inner of two do loops.
 s" W01-LEAVE"
 s" : W01-LEAVE ( -- ) 0 5 0 do 5 0 do i j + 4 > if leave then 1+ loop loop depth . .s drop ;"
-s\" 1\n15\n" ROW
+s\" 1\n15\n" WASM-DIFFERENTIAL:ROW
 
 \ ---- W03 type and function indices past a one-byte LEB ---------------------------
-s" W03" W03$ s\" 1\n96096\n" ROW
+s" W03" WASM-DIFFERENTIAL:W03$ s\" 1\n96096\n" WASM-DIFFERENTIAL:ROW
 
 \ ---- W06 16 lanes each way are direct, 17 take the frame; execute adapts both ----
 \ Each FOLD weights its arguments by position, so a reordered pass or result fails.
 s" W06"
 s" : W06-FOLD16 ( n n n n n n n n n n n n n n n n -- n ) 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + ; : W06-FOLD17 ( n n n n n n n n n n n n n n n n n -- n ) W06-FOLD16 2 * + ; : W06-COUNT16 ( n -- n n n n n n n n n n n n n n n n ) dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ ; : W06-COUNT17 ( n -- n n n n n n n n n n n n n n n n n ) W06-COUNT16 dup 1+ ; : W06 ( -- ) 1 W06-COUNT16 W06-FOLD16 . 1 W06-COUNT17 W06-FOLD17 . 1 ['] W06-COUNT16 execute ['] W06-FOLD16 execute . 1 ['] W06-COUNT17 execute ['] W06-FOLD17 execute . depth . ;"
-s\" 983041\n2097153\n983041\n2097153\n0\n" ROW
+s\" 983041\n2097153\n983041\n2097153\n0\n" WASM-DIFFERENTIAL:ROW
 
 \ ---- W07 an uncaught throw prints its record, a memory fault is a throw ----------
 \ MIN-N + 1, which a double rounds, caught and printed, then thrown uncaught.
 s" W07-THROW"
 s" : W07-THROW ( -- ) [: $8000000000000001 throw ;] catch . $8000000000000001 throw ;"
-s\" -9223372036854775807\n" $8000000000000001 THROW-ROW
+s\" -9223372036854775807\n" $8000000000000001 WASM-DIFFERENTIAL:THROW-ROW
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ A byte read in the null region throws E-MEMORY-FAULT through the catch around it.
 s" W07-FAULT"
 s" package W07-FAULT-CAST private CAST: >BYTE ( n -- ^u8 ) public : PEEK ( -- ) $FFFF >BYTE c@ drop ; ;package : W07-FAULT ( -- ) 2 . [: W07-FAULT-CAST:PEEK ;] catch . ;"
-s\" 2\n110\n" FAULT-ROW
+s\" 2\n110\n" WASM-DIFFERENTIAL:FAULT-ROW
 [then]
 
 \ ---- W31 a program's own storage -------------------------------------------------
@@ -303,50 +303,49 @@ s\" 2\n110\n" FAULT-ROW
 \ through checked pointers.
 s" W31-STORAGE"
 s" variable W31-STORAGE-V create W31-STORAGE-B 2 allot 5 constant W31-STORAGE-K : W31-STORAGE ( -- ) W31-STORAGE-K W31-STORAGE-V ! W31-STORAGE-V @ 7 + W31-STORAGE-V ! W31-STORAGE-V @ . 65 W31-STORAGE-B c! 66 W31-STORAGE-B 1 + c! W31-STORAGE-B 2 >str type cr depth . ;"
-s\" 12\nAB\n0\n" ROW
+s\" 12\nAB\n0\n" WASM-DIFFERENTIAL:ROW
 
 \ true and false, which the map answers with kernel words, as conditions and as
 \ cells.
 s" W31-BOOLEANS"
 s" : W31-BOOLEANS ( -- ) true if 1 else 0 then . false if 1 else 0 then . true false depth . .s 2drop ;"
-s\" 1\n0\n2\n-1\n0\n" ROW
+s\" 1\n0\n2\n-1\n0\n" WASM-DIFFERENTIAL:ROW
 
 \ f<= and then f>= on equal, lesser and greater reals, a NaN on either side and
 \ the signed zeros both ways.
 s" W31-ORDERS"
 s" : W31-ORDERS-NAN ( -- r ) 0 s>f 0 s>f f/ ; : W31-ORDERS-NEG0 ( -- r ) 0 s>f fnegate ; : W31-ORDERS ( -- ) 1 s>f 1 s>f f<= 1 s>f 2 s>f f<= 2 s>f 1 s>f f<= W31-ORDERS-NAN 1 s>f f<= 1 s>f W31-ORDERS-NAN f<= W31-ORDERS-NEG0 0 s>f f<= 0 s>f W31-ORDERS-NEG0 f<= 1 s>f 1 s>f f>= 1 s>f 2 s>f f>= 2 s>f 1 s>f f>= W31-ORDERS-NAN 1 s>f f>= 1 s>f W31-ORDERS-NAN f>= W31-ORDERS-NEG0 0 s>f f>= 0 s>f W31-ORDERS-NEG0 f>= depth . .s 2drop 2drop 2drop 2drop 2drop 2drop 2drop ;"
-s\" 14\n-1\n-1\n0\n0\n0\n-1\n-1\n-1\n0\n-1\n0\n0\n-1\n-1\n" ROW
+s\" 14\n-1\n-1\n0\n0\n0\n-1\n-1\n-1\n0\n-1\n0\n0\n-1\n-1\n" WASM-DIFFERENTIAL:ROW
 
 \ src/lib/fmath.f, whose words call f<= and f>=: sin and cos of 1 and of 10, past
 \ pi/4, by their bits.
 s" W31-FMATH"
 s" require src/lib/fmath.f : W31-FMATH ( -- ) 1 s>f FMATH:SIN 1 s>f FMATH:COS 10 s>f FMATH:SIN 10 s>f FMATH:COS depth . .s fdrop fdrop fdrop fdrop ;"
-s\" 4\n4605754516372524270\n4603041830072026764\n-4620296710764933294\n-4617639132858127585\n" ROW
+s\" 4\n4605754516372524270\n4603041830072026764\n-4620296710764933294\n-4617639132858127585\n" WASM-DIFFERENTIAL:ROW
 
 \ JSON fields, UTF-8 bytes and the signed minimum's text through the library's
 \ writer.
 s" WJSON:STEP"
 S\" require src/lib/heap.f\nrequire src/lib/vector.f\nrequire src/lib/json.f\nrequire src/lib/json/write.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\npublic\n: STEP ( -- )\n   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}\n   W v JSON:OPEN JSON:WRITE-OBJECT-START\n   s\" name\" s\" é\" JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" STR:MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ type cr\n   W JSON:CLOSE  v VEC:DELETE ;\n;package\n"
-S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
+S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" WASM-DIFFERENTIAL:ROW
 
 \ MAP's keyed words, held to one order on native and wasm: INIT-KEYED under a
 \ fixed key, SET, GET and EACH's visit order.
 s" WMAP:STEP"
 S\" require src/lib/map-core.f\npackage WMAP\nprivate\n8 constant ROOM\ncreate M ROOM >COUNT MAP:CELL-COUNT COUNT>N cells allot\n: SHOW ( str n -- ) {: s:str v:n :}\n   s type space v . ;\npublic\n: STEP ( -- )\n   M ROOM >COUNT $5EED $C0DE MAP:INIT-KEYED\n   1 M s\" one\" MAP:SET\n   2 M s\" two\" MAP:SET\n   3 M s\" three\" MAP:SET\n   M s\" two\" MAP:GET MATCH option\n     none OF -1 . ENDOF\n     some OF . ENDOF\n   ;MATCH\n   M ['] SHOW MAP:EACH ;\n;package\n"
-S\" 2\ntwo 2\nthree 3\none 1\n" ROW
+S\" 2\ntwo 2\nthree 3\none 1\n" WASM-DIFFERENTIAL:ROW
 
 \ Core byte copying is forward, including when the destination overlaps the
 \ source by less than a cell. A memmove-style provider prints different bytes.
 s" WBYTES:STEP"
 S\" package WBYTES\nprivate\n16 BUFFER: B\npublic\n: STEP ( -- )\n   s\" 0123456789\" str> drop B 10 BYTE-COPY\n   B B 2 + 8 BYTE-COPY\n   B 10 >str type cr ;\n;package\n"
-S\" 0101010101\n" ROW
+S\" 0101010101\n" WASM-DIFFERENTIAL:ROW
 
 \ Camera numeric text reaches FMT's DATA scratch, STR>FLOAT's decimal gate
 \ and JSON:READ-FLOAT through the same checked entry on native and Wasm.
 s" WNUM:STEP"
 s" require test/wasm/number-text.f"
-S\" 1.2500000000000000e0\n-0.0000000000000000e0\n1.2500e-1\n-2.5000e-3\n-1\n-1\n0\n0\n0\n0\n-1\n-1\n-1\n-1\n-1\n" ROW
+S\" 1.2500000000000000e0\n-0.0000000000000000e0\n1.2500e-1\n-2.5000e-3\n-1\n-1\n0\n0\n0\n0\n-1\n-1\n-1\n-1\n-1\n" WASM-DIFFERENTIAL:ROW
 
-RETURNING
-;using
+WASM-DIFFERENTIAL:RETURNING
 T-REPORT

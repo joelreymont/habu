@@ -16,7 +16,6 @@ require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
 
-using SOURCE-ROOT
 package INCLUDE-REJECTION-E2E
 private
 
@@ -39,7 +38,7 @@ variable RC
    PATH u >str ;
 
 : SETUP ( -- )
-   s" habu-include-rejection" FS:MKTEMP-DIR CANONICAL TTRUE {: d:str :}
+   s" habu-include-rejection" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL TTRUE {: d:str :}
    d FS:CLEANUP-TREE+
    d STR:DATA ROOT d STR:LEN BYTE-COPY d STR:LEN ROOT-U !
    s" cases" AT FS:MAKE-DIR
@@ -75,7 +74,7 @@ variable RC
    s" --load" PROC-ARGV+
    name s" .f" NAMED PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ CWD$
+   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT!
    name KEEP ;
@@ -314,6 +313,5 @@ public
    T-REPORT ;
 
 ;package
-;using
 
 INCLUDE-REJECTION-E2E:RUN

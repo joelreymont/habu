@@ -14,9 +14,6 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 
 package X64K-DEFINITION
-using X64ASM
-using X64CODE
-using X64RT
 
 5 constant WID                         \ a public wordlist past the fixed ones
 6 constant OTHER-WID
@@ -53,40 +50,40 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 : HEAD ( -- n ) s" hello " 0 X64HARNESS:NAME-CELL ;
 : TAIL ( -- n ) HEAD 16 lshift ;
 
-: DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
-: DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
+: DATA-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-RBASE X64ASM:>R64 ;
+: DBASE-REG ( -- X64ASM:r64 ) ENGINE-GPR:X64-DBASE X64ASM:>R64 ;
 
 \ ---- the body text block, which body-capture maps at run time --------------
-: TEXT@, ( r64 -- ) {: r:r64 :}
-   r DATA-REG BODY-TEXT:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM ;
+: TEXT@, ( X64ASM:r64 -- ) {: r:X64ASM:r64 :}
+   r DATA-REG BODY-TEXT:BASE-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM ;
 
 \ Push the cell off bytes into the text, or into the rows at base + capacity.
 : PUSH-TEXT-CELL, ( n -- ) {: off:n :}
-   RCX TEXT@,  RAX RCX off MEM-OFF ASM-SINK ENC-MOV-RM  0 G-PUSH ;
+   X64ASM:RCX TEXT@,  X64ASM:RAX X64ASM:RCX off X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM  0 X64RT:G-PUSH ;
 : PUSH-ROW-CELL, ( n -- ) {: off:n :}
-   RCX TEXT@,  RCX DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM
-   RAX RCX off MEM-OFF ASM-SINK ENC-MOV-RM  0 G-PUSH ;
+   X64ASM:RCX TEXT@,  X64ASM:RCX DATA-REG BODY-TEXT:CAP-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-ADD-RM
+   X64ASM:RAX X64ASM:RCX off X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM  0 X64RT:G-PUSH ;
 
 \ Push the address off bytes into the text, or store it in the DATA cell at
 \ cell; pop one and expect it off bytes in.
 : PUSH-TEXT-ADDR, ( n -- ) {: off:n :}
-   RAX TEXT@,  RAX RAX off MEM-OFF ASM-SINK ENC-LEA  0 G-PUSH ;
+   X64ASM:RAX TEXT@,  X64ASM:RAX X64ASM:RAX off X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA  0 X64RT:G-PUSH ;
 : TEXT-ADDR!, ( n n -- ) {: off:n cell:n :}
-   RAX TEXT@,  RAX RAX off MEM-OFF ASM-SINK ENC-LEA
-   RAX DATA-REG cell MEM-OFF ASM-SINK ENC-MOV-MR ;
+   X64ASM:RAX TEXT@,  X64ASM:RAX X64ASM:RAX off X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
+   X64ASM:RAX DATA-REG cell X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
 : EXPECT-POP-TEXT, ( n -- ) {: want:n :}
-   0 G-POP  RAX DATA-REG BODY-TEXT:BASE-CELL MEM-OFF ASM-SINK ENC-SUB-RM
-   0 G-PUSH  want X64HARNESS:EXPECT-POP, ;
+   0 X64RT:G-POP  X64ASM:RAX DATA-REG BODY-TEXT:BASE-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-SUB-RM
+   0 X64RT:G-PUSH  want X64HARNESS:EXPECT-POP, ;
 
 \ Keep the block's address in scratch cell 0; push 1 once it differs.
 : SAVE-BASE, ( -- )
-   RAX TEXT@,  RAX DATA-REG X64HARNESS:SCRATCH-OFF MEM-OFF ASM-SINK ENC-MOV-MR ;
+   X64ASM:RAX TEXT@,  X64ASM:RAX DATA-REG X64HARNESS:SCRATCH-OFF X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-MR ;
 : PUSH-MOVED, ( -- )
    X64CODE:LBL {: same:label :}
-   RAX ZERO-REG,  RCX TEXT@,
-   RCX DATA-REG X64HARNESS:SCRATCH-OFF MEM-OFF ASM-SINK ENC-SUB-RM  C-E same JCC,
-   RAX 1 >IMM32 ASM-SINK ENC-MOV-RI32
-   same X64CODE:LBL,  0 G-PUSH ;
+   X64ASM:RAX ZERO-REG,  X64ASM:RCX TEXT@,
+   X64ASM:RCX DATA-REG X64HARNESS:SCRATCH-OFF X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-SUB-RM  X64ASM:C-E same X64CODE:JCC,
+   X64ASM:RAX 1 X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-MOV-RI32
+   same X64CODE:LBL,  0 X64RT:G-PUSH ;
 
 \ ---- the staging and the checks ----------------------------------------------
 : NAMESPACE, ( str n -- ) {: s:str flag:n :}
@@ -123,27 +120,27 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 \ Move CP n bytes into the region.
 : CP-AT, ( n -- ) {: off:n :}
-   ENGINE-GPR:X64-CP >R64 DBASE-REG off MEM-OFF ASM-SINK ENC-LEA ;
+   ENGINE-GPR:X64-CP X64ASM:>R64 DBASE-REG off X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA ;
 
 : PUSH-NDICT, ( -- )
-   RAX ENGINE-GPR:X64-NDICT >R64 ASM-SINK ENC-MOV-RR  0 G-PUSH ;
+   X64ASM:RAX ENGINE-GPR:X64-NDICT X64ASM:>R64 X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  0 X64RT:G-PUSH ;
 
-: OR-CELL, ( n -- ) {: off:n :} RAX DATA-REG off MEM-OFF ASM-SINK ENC-OR-RM ;
+: OR-CELL, ( n -- ) {: off:n :} X64ASM:RAX DATA-REG off X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-OR-RM ;
 
 \ The four package cells or'd together: 0 once they clear.
 : PUSH-PKG, ( -- )
-   RAX ZERO-REG,
+   X64ASM:RAX ZERO-REG,
    PKG-PUB-CELL OR-CELL,  PKG-PRI-CELL OR-CELL,
    PKG-PARENT-CELL OR-CELL,  PKG-REC-CELL OR-CELL,
-   0 G-PUSH ;
+   0 X64RT:G-PUSH ;
 
 \ The seven signature and clause cells def-open clears, or'd together.
 : PUSH-SIGS, ( -- )
-   RAX ZERO-REG,
+   X64ASM:RAX ZERO-REG,
    TSIG-A-CELL OR-CELL,  TSIG-U-CELL OR-CELL,
    TCSIG-A-CELL OR-CELL,  TCSIG-U-CELL OR-CELL,
    DOESB-CELL OR-CELL,  TRUSTED-CELL OR-CELL,  CLAUSE-CELL OR-CELL,
-   0 G-PUSH ;
+   0 X64RT:G-PUSH ;
 
 \ The tier-0 definition def-close ends: its seven signature and clause cells
 \ set.
@@ -528,9 +525,6 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
-;using
-;using
-;using
 ;package
 
 X64K-DEFINITION:RUN

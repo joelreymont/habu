@@ -8,8 +8,6 @@ require src/lib/float32.f
 
 package F32-BUF
 
-using F32
-
 public
 
 : STORE ( n ^u8 -- ) {: value:n dst:^ :}
@@ -26,15 +24,14 @@ public
 
 : PACK ( ^r n ^u8 -- ) {: src:^ count:n dst:^ :}
    count 0 ?do
-      src i cells + @ NARROW
+      src i cells + @ F32:NARROW
       dst i 4 * + STORE
    loop ;
 
 : UNPACK ( ^u8 n ^r -- ) {: src:^ count:n dst:^ :}
    count 0 ?do
-      src i 4 * + LOAD WIDEN
+      src i 4 * + LOAD F32:WIDEN
       dst i cells + !
    loop ;
 
-;using
 ;package

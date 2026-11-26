@@ -14,8 +14,6 @@ require tools/lsp-text.f
 require src/lib/json/write.f
 
 package LSP-TOKENS
-using JSON
-using LSP-DEFS
 
 private
 
@@ -41,7 +39,7 @@ variable PREV-CHAR                       \ one written last
 \ the export's own class, not the exported word's.
 : GATHER ( n n n -- )
    {: from:n to:n class:n :}
-   class CLASS-EXPORT = if exit then
+   class LSP-DEFS:CLASS-EXPORT = if exit then
    TOKEN-N @ {: k:n :}
    k 1+ TOKEN-CELLS * TOKENS-RESERVE
    k 1+ ORDER-RESERVE
@@ -55,13 +53,13 @@ variable PREV-CHAR                       \ one written last
 \ DEFTYPE's name declares both its converters and gets none.
 : DECLARED ( n -- )
    {: g:n :}
-   g GROUP-FIRST begin dup 0 >= while
+   g LSP-DEFS:GROUP-FIRST begin dup 0 >= while
       {: r:n :}
-      g r REC-BYTES GROUP-REC-SOLE MATCH option
-         some OF drop r REC-BYTES r REC-CLASS GATHER ENDOF
+      g r LSP-DEFS:REC-BYTES LSP-DEFS:GROUP-REC-SOLE MATCH option
+         some OF drop r LSP-DEFS:REC-BYTES r LSP-DEFS:REC-CLASS GATHER ENDOF
          none OF ENDOF
       ;MATCH
-      r REC-NEXT
+      r LSP-DEFS:REC-NEXT
    repeat drop ;
 
 \ Typed by the record its spelling names (LSP-DEFS:GROUP-REC-NAMED), as hover
@@ -69,9 +67,9 @@ variable PREV-CHAR                       \ one written last
 \ states is a use too.
 : USED ( str n -- )
    {: t:str u:n :}
-   u USE-GROUP 0 < if exit then
-   u USE-GROUP u USE-TARGET t u USE-WORD$ GROUP-REC-NAMED MATCH option
-      some OF {: r:n :} u USE-BYTES r REC-CLASS GATHER ENDOF
+   u LSP-DEFS:USE-GROUP 0 < if exit then
+   u LSP-DEFS:USE-GROUP u LSP-DEFS:USE-TARGET t u LSP-DEFS:USE-WORD$ LSP-DEFS:GROUP-REC-NAMED MATCH option
+      some OF {: r:n :} u LSP-DEFS:USE-BYTES r LSP-DEFS:REC-CLASS GATHER ENDOF
       none OF ENDOF
    ;MATCH ;
 
@@ -89,8 +87,8 @@ variable PREV-CHAR                       \ one written last
 
 : TYPED ( n -- n n )
    {: class:n :}
-   class CLASS-CONSTANT = if T-VARIABLE M-READONLY exit then
-   class CLASS-STORAGE = if T-VARIABLE 0 exit then
+   class LSP-DEFS:CLASS-CONSTANT = if T-VARIABLE M-READONLY exit then
+   class LSP-DEFS:CLASS-STORAGE = if T-VARIABLE 0 exit then
    T-FUNCTION 0 ;
 
 \ Lines from the previous token's line; characters from its start on the same
@@ -99,33 +97,33 @@ variable PREV-CHAR                       \ one written last
 \ length is its end's character less its start's.
 : ENCODED ( ^JSON:writer n bool -- ^JSON:writer )
    {: k:n first:bool :}
-   first 0= if WRITE-COMMA then
+   first 0= if JSON:WRITE-COMMA then
    k K-START TOKEN@ {: from:n :}
    from LSP-TEXT:LINE-CHARACTER {: ln:n ch:n :}
    k K-END TOKEN@ LSP-TEXT:LINE-CHARACTER nip {: end:n :}
-   ln PREV-LINE @ - WRITE-U WRITE-COMMA
-   ln PREV-LINE @ = if ch PREV-CHAR @ - else ch then WRITE-U WRITE-COMMA
-   end ch - WRITE-U WRITE-COMMA
+   ln PREV-LINE @ - JSON:WRITE-U JSON:WRITE-COMMA
+   ln PREV-LINE @ = if ch PREV-CHAR @ - else ch then JSON:WRITE-U JSON:WRITE-COMMA
+   end ch - JSON:WRITE-U JSON:WRITE-COMMA
    k K-CLASS TOKEN@ TYPED {: ty:n mods:n :}
-   ty WRITE-U WRITE-COMMA mods WRITE-U
+   ty JSON:WRITE-U JSON:WRITE-COMMA mods JSON:WRITE-U
    ln PREV-LINE !
    ch PREV-CHAR ! ;
 
 public
 
 : LEGEND ( ^JSON:writer -- ^JSON:writer )
-   s" semanticTokensProvider" WRITE-KEY WRITE-OBJECT-START
-      s" legend" WRITE-KEY WRITE-OBJECT-START
-         s" tokenTypes" WRITE-KEY WRITE-ARRAY-START
-            s" function" WRITE-STRING WRITE-COMMA
-            s" variable" WRITE-STRING
-         WRITE-ARRAY-END WRITE-COMMA
-         s" tokenModifiers" WRITE-KEY WRITE-ARRAY-START
-            s" readonly" WRITE-STRING
-         WRITE-ARRAY-END
-      WRITE-OBJECT-END WRITE-COMMA
-      s" full" true WRITE-FIELD-BOOL
-   WRITE-OBJECT-END ;
+   s" semanticTokensProvider" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
+      s" legend" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
+         s" tokenTypes" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
+            s" function" JSON:WRITE-STRING JSON:WRITE-COMMA
+            s" variable" JSON:WRITE-STRING
+         JSON:WRITE-ARRAY-END JSON:WRITE-COMMA
+         s" tokenModifiers" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
+            s" readonly" JSON:WRITE-STRING
+         JSON:WRITE-ARRAY-END
+      JSON:WRITE-OBJECT-END JSON:WRITE-COMMA
+      s" full" true JSON:WRITE-FIELD-BOOL
+   JSON:WRITE-OBJECT-END ;
 
 \ From the last completed check whatever its verdict, while its positions are
 \ of the text: a rejected or deferred check stopped at a point, and what it
@@ -136,20 +134,18 @@ public
    slot LSP-DOCS:DOC-TEXT$ {: t:str :}
    t LSP-TEXT:TEXT!
    0 TOKEN-N !
-   slot DEFS-OWN-GROUP MATCH option
+   slot LSP-DEFS:DEFS-OWN-GROUP MATCH option
       some OF DECLARED ENDOF
       none OF ENDOF
    ;MATCH
-   slot DEFS-USE-RANGE ?do t i USED loop
+   slot LSP-DEFS:DEFS-USE-RANGE ?do t i USED loop
    SORTED
    0 PREV-LINE !
    0 PREV-CHAR !
-   w WRITE-OBJECT-START
-   s" data" WRITE-KEY WRITE-ARRAY-START
+   w JSON:WRITE-OBJECT-START
+   s" data" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
    TOKEN-N @ 0 ?do i ORDER @ i 0= ENCODED loop
-   WRITE-ARRAY-END
-   WRITE-OBJECT-END ;
+   JSON:WRITE-ARRAY-END
+   JSON:WRITE-OBJECT-END ;
 
-;using
-;using
 ;package

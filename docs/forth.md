@@ -286,8 +286,8 @@ public
   directory never changes. So `/work/app/main.f` can require `src/model.f`,
   and that file `src/math.f`. Nested loads, file sizes and the loads a file
   makes have no fixed limit.
-- SwiftForth's path words, public in package `SOURCE-ROOT`
-  (`SOURCE-ROOT:CD`, or `CD` under `using SOURCE-ROOT`), move the current
+- SwiftForth's path words, public in package `SOURCE-ROOT` and called
+  qualified (`SOURCE-ROOT:CD`), move the current
   path, the first root a relative path searches: `CD <dir>` sets it, relative
   to the current path when relative, and a bare `CD` prints it; `PUSHPATH`
   saves it and `POPPATH` restores it. Inside a load (`--load` or `require`)
@@ -370,9 +370,8 @@ public
 
 `using NAME` makes package `NAME`'s **public** wordlist visible to bare lookup
 in the current scope without opening `NAME`; `require` loads source and
-imports nothing. A file that calls two or more public words of one package
-imports it once, `using NAME … ;using`, and calls them bare; `NAME:WORD`
-serves a one-off call or escapes a collision.
+imports nothing. Call another package's public word as `NAME:WORD`, however
+often a file calls it; Habu code does not import with `using`.
 
 - `using NAME` consumes the next token and rejects a missing name, a name with
   `:` and an unknown package; it is valid at top level and inside an open
@@ -1023,10 +1022,9 @@ GETAFIX reads a fixed-point number from a key line, keeping digits, the first
 point and a leading minus (`src/lib/fsm-test.f`):
 
 ```forth
-using FSM
 ENUM entry start whole fraction ended ;ENUM
 ENUM key other digit minus point enter ;ENUM
-DEFINE GETAFIX ( ^line ) entry key
+FSM:DEFINE GETAFIX ( ^line ) entry key
    IN start     READ-KEY
       other   DROP-KEY  >start
       digit   ECHO      >whole
@@ -1047,7 +1045,6 @@ DEFINE GETAFIX ( ^line ) entry key
       enter   -         >ended
    FINAL ended  -
 ;DEFINE
-;using
 ```
 
 ## Words & factoring
@@ -2316,7 +2313,7 @@ runtime or analysis layer.
 ## Habu Native Tooling Gotchas
 
 - **Native debugging**: [debugging.md](debugging.md) covers the stack display,
-  breakpoints and the dump tools; `using DEBUG` opens the baked debugger.
+  breakpoints and the dump tools; package DEBUG holds the baked debugger.
 - **Semantic xref is in-image**: ownership, references and call RCA use
   `XREF`/`SEE`/`USES`/`USED-BY` in the live image, with CLIs as thin wrappers;
   source search where it answers, native inspection where runtime state matters.

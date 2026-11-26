@@ -13,7 +13,6 @@ require src/lib/vector.f
 
 package X64ASM-TEST
 private
-using X64ASM
 
 \ One sink for the whole suite: each case encodes into it, is compared, and
 \ clears it, so a case can never read a neighbour's bytes.
@@ -53,423 +52,423 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
 \ from memory, memory from register, sign-extended imm8 and imm32.
 : ALU-ADD-OR ( -- )
    \ llvm-mc: addq %rbx, %rax
-   RAX RBX SINK ENC-ADD-RR   s" 4801d8" X=
+   X64ASM:RAX X64ASM:RBX SINK X64ASM:ENC-ADD-RR   s" 4801d8" X=
    \ llvm-mc: addq (%rcx), %rax
-   RAX RCX MEM-AT SINK ENC-ADD-RM   s" 480301" X=
+   X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT SINK X64ASM:ENC-ADD-RM   s" 480301" X=
    \ llvm-mc: addq %rax, (%rcx)
-   RAX RCX MEM-AT SINK ENC-ADD-MR   s" 480101" X=
+   X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT SINK X64ASM:ENC-ADD-MR   s" 480101" X=
    \ llvm-mc: addq $7, %rax
-   RAX 7 >IMM8 SINK ENC-ADD-RI8   s" 4883c007" X=
-   RBX 72 MEM-OFF -16 >IMM8 SINK ENC-ADD-MI8   s" 48834348f0" X=
+   X64ASM:RAX 7 X64ASM:>IMM8 SINK X64ASM:ENC-ADD-RI8   s" 4883c007" X=
+   X64ASM:RBX 72 X64ASM:MEM-OFF -16 X64ASM:>IMM8 SINK X64ASM:ENC-ADD-MI8   s" 48834348f0" X=
    \ llvm-mc: addq $1000, %rcx
-   RCX 1000 >IMM32 SINK ENC-ADD-RI32   s" 4881c1e8030000" X=
+   X64ASM:RCX 1000 X64ASM:>IMM32 SINK X64ASM:ENC-ADD-RI32   s" 4881c1e8030000" X=
    \ llvm-mc: orq %r15, %r8
-   R8 R15 SINK ENC-OR-RR   s" 4d09f8" X=
+   X64ASM:R8 X64ASM:R15 SINK X64ASM:ENC-OR-RR   s" 4d09f8" X=
    \ llvm-mc: orq 16(%rsi), %rdx
-   RDX RSI 16 MEM-OFF SINK ENC-OR-RM   s" 480b5610" X=
+   X64ASM:RDX X64ASM:RSI 16 X64ASM:MEM-OFF SINK X64ASM:ENC-OR-RM   s" 480b5610" X=
    \ llvm-mc: orq %rdx, 16(%rsi)
-   RDX RSI 16 MEM-OFF SINK ENC-OR-MR   s" 48095610" X=
+   X64ASM:RDX X64ASM:RSI 16 X64ASM:MEM-OFF SINK X64ASM:ENC-OR-MR   s" 48095610" X=
    \ llvm-mc: orq $-1, %rbx
-   RBX -1 >IMM8 SINK ENC-OR-RI8   s" 4883cbff" X=
+   X64ASM:RBX -1 X64ASM:>IMM8 SINK X64ASM:ENC-OR-RI8   s" 4883cbff" X=
    \ llvm-mc: orq $2147483647, %rbx
-   RBX 2147483647 >IMM32 SINK ENC-OR-RI32   s" 4881cbffffff7f" X= ;
+   X64ASM:RBX 2147483647 X64ASM:>IMM32 SINK X64ASM:ENC-OR-RI32   s" 4881cbffffff7f" X= ;
 
 \ adc and sbb. The r12 base needs a SIB byte with no index and
 \ the r13 base needs a disp8 of zero; both also set REX.B.
 : ALU-ADC-SBB ( -- )
    \ llvm-mc: adcq %rax, %rdx
-   RDX RAX SINK ENC-ADC-RR   s" 4811c2" X=
+   X64ASM:RDX X64ASM:RAX SINK X64ASM:ENC-ADC-RR   s" 4811c2" X=
    \ llvm-mc: adcq (%r12), %r9
-   R9 R12 MEM-AT SINK ENC-ADC-RM   s" 4d130c24" X=
+   X64ASM:R9 X64ASM:R12 X64ASM:MEM-AT SINK X64ASM:ENC-ADC-RM   s" 4d130c24" X=
    \ llvm-mc: adcq %r9, (%r12)
-   R9 R12 MEM-AT SINK ENC-ADC-MR   s" 4d110c24" X=
+   X64ASM:R9 X64ASM:R12 X64ASM:MEM-AT SINK X64ASM:ENC-ADC-MR   s" 4d110c24" X=
    \ llvm-mc: adcq $0, %r10
-   R10 0 >IMM8 SINK ENC-ADC-RI8   s" 4983d200" X=
+   X64ASM:R10 0 X64ASM:>IMM8 SINK X64ASM:ENC-ADC-RI8   s" 4983d200" X=
    \ llvm-mc: adcq $-2147483648, %r10
-   R10 -2147483648 >IMM32 SINK ENC-ADC-RI32   s" 4981d200000080" X=
+   X64ASM:R10 -2147483648 X64ASM:>IMM32 SINK X64ASM:ENC-ADC-RI32   s" 4981d200000080" X=
    \ llvm-mc: sbbq %rcx, %rdx
-   RDX RCX SINK ENC-SBB-RR   s" 4819ca" X=
+   X64ASM:RDX X64ASM:RCX SINK X64ASM:ENC-SBB-RR   s" 4819ca" X=
    \ llvm-mc: sbbq (%r13), %rbp
-   RBP R13 MEM-AT SINK ENC-SBB-RM   s" 491b6d00" X=
+   X64ASM:RBP X64ASM:R13 X64ASM:MEM-AT SINK X64ASM:ENC-SBB-RM   s" 491b6d00" X=
    \ llvm-mc: sbbq %rbp, (%r13)
-   RBP R13 MEM-AT SINK ENC-SBB-MR   s" 49196d00" X=
+   X64ASM:RBP X64ASM:R13 X64ASM:MEM-AT SINK X64ASM:ENC-SBB-MR   s" 49196d00" X=
    \ llvm-mc: sbbq $127, %rsp
-   RSP 127 >IMM8 SINK ENC-SBB-RI8   s" 4883dc7f" X=
+   X64ASM:RSP 127 X64ASM:>IMM8 SINK X64ASM:ENC-SBB-RI8   s" 4883dc7f" X=
    \ llvm-mc: sbbq $65536, %rsi
-   RSI 65536 >IMM32 SINK ENC-SBB-RI32   s" 4881de00000100" X= ;
+   X64ASM:RSI 65536 X64ASM:>IMM32 SINK X64ASM:ENC-SBB-RI32   s" 4881de00000100" X= ;
 
 \ and and sub. The rsp base is the other SIB-only base, and the
 \ scaled-index form carries its own SIB.
 : ALU-AND-SUB ( -- )
    \ llvm-mc: andq %rsi, %rdi
-   RDI RSI SINK ENC-AND-RR   s" 4821f7" X=
+   X64ASM:RDI X64ASM:RSI SINK X64ASM:ENC-AND-RR   s" 4821f7" X=
    \ llvm-mc: andq (%rsp), %rdi
-   RDI RSP MEM-AT SINK ENC-AND-RM   s" 48233c24" X=
+   X64ASM:RDI X64ASM:RSP X64ASM:MEM-AT SINK X64ASM:ENC-AND-RM   s" 48233c24" X=
    \ llvm-mc: andq %rdi, (%rsp)
-   RDI RSP MEM-AT SINK ENC-AND-MR   s" 48213c24" X=
+   X64ASM:RDI X64ASM:RSP X64ASM:MEM-AT SINK X64ASM:ENC-AND-MR   s" 48213c24" X=
    \ llvm-mc: andq $-128, %rdi
-   RDI -128 >IMM8 SINK ENC-AND-RI8   s" 4883e780" X=
+   X64ASM:RDI -128 X64ASM:>IMM8 SINK X64ASM:ENC-AND-RI8   s" 4883e780" X=
    \ llvm-mc: andq $4096, %rdi
-   RDI 4096 >IMM32 SINK ENC-AND-RI32   s" 4881e700100000" X=
+   X64ASM:RDI 4096 X64ASM:>IMM32 SINK X64ASM:ENC-AND-RI32   s" 4881e700100000" X=
    \ llvm-mc: subq %r13, %r14
-   R14 R13 SINK ENC-SUB-RR   s" 4d29ee" X=
+   X64ASM:R14 X64ASM:R13 SINK X64ASM:ENC-SUB-RR   s" 4d29ee" X=
    \ llvm-mc: subq 8(%rbx,%rcx,4), %rax
-   RAX RBX RCX 4 8 MEM-IDX SINK ENC-SUB-RM   s" 482b448b08" X=
+   X64ASM:RAX X64ASM:RBX X64ASM:RCX 4 8 X64ASM:MEM-IDX SINK X64ASM:ENC-SUB-RM   s" 482b448b08" X=
    \ llvm-mc: subq %rax, 8(%rbx,%rcx,4)
-   RAX RBX RCX 4 8 MEM-IDX SINK ENC-SUB-MR   s" 4829448b08" X=
+   X64ASM:RAX X64ASM:RBX X64ASM:RCX 4 8 X64ASM:MEM-IDX SINK X64ASM:ENC-SUB-MR   s" 4829448b08" X=
    \ llvm-mc: subq $1, %rbp
-   RBP 1 >IMM8 SINK ENC-SUB-RI8   s" 4883ed01" X=
+   X64ASM:RBP 1 X64ASM:>IMM8 SINK X64ASM:ENC-SUB-RI8   s" 4883ed01" X=
    \ llvm-mc: subq $100000, %rbp
-   RBP 100000 >IMM32 SINK ENC-SUB-RI32   s" 4881eda0860100" X= ;
+   X64ASM:RBP 100000 X64ASM:>IMM32 SINK X64ASM:ENC-SUB-RI32   s" 4881eda0860100" X= ;
 
 \ xor and cmp, including the two rip-relative forms and the
 \ disp8/disp32 boundary at -128 and -129.
 : ALU-XOR-CMP ( -- )
    \ llvm-mc: xorq %rcx, %rcx
-   RCX RCX SINK ENC-XOR-RR   s" 4831c9" X=
+   X64ASM:RCX X64ASM:RCX SINK X64ASM:ENC-XOR-RR   s" 4831c9" X=
    \ llvm-mc: xorq (%rip), %r11
-   R11 0 MEM-RIP SINK ENC-XOR-RM   s" 4c331d00000000" X=
+   X64ASM:R11 0 X64ASM:MEM-RIP SINK X64ASM:ENC-XOR-RM   s" 4c331d00000000" X=
    \ llvm-mc: xorq %r11, 16(%rip)
-   R11 16 MEM-RIP SINK ENC-XOR-MR   s" 4c311d10000000" X=
+   X64ASM:R11 16 X64ASM:MEM-RIP SINK X64ASM:ENC-XOR-MR   s" 4c311d10000000" X=
    \ llvm-mc: xorq $-16, %r15
-   R15 -16 >IMM8 SINK ENC-XOR-RI8   s" 4983f7f0" X=
+   X64ASM:R15 -16 X64ASM:>IMM8 SINK X64ASM:ENC-XOR-RI8   s" 4983f7f0" X=
    \ llvm-mc: xorq $65536, %r15
-   R15 65536 >IMM32 SINK ENC-XOR-RI32   s" 4981f700000100" X=
+   X64ASM:R15 65536 X64ASM:>IMM32 SINK X64ASM:ENC-XOR-RI32   s" 4981f700000100" X=
    \ llvm-mc: cmpq %r15, %r14
-   R14 R15 SINK ENC-CMP-RR   s" 4d39fe" X=
+   X64ASM:R14 X64ASM:R15 SINK X64ASM:ENC-CMP-RR   s" 4d39fe" X=
    \ llvm-mc: cmpq -129(%rbx), %rax
-   RAX RBX -129 MEM-OFF SINK ENC-CMP-RM   s" 483b837fffffff" X=
+   X64ASM:RAX X64ASM:RBX -129 X64ASM:MEM-OFF SINK X64ASM:ENC-CMP-RM   s" 483b837fffffff" X=
    \ llvm-mc: cmpq %rax, -128(%rbx)
-   RAX RBX -128 MEM-OFF SINK ENC-CMP-MR   s" 48394380" X=
+   X64ASM:RAX X64ASM:RBX -128 X64ASM:MEM-OFF SINK X64ASM:ENC-CMP-MR   s" 48394380" X=
    \ llvm-mc: cmpq $8, %rcx
-   RCX 8 >IMM8 SINK ENC-CMP-RI8   s" 4883f908" X=
+   X64ASM:RCX 8 X64ASM:>IMM8 SINK X64ASM:ENC-CMP-RI8   s" 4883f908" X=
    \ llvm-mc: cmpq $1048576, %rcx
-   RCX 1048576 >IMM32 SINK ENC-CMP-RI32   s" 4881f900001000" X= ;
+   X64ASM:RCX 1048576 X64ASM:>IMM32 SINK X64ASM:ENC-CMP-RI32   s" 4881f900001000" X= ;
 
 \ test has no sign-extended imm8 form, so it has three.
 : TEST-FORMS ( -- )
    \ llvm-mc: testq %rbx, %rax
-   RAX RBX SINK ENC-TEST-RR   s" 4885d8" X=
+   X64ASM:RAX X64ASM:RBX SINK X64ASM:ENC-TEST-RR   s" 4885d8" X=
    \ llvm-mc: testq %rcx, (%rdi)
-   RCX RDI MEM-AT SINK ENC-TEST-MR   s" 48850f" X=
+   X64ASM:RCX X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-TEST-MR   s" 48850f" X=
    \ llvm-mc: testq $16, %rcx
-   RCX 16 >IMM32 SINK ENC-TEST-RI32   s" 48f7c110000000" X= ;
+   X64ASM:RCX 16 X64ASM:>IMM32 SINK X64ASM:ENC-TEST-RI32   s" 48f7c110000000" X= ;
 
 \ moves, loads and stores at all four widths, and the three
 \ constant forms. A 32-bit move zero-extends into the full register; movabs is
 \ the relocatable literal whose immediate starts at MOV-RI64-IMM-OFF.
 : MOVES ( -- )
    \ llvm-mc: movq %rbx, %rax
-   RAX RBX SINK ENC-MOV-RR   s" 4889d8" X=
+   X64ASM:RAX X64ASM:RBX SINK X64ASM:ENC-MOV-RR   s" 4889d8" X=
    \ llvm-mc: movq 8(%r13,%rcx,4), %r9
-   R9 R13 RCX 4 8 MEM-IDX SINK ENC-MOV-RM   s" 4d8b4c8d08" X=
+   X64ASM:R9 X64ASM:R13 X64ASM:RCX 4 8 X64ASM:MEM-IDX SINK X64ASM:ENC-MOV-RM   s" 4d8b4c8d08" X=
    \ llvm-mc: movq %r13, 24(%r12,%r15,8)
-   R13 R12 R15 8 24 MEM-IDX SINK ENC-MOV-MR   s" 4f896cfc18" X=
+   X64ASM:R13 X64ASM:R12 X64ASM:R15 8 24 X64ASM:MEM-IDX SINK X64ASM:ENC-MOV-MR   s" 4f896cfc18" X=
    \ llvm-mc: movl %ebx, %eax
-   0 >R32 3 >R32 SINK ENC-MOV32-RR   s" 89d8" X=
+   0 X64ASM:>R32 3 X64ASM:>R32 SINK X64ASM:ENC-MOV32-RR   s" 89d8" X=
    \ llvm-mc: movl (%rdi), %eax
-   0 >R32 RDI MEM-AT SINK ENC-MOV32-RM   s" 8b07" X=
+   0 X64ASM:>R32 X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOV32-RM   s" 8b07" X=
    \ llvm-mc: movl %eax, (%rdi)
-   0 >R32 RDI MEM-AT SINK ENC-MOV32-MR   s" 8907" X=
+   0 X64ASM:>R32 X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOV32-MR   s" 8907" X=
    \ llvm-mc: movw %ax, %bx
-   3 >R16 0 >R16 SINK ENC-MOV16-RR   s" 6689c3" X=
+   3 X64ASM:>R16 0 X64ASM:>R16 SINK X64ASM:ENC-MOV16-RR   s" 6689c3" X=
    \ llvm-mc: movw (%rdi), %ax
-   0 >R16 RDI MEM-AT SINK ENC-MOV16-RM   s" 668b07" X=
+   0 X64ASM:>R16 X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOV16-RM   s" 668b07" X=
    \ llvm-mc: movw %ax, (%rdi)
-   0 >R16 RDI MEM-AT SINK ENC-MOV16-MR   s" 668907" X=
+   0 X64ASM:>R16 X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOV16-MR   s" 668907" X=
    \ llvm-mc: movb %al, %sil
-   6 >R8 0 >R8 SINK ENC-MOV8-RR   s" 4088c6" X=
+   6 X64ASM:>R8 0 X64ASM:>R8 SINK X64ASM:ENC-MOV8-RR   s" 4088c6" X=
    \ llvm-mc: movb (%rdi), %sil
-   6 >R8 RDI MEM-AT SINK ENC-MOV8-RM   s" 408a37" X=
+   6 X64ASM:>R8 X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOV8-RM   s" 408a37" X=
    \ llvm-mc: movb %sil, (%rdi)
-   6 >R8 RDI MEM-AT SINK ENC-MOV8-MR   s" 408837" X=
+   6 X64ASM:>R8 X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOV8-MR   s" 408837" X=
    \ llvm-mc: movq $-1, %rax
-   RAX -1 >IMM32 SINK ENC-MOV-RI32   s" 48c7c0ffffffff" X=
+   X64ASM:RAX -1 X64ASM:>IMM32 SINK X64ASM:ENC-MOV-RI32   s" 48c7c0ffffffff" X=
    \ llvm-mc: movl $4294967295, %eax
-   0 >R32 4294967295 >IMM32 SINK ENC-MOV32-RI32   s" b8ffffffff" X=
+   0 X64ASM:>R32 4294967295 X64ASM:>IMM32 SINK X64ASM:ENC-MOV32-RI32   s" b8ffffffff" X=
    \ llvm-mc: movabsq $1234605616436508552, %r11
-   R11 $1122334455667788 >IMM64 SINK ENC-MOV-RI64   s" 49bb8877665544332211" X= ;
+   X64ASM:R11 $1122334455667788 X64ASM:>IMM64 SINK X64ASM:ENC-MOV-RI64   s" 49bb8877665544332211" X= ;
 
 \ movzx, movsx and movsxd. A byte source at or above 4 is
 \ sil/dil and carries REX even when no REX field is set.
 : WIDENING ( -- )
    \ llvm-mc: movzbq %sil, %rax
-   RAX 6 >R8 SINK ENC-MOVZX-8-RR   s" 480fb6c6" X=
+   X64ASM:RAX 6 X64ASM:>R8 SINK X64ASM:ENC-MOVZX-8-RR   s" 480fb6c6" X=
    \ llvm-mc: movzbq (%rdi), %rax
-   RAX RDI MEM-AT SINK ENC-MOVZX-8-RM   s" 480fb607" X=
+   X64ASM:RAX X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOVZX-8-RM   s" 480fb607" X=
    \ llvm-mc: movzbl %sil, %eax
-   0 >R32 6 >R8 SINK ENC-MOVZX32-8-RR   s" 400fb6c6" X=
+   0 X64ASM:>R32 6 X64ASM:>R8 SINK X64ASM:ENC-MOVZX32-8-RR   s" 400fb6c6" X=
    \ llvm-mc: movzbl %al, %r9d
-   9 >R32 0 >R8 SINK ENC-MOVZX32-8-RR   s" 440fb6c8" X=
+   9 X64ASM:>R32 0 X64ASM:>R8 SINK X64ASM:ENC-MOVZX32-8-RR   s" 440fb6c8" X=
    \ llvm-mc: movzwq %si, %rax
-   RAX 6 >R16 SINK ENC-MOVZX-16-RR   s" 480fb7c6" X=
+   X64ASM:RAX 6 X64ASM:>R16 SINK X64ASM:ENC-MOVZX-16-RR   s" 480fb7c6" X=
    \ llvm-mc: movzwq (%rdi), %rax
-   RAX RDI MEM-AT SINK ENC-MOVZX-16-RM   s" 480fb707" X=
+   X64ASM:RAX X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOVZX-16-RM   s" 480fb707" X=
    \ llvm-mc: movsbq %dil, %rax
-   RAX 7 >R8 SINK ENC-MOVSX-8-RR   s" 480fbec7" X=
+   X64ASM:RAX 7 X64ASM:>R8 SINK X64ASM:ENC-MOVSX-8-RR   s" 480fbec7" X=
    \ llvm-mc: movsbq (%rdi), %rax
-   RAX RDI MEM-AT SINK ENC-MOVSX-8-RM   s" 480fbe07" X=
+   X64ASM:RAX X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOVSX-8-RM   s" 480fbe07" X=
    \ llvm-mc: movswq %si, %rax
-   RAX 6 >R16 SINK ENC-MOVSX-16-RR   s" 480fbfc6" X=
+   X64ASM:RAX 6 X64ASM:>R16 SINK X64ASM:ENC-MOVSX-16-RR   s" 480fbfc6" X=
    \ llvm-mc: movswq (%rdi), %rax
-   RAX RDI MEM-AT SINK ENC-MOVSX-16-RM   s" 480fbf07" X=
+   X64ASM:RAX X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOVSX-16-RM   s" 480fbf07" X=
    \ llvm-mc: movslq %ecx, %rax
-   RAX 1 >R32 SINK ENC-MOVSXD-RR   s" 4863c1" X=
+   X64ASM:RAX 1 X64ASM:>R32 SINK X64ASM:ENC-MOVSXD-RR   s" 4863c1" X=
    \ llvm-mc: movslq (%rdi), %rax
-   RAX RDI MEM-AT SINK ENC-MOVSXD-RM   s" 486307" X= ;
+   X64ASM:RAX X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-MOVSXD-RM   s" 486307" X= ;
 
 \ lea and the 32-bit zeroing idiom.
 : ADDRESS-AND-ZERO ( -- )
    \ llvm-mc: leaq 16(%rax,%rbx,8), %rcx
-   RCX RAX RBX 8 16 MEM-IDX SINK ENC-LEA   s" 488d4cd810" X=
+   X64ASM:RCX X64ASM:RAX X64ASM:RBX 8 16 X64ASM:MEM-IDX SINK X64ASM:ENC-LEA   s" 488d4cd810" X=
    \ llvm-mc: xorl %eax, %eax
-   0 >R32 0 >R32 SINK ENC-XOR32-RR   s" 31c0" X= ;
+   0 X64ASM:>R32 0 X64ASM:>R32 SINK X64ASM:ENC-XOR32-RR   s" 31c0" X= ;
 
 \ the F7 and FF groups and cqo.
 : ONE-REGISTER ( -- )
    \ llvm-mc: notq %r15
-   R15 SINK ENC-NOT   s" 49f7d7" X=
+   X64ASM:R15 SINK X64ASM:ENC-NOT   s" 49f7d7" X=
    \ llvm-mc: negq %rax
-   RAX SINK ENC-NEG   s" 48f7d8" X=
+   X64ASM:RAX SINK X64ASM:ENC-NEG   s" 48f7d8" X=
    \ llvm-mc: mulq %rcx
-   RCX SINK ENC-MUL   s" 48f7e1" X=
+   X64ASM:RCX SINK X64ASM:ENC-MUL   s" 48f7e1" X=
    \ llvm-mc: imulq %rcx
-   RCX SINK ENC-IMUL1   s" 48f7e9" X=
+   X64ASM:RCX SINK X64ASM:ENC-IMUL1   s" 48f7e9" X=
    \ llvm-mc: divq %rcx
-   RCX SINK ENC-DIV   s" 48f7f1" X=
+   X64ASM:RCX SINK X64ASM:ENC-DIV   s" 48f7f1" X=
    \ llvm-mc: idivq %rcx
-   RCX SINK ENC-IDIV   s" 48f7f9" X=
+   X64ASM:RCX SINK X64ASM:ENC-IDIV   s" 48f7f9" X=
    \ llvm-mc: incq %rax
-   RAX SINK ENC-INC   s" 48ffc0" X=
+   X64ASM:RAX SINK X64ASM:ENC-INC   s" 48ffc0" X=
    \ llvm-mc: decq %r8
-   R8 SINK ENC-DEC   s" 49ffc8" X=
+   X64ASM:R8 SINK X64ASM:ENC-DEC   s" 49ffc8" X=
    \ llvm-mc: cqto
-   SINK ENC-CQO   s" 4899" X= ;
+   SINK X64ASM:ENC-CQO   s" 4899" X= ;
 
 \ the non-widening imul in its four forms.
 : SIGNED-MULTIPLY ( -- )
    \ llvm-mc: imulq %rcx, %rax
-   RAX RCX SINK ENC-IMUL-RR   s" 480fafc1" X=
+   X64ASM:RAX X64ASM:RCX SINK X64ASM:ENC-IMUL-RR   s" 480fafc1" X=
    \ llvm-mc: imulq (%rdi), %rax
-   RAX RDI MEM-AT SINK ENC-IMUL-RM   s" 480faf07" X=
+   X64ASM:RAX X64ASM:RDI X64ASM:MEM-AT SINK X64ASM:ENC-IMUL-RM   s" 480faf07" X=
    \ llvm-mc: imulq $3, %rcx, %rax
-   RAX RCX 3 >IMM8 SINK ENC-IMUL-RRI8   s" 486bc103" X=
+   X64ASM:RAX X64ASM:RCX 3 X64ASM:>IMM8 SINK X64ASM:ENC-IMUL-RRI8   s" 486bc103" X=
    \ llvm-mc: imulq $300, %rcx, %rax
-   RAX RCX 300 >IMM32 SINK ENC-IMUL-RRI32   s" 4869c12c010000" X= ;
+   X64ASM:RAX X64ASM:RCX 300 X64ASM:>IMM32 SINK X64ASM:ENC-IMUL-RRI32   s" 4869c12c010000" X= ;
 
 \ shifts and rotates by imm8 and by cl.
 : SHIFTS ( -- )
    \ llvm-mc: rolq $4, %rax
-   RAX 4 >IMM8 SINK ENC-ROL-RI8   s" 48c1c004" X=
+   X64ASM:RAX 4 X64ASM:>IMM8 SINK X64ASM:ENC-ROL-RI8   s" 48c1c004" X=
    \ llvm-mc: rorq $2, %rbx
-   RBX 2 >IMM8 SINK ENC-ROR-RI8   s" 48c1cb02" X=
+   X64ASM:RBX 2 X64ASM:>IMM8 SINK X64ASM:ENC-ROR-RI8   s" 48c1cb02" X=
    \ llvm-mc: shlq $3, %rax
-   RAX 3 >IMM8 SINK ENC-SHL-RI8   s" 48c1e003" X=
+   X64ASM:RAX 3 X64ASM:>IMM8 SINK X64ASM:ENC-SHL-RI8   s" 48c1e003" X=
    \ llvm-mc: shrq $63, %rax
-   RAX 63 >IMM8 SINK ENC-SHR-RI8   s" 48c1e83f" X=
+   X64ASM:RAX 63 X64ASM:>IMM8 SINK X64ASM:ENC-SHR-RI8   s" 48c1e83f" X=
    \ llvm-mc: sarq $2, %r9
-   R9 2 >IMM8 SINK ENC-SAR-RI8   s" 49c1f902" X=
+   X64ASM:R9 2 X64ASM:>IMM8 SINK X64ASM:ENC-SAR-RI8   s" 49c1f902" X=
    \ llvm-mc: rolq %cl, %rax
-   RAX SINK ENC-ROL-CL   s" 48d3c0" X=
+   X64ASM:RAX SINK X64ASM:ENC-ROL-CL   s" 48d3c0" X=
    \ llvm-mc: rorq %cl, %rbx
-   RBX SINK ENC-ROR-CL   s" 48d3cb" X=
+   X64ASM:RBX SINK X64ASM:ENC-ROR-CL   s" 48d3cb" X=
    \ llvm-mc: shlq %cl, %r10
-   R10 SINK ENC-SHL-CL   s" 49d3e2" X=
+   X64ASM:R10 SINK X64ASM:ENC-SHL-CL   s" 49d3e2" X=
    \ llvm-mc: shrq %cl, %rax
-   RAX SINK ENC-SHR-CL   s" 48d3e8" X=
+   X64ASM:RAX SINK X64ASM:ENC-SHR-CL   s" 48d3e8" X=
    \ llvm-mc: sarq %cl, %rax
-   RAX SINK ENC-SAR-CL   s" 48d3f8" X= ;
+   X64ASM:RAX SINK X64ASM:ENC-SAR-CL   s" 48d3f8" X= ;
 
 \ indirect branches, return, syscall, setcc, cmovcc, the stack
 \ and the exchange.
 : CONTROL ( -- )
    \ llvm-mc: jmpq *%rax
-   RAX SINK ENC-JMP-REG   s" ffe0" X=
+   X64ASM:RAX SINK X64ASM:ENC-JMP-REG   s" ffe0" X=
    \ llvm-mc: jmpq *%r11
-   R11 SINK ENC-JMP-REG   s" 41ffe3" X=
+   X64ASM:R11 SINK X64ASM:ENC-JMP-REG   s" 41ffe3" X=
    \ llvm-mc: callq *%rax
-   RAX SINK ENC-CALL-REG   s" ffd0" X=
+   X64ASM:RAX SINK X64ASM:ENC-CALL-REG   s" ffd0" X=
    \ llvm-mc: ret
-   SINK ENC-RET   s" c3" X=
+   SINK X64ASM:ENC-RET   s" c3" X=
    \ llvm-mc: syscall
-   SINK ENC-SYSCALL   s" 0f05" X=
+   SINK X64ASM:ENC-SYSCALL   s" 0f05" X=
    \ llvm-mc: setl %al
-   C-L 0 >R8 SINK ENC-SETCC   s" 0f9cc0" X=
+   X64ASM:C-L 0 X64ASM:>R8 SINK X64ASM:ENC-SETCC   s" 0f9cc0" X=
    \ llvm-mc: setl %sil
-   C-L 6 >R8 SINK ENC-SETCC   s" 400f9cc6" X=
+   X64ASM:C-L 6 X64ASM:>R8 SINK X64ASM:ENC-SETCC   s" 400f9cc6" X=
    \ llvm-mc: cmovlq %rcx, %rax
-   C-L RAX RCX SINK ENC-CMOVCC   s" 480f4cc1" X=
+   X64ASM:C-L X64ASM:RAX X64ASM:RCX SINK X64ASM:ENC-CMOVCC   s" 480f4cc1" X=
    \ llvm-mc: pushq %rax
-   RAX SINK ENC-PUSH   s" 50" X=
+   X64ASM:RAX SINK X64ASM:ENC-PUSH   s" 50" X=
    \ llvm-mc: pushq %r13
-   R13 SINK ENC-PUSH   s" 4155" X=
+   X64ASM:R13 SINK X64ASM:ENC-PUSH   s" 4155" X=
    \ llvm-mc: popq %rbp
-   RBP SINK ENC-POP   s" 5d" X=
+   X64ASM:RBP SINK X64ASM:ENC-POP   s" 5d" X=
    \ llvm-mc: popq %r12
-   R12 SINK ENC-POP   s" 415c" X=
+   X64ASM:R12 SINK X64ASM:ENC-POP   s" 415c" X=
    \ llvm-mc: xchgq %rbx, %rcx
-   RCX RBX SINK ENC-XCHG-RR   s" 4887cb" X= ;
+   X64ASM:RCX X64ASM:RBX SINK X64ASM:ENC-XCHG-RR   s" 4887cb" X= ;
 
 \ the atomic forms. The memory xchg is locked with no prefix; xadd and cmpxchg
 \ carry f0 ahead of REX, here with REX.R and REX.B or REX.X set behind it.
 : ATOMICS ( -- )
    \ llvm-mc: xchgq %rax, (%rcx)
-   RAX RCX MEM-AT SINK ENC-XCHG-MR   s" 488701" X=
+   X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT SINK X64ASM:ENC-XCHG-MR   s" 488701" X=
    \ llvm-mc: xchgq %r9, 8(%r12)
-   R9 R12 8 MEM-OFF SINK ENC-XCHG-MR   s" 4d874c2408" X=
+   X64ASM:R9 X64ASM:R12 8 X64ASM:MEM-OFF SINK X64ASM:ENC-XCHG-MR   s" 4d874c2408" X=
    \ llvm-mc: xchgl %eax, (%rcx)
-   0 >R32 RCX MEM-AT SINK ENC-XCHG32-MR   s" 8701" X=
+   0 X64ASM:>R32 X64ASM:RCX X64ASM:MEM-AT SINK X64ASM:ENC-XCHG32-MR   s" 8701" X=
    \ llvm-mc: xchgl %r9d, 8(%r12)
-   9 >R32 R12 8 MEM-OFF SINK ENC-XCHG32-MR   s" 45874c2408" X=
+   9 X64ASM:>R32 X64ASM:R12 8 X64ASM:MEM-OFF SINK X64ASM:ENC-XCHG32-MR   s" 45874c2408" X=
    \ llvm-mc: lock xaddq %rax, (%rcx)
-   RAX RCX MEM-AT SINK ENC-LOCK-XADD-MR   s" f0480fc101" X=
+   X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT SINK X64ASM:ENC-LOCK-XADD-MR   s" f0480fc101" X=
    \ llvm-mc: lock xaddq %r10, (%r13)
-   R10 R13 MEM-AT SINK ENC-LOCK-XADD-MR   s" f04d0fc15500" X=
+   X64ASM:R10 X64ASM:R13 X64ASM:MEM-AT SINK X64ASM:ENC-LOCK-XADD-MR   s" f04d0fc15500" X=
    \ llvm-mc: lock cmpxchgq %rdx, (%rcx)
-   RDX RCX MEM-AT SINK ENC-LOCK-CMPXCHG-MR   s" f0480fb111" X=
+   X64ASM:RDX X64ASM:RCX X64ASM:MEM-AT SINK X64ASM:ENC-LOCK-CMPXCHG-MR   s" f0480fb111" X=
    \ llvm-mc: lock cmpxchgq %rbx, -16(%rbp,%r8,8)
-   RBX RBP R8 8 -16 MEM-IDX SINK ENC-LOCK-CMPXCHG-MR   s" f04a0fb15cc5f0" X=
+   X64ASM:RBX X64ASM:RBP X64ASM:R8 8 -16 X64ASM:MEM-IDX SINK X64ASM:ENC-LOCK-CMPXCHG-MR   s" f04a0fb15cc5f0" X=
    \ llvm-mc: mfence
-   SINK ENC-MFENCE   s" 0faef0" X= ;
+   SINK X64ASM:ENC-MFENCE   s" 0faef0" X= ;
 
 \ the addressing forms that have no ARM counterpart: rsp and
 \ r12 forcing a SIB, rbp and r13 forcing a disp8 of zero, the disp8 boundary,
 \ rip-relative, and an rsp base carrying an index.
 : MEMORY-TRAPS ( -- )
    \ llvm-mc: movq (%rsp), %rax
-   RAX RSP MEM-AT SINK ENC-MOV-RM   s" 488b0424" X=
+   X64ASM:RAX X64ASM:RSP X64ASM:MEM-AT SINK X64ASM:ENC-MOV-RM   s" 488b0424" X=
    \ llvm-mc: movq (%rbp), %rax
-   RAX RBP MEM-AT SINK ENC-MOV-RM   s" 488b4500" X=
+   X64ASM:RAX X64ASM:RBP X64ASM:MEM-AT SINK X64ASM:ENC-MOV-RM   s" 488b4500" X=
    \ llvm-mc: movq (%r12), %rax
-   RAX R12 MEM-AT SINK ENC-MOV-RM   s" 498b0424" X=
+   X64ASM:RAX X64ASM:R12 X64ASM:MEM-AT SINK X64ASM:ENC-MOV-RM   s" 498b0424" X=
    \ llvm-mc: movq (%r13), %rax
-   RAX R13 MEM-AT SINK ENC-MOV-RM   s" 498b4500" X=
+   X64ASM:RAX X64ASM:R13 X64ASM:MEM-AT SINK X64ASM:ENC-MOV-RM   s" 498b4500" X=
    \ llvm-mc: movq -128(%rbx), %rax
-   RAX RBX -128 MEM-OFF SINK ENC-MOV-RM   s" 488b4380" X=
+   X64ASM:RAX X64ASM:RBX -128 X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-RM   s" 488b4380" X=
    \ llvm-mc: movq -129(%rbx), %rax
-   RAX RBX -129 MEM-OFF SINK ENC-MOV-RM   s" 488b837fffffff" X=
+   X64ASM:RAX X64ASM:RBX -129 X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-RM   s" 488b837fffffff" X=
    \ llvm-mc: movq (%rip), %rax
-   RAX 0 MEM-RIP SINK ENC-MOV-RM   s" 488b0500000000" X=
+   X64ASM:RAX 0 X64ASM:MEM-RIP SINK X64ASM:ENC-MOV-RM   s" 488b0500000000" X=
    \ llvm-mc: movq 16(%rip), %rax
-   RAX 16 MEM-RIP SINK ENC-MOV-RM   s" 488b0510000000" X=
+   X64ASM:RAX 16 X64ASM:MEM-RIP SINK X64ASM:ENC-MOV-RM   s" 488b0510000000" X=
    \ llvm-mc: movq %r15, 4(%rsp,%rbp,2)
-   R15 RSP RBP 2 4 MEM-IDX SINK ENC-MOV-MR   s" 4c897c6c04" X= ;
+   X64ASM:R15 X64ASM:RSP X64ASM:RBP 2 4 X64ASM:MEM-IDX SINK X64ASM:ENC-MOV-MR   s" 4c897c6c04" X= ;
 \ The sixteen condition names, each through the one-byte conditional jump, so a
 \ transposed code cannot hide: the opcode IS 70 plus the condition.
 : CONDITION-NAMES ( -- )
    \ llvm-objdump: jo (to the next instruction)
-   C-O 0 >REL SINK ENC-JCC-REL8   s" 7000" X=
+   X64ASM:C-O 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7000" X=
    \ llvm-objdump: jno (to the next instruction)
-   C-NO 0 >REL SINK ENC-JCC-REL8   s" 7100" X=
+   X64ASM:C-NO 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7100" X=
    \ llvm-objdump: jb (to the next instruction)
-   C-B 0 >REL SINK ENC-JCC-REL8   s" 7200" X=
+   X64ASM:C-B 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7200" X=
    \ llvm-objdump: jae (to the next instruction)
-   C-AE 0 >REL SINK ENC-JCC-REL8   s" 7300" X=
+   X64ASM:C-AE 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7300" X=
    \ llvm-objdump: je (to the next instruction)
-   C-E 0 >REL SINK ENC-JCC-REL8   s" 7400" X=
+   X64ASM:C-E 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7400" X=
    \ llvm-objdump: jne (to the next instruction)
-   C-NE 0 >REL SINK ENC-JCC-REL8   s" 7500" X=
+   X64ASM:C-NE 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7500" X=
    \ llvm-objdump: jbe (to the next instruction)
-   C-BE 0 >REL SINK ENC-JCC-REL8   s" 7600" X=
+   X64ASM:C-BE 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7600" X=
    \ llvm-objdump: ja (to the next instruction)
-   C-A 0 >REL SINK ENC-JCC-REL8   s" 7700" X=
+   X64ASM:C-A 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7700" X=
    \ llvm-objdump: js (to the next instruction)
-   C-S 0 >REL SINK ENC-JCC-REL8   s" 7800" X=
+   X64ASM:C-S 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7800" X=
    \ llvm-objdump: jns (to the next instruction)
-   C-NS 0 >REL SINK ENC-JCC-REL8   s" 7900" X=
+   X64ASM:C-NS 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7900" X=
    \ llvm-objdump: jp (to the next instruction)
-   C-P 0 >REL SINK ENC-JCC-REL8   s" 7a00" X=
+   X64ASM:C-P 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7a00" X=
    \ llvm-objdump: jnp (to the next instruction)
-   C-NP 0 >REL SINK ENC-JCC-REL8   s" 7b00" X=
+   X64ASM:C-NP 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7b00" X=
    \ llvm-objdump: jl (to the next instruction)
-   C-L 0 >REL SINK ENC-JCC-REL8   s" 7c00" X=
+   X64ASM:C-L 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7c00" X=
    \ llvm-objdump: jge (to the next instruction)
-   C-GE 0 >REL SINK ENC-JCC-REL8   s" 7d00" X=
+   X64ASM:C-GE 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7d00" X=
    \ llvm-objdump: jle (to the next instruction)
-   C-LE 0 >REL SINK ENC-JCC-REL8   s" 7e00" X=
+   X64ASM:C-LE 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7e00" X=
    \ llvm-objdump: jg (to the next instruction)
-   C-G 0 >REL SINK ENC-JCC-REL8   s" 7f00" X= ;
+   X64ASM:C-G 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7f00" X= ;
 
 \ The sixteen register names, each through push, so a misnumbered name cannot
 \ hide: the opcode IS 50 plus the low three bits, with REX.B above seven.
 : REGISTER-NAMES ( -- )
    \ llvm-objdump: pushq %rax
-   RAX SINK ENC-PUSH   s" 50" X=
+   X64ASM:RAX SINK X64ASM:ENC-PUSH   s" 50" X=
    \ llvm-objdump: pushq %rcx
-   RCX SINK ENC-PUSH   s" 51" X=
+   X64ASM:RCX SINK X64ASM:ENC-PUSH   s" 51" X=
    \ llvm-objdump: pushq %rdx
-   RDX SINK ENC-PUSH   s" 52" X=
+   X64ASM:RDX SINK X64ASM:ENC-PUSH   s" 52" X=
    \ llvm-objdump: pushq %rbx
-   RBX SINK ENC-PUSH   s" 53" X=
+   X64ASM:RBX SINK X64ASM:ENC-PUSH   s" 53" X=
    \ llvm-objdump: pushq %rsp
-   RSP SINK ENC-PUSH   s" 54" X=
+   X64ASM:RSP SINK X64ASM:ENC-PUSH   s" 54" X=
    \ llvm-objdump: pushq %rbp
-   RBP SINK ENC-PUSH   s" 55" X=
+   X64ASM:RBP SINK X64ASM:ENC-PUSH   s" 55" X=
    \ llvm-objdump: pushq %rsi
-   RSI SINK ENC-PUSH   s" 56" X=
+   X64ASM:RSI SINK X64ASM:ENC-PUSH   s" 56" X=
    \ llvm-objdump: pushq %rdi
-   RDI SINK ENC-PUSH   s" 57" X=
+   X64ASM:RDI SINK X64ASM:ENC-PUSH   s" 57" X=
    \ llvm-objdump: pushq %r8
-   R8 SINK ENC-PUSH   s" 4150" X=
+   X64ASM:R8 SINK X64ASM:ENC-PUSH   s" 4150" X=
    \ llvm-objdump: pushq %r9
-   R9 SINK ENC-PUSH   s" 4151" X=
+   X64ASM:R9 SINK X64ASM:ENC-PUSH   s" 4151" X=
    \ llvm-objdump: pushq %r10
-   R10 SINK ENC-PUSH   s" 4152" X=
+   X64ASM:R10 SINK X64ASM:ENC-PUSH   s" 4152" X=
    \ llvm-objdump: pushq %r11
-   R11 SINK ENC-PUSH   s" 4153" X=
+   X64ASM:R11 SINK X64ASM:ENC-PUSH   s" 4153" X=
    \ llvm-objdump: pushq %r12
-   R12 SINK ENC-PUSH   s" 4154" X=
+   X64ASM:R12 SINK X64ASM:ENC-PUSH   s" 4154" X=
    \ llvm-objdump: pushq %r13
-   R13 SINK ENC-PUSH   s" 4155" X=
+   X64ASM:R13 SINK X64ASM:ENC-PUSH   s" 4155" X=
    \ llvm-objdump: pushq %r14
-   R14 SINK ENC-PUSH   s" 4156" X=
+   X64ASM:R14 SINK X64ASM:ENC-PUSH   s" 4156" X=
    \ llvm-objdump: pushq %r15
-   R15 SINK ENC-PUSH   s" 4157" X= ;
+   X64ASM:R15 SINK X64ASM:ENC-PUSH   s" 4157" X= ;
 
 : PADDING-AND-TRAP ( -- )
    \ llvm-mc: nop
-   SINK ENC-NOP   s" 90" X=
+   SINK X64ASM:ENC-NOP   s" 90" X=
    \ llvm-mc: ud2
-   SINK ENC-UD2   s" 0f0b" X= ;
+   SINK X64ASM:ENC-UD2   s" 0f0b" X= ;
 
 : IMMEDIATE-STORES ( -- )
    \ llvm-mc: movl $0x12345678, 16(%rip)
-   $12345678 >IMM32 16 MEM-RIP SINK ENC-MOV32-MI32   s" c7051000000078563412" X=
+   $12345678 X64ASM:>IMM32 16 X64ASM:MEM-RIP SINK X64ASM:ENC-MOV32-MI32   s" c7051000000078563412" X=
    \ llvm-mc: movl $-1, -129(%r13,%r12,8)
-   -1 >IMM32 R13 R12 8 -129 MEM-IDX SINK ENC-MOV32-MI32   s" 43c784e57fffffffffffffff" X=
+   -1 X64ASM:>IMM32 X64ASM:R13 X64ASM:R12 8 -129 X64ASM:MEM-IDX SINK X64ASM:ENC-MOV32-MI32   s" 43c784e57fffffffffffffff" X=
    \ llvm-mc: movl $0, (%rax)
-   0 >IMM32 RAX MEM-AT SINK ENC-MOV32-MI32   s" c70000000000" X=
+   0 X64ASM:>IMM32 X64ASM:RAX X64ASM:MEM-AT SINK X64ASM:ENC-MOV32-MI32   s" c70000000000" X=
    \ llvm-mc: movl $-2147483648, (%r13)
-   -2147483648 >IMM32 R13 MEM-AT SINK ENC-MOV32-MI32   s" 41c7450000000080" X=
+   -2147483648 X64ASM:>IMM32 X64ASM:R13 X64ASM:MEM-AT SINK X64ASM:ENC-MOV32-MI32   s" 41c7450000000080" X=
    \ llvm-mc: movl $2147483647, 127(%rsp)
-   2147483647 >IMM32 RSP 127 MEM-OFF SINK ENC-MOV32-MI32   s" c744247fffffff7f" X=
+   2147483647 X64ASM:>IMM32 X64ASM:RSP 127 X64ASM:MEM-OFF SINK X64ASM:ENC-MOV32-MI32   s" c744247fffffff7f" X=
    \ llvm-mc: movl $1, 128(%r12)
-   1 >IMM32 R12 128 MEM-OFF SINK ENC-MOV32-MI32   s" 41c784248000000001000000" X=
+   1 X64ASM:>IMM32 X64ASM:R12 128 X64ASM:MEM-OFF SINK X64ASM:ENC-MOV32-MI32   s" 41c784248000000001000000" X=
    \ llvm-mc: movl $-2, -128(%rbp)
-   -2 >IMM32 RBP -128 MEM-OFF SINK ENC-MOV32-MI32   s" c74580feffffff" X=
+   -2 X64ASM:>IMM32 X64ASM:RBP -128 X64ASM:MEM-OFF SINK X64ASM:ENC-MOV32-MI32   s" c74580feffffff" X=
    \ llvm-objdump: .Lhere: movl $7, .Lhere(%rip)
    \ Target is the instruction's beginning: -10 includes the trailing imm32.
-   7 >IMM32 -10 MEM-RIP SINK ENC-MOV32-MI32
+   7 X64ASM:>IMM32 -10 X64ASM:MEM-RIP SINK X64ASM:ENC-MOV32-MI32
    SINK-LEN 10 T=   s" c705f6ffffff07000000" X= ;
 
 : CELL-STORES ( -- )
    \ llvm-mc: movq $0, (%r12)
-   0 >IMM32 R12 MEM-AT SINK ENC-MOV-MI32   s" 49c7042400000000" X=
+   0 X64ASM:>IMM32 X64ASM:R12 X64ASM:MEM-AT SINK X64ASM:ENC-MOV-MI32   s" 49c7042400000000" X=
    \ llvm-mc: movq $-1, -8(%r12)
-   -1 >IMM32 R12 -8 MEM-OFF SINK ENC-MOV-MI32   s" 49c74424f8ffffffff" X=
+   -1 X64ASM:>IMM32 X64ASM:R12 -8 X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-MI32   s" 49c74424f8ffffffff" X=
    \ llvm-mc: movq $-2147483648, 128(%rbx)
-   -2147483648 >IMM32 RBX 128 MEM-OFF SINK ENC-MOV-MI32   s" 48c7838000000000000080" X=
+   -2147483648 X64ASM:>IMM32 X64ASM:RBX 128 X64ASM:MEM-OFF SINK X64ASM:ENC-MOV-MI32   s" 48c7838000000000000080" X=
    \ llvm-mc: movq $2147483647, (%r13)
-   2147483647 >IMM32 R13 MEM-AT SINK ENC-MOV-MI32   s" 49c74500ffffff7f" X=
-   [: 2147483648 >IMM32 RAX MEM-AT SINK ENC-MOV-MI32 ;] E-OPERAND TTHROWSQ ;
+   2147483647 X64ASM:>IMM32 X64ASM:R13 X64ASM:MEM-AT SINK X64ASM:ENC-MOV-MI32   s" 49c74500ffffff7f" X=
+   [: 2147483648 X64ASM:>IMM32 X64ASM:RAX X64ASM:MEM-AT SINK X64ASM:ENC-MOV-MI32 ;] X64ASM:E-OPERAND TTHROWSQ ;
 
 : STORE-REJECTIONS ( -- )
-   RAX SINK ENC-PUSH
-   [: 2147483648 >IMM32 RAX MEM-AT SINK ENC-MOV32-MI32 ;] E-OPERAND TTHROWSQ
-   [: -2147483649 >IMM32 RAX MEM-AT SINK ENC-MOV32-MI32 ;] E-OPERAND TTHROWSQ
-   [: 0 >IMM32 16 32 lshift >MEM SINK ENC-MOV32-MI32 ;] E-OPERAND TTHROWSQ
-   [: 0 >IMM32 4 37 lshift >MEM SINK ENC-MOV32-MI32 ;] E-OPERAND TTHROWSQ
-   [: 0 >IMM32 1 44 lshift >MEM SINK ENC-MOV32-MI32 ;] E-OPERAND TTHROWSQ
+   X64ASM:RAX SINK X64ASM:ENC-PUSH
+   [: 2147483648 X64ASM:>IMM32 X64ASM:RAX X64ASM:MEM-AT SINK X64ASM:ENC-MOV32-MI32 ;] X64ASM:E-OPERAND TTHROWSQ
+   [: -2147483649 X64ASM:>IMM32 X64ASM:RAX X64ASM:MEM-AT SINK X64ASM:ENC-MOV32-MI32 ;] X64ASM:E-OPERAND TTHROWSQ
+   [: 0 X64ASM:>IMM32 16 32 lshift X64ASM:>MEM SINK X64ASM:ENC-MOV32-MI32 ;] X64ASM:E-OPERAND TTHROWSQ
+   [: 0 X64ASM:>IMM32 4 37 lshift X64ASM:>MEM SINK X64ASM:ENC-MOV32-MI32 ;] X64ASM:E-OPERAND TTHROWSQ
+   [: 0 X64ASM:>IMM32 1 44 lshift X64ASM:>MEM SINK X64ASM:ENC-MOV32-MI32 ;] X64ASM:E-OPERAND TTHROWSQ
    s" 50" X=
    s" X64-GOOD-STORE ( X64ASM:imm32 X64ASM:mem ^VEC:vector<u8> -- ) X64ASM:ENC-MOV32-MI32"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -478,187 +477,187 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
 
 : SSE-REGISTERS ( -- )
    \ llvm-mc: movsd %xmm0, %xmm0
-   XMM0 XMM0 SINK ENC-MOVSD-RR   s" f20f10c0" X=
+   X64ASM:XMM0 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f20f10c0" X=
    \ llvm-mc: movsd %xmm0, %xmm1
-   XMM1 XMM0 SINK ENC-MOVSD-RR   s" f20f10c8" X=
+   X64ASM:XMM1 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f20f10c8" X=
    \ llvm-mc: movsd %xmm0, %xmm2
-   XMM2 XMM0 SINK ENC-MOVSD-RR   s" f20f10d0" X=
+   X64ASM:XMM2 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f20f10d0" X=
    \ llvm-mc: movsd %xmm0, %xmm3
-   XMM3 XMM0 SINK ENC-MOVSD-RR   s" f20f10d8" X=
+   X64ASM:XMM3 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f20f10d8" X=
    \ llvm-mc: movsd %xmm0, %xmm4
-   XMM4 XMM0 SINK ENC-MOVSD-RR   s" f20f10e0" X=
+   X64ASM:XMM4 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f20f10e0" X=
    \ llvm-mc: movsd %xmm0, %xmm5
-   XMM5 XMM0 SINK ENC-MOVSD-RR   s" f20f10e8" X=
+   X64ASM:XMM5 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f20f10e8" X=
    \ llvm-mc: movsd %xmm0, %xmm6
-   XMM6 XMM0 SINK ENC-MOVSD-RR   s" f20f10f0" X=
+   X64ASM:XMM6 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f20f10f0" X=
    \ llvm-mc: movsd %xmm0, %xmm7
-   XMM7 XMM0 SINK ENC-MOVSD-RR   s" f20f10f8" X=
+   X64ASM:XMM7 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f20f10f8" X=
    \ llvm-mc: movsd %xmm0, %xmm8
-   XMM8 XMM0 SINK ENC-MOVSD-RR   s" f2440f10c0" X=
+   X64ASM:XMM8 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f2440f10c0" X=
    \ llvm-mc: movsd %xmm0, %xmm9
-   XMM9 XMM0 SINK ENC-MOVSD-RR   s" f2440f10c8" X=
+   X64ASM:XMM9 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f2440f10c8" X=
    \ llvm-mc: movsd %xmm0, %xmm10
-   XMM10 XMM0 SINK ENC-MOVSD-RR   s" f2440f10d0" X=
+   X64ASM:XMM10 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f2440f10d0" X=
    \ llvm-mc: movsd %xmm0, %xmm11
-   XMM11 XMM0 SINK ENC-MOVSD-RR   s" f2440f10d8" X=
+   X64ASM:XMM11 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f2440f10d8" X=
    \ llvm-mc: movsd %xmm0, %xmm12
-   XMM12 XMM0 SINK ENC-MOVSD-RR   s" f2440f10e0" X=
+   X64ASM:XMM12 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f2440f10e0" X=
    \ llvm-mc: movsd %xmm0, %xmm13
-   XMM13 XMM0 SINK ENC-MOVSD-RR   s" f2440f10e8" X=
+   X64ASM:XMM13 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f2440f10e8" X=
    \ llvm-mc: movsd %xmm0, %xmm14
-   XMM14 XMM0 SINK ENC-MOVSD-RR   s" f2440f10f0" X=
+   X64ASM:XMM14 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f2440f10f0" X=
    \ llvm-mc: movsd %xmm0, %xmm15
-   XMM15 XMM0 SINK ENC-MOVSD-RR   s" f2440f10f8" X= ;
+   X64ASM:XMM15 X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR   s" f2440f10f8" X= ;
 
 : SSE-MOVES ( -- )
    \ llvm-mc: movsd %xmm15, %xmm8
-   XMM8 XMM15 SINK ENC-MOVSD-RR   s" f2450f10c7" X=
+   X64ASM:XMM8 X64ASM:XMM15 SINK X64ASM:ENC-MOVSD-RR   s" f2450f10c7" X=
    \ llvm-mc: movsd %xmm15, %xmm0
-   XMM0 XMM15 SINK ENC-MOVSD-RR   s" f2410f10c7" X=
+   X64ASM:XMM0 X64ASM:XMM15 SINK X64ASM:ENC-MOVSD-RR   s" f2410f10c7" X=
    \ llvm-mc: movsd 8(%r13,%r12,4), %xmm9
-   XMM9 R13 R12 4 8 MEM-IDX SINK ENC-MOVSD-RM   s" f2470f104ca508" X=
+   X64ASM:XMM9 X64ASM:R13 X64ASM:R12 4 8 X64ASM:MEM-IDX SINK X64ASM:ENC-MOVSD-RM   s" f2470f104ca508" X=
    \ llvm-mc: movsd %xmm15, -129(%r12)
-   XMM15 R12 -129 MEM-OFF SINK ENC-MOVSD-MR   s" f2450f11bc247fffffff" X=
+   X64ASM:XMM15 X64ASM:R12 -129 X64ASM:MEM-OFF SINK X64ASM:ENC-MOVSD-MR   s" f2450f11bc247fffffff" X=
    \ llvm-mc: movsd 16(%rip), %xmm8
-   XMM8 16 MEM-RIP SINK ENC-MOVSD-RM   s" f2440f100510000000" X=
+   X64ASM:XMM8 16 X64ASM:MEM-RIP SINK X64ASM:ENC-MOVSD-RM   s" f2440f100510000000" X=
    \ llvm-mc: movsd %xmm1, -16(%rip)
-   XMM1 -16 MEM-RIP SINK ENC-MOVSD-MR   s" f20f110df0ffffff" X=
+   X64ASM:XMM1 -16 X64ASM:MEM-RIP SINK X64ASM:ENC-MOVSD-MR   s" f20f110df0ffffff" X=
    \ llvm-mc: movsd (%rbp), %xmm0
-   XMM0 RBP MEM-AT SINK ENC-MOVSD-RM   s" f20f104500" X=
+   X64ASM:XMM0 X64ASM:RBP X64ASM:MEM-AT SINK X64ASM:ENC-MOVSD-RM   s" f20f104500" X=
    \ llvm-mc: movsd (%rsp), %xmm1
-   XMM1 RSP MEM-AT SINK ENC-MOVSD-RM   s" f20f100c24" X= ;
+   X64ASM:XMM1 X64ASM:RSP X64ASM:MEM-AT SINK X64ASM:ENC-MOVSD-RM   s" f20f100c24" X= ;
 
 : SSE-ARITHMETIC ( -- )
    \ llvm-mc: addsd %xmm9, %xmm8
-   XMM8 XMM9 SINK ENC-ADDSD-RR   s" f2450f58c1" X=
+   X64ASM:XMM8 X64ASM:XMM9 SINK X64ASM:ENC-ADDSD-RR   s" f2450f58c1" X=
    \ llvm-mc: subsd %xmm9, %xmm8
-   XMM8 XMM9 SINK ENC-SUBSD-RR   s" f2450f5cc1" X=
+   X64ASM:XMM8 X64ASM:XMM9 SINK X64ASM:ENC-SUBSD-RR   s" f2450f5cc1" X=
    \ llvm-mc: mulsd %xmm9, %xmm8
-   XMM8 XMM9 SINK ENC-MULSD-RR   s" f2450f59c1" X=
+   X64ASM:XMM8 X64ASM:XMM9 SINK X64ASM:ENC-MULSD-RR   s" f2450f59c1" X=
    \ llvm-mc: divsd %xmm9, %xmm8
-   XMM8 XMM9 SINK ENC-DIVSD-RR   s" f2450f5ec1" X=
+   X64ASM:XMM8 X64ASM:XMM9 SINK X64ASM:ENC-DIVSD-RR   s" f2450f5ec1" X=
    \ llvm-mc: sqrtsd %xmm9, %xmm8
-   XMM8 XMM9 SINK ENC-SQRTSD-RR   s" f2450f51c1" X=
+   X64ASM:XMM8 X64ASM:XMM9 SINK X64ASM:ENC-SQRTSD-RR   s" f2450f51c1" X=
    \ llvm-mc: andpd %xmm15, %xmm8
-   XMM8 XMM15 SINK ENC-ANDPD-RR   s" 66450f54c7" X=
+   X64ASM:XMM8 X64ASM:XMM15 SINK X64ASM:ENC-ANDPD-RR   s" 66450f54c7" X=
    \ llvm-mc: xorpd %xmm15, %xmm8
-   XMM8 XMM15 SINK ENC-XORPD-RR   s" 66450f57c7" X=
+   X64ASM:XMM8 X64ASM:XMM15 SINK X64ASM:ENC-XORPD-RR   s" 66450f57c7" X=
    \ llvm-mc: cmpunordsd %xmm15, %xmm8
-   XMM8 XMM15 SINK ENC-CMPUNORDSD-RR   s" f2450fc2c703" X=
+   X64ASM:XMM8 X64ASM:XMM15 SINK X64ASM:ENC-CMPUNORDSD-RR   s" f2450fc2c703" X=
    \ llvm-mc: ucomisd %xmm15, %xmm8
-   XMM8 XMM15 SINK ENC-UCOMISD-RR   s" 66450f2ec7" X=
+   X64ASM:XMM8 X64ASM:XMM15 SINK X64ASM:ENC-UCOMISD-RR   s" 66450f2ec7" X=
    \ llvm-mc: cvtsi2sdq %r15, %xmm8
-   XMM8 R15 SINK ENC-CVTSI2SD-RR   s" f24d0f2ac7" X=
+   X64ASM:XMM8 X64ASM:R15 SINK X64ASM:ENC-CVTSI2SD-RR   s" f24d0f2ac7" X=
    \ llvm-mc: cvttsd2siq %xmm15, %r8
-   R8 XMM15 SINK ENC-CVTTSD2SI-RR   s" f24d0f2cc7" X=
+   X64ASM:R8 X64ASM:XMM15 SINK X64ASM:ENC-CVTTSD2SI-RR   s" f24d0f2cc7" X=
    \ llvm-mc: cvtsi2sdq %rax, %xmm0
-   XMM0 RAX SINK ENC-CVTSI2SD-RR   s" f2480f2ac0" X=
+   X64ASM:XMM0 X64ASM:RAX SINK X64ASM:ENC-CVTSI2SD-RR   s" f2480f2ac0" X=
    \ llvm-mc: cvttsd2siq %xmm1, %rcx
-   RCX XMM1 SINK ENC-CVTTSD2SI-RR   s" f2480f2cc9" X= ;
+   X64ASM:RCX X64ASM:XMM1 SINK X64ASM:ENC-CVTTSD2SI-RR   s" f2480f2cc9" X= ;
 
 \ The packed moves and shuffles, and the three-byte opcodes 0F38xx and 0F3Axx.
 : SSE-PACKED ( -- )
    \ llvm-mc: movdqu 16(%rsi), %xmm3
-   XMM3 RSI 16 MEM-OFF SINK ENC-MOVDQU-RM   s" f30f6f5e10" X=
+   X64ASM:XMM3 X64ASM:RSI 16 X64ASM:MEM-OFF SINK X64ASM:ENC-MOVDQU-RM   s" f30f6f5e10" X=
    \ llvm-mc: movdqu -129(%r12), %xmm15
-   XMM15 R12 -129 MEM-OFF SINK ENC-MOVDQU-RM   s" f3450f6fbc247fffffff" X=
+   X64ASM:XMM15 X64ASM:R12 -129 X64ASM:MEM-OFF SINK X64ASM:ENC-MOVDQU-RM   s" f3450f6fbc247fffffff" X=
    \ llvm-mc: movdqu %xmm0, 32(%rdi)
-   XMM0 RDI 32 MEM-OFF SINK ENC-MOVDQU-MR   s" f30f7f4720" X=
+   X64ASM:XMM0 X64ASM:RDI 32 X64ASM:MEM-OFF SINK X64ASM:ENC-MOVDQU-MR   s" f30f7f4720" X=
    \ llvm-mc: movdqu %xmm9, 8(%r13,%r12,4)
-   XMM9 R13 R12 4 8 MEM-IDX SINK ENC-MOVDQU-MR   s" f3470f7f4ca508" X=
+   X64ASM:XMM9 X64ASM:R13 X64ASM:R12 4 8 X64ASM:MEM-IDX SINK X64ASM:ENC-MOVDQU-MR   s" f3470f7f4ca508" X=
    \ llvm-mc: movdqa %xmm1, %xmm9
-   XMM9 XMM1 SINK ENC-MOVDQA-RR   s" 66440f6fc9" X=
+   X64ASM:XMM9 X64ASM:XMM1 SINK X64ASM:ENC-MOVDQA-RR   s" 66440f6fc9" X=
    \ llvm-mc: paddd %xmm9, %xmm1
-   XMM1 XMM9 SINK ENC-PADDD-RR   s" 66410ffec9" X=
+   X64ASM:XMM1 X64ASM:XMM9 SINK X64ASM:ENC-PADDD-RR   s" 66410ffec9" X=
    \ llvm-mc: punpcklqdq %xmm3, %xmm1
-   XMM1 XMM3 SINK ENC-PUNPCKLQDQ-RR   s" 660f6ccb" X=
+   X64ASM:XMM1 X64ASM:XMM3 SINK X64ASM:ENC-PUNPCKLQDQ-RR   s" 660f6ccb" X=
    \ llvm-mc: pshufd $14, %xmm0, %xmm0
-   XMM0 XMM0 14 >IMM8 SINK ENC-PSHUFD-RRI8   s" 660f70c00e" X=
+   X64ASM:XMM0 X64ASM:XMM0 14 X64ASM:>IMM8 SINK X64ASM:ENC-PSHUFD-RRI8   s" 660f70c00e" X=
    \ llvm-mc: pshufd $255, %xmm15, %xmm8
-   XMM8 XMM15 255 >IMM8 SINK ENC-PSHUFD-RRI8   s" 66450f70c7ff" X=
+   X64ASM:XMM8 X64ASM:XMM15 255 X64ASM:>IMM8 SINK X64ASM:ENC-PSHUFD-RRI8   s" 66450f70c7ff" X=
    \ llvm-mc: pshufb %xmm8, %xmm3
-   XMM3 XMM8 SINK ENC-PSHUFB-RR   s" 66410f3800d8" X=
+   X64ASM:XMM3 X64ASM:XMM8 SINK X64ASM:ENC-PSHUFB-RR   s" 66410f3800d8" X=
    \ llvm-mc: palignr $4, %xmm5, %xmm7
-   XMM7 XMM5 4 >IMM8 SINK ENC-PALIGNR-RRI8   s" 660f3a0ffd04" X=
+   X64ASM:XMM7 X64ASM:XMM5 4 X64ASM:>IMM8 SINK X64ASM:ENC-PALIGNR-RRI8   s" 660f3a0ffd04" X=
    \ llvm-mc: palignr $4, %xmm15, %xmm8
-   XMM8 XMM15 4 >IMM8 SINK ENC-PALIGNR-RRI8   s" 66450f3a0fc704" X=
+   X64ASM:XMM8 X64ASM:XMM15 4 X64ASM:>IMM8 SINK X64ASM:ENC-PALIGNR-RRI8   s" 66450f3a0fc704" X=
    \ llvm-mc: pmovzxdq %xmm8, %xmm15
-   XMM15 XMM8 SINK ENC-PMOVZXDQ-RR   s" 66450f3835f8" X= ;
+   X64ASM:XMM15 X64ASM:XMM8 SINK X64ASM:ENC-PMOVZXDQ-RR   s" 66450f3835f8" X= ;
 
 : SHA-ROUNDS ( -- )
    \ llvm-mc: sha256rnds2 %xmm0, %xmm1, %xmm2
-   XMM2 XMM1 SINK ENC-SHA256RNDS2-RR   s" 0f38cbd1" X=
+   X64ASM:XMM2 X64ASM:XMM1 SINK X64ASM:ENC-SHA256RNDS2-RR   s" 0f38cbd1" X=
    \ llvm-mc: sha256rnds2 %xmm0, %xmm8, %xmm15
-   XMM15 XMM8 SINK ENC-SHA256RNDS2-RR   s" 450f38cbf8" X=
+   X64ASM:XMM15 X64ASM:XMM8 SINK X64ASM:ENC-SHA256RNDS2-RR   s" 450f38cbf8" X=
    \ llvm-mc: sha256msg1 %xmm4, %xmm3
-   XMM3 XMM4 SINK ENC-SHA256MSG1-RR   s" 0f38ccdc" X=
+   X64ASM:XMM3 X64ASM:XMM4 SINK X64ASM:ENC-SHA256MSG1-RR   s" 0f38ccdc" X=
    \ llvm-mc: sha256msg1 %xmm9, %xmm8
-   XMM8 XMM9 SINK ENC-SHA256MSG1-RR   s" 450f38ccc1" X=
+   X64ASM:XMM8 X64ASM:XMM9 SINK X64ASM:ENC-SHA256MSG1-RR   s" 450f38ccc1" X=
    \ llvm-mc: sha256msg2 %xmm6, %xmm3
-   XMM3 XMM6 SINK ENC-SHA256MSG2-RR   s" 0f38cdde" X=
+   X64ASM:XMM3 X64ASM:XMM6 SINK X64ASM:ENC-SHA256MSG2-RR   s" 0f38cdde" X=
    \ llvm-mc: sha256msg2 %xmm15, %xmm8
-   XMM8 XMM15 SINK ENC-SHA256MSG2-RR   s" 450f38cdc7" X= ;
+   X64ASM:XMM8 X64ASM:XMM15 SINK X64ASM:ENC-SHA256MSG2-RR   s" 450f38cdc7" X= ;
 
 \ movq moves eight bytes between the two files unchanged. The XMM register is the
 \ ModRM reg field in both directions, so each pair crosses REX.R with REX.B.
 : SSE-CROSS ( -- )
    \ llvm-mc: movq %rax, %xmm0
-   XMM0 RAX SINK ENC-MOVQ-XR   s" 66480f6ec0" X=
+   X64ASM:XMM0 X64ASM:RAX SINK X64ASM:ENC-MOVQ-XR   s" 66480f6ec0" X=
    \ llvm-mc: movq %xmm0, %rax
-   RAX XMM0 SINK ENC-MOVQ-RX   s" 66480f7ec0" X=
+   X64ASM:RAX X64ASM:XMM0 SINK X64ASM:ENC-MOVQ-RX   s" 66480f7ec0" X=
    \ llvm-mc: movq %r8, %xmm0
-   XMM0 R8 SINK ENC-MOVQ-XR   s" 66490f6ec0" X=
+   X64ASM:XMM0 X64ASM:R8 SINK X64ASM:ENC-MOVQ-XR   s" 66490f6ec0" X=
    \ llvm-mc: movq %xmm0, %r8
-   R8 XMM0 SINK ENC-MOVQ-RX   s" 66490f7ec0" X=
+   X64ASM:R8 X64ASM:XMM0 SINK X64ASM:ENC-MOVQ-RX   s" 66490f7ec0" X=
    \ llvm-mc: movq %r15, %xmm0
-   XMM0 R15 SINK ENC-MOVQ-XR   s" 66490f6ec7" X=
+   X64ASM:XMM0 X64ASM:R15 SINK X64ASM:ENC-MOVQ-XR   s" 66490f6ec7" X=
    \ llvm-mc: movq %xmm0, %r15
-   R15 XMM0 SINK ENC-MOVQ-RX   s" 66490f7ec7" X=
+   X64ASM:R15 X64ASM:XMM0 SINK X64ASM:ENC-MOVQ-RX   s" 66490f7ec7" X=
    \ llvm-mc: movq %rax, %xmm8
-   XMM8 RAX SINK ENC-MOVQ-XR   s" 664c0f6ec0" X=
+   X64ASM:XMM8 X64ASM:RAX SINK X64ASM:ENC-MOVQ-XR   s" 664c0f6ec0" X=
    \ llvm-mc: movq %xmm8, %rax
-   RAX XMM8 SINK ENC-MOVQ-RX   s" 664c0f7ec0" X=
+   X64ASM:RAX X64ASM:XMM8 SINK X64ASM:ENC-MOVQ-RX   s" 664c0f7ec0" X=
    \ llvm-mc: movq %r8, %xmm8
-   XMM8 R8 SINK ENC-MOVQ-XR   s" 664d0f6ec0" X=
+   X64ASM:XMM8 X64ASM:R8 SINK X64ASM:ENC-MOVQ-XR   s" 664d0f6ec0" X=
    \ llvm-mc: movq %xmm8, %r8
-   R8 XMM8 SINK ENC-MOVQ-RX   s" 664d0f7ec0" X=
+   X64ASM:R8 X64ASM:XMM8 SINK X64ASM:ENC-MOVQ-RX   s" 664d0f7ec0" X=
    \ llvm-mc: movq %r15, %xmm8
-   XMM8 R15 SINK ENC-MOVQ-XR   s" 664d0f6ec7" X=
+   X64ASM:XMM8 X64ASM:R15 SINK X64ASM:ENC-MOVQ-XR   s" 664d0f6ec7" X=
    \ llvm-mc: movq %xmm8, %r15
-   R15 XMM8 SINK ENC-MOVQ-RX   s" 664d0f7ec7" X=
+   X64ASM:R15 X64ASM:XMM8 SINK X64ASM:ENC-MOVQ-RX   s" 664d0f7ec7" X=
    \ llvm-mc: movq %rax, %xmm15
-   XMM15 RAX SINK ENC-MOVQ-XR   s" 664c0f6ef8" X=
+   X64ASM:XMM15 X64ASM:RAX SINK X64ASM:ENC-MOVQ-XR   s" 664c0f6ef8" X=
    \ llvm-mc: movq %xmm15, %rax
-   RAX XMM15 SINK ENC-MOVQ-RX   s" 664c0f7ef8" X=
+   X64ASM:RAX X64ASM:XMM15 SINK X64ASM:ENC-MOVQ-RX   s" 664c0f7ef8" X=
    \ llvm-mc: movq %r8, %xmm15
-   XMM15 R8 SINK ENC-MOVQ-XR   s" 664d0f6ef8" X=
+   X64ASM:XMM15 X64ASM:R8 SINK X64ASM:ENC-MOVQ-XR   s" 664d0f6ef8" X=
    \ llvm-mc: movq %xmm15, %r8
-   R8 XMM15 SINK ENC-MOVQ-RX   s" 664d0f7ef8" X=
+   X64ASM:R8 X64ASM:XMM15 SINK X64ASM:ENC-MOVQ-RX   s" 664d0f7ef8" X=
    \ llvm-mc: movq %r15, %xmm15
-   XMM15 R15 SINK ENC-MOVQ-XR   s" 664d0f6eff" X=
+   X64ASM:XMM15 X64ASM:R15 SINK X64ASM:ENC-MOVQ-XR   s" 664d0f6eff" X=
    \ llvm-mc: movq %xmm15, %r15
-   R15 XMM15 SINK ENC-MOVQ-RX   s" 664d0f7eff" X= ;
+   X64ASM:R15 X64ASM:XMM15 SINK X64ASM:ENC-MOVQ-RX   s" 664d0f7eff" X= ;
 
 : SSE-REJECTIONS ( -- )
    \ Preserve an existing instruction as well as emitting no partial prefix.
-   RAX SINK ENC-PUSH
-   [: 16 >XMM XMM0 SINK ENC-MOVSD-RR ;] E-OPERAND TTHROWSQ
-   [: XMM0 -1 >XMM SINK ENC-ADDSD-RR ;] E-OPERAND TTHROWSQ
-   [: XMM0 16 >R64 SINK ENC-CVTSI2SD-RR ;] E-OPERAND TTHROWSQ
-   [: -1 >R64 XMM0 SINK ENC-CVTTSD2SI-RR ;] E-OPERAND TTHROWSQ
-   [: 16 >XMM RAX MEM-AT SINK ENC-MOVSD-RM ;] E-OPERAND TTHROWSQ
-   [: -1 >XMM RAX MEM-AT SINK ENC-MOVSD-MR ;] E-OPERAND TTHROWSQ
-   [: XMM0 16 32 lshift >MEM SINK ENC-MOVSD-RM ;] E-OPERAND TTHROWSQ
-   [: XMM0 4 37 lshift >MEM SINK ENC-MOVSD-MR ;] E-OPERAND TTHROWSQ
-   [: XMM0 1 44 lshift >MEM SINK ENC-MOVSD-RM ;] E-OPERAND TTHROWSQ
-   [: 16 >XMM RAX SINK ENC-MOVQ-XR ;] E-OPERAND TTHROWSQ
-   [: XMM0 16 >R64 SINK ENC-MOVQ-XR ;] E-OPERAND TTHROWSQ
-   [: -1 >R64 XMM0 SINK ENC-MOVQ-RX ;] E-OPERAND TTHROWSQ
-   [: RAX 16 >XMM SINK ENC-MOVQ-RX ;] E-OPERAND TTHROWSQ
-   [: 16 >XMM RAX MEM-AT SINK ENC-MOVDQU-RM ;] E-OPERAND TTHROWSQ
-   [: XMM0 XMM0 256 >IMM8 SINK ENC-PSHUFD-RRI8 ;] E-OPERAND TTHROWSQ
-   [: XMM0 XMM0 -1 >IMM8 SINK ENC-PALIGNR-RRI8 ;] E-OPERAND TTHROWSQ
-   [: XMM0 16 >XMM SINK ENC-SHA256RNDS2-RR ;] E-OPERAND TTHROWSQ
+   X64ASM:RAX SINK X64ASM:ENC-PUSH
+   [: 16 X64ASM:>XMM X64ASM:XMM0 SINK X64ASM:ENC-MOVSD-RR ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:XMM0 -1 X64ASM:>XMM SINK X64ASM:ENC-ADDSD-RR ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:XMM0 16 X64ASM:>R64 SINK X64ASM:ENC-CVTSI2SD-RR ;] X64ASM:E-OPERAND TTHROWSQ
+   [: -1 X64ASM:>R64 X64ASM:XMM0 SINK X64ASM:ENC-CVTTSD2SI-RR ;] X64ASM:E-OPERAND TTHROWSQ
+   [: 16 X64ASM:>XMM X64ASM:RAX X64ASM:MEM-AT SINK X64ASM:ENC-MOVSD-RM ;] X64ASM:E-OPERAND TTHROWSQ
+   [: -1 X64ASM:>XMM X64ASM:RAX X64ASM:MEM-AT SINK X64ASM:ENC-MOVSD-MR ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:XMM0 16 32 lshift X64ASM:>MEM SINK X64ASM:ENC-MOVSD-RM ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:XMM0 4 37 lshift X64ASM:>MEM SINK X64ASM:ENC-MOVSD-MR ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:XMM0 1 44 lshift X64ASM:>MEM SINK X64ASM:ENC-MOVSD-RM ;] X64ASM:E-OPERAND TTHROWSQ
+   [: 16 X64ASM:>XMM X64ASM:RAX SINK X64ASM:ENC-MOVQ-XR ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:XMM0 16 X64ASM:>R64 SINK X64ASM:ENC-MOVQ-XR ;] X64ASM:E-OPERAND TTHROWSQ
+   [: -1 X64ASM:>R64 X64ASM:XMM0 SINK X64ASM:ENC-MOVQ-RX ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:RAX 16 X64ASM:>XMM SINK X64ASM:ENC-MOVQ-RX ;] X64ASM:E-OPERAND TTHROWSQ
+   [: 16 X64ASM:>XMM X64ASM:RAX X64ASM:MEM-AT SINK X64ASM:ENC-MOVDQU-RM ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:XMM0 X64ASM:XMM0 256 X64ASM:>IMM8 SINK X64ASM:ENC-PSHUFD-RRI8 ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:XMM0 X64ASM:XMM0 -1 X64ASM:>IMM8 SINK X64ASM:ENC-PALIGNR-RRI8 ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:XMM0 16 X64ASM:>XMM SINK X64ASM:ENC-SHA256RNDS2-RR ;] X64ASM:E-OPERAND TTHROWSQ
    s" 50" X= ;
 
 \ The five relative branches. A displacement is measured from the END of the
@@ -667,61 +666,61 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
 \ with llvm-objdump from an object llvm-mc assembled from `1: .space N` / `jl 1b`.
 : BRANCHES ( -- )
    \ llvm-objdump: eb f4  jmp  (10 bytes back)
-   -12 >REL SINK ENC-JMP-REL8   s" ebf4" X=
+   -12 X64ASM:>REL SINK X64ASM:ENC-JMP-REL8   s" ebf4" X=
    \ llvm-objdump: e9 33 ff ff ff  jmp  (200 bytes back)
-   -205 >REL SINK ENC-JMP-REL32   s" e933ffffff" X=
+   -205 X64ASM:>REL SINK X64ASM:ENC-JMP-REL32   s" e933ffffff" X=
    \ llvm-objdump: e8 33 ff ff ff  callq  (200 bytes back)
-   -205 >REL SINK ENC-CALL-REL32   s" e833ffffff" X=
+   -205 X64ASM:>REL SINK X64ASM:ENC-CALL-REL32   s" e833ffffff" X=
    \ llvm-objdump: 7c f4  jl  (10 bytes back)
-   C-L -12 >REL SINK ENC-JCC-REL8   s" 7cf4" X=
+   X64ASM:C-L -12 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8   s" 7cf4" X=
    \ llvm-objdump: 0f 85 32 ff ff ff  jne  (200 bytes back)
-   C-NE -206 >REL SINK ENC-JCC-REL32   s" 0f8532ffffff" X= ;
+   X64ASM:C-NE -206 X64ASM:>REL SINK X64ASM:ENC-JCC-REL32   s" 0f8532ffffff" X= ;
 
 \ A rejected operand must also leave the sink untouched: every encoder screens
 \ every operand before its first byte, so a rejection cannot deposit the prefix of
 \ an instruction that was never emitted.
 : REGISTER-REJECTIONS ( -- )
-   [: 16 >R64 SINK ENC-PUSH ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: -1 >R64 SINK ENC-NEG ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: 16 >R8 0 >R8 SINK ENC-MOV8-RR ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: 0 >R16 16 >R16 SINK ENC-MOV16-RR ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: 0 >R32 -1 >R32 SINK ENC-XOR32-RR ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
+   [: 16 X64ASM:>R64 SINK X64ASM:ENC-PUSH ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: -1 X64ASM:>R64 SINK X64ASM:ENC-NEG ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: 16 X64ASM:>R8 0 X64ASM:>R8 SINK X64ASM:ENC-MOV8-RR ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: 0 X64ASM:>R16 16 X64ASM:>R16 SINK X64ASM:ENC-MOV16-RR ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: 0 X64ASM:>R32 -1 X64ASM:>R32 SINK X64ASM:ENC-XOR32-RR ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
 
 : IMMEDIATE-REJECTIONS ( -- )
-   [: RAX 128 >IMM8 SINK ENC-ADD-RI8 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: RAX -129 >IMM8 SINK ENC-ADD-RI8 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: RAX 2147483648 >IMM32 SINK ENC-MOV-RI32 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: RAX -2147483649 >IMM32 SINK ENC-MOV-RI32 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: X64ASM:RAX 128 X64ASM:>IMM8 SINK X64ASM:ENC-ADD-RI8 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: X64ASM:RAX -129 X64ASM:>IMM8 SINK X64ASM:ENC-ADD-RI8 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: X64ASM:RAX 2147483648 X64ASM:>IMM32 SINK X64ASM:ENC-MOV-RI32 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: X64ASM:RAX -2147483649 X64ASM:>IMM32 SINK X64ASM:ENC-MOV-RI32 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
    \ B8+rd zero-extends, so its immediate is unsigned where C7 /0's is signed.
-   [: 0 >R32 -1 >IMM32 SINK ENC-MOV32-RI32 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: 0 >R32 4294967296 >IMM32 SINK ENC-MOV32-RI32 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: RAX 64 >IMM8 SINK ENC-SHL-RI8 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: RAX -1 >IMM8 SINK ENC-SAR-RI8 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
+   [: 0 X64ASM:>R32 -1 X64ASM:>IMM32 SINK X64ASM:ENC-MOV32-RI32 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: 0 X64ASM:>R32 4294967296 X64ASM:>IMM32 SINK X64ASM:ENC-MOV32-RI32 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: X64ASM:RAX 64 X64ASM:>IMM8 SINK X64ASM:ENC-SHL-RI8 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: X64ASM:RAX -1 X64ASM:>IMM8 SINK X64ASM:ENC-SAR-RI8 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
 
 : MEMORY-REJECTIONS ( -- )
    \ rsp is the "no index" encoding, so it can never BE an index.
-   [: RAX RSP 4 0 MEM-IDX drop ;] E-OPERAND TTHROWSQ
-   [: RAX RBX 3 0 MEM-IDX drop ;] E-OPERAND TTHROWSQ
-   [: RAX RBX 0 0 MEM-IDX drop ;] E-OPERAND TTHROWSQ
-   [: RAX 2147483648 MEM-OFF drop ;] E-OPERAND TTHROWSQ
-   [: -2147483649 MEM-RIP drop ;] E-OPERAND TTHROWSQ
+   [: X64ASM:RAX X64ASM:RSP 4 0 X64ASM:MEM-IDX drop ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:RAX X64ASM:RBX 3 0 X64ASM:MEM-IDX drop ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:RAX X64ASM:RBX 0 0 X64ASM:MEM-IDX drop ;] X64ASM:E-OPERAND TTHROWSQ
+   [: X64ASM:RAX 2147483648 X64ASM:MEM-OFF drop ;] X64ASM:E-OPERAND TTHROWSQ
+   [: -2147483649 X64ASM:MEM-RIP drop ;] X64ASM:E-OPERAND TTHROWSQ
    \ A memory operand forged through the generated cast is screened on the way in.
-   [: RAX 16 32 lshift >MEM SINK ENC-MOV-RM ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: RAX 4 37 lshift >MEM SINK ENC-MOV-RM ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: RAX 1 44 lshift >MEM SINK ENC-MOV-RM ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
+   [: X64ASM:RAX 16 32 lshift X64ASM:>MEM SINK X64ASM:ENC-MOV-RM ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: X64ASM:RAX 4 37 lshift X64ASM:>MEM SINK X64ASM:ENC-MOV-RM ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: X64ASM:RAX 1 44 lshift X64ASM:>MEM SINK X64ASM:ENC-MOV-RM ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
 
 : BRANCH-REJECTIONS ( -- )
-   [: 128 >REL SINK ENC-JMP-REL8 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: -129 >REL SINK ENC-JMP-REL8 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: 2147483648 >REL SINK ENC-JMP-REL32 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: 16 >CONDITION 0 >REL SINK ENC-JCC-REL8 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: -1 >CONDITION 0 >REL SINK ENC-JCC-REL32 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: 16 >CONDITION 0 >R8 SINK ENC-SETCC ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
+   [: 128 X64ASM:>REL SINK X64ASM:ENC-JMP-REL8 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: -129 X64ASM:>REL SINK X64ASM:ENC-JMP-REL8 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: 2147483648 X64ASM:>REL SINK X64ASM:ENC-JMP-REL32 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: 16 X64ASM:>CONDITION 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL8 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: -1 X64ASM:>CONDITION 0 X64ASM:>REL SINK X64ASM:ENC-JCC-REL32 ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: 16 X64ASM:>CONDITION 0 X64ASM:>R8 SINK X64ASM:ENC-SETCC ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
 
 \ The lock prefix is the first byte, so a rejected operand must stop it too.
 : LOCK-REJECTIONS ( -- )
-   [: RAX 16 32 lshift >MEM SINK ENC-LOCK-XADD-MR ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
-   [: 16 >R64 RCX MEM-AT SINK ENC-LOCK-CMPXCHG-MR ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
+   [: X64ASM:RAX 16 32 lshift X64ASM:>MEM SINK X64ASM:ENC-LOCK-XADD-MR ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: 16 X64ASM:>R64 X64ASM:RCX X64ASM:MEM-AT SINK X64ASM:ENC-LOCK-CMPXCHG-MR ;] X64ASM:E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
 
 \ The operand types themselves: an ill-formed instruction is a CHECKER rejection,
 \ not a runtime throw. -1 is accepted, 0 rejected.
@@ -777,9 +776,9 @@ TYPED-VARIABLE SINK-CELL ^VEC:vector<u8>
 \ The relocation writer patches the imm64 at this offset; the movabs case above
 \ is ten bytes long, so the immediate is its last eight.
 : RELOCATION-CONTRACT ( -- )
-   MOV-RI64-IMM-OFF 2 T=
-   R11 $1122334455667788 >IMM64 SINK ENC-MOV-RI64
-   SINK-LEN MOV-RI64-IMM-OFF 8 + T=
+   X64ASM:MOV-RI64-IMM-OFF 2 T=
+   X64ASM:R11 $1122334455667788 X64ASM:>IMM64 SINK X64ASM:ENC-MOV-RI64
+   SINK-LEN X64ASM:MOV-RI64-IMM-OFF 8 + T=
    SINK 0 VEC:RESIZE ;
 
 : RUN ( -- )

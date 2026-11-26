@@ -29,7 +29,6 @@ require src/lib/json.f
 require src/habu/verify-source.f
 
 package LSP-CHECK
-using SOURCE-ROOT
 
 TYPED-VARIABLE CHK-BYTES-A ^u8
 variable CHK-BYTES-U
@@ -175,7 +174,7 @@ variable VFY-TARGET-U
 \ whether or not a file is there yet.
 : VFY-PATH! ( str -- ) {: s:str :}
    s STR:LEN 0= if E-FS-PATH throw then
-   s CANONICAL drop {: c:str :}
+   s SOURCE-ROOT:CANONICAL drop {: c:str :}
    c STR:LEN PATH-CAP > if E-FS-CAPACITY throw then
    c STR:DATA VFY-PATH c STR:LEN BYTE-COPY
    c STR:LEN VFY-PATH-U ! ;
@@ -1143,5 +1142,4 @@ public
    VFY-ANSWER @ VFY-MISSING =  VFY-ANSWER @ VFY-UNREAD =  or
    if VFY-TARGET$ else NULL$ then ;
 
-;using
 ;package
