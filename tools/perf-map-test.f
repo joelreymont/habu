@@ -3,7 +3,7 @@
 \   perf record -g -o perf.data -- bin/hb --load <program>; perf script -i perf.data
 \ A header's pid and period also read as hex, so only a call-chain line's first
 \ column may be mapped. A captured address belongs to another binary, so the
-\ resolution case builds its line from a word defined here.
+\ resolution cases build their lines from this dictionary's records.
 require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
@@ -13,11 +13,8 @@ require tools/perf-map-core.f
 package PERF-MAP-TEST
 private
 
-\ The word the resolution case looks for. Package-qualified on purpose: the
-\ rewritten line must carry the qualifier, not the bare name.
-public
+\ Compiled by this process, as a profiled program's words are: it stays hex.
 : MARKER ( n -- n ) 1+ ;
-private
 
 create HEXBUF 32 allot
 variable HV
@@ -85,21 +82,26 @@ variable ACC
    s s" [unknown]" STR:CONTAINS? TTRUE
    s s" (/tmp/hz-prof/H)" STR:CONTAINS? TTRUE ;
 
-\ A live address resolves to its package-qualified word, and the rest of the
-\ line - symbol column and dso - is left alone.
-: LIVE-FRAME$ ( -- str )
-   s" MARKER" FIND-REC {: idx:n :}
-   idx 0 < if s" perf-map-test: MARKER is not in the dictionary" EXIT-STATUS:FAILURE die then
+: FRAME-AT$ ( str -- str ) {: name:str :}   \ a call-chain line at the word's start
+   name FIND-REC {: idx:n :}
+   idx 0 < if s" perf-map-test: a case's word is not in the dictionary" EXIT-STATUS:FAILURE die then
    SB-RESET
    S\" \t          " SB-APPEND
    idx XREF-REC XREF-START HEX+
    s"  [unknown] (bin/hb)" SB-APPEND
    SB$ ;
 
-: T-LIVE-RESOLVES ( -- )
-   LIVE-FRAME$ PERF-MAP:LINE$ {: s:str :}
-   s s" PERF-MAP-TEST:MARKER" STR:CONTAINS? TTRUE
+\ An engine word's address resolves to its package-qualified name, and the rest
+\ of the line - symbol column and dso - is left alone.
+: T-ENGINE-WORD-RESOLVES ( -- )
+   s" COUNT-SUB" FRAME-AT$ PERF-MAP:LINE$ {: s:str :}
+   s s" STR:COUNT-SUB" STR:CONTAINS? TTRUE
    s s" (bin/hb)" STR:CONTAINS? TTRUE ;
+
+: T-PROGRAM-WORD-STAYS-HEX ( -- )
+   s" MARKER" FRAME-AT$ PERF-MAP:LINE$ {: s:str :}
+   s s" MARKER" STR:CONTAINS? TFALSE
+   s s" [unknown]" STR:CONTAINS? TTRUE ;
 
 \ The header pid is a seven-digit run that is also valid hex.
 : T-PID-NOT-AN-ADDRESS ( -- )
@@ -112,7 +114,8 @@ variable ACC
    T-FRAME-KEPT
    T-FOREIGN-STAYS-HEX
    T-ENGINE-FRAME-KEPT
-   T-LIVE-RESOLVES
+   T-ENGINE-WORD-RESOLVES
+   T-PROGRAM-WORD-STAYS-HEX
    T-PID-NOT-AN-ADDRESS
    T-REPORT ;
 

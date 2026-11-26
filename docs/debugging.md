@@ -342,8 +342,10 @@ compiled for itself, because it is all one anonymous mapping.
 ### Cross-checking with external perf
 
 `perf record -g` prints every Habu word as `[unknown]`; `tools/perf-map.f` puts
-the names back through the profiler's own search. Its chains are no better than
-the profiler's walk: Habu words keep no frame pointer (src/habu/prof.f).
+the engine's names back through the profiler's own search. The program's own
+words stay hex: perf-map compiles its words where the program compiled them. Its
+chains are no better than the profiler's walk: Habu words keep no frame pointer
+(src/habu/prof.f).
 
 ```
 perf record -g bin/hb --load prog.f

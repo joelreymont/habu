@@ -104,10 +104,12 @@ variable MAPPED    \ has this line's address column been rewritten already
    s STR:LEN 0 ?do s STR:DATA i + c@ HEX-DIGIT 0 < if 0 OK ! then loop
    OK @ 0<> ;
 
+\ A record past hb's seal is one this process compiled, at the addresses the
+\ profiled program compiled its own words to, so it names nothing.
 : ADDR+ ( str -- ) {: s:str :}
    s HEX@ {: addr:n :}
    addr prof-pc>rec {: idx:n :}
-   idx 0 < if s OUT+ exit then
+   idx 0 <  idx SEAL-NDICT@ >= or if s OUT+ exit then
    idx QNAME+
    addr idx XREF-REC XREF-START - {: off:n :}
    off 0 > if s" +" OUT+ off DEC+ then ;
