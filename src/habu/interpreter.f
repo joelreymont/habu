@@ -1007,7 +1007,7 @@ EXPORT CHECK:REJECT-DUPLICATE
    s t REJECTION:DICTIONARY-FULL ;
 
 : CODE-ROOM ( str str n -- ) {: s:str t:str used:n :}
-   s STR:DATA s STR:LEN  t STR:DATA t STR:LEN  used CODE-SPACE:ROOM ;
+   s t used CODE-SPACE:ROOM ;
 
 : PKG-CODE-ROOM ( str str -- ) 0 CODE-ROOM ;
 

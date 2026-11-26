@@ -15004,15 +15004,15 @@ private
 
 public
 
-\ Rejects the name a u, empty when its copy is placed, and used bytes of code
-\ after it at cp@, placed at t tu, unless they fit below the ceiling. A
-\ definition places at least one byte.
-: ROOM ( ^u8 n ^u8 n n -- ) {: a:^ u:n t:^ tu:n used:n :}
-   u used FITS-AFTER? IF EXIT THEN
+\ Rejects the name, empty when its copy is placed, and used bytes of code after
+\ it at cp@, placed at t, unless they fit below the ceiling. A definition
+\ places at least one byte.
+: ROOM ( str str n -- ) {: name:str t:str used:n :}
+   name STR:LEN used FITS-AFTER? IF EXIT THEN
    s" E-CODE-SPACE-FULL" REJECTION:OPEN
    s" the code space is full at `" REJECTION:EMIT-STR
-   t tu >str REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   t tu >str REJECTION:AT  s" no code space left" REJECTION:EMIT-STR
+   t REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   t REJECTION:AT  s" no code space left" REJECTION:EMIT-STR
    REJECTION:HELP
    s" load fewer or smaller definitions into this image" REJECTION:EMIT-STR
    EXIT-STATUS:FULL REJECTION:STOP ;
@@ -15200,7 +15200,7 @@ public
    s NS-ROW {: rec:^ :}
    rec NULL-PTR <> IF rec EXIT THEN
    s ROOM
-   s STR:DATA s STR:LEN  s STR:DATA s STR:LEN  0 CODE-SPACE:ROOM
+   s s 0 CODE-SPACE:ROOM
    s own namespace-record drop
    s NS-ROW ;
 private

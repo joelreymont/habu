@@ -53,7 +53,7 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
    rec XREF-NAME$ {: name:str :}
    cp@ {: cp:n :}
    rec OPEN-CP TRUNCATE
-   name STR:DATA name STR:LEN  name STR:DATA name STR:LEN  size CODE-SPACE:ROOM
+   name name size CODE-SPACE:ROOM
    cp TRUNCATE ;
 
 \ The bytes size bytes of code and the u bytes written after them take: each
