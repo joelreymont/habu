@@ -1,4 +1,3 @@
-split-str
 \ boot-x64.f - the x86-64 process entry, package X64BOOT. START, emits
 \ `_start` up to its first run-time state, and falls through into whatever the
 \ stream emits next. It is straight-line code that never calls or pushes, and
@@ -209,13 +208,13 @@ private
 \ Bind a failure at the label: its line, newline included, to fd 2 in one
 \ write, then exit with the status. The line follows the exit syscall inside
 \ the loaded text, so it is readable before any region exists.
-: FAIL, ( label str n -- ) {: at:label a:^ u:n rc:n :}
+: FAIL, ( label str n -- ) {: at:label t:str rc:n :}
    X64CODE:LBL {: msg:label :}
    at X64CODE:LBL,
-   X64ASM:RDI STDERR IMM,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX u IMM,  NR-WRITE SYS,
+   X64ASM:RDI STDERR IMM,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX t STR:LEN IMM,  NR-WRITE SYS,
    X64ASM:RDI rc IMM,  NR-EXIT-GROUP SYS,
    msg X64CODE:LBL,
-   a u X64CODE:BYTES, ;
+   t X64CODE:BYTES, ;
 
 \ The width of the stub's one write: under PIPE_BUF, so a pipe takes it whole.
 4 constant SIGNO-BYTES
@@ -563,8 +562,8 @@ $F constant NIBBLE
 \ A stack's overflow record: `in` the word at the saved rip, read from the
 \ records at DICT-REG, which the saved r14 counts; `at` the rip when DICT-REG
 \ is 0 or no word holds it.
-: STACK-RECORD, ( str -- ) {: a:^ u:n :}
-   s" E-STACK-BOUNDS" a u X64CRASH:FAULT-OPEN,
+: STACK-RECORD, ( str -- ) {: t:str :}
+   s" E-STACK-BOUNDS" t X64CRASH:FAULT-OPEN,
    X64ASM:RDI UC-REG UC-RIP X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64ASM:RSI DICT-REG X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
    X64ASM:RDX UC-REG ENGINE-GPR:X64-NDICT X64ASM:>R64 UC-GREG X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
@@ -680,7 +679,7 @@ $F constant NIBBLE
 \ code lines, then, from the raise label, the signal re-raised, returning
 \ through the restorer label for the default action's frame.
 : DUMP, ( label label label label -- ) {: head:label hex:label rest:label raise:label :}
-   X64ASM:RDI STDERR IMM,  X64ASM:RSI head X64CODE:MOVABS,  X64ASM:RDX HEAD$ nip IMM,  NR-WRITE SYS,
+   X64ASM:RDI STDERR IMM,  X64ASM:RSI head X64CODE:MOVABS,  X64ASM:RDX HEAD$ STR:LEN IMM,  NR-WRITE SYS,
    X64ASM:RAX SIG-REG X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  hex VALUE-ORDER PRINT,
    16 0 ?do
       X64ASM:RAX UC-REG i X64ASM:>R64 UC-GREG X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM  hex VALUE-ORDER PRINT,
@@ -775,21 +774,21 @@ variable HEX-AT
 \ The address, the stack's top when the stack holds one, and the return address.
 : BP-PRINT-HIT, ( label label -- ) {: head:label lr:label :}
    X64CODE:LBL {: empty:label :}
-   head BP-HEAD$ nip BP-LINE,
+   head BP-HEAD$ STR:LEN BP-LINE,
    X64ASM:RAX X64ASM:R14 X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  BP-HEX,
    X64ASM:R15 X64ASM:R13 STACK-ABI:BASE-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64ASM:RCX X64ASM:RBX DSTACK-REG UC-GREG X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64ASM:RCX X64ASM:R15 X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-BE empty X64CODE:JCC,
    X64ASM:RAX X64ASM:RCX CELL negate X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM  BP-HEX,
    empty X64CODE:LBL,
-   lr BP-LR$ nip BP-LINE,
+   lr BP-LR$ STR:LEN BP-LINE,
    X64ASM:RCX X64ASM:RBX X64ASM:RSP UC-GREG X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64ASM:RAX X64ASM:RCX X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-RM  BP-HEX, ;
 
 \ The data stack from its base, r15, up to the saved stack pointer.
 : BP-PRINT-STACK, ( label -- ) {: head:label :}
    X64CODE:LBL X64CODE:LBL {: next:label done:label :}
-   head BP-STACK$ nip BP-LINE,
+   head BP-STACK$ STR:LEN BP-LINE,
    next X64CODE:LBL,
       X64ASM:RCX X64ASM:RBX DSTACK-REG UC-GREG X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
       X64ASM:R15 X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-AE done X64CODE:JCC,
@@ -806,7 +805,7 @@ variable HEX-AT
    X64ASM:R15 X64ASM:R13 BPWBASE-CELL X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64ASM:R15 X64ASM:R15 X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E done X64CODE:JCC,
    X64ASM:R9 X64ASM:R15 X64ASM:RCX CELL 0 X64ASM:MEM-IDX X64CODE:ASM-SINK X64ASM:ENC-LEA
-   head BP-WATCH$ nip BP-LINE,
+   head BP-WATCH$ STR:LEN BP-LINE,
    next X64CODE:LBL,
       X64ASM:R15 X64ASM:R9 X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-AE done X64CODE:JCC,
       X64ASM:R10 X64ASM:R15 X64ASM:MEM-AT X64CODE:ASM-SINK X64ASM:ENC-MOV-RM

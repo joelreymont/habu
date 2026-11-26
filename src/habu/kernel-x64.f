@@ -1,4 +1,3 @@
-split-str
 \ kernel-x64.f - the x86-64 engine's primitive bodies (package X64KERNEL): the
 \ twins of habu1.f's bodies for the rows of src/habu/prims.f, written through
 \ X64ASM and registered in src/habu/primitive-registry.f as habu1.f FPRIM does.
@@ -121,10 +120,11 @@ variable SCOPE-KIND-CELL
 defer BODY ( -- )
 PTR-VARIABLE ROW-A
 variable ROW-U
-: ROW$ ( -- str ) ROW-A @ ROW-U @ ;
+: ROW$ ( -- str ) ROW-A @ ROW-U @ >str ;
 
 : ARGS ( str [ -- ] -- )
-   is BODY  ROW-U !  ROW-A !
+   is BODY  {: name:str :}
+   name STR:DATA ROW-A !  name STR:LEN ROW-U !
    ROW$ ENGINE-PRIMS:SPEC-CHECK ;
 
 \ The record spans [first, last): the body and the ret after it.
@@ -137,11 +137,11 @@ variable ROW-U
    X64ASM:RDI STDERR IMM32,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX len IMM32,  NR-WRITE SYS, ;
 
 \ The text follows the exit, inside the record.
-: STDERR-EXIT, ( str n -- ) {: a:^ u:n rc:n :}
+: STDERR-EXIT, ( str n -- ) {: t:str rc:n :}
    X64CODE:LBL {: msg:label :}
-   msg u STDERR-WRITE,
+   msg t STR:LEN STDERR-WRITE,
    rc EXIT-GROUP,
-   msg X64CODE:LBL,  a u X64CODE:BYTES, ;
+   msg X64CODE:LBL,  t X64CODE:BYTES, ;
 
 public
 
@@ -149,13 +149,13 @@ public
    ARGS
    EMIT-ROW ;
 
-: ENTRY-LABEL ( str -- label ) {: a:^ u:n :}
+: ENTRY-LABEL ( str -- label ) {: name:str :}
    ENGINE-PRIMS:COUNT 0 ?do
-      i ENGINE-PRIMS:NAME$ a u STR:= if
+      i ENGINE-PRIMS:NAME$ name STR:= if
          i ENGINE-PRIMS:FIRST-LABEL unloop exit
       then
    loop
-   s" x64kernel: no registered body named " type a u type cr
+   s" x64kernel: no registered body named " type name type cr
    s" x64kernel: ENTRY-LABEL names no registered body" EXIT-STATUS:INTERNAL die ;
 
 \ The live-task retreat guard, also exercised by the bare kernel fixture.
@@ -317,16 +317,16 @@ $20 constant FOLD-BIT
 \ change. It runs before the row's first call or machine-stack push, so [rsp]
 \ is the caller's return address.
 : MUTATION-GUARD, ( str str str n -- )
-   {: p:^ pu:n r:^ ru:n h:^ hu:n cell:n :}
+   {: p:str r:str h:str cell:n :}
    X64CODE:LBL {: ok:label :}
    X64ASM:RAX cell CELL@,
    X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E ok X64CODE:JCC,
-   s" E-TASK-COMPILE"  p pu r ru FAULT-RECORD:GUARD-MSG$  X64CRASH:FAULT-OPEN,
+   s" E-TASK-COMPILE"  p r FAULT-RECORD:GUARD-MSG$  X64CRASH:FAULT-OPEN,
    X64ASM:RDI X64ASM:RSP FAULT-RECORD:FAULT-FRAME X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64ASM:RSI DBASE-REG X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
    X64ASM:RDX NDICT-REG X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
    X64CRASH:FAULT-IN,
-   h hu EXIT-STATUS:TASK-COMPILE X64CRASH:FAULT-STOP,
+   h EXIT-STATUS:TASK-COMPILE X64CRASH:FAULT-STOP,
    ok X64CODE:LBL, ;
 
 \ The main thread alone defines and allots: a task's or callback's DATA holds
@@ -1679,7 +1679,7 @@ private
    X64ASM:RCX X64ASM:RAX -1 X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-LEA
    X64ASM:RCX 254 X64ASM:>IMM32 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI32  X64ASM:C-BE done X64CODE:JCC,
    X64ASM:R8 X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
-   head s" hb: uncaught throw code " nip STDERR-WRITE,
+   head s" hb: uncaught throw code " STR:LEN STDERR-WRITE,
    X64ASM:R8 X64ASM:R8 X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-NS number X64CODE:JCC,
    minus 1 STDERR-WRITE,
    X64ASM:R8 X64CODE:ASM-SINK X64ASM:ENC-NEG
@@ -2907,9 +2907,10 @@ variable SEAL-TRAP-CELL
 
 \ Store the suffix's bytes at rdi and step past them.
 : SUFFIX, ( -- )
-   DOES-CLAUSE:SUFFIX$ {: a:^ u:n :}
+   DOES-CLAUSE:SUFFIX$ {: sfx:str :}
+   sfx STR:LEN {: u:n :}
    u 0 ?do
-      X64ASM:RAX a i + c@ IMM32,
+      X64ASM:RAX sfx STR:DATA i + c@ IMM32,
       0 X64ASM:>R8 X64ASM:RDI i X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV8-MR
    loop
    X64ASM:RDI u X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8 ;
@@ -2926,14 +2927,14 @@ variable SEAL-TRAP-CELL
    X64ASM:R11 DATA-REG PEND-CELL MOV-LOAD,                    \ the parent's record
    X64ASM:R11 X64ASM:RCX X64ASM:RAX NAME-LEN,
    X64ASM:R11 X64ASM:RDX X64ASM:RAX NAME-AT,
-   X64ASM:RCX DOES-CLAUSE:SUFFIX$ nip X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8
+   X64ASM:RCX DOES-CLAUSE:SUFFIX$ STR:LEN X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8
    X64ASM:RCX X64ASM:RSP DR-NAME-LEN MOV-STORE,
    X64ASM:RDX X64ASM:RSP DR-NAME MOV-STORE,
    X64ASM:RAX X64ASM:RCX SLOT-UP,
    X64ASM:RAX X64ASM:RSP DR-PAD MOV-STORE,
    X64ASM:RSI X64ASM:RSP DR-NAME MOV-LOAD,
    X64ASM:RDI cp X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  X64ASM:RDI WRITE-ALIAS,
-   X64ASM:RCX X64ASM:RSP DR-NAME-LEN MOV-LOAD,  X64ASM:RCX DOES-CLAUSE:SUFFIX$ nip X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SUB-RI8
+   X64ASM:RCX X64ASM:RSP DR-NAME-LEN MOV-LOAD,  X64ASM:RCX DOES-CLAUSE:SUFFIX$ STR:LEN X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SUB-RI8
    COPY-BYTES,                                         \ the parent's name
    SUFFIX,
    X64ASM:RCX X64ASM:RSP DR-PAD MOV-LOAD,
@@ -3407,11 +3408,11 @@ private
 
 \ Note `in` the word whose code holds the lr at rsp + off, read from the records
 \ at r13, and help; never returns.
-: POLICY-STOP, ( FAULT-RECORD:record str n -- ) {: h:^ hu:n lr:n :}
+: POLICY-STOP, ( FAULT-RECORD:record str n -- ) {: h:str lr:n :}
    X64ASM:RDI lr POLICY-ARG,
    X64ASM:RSI DBASE-REG X64CODE:ASM-SINK X64ASM:ENC-MOV-RR  X64ASM:RDX NDICT-REG X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
    X64CRASH:FAULT-IN,
-   h hu EXIT-STATUS:POLICY X64CRASH:FAULT-STOP, ;
+   h EXIT-STATUS:POLICY X64CRASH:FAULT-STOP, ;
 
 \ Unsealed it falls through, having written rax only.
 : POLICY-OPEN, ( -- )
@@ -4297,14 +4298,14 @@ CBT-BYTES 6 cells + constant CBT-LR  \ above the six saved VM registers
 \ the slot and C's return address, which no word owns, then exit
 \ EXIT-STATUS:CALLBACK. FAULT-OPEN, moves rsp, so rbx and r12, which the
 \ record never writes, carry both.
-: CB-DIE, ( str str label -- ) {: msg:^ mu:n help:^ hu:n at:label :}
+: CB-DIE, ( str str label -- ) {: msg:str help:str at:label :}
    at X64CODE:LBL,
    X64ASM:RBX X64ASM:RSP CBT-SLOT X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64ASM:R12 X64ASM:RSP CBT-LR X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
-   s" E-CALLBACK" msg mu X64CRASH:FAULT-OPEN,
+   s" E-CALLBACK" msg X64CRASH:FAULT-OPEN,
    s" slot" X64ASM:RBX X64CRASH:FAULT-NUMBER,
    s" caller" X64ASM:R12 X64CRASH:FAULT-ADDRESS,
-   help hu EXIT-STATUS:CALLBACK X64CRASH:FAULT-STOP, ;
+   help EXIT-STATUS:CALLBACK X64CRASH:FAULT-STOP, ;
 
 \ The twin of crash.f C-SIGNAL-STACK-ABSENT>R12: rax is nonzero when this
 \ thread has no alternate stack registered, as sigaltstack(NULL, old) answers
@@ -5259,14 +5260,14 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 
 \ rax = the active checker's operation at offset n of its record; with no
 \ record or no operation the process ends naming it.
-: OWNER-OP, ( n str -- ) {: off:n a:^ u:n :}
+: OWNER-OP, ( n str -- ) {: off:n t:str :}
    X64CODE:LBL X64CODE:LBL {: absent:label found:label :}
    X64ASM:RAX NCOMP-DISPATCH:DECL-CELL CELL@,
    X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E absent X64CODE:JCC,
    X64ASM:RAX X64ASM:RAX off X64ASM:MEM-OFF X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
    X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-NE found X64CODE:JCC,
    absent X64CODE:LBL,
-   a u EXIT-STATUS:INTERNAL STDERR-EXIT,
+   t EXIT-STATUS:INTERNAL STDERR-EXIT,
    found X64CODE:LBL, ;
 
 \ The active checker publishes width for NDICT-1 through its owner record.
@@ -5346,9 +5347,9 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    X64ASM:RAX X64ASM:R8 REC-WID MOV-LOAD,
    X64ASM:RAX WL:RETIRED X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI8  X64ASM:C-NE have X64CODE:JCC,
    none X64CODE:LBL,
-   class DOES-NONE-CLASS$ nip STDERR-WRITE,
+   class DOES-NONE-CLASS$ STR:LEN STDERR-WRITE,
    SOURCE-PLACE,
-   msg DOES-NONE$ nip STDERR-WRITE,
+   msg DOES-NONE$ STR:LEN STDERR-WRITE,
    X64ASM:RAX 70 IMM32,  THROW,
    class X64CODE:LBL,  DOES-NONE-CLASS$ X64CODE:BYTES,
    msg X64CODE:LBL,  DOES-NONE$ X64CODE:BYTES,

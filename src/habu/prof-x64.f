@@ -1,4 +1,3 @@
-split-str
 \ prof-x64.f - the x86-64 twin of src/habu/prof.f, package X64PROF: the SIGALRM handler, its pc
 \ index, the sync, the reports and the prof-* bodies src/habu/kernel-x64.f PROFILER, registers.
 \ The band and arena are PROF-ABI's (src/habu/prof-abi.f); prof.f EMIT-PROF's comment gives the design. What
@@ -189,11 +188,11 @@ variable SESSION-CELL
    hit X64CODE:LBL,  X64ASM:R11 CELL WEIGHT,  X64ASM:R11 X64ASM:R10 CELL ADD-MEM,
    done X64CODE:LBL,  X64CODE:RET, ;
 
-: REJECTED, ( str -- ) {: a:^ u:n :}
+: REJECTED, ( str -- ) {: t:str :}
    X64CODE:LBL {: msg:label :}
-   X64ASM:RDI STDERR IMM32,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX u IMM32,  NR-WRITE SYS,
+   X64ASM:RDI STDERR IMM32,  X64ASM:RSI msg X64CODE:MOVABS,  X64ASM:RDX t STR:LEN IMM32,  NR-WRITE SYS,
    X64ASM:RDI EXIT-STATUS:SYSTEM IMM32,  NR-EXIT-GROUP SYS,
-   msg X64CODE:LBL,  a u X64CODE:BYTES, ;
+   msg X64CODE:LBL,  t X64CODE:BYTES, ;
 
 \ rdi = a live dictionary record; rsi/rdx = its raw name bytes and exact
 \ length. The caller copies those bytes before a rewind can reuse the record.
@@ -863,12 +862,12 @@ variable SESSION-CELL
 \ of prof.f's printers. Each writes fd 1 directly, as those do.
 
 \ Write the text; its bytes sit in the stream behind a jump.
-: SAY, ( str -- ) {: a:^ u:n :}
+: SAY, ( str -- ) {: t:str :}
    X64CODE:LBL X64CODE:LBL {: text:label past:label :}
    past X64CODE:JMP,
-   text X64CODE:LBL,  a u X64CODE:BYTES,
+   text X64CODE:LBL,  t X64CODE:BYTES,
    past X64CODE:LBL,
-   X64ASM:RDI STDOUT IMM32,  X64ASM:RSI text X64CODE:MOVABS,  X64ASM:RDX u IMM32,  NR-WRITE SYS, ;
+   X64ASM:RDI STDOUT IMM32,  X64ASM:RSI text X64CODE:MOVABS,  X64ASM:RDX t STR:LEN IMM32,  NR-WRITE SYS, ;
 
 \ Write the one byte, from a cell pushed for it.
 : BYTE, ( n -- ) {: c:n :}
@@ -994,16 +993,16 @@ variable SESSION-CELL
 
 \ A header field: the text, then the value in one column, from the frame, the
 \ band or the arena.
-: FRAME-FIELD, ( str n -- ) {: a:^ u:n off:n :}
-   a u SAY,  X64ASM:RAX off SLOT@,  1 NUM, ;
-: BAND-FIELD, ( str n -- ) {: a:^ u:n off:n :}
-   a u SAY,  X64ASM:RAX BAND-VA IMM,  X64ASM:RAX X64ASM:RAX off X64ASM:MEM-OFF LOAD,  1 NUM, ;
-: ARENA-FIELD, ( str n -- ) {: a:^ u:n off:n :}
-   a u SAY,  X64ASM:RAX X64ASM:R15 off X64ASM:MEM-OFF LOAD,  1 NUM, ;
+: FRAME-FIELD, ( str n -- ) {: t:str off:n :}
+   t SAY,  X64ASM:RAX off SLOT@,  1 NUM, ;
+: BAND-FIELD, ( str n -- ) {: t:str off:n :}
+   t SAY,  X64ASM:RAX BAND-VA IMM,  X64ASM:RAX X64ASM:RAX off X64ASM:MEM-OFF LOAD,  1 NUM, ;
+: ARENA-FIELD, ( str n -- ) {: t:str off:n :}
+   t SAY,  X64ASM:RAX X64ASM:R15 off X64ASM:MEM-OFF LOAD,  1 NUM, ;
 \ The deferred slots' summed weights, from r15 = arena: the twin of prof.f C-PROF-DEFER-WEIGHT.
-: DEFER-FIELD, ( str -- ) {: a:^ u:n :}
+: DEFER-FIELD, ( str -- ) {: t:str :}
    X64CODE:LBL X64CODE:LBL {: turn:label done:label :}
-   a u SAY,
+   t SAY,
    X64ASM:RAX ZERO-REG,  X64ASM:RCX X64ASM:R15 PROF-ABI:ARN-DEFER X64ASM:MEM-OFF LOAD,
    X64ASM:RDX X64ASM:R15 PROF-ABI:ARN-DEF PROF-ABI:PROF-SLOT-WEIGHT + X64ASM:MEM-OFF LEA,
    turn X64CODE:LBL,
@@ -1260,13 +1259,13 @@ private
 \ rax = n fresh read/write bytes. A failed mapping writes the text on fd 2
 \ and exits EXIT-STATUS:SYSTEM: a profiler that ran without its arena would report
 \ numbers nobody could trust (prof.f C-PROF-ARENA-MAP).
-: MAP, ( n str -- ) {: len:n a:^ u:n :}
+: MAP, ( n str -- ) {: len:n t:str :}
    X64CODE:LBL {: ok:label :}
    X64ASM:RDI ZERO-REG,  X64ASM:RSI len IMM32,  X64ASM:RDX PROT-RW IMM32,  X64ASM:R10 MAP-ANON-PRIVATE IMM32,
    X64ASM:R8 ALL-ONES,  X64ASM:R9 ZERO-REG,
    NR-MMAP SYS,
    X64ASM:C-AE ok X64CODE:JCC,
-   a u REJECTED,
+   t REJECTED,
    ok X64CODE:LBL, ;
 
 \ The arena, mapped on the first prof-on or prof-rate of the process and kept
