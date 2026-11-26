@@ -41,7 +41,8 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
 $$;
 
 -- A value without a zone is UTC's, the implicit timezone. Years are 0001 to
--- 294276, PostgreSQL's range, and fractions past a microsecond are cut.
+-- 294276, PostgreSQL's range, and fractions past a microsecond are cut. One out
+-- of range is no instant; pg_input_is_valid tells without a subtransaction.
 CREATE FUNCTION sparql.instant(value text,datatype text) RETURNS timestamptz
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
 BEGIN
@@ -54,9 +55,8 @@ BEGIN
     END IF;
     -- PostgreSQL reads no date with a zone west of UTC.
     IF value LIKE '%-__-__-__:__' THEN value := left(value,-6) || 'T00:00:00' || right(value,6); END IF;
-    RETURN (value || CASE WHEN value LIKE '%Z' OR value LIKE '%+__:__' OR value LIKE '%-__:__' THEN '' ELSE 'Z' END)::timestamptz;
-EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR datetime_field_overflow OR invalid_datetime_format THEN
-    RETURN NULL;
+    value := value || CASE WHEN value LIKE '%Z' OR value LIKE '%+__:__' OR value LIKE '%-__:__' THEN '' ELSE 'Z' END;
+    RETURN CASE WHEN pg_input_is_valid(value,'timestamptz') THEN value::timestamptz END;
 END $$;
 
 CREATE FUNCTION sparql.boolean(value boolean) RETURNS jsonb
@@ -112,26 +112,30 @@ BEGIN
 END $$;
 
 -- The value of an xsd:float or xsd:double lexical form. One past its datatype's
--- range is INF, -INF or a zero of its sign (XSD 1.1 part 2, floatingPointRound).
--- The cast raises out of range for both: the form is too large when its first
--- nonzero digit, moved by the exponent, stands before the point. The length
--- bound is numeric's, and keeps the exponent within one.
+-- range is INF, -INF or a zero of its sign (XSD 1.1 part 2, floatingPointRound):
+-- the form is too large when its first nonzero digit, moved by the exponent,
+-- stands before the point. pg_input_is_valid tells a form the cast cannot read
+-- without a subtransaction. The length bound is numeric's, and keeps the
+-- exponent within one.
 CREATE FUNCTION sparql.float_value(value text, kind text) RETURNS double precision
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
-DECLARE mantissa text; whole text; place numeric;
+DECLARE mantissa text; whole text;
 BEGIN
-    IF octet_length(value)>16383 THEN RETURN NULL; END IF;
     IF value IN ('INF','+INF','-INF','NaN') THEN RETURN replace(value,'INF','Infinity')::double precision; END IF;
+    IF octet_length(value)>16383 THEN RETURN NULL; END IF;
+    -- Of these characters the cast reads only the decimal form, and all of it.
+    IF value !~ '[^0-9.eE+-]' AND (CASE kind WHEN 'float' THEN pg_input_is_valid(value,'real')
+                                             ELSE pg_input_is_valid(value,'double precision') END) THEN
+        RETURN CASE kind WHEN 'float' THEN value::real ELSE value::double precision END;
+    END IF;
     IF value !~ '^[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?$' THEN RETURN NULL; END IF;
-    RETURN CASE kind WHEN 'float' THEN value::real ELSE value::double precision END;
-EXCEPTION WHEN numeric_value_out_of_range THEN
     mantissa := ltrim(split_part(lower(value),'e',1),'+-');
     whole := ltrim(split_part(mantissa,'.',1),'0');
-    place := coalesce(nullif(split_part(lower(value),'e',2),''),'0')::numeric
-           + CASE WHEN whole<>'' THEN length(whole)
-                  ELSE length(ltrim(split_part(mantissa,'.',2),'0'))-length(split_part(mantissa,'.',2)) END;
     RETURN (CASE WHEN starts_with(value,'-') THEN '-' ELSE '' END
-            || CASE WHEN place>0 THEN 'Infinity' ELSE '0' END)::double precision;
+            || CASE WHEN coalesce(nullif(split_part(lower(value),'e',2),''),'0')::numeric
+                         + CASE WHEN whole<>'' THEN length(whole)
+                                ELSE length(ltrim(split_part(mantissa,'.',2),'0'))-length(split_part(mantissa,'.',2)) END>0
+                    THEN 'Infinity' ELSE '0' END)::double precision;
 END $$;
 
 CREATE FUNCTION sparql.float_numeric(value text, kind text) RETURNS numeric
@@ -142,37 +146,58 @@ END $$;
 
 -- A lexical form longer than 16,383 bytes, the most digits a numeric holds
 -- after its point, is no number: so neither a cast below nor SUM can raise.
+-- One CASE on the datatype, which PostgreSQL inlines into its caller.
 CREATE FUNCTION sparql.numeric(term jsonb) RETURNS numeric
-LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
-DECLARE datatype text := term->>'datatype'; kind text; value text; result numeric;
-BEGIN
-    IF datatype='http://www.w3.org/2001/XMLSchema#integer' THEN
-        RETURN CASE WHEN term->>'value' ~ '^[+-]?[0-9]+$' AND octet_length(term->>'value')<=16383
-                         AND term->>'type'='literal' THEN (term->>'value')::numeric END;
-    END IF;
-    IF datatype='http://www.w3.org/2001/XMLSchema#decimal' THEN
-        RETURN CASE WHEN term->>'value' ~ '^[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)$' AND octet_length(term->>'value')<=16383
-                         AND term->>'type'='literal' THEN (term->>'value')::numeric END;
-    END IF;
-    IF term->>'type'<>'literal' THEN RETURN NULL; END IF;
-    value := term->>'value'; kind := sparql.numeric_kind(datatype);
-    IF kind IN ('float','double') THEN RETURN sparql.float_numeric(value,kind); END IF;
-    IF kind IS NULL OR octet_length(value)>16383 OR value !~ '^[+-]?[0-9]+$' THEN RETURN NULL; END IF;
-    kind := substr(datatype,length('http://www.w3.org/2001/XMLSchema#')+1);
-    result := value::numeric;
-    IF kind='nonPositiveInteger' AND result>0 OR kind='negativeInteger' AND result>=0
-       OR kind IN ('nonNegativeInteger','unsignedLong','unsignedInt','unsignedShort','unsignedByte') AND result<0
-       OR kind='positiveInteger' AND result<=0
-       OR kind='long' AND result NOT BETWEEN -9223372036854775808 AND 9223372036854775807
-       OR kind='int' AND result NOT BETWEEN -2147483648 AND 2147483647
-       OR kind='short' AND result NOT BETWEEN -32768 AND 32767
-       OR kind='byte' AND result NOT BETWEEN -128 AND 127
-       OR kind='unsignedLong' AND result>18446744073709551615
-       OR kind='unsignedInt' AND result>4294967295
-       OR kind='unsignedShort' AND result>65535
-       OR kind='unsignedByte' AND result>255 THEN RETURN NULL; END IF;
-    RETURN result;
-END $$;
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT CASE term->>'datatype'
+        WHEN 'http://www.w3.org/2001/XMLSchema#integer' THEN
+            CASE WHEN octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND term->>'type'='literal' THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#decimal' THEN
+            CASE WHEN octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)$'
+                      AND term->>'type'='literal' THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#double' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE THEN sparql.float_numeric(term->>'value','double') END
+        WHEN 'http://www.w3.org/2001/XMLSchema#float' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE THEN sparql.float_numeric(term->>'value','float') END
+        WHEN 'http://www.w3.org/2001/XMLSchema#nonPositiveInteger' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric<=0 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#negativeInteger' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric<0 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#nonNegativeInteger' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric>=0 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#positiveInteger' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric>0 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#long' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric BETWEEN -9223372036854775808 AND 9223372036854775807 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#int' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric BETWEEN -2147483648 AND 2147483647 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#short' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric BETWEEN -32768 AND 32767 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#byte' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric BETWEEN -128 AND 127 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#unsignedLong' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric BETWEEN 0 AND 18446744073709551615 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#unsignedInt' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric BETWEEN 0 AND 4294967295 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#unsignedShort' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric BETWEEN 0 AND 65535 THEN (term->>'value')::numeric END
+        WHEN 'http://www.w3.org/2001/XMLSchema#unsignedByte' THEN
+            CASE WHEN (term->>'type'<>'literal') IS NOT TRUE AND octet_length(term->>'value')<=16383 AND term->>'value' ~ '^[+-]?[0-9]+$'
+                      AND (term->>'value')::numeric BETWEEN 0 AND 255 THEN (term->>'value')::numeric END
+    END
+$$;
 
 CREATE FUNCTION sparql.numeric_kind(datatype text) RETURNS text
 LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
@@ -221,20 +246,29 @@ BEGIN
 END $$;
 
 -- Promote native floating inputs without losing signed zero or float precision.
+-- A number past the width's range is an infinity or a zero of its sign; a
+-- numeric casts through its text, which pg_input_is_valid tests.
 CREATE FUNCTION sparql.floating(term jsonb,kind text) RETURNS double precision
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
-DECLARE source text := sparql.numeric_kind(term->>'datatype'); result double precision;
+DECLARE source text := sparql.numeric_kind(term->>'datatype'); result double precision; value numeric;
 BEGIN
     IF source IS NULL OR term->>'type'<>'literal' THEN RETURN NULL; END IF;
     IF source IN ('float','double') THEN
         result := sparql.float_value(term->>'value',source);
-        RETURN CASE kind WHEN 'float' THEN result::real WHEN 'double' THEN result END;
+        IF source='float' OR kind<>'float' THEN RETURN CASE kind WHEN 'float' THEN result::real WHEN 'double' THEN result END; END IF;
+        BEGIN
+            RETURN result::real;
+        EXCEPTION WHEN numeric_value_out_of_range THEN
+            RETURN sign(sparql.numeric(term))::double precision
+                 * CASE WHEN abs(sparql.numeric(term))<1 THEN 0::double precision ELSE 'Infinity' END;
+        END;
     END IF;
-    RETURN CASE kind WHEN 'float' THEN sparql.numeric(term)::real
-                     WHEN 'double' THEN sparql.numeric(term)::double precision END;
-EXCEPTION WHEN numeric_value_out_of_range THEN
-    RETURN sign(sparql.numeric(term))::double precision
-         * CASE WHEN abs(sparql.numeric(term))<1 THEN 0::double precision ELSE 'Infinity' END;
+    value := sparql.numeric(term);
+    IF (CASE kind WHEN 'float' THEN pg_input_is_valid(value::text,'real')
+                  WHEN 'double' THEN pg_input_is_valid(value::text,'double precision') END) IS FALSE THEN
+        RETURN sign(value)::double precision * CASE WHEN abs(value)<1 THEN 0::double precision ELSE 'Infinity' END;
+    END IF;
+    RETURN CASE kind WHEN 'float' THEN value::real WHEN 'double' THEN value::double precision END;
 END $$;
 
 CREATE FUNCTION sparql.ebv(term jsonb) RETURNS boolean
@@ -254,62 +288,61 @@ BEGIN
     RETURN coalesce(value<>0 AND value<>'NaN'::numeric,false);
 END $$;
 
+-- One CASE, which PostgreSQL inlines into its caller. A float or double literal
+-- is its own value at either width, and NaN only as the lexical form NaN.
 CREATE FUNCTION sparql.compare(a jsonb,b jsonb) RETURNS integer
-LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
-DECLARE ak text := a->>'datatype'; bk text := b->>'datatype';
-        akind text := sparql.numeric_kind(ak); bkind text := sparql.numeric_kind(bk);
-        av numeric; bv numeric; af double precision; bf double precision; atime timestamptz; btime timestamptz;
-BEGIN
-    IF akind IS NOT NULL AND bkind IS NOT NULL THEN
-        IF akind IN ('float','double') OR bkind IN ('float','double') THEN
-            akind := CASE WHEN akind='double' OR bkind='double' THEN 'double' ELSE 'float' END;
-            af:=sparql.floating(a,akind); bf:=sparql.floating(b,akind);
-            RETURN CASE WHEN af='NaN' OR bf='NaN' THEN NULL WHEN af<bf THEN -1 WHEN af>bf THEN 1 WHEN af=bf THEN 0 END;
-        END IF;
-        av:=sparql.numeric(a); bv:=sparql.numeric(b);
-        RETURN CASE WHEN av<bv THEN -1 WHEN av>bv THEN 1 WHEN av=bv THEN 0 END;
-    END IF;
-    IF a->>'type'<>'literal' OR b->>'type'<>'literal' THEN RETURN NULL; END IF;
-    IF coalesce(ak,'http://www.w3.org/2001/XMLSchema#string')='http://www.w3.org/2001/XMLSchema#string'
-       AND coalesce(bk,'http://www.w3.org/2001/XMLSchema#string')='http://www.w3.org/2001/XMLSchema#string' THEN
-        IF lower(coalesce(a->>'xml:lang','') COLLATE "C")<>lower(coalesce(b->>'xml:lang','') COLLATE "C") THEN RETURN NULL; END IF;
-        RETURN CASE WHEN (a->>'value') COLLATE "C"<(b->>'value') COLLATE "C" THEN -1
-                    WHEN (a->>'value') COLLATE "C">(b->>'value') COLLATE "C" THEN 1 ELSE 0 END;
-    END IF;
-    IF ak IS DISTINCT FROM bk THEN RETURN NULL; END IF;
-    IF ak='http://www.w3.org/2001/XMLSchema#boolean'
-       AND a->>'value' IN ('true','false','1','0') AND b->>'value' IN ('true','false','1','0') THEN
-        RETURN CASE WHEN sparql.ebv(a)<sparql.ebv(b) THEN -1
-                    WHEN sparql.ebv(a)>sparql.ebv(b) THEN 1
-                    WHEN sparql.ebv(a)=sparql.ebv(b) THEN 0 END;
-    END IF;
-    IF ak IN ('http://www.w3.org/2001/XMLSchema#dateTime','http://www.w3.org/2001/XMLSchema#date') THEN
-        atime := sparql.instant(a->>'value',ak); btime := sparql.instant(b->>'value',bk);
-        RETURN CASE WHEN atime<btime THEN -1 WHEN atime>btime THEN 1 WHEN atime=btime THEN 0 END;
-    END IF;
-    RETURN NULL;
-END $$;
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT CASE
+        WHEN a IS NULL OR b IS NULL THEN NULL
+        WHEN sparql.numeric_kind(a->>'datatype') IS NULL OR sparql.numeric_kind(b->>'datatype') IS NULL THEN
+            CASE WHEN a->>'type'<>'literal' OR b->>'type'<>'literal' THEN NULL
+                 WHEN coalesce(a->>'datatype','http://www.w3.org/2001/XMLSchema#string')='http://www.w3.org/2001/XMLSchema#string'
+                      AND coalesce(b->>'datatype','http://www.w3.org/2001/XMLSchema#string')='http://www.w3.org/2001/XMLSchema#string' THEN
+                     CASE WHEN lower(coalesce(a->>'xml:lang','') COLLATE "C")<>lower(coalesce(b->>'xml:lang','') COLLATE "C") THEN NULL
+                          WHEN (a->>'value') COLLATE "C"<(b->>'value') COLLATE "C" THEN -1
+                          WHEN (a->>'value') COLLATE "C">(b->>'value') COLLATE "C" THEN 1 ELSE 0 END
+                 WHEN a->>'datatype' IS DISTINCT FROM b->>'datatype' THEN NULL
+                 WHEN a->>'datatype'='http://www.w3.org/2001/XMLSchema#boolean'
+                      AND a->>'value' IN ('true','false','1','0') AND b->>'value' IN ('true','false','1','0') THEN
+                     (a->>'value' IN ('true','1'))::integer-(b->>'value' IN ('true','1'))::integer
+                 WHEN a->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#dateTime','http://www.w3.org/2001/XMLSchema#date') THEN
+                     timestamptz_cmp(sparql.instant(a->>'value',a->>'datatype'),sparql.instant(b->>'value',b->>'datatype'))
+            END
+        WHEN a->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#float','http://www.w3.org/2001/XMLSchema#double')
+             OR b->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#float','http://www.w3.org/2001/XMLSchema#double') THEN
+            CASE WHEN a->>'value'='NaN' AND a->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#float','http://www.w3.org/2001/XMLSchema#double')
+                      OR b->>'value'='NaN' AND b->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#float','http://www.w3.org/2001/XMLSchema#double')
+                 THEN NULL
+                 ELSE btfloat8cmp(
+                     CASE WHEN a->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#float','http://www.w3.org/2001/XMLSchema#double')
+                               AND (a->>'type'<>'literal') IS NOT TRUE
+                          THEN sparql.float_value(a->>'value',CASE a->>'datatype' WHEN 'http://www.w3.org/2001/XMLSchema#float' THEN 'float' ELSE 'double' END)
+                          ELSE sparql.floating(a,CASE b->>'datatype' WHEN 'http://www.w3.org/2001/XMLSchema#double' THEN 'double' ELSE 'float' END) END,
+                     CASE WHEN b->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#float','http://www.w3.org/2001/XMLSchema#double')
+                               AND (b->>'type'<>'literal') IS NOT TRUE
+                          THEN sparql.float_value(b->>'value',CASE b->>'datatype' WHEN 'http://www.w3.org/2001/XMLSchema#float' THEN 'float' ELSE 'double' END)
+                          ELSE sparql.floating(b,CASE a->>'datatype' WHEN 'http://www.w3.org/2001/XMLSchema#double' THEN 'double' ELSE 'float' END) END) END
+        ELSE numeric_cmp(sparql.numeric(a),sparql.numeric(b))
+    END
+$$;
 
 CREATE FUNCTION sparql.equal(a jsonb,b jsonb) RETURNS boolean
 LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $$
-DECLARE ordering integer;
 BEGIN
-    IF a=b THEN RETURN sparql.nan(a) IS NOT TRUE; END IF;
-    IF a->>'type'<>'literal' OR b->>'type'<>'literal' THEN RETURN false; END IF;
-    IF NOT a ? 'datatype' AND NOT b ? 'datatype' THEN
-        RETURN a->>'value'=b->>'value' AND lower(coalesce(a->>'xml:lang','') COLLATE "C")=lower(coalesce(b->>'xml:lang','') COLLATE "C");
-    END IF;
-    IF a->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#integer','http://www.w3.org/2001/XMLSchema#decimal')
-       AND b->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#integer','http://www.w3.org/2001/XMLSchema#decimal') THEN
-        RETURN sparql.numeric(a)=sparql.numeric(b);
-    END IF;
-    ordering := sparql.compare(a,b);
-    IF ordering IS NOT NULL THEN RETURN ordering=0; END IF;
-    IF sparql.nan(a) OR sparql.nan(b) THEN RETURN false; END IF;
-    -- RDF term identity still holds for an ill-typed literal; NaN was handled above.
-    IF sparql.normalize(a)=sparql.normalize(b) THEN RETURN true; END IF;
-    IF a ? 'xml:lang' OR b ? 'xml:lang' THEN RETURN false; END IF;
-    RETURN NULL;
+    RETURN CASE
+        WHEN a=b THEN sparql.nan(a) IS NOT TRUE
+        WHEN a->>'type'<>'literal' OR b->>'type'<>'literal' THEN false
+        WHEN NOT a ? 'datatype' AND NOT b ? 'datatype' THEN
+            a->>'value'=b->>'value' AND lower(coalesce(a->>'xml:lang','') COLLATE "C")=lower(coalesce(b->>'xml:lang','') COLLATE "C")
+        WHEN a->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#integer','http://www.w3.org/2001/XMLSchema#decimal')
+             AND b->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#integer','http://www.w3.org/2001/XMLSchema#decimal') THEN
+            sparql.numeric(a)=sparql.numeric(b)
+        -- RDF term identity still holds for an ill-typed literal, but never for NaN.
+        ELSE coalesce(sparql.compare(a,b)=0,
+                      CASE WHEN sparql.nan(a) OR sparql.nan(b) THEN false
+                           WHEN sparql.normalize(a)=sparql.normalize(b) THEN true
+                           WHEN a ? 'xml:lang' OR b ? 'xml:lang' THEN false END)
+    END;
 END $$;
 
 CREATE FUNCTION sparql.relation(op text,a jsonb,b jsonb) RETURNS boolean
@@ -377,22 +410,20 @@ CREATE TYPE sparql.order_key AS (kind integer, value numeric, lexical text COLLA
 
 CREATE FUNCTION sparql.order(term jsonb) RETURNS sparql.order_key
 LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
-DECLARE kind text := term->>'type'; lexical text := term->>'value'; datatype text := term->>'datatype';
-        value numeric;
+DECLARE value numeric := sparql.numeric(term);
 BEGIN
-    IF term IS NULL THEN RETURN ROW(0,NULL,NULL,NULL,NULL)::sparql.order_key; END IF;
-    IF kind='bnode' THEN RETURN ROW(1,NULL,lexical,NULL,NULL)::sparql.order_key; END IF;
-    IF kind='uri' THEN RETURN ROW(2,NULL,lexical,NULL,NULL)::sparql.order_key; END IF;
-    IF datatype IS NULL THEN RETURN ROW(6,NULL,lexical,lower((term->>'xml:lang') COLLATE "C"),NULL)::sparql.order_key; END IF;
-    IF datatype='http://www.w3.org/2001/XMLSchema#boolean' THEN
-        RETURN ROW(4,sparql.ebv(term)::integer,lexical,NULL,datatype)::sparql.order_key;
-    END IF;
-    IF datatype IN ('http://www.w3.org/2001/XMLSchema#dateTime','http://www.w3.org/2001/XMLSchema#date') THEN
-        RETURN ROW(5,extract(epoch FROM sparql.instant(lexical,datatype)),lexical,NULL,datatype)::sparql.order_key;
-    END IF;
-    value := sparql.numeric(term);
-    IF value IS NOT NULL THEN RETURN ROW(3,value,lexical,NULL,datatype)::sparql.order_key; END IF;
-    RETURN ROW(6,NULL,lexical,lower((term->>'xml:lang') COLLATE "C"),datatype)::sparql.order_key;
+    RETURN CASE
+        WHEN term IS NULL THEN ROW(0,NULL,NULL,NULL,NULL)::sparql.order_key
+        WHEN term->>'type'='bnode' THEN ROW(1,NULL,term->>'value',NULL,NULL)::sparql.order_key
+        WHEN term->>'type'='uri' THEN ROW(2,NULL,term->>'value',NULL,NULL)::sparql.order_key
+        WHEN term->>'datatype' IS NULL THEN ROW(6,NULL,term->>'value',lower((term->>'xml:lang') COLLATE "C"),NULL)::sparql.order_key
+        WHEN term->>'datatype'='http://www.w3.org/2001/XMLSchema#boolean' THEN
+            ROW(4,sparql.ebv(term)::integer,term->>'value',NULL,term->>'datatype')::sparql.order_key
+        WHEN term->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#dateTime','http://www.w3.org/2001/XMLSchema#date') THEN
+            ROW(5,extract(epoch FROM sparql.instant(term->>'value',term->>'datatype')),term->>'value',NULL,term->>'datatype')::sparql.order_key
+        WHEN value IS NOT NULL THEN ROW(3,value,term->>'value',NULL,term->>'datatype')::sparql.order_key
+        ELSE ROW(6,NULL,term->>'value',lower((term->>'xml:lang') COLLATE "C"),term->>'datatype')::sparql.order_key
+    END;
 END $$;
 
 -- The seven SPARQL constructor datatypes and numeric derived types. A bad
@@ -1044,10 +1075,20 @@ END $$;
 -- The expression list retains errors: SUM/AVG must not silently discard a
 -- nonnumeric value. MIN/MAX/SAMPLE return original terms; SUM/AVG are promoted
 -- and spelled as arithmetic promotes and spells them.
+-- SUM/AVG walk the terms once; kind is the running total's datatype. While it
+-- is integer or decimal, terms add up as numeric and one that is no number
+-- makes the total NaN. The first float or double turns it into one; from there
+-- each term is added as arithmetic adds it to the running total's term, so
+-- that term must read back: an exact one past 16,383 bytes is no number, and a
+-- term that is no number or an overflow makes the result unbound. A float total
+-- keeps its real: the real's shortest text, which arithmetic spells, reads back
+-- as the same real.
 CREATE FUNCTION sparql.aggregate(name text,terms jsonb[],unique_terms boolean,separator text)
-RETURNS jsonb LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
+RETURNS jsonb LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET extra_float_digits=3 AS $$
 DECLARE term_values jsonb[] := coalesce(terms,'{}'::jsonb[]); item jsonb; result jsonb;
-        amount integer; text_value text; floats boolean; total numeric; kind text;
+        amount integer; text_value text; key sparql.order_key; best sparql.order_key;
+        datatype text; kind text := 'integer'; next text; total numeric := 0; long boolean := false;
+        sum double precision; value double precision;
 BEGIN
     IF unique_terms THEN
         SELECT coalesce(array_agg(term ORDER BY first),'{}'::jsonb[]) INTO term_values
@@ -1058,9 +1099,12 @@ BEGIN
     IF name='SAMPLE' THEN SELECT term INTO result FROM unnest(term_values) term WHERE term IS NOT NULL LIMIT 1; RETURN result; END IF;
     IF name IN ('MIN','MAX') THEN
         -- MIN takes the first term in ORDER BY's order, which an unbound one leads (SPARQL 1.1 sections 18.5.1.5, 15.1).
-        SELECT term INTO result FROM unnest(term_values) WITH ORDINALITY t(term,ord)
-         ORDER BY CASE WHEN name='MIN' THEN sparql.order(term) END,
-                  CASE WHEN name='MAX' THEN sparql.order(term) END DESC, ord LIMIT 1;
+        IF amount=0 THEN RETURN NULL; END IF;
+        result := term_values[1]; best := sparql.order(result);
+        FOREACH item IN ARRAY term_values LOOP
+            key := sparql.order(item);
+            IF (CASE name WHEN 'MIN' THEN key<best ELSE key>best END) THEN result := item; best := key; END IF;
+        END LOOP;
         RETURN result;
     END IF;
     IF name='GROUP_CONCAT' THEN
@@ -1068,20 +1112,42 @@ BEGIN
         SELECT string_agg(term->>'value',coalesce(separator,' ') ORDER BY ord) INTO text_value FROM unnest(term_values) WITH ORDINALITY t(term,ord);
         RETURN sparql.term(coalesce(text_value,''));
     END IF;
-    -- No integer or decimal is NaN, so a NaN total holds a term that is no number.
-    SELECT coalesce(sum(CASE WHEN term->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#float','http://www.w3.org/2001/XMLSchema#double')
-                             THEN 0 ELSE coalesce(sparql.numeric(term),'NaN') END),0),
-           bool_or(term->>'datatype' IN ('http://www.w3.org/2001/XMLSchema#float','http://www.w3.org/2001/XMLSchema#double')),
-           CASE WHEN bool_or(term->>'datatype'='http://www.w3.org/2001/XMLSchema#decimal') THEN 'decimal' ELSE 'integer' END
-      INTO total,floats,kind FROM unnest(term_values) term;
-    IF floats THEN
-        result := sparql.number(0,'integer');
-        FOREACH item IN ARRAY term_values LOOP
-            result := sparql.arithmetic('+',result,item);
-            EXIT WHEN result IS NULL;
-        END LOOP;
+    FOREACH item IN ARRAY term_values LOOP
+        datatype := item->>'datatype';
+        IF kind IN ('integer','decimal') AND (datatype IN ('http://www.w3.org/2001/XMLSchema#float',
+                                                           'http://www.w3.org/2001/XMLSchema#double')) IS NOT TRUE THEN
+            -- Shorter than 16,002 bytes otherwise.
+            IF abs(total)>=1e8000 OR scale(total)>8000 THEN
+                long := long OR (octet_length(sparql.format_decimal(total))>16383) IS TRUE;
+            END IF;
+            total := total + coalesce(sparql.numeric(item),'NaN');
+            IF datatype='http://www.w3.org/2001/XMLSchema#decimal' THEN kind := 'decimal'; END IF;
+            CONTINUE;
+        END IF;
+        next := CASE WHEN kind='double' OR datatype LIKE '%#double' THEN 'double' ELSE 'float' END;
+        IF kind IN ('integer','decimal') THEN
+            IF long THEN RETURN NULL; END IF;
+            sum := sparql.floating(sparql.number(total,kind),next);
+        END IF;
+        value := sparql.floating(item,next);
+        IF sum IS NULL OR value IS NULL THEN RETURN NULL; END IF;
+        IF abs(sum)<1e37 AND abs(value)<1e37 THEN
+            sum := CASE next WHEN 'float' THEN sum::real+value::real ELSE sum+value END;
+        ELSE
+            BEGIN
+                sum := CASE next WHEN 'float' THEN sum::real+value::real ELSE sum+value END;
+            EXCEPTION WHEN numeric_value_out_of_range THEN
+                RETURN NULL;
+            END;
+        END IF;
+        kind := next;
+    END LOOP;
+    IF kind IN ('float','double') THEN
+        result := sparql.term(sparql.format_double(CASE kind WHEN 'float' THEN sum::real::text::double precision ELSE sum END),
+                              'literal','http://www.w3.org/2001/XMLSchema#' || kind);
+    ELSIF total='NaN' THEN
+        RETURN NULL;
     ELSE
-        IF total='NaN' THEN RETURN NULL; END IF;
         result := sparql.number(total,kind);
     END IF;
     IF name='AVG' AND amount>0 THEN result:=sparql.arithmetic('/',result,sparql.number(amount,'integer')); END IF;
