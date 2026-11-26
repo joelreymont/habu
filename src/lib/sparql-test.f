@@ -520,12 +520,24 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    EXPECT
    \ A chain joins from its given end, whatever the written order.
    s" SELECT ?c WHERE { ?b t:25 ?c . ?a t:25 ?b . t:50 t:25 ?a }"
-   s"  WHERE t1.s = sparql_test.id($1) AND t1.p = sparql_test.id($2) AND t1.o IS NOT NULL AND t2.s IS NOT NULL AND t2.p = sparql_test.id($2) AND t2.o IS NOT NULL AND t1.o = t2.s AND "
+   s"  WHERE t1.s = sparql_test.id($1) AND t1.p = sparql_test.id($2) AND t2.p = sparql_test.id($2) AND t1.o = t2.s AND "
    s" {'head':{'vars':['c']},'results':{'bindings':[{'c':{'type':'uri','value':'urn:test:50'}}]}}"
    HOLDS
    s" SELECT ?l ?w WHERE { ?s rdfs:label ?l { ?s t:30 ?w FILTER(?w < 100) } }"
    s" {'head':{'vars':['l','w']},'results':{'bindings':[{'l':{'type':'literal','value':'Spindle'},'w':{'type':'literal','value':'12','datatype':'http://www.w3.org/2001/XMLSchema#integer'}},{'l':{'type':'literal','value':'Bolt'},'w':{'type':'literal','value':'0.25','datatype':'http://www.w3.org/2001/XMLSchema#decimal'}}]}}"
    EXPECT ;
+
+\ A column that may hold NULL is tested IS NOT NULL unless a join's `=`
+\ reads it: edge's o and mark's s here, in a union's branch too.
+: NULL-TESTS ( -- )
+   s" SELECT ?x ?m ?y WHERE { ?x t:20 ?m . GRAPH t:7 { ?m t:23 ?y } }"
+   s" t1.o = t2.s" s" t1.o IS NOT NULL"
+   s" {'head':{'vars':['x','m','y']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:3'},'m':{'type':'uri','value':'urn:test:1'},'y':{'type':'uri','value':'urn:test:7'}},{'x':{'type':'uri','value':'urn:test:5'},'m':{'type':'uri','value':'urn:test:1'},'y':{'type':'uri','value':'urn:test:7'}},{'x':{'type':'uri','value':'urn:test:4'},'m':{'type':'uri','value':'urn:test:2'},'y':{'type':'uri','value':'urn:test:8'}}]}}"
+   ALONE
+   s" SELECT ?x ?m WHERE { { ?x t:20 ?m } UNION { GRAPH t:7 { ?x t:23 ?m } } }"
+   s" u.o IS NOT NULL" s" t2.s IS NOT NULL"
+   s" {'head':{'vars':['x','m']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:3'},'m':{'type':'uri','value':'urn:test:1'}},{'x':{'type':'uri','value':'urn:test:4'},'m':{'type':'uri','value':'urn:test:2'}},{'x':{'type':'uri','value':'urn:test:5'},'m':{'type':'uri','value':'urn:test:1'}},{'x':{'type':'uri','value':'urn:test:1'},'m':{'type':'uri','value':'urn:test:7'}},{'x':{'type':'uri','value':'urn:test:2'},'m':{'type':'uri','value':'urn:test:8'}}]}}"
+   BOTH ;
 
 \ Patterns of one subject read its row once where the source's subject
 \ column is unique, while the FROM holds that row.
@@ -1269,7 +1281,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" src/lib/sparql/runtime.sql" RUN-SQL
    s" test/sparql/host.sql" RUN-SQL
    SPELLINGS SLOTS SHAPES ALL-SOURCES KEY-SETS TYPED-COLUMNS DRIVEN JOINS
-   SUBJECT-ROWS FILTERS FILTER-EQUALITIES GRAPHS NAMED-GRAPHS OPTIONALS
+   NULL-TESTS SUBJECT-ROWS FILTERS FILTER-EQUALITIES GRAPHS NAMED-GRAPHS OPTIONALS
    UNIONS MINUSES FILTER-EXISTS
    SUBSTITUTIONS MANY CONSTANTS WIDE FORMS
    PROJECTIONS GROUPING AGGREGATES TYPED-AGGREGATES BRANCH-GROUPING

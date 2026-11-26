@@ -66,7 +66,11 @@
 \ anchor: native `=` within a shape and between a part and its root,
 \ `col = in(term)` against a term, JSONB `=` between terms. A maybe
 \ binding meets also where either is NULL, and the variable is then the
-\ first bound of the two. The group's FILTERs read the folded bindings. An
+\ first bound of the two. A variable's slot on a column that may hold
+\ NULL is tested `IS NOT NULL` where its relation's WHERE is written,
+\ unless a strict `=` of that WHERE already reads the column, since
+\ PostgreSQL would count the column's null fraction twice. The group's
+\ FILTERs read the folded bindings. An
 \ expression has two SQL forms, its term, JSONB, and its test, an SQL
 \ boolean; a FILTER and HAVING hold its test, all else its term. Each
 \ conjunct of such a test that is `=` of a natively bound variable and an
@@ -178,7 +182,9 @@ STRUCTURE name DERIVE addr FIELD text str FIELD frame n ;STRUCTURE
 
 \ shape is a shape's index for a native column of it, else GENERIC or
 \ KNOWN; term is a KNOWN term's text; copies is the bytes of the expressions
-\ PostgreSQL copies for the derived tables' columns in sql.
+\ PostgreSQL copies for the derived tables' columns in sql; nullable, that
+\ sql is a column that may hold NULL which no condition of its relation's
+\ WHERE drops yet.
 STRUCTURE binding DERIVE addr
    FIELD var n
    FIELD shape n
@@ -186,6 +192,7 @@ STRUCTURE binding DERIVE addr
    FIELD term str
    FIELD always bool
    FIELD copies n
+   FIELD nullable bool
 ;STRUCTURE
 
 \ A row the FROM reads once under the alias: of the FROM item `from`, by
@@ -534,7 +541,8 @@ defer EXISTS-SQL ( ^plan n -- )
    list VEC:PUSH {: b:^ :}
    var b BINDING-VAR ! shape b BINDING-SHAPE !
    sql b BINDING-SQL ! term b BINDING-TERM !
-   true b BINDING-ALWAYS ! 0 b BINDING-COPIES ! ;
+   true b BINDING-ALWAYS ! 0 b BINDING-COPIES !
+   false b BINDING-NULLABLE ! ;
 
 \ The index of variable n's first binding in the list, or -1.
 : FIND-VAR ( ^VEC:vector<binding> n -- n )
@@ -663,21 +671,27 @@ defer EXISTS-SQL ( ^plan n -- )
    {: where:^ a:str :}
    where s"  AND " +SEP where a +SQL ;
 
+: +NULL-TEST ( ^VEC:vector<u8> str -- )
+   {: where:^ sql:str :}
+   where sql +AND where s"  IS NOT NULL" +SQL ;
+
 : +NULL-OR ( ^VEC:vector<u8> ^binding -- )
    {: v:^ b:^ :}
    b BINDING-ALWAYS @ if exit then
    v b BINDING-SQL @ +SQL v s"  IS NULL OR " +SQL ;
 
 \ Appends to where that s and o meet: one term, or a maybe one NULL.
-: +MEETS ( ^plan ^binding ^binding ^VEC:vector<u8> -- )
+\ Answers whether that is a strict `=`, which drops a NULL of either.
+: +MEETS ( ^plan ^binding ^binding ^VEC:vector<u8> -- bool )
    {: plan s:^ o:^ where:^ :}
    plan s o SAME-SQL {: eq:str :}
-   eq STR:LEN 0= if exit then
+   eq STR:LEN 0= if false exit then
    s BINDING-ALWAYS @ o BINDING-ALWAYS @ and if
-      where eq +AND exit
+      where eq +AND true exit
    then
    where s"  AND " +SEP where s" (" +SQL
-   where s +NULL-OR where o +NULL-OR where eq +SQL where s" )" +SQL ;
+   where s +NULL-OR where o +NULL-OR where eq +SQL where s" )" +SQL
+   false ;
 
 : TAKE ( ^binding ^binding -- )
    {: s:^ o:^ :}
@@ -714,17 +728,25 @@ defer EXISTS-SQL ( ^plan n -- )
    sure if s o TAKE true s BINDING-ALWAYS ! exit then
    plan s o COALESCED ;
 
-\ Joins binding o into the scope, its condition to where.
+\ Joins binding o into the scope, its condition to where. A first o's
+\ copy is nullable as o is; a strict `=` leaves the scope's binding not
+\ nullable, else a nullable o's null test goes to where at once. An
+\ OPTIONAL's ON drops no row of the scope, so it changes no flag.
 : MEET ( ^plan ^VEC:vector<binding> ^binding ^VEC:vector<u8> bool -- )
    {: plan scope:^ o:^ where:^ optional:bool :}
    scope o BINDING-VAR @ FIND-VAR {: k:n :}
    k 0< if
       o scope COPY-BINDING
-      optional if false scope LAST BINDING-ALWAYS ! then exit
+      optional if false scope LAST BINDING-ALWAYS ! exit then
+      o BINDING-NULLABLE @ scope LAST BINDING-NULLABLE ! exit
    then
    scope k VEC:AT {: s:^ :}
-   plan s o where +MEETS
-   plan s o optional MERGE ;
+   plan s o where +MEETS {: strict:bool :}
+   o BINDING-NULLABLE @ {: open:bool :}
+   plan s o optional MERGE
+   optional if exit then
+   strict if false s BINDING-NULLABLE ! exit then
+   open if where o BINDING-SQL @ +NULL-TEST then ;
 
 : MEET-ALL ( ^plan ^VEC:vector<binding> ^VEC:vector<binding>
       ^VEC:vector<u8> bool -- )
@@ -1263,15 +1285,22 @@ STRUCTURE pruning DERIVE addr
 
 \ Binds a slot's occurrence of var into occs and meets it in where with
 \ the substitution's binding of var; one bound always keeps it out of occs.
-: OCCUR ( ^plan ^VEC:vector<binding> n n str str ^VEC:vector<u8> -- )
-   {: plan occs:^ var:n shape:n sql:str t:str where:^ :}
+\ null: the slot's column may hold NULL. The occurrence is nullable unless
+\ the meeting is a strict `=`; one kept out of occs has its null test
+\ written to where at once.
+: OCCUR ( ^plan ^VEC:vector<binding> n n str str bool ^VEC:vector<u8> -- )
+   {: plan occs:^ var:n shape:n sql:str t:str null:bool where:^ :}
    plan PLAN-OUTER @ {: outer:^ :}
    outer var FIND-VAR {: k:n :}
-   k 0< if occs var shape sql t BIND exit then
+   k 0< if
+      occs var shape sql t BIND null occs LAST BINDING-NULLABLE ! exit
+   then
    outer k VEC:AT {: o:^ :}
    o BINDING-ALWAYS @ if plan NEW-BINDINGS else occs then {: list:^ :}
    list var shape sql t BIND
-   plan list LAST o where +MEETS ;
+   plan list LAST o where +MEETS 0= null and {: open:bool :}
+   o BINDING-ALWAYS @ 0= if open list LAST BINDING-NULLABLE ! exit then
+   open if where sql +NULL-TEST then ;
 
 \ Appends to where that b meets the substitution's binding of its variable.
 : +OUTER ( ^plan ^binding ^VEC:vector<u8> -- )
@@ -1279,7 +1308,7 @@ STRUCTURE pruning DERIVE addr
    plan PLAN-OUTER @ {: outer:^ :}
    outer b BINDING-VAR @ FIND-VAR {: k:n :}
    k 0< if exit then
-   plan b outer k VEC:AT where +MEETS ;
+   plan b outer k VEC:AT where +MEETS drop ;
 
 \ The column slot's key, none for a term slot.
 : SLOT-KEY ( slot -- nullable<key> )
@@ -1331,18 +1360,15 @@ STRUCTURE pruning DERIVE addr
       plan TREE each NODE-B@ dup 0<> if where s" ," +SQL then
    repeat drop where s" )) IS NOT TRUE" +SQL ;
 
-\ A variable's occurrence of the slot under alias to occs, and IS NOT NULL to
-\ where on a column that may hold NULL; a constant a column holds, to where.
+\ A variable's occurrence of the slot under alias to occs; a constant a
+\ column holds, to where.
 : +SLOT ( ^plan n slot str ^VEC:vector<binding> ^VEC:vector<u8> -- )
    {: plan node:n sl alias:str occs:^ where:^ :}
    sl SLOT-KIND {: shape:n t:str :}
    plan TREE node VARIABLE? if
       plan sl alias SLOT-SQL {: sql:str :}
-      plan occs plan node VAR shape sql t where OCCUR
-      shape -1 >  sl SLOT-NOTNULL? 0=  and if
-         where s"  AND " +SEP where sql +SQL
-         where s"  IS NOT NULL" +SQL
-      then exit
+      shape -1 >  sl SLOT-NOTNULL? 0=  and {: null:bool :}
+      plan occs plan node VAR shape sql t null where OCCUR exit
    then
    shape -1 > if plan node sl alias where +CONSTANT then ;
 
@@ -1442,7 +1468,7 @@ STRUCTURE pruning DERIVE addr
    {: plan node:n recs:^ k:n alias:str occs:^ where:^ :}
    plan TREE node VARIABLE? if
       plan recs k alias COALESCE-COLUMNS {: form:n sql:str :}
-      plan occs plan node VAR form sql s" " where OCCUR
+      plan occs plan node VAR form sql s" " false where OCCUR
    then
    plan node recs k alias where +ANY-COLUMN ;
 
@@ -1613,8 +1639,21 @@ STRUCTURE pruning DERIVE addr
       loop
    loop cols ;
 
+\ Writes to r's WHERE the null test of each binding still nullable.
+: +NULL-TESTS ( ^relation -- )
+   {: r:^ :}
+   r RELATION-BINDINGS @ {: bs:^ :}
+   bs VEC:COUNT 0 ?do
+      bs i VEC:AT {: b:^ :}
+      b BINDING-NULLABLE @ if
+         r RELATION-WHERE @ b BINDING-SQL @ +NULL-TEST
+         false b BINDING-NULLABLE !
+      then
+   loop ;
+
 : +FROM-WHERE ( ^VEC:vector<u8> ^relation -- )
    {: v:^ r:^ :}
+   r +NULL-TESTS
    r RELATION-FROM @ {: from:^ :}
    r RELATION-WHERE @ {: where:^ :}
    from VEC:COUNT 0<> if v s"  FROM " +SQL v from VEC:BYTES +SQL then
@@ -1662,9 +1701,11 @@ STRUCTURE pruning DERIVE addr
    from BINDING-ALWAYS @ to BINDING-ALWAYS !
    from BINDING-COPIES @ to BINDING-COPIES ! ;
 
-\ Branch b as the union of columns cols presents it.
+\ Branch b as the union of columns cols presents it. u shares b's WHERE,
+\ so b's null tests are written first.
 : PRESENTED ( ^plan ^relation ^VEC:vector<binding> -- ^relation )
    {: plan b:^ cols:^ :}
+   b +NULL-TESTS
    plan NEW-RELATION {: u:^ :}
    b RELATION-FROM @ u RELATION-FROM !
    b RELATION-WHERE @ u RELATION-WHERE !
@@ -3019,9 +3060,11 @@ STRUCTURE walk DERIVE addr
       then
    loop d ;
 
-\ Leaves r the bindings of the listed variables it binds always.
+\ Leaves r the bindings of the listed variables it binds always, its
+\ null tests written first, since it drops bindings.
 : KEEP-READ ( ^plan ^VEC:vector<n> ^relation -- )
    {: plan vars:^ r:^ :}
+   r +NULL-TESTS
    r RELATION-BINDINGS @ {: bs:^ :}
    plan NEW-BINDINGS {: cols:^ :}
    vars VEC:COUNT 0 ?do
