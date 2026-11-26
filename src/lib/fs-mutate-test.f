@@ -424,7 +424,7 @@ public
 ;package
 
 : FMT-REAL ( str -- str )
-   FS:>PATHZ FMT-REAL-BUF FS:PATHZ-CAP realpath {: u:n :}
+   FS:>PATHZ FMT-REAL-BUF FS:PATHZ-CAP SPAN:MAKE realpath {: u:n :}
    u 0 > TTRUE
    FMT-REAL-BUF u >str ;
 

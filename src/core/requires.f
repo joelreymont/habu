@@ -268,7 +268,7 @@ create REAL-BUF PATH-CAP 1 + SCRATCH-ALLOT
 : REAL$ ( str -- str ) {: p:str :}
    p PORTABLE? 0= if p exit then
    ENGINE$ p UNDER {: q:str :}
-   q STR:DATA REAL-BUF PATH-CAP 1 + realpath {: n:n :}
+   q STR:DATA REAL-BUF PATH-CAP 1 + >span realpath {: n:n :}
    n 0 > if REAL-BUF n >str else q then ;
 
 : OUTSIDE? ( n -- bool )

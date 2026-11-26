@@ -1732,7 +1732,7 @@ MODE@ $F000 and $4000 = TTRUE
 s" src/os/macos" PATH0 open-rd DFD !
 DFD @ 0 >= TTRUE
 0 DIRBASE !
-DFD @ DBUF 4096 DIRBASE getdirentries64 0 > TTRUE
+DFD @ DBUF 4096 SPAN:MAKE DIRBASE getdirentries64 0 > TTRUE
 DFD @ close
 s" engine-suite" FS:MKTEMP-DIR ES-ROOT!
 s" dir" ES-TMPZ 493 mkdir 0 T=
@@ -1742,7 +1742,7 @@ s" dir" ES-TMPZ rmdir 0 T=
 ES-TARGETZ s" link" ES-TMPZ symlink 0 T=
 s" link" ES-TMPZ ES-STB lstat64 0 T=
 MODE@ $F000 and $A000 = TTRUE
-s" link" ES-TMPZ RLB 64 readlink 9 T=
+s" link" ES-TMPZ RLB 64 SPAN:MAKE readlink 9 T=
 RLB c@ 65 T=
 s" link" ES-TMPZ unlink 0 T=
 ES-ROOT$ FS:>PATHZ rmdir 0 T=

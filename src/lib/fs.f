@@ -881,7 +881,7 @@ private
    then ;
 
 : READ-DIR ( ^n -- bool ) {: ctx:^ :}
-   ctx FD@ ctx CUR-DIR SPAN:$ dup STR:DATA swap STR:LEN ctx BASE@ getdirentries64
+   ctx FD@ ctx CUR-DIR ctx BASE@ getdirentries64
    dup 0 < if drop E-FS-DIR throw then
    dup ctx N! 0 > ;
 

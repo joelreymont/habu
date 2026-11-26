@@ -1940,7 +1940,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" 1" WRITE-DATA
    s\" require src/lib/fs-anchored.f\npackage FILE-OBJECTS-ANCHORED\n1 SPAN-BUFFER: B\n" SRC+
    s\" : READ-D ( -- n ) s\" " SRC+
-   NEST-DIR NEST-DIR-U @ >str FS:>PATHZ NEST-PATH PATH-CAP realpath {: real:n :}
+   NEST-DIR NEST-DIR-U @ >str FS:>PATHZ NEST-PATH PATH-CAP SPAN:MAKE realpath {: real:n :}
    NEST-PATH real >str SRC+
    s\" \" FS:OPEN-DIR {: d:fd :} d s\" d.txt\" B FS:READ-FILE-AT d FS:CLOSE-DIR ;\n" SRC+
    s\" public READ-D constant K ;package\n" SRC+  s" f.f" NEST-WRITE

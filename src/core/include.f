@@ -354,7 +354,7 @@ variable SLOT-BASE
    s CHECK
    s LOADER:PATH-FAULT {: kind:n len:n :}
    kind 0 <> if s kind len INCLUDE-FALSE PATH-CAP PATH-PASS then
-   s ZPATH-OF CANON-BUF PATH-BYTES realpath ;
+   s ZPATH-OF CANON-BUF PATH-BYTES >span realpath ;
 
 public
 
@@ -469,7 +469,7 @@ SCRATCH-VARIABLE PROGRAM-ID
    PROGRAM-U @ 0= 0= if exit then
    PROGRAM-ARG @ {: a:^ :}
    a 0= if exit then
-   a PROGRAM-BUF PATH-BYTES realpath {: n:n :}
+   a PROGRAM-BUF PATH-BYTES >span realpath {: n:n :}
    n 0 <= if
       s" source root: the program file does not resolve within PATH-CAP bytes"
       EXIT-STATUS:IOERR die
@@ -1678,7 +1678,7 @@ private
    CANON-U @ {: r:n :}
    DENIED-PATH c + e c - >str SEG-PATH {: lu:n :}
    WORK-BUF lu >str ZPATH-OF  PATH-BYTES WORK-FIT
-   WORK-BUF PATH-BYTES readlink {: t:n :}
+   WORK-BUF PATH-BYTES >span readlink {: t:n :}
    t 1 <  t PATH-BYTES >=  or if 0 exit then
    WORK-BUF c@ 47 = if 0 else lu e c - - then {: head:n :}
    head t + w e - + {: total:n :}

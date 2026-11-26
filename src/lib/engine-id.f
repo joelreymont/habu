@@ -64,7 +64,7 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 : READ-OWN-PATH ( -- n )
    HB-TARGET-MACOS? if getpid OWN-PATH-BUF OWN-PATH-CAP SELF-PATH exit then
    HB-TARGET-LINUX? if
-      PROC-SELF-EXE OWN-PATH-BUF OWN-PATH-CAP readlink exit
+      PROC-SELF-EXE OWN-PATH-BUF OWN-PATH-CAP SPAN:MAKE readlink exit
    then
    0 ;
 

@@ -24,7 +24,7 @@ variable LINK-N
 
 
 : CWD ( n -- n )
-   s" ." FS:>PATHZ OUT 1+ rot realpath ;
+   s" ." FS:>PATHZ OUT 1+ rot >span realpath ;
 
 
 : CAPACITY ( -- )
@@ -54,12 +54,12 @@ variable LINK-N
    root s" alias.f" LINK FS:JOIN-PATH LINK-N !
    TARGET TARGET-N @ >str s" target" FS:WRITE-ALL
    TARGET TARGET-N @ >str LINK LINK-N @ >str FS:MAKE-SYMLINK
-   TARGET TARGET-N @ >str FS:>PATHZ EXPECT CAP realpath dup 0 > TTRUE EXPECT-N !
-   LINK LINK-N @ >str FS:>PATHZ OUT CAP realpath EXPECT-N @ T=
+   TARGET TARGET-N @ >str FS:>PATHZ EXPECT CAP SPAN:MAKE realpath dup 0 > TTRUE EXPECT-N !
+   LINK LINK-N @ >str FS:>PATHZ OUT CAP SPAN:MAKE realpath EXPECT-N @ T=
    OUT EXPECT-N @ >str EXPECT EXPECT-N @ >str T$=
    LINK LINK-N @ >str FS:REMOVE-FILE
    CLEAR
-   LINK LINK-N @ >str FS:>PATHZ OUT 1+ PATH-CAP realpath -1 T=
+   LINK LINK-N @ >str FS:>PATHZ OUT 1+ PATH-CAP SPAN:MAKE realpath -1 T=
    UNTOUCHED ;
 
 

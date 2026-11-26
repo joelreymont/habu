@@ -96,7 +96,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ PATH with every link resolved: the checker names a required file so, and
 \ --verify-only its subject too.
 : CANON$ ( str -- str )
-   FS:>PATHZ CANON FS:PATHZ-CAP realpath {: n:n :}
+   FS:>PATHZ CANON FS:PATHZ-CAP SPAN:MAKE realpath {: n:n :}
    n 0 <= IF E-FS-PATH throw THEN
    CANON n >str ;
 

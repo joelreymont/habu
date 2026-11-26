@@ -66,9 +66,7 @@ FUNCTION: OPEN-AT-CALL openat ( n ^u8 n -- i32 ) ;FUNCTION
 
 
 : READ-BLOCK ( ^listing -- n ) {: ls:^ :}
-   ls LISTING-BLOCK SPAN:$ {: block:str :}
-   ls LISTING-FD @ block STR:DATA block STR:LEN ls LISTING-BASE
-   getdirentries64 {: got:n :}
+   ls LISTING-FD @ ls LISTING-BLOCK ls LISTING-BASE getdirentries64 {: got:n :}
    got 0 < if E-READ throw then
    got ;
 

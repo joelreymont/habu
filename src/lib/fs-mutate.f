@@ -538,7 +538,7 @@ private
          path STR:DATA off 1 - >str >PATHZ
       then
    then {: parent:^ :}
-   parent PATHZ2-BUF SPAN:$ STR:DATA PATHZ-CAP realpath {: u:n :}
+   parent PATHZ2-BUF realpath {: u:n :}
    u -2 = if CAUSE-CLEAR E-FS-CAPACITY throw then
    u 0 < if E-FS-STAT ERRNO-FAIL then
    PATHZ2-BUF SPAN:$ STR:DATA u >str ;
@@ -552,7 +552,7 @@ public
 : ATOMIC-TARGET ( str -- str )
    {: path:str :}
    path >PATHZ {: input:^ :}
-   input PATHZ2-BUF SPAN:$ STR:DATA PATHZ-CAP realpath {: u:n :}
+   input PATHZ2-BUF realpath {: u:n :}
    u -2 = if CAUSE-CLEAR E-FS-CAPACITY throw then
    u 0 >= if PATHZ2-BUF SPAN:$ STR:DATA u >str exit then
    input path STR:LEN >str SYMLINK? if E-FS-STAT throw then
@@ -1082,7 +1082,7 @@ private
 \ and FS:MKTEMP build and make their candidates through TMP-PATH-BUF and
 \ >PATHZ only, so the spelling stands through every attempt.
 : TEMP-REAL ( str -- n )
-   >PATHZ PATHZ2-BUF SPAN:$ STR:DATA PATHZ-CAP realpath ;
+   >PATHZ PATHZ2-BUF realpath ;
 
 \ One record naming TMPDIR, its value and why, before anything is made:
 \ without it each rejection dies later on an error that does not name TMPDIR.

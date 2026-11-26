@@ -1,9 +1,9 @@
 \ fs-anchored.f - descriptor-anchored lookup, and on Linux the opens, links,
 \ renames, removals, directories and stats of one name under a directory
-\ descriptor, and the path an open descriptor names. A walk owns its task's
-\ work area and two fds. Each component opens relative to the live parent with
-\ O_NOFOLLOW (directories also O_DIRECTORY), so a replaced symlink cannot
-\ redirect a lookup and an open directory stays the anchor across a rename.
+\ descriptor. A walk owns its task's work area and two fds. Each component
+\ opens relative to the live parent with O_NOFOLLOW (directories also
+\ O_DIRECTORY), so a replaced symlink cannot redirect a lookup and an open
+\ directory stays the anchor across a rename.
 \ The walk does not prove the anchor is the intended root, nor guard a lookup
 \ against cross-root renames, hard links, mounts or content changes.
 \ Programs outside this tree call its public words.
@@ -384,15 +384,6 @@ public
    prefix STR:DATA z prefix STR:LEN BYTE-COPY
    FD>N z prefix STR:LEN + A-SIGNED {: du:n :}
    0 z prefix STR:LEN du + + c!  z ;
-\ The text of /proc/self/fd/<fd>: the path, " (deleted)" after it once unlinked.
-\ readlink cuts silently, so a count that fills the buffer is E-FS-CAPACITY.
-: FD-PATH ( fd ^u8 n -- n ) {: file:fd buf:^ cap:n :}
-   COMPILE-READS:MISS
-   cap 1 < if CAUSE-CLEAR E-FS-CAPACITY throw then
-   file FD-LINKZ buf cap readlink {: got:n :}
-   got 0 < if E-FS-STAT throw then
-   got cap >= if CAUSE-CLEAR E-FS-CAPACITY throw then
-   CAUSE-CLEAR got ;
 \ An unnamed regular file of mode 0600 in the directory, which TRY-LINK-AT
 \ names. A failure is E-FS-OPEN with its errno in FS:ERRNO.
 : TEMP-AT ( fd -- fd ) {: dir:fd :}

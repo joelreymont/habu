@@ -88,7 +88,7 @@ create PRIMS PRIMS-CAP allot                      \ the copy's src/habu/prims.f
    s" tree/src/habu/prims.f" AT$ {: p:str :}
    p PRIMS PRIMS-CAP FS:READ-ALL {: u:n :}
    PRIMS u >str {: text:str :}
-   s" EPRIM: realpath PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN PE-N PE-IN " {: row:str :}
+   s" EPRIM: realpath PE-PTR-U8 PE-IN PE-SPAN-U8 PE-IN " {: row:str :}
    text row STR:FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
