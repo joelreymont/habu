@@ -48,24 +48,32 @@
 \ folds after the other joined items up to the next OPTIONAL, MINUS or
 \ BIND. Unless its subject or object is given, each of its variables
 \ those items bind always has keys, one set for all the triples folded
-\ there: a CTE at the statement's WITH, materialized, of the distinct
-\ values bound to it by the items connected to it, those binding it always
-\ and, to a fixpoint, those binding always a variable a connected item
-\ binds always; a WITH inside the union's derived table would stop
-\ PostgreSQL flattening the union. Connected items with several keys join
-\ in one CTE, which those keys read. No union inside an EXISTS has keys. A
-\ branch binding the variable natively reads only its keys. Two always
-\ bindings of a variable meet as equal, a native one the anchor: native
-\ `=` within a shape and between a part and its root, `col = in(term)`
-\ against a term, JSONB `=` between terms. A maybe binding meets also
-\ where either is NULL, and the variable is then the first bound of the
-\ two. The group's FILTERs read the folded bindings. An expression has
-\ two SQL forms, its term, JSONB, and its test, an SQL boolean; a FILTER
-\ and HAVING hold its test, all else its term. Each conjunct of such a
-\ test that is `=` of a natively bound variable and an IRI or a plain or
-\ language-tagged string, either way round, IN a list of only those, or
-\ sameTerm of it and any constant also adds the native equality it
-\ implies, which an index can serve; the test stays and decides.
+\ there: the distinct values bound to it by the items connected to it,
+\ those binding it always and, to a fixpoint, those binding always a
+\ variable a connected item binds always. No union inside an EXISTS has
+\ keys. The first of its keys that a branch binds natively, of its root
+\ or through its shape's `in` for a term key, drives the union: those
+\ branches read once per key, `tK AS a CROSS JOIN LATERAL (<their UNION
+\ ALL>)`, each with its binding `=` a.k, and the other branches join
+\ beside them in a UNION ALL. A condition reading the keys in each branch
+\ would make PostgreSQL hash them once per branch, held until the
+\ statement ends. The union's other keys add no condition: the group's
+\ meeting keeps its answers. A key that drives a union is a CTE at the
+\ statement's WITH, materialized, since a WITH inside the union's derived
+\ table would stop PostgreSQL flattening the union; connected items with
+\ several such keys join in one CTE, which those keys read.
+\ Two always bindings of a variable meet as equal, a native one the
+\ anchor: native `=` within a shape and between a part and its root,
+\ `col = in(term)` against a term, JSONB `=` between terms. A maybe
+\ binding meets also where either is NULL, and the variable is then the
+\ first bound of the two. The group's FILTERs read the folded bindings. An
+\ expression has two SQL forms, its term, JSONB, and its test, an SQL
+\ boolean; a FILTER and HAVING hold its test, all else its term. Each
+\ conjunct of such a test that is `=` of a natively bound variable and an
+\ IRI or a plain or language-tagged string, either way round, IN a list of
+\ only those, or sameTerm of it and any constant also adds the native
+\ equality it implies, which an index can serve; the test stays and
+\ decides.
 \
 \ [NOT] EXISTS substitutes the solution it reads (SPARQL 1.1 section
 \ 18.6): each binding of a variable that solution binds meets its binding
@@ -1692,47 +1700,127 @@ STRUCTURE pruning DERIVE addr
    v s" (SELECT * FROM " +SQL v from VEC:BYTES +SQL
    v s"  WHERE " +SQL v where VEC:BYTES +SQL v s" )" +SQL v VEC:BYTES ;
 
-\ Appends to where that binding b of a key's variable is one of the
-\ key's values: `b IN (SELECT k ...)` within one root, through b's
-\ shape's `in` for terms; nothing when b is a term or of another root.
-: +KEY-IN ( ^plan ^binding ^binding ^VEC:vector<u8> -- )
-   {: plan key:^ b:^ where:^ :}
+\ Whether binding b of a key's variable can read the key's values: b
+\ native, the key a term or of b's root.
+: PROBES? ( ^plan ^binding ^binding -- bool )
+   {: plan key:^ b:^ :}
    b BINDING-SHAPE @ {: t:n :} key BINDING-SHAPE @ {: form:n :}
-   t 0< if exit then
-   form GENERIC <> plan form t ONE-ROOT? 0= and if exit then
-   where s"  AND " +SEP where b BINDING-SQL @ +SQL
-   where s"  IN (SELECT " +SQL
-   form GENERIC = if where plan t SHAPE@ SHAPE-IN @ s" k" +CALL
-   else where s" k" +SQL then
-   where s"  FROM " +SQL where key BINDING-SQL @ +SQL where s" )" +SQL ;
+   t 0< if false exit then
+   form GENERIC = plan form t ONE-ROOT? or ;
 
-\ Each key, a variable whose sql names its CTE, met in the branch.
-: +KEYS ( ^plan ^VEC:vector<binding> ^relation -- )
-   {: plan keys:^ r:^ :}
+\ The index of r's binding of the key's variable where it PROBES?,
+\ else -1.
+: PROBED ( ^plan ^binding ^relation -- n )
+   {: plan key:^ r:^ :}
    r RELATION-BINDINGS @ {: bs:^ :}
+   bs key BINDING-VAR @ FIND-VAR {: k:n :}
+   k 0< if -1 exit then
+   plan key bs k VEC:AT PROBES? if k else -1 then ;
+
+: PROBED? ( ^plan ^binding ^VEC:vector<relation> -- bool )
+   {: plan key:^ branches:^ :}
+   branches VEC:COUNT 0 ?do
+      plan key branches i VEC:AT PROBED -1 >
+      if true unloop exit then
+   loop false ;
+
+\ The index of the first key some branch PROBED, the union's driver;
+\ -1 when none.
+: DRIVER ( ^plan ^VEC:vector<binding> ^VEC:vector<relation> -- n )
+   {: plan keys:^ branches:^ :}
    keys VEC:COUNT 0 ?do
-      keys i VEC:AT {: key:^ :}
-      bs key BINDING-VAR @ FIND-VAR {: k:n :}
-      k -1 > if plan key bs k VEC:AT r RELATION-WHERE @ +KEY-IN then
+      plan keys i VEC:AT branches PROBED? if i unloop exit then
+   loop -1 ;
+
+\ Appends to where that binding b of a key's variable is the key of
+\ row: `b = row.k`, through b's shape's `in` for a term key.
+: +MEET-KEY ( ^plan ^binding ^binding str ^VEC:vector<u8> -- )
+   {: plan key:^ b:^ row:str where:^ :}
+   plan NEW-SQL {: k:^ :} k row +SQL k s" .k" +SQL
+   where s"  AND " +SEP where b BINDING-SQL @ +SQL where s"  = " +SQL
+   key BINDING-SHAPE @ GENERIC <> if where k VEC:BYTES +SQL exit then
+   where plan b BINDING-SHAPE @ SHAPE@ SHAPE-IN @ k VEC:BYTES +CALL ;
+
+\ Meets the key of row in each branch that PROBED it; answers the
+\ indexes of those branches, then of the others.
+: +KEYS ( ^plan ^binding str ^VEC:vector<relation>
+      -- ^VEC:vector<n> ^VEC:vector<n> )
+   {: plan key:^ row:str branches:^ :}
+   plan INDEXES {: probed:^ :} plan INDEXES {: rest:^ :}
+   branches VEC:COUNT 0 ?do
+      branches i VEC:AT {: r:^ :}
+      plan key r PROBED {: k:n :}
+      k 0< if i rest VEC:PUSH ! else
+         plan key r RELATION-BINDINGS @ k VEC:AT row
+            r RELATION-WHERE @ +MEET-KEY
+         i probed VEC:PUSH !
+      then
+   loop probed rest ;
+
+\ Appends the listed branches as the union of columns cols presents
+\ them.
+: +UNION ( ^plan ^VEC:vector<u8> ^VEC:vector<relation> ^VEC:vector<n>
+      ^VEC:vector<binding> -- )
+   {: plan v:^ branches:^ list:^ cols:^ :}
+   list VEC:COUNT 0 ?do
+      i 0<> if v s"  UNION ALL " +SQL then
+      plan v branches list i VEC:AT @ VEC:AT cols +BRANCH
    loop ;
 
-\ A pattern whose live choices come from several description sources: a
-\ UNION ALL of one branch per source, each reading only the keys' values
-\ where it binds their variables natively.
-: UNION-SQL ( ^plan ^item ^VEC:vector<binding> ^relation
-      -- ^VEC:vector<binding> )
-   {: plan it:^ keys:^ group:^ :}
+\ `tK AS row CROSS JOIN LATERAL (<the listed branches>)`: the branches
+\ read once per key of the key's CTE tK.
+: PROBE-SQL ( ^plan ^binding str ^VEC:vector<relation> ^VEC:vector<n>
+      ^VEC:vector<binding> -- str )
+   {: plan key:^ row:str branches:^ list:^ cols:^ :}
+   plan NEW-SQL {: v:^ :}
+   v key BINDING-SQL @ +SQL v s"  AS " +SQL v row +SQL
+   v s"  CROSS JOIN LATERAL (" +SQL
+   plan v branches list cols +UNION v s" )" +SQL v VEC:BYTES ;
+
+\ `(SELECT x.* FROM probe AS x UNION ALL <the listed branches>)`.
+: BESIDE ( ^plan str ^VEC:vector<relation> ^VEC:vector<n>
+      ^VEC:vector<binding> -- str )
+   {: plan probe:str branches:^ list:^ cols:^ :}
+   plan NEXT-ALIAS {: x:str :}
+   plan NEW-SQL {: v:^ :}
+   v s" (SELECT " +SQL v x +SQL v s" .* FROM " +SQL v probe +SQL
+   v s"  AS " +SQL v x +SQL v s"  UNION ALL " +SQL
+   plan v branches list cols +UNION v s" )" +SQL v VEC:BYTES ;
+
+\ The branches driven by the key as FROM text whose last item takes the
+\ alias +TABLE appends, and its columns.
+: DRIVEN-TABLE ( ^plan ^binding ^VEC:vector<relation>
+      -- str ^VEC:vector<binding> )
+   {: plan key:^ branches:^ :}
+   plan branches COLUMNS {: cols:^ :}
+   plan NEXT-ALIAS {: row:str :}
+   plan key row branches +KEYS {: probed:^ rest:^ :}
+   plan key row branches probed cols PROBE-SQL {: t:str :}
+   rest VEC:COUNT 0= if t cols exit then
+   plan t branches rest cols BESIDE cols ;
+
+\ Sets the item's branches, one per description source it reads.
+: BRANCHES ( ^plan ^item -- )
+   {: plan it:^ :}
    plan it ORIGINS {: origins:^ :}
    plan AL 0 [type] relation VEC:NEW {: branches:^ :}
    origins VEC:COUNT 0 ?do
       plan it origins i VEC:AT @ LIVE-OF {: recs:^ :}
       branches VEC:PUSH {: b:^ :}
       plan it ITEM-NODE @ recs b SOURCE-BRANCH
-      plan keys b +KEYS
-   loop branches it ITEM-BRANCHES !
+   loop branches it ITEM-BRANCHES ! ;
+
+\ A pattern of several description sources: a UNION ALL of a branch per
+\ source, driven by the first key some branch binds natively.
+: UNION-SQL ( ^plan ^item ^VEC:vector<binding> ^relation
+      -- ^VEC:vector<binding> )
+   {: plan it:^ keys:^ group:^ :}
+   it ITEM-BRANCHES @ {: branches:^ :}
    group RELATION-FROM @ {: from:^ :}
    from s"  CROSS JOIN " +SEP
-   plan plan branches UNION-TABLE from +TABLE ;
+   plan keys branches DRIVER {: d:n :}
+   d 0< if plan plan branches UNION-TABLE from +TABLE exit then
+   plan plan keys d VEC:AT branches DRIVEN-TABLE from +TABLE ;
 
 \ Appends the joined item, a derived table or a triple of one
 \ description source, to the group's FROM and answers its bindings.
@@ -2966,20 +3054,67 @@ STRUCTURE walk DERIVE addr
       then
    loop vars ;
 
-\ The keys of the unions among items from..to.
+\ The keys r's bindings would give, each in its form, naming no CTE.
+: FORMS ( ^plan ^relation -- ^VEC:vector<binding> )
+   {: plan r:^ :}
+   r RELATION-BINDINGS @ {: bs:^ :}
+   plan NEW-BINDINGS {: keys:^ :}
+   bs VEC:COUNT 0 ?do
+      bs i VEC:AT BINDING-VAR @ {: var:n :}
+      keys var bs var SHAPE-OF s" " s" " BIND
+   loop keys ;
+
+\ The index in keys of the item's DRIVER when it is a keyed union, else
+\ -1.
+: DRIVES ( ^plan ^VEC:vector<binding> ^item -- n )
+   {: plan keys:^ it:^ :}
+   it ITEM-UNION @ 0= if -1 exit then
+   plan it KEYED? 0= if -1 exit then
+   plan keys it ITEM-BRANCHES @ DRIVER ;
+
+\ The variables of keys that hits holds, in keys' order.
+: IN-ORDER ( ^plan ^VEC:vector<binding> ^VEC:vector<n>
+      -- ^VEC:vector<n> )
+   {: plan keys:^ hits:^ :}
+   plan INDEXES {: vars:^ :}
+   keys VEC:COUNT 0 ?do
+      keys i VEC:AT BINDING-VAR @ {: var:n :}
+      hits var INDEXED? if var vars VEC:PUSH ! then
+   loop vars ;
+
+\ Adds to driven the index of each union among items from..to not there
+\ that one of keys DRIVES; answers those keys' variables.
+: DRIVING ( ^plan ^VEC:vector<item> n n ^VEC:vector<binding>
+      ^VEC:vector<n> -- ^VEC:vector<n> )
+   {: plan items:^ from:n to:n keys:^ driven:^ :}
+   plan INDEXES {: hits:^ :}
+   to from ?do
+      driven i INDEXED? 0= if
+         plan keys items i VEC:AT DRIVES {: d:n :}
+         d -1 > if
+            i driven VEC:PUSH !
+            keys d VEC:AT BINDING-VAR @ hits VEC:PUSH !
+         then
+      then
+   loop plan keys hits IN-ORDER ;
+
+\ The keys of the unions among items from..to: of each component in
+\ turn, those that drive a union no earlier component's keys drive.
 : RUN-KEYS ( ^plan ^VEC:vector<item> n n -- ^VEC:vector<binding> )
    {: plan items:^ from:n to:n :}
    plan NEW-BINDINGS {: keys:^ :}
    plan items from to READ-VARS {: vars:^ :}
    vars VEC:COUNT 0= if keys exit then
    plan items from to COMPONENTS {: links:^ :}
-   plan INDEXES {: done:^ :}
+   plan INDEXES {: done:^ :} plan INDEXES {: driven:^ :}
    vars VEC:COUNT 0 ?do
       links vars i VEC:AT @ HEAD {: head:n :}
       done head INDEXED? 0= if
          head done VEC:PUSH !
          plan items from to links head DRIVERS {: d:^ :}
-         plan vars d keys +KEYS-OF
+         plan vars d KEEP-READ
+         plan items from to plan d FORMS driven DRIVING
+         {: used:^ :} plan used d keys +KEYS-OF
       then
    loop keys ;
 
@@ -2993,6 +3128,10 @@ STRUCTURE walk DERIVE addr
 \ Folds the unions among items from..to, then the walks.
 : LATE ( ^plan ^VEC:vector<item> n n ^relation -- )
    {: plan items:^ from:n to:n r:^ :}
+   to from ?do
+      items i VEC:AT {: it:^ :}
+      it ITEM-UNION @ if plan it BRANCHES then
+   loop
    plan items from to RUN-KEYS {: keys:^ :}
    to from ?do
       items i VEC:AT {: it:^ :}

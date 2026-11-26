@@ -257,6 +257,17 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
 \ x nor y.
 : NEITHER ( str str str str -- ) [: NEITHER-IN ;] ARENA:WITH ;
 
+: BOTH-IN ( str str str str ^ARENA:arena -- )
+   {: q:str x:str y:str w:str a:^ :}
+   q s" 1048576" a ANSWER {: sql:^ doc:^ :}
+   sql $ x STR:CONTAINS? TTRUE
+   sql $ y STR:CONTAINS? TTRUE
+   doc $ w a UNQUOTE $ a false SAME? TTRUE ;
+
+\ The query answers the expected document and its statement names both x
+\ and y.
+: BOTH ( str str str str -- ) [: BOTH-IN ;] ARENA:WITH ;
+
 \ A part before its parent, a list of datatypes one with an escape, a
 \ shape of any term.
 : SPELLED-SHAPES ( -- str )
@@ -453,15 +464,11 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" {'head':{'vars':['o','l']},'results':{'bindings':[{'o':{'type':'uri','value':'urn:test:1'},'l':{'type':'literal','value':'Lathe'}},{'o':{'type':'uri','value':'urn:test:10'},'l':{'type':'literal','value':'Machine'}}]}}"
    ALONE ;
 
-\ A union's branches read only the keys the other joined items bind its
-\ variables to, whatever the written order: through its connected items
-\ and only those, a term's through the shape's `in`. A run's unions share
-\ one key set per variable, and the keys of connected items one join of
-\ them. A given subject needs no keys, and nor does a union inside an
-\ EXISTS.
+\ A keyed union reads its natively bound branches once per key, the
+\ others beside them; a key that drives no union has no CTE.
 : DRIVEN ( -- )
    s" SELECT ?p ?o WHERE { ?s rdfs:label 'Lathe' . ?s ?p ?o }"
-   s"  IN (SELECT k FROM " LATHE HOLDS
+   s"  CROSS JOIN LATERAL (" s"  IN (SELECT " LATHE ALONE
    s" SELECT ?p ?o WHERE { ?s rdfs:label 'Lathe' . ?s ?p ?o }"
    LATHE HOISTED
    s" SELECT ?p ?o WHERE { ?s ?p ?o . ?s rdfs:label 'Lathe' }"
@@ -471,9 +478,17 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" SELECT ?p ?o WHERE { ?s rdfs:label 'Lathe' . ?s ?p ?o }"
    LATHE ALIKE
    s" SELECT ?p ?o WHERE { VALUES ?p { rdfs:label <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> t:21 t:30 t:31 } t:1 ?p ?o }"
-   s"  IN (SELECT " LATHE WITHOUT
+   s"  LATERAL " LATHE WITHOUT
    s" SELECT ?p ?o WHERE { VALUES ?s { t:1 } ?s ?p ?o }"
-   s" IN (SELECT sparql_test.id(k) FROM " LATHE HOLDS
+   s" = sparql_test.id(" s" .k)" LATHE BOTH
+   s" SELECT ?s ?o WHERE { VALUES ?p { t:21 } ?s ?p ?o }"
+   s" .* FROM " s"  CROSS JOIN LATERAL ("
+   s" {'head':{'vars':['s','o']},'results':{'bindings':[{'s':{'type':'uri','value':'urn:test:1'},'o':{'type':'uri','value':'urn:test:2'}}]}}"
+   BOTH
+   s" SELECT ?p WHERE { ?s rdfs:label 'Lathe' . ?o rdfs:label 'Mill' . ?s ?p ?o }"
+   s"  AS MATERIALIZED (" 1
+   s" {'head':{'vars':['p']},'results':{'bindings':[{'p':{'type':'uri','value':'urn:test:21'}}]}}"
+   TIMES
    s" SELECT ?p ?o WHERE { ?x rdfs:label 'Spindle' . ?x t:20 ?s . ?s ?p ?o . ?y rdfs:label 'Mill' }"
    s" .label = sparql_test.string($1)" 2 LATHE TIMES
    s" SELECT ?p ?o WHERE { ?x rdfs:label 'Spindle' . ?x t:20 ?s . ?s ?p ?o . ?y rdfs:label 'Mill' }"
@@ -487,7 +502,7 @@ STRUCTURE row DERIVE addr FIELD text str ;STRUCTURE
    s" {'head':{'vars':['n']},'results':{'bindings':[{'n':{'type':'literal','value':'20','datatype':'http://www.w3.org/2001/XMLSchema#integer'}}]}}"
    TIMES
    s" SELECT ?x WHERE { ?x rdfs:label 'Spindle' FILTER EXISTS { ?x t:20 ?s . ?s ?p ?o } }"
-   s"  IN (SELECT "
+   s"  LATERAL "
    s" {'head':{'vars':['x']},'results':{'bindings':[{'x':{'type':'uri','value':'urn:test:3'}}]}}"
    WITHOUT ;
 
