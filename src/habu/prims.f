@@ -758,6 +758,8 @@ EPPRIM: CHECKER-RESOLVE bare-search-wl PE-STR PE-IN PE-N PE-IN  PE-N PE-OUT ECLO
 EPPRIM: CHECKER-RESOLVE xref-search-wl PE-STR PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: CHECKER-RESOLVE bare-scope-find PE-STR PE-IN
    PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: CHECKER-RESOLVE bare-scope-bind PE-STR PE-IN
+   PE-PTR-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: parse-name     PE-STR PE-OUT EPRIM;
 \ num-parse ( ^u8 n -- n bool bool ) : the engine's own number reader, over
 \ bytes the caller already holds - the routine the interpret and compile

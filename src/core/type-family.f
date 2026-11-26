@@ -88,7 +88,6 @@ public
 \ --- named reject codes (thrown, caught by parser/CHECK path or unit `catch`).
 7101 constant E-TFAM-CASE     \ uppercase/mixed-case or non-canonical tail token
 7102 constant E-TFAM-DUP      \ duplicate tail within the same package
-7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail
 \ E-TDECL-DEF-NAME: a family, variant or public accessor field name that is
 \ a keyword or reads as a number.
 7123 constant E-TDECL-DEF-NAME
@@ -97,8 +96,6 @@ public
 7125 constant E-PF-NAME       \ reserved field tail
 
 private
-
-variable TF-PUB               \ private first-public-match accumulator (-1 = none)
 
 \ declaration parameter spelling.  This is the one reversible alphabet used by
 \ every declaration parser and signature generator.  The concrete scalar tokens
@@ -197,8 +194,6 @@ EXPORT CHECK:CHECKER-COLON-SCAN
 EXPORT CHECK:CHECKER-PKG-SYM
 EXPORT CHECK:CHECKER-SYM-IDENTITY
 EXPORT CHECK:CHECKER-TYPE-MARK-COVERS?
-EXPORT CHECK:CHECKER-USING$
-EXPORT CHECK:CHECKER-USING-N
 EXPORT CHECK:CK-REC-WID
 EXPORT CHECK:CONSTRUCT-DECL-TERM
 EXPORT CHECK:CONSTRUCT-WIDE-STAGED-REJECT
@@ -3500,7 +3495,6 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
 EXPORT CHECK:FACTS@
 EXPORT CHECK:LINEAR-TEXT?
 EXPORT CHECK:NMAP-SLOT
-EXPORT CHECK:SGBAD-AMBIG!
 EXPORT CHECK:SIG-SCOPE$
 EXPORT CHECKER-RESOLVE:REC-AT
 EXPORT CHECKER-RESOLVE:xref-search-wl
@@ -3572,37 +3566,10 @@ EXPORT BOOT:TYPES-WL
    0 ENTRIES-PENDING ! ;
 
 
-\ A `using` import names its package's public families: the family tail ns
-\ names in the package of using slot ix.
-: TFAM-USED-FIND ( n str -- n bool ) {: ix:n ns:str :}
-   ix CHECKER-USING$ ns TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
-   {: id:n :}
-   id TFAM-PUBLIC? IF id RES-TRUE ELSE 0 RES-FALSE THEN ;
-
-\ Repeating an import still names the same family; two distinct matches throw
-\ E-TFAM-AMBIG.
-: TFAM-FIND-USED ( str -- n bool ) {: ns:str :}
-   -1 TF-PUB !
-   CHECKER-USING-N 0 ?DO
-      i ns TFAM-USED-FIND IF
-         {: id:n :}
-         TF-PUB @ 0< IF id TF-PUB !
-         ELSE id TF-PUB @ <> IF E-TFAM-AMBIG throw THEN THEN
-      ELSE drop THEN
-   LOOP
-   TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
-
-\ Bit i set when using slot i offers the family tail ns.
-: TFAM-USED-MASK ( str -- n ) {: ns:str :}
-   0  CHECKER-USING-N 0 ?DO
-      i ns TFAM-USED-FIND nip IF 1 i lshift or THEN
-   LOOP ;
-
 \ A bare tail resolves as a bare word does: the active package's exact row
 \ (private or public), inside a part `A:B` the row of its package A, the exact
-\ global row, then the `using` imports; another package's family needs
-\ `PKG:tail` or an import. At top level the first exact lookup is already
-\ global. Compaction-hidden `@name` tokens never resolve.
+\ global row; another package's family needs `PKG:tail`. At top level the
+\ first exact lookup is already global. Compaction-hidden `@name` tokens never resolve.
 : TFAM-RESOLVE ( str str -- n bool )
    {: ps:str ns:str :}
    ns TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
@@ -3616,7 +3583,7 @@ EXPORT BOOT:TYPES-WL
       s" " ns TFAM-FIND IF RES-TRUE EXIT THEN
       drop
    THEN
-   ns TFAM-FIND-USED ;
+   0 RES-FALSE ;
 
 PTR-VARIABLE TFQ-P
 SCRATCH-VARIABLE TFQ-CAP          \ TFQ-P's room, in cells
@@ -3655,11 +3622,10 @@ variable TFQ-COLON
    s STR:LEN TFQ-COLON @ - 1 - TFQ-TU !
    RES-TRUE ;
 
-\ How a family token resolved: SR-AMBIG is a bare tail two used packages make
-\ public, SR-HIDDEN a family another package keeps private.
+\ How a family token resolved: SR-HIDDEN is a family another package keeps
+\ private.
 0 constant SR-FOUND
 1 constant SR-ABSENT
-2 constant SR-AMBIG
 3 constant SR-HIDDEN
 
 \ The split tail's family in package qs, seen from package ps.
@@ -3682,8 +3648,7 @@ variable TFQ-COLON
    ns TFQ-SPLIT? 0= IF 0 RES-FALSE EXIT THEN
    TFQ-BUF TFQ-U @ >str ps TFAM-QUAL-IN SR-FOUND = ;
 
-\ The family token ns names in package ps and how it resolved; an ambiguous
-\ public tail (E-TFAM-AMBIG) answers SR-AMBIG.
+\ The family token ns names in package ps and how it resolved.
 : TFAM-SIG-RESOLVE ( str str -- n n )
    {: ps:str ns:str :}
    SIG-FACTS-MODE @ IF   \ facts may start "@:"
@@ -3694,26 +3659,19 @@ variable TFQ-COLON
       SIG-EXACT-MODE @ IF TFQ-BUF TFQ-U @ >str ps TFAM-QUAL-IN EXIT THEN
       ps TFAM-QUAL-RESOLVE EXIT
    THEN
-   [: ps ns TFAM-RESOLVE ;] catch {: id flag rc:n :}
-   rc 0= IF id flag IF SR-FOUND ELSE SR-ABSENT THEN EXIT THEN
-   rc E-TFAM-AMBIG = IF 0 SR-AMBIG EXIT THEN
-   rc throw ;
+   ps ns TFAM-RESOLVE IF SR-FOUND ELSE SR-ABSENT THEN ;
 
-\ The checker's TFAM-RESOLVE-XT target: an ambiguous tail fails the parse as
-\ SGBAD's ambiguous kind, with the using slots that offer it.
+\ The checker's TFAM-RESOLVE-XT target.
 : TFAM-PARSE-RESOLVE ( str str -- n bool )
-   {: ps:str ns:str :}
-   ps ns TFAM-SIG-RESOLVE {: id:n sr:n :}
-   sr SR-AMBIG = IF ns  ns TFAM-USED-MASK  SGBAD-AMBIG! THEN
-   id  sr SR-FOUND = ;
+   TFAM-SIG-RESOLVE SR-FOUND = ;
 
 \ The signature parser asks this only after its normal family and concrete
-\ lookups missed. An ambiguous public tail, another package's private family, a
-\ malformed qualifier or a noncanonical family tail is not an absent
-\ declaration a quiet producer may explain.
+\ lookups missed. Another package's private family, a malformed qualifier or a
+\ noncanonical family tail is not an absent declaration a quiet producer may
+\ explain.
 : TFAM-MAY-ARRIVE? ( str -- bool ) {: s:str :}
    SIG-SCOPE$ s TFAM-SIG-RESOLVE nip {: sr:n :}
-   sr SR-AMBIG =  sr SR-HIDDEN = or IF RES-FALSE EXIT THEN
+   sr SR-HIDDEN = IF RES-FALSE EXIT THEN
    s TFQ-SPLIT? IF TFQ-TA @ TFQ-TU @ >str TF-CANON?
    ELSE s TF-CANON? THEN
    IF s CHECKER-TYPE-MARK-COVERS? ELSE RES-FALSE THEN ;
@@ -4384,7 +4342,6 @@ TFAM-MEMBERS-INSTALL
    REPEAT ;
 
 EXPORT CHECK:MD-CONSTRUCT-WIDE
-EXPORT CHECK:MD-FAM-AMBIG
 EXPORT CHECK:MD-MEMBER-TOP
 EXPORT CHECK:MDIAG!
 EXPORT CHECK:OK
@@ -4745,7 +4702,6 @@ EXPORT CHECK:OK
 
 : TFAM-MATCH-FAM ( str -- n bool ) {: ns:str :}   \ folded family token
    TFAM-ACTIVE-PKG$ ns TFAM-SIG-RESOLVE {: id:n sr:n :}
-   sr SR-AMBIG = IF MD-FAM-AMBIG MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    sr SR-FOUND <> IF MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id TFAM-MATCH-KIND ;
 

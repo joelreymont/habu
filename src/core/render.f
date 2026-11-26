@@ -1022,7 +1022,6 @@ variable MDV-I   variable MDV-F
 : MD-CODE$ ( n -- str )
    case
       MD-FAM-UNKNOWN  of s" E-MATCH-UNKNOWN-FAMILY" endof
-      MD-FAM-AMBIG    of s" E-USING-AMBIGUOUS" endof
       MD-FAM-KIND     of s" E-MATCH-FAMILY-KIND" endof
       MD-SCRUT        of s" E-MATCH-SCRUTINEE" endof
       MD-FAM-MISMATCH of s" E-MATCH-FAMILY-MISMATCH" endof
@@ -1143,8 +1142,7 @@ variable MDV-I   variable MDV-F
       MD-VAR-DUP      of s" keep one `OF ... ENDOF` arm for this variant and delete the other" endof
       MD-VAR-UNKNOWN  of s" write a variant the family declares, spelled as its declaration spells it" endof
       MD-CON-VAR      of s" write a variant the family declares, spelled as its declaration spells it" endof
-      MD-FAM-UNKNOWN  of s" name a family visible here: one of this package, a global one, one a `using` imports, or `PKG:family`" endof
-      MD-FAM-AMBIG    of s" qualify the family as `PKG:family` with the package you mean" endof
+      MD-FAM-UNKNOWN  of s" name a family visible here: one of this package, a global one, or `PKG:family`" endof
       MD-CON-FAM      of s" name a family of this package after `construct`, or call another package's generated constructor, as `PKG-FAMILY:VARIANT`" endof
       MD-FAM-KIND     of s" name a `SUMTYPE` or `ENUM` family after `MATCH`" endof
       MD-CON-KIND     of s" name a `SUMTYPE` or `ENUM` family after `construct`" endof
@@ -1182,7 +1180,7 @@ variable MDV-I   variable MDV-F
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
       MD-RECURSE-SIG  of s" declare the definition's stack effect after its name, as `: NAME ( n -- n )`" endof
       MD-RECURSE-DOES of s" move the recursion into a named word with a declared effect and call that word from the `does>` clause" endof
-      MD-IS-UNKNOWN   of s" name a word declared with `defer` after `is`, as `PKG:NAME` or with its package imported by `using`" endof
+      MD-IS-UNKNOWN   of s" name a word declared with `defer` after `is`, qualified as `PKG:NAME` when another package declares it" endof
       MD-LOCAL-ENDED  of s" read the local inside the `{:` block that binds it, and keep a value needed after the block on the stack" endof
       MD-LOCAL-STRAY  of s" append a built local between the `{:` and `:}` keywords of its group" endof
       MD-LOCAL-UNBOUND of s" read a built local by the index `EFFECT:LOCAL` answered, after the `:}` that binds it" endof
@@ -1247,7 +1245,6 @@ variable MDV-I   variable MDV-F
 : MD-REASON$ ( n -- str )
    case
       MD-FAM-UNKNOWN  of s" bad match: unknown type family" endof
-      MD-FAM-AMBIG    of s" bad match: ambiguous type family" endof
       MD-FAM-KIND     of s" bad match: family is not a sum or enum" endof
       MD-SCRUT        of s" bad match: expected sum or enum value on stack" endof
       MD-FAM-MISMATCH of s" bad match: family mismatch" endof
@@ -1364,7 +1361,6 @@ variable MDV-I   variable MDV-F
       MD-MEMORY-ARG   of s" type argument may be linear" endof
       MD-MEMORY-EMPTY of s" zero-width value" endof
       MD-FAM-UNKNOWN  of s" names no visible family" endof
-      MD-FAM-AMBIG    of s" names a family two used packages make public" endof
       MD-FAM-KIND     of s" family of another kind" endof
       MD-SCRUT        of s" no matchable value on top" endof
       MD-FAM-MISMATCH of s" top value of another family" endof
@@ -1603,7 +1599,6 @@ variable MDV-I   variable MDV-F
 \ A definition's signature, a local's type or a stored signature that does not
 \ parse; SGBAD's state from the failed parse names the kind.
 : SGBAD-CODE$ ( -- str )
-   SGBAD-AMBIG? IF s" E-USING-AMBIGUOUS" EXIT THEN
    SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" EXIT THEN
    SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" EXIT THEN
    SGBAD-ARITY? IF s" E-WRONG-ARITY" EXIT THEN
@@ -1793,7 +1788,7 @@ PTR-VARIABLE TAKEN-P   variable TAKEN-CAP   variable TAKEN-N
 \ What the pinned token takes: the expected row, or, when the token's word has
 \ more than one row, each row's inputs in table order.
 : TAKES-WORD ( -- )
-   PIN-TOK$ CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   PIN-TOK$ CHECKER-BIND {: sym:n :}
    sym SYM-ROWS 2 < IF DEXP @ ROW-WORD EXIT THEN
    RECORD-NAMES
    0 TAKEN-N !
@@ -1867,10 +1862,6 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    PIN-TOK$ dup STR:DATA 0 >str ;
 : SIG-MESSAGE ( -- )
    SIG-SUBJECT$ {: t:str l:str :}
-   SGBAD-AMBIG? IF
-      s" type family " REJECTION:EMIT-STR  t l SUBJECT-SPAN
-      s"  is public in more than one used package" REJECTION:EMIT-STR EXIT
-   THEN
    SGBAD-UNKNOWN? IF
       s" unknown type " REJECTION:EMIT-STR  t l SUBJECT-SPAN
       l STR:LEN 0= IF s"  in signature" REJECTION:EMIT-STR THEN EXIT
@@ -2002,7 +1993,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
 
 \ Why a body does not admit immediate t: IMM-READS of its binding.
 : IMM-WHY ( str -- n ) {: t:str :}
-   t  t CHECKER-FIND-ACTIVE-SYM IMM-READS ;
+   t  t CHECKER-BIND IMM-READS ;
 
 : IMM-MESSAGE ( str -- ) {: t:str :}
    t CODE-SPAN
@@ -2075,7 +2066,6 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    s" bound here" REJECTION:EMIT-STR ;
 
 : SIG-LABEL ( -- )
-   SGBAD-AMBIG? IF s" ambiguous here" REJECTION:EMIT-STR EXIT THEN
    SGBAD-UNKNOWN? IF s" unknown type" REJECTION:EMIT-STR EXIT THEN
    SGBAD-SCHEME? IF s" a local holds one type" REJECTION:EMIT-STR EXIT THEN
    SGBAD-BAREPTR? IF s" no element type" REJECTION:EMIT-STR EXIT THEN
@@ -2206,7 +2196,7 @@ EXPORT TFAM:SUMV-PAY-N
 : IMM-NOTES ( str -- ) {: t:str :}
    t IMM-WHY IMM-EFFECT <> IF EXIT THEN
    s" expected" REJECTION:NOTE  s" ( -- )" REJECTION:EMIT-STR
-   t CHECKER-FIND-ACTIVE-SYM USIG-NEWEST-VISIBLE {: rec1:n :}
+   t CHECKER-BIND USIG-NEWEST-VISIBLE {: rec1:n :}
    rec1 0= IF EXIT THEN
    s" found" REJECTION:NOTE  s" ( " REJECTION:EMIT-STR
    RQM @ REJECTION:DEST @ {: qm:n dst:n :}
@@ -2216,7 +2206,7 @@ EXPORT TFAM:SUMV-PAY-N
 
 \ A reason one row of a many-row word gave still names every form the word takes.
 : FORMS-NOTE ( -- )
-   PIN-TOK$ CHECKER-FIND-ACTIVE-SYM SYM-ROWS 2 < IF EXIT THEN
+   PIN-TOK$ CHECKER-BIND SYM-ROWS 2 < IF EXIT THEN
    s" note" REJECTION:NOTE  TOK-SPAN  s"  takes " REJECTION:EMIT-STR  AT-PIN TAKES-WORD ;AT-PIN ;
 
 : DIAG-NOTES ( -- )
@@ -2361,7 +2351,7 @@ PTR-VARIABLE HOLDER-FIRST
 
 : IMM-HELP ( str -- ) {: t:str :}
    \ The token's binding is read afresh: the walk's last bound token may be another.
-   t CHECKER-FIND-ACTIVE-SYM t TOK-IDENTITY CTL>INTRINSIC {: id:n :}
+   t CHECKER-BIND t TOK-IDENTITY CTL>INTRINSIC {: id:n :}
    id INTRINSIC-INCLUDE = IF t s" included" LOADER-HELP EXIT THEN
    id INTRINSIC-REQUIRE = IF t s" required" LOADER-HELP EXIT THEN
    t IMM-WHY {: why:n :}
@@ -2571,10 +2561,8 @@ PTR-VARIABLE HOLDER-FIRST
    t REJECTION:AT  MD-DOES-UNMADE MD-LABEL$ REJECTION:EMIT-STR
    REJECTION:HELP  MD-DOES-UNMADE MD-SUGGEST$ REJECTION:EMIT-STR ;
 
-\ The notes and the help; an ambiguous family's packages note and help are
-\ one part.
+\ The notes and the help.
 : DIAG-ADVICE ( -- )
-   DKIND RF-SIG =  SGBAD-AMBIG?  and IF SIG-SUBJECT$ drop SGBAD-AMBIG-HELP EXIT THEN
    DIAG-NOTES
    REJECTION:HELP  DIAG-HELP ;
 

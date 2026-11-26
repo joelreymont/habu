@@ -1093,20 +1093,13 @@ PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF \ in-slot: sig bytes
 PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 8 constant PD-SLOTS-REL                       \ slots begin after the u64 band count cell
 
-\ Fields of each evaluate frame: the package scope and using depth (PKGSNAP-USE)
-\ as its text began, which a throw puts back.
+\ Fields of each evaluate frame: the package scope as its text began, which a
+\ throw puts back.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
 16 constant PKGSNAP-PRI
 24 constant PKGSNAP-PARENT
 32 constant PKGSNAP-REC
-40 constant PKGSNAP-USE
-package PKGSNAP
-public
-\ FLOOR saves the open package's using floor (USE-PKG-SAVE-CELL): a REPL line may
-\ close an earlier line's package and open another, which rewrites it.
-48 constant FLOOR
-;package
 
 
 \ A fixed stack of public wordlist IDs plus a depth cell, the one count of live

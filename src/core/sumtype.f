@@ -45,7 +45,6 @@ EXPORT TFAM:PK-REGION
 EXPORT TFAM:PK-SCOPE
 EXPORT TFAM:PK-TYPE
 EXPORT TFAM:READ-PENDING
-EXPORT TFAM:SR-AMBIG
 EXPORT TFAM:SR-FOUND
 EXPORT TFAM:STR-FAM
 EXPORT TFAM:SUMV-ADD
@@ -122,7 +121,6 @@ EXPORT TFAM:TFAM-SIG-RESOLVE
 EXPORT TFAM:TFAM-SLOTS!
 EXPORT TFAM:TFAM-SLOTS@
 EXPORT TFAM:TFAM-SUM?
-EXPORT TFAM:TFAM-USED-MASK
 EXPORT TFAM:TFAM-VAR-COUNT@
 EXPORT TFAM:TFAM-VAR-RANGE!
 EXPORT TFAM:TFAM-VAR-START@
@@ -264,7 +262,6 @@ EXPORT CHECK:RR-SHARED
 EXPORT CHECK:SB!
 EXPORT CHECK:SGBAD
 EXPORT CHECK:SGBAD-A
-EXPORT CHECK:SGBAD-AMBIG?
 EXPORT CHECK:SGBAD-ARITY?
 EXPORT CHECK:SGBAD-CLEAR
 EXPORT CHECK:SGBAD-U
@@ -286,10 +283,8 @@ EXPORT CHECK:SQUOT-N
 EXPORT CHECK:STATED-FLAG
 EXPORT CHECK:T-RES
 EXPORT CHECK:TAG
-EXPORT CHECK:TDECL-TITLE
 EXPORT CHECK:TFAM-WIDTH-SLOT-XT
 EXPORT CHECK:UNSTORED-REASON
-EXPORT CHECK:UPKG-HELP
 EXPORT CHECK:WRITE-WINDOW-CK
 
 \ A use any value kind fits: a pointee or a quotation element.
@@ -389,7 +384,7 @@ PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token
 PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
 PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
 PTR-VARIABLE TDF-A   variable TDF-U   \ what to write instead (diagnostics)
-PTR-VARIABLE TDA-A   variable TDA-U   \ copy of the token TDECL-THROW or TDECL-AMBIG armed with
+PTR-VARIABLE TDA-A   variable TDA-U   \ copy of the token TDECL-THROW armed with
 variable TDECL-CODE                 \ the code TDW and TDF explain (0 = none armed)
 variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
 \ A collected body, its tokens one blank apart.
@@ -480,21 +475,6 @@ variable LABEL-U
    LABEL-U @ s STR:LEN + LABEL-U ! ;
 : LABEL$ ( -- str ) LABEL-P @ LABEL-U @ >str ;
 
-\ Arms E-USING-AMBIGUOUS for the family tail a u, public in more than one used
-\ package, keeping a copy of it; answers the code for the caller to throw.
-: TDECL-AMBIG ( str -- n ) {: s:str :}
-   s" ambiguous type family" s" " E-USING-AMBIGUOUS TDECL-ARM
-   s TDA-KEEP
-   E-USING-AMBIGUOUS ;
-
-\ The record of a TDECL-AMBIG arming in a declaration of a kind and family,
-\ placed at the token ta tu. The caller ends it.
-: TDECL-AMBIG-DIAG ( str str str -- )
-   {: ks:str fs:str ts:str :}
-   s" E-USING-AMBIGUOUS" ks fs TDECL-TITLE
-   ts REJECTION:AT  TDW-A @ TDW-U @ >str REJECTION:EMIT-STR
-   s" type family"  TDA-A @ TDA-U @ >str  TDA-A @ TDA-U @ >str TFAM-USED-MASK  UPKG-HELP ;
-
 \ --- transactional mark/restore over every store a declaration can grow.
 \ The family and variant stores go back through TFAM-REWIND, not here: their
 \ indexes chain rows by id, so unchaining must precede lowering the counters, or
@@ -573,9 +553,6 @@ variable TDECL-TOK-N
 
 \ TDECL-RUN reports only a code TDECL-CODE was armed with.
 : TDECL-REPORT ( -- )
-   TDECL-ARMED E-USING-AMBIGUOUS = IF
-      TDK-A @ TDK-U @ >str  TDN-A @ TDN-U @ >str  TDECL-REPORT-TOK  TDECL-AMBIG-DIAG EXIT
-   THEN
    TDECL-ARMED E-TDECL-SEALED = IF
       TDECL-REPORT-TOK {: ts:str :} ts TDECL-SEALED-WORD ts REJECTION:SEALED EXIT
    THEN
@@ -774,11 +751,6 @@ defer TDECL-NAME-PREFLIGHT-XT ( str -- )
 : TDECL-SELF-REF? ( str -- bool ) {: s:str :}
    s TDN-A @ TDN-U @ >str STR:= ;
 
-\ Rejects the tail a u when its outcome sr is SR-AMBIG.
-: TDECL-AMBIG-REJECT ( n str -- ) {: sr:n s:str :}
-   sr SR-AMBIG <> IF EXIT THEN
-   s TDECL-TOK!  s TDECL-AMBIG throw ;
-
 \ A bare family payload is one logical schema root whose physical width is the
 \ referenced closed width: an arity-0 layout family (sum/enum/product) or cell
 \ family (nominal scalar, the reference a signature admits). Resolution is
@@ -788,7 +760,7 @@ defer TDECL-NAME-PREFLIGHT-XT ( str -- )
 \ payloads and evidence families are rejected.
 : TDECL-PAY-FAM? ( str -- n bool ) {: s:str :}
    TFAM-ACTIVE-PKG$ s TFAM-SIG-RESOLVE {: id:n sr:n :}
-   sr SR-FOUND <> IF sr s TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
+   sr SR-FOUND <> IF 0 RES-FALSE EXIT THEN
    s id UNSTORED-REASON IF E-TDECL-PAYLOAD TDECL-THROW THEN drop drop drop
    id TDECL-CUR-FAM @ = IF
       s s" invalid layout policy for recursive sum"
@@ -855,7 +827,7 @@ defer TDV-ELEM-XT ( str -- n nominal )   \ forward ref for the ELEM<->ARGS<->QUO
 \ One with a scope or region parameter is rejected: a SUMTYPE header lists none.
 : TDECL-VPAY-FAM? ( str -- n bool ) {: s:str :}
    TFAM-ACTIVE-PKG$ s TFAM-SIG-RESOLVE {: id:n sr:n :}
-   sr SR-FOUND <> IF sr s TDECL-AMBIG-REJECT 0 RES-FALSE EXIT THEN
+   sr SR-FOUND <> IF 0 RES-FALSE EXIT THEN
    id TFAM-NONVALUE-PARAM? IF
       s s" takes a scope or region, which a `SUMTYPE` payload cannot hold"
       s" hold it in a field of an `ENUM` whose header lists its scope and region parameters, as in `ENUM box<p,q>` with `FIELD v read-view<p,q,u8>`"
@@ -1173,9 +1145,6 @@ TERM-SCHEMA-INSTALL
 \ The parse's reject: the token SGBAD latched and why.
 : READ-BAD ( [ str str n n -- ] -- ) {: fail :}
    SGBAD-A @ SGBAD-U @ >str
-   SGBAD-AMBIG? IF
-      s" ambiguous type family" E-USING-AMBIGUOUS 0 fail execute EXIT
-   THEN
    SGBAD-UNKNOWN? IF s" unknown type" E-TDECL-PAYLOAD 0 fail execute EXIT THEN
    SGBAD-ARITY? IF
       s" type family applied to wrong number of arguments"

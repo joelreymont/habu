@@ -2111,42 +2111,29 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
 
 \ A source token's scope is a dictionary-record lookup. The one-wordlist
 \ FIND-LBL helper also serves the public search rows; using it here keeps
-\ package, qualified and used-public names on the same name-folding path.
-64 constant SCOPE-FRAME
+\ package and qualified names on the same name-folding path.
+32 constant SCOPE-FRAME
 0 constant SF-TOKEN
 8 constant SF-LEN
-16 constant SF-BOUND
-24 constant SF-USED
-32 constant SF-USED2
-40 constant SF-COLON
-48 constant SF-INDEX
-56 constant SF-QUAL-PUB
+16 constant SF-COLON
+24 constant SF-QUAL-PUB
 
-\ bare-scope-find ( ^u8 n -- bound used used2 flags ). A qualified name
-\ searches the namespace record's public wid. Bare names search the open
-\ private/public wids, the enclosing package's (layout.f ENCLOSING) while a
-\ part is open, then global, while the used publics are collected
-\ independently. Two distinct used records set flag 2 and bind neither when
-\ the primary search missed; a bound seeded primitive sets flag 1.
+\ bare-scope-bind ( ^u8 n -- ^n n ): the bound record, null when nothing
+\ binds, and the flags. A qualified name searches the namespace record's
+\ public wid. Bare names search the open private/public wids, the enclosing
+\ package's (layout.f ENCLOSING) while a part is open, then global. A bound
+\ seeded primitive sets flag 1. The record stays in RAX from the search to
+\ the push.
 : SCOPE-FIND-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: colon-scan:label colon-hit:label bare:label qual-scan:label
-      qual-find:label primary-done:label pub:label enclosing-pri:label
-      enclosing-pub:label global:label
-      used-loop:label used-next:label used-first:label used-done:label
-      bound:label seed-done:label push-out:label qual-bad:label seed-skip:label :}
+      qual-find:label pub:label enclosing-pri:label enclosing-pub:label
+      global:label bound:label qual-bad:label seed-skip:label :}
    X64ASM:RSI POP,  X64ASM:RDI POP,
    X64ASM:RSP SCOPE-FRAME X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-SUB-RI8
    X64ASM:RDI X64ASM:RSP SF-TOKEN MOV-STORE,  X64ASM:RSI X64ASM:RSP SF-LEN MOV-STORE,
-   X64ASM:RAX ZERO-REG,
-   X64ASM:RAX X64ASM:RSP SF-BOUND MOV-STORE,
-   X64ASM:RAX X64ASM:RSP SF-USED MOV-STORE,
-   X64ASM:RAX X64ASM:RSP SF-USED2 MOV-STORE,
-   X64ASM:RAX X64ASM:RSP SF-INDEX MOV-STORE,
    X64ASM:RAX -1 IMM64,  X64ASM:RAX X64ASM:RSP SF-COLON MOV-STORE,
    X64ASM:RCX ZERO-REG,
    colon-scan X64CODE:LBL,
@@ -2167,7 +2154,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    qual-find X64CODE:LBL,
    X64ASM:RSI X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
    HEAD-ROW-LBL X64CODE:CALL,
-   X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E primary-done X64CODE:JCC,
+   X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E bound X64CODE:JCC,
    X64ASM:RDX X64ASM:RAX REC-CODE MOV-LOAD,
    X64ASM:RDX X64ASM:RSP SF-QUAL-PUB MOV-STORE,
    X64ASM:RCX X64ASM:RSP SF-COLON MOV-LOAD,
@@ -2177,11 +2164,10 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    X64ASM:RSI X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-SUB-RR
    X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-DEC
    FIND-LBL X64CODE:CALL,
-   X64ASM:RAX X64ASM:RSP SF-BOUND MOV-STORE,
-   X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-NE primary-done X64CODE:JCC,
+   X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-NE bound X64CODE:JCC,
    X64ASM:RDX X64ASM:RSP SF-QUAL-PUB MOV-LOAD,
    X64ASM:RCX DATA-REG PKG-PUB-CELL MOV-LOAD,
-   X64ASM:RDX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-NE primary-done X64CODE:JCC,
+   X64ASM:RDX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-NE bound X64CODE:JCC,
    X64ASM:RCX X64ASM:RSP SF-COLON MOV-LOAD,
    X64ASM:RDI X64ASM:RSP SF-TOKEN MOV-LOAD,
    X64ASM:RDI X64ASM:RDI X64ASM:RCX 1 1 X64ASM:MEM-IDX X64CODE:ASM-SINK X64ASM:ENC-LEA
@@ -2189,13 +2175,10 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    X64ASM:RSI X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-SUB-RR
    X64ASM:RSI X64CODE:ASM-SINK X64ASM:ENC-DEC
    X64ASM:RDX BOOT:GLOBAL-WL-CELL CELL@,  FIND-LBL X64CODE:CALL,
-   X64ASM:RAX X64ASM:RSP SF-BOUND MOV-STORE,
-   primary-done X64CODE:JMP,
+   bound X64CODE:JMP,
    qual-bad X64CODE:LBL,
-   primary-done X64CODE:LBL,
-   X64ASM:RAX X64ASM:RSP SF-COLON MOV-LOAD,
-   X64ASM:RAX -1 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI8  X64ASM:C-NE used-done X64CODE:JCC,
-   used-loop X64CODE:JMP,
+   X64ASM:RAX ZERO-REG,
+   bound X64CODE:JMP,
    bare X64CODE:LBL,
    X64ASM:RDI X64ASM:RSP SF-TOKEN MOV-LOAD,  X64ASM:RSI X64ASM:RSP SF-LEN MOV-LOAD,
    X64ASM:RDX DATA-REG PKG-PRI-CELL MOV-LOAD,
@@ -2221,41 +2204,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    X64ASM:RDX BOOT:GLOBAL-WL-CELL CELL@,
    FIND-LBL X64CODE:CALL,
    bound X64CODE:LBL,
-   X64ASM:RAX X64ASM:RSP SF-BOUND MOV-STORE,
-   X64ASM:RAX X64ASM:RSP SF-COLON MOV-LOAD,
-   X64ASM:RAX -1 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-CMP-RI8  X64ASM:C-NE used-done X64CODE:JCC,
-   used-loop X64CODE:LBL,
-   X64ASM:RCX X64ASM:RSP SF-INDEX MOV-LOAD,
-   X64ASM:RAX DATA-REG USE-DEPTH-CELL MOV-LOAD,
-   X64ASM:RCX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-GE used-done X64CODE:JCC,
-   X64ASM:RDX DATA-REG X64ASM:RCX CELL USE-WIDS-OFF X64ASM:MEM-IDX X64CODE:ASM-SINK X64ASM:ENC-MOV-RM
-   X64ASM:RDI X64ASM:RSP SF-TOKEN MOV-LOAD,  X64ASM:RSI X64ASM:RSP SF-LEN MOV-LOAD,
-   FIND-LBL X64CODE:CALL,
-   X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E used-next X64CODE:JCC,
-   X64ASM:RCX X64ASM:RSP SF-USED MOV-LOAD,
-   X64ASM:RCX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E used-first X64CODE:JCC,
-   X64ASM:RAX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-E used-next X64CODE:JCC,
-   X64ASM:RAX X64ASM:RSP SF-USED2 MOV-STORE,
-   used-done X64CODE:JMP,
-   used-first X64CODE:LBL,
-   X64ASM:RAX X64ASM:RSP SF-USED MOV-STORE,
-   used-next X64CODE:LBL,
-   X64ASM:RCX X64ASM:RSP SF-INDEX MOV-LOAD,
-   X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-INC
-   X64ASM:RCX X64ASM:RSP SF-INDEX MOV-STORE,
-   used-loop X64CODE:JMP,
-   used-done X64CODE:LBL,
-   X64ASM:RAX X64ASM:RSP SF-BOUND MOV-LOAD,
-   X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-NE push-out X64CODE:JCC,
-   X64ASM:RCX X64ASM:RSP SF-USED2 MOV-LOAD,
-   X64ASM:RCX X64ASM:RCX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-NE push-out X64CODE:JCC,
-   X64ASM:RAX X64ASM:RSP SF-USED MOV-LOAD,
-   push-out X64CODE:LBL,
    X64ASM:RCX ZERO-REG,
-   X64ASM:RDX X64ASM:RSP SF-USED2 MOV-LOAD,
-   X64ASM:RDX X64ASM:RDX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E seed-done X64CODE:JCC,
-   X64ASM:RCX 2 IMM32,
-   seed-done X64CODE:LBL,
    X64ASM:RAX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-TEST-RR  X64ASM:C-E seed-skip X64CODE:JCC,
    X64ASM:RDX X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
    X64ASM:RDX DBASE-REG X64CODE:ASM-SINK X64ASM:ENC-SUB-RR
@@ -2263,11 +2212,14 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    X64ASM:RDX X64ASM:R8 X64CODE:ASM-SINK X64ASM:ENC-CMP-RR  X64ASM:C-AE seed-skip X64CODE:JCC,
    X64ASM:RCX 1 X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-OR-RI8
    seed-skip X64CODE:LBL,
-   X64ASM:RAX PUSH,
-   X64ASM:RAX X64ASM:RSP SF-USED MOV-LOAD,  X64ASM:RAX PUSH,
-   X64ASM:RAX X64ASM:RSP SF-USED2 MOV-LOAD,  X64ASM:RAX PUSH,
-   X64ASM:RCX PUSH,
+   X64ASM:RAX PUSH,  X64ASM:RCX PUSH,
    X64ASM:RSP SCOPE-FRAME X64ASM:>IMM8 X64CODE:ASM-SINK X64ASM:ENC-ADD-RI8 ;
+
+\ bare-scope-find: stage 2 deletes it once its callers move to bare-scope-bind.
+: SCOPE-FIND-FOUR-BODY ( -- )
+   SCOPE-FIND-BODY
+   X64ASM:RCX POP,  X64ASM:RAX ZERO-REG,
+   X64ASM:RAX PUSH,  X64ASM:RAX PUSH,  X64ASM:RCX PUSH, ;
 
 \ parse-name follows the shared source cursor. Whitespace is every byte at
 \ or below space; on exhaustion the previous token cells remain untouched.
@@ -2303,9 +2255,8 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    X64ASM:RAX ZERO-REG,  X64ASM:RAX PUSH,
    finish X64CODE:LBL, ;
 
-\ bare-tok-imm? asks the primary scope only: a used public does not make a
-\ token immediate to a checked body. FIND-LBL supplies the same folded-name
-\ record lookup as bare-scope-find; the immediate flag is its DNAME-IMM bit
+\ bare-tok-imm? asks the scope bare-scope-bind asks; FIND-LBL supplies the
+\ same folded-name record lookup, and the immediate flag is its DNAME-IMM bit
 \ folded to 2.
 : TOK-IMM-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
@@ -2641,7 +2592,8 @@ public
    s" parse-name" [: PARSE-NAME-BODY ;] PRIM
    s" num-parse" [: NUM-PARSE, ;] PRIM
    s" bare-tok-imm?" [: TOK-IMM-BODY ;] PRIM
-   s" bare-scope-find" [: SCOPE-FIND-BODY ;] PRIM
+   s" bare-scope-find" [: SCOPE-FIND-FOUR-BODY ;] PRIM
+   s" bare-scope-bind" [: SCOPE-FIND-BODY ;] PRIM
    s" scope-kind?" [: X64ASM:RAX POP,  SCOPE-KIND-LBL X64CODE:CALL,  X64ASM:RAX PUSH, ;] PRIM ;
 
 private

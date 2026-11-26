@@ -180,6 +180,7 @@ variable UNSAFE-COUNT
    s s" bare-search-wl" STR:=CI or
    s s" xref-search-wl" STR:=CI or
    s s" bare-scope-find" STR:=CI or
+   s s" bare-scope-bind" STR:=CI or
    s s" bare-tok-imm?" STR:=CI or
    s s" policy-admit" STR:=CI or
    s s" policy-seal" STR:=CI or

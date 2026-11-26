@@ -150,7 +150,7 @@ variable LENTRY  variable LPAIR
 package ENGINE-EMIT
 public
 variable LBCS  variable LDOESPATCH
-variable LFINDUSED-CORE variable LSCOPEREC
+variable LSCOPEREC
 ;package
 package ENGINE-EMIT
 public

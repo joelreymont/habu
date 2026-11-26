@@ -725,7 +725,7 @@ generates: FAULT ( -- n )
 -8575 s" a required call ordinal with no successful scan or resolved binding behind it" ERROR:FAULT E-COMP-BINDING
 -8576 s" the active checker counted a rejection or borrowed its recovery fact; abandon the unpublished definition and continue" ERROR:CODE E-COMP-RECOVERY
 -8579 s" the checker holds no declared effect for the pending definition" ERROR:CODE E-COMP-ARITY
--8600 s" a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist, the used publics and the namespace record for a qualified token all answer absent" ERROR:CODE E-NDICT-NAME
+-8600 s" a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the enclosing package's while a part is open, the global wordlist and the namespace record for a qualified token all answer absent" ERROR:CODE E-NDICT-NAME
 -8602 s" the record a spelling denoted carries no definer kind: it was not made by `constant`, `create` or `variable`, or a `does>` clause took that kind away from it, so entering it would run a body rather than collect a decided value" ERROR:CODE E-NDICT-KIND
 -8621 s" a prepared body whose size or clause offset is no whole run of its code" ERROR:FAULT E-NPUB-RELOC
 -8622 s" the pending record is not the unpublished slot the dictionary count points at" ERROR:FAULT E-NPUB-PENDING
@@ -848,7 +848,6 @@ package ERROR
 private
 
 7203 s" a value record's field names a type not yet declared: declare the type before the record" false MINTED E-CHECKER-RECORD-UNRESOLVED
-7144 s" a bare name is public in more than one package a `using` imports: call it qualified, as `PKG:NAME`" false MINTED E-USING-AMBIGUOUS
 7202 s" a storage definition names a type not yet declared: declare the type before the storage" false MINTED E-CHECKER-STORAGE-UNRESOLVED
 7205 s" a cast's signature names a type not yet declared: declare the type before the cast" false MINTED E-CHECKER-IDENTITY-UNRESOLVED
 7163 s" a second POLICY clause in one declaration: keep one `POLICY` clause in the declaration header" false MINTED TYPE-DECL:DECL-EVENT:E-DEV-DUP-POLICY
@@ -870,7 +869,6 @@ private
 -3204 s" an allocator record was filled a second time: call `ALLOC:INIT` once, on a zeroed record" true MINTED E-ALLOC-STATE
 7101 s" a type, variant or field name is not a lowercase tail: write it in lower case with no package qualifier, as in `point`" false MINTED TFAM:E-TFAM-CASE
 7102 s" a family, variant or field name is declared twice where it must be unique: give each a name no other declaration in its package, family or variant uses" false MINTED TFAM:E-TFAM-DUP
-7106 s" a bare type name is public in more than one package a `using` imports: write it qualified, as `PKG:name`" false MINTED TFAM:E-TFAM-AMBIG
 7123 s" a family, variant or public field name is a keyword or reads as a number: rename it, since a keyword or a number names no definition" false MINTED TFAM:E-TDECL-DEF-NAME
 7125 s" a field name spells a declaration word or a generated word such as `make`, `tag` or `eq`: rename the field" false MINTED TFAM:E-PF-NAME
 7107 s" a malformed type declaration, missing its name, a clause token or its closing word: write the declaration word, its name, its clauses, then its closing word" false MINTED TYPE-DECL:E-TDECL-SYNTAX

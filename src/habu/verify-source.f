@@ -9,8 +9,8 @@
 \ tick's operand, has the checker offer the spellings that bind there before
 \ the token is consumed; a run a definition's body appends places the cursor in
 \ the body's text, where that body's check offers them. A token any other
-\ reader takes - a definer's name, a loader's or `using`'s operand, a TRUSTED:
-\ body, type syntax - offers nothing, nor does a byte the scan passed inside a
+\ reader takes - a definer's name, a loader's operand, a TRUSTED: body,
+\ type syntax - offers nothing, nor does a byte the scan passed inside a
 \ comment, a string or a signature, nor one it never reaches. Blanks before a
 \ comment or string the scan skips belong to the token after it. One answer at
 \ most.
@@ -590,7 +590,7 @@ EXPORT CHECK:CHECKER-DYNAMIC-INFO
 EXPORT CHECK:CHECKER-END-PACKAGE
 EXPORT CHECK:CHECKER-EXPORT-ROW
 EXPORT CHECK:CHECKER-EXPORT-SOURCE
-EXPORT CHECK:CHECKER-FIND-QUIET-SYM
+EXPORT CHECK:CHECKER-BIND
 EXPORT CHECK:CHECKER-GLOBAL
 EXPORT CHECK:CHECKER-IMMEDIATE
 EXPORT CHECK:CHECKER-LBUF-NAME-OK?
@@ -612,13 +612,11 @@ EXPORT CHECK:CHECKER-TYPE-SPAN-BREAK?
 EXPORT CHECK:CHECKER-TYPE-SPAN-STEP
 EXPORT CHECK:CHECKER-UNDEFINE
 EXPORT CHECK:CHECKER-UNSEEN-NAME
-EXPORT CHECK:CLOSE-USING
 EXPORT CHECK:DEF-NAME-REJECT?
 EXPORT CHECK:DOES-UNMADE-OPEN
 EXPORT CHECK:IMM-READS
 EXPORT CHECK:LEFT-AT-CALL?
 EXPORT CHECK:MULTI-ERR?
-EXPORT CHECK:OPEN-USING
 EXPORT CHECK:PROW-ADD-TEXT
 EXPORT CHECK:PROW-FIND
 EXPORT CHECK:SIG-EXACT-MODE
@@ -1189,9 +1187,9 @@ variable GROUP-AT
    p ;
 
 \ The tokens an admitted immediate's `parses:` count names are read raw, across
-\ line ends, and never join the body; a using rejection is left to the definition's check.
+\ line ends, and never join the body.
 : SKIP-PAYLOAD ( str -- ) {: s:str :}
-   s s CHECKER-FIND-QUIET-SYM IMM-READS {: cnt:n :}
+   s s CHECKER-BIND IMM-READS {: cnt:n :}
    cnt 0 > IF cnt 0 ?DO NEXT-RAW drop LOOP THEN ;
 
 \ A local or a group skips BODY-TOKEN-SEEN, so it clears the literal before it:
@@ -1387,15 +1385,15 @@ CAST: VISIBLE-ACTION ( n -- [ str n [ str n n n -- ] -- ] )
 
 \ The scope's two questions about a name, asked of the checker that owns the
 \ scope: RECORD-SYM? names the symbol a definition in THIS source is recorded
-\ under (0 when it never was) and FIND-SYM resolves a USE through the open
-\ package's private and public wordlists, the global wordlist and the used
-\ publics - the same chain a body token resolves through.
+\ under (0 when it never was) and FIND-SYM resolves a USE through the chain a
+\ body token resolves through: the open package's private and public
+\ wordlists, the enclosing package's while a part is open, and the global
+\ wordlist, or a qualified token's namespace.
 : RECORD-SYM? ( str -- n )
    NCOMP-DISPATCH:DECL-VERIFY-RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
 \ FIND-SYM reports nothing: this scan asks it of tokens it is only
-\ classifying, and the two rejections the authoritative resolver owns (a used
-\ public shadowing a global, a tail two used packages both export) belong to the
-\ definition's own check, which resolves the same token straight after.
+\ classifying, and a rejection belongs to the definition's own check, which
+\ resolves the same token straight after.
 : FIND-SYM ( str -- n )
    NCOMP-DISPATCH:DECL-VERIFY-FIND-SYM-OFF OWNER-XT SYM-ACTION execute ;
 
@@ -1790,9 +1788,8 @@ variable WRAP-MAKES                           \ a `create` or definer call befor
    WRAP-DEFINERS @ 1 <> IF EXIT THEN
    WRAP-ROW @  DEF-NAME-A @ DEF-NAME-U @ >str RECORD-SYM?  DEFINER-INHERIT ;
 
-\ The live probe follows interpreter syntax. A selected public word can be
-\ probed by its qualified spelling even when the verifier's using mirror does
-\ not match the interpreter's; a private word has no qualified spelling and
+\ The live probe follows interpreter syntax. A selected public word is probed
+\ by its qualified spelling; a private word has no qualified spelling and
 \ cannot prove it will not execute at compile time.
 DYNAMIC-BUFFER TICK-QUAL u8
 
@@ -2558,20 +2555,6 @@ EXPORT CHECKER-RESOLVE:PART-PATH
 
 : RECORD-END-PACKAGE ( -- )
    PACKAGE-KEYWORD-GUARD IF CHECKER-END-PACKAGE THEN ;
-
-\ `using NAME` and `;using` are source events like `package` and `;package`:
-\ without these rows a replayed file's own
-\ imports do nothing and a name it imports is rejected E-UNDEFINED. The checker
-\ owns the replay's using depth, so these two rows are the only thing that
-\ moves it.
-: RECORD-USING ( -- )
-   NAME-TOKEN {: name:str :}
-   name STR:LEN 0= IF NAME-STOP THEN
-   name OPEN-USING ;
-
-\ Takes the `;using` token.
-: RECORD-END-USING ( str -- )
-   CLOSE-USING ;
 
 \ DEFTYPE NAME declares a value nominal: a package-scoped arity-0 type family
 \ whose lowercase tail is the surface name folded (SERIAL -> serial) and whose
@@ -4030,7 +4013,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 ENUM definer-arm DERIVE eq
    other
    package-open public-section private-section global-section target-section
-   package-close package-seal using-open using-close split-mark
+   package-close package-seal split-mark
    type-decl linear-type value-record raw-structure structure-decl mutual-decl
    newtype-decl sumtype-decl enum-decl
    layout-buffer defer-layout-buffer typed-buffer typed-variable
@@ -4052,8 +4035,6 @@ ENUM definer-arm DERIVE eq
    s s" target" STR:=CI IF construct definer-arm target-section EXIT THEN
    s s" ;package" STR:=CI IF construct definer-arm package-close EXIT THEN
    s s" seal-package" STR:=CI IF construct definer-arm package-seal EXIT THEN
-   s s" using" STR:=CI IF construct definer-arm using-open EXIT THEN
-   s s" ;using" STR:=CI IF construct definer-arm using-close EXIT THEN
    s s" split-str" STR:=CI IF construct definer-arm split-mark EXIT THEN
    construct definer-arm other ;
 
@@ -4199,8 +4180,6 @@ ENUM definer-arm DERIVE eq
       target-section OF ENDOF
       package-close OF RECORD-END-PACKAGE ENDOF
       package-seal OF SEAL-ROW ENDOF
-      using-open OF RECORD-USING ENDOF
-      using-close OF s RECORD-END-USING ENDOF
       split-mark OF s SPLIT-MARK ENDOF
       type-decl OF RECORD-DEFTYPE ENDOF
       linear-type OF RECORD-DEFLINEAR ENDOF

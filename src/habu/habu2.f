@@ -1808,158 +1808,28 @@ public
 ;package
 
 package ENGINE-EMIT
-private
-
-\ In x9/x10 = the token; out x13 = 0, or the FIND flags with x11 = code, x12 =
-\ body-len and x5 = the record. Two distinct records bind nothing: x6 = 2.
-: EMIT-FIND-USED ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL
-   {: qscan:label qnone:label ret:label uloop:label mloop:label member:label
-      ninl:label ncmp:label nmatch:label unext:label udone:label
-      lscan:label kloop:label knext:label ploop:label pnext:label pinl:label
-      pcmp:label pmatch:label pamb:label :}
-   LFINDUSED-CORE A64ICODE:LABEL@ A64ICODE:LBL,
-   13 0 A64ICODE:MOVZ,
-   17 0 A64ICODE:MOVZ,
-   6 0 A64ICODE:MOVZ,                                                        \ the match count every exit answers
-   qscan A64ICODE:LBL,
-      17 10 A64ICODE:CMP,  A64ASM:C-GE qnone A64ICODE:BCOND,
-      14 9 17 A64ICODE:ADD,  14 14 0 A64ICODE:LDRB,  14 $3A A64ICODE:CMPI,  A64ASM:C-EQ ret A64ICODE:BCOND,   \ colon -> not a bare tail; miss
-      17 17 1 A64ICODE:ADDI,  qscan A64ICODE:B,
-   qnone A64ICODE:LBL,
-   14 USE-DEPTH-CELL A64ICODE:LIT64,  14 XREG-RBASE 14 A64ICODE:ADD,  8 14 0 A64ICODE:LDR,
-   8 ret A64ICODE:CBZ,
-   7 USE-WIDS-OFF A64ICODE:LIT64,  7 XREG-RBASE 7 A64ICODE:ADD,
-   14 XREG-RBASE HIDXP-CELL A64ICODE:LDR,  14 lscan A64ICODE:CBZ,                          \ no table -> the scan answers
-   9 10 15 4 5 17 C-HIDX-HASH                                      \ x15 = folded-name hash, once
-   16 0 A64ICODE:MOVZ,  6 0 A64ICODE:MOVZ,                                            \ x16 = matched record (0=none), x6 = match count
-   3 0 A64ICODE:MOVZ,                                                        \ x3 = used-wid index
-   kloop A64ICODE:LBL,
-      3 8 A64ICODE:CMP,  A64ASM:C-GE udone A64ICODE:BCOND,
-      2 3 3 A64ICODE:LSLI,  2 7 2 A64ICODE:ADD,  2 2 0 A64ICODE:LDR,
-      5 15 2 4 C-HIDX-SLOT,                                        \ x5 = the wid's first slot
-      4 HIDX-SLOTS A64ICODE:LIT64,                                          \ x4 = step budget
-   ploop A64ICODE:LBL,
-      12 5 2 A64ICODE:LSLI,  12 14 12 A64ICODE:ADD,  11 12 0 A64ICODE:LDRW,                   \ x11 = slot value (index+1)
-      11 knext A64ICODE:CBZ,                                                \ empty slot -> absent from this wid
-      11 11 1 A64ICODE:SUBI,  11 NDICT A64ICODE:CMP,  A64ASM:C-GE pnext A64ICODE:BCOND,              \ stale (truncated) index
-      12 DREC A64ICODE:MOVZ,  12 11 12 A64ICODE:MUL,  12 DBASE 12 A64ICODE:ADD,
-      11 12 40 A64ICODE:LDR,  11 2 A64ICODE:CMP,  A64ASM:C-NE pnext A64ICODE:BCOND,                  \ wid mismatch
-      11 12 16 A64ICODE:LDR,  11 11 DNAME-FLAG-BITS A64ICODE:LSLI,  11 11 DNAME-FLAG-BITS A64ICODE:LSRI,  11 10 A64ICODE:CMP,  A64ASM:C-NE pnext A64ICODE:BCOND,  \ name-len mismatch
-      17 12 24 A64ICODE:ADDI,
-      11 12 16 A64ICODE:LDR,  11 11 DNAME-EXT A64ICODE:ANDI,  11 pinl A64ICODE:CBZ,
-         17 12 24 A64ICODE:LDR,
-      pinl A64ICODE:LBL,
-      13 0 A64ICODE:MOVZ,
-      pcmp A64ICODE:LBL,
-         \ x2 and x11 carry the two bytes, x12 is the fold scratch; the record
-         \ pointer is recomputed at pmatch and the wid reloaded from USE-WIDS[x3]
-         \ at pnext.
-         13 10 A64ICODE:CMP,  A64ASM:C-GE pmatch A64ICODE:BCOND,
-         11 17 13 A64ICODE:ADD,  11 11 0 A64ICODE:LDRB,
-         12 11 $41 A64ICODE:SUBI,  12 $1A A64ICODE:CMPI,  12 A64ASM:C-CC A64ICODE:CSET,  12 12 5 A64ICODE:LSLI,  11 11 12 A64ICODE:ORR,
-         2 9 13 A64ICODE:ADD,  2 2 0 A64ICODE:LDRB,
-         12 2 $41 A64ICODE:SUBI,  12 $1A A64ICODE:CMPI,  12 A64ASM:C-CC A64ICODE:CSET,  12 12 5 A64ICODE:LSLI,  2 2 12 A64ICODE:ORR,
-         11 2 A64ICODE:CMP,  A64ASM:C-NE pnext A64ICODE:BCOND,
-         13 13 1 A64ICODE:ADDI,  pcmp A64ICODE:B,
-      pmatch A64ICODE:LBL,
-         12 5 2 A64ICODE:LSLI,  12 14 12 A64ICODE:ADD,  12 12 0 A64ICODE:LDRW,
-         12 12 1 A64ICODE:SUBI,  11 DREC A64ICODE:MOVZ,  12 12 11 A64ICODE:MUL,  12 DBASE 12 A64ICODE:ADD,
-         12 16 A64ICODE:CMP,  A64ASM:C-EQ knext A64ICODE:BCOND,                             \ same record again (same package used twice)
-         6 6 1 A64ICODE:ADDI,  6 2 A64ICODE:CMPI,  A64ASM:C-GE pamb A64ICODE:BCOND,                  \ 2nd distinct record -> ambiguous: x16 1st, x12 2nd
-         16 12 0 A64ICODE:ADDI,
-   knext A64ICODE:LBL,
-      3 3 1 A64ICODE:ADDI,  kloop A64ICODE:B,
-   pnext A64ICODE:LBL,
-      2 3 3 A64ICODE:LSLI,  2 7 2 A64ICODE:ADD,  2 2 0 A64ICODE:LDR,
-      4 4 1 A64ICODE:SUBI,  4 lscan A64ICODE:CBZ,                                    \ full wrap -> the scan answers
-      5 5 1 A64ICODE:ADDI,  12 HIDX-SLOTS 1 - A64ICODE:LIT64,  5 5 12 A64ICODE:AND,  ploop A64ICODE:B,
-   lscan A64ICODE:LBL,
-   16 0 A64ICODE:MOVZ,  6 0 A64ICODE:MOVZ,                                            \ x16 = matched record (0=none), x6 = match count
-   5 DBASE 0 A64ICODE:ADDI,  4 NDICT 0 A64ICODE:ADDI,
-   uloop A64ICODE:LBL,
-      4 udone A64ICODE:CBZ,
-      14 5 40 A64ICODE:LDR,                                                 \ x14 = record wid
-      3 0 A64ICODE:MOVZ,
-      mloop A64ICODE:LBL,
-         3 8 A64ICODE:CMP,  A64ASM:C-GE unext A64ICODE:BCOND,
-         2 3 3 A64ICODE:LSLI,  2 7 2 A64ICODE:ADD,  15 2 0 A64ICODE:LDR,
-         15 14 A64ICODE:CMP,  A64ASM:C-EQ member A64ICODE:BCOND,
-         3 3 1 A64ICODE:ADDI,  mloop A64ICODE:B,
-      member A64ICODE:LBL,
-         15 5 16 A64ICODE:LDR,  15 15 DNAME-FLAG-BITS A64ICODE:LSLI,  15 15 DNAME-FLAG-BITS A64ICODE:LSRI,  15 10 A64ICODE:CMP,  A64ASM:C-NE unext A64ICODE:BCOND,   \ name-len mismatch
-         2 5 24 A64ICODE:ADDI,
-         14 5 16 A64ICODE:LDR,  14 14 DNAME-EXT A64ICODE:ANDI,  14 ninl A64ICODE:CBZ,
-            2 5 24 A64ICODE:LDR,
-         ninl A64ICODE:LBL,
-         17 0 A64ICODE:MOVZ,
-         ncmp A64ICODE:LBL,
-            17 10 A64ICODE:CMP,  A64ASM:C-GE nmatch A64ICODE:BCOND,
-            15 2 17 A64ICODE:ADD,  15 15 0 A64ICODE:LDRB,
-            3 15 $41 A64ICODE:SUBI,  3 $1A A64ICODE:CMPI,  3 A64ASM:C-CC A64ICODE:CSET,  3 3 5 A64ICODE:LSLI,  15 15 3 A64ICODE:ORR,
-            14 9 17 A64ICODE:ADD,  14 14 0 A64ICODE:LDRB,
-            3 14 $41 A64ICODE:SUBI,  3 $1A A64ICODE:CMPI,  3 A64ASM:C-CC A64ICODE:CSET,  3 3 5 A64ICODE:LSLI,  14 14 3 A64ICODE:ORR,
-            15 14 A64ICODE:CMP,  A64ASM:C-NE unext A64ICODE:BCOND,
-            17 17 1 A64ICODE:ADDI,  ncmp A64ICODE:B,
-         nmatch A64ICODE:LBL,
-            6 6 1 A64ICODE:ADDI,  12 5 0 A64ICODE:ADDI,
-            6 2 A64ICODE:CMPI,  A64ASM:C-GE pamb A64ICODE:BCOND,                            \ 2nd distinct match -> ambiguous: x16 1st, x12 2nd
-            16 5 0 A64ICODE:ADDI,
-      unext A64ICODE:LBL,  5 5 DREC A64ICODE:ADDI,  4 4 1 A64ICODE:SUBI,  uloop A64ICODE:B,
-   udone A64ICODE:LBL,
-   13 0 A64ICODE:MOVZ,                                                      \ the probes used x13 as a byte index
-   16 ret A64ICODE:CBZ,
-   5 16 0 A64ICODE:ADDI,
-   11 5 0 A64ICODE:LDR,  12 5 8 A64ICODE:LDR,
-   14 5 16 A64ICODE:LDR,
-   15 14 DNAME-WIDE A64ICODE:ANDI,  15 15 59 A64ICODE:LSRI,
-   16 14 DNAME-INT A64ICODE:ANDI,  16 16 59 A64ICODE:LSRI,
-   15 15 16 A64ICODE:ORR,
-   14 14 DNAME-IMM A64ICODE:ANDI,  14 14 59 A64ICODE:LSRI,
-   14 14 15 A64ICODE:ORR,
-   13 1 A64ICODE:MOVZ,  13 13 14 A64ICODE:ORR,
-   A64ICODE:RET,                                                            \ hit: x5 is the matched record, LFIND's own output shape
-   ret A64ICODE:LBL,  5 0 A64ICODE:MOVZ,  A64ICODE:RET,                                       \ every miss leaves x5 = 0, including the two that never wrote it
-   pamb A64ICODE:LBL,  13 0 A64ICODE:MOVZ,  5 0 A64ICODE:MOVZ,  A64ICODE:RET, ;
-;package
-
-package ENGINE-EMIT
 \ LSCOPEREC: the name lookup as one leaf for every reader but the call site, in
 \ the call site's order: LFIND (open package, enclosing one, global, or
-\ NAME:tail), then the used publics only when LFIND missed. In: x9/x10 = the
-\ token, preserved. Out: x14 = the bound record (0 when nothing binds), x16 =
-\ the used publics' record (0 when none, the first of two), x17 = the second of
-\ two, x15 = flags: 1 when the bound record is a seeded primitive, 2 when the
-\ used publics hold two distinct records (then nothing binds and both are
-\ named). Clobbers x2-x17 as the leaves do.
+\ NAME:tail). In: x9/x10 = the token, preserved. Out: x14 = the bound record
+\ (0 when nothing binds), x15 = flags: 1 when the bound record is a seeded
+\ primitive. Clobbers x2-x17 as the leaves do.
 \ Seeded is the identity of an operator row's word: the boot copies the
 \ primitives' records to dict[0..LNCOUNT), and every later record (a package
 \ word, an EXPORT alias, a redefinition after `undefine`) sits above. An
 \ operator row may claim its token only when the lookup bound that
 \ primitive's own record.
 : EMIT-SCOPE-REC ( -- )
-   A64ICODE:LBL A64ICODE:LBL A64ICODE:LBL {: two:label have:label notseed:label :}
+   A64ICODE:LBL {: notseed:label :}
    LSCOPEREC A64ICODE:LABEL@ A64ICODE:LBL,
    A64ICODE:SP A64ICODE:SP 32 A64ICODE:SUBI,  30 A64ICODE:SP 0 A64ICODE:STR,  9 A64ICODE:SP 8 A64ICODE:STR,  10 A64ICODE:SP 16 A64ICODE:STR,
    LFIND A64ICODE:LABEL@ A64ICODE:BL,                                       \ x5 = the record, 0 on a miss
-   5 A64ICODE:SP 24 A64ICODE:STR,
-   9 A64ICODE:SP 8 A64ICODE:LDR,  10 A64ICODE:SP 16 A64ICODE:LDR,                             \ LFIND moved them onto a qualified tail
-   LFINDUSED-CORE A64ICODE:LABEL@ A64ICODE:BL,                              \ x5 = the one used record, x6 = records met
-   17 12 0 A64ICODE:ADDI,
-   6 2 A64ICODE:CMPI,  A64ASM:C-GE two A64ICODE:BCOND,
-      16 5 0 A64ICODE:ADDI,  17 0 A64ICODE:MOVZ,
-   two A64ICODE:LBL,
-   14 A64ICODE:SP 24 A64ICODE:LDR,  14 have A64ICODE:CBNZ,
-      14 5 0 A64ICODE:ADDI,
-   have A64ICODE:LBL,
-   6 2 A64ICODE:CMPI,  15 A64ASM:C-GE A64ICODE:CSET,  15 15 1 A64ICODE:LSLI,
+   14 5 0 A64ICODE:ADDI,  15 0 A64ICODE:MOVZ,
    14 notseed A64ICODE:CBZ,
    12 LNCOUNT A64ICODE:LABEL@ A64ICODE:ADR,  12 12 0 A64ICODE:LDR,  13 DREC A64ICODE:MOVZ,  12 12 13 A64ICODE:MUL,  12 DBASE 12 A64ICODE:ADD,
    14 12 A64ICODE:CMP,  A64ASM:C-CS notseed A64ICODE:BCOND,
-      13 1 A64ICODE:MOVZ,  15 15 13 A64ICODE:ORR,
+      15 1 A64ICODE:MOVZ,
    notseed A64ICODE:LBL,
-   9 A64ICODE:SP 8 A64ICODE:LDR,  10 A64ICODE:SP 16 A64ICODE:LDR,
+   9 A64ICODE:SP 8 A64ICODE:LDR,  10 A64ICODE:SP 16 A64ICODE:LDR,                             \ LFIND moved them onto a qualified tail
    30 A64ICODE:SP 0 A64ICODE:LDR,  A64ICODE:SP A64ICODE:SP 32 A64ICODE:ADDI,
    A64ICODE:RET, ;
 
@@ -2115,7 +1985,7 @@ package LABELS
 
 : CONTROL ( -- )
    A64ICODE:LBL KWDATA:LKWTRUSTDECL !  A64ICODE:LBL KWDATA:LKWTRUSTRAW !
-   A64ICODE:LBL ENGINE-EMIT:LFINDUSED-CORE !  A64ICODE:LBL ENGINE-EMIT:LSCOPEREC !
+   A64ICODE:LBL ENGINE-EMIT:LSCOPEREC !
    A64ICODE:LBL DEFWRITE:LREPLAYTRAP ! ;
 
 : RUNTIME ( -- )
@@ -2215,14 +2085,20 @@ public
 ;package
 
 package ENGINE-EMIT
-\ bare-scope-find ( ^u8 n -- ^n ^n ^n n ): LSCOPEREC's four answers for a
-\ token (bound record, used publics' record, second used record when two hold
-\ the tail, flags), so the checker, tier 0 and the Habu interpreter bind a
-\ spelling to the record a compiled call binds.
+\ bare-scope-bind ( ^u8 n -- ^n n ): LSCOPEREC's two answers for a token (the
+\ bound record and the flags), so the checker, tier 0 and the Habu interpreter
+\ bind a spelling to the record a compiled call binds.
+: BSCOPEBIND ( -- )
+   10 RT:G-POP  9 RT:G-POP                   \ x10 = len (TOS), x9 = addr
+   LSCOPEREC A64ICODE:LABEL@ A64ICODE:BL,
+   14 RT:G-PUSH  15 RT:G-PUSH ;
+
+\ bare-scope-find: stage 2 deletes it once its callers move to bare-scope-bind.
 : BSCOPEFIND ( -- )
    10 RT:G-POP  9 RT:G-POP                   \ x10 = len (TOS), x9 = addr
    LSCOPEREC A64ICODE:LABEL@ A64ICODE:BL,
-   14 RT:G-PUSH  16 RT:G-PUSH  17 RT:G-PUSH  15 RT:G-PUSH ;
+   16 0 A64ICODE:MOVZ,
+   14 RT:G-PUSH  16 RT:G-PUSH  16 RT:G-PUSH  15 RT:G-PUSH ;
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
@@ -2250,6 +2126,7 @@ package ENGINE-EMIT
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" bare-tok-imm?" ['] BTOKIMM FPRIM
    s" bare-scope-find" ['] BSCOPEFIND FPRIM
+   s" bare-scope-bind" ['] BSCOPEBIND FPRIM
    s" scope-kind?" ['] BSCOPE-KIND FPRIM
    s" xt!" ['] RELOC-EMIT:BXTSTORE FPRIM
    s" ptr-cell-mark" ['] RELOC-EMIT:BPTRCELLMARK FPRIM
@@ -2264,7 +2141,6 @@ package ENGINE-EMIT
    EMIT-FIND
    WLFIND:EMIT
    EMIT-HEAD-ROW
-   EMIT-FIND-USED
    EMIT-SCOPE-REC
    DEFWRITE:EMIT-REPLAY-TRAP
    EMIT-HIDX

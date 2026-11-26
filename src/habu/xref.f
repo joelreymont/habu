@@ -211,28 +211,9 @@ EXPORT BOOT:data-base
    data-base PKG-PRI-CELL + @
    LIVE-PKG ;
 
-\ The package whose public wordlist wid is: the live namespace row that
-\ publishes it.
-: NS-PUB? ( ^n n -- bool ) {: rec:^ wid:n :}
-   rec XREF-WORDLIST BOOT:NAMESPACE-WL =  rec XREF-PKG-PUBLIC wid =  and ;
-
-: WID-PKG ( n -- str bool ) {: wid:n :}
-   ndict@ 1-
-   begin dup 0 >= while
-      dup XREF-REC wid NS-PUB? if XREF-REC XREF-NAME$ XREF-TRUE exit then
-      1-
-   repeat drop
-   s" " XREF-FALSE ;
-
-\ The package the engine's using slot n imports (layout.f USE-WIDS-OFF).
-: USE-SLOT ( n -- str bool )
-   cells USE-WIDS-OFF + data-base + @ WID-PKG ;
-
 EXPORT CHECK:PKG-LIVE-XT
-EXPORT CHECK:USE-SLOT-XT
 : INSTALL ( -- )
-   [: LIVE ;] is PKG-LIVE-XT
-   [: USE-SLOT ;] is USE-SLOT-XT ;
+   [: LIVE ;] is PKG-LIVE-XT ;
 INSTALL
 
 ;package

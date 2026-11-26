@@ -285,12 +285,9 @@
 \ order. The body compiles before `;` checks anything, so the first body token
 \ the load cannot compile (undefined word, retired global, unbindable local,
 \ unmodeled immediate, unreadable construct or match) rejects it (CREJECT,
-\ taken by REJECTION-STEP). A name `using` makes the walk reject
-\ (CHECKER-RESOLVE:RAISE) is such a token when ticked or when no global binds
-\ it. Otherwise, in order: the first name a used public shadows a global for
-\ or makes ambiguous beside one (CUSING); a signature that does not parse
-\ (SGBAD-FAIL!); the first token whose check fails (REJECTION-OF); the checks at
-\ `;` (REJECTION@).
+\ taken by REJECTION-STEP). Otherwise, in order: a signature that does not
+\ parse (SGBAD-FAIL!); the first token whose check fails (REJECTION-OF); the
+\ checks at `;` (REJECTION@).
 \
 \ Stored type spans: a storage declaration's stored type is read token by
 \ token at run time and at the gate. The spelling ends at the first token
@@ -469,8 +466,8 @@
 \ any lookup. Every writer rejection ends the process, so each rejection a
 \ replay can meet is checked in CHECKER-OVERLAY first and thrown by name.
 \
-\ Replayed package scope: live compilation splits each package and using word
-\ between the engine and the checker. The engine's keyword moves its scope and
+\ Replayed package scope: live compilation splits each package word between
+\ the engine and the checker. The engine's keyword moves its scope and
 \ notifies the checker, which records the name. A replay reads source as text
 \ and compiles nothing, so inside the verifier window the checker overlay moves
 \ the engine's scope first.
@@ -522,7 +519,7 @@
 \
 \ The lookup under a binding horizon: in a reconstruction the engine's lookup
 \ can return a record of a word defined after the definition being checked, a
-\ later package twin, used public or global. HORIZON-FIND hides that record
+\ later package twin or global. HORIZON-FIND hides that record
 \ for the time of the lookup and asks again, until every record it reports is
 \ visible, so the token binds what a compile at that point bound; `finally`
 \ gives the hidden records back on every exit. A record lies beyond the
@@ -530,16 +527,12 @@
 \ never recorded is the engine's own word and stays. NAME-TOK sets a horizon
 \ only inside the verifier window, so the overlay is open whenever one is set.
 \
-\ The binder's answers: LIVE-BIND answers its rejections rather than raising
-\ them. It leaves ( sym why ), why 0 or the code of the rejection it reached:
-\ EXIT-STATUS:REJECTED when no authority names a package context for a bare
-\ token, E-USING-SHADOW-GLOBAL when a used public also exports the tail a
-\ global binds, E-USING-AMBIGUOUS when two used publics export it and nothing
-\ earlier binds it or the global does. Under a rejection sym is no answer. It
-\ renders nothing: a using rejection leaves the used packages holding the tail
-\ marked in CK-USED-MASK for the raise to name. CHECKER-BIND raises the
-\ rejection (CHECKER-RESOLVE:RAISE); a caller that only asks reads why. A name
-\ the split rejects (a malformed qualified name, or a length that describes no
+\ The binder's answers: LIVE-BIND answers its rejection rather than raising
+\ it. It leaves ( sym why ), why 0 or EXIT-STATUS:REJECTED when no authority
+\ names a package context for a bare token. Under a rejection sym is no
+\ answer. It renders nothing. CHECKER-BIND raises the rejection
+\ (CHECKER-RESOLVE:RAISE); a caller that only asks reads why. A name the
+\ split rejects (a malformed qualified name, or a length that describes no
 \ memory) binds nothing. A sym of 0 without a rejection does not prove the load
 \ cannot bind the name, since the engine holds words no checker symbol names
 \ (one defined while checking was off); LIVE-BIND sets WALK-REC when
@@ -559,9 +552,9 @@
 \ (BODY-WALK) or the compile window does a recovery row bind ahead of the
 \ lookup's record (RECOVERY-BIND), in the engine's search order: the open
 \ package's private then public wordlist, inside a part its package's private
-\ then public one, the globals, then the used publics in import order. A
-\ qualified name asks its package's public row, and the global row when that
-\ package is open. A hookless compile finds a rejected definition by this bind.
+\ then public one, then the globals. A qualified name asks its package's
+\ public row, and the global row when that package is open. A hookless
+\ compile finds a rejected definition by this bind.
 \
 \ Rendering marks: a top-level statement that calls a CTL-RENDERS word defines
 \ words, and may register nominal types, from text the source pre-pass never
@@ -802,7 +795,6 @@ CHECKER-OWNER-ABI:EFFECT-OFF constant EFFECT-OFF
 CHECKER-OWNER-ABI:DEFER-OFF constant DEFER-OFF
 CHECKER-OWNER-ABI:CAST-OFF constant CAST-OFF
 CHECKER-OWNER-ABI:LINEAR-OFF constant LINEAR-OFF
-CHECKER-OWNER-ABI:USING-OFF constant USING-OFF
 CHECKER-OWNER-ABI:PACKAGE-OFF constant PACKAGE-OFF
 CHECKER-OWNER-ABI:PUBLIC-OFF constant PUBLIC-OFF
 CHECKER-OWNER-ABI:PRIVATE-OFF constant PRIVATE-OFF
@@ -1969,22 +1961,8 @@ variable CHECKER-PACKAGE-MODE
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
 
-\ The using depth the replayed source may close down to: the depth it starts at,
-\ as for an engine buffer.
-;package
-package CHECKER-USE
-variable SOURCE-FLOOR
-0 SOURCE-FLOOR !
-;package
-package CHECK
 EXPORT BOOT:data-base
 EXPORT ARENA-PAGES:DATA-OFF
-
-\ Import row storage is shared by the live compiler and the verifier window.
-\ Row n holds slot n's folded package name: its offset in SYM-STR, then its
-\ length. A savepoint keeps the rows with their count (CK-USE-SAVE).
-create CK-USE-NAMES USE-MAX 2 * cells allot
-CELL USE-MAX 2 * cells + constant CK-USE-SNAP-BYTES
 
 \ The mirror above records parser state and is rollback-aware. Every check, the
 \ verifier window's included, reads the engine's protected package record and
@@ -1993,7 +1971,7 @@ CELL USE-MAX 2 * cells + constant CK-USE-SNAP-BYTES
 \ drives the engine's scope (CHECKER-OVERLAY). The boot provider reads
 \ layout.f's fixed DATA offsets; xref.f replaces it with full record validation
 \ before user source.
-: CK-USE-ENGINE-DEPTH ( -- n )  data-base USE-DEPTH-CELL + @ ;
+
 \ The verifier window's state: none open, open inside the caller's scope (the
 \ overlay was open), or owning a scope of its own (check-walk.f's window).
 0 constant VERIFY-WINDOW-NONE
@@ -2048,7 +2026,6 @@ package CHECKER-RESOLVE
 EXPORT BOOT:data-base
 EXPORT CHECK:ARENA-ROWS-ENSURE
 EXPORT CHECK:CHECKER-PKG-CONTEXT-REJECT
-EXPORT CHECK:CK-USE-ENGINE-DEPTH
 EXPORT CHECK:PKG-LIVE-XT
 \ The open package's name and section, and whether the current wordlist is a
 \ definition context: one of its sections, or the global wordlist outside one.
@@ -6001,7 +5978,6 @@ private
 97 constant MD-LOCAL-STRAY   \ a built definition appended a local outside a `{:` group (LOCAL-STRAY)
 98 constant MD-LOCAL-UNBOUND \ a built definition read a local no group bound before it (ITEM-LOCAL-REF)
 99 constant MD-LITERAL-RANGE \ a number token does not fit in a cell (LITERAL-TOK?); REJECTION:LITERAL-RANGE writes its record
-100 constant MD-FAM-AMBIG    \ match family token is a bare tail two used packages make public
 101 constant MD-MEMBER-TOP   \ a generic member's word at top level runs with its declared number, which the receiver's instance moves (TFAM-MEMBER-STEP?)
 112 constant MD-CATCH-TOP    \ a top-level `catch` of a body that changes the stack (CATCH-RESHAPE-REJECT)
 113 constant MD-CATCH-LINEAR \ a `catch` of a body that changes the stack takes a cell that may be linear (CATCH-RESHAPE-REJECT)
@@ -8013,8 +7989,6 @@ variable NRES  variable NDI  variable NDH
 7 constant SGBAD-RETURN-KIND
 \ A binder nested inside BINDER-DEPTH-MAX others (SIG-FORALL-DOMAIN).
 8 constant SGBAD-BINDERS-KIND
-\ A bare family tail more than one used package makes public.
-9 constant SGBAD-AMBIG-KIND
 \ A type scheme, `forall`, in a local's annotation: a local holds one type.
 10 constant SGBAD-SCHEME-KIND
 variable SGBAD
@@ -8027,7 +8001,6 @@ variable SGBAD-AR-DECL   \ arity kind: the family's declared arity
 variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
 PTR-VARIABLE SGBAD-EXP-A \ syntax kind: the word the parser expected there, if one
 variable SGBAD-EXP-U
-variable SGBAD-USED      \ ambiguous kind: bit i set when using slot i offers the family
 variable SGBAD-LOCAL     \ a local's annotation gave the verdict: its token's offset from the colon
 0 constant LOCALBAD-SCOPE    \ a local inside a quotation or on a dead path
 1 constant LOCALBAD-DASH     \ `--` in a locals group
@@ -8118,22 +8091,13 @@ variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family 
 13 constant RF-MISMATCH      \ a stack row that does not fit (DEXP)
 14 constant RF-RETURN        \ a return row that does not fit (RSBAD)
 15 constant RF-REJECTED      \ a rejection with no finer name
-global
-16 constant RF-USHADOW       \ a bare name a used public shadows a global for (E-USING-SHADOW-GLOBAL)
-17 constant RF-UAMBIG        \ a bare name two used publics export (E-USING-AMBIGUOUS)
-private
 18 constant RF-KEYWORD       \ a keyword named where a word is needed (a tick's or postpone's operand)
 SCRATCH{
 variable REJECTION             \ the RF-* kind the diagnostic names; 0 = none chosen yet
 variable CREJECT             \ the RF-* kind the load rejects this token for while compiling; 0 = none
 variable CRTGT               \ CREJECT rejects the word this token ticks, not the token
 variable RCOMPILE            \ a compile-time rejection holds the diagnostic
-variable CUSING              \ the using rejection the walk raised at this token; 0 = none
 }SCRATCH
-
-: USING-KIND? ( n -- bool )
-   {: k:n :}
-   k RF-USHADOW =  k RF-UAMBIG =  or ;
 
 \ Asked when the first failing token ends, or at `;` when none failed: each
 \ check raises its flag where it fails, so the flags present are that failure's.
@@ -8305,7 +8269,6 @@ PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
    0 SGBAD-U !
    NULL-PTR SGBAD-EXP-A !
    0 SGBAD-EXP-U !
-   0 SGBAD-USED !
    0 SGBAD-LOCAL !
    SGBAD-SYNTAX-KIND SGBAD-KIND ! ;
 
@@ -8342,11 +8305,6 @@ PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
    SGBAD-SCHEME-KIND SGBAD-SET ;
 : SGBAD-SCHEME? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-SCHEME-KIND = and ;
-: SGBAD-AMBIG! ( str n -- ) {: s:str used:n :}
-   SGBAD @ 0= IF used SGBAD-USED ! THEN
-   s SGBAD-AMBIG-KIND SGBAD-SET ;
-: SGBAD-AMBIG? ( -- bool )
-   SGBAD @ SGBAD-KIND @ SGBAD-AMBIG-KIND = and ;
 : SGBAD-BAREPTR! ( str -- )
    SGBAD-BAREPTR-KIND SGBAD-SET ;
 : SGBAD-BAREPTR? ( -- bool )
@@ -12779,25 +12737,6 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
 : SGBAD-PIN ( str str -- )
    SGBAD-TOKEN RF-SIG PIN-REJECTED! ;
 
-\ A neutral replay starts at zero and may overwrite caller rows, so rollback
-\ savepoints preserve the rows alongside the depth.
-: CK-USE-DEPTH ( -- n )
-   CK-USE-ENGINE-DEPTH ;
-: CK-USE-OFF@ ( n -- n )  2 * cells CK-USE-NAMES + @ ;
-: CK-USE-LEN@ ( n -- n )  2 * 1 + cells CK-USE-NAMES + @ ;
-: CK-USE-SLOT ( n -- ^u8 )  {: ix:n :}  SYM-STR ix CK-USE-OFF@ + ;
-
-\ The scan is capped at USE-MAX so the loop stays inside the mirror whatever
-\ the engine's depth cell holds.
-: CK-USE-SCAN-N ( -- n )
-   CK-USE-DEPTH
-   dup 0 < IF drop 0 EXIT THEN
-   dup USE-MAX > IF drop USE-MAX THEN ;
-
-: CHECKER-USING-N ( -- n ) CK-USE-SCAN-N ;
-: CHECKER-USING$ ( n -- str ) {: ix:n :}
-   ix CK-USE-SLOT ix CK-USE-LEN@ >str ;
-
 ;package
 package CHECKER-RESOLVE
 : TOP-NAME$ ( -- str )
@@ -12837,7 +12776,6 @@ SCRATCH-VARIABLE HEAD-KEY-CAP     \ HEAD-KEY-P's room, in cells
 package CHECK
 
 EXPORT CHECKER-RESOLVE:HEAD-ROW
-EXPORT CHECKER-RESOLVE:PART-ROW
 
 \ How many colons the name holds, and the index of its first, -1 for none.
 : CHECKER-COLON-SCAN ( str -- n n )
@@ -12855,95 +12793,22 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    cn 1 <>  ci 0 =  or  ci s STR:LEN 1 - =  or IF s EXIT THEN
    s STR:DATA ci + 1 +  s STR:LEN ci - 1 - >str ;
 
-\ The using mirror and a sym hold a package's name folded; its row spells it
-\ as the program wrote it. A name no row holds is answered as given.
+\ A sym holds a package's name folded; its row spells it as the program
+\ wrote it. A name no row holds is answered as given.
 : PACKAGE-NAME$ ( str -- str ) {: s:str :}
    s STR:LEN 0= IF s EXIT THEN
    s BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: row:^ :}
    row NULL-PTR = IF s EXIT THEN
    row CK-REC-NAME$ ;
 
-\ A used package's qualifier here, its row's tail, and whether that tail
-\ reaches it here rather than a part of the open package of that name.
-: USED-QUAL ( str -- str bool ) {: s:str :}
-   s BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: row:^ :}
-   s PACKAGE-NAME$ ROW-TAIL$ {: t:str :}
-   t  t HEAD-ROW row = ;
-
-\ S is the tail of a used package that a part of the open package hides.
-: EMIT-HIDER ( str -- ) {: s:str :}
-   s" rename the part `" REJECTION:EMIT-STR
-   s PART-ROW CK-REC-NAME$ REJECTION:EMIT-STR
-   s" `, which hides package `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
-   s" ` here" REJECTION:EMIT-STR ;
-
 : EMIT-QUALIFIED ( str str -- ) {: p:str w:str :}
    p REJECTION:EMIT-STR  58 REJECTION:EMIT1  w REJECTION:EMIT-STR ;
-
-\ Using slot ix is set in mask and no earlier slot set in it names its package.
-: UPKG-FIRST? ( n n -- bool ) {: ix:n mask:n :}
-   1 ix lshift mask and 0= IF RES-FALSE EXIT THEN
-   RES-TRUE  ix 0 ?DO
-      1 i lshift mask and 0 <> IF
-         i CHECKER-USING$ ix CHECKER-USING$ STR:= IF drop RES-FALSE THEN
-      THEN
-   LOOP ;
-: UPKG-QUAL ( n -- str bool ) CHECKER-USING$ USED-QUAL ;
-: UPKG-REACHED? ( n n -- bool ) {: ix:n mask:n :}
-   ix mask UPKG-FIRST? 0= IF RES-FALSE EXIT THEN
-   ix UPKG-QUAL nip ;
-: UPKG-N ( n -- n ) {: mask:n :}
-   0  CHECKER-USING-N 0 ?DO i mask UPKG-REACHED? IF 1 + THEN LOOP ;
-
-: UPKG-NOTE ( n -- ) {: mask:n :}
-   s" packages" REJECTION:NOTE
-   0  CHECKER-USING-N 0 ?DO
-      i mask UPKG-FIRST? IF
-         dup 0 <> IF s" , " REJECTION:EMIT-STR THEN
-         i CHECKER-USING$ PACKAGE-NAME$ REJECTION:EMIT-STR  1 +
-      THEN
-   LOOP drop ;
-\ What precedes the k-th of n spellings: nothing, `, `, or ` or ` the last.
-: UPKG-SEP ( n n -- ) {: k:n n:n :}
-   k 0= IF EXIT THEN
-   k 1 + n = IF s"  or " ELSE s" , " THEN REJECTION:EMIT-STR ;
-\ The qualified spelling of s in each package its qualifier reaches here.
-: UPKG-SPELLINGS ( str n -- ) {: s:str mask:n :}
-   mask UPKG-N {: n:n :}
-   0  CHECKER-USING-N 0 ?DO
-      i mask UPKG-REACHED? IF
-         dup n UPKG-SEP
-         96 REJECTION:EMIT1  i UPKG-QUAL drop s EMIT-QUALIFIED
-         96 REJECTION:EMIT1  1 +
-      THEN
-   LOOP drop ;
-\ The packages note and the help of s, a `what` public in each package of
-\ mask: the spellings that reach one here, then the part hiding each other.
-: UPKG-HELP ( str str n -- ) {: ws:str s:str mask:n :}
-   mask UPKG-NOTE
-   REJECTION:HELP
-   mask UPKG-N {: n:n :}
-   n 0 <> IF
-      s" write the package's name before the " REJECTION:EMIT-STR
-      ws REJECTION:EMIT-STR  s" , as " REJECTION:EMIT-STR
-      s mask UPKG-SPELLINGS
-   THEN
-   n  CHECKER-USING-N 0 ?DO
-      i mask UPKG-FIRST?  i mask UPKG-REACHED? 0=  and IF
-         dup 0 <> IF s" , or " REJECTION:EMIT-STR THEN
-         i UPKG-QUAL drop EMIT-HIDER  1 +
-      THEN
-   LOOP drop ;
-\ The packages note and the help of the ambiguous family tail s.
-: SGBAD-AMBIG-HELP ( str -- ) {: s:str :}
-   s" type family" s SGBAD-USED @ UPKG-HELP ;
 
 \ The label for SGBAD's kind of fault, S for a fault of no other kind. The
 \ return and unsupplied kinds name the whole row, so their label sits on the
 \ caller's fallback: a signature's declaring name, or the storage type.
 : SGBAD-LABEL$ ( str -- str ) {: s:str :}
    SGBAD-RETURN? IF s" its signature moves the return stack" EXIT THEN
-   SGBAD-AMBIG? IF s" ambiguous here" EXIT THEN
    SGBAD-UNKNOWN? IF s" no type has this name" EXIT THEN
    SGBAD-BAREPTR? IF s" `^` with no element type" EXIT THEN
    SGBAD-ARITY? IF s" wrong number of type arguments" EXIT THEN
@@ -13060,7 +12925,6 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 \ The help of stored signature ss's rejection, declared at AT. A fix
 \ names the token SGBAD rejects, even when it is the whole row.
 : SGBAD-HELP ( str str -- ) {: ss:str at:str :}
-   SGBAD-AMBIG? IF ss at SGBAD-TOKEN SGBAD-AMBIG-HELP EXIT THEN
    REJECTION:HELP  ss SGBAD-AT {: p:^ :}
    p SGBAD-U @ >str  p 0 >str SGBAD-FIX ;
 
@@ -13102,8 +12966,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 \ word (a STRUCTURE's MAKE) has no signature text, so no note quotes one.
 : SGBAD-REJECTION ( str str -- )
    {: ss:str at:str :}
-   SGBAD-AMBIG? IF s" E-USING-AMBIGUOUS" ELSE s" E-BAD-STORED-SIGNATURE" THEN
-   REJECTION:OPEN
+   s" E-BAD-STORED-SIGNATURE" REJECTION:OPEN
    s" the signature of `" REJECTION:EMIT-STR  at REJECTION:EMIT-STR
    s" ` cannot be recorded" REJECTION:EMIT-STR
    ss at SGBAD-TOKEN REJECTION:AT
@@ -14335,25 +14198,6 @@ DFERS-P DFER-CAP-V 1 DFER-END STORE+
 : CHECKER-PACKAGE-COPY ( str -- ) {: s:str :}
    s SYM-PKG-INTERN  CHECKER-PACKAGE-U !  CHECKER-PACKAGE-NAME ! ;
 
-global
-\ --- `using`-scope import mirror. The engine owns the live using depth in one
-\ DATA cell; this table of folded package names is bounded by that depth, so no
-\ checker counter can drift.
-7144 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
-private
-
-;package
-package CHECKER-USE
-EXPORT CHECK:CK-USE-NAMES
-EXPORT CHECK:SYM-PKG-INTERN
-\ Slot d names package s, interned folded in SYM-STR.
-: NAME! ( str n -- ) {: s:str d:n :}
-   s SYM-PKG-INTERN {: off:n len:n :}
-   off d 2 * cells CK-USE-NAMES + !
-   len d 2 * 1 + cells CK-USE-NAMES + ! ;
-;package
-package CHECK
-
 \ A held entry's kind, where a record's facts carry the record's index.
 -1 constant HELD-LAID
 -2 constant HELD-UNDEFINE            \ an `undefine`: the symbol's identity (HOLD-UNDEFINE)
@@ -14481,50 +14325,11 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
    HELD-N @ from ?do i PLACE-FACT loop
    from HELD-KEEP ;
 
-EXPORT CHECKER-USE:NAME!
-
-: CHECKER-USING ( str -- ) {: s:str :}
-   CK-USE-DEPTH {: d:n :}
-   d USE-MAX >= IF s" checker: using stack overflow" EXIT-STATUS:INTERNAL die THEN
-   s HEAD-ROW {: row:^ :}
-   row NULL-PTR = IF s ELSE row CK-REC-NAME$ THEN {: r:str :}
-   r d NAME! ;
-;package
-package CHECKER-REG
-EXPORT CHECK:CHECKER-USING
-' CHECKER-USING DECLARATIONS USING-OFF + xt!
-;package
-package CHECK
-
-
 global
-\ --- global-vs-used-public shadow rejection. Resolution puts the open scope and
-\ the global wordlist ahead of the used publics, so a bare tail inside a live
-\ `using` scope that resolves to a global while a used package also exports it
-\ is ambiguous and fails at the reference.
-7141 constant E-USING-SHADOW-GLOBAL
 \ A `generates:` row the checker cannot keep.
 7153 constant E-GENERATES-ROW
 private
-variable USING-UNBOUND   \ no global binds the tail the walk rejected: the engine's own lookup rejects it
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
-variable WALK-USED       \ the record the walk bound is only a used public's (LIVE-BIND)
-SCRATCH{
-PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the diagnostic's token as written
-variable USH-PKG-A   variable USH-PKG-U     \ the used package's folded name, its SYM-STR offset (renders PKG:WORD)
-variable USING-HOLD      \ a body token's walk holds its using rejection for the selector (DO-TOK1)
-variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the using diagnostics
-}SCRATCH
-
-\ Keeps the name of the used package at scan slot ix, which the rejection's fix
-\ writes as PKG:WORD.
-: CK-SHADOW-CAPTURE ( n -- n ) {: ix:n :}
-   ix 0 >= IF
-      ix CK-USE-OFF@ USH-PKG-A !  ix CK-USE-LEN@ USH-PKG-U !
-   ELSE
-      0 USH-PKG-A !  0 USH-PKG-U !
-   THEN
-   E-USING-SHADOW-GLOBAL ;
 
 : CK-WL-CLAIMS? ( str n -- bool ) {: s:str wid:n :}
    s wid search-wl 0 <> ;
@@ -14594,12 +14399,6 @@ CTOR-PROT-DEFAULTS
 : CHECKER-UNDEFINE-GUARD ( str -- ) {: s:str :}
    s CTOR-WORD?-XT IF s CTOR-WORD-REJECT THEN ;
 
-\ The package whose public wordlist the engine keeps in using slot n: its name
-\ and whether a live namespace row publishes that wid.
-defer USE-SLOT-XT ( n -- str bool )
-: USE-SLOT-BOOT ( -- ) [: drop s" " 0 0= 0= ;] is USE-SLOT-XT ;
-USE-SLOT-BOOT
-
 \ CHECKER-RESYNC sets the mirror from the engine's scope after a throw's
 \ recovery. Its entry, SCOPE, is reached only through the declaration owner.
 ;package
@@ -14609,25 +14408,12 @@ EXPORT BOOT:data-base
 EXPORT CHECK:CHECKER-PACKAGE-COPY
 EXPORT CHECK:CHECKER-PACKAGE-MODE
 EXPORT CHECK:CHECKER-PACKAGE-U
-EXPORT CHECK:CK-USE-NAMES
-EXPORT CHECK:CK-USE-SCAN-N
-EXPORT CHECK:USE-SLOT-XT
-EXPORT CHECKER-USE:NAME!
-\ The engine's wid is each slot's truth, so the slot's name is read back from it.
-: SLOT ( n -- ) {: d:n :}
-   d USE-SLOT-XT {: t:str ok:bool :}
-   ok IF t d NAME! EXIT THEN
-   0 d 2 * 1 + cells CK-USE-NAMES + ! ;
-
-: SLOTS ( -- )
-   CK-USE-SCAN-N 0 ?DO i SLOT LOOP ;
 
 EXPORT CHECKER-RESOLVE:AUTHORITY
 
 \ After that recovery the mirror is set from the restored scope, else every later replay rejects E-PKG-CONTEXT. A scope
 \ AUTHORITY cannot authenticate keeps the notifications' mirror while a package is open, else sets top level.
 : MIRROR ( -- )
-   SLOTS
    AUTHORITY {: t:str mode:n ok:bool :}
    ok 0=  data-base PKG-PUB-CELL + @ 0 <>  and IF EXIT THEN
    ok 0=  mode CHECKER-PACKAGE-NONE =  or IF
@@ -15092,7 +14878,6 @@ variable ON
 variable MARK                              \ NDICT when it opened: later records are the replay's
 variable PREFIX                            \ FIRST-RECORD-XT: earlier records the builder made
 variable OPENER                            \ the tag of the scope that opened it
-variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it opened
 \ The engine's PKG-OUTSIDE-CELL when it opened: the replay's scopes move that
 \ cell as the engine's buffers do, and CLOSE puts it back.
 variable OUTSIDE0
@@ -15131,9 +14916,9 @@ variable UNSTATED-N
 \ binding horizon retired for its own time (HIDE, HORIZON-FIND). They are kept
 \ apart from the undo log, so putting them back can never revive a record a
 \ replayed `undefine` retired. A lookup hides at most one record of its name in
-\ each wordlist it searches: the open package's two, the enclosing package's
-\ two, the used publics and the global one.
-USE-MAX 5 + constant HIDE-MAX
+\ each of the five wordlists it searches: the open package's two, the
+\ enclosing package's two and the global one.
+5 constant HIDE-MAX
 create HIDDEN HIDE-MAX 2 * cells allot
 variable HIDDEN-N
 
@@ -15142,17 +14927,11 @@ variable HIDDEN-N
 0 constant S-REC
 1 constant S-PARENT
 2 constant S-CURRENT
-3 constant S-DEPTH                         \ the using depth
-4 constant S-FLOOR                         \ the open package's using floor
-5 constant S-SOURCE                        \ CHECKER-USE:SOURCE-FLOOR
-6 constant S-TAG                           \ the scope that pushed the row
-7 constant S-ENCLOSING                     \ the enclosing package's row index, -1 for none
-8 constant S-ENCLOSING-PARENT
-9 constant S-OUTSIDE
-\ A neutral scope starts at depth 0, so its replay writes slots below the
-\ depth this row puts back.
-10 constant S-WIDS                         \ the used publics, USE-MAX cells
-S-WIDS USE-MAX + constant ROW-CELLS
+3 constant S-TAG                           \ the scope that pushed the row
+4 constant S-ENCLOSING                     \ the enclosing package's row index, -1 for none
+5 constant S-ENCLOSING-PARENT
+6 constant S-OUTSIDE
+7 constant ROW-CELLS
 \ The snapshot rows, newest last (SNAP-PUSH). Scopes nest as deep as memory
 \ holds (RBF-GROW), so the rows are a growing mapping, given back by CLOSE.
 PTR-VARIABLE SNAPS-P
@@ -15178,7 +14957,6 @@ EXPORT CHECK:CHECKER-QBAD-TOK
 EXPORT CHECK:CHECKER-QPKG$
 EXPORT CHECK:CHECKER-QTAIL$
 EXPORT CHECK:CHECKER-QUALIFIED?
-EXPORT CHECK:CHECKER-USING
 EXPORT CHECK:CK-REC-WID
 EXPORT CHECK:DOES-COMPANION?-XT
 EXPORT CHECK:FIRST-RECORD-XT
@@ -15217,19 +14995,13 @@ public
    s NS-ROW ;
 private
 
-EXPORT CHECKER-USE:SOURCE-FLOOR
-
 : SNAP-SAVE ( ^u8 -- ) {: p:^ :}
    PKG-REC-CELL SCOPE-IX p S-REC ROW!
    PKG-PARENT-CELL DATA@ p S-PARENT ROW!
    ENCLOSING:REC SCOPE-IX p S-ENCLOSING ROW!
    ENCLOSING:PARENT DATA@ p S-ENCLOSING-PARENT ROW!
    get-current p S-CURRENT ROW!
-   USE-DEPTH-CELL DATA@ p S-DEPTH ROW!
-   USE-PKG-SAVE-CELL DATA@ p S-FLOOR ROW!
-   SOURCE-FLOOR @ p S-SOURCE ROW!
-   PKG-OUTSIDE-CELL DATA@ p S-OUTSIDE ROW!
-   USE-MAX 0 ?DO i cells USE-WIDS-OFF + DATA@ p S-WIDS i + ROW! LOOP ;
+   PKG-OUTSIDE-CELL DATA@ p S-OUTSIDE ROW! ;
 
 \ A part opens only inside its enclosing package, so that package opens first.
 : SNAP-RESTORE ( ^u8 -- ) {: p:^ :}
@@ -15238,11 +15010,7 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    p S-REC ROW@ {: ix:n :}
    ix 0 < IF -1 0 ELSE ix p S-PARENT ROW@ THEN package-scope!
    p S-CURRENT ROW@ CUR-CELL DATA!
-   p S-DEPTH ROW@ USE-DEPTH-CELL DATA!
-   p S-FLOOR ROW@ USE-PKG-SAVE-CELL DATA!
-   p S-SOURCE ROW@ SOURCE-FLOOR !
-   p S-OUTSIDE ROW@ PKG-OUTSIDE-CELL DATA!
-   USE-MAX 0 ?DO p S-WIDS i + ROW@ i cells USE-WIDS-OFF + DATA! LOOP ;
+   p S-OUTSIDE ROW@ PKG-OUTSIDE-CELL DATA! ;
 
 : SNAP-PUSH ( n -- ) {: tag:n :}
    SNAPS-P SNAPS-CAP SNAP-N @ 1 + ROW-CELLS ARENA-ROWS-ENSURE
@@ -15255,12 +15023,10 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    k SNAP SNAP-RESTORE
    k SNAP-N ! ;
 
-\ The scope a package-neutral replay starts in: top level, no imports.
+\ The scope a package-neutral replay starts in: top level.
 : CLEAR ( -- )
    -1 0 package-scope!
-   BOOT:GLOBAL-WL CUR-CELL DATA!
-   0 USE-DEPTH-CELL DATA!
-   0 USE-PKG-SAVE-CELL DATA! ;
+   BOOT:GLOBAL-WL CUR-CELL DATA! ;
 
 : LOG! ( n n -- ) LOG-P LOG-CAP LOG-N PAIR+ ;
 
@@ -15291,7 +15057,6 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    FIRST-RECORD-XT PREFIX !
    tag OPENER !
    0 LOG-N !
-   SOURCE-FLOOR @ FLOOR0 !
    PKG-OUTSIDE-CELL DATA@ OUTSIDE0 !
    -1 ON ! ;
 
@@ -15322,9 +15087,8 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    VALUES-P VALUES-CAP 2 ARENA-ROWS-RELEASE
    UNSTATED-P UNSTATED-CAP 1 ARENA-ROWS-RELEASE
    SNAPS-P SNAPS-CAP ROW-CELLS ARENA-ROWS-RELEASE
-   FLOOR0 @ SOURCE-FLOOR !
    OUTSIDE0 @ PKG-OUTSIDE-CELL DATA!
-   0 FLOOR0 !  0 OPENER !  0 MARK !  0 PREFIX !  0 ON !  0 SNAP-N !  0 OUTSIDE0 ! ;
+   0 OPENER !  0 MARK !  0 PREFIX !  0 ON !  0 SNAP-N !  0 OUTSIDE0 ! ;
 
 : SYM-WID ( n -- n ) {: sym:n :}
    sym SYM-ROW SYM.VIS @ SYM-GLOBAL = IF BOOT:GLOBAL-WL EXIT THEN
@@ -15511,10 +15275,6 @@ ROW-CELLS cells constant SCOPE-BYTES
 : SAVE-SCOPE ( ^u8 -- ) SNAP-SAVE  1 PKG-OUTSIDE-CELL DATA! ;
 : RESTORE-SCOPE ( ^u8 -- ) SNAP-RESTORE MIRROR ;
 : FILE-DONE ( ^u8 -- ) {: p:^ :}
-   SOURCE-FLOOR @ {: d:n :}
-   d USE-DEPTH-CELL DATA!
-   USE-PKG-SAVE-CELL DATA@ d min USE-PKG-SAVE-CELL DATA!
-   p S-SOURCE ROW@ SOURCE-FLOOR !
    PKG-OUTSIDE-CELL DATA@ 0 <> IF p S-OUTSIDE ROW@ PKG-OUTSIDE-CELL DATA! THEN ;
 
 \ A name its wordlist already holds live keeps that record: in a warm engine it
@@ -15585,7 +15345,6 @@ ROW-CELLS cells constant SCOPE-BYTES
 : OPEN-PACKAGE ( str -- ) {: s:str :}
    s RES-TRUE NS-ENSURE {: rec:^ :}
    rec CELL + @ 0= IF rec GRANT THEN
-   USE-DEPTH-CELL DATA@ USE-PKG-SAVE-CELL DATA!
    rec REC>IX get-current package-scope!
    rec CELL + @ CUR-CELL DATA!
    0 PKG-OUTSIDE-CELL DATA! ;
@@ -15614,41 +15373,7 @@ EXPORT CHECKER-RESOLVE:CK-REC-NAME$
    THEN
    PKG-PARENT-CELL DATA@ CUR-CELL DATA!
    ENCLOSING:REC SCOPE-IX {: outer:n :}
-   outer 0 < IF -1 0 ELSE outer ENCLOSING:PARENT DATA@ THEN package-scope!
-   USE-PKG-SAVE-CELL DATA@ USE-DEPTH-CELL DATA! ;
-
-EXPORT CHECKER-RESOLVE:HEAD-ROW
-
-\ A name with no row gets NS-ENSURE's placeholder; the run rejects USING-UNKNOWN.
-\ NAME, not the slot CHECKER-USE:NAME! folds to lower case, spells a new row.
-: OPEN-USING ( str -- ) {: s:str :}
-   s CHECKER-USING
-   s CHECKER-COLON-SCAN drop 0 <> IF
-      s REJECTION:USING-BAD-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
-   THEN
-   s HEAD-ROW {: row:^ :}
-   row NULL-PTR = IF s RES-TRUE NS-ENSURE ELSE row THEN {: rec:^ :}
-   USE-DEPTH-CELL DATA@ {: d:n :}
-   rec @ d cells USE-WIDS-OFF + DATA!
-   d 1 + USE-DEPTH-CELL DATA! ;
-
-\ `;using`, the token t, closes only an import the open package or the
-\ replayed source opened: one opened before `package` is at or below the depth
-\ `;package` restores, so closing it would come undone there, and the engine
-\ rejects closing one the source inherited, at or below
-\ CHECKER-USE:SOURCE-FLOOR, in an evaluated buffer.
-: CLOSE-USING ( str -- ) {: t:str :}
-   USE-DEPTH-CELL DATA@ {: d:n :}
-   d 0 <= IF
-      t REJECTION:USING-UNBALANCED  EXIT-STATUS:REJECTED REJECTION:STOP
-   THEN
-   PKG-PUB-CELL DATA@ 0 <>  d USE-PKG-SAVE-CELL DATA@ <=  and IF
-      t s" package" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
-   THEN
-   d SOURCE-FLOOR @ <= IF
-      t s" file" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
-   THEN
-   d 1 - USE-DEPTH-CELL DATA! ;
+   outer 0 < IF -1 0 ELSE outer ENCLOSING:PARENT DATA@ THEN package-scope! ;
 
 \ `undefine NAME`: every live record of the name in the wordlist it acts in is
 \ retired and logged, a seeded primitive's as well.
@@ -15694,8 +15419,8 @@ NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
    REJECTION:HELP  h REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ A part opens in its package's private section, in its buffer, under no using
-\ it opened, inside no part.
+\ A part opens in its package's private section, in its buffer, inside no
+\ part.
 : PART-GUARD ( -- )
    data-base PKG-PUB-CELL + @ 0= IF EXIT THEN
    data-base ENCLOSING:PUB + @ 0 <> IF
@@ -15711,10 +15436,6 @@ NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
    get-current data-base PKG-PRI-CELL + @ <> IF
       s" outside its private section"
       s" write `private` before `package`" PART-REJECT
-   THEN
-   CK-USE-ENGINE-DEPTH data-base USE-PKG-SAVE-CELL + @ <> IF
-      s" under a using the package opened"
-      s" close that using with `;using` before `package`" PART-REJECT
    THEN ;
 
 \ NAME, or `A:NAME` in package A.
@@ -15741,11 +15462,7 @@ NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
 ;package
 package CHECK
 
-EXPORT CHECKER-OVERLAY:OPEN-USING
-
-\ --- the package and using words ---------------------------------------------
-EXPORT CHECKER-OVERLAY:CLOSE-USING
-
+\ --- the package words ---------------------------------------------------------
 EXPORT CHECKER-OVERLAY:OPEN-PACKAGE
 
 \ The path s, then the name as written t.
@@ -15809,7 +15526,6 @@ package CHECK
 
 EXPORT CHECKER-OVERLAY:SCOPE-BYTES
 EXPORT CHECKER-OVERLAY:SAVE-SCOPE
-EXPORT CHECKER-USE:SOURCE-FLOOR
 EXPORT CHECKER-OVERLAY:FILE-DONE
 EXPORT CHECKER-OVERLAY:RESTORE-SCOPE
 
@@ -15825,12 +15541,11 @@ EXPORT CHECKER-OVERLAY:RESTORE-SCOPE
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A source loaded inside an active verifier window inherits its caller's
-\ package and imports. On a clean return it keeps no import it opened.
+\ package.
 : CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
    SCOPE-BYTES map-anon 0= 0= IF drop SCOPE-BYTES s" a file scope" REJECTION:MAP-PASS THEN
    {: frame:^ :}
    frame SAVE-SCOPE
-   CK-USE-ENGINE-DEPTH SOURCE-FLOOR !
    q catch {: rc:n :}
    rc 0= IF frame FILE-DONE ELSE frame RESTORE-SCOPE THEN
    frame SCOPE-BYTES munmap {: release:n :}
@@ -16033,17 +15748,6 @@ private
    REJECTION:HELP  ns ts why STGR-HELP
    STGR-END ;
 
-\ Family tail ts in the type of ns is public in more than one used
-\ package.
-: STGR-AMBIG ( str str -- ) {: ns:str ts:str :}
-   s" E-USING-AMBIGUOUS" REJECTION:OPEN
-   s" the type of " REJECTION:EMIT-STR  ns CODE-SPAN
-   s"  names type family " REJECTION:EMIT-STR  ts CODE-SPAN
-   s" , which is public in more than one used package" REJECTION:EMIT-STR
-   ts REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
-   ts SGBAD-AMBIG-HELP
-   STGR-END ;
-
 \ Type ts of ns does not parse: SGBAD holds the fault's kind and the
 \ token the parse stopped on, none where the type ended early.
 : STGR-MALFORMED ( str str -- ) {: ns:str ts:str :}
@@ -16201,28 +15905,6 @@ variable CK-PEND-IX
    sym CK-SCOPE-PENDING? IF sym EXIT THEN
    0 ;
 
-\ The engine's USE-WIDS and this checker's name mirror share one index.
-: CK-USED-INDEX ( n -- n ) {: wid:n :}
-   CK-USE-SCAN-N 0 ?DO
-      data-base USE-WIDS-OFF + i cells + @ wid = IF i UNLOOP EXIT THEN
-   LOOP
-   -1 ;
-
-: CK-USED-SYM@ ( str n -- n ) {: s:str ix:n :}
-   ix 0 < IF 0 EXIT THEN
-   ix CK-USE-SLOT ix CK-USE-LEN@ >str SYM-PUBLIC s SYM-FIND IF EXIT THEN drop 0 ;
-
-\ The packages a using rejection names: every package the lookup met, not only the
-\ two scope-find reports.
-: CK-USED-MARK ( str -- ) {: s:str :}
-   0 CK-USED-MASK !
-   CK-USE-SCAN-N 0 ?DO
-      s data-base USE-WIDS-OFF + i cells + @ CHECKER-RESOLVE:WL-PROBE NULL-PTR <>
-      s i CK-USED-SYM@ SYM-BEYOND? 0=  and IF
-         1 i lshift CK-USED-MASK @ or CK-USED-MASK !
-      THEN
-   LOOP ;
-
 ;package
 package CHECKER-RESOLVE
 \ The package a part's path `A:B` names first: A, whose words a part binds
@@ -16247,7 +15929,7 @@ EXPORT CHECKER-RESOLVE:TOP$
    wid data-base PKG-PUB-CELL + @ = IF pkg SYM-PUBLIC s CHECKER-PKG-SYM? EXIT THEN
    wid data-base ENCLOSING:PRI + @ = IF pkg TOP$ SYM-PRIVATE s CHECKER-PKG-SYM? EXIT THEN
    wid data-base ENCLOSING:PUB + @ = IF pkg TOP$ SYM-PUBLIC s CHECKER-PKG-SYM? EXIT THEN
-   s wid CK-USED-INDEX CK-USED-SYM@ ;
+   0 ;
 
 \ A keyword's axiom: the global symbol of a bare name the engine holds no record
 \ for. Those live below the user region USIG-NEWEST indexes.
@@ -16257,28 +15939,18 @@ EXPORT CHECKER-RESOLVE:TOP$
    sym USIG-NEWEST 0 <> IF 0 EXIT THEN
    sym ;
 
-: USED-BEYOND? ( str ^n -- bool ) {: s:str rec:^ :}
-   s rec CK-REC-WID CK-USED-INDEX CK-USED-SYM@ SYM-BEYOND? ;
-
 EXPORT CHECKER-OVERLAY:HIDE
 EXPORT CHECKER-RESOLVE:bare-scope-find
 
-: HIDE-BEYOND? ( ^n ^n ^n str -- bool )
-   {: rec:^ used:^ used2:^ s:str :}
+: HIDE-BEYOND? ( ^n str -- bool ) {: rec:^ s:str :}
    rec 0= 0= IF
       s rec CK-REC-BIND SYM-BEYOND? IF rec HIDE RES-TRUE EXIT THEN
-   THEN
-   used 0= 0= IF
-      s used USED-BEYOND? IF used HIDE RES-TRUE EXIT THEN
-   THEN
-   used2 0= 0= IF
-      s used2 USED-BEYOND? IF used2 HIDE RES-TRUE EXIT THEN
    THEN
    RES-FALSE ;
 
 : HIDE-FIND ( str -- ^n ^n ^n n ) {: s:str :}
    s bare-scope-find
-   BEGIN 2over 2over drop s HIDE-BEYOND? WHILE
+   BEGIN 2over drop s HIDE-BEYOND? WHILE
       2drop 2drop  s bare-scope-find
    REPEAT ;
 
@@ -16298,15 +15970,9 @@ variable BIND-SEEDED
 
 variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
 
-: RECOVERY-USED-BIND ( str -- n ) {: s:str :}
-   CK-USE-SCAN-N 0 ?DO
-      s i CK-USED-SYM@ RECOVERY-LIVE {: sym:n :}
-      sym 0 <> IF sym UNLOOP EXIT THEN
-   LOOP 0 ;
-
 0 constant RB-PRIVATE         1 constant RB-PUBLIC
 2 constant RB-ENCLOSING-PRIVATE   3 constant RB-ENCLOSING-PUBLIC
-4 constant RB-GLOBAL          5 constant RB-USED            6 constant RB-NONE
+4 constant RB-GLOBAL          5 constant RB-NONE
 
 : RECOVERY-RANK ( ^n -- n ) {: rec:^ :}
    rec 0= IF RB-NONE EXIT THEN
@@ -16316,7 +15982,7 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
    wid data-base PKG-PUB-CELL + @ = IF RB-PUBLIC EXIT THEN
    wid data-base ENCLOSING:PRI + @ = IF RB-ENCLOSING-PRIVATE EXIT THEN
    wid data-base ENCLOSING:PUB + @ = IF RB-ENCLOSING-PUBLIC EXIT THEN
-   RB-USED ;
+   RB-NONE ;
 
 : RECOVERY-QUALIFIED ( ^n -- n ) {: rec:^ :}
    CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? RECOVERY-LIVE
@@ -16354,7 +16020,6 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
    rank RB-GLOBAL > IF
       s CHECKER-GLOBAL-SYM? RECOVERY-LIVE dup 0 <> IF EXIT THEN drop
    THEN
-   rank RB-NONE = IF s RECOVERY-USED-BIND EXIT THEN
    0 ;
 
 \ Reads a bound record's facts text into the stores the first time a lookup binds
@@ -16362,24 +16027,6 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
 defer FACTS-READ-XT ( ^n -- nominal )
 : FACTS-READ-DEFAULT ( -- ) [: drop ;] is FACTS-READ-XT ;
 FACTS-READ-DEFAULT
-
-;package
-package CHECKER-RESOLVE
-EXPORT CHECK:CK-REC-WID
-\ Whether scope-find's record REC is only the used publics' record USED: the
-\ open and the enclosing package's public wordlists, searched first, do not
-\ hold it.
-: USED-ONLY? ( ^n ^n -- bool ) {: rec:^ used:^ :}
-   rec used <> IF RES-FALSE EXIT THEN
-   rec NULL-PTR = IF RES-FALSE EXIT THEN
-   rec CK-REC-WID {: wl:n :}
-   wl data-base PKG-PUB-CELL + @ = IF RES-FALSE EXIT THEN
-   wl data-base ENCLOSING:PUB + @ = IF RES-FALSE EXIT THEN
-   RES-TRUE ;
-;package
-package CHECK
-
-EXPORT CHECKER-RESOLVE:USED-ONLY?
 
 : LIVE-BIND ( str -- n n ) {: w:str :}
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
@@ -16394,121 +16041,36 @@ EXPORT CHECKER-RESOLVE:USED-ONLY?
       ndict@ BIND-PEND-IX !  pending USIG-NEWEST BIND-PEND-OFF !
       \ The checker may still call this declaration pending after the engine
       \ has published its record. A later name query could bind another.
-      w HORIZON-FIND {: held:^ used:^ used2:^ flags:n :}
-      held 0= 0= flags SCOPE-FIND-AMBIGUOUS and 0= and IF
-         held CK-REC-WID WL:GLOBAL? 0= used 0= or IF held BIND-REC ! THEN
-      THEN
+      w HORIZON-FIND drop 2drop {: held:^ :}
+      held 0= 0= IF held BIND-REC ! THEN
       pending 0 EXIT
    THEN
-   w HORIZON-FIND {: rec:^ used:^ used2:^ flags:n :}
+   w HORIZON-FIND nip nip {: rec:^ flags:n :}
    flags BIND-SCOPE-SEEDED and BIND-SEEDED !
    MULTI-ERR? BODY-WALK @ WRITE-WINDOW @ or 0 <> and IF
       w rec RECOVERY-BIND {: rsym:n :}
       rsym 0 <> IF rsym 0 EXIT THEN
    THEN
-   rec used USED-ONLY? IF -1 WALK-USED ! THEN
-   flags SCOPE-FIND-AMBIGUOUS and 0 <> {: two:bool :}
    rec 0= IF
-      two IF -1 USING-UNBOUND !  w CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
       w CHECKER-QUALIFIED? IF 0 0 EXIT THEN
       w CK-AXIOM-SYM 0 EXIT
    THEN
    rec FACTS-READ-XT
    w rec CK-REC-BIND {: sym:n :}
    rec BIND-REC !
-   rec CK-REC-WID WL:GLOBAL? IF                       \ a used public exporting the bound global's tail
-      two IF w CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
-      used 0= 0= IF
-         w CK-USED-MARK
-         used CK-REC-WID CK-USED-INDEX {: ix:n :}
-         0  ix CK-SHADOW-CAPTURE  EXIT
-      THEN
-   THEN
    -1 WALK-REC !
    sym 0 ;
 
-\ s is both a global word and a public of used package p. Writes the
-\ record through its help and leaves it open: the caller ends it.
-: USING-SHADOW-REJECT ( str str -- )
-   {: s:str p:str :}
-   p PACKAGE-NAME$ {: ps:str :}
-   p USED-QUAL {: q:str reach:bool :}
-   s" E-USING-SHADOW-GLOBAL" REJECTION:OPEN
-   96 REJECTION:EMIT1  s REJECTION:EMIT-STR
-   s" ` is both a global word and a public of used package `"
-   REJECTION:EMIT-STR
-   ps REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   s REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
-   s" global" REJECTION:NOTE  s REJECTION:EMIT-STR
-   s" package" REJECTION:NOTE  ps s EMIT-QUALIFIED
-   REJECTION:HELP
-   reach 0= IF
-      s" rename one of the two: the global word has no qualified form, "
-      REJECTION:EMIT-STR
-      s" and the part `" REJECTION:EMIT-STR  q PART-ROW CK-REC-NAME$ REJECTION:EMIT-STR
-      s" ` hides package `" REJECTION:EMIT-STR  q REJECTION:EMIT-STR
-      s" ` here" REJECTION:EMIT-STR  EXIT
-   THEN
-   s" write `" REJECTION:EMIT-STR  q s EMIT-QUALIFIED
-   s" ` to call the package's word, or rename one of the two: "
-   REJECTION:EMIT-STR
-   s" the global word has no qualified form" REJECTION:EMIT-STR ;
-
-\ The bare token s is public in each package whose using slot is set in
-\ mask. Writes the record through its help and leaves it open: the caller ends
-\ it.
-: USING-AMBIGUOUS-REJECT ( str n -- ) {: s:str mask:n :}
-   s" E-USING-AMBIGUOUS" REJECTION:OPEN
-   96 REJECTION:EMIT1  s REJECTION:EMIT-STR
-   s" ` is public in more than one used package" REJECTION:EMIT-STR
-   s REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
-   s" word" s mask UPKG-HELP ;
-
 ;package
 package CHECKER-RESOLVE
-EXPORT CHECK:USING-UNBOUND
 EXPORT CHECK:WALK-REC
-EXPORT CHECK:WALK-USED
 EXPORT CHECK:LIVE-BIND
 : WALK ( str -- n n )
-   0 USING-UNBOUND !  0 WALK-REC !  0 WALK-USED !
-   LIVE-BIND ;
+   0 WALK-REC !  LIVE-BIND ;
 
-EXPORT CHECK:USING-HOLD
-EXPORT CHECK:CUSING
-EXPORT CHECK:USH-TOK-A
-EXPORT CHECK:USH-TOK-U
-EXPORT CHECK:CREJECT!
-EXPORT CHECK:CRTGT
-EXPORT CHECK:FAILSET
-EXPORT CHECK:CK-USED-MASK
-EXPORT CHECK:SYM-STR
-EXPORT CHECK:USH-PKG-A
-EXPORT CHECK:USH-PKG-U
-EXPORT CHECK:USING-SHADOW-REJECT
-EXPORT CHECK:USING-AMBIGUOUS-REJECT
-EXPORT CHECK:OK
-\ Inside a body token's walk (USING-HOLD) a using rejection renders nothing and
-\ throws nothing: the scan's end raises it if the definition is rejected for it.
-: RAISE ( str n -- )
-   {: s:str why:n :}
+: RAISE ( n -- )
+   {: why:n :}
    why EXIT-STATUS:REJECTED = IF CHECKER-PKG-CONTEXT-REJECT THEN
-   USING-HOLD @ IF
-      CUSING @ 0 <> IF EXIT THEN
-      s STR:DATA USH-TOK-A !  s STR:LEN USH-TOK-U !
-      why E-USING-SHADOW-GLOBAL = IF RF-USHADOW ELSE RF-UAMBIG THEN CUSING !
-      CRTGT @ 0 <>  USING-UNBOUND @ 0 <>  or IF CUSING @ CREJECT! THEN
-      0 OK !  -1 FAILSET !
-      EXIT
-   THEN
-   why E-USING-SHADOW-GLOBAL = IF
-      s SYM-STR USH-PKG-A @ + USH-PKG-U @ >str USING-SHADOW-REJECT
-      EXIT-STATUS:REJECTED REJECTION:STOP
-   THEN
-   why E-USING-AMBIGUOUS = IF
-      s CK-USED-MASK @ USING-AMBIGUOUS-REJECT
-      EXIT-STATUS:REJECTED REJECTION:STOP
-   THEN
    s" checker: CHECKER-RESOLVE:RAISE got a code LIVE-BIND never answers" EXIT-STATUS:INTERNAL die ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME be
@@ -16518,47 +16080,21 @@ EXPORT CHECK:OK
 ;package
 package CHECK
 
-\ The using rejection the selector took: its token and what the walk captured for
-\ it, kept from the later lookups and rejections that move them.
-SCRATCH{
-PTR-VARIABLE UHELD-TOK-A   variable UHELD-TOK-U
-variable UHELD-PKG-A   variable UHELD-PKG-U
-variable UHELD-MASK
-}SCRATCH
-
-: USING-SAVE ( -- )
-   USH-TOK-A @ UHELD-TOK-A !  USH-TOK-U @ UHELD-TOK-U !
-   USH-PKG-A @ UHELD-PKG-A !  USH-PKG-U @ UHELD-PKG-U !
-   CK-USED-MASK @ UHELD-MASK ! ;
-
 EXPORT CHECKER-RESOLVE:RAISE
-
-: USING-RAISE ( -- )
-   REJECTION @ USING-KIND? 0= IF EXIT THEN
-   UHELD-PKG-A @ USH-PKG-A !  UHELD-PKG-U @ USH-PKG-U !
-   UHELD-MASK @ CK-USED-MASK !
-   UHELD-TOK-A @ UHELD-TOK-U @ >str
-   REJECTION @ RF-USHADOW = IF E-USING-SHADOW-GLOBAL ELSE E-USING-AMBIGUOUS THEN
-   RAISE ;
-
 EXPORT CHECKER-RESOLVE:WALK
 
-\ `t` is the token to resolve, `s` its spelling for a rejection to name.
-: CHECKER-BIND-WHY ( str str -- n n )
-   {: t:str s:str :}
+\ The symbol token t binds and WALK's code; a rejection WALK answers is raised.
+: CHECKER-BIND-WHY ( str -- n n )
+   {: t:str :}
    t WALK {: sym:n why:n :}
-   why 0 <> IF s why RAISE THEN
+   why 0 <> IF why RAISE THEN
    sym why ;
 
-: CHECKER-BIND ( str str -- n )
+: CHECKER-BIND ( str -- n )
    CHECKER-BIND-WHY drop ;
 
-: CHECKER-FIND-ACTIVE-SYM ( str -- n )
-   {: s:str :}
-   s s CHECKER-BIND ;
-
 : CHECKER-TRUSTED-TICK? ( str -- bool )
-   CHECKER-FIND-ACTIVE-SYM PRIM-TRUSTED-SYM? ;
+   CHECKER-BIND PRIM-TRUSTED-SYM? ;
 
 ;package
 package CHECKER-REG
@@ -16566,23 +16102,6 @@ EXPORT CHECK:CHECKER-TRUSTED-TICK?
 ' CHECKER-TRUSTED-TICK? DECLARATIONS CHECKER-OWNER-ABI:TRUSTED-TICK-OFF + xt!
 ;package
 package CHECK
-
-\ The two used-scope rejections belong to the definition being checked. Anything
-\ else the walk throws propagates, so the pre-pass reports it.
-: FQSYM-DEFERRED? ( n -- bool ) {: code:n :}
-   code E-USING-SHADOW-GLOBAL =  code E-USING-AMBIGUOUS =  or ;
-
-\ The symbol the walk binds, 0 when it binds nothing, and true when it deferred
-\ one of those two rejections: a name the load rejects, not one it lacks.
-: CHECKER-QUIET-WALK ( str -- n bool )
-   {: s:str :}
-   s WALK {: sym:n why:n :}
-   why 0= IF sym RES-FALSE EXIT THEN
-   why FQSYM-DEFERRED? 0= IF s why RAISE THEN
-   0 RES-TRUE ;
-
-: CHECKER-FIND-QUIET-SYM ( str -- n )
-   CHECKER-QUIET-WALK drop ;
 
 \ ---- words a rendering statement may have defined ----------------------------
 : UNSEEN-MARK$ ( -- str ) s" unseen products" ;
@@ -16628,7 +16147,6 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
    {: ns:str ts:str lay:bool :}
    ts STR:LEN 0= IF ns ns STG-NO-TYPE CHECKER-STORAGE-REJECT EXIT THEN
    STORAGE-UNRESOLVED? IF E-CHECKER-STORAGE-UNRESOLVED throw THEN
-   SGBAD-AMBIG? IF ns SGBAD-A @ SGBAD-U @ >str STGR-AMBIG EXIT THEN
    SGBAD-UNKNOWN? IF
       ns SGBAD-A @ SGBAD-U @ >str STG-UNKNOWN-TYPE CHECKER-STORAGE-REJECT EXIT
    THEN
@@ -16680,20 +16198,14 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
          pkg TOP$ SYM-PRIVATE s TYPE-MARK-IN? IF RES-TRUE EXIT THEN
       THEN
    THEN
-   s" " SYM-GLOBAL s TYPE-MARK-IN? IF RES-TRUE EXIT THEN
-   CHECKER-USING-N 0 ?DO
-      i CHECKER-USING$ SYM-PUBLIC s TYPE-MARK-IN? IF
-         RES-TRUE unloop EXIT
-      THEN
-   LOOP
-   RES-FALSE ;
+   s" " SYM-GLOBAL s TYPE-MARK-IN? ;
 
 \ Whether the wordlist holds the unseen-products mark or NAME's own.
 : UNSEEN-IN? ( str n str -- bool ) {: pkg:str vis:n s:str :}
    pkg vis UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
    pkg vis s UNSEEN-NAME$ CHECKER-PKG-SYM? 0 <> ;
 
-\ Every wordlist CHECKER-FIND-ACTIVE-SYM walks for a token.
+\ Every wordlist CHECKER-BIND walks for a token.
 : UNSEEN-COVERS? ( str -- bool ) {: s:str :}
    s CHECKER-QUALIFIED? IF
       CHECKER-QPKG$ SYM-PUBLIC CHECKER-QTAIL$ UNSEEN-IN? IF RES-TRUE EXIT THEN
@@ -16708,11 +16220,7 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
          pkg TOP$ SYM-PUBLIC s UNSEEN-IN? IF RES-TRUE EXIT THEN
       THEN
    THEN
-   s" " SYM-GLOBAL s UNSEEN-IN? IF RES-TRUE EXIT THEN
-   CK-USE-SCAN-N 0 ?DO
-      i CK-USE-SLOT i CK-USE-LEN@ >str SYM-PUBLIC s UNSEEN-IN? IF unloop RES-TRUE EXIT THEN
-   LOOP
-   RES-FALSE ;
+   s" " SYM-GLOBAL s UNSEEN-IN? ;
 
 \ Cache value: record offset+1, 0 for none or deleted.
 : CHECKER-FIND-USIG-SYM ( n -- bool ) {: sym:n :}
@@ -16748,7 +16256,7 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
 
 : CHECKER-FIND-ACTIVE-SIG ( str -- ) {: s:str :}
    FEP-CLEAR
-   s CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM drop ;
+   s CHECKER-BIND CHECKER-FIND-USIG-SYM drop ;
 
 : FIND-SIG-SYM ( n -- bool ) {: sym:n :}
    FEP-CLEAR
@@ -16758,7 +16266,7 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
    dup 0 <> IF E-PTR FEP-SET RES-TRUE ELSE drop RES-FALSE THEN ;
 
 : FIND-SIG ( str -- bool )
-   CHECKER-FIND-ACTIVE-SYM FIND-SIG-SYM ;
+   CHECKER-BIND FIND-SIG-SYM ;
 
 \ ---- effect-read export API -------------------------------------------------
 \ FIND-SIG, E-DIN@/E-DOUT@, E-PTR and the EN-* accessors are sig-less, so the
@@ -18785,7 +18293,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 : CTL-MASKS-SYM ( n -- n n ) CTL-WORD-SYM dup XFER-DMASK swap XFER-RMASK ;
 
 : CTL-MASKS ( str -- n n ) {: s:str :}
-   s CHECKER-FIND-ACTIVE-SYM CTL-MASKS-SYM ;
+   s CHECKER-BIND CTL-MASKS-SYM ;
 
 \ `id INTRINSIC`, at top level right after the source definition of an engine
 \ word, tags it as that engine word, as `immediate` marks the latest word. A
@@ -18819,11 +18327,11 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    s BOOT:GLOBAL-WL CK-WL-CLAIMS? 0= IF 0 RES-FALSE EXIT THEN
    s CHECKER-GLOBAL-SYM? RES-TRUE ;
 
-\ The engine compiles a TRUSTED: body's call to a global a used public shadows
-\ as a call to the global, so the shadow the quiet walk defers falls back here.
+\ A TRUSTED: body's call binds the word the walk binds, else the engine's
+\ global word of that name.
 : CHECKER-RUN-SYM ( str -- n bool )
    {: s:str :}
-   s CHECKER-FIND-QUIET-SYM dup 0 <> IF RES-TRUE EXIT THEN drop
+   s CHECKER-BIND dup 0 <> IF RES-TRUE EXIT THEN drop
    s ENGINE-WORD-SYM ;
 
 \ The engine's top-level find looks for the tail of PKG:TAIL in the global
@@ -18877,15 +18385,12 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    THEN
    s ENGINE-WORD-SYM s ENGINE-WORD-REC ;
 
-\ 0 and false when `using` rejects it: the load runs no word for a shadowed or
-\ ambiguous name, so no engine word of that name stands in.
+\ The symbol top-level token s binds, and false when no word the engine holds
+\ stands for it.
 : CHECKER-TOP-SYM ( str -- n bool )
    {: s:str :}
    s WALK {: sym:n why:n :}
-   why 0 <> IF
-      why FQSYM-DEFERRED? 0= IF s why RAISE THEN
-      0 RES-FALSE EXIT
-   THEN
+   why 0 <> IF why RAISE THEN
    s sym TOP-BOUND-SYM nip ;
 
 : TOP-CONTROL ( n -- n bool ) {: sym:n :}
@@ -19100,7 +18605,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 \ A private or ABI-only row is not a callable source effect. Primitive-only rows
 \ are excluded.
 : CHECKER-RESOLVES? ( str -- bool ) {: s:str :}
-   s CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   s CHECKER-BIND {: sym:n :}
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym EFFECT-EXTERNAL-SYM? ;
 
@@ -19445,31 +18950,14 @@ EXPORT CHECKER-RESOLVE:EXPORT-SEALED?
 EXPORT CHECKER-RESOLVE:EXPORT-SEALED
 EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
 
-\ The operand s binds the public SYM of a package it uses.
-: EXPORT-USED ( str n -- ) {: s:str sym:n :}
-   sym SYM-PKG$ PACKAGE-NAME$ {: p:str :}
-   sym SYM-PKG$ USED-QUAL {: q:str reach:bool :}
-   s" E-EXPORT-UNDEFINED" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  s REJECTION:EMIT-STR
-   s" ` is a public of used package `" REJECTION:EMIT-STR  p REJECTION:EMIT-STR
-   s" `, and EXPORT does not search used packages" REJECTION:EMIT-STR
-   s REJECTION:AT  s" used, not in this package's scope" REJECTION:EMIT-STR
-   REJECTION:HELP
-   reach IF
-      s" write `EXPORT " REJECTION:EMIT-STR  q s EMIT-QUALIFIED
-      s" `" REJECTION:EMIT-STR
-   ELSE q EMIT-HIDER THEN
-   EXIT-STATUS:REJECTED REJECTION:STOP ;
-
 \ Rejects the operand s, which names no word EXPORT may take. SYM is
-\ EXPORT-SYM's symbol; WALK-USED still describes the walk that bound it.
+\ EXPORT-SYM's symbol.
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row lives at offset 0.
 : EXPORT-MISS ( str n -- ) {: s:str sym:n :}
    sym PRIM-FIRST-IDX 0 <> IF s EXPORT-PRIM THEN
    sym CTL-FLAGS-SYM CTL-IDENTITY and 0 <> IF s EXPORT-JUDGED THEN
    sym 0= IF s EXPORT-KEYWORD THEN
-   WALK-USED @ 0 <>  sym 0 <>  and IF s sym EXPORT-USED THEN
    s EXPORT-SEALED? IF s EXPORT-SEALED THEN
    s EXPORT-UNDEFINED ;
 
@@ -19494,7 +18982,7 @@ variable CHECKER-PREFIX-ACTIVE
    sym HOST-DECLARATION-SYM? IF s EXPORT-DECLARATION THEN
    sym PRIM-TRUSTED-SYM? IF s EXPORT-UNSAFE THEN
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
-   FEP-HIT? WALK-USED @ 0= and
+   FEP-HIT?
    \ A primitive a package owns is one of its private words; a global one is not.
    sym PRIM-FIRST-IDX 0 <>  sym SYM-PKG$ STR:LEN 0 <>  and  or
    0= IF s sym EXPORT-MISS THEN
@@ -19504,7 +18992,7 @@ variable CHECKER-PREFIX-ACTIVE
 \ The symbol an EXPORT operand names and, when its scope finds no word, the
 \ private record CHECKER-RESOLVE:EXPORT-PRIVATE finds instead, else NULL-PTR.
 : EXPORT-SYM ( str -- n ^n ) {: s:str :}
-   s CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   s CHECKER-BIND {: sym:n :}
    sym 0 <> IF sym NULL-PTR EXIT THEN
    s EXPORT-PRIVATE {: rec:^ :}
    rec NULL-PTR = IF 0 rec EXIT THEN
@@ -19611,7 +19099,7 @@ variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG  variable SV-MCELL  variab
 variable SV-SGBAD
 PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
-PTR-VARIABLE SV-SGBAD-EXP-A  variable SV-SGBAD-EXP-U  variable SV-SGBAD-USED
+PTR-VARIABLE SV-SGBAD-EXP-A  variable SV-SGBAD-EXP-U
 variable SV-SGBAD-LOCAL
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
@@ -19640,7 +19128,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    SGBAD-U @ SV-SGBAD-U !  SGBAD-KIND @ SV-SGBAD-KIND !
    SGBAD-AR-DECL @ SV-SGBAD-AR-DECL !  SGBAD-AR-GOT @ SV-SGBAD-AR-GOT !
    SGBAD-EXP-A @ SV-SGBAD-EXP-A !  SGBAD-EXP-U @ SV-SGBAD-EXP-U !
-   SGBAD-USED @ SV-SGBAD-USED !  SGBAD-LOCAL @ SV-SGBAD-LOCAL !
+   SGBAD-LOCAL @ SV-SGBAD-LOCAL !
    SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
    SGWIN @ SV-SGWIN !  SGWOUT @ SV-SGWOUT !  SGWRIN @ SV-SGWRIN !  SGWROUT @ SV-SGWROUT !
@@ -19654,7 +19142,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    SV-SGBAD-U @ SGBAD-U !  SV-SGBAD-KIND @ SGBAD-KIND !
    SV-SGBAD-AR-DECL @ SGBAD-AR-DECL !  SV-SGBAD-AR-GOT @ SGBAD-AR-GOT !
    SV-SGBAD-EXP-A @ SGBAD-EXP-A !  SV-SGBAD-EXP-U @ SGBAD-EXP-U !
-   SV-SGBAD-USED @ SGBAD-USED !  SV-SGBAD-LOCAL @ SGBAD-LOCAL !
+   SV-SGBAD-LOCAL @ SGBAD-LOCAL !
    SV-SGSEEN @ SGSEEN !  SV-SGHASR @ SGHASR !
    SV-SGIN @ SGIN !  SV-SGOUT @ SGOUT !  SV-SGRIN @ SGRIN !  SV-SGROUT @ SGROUT !
    SV-SGWIN @ SGWIN !  SV-SGWOUT @ SGWOUT !  SV-SGWRIN @ SGWRIN !  SV-SGWROUT @ SGWROUT ! ;
@@ -20683,8 +20171,7 @@ PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
 EXPORT CHECKER-ITEMS:POSTPONED-REC
 
 \ Made on the first ask for the token DO-TOK1 is reading, and read by every
-\ later reader of that token. A rejection the lookup raises names the token as
-\ DO-TOK1 read it; `s` may be the fold the body walk keeps in scratch.
+\ later reader of that token.
 : BIND-TOK ( str -- )
    {: s:str :}
    TOK-DONE @ IF EXIT THEN
@@ -20693,7 +20180,7 @@ EXPORT CHECKER-ITEMS:POSTPONED-REC
    BIND-START
    TSTART @ s STR:LEN POSTPONED-REC {: prec:^ :}
    prec NULL-PTR <> IF prec BIND-PREC 0
-   ELSE s TOK-SPELL-A @ TOK-SPELL-U @ >str CHECKER-BIND-WHY THEN
+   ELSE s CHECKER-BIND-WHY THEN
    s BIND-FILL ;
 
 \ A CALL item's token, spelled s, binds the record rec.
@@ -20779,10 +20266,8 @@ variable CHECKER-PREFIX-ROLLBACK
 
 EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
 
-\ A name the walk rejected for a `using` is not undefined. No definition, now or
-\ later, makes a keyword a word.
+\ No definition, now or later, makes a keyword a word.
 : REJECT-UNDEFINED ( str -- )
-   CUSING @ 0 <> IF drop EXIT THEN
    dup BODY-KEYWORD? IF
       drop RF-KEYWORD CREJECT!  0 OK !  -1 FAILSET !  EXIT
    THEN
@@ -23643,7 +23128,7 @@ private
    0 ;
 
 : NAME-IMM-READS ( str -- n )
-   dup CHECKER-FIND-ACTIVE-SYM IMM-READS ;
+   dup CHECKER-BIND IMM-READS ;
 
 ;package
 package CHECKER-PREFLIGHT
@@ -23668,7 +23153,7 @@ variable ACTIVE
    BODY-A ! ;
 
 EXPORT CHECK:BIND-REC
-EXPORT CHECK:CHECKER-FIND-ACTIVE-SYM
+EXPORT CHECK:CHECKER-BIND
 EXPORT CHECK:CHECKER-FIND-USIG-SYM
 EXPORT CHECK:CK-REC-WID
 EXPORT CHECK:IMM-READS
@@ -23710,7 +23195,7 @@ EXPORT CHECK:DICT-CELL@
 
 : BODY-TOK? ( str -- bool ) {: s:str :}
    s FORCED? IF RES-TRUE EXIT THEN
-   s CHECKER-FIND-ACTIVE-SYM  BIND-REC @  {: sym:n rec:^ :}
+   s CHECKER-BIND  BIND-REC @  {: sym:n rec:^ :}
    sym CHECKER-FIND-USIG-SYM 0= IF
       rec NULL-PTR = IF RES-FALSE EXIT THEN
       rec CK-REC-WID WL:PRIMITIVES <> IF RES-FALSE EXIT THEN
@@ -23866,11 +23351,9 @@ defer VIS-VISIT ( str n n n -- )
    {: s:str kind:n controls:bool :}
    BIND-REC @ {: s-br:^ :}
    BIND-PEND-IX @ BIND-PEND-OFF @ BIND-SEEDED @ {: s-bpi:n s-bpo:n s-bs:n :}
-   CK-USED-MASK @ {: s-um:n :}
-   USH-PKG-A @ USH-PKG-U @ {: s-ha:n s-hn:n :}
    CHECKER-QBAD-TOK @ {: s-qb:n :}
    CHECKER-QA @ CHECKER-QU @ CHECKER-TA @ CHECKER-TU @ {: s-qa:^ s-qu:n s-ta:^ s-tu:n :}
-   USING-UNBOUND @ WALK-REC @ WALK-USED @ {: s-ub:n s-wr:n s-wu:n :}
+   WALK-REC @ {: s-wr:n :}
    HIDX-H @ HIDX-I @ HIDX-CUR @ USX-BP @ USX-BN @ {: s-hh:n s-hi:n s-hc:n s-xp:n s-xn:n :}
    PRM-FIRST @ PE-I @ NORET-CTL @ NORET-FMEND @ NRX-POS @
    {: s-pf:n s-pe:n s-nc:n s-nf:n s-np:n :}
@@ -23888,11 +23371,9 @@ defer VIS-VISIT ( str n n n -- )
       flags deferred IF CHECKER-OWNER-ABI:BINDING-DEFER or THEN
    ELSE 0 THEN {: ctl:n :}
    s-br BIND-REC !  s-bpi BIND-PEND-IX !  s-bpo BIND-PEND-OFF !  s-bs BIND-SEEDED !
-   s-um CK-USED-MASK !
-   s-ha USH-PKG-A !  s-hn USH-PKG-U !
    s-qb CHECKER-QBAD-TOK !
    s-qa CHECKER-QA !  s-qu CHECKER-QU !  s-ta CHECKER-TA !  s-tu CHECKER-TU !
-   s-ub USING-UNBOUND !  s-wr WALK-REC !  s-wu WALK-USED !
+   s-wr WALK-REC !
    s-hh HIDX-H !  s-hi HIDX-I !  s-hc HIDX-CUR !  s-xp USX-BP !  s-xn USX-BN !
    s-pf PRM-FIRST !  s-pe PE-I !  s-nc NORET-CTL !  s-nf NORET-FMEND !  s-np NRX-POS !
    rejected IF
@@ -24251,15 +23732,14 @@ variable IS-PEND-U                   \ and its length
    IS-PEND-ARM
    RES-TRUE ;
 
-\ The symbol the swallowed target names: its fold resolves, and the token as
-\ written names a rejection, so a raised shadow locates in the file.
+\ The symbol the swallowed target names, bound by its fold.
 : IS-TARGET-SYM ( -- n )
    IS-TOFF @ IS-TU @ POSTPONED-REC {: prec:^ :}
    prec NULL-PTR <> IF
       prec FACTS-READ-XT  prec BIND-REC !  0 BIND-PEND-IX !  -1 WALK-REC !
       prec REC-HOME-SYM EXIT
    THEN
-   TKF TKFU @ >str IS-TA@ IS-TU @ >str CHECKER-BIND-WHY {: sym:n why:n :}
+   TKF TKFU @ >str CHECKER-BIND-WHY {: sym:n why:n :}
    why 0= IF
       sym IS-TA@ IS-TU @ >str NAV-USE  sym IS-TA@ IS-TU @ >str BIND-REC @ USE-CHECK
    THEN
@@ -24468,22 +23948,18 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    BIND-HORIZON ! ;
 
 : REJECTION-TAKE ( n -- )
-   dup REJECTION !  CAPTURE-CLEAR
-   USING-KIND? IF USING-SAVE THEN ;
+   REJECTION !  CAPTURE-CLEAR ;
 
 : LEFT-OFF? ( -- bool ) UNSEEN @ 0 <>  UNFIT @ 0=  and ;   \ an effect too deep to record is never left to the run
 
 \ A body left to the run keeps its pin. Else the first token the load cannot compile takes it from
-\ every failure before, else the first name a used public rejects (CUSING), else the first failure.
+\ every failure before, else the first failure.
 : REJECTION-STEP ( str -- )
    {: s:str :}
    LEFT-OFF? IF EXIT THEN
    CREJECT @ 0 <>  RCOMPILE @ 0=  and IF
       CRTGT @ IF TARGET-PIN! ELSE s FAIL-PIN! THEN
       CREJECT @ REJECTION-TAKE  -1 RCOMPILE !  EXIT
-   THEN
-   CUSING @ 0 <>  RCOMPILE @ 0=  and  REJECTION @ USING-KIND? 0=  and IF
-      s FAIL-PIN!  CUSING @ REJECTION-TAKE  EXIT
    THEN
    \ Past a token left to the run a failed check names no rejection; the checks at ; do.
    FAILSET @ 0 <>  REJECTION @ 0=  and  UNSEEN @ 0=  and IF REJECTION-OF REJECTION ! THEN ;
@@ -24599,8 +24075,8 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 : TYPE-LIT-INFO ( str -- n bool bool ) {: s:str :}
    SGBAD @ SGBAD-A @ SGBAD-U @ SGBAD-KIND @ {: sg:n sga:^ sgu:n sgk:n :}
    SGBAD-AR-DECL @ SGBAD-AR-GOT @ {: ard:n arg:n :}
-   SGBAD-EXP-A @ SGBAD-EXP-U @ SGBAD-USED @ SGBAD-LOCAL @
-   {: sgea:^ sgeu:n sgused:n sgloc:n :}
+   SGBAD-EXP-A @ SGBAD-EXP-U @ SGBAD-LOCAL @
+   {: sgea:^ sgeu:n sgloc:n :}
    SIG-UNRES @ SIG-UNRES-A @ SIG-UNRES-U @ {: un:n una:^ unu:n :}
    SGBAD-CLEAR SIG-UNRES-CLEAR
    0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-EFFECT !
@@ -24611,7 +24087,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    STORAGE-UNRESOLVED? {: unres:bool :}
    sg SGBAD !  sga SGBAD-A !  sgu SGBAD-U !  sgk SGBAD-KIND !
    ard SGBAD-AR-DECL !  arg SGBAD-AR-GOT !
-   sgea SGBAD-EXP-A !  sgeu SGBAD-EXP-U !  sgused SGBAD-USED !  sgloc SGBAD-LOCAL !
+   sgea SGBAD-EXP-A !  sgeu SGBAD-EXP-U !  sgloc SGBAD-LOCAL !
    un 0 <> unres 0= or IF
       un SIG-UNRES !  una SIG-UNRES-A !  unu SIG-UNRES-U !
    THEN
@@ -24730,7 +24206,6 @@ variable XPORT-TAIL
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
    s STR:DATA TOK-SPELL-A !  s STR:LEN TOK-SPELL-U !  0 CREJECT !  0 CRTGT !
-   0 CUSING !  -1 USING-HOLD !
    s TOKFOLD drop
    BWIN-UNJUDGED @ 0 <> {: unj:bool :}       \ judged per token: OK := incoming AND this token
    OK @ {: ok-in:n :}  UNCK @ {: unck-in:n :}    \ an uncheckable token fails with OK still set
@@ -24770,7 +24245,6 @@ variable XPORT-TAIL
    THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
-   0 USING-HOLD !
    s REJECTION-STEP
    TOKIX @ 1 + TOKIX ! ;
 
@@ -25387,7 +24861,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 TOKIX !  0 FAILIX !  VERDICT-NONE DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEF-LSC !  0 XFACT !  PATH-LIVE PATH!  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
-   0 REJECTION !  0 CREJECT !  0 CRTGT !  0 RCOMPILE !  0 CUSING !  0 PIN-BODY-CALL !
+   0 REJECTION !  0 CREJECT !  0 CRTGT !  0 RCOMPILE !  0 PIN-BODY-CALL !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
    0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 LEFT-CALL !  0 TAKES-LEFT !  0 QUALBAD !  0 CAPREQ !
    0 NP-ORIG-N !  0 CALL-MINT-N !  0 RECUR-MAP-N !  0 RECUR-INST-N !
@@ -25622,8 +25096,6 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 \ so the pre-pass and the load accept the same rows.
 0 constant PARSES-UNDEFINED               \ the target names no word here
 1 constant PARSES-QUALIFIED               \ the target is a malformed qualified name
-2 constant PARSES-SHADOW                  \ a used public shadows the global it names
-3 constant PARSES-AMBIGUOUS               \ two used packages export its tail
 4 constant PARSES-READS-NONE              \ it names a word that reads no source
 5 constant PARSES-NO-TARGET               \ nothing follows the declarer
 6 constant PARSES-COUNT                   \ the count is no number, or negative

@@ -279,7 +279,6 @@ EXPORT CHECK:WIDTH-FAM
 \ whose ;STRUCTURE has not been read; a closed member is any family.
 : FIELD-FAM? ( str -- n bool ) {: s:str :}
    TFAM-ACTIVE-PKG$ s TFAM-SIG-RESOLVE {: id:n sr:n :}
-   sr SR-AMBIG = IF s DECL-REJECT:TOKEN!  s TDECL-AMBIG throw THEN
    sr SR-FOUND <> IF 0 DECL-FRONT:NO EXIT THEN
    id UNSTORED-REASON IF
       s DECL-REJECT:TOKEN!
@@ -927,9 +926,9 @@ private
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
 EXPORT CHECK:CHECKER-BIND
 EXPORT CHECKER-OVERLAY:VALUE
-\ The record a count name binds; a using rejection is raised as a bare call's.
+\ The record a count name binds, rejected as a bare call's is.
 : COUNT-REC ( str -- ^n ) {: s:str :}
-   s s CHECKER-BIND drop
+   s CHECKER-BIND drop
    s scope-find drop drop drop ;
 \ A count token's value and true: an integer literal or the value of the
 \ constant it binds; false for anything else.

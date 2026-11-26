@@ -222,15 +222,11 @@ private
    -1 ;
 
 EXPORT BOOT:data-base
-EXPORT CHECKER-RESOLVE:USED-ONLY?
 EXPORT CHECKER-RESOLVE:bare-scope-find
 
-\ The scope's answer (open package, enclosing package, global, NAME:tail), never
-\ a used public's.
+\ The scope's answer: open package, enclosing package, global, NAME:tail.
 : FIND-SCOPE ( str -- ^n )
-   bare-scope-find drop drop {: rec:^ used:^ :}
-   rec used USED-ONLY? if XREF-NULL exit then
-   rec ;
+   bare-scope-find drop drop drop ;
 
 public
 
@@ -249,8 +245,6 @@ EXPORT CHECK:BODY-KEYWORD?
 EXPORT CHECK:NAME-KEYWORD?
 EXPORT CHECK:DEF-NAME-REJECT?
 EXPORT CHECK:BODY-ONLY-RECORD
-EXPORT CHECK:CHECKER-USING$
-EXPORT CHECK:CHECKER-USING-N
 EXPORT CHECK:CLAUSE-NAME
 EXPORT CHECK:TYPE-OP
 EXPORT CHECK:TYPE-ARG
@@ -261,8 +255,6 @@ EXPORT CHECK:EFFECT-TEXT
 EXPORT CHECK:TOP-LEVEL
 EXPORT CHECK:TOP-TAKE
 EXPORT CHECK:TOP-MOVE
-EXPORT CHECK:USING-AMBIGUOUS-REJECT
-EXPORT CHECK:USING-SHADOW-REJECT
 EXPORT CHECK:CHECKER-VERIFY-TOP-BINDING
 EXPORT CHECK:CHECKER-SYM-SOURCE
 EXPORT CHECK:SYM-PKG$
@@ -389,44 +381,6 @@ create NL NEWLINE c,
 : NUMBER-RANGE ( -- )
    TOKEN$ REJECTION:LITERAL-RANGE  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: USED-WID ( n -- n )
-   cells USE-WIDS-OFF + CELL@ ;
-
-\ Whether using slot s exports the name and no earlier slot uses its
-\ package.
-: ANSWERS? ( str n -- bool ) {: name:str s:n :}
-   name s USED-WID WL-PROBE XREF-FOUND? 0= if false exit then
-   s 0 ?do
-      i USED-WID s USED-WID = if false unloop exit then
-   loop
-   true ;
-
-\ xt runs on each using slot that exports the name, in using order.
-: ANSWERING ( [ n -- ] str -- ) {: xt name:str :}
-   CHECKER-USING-N 0 ?do
-      name i ANSWERS? if i xt execute then
-   loop ;
-
-variable ANSWERERS   \ bit i set when using slot i exports the ambiguous name
-
-: AMBIGUOUS ( str -- ) {: s:str :}
-   0 ANSWERERS !
-   [: 1 swap lshift ANSWERERS @ or ANSWERERS ! ;] s ANSWERING
-   s ANSWERERS @ USING-AMBIGUOUS-REJECT
-   EXIT-STATUS:REJECTED REJECTION:STOP ;
-
-variable ANSWERED
-
-\ The first using slot that exports the name.
-: ANSWER ( str -- n ) {: s:str :}
-   -1 ANSWERED !
-   [: ANSWERED @ 0< if ANSWERED ! else drop then ;] s ANSWERING
-   ANSWERED @ ;
-
-: SHADOWED ( str -- ) {: s:str :}
-   s  s ANSWER CHECKER-USING$ USING-SHADOW-REJECT
-   EXIT-STATUS:REJECTED REJECTION:STOP ;
-
 \ Ends the open record and the process with status rc; a capture's records go
 \ out first, since die-closed runs no exit action.
 : KEEP-DIE ( n -- ) {: rc:n :}
@@ -542,31 +496,20 @@ TYPED-VARIABLE REC ^n
    rec XREF-WORDLIST WL:GLOBAL? 0= if false exit then
    s s" require" FOLDED= ;
 
-\ The record, rejected, naming it, where a bare name meets two used publics
-\ that export it, or a global and a used public that do.
-: USING-CHECK ( str ^n ^n n -- ^n )
-   {: s:str rec:^ used:^ flags:n :}
-   flags SCOPE-FIND-AMBIGUOUS and 0<> {: amb:bool :}
-   rec XREF-FOUND? 0= if amb if s AMBIGUOUS then rec exit then
-   rec XREF-WORDLIST WL:GLOBAL? 0= if rec exit then
-   amb if s AMBIGUOUS then
-   used XREF-FOUND? if s SHADOWED then
-   rec ;
-
 \ The record the name binds, rejected, naming it, where a sealed source may
-\ not call it, then where USING-CHECK rejects it.
+\ not call it.
 : LOOKUP-NAME ( str -- ^n ) {: s:str :}
-   s scope-find {: rec:^ used:^ used2:^ flags:n :}
+   s scope-find drop drop drop {: rec:^ :}
    s rec POLICY-CHECK-REC
-   s rec used flags USING-CHECK ;
+   rec ;
 
 \ LOOKUP-NAME for the top-level token, whose policy also admits the exempt
 \ require.
 : SEARCH ( -- )
-   TOKEN$ bare-scope-find {: rec:^ used:^ used2:^ flags:n :}
+   TOKEN$ bare-scope-find drop drop drop {: rec:^ :}
    TOKEN$ rec POLICY-REQUIRE? 0= if TOKEN$ rec POLICY-CHECK-REC then
    TOKEN$ rec REQUIRE-CHECK
-   TOKEN$ rec used flags USING-CHECK REC ! ;
+   rec REC ! ;
 
 : LOOKUP ( -- )
    SEARCH
@@ -1141,8 +1084,6 @@ EXPORT CHECKER-RESOLVE:PART-PATH
 
 EXPORT CHECKER-RESOLVE:PART-GUARD
 
-\ The using depth it opens at is the one `;package` restores, a part's its
-\ package's.
 : PKG-PACKAGE ( -- )
    PART-GUARD
    PKG-NAME
@@ -1152,7 +1093,6 @@ EXPORT CHECKER-RESOLVE:PART-GUARD
    t NCOMP-DISPATCH:DECL-PACKAGE-OFF PKG-NOTIFY-NAME
    PKG-SEAL-GUARD
    PKG-ENSURE {: ix:n :}
-   USE-DEPTH-CELL CELL@ USE-PKG-SAVE-CELL CELL!
    ix get-current package-scope!
    PKG-PRI-CELL CELL@ CUR-CELL CELL!
    0 PKG-OUTSIDE-CELL CELL! ;
@@ -1164,24 +1104,22 @@ EXPORT CHECKER-RESOLVE:PART-GUARD
    PKG-PARENT-CELL CELL@ CUR-CELL CELL!
    ENCLOSING:REC CELL@ {: outer:n :}
    outer 0= if -1 0 else outer XREF-ADDR>INDEX ENCLOSING:PARENT CELL@ then
-   package-scope!
-   USE-PKG-SAVE-CELL CELL@ USE-DEPTH-CELL CELL! ;
+   package-scope! ;
 
 : PKG-SEAL ( -- )
    PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
    PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEAL ;
 
-\ What the engine's evaluate frame keeps of the package scope beside the using
-\ depth, which a throw puts back.
-: PKG-STATE ( -- n n n n n n )
+\ What the engine's evaluate frame keeps of the package scope, which a throw
+\ puts back.
+: PKG-STATE ( -- n n n n n )
    ENCLOSING:REC CELL@  ENCLOSING:PARENT CELL@
-   PKG-REC-CELL CELL@  PKG-PARENT-CELL CELL@  get-current  USE-PKG-SAVE-CELL CELL@ ;
+   PKG-REC-CELL CELL@  PKG-PARENT-CELL CELL@  get-current ;
 
 \ The sealed writers run only when the failed input changed the scope. A part
 \ opens only inside its enclosing package, so that package opens first.
-: PKG-RECOVER ( n n n n n n -- )
-   {: outer-rec:n outer-parent:n rec:n parent:n cur:n floor:n :}
-   floor USE-PKG-SAVE-CELL CELL!
+: PKG-RECOVER ( n n n n n -- )
+   {: outer-rec:n outer-parent:n rec:n parent:n cur:n :}
    ENCLOSING:REC CELL@ outer-rec <>  ENCLOSING:PARENT CELL@ outer-parent <> or
    PKG-REC-CELL CELL@ rec <> or  PKG-PARENT-CELL CELL@ parent <> or
    get-current cur <> or if
@@ -1192,9 +1130,6 @@ EXPORT CHECKER-RESOLVE:PART-GUARD
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
 
 EXPORT CHECKER-RESOLVE:HEAD-ROW
-
-\ The using depth the buffer may close down to: its entry depth.
-variable USE-FLOOR
 
 : PKG-TAIL ( -- str )
    TOKEN$ {: t:str :}
@@ -1328,14 +1263,14 @@ public
 \ opened. The scope comes back on either exit, Q's throw rethrown.
 : WITHOUT-PACKAGE ( [ -- ] -- )
    {: q :}
-   PKG-STATE {: outer-rec:n outer-parent:n rec:n parent:n cur:n floor:n :}
+   PKG-STATE {: outer-rec:n outer-parent:n rec:n parent:n cur:n :}
    PKG-OUTSIDE-CELL CELL@ {: outside:n :}
    PKG-CLEAR
    outer-rec 0<> if outer-parent CUR-CELL CELL! else
       rec 0<> if parent CUR-CELL CELL! then
    then
    q catch {: rc:n :}
-   outer-rec outer-parent rec parent cur floor PKG-RECOVER
+   outer-rec outer-parent rec parent cur PKG-RECOVER
    outside PKG-OUTSIDE-CELL CELL!
    rc 0<> if rc throw then ;
 
@@ -2995,9 +2930,6 @@ EXPORT SOURCE-ROOT:TEXT-UNWOUND
 
 \ A `package` in the buffer leaves PKG-OUTSIDE-CELL 0, which matters only in a package.
 : CLEAN-END ( n -- ) {: outside:n :}
-   USE-FLOOR @ {: back:n :}
-   back USE-DEPTH-CELL CELL!
-   USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then
    PKG-OUTSIDE-CELL CELL@ 0<> if outside PKG-OUTSIDE-CELL CELL! then ;
 
 \ DP-CELL as the buffer began.
@@ -3033,7 +2965,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    xt 0= if 0 exit then
    xt AS-ROWS-END execute 1+ ;
 
-\ The frame of a buffer. Its using depth is also the buffer's using floor.
+\ The frame of a buffer.
 : FRAME-OPEN ( -- ^u8 )
    EVAL-FRAME-SIZE MEM-ALLOC-PTR {: f:^ :}
    INP-CELL CELL@ f EVAL-INP FR!
@@ -3054,8 +2986,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    ENCLOSING:END ENCLOSING:PUB - 0 ?do
       ENCLOSING:PUB i + CELL@  f EVAL-FRAME:ENCLOSING i + FR!
    CELL +loop
-   USE-DEPTH-CELL CELL@ snap PKGSNAP-USE FR!
-   USE-PKG-SAVE-CELL CELL@ snap PKGSNAP:FLOOR FR!
    PKG-OUTSIDE-CELL CELL@ f EVAL-FRAME:PKG-OUTSIDE FR!
    SECTION-CELL CELL@ f EVAL-FRAME:SECTION FR!
    ROWS-MARK f EVAL-FRAME:ROWS FR!
@@ -3130,13 +3060,12 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 
 : FRAME-RESTORE-SCOPE ( ^u8 -- ) {: f:^ :}
    f EVAL-PKG + {: snap:^ :}
-   snap PKGSNAP-USE FR@ USE-DEPTH-CELL CELL!
    f EVAL-FRAME:PKG-OUTSIDE FR@ PKG-OUTSIDE-CELL CELL!
    f EVAL-FRAME:SECTION FR@ SECTION-CELL CELL!
    f EVAL-FRAME:ENCLOSING ENCLOSING:REC ENCLOSING:PUB - + FR@
    f EVAL-FRAME:ENCLOSING ENCLOSING:PARENT ENCLOSING:PUB - + FR@
    snap PKGSNAP-REC FR@ snap PKGSNAP-PARENT FR@
-   snap PKGSNAP-CUR FR@ snap PKGSNAP:FLOOR FR@ PKG-RECOVER ;
+   snap PKGSNAP-CUR FR@ PKG-RECOVER ;
 
 : FRAME-RECOVER ( n ^u8 -- ) {: c:n f:^ :}
    f EVAL-FRAME:PEND FR@ 0= if c f FRAME-ROLLBACK-CODE else FRAME-ROLLBACK-TOKEN then
@@ -3160,29 +3089,21 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    EVAL-FRAME-SIZE munmap 0<> if E-MEM-UNMAP throw then ;
 
 \ The REPL has one source owner. A line uses a savepoint, but its successful
-\ stack, pending definition, package and usings remain for the next line.
+\ stack, pending definition and package remain for the next line.
 create REPL-QNL 63 c, 10 c,
 variable REPL-OK
-\ The used publics as a line began, which a failed line puts back: lines share
-\ one source, so a line may close an earlier line's using and fill its slot.
-USE-MAX TYPED-BUFFER REPL-WIDS n
-
-: REPL-WIDS-BACK ( -- )
-   USE-MAX 0 ?do  i REPL-WIDS @  i cells USE-WIDS-OFF +  CELL!  loop ;
 
 : REPL-STACK-CLEAR ( -- )
    stack-clear ;
 
-: REPL-RECOVER ( n ^u8 n ^n -- ) {: c:n f:^ prior:n found:^ :}
+: REPL-RECOVER ( n ^u8 ^n -- ) {: c:n f:^ found:^ :}
    c f FRAME-ROLLBACK-CODE
    f EVAL-INP FR@ INP-CELL CELL!
    f EVAL-INE FR@ INE-CELL CELL!
    f EVAL-INB FR@ SRCLOC:INB-CELL CELL!
    f EVAL-TKA FR@ TKA-CELL CELL!
    f EVAL-TKL FR@ TKL-CELL CELL!
-   REPL-WIDS-BACK
    f FRAME-RESTORE-SCOPE
-   prior USE-FLOOR !
    found REC ! ;
 
 \ The REPL keeps its lines while this holds: a definition is pending or a
@@ -3212,8 +3133,6 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    \ The session, not this line, owns a pending definition from an earlier
    \ line, yet a failed line abandons it through this savepoint's full rollback.
    0 f EVAL-FRAME:PEND FR!
-   USE-FLOOR @ {: prior:n :}
-   USE-MAX 0 ?do  i cells USE-WIDS-OFF + CELL@  i REPL-WIDS !  loop
    REC @ {: found:^ :}
    s STR:DATA INP-CELL ADDR!  s STR:DATA SRCLOC:INB-CELL ADDR!
    s STR:DATA s STR:LEN + INE-CELL ADDR!
@@ -3228,7 +3147,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
       endof
       FRAME-LINKED of
          f FRAME-UNLINK
-         code f prior found REPL-RECOVER
+         code f found REPL-RECOVER
       endof
    endcase
    f FRAME-FREE
@@ -3274,14 +3193,12 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
 \ starting past it continues a run of the buffer and keeps its PKG-OUTSIDE-CELL.
 : EVAL-FRAMED-RANGE ( str n n -- ) {: s:str first:n end:n :}
    FRAME-OPEN {: f:^ :}
-   USE-FLOOR @ {: outer:n :}
    REC @ {: found:^ :}
    ENTRY-PEND @ {: prior:n :}
    DECL-MARK @ {: prior-mark:n :}
    PEND-CELL CELL@ {: entry:n :}
    entry ENTRY-PEND !
    TEXT-MARK DECL-MARK !
-   USE-DEPTH-CELL CELL@ USE-FLOOR !
    first 0= if 1 PKG-OUTSIDE-CELL CELL! then
    s STR:DATA first + INP-CELL ADDR!  s STR:DATA SRCLOC:INB-CELL ADDR!
    s STR:DATA end + INE-CELL ADDR!
@@ -3301,7 +3218,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    out FRAME-DONE <> if
       entry PEND-CELL CELL!
    then
-   outer USE-FLOOR !  found REC !
+   found REC !
    f FRAME-FREE
    out FRAME-DONE <> if code throw then ;
 

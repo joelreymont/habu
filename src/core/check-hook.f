@@ -385,16 +385,6 @@ CAST: >BYTES ( n -- ^u8 )
    then
    a >BYTES u >str CON-OF ;
 
-\ EFFECT:NAMED's family tail a u is public in more than one used package.
-: NAMED-AMBIG ( str -- ) {: s:str :}
-   s" E-USING-AMBIGUOUS" REJECTION:OPEN
-   s" EFFECT:NAMED found type family '" REJECTION:EMIT-STR
-   s REJECTION:EMIT-STR
-   s" ' public in more than one used package" REJECTION:EMIT-STR
-   DEFINER-PLACE
-   s SGBAD-AMBIG-HELP
-   EXIT-STATUS:REJECTED REJECTION:STOP ;
-
 \ The type a spelling names: a built-in type's con code and 0, else 0 and the
 \ family; one that names neither is rejected.
 : NAMED-FAMILY ( n n -- n n )
@@ -406,7 +396,6 @@ CAST: >BYTES ( n -- ^u8 )
    else TFAM-PARSE-RESOLVE then
    if 0 swap exit then
    drop
-   SGBAD-AMBIG? if a >BYTES u >str NAMED-AMBIG then
    s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:OPEN
    s" EFFECT:NAMED found no type named '" REJECTION:EMIT-STR
    a >BYTES u >str REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
@@ -420,9 +409,7 @@ CAST: >BYTES ( n -- ^u8 )
    {: ts:str ws:str code:n why:n xs:str :}
    ts STR:LEN 0= if xs else ts then {: ns:str :}
    code TYPE-DECL:E-TDECL-PAYLOAD = {: unknown:bool :}
-   code E-USING-AMBIGUOUS = {: ambig:bool :}
-   ambig if s" E-USING-AMBIGUOUS" else
-   unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then then
+   unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then
    REJECTION:OPEN
    ws REJECTION:EMIT-STR  s"  '" REJECTION:EMIT-STR
    ns REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
@@ -431,14 +418,12 @@ CAST: >BYTES ( n -- ^u8 )
       s" '" REJECTION:EMIT-STR
    then
    DEFINER-PLACE
-   ambig if ns SGBAD-AMBIG-HELP else
-      REJECTION:HELP
-      why STG-UNSTORABLE-TYPE = if
-         s" write a closed, copyable type, such as n or ^u8"
-      else unknown if s" declare a type of that name, or correct its spelling"
-      else s" write the type as a signature writes it" then then
-      REJECTION:EMIT-STR
-   then
+   REJECTION:HELP
+   why STG-UNSTORABLE-TYPE = if
+      s" write a closed, copyable type, such as n or ^u8"
+   else unknown if s" declare a type of that name, or correct its spelling"
+   else s" write the type as a signature writes it" then then
+   REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Rejects a type variable's or region's letter in a type EFFECT:READ-TYPE was
