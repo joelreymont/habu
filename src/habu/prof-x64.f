@@ -55,6 +55,7 @@ variable RESTORER-CELL
 variable FIND-CELL
 variable EDGE-CELL
 variable INDEX-CELL
+variable PRUNE-CELL
 variable SYNC-CELL
 variable NUM-CELL
 variable PCT-CELL
@@ -69,6 +70,7 @@ variable SESSION-CELL
 : FIND-LBL ( -- label ) FIND-CELL @ >LABEL ;
 : EDGE-LBL ( -- label ) EDGE-CELL @ >LABEL ;
 : INDEX-LBL ( -- label ) INDEX-CELL @ >LABEL ;
+: PRUNE-LBL ( -- label ) PRUNE-CELL @ >LABEL ;
 : SYNC-LBL ( -- label ) SYNC-CELL @ >LABEL ;
 : NUM-LBL ( -- label ) NUM-CELL @ >LABEL ;
 : PCT-LBL ( -- label ) PCT-CELL @ >LABEL ;
@@ -499,6 +501,38 @@ variable SESSION-CELL
    BUILD,
    SORT,
    R15 ASM-SINK ENC-POP  R12 ASM-SINK ENC-POP  RBP ASM-SINK ENC-POP  RBX ASM-SINK ENC-POP
+   RET, ;
+
+\ PRUNE ( rsi = arena ): compact the sorted index in place, dropping IDs whose
+\ span was released, the twin of prof.f C-PROF-INDEX-PRUNE. After a sync every
+\ inclusive count is durable, so their history stays. rcx and rdi are the read
+\ and write cursors, rdx the end, r8 and r9 the lo and hi, r11 the count. It
+\ keeps rsi and every VM register; it clobbers rax rcx rdx rdi r8-r11 and the
+\ flags.
+: PRUNE-HELPER, ( -- )
+   PRUNE-LBL LBL,
+   LBL LBL LBL LBL LBL {: turn:label next:label done:label lowdone:label hidone:label :}
+   RCX RSI ARN-IDX MEM-OFF LEA,  RDI RCX COPY,
+   RDX RSI ARN-COUNT MEM-OFF LOAD,  RDX RDX PROF-ENT SCALE,  RDX RCX ASM-SINK ENC-ADD-RR
+   R8 ALL-ONES,  R9 ZERO-REG,  R11 ZERO-REG,
+   turn LBL,
+      RCX RDX CMP-REG,  C-AE done JCC,
+      RAX RCX ENT-IDX MEM-OFF LOAD,  RAX RAX PROF-ID-ENT SCALE,
+      RAX RSI RAX 1 ARN-RECS RID-START + MEM-IDX LOAD,
+      RAX TEST,  C-E next JCC,
+      R10 RCX ENT-START MEM-OFF LOAD,  R10 RDI ENT-START MEM-OFF STORE,
+      RAX RCX ENT-END MEM-OFF LOAD,  RAX RDI ENT-END MEM-OFF STORE,
+      R10 R8 CMP-REG,  C-AE lowdone JCC,  R8 R10 COPY,
+      lowdone LBL,
+      RAX R9 CMP-REG,  C-BE hidone JCC,  R9 RAX COPY,
+      hidone LBL,
+      RAX RCX ENT-IDX MEM-OFF LOAD,  RAX RDI ENT-IDX MEM-OFF STORE,
+      RAX ZERO-REG,  RAX RDI ENT-INCL MEM-OFF STORE,
+      RDI PROF-ENT ADDI,  R11 INC,
+   next LBL,  RCX PROF-ENT ADDI,  turn JMP,
+   done LBL,
+   R11 RSI ARN-COUNT MEM-OFF STORE,  R8 RSI ARN-LO MEM-OFF STORE,
+   R9 RSI ARN-HI MEM-OFF STORE,
    RET, ;
 
 \ rsi = arena, the clock stopped: empty every entry's inclusive count into the
@@ -1306,7 +1340,7 @@ public
       R9 RAX RID-START MEM-OFF STORE,  R9 RAX RID-END MEM-OFF STORE,
    next LBL,  RCX INC,  turn JMP,
    done LBL,
-   INDEX-LBL CALL,
+   PRUNE-LBL CALL,
    RESUME,
    absent LBL,  RETIRE-CLOSE, ;
 
@@ -1329,7 +1363,7 @@ public
       R10 ZERO-REG,  R10 R9 RID-START MEM-OFF STORE,  R10 R9 RID-END MEM-OFF STORE,
    next LBL,  RCX INC,  turn JMP,
    done LBL,
-   INDEX-LBL CALL,
+   PRUNE-LBL CALL,
    RESUME,
    absent LBL,  RETIRE-CLOSE, ;
 
@@ -1337,14 +1371,14 @@ public
 \ helper once. kernel-x64.f calls this from its initial helpers section.
 : HELPERS, ( -- )
    LBL HANDLER-CELL !  LBL RESTORER-CELL !
-   LBL FIND-CELL !  LBL EDGE-CELL !  LBL INDEX-CELL !  LBL SYNC-CELL !
-   LBL NUM-CELL !  LBL PCT-CELL !  LBL NAME-CELL !
+   LBL FIND-CELL !  LBL EDGE-CELL !  LBL INDEX-CELL !  LBL PRUNE-CELL !
+   LBL SYNC-CELL !  LBL NUM-CELL !  LBL PCT-CELL !  LBL NAME-CELL !
    LBL DUMP-CELL !  LBL JSON-CELL !  LBL ROW-CELL !
    LBL SNAP-CELL !  LBL SESSION-CELL !
    HANDLER,
    RESTORER-LBL X64BOOT:RESTORER,
    FIND-HELPER,  EDGE-HELPER,  SNAP-HELPER,  SESSION-HELPER,
-   INDEX-HELPER,  SYNC-HELPER,
+   INDEX-HELPER,  PRUNE-HELPER,  SYNC-HELPER,
    NUM-HELPER,  PCT-HELPER,  NAME-HELPER,
    false REPORT-HELPER,  true REPORT-HELPER,  ROW-HELPER, ;
 
