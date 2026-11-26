@@ -387,6 +387,7 @@ require src/os/env-base.f
 \ throws it; no lib block is taken from this range.
 \ SPARQL queries: -10000..-10099, minted in src/lib/sparql/syntax.f, a file of
 \ package SPARQL (src/lib/sparql.f).
+\ PNG decoding: -10100..-10109, minted in src/lib/png.f, which owns package PNG.
 
 \ T0 (src/habu/t0.f): -9600..-9609, declared at this file's end.
 -9600 constant E-T0-FIRST

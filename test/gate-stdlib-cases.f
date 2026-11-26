@@ -457,6 +457,11 @@ SUITE zlib
    test/zlib-source.f
 ;SUITE
 
+\ PNG decoding through libpng16 on PNGs the test assembles.
+SUITE png
+   src/lib/png-test.f
+;SUITE
+
 \ FONT on the host's installed fonts; HarfBuzz and the fonts are a gate
 \ requirement (docs/bootstrap.md "Requirements").
 SUITE font-native
