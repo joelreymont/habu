@@ -63,7 +63,7 @@ variable DQUIET
 : REJECT ( n str -- ) {: code:n msg:^ u:n :}
    DQUIET @ 0= if
       s" x64dis: " OUT msg u OUT s"  at " OUT
-      DPC @ DI @ + HEX. cr
+      DPC @ HEX. cr
    then
    code throw ;
 
