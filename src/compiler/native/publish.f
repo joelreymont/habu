@@ -47,14 +47,14 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
    rec XREF-NAME-SLOT XREF-CELL@ ;
 
 \ Rejects size bytes of code the ceiling has no room for after the pending
-\ definition's name, measured from its open; a rejection leaves cp there.
+\ definition's name, measured from its open; a rejection leaves cp there, so
+\ the rejected definition's name copy is reused.
 : CODE-ROOM ( n -- ) {: size:n :}
    ndict@ XREF-REC {: rec:^ :}
    rec XREF-NAME$ {: name:str :}
-   cp@ {: cp:n :}
-   rec OPEN-CP TRUNCATE
-   name name size CODE-SPACE:ROOM
-   cp TRUNCATE ;
+   rec OPEN-CP {: at:n :}
+   name size at CODE-SPACE:FITS? 0= if at TRUNCATE then
+   name name size at CODE-SPACE:ROOM ;
 
 \ The bytes size bytes of code and the u bytes written after them take: each
 \ write starts on a code slot.

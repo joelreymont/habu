@@ -14992,23 +14992,27 @@ public
 
 private
 
-\ A name of u bytes copied at cp@ and used bytes after it fit when they end at
+\ A name of u bytes copied at `at` and used bytes after it fit when they end at
 \ or below the ceiling and a long name's copy ends below it, as def-open's name
 \ test demands. Signed comparisons, as the engine's head makes them: `U>` loads
 \ after this file.
-: FITS-AFTER? ( n n -- bool ) {: u:n used:n :}
+: FITS-AFTER? ( n n n -- bool ) {: u:n used:n at:n :}
    u SPAN {: span:n :}
-   CEILING cp@ - {: room:n :}
+   CEILING at - {: room:n :}
    span 0 > IF room span > 0= IF RES-FALSE EXIT THEN THEN
    span used + room > 0= ;
 
 public
 
-\ Rejects the name, empty when its copy is placed, and used bytes of code after
-\ it at cp@, placed at t, unless they fit below the ceiling. A definition
-\ places at least one byte.
-: ROOM ( str str n -- ) {: name:str t:str used:n :}
-   name STR:LEN used FITS-AFTER? IF EXIT THEN
+\ Whether the name, empty when its copy is placed, and used bytes of code after
+\ it at at fit below the ceiling.
+: FITS? ( str n n -- bool ) {: name:str used:n at:n :}
+   name STR:LEN used at FITS-AFTER? ;
+
+\ Rejects the name and used bytes after it at at, placed at t, unless they
+\ fit. A definition places at least one byte.
+: ROOM ( str str n n -- ) {: name:str t:str used:n at:n :}
+   name used at FITS? IF EXIT THEN
    s" E-CODE-SPACE-FULL" REJECTION:OPEN
    s" the code space is full at `" REJECTION:EMIT-STR
    t REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
@@ -15200,7 +15204,7 @@ public
    s NS-ROW {: rec:^ :}
    rec NULL-PTR <> IF rec EXIT THEN
    s ROOM
-   s s 0 CODE-SPACE:ROOM
+   s s 0 cp@ CODE-SPACE:ROOM
    s own namespace-record drop
    s NS-ROW ;
 private
