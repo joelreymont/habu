@@ -161,9 +161,9 @@ s" ENUM compact-dup-policy POLICY packed-tag POLICY stack-cell-tag alpha ;ENUM" 
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-dup-policy`\n" DECL-DIAG:HAS? TTRUE
 s" stack-cell-tag" s" a second POLICY clause in one declaration" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" ENUM compact-dup-feature DERIVE eq eq alpha ;ENUM" 70 REJECT-CODE
-s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-dup-feature`\n" DECL-DIAG:HAS? TTRUE
-s" eq" s" the same DERIVE feature twice in one declaration" DECL-DIAG:CAUSE? TTRUE
+s" ENUM kk DERIVE eq tag low ;ENUM" 70 REJECT-CODE
+s\" error[E-BAD-DECLARATION]: bad enum declaration `kk`\n" DECL-DIAG:HAS? TTRUE
+s" tag" s" one feature per `DERIVE`" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" ENUM compact-dup-split DERIVE eq DERIVE eq alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-dup-split`\n" DECL-DIAG:HAS? TTRUE
@@ -370,13 +370,14 @@ s" D4 ( dctor dctor -- f ) DCTOR:EQ" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ 20c. DERIVE tag adds TAG> ( n -- fam ), TAG's inverse: each tag decodes to
 \      its own variant, and any other number throws E-ENUM-TAG.
-ENUM tagconv DERIVE eq tag low mid high ;ENUM
+ENUM tagconv DERIVE eq DERIVE tag low mid high ;ENUM
 : TAGCONV-ARM ( n -- n )
    TAGCONV:TAG>
    MATCH tagconv low of 10 endof mid of 20 endof high of 30 endof ;MATCH ;
 : TAGCONV-THROWS ( n -- ) {: k:n :}
    [: k TAGCONV-ARM drop ;] TYPE-DECL:E-ENUM-TAG TTHROWSQ ;
 0 TAGCONV-ARM 10 T=  1 TAGCONV-ARM 20 T=  2 TAGCONV-ARM 30 T=
+TAGCONV:LOW TAGCONV:TAG 0 T=
 -1 TAGCONV-THROWS  3 TAGCONV-THROWS  $7FFFFFFFFFFFFFFF TAGCONV-THROWS
 
 \      TAG> builds a value from its tag alone, so a payload variant rejects.
@@ -394,7 +395,7 @@ NAMEDRV:MID-POINT NAMEDRV:NAME$ s" mid-point" T$=
 NAMEDRV:HIGH NAMEDRV:NAME$ s" high" T$=
 s" NM1 ( namedrv -- str ) NAMEDRV:NAME$" CHECK-QUIET-CANDIDATE! -1 T=
 s" NM2 ( namedrv -- n ) NAMEDRV:NAME$" CHECK-QUIET-CANDIDATE! 0 T=
-ENUM namepay DERIVE eq name
+ENUM namepay DERIVE eq DERIVE name
    VARIANT bare ;VARIANT
    VARIANT held FIELD a n FIELD b n ;VARIANT
 ;ENUM
@@ -407,7 +408,7 @@ s" undefine NAMEDRV:NAME$" TEST-EVAL:RC 70 T=
 s" error[E-CTOR-PROTECTED]: `NAMEDRV:NAME$`" DECL-DIAG:HAS? TTRUE
 \      Only an ENUM derives name: a SUMTYPE's DERIVE name rejects.
 DECL-DIAG:PROSE
-s" SUMTYPE sumname DERIVE eq name VARIANT bare ;VARIANT ;SUMTYPE"
+s" SUMTYPE sumname DERIVE eq DERIVE name VARIANT bare ;VARIANT ;SUMTYPE"
    TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `sumname`\n" DECL-DIAG:HAS? TTRUE
 s" name" s" derive name requires an enum" DECL-DIAG:CAUSE? TTRUE
@@ -416,7 +417,7 @@ s" name" s" derive name requires an enum" DECL-DIAG:CAUSE? TTRUE
 \      its package's private wordlist, protected there as a public family's are.
 package enum-tag-test
 private
-ENUM tagpriv DERIVE eq tag one two ;ENUM
+ENUM tagpriv DERIVE eq DERIVE tag one two ;ENUM
 s" ETPI ( n -- ) TAGPRIV-TAG> drop" CHECK-QUIET-CANDIDATE! -1 T=
 DECL-DIAG:PROSE
 s" undefine TAGPRIV-ONE" TEST-EVAL:RC 70 T=
@@ -830,7 +831,7 @@ create EC-NONE 1 allot
    s" ENUM rpcompact red green blue ;ENUM" EC-LINE
    s" : R1 ( -- rpcompact ) RPCOMPACT:RED ;" EC-LINE
    s" : R1BAD ( -- n ) RPCOMPACT:RED ;" EC-LINE
-   s" ENUM rppol POLICY packed-tag DERIVE eq hash red green ;ENUM" EC-LINE
+   s" ENUM rppol POLICY packed-tag DERIVE eq DERIVE hash red green ;ENUM" EC-LINE
    s" ENUM rpbadv VARIANT vv stray ;VARIANT ;ENUM" EC-LINE
    s" ENUM rpbadname red red ;ENUM" EC-LINE
    s" ENUM rpcm DERIVE eq \ the header's comment" EC-LINE

@@ -481,7 +481,7 @@ structure-decl  = STRUCTURE type-header header-clause* structure-field* ;STRUCTU
 enum-decl       = ENUM type-header (full-enum | compact-enum) ;ENUM
 full-enum       = header-clause* variant-block+
 compact-enum    = header-clause* compact-variant+
-header-clause   = POLICY policy-name | DERIVE derive-name+ | OPAQUE
+header-clause   = POLICY policy-name | DERIVE derive-name | OPAQUE
 structure-field = field | BUFFER field-name byte-count
 field           = FIELD field-name type-expr
 variant-block   = VARIANT variant-name field* ;VARIANT
@@ -599,6 +599,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   exhaustive `MATCH … ;MATCH`.
 - Compact `ENUM name [ header… ] v0 v1 … ;ENUM` declares payloadless variants
   from bare names, with implicit arity zero; never mix it with `VARIANT` blocks.
+- Each `DERIVE` names one feature; repeat it for more (`DERIVE eq DERIVE hash`).
 - `POLICY`, `DERIVE` and `OPAQUE` headers precede the first field or variant: after the
   family header;
   repeating a feature rejects; `OPAQUE` is `STRUCTURE`-only, once, and needs a

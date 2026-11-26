@@ -681,6 +681,10 @@ private
    s" variant name collides with a derived word"
    s" rename the variant: under `DERIVE` the names `eq`, `hash` and `tag` are taken" ;
 
+: TDECL-DERIVE-ONE-WHY ( -- str str )
+   s" one feature per `DERIVE`"
+   s" write `DERIVE` before each feature; a variant spelled like a feature goes after another variant" ;
+
 : TDECL-COLLIDE-THROW ( str -- )
    TDECL-COLLIDE-WHY E-TDECL-NAME TDECL-THROW ;
 
@@ -1496,27 +1500,31 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    s s" unknown derive feature"
       s" name `eq`, `hash` or `init` after `DERIVE`"
       E-TDECL-DERIVE TDECL-THROW ;
-: TDECL-DERIVE-MORE? ( n -- bool ) {: fam:n :}
-   TDECL-NEXT {: s:str :}
-   s STR:LEN 0= IF RES-FALSE EXIT THEN
+\ Each `DERIVE` names one feature; a feature right after it is a second one.
+: TDECL-DERIVE-FEATURE? ( str -- bool ) {: s:str :}
    s s" eq" STR:=CI
    s s" hash" STR:=CI or
    s s" init" STR:=CI or
    s s" tag" STR:=CI or
    s s" name" STR:=CI or
-   s s" order" STR:=CI or
-   0= IF s PK! RES-FALSE EXIT THEN
-   s fam TDECL-DERIVE-SET
-   RES-TRUE ;
-: TDECL-DERIVE ( n -- ) {: fam:n :}
-   TDECL-NEXT {: s:str :}
-   s s" derive" STR:=CI 0= IF s PK! EXIT THEN
+   s s" order" STR:=CI or ;
+: TDECL-DERIVE-CLAUSE ( n -- ) {: fam:n :}
    TDECL-NEXT {: fs:str :}
    fs STR:LEN 0= IF TDN-A @ TDN-U @ >str s" missing derive feature"
       s" name a feature after `DERIVE`: `eq`, `hash` or `init`"
       E-TDECL-DERIVE TDECL-THROW THEN
-   fs fam TDECL-DERIVE-SET          \ the FIRST token must be a feature (unknown rejects);
-   BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
+   fs fam TDECL-DERIVE-SET ;            \ unknown rejects
+: TDECL-DERIVE-AGAIN? ( -- bool )
+   TDECL-NEXT {: s:str :}
+   s STR:LEN 0= IF RES-FALSE EXIT THEN
+   s s" derive" STR:=CI IF RES-TRUE EXIT THEN
+   s TDECL-DERIVE-FEATURE? IF
+      s TDECL-DERIVE-ONE-WHY E-TDECL-DERIVE TDECL-THROW THEN
+   s PK! RES-FALSE ;
+: TDECL-DERIVE ( n -- ) {: fam:n :}
+   TDECL-NEXT {: s:str :}
+   s s" derive" STR:=CI 0= IF s PK! EXIT THEN
+   BEGIN fam TDECL-DERIVE-CLAUSE  TDECL-DERIVE-AGAIN? 0= UNTIL ;
 
 \ --- registration entry points (verify-source, sumtype-front.f and the definers below).
 

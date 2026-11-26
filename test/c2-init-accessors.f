@@ -10,7 +10,7 @@ STRUCTURE shelf<a,b> DERIVE init
    FIELD count n
 ;STRUCTURE
 
-STRUCTURE pair DERIVE addr init
+STRUCTURE pair DERIVE addr DERIVE init
    FIELD first n
    FIELD second n
 ;STRUCTURE

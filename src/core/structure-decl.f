@@ -1,7 +1,7 @@
 \ structure-decl.f: the STRUCTURE and MUTUAL front end (package STRUCTURE-DECL),
 \ grammar loop and reject dispatch only. DECL-FRONT (generated-declaration.f) owns
 \ the token source and the guarded run; DECL-EVENT (decl-event.f) owns every event.
-\   STRUCTURE type-name[<params>] (POLICY p | DERIVE f+ | OPAQUE)*
+\   STRUCTURE type-name[<params>] (POLICY p | DERIVE f | OPAQUE)*
 \      (FIELD name type | BUFFER name bytes)* ;STRUCTURE
 \   MUTUAL type-name[<params>]+ (STRUCTURE ... ;STRUCTURE)* ;MUTUAL
 \ A reject rolls the whole declaration back to a byte-identical registry. Loads
@@ -849,9 +849,11 @@ private
       drop s" missing derive feature"
       s" name a feature after `DERIVE`: `eq`, `hash`, `addr` or `init`"
       TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
-   BEGIN NEXT dup STR:LEN 0= IF drop EXIT THEN
-      dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
-   AGAIN ;
+   NEXT dup STR:LEN 0= IF drop EXIT THEN
+   dup DERIVE-FEATURE? IF
+      DECL-REJECT:TOKEN!
+      TDECL-DERIVE-ONE-WHY TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
+   UNGET ;
 
 : EMIT-FIELD ( str n -- )
    SCHEMA-ROOT+ {: sch:n :}

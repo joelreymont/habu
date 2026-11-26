@@ -165,7 +165,7 @@ CODEGEN:BUFFER OUTPUT
 : OUT-ENUM ( -- )
    s" public" OUT-LINE
    s" " OUT-LINE
-   s" ENUM script DERIVE eq hash" OUT-LINE
+   s" ENUM script DERIVE eq DERIVE hash" OUT-LINE
    NAME-N @ 0 ?do i OUT-VARIANT loop
    s" ;ENUM" OUT-LINE
    s" " OUT-LINE ;

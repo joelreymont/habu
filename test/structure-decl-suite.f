@@ -156,6 +156,10 @@ s" STRUCTURE foo DERIVE nope FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T= \ unknown 
 s\" error[E-BAD-DECLARATION]: bad structure declaration `foo`\n" DECL-DIAG:HAS? TTRUE
 s" nope" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: name `eq`, `hash`, `addr` or `init` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE kp DERIVE eq hash FIELD a n ;STRUCTURE" TEST-EVAL:RC 70 T= \ one feature per DERIVE
+s\" error[E-BAD-DECLARATION]: bad structure declaration `kp`\n" DECL-DIAG:HAS? TTRUE
+s" hash" s" one feature per `DERIVE`" DECL-DIAG:CAUSE? TTRUE
 
 \ A throw out of the text that opened a BEGIN-STRUCTURE abandons it, so the next
 \ text opens its own; a text that ends with one still open rejects it.
@@ -1474,7 +1478,7 @@ public
 package SDAPRIVDRV
 private
 STRUCTURE drec
-   DERIVE eq hash
+   DERIVE eq DERIVE hash
    FIELD u n
 ;STRUCTURE
 public
@@ -1616,7 +1620,7 @@ s" STRUCTURE oloose FIELD x n ;STRUCTURE" TEST-EVAL:RC 0 T=
 package SDOPQ
 public
 STRUCTURE oaddr OPAQUE DERIVE addr FIELD x n FIELD y n ;STRUCTURE
-STRUCTURE oeq OPAQUE DERIVE eq hash FIELD u n ;STRUCTURE
+STRUCTURE oeq OPAQUE DERIVE eq DERIVE hash FIELD u n ;STRUCTURE
 STRUCTURE oinit OPAQUE DERIVE init FIELD a n FIELD b n ;STRUCTURE
 : OAFTER ( -- n ) 8 ;                                 \ defined after generation: still public
 : ORT ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE ;          \ section 16's family, callable bare

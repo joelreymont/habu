@@ -136,7 +136,7 @@ s" IPU ( scpkg:prow -- n n ) SCPKG-PROW:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 \    structure's UNMAKE, which binds for the later rows of its scope
 \    (src/core/checker.f CK-PENDING-SYM). A scope whose rows did not bind
 \    rejects the declaration (`bad structure declaration`, 70).
-s" STRUCTURE scder DERIVE eq hash FIELD x n ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE scder DERIVE eq DERIVE hash FIELD x n ;STRUCTURE" TEST-EVAL:RC 0 T=
 : SCDEQ ( n n -- bool ) {: a:n b:n :} a SCDER:MAKE b SCDER:MAKE SCDER:EQ ;
 : SCDHS ( n n -- bool ) {: a:n b:n :} a SCDER:MAKE SCDER:HASH b SCDER:MAKE SCDER:HASH = ;
 5 5 SCDEQ TTRUE

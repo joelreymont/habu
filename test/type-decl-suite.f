@@ -2074,9 +2074,11 @@ s" frobnicate" s" unknown derive feature" TDT-AT
 s" ENUM tdrb4 DERIVE ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb4`\n"
 s" ;ENUM" s" unknown derive feature" TDT-AT
-\ a feature token right after the clause reads as a feature (a repeated one
-\ rejects); a variant spelled like a derived word follows another variant and
-\ collides.
+\ a feature right after a DERIVE's feature is a second one and rejects; a
+\ variant spelled like a derived word follows another variant and collides.
+s" SUMTYPE tdrb8 DERIVE eq hash VARIANT aa ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrb8`\n"
+s" hash" s" one feature per `DERIVE`" TDT-AT
 s" ENUM tdrb7 DERIVE eq other eq ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb7`\n"
 s" eq" s" variant name collides with a derived word" TDT-AT
@@ -2162,7 +2164,7 @@ s\"   = help: add `DERIVE eq` to the field's family, or drop `eq` from this `DER
 \ an OPAQUE family's derived words are private to its package.
 package tdsbo
 public
-STRUCTURE inner OPAQUE DERIVE eq hash FIELD u n ;STRUCTURE
+STRUCTURE inner OPAQUE DERIVE eq DERIVE hash FIELD u n ;STRUCTURE
 ;package
 s" STRUCTURE tdsb7 DERIVE eq FIELD w tdsbo:inner ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdsb7`\n"
@@ -2185,9 +2187,10 @@ TDSB6-EQ TTRUE
 \ variant tag + bound payload scalars per branch; products fold fields,
 \ family-typed fields through their family's HASH). INVARIANT: equal values hash equal
 \ BY CONSTRUCTION (hash folds exactly what eq compares); the differs cases
-\ are non-degeneracy smoke only. `DERIVE eq hash` and `DERIVE hash eq` are
-\ an order-free feature list; hash-alone derives HASH (+TAG) without EQ.
-SUMTYPE tdhs DERIVE eq hash
+\ are non-degeneracy smoke only. `DERIVE eq DERIVE hash` and
+\ `DERIVE hash DERIVE eq` are order-free; hash-alone derives HASH (+TAG)
+\ without EQ.
+SUMTYPE tdhs DERIVE eq DERIVE hash
   VARIANT hnil ;VARIANT
   VARIANT hone n ;VARIANT
   VARIANT hpair n i64 ;VARIANT
@@ -2213,9 +2216,9 @@ TDHS-D1 TFALSE
 TDHS-D2 TFALSE
 TDHS-D3 TFALSE
 
-\ product hash: order-free `DERIVE hash eq`; the col field folds TDHE:HASH.
-ENUM tdhe DERIVE eq hash red green ;ENUM
-STRUCTURE tdhp DERIVE hash eq
+\ product hash: order-free `DERIVE hash DERIVE eq`; the col field folds TDHE:HASH.
+ENUM tdhe DERIVE eq DERIVE hash red green ;ENUM
+STRUCTURE tdhp DERIVE hash DERIVE eq
   FIELD col tdhe
   FIELD amt n
 ;STRUCTURE
@@ -2244,7 +2247,7 @@ variable BUF-N
 : NUM+ ( n -- ) {: v:n :}   \ three decimal digits
    v 100 / 48 + C+  v 10 / 10 mod 48 + C+  v 10 mod 48 + C+ ;
 : DECL$ ( -- str )
-   0 BUF-N !  s" STRUCTURE tdeq256 DERIVE eq hash" APPEND
+   0 BUF-N !  s" STRUCTURE tdeq256 DERIVE eq DERIVE hash" APPEND
    256 0 ?do  s"  FIELD f" APPEND  i NUM+  s"  n" APPEND  loop
    s"  ;STRUCTURE" APPEND  BUF BUF-N @ >str ;
 : VALUE+ ( n -- ) {: odd:n :}   \ field i holds i, field odd holds 999
@@ -2296,24 +2299,24 @@ private
 : swap ( a b -- b a ) {: x y :} 1 HITS +! y x ;
 : drop ( a -- ) {: x :} 1 HITS +! ;
 public
-ENUM tdbe DERIVE eq hash red green ;ENUM
-SUMTYPE tdbs DERIVE eq hash
+ENUM tdbe DERIVE eq DERIVE hash red green ;ENUM
+SUMTYPE tdbs DERIVE eq DERIVE hash
   VARIANT bnil ;VARIANT
   VARIANT bpair n n ;VARIANT
 ;SUMTYPE
-STRUCTURE tdbp DERIVE eq hash
+STRUCTURE tdbp DERIVE eq DERIVE hash
   FIELD col tdbe
   FIELD amt n
 ;STRUCTURE
 ;package
 package tdbc
 public
-ENUM tdbe DERIVE eq hash red green ;ENUM
-SUMTYPE tdbs DERIVE eq hash
+ENUM tdbe DERIVE eq DERIVE hash red green ;ENUM
+SUMTYPE tdbs DERIVE eq DERIVE hash
   VARIANT bnil ;VARIANT
   VARIANT bpair n n ;VARIANT
 ;SUMTYPE
-STRUCTURE tdbp DERIVE eq hash
+STRUCTURE tdbp DERIVE eq DERIVE hash
   FIELD col tdbe
   FIELD amt n
 ;STRUCTURE
@@ -2359,7 +2362,7 @@ TDBW:HITS @ 0 T=
 \ part named as the field's constructor package captures neither EQ nor HASH.
 package tdbx
 public
-ENUM tdxe DERIVE eq hash red green ;ENUM
+ENUM tdxe DERIVE eq DERIVE hash red green ;ENUM
 ;package
 package tdby
 private
@@ -2369,11 +2372,11 @@ public
 : HASH ( tdbx:tdxe -- n ) drop 7 ;
 ;package
 public
-STRUCTURE tdyp DERIVE eq hash
+STRUCTURE tdyp DERIVE eq DERIVE hash
   FIELD col tdbx:tdxe
   FIELD amt n
 ;STRUCTURE
-SUMTYPE tdys DERIVE eq hash
+SUMTYPE tdys DERIVE eq DERIVE hash
   VARIANT ywrap tdbx:tdxe ;VARIANT
 ;SUMTYPE
 ;package
@@ -2394,9 +2397,9 @@ TDBY-PH TFALSE
 TDBY-SE TFALSE
 TDBY-SH TFALSE
 
-\ grammar: order stays deferred inside the list; unknown first token rejects;
+\ grammar: order stays deferred in a later clause; unknown first token rejects;
 \ a sum variant named hash collides; hash-only ptr/field gates still fire.
-s" ENUM tdhb1 DERIVE eq order aa bb ;ENUM"
+s" ENUM tdhb1 DERIVE eq DERIVE order aa bb ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdhb1`\n"
 s" order" s" derive feature not yet supported" TDT-AT
 s" SUMTYPE tdhb2 DERIVE hash VARIANT hash n ;VARIANT ;SUMTYPE"
@@ -2412,11 +2415,11 @@ s\"   = help: add `DERIVE hash` to the field's family, or drop `hash` from this 
 
 \ A family-typed field or payload compares through its family's EQ and hashes
 \ through its HASH: a product of payload sums tells 1 2 from 1 3.
-SUMTYPE tdfs DERIVE eq hash
+SUMTYPE tdfs DERIVE eq DERIVE hash
   VARIANT fnil ;VARIANT
   VARIANT fpair n n ;VARIANT
 ;SUMTYPE
-STRUCTURE tdfp DERIVE eq hash FIELD s tdfs ;STRUCTURE
+STRUCTURE tdfp DERIVE eq DERIVE hash FIELD s tdfs ;STRUCTURE
 : TDFP-12 ( -- tdfp ) 1 2 TDFS:FPAIR TDFP:MAKE ;
 : TDFP-EQ ( -- bool ) TDFP-12 TDFP-12 TDFP:EQ ;
 : TDFP-NEQ ( -- bool ) TDFP-12 1 3 TDFS:FPAIR TDFP:MAKE TDFP:EQ ;
@@ -2446,7 +2449,7 @@ REJECTION:BUFFER$ s" field family must also derive hash" STR:CONTAINS? TTRUE
 
 \ A full-mode ENUM builds its derived words at commit, once its FIELD rows are
 \ committed, so the declaration below is the whole setup.
-ENUM tdnu DERIVE eq hash
+ENUM tdnu DERIVE eq DERIVE hash
   VARIANT empty ;VARIANT
   VARIANT pair FIELD first n FIELD second n ;VARIANT
 ;ENUM

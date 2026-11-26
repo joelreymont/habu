@@ -90,19 +90,14 @@ ED-RESET
    s" ;enum" STR:=CI ;
 : ED-FIRST-VARIANT ( str -- str )
    BEGIN
-      dup s" policy" STR:=CI IF
+      dup s" policy" STR:=CI  over s" derive" STR:=CI or IF
          drop SOURCE-NEXT
          dup ED-LOOK-END? IF EXIT THEN
          drop SOURCE-NEXT
       ELSE
-         dup s" derive" STR:=CI IF
-            drop SOURCE-NEXT
-            BEGIN dup DERIVE-FEATURE? WHILE drop SOURCE-NEXT REPEAT
-         ELSE
-            \ OPAQUE may be a compact variant or a forbidden header before
-            \ VARIANT blocks. Keep it in the lookahead and inspect the next token.
-            dup s" opaque" STR:=CI IF drop SOURCE-NEXT ELSE EXIT THEN
-         THEN
+         \ OPAQUE may be a compact variant or a forbidden header before
+         \ VARIANT blocks. Keep it in the lookahead and inspect the next token.
+         dup s" opaque" STR:=CI IF drop SOURCE-NEXT ELSE EXIT THEN
       THEN
    AGAIN ;
 : ED-FULL? ( -- bool )
@@ -136,9 +131,11 @@ ED-RESET
       drop s" missing derive feature"
       s" name `eq`, `hash`, `tag` or `name` after `DERIVE`"
       E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
-   BEGIN NEXT dup STR:LEN 0= IF drop EXIT THEN
-      dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
-   AGAIN ;
+   NEXT dup STR:LEN 0= IF drop EXIT THEN
+   dup DERIVE-FEATURE? IF
+      DECL-REJECT:TOKEN!
+      TDECL-DERIVE-ONE-WHY E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN
+   UNGET ;
 
 : ED-FIELD-FIX$ ( -- str ) s" give each field of the variant its own name" ;
 
@@ -385,7 +382,7 @@ global
 \ only ENUM parser; it parses its body to ;ENUM at interpret time, so its checked
 \ effect is ( -- ).
 \   ENUM type-name[<params>] header-clause* (variant-name+ | variant-block+) ;ENUM
-\   header-clause = POLICY policy-name | DERIVE derive-name+
+\   header-clause = POLICY policy-name | DERIVE derive-name
 \   variant-block = VARIANT variant-name (FIELD field-name type-expr)* ;VARIANT
 : ENUM ( -- ) DECLARE-ENUM ;
 INTRINSIC-DECLARATION INTRINSIC

@@ -9,7 +9,7 @@ package UNICODE-SCRIPT
 
 public
 
-ENUM script DERIVE eq hash
+ENUM script DERIVE eq DERIVE hash
    adlam
    caucasian-albanian
    ahom
