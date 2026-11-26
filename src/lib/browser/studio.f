@@ -1,19 +1,21 @@
-\ studio.f - STUDIO: the key light's volume, the bodies a module sends so the
-\ host's ground shadow is the whole model's. KEY-VOLUME computes, in binary64:
-\ - the view's axes as viewport.js's viewer gives them, then studio's (up the
-\   plane's unit normal n), then keyAxes' key x, y and z;
+\ studio.f - STUDIO: the key light's fit, the ground record a module sends the
+\ host and the volume it culls its casters to, so the host's ground shadow is
+\ the whole model's. KEY-FIT computes, in binary64:
+\ - the view's right, up and back, then the studio's (up the plane's unit
+\   normal n), then the key's x, y and z, the light's tangents and direction
+\   laid on the studio's axes;
 \ - V, the plane's points at clip x, y = +-1 met along the view's back, and
 \   R, their rectangle in key x, y; T, the highest rise n.p + d of the box's
 \   corners; M, R grown by how far its rays to the softbox go in key x and y
 \   before they rise T, and cut to the rectangle of the box's corners there;
+\   C, M grown the same reach the other way: the ground that sees M on its
+\   way to the softbox;
 \ - the volume, every point on or above the plane whose key x, y lie in M, and
 \   the key's pixel, M's larger side over the shadow map's side.
-\ src/lib/browser/viewport.js states KEY, KEY_BOX, SHADOW_SIDE and studio's
-\ turntable rule a second time: test/browser/display-peer.mjs compares this
-\ volume's planes and pixel, as numbers, with the ground, M and pixel of the
-\ shadow map the host fits, for two views; studio-test.f's expected numbers
-\ come from viewport.js's own functions and constants, SHADOW_SIDE among them.
-\ STORAGE CLASS. CALLER-OWNED: the planes go to the caller's room; no state.
+\ Each step reads the f32 numbers the steps before it wrote into the record,
+\ so the volume culled is the volume the host casts from the record.
+\ STORAGE CLASS. CALLER-OWNED: the record and the planes go to the caller's
+\ room; no state.
 
 require src/lib/error.f
 require src/lib/fmath.f
@@ -30,13 +32,6 @@ public
 private
 
 STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
-
-\ The key light's direction and its softbox's half extents per unit along it,
-\ in studio coordinates; the shadow map's side.
-: KEY ( -- vec ) -0.4 0.6 0.7 VEC-MAKE ;
-: KEY-BOX-X ( -- r ) 0.45 ;
-: KEY-BOX-Y ( -- r ) 0.27 ;
-1024 constant SHADOW-SIDE
 
 \ studio's least length of the view's right laid on the plane.
 : LAID-LEAST ( -- r ) 0.000001 ;
@@ -80,8 +75,32 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
 \ -1.0 for a negative r, else 1.0.
 : SIGN ( r -- r ) f0< if -1.0 else 1.0 then ;
 
-\ The k-th f32 of the span, widened.
+\ The k-th f32 of the span, widened; r rounded into it.
 : F32@ ( ^u8 n -- r ) 4 * + F32-BUF:LOAD F32:WIDEN ;
+: F32! ( r ^u8 n -- )
+   {: v:r p i:n :}
+   v F32:NARROW  p i 4 * +  F32-BUF:STORE ;
+
+\ The f32s k, k + 1 and k + 2 of the span.
+: VEC@ ( ^u8 n -- vec )
+   {: p k:n :}
+   p k F32@  p k 1+ F32@  p k 2 + F32@ VEC-MAKE ;
+: VEC! ( vec ^u8 n -- )
+   {: a:vec p k:n :}
+   a VEC-UNMAKE {: x:r y:r z:r :}
+   x p k F32!  y p k 1+ F32!  z p k 2 + F32! ;
+
+\ The light's softbox half extents in key x and y, per unit along the key,
+\ and the shadow map's side.
+: BOX-X ( ^u8 -- r ) 9 F32@ ;
+: BOX-Y ( ^u8 -- r ) 10 F32@ ;
+: SIDE ( ^u8 -- r ) 11 F32@ ;
+
+\ The record's plane, unit normal and d, and the studio's right and back.
+: NORMAL@ ( ^u8 -- vec ) 0 VEC@ ;
+: OFFSET@ ( ^u8 -- r ) 3 F32@ ;
+: RIGHT@ ( ^u8 -- vec ) 4 VEC@ ;
+: BACK@ ( ^u8 -- vec ) 7 VEC@ ;
 
 \ Row r of the column-major matrix m's 3x3 part, and its translation.
 : ROW ( ^u8 n -- vec )
@@ -150,15 +169,13 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
    a VEC-UNMAKE {: ax:r ay:r az:r :}
    right ax SCALED  up ay SCALED PLUS  back az SCALED PLUS ;
 
-\ keyAxes' x, y and z in world: the softbox's tangents and the way toward
+\ The key's x, y and z in world: the light's softbox tangents and way toward
 \ the key, for the studio's right, up and back.
-: KEY-AXES ( vec vec vec -- vec vec vec )
-   {: right:vec up:vec back:vec :}
-   KEY UNIT {: c:vec :}
-   0.0 1.0 0.0 VEC-MAKE c CROSS UNIT {: across:vec :}
-   across right up back WORLD
-   c across CROSS right up back WORLD
-   c right up back WORLD ;
+: KEY-AXES ( ^u8 vec vec vec -- vec vec vec )
+   {: light right:vec up:vec back:vec :}
+   light 0 VEC@ right up back WORLD
+   light 3 VEC@ right up back WORLD
+   light 6 VEC@ right up back WORLD ;
 
 \ The plane's normal; its unit normal, and d over the normal's length.
 : PLANE-NORMAL ( ^u8 -- vec )
@@ -175,26 +192,34 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
    {: q:vec back:vec n:vec d:r :}
    q  back  n q DOT d f+  n back DOT f/  SCALED  MINUS ;
 
-\ Whether m's eye, the way of viewer's back, is above g's plane.
-: ABOVE? ( ^u8 ^u8 -- bool )
-   {: m g :}
-   m COLUMNS {: cx:vec cy:vec cz:vec :}
-   g NORMAL  cz BACK  DOT 0.0 f> ;
+\ The record's plane and studio axes for m's view of g's plane.
+: AXES! ( ^u8 ^u8 ^u8 -- )
+   {: m g rec :}
+   g NORMAL {: n:vec :}
+   m COLUMNS VIEWER n STUDIO-AXES {: r:vec u:vec b:vec :}
+   n rec 0 VEC!  g OFFSET rec 3 F32!
+   r rec 4 VEC!  b rec 7 VEC! ;
 
-\ The key's x, y and z for m's view of g's plane.
+\ Whether m's eye, the way of viewer's back, is above the record's plane.
+: ABOVE? ( ^u8 ^u8 -- bool )
+   {: m rec :}
+   m COLUMNS {: cx:vec cy:vec cz:vec :}
+   rec NORMAL@  cz BACK  DOT 0.0 f> ;
+
+\ The key's x, y and z by the record's studio axes.
 : KEY-FRAME ( ^u8 ^u8 -- vec vec vec )
-   {: m g :}
-   m COLUMNS VIEWER  g NORMAL  STUDIO-AXES KEY-AXES ;
+   {: light rec :}
+   light  rec RIGHT@  rec NORMAL@  rec BACK@  KEY-AXES ;
 
 \ V as p0 + x ex + y ey for clip x, y = +-1: p0 is the plane's point at
 \ clip x, y = 0, ex and ey its steps per unit of clip x and y.
 : GROUND ( ^u8 ^u8 -- vec vec vec )
-   {: m g :}
+   {: m rec :}
    m COLUMNS {: cx:vec cy:vec cz:vec :}
    cz BACK {: back:vec :}
-   g NORMAL {: n:vec :}
+   rec NORMAL@ {: n:vec :}
    cx m 0 SHIFT fnegate SCALED  cy m 1 SHIFT fnegate SCALED  PLUS
-   back n g OFFSET ONTO
+   back n rec OFFSET@ ONTO
    cx back n 0.0 ONTO  cy back n 0.0 ONTO ;
 
 \ R in key axis k: V's corners p0 +- ex +- ey span k.p0 +- (|k.ex| + |k.ey|).
@@ -213,15 +238,15 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
    {: g i:n :}
    g i 0 COORD  g i 1 COORD  g i 2 COORD VEC-MAKE ;
 
-\ T, the highest rise n.p + d of the box's corners.
-: RISE ( ^u8 n -- r )
-   {: g i:n :}
-   g NORMAL  g i CORNER  DOT  g OFFSET f+ ;
+\ T, the highest rise n.p + d of g's box's corners over the record's plane.
+: RISE ( ^u8 ^u8 n -- r )
+   {: rec g i:n :}
+   rec NORMAL@  g i CORNER  DOT  rec OFFSET@ f+ ;
 
-: TALLEST ( ^u8 -- r )
-   {: g :}
-   g 0 RISE
-   8 1 ?do g i RISE FMATH:FMAX loop ;
+: TALLEST ( ^u8 ^u8 -- r )
+   {: rec g :}
+   rec g 0 RISE
+   8 1 ?do rec g i RISE FMATH:FMAX loop ;
 
 \ The lowest and highest of the box's corners in key axis k.
 : BOX-SPAN ( ^u8 vec -- r r )
@@ -238,38 +263,85 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
 \ the plane: they rise nz + v ny a unit, ny and nz n.ky and n.kz, n having
 \ no part along key x.
 : RISEN ( ^u8 vec vec r r -- r )
-   {: g ky:vec kz:vec t:r v:r :}
-   g NORMAL {: n:vec :}
+   {: rec ky:vec kz:vec t:r v:r :}
+   rec NORMAL@ {: n:vec :}
    t  n kz DOT  n ky DOT v f*  f+ f/ ;
 
 \ How far a ground point's rays to the softbox go before they rise t, in key
 \ x either way, in key y down and up: those at its low edge go furthest.
-: GROWTH ( ^u8 vec vec r -- r r r )
-   {: g ky:vec kz:vec t:r :}
-   g ky kz t KEY-BOX-Y fnegate RISEN {: far:r :}
-   KEY-BOX-X far f*  KEY-BOX-Y far f*
-   KEY-BOX-Y  g ky kz t KEY-BOX-Y RISEN f* ;
+: GROWTH ( ^u8 ^u8 vec vec r -- r r r )
+   {: light rec ky:vec kz:vec t:r :}
+   light BOX-Y {: by:r :}
+   rec ky kz t by fnegate RISEN {: far:r :}
+   light BOX-X far f*  by far f*
+   by  rec ky kz t by RISEN f* ;
 
 \ M in key axis k: R grown by down and up, cut to the box's span.
-: M-SPAN ( ^u8 ^u8 vec r r -- r r )
-   {: m g k:vec down:r up:r :}
-   m g GROUND {: p0:vec ex:vec ey:vec :}
+: M-SPAN ( ^u8 ^u8 ^u8 vec r r -- r r )
+   {: m rec g k:vec down:r up:r :}
+   m rec GROUND {: p0:vec ex:vec ey:vec :}
    k p0 ex ey VIEW-SPAN {: lo:r hi:r :}
    g k BOX-SPAN {: blo:r bhi:r :}
    lo down f- blo FMATH:FMAX  hi up f+ bhi FMATH:FMIN ;
 
-\ M's lowest and highest key x, then key y, for m's view of g and T t.
-: M ( ^u8 ^u8 r -- r r r r )
-   {: m g t:r :}
-   m g KEY-FRAME {: kx:vec ky:vec kz:vec :}
-   g ky kz t GROWTH {: across:r down:r up:r :}
-   m g kx across across M-SPAN
-   m g ky down up M-SPAN ;
+\ Four f32 of the record from slot k: lowest and highest key x, then key y.
+: RECT@ ( ^u8 n -- r r r r )
+   {: rec k:n :}
+   rec k F32@  rec k 1+ F32@  rec k 2 + F32@  rec k 3 + F32@ ;
+: RECT! ( r r r r ^u8 n -- )
+   {: xlo:r xhi:r ylo:r yhi:r rec k:n :}
+   xlo rec k F32!  xhi rec k 1+ F32!
+   ylo rec k 2 + F32!  yhi rec k 3 + F32! ;
+
+: M@ ( ^u8 -- r r r r ) 10 RECT@ ;
+: T@ ( ^u8 -- r ) 18 F32@ ;
+
+\ M into the record, its key x grown by across, its key y by down and up.
+: M! ( ^u8 ^u8 ^u8 vec vec r r r -- )
+   {: m g rec kx:vec ky:vec across:r down:r up:r :}
+   m rec g kx across across M-SPAN
+   m rec g ky down up M-SPAN  rec 10 RECT! ;
+
+\ C into the record: the record's M grown by across, and by up below and
+\ down above.
+: CATCHER! ( ^u8 r r r -- )
+   {: rec across:r down:r up:r :}
+   rec M@ {: xlo:r xhi:r ylo:r yhi:r :}
+   xlo across f-  xhi across f+
+   ylo up f-  yhi down f+  rec 14 RECT! ;
+
+\ The casters' nearest and farthest key z into the record.
+: DEPTHS! ( ^u8 ^u8 vec -- )
+   {: g rec kz:vec :}
+   g kz BOX-SPAN {: far:r near:r :}
+   near rec 19 F32!  far rec 20 F32! ;
+
+\ M, C, near and far into the record, for the record's T.
+: SPANS! ( ^u8 ^u8 ^u8 ^u8 -- )
+   {: light m g rec :}
+   light rec KEY-FRAME {: kx:vec ky:vec kz:vec :}
+   light rec ky kz rec T@ GROWTH {: across:r down:r up:r :}
+   m g rec kx ky across down up M!
+   rec across down up CATCHER!
+   g rec kz DEPTHS! ;
 
 \ Whether M holds no point; a NaN side holds none.
 : EMPTY? ( r r r r -- bool )
    {: xlo:r xhi:r ylo:r yhi:r :}
    xlo xhi f<=  ylo yhi f<=  and 0= ;
+
+\ The record's M's larger side.
+: LARGER ( ^u8 -- r )
+   {: rec :}
+   rec M@ {: xlo:r xhi:r ylo:r yhi:r :}
+   xhi xlo f-  yhi ylo f-  FMATH:FMAX ;
+
+\ Whether the record's M holds a point and M or the casters' depth along
+\ the key has extent: a casters' box that is a point casts nothing.
+: CAST? ( ^u8 -- bool )
+   {: rec :}
+   rec M@ EMPTY? if false exit then
+   rec LARGER  rec 19 F32@ rec 20 F32@ f-  FMATH:FMAX  0.0 f> ;
 
 \ Plane i of out, a b c d.
 : PLANE! ( vec r ^r n -- )
@@ -284,40 +356,46 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
    k lo fnegate out i PLANE!
    k -1.0 SCALED hi out i 1+ PLANE! ;
 
-\ The five planes of the volume into out.
-: PLANES! ( ^u8 ^u8 r r r r ^r -- )
-   {: m g xlo:r xhi:r ylo:r yhi:r out:^ :}
-   m g KEY-FRAME {: kx:vec ky:vec kz:vec :}
-   g NORMAL g OFFSET out 0 PLANE!
+\ The five planes of the record's volume into out.
+: PLANES! ( ^u8 ^u8 ^r -- )
+   {: light rec out:^ :}
+   light rec KEY-FRAME {: kx:vec ky:vec kz:vec :}
+   rec M@ {: xlo:r xhi:r ylo:r yhi:r :}
+   rec NORMAL@ rec OFFSET@ out 0 PLANE!
    kx xlo xhi out 1 SIDES!
    ky ylo yhi out 3 SIDES! ;
 
-\ The key's pixel: M's larger side over the shadow map's side.
-: PIXEL ( r r r r -- r )
-   {: xlo:r xhi:r ylo:r yhi:r :}
-   xhi xlo f-  yhi ylo f-  FMATH:FMAX  SHADOW-SIDE s>f f/ ;
-
 public
 
-\ The key light's volume for the draw's matrix m, 16 f32 column-major as
-\ the draw record carries it, and the ground g, ten f32: the plane nx ny nz
-\ d, then the box no caster leaves, lowest x y z then highest. Writes into
-\ out, room for 20 binary64, five planes a b c d, a point inside when
-\ a x + b y + c z + d >= 0: the ground, then key x at least M's lowest, at
-\ most its highest, then key y the same; answers 5 and the key's pixel in
-\ world units. Answers 0 and 0.0, out's contents no planes, when the eye is
-\ not above the plane, T is not above 0 or M is empty. A casters' box that
-\ is a point answers 5 and 0.0, where viewport.js draws no shadow; no model
-\ gives one. Reads only the direction of m's depth row. E-MATRIX for an m
-\ whose fourth row is not 0 0 0 1 or that is not invertible.
-: KEY-VOLUME ( ^u8 ^u8 ^r -- n r )
-   {: m g out:^ :}
-   m g ABOVE? 0= if 0 0.0 exit then
-   g TALLEST {: t:r :}
-   t 0.0 f> 0= if 0 0.0 exit then
-   m g t M {: xlo:r xhi:r ylo:r yhi:r :}
-   xlo xhi ylo yhi EMPTY? if 0 0.0 exit then
-   m g xlo xhi ylo yhi out PLANES!
-   5  xlo xhi ylo yhi PIXEL ;
+\ The key light's fit for the light, 48 bytes, twelve f32 in studio
+\ coordinates (right, up, back): the softbox's x tangent, its y tangent, the
+\ unit direction toward the key, the softbox's half extents in x and y per
+\ unit along it, the shadow map's side in texels, its x tangent square to
+\ the studio's up and every ray to its softbox rising; the draw's matrix m,
+\ 16 f32 column-major as the draw record carries it; and the ground g, ten
+\ f32, each finite, else the fit is undefined: the plane nx ny nz d, then
+\ the box no caster leaves, lowest x y z then highest. Writes into rec, room
+\ for 84 bytes, the ground record: ten f32, the plane's unit normal and d,
+\ then the studio's right and back in world; and, with a volume, M (key x
+\ lowest, highest, key y lowest, highest), C in the same order, T, and the
+\ casters' nearest and farthest key z. Writes into out, room for 20
+\ binary64, five planes a b c d, a point inside when a x + b y + c z + d >=
+\ 0: the ground, then key x at least M's lowest, at most its highest, then
+\ key y the same. Answers the record's length, 84, 5 planes and the key's
+\ pixel in world units; or 40, 0 and 0.0 when the eye is not above the
+\ plane, T is not above 0, M is empty, or neither M nor the casters' depth
+\ along the key has extent, as for a casters' box that is a point. Reads
+\ only the direction of m's depth row. E-MATRIX for an m whose fourth row
+\ is not 0 0 0 1 or that is not invertible.
+: KEY-FIT ( ^u8 ^u8 ^u8 ^u8 ^r -- n n r )
+   {: light m g rec out:^ :}
+   m g rec AXES!
+   m rec ABOVE? 0= if 40 0 0.0 exit then
+   rec g TALLEST rec 18 F32!
+   rec T@ 0.0 f> 0= if 40 0 0.0 exit then
+   light m g rec SPANS!
+   rec CAST? 0= if 40 0 0.0 exit then
+   light rec out PLANES!
+   84 5  rec LARGER light SIDE f/ ;
 
 ;package

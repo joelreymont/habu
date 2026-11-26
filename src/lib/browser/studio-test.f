@@ -1,8 +1,14 @@
-\ studio-test.f - STUDIO:KEY-VOLUME for four scenes stated here, each number
-\ within 1e-9 of the larger of its own size and 1; the expected numbers come
-\ from viewport.js's own viewer, studio, keyAxes, keyVolume and SHADOW_SIDE,
-\ run in binary64 on the scene's f32 numbers. A matrix whose fourth row is not
-\ 0 0 0 1, and a singular one, are E-MATRIX.
+\ studio-test.f - STUDIO:KEY-FIT's record, planes and pixel for scenes stated
+\ here, each number within 1e-9 of the larger of its own size and 1, or
+\ 1e-6 in SLOPED, whose light's 0.8 and 0.6 an f32 rounds. Every view but
+\ BELOW's looks down from +z with its right along +x. Every light but
+\ SLOPED's stands straight overhead, a square softbox of half extent 0.5
+\ and a map of side 1024, so key x, y and z are world x, y and z: M is R
+\ grown by T / 2 each way and cut to the box's rectangle, C is M grown by
+\ T / 2 again, and the pixel is M's larger side over 1024. The eye below the plane, a box under it, a
+\ ground whose M is empty and a box that is a point answer the 40-byte
+\ record alone. A matrix whose fourth row is not 0 0 0 1, and a singular
+\ one, are E-MATRIX.
 \ Run: bin/hb --load src/lib/browser/studio-test.f
 
 require src/lib/test/assert.f
@@ -15,13 +21,42 @@ package STUDIO-TEST
 private
 
 4 constant F32-BYTES
+12 F32-BYTES * BUFFER: LIGHT
 16 F32-BYTES * BUFFER: MATRIX
 10 F32-BYTES * BUFFER: GROUND
+21 F32-BYTES * BUFFER: RECORD
 20 TYPED-BUFFER PLANES r
+TYPED-VARIABLE TOLERANCE r
 
 : F32! ( r ^u8 n -- )
    {: v:r p i:n :}
    v F32:NARROW  p i F32-BYTES * +  F32-BUF:STORE ;
+
+: F32@ ( ^u8 n -- r )
+   F32-BYTES * + F32-BUF:LOAD F32:WIDEN ;
+
+: TRIPLE! ( r r r ^u8 n -- )
+   {: x:r y:r z:r p i:n :}
+   x p i F32!  y p i 1+ F32!  z p i 2 + F32! ;
+
+\ Key x the studio's right, key y its front, -back, and the key up; half
+\ extents 0.5 by 0.5; side 1024.
+: LIGHT! ( -- )
+   1.0 0.0 0.0 LIGHT 0 TRIPLE!
+   0.0 0.0 -1.0 LIGHT 3 TRIPLE!
+   0.0 1.0 0.0 LIGHT 6 TRIPLE!
+   0.5 0.5 1024.0 LIGHT 9 TRIPLE! ;
+
+\ Key x the studio's right, key y up 0.6 and back -0.8, the key up 0.8 and
+\ back 0.6; half extents 0.5 by 1/3; side 1024.
+: SLOPED-LIGHT! ( -- )
+   1.0 0.0 0.0 LIGHT 0 TRIPLE!
+   0.0 0.6 -0.8 LIGHT 3 TRIPLE!
+   0.0 0.8 0.6 LIGHT 6 TRIPLE!
+   0.5 1.0 3.0 f/ 1024.0 LIGHT 9 TRIPLE! ;
+
+: EXACT ( -- ) 0.000000001 TOLERANCE ! ;
+: ROUNDED ( -- ) 0.000001 TOLERANCE ! ;
 
 \ Row i of the world-to-clip map, a x + b y + c z + t, column-major.
 : ROW! ( r r r r n -- )
@@ -31,6 +66,12 @@ private
 
 : AFFINE! ( -- ) 0.0 0.0 0.0 1.0 3 ROW! ;
 
+\ Clip x and y s x + t and s y + t, depth k z + 0.5.
+: VIEW! ( r r r -- )
+   {: s:r t:r k:r :}
+   s 0.0 0.0 t 0 ROW!  0.0 s 0.0 t 1 ROW!
+   0.0 0.0 k 0.5 2 ROW!  AFFINE! ;
+
 : PLANE! ( r r r r -- )
    {: a:r b:r c:r d:r :}
    a GROUND 0 F32!  b GROUND 1 F32!  c GROUND 2 F32!  d GROUND 3 F32! ;
@@ -38,13 +79,12 @@ private
 \ The box no caster leaves, lowest x y z then highest.
 : BOX! ( r r r r r r -- )
    {: x0:r y0:r z0:r x1:r y1:r z1:r :}
-   x0 GROUND 4 F32!  y0 GROUND 5 F32!  z0 GROUND 6 F32!
-   x1 GROUND 7 F32!  y1 GROUND 8 F32!  z1 GROUND 9 F32! ;
+   x0 y0 z0 GROUND 4 TRIPLE!  x1 y1 z1 GROUND 7 TRIPLE! ;
 
 : NEAR ( r r -- )
    {: got:r want:r :}
    got want f- fabs
-   want fabs 1.0 FMATH:FMAX 0.000000001 f*  f<= TTRUE ;
+   want fabs 1.0 FMATH:FMAX TOLERANCE @ f*  f<= TTRUE ;
 
 : PLANE= ( r r r r n -- )
    {: a:r b:r c:r d:r i:n :}
@@ -52,85 +92,129 @@ private
    k PLANES @ a NEAR  k 1+ PLANES @ b NEAR
    k 2 + PLANES @ c NEAR  k 3 + PLANES @ d NEAR ;
 
-: VOLUME ( -- n r ) MATRIX GROUND 0 PLANES STUDIO:KEY-VOLUME ;
+\ The record's f32s from slot k.
+: AT= ( r n -- ) RECORD swap F32@ swap NEAR ;
+: TRIPLE= ( r r r n -- )
+   {: x:r y:r z:r k:n :}
+   x k AT=  y k 1+ AT=  z k 2 + AT= ;
+: RECT= ( r r r r n -- )
+   {: a:r b:r c:r d:r k:n :}
+   a k AT=  b k 1+ AT=  c k 2 + AT=  d k 3 + AT= ;
+
+\ The plane z = 0, the studio's right +x and back -y.
+: FLOOR= ( -- )
+   0.0 0.0 1.0 0 TRIPLE=  0.0 3 AT=
+   1.0 0.0 0.0 4 TRIPLE=  0.0 -1.0 0.0 7 TRIPLE= ;
+
+: FIT ( -- n n r )
+   LIGHT MATRIX GROUND RECORD 0 PLANES STUDIO:KEY-FIT ;
+
+\ The 40-byte record alone.
+: NONE= ( n n r -- )
+   {: bytes:n count:n px:r :}
+   bytes 40 T=  count 0 T=  px 0.0 NEAR ;
 
 \ The box -3 -2 0 to 4 5 2 on the plane z = 0.
 : SHELF! ( -- )
    0.0 0.0 1.0 0.0 PLANE!
    -3.0 -2.0 0.0 4.0 5.0 2.0 BOX! ;
 
-\ Looking down on z = 0 at x, y in 0..4, the eye on +z.
+\ The ground in view x, y in 0..4; T 2. M is x -1..5 cut to -3..4, y -1..5
+\ within -2..5; C x -2..5, y -2..6; near 2, far 0; the pixel 6 / 1024.
 : TOP ( -- )
    s" top" T-LABEL
-   0.5 0.0 0.0 -1.0 0 ROW!  0.0 0.5 0.0 -1.0 1 ROW!
-   0.0 0.0 -0.0625 0.5 2 ROW!  AFFINE!  SHELF!
-   VOLUME {: count:n px:r :}
-   count 5 T=  px 0.008608986390464085 NEAR
+   0.5 -1.0 -0.0625 VIEW!  SHELF!
+   FIT {: bytes:n count:n px:r :}
+   bytes 84 T=  count 5 T=  px 0.005859375 NEAR
+   FLOOR=
+   -1.0 4.0 -1.0 5.0 10 RECT=  -2.0 5.0 -2.0 6.0 14 RECT=
+   2.0 18 AT=  2.0 19 AT=  0.0 20 AT=
    0.0 0.0 1.0 0.0 0 PLANE=
-   0.8682431421244592 -0.4961389383568339 0.0 4.350351618623719 1 PLANE=
-   -0.8682431421244592 0.4961389383568339 0.0 4.465250445211504 2 PLANE=
-   0.29620601710581057 0.5183605299351683 0.8022246296615702
-   1.4194775191178302 3 PLANE=
-   -0.29620601710581057 -0.5183605299351683 -0.8022246296615702
-   3.921964269220849 4 PLANE= ;
+   1.0 0.0 0.0 1.0 1 PLANE=  -1.0 0.0 0.0 4.0 2 PLANE=
+   0.0 1.0 0.0 1.0 3 PLANE=  0.0 -1.0 0.0 5.0 4 PLANE= ;
 
-\ A skewed affine map onto the tilted plane 0.1 x + 0.2 y + z = 0.5, the
-\ box -20 -3 0.25 to 5 20 3.5.
-: OBLIQUE ( -- )
-   s" oblique" T-LABEL
-   0.3 0.1 -0.05 0.2 0 ROW!  -0.08 0.15 0.25 -0.1 1 ROW!
-   -0.1 0.2 0.12 0.4 2 ROW!  AFFINE!
-   0.1 0.2 1.0 -0.5 PLANE!
-   -20.0 -3.0 0.25 5.0 20.0 3.5 BOX!
-   VOLUME {: count:n px:r :}
-   count 5 T=  px 0.01913341281398355 NEAR
-   0.09759000867980991 0.19518001735961982 0.9759000722560548
-   -0.4879500361280274 0 PLANE=
-   0.992295296543169 -0.09428908832844912 -0.08037171318625887
-   14.36836390211453 1 PLANE=
-   -0.992295296543169 0.09428908832844912 0.08037171318625887
-   5.224250819404626 2 PLANE=
-   0.12385968791951427 0.7394060438273888 0.6617684489759311
-   4.5299697776284695 3 PLANE=
-   -0.12385968791951427 -0.7394060438273888 -0.6617684489759311
-   8.2694124642653 4 PLANE= ;
+\ The plane 2 z - 2 = 0, z = 1, under the box -10 -0.5 1 to 10 0.5 3, the
+\ ground in view x, y in -20..20; T 2. M is x -10..10, y -0.5..0.5, both cut
+\ to the box; C x -11..11, y -1.5..1.5; near 3, far 1; the pixel 20 / 1024,
+\ M's key x side.
+: RAISED ( -- )
+   s" raised" T-LABEL
+   0.05 0.0 -0.0625 VIEW!
+   0.0 0.0 2.0 -2.0 PLANE!
+   -10.0 -0.5 1.0 10.0 0.5 3.0 BOX!
+   FIT {: bytes:n count:n px:r :}
+   bytes 84 T=  count 5 T=  px 0.01953125 NEAR
+   0.0 0.0 1.0 0 TRIPLE=  -1.0 3 AT=
+   -10.0 10.0 -0.5 0.5 10 RECT=  -11.0 11.0 -1.5 1.5 14 RECT=
+   2.0 18 AT=  3.0 19 AT=  1.0 20 AT=
+   0.0 0.0 1.0 -1.0 0 PLANE=
+   1.0 0.0 0.0 10.0 1 PLANE=  -1.0 0.0 0.0 10.0 2 PLANE=
+   0.0 1.0 0.0 0.5 3 PLANE=  0.0 -1.0 0.0 0.5 4 PLANE= ;
 
-\ Looking down at x in 100..102 and y in 0..2: that ground, grown by the
-\ softbox, lies wholly outside the box's rectangle in key x.
+\ The eye on -z: the studio turns about its up to keep the view's
+\ handedness, its right +x and back +y.
+: BELOW ( -- )
+   s" below" T-LABEL
+   0.5 -1.0 0.0625 VIEW!  SHELF!
+   FIT NONE=
+   0.0 0.0 1.0 0 TRIPLE=  0.0 3 AT=
+   1.0 0.0 0.0 4 TRIPLE=  0.0 1.0 0.0 7 TRIPLE= ;
+
+\ The box -3 -2 -1 to 4 5 0, T 0.
+: UNDER ( -- )
+   s" under" T-LABEL
+   0.5 -1.0 -0.0625 VIEW!
+   0.0 0.0 1.0 0.0 PLANE!
+   -3.0 -2.0 -1.0 4.0 5.0 0.0 BOX!
+   FIT NONE=  FLOOR= ;
+
+\ The ground in view x in 100..102: M's key x 99..103 cut to -3..4 is
+\ empty.
 : OUTSIDE ( -- )
    s" outside" T-LABEL
    1.0 0.0 0.0 -101.0 0 ROW!  0.0 1.0 0.0 -1.0 1 ROW!
    0.0 0.0 -0.0625 0.5 2 ROW!  AFFINE!  SHELF!
-   VOLUME {: count:n px:r :}
-   count 0 T=  px 0.0 NEAR ;
+   FIT NONE=  FLOOR= ;
 
-\ Looking down at x, y in -20..20 on the box -0.5 -10 0 to 0.5 10 3, narrow
-\ in x and long in y. It holds the pixel taken from M's key y side, 13.07
-\ against its key x side's 10.79.
-: TALL ( -- )
-   s" tall" T-LABEL
-   0.05 0.0 0.0 0.0 0 ROW!  0.0 0.05 0.0 0.0 1 ROW!
-   0.0 0.0 -0.0625 0.5 2 ROW!  AFFINE!
+\ The box the point 1 1 1: M is that point and near equals far.
+: POINT ( -- )
+   s" point" T-LABEL
+   0.5 -1.0 -0.0625 VIEW!
    0.0 0.0 1.0 0.0 PLANE!
-   -0.5 -10.0 0.0 0.5 10.0 3.0 BOX!
-   VOLUME {: count:n px:r :}
-   count 5 T=  px 0.012763760258587779 NEAR
-   0.0 0.0 1.0 0.0 0 PLANE=
-   0.8682431421244592 -0.4961389383568339 0.0 5.395510954630569 1 PLANE=
-   -0.8682431421244592 0.4961389383568339 0.0 5.395510954630569 2 PLANE=
-   0.29620601710581057 0.5183605299351683 0.8022246296615702
-   5.331708307904588 3 PLANE=
-   -0.29620601710581057 -0.5183605299351683 -0.8022246296615702
-   7.738382196889298 4 PLANE= ;
+   1.0 1.0 1.0 1.0 1.0 1.0 BOX!
+   FIT NONE=  FLOOR= ;
 
-: KEPT ( -- ) VOLUME {: count:n px:r :} ;
+\ TOP's view of the plane z = 0 under the box -3 -2 0 to 4 5 1.8, T 1.8,
+\ the key rising toward the studio's back: key y 0.8 y + 0.6 z, key z
+\ -0.6 y + 0.8 z. Rays to the softbox's low and high edges rise 0.8 - 0.6 /
+\ 3 = 0.6 and 0.8 + 0.6 / 3 = 1.0 a unit along the key, so they rise T in 3
+\ and 1.8: across 0.5 * 3 = 1.5, down 3 / 3 = 1, up 1.8 / 3 = 0.6. R is x
+\ 0..4, key y 0..3.2; M x -1.5..5.5 cut to the box's -3..4, key y -1..3.8
+\ within the box's -1.6..5.08; C x -3..5.5, key y -1.6..4.8; near 2.64 at
+\ y -2, z 1.8, far -3 at y 5, z 0; the pixel 5.5 / 1024.
+: SLOPED ( -- )
+   s" sloped" T-LABEL
+   SLOPED-LIGHT! ROUNDED
+   0.5 -1.0 -0.0625 VIEW!
+   0.0 0.0 1.0 0.0 PLANE!
+   -3.0 -2.0 0.0 4.0 5.0 1.8 BOX!
+   FIT {: bytes:n count:n px:r :}
+   bytes 84 T=  count 5 T=  px 0.00537109375 NEAR
+   FLOOR=
+   -1.5 4.0 -1.0 3.8 10 RECT=  -3.0 5.5 -1.6 4.8 14 RECT=
+   1.8 18 AT=  2.64 19 AT=  -3.0 20 AT=
+   0.0 0.0 1.0 0.0 0 PLANE=
+   1.0 0.0 0.0 1.5 1 PLANE=  -1.0 0.0 0.0 4.0 2 PLANE=
+   0.0 0.8 0.6 1.0 3 PLANE=  0.0 -0.8 -0.6 3.8 4 PLANE=
+   LIGHT! EXACT ;
+
+: KEPT ( -- ) FIT {: bytes:n count:n px:r :} ;
 
 \ TOP's matrix with a fourth row 0 0.25 0 1, then with rows 0 and 1
 \ parallel.
 : REJECTED ( -- )
    s" rejected" T-LABEL
-   0.5 0.0 0.0 -1.0 0 ROW!  0.0 0.5 0.0 -1.0 1 ROW!
-   0.0 0.0 -0.0625 0.5 2 ROW!  0.0 0.25 0.0 1.0 3 ROW!  SHELF!
+   0.5 -1.0 -0.0625 VIEW!  0.0 0.25 0.0 1.0 3 ROW!  SHELF!
    [: KEPT ;] STUDIO:E-MATRIX TTHROWSQ
    1.0 0.0 0.0 -1.0 1 ROW!  AFFINE!
    [: KEPT ;] STUDIO:E-MATRIX TTHROWSQ ;
@@ -139,10 +223,14 @@ public
 
 : RUN ( -- )
    T-RESET
+   LIGHT!  EXACT
    TOP
-   OBLIQUE
+   RAISED
+   BELOW
+   UNDER
    OUTSIDE
-   TALL
+   POINT
+   SLOPED
    REJECTED
    T-REPORT ;
 
