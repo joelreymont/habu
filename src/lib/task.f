@@ -527,16 +527,12 @@ SCRATCH-VARIABLE MAIN-PARK-READY
 : TASK-STOP ( -- )
    PARK-SELF SEM-WAIT ;
 
-\ A task never activated, only constructed, or ended has no run to hint at: the
-\ count would sit in a record its next activation is not entitled to, so all
-\ three are rejected. The task can end, be released and open again between the
-\ state read and the post; the post still meets this TCB's one live park. A
-\ hint before the next run opens is drained there; a WAKE in flight as it opens
-\ lands in it, the one stale hint its re-check absorbs.
+\ A task that ends between the state read and the post keeps its live park:
+\ its next run drains that post, or its re-check absorbs it as a stale hint.
 : TASK-WAKE ( ^n -- ) {: tcb:^ :}
    tcb FFI:>CELL 0= if MAIN-PARK-INIT MAIN-PARK SEM-SIGNAL exit then
    tcb TASK-STATE@ {: st:n :}
-   st TASK-RUNNING <> st TASK-HALT-REQ <> and if E-TASK-STATE throw then
+   st TASK-RUNNING <> st TASK-HALT-REQ <> and if exit then
    tcb TASK-PARK-SEM SEM-SIGNAL ;
 
 \ ---- the task's outcome ------------------------------------------------------
@@ -1328,12 +1324,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ ended) and the state is left alone: an ended task has no PAUSE to reach, and
 \ DONE is never overwritten by a request nobody can observe.
 \
-\ The park is posted DIRECTLY, not through TASK-WAKE, whose rejection of an ended
-\ task is TASK:WAKE's own contract: the task may end, or be released, between
-\ the CAS and the post, and the post still meets a live park (PARK-CREATE). A
-\ count posted before the next run opens dies there; one in flight as it opens
-\ is the one stale hint its re-check absorbs. The post is the only
-\ step after the CAS, so that hint is all a HALT can leave a run it did not see.
+\ The post is the only step after the CAS: a task that ends between them is
+\ left at most the one stale hint its next run drains or its re-check absorbs.
 : HALT ( ^n -- ) {: tcb:^ :}
    TASK-RUNNING TASK-HALT-REQ tcb TASK-ABI:TCB.STATUS atomic-cas {: st:n :}
    st TASK-RUNNING <> st TASK-HALT-REQ <> and if exit then
@@ -1924,9 +1916,8 @@ TASK-MIN-STACK constant MIN-STACK
 : WAIT-MS ( ms -- bool )
    TASK-STOP-FOR ;
 
-\ Posts the named task's park. The null TCB - what TASK:SELF answers on the main
-\ thread - posts the main thread's park. A task that was never activated, one
-\ that is only prepared and one that has ended are E-TASK-STATE.
+\ Posts a running task's park, or the main thread's for the null TCB TASK:SELF
+\ answers there. A task that is not running has no run to hint at: no post.
 : WAKE ( ^n -- )
    TASK-WAKE ;
 

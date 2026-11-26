@@ -1554,6 +1554,7 @@ variable STOP-TAKEN
 variable STOP-EARLY-DONE
 variable STOP-PARKED
 variable STOP-WAKED
+variable STOP-HINT                    \ 1 when a run opened with a hint pending
 PTR-VARIABLE STOP-MAIN-TCB
 
 : STOP-MAIN-TCB@ ( -- ^n )
@@ -1572,14 +1573,12 @@ PTR-VARIABLE STOP-MAIN-TCB
       STOP-CONS TASK:WAKE
    loop ;
 
-\ The consumer wakes the producer for the next item but not after the last one:
-\ a WAKE of a task that has ended is E-TASK-STATE.
 : STOP-CONS-WORK ( -- )
    STOP-ITEM-N 1 + 1 ?do
       i STOP-WAIT-SLOT
       1 STOP-TAKEN atomic-add drop
       0 STOP-SLOT atomic!
-      i STOP-ITEM-N < if STOP-PROD TASK:WAKE then
+      STOP-PROD TASK:WAKE
    loop ;
 
 : TASK-TEST-STOP-PIPE ( -- )
@@ -1649,16 +1648,29 @@ PTR-VARIABLE STOP-MAIN-TCB
    STOP-WAKER TASK:THROW@ 0 T=
    STOP-WAKER TASK:KILL ;
 
-\ A task with no run has nothing to hint at: the count would sit in a record its
-\ next activation is not entitled to.
-: TASK-TEST-STOP-REJECTED ( -- )
-   [: STOP-IDLE TASK:WAKE ;] E-TASK-STATE TTHROWSQ
+: STOP-HINT-WORK ( -- )
+   0 >MS TASK:WAIT-MS if 1 else 0 then STOP-HINT atomic! ;
+
+: STOP-HINT-RUN ( ^n -- ) {: tcb:^ :}
+   -1 STOP-HINT !
+   ['] STOP-HINT-WORK tcb TASK:ACTIVATE
+   tcb APP-WAIT-DONE
+   STOP-HINT @ 0 T= ;
+
+: STOP-SELF-HINT-WORK ( -- )
+   TASK:SELF TASK:WAKE ;
+
+\ A WAKE of a task that is not running returns and posts nothing; a run that
+\ ended with a hint pending leaves none to the next run.
+: TASK-TEST-STOP-NO-HINT ( -- )
+   STOP-IDLE TASK:WAKE
    STOP-IDLE TASK:PREPARE
-   [: STOP-IDLE TASK:WAKE ;] E-TASK-STATE TTHROWSQ
+   STOP-IDLE TASK:WAKE
    STOP-IDLE TASK:KILL
-   ['] TASK-OK-WORK STOP-ENDED TASK:ACTIVATE
+   ['] STOP-SELF-HINT-WORK STOP-ENDED TASK:ACTIVATE
    STOP-ENDED APP-WAIT-DONE
-   [: STOP-ENDED TASK:WAKE ;] E-TASK-STATE TTHROWSQ
+   STOP-ENDED TASK:WAKE
+   STOP-ENDED STOP-HINT-RUN
    STOP-ENDED TASK:KILL ;
 
 : TASK-TEST-STOP-TYPES ( -- )
@@ -2058,27 +2070,23 @@ CB-POOL 2 - constant BIND-SLOT-B
    1 CTX-GATE atomic!
    CTX-BUSY TASK:KILL ;
 
-\ TASK:WAKE reads the state and then posts the park, and TASK:HALT posts it
-\ after its CAS, so the owner's KILL can end and release the task between the
-\ two steps. A WAKE posts or is rejected E-TASK-STATE, and a HALT always
-\ succeeds, being a no-op on a task that has ended or been released, so only
-\ the wakers' answers count as posts and rejections.
+\ WAKE posts after it reads the state and HALT after its CAS, so KILL can
+\ release the task in between; neither may throw.
 TASK:MIN-STACK TASK:TASK WAKE-RACE-TASK
 TASK:MIN-STACK TASK:TASK WAKE-RACE-W1
 TASK:MIN-STACK TASK:TASK WAKE-RACE-W2
 TASK:MIN-STACK TASK:TASK WAKE-RACE-H
 
 TASK-TEST-ALIGN8
-variable WAKE-RACE-OK
-variable WAKE-RACE-REJECTED
-variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
+variable WAKE-RACE-ODD                \ any WAKE or HALT throw
+variable WAKE-RACE-WOKEN              \ WAITs that returned to a run not halted
+variable WAKE-RACE-IN                 \ 1 once this run counted a wake
 
 20000 constant WAKE-RACE-ROUNDS
 64 constant WAKE-RACE-BURST
 
 : WAKE-RACE-COUNT ( n -- ) {: rc:n :}
-   rc 0= if 1 WAKE-RACE-OK atomic-add drop exit then
-   rc E-TASK-STATE = if 1 WAKE-RACE-REJECTED atomic-add drop exit then
+   rc 0= if exit then
    1 WAKE-RACE-ODD atomic-add drop ;
 
 : WAKE-RACE-WAKER ( -- )
@@ -2092,33 +2100,44 @@ variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
 : WAKE-RACE-HALTER ( -- )
    begin
       WAKE-RACE-BURST 0 ?do
-         [: WAKE-RACE-TASK TASK:HALT ;] catch
-         0 <> if 1 WAKE-RACE-ODD atomic-add drop then
+         WAKE-RACE-IN atomic@ 0<> if
+            [: WAKE-RACE-TASK TASK:HALT ;] catch
+            0 <> if 1 WAKE-RACE-ODD atomic-add drop then
+         then
       loop
       TASK:PAUSE
    again ;
 
 : WAKE-RACE-BODY ( -- )
-   begin TASK:HALTED? if exit then TASK:WAIT again ;
+   TASK:HALTED? if exit then
+   begin
+      TASK:WAIT
+      TASK:HALTED? if exit then
+      1 WAKE-RACE-WOKEN atomic-add drop
+      1 WAKE-RACE-IN atomic!
+   again ;
 
 : TASK-TEST-WAKE-RACE ( -- )
-   0 WAKE-RACE-OK atomic!
-   0 WAKE-RACE-REJECTED atomic!
    0 WAKE-RACE-ODD atomic!
+   0 WAKE-RACE-WOKEN atomic!
    ['] WAKE-RACE-WAKER WAKE-RACE-W1 TASK:ACTIVATE
    ['] WAKE-RACE-WAKER WAKE-RACE-W2 TASK:ACTIVATE
    ['] WAKE-RACE-HALTER WAKE-RACE-H TASK:ACTIVATE
    WAKE-RACE-ROUNDS 0 ?do
+      0 WAKE-RACE-IN atomic!
       ['] WAKE-RACE-BODY WAKE-RACE-TASK TASK:ACTIVATE
+      begin WAKE-RACE-IN atomic@ 0= WAKE-RACE-TASK TASK:DONE? 0= and while
+         TASK:PAUSE
+      repeat
       WAKE-RACE-TASK TASK:KILL
    loop
    WAKE-RACE-W1 TASK:KILL
    WAKE-RACE-W2 TASK:KILL
    WAKE-RACE-H TASK:KILL
-   s" a WAKE racing a KILL posts or is rejected E-TASK-STATE, a HALT succeeds" T-LABEL
+   s" no WAKE or HALT racing a KILL throws" T-LABEL
    WAKE-RACE-ODD atomic@ 0 T=
-   s" the wakers landed on both sides of the KILL" T-LABEL
-   WAKE-RACE-OK atomic@ 0 <> WAKE-RACE-REJECTED atomic@ 0 <> and TTRUE
+   s" the wakers woke runs no HALT had reached" T-LABEL
+   WAKE-RACE-WOKEN atomic@ 0 <> TTRUE
    s" the race leaves no task live" T-LABEL
    NO-TASK-LIVE? TTRUE ;
 
@@ -2599,7 +2618,7 @@ variable NEW-STRAY
    TASK-TEST-STOP-EARLY
    TASK-TEST-STOP-HALT
    TASK-TEST-STOP-MAIN
-   TASK-TEST-STOP-REJECTED
+   TASK-TEST-STOP-NO-HINT
    TASK-TEST-STOP-FOR-MAIN
    TASK-TEST-STOP-FOR-EDGE
    TASK-TEST-STOP-FOR-HALT

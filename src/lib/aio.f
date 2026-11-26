@@ -1,6 +1,7 @@
 \ aio.f - asynchronous I/O, package AIO: a task submits one operation, gets a
 \ ticket and AWAITs it; one loop task waits on the eventfd every ring signals,
-\ drains the rings and TASK:WAKEs each owner.
+\ drains the rings and, once it lets go of AIO-LOCK, TASK:WAKEs the owner of
+\ each record the drain settled, so no woken TAKE waits on the drain's hold.
 \ START the loop before the first wait; main keeps compiling while it runs.
 \ A submission with no loop, or one STOP is ending, is E-AIO-STATE. Linux uses
 \ io_uring from 5.10, the first long-term kernel with every opcode used;
@@ -21,7 +22,9 @@
 \ hold of AIO-LOCK; its last steps clear RING-STOP and set RING-LIVE, so one that
 \ throws changes neither.
 \ STORAGE CLASS. PROCESS-WIDE: rings, records and loop, under one TASK:FACILITY.
-\ SINK, outside it, which every waker's task writes and none reads.
+\ SINK, outside it, which every waker's task writes and none reads. WOKEN,
+\ outside it: START makes it before the loop runs and STOP deletes it after
+\ the join; between them only the loop task touches it.
 \ TASK-LOCAL: AIO-REGISTERED and AIO-PARKED, a submitting task's own cells.
 
 require src/lib/error.f
@@ -36,6 +39,7 @@ require src/lib/task.f
 require src/lib/fd.f
 require src/lib/adt/result.f
 require src/lib/log.f
+require src/lib/vector.f
 
 package AIO
 public
@@ -96,7 +100,7 @@ $80000 constant EFD-CLOEXEC         \ O_CLOEXEC
 \ own and one cancel's (a linked poll's second is its link record's own).
 \ A submission entry is held only from a stage's publish to its enter; a ring
 \ has half as many as completion entries, at most AIO-ENTRIES.
-\ AIO-RECS-MAX is the most live records a Linux process holds, shared by every
+\ AIO-RECS-MAX is the most live records a process holds, shared by every
 \ task: every wait of a server process at once, its sockets, parked
 \ connections and database waits, with room to spare.
 $100 constant AIO-ENTRIES
@@ -320,12 +324,15 @@ CAST: RING-SLOT ( ^n -- ^^ring )
 TASK:FACILITY AIO-LOCK
 TASK:MIN-STACK TASK:TASK AIO-LOOP
 
+\ The owners of the records the loop's current pass settled.
+TYPED-VARIABLE WOKEN ^VEC:vector<^n> SCRATCH-ONLY
+
 \ Backend submissions run with AIO-LOCK held and answer a code plus record
 \ index. The common layer retains handles, buffers, generations and ownership.
 defer HOST-POLL ( n n n -- n n )
 defer HOST-TIMEOUT ( n -- n n )
 defer HOST-XFER ( n ^u8 NUM:alloc-byte-len n n n -- n n )
-defer HOST-CANCEL ( n -- n )
+defer HOST-CANCEL ( n -- n bool )
 defer HOST-WAKE ( -- n )
 defer HOST-SETUP ( -- )
 defer HOST-CLOSE ( -- )
@@ -575,6 +582,12 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
       rot CHUNK-NEXT dup 0= if drop 2drop -1 exit then -rot
    again ;
 
+\ 0, or E-AIO-FULL when n more live records would pass AIO-RECS-MAX. Every
+\ stage asks before it claims or grows anything.
+: REC-ROOM ( n -- n )
+   REC-LIVE @ + AIO-RECS-MAX > if E-AIO-FULL exit then
+   0 ;
+
 \ A free record, grown into when all are taken; every claim holds AIO-LOCK,
 \ which serializes REC-GROW. Answers 0 and it, or a code and -1.
 : REC-CLAIM ( -- n n )
@@ -705,20 +718,32 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ ---- completion --------------------------------------------------------------
 \ The count is exact: the kernel posts both CQEs of a linked pair (POLL-LINKED)
 \ and one per cancel (CANCEL-STAGE), so the last one owed settles the record.
-: SETTLE ( n -- ) {: idx:n :}
+\ Answers whether the record became done; a forgotten one is discarded instead.
+: SETTLE ( n -- bool ) {: idx:n :}
    idx REC {: r:^ :}
    r REC.PENDING @ 1 - dup r REC.PENDING !
-   0 > if exit then
-   r REC.STATE atomic@ STATE-FORGET = if idx REC-DISCARD exit then
+   0 > if false exit then
+   r REC.STATE atomic@ STATE-FORGET = if idx REC-DISCARD false exit then
    STATE-DONE r REC.STATE atomic!
-   idx REC-OWNER @ TASK:WAKE ;
+   true ;
+
+: WOKEN+ ( n bool -- ) {: idx:n done:bool :}
+   done 0= if exit then
+   idx REC-OWNER @ WOKEN @ VEC:PUSH ! ;
+
+\ An owner may have seen its record done, taken it and ended before its wake
+\ lands.
+: WOKEN-WAKE ( -- )
+   WOKEN @ {: v:^ :}
+   v VEC:COUNT 0 ?do v i VEC:AT @ TASK:WAKE loop
+   v 0 VEC:RESIZE ;
 
 : COMPLETE-LINK ( n n -- ) {: idx:n res:n :}
    idx REC REC.PEER @ {: peer:n :}
    idx REC-FREE
    peer 0 < if exit then
    res ERR-TIME negate = if 1 peer REC REC.TIMED-OUT ! then
-   peer SETTLE ;
+   peer dup SETTLE WOKEN+ ;
 
 \ user_data is NOP-ID or a record's index; a cancel's carries CANCEL-BIT and
 \ only settles.
@@ -728,11 +753,11 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    cqe CQE-FLAGS + LE:U32@ {: fl:n :}
    id NOP-ID = if exit then
    id CANCEL-BIT invert and {: idx:n :}
-   idx id <> if idx SETTLE exit then
+   idx id <> if idx dup SETTLE WOKEN+ exit then
    id REC REC.KIND @ KIND-LINK = if id res COMPLETE-LINK exit then
    res id REC REC.RES !
    fl id REC REC.FLAGS !
-   id SETTLE ;
+   id dup SETTLE WOKEN+ ;
 
 \ The head's store follows this thread's reads of the slot it releases.
 : DRAIN ( ^ring -- ) {: rg:^ :}
@@ -878,6 +903,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
       RETIRED-CLOSE
       LOOP-ENDED?
       AIO-LOCK TASK:RELEASE
+      WOKEN-WAKE
       if exit then
    again ;
 
@@ -913,7 +939,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 : RING-FOR ( n -- ^ring n ) {: want:n :}
    LEFT-ENTER drop
    ACTIVE @ RINGS {: rg:^ :}
-   REC-LIVE @ want + AIO-RECS-MAX > if rg E-AIO-FULL exit then
+   want REC-ROOM {: rc:n :}
+   rc 0<> if rg rc exit then
    rg RING-RECS-LIVE @ want + rg RING-CQ-ENTRIES @ 2 / <= if rg 0 exit then
    rg RING-CQ-ENTRIES @ AIO-CQ-ENTRIES >= if rg E-AIO-FULL exit then
    rg RING-GROW ;
@@ -986,20 +1013,21 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 \ A link (its poll's cancel ends it), an ended or a cancelled record answers 0.
 \ The kernel finds a cancel's target only on the ring the cancel is submitted to.
-: CANCEL-STAGE ( n -- n ) {: target:n :}
+\ Its flag, whether it finished the record, is false: only the loop settles.
+: CANCEL-STAGE ( n -- n bool ) {: target:n :}
    target REC {: r:^ :}
    r REC.STATE atomic@ {: st:n :}
-   st STATE-SUBMITTED <> st STATE-FORGET <> and if 0 exit then
-   r REC.KIND @ KIND-LINK = if 0 exit then
-   r REC.CANCELING @ 0<> if 0 exit then
+   st STATE-SUBMITTED <> st STATE-FORGET <> and if 0 false exit then
+   r REC.KIND @ KIND-LINK = if 0 false exit then
+   r REC.CANCELING @ 0<> if 0 false exit then
    target REC-RING @ {: rg:^ :}
    LEFT-ENTER drop
-   rg 1 SQ-ROOM? 0= if E-AIO-FULL exit then
+   rg 1 SQ-ROOM? 0= if E-AIO-FULL false exit then
    r REC.PENDING @ 1 + r REC.PENDING !
    1 r REC.CANCELING !
    rg dup SQ-SLOT 2dup target CANCEL-BIT or target SQE-CANCEL
    SQ-PUBLISH
-   rg ENTER-SUBMIT ;
+   rg ENTER-SUBMIT false ;
 
 \ A poll with a deadline claims two records, its own and its link's.
 : URING-POLL ( n n n -- n n ) {: f:n events:n ms:n :}
@@ -1057,12 +1085,12 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 INSTALL-HOST
 
 \ ---- the cleanup a submitting task registers ---------------------------------
-\ Without it a task that ends while one of its operations is in flight would be
-\ woken by the loop through a TCB whose memory the join has released.
+\ An ending task's done records are discarded and those in flight forgotten
+\ and cancelled for their last completion to free: none stays live for STOP.
 
 \ A cancel is rejected only after an enter that failed or was taken short.
 : TRY-CANCEL ( n -- ) {: target:n :}
-   target HOST-CANCEL drop ;
+   target HOST-CANCEL drop drop ;
 
 : SCRUB-ONE ( n n -- ) {: idx:n me:n :}
    idx REC-STATE@ {: st:n :}
@@ -1185,11 +1213,15 @@ INSTALL-HOST
    rc 0 <> if rc throw then
    idx ;
 
+\ A stage that finished another task's record leaves its owner to wake here,
+\ after the release; the caller, owning it, is not waiting.
 : CANCEL-HANDLE ( n -- ) {: idx:n :}
    RUNNING-CHECK
    AIO-LOCK TASK:GET
-   idx HOST-CANCEL {: rc:n :}
+   idx HOST-CANCEL {: rc:n done:bool :}
+   done if idx REC-OWNER @ else TASK:SELF then {: owner:^ :}
    AIO-LOCK TASK:RELEASE
+   owner FFI:>CELL TASK:SELF FFI:>CELL <> if owner TASK:WAKE then
    rc 0 <> if rc throw then ;
 
 \ -1 is the file's own position and nothing is below it.
@@ -1304,7 +1336,7 @@ INSTALL-HOST
 : FORGOTTEN-CANCEL ( -- n )
    REC-CAP 0 ?do
       i REC-STATE@ STATE-FORGET = if
-         i HOST-CANCEL dup 0<> if unloop exit then drop
+         i HOST-CANCEL drop dup 0<> if unloop exit then drop
       then
    loop
    0 ;
@@ -1318,12 +1350,23 @@ INSTALL-HOST
    1 RING-STOP atomic!
    0 ;
 
+\ Room for AIO-RECS-MAX owners, the most records live at once, so a push under
+\ AIO-LOCK never allocates and cannot throw with the lock held.
+: WOKEN-OPEN ( -- )
+   HEAP:ALLOCATOR 0 [type] ^n VEC:NEW WOKEN !
+   WOKEN @ AIO-RECS-MAX VEC:RESERVE ;
+
+: QUEUES-CLOSE ( -- )
+   HOST-CLOSE
+   WOKEN @ VEC:DELETE
+   NULL-PTR WOKEN ! ;
+
 : START-LOCKED ( -- )
    RING-LIVE atomic@ 0 <> if E-AIO-STATE throw then
    RECS-CLEAR
    HOST-SETUP
-   [: ['] LOOP-BODY AIO-LOOP TASK:ACTIVATE ;] catch {: code:n :}
-   code 0 <> if HOST-CLOSE code throw then
+   [: WOKEN-OPEN ['] LOOP-BODY AIO-LOOP TASK:ACTIVATE ;] catch {: code:n :}
+   code 0 <> if QUEUES-CLOSE code throw then
    0 RING-STOP atomic!
    1 RING-LIVE ! ;
 
@@ -1359,7 +1402,7 @@ public
       ok OF drop 0 ENDOF
       err OF ENDOF
    ;MATCH {: code:n :}
-   HOST-CLOSE
+   QUEUES-CLOSE
    0 RING-LIVE atomic!
    code 0 <> if code throw then ;
 
@@ -1368,9 +1411,9 @@ public
    RING-LIVE @ 0 <> ;
 
 \ Waits for a descriptor to carry one of the events in the mask. ms is a
-\ deadline in milliseconds, or -1 for no deadline. A full kernel ring on Linux is
-\ E-AIO-FULL and a descriptor past Darwin's per-call poll bound is
-\ E-AIO-POLL-BOUND; either leaves nothing submitted.
+\ deadline in milliseconds, or -1 for no deadline. AIO-RECS-MAX records live, or
+\ a full kernel ring on Linux, is E-AIO-FULL and a descriptor past Darwin's
+\ per-call poll bound is E-AIO-POLL-BOUND; either leaves nothing submitted.
 : POLL ( fd n ms -- ticket ) {: f:fd events:n timeout:ms :}
    SUBMIT-ENTER
    f FD-INT events timeout MS>N HOST-POLL SUBMIT-LEAVE REC >TICKET ;

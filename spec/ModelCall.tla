@@ -1006,8 +1006,8 @@ Halt ==
                    seen>>
 
 (* WAKE-STARTER: a CANCEL or stop of a resting call (its RESEND-DUE read  *)
-(* under the gate) posts the owner's park; an ended owner's TASK:WAKE is   *)
-(* E-TASK-STATE, which it drops. Only the first CANCEL or stop of a rest  *)
+(* under the gate) posts the owner's park; an ended owner's TASK:WAKE      *)
+(* posts nothing. Only the first CANCEL or stop of a rest                  *)
 (* posts here, and the owner's own CANCEL in its cleanups does not: a      *)
 (* later post is a spare hint that only ends a park early, and leaving it  *)
 (* out keeps the hint count bounded.                                       *)

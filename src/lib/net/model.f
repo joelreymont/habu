@@ -5016,11 +5016,9 @@ FSM:DEFINE RESEND-MACHINE ( ^call ) resend-step sent-event
 
 CAST: N>TASK ( n -- ^n )
 
-\ Wakes the starter of a resting call; one that has ended takes no hint.
+\ Wakes the starter of a resting call.
 : WAKE-STARTER ( ^call -- )
-   MODEL-CALL:STARTER @ N>TASK [: dup TASK:WAKE ;] catch {: code:n :} drop
-   code 0= if exit then
-   code E-TASK-STATE <> if code throw then ;
+   MODEL-CALL:STARTER @ N>TASK TASK:WAKE ;
 
 : BEGIN-SEND ( ^call -- ) dup BEGIN-CALL dup SEND-BEGUN RESEND-STEP ;
 

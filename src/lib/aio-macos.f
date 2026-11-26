@@ -147,6 +147,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 \ A record for a stage on descriptor fd, or -1 for none, its fields cleared.
 \ Answers a code and the index, as REC-CLAIM.
 : MAC-CLAIM ( n n -- n n ) {: fd:n kind:n :}
+   1 REC-ROOM dup 0<> if -1 exit then drop
    fd MAC-FD-ROOM dup 0<> if -1 exit then drop
    REC-CLAIM {: rc:n idx:n :}
    rc 0<> if rc -1 exit then
@@ -174,7 +175,9 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
       s" aio: descriptor flags could not be restored" EXIT-STATUS:SYSTEM die
    then ;
 
-: MAC-FINISH ( n n -- ) {: idx:n result:n :}
+\ The poll, timeout and transfer stages drop the flag: they finish only a record
+\ their caller just claimed, which nobody waits on yet.
+: MAC-FINISH ( n n -- bool ) {: idx:n result:n :}
    idx MAC-GIVE-FLAGS
    idx MAC-FD-DROP
    result idx REC REC.RES !
@@ -190,14 +193,14 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    rc 0<> if rc -1 exit then
    events idx MR MR.EVENTS !
    ms MAC-DEADLINE idx MR MR.DEADLINE !
-   fd 0 < if idx MAC-BADF negate MAC-FINISH then
+   fd 0 < if idx MAC-BADF negate MAC-FINISH drop then
    MAC-NOTIFY idx ;
 
 : MAC-TIMEOUT-STAGE ( n -- n n ) {: ms:n :}
    -1 KIND-TIMEOUT MAC-CLAIM {: rc:n idx:n :}
    rc 0<> if rc -1 exit then
    ms MAC-DEADLINE idx MR MR.DEADLINE !
-   ms 0 < if idx MAC-INVAL negate MAC-FINISH then
+   ms 0 < if idx MAC-INVAL negate MAC-FINISH drop then
    MAC-NOTIFY idx ;
 
 : MAC-XFER-STAGE ( n ^u8 NUM:alloc-byte-len n n n -- n n )
@@ -207,15 +210,18 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    buf idx REC-BUF ! cap idx REC-BUF-LEN! 1 idx REC REC.HOLD !
    count idx MR MR.COUNT ! off idx MR MR.OFFSET !
    EV-READABLE idx MR MR.EVENTS !
-   fd 1 0 MAC-FCNTL dup 0 < if idx swap MAC-FINISH MAC-NOTIFY idx exit then drop
-   count 0= if idx 0 MAC-FINISH MAC-NOTIFY idx exit then
+   fd 1 0 MAC-FCNTL dup 0 < if
+      idx swap MAC-FINISH drop MAC-NOTIFY idx exit
+   then drop
+   count 0= if idx 0 MAC-FINISH drop MAC-NOTIFY idx exit then
    fd 0 1 MAC-SEEK 0 >= if 1 idx MR MR.SEEKABLE !
-   else FFI:ERRNO MAC-SPIPE <> if idx FFI:ERRNO negate MAC-FINISH then then
+   else FFI:ERRNO MAC-SPIPE <> if idx FFI:ERRNO negate MAC-FINISH drop then then
    MAC-NOTIFY idx ;
 
-: MAC-CANCEL-STAGE ( n -- n ) {: idx:n :}
-   idx MAC-ACTIVE? if idx ERR-CANCELED negate MAC-FINISH then
-   MAC-NOTIFY ;
+: MAC-CANCEL-STAGE ( n -- n bool ) {: idx:n :}
+   idx MAC-ACTIVE? if idx ERR-CANCELED negate MAC-FINISH else false then
+   {: done:bool :}
+   MAC-NOTIFY done ;
 
 : MAC-PIPE-OPEN ( -- )
    FD:PIPE FD>N MAC-WRITE-FD ! FD>N MAC-READ-FD ! ;
@@ -252,14 +258,14 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    positioned if fd buf count off MAC-PREAD else fd buf count MAC-READ then
    MAC-RESULT ;
 
-: MAC-SERVICE ( n n -- ) {: idx:n events:n :}
+: MAC-SERVICE ( n n -- bool ) {: idx:n events:n :}
    idx REC REC.KIND @ {: kind:n :}
    kind KIND-POLL = if idx events MAC-FINISH exit then
    events $20 and 0<> if idx MAC-BADF negate MAC-FINISH exit then
    idx MAC-TAKE-FLAGS dup 0 <> if negate idx swap MAC-FINISH exit then drop
    idx MAC-TRANSFER {: result:n :}
    idx MAC-GIVE-FLAGS
-   result MAC-AGAIN negate = result ERR-INTR negate = or if exit then
+   result MAC-AGAIN negate = result ERR-INTR negate = or if false exit then
    idx result MAC-FINISH ;
 
 : MAC-PFD! ( n n n -- ) {: fd:n events:n slot:n :}
@@ -311,11 +317,11 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
       i MAC-ACTIVE? i REC REC.GEN @ i MR MR.GEN @ = and if
          i MR MR.SLOT @ dup 0 >= if
             MAC-PFD 6 + LE:U16@ i MR MR.EVENTS @ $38 or and
-            dup 0 <> if i swap MAC-SERVICE else drop then
+            dup 0 <> if i dup rot MAC-SERVICE WOKEN+ else drop then
          else drop then
          i MAC-ACTIVE? if
             i MR MR.DEADLINE @ dup 0 >= swap mono-ns <= and if
-               i ERR-TIME negate MAC-FINISH
+               i dup ERR-TIME negate MAC-FINISH WOKEN+
             then
          then
       then
@@ -327,6 +333,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
       MAC-POLLS @ slots timeout MAC-POLL MAC-RESULT
       dup 0 < if ERR-INTR negate <> if E-AIO-ENTER throw then else drop then
       AIO-LOCK TASK:GET MAC-COLLECT LOOP-ENDED? AIO-LOCK TASK:RELEASE
+      WOKEN-WAKE
       if exit then
    again ;
 

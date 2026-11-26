@@ -1291,8 +1291,9 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 \ A server reports each fault on fd 2 under the id its client is given. For one
 \ server fd 2 is a file, read back while it runs or after the stop.
 \ A full job queue's fault lines: a connection's and a request's for each
-\ queued peer and the gated one, each under 256 bytes.
-HTTP-TEST:QUEUED 1+ 2 * $100 * constant ERR-CAP
+\ queued peer and the gated one, each a log line's frame and E-AIO-FULL's text.
+E-AIO-FULL ERROR:TEXT$ STR:LEN $80 + constant ERR-LINE
+HTTP-TEST:QUEUED 1+ 2 * ERR-LINE * constant ERR-CAP
 
 variable ERR-PATH-U
 variable ERR-U
