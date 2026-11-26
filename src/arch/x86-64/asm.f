@@ -1,6 +1,7 @@
 \ asm.f — x86_64 instruction encoders, package X64ASM.
-\ Operands are nominal types; every encoder screens an operand before it packs a
-\ bit, and a rejection is E-OPERAND. Destination comes first; a memory form takes
+\ Operands are nominal types; every encoder screens a register or immediate
+\ before it packs a bit, a memory operand's constructor screens it, and a
+\ rejection is E-OPERAND. Destination comes first; a memory form takes
 \ the data register first and the memory operand second, stores included.
 \ An instruction is 1..15 bytes with no value form, so every ENC-* takes the byte
 \ sink, a vector<u8> (src/lib/vector.f), last and appends to it.
@@ -22,7 +23,7 @@ DEFTYPE IMM32
 DEFTYPE IMM64
 DEFTYPE CONDITION
 DEFTYPE REL
-DEFTYPE MEM
+NEWTYPE mem
 
 E-X64ASM-OPERAND constant E-OPERAND
 
@@ -115,27 +116,28 @@ private
 \ operand: disp32 in bits 0..31, base in 32..36, index in 37..41, the scale
 \ logarithm in 42..43 and the rip-relative bit in 44. MEM-NONE is the absent
 \ register. The public constructors below are the only way to build one.
+CAST: >MEM ( n -- mem )
+CAST: MEM>N ( mem -- n )
+
 16 constant MEM-NONE
 32 constant MEM-BASE-SHIFT
 37 constant MEM-INDEX-SHIFT
 42 constant MEM-SCALE-SHIFT
 44 constant MEM-RIP-SHIFT
 
-: MEM-FIELD ( n n n -- n ) {: v:n shift:n width:n :}
-   v shift rshift  1 width lshift 1 -  and ;
-
-: MEM-BASE ( mem -- n )   MEM>N MEM-BASE-SHIFT 5 MEM-FIELD ;
-
-: MEM-INDEX ( mem -- n )  MEM>N MEM-INDEX-SHIFT 5 MEM-FIELD ;
-
-: MEM-SS ( mem -- n )     MEM>N MEM-SCALE-SHIFT 2 MEM-FIELD ;
-
-: MEM-RIP? ( mem -- bool ) MEM>N MEM-RIP-SHIFT 1 MEM-FIELD 0<> ;
-
-: MEM-DISP ( mem -- n ) {: m:mem :}
-   m MEM>N $FFFFFFFF and {: d:n :}
+: DISP32 ( n -- n ) {: v:n :}
+   v $FFFFFFFF and {: d:n :}
    d $80000000 and 0<> if d $100000000 - exit then
    d ;
+
+\ The base, index, scale logarithm, signed displacement and rip-relative bit.
+: MEM-DECODE ( mem -- n n n n bool ) {: m:mem :}
+   m MEM>N {: v:n :}
+   v MEM-BASE-SHIFT rshift $1F and
+   v MEM-INDEX-SHIFT rshift $1F and
+   v MEM-SCALE-SHIFT rshift 3 and
+   v DISP32
+   v MEM-RIP-SHIFT rshift 1 and 0<> ;
 
 : SCALE-LOG ( n -- n ) {: sc:n :}
    sc 1 = if 0 exit then
@@ -151,69 +153,47 @@ private
    ss MEM-SCALE-SHIFT lshift or
    rip MEM-RIP-SHIFT lshift or >MEM ;
 
-\ Every memory operand is re-screened on the way into an encoder, so a value
-\ forged through the generated >MEM cast cannot reach a ModRM or SIB field.
-: MEM-CHECK ( mem -- ) {: m:mem :}
-   m MEM-INDEX {: ix:n :}
-   ix MEM-NONE <> if
-      ix REG-NUM drop
-      ix 4 = if E-OPERAND throw then
-   then
-   m MEM-RIP? if
-      m MEM-BASE MEM-NONE <> if E-OPERAND throw then
-      ix MEM-NONE <> if E-OPERAND throw then
-      exit
-   then
-   m MEM-BASE REG-NUM drop ;
-
-: MEM-X-BIT ( mem -- n ) {: m:mem :}
-   m MEM-INDEX {: ix:n :}
-   ix MEM-NONE = if 0 exit then
-   ix 3 rshift ;
-
-: MEM-B-BIT ( mem -- n ) {: m:mem :}
-   m MEM-BASE {: b:n :}
-   b MEM-NONE = if 0 exit then
-   b 3 rshift ;
+\ A base or index register's REX.B or REX.X bit; the absent register has none.
+: REX-BIT ( n -- n ) {: r:n :}
+   r MEM-NONE = if 0 exit then
+   r 3 rshift ;
 
 \ mod 00 has no displacement, but rm 101 in mod 00 means rip-relative, so a base
 \ of rbp or r13 spells its zero displacement as a disp8 of zero.
-: MEM-MOD ( mem -- n ) {: m:mem :}
-   m MEM-DISP {: d:n :}
-   d 0= m MEM-BASE 7 and 5 <> and if 0 exit then
+: MEM-MOD ( n n -- n ) {: b:n d:n :}
+   d 0= b 7 and 5 <> and if 0 exit then
    d -128 >= d 127 <= and if 1 exit then
    2 ;
 
 \ rm 100 means "a SIB byte follows", so a base of rsp or r12 needs one even with
 \ no index at all.
-: MEM-SIB? ( mem -- bool ) {: m:mem :}
-   m MEM-INDEX MEM-NONE <> if true exit then
-   m MEM-BASE 7 and 4 = ;
+: MEM-SIB? ( n n -- bool ) {: b:n ix:n :}
+   ix MEM-NONE <> if true exit then
+   b 7 and 4 = ;
 
 \ index 100 in a SIB byte means "no index".
-: MEM-SIB-INDEX ( mem -- n ) {: m:mem :}
-   m MEM-INDEX {: ix:n :}
+: MEM-SIB-INDEX ( n -- n ) {: ix:n :}
    ix MEM-NONE = if 4 exit then
    ix ;
 
-: EMIT-DISP ( n mem ^VEC:vector<u8> -- ) {: mod:n m:mem s:^ :}
-   mod 1 = if m MEM-DISP s EMIT-B exit then
-   mod 2 = if m MEM-DISP s EMIT-D then ;
+: EMIT-DISP ( n n ^VEC:vector<u8> -- ) {: mod:n d:n s:^ :}
+   mod 1 = if d s EMIT-B exit then
+   mod 2 = if d s EMIT-D then ;
 
-: EMIT-MEM ( n mem ^VEC:vector<u8> -- ) {: reg:n m:mem s:^ :}
-   m MEM-RIP? if
-      0 reg 5 MODRM s EMIT-B
-      m MEM-DISP s EMIT-D
-      exit
-   then
-   m MEM-MOD {: mod:n :}
-   m MEM-SIB? if
+: EMIT-RIP ( n n ^VEC:vector<u8> -- ) {: reg:n d:n s:^ :}
+   0 reg 5 MODRM s EMIT-B
+   d s EMIT-D ;
+
+\ The ModRM, optional SIB and displacement of a base-relative operand.
+: EMIT-BASED ( n n n n n ^VEC:vector<u8> -- ) {: reg:n b:n ix:n ss:n d:n s:^ :}
+   b d MEM-MOD {: mod:n :}
+   b ix MEM-SIB? if
       mod reg 4 MODRM s EMIT-B
-      m MEM-SS m MEM-SIB-INDEX m MEM-BASE SIB s EMIT-B
+      ss ix MEM-SIB-INDEX b SIB s EMIT-B
    else
-      mod reg m MEM-BASE MODRM s EMIT-B
+      mod reg b MODRM s EMIT-B
    then
-   mod m s EMIT-DISP ;
+   mod d s EMIT-DISP ;
 
 \ ---- the two instruction shapes ----------------------------------------------
 \ A register-to-register form: mod 11, the reg field holding either a register
@@ -227,11 +207,12 @@ private
 \ A memory form: the reg field as above, the rm field spelled by the ModRM, the
 \ optional SIB and the displacement.
 : RM-ENC ( n n n mem n ^VEC:vector<u8> -- ) {: wd:n op:n reg:n m:mem force:n s:^ :}
-   m MEM-CHECK
+   m MEM-DECODE {: b:n ix:n ss:n d:n rip:bool :}
    wd WIDTH-66? if $66 s EMIT-B then
-   wd WIDTH-W  reg 3 rshift  m MEM-X-BIT  m MEM-B-BIT  force s EMIT-REX
+   wd WIDTH-W  reg 3 rshift  ix REX-BIT  b REX-BIT  force s EMIT-REX
    op s EMIT-OP
-   reg m s EMIT-MEM ;
+   rip if reg d s EMIT-RIP exit then
+   reg b ix ss d s EMIT-BASED ;
 
 \ ---- the group-1 arithmetic/logic family -------------------------------------
 \ One opcode family parameterised by a base: add 00, or 08, adc 10, sbb 18,
@@ -303,20 +284,18 @@ private
 
 : SSE-MEM ( n n xmm mem ^VEC:vector<u8> -- )
    {: prefix:n op:n r:xmm m:mem s:^ :}
-   r XMM>N REG-NUM {: rn:n :}  m MEM-CHECK
+   r XMM>N REG-NUM {: rn:n :}
    prefix s EMIT-B
-   0 rn 3 rshift m MEM-X-BIT m MEM-B-BIT 0 s EMIT-REX
-   op s EMIT-OP
-   rn m s EMIT-MEM ;
+   W32 op rn m 0 s RM-ENC ;
 
 \ The SHA instructions take no mandatory prefix.
 : SHA-RR ( n xmm xmm ^VEC:vector<u8> -- ) {: op:n d:xmm sr:xmm s:^ :}
    W32 op d XMM>N REG-NUM sr XMM>N REG-NUM 0 s RR-ENC ;
 
 \ A locked 64-bit read-modify-write of memory. The lock prefix precedes REX, as
-\ a mandatory SSE prefix does, so both operands are screened before it.
+\ a mandatory SSE prefix does, so the register is screened before it.
 : LOCK-RM ( n r64 mem ^VEC:vector<u8> -- ) {: op:n r:r64 m:mem s:^ :}
-   r R64>N REG-NUM {: rn:n :}  m MEM-CHECK
+   r R64>N REG-NUM {: rn:n :}
    $F0 s EMIT-B
    W64 op rn m 0 s RM-ENC ;
 
