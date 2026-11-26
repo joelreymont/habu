@@ -63,9 +63,7 @@ public
 \ No generic element-indexed accessor: `+` on a `^t` is byte arithmetic and
 \ checked code has no element size for a type parameter. The byte set works over
 \ `span<u8>`, the cell set over `span<cell>`, and SKIP/TAKE/SUB narrow in bytes.
-\ There is no TYPED-BUFFER span form: its accessor is an index function, and one
-\ would change the generated accessor set (src/core/layout-buffer.f); hand a
-\ TYPED-BUFFER accessor result to SPAN:MAKE instead.
+\ There is no TYPED-BUFFER span form: its accessor is an index function.
 : AT ( span<u8> n -- ^u8 ) {: s i :}
    s span> {: b l :}
    i 0 < i l >= or if E-SPAN-RANGE throw then
