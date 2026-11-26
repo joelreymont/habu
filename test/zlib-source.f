@@ -242,15 +242,73 @@ $100000000 constant U32-OVER
    NOTHING$ EMPTY-FRAMED$ FRAMED-ROUND ;
 
 \ A deterministic mix: runs of one byte, a repeating text and an LCG's bytes,
-\ so both literal and match coding are exercised.
-: FILL ( ^u8 n -- ) {: p:^ u:n :}
+\ each part `run` bytes long, so both literal and match coding are exercised.
+: FILL ( ^u8 n n -- ) {: p:^ u:n run:n :}
    $2545F491 u 0 ?do
       $41C64E6D * $3039 + $FFFFFFFF and
-      i $10000 / 3 mod
-      dup 0= if drop i $4000 / $FF and else
+      i run / 3 mod
+      dup 0= if drop i run 4 / / $FF and else
       1 = if i 26 mod [char] a + else dup 16 rshift $FF and then then
       p i + c!
    loop drop ;
+
+4096 constant STEP-BYTES
+7 constant STEP-FEED
+13 constant STEP-ROOM
+create STEP-PLAIN STEP-BYTES allot
+create STEP-OUT STEP-ROOM allot
+variable STEP-AT
+TYPED-VARIABLE STEP-DONE bool
+: STEP-TAIL$ ( -- str ) s\" \xAA\xBB" ;
+
+\ Feeds at most STEP-FEED bytes of s from STEP-AT and appends what the step
+\ made. A step that moves nothing ends the loop, so a stall fails the case
+\ instead of hanging it.
+: STEP ( ^ZLIB:zstream str ^VEC:vector<u8> -- bool ) {: z:^ s:str out:^ :}
+   s STR:LEN STEP-AT @ - STEP-FEED min {: k:n :}
+   z s STR:DATA STEP-AT @ + k >str STEP-OUT STEP-ROOM SPAN:MAKE
+   ZLIB:INFLATE-STEP {: used:n made:n done:bool :}
+   done STEP-DONE !
+   STEP-OUT made >str out VEC:APPEND
+   used STEP-AT +!
+   done 0= used made + 0<> and ;
+
+: STEPS ( ^ZLIB:zstream str ^VEC:vector<u8> -- ) {: z:^ s:str out:^ :}
+   0 STEP-AT !
+   begin z s out STEP 0= until ;
+
+: STEP-INVALID ( ^ZLIB:zstream -- )
+   s\" \xFF\xFF" STEP-OUT STEP-ROOM SPAN:MAKE ZLIB:INFLATE-STEP drop drop drop ;
+: STEP-BAD ( -- ) [: STEP-INVALID ;] ZLIB:WITH-INFLATE-RAW ;
+
+\ A fresh vector's empty room has a null base.
+: STEP-IDLE ( ^ZLIB:zstream -- n n bool ) {: z:^ :}
+   FRESH {: v:^ :}
+   z NOTHING$ v 0 VEC:EXTEND ZLIB:INFLATE-STEP
+   v VEC:DELETE ;
+
+\ The stream is followed by STEP-TAIL$, which the step that ends it leaves
+\ unused.
+: STEP-CASES ( -- )
+   s" a raw stream inflates in steps, 7 bytes in and 13 out at a time" T-LABEL
+   STEP-PLAIN STEP-BYTES $400 FILL
+   STEP-PLAIN STEP-BYTES >str {: plain:str :}
+   FRESH {: packed:^ :}
+   plain packed ZLIB:DEFLATE-RAW
+   packed VEC:COUNT {: k:n :}
+   STEP-TAIL$ packed VEC:APPEND
+   packed VEC:BYTES {: s:str :}
+   FRESH {: out:^ :}
+   [: s out STEPS ;] ZLIB:WITH-INFLATE-RAW
+   STEP-DONE @ TTRUE
+   STEP-AT @ k T=
+   out VEC:BYTES plain T$=
+   out VEC:DELETE packed VEC:DELETE
+   s" a step over invalid data is a data error" T-LABEL
+   [: STEP-BAD ;] ZLIB:E-DATA TTHROWSQ
+   s" a step with no input into an empty room answers 0 0 false" T-LABEL
+   [: STEP-IDLE ;] ZLIB:WITH-INFLATE-RAW {: used:n made:n done:bool :}
+   used 0 T= made 0 T= done TFALSE ;
 
 : ARTIFACT$ ( str -- str ) {: name:str :}
    ROOT ROOT-U @ >str name PATH FS:JOIN-PATH PATH swap >str ;
@@ -291,7 +349,7 @@ PTR-VARIABLE PLAIN
 
 : LARGE ( -- )
    PAYLOAD-BYTES MEM-ALLOC-BYTES drop PLAIN !
-   PLAIN @ PAYLOAD-BYTES FILL
+   PLAIN @ PAYLOAD-BYTES $10000 FILL
    LARGE-RAW LARGE-FRAMED
    PLAIN @ PAYLOAD-BYTES RELEASE ;
 
@@ -303,7 +361,7 @@ public
    root STR:DATA ROOT root STR:LEN BYTE-COPY root STR:LEN ROOT-U !
 
    CRC-CASES LITERAL-CASES STREAM-FAILURES KEEPS SPAN-REJECTIONS
-   SMALL-DEFLATE FRAMED-CASES LARGE
+   SMALL-DEFLATE FRAMED-CASES STEP-CASES LARGE
    T-REPORT
    s" zlib-source: ok" type cr ;
 ;package

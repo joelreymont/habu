@@ -1,16 +1,23 @@
 \ zlib.f - raw DEFLATE (RFC 1951), zlib-framed DEFLATE (RFC 1950) and CRC-32
-\ by libz. A codec word reads its source and appends to the caller's vector:
+\ by libz. A one-shot word reads its source and appends to the caller's vector:
 \ deflate the whole stream, inflate at most the count it is given. A failure
 \ rethrows its code and leaves COUNT as it was, earlier bytes intact. The
 \ source must not lie in the vector's block: growing it may move the block.
-\ libz allocates from init to the matching *End, which every path reaches.
-\ STORAGE CLASS. TASK-LOCAL: the z_stream and the overflow byte are TASK:+USER
-\ rows, cleared after every call, so no address survives into a saved image.
+\ WITH-INFLATE-RAW lends a raw inflater its body feeds in pieces through
+\ INFLATE-STEP. libz allocates from init to the matching *End, which every
+\ path reaches.
+\ STORAGE CLASS. TASK-LOCAL: the one-shot words' z_stream and the overflow
+\ byte are TASK:+USER rows, cleared after every call, so no address survives
+\ into a saved image. SCOPE-OWNED: a WITH-INFLATE-RAW stream belongs to its
+\ scope, a MEM:WITH-RECORD record whose libz state lives in heap memory from
+\ open to end.
 
 require src/lib/error.f
 require src/lib/le.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
+require src/lib/memory.f
+require src/lib/span.f
 require src/lib/vector.f
 
 package ZLIB
@@ -26,14 +33,10 @@ public
 -9523 s" libz reports Z_MEM_ERROR" ERROR:FAULT E-MEMORY
 -9524 s" a libz version, layout or state error, or an unexpected libz status" ERROR:FAULT E-ABI
 
-private
-
-$FFFFFFFF constant U32-MAX
-
 \ z_stream on the supported LP64 hosts (Darwin and Linux): pointers and uLong
 \ are eight bytes, uInt and int four; avail-in, avail-out and data-type are
 \ each a four-byte C field at the start of its cell, the rest padding.
-STRUCTURE zstream DERIVE addr
+STRUCTURE zstream OPAQUE DERIVE addr
    FIELD next-in ^u8
    FIELD avail-in n
    FIELD total-in n
@@ -50,12 +53,17 @@ STRUCTURE zstream DERIVE addr
    FIELD reserved n
 ;STRUCTURE
 
+private
+
+$FFFFFFFF constant U32-MAX
+
 0 constant Z-OK
 1 constant Z-STREAM-END
 2 constant Z-NEED-DICT
 -3 constant Z-DATA-ERROR
 -4 constant Z-MEM-ERROR
 -5 constant Z-BUF-ERROR
+0 constant Z-NO-FLUSH
 4 constant Z-FINISH
 -1 constant Z-DEFAULT-COMPRESSION
 8 constant Z-DEFLATED
@@ -66,11 +74,9 @@ STRUCTURE zstream DERIVE addr
 
 TASK:+USER STREAM zstream
 TASK:+USER PROBE u8
-: NEXT-IN ( -- ^^u8 ) STREAM ZSTREAM-NEXT-IN ;
-: NEXT-OUT ( -- ^^u8 ) STREAM ZSTREAM-NEXT-OUT ;
-: AVAIL-IN@ ( -- n ) STREAM ZSTREAM-AVAIL-IN BYTE-VIEW LE:U32@ ;
-: AVAIL-OUT@ ( -- n ) STREAM ZSTREAM-AVAIL-OUT BYTE-VIEW LE:U32@ ;
-: AVAIL-OUT! ( n -- ) STREAM ZSTREAM-AVAIL-OUT BYTE-VIEW LE:U32! ;
+: AVAIL-IN@ ( ^zstream -- n ) ZSTREAM-AVAIL-IN BYTE-VIEW LE:U32@ ;
+: AVAIL-OUT@ ( ^zstream -- n ) ZSTREAM-AVAIL-OUT BYTE-VIEW LE:U32@ ;
+: AVAIL-OUT! ( n ^zstream -- ) ZSTREAM-AVAIL-OUT BYTE-VIEW LE:U32! ;
 : TOTAL-OUT@ ( -- n ) STREAM ZSTREAM-TOTAL-OUT @ ;
 
 \ The only asserted effects are exact C entry points; Habu owns every check.
@@ -110,11 +116,18 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    dup Z-OK = if drop exit then
    FAIL ;
 
+\ The caller has checked both lengths fit libz's 32 bits; libz rejects a null
+\ next_out even where there is no room.
+: AIM ( ^zstream str str -- )
+   {: z:^ src:str dst:str :}
+   src STR:DATA z ZSTREAM-NEXT-IN ! src STR:LEN z ZSTREAM-AVAIL-IN BYTE-VIEW LE:U32!
+   dst STR:DATA dst STR:LEN 0= if drop PROBE then z ZSTREAM-NEXT-OUT !
+   dst STR:LEN z AVAIL-OUT! ;
+
 : STAGE ( str str -- )
    {: src:str dst:str :}
    CLEAR
-   src STR:DATA NEXT-IN ! src STR:LEN STREAM ZSTREAM-AVAIL-IN BYTE-VIEW LE:U32!
-   dst STR:DATA NEXT-OUT ! dst STR:LEN AVAIL-OUT! ;
+   STREAM src dst AIM ;
 
 \ The *End status of an operation that succeeded. After a failure the caught
 \ code is the report: abandoning an unfinished deflater ends with Z_DATA_ERROR.
@@ -125,8 +138,8 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    Z-DEFAULT-STRATEGY C-VERSION [type] zstream width>n C-DEFLATE-INIT
    INIT-CHECK ;
 
-: INFLATE-OPEN ( n -- ) {: window:n :}
-   STREAM BYTE-VIEW window C-VERSION [type] zstream width>n C-INFLATE-INIT
+: INFLATE-OPEN ( ^zstream n -- ) {: z:^ window:n :}
+   z BYTE-VIEW window C-VERSION [type] zstream width>n C-INFLATE-INIT
    INIT-CHECK ;
 
 : BOUND ( n -- n ) STREAM BYTE-VIEW swap C-BOUND ;
@@ -134,31 +147,31 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
 : STALLED? ( n -- bool ) dup Z-OK = swap Z-BUF-ERROR = or ;
 
 : ENDED ( -- n )
-   AVAIL-IN@ 0<> if E-DATA throw then
+   STREAM AVAIL-IN@ 0<> if E-DATA throw then
    TOTAL-OUT@ ;
 
 \ The room is full, or there was none, and the stream has not ended. One
 \ more byte of room tells completion from an overrun without exposing
 \ anything past the most the caller allows.
 : PROBE-STEP ( -- n )
-   PROBE NEXT-OUT ! 1 AVAIL-OUT!
+   PROBE STREAM ZSTREAM-NEXT-OUT ! 1 STREAM AVAIL-OUT!
    STREAM BYTE-VIEW Z-FINISH C-INFLATE {: status:n :}
    status Z-STREAM-END = if
-      AVAIL-OUT@ 0= if E-CAPACITY throw then
+      STREAM AVAIL-OUT@ 0= if E-CAPACITY throw then
       ENDED exit
    then
    status STALLED? 0= if status FAIL then
-   AVAIL-OUT@ 0= if E-CAPACITY throw then
+   STREAM AVAIL-OUT@ 0= if E-CAPACITY throw then
    E-DATA throw ;
 
 \ Z_FINISH lets a stream that completes in this call skip libz's window. A
 \ stall with room left means the input ran out first: truncated.
 : INFLATE-RUN ( -- n )
-   AVAIL-OUT@ 0= if PROBE-STEP exit then
+   STREAM AVAIL-OUT@ 0= if PROBE-STEP exit then
    STREAM BYTE-VIEW Z-FINISH C-INFLATE {: status:n :}
    status Z-STREAM-END = if ENDED exit then
    status STALLED? 0= if status FAIL then
-   AVAIL-OUT@ 0<> if E-DATA throw then
+   STREAM AVAIL-OUT@ 0<> if E-DATA throw then
    PROBE-STEP ;
 
 \ With Z_FINISH, all input supplied and libz's bound for room, deflate ends
@@ -184,7 +197,7 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    status END-CHECK ;
 
 : INFLATE-SESSION ( n -- n )
-   INFLATE-OPEN
+   STREAM swap INFLATE-OPEN
    [: INFLATE-RUN ;] catch {: rc:n :}
    STREAM BYTE-VIEW C-INFLATE-END {: status:n :}
    rc 0<> if rc throw then
@@ -221,6 +234,13 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    dup 0<> if nip v old VEC:RESIZE throw then
    drop old + v swap VEC:RESIZE ;
 
+: RUN-BODY ( R ^zstream [ R ^zstream -- S ] -- S ) execute ;
+
+: INFLATE-SCOPE ( R ^zstream [ R ^zstream -- S ] -- S )
+   {: z:^ body :}
+   z RAW-WINDOW INFLATE-OPEN
+   z body [: RUN-BODY ;] [: z BYTE-VIEW C-INFLATE-END END-CHECK ;] finally ;
+
 public
 
 \ The finalized IEEE CRC-32; zero for no bytes.
@@ -244,5 +264,23 @@ public
 \ its method, window, header check and Adler-32, at most n bytes expanded. A
 \ preset dictionary is rejected.
 : INFLATE-FRAMED ( str ^VEC:vector<u8> n -- ) FRAMED-WINDOW INFLATE-FOR ;
+
+\ Runs the body on a stream opened as a raw inflater, window bits -15, and ends
+\ the stream when the body returns or throws; a failed open runs no body.
+: WITH-INFLATE-RAW ( R [ R ^zstream -- S ] -- S )
+   {: body :}
+   [type] zstream [: body INFLATE-SCOPE ;] MEM:WITH-RECORD ;
+
+\ Answers the source bytes used, the bytes made and true at the stream's end,
+\ using no byte past it. 0 0 false: libz cannot move without more input or room.
+: INFLATE-STEP ( ^zstream str SPAN:span<u8> -- n n bool )
+   SPAN:$ {: z:^ src:str dst:str :}
+   src SPAN-CHECK dst SPAN-CHECK
+   z src dst AIM
+   z BYTE-VIEW Z-NO-FLUSH C-INFLATE {: status:n :}
+   status Z-STREAM-END = status STALLED? or 0= if status FAIL then
+   src STR:LEN z AVAIL-IN@ -
+   dst STR:LEN z AVAIL-OUT@ -
+   status Z-STREAM-END = ;
 
 ;package
